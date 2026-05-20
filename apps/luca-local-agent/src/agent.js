@@ -1407,9 +1407,119 @@ process.on('SIGTERM', () => {
   }
 });
 
+// ====================================================================
+// PRINT QUEUE LOOP — Word ciktilarini otomatik yazicidan cikart
+// ====================================================================
+// Backend fis-yazdirma'da yeni bir print kaydi olusunca buraya pending
+// olarak duser; biz indirip Windows'un default yazicisina gondeririz.
+
+const PRINT_POLL_INTERVAL = 8_000;
+const PRINT_TEMP_DIR = path.join(os.tmpdir(), 'moren-print');
+
+async function ensurePrintTempDir() {
+  try {
+    await fs.promises.mkdir(PRINT_TEMP_DIR, { recursive: true });
+  } catch (err) {
+    log.warn(`Print temp dir olusturulamadi: ${err.message}`);
+  }
+}
+
+/**
+ * Tek bir Word dosyasini Windows default yazicisina gonderir.
+ * Start-Process -FilePath x.docx -Verb Print → Word/Office aciliyor,
+ * yazdiriyor, sessizce kapaniyor.
+ */
+async function printDocxFile(filePath) {
+  return new Promise((resolve, reject) => {
+    const ps = `Start-Process -FilePath '${filePath.replace(/'/g, "''")}' -Verb Print -WindowStyle Hidden`;
+    const child = require('child_process').spawn(
+      'powershell.exe',
+      ['-NoProfile', '-NonInteractive', '-Command', ps],
+      { windowsHide: true },
+    );
+    let stderr = '';
+    child.stderr.on('data', (d) => { stderr += d.toString(); });
+    child.on('close', (code) => {
+      if (code === 0) resolve();
+      else reject(new Error(`PowerShell exit ${code}: ${stderr.slice(0, 300)}`));
+    });
+    child.on('error', reject);
+  });
+}
+
+async function processPrintJob(job) {
+  const tempFile = path.join(PRINT_TEMP_DIR, `${job.id}_${Date.now()}.docx`);
+  try {
+    // 1) Claim — ayni anda iki agent yazdirmasin
+    const { data: claim } = await api.post(`/agent/print-queue/${job.id}/claim`, {
+      deviceId: DEVICE_ID,
+    });
+    if (!claim?.claimed) {
+      log.debug(`Print ${job.id}: baska bir agent aldi`);
+      return;
+    }
+    log.info(`Print ${job.id} alindi (${job.filename})`);
+
+    // 2) Word'u indir
+    const resp = await api.get(`/agent/print-queue/${job.id}/download`, {
+      responseType: 'arraybuffer',
+    });
+    await fs.promises.writeFile(tempFile, Buffer.from(resp.data));
+    log.info(`Print ${job.id} indirildi: ${tempFile} (${resp.data.byteLength} byte)`);
+
+    // 3) Yazdir
+    await printDocxFile(tempFile);
+    log.info(`Print ${job.id} yaziciya gonderildi`);
+
+    // 4) Complete
+    await api.post(`/agent/print-queue/${job.id}/complete`, { success: true });
+  } catch (err) {
+    log.error(`Print ${job.id} basarisiz: ${err.message}`);
+    try {
+      await api.post(`/agent/print-queue/${job.id}/complete`, {
+        success: false,
+        error: err.message?.slice(0, 500) || 'unknown',
+      });
+    } catch {}
+  } finally {
+    // Gecici dosyayi sil (30 sn sonra — yazici daha kuyrugundayken silinmesin)
+    setTimeout(() => {
+      fs.promises.unlink(tempFile).catch(() => {});
+    }, 30_000);
+  }
+}
+
+async function printQueueLoop() {
+  await ensurePrintTempDir();
+  log.info(`Print queue loop basladi (${PRINT_POLL_INTERVAL / 1000}sn poll)`);
+  while (!stopped) {
+    try {
+      const { data: pending } = await api.get('/agent/print-queue/pending', {
+        params: { deviceId: DEVICE_ID },
+      });
+      if (Array.isArray(pending) && pending.length > 0) {
+        for (const job of pending) {
+          if (stopped) break;
+          await processPrintJob(job);
+        }
+      }
+    } catch (err) {
+      // 404/connection — sessiz gec, backend henuz print modulunu deploy etmemis olabilir
+      if (err.response?.status && err.response.status !== 404) {
+        log.warn(`Print poll hatasi: ${err.message}`);
+      }
+    }
+    if (!stopped) await new Promise((r) => setTimeout(r, PRINT_POLL_INTERVAL));
+  }
+}
+
 async function start() {
   acquireSingleInstanceLock();
   const poolStarted = await startPortalWorkerPoolIfAvailable();
+
+  // Print queue loop'u her zaman calişsin — Luca havuzu var/yok fark etmez
+  printQueueLoop().catch((err) => log.error(`Print loop fatal: ${err.message}`));
+
   if (!poolStarted) {
     if (!cfg.luca?.uyeNo || !cfg.luca?.username || !cfg.luca?.password) {
       throw new Error('Portal Luca kullanici havuzu bos ve config.json icinde tekil Luca kullanicisi yok');

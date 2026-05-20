@@ -1775,8 +1775,15 @@ model FisYazdirmaOutput {
   createdBy     String?
   createdAt     DateTime @default(now())
 
+  // Otomatik yazdırma — lokal agent tarafından pull edilir
+  printStatus   String?  // null | "REQUESTED" | "PRINTING" | "DONE" | "FAILED"
+  printedAt     DateTime?
+  printError    String?  // hata olursa mesaj
+  printDeviceId String?  // hangi agent yazdıracak (null = ilk uygun cihaz)
+
   @@index([tenantId, createdAt])
   @@index([tenantId, mukellefId, donem])
+  @@index([printStatus]) // agent pending sorgusu icin
   @@map("fis_yazdirma_outputs")
 }
 

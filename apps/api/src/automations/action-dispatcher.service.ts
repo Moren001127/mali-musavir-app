@@ -5,6 +5,7 @@ import { PrismaService } from '../prisma/prisma.service';
 import { WhatsAppService } from '../whatsapp/whatsapp.service';
 import { WhatsAppQrService } from '../whatsapp-qr/whatsapp-qr.service';
 import { FisYazdirmaService } from '../fis-yazdirma/fis-yazdirma.service';
+import { MihsapService } from '../mihsap/mihsap.service';
 import { ACTION_BY_NAME } from './action-catalog';
 
 /**
@@ -33,6 +34,7 @@ export class ActionDispatcherService {
     private readonly whatsapp: WhatsAppService,
     private readonly whatsappQr: WhatsAppQrService,
     private readonly fisYazdirma: FisYazdirmaService,
+    private readonly mihsap: MihsapService,
   ) {}
 
   /**
@@ -104,6 +106,10 @@ export class ActionDispatcherService {
         );
       case 'generate_fis_word_from_invoices':
         return this.generateFisWordFromInvoices(args, ctx);
+      case 'print_word_output':
+        return this.printWordOutput(args, ctx);
+      case 'fetch_invoices_for_period':
+        return this.fetchInvoicesForPeriod(args, ctx);
 
       default:
         throw new Error(`Aksiyon "${toolName}" tanımlı ama dispatcher'da uygulanmamış.`);
@@ -320,6 +326,83 @@ export class ActionDispatcherService {
       fileCount: result.fileCount,
       outputId: result.outputId,
       downloadUrl: result.downloadUrl,
+    };
+  }
+
+  // ---------------------------------------------------------------
+  // PRINT WORD OUTPUT — lokal agent uzerinden yazicidan cikar
+  // ---------------------------------------------------------------
+  private async printWordOutput(
+    args: any,
+    ctx: { tenantId: string; userId?: string | null },
+  ) {
+    const outputId = String(args.outputId ?? '');
+    if (!outputId) {
+      throw new Error('print_word_output: outputId zorunlu.');
+    }
+    const deviceId = args.deviceId ? String(args.deviceId) : undefined;
+    const result = await this.fisYazdirma.enqueuePrint(ctx.tenantId, outputId, deviceId);
+    return {
+      success: true,
+      outputId: result.id,
+      printStatus: result.printStatus,
+      message: 'Yazdirma kuyruga eklendi; lokal agent birkac saniye icinde alacak.',
+    };
+  }
+
+  // ---------------------------------------------------------------
+  // FETCH INVOICES FOR PERIOD — MIHSAP'tan canli cek
+  // ---------------------------------------------------------------
+  private async fetchInvoicesForPeriod(
+    args: any,
+    ctx: { tenantId: string; userId?: string | null },
+  ) {
+    const taxpayerId = String(args.taxpayerId ?? '');
+    const donemRaw = String(args.donem ?? '');
+    if (!taxpayerId || !donemRaw) {
+      throw new Error('fetch_invoices_for_period: taxpayerId ve donem zorunlu.');
+    }
+    const donem = this.normalizeDonem(donemRaw);
+    if (!donem) {
+      throw new Error(
+        `fetch_invoices_for_period: donem formati gecersiz ("${donemRaw}"). Beklenen: "YYYY-MM".`,
+      );
+    }
+    const faturaTuru = args.faturaTuru === 'ALIS' || args.faturaTuru === 'SATIS'
+      ? args.faturaTuru
+      : null; // null = ikisi de
+
+    // Mukellefin MIHSAP ID'sini bul
+    const taxpayer = await (this.prisma as any).taxpayer.findFirst({
+      where: { id: taxpayerId, tenantId: ctx.tenantId },
+      select: { mihsapId: true, firstName: true, lastName: true, companyName: true, type: true },
+    });
+    if (!taxpayer?.mihsapId) {
+      throw new Error('fetch_invoices_for_period: Bu mukellefin MIHSAP ID\'si yok. Mukellef kartindan ekleyin.');
+    }
+
+    const results: any[] = [];
+    const turler: ('ALIS' | 'SATIS')[] = faturaTuru ? [faturaTuru] : ['ALIS', 'SATIS'];
+    for (const tur of turler) {
+      try {
+        const job = await this.mihsap.fetchAndStoreInvoices({
+          tenantId: ctx.tenantId,
+          mukellefId: taxpayerId,
+          mukellefMihsapId: String(taxpayer.mihsapId),
+          donem,
+          faturaTuru: tur,
+          createdBy: ctx.userId ?? undefined,
+        });
+        results.push({ tur, jobId: (job as any)?.id ?? null, ok: true });
+      } catch (err: any) {
+        results.push({ tur, ok: false, error: err.message?.slice(0, 200) });
+      }
+    }
+    return {
+      success: results.some((r) => r.ok),
+      taxpayerId,
+      donem,
+      results,
     };
   }
 

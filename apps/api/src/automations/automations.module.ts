@@ -5,6 +5,8 @@ import { NotificationsModule } from '../notifications/notifications.module';
 import { PrismaModule } from '../prisma/prisma.module';
 import { WhatsAppModule } from '../whatsapp/whatsapp.module';
 import { FisYazdirmaModule } from '../fis-yazdirma/fis-yazdirma.module';
+import { MihsapModule } from '../mihsap/mihsap.module';
+import { WhatsAppQrModule } from '../whatsapp-qr/whatsapp-qr.module';
 import { ActionDispatcherService } from './action-dispatcher.service';
 import { AutomationEventBus } from './automation-event-bus.service';
 import { AutomationParserService } from './automation-parser.service';
@@ -29,7 +31,7 @@ import { AutomationsService } from './automations.service';
  */
 @Global()
 @Module({
-  imports: [PrismaModule, ScheduleModule.forRoot(), MorenAiModule, NotificationsModule, WhatsAppModule, FisYazdirmaModule],
+  imports: [PrismaModule, ScheduleModule.forRoot(), MorenAiModule, NotificationsModule, WhatsAppModule, FisYazdirmaModule, MihsapModule, WhatsAppQrModule],
   controllers: [AutomationsController],
   providers: [
     AutomationsService,

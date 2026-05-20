@@ -296,11 +296,25 @@ export class FisYazdirmaService {
           size: fileData.buffer.length,
         } as unknown as Express.Multer.File);
 
-        // DB'deki faturaTarihi fallback olarak hazirlanir; ana kaynak asagidaki OCR.
+        // DB'deki faturaTarihi = kullanicinin Luca'ya isledigi muhasebe tarihi
+        // (fisin gercek uzerindeki tarihten farkli olabilir; biz muhasebe
+        // tarihini gostermek istiyoruz — Word kapakta "ilk/son tarih" de bu).
+        //
+        // BUG FIX: Postgres UTC olarak sakliyor. Backend Railway Linux'ta UTC.
+        // .toISOString().slice(0,10) UTC gununu verir -> TR 01.04.2026 = UTC
+        // 31.03.2026T21:00 -> "2026-03-31" yanlis cikar. Manuel UI tarayicida
+        // TR zone'unda calistigi icin orada dogru goruyordu.
+        // Cozum: Europe/Istanbul TZ ile gunu al.
         if (inv.faturaTarihi) {
           const d = new Date(inv.faturaTarihi);
           if (!isNaN(d.getTime())) {
-            allDates[filename] = d.toISOString().slice(0, 10);
+            const parts = new Intl.DateTimeFormat('en-CA', {
+              timeZone: 'Europe/Istanbul',
+              year: 'numeric',
+              month: '2-digit',
+              day: '2-digit',
+            }).format(d); // "2026-04-01"
+            allDates[filename] = parts;
           }
         }
         if (!allDates[filename]) {
@@ -314,25 +328,6 @@ export class FisYazdirmaService {
     if (files.length === 0) {
       throw new BadRequestException(
         `Hiçbir görsel fiş indirilemedi (${invoices.length} kayıt vardı, ${skippedNonImage} görsel olmayan atlandı).`,
-      );
-    }
-
-    // 2.5) OCR ile gercek fis tarihlerini cikar (manuel akisla ayni - Claude Haiku)
-    // BUG FIX: Onceden DB'deki inv.faturaTarihi kullaniliyordu, o MIHSAP'in
-    // kaydettigi tarih (kayit/muhasebelestirme tarihi). Fisin gercek uzerindeki
-    // tarihten farkliydi. Manuel UI scanImages ile gorselden okuyordu, otomasyon
-    // okumuyordu -> uyumsuz tarihler. Simdi otomasyon da OCR ile okuyor.
-    try {
-      const scanResult = await this.scanImages(files, tenantId, donem);
-      for (const d of scanResult.detected) {
-        if (d.date) allDates[d.filename] = d.date;
-      }
-      this.logger.log(
-        `[generateFromInvoices] OCR: ${scanResult.detected.length}/${files.length} tarih okundu, ${scanResult.unread.length} teyit gerekli`,
-      );
-    } catch (err: any) {
-      this.logger.warn(
-        `[generateFromInvoices] OCR basarisiz, DB fatura tarihlerine geri donulecek: ${err.message}`,
       );
     }
 
@@ -872,6 +867,82 @@ export class FisYazdirmaService {
   }
 
   /** Tenant'a ait tüm çıktıları listeler (bayt içeriği hariç) */
+  /**
+   * Bir Word ciktisini yazicidan otomatik cikarmak icin kuyruga ekler.
+   * Lokal agent her birkac saniyede bir pending kayitlari poll edip yazdirir.
+   */
+  async enqueuePrint(
+    tenantId: string,
+    outputId: string,
+    deviceId?: string | null,
+  ): Promise<{ id: string; printStatus: string }> {
+    const output = await (this.prisma as any).fisYazdirmaOutput.findFirst({
+      where: { id: outputId, tenantId },
+    });
+    if (!output) throw new BadRequestException('Cikti bulunamadi');
+    const updated = await (this.prisma as any).fisYazdirmaOutput.update({
+      where: { id: outputId },
+      data: {
+        printStatus: 'REQUESTED',
+        printDeviceId: deviceId ?? null,
+        printError: null,
+        printedAt: null,
+      },
+    });
+    this.logger.log(`[print] Kuyruga eklendi outputId=${outputId} device=${deviceId ?? 'any'}`);
+    return { id: updated.id, printStatus: updated.printStatus };
+  }
+
+  /**
+   * Lokal agent icin: yazdirma bekleyen ciktilari donder.
+   * deviceId match: null (any) veya tam eslesen kayitlar.
+   */
+  async listPendingPrints(tenantId: string, deviceId: string) {
+    return (this.prisma as any).fisYazdirmaOutput.findMany({
+      where: {
+        tenantId,
+        printStatus: 'REQUESTED',
+        OR: [{ printDeviceId: null }, { printDeviceId: deviceId }],
+      },
+      select: { id: true, filename: true, mukellefName: true, donem: true, fileSize: true },
+      orderBy: { createdAt: 'asc' },
+      take: 5,
+    });
+  }
+
+  /** Agent isi aldigi anda PRINTING'e cevirir (race condition koruma). */
+  async claimPrint(tenantId: string, outputId: string, deviceId: string) {
+    const result = await (this.prisma as any).fisYazdirmaOutput.updateMany({
+      where: {
+        id: outputId,
+        tenantId,
+        printStatus: 'REQUESTED',
+      },
+      data: {
+        printStatus: 'PRINTING',
+        printDeviceId: deviceId,
+      },
+    });
+    return { claimed: result.count > 0 };
+  }
+
+  /** Yazdirma bittikten sonra agent bunu cagirir. */
+  async completePrint(
+    tenantId: string,
+    outputId: string,
+    success: boolean,
+    errorMessage?: string,
+  ) {
+    return (this.prisma as any).fisYazdirmaOutput.update({
+      where: { id: outputId },
+      data: {
+        printStatus: success ? 'DONE' : 'FAILED',
+        printedAt: success ? new Date() : null,
+        printError: success ? null : (errorMessage || 'Bilinmeyen hata').slice(0, 500),
+      },
+    });
+  }
+
   async listOutputs(tenantId: string, limit = 100) {
     return (this.prisma as any).fisYazdirmaOutput.findMany({
       where: { tenantId },

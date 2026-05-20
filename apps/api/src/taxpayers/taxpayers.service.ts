@@ -666,6 +666,32 @@ export class TaxpayersService {
       emitIfChanged('Taxpayer.EvrakIslendiChanged', 'evraklarIslendi');
       emitIfChanged('Taxpayer.KontrolEdildiChanged', 'kontrolEdildi');
       emitIfChanged('Taxpayer.BeyannameDurumuChanged', 'beyannameVerildi');
+
+      // Composite event: HEM evraklar geldi HEM evraklar islendi true ise,
+      // ve bu son guncellemede bu duruma yeni gectiyse, EvraklarHazir tetiklenir.
+      // Bu otomasyonu kuran kullanici "evraklari toplandi mi" ile "isleme alindi mi"
+      // ikisini de gormeden tetiklenmesin istiyor. (Tipik otomasyon: hepsini cek)
+      const wasReady =
+        (existing?.evraklarGeldi ?? false) && (existing?.evraklarIslendi ?? false);
+      const isReady = result.evraklarGeldi && result.evraklarIslendi;
+      if (!wasReady && isReady) {
+        const t = taxpayer as any;
+        const unvan =
+          t.type === 'TUZEL_KISI'
+            ? t.companyName || ''
+            : `${t.firstName ?? ''} ${t.lastName ?? ''}`.trim();
+        const periodLabel = `${year}-${String(month).padStart(2, '0')}`;
+        this.eventBus.emit('Taxpayer.EvraklarHazir', {
+          tenantId,
+          taxpayerId,
+          year,
+          month,
+          periodLabel,
+          taxpayerUnvan: unvan || '(isim yok)',
+          taxpayerVkn: t.taxNumber ?? '',
+          taxpayerType: t.type,
+        });
+      }
     }
 
     return result;

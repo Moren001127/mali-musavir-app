@@ -8,12 +8,15 @@ import {
   Body,
   Res,
   Req,
+  Headers,
   UseGuards,
   UseInterceptors,
   UploadedFiles,
   BadRequestException,
   NotFoundException,
+  UnauthorizedException,
 } from '@nestjs/common';
+import { PrismaService } from '../prisma/prisma.service';
 import { AuthGuard } from '@nestjs/passport';
 import { FilesInterceptor } from '@nestjs/platform-express';
 import { FisYazdirmaService } from './fis-yazdirma.service';
@@ -35,7 +38,10 @@ const imageInterceptor = () =>
 @Controller('fis-yazdirma')
 @UseGuards(AuthGuard('jwt'))
 export class FisYazdirmaController {
-  constructor(private fisYazdirmaService: FisYazdirmaService) {}
+  constructor(
+    private fisYazdirmaService: FisYazdirmaService,
+    private prisma: PrismaService,
+  ) {}
 
   /**
    * POST /api/v1/fis-yazdirma/scan
@@ -152,5 +158,102 @@ export class FisYazdirmaController {
   @Delete('outputs/:id')
   async deleteOutput(@Req() req: any, @Param('id') id: string) {
     return this.fisYazdirmaService.deleteOutput(req.user.tenantId, id);
+  }
+
+  /**
+   * POST /api/v1/fis-yazdirma/outputs/:id/print
+   * Bir Word ciktisini lokal agent uzerinden yazicidan otomatik yazdir.
+   * Lokal agent bu kaydi pending kuyrugunda gorur, indirir, yazdirir.
+   */
+  @Post('outputs/:id/print')
+  async requestPrint(
+    @Req() req: any,
+    @Param('id') id: string,
+    @Body() body: { deviceId?: string } = {},
+  ) {
+    return this.fisYazdirmaService.enqueuePrint(
+      req.user.tenantId,
+      id,
+      body?.deviceId,
+    );
+  }
+}
+
+/**
+ * Lokal agent icin print queue endpoint'leri. AuthGuard yok, tenant'i
+ * X-Agent-Token header'i ile resolve eder (Luca agent endpoint'leriyle ayni mantik).
+ */
+@Controller('agent/print-queue')
+export class FisYazdirmaAgentController {
+  constructor(
+    private fisYazdirmaService: FisYazdirmaService,
+    private prisma: PrismaService,
+  ) {}
+
+  private async resolveTenantId(token: string): Promise<string> {
+    const t = (token || '').trim();
+    if (!t) throw new UnauthorizedException('X-Agent-Token gerekli');
+    const tenant = await (this.prisma as any).tenant.findFirst({
+      where: { OR: [{ slug: t }, { id: t }] },
+      select: { id: true },
+    });
+    if (!tenant) throw new UnauthorizedException('Gecersiz agent token');
+    return tenant.id;
+  }
+
+  /** GET /api/v1/agent/print-queue/pending?deviceId=X */
+  @Get('pending')
+  async pending(
+    @Headers('x-agent-token') token: string,
+    @Query('deviceId') deviceId: string,
+  ) {
+    const tenantId = await this.resolveTenantId(token);
+    return this.fisYazdirmaService.listPendingPrints(tenantId, String(deviceId || ''));
+  }
+
+  /** POST /api/v1/agent/print-queue/:id/claim?deviceId=X */
+  @Post(':id/claim')
+  async claim(
+    @Headers('x-agent-token') token: string,
+    @Param('id') id: string,
+    @Body() body: { deviceId: string },
+  ) {
+    const tenantId = await this.resolveTenantId(token);
+    return this.fisYazdirmaService.claimPrint(tenantId, id, String(body?.deviceId || ''));
+  }
+
+  /** GET /api/v1/agent/print-queue/:id/download */
+  @Get(':id/download')
+  async download(
+    @Headers('x-agent-token') token: string,
+    @Param('id') id: string,
+    @Res() res: any,
+  ) {
+    const tenantId = await this.resolveTenantId(token);
+    const rec = await this.fisYazdirmaService.getOutput(tenantId, id);
+    if (!rec) throw new NotFoundException('Cikti bulunamadi');
+    res.set({
+      'Content-Type':
+        'application/vnd.openxmlformats-officedocument.wordprocessingml.document',
+      'Content-Disposition': `attachment; filename="${rec.filename}"`,
+      'Content-Length': String(rec.fileSize ?? rec.fileBytes.length),
+    });
+    return res.send(rec.fileBytes);
+  }
+
+  /** POST /api/v1/agent/print-queue/:id/complete */
+  @Post(':id/complete')
+  async complete(
+    @Headers('x-agent-token') token: string,
+    @Param('id') id: string,
+    @Body() body: { success: boolean; error?: string },
+  ) {
+    const tenantId = await this.resolveTenantId(token);
+    return this.fisYazdirmaService.completePrint(
+      tenantId,
+      id,
+      !!body?.success,
+      body?.error,
+    );
   }
 }

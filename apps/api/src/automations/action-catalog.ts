@@ -282,6 +282,42 @@ const DOCUMENT_ACTIONS: AutomationAction[] = [
 
 const AI_ACTIONS: AutomationAction[] = [
   {
+    name: 'print_word_output',
+    category: 'WRITE',
+    estimatedClaudeCostPerCall: 0,
+    requires: ['fis-yazdirma', 'local-agent'],
+    description:
+      'Bir Word ciktisini (fis-yazdirma outputId) lokal agent uzerinden Windows default yazicisina otomatik gonderir. ' +
+      'Lokal agent acik olmali ve default yazici tanimli olmali. Tipik kullanim: generate_fis_word_from_invoices sonrasi outputId al, bu aksiyon ile yazdir.',
+    input_schema: {
+      type: 'object',
+      properties: {
+        outputId: { type: 'string', description: 'fis-yazdirma cikti ID\'si (genelde bir onceki adimdan {{prev.outputId}}).' },
+        deviceId: { type: 'string', description: '(Opsiyonel) Belirli bir cihaz hedeflenmek isteniyorsa.' },
+      },
+      required: ['outputId'],
+    },
+  },
+  {
+    name: 'fetch_invoices_for_period',
+    category: 'WRITE',
+    estimatedClaudeCostPerCall: 0,
+    requires: ['mihsap', 'local-agent'],
+    description:
+      'Belirtilen mukellefin belirtilen donemde tum faturalarini (alis + satis) MIHSAP\'tan canli olarak ceker ve portala kaydeder. ' +
+      'Yani Faturalar sayfasindaki "Hepsini Cek" butonunun otomasyon esdegeri. ' +
+      'Tipik kullanim: Taxpayer.EvraklarHazir event\'inde tetikle, payload\'tan taxpayerId ve donem alirsin.',
+    input_schema: {
+      type: 'object',
+      properties: {
+        taxpayerId: { type: 'string', description: 'Mukellefin sistem ID\'si.' },
+        donem: { type: 'string', description: 'YYYY-MM formatinda (orn. "2026-04"). Slash veya tek hane ay da kabul edilir, normalize edilir.' },
+        faturaTuru: { type: 'string', enum: ['ALIS', 'SATIS', 'ALL'], description: '(Opsiyonel) Sadece alis veya satis. Default: ALL (ikisi).' },
+      },
+      required: ['taxpayerId', 'donem'],
+    },
+  },
+  {
     name: 'summarize_with_claude',
     category: 'AI',
     estimatedClaudeCostPerCall: 0.01,
@@ -579,6 +615,7 @@ export const TRIGGER_SPECS: TriggerSpec[] = [
           'Taxpayer.KontrolEdildiChanged',     // "Kontrol edildi" alanı değişti
           'Taxpayer.BeyannameDurumuChanged',   // "Beyanname verildi" alanı değişti
           'Taxpayer.KdvKontrolKilitlendi',     // KDV kontrolü tamamlanıp kilitlendi
+          'Taxpayer.EvraklarHazir',            // Hem 'evraklar geldi' hem 'evraklar işlendi' true oldu
           'Taxpayer.Created',                   // Yeni müvekkil eklendi
           // İletişim
           'WhatsApp.MessageReceived',           // Müvekkelden WhatsApp mesajı geldi
