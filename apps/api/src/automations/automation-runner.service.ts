@@ -98,23 +98,32 @@ export class AutomationRunnerService implements OnModuleInit {
    */
   registerCron(automation: Automation): void {
     if (automation.triggerType !== AutomationTriggerType.CRON) return;
-    const cronExpr = (automation.triggerConfig as any)?.cron;
+    const cfg = automation.triggerConfig as any;
+    const cronExpr = cfg?.cron;
     if (!cronExpr) throw new Error('triggerConfig.cron eksik.');
+    // Varsayılan Türkiye saati. Parser bunu default olarak üretir, ama eski
+    // otomasyonlarda eksik olabilir — kullanıcı zaten Türk mali müşaviri.
+    const timezone = cfg?.timezone || 'Europe/Istanbul';
     const jobId = this.cronPrefix + automation.id;
 
     // Mevcut bir job varsa önce sil
     this.unregisterCron(automation.id);
 
-    const job = new CronJob(cronExpr, () => {
-      // fire-and-forget: bir cron tetiği background'da bağımsız çalışır
-      this.executeAutomation(automation.id, { source: 'cron', firedAt: new Date().toISOString() })
-        .catch((err) => {
-          this.logger.error(`Cron run hata id=${automation.id}: ${err.message}`);
-        });
-    });
+    const job = new CronJob(
+      cronExpr,
+      () => {
+        this.executeAutomation(automation.id, { source: 'cron', firedAt: new Date().toISOString() })
+          .catch((err) => {
+            this.logger.error(`Cron run hata id=${automation.id}: ${err.message}`);
+          });
+      },
+      null, // onComplete
+      false, // start
+      timezone, // timezone
+    );
     this.scheduler.addCronJob(jobId, job as unknown as any);
     job.start();
-    this.logger.log(`Cron register: id=${automation.id} expr="${cronExpr}"`);
+    this.logger.log(`Cron register: id=${automation.id} expr="${cronExpr}" tz=${timezone}`);
   }
 
   /**

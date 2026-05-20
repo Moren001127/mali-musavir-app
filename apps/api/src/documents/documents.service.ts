@@ -1,13 +1,15 @@
-import { Injectable, NotFoundException, ForbiddenException, BadRequestException } from '@nestjs/common';
+import { Injectable, NotFoundException, ForbiddenException, BadRequestException, Optional } from '@nestjs/common';
 import { PrismaService } from '../prisma/prisma.service';
 import { StorageService } from '../storage/storage.service';
 import { InitiateUploadDto, UpdateDocumentDto } from '@mali-musavir/shared';
+import { AutomationEventBus } from '../automations/automation-event-bus.service';
 
 @Injectable()
 export class DocumentsService {
   constructor(
     private prisma: PrismaService,
     private storage: StorageService,
+    @Optional() private readonly eventBus?: AutomationEventBus,
   ) {}
 
   /**
@@ -86,6 +88,20 @@ export class DocumentsService {
         include: { tags: true, versions: true },
       });
     });
+
+    // Otomasyon event'i: belge portala yüklendi
+    if (this.eventBus) {
+      this.eventBus.emit('Document.Uploaded', {
+        tenantId,
+        documentId: document.id,
+        taxpayerId: dto.taxpayerId,
+        title: dto.title,
+        category: dto.category,
+        mimeType: dto.mimeType,
+        sizeBytes: meta.sizeBytes,
+        uploadedBy: userId,
+      });
+    }
 
     return document;
   }

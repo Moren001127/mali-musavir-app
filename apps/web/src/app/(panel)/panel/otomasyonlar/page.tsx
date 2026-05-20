@@ -2,6 +2,7 @@
 
 import React from 'react';
 import Link from 'next/link';
+import { useRouter } from 'next/navigation';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import { toast } from 'sonner';
 import {
@@ -35,6 +36,7 @@ const GOLD = '#d4b876';
  */
 export default function OtomasyonlarPage() {
   const qc = useQueryClient();
+  const router = useRouter();
 
   const { data, isLoading, error } = useQuery({
     queryKey: ['automations', { status: undefined }],
@@ -169,6 +171,7 @@ export default function OtomasyonlarPage() {
                 <Row
                   key={auto.id}
                   auto={auto}
+                  onOpen={(id) => router.push(`/panel/otomasyonlar/${id}`)}
                   onToggleActive={(id, current) =>
                     statusMutation.mutate({
                       id,
@@ -192,6 +195,7 @@ export default function OtomasyonlarPage() {
 
 function Row({
   auto,
+  onOpen,
   onToggleActive,
   onArchive,
   onHardDelete,
@@ -200,6 +204,7 @@ function Row({
   runNowPending,
 }: {
   auto: Automation;
+  onOpen: (id: string) => void;
   onToggleActive: (id: string, current: AutomationStatus) => void;
   onArchive: (id: string) => void;
   onHardDelete: (id: string) => void;
@@ -209,9 +214,14 @@ function Row({
 }) {
   // Hiç çalışmamış DRAFT otomasyonlar tamamen silinebilir (denetim izi yok)
   const canHardDelete = auto.status === 'DRAFT' && auto.totalRuns === 0;
+  // Buton içinde tıklananlar satırın açılmasını engellemeli
+  const stop = (e: React.MouseEvent) => e.stopPropagation();
   const lastRunStatus = auto.lastRunStatus;
   return (
-    <tr className="text-stone-800 dark:text-stone-100">
+    <tr
+      className="cursor-pointer text-stone-800 dark:text-stone-100 hover:bg-stone-50 dark:hover:bg-stone-800"
+      onClick={() => onOpen(auto.id)}
+    >
       <td className="px-4 py-3">
         <div className="font-medium">{auto.title}</div>
         <div className="line-clamp-1 max-w-md text-xs text-stone-500 dark:text-stone-400 dark:text-stone-500">{auto.prompt}</div>
@@ -247,7 +257,7 @@ function Row({
           {auto.status !== 'ARCHIVED' && (
             <>
               <button
-                onClick={() => onRunNow(auto.id)}
+                onClick={(e) => { stop(e); onRunNow(auto.id); }}
                 disabled={runNowPending}
                 className="rounded-md border border-amber-300 bg-amber-50 p-1.5 text-amber-800 hover:bg-amber-100 disabled:opacity-50"
                 title="Şimdi Çalıştır (gerçek aksiyon)"
@@ -255,7 +265,7 @@ function Row({
                 <Zap className="h-4 w-4" />
               </button>
               <button
-                onClick={() => onDryRun(auto.id)}
+                onClick={(e) => { stop(e); onDryRun(auto.id); }}
                 className="rounded-md border border-stone-300 dark:border-stone-600 bg-white dark:bg-stone-900 p-1.5 text-stone-600 dark:text-stone-300 hover:bg-stone-50 dark:hover:bg-stone-800 dark:bg-stone-800"
                 title="Dry-Run (aksiyon yapmadan simüle et)"
               >
@@ -265,7 +275,7 @@ function Row({
           )}
           {(auto.status === 'ACTIVE' || auto.status === 'PAUSED') && (
             <button
-              onClick={() => onToggleActive(auto.id, auto.status)}
+              onClick={(e) => { stop(e); onToggleActive(auto.id, auto.status); }}
               className="rounded-md border border-stone-300 dark:border-stone-600 bg-white dark:bg-stone-900 p-1.5 text-stone-600 dark:text-stone-300 hover:bg-stone-50 dark:hover:bg-stone-800 dark:bg-stone-800"
               title={auto.status === 'ACTIVE' ? 'Duraklat' : 'Aktive et'}
             >
@@ -278,7 +288,8 @@ function Row({
           )}
           {auto.status !== 'ARCHIVED' && (
             <button
-              onClick={() => {
+              onClick={(e) => {
+                stop(e);
                 if (confirm(`"${auto.title}" arşivlensin mi?`)) onArchive(auto.id);
               }}
               className="rounded-md border border-stone-300 dark:border-stone-600 bg-white dark:bg-stone-900 p-1.5 text-stone-600 dark:text-stone-300 hover:bg-stone-50 dark:hover:bg-stone-800 dark:bg-stone-800"
@@ -289,7 +300,8 @@ function Row({
           )}
           {canHardDelete && (
             <button
-              onClick={() => {
+              onClick={(e) => {
+                stop(e);
                 if (
                   confirm(
                     `"${auto.title}" KALICI olarak silinsin mi?\n\nBu işlem geri alınamaz.`,

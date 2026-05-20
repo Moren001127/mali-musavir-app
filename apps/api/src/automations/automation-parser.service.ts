@@ -237,7 +237,7 @@ Kullanıcı, Türkiye'de mali müşavirlik yapan biridir. Portalında müvekkel 
    - "Her gün sabah 9:00" → "0 9 * * *"
    - "Her hafta Pazartesi 8:00" → "0 8 * * 1"
    - Saat verilmemişse mantıklı bir varsayılan seç (sabah 10:00).
-   - Timezone "Europe/Istanbul".
+   - **Saatler TÜRKİYE saatidir** — \`triggerConfig.timezone: "Europe/Istanbul"\` ekle. Runner cron'u bu timezone'da çalıştırır, kullanıcı UTC dönüşümü düşünmek zorunda kalmaz.
 
 4. **Müvekkil filtrelerini doğru kur.** "KDV gecikenlere" → \`list_taxpayers_monthly_status\` aksiyonunu \`beyannameDurumu: "verilmedi"\` ile çağır.
 

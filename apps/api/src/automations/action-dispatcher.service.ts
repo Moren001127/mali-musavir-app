@@ -81,13 +81,20 @@ export class ActionDispatcherService {
       case 'check_official_gazette':
         return this.stubResponse(toolName, 'Resmi Gazete tetikleyicisi Faz 7\'de açılacak.');
 
-      // ---------------- BELGE / OCR / LUCA (Faz 6 STUB) ----------------
-      case 'ocr_pdf':
+      // ---------------- BELGE / OCR / LUCA ----------------
       case 'extract_invoice_fields':
+        return this.extractInvoiceFields(args);
+      case 'ocr_pdf':
+        return this.stubResponse(
+          toolName,
+          'OCR aksiyonu kdv-control/OcrService ile entegre edilecek. Şu an documentId verirseniz boş döner. ' +
+            'Tam entegrasyon için: StorageService.getObject + Buffer + OcrService.extractFromImage akışı kurulmalı.',
+        );
       case 'post_to_luca':
         return this.stubResponse(
           toolName,
-          'Belge/Luca aksiyonları Faz 6\'da gerçek implementasyona kavuşacak.',
+          'Luca\'ya direkt fiş atma aksiyonu LucaService.createFetchJob yerine yeni bir "createEntry" metoduna ihtiyaç duyar. ' +
+            'Şu an Luca\'da bu metot yok — manuel olarak portal/Luca arayüzünden işleme alın.',
         );
 
       default:
@@ -227,6 +234,59 @@ export class ActionDispatcherService {
     const cost =
       Math.round((inputTokens * 0.0000008 + outputTokens * 0.000004) * 10000) / 10000;
     return { text, cost, inputTokens, outputTokens };
+  }
+
+  // ---------------------------------------------------------------
+  // FATURA ALAN ÇIKARICI (Claude ile)
+  // ---------------------------------------------------------------
+  /**
+   * Fatura OCR çıktısından yapısal alan çıkarımı. Claude'a şema verilir,
+   * o JSON döner. Türkçe fatura terminolojisi (KDV, Tevkifat, vb.) tanır.
+   */
+  private async extractInvoiceFields(args: any) {
+    const text = String(args.ocrText ?? '').slice(0, 16000);
+    if (!text) return { error: 'ocrText boş — OCR çıktısı verilmeli.' };
+
+    const prompt = `Sen bir Türk fatura analiz uzmanısın. Aşağıdaki OCR metninden fatura alanlarını çıkar.
+Yanıtını SADECE JSON olarak ver, başka açıklama yapma.
+
+Şema:
+{
+  "tedarikciAdi": "string veya null",
+  "tedarikciVkn": "string (10/11 hane) veya null",
+  "aliciAdi": "string veya null",
+  "aliciVkn": "string veya null",
+  "faturaNo": "string veya null",
+  "faturaTarihi": "YYYY-MM-DD veya null",
+  "donem": "YYYY-MM veya null (faturanın ait olduğu dönem)",
+  "matrah": "number veya null (KDV hariç toplam)",
+  "kdvOrani": "number veya null (1, 8, 10, 18, 20 vb.)",
+  "kdvTutari": "number veya null",
+  "tevkifatOrani": "number veya null (tevkifat varsa)",
+  "genelToplam": "number veya null",
+  "paraBirimi": "TRY|USD|EUR veya null",
+  "aciklama": "string (kısa özet)"
+}
+
+OCR METNİ:
+---
+${text}`;
+
+    const result = await this.claudeCall(prompt, 'claude-haiku-4-5-20251001', 1000);
+    try {
+      // Claude bazen ```json blokları içine sarar — temizle
+      const cleaned = result.text
+        .replace(/^```(?:json)?\s*/i, '')
+        .replace(/\s*```\s*$/, '')
+        .trim();
+      const parsed = JSON.parse(cleaned);
+      return { ...parsed, _meta: { cost: result.cost, model: 'haiku-4-5' } };
+    } catch (err: any) {
+      return {
+        error: `Claude çıktısı JSON olarak parse edilemedi: ${err.message}`,
+        rawText: result.text.slice(0, 500),
+      };
+    }
   }
 
   // ---------------------------------------------------------------
