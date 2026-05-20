@@ -2,6 +2,7 @@ import { BadRequestException, Injectable, Logger, ServiceUnavailableException } 
 import {
   ACTION_BY_NAME,
   AutomationAction,
+  VALID_EVENT_NAMES,
   buildCatalogMarkdown,
 } from './action-catalog';
 
@@ -200,6 +201,19 @@ Kullanıcı, Türkiye'de mali müşavirlik yapan biridir. Portalında müvekkel 
    - "Dışarıdan HTTP isteği geldiğinde" → WEBHOOK
    - Test/tek seferlik → MANUAL
 
+2b. **EVENT seçtiysen `triggerConfig.eventName` MUTLAKA aşağıdaki listeden BİRİ olmalı:**
+   - \`Taxpayer.EvrakDurumuChanged\` — müvekkilin "evrak geldi" alanı değişti (evrak teslim alındı/iptal edildi). Filtre olarak \`newValue: true\` koyarsan sadece "evrak geldi" olunca tetiklenir.
+   - \`Taxpayer.EvrakIslendiChanged\` — "evrak işlendi" alanı değişti.
+   - \`Taxpayer.KontrolEdildiChanged\` — "kontrol edildi" alanı değişti.
+   - \`Taxpayer.BeyannameDurumuChanged\` — "beyanname verildi" alanı değişti. Filtre: \`newValue: true\` beyanname verildiğinde, \`false\` iptal edildiğinde.
+   - \`Taxpayer.Created\` — yeni müvekkil eklendi.
+   - \`WhatsApp.MessageReceived\` — müvekkilden serbest WhatsApp mesajı geldi.
+   - \`WhatsApp.DocumentReceived\` — WhatsApp'tan belge (PDF, görsel) geldi.
+   - \`Document.Uploaded\` — portala belge yüklendi.
+   - \`Invoice.Created\` — fatura kaydı oluştu.
+   ASLA bu listede olmayan bir event ismi (örn. \`taxpayer.evrak_durumu_guncellendi\`) üretme.
+   Tüm Taxpayer.* event'leri şu payload alanlarına sahiptir: \`tenantId\`, \`taxpayerId\`, \`year\`, \`month\`, \`field\`, \`oldValue\`, \`newValue\`, \`taxpayerUnvan\`. Sonraki adımlarda \`{{trigger.payload.taxpayerUnvan}}\` veya \`{{trigger.payload.taxpayerId}}\` ile bu verilere erişebilirsin.
+
 3. **Cron expression'ı dikkatli yaz.**
    - "Her ayın 22'sinde sabah 10:00" → "0 10 22 * *"
    - "Her gün sabah 9:00" → "0 9 * * *"
@@ -348,6 +362,17 @@ propose_automation tool'unu çağır. JSON şeması zorunlu.`;
       const cron = proposed.triggerConfig?.cron;
       if (typeof cron !== 'string' || !cron.trim()) {
         throw new BadRequestException('CRON tetikleyici için triggerConfig.cron zorunlu.');
+      }
+    }
+
+    // EVENT için event ismi mutlaka kataloğumuzda olmalı
+    if (proposed.triggerType === 'EVENT') {
+      const eventName = proposed.triggerConfig?.eventName;
+      if (typeof eventName !== 'string' || !VALID_EVENT_NAMES.includes(eventName)) {
+        throw new BadRequestException(
+          `EVENT tetikleyici için triggerConfig.eventName şu listeden olmalı: ${VALID_EVENT_NAMES.join(', ')}. ` +
+            `Üretilen: "${eventName ?? 'eksik'}".`,
+        );
       }
     }
   }

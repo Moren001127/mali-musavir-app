@@ -1,10 +1,14 @@
-import { BadRequestException, Injectable, NotFoundException } from '@nestjs/common';
+import { BadRequestException, Injectable, NotFoundException, Optional } from '@nestjs/common';
 import { PrismaService } from '../prisma/prisma.service';
 import { CreateTaxpayerDto } from '@mali-musavir/shared';
+import { AutomationEventBus } from '../automations/automation-event-bus.service';
 
 @Injectable()
 export class TaxpayersService {
-  constructor(private prisma: PrismaService) {}
+  constructor(
+    private prisma: PrismaService,
+    @Optional() private readonly eventBus?: AutomationEventBus,
+  ) {}
 
   private normalizeDefterFields<T extends Record<string, any>>(dto: T): T {
     const data: any = { ...dto };
@@ -595,11 +599,50 @@ export class TaxpayersService {
       cleanData.notes = trimmed ? trimmed.slice(0, 1000) : null;
     }
 
-    return this.prisma.taxpayerMonthlyStatus.upsert({
+    // Event emit için eski durum (varsa) okunur — değişikliği tespit etmek için.
+    const existing = await this.prisma.taxpayerMonthlyStatus.findUnique({
+      where: { taxpayerId_year_month: { taxpayerId, year, month } },
+    });
+
+    const result = await this.prisma.taxpayerMonthlyStatus.upsert({
       where: { taxpayerId_year_month: { taxpayerId, year, month } },
       create: { taxpayerId, tenantId, year, month, ...cleanData },
       update: cleanData,
     });
+
+    // Otomasyon event'leri — değişen alan başına ayrı event yayınla.
+    // Bu, "evrak geldi", "beyanname verildi" gibi spesifik tetikleyicileri
+    // ayrı ayrı dinleyebilmek için tasarlandı.
+    if (this.eventBus) {
+      const emitIfChanged = (
+        eventName: string,
+        field: keyof typeof cleanData,
+      ) => {
+        if (cleanData[field] === undefined) return;
+        const oldValue = existing ? (existing as any)[field] : false;
+        const newValue = (result as any)[field];
+        if (oldValue !== newValue) {
+          this.eventBus!.emit(eventName, {
+            tenantId,
+            taxpayerId,
+            year,
+            month,
+            field,
+            oldValue,
+            newValue,
+            taxpayerUnvan: taxpayer.firstName
+              ? `${taxpayer.firstName} ${taxpayer.lastName ?? ''}`.trim()
+              : (taxpayer as any).title || (taxpayer as any).tradeName || '',
+          });
+        }
+      };
+      emitIfChanged('Taxpayer.EvrakDurumuChanged', 'evraklarGeldi');
+      emitIfChanged('Taxpayer.EvrakIslendiChanged', 'evraklarIslendi');
+      emitIfChanged('Taxpayer.KontrolEdildiChanged', 'kontrolEdildi');
+      emitIfChanged('Taxpayer.BeyannameDurumuChanged', 'beyannameVerildi');
+    }
+
+    return result;
   }
 
   /**

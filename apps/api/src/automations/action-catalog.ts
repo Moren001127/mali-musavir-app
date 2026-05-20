@@ -502,6 +502,16 @@ export const ACTION_BY_NAME: Record<string, AutomationAction> = Object.fromEntri
   AUTOMATION_ACTION_CATALOG.map((a) => [a.name, a]),
 );
 
+/**
+ * Parser ve validator için: kullanılabilir tüm event isimleri.
+ * Bu listede olmayan bir event ismi otomasyonda KULLANILAMAZ.
+ */
+export const VALID_EVENT_NAMES: readonly string[] = (() => {
+  const eventSpec = TRIGGER_SPECS.find((s) => s.type === 'EVENT');
+  const enumVals = (eventSpec?.configSchema as any)?.eventName?.enum;
+  return Array.isArray(enumVals) ? enumVals : [];
+})();
+
 // ---------------------------------------------------------------
 // TETİKLEYİCİ TANIMLAMA
 // ---------------------------------------------------------------
@@ -533,17 +543,26 @@ export const TRIGGER_SPECS: TriggerSpec[] = [
       eventName: {
         type: 'string',
         enum: [
-          'WhatsApp.MessageReceived',
-          'WhatsApp.DocumentReceived',
-          'Document.Uploaded',
-          'Beyanname.StatusChanged',
-          'Invoice.Created',
-          'Taxpayer.Created',
+          // Müvekkel evrak/durum güncellemeleri
+          'Taxpayer.EvrakDurumuChanged',       // "Müvekkilin evrak geldi" alanı değişti
+          'Taxpayer.EvrakIslendiChanged',      // "Evrak işlendi" alanı değişti
+          'Taxpayer.KontrolEdildiChanged',     // "Kontrol edildi" alanı değişti
+          'Taxpayer.BeyannameDurumuChanged',   // "Beyanname verildi" alanı değişti
+          'Taxpayer.Created',                   // Yeni müvekkil eklendi
+          // İletişim
+          'WhatsApp.MessageReceived',           // Müvekkelden WhatsApp mesajı geldi
+          'WhatsApp.DocumentReceived',          // WhatsApp'tan belge geldi
+          // Belge / fatura
+          'Document.Uploaded',                  // Portala belge yüklendi
+          'Invoice.Created',                    // Fatura kaydı oluştu
         ],
       },
       filters: {
         type: 'object',
-        description: 'Olay payload\'una uygulanacak filtreler (örn. taxpayerId).',
+        description:
+          'Olay payload\'una uygulanacak filtreler. Her key payload\'da eşit olmalı. ' +
+          'Taxpayer.* event\'leri için kullanılabilir alanlar: taxpayerId, year, month, field, newValue. ' +
+          'Örn. Taxpayer.EvrakDurumuChanged için filters: { newValue: true } sadece "evrak geldi" olduğunda tetikler.',
       },
     },
   },

@@ -10,6 +10,7 @@ import { CronJob } from 'cron';
 import { PrismaService } from '../prisma/prisma.service';
 import { ACTION_BY_NAME } from './action-catalog';
 import { ActionDispatcherService } from './action-dispatcher.service';
+import { AutomationEventBus } from './automation-event-bus.service';
 import { evaluateCondition, resolveTemplates, ResolveContext } from './template-resolver';
 
 const MAX_FOR_EACH_ITEMS = 1000;
@@ -45,11 +46,14 @@ export class AutomationRunnerService implements OnModuleInit {
   private readonly logger = new Logger(AutomationRunnerService.name);
   /** Cron job ID prefix — registry'de çakışmasın diye */
   private readonly cronPrefix = 'auto.';
+  /** EVENT otomasyonları için unsubscribe fonksiyonları (id → unsubscribe) */
+  private readonly eventUnsubscribers = new Map<string, () => void>();
 
   constructor(
     private readonly prisma: PrismaService,
     private readonly dispatcher: ActionDispatcherService,
     private readonly scheduler: SchedulerRegistry,
+    private readonly eventBus: AutomationEventBus,
   ) {}
 
   // ---------------------------------------------------------------
@@ -58,15 +62,29 @@ export class AutomationRunnerService implements OnModuleInit {
 
   async onModuleInit() {
     try {
-      const active = await this.prisma.automation.findMany({
+      // CRON otomasyonları
+      const activeCron = await this.prisma.automation.findMany({
         where: { status: AutomationStatus.ACTIVE, triggerType: AutomationTriggerType.CRON },
       });
-      this.logger.log(`Boot: ${active.length} aktif cron otomasyonu yüklenecek.`);
-      for (const a of active) {
+      this.logger.log(`Boot: ${activeCron.length} aktif cron otomasyonu yüklenecek.`);
+      for (const a of activeCron) {
         try {
           this.registerCron(a);
         } catch (err: any) {
           this.logger.error(`Cron register hatası id=${a.id}: ${err.message}`);
+        }
+      }
+
+      // EVENT otomasyonları
+      const activeEvent = await this.prisma.automation.findMany({
+        where: { status: AutomationStatus.ACTIVE, triggerType: AutomationTriggerType.EVENT },
+      });
+      this.logger.log(`Boot: ${activeEvent.length} aktif event otomasyonu yüklenecek.`);
+      for (const a of activeEvent) {
+        try {
+          this.registerEvent(a);
+        } catch (err: any) {
+          this.logger.error(`Event register hatası id=${a.id}: ${err.message}`);
         }
       }
     } catch (err: any) {
@@ -113,6 +131,60 @@ export class AutomationRunnerService implements OnModuleInit {
       }
     } catch {
       // Yoksa sessiz geç
+    }
+  }
+
+  /**
+   * EVENT otomasyonunu event bus'a kaydeder.
+   * Bir event yayınlandığında bu otomasyonun tetikleyici filtresi geçtiyse çalıştırılır.
+   */
+  registerEvent(automation: Automation): void {
+    if (automation.triggerType !== AutomationTriggerType.EVENT) return;
+    const cfg = automation.triggerConfig as any;
+    const eventName = cfg?.eventName;
+    const filters: Record<string, unknown> = cfg?.filters ?? {};
+    if (!eventName) throw new Error('triggerConfig.eventName eksik.');
+
+    // Mevcut listener varsa önce kaldır
+    this.unregisterEvent(automation.id);
+
+    const unsubscribe = this.eventBus.on(eventName, (payload) => {
+      // Tenant izolasyonu — bu otomasyon başka tenant'ın event'ini dinlemesin
+      if (payload.tenantId !== automation.tenantId) return;
+
+      // Filter eşleşmesi — her filter key'i payload'a eşit olmalı
+      for (const [key, expected] of Object.entries(filters)) {
+        if ((payload as any)[key] !== expected) {
+          return; // filter geçemedi
+        }
+      }
+
+      // Async fire-and-forget
+      this.executeAutomation(automation.id, {
+        source: 'event',
+        eventName,
+        payload,
+        firedAt: new Date().toISOString(),
+      }).catch((err) => {
+        this.logger.error(`Event run hata id=${automation.id}: ${err.message}`);
+      });
+    });
+
+    this.eventUnsubscribers.set(automation.id, unsubscribe);
+    this.logger.log(
+      `Event register: id=${automation.id} event="${eventName}" filters=${JSON.stringify(filters)}`,
+    );
+  }
+
+  /**
+   * EVENT listener'ı kaldırır.
+   */
+  unregisterEvent(automationId: string): void {
+    const unsubscribe = this.eventUnsubscribers.get(automationId);
+    if (unsubscribe) {
+      unsubscribe();
+      this.eventUnsubscribers.delete(automationId);
+      this.logger.log(`Event unregister: id=${automationId}`);
     }
   }
 

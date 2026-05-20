@@ -163,29 +163,32 @@ export class AutomationsService {
       data: { status },
     });
 
-    // Runner'ı bilgilendir: CRON tetikleyici varsa cron job'ı ekle/kaldır.
+    // Runner'ı bilgilendir: CRON veya EVENT tetikleyici varsa register/unregister.
     try {
       if (updated.triggerType === AutomationTriggerType.CRON) {
         if (status === AutomationStatus.ACTIVE) {
           this.runner.registerCron(updated);
         } else {
-          // PAUSED, ERROR, ARCHIVED — cron'u kaldır
           this.runner.unregisterCron(updated.id);
+        }
+      } else if (updated.triggerType === AutomationTriggerType.EVENT) {
+        if (status === AutomationStatus.ACTIVE) {
+          this.runner.registerEvent(updated);
+        } else {
+          this.runner.unregisterEvent(updated.id);
         }
       }
     } catch (err: any) {
       this.logger.error(
         `Runner bilgilendirme hatası id=${id} status=${status}: ${err.message}`,
       );
-      // Status güncellemesi başarılı oldu ama cron register başarısız —
-      // ERROR durumuna alıp kullanıcıya hata mesajı dönelim.
       if (status === AutomationStatus.ACTIVE) {
         await this.prisma.automation.update({
           where: { id },
           data: { status: AutomationStatus.ERROR },
         });
         throw new BadRequestException(
-          `Otomasyon aktif edilemedi (cron register hatası): ${err.message}`,
+          `Otomasyon aktif edilemedi (tetikleyici register hatası): ${err.message}`,
         );
       }
     }
