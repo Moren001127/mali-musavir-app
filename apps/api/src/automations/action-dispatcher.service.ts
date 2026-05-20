@@ -258,14 +258,55 @@ export class ActionDispatcherService {
    * Mükellef + dönem için MIHSAP'tan FIS faturalarını çekip Word üretir.
    * Otomasyon "KDV kilitlendi → fiş Word raporu" akışı için.
    */
+  /**
+   * Donem string'ini "YYYY-MM" formatına normalize eder.
+   * Kabul ettiği girdiler:
+   *   "2026-04", "2026-4", "2026/04", "2026/4"  -> "2026-04"
+   *   "04/2026", "4/2026", "04-2026", "4-2026"  -> "2026-04"
+   *   "2026.04", "2026.4"                        -> "2026-04"
+   * Gecersizse null doner.
+   *
+   * BUG FIX: KDV Kontrol session.periodLabel "2026/04" formatinda (slash) sakliyor
+   * ama MihsapInvoice.donem "2026-04" formatinda (tire). Ayrica otomasyon parser
+   * `{{year}}-{{month}}` template'i kullanirsa padding kaybolup "2026-4" uretir.
+   * Bu fonksiyon her iki format farkini ve padding eksikligini duzeltir.
+   */
+  private normalizeDonem(input: string): string | null {
+    const s = String(input ?? '').trim();
+    if (!s) return null;
+    const parts = s.split(/[-/.]/).map((p) => p.trim()).filter(Boolean);
+    if (parts.length !== 2) return null;
+    let year: number;
+    let month: number;
+    if (/^\d{4}$/.test(parts[0])) {
+      year = Number(parts[0]);
+      month = Number(parts[1]);
+    } else if (/^\d{4}$/.test(parts[1])) {
+      year = Number(parts[1]);
+      month = Number(parts[0]);
+    } else {
+      return null;
+    }
+    if (!Number.isFinite(year) || !Number.isFinite(month)) return null;
+    if (year < 2000 || year > 2100) return null;
+    if (month < 1 || month > 12) return null;
+    return `${year}-${String(month).padStart(2, '0')}`;
+  }
+
   private async generateFisWordFromInvoices(
     args: any,
     ctx: { tenantId: string; userId?: string | null },
   ) {
     const taxpayerId = String(args.taxpayerId ?? '');
-    const donem = String(args.donem ?? '');
-    if (!taxpayerId || !donem) {
+    const donemRaw = String(args.donem ?? '');
+    if (!taxpayerId || !donemRaw) {
       throw new Error('generate_fis_word_from_invoices: taxpayerId ve donem zorunlu.');
+    }
+    const donem = this.normalizeDonem(donemRaw);
+    if (!donem) {
+      throw new Error(
+        `generate_fis_word_from_invoices: donem formati gecersiz ("${donemRaw}"). Beklenen: "YYYY-MM" (orn. "2026-04").`,
+      );
     }
     const result = await this.fisYazdirma.generateFromInvoices({
       tenantId: ctx.tenantId,
