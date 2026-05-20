@@ -280,6 +280,7 @@ export class WhatsAppQrService implements OnModuleInit {
                   channel: 'WHATSAPP',
                   subject: 'WhatsApp QR gelen mesaj',
                   content: text.slice(0, 4000),
+                  occurredAt: new Date(),
                 },
               });
             } catch (err: any) {
