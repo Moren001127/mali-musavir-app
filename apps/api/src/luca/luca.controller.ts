@@ -88,7 +88,7 @@ export class LucaController {
   }
 
   private requiredAgentVersionForJobTip(tip?: string | null) {
-    if (tip === 'EDEFTER_FIS_LISTESI') return '1.37.87';
+    if (tip === 'EDEFTER_FIS_LISTESI') return '1.37.88';
     return null;
   }
 

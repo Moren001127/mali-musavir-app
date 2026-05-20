@@ -4,7 +4,7 @@
 */
 (function () {
   // Agent versiyon — UI'da gösterilir, debug için kritik
-  const AGENT_VERSION = '1.37.87';
+  const AGENT_VERSION = '1.37.88';
   const AGENT_INSTANCE_ID = 'mai_' + Date.now().toString(36) + '_' + Math.random().toString(36).slice(2, 8);
 
   // === VERSION-AWARE RELOAD ===
@@ -46,6 +46,36 @@
     || localStorage.getItem('moren_agent_token')
     || '';
 
+  function restartAgentRuntime(reason = '', version = AGENT_VERSION) {
+    try { console.warn('[Moren] Agent runtime yeniden baslatiliyor' + (reason ? ': ' + reason : '')); } catch {}
+    try { window.__lucaJobRunning = false; } catch {}
+    try { window.__morenAgent.stopRequested = true; } catch {}
+    try { document.getElementById('moren-agent-panel')?.remove(); } catch {}
+    try { delete window.__morenAgent; delete window.__morenAutoAgent; } catch {}
+    try {
+      const script = document.createElement('script');
+      script.src = API + '/agent/runtime.js?v=' + encodeURIComponent(version) + '&ts=' + Date.now();
+      script.async = true;
+      (document.head || document.documentElement || document.body).appendChild(script);
+      return true;
+    } catch {
+      return false;
+    }
+  }
+
+  function recoverTransientLucaLock(reason = '') {
+    try { window.__lucaJobRunning = false; } catch {}
+    try { resetClassicLucaGirisBlankState(); } catch {}
+    try { resetClassicLucaRepairState(); } catch {}
+    try { setStatus('Luca teknik kilit temizleniyor; oturum yeniden deneniyor'); } catch {}
+    try { location.href = LUCA_SSO_MAIN_URL; } catch {}
+    setTimeout(() => {
+      if (window.__morenAgent?.instanceId === AGENT_INSTANCE_ID) {
+        restartAgentRuntime(reason || 'transient luca lock');
+      }
+    }, 1500);
+  }
+
   function sleep(ms) {
     return new Promise((resolve) => setTimeout(resolve, ms));
   }
@@ -78,12 +108,7 @@
       if (!latest || compareAgentVersions(AGENT_VERSION, latest) >= 0) return true;
       console.warn(`[Moren] Yeni ajan runtime var: v${latest}. v${AGENT_VERSION} durdurulup yeniden yukleniyor.`);
       try { setStatus(`Ajan guncelleniyor: v${latest}`); } catch {}
-      try { window.__morenAgent.stopRequested = true; } catch {}
-      try { document.getElementById('moren-agent-panel')?.remove(); } catch {}
-      const script = document.createElement('script');
-      script.src = API + '/agent/runtime.js?v=' + encodeURIComponent(latest) + '&ts=' + Date.now();
-      script.async = true;
-      (document.head || document.documentElement || document.body).appendChild(script);
+      restartAgentRuntime(`v${latest} guncellemesi`, latest);
       return false;
     } catch {
       return true;
@@ -1029,7 +1054,7 @@
                 }).catch(() => {});
               }
               resetClassicLucaGirisBlankState();
-              window.__morenAgent.stopRequested = true;
+              recoverTransientLucaLock(reason);
               return;
             }
             for (const job of jobs) {
@@ -1051,7 +1076,7 @@
               }).catch(() => {});
             }
             resetClassicLucaRepairState();
-            window.__morenAgent.stopRequested = true;
+            recoverTransientLucaLock(reason);
             return;
           }
           if (!classicLucaRepairRecentlyActed(repairState, 12000)) {
@@ -1524,9 +1549,9 @@
                 headers: { 'Content-Type': 'application/json', 'X-Agent-Token': TOKEN },
                 body: JSON.stringify({ reason }),
               }).catch(() => {});
-              window.__morenAgent.stopRequested = true;
               setStatus(`Luca: ${job.tip} teknik kilit temizleniyor`);
-              continue;
+              recoverTransientLucaLock(reason);
+              return;
             }
             console.error('[Moren] Luca job hata:', e);
             await safeLog(`✗ ${job.tip} hata: ${msg.slice(0, 200)}`);
