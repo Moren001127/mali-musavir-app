@@ -502,16 +502,6 @@ export const ACTION_BY_NAME: Record<string, AutomationAction> = Object.fromEntri
   AUTOMATION_ACTION_CATALOG.map((a) => [a.name, a]),
 );
 
-/**
- * Parser ve validator için: kullanılabilir tüm event isimleri.
- * Bu listede olmayan bir event ismi otomasyonda KULLANILAMAZ.
- */
-export const VALID_EVENT_NAMES: readonly string[] = (() => {
-  const eventSpec = TRIGGER_SPECS.find((s) => s.type === 'EVENT');
-  const enumVals = (eventSpec?.configSchema as any)?.eventName?.enum;
-  return Array.isArray(enumVals) ? enumVals : [];
-})();
-
 // ---------------------------------------------------------------
 // TETİKLEYİCİ TANIMLAMA
 // ---------------------------------------------------------------
@@ -582,6 +572,16 @@ export const TRIGGER_SPECS: TriggerSpec[] = [
     configSchema: {},
   },
 ];
+
+/**
+ * Parser ve validator için: kullanılabilir tüm event isimleri.
+ * Bu listede olmayan bir event ismi otomasyonda KULLANILAMAZ.
+ */
+export const VALID_EVENT_NAMES: readonly string[] = (() => {
+  const eventSpec = TRIGGER_SPECS.find((s) => s.type === 'EVENT');
+  const enumVals = (eventSpec?.configSchema as any)?.eventName?.enum;
+  return Array.isArray(enumVals) ? enumVals : [];
+})();
 
 /**
  * System prompt'a gömülecek katalog özetini üretir.
