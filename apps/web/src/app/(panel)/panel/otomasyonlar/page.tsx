@@ -18,6 +18,7 @@ import {
   Inbox,
   Zap,
   FlaskConical,
+  Trash2,
 } from 'lucide-react';
 import { automationsApi, type Automation, type AutomationStatus } from '@/lib/automations';
 
@@ -80,6 +81,20 @@ export default function OtomasyonlarPage() {
     },
     onError: (err: any) => {
       toast.error(err?.response?.data?.message || 'Dry-run başarısız');
+    },
+  });
+
+  const hardDeleteMutation = useMutation({
+    mutationFn: (id: string) => automationsApi.hardDelete(id),
+    onSuccess: () => {
+      qc.invalidateQueries({ queryKey: ['automations'] });
+      toast.success('Otomasyon kalıcı olarak silindi');
+    },
+    onError: (err: any) => {
+      toast.error(
+        err?.response?.data?.message ||
+          'Kalıcı silme başarısız. Sadece hiç çalışmamış DRAFT otomasyonlar tamamen silinebilir.',
+      );
     },
   });
 
@@ -161,6 +176,7 @@ export default function OtomasyonlarPage() {
                     })
                   }
                   onArchive={(id) => archiveMutation.mutate(id)}
+                  onHardDelete={(id) => hardDeleteMutation.mutate(id)}
                   onRunNow={(id) => runNowMutation.mutate(id)}
                   onDryRun={(id) => dryRunMutation.mutate(id)}
                   runNowPending={runNowMutation.isPending}
@@ -178,6 +194,7 @@ function Row({
   auto,
   onToggleActive,
   onArchive,
+  onHardDelete,
   onRunNow,
   onDryRun,
   runNowPending,
@@ -185,10 +202,13 @@ function Row({
   auto: Automation;
   onToggleActive: (id: string, current: AutomationStatus) => void;
   onArchive: (id: string) => void;
+  onHardDelete: (id: string) => void;
   onRunNow: (id: string) => void;
   onDryRun: (id: string) => void;
   runNowPending: boolean;
 }) {
+  // Hiç çalışmamış DRAFT otomasyonlar tamamen silinebilir (denetim izi yok)
+  const canHardDelete = auto.status === 'DRAFT' && auto.totalRuns === 0;
   const lastRunStatus = auto.lastRunStatus;
   return (
     <tr className="text-stone-800 dark:text-stone-100">
@@ -262,9 +282,26 @@ function Row({
                 if (confirm(`"${auto.title}" arşivlensin mi?`)) onArchive(auto.id);
               }}
               className="rounded-md border border-stone-300 dark:border-stone-600 bg-white dark:bg-stone-900 p-1.5 text-stone-600 dark:text-stone-300 hover:bg-stone-50 dark:hover:bg-stone-800 dark:bg-stone-800"
-              title="Arşivle"
+              title="Arşivle (çalışma geçmişi korunur)"
             >
               <Archive className="h-4 w-4" />
+            </button>
+          )}
+          {canHardDelete && (
+            <button
+              onClick={() => {
+                if (
+                  confirm(
+                    `"${auto.title}" KALICI olarak silinsin mi?\n\nBu işlem geri alınamaz.`,
+                  )
+                ) {
+                  onHardDelete(auto.id);
+                }
+              }}
+              className="rounded-md border border-rose-300 dark:border-rose-700 bg-white dark:bg-stone-900 p-1.5 text-rose-600 dark:text-rose-400 hover:bg-rose-50 dark:hover:bg-rose-950"
+              title="Kalıcı sil (sadece hiç çalışmamış taslaklar için)"
+            >
+              <Trash2 className="h-4 w-4" />
             </button>
           )}
         </div>

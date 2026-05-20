@@ -101,6 +101,12 @@ export const automationsApi = {
     return data;
   },
 
+  /** Sert silme — sadece hiç çalışmamış DRAFT otomasyonlar için */
+  async hardDelete(id: string): Promise<{ deleted: true }> {
+    const { data } = await api.delete(`/automations/${id}/hard`);
+    return data;
+  },
+
   async getCatalog(): Promise<
     Array<{ name: string; category: string; description: string; estimatedClaudeCostPerCall: number }>
   > {

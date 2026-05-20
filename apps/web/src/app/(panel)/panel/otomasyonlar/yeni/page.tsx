@@ -116,7 +116,7 @@ export default function YeniOtomasyonPage() {
           value={prompt}
           onChange={(e) => setPrompt(e.target.value)}
           placeholder="Örn: Her ayın 22'sinde KDV beyannamesi gecikenlere WhatsApp at..."
-          className="min-h-[120px] w-full resize-y rounded-lg border border-stone-300 dark:border-stone-600 bg-stone-50 dark:bg-stone-800 p-3 font-mono text-sm text-stone-800 dark:text-stone-100 outline-none focus:border-amber-400 focus:bg-white dark:bg-stone-900"
+          className="min-h-[120px] w-full resize-y rounded-lg border border-stone-300 dark:border-stone-600 bg-stone-50 dark:bg-stone-800 p-3 font-mono text-sm text-stone-800 dark:text-stone-100 outline-none focus:border-amber-400 focus:bg-white dark:focus:bg-stone-900 dark:bg-stone-900"
           maxLength={2000}
           disabled={parseMutation.isPending}
         />
