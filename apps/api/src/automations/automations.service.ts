@@ -255,44 +255,43 @@ export class AutomationsService {
     const oneWeekAgo = new Date();
     oneWeekAgo.setDate(oneWeekAgo.getDate() - 7);
 
-    const [counts, weeklyRuns, totalCost] = await this.prisma.$transaction([
-      this.prisma.automation.groupBy({
-        by: ['status'],
-        where: { tenantId },
-        _count: { _all: true },
-      }),
-      this.prisma.automationRun.groupBy({
-        by: ['status'],
-        where: {
-          automation: { tenantId },
-          startedAt: { gte: oneWeekAgo },
-        },
-        _count: { _all: true },
-      }),
+    const runScope = { automation: { tenantId }, startedAt: { gte: oneWeekAgo } };
+
+    // groupBy yerine ayrı count'lar — Prisma 5.22 type inference daha temiz oluyor.
+    const [
+      active,
+      paused,
+      error,
+      draft,
+      weeklySuccess,
+      weeklyFailure,
+      weeklyPartial,
+      weeklyRunning,
+      totalCost,
+    ] = await this.prisma.$transaction([
+      this.prisma.automation.count({ where: { tenantId, status: AutomationStatus.ACTIVE } }),
+      this.prisma.automation.count({ where: { tenantId, status: AutomationStatus.PAUSED } }),
+      this.prisma.automation.count({ where: { tenantId, status: AutomationStatus.ERROR } }),
+      this.prisma.automation.count({ where: { tenantId, status: AutomationStatus.DRAFT } }),
+      this.prisma.automationRun.count({ where: { ...runScope, status: 'success' } }),
+      this.prisma.automationRun.count({ where: { ...runScope, status: 'failure' } }),
+      this.prisma.automationRun.count({ where: { ...runScope, status: 'partial' } }),
+      this.prisma.automationRun.count({ where: { ...runScope, status: 'running' } }),
       this.prisma.automationRun.aggregate({
-        where: {
-          automation: { tenantId },
-          startedAt: { gte: oneWeekAgo },
-        },
+        where: runScope,
         _sum: { costUsd: true },
       }),
     ]);
 
-    const byStatus: Record<string, number> = {};
-    for (const r of counts) byStatus[r.status] = r._count._all;
-
-    const byRunStatus: Record<string, number> = {};
-    for (const r of weeklyRuns) byRunStatus[r.status] = r._count._all;
-
     return {
-      active: byStatus[AutomationStatus.ACTIVE] || 0,
-      paused: byStatus[AutomationStatus.PAUSED] || 0,
-      error: byStatus[AutomationStatus.ERROR] || 0,
-      draft: byStatus[AutomationStatus.DRAFT] || 0,
-      weeklyTotal: Object.values(byRunStatus).reduce((a, b) => a + b, 0),
-      weeklySuccess: byRunStatus.success || 0,
-      weeklyFailure: byRunStatus.failure || 0,
-      weeklyPartial: byRunStatus.partial || 0,
+      active,
+      paused,
+      error,
+      draft,
+      weeklyTotal: weeklySuccess + weeklyFailure + weeklyPartial + weeklyRunning,
+      weeklySuccess,
+      weeklyFailure,
+      weeklyPartial,
       weeklyCostUsd: totalCost._sum.costUsd || 0,
     };
   }
