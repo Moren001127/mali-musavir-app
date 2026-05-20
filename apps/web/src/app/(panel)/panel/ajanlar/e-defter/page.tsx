@@ -68,6 +68,22 @@ function fmtTRY(value: any) {
   return n.toLocaleString('tr-TR', { minimumFractionDigits: 2, maximumFractionDigits: 2 });
 }
 
+function periodKey(year: number, quarter: number) {
+  return `${year}-Q${quarter}`;
+}
+
+function normalizePeriodKey(donem?: string | null, donemTipi?: string | null) {
+  const source = `${donem || ''} ${donemTipi || ''}`.trim();
+  const yearMatch = source.match(/\b(20\d{2})\b/);
+  const qMatch = source.match(/Q([1-4])/i);
+  if (yearMatch && qMatch) return periodKey(Number(yearMatch[1]), Number(qMatch[1]));
+  return String(donem || '').trim().toUpperCase();
+}
+
+function sessionMatchesPeriod(session: any, year: number, quarter: number) {
+  return normalizePeriodKey(session?.donem, session?.donemTipi) === periodKey(year, quarter);
+}
+
 export default function EDefterAgentPage() {
   const qc = useQueryClient();
   const now = new Date();
@@ -98,11 +114,24 @@ export default function EDefterAgentPage() {
     refetchInterval: 5000,
   });
 
-  useEffect(() => {
-    if (!selectedSessionId && sessions[0]?.id) setSelectedSessionId(sessions[0].id);
-  }, [sessions, selectedSessionId]);
+  const periodSessions = useMemo(
+    () => sessions.filter((s: any) => sessionMatchesPeriod(s, year, quarter)),
+    [sessions, year, quarter],
+  );
 
-  const activeSessionId = selectedSessionId || sessions[0]?.id || null;
+  useEffect(() => {
+    const latestPeriodSession = periodSessions[0]?.id || null;
+    if (!latestPeriodSession) {
+      if (selectedSessionId) setSelectedSessionId(null);
+      return;
+    }
+    if (!selectedSessionId || !periodSessions.some((s: any) => s.id === selectedSessionId)) {
+      setSelectedSessionId(latestPeriodSession);
+    }
+  }, [periodSessions, selectedSessionId]);
+
+  const selectedSessionInPeriod = !!selectedSessionId && periodSessions.some((s: any) => s.id === selectedSessionId);
+  const activeSessionId = selectedSessionInPeriod ? selectedSessionId : periodSessions[0]?.id || null;
   const { data: session } = useQuery<any>({
     queryKey: ['edefter-control-session', activeSessionId],
     queryFn: () => edefterControlApi.get(activeSessionId!),
@@ -118,6 +147,7 @@ export default function EDefterAgentPage() {
       }),
     onSuccess: (data) => {
       setLucaJobId(data.jobId);
+      setSelectedSessionId(null);
       setLucaStatus('Luca ajani Detay Fis Listesi raporunu hazirliyor...');
       toast.info('e-Defter Detay Fiş Listesi job oluşturuldu');
     },
@@ -129,8 +159,9 @@ export default function EDefterAgentPage() {
     onSuccess: (data: any) => {
       toast.success(`Detay Fiş Listesi yüklendi: ${data.rows} satır`);
       setSelectedSessionId(data.sessionId);
-      qc.invalidateQueries({ queryKey: ['edefter-control-list'] });
+      qc.invalidateQueries({ queryKey: ['edefter-control-list', taxpayerId] });
       qc.invalidateQueries({ queryKey: ['edefter-control-session', data.sessionId] });
+      qc.refetchQueries({ queryKey: ['edefter-control-list', taxpayerId] });
     },
     onError: (e: any) => toast.error(e?.response?.data?.message || e?.message || 'Excel yuklenemedi'),
   });
@@ -155,8 +186,10 @@ export default function EDefterAgentPage() {
     if (job.status === 'done') {
       setLucaStatus('Detay Fis Listesi alindi ve analiz edildi');
       if (data.session?.id) setSelectedSessionId(data.session.id);
-      qc.invalidateQueries({ queryKey: ['edefter-control-list'] });
+      qc.invalidateQueries({ queryKey: ['edefter-control-list', taxpayerId] });
       qc.invalidateQueries({ queryKey: ['edefter-control-session'] });
+      qc.refetchQueries({ queryKey: ['edefter-control-list', taxpayerId] });
+      if (data.session?.id) qc.refetchQueries({ queryKey: ['edefter-control-session', data.session.id] });
       setLucaJobId(null);
       toast.success('e-Defter ön kontrol verisi hazır');
     }
@@ -166,7 +199,7 @@ export default function EDefterAgentPage() {
       setLucaJobId(null);
       toast.error(friendly);
     }
-  }, [jobQuery.data, qc]);
+  }, [jobQuery.data, qc, taxpayerId]);
 
   const stats = useMemo(() => {
     const findings = session?.findings || [];
@@ -209,7 +242,10 @@ export default function EDefterAgentPage() {
           <input
             type="number"
             value={year}
-            onChange={(e) => setYear(Number(e.target.value) || now.getFullYear())}
+            onChange={(e) => {
+              setYear(Number(e.target.value) || now.getFullYear());
+              setSelectedSessionId(null);
+            }}
             className="h-10 rounded-lg px-3 text-sm w-24 tabular-nums"
             style={{ background: PANEL, border: `1px solid ${BORDER}`, color: '#fafaf9' }}
           />
@@ -217,7 +253,10 @@ export default function EDefterAgentPage() {
             {[1, 2, 3, 4].map((q) => (
               <button
                 key={q}
-                onClick={() => setQuarter(q)}
+                onClick={() => {
+                  setQuarter(q);
+                  setSelectedSessionId(null);
+                }}
                 className="px-3 text-sm font-semibold"
                 style={{ background: quarter === q ? 'rgba(212,184,118,.18)' : PANEL, color: quarter === q ? GOLD : 'rgba(250,250,249,.65)' }}
               >
@@ -272,10 +311,10 @@ export default function EDefterAgentPage() {
         <div className="rounded-xl border p-4" style={{ background: PANEL, borderColor: BORDER }}>
           <div className="flex items-center justify-between mb-3">
             <h2 className="text-sm font-semibold" style={{ color: '#fafaf9' }}>Geçmiş Kontroller</h2>
-            <span className="text-xs tabular-nums" style={{ color: 'rgba(250,250,249,.45)' }}>{sessions.length}</span>
+            <span className="text-xs tabular-nums" style={{ color: 'rgba(250,250,249,.45)' }}>{periodSessions.length}</span>
           </div>
           <div className="space-y-2 max-h-[520px] overflow-auto">
-            {sessions.map((s: any) => (
+            {periodSessions.map((s: any) => (
               <button
                 key={s.id}
                 onClick={() => setSelectedSessionId(s.id)}
@@ -296,7 +335,7 @@ export default function EDefterAgentPage() {
                 </div>
               </button>
             ))}
-            {sessions.length === 0 && (
+            {periodSessions.length === 0 && (
               <div className="text-sm p-4 rounded-lg" style={{ background: 'rgba(255,255,255,.02)', color: 'rgba(250,250,249,.45)' }}>
                 Henüz Detay Fiş Listesi çekilmedi.
               </div>
