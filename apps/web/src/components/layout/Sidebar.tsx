@@ -28,6 +28,7 @@ const navGroups = [
     items: [
       { href: '/panel/moren-ai', label: 'MOREN AI', icon: Brain },
       { href: '/panel/otomasyonlar', label: 'Otomasyonlar', icon: Zap },
+      { href: '/panel/whatsapp-qr', label: 'WhatsApp QR', icon: MessageSquare },
       // Mobil tanıtım sidebar'dan kaldırıldı — tasarım gözden geçirme için
       // doğrudan /panel/mobil-tanitim URL'inden erişilir, müşterilere
       // yansıtılmaz. Tasarım onaylanınca kodlanacak.

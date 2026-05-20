@@ -3,6 +3,7 @@ import { ToolExecutorService } from '../moren-ai/tool-executor.service';
 import { NotificationsService } from '../notifications/notifications.service';
 import { PrismaService } from '../prisma/prisma.service';
 import { WhatsAppService } from '../whatsapp/whatsapp.service';
+import { WhatsAppQrService } from '../whatsapp-qr/whatsapp-qr.service';
 import { ACTION_BY_NAME } from './action-catalog';
 
 /**
@@ -29,6 +30,7 @@ export class ActionDispatcherService {
     private readonly toolExecutor: ToolExecutorService,
     private readonly notifications: NotificationsService,
     private readonly whatsapp: WhatsAppService,
+    private readonly whatsappQr: WhatsAppQrService,
   ) {}
 
   /**
@@ -62,6 +64,8 @@ export class ActionDispatcherService {
         return this.sendWhatsAppTemplate(args);
       case 'send_whatsapp_freeform':
         return this.sendWhatsAppFreeform(args);
+      case 'send_whatsapp_qr':
+        return this.sendWhatsAppQr(args, ctx);
       case 'send_email':
         return this.sendEmail(args, ctx);
       case 'send_sms':
@@ -124,6 +128,13 @@ export class ActionDispatcherService {
     const message = String(args.message ?? '').slice(0, 4096);
     const ok = await this.whatsapp.sendMessage(phone, message);
     return { sent: ok, to: phone };
+  }
+
+  private async sendWhatsAppQr(args: any, ctx: { tenantId: string }) {
+    const phone = String(args.to ?? '');
+    const message = String(args.message ?? '').slice(0, 4000);
+    const result = await this.whatsappQr.sendMessage(ctx.tenantId, phone, message);
+    return { sent: true, channel: 'qr', to: phone, ...result };
   }
 
   private async sendEmail(args: any, ctx: { tenantId: string }) {
