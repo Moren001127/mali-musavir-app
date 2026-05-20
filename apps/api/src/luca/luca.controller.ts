@@ -88,7 +88,7 @@ export class LucaController {
   }
 
   private requiredAgentVersionForJobTip(tip?: string | null) {
-    if (tip === 'EDEFTER_FIS_LISTESI') return '1.37.86';
+    if (tip === 'EDEFTER_FIS_LISTESI') return '1.37.87';
     return null;
   }
 
@@ -387,6 +387,9 @@ export class LucaController {
   }
 
   @Get('agent/luca/jobs/pending')
+  @Header('Cache-Control', 'no-store, no-cache, must-revalidate, proxy-revalidate')
+  @Header('Pragma', 'no-cache')
+  @Header('Expires', '0')
   async pendingJobs(
     @Headers('x-agent-token') agentToken: string,
     @Query('deviceId') deviceId?: string,

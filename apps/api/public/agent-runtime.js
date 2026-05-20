@@ -4,7 +4,7 @@
 */
 (function () {
   // Agent versiyon — UI'da gösterilir, debug için kritik
-  const AGENT_VERSION = '1.37.86';
+  const AGENT_VERSION = '1.37.87';
   const AGENT_INSTANCE_ID = 'mai_' + Date.now().toString(36) + '_' + Math.random().toString(36).slice(2, 8);
 
   // === VERSION-AWARE RELOAD ===
@@ -920,10 +920,12 @@
       const pendingParams = new URLSearchParams({
         version: AGENT_VERSION,
         agentVersion: AGENT_VERSION,
+        ts: String(Date.now()),
       });
       if (DEVICE_ID) pendingParams.set('deviceId', DEVICE_ID);
       const pendingUrl = API + '/agent/luca/jobs/pending?' + pendingParams.toString();
       const r = await fetch(pendingUrl, {
+        cache: 'no-store',
         headers: { 'X-Agent-Token': TOKEN },
       });
       if (!r.ok) return;
