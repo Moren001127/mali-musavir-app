@@ -296,7 +296,7 @@ export class FisYazdirmaService {
           size: fileData.buffer.length,
         } as unknown as Express.Multer.File);
 
-        // Fatura tarihini DB'den al
+        // DB'deki faturaTarihi fallback olarak hazirlanir; ana kaynak asagidaki OCR.
         if (inv.faturaTarihi) {
           const d = new Date(inv.faturaTarihi);
           if (!isNaN(d.getTime())) {
@@ -314,6 +314,25 @@ export class FisYazdirmaService {
     if (files.length === 0) {
       throw new BadRequestException(
         `Hiçbir görsel fiş indirilemedi (${invoices.length} kayıt vardı, ${skippedNonImage} görsel olmayan atlandı).`,
+      );
+    }
+
+    // 2.5) OCR ile gercek fis tarihlerini cikar (manuel akisla ayni - Claude Haiku)
+    // BUG FIX: Onceden DB'deki inv.faturaTarihi kullaniliyordu, o MIHSAP'in
+    // kaydettigi tarih (kayit/muhasebelestirme tarihi). Fisin gercek uzerindeki
+    // tarihten farkliydi. Manuel UI scanImages ile gorselden okuyordu, otomasyon
+    // okumuyordu -> uyumsuz tarihler. Simdi otomasyon da OCR ile okuyor.
+    try {
+      const scanResult = await this.scanImages(files, tenantId, donem);
+      for (const d of scanResult.detected) {
+        if (d.date) allDates[d.filename] = d.date;
+      }
+      this.logger.log(
+        `[generateFromInvoices] OCR: ${scanResult.detected.length}/${files.length} tarih okundu, ${scanResult.unread.length} teyit gerekli`,
+      );
+    } catch (err: any) {
+      this.logger.warn(
+        `[generateFromInvoices] OCR basarisiz, DB fatura tarihlerine geri donulecek: ${err.message}`,
       );
     }
 
