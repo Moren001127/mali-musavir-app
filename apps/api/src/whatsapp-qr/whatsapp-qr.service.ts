@@ -96,8 +96,8 @@ export class WhatsAppQrService implements OnModuleInit {
     });
 
     let sock: WASocket;
+    const authPath = this.getAuthPath(tenantId);
     try {
-      const authPath = this.getAuthPath(tenantId);
       await fs.mkdir(authPath, { recursive: true });
 
       const { state, saveCreds } = await useMultiFileAuthState(authPath);
