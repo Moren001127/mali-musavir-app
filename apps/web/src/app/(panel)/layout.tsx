@@ -5,6 +5,7 @@ import { useEffect } from 'react';
 import Sidebar from '@/components/layout/Sidebar';
 import TopBar from '@/components/layout/TopBar';
 import { LucaCaptchaOverlay } from '@/components/luca/LucaCaptchaOverlay';
+import NotificationFlashOverlay from '@/components/layout/NotificationFlashOverlay';
 
 export default function PanelLayout({ children }: { children: React.ReactNode }) {
   const { data: user, isLoading, isError } = useMe();
@@ -40,6 +41,7 @@ export default function PanelLayout({ children }: { children: React.ReactNode })
         </main>
         <LucaCaptchaOverlay />
       </div>
+      <NotificationFlashOverlay />
     </div>
   );
 }
