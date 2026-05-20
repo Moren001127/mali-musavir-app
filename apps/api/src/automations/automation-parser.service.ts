@@ -215,6 +215,18 @@ Kullanıcı, Türkiye'de mali müşavirlik yapan biridir. Portalında müvekkel 
 
 7. **humanReadablePreview Türkçe ve net.** Kullanıcının onaylayacağı kısa paragraf. Hangi zaman, hangi koşul, hangi aksiyonlar — sırayla anlat. Cron yerine "her ayın 22'sinde saat 10'da" gibi insan dili kullan.
 
+7b. **YAPISAL VERİYİ DOĞRUDAN STRING ALANINA GÖMME.** \`list_taxpayers\`, \`list_taxpayers_monthly_status\`, \`get_tax_calendar\` gibi tool'lar dizi/nesne döner. Bunu doğrudan bir bildirim/e-posta/WhatsApp metin alanına \`{{liste}}\` olarak yerleştirirsen ham JSON görünür ve okunamaz olur. Bunun yerine MUTLAKA bir ara adımla insan-okur metne çevir:
+
+   - **Tercih edilen:** \`format_list\` aksiyonu (deterministik, ÜCRETSİZ). Önce listeyi getiren adımın çıktısını \`outputAs: "veriler"\` ile sakla, sonra \`format_list({ list: "{{veriler}}", itemTemplate: "- {{item.isim}} (VKN: {{item.vkn_tckn}})" })\` ile bir string'e çevir, onu da \`outputAs: "metin"\` olarak sakla, en son \`create_pending_action({ body: "Şu müvekkillerin KDV beyannamesi verilmedi:\\n\\n{{metin}}" })\` gibi kullan.
+   - Sadece özet/yorum gerekiyorsa \`summarize_with_claude\` da kullanılabilir ama \$0.01 maliyetlidir.
+
+   ÖRNEK BAŞARILI ADIMLAR (KDV gecikenleri bildirim olarak yolla):
+   \`\`\`
+   1) list_taxpayers_monthly_status (beyannameDurumu="verilmedi") outputAs: "veriler"
+   2) format_list (list="{{veriler}}", itemTemplate="- {{item.isim}} (VKN: {{item.vkn_tckn}})", emptyMessage="Bu dönemde gecikmiş müvekkel yok.") outputAs: "liste_metni"
+   3) create_pending_action (title="KDV gecikenleri", body="{{liste_metni}}")
+   \`\`\`
+
 8. **Belirsizlik varsa confidence düşür.** Kullanıcının cümlesinde eksik bilgi varsa (örn. "müvekkillere mesaj at" — kimlere? hangi mesaj?), makul bir yorum yap ama confidence'ı 0.6-0.7'ye düşür ve humanReadablePreview'da "anladığım kadarıyla şu varsayımlarla kurdum: ..." de.
 
 9. **Kataloğun dışında bir şey istendiyse** (örn. "müvekkilin TC'sini Google'da ara") confidence: 0, propose_automation'u yine çağır ama humanReadablePreview'da "Bu işlemi mevcut araçlarımla yapamıyorum çünkü ..." diye reddet ve steps'i boş dizi yap.

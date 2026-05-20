@@ -89,7 +89,7 @@ export default function OtomasyonlarPage() {
       <div className="mb-6 flex flex-wrap items-center justify-between gap-3">
         <div className="flex items-center gap-2">
           <Wand2 className="h-6 w-6" style={{ color: GOLD }} />
-          <h1 className="text-2xl font-serif text-stone-800">Otomasyonlarım</h1>
+          <h1 className="text-2xl font-serif text-stone-800 dark:text-stone-100">Otomasyonlarım</h1>
         </div>
         <Link
           href="/panel/otomasyonlar/yeni"
@@ -101,13 +101,13 @@ export default function OtomasyonlarPage() {
         </Link>
       </div>
 
-      <p className="mb-6 text-sm text-stone-600">
+      <p className="mb-6 text-sm text-stone-600 dark:text-stone-300">
         Türkçe cümleyle kurduğun otomasyonların listesi. Arka planda otomatik çalışır,
         durumlarını ve geçmişlerini buradan takip edersin.
       </p>
 
       {isLoading && (
-        <div className="rounded-2xl border border-stone-200 bg-white p-12 text-center text-sm text-stone-500">
+        <div className="rounded-2xl border border-stone-200 dark:border-stone-700 bg-white dark:bg-stone-900 p-12 text-center text-sm text-stone-500 dark:text-stone-400 dark:text-stone-500">
           Yükleniyor…
         </div>
       )}
@@ -119,10 +119,10 @@ export default function OtomasyonlarPage() {
       )}
 
       {data && data.items.length === 0 && (
-        <div className="rounded-2xl border-2 border-dashed border-stone-300 bg-white p-12 text-center">
-          <Inbox className="mx-auto mb-3 h-10 w-10 text-stone-400" />
-          <h3 className="text-lg font-medium text-stone-700">Henüz otomasyonun yok</h3>
-          <p className="mt-1 text-sm text-stone-500">
+        <div className="rounded-2xl border-2 border-dashed border-stone-300 dark:border-stone-600 bg-white dark:bg-stone-900 p-12 text-center">
+          <Inbox className="mx-auto mb-3 h-10 w-10 text-stone-400 dark:text-stone-500" />
+          <h3 className="text-lg font-medium text-stone-700 dark:text-stone-200">Henüz otomasyonun yok</h3>
+          <p className="mt-1 text-sm text-stone-500 dark:text-stone-400 dark:text-stone-500">
             "Yeni Otomasyon" diyerek bir cümleyle ilk otomasyonunu kurabilirsin.
           </p>
           <Link
@@ -137,9 +137,9 @@ export default function OtomasyonlarPage() {
       )}
 
       {data && data.items.length > 0 && (
-        <div className="overflow-hidden rounded-2xl border border-stone-200 bg-white shadow-sm">
+        <div className="overflow-hidden rounded-2xl border border-stone-200 dark:border-stone-700 bg-white dark:bg-stone-900 shadow-sm">
           <table className="w-full text-sm">
-            <thead className="bg-stone-50 text-left text-xs uppercase tracking-wide text-stone-500">
+            <thead className="bg-stone-50 dark:bg-stone-800 text-left text-xs uppercase tracking-wide text-stone-500 dark:text-stone-400 dark:text-stone-500">
               <tr>
                 <th className="px-4 py-3 font-medium">Ad</th>
                 <th className="px-4 py-3 font-medium">Tetik</th>
@@ -149,7 +149,7 @@ export default function OtomasyonlarPage() {
                 <th className="px-4 py-3 font-medium text-right">Eylem</th>
               </tr>
             </thead>
-            <tbody className="divide-y divide-stone-100">
+            <tbody className="divide-y divide-stone-100 dark:divide-stone-800">
               {data.items.map((auto) => (
                 <Row
                   key={auto.id}
@@ -191,18 +191,18 @@ function Row({
 }) {
   const lastRunStatus = auto.lastRunStatus;
   return (
-    <tr className="text-stone-800">
+    <tr className="text-stone-800 dark:text-stone-100">
       <td className="px-4 py-3">
         <div className="font-medium">{auto.title}</div>
-        <div className="line-clamp-1 max-w-md text-xs text-stone-500">{auto.prompt}</div>
+        <div className="line-clamp-1 max-w-md text-xs text-stone-500 dark:text-stone-400 dark:text-stone-500">{auto.prompt}</div>
       </td>
-      <td className="px-4 py-3 text-xs text-stone-600">
+      <td className="px-4 py-3 text-xs text-stone-600 dark:text-stone-300">
         <span className="inline-flex items-center gap-1">
           <TriggerIcon t={auto.triggerType} />
           {triggerShort(auto.triggerType, auto.triggerConfig)}
         </span>
       </td>
-      <td className="px-4 py-3 text-xs text-stone-600">
+      <td className="px-4 py-3 text-xs text-stone-600 dark:text-stone-300">
         {auto.lastRunAt ? (
           <span className="inline-flex items-center gap-1">
             {lastRunStatus === 'success' ? (
@@ -213,14 +213,14 @@ function Row({
             {new Date(auto.lastRunAt).toLocaleString('tr-TR')}
           </span>
         ) : (
-          <span className="text-stone-400">—</span>
+          <span className="text-stone-400 dark:text-stone-500">—</span>
         )}
       </td>
       <td className="px-4 py-3">
         <StatusBadge status={auto.status} />
       </td>
-      <td className="px-4 py-3 text-right text-xs text-stone-600">
-        {auto.totalRuns} <span className="text-stone-400">/ {auto.successRuns} başarı</span>
+      <td className="px-4 py-3 text-right text-xs text-stone-600 dark:text-stone-300">
+        {auto.totalRuns} <span className="text-stone-400 dark:text-stone-500">/ {auto.successRuns} başarı</span>
       </td>
       <td className="px-4 py-3 text-right">
         <div className="inline-flex items-center gap-1">
@@ -236,7 +236,7 @@ function Row({
               </button>
               <button
                 onClick={() => onDryRun(auto.id)}
-                className="rounded-md border border-stone-300 bg-white p-1.5 text-stone-600 hover:bg-stone-50"
+                className="rounded-md border border-stone-300 dark:border-stone-600 bg-white dark:bg-stone-900 p-1.5 text-stone-600 dark:text-stone-300 hover:bg-stone-50 dark:hover:bg-stone-800 dark:bg-stone-800"
                 title="Dry-Run (aksiyon yapmadan simüle et)"
               >
                 <FlaskConical className="h-4 w-4" />
@@ -246,7 +246,7 @@ function Row({
           {(auto.status === 'ACTIVE' || auto.status === 'PAUSED') && (
             <button
               onClick={() => onToggleActive(auto.id, auto.status)}
-              className="rounded-md border border-stone-300 bg-white p-1.5 text-stone-600 hover:bg-stone-50"
+              className="rounded-md border border-stone-300 dark:border-stone-600 bg-white dark:bg-stone-900 p-1.5 text-stone-600 dark:text-stone-300 hover:bg-stone-50 dark:hover:bg-stone-800 dark:bg-stone-800"
               title={auto.status === 'ACTIVE' ? 'Duraklat' : 'Aktive et'}
             >
               {auto.status === 'ACTIVE' ? (
@@ -261,7 +261,7 @@ function Row({
               onClick={() => {
                 if (confirm(`"${auto.title}" arşivlensin mi?`)) onArchive(auto.id);
               }}
-              className="rounded-md border border-stone-300 bg-white p-1.5 text-stone-600 hover:bg-stone-50"
+              className="rounded-md border border-stone-300 dark:border-stone-600 bg-white dark:bg-stone-900 p-1.5 text-stone-600 dark:text-stone-300 hover:bg-stone-50 dark:hover:bg-stone-800 dark:bg-stone-800"
               title="Arşivle"
             >
               <Archive className="h-4 w-4" />
@@ -275,11 +275,11 @@ function Row({
 
 function StatusBadge({ status }: { status: AutomationStatus }) {
   const styles: Record<AutomationStatus, string> = {
-    DRAFT: 'bg-stone-100 text-stone-700',
+    DRAFT: 'bg-stone-100 text-stone-700 dark:text-stone-200',
     ACTIVE: 'bg-emerald-100 text-emerald-800',
     PAUSED: 'bg-amber-100 text-amber-800',
     ERROR: 'bg-rose-100 text-rose-800',
-    ARCHIVED: 'bg-stone-200 text-stone-500',
+    ARCHIVED: 'bg-stone-200 text-stone-500 dark:text-stone-400 dark:text-stone-500',
   };
   const labels: Record<AutomationStatus, string> = {
     DRAFT: 'Taslak',

@@ -330,6 +330,64 @@ const EXTERNAL_ACTIONS: AutomationAction[] = [
 ];
 
 // ---------------------------------------------------------------
+// AKSIYON: Veri biçimlendirme (FLOW yardımcıları)
+// ---------------------------------------------------------------
+
+const FORMATTING_ACTIONS: AutomationAction[] = [
+  {
+    name: 'format_list',
+    category: 'FLOW',
+    estimatedClaudeCostPerCall: 0,
+    description:
+      'Bir dizi nesneyi insan-okur metne çevirir. Deterministik (Claude çağırmaz, ücretsiz). ' +
+      'Bildirim metni, e-posta gövdesi veya WhatsApp mesajı içine yapısal liste yerleştirmek için MUTLAKA kullan. ' +
+      'Aksi halde {{liste}} doğrudan interpolasyon yapılırsa ham JSON görünür.',
+    input_schema: {
+      type: 'object',
+      properties: {
+        list: {
+          type: 'string',
+          description:
+            'Biçimlendirilecek dizi referansı (önceki adımın outputAs\'i). ' +
+            'Örn. "{{mukellefler}}". DOĞRUDAN bir dizi yerine TEMPLATE referansı olmalı.',
+        },
+        itemTemplate: {
+          type: 'string',
+          description:
+            'Her eleman için kullanılacak template. {{item.field}} ile alanlara erişilir. ' +
+            'Örn. "- {{item.isim}} ({{item.vkn_tckn}})".',
+        },
+        separator: {
+          type: 'string',
+          description: 'Elemanları ayıracak metin. Varsayılan "\\n" (yeni satır).',
+        },
+        emptyMessage: {
+          type: 'string',
+          description:
+            'Dizi boşsa kullanılacak metin. Verilmezse boş string döner. ' +
+            'Örn. "Bu dönemde gecikmiş müvekkel yok."',
+        },
+        prefix: {
+          type: 'string',
+          description: 'Listenin başına eklenecek metin (opsiyonel).',
+        },
+        suffix: {
+          type: 'string',
+          description: 'Listenin sonuna eklenecek metin (opsiyonel).',
+        },
+        maxItems: {
+          type: 'number',
+          description:
+            'Listede en fazla kaç eleman göster. Aşılırsa "... ve N tane daha" eklenir. ' +
+            'Varsayılan: tümü.',
+        },
+      },
+      required: ['list', 'itemTemplate'],
+    },
+  },
+];
+
+// ---------------------------------------------------------------
 // AKSIYON: Akış kontrolü (FLOW meta-aksiyonları)
 // ---------------------------------------------------------------
 
@@ -436,6 +494,7 @@ export const AUTOMATION_ACTION_CATALOG: AutomationAction[] = [
   ...DOCUMENT_ACTIONS,
   ...AI_ACTIONS,
   ...EXTERNAL_ACTIONS,
+  ...FORMATTING_ACTIONS,
   ...FLOW_ACTIONS,
 ];
 

@@ -342,6 +342,22 @@ export class AutomationRunnerService implements OnModuleInit {
     const startMs = Date.now();
     try {
       switch (step.tool) {
+        case 'format_list': {
+          const output = this.formatList(args);
+          if (step.outputAs) {
+            ctx.outputs[step.outputAs] = output;
+          }
+          log.push({
+            stepId,
+            tool: 'format_list',
+            input: { itemTemplate: args.itemTemplate, listLength: Array.isArray(args.list) ? args.list.length : 0 },
+            output: typeof output === 'string' ? output.slice(0, 500) : output,
+            ms: Date.now() - startMs,
+            ts: new Date().toISOString(),
+          });
+          return { cost: 0 };
+        }
+
         case 'for_each': {
           const list = args.list;
           if (!Array.isArray(list)) {
@@ -514,6 +530,58 @@ export class AutomationRunnerService implements OnModuleInit {
   // ---------------------------------------------------------------
   // YARDIMCILAR
   // ---------------------------------------------------------------
+
+  /**
+   * format_list aksiyonu — diziyi insan-okur metne çevirir.
+   * Deterministik, Claude çağırmaz.
+   */
+  private formatList(args: any): string {
+    const list = args.list;
+    const itemTemplate = String(args.itemTemplate ?? '');
+    const separator = String(args.separator ?? '\n');
+    const emptyMessage = String(args.emptyMessage ?? '');
+    const prefix = String(args.prefix ?? '');
+    const suffix = String(args.suffix ?? '');
+    const maxItems = typeof args.maxItems === 'number' ? args.maxItems : Infinity;
+
+    // list, üst seviyede mukellefler objesinin .mukellefler alanı gibi nested olabilir
+    // Eğer doğrudan dizi değilse, bazı yaygın alanlarda ara
+    let arr: unknown[] = [];
+    if (Array.isArray(list)) {
+      arr = list;
+    } else if (list && typeof list === 'object') {
+      const candidates = ['mukellefler', 'items', 'data', 'results', 'list'];
+      for (const c of candidates) {
+        if (Array.isArray((list as any)[c])) {
+          arr = (list as any)[c];
+          break;
+        }
+      }
+    }
+
+    if (arr.length === 0) return emptyMessage;
+
+    const limited = arr.slice(0, maxItems);
+    const lines = limited.map((item) => {
+      // Item'ı template içine yerleştir — küçük bir mini template-resolver
+      return itemTemplate.replace(/\{\{\s*item\.([^}]+?)\s*\}\}/g, (_full, path) => {
+        const parts = String(path).trim().split('.');
+        let cur: any = item;
+        for (const p of parts) {
+          if (cur === null || cur === undefined) return '';
+          cur = cur[p];
+        }
+        if (cur === null || cur === undefined) return '';
+        return typeof cur === 'string' ? cur : String(cur);
+      });
+    });
+
+    let body = lines.join(separator);
+    if (arr.length > limited.length) {
+      body += `${separator}... ve ${arr.length - limited.length} tane daha`;
+    }
+    return prefix + body + suffix;
+  }
 
   private buildSummary(
     log: StepLog[],

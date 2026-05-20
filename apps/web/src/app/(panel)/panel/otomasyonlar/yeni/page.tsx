@@ -92,35 +92,35 @@ export default function YeniOtomasyonPage() {
       <div className="mb-6 flex items-center gap-3">
         <button
           onClick={() => router.back()}
-          className="rounded-lg p-2 text-stone-500 hover:bg-stone-100 hover:text-stone-700"
+          className="rounded-lg p-2 text-stone-500 dark:text-stone-400 dark:text-stone-500 hover:bg-stone-100 dark:hover:bg-stone-800 hover:text-stone-700 dark:hover:text-stone-200 dark:text-stone-200"
         >
           <ChevronLeft className="h-5 w-5" />
         </button>
         <div className="flex items-center gap-2">
           <Wand2 className="h-6 w-6" style={{ color: GOLD }} />
-          <h1 className="text-2xl font-serif text-stone-800">Yeni Otomasyon</h1>
+          <h1 className="text-2xl font-serif text-stone-800 dark:text-stone-100">Yeni Otomasyon</h1>
         </div>
       </div>
 
-      <p className="mb-6 text-sm text-stone-600">
+      <p className="mb-6 text-sm text-stone-600 dark:text-stone-300">
         Otomatik yapılmasını istediğin işi Türkçe yaz. Moren AI cümleyi okuyup uygun
         otomasyonu kuracak. Sen önizlemeyi inceleyip onayladığında çalışmaya başlar.
       </p>
 
       {/* Cümle textarea */}
-      <div className="rounded-2xl border border-stone-200 bg-white p-6 shadow-sm">
-        <label className="mb-2 block text-sm font-medium text-stone-700">
+      <div className="rounded-2xl border border-stone-200 dark:border-stone-700 bg-white dark:bg-stone-900 p-6 shadow-sm">
+        <label className="mb-2 block text-sm font-medium text-stone-700 dark:text-stone-200">
           Ne yapmasını istiyorsun?
         </label>
         <textarea
           value={prompt}
           onChange={(e) => setPrompt(e.target.value)}
           placeholder="Örn: Her ayın 22'sinde KDV beyannamesi gecikenlere WhatsApp at..."
-          className="min-h-[120px] w-full resize-y rounded-lg border border-stone-300 bg-stone-50 p-3 font-mono text-sm text-stone-800 outline-none focus:border-amber-400 focus:bg-white"
+          className="min-h-[120px] w-full resize-y rounded-lg border border-stone-300 dark:border-stone-600 bg-stone-50 dark:bg-stone-800 p-3 font-mono text-sm text-stone-800 dark:text-stone-100 outline-none focus:border-amber-400 focus:bg-white dark:bg-stone-900"
           maxLength={2000}
           disabled={parseMutation.isPending}
         />
-        <div className="mt-1 flex justify-between text-xs text-stone-500">
+        <div className="mt-1 flex justify-between text-xs text-stone-500 dark:text-stone-400 dark:text-stone-500">
           <span>{prompt.length} / 2000</span>
           <span>Daha açık yazarsan, daha doğru kurar.</span>
         </div>
@@ -146,7 +146,7 @@ export default function YeniOtomasyonPage() {
                 parseMutation.mutate(prompt);
               }}
               disabled={parseMutation.isPending}
-              className="inline-flex items-center gap-2 rounded-lg border border-stone-300 bg-white px-4 py-2 text-sm font-medium text-stone-700 hover:bg-stone-50"
+              className="inline-flex items-center gap-2 rounded-lg border border-stone-300 dark:border-stone-600 bg-white dark:bg-stone-900 px-4 py-2 text-sm font-medium text-stone-700 dark:text-stone-200 hover:bg-stone-50 dark:hover:bg-stone-800 dark:bg-stone-800"
             >
               Yeniden Üret
             </button>
@@ -155,7 +155,7 @@ export default function YeniOtomasyonPage() {
 
         {/* Örnek cümleler */}
         <details className="mt-5 group">
-          <summary className="cursor-pointer text-sm font-medium text-stone-600 hover:text-stone-800">
+          <summary className="cursor-pointer text-sm font-medium text-stone-600 dark:text-stone-300 hover:text-stone-800 dark:hover:text-stone-100 dark:text-stone-100">
             Örnek cümleler (tıklayınca kullanılır)
           </summary>
           <ul className="mt-3 space-y-2">
@@ -163,7 +163,7 @@ export default function YeniOtomasyonPage() {
               <li key={i}>
                 <button
                   onClick={() => setPrompt(ex)}
-                  className="block w-full rounded-lg border border-stone-200 bg-stone-50 p-3 text-left text-xs text-stone-700 hover:border-amber-300 hover:bg-amber-50"
+                  className="block w-full rounded-lg border border-stone-200 dark:border-stone-700 bg-stone-50 dark:bg-stone-800 p-3 text-left text-xs text-stone-700 dark:text-stone-200 hover:border-amber-300 hover:bg-amber-50"
                 >
                   {ex}
                 </button>
@@ -192,21 +192,21 @@ function PreviewPanel({
   const lowConfidence = parsed.confidence < 0.6;
 
   return (
-    <div className="mt-6 rounded-2xl border-2 bg-white shadow-md" style={{ borderColor: GOLD }}>
-      <div className="border-b border-stone-200 px-6 py-4">
-        <div className="flex items-center gap-2 text-sm font-medium text-stone-500">
+    <div className="mt-6 rounded-2xl border-2 bg-white dark:bg-stone-900 shadow-md" style={{ borderColor: GOLD }}>
+      <div className="border-b border-stone-200 dark:border-stone-700 px-6 py-4">
+        <div className="flex items-center gap-2 text-sm font-medium text-stone-500 dark:text-stone-400 dark:text-stone-500">
           <CheckCircle2 className="h-4 w-4" style={{ color: GOLD }} />
           Önizleme
         </div>
-        <h2 className="mt-1 text-xl font-serif text-stone-800">{parsed.title}</h2>
+        <h2 className="mt-1 text-xl font-serif text-stone-800 dark:text-stone-100">{parsed.title}</h2>
         {parsed.description && (
-          <p className="mt-1 text-sm text-stone-600">{parsed.description}</p>
+          <p className="mt-1 text-sm text-stone-600 dark:text-stone-300">{parsed.description}</p>
         )}
       </div>
 
       <div className="space-y-5 px-6 py-5">
         {/* İnsan-okur açıklama */}
-        <div className="rounded-lg bg-amber-50 p-4 text-sm leading-relaxed text-stone-800">
+        <div className="rounded-lg bg-amber-50 p-4 text-sm leading-relaxed text-stone-800 dark:text-stone-100">
           {parsed.humanReadablePreview}
         </div>
 
@@ -231,7 +231,7 @@ function PreviewPanel({
         {/* Adımlar */}
         {hasSteps && (
           <div>
-            <h3 className="mb-2 text-sm font-medium text-stone-700">Adımlar</h3>
+            <h3 className="mb-2 text-sm font-medium text-stone-700 dark:text-stone-200">Adımlar</h3>
             <ol className="space-y-2 text-xs">
               {parsed.steps.steps.map((step: any, i: number) => (
                 <StepItem key={step.id ?? i} step={step} depth={0} index={i + 1} />
@@ -271,7 +271,7 @@ function PreviewPanel({
 
         {/* Aksiyon butonları */}
         {hasSteps && (
-          <div className="flex flex-wrap items-center gap-2 border-t border-stone-100 pt-4">
+          <div className="flex flex-wrap items-center gap-2 border-t border-stone-100 dark:border-stone-800 pt-4">
             <button
               onClick={onConfirm}
               disabled={confirming}
@@ -284,7 +284,7 @@ function PreviewPanel({
             <button
               disabled
               title="Faz 4 — gelecek sürüm"
-              className="rounded-lg border border-stone-300 bg-white px-4 py-2 text-sm text-stone-400"
+              className="rounded-lg border border-stone-300 dark:border-stone-600 bg-white dark:bg-stone-900 px-4 py-2 text-sm text-stone-400 dark:text-stone-500"
             >
               Adımları Manuel Düzenle
             </button>
@@ -297,12 +297,12 @@ function PreviewPanel({
 
 function InfoCard({ icon, label, value }: { icon: React.ReactNode; label: string; value: string }) {
   return (
-    <div className="rounded-lg border border-stone-200 bg-stone-50 p-3">
-      <div className="flex items-center gap-2 text-xs uppercase tracking-wide text-stone-500">
+    <div className="rounded-lg border border-stone-200 dark:border-stone-700 bg-stone-50 dark:bg-stone-800 p-3">
+      <div className="flex items-center gap-2 text-xs uppercase tracking-wide text-stone-500 dark:text-stone-400 dark:text-stone-500">
         {icon}
         {label}
       </div>
-      <div className="mt-1 text-sm text-stone-800">{value}</div>
+      <div className="mt-1 text-sm text-stone-800 dark:text-stone-100">{value}</div>
     </div>
   );
 }
@@ -311,7 +311,7 @@ function StepItem({ step, depth, index }: { step: any; depth: number; index: num
   const isFlow = ['for_each', 'branch_if', 'parallel', 'wait'].includes(step.tool);
   return (
     <li
-      className="rounded-lg border border-stone-200 bg-stone-50 p-3"
+      className="rounded-lg border border-stone-200 dark:border-stone-700 bg-stone-50 dark:bg-stone-800 p-3"
       style={{ marginLeft: depth * 16 }}
     >
       <div className="flex items-start gap-2">
@@ -322,15 +322,15 @@ function StepItem({ step, depth, index }: { step: any; depth: number; index: num
           {index}
         </span>
         <div className="flex-1">
-          <code className="rounded bg-white px-1.5 py-0.5 text-[11px] font-medium text-stone-700">
+          <code className="rounded bg-white dark:bg-stone-900 px-1.5 py-0.5 text-[11px] font-medium text-stone-700 dark:text-stone-200">
             {step.tool}
           </code>
           {step.outputAs && (
-            <span className="ml-2 text-[11px] text-stone-500">
-              → <code className="text-stone-700">{step.outputAs}</code>
+            <span className="ml-2 text-[11px] text-stone-500 dark:text-stone-400 dark:text-stone-500">
+              → <code className="text-stone-700 dark:text-stone-200">{step.outputAs}</code>
             </span>
           )}
-          <pre className="mt-1 max-h-32 overflow-auto whitespace-pre-wrap break-words text-[11px] text-stone-600">
+          <pre className="mt-1 max-h-32 overflow-auto whitespace-pre-wrap break-words text-[11px] text-stone-600 dark:text-stone-300">
             {JSON.stringify(step.args, null, 2)}
           </pre>
         </div>
@@ -345,7 +345,7 @@ function StepItem({ step, depth, index }: { step: any; depth: number; index: num
       )}
       {Array.isArray(step.then) && step.then.length > 0 && (
         <div className="mt-2">
-          <div className="text-[10px] uppercase text-stone-500">then:</div>
+          <div className="text-[10px] uppercase text-stone-500 dark:text-stone-400 dark:text-stone-500">then:</div>
           <ol className="space-y-1">
             {step.then.map((s: any, i: number) => (
               <StepItem key={s.id ?? i} step={s} depth={depth + 1} index={i + 1} />
@@ -355,7 +355,7 @@ function StepItem({ step, depth, index }: { step: any; depth: number; index: num
       )}
       {Array.isArray(step.else) && step.else.length > 0 && (
         <div className="mt-2">
-          <div className="text-[10px] uppercase text-stone-500">else:</div>
+          <div className="text-[10px] uppercase text-stone-500 dark:text-stone-400 dark:text-stone-500">else:</div>
           <ol className="space-y-1">
             {step.else.map((s: any, i: number) => (
               <StepItem key={s.id ?? i} step={s} depth={depth + 1} index={i + 1} />
