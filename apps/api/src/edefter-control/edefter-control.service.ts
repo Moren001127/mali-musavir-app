@@ -130,7 +130,7 @@ export class EDefterControlService {
     const range = this.donemToRange(params.donem, donemTipi);
     let rows: ParsedEDefterFisLine[];
     try {
-      rows = this.parser.parse(params.buffer);
+      rows = this.parser.parse(params.buffer, { defaultYear: range?.start.getUTCFullYear() });
     } catch (err: any) {
       throw new BadRequestException(err?.message || 'Detay Fis Listesi Excel parse edilemedi');
     }

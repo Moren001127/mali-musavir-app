@@ -22,12 +22,15 @@ export type ParsedEDefterFisLine = {
 };
 
 type HeaderMap = Record<string, number>;
+type ParserOptions = {
+  defaultYear?: number;
+};
 
 @Injectable()
 export class EDefterFisListesiParserService {
   private readonly logger = new Logger(EDefterFisListesiParserService.name);
 
-  parse(buffer: Buffer): ParsedEDefterFisLine[] {
+  parse(buffer: Buffer, opts: ParserOptions = {}): ParsedEDefterFisLine[] {
     const wb = XLSX.read(buffer, { type: 'buffer', cellDates: true });
     const { sheetName, grid } = this.pickBestSheet(wb);
     const headerRowIdx = this.findHeaderRow(grid);
@@ -63,13 +66,13 @@ export class EDefterFisListesiParserService {
         if (h) rawData[h] = row[idx] ?? null;
       });
 
-      const hesapKodu = this.readString(row, headerMap, [
+      let hesapKodu = this.readString(row, headerMap, [
         /^hesap.*kod/,
         /^kod$/,
         /^hsp.*kod/,
         /^account.*code/,
       ]);
-      const hesapAdi = this.readString(row, headerMap, [
+      let hesapAdi = this.readString(row, headerMap, [
         /^hesap.*ad/,
         /^hesap.*aciklama/,
         /^account.*name/,
@@ -77,16 +80,27 @@ export class EDefterFisListesiParserService {
       const borc = this.readAmount(row, headerMap, [/^borc$/, /^borc\s*tutar/, /^debit$/]);
       const alacak = this.readAmount(row, headerMap, [/^alacak$/, /^alacak\s*tutar/, /^credit$/]);
 
-      const fisNo = this.readString(row, headerMap, [/^fis\s*no/, /^fisno$/, /^fis\s*numara/]);
+      const account = this.splitAccount(hesapKodu, hesapAdi);
+      hesapKodu = account.code;
+      hesapAdi = account.name;
+
+      let aciklama = this.readString(row, headerMap, [/^aciklama$/, /^izahat$/, /^fis\s*aciklama/, /^description$/]);
+      const inlineVoucher = this.parseInlineVoucher(aciklama, opts.defaultYear);
+      if (inlineVoucher.description) aciklama = inlineVoucher.description;
+
+      const fisNo = this.readString(row, headerMap, [/^fis\s*no/, /^fisno$/, /^fis\s*numara/]) || inlineVoucher.no;
       const yevmiyeNo = this.readString(row, headerMap, [/^yevmiye\s*no/, /^yevmiye$/, /^yevmiye\s*numara/]);
-      const fisTarihi = this.readDate(row, headerMap, [/^fis\s*tarih/, /^fistarih/, /^tarih$/]);
-      const evrakNo = this.readString(row, headerMap, [/^evrak\s*no/, /^belge\s*no/, /^dokuman\s*no/, /^document\s*no/]);
-      const evrakTarihi = this.readDate(row, headerMap, [/^evrak\s*tarih/, /^belge\s*tarih/, /^document\s*date/]);
-      const aciklama = this.readString(row, headerMap, [/^aciklama$/, /^izahat$/, /^fis\s*aciklama/, /^description$/]);
+      const fisTarihi = this.readDate(row, headerMap, [/^fis\s*tarih/, /^fistarih/, /^tarih$/]) || inlineVoucher.date;
+      const evrakNo = this.readString(row, headerMap, [/^evrak\s*no/, /^belge\s*no/, /^dokuman\s*no/, /^document\s*no/]) || inlineVoucher.no;
+      const evrakTarihi = this.readDate(row, headerMap, [/^evrak\s*tarih/, /^belge\s*tarih/, /^document\s*date/]) || inlineVoucher.date;
       const fisTipi = this.readString(row, headerMap, [/^fis\s*tip/, /^fistipi$/, /^tip$/]);
       const belgeTuru = this.readString(row, headerMap, [/^belge\s*tur/, /^evrak\s*tur/, /^document\s*type/]);
       const vknTckn = this.readString(row, headerMap, [/^vkn/, /^tckn/, /^vergi\s*no/, /^tc\s*no/, /^tax\s*no/]);
       const karsiHesap = this.readString(row, headerMap, [/^karsi\s*hesap/, /^karsi\s*kod/]);
+
+      if (this.isReportScaffoldRow({ hesapKodu, hesapAdi, aciklama, borc, alacak, fisNo, yevmiyeNo })) {
+        continue;
+      }
 
       if (!hesapKodu && !hesapAdi && borc === 0 && alacak === 0 && !fisNo && !yevmiyeNo) {
         continue;
@@ -178,6 +192,76 @@ export class EDefterFisListesiParserService {
   private findIndex(map: HeaderMap, patterns: RegExp[]): number | null {
     const key = Object.keys(map).find((h) => patterns.some((p) => p.test(h)));
     return key == null ? null : map[key];
+  }
+
+  private splitAccount(
+    hesapKodu?: string | null,
+    hesapAdi?: string | null,
+  ): { code: string | null; name: string | null } {
+    const codeText = this.cellText(hesapKodu);
+    const nameText = this.cellText(hesapAdi);
+    const source = codeText || nameText;
+    const match = source.match(/^(\d{3}(?:[.\-][A-Za-z0-9]+)*)(?:\s*[-·]\s*|\s+)(.+)$/);
+    if (!match) {
+      return { code: codeText || null, name: nameText && nameText !== codeText ? nameText : null };
+    }
+    const code = match[1];
+    const nameFromCombined = match[2]?.trim() || null;
+    const cleanName = nameText && nameText !== source ? nameText : nameFromCombined;
+    return { code, name: cleanName || null };
+  }
+
+  private parseInlineVoucher(
+    text?: string | null,
+    defaultYear?: number,
+  ): { date: Date | null; no: string | null; description: string | null } {
+    const raw = this.cellText(text);
+    const match = raw.match(/^(\d{1,2})[./-](\d{1,2})(?:[./-](\d{2,4}))?\s+([A-Za-z0-9][A-Za-z0-9./_-]*)\s*(.*)$/);
+    if (!match) return { date: null, no: null, description: null };
+
+    const day = Number(match[1]);
+    const month = Number(match[2]);
+    let year = match[3] ? Number(match[3]) : Number(defaultYear || 0);
+    if (year > 0 && year < 100) year += 2000;
+    const date = year >= 1900 && month >= 1 && month <= 12 && day >= 1 && day <= 31
+      ? new Date(Date.UTC(year, month - 1, day))
+      : null;
+
+    return {
+      date,
+      no: match[4] || null,
+      description: match[5]?.trim() || null,
+    };
+  }
+
+  private isReportScaffoldRow(row: {
+    hesapKodu?: string | null;
+    hesapAdi?: string | null;
+    aciklama?: string | null;
+    borc: number;
+    alacak: number;
+    fisNo?: string | null;
+    yevmiyeNo?: string | null;
+  }) {
+    const code = this.normalizeHeader(row.hesapKodu);
+    const name = this.normalizeHeader(row.hesapAdi);
+    const desc = this.normalizeHeader(row.aciklama);
+    const label = `${code} ${name} ${desc}`.trim();
+    if (!label) return false;
+    if (/fis toplam|sayfa toplam|genel toplam/.test(label)) return true;
+    if (/^tarih(?:\s+mahsup)?$/.test(label) || /^mahsup$/.test(label)) return true;
+    if (/hesap kodu|hesap adi|aciklama/.test(label)) return true;
+    if (row.borc === 0 && row.alacak === 0 && !this.isAccountCode(row.hesapKodu) && !row.fisNo && !row.yevmiyeNo) {
+      return true;
+    }
+    return Boolean(row.hesapKodu && !this.isAccountCode(row.hesapKodu) && row.borc === 0 && row.alacak === 0);
+  }
+
+  private isAccountCode(value?: string | null) {
+    const text = this.cellText(value);
+    if (!text) return false;
+    const first = text.split(/\s*[-·]\s*|\s+/)[0];
+    return /^\d{3}(?:[.\-][A-Za-z0-9]+)*$/.test(first);
   }
 
   private buildVoucherKey(input: {
