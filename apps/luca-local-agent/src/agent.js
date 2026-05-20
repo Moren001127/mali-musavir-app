@@ -1094,6 +1094,9 @@ async function processJob(job) {
   const mukellefAdi = job.mukellefAdi || job.taxpayer?.companyName || job.taxpayer?.name || '';
   const donem = job.donem || '';
 
+  // SELF-HEAL: timeout watcher icin kaydet
+  activeJobsStartTime.set(jobId, Date.now());
+
   // Aynı mükellef hızlı yol kontrolü
   const session = browserSession; // null olabilir (henüz açılmamış)
   const last = session?.lastTaxpayer;
@@ -1172,6 +1175,7 @@ async function processJob(job) {
     }
     await markJobFailed(jobId, err.message);
   } finally {
+    activeJobsStartTime.delete(jobId);
     activeJobCount = Math.max(0, activeJobCount - 1);
   }
 }
@@ -1211,7 +1215,34 @@ async function preWarmBrowserSession() {
         // Zaten Luca sayfasındaysa reload et ki yeni eklenen init script çalışsın.
         await page.reload({ waitUntil: 'domcontentloaded', timeout: 60_000 }).catch(() => {});
       }
-      log.info(`✓ Pre-warm tamamlandı (url: ${page.url().slice(0, 80)})`);
+      const finalUrl = page.url();
+      log.info(`✓ Pre-warm tamamlandı (url: ${finalUrl.slice(0, 80)})`);
+
+      // SELF-HEAL: Pre-warm sonrası URL chrome-error veya about:blank ise
+      // browser profil bozulmus demektir. Profili silip prosesi sonlandir,
+      // scheduled task / mainLoop yeniden baslatir (temiz profil).
+      const isBrokenUrl =
+        finalUrl.startsWith('chrome-error://') ||
+        finalUrl === 'about:blank' ||
+        finalUrl.startsWith('chrome://') ||
+        (!finalUrl.includes('luca.com.tr') && !finalUrl.includes('lucasso'));
+      if (isBrokenUrl) {
+        log.error(`Pre-warm SAGLIKSIZ URL (${finalUrl.slice(0, 80)}). Browser profili silinip prosesi sonlandiriliyor.`);
+        try { await session.context.close(); } catch {}
+        try { await session.browser?.close?.(); } catch {}
+        try {
+          const profileDir = path.resolve(__dirname, '..', '.browser-data');
+          if (fs.existsSync(profileDir)) {
+            fs.rmSync(profileDir, { recursive: true, force: true });
+            log.info(`Browser profil silindi: ${profileDir}`);
+          }
+        } catch (err) {
+          log.warn(`Browser profili silinemedi: ${err.message}`);
+        }
+        // Process exit -> Scheduled Task yeniden baslatir (yoksa mainLoop catch eder)
+        log.warn('Self-heal: proses sonlandiriliyor, watchdog yeniden baslatacak.');
+        process.exit(2);
+      }
     }
     } catch (err) {
       log.warn(`Pre-warm başarısız (önemsiz, gerçek iş geldiğinde tekrar denenecek): ${err.message}`);
@@ -1513,12 +1544,53 @@ async function printQueueLoop() {
   }
 }
 
+// ====================================================================
+// SELF-HEAL: Memory watcher — RAM 600MB asarsa restart
+// ====================================================================
+function startMemoryWatcher() {
+  const LIMIT_MB = 600;
+  setInterval(() => {
+    const mb = Math.round(process.memoryUsage().rss / 1024 / 1024);
+    if (mb > LIMIT_MB) {
+      log.error(`Self-heal: RAM ${mb}MB > ${LIMIT_MB}MB limit. Proses sonlandiriliyor (watchdog restart edecek).`);
+      process.exit(3);
+    }
+  }, 60_000); // 60sn'de bir
+}
+
+// ====================================================================
+// SELF-HEAL: Job timeout watcher — 10dk asan jobi abort + restart
+// ====================================================================
+const activeJobsStartTime = new Map(); // jobId -> startedAt
+const JOB_TIMEOUT_MS = 10 * 60 * 1000; // 10 dakika
+
+function startJobTimeoutWatcher() {
+  setInterval(() => {
+    const now = Date.now();
+    for (const [jid, startedAt] of activeJobsStartTime) {
+      if (now - startedAt > JOB_TIMEOUT_MS) {
+        log.error(`Self-heal: Job ${jid} 10dk+ takildi. Proses sonlandiriliyor (watchdog restart edecek).`);
+        // Job'u backend'e abort olarak isaretle
+        api.post(`/agent/luca/jobs/${jid}/requeue`, {
+          reason: 'AGENT_SELF_HEAL_TIMEOUT_10MIN',
+        }).catch(() => {});
+        setTimeout(() => process.exit(4), 2000);
+        return;
+      }
+    }
+  }, 30_000); // 30sn'de bir
+}
+
 async function start() {
   acquireSingleInstanceLock();
   const poolStarted = await startPortalWorkerPoolIfAvailable();
 
   // Print queue loop'u her zaman calişsin — Luca havuzu var/yok fark etmez
   printQueueLoop().catch((err) => log.error(`Print loop fatal: ${err.message}`));
+
+  // SELF-HEAL watcher'lari baslat
+  startMemoryWatcher();
+  startJobTimeoutWatcher();
 
   if (!poolStarted) {
     if (!cfg.luca?.uyeNo || !cfg.luca?.username || !cfg.luca?.password) {
