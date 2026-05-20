@@ -1,6 +1,6 @@
 'use client';
 
-import { useEffect, useMemo, useState } from 'react';
+import { useEffect, useMemo, useRef, useState } from 'react';
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import { AlertTriangle, BookOpen, CheckCircle2, FileSpreadsheet, Loader2, Play, Search, UploadCloud, XCircle } from 'lucide-react';
 import { toast } from 'sonner';
@@ -96,6 +96,8 @@ export default function EDefterAgentPage() {
   const [lineSearch, setLineSearch] = useState('');
   const [findingSearch, setFindingSearch] = useState('');
   const [focusedFinding, setFocusedFinding] = useState<any | null>(null);
+  const linesSectionRef = useRef<HTMLDivElement | null>(null);
+  const focusedLineRef = useRef<HTMLTableRowElement | null>(null);
 
   const donem = `${year}-Q${quarter}`;
   const donemTipi = `GECICI_Q${quarter}` as EDefterDonemTipi;
@@ -151,7 +153,9 @@ export default function EDefterAgentPage() {
     onSuccess: (data) => {
       setLucaJobId(data.jobId);
       setSelectedSessionId(null);
-      setLucaStatus('Luca ajani Detay Fis Listesi raporunu hazirliyor...');
+      setLucaStatus(data.mizanJobId
+        ? 'Luca ajani Detay Fis Listesi ve Mizan raporlarini hazirliyor...'
+        : 'Luca ajani Detay Fis Listesi raporunu hazirliyor...');
       toast.info('e-Defter Detay Fiş Listesi job oluşturuldu');
     },
     onError: (e: any) => toast.error(e?.response?.data?.message || e?.message || 'Luca job olusturulamadi'),
@@ -185,15 +189,25 @@ export default function EDefterAgentPage() {
       .map((line) => line.trim())
       .filter(Boolean);
     const lastLine = cleanLucaStatus(lines[lines.length - 1]);
+    const mizanJob = data.mizanJob;
+    const mizanStatus = String(mizanJob?.status || '').toLowerCase();
+    const mizanDone = !mizanJob || ['done', 'failed', 'cancelled'].includes(mizanStatus);
     if (job.status === 'running') setLucaStatus(lastLine || 'Luca Detay Fis Listesi Excel hazirlaniyor...');
     if (job.status === 'done') {
-      setLucaStatus('Detay Fis Listesi alindi ve analiz edildi');
+      setLucaStatus(mizanDone
+        ? 'Detay Fis Listesi alindi, Mizan kontrolu de guncellendi'
+        : 'Detay Fis Listesi alindi; eslik eden Mizan kontrolu suruyor...');
       if (data.session?.id) setSelectedSessionId(data.session.id);
       qc.invalidateQueries({ queryKey: ['edefter-control-list', taxpayerId] });
       qc.invalidateQueries({ queryKey: ['edefter-control-session'] });
       qc.refetchQueries({ queryKey: ['edefter-control-list', taxpayerId] });
       if (data.session?.id) qc.refetchQueries({ queryKey: ['edefter-control-session', data.session.id] });
-      setLucaJobId(null);
+      if (mizanDone) setLucaJobId(null);
+      if (!mizanDone) return;
+      if (mizanStatus === 'failed') {
+        toast.warning('Detay Fis Listesi hazir; Mizan job hata verdi');
+        return;
+      }
       toast.success('e-Defter ön kontrol verisi hazır');
     }
     if (job.status === 'failed') {
@@ -212,6 +226,8 @@ export default function EDefterAgentPage() {
       info: findings.filter((f: any) => f.severity === 'INFO').length,
     };
   }, [session]);
+  const mizan = session?.companionMizan || jobQuery.data?.mizan || null;
+  const mizanAnomalies = mizan?.anomaliler || [];
 
   const visibleFindings = useMemo(() => {
     const query = findingSearch.trim().toLocaleLowerCase('tr-TR');
@@ -255,6 +271,22 @@ export default function EDefterAgentPage() {
       return haystack.includes(query);
     });
   }, [focusedFinding, lineSearch, lines]);
+
+  const focusFinding = (finding: any) => {
+    setFocusedFinding(finding);
+    setLineSearch('');
+    window.setTimeout(() => {
+      linesSectionRef.current?.scrollIntoView({ behavior: 'smooth', block: 'start' });
+    }, 0);
+  };
+
+  useEffect(() => {
+    if (!focusedFinding) return;
+    const timer = window.setTimeout(() => {
+      focusedLineRef.current?.scrollIntoView({ behavior: 'smooth', block: 'center' });
+    }, 80);
+    return () => window.clearTimeout(timer);
+  }, [focusedFinding, visibleLines.length]);
 
   useEffect(() => {
     setFocusedFinding(null);
@@ -418,8 +450,8 @@ export default function EDefterAgentPage() {
                 </div>
               </div>
             </div>
-            <div className="overflow-auto">
-              <table className="w-full text-sm">
+            <div className="overflow-auto max-h-[560px]">
+              <table className="w-full min-w-[920px] text-sm">
                 <thead>
                   <tr style={{ color: 'rgba(250,250,249,.48)', borderBottom: `1px solid ${BORDER}` }}>
                     <th className="text-left py-2 font-medium">Seviye</th>
@@ -432,10 +464,7 @@ export default function EDefterAgentPage() {
                   {visibleFindings.slice(0, 1000).map((f: any) => (
                     <tr
                       key={f.id}
-                      onClick={() => {
-                        setFocusedFinding(f);
-                        setLineSearch('');
-                      }}
+                      onClick={() => focusFinding(f)}
                       className="cursor-pointer"
                       style={{
                         borderBottom: `1px solid ${BORDER}`,
@@ -443,10 +472,10 @@ export default function EDefterAgentPage() {
                         background: focusedFinding?.id === f.id ? 'rgba(212,184,118,.10)' : 'transparent',
                       }}
                     >
-                      <td className="py-2"><Severity value={f.severity} /></td>
-                      <td className="py-2 text-xs">{f.category}</td>
-                      <td className="py-2">{f.message}</td>
-                      <td className="py-2 tabular-nums">{f.rowIndex || '-'}</td>
+                      <td className="py-2 px-2"><Severity value={f.severity} /></td>
+                      <td className="py-2 px-2 text-xs max-w-[240px] break-words">{f.category}</td>
+                      <td className="py-2 px-2 min-w-[360px]">{f.message}</td>
+                      <td className="py-2 px-2 tabular-nums">{f.rowIndex || '-'}</td>
                     </tr>
                   ))}
                 </tbody>
@@ -465,6 +494,38 @@ export default function EDefterAgentPage() {
           </div>
 
           <div className="rounded-xl border p-4" style={{ background: PANEL, borderColor: BORDER }}>
+            <div className="flex flex-col gap-2 mb-3 sm:flex-row sm:items-center sm:justify-between">
+              <div className="flex items-center gap-2">
+                <FileSpreadsheet size={16} style={{ color: GOLD }} />
+                <h2 className="text-sm font-semibold" style={{ color: '#fafaf9' }}>Mizan Kontrolu</h2>
+              </div>
+              <span className="text-xs tabular-nums" style={{ color: mizan?.anomalyCount ? '#f59e0b' : 'rgba(250,250,249,.45)' }}>
+                {mizan ? `${mizan.hesapCount || 0} hesap, ${mizan.anomalyCount || 0} bulgu` : 'Mizan bekleniyor'}
+              </span>
+            </div>
+            {mizan ? (
+              <div className="space-y-2">
+                {mizanAnomalies.slice(0, 8).map((a: any) => (
+                  <div key={a.id} className="grid grid-cols-1 gap-2 rounded-lg px-3 py-2 text-xs sm:grid-cols-[88px_120px_minmax(0,1fr)]" style={{ background: 'rgba(255,255,255,.025)', color: 'rgba(250,250,249,.78)' }}>
+                    <Severity value={a.seviye || 'WARN'} />
+                    <span className="font-semibold truncate">{a.tip || '-'}</span>
+                    <span className="min-w-0 break-words">{a.hesapKodu ? `${a.hesapKodu} - ` : ''}{a.mesaj || '-'}</span>
+                  </div>
+                ))}
+                {mizanAnomalies.length === 0 && (
+                  <div className="rounded-lg px-3 py-3 text-sm" style={{ background: 'rgba(34,197,94,.08)', color: '#86efac' }}>
+                    Mizan kontrolunde bulgu yok.
+                  </div>
+                )}
+              </div>
+            ) : (
+              <div className="rounded-lg px-3 py-3 text-sm" style={{ background: 'rgba(255,255,255,.02)', color: 'rgba(250,250,249,.45)' }}>
+                Luca'dan cekim tamamlandiginda Detay Fis Listesi ile ayni donemin mizani burada ayri kontrol olarak gorunecek.
+              </div>
+            )}
+          </div>
+
+          <div ref={linesSectionRef} className="rounded-xl border p-4" style={{ background: PANEL, borderColor: BORDER }}>
             <div className="flex flex-col gap-3 mb-3 lg:flex-row lg:items-center lg:justify-between">
               <div className="flex items-center gap-2">
                 <FileSpreadsheet size={16} style={{ color: GOLD }} />
@@ -514,6 +575,7 @@ export default function EDefterAgentPage() {
                   {visibleLines.slice(0, 1000).map((line: any) => (
                     <tr
                       key={line.id}
+                      ref={focusedFinding?.rowIndex && Number(focusedFinding.rowIndex) === Number(line.rowIndex) ? focusedLineRef : undefined}
                       style={{
                         borderBottom: `1px solid ${BORDER}`,
                         color: 'rgba(250,250,249,.82)',

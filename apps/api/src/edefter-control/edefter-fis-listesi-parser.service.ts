@@ -208,7 +208,7 @@ export class EDefterFisListesiParserService {
     const codeText = this.cellText(hesapKodu);
     const nameText = this.cellText(hesapAdi);
     const source = codeText || nameText;
-    const match = source.match(/^(\d{3}(?:[.\-][A-Za-z0-9]+)*)(?:\s*[-·]\s*|\s+)(.+)$/);
+    const match = source.match(/^(\d{3}(?:[.\-][\p{L}\p{N}]+)*)(?:\s*[-·]\s*|\s+)(.+)$/u);
     if (!match) {
       return { code: codeText || null, name: nameText && nameText !== codeText ? nameText : null };
     }
@@ -281,7 +281,7 @@ export class EDefterFisListesiParserService {
     const text = this.cellText(value);
     if (!text) return false;
     const first = text.split(/\s*[-·]\s*|\s+/)[0];
-    return /^\d{3}(?:[.\-][A-Za-z0-9]+)*$/.test(first);
+    return /^\d{3}(?:[.\-][\p{L}\p{N}]+)*$/u.test(first);
   }
 
   private buildVoucherKey(input: {

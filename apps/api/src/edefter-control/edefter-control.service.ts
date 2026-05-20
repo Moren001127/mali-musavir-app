@@ -74,11 +74,14 @@ export class EDefterControlService {
     });
     if (!session) throw new NotFoundException('e-Defter kontrol oturumu bulunamadi');
 
-    const taxpayer = await (this.prisma as any).taxpayer.findFirst({
-      where: { id: session.taxpayerId, tenantId },
-      select: { id: true, firstName: true, lastName: true, companyName: true, taxNumber: true },
-    });
-    return { ...session, taxpayer: taxpayer || null };
+    const [taxpayer, companionMizan] = await Promise.all([
+      (this.prisma as any).taxpayer.findFirst({
+        where: { id: session.taxpayerId, tenantId },
+        select: { id: true, firstName: true, lastName: true, companyName: true, taxNumber: true },
+      }),
+      this.findCompanionMizan(tenantId, session.taxpayerId, session.donem, session.donemTipi),
+    ]);
+    return { ...session, taxpayer: taxpayer || null, companionMizan };
   }
 
   async createFetchJob(params: {
@@ -99,7 +102,7 @@ export class EDefterControlService {
     const targetDeviceId =
       requestedDeviceId && !/^DEV-/i.test(requestedDeviceId) ? requestedDeviceId : undefined;
 
-    const job = await this.luca.createFetchJob({
+    const detailJob = await this.luca.createFetchJob({
       tenantId: params.tenantId,
       sessionId: undefined as any,
       mukellefId: params.mukellefId,
@@ -117,9 +120,30 @@ export class EDefterControlService {
     });
 
     await this.luca
-      .appendJobLog(job.id, 'e-Defter on kontrol icin Detay Fis Listesi cekimi siraya alindi')
+      .appendJobLog(detailJob.id, 'e-Defter on kontrol icin Detay Fis Listesi cekimi siraya alindi')
       .catch(() => undefined);
-    return job;
+
+    const mizanJob = await this.luca.createFetchJob({
+      tenantId: params.tenantId,
+      sessionId: undefined as any,
+      mukellefId: params.mukellefId,
+      donem: params.donem,
+      donemTipi: params.donemTipi,
+      tip: 'MIZAN',
+      createdBy: params.createdBy,
+      targetDeviceId,
+      preferredAgent: 'local-node',
+      mukellefAdi:
+        taxpayer.companyName ||
+        [taxpayer.firstName, taxpayer.lastName].filter(Boolean).join(' ') ||
+        taxpayer.taxNumber ||
+        '',
+    });
+    await this.luca
+      .appendJobLog(mizanJob.id, 'e-Defter on kontrol icin eslik eden Mizan cekimi siraya alindi')
+      .catch(() => undefined);
+
+    return { detailJob, mizanJob };
   }
 
   async importFromExcel(params: {
@@ -234,6 +258,49 @@ export class EDefterControlService {
     return { sessionId: session.id, rows: rows.length, vouchers: voucherCount, findings: findings.length };
   }
 
+  async findCompanionMizan(
+    tenantId: string,
+    taxpayerId: string,
+    donem: string,
+    donemTipi?: string | null,
+  ) {
+    const mizan = await (this.prisma as any).mizan.findFirst({
+      where: {
+        tenantId,
+        taxpayerId,
+        donem,
+        ...(donemTipi ? { donemTipi } : {}),
+      },
+      orderBy: { createdAt: 'desc' },
+      include: {
+        _count: { select: { hesaplar: true, anomaliler: true } },
+        anomaliler: true,
+      },
+    });
+    if (!mizan) return null;
+
+    const severityRank: Record<string, number> = { ERROR: 0, WARN: 1, INFO: 2 };
+    const anomaliler = [...(mizan.anomaliler || [])]
+      .sort((a: any, b: any) => {
+        const severityDiff = (severityRank[a.seviye] ?? 9) - (severityRank[b.seviye] ?? 9);
+        if (severityDiff !== 0) return severityDiff;
+        return String(a.hesapKodu || '').localeCompare(String(b.hesapKodu || ''), 'tr');
+      })
+      .slice(0, 80);
+
+    return {
+      id: mizan.id,
+      status: mizan.status,
+      donem: mizan.donem,
+      donemTipi: mizan.donemTipi,
+      createdAt: mizan.createdAt,
+      updatedAt: mizan.updatedAt,
+      hesapCount: mizan._count?.hesaplar || 0,
+      anomalyCount: mizan._count?.anomaliler || 0,
+      anomaliler,
+    };
+  }
+
   private analyze(rows: ParsedEDefterFisLine[], range: { start: Date; end: Date } | null): FindingDraft[] {
     const findings: FindingDraft[] = [];
     const byVoucher = new Map<string, ParsedEDefterFisLine[]>();
@@ -247,9 +314,6 @@ export class EDefterControlService {
     for (const [voucherKey, group] of byVoucher.entries()) {
       voucherMeta.set(voucherKey, this.buildVoucherMeta(voucherKey, group));
     }
-    const hasBelgeTuruData = rows.some((r) => !!r.belgeTuru);
-    const hasVknTcknData = rows.some((r) => !!r.vknTckn);
-
     for (const row of rows) {
       const meta = voucherMeta.get(row.voucherKey);
       if (!row.hesapKodu) {
@@ -259,16 +323,6 @@ export class EDefterControlService {
           message: `Satir ${row.rowIndex}: hesap kodu bos.`,
           voucherKey: row.voucherKey,
           rowIndex: row.rowIndex,
-        });
-      }
-      if (row.hesapKodu && !this.isValidAccountCode(row.hesapKodu)) {
-        findings.push({
-          severity: 'ERROR',
-          category: 'HESAP_KODU_FORMAT',
-          message: `Satir ${row.rowIndex}: hesap kodu formati supheli (${row.hesapKodu}).`,
-          voucherKey: row.voucherKey,
-          rowIndex: row.rowIndex,
-          hesapKodu: row.hesapKodu,
         });
       }
       if (!row.fisTarihi) {
@@ -312,62 +366,6 @@ export class EDefterControlService {
           hesapKodu: row.hesapKodu,
         });
       }
-      if (this.requiresDocumentFields(row, meta)) {
-        if (hasBelgeTuruData && !row.belgeTuru) {
-          findings.push({
-            severity: 'WARN',
-            category: 'BELGE_TURU_EKSIK',
-            message: `Satir ${row.rowIndex}: belge turu bos; e-defter belge tipi kontrol edilmeli.`,
-            voucherKey: row.voucherKey,
-            rowIndex: row.rowIndex,
-            hesapKodu: row.hesapKodu,
-          });
-        }
-        if (row.evrakNo && !row.evrakTarihi) {
-          findings.push({
-            severity: 'WARN',
-            category: 'BELGE_TARIHI_EKSIK',
-            message: `Satir ${row.rowIndex}: belge/evrak no var ama belge tarihi okunamadi.`,
-            voucherKey: row.voucherKey,
-            rowIndex: row.rowIndex,
-            hesapKodu: row.hesapKodu,
-          });
-        }
-        if (row.evrakNo && this.isSuspiciousDocumentNo(row.evrakNo)) {
-          findings.push({
-            severity: 'WARN',
-            category: 'BELGE_NO_FORMAT_SUPHELI',
-            message: `Satir ${row.rowIndex}: belge/evrak no formati supheli (${row.evrakNo}).`,
-            voucherKey: row.voucherKey,
-            rowIndex: row.rowIndex,
-            hesapKodu: row.hesapKodu,
-          });
-        }
-        const docYear = row.evrakNo ? this.documentYear(row.evrakNo) : null;
-        const compareDate = row.evrakTarihi || row.fisTarihi || null;
-        if (docYear && compareDate && docYear !== compareDate.getUTCFullYear()) {
-          findings.push({
-            severity: 'WARN',
-            category: 'BELGE_NO_YIL_TARIH_UYUMSUZ',
-            message: `Satir ${row.rowIndex}: belge no icindeki yil ${docYear}, kayit/belge tarihi ${this.fmtDate(compareDate)} ile uyusmuyor.`,
-            voucherKey: row.voucherKey,
-            rowIndex: row.rowIndex,
-            hesapKodu: row.hesapKodu,
-            detail: { documentYear: docYear, dateYear: compareDate.getUTCFullYear() },
-          });
-        }
-      }
-      if (hasVknTcknData && row.vknTckn && !this.isValidTaxIdentity(row.vknTckn)) {
-        findings.push({
-          severity: 'WARN',
-          category: 'VKN_TCKN_FORMAT_HATALI',
-          message: `Satir ${row.rowIndex}: VKN/TCKN formati veya kontrol hanesi hatali gorunuyor.`,
-          voucherKey: row.voucherKey,
-          rowIndex: row.rowIndex,
-          hesapKodu: row.hesapKodu,
-          detail: { vknTckn: row.vknTckn },
-        });
-      }
       if (/^191/.test(row.hesapKodu || '') && row.alacak > row.borc && !meta?.isVatAccrual) {
         findings.push({
           severity: 'WARN',
@@ -398,7 +396,8 @@ export class EDefterControlService {
       const fark = Math.abs(borc - alacak);
       const first = group[0];
       const meta = voucherMeta.get(voucherKey)!;
-      if (group.length >= 2 && fark > 0.01) {
+      const hasReliableVoucherKey = Boolean(first.fisNo || first.yevmiyeNo);
+      if (hasReliableVoucherKey && group.length >= 2 && fark > 0.01) {
         findings.push({
           severity: 'ERROR',
           category: 'FIS_DENGESIZ',
@@ -408,29 +407,14 @@ export class EDefterControlService {
           detail: { borc, alacak, fark, satirSayisi: group.length },
         });
       }
-      const hasDocumentAccount = group.some((r) => this.requiresDocumentFields(r, meta));
-      const hasDocumentNo = group.some((r) => !!r.evrakNo);
-      if (hasDocumentAccount && !hasDocumentNo) {
-        findings.push({
-          severity: 'WARN',
-          category: 'EVRAK_NO_EKSIK',
-          message: `Fis ${this.voucherLabel(first)} belge/evrak no olmadan kaydedilmis gorunuyor.`,
-          voucherKey,
-          rowIndex: first.rowIndex,
-          detail: { satirSayisi: group.length },
-        });
-      }
-      findings.push(...this.analyzeVoucherDocumentStructure(meta, hasBelgeTuruData));
       findings.push(...this.analyzeVoucherRisks(meta));
     }
 
     findings.push(...this.analyzeMonthlyVat(rows, range, voucherMeta));
     findings.push(...this.analyzeDuplicateDocuments(rows, voucherMeta));
-    findings.push(...this.analyzeDocumentDates(rows, range));
-    findings.push(...this.analyzeLedgerNumbering(rows));
     findings.push(...this.analyzeParentAccountUsage(rows));
     findings.push(...this.analyzeDailyCash(rows));
-    findings.push(...this.analyzeCostReflectionPeriod(rows, voucherMeta));
+    findings.push(...this.analyzeCostReflectionPeriod(rows));
     findings.push(...this.analyzePeriodAccountingRisks(rows, range, voucherMeta));
 
     return findings.slice(0, 10000);
@@ -535,7 +519,6 @@ export class EDefterControlService {
       }
     }
 
-    findings.push(...this.analyzeVoucherVatRisks(meta));
     return findings;
   }
 
@@ -826,7 +809,7 @@ export class EDefterControlService {
   }
 
   private isValidAccountCode(code?: string | null) {
-    return /^\d{3}(?:[.\-][A-Za-z0-9]+)*$/.test(String(code || '').trim());
+    return /^\d{3}(?:[.\-][\p{L}\p{N}]+)*$/u.test(String(code || '').trim());
   }
 
   private isParentAccountRisk(row: ParsedEDefterFisLine) {
@@ -1103,10 +1086,7 @@ export class EDefterControlService {
     return findings;
   }
 
-  private analyzeCostReflectionPeriod(
-    rows: ParsedEDefterFisLine[],
-    voucherMeta: Map<string, VoucherMeta>,
-  ): FindingDraft[] {
+  private analyzeCostReflectionPeriod(rows: ParsedEDefterFisLine[]): FindingDraft[] {
     const findings: FindingDraft[] = [];
     const reflectionPairs = [
       ['710', '711'],
@@ -1117,22 +1097,6 @@ export class EDefterControlService {
       ['760', '761'],
       ['770', '771'],
     ] as const;
-
-    for (const meta of voucherMeta.values()) {
-      if (!meta.rows.some((r) => this.isCostReflectionAccount(r.hesapKodu))) continue;
-      const hasCostSource = meta.rows.some((r) => /^(710|720|730|740|750|760|770)/.test(r.hesapKodu || ''));
-      const hasCostTarget = meta.rows.some((r) => /^(151|152|620|621|622|623|631|632)/.test(r.hesapKodu || ''));
-      if (!hasCostSource || !hasCostTarget) {
-        findings.push({
-          severity: 'WARN',
-          category: 'MALIYET_YANSITMA_KARSILIK_EKSIK',
-          message: `Fis ${this.voucherLabel(meta.first)} yansitma hesabi iceriyor; kaynak 7xx ve hedef maliyet/gelir tablosu hesaplari birlikte kontrol edilmeli.`,
-          voucherKey: meta.key,
-          rowIndex: meta.first.rowIndex,
-          detail: { hasCostSource, hasCostTarget },
-        });
-      }
-    }
 
     for (const [source, reflection] of reflectionPairs) {
       const sourceDebit = rows

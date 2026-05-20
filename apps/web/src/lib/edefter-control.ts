@@ -19,9 +19,19 @@ export const edefterControlApi = {
     donem: string;
     donemTipi?: EDefterDonemTipi;
     targetDeviceId?: string;
-  }) => api.post('/edefter-control/fetch-from-luca', data).then((r) => r.data as { jobId: string; status: string }),
+  }) => api.post('/edefter-control/fetch-from-luca', data).then((r) => r.data as {
+    jobId: string;
+    status: string;
+    mizanJobId?: string | null;
+    mizanStatus?: string | null;
+  }),
   getLucaJob: (jobId: string) =>
-    api.get(`/edefter-control/luca-job/${jobId}`).then((r) => r.data as { job: any; session: any }),
+    api.get(`/edefter-control/luca-job/${jobId}`).then((r) => r.data as {
+      job: any;
+      session: any;
+      mizanJob?: any;
+      mizan?: any;
+    }),
   cancelLucaJob: (jobId: string) =>
     api.post(`/luca/jobs/${jobId}/cancel`).then((r) => r.data),
   uploadExcel: (

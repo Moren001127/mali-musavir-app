@@ -41,7 +41,25 @@ export class EDefterControlController {
   @Get('edefter-control/luca-job/:id')
   @UseGuards(AuthGuard('jwt'), RolesGuard)
   async getLucaJob(@Req() req: any, @Param('id') id: string) {
-    const job = await this.luca.getJob(id, req.user.tenantId);
+    let job = await this.luca.getJob(id, req.user.tenantId);
+    if (
+      job.status === 'pending' &&
+      job.tip === 'EDEFTER_FIS_LISTESI' &&
+      /^DEV-/i.test(String(job.targetDeviceId || ''))
+    ) {
+      await (this.prisma as any).lucaFetchJob.updateMany({
+        where: { id: job.id, tenantId: req.user.tenantId, status: 'pending' },
+        data: {
+          targetDeviceId: null,
+          preferredAgent: 'local-node',
+        },
+      });
+      await this.luca
+        .appendJobLog(job.id, 'e-Defter isi Chrome sekmesine kilitlenmisti; local Luca ajanina yonlendirildi')
+        .catch(() => undefined);
+      job = await this.luca.getJob(id, req.user.tenantId);
+    }
+
     let session: any = null;
     if (job.status === 'done') {
       session = await (this.prisma as any).eDefterControlSession.findFirst({
@@ -53,7 +71,22 @@ export class EDefterControlController {
         orderBy: { createdAt: 'desc' },
       });
     }
-    return { job, session };
+    const mizanJob = await (this.prisma as any).lucaFetchJob.findFirst({
+      where: {
+        tenantId: req.user.tenantId,
+        mukellefId: job.mukellefId,
+        donem: job.donem,
+        tip: 'MIZAN',
+      },
+      orderBy: { createdAt: 'desc' },
+    });
+    const mizan = await this.service.findCompanionMizan(
+      req.user.tenantId,
+      job.mukellefId,
+      job.donem,
+      job.donemTipi,
+    );
+    return { job, session, mizanJob, mizan };
   }
 
   @Get('edefter-control/:id')
@@ -79,7 +112,7 @@ export class EDefterControlController {
     if (!body?.mukellefId || !body?.donem) {
       throw new BadRequestException('mukellefId ve donem gerekli');
     }
-    const job = await this.service.createFetchJob({
+    const jobs = await this.service.createFetchJob({
       tenantId: req.user.tenantId,
       mukellefId: body.mukellefId,
       donem: body.donem,
@@ -87,7 +120,12 @@ export class EDefterControlController {
       targetDeviceId: body.targetDeviceId,
       createdBy: req.user.sub,
     });
-    return { jobId: job.id, status: job.status };
+    return {
+      jobId: jobs.detailJob.id,
+      mizanJobId: jobs.mizanJob?.id || null,
+      status: jobs.detailJob.status,
+      mizanStatus: jobs.mizanJob?.status || null,
+    };
   }
 
   @Post('edefter-control/upload')
