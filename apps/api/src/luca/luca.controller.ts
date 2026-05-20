@@ -88,7 +88,22 @@ export class LucaController {
   }
 
   private requiredAgentVersionForJobTip(tip?: string | null) {
-    if (tip === 'EDEFTER_FIS_LISTESI') return '1.37.89';
+    const lucaBrowserJobTips = new Set([
+      'EARSIV_SATIS',
+      'EARSIV_ALIS',
+      'EFATURA_SATIS',
+      'EFATURA_ALIS',
+      'MIZAN',
+      'KDV_MIZAN',
+      'ACCOUNT_PLAN',
+      'IHO_FETCH',
+      'EDEFTER_FIS_LISTESI',
+      'KDV_191',
+      'KDV_391',
+      'ISLETME_GELIR',
+      'ISLETME_GIDER',
+    ]);
+    if (tip && lucaBrowserJobTips.has(tip)) return '1.37.89';
     return null;
   }
 
