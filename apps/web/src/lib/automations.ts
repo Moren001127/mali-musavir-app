@@ -131,7 +131,41 @@ export const automationsApi = {
     const { data } = await api.get(`/automations/${id}/runs`, { params: { limit } });
     return data;
   },
+
+  /** Tenant geneli özet (aktif sayısı, haftalık başarı, maliyet) */
+  async summary(): Promise<AutomationsSummary> {
+    const { data } = await api.get('/automations/summary');
+    return data;
+  },
+
+  /** Tüm otomasyonlardan son N çalışma (cross-automation feed) */
+  async recentRuns(limit = 20): Promise<RecentRun[]> {
+    const { data } = await api.get('/automations/recent-runs', { params: { limit } });
+    return data;
+  },
+
+  /** Mevcut otomasyondan yeni DRAFT yarat */
+  async duplicate(id: string): Promise<Automation> {
+    const { data } = await api.post(`/automations/${id}/duplicate`);
+    return data;
+  },
 };
+
+export interface AutomationsSummary {
+  active: number;
+  paused: number;
+  error: number;
+  draft: number;
+  weeklyTotal: number;
+  weeklySuccess: number;
+  weeklyFailure: number;
+  weeklyPartial: number;
+  weeklyCostUsd: number;
+}
+
+export interface RecentRun extends AutomationRun {
+  automation: { id: string; title: string; triggerType: AutomationTriggerType };
+}
 
 export interface AutomationRun {
   id: string;

@@ -79,12 +79,67 @@ export default function YeniOtomasyonPage() {
     },
   });
 
-  const EXAMPLES = [
-    "Her ayın 22'sinde KDV beyannamesi henüz verilmemiş müvekkillere WhatsApp'tan hatırlatma at, listesini de bana e-posta gönder.",
-    "Bir müvekkil WhatsApp'tan PDF fatura gönderdiğinde otomatik OCR'la oku, KDV ve tutarı çıkar ve Luca'ya kaydet.",
-    "Resmi Gazete'de KDV ile ilgili yeni bir düzenleme yayınlandığında özetini bana e-posta at.",
-    "Her Pazartesi sabah 9'da bu hafta beyanname tarihi yaklaşan müvekkillerin listesini hazırla ve bana bildirim olarak gönder.",
+  const EXAMPLES: Array<{ category: string; cumle: string; note?: string }> = [
+    // Zamanlı
+    {
+      category: 'Zamanlı',
+      cumle:
+        "Her Pazartesi sabah 9'da bu hafta beyanname tarihi yaklaşan müvekkillerin listesini hazırla ve bana bildirim gönder.",
+    },
+    {
+      category: 'Zamanlı',
+      cumle:
+        "Her ayın 22'sinde KDV beyannamesi henüz verilmemiş müvekkillere WhatsApp şablonu at, listesini de bana e-posta gönder.",
+    },
+    {
+      category: 'Zamanlı',
+      cumle:
+        "Her saat tahsilat riski yüksek müvekkellerin sayısını kontrol et, 5'i geçtiyse bana acil bildirim at.",
+      note: 'Eşik takibi: cron + branch_if pattern',
+    },
+    // Olay-tetikli
+    {
+      category: 'Olay-tetikli',
+      cumle:
+        "Bir müvekkilin evrak geldi alanı işaretlenince bana bildirim at: 'X müvekkilinin evrakları teslim alındı.'",
+    },
+    {
+      category: 'Olay-tetikli',
+      cumle:
+        "Yeni bir müvekkil eklendiğinde bana hoşgeldin bildirimi at ve müvekkele WhatsApp şablonu gönder.",
+    },
+    {
+      category: 'Olay-tetikli',
+      cumle:
+        "Müvekkil portala belge yüklediğinde belgenin başlığıyla beraber bana bildirim at.",
+    },
+    {
+      category: 'Olay-tetikli',
+      cumle:
+        "Müvekkil WhatsApp'tan bana mesaj attığında mesaj içeriği ve müvekkel adıyla beraber bildirim oluştur.",
+    },
+    // Karmaşık
+    {
+      category: 'Karmaşık',
+      cumle:
+        "Her ayın 5'inde tüm aktif müvekkeller için: KDV durumunu kontrol et, eksikse müvekkele şablon mesaj gönder, eksik olanların listesini bana e-postala.",
+      note: 'for_each + branch_if',
+    },
+    {
+      category: 'Karmaşık',
+      cumle:
+        "Her gün sabah 8'de geciken müvekkelleri listele, 5'ten fazlaysa bana acil bildirim, az ise sadece e-posta at.",
+      note: 'branch_if then/else',
+    },
   ];
+
+  const groupedExamples = EXAMPLES.reduce<Record<string, typeof EXAMPLES>>(
+    (acc, ex) => {
+      (acc[ex.category] = acc[ex.category] || []).push(ex);
+      return acc;
+    },
+    {},
+  );
 
   return (
     <div className="mx-auto max-w-5xl px-4 py-8">
@@ -153,23 +208,37 @@ export default function YeniOtomasyonPage() {
           )}
         </div>
 
-        {/* Örnek cümleler */}
-        <details className="mt-5 group">
-          <summary className="cursor-pointer text-sm font-medium text-stone-600 dark:text-stone-300 hover:text-stone-800 dark:hover:text-stone-100 dark:text-stone-100">
+        {/* Örnek cümleler — kategorize */}
+        <details className="mt-5 group" open>
+          <summary className="cursor-pointer text-sm font-medium text-stone-600 dark:text-stone-300 hover:text-stone-800 dark:hover:text-stone-100">
             Örnek cümleler (tıklayınca kullanılır)
           </summary>
-          <ul className="mt-3 space-y-2">
-            {EXAMPLES.map((ex, i) => (
-              <li key={i}>
-                <button
-                  onClick={() => setPrompt(ex)}
-                  className="block w-full rounded-lg border border-stone-200 dark:border-stone-700 bg-stone-50 dark:bg-stone-800 p-3 text-left text-xs text-stone-700 dark:text-stone-200 hover:border-amber-300 hover:bg-amber-50"
-                >
-                  {ex}
-                </button>
-              </li>
+          <div className="mt-3 space-y-4">
+            {Object.entries(groupedExamples).map(([category, items]) => (
+              <div key={category}>
+                <h4 className="mb-1.5 text-[11px] font-semibold uppercase tracking-wide text-amber-700 dark:text-amber-400">
+                  {category}
+                </h4>
+                <ul className="space-y-1.5">
+                  {items.map((ex, i) => (
+                    <li key={i}>
+                      <button
+                        onClick={() => setPrompt(ex.cumle)}
+                        className="block w-full rounded-lg border border-stone-200 dark:border-stone-700 bg-stone-50 dark:bg-stone-800 p-3 text-left text-xs text-stone-700 dark:text-stone-200 hover:border-amber-300 hover:bg-amber-50 dark:hover:bg-amber-950/30"
+                      >
+                        <div>{ex.cumle}</div>
+                        {ex.note && (
+                          <div className="mt-1 text-[10px] text-stone-500 dark:text-stone-400 italic">
+                            {ex.note}
+                          </div>
+                        )}
+                      </button>
+                    </li>
+                  ))}
+                </ul>
+              </div>
             ))}
-          </ul>
+          </div>
         </details>
       </div>
 

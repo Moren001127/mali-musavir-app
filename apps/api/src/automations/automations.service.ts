@@ -222,6 +222,98 @@ export class AutomationsService {
   }
 
   // ---------------------------------------------------------------
+  // DUPLICATE — mevcut otomasyondan yeni DRAFT yarat
+  // ---------------------------------------------------------------
+  async duplicate(tenantId: string, userId: string, sourceId: string) {
+    const source = await this.prisma.automation.findUnique({ where: { id: sourceId } });
+    if (!source) throw new NotFoundException('Kaynak otomasyon bulunamadı.');
+    this.assertTenantOwnership(source.tenantId, tenantId);
+
+    const dup = await this.prisma.automation.create({
+      data: {
+        tenantId,
+        createdById: userId,
+        prompt: source.prompt,
+        title: `${source.title} (kopya)`,
+        description: source.description,
+        triggerType: source.triggerType,
+        triggerConfig: source.triggerConfig as Prisma.InputJsonValue,
+        steps: source.steps as Prisma.InputJsonValue,
+        failurePolicy: source.failurePolicy,
+        estimatedCostPerRun: source.estimatedCostPerRun,
+        status: AutomationStatus.DRAFT,
+      },
+    });
+    this.logger.log(`Automation duplicated: source=${sourceId} new=${dup.id}`);
+    return dup;
+  }
+
+  // ---------------------------------------------------------------
+  // ÖZET — tenant geneli istatistikler (liste sayfasında üst bant için)
+  // ---------------------------------------------------------------
+  async summary(tenantId: string) {
+    const oneWeekAgo = new Date();
+    oneWeekAgo.setDate(oneWeekAgo.getDate() - 7);
+
+    const [counts, weeklyRuns, totalCost] = await this.prisma.$transaction([
+      this.prisma.automation.groupBy({
+        by: ['status'],
+        where: { tenantId },
+        _count: true,
+      }),
+      this.prisma.automationRun.groupBy({
+        by: ['status'],
+        where: {
+          automation: { tenantId },
+          startedAt: { gte: oneWeekAgo },
+        },
+        _count: true,
+      }),
+      this.prisma.automationRun.aggregate({
+        where: {
+          automation: { tenantId },
+          startedAt: { gte: oneWeekAgo },
+        },
+        _sum: { costUsd: true },
+      }),
+    ]);
+
+    const byStatus: Record<string, number> = {};
+    for (const r of counts) byStatus[r.status] = r._count;
+
+    const byRunStatus: Record<string, number> = {};
+    for (const r of weeklyRuns) byRunStatus[r.status] = r._count;
+
+    return {
+      active: byStatus[AutomationStatus.ACTIVE] || 0,
+      paused: byStatus[AutomationStatus.PAUSED] || 0,
+      error: byStatus[AutomationStatus.ERROR] || 0,
+      draft: byStatus[AutomationStatus.DRAFT] || 0,
+      weeklyTotal: Object.values(byRunStatus).reduce((a, b) => a + b, 0),
+      weeklySuccess: byRunStatus.success || 0,
+      weeklyFailure: byRunStatus.failure || 0,
+      weeklyPartial: byRunStatus.partial || 0,
+      weeklyCostUsd: totalCost._sum.costUsd || 0,
+    };
+  }
+
+  // ---------------------------------------------------------------
+  // RECENT RUNS — tenant geneli son N çalışma
+  // ---------------------------------------------------------------
+  async listRecentRuns(tenantId: string, limit = 20) {
+    return this.prisma.automationRun.findMany({
+      where: { automation: { tenantId } },
+      orderBy: { startedAt: 'desc' },
+      take: Math.min(limit, 100),
+      include: {
+        automation: {
+          select: { id: true, title: true, triggerType: true },
+        },
+      },
+    });
+  }
+
+  // ---------------------------------------------------------------
   // RUNS (çalışma geçmişi)
   // ---------------------------------------------------------------
   async listRuns(tenantId: string, automationId: string, limit = 50) {

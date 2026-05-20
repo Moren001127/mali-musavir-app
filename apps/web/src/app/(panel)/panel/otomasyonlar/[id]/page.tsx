@@ -26,6 +26,7 @@ import {
   FileText,
   Settings as SettingsIcon,
   ShieldAlert,
+  Copy,
 } from 'lucide-react';
 import { automationsApi, type Automation, type AutomationRun, type AutomationStatus } from '@/lib/automations';
 
@@ -103,6 +104,16 @@ export default function OtomasyonDetayPage() {
     mutationFn: () => automationsApi.dryRun(id),
     onSuccess: (result) => toast.info(`Dry-run: ${result.summary || 'Simüle edildi'}`),
     onError: (err: any) => toast.error(err?.response?.data?.message || 'Dry-run başarısız'),
+  });
+
+  const duplicate = useMutation({
+    mutationFn: () => automationsApi.duplicate(id),
+    onSuccess: (newAuto) => {
+      qc.invalidateQueries({ queryKey: ['automations'] });
+      toast.success(`"${newAuto.title}" oluşturuldu (DRAFT)`);
+      router.push(`/panel/otomasyonlar/${newAuto.id}`);
+    },
+    onError: (err: any) => toast.error(err?.response?.data?.message || 'Çoğaltma başarısız'),
   });
 
   if (isLoading) {
@@ -202,6 +213,15 @@ export default function OtomasyonDetayPage() {
               )}
             </button>
           )}
+          <button
+            onClick={() => duplicate.mutate()}
+            disabled={duplicate.isPending}
+            className="inline-flex items-center gap-1 rounded-md border border-stone-300 dark:border-stone-600 bg-white dark:bg-stone-900 px-3 py-1.5 text-sm text-stone-700 dark:text-stone-200 hover:bg-stone-50 dark:hover:bg-stone-800 disabled:opacity-50"
+            title="Bu otomasyonu kopyalayıp yeni bir DRAFT oluştur"
+          >
+            {duplicate.isPending ? <Loader2 className="h-4 w-4 animate-spin" /> : <Copy className="h-4 w-4" />}
+            Çoğalt
+          </button>
           {auto.status !== 'ARCHIVED' && (
             <button
               onClick={() => {

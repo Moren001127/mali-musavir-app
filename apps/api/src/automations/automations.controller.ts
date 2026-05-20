@@ -49,6 +49,26 @@ export class AutomationsController {
     return this.parserService.parse(dto.prompt);
   }
 
+  // GET /automations/summary  — tenant geneli istatistikler (üst bant)
+  @Get('summary')
+  summary(@Req() req: any) {
+    return this.automationsService.summary(req.user.tenantId);
+  }
+
+  // GET /automations/recent-runs  — tüm otomasyonlardan son çalışmalar feed'i
+  @Get('recent-runs')
+  recentRuns(@Req() req: any, @Query('limit') limit?: string) {
+    const parsed = limit ? parseInt(limit, 10) : undefined;
+    return this.automationsService.listRecentRuns(req.user.tenantId, parsed);
+  }
+
+  // POST /automations/:id/duplicate  — yeni DRAFT olarak çoğalt
+  @Post(':id/duplicate')
+  @HttpCode(HttpStatus.CREATED)
+  duplicate(@Req() req: any, @Param('id') id: string) {
+    return this.automationsService.duplicate(req.user.tenantId, req.user.sub, id);
+  }
+
   // GET /automations/catalog  — UI'ın "Yeni Otomasyon" sayfasında örnek/kategori için
   @Get('catalog')
   getCatalog() {

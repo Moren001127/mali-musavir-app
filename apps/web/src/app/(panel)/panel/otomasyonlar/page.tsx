@@ -1,6 +1,6 @@
 'use client';
 
-import React from 'react';
+import React, { useState, useMemo } from 'react';
 import Link from 'next/link';
 import { useRouter } from 'next/navigation';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
@@ -20,8 +20,17 @@ import {
   Zap,
   FlaskConical,
   Trash2,
+  Search,
+  Activity,
+  XCircle,
+  DollarSign,
 } from 'lucide-react';
-import { automationsApi, type Automation, type AutomationStatus } from '@/lib/automations';
+import {
+  automationsApi,
+  type Automation,
+  type AutomationStatus,
+  type AutomationTriggerType,
+} from '@/lib/automations';
 
 const GOLD = '#d4b876';
 
@@ -37,10 +46,31 @@ const GOLD = '#d4b876';
 export default function OtomasyonlarPage() {
   const qc = useQueryClient();
   const router = useRouter();
+  const [search, setSearch] = useState('');
+  const [statusFilter, setStatusFilter] = useState<AutomationStatus | 'all'>('all');
+  const [triggerFilter, setTriggerFilter] = useState<AutomationTriggerType | 'all'>('all');
 
   const { data, isLoading, error } = useQuery({
-    queryKey: ['automations', { status: undefined }],
-    queryFn: () => automationsApi.list({ pageSize: 50 }),
+    queryKey: ['automations', { search, status: statusFilter, trigger: triggerFilter }],
+    queryFn: () =>
+      automationsApi.list({
+        pageSize: 50,
+        search: search || undefined,
+        status: statusFilter !== 'all' ? statusFilter : undefined,
+        triggerType: triggerFilter !== 'all' ? triggerFilter : undefined,
+      }),
+  });
+
+  const { data: summary } = useQuery({
+    queryKey: ['automations-summary'],
+    queryFn: () => automationsApi.summary(),
+    refetchInterval: 30000,
+  });
+
+  const { data: recentRuns } = useQuery({
+    queryKey: ['automations-recent-runs'],
+    queryFn: () => automationsApi.recentRuns(15),
+    refetchInterval: 15000,
   });
 
   const statusMutation = useMutation({
@@ -123,6 +153,75 @@ export default function OtomasyonlarPage() {
         durumlarını ve geçmişlerini buradan takip edersin.
       </p>
 
+      {/* Özet bandı */}
+      {summary && (
+        <div className="mb-6 grid grid-cols-2 gap-3 sm:grid-cols-4">
+          <SummaryStat
+            icon={<Activity className="h-4 w-4 text-emerald-500" />}
+            label="Aktif"
+            value={summary.active}
+            subtitle={`${summary.paused} duraklatıldı`}
+          />
+          <SummaryStat
+            icon={<CheckCircle2 className="h-4 w-4 text-emerald-500" />}
+            label="Bu Hafta Başarılı"
+            value={summary.weeklySuccess}
+            subtitle={`${summary.weeklyTotal} toplam çalışma`}
+          />
+          <SummaryStat
+            icon={<XCircle className="h-4 w-4 text-rose-500" />}
+            label="Bu Hafta Hata"
+            value={summary.weeklyFailure}
+            subtitle={
+              summary.error > 0 ? `${summary.error} otomasyon ERROR durumda` : 'Sistem sağlıklı'
+            }
+          />
+          <SummaryStat
+            icon={<DollarSign className="h-4 w-4" style={{ color: GOLD }} />}
+            label="Bu Hafta Maliyet"
+            value={`$${summary.weeklyCostUsd.toFixed(2)}`}
+            subtitle="Anthropic API kullanımı"
+          />
+        </div>
+      )}
+
+      {/* Arama ve filtreler */}
+      <div className="mb-4 flex flex-wrap items-center gap-2">
+        <div className="relative flex-1 min-w-[200px]">
+          <Search className="absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-stone-400 dark:text-stone-500" />
+          <input
+            type="text"
+            placeholder="Otomasyonlarda ara…"
+            value={search}
+            onChange={(e) => setSearch(e.target.value)}
+            className="w-full rounded-lg border border-stone-300 dark:border-stone-600 bg-white dark:bg-stone-900 py-2 pl-9 pr-3 text-sm text-stone-800 dark:text-stone-100 outline-none focus:border-amber-400"
+          />
+        </div>
+        <select
+          value={statusFilter}
+          onChange={(e) => setStatusFilter(e.target.value as any)}
+          className="rounded-lg border border-stone-300 dark:border-stone-600 bg-white dark:bg-stone-900 px-3 py-2 text-sm text-stone-800 dark:text-stone-100 outline-none focus:border-amber-400"
+        >
+          <option value="all">Tüm Durumlar</option>
+          <option value="ACTIVE">Aktif</option>
+          <option value="PAUSED">Duraklatıldı</option>
+          <option value="DRAFT">Taslak</option>
+          <option value="ERROR">Hata</option>
+          <option value="ARCHIVED">Arşiv</option>
+        </select>
+        <select
+          value={triggerFilter}
+          onChange={(e) => setTriggerFilter(e.target.value as any)}
+          className="rounded-lg border border-stone-300 dark:border-stone-600 bg-white dark:bg-stone-900 px-3 py-2 text-sm text-stone-800 dark:text-stone-100 outline-none focus:border-amber-400"
+        >
+          <option value="all">Tüm Tetikleyiciler</option>
+          <option value="CRON">Zamanlı</option>
+          <option value="EVENT">Olay</option>
+          <option value="WEBHOOK">Webhook</option>
+          <option value="MANUAL">Manuel</option>
+        </select>
+      </div>
+
       {isLoading && (
         <div className="rounded-2xl border border-stone-200 dark:border-stone-700 bg-white dark:bg-stone-900 p-12 text-center text-sm text-stone-500 dark:text-stone-400 dark:text-stone-500">
           Yükleniyor…
@@ -150,6 +249,42 @@ export default function OtomasyonlarPage() {
             <Plus className="h-4 w-4" />
             İlkini Oluştur
           </Link>
+        </div>
+      )}
+
+      {/* Son çalışmalar widget'i */}
+      {recentRuns && recentRuns.length > 0 && (
+        <div className="mb-6">
+          <h2 className="mb-2 text-sm font-medium uppercase tracking-wide text-stone-500 dark:text-stone-400">
+            Son Çalışmalar
+          </h2>
+          <div className="flex flex-wrap gap-2">
+            {recentRuns.slice(0, 8).map((run) => (
+              <button
+                key={run.id}
+                onClick={() => router.push(`/panel/otomasyonlar/${run.automation.id}`)}
+                className={`group flex items-center gap-2 rounded-lg border px-3 py-1.5 text-xs transition ${
+                  run.status === 'success'
+                    ? 'border-emerald-200 dark:border-emerald-900/40 bg-emerald-50 dark:bg-emerald-950/20 text-emerald-800 dark:text-emerald-300 hover:bg-emerald-100 dark:hover:bg-emerald-900/30'
+                    : run.status === 'failure'
+                      ? 'border-rose-200 dark:border-rose-900/40 bg-rose-50 dark:bg-rose-950/20 text-rose-800 dark:text-rose-300 hover:bg-rose-100 dark:hover:bg-rose-900/30'
+                      : 'border-stone-200 dark:border-stone-700 bg-stone-50 dark:bg-stone-800 text-stone-700 dark:text-stone-200 hover:bg-stone-100 dark:hover:bg-stone-700'
+                }`}
+              >
+                {run.status === 'success' ? (
+                  <CheckCircle2 className="h-3.5 w-3.5" />
+                ) : run.status === 'failure' ? (
+                  <XCircle className="h-3.5 w-3.5" />
+                ) : (
+                  <Activity className="h-3.5 w-3.5" />
+                )}
+                <span className="font-medium">{run.automation.title}</span>
+                <span className="opacity-70">
+                  {timeAgo(run.startedAt)}
+                </span>
+              </button>
+            ))}
+          </div>
         </div>
       )}
 
@@ -320,6 +455,44 @@ function Row({
       </td>
     </tr>
   );
+}
+
+function SummaryStat({
+  icon,
+  label,
+  value,
+  subtitle,
+}: {
+  icon: React.ReactNode;
+  label: string;
+  value: string | number;
+  subtitle?: string;
+}) {
+  return (
+    <div className="rounded-lg border border-stone-200 dark:border-stone-700 bg-white dark:bg-stone-900 p-3">
+      <div className="flex items-center gap-1.5 text-xs uppercase tracking-wide text-stone-500 dark:text-stone-400">
+        {icon}
+        {label}
+      </div>
+      <div className="mt-1 text-xl font-medium text-stone-800 dark:text-stone-100">{value}</div>
+      {subtitle && (
+        <div className="text-[11px] text-stone-500 dark:text-stone-400">{subtitle}</div>
+      )}
+    </div>
+  );
+}
+
+function timeAgo(iso: string): string {
+  const ms = Date.now() - new Date(iso).getTime();
+  const s = Math.floor(ms / 1000);
+  if (s < 60) return `${s}sn önce`;
+  const m = Math.floor(s / 60);
+  if (m < 60) return `${m}dk önce`;
+  const h = Math.floor(m / 60);
+  if (h < 24) return `${h}sa önce`;
+  const d = Math.floor(h / 24);
+  if (d < 7) return `${d}gün önce`;
+  return new Date(iso).toLocaleDateString('tr-TR');
 }
 
 function StatusBadge({ status }: { status: AutomationStatus }) {
