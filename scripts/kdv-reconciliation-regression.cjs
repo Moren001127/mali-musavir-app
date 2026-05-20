@@ -750,6 +750,11 @@ const cases = [
         belgeNo: '00104',
         date: '19.04.2026',
         kdv: '2.883,33',
+        breakdown: [
+          { oran: 1, tutar: 880.42 },
+          { oran: 10, tutar: 70 },
+          { oran: 20, tutar: 1 },
+        ],
         satici: 'AKKAR AMB.ve PAK.TAR.HAY.',
         rawText: [
           'AKKAR AMB.ve PAK.TAR.HAY.',
@@ -772,7 +777,7 @@ const cases = [
           'KUR. Medjoul Hurma',
           '%1',
           '*104,77',
-          'TOPKDV',
+          'TOPKOV',
           '*35,26',
           'TOPLAM',
           '*3.529,57',

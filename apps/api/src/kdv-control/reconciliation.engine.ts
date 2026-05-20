@@ -788,12 +788,18 @@ export class ReconciliationEngine {
       } else if (record.kdvTutari && imgKdv) {
         const recordKdv = parseFloat(record.kdvTutari.toString());
         const imgKdvNum = this.parseTrUsAmount(imgKdv);
-        const totalDiff = Math.abs(recordKdv - imgKdvNum) / (recordKdv || 1);
-        if (Number.isFinite(imgKdvNum) && totalDiff < 0.01) {
+        const bestTotalKdv = this.findBestAmountCandidate(
+          recordKdv,
+          [
+            ...(Number.isFinite(imgKdvNum) ? [imgKdvNum] : []),
+            ...imgKdvCandidates,
+          ],
+        );
+        if (bestTotalKdv && bestTotalKdv.diff < 0.01) {
           kdvExact = true;
           score = Math.min(1, score + 0.3);
           reasons.push(
-            `Çok oranlı toplam KDV eşleşti: Luca ${this.fmtAmt(recordKdv)} = Fatura ${this.fmtAmt(imgKdvNum)}; OCR oran kırılımı güvenilir olmadığı için toplam esas alındı`,
+            `Çok oranlı toplam KDV eşleşti: Luca ${this.fmtAmt(recordKdv)} = Fatura ${this.fmtAmt(bestTotalKdv.amount)}; OCR oran kırılımı güvenilir olmadığı için toplam esas alındı`,
           );
           rateMismatched = false;
         }
@@ -1120,7 +1126,7 @@ export class ReconciliationEngine {
       .replace(/Ş/g, 'S').replace(/İ/g, 'I')
       .replace(/Ğ/g, 'G').replace(/Ç/g, 'C')
       .replace(/Ü/g, 'U').replace(/Ö/g, 'O');
-    if (!/\bTOPKDV\b/.test(foldedText) || !/\bFIS\s*NO\b/.test(foldedText)) return [];
+    if (!/\bTOPK(?:DV|OV|D|O)\b/.test(foldedText) || !/\bFIS\s*NO\b/.test(foldedText)) return [];
 
     const lines = rawText.split(/\r?\n/).map((line) => line.trim()).filter(Boolean);
     const fold = (value: string) =>
@@ -1243,7 +1249,7 @@ export class ReconciliationEngine {
     };
 
     for (let i = 0; i < lines.length; i++) {
-      if (!/\bTOPKDV\b/.test(fold(lines[i]))) continue;
+      if (!/\bTOPK(?:DV|OV|D|O)\b/.test(fold(lines[i]))) continue;
       const sameLine = parseLastAmount(lines[i]);
       if (sameLine > 0) return sameLine;
       for (let j = 1; j <= 2 && i + j < lines.length; j++) {
