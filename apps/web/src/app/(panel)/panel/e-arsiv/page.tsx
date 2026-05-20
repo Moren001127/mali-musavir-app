@@ -291,7 +291,7 @@ export default function EarsivPage() {
       if (hedefMukellefler.length === 0) {
         throw new Error('Mükellef seçmedin — ya mükellef seç ya da "Tüm Mükellefler"i işaretle');
       }
-      await wakeLucaAgentForFetch(setLucaStatus);
+      void wakeLucaAgentForFetch(setLucaStatus);
       // SABIT SIRA: önce Gelen E-Arşiv, sonra Giden E-Arşiv, sonra E-Fatura'lar
       // Mükellef bazlı dış döngü — bir mükellef için tüm tipler bittikten sonra diğeri
       const sortedModes = MODE_ORDER.filter((m) => modes.has(m));

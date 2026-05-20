@@ -363,9 +363,13 @@ export default function KdvKontrolPage() {
   const lucaAgentMut = useMutation({
     mutationFn: async () => {
       if (!taxpayerId) throw new Error('Önce mükellef seçin');
-      await wakeLucaAgentForFetch(setLucaStatus);
+      const actionsToQueue: KdvAction[] =
+        selectedActions.length > 0
+          ? selectedActions
+          : [selectedTp?.defterTuru === 'ISLETME' ? 'ISLETME_ALIS' : 'BILANCO_ALIS'];
+      void wakeLucaAgentForFetch(setLucaStatus);
       const queued: LucaQueuedJob[] = [];
-      for (const selectedAction of selectedActions) {
+      for (const selectedAction of actionsToQueue) {
         const s = await ensureSessionForAction(selectedAction);
         const d = await kdvApi.importFromLuca(s.id);
         queued.push({ id: d.jobId, action: selectedAction, sessionId: s.id });
