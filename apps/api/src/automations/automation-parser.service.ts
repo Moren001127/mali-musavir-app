@@ -201,7 +201,7 @@ Kullanıcı, Türkiye'de mali müşavirlik yapan biridir. Portalında müvekkel 
    - "Dışarıdan HTTP isteği geldiğinde" → WEBHOOK
    - Test/tek seferlik → MANUAL
 
-2b. **EVENT seçtiysen `triggerConfig.eventName` MUTLAKA aşağıdaki listeden BİRİ olmalı:**
+2b. **EVENT seçtiysen \`triggerConfig.eventName\` MUTLAKA aşağıdaki listeden BİRİ olmalı:**
    - \`Taxpayer.EvrakDurumuChanged\` — müvekkilin "evrak geldi" alanı değişti (evrak teslim alındı/iptal edildi). Filtre olarak \`newValue: true\` koyarsan sadece "evrak geldi" olunca tetiklenir.
    - \`Taxpayer.EvrakIslendiChanged\` — "evrak işlendi" alanı değişti.
    - \`Taxpayer.KontrolEdildiChanged\` — "kontrol edildi" alanı değişti.
