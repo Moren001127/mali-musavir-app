@@ -1,4 +1,4 @@
-import { Injectable, Logger, OnModuleInit, BadRequestException } from '@nestjs/common';
+import { Injectable, Logger, OnModuleInit, BadRequestException, Optional } from '@nestjs/common';
 import makeWASocket, {
   useMultiFileAuthState,
   DisconnectReason,
@@ -10,6 +10,8 @@ import * as QRCode from 'qrcode';
 import * as path from 'path';
 import * as fs from 'fs/promises';
 import * as fssync from 'fs';
+import { PrismaService } from '../prisma/prisma.service';
+import { AutomationEventBus } from '../automations/automation-event-bus.service';
 
 interface TenantStatus {
   connected: boolean;
@@ -41,6 +43,11 @@ export class WhatsAppQrService implements OnModuleInit {
   private latestQr = new Map<string, string>();
   private statuses = new Map<string, TenantStatus>();
   private connectPromises = new Map<string, Promise<void>>();
+
+  constructor(
+    @Optional() private readonly prisma?: PrismaService,
+    @Optional() private readonly eventBus?: AutomationEventBus,
+  ) {}
 
   private getAuthPath(tenantId: string): string {
     const base = process.env.WHATSAPP_QR_AUTH_PATH || './.wa-auth';
@@ -192,21 +199,94 @@ export class WhatsAppQrService implements OnModuleInit {
       }
     });
 
-    // Gelen mesaj event'i — Otomasyon event bus'a yayınlamak için (opsiyonel)
-    sock.ev.on('messages.upsert', ({ messages, type }) => {
+    // Gelen mesaj event'i — Otomasyon event bus'a yayınla
+    sock.ev.on('messages.upsert', async ({ messages, type }) => {
       if (type !== 'notify') return;
       for (const msg of messages) {
         if (msg.key.fromMe) continue;
-        const from = msg.key.remoteJid?.replace('@s.whatsapp.net', '') || '';
+        const remoteJid = msg.key.remoteJid || '';
+        // Sadece bireysel mesajlar (grup değil)
+        if (!remoteJid.endsWith('@s.whatsapp.net')) continue;
+        const from = remoteJid.replace('@s.whatsapp.net', '');
         const text =
           msg.message?.conversation ||
           msg.message?.extendedTextMessage?.text ||
           msg.message?.imageMessage?.caption ||
+          msg.message?.videoMessage?.caption ||
           '';
         if (!text) continue;
-        this.logger.debug(`Gelen WA QR mesajı tenant=${tenantId} from=${from} text=${text.slice(0, 80)}`);
-        // Not: bu event'i AutomationEventBus'a forwarding yapmak için
-        // sonraki versiyonda eklenebilir.
+
+        this.logger.debug(
+          `Gelen WA QR mesajı tenant=${tenantId} from=${from} text=${text.slice(0, 80)}`,
+        );
+
+        // Mükellef arama + AutomationEventBus'a forward
+        if (this.eventBus) {
+          let taxpayerUnvan = '';
+          let taxpayerId: string | undefined;
+          let taxpayerVkn = '';
+          if (this.prisma) {
+            try {
+              // Mevcut Meta bot ile aynı mantık — telefon numarasını normalize edip eşleştir
+              const normalized = this.normalizePhoneSearch(from);
+              const taxpayer = await this.prisma.taxpayer.findFirst({
+                where: {
+                  tenantId,
+                  OR: [
+                    { phone: { contains: normalized } },
+                    { phones: { hasSome: [normalized] } },
+                  ],
+                },
+                select: {
+                  id: true,
+                  firstName: true,
+                  lastName: true,
+                  companyName: true,
+                  type: true,
+                  taxNumber: true,
+                },
+              });
+              if (taxpayer) {
+                taxpayerId = taxpayer.id;
+                taxpayerVkn = taxpayer.taxNumber ?? '';
+                taxpayerUnvan =
+                  taxpayer.type === 'TUZEL_KISI'
+                    ? taxpayer.companyName || ''
+                    : `${taxpayer.firstName ?? ''} ${taxpayer.lastName ?? ''}`.trim();
+              }
+            } catch (err: any) {
+              this.logger.warn(`Mükellef arama hatası: ${err.message}`);
+            }
+          }
+
+          this.eventBus.emit('WhatsApp.MessageReceived', {
+            tenantId,
+            taxpayerId,
+            taxpayerUnvan: taxpayerUnvan || '(bilinmeyen numara)',
+            taxpayerVkn,
+            from,
+            text,
+            messageId: msg.key.id || undefined,
+            source: 'qr', // Meta vs QR ayrımı
+          });
+
+          // Mükellef bulunduysa CommunicationLog'a da yaz ki "Gelen Mesajlar"
+          // widget'ında görünsün (Meta webhook ile aynı tablo).
+          if (this.prisma && taxpayerId) {
+            try {
+              await this.prisma.communicationLog.create({
+                data: {
+                  taxpayerId,
+                  channel: 'WHATSAPP',
+                  subject: 'WhatsApp QR gelen mesaj',
+                  content: text.slice(0, 4000),
+                },
+              });
+            } catch (err: any) {
+              this.logger.warn(`CommunicationLog yazma hatası: ${err.message}`);
+            }
+          }
+        }
       }
     });
 
@@ -303,6 +383,17 @@ export class WhatsAppQrService implements OnModuleInit {
     const jid = `${normalized}@s.whatsapp.net`;
     const result = await sock.sendMessage(jid, { text });
     return { messageId: result?.key?.id ?? undefined };
+  }
+
+  /**
+   * Telefon numarasını arama formatına çevir (5XX9999999 gibi 10 haneli son ek).
+   */
+  private normalizePhoneSearch(raw: string): string {
+    const digits = raw.replace(/\D/g, '');
+    // Türkiye numarası ise son 10 haneyi al (90 prefiks olmadan)
+    if (digits.startsWith('90') && digits.length === 12) return digits.slice(2);
+    if (digits.startsWith('0') && digits.length === 11) return digits.slice(1);
+    return digits.length >= 10 ? digits.slice(-10) : digits;
   }
 
   /**
