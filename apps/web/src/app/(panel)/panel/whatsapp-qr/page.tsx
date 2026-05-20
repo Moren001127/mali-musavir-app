@@ -67,7 +67,15 @@ export default function WhatsAppQrPage() {
     onError: (err: any) => toast.error(err?.response?.data?.message || 'Mesaj gönderilemedi'),
   });
 
-  const isWaiting = !!status && !status.connected && !status.qrDataUrl;
+  // Backend her zaman bir obje dönüyor — "hiç başlatılmadı" durumunu
+  // initSecondsAgo / lastError / qrDataUrl alanlarının varlığından anlıyoruz.
+  const hasActivity =
+    !!status &&
+    (status.initSecondsAgo !== undefined ||
+      !!status.lastError ||
+      !!status.qrDataUrl);
+  const isInitial = !status?.connected && !hasActivity;
+  const isWaiting = !!status && !status.connected && !status.qrDataUrl && hasActivity;
 
   return (
     <div className="mx-auto max-w-3xl px-4 py-8">
@@ -192,6 +200,23 @@ export default function WhatsAppQrPage() {
             >
               {connect.isPending ? <Loader2 className="h-4 w-4 animate-spin" /> : <RefreshCw className="h-4 w-4" />}
               QR Üret ve Bağlan
+            </button>
+          </div>
+        )}
+
+        {/* Hangi durumda olursa olsun, sıfırlama imkanı */}
+        {!isInitial && (
+          <div className="mt-4 border-t border-stone-200 dark:border-stone-700 pt-3 text-center">
+            <button
+              onClick={() => {
+                if (confirm('Mevcut oturumu kapatıp baştan başlatmak istediğine emin misin?')) {
+                  disconnect.mutate();
+                }
+              }}
+              disabled={disconnect.isPending}
+              className="text-xs text-stone-500 dark:text-stone-400 hover:text-rose-600 dark:hover:text-rose-400 underline"
+            >
+              Oturumu sıfırla ve baştan başla
             </button>
           </div>
         )}
