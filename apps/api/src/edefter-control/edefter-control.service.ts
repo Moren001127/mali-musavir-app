@@ -68,7 +68,7 @@ export class EDefterControlService {
     const session = await (this.prisma as any).eDefterControlSession.findFirst({
       where: { id, tenantId },
       include: {
-        lines: { orderBy: { rowIndex: 'asc' }, take: 1000 },
+        lines: { orderBy: { rowIndex: 'asc' }, take: 20000 },
         findings: { orderBy: [{ severity: 'desc' }, { createdAt: 'asc' }] },
       },
     });
@@ -247,6 +247,8 @@ export class EDefterControlService {
     for (const [voucherKey, group] of byVoucher.entries()) {
       voucherMeta.set(voucherKey, this.buildVoucherMeta(voucherKey, group));
     }
+    const hasBelgeTuruData = rows.some((r) => !!r.belgeTuru);
+    const hasVknTcknData = rows.some((r) => !!r.vknTckn);
 
     for (const row of rows) {
       const meta = voucherMeta.get(row.voucherKey);
@@ -257,6 +259,16 @@ export class EDefterControlService {
           message: `Satir ${row.rowIndex}: hesap kodu bos.`,
           voucherKey: row.voucherKey,
           rowIndex: row.rowIndex,
+        });
+      }
+      if (row.hesapKodu && !this.isValidAccountCode(row.hesapKodu)) {
+        findings.push({
+          severity: 'ERROR',
+          category: 'HESAP_KODU_FORMAT',
+          message: `Satir ${row.rowIndex}: hesap kodu formati supheli (${row.hesapKodu}).`,
+          voucherKey: row.voucherKey,
+          rowIndex: row.rowIndex,
+          hesapKodu: row.hesapKodu,
         });
       }
       if (!row.fisTarihi) {
@@ -300,6 +312,62 @@ export class EDefterControlService {
           hesapKodu: row.hesapKodu,
         });
       }
+      if (this.requiresDocumentFields(row, meta)) {
+        if (hasBelgeTuruData && !row.belgeTuru) {
+          findings.push({
+            severity: 'WARN',
+            category: 'BELGE_TURU_EKSIK',
+            message: `Satir ${row.rowIndex}: belge turu bos; e-defter belge tipi kontrol edilmeli.`,
+            voucherKey: row.voucherKey,
+            rowIndex: row.rowIndex,
+            hesapKodu: row.hesapKodu,
+          });
+        }
+        if (row.evrakNo && !row.evrakTarihi) {
+          findings.push({
+            severity: 'WARN',
+            category: 'BELGE_TARIHI_EKSIK',
+            message: `Satir ${row.rowIndex}: belge/evrak no var ama belge tarihi okunamadi.`,
+            voucherKey: row.voucherKey,
+            rowIndex: row.rowIndex,
+            hesapKodu: row.hesapKodu,
+          });
+        }
+        if (row.evrakNo && this.isSuspiciousDocumentNo(row.evrakNo)) {
+          findings.push({
+            severity: 'WARN',
+            category: 'BELGE_NO_FORMAT_SUPHELI',
+            message: `Satir ${row.rowIndex}: belge/evrak no formati supheli (${row.evrakNo}).`,
+            voucherKey: row.voucherKey,
+            rowIndex: row.rowIndex,
+            hesapKodu: row.hesapKodu,
+          });
+        }
+        const docYear = row.evrakNo ? this.documentYear(row.evrakNo) : null;
+        const compareDate = row.evrakTarihi || row.fisTarihi || null;
+        if (docYear && compareDate && docYear !== compareDate.getUTCFullYear()) {
+          findings.push({
+            severity: 'WARN',
+            category: 'BELGE_NO_YIL_TARIH_UYUMSUZ',
+            message: `Satir ${row.rowIndex}: belge no icindeki yil ${docYear}, kayit/belge tarihi ${this.fmtDate(compareDate)} ile uyusmuyor.`,
+            voucherKey: row.voucherKey,
+            rowIndex: row.rowIndex,
+            hesapKodu: row.hesapKodu,
+            detail: { documentYear: docYear, dateYear: compareDate.getUTCFullYear() },
+          });
+        }
+      }
+      if (hasVknTcknData && row.vknTckn && !this.isValidTaxIdentity(row.vknTckn)) {
+        findings.push({
+          severity: 'WARN',
+          category: 'VKN_TCKN_FORMAT_HATALI',
+          message: `Satir ${row.rowIndex}: VKN/TCKN formati veya kontrol hanesi hatali gorunuyor.`,
+          voucherKey: row.voucherKey,
+          rowIndex: row.rowIndex,
+          hesapKodu: row.hesapKodu,
+          detail: { vknTckn: row.vknTckn },
+        });
+      }
       if (/^191/.test(row.hesapKodu || '') && row.alacak > row.borc && !meta?.isVatAccrual) {
         findings.push({
           severity: 'WARN',
@@ -330,7 +398,7 @@ export class EDefterControlService {
       const fark = Math.abs(borc - alacak);
       const first = group[0];
       const meta = voucherMeta.get(voucherKey)!;
-      if (fark > 0.01) {
+      if (group.length >= 2 && fark > 0.01) {
         findings.push({
           severity: 'ERROR',
           category: 'FIS_DENGESIZ',
@@ -340,7 +408,7 @@ export class EDefterControlService {
           detail: { borc, alacak, fark, satirSayisi: group.length },
         });
       }
-      const hasDocumentAccount = group.some((r) => /^(191|391|120|320|600|601|602|740|760|770)/.test(r.hesapKodu || ''));
+      const hasDocumentAccount = group.some((r) => this.requiresDocumentFields(r, meta));
       const hasDocumentNo = group.some((r) => !!r.evrakNo);
       if (hasDocumentAccount && !hasDocumentNo) {
         findings.push({
@@ -352,16 +420,20 @@ export class EDefterControlService {
           detail: { satirSayisi: group.length },
         });
       }
+      findings.push(...this.analyzeVoucherDocumentStructure(meta, hasBelgeTuruData));
       findings.push(...this.analyzeVoucherRisks(meta));
     }
 
     findings.push(...this.analyzeMonthlyVat(rows, range, voucherMeta));
-    findings.push(...this.analyzeDuplicateDocuments(rows));
+    findings.push(...this.analyzeDuplicateDocuments(rows, voucherMeta));
     findings.push(...this.analyzeDocumentDates(rows, range));
+    findings.push(...this.analyzeLedgerNumbering(rows));
+    findings.push(...this.analyzeParentAccountUsage(rows));
     findings.push(...this.analyzeDailyCash(rows));
+    findings.push(...this.analyzeCostReflectionPeriod(rows, voucherMeta));
     findings.push(...this.analyzePeriodAccountingRisks(rows, range, voucherMeta));
 
-    return findings.slice(0, 5000);
+    return findings.slice(0, 10000);
   }
 
   private buildVoucherMeta(key: string, rows: ParsedEDefterFisLine[]): VoucherMeta {
@@ -382,10 +454,11 @@ export class EDefterControlService {
   }
 
   private isVatAccrualVoucher(rows: ParsedEDefterFisLine[], description: string) {
+    const desc = this.normalizeLoose(description);
     const has191Credit = rows.some((r) => /^191/.test(r.hesapKodu || '') && r.alacak > r.borc);
     const has391Debit = rows.some((r) => /^391/.test(r.hesapKodu || '') && r.borc > r.alacak);
     const hasSettlementAccount = rows.some((r) => /^(190|360)/.test(r.hesapKodu || ''));
-    const hasAccrualText = /kdv|tahakkuk|mahsup|beyanname|devreden|odenecek|ödenecek/.test(description);
+    const hasAccrualText = /kdv|tahakkuk|mahsup|beyanname|devreden|odenecek/.test(desc);
     return has191Credit && has391Debit && (hasSettlementAccount || hasAccrualText);
   }
 
@@ -429,7 +502,8 @@ export class EDefterControlService {
       });
     }
 
-    const isClosingLike = /kapanis|kapanış|yansitma|yansıtma|devir|virman|mahsup/.test(meta.description);
+    const isClosingLike = this.isClosingLikeVoucher(meta);
+    const isReflectionVoucher = this.isCostReflectionVoucher(meta);
     for (const row of rows) {
       if (/^60[0-2]/.test(row.hesapKodu || '') && row.borc > row.alacak && !isClosingLike) {
         findings.push({
@@ -442,7 +516,13 @@ export class EDefterControlService {
           detail: { borc: row.borc, alacak: row.alacak },
         });
       }
-      if (/^7/.test(row.hesapKodu || '') && row.alacak > row.borc && !isClosingLike) {
+      if (
+        /^7/.test(row.hesapKodu || '') &&
+        row.alacak > row.borc &&
+        !isClosingLike &&
+        !this.isCostReflectionAccount(row.hesapKodu) &&
+        !isReflectionVoucher
+      ) {
         findings.push({
           severity: 'WARN',
           category: 'GIDER_HESABI_ALACAK_CALISMA',
@@ -452,6 +532,141 @@ export class EDefterControlService {
           hesapKodu: row.hesapKodu,
           detail: { borc: row.borc, alacak: row.alacak },
         });
+      }
+    }
+
+    findings.push(...this.analyzeVoucherVatRisks(meta));
+    return findings;
+  }
+
+  private analyzeVoucherDocumentStructure(meta: VoucherMeta, hasBelgeTuruData: boolean): FindingDraft[] {
+    if (meta.isVatAccrual || this.isClosingLikeVoucher(meta) || this.isCostReflectionVoucher(meta) || this.isPayrollVoucher(meta)) {
+      return [];
+    }
+    const docRows = meta.rows.filter((r) => this.requiresDocumentFields(r, meta));
+    if (!docRows.length) return [];
+
+    const findings: FindingDraft[] = [];
+    const first = docRows[0];
+    const documentNos = [...new Set(docRows.map((r) => this.normalizeDocumentNo(r.evrakNo)).filter(Boolean))];
+    if (documentNos.length > 1) {
+      findings.push({
+        severity: 'WARN',
+        category: 'TEK_FISTE_BIRDEN_COK_BELGE',
+        message: `Fis ${this.voucherLabel(meta.first)} icinde ${documentNos.length} farkli belge no var; e-defterde her belge ayri kayit olmalidir.`,
+        voucherKey: meta.key,
+        rowIndex: first.rowIndex,
+        detail: { documentNos: documentNos.slice(0, 8) },
+      });
+    }
+
+    const nonEmptyFieldRows = docRows.filter((r) => r.evrakNo || r.evrakTarihi || r.belgeTuru || r.vknTckn);
+    const fieldSignatures = new Set(
+      nonEmptyFieldRows.map((r) => [
+        this.normalizeLoose(r.belgeTuru),
+        this.normalizeDocumentNo(r.evrakNo) || '',
+        r.evrakTarihi ? r.evrakTarihi.toISOString().slice(0, 10) : '',
+        this.normalizeLoose(r.vknTckn),
+      ].join('|')),
+    );
+    if (fieldSignatures.size > 1 && documentNos.length > 1) {
+      findings.push({
+        severity: 'WARN',
+        category: 'AYNI_FISTE_BELGE_ALANLARI_FARKLI',
+        message: `Fis ${this.voucherLabel(meta.first)} icinde belge turu/no/tarih/VKN alanlari farkli satirlar var; Luca e-defter aktariminda belge bolunmeli.`,
+        voucherKey: meta.key,
+        rowIndex: first.rowIndex,
+        detail: { signatureCount: fieldSignatures.size },
+      });
+    }
+
+    const hasSettlementAccount = meta.rows.some((r) => /^(100|101|102|103|108|120|320|329|331|336)/.test(r.hesapKodu || ''));
+    const hasInvoiceTaxOrBase = meta.rows.some((r) => /^(191|391|600|601|602|150|153|159)/.test(r.hesapKodu || ''));
+    if (hasInvoiceTaxOrBase && !hasSettlementAccount) {
+      findings.push({
+        severity: 'WARN',
+        category: 'FATURA_KARSILIK_HESAP_EKSIK',
+        message: `Fis ${this.voucherLabel(meta.first)} fatura/KDV kaydina benziyor ancak cari, kasa veya banka karsilik hesabi gorunmuyor.`,
+        voucherKey: meta.key,
+        rowIndex: first.rowIndex,
+      });
+    }
+
+    if (hasBelgeTuruData) {
+      const otherDocType = docRows.find((r) => /diger|other|other document/i.test(this.normalizeLoose(r.belgeTuru)));
+      if (otherDocType && !this.hasMeaningfulDescription(otherDocType)) {
+        findings.push({
+          severity: 'WARN',
+          category: 'BELGE_TURU_DIGER_ACIKLAMA_EKSIK',
+          message: `Fis ${this.voucherLabel(meta.first)} belge turu "Diger" gibi gorunuyor; e-defter belge aciklamasi net degil.`,
+          voucherKey: meta.key,
+          rowIndex: otherDocType.rowIndex,
+          hesapKodu: otherDocType.hesapKodu,
+        });
+      }
+    }
+
+    return findings;
+  }
+
+  private analyzeVoucherVatRisks(meta: VoucherMeta): FindingDraft[] {
+    if (meta.isVatAccrual || this.isClosingLikeVoucher(meta) || this.isCostReflectionVoucher(meta)) return [];
+    const findings: FindingDraft[] = [];
+    const desc = this.normalizeLoose(meta.description);
+    const hasExceptionText = /tevkifat|istisna|iade|kur fark|kurfark|otv|oiv|ozel iletisim|istisnai/.test(desc);
+    const hasMixedRateText = this.detectVatRates(meta).length > 1;
+
+    const purchaseVat = this.netRows(meta.rows, /^191/, 'borc');
+    if (purchaseVat > 1) {
+      const purchaseBase = this.purchaseBase(meta.rows);
+      if (purchaseBase <= 1) {
+        findings.push({
+          severity: 'WARN',
+          category: 'KDV_MATRAH_KARSILIK_YOK',
+          message: `Fis ${this.voucherLabel(meta.first)} 191 KDV iceriyor ancak uygun matrah/gider/stok hesabi gorunmuyor.`,
+          voucherKey: meta.key,
+          rowIndex: meta.first.rowIndex,
+          detail: { kdv: purchaseVat, matrah: purchaseBase },
+        });
+      } else {
+        const rate = (purchaseVat / purchaseBase) * 100;
+        if (!hasExceptionText && !hasMixedRateText && !this.isKnownVatRate(rate)) {
+          findings.push({
+            severity: 'WARN',
+            category: 'KDV_ORANI_OLAGAN_DISI',
+            message: `Fis ${this.voucherLabel(meta.first)} 191 KDV orani yaklasik %${this.fmtRate(rate)}; matrah/KDV ayrimi kontrol edilmeli.`,
+            voucherKey: meta.key,
+            rowIndex: meta.first.rowIndex,
+            detail: { kdv: purchaseVat, matrah: purchaseBase, oran: rate },
+          });
+        }
+      }
+    }
+
+    const salesVat = this.netRows(meta.rows, /^391/, 'alacak');
+    if (salesVat > 1) {
+      const salesBase = this.salesBase(meta.rows);
+      if (salesBase <= 1) {
+        findings.push({
+          severity: 'WARN',
+          category: 'KDV_MATRAH_KARSILIK_YOK',
+          message: `Fis ${this.voucherLabel(meta.first)} 391 KDV iceriyor ancak uygun gelir/matrah hesabi gorunmuyor.`,
+          voucherKey: meta.key,
+          rowIndex: meta.first.rowIndex,
+          detail: { kdv: salesVat, matrah: salesBase },
+        });
+      } else {
+        const rate = (salesVat / salesBase) * 100;
+        if (!hasExceptionText && !hasMixedRateText && !this.isKnownVatRate(rate)) {
+          findings.push({
+            severity: 'WARN',
+            category: 'KDV_ORANI_OLAGAN_DISI',
+            message: `Fis ${this.voucherLabel(meta.first)} 391 KDV orani yaklasik %${this.fmtRate(rate)}; matrah/KDV ayrimi kontrol edilmeli.`,
+            voucherKey: meta.key,
+            rowIndex: meta.first.rowIndex,
+            detail: { kdv: salesVat, matrah: salesBase, oran: rate },
+          });
+        }
       }
     }
 
@@ -570,12 +785,137 @@ export class EDefterControlService {
     return findings;
   }
 
-  private analyzeDuplicateDocuments(rows: ParsedEDefterFisLine[]): FindingDraft[] {
+  private isClosingLikeVoucher(meta: VoucherMeta) {
+    const desc = this.normalizeLoose(meta.description);
+    return /kapanis|yansitma|devir|virman|mahsup|aktarma|duzeltme/.test(desc);
+  }
+
+  private isCostReflectionVoucher(meta: VoucherMeta) {
+    const hasReflectionAccount = meta.rows.some((r) => this.isCostReflectionAccount(r.hesapKodu));
+    const hasCostSource = meta.rows.some((r) => /^(710|720|730|740|750|760|770)/.test(r.hesapKodu || ''));
+    const hasCostTarget = meta.rows.some((r) => /^(151|152|620|621|622|623|631|632)/.test(r.hesapKodu || ''));
+    return hasReflectionAccount || (hasCostSource && hasCostTarget && this.isClosingLikeVoucher(meta));
+  }
+
+  private isCostReflectionAccount(code?: string | null) {
+    return /^(711|721|731|741|751|761|771)/.test(code || '');
+  }
+
+  private isPayrollVoucher(meta: VoucherMeta) {
+    const desc = this.normalizeLoose(meta.description);
+    return /ucret|maas|personel|bordro|sgk|ssk|muhtasar/i.test(desc) ||
+      meta.rows.some((r) => /^(335|360|361|369)/.test(r.hesapKodu || ''));
+  }
+
+  private requiresDocumentFields(row: ParsedEDefterFisLine, meta?: VoucherMeta | null) {
+    if (!row.hesapKodu) return false;
+    if (meta && (meta.isVatAccrual || this.isClosingLikeVoucher(meta) || this.isCostReflectionVoucher(meta) || this.isPayrollVoucher(meta))) {
+      return false;
+    }
+
+    const code = row.hesapKodu || '';
+    if (/^(120|320|150|153|159|191|391|600|601|602)/.test(code)) return true;
+    if (/^(720|730|740|750|760|770|780)/.test(code)) {
+      const text = this.rowText(row);
+      if (/yansitma|mahsup|tahakkuk|bordro|ucret|maas|sgk|ssk|amortisman|reeskont/.test(text)) {
+        return false;
+      }
+      return this.amountOf(row) > 0;
+    }
+    return false;
+  }
+
+  private isValidAccountCode(code?: string | null) {
+    return /^\d{3}(?:[.\-][A-Za-z0-9]+)*$/.test(String(code || '').trim());
+  }
+
+  private isParentAccountRisk(row: ParsedEDefterFisLine) {
+    const code = String(row.hesapKodu || '').trim();
+    if (!/^\d{3}$/.test(code)) return false;
+    if (!/^(100|101|102|108|120|121|126|127|131|150|153|159|191|320|329|331|335|360|361|391|600|601|602|710|720|730|740|750|760|770|780)/.test(code)) {
+      return false;
+    }
+    return this.amountOf(row) > 0;
+  }
+
+  private isSuspiciousDocumentNo(value?: string | null) {
+    const raw = String(value || '').trim();
+    const normalized = this.normalizeDocumentNo(raw);
+    if (!normalized) return true;
+    if (/^(0+|yok|bos|boş|belgesiz|muhtelif|nakit|mahsup|virman)$/i.test(raw)) return true;
+    return normalized.length < 5;
+  }
+
+  private documentYear(value?: string | null) {
+    const text = String(value || '').toUpperCase().replace(/\s+/g, '');
+    const match = text.match(/(?:^|[A-Z])((?:19|20)\d{2})(?=\d{4,})/);
+    return match ? Number(match[1]) : null;
+  }
+
+  private isValidTaxIdentity(value?: string | null) {
+    const digits = String(value || '').replace(/\D/g, '');
+    if (digits.length === 10) return this.isValidVkn(digits);
+    if (digits.length === 11) return this.isValidTckn(digits);
+    return false;
+  }
+
+  private isValidTckn(value: string) {
+    if (!/^[1-9]\d{10}$/.test(value)) return false;
+    const d = value.split('').map(Number);
+    const odd = d[0] + d[2] + d[4] + d[6] + d[8];
+    const even = d[1] + d[3] + d[5] + d[7];
+    const tenth = ((odd * 7) - even) % 10;
+    const eleventh = d.slice(0, 10).reduce((sum, n) => sum + n, 0) % 10;
+    return d[9] === tenth && d[10] === eleventh;
+  }
+
+  private isValidVkn(value: string) {
+    if (!/^\d{10}$/.test(value)) return false;
+    const digits = value.split('').map(Number);
+    let sum = 0;
+    for (let i = 0; i < 9; i += 1) {
+      const tmp = (digits[i] + 9 - i) % 10;
+      const calc = tmp === 9 ? tmp : (tmp * (2 ** (9 - i))) % 9;
+      sum += calc;
+    }
+    const check = (10 - (sum % 10)) % 10;
+    return check === digits[9];
+  }
+
+  private normalizeLoose(value?: string | null) {
+    return String(value || '')
+      .toLocaleLowerCase('tr-TR')
+      .normalize('NFD')
+      .replace(/[\u0300-\u036f]/g, '')
+      .replace(/[ı]/g, 'i')
+      .replace(/[ğ]/g, 'g')
+      .replace(/[ş]/g, 's')
+      .replace(/[ö]/g, 'o')
+      .replace(/[ü]/g, 'u')
+      .replace(/[ç]/g, 'c')
+      .replace(/\s+/g, ' ')
+      .trim();
+  }
+
+  private rowText(row: ParsedEDefterFisLine) {
+    return this.normalizeLoose([row.hesapKodu, row.hesapAdi, row.aciklama, row.fisTipi, row.belgeTuru].filter(Boolean).join(' '));
+  }
+
+  private hasMeaningfulDescription(row: ParsedEDefterFisLine) {
+    const desc = this.normalizeLoose(row.aciklama);
+    if (desc.length < 8) return false;
+    return !/^(diger|other|muhtelif|mahsup|virman|belge|fatura)$/.test(desc);
+  }
+
+  private analyzeDuplicateDocuments(
+    rows: ParsedEDefterFisLine[],
+    voucherMeta: Map<string, VoucherMeta>,
+  ): FindingDraft[] {
     const byDoc = new Map<string, ParsedEDefterFisLine[]>();
     for (const row of rows) {
       const no = this.normalizeDocumentNo(row.evrakNo);
       if (!no) continue;
-      if (!/^(191|391|120|320|600|601|602|740|760|770)/.test(row.hesapKodu || '')) continue;
+      if (!this.requiresDocumentFields(row, voucherMeta.get(row.voucherKey))) continue;
       if (!byDoc.has(no)) byDoc.set(no, []);
       byDoc.get(no)!.push(row);
     }
@@ -627,6 +967,116 @@ export class EDefterControlService {
     return findings;
   }
 
+  private analyzeLedgerNumbering(rows: ParsedEDefterFisLine[]): FindingDraft[] {
+    const findings: FindingDraft[] = [];
+    const byNumber = new Map<number, ParsedEDefterFisLine[]>();
+    const invalid = rows.filter((r) => r.yevmiyeNo && this.parseSequenceNo(r.yevmiyeNo) == null);
+
+    for (const row of invalid.slice(0, 5)) {
+      findings.push({
+        severity: 'INFO',
+        category: 'YEVMIYE_NO_FORMAT_SUPHELI',
+        message: `Satir ${row.rowIndex}: yevmiye no sayisal okunamadi (${row.yevmiyeNo}).`,
+        voucherKey: row.voucherKey,
+        rowIndex: row.rowIndex,
+        hesapKodu: row.hesapKodu,
+      });
+    }
+
+    for (const row of rows) {
+      const no = this.parseSequenceNo(row.yevmiyeNo);
+      if (no == null) continue;
+      if (!byNumber.has(no)) byNumber.set(no, []);
+      byNumber.get(no)!.push(row);
+    }
+    if (!byNumber.size) return findings;
+
+    const sorted = [...byNumber.keys()].sort((a, b) => a - b);
+    for (const no of sorted) {
+      const numberRows = byNumber.get(no)!;
+      const voucherKeys = [...new Set(numberRows.map((r) => r.voucherKey))];
+      const dates = [...new Set(numberRows.map((r) => r.fisTarihi?.toISOString().slice(0, 10)).filter(Boolean))];
+      if (voucherKeys.length > 1 && dates.length > 1) {
+        const first = numberRows[0];
+        findings.push({
+          severity: 'ERROR',
+          category: 'YEVMIYE_NO_MUKERRER',
+          message: `Yevmiye no ${no} birden fazla tarih/fis grubunda gorunuyor; numara mukerrerligi kontrol edilmeli.`,
+          voucherKey: first.voucherKey,
+          rowIndex: first.rowIndex,
+          detail: { yevmiyeNo: no, dates, voucherCount: voucherKeys.length },
+        });
+      }
+    }
+
+    let gapCount = 0;
+    for (let i = 1; i < sorted.length; i += 1) {
+      const prev = sorted[i - 1];
+      const curr = sorted[i];
+      if (curr - prev <= 1) continue;
+      gapCount += 1;
+      if (gapCount > 10) break;
+      const first = byNumber.get(curr)![0];
+      findings.push({
+        severity: 'WARN',
+        category: 'YEVMIYE_NO_ATLAMA',
+        message: `Yevmiye no sirasi ${prev} ile ${curr} arasinda atlama gosteriyor; eksik/iptal fis kontrol edilmeli.`,
+        voucherKey: first.voucherKey,
+        rowIndex: first.rowIndex,
+        detail: { onceki: prev, sonraki: curr },
+      });
+    }
+
+    let lastDate: Date | null = null;
+    let lastNo: number | null = null;
+    for (const no of sorted) {
+      const date = byNumber.get(no)!.find((r) => r.fisTarihi)?.fisTarihi || null;
+      if (date && lastDate && date < lastDate) {
+        const first = byNumber.get(no)![0];
+        findings.push({
+          severity: 'WARN',
+          category: 'YEVMIYE_TARIH_SIRASI',
+          message: `Yevmiye no ${no} tarihi, onceki yevmiye no ${lastNo} tarihinden once gorunuyor; tarih/numara sirasi kontrol edilmeli.`,
+          voucherKey: first.voucherKey,
+          rowIndex: first.rowIndex,
+          detail: { yevmiyeNo: no, oncekiYevmiyeNo: lastNo },
+        });
+        break;
+      }
+      if (date) {
+        lastDate = date;
+        lastNo = no;
+      }
+    }
+
+    return findings;
+  }
+
+  private analyzeParentAccountUsage(rows: ParsedEDefterFisLine[]): FindingDraft[] {
+    const byCode = new Map<string, ParsedEDefterFisLine[]>();
+    for (const row of rows) {
+      if (!this.isParentAccountRisk(row)) continue;
+      const code = row.hesapKodu!;
+      if (!byCode.has(code)) byCode.set(code, []);
+      byCode.get(code)!.push(row);
+    }
+
+    const findings: FindingDraft[] = [];
+    for (const [code, codeRows] of [...byCode.entries()].slice(0, 25)) {
+      const first = codeRows[0];
+      findings.push({
+        severity: 'INFO',
+        category: 'ANA_HESAPTA_KAYIT',
+        message: `${code} ana hesabina ${codeRows.length} satir kayit yapilmis; muavin/alt hesap acilmasi gerekip gerekmedigi kontrol edilmeli.`,
+        voucherKey: first.voucherKey,
+        rowIndex: first.rowIndex,
+        hesapKodu: code,
+        detail: { count: codeRows.length },
+      });
+    }
+    return findings;
+  }
+
   private analyzeDailyCash(rows: ParsedEDefterFisLine[]): FindingDraft[] {
     const byDay = new Map<string, ParsedEDefterFisLine[]>();
     for (const row of rows) {
@@ -650,6 +1100,62 @@ export class EDefterControlService {
         detail: { day, total, limit: 30000 },
       });
     }
+    return findings;
+  }
+
+  private analyzeCostReflectionPeriod(
+    rows: ParsedEDefterFisLine[],
+    voucherMeta: Map<string, VoucherMeta>,
+  ): FindingDraft[] {
+    const findings: FindingDraft[] = [];
+    const reflectionPairs = [
+      ['710', '711'],
+      ['720', '721'],
+      ['730', '731'],
+      ['740', '741'],
+      ['750', '751'],
+      ['760', '761'],
+      ['770', '771'],
+    ] as const;
+
+    for (const meta of voucherMeta.values()) {
+      if (!meta.rows.some((r) => this.isCostReflectionAccount(r.hesapKodu))) continue;
+      const hasCostSource = meta.rows.some((r) => /^(710|720|730|740|750|760|770)/.test(r.hesapKodu || ''));
+      const hasCostTarget = meta.rows.some((r) => /^(151|152|620|621|622|623|631|632)/.test(r.hesapKodu || ''));
+      if (!hasCostSource || !hasCostTarget) {
+        findings.push({
+          severity: 'WARN',
+          category: 'MALIYET_YANSITMA_KARSILIK_EKSIK',
+          message: `Fis ${this.voucherLabel(meta.first)} yansitma hesabi iceriyor; kaynak 7xx ve hedef maliyet/gelir tablosu hesaplari birlikte kontrol edilmeli.`,
+          voucherKey: meta.key,
+          rowIndex: meta.first.rowIndex,
+          detail: { hasCostSource, hasCostTarget },
+        });
+      }
+    }
+
+    for (const [source, reflection] of reflectionPairs) {
+      const sourceDebit = rows
+        .filter((r) => new RegExp(`^${source}`).test(r.hesapKodu || ''))
+        .reduce((sum, r) => sum + Math.max(0, Number(r.borc || 0) - Number(r.alacak || 0)), 0);
+      if (sourceDebit <= 1) continue;
+      const reflectionCredit = rows
+        .filter((r) => new RegExp(`^${reflection}`).test(r.hesapKodu || ''))
+        .reduce((sum, r) => sum + Math.max(0, Number(r.alacak || 0) - Number(r.borc || 0)), 0);
+      if (reflectionCredit <= 1) {
+        const first = rows.find((r) => new RegExp(`^${source}`).test(r.hesapKodu || ''))!;
+        findings.push({
+          severity: 'INFO',
+          category: 'MALIYET_YANSITMA_EKSIK_KONTROL',
+          message: `${source} hesap hareketi ${this.fmt(sourceDebit)} TL; ${reflection} yansitma hesabi gorunmuyor. Donem sonu yansitma kaydi kontrol edilmeli.`,
+          voucherKey: first.voucherKey,
+          rowIndex: first.rowIndex,
+          hesapKodu: first.hesapKodu,
+          detail: { source, reflection, sourceDebit, reflectionCredit },
+        });
+      }
+    }
+
     return findings;
   }
 
@@ -688,26 +1194,78 @@ export class EDefterControlService {
 
     for (const meta of voucherMeta.values()) {
       const rowsInVoucher = meta.rows;
+      const desc = this.normalizeLoose(meta.description);
       const cariRows = rowsInVoucher.filter((r) => /^(120|320)/.test(r.hesapKodu || '') && this.amountOf(r) >= 30000);
-      if (!cariRows.length) continue;
-      const hasCashOrBank = rowsInVoucher.some((r) => /^(100|102|103|108)/.test(r.hesapKodu || ''));
-      const hasInvoiceLikeAccount = rowsInVoucher.some((r) => /^(191|391|600|601|602|7)/.test(r.hesapKodu || ''));
-      if (!hasCashOrBank && !hasInvoiceLikeAccount) {
+      if (cariRows.length) {
+        const hasCashOrBank = rowsInVoucher.some((r) => /^(100|102|103|108)/.test(r.hesapKodu || ''));
+        const hasInvoiceLikeAccount = rowsInVoucher.some((r) => /^(191|391|600|601|602|7)/.test(r.hesapKodu || ''));
+        if (!hasCashOrBank && !hasInvoiceLikeAccount) {
+          findings.push({
+            severity: 'WARN',
+            category: 'CARI_KAPAMA_KARSILIK_KONTROL',
+            message: `Fis ${this.voucherLabel(meta.first)} 120/320 cari hesabi ${this.fmt(this.amountOf(cariRows[0]))} TL uzeri calistiriyor; banka/kasa veya fatura karsiligi gorunmuyor.`,
+            voucherKey: meta.key,
+            rowIndex: cariRows[0].rowIndex,
+            hesapKodu: cariRows[0].hesapKodu,
+          });
+        }
+      }
+
+      if (range && meta.date && /acilis|acilis fisi|acilis kaydi/.test(desc) && !this.sameDateUTC(meta.date, range.start)) {
         findings.push({
           severity: 'WARN',
-          category: 'CARI_KAPAMA_KARSILIK_KONTROL',
-          message: `Fis ${this.voucherLabel(meta.first)} 120/320 cari hesabi ${this.fmt(this.amountOf(cariRows[0]))} TL uzeri calistiriyor; banka/kasa veya fatura karsiligi gorunmuyor.`,
+          category: 'ACILIS_FISI_TARIH_KONTROL',
+          message: `Fis ${this.voucherLabel(meta.first)} acilis kaydina benziyor; tarih ${this.fmtDate(meta.date)}, donem baslangici ${this.fmtDate(range.start)}.`,
           voucherKey: meta.key,
-          rowIndex: cariRows[0].rowIndex,
-          hesapKodu: cariRows[0].hesapKodu,
+          rowIndex: meta.first.rowIndex,
         });
+      }
+
+      if (range && meta.date && /kapanis|donem sonu/.test(desc) && !this.sameDateUTC(meta.date, range.end)) {
+        findings.push({
+          severity: 'INFO',
+          category: 'KAPANIS_FISI_TARIH_KONTROL',
+          message: `Fis ${this.voucherLabel(meta.first)} kapanis/donem sonu kaydina benziyor; tarih ${this.fmtDate(meta.date)}, donem bitisi ${this.fmtDate(range.end)}.`,
+          voucherKey: meta.key,
+          rowIndex: meta.first.rowIndex,
+        });
+      }
+
+      const periodizationRow = rowsInVoucher.find((r) =>
+        /^(720|730|740|750|760|770|780|689)/.test(r.hesapKodu || '') &&
+        /sigorta|kasko|kira|abonelik|lisans|bakim|pesin|yillik|gelecek ay|gelecek donem/.test(this.rowText(r)),
+      );
+      if (periodizationRow && !rowsInVoucher.some((r) => /^(180|280|380|480)/.test(r.hesapKodu || ''))) {
+        findings.push({
+          severity: 'INFO',
+          category: 'DONEMSELLIK_GIDER_KONTROL',
+          message: `Fis ${this.voucherLabel(meta.first)} pesin/gelecek donem gideri sinyali veriyor; 180/280 veya 380/480 donemsellik hesabi kontrol edilmeli.`,
+          voucherKey: meta.key,
+          rowIndex: periodizationRow.rowIndex,
+          hesapKodu: periodizationRow.hesapKodu,
+        });
+      }
+
+      if (this.isPayrollVoucher(meta)) {
+        const hasNetWage = rowsInVoucher.some((r) => /^335/.test(r.hesapKodu || ''));
+        const hasTaxOrSgk = rowsInVoucher.some((r) => /^(360|361)/.test(r.hesapKodu || ''));
+        if (!hasNetWage || !hasTaxOrSgk) {
+          findings.push({
+            severity: 'INFO',
+            category: 'BORDRO_TAHAKKUK_HESAP_KONTROL',
+            message: `Fis ${this.voucherLabel(meta.first)} bordro/personel kaydina benziyor; 335 net ucret ve 360/361 vergi-SGK hesaplari birlikte kontrol edilmeli.`,
+            voucherKey: meta.key,
+            rowIndex: meta.first.rowIndex,
+            detail: { hasNetWage, hasTaxOrSgk },
+          });
+        }
       }
     }
 
     if (range) {
       for (const monthKey of this.monthKeysInRange(range.start, range.end)) {
         const monthRows = rows.filter((r) => r.fisTarihi && this.monthKey(r.fisTarihi) === monthKey);
-        const payrollSignal = monthRows.some((r) => /ucret|ücret|maas|maaş|personel|sgk/i.test(`${r.hesapAdi || ''} ${r.aciklama || ''}`));
+        const payrollSignal = monthRows.some((r) => /ucret|maas|personel|sgk/i.test(this.rowText(r)));
         if (!payrollSignal) continue;
         const hasPayrollAccrual = monthRows.some((r) => /^(335|360|361|369)/.test(r.hesapKodu || ''));
         if (!hasPayrollAccrual) {
@@ -737,6 +1295,55 @@ export class EDefterControlService {
     return rows
       .filter((r) => accountPattern.test(r.hesapKodu || ''))
       .reduce((sum, r) => sum + Number(r[side] || 0), 0);
+  }
+
+  private netRows(rows: ParsedEDefterFisLine[], accountPattern: RegExp, naturalSide: 'borc' | 'alacak') {
+    return rows
+      .filter((r) => accountPattern.test(r.hesapKodu || ''))
+      .reduce((sum, r) => {
+        const borc = Number(r.borc || 0);
+        const alacak = Number(r.alacak || 0);
+        return sum + (naturalSide === 'borc' ? borc - alacak : alacak - borc);
+      }, 0);
+  }
+
+  private purchaseBase(rows: ParsedEDefterFisLine[]) {
+    return rows
+      .filter((r) => /^(150|151|152|153|157|159|180|250|251|252|253|254|255|258|260|264|280|720|730|740|750|760|770|780|689|659)/.test(r.hesapKodu || ''))
+      .filter((r) => !this.isCostReflectionAccount(r.hesapKodu))
+      .reduce((sum, r) => sum + Math.max(0, Number(r.borc || 0) - Number(r.alacak || 0)), 0);
+  }
+
+  private salesBase(rows: ParsedEDefterFisLine[]) {
+    return rows
+      .filter((r) => /^(600|601|602|649|679)/.test(r.hesapKodu || ''))
+      .reduce((sum, r) => sum + Math.max(0, Number(r.alacak || 0) - Number(r.borc || 0)), 0);
+  }
+
+  private detectVatRates(meta: VoucherMeta) {
+    const text = meta.description;
+    const rates = new Set<number>();
+    for (const match of text.matchAll(/%?\s*(1|8|10|18|20)(?:[,\.]0+)?\s*(?:kdv|oran|%)/gi)) {
+      rates.add(Number(match[1]));
+    }
+    return [...rates];
+  }
+
+  private isKnownVatRate(rate: number) {
+    return [1, 8, 10, 18, 20].some((known) => Math.abs(rate - known) <= 0.6);
+  }
+
+  private fmtRate(value: number) {
+    return value.toLocaleString('tr-TR', { minimumFractionDigits: 1, maximumFractionDigits: 1 });
+  }
+
+  private parseSequenceNo(value?: string | null) {
+    const text = String(value || '').trim();
+    if (!text) return null;
+    const normalized = text.replace(/[^\d]/g, '');
+    if (!normalized) return null;
+    const n = Number(normalized);
+    return Number.isSafeInteger(n) && n > 0 ? n : null;
   }
 
   private amountOf(row: ParsedEDefterFisLine) {

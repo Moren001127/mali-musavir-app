@@ -57,6 +57,7 @@ export class EDefterFisListesiParserService {
     );
 
     const rows: ParsedEDefterFisLine[] = [];
+    let reportBlockNo = 1;
     for (let r = headerRowIdx + 1; r < grid.length; r++) {
       const row = grid[r] || [];
       if (row.every((c) => this.cellText(c) === '')) continue;
@@ -88,7 +89,7 @@ export class EDefterFisListesiParserService {
       const inlineVoucher = this.parseInlineVoucher(aciklama, opts.defaultYear);
       if (inlineVoucher.description) aciklama = inlineVoucher.description;
 
-      const fisNo = this.readString(row, headerMap, [/^fis\s*no/, /^fisno$/, /^fis\s*numara/]) || inlineVoucher.no;
+      const fisNo = this.readString(row, headerMap, [/^fis$/, /^fis\s*no/, /^fisno$/, /^fis\s*numara/]) || inlineVoucher.no;
       const yevmiyeNo = this.readString(row, headerMap, [/^yevmiye\s*no/, /^yevmiye$/, /^yevmiye\s*numara/]);
       const fisTarihi = this.readDate(row, headerMap, [/^fis\s*tarih/, /^fistarih/, /^tarih$/]) || inlineVoucher.date;
       const evrakNo = this.readString(row, headerMap, [/^evrak\s*no/, /^belge\s*no/, /^dokuman\s*no/, /^document\s*no/]) || inlineVoucher.no;
@@ -98,6 +99,10 @@ export class EDefterFisListesiParserService {
       const vknTckn = this.readString(row, headerMap, [/^vkn/, /^tckn/, /^vergi\s*no/, /^tc\s*no/, /^tax\s*no/]);
       const karsiHesap = this.readString(row, headerMap, [/^karsi\s*hesap/, /^karsi\s*kod/]);
 
+      if (this.isReportTotalRow({ hesapKodu, hesapAdi, aciklama })) {
+        reportBlockNo += 1;
+        continue;
+      }
       if (this.isReportScaffoldRow({ hesapKodu, hesapAdi, aciklama, borc, alacak, fisNo, yevmiyeNo })) {
         continue;
       }
@@ -106,7 +111,9 @@ export class EDefterFisListesiParserService {
         continue;
       }
 
-      const voucherKey = this.buildVoucherKey({ fisNo, yevmiyeNo, fisTarihi, rowIndex: r + 1 });
+      const voucherKey = fisNo || yevmiyeNo
+        ? this.buildVoucherKey({ fisNo, yevmiyeNo, fisTarihi, rowIndex: r + 1 })
+        : `BLOCK|${reportBlockNo}`;
       rows.push({
         rowIndex: r + 1,
         voucherKey,
@@ -255,6 +262,19 @@ export class EDefterFisListesiParserService {
       return true;
     }
     return Boolean(row.hesapKodu && !this.isAccountCode(row.hesapKodu) && row.borc === 0 && row.alacak === 0);
+  }
+
+  private isReportTotalRow(row: {
+    hesapKodu?: string | null;
+    hesapAdi?: string | null;
+    aciklama?: string | null;
+  }) {
+    const label = [
+      this.normalizeHeader(row.hesapKodu),
+      this.normalizeHeader(row.hesapAdi),
+      this.normalizeHeader(row.aciklama),
+    ].filter(Boolean).join(' ');
+    return /fis toplam|sayfa toplam|genel toplam/.test(label);
   }
 
   private isAccountCode(value?: string | null) {

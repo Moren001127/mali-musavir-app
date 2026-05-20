@@ -2,7 +2,7 @@
 
 import { useEffect, useMemo, useState } from 'react';
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
-import { AlertTriangle, BookOpen, CheckCircle2, FileSpreadsheet, Loader2, Play, UploadCloud, XCircle } from 'lucide-react';
+import { AlertTriangle, BookOpen, CheckCircle2, FileSpreadsheet, Loader2, Play, Search, UploadCloud, XCircle } from 'lucide-react';
 import { toast } from 'sonner';
 import { api } from '@/lib/api';
 import { EDefterDonemTipi, edefterControlApi } from '@/lib/edefter-control';
@@ -93,6 +93,9 @@ export default function EDefterAgentPage() {
   const [selectedSessionId, setSelectedSessionId] = useState<string | null>(null);
   const [lucaJobId, setLucaJobId] = useState<string | null>(null);
   const [lucaStatus, setLucaStatus] = useState('');
+  const [lineSearch, setLineSearch] = useState('');
+  const [findingSearch, setFindingSearch] = useState('');
+  const [focusedFinding, setFocusedFinding] = useState<any | null>(null);
 
   const donem = `${year}-Q${quarter}`;
   const donemTipi = `GECICI_Q${quarter}` as EDefterDonemTipi;
@@ -209,6 +212,55 @@ export default function EDefterAgentPage() {
       info: findings.filter((f: any) => f.severity === 'INFO').length,
     };
   }, [session]);
+
+  const visibleFindings = useMemo(() => {
+    const query = findingSearch.trim().toLocaleLowerCase('tr-TR');
+    const findings = session?.findings || [];
+    if (!query) return findings;
+    return findings.filter((f: any) => {
+      const haystack = [
+        f.severity,
+        f.category,
+        f.message,
+        f.voucherKey,
+        f.rowIndex,
+        f.hesapKodu,
+      ].filter(Boolean).join(' ').toLocaleLowerCase('tr-TR');
+      return haystack.includes(query);
+    });
+  }, [findingSearch, session]);
+
+  const lines = useMemo(() => session?.lines || [], [session]);
+  const visibleLines = useMemo(() => {
+    const focusedVoucherKey = focusedFinding?.voucherKey || null;
+    const focusedRowIndex = focusedFinding?.rowIndex ? Number(focusedFinding.rowIndex) : null;
+    const query = lineSearch.trim().toLocaleLowerCase('tr-TR');
+    return lines.filter((line: any) => {
+      const matchesFocus = !focusedFinding
+        || (focusedVoucherKey && line.voucherKey === focusedVoucherKey)
+        || (focusedRowIndex && Number(line.rowIndex) === focusedRowIndex);
+      if (!matchesFocus) return false;
+      if (!query) return true;
+      const haystack = [
+        line.rowIndex,
+        line.voucherKey,
+        line.fisNo,
+        line.yevmiyeNo,
+        line.evrakNo,
+        line.hesapKodu,
+        line.hesapAdi,
+        line.aciklama,
+        fmtDate(line.fisTarihi),
+      ].filter(Boolean).join(' ').toLocaleLowerCase('tr-TR');
+      return haystack.includes(query);
+    });
+  }, [focusedFinding, lineSearch, lines]);
+
+  useEffect(() => {
+    setFocusedFinding(null);
+    setLineSearch('');
+    setFindingSearch('');
+  }, [activeSessionId]);
 
   return (
     <div className="space-y-5 max-w-7xl">
@@ -345,12 +397,25 @@ export default function EDefterAgentPage() {
 
         <div className="space-y-4">
           <div className="rounded-xl border p-4" style={{ background: PANEL, borderColor: BORDER }}>
-            <div className="flex items-center justify-between mb-3">
+            <div className="flex flex-col gap-3 mb-3 lg:flex-row lg:items-center lg:justify-between">
               <h2 className="text-sm font-semibold" style={{ color: '#fafaf9' }}>Bulgular</h2>
-              <div className="flex items-center gap-2 text-xs">
+              <span className="text-xs tabular-nums" style={{ color: 'rgba(250,250,249,.45)' }}>
+                {visibleFindings.length}/{session?.findings?.length || 0}
+              </span>
+              <div className="flex flex-wrap items-center gap-2 text-xs">
                 <Badge icon={XCircle} label={`Hata ${stats.error}`} color="#ef4444" />
                 <Badge icon={AlertTriangle} label={`Uyarı ${stats.warn}`} color="#f59e0b" />
                 <Badge icon={CheckCircle2} label={`Bilgi ${stats.info}`} color="#38bdf8" />
+                <div className="h-9 rounded-lg px-3 flex items-center gap-2 min-w-[260px]" style={{ background: 'rgba(255,255,255,.03)', border: `1px solid ${BORDER}`, color: 'rgba(250,250,249,.75)' }}>
+                  <Search size={14} />
+                  <input
+                    value={findingSearch}
+                    onChange={(e) => setFindingSearch(e.target.value)}
+                    placeholder="Bulgu, satir, fis veya hesap ara"
+                    className="bg-transparent outline-none text-xs w-full"
+                    style={{ color: '#fafaf9' }}
+                  />
+                </div>
               </div>
             </div>
             <div className="overflow-auto">
@@ -364,8 +429,20 @@ export default function EDefterAgentPage() {
                   </tr>
                 </thead>
                 <tbody>
-                  {(session?.findings || []).slice(0, 200).map((f: any) => (
-                    <tr key={f.id} style={{ borderBottom: `1px solid ${BORDER}`, color: '#fafaf9' }}>
+                  {visibleFindings.slice(0, 1000).map((f: any) => (
+                    <tr
+                      key={f.id}
+                      onClick={() => {
+                        setFocusedFinding(f);
+                        setLineSearch('');
+                      }}
+                      className="cursor-pointer"
+                      style={{
+                        borderBottom: `1px solid ${BORDER}`,
+                        color: '#fafaf9',
+                        background: focusedFinding?.id === f.id ? 'rgba(212,184,118,.10)' : 'transparent',
+                      }}
+                    >
                       <td className="py-2"><Severity value={f.severity} /></td>
                       <td className="py-2 text-xs">{f.category}</td>
                       <td className="py-2">{f.message}</td>
@@ -374,6 +451,11 @@ export default function EDefterAgentPage() {
                   ))}
                 </tbody>
               </table>
+              {session && visibleFindings.length === 0 && (session.findings?.length || 0) > 0 && (
+                <div className="py-8 text-center text-sm" style={{ color: 'rgba(250,250,249,.45)' }}>
+                  Bu filtreyle bulgu bulunamadi.
+                </div>
+              )}
               {(!session?.findings || session.findings.length === 0) && (
                 <div className="py-8 text-center text-sm" style={{ color: 'rgba(250,250,249,.45)' }}>
                   Bulgu yok. Bu dönem ön kontrol açısından temiz görünüyor.
@@ -383,16 +465,45 @@ export default function EDefterAgentPage() {
           </div>
 
           <div className="rounded-xl border p-4" style={{ background: PANEL, borderColor: BORDER }}>
-            <div className="flex items-center gap-2 mb-3">
-              <FileSpreadsheet size={16} style={{ color: GOLD }} />
-              <h2 className="text-sm font-semibold" style={{ color: '#fafaf9' }}>İlk Fiş Satırları</h2>
+            <div className="flex flex-col gap-3 mb-3 lg:flex-row lg:items-center lg:justify-between">
+              <div className="flex items-center gap-2">
+                <FileSpreadsheet size={16} style={{ color: GOLD }} />
+                <h2 className="text-sm font-semibold" style={{ color: '#fafaf9' }}>Fiş Satırları</h2>
+                <span className="text-xs tabular-nums" style={{ color: 'rgba(250,250,249,.45)' }}>
+                  {visibleLines.length}/{lines.length}
+                </span>
+              </div>
+              <div className="flex flex-wrap items-center gap-2">
+                {focusedFinding && (
+                  <button
+                    onClick={() => setFocusedFinding(null)}
+                    className="h-9 px-3 rounded-lg text-xs font-semibold inline-flex items-center gap-1"
+                    style={{ background: 'rgba(212,184,118,.12)', color: GOLD, border: '1px solid rgba(212,184,118,.24)' }}
+                  >
+                    <XCircle size={13} />
+                    Bulgu filtresini temizle
+                  </button>
+                )}
+                <div className="h-9 rounded-lg px-3 flex items-center gap-2 min-w-[260px]" style={{ background: 'rgba(255,255,255,.03)', border: `1px solid ${BORDER}`, color: 'rgba(250,250,249,.75)' }}>
+                  <Search size={14} />
+                  <input
+                    value={lineSearch}
+                    onChange={(e) => setLineSearch(e.target.value)}
+                    placeholder="Satır, fiş, evrak, hesap veya açıklama ara"
+                    className="bg-transparent outline-none text-xs w-full"
+                    style={{ color: '#fafaf9' }}
+                  />
+                </div>
+              </div>
             </div>
             <div className="overflow-auto max-h-[520px]">
               <table className="w-full text-xs">
                 <thead>
                   <tr style={{ color: 'rgba(250,250,249,.48)', borderBottom: `1px solid ${BORDER}` }}>
+                    <th className="text-left py-2 font-medium">Satır</th>
                     <th className="text-left py-2 font-medium">Tarih</th>
                     <th className="text-left py-2 font-medium">Fiş</th>
+                    <th className="text-left py-2 font-medium">Evrak</th>
                     <th className="text-left py-2 font-medium">Hesap</th>
                     <th className="text-left py-2 font-medium">Açıklama</th>
                     <th className="text-right py-2 font-medium">Borç</th>
@@ -400,10 +511,21 @@ export default function EDefterAgentPage() {
                   </tr>
                 </thead>
                 <tbody>
-                  {(session?.lines || []).slice(0, 500).map((line: any) => (
-                    <tr key={line.id} style={{ borderBottom: `1px solid ${BORDER}`, color: 'rgba(250,250,249,.82)' }}>
+                  {visibleLines.slice(0, 1000).map((line: any) => (
+                    <tr
+                      key={line.id}
+                      style={{
+                        borderBottom: `1px solid ${BORDER}`,
+                        color: 'rgba(250,250,249,.82)',
+                        background: focusedFinding?.rowIndex && Number(focusedFinding.rowIndex) === Number(line.rowIndex)
+                          ? 'rgba(212,184,118,.10)'
+                          : 'transparent',
+                      }}
+                    >
+                      <td className="py-2 tabular-nums">{line.rowIndex || '-'}</td>
                       <td className="py-2 whitespace-nowrap">{fmtDate(line.fisTarihi)}</td>
                       <td className="py-2">{line.yevmiyeNo || line.fisNo || '-'}</td>
+                      <td className="py-2">{line.evrakNo || '-'}</td>
                       <td className="py-2 whitespace-nowrap">{line.hesapKodu || '-'} · {line.hesapAdi || ''}</td>
                       <td className="py-2 min-w-[220px]">{line.aciklama || '-'}</td>
                       <td className="py-2 text-right tabular-nums">{fmtTRY(line.borc)}</td>
@@ -412,6 +534,11 @@ export default function EDefterAgentPage() {
                   ))}
                 </tbody>
               </table>
+              {session && visibleLines.length === 0 && (
+                <div className="py-8 text-center text-sm" style={{ color: 'rgba(250,250,249,.45)' }}>
+                  Bu filtreyle satır bulunamadı.
+                </div>
+              )}
               {!session && (
                 <div className="py-8 text-center text-sm" style={{ color: 'rgba(250,250,249,.45)' }}>
                   Bir dönem seç veya Luca'dan Detay Fiş Listesi çek.
