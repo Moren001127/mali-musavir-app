@@ -206,7 +206,7 @@ function PreviewPanel({
 
       <div className="space-y-5 px-6 py-5">
         {/* İnsan-okur açıklama */}
-        <div className="rounded-lg bg-amber-50 p-4 text-sm leading-relaxed text-stone-800 dark:text-stone-100">
+        <div className="rounded-lg bg-amber-50 dark:bg-stone-800 p-4 text-sm leading-relaxed text-stone-800 dark:text-stone-100 border border-amber-200 dark:border-amber-900/40">
           {parsed.humanReadablePreview}
         </div>
 
@@ -242,7 +242,7 @@ function PreviewPanel({
 
         {/* Uyarılar */}
         {!hasSteps && (
-          <div className="flex gap-2 rounded-lg border border-rose-200 bg-rose-50 p-3 text-sm text-rose-800">
+          <div className="flex gap-2 rounded-lg border border-rose-200 dark:border-rose-900/50 bg-rose-50 dark:bg-rose-950/30 p-3 text-sm text-rose-800 dark:text-rose-200">
             <AlertTriangle className="h-5 w-5 shrink-0" />
             <div>
               Bu cümleyi mevcut araçlarımla bir otomasyon olarak kuramadım. Önizleme paneline
@@ -252,7 +252,7 @@ function PreviewPanel({
         )}
 
         {lowConfidence && hasSteps && (
-          <div className="flex gap-2 rounded-lg border border-amber-200 bg-amber-50 p-3 text-sm text-amber-900">
+          <div className="flex gap-2 rounded-lg border border-amber-200 dark:border-amber-900/50 bg-amber-50 dark:bg-amber-950/30 p-3 text-sm text-amber-900 dark:text-amber-200">
             <AlertTriangle className="h-5 w-5 shrink-0" />
             <div>
               <b>Güven puanı düşük ({Math.round(parsed.confidence * 100)}%).</b> Cümlende bazı
@@ -263,7 +263,7 @@ function PreviewPanel({
         )}
 
         {parsed.privacyNotice && (
-          <div className="flex gap-2 rounded-lg border border-blue-200 bg-blue-50 p-3 text-sm text-blue-900">
+          <div className="flex gap-2 rounded-lg border border-blue-200 dark:border-blue-900/50 bg-blue-50 dark:bg-blue-950/30 p-3 text-sm text-blue-900 dark:text-blue-200">
             <ShieldAlert className="h-5 w-5 shrink-0" />
             <div>{parsed.privacyNotice}</div>
           </div>
