@@ -357,7 +357,9 @@ export class EDefterControlService {
 
     findings.push(...this.analyzeMonthlyVat(rows, range, voucherMeta));
     findings.push(...this.analyzeDuplicateDocuments(rows));
+    findings.push(...this.analyzeDocumentDates(rows, range));
     findings.push(...this.analyzeDailyCash(rows));
+    findings.push(...this.analyzePeriodAccountingRisks(rows, range, voucherMeta));
 
     return findings.slice(0, 5000);
   }
@@ -594,6 +596,37 @@ export class EDefterControlService {
     return findings;
   }
 
+  private analyzeDocumentDates(
+    rows: ParsedEDefterFisLine[],
+    range: { start: Date; end: Date } | null,
+  ): FindingDraft[] {
+    const findings: FindingDraft[] = [];
+    for (const row of rows) {
+      if (!row.evrakTarihi) continue;
+      if (row.fisTarihi && row.evrakTarihi > row.fisTarihi) {
+        findings.push({
+          severity: 'WARN',
+          category: 'BELGE_TARIHI_FIS_TARIHINDEN_SONRA',
+          message: `Satir ${row.rowIndex}: belge tarihi (${this.fmtDate(row.evrakTarihi)}) fis tarihinden (${this.fmtDate(row.fisTarihi)}) sonra.`,
+          voucherKey: row.voucherKey,
+          rowIndex: row.rowIndex,
+          hesapKodu: row.hesapKodu,
+        });
+      }
+      if (range && (row.evrakTarihi < range.start || row.evrakTarihi > range.end)) {
+        findings.push({
+          severity: 'WARN',
+          category: 'BELGE_TARIHI_DONEM_DISI',
+          message: `Satir ${row.rowIndex}: belge tarihi secilen donem disinda (${this.fmtDate(row.evrakTarihi)}).`,
+          voucherKey: row.voucherKey,
+          rowIndex: row.rowIndex,
+          hesapKodu: row.hesapKodu,
+        });
+      }
+    }
+    return findings;
+  }
+
   private analyzeDailyCash(rows: ParsedEDefterFisLine[]): FindingDraft[] {
     const byDay = new Map<string, ParsedEDefterFisLine[]>();
     for (const row of rows) {
@@ -617,6 +650,78 @@ export class EDefterControlService {
         detail: { day, total, limit: 30000 },
       });
     }
+    return findings;
+  }
+
+  private analyzePeriodAccountingRisks(
+    rows: ParsedEDefterFisLine[],
+    range: { start: Date; end: Date } | null,
+    voucherMeta: Map<string, VoucherMeta>,
+  ): FindingDraft[] {
+    const findings: FindingDraft[] = [];
+    const first = rows[0];
+    if (!first) return findings;
+
+    const hasFixedAssetMovement = rows.some((r) => /^(25[2-9]|260|264)/.test(r.hesapKodu || ''));
+    const hasDepreciation = rows.some((r) => /^(257|268|730|740|760|770)/.test(r.hesapKodu || '') && /amortisman/i.test(`${r.hesapAdi || ''} ${r.aciklama || ''}`));
+    if (hasFixedAssetMovement && !hasDepreciation) {
+      findings.push({
+        severity: 'INFO',
+        category: 'AMORTISMAN_KAYDI_KONTROL',
+        message: 'Donem icinde sabit kiymet hesabi hareketi var; amortisman kaydinin yapilip yapilmadigi kontrol edilmeli.',
+        voucherKey: first.voucherKey,
+        rowIndex: first.rowIndex,
+      });
+    }
+
+    const hasReceivableRediscount = rows.some((r) => /^(122|222|647)/.test(r.hesapKodu || '') || /alacak sened.*reeskont/i.test(`${r.hesapAdi || ''} ${r.aciklama || ''}`));
+    const hasPayableRediscount = rows.some((r) => /^(322|422|657)/.test(r.hesapKodu || '') || /borc sened.*reeskont|borç sened.*reeskont/i.test(`${r.hesapAdi || ''} ${r.aciklama || ''}`));
+    if (hasReceivableRediscount && !hasPayableRediscount) {
+      findings.push({
+        severity: 'INFO',
+        category: 'REESKONT_SIMETRI_KONTROL',
+        message: 'Alacak senedi reeskontuna benzer kayit var; borc senetleri reeskontu gerekip gerekmedigi kontrol edilmeli.',
+        voucherKey: first.voucherKey,
+        rowIndex: first.rowIndex,
+      });
+    }
+
+    for (const meta of voucherMeta.values()) {
+      const rowsInVoucher = meta.rows;
+      const cariRows = rowsInVoucher.filter((r) => /^(120|320)/.test(r.hesapKodu || '') && this.amountOf(r) >= 30000);
+      if (!cariRows.length) continue;
+      const hasCashOrBank = rowsInVoucher.some((r) => /^(100|102|103|108)/.test(r.hesapKodu || ''));
+      const hasInvoiceLikeAccount = rowsInVoucher.some((r) => /^(191|391|600|601|602|7)/.test(r.hesapKodu || ''));
+      if (!hasCashOrBank && !hasInvoiceLikeAccount) {
+        findings.push({
+          severity: 'WARN',
+          category: 'CARI_KAPAMA_KARSILIK_KONTROL',
+          message: `Fis ${this.voucherLabel(meta.first)} 120/320 cari hesabi ${this.fmt(this.amountOf(cariRows[0]))} TL uzeri calistiriyor; banka/kasa veya fatura karsiligi gorunmuyor.`,
+          voucherKey: meta.key,
+          rowIndex: cariRows[0].rowIndex,
+          hesapKodu: cariRows[0].hesapKodu,
+        });
+      }
+    }
+
+    if (range) {
+      for (const monthKey of this.monthKeysInRange(range.start, range.end)) {
+        const monthRows = rows.filter((r) => r.fisTarihi && this.monthKey(r.fisTarihi) === monthKey);
+        const payrollSignal = monthRows.some((r) => /ucret|ücret|maas|maaş|personel|sgk/i.test(`${r.hesapAdi || ''} ${r.aciklama || ''}`));
+        if (!payrollSignal) continue;
+        const hasPayrollAccrual = monthRows.some((r) => /^(335|360|361|369)/.test(r.hesapKodu || ''));
+        if (!hasPayrollAccrual) {
+          findings.push({
+            severity: 'INFO',
+            category: 'UCRET_SGK_TAHAKKUK_KONTROL',
+            message: `${this.describeMonth(monthKey)} icinde ucret/personel/SGK sinyali var; 335/360/361 tahakkuk hesaplari gorunmuyor.`,
+            voucherKey: monthRows[0].voucherKey,
+            rowIndex: monthRows[0].rowIndex,
+          });
+        }
+      }
+    }
+
     return findings;
   }
 
