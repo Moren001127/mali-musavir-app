@@ -253,6 +253,27 @@ const DOCUMENT_ACTIONS: AutomationAction[] = [
       required: ['taxpayerId', 'entryType', 'date', 'amount'],
     },
   },
+  {
+    name: 'generate_fis_word_from_invoices',
+    category: 'WRITE',
+    estimatedClaudeCostPerCall: 0,
+    requires: ['fis-yazdirma', 'mihsap'],
+    description:
+      'Bir mükellefin verilen dönemdeki FİŞ türü faturalarını MIHSAP\'tan çeker ve Word raporu üretir. ' +
+      'Sonuç dosyası /panel/fis-yazdirma sayfasındaki "Çıktılar" listesinde görünür ve oradan indirilebilir. ' +
+      'Tipik kullanım: KDV kontrolü kilitlenince ilgili dönemin fişlerini otomatik Word\'e dök.',
+    input_schema: {
+      type: 'object',
+      properties: {
+        taxpayerId: { type: 'string', description: 'Mükellefin sistem ID\'si.' },
+        donem: {
+          type: 'string',
+          description: 'YYYY-MM formatında (örn. "2026-05"). Trigger payload\'undan {{trigger.payload.year}}-{{trigger.payload.month}} olarak hesaplanabilir.',
+        },
+      },
+      required: ['taxpayerId', 'donem'],
+    },
+  },
 ];
 
 // ---------------------------------------------------------------
@@ -557,6 +578,7 @@ export const TRIGGER_SPECS: TriggerSpec[] = [
           'Taxpayer.EvrakIslendiChanged',      // "Evrak işlendi" alanı değişti
           'Taxpayer.KontrolEdildiChanged',     // "Kontrol edildi" alanı değişti
           'Taxpayer.BeyannameDurumuChanged',   // "Beyanname verildi" alanı değişti
+          'Taxpayer.KdvKontrolKilitlendi',     // KDV kontrolü tamamlanıp kilitlendi
           'Taxpayer.Created',                   // Yeni müvekkil eklendi
           // İletişim
           'WhatsApp.MessageReceived',           // Müvekkelden WhatsApp mesajı geldi

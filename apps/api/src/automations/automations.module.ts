@@ -4,6 +4,7 @@ import { MorenAiModule } from '../moren-ai/moren-ai.module';
 import { NotificationsModule } from '../notifications/notifications.module';
 import { PrismaModule } from '../prisma/prisma.module';
 import { WhatsAppModule } from '../whatsapp/whatsapp.module';
+import { FisYazdirmaModule } from '../fis-yazdirma/fis-yazdirma.module';
 import { ActionDispatcherService } from './action-dispatcher.service';
 import { AutomationEventBus } from './automation-event-bus.service';
 import { AutomationParserService } from './automation-parser.service';
@@ -28,7 +29,7 @@ import { AutomationsService } from './automations.service';
  */
 @Global()
 @Module({
-  imports: [PrismaModule, ScheduleModule.forRoot(), MorenAiModule, NotificationsModule, WhatsAppModule],
+  imports: [PrismaModule, ScheduleModule.forRoot(), MorenAiModule, NotificationsModule, WhatsAppModule, FisYazdirmaModule],
   controllers: [AutomationsController],
   providers: [
     AutomationsService,

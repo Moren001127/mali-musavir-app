@@ -4,6 +4,7 @@ import { NotificationsService } from '../notifications/notifications.service';
 import { PrismaService } from '../prisma/prisma.service';
 import { WhatsAppService } from '../whatsapp/whatsapp.service';
 import { WhatsAppQrService } from '../whatsapp-qr/whatsapp-qr.service';
+import { FisYazdirmaService } from '../fis-yazdirma/fis-yazdirma.service';
 import { ACTION_BY_NAME } from './action-catalog';
 
 /**
@@ -31,6 +32,7 @@ export class ActionDispatcherService {
     private readonly notifications: NotificationsService,
     private readonly whatsapp: WhatsAppService,
     private readonly whatsappQr: WhatsAppQrService,
+    private readonly fisYazdirma: FisYazdirmaService,
   ) {}
 
   /**
@@ -100,6 +102,8 @@ export class ActionDispatcherService {
           'Luca\'ya direkt fiş atma aksiyonu LucaService.createFetchJob yerine yeni bir "createEntry" metoduna ihtiyaç duyar. ' +
             'Şu an Luca\'da bu metot yok — manuel olarak portal/Luca arayüzünden işleme alın.',
         );
+      case 'generate_fis_word_from_invoices':
+        return this.generateFisWordFromInvoices(args, ctx);
 
       default:
         throw new Error(`Aksiyon "${toolName}" tanımlı ama dispatcher'da uygulanmamış.`);
@@ -245,6 +249,37 @@ export class ActionDispatcherService {
     const cost =
       Math.round((inputTokens * 0.0000008 + outputTokens * 0.000004) * 10000) / 10000;
     return { text, cost, inputTokens, outputTokens };
+  }
+
+  // ---------------------------------------------------------------
+  // FİŞ YAZDIRMA (Word raporu)
+  // ---------------------------------------------------------------
+  /**
+   * Mükellef + dönem için MIHSAP'tan FIS faturalarını çekip Word üretir.
+   * Otomasyon "KDV kilitlendi → fiş Word raporu" akışı için.
+   */
+  private async generateFisWordFromInvoices(
+    args: any,
+    ctx: { tenantId: string; userId?: string | null },
+  ) {
+    const taxpayerId = String(args.taxpayerId ?? '');
+    const donem = String(args.donem ?? '');
+    if (!taxpayerId || !donem) {
+      throw new Error('generate_fis_word_from_invoices: taxpayerId ve donem zorunlu.');
+    }
+    const result = await this.fisYazdirma.generateFromInvoices({
+      tenantId: ctx.tenantId,
+      mukellefId: taxpayerId,
+      donem,
+      createdBy: ctx.userId ?? undefined,
+    });
+    return {
+      success: true,
+      filename: result.filename,
+      fileCount: result.fileCount,
+      outputId: result.outputId,
+      downloadUrl: result.downloadUrl,
+    };
   }
 
   // ---------------------------------------------------------------

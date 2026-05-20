@@ -1,5 +1,6 @@
 import { Injectable, Logger, BadRequestException } from '@nestjs/common';
 import { PrismaService } from '../prisma/prisma.service';
+import { MihsapService } from '../mihsap/mihsap.service';
 import { logAiUsage } from '../common/ai-usage-logger';
 import { createWorker } from 'tesseract.js';
 import * as sharp from 'sharp';
@@ -232,7 +233,132 @@ const OCR_STRATEGIES: OcrStrategy[] = [
 export class FisYazdirmaService {
   private readonly logger = new Logger(FisYazdirmaService.name);
 
-  constructor(private readonly prisma: PrismaService) {}
+  constructor(
+    private readonly prisma: PrismaService,
+    private readonly mihsap: MihsapService,
+  ) {}
+
+  /**
+   * Otomasyon için: mükellef + dönem alır, MIHSAP'tan FIS türü faturaları çeker,
+   * her birinin görselini indirir, Word raporu üretir ve saveOutput ile arşivler.
+   *
+   * Otomasyon dispatcher'ı bunu çağırır. Word dosyası DB'ye kayıt edilir,
+   * outputId döner — kullanıcı bildirimden tıklayıp indirebilir.
+   */
+  async generateFromInvoices(params: {
+    tenantId: string;
+    mukellefId: string;
+    donem: string; // YYYY-MM
+    createdBy?: string;
+  }): Promise<{ outputId: string | null; filename: string; fileCount: number; downloadUrl?: string }> {
+    const { tenantId, mukellefId, donem, createdBy } = params;
+
+    // 1) FIS faturalarını listele
+    const invoices = await this.mihsap.listStoredInvoices({
+      tenantId,
+      mukellefId,
+      donem,
+      belgeTuru: 'FIS',
+      limit: 500,
+    });
+
+    if (!invoices.length) {
+      throw new BadRequestException(
+        `${donem} döneminde mükellef için FIS bulunamadı. Önce Faturalar sayfasından MIHSAP'tan çekin.`,
+      );
+    }
+
+    this.logger.log(
+      `[generateFromInvoices] mukellef=${mukellefId} donem=${donem} fişSayısı=${invoices.length}`,
+    );
+
+    // 2) Her birinin görselini indir
+    const files: Express.Multer.File[] = [];
+    const allDates: Record<string, string> = {};
+    let skippedNonImage = 0;
+
+    for (const inv of invoices as any[]) {
+      try {
+        const fileData = await this.mihsap.getInvoiceFile(tenantId, inv.id);
+        const ct = (fileData.contentType || '').toLowerCase();
+        if (!ct.startsWith('image/')) {
+          // PDF/HTML değil, görsel olanları al — Word'e gömeceğiz
+          skippedNonImage++;
+          continue;
+        }
+        const filename = fileData.filename || `${inv.id}.jpg`;
+        files.push({
+          fieldname: 'files',
+          originalname: filename,
+          encoding: '7bit',
+          mimetype: ct,
+          buffer: fileData.buffer,
+          size: fileData.buffer.length,
+        } as unknown as Express.Multer.File);
+
+        // Fatura tarihini DB'den al
+        if (inv.faturaTarihi) {
+          const d = new Date(inv.faturaTarihi);
+          if (!isNaN(d.getTime())) {
+            allDates[filename] = d.toISOString().slice(0, 10);
+          }
+        }
+        if (!allDates[filename]) {
+          allDates[filename] = donem + '-01';
+        }
+      } catch (err: any) {
+        this.logger.warn(`Fatura indirilemedi id=${inv.id}: ${err.message}`);
+      }
+    }
+
+    if (files.length === 0) {
+      throw new BadRequestException(
+        `Hiçbir görsel fiş indirilemedi (${invoices.length} kayıt vardı, ${skippedNonImage} görsel olmayan atlandı).`,
+      );
+    }
+
+    // 3) Mükellef adını çek
+    const taxpayer = await this.prisma.taxpayer.findFirst({
+      where: { id: mukellefId, tenantId },
+      select: { firstName: true, lastName: true, companyName: true, type: true },
+    });
+    const t = taxpayer as any;
+    const mukellefName = t?.type === 'TUZEL_KISI'
+      ? t.companyName || ''
+      : `${t?.firstName ?? ''} ${t?.lastName ?? ''}`.trim();
+
+    // 4) Word üret
+    const wordBuffer = await this.generateWord(files, allDates, {
+      mukellef: mukellefName || undefined,
+      donem,
+    });
+
+    // 5) Arşive kaydet
+    const safeMukellef = (mukellefName || 'fisler').replace(/[^a-zA-Z0-9_-]/g, '_').slice(0, 40);
+    const filename = `${safeMukellef}_${donem}.docx`;
+    let outputId: string | null = null;
+    try {
+      const rec = await this.saveOutput({
+        tenantId,
+        buffer: wordBuffer,
+        filename,
+        fileCount: files.length,
+        mukellefName: mukellefName || undefined,
+        donem,
+        createdBy,
+      });
+      outputId = rec.id;
+    } catch (err: any) {
+      this.logger.error(`Word kaydetme hatası: ${err.message}`);
+    }
+
+    return {
+      outputId,
+      filename,
+      fileCount: files.length,
+      downloadUrl: outputId ? `/api/v1/fis-yazdirma/outputs/${outputId}/download` : undefined,
+    };
+  }
 
   private async preprocessImage(
     buffer: Buffer,

@@ -18,6 +18,8 @@ import { replaceSessionLucaRecordsInDb } from './session/session-record-replacem
 import { LucaService } from '../luca/luca.service';
 import { LucaAutoScraperService } from '../luca/luca-auto-scraper.service';
 import { AgentEventsService } from '../agent-events/agent-events.service';
+import { AutomationEventBus } from '../automations/automation-event-bus.service';
+import { Optional } from '@nestjs/common';
 import { logAiUsage } from '../common/ai-usage-logger';
 import { randomUUID } from 'crypto';
 import * as ExcelJS from 'exceljs';
@@ -39,6 +41,7 @@ export class KdvControlService {
     @Inject(forwardRef(() => LucaAutoScraperService))
     private lucaAutoScraper: LucaAutoScraperService,
     private agentEvents: AgentEventsService,
+    @Optional() private readonly automationEventBus?: AutomationEventBus,
   ) {}
 
   /**
@@ -3648,6 +3651,32 @@ export class KdvControlService {
           create: { taxpayerId: session.taxpayerId, tenantId, year, month, kdvKontrolEdildi: true },
           update: { kdvKontrolEdildi: true },
         });
+
+        // Otomasyon event'i: KDV kontrolü kilitlendi
+        if (this.automationEventBus) {
+          try {
+            const taxpayer = await this.prisma.taxpayer.findUnique({
+              where: { id: session.taxpayerId },
+              select: { id: true, type: true, firstName: true, lastName: true, companyName: true, taxNumber: true },
+            });
+            const t = taxpayer as any;
+            const unvan = t?.type === 'TUZEL_KISI'
+              ? t.companyName || ''
+              : `${t?.firstName ?? ''} ${t?.lastName ?? ''}`.trim();
+            this.automationEventBus.emit('Taxpayer.KdvKontrolKilitlendi', {
+              tenantId,
+              taxpayerId: session.taxpayerId,
+              taxpayerUnvan: unvan || '(isim yok)',
+              taxpayerVkn: t?.taxNumber ?? '',
+              year,
+              month,
+              sessionId: session.id,
+              periodLabel: session.periodLabel,
+            });
+          } catch (err: any) {
+            this.logger.warn(`KDV kilitleme event yayını başarısız: ${err.message}`);
+          }
+        }
       }
     }
 
