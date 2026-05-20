@@ -11,10 +11,13 @@ import {
   FileInput,
   Inbox,
   Loader2,
+  LogOut,
   MessageSquare,
   RefreshCw,
   Send,
   Settings,
+  ShieldAlert,
+  Smartphone,
   Wallet,
 } from 'lucide-react';
 import { api } from '@/lib/api';
@@ -123,6 +126,37 @@ export default function HatirlatmalarPage() {
   const whatsappStatus = evrakQuery.data?.whatsapp || tahsilatQuery.data?.whatsapp;
   const whatsappReady = Boolean(whatsappStatus?.ready);
 
+  // ─── QR (Baileys) bağlantı durumu ──────────────────────────────
+  const qrStatusQuery = useQuery<{
+    connected: boolean;
+    phone?: string;
+    qrDataUrl?: string;
+    lastError?: string;
+    initSecondsAgo?: number;
+    reconnectAttempts?: number;
+  }>({
+    queryKey: ['wa-qr-status'],
+    queryFn: async () => (await api.get('/whatsapp-qr/status')).data,
+    refetchInterval: 3000,
+  });
+
+  const qrConnect = useMutation({
+    mutationFn: async () => (await api.post('/whatsapp-qr/connect')).data,
+    onSuccess: () => {
+      toast.success('QR oturumu başlatılıyor…');
+      qc.invalidateQueries({ queryKey: ['wa-qr-status'] });
+    },
+    onError: (e: any) => toast.error(e?.response?.data?.message || 'QR başlatılamadı'),
+  });
+
+  const qrDisconnect = useMutation({
+    mutationFn: async () => (await api.delete('/whatsapp-qr')).data,
+    onSuccess: () => {
+      toast.success('QR oturumu kapatıldı');
+      qc.invalidateQueries({ queryKey: ['wa-qr-status'] });
+    },
+  });
+
   const totals = useMemo(() => {
     const tahsilatTutar = tahsilatRows
       .filter((r) => r.gonderilebilir)
@@ -191,6 +225,114 @@ export default function HatirlatmalarPage() {
           </div>
         </div>
       )}
+
+      {/* QR (Baileys) Bağlantı Bölümü */}
+      <section className="rounded-2xl overflow-hidden mb-4" style={{ background: 'rgba(255,255,255,0.025)', border: '1px solid rgba(255,255,255,0.07)' }}>
+        <div className="px-5 py-4 flex items-start justify-between gap-3" style={{ borderBottom: '1px solid rgba(255,255,255,0.06)' }}>
+          <div className="flex items-start gap-3">
+            <span className="w-10 h-10 rounded-xl inline-flex items-center justify-center" style={{ background: 'rgba(212,184,118,0.12)', border: '1px solid rgba(212,184,118,0.28)' }}>
+              <Smartphone size={17} style={{ color: GOLD }} />
+            </span>
+            <div>
+              <h2 className="text-[16px] font-semibold" style={{ color: '#fafaf9', fontFamily: 'Fraunces, serif' }}>WhatsApp QR (Kişisel Hat)</h2>
+              <p className="text-[12.5px] mt-1" style={{ color: 'rgba(250,250,249,0.48)' }}>Meta Cloud API'sinin yanında kişisel WA hesabını QR ile bağla. Resmi olmayan yol — ban riski var.</p>
+            </div>
+          </div>
+        </div>
+        <div className="p-5">
+          {qrStatusQuery.data?.connected ? (
+            <div className="flex items-center justify-between gap-3">
+              <div className="flex items-center gap-3">
+                <CheckCircle2 size={24} style={{ color: '#10b981' }} />
+                <div>
+                  <div className="text-[14px] font-medium" style={{ color: '#fafaf9' }}>Bağlı</div>
+                  <div className="text-[12px]" style={{ color: 'rgba(250,250,249,0.6)' }}>
+                    Numara: +{qrStatusQuery.data.phone}
+                  </div>
+                </div>
+              </div>
+              <button
+                onClick={() => {
+                  if (confirm('QR oturumunu kapatmak istediğine emin misin?')) qrDisconnect.mutate();
+                }}
+                disabled={qrDisconnect.isPending}
+                className="inline-flex items-center gap-2 px-3 py-1.5 rounded-md text-[12px] font-medium"
+                style={{ background: 'rgba(239,68,68,0.1)', border: '1px solid rgba(239,68,68,0.3)', color: '#f87171' }}
+              >
+                <LogOut size={14} /> Bağlantıyı Kes
+              </button>
+            </div>
+          ) : qrStatusQuery.data?.qrDataUrl ? (
+            <div className="flex flex-col items-center gap-3">
+              <div className="text-[12.5px] text-center" style={{ color: 'rgba(250,250,249,0.7)' }}>
+                Telefon → WhatsApp → <b>Ayarlar</b> → <b>Bağlı Cihazlar</b> → <b>Cihaz Bağla</b> ile aşağıdaki QR'ı okutun:
+              </div>
+              <div className="rounded-lg p-2" style={{ background: '#fff' }}>
+                <img src={qrStatusQuery.data.qrDataUrl} alt="WhatsApp QR" width={240} height={240} />
+              </div>
+              <button
+                onClick={() => qrDisconnect.mutate()}
+                className="text-[11px] underline"
+                style={{ color: 'rgba(250,250,249,0.5)' }}
+              >
+                İptal et
+              </button>
+            </div>
+          ) : qrStatusQuery.data?.lastError ? (
+            <div className="text-center">
+              <ShieldAlert size={32} style={{ color: '#f87171', margin: '0 auto' }} />
+              <div className="mt-2 text-[14px] font-medium" style={{ color: '#f87171' }}>QR Oluşturulamadı</div>
+              <div className="mt-1 text-[12px]" style={{ color: 'rgba(250,250,249,0.6)' }}>
+                {qrStatusQuery.data.lastError}
+              </div>
+              <button
+                onClick={() => qrConnect.mutate()}
+                disabled={qrConnect.isPending}
+                className="mt-3 inline-flex items-center gap-2 px-4 py-2 rounded-md text-[13px] font-medium text-white shadow-sm"
+                style={{ background: GOLD }}
+              >
+                {qrConnect.isPending && <Loader2 size={14} className="animate-spin" />}
+                <RefreshCw size={14} /> Tekrar Dene
+              </button>
+            </div>
+          ) : (qrStatusQuery.data?.initSecondsAgo ?? 0) > 0 ? (
+            <div className="flex flex-col items-center gap-2">
+              <Loader2 size={28} className="animate-spin" style={{ color: GOLD }} />
+              <div className="text-[12.5px]" style={{ color: 'rgba(250,250,249,0.7)' }}>
+                QR hazırlanıyor… {qrStatusQuery.data?.initSecondsAgo}sn
+              </div>
+              {(qrStatusQuery.data?.initSecondsAgo ?? 0) > 30 && (
+                <button
+                  onClick={() => qrDisconnect.mutate()}
+                  className="text-[11px] underline mt-1"
+                  style={{ color: 'rgba(250,250,249,0.5)' }}
+                >
+                  Sıfırla ve baştan başla
+                </button>
+              )}
+            </div>
+          ) : (
+            <div className="flex items-center justify-between gap-3">
+              <div className="flex items-center gap-3">
+                <Smartphone size={24} style={{ color: 'rgba(250,250,249,0.4)' }} />
+                <div>
+                  <div className="text-[14px]" style={{ color: 'rgba(250,250,249,0.8)' }}>Henüz oturum yok</div>
+                  <div className="text-[12px]" style={{ color: 'rgba(250,250,249,0.5)' }}>QR üretip telefonundan okut.</div>
+                </div>
+              </div>
+              <button
+                onClick={() => qrConnect.mutate()}
+                disabled={qrConnect.isPending}
+                className="inline-flex items-center gap-2 px-4 py-2 rounded-md text-[13px] font-medium text-white shadow-sm"
+                style={{ background: GOLD }}
+              >
+                {qrConnect.isPending ? <Loader2 size={14} className="animate-spin" /> : <RefreshCw size={14} />}
+                QR Üret ve Bağlan
+              </button>
+            </div>
+          )}
+        </div>
+      </section>
 
       <div className="grid grid-cols-1 xl:grid-cols-[0.85fr_1.15fr] gap-4">
         <section className="rounded-2xl overflow-hidden" style={{ background: 'rgba(255,255,255,0.025)', border: '1px solid rgba(255,255,255,0.07)' }}>
