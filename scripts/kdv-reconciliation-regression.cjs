@@ -676,6 +676,51 @@ const cases = [
       { record: 'r-perihan-superonline', image: 'img-perihan-superonline', status: 'MATCHED' },
     ],
   },
+  {
+    name: 'raw invoice no missing trailing digit keeps OCR belge no for split invoice total',
+    sessionType: 'KDV_191',
+    records: [
+      record({
+        id: 'r-perihan-anpa-a',
+        belgeNo: 'E152026000008471',
+        date: '2026-04-12',
+        kdv: 18.96,
+        oran: 1,
+        karsiTaraf: 'ANPA GROSS MA\uFFFDAZAC',
+        rawData: { karsiTaraf: 'ANPA GROSS MA\uFFFDAZAC' },
+      }),
+      record({
+        id: 'r-perihan-anpa-b',
+        belgeNo: 'E152026000008471',
+        date: '2026-04-12',
+        kdv: 0.5,
+        oran: 1,
+        karsiTaraf: 'ANPA GROSS MA\uFFFDAZAC',
+        rawData: { karsiTaraf: 'ANPA GROSS MA\uFFFDAZAC' },
+      }),
+    ],
+    images: [
+      image({
+        id: 'img-perihan-anpa',
+        belgeNo: 'E152026000008471',
+        date: '12.04.2026',
+        kdv: '19,46',
+        breakdown: [{ oran: 1, tutar: 19.46 }],
+        satici: 'ANPA GROSS MA\u011EAZACILIK ANON\u0130M \u015E\u0130RKET\u0130',
+        rawText: [
+          'Fatura No: E15202600000847',
+          'Fatura Tarihi: 12-04-2026',
+          'Hesaplanan KDV 19,46 TL',
+        ].join('\n'),
+        belgeTipi: 'EFATURA',
+      }),
+    ],
+    expectedStats: { matched: 2, partial: 0, unmatched: 0, needsReview: 0 },
+    expectedRows: [
+      { record: 'r-perihan-anpa-a', image: 'img-perihan-anpa', status: 'MATCHED' },
+      { record: 'r-perihan-anpa-b', image: 'img-perihan-anpa', status: 'MATCHED' },
+    ],
+  },
 ];
 
 (async () => {

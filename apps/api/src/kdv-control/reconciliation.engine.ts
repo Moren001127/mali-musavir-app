@@ -887,6 +887,16 @@ export class ReconciliationEngine {
   private resolveImageBelgeNo(image: ReceiptImage): string | null {
     const direct = String(image.confirmedBelgeNo || image.ocrBelgeNo || '').trim();
     const rawInvoiceNo = this.extractInvoiceNoFromRawText(String((image as any).ocrRawText || ''));
+    if (rawInvoiceNo && direct && !this.isOcrHeaderWordAsBelgeNo(direct)) {
+      const normDirect = this.normalizeBelgeNo(direct);
+      const normRaw = this.normalizeBelgeNo(rawInvoiceNo);
+      const directLooksComplete =
+        normDirect.includes('20') &&
+        normRaw.includes('20') &&
+        normDirect.startsWith(normRaw) &&
+        normDirect.length - normRaw.length === 1;
+      if (this.sameBelgeNo(direct, rawInvoiceNo) || directLooksComplete) return direct;
+    }
     if (rawInvoiceNo) return rawInvoiceNo;
     if (direct && !this.isOcrHeaderWordAsBelgeNo(direct)) return direct;
 

@@ -67,6 +67,9 @@ export function companyNameSimilarity(a: string, b: string): number {
       .replace(/Å/g, 'S').replace(/Ä°/g, 'I')
       .replace(/Ä/g, 'G').replace(/Ã‡/g, 'C')
       .replace(/Ãœ/g, 'U').replace(/Ã–/g, 'O')
+      .replace(/\uFFFD/g, 'G')
+      .normalize('NFD')
+      .replace(/[\u0300-\u036f]/g, '')
       .replace(/[.,;:'"\-/\\()&]/g, ' ')
       .replace(/\s+/g, ' ')
       .trim();
@@ -91,6 +94,9 @@ export function companyNameSimilarity(a: string, b: string): number {
       .replace(/Å/g, 'S').replace(/Ä°/g, 'I')
       .replace(/Ä/g, 'G').replace(/Ã‡/g, 'C')
       .replace(/Ãœ/g, 'U').replace(/Ã–/g, 'O')
+      .replace(/\uFFFD/g, 'G')
+      .normalize('NFD')
+      .replace(/[\u0300-\u036f]/g, '')
       .replace(/\s+/g, '');
     return stringSimilarity(flat(a), flat(b));
   }
