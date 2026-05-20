@@ -4,7 +4,7 @@
 */
 (function () {
   // Agent versiyon — UI'da gösterilir, debug için kritik
-  const AGENT_VERSION = '1.37.88';
+  const AGENT_VERSION = '1.37.89';
   const AGENT_INSTANCE_ID = 'mai_' + Date.now().toString(36) + '_' + Math.random().toString(36).slice(2, 8);
 
   // === VERSION-AWARE RELOAD ===
@@ -67,8 +67,19 @@
     try { window.__lucaJobRunning = false; } catch {}
     try { resetClassicLucaGirisBlankState(); } catch {}
     try { resetClassicLucaRepairState(); } catch {}
-    try { setStatus('Luca teknik kilit temizleniyor; oturum yeniden deneniyor'); } catch {}
-    try { location.href = LUCA_SSO_MAIN_URL; } catch {}
+    try {
+      delete window.__morenLucaEntryRedirectAt;
+      delete window.__morenSsoGirisStartedAt;
+      delete window.__morenSsoGirisDirectClassicAt;
+      delete window.__morenSsoGirisWaitLogAt;
+    } catch {}
+    const hardReset = /FRAME_STUCK|GIRIS_DO_BLANK|FIRMA_OR_FRAME|SirketCombo|firma frame|classic frame/i.test(String(reason || ''));
+    try {
+      setStatus(hardReset
+        ? 'Luca klasik ekran kilidi temizleniyor; giristen yeniden deneniyor'
+        : 'Luca teknik kilit temizleniyor; oturum yeniden deneniyor');
+    } catch {}
+    try { location.href = hardReset ? LUCA_LOGIN_ENTRY_URL : LUCA_SSO_MAIN_URL; } catch {}
     setTimeout(() => {
       if (window.__morenAgent?.instanceId === AGENT_INSTANCE_ID) {
         restartAgentRuntime(reason || 'transient luca lock');
