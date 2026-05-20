@@ -79,7 +79,7 @@ export class ActionDispatcherService {
       case 'http_get':
         return this.httpGet(args);
       case 'check_official_gazette':
-        return this.stubResponse(toolName, 'Resmi Gazete tetikleyicisi Faz 7\'de açılacak.');
+        return this.checkOfficialGazette(args);
 
       // ---------------- BELGE / OCR / LUCA ----------------
       case 'extract_invoice_fields':
@@ -313,7 +313,117 @@ ${text}`;
   }
 
   // ---------------------------------------------------------------
-  // STUB (Faz 6/7)
+  // RESMİ GAZETE TAKİBİ (Faz 7)
+  // ---------------------------------------------------------------
+  /**
+   * Resmi Gazete sayfasını çeker, Claude ile yapısal olarak parse eder,
+   * verilen anahtar kelimelerle eşleşenleri filtreler ve her biri için özet üretir.
+   *
+   * Tek bir Claude çağrısıyla: extract + filter + summarize.
+   *
+   * RG'nin sitesi bot koruması veya JS gerektirebilir — fetch başarısız olursa
+   * { error, hint } döner, runner bunu "kısmi" olarak işaretler.
+   */
+  private async checkOfficialGazette(args: any) {
+    const keywords: string[] = Array.isArray(args.keywords) ? args.keywords : [];
+    const sinceDays = Number(args.sinceDays ?? 1);
+    if (keywords.length === 0) {
+      throw new Error('check_official_gazette: keywords boş olamaz (örn. ["KDV", "katma değer vergisi"]).');
+    }
+
+    // Bugünden N gün geriye giderek günlük endeksleri tara
+    const today = new Date();
+    const targets: { url: string; tarih: string }[] = [];
+    for (let i = 0; i < Math.min(sinceDays, 7); i++) {
+      const d = new Date(today);
+      d.setDate(d.getDate() - i);
+      const tarih = d.toISOString().slice(0, 10);
+      targets.push({
+        url: `https://www.resmigazete.gov.tr/?tarih=${tarih}`,
+        tarih,
+      });
+    }
+
+    const matches: any[] = [];
+    let claudeCost = 0;
+    const fetchErrors: string[] = [];
+
+    for (const { url, tarih } of targets) {
+      let html = '';
+      try {
+        const res = await fetch(url, {
+          headers: {
+            'User-Agent':
+              'Mozilla/5.0 (X11; Linux x86_64; rv:121.0) Gecko/20100101 Firefox/121.0',
+            Accept: 'text/html,application/xhtml+xml,application/xml',
+            'Accept-Language': 'tr-TR,tr;q=0.9',
+          },
+          signal: AbortSignal.timeout(15000),
+        });
+        if (!res.ok) {
+          fetchErrors.push(`${tarih}: HTTP ${res.status}`);
+          continue;
+        }
+        html = await res.text();
+      } catch (err: any) {
+        fetchErrors.push(`${tarih}: ${err.message}`);
+        continue;
+      }
+
+      if (html.length < 500) {
+        fetchErrors.push(`${tarih}: HTML çok kısa (${html.length} byte) — bot koruması olabilir.`);
+        continue;
+      }
+
+      // HTML'i Claude'a yolla, JSON çıktısı al
+      const prompt = `Aşağıdaki Resmi Gazete HTML sayfasını (${tarih} tarihli) analiz et.
+Sadece şu anahtar kelimelerle ilgili maddeleri çıkar: ${keywords.join(', ')}.
+Anahtar kelimeler büyük/küçük harf duyarsız aranır.
+
+Çıktı formatı (sadece JSON, başka açıklama yapma):
+[
+  {
+    "baslik": "maddenin başlığı",
+    "bolum": "Yürütme / Yargı / Tebliğ / Yönetmelik / Kanun / Karar (varsa)",
+    "ozet": "1-2 cümlelik Türkçe özet — neyi düzenliyor",
+    "ilgisi": "Hangi anahtar kelimeyle eşleşti ve mali müşavir için neden önemli (1 cümle)"
+  }
+]
+
+Hiç eşleşme yoksa: []
+
+HTML:
+---
+${html.slice(0, 60000)}`;
+
+      try {
+        const result = await this.claudeCall(prompt, 'claude-haiku-4-5-20251001', 2000);
+        claudeCost += result.cost;
+        const cleaned = result.text
+          .replace(/^```(?:json)?\s*/i, '')
+          .replace(/\s*```\s*$/, '')
+          .trim();
+        const items = JSON.parse(cleaned);
+        if (Array.isArray(items)) {
+          for (const it of items) matches.push({ ...it, tarih });
+        }
+      } catch (err: any) {
+        fetchErrors.push(`${tarih}: Claude parse hatası — ${err.message}`);
+      }
+    }
+
+    return {
+      matches,
+      count: matches.length,
+      keywords,
+      sinceDays,
+      claudeCostUsd: Math.round(claudeCost * 10000) / 10000,
+      ...(fetchErrors.length > 0 && { fetchErrors }),
+    };
+  }
+
+  // ---------------------------------------------------------------
+  // STUB (Faz 6)
   // ---------------------------------------------------------------
 
   private stubResponse(toolName: string, message: string) {

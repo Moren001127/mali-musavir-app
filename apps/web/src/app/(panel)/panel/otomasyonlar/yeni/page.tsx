@@ -157,10 +157,51 @@ export default function YeniOtomasyonPage() {
         </div>
       </div>
 
-      <p className="mb-6 text-sm text-stone-600 dark:text-stone-300">
+      <p className="mb-4 text-sm text-stone-600 dark:text-stone-300">
         Otomatik yapılmasını istediğin işi Türkçe yaz. Moren AI cümleyi okuyup uygun
         otomasyonu kuracak. Sen önizlemeyi inceleyip onayladığında çalışmaya başlar.
       </p>
+
+      {/* Yetenek kartı */}
+      <details className="mb-6 rounded-lg border border-stone-200 dark:border-stone-700 bg-stone-50 dark:bg-stone-800 p-3 text-xs">
+        <summary className="cursor-pointer font-medium text-stone-700 dark:text-stone-200">
+          Moren AI Otomasyon ne yapabilir, ne yapamaz?
+        </summary>
+        <div className="mt-3 grid gap-3 sm:grid-cols-2">
+          <div>
+            <div className="mb-1 font-semibold text-emerald-700 dark:text-emerald-400">
+              YAPABİLİR
+            </div>
+            <ul className="space-y-1 text-stone-600 dark:text-stone-300">
+              <li>• Mükellef/mizan/fatura/beyan verisi sorgula</li>
+              <li>• In-app bildirim, e-posta, WhatsApp şablon mesajı gönder</li>
+              <li>• Belgeden Claude ile fatura alanı çıkar (extract_invoice_fields)</li>
+              <li>• Resmi Gazete'yi anahtar kelimelerle tarar, özetler</li>
+              <li>• Tetikleyici: cron (her dakika/saat/gün/ay), olay, manuel</li>
+              <li>• Olaylar: evrak değişimi, müvekkel kaydı, WA mesajı, belge yükleme</li>
+              <li>• for_each / branch_if / parallel / wait / format_list akış kontrolü</li>
+            </ul>
+          </div>
+          <div>
+            <div className="mb-1 font-semibold text-rose-700 dark:text-rose-400">
+              YAPAMAZ (henüz)
+            </div>
+            <ul className="space-y-1 text-stone-600 dark:text-stone-300">
+              <li>• Luca'ya direkt fiş atma (entegrasyon yok)</li>
+              <li>• GİB IVD'den tebligat çekme (agent aktif değil)</li>
+              <li>• Portal arayüzündeki butonları tıklatma</li>
+              <li>• PDF/Resim OCR (StorageService bağlantısı yok)</li>
+              <li>• SMS gönderme (sağlayıcı yapılandırılmamış)</li>
+              <li>• Dış sistemlerden veri çekme (allowlist dışı domain)</li>
+              <li>• Dakikadan kısa sürede (saniye/realtime)</li>
+            </ul>
+          </div>
+        </div>
+        <div className="mt-3 rounded bg-amber-50 dark:bg-amber-950/30 p-2 text-stone-700 dark:text-stone-200 border border-amber-200 dark:border-amber-900/50">
+          <strong>İpucu:</strong> Yapamayacağı bir şey istersen güven puanı 0 ile "yapamıyorum"
+          mesajı görürsün. Sistem sessizce yanlış otomasyon kurmaz.
+        </div>
+      </details>
 
       {/* Cümle textarea */}
       <div className="rounded-2xl border border-stone-200 dark:border-stone-700 bg-white dark:bg-stone-900 p-6 shadow-sm">
