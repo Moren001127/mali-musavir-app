@@ -115,7 +115,7 @@ export class EDefterControlService {
       donem: params.donem,
       donemTipi: params.donemTipi,
       tip: 'EDEFTER_FIS_LISTESI',
-      createdBy: params.createdBy,
+      createdBy: params.createdBy || undefined,
       targetDeviceId,
       preferredAgent: 'local-node',
       mukellefAdi:
@@ -129,14 +129,36 @@ export class EDefterControlService {
       .appendJobLog(detailJob.id, 'e-Defter on kontrol icin Detay Fis Listesi cekimi siraya alindi')
       .catch(() => undefined);
 
+    return { detailJob, mizanJob: null };
+  }
+
+  async createCompanionMizanJob(params: {
+    tenantId: string;
+    detailJobId: string;
+    mukellefId: string;
+    donem: string;
+    donemTipi?: EDefterDonemTipi;
+    targetDeviceId?: string | null;
+    createdBy?: string | null;
+  }) {
+    const taxpayer = await (this.prisma as any).taxpayer.findFirst({
+      where: { id: params.mukellefId, tenantId: params.tenantId },
+      select: { id: true, firstName: true, lastName: true, companyName: true, taxNumber: true },
+    });
+    if (!taxpayer) throw new NotFoundException('Mukellef bulunamadi');
+
+    const requestedDeviceId = params.targetDeviceId?.trim() || undefined;
+    const targetDeviceId =
+      requestedDeviceId && !/^DEV-/i.test(requestedDeviceId) ? requestedDeviceId : undefined;
+
     const mizanJob = await this.luca.createFetchJob({
       tenantId: params.tenantId,
-      sessionId: detailJob.id,
+      sessionId: params.detailJobId,
       mukellefId: params.mukellefId,
       donem: params.donem,
       donemTipi: params.donemTipi,
       tip: 'MIZAN',
-      createdBy: params.createdBy,
+      createdBy: params.createdBy || undefined,
       targetDeviceId,
       preferredAgent: 'local-node',
       mukellefAdi:
@@ -149,7 +171,7 @@ export class EDefterControlService {
       .appendJobLog(mizanJob.id, 'e-Defter on kontrol icin eslik eden Mizan cekimi siraya alindi')
       .catch(() => undefined);
 
-    return { detailJob, mizanJob };
+    return mizanJob;
   }
 
   async importFromExcel(params: {

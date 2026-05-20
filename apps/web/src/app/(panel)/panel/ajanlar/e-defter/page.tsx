@@ -155,7 +155,7 @@ export default function EDefterAgentPage() {
       setSelectedSessionId(null);
       setLucaStatus(data.mizanJobId
         ? 'Luca ajani Detay Fis Listesi ve Mizan raporlarini hazirliyor...'
-        : 'Luca ajani Detay Fis Listesi raporunu hazirliyor...');
+        : 'Luca ajani Detay Fis Listesi raporunu hazirliyor; bitince Mizan otomatik siraya alinacak...');
       toast.info('e-Defter Detay Fiş Listesi job oluşturuldu');
     },
     onError: (e: any) => toast.error(e?.response?.data?.message || e?.message || 'Luca job olusturulamadi'),

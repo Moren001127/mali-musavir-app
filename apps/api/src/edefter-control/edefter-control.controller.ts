@@ -124,9 +124,9 @@ export class EDefterControlController {
     });
     return {
       jobId: jobs.detailJob.id,
-      mizanJobId: jobs.mizanJob?.id || null,
+      mizanJobId: null,
       status: jobs.detailJob.status,
-      mizanStatus: jobs.mizanJob?.status || null,
+      mizanStatus: null,
     };
   }
 
@@ -167,6 +167,7 @@ export class EDefterControlController {
     if (!mukellefId || !donem) throw new BadRequestException('mukellefId ve donem query parametreleri gerekli');
 
     const tenantId = await this.resolveTenantFromAgentToken(agentToken);
+    let sourceJob: any = null;
     if (jobId) {
       const job = await this.luca.getJob(jobId, tenantId).catch(() => null);
       if (!job) throw new BadRequestException('e-Defter upload reddedildi: job bulunamadi');
@@ -179,6 +180,7 @@ export class EDefterControlController {
       if (String(job.donem || '').replace('/', '-') !== String(donem || '').replace('/', '-')) {
         throw new BadRequestException('e-Defter upload reddedildi: donem job ile uyusmuyor');
       }
+      sourceJob = job;
     }
 
     try {
@@ -190,8 +192,29 @@ export class EDefterControlController {
         buffer: file.buffer,
         createdBy: jobId ? `edefter-control:${jobId}` : 'luca-agent',
       });
+      const mizanJob = jobId
+        ? await this.service
+            .createCompanionMizanJob({
+              tenantId,
+              detailJobId: jobId,
+              mukellefId,
+              donem,
+              donemTipi,
+              targetDeviceId: sourceJob?.targetDeviceId,
+              createdBy: sourceJob?.createdBy || 'luca-agent',
+            })
+            .catch((err: any) => {
+              this.luca
+                .appendJobLog(
+                  jobId,
+                  `e-Defter eslik eden mizan job olusturulamadi: ${err?.message || 'bilinmeyen'}`,
+                )
+                .catch(() => undefined);
+              return null;
+            })
+        : null;
       if (jobId) await this.luca.markJobDone(jobId, result.rows).catch(() => undefined);
-      return { ok: true, ...result };
+      return { ok: true, ...result, mizanJobId: mizanJob?.id || null };
     } catch (err: any) {
       if (jobId) await this.luca.markJobFailed(jobId, err?.message || 'bilinmeyen').catch(() => undefined);
       throw new BadRequestException(`e-Defter Detay Fis Listesi import hatasi: ${err?.message || 'bilinmeyen'}`);

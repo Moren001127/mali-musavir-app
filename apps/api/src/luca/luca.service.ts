@@ -219,6 +219,27 @@ export class LucaService {
     if (!job) return null;
     if (opts.tenantId && job.tenantId !== opts.tenantId) return null;
 
+    if (job.mukellefId) {
+      const fiveMinAgo = new Date(Date.now() - 5 * 60 * 1000);
+      const runningSameMukellef = await (this.prisma as any).lucaFetchJob.findFirst({
+        where: {
+          tenantId: job.tenantId,
+          mukellefId: job.mukellefId,
+          status: 'running',
+          startedAt: { gte: fiveMinAgo },
+          id: { not: jobId },
+        },
+        select: { id: true, tip: true },
+      });
+      if (runningSameMukellef) {
+        await this.appendJobLog(
+          job.id,
+          `Ayni mukellefte ${runningSameMukellef.tip || 'baska'} Luca isi calisiyor; bu is sirada bekliyor`,
+        ).catch(() => undefined);
+        return null;
+      }
+    }
+
     const deviceId = opts.deviceId?.trim();
     const canClaimUnassigned = this.canClaimUnassignedLucaJob(deviceId);
     const where: any = {
