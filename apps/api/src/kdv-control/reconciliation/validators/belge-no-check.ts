@@ -9,8 +9,9 @@ export function stripLeadingZeros(value: string): string {
 }
 
 export function eInvoiceComparableKey(normalizedBelgeNo: string): string {
-  const m = normalizedBelgeNo.match(/^([A-Z]{2,4})(20\d{2})(\d{6,14})$/)
-    ?? normalizedBelgeNo.match(/^([A-Z]\d{2})(20\d{2})(\d{6,14})$/);
+  const normalized = normalizeCommonOcrSeries(normalizedBelgeNo);
+  const m = normalized.match(/^([A-Z]{2,4})(20\d{2})(\d{6,14})$/)
+    ?? normalized.match(/^([A-Z]\d{2})(20\d{2})(\d{6,14})$/);
   if (!m) return normalizedBelgeNo;
   return `${m[1]}${m[2]}${m[3].replace(/^0+/, '') || '0'}`;
 }
@@ -19,11 +20,25 @@ export function sameBelgeNo(a: string, b: string): boolean {
   const normA = normalizeBelgeNo(a);
   const normB = normalizeBelgeNo(b);
   if (!normA || !normB) return false;
+  const seriesA = normalizeCommonOcrSeries(normA);
+  const seriesB = normalizeCommonOcrSeries(normB);
   return (
     normA === normB ||
+    seriesA === seriesB ||
     stripLeadingZeros(normA) === stripLeadingZeros(normB) ||
-    eInvoiceComparableKey(normA) === eInvoiceComparableKey(normB)
+    eInvoiceComparableKey(seriesA) === eInvoiceComparableKey(seriesB)
   );
+}
+
+function normalizeCommonOcrSeries(value: string): string {
+  const norm = normalizeBelgeNo(value);
+  // Superonline/Turkcell series "01S" is often OCR'd as numeric "015".
+  // Keep this narrow: only the first three-character e-invoice series is normalized.
+  const m = norm.match(/^([0O][1I])5(20\d{2}\d{6,14})$/);
+  if (m) {
+    return `${m[1].replace(/O/g, '0').replace(/I/g, '1')}S${m[2]}`;
+  }
+  return norm;
 }
 
 export function stringSimilarity(a: string, b: string): number {

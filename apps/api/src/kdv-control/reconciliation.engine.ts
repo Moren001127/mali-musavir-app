@@ -420,6 +420,7 @@ export class ReconciliationEngine {
     const imgBelgeNo = this.resolveImageBelgeNo(image);
     const imgDate = image.confirmedDate || image.ocrDate;
     const imgKdv = image.confirmedKdvTutari || image.ocrKdvTutari;
+    const imgKdvCandidates = this.getImageKdvCandidateAmounts(image);
     const imgTevkifat = parseMoneyLike(
       (image as any).confirmedKdvTevkifat ?? (image as any).ocrKdvTevkifat,
     );
@@ -552,11 +553,18 @@ export class ReconciliationEngine {
             const totalDiff = Number.isFinite(imgKdvNum)
               ? Math.abs(recordKdv - imgKdvNum) / (recordKdv || 1)
               : 1;
+            const bestRawCandidate = this.findBestAmountCandidate(recordKdv, imgKdvCandidates);
             if (totalDiff < 0.01 && (belgeNoExact || this.isOkcFisImage(image))) {
               score += 0.3;
               kdvExact = true;
               reasons.push(
                 `KDV toplamı eşleşti: Luca ${this.fmtAmt(recordKdv)} = Fatura ${this.fmtAmt(imgKdvNum)}; OCR kalem kırılımı eksik/hatalı olduğu için TOPKDV toplamı esas alındı`,
+              );
+            } else if (bestRawCandidate && bestRawCandidate.diff < 0.01 && belgeNoExact) {
+              score += 0.3;
+              kdvExact = true;
+              reasons.push(
+                `Ham fatura metnindeki KDV toplami eslesti: Luca ${this.fmtAmt(recordKdv)} = Fatura ${this.fmtAmt(bestRawCandidate.amount)}; OCR kalem/matrah ayrimi hatali oldugu icin acik KDV satiri esas alindi`,
               );
             } else {
               reasons.push(
@@ -569,11 +577,18 @@ export class ReconciliationEngine {
           const totalDiff = Number.isFinite(imgKdvNum)
             ? Math.abs(recordKdv - imgKdvNum) / (recordKdv || 1)
             : 1;
+          const bestRawCandidate = this.findBestAmountCandidate(recordKdv, imgKdvCandidates);
           if (totalDiff < 0.01 && (belgeNoExact || this.isOkcFisImage(image) || rateAwareImageBreakdown.length === 1)) {
             score += 0.3;
             kdvExact = true;
             reasons.push(
               `KDV toplamı eşleşti: Luca ${this.fmtAmt(recordKdv)} = Fatura ${this.fmtAmt(imgKdvNum)}; OCR oran kırılımı güvenilir olmadığı için toplam esas alındı`,
+            );
+          } else if (bestRawCandidate && bestRawCandidate.diff < 0.01 && belgeNoExact) {
+            score += 0.3;
+            kdvExact = true;
+            reasons.push(
+              `Ham fatura metnindeki KDV toplami eslesti: Luca ${this.fmtAmt(recordKdv)} = Fatura ${this.fmtAmt(bestRawCandidate.amount)}; OCR oran kirilimi guvenilir olmadigi icin toplam esas alindi`,
             );
           } else {
             // Luca'da %20 var ama OCR breakdown'unda %20 yok — KESİN UYUMSUZ
@@ -597,6 +612,7 @@ export class ReconciliationEngine {
         if (!isNaN(imgKdvNum)) {
           const kdvCandidates = [
             { amount: imgKdvNum, label: 'OCR' },
+            ...imgKdvCandidates.map((amount) => ({ amount, label: 'RAW-KDV' })),
             ...(!isAlis && imgTevkifat > 0 && imgKdvNum > imgTevkifat
               ? [{ amount: imgKdvNum - imgTevkifat, label: 'TAM-Tevkifat' }]
               : []),
@@ -848,7 +864,12 @@ export class ReconciliationEngine {
       );
     }
     const strictMatch =
-      belgeNoExact && kdvExact && dateExact && !rateMismatched && !sellerMismatchBlocksStrict && !ambiguousSellerHard;
+      belgeNoExact &&
+      kdvExact &&
+      (dateExact || !isOkcFisi) &&
+      !rateMismatched &&
+      !sellerMismatchBlocksStrict &&
+      !ambiguousSellerHard;
 
     // Oran uyumsuzluğu varsa skoru sert düşür — drift bekle, aday bile olmasın
     if (rateMismatched) {
@@ -865,10 +886,30 @@ export class ReconciliationEngine {
 
   private resolveImageBelgeNo(image: ReceiptImage): string | null {
     const direct = String(image.confirmedBelgeNo || image.ocrBelgeNo || '').trim();
+    const rawInvoiceNo = this.extractInvoiceNoFromRawText(String((image as any).ocrRawText || ''));
+    if (rawInvoiceNo) return rawInvoiceNo;
     if (direct && !this.isOcrHeaderWordAsBelgeNo(direct)) return direct;
 
     const fallback = this.extractOkcReceiptNoFromRawText(String((image as any).ocrRawText || ''));
     return fallback || direct || null;
+  }
+
+  private extractInvoiceNoFromRawText(rawText: string): string | null {
+    if (!rawText) return null;
+    const azureSegment = rawText.split(/\[AZURE\]/i).pop() || rawText;
+    const text = azureSegment.replace(/\r?\n/g, ' | ').toLocaleUpperCase('tr-TR');
+    const patterns = [
+      /FATURA\s*(?:NO|NUMARASI|ID)\s*[:#]?\s*(?:\|\s*){0,4}([A-Z0-9]{0,4}\s*20\d{2}\s*\d{6,14}|\d{13,20})/gi,
+      /BELGE\s*(?:NO|NUMARASI)\s*[:#]?\s*(?:\|\s*){0,4}([A-Z0-9]{0,4}\s*20\d{2}\s*\d{6,14}|\d{13,20})/gi,
+    ];
+    for (const pattern of patterns) {
+      pattern.lastIndex = 0;
+      for (const match of text.matchAll(pattern)) {
+        const value = this.normalizeBelgeNo(match[1] || '');
+        if (value.length >= 13 && !/^\d{10,11}$/.test(value)) return value;
+      }
+    }
+    return null;
   }
 
   private isOcrHeaderWordAsBelgeNo(value: string): boolean {
@@ -901,6 +942,85 @@ export class ReconciliationEngine {
     if (posIslem?.[1]) return this.stripLeadingZeros(posIslem[1]) || posIslem[1];
 
     return null;
+  }
+
+  private getImageKdvCandidateAmounts(image: ReceiptImage): number[] {
+    const values: number[] = [];
+    const add = (value: unknown) => {
+      if (value == null || value === '') return;
+      const parsed = typeof value === 'number' ? value : this.parseTrUsAmount(String(value));
+      if (!Number.isFinite(parsed) || parsed <= 0 || parsed >= 100_000_000) return;
+      if (!values.some((v) => Math.abs(v - parsed) < 0.005)) values.push(parsed);
+    };
+
+    add((image as any).confirmedKdvTutari ?? (image as any).ocrKdvTutari);
+    for (const item of this.extractClaudeKdvCandidates(String((image as any).ocrRawText || ''))) add(item);
+    for (const item of this.extractExplicitKdvAmountsFromRawText(String((image as any).ocrRawText || ''))) add(item);
+    return values;
+  }
+
+  private findBestAmountCandidate(target: number, candidates: number[]): { amount: number; diff: number } | null {
+    if (!Number.isFinite(target) || target <= 0) return null;
+    const best = candidates
+      .map((amount) => ({ amount, diff: Math.abs(amount - target) / target }))
+      .sort((a, b) => a.diff - b.diff)[0];
+    return best || null;
+  }
+
+  private extractClaudeKdvCandidates(rawText: string): number[] {
+    const match = rawText.match(/\[CLAUDE\]\s*(\{[\s\S]*?\})\s*(?:\r?\n?\[AZURE\]|$)/i);
+    if (!match?.[1]) return [];
+    try {
+      const parsed = JSON.parse(match[1]);
+      return [parsed?.kdvTutari, parsed?.kdvTutariNet, parsed?.kdv]
+        .filter(Boolean)
+        .map((v) => this.parseTrUsAmount(String(v)))
+        .filter((n) => Number.isFinite(n));
+    } catch {
+      return [];
+    }
+  }
+
+  private extractExplicitKdvAmountsFromRawText(rawText: string): number[] {
+    if (!rawText) return [];
+    const values: number[] = [];
+    const add = (raw: string) => {
+      const parsed = this.parseTrUsAmount(raw);
+      if (Number.isFinite(parsed) && parsed > 0 && parsed < 100_000_000) values.push(parsed);
+    };
+    const flat = rawText.replace(/\r?\n/g, ' | ');
+    const explicitRe =
+      /HESAPLANAN\s+KDV\s*\(?\s*%?\s*\d{1,2}(?:[.,]\d{1,2})?\s*\)?\s*(?:TL)?[^0-9]{0,30}([\d]{1,3}(?:[.,]\d{3})*[.,]\d{1,2})/gi;
+    for (const match of flat.matchAll(explicitRe)) add(match[1]);
+
+    const telekomKdv = this.extractTelekomKdvAmountFromRawText(rawText);
+    if (telekomKdv != null) values.push(telekomKdv);
+    return values.filter((v, idx, arr) => arr.findIndex((x) => Math.abs(x - v) < 0.005) === idx);
+  }
+
+  private extractTelekomKdvAmountFromRawText(rawText: string): number | null {
+    const folded = rawText
+      .toLocaleUpperCase('tr-TR')
+      .normalize('NFD')
+      .replace(/[\u0300-\u036f]/g, '');
+    if (!/SUPERONLINE|TURKCELL|TURK\s*TELEKOM|VODAFONE/.test(folded)) return null;
+    const flat = folded.replace(/\r?\n/g, ' | ');
+    const kdvLabel = flat.match(/KDV\s*\(\s*%?\s*(\d{1,2})(?:[.,]\d{1,2})?\s*\)/i);
+    if (!kdvLabel?.[1]) return null;
+    const rate = parseInt(kdvLabel[1], 10);
+    if (![1, 10, 20].includes(rate)) return null;
+    const start = (kdvLabel.index || 0) + kdvLabel[0].length;
+    const tail = flat.slice(start, start + 400);
+    const amounts = [...tail.matchAll(/([\d]{1,3}(?:[.,]\d{3})*[.,]\d{1,2})/g)]
+      .map((m) => this.parseTrUsAmount(m[1]))
+      .filter((n) => Number.isFinite(n) && n > 0 && n < 100_000_000);
+    if (amounts.length === 0) return null;
+    const first = amounts[0];
+    const calculated = first * rate / 100;
+    const derived = amounts.find((n, idx) =>
+      idx > 0 && Math.abs(n - calculated) <= Math.max(0.05, calculated * 0.03),
+    );
+    return derived ?? first;
   }
 
   private isOkcFisImage(image: ReceiptImage): boolean {

@@ -574,6 +574,108 @@ const cases = [
       { record: 'r-osmanli-0001', image: 'img-osmanli-0001', status: 'MATCHED' },
     ],
   },
+  {
+    name: 'long e-invoice number and KDV exact match even when Luca booking date differs',
+    sessionType: 'KDV_191',
+    records: [
+      record({
+        id: 'r-perihan-zfe-date',
+        belgeNo: 'ZFE2026000000451',
+        date: '2026-04-02',
+        kdv: 47.41,
+        oran: 18,
+        rawData: { 'HESAP ADI': 'INDIRILECEK KDV %20' },
+      }),
+    ],
+    images: [
+      image({
+        id: 'img-perihan-zfe-date',
+        belgeNo: 'ZFE2026000000451',
+        date: '01.04.2026',
+        kdv: '47,41',
+        breakdown: [{ oran: 20, tutar: 47.41 }],
+        belgeTipi: 'EFATURA',
+      }),
+    ],
+    expectedStats: { matched: 1, partial: 0, unmatched: 0, needsReview: 0 },
+    expectedRows: [
+      { record: 'r-perihan-zfe-date', image: 'img-perihan-zfe-date', status: 'MATCHED' },
+    ],
+  },
+  {
+    name: 'raw explicit Hesaplanan KDV fixes matrah-as-KDV OCR amount',
+    sessionType: 'KDV_191',
+    records: [
+      record({
+        id: 'r-perihan-bae-matrah',
+        belgeNo: 'BAE2026000000259',
+        date: '2026-04-18',
+        kdv: 1091.52,
+        oran: 18,
+        rawData: { 'HESAP ADI': 'INDIRILECEK KDV %20' },
+      }),
+    ],
+    images: [
+      image({
+        id: 'img-perihan-bae-matrah',
+        belgeNo: 'BAE2026000000259',
+        date: '18.04.2026',
+        kdv: '5.457,60',
+        breakdown: [{ oran: 20, tutar: 5457.6 }],
+        rawText: [
+          'Fatura No: BAE2026000000259',
+          'Fatura Tarihi: 18-04-2026',
+          'KDV Matrahi (%20) 5.457,60 TL',
+          'Hesaplanan KDV(%20) 1.091,52 TL',
+          'Odenecek Tutar 6.549,12 TL',
+        ].join('\n'),
+        belgeTipi: 'EARSIV',
+      }),
+    ],
+    expectedStats: { matched: 1, partial: 0, unmatched: 0, needsReview: 0 },
+    expectedRows: [
+      { record: 'r-perihan-bae-matrah', image: 'img-perihan-bae-matrah', status: 'MATCHED' },
+    ],
+  },
+  {
+    name: 'telekom raw invoice id and KDV amount override Claude hallucinated belge no/date',
+    sessionType: 'KDV_191',
+    records: [
+      record({
+        id: 'r-perihan-superonline',
+        belgeNo: '01S2026000660368',
+        date: '2026-04-30',
+        kdv: 111.28,
+        oran: 18,
+        rawData: { 'HESAP ADI': 'INDIRILECEK KDV %20' },
+      }),
+    ],
+    images: [
+      image({
+        id: 'img-perihan-superonline',
+        belgeNo: 'TFS2026000000368',
+        date: '31.05.2026',
+        kdv: '556,38',
+        breakdown: [{ oran: 20, tutar: 556.38 }],
+        rawText: [
+          '[CLAUDE] {"tarih":"2026-05-31","belgeNo":"TFS2026000000368","kdvTutari":"111,28","kdvBreakdown":[{"oran":20,"tutar":"111,28","matrah":"556,38"}]}',
+          '[AZURE]',
+          'SUPERONLINE',
+          'FATURA ID 0152026000660368',
+          'Fatura Tarihi : 30/04/2026',
+          'KDV Uygulanan Tutar (%20)',
+          'KDV (%20)',
+          ':556.38',
+          ':111.28',
+        ].join('\n'),
+        belgeTipi: 'EFATURA',
+      }),
+    ],
+    expectedStats: { matched: 1, partial: 0, unmatched: 0, needsReview: 0 },
+    expectedRows: [
+      { record: 'r-perihan-superonline', image: 'img-perihan-superonline', status: 'MATCHED' },
+    ],
+  },
 ];
 
 (async () => {
