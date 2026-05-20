@@ -966,6 +966,7 @@ export class ReconciliationEngine {
     add((image as any).confirmedKdvTutari ?? (image as any).ocrKdvTutari);
     for (const item of this.extractClaudeKdvCandidates(String((image as any).ocrRawText || ''))) add(item);
     for (const item of this.extractExplicitKdvAmountsFromRawText(String((image as any).ocrRawText || ''))) add(item);
+    add(this.extractTopKdvFromOkcText(String((image as any).ocrRawText || '')));
     return values;
   }
 

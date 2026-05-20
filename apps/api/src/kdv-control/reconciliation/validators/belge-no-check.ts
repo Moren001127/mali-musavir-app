@@ -32,6 +32,10 @@ export function sameBelgeNo(a: string, b: string): boolean {
 
 function normalizeCommonOcrSeries(value: string): string {
   const norm = normalizeBelgeNo(value);
+  const alphaZeroSeries = norm.match(/^([A-Z])O([0-9])(20\d{2}\d{6,14})$/);
+  if (alphaZeroSeries) {
+    return `${alphaZeroSeries[1]}0${alphaZeroSeries[2]}${alphaZeroSeries[3]}`;
+  }
   // Superonline/Turkcell series "01S" is often OCR'd as numeric "015".
   // Keep this narrow: only the first three-character e-invoice series is normalized.
   const m = norm.match(/^([0O][1I])5(20\d{2}\d{6,14})$/);
