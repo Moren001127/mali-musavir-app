@@ -190,15 +190,43 @@ export default function Sidebar() {
       >
         <Link
           href="/panel"
-          className="group relative flex h-[90px] items-center justify-center transition-transform duration-300 hover:scale-[1.01]"
+          className="group relative flex h-[90px] items-center justify-center gap-2.5 transition-transform duration-300 hover:scale-[1.01]"
           aria-label="Moren Mali Müşavirlik"
         >
           <img
-            src="/brand/moren-sidebar-horizontal.png"
-            alt="Moren Mali Müşavirlik"
-            className="block h-auto w-[248px] max-w-full object-contain"
+            src="/brand/moren-sidebar-mark.png"
+            alt=""
+            aria-hidden="true"
+            className="block h-[62px] w-auto shrink-0 object-contain"
             style={{ filter: 'none' }}
           />
+          <span className="flex h-[62px] min-w-0 flex-col justify-between py-[2px]">
+            <span
+              className="block leading-none"
+              style={{
+                color: '#ecd290',
+                fontFamily: 'Arial, "Segoe UI", system-ui, sans-serif',
+                fontSize: 31,
+                fontWeight: 800,
+                letterSpacing: 0,
+                textShadow: '0 0 12px rgba(212,184,118,0.12)',
+              }}
+            >
+              MOREN
+            </span>
+            <span
+              className="block leading-none"
+              style={{
+                color: 'rgba(212,184,118,0.86)',
+                fontFamily: 'Arial, "Segoe UI", system-ui, sans-serif',
+                fontSize: 12,
+                fontWeight: 800,
+                letterSpacing: 0,
+              }}
+            >
+              MALİ MÜŞAVİRLİK
+            </span>
+          </span>
         </Link>
       </div>
 
