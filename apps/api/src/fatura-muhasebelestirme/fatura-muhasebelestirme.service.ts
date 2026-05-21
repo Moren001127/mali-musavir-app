@@ -436,23 +436,41 @@ export class FaturaMuhasebelestirmeService {
 
     const docs = await (this.prisma as any).invoiceAccountingDocument.findMany({
       where,
-      select: { status: true, lucaStatus: true, ocrStatus: true },
+      select: { status: true, lucaStatus: true, ocrStatus: true, taxpayerId: true, validationStatus: true },
     });
 
+    // v2.2: Mukellef bağlantısı + validation durumu ayrı sayılır
     let pending = 0, approved = 0, errors = 0, posted = 0, ocrInProgress = 0;
+    let pendingWithTaxpayer = 0;  // perTaxpayerSummary'de gözükenler
+    let orphanCount = 0;          // taxpayerId null/empty
+    let invalidCount = 0;         // validation INVALID/INCOMPLETE
     for (const d of docs) {
       const status = String(d.status || '').toUpperCase();
-      // Schema status: NEEDS_REVIEW | READY | APPROVED | REJECTED
-      if (status === 'READY' || status === 'NEEDS_REVIEW' || status === 'PENDING' || status === 'PROCESSING') pending++;
+      const isPending = status === 'READY' || status === 'NEEDS_REVIEW' || status === 'PENDING' || status === 'PROCESSING';
+      const hasTaxpayer = !!d.taxpayerId;
+
+      if (isPending) {
+        pending++;
+        if (hasTaxpayer) pendingWithTaxpayer++;
+      }
       if (status === 'APPROVED') approved++;
       if (status === 'REJECTED' || status === 'ERROR') errors++;
       if (d.lucaStatus === 'POSTED') posted++;
       if (d.ocrStatus === 'IN_PROGRESS' || d.ocrStatus === 'PENDING') ocrInProgress++;
+
+      if (!hasTaxpayer) orphanCount++;
+      if (d.validationStatus === 'INVALID' || d.validationStatus === 'INCOMPLETE') invalidCount++;
     }
 
     return {
       total: docs.length,
       pending,
+      // Sidebar'da gösterilen: gerçekten mukellefe bağlı bekleyenler
+      pendingWithTaxpayer,
+      // Mukellef seçilmediği için tabloda görünmeyen belgeler
+      orphanCount,
+      // Validation hatası olan belgeler
+      invalidCount,
       approved,
       errors,
       posted,
@@ -2508,6 +2526,68 @@ export class FaturaMuhasebelestirmeService {
         orderNo: 2,
       },
     ];
+  }
+
+  /**
+   * v2.2 — taxpayerId boş olan belgeleri, sellerVkn/buyerVkn üzerinden mevcut mukelleflere bağla.
+   * Taxpayer.taxNumber şifreli tutulabildiği için tüm aktif mukelleflerin
+   * decrypt'lenmiş VKN/TC'lerini bir map'e alıp belgelerin sellerVkn/buyerVkn
+   * alanlarıyla karşılaştırırız.
+   * Alış belgesi → aliciVergiNo/buyerVkn = mukellef VKN'si
+   * Satış belgesi → saticiVergiNo/sellerVkn = mukellef VKN'si
+   */
+  async matchOrphansToTaxpayers(
+    tenantId: string,
+    opts: { period?: string } = {},
+  ): Promise<{ matched: number; stillOrphan: number; notFoundExamples: string[] }> {
+    // 1) Tenant mukellef VKN/TC'lerini topla (decrypt edilmiş)
+    const taxpayers = await (this.prisma as any).taxpayer.findMany({
+      where: { tenantId, isActive: true },
+      select: { id: true, taxNumber: true },
+    });
+    const byVkn = new Map<string, string>();
+    for (const t of taxpayers) {
+      if (!t.taxNumber) continue;
+      const decoded = String(tryDecrypt(t.taxNumber) || t.taxNumber).replace(/\D/g, '');
+      if (decoded) byVkn.set(decoded, t.id);
+    }
+    if (byVkn.size === 0) return { matched: 0, stillOrphan: 0, notFoundExamples: [] };
+
+    // 2) Orphan belgeleri çek (period filtresi opsiyonel)
+    const where: any = { tenantId, taxpayerId: null };
+    Object.assign(where, periodWhere(opts.period));
+    const orphans = await (this.prisma as any).invoiceAccountingDocument.findMany({
+      where,
+      select: { id: true, invoiceKind: true, sellerVkn: true, buyerVkn: true },
+      take: 5000,
+    });
+
+    let matched = 0;
+    let stillOrphan = 0;
+    const notFoundVkns = new Set<string>();
+    for (const d of orphans) {
+      const isSale = String(d.invoiceKind || '').toUpperCase() === 'SATIS';
+      const expectedVkn = String(isSale ? d.sellerVkn : d.buyerVkn || '').replace(/\D/g, '');
+      const taxpayerId = expectedVkn ? byVkn.get(expectedVkn) : undefined;
+      if (taxpayerId) {
+        await (this.prisma as any).invoiceAccountingDocument.update({
+          where: { id: d.id },
+          data: { taxpayerId },
+        });
+        matched++;
+        // Tekrar validation çalıştır (taxpayer eşleşti → OWNERSHIP_MISMATCH kalktı)
+        await this.revalidateDocument(tenantId, d.id).catch(() => null);
+      } else {
+        stillOrphan++;
+        if (expectedVkn) notFoundVkns.add(expectedVkn);
+      }
+    }
+
+    return {
+      matched,
+      stillOrphan,
+      notFoundExamples: Array.from(notFoundVkns).slice(0, 10),
+    };
   }
 
   /**

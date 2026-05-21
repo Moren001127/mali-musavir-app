@@ -46,7 +46,7 @@ const SECTIONS: Array<{
   badge?: (counts: Counts) => string | null;
 }> = [
   { id: 'genel',              label: 'Genel Bakış',         icon: LayoutDashboard,   group: 'OVERVIEW' },
-  { id: 'gelen',              label: 'Gelen Belgeler',      icon: Inbox,              group: 'OVERVIEW', badge: (c) => c.pending > 0 ? String(c.pending) : null },
+  { id: 'gelen',              label: 'Gelen Belgeler',      icon: Inbox,              group: 'OVERVIEW', badge: (c) => c.pendingWithTaxpayer > 0 ? String(c.pendingWithTaxpayer) : null },
   { id: 'mukellefler',        label: 'Mükellefler',         icon: Users,              group: 'KAYIT' },
   { id: 'entegrator-listesi', label: 'Entegratör Listesi',  icon: Cloud,              group: 'KAYIT' },
   { id: 'hesap-plani',        label: 'Hesap Planı',         icon: BookOpen,           group: 'KAYIT' },
@@ -56,7 +56,7 @@ const SECTIONS: Array<{
   { id: 'arsiv',              label: 'Arşiv',               icon: Archive,            group: 'AKTARIM' },
 ];
 
-type Counts = { pending: number; openPeriods: number };
+type Counts = { pending: number; pendingWithTaxpayer: number; orphanCount: number; invalidCount: number; openPeriods: number };
 
 const PERIODS = [
   'Ocak', 'Şubat', 'Mart', 'Nisan', 'Mayıs', 'Haziran',
@@ -95,6 +95,9 @@ export default function FaturaMerkeziPage() {
 
   const counts: Counts = {
     pending: summaryQ.data?.pending ?? 0,
+    pendingWithTaxpayer: summaryQ.data?.pendingWithTaxpayer ?? 0,
+    orphanCount: summaryQ.data?.orphanCount ?? 0,
+    invalidCount: summaryQ.data?.invalidCount ?? 0,
     openPeriods: summaryQ.data?.openPeriods ?? 0,
   };
 

@@ -30,6 +30,20 @@ export default function GelenBelgelerPanel({ taxpayerId, period }: Props) {
     },
   });
 
+  /* Summary — orphan / invalid sayıları için */
+  const summaryQ = useQuery({
+    queryKey: ['fatura-merkezi', 'summary', period],
+    queryFn: () => api.get('/fatura-muhasebelestirme/summary', { params: { period } }).then((r) => r.data).catch(() => ({})),
+  });
+
+  /* Orphan belgeleri VKN/TC ile mevcut mukelleflere eşleştir */
+  const matchOrphansMut = useMutation({
+    mutationFn: async () => api.post('/fatura-muhasebelestirme/documents/match-orphans', { period }),
+    onSuccess: () => {
+      qc.invalidateQueries({ queryKey: ['fatura-merkezi'] });
+    },
+  });
+
   const taxpayersQ = useQuery({
     queryKey: ['fatura-merkezi', 'taxpayers'],
     queryFn: () => api.get('/taxpayers').then((r) => r.data),
@@ -51,7 +65,7 @@ export default function GelenBelgelerPanel({ taxpayerId, period }: Props) {
       .filter((t) => !taxpayerId || t.id === taxpayerId)
       .filter((t) => !search || taxpayerSearchMatch(t, search))
       .map((t) => {
-        const s = summaryMap.get(t.id) || {};
+        const s: any = summaryMap.get(t.id) || {};
         return {
           ...t,
           pendingAlis: s.pendingAlis || 0,
@@ -61,6 +75,7 @@ export default function GelenBelgelerPanel({ taxpayerId, period }: Props) {
           approvedSatis: s.approvedSatis || 0,
           approvedBanka: s.approvedBanka || 0,
           postedToLuca: s.postedToLuca || 0,
+          hasIssue: s.hasIssue || 0,
           pendingTotal: (s.pendingAlis || 0) + (s.pendingSatis || 0) + (s.pendingBanka || 0),
           approvedTotal: (s.approvedAlis || 0) + (s.approvedSatis || 0) + (s.approvedBanka || 0),
         };
@@ -152,6 +167,37 @@ export default function GelenBelgelerPanel({ taxpayerId, period }: Props) {
         </div>
       )}
 
+      {/* v2.2: Orphan (mukellef bağı yok) belgeler uyarı bandı */}
+      {(summaryQ.data?.orphanCount ?? 0) > 0 && (
+        <div className="mb-3 p-3 rounded-lg flex items-center gap-3" style={{ background: '#f59e0b15', border: '1px solid #f59e0b60' }}>
+          <div className="flex-1">
+            <div className="text-[12.5px] font-semibold" style={{ color: '#fbbf24' }}>
+              {summaryQ.data.orphanCount} belge mukellefe bağlı değil
+            </div>
+            <div className="text-[11px] mt-0.5" style={{ color: 'var(--text-secondary)' }}>
+              Bu yüzden aşağıdaki tabloda görünmüyor. VKN/TC'leri mevcut mukelleflerle otomatik eşleştirebilirim.
+            </div>
+          </div>
+          <button
+            onClick={() => matchOrphansMut.mutate()}
+            disabled={matchOrphansMut.isPending}
+            className="flex items-center gap-1.5 px-3 py-2 text-[12px] font-semibold rounded-lg disabled:opacity-50"
+            style={{ background: '#f59e0b', color: 'white' }}
+          >
+            {matchOrphansMut.isPending ? <Loader2 size={12} className="animate-spin" /> : null}
+            Mukellef eşleştir
+          </button>
+        </div>
+      )}
+      {matchOrphansMut.isSuccess && (() => {
+        const r = (matchOrphansMut.data as any)?.data || {};
+        return (
+          <div className="mb-3 p-2.5 rounded-lg text-[12px]" style={{ background: '#10b98115', border: '1px solid #10b98140', color: '#86efac' }}>
+            ✓ {r.matched ?? 0} belge mukelleflere eşleştirildi · {r.stillOrphan ?? 0} hâlâ bağlı değil (VKN/TC eşleşmedi){r.notFoundExamples?.length ? ` — örnek VKN: ${r.notFoundExamples.slice(0, 3).join(', ')}` : ''}
+          </div>
+        );
+      })()}
+
       {/* Hızlı özet kart */}
       <div className="grid grid-cols-3 gap-3 mb-4">
         <SummaryCard
@@ -209,13 +255,24 @@ export default function GelenBelgelerPanel({ taxpayerId, period }: Props) {
                   onMouseLeave={(e) => (e.currentTarget.style.background = 'transparent')}
                 >
                   <td className="px-3 py-2.5 text-[13px] font-medium" style={{ color: 'var(--text)' }}>
-                    <button
-                      type="button"
-                      onClick={() => setSelectedDoc({ taxpayerId: r.id, direction: 'ALIS' })}
-                      className="text-left hover:underline"
-                    >
-                      {taxpayerName(r)}
-                    </button>
+                    <div className="flex items-center gap-2">
+                      <button
+                        type="button"
+                        onClick={() => setSelectedDoc({ taxpayerId: r.id, direction: 'ALIS' })}
+                        className="text-left hover:underline"
+                      >
+                        {taxpayerName(r)}
+                      </button>
+                      {r.hasIssue > 0 && (
+                        <span
+                          className="inline-flex items-center gap-1 px-1.5 py-0.5 rounded text-[10px] font-semibold tabular-nums"
+                          style={{ background: '#ef444422', color: '#ef4444', border: '1px solid #ef444455' }}
+                          title="Bu mükellefte veri kontrolü hatası olan belgeler var — onaylanamaz"
+                        >
+                          ⚠ {r.hasIssue} hata
+                        </span>
+                      )}
+                    </div>
                   </td>
                   <td className="px-3 py-2.5 text-[12px]" style={{ color: 'var(--text-secondary)' }}>{taxpayerBookType(r)}</td>
                   <NumCell value={r.pendingAlis} tone="#f59e0b" onClick={() => r.pendingAlis > 0 && setSelectedDoc({ taxpayerId: r.id, direction: 'ALIS' })} />

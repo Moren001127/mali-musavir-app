@@ -209,6 +209,15 @@ export class FaturaMuhasebelestirmeController {
     });
   }
 
+  // v2.2: taxpayerId boş olan belgeleri (sellerVkn/buyerVkn üzerinden) mevcut mukelleflere bağla
+  @Post('documents/match-orphans')
+  matchOrphans(
+    @Req() req: any,
+    @Body() body: { period?: string },
+  ) {
+    return this.service.matchOrphansToTaxpayers(req.user.tenantId, { period: body?.period });
+  }
+
   @Post('documents/duplicate-check')
   duplicateCheck(@Req() req: any, @Body() body: any) {
     return this.service.duplicateCheck(req.user.tenantId, body || {});
