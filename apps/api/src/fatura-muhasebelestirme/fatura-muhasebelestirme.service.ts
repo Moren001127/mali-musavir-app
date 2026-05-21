@@ -493,6 +493,7 @@ export class FaturaMuhasebelestirmeService {
         invoiceKind: true,
         documentType: true,
         lucaStatus: true,
+        validationStatus: true,
       },
     });
 
@@ -508,6 +509,7 @@ export class FaturaMuhasebelestirmeService {
         approvedSatis: 0,
         approvedBanka: 0,
         postedToLuca: 0,
+        hasIssue: 0,            // v2.1: validation hatası olan belge sayısı
       };
       const isBank = (d.documentType || '').toUpperCase().includes('BANKA');
       const isAlis = String(d.invoiceKind || '').toUpperCase().startsWith('ALI');
@@ -528,6 +530,7 @@ export class FaturaMuhasebelestirmeService {
       }
 
       if (d.lucaStatus === 'POSTED') entry.postedToLuca++;
+      if (d.validationStatus === 'INVALID' || d.validationStatus === 'INCOMPLETE') entry.hasIssue++;
       byTaxpayer.set(d.taxpayerId, entry);
     }
 
@@ -1134,6 +1137,7 @@ export class FaturaMuhasebelestirmeService {
         matrah: true,
         kdvTutari: true,
         kdvOrani: true,
+        kdvBreakdown: true,
         toplamTutar: true,
         paraBirimi: true,
         pdfStorageKey: true,
@@ -1157,6 +1161,9 @@ export class FaturaMuhasebelestirmeService {
       f.htmlStorageKey ||
       `earsiv-inline://${f.id}`;
     const sizeBytes = f.pdfStorageKey || f.htmlStorageKey ? 1 : Buffer.byteLength(f.xmlContent || '', 'utf8');
+    const breakdownArr = Array.isArray((f as any).kdvBreakdown)
+      ? (f as any).kdvBreakdown as Array<{ rate: number; base: number; amount: number }>
+      : null;
     const lines = this.linesFromAmounts({
       invoiceKind,
       matrah: f.matrah,
@@ -1164,6 +1171,7 @@ export class FaturaMuhasebelestirmeService {
       kdvOrani: f.kdvOrani,
       total: f.toplamTutar,
       vendorName: invoiceKind === 'ALIS' ? f.satici : f.alici,
+      kdvBreakdown: breakdownArr,
     });
     const duplicate = await this.findDuplicate(tenantId, {
       taxpayerId: f.taxpayerId,
@@ -1171,6 +1179,20 @@ export class FaturaMuhasebelestirmeService {
       sellerVkn: f.saticiVergiNo,
       buyerVkn: f.aliciVergiNo,
       totalAmount: f.toplamTutar,
+    });
+
+    // v2.1: Sahiplik + denge kontrolü
+    const validation = await this.runValidation({
+      tenantId,
+      taxpayerId: f.taxpayerId,
+      invoiceKind,
+      lines,
+      totalAmount: f.toplamTutar,
+      sellerVkn: f.saticiVergiNo,
+      buyerVkn: f.aliciVergiNo,
+      matrah: f.matrah,
+      kdvTutari: f.kdvTutari,
+      kdvBreakdown: breakdownArr,
     });
 
     const doc = await (this.prisma as any).invoiceAccountingDocument.create({
@@ -1181,7 +1203,8 @@ export class FaturaMuhasebelestirmeService {
         sourceRefId: f.id,
         documentType,
         invoiceKind,
-        status: duplicate ? 'NEEDS_REVIEW' : 'READY',
+        // Validation hatası varsa NEEDS_REVIEW — kullanıcı kontrol etmeli
+        status: (duplicate || validation.status !== 'OK') ? 'NEEDS_REVIEW' : 'READY',
         duplicateOfId: duplicate?.duplicateOfId || null,
         duplicateReason: duplicate?.duplicateReason || null,
         duplicateSeverity: duplicate?.duplicateSeverity || null,
@@ -1206,7 +1229,11 @@ export class FaturaMuhasebelestirmeService {
           matrah: f.matrah,
           kdvTutari: f.kdvTutari,
           kdvOrani: f.kdvOrani,
+          kdvBreakdown: breakdownArr,
         },
+        validationStatus: validation.status,
+        validationIssues: validation.issues.length ? (validation.issues as any) : undefined,
+        validationCheckedAt: new Date(),
         lines: { create: lines },
       },
       include: { lines: { orderBy: { orderNo: 'asc' } } },
@@ -1288,26 +1315,33 @@ export class FaturaMuhasebelestirmeService {
       if (fatura?.pdfStorageKey) {
         return {
           url: await this.storage.getPresignedDownloadUrl(fatura.pdfStorageKey, `${fatura.faturaNo || 'fatura'}.pdf`),
+          source: 'original-pdf' as const,
         };
       }
       if (fatura?.htmlStorageKey) {
         const buffer = await this.storage.getBuffer(fatura.htmlStorageKey);
         const html = this.earsivRender.renderOriginalHtml(buffer.toString('utf8'), { autoPrint: false });
-        return { url: '', inlineHtml: html, mimeType: 'text/html' };
+        return { url: '', inlineHtml: html, mimeType: 'text/html', source: 'original-html' as const };
       }
       const html = fatura
         ? this.earsivRender.renderHtml(fatura, { autoPrint: false })
         : this.inlinePreviewHtml('Bu belge icin orijinal dosya bulunamadi.');
-      return { url: '', inlineHtml: html, mimeType: 'text/html' };
+      return {
+        url: '',
+        inlineHtml: html,
+        mimeType: 'text/html',
+        // v2.2: Luca'dan PDF/HTML inmemiş, biz XML'den render ettik — kullanıcı bilsin
+        source: fatura ? ('rendered-from-xml' as const) : ('placeholder' as const),
+      };
     }
     if (/text\/html|xml/i.test(mimeType)) {
       const buffer = await this.storage.getBuffer(doc.s3Key);
       const raw = buffer.toString('utf8');
       const html = mimeType.includes('html') ? raw : this.inlinePreviewHtml(raw);
-      return { url: '', inlineHtml: html, mimeType: 'text/html' };
+      return { url: '', inlineHtml: html, mimeType: 'text/html', source: 'stored-html' as const };
     }
     const url = await this.storage.getPresignedDownloadUrl(doc.s3Key, doc.originalName);
-    return { url };
+    return { url, source: 'stored-file' as const };
   }
 
   private inlinePreviewHtml(raw: string) {
@@ -1419,11 +1453,67 @@ export class FaturaMuhasebelestirmeService {
       }
     }
 
+    // v2.1: Manuel değişiklik sonrası validation'ı tekrar çalıştır
+    await this.revalidateDocument(tenantId, id);
+
     return this.get(tenantId, id);
+  }
+
+  /**
+   * v2.1 — Belgeyi tekrar oku, validation pipeline'ını çalıştır ve sonucu yaz.
+   * update / manuel edit / line düzenleme sonrasında çağrılır.
+   */
+  async revalidateDocument(tenantId: string, id: string): Promise<{ status: string; issues: any[] }> {
+    const doc = await (this.prisma as any).invoiceAccountingDocument.findFirst({
+      where: { id, tenantId },
+      include: { lines: true },
+    });
+    if (!doc) return { status: 'OK', issues: [] };
+
+    // ocrData içinden breakdown'ı oku (varsa)
+    const ocrData: any = doc.ocrData || {};
+    const breakdown = Array.isArray(ocrData?.kdvBreakdown) ? ocrData.kdvBreakdown : null;
+
+    const validation = await this.runValidation({
+      tenantId,
+      taxpayerId: doc.taxpayerId,
+      invoiceKind: doc.invoiceKind,
+      lines: doc.lines || [],
+      totalAmount: doc.totalAmount,
+      sellerVkn: doc.sellerVkn,
+      buyerVkn: doc.buyerVkn,
+      matrah: ocrData?.matrah,
+      kdvTutari: ocrData?.kdvTutari,
+      kdvBreakdown: breakdown,
+    });
+
+    await (this.prisma as any).invoiceAccountingDocument.update({
+      where: { id },
+      data: {
+        validationStatus: validation.status,
+        validationIssues: validation.issues.length ? validation.issues : null,
+        validationCheckedAt: new Date(),
+      },
+    });
+    return validation;
   }
 
   async approve(tenantId: string, id: string, userId?: string) {
     const doc = await this.get(tenantId, id);
+
+    // v2.1: Approve öncesi mutlaka revalidate çalıştır — sonucu OK değilse reddet.
+    // Validation şu durumlarda hata atar:
+    //   - Yevmiye dengesiz (Borç ≠ Alacak)
+    //   - Yevmiye toplamı belge tutarına eşit değil
+    //   - Matrah/KDV eksik (INCOMPLETE)
+    //   - VKN/TC mükellefe ait değil
+    const validation = await this.revalidateDocument(tenantId, id);
+    if (validation.status !== 'OK') {
+      const messages = validation.issues.map((i: any) => i.message).join(' · ');
+      throw new BadRequestException(
+        `Bu belge onaylanamaz — veri kontrolü başarısız: ${messages}. Önce hatayı düzelt.`,
+      );
+    }
 
     // v1.38: Tek belge onayi — sadece belgeyi APPROVED + lucaStatus=QUEUED yap.
     // Luca'ya GERCEK aktarim per-invoice job ile DEGIL, kullanici Sahne 5'te
@@ -1456,11 +1546,16 @@ export class FaturaMuhasebelestirmeService {
     }
 
     // Hangi belgeler bu batch'e dahil — ya verilen ID listesi ya QUEUED filtresi
+    // v2.1: validation OK olmayan belgeler hariç tutulur (INVALID/INCOMPLETE Luca'ya gitmesin)
     const where: any = {
       tenantId,
       taxpayerId: body.taxpayerId,
       status: 'APPROVED',
       lucaStatus: { in: ['QUEUED', 'FAILED', 'NOT_STARTED'] },
+      OR: [
+        { validationStatus: null },     // eski kayıtlar (henüz validation yapılmamış)
+        { validationStatus: 'OK' },
+      ],
     };
     if (Array.isArray(body.documentIds) && body.documentIds.length > 0) {
       where.id = { in: body.documentIds };
@@ -1480,8 +1575,27 @@ export class FaturaMuhasebelestirmeService {
       orderBy: { faturaTarihi: 'asc' },
     });
 
+    // v2.1: validation INVALID/INCOMPLETE belgeleri ayrı raporla (kullanıcı bilsin)
+    const skippedCount = await (this.prisma as any).invoiceAccountingDocument.count({
+      where: {
+        tenantId,
+        taxpayerId: body.taxpayerId,
+        status: 'APPROVED',
+        lucaStatus: { in: ['QUEUED', 'FAILED', 'NOT_STARTED'] },
+        validationStatus: { in: ['INVALID', 'INCOMPLETE'] },
+        ...(body.period ? (() => {
+          const [y, m] = String(body.period).split('-').map((n) => parseInt(n, 10));
+          if (!Number.isFinite(y) || !Number.isFinite(m)) return {};
+          return { faturaTarihi: { gte: new Date(Date.UTC(y, m - 1, 1)), lt: new Date(Date.UTC(y, m, 1)) } };
+        })() : {}),
+      },
+    });
+
     if (!docs.length) {
-      throw new Error('Bu mukellef icin Luca\'ya aktarilabilir belge bulunamadi');
+      const extra = skippedCount > 0
+        ? ` (${skippedCount} belge veri kontrolü hatası nedeniyle hariç tutuldu — Gelen Belgeler'de düzelt)`
+        : '';
+      throw new Error(`Bu mukellef icin Luca'ya aktarilabilir belge bulunamadi${extra}`);
     }
 
     // Tek job icin period etiketi: en cok rastlanan ay
@@ -1552,6 +1666,7 @@ export class FaturaMuhasebelestirmeService {
       taxpayerId: body.taxpayerId,
       period: dominantPeriod,
       documentCount: docs.length,
+      skippedInvalid: skippedCount, // v2.1: validation hatası olan + bu yüzden Luca'ya gitmeyen belgeler
     };
   }
 
@@ -2297,14 +2412,73 @@ export class FaturaMuhasebelestirmeService {
     kdvOrani: any;
     total: any;
     vendorName?: string | null;
+    // v2.1: çoklu KDV oranı detayı varsa her oran için ayrı yevmiye satırı üret
+    kdvBreakdown?: Array<{ rate: number; base: number; amount: number }> | null;
   }) {
     const isSale = opts.invoiceKind === 'SATIS';
-    const matrah = money(opts.matrah) || new Prisma.Decimal(0);
-    const kdv = money(opts.kdvTutari) || new Prisma.Decimal(0);
-    const total = money(opts.total) || matrah.plus(kdv);
     const kdvCode = isSale ? '391.01.020' : '191.01.020';
     const cariCode = isSale ? '120.01.001' : '320.01.001';
     const matrahCode = isSale ? '600.01.001' : '770.01.010';
+    const zero = () => new Prisma.Decimal(0);
+
+    // Breakdown geçerli mi? — En az bir satırda base veya amount > 0 olmalı
+    const breakdown = Array.isArray(opts.kdvBreakdown) ? opts.kdvBreakdown : [];
+    const hasBreakdown = breakdown.some((b) => Number(b.base || 0) > 0 || Number(b.amount || 0) > 0);
+
+    const lines: any[] = [];
+    let orderNo = 0;
+
+    if (hasBreakdown) {
+      // Her KDV oranı için ayrı matrah + KDV satırı; en sonda tek cari satırı.
+      // Toplam = sum(base) + sum(amount)
+      let totalBase = new Prisma.Decimal(0);
+      let totalKdv = new Prisma.Decimal(0);
+      for (const item of breakdown) {
+        const base = money(item.base) || zero();
+        const amount = money(item.amount) || zero();
+        totalBase = totalBase.plus(base);
+        totalKdv = totalKdv.plus(amount);
+        const rateLabel = item.rate ? `%${Number(item.rate).toLocaleString('tr-TR')}` : undefined;
+
+        // Matrah satırı (alış için Borç, satış için Alacak)
+        lines.push({
+          group: 'matrah',
+          accountCode: matrahCode,
+          description: isSale ? `Satış matrahı (KDV ${rateLabel || ''})`.trim() : `Gider / matrah (KDV ${rateLabel || ''})`.trim(),
+          rate: rateLabel,
+          debit: isSale ? zero() : base,
+          credit: isSale ? base : zero(),
+          orderNo: orderNo++,
+        });
+        // KDV satırı (sadece tutar > 0 ise yaz)
+        if (Number(item.amount || 0) > 0) {
+          lines.push({
+            group: 'vergi',
+            accountCode: kdvCode,
+            description: isSale ? `Hesaplanan KDV ${rateLabel || ''}`.trim() : `İndirilecek KDV ${rateLabel || ''}`.trim(),
+            rate: rateLabel,
+            debit: isSale ? zero() : amount,
+            credit: isSale ? amount : zero(),
+            orderNo: orderNo++,
+          });
+        }
+      }
+      const total = totalBase.plus(totalKdv);
+      lines.push({
+        group: 'cari',
+        accountCode: cariCode,
+        description: opts.vendorName || 'Cari hesap',
+        debit: isSale ? total : zero(),
+        credit: isSale ? zero() : total,
+        orderNo: orderNo++,
+      });
+      return lines;
+    }
+
+    // Tek-oran fallback (eski davranış)
+    const matrah = money(opts.matrah) || zero();
+    const kdv = money(opts.kdvTutari) || zero();
+    const total = money(opts.total) || matrah.plus(kdv);
     const rate = opts.kdvOrani ? `%${Number(opts.kdvOrani).toLocaleString('tr-TR')}` : undefined;
 
     return [
@@ -2312,28 +2486,142 @@ export class FaturaMuhasebelestirmeService {
         group: 'matrah',
         accountCode: matrahCode,
         description: isSale ? 'Satış matrahı' : 'Gider / matrah',
-        debit: isSale ? new Prisma.Decimal(0) : matrah,
-        credit: isSale ? matrah : new Prisma.Decimal(0),
+        debit: isSale ? zero() : matrah,
+        credit: isSale ? matrah : zero(),
         orderNo: 0,
       },
       {
         group: 'vergi',
         accountCode: kdvCode,
-        description: isSale ? 'Hesaplanan KDV' : 'Indirilecek KDV',
+        description: isSale ? 'Hesaplanan KDV' : 'İndirilecek KDV',
         rate,
-        debit: isSale ? new Prisma.Decimal(0) : kdv,
-        credit: isSale ? kdv : new Prisma.Decimal(0),
+        debit: isSale ? zero() : kdv,
+        credit: isSale ? kdv : zero(),
         orderNo: 1,
       },
       {
         group: 'cari',
         accountCode: cariCode,
         description: opts.vendorName || 'Cari hesap',
-        debit: isSale ? total : new Prisma.Decimal(0),
-        credit: isSale ? new Prisma.Decimal(0) : total,
+        debit: isSale ? total : zero(),
+        credit: isSale ? zero() : total,
         orderNo: 2,
       },
     ];
+  }
+
+  /**
+   * v2.1 — Belge validation pipeline.
+   * 3 tip kontrol yapar:
+   *   1) INCOMPLETE_AMOUNTS: matrah/KDV eksik veya 0 ama belge toplamı > 0
+   *   2) BALANCE_MISMATCH: yevmiye satırlarında debit toplam ≠ credit toplam
+   *   3) TOTAL_MISMATCH: yevmiye toplamı belge üzerindeki toplam tutardan farklı
+   *   4) OWNERSHIP_MISMATCH: alış faturasında aliciVergiNo, satışta saticiVergiNo
+   *      mükellefin VKN/TC'siyle eşleşmiyor
+   *
+   * status: OK | INCOMPLETE | INVALID
+   *   - OK = tüm kontroller geçti
+   *   - INCOMPLETE = veri eksik (kullanıcı doldurmalı)
+   *   - INVALID = veri var ama hatalı (denge bozuk veya sahip yanlış)
+   */
+  async runValidation(opts: {
+    tenantId: string;
+    taxpayerId?: string | null;
+    invoiceKind: string;
+    lines: Array<{ debit: any; credit: any; group?: string }>;
+    totalAmount?: any;
+    sellerVkn?: string | null;
+    buyerVkn?: string | null;
+    matrah?: any;
+    kdvTutari?: any;
+    kdvBreakdown?: Array<{ rate: number; base: number; amount: number }> | null;
+  }): Promise<{
+    status: 'OK' | 'INCOMPLETE' | 'INVALID';
+    issues: Array<{ code: string; severity: 'WARNING' | 'ERROR'; message: string; expected?: any; actual?: any }>;
+  }> {
+    const issues: Array<{ code: string; severity: 'WARNING' | 'ERROR'; message: string; expected?: any; actual?: any }> = [];
+
+    const totalAmount = Number(opts.totalAmount || 0);
+    const sumDebit = opts.lines.reduce((s, l) => s + Number(l.debit || 0), 0);
+    const sumCredit = opts.lines.reduce((s, l) => s + Number(l.credit || 0), 0);
+    const TOL = 0.02; // 2 kuruş tolerans (decimal yuvarlamalar için)
+
+    // ── 1) INCOMPLETE_AMOUNTS — toplam var ama matrah/KDV eksik
+    const matrahN = Number(opts.matrah || 0);
+    const kdvN = Number(opts.kdvTutari || 0);
+    const breakdownSumBase = Array.isArray(opts.kdvBreakdown)
+      ? opts.kdvBreakdown.reduce((s, b) => s + Number(b.base || 0), 0)
+      : 0;
+    const breakdownSumKdv = Array.isArray(opts.kdvBreakdown)
+      ? opts.kdvBreakdown.reduce((s, b) => s + Number(b.amount || 0), 0)
+      : 0;
+    const hasAnyMatrah = matrahN > 0 || breakdownSumBase > 0;
+    if (totalAmount > 0 && !hasAnyMatrah) {
+      issues.push({
+        code: 'INCOMPLETE_AMOUNTS',
+        severity: 'ERROR',
+        message: `Belge toplamı ${totalAmount.toLocaleString('tr-TR')} ₺ ama matrah/KDV ayrıştırılamadı. Manuel girilmesi gerek.`,
+        expected: 'matrah > 0',
+        actual: 0,
+      });
+    }
+
+    // ── 2) BALANCE_MISMATCH — borç ≠ alacak
+    if (Math.abs(sumDebit - sumCredit) > TOL) {
+      issues.push({
+        code: 'BALANCE_MISMATCH',
+        severity: 'ERROR',
+        message: `Yevmiye dengesiz: Borç ${sumDebit.toLocaleString('tr-TR')} ₺ ≠ Alacak ${sumCredit.toLocaleString('tr-TR')} ₺`,
+        expected: sumCredit,
+        actual: sumDebit,
+      });
+    }
+
+    // ── 3) TOTAL_MISMATCH — yevmiye toplamı ≠ belge toplamı
+    if (totalAmount > 0) {
+      const yevmiyeToplam = Math.max(sumDebit, sumCredit);
+      if (Math.abs(yevmiyeToplam - totalAmount) > TOL) {
+        issues.push({
+          code: 'TOTAL_MISMATCH',
+          severity: 'ERROR',
+          message: `Belge tutarı ${totalAmount.toLocaleString('tr-TR')} ₺ ama yevmiye toplamı ${yevmiyeToplam.toLocaleString('tr-TR')} ₺ — uyumsuz.`,
+          expected: totalAmount,
+          actual: yevmiyeToplam,
+        });
+      }
+    }
+
+    // ── 4) OWNERSHIP_MISMATCH — VKN/TC sahiplik kontrolü
+    if (opts.taxpayerId) {
+      const taxpayer = await (this.prisma as any).taxpayer.findFirst({
+        where: { id: opts.taxpayerId, tenantId: opts.tenantId },
+        select: { taxNumber: true, companyName: true, firstName: true, lastName: true },
+      });
+      if (taxpayer?.taxNumber) {
+        // taxNumber şifreli olabilir
+        const ownVkn = String(tryDecrypt(taxpayer.taxNumber) || taxpayer.taxNumber).replace(/\D/g, '');
+        const isSale = String(opts.invoiceKind || '').toUpperCase() === 'SATIS';
+        const expectedVkn = isSale
+          ? String(opts.sellerVkn || '').replace(/\D/g, '')
+          : String(opts.buyerVkn || '').replace(/\D/g, '');
+        if (ownVkn && expectedVkn && ownVkn !== expectedVkn) {
+          const ownerName = taxpayer.companyName || `${taxpayer.firstName || ''} ${taxpayer.lastName || ''}`.trim();
+          issues.push({
+            code: 'OWNERSHIP_MISMATCH',
+            severity: 'ERROR',
+            message: `Bu belge ${ownerName || 'mükellefin'} VKN/TC'sine ait değil. ${isSale ? 'Satıcı' : 'Alıcı'} VKN ${expectedVkn} → beklenen ${ownVkn}.`,
+            expected: ownVkn,
+            actual: expectedVkn,
+          });
+        }
+      }
+    }
+
+    // Sonuç durumu
+    const hasIncomplete = issues.some((i) => i.code === 'INCOMPLETE_AMOUNTS');
+    const hasInvalid = issues.some((i) => i.code !== 'INCOMPLETE_AMOUNTS' && i.severity === 'ERROR');
+    const status = hasInvalid ? 'INVALID' : hasIncomplete ? 'INCOMPLETE' : 'OK';
+    return { status, issues };
   }
 
   private async rematchPendingDocumentsWithAccountPlan(tenantId: string, taxpayerId: string, snapshotId: string) {
