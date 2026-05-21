@@ -324,10 +324,122 @@ export class FaturaMuhasebelestirmeService {
         hasApiKey: Boolean(taxpayerConfig?.hasApiKey),
         hasApiSecret: Boolean(taxpayerConfig?.hasApiSecret),
         hasPassword: Boolean(taxpayerConfig?.hasPassword),
+        // v2: Talimat — otomatik gece çekim aktif mi?
+        talimat: Boolean(taxpayerConfig?.talimat),
+        talimatUpdatedAt: taxpayerConfig?.talimatUpdatedAt || null,
         lastSyncAt: row?.lastSyncAt || null,
         updatedAt: taxpayerConfig?.updatedAt || row?.updatedAt || null,
       };
     });
+  }
+
+  /**
+   * Talimat ver/kaldır — config.taxpayers[key].talimat alanını günceller.
+   * Aktif olduğunda scheduler her gece son 9 günün faturalarını çeker.
+   */
+  async setIntegrationTalimat(
+    tenantId: string,
+    input: { taxpayerId?: string | null; provider?: string; active?: boolean },
+  ) {
+    const provider = String(input.provider || '').trim().toUpperCase();
+    if (!provider) throw new BadRequestException('Sağlayıcı belirtilmedi');
+    const taxpayerKey = input.taxpayerId || 'global';
+    const active = input.active === undefined ? true : Boolean(input.active);
+
+    const existing = await (this.prisma as any).integrationConnection.findUnique({
+      where: { tenantId_provider: { tenantId, provider } },
+    });
+    if (!existing) throw new BadRequestException('Entegratör tanımlı değil. Önce kaydet.');
+
+    const config = (existing.config || {}) as any;
+    config.taxpayers = config.taxpayers || {};
+    config.taxpayers[taxpayerKey] = {
+      ...(config.taxpayers[taxpayerKey] || {}),
+      talimat: active,
+      talimatUpdatedAt: new Date().toISOString(),
+    };
+
+    await (this.prisma as any).integrationConnection.update({
+      where: { tenantId_provider: { tenantId, provider } },
+      data: { config },
+    });
+    return { ok: true, provider, taxpayerId: input.taxpayerId || null, talimat: active };
+  }
+
+  /**
+   * Bir mukellef için bir entegratör kaydını siler.
+   * Tüm mukellef kayıtları silinmişse satırı tamamen kaldır.
+   */
+  async deleteIntegration(
+    tenantId: string,
+    input: { taxpayerId?: string | null; provider?: string },
+  ) {
+    const provider = String(input.provider || '').trim().toUpperCase();
+    if (!provider) throw new BadRequestException('Sağlayıcı belirtilmedi');
+    const taxpayerKey = input.taxpayerId || 'global';
+
+    const existing = await (this.prisma as any).integrationConnection.findUnique({
+      where: { tenantId_provider: { tenantId, provider } },
+    });
+    if (!existing) return { ok: true, deleted: false };
+
+    const config = (existing.config || {}) as any;
+    if (config.taxpayers && config.taxpayers[taxpayerKey]) {
+      delete config.taxpayers[taxpayerKey];
+    }
+
+    const remaining = Object.keys(config.taxpayers || {});
+    if (remaining.length === 0) {
+      await (this.prisma as any).integrationConnection.delete({
+        where: { tenantId_provider: { tenantId, provider } },
+      });
+    } else {
+      await (this.prisma as any).integrationConnection.update({
+        where: { tenantId_provider: { tenantId, provider } },
+        data: { config },
+      });
+    }
+    return { ok: true, deleted: true };
+  }
+
+  /**
+   * Fatura Merkezi v2'nin Genel Bakış kartlarında kullanılan kısa özet.
+   * Dashboard'dan daha hafif — tek scan, agresif filter.
+   */
+  async summary(
+    tenantId: string,
+    opts: { period?: string; taxpayerId?: string } = {},
+  ) {
+    const where: any = { tenantId };
+    if (opts.taxpayerId) where.taxpayerId = opts.taxpayerId;
+    if (opts.period) where.period = opts.period;
+
+    const docs = await (this.prisma as any).invoiceAccountingDocument.findMany({
+      where,
+      select: { status: true, lucaStatus: true, ocrStatus: true },
+    });
+
+    let pending = 0, approved = 0, errors = 0, posted = 0, ocrInProgress = 0;
+    for (const d of docs) {
+      if (d.status === 'PENDING' || d.status === 'PROCESSING') pending++;
+      if (d.status === 'APPROVED') approved++;
+      if (d.status === 'ERROR') errors++;
+      if (d.lucaStatus === 'POSTED') posted++;
+      if (d.ocrStatus === 'IN_PROGRESS' || d.ocrStatus === 'PENDING') ocrInProgress++;
+    }
+
+    return {
+      total: docs.length,
+      pending,
+      approved,
+      errors,
+      posted,
+      ocrInProgress,
+      processedRate: docs.length ? Math.round((approved / docs.length) * 100) : 0,
+      approvalRate: docs.length ? Math.round((approved / Math.max(1, approved + pending)) * 100) : 0,
+      postedRate: approved ? Math.round((posted / approved) * 100) : 0,
+      openPeriods: 0,
+    };
   }
 
   async saveIntegration(tenantId: string, input: IntegrationSaveInput, updatedBy?: string) {

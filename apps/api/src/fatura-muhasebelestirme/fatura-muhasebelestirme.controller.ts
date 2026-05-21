@@ -82,6 +82,35 @@ export class FaturaMuhasebelestirmeController {
     );
   }
 
+  /** Talimat ver/kaldır — her gece otomatik fetch. */
+  @Post('integrations/talimat')
+  setTalimat(@Req() req: any, @Body() body: any) {
+    return this.service.setIntegrationTalimat(req.user.tenantId, body || {});
+  }
+
+  /** Mukellef için bir entegratör kaydını sil. */
+  @Delete('integrations')
+  deleteIntegration(
+    @Req() req: any,
+    @Query('taxpayerId') taxpayerId?: string,
+    @Query('provider') provider?: string,
+  ) {
+    return this.service.deleteIntegration(req.user.tenantId, {
+      taxpayerId: taxpayerId || null,
+      provider: provider || '',
+    });
+  }
+
+  /** Yeni Fatura Merkezi v2'nin kullandığı kısa özet endpoint. */
+  @Get('summary')
+  summary(
+    @Req() req: any,
+    @Query('period') period?: string,
+    @Query('taxpayerId') taxpayerId?: string,
+  ) {
+    return this.service.summary(req.user.tenantId, { period, taxpayerId });
+  }
+
   @Post('documents/upload')
   @UseInterceptors(documentUploadInterceptor())
   upload(

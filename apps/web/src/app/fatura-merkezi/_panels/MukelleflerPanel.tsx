@@ -13,6 +13,11 @@ import {
   taxpayerTaxNumber,
   taxpayerSearchMatch,
 } from '../_lib/taxpayer';
+import EntegratorDialog from '../_dialogs/EntegratorDialog';
+import UploadDialog from '../_dialogs/UploadDialog';
+import GibPortalDialog from '../_dialogs/GibPortalDialog';
+import HesapPlaniDialog from '../_dialogs/HesapPlaniDialog';
+import MukellefAyarDialog from '../_dialogs/MukellefAyarDialog';
 
 /* ════════════════════════════════════════════════════════════════════
    MÜKELLEFLER PANELİ — Mihsap referansı
@@ -192,87 +197,37 @@ export default function MukelleflerPanel({ taxpayers, loading, onRefresh, onSele
         </table>
       </div>
 
-      {/* Hızlı işlem dialog'u */}
-      {activeDialog && (
-        <QuickActionDialog
-          action={activeDialog.action}
+      {/* Hızlı işlem dialog'ları */}
+      {activeDialog?.action === 'entegrator' && (
+        <EntegratorDialog
           taxpayer={activeDialog.taxpayer}
-          onClose={() => setActiveDialog(null)}
-          onRefresh={onRefresh}
+          onClose={() => { setActiveDialog(null); onRefresh(); }}
         />
       )}
-    </div>
-  );
-}
-
-/* ─── Hızlı işlem modal yer tutucusu ─── */
-function QuickActionDialog({
-  action, taxpayer, onClose, onRefresh,
-}: { action: ActionId; taxpayer: any; onClose: () => void; onRefresh: () => void }) {
-  const a = ACTIONS.find((x) => x.id === action)!;
-  const Icon = a.icon;
-
-  return (
-    <div
-      className="fixed inset-0 z-50 flex items-center justify-center p-4"
-      style={{ background: 'rgba(0,0,0,0.6)' }}
-      onClick={onClose}
-    >
-      <div
-        className="w-full max-w-2xl rounded-2xl shadow-2xl overflow-hidden"
-        style={{ background: 'var(--surface)', border: '1px solid var(--border)' }}
-        onClick={(e) => e.stopPropagation()}
-      >
-        <div className="p-6" style={{ borderBottom: '1px solid var(--border)' }}>
-          <div className="flex items-center gap-3 mb-2">
-            <div
-              className="p-2 rounded-lg"
-              style={{ background: `${a.color}20`, color: a.color }}
-            >
-              <Icon size={18} />
-            </div>
-            <div>
-              <div className="text-[15px] font-semibold" style={{ color: 'var(--text)' }}>
-                {a.label}
-              </div>
-              <div className="text-[11.5px]" style={{ color: 'var(--text-muted)' }}>
-                {taxpayer.name}
-              </div>
-            </div>
-          </div>
-        </div>
-
-        <div className="p-6">
-          <div
-            className="rounded-xl p-6 text-center"
-            style={{ background: 'var(--surface-2)', border: '1px dashed var(--border)' }}
-          >
-            <div className="text-[13.5px] font-medium mb-1" style={{ color: 'var(--text)' }}>
-              {action === 'yukle' && 'Belge yükleme paneli (Alış/Satış/Banka, drag-drop, QR mobil) buraya gelecek.'}
-              {action === 'gib' && 'GİB e-Arşiv satış çekim ekranı (tarih aralığı + Sorgula + Talimat Ver + Güvenli Çıkış).'}
-              {action === 'entegrator' && 'e-Fatura entegratör config (Sağlayıcı + kullanıcı + şifre + Talimat).'}
-              {action === 'hesap' && 'Hesap planı (Luca senkron + yeni hesap aç + fatura işlerken eşleştirme).'}
-              {action === 'ayar' && 'Mukellef ayarları (defter türü, KDV ayır, stok, tevkifat vs.)'}
-            </div>
-            <div className="text-[12px]" style={{ color: 'var(--text-muted)' }}>
-              Bu sayfa bir sonraki sürümde aktif olacak.
-            </div>
-          </div>
-        </div>
-
-        <div
-          className="px-6 py-3 flex justify-end gap-2"
-          style={{ borderTop: '1px solid var(--border)', background: 'var(--surface-2)' }}
-        >
-          <button
-            onClick={onClose}
-            className="px-4 py-1.5 text-[12.5px] rounded-md font-medium transition-colors"
-            style={{ background: 'transparent', color: 'var(--text-secondary)', border: '1px solid var(--border)' }}
-          >
-            Kapat
-          </button>
-        </div>
-      </div>
+      {activeDialog?.action === 'yukle' && (
+        <UploadDialog
+          taxpayer={activeDialog.taxpayer}
+          onClose={() => { setActiveDialog(null); onRefresh(); }}
+        />
+      )}
+      {activeDialog?.action === 'gib' && (
+        <GibPortalDialog
+          taxpayer={activeDialog.taxpayer}
+          onClose={() => { setActiveDialog(null); onRefresh(); }}
+        />
+      )}
+      {activeDialog?.action === 'hesap' && (
+        <HesapPlaniDialog
+          taxpayer={activeDialog.taxpayer}
+          onClose={() => { setActiveDialog(null); onRefresh(); }}
+        />
+      )}
+      {activeDialog?.action === 'ayar' && (
+        <MukellefAyarDialog
+          taxpayer={activeDialog.taxpayer}
+          onClose={() => { setActiveDialog(null); onRefresh(); }}
+        />
+      )}
     </div>
   );
 }
