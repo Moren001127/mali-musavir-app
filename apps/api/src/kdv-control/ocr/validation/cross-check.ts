@@ -195,7 +195,16 @@ export function crossCheckWithAzure(
     }
     if (zParsed.breakdown.length > 0) {
       const claudeBreakdownCount = result.kdvBreakdown?.length || 0;
-      if (claudeBreakdownCount === 0 || claudeBreakdownCount !== zParsed.breakdown.length) {
+      const currentBreakdown = result.kdvBreakdown || [];
+      const breakdownDiffers =
+        currentBreakdown.length !== zParsed.breakdown.length ||
+        zParsed.breakdown.some((expected) => {
+          const current = currentBreakdown.find((item) =>
+            Math.abs(Number(item?.oran) - Number(expected.oran)) < 0.5,
+          );
+          return !current || Math.abs(Number(current.tutar) - Number(expected.tutar)) > 0.05;
+        });
+      if (claudeBreakdownCount === 0 || breakdownDiffers) {
         logger.warn(
           `Z_RAPORU breakdown auto-fill: Claude=${claudeBreakdownCount} oran → Azure=${zParsed.breakdown.length} oran (${originalName})`,
         );

@@ -123,10 +123,6 @@ export class KdvControlService {
 
   private inferKdvRecordRate(record: any): number | null {
     if (!record) return null;
-    if (record.kdvOrani != null) {
-      const explicit = Number(record.kdvOrani);
-      if (Number.isFinite(explicit) && explicit > 0) return explicit;
-    }
     const raw = record.rawData || {};
     const source = [
       record.karsiTaraf,
@@ -137,9 +133,15 @@ export class KdvControlService {
       raw['AÇIKLAMA'],
     ].filter(Boolean).join(' ');
     const match = source.match(/%\s*(\d{1,2}(?:[,.]\d{1,2})?)/);
-    if (!match) return null;
-    const parsed = this.parseKdvAmount(match[1]);
-    return Number.isFinite(parsed) && parsed > 0 ? parsed : null;
+    if (match) {
+      const parsed = this.parseKdvAmount(match[1]);
+      if (Number.isFinite(parsed) && parsed > 0) return parsed;
+    }
+    if (record.kdvOrani != null) {
+      const explicit = Number(record.kdvOrani);
+      if (Number.isFinite(explicit) && explicit > 0) return explicit;
+    }
+    return null;
   }
 
   private getExportFaturaKdvValue(
@@ -698,6 +700,7 @@ export class KdvControlService {
       return n === 'ACIKLAMA' || n === 'AIKLAMA' || n.includes('ACIKLAMA');
     }) || null;
     const aciklamaCol = aciklamaExactCol || findAutoCol(aciklamaKeywords);
+    const hesapAdiCol = findAutoCol(['hesap adi', 'hesap adÄ±', 'hesap ad']);
     const hesapKoduCol = findAutoCol(hesapKoduKeywords);
     if (aciklamaCol) {
       this.logger.log(`Luca import: AÇIKLAMA sütunu otomatik tespit: "${aciklamaCol}"`);
@@ -718,8 +721,11 @@ export class KdvControlService {
 
       // Opsiyonel alanlar
       const aciklamaRaw = aciklamaCol && row[aciklamaCol] ? String(row[aciklamaCol]).trim() : null;
+      const hesapAdiRaw = hesapAdiCol && row[hesapAdiCol] ? String(row[hesapAdiCol]).trim() : null;
       const hesapKoduRaw = hesapKoduCol && row[hesapKoduCol] ? String(row[hesapKoduCol]).trim() : null;
-      const kdvOrani = hesapKoduRaw ? this.excelParser.extractKdvOraniFromHesapKodu(hesapKoduRaw) : null;
+      const kdvOrani =
+        this.excelParser.extractKdvOraniFromText(`${hesapAdiRaw ?? ''} ${aciklamaRaw ?? ''}`) ??
+        (hesapKoduRaw ? this.excelParser.extractKdvOraniFromHesapKodu(hesapKoduRaw) : null);
       const rawBelgeNo = belgeKey ? row[belgeKey] : null;
       const rowTextForBelgeNo = Object.values(row)
         .map((v) => String(v ?? ''))
