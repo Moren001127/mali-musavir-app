@@ -44,7 +44,9 @@ export function extractOkcFisKdv(
   if (!text) return null;
   const lines = normalizeAzureText(text).split(/\r?\n/).map((l) => l.trim()).filter(Boolean);
   const breakdown: KdvBreakdownItem[] = [];
-  const kdvLineRe = /\bK\.?\s*D\.?\s*V\.?\b(?!\s*(?:MATRAH|ORAN|UYGULANAN))|\bT[O0]P\s*K\s*D\s*V\b|\bT[O0]PKD[UV]\b/i;
+  const kdvLineRe = /\bT[O0]P\s*K\s*D\s*V\b|\bT[O0]PKD[UV]\b|\bK\.?\s*D\.?\s*V\.?\s*(?:TUTARI|TOPLAM)\b/i;
+  const summaryLookaheadLabelRe = /^(?:TOPLAM|GENEL\s*TOPLAM|KDV\s*ORANI|KDV\s*DAHIL\s*TUTAR|KDV\s*DAH[Iİ]L\s*TUTAR)$/i;
+  const summaryHardStopRe = /NAK[Iİ]T|KRED[Iİ]|KART|PARA\s*[UÜ]ST[UÜ]|KAS[Iİ]YER|M[UÜ][SŞ]TER[Iİ]/i;
   const otherTaxRe = /ÖZEL\s*İLETİŞİM|ÖİV|OIV|TELSİZ|TELSIZ|ÖTV|OTV|DAMGA|BSMV|KKDF|KONAKLAMA|ÇEVRE|STOPAJ/i;
   // OCR sometimes inserts spaces inside amounts: "* 1. 000, 00".
   // Keep the capture broad enough for that form, then let parseAmount remove spaces.
@@ -69,11 +71,12 @@ export function extractOkcFisKdv(
     const oran = rateMatch ? Number(rateMatch[1]) : null;
     let tutar = parseLastAmount(line);
     if (tutar <= 0) {
-      for (let j = 1; j <= 2 && i + j < lines.length; j++) {
+      for (let j = 1; j <= 4 && i + j < lines.length; j++) {
         const next = lines[i + j];
-        if (otherTaxRe.test(next) || /TOPLAM|NAKİT|NAKIT|KART|GENEL/i.test(next)) break;
         tutar = parseLastAmount(next);
         if (tutar > 0) break;
+        if (summaryLookaheadLabelRe.test(next)) continue;
+        if (otherTaxRe.test(next) || summaryHardStopRe.test(next)) break;
       }
     }
     if (tutar > 0) {
@@ -129,7 +132,8 @@ export function extractOkcFisItemRateBreakdown(
   // OCR sometimes inserts spaces inside amounts: "* 1. 000, 00".
   // Keep the capture broad enough for that form, then let parseAmount remove spaces.
   const amountRe = /([+-])?\s*[*]?\s*([+-])?\s*(\d{1,3}(?:\s*[.,]\s*\d{3})*\s*[.,]\s*\d{2}|\d+\s*[.,]\s*\d{2})\s*(?:TL|TRY)?/g;
-  const skipRe = /TOPKDV|TOPLAM|KDV\s*TUTARI|KDV\s*TOPLAM|NAK[Iİ]T|KRED[Iİ]|KART|PARA\s*[UÜ]ST[UÜ]|KAS[Iİ]YER|MERS[Iİ]S|EKU|Z\s*NO|F[Iİ][SŞ]\s*NO|TAR[Iİ]H|SAAT|VERG[Iİ]|V\.?D\.?|T\.?C\.?|TE[SŞ]EKK[UÜ]R|M[UÜ][SŞ]TER[Iİ]/i;
+  const skipRe = /TOPKDV|TOPLAM|KDV\s*TUTARI|KDV\s*TOPLAM|KDV\s*ORAN|KDV\s*DAH[Iİ]L|KDV\s*DAHIL|^KDV$|NAK[Iİ]T|KRED[Iİ]|KART|PARA\s*[UÜ]ST[UÜ]|KAS[Iİ]YER|MERS[Iİ]S|EKU|Z\s*NO|F[Iİ][SŞ]\s*NO|TAR[Iİ]H|SAAT|VERG[Iİ]|V\.?D\.?|T\.?C\.?|TE[SŞ]EKK[UÜ]R|M[UÜ][SŞ]TER[Iİ]/i;
+  const quantityUnitLineRe = /\b\d+(?:[.,]\d+)?\s*(?:KG|GR|AD|ADET|LT|L)?\s*[x×]\s*\d+(?:[.,]\d+)?/i;
 
   const parseLastAmount = (raw: string): number => {
     const values = [...raw.matchAll(amountRe)]
@@ -172,7 +176,9 @@ export function extractOkcFisItemRateBreakdown(
     if (detectedRate) {
       const oran = detectedRate.oran;
       const afterRate = line.slice(detectedRate.index + detectedRate.length);
-      const gross = parseLastAmount(afterRate) || (afterRate.trim() ? parseLastAmount(line) : 0);
+      const gross = quantityUnitLineRe.test(afterRate)
+        ? 0
+        : (parseLastAmount(afterRate) || (afterRate.trim() ? parseLastAmount(line) : 0));
       if (gross) {
         grossByRate.set(oran, (grossByRate.get(oran) || 0) + gross);
         pendingRate = null;
@@ -183,6 +189,9 @@ export function extractOkcFisItemRateBreakdown(
     }
 
     if (pendingRate) {
+      if (quantityUnitLineRe.test(line)) {
+        continue;
+      }
       const gross = parseLastAmount(line);
       if (gross) {
         grossByRate.set(pendingRate, (grossByRate.get(pendingRate) || 0) + gross);

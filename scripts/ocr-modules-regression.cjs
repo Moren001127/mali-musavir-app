@@ -604,7 +604,61 @@ const okcSpacedAmount = okcFis.extractOkcFisKdv(okcSpacedAmountText, okcDeps);
 assert(okcSpacedAmount !== null, 'okc spaced amount result not null');
 eq(okcSpacedAmount.kdvTutari, '117,27', 'okc spaced gross topkdv preserved');
 approx(okcSpacedAmount.breakdown.find((b) => b.oran === 10).tutar, 117.27, 0.01, 'okc spaced gross amounts summed');
-ok('azure/okc-fis.ts (19 assertion)');
+
+const okcTahir0095Text = [
+  'FIS NO',
+  '0095',
+  '%01',
+  '*106,83',
+  '%01',
+  '*149,95',
+  'TOPKDV',
+  'TOPLAM',
+  '*2,54',
+  '*256,78',
+  'KDV Orani',
+  'KDV Dahil Tutar',
+  'KDV',
+  '%1',
+  '*256,78',
+  '*2,54',
+].join('\n');
+const okcTahir0095 = okcFis.extractOkcFisKdv(okcTahir0095Text, okcDeps);
+assert(okcTahir0095 !== null, 'okc tahir 0095 result not null');
+eq(okcTahir0095.kdvTutari, '2,54', 'okc tahir 0095 topkdv/table not double counted');
+approx(okcTahir0095.breakdown.reduce((sum, b) => sum + b.tutar, 0), 2.54, 0.01, 'okc tahir 0095 breakdown total');
+
+const okcTahir0368Text = [
+  'FIS NO',
+  ':0368',
+  '3 AD x 26,00 TL/AD',
+  'EVIN MARGARIN 250GR',
+  '%1',
+  '*78,00',
+  '%1',
+  '21 AD x 17,90 TL/AD',
+  '*449,00',
+  'ETI TUTKU MOZAIK 100',
+  '%1',
+  '*375,90',
+  'ASPEROX SARI GUC 650',
+  '%20',
+  '*99,00',
+  'ALISVERIS POSETI',
+  '%20',
+  '*1,00',
+  'INDIRIMLER',
+  '*- 30,00',
+  'TOPKDV',
+  'TOPLAM',
+  '*20,61',
+  '*972,90',
+].join('\n');
+const okcTahir0368 = okcFis.extractOkcFisKdv(okcTahir0368Text, okcDeps);
+assert(okcTahir0368 !== null, 'okc tahir 0368 result not null');
+eq(okcTahir0368.kdvTutari, '20,61', 'okc tahir 0368 topkdv wins over discounted item inference');
+approx(okcTahir0368.breakdown.reduce((sum, b) => sum + b.tutar, 0), 20.61, 0.01, 'okc tahir 0368 breakdown total');
+ok('azure/okc-fis.ts (25 assertion)');
 
 // ═══════════════════════════════════════════════════════════
 // SONUC

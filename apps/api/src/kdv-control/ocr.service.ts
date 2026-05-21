@@ -673,7 +673,11 @@ export class OcrService {
         );
       }
     } else {
-      belgeNo = belgeNoFromFilename ?? bodyBelgeNo;
+      const filenameIsShortOkcNo = !!belgeNoFromFilename && /^\d{1,6}$/.test(belgeNoFromFilename);
+      const trustFilename =
+        !!belgeNoFromFilename &&
+        (!filenameIsShortOkcNo || belgeTipi === 'OKC_FIS' || belgeTipi === 'MAKBUZ' || !bodyBelgeNo);
+      belgeNo = trustFilename ? belgeNoFromFilename : (bodyBelgeNo ?? belgeNoFromFilename);
     }
     const zRaporu = belgeTipi === 'Z_RAPORU' ? this.extractZRaporuKdvFromAzure(fullText) : null;
     const okcFis = belgeTipi === 'OKC_FIS' ? this.extractOkcFisKdvFromAzure(fullText) : null;
@@ -786,6 +790,7 @@ export class OcrService {
     if (E_BELGE_NO_REGEX.test(base.toUpperCase())) return base.toUpperCase();
     if (/^[A-Z0-9]{3}\d{4}\d{6,12}$/i.test(base)) return base.toUpperCase();
     if (/^[A-Z0-9\-_]{8,30}$/i.test(base)) return base.toUpperCase();
+    if (/^\d{1,6}$/.test(base) && !/^(?:20)?\d{2}[01]\d[0-3]\d$/.test(base)) return base;
     return null;
   }
 

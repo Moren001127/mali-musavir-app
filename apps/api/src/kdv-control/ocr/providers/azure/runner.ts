@@ -131,7 +131,11 @@ export async function runAzureOcr(
       );
     }
   } else {
-    belgeNo = belgeNoFromFilename ?? bodyBelgeNo;
+    const filenameIsShortOkcNo = !!belgeNoFromFilename && /^\d{1,6}$/.test(belgeNoFromFilename);
+    const trustFilename =
+      !!belgeNoFromFilename &&
+      (!filenameIsShortOkcNo || belgeTipi === 'OKC_FIS' || belgeTipi === 'MAKBUZ' || !bodyBelgeNo);
+    belgeNo = trustFilename ? belgeNoFromFilename : (bodyBelgeNo ?? belgeNoFromFilename);
   }
   const zRaporu = belgeTipi === 'Z_RAPORU' ? extractZRaporuKdvFromAzure(fullText) : null;
   const okcFis = belgeTipi === 'OKC_FIS' ? extractOkcFisKdvFromAzure(fullText) : null;

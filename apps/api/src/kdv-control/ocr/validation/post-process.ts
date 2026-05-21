@@ -84,6 +84,13 @@ export function postProcessOcrResult(
   if (belgeNoFromFilename) {
     const fnClean = belgeNoFromFilename.toUpperCase().replace(/[^A-Z0-9]/g, '');
     const ocrClean = (result.belgeNo || '').toUpperCase().replace(/[^A-Z0-9]/g, '');
+    const fnLooksLikeOkcNo = /^\d{1,6}$/.test(fnClean);
+    const ocrLooksLikeOkcNo = !ocrClean || /^\d{1,8}$/.test(ocrClean);
+    if (result.belgeTipi === 'OKC_FIS' && fnLooksLikeOkcNo && ocrLooksLikeOkcNo && fnClean !== ocrClean) {
+      logger.warn(`OKC belge no filename override: "${ocrClean}" -> "${fnClean}" (${originalName})`);
+      result.belgeNo = belgeNoFromFilename;
+      if (result.fieldConfidence) result.fieldConfidence.belgeNo = 0.95;
+    }
 
     const editDist =
       fnClean.length >= 10 && ocrClean.length >= 10
