@@ -93,6 +93,7 @@ const kdvBreakdown = require(path.join(ROOT, 'apps/api/src/kdv-control/ocr/provi
 const zRaporu = require(path.join(ROOT, 'apps/api/src/kdv-control/ocr/providers/azure/z-raporu.ts'));
 const azureHelpers = require(path.join(ROOT, 'apps/api/src/kdv-control/ocr/providers/azure/helpers.ts'));
 const sectoral = require(path.join(ROOT, 'apps/api/src/kdv-control/ocr/providers/azure/sectoral.ts'));
+const crossCheck = require(path.join(ROOT, 'apps/api/src/kdv-control/ocr/validation/cross-check.ts'));
 
 const log = [];
 const ok = (name) => log.push(`  ✓ ${name}`);
@@ -368,6 +369,57 @@ eq(zPetravet1421.kdvTutari, '575,30', 'z petravet 1421 interleaved label total')
 approx(zPetravet1421.breakdown.find((b) => b.oran === 20).tutar, 461.66, 0.01, 'z petravet 1421 interleaved %20');
 approx(zPetravet1421.breakdown.find((b) => b.oran === 10).tutar, 113.64, 0.01, 'z petravet 1421 interleaved %10');
 ok('azure/z-raporu.ts (21 assertion)');
+
+// ─── validation/cross-check.ts ───
+const zCrossText = [
+  'Z RAPORU',
+  'Z NO: 1.407',
+  'TOPLAM %20',
+  '*1. 980, 00',
+  'TOPKDV /20',
+  '* 330, 00',
+  'TOPLAM /10',
+  '*7. 750,00',
+  'TOPKDV %10',
+  '*704,54',
+  'TOPLAM',
+  '.9. 730, 00',
+  'TOPKDV',
+  '* 1. 034,54',
+].join('\n');
+const zCrossResult = {
+  rawText: zCrossText,
+  belgeNo: '1407',
+  date: '02.04.2026',
+  kdvTutari: '17480,00',
+  kdvBreakdown: [
+    { oran: 20, tutar: 7750, matrah: 330 },
+    { oran: 10, tutar: 9730, matrah: 704.54 },
+  ],
+  belgeTipi: 'Z_RAPORU',
+  fieldConfidence: { belgeNo: 0.9, date: 0.9, kdvTutari: 0.9 },
+  confidence: 0.9,
+};
+crossCheck.crossCheckWithAzure(zCrossResult, zCrossText, '1407.image', '1407', {
+  parseAmount: ublDeps.parseAmount,
+  formatAmount: ublDeps.formatAmount,
+  foldTurkishAscii: azureHelpers.foldTurkishAscii,
+  normalizeAzureText: azureHelpers.normalizeAzureText,
+  eBelgeNoDistance: () => 0,
+  extractZRaporuKdvFromAzure: (text) => zRaporu.extractZRaporuKdv(text, zDeps),
+  extractTevkifatliFaturaFromAzure: () => null,
+  extractKdvOnlyFromTelekomAzure: () => null,
+  extractKdvFromInvoiceTotalsAzure: () => null,
+  extractMultiRateKdvFromAzure: () => [{ oran: 20, tutar: 7750, matrah: 330 }],
+  extractMultiRateKdvFromItemRows: () => [{ oran: 20, tutar: 7750, matrah: 330 }, { oran: 10, tutar: 9730, matrah: 704.54 }],
+  extractHesMatrahKdvTable: () => ({ breakdown: [], totalKdv: null }),
+  isFieldInAzureText: () => true,
+  logger: { log: () => {}, warn: () => {} },
+});
+eq(zCrossResult.kdvTutari, '1034,54', 'cross-check z report keeps TOPKDV total');
+approx(zCrossResult.kdvBreakdown.find((b) => b.oran === 20).tutar, 330, 0.01, 'cross-check z report %20 stays Azure Z parser');
+approx(zCrossResult.kdvBreakdown.find((b) => b.oran === 10).tutar, 704.54, 0.01, 'cross-check z report %10 stays Azure Z parser');
+ok('validation/cross-check.ts Z_RAPORU guard (3 assertion)');
 
 // ─── azure/tevkifatli-fatura.ts ───
 const foldFn = azureHelpers.foldTurkishAscii;

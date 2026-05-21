@@ -359,6 +359,10 @@ export function crossCheckWithAzure(
     logger.log(
       `Multi-rate auto-fill SKIP: telekom KDV-only kilidi aktif (${originalName})`,
     );
+  } else if (result.belgeTipi === 'Z_RAPORU' || result.belgeTipi === 'OKC_FIS') {
+    logger.log(
+      `Multi-rate auto-fill SKIP: yapisal fis/Z raporu Azure parser kilidi aktif (${originalName})`,
+    );
   } else if (kdvAlreadyVerifiedByAutoFill.value && azureMentionsTevkifat) {
     logger.log(
       `Multi-rate auto-fill SKIP: tevkifatlı fatura (auto-correct çalıştı, ${originalName})`,
