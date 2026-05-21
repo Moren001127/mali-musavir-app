@@ -1,8 +1,8 @@
 'use client';
 
 import { useMemo, useState } from 'react';
-import { useQuery } from '@tanstack/react-query';
-import { ChevronRight, Search, Inbox, ArrowUpDown } from 'lucide-react';
+import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
+import { ChevronRight, Search, Inbox, ArrowUpDown, Download, Loader2 } from 'lucide-react';
 import { api } from '@/lib/api';
 import { taxpayerName, taxpayerBookType, taxpayerSearchMatch } from '../_lib/taxpayer';
 import FaturaDetayDrawer from '../_dialogs/FaturaDetayDrawer';
@@ -12,9 +12,23 @@ type Props = { taxpayerId?: string; period: string };
 /* GELEN BELGELER — Per-mukellef özet tablosu
    Mihsap referansı: Firma · Defter · Bekleyen Alış · Bekleyen Satış · Bekleyen Banka · Onaylanan Alış · Onaylanan Satış · Onaylanan Banka */
 export default function GelenBelgelerPanel({ taxpayerId, period }: Props) {
+  const qc = useQueryClient();
   const [search, setSearch] = useState('');
   const [sortBy, setSortBy] = useState<'name' | 'pending' | 'approved'>('pending');
   const [selectedDoc, setSelectedDoc] = useState<{ taxpayerId: string; direction: 'ALIS' | 'SATIS' } | null>(null);
+
+  /* e-Arşiv kayıtlarını invoice document'lere çevir (toplu) */
+  const earsivBackfillMut = useMutation({
+    mutationFn: async () => {
+      return api.post('/fatura-muhasebelestirme/documents/backfill-earsiv', {
+        taxpayerId: taxpayerId || undefined,
+        donem: period,
+      });
+    },
+    onSuccess: () => {
+      qc.invalidateQueries({ queryKey: ['fatura-merkezi'] });
+    },
+  });
 
   const taxpayersQ = useQuery({
     queryKey: ['fatura-merkezi', 'taxpayers'],
@@ -103,7 +117,24 @@ export default function GelenBelgelerPanel({ taxpayerId, period }: Props) {
           <option value="approved">Onaylanana göre</option>
           <option value="name">Ada göre</option>
         </select>
+
+        <button
+          onClick={() => earsivBackfillMut.mutate()}
+          disabled={earsivBackfillMut.isPending}
+          className="flex items-center gap-1.5 px-3 py-2 text-[12.5px] font-medium rounded-lg transition-colors"
+          style={{ background: '#a78bfa15', border: '1px solid #a78bfa40', color: '#a78bfa' }}
+          title="e-Arşiv'den çekilmiş faturaları bu dönem için Gelen Belgeler'e aktarır"
+        >
+          {earsivBackfillMut.isPending ? <Loader2 size={13} className="animate-spin" /> : <Download size={13} />}
+          e-Arşiv'den İçe Aktar
+        </button>
       </div>
+
+      {earsivBackfillMut.isSuccess && (
+        <div className="mb-3 p-2.5 rounded-lg text-[12px] flex items-center gap-2" style={{ background: '#10b98115', border: '1px solid #10b98140', color: '#86efac' }}>
+          ✓ {(earsivBackfillMut.data as any)?.data?.imported ?? 'Birkaç'} e-arşiv kaydı Gelen Belgeler'e taşındı. Sayfayı yenile.
+        </div>
+      )}
 
       {/* Hızlı özet kart */}
       <div className="grid grid-cols-3 gap-3 mb-4">
