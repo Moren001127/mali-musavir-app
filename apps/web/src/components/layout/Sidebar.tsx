@@ -48,16 +48,18 @@ import {
 import { useQuery } from '@tanstack/react-query';
 import { pendingDecisionsApi } from '@/lib/pending-decisions';
 
-// Elit Boutique altın ailesi — her grup kendi tonunu alır
-const GOLD      = '#d4b876';  // Ana altın
-const CHAMPAGNE = '#e8d6a0';  // Parlak şampanya
-const BRONZE    = '#c0a079';  // Bronz
-const COPPER    = '#d99560';  // Bakır
+const GOLD = '#d4b876';
+const LAVENDER = '#c6a7ff';
+const SAGE = '#8fd7bd';
+const AMBER = '#d8ad70';
+const SKY = '#8cbde8';
+const COPPER = '#d9a06c';
+const STEEL = '#9da8b7';
 // Sidebar gruplari kullanicinin gunluk akisi icin siralandi.
 const navGroups = [
   {
     label: 'Moren AI',
-    color: GOLD,
+    color: LAVENDER,
     icon: BrainCircuit,
     items: [
       { href: '/panel/moren-ai', label: 'MOREN AI', icon: BrainCircuit },
@@ -78,7 +80,7 @@ const navGroups = [
   },
   {
     label: 'Fatura & Muhasebe',
-    color: CHAMPAGNE,
+    color: SAGE,
     icon: ReceiptText,
     items: [
       { href: '/fatura-merkezi', label: 'Fatura İşleme Merkezi', icon: FileStack },
@@ -92,7 +94,7 @@ const navGroups = [
   },
   {
     label: 'Vergi & Beyanname',
-    color: BRONZE,
+    color: AMBER,
     icon: FileCheck2,
     items: [
       { href: '/panel/kdv-kontrol', label: 'KDV Kontrol', icon: FileCheck2 },
@@ -104,7 +106,7 @@ const navGroups = [
   },
   {
     label: 'Mali Veriler',
-    color: CHAMPAGNE,
+    color: SKY,
     icon: DatabaseZap,
     items: [
       { href: '/panel/mizan', label: 'Mizan', icon: Table2 },
@@ -116,7 +118,7 @@ const navGroups = [
   },
   {
     label: 'Ofis',
-    color: CHAMPAGNE,
+    color: COPPER,
     icon: Building2,
     items: [
       { href: '/panel/cari-kasa', label: 'Cari Kasa & Tahsilat', icon: HandCoins },
@@ -126,7 +128,7 @@ const navGroups = [
   },
   {
     label: 'Teknik & Sistem',
-    color: COPPER,
+    color: STEEL,
     icon: Settings2,
     items: [
       { href: '/panel/hatirlatmalar', label: 'WhatsApp Otomasyonu', icon: MessageSquareText },
@@ -196,30 +198,46 @@ export default function Sidebar() {
       </div>
 
       {/* === NAVIGASYON === */}
-      <nav className="flex-1 px-2 pt-3 pb-4 space-y-4 overflow-y-auto relative">
+      <nav className="flex-1 px-2 pt-3 pb-5 space-y-4 overflow-y-auto relative">
         {navGroups.map((group) => {
           const GIcon = group.icon;
           return (
             <div key={group.label}>
               {/* Grup Başlığı */}
-              <div className="flex items-center gap-2 px-3 mb-1.5">
-                <span
-                  className="flex h-[18px] w-[18px] items-center justify-center rounded-md"
+              <div className="px-1.5 mb-2">
+                <div
+                  className="flex items-center gap-2 rounded-lg border px-2 py-1.5"
                   style={{
-                    background: `${group.color}12`,
-                    border: `1px solid ${group.color}22`,
-                    boxShadow: `inset 0 1px 0 rgba(255,255,255,0.05)`,
+                    background: `linear-gradient(90deg, ${group.color}12 0%, rgba(255,255,255,0.018) 46%, transparent 100%)`,
+                    borderColor: `${group.color}24`,
+                    boxShadow: `inset 0 1px 0 rgba(255,255,255,0.045), 0 6px 18px ${group.color}08`,
                   }}
                 >
-                  <GIcon size={11} style={{ color: group.color, opacity: 0.9 }} />
-                </span>
-                <p
-                  className="text-[9.5px] font-bold uppercase flex-1"
-                  style={{ color: 'rgba(250,250,249,0.42)', letterSpacing: '0.15em' }}
-                >
-                  {group.label}
-                </p>
-                <div className="h-px flex-1" style={{ background: 'linear-gradient(90deg, rgba(184,160,111,0.2), transparent)' }} />
+                  <span
+                    className="flex h-[22px] w-[22px] items-center justify-center rounded-md"
+                    style={{
+                      background: `${group.color}18`,
+                      border: `1px solid ${group.color}32`,
+                      boxShadow: `0 0 14px ${group.color}10, inset 0 1px 0 rgba(255,255,255,0.07)`,
+                    }}
+                  >
+                    <GIcon size={12} strokeWidth={2.15} style={{ color: group.color }} />
+                  </span>
+                  <p
+                    className="text-[10.5px] font-extrabold uppercase flex-none"
+                    style={{
+                      color: group.color,
+                      letterSpacing: 0,
+                      textShadow: `0 0 16px ${group.color}26`,
+                    }}
+                  >
+                    {group.label}
+                  </p>
+                  <div
+                    className="h-px flex-1"
+                    style={{ background: `linear-gradient(90deg, ${group.color}44, transparent)` }}
+                  />
+                </div>
               </div>
 
               {/* Menü Öğeleri */}
@@ -246,7 +264,7 @@ export default function Sidebar() {
                         borderColor: baseBorder,
                         boxShadow: baseShadow,
                         fontWeight: active ? 600 : 450,
-                        letterSpacing: '-0.005em',
+                        letterSpacing: 0,
                         transition: 'all 0.28s cubic-bezier(0.16, 1, 0.3, 1)',
                       }}
                       onMouseEnter={(e) => {
@@ -303,20 +321,22 @@ export default function Sidebar() {
 
                       {/* İkon kutucuğu */}
                       <div
-                        className="relative flex items-center justify-center flex-shrink-0 transition-all duration-300 group-hover:-rotate-3 group-hover:scale-110"
+                        className="relative flex items-center justify-center flex-shrink-0 transition-all duration-300 group-hover:scale-105"
                         style={{
                           width: 24,
                           height: 24,
                           borderRadius: 8,
-                          background: active ? `${group.color}24` : 'rgba(255,255,255,0.025)',
-                          border: `1px solid ${active ? `${group.color}42` : 'rgba(255,255,255,0.04)'}`,
-                          boxShadow: active ? `0 0 14px ${group.color}20` : 'none',
+                          background: active ? `${group.color}24` : `${group.color}0f`,
+                          border: `1px solid ${active ? `${group.color}48` : `${group.color}1f`}`,
+                          boxShadow: active
+                            ? `0 0 14px ${group.color}20`
+                            : `inset 0 1px 0 rgba(255,255,255,0.035)`,
                         }}
                       >
                         <Icon
                           size={14}
                           strokeWidth={active ? 2.25 : 1.75}
-                          style={{ color: active ? group.color : 'currentColor' }}
+                          style={{ color: group.color, opacity: active ? 1 : 0.78 }}
                         />
                       </div>
 
@@ -352,64 +372,65 @@ export default function Sidebar() {
             </div>
           );
         })}
-      </nav>
 
-      {/* === KULLANICI KARTI === */}
-      <div className="relative px-3 pt-3 pb-4" style={{ borderTop: '1px solid #1f1a15' }}>
-        <div
-          className="relative overflow-hidden rounded-xl p-3 group transition-all duration-300"
-          style={{
-            background: 'linear-gradient(135deg, rgba(255,255,255,0.04), rgba(255,255,255,0.01))',
-            border: '1px solid rgba(255,255,255,0.06)',
-          }}
-        >
-          {/* Dekoratif */}
+        {/* === KULLANICI KARTI === */}
+        <div className="relative px-1 pt-4 pb-1" style={{ borderTop: '1px solid rgba(212,184,118,0.16)' }}>
           <div
-            className="absolute -bottom-4 -right-4 w-16 h-16 rounded-full opacity-20"
-            style={{ background: 'radial-gradient(circle, #b8a06f, transparent 70%)' }}
-          />
-          <div className="relative flex items-center gap-3">
-            <div className="relative">
-              <div
-                className="absolute inset-0 rounded-lg blur-sm opacity-40"
-                style={{ background: 'linear-gradient(135deg, #b8a06f, #8b7649)' }}
-              />
-              <div
-                className="relative w-9 h-9 rounded-lg flex-shrink-0 flex items-center justify-center text-[12px] font-bold transition-transform duration-200 group-hover:scale-105"
-                style={{
-                  background: 'linear-gradient(135deg, #d4b876, #8b7649)',
-                  color: '#0f0d0b',
-                  boxShadow: 'inset 0 1px 0 rgba(255,255,255,0.25), 0 2px 8px rgba(0,0,0,0.3)',
-                }}
-              >
-                {initials}
+            className="relative overflow-hidden rounded-xl p-3 group transition-all duration-300"
+            style={{
+              background: 'linear-gradient(135deg, rgba(212,184,118,0.10), rgba(255,255,255,0.025))',
+              border: '1px solid rgba(212,184,118,0.16)',
+              boxShadow: 'inset 0 1px 0 rgba(255,255,255,0.06)',
+            }}
+          >
+            <div
+              className="absolute -bottom-5 -right-5 w-20 h-20 rounded-full"
+              style={{ background: 'radial-gradient(circle, #d4b876, transparent 70%)', opacity: 0.18 }}
+            />
+            <div className="relative flex items-center gap-3">
+              <div className="relative">
+                <div
+                  className="absolute inset-0 rounded-lg blur-sm opacity-40"
+                  style={{ background: 'linear-gradient(135deg, #d4b876, #8b7649)' }}
+                />
+                <div
+                  className="relative w-9 h-9 rounded-lg flex-shrink-0 flex items-center justify-center text-[12px] font-bold transition-transform duration-200 group-hover:scale-105"
+                  style={{
+                    background: 'linear-gradient(135deg, #d4b876, #8b7649)',
+                    color: '#0f0d0b',
+                    boxShadow: 'inset 0 1px 0 rgba(255,255,255,0.25), 0 2px 8px rgba(0,0,0,0.3)',
+                  }}
+                >
+                  {initials}
+                </div>
               </div>
+              <div className="flex-1 min-w-0">
+                <p className="text-[13px] font-semibold truncate" style={{ color: '#fafaf9' }}>
+                  {user ? `${user.firstName ?? ''} ${user.lastName ?? ''}`.trim() || user.email : '...'}
+                </p>
+                <p className="text-[10px] font-medium mt-0.5 flex items-center gap-1" style={{ color: '#d4b876' }}>
+                  <span className="w-1 h-1 rounded-full" style={{ background: '#d4b876' }} />
+                  {user?.role === 'ADMIN' ? 'YÖNETİCİ' : 'PERSONEL'}
+                </p>
+              </div>
+              <button
+                onClick={() => logout.mutate()}
+                className="opacity-60 hover:opacity-100 transition-all p-1.5 rounded-md hover:bg-red-500/20"
+                title="Çıkış Yap"
+                aria-label="Çıkış yap"
+              >
+                <LogOut size={13} style={{ color: '#ef4444' }} />
+              </button>
             </div>
-            <div className="flex-1 min-w-0">
-              <p className="text-[13px] font-semibold truncate" style={{ color: '#fafaf9' }}>
-                {user ? `${user.firstName ?? ''} ${user.lastName ?? ''}`.trim() || user.email : '...'}
-              </p>
-              <p className="text-[10px] font-medium mt-0.5 flex items-center gap-1" style={{ color: '#b8a06f' }}>
-                <span className="w-1 h-1 rounded-full" style={{ background: '#b8a06f' }} />
-                {user?.role === 'ADMIN' ? 'YÖNETİCİ' : 'PERSONEL'}
-              </p>
-            </div>
-            <button
-              onClick={() => logout.mutate()}
-              className="opacity-0 group-hover:opacity-100 transition-opacity p-1.5 rounded-md hover:bg-red-500/20"
-              title="Çıkış Yap"
-            >
-              <LogOut size={13} style={{ color: '#ef4444' }} />
-            </button>
           </div>
+          <p
+            className="text-center mt-3 text-[9px] uppercase tabular-nums"
+            style={{ color: 'rgba(250,250,249,0.22)', letterSpacing: 0 }}
+          >
+            v0.1.0 · KVKK
+          </p>
         </div>
-        <p
-          className="text-center mt-3 text-[9px] uppercase tabular-nums"
-          style={{ color: 'rgba(250,250,249,0.22)', letterSpacing: '0.2em' }}
-        >
-          v0.1.0 · KVKK
-        </p>
-      </div>
+      </nav>
     </aside>
   );
 }
