@@ -241,7 +241,7 @@ export default function Sidebar() {
               </div>
 
               {/* Menü Öğeleri */}
-              <div className="space-y-0.5">
+              <div className="ml-3 space-y-0.5">
                 {group.items.map(({ href, label, icon: Icon }) => {
                   const active = isActive(href);
                   const baseBackground = active
