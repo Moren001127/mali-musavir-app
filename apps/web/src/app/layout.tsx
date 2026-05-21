@@ -2,6 +2,7 @@ import type { Metadata } from 'next';
 import './globals.css';
 import { Providers } from '@/components/providers';
 import { Toaster } from 'sonner';
+import GlobalMorenVoice from '@/components/moren-ai/GlobalMorenVoice';
 
 export const metadata: Metadata = {
   title: 'Moren Mali Müşavirlik Yönetim Portali',
@@ -47,6 +48,7 @@ export default function RootLayout({ children }: { children: React.ReactNode }) 
       <body>
         <Providers>
           {children}
+          <GlobalMorenVoice />
           <Toaster position="top-right" richColors />
         </Providers>
       </body>

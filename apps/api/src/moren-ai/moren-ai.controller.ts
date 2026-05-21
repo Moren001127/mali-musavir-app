@@ -90,8 +90,14 @@ export class MorenAiController {
   }
 
   @Get('memories')
-  async memories(@Req() req: any, @Query('query') query?: string, @Query('taxpayerId') taxpayerId?: string, @Query('scope') scope?: string) {
-    return this.tools.execute('search_ai_memory', { query, taxpayerId, scope }, {
+  async memories(
+    @Req() req: any,
+    @Query('query') query?: string,
+    @Query('taxpayerId') taxpayerId?: string,
+    @Query('scope') scope?: string,
+    @Query('limit') limit?: string,
+  ) {
+    return this.tools.execute('search_ai_memory', { query, taxpayerId, scope, limit: limit ? parseInt(limit) : undefined }, {
       tenantId: req.user.tenantId,
       userId: req.user.sub,
     });

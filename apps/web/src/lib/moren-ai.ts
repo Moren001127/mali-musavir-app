@@ -73,7 +73,7 @@ export async function getOfficeBrain(period?: string) {
   return data;
 }
 
-export async function searchMemories(params?: { query?: string; taxpayerId?: string; scope?: string }) {
+export async function searchMemories(params?: { query?: string; taxpayerId?: string; scope?: string; limit?: number }) {
   const { data } = await api.get('/moren-ai/memories', { params });
   return data;
 }
@@ -125,6 +125,7 @@ export async function realtimePortalQuery(body: {
   conversationId?: string;
   taxpayerId?: string;
   question: string;
+  currentPath?: string;
 }): Promise<ChatResponse> {
   const { data } = await api.post('/moren-ai/voice/realtime-portal-query', body);
   return data;

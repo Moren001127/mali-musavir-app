@@ -26,6 +26,7 @@ import {
 } from 'lucide-react';
 import {
   chat,
+  confirmAgentCommand,
   deleteConversation,
   getConversation,
   getOfficeBrain,
@@ -35,6 +36,7 @@ import {
   realtimePortalQuery,
   renameConversation,
   saveMemory,
+  searchMemories,
   synthesize,
   transcribe,
   type ConversationSummary,
@@ -233,6 +235,14 @@ export default function MorenAIPage() {
     refetchInterval: 60_000,
   });
 
+  const { data: memoryData } = useQuery({
+    queryKey: ['moren-ai-memories', selectedTaxpayerId || 'office'],
+    queryFn: () => searchMemories({
+      taxpayerId: selectedTaxpayerId || undefined,
+      limit: 6,
+    }),
+  });
+
   const { data: conversations = [] } = useQuery<ConversationSummary[]>({
     queryKey: ['ai-conversations'],
     queryFn: () => listConversations(30),
@@ -316,6 +326,7 @@ export default function MorenAIPage() {
         conversationId: activeConversationIdRef.current || undefined,
         taxpayerId: selectedTaxpayerIdRef.current || undefined,
         question,
+        currentPath: typeof window !== 'undefined' ? window.location.pathname : undefined,
       });
       activeConversationIdRef.current = result.conversationId;
       if (!activeConversationId) setActiveConversationId(result.conversationId);
@@ -415,7 +426,9 @@ export default function MorenAIPage() {
     pc.onconnectionstatechange = () => {
       if (['failed', 'closed', 'disconnected'].includes(pc.connectionState)) {
         stopRealtimeVoice();
-        if (voiceModeRef.current) setVoiceStatus('idle');
+        voiceModeRef.current = false;
+        setVoiceMode(false);
+        setVoiceStatus('idle');
       }
     };
 
@@ -549,8 +562,26 @@ export default function MorenAIPage() {
     onSuccess: () => {
       toast.success('MOREN hafızasına alındı');
       setMemoryText('');
+      qc.invalidateQueries({ queryKey: ['moren-ai-memories'] });
     },
     onError: (error: any) => toast.error(error?.response?.data?.message || error?.message || 'Hafıza kaydedilemedi'),
+  });
+
+  const confirmActionMut = useMutation({
+    mutationFn: (preview: any) =>
+      confirmAgentCommand({
+        agent: preview.agent,
+        action: preview.action,
+        payload: preview.payload || {},
+        confirmationText: preview.confirmationText || 'ONAYLIYORUM',
+      }),
+    onSuccess: () => {
+      toast.success('Aksiyon onay kuyruğuna alındı');
+      qc.invalidateQueries({ queryKey: ['pending-count'] });
+      qc.invalidateQueries({ queryKey: ['moren-ai-office-brain'] });
+      qc.invalidateQueries({ queryKey: ['ai-conversations'] });
+    },
+    onError: (error: any) => toast.error(error?.response?.data?.message || error?.message || 'Aksiyon onaylanamadı'),
   });
 
   useEffect(() => {
@@ -605,8 +636,7 @@ export default function MorenAIPage() {
   };
 
   restartVoiceRef.current = () => {
-    if (!voiceModeRef.current || sendMutation.isPending || recorder.recording) return;
-    startVoiceListening().catch(() => {});
+    // Canlı konuşmada eski "sesi yazıya çevir ve gönder" akışına otomatik düşmüyoruz.
   };
 
   const handleVoiceModeToggle = async () => {
@@ -619,8 +649,10 @@ export default function MorenAIPage() {
         await startRealtimeVoice();
       } catch (error: any) {
         stopRealtimeVoice();
-        toast.info('Canlı ses başlatılamadı; kayıtlı ses moduna geçiyorum.');
-        window.setTimeout(() => restartVoiceRef.current(), 100);
+        toast.error('Canlı ses başlatılamadı; eski yazıya çeviren ses moduna düşmedim.');
+        setVoiceMode(false);
+        voiceModeRef.current = false;
+        setVoiceStatus('idle');
       }
       return;
     }
@@ -672,9 +704,12 @@ export default function MorenAIPage() {
     voiceModeRef.current = true;
     try {
       await startRealtimeVoice();
-    } catch {
+    } catch (error: any) {
       stopRealtimeVoice();
-      await startVoiceListening();
+      setVoiceMode(false);
+      voiceModeRef.current = false;
+      setVoiceStatus('idle');
+      toast.error('Canlı ses başlatılamadı: ' + (error?.response?.data?.message || error?.message || 'Bağlantı hatası'));
     }
   };
 
@@ -923,7 +958,12 @@ export default function MorenAIPage() {
           ) : (
             <div className="space-y-4">
               {messages.map((message) => (
-                <MessageBubble key={message.id} message={message} />
+                <MessageBubble
+                  key={message.id}
+                  message={message}
+                  onConfirmAction={(preview) => confirmActionMut.mutate(preview)}
+                  confirming={confirmActionMut.isPending}
+                />
               ))}
               {sendMutation.isPending && (
                 <div className="flex items-center gap-2 text-[12px]" style={{ color: GOLD }}>
@@ -992,6 +1032,7 @@ export default function MorenAIPage() {
         setMemoryText={setMemoryText}
         saveMemory={() => saveMemoryMut.mutate()}
         savingMemory={saveMemoryMut.isPending}
+        memories={memoryData?.memories || []}
         refetch={() => refetchBrain()}
         askQuick={askQuick}
       />
@@ -1046,6 +1087,7 @@ function OfficeBrainPanel({
   setMemoryText,
   saveMemory,
   savingMemory,
+  memories,
   refetch,
   askQuick,
 }: {
@@ -1055,6 +1097,7 @@ function OfficeBrainPanel({
   setMemoryText: (value: string) => void;
   saveMemory: () => void;
   savingMemory: boolean;
+  memories: any[];
   refetch: () => void;
   askQuick: (text: string) => void;
 }) {
@@ -1070,6 +1113,8 @@ function OfficeBrainPanel({
     'Bugün önce neye bakmalıyım?',
     'Beyana hazır olmayanları risk sırasına koy.',
     'Agent hatalarında acil bir şey var mı?',
+    'Evrak bekleyenler için WhatsApp taslakları hazırla.',
+    'Tahsilat riski yüksek olanlara WhatsApp mesajı öner.',
   ];
 
   return (
@@ -1126,6 +1171,19 @@ function OfficeBrainPanel({
             {agents.length === 0 && <span className="text-[12px]" style={{ color: MUTED }}>Ajan bilgisi yok.</span>}
           </div>
         </div>
+
+        <div className="mt-5">
+          <p className="mb-2 text-[11px] font-semibold uppercase tracking-[0.12em]" style={{ color: 'rgba(250,250,249,0.42)' }}>Son hafıza</p>
+          <div className="space-y-2">
+            {memories.slice(0, 4).map((memory: any) => (
+              <div key={memory.id} className="rounded-lg border px-3 py-2" style={{ borderColor: LINE, background: 'rgba(255,255,255,0.02)' }}>
+                <p className="truncate text-[12px] font-semibold" style={{ color: TEXT }}>{memory.title}</p>
+                <p className="mt-1 line-clamp-2 text-[11px] leading-relaxed" style={{ color: MUTED }}>{memory.content}</p>
+              </div>
+            ))}
+            {memories.length === 0 && <p className="text-[12px]" style={{ color: MUTED }}>Henüz kayıtlı not yok.</p>}
+          </div>
+        </div>
       </div>
 
       <div className="border-t p-4" style={{ borderColor: LINE }}>
@@ -1156,8 +1214,83 @@ function OfficeBrainPanel({
   );
 }
 
-function MessageBubble({ message }: { message: Message }) {
+type ToolView = {
+  name: string;
+  input?: any;
+  result?: any;
+};
+
+const TOOL_LABELS: Record<string, string> = {
+  get_operation_briefing: 'Ofis brifingi',
+  get_taxpayer_work_status: 'Mükellef durumu',
+  get_beyanname_readiness_summary: 'Beyan hazırlığı',
+  get_collection_risk_summary: 'Tahsilat riski',
+  get_invoice_summary: 'Fatura özeti',
+  list_taxpayers: 'Mükellef arama',
+  search_ai_memory: 'Hafıza',
+  save_ai_memory: 'Hafıza kaydı',
+  get_agent_status: 'Ajan durumu',
+  get_luca_agent_jobs: 'Luca işleri',
+  get_mihsap_agent_jobs: 'Mihsap işleri',
+  preview_agent_command: 'Aksiyon önizleme',
+  create_confirmed_agent_command: 'Onaylı aksiyon',
+  research_official_sources: 'Resmi kaynak',
+};
+
+function parseJsonish(value: any) {
+  if (!value) return value;
+  if (typeof value !== 'string') return value;
+  try {
+    return JSON.parse(value);
+  } catch {
+    return value;
+  }
+}
+
+function asToolArray(value: any): any[] {
+  const parsed = parseJsonish(value);
+  if (Array.isArray(parsed)) return parsed;
+  if (Array.isArray(parsed?.toolUses)) return parsed.toolUses;
+  if (Array.isArray(parsed?.tools)) return parsed.tools;
+  return [];
+}
+
+function normalizeTools(message: Message): ToolView[] {
+  const results = asToolArray(message.toolResults).map((tool) => ({
+    name: String(tool?.name || tool?.tool || ''),
+    input: tool?.input,
+    result: parseJsonish(tool?.result),
+  })).filter((tool) => tool.name);
+  const resultKeys = new Set(results.map((tool) => `${tool.name}:${JSON.stringify(tool.input || {})}`));
+  const calls = asToolArray(message.toolCalls)
+    .map((tool) => ({
+      name: String(tool?.name || tool?.tool || ''),
+      input: tool?.input,
+      result: undefined,
+    }))
+    .filter((tool) => tool.name && !resultKeys.has(`${tool.name}:${JSON.stringify(tool.input || {})}`));
+  return [...results, ...calls];
+}
+
+function getActionPreviews(tools: ToolView[]) {
+  return tools
+    .filter((tool) => tool.name === 'preview_agent_command')
+    .map((tool) => parseJsonish(tool.result))
+    .filter((result) => result && typeof result === 'object' && result.requiresConfirmation && result.agent && result.action);
+}
+
+function MessageBubble({
+  message,
+  onConfirmAction,
+  confirming,
+}: {
+  message: Message;
+  onConfirmAction?: (preview: any) => void;
+  confirming?: boolean;
+}) {
   const isUser = message.role === 'user';
+  const tools = !isUser ? normalizeTools(message) : [];
+  const previews = getActionPreviews(tools);
 
   return (
     <div className={`flex ${isUser ? 'justify-end' : 'justify-start'}`}>
@@ -1172,6 +1305,66 @@ function MessageBubble({ message }: { message: Message }) {
         <div className="moren-md text-[13px] leading-[1.6]">
           <ReactMarkdown remarkPlugins={[remarkGfm]}>{message.content}</ReactMarkdown>
         </div>
+        {!isUser && tools.length > 0 ? (
+          <div className="mt-3 rounded-lg border px-3 py-2" style={{ borderColor: LINE, background: 'rgba(0,0,0,0.16)' }}>
+            <p className="mb-2 text-[10px] font-semibold uppercase tracking-[0.12em]" style={{ color: 'rgba(250,250,249,0.38)' }}>
+              Kullanılan veri ve araçlar
+            </p>
+            <div className="flex flex-wrap gap-1.5">
+              {tools.map((tool, index) => (
+                <span
+                  key={`${tool.name}-${index}`}
+                  className="inline-flex items-center gap-1 rounded-md border px-2 py-1 text-[10.5px] font-semibold"
+                  style={{ borderColor: LINE_GOLD, color: GOLD, background: 'rgba(212,184,118,0.07)' }}
+                >
+                  <Bot size={10} />
+                  {TOOL_LABELS[tool.name] || tool.name}
+                </span>
+              ))}
+            </div>
+          </div>
+        ) : null}
+
+        {!isUser && previews.length > 0 ? (
+          <div className="mt-3 space-y-2">
+            {previews.map((preview: any, index: number) => (
+              <div
+                key={`${preview.agent}-${preview.action}-${index}`}
+                className="rounded-lg border p-3"
+                style={{ borderColor: preview.ok ? 'rgba(240,154,168,0.34)' : 'rgba(248,113,113,0.34)', background: preview.ok ? 'rgba(240,154,168,0.08)' : 'rgba(248,113,113,0.08)' }}
+              >
+                <div className="flex items-start justify-between gap-3">
+                  <div className="min-w-0">
+                    <p className="text-[12px] font-semibold" style={{ color: TEXT }}>Onay bekleyen aksiyon</p>
+                    <p className="mt-1 text-[11px]" style={{ color: MUTED }}>{preview.agent} · {preview.action}</p>
+                  </div>
+                  <span className="rounded-md border px-2 py-1 text-[10px] font-semibold" style={{ borderColor: LINE, color: preview.ok ? GOLD : '#fca5a5' }}>
+                    {preview.ok ? 'Hazır' : 'Eksik'}
+                  </span>
+                </div>
+                {preview.etki ? (
+                  <p className="mt-2 text-[12px] leading-relaxed" style={{ color: TEXT }}>{preview.etki}</p>
+                ) : null}
+                {Array.isArray(preview.errors) && preview.errors.length > 0 ? (
+                  <ul className="mt-2 space-y-1 text-[11px]" style={{ color: '#fca5a5' }}>
+                    {preview.errors.map((error: string) => <li key={error}>{error}</li>)}
+                  </ul>
+                ) : null}
+                <button
+                  type="button"
+                  disabled={!preview.ok || confirming}
+                  onClick={() => onConfirmAction?.(preview)}
+                  className="mt-3 inline-flex h-8 items-center gap-2 rounded-lg border px-3 text-[11.5px] font-semibold transition disabled:opacity-45"
+                  style={{ borderColor: LINE_GOLD, color: GOLD, background: 'rgba(212,184,118,0.08)' }}
+                >
+                  {confirming ? <Loader2 size={13} className="animate-spin" /> : <CheckCircle2 size={13} />}
+                  Onayla ve kuyruğa al
+                </button>
+              </div>
+            ))}
+          </div>
+        ) : null}
+
         {!isUser && (message.inputTokens || message.outputTokens) ? (
           <div className="mt-2 flex gap-3 border-t pt-2 text-[10px]" style={{ borderColor: LINE, color: 'rgba(250,250,249,0.36)' }}>
             <span className="flex items-center gap-1"><DollarSign size={10} />${message.costUsd?.toFixed(4) || '0.0000'}</span>

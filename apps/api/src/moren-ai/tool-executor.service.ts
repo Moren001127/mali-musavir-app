@@ -1454,7 +1454,7 @@ export class ToolExecutorService {
       (this.prisma as any).beyanKaydi.findMany({ where: { tenantId: ctx.tenantId, taxpayerId, donem: period }, take: 10 }).catch(() => []),
       (this.prisma as any).mizan.findFirst({ where: { tenantId: ctx.tenantId, taxpayerId, donem: period }, orderBy: { createdAt: 'desc' } }).catch(() => null),
       (this.prisma as any).cariHareket.findMany({ where: { tenantId: ctx.tenantId, taxpayerId }, select: { tip: true, tutar: true } }).catch(() => []),
-      (this.prisma as any).agentEvent.findMany({ where: { tenantId: ctx.tenantId, mukellef: { contains: '', mode: 'insensitive' } }, orderBy: { ts: 'desc' }, take: 20 }).catch(() => []),
+      (this.prisma as any).agentEvent.findMany({ where: { tenantId: ctx.tenantId }, orderBy: { ts: 'desc' }, take: 100 }).catch(() => []),
       (this.prisma as any).aiMemory?.findMany
         ? (this.prisma as any).aiMemory.findMany({ where: { tenantId: ctx.tenantId, taxpayerId, isActive: true }, orderBy: [{ importance: 'desc' }, { updatedAt: 'desc' }], take: 5 })
         : Promise.resolve([]),
@@ -1462,6 +1462,16 @@ export class ToolExecutorService {
     if (!taxpayer) return { error: 'Mükellef bulunamadı' };
     const s: any = status || {};
     const cariBakiye = (cariRows || []).reduce((sum: number, h: any) => sum + (h.tip === 'TAHAKKUK' ? this.toNum(h.tutar) : h.tip === 'TAHSILAT' ? -this.toNum(h.tutar) : 0), 0);
+    const taxpayerLabel = this.displayName(taxpayer).toLocaleLowerCase('tr-TR');
+    const relevantAgentEvents = (agentEvents || [])
+      .filter((event: any) => {
+        const metaTaxpayerId = event?.meta && typeof event.meta === 'object' ? String(event.meta.taxpayerId || event.meta.mukellefId || '') : '';
+        if (metaTaxpayerId === taxpayerId) return true;
+        return [event.mukellef, event.firma, event.message]
+          .filter(Boolean)
+          .some((value: any) => String(value).toLocaleLowerCase('tr-TR').includes(taxpayerLabel));
+      })
+      .slice(0, 20);
     const eksikler: string[] = [];
     if (!s.evraklarGeldi) eksikler.push('evrak gelmedi');
     if (s.evraklarGeldi && !s.evraklarIslendi) eksikler.push('evrak işlenmedi');
@@ -1488,7 +1498,7 @@ export class ToolExecutorService {
         bankaHesapSayisi: bankAccounts.length,
         cariBakiye,
         hafizaNotlari: memories.map((m: any) => ({ title: m.title, content: m.content, tags: m.tags })),
-        sonAgentOlaylari: agentEvents,
+        sonAgentOlaylari: relevantAgentEvents,
       },
     };
   }
@@ -1604,13 +1614,15 @@ export class ToolExecutorService {
     const { period } = this.currentPeriod(input);
     const limit = Math.min(input?.limit || 30, 100);
     const base = await this.getOperationBriefing({ period }, ctx);
+    const sorunlu = Array.isArray(base.riskliMukellefler) ? base.riskliMukellefler : [];
+    const toplam = Number(base?.ozet?.aktifMukellef || 0);
     return {
       period,
-      toplam: base.ozet.aktifMukellef,
-      hazir: base.riskliMukellefler.filter((r: any) => r.durum === 'HAZIR').length,
-      eksik: base.riskliMukellefler.filter((r: any) => r.durum === 'EKSIK').length,
-      riskli: base.riskliMukellefler.filter((r: any) => r.durum === 'RISKLI').length,
-      enSorunlu: base.riskliMukellefler.slice(0, limit),
+      toplam,
+      hazir: Math.max(0, toplam - sorunlu.length),
+      eksik: sorunlu.filter((r: any) => r.durum !== 'RISKLI').length,
+      riskli: sorunlu.filter((r: any) => r.durum === 'RISKLI').length,
+      enSorunlu: sorunlu.slice(0, limit),
       ozet: base.ozet,
     };
   }

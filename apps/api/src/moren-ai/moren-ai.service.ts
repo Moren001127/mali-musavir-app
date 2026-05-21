@@ -542,14 +542,17 @@ export class MorenAiService {
       conversationId?: string;
       taxpayerId?: string;
       question?: string;
+      currentPath?: string;
     },
   ) {
     const question = String(body?.question || '').replace(/\s+/g, ' ').trim();
     if (!question) throw new BadRequestException('question zorunlu');
+    const currentPath = String(body?.currentPath || '').trim().slice(0, 180);
+    const routeContext = currentPath ? `[Aktif portal yolu: ${currentPath}]\n` : '';
     return this.chat(tenantId, userId, {
       conversationId: body.conversationId,
       taxpayerId: body.taxpayerId,
-      message: question.slice(0, 1200),
+      message: `${routeContext}${question.slice(0, 1200)}`,
       voiceMode: true,
     });
   }
