@@ -12,6 +12,7 @@ import {
 } from 'lucide-react';
 import { api } from '@/lib/api';
 import MukelleflerPanel from './_panels/MukelleflerPanel';
+import { taxpayerName, taxpayerTaxNumber, taxpayerSearchMatch } from './_lib/taxpayer';
 import GelenBelgelerPanel from './_panels/GelenBelgelerPanel';
 import EntegratorListesiPanel from './_panels/EntegratorListesiPanel';
 import VeriAktarimiPanel from './_panels/VeriAktarimiPanel';
@@ -81,12 +82,7 @@ export default function FaturaMerkeziPage() {
   const taxpayers: Array<any> = Array.isArray(taxpayersQ.data) ? taxpayersQ.data : (taxpayersQ.data?.items || []);
   const filteredTaxpayers = useMemo(() => {
     if (!taxpayerSearch) return taxpayers;
-    const q = taxpayerSearch.toLowerCase();
-    return taxpayers.filter((t) =>
-      (t.name || '').toLowerCase().includes(q) ||
-      String(t.taxNumber || '').includes(q) ||
-      String(t.identityNumber || '').includes(q),
-    );
+    return taxpayers.filter((t) => taxpayerSearchMatch(t, taxpayerSearch));
   }, [taxpayers, taxpayerSearch]);
 
   const selectedTaxpayer = taxpayers.find((t) => t.id === taxpayerId);
@@ -253,7 +249,7 @@ export default function FaturaMerkeziPage() {
               <Users size={15} style={{ color: 'var(--text-muted)' }} />
               <span className="flex-1 text-left truncate">
                 {selectedTaxpayer
-                  ? selectedTaxpayer.name
+                  ? taxpayerName(selectedTaxpayer)
                   : `Tüm Mükellefler · ${taxpayers.length}`}
               </span>
               <ChevronDown size={14} style={{ color: 'var(--text-muted)' }} />
@@ -317,9 +313,9 @@ export default function FaturaMerkeziPage() {
                           color: sel ? 'var(--accent)' : 'var(--text)',
                         }}
                       >
-                        <div className="font-medium truncate">{t.name}</div>
+                        <div className="font-medium truncate">{taxpayerName(t)}</div>
                         <div className="text-[11px] mt-0.5" style={{ color: 'var(--text-muted)' }}>
-                          {t.taxNumber || t.identityNumber || '-'}
+                          {taxpayerTaxNumber(t)}
                         </div>
                       </button>
                     );

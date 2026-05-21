@@ -3,9 +3,16 @@
 import { useState, useMemo } from 'react';
 import {
   Settings, Cloud, FileText, Plug, BookOpen,
-  Search, Plus, Download, Upload, ChevronRight,
+  Search, ChevronRight,
   type LucideIcon,
 } from 'lucide-react';
+import {
+  taxpayerName,
+  taxpayerType,
+  taxpayerBookType,
+  taxpayerTaxNumber,
+  taxpayerSearchMatch,
+} from '../_lib/taxpayer';
 
 /* ════════════════════════════════════════════════════════════════════
    MÜKELLEFLER PANELİ — Mihsap referansı
@@ -46,12 +53,7 @@ export default function MukelleflerPanel({ taxpayers, loading, onRefresh, onSele
 
   const filtered = useMemo(() => {
     if (!search) return taxpayers;
-    const q = search.toLowerCase();
-    return taxpayers.filter((t) =>
-      (t.name || '').toLowerCase().includes(q) ||
-      String(t.taxNumber || '').includes(q) ||
-      String(t.identityNumber || '').includes(q),
-    );
+    return taxpayers.filter((t) => taxpayerSearchMatch(t, search));
   }, [taxpayers, search]);
 
   return (
@@ -66,28 +68,6 @@ export default function MukelleflerPanel({ taxpayers, loading, onRefresh, onSele
         </div>
 
         <div className="flex-1" />
-
-        <button
-          className="flex items-center gap-1.5 px-3 py-2 text-[12.5px] font-medium rounded-lg transition-colors"
-          style={{ background: 'var(--surface-2)', border: '1px solid var(--border)', color: 'var(--text-secondary)' }}
-        >
-          <Download size={14} />
-          Lucadan Mükellef Aktar
-        </button>
-        <button
-          className="flex items-center gap-1.5 px-3 py-2 text-[12.5px] font-medium rounded-lg transition-colors"
-          style={{ background: 'var(--surface-2)', border: '1px solid var(--border)', color: 'var(--text-secondary)' }}
-        >
-          <Upload size={14} />
-          Toplu Mükellef Ekle
-        </button>
-        <button
-          className="flex items-center gap-1.5 px-3 py-2 text-[12.5px] font-medium rounded-lg transition-colors"
-          style={{ background: 'var(--accent)', color: 'var(--bg)', fontWeight: 600 }}
-        >
-          <Plus size={14} />
-          Yeni Mükellef
-        </button>
       </div>
 
       {/* Arama */}
@@ -146,7 +126,7 @@ export default function MukelleflerPanel({ taxpayers, loading, onRefresh, onSele
                 onMouseLeave={(e) => { e.currentTarget.style.background = 'transparent'; }}
               >
                 <td className="px-4 py-2.5 text-[12.5px] font-mono" style={{ color: 'var(--text-secondary)' }}>
-                  {t.taxNumber || t.identityNumber || '-'}
+                  {taxpayerTaxNumber(t)}
                 </td>
                 <td className="px-3 py-2.5">
                   <button
@@ -155,14 +135,14 @@ export default function MukelleflerPanel({ taxpayers, loading, onRefresh, onSele
                     className="text-[13px] font-medium text-left hover:underline"
                     style={{ color: 'var(--text)' }}
                   >
-                    {t.name}
+                    {taxpayerName(t)}
                   </button>
                 </td>
                 <td className="px-3 py-2.5 text-[12px]" style={{ color: 'var(--text-secondary)' }}>
-                  {t.taxNumber ? 'Kurumsal' : 'Bireysel'}
+                  {taxpayerType(t)}
                 </td>
                 <td className="px-3 py-2.5 text-[12px]" style={{ color: 'var(--text-secondary)' }}>
-                  {t.bookType || 'Bilanço'}
+                  {taxpayerBookType(t)}
                 </td>
                 <td className="px-3 py-2.5">
                   <div className="flex items-center justify-end gap-1">
