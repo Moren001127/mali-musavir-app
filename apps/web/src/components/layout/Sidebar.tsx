@@ -181,7 +181,7 @@ export default function Sidebar() {
 
       {/* === LOGO === */}
       <div
-        className="relative px-3 py-3"
+        className="relative px-1 py-3"
         style={{
           borderBottom: '1px solid rgba(212,184,118,0.18)',
           background:
@@ -190,13 +190,13 @@ export default function Sidebar() {
       >
         <Link
           href="/panel"
-          className="group relative flex h-[72px] items-center justify-center transition-transform duration-300 hover:scale-[1.01]"
+          className="group relative flex h-[90px] items-center justify-center transition-transform duration-300 hover:scale-[1.01]"
           aria-label="Moren Mali Müşavirlik"
         >
           <img
             src="/brand/moren-sidebar-horizontal.png"
             alt="Moren Mali Müşavirlik"
-            className="block h-[62px] w-auto max-w-full object-contain"
+            className="block h-auto w-[248px] max-w-full object-contain"
             style={{ filter: 'none' }}
           />
         </Link>
