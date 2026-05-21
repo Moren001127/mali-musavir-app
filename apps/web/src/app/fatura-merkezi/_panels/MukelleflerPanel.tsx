@@ -4,6 +4,7 @@ import { useState, useMemo } from 'react';
 import {
   Settings, Cloud, FileText, Plug, BookOpen,
   Search, Plus, Download, Upload, ChevronRight,
+  type LucideIcon,
 } from 'lucide-react';
 
 /* ════════════════════════════════════════════════════════════════════
@@ -29,7 +30,7 @@ const ACTIONS: Array<{
   id: ActionId;
   label: string;
   desc: string;
-  icon: React.ComponentType<{ size?: number; strokeWidth?: number }>;
+  icon: LucideIcon;
   color: string;
 }> = [
   { id: 'ayar',       label: 'Mukellef Ayarları', desc: 'Defter türü, KDV, stok',          icon: Settings, color: '#9ca3af' },

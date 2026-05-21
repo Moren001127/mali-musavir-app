@@ -8,6 +8,7 @@ import {
   FileSpreadsheet, ArrowLeftRight, ArrowLeft, RefreshCw, Palette,
   CalendarDays, Search, ChevronDown, Sparkles, Settings, FileText,
   Cloud, Building, BookOpen, BarChart3,
+  type LucideIcon,
 } from 'lucide-react';
 import { api } from '@/lib/api';
 import MukelleflerPanel from './_panels/MukelleflerPanel';
@@ -39,7 +40,7 @@ type SectionId =
 const SECTIONS: Array<{
   id: SectionId;
   label: string;
-  icon: React.ComponentType<{ size?: number; strokeWidth?: number }>;
+  icon: LucideIcon;
   group: string;
   badge?: (counts: Counts) => string | null;
 }> = [

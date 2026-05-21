@@ -1,6 +1,6 @@
 'use client';
 
-import { Upload, AlertTriangle, Clock, CheckCircle2 } from 'lucide-react';
+import { Upload, AlertTriangle, Clock, CheckCircle2, type LucideIcon } from 'lucide-react';
 
 /* YÜKLENEN FATURALAR — ham dosya pipeline durumu
    Mihsap referansı: "Bu menü sadece yüklediğiniz dosyaların durumunu incelemek içindir"
@@ -34,7 +34,7 @@ export default function YuklenenlerPanel({ taxpayerId, period }: { taxpayerId?: 
   );
 }
 
-function PipelineStat({ label, value, tone, icon: Icon }: { label: string; value: number; tone: string; icon: React.ComponentType<{ size?: number }> }) {
+function PipelineStat({ label, value, tone, icon: Icon }: { label: string; value: number; tone: string; icon: LucideIcon }) {
   return (
     <div className="rounded-xl p-4" style={{ background: 'var(--surface)', border: '1px solid var(--border)' }}>
       <div className="flex items-center justify-between mb-2">
