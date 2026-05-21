@@ -195,10 +195,21 @@ export class FaturaMuhasebelestirmeService {
   ) {}
 
   async list(tenantId: string, opts: { status?: string; limit?: number; taxpayerId?: string; period?: string }) {
+    // status='PENDING' frontend konvansiyonu = onaylanmamış belgeler (READY + NEEDS_REVIEW).
+    // Schema status enum: NEEDS_REVIEW | READY | APPROVED | REJECTED
+    const statusFilter = (() => {
+      const s = String(opts.status || '').toUpperCase();
+      if (!s) return {};
+      if (s === 'PENDING' || s === 'PROCESSING') {
+        return { status: { in: ['READY', 'NEEDS_REVIEW'] } };
+      }
+      return { status: s };
+    })();
+
     return (this.prisma as any).invoiceAccountingDocument.findMany({
       where: {
         tenantId,
-        ...(opts.status ? { status: opts.status } : {}),
+        ...statusFilter,
         ...(opts.taxpayerId ? { taxpayerId: opts.taxpayerId } : {}),
         ...periodWhere(opts.period),
       },

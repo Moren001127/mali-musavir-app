@@ -6,15 +6,12 @@ import { Workflow, CheckCircle2, Search, FileText } from 'lucide-react';
 import { api } from '@/lib/api';
 import { taxpayerName, taxpayerSearchMatch } from '../_lib/taxpayer';
 
-/* SÜREÇ TAKİBİ — Mihsap referansı.
-   Dönem bazlı kapanış akışı:
-     Onay Tamamlanmayanlar → Rapor Bekleyenler → Kontrol Bekleyenler → Kontrol Edilenler
-
-   Bizim mevcut backend'imizde "dönem kapama" durumu yok — bunu
-   yaklaşık bir hesapla simüle ediyoruz:
-     - Bekleyen > 0 → "Onay Tamamlanmayanlar"
-     - Bekleyen 0 & Aktarılan 0 → "Rapor Bekleyenler"
-     - Aktarılan > 0 → "Kontrol Edilenler" */
+/* SÜREÇ TAKİBİ — Bir mükellefin dönemde hangi aşamada olduğunu gösterir.
+   Aşamalar (bir sonrakine geçmek için öncekinin biter olması gerekir):
+     1) Onay Bekliyor    → e-Arşiv/yüklenen ama henüz onaylanmamış faturası var
+     2) Belge Yok        → Bu döneme ait hiç belge gelmemiş
+     3) Aktarım Bekliyor → Faturalar onaylanmış ama Luca'ya gönderilmemiş
+     4) Tamamlandı       → Faturalar Luca'ya başarıyla atılmış */
 export default function SurecTakipPanel({ period, taxpayers }: { period: string; taxpayers: Array<any> }) {
   const [stage, setStage] = useState<'pending' | 'report' | 'review' | 'done'>('pending');
   const [search, setSearch] = useState('');
@@ -30,8 +27,9 @@ export default function SurecTakipPanel({ period, taxpayers }: { period: string;
 
   const enriched = useMemo(() => taxpayers.map((t) => {
     const s: any = summaryMap.get(t.id) || {};
-    const pending = (s.pendingAlis || 0) + (s.pendingSatis || 0) + (s.pendingBanka || 0);
-    const approved = (s.approvedAlis || 0) + (s.approvedSatis || 0) + (s.approvedBanka || 0);
+    // Banka kullanılmıyor — sadece alış+satış
+    const pending = (s.pendingAlis || 0) + (s.pendingSatis || 0);
+    const approved = (s.approvedAlis || 0) + (s.approvedSatis || 0);
     const posted = s.postedToLuca || 0;
     return { ...t, pending, approved, posted };
   }), [taxpayers, summaryMap]);
@@ -52,39 +50,43 @@ export default function SurecTakipPanel({ period, taxpayers }: { period: string;
           Süreç Takibi
         </div>
         <div className="text-[12.5px] mt-0.5" style={{ color: 'var(--text-muted)' }}>
-          Dönem {period} · {taxpayers.length} mukellef
+          Dönem {period} · {taxpayers.length} mukellef · Hangi mükellefte ne kaldı tek bakışta
         </div>
       </div>
 
-      {/* 4 aşama */}
+      {/* 4 aşama — sıralı iş akışı (soldan sağa) */}
       <div className="grid grid-cols-4 gap-3 mb-5">
         <Stage
-          label="Onay Tamamlanmayanlar"
-          desc="Bekleyen belge var"
+          step="1"
+          label="Onay Bekliyor"
+          desc="Faturası gelmiş ama henüz onaylanmamış"
           count={buckets.pending.length}
           tone="#ef4444"
           active={stage === 'pending'}
           onClick={() => setStage('pending')}
         />
         <Stage
-          label="Rapor Bekleyenler"
-          desc="Hiç belge yok"
+          step="2"
+          label="Belge Yok"
+          desc="Bu döneme ait hiç fatura çekilmemiş"
           count={buckets.report.length}
           tone="#f59e0b"
           active={stage === 'report'}
           onClick={() => setStage('report')}
         />
         <Stage
-          label="Kontrol Bekleyenler"
-          desc="Onaylı ama gönderilmedi"
+          step="3"
+          label="Aktarım Bekliyor"
+          desc="Onaylanmış ama Luca'ya gönderilmemiş"
           count={buckets.review.length}
           tone="#60a5fa"
           active={stage === 'review'}
           onClick={() => setStage('review')}
         />
         <Stage
-          label="Kontrol Edilenler"
-          desc="Luca'ya aktarıldı"
+          step="4"
+          label="Tamamlandı"
+          desc="Faturalar Luca'ya başarıyla atıldı"
           count={buckets.done.length}
           tone="#10b981"
           active={stage === 'done'}
@@ -140,16 +142,20 @@ export default function SurecTakipPanel({ period, taxpayers }: { period: string;
         </table>
       </div>
 
-      <div className="mt-4 p-3 rounded-lg text-[11.5px]" style={{ background: 'var(--accent-50)', border: '1px solid var(--border-soft)', color: 'var(--text-muted)' }}>
-        <strong style={{ color: 'var(--accent)' }}>Akış:</strong>{' '}
-        Onay Tamamlanmayanlar → Rapor Bekleyenler → Kontrol Bekleyenler → Luca'ya gönderilince Kontrol Edilenler.
-        Her aşamada mukellefler otomatik geçer; manuel müdahale gerekmez.
+      <div className="mt-4 p-3 rounded-lg text-[11.5px] leading-relaxed" style={{ background: 'var(--accent-50)', border: '1px solid var(--border-soft)', color: 'var(--text-muted)' }}>
+        <strong style={{ color: 'var(--accent)' }}>İş akışı:</strong>{' '}
+        Her mükellef her dönemde 4 aşamadan birinde bulunur. Sırasıyla:
+        <span style={{ color: '#ef4444' }}> Onay Bekliyor</span> (faturalar geldi, onayı bekleniyor) →
+        <span style={{ color: '#f59e0b' }}> Belge Yok</span> (mükellefin bu ay hiç faturası gelmedi) →
+        <span style={{ color: '#60a5fa' }}> Aktarım Bekliyor</span> (onaylandı, Luca'ya gönderilmeyi bekliyor) →
+        <span style={{ color: '#10b981' }}> Tamamlandı</span> (Luca'ya gitti, dönem kapanmış sayılır).
+        Mükellefler otomatik geçer; manuel müdahale gerekmez.
       </div>
     </div>
   );
 }
 
-function Stage({ label, desc, count, tone, active, onClick }: { label: string; desc: string; count: number; tone: string; active?: boolean; onClick?: () => void }) {
+function Stage({ step, label, desc, count, tone, active, onClick }: { step: string; label: string; desc: string; count: number; tone: string; active?: boolean; onClick?: () => void }) {
   return (
     <button
       type="button"
@@ -162,15 +168,21 @@ function Stage({ label, desc, count, tone, active, onClick }: { label: string; d
       }}
     >
       <div className="flex items-center gap-2 mb-2">
-        <span className="w-2 h-2 rounded-full" style={{ background: tone }} />
-        <span className="text-[10.5px] font-semibold tracking-wide" style={{ color: active ? tone : 'var(--text-muted)' }}>
-          {label.toUpperCase()}
+        <span
+          className="inline-flex items-center justify-center w-5 h-5 rounded-full text-[10px] font-bold tabular-nums"
+          style={{ background: `${tone}28`, color: tone, border: `1px solid ${tone}55` }}
+        >
+          {step}
+        </span>
+        <span className="text-[11px] font-semibold tracking-wide" style={{ color: active ? tone : 'var(--text)' }}>
+          {label}
         </span>
       </div>
       <div className="flex items-end justify-between">
         <div className="text-[26px] font-semibold tabular-nums leading-none" style={{ color: tone, fontFamily: 'var(--font-heading)' }}>{count}</div>
+        <div className="text-[10px] tabular-nums" style={{ color: 'var(--text-light)' }}>mukellef</div>
       </div>
-      <div className="text-[10.5px] mt-2" style={{ color: 'var(--text-light)' }}>{desc}</div>
+      <div className="text-[10.5px] mt-2 leading-snug" style={{ color: 'var(--text-secondary)' }}>{desc}</div>
     </button>
   );
 }
@@ -178,13 +190,13 @@ function Stage({ label, desc, count, tone, active, onClick }: { label: string; d
 function StageBadge({ stage }: { stage: string }) {
   const map = {
     pending: { label: 'Onay Bekliyor', color: '#ef4444' },
-    report:  { label: 'Rapor Yok',      color: '#f59e0b' },
+    report:  { label: 'Belge Yok', color: '#f59e0b' },
     review:  { label: 'Aktarım Bekliyor', color: '#60a5fa' },
-    done:    { label: 'Tamamlandı',     color: '#10b981' },
+    done:    { label: 'Tamamlandı', color: '#10b981' },
   } as const;
   const info = (map as any)[stage] || map.pending;
   return (
-    <span className="px-2 py-0.5 rounded-md text-[10.5px] font-medium" style={{ background: `${info.color}15`, color: info.color }}>
+    <span className="px-2 py-0.5 rounded-md text-[10.5px] font-medium" style={{ background: `${info.color}22`, color: info.color, border: `1px solid ${info.color}40` }}>
       {info.label}
     </span>
   );

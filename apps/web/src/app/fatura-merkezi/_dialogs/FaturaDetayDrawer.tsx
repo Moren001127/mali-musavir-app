@@ -39,8 +39,9 @@ export default function FaturaDetayDrawer({ taxpayerId, direction, period, onClo
   const allDocs: any[] = listQ.data || [];
   const docs = useMemo(
     () => allDocs.filter((d) => {
-      const dir = String(d.direction || '').toUpperCase();
-      return direction === 'ALIS' ? dir.startsWith('ALI') : !dir.startsWith('ALI');
+      // Schema field: invoiceKind (ALIS | SATIS); eski API'lerle uyum için `direction` da fallback
+      const kind = String(d.invoiceKind ?? d.direction ?? '').toUpperCase();
+      return direction === 'ALIS' ? kind.startsWith('ALI') : !kind.startsWith('ALI');
     }),
     [allDocs, direction],
   );

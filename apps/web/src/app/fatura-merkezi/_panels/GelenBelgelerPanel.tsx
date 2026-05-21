@@ -158,14 +158,12 @@ export default function GelenBelgelerPanel({ taxpayerId, period }: Props) {
           label="Bekleyen Toplam"
           alis={totals.pendingAlis}
           satis={totals.pendingSatis}
-          banka={totals.pendingBanka}
           tone="#f59e0b"
         />
         <SummaryCard
           label="Onaylanan Toplam"
           alis={totals.approvedAlis}
           satis={totals.approvedSatis}
-          banka={totals.approvedBanka}
           tone="#10b981"
         />
         <div className="rounded-xl p-4 flex items-center justify-between" style={{ background: 'var(--surface)', border: '1px solid var(--border)' }}>
@@ -188,20 +186,18 @@ export default function GelenBelgelerPanel({ taxpayerId, period }: Props) {
                 <Th>DEFTER</Th>
                 <Th align="right" tone="#f59e0b">BEKL. ALIŞ</Th>
                 <Th align="right" tone="#f59e0b">BEKL. SATIŞ</Th>
-                <Th align="right" tone="#f59e0b">BEKL. BANKA</Th>
                 <Th align="right" tone="#10b981">ONAY. ALIŞ</Th>
                 <Th align="right" tone="#10b981">ONAY. SATIŞ</Th>
-                <Th align="right" tone="#10b981">ONAY. BANKA</Th>
                 <Th align="right">LUCA</Th>
                 <th className="px-3 py-2.5"></th>
               </tr>
             </thead>
             <tbody>
               {summaryQ.isLoading && (
-                <tr><td colSpan={10} className="px-3 py-10 text-center text-[13px]" style={{ color: 'var(--text-muted)' }}>Yükleniyor...</td></tr>
+                <tr><td colSpan={8} className="px-3 py-10 text-center text-[13px]" style={{ color: 'var(--text-muted)' }}>Yükleniyor...</td></tr>
               )}
               {!summaryQ.isLoading && rows.length === 0 && (
-                <tr><td colSpan={10} className="px-3 py-10 text-center text-[13px]" style={{ color: 'var(--text-muted)' }}>
+                <tr><td colSpan={8} className="px-3 py-10 text-center text-[13px]" style={{ color: 'var(--text-muted)' }}>
                   {search ? 'Eşleşen mukellef yok' : `${period} dönemi için kayıt yok`}
                 </td></tr>
               )}
@@ -224,10 +220,8 @@ export default function GelenBelgelerPanel({ taxpayerId, period }: Props) {
                   <td className="px-3 py-2.5 text-[12px]" style={{ color: 'var(--text-secondary)' }}>{taxpayerBookType(r)}</td>
                   <NumCell value={r.pendingAlis} tone="#f59e0b" onClick={() => r.pendingAlis > 0 && setSelectedDoc({ taxpayerId: r.id, direction: 'ALIS' })} />
                   <NumCell value={r.pendingSatis} tone="#f59e0b" onClick={() => r.pendingSatis > 0 && setSelectedDoc({ taxpayerId: r.id, direction: 'SATIS' })} />
-                  <NumCell value={r.pendingBanka} tone="#f59e0b" />
                   <NumCell value={r.approvedAlis} tone="#10b981" />
                   <NumCell value={r.approvedSatis} tone="#10b981" />
-                  <NumCell value={r.approvedBanka} tone="#10b981" />
                   <NumCell value={r.postedToLuca} tone="#a78bfa" />
                   <td className="px-3 py-2.5 text-right">
                     <button
@@ -279,10 +273,11 @@ function NumCell({ value, tone, onClick }: { value: number; tone: string; onClic
           type="button"
           onClick={onClick}
           disabled={!onClick}
-          className="px-2 py-0.5 rounded-md text-[12.5px] font-semibold tabular-nums transition-all"
+          className="px-2.5 py-1 rounded-md text-[13px] font-bold tabular-nums transition-all"
           style={{
-            background: `${tone}12`,
+            background: `${tone}28`,
             color: tone,
+            border: `1px solid ${tone}55`,
             cursor: onClick ? 'pointer' : 'default',
           }}
         >
@@ -295,18 +290,17 @@ function NumCell({ value, tone, onClick }: { value: number; tone: string; onClic
   );
 }
 
-function SummaryCard({ label, alis, satis, banka, tone }: { label: string; alis: number; satis: number; banka: number; tone: string }) {
-  const total = alis + satis + banka;
+function SummaryCard({ label, alis, satis, tone }: { label: string; alis: number; satis: number; tone: string }) {
+  const total = alis + satis;
   return (
     <div className="rounded-xl p-4" style={{ background: 'var(--surface)', border: '1px solid var(--border)' }}>
       <div className="flex items-center justify-between mb-2">
         <div className="text-[10.5px] tracking-wider font-semibold" style={{ color: 'var(--text-light)' }}>{label.toUpperCase()}</div>
         <div className="text-[22px] font-semibold tabular-nums" style={{ color: tone, fontFamily: 'var(--font-heading)' }}>{total}</div>
       </div>
-      <div className="grid grid-cols-3 gap-2 mt-3">
+      <div className="grid grid-cols-2 gap-2 mt-3">
         <SubStat label="Alış"  value={alis}  tone={tone} />
         <SubStat label="Satış" value={satis} tone={tone} />
-        <SubStat label="Banka" value={banka} tone={tone} />
       </div>
     </div>
   );
@@ -314,9 +308,9 @@ function SummaryCard({ label, alis, satis, banka, tone }: { label: string; alis:
 
 function SubStat({ label, value, tone }: { label: string; value: number; tone: string }) {
   return (
-    <div className="text-center p-1.5 rounded-md" style={{ background: `${tone}10` }}>
-      <div className="text-[15px] font-semibold tabular-nums" style={{ color: tone }}>{value}</div>
-      <div className="text-[10px]" style={{ color: 'var(--text-muted)' }}>{label}</div>
+    <div className="text-center p-2 rounded-md" style={{ background: `${tone}22`, border: `1px solid ${tone}40` }}>
+      <div className="text-[18px] font-bold tabular-nums" style={{ color: tone }}>{value}</div>
+      <div className="text-[10.5px] font-medium" style={{ color: 'var(--text-secondary)' }}>{label}</div>
     </div>
   );
 }
