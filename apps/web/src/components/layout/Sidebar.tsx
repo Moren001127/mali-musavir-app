@@ -4,11 +4,47 @@ import Link from 'next/link';
 import { usePathname } from 'next/navigation';
 import { useMe, useLogout } from '@/hooks/useAuth';
 import {
-  LayoutDashboard, Users, FileText, Receipt, Users2, FolderOpen,
-  Bell, Settings, FileCheck, Printer, LogOut, Bot, Activity, Sliders,
-  Zap, Sparkles, ChevronRight, Cpu, FileInput, Mailbox, Calculator, BookOpen, ShieldCheck, ShieldAlert,
-  Scale, TrendingUp, Table2, MessageSquare, AlertTriangle, Brain,
-  Car, Gavel, Wallet, Megaphone, Archive, Landmark, Lock, CheckSquare, Workflow, Coins, Building, FolderCheck} from 'lucide-react';
+  BellRing,
+  BookMarked,
+  BookOpenText,
+  BotMessageSquare,
+  BrainCircuit,
+  Building2,
+  ChevronRight,
+  ClipboardCheck,
+  Cpu,
+  DatabaseZap,
+  FileCheck2,
+  FileScan,
+  FileStack,
+  FileText,
+  Gauge,
+  Gavel,
+  HandCoins,
+  History,
+  Landmark,
+  LockKeyhole,
+  LogOut,
+  MailSearch,
+  Megaphone,
+  MessageSquareText,
+  PanelTop,
+  Printer,
+  QrCode,
+  ReceiptText,
+  Scale,
+  Settings2,
+  Shield,
+  ShieldAlert,
+  ShieldCheck,
+  Stethoscope,
+  Table2,
+  TrendingUp,
+  UserCog,
+  UserRoundSearch,
+  WandSparkles,
+  Workflow,
+} from 'lucide-react';
 import { useQuery } from '@tanstack/react-query';
 import { pendingDecisionsApi } from '@/lib/pending-decisions';
 
@@ -17,115 +53,91 @@ const GOLD      = '#d4b876';  // Ana altın
 const CHAMPAGNE = '#e8d6a0';  // Parlak şampanya
 const BRONZE    = '#c0a079';  // Bronz
 const COPPER    = '#d99560';  // Bakır
-// v1.36.75: Sidebar yeniden organize — 8 grup → 6 grup.
-// Mevcut hiçbir sayfa silinmedi/taşınmadı, sadece menüdeki gruplandırma değişti.
-// Tüm href'ler aynen korundu. Yeni eklenen 2 öğe: /panel/is-yuku ve /panel/tahsilat.
+// Sidebar gruplari kullanicinin gunluk akisi icin siralandi.
 const navGroups = [
   {
     label: 'Moren AI',
     color: GOLD,
-    icon: Brain,
+    icon: BrainCircuit,
     items: [
-      { href: '/panel/moren-ai', label: 'MOREN AI', icon: Brain },
-      { href: '/panel/otomasyonlar', label: 'Otomasyonlar', icon: Zap },
-      { href: '/panel/whatsapp-qr', label: 'WhatsApp QR', icon: MessageSquare },
-      // Mobil tanıtım sidebar'dan kaldırıldı — tasarım gözden geçirme için
-      // doğrudan /panel/mobil-tanitim URL'inden erişilir, müşterilere
-      // yansıtılmaz. Tasarım onaylanınca kodlanacak.
+      { href: '/panel/moren-ai', label: 'MOREN AI', icon: BrainCircuit },
+      { href: '/panel/otomasyonlar', label: 'Otomasyonlar', icon: WandSparkles },
     ],
   },
   {
     label: 'Genel',
     color: GOLD,
-    icon: Sparkles,
+    icon: PanelTop,
     items: [
-      { href: '/panel',              label: 'Gösterge Paneli',   icon: LayoutDashboard },
-      { href: '/panel/is-yuku',      label: 'İş Akışı',           icon: Workflow },        // YENİ
-      { href: '/panel/gorevler',     label: 'Görevler & Notlar',  icon: CheckSquare },
+      { href: '/panel', label: 'Gösterge Paneli', icon: Gauge },
+      { href: '/panel/mukellefler', label: 'Mükellef Listesi', icon: UserRoundSearch },
+      { href: '/panel/is-yuku', label: 'İş Akışı', icon: Workflow },
+      { href: '/panel/gorevler', label: 'Görevler & Notlar', icon: ClipboardCheck },
+      { href: '/panel/bildirimler', label: 'Bildirimler', icon: BellRing },
     ],
   },
   {
-    // v1.36.75: Mükellef-bazlı tüm modüller burada toplanır.
-    // Banka Takip (mükellef ekstreleri), Mükellef Profilleri (otomasyon config),
-    // ileride Belge Takibi ve Profil Tamamlık da buraya ekleniyor.
-    label: 'Mükellefler',
-    color: GOLD,
-    icon: Users,
-    items: [
-      { href: '/panel/mukellefler',       label: 'Mükellef Listesi',    icon: Users },
-      { href: '/panel/banka-takip',       label: 'Banka Takip',         icon: Landmark },
-      { href: '/panel/ajanlar/profiller', label: 'Mükellef Profilleri', icon: Sliders },
-    ],
-  },
-  {
-    label: 'Faturalar & Muhasebe',
+    label: 'Fatura & Muhasebe',
     color: CHAMPAGNE,
-    icon: Receipt,
+    icon: ReceiptText,
     items: [
-      { href: '/fatura-merkezi',               label: 'Fatura İşleme Merkezi', icon: Sparkles },
-      { href: '/panel/faturalar',              label: 'İşlenen Faturalar',  icon: Receipt },
-      // "Fatura Muhasebeleştirme" sayfası kaldırıldı — modül yeniden tasarlanacak.
-      // Backend kaldı (earsiv + luca otomatik bu service'i kullanıyor).
-      // Yeni UI: çoklu entegratör (e-Logo, TÜRMOB, Paraşüt, Mikro, Uyumsoft)
-      // + manuel fiş yükleme + hesap planı eşleştirme + Luca'ya fişleme.
-      { href: '/panel/e-arsiv',                label: 'E-Fatura / E-Arşiv Sorgulama', icon: Archive },
-      { href: '/panel/ajanlar/mihsap',         label: 'Fatura İşleme',      icon: Bot },
-      { href: '/panel/fis-yazdirma',           label: 'Fiş Yazdırma',       icon: Printer },
-      { href: '/panel/mizan',                  label: 'Mizan',              icon: Table2 },
-      { href: '/panel/bilanco',                label: 'Bilanço',            icon: Scale },
-      { href: '/panel/gelir-tablosu',          label: 'Gelir Tablosu',      icon: TrendingUp },
-      { href: '/panel/isletme-hesap-ozeti',    label: 'İşletme Hesap Özeti',icon: BookOpen },
-      // NOT: Banka Takip → Mükellefler grubuna taşındı (mükellef-bazlı)
-      // NOT: Cari Kasa → Ofis grubuna taşındı (senin ofisinin tahsilatı)
+      { href: '/fatura-merkezi', label: 'Fatura İşleme Merkezi', icon: FileStack },
+      { href: '/panel/e-arsiv', label: 'E-Fatura / E-Arşiv Sorgulama', icon: FileScan },
+      { href: '/panel/ajanlar/mihsap', label: 'Fatura İşleme', icon: BotMessageSquare },
+      { href: '/panel/faturalar', label: 'İşlenen Faturalar', icon: ReceiptText },
+      { href: '/panel/fis-yazdirma', label: 'Fiş Yazdırma', icon: Printer },
+      { href: '/panel/banka-takip', label: 'Banka Takip', icon: Landmark },
+      { href: '/panel/ajanlar/profiller', label: 'Mükellef Profilleri', icon: UserCog },
     ],
   },
   {
-    label: 'KDV & Beyanname',
+    label: 'Vergi & Beyanname',
     color: BRONZE,
-    icon: FileCheck,
+    icon: FileCheck2,
     items: [
-      { href: '/panel/kdv-kontrol',          label: 'KDV Kontrol',     icon: FileCheck },
-      { href: '/panel/kdv-beyanname',        label: 'KDV Beyanname',   icon: FileCheck },
-      { href: '/panel/beyannameler',         label: 'Beyannameler',    icon: FileText },
-      { href: '/panel/ajanlar/e-defter',     label: 'E-Defter Kontrol', icon: BookOpen },
+      { href: '/panel/kdv-kontrol', label: 'KDV Kontrol', icon: FileCheck2 },
+      { href: '/panel/kdv-beyanname', label: 'KDV Beyanname', icon: FileCheck2 },
+      { href: '/panel/beyannameler', label: 'Beyannameler', icon: FileText },
+      { href: '/panel/ajanlar/tebligat', label: 'e-Tebligat Kontrol', icon: MailSearch },
+      { href: '/panel/ajanlar/sgk', label: 'SGK Otomasyonu', icon: ShieldAlert },
     ],
   },
   {
-    label: 'Otomasyon',
-    color: BRONZE,
-    icon: Zap,
+    label: 'Mali Veriler',
+    color: CHAMPAGNE,
+    icon: DatabaseZap,
     items: [
-      { href: '/panel/ajanlar',           label: 'Tüm Ajanlar',         icon: Cpu },
-      { href: '/panel/ajan-saglik',       label: 'Sağlık Panosu',       icon: Activity },
-      { href: '/panel/ajanlar/luca',      label: 'Luca Oturumu',        icon: ShieldCheck },
-      { href: '/panel/ajanlar/tebligat',  label: 'e-Tebligat Kontrol',  icon: Mailbox },
-      { href: '/panel/ajanlar/sgk',       label: 'SGK Otomasyonu',      icon: ShieldAlert },
-      { href: '/panel/ajanlar/loglar',    label: 'Yapılan İşlemler',    icon: Activity },
-      { href: '/panel/galeri/hgs-ihlal',  label: 'HGS İhlal Sorgulama', icon: Gavel },
-      // NOT: Mükellef Profilleri → Mükellefler grubuna taşındı (mükellef-bazlı config)
+      { href: '/panel/mizan', label: 'Mizan', icon: Table2 },
+      { href: '/panel/isletme-hesap-ozeti', label: 'İşletme Hesap Özeti', icon: BookOpenText },
+      { href: '/panel/gelir-tablosu', label: 'Gelir Tablosu', icon: TrendingUp },
+      { href: '/panel/bilanco', label: 'Bilanço', icon: Scale },
+      { href: '/panel/ajanlar/e-defter', label: 'E-Defter Kontrol', icon: BookMarked },
     ],
   },
   {
     label: 'Ofis',
     color: CHAMPAGNE,
-    icon: Building,
+    icon: Building2,
     items: [
-      // Cari Kasa Faturalar & Muhasebe altından buraya taşındı —
-      // mükellef muhasebesi DEĞİL, senin ofisinin mali müşavirlik ücret tahsilatı.
-      { href: '/panel/cari-kasa',   label: 'Cari Kasa & Tahsilat', icon: Coins },
-      { href: '/panel/hatirlatmalar', label: 'WhatsApp Otomasyonu',  icon: MessageSquare },
-      { href: '/panel/bildirimler', label: 'Bildirimler',           icon: Bell },
-      { href: '/panel/duyurular',   label: 'Duyurular',             icon: Megaphone },
+      { href: '/panel/cari-kasa', label: 'Cari Kasa & Tahsilat', icon: HandCoins },
+      { href: '/panel/duyurular', label: 'Duyurular', icon: Megaphone },
+      { href: '/panel/galeri/hgs-ihlal', label: 'HGS İhlal Sorgulama', icon: Gavel },
     ],
   },
   {
-    label: 'Sistem',
+    label: 'Teknik & Sistem',
     color: COPPER,
-    icon: Settings,
+    icon: Settings2,
     items: [
-      { href: '/panel/sistem/kilitli-moduller', label: 'Kilitli Modüller', icon: Lock },
-      { href: '/panel/ayarlar/denetim',         label: 'Denetim Günlüğü',  icon: ShieldCheck },
-      { href: '/panel/ayarlar',                 label: 'Ayarlar',          icon: Settings },
+      { href: '/panel/hatirlatmalar', label: 'WhatsApp Otomasyonu', icon: MessageSquareText },
+      { href: '/panel/whatsapp-qr', label: 'WhatsApp QR', icon: QrCode },
+      { href: '/panel/ajanlar', label: 'Tüm Ajanlar', icon: Cpu },
+      { href: '/panel/ajanlar/luca', label: 'Luca Oturumu', icon: ShieldCheck },
+      { href: '/panel/ajan-saglik', label: 'Sağlık Panosu', icon: Stethoscope },
+      { href: '/panel/ajanlar/loglar', label: 'Yapılan İşlemler', icon: History },
+      { href: '/panel/ayarlar', label: 'Ayarlar', icon: Settings2 },
+      { href: '/panel/ayarlar/denetim', label: 'Denetim Günlüğü', icon: Shield },
+      { href: '/panel/sistem/kilitli-moduller', label: 'Kilitli Modüller', icon: LockKeyhole },
     ],
   },
 ];
@@ -144,8 +156,9 @@ export default function Sidebar() {
   });
   const bekleyenSayisi = pendingCount?.bekleyen || 0;
 
+  const exactActiveHrefs = new Set(['/panel', '/panel/ajanlar', '/panel/ayarlar']);
   const isActive = (href: string) =>
-    href === '/panel' ? pathname === '/panel' : pathname.startsWith(href);
+    exactActiveHrefs.has(href) ? pathname === href : pathname.startsWith(href);
 
   const initials = user
     ? `${user.firstName?.[0] ?? ''}${user.lastName?.[0] ?? ''}`.toUpperCase() || user.email[0].toUpperCase()
@@ -190,7 +203,16 @@ export default function Sidebar() {
             <div key={group.label}>
               {/* Grup Başlığı */}
               <div className="flex items-center gap-2 px-3 mb-1.5">
-                <GIcon size={11} style={{ color: group.color, opacity: 0.85 }} />
+                <span
+                  className="flex h-[18px] w-[18px] items-center justify-center rounded-md"
+                  style={{
+                    background: `${group.color}12`,
+                    border: `1px solid ${group.color}22`,
+                    boxShadow: `inset 0 1px 0 rgba(255,255,255,0.05)`,
+                  }}
+                >
+                  <GIcon size={11} style={{ color: group.color, opacity: 0.9 }} />
+                </span>
                 <p
                   className="text-[9.5px] font-bold uppercase flex-1"
                   style={{ color: 'rgba(250,250,249,0.42)', letterSpacing: '0.15em' }}
@@ -204,39 +226,61 @@ export default function Sidebar() {
               <div className="space-y-0.5">
                 {group.items.map(({ href, label, icon: Icon }) => {
                   const active = isActive(href);
+                  const baseBackground = active
+                    ? `linear-gradient(135deg, ${group.color}24 0%, rgba(255,255,255,0.04) 50%, ${group.color}0f 100%)`
+                    : 'rgba(255,255,255,0.012)';
+                  const baseBorder = active ? `${group.color}5c` : 'rgba(255,255,255,0.035)';
+                  const baseColor = active ? '#fafaf9' : 'rgba(250,250,249,0.58)';
+                  const baseShadow = active
+                    ? `inset 0 1px 0 rgba(255,255,255,0.08), 0 8px 22px ${group.color}12`
+                    : 'inset 0 1px 0 rgba(255,255,255,0.025)';
+
                   return (
                     <Link
                       key={href}
                       href={href}
-                      className="group relative flex items-center gap-3 px-3 py-[9px] rounded-lg text-[13px] overflow-hidden"
+                      className="group relative flex items-center gap-3 px-3 py-[9px] rounded-xl border text-[13px] overflow-hidden"
                       style={{
-                        color: active ? '#fafaf9' : 'rgba(250,250,249,0.55)',
-                        background: active
-                          ? `linear-gradient(90deg, ${group.color}20, ${group.color}08)`
-                          : 'transparent',
+                        color: baseColor,
+                        background: baseBackground,
+                        borderColor: baseBorder,
+                        boxShadow: baseShadow,
                         fontWeight: active ? 600 : 450,
                         letterSpacing: '-0.005em',
-                        transition: 'all 0.25s cubic-bezier(0.4, 0, 0.2, 1)',
+                        transition: 'all 0.28s cubic-bezier(0.16, 1, 0.3, 1)',
                       }}
                       onMouseEnter={(e) => {
                         if (!active) {
                           const el = e.currentTarget as HTMLElement;
-                          el.style.background = 'rgba(184,160,111,0.08)';
-                          el.style.color = '#fafaf9';
-                          el.style.transform = 'translateX(4px) scale(1.02)';
-                          el.style.boxShadow = '0 2px 12px rgba(0,0,0,0.2)';
+                          el.style.background = `linear-gradient(135deg, ${group.color}20 0%, rgba(255,255,255,0.075) 48%, ${group.color}08 100%)`;
+                          el.style.borderColor = `${group.color}55`;
+                          el.style.color = '#fffaf2';
+                          el.style.transform = 'translateX(6px)';
+                          el.style.boxShadow = `inset 0 1px 0 rgba(255,255,255,0.11), 0 10px 28px ${group.color}18`;
                         }
                       }}
                       onMouseLeave={(e) => {
                         if (!active) {
                           const el = e.currentTarget as HTMLElement;
-                          el.style.background = 'transparent';
-                          el.style.color = 'rgba(250,250,249,0.55)';
-                          el.style.transform = 'translateX(0) scale(1)';
-                          el.style.boxShadow = 'none';
+                          el.style.background = baseBackground;
+                          el.style.borderColor = baseBorder;
+                          el.style.color = baseColor;
+                          el.style.transform = 'translateX(0)';
+                          el.style.boxShadow = baseShadow;
                         }
                       }}
                     >
+                      <span
+                        className="absolute inset-y-1 left-1 w-10 rounded-full opacity-0 blur-md transition-opacity duration-300 group-hover:opacity-70"
+                        style={{ background: `${group.color}28` }}
+                      />
+                      <span
+                        className="absolute inset-0 opacity-0 transition-opacity duration-300 group-hover:opacity-100"
+                        style={{
+                          background: `linear-gradient(90deg, transparent 0%, ${group.color}0f 46%, transparent 100%)`,
+                        }}
+                      />
+
                       {/* Aktif sol şerit */}
                       {active && (
                         <>
@@ -259,12 +303,14 @@ export default function Sidebar() {
 
                       {/* İkon kutucuğu */}
                       <div
-                        className="relative flex items-center justify-center flex-shrink-0 transition-all duration-200 group-hover:scale-110"
+                        className="relative flex items-center justify-center flex-shrink-0 transition-all duration-300 group-hover:-rotate-3 group-hover:scale-110"
                         style={{
-                          width: 22,
-                          height: 22,
-                          borderRadius: 6,
-                          background: active ? `${group.color}22` : 'transparent',
+                          width: 24,
+                          height: 24,
+                          borderRadius: 8,
+                          background: active ? `${group.color}24` : 'rgba(255,255,255,0.025)',
+                          border: `1px solid ${active ? `${group.color}42` : 'rgba(255,255,255,0.04)'}`,
+                          boxShadow: active ? `0 0 14px ${group.color}20` : 'none',
                         }}
                       >
                         <Icon
@@ -274,7 +320,7 @@ export default function Sidebar() {
                         />
                       </div>
 
-                      <span className="flex-1 leading-none relative">{label}</span>
+                      <span className="flex-1 leading-none relative transition-colors duration-200">{label}</span>
 
                       {/* Bekleyen onay badge — Fatura İşleme menüsünde göster (Onay Kuyruğu oraya entegre) */}
                       {href === '/panel/ajanlar/mihsap' && bekleyenSayisi > 0 && (
