@@ -412,7 +412,16 @@ export class FaturaMuhasebelestirmeService {
   ) {
     const where: any = { tenantId };
     if (opts.taxpayerId) where.taxpayerId = opts.taxpayerId;
-    if (opts.period) where.period = opts.period;
+    // InvoiceAccountingDocument'ta `period` kolonu yok — faturaTarihi(YYYY-MM) üzerinden.
+    if (opts.period && /^\d{4}-\d{2}$/.test(opts.period)) {
+      const [y, m] = opts.period.split('-').map((n) => parseInt(n, 10));
+      const start = new Date(Date.UTC(y, m - 1, 1, 0, 0, 0));
+      const end = new Date(Date.UTC(y, m, 1, 0, 0, 0));
+      where.OR = [
+        { faturaTarihi: { gte: start, lt: end } },
+        { AND: [{ faturaTarihi: null }, { createdAt: { gte: start, lt: end } }] },
+      ];
+    }
 
     const docs = await (this.prisma as any).invoiceAccountingDocument.findMany({
       where,
@@ -421,9 +430,11 @@ export class FaturaMuhasebelestirmeService {
 
     let pending = 0, approved = 0, errors = 0, posted = 0, ocrInProgress = 0;
     for (const d of docs) {
-      if (d.status === 'PENDING' || d.status === 'PROCESSING') pending++;
-      if (d.status === 'APPROVED') approved++;
-      if (d.status === 'ERROR') errors++;
+      const status = String(d.status || '').toUpperCase();
+      // Schema status: NEEDS_REVIEW | READY | APPROVED | REJECTED
+      if (status === 'READY' || status === 'NEEDS_REVIEW' || status === 'PENDING' || status === 'PROCESSING') pending++;
+      if (status === 'APPROVED') approved++;
+      if (status === 'REJECTED' || status === 'ERROR') errors++;
       if (d.lucaStatus === 'POSTED') posted++;
       if (d.ocrStatus === 'IN_PROGRESS' || d.ocrStatus === 'PENDING') ocrInProgress++;
     }
@@ -451,14 +462,24 @@ export class FaturaMuhasebelestirmeService {
     opts: { period?: string } = {},
   ) {
     const where: any = { tenantId };
-    if (opts.period) where.period = opts.period;
+    // InvoiceAccountingDocument'ta `period` kolonu yok — faturaTarihi'nin YYYY-MM
+    // dilimi üzerinden filtrele. Tarih yoksa createdAt'i fallback olarak değerlendir.
+    if (opts.period && /^\d{4}-\d{2}$/.test(opts.period)) {
+      const [y, m] = opts.period.split('-').map((n) => parseInt(n, 10));
+      const start = new Date(Date.UTC(y, m - 1, 1, 0, 0, 0));
+      const end = new Date(Date.UTC(y, m, 1, 0, 0, 0));
+      where.OR = [
+        { faturaTarihi: { gte: start, lt: end } },
+        { AND: [{ faturaTarihi: null }, { createdAt: { gte: start, lt: end } }] },
+      ];
+    }
 
     const docs = await (this.prisma as any).invoiceAccountingDocument.findMany({
       where,
       select: {
         taxpayerId: true,
         status: true,
-        direction: true,
+        invoiceKind: true,
         documentType: true,
         lucaStatus: true,
       },
@@ -478,9 +499,12 @@ export class FaturaMuhasebelestirmeService {
         postedToLuca: 0,
       };
       const isBank = (d.documentType || '').toUpperCase().includes('BANKA');
-      const isAlis = String(d.direction || '').toUpperCase().startsWith('ALI');
-      const pending = d.status === 'PENDING' || d.status === 'PROCESSING';
-      const approved = d.status === 'APPROVED';
+      const isAlis = String(d.invoiceKind || '').toUpperCase().startsWith('ALI');
+      // Schema status: NEEDS_REVIEW | READY | APPROVED | REJECTED
+      // "Bekleyen" = henüz onaylanmamış / yevmiyeye atılmamış (READY + NEEDS_REVIEW)
+      const status = String(d.status || '').toUpperCase();
+      const pending = status === 'READY' || status === 'NEEDS_REVIEW' || status === 'PENDING' || status === 'PROCESSING';
+      const approved = status === 'APPROVED';
 
       if (pending) {
         if (isBank) entry.pendingBanka++;
