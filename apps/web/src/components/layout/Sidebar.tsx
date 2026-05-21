@@ -49,7 +49,7 @@ import { useQuery } from '@tanstack/react-query';
 import { pendingDecisionsApi } from '@/lib/pending-decisions';
 
 const GOLD = '#d4b876';
-const LAVENDER = '#c6a7ff';
+const ROSE = '#f09aa8';
 const SAGE = '#8fd7bd';
 const AMBER = '#d8ad70';
 const SKY = '#8cbde8';
@@ -59,7 +59,7 @@ const STEEL = '#9da8b7';
 const navGroups = [
   {
     label: 'Moren AI',
-    color: LAVENDER,
+    color: ROSE,
     icon: BrainCircuit,
     items: [
       { href: '/panel/moren-ai', label: 'MOREN AI', icon: BrainCircuit },
