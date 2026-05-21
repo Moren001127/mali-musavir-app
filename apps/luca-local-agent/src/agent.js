@@ -323,48 +323,70 @@ async function requeueJob(jobId, reason) {
 }
 
 // ---------------------------------------------------------------------------
-// v1.38: postInvoiceVoucher — Luca'ya yevmiye fisi yazar (INVOICE_POST job)
+// v1.38: postInvoiceVoucher — INVOICE_POST job islerken cagrilir.
 //
-// Su an: placeholder. payload'i logla, "manuel giris gerek" mesaji ile basari
-// veya hata olarak kapat. Bu sayede backend pipeline'i (job kuyruga ekleme,
-// belge lucaStatus alanlari, retry endpointi) uctan uca test edilebilir.
+// Iki payload format desteklenir:
+//   A) mode='BATCH_EXCEL'  → Backend Excel uretti, agent endpoint'ten alir ve
+//      Luca'nin "Toplu Fis Aktarim" ekrani araciligiyla yukler.
+//   B) tek belge (legacy)  → Eski format, placeholder olarak fail.
 //
-// Gercek implementasyon icin yapilacaklar (sonraki tur):
-//   1. agent-runtime.js'e Luca menusunde "Yevmiye Islemleri > Fis Girisi"
-//      navigasyonu (collectLucaClickMap + nativeClickText ile)
-//   2. Tarih + aciklama doldur
-//   3. Her line icin: hesap kodu sec, aciklama gir, debit/credit alanlari
-//   4. Kaydet butonuna bas, fis numarasini yakala
-//   5. Sonucu /agent/luca/jobs/:id/done ile geri bildir (fisNo alani ile)
+// Su an Luca'da Toplu Aktarim ekranina UI navigation henuz yazilmadi — bu
+// turda sadece Excel'in indirilebildiginin sinama placeholder'i olarak calisir.
+// Gercek implementasyon: agent-runtime.js'e "loadExcelToLucaToplu Aktarim()"
+// fonksiyonu eklendiginde devreye girer.
 // ---------------------------------------------------------------------------
 async function postInvoiceVoucher(job) {
   const jobId = job.id || job.jobId;
   const payload = job.payload || {};
+  const mode = payload.mode || 'SINGLE';
+
+  if (mode === 'BATCH_EXCEL') {
+    const totalCount = payload.totalCount || (payload.invoices || []).length;
+    const period = payload.period || '-';
+    log.info(`INVOICE_POST BATCH_EXCEL: ${totalCount} fatura, donem=${period}, jobId=${jobId.slice(0, 8)}`);
+
+    // 1) Backend'ten Excel dosyasini indir (BUFFER)
+    try {
+      const r = await api.get(`/agent/luca/jobs/${jobId}/invoice-excel`, {
+        responseType: 'arraybuffer',
+        headers: { Accept: 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet' },
+      });
+      const sizeKb = Math.round((r.data?.byteLength || r.data?.length || 0) / 1024);
+      log.info(`Luca aktarim Excel'i alindi: ${sizeKb} KB`);
+      await logJob(jobId, `Excel uretildi (${sizeKb} KB), Luca'ya yukleme bekleniyor.`).catch(() => {});
+
+      // Excel'i diske kaydet — debug + manuel yukleme icin
+      const tmpDir = path.join(__dirname, '..', 'tmp-invoice-exports');
+      if (!fs.existsSync(tmpDir)) fs.mkdirSync(tmpDir, { recursive: true });
+      const filePath = path.join(tmpDir, `luca-fis-${jobId.slice(0, 8)}-${period}.xlsx`);
+      fs.writeFileSync(filePath, Buffer.from(r.data));
+      log.info(`Excel kaydedildi: ${filePath}`);
+      await logJob(jobId, `Excel dosyasi: ${filePath}`).catch(() => {});
+    } catch (err) {
+      log.error(`Excel uretilemedi: ${err.message}`);
+      await markJobFailed(jobId, `Backend Excel uretmedi: ${err.message}`);
+      return;
+    }
+
+    // 2) Luca'da "Toplu Fis Aktarim" ekranina yukle — HENUZ HAZIR DEGIL
+    //    Su an placeholder: agent Excel'i indirdigini ve diskte kaydettigini
+    //    rapor eder, ama Luca'ya yuklemez. Kullanici manuel olarak
+    //    tmp-invoice-exports/ klasorunden Excel'i alip Luca'ya yukleyebilir.
+    await markJobFailed(
+      jobId,
+      `INVOICE_POST_EXCEL_HAZIR: ${totalCount} faturalik Excel uretildi ama Luca'ya otomatik yukleme henuz hazir degil. ` +
+      `Dosya agent klasorunde tmp-invoice-exports/ altinda. Kullanici manuel yukleyebilir.`
+    );
+    return;
+  }
+
+  // Eski single-invoice format (artik kullanilmamali — backend BATCH_EXCEL'e gecti)
   const documentId = payload.documentId || '?';
-  const belgeNo = payload.belgeNo || '-';
-  const vendor = payload.vendorName || payload.customerName || '-';
-  const totalAmount = payload.totalAmount || '0';
-  const lineCount = Array.isArray(payload.lines) ? payload.lines.length : 0;
-
-  log.info(
-    `INVOICE_POST alindi (placeholder): doc=${documentId.slice(0, 8)} ` +
-    `belgeNo=${belgeNo} firma="${vendor}" tutar=${totalAmount} satir=${lineCount}`
-  );
-  await logJob(
-    jobId,
-    `INVOICE_POST placeholder: doc=${documentId.slice(0, 8)} belgeNo=${belgeNo} ` +
-    `vendor=${vendor} total=${totalAmount} lineCount=${lineCount}. ` +
-    `Luca'ya gercek fis yazma henuz implement edilmedi; manuel giris gerek.`
-  ).catch(() => {});
-
-  // Su an gercek Luca yazimi yok — backend'e "yarim basarili" sinyali yolla.
-  // Backend tarafi (markJobFailed) bunu lucaStatus=FAILED yapacak ve kullaniciya
-  // "Tekrar dene" / "Luca'ya manuel gir" diye gosterecek. Tipik hata mesajiyla
-  // ayri tutmak icin ozel bir reason kodu kullaniyoruz.
+  log.info(`INVOICE_POST single (legacy) doc=${documentId.slice(0, 8)} — fail`);
   await markJobFailed(
     jobId,
-    'INVOICE_POST_NOT_IMPLEMENTED: Luca yevmiye fisi otomasyonu henuz hazir degil. ' +
-    'Belgenin Luca tarafina manuel girilmesi gerekir.'
+    'INVOICE_POST_LEGACY_SINGLE: Tek belge per-job format artik desteklenmiyor. ' +
+    'Backend BATCH_EXCEL\'e gecti, lutfen yeni "Luca\'ya Aktar" toplu butonunu kullanin.'
   );
 }
 

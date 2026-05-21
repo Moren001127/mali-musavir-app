@@ -38,6 +38,7 @@ import { IsletmeHesapOzetiService } from '../isletme-hesap-ozeti/isletme-hesap-o
 import { EarsivService, EarsivTip, BelgeKaynak } from '../earsiv/earsiv.service';
 import { MizanParserService } from '../mizan/mizan-parser.service';
 import { FaturaMuhasebelestirmeService } from '../fatura-muhasebelestirme/fatura-muhasebelestirme.service';
+import { buildLucaImportExcel } from '../fatura-muhasebelestirme/luca-excel.service';
 
 /**
  * Luca entegrasyon controller'ı.
@@ -565,6 +566,32 @@ export class LucaController {
     await this.resolveTenantFromAgentToken(agentToken);
     await this.luca.markJobFailed(id, body.error || 'bilinmeyen hata');
     return { ok: true };
+  }
+
+  // v1.38: INVOICE_POST BATCH_EXCEL — agent bu endpoint'ten Luca Fis Aktarim
+  // Excel'ini indirir, sonra Luca'nin Toplu Aktarim menusune yukler.
+  // payload.mode === 'BATCH_EXCEL' job'larda gecerli.
+  @Get('agent/luca/jobs/:id/invoice-excel')
+  @Header('Content-Type', 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet')
+  @Header('Content-Disposition', 'attachment; filename="luca-fis-aktarim.xlsx"')
+  async getInvoiceExcel(
+    @Param('id') id: string,
+    @Headers('x-agent-token') agentToken: string,
+    @Res() res: any,
+  ) {
+    await this.resolveTenantFromAgentToken(agentToken);
+    const job = await (this.prisma as any).lucaFetchJob.findUnique({ where: { id } });
+    if (!job) throw new BadRequestException('Job bulunamadi');
+    if (job.tip !== 'INVOICE_POST') {
+      throw new BadRequestException('Sadece INVOICE_POST job icin Excel uretilir');
+    }
+    const payload: any = job.payload || {};
+    if (payload.mode !== 'BATCH_EXCEL' || !Array.isArray(payload.invoices) || !payload.invoices.length) {
+      throw new BadRequestException('Job payload BATCH_EXCEL formatinda degil');
+    }
+    const buffer = await buildLucaImportExcel(payload);
+    res.setHeader('Content-Length', buffer.length.toString());
+    res.end(buffer);
   }
 
   @Post('agent/luca/jobs/:id/requeue')

@@ -2441,6 +2441,37 @@ function LucaStage({
     return { posted, queued, failed, notStarted, total, rate };
   }, [documents]);
 
+  // v1.38: Aktarilabilir belgeleri mukellef+donem'e gore grupla
+  // — her grup icin tek tikla "Luca'ya Aktar" butonu
+  const sendableGroups = useMemo(() => {
+    const m = new Map<string, { taxpayerId: string; period: string; docs: ApiDocument[]; total: number }>();
+    documents.forEach((d) => {
+      const lucaSt = String(d.lucaStatus || 'NOT_STARTED');
+      if (!['QUEUED', 'NOT_STARTED', 'FAILED'].includes(lucaSt)) return;
+      if (!d.taxpayerId) return;
+      const dt = d.faturaTarihi ? new Date(d.faturaTarihi) : new Date(d.approvedAt || d.createdAt || Date.now());
+      const period = `${dt.getFullYear()}-${String(dt.getMonth() + 1).padStart(2, '0')}`;
+      const key = `${d.taxpayerId}|${period}`;
+      if (!m.has(key)) m.set(key, { taxpayerId: d.taxpayerId, period, docs: [], total: 0 });
+      const g = m.get(key)!;
+      g.docs.push(d);
+      g.total += parseNum(d.totalAmount);
+    });
+    return Array.from(m.values()).sort((a, b) => b.docs.length - a.docs.length);
+  }, [documents]);
+
+  const batchSendMut = useMutation({
+    mutationFn: async (input: { taxpayerId: string; period: string }) =>
+      api.post(`/fatura-muhasebelestirme/batch-post-to-luca`, input).then((r) => r.data),
+    onSuccess: (res: any) => {
+      toast.success(`${res?.documentCount || '?'} belge Luca'ya gönderildi`);
+      qc.invalidateQueries({ queryKey: ['fatura-muhasebelestirme', 'documents'] });
+    },
+    onError: (e: any) => {
+      toast.error(e?.message || 'Toplu aktarım başarısız');
+    },
+  });
+
   const retryMut = useMutation({
     mutationFn: async (id: string) => api.post(`/fatura-muhasebelestirme/documents/${id}/retry-luca`),
     onSuccess: () => {
@@ -2465,6 +2496,49 @@ function LucaStage({
           Başarı oranı <Strong>%{stats.rate}</Strong>
         </Summary>
       </WsBar>
+
+      {/* v1.38: Toplu aktarim kartlari — mukellef+donem bazinda gruplu */}
+      {sendableGroups.length > 0 && (
+        <div className="border-b border-[#e6e1d6] bg-[#fef9ee] px-[22px] py-4">
+          <div className="flex items-center gap-2 mb-3">
+            <span className="text-[13px] font-semibold text-[#7a572b]">
+              Luca'ya Toplu Aktarım Bekleyenler
+            </span>
+            <span className="text-[12px] text-[#a87a3d]">
+              · {sendableGroups.length} mükellef · {sendableGroups.reduce((s, g) => s + g.docs.length, 0)} belge
+            </span>
+          </div>
+          <div className="flex flex-wrap gap-3">
+            {sendableGroups.map((g) => {
+              const tp = taxpayerMap.get(g.taxpayerId);
+              const isPending = batchSendMut.isPending && batchSendMut.variables?.taxpayerId === g.taxpayerId && batchSendMut.variables?.period === g.period;
+              return (
+                <div
+                  key={`${g.taxpayerId}|${g.period}`}
+                  className="flex items-center gap-3 rounded-lg border border-[#e6e1d6] bg-white px-4 py-2.5 shadow-sm"
+                >
+                  <div className="flex flex-col gap-0.5">
+                    <span className="text-[13px] font-medium text-[#2a2723]">
+                      {tp ? taxpayerLabel(tp) : g.taxpayerId.slice(0, 8)}
+                    </span>
+                    <span className="text-[11px] text-[#8a8270]">
+                      {g.period} · {g.docs.length} belge · {fmtMoney(g.total)} ₺
+                    </span>
+                  </div>
+                  <button
+                    type="button"
+                    onClick={() => batchSendMut.mutate({ taxpayerId: g.taxpayerId, period: g.period })}
+                    disabled={batchSendMut.isPending}
+                    className="rounded-md bg-[#4a8580] px-3 py-1.5 text-[12px] font-medium text-white hover:bg-[#2f6863] disabled:opacity-50"
+                  >
+                    {isPending ? 'Gönderiliyor…' : `Luca'ya Aktar`}
+                  </button>
+                </div>
+              );
+            })}
+          </div>
+        </div>
+      )}
 
       {grouped.length === 0 ? (
         <EmptyState title="Henüz transfer yok" desc="Fişler aktarıldıkça burada gün bazlı jurnal halinde listelenir." />
