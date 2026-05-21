@@ -62,7 +62,8 @@ const navGroups = [
     color: CHAMPAGNE,
     icon: Receipt,
     items: [
-      { href: '/panel/fatura-isleme',          label: 'Fatura İşleme Merkezi', icon: Workflow },
+      { href: '/fatura-merkezi',               label: 'Fatura Merkezi ✨',     icon: Sparkles },
+      { href: '/panel/fatura-isleme',          label: 'Fatura İşleme (Eski)',  icon: Workflow },
       { href: '/panel/faturalar',              label: 'İşlenen Faturalar',  icon: Receipt },
       // "Fatura Muhasebeleştirme" sayfası kaldırıldı — modül yeniden tasarlanacak.
       // Backend kaldı (earsiv + luca otomatik bu service'i kullanıyor).
