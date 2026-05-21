@@ -329,7 +329,45 @@ const zPetravet1430 = zRaporu.extractZRaporuKdv(zPetravet1430Text, zDeps);
 eq(zPetravet1430.kdvTutari, '1230,68', 'z petravet 1430 multi-rate total');
 approx(zPetravet1430.breakdown.find((b) => b.oran === 20).tutar, 342.50, 0.01, 'z petravet 1430 %20');
 approx(zPetravet1430.breakdown.find((b) => b.oran === 10).tutar, 888.18, 0.01, 'z petravet 1430 %10');
-ok('azure/z-raporu.ts (15 assertion)');
+
+const zPetravet1420Text = [
+  'TOPLAM /20',
+  '*2. 350,00',
+  'TOPKDV /20',
+  'TOPLAM /10',
+  '.391,67',
+  '*2. 600, 00',
+  'TOPKDV /10',
+  '· 236, 36',
+  'TOPLAM',
+  '*4 950,00',
+  'TOPKDV',
+  '*628.03',
+].join('\n');
+const zPetravet1420 = zRaporu.extractZRaporuKdv(zPetravet1420Text, zDeps);
+eq(zPetravet1420.kdvTutari, '628,03', 'z petravet 1420 interleaved label total');
+approx(zPetravet1420.breakdown.find((b) => b.oran === 20).tutar, 391.67, 0.01, 'z petravet 1420 interleaved %20');
+approx(zPetravet1420.breakdown.find((b) => b.oran === 10).tutar, 236.36, 0.01, 'z petravet 1420 interleaved %10');
+
+const zPetravet1421Text = [
+  'TOPLAM /20',
+  'TOPKDV 720',
+  '*2. 770, 00',
+  'TOPLAM Z10',
+  '*461.66',
+  'TOPKDV /10',
+  '*1 250, 00',
+  '* 113,64',
+  'TOPLAM',
+  'TOPKDV',
+  '* 4. 020.00',
+  '*575,30',
+].join('\n');
+const zPetravet1421 = zRaporu.extractZRaporuKdv(zPetravet1421Text, zDeps);
+eq(zPetravet1421.kdvTutari, '575,30', 'z petravet 1421 interleaved label total');
+approx(zPetravet1421.breakdown.find((b) => b.oran === 20).tutar, 461.66, 0.01, 'z petravet 1421 interleaved %20');
+approx(zPetravet1421.breakdown.find((b) => b.oran === 10).tutar, 113.64, 0.01, 'z petravet 1421 interleaved %10');
+ok('azure/z-raporu.ts (21 assertion)');
 
 // ─── azure/tevkifatli-fatura.ts ───
 const foldFn = azureHelpers.foldTurkishAscii;

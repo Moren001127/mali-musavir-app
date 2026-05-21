@@ -42,7 +42,7 @@ export function extractZRaporuKdv(
       return rate > 0 && rate <= 30 ? rate : null;
     }
 
-    if (!topKdvLabel.test(line)) return null;
+    if (!topKdvLabel.test(line) && !/^\s*T[O0]PLAM\b/.test(line)) return null;
     const beforeFirstAmount = line.split(/[\*â‚ºÂ¥]|\d+[.,:;]\s*\d{2}/)[0] || '';
     const alias =
       beforeFirstAmount.match(/\bZ\s*(10|20|1)\b/) ||
@@ -81,7 +81,7 @@ export function extractZRaporuKdv(
     let line = foldTurkishAscii(raw)
       .replace(/[%/]\s*\d{1,2}(?:[.,]\d+)?/g, ' ')
       .replace(/\b\d{1,2}\s*[%/]/g, ' ');
-    if (detectRate(raw) != null && topKdvLabel.test(line)) {
+    if (detectRate(raw) != null && (topKdvLabel.test(line) || /^\s*T[O0]PLAM\b/.test(line))) {
       line = line
         .replace(/\bZ\s*(10|20|1)\b/g, ' ')
         .replace(/\b7\s*(10|20)\b/g, ' ')
@@ -138,39 +138,49 @@ export function extractZRaporuKdv(
     }
   };
 
-  for (const line of lines) {
-    if (/\bKUM\b/i.test(line)) continue;
-    const folded = foldTurkishAscii(line);
-    if (!/^\s*T[O0]PLAM\b/.test(folded) || topKdvLabel.test(folded)) continue;
-    const oran = detectRate(line);
-    if (oran != null) {
-      const gross = extractLastMoney(line);
-      if (gross > 0) result.matrahByOran[oran] = gross;
+  const pendingLabels: Array<{ kind: 'gross' | 'kdv'; oran: number | null }> = [];
+  const assignLabel = (label: { kind: 'gross' | 'kdv'; oran: number | null }, amount: number): void => {
+    if (!amount || amount <= 0) return;
+    if (label.kind === 'gross' && label.oran != null) {
+      result.matrahByOran[label.oran] = amount;
+      return;
     }
-  }
+    if (label.kind === 'kdv' && label.oran != null) {
+      addBreakdown(label.oran, amount);
+      return;
+    }
+    if (label.kind === 'kdv' && label.oran == null) {
+      topKdvTotal = amount;
+    }
+  };
 
   for (let i = 0; i < foldedLines.length; i++) {
     const line = foldedLines[i];
-    if (/\bKUM\b/.test(line)) continue;
-    if (!topKdvLabel.test(line)) continue;
-    if (detectRate(line) != null) continue;
-    const tutar = extractLastMoney(lines[i]) || nextLineMoney(i);
-    if (tutar > 0) {
-      topKdvTotal = tutar;
-      break;
-    }
-  }
+    if (/\bKUM\b/.test(line)) break;
 
-  for (let i = 0; i < foldedLines.length; i++) {
-    const line = foldedLines[i];
-    if (/\bKUM\b/.test(line)) continue;
-    if (!topKdvLabel.test(line)) continue;
-    const oran = detectRate(line);
-    if (oran != null) {
-      let tutar = extractLastMoney(lines[i]) || nextLineMoney(i);
-      if (topKdvTotal != null && tutar > topKdvTotal * 1.05) tutar = 0;
-      if (tutar <= 0) tutar = deriveKdvFromGross(oran);
-      addBreakdown(oran, tutar);
+    const isKdvLabel = topKdvLabel.test(line);
+    const isGrossLabel = /^\s*T[O0]PLAM\b/.test(line) && !isKdvLabel;
+    const values = extractMoneyValues(lines[i]);
+
+    if (isKdvLabel || isGrossLabel) {
+      const label = {
+        kind: isKdvLabel ? 'kdv' as const : 'gross' as const,
+        oran: detectRate(line),
+      };
+      if (values.length > 0) {
+        assignLabel(label, values[values.length - 1]);
+      } else {
+        pendingLabels.push(label);
+      }
+      continue;
+    }
+
+    if (values.length > 0 && pendingLabels.length > 0) {
+      for (const value of values) {
+        const label = pendingLabels.shift();
+        if (!label) break;
+        assignLabel(label, value);
+      }
     }
   }
 
