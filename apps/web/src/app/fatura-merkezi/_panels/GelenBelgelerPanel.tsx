@@ -17,12 +17,15 @@ export default function GelenBelgelerPanel({ taxpayerId, period }: Props) {
   const [sortBy, setSortBy] = useState<'name' | 'pending' | 'approved'>('pending');
   const [selectedDoc, setSelectedDoc] = useState<{ taxpayerId: string; direction: 'ALIS' | 'SATIS' } | null>(null);
 
-  /* e-Arşiv kayıtlarını invoice document'lere çevir (toplu) */
+  /* e-Arşiv ALIŞ kayıtlarını gelen belgeye çevir (toplu)
+     — sadece tip=ALIS + belgeKaynak=EARSIV. Satış ve e-fatura akışları ayrı butonlarla. */
   const earsivBackfillMut = useMutation({
     mutationFn: async () => {
       return api.post('/fatura-muhasebelestirme/documents/backfill-earsiv', {
         taxpayerId: taxpayerId || undefined,
         donem: period,
+        tip: 'ALIS',
+        belgeKaynak: 'EARSIV',
       });
     },
     onSuccess: () => {
@@ -30,8 +33,8 @@ export default function GelenBelgelerPanel({ taxpayerId, period }: Props) {
     },
   });
 
-  /* Summary — orphan / invalid sayıları için */
-  const summaryQ = useQuery({
+  /* Inbox özeti — orphan / invalid sayıları için (perTaxpayerSummary ile karışmasın) */
+  const inboxSummaryQ = useQuery({
     queryKey: ['fatura-merkezi', 'summary', period],
     queryFn: () => api.get('/fatura-muhasebelestirme/summary', { params: { period } }).then((r) => r.data).catch(() => ({})),
   });
@@ -168,11 +171,11 @@ export default function GelenBelgelerPanel({ taxpayerId, period }: Props) {
       )}
 
       {/* v2.2: Orphan (mukellef bağı yok) belgeler uyarı bandı */}
-      {(summaryQ.data?.orphanCount ?? 0) > 0 && (
+      {(inboxSummaryQ.data?.orphanCount ?? 0) > 0 && (
         <div className="mb-3 p-3 rounded-lg flex items-center gap-3" style={{ background: '#f59e0b15', border: '1px solid #f59e0b60' }}>
           <div className="flex-1">
             <div className="text-[12.5px] font-semibold" style={{ color: '#fbbf24' }}>
-              {summaryQ.data.orphanCount} belge mukellefe bağlı değil
+              {inboxSummaryQ.data.orphanCount} belge mukellefe bağlı değil
             </div>
             <div className="text-[11px] mt-0.5" style={{ color: 'var(--text-secondary)' }}>
               Bu yüzden aşağıdaki tabloda görünmüyor. VKN/TC'leri mevcut mukelleflerle otomatik eşleştirebilirim.
