@@ -1126,16 +1126,130 @@ export class FaturaMuhasebelestirmeService {
   }
 
   async approve(tenantId: string, id: string, userId?: string) {
-    await this.get(tenantId, id);
-    return (this.prisma as any).invoiceAccountingDocument.update({
+    const doc = await this.get(tenantId, id);
+
+    // 1) Belgeyi APPROVED yap (mevcut davranis)
+    await (this.prisma as any).invoiceAccountingDocument.update({
       where: { id },
       data: {
         status: 'APPROVED',
         approvedBy: userId || null,
         approvedAt: new Date(),
+        // Luca aktarimi pipe icin kuyrugla
+        lucaStatus: 'QUEUED',
+        lucaErrorMessage: null,
       },
-      include: { lines: { orderBy: { orderNo: 'asc' } } },
     });
+
+    // 2) Luca'ya gercek aktarim isi (INVOICE_POST) kuyruga ekle
+    //    Eger taxpayerId yoksa Luca'ya gonderemeyiz — local olarak APPROVED kalir.
+    if (doc.taxpayerId) {
+      try {
+        const lines = Array.isArray(doc.lines) ? doc.lines : [];
+        const periodLabel = doc.faturaTarihi
+          ? `${doc.faturaTarihi.getFullYear()}-${String(doc.faturaTarihi.getMonth() + 1).padStart(2, '0')}`
+          : `${new Date().getFullYear()}-${String(new Date().getMonth() + 1).padStart(2, '0')}`;
+
+        const job = await (this.prisma as any).lucaFetchJob.create({
+          data: {
+            tenantId,
+            mukellefId: doc.taxpayerId,
+            donem: periodLabel,
+            tip: 'INVOICE_POST',
+            status: 'pending',
+            priority: 5, // kullanici onayli is — normal cekimlerden once
+            createdBy: userId || null,
+            invoiceDocumentId: id,
+            payload: {
+              documentId: id,
+              documentType: doc.documentType,
+              invoiceKind: doc.invoiceKind,
+              belgeNo: doc.belgeNo,
+              seriNo: doc.seriNo,
+              faturaTarihi: doc.faturaTarihi ? doc.faturaTarihi.toISOString() : null,
+              sellerVkn: doc.sellerVkn,
+              buyerVkn: doc.buyerVkn,
+              vendorName: doc.vendorName,
+              customerName: doc.customerName,
+              totalAmount: doc.totalAmount ? String(doc.totalAmount) : null,
+              currency: doc.currency || 'TL',
+              lines: lines.map((line: any) => ({
+                group: line.group,
+                accountCode: line.accountCode,
+                description: line.description,
+                rate: line.rate,
+                debit: line.debit ? String(line.debit) : '0',
+                credit: line.credit ? String(line.credit) : '0',
+                orderNo: line.orderNo,
+              })),
+            },
+          },
+        });
+
+        // Belgeye job id'sini yaz
+        await (this.prisma as any).invoiceAccountingDocument.update({
+          where: { id },
+          data: {
+            lucaJobId: job.id,
+            lucaAttemptCount: { increment: 1 },
+          },
+        });
+      } catch (err: any) {
+        // Job yaratamadik — belge APPROVED kaldi ama Luca'ya gitmedi.
+        // Kullanici "Tekrar dene" ile yeniden tetikleyebilir.
+        await (this.prisma as any).invoiceAccountingDocument.update({
+          where: { id },
+          data: {
+            lucaStatus: 'FAILED',
+            lucaErrorMessage: `Luca job kuyruğa eklenemedi: ${err?.message || err}`,
+          },
+        });
+      }
+    } else {
+      // Mukellef secilmemis — Luca'ya gönderilemez, kullanici uyarilmali
+      await (this.prisma as any).invoiceAccountingDocument.update({
+        where: { id },
+        data: {
+          lucaStatus: 'FAILED',
+          lucaErrorMessage: 'Mükellef seçilmediği için Luca\'ya aktarılamadı',
+        },
+      });
+    }
+
+    return this.get(tenantId, id);
+  }
+
+  // v1.38: Luca aktarimi basarisiz olan veya tekrar denenmek istenen belgeler icin
+  // ayri endpoint — kullanici "Tekrar dene" butonuna basinca tetiklenir.
+  async retryLucaPost(tenantId: string, id: string, userId?: string) {
+    const doc = await this.get(tenantId, id);
+    if (doc.status !== 'APPROVED') {
+      throw new Error('Sadece APPROVED durumundaki belgeler Luca\'ya aktarilabilir');
+    }
+    if (!doc.taxpayerId) {
+      throw new Error('Belgede mükellef secilmemis, Luca\'ya aktarilamaz');
+    }
+
+    // Eski aktif job'u iptal et (varsa)
+    if (doc.lucaJobId) {
+      await (this.prisma as any).lucaFetchJob.updateMany({
+        where: { id: doc.lucaJobId, status: { in: ['pending', 'running'] } },
+        data: { status: 'failed', errorMsg: 'Tekrar deneme icin iptal edildi', finishedAt: new Date() },
+      });
+    }
+
+    // Belgeyi yeniden QUEUED yap (approve ile aynı mantık — payload yeniden hazirlanir)
+    await (this.prisma as any).invoiceAccountingDocument.update({
+      where: { id },
+      data: {
+        lucaStatus: 'QUEUED',
+        lucaErrorMessage: null,
+        lucaJobId: null,
+      },
+    });
+
+    // Tekrar approve mantığını çalıştır (yeni job yaratır)
+    return this.approve(tenantId, id, userId);
   }
 
   async remove(tenantId: string, id: string) {

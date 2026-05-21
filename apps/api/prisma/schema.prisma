@@ -1626,7 +1626,7 @@ model LucaFetchJob {
   sessionId     String?   // Bağlı KDV kontrol oturumu (varsa)
   mukellefId    String
   donem         String    // "2026-03"
-  tip           String    // "KDV_191" | "KDV_391" | "ISLETME_GELIR" | "ISLETME_GIDER"
+  tip           String    // "KDV_191" | "KDV_391" | "ISLETME_GELIR" | "ISLETME_GIDER" | "INVOICE_POST"
   status        String    @default("pending") // pending | running | done | failed
   recordCount   Int       @default(0)
   errorMsg      String?
@@ -1643,6 +1643,11 @@ model LucaFetchJob {
   // her retry'da nextRetryAt exponential backoff (5dk, 15dk, 45dk)
   retryCount    Int       @default(0)
   nextRetryAt   DateTime?
+  // v1.38: INVOICE_POST tipi için iş yükü (belge ID, satırlar vs).
+  // Diğer tipler de gelecekte serbest payload taşıyabilir.
+  payload       Json?
+  // v1.38: INVOICE_POST için bağlı belgeye direct FK index (kolay sorgu)
+  invoiceDocumentId String?
   createdAt     DateTime  @default(now())
   startedAt     DateTime?
   finishedAt    DateTime?
@@ -1652,6 +1657,7 @@ model LucaFetchJob {
   @@index([tenantId, targetDeviceId, status])
   @@index([tenantId, status, priority])
   @@index([sessionId])
+  @@index([invoiceDocumentId])
   @@map("luca_fetch_jobs")
 }
 
@@ -2009,6 +2015,15 @@ model InvoiceAccountingDocument {
   createdAt    DateTime @default(now())
   updatedAt    DateTime @updatedAt
 
+  // v1.38: Luca'ya aktarim izi (INVOICE_POST job ile islenir)
+  // lucaStatus: NOT_STARTED | QUEUED | POSTING | POSTED | FAILED
+  lucaStatus       String    @default("NOT_STARTED")
+  lucaJobId        String?
+  lucaPostedAt     DateTime?
+  lucaErrorMessage String?
+  lucaAttemptCount Int       @default(0)
+  lucaFisNo        String?   // Luca'nin atadığı yevmiye fiş numarasi
+
   lines        InvoiceAccountingLine[]
 
   @@index([tenantId, status, createdAt])
@@ -2017,6 +2032,7 @@ model InvoiceAccountingDocument {
   @@index([tenantId, source, sourceRefId])
   @@index([tenantId, duplicateOfId])
   @@index([imageHash])
+  @@index([tenantId, lucaStatus])
   @@map("invoice_accounting_documents")
 }
 

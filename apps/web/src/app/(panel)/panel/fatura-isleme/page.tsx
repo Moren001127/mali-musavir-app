@@ -73,6 +73,13 @@ interface ApiDocument {
   createdAt?: string;
   taxpayerId?: string | null;
   approvedAt?: string | null;
+  // v1.38: Luca aktarim izi
+  lucaStatus?: 'NOT_STARTED' | 'QUEUED' | 'POSTING' | 'POSTED' | 'FAILED' | string | null;
+  lucaJobId?: string | null;
+  lucaPostedAt?: string | null;
+  lucaErrorMessage?: string | null;
+  lucaAttemptCount?: number | null;
+  lucaFisNo?: string | null;
 }
 
 interface DashboardRow {
@@ -598,16 +605,18 @@ function Sep() {
   return <span className="mx-1.5 text-[#b8b09b]">·</span>;
 }
 
-function Strong({ children }: { children: React.ReactNode }) {
-  return <strong className="font-semibold text-[#2a2723]">{children}</strong>;
+function Strong({ children, className }: { children: React.ReactNode; className?: string }) {
+  return <strong className={`font-semibold text-[#2a2723] ${className || ''}`.trim()}>{children}</strong>;
 }
 
 function Badge({
   tone = 'neutral',
   children,
+  title,
 }: {
   tone?: 'neutral' | 'success' | 'warning' | 'danger' | 'accent';
   children: React.ReactNode;
+  title?: string;
 }) {
   const styles: Record<string, { bg: string; color: string; dot: string }> = {
     neutral: { bg: '#f8f6f1', color: '#5b5447', dot: '#8a8270' },
@@ -621,6 +630,7 @@ function Badge({
     <span
       className="inline-flex items-center gap-1.5 rounded-[14px] px-2.5 py-[3px] text-[12px] font-medium leading-[1.4]"
       style={{ background: s.bg, color: s.color }}
+      title={title}
     >
       <span className="h-[5px] w-[5px] rounded-full" style={{ background: s.dot }} />
       {children}
@@ -2402,6 +2412,7 @@ function LucaStage({
   documents: ApiDocument[];
   taxpayerMap: Map<string, TaxpayerLite>;
 }) {
+  const qc = useQueryClient();
   const grouped = useMemo(() => {
     const m = new Map<string, ApiDocument[]>();
     documents.forEach((d) => {
@@ -2415,15 +2426,43 @@ function LucaStage({
 
   const totalAmount = documents.reduce((acc, d) => acc + parseNum(d.totalAmount), 0);
 
+  // v1.38: Gercek basari orani — POSTED / toplam
+  const stats = useMemo(() => {
+    let posted = 0, queued = 0, failed = 0, notStarted = 0;
+    documents.forEach((d) => {
+      const s = String(d.lucaStatus || 'NOT_STARTED');
+      if (s === 'POSTED') posted++;
+      else if (s === 'QUEUED' || s === 'POSTING') queued++;
+      else if (s === 'FAILED') failed++;
+      else notStarted++;
+    });
+    const total = documents.length;
+    const rate = total > 0 ? Math.round((posted / total) * 100) : 0;
+    return { posted, queued, failed, notStarted, total, rate };
+  }, [documents]);
+
+  const retryMut = useMutation({
+    mutationFn: async (id: string) => api.post(`/fatura-muhasebelestirme/documents/${id}/retry-luca`),
+    onSuccess: () => {
+      toast.success('Luca aktarımı tekrar denendi');
+      qc.invalidateQueries({ queryKey: ['fatura-muhasebelestirme', 'documents'] });
+    },
+    onError: (e: any) => {
+      toast.error(e?.message || 'Tekrar deneme başarısız');
+    },
+  });
+
   return (
     <>
       <WsBar>
         <Summary>
-          <Strong>{documents.length}</Strong> fiş bu ay aktarıldı
+          <Strong>{stats.posted}</Strong> başarıyla aktarıldı
+          {stats.queued > 0 && (<><Sep /><Strong className="text-amber-700">{stats.queued}</Strong> bekleyen</>)}
+          {stats.failed > 0 && (<><Sep /><Strong className="text-red-700">{stats.failed}</Strong> başarısız</>)}
           <Sep />
           <Strong>{fmtMoney(totalAmount)} ₺</Strong> toplam
           <Sep />
-          Başarı oranı <Strong>%{documents.length > 0 ? 100 : 0}</Strong>
+          Başarı oranı <Strong>%{stats.rate}</Strong>
         </Summary>
       </WsBar>
 
@@ -2448,23 +2487,57 @@ function LucaStage({
                       <Th>Saat</Th>
                       <Th right>Tutar</Th>
                       <Th right>Durum</Th>
+                      <Th right>İşlem</Th>
                     </tr>
                   </thead>
                   <tbody>
                     {items.map((d) => {
                       const tp = d.taxpayerId ? taxpayerMap.get(d.taxpayerId) : undefined;
+                      const lucaSt = String(d.lucaStatus || 'NOT_STARTED');
+                      const badge = (() => {
+                        if (lucaSt === 'POSTED') {
+                          return <Badge tone="success" title={d.lucaFisNo ? `Fiş no: ${d.lucaFisNo}` : undefined}>
+                            Aktarıldı{d.lucaFisNo ? ` · #${d.lucaFisNo}` : ''}
+                          </Badge>;
+                        }
+                        if (lucaSt === 'QUEUED' || lucaSt === 'POSTING') {
+                          return <Badge tone="warning">Bekliyor</Badge>;
+                        }
+                        if (lucaSt === 'FAILED') {
+                          return <Badge tone="danger" title={d.lucaErrorMessage || undefined}>Başarısız</Badge>;
+                        }
+                        return <Badge tone="neutral">—</Badge>;
+                      })();
+                      const canRetry = lucaSt === 'FAILED' || lucaSt === 'NOT_STARTED';
                       return (
                         <Tr key={d.id}>
                           <Td>
                             <div className="flex flex-col gap-0.5">
                               <strong className="text-[14px] font-medium text-[#2a2723]">{d.vendorName || d.customerName || d.originalName || '—'}</strong>
                               {d.belgeNo && (<small className="text-[12px] text-[#8a8270]">{d.belgeNo}</small>)}
+                              {lucaSt === 'FAILED' && d.lucaErrorMessage && (
+                                <small className="text-[11px] text-red-700 line-clamp-2 max-w-md">
+                                  {d.lucaErrorMessage}
+                                </small>
+                              )}
                             </div>
                           </Td>
                           <Td>{tp ? taxpayerLabel(tp) : '—'}</Td>
                           <Td>{fmtTime(d.approvedAt || d.createdAt)}</Td>
                           <Td right><span className="font-medium tabular-nums">{fmtMoney(d.totalAmount)} ₺</span></Td>
-                          <Td right><Badge tone="success">Aktarıldı</Badge></Td>
+                          <Td right>{badge}</Td>
+                          <Td right>
+                            {canRetry ? (
+                              <button
+                                type="button"
+                                onClick={() => retryMut.mutate(d.id)}
+                                disabled={retryMut.isPending}
+                                className="text-[12px] text-[#4a8580] hover:text-[#2a5550] disabled:opacity-50 underline-offset-2 hover:underline"
+                              >
+                                {retryMut.isPending ? 'Gönderiliyor…' : 'Tekrar dene'}
+                              </button>
+                            ) : null}
+                          </Td>
                         </Tr>
                       );
                     })}

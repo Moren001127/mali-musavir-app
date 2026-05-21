@@ -1,99 +1,82 @@
-# Moren Mobil (Expo)
+# Moren Mobil
 
-iOS + Android personel uygulaması. Web portalın mobil versiyonu — Moren AI ekibi
-ile sesli sohbet, AI onay kuyruğu, mükellef hızlı bakış, evrak yükle.
+MOREN Mali Müşavirlik portalının iOS/Android hazırlık uygulaması.
 
-## Durum
+Bu klasörde artık iki ayrı giriş akışı olan Expo Router kabuğu var:
 
-🚧 İskelet aşaması — kurulum komutları aşağıda. Tanıtım görseli:
-[mobil/tanitim.html](../web/public/mobil/tanitim.html)
+- Müşavir girişi: ofis özeti, portal modülleri, Moren Ofis AI, AI onay kuyruğu, mükellef hızlı bakış.
+- Mükellef girişi: mükellef özeti, evrak gönderme, belge arşivi, ofise mesaj.
+- Mobil OCR: müşavir mükellefi seçer, kamera/galeri ile görüntüleri tarar, dosyalar seçilen mükellef adına portaldaki fatura işleme OCR kuyruğuna düşer.
 
-## Kurulum (npm install gerekir)
+## Çalıştırma
 
 ```bash
-cd apps/mobile
-npx create-expo-app@latest . --template tabs
-npm install expo-local-authentication expo-secure-store expo-speech expo-av \
-            expo-notifications expo-device expo-image-picker \
-            @tanstack/react-query zustand axios
-npm install nativewind tailwindcss
-npx expo install react-native-svg
+cd C:\Users\moren\.verdent\verdent-projects\mali-mavirlik-ofisim-iin\mali-musavir-app
+pnpm install
+pnpm --filter @moren/mobile start
 ```
 
-## Proje Yapısı (Planlanan)
+Expo Go ile QR kodu okutulabilir. Web önizleme için:
 
-```
-apps/mobile/
-├── app/
-│   ├── (auth)/login.tsx           # JWT + biyometrik
-│   ├── (tabs)/
-│   │   ├── index.tsx              # Dashboard (brifing + AI özet)
-│   │   ├── ofis.tsx               # Moren Ofis 7 ajan chat
-│   │   ├── onay.tsx               # AI Onay Kuyruğu
-│   │   ├── mukellef.tsx           # Mükellef listesi + bakış
-│   │   └── evrak.tsx              # Belge yükle + OCR
-│   └── _layout.tsx
-├── lib/
-│   ├── api.ts                     # axios + JWT (web'den kopya)
-│   ├── auth.ts                    # AsyncStorage token + biyometrik
-│   ├── moren-ofis.ts              # Chat + sesli + tool
-│   └── push.ts                    # Expo Push token register
-├── components/
-│   ├── AgentCard.tsx
-│   ├── MesajKart.tsx
-│   ├── OnayKart.tsx
-│   └── ...
-├── assets/
-│   ├── icon.png
-│   ├── splash.png
-│   └── adaptive-icon.png
-├── app.json                       # Expo config
-├── package.json
-└── tsconfig.json
+```bash
+pnpm --filter @moren/mobile web
 ```
 
-## Faz 1 MVP — 1 Hafta
+API adresi varsayılan olarak `http://localhost:3001/api/v1`.
+Değiştirmek için:
 
-- [ ] Login + JWT + biyometrik kilit
-- [ ] Dashboard ana sayfa (Moren AI özet, brifing)
-- [ ] Moren Ofis chat (yazılı + sesli)
-- [ ] AI Onay Kuyruğu (onayla / reddet)
-- [ ] Push notification kayıt (Expo Push)
+```bash
+$env:EXPO_PUBLIC_API_URL="https://api.morenmusavirlik.com/api/v1"
+pnpm --filter @moren/mobile start
+```
 
-## Faz 2 — 2. Hafta
+## Mobil Kapsam
 
-- [ ] Mükellef hızlı bakış (mizan, KDV, evrak özet)
-- [ ] Evrak yükleme (kamera + galeri, çoklu)
-- [ ] DENİZ Patrol & Haftalık Rapor
-- [ ] Sesli sohbet modu (mikrofon + Türkçe TTS)
+Portal modülleri `lib/mobile-modules.ts` içinde müşavir ve mükellef olarak iki kataloğa ayrıldı.
 
-## Faz 3 — Build & Yayın
+Müşavir öncelikleri:
 
-- [ ] EAS Build kurulumu (`eas build:configure`)
-- [ ] iOS TestFlight (Apple Developer hesabı $99/yıl)
-- [ ] Android Internal Test (Google Play Console $25)
-- [ ] App Store + Play Store submission (1-3 hafta inceleme)
+- Ofis özeti
+- Moren Ofis AI
+- Mobil OCR tarama
+- AI onay kuyruğu
+- Mükellefler
+- Görevler
+- Evraklar
+- KDV kontrol
+- Beyannameler
+- Faturalar ve fatura muhasebeleştirme
+- Cari kasa, banka takip, mizan/gelir/bilanço
+- Bordro/SGK, ajanlar, bildirimler
 
-## Backend Eklemeleri (mobile için)
+Mükellef öncelikleri:
 
-Web'de mevcut JWT tabanlı auth aynı kullanılır.
-Eklenen endpoint'ler:
+- Mükellef özeti
+- Evrak gönder
+- Belgelerim
+- KDV durumu
+- Beyannamelerim
+- Cari durum
+- Ofise mesaj
+- Takvim
 
-- `POST /push/register` { token, platform }
-- `POST /push/test` { userId }
-- `GET /mobile/bootstrap` (initial dashboard data — tek istek)
+## Teknik Durum
 
-## Maliyet
+- Expo SDK 52, Expo Router, React Native 0.76.
+- JWT login ve refresh token için mobil API client hazır.
+- Tokenlar `expo-secure-store` ile saklanıyor.
+- Demo önizleme gerçek API gerektirmeden müşavir/mükellef ekranlarını açıyor.
+- Moren Ofis AI, AI onay kuyruğu, görev sayıları ve mükellef listesi gerçek API varsa onu kullanıyor.
+- Mobil OCR tarama gerçek API varsa `/fatura-muhasebelestirme/documents/upload` endpointine `taxpayerId`, `source=mobile-ocr`, `invoiceKind` ve görüntüleri multipart olarak gönderiyor.
+- Mükellef tarafındaki evrak yükleme şimdilik dosya seçme/kamera hazırlığıdır; gerçek mükellef upload yetkisi backend modelinde ayrıca açılmalı.
 
-| Kalem | Bedel |
-|---|---|
-| Apple Developer Program | $99/yıl |
-| Google Play Console | $25 tek seferlik |
-| Expo + EAS Build (free tier) | $0 |
-| Expo Push Service | $0 |
-| Toplam | ~$100/yıl |
+## Backend Sonraki Adım
 
-## Görsel Tanıtım
+Mükellef girişini üretime almak için backend tarafında ayrı bir erişim modeli önerilir:
 
-Web'deki `/mobil/tanitim.html` sayfasında 6 ekran mockup'ı mevcut.
-Production'da kullanıcılar `morenmusavirlik.com/mobil` adresinden bu sayfayı görür.
+- `TaxpayerAccess` veya `TaxpayerUser` modeli
+- Davet kodu + parola/OTP
+- `TAXPAYER` rolü veya ayrı guard
+- Mükellef kullanıcısının sadece kendi `taxpayerId` kapsamına erişmesi
+- Mobil push token kayıt endpointi
+- `GET /mobile/bootstrap` ile tek istekte ilk ekran verisi

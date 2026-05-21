@@ -121,6 +121,10 @@ const SUPPORTED_JOB_TYPES = Object.freeze([
   'EARSIV_ALIS',
   'EFATURA_SATIS',
   'EFATURA_ALIS',
+  // v1.38: Fatura Isleme Merkezi -> Luca'ya muhasebe fisi aktarimi
+  // Service tarafinda approve() metodu bu tipte LucaFetchJob yaratir.
+  // Scraper agent-runtime.js icinde postInvoiceVoucher() ile implement.
+  'INVOICE_POST',
 ]);
 const LEGACY_DEFAULT_JOB_TYPES = Object.freeze(['ACCOUNT_PLAN', 'MIZAN', 'KDV_MIZAN', 'MUAVIN']);
 
@@ -316,6 +320,52 @@ async function requeueJob(jobId, reason) {
     log.warn(`Job requeue mark hatasi: ${err.message}`);
     throw err;
   }
+}
+
+// ---------------------------------------------------------------------------
+// v1.38: postInvoiceVoucher — Luca'ya yevmiye fisi yazar (INVOICE_POST job)
+//
+// Su an: placeholder. payload'i logla, "manuel giris gerek" mesaji ile basari
+// veya hata olarak kapat. Bu sayede backend pipeline'i (job kuyruga ekleme,
+// belge lucaStatus alanlari, retry endpointi) uctan uca test edilebilir.
+//
+// Gercek implementasyon icin yapilacaklar (sonraki tur):
+//   1. agent-runtime.js'e Luca menusunde "Yevmiye Islemleri > Fis Girisi"
+//      navigasyonu (collectLucaClickMap + nativeClickText ile)
+//   2. Tarih + aciklama doldur
+//   3. Her line icin: hesap kodu sec, aciklama gir, debit/credit alanlari
+//   4. Kaydet butonuna bas, fis numarasini yakala
+//   5. Sonucu /agent/luca/jobs/:id/done ile geri bildir (fisNo alani ile)
+// ---------------------------------------------------------------------------
+async function postInvoiceVoucher(job) {
+  const jobId = job.id || job.jobId;
+  const payload = job.payload || {};
+  const documentId = payload.documentId || '?';
+  const belgeNo = payload.belgeNo || '-';
+  const vendor = payload.vendorName || payload.customerName || '-';
+  const totalAmount = payload.totalAmount || '0';
+  const lineCount = Array.isArray(payload.lines) ? payload.lines.length : 0;
+
+  log.info(
+    `INVOICE_POST alindi (placeholder): doc=${documentId.slice(0, 8)} ` +
+    `belgeNo=${belgeNo} firma="${vendor}" tutar=${totalAmount} satir=${lineCount}`
+  );
+  await logJob(
+    jobId,
+    `INVOICE_POST placeholder: doc=${documentId.slice(0, 8)} belgeNo=${belgeNo} ` +
+    `vendor=${vendor} total=${totalAmount} lineCount=${lineCount}. ` +
+    `Luca'ya gercek fis yazma henuz implement edilmedi; manuel giris gerek.`
+  ).catch(() => {});
+
+  // Su an gercek Luca yazimi yok — backend'e "yarim basarili" sinyali yolla.
+  // Backend tarafi (markJobFailed) bunu lucaStatus=FAILED yapacak ve kullaniciya
+  // "Tekrar dene" / "Luca'ya manuel gir" diye gosterecek. Tipik hata mesajiyla
+  // ayri tutmak icin ozel bir reason kodu kullaniyoruz.
+  await markJobFailed(
+    jobId,
+    'INVOICE_POST_NOT_IMPLEMENTED: Luca yevmiye fisi otomasyonu henuz hazir degil. ' +
+    'Belgenin Luca tarafina manuel girilmesi gerekir.'
+  );
 }
 
 function isTransientLucaConnectivityError(err) {
@@ -1144,6 +1194,15 @@ async function processJob(job) {
   await pingAgentStatus(true, { activeJobId: jobId, activeJobType: tip });
 
   try {
+    // v1.38: INVOICE_POST ozel akis — Luca'ya yevmiye fisi yazar
+    // (fetch + upload pattern degil, post pattern). Scraper henuz hazir degil,
+    // belgeyi "Luca'da manuel girilmesi gerek" diye isaretler.
+    if (tip === 'INVOICE_POST') {
+      await postInvoiceVoucher(job);
+      log.info(`OK INVOICE_POST tamamlandi: jobId=${jobId.slice(0, 8)}`);
+      return;
+    }
+
     await runJobWithMorenRuntime(job);
     // Aynı mükellef hızlı yol cache güncelle — bir sonraki aynı mükellef
     // job'unda fastPath ipucu verilir.
@@ -1155,21 +1214,6 @@ async function processJob(job) {
     }
     log.info(`OK ${tip} tamamlandi/kapandi: jobId=${jobId.slice(0, 8)}`);
     return;
-    await withBrowser(async (page) => {
-      await loginToLuca(page);
-
-      if (tip === 'ACCOUNT_PLAN') {
-        const buffer = await fetchAccountPlan(page, mukellefAdi);
-        log.info(`Hesap planı indirildi (${buffer.byteLength} byte), yükleniyor...`);
-        const result = await uploadAccountPlan(buffer, mukellefId, jobId);
-        log.info(`Hesap planı yüklendi: ${JSON.stringify(result)}`);
-      } else {
-        log.warn(`${tip} tipi için scraper implementasyonu eksik (placeholder)`);
-        throw new Error(`${tip} henüz implement edilmedi`);
-      }
-    });
-
-    log.info(`✓ ${tip} tamamlandı: jobId=${jobId.slice(0, 8)}`);
   } catch (err) {
     log.error(`✗ ${tip} hatası: ${err.message}`);
     if (/RUNTIME_STOP_REQUESTED|guvenlik kodu .*tekrarlandi|captcha .*tekrar/i.test(err.message || '')) {

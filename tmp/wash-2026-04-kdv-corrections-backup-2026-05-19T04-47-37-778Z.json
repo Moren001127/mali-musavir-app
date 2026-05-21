@@ -1,0 +1,548 @@
+{
+  "sessionId": "cmpbl4noq01g6k43bre3aj9fw",
+  "createdAt": "2026-05-19T04:47:42.458Z",
+  "beforeSummary": {
+    "byStatus": {
+      "MATCHED": 131,
+      "PARTIAL_MATCH": 11,
+      "UNMATCHED": 2
+    },
+    "totals": {
+      "lucaKdv": 124732.24,
+      "uniqueImageKdv": 126574.33,
+      "uniqueImageTevkifat": 0,
+      "lucaMinusImageKdv": -1842.09
+    },
+    "issueCount": 13,
+    "issues": [
+      {
+        "status": "PARTIAL_MATCH",
+        "rowIndex": 3,
+        "recordBelgeNo": "0005",
+        "recordDate": "2026-04-01",
+        "recordKdv": 61.82,
+        "imageName": "0005.image",
+        "imageBelgeNo": "0005",
+        "imageDate": "04.03.2026",
+        "imageKdv": 61.82,
+        "reasons": [
+          "Satıcı uyumsuz: Luca \"KAMBER BADEC�\" ≠ Fatura \"DERMAN CAFE & RESTAURANT\"",
+          "Tarih uyumsuz: Luca: 01.04.2026 · Fiş: 04.03.2026 · Mihsap: 31.03.2026"
+        ]
+      },
+      {
+        "status": "PARTIAL_MATCH",
+        "rowIndex": 4,
+        "recordBelgeNo": "0006",
+        "recordDate": "2026-04-01",
+        "recordKdv": 185.27,
+        "imageName": "0006.image",
+        "imageBelgeNo": "0006",
+        "imageDate": "28.03.2026",
+        "imageKdv": 185.27,
+        "reasons": [
+          "Satıcı uyumsuz: Luca \"ANTEPHAN K�NEFE GI\" ≠ Fatura \"ANTEPHAN KÜNEFE GIDA SAN.\"",
+          "Tarih uyumsuz: Luca: 01.04.2026 · Fiş: 28.03.2026 · Mihsap: 31.03.2026"
+        ]
+      },
+      {
+        "status": "PARTIAL_MATCH",
+        "rowIndex": 8,
+        "recordBelgeNo": "58",
+        "recordDate": "2026-04-01",
+        "recordKdv": 47.27,
+        "imageName": "58.image",
+        "imageBelgeNo": "58",
+        "imageDate": "29.03.2026",
+        "imageKdv": 47.27,
+        "reasons": [
+          "Satıcı uyumsuz: Luca \"FUAT �KC�\" ≠ Fatura \"EKINOB MAH SEMI ARMAGAN SK\"",
+          "Tarih uyumsuz: Luca: 01.04.2026 · Fiş: 29.03.2026 · Mihsap: 31.03.2026"
+        ]
+      },
+      {
+        "status": "PARTIAL_MATCH",
+        "rowIndex": 11,
+        "recordBelgeNo": "13",
+        "recordDate": "2026-04-02",
+        "recordKdv": 516.67,
+        "imageName": "13.image",
+        "imageBelgeNo": "13",
+        "imageDate": "02.04.2020",
+        "imageKdv": 1516.67,
+        "reasons": [
+          "KDV tutar uyumsuz: 516,67 ≠ 1.516,67",
+          "Satıcı uyumsuz: Luca \"S�MTA� ELEKTR�K SA\" ≠ Fatura \"SIMIAS ITEKIRIK\"",
+          "Tarih uyumsuz: Luca: 02.04.2026 · Fiş: 02.04.2020 · Mihsap: 01.04.2026"
+        ]
+      },
+      {
+        "status": "PARTIAL_MATCH",
+        "rowIndex": 29,
+        "recordBelgeNo": "00016",
+        "recordDate": "2026-04-06",
+        "recordKdv": 27.27,
+        "imageName": "00016.image",
+        "imageBelgeNo": "00016",
+        "imageDate": "06.04.2026",
+        "imageKdv": 746.34,
+        "reasons": [
+          "Satıcı uyumsuz: Luca \"�RFAN DO�AN\" ≠ Fatura \"ERZINCAN TANDIR\"",
+          "%10 KDV uyumsuz: Luca 27,27 ≠ Fatura 300,00",
+          "%1 KDV uyumsuz: Luca 2,99 ≠ Fatura 446,34"
+        ]
+      },
+      {
+        "status": "PARTIAL_MATCH",
+        "rowIndex": 30,
+        "recordBelgeNo": "00016",
+        "recordDate": "2026-04-06",
+        "recordKdv": 2.99,
+        "imageName": "00016.image",
+        "imageBelgeNo": "00016",
+        "imageDate": "06.04.2026",
+        "imageKdv": 746.34,
+        "reasons": [
+          "Satıcı uyumsuz: Luca \"�RFAN DO�AN\" ≠ Fatura \"ERZINCAN TANDIR\"",
+          "%10 KDV uyumsuz: Luca 27,27 ≠ Fatura 300,00",
+          "%1 KDV uyumsuz: Luca 2,99 ≠ Fatura 446,34"
+        ]
+      },
+      {
+        "status": "UNMATCHED",
+        "rowIndex": 79,
+        "recordBelgeNo": "0012",
+        "recordDate": "2026-04-15",
+        "recordKdv": 2.03,
+        "imageName": null,
+        "imageBelgeNo": null,
+        "imageDate": null,
+        "imageKdv": null,
+        "reasons": [
+          "Eşleşen görsel bulunamadı (skor eşiği altında)"
+        ]
+      },
+      {
+        "status": "PARTIAL_MATCH",
+        "rowIndex": 85,
+        "recordBelgeNo": "0159",
+        "recordDate": "2026-04-16",
+        "recordKdv": 0.63,
+        "imageName": "0159.image",
+        "imageBelgeNo": "0159",
+        "imageDate": "16.04.2026",
+        "imageKdv": 33.5,
+        "reasons": [
+          "%20 KDV uyumsuz: Luca 0,17 ≠ Fatura 1,00",
+          "%1 KDV uyumsuz: Luca 0,63 ≠ Fatura 32,50"
+        ]
+      },
+      {
+        "status": "PARTIAL_MATCH",
+        "rowIndex": 86,
+        "recordBelgeNo": "0159",
+        "recordDate": "2026-04-16",
+        "recordKdv": 0.17,
+        "imageName": "0159.image",
+        "imageBelgeNo": "0159",
+        "imageDate": "16.04.2026",
+        "imageKdv": 33.5,
+        "reasons": [
+          "%20 KDV uyumsuz: Luca 0,17 ≠ Fatura 1,00",
+          "%1 KDV uyumsuz: Luca 0,63 ≠ Fatura 32,50"
+        ]
+      },
+      {
+        "status": "PARTIAL_MATCH",
+        "rowIndex": 106,
+        "recordBelgeNo": "4",
+        "recordDate": "2026-04-22",
+        "recordKdv": 35.45,
+        "imageName": "4.image",
+        "imageBelgeNo": "4",
+        "imageDate": "22.02.2026",
+        "imageKdv": 35.45,
+        "reasons": [
+          "Satıcı uyumsuz: Luca \"CEVAT DEN�Z\" ≠ Fatura \"FATIH MH ATTRUS AVM GIRIŞ KAT\"",
+          "Tarih uyumsuz: Luca: 22.04.2026 · Fiş: 22.02.2026 · Mihsap: 21.04.2026"
+        ]
+      },
+      {
+        "status": "PARTIAL_MATCH",
+        "rowIndex": 142,
+        "recordBelgeNo": "0019",
+        "recordDate": "2026-04-30",
+        "recordKdv": 1.17,
+        "imageName": "0019.image",
+        "imageBelgeNo": "0019",
+        "imageDate": "30.04.2026",
+        "imageKdv": 94.65,
+        "reasons": [
+          "Satıcı uyumsuz: Luca \"�OK MARKETLER T�CA\" ≠ Fatura \"ŞOK MARKETLER TİC.A.Ş\"",
+          "%20 KDV uyumsuz: Luca 0,17 ≠ Fatura 1,00",
+          "%1 KDV uyumsuz: Luca 1,17 ≠ Fatura 93,65"
+        ]
+      },
+      {
+        "status": "PARTIAL_MATCH",
+        "rowIndex": 143,
+        "recordBelgeNo": "0019",
+        "recordDate": "2026-04-30",
+        "recordKdv": 0.17,
+        "imageName": "0019.image",
+        "imageBelgeNo": "0019",
+        "imageDate": "30.04.2026",
+        "imageKdv": 94.65,
+        "reasons": [
+          "Satıcı uyumsuz: Luca \"�OK MARKETLER T�CA\" ≠ Fatura \"ŞOK MARKETLER TİC.A.Ş\"",
+          "%20 KDV uyumsuz: Luca 0,17 ≠ Fatura 1,00",
+          "%1 KDV uyumsuz: Luca 1,17 ≠ Fatura 93,65"
+        ]
+      },
+      {
+        "status": "UNMATCHED",
+        "rowIndex": null,
+        "recordBelgeNo": null,
+        "recordDate": null,
+        "recordKdv": null,
+        "imageName": "0012.image",
+        "imageBelgeNo": "0012",
+        "imageDate": "01.04.2026",
+        "imageKdv": 2.03,
+        "reasons": [
+          "Eşleşen Excel kaydı bulunamadı"
+        ]
+      }
+    ]
+  },
+  "corrections": [
+    {
+      "id": "cmpbm8sog00v372z2rbs6g4w9",
+      "reason": "0159 OKC TOPKDV 0,80",
+      "data": {
+        "confirmedBelgeNo": "0159",
+        "confirmedDate": "16.04.2026",
+        "confirmedKdvTutari": "0,80",
+        "confirmedKdvTevkifat": null,
+        "confirmedKdvBreakdown": [
+          {
+            "oran": 1,
+            "tutar": 0.63,
+            "matrah": null
+          },
+          {
+            "oran": 20,
+            "tutar": 0.17,
+            "matrah": null
+          }
+        ],
+        "isManuallyConfirmed": true,
+        "ocrStatus": "SUCCESS"
+      }
+    },
+    {
+      "id": "cmpbm8svu00y372z2e7p2qhq3",
+      "reason": "0019 OKC TOPKDV 1,34",
+      "data": {
+        "confirmedBelgeNo": "0019",
+        "confirmedDate": "30.04.2026",
+        "confirmedKdvTutari": "1,34",
+        "confirmedKdvTevkifat": null,
+        "confirmedKdvBreakdown": [
+          {
+            "oran": 1,
+            "tutar": 1.17,
+            "matrah": null
+          },
+          {
+            "oran": 20,
+            "tutar": 0.17,
+            "matrah": null
+          }
+        ],
+        "isManuallyConfirmed": true,
+        "ocrStatus": "SUCCESS"
+      }
+    },
+    {
+      "id": "cmpbm8shg00s772z2e0v9qosf",
+      "reason": "00016 OKC TOPKDV 30,26",
+      "data": {
+        "confirmedBelgeNo": "00016",
+        "confirmedDate": "06.04.2026",
+        "confirmedKdvTutari": "30,26",
+        "confirmedKdvTevkifat": null,
+        "confirmedKdvBreakdown": [
+          {
+            "oran": 1,
+            "tutar": 2.99,
+            "matrah": null
+          },
+          {
+            "oran": 10,
+            "tutar": 27.27,
+            "matrah": null
+          }
+        ],
+        "isManuallyConfirmed": true,
+        "ocrStatus": "SUCCESS"
+      }
+    },
+    {
+      "id": "cmpbm8see00r372z2zk7p6p3m",
+      "reason": "13 OKC TOPKDV OCR hatasi; gross/rate 516,67",
+      "data": {
+        "confirmedBelgeNo": "13",
+        "confirmedDate": "02.04.2026",
+        "confirmedKdvTutari": "516,67",
+        "confirmedKdvTevkifat": null,
+        "confirmedKdvBreakdown": [
+          {
+            "oran": 20,
+            "tutar": 516.67,
+            "matrah": null
+          }
+        ],
+        "isManuallyConfirmed": true,
+        "ocrStatus": "SUCCESS"
+      }
+    },
+    {
+      "id": "cmpbm8sny00uv72z2n5yuoh9d",
+      "reason": "0012 OKC confirmed tarih/belge/oran duzeltmesi",
+      "data": {
+        "confirmedBelgeNo": "0012",
+        "confirmedDate": "15.04.2026",
+        "confirmedKdvTutari": "2,03",
+        "confirmedKdvTevkifat": null,
+        "confirmedKdvBreakdown": [
+          {
+            "oran": 1,
+            "tutar": 2.03,
+            "matrah": null
+          }
+        ],
+        "isManuallyConfirmed": true,
+        "ocrStatus": "SUCCESS"
+      }
+    }
+  ],
+  "beforeImages": [
+    {
+      "id": "cmpbm8see00r372z2zk7p6p3m",
+      "sessionId": "cmpbl4noq01g6k43bre3aj9fw",
+      "s3Key": "mihsap://cmpaz1xr80ecy82g0i7psdyyx",
+      "originalName": "13.image",
+      "mimeType": "image/jpeg",
+      "sizeBytes": 0,
+      "ocrStatus": "SUCCESS",
+      "ocrBelgeNo": "13",
+      "ocrDate": "02.04.2020",
+      "ocrKdvTutari": "1516,67",
+      "ocrKdvTevkifat": null,
+      "ocrSatici": "SIMIAS ITEKIRIK",
+      "ocrSaticiVkn": null,
+      "ocrRawText": "SIMIAS ITEKIRIK\nSAN VE TIC A S\nANCABURGAS MIT HADIMKOY YOLU TE\nNO 84/D ESENYURT/ IST\nESENYURT VD 7/00430551\nTEL 444 50 86\n02-04-2020\nFIS NO\n13\nSAAT 15 49\nELEKTRIK MLZ\n/20\n<3. 100 00\nTOPKDV\n1516,67\nTOPLAM\n+3.100,00\nKREDI KARTI\n*3 100 00\n1: 9180638\n1:038/3191\n62/04/2026-15 50\nB 001426 5 812564\nVER USD1584/0001\nKHKI TIF: PHRAERKU\nK N\n0266\nEHV SHIIŞ WOTHRT\n3.100,00 TL\nBU IŞİEN TEMASSIZ BIR KART İLE\nGERÇEKLEŞTIRILMIŞTIR\nONAY NUMARASI: 295309\nREF NO 609261927679\nBU ALIŞVERIŞINIZIN 2 98 IL SINI\nBONUS UNUZLA BEDAVA YAPABIL IRDINIZ\nKULLANILABILIR BONUSUNUZ 2 98 TL\nMERSIS NO 08/9 0017 5660 0379\nWWW GARANTIBBVA COM. TR\n(KART SAHIBINE ATTTIR)\nGaranti BBVA\nIKU HO\n1\nNO\n214\nAT 0000510048",
+      "ocrConfidence": 0.9066666666666667,
+      "ocrBelgeNoConfidence": 0.9,
+      "ocrDateConfidence": 0.9,
+      "ocrKdvConfidence": 0.92,
+      "ocrEngine": "azure-read",
+      "ocrBelgeTipi": "OKC_FIS",
+      "ocrKdvBreakdown": [
+        {
+          "oran": 0,
+          "tutar": 1516.67,
+          "matrah": null
+        }
+      ],
+      "ocrValidationScore": 0.85,
+      "imageHash": "351e09bc13ef6e39e310670a38e53479216bc443a08c85430e0d97e2dd0247c9",
+      "ocrKategori": null,
+      "confirmedBelgeNo": null,
+      "confirmedDate": null,
+      "confirmedKdvTutari": null,
+      "confirmedKdvTevkifat": null,
+      "confirmedKdvBreakdown": null,
+      "isManuallyConfirmed": false,
+      "uploadedAt": "2026-05-18T19:47:38.054Z"
+    },
+    {
+      "id": "cmpbm8shg00s772z2e0v9qosf",
+      "sessionId": "cmpbl4noq01g6k43bre3aj9fw",
+      "s3Key": "mihsap://cmpaz1xo30ece82g05qf7d9ng",
+      "originalName": "00016.image",
+      "mimeType": "image/jpeg",
+      "sizeBytes": 0,
+      "ocrStatus": "SUCCESS",
+      "ocrBelgeNo": "00016",
+      "ocrDate": "06.04.2026",
+      "ocrKdvTutari": "746,34",
+      "ocrKdvTevkifat": null,
+      "ocrSatici": "ERZINCAN TANDIR",
+      "ocrSaticiVkn": "36964302508",
+      "ocrRawText": "ERZINCAN TANDIR\nİRFAN DOĞAN\nHURRIYET MAH DR.CEMIL BENGU CAD.\nNO:73/A KAĞITHANE / ISTANBUL\nKAĞITHANE V.D V.NO:36964302508\n0212 225 07 08\n0212 225 07 17\nTARİH: 06/04/2026\nFİŞ NO: 00016\nSAAT : 08:52:41\n3 AD × 100,00 TL\nGIL IK\n%10\n*300,00\n0,122 KG × 590,00 TL\nSR.ALTINPETEK SUZME\n%1\n*71,98\n0,108 KG × 850,00 TL\nSUT KAYMAGI KG\n%1\n*91,80\n0,122 KG × 590,00 TL\nSR.ALTINPETEK SUZME\n%1\n*71,98\n**\nIPTAL **\n-0,122 KG × 590,00 TL\nSR.ALTINPETEK SUZME\n%1\n*- 71,98\n0,252 KG × 550,00 TL\nKERVAN BAŞ LUX ZEYTIN\n%1\n*138,60\nTOPKDV\n*30,26\nTOPLAM\n*602,38",
+      "ocrConfidence": 0.9066666666666667,
+      "ocrBelgeNoConfidence": 0.9,
+      "ocrDateConfidence": 0.9,
+      "ocrKdvConfidence": 0.92,
+      "ocrEngine": "azure-read",
+      "ocrBelgeTipi": "OKC_FIS",
+      "ocrKdvBreakdown": [
+        {
+          "oran": 1,
+          "tutar": 446.34,
+          "matrah": null
+        },
+        {
+          "oran": 10,
+          "tutar": 300,
+          "matrah": null
+        }
+      ],
+      "ocrValidationScore": 1,
+      "imageHash": "eff19517901c9d869501c685a641926f0e899d0d095ddd5de9305e30cf780b22",
+      "ocrKategori": null,
+      "confirmedBelgeNo": null,
+      "confirmedDate": null,
+      "confirmedKdvTutari": null,
+      "confirmedKdvTevkifat": null,
+      "confirmedKdvBreakdown": null,
+      "isManuallyConfirmed": false,
+      "uploadedAt": "2026-05-18T19:47:38.164Z"
+    },
+    {
+      "id": "cmpbm8sny00uv72z2n5yuoh9d",
+      "sessionId": "cmpbl4noq01g6k43bre3aj9fw",
+      "s3Key": "mihsap://cmpaz1xfs0eb282g0sered4co",
+      "originalName": "0012.image",
+      "mimeType": "image/jpeg",
+      "sizeBytes": 0,
+      "ocrStatus": "SUCCESS",
+      "ocrBelgeNo": "4812",
+      "ocrDate": "15.01.2026",
+      "ocrKdvTutari": "2,03",
+      "ocrKdvTevkifat": null,
+      "ocrSatici": "FİSİK TAT ANTEPLIOGLU",
+      "ocrSaticiVkn": null,
+      "ocrRawText": "[CLAUDE] {\"tarih\":\"2026-01-15\",\"belgeNo\":\"4812\",\"kdvTutari\":\"2,03\",\"kdvTevkifat\":\"0,00\",\"toplam\":\"205,00\",\"satici\":\"FİSİK TAT ANTEPLIOGLU\",\"saticiVkn\":null,\"kdvOrani\":20,\"belgeTipi\":\"OKC_FIS\",\"kategori\":\"diger\",\"kdvBreakdown\":[{\"oran\":20,\"tutar\":\"2,03\",\"matrah\":\"10,15\"}],\"confidence\":{\"tarih\":0.92,\"belgeNo\":0.85,\"kdvTutari\":0.75,\"toplam\":0.9,\"belgeTipi\":0.88}}\n[AZURE]\nFISTIK TAT ANTEPLİOĞLU\nYUNUS ÇAKMAK\nHÜRRİYET MALI\nDR.CEMİL BENGÜ CAD NO: 53A\nKAĞITHAN İSTANBUL\nKAGITHANE VD: 20243071082\nTEŞEKKÜRLER\nYINE BEKLERİZ\nTARİH: 15-04 2026\nSAAT 17:18\nFİŞ NO: 0012\nTatlı\n%1\n205,00\nTOPKDV\n*2,03\nTOPLAM\n*205,00\nKredi Kartı\n*205.00\nKASİYER MU TATA ÇAKMAK\nİŞYERI NO. 113800000014118\nTERMINAL : P3412924\nREF NO:WB03260011 / SIRA NO.0011\nSAAT:17:18\n**** **** **** 0266\nSATIŞ\nTOPLAM 205,00 TL\nAID : A0000000041810\nDEBIT MASTERCARD)\nONAY KODU:637395",
+      "ocrConfidence": 0.3833333333333333,
+      "ocrBelgeNoConfidence": 0.2,
+      "ocrDateConfidence": 0.2,
+      "ocrKdvConfidence": 0.92,
+      "ocrEngine": "claude-haiku-4-5-20251001 (claude-escalation)",
+      "ocrBelgeTipi": "OKC_FIS",
+      "ocrKdvBreakdown": [
+        {
+          "oran": 20,
+          "tutar": 2.03,
+          "matrah": 10.15
+        }
+      ],
+      "ocrValidationScore": 1,
+      "imageHash": "9535cf2d003291856ff030d0d432ee513e3b5465304a596004b1d00ea92a51a4",
+      "ocrKategori": "diger",
+      "confirmedBelgeNo": "0012",
+      "confirmedDate": "01.04.2026",
+      "confirmedKdvTutari": "2,03",
+      "confirmedKdvTevkifat": null,
+      "confirmedKdvBreakdown": [
+        {
+          "oran": 20,
+          "tutar": 2.03,
+          "matrah": 10.15
+        }
+      ],
+      "isManuallyConfirmed": true,
+      "uploadedAt": "2026-05-18T19:47:38.398Z"
+    },
+    {
+      "id": "cmpbm8sog00v372z2rbs6g4w9",
+      "sessionId": "cmpbl4noq01g6k43bre3aj9fw",
+      "s3Key": "mihsap://cmpaz1xeq0eav82g0ejuhraev",
+      "originalName": "0159.image",
+      "mimeType": "image/jpeg",
+      "sizeBytes": 0,
+      "ocrStatus": "SUCCESS",
+      "ocrBelgeNo": "0159",
+      "ocrDate": "16.04.2026",
+      "ocrKdvTutari": "33,50",
+      "ocrKdvTevkifat": null,
+      "ocrSatici": "ŞOK MARKETLER TIC.A.Ş",
+      "ocrSaticiVkn": "8140131899",
+      "ocrRawText": "ŞOK MARKETLER TIC.A.Ş\n2662 MECIDIYEKOY İZZETPAŞA\nİZZETPAŞA MH.KARAKUYUSU CD\nFIRIN ARKASI SOK. NO: 24\nŞİŞLİ/İSTANBUL\n8140131899\nANADOLU KURUMLAR V.D\nTARIH\n16/04/2026\nSAAT\n14:22:43\nFİŞ NO\n0159\nOM\nMIS BARDAK AYRAN TAM\n%01\n*9,50\nALIŞVERİŞ POŞETİ 43\n%20\n*1,00\nMEZZET RUS SALATASI\n401\n*31,50\nCAFE CROWN 2SI1 FIND\n%01\n*11,50\nCAFE CROWN 2511 FIND\n%01\n*11,50\nTOPKDV\n*0,80\nTOPLAM\n289.\n*65,00\nKREDİ\n$65,00\nZİRAATBANK\n************ 4015\nKASIYER: MAŁ ** DA ***\nMERSIS : 6812859773258470\nEKÜ NO: 0004",
+      "ocrConfidence": 0.9066666666666667,
+      "ocrBelgeNoConfidence": 0.9,
+      "ocrDateConfidence": 0.9,
+      "ocrKdvConfidence": 0.92,
+      "ocrEngine": "azure-read",
+      "ocrBelgeTipi": "OKC_FIS",
+      "ocrKdvBreakdown": [
+        {
+          "oran": 1,
+          "tutar": 32.5,
+          "matrah": null
+        },
+        {
+          "oran": 20,
+          "tutar": 1,
+          "matrah": null
+        }
+      ],
+      "ocrValidationScore": 1,
+      "imageHash": "a3fd9f170b5b95e5b09d10023b01e1866b971d0b93b4b4bfa4f6833fdfac4fd2",
+      "ocrKategori": null,
+      "confirmedBelgeNo": null,
+      "confirmedDate": null,
+      "confirmedKdvTutari": null,
+      "confirmedKdvTevkifat": null,
+      "confirmedKdvBreakdown": null,
+      "isManuallyConfirmed": false,
+      "uploadedAt": "2026-05-18T19:47:38.417Z"
+    },
+    {
+      "id": "cmpbm8svu00y372z2e7p2qhq3",
+      "sessionId": "cmpbl4noq01g6k43bre3aj9fw",
+      "s3Key": "mihsap://cmpaz1x6f0e9782g0xhx1haa4",
+      "originalName": "0019.image",
+      "mimeType": "image/jpeg",
+      "sizeBytes": 0,
+      "ocrStatus": "SUCCESS",
+      "ocrBelgeNo": "0019",
+      "ocrDate": "30.04.2026",
+      "ocrKdvTutari": "94,65",
+      "ocrKdvTevkifat": null,
+      "ocrSatici": "ŞOK MARKETLER TİC.A.Ş",
+      "ocrSaticiVkn": "8140131899",
+      "ocrRawText": "ŞOK MARKETLER TİC.A.Ş\n2662 MECİDİYEKÖY İZZETPAŞA\nIZZETPASA MH.KARAKUYUSU CD.\nFIRIN ARKASI SOK. NO:24\nŞİŞLİ/İSTANBUL\n8140131899\nANADOLU KURUMLAR V.D\nTARİH\n: 30/04/2026\nSAAT\n:\n09:23:23\nFİŞ NO\n: 0019\nETİ TUTKU MOZAİK 100\n401\n*17,90\nÜLKER HANIMELLER ÇOK\n%01\n*14,90\nÜLKER KEKSTRA JÖLELİ\n%01\n*6,90\nALIŞVERİŞ POŞETİ 43\n%20\n*1,00\nDANONE KAKAOLU SUT 1\n%01\n*18,95\nÜLKER ÇOKOMİLK 24 GR\n%01\n*6,90\n2Adt X *11,50\nCAFE CROWN 2S11 FIND\n%01\n*23,00\nGÜZELPINAR SU 1.5 LT\n%01\n*11,50\nÜLKER KEKSTRA JÖLELİ\n401\n*6,90\nCAFE CROWN 2SII FIND\n%01\n*11,50\nTOPKDV\n*1,34\nTOPLAM\n*119,45\nKREDI\n*119,45\nZIRAATBANK",
+      "ocrConfidence": 0.9066666666666667,
+      "ocrBelgeNoConfidence": 0.9,
+      "ocrDateConfidence": 0.9,
+      "ocrKdvConfidence": 0.92,
+      "ocrEngine": "azure-read",
+      "ocrBelgeTipi": "OKC_FIS",
+      "ocrKdvBreakdown": [
+        {
+          "oran": 1,
+          "tutar": 93.65,
+          "matrah": null
+        },
+        {
+          "oran": 20,
+          "tutar": 1,
+          "matrah": null
+        }
+      ],
+      "ocrValidationScore": 1,
+      "imageHash": "fae55daec58adfe66d267856edb8007b8201023f306f9a56f7d9b16a630a4e6f",
+      "ocrKategori": null,
+      "confirmedBelgeNo": null,
+      "confirmedDate": null,
+      "confirmedKdvTutari": null,
+      "confirmedKdvTevkifat": null,
+      "confirmedKdvBreakdown": null,
+      "isManuallyConfirmed": false,
+      "uploadedAt": "2026-05-18T19:47:38.682Z"
+    }
+  ]
+}

@@ -263,10 +263,10 @@ export class LucaService {
     return (this.prisma as any).lucaFetchJob.findUnique({ where: { id: jobId } });
   }
 
-  async markJobDone(jobId: string, recordCount: number) {
+  async markJobDone(jobId: string, recordCount: number, extra?: { fisNo?: string }) {
     const current = await (this.prisma as any).lucaFetchJob.findUnique({
       where: { id: jobId },
-      select: { recordCount: true },
+      select: { recordCount: true, tip: true, invoiceDocumentId: true },
     });
     const nextRecordCount = Number.isFinite(recordCount) && recordCount > 0
       ? recordCount
@@ -279,6 +279,24 @@ export class LucaService {
         finishedAt: new Date(),
       },
     });
+
+    // v1.38: INVOICE_POST -> InvoiceAccountingDocument.lucaStatus = POSTED
+    if (current?.tip === 'INVOICE_POST' && current?.invoiceDocumentId) {
+      try {
+        await (this.prisma as any).invoiceAccountingDocument.updateMany({
+          where: { id: current.invoiceDocumentId },
+          data: {
+            lucaStatus: 'POSTED',
+            lucaPostedAt: new Date(),
+            lucaErrorMessage: null,
+            ...(extra?.fisNo ? { lucaFisNo: extra.fisNo } : {}),
+          },
+        });
+      } catch (err) {
+        this.logger.warn(`InvoiceAccountingDocument lucaStatus POSTED guncellenemedi: ${(err as any)?.message}`);
+      }
+    }
+
     return (this.prisma as any).lucaFetchJob.findUnique({ where: { id: jobId } });
   }
 
@@ -347,6 +365,22 @@ export class LucaService {
         data: { status: 'REVIEWING' },
       }).catch(() => undefined);
     }
+
+    // v1.38: INVOICE_POST -> InvoiceAccountingDocument.lucaStatus = FAILED
+    if (job?.tip === 'INVOICE_POST' && job?.invoiceDocumentId) {
+      try {
+        await (this.prisma as any).invoiceAccountingDocument.updateMany({
+          where: { id: job.invoiceDocumentId },
+          data: {
+            lucaStatus: 'FAILED',
+            lucaErrorMessage: String(errorMsg || '').slice(0, 1000),
+          },
+        });
+      } catch (err) {
+        this.logger.warn(`InvoiceAccountingDocument lucaStatus FAILED guncellenemedi: ${(err as any)?.message}`);
+      }
+    }
+
     return (this.prisma as any).lucaFetchJob.findUnique({ where: { id: jobId } });
   }
 

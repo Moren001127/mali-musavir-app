@@ -174,6 +174,12 @@ export class FaturaMuhasebelestirmeController {
     return this.service.approve(req.user.tenantId, id, req.user?.userId);
   }
 
+  // v1.38: Luca aktarimi basarisiz olursa veya kullanici manuel tekrarlamak isterse
+  @Post('documents/:id/retry-luca')
+  retryLuca(@Req() req: any, @Param('id') id: string) {
+    return this.service.retryLucaPost(req.user.tenantId, id, req.user?.userId);
+  }
+
   @Delete('documents/:id')
   remove(@Req() req: any, @Param('id') id: string) {
     return this.service.remove(req.user.tenantId, id);
