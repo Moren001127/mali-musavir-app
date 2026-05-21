@@ -436,7 +436,8 @@ export class FaturaMuhasebelestirmeService {
 
     const docs = await (this.prisma as any).invoiceAccountingDocument.findMany({
       where,
-      select: { status: true, lucaStatus: true, ocrStatus: true, taxpayerId: true, validationStatus: true },
+      // v2.2: validationStatus select'i raw query ile yaparız, Prisma client tanımıyor olabilir
+      select: { status: true, lucaStatus: true, ocrStatus: true, taxpayerId: true, ocrData: true },
     });
 
     // v2.2: Mukellef bağlantısı + validation durumu ayrı sayılır
@@ -459,7 +460,9 @@ export class FaturaMuhasebelestirmeService {
       if (d.ocrStatus === 'IN_PROGRESS' || d.ocrStatus === 'PENDING') ocrInProgress++;
 
       if (!hasTaxpayer) orphanCount++;
-      if (d.validationStatus === 'INVALID' || d.validationStatus === 'INCOMPLETE') invalidCount++;
+      // ocrData içindeki validationStatus'a düş — ana kolon henüz yok olabilir
+      const vStatus = (d as any).ocrData?.validationStatus;
+      if (vStatus === 'INVALID' || vStatus === 'INCOMPLETE') invalidCount++;
     }
 
     return {
@@ -505,13 +508,14 @@ export class FaturaMuhasebelestirmeService {
 
     const docs = await (this.prisma as any).invoiceAccountingDocument.findMany({
       where,
+      // v2.2: validationStatus yerine ocrData içinden okuyoruz — Prisma client tanımıyor olabilir
       select: {
         taxpayerId: true,
         status: true,
         invoiceKind: true,
         documentType: true,
         lucaStatus: true,
-        validationStatus: true,
+        ocrData: true,
       },
     });
 
@@ -548,7 +552,8 @@ export class FaturaMuhasebelestirmeService {
       }
 
       if (d.lucaStatus === 'POSTED') entry.postedToLuca++;
-      if (d.validationStatus === 'INVALID' || d.validationStatus === 'INCOMPLETE') entry.hasIssue++;
+      const vStatus = (d as any).ocrData?.validationStatus;
+      if (vStatus === 'INVALID' || vStatus === 'INCOMPLETE') entry.hasIssue++;
       byTaxpayer.set(d.taxpayerId, entry);
     }
 
@@ -1138,6 +1143,8 @@ export class FaturaMuhasebelestirmeService {
   }
 
   async ensureFromEarsivFatura(tenantId: string, faturaId: string) {
+    // v2.2: select'ten kdvBreakdown'u çıkar — yeni kolon DB'de henüz olmayabilir,
+    // Prisma "Unknown field" hatası vermesin. Ayrıca raw SQL ile sonradan çekeriz.
     const f = await (this.prisma as any).earsivFatura.findFirst({
       where: { id: faturaId, tenantId },
       select: {
@@ -1155,7 +1162,6 @@ export class FaturaMuhasebelestirmeService {
         matrah: true,
         kdvTutari: true,
         kdvOrani: true,
-        kdvBreakdown: true,
         toplamTutar: true,
         paraBirimi: true,
         pdfStorageKey: true,
@@ -1164,6 +1170,19 @@ export class FaturaMuhasebelestirmeService {
       },
     });
     if (!f) throw new NotFoundException('E-fatura/e-arşiv kaydı bulunamadı');
+
+    // kdvBreakdown'u raw SQL ile çek — kolon yoksa silently null döner
+    let kdvBreakdownRaw: any = null;
+    try {
+      const rows: any[] = await (this.prisma as any).$queryRawUnsafe(
+        `SELECT "kdvBreakdown" FROM "earsiv_faturalar" WHERE "id" = $1 LIMIT 1`,
+        faturaId,
+      );
+      kdvBreakdownRaw = rows?.[0]?.kdvBreakdown ?? null;
+    } catch {
+      // kolon yok → null kalır
+    }
+    (f as any).kdvBreakdown = kdvBreakdownRaw;
 
     const existing = await (this.prisma as any).invoiceAccountingDocument.findFirst({
       where: { tenantId, source: 'earsiv', sourceRefId: f.id },
@@ -1248,14 +1267,29 @@ export class FaturaMuhasebelestirmeService {
           kdvTutari: f.kdvTutari,
           kdvOrani: f.kdvOrani,
           kdvBreakdown: breakdownArr,
+          // Validation sonucunu ocrData içine de yaz — ana kolonlar olmasa bile UI okuyabilir
+          validationStatus: validation.status,
+          validationIssues: validation.issues,
+          validationCheckedAt: new Date().toISOString(),
         },
-        validationStatus: validation.status,
-        validationIssues: validation.issues.length ? (validation.issues as any) : undefined,
-        validationCheckedAt: new Date(),
         lines: { create: lines },
       },
       include: { lines: { orderBy: { orderNo: 'asc' } } },
     });
+
+    // v2.2: validation kolonlarını raw SQL ile yaz — Prisma client tanımıyor olabilir
+    try {
+      await (this.prisma as any).$executeRawUnsafe(
+        `UPDATE "invoice_accounting_documents"
+         SET "validationStatus" = $1, "validationIssues" = $2::jsonb, "validationCheckedAt" = NOW()
+         WHERE "id" = $3`,
+        validation.status,
+        JSON.stringify(validation.issues),
+        doc.id,
+      );
+    } catch {
+      // kolonlar yoksa atla — ocrData içinde zaten saklı
+    }
 
     return { created: true, document: doc };
   }
@@ -1505,14 +1539,19 @@ export class FaturaMuhasebelestirmeService {
       kdvBreakdown: breakdown,
     });
 
-    await (this.prisma as any).invoiceAccountingDocument.update({
-      where: { id },
-      data: {
-        validationStatus: validation.status,
-        validationIssues: validation.issues.length ? validation.issues : null,
-        validationCheckedAt: new Date(),
-      },
-    });
+    // v2.2: validation kolonlarını raw SQL ile yaz — Prisma client tanımıyor olabilir
+    try {
+      await (this.prisma as any).$executeRawUnsafe(
+        `UPDATE "invoice_accounting_documents"
+         SET "validationStatus" = $1, "validationIssues" = $2::jsonb, "validationCheckedAt" = NOW()
+         WHERE "id" = $3`,
+        validation.status,
+        validation.issues.length ? JSON.stringify(validation.issues) : null,
+        id,
+      );
+    } catch {
+      // kolonlar yoksa atla
+    }
     return validation;
   }
 
@@ -1564,16 +1603,12 @@ export class FaturaMuhasebelestirmeService {
     }
 
     // Hangi belgeler bu batch'e dahil — ya verilen ID listesi ya QUEUED filtresi
-    // v2.1: validation OK olmayan belgeler hariç tutulur (INVALID/INCOMPLETE Luca'ya gitmesin)
+    // v2.2: validation kolonları olmayabilir — filtreleme application-side (validation OK olmayanları sonradan ele)
     const where: any = {
       tenantId,
       taxpayerId: body.taxpayerId,
       status: 'APPROVED',
       lucaStatus: { in: ['QUEUED', 'FAILED', 'NOT_STARTED'] },
-      OR: [
-        { validationStatus: null },     // eski kayıtlar (henüz validation yapılmamış)
-        { validationStatus: 'OK' },
-      ],
     };
     if (Array.isArray(body.documentIds) && body.documentIds.length > 0) {
       where.id = { in: body.documentIds };
@@ -1587,26 +1622,18 @@ export class FaturaMuhasebelestirmeService {
       }
     }
 
-    const docs = await (this.prisma as any).invoiceAccountingDocument.findMany({
+    const allDocs: any[] = await (this.prisma as any).invoiceAccountingDocument.findMany({
       where,
       include: { lines: { orderBy: { orderNo: 'asc' } } },
       orderBy: { faturaTarihi: 'asc' },
     });
 
-    // v2.1: validation INVALID/INCOMPLETE belgeleri ayrı raporla (kullanıcı bilsin)
-    const skippedCount = await (this.prisma as any).invoiceAccountingDocument.count({
-      where: {
-        tenantId,
-        taxpayerId: body.taxpayerId,
-        status: 'APPROVED',
-        lucaStatus: { in: ['QUEUED', 'FAILED', 'NOT_STARTED'] },
-        validationStatus: { in: ['INVALID', 'INCOMPLETE'] },
-        ...(body.period ? (() => {
-          const [y, m] = String(body.period).split('-').map((n) => parseInt(n, 10));
-          if (!Number.isFinite(y) || !Number.isFinite(m)) return {};
-          return { faturaTarihi: { gte: new Date(Date.UTC(y, m - 1, 1)), lt: new Date(Date.UTC(y, m, 1)) } };
-        })() : {}),
-      },
+    // v2.2: validationStatus ocrData içinde — application-side filter
+    let skippedCount = 0;
+    const docs = allDocs.filter((d: any) => {
+      const v = d.ocrData?.validationStatus;
+      if (v === 'INVALID' || v === 'INCOMPLETE') { skippedCount++; return false; }
+      return true;
     });
 
     if (!docs.length) {
