@@ -181,72 +181,24 @@ export default function Sidebar() {
 
       {/* === LOGO === */}
       <div
-        className="relative px-4 pt-4 pb-4"
+        className="relative px-3 py-3"
         style={{
           borderBottom: '1px solid rgba(212,184,118,0.18)',
           background:
-            'linear-gradient(180deg, rgba(212,184,118,0.045) 0%, rgba(15,13,11,0.08) 72%, transparent 100%)',
+            'linear-gradient(180deg, rgba(212,184,118,0.035) 0%, rgba(15,13,11,0.08) 72%, transparent 100%)',
         }}
       >
-        <div
-          className="pointer-events-none absolute inset-0"
-          style={{
-            background:
-              'radial-gradient(circle at 23% 42%, rgba(212,184,118,0.10), transparent 34%), radial-gradient(circle at 76% 42%, rgba(212,184,118,0.055), transparent 36%)',
-          }}
-        />
         <Link
           href="/panel"
-          className="group relative flex items-center justify-center gap-3 transition-transform duration-300 hover:scale-[1.015]"
+          className="group relative flex h-[72px] items-center justify-center transition-transform duration-300 hover:scale-[1.01]"
           aria-label="Moren Mali Müşavirlik"
         >
-          <span className="relative block h-[52px] w-[104px] shrink-0 overflow-hidden">
-            <img
-              src="/brand/moren-logo-gold.png"
-              alt=""
-              aria-hidden="true"
-              className="absolute transition-transform duration-300 group-hover:scale-[1.025]"
-              style={{
-                width: 132,
-                height: 'auto',
-                maxWidth: 'none',
-                left: -16,
-                top: -1,
-                objectFit: 'contain',
-              }}
-            />
-          </span>
-          <span className="flex min-w-0 flex-col items-center">
-            <span
-              className="leading-none"
-              style={{
-                color: '#ecd290',
-                fontFamily: 'Georgia, "Times New Roman", serif',
-                fontSize: 25,
-                fontWeight: 700,
-                letterSpacing: 0,
-                textShadow: '0 0 14px rgba(212,184,118,0.16)',
-              }}
-            >
-              MOREN
-            </span>
-            <span
-              className="mt-1 leading-none"
-              style={{
-                color: 'rgba(212,184,118,0.78)',
-                fontFamily: 'Georgia, "Times New Roman", serif',
-                fontSize: 8.8,
-                fontWeight: 600,
-                letterSpacing: 0,
-              }}
-            >
-              MALİ MÜŞAVİRLİK
-            </span>
-            <span
-              className="mt-2 h-px w-full"
-              style={{ background: 'linear-gradient(90deg, transparent, rgba(212,184,118,0.62), transparent)' }}
-            />
-          </span>
+          <img
+            src="/brand/moren-sidebar-horizontal.png"
+            alt="Moren Mali Müşavirlik"
+            className="block h-[62px] w-auto max-w-full object-contain"
+            style={{ filter: 'none' }}
+          />
         </Link>
       </div>
 
