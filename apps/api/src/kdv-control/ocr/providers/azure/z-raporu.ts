@@ -64,9 +64,32 @@ export function extractZRaporuKdv(
       .replace(/\s*([.,])\s*/g, '$1')
       .trim();
 
+    if (/[.,]/.test(token)) {
+      token = token.replace(/\s/g, '');
+    }
+
+    const sign = token.startsWith('-') ? '-' : '';
+    let unsigned = token.replace(/^[+-]/, '').trim();
+
+    if (!unsigned.includes(',')) {
+      const dotCount = (unsigned.match(/\./g) || []).length;
+      if (dotCount >= 2) {
+        const lastDot = unsigned.lastIndexOf('.');
+        const decimals = unsigned.slice(lastDot + 1);
+        if (/^\d{2}$/.test(decimals)) {
+          unsigned = `${unsigned.slice(0, lastDot).replace(/\./g, '')},${decimals}`;
+          token = `${sign}${unsigned}`;
+        }
+      } else if (dotCount === 1) {
+        const [head, tail] = unsigned.split('.');
+        if (/^\d+$/.test(head) && /^\d{4,}$/.test(tail)) {
+          unsigned = `${head}${tail.slice(0, -2)},${tail.slice(-2)}`;
+          token = `${sign}${unsigned}`;
+        }
+      }
+    }
+
     if (!/[.,]/.test(token)) {
-      const sign = token.startsWith('-') ? '-' : '';
-      const unsigned = token.replace(/^[+-]/, '').trim();
       const parts = unsigned.split(/\s+/).filter(Boolean);
       if (parts.length >= 2 && /^\d{2}$/.test(parts[parts.length - 1])) {
         const decimals = parts.pop();
@@ -159,7 +182,9 @@ export function extractZRaporuKdv(
     if (/\bKUM\b/.test(line)) break;
 
     const isKdvLabel = topKdvLabel.test(line);
-    const isGrossLabel = /^\s*T[O0]PLAM\b/.test(line) && !isKdvLabel;
+    const isCounterTotalLine =
+      /\bFIS\s+SAYISI\b|\bMALI\s+FIS\b|\bSLIP\s+FIS\b|\bGECERLI\s+SATIS\s+FIS\b|\bIPTAL\s+FIS\b/.test(line);
+    const isGrossLabel = /^\s*T[O0]PLAM\b/.test(line) && !isKdvLabel && !isCounterTotalLine;
     const values = extractMoneyValues(lines[i]);
 
     if (isKdvLabel || isGrossLabel) {

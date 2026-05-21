@@ -368,7 +368,43 @@ const zPetravet1421 = zRaporu.extractZRaporuKdv(zPetravet1421Text, zDeps);
 eq(zPetravet1421.kdvTutari, '575,30', 'z petravet 1421 interleaved label total');
 approx(zPetravet1421.breakdown.find((b) => b.oran === 20).tutar, 461.66, 0.01, 'z petravet 1421 interleaved %20');
 approx(zPetravet1421.breakdown.find((b) => b.oran === 10).tutar, 113.64, 0.01, 'z petravet 1421 interleaved %10');
-ok('azure/z-raporu.ts (21 assertion)');
+
+const zPetravet1407CounterText = [
+  'TOPLAM FIS SAYISI',
+  '6',
+  'TOPLAM %20',
+  '*1. 980, 00',
+  'TOPKDV /20',
+  '* 330, 00',
+  'TOPLAM /10',
+  '*7. 750,00',
+  'TOPKDV %10',
+  '*704,54',
+  'TOPLAM',
+  '.9. 730, 00',
+  'TOPKDV',
+  '* 1. 034,54',
+].join('\n');
+const zPetravet1407Counter = zRaporu.extractZRaporuKdv(zPetravet1407CounterText, zDeps);
+eq(zPetravet1407Counter.kdvTutari, '1034,54', 'z petravet 1407 ignores total fis count');
+approx(zPetravet1407Counter.breakdown.find((b) => b.oran === 20).tutar, 330, 0.01, 'z petravet 1407 counter %20');
+approx(zPetravet1407Counter.breakdown.find((b) => b.oran === 10).tutar, 704.54, 0.01, 'z petravet 1407 counter %10');
+
+const zPetravet1425DotText = [
+  'TOPLAM %10',
+  '* 12. 850.00',
+  'TOPKDV %10',
+  '*1. 168, 17',
+  'TOPLAM',
+  '* 12. 850 00',
+  'TOPKDV',
+  '* 1. 168: 17',
+].join('\n');
+const zPetravet1425Dot = zRaporu.extractZRaporuKdv(zPetravet1425DotText, zDeps);
+eq(zPetravet1425Dot.kdvTutari, '1168,17', 'z petravet 1425 dotted amount total');
+approx(zPetravet1425Dot.breakdown.find((b) => b.oran === 10).tutar, 1168.17, 0.01, 'z petravet 1425 dotted %10');
+approx(zPetravet1425Dot.matrahByOran[10], 12850, 0.01, 'z petravet 1425 dotted gross');
+ok('azure/z-raporu.ts (27 assertion)');
 
 // ─── validation/cross-check.ts ───
 const zCrossText = [
