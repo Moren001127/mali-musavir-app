@@ -88,12 +88,17 @@ export default function FaturaDetayDrawer({ taxpayerId, direction, period, onClo
 
   const approveCurrent = () => { if (current?.id) approveMut.mutate(current.id); };
 
-  /* Dosya URL */
+  /* Dosya URL veya inline HTML (e-Arşiv için backend HTML render ediyor) */
   const fileQ = useQuery({
     queryKey: ['fatura-merkezi', 'file-url', current?.id],
-    queryFn: () => api.get(`/fatura-muhasebelestirme/documents/${current.id}/file-url`).then((r) => r.data?.url || null),
+    queryFn: () => api.get(`/fatura-muhasebelestirme/documents/${current.id}/file-url`).then((r) => ({
+      url: (r.data?.url as string) || null,
+      inlineHtml: (r.data?.inlineHtml as string) || null,
+      mimeType: (r.data?.mimeType as string) || null,
+    })),
     enabled: !!current?.id,
   });
+  const hasPreview = !!(fileQ.data?.url || fileQ.data?.inlineHtml);
 
   return (
     <div className="fixed inset-0 z-50 flex flex-col" style={{ background: 'rgba(0,0,0,0.85)' }}>
@@ -148,15 +153,24 @@ export default function FaturaDetayDrawer({ taxpayerId, direction, period, onClo
           {current && fileQ.isLoading && (
             <Loader2 size={22} className="animate-spin" style={{ color: 'var(--accent)' }} />
           )}
-          {current && fileQ.data && (
+          {current && fileQ.data?.url && (
             <iframe
-              src={fileQ.data}
+              src={fileQ.data.url}
               className="w-full h-full"
               style={{ background: 'white' }}
-              title={current.documentNumber || current.id}
+              title={current.belgeNo || current.id}
             />
           )}
-          {current && !fileQ.isLoading && !fileQ.data && (
+          {current && !fileQ.data?.url && fileQ.data?.inlineHtml && (
+            <iframe
+              srcDoc={fileQ.data.inlineHtml}
+              className="w-full h-full"
+              style={{ background: 'white' }}
+              title={current.belgeNo || current.id}
+              sandbox="allow-same-origin"
+            />
+          )}
+          {current && !fileQ.isLoading && !hasPreview && (
             <div className="text-center" style={{ color: 'var(--text-muted)' }}>
               <FileText size={36} className="mx-auto mb-2" style={{ color: 'var(--text-muted)' }} />
               <div className="text-[13px]">Belge önizlemesi alınamadı.</div>
@@ -223,13 +237,23 @@ function FaturaForm({ doc, onApprove, onDelete, approving, deleting }: {
   approving: boolean;
   deleting: boolean;
 }) {
+  // Schema'daki field'lar: vendorName/customerName, sellerVkn/buyerVkn
+  const isSale = String(doc.invoiceKind || '').toUpperCase() === 'SATIS';
   const supplierName =
+    (isSale ? doc.customerName : doc.vendorName) ||
     doc.supplierName || doc.counterpartyName || doc.firmaUnvan || doc.unvan ||
     doc.metadata?.supplier?.name || '—';
-  const supplierVkn = doc.supplierVkn || doc.counterpartyTaxNumber || doc.metadata?.supplier?.vkn || '—';
+  const supplierVkn =
+    (isSale ? doc.buyerVkn : doc.sellerVkn) ||
+    doc.supplierVkn || doc.counterpartyTaxNumber || doc.metadata?.supplier?.vkn || '—';
   const total = doc.totalAmount ?? doc.toplamTutar ?? doc.metadata?.total ?? 0;
-  const kdv = doc.kdvAmount ?? doc.kdvToplam ?? doc.metadata?.kdv ?? 0;
-  const lines = Array.isArray(doc.lines) ? doc.lines : Array.isArray(doc.metadata?.lines) ? doc.metadata.lines : [];
+  // Schema'da kdvAmount yok — line.group='vergi' satırlarından topla
+  const linesRaw = Array.isArray(doc.lines) ? doc.lines : Array.isArray(doc.metadata?.lines) ? doc.metadata.lines : [];
+  const kdvFromLines = linesRaw
+    .filter((l: any) => String(l.group || '').toLowerCase() === 'vergi')
+    .reduce((sum: number, l: any) => sum + Number(l.debit || 0) + Number(l.credit || 0), 0);
+  const kdv = doc.kdvAmount ?? doc.kdvToplam ?? doc.metadata?.kdv ?? kdvFromLines;
+  const lines = linesRaw;
 
   return (
     <div className="flex-1 overflow-y-auto p-5 space-y-4">
@@ -240,10 +264,10 @@ function FaturaForm({ doc, onApprove, onDelete, approving, deleting }: {
       </div>
 
       <div className="grid grid-cols-2 gap-2">
-        <Field label="Belge No" value={doc.documentNumber || doc.faturaNo || '-'} mono />
-        <Field label="Belge Tarihi" value={fmtDate(doc.documentDate || doc.faturaTarihi)} />
+        <Field label="Belge No" value={doc.belgeNo || doc.documentNumber || doc.faturaNo || '-'} mono />
+        <Field label="Belge Tarihi" value={fmtDate(doc.faturaTarihi || doc.documentDate)} />
         <Field label="Belge Türü" value={doc.documentType || '-'} />
-        <Field label="Yön" value={String(doc.direction || '').toUpperCase()} />
+        <Field label="Yön" value={String(doc.invoiceKind || doc.direction || '').toUpperCase()} />
       </div>
 
       <div className="grid grid-cols-2 gap-2">
@@ -260,35 +284,70 @@ function FaturaForm({ doc, onApprove, onDelete, approving, deleting }: {
         </div>
       )}
 
-      {/* Kalemler */}
+      {/* Yevmiye kalemleri (Borç / Alacak) */}
       {lines.length > 0 && (
         <div>
-          <div className="text-[11px] tracking-wide font-semibold mb-1" style={{ color: 'var(--text-light)' }}>
-            KALEMLER ({lines.length})
+          <div className="flex items-center justify-between mb-1.5">
+            <div className="text-[11px] tracking-wide font-semibold" style={{ color: 'var(--text-light)' }}>
+              YEVMİYE KAYDI ({lines.length} satır)
+            </div>
+            <div className="text-[10px]" style={{ color: 'var(--text-muted)' }}>
+              Hesap kodu · Borç / Alacak
+            </div>
           </div>
           <div className="rounded-lg overflow-hidden" style={{ background: 'var(--surface-2)', border: '1px solid var(--border)' }}>
-            {lines.slice(0, 8).map((line: any, idx: number) => (
-              <div
-                key={idx}
-                className="px-2.5 py-1.5 text-[11.5px]"
-                style={{ borderBottom: idx === lines.length - 1 ? 'none' : '1px solid var(--border-soft)' }}
-              >
-                <div className="flex justify-between">
-                  <span style={{ color: 'var(--text)' }}>{line.description || line.name || `Kalem ${idx + 1}`}</span>
-                  <span className="font-mono" style={{ color: 'var(--text-secondary)' }}>{fmtTl(line.total || line.amount || 0)}</span>
-                </div>
-                {(line.suggestedAccount || line.hesapKodu) && (
-                  <div className="text-[10.5px] mt-0.5 font-mono" style={{ color: 'var(--accent)' }}>
-                    → {line.suggestedAccount || line.hesapKodu}
+            <div className="grid grid-cols-[1fr_72px_72px] gap-2 px-2.5 py-1.5 text-[10px] tracking-wide font-semibold" style={{ background: 'var(--surface)', color: 'var(--text-muted)', borderBottom: '1px solid var(--border)' }}>
+              <span>HESAP / AÇIKLAMA</span>
+              <span className="text-right">BORÇ</span>
+              <span className="text-right">ALACAK</span>
+            </div>
+            {lines.slice(0, 12).map((line: any, idx: number) => {
+              const debit = Number(line.debit || 0);
+              const credit = Number(line.credit || 0);
+              return (
+                <div
+                  key={line.id || idx}
+                  className="grid grid-cols-[1fr_72px_72px] gap-2 px-2.5 py-2 text-[11.5px]"
+                  style={{ borderBottom: idx === lines.length - 1 ? 'none' : '1px solid var(--border-soft)' }}
+                >
+                  <div className="min-w-0">
+                    <div className="flex items-center gap-1.5">
+                      <span className="font-mono text-[11px] px-1.5 py-0.5 rounded" style={{ background: 'var(--accent-50)', color: 'var(--accent)' }}>
+                        {line.accountCode || '???'}
+                      </span>
+                      {line.rate && <span className="text-[10px]" style={{ color: 'var(--text-muted)' }}>{line.rate}</span>}
+                    </div>
+                    <div className="mt-0.5 truncate" style={{ color: 'var(--text)' }}>
+                      {line.description || `Kalem ${idx + 1}`}
+                    </div>
                   </div>
-                )}
-              </div>
-            ))}
-            {lines.length > 8 && (
-              <div className="px-2.5 py-1.5 text-[10.5px] text-center" style={{ color: 'var(--text-muted)' }}>
-                ... ve {lines.length - 8} kalem daha
+                  <span className="text-right font-mono tabular-nums self-center" style={{ color: debit > 0 ? 'var(--text)' : 'var(--text-light)' }}>
+                    {debit > 0 ? fmtTl(debit) : '—'}
+                  </span>
+                  <span className="text-right font-mono tabular-nums self-center" style={{ color: credit > 0 ? 'var(--text)' : 'var(--text-light)' }}>
+                    {credit > 0 ? fmtTl(credit) : '—'}
+                  </span>
+                </div>
+              );
+            })}
+            {lines.length > 12 && (
+              <div className="px-2.5 py-1.5 text-[10.5px] text-center" style={{ color: 'var(--text-muted)', borderTop: '1px solid var(--border-soft)' }}>
+                ... ve {lines.length - 12} satır daha
               </div>
             )}
+            {/* Toplam */}
+            <div className="grid grid-cols-[1fr_72px_72px] gap-2 px-2.5 py-1.5 text-[11px] font-semibold" style={{ background: 'var(--surface)', borderTop: '1px solid var(--border)', color: 'var(--text-secondary)' }}>
+              <span>Toplam</span>
+              <span className="text-right font-mono tabular-nums">
+                {fmtTl(lines.reduce((s: number, l: any) => s + Number(l.debit || 0), 0))}
+              </span>
+              <span className="text-right font-mono tabular-nums">
+                {fmtTl(lines.reduce((s: number, l: any) => s + Number(l.credit || 0), 0))}
+              </span>
+            </div>
+          </div>
+          <div className="mt-1.5 text-[10.5px]" style={{ color: 'var(--text-muted)' }}>
+            Hesap kodları otomatik atandı. Onaylamadan önce kontrol et — sonradan Luca'ya bu satırlar gönderilecek.
           </div>
         </div>
       )}
