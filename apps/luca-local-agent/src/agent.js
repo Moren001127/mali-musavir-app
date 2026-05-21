@@ -154,7 +154,19 @@ function normalizeJobTypeConfig(rawJobTypes) {
 const JOB_TYPE_CONFIG = normalizeJobTypeConfig(cfg.worker?.jobTypes);
 const JOB_TYPES = new Set(JOB_TYPE_CONFIG.jobTypes);
 const LOG_LEVEL = cfg.log?.level || 'info';
-const LOCAL_AGENT_VERSION = 'local-1.1.7';
+const LOCAL_AGENT_VERSION = 'local-1.1.8';
+function readBundledRuntimeVersion() {
+  try {
+    const runtimePath = path.resolve(__dirname, '..', '..', 'api', 'public', 'agent-runtime.js');
+    if (!fs.existsSync(runtimePath)) return null;
+    const code = fs.readFileSync(runtimePath, 'utf8').slice(0, 5000);
+    const m = code.match(/AGENT_VERSION\s*=\s*['"`]([^'"`]+)['"`]/);
+    return m ? m[1] : null;
+  } catch {
+    return null;
+  }
+}
+const BUNDLED_RUNTIME_VERSION = readBundledRuntimeVersion();
 const JOB_TIMEOUT = (cfg.worker?.jobTimeoutSeconds || 15 * 60) * 1000;
 // v1.36.X: idle TTL 20dk → 2 saat. Mali müşavir ofisi tüm gün açık;
 // her tıklamada login için 10-20sn kayıp anlamsız. 2 saat hareketsizlik
@@ -252,7 +264,11 @@ const api = axios.create({
 async function pollPendingJobs() {
   try {
     const { data } = await api.get('/agent/luca/jobs/pending', {
-      params: { deviceId: DEVICE_ID },
+      params: {
+        deviceId: DEVICE_ID,
+        version: getCurrentRuntimeVersionForApi(),
+        agentVersion: getCurrentRuntimeVersionForApi(),
+      },
     });
     return Array.isArray(data) ? data : data?.jobs || [];
   } catch (err) {
@@ -265,7 +281,11 @@ async function pollPendingJobs() {
 
 async function markJobStart(jobId) {
   try {
-    const { data } = await api.post(`/agent/luca/jobs/${jobId}/start`, { deviceId: DEVICE_ID });
+    const { data } = await api.post(`/agent/luca/jobs/${jobId}/start`, {
+      deviceId: DEVICE_ID,
+      version: getCurrentRuntimeVersionForApi(),
+      agentVersion: getCurrentRuntimeVersionForApi(),
+    });
     return data?.claimed !== false && data?.ok !== false;
   } catch (err) {
     log.warn(`Job start mark hatası: ${err.message}`);
@@ -347,13 +367,15 @@ async function assertLucaConnectivity(jobId) {
 
 async function pingAgentStatus(running = true, extraMeta = {}) {
   try {
+    const runtimeVersion = getCurrentRuntimeVersionForApi();
     await api.post('/agent/status/ping', {
       agent: 'luca',
       running,
       meta: {
         deviceId: DEVICE_ID,
         workerName: WORKER_NAME,
-        version: LOCAL_AGENT_VERSION,
+        version: runtimeVersion,
+        localAgentVersion: LOCAL_AGENT_VERSION,
         localWorker: true,
         hostname: os.hostname(),
         jobTypes: [...JOB_TYPES],
@@ -435,6 +457,10 @@ const LUCA_CLASSIC_ENTRY = process.env.LUCA_CLASSIC_URL || 'https://auygs.luca.c
 let browserSession = null;
 let activeJobCount = 0;
 let preWarmPromise = null;
+
+function getCurrentRuntimeVersionForApi() {
+  return browserSession?.runtimeVersion || BUNDLED_RUNTIME_VERSION || LOCAL_AGENT_VERSION;
+}
 
 function getBrowserUserDataDir() {
   return path.join(
@@ -1227,9 +1253,10 @@ async function preWarmBrowserSession() {
         finalUrl.startsWith('chrome://') ||
         (!finalUrl.includes('luca.com.tr') && !finalUrl.includes('lucasso'));
       if (isBrokenUrl) {
-        log.error(`Pre-warm SAGLIKSIZ URL (${finalUrl.slice(0, 80)}). Browser profili silinip prosesi sonlandiriliyor.`);
+        log.error(`Pre-warm SAGLIKSIZ URL (${finalUrl.slice(0, 80)}). Browser profili silinip polling canli tutuluyor.`);
         try { await session.context.close(); } catch {}
         try { await session.browser?.close?.(); } catch {}
+        browserSession = null;
         try {
           const profileDir = path.resolve(__dirname, '..', '.browser-data');
           if (fs.existsSync(profileDir)) {
@@ -1239,9 +1266,8 @@ async function preWarmBrowserSession() {
         } catch (err) {
           log.warn(`Browser profili silinemedi: ${err.message}`);
         }
-        // Process exit -> Scheduled Task yeniden baslatir (yoksa mainLoop catch eder)
-        log.warn('Self-heal: proses sonlandiriliyor, watchdog yeniden baslatacak.');
-        process.exit(2);
+        log.warn('Self-heal: pre-warm iptal edildi; agent prosesi acik kalacak ve bekleyen isleri poll etmeye devam edecek.');
+        return;
       }
     }
     } catch (err) {
