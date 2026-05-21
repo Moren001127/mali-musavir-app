@@ -442,6 +442,63 @@ export class FaturaMuhasebelestirmeService {
     };
   }
 
+  /**
+   * Her mukellef için bekleyen/onaylanan/banka sayılarını tek scan'de döner.
+   * Mihsap'ın "Gelen Belgeler" tablosunda gösterdiği verinin karşılığı.
+   */
+  async perTaxpayerSummary(
+    tenantId: string,
+    opts: { period?: string } = {},
+  ) {
+    const where: any = { tenantId };
+    if (opts.period) where.period = opts.period;
+
+    const docs = await (this.prisma as any).invoiceAccountingDocument.findMany({
+      where,
+      select: {
+        taxpayerId: true,
+        status: true,
+        direction: true,
+        documentType: true,
+        lucaStatus: true,
+      },
+    });
+
+    const byTaxpayer = new Map<string, any>();
+    for (const d of docs) {
+      if (!d.taxpayerId) continue;
+      const entry = byTaxpayer.get(d.taxpayerId) || {
+        taxpayerId: d.taxpayerId,
+        pendingAlis: 0,
+        pendingSatis: 0,
+        pendingBanka: 0,
+        approvedAlis: 0,
+        approvedSatis: 0,
+        approvedBanka: 0,
+        postedToLuca: 0,
+      };
+      const isBank = (d.documentType || '').toUpperCase().includes('BANKA');
+      const isAlis = String(d.direction || '').toUpperCase().startsWith('ALI');
+      const pending = d.status === 'PENDING' || d.status === 'PROCESSING';
+      const approved = d.status === 'APPROVED';
+
+      if (pending) {
+        if (isBank) entry.pendingBanka++;
+        else if (isAlis) entry.pendingAlis++;
+        else entry.pendingSatis++;
+      } else if (approved) {
+        if (isBank) entry.approvedBanka++;
+        else if (isAlis) entry.approvedAlis++;
+        else entry.approvedSatis++;
+      }
+
+      if (d.lucaStatus === 'POSTED') entry.postedToLuca++;
+      byTaxpayer.set(d.taxpayerId, entry);
+    }
+
+    return Array.from(byTaxpayer.values());
+  }
+
   async saveIntegration(tenantId: string, input: IntegrationSaveInput, updatedBy?: string) {
     const provider = String(input.provider || '').trim().toUpperCase();
     const catalog = INTEGRATOR_CATALOG.find((item) => item.provider === provider);

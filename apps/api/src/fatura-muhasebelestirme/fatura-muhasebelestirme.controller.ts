@@ -111,6 +111,12 @@ export class FaturaMuhasebelestirmeController {
     return this.service.summary(req.user.tenantId, { period, taxpayerId });
   }
 
+  /** Her mukellef için bekleyen/onaylanan sayıları tek scan'de döner. */
+  @Get('per-taxpayer-summary')
+  perTaxpayerSummary(@Req() req: any, @Query('period') period?: string) {
+    return this.service.perTaxpayerSummary(req.user.tenantId, { period });
+  }
+
   @Post('documents/upload')
   @UseInterceptors(documentUploadInterceptor())
   upload(

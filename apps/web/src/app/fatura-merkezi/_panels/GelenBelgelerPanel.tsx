@@ -1,40 +1,275 @@
 'use client';
 
-import { Inbox } from 'lucide-react';
+import { useMemo, useState } from 'react';
+import { useQuery } from '@tanstack/react-query';
+import { ChevronRight, Search, Inbox, ArrowUpDown } from 'lucide-react';
+import { api } from '@/lib/api';
+import { taxpayerName, taxpayerBookType, taxpayerSearchMatch } from '../_lib/taxpayer';
+import FaturaDetayDrawer from '../_dialogs/FaturaDetayDrawer';
 
 type Props = { taxpayerId?: string; period: string };
 
-/* GELEN BELGELER — Per-mukellef özet tablosu + detay drill-down
-   Mihsap referansı: kolonlar = Firma · Defter · Bekleyen Alış · Bekleyen Satış · Bekleyen Banka · Onaylanan Faturalar · Onaylanan Banka */
+/* GELEN BELGELER — Per-mukellef özet tablosu
+   Mihsap referansı: Firma · Defter · Bekleyen Alış · Bekleyen Satış · Bekleyen Banka · Onaylanan Alış · Onaylanan Satış · Onaylanan Banka */
 export default function GelenBelgelerPanel({ taxpayerId, period }: Props) {
+  const [search, setSearch] = useState('');
+  const [sortBy, setSortBy] = useState<'name' | 'pending' | 'approved'>('pending');
+  const [selectedDoc, setSelectedDoc] = useState<{ taxpayerId: string; direction: 'ALIS' | 'SATIS' } | null>(null);
+
+  const taxpayersQ = useQuery({
+    queryKey: ['fatura-merkezi', 'taxpayers'],
+    queryFn: () => api.get('/taxpayers').then((r) => r.data),
+  });
+
+  const summaryQ = useQuery({
+    queryKey: ['fatura-merkezi', 'per-taxpayer-summary', period],
+    queryFn: () => api
+      .get('/fatura-muhasebelestirme/per-taxpayer-summary', { params: { period } })
+      .then((r) => Array.isArray(r.data) ? r.data : []),
+  });
+
+  const taxpayers: any[] = Array.isArray(taxpayersQ.data) ? taxpayersQ.data : (taxpayersQ.data?.items || []);
+  const summaryMap = new Map((summaryQ.data || []).map((s: any) => [s.taxpayerId, s]));
+
+  /* ─── Filtre + birleştir ─── */
+  const rows = useMemo(() => {
+    const merged = taxpayers
+      .filter((t) => !taxpayerId || t.id === taxpayerId)
+      .filter((t) => !search || taxpayerSearchMatch(t, search))
+      .map((t) => {
+        const s = summaryMap.get(t.id) || {};
+        return {
+          ...t,
+          pendingAlis: s.pendingAlis || 0,
+          pendingSatis: s.pendingSatis || 0,
+          pendingBanka: s.pendingBanka || 0,
+          approvedAlis: s.approvedAlis || 0,
+          approvedSatis: s.approvedSatis || 0,
+          approvedBanka: s.approvedBanka || 0,
+          postedToLuca: s.postedToLuca || 0,
+          pendingTotal: (s.pendingAlis || 0) + (s.pendingSatis || 0) + (s.pendingBanka || 0),
+          approvedTotal: (s.approvedAlis || 0) + (s.approvedSatis || 0) + (s.approvedBanka || 0),
+        };
+      });
+
+    if (sortBy === 'name') merged.sort((a, b) => taxpayerName(a).localeCompare(taxpayerName(b), 'tr'));
+    else if (sortBy === 'pending') merged.sort((a, b) => b.pendingTotal - a.pendingTotal);
+    else if (sortBy === 'approved') merged.sort((a, b) => b.approvedTotal - a.approvedTotal);
+
+    return merged;
+  }, [taxpayers, summaryMap, taxpayerId, search, sortBy]);
+
+  const totals = useMemo(() => rows.reduce((acc, r) => ({
+    pendingAlis: acc.pendingAlis + r.pendingAlis,
+    pendingSatis: acc.pendingSatis + r.pendingSatis,
+    pendingBanka: acc.pendingBanka + r.pendingBanka,
+    approvedAlis: acc.approvedAlis + r.approvedAlis,
+    approvedSatis: acc.approvedSatis + r.approvedSatis,
+    approvedBanka: acc.approvedBanka + r.approvedBanka,
+  }), { pendingAlis: 0, pendingSatis: 0, pendingBanka: 0, approvedAlis: 0, approvedSatis: 0, approvedBanka: 0 }), [rows]);
+
   return (
     <div className="p-6 max-w-7xl mx-auto">
-      <div className="mb-5">
-        <div className="text-[22px] font-semibold tracking-tight" style={{ color: 'var(--text)', fontFamily: 'var(--font-heading)' }}>
-          Gelen Belgeler
+      <div className="flex items-end gap-3 mb-5">
+        <div>
+          <div className="text-[22px] font-semibold tracking-tight" style={{ color: 'var(--text)', fontFamily: 'var(--font-heading)' }}>
+            Gelen Belgeler
+          </div>
+          <div className="text-[12.5px] mt-0.5" style={{ color: 'var(--text-muted)' }}>
+            {rows.length} mukellef · Dönem {period}
+          </div>
         </div>
-        <div className="text-[12.5px] mt-0.5" style={{ color: 'var(--text-muted)' }}>
-          {taxpayerId ? 'Seçili mukellef için' : 'Tüm mukellefler'} · Dönem {period}
+
+        <div className="flex-1" />
+
+        <div className="flex items-center gap-2 px-3 py-2 rounded-lg" style={{ background: 'var(--surface)', border: '1px solid var(--border)', minWidth: 280 }}>
+          <Search size={14} style={{ color: 'var(--text-muted)' }} />
+          <input
+            placeholder="Mukellef ara..."
+            value={search}
+            onChange={(e) => setSearch(e.target.value)}
+            className="flex-1 bg-transparent outline-none text-[13px]"
+            style={{ color: 'var(--text)' }}
+          />
+        </div>
+
+        <select
+          value={sortBy}
+          onChange={(e) => setSortBy(e.target.value as any)}
+          className="px-3 py-2 rounded-lg text-[12.5px] outline-none"
+          style={{ background: 'var(--surface)', border: '1px solid var(--border)', color: 'var(--text)' }}
+        >
+          <option value="pending">Bekleyene göre</option>
+          <option value="approved">Onaylanana göre</option>
+          <option value="name">Ada göre</option>
+        </select>
+      </div>
+
+      {/* Hızlı özet kart */}
+      <div className="grid grid-cols-3 gap-3 mb-4">
+        <SummaryCard
+          label="Bekleyen Toplam"
+          alis={totals.pendingAlis}
+          satis={totals.pendingSatis}
+          banka={totals.pendingBanka}
+          tone="#f59e0b"
+        />
+        <SummaryCard
+          label="Onaylanan Toplam"
+          alis={totals.approvedAlis}
+          satis={totals.approvedSatis}
+          banka={totals.approvedBanka}
+          tone="#10b981"
+        />
+        <div className="rounded-xl p-4 flex items-center justify-between" style={{ background: 'var(--surface)', border: '1px solid var(--border)' }}>
+          <div>
+            <div className="text-[10.5px] tracking-wider font-semibold" style={{ color: 'var(--text-light)' }}>HEDEF</div>
+            <div className="text-[15px] font-semibold mt-0.5" style={{ color: 'var(--text)' }}>Toplu Onayla</div>
+            <div className="text-[11.5px] mt-0.5" style={{ color: 'var(--text-muted)' }}>Sıraya almak için aşağıdaki satıra bas</div>
+          </div>
+          <Inbox size={28} style={{ color: 'var(--accent)' }} />
         </div>
       </div>
 
-      <Placeholder
-        title="Gelen Belgeler özet tablosu"
-        body="Her mukellef için Bekleyen Alış/Satış/Banka ve Onaylanan sayıları tek tabloda gösterilecek. Detayına tıklayınca PDF + form yan yana açılacak (F8/F9 keyboard, Toplu Onayla)."
-      />
+      {/* Tablo */}
+      <div className="rounded-xl overflow-hidden" style={{ background: 'var(--surface)', border: '1px solid var(--border)' }}>
+        <div className="overflow-x-auto">
+          <table className="w-full">
+            <thead style={{ background: 'var(--surface-2)' }}>
+              <tr style={{ borderBottom: '1px solid var(--border)' }}>
+                <Th>FİRMA / AD</Th>
+                <Th>DEFTER</Th>
+                <Th align="right" tone="#f59e0b">BEKL. ALIŞ</Th>
+                <Th align="right" tone="#f59e0b">BEKL. SATIŞ</Th>
+                <Th align="right" tone="#f59e0b">BEKL. BANKA</Th>
+                <Th align="right" tone="#10b981">ONAY. ALIŞ</Th>
+                <Th align="right" tone="#10b981">ONAY. SATIŞ</Th>
+                <Th align="right" tone="#10b981">ONAY. BANKA</Th>
+                <Th align="right">LUCA</Th>
+                <th className="px-3 py-2.5"></th>
+              </tr>
+            </thead>
+            <tbody>
+              {summaryQ.isLoading && (
+                <tr><td colSpan={10} className="px-3 py-10 text-center text-[13px]" style={{ color: 'var(--text-muted)' }}>Yükleniyor...</td></tr>
+              )}
+              {!summaryQ.isLoading && rows.length === 0 && (
+                <tr><td colSpan={10} className="px-3 py-10 text-center text-[13px]" style={{ color: 'var(--text-muted)' }}>
+                  {search ? 'Eşleşen mukellef yok' : `${period} dönemi için kayıt yok`}
+                </td></tr>
+              )}
+              {rows.map((r, idx) => (
+                <tr
+                  key={r.id}
+                  style={{ borderBottom: idx === rows.length - 1 ? 'none' : '1px solid var(--border-soft)' }}
+                  onMouseEnter={(e) => (e.currentTarget.style.background = 'var(--surface-2)')}
+                  onMouseLeave={(e) => (e.currentTarget.style.background = 'transparent')}
+                >
+                  <td className="px-3 py-2.5 text-[13px] font-medium" style={{ color: 'var(--text)' }}>
+                    <button
+                      type="button"
+                      onClick={() => setSelectedDoc({ taxpayerId: r.id, direction: 'ALIS' })}
+                      className="text-left hover:underline"
+                    >
+                      {taxpayerName(r)}
+                    </button>
+                  </td>
+                  <td className="px-3 py-2.5 text-[12px]" style={{ color: 'var(--text-secondary)' }}>{taxpayerBookType(r)}</td>
+                  <NumCell value={r.pendingAlis} tone="#f59e0b" onClick={() => r.pendingAlis > 0 && setSelectedDoc({ taxpayerId: r.id, direction: 'ALIS' })} />
+                  <NumCell value={r.pendingSatis} tone="#f59e0b" onClick={() => r.pendingSatis > 0 && setSelectedDoc({ taxpayerId: r.id, direction: 'SATIS' })} />
+                  <NumCell value={r.pendingBanka} tone="#f59e0b" />
+                  <NumCell value={r.approvedAlis} tone="#10b981" />
+                  <NumCell value={r.approvedSatis} tone="#10b981" />
+                  <NumCell value={r.approvedBanka} tone="#10b981" />
+                  <NumCell value={r.postedToLuca} tone="#a78bfa" />
+                  <td className="px-3 py-2.5 text-right">
+                    <button
+                      onClick={() => setSelectedDoc({ taxpayerId: r.id, direction: 'ALIS' })}
+                      className="p-1 rounded-md transition-colors"
+                      style={{ color: 'var(--text-muted)' }}
+                      onMouseEnter={(e) => (e.currentTarget.style.color = 'var(--accent)')}
+                      onMouseLeave={(e) => (e.currentTarget.style.color = 'var(--text-muted)')}
+                    >
+                      <ChevronRight size={15} />
+                    </button>
+                  </td>
+                </tr>
+              ))}
+            </tbody>
+          </table>
+        </div>
+      </div>
+
+      {selectedDoc && (
+        <FaturaDetayDrawer
+          taxpayerId={selectedDoc.taxpayerId}
+          direction={selectedDoc.direction}
+          period={period}
+          onClose={() => setSelectedDoc(null)}
+        />
+      )}
     </div>
   );
 }
 
-function Placeholder({ title, body }: { title: string; body: string }) {
+/* ─── Yardımcı bileşenler ─── */
+function Th({ children, align, tone }: { children: React.ReactNode; align?: 'right' | 'left'; tone?: string }) {
   return (
-    <div
-      className="rounded-xl p-8 text-center"
-      style={{ background: 'var(--surface)', border: '1px solid var(--border)' }}
+    <th
+      className={`px-3 py-2.5 text-[10.5px] font-semibold tracking-wide whitespace-nowrap ${align === 'right' ? 'text-right' : 'text-left'}`}
+      style={{ color: tone || 'var(--text-muted)' }}
     >
-      <Inbox size={32} className="mx-auto mb-3" style={{ color: 'var(--accent)' }} />
-      <h3 className="text-[15px] font-semibold mb-1.5" style={{ color: 'var(--text)' }}>{title}</h3>
-      <p className="text-[12.5px] max-w-lg mx-auto" style={{ color: 'var(--text-muted)' }}>{body}</p>
+      {children}
+    </th>
+  );
+}
+
+function NumCell({ value, tone, onClick }: { value: number; tone: string; onClick?: () => void }) {
+  return (
+    <td className="px-3 py-2.5 text-right">
+      {value > 0 ? (
+        <button
+          type="button"
+          onClick={onClick}
+          disabled={!onClick}
+          className="px-2 py-0.5 rounded-md text-[12.5px] font-semibold tabular-nums transition-all"
+          style={{
+            background: `${tone}12`,
+            color: tone,
+            cursor: onClick ? 'pointer' : 'default',
+          }}
+        >
+          {value}
+        </button>
+      ) : (
+        <span className="text-[12px] tabular-nums" style={{ color: 'var(--text-light)' }}>0</span>
+      )}
+    </td>
+  );
+}
+
+function SummaryCard({ label, alis, satis, banka, tone }: { label: string; alis: number; satis: number; banka: number; tone: string }) {
+  const total = alis + satis + banka;
+  return (
+    <div className="rounded-xl p-4" style={{ background: 'var(--surface)', border: '1px solid var(--border)' }}>
+      <div className="flex items-center justify-between mb-2">
+        <div className="text-[10.5px] tracking-wider font-semibold" style={{ color: 'var(--text-light)' }}>{label.toUpperCase()}</div>
+        <div className="text-[22px] font-semibold tabular-nums" style={{ color: tone, fontFamily: 'var(--font-heading)' }}>{total}</div>
+      </div>
+      <div className="grid grid-cols-3 gap-2 mt-3">
+        <SubStat label="Alış"  value={alis}  tone={tone} />
+        <SubStat label="Satış" value={satis} tone={tone} />
+        <SubStat label="Banka" value={banka} tone={tone} />
+      </div>
+    </div>
+  );
+}
+
+function SubStat({ label, value, tone }: { label: string; value: number; tone: string }) {
+  return (
+    <div className="text-center p-1.5 rounded-md" style={{ background: `${tone}10` }}>
+      <div className="text-[15px] font-semibold tabular-nums" style={{ color: tone }}>{value}</div>
+      <div className="text-[10px]" style={{ color: 'var(--text-muted)' }}>{label}</div>
     </div>
   );
 }
