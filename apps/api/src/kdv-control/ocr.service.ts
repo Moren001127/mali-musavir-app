@@ -1337,6 +1337,7 @@ export class OcrService {
       normalizeAzureText: (t) => this.normalizeAzureText(t),
       eBelgeNoDistance: (a, b) => this.eBelgeNoDistance(a, b),
       extractZRaporuKdvFromAzure: (t) => this.extractZRaporuKdvFromAzure(t),
+      extractOkcFisKdvFromAzure: (t) => this.extractOkcFisKdvFromAzure(t),
       extractTevkifatliFaturaFromAzure: (t) => this.extractTevkifatliFaturaFromAzure(t),
       extractKdvOnlyFromTelekomAzure: (t) => this.extractKdvOnlyFromTelekomAzure(t),
       extractKdvFromInvoiceTotalsAzure: (t) => this.extractKdvFromInvoiceTotalsAzure(t),

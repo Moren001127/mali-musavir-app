@@ -41,6 +41,10 @@ export interface CrossCheckDeps {
     breakdown: KdvBreakdownItem[];
     matrahByOran: Record<number, number>;
   };
+  extractOkcFisKdvFromAzure: (text: string) => {
+    kdvTutari: string | null;
+    breakdown: KdvBreakdownItem[];
+  } | null;
   extractTevkifatliFaturaFromAzure: (text: string) => {
     tamKdv: number;
     tevkifat: number;
@@ -83,6 +87,7 @@ export function crossCheckWithAzure(
     normalizeAzureText,
     eBelgeNoDistance,
     extractZRaporuKdvFromAzure,
+    extractOkcFisKdvFromAzure,
     extractTevkifatliFaturaFromAzure,
     extractKdvOnlyFromTelekomAzure,
     extractKdvFromInvoiceTotalsAzure,
@@ -214,6 +219,25 @@ export function crossCheckWithAzure(
   }
 
   // ─── TEVKIFATLI FATURA auto-correct ───
+  if (result.belgeTipi === 'OKC_FIS') {
+    const okcParsed = extractOkcFisKdvFromAzure(azureText);
+    if (okcParsed?.kdvTutari) {
+      const currentKdv = result.kdvTutari ? parseAmount(result.kdvTutari) : 0;
+      const azureKdv = parseAmount(okcParsed.kdvTutari);
+      if (azureKdv > 0 && (!currentKdv || Math.abs(currentKdv - azureKdv) > 0.02)) {
+        logger.warn(
+          `OKC_FIS KDV auto-correct: OCR=${result.kdvTutari || 'bos'} -> Azure TOPKDV=${okcParsed.kdvTutari} (${originalName})`,
+        );
+        result.kdvTutari = okcParsed.kdvTutari;
+        result.kdvBreakdown = okcParsed.breakdown;
+        result.fieldConfidence.kdvTutari = 0.95;
+        kdvAlreadyVerifiedByAutoFill.value = true;
+      } else if ((!result.kdvBreakdown || result.kdvBreakdown.length === 0) && okcParsed.breakdown?.length) {
+        result.kdvBreakdown = okcParsed.breakdown;
+      }
+    }
+  }
+
   const azureTextNorm = normalizeAzureText(azureText);
   const azureMentionsTevkifat = /TEVK[İI]FAT/i.test(azureTextNorm);
   let tevkifatExtracted = false;

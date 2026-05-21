@@ -443,6 +443,7 @@ crossCheck.crossCheckWithAzure(zCrossResult, zCrossText, '1407.image', '1407', {
   normalizeAzureText: azureHelpers.normalizeAzureText,
   eBelgeNoDistance: () => 0,
   extractZRaporuKdvFromAzure: (text) => zRaporu.extractZRaporuKdv(text, zDeps),
+  extractOkcFisKdvFromAzure: () => null,
   extractTevkifatliFaturaFromAzure: () => null,
   extractKdvOnlyFromTelekomAzure: () => null,
   extractKdvFromInvoiceTotalsAzure: () => null,
@@ -659,6 +660,50 @@ assert(okcTahir0368 !== null, 'okc tahir 0368 result not null');
 eq(okcTahir0368.kdvTutari, '20,61', 'okc tahir 0368 topkdv wins over discounted item inference');
 approx(okcTahir0368.breakdown.reduce((sum, b) => sum + b.tutar, 0), 20.61, 0.01, 'okc tahir 0368 breakdown total');
 ok('azure/okc-fis.ts (25 assertion)');
+
+const okcCrossText = [
+  'FIS NO : 0276',
+  '%01',
+  '*85,96',
+  '%01',
+  '*103,96',
+  '%01',
+  '*103,56',
+  'TOPKDV',
+  'TOPLAM',
+  '*2,91',
+  '*293,88',
+].join('\n');
+const okcCrossResult = {
+  rawText: okcCrossText,
+  belgeNo: '0276',
+  date: '10.04.2026',
+  kdvTutari: '43,91',
+  kdvBreakdown: [{ oran: 1, tutar: 43.91, matrah: null }],
+  belgeTipi: 'OKC_FIS',
+  fieldConfidence: { belgeNo: 0.9, date: 0.9, kdvTutari: 0.9 },
+  confidence: 0.9,
+};
+crossCheck.crossCheckWithAzure(okcCrossResult, okcCrossText, '0276.image', '0276', {
+  parseAmount: ublDeps.parseAmount,
+  formatAmount: ublDeps.formatAmount,
+  foldTurkishAscii: azureHelpers.foldTurkishAscii,
+  normalizeAzureText: azureHelpers.normalizeAzureText,
+  eBelgeNoDistance: () => 0,
+  extractZRaporuKdvFromAzure: (text) => zRaporu.extractZRaporuKdv(text, zDeps),
+  extractOkcFisKdvFromAzure: (text) => okcFis.extractOkcFisKdv(text, okcDeps),
+  extractTevkifatliFaturaFromAzure: () => null,
+  extractKdvOnlyFromTelekomAzure: () => null,
+  extractKdvFromInvoiceTotalsAzure: () => null,
+  extractMultiRateKdvFromAzure: () => [],
+  extractMultiRateKdvFromItemRows: () => [],
+  extractHesMatrahKdvTable: () => ({ breakdown: [], totalKdv: null }),
+  isFieldInAzureText: () => true,
+  logger: { log: () => {}, warn: () => {} },
+});
+eq(okcCrossResult.kdvTutari, '2,91', 'cross-check okc receipt keeps Azure TOPKDV total');
+approx(okcCrossResult.kdvBreakdown.reduce((sum, b) => sum + b.tutar, 0), 2.91, 0.01, 'cross-check okc receipt breakdown total');
+ok('validation/cross-check.ts OKC_FIS guard (2 assertion)');
 
 // ═══════════════════════════════════════════════════════════
 // SONUC
