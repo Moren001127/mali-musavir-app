@@ -165,6 +165,31 @@ export class FaturaMuhasebelestirmeController {
     });
   }
 
+  /** Yeni hesap aç — sonra Luca'ya gönderilebilir. */
+  @Post('account-plan')
+  createAccount(
+    @Req() req: any,
+    @Body() body: { taxpayerId?: string; code?: string; name?: string },
+  ) {
+    return this.service.createAccount(req.user.tenantId, {
+      taxpayerId: body?.taxpayerId || '',
+      code: body?.code || '',
+      name: body?.name || '',
+    });
+  }
+
+  /** Sadece yerelde açılmış (Luca'ya gönderilmemiş) hesapları Luca'ya yükler. */
+  @Post('account-plan/push-to-luca')
+  pushAccountPlanToLuca(
+    @Req() req: any,
+    @Body() body: { taxpayerId?: string },
+  ) {
+    return this.service.pushAccountPlanToLuca(req.user.tenantId, {
+      taxpayerId: body?.taxpayerId || '',
+      createdBy: req.user?.userId || req.user?.sub,
+    });
+  }
+
   @Post('documents/from-earsiv/:faturaId')
   fromEarsiv(@Req() req: any, @Param('faturaId') faturaId: string) {
     return this.service.ensureFromEarsivFatura(req.user.tenantId, faturaId);

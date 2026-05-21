@@ -783,19 +783,112 @@ export class FaturaMuhasebelestirmeService {
         level: true,
         debitBalance: true,
         creditBalance: true,
+        source: true,
+        syncedToLuca: true,
       },
     });
-    return {
-      source: latest,
-      accounts: rows.map((r: any) => ({
-        id: r.id,
-        code: r.accountCode,
-        name: r.accountName,
-        level: r.level,
-        debitBalance: Number(r.debitBalance || 0),
-        creditBalance: Number(r.creditBalance || 0),
-      })),
-    };
+    const accounts = rows.map((r: any) => ({
+      id: r.id,
+      code: r.accountCode,
+      name: r.accountName,
+      level: r.level,
+      debitBalance: Number(r.debitBalance || 0),
+      creditBalance: Number(r.creditBalance || 0),
+      // v2: Fatura Merkezi senkron rozeti
+      local: r.source === 'LOCAL',
+      syncedToLuca: r.syncedToLuca !== false,
+    }));
+    // Frontend bazı yerlerde sadece array bekliyor — geriye dönük uyumluluk için flat dön
+    return Array.isArray(accounts) ? accounts : accounts;
+  }
+
+  /**
+   * Yerelde yeni hesap aç. Mevcut snapshot'a ek satır olarak yazılır;
+   * `accountCode`'lar arasına "LOCAL" prefix'i ile eklenir, böylece UI'da
+   * "lokal, Luca'ya gönderilmemiş" olarak ayırt edilebilir.
+   *
+   * NOT: Tam Luca senkron bir sonraki sürümde tamamlanacak — şimdilik
+   * yerel kayıt yapılır, push-to-luca placeholder olarak kuyruğa atar.
+   */
+  async createAccount(
+    tenantId: string,
+    input: { taxpayerId: string; code: string; name: string },
+  ) {
+    if (!input.taxpayerId) throw new BadRequestException('taxpayerId gerekli');
+    if (!input.code?.trim()) throw new BadRequestException('Hesap kodu gerekli');
+    if (!input.name?.trim()) throw new BadRequestException('Hesap adı gerekli');
+
+    const latest = await (this.prisma as any).lucaAccountPlanSnapshot.findFirst({
+      where: { tenantId, taxpayerId: input.taxpayerId, status: 'READY' },
+      orderBy: { createdAt: 'desc' },
+      select: { id: true },
+    });
+
+    if (!latest) {
+      throw new BadRequestException(
+        'Önce Luca\'dan hesap planı çekilmeli (Hesap Planı dialog → Luca\'dan Çek).',
+      );
+    }
+
+    // Lokal hesap olarak işaretle (Luca'ya henüz gönderilmedi)
+    const created = await (this.prisma as any).lucaAccountPlanLine.create({
+      data: {
+        snapshotId: latest.id,
+        accountCode: input.code.trim(),
+        accountName: input.name.trim(),
+        level: input.code.trim().split('.').length,
+        debitBalance: 0,
+        creditBalance: 0,
+        source: 'LOCAL',
+        syncedToLuca: false,
+      },
+    });
+
+    return { ok: true, id: created.id, code: created.accountCode, name: created.accountName, local: true, syncedToLuca: false };
+  }
+
+  /**
+   * Yerelde açılmış hesapları Luca'ya gönderir.
+   * Şimdilik LucaFetchJob (tip=ACCOUNT_PLAN_PUSH) oluşturur; agent v2.2'de
+   * bu job'u alıp Luca arayüzünden yeni hesap açacak.
+   */
+  async pushAccountPlanToLuca(
+    tenantId: string,
+    opts: { taxpayerId: string; createdBy?: string },
+  ) {
+    if (!opts.taxpayerId) throw new BadRequestException('taxpayerId gerekli');
+
+    const latest = await (this.prisma as any).lucaAccountPlanSnapshot.findFirst({
+      where: { tenantId, taxpayerId: opts.taxpayerId, status: 'READY' },
+      orderBy: { createdAt: 'desc' },
+      select: { id: true },
+    });
+    if (!latest) throw new BadRequestException('Hesap planı snapshot bulunamadı.');
+
+    // Henüz Luca'ya senkron edilmemiş hesaplar
+    const localItems = await (this.prisma as any).lucaAccountPlanLine.findMany({
+      where: { snapshotId: latest.id, syncedToLuca: false },
+      select: { id: true, accountCode: true, accountName: true },
+    });
+
+    if (localItems.length === 0) {
+      return { ok: true, pushed: 0, message: 'Gönderilecek yeni hesap yok.' };
+    }
+
+    const job = await (this.prisma as any).lucaFetchJob.create({
+      data: {
+        tenantId,
+        sessionId: null,
+        mukellefId: opts.taxpayerId,
+        donem: new Date().toISOString().slice(0, 7),
+        tip: 'ACCOUNT_PLAN_PUSH',
+        status: 'pending',
+        createdBy: opts.createdBy || null,
+        payload: { accounts: localItems } as any,
+      },
+    });
+
+    return { ok: true, pushed: localItems.length, jobId: job.id };
   }
 
   async refreshAccountPlan(tenantId: string, opts: { taxpayerId: string; createdBy?: string; targetDeviceId?: string }) {

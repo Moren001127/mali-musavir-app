@@ -2083,6 +2083,10 @@ model LucaAccountPlanLine {
   creditBalance Decimal @default(0) @db.Decimal(14, 2)
   createdAt   DateTime @default(now())
 
+  // v2: Fatura Merkezi hesap planı senkronizasyonu
+  source       String?  // null=Luca'dan geldi, "LOCAL"=yerel olarak eklendi
+  syncedToLuca Boolean  @default(true)
+
   snapshot    LucaAccountPlanSnapshot @relation(fields: [snapshotId], references: [id], onDelete: Cascade)
 
   @@index([snapshotId, accountCode])
