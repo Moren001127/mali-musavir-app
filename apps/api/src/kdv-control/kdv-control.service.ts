@@ -2980,7 +2980,7 @@ export class KdvControlService {
     // düzelttiğinde bu kartı kullanarak eski sonuçları silip yeniden OCR'lamak
     // ister.
     const targetStatuses = forceFresh
-      ? ['PENDING', 'LOW_CONFIDENCE', 'FAILED', 'NEEDS_REVIEW']
+      ? ['PENDING', 'SUCCESS', 'LOW_CONFIDENCE', 'FAILED', 'NEEDS_REVIEW']
       : ['PENDING', 'LOW_CONFIDENCE', 'FAILED'];
     const pending = await this.prisma.receiptImage.findMany({
       where: {
