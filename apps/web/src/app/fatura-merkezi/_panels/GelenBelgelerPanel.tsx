@@ -84,19 +84,19 @@ export default function GelenBelgelerPanel({ taxpayerId, period }: Props) {
 
   return (
     <div className="p-6 max-w-7xl mx-auto">
-      <div className="flex items-end gap-3 mb-5">
-        <div>
-          <div className="text-[22px] font-semibold tracking-tight" style={{ color: 'var(--text)', fontFamily: 'var(--font-heading)' }}>
+      <div className="flex items-end gap-3 mb-5 flex-wrap">
+        <div className="min-w-0">
+          <div className="text-[22px] font-semibold tracking-tight whitespace-nowrap" style={{ color: 'var(--text)', fontFamily: 'var(--font-heading)' }}>
             Gelen Belgeler
           </div>
-          <div className="text-[12.5px] mt-0.5" style={{ color: 'var(--text-muted)' }}>
+          <div className="text-[12.5px] mt-0.5 whitespace-nowrap" style={{ color: 'var(--text-muted)' }}>
             {rows.length} mukellef · Dönem {period}
           </div>
         </div>
 
         <div className="flex-1" />
 
-        <div className="flex items-center gap-2 px-3 py-2 rounded-lg" style={{ background: 'var(--surface)', border: '1px solid var(--border)', minWidth: 280 }}>
+        <div className="flex items-center gap-2 px-3 py-2 rounded-lg flex-shrink-0" style={{ background: 'var(--surface)', border: '1px solid var(--border)', width: 240 }}>
           <Search size={14} style={{ color: 'var(--text-muted)' }} />
           <input
             placeholder="Mukellef ara..."
@@ -110,7 +110,7 @@ export default function GelenBelgelerPanel({ taxpayerId, period }: Props) {
         <select
           value={sortBy}
           onChange={(e) => setSortBy(e.target.value as any)}
-          className="px-3 py-2 rounded-lg text-[12.5px] outline-none"
+          className="px-3 py-2 rounded-lg text-[12.5px] outline-none flex-shrink-0"
           style={{ background: 'var(--surface)', border: '1px solid var(--border)', color: 'var(--text)' }}
         >
           <option value="pending">Bekleyene göre</option>
@@ -121,18 +121,34 @@ export default function GelenBelgelerPanel({ taxpayerId, period }: Props) {
         <button
           onClick={() => earsivBackfillMut.mutate()}
           disabled={earsivBackfillMut.isPending}
-          className="flex items-center gap-1.5 px-3 py-2 text-[12.5px] font-medium rounded-lg transition-colors"
+          className="flex items-center gap-1.5 px-3 py-2 text-[12.5px] font-medium rounded-lg transition-colors whitespace-nowrap flex-shrink-0"
           style={{ background: '#a78bfa15', border: '1px solid #a78bfa40', color: '#a78bfa' }}
           title="e-Arşiv'den çekilmiş faturaları bu dönem için Gelen Belgeler'e aktarır"
         >
           {earsivBackfillMut.isPending ? <Loader2 size={13} className="animate-spin" /> : <Download size={13} />}
-          e-Arşiv'den İçe Aktar
+          e-Arşiv İçe Aktar
         </button>
       </div>
 
-      {earsivBackfillMut.isSuccess && (
-        <div className="mb-3 p-2.5 rounded-lg text-[12px] flex items-center gap-2" style={{ background: '#10b98115', border: '1px solid #10b98140', color: '#86efac' }}>
-          ✓ {(earsivBackfillMut.data as any)?.data?.imported ?? 'Birkaç'} e-arşiv kaydı Gelen Belgeler'e taşındı. Sayfayı yenile.
+      {earsivBackfillMut.isSuccess && (() => {
+        const r = (earsivBackfillMut.data as any)?.data || {};
+        if (r.scanned === 0) {
+          return (
+            <div className="mb-3 p-2.5 rounded-lg text-[12px] flex items-center gap-2" style={{ background: '#f59e0b15', border: '1px solid #f59e0b40', color: '#fbbf24' }}>
+              Bu dönem için e-Arşiv kaydı bulunamadı. Önce e-Arşiv modülünden faturaları çekmen lazım.
+            </div>
+          );
+        }
+        return (
+          <div className="mb-3 p-2.5 rounded-lg text-[12px] flex items-center gap-2" style={{ background: '#10b98115', border: '1px solid #10b98140', color: '#86efac' }}>
+            ✓ {r.scanned} e-arşiv tarandı · {r.created || 0} yeni belge · {r.alreadyQueued || 0} zaten vardı{r.failed ? ` · ${r.failed} hata` : ''}
+          </div>
+        );
+      })()}
+
+      {earsivBackfillMut.error && (
+        <div className="mb-3 p-2.5 rounded-lg text-[12px]" style={{ background: '#ef444415', border: '1px solid #ef444440', color: '#fca5a5' }}>
+          {(earsivBackfillMut.error as any)?.response?.data?.message || 'Backfill hatası'}
         </div>
       )}
 
