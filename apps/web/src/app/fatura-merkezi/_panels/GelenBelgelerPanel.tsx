@@ -157,9 +157,31 @@ export default function GelenBelgelerPanel({ taxpayerId, period }: Props) {
             </div>
           );
         }
+        const errorsList: Array<{ id: string; message: string }> = Array.isArray(r.errors) ? r.errors : [];
+        const isMostlyFailing = r.failed && r.failed >= r.scanned * 0.5;
         return (
-          <div className="mb-3 p-2.5 rounded-lg text-[12px] flex items-center gap-2" style={{ background: '#10b98115', border: '1px solid #10b98140', color: '#86efac' }}>
-            ✓ {r.scanned} e-arşiv tarandı · {r.created || 0} yeni belge · {r.alreadyQueued || 0} zaten vardı{r.failed ? ` · ${r.failed} hata` : ''}
+          <div className="mb-3 p-2.5 rounded-lg text-[12px]" style={{
+            background: isMostlyFailing ? '#ef444415' : '#10b98115',
+            border: `1px solid ${isMostlyFailing ? '#ef444440' : '#10b98140'}`,
+            color: isMostlyFailing ? '#fca5a5' : '#86efac',
+          }}>
+            <div>
+              {isMostlyFailing ? '⚠' : '✓'} {r.scanned} e-arşiv tarandı · {r.created || 0} yeni belge · {r.alreadyQueued || 0} zaten vardı{r.failed ? ` · ${r.failed} hata` : ''}
+            </div>
+            {errorsList.length > 0 && (
+              <details className="mt-2">
+                <summary className="cursor-pointer text-[11px] underline" style={{ color: '#fca5a5' }}>
+                  Hata detayları (ilk {errorsList.length})
+                </summary>
+                <ul className="mt-1 ml-3 space-y-0.5 text-[10.5px] font-mono" style={{ color: 'var(--text-secondary)' }}>
+                  {errorsList.map((e, idx) => (
+                    <li key={idx} className="break-all">
+                      <span style={{ color: 'var(--text-light)' }}>{e.id?.slice(0, 8) || '?'}</span>: {e.message}
+                    </li>
+                  ))}
+                </ul>
+              </details>
+            )}
           </div>
         );
       })()}
