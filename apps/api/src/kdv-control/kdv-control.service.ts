@@ -2511,6 +2511,31 @@ export class KdvControlService {
     }
 
     const uyarilar: Array<{ tip: string; mesaj: string }> = [];
+    const parseZNo = (no: string | null | undefined): number | null => {
+      const raw = String(no || '').trim().toUpperCase();
+      if (!raw || /[A-Z]/.test(raw)) return null;
+      const digits = raw.replace(/\D/g, '');
+      if (!digits || digits.length > 8) return null;
+      const num = parseInt(digits, 10);
+      return Number.isFinite(num) && num > 0 ? num : null;
+    };
+
+    const collectZNumbers = async (targetSessionId: string): Promise<number[]> => {
+      const zImages = await this.prisma.receiptImage.findMany({
+        where: {
+          sessionId: targetSessionId,
+          ocrBelgeTipi: 'Z_RAPORU',
+          OR: [
+            { confirmedBelgeNo: { not: null } },
+            { ocrBelgeNo: { not: null } },
+          ],
+        },
+        select: { confirmedBelgeNo: true, ocrBelgeNo: true },
+      });
+      return zImages
+        .map((img) => parseZNo(img.confirmedBelgeNo || img.ocrBelgeNo))
+        .filter((num): num is number => num !== null);
+    };
 
     // Bu oturum içi gap kontrolü
     for (const [prefix, entries] of Object.entries(grouped)) {
@@ -2534,7 +2559,46 @@ export class KdvControlService {
       }
     }
 
-    // Cross-month: önceki dönem son belge no
+    // Z raporu sıra takibi: sadece OCR'ın Z_RAPORU diye etiketlediği satış belgeleri.
+    const zNumbers = await collectZNumbers(sessionId);
+    if (zNumbers.length > 0) {
+      const duplicateMap = zNumbers.reduce((acc, num) => {
+        acc[num] = (acc[num] || 0) + 1;
+        return acc;
+      }, {} as Record<number, number>);
+      const duplicateNos = Object.entries(duplicateMap)
+        .filter(([, count]) => count > 1)
+        .map(([num]) => Number(num))
+        .sort((a, b) => a - b);
+      if (duplicateNos.length > 0) {
+        const duplicateStr = duplicateNos.slice(0, 10).map((n) => `Z No ${n}`).join(', ');
+        const fazla = duplicateNos.length > 10 ? ` (+${duplicateNos.length - 10} tane daha)` : '';
+        uyarilar.push({
+          tip: 'z_duplicate',
+          mesaj: `Z raporu sıra takibinde aynı Z No birden fazla kez göründü: ${duplicateStr}${fazla}`,
+        });
+      }
+
+      const sortedZ = [...new Set(zNumbers)].sort((a, b) => a - b);
+      if (sortedZ.length >= 2) {
+        const eksikler: number[] = [];
+        for (let i = 1; i < sortedZ.length; i++) {
+          for (let n = sortedZ[i - 1] + 1; n < sortedZ[i]; n++) {
+            eksikler.push(n);
+          }
+        }
+        if (eksikler.length > 0) {
+          const eksikStr = eksikler.slice(0, 20).map((n) => `Z No ${n}`).join(', ');
+          const fazla = eksikler.length > 20 ? ` (+${eksikler.length - 20} tane daha)` : '';
+          uyarilar.push({
+            tip: 'z_gap',
+            mesaj: `Z raporu sıra takibinde ${eksikler.length} eksik numara tespit edildi: ${eksikStr}${fazla}`,
+          });
+        }
+      }
+    }
+
+    // Cross-month: önceki dönem son belge no / Z no
     if (session.taxpayerId && session.periodLabel) {
       const [yilStr, ayStr] = session.periodLabel.split(/[/-]/);
       const yil = parseInt(yilStr, 10);
@@ -2586,6 +2650,18 @@ export class KdvControlService {
               uyarilar.push({
                 tip: 'cross_break',
                 mesaj: `Önceki dönem (${oncekiSession.periodLabel}) son belge ${prefix}${String(onceki.num).padStart(padLen, '0')} → bu dönem ilk belge ${prefix}${String(buAyIlk).padStart(padLen, '0')}. Aralarda ${eksikSayi} belge no atlanmış.`,
+              });
+            }
+          }
+
+          const oncekiZNumbers = await collectZNumbers(oncekiSession.id);
+          if (oncekiZNumbers.length > 0 && zNumbers.length > 0) {
+            const oncekiSonZ = Math.max(...oncekiZNumbers);
+            const buDonemIlkZ = Math.min(...zNumbers);
+            if (buDonemIlkZ > oncekiSonZ + 1) {
+              uyarilar.push({
+                tip: 'z_cross_break',
+                mesaj: `Önceki dönem (${oncekiSession.periodLabel}) son Z No ${oncekiSonZ} → bu dönem ilk Z No ${buDonemIlkZ}. Aralarda ${buDonemIlkZ - oncekiSonZ - 1} Z raporu atlanmış.`,
               });
             }
           }

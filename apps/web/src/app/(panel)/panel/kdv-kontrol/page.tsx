@@ -1360,18 +1360,18 @@ export default function KdvKontrolPage() {
                 key={idx}
                 className="flex items-start gap-2.5 px-3.5 py-2.5 rounded-lg"
                 style={{
-                  background: u.tip === 'cross_break' ? 'rgba(244,63,94,0.08)' : 'rgba(245,158,11,0.08)',
-                  border: `1px solid ${u.tip === 'cross_break' ? 'rgba(244,63,94,0.20)' : 'rgba(245,158,11,0.18)'}`,
+                  background: (u.tip === 'cross_break' || u.tip === 'z_cross_break' || u.tip === 'z_duplicate') ? 'rgba(244,63,94,0.08)' : 'rgba(245,158,11,0.08)',
+                  border: `1px solid ${(u.tip === 'cross_break' || u.tip === 'z_cross_break' || u.tip === 'z_duplicate') ? 'rgba(244,63,94,0.20)' : 'rgba(245,158,11,0.18)'}`,
                 }}
               >
                 <span
                   className="text-[10.5px] font-bold uppercase tracking-wider px-2 py-0.5 rounded shrink-0 mt-[1px]"
                   style={{
-                    background: u.tip === 'cross_break' ? 'rgba(244,63,94,0.18)' : 'rgba(245,158,11,0.18)',
-                    color: u.tip === 'cross_break' ? '#f43f5e' : '#f59e0b',
+                    background: (u.tip === 'cross_break' || u.tip === 'z_cross_break' || u.tip === 'z_duplicate') ? 'rgba(244,63,94,0.18)' : 'rgba(245,158,11,0.18)',
+                    color: (u.tip === 'cross_break' || u.tip === 'z_cross_break' || u.tip === 'z_duplicate') ? '#f43f5e' : '#f59e0b',
                   }}
                 >
-                  {u.tip === 'cross_break' ? 'Dönem Geçişi' : 'Seri Boşluğu'}
+                  {u.tip === 'z_gap' ? 'Z No Boşluğu' : u.tip === 'z_cross_break' ? 'Z Dönem Geçişi' : u.tip === 'z_duplicate' ? 'Tekrarlı Z No' : u.tip === 'cross_break' ? 'Dönem Geçişi' : 'Seri Boşluğu'}
                 </span>
                 <p className="text-[12.5px] leading-relaxed" style={{ color: '#fafaf9' }}>
                   {u.mesaj}
@@ -1379,7 +1379,7 @@ export default function KdvKontrolPage() {
               </div>
             ))}
             <p className="text-[11px] mt-3 leading-relaxed" style={{ color: 'rgba(250,250,249,0.5)' }}>
-              Bu uyarılar yalnızca <strong style={{ color: '#fafaf9' }}>satış faturaları</strong> (KDV 391 / İşletme Geliri) için yapılan seri takibinden gelir. Atlanan belge no'lar iptal edilmiş, kayıt dışı kalmış veya başka bir döneme yazılmış olabilir.
+              Bu uyarılar yalnızca <strong style={{ color: '#fafaf9' }}>satış kontrollerinde</strong> (KDV 391 / İşletme Geliri) e-belge seri numarası ve Z raporu sıra takibinden gelir. Atlanan belge no'lar iptal edilmiş, kayıt dışı kalmış veya başka bir döneme yazılmış olabilir.
             </p>
           </div>
         </div>
