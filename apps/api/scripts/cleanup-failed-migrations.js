@@ -196,6 +196,14 @@ CREATE INDEX IF NOT EXISTS "luca_fetch_jobs_tenantId_targetDeviceId_status_idx"
     // PATCH: belgeKaynak + Mihsap kolonları yoksa ekle (idempotent ALTER)
     // Her statement'ı ayrı çalıştır — biri patlasa diğeri çalışsın.
     const patches = [
+      // v2.1 — Çoklu KDV oranı detayı (UBL TaxSubtotal)
+      `ALTER TABLE "earsiv_faturalar" ADD COLUMN IF NOT EXISTS "kdvBreakdown" JSONB;`,
+      // v2.1 — Belge validation field'ları (üçlü eşitlik + sahiplik kontrolü)
+      `ALTER TABLE "invoice_accounting_documents" ADD COLUMN IF NOT EXISTS "validationStatus"    TEXT;`,
+      `ALTER TABLE "invoice_accounting_documents" ADD COLUMN IF NOT EXISTS "validationIssues"    JSONB;`,
+      `ALTER TABLE "invoice_accounting_documents" ADD COLUMN IF NOT EXISTS "validationCheckedAt" TIMESTAMP(3);`,
+      `CREATE INDEX IF NOT EXISTS "invoice_accounting_documents_tenantId_validationStatus_idx" ON "invoice_accounting_documents"("tenantId", "validationStatus");`,
+
       `DO $$ BEGIN CREATE TYPE "BelgeKaynak" AS ENUM ('EFATURA', 'EARSIV'); EXCEPTION WHEN duplicate_object THEN NULL; END $$;`,
       `ALTER TABLE "earsiv_faturalar" ADD COLUMN IF NOT EXISTS "belgeKaynak" "BelgeKaynak" NOT NULL DEFAULT 'EARSIV';`,
       `ALTER TABLE "earsiv_faturalar" ADD COLUMN IF NOT EXISTS "mihsapUploadedAt"   TIMESTAMP(3);`,
