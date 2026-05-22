@@ -1335,7 +1335,7 @@
           // ISLETME_GELIR/GIDER → İşletme defteri ekranı
           const tipLabel = {
             MIZAN: 'Mizan ekranı (Genel Raporlar > Mizan)',
-            ACCOUNT_PLAN: 'Hesap planı güncelleme için Mizan ekranı',
+            ACCOUNT_PLAN: 'Genel Raporlar > Hesap Plani Listesi',
             KDV_MIZAN: 'KDV Beyanname için Mizan ekranı',
             EDEFTER_FIS_LISTESI: 'e-Defter On Kontrol icin Detay Fis Listesi ekrani',
             KDV_191: 'Defteri Kebir (Tüm Yazıcılar) — 191 hesap kodu',
@@ -1603,8 +1603,11 @@
   async function fetchLucaJobExcel(job, log = (() => {}), throwIfCancelled = async () => {}) {
     // MIZAN ve KDV_MIZAN aynı Luca ekranını kullanır (Mizan ekranı, tüm hesaplar)
     // Sadece backend'de farklı tabloya yazılır (Mizan vs KdvLucaSnapshot)
-    if (job.tip === 'MIZAN' || job.tip === 'ACCOUNT_PLAN' || job.tip === 'KDV_MIZAN') {
+    if (job.tip === 'MIZAN' || job.tip === 'KDV_MIZAN') {
       return await fetchLucaMizanExcel(job, log);
+    }
+    if (job.tip === 'ACCOUNT_PLAN') {
+      return await fetchLucaAccountPlanExcel(job, log);
     }
     if (job.tip === 'EDEFTER_FIS_LISTESI') {
       return await fetchLucaDetayFisListesiExcel(job, log);
@@ -5397,8 +5400,9 @@
    * Form'daki TARIH_ILK / TARIH_SON'u job.donem'a göre doldur (Mizan'la aynı format).
    */
   async function fillLucaTarih(form, job, log) {
-    const tarih = donemToTarihAraligi(job.donem, job.donemTipi);
-    if (!tarih) throw new Error(`Tarih hesaplanamadı: ${job.donem}`);
+    const skipDates = options.skipDates === true;
+    const tarih = skipDates ? null : donemToTarihAraligi(job.donem, job.donemTipi);
+    if (!skipDates && !tarih) throw new Error(`Tarih hesaplanamadı: ${job.donem}`);
     let tarihIlk = getCachedLucaFormField(form, 'tarihIlk') ||
       form.querySelector('input[name="TARIH_ILK"], input[id="TARIH_ILK"], input[name="tarih_ilk"], input[name="tarih_bas"], input[id="tarih_bas"], input[name*="tarih" i][name*="bas" i], input[name*="tarih" i][name*="ilk" i], input[id*="tarih" i][id*="ilk" i], input[name*="tar" i][name*="ilk" i], input[id*="tar" i][id*="ilk" i]');
     let tarihSon = getCachedLucaFormField(form, 'tarihSon') ||
@@ -8054,6 +8058,112 @@
     await log('✓ İşletme Gider Listesi hazır, Gelir/Gider Listesi sağ menüsü görünür');
   }
 
+  async function openLucaAccountPlanListesi(log) {
+    try {
+      const f3 = getLucaFrame('frm3');
+      if (f3) {
+        f3.src = 'about:blank';
+        await sleep(650);
+        await log('Hesap Plani Listesi icin frm3 temizlendi; eski rapor formu kabul edilmeyecek');
+      }
+    } catch {}
+
+    const labels = ['Hesap Plani Listesi'];
+    cacheVisibleLucaMenuIds();
+    for (const label of labels) {
+      if (await openCachedLucaMenu(label, log, 1000)) {
+        const ready = await waitUntil(() => findLucaAccountPlanListesiFormNow(), 7000, 250);
+        if (ready) {
+          await log('Hesap Plani Listesi ID cache ile acildi ve form dogrulandi');
+          return;
+        }
+        deleteCachedLucaMenuHit(label);
+        await log(`${label} cache ID hedef formu acmadi; metinle yeniden denenecek`);
+      }
+    }
+
+    await log('Sag menude Hesap Plani Listesi linki araniyor...');
+    const found = await findLucaMenuItemAny(labels, log, 7000);
+    if (!found) {
+      throw new Error(
+        'Luca Hesap Plani Listesi linki bulunamadi. Muhasebe > Fis Islemleri > Fis Listesi sayfasinda, Genel Raporlar bolumunde olmaliyiz.',
+      );
+    }
+    await log(`Hesap Plani Listesi tiklaniyor (${found.frameName} -> ${found.el.tagName})`);
+    await activateLucaMenuItem(found.foundLabel || 'Hesap Plani Listesi', found, log, 1000);
+    const ready = await waitUntil(() => findLucaAccountPlanListesiFormNow(), 12000, 250);
+    if (ready) return;
+    throw new Error(`Hesap Plani Listesi tiklandi ama form yuklenmedi. Mevcut form'lar: ${collectLucaFormsBrief().join(' | ') || '(yok)'}`);
+  }
+
+  function findLucaAccountPlanListesiFormNow() {
+    const collectFrames = (root, depth = 0, acc = []) => {
+      if (depth > 5) return acc;
+      try {
+        for (const f of root.querySelectorAll('frame, iframe')) {
+          acc.push(f);
+          if (f.contentDocument) collectFrames(f.contentDocument, depth + 1, acc);
+        }
+      } catch {}
+      return acc;
+    };
+    const looksLikeAccountPlan = (form) => {
+      const docText = normalizeLucaMenuText(form.ownerDocument?.body?.textContent || '');
+      const formText = normalizeLucaMenuText(`${form.name || ''} ${form.id || ''} ${form.action || ''}`);
+      const text = `${docText} ${formText}`;
+      const hasTitle = /hesap plani listesi|hesap plani/.test(text);
+      const isWrongReport = /mizan|detay fis listesi|ozet fis listesi|isletme/.test(formText);
+      const selectText = [...form.querySelectorAll('select')]
+        .flatMap((sel) => [...sel.options].map((opt) => `${opt.text || ''} ${opt.value || ''}`))
+        .join(' ')
+        .toLocaleLowerCase('tr-TR');
+      const hasExcelChoice = /excel|xlsx|xls/.test(selectText);
+      const hasControls = form.querySelectorAll('input, select, button').length > 0;
+      return hasTitle && hasControls && hasExcelChoice && !isWrongReport;
+    };
+    for (const f of collectFrames(document)) {
+      if (!f.contentDocument) continue;
+      try {
+        for (const form of f.contentDocument.querySelectorAll('form')) {
+          if (looksLikeAccountPlan(form)) return form;
+        }
+      } catch {}
+    }
+    return null;
+  }
+
+  async function waitForLucaAccountPlanListesiForm(log, maxMs = 15000) {
+    await log('Hesap Plani Listesi formu bekleniyor...');
+    const form = await waitUntil(() => findLucaAccountPlanListesiFormNow(), maxMs, 250);
+    if (!form) {
+      await log(`Bulunan form'lar: ${collectLucaFormsBrief().join(' | ') || '(hic yok)'}`);
+      throw new Error('Hesap Plani Listesi formu yuklenmedi (timeout)');
+    }
+    await log(`Hesap Plani Listesi formu yuklendi: name="${form.name || '?'}" action="${(form.action || '').split('/').pop()}"`);
+    return form;
+  }
+
+  async function fetchLucaAccountPlanExcel(job, log) {
+    if (location.hostname.includes('agiris.luca') || location.pathname.includes('LUCASSO')) {
+      throw new Error(
+        'Bu Luca v2.1 (LUCASSO) surumu. Lutfen klasik Luca icinde calisin: auygs.luca.com.tr/Luca/luca.do',
+      );
+    }
+
+    const firmaResult = await ensureLucaFirma(job, log);
+    await navigateToFisListesi(log);
+    if (firmaResult?.changed) {
+      await log('Firma degisti - Hesap Plani Listesi formu taze acilacak');
+    }
+    await openLucaAccountPlanListesi(log);
+    const form = await waitForLucaAccountPlanListesiForm(log);
+    await preferExcelReportType(form, log, 'Hesap Plani Listesi');
+    return await fetchMizanByClickIntercept(form, job, log, {
+      label: 'Hesap Plani Listesi',
+      skipDates: true,
+    });
+  }
+
   async function openLucaDetayFisListesi(log) {
     try {
       const f3 = getLucaFrame('frm3');
@@ -8652,10 +8762,10 @@
       } catch (e) {}
     };
 
-    const tarihIlk = form.querySelector('input[name="TARIH_ILK"], input[id="TARIH_ILK"], input[name="tarih_ilk"]');
-    const tarihSon = form.querySelector('input[name="TARIH_SON"], input[id="TARIH_SON"], input[name="tarih_son"]');
-    const slashBas = tarih.bas.replace(/\./g, '/');
-    const slashBit = tarih.bit.replace(/\./g, '/');
+    const tarihIlk = skipDates ? null : form.querySelector('input[name="TARIH_ILK"], input[id="TARIH_ILK"], input[name="tarih_ilk"]');
+    const tarihSon = skipDates ? null : form.querySelector('input[name="TARIH_SON"], input[id="TARIH_SON"], input[name="tarih_son"]');
+    const slashBas = tarih ? tarih.bas.replace(/\./g, '/') : '';
+    const slashBit = tarih ? tarih.bit.replace(/\./g, '/') : '';
     const mizanStartKeys = [
       'tarih_ilk', 'tarihIlk', 'TARIH_ILK', 'tarih_bas', 'tarihBas',
       'baslangic', 'basTarih', 'ilkTarih', 'donem_bas', 'cari_donem_bas',
@@ -8667,6 +8777,7 @@
       'fis_tarihi_son', 'p_fis_tarihi_son_1', 'bitisFisTarihi', 'BITIS_FIS_TARIHI',
     ];
     const setAllMizanDateKeys = (target) => {
+      if (skipDates) return false;
       if (!target || typeof target !== 'object') return false;
       let changed = false;
       for (const k of mizanStartKeys) {
@@ -8732,7 +8843,7 @@
       return 'xlsx';
     };
     const applyExcelReportParams = (params) => {
-      if (!params || typeof params.set !== 'function' || !options.raporTur) return false;
+      if (!params || typeof params.set !== 'function') return false;
       const reportOption = getExcelReportOption();
       let changed = false;
       const setParam = (key, value) => {
@@ -8743,7 +8854,7 @@
           changed = true;
         }
       };
-      if (!params.has('raporTur')) {
+      if (options.raporTur && !params.has('raporTur')) {
         params.set('raporTur', options.raporTur);
         changed = true;
       }
@@ -8753,15 +8864,15 @@
       return changed;
     };
     const forceNestedExcelReportFields = (target, depth = 0) => {
-      if (!options.raporTur || !target || typeof target !== 'object' || depth > 5) return false;
+      if (!target || typeof target !== 'object' || depth > 5) return false;
       let changed = false;
       const reportOption = getExcelReportOption();
       const isRoot = depth === 0;
-      if (isRoot && (!target.params || typeof target.params !== 'object')) {
+      if (isRoot && options.raporTur && (!target.params || typeof target.params !== 'object')) {
         target.params = {};
         changed = true;
       }
-      if (isRoot && target.params.raporTur !== options.raporTur) {
+      if (isRoot && options.raporTur && target.params.raporTur !== options.raporTur) {
         target.params.raporTur = options.raporTur;
         changed = true;
       }
@@ -8771,7 +8882,7 @@
           target[key] = value;
           changed = true;
         }
-        if (isRoot && target.params[key] !== value) {
+        if (isRoot && target.params && target.params[key] !== value) {
           target.params[key] = value;
           changed = true;
         }
@@ -8847,8 +8958,10 @@
           }
           if (trimmed.includes('=')) {
             const params = new URLSearchParams(trimmed);
-            for (const k of mizanStartKeys) params.set(k, slashBas);
-            for (const k of mizanEndKeys) params.set(k, slashBit);
+            if (!skipDates) {
+              for (const k of mizanStartKeys) params.set(k, slashBas);
+              for (const k of mizanEndKeys) params.set(k, slashBit);
+            }
             const changedReportParams = applyExcelReportParams(params);
             for (const [key, val] of Array.from(params.entries())) {
               const s = String(val || '').trim();
@@ -8865,8 +8978,10 @@
           }
         }
         if (body && typeof body.set === 'function' && typeof body.entries === 'function') {
-          for (const k of mizanStartKeys) body.set(k, slashBas);
-          for (const k of mizanEndKeys) body.set(k, slashBit);
+          if (!skipDates) {
+            for (const k of mizanStartKeys) body.set(k, slashBas);
+            for (const k of mizanEndKeys) body.set(k, slashBit);
+          }
           applyExcelReportParams(body);
           for (const [key, val] of Array.from(body.entries())) {
             if (typeof val !== 'string') continue;
@@ -8879,7 +8994,7 @@
               if (changedDates || changedReport) body.set(key, JSON.stringify(parsed));
             } catch {}
           }
-          return { body, changed: true, preview: '[FormData/URLSearchParams tarih zorlandi]' };
+          return { body, changed: true, preview: skipDates ? '[FormData/URLSearchParams Excel zorlandi]' : '[FormData/URLSearchParams tarih zorlandi]' };
         }
       } catch (e) {
         return { body, changed: false, preview: `tarih body parse hata: ${e?.message || e}` };
@@ -8891,7 +9006,7 @@
       };
     };
 
-    if (tarihIlk && tarihSon) {
+    if (!skipDates && tarihIlk && tarihSon) {
       // Luca slash formatı kullanıyor (network'ten görüldü: "01/03/2026")
 
       // Set + 5 kez deneme — Luca async olarak silebilir
@@ -8922,7 +9037,7 @@
       await log(`📅 Tarih: ${tarihIlk.value || '∅'} → ${tarihSon.value || '∅'} (set ${setOk ? 'OK' : 'FAIL'})`);
     }
 
-    const dateLikeInputs = [...form.querySelectorAll('input')]
+    const dateLikeInputs = skipDates ? [] : [...form.querySelectorAll('input')]
       .filter((inp) => /tarih|date|tar/i.test(`${inp.name || ''} ${inp.id || ''}`));
     let dateLikeChanged = 0;
     for (const inp of dateLikeInputs) {
@@ -8943,8 +9058,8 @@
         .slice(0, 12)
         .join(' | ');
       await log(`🧷 Mizan tarih ID kontrolü (${dateLikeChanged}/${dateLikeInputs.length} set): ${state}`);
-      await preferExcelReportType(form, log, options.label || 'Mizan');
     }
+    await preferExcelReportType(form, log, options.label || 'Mizan');
     if (options.raporTur) {
       await setRaporTuruExcel(form, log);
     }
@@ -9015,7 +9130,7 @@
     };
 
     const forceExcelJsonPayload = (value) => {
-      if (!options.raporTur || typeof value !== 'string') return value;
+      if (typeof value !== 'string') return value;
       const trimmed = value.trim();
       if (!trimmed.startsWith('{')) return value;
       try {
@@ -9109,6 +9224,10 @@
     await log('🔔 Background\'a "download bekliyorum" sinyali gönderildi');
     restoreFns.push(() => postExpecting(false));
 
+    const forcedBodyLabel = skipDates
+      ? `${options.label || 'Rapor'} Excel zorlandi`
+      : `Excel/tarih zorlandi: ${slashBas}->${slashBit}`;
+
     const installFetchOverride = (win, label) => {
       if (!win.fetch) return;
       const orig = win.fetch;
@@ -9124,7 +9243,7 @@
           jasperUrl = url;
           if (fixed.changed || nextBody !== init.body) {
             args = [input, { ...init, body: nextBody }];
-            log(`🧷 jasper.jq fetch Excel/tarih zorlandi: ${slashBas}→${slashBit}; body=${String(nextBody).slice(0, 420)}`).catch(() => {});
+            log(`🧷 jasper.jq fetch ${forcedBodyLabel}; body=${String(nextBody).slice(0, 420)}`).catch(() => {});
           }
         }
         // PASIF: Luca akışını engelleme, sadece izle. Background script
@@ -9156,9 +9275,11 @@
           jasperBody = String(sendBody || '');
           jasperUrl = url;
           if (fixed.changed || sendBody !== body) {
-            log(`🧷 jasper.jq XHR Excel/tarih zorlandi: ${slashBas}→${slashBit}; body=${String(sendBody).slice(0, 420)}`).catch(() => {});
+            log(`🧷 jasper.jq XHR ${forcedBodyLabel}; body=${String(sendBody).slice(0, 420)}`).catch(() => {});
           } else {
-            log(`🧷 jasper.jq XHR tarih kontrolü: beklenen ${slashBas}→${slashBit}; body=${fixed.preview}`).catch(() => {});
+            log(skipDates
+              ? `🧷 jasper.jq XHR Excel kontrolu: body=${fixed.preview}`
+              : `🧷 jasper.jq XHR tarih kontrolü: beklenen ${slashBas}→${slashBit}; body=${fixed.preview}`).catch(() => {});
           }
         }
         this._capturedBody = sendBody;

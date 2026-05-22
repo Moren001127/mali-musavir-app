@@ -44,14 +44,14 @@ import { TaxpayerPortalCredentialsCard } from '@/components/portal-automation/Po
 
 const GOLD = '#d4b876';
 const GOLD_DEEP = '#8b7649';
-const LINE = 'rgba(255,255,255,0.10)';
-const LINE_GOLD = 'rgba(212,184,118,0.28)';
+const LINE = 'rgba(255,255,255,0.12)';
+const LINE_GOLD = 'rgba(212,184,118,0.32)';
 const TEXT = '#fafaf9';
-const MUTED = 'rgba(250,250,249,0.62)';
-const SOFT = 'rgba(255,255,255,0.055)';
-// Tema arka plan tonları — eskisinden biraz açık (siyah yerine koyu gri-kahve)
-const PANEL = '#1c1814';
-const PANEL_LIGHT = '#241f19';
+const MUTED = 'rgba(250,250,249,0.68)';
+const SOFT = 'rgba(255,255,255,0.05)';
+// Tema arka plan tonları — sıcak kahve-gri, ferah his
+const PANEL = '#2a241c';
+const PANEL_LIGHT = '#352e23';
 
 const TAXPAYER_TYPES = [
   { value: 'TUZEL_KISI', label: 'Tüzel Kişi', detail: 'Şirket veya kurum kaydı' },
@@ -369,7 +369,7 @@ export default function MukellefDetayPage() {
   }
 
   return (
-    <form onSubmit={handleSubmit} className="mx-auto max-w-7xl space-y-4">
+    <form onSubmit={handleSubmit} className="mx-auto max-w-[1400px] space-y-5 px-1">
       {/* ============================================================
           HEADER — Logo + Kimlik + Durum İkonları + Navigasyon
       ============================================================ */}
@@ -498,8 +498,8 @@ export default function MukellefDetayPage() {
       {/* ============================================================
           ANA İÇERİK — TAB + ASIDE
       ============================================================ */}
-      <div className="grid gap-4 xl:grid-cols-[minmax(0,1fr)_360px]">
-        <main className="space-y-4">
+      <div className="grid gap-5 xl:grid-cols-[minmax(0,1fr)_400px]">
+        <main className="space-y-5">
           {/* TAB NAVIGATION */}
           <div className="overflow-hidden rounded-xl border" style={{ borderColor: LINE, background: PANEL }}>
             <div className="flex overflow-x-auto border-b" style={{ borderColor: LINE }}>
@@ -517,7 +517,7 @@ export default function MukellefDetayPage() {
                         setActiveTab(t.key);
                       }
                     }}
-                    className="flex shrink-0 items-center gap-2 whitespace-nowrap px-4 py-3 text-[13px] font-semibold transition"
+                    className="flex shrink-0 items-center gap-2 whitespace-nowrap px-5 py-3.5 text-[13.5px] font-semibold transition"
                     style={{
                       color: active ? GOLD : MUTED,
                       borderBottom: `2px solid ${active ? GOLD : 'transparent'}`,
@@ -532,7 +532,7 @@ export default function MukellefDetayPage() {
             </div>
 
             {/* TAB CONTENT */}
-            <div className="p-5">
+            <div className="p-6">
               {activeTab === 'bilgiler' && (
                 <BilgilerTab form={form} setForm={setForm} taxpayerId={isNew ? null : id} />
               )}
@@ -561,7 +561,7 @@ export default function MukellefDetayPage() {
         </main>
 
         {/* SAĞ ASIDE */}
-        <aside className="space-y-4">
+        <aside className="space-y-5">
           {!isNew && id ? (
             <>
               <TaxpayerStatsCard taxpayerId={id} />
@@ -623,7 +623,7 @@ function BilgilerTab({
   const [openSection, setOpenSection] = useState<string>('musteri');
 
   return (
-    <div className="space-y-3">
+    <div className="space-y-4">
       <AccordionPanel
         id="musteri"
         title="Müşteri / Şirket Bilgileri"
@@ -1192,25 +1192,25 @@ function AccordionPanel({
   children: React.ReactNode;
 }) {
   return (
-    <div className="overflow-hidden rounded-lg border" style={{ borderColor: LINE }}>
+    <div className="overflow-hidden rounded-xl border transition" style={{ borderColor: open ? 'rgba(212,184,118,0.35)' : LINE, background: open ? 'rgba(53,46,35,0.55)' : 'rgba(42,36,28,0.55)' }}>
       <button
         type="button"
         onClick={() => onToggle(id)}
-        className="flex w-full items-center justify-between px-4 py-3 text-left transition hover:bg-white/[0.04]"
-        style={{ background: open ? 'rgba(212,184,118,0.06)' : SOFT, borderBottom: open ? `1px solid ${LINE}` : 'none' }}
+        className="flex w-full items-center justify-between px-5 py-4 text-left transition hover:bg-white/[0.04]"
+        style={{ borderBottom: open ? `1px solid ${LINE}` : 'none' }}
       >
-        <div className="flex items-center gap-3">
-          <div className="flex h-8 w-8 items-center justify-center rounded-lg border" style={{ borderColor: LINE_GOLD, background: 'rgba(212,184,118,0.10)', color: GOLD }}>
-            <Icon size={15} />
+        <div className="flex items-center gap-3.5">
+          <div className="flex h-10 w-10 items-center justify-center rounded-lg border" style={{ borderColor: LINE_GOLD, background: 'rgba(212,184,118,0.14)', color: GOLD }}>
+            <Icon size={17} />
           </div>
           <div>
-            <div className="text-[13.5px] font-semibold" style={{ color: TEXT }}>{title}</div>
-            {subtitle && <div className="text-[11.5px]" style={{ color: MUTED }}>{subtitle}</div>}
+            <div className="text-[14.5px] font-semibold" style={{ color: TEXT }}>{title}</div>
+            {subtitle && <div className="mt-0.5 text-[12px]" style={{ color: MUTED }}>{subtitle}</div>}
           </div>
         </div>
-        <ChevronDown size={16} style={{ color: MUTED, transform: open ? 'rotate(180deg)' : 'rotate(0)', transition: 'transform 0.15s' }} />
+        <ChevronDown size={18} style={{ color: MUTED, transform: open ? 'rotate(180deg)' : 'rotate(0)', transition: 'transform 0.2s' }} />
       </button>
-      {open && <div className="p-4">{children}</div>}
+      {open && <div className="p-5">{children}</div>}
     </div>
   );
 }
