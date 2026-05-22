@@ -196,6 +196,28 @@
 
 html { -webkit-font-smoothing: antialiased; text-rendering: optimizeLegibility; }
 
+@media (max-width: 1023px) {
+  html,
+  body {
+    width: 100%;
+    max-width: 100%;
+    overflow-x: hidden;
+  }
+
+  [data-panel-shell],
+  [data-panel-content],
+  [data-panel-main] {
+    width: 100%;
+    min-width: 0;
+    max-width: 100%;
+  }
+
+  .mobile-dashboard-home,
+  .mobile-dashboard-home * {
+    min-width: 0;
+  }
+}
+
 body {
   background: var(--bg);
   color: var(--text);

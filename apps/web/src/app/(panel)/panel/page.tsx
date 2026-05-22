@@ -1,7 +1,35 @@
 'use client';
 import { useQuery } from '@tanstack/react-query';
 import { api } from '@/lib/api';
-import { Users, FileText, AlertTriangle, ArrowRight, Receipt, FileCheck, Plus, Bot, FileInput, CheckCircle2, X as IconX, Download, FileCheck2, Search as SearchIcon, Settings } from 'lucide-react';
+import {
+  Users,
+  FileText,
+  AlertTriangle,
+  ArrowRight,
+  Receipt,
+  FileCheck,
+  Plus,
+  Bot,
+  FileInput,
+  CheckCircle2,
+  X as IconX,
+  Download,
+  FileCheck2,
+  Search as SearchIcon,
+  Settings,
+  BellRing,
+  BrainCircuit,
+  Building2,
+  ClipboardCheck,
+  DatabaseZap,
+  FileScan,
+  Gauge,
+  MessageSquareText,
+  ReceiptText,
+  Settings2,
+  UserRoundSearch,
+  Workflow,
+} from 'lucide-react';
 import { beyannameTakipApi, BEYAN_ETIKETLER, OzetRow, BeyanTipi } from '@/lib/beyanname-takip';
 import Link from 'next/link';
 import { ReactNode, useEffect, useMemo, useState } from 'react';
@@ -723,6 +751,257 @@ function MukellefDonut({ total, segments }: { total: number; segments: { label: 
   );
 }
 
+const MOBILE_COLORS = {
+  ai: '#f09aa8',
+  general: '#d4b876',
+  invoice: '#8fd7bd',
+  tax: '#d8ad70',
+  finance: '#8cbde8',
+  office: '#d9a06c',
+  system: '#9da8b7',
+};
+
+const MOBILE_PRIORITY_MODULES = [
+  { label: 'MOREN AI', sub: 'Moren AI', href: '/panel/moren-ai', icon: BrainCircuit, color: MOBILE_COLORS.ai },
+  { label: 'Gösterge Paneli', sub: 'Genel', href: '/panel', icon: Gauge, color: MOBILE_COLORS.general },
+  { label: 'Mükellef Listesi', sub: 'Genel', href: '/panel/mukellefler', icon: UserRoundSearch, color: MOBILE_COLORS.general },
+  { label: 'İş Akışı', sub: 'Genel', href: '/panel/is-yuku', icon: Workflow, color: MOBILE_COLORS.general },
+  { label: 'Görevler & Notlar', sub: 'Genel', href: '/panel/gorevler', icon: ClipboardCheck, color: MOBILE_COLORS.general },
+  { label: 'Bildirimler', sub: 'Genel', href: '/panel/bildirimler', icon: BellRing, color: MOBILE_COLORS.general },
+  { label: 'Fatura Merkezi', sub: 'Fatura & Muhasebe', href: '/fatura-merkezi', icon: ReceiptText, color: MOBILE_COLORS.invoice },
+  { label: 'E-Fatura / E-Arşiv', sub: 'Fatura & Muhasebe', href: '/panel/e-arsiv', icon: FileScan, color: MOBILE_COLORS.invoice },
+  { label: 'Fatura İşleme', sub: 'Fatura & Muhasebe', href: '/panel/ajanlar/mihsap', icon: Bot, color: MOBILE_COLORS.invoice },
+  { label: 'İşlenen Faturalar', sub: 'Fatura & Muhasebe', href: '/panel/faturalar', icon: Receipt, color: MOBILE_COLORS.invoice },
+  { label: 'KDV Kontrol', sub: 'Vergi & Beyanname', href: '/panel/kdv-kontrol', icon: FileCheck2, color: MOBILE_COLORS.tax },
+  { label: 'KDV Beyanname', sub: 'Vergi & Beyanname', href: '/panel/kdv-beyanname', icon: FileCheck2, color: MOBILE_COLORS.tax },
+  { label: 'Beyannameler', sub: 'Vergi & Beyanname', href: '/panel/beyannameler', icon: FileText, color: MOBILE_COLORS.tax },
+  { label: 'WhatsApp QR', sub: 'Teknik & Sistem', href: '/panel/whatsapp-qr', icon: MessageSquareText, color: MOBILE_COLORS.system },
+];
+
+const MOBILE_GROUPS = [
+  { label: 'Moren AI', count: '2 aktif', icon: BrainCircuit, color: MOBILE_COLORS.ai },
+  { label: 'Genel', count: '5 aktif', icon: Gauge, color: MOBILE_COLORS.general },
+  { label: 'Fatura & Muhasebe', count: '7 aktif', icon: ReceiptText, color: MOBILE_COLORS.invoice },
+  { label: 'Vergi & Beyanname', count: '3 aktif, 2 planlı', icon: FileCheck2, color: MOBILE_COLORS.tax },
+  { label: 'Mali Veriler', count: '5 aktif', icon: DatabaseZap, color: MOBILE_COLORS.finance },
+  { label: 'Ofis', count: '3 aktif', icon: Building2, color: MOBILE_COLORS.office },
+  { label: 'Teknik & Sistem', count: '9 aktif', icon: Settings2, color: MOBILE_COLORS.system },
+];
+
+function MobilePortalHome({
+  activeCount,
+  totalTx,
+  pendingTasks,
+  todayTaskCount,
+  activeWorkload,
+  unread,
+  workflowCounts,
+  workflowTotal,
+  nextDueStr,
+}: {
+  activeCount: number;
+  totalTx: number;
+  pendingTasks: number;
+  todayTaskCount: number;
+  activeWorkload: number;
+  unread: number;
+  workflowCounts: WorkflowCounts;
+  workflowTotal: number;
+  nextDueStr: string | null;
+}) {
+  const quickActions = [
+    { label: 'Mükellefler', sub: `${activeCount || totalTx || 0} aktif`, href: '/panel/mukellefler', icon: UserRoundSearch, color: MOBILE_COLORS.general },
+    { label: 'İş Akışı', sub: `${activeWorkload} aktif iş`, href: '/panel/is-yuku', icon: Workflow, color: MOBILE_COLORS.office },
+    { label: 'Fatura', sub: 'İşleme merkezi', href: '/panel/ajanlar/mihsap', icon: ReceiptText, color: MOBILE_COLORS.invoice },
+    { label: 'KDV', sub: `${workflowCounts.kontrol || 0} kontrol`, href: '/panel/kdv-kontrol', icon: FileCheck2, color: MOBILE_COLORS.tax },
+  ];
+
+  const stats = [
+    { label: 'Mükellef', value: activeCount || totalTx || 0, sub: workflowTotal > 0 ? `${workflowTotal} akışta` : 'liste', color: MOBILE_COLORS.general, icon: Users },
+    { label: 'İş yükü', value: activeWorkload, sub: 'aktif', color: MOBILE_COLORS.invoice, icon: Workflow },
+    { label: 'Görev', value: pendingTasks, sub: todayTaskCount > 0 ? `bugün ${todayTaskCount}` : nextDueStr || 'sakin', color: MOBILE_COLORS.ai, icon: ClipboardCheck },
+    { label: 'Bildirim', value: unread, sub: 'okunmamış', color: MOBILE_COLORS.system, icon: BellRing },
+  ];
+
+  return (
+    <div className="mobile-dashboard-home mx-auto max-w-[460px] space-y-4 overflow-x-hidden pb-2">
+      <section
+        className="rounded-lg p-4"
+        style={{
+          background: 'linear-gradient(135deg, rgba(212,184,118,0.11), rgba(15,13,11,0.98))',
+          border: '1px solid rgba(212,184,118,0.22)',
+        }}
+      >
+        <div className="flex items-center gap-3">
+          <span
+            className="flex h-10 w-10 flex-shrink-0 items-center justify-center rounded-lg"
+            style={{ background: 'linear-gradient(135deg, #d4b876, #8b7649)', color: '#0f0d0b', fontFamily: 'Fraunces, serif', fontWeight: 800 }}
+          >
+            M
+          </span>
+          <div className="min-w-0 flex-1">
+            <p className="text-[10px] font-bold uppercase" style={{ color: GOLD, letterSpacing: 0 }}>
+              Kurulu Mobil Portal
+            </p>
+            <h1 className="mt-1 text-[22px] leading-[1.1]" style={{ color: '#fafaf9', fontFamily: 'Fraunces, serif', letterSpacing: 0 }}>
+              Moren Portal
+            </h1>
+          </div>
+        </div>
+        <p className="mt-3 text-[13px] leading-6" style={{ color: 'rgba(250,250,249,0.62)' }}>
+          Telefonda ilk ekran artık gerçek modüllere giden mobil ana menüdür. Masaüstü panel düzeni bu ekranda zorlanmaz.
+        </p>
+      </section>
+
+      <section className="grid grid-cols-2 gap-2.5">
+        {stats.map((stat) => {
+          const Icon = stat.icon;
+          return (
+            <div
+              key={stat.label}
+              className="min-h-[88px] rounded-lg p-3"
+              style={{ background: `${stat.color}10`, border: `1px solid ${stat.color}28` }}
+            >
+              <div className="mb-2 flex items-center justify-between gap-2">
+                <span className="text-[10px] font-bold uppercase" style={{ color: 'rgba(250,250,249,0.52)', letterSpacing: 0 }}>
+                  {stat.label}
+                </span>
+                <Icon size={14} style={{ color: stat.color }} />
+              </div>
+              <div className="tabular-nums text-[25px] leading-none" style={{ color: stat.color, fontFamily: 'Fraunces, serif', fontWeight: 700 }}>
+                {stat.value}
+              </div>
+              <div className="mt-1 truncate text-[11px]" style={{ color: 'rgba(250,250,249,0.46)' }}>
+                {stat.sub}
+              </div>
+            </div>
+          );
+        })}
+      </section>
+
+      <section className="space-y-2">
+        <div className="flex items-end justify-between gap-3">
+          <div>
+            <h2 className="text-[18px] leading-tight" style={{ color: '#fafaf9', fontFamily: 'Fraunces, serif', letterSpacing: 0 }}>
+              Hızlı işlemler
+            </h2>
+            <p className="mt-1 text-[12px]" style={{ color: 'rgba(250,250,249,0.46)' }}>
+              Telefonda en sık açılacak ekranlar
+            </p>
+          </div>
+        </div>
+        <div className="grid grid-cols-2 gap-2.5">
+          {quickActions.map((item) => {
+            const Icon = item.icon;
+            return (
+              <Link
+                key={item.href}
+                href={item.href}
+                className="block min-h-[104px] rounded-lg p-3"
+                style={{ background: `${item.color}0f`, border: `1px solid ${item.color}26` }}
+              >
+                <div className="flex items-center justify-between gap-2">
+                  <Icon size={18} style={{ color: item.color }} />
+                  <ArrowRight size={15} style={{ color: 'rgba(250,250,249,0.42)' }} />
+                </div>
+                <div className="mt-4 truncate text-[14px] font-bold" style={{ color: '#fafaf9' }}>
+                  {item.label}
+                </div>
+                <div className="mt-1 truncate text-[11px]" style={{ color: 'rgba(250,250,249,0.46)' }}>
+                  {item.sub}
+                </div>
+              </Link>
+            );
+          })}
+        </div>
+      </section>
+
+      <section className="space-y-2">
+        <div className="flex items-center justify-between gap-3">
+          <div>
+            <h2 className="text-[18px] leading-tight" style={{ color: '#fafaf9', fontFamily: 'Fraunces, serif', letterSpacing: 0 }}>
+              İlk PWA modülleri
+            </h2>
+            <p className="mt-1 text-[12px]" style={{ color: 'rgba(250,250,249,0.46)' }}>
+              Kurulu uygulamada doğrudan erişim
+            </p>
+          </div>
+          <span className="rounded-lg px-2 py-1 text-[12px] font-bold" style={{ background: 'rgba(212,184,118,0.14)', color: GOLD }}>
+            {MOBILE_PRIORITY_MODULES.length}
+          </span>
+        </div>
+        <div className="space-y-2">
+          {MOBILE_PRIORITY_MODULES.map((item) => {
+            const Icon = item.icon;
+            return (
+              <Link
+                key={item.href}
+                href={item.href}
+                className="flex min-h-[58px] items-center gap-3 rounded-lg px-3 py-2"
+                style={{ background: `${item.color}0d`, border: `1px solid ${item.color}22` }}
+              >
+                <span
+                  className="flex h-9 w-9 flex-shrink-0 items-center justify-center rounded-lg"
+                  style={{ background: `${item.color}14`, border: `1px solid ${item.color}30`, color: item.color }}
+                >
+                  <Icon size={16} />
+                </span>
+                <span className="min-w-0 flex-1">
+                  <span className="block truncate text-[13.5px] font-bold" style={{ color: '#fafaf9' }}>
+                    {item.label}
+                  </span>
+                  <span className="mt-0.5 block truncate text-[11px]" style={{ color: 'rgba(250,250,249,0.46)' }}>
+                    {item.sub}
+                  </span>
+                </span>
+                <ArrowRight size={15} style={{ color: item.color }} />
+              </Link>
+            );
+          })}
+        </div>
+      </section>
+
+      <section className="space-y-2">
+        <div>
+          <h2 className="text-[18px] leading-tight" style={{ color: '#fafaf9', fontFamily: 'Fraunces, serif', letterSpacing: 0 }}>
+            Modül grupları
+          </h2>
+          <p className="mt-1 text-[12px]" style={{ color: 'rgba(250,250,249,0.46)' }}>
+            Portal yapısı mobil menüde bu gruplarla açılır
+          </p>
+        </div>
+        <div className="grid grid-cols-1 gap-2">
+          {MOBILE_GROUPS.map((group) => {
+            const Icon = group.icon;
+            return (
+              <div
+                key={group.label}
+                className="flex min-h-[58px] items-center gap-3 rounded-lg px-3 py-2"
+                style={{ background: `${group.color}0d`, border: `1px solid ${group.color}22` }}
+              >
+                <span
+                  className="flex h-9 w-9 flex-shrink-0 items-center justify-center rounded-lg"
+                  style={{ background: `${group.color}14`, border: `1px solid ${group.color}30`, color: group.color }}
+                >
+                  <Icon size={16} />
+                </span>
+                <span className="min-w-0 flex-1">
+                  <span className="block truncate text-[13.5px] font-bold" style={{ color: '#fafaf9' }}>
+                    {group.label}
+                  </span>
+                  <span className="mt-0.5 block text-[11px]" style={{ color: 'rgba(250,250,249,0.46)' }}>
+                    {group.count}
+                  </span>
+                </span>
+              </div>
+            );
+          })}
+        </div>
+      </section>
+    </div>
+  );
+}
+
 export default function DashboardPage() {
   const { data: taxpayers } = useQuery({ queryKey: ['taxpayers'], queryFn: () => api.get('/taxpayers').then((r) => r.data).catch(() => []) });
   const { data: unreadRaw } = useQuery({ queryKey: ['notifications', 'unread'], queryFn: () => api.get('/notifications/unread-count').then((r) => r.data).catch(() => 0) });
@@ -902,7 +1181,22 @@ export default function DashboardPage() {
   }, [tx, activeCount, passiveCount]);
 
   return (
-    <div className="space-y-5 max-w-none pr-3 xl:pr-5">
+    <div className="max-w-full overflow-x-hidden">
+      <section className="lg:hidden">
+        <MobilePortalHome
+          activeCount={activeCount}
+          totalTx={totalTx}
+          pendingTasks={pendingTasks.length}
+          todayTaskCount={todayTaskCount}
+          activeWorkload={aktifIsYuku}
+          unread={unread}
+          workflowCounts={workflowCounts}
+          workflowTotal={workflowTotal}
+          nextDueStr={nextDueStr}
+        />
+      </section>
+
+      <div className="hidden space-y-5 max-w-none pr-3 lg:block xl:pr-5">
       {/* Hatırlatma bannerı — bugün veya geçmiş tarihli tamamlanmamış görevler için sürekli uyarı.
           v1.36.74: scale-siz pulse — banner ekrandan taşmıyor, sadece glow nefes alıyor. */}
       {dueTasks.length > 0 && (
@@ -1013,6 +1307,7 @@ export default function DashboardPage() {
 
       {/* v1.36.81: ToplubeyannameTable kaldırıldı — Beyannameler ayrı sayfada (/panel/beyannameler) */}
       <BuHaftaTakvim />
+      </div>
     </div>
   );
 }

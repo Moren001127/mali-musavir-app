@@ -33,16 +33,16 @@ export default function PanelLayout({ children }: { children: React.ReactNode })
   if (!user) return null;
 
   return (
-    <div className="flex h-screen overflow-hidden" style={{ background: 'rgba(255,255,255,0.03)' }}>
+    <div data-panel-shell className="flex h-screen w-full max-w-full overflow-hidden" style={{ background: 'rgba(255,255,255,0.03)' }}>
       <div className="hidden lg:flex">
         <Sidebar />
       </div>
-      <div className="flex-1 flex flex-col min-w-0">
+      <div data-panel-content className="flex-1 flex flex-col min-w-0 max-w-full">
         <MobilePanelNavigation />
         <div className="hidden lg:block">
           <TopBar />
         </div>
-        <main className="flex-1 overflow-auto p-3 pb-24 sm:p-4 lg:p-6 lg:pb-6 animate-fade-up">
+        <main data-panel-main className="flex-1 min-w-0 max-w-full overflow-y-auto overflow-x-hidden p-3 pb-24 sm:p-4 lg:overflow-auto lg:p-6 lg:pb-6 animate-fade-up">
           {children}
         </main>
         <LucaCaptchaOverlay />

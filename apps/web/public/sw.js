@@ -1,4 +1,4 @@
-const VERSION = 'moren-pwa-v1';
+const VERSION = 'moren-pwa-v2';
 const STATIC_CACHE = `${VERSION}-static`;
 const RUNTIME_CACHE = `${VERSION}-runtime`;
 
