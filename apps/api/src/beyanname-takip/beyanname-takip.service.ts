@@ -70,6 +70,20 @@ export class BeyannameTakipService {
       posetEnabled?: boolean;
       sgkBildirgeEnabled?: boolean;
       eDefterPeriod?: Period;
+      // v1.37.1 — Hattat tarzı genişletme
+      kdv4Period?: Period | null;
+      kdv9015Period?: Period | null;
+      gelirGeciciPeriod?: Period | null;
+      kurumGeciciPeriod?: Period | null;
+      otv1Period?: Period | null;
+      otv3aPeriod?: Period | null;
+      otv3bPeriod?: Period | null;
+      otv4Period?: Period | null;
+      muhtasar2Period?: Period | null;
+      turizmPeriod?: Period | null;
+      konaklamaEnabled?: boolean;
+      oivEnabled?: boolean;
+      gmsiEnabled?: boolean;
       notes?: string | null;
     },
   ) {

@@ -5400,9 +5400,8 @@
    * Form'daki TARIH_ILK / TARIH_SON'u job.donem'a göre doldur (Mizan'la aynı format).
    */
   async function fillLucaTarih(form, job, log) {
-    const skipDates = options.skipDates === true;
-    const tarih = skipDates ? null : donemToTarihAraligi(job.donem, job.donemTipi);
-    if (!skipDates && !tarih) throw new Error(`Tarih hesaplanamadı: ${job.donem}`);
+    const tarih = donemToTarihAraligi(job.donem, job.donemTipi);
+    if (!tarih) throw new Error(`Tarih hesaplanamadı: ${job.donem}`);
     let tarihIlk = getCachedLucaFormField(form, 'tarihIlk') ||
       form.querySelector('input[name="TARIH_ILK"], input[id="TARIH_ILK"], input[name="tarih_ilk"], input[name="tarih_bas"], input[id="tarih_bas"], input[name*="tarih" i][name*="bas" i], input[name*="tarih" i][name*="ilk" i], input[id*="tarih" i][id*="ilk" i], input[name*="tar" i][name*="ilk" i], input[id*="tar" i][id*="ilk" i]');
     let tarihSon = getCachedLucaFormField(form, 'tarihSon') ||
@@ -8746,9 +8745,12 @@
    * ederek rapor_indir.jq response'unu (Excel blob) yakala.
    */
   async function fetchMizanByClickIntercept(form, job, log, options = {}) {
-    // Önce tarihleri formda elle doldur (button click bunları kullanacak)
-    const tarih = donemToTarihAraligi(job.donem, job.donemTipi);
-    if (!tarih) throw new Error(`Tarih hesaplanamadı: ${job.donem}`);
+    // Mizan raporlarinda tarih doldurulur; Hesap Plani Listesi skipDates ile
+    // sadece rapor turunu Excel'e alir.
+    const skipDates = options.skipDates === true;
+    const forceReportFormat = Boolean(options.raporTur || options.forceReportFormat || skipDates);
+    const tarih = skipDates ? null : donemToTarihAraligi(job.donem, job.donemTipi);
+    if (!skipDates && !tarih) throw new Error(`Tarih hesaplanamadı: ${job.donem}`);
 
     const setNative = (inp, value) => {
       if (!inp) return;
@@ -8843,7 +8845,7 @@
       return 'xlsx';
     };
     const applyExcelReportParams = (params) => {
-      if (!params || typeof params.set !== 'function') return false;
+      if (!params || typeof params.set !== 'function' || !forceReportFormat) return false;
       const reportOption = getExcelReportOption();
       let changed = false;
       const setParam = (key, value) => {
@@ -8864,7 +8866,7 @@
       return changed;
     };
     const forceNestedExcelReportFields = (target, depth = 0) => {
-      if (!target || typeof target !== 'object' || depth > 5) return false;
+      if (!forceReportFormat || !target || typeof target !== 'object' || depth > 5) return false;
       let changed = false;
       const reportOption = getExcelReportOption();
       const isRoot = depth === 0;
@@ -9130,7 +9132,7 @@
     };
 
     const forceExcelJsonPayload = (value) => {
-      if (typeof value !== 'string') return value;
+      if (!forceReportFormat || typeof value !== 'string') return value;
       const trimmed = value.trim();
       if (!trimmed.startsWith('{')) return value;
       try {
@@ -9587,23 +9589,36 @@
         // 2) rapor_takip polling (genel/rapor_takip.jq POST)
         // Body: {"donem_id":"X","params":{"raporTur":"mizan"}}
         let donemId = '';
-        try { donemId = JSON.parse(jasperBody).donem_id || JSON.parse(jasperBody)?.donem_id || ''; } catch (e) {}
+        let raporTur = options.raporTur || '';
+        try {
+          const parsed = JSON.parse(jasperBody);
+          donemId = parsed.donem_id || '';
+          raporTur = raporTur || parsed.params?.raporTur || parsed.raporTur || '';
+        } catch (e) {}
         if (!donemId) {
           // jasperBody'den manual olarak çıkar
           const dm = jasperBody.match(/"donem_id"\s*:\s*"?(\d+)"?/);
           donemId = dm ? dm[1] : '';
         }
+        if (!raporTur && String(jasperBody || '').includes('=')) {
+          try {
+            const params = new URLSearchParams(jasperBody);
+            raporTur = params.get('raporTur') || params.get('rapor_turu') || params.get('RAPOR_TURU') || '';
+          } catch {}
+        }
         if (!donemId) {
           donemId = form.querySelector('input[name="DONEM_ID"], input[name="donem_id"]')?.value || '';
         }
+        if (!raporTur && !skipDates) raporTur = 'mizan';
+        const takipParams = {
+          dosya_tipi: 'xlsx',
+          format: 'xlsx',
+          REPORT_TYPE: 'xlsx',
+        };
+        if (raporTur) takipParams.raporTur = raporTur;
         const takipBody = JSON.stringify({
           donem_id: donemId,
-          params: {
-            raporTur: options.raporTur || 'mizan',
-            dosya_tipi: 'xlsx',
-            format: 'xlsx',
-            REPORT_TYPE: 'xlsx',
-          },
+          params: takipParams,
         });
         const baseGenelUrl = `${form.ownerDocument.defaultView.location.origin}/Luca/genel`;
 

@@ -287,6 +287,31 @@ model TaxpayerBeyanConfig {
   // E-Defter (bilanço usulü mükellefler için)
   eDefterPeriod   String?   // "AYLIK" | "UCAYLIK" | null (e-defter mükellefi değilse)
 
+  // === v1.37.1: Hattat tarzı genişletilmiş beyanname türleri ===
+  // KDV4 (özel kdv beyanları - e-ticaret, hizmet ihracatı vb.)
+  kdv4Period           String?   // "AYLIK" | "UCAYLIK" | null
+  // KDV9015 — Vergi tevkifatı (kıymetli maden, kira vb.)
+  kdv9015Period        String?   // "AYLIK" | null
+  // Gelir Geçici Vergi (GGECICI) — 3 aylık zorunlu
+  gelirGeciciPeriod    String?   // "UCAYLIK" | null
+  // Kurum Geçici Vergi (KGECICI) — 3 aylık zorunlu
+  kurumGeciciPeriod    String?   // "UCAYLIK" | null
+  // ÖTV türleri
+  otv1Period           String?   // "AYLIK" | null (akaryakıt vb.)
+  otv3aPeriod          String?   // "AYLIK" | null (motorlu taşıt)
+  otv3bPeriod          String?   // "ON_BES_GUNLUK" | "AYLIK" | null (özel akaryakıt)
+  otv4Period           String?   // "AYLIK" | null (alkollü içecek, tütün)
+  // MUHSGK2 — 3 aylık muhtasar varyantı
+  muhtasar2Period      String?   // "UCAYLIK" | null
+  // Turizm Payı (3 aylık veya aylık)
+  turizmPeriod         String?   // "AYLIK" | "UCAYLIK" | null
+  // Konaklama Vergisi (aylık)
+  konaklamaEnabled     Boolean   @default(false)
+  // ÖİV — Özel İletişim Vergisi
+  oivEnabled           Boolean   @default(false)
+  // GMSİ — Gayrimenkul Sermaye İradı (yıllık)
+  gmsiEnabled          Boolean   @default(false)
+
   notes           String?
   createdAt       DateTime  @default(now())
   updatedAt       DateTime  @updatedAt
