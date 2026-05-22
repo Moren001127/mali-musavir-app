@@ -20,7 +20,7 @@ const GOLD = '#d4b876';
 const GOLD_SOFT = '#b8a06f';
 const ROSE = '#f5a6b8';
 const ROSE_SOFT = '#f0b4c0';
-const CURRENT_MONTH_LABEL = 'Ayın tamamı';
+const CURRENT_MONTH_LABEL = 'Kalan akış';
 
 interface DeadlineRow {
   date: Date;
@@ -142,6 +142,7 @@ function buildCurrentMonthDeadlineList(): DeadlineRow[] {
   for (let day = 1; day <= lastDay; day++) {
     const d = new Date(today.getFullYear(), today.getMonth(), day);
     const gunFark = Math.round((d.getTime() - today.getTime()) / 86400000);
+    if (gunFark < 0) continue;
     const items = deadlinesForDate(d);
     for (const it of items) {
       out.push({ ...it, date: d, gunFark });
@@ -266,7 +267,7 @@ export function BuHaftaTakvim() {
       {rows.length === 0 ? (
         <div className="rounded-2xl py-10 text-center" style={{ background: 'rgba(255,255,255,0.02)', border: '1px solid rgba(255,255,255,0.05)' }}>
           <p className="text-[13px]" style={{ color: 'rgba(250,250,249,0.5)' }}>
-            Bu ay içinde beyanname, bildirim veya e-Defter son tarihi yok.
+            Kalan günlerde beyanname, bildirim veya e-Defter son tarihi yok.
           </p>
         </div>
       ) : (

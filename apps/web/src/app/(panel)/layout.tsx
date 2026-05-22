@@ -35,7 +35,7 @@ export default function PanelLayout({ children }: { children: React.ReactNode })
     <div className="flex h-screen overflow-hidden" style={{ background: 'rgba(255,255,255,0.03)' }}>
       <Sidebar />
       <div className="flex-1 flex flex-col min-w-0">
-        <TopBar user={user} />
+        <TopBar />
         <main className="flex-1 overflow-auto p-6 animate-fade-up">
           {children}
         </main>

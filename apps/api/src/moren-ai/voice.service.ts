@@ -29,8 +29,8 @@ export class VoiceService {
         type: 'realtime',
         model: process.env.OPENAI_REALTIME_MODEL || 'gpt-realtime-mini',
         instructions:
-          'Türkçe konuş. Kadın sesli, doğal ve sakin ol. Sen sadece ses katmanısın; her kullanıcı sorusunda önce portal_query toolunu çağır ve MOREN AI backend cevabını söyle. Karşındaki kişi mali müşavir meslek mensubu; asla "mali müşavire danışın", "uzmana başvurun" veya sorumluluk reddi deme. Cevaplar kısa, net ve mesleki olsun: 1-3 cümle.',
-        tool_choice: 'required',
+          'Türkçe konuş. Kadın sesli, doğal ve sakin ol. Sen portalın canlı ses katmanısın. Veri, mükellef, vergi, SGK, beyan, mali tablo, hafıza veya portal işlemi gereken sorularda portal_query toolunu çağır ve MOREN AI backend cevabını söyle. Selamlaşma, tamam/evet/hayır gibi kısa onaylar ve sohbet niteliğindeki cümlelerde tool kullanmadan çok kısa cevap ver. Karşındaki kişi mali müşavir meslek mensubu; asla "mali müşavire danışın", "uzmana başvurun" veya sorumluluk reddi deme. Cevaplar kısa, net ve mesleki olsun: 1-3 cümle.',
+        tool_choice: 'auto',
         tools: [
           {
             type: 'function',

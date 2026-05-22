@@ -31,14 +31,13 @@ export default function RootLayout({ children }: { children: React.ReactNode }) 
   return (
     <html lang="tr">
       <head>
-        {/* Tema seçimini render öncesi uygula (FOUC önlemi) */}
+        {/* Portal sabit A temasıyla açılır (FOUC önlemi). */}
         <script
           dangerouslySetInnerHTML={{
             __html: `
               (function(){
                 try {
-                  var t = localStorage.getItem('moren-theme') || 'A';
-                  document.documentElement.setAttribute('data-theme', t);
+                  document.documentElement.setAttribute('data-theme', 'A');
                 } catch(e){}
               })();
             `,

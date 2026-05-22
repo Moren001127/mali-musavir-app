@@ -3,7 +3,7 @@
 import React, { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { usePathname, useRouter } from 'next/navigation';
 import { useQueryClient } from '@tanstack/react-query';
-import { Bot, Loader2, Mic, MicOff, Minimize2, Navigation, Radio, Sparkles, X } from 'lucide-react';
+import { Bot, Loader2, MessageSquareText, Mic, MicOff, Minimize2, Radio, Sparkles, X } from 'lucide-react';
 import { toast } from 'sonner';
 import {
   getRealtimeVoiceToken,
@@ -138,6 +138,7 @@ function realtimeInstructions(currentModule: string, currentPath: string) {
     'Sen portal genelinde çalışan canlı MOREN AI ses katmanısın.',
     'Kullanıcı bir modüle geçmek isterse portal_navigate toolunu kullan; konuşmayı kapatma.',
     'Kullanıcı veri, mükellef, mali tablo, beyan, SGK, WhatsApp veya ofis işi sorarsa portal_query toolunu kullan.',
+    'Selamlaşma, tamam/evet/hayır gibi kısa onaylar ve sohbet niteliğindeki cümlelerde portal_query kullanma; doğrudan çok kısa cevap ver.',
     'Cevapları kısa, net ve mesleki tut: 1-3 cümle.',
     'Karşındaki kişi mali müşavir meslek mensubu; "mali müşavire danışın", "uzmana başvurun" veya sorumluluk reddi deme.',
     `Aktif ekran: ${currentModule} (${currentPath || '/panel'}).`,
@@ -234,7 +235,7 @@ export default function GlobalMorenVoice() {
     }
 
     setStatus('thinking');
-    setLastAction('Portal verisi okunuyor');
+    setLastAction('Yanıt hazırlanıyor');
     const result = await realtimePortalQuery({
       conversationId: conversationIdRef.current || undefined,
       question,
@@ -392,7 +393,7 @@ export default function GlobalMorenVoice() {
           session: {
             instructions: realtimeInstructions(currentRoute.label, pathname || '/panel'),
             tools: [PORTAL_QUERY_TOOL, PORTAL_NAVIGATE_TOOL],
-            tool_choice: 'required',
+            tool_choice: 'auto',
           },
         }));
       };
@@ -433,7 +434,7 @@ export default function GlobalMorenVoice() {
       session: {
         instructions: realtimeInstructions(currentRoute.label, pathname || '/panel'),
         tools: [PORTAL_QUERY_TOOL, PORTAL_NAVIGATE_TOOL],
-        tool_choice: 'required',
+        tool_choice: 'auto',
       },
     });
     setLastAction(`${currentRoute.label} ekranındasınız`);
@@ -473,6 +474,17 @@ export default function GlobalMorenVoice() {
           aria-label="Canlı MOREN AI"
         >
           <Radio size={22} />
+          <span
+            className="absolute -bottom-1 -left-1 flex h-6 w-6 items-center justify-center rounded-full"
+            style={{
+              background: '#17110f',
+              border: '1px solid rgba(240,154,168,0.42)',
+              color: ROSE,
+              boxShadow: '0 8px 18px rgba(0,0,0,0.28)',
+            }}
+          >
+            <MessageSquareText size={12} />
+          </span>
           <span
             className="absolute -right-0.5 -top-0.5 h-3.5 w-3.5 rounded-full"
             style={{
@@ -528,7 +540,10 @@ export default function GlobalMorenVoice() {
             </button>
             <button
               type="button"
-              onClick={stopVoice}
+              onClick={() => {
+                stopVoice();
+                setExpanded(false);
+              }}
               className="flex h-8 w-8 items-center justify-center rounded-lg transition hover:bg-white/[0.06]"
               style={{ color: MUTED }}
               title="Kapat"
@@ -576,6 +591,18 @@ export default function GlobalMorenVoice() {
             <div className="flex gap-2">
               <button
                 type="button"
+                onClick={() => {
+                  setExpanded(false);
+                  router.push('/panel/moren-ai');
+                }}
+                className="flex h-10 items-center justify-center gap-2 rounded-lg border px-3 text-[12.5px] font-semibold transition hover:bg-white/[0.06]"
+                style={{ borderColor: LINE, color: ROSE, background: 'rgba(240,154,168,0.07)' }}
+              >
+                <MessageSquareText size={15} />
+                Mesajlaşma
+              </button>
+              <button
+                type="button"
                 onClick={() => (activeRef.current ? stopVoice() : startVoice())}
                 className="flex h-10 flex-1 items-center justify-center gap-2 rounded-lg text-[12.5px] font-semibold transition disabled:opacity-50"
                 style={{
@@ -590,15 +617,6 @@ export default function GlobalMorenVoice() {
                     ? <MicOff size={15} />
                     : <Mic size={15} />}
                 {activeRef.current ? 'Sesi Kapat' : 'Canlı Konuş'}
-              </button>
-              <button
-                type="button"
-                onClick={() => router.push('/panel/moren-ai')}
-                className="flex h-10 w-10 items-center justify-center rounded-lg border transition hover:bg-white/[0.06]"
-                style={{ borderColor: LINE, color: ROSE }}
-                title="MOREN AI ekranı"
-              >
-                <Navigation size={15} />
               </button>
             </div>
           </div>

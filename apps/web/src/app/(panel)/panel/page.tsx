@@ -1,11 +1,10 @@
 'use client';
-import { useQuery, useQueryClient } from '@tanstack/react-query';
+import { useQuery } from '@tanstack/react-query';
 import { api } from '@/lib/api';
-import { Users, FileText, AlertTriangle, ArrowRight, Receipt, FileCheck, Plus, Bot, FileInput, Mailbox, Calculator, BookOpen, Printer, CheckCircle2, X as IconX, Check, Download, FileCheck2, Search as SearchIcon, Settings } from 'lucide-react';
+import { Users, FileText, AlertTriangle, ArrowRight, Receipt, FileCheck, Plus, Bot, FileInput, CheckCircle2, X as IconX, Download, FileCheck2, Search as SearchIcon, Settings } from 'lucide-react';
 import { beyannameTakipApi, BEYAN_ETIKETLER, OzetRow, BeyanTipi } from '@/lib/beyanname-takip';
 import Link from 'next/link';
 import { ReactNode, useEffect, useMemo, useState } from 'react';
-import MorenAiChat, { MorenAiButton, MorenAiFab } from '@/components/MorenAiChat';
 import { useMe } from '@/hooks/useAuth';
 import { KritikUyariStatCard } from '@/components/dashboard/KritikUyariStatCard';
 import { BrifingKart } from '@/components/dashboard/BrifingKart';
@@ -38,51 +37,6 @@ type Task = {
   lastReminderAt?: string; // Son uyarının zamanı (sürekli bildirim tekrarı için)
   reminderDismissed?: boolean; // Kullanıcı "Anladım" derse bu oturumda bir daha uyarma
 };
-// v1.36.74: localStorage tabanlı görev sistemi kaldırıldı — backend tasks API kullanılıyor.
-// const TKEY = 'moren-dashboard-tasks'; (deprecated)
-const fmtDue = (iso: string): { label: string; kind: 'danger' | 'warn' | 'gold' | 'ok' } => {
-  const t = new Date(); t.setHours(0,0,0,0);
-  const d = new Date(iso); d.setHours(0,0,0,0);
-  const diff = Math.round((d.getTime() - t.getTime()) / 86400000);
-  if (diff === 0) return { label: 'BUGÜN', kind: 'danger' };
-  if (diff === 1) return { label: 'Yarın', kind: 'gold' };
-  if (diff < 0) return { label: `${-diff}g geçti`, kind: 'danger' };
-  return { label: `${diff} gün`, kind: 'warn' };
-};
-
-type FeedKind = 'ok' | 'warn' | 'err' | 'info';
-function agentEventToFeed(ev: any) {
-  const a = (ev.agent || '').toUpperCase(), s = (ev.status || '').toUpperCase();
-  let kind: FeedKind = 'info';
-  if (['OK','KAYDET','BASARILI','SUCCESS','ONAYLANDI','ONAY','DONE','TAMAMLANDI'].includes(s)) kind = 'ok';
-  else if (['ATLA','SKIP','WARN','WARNING','ATLANDI'].includes(s)) kind = 'warn';
-  else if (['HATA','ERROR','FAIL','FAILED','HATALI'].includes(s)) kind = 'err';
-  else if (['BILGI','INFO'].includes(s)) kind = 'info';
-  let Icon: any = Bot;
-  if (a.includes('MIHSAP')) Icon = Receipt;
-  else if (a.includes('LUCA')) Icon = FileInput;
-  else if (a.includes('TEBLIGAT')) Icon = Mailbox;
-  else if (a.includes('KDV')) Icon = Calculator;
-  else if (a.includes('DEFTER')) Icon = BookOpen;
-  else if (a.includes('SGK')) Icon = FileCheck;
-  else if (a.includes('FIS')) Icon = Printer;
-  const rawTs = ev.ts || ev.createdAt || ev.timestamp || ev.date;
-  const ts = rawTs ? new Date(rawTs) : new Date();
-  const now = new Date();
-  const sameDay = ts.toDateString() === now.toDateString();
-  const time = sameDay
-    ? ts.toLocaleTimeString('tr-TR', { hour: '2-digit', minute: '2-digit', timeZone: 'Europe/Istanbul' })
-    : ts.toLocaleDateString('tr-TR', { day: '2-digit', month: 'short', timeZone: 'Europe/Istanbul' }) + ' ' + ts.toLocaleTimeString('tr-TR', { hour: '2-digit', minute: '2-digit', timeZone: 'Europe/Istanbul' });
-  const title = (<><strong style={{ color: '#fafaf9', fontWeight: 600 }}>{ev.agent || 'Sistem'}</strong>{ev.message ? <> · {ev.message}</> : ev.status ? <> · {ev.status}</> : null}</>);
-  const p: string[] = [];
-  if (ev.mukellef) p.push(ev.mukellef);
-  if (ev.fisNo) p.push(`#${ev.fisNo}`);
-  else if (ev.belgeNo) p.push(`#${ev.belgeNo}`);
-  if (ev.firma) p.push(ev.firma);
-  if (ev.tutar != null && ev.tutar !== '') p.push(`${ev.tutar} TL`);
-  return { time, icon: Icon, title, meta: p.join(' · ') || ts.toLocaleDateString('tr-TR'), kind };
-}
-
 // Elit Boutique altın ailesi — dashboard'a renk dokunuşları için
 type StatAccent = 'gold' | 'champagne' | 'bronze' | 'copper' | 'burgundy' | 'sage' | 'sky' | 'amber';
 const ACCENT_TONES: Record<StatAccent, { color: string; bg: string; border: string; hoverBg: string; hoverBorder: string }> = {
@@ -226,74 +180,6 @@ function DashboardSectionBridge() {
         Son Tarihler
         <span className="h-1.5 w-1.5 rounded-full" style={{ background: '#f5a6b8' }} />
       </div>
-    </div>
-  );
-}
-
-function Section({ title, children, action, accent = 'gold' }: { title: string; children: ReactNode; action?: ReactNode; accent?: StatAccent }) {
-  const t = ACCENT_TONES[accent];
-  return (
-    <div className="rounded-2xl overflow-hidden" style={{ background: 'rgba(255,255,255,0.02)', border: '1px solid rgba(255,255,255,0.05)' }}>
-      <div className="flex items-center justify-between px-5 py-4" style={{ borderBottom: '1px solid rgba(255,255,255,0.04)' }}>
-        <div className="flex items-center gap-2.5"><span className="w-[3px] h-4 rounded-sm" style={{ background: t.color }} /><h3 className="text-[13.5px] font-semibold" style={{ color: '#fafaf9' }}>{title}</h3></div>
-        {action}
-      </div>
-      {children}
-    </div>
-  );
-}
-
-function FeedRow({ time, icon: Icon, title, meta, kind = 'info' }: { time: string; icon: any; title: ReactNode; meta: string; kind?: FeedKind }) {
-  // Mat ton paleti — Mihsap LogCard ve KDV Kontrol akışıyla tutarlı
-  const C: Record<FeedKind, { bg: string; bd: string; c: string }> = {
-    ok:   { bg: 'rgba(60,120,70,0.06)',  bd: 'rgba(77,124,79,0.2)',  c: '#7aa07c' },
-    warn: { bg: 'rgba(180,120,40,0.06)', bd: 'rgba(146,116,74,0.2)', c: '#b89870' },
-    err:  { bg: 'rgba(180,50,50,0.07)',  bd: 'rgba(176,64,64,0.2)',  c: '#d97070' },
-    info: { bg: 'rgba(184,160,111,0.06)', bd: 'rgba(184,160,111,0.15)', c: GOLD },
-  };
-  const c = C[kind];
-  return (
-    <div className="flex items-start gap-3 px-5 py-[11px]" style={{ borderLeft: '2px solid transparent' }}
-      onMouseEnter={(e) => { e.currentTarget.style.background = 'rgba(184,160,111,0.04)'; e.currentTarget.style.borderLeftColor = GOLD; }}
-      onMouseLeave={(e) => { e.currentTarget.style.background = 'transparent'; e.currentTarget.style.borderLeftColor = 'transparent'; }}>
-      <span className="min-w-[40px] pt-[3px] tabular-nums" style={{ fontFamily: 'JetBrains Mono, monospace', fontSize: 10.5, color: 'rgba(250,250,249,0.3)' }}>{time}</span>
-      <div className="w-7 h-7 rounded-lg flex items-center justify-center flex-shrink-0" style={{ background: c.bg, border: `1px solid ${c.bd}`, color: c.c }}><Icon size={13} /></div>
-      <div className="flex-1 min-w-0">
-        <div className="text-[12.5px] leading-[1.45]" style={{ color: 'rgba(250,250,249,0.85)' }}>{title}</div>
-        <div className="text-[10.5px] mt-0.5" style={{ fontFamily: 'JetBrains Mono, monospace', color: 'rgba(250,250,249,0.35)' }}>{meta}</div>
-      </div>
-    </div>
-  );
-}
-
-function TaskRow({ t, onToggle, onDelete }: { t: Task; onToggle: () => void; onDelete: () => void }) {
-  const due = fmtDue(t.dueDate);
-  const k = t.done ? 'ok' : due.kind;
-  const chip = t.done ? 'Tamam' : due.label;
-  const cs: any = { danger: { bg: 'rgba(244,63,94,0.1)', c: '#f43f5e' }, warn: { bg: 'rgba(245,158,11,0.1)', c: '#f59e0b' }, gold: { bg: 'rgba(184,160,111,0.12)', c: GOLD }, ok: { bg: 'rgba(34,197,94,0.1)', c: '#22c55e' } }[k];
-  const barC: any = { danger: '#f43f5e', warn: '#f59e0b', gold: 'rgba(184,160,111,0.5)', ok: '#22c55e' }[k];
-  const dateStr = new Date(t.dueDate).toLocaleDateString('tr-TR', { day: 'numeric', month: 'long', year: 'numeric' });
-  return (
-    <div className="group/row flex items-center gap-3 px-5 py-3" style={{ borderLeft: '2px solid transparent' }}
-      onMouseEnter={(e) => { e.currentTarget.style.background = 'rgba(184,160,111,0.04)'; e.currentTarget.style.borderLeftColor = 'rgba(184,160,111,0.4)'; }}
-      onMouseLeave={(e) => { e.currentTarget.style.background = 'transparent'; e.currentTarget.style.borderLeftColor = 'transparent'; }}>
-      <div className="w-[3px] h-7 rounded-sm flex-shrink-0" style={{ background: barC }} />
-      <button onClick={onToggle} className="w-5 h-5 rounded-md flex items-center justify-center flex-shrink-0" style={{ background: t.done ? GOLD : 'transparent', border: `1.5px solid ${t.done ? GOLD : 'rgba(250,250,249,0.25)'}`, color: '#0f0d0b' }}>{t.done && <Check size={13} strokeWidth={3} />}</button>
-      <div className="flex-1 min-w-0">
-        <div className="flex items-center gap-1.5">
-          <p className="text-[13.5px] font-medium truncate" style={{ color: '#fafaf9', textDecoration: t.done ? 'line-through' : 'none', opacity: t.done ? 0.55 : 1 }}>{t.title}</p>
-          {/* Hatırlatma kanalı rozetleri */}
-          {t.whatsappPhone && (
-            <span title={`WhatsApp: ${t.whatsappPhone} (yakında aktif)`} className="text-[9.5px] px-1.5 py-[1px] rounded" style={{ background: 'rgba(34,197,94,0.12)', color: '#22c55e', border: '1px solid rgba(34,197,94,0.25)' }}>WA</span>
-          )}
-          {t.emailAddr && (
-            <span title={`E-posta: ${t.emailAddr} (yakında aktif)`} className="text-[9.5px] px-1.5 py-[1px] rounded" style={{ background: 'rgba(184,160,111,0.12)', color: GOLD, border: '1px solid rgba(184,160,111,0.25)' }}>MAIL</span>
-          )}
-        </div>
-        <p className="text-[11.5px] mt-0.5" style={{ color: 'rgba(250,250,249,0.35)' }}>{t.note ? `${dateStr} · ${t.note}` : dateStr}</p>
-      </div>
-      <span className="text-[10.5px] font-semibold px-2.5 py-[3px] rounded-md flex-shrink-0" style={{ background: cs.bg, color: cs.c }}>{chip}</span>
-      <button onClick={onDelete} className="opacity-0 group-hover/row:opacity-100 transition-opacity p-1" style={{ color: 'rgba(244,63,94,0.65)' }}><IconX size={14} /></button>
     </div>
   );
 }
@@ -856,11 +742,8 @@ export default function DashboardPage() {
     (workflowData?.counts?.kontrol ?? 0) +
     (workflowData?.counts?.beyanname ?? 0);
 
-  const feed = (agentEvents as any[]).slice(0, 20).map(agentEventToFeed);
-
   // v1.36.74: Görevler artık backend'den geliyor (Görevler & Notlar modülüyle ortak veri).
   // Eskiden localStorage tabanlıydı — yeni `/panel/gorevler` sayfasıyla senkron olsun diye API'ye geçildi.
-  const qcDash = useQueryClient();
   const { data: backendTasksData } = useQuery({
     queryKey: ['dashboard-tasks'],
     queryFn: () => api.get('/tasks', { params: { isTemplate: 'false', limit: 200 } }).then((r) => r.data).catch(() => ({ items: [] })),
@@ -888,59 +771,8 @@ export default function DashboardPage() {
     } as Task));
   }, [backendTasksData, dismissedIds]);
 
-  const [modal, setModal] = useState(false);
-  const [aiOpen, setAiOpen] = useState(false);
-  const [nT, setNT] = useState('');
-  const [nD, setND] = useState(() => new Date().toISOString().slice(0, 10));
-  const [nN, setNN] = useState('');
-  const [nWA, setNWA] = useState('');
-  const [nEM, setNEM] = useState('');
   // Bu oturumda hangi görevler için uyarı gösterildi
   const [dueShown, setDueShown] = useState<Record<string, number>>({});
-
-  // v1.36.74: setTasks artık API tarafına yazıp local cache'i invalide eder.
-  // Eski state-base API ile uyumlu kalmak için "(p) => Task[]" pattern destekleniyor.
-  const setTasks: React.Dispatch<React.SetStateAction<Task[]>> = (updater) => {
-    const next = typeof updater === 'function' ? (updater as (p: Task[]) => Task[])(tasks) : updater;
-    // Hangisi sildi, hangisi toggle etti, hangisi eklendi — diff hesapla
-    const oldIds = new Set(tasks.map((t) => t.id));
-    const newIds = new Set(next.map((t) => t.id));
-    // SİLİNEN
-    for (const old of tasks) {
-      if (!newIds.has(old.id)) {
-        api.delete(`/tasks/${old.id}`).catch(() => {});
-      }
-    }
-    // TOGGLE (done değişimi)
-    for (const n of next) {
-      const old = tasks.find((t) => t.id === n.id);
-      if (old && old.done !== n.done) {
-        if (n.done) api.post(`/tasks/${n.id}/complete`).catch(() => {});
-        else api.patch(`/tasks/${n.id}`, { status: 'OPEN' }).catch(() => {});
-      }
-    }
-    qcDash.invalidateQueries({ queryKey: ['dashboard-tasks'] });
-    qcDash.invalidateQueries({ queryKey: ['task-counts'] });
-  };
-
-  const addT = () => {
-    if (!nT.trim()) return;
-    api.post('/tasks', {
-      title: nT.trim(),
-      description: nN.trim() || undefined,
-      dueDate: nD ? new Date(nD).toISOString() : undefined,
-      allDay: true,
-      priority: 'MEDIUM',
-      notifyInApp: true,
-      notifyBrowser: true,
-    }).then(() => {
-      qcDash.invalidateQueries({ queryKey: ['dashboard-tasks'] });
-      qcDash.invalidateQueries({ queryKey: ['task-counts'] });
-    }).catch(() => {});
-    setNT(''); setNN(''); setNWA(''); setNEM('');
-    setND(new Date().toISOString().slice(0, 10));
-    setModal(false);
-  };
 
   // ══════════ Sürekli Hatırlatma Sistemi ══════════
   // Bugün veya geçmiş tarihli, tamamlanmamış görevler için:
@@ -1004,7 +836,6 @@ export default function DashboardPage() {
   };
   const sorted = [...tasks].sort((a, b) => a.done !== b.done ? (a.done ? 1 : -1) : new Date(a.dueDate).getTime() - new Date(b.dueDate).getTime());
 
-  const today = new Date().toLocaleDateString('tr-TR', { day: 'numeric', month: 'long' }).toUpperCase();
   const statMap: Record<string, boolean> = {};
   for (const s of (agentStatuses as any[])) if (s?.agent) statMap[String(s.agent).toUpperCase()] = !!s.running;
   const running = (k: string) => statMap[k.toUpperCase()] ?? false;
@@ -1125,7 +956,6 @@ export default function DashboardPage() {
           <p className="text-[13px] mt-1.5" style={{ color: 'rgba(250,250,249,0.42)' }}>{new Date().toLocaleDateString('tr-TR', { month: 'long', year: 'numeric' })} · Mükellefler · Beyannameler · Ajanlar</p>
         </div>
         <div className="flex items-center gap-2">
-          <MorenAiButton onClick={() => setAiOpen(true)} />
           <Link href="/panel/evraklar" className="inline-flex items-center gap-1.5 px-[18px] py-2.5 text-[13px] font-medium rounded-[10px] transition-all" style={{ background: 'rgba(255,255,255,0.03)', border: '1px solid rgba(255,255,255,0.08)', color: 'rgba(250,250,249,0.75)' }}
             onMouseEnter={(e) => { e.currentTarget.style.background = 'rgba(184,160,111,0.08)'; e.currentTarget.style.borderColor = 'rgba(184,160,111,0.2)'; e.currentTarget.style.color = '#fafaf9'; }}
             onMouseLeave={(e) => { e.currentTarget.style.background = 'rgba(255,255,255,0.03)'; e.currentTarget.style.borderColor = 'rgba(255,255,255,0.08)'; e.currentTarget.style.color = 'rgba(250,250,249,0.75)'; }}>
@@ -1183,113 +1013,6 @@ export default function DashboardPage() {
 
       {/* v1.36.81: ToplubeyannameTable kaldırıldı — Beyannameler ayrı sayfada (/panel/beyannameler) */}
       <BuHaftaTakvim />
-
-
-      <div className="grid grid-cols-1 lg:grid-cols-2 gap-3.5">
-        <Section title="Notlar & Görevler" accent="champagne" action={
-          <div className="flex items-center gap-2">
-            <span className="text-[10.5px] tabular-nums" style={{ fontFamily: 'JetBrains Mono, monospace', color: 'rgba(250,250,249,0.35)' }}>{today} · BUGÜN</span>
-            <button onClick={() => setModal(true)} className="text-[11px] font-medium px-2.5 py-[5px] rounded-md" style={{ background: 'rgba(184,160,111,0.12)', border: '1px solid rgba(184,160,111,0.3)', color: GOLD }}>＋ Ekle</button>
-          </div>
-        }>
-          <div className="py-1.5 max-h-[380px] overflow-y-auto">
-            {sorted.length === 0 ? (
-              <div className="text-center py-10 px-5">
-                <p className="text-[13px]" style={{ color: 'rgba(250,250,249,0.4)' }}>Henüz görev yok.</p>
-                <button onClick={() => setModal(true)} className="mt-3 text-[12px] font-medium" style={{ color: GOLD }}>+ İlk görevi ekle</button>
-              </div>
-            ) : sorted.map((t) => <TaskRow key={t.id} t={t} onToggle={() => setTasks((p) => p.map((x) => x.id === t.id ? { ...x, done: !x.done } : x))} onDelete={() => setTasks((p) => p.filter((x) => x.id !== t.id))} />)}
-          </div>
-        </Section>
-
-        <Section title="Canlı Sistem Akışı" accent="bronze" action={
-          <div className="flex items-center gap-1.5">
-            <span className="w-1.5 h-1.5 rounded-full" style={{ background: feed.length > 0 ? '#22c55e' : 'rgba(255,255,255,0.25)', boxShadow: feed.length > 0 ? '0 0 8px rgba(34,197,94,0.8)' : 'none', animation: feed.length > 0 ? 'moren-pulse 1.6s infinite' : 'none' }} />
-            <span className="text-[10px] font-bold uppercase tracking-[.1em]" style={{ color: feed.length > 0 ? '#22c55e' : 'rgba(250,250,249,0.35)' }}>{feed.length > 0 ? 'Canlı' : 'Boş'}</span>
-          </div>
-        }>
-          {feed.length === 0 ? (
-            <div className="text-center py-10 px-5">
-              <p className="text-[13px]" style={{ color: 'rgba(250,250,249,0.4)' }}>Henüz ajan olayı kaydedilmedi.</p>
-              <p className="text-[11.5px] mt-2" style={{ color: 'rgba(250,250,249,0.3)' }}>Ajanlar çalıştığında buradan akar.</p>
-            </div>
-          ) : feed.length < 5 ? (
-            <div className="py-1.5 max-h-[260px] overflow-y-auto">{feed.map((item, i) => <FeedRow key={i} {...item} />)}</div>
-          ) : (
-            <div className="moren-feed-wrap"><div className="moren-feed-track">{[...feed, ...feed].map((item, i) => <FeedRow key={i} {...item} />)}</div></div>
-          )}
-        </Section>
-      </div>
-
-      {/* Moren AI — floating button & chat sheet */}
-      <MorenAiFab onClick={() => setAiOpen(true)} />
-      <MorenAiChat open={aiOpen} onClose={() => setAiOpen(false)} />
-
-      {modal && (
-        <div className="fixed inset-0 z-50 flex items-center justify-center p-4" style={{ background: 'rgba(0,0,0,0.7)', backdropFilter: 'blur(4px)' }} onClick={() => setModal(false)}>
-          <div onClick={(e) => e.stopPropagation()} className="w-full max-w-md rounded-2xl p-6" style={{ background: '#11100c', border: '1px solid rgba(184,160,111,0.25)' }}>
-            <div className="flex items-center justify-between mb-5">
-              <h3 style={{ fontFamily: 'Fraunces, serif', fontSize: 22, fontWeight: 600, color: '#fafaf9' }}>Yeni Görev</h3>
-              <button onClick={() => setModal(false)} style={{ color: 'rgba(250,250,249,0.4)' }}><IconX size={18} /></button>
-            </div>
-            <div className="space-y-4">
-              <div>
-                <label className="block text-[11px] font-semibold uppercase tracking-wider mb-1.5" style={{ color: 'rgba(250,250,249,0.55)' }}>Başlık</label>
-                <input type="text" value={nT} onChange={(e) => setNT(e.target.value)} autoFocus onKeyDown={(e) => { if (e.key === 'Enter') addT(); }} className="w-full px-3.5 py-2.5 rounded-[10px] text-[14px] outline-none" style={{ background: 'rgba(255,255,255,0.04)', border: '1px solid rgba(255,255,255,0.08)', color: '#fafaf9' }} />
-              </div>
-              <div>
-                <label className="block text-[11px] font-semibold uppercase tracking-wider mb-1.5" style={{ color: 'rgba(250,250,249,0.55)' }}>Tarih</label>
-                <input type="date" value={nD} onChange={(e) => setND(e.target.value)} className="w-full px-3.5 py-2.5 rounded-[10px] text-[14px] outline-none" style={{ background: 'rgba(255,255,255,0.04)', border: '1px solid rgba(255,255,255,0.08)', color: '#fafaf9' }} />
-              </div>
-              <div>
-                <label className="block text-[11px] font-semibold uppercase tracking-wider mb-1.5" style={{ color: 'rgba(250,250,249,0.55)' }}>Not (opsiyonel)</label>
-                <textarea value={nN} onChange={(e) => setNN(e.target.value)} rows={3} className="w-full px-3.5 py-2.5 rounded-[10px] text-[14px] outline-none resize-none" style={{ background: 'rgba(255,255,255,0.04)', border: '1px solid rgba(255,255,255,0.08)', color: '#fafaf9' }} />
-              </div>
-
-              {/* Hatırlatma kanalları — şimdilik bilgi toplama, entegrasyon ileride */}
-              <div className="pt-2 border-t" style={{ borderColor: 'rgba(255,255,255,0.06)' }}>
-                <div className="flex items-center gap-2 mb-2 mt-2">
-                  <span className="text-[11px] font-semibold uppercase tracking-wider" style={{ color: 'rgba(250,250,249,0.55)' }}>Hatırlatma Kanalları</span>
-                  <span className="text-[9.5px] font-bold uppercase tracking-wider px-2 py-0.5 rounded" style={{ background: 'rgba(212,184,118,0.12)', color: GOLD, border: '1px solid rgba(212,184,118,0.3)' }}>Yakında Aktif</span>
-                </div>
-
-                <div className="space-y-2">
-                  <div>
-                    <label className="block text-[10.5px] mb-1" style={{ color: 'rgba(250,250,249,0.45)' }}>📱 WhatsApp numarası (Örn: 0535 058 74 75)</label>
-                    <input
-                      type="tel"
-                      value={nWA}
-                      onChange={(e) => setNWA(e.target.value)}
-                      placeholder="05xx xxx xx xx"
-                      className="w-full px-3.5 py-2 rounded-[10px] text-[13.5px] outline-none"
-                      style={{ background: 'rgba(255,255,255,0.03)', border: '1px solid rgba(255,255,255,0.06)', color: '#fafaf9' }}
-                    />
-                  </div>
-                  <div>
-                    <label className="block text-[10.5px] mb-1" style={{ color: 'rgba(250,250,249,0.45)' }}>📧 E-posta adresi</label>
-                    <input
-                      type="email"
-                      value={nEM}
-                      onChange={(e) => setNEM(e.target.value)}
-                      placeholder="ornek@mail.com"
-                      className="w-full px-3.5 py-2 rounded-[10px] text-[13.5px] outline-none"
-                      style={{ background: 'rgba(255,255,255,0.03)', border: '1px solid rgba(255,255,255,0.06)', color: '#fafaf9' }}
-                    />
-                  </div>
-                </div>
-                <p className="text-[10px] mt-2" style={{ color: 'rgba(250,250,249,0.35)' }}>
-                  Hatırlatma günü geldiğinde bu kanallara da bildirim gidecek. Şimdilik bilgi kaydediliyor, entegrasyon yakında.
-                </p>
-              </div>
-
-              <div className="flex items-center justify-end gap-2 pt-2">
-                <button onClick={() => setModal(false)} className="px-4 py-2 rounded-[10px] text-[13px] font-medium" style={{ background: 'rgba(255,255,255,0.03)', border: '1px solid rgba(255,255,255,0.08)', color: 'rgba(250,250,249,0.75)' }}>İptal</button>
-                <button onClick={addT} disabled={!nT.trim()} className="px-5 py-2 rounded-[10px] text-[13px] font-bold disabled:opacity-50" style={{ background: `linear-gradient(135deg, ${GOLD}, #b8a06f)`, color: '#0f0d0b' }}>Ekle</button>
-              </div>
-            </div>
-          </div>
-        </div>
-      )}
     </div>
   );
 }

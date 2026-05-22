@@ -72,8 +72,9 @@ const REALTIME_PORTAL_TOOL = {
 function realtimeInstructions(selectedName?: string) {
   return [
     'Türkçe konuş. Kadın sesli, doğal ve sakin ol.',
-    'Sen MOREN AI ses katmanısın; her kullanıcı sorusunda önce portal_query toolunu çağır.',
-    'Cevabı MOREN AI backendinden gelen sonuca göre söyle; kendi başına mali/vergi/hukuk cevabı üretme.',
+    'Sen MOREN AI ses katmanısın; veri, mükellef, vergi, SGK, beyan, mali tablo, hafıza veya portal işlemi gereken sorularda portal_query toolunu çağır.',
+    'Selamlaşma, tamam/evet/hayır gibi kısa onaylar ve sohbet niteliğindeki cümlelerde portal_query kullanma; doğrudan çok kısa cevap ver.',
+    'Mali/vergi/hukuk cevabı gerekiyorsa cevabı MOREN AI backendinden gelen sonuca göre söyle; kendi başına üretme.',
     'Karşındaki kişi mali müşavir meslek mensubu; asla "mali müşavire danışın", "uzmana başvurun" veya sorumluluk reddi deme.',
     'Cevaplar kısa, net ve mesleki olsun: 1-3 cümle.',
     selectedName ? `Seçili mükellef: ${selectedName}.` : 'Seçili mükellef yok; genel ofis sorusu.',
@@ -449,7 +450,7 @@ export default function MorenAIPage() {
         session: {
           instructions: realtimeInstructions(selectedTaxpayer ? taxpayerName(selectedTaxpayer) : undefined),
           tools: [REALTIME_PORTAL_TOOL],
-          tool_choice: 'required',
+          tool_choice: 'auto',
         },
       }));
     };
