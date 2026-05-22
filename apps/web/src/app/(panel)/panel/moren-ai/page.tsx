@@ -1274,6 +1274,7 @@ const TOOL_LABELS: Record<string, string> = {
   get_beyanname_readiness_summary: 'Beyan hazırlığı',
   get_collection_risk_summary: 'Tahsilat riski',
   get_invoice_summary: 'Fatura özeti',
+  list_invoices: 'İşlenen faturalar',
   list_taxpayers: 'Mükellef arama',
   search_ai_memory: 'Hafıza',
   save_ai_memory: 'Hafıza kaydı',

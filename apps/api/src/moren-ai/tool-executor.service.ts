@@ -105,6 +105,134 @@ export class ToolExecutorService {
     return `${t.firstName || ''} ${t.lastName || ''}`.trim() || '(isimsiz)';
   }
 
+  private normalizeSearchText(value: any): string {
+    return String(value || '')
+      .toLocaleLowerCase('tr-TR')
+      .normalize('NFD')
+      .replace(/[\u0300-\u036f]/g, '')
+      .replace(/ı/g, 'i')
+      .replace(/ğ/g, 'g')
+      .replace(/ü/g, 'u')
+      .replace(/ş/g, 's')
+      .replace(/ö/g, 'o')
+      .replace(/ç/g, 'c')
+      .replace(/[^a-z0-9]+/g, ' ')
+      .trim();
+  }
+
+  private taxpayerSearchWhere(search: string) {
+    const tokens = String(search || '').trim().split(/\s+/).filter(Boolean);
+    if (!tokens.length) return undefined;
+    return {
+      AND: tokens.map((token) => ({
+        OR: [
+          { companyName: { contains: token, mode: 'insensitive' } },
+          { firstName: { contains: token, mode: 'insensitive' } },
+          { lastName: { contains: token, mode: 'insensitive' } },
+          { taxNumber: { contains: token } },
+        ],
+      })),
+    };
+  }
+
+  private filterTaxpayerCandidates(rows: any[], search: string) {
+    const tokens = this.normalizeSearchText(search).split(' ').filter(Boolean);
+    if (!tokens.length) return rows;
+    return rows
+      .filter((t) => {
+        const text = this.normalizeSearchText(
+          `${this.displayName(t)} ${t.taxNumber || ''} ${t.taxOffice || ''}`,
+        );
+        return tokens.every((token) => text.includes(token));
+      })
+      .sort((a, b) => {
+        const q = this.normalizeSearchText(search);
+        const an = this.normalizeSearchText(this.displayName(a));
+        const bn = this.normalizeSearchText(this.displayName(b));
+        const as = an === q ? 3 : an.includes(q) ? 2 : 1;
+        const bs = bn === q ? 3 : bn.includes(q) ? 2 : 1;
+        return bs - as;
+      });
+  }
+
+  private parseMonthPeriod(input: any): string | undefined {
+    const raw = String(input?.period || input?.donem || input?.ay || input?.month || '').trim();
+    if (!raw) return undefined;
+    const exact = raw.match(/\b(\d{4})-(0[1-9]|1[0-2])\b/);
+    if (exact) return exact[0];
+
+    const normalized = this.normalizeSearchText(raw);
+    const months: Record<string, number> = {
+      ocak: 1,
+      subat: 2,
+      mart: 3,
+      nisan: 4,
+      mayis: 5,
+      haziran: 6,
+      temmuz: 7,
+      agustos: 8,
+      eylul: 9,
+      ekim: 10,
+      kasim: 11,
+      aralik: 12,
+    };
+    const monthName = Object.keys(months).find((name) => normalized.includes(name));
+    if (!monthName) return undefined;
+    const yearMatch = raw.match(/\b(20\d{2}|19\d{2})\b/);
+    const year = yearMatch ? Number(yearMatch[1]) : new Date().getFullYear();
+    return `${year}-${String(months[monthName]).padStart(2, '0')}`;
+  }
+
+  private async resolveTaxpayerFromInput(input: any, ctx: { tenantId: string }) {
+    const taxpayerId = input?.taxpayerId || input?.mukellefId;
+    const select = {
+      id: true,
+      type: true,
+      companyName: true,
+      firstName: true,
+      lastName: true,
+      taxNumber: true,
+      taxOffice: true,
+      mihsapId: true,
+      isActive: true,
+    };
+
+    if (taxpayerId) {
+      return this.prisma.taxpayer.findFirst({
+        where: { id: taxpayerId, tenantId: ctx.tenantId },
+        select,
+      });
+    }
+
+    const search = String(
+      input?.taxpayerName || input?.mukellefName || input?.mukellef || input?.search || '',
+    ).trim();
+    if (!search) return null;
+
+    const where: any = { tenantId: ctx.tenantId };
+    const searchWhere = this.taxpayerSearchWhere(search);
+    if (searchWhere) Object.assign(where, searchWhere);
+
+    let candidates = await this.prisma.taxpayer.findMany({
+      where,
+      take: 10,
+      orderBy: { updatedAt: 'desc' },
+      select,
+    });
+
+    if (!candidates.length) {
+      const fallback = await this.prisma.taxpayer.findMany({
+        where: { tenantId: ctx.tenantId },
+        take: 750,
+        orderBy: { updatedAt: 'desc' },
+        select,
+      });
+      candidates = this.filterTaxpayerCandidates(fallback, search);
+    }
+
+    return candidates[0] || null;
+  }
+
   private currentPeriod(input?: any): { period: string; year: number; month: number } {
     const raw = String(input?.period || '').trim();
     const m = raw.match(/^(\d{4})-(\d{2})$/);
@@ -214,15 +342,10 @@ export class ToolExecutorService {
     const where: any = { tenantId: ctx.tenantId };
     if (onlyActive) where.isActive = true;
     if (search) {
-      where.OR = [
-        { companyName: { contains: search, mode: 'insensitive' } },
-        { firstName: { contains: search, mode: 'insensitive' } },
-        { lastName: { contains: search, mode: 'insensitive' } },
-        { taxNumber: { contains: search } },
-      ];
+      Object.assign(where, this.taxpayerSearchWhere(search));
     }
 
-    const rows = await this.prisma.taxpayer.findMany({
+    let rows = await this.prisma.taxpayer.findMany({
       where,
       take: limit,
       orderBy: { updatedAt: 'desc' },
@@ -231,6 +354,19 @@ export class ToolExecutorService {
         taxNumber: true, taxOffice: true, startDate: true, endDate: true, isActive: true,
       },
     });
+
+    if (search && rows.length === 0) {
+      const fallback = await this.prisma.taxpayer.findMany({
+        where: { tenantId: ctx.tenantId, ...(onlyActive ? { isActive: true } : {}) },
+        take: 750,
+        orderBy: { updatedAt: 'desc' },
+        select: {
+          id: true, type: true, companyName: true, firstName: true, lastName: true,
+          taxNumber: true, taxOffice: true, startDate: true, endDate: true, isActive: true,
+        },
+      });
+      rows = this.filterTaxpayerCandidates(fallback, search).slice(0, limit);
+    }
 
     return {
       count: rows.length,
@@ -597,52 +733,169 @@ export class ToolExecutorService {
   // FATURALAR
   // ------------------------------------------------------------
   private async listInvoices(input: any, ctx: { tenantId: string }) {
-    // Taxpayer'ın bu tenant'ta olduğunu doğrula
-    const t = await this.prisma.taxpayer.findFirst({
-      where: { id: input.taxpayerId, tenantId: ctx.tenantId },
-      select: { id: true },
-    });
-    if (!t) return { error: 'Mükellef bulunamadı' };
+    return this.listModuleInvoices(input, ctx);
+  }
 
-    const where: any = { taxpayerId: input.taxpayerId };
-    if (input.type) where.type = input.type;
-    if (input.status) where.status = input.status;
-    if (input.startDate || input.endDate) {
-      where.issueDate = {};
-      if (input.startDate) where.issueDate.gte = new Date(input.startDate);
-      if (input.endDate) where.issueDate.lte = new Date(input.endDate);
-    }
-    if (input.minAmount !== undefined) where.totalAmount = { gte: input.minAmount };
-    if (input.maxAmount !== undefined) {
-      where.totalAmount = { ...(where.totalAmount || {}), lte: input.maxAmount };
+  private async listModuleInvoices(input: any, ctx: { tenantId: string }) {
+    const taxpayer = await this.resolveTaxpayerFromInput(input, ctx);
+    if (!taxpayer) {
+      return {
+        error: 'Mükellef bulunamadı',
+        ipucu: 'taxpayerId veya taxpayerName/mukellefName gönder. Örn: { "taxpayerName": "Doğan Özkan", "period": "2026-04" }',
+      };
     }
 
-    const limit = Math.min(input.limit || 20, 100);
-    const rows = await this.prisma.invoice.findMany({
-      where,
-      take: limit,
+    const period = this.parseMonthPeriod(input);
+    const type = String(input?.type || input?.faturaTuru || '').trim().toUpperCase();
+    const source = String(input?.source || 'ISLENEN_FATURALAR').trim().toUpperCase();
+    const counterpartySearch = String(
+      input?.counterpartySearch || input?.firmaSearch || input?.firmaUnvan || input?.firma || input?.faturaNo || '',
+    ).trim();
+    const limit = Math.min(Number(input?.limit) || 50, 200);
+
+    const dateFilter: any = {};
+    if (input?.startDate) dateFilter.gte = new Date(input.startDate);
+    if (input?.endDate) dateFilter.lte = new Date(input.endDate);
+
+    const amountFilter: any = {};
+    if (input?.minAmount !== undefined) amountFilter.gte = Number(input.minAmount);
+    if (input?.maxAmount !== undefined) amountFilter.lte = Number(input.maxAmount);
+
+    const mihsapWhere: any = { tenantId: ctx.tenantId, mukellefId: taxpayer.id };
+    if (period) mihsapWhere.donem = period;
+    if (type && type !== 'ARSIV') {
+      mihsapWhere.faturaTuru = { contains: type, mode: 'insensitive' };
+    }
+    if (input?.belgeTuru) {
+      mihsapWhere.belgeTuru = { contains: String(input.belgeTuru), mode: 'insensitive' };
+    }
+    if (Object.keys(dateFilter).length) mihsapWhere.faturaTarihi = dateFilter;
+    if (Object.keys(amountFilter).length) mihsapWhere.toplamTutar = amountFilter;
+    if (counterpartySearch) {
+      mihsapWhere.OR = [
+        { firmaUnvan: { contains: counterpartySearch, mode: 'insensitive' } },
+        { firmaKimlikNo: { contains: counterpartySearch } },
+        { faturaNo: { contains: counterpartySearch, mode: 'insensitive' } },
+      ];
+    }
+
+    const mihsapClient = (this.prisma as any).mihsapInvoice;
+    const [mihsapCount, mihsapGroups, mihsapRows] = await Promise.all([
+      mihsapClient.count({ where: mihsapWhere }),
+      mihsapClient.groupBy({
+        by: ['faturaTuru'],
+        where: mihsapWhere,
+        _count: { _all: true },
+        _sum: { toplamTutar: true },
+      }),
+      mihsapClient.findMany({
+        where: mihsapWhere,
+        take: limit,
+        orderBy: [{ faturaTarihi: 'desc' }, { createdAt: 'desc' }],
+      }),
+    ]);
+
+    const includeMuhasebe = source === 'ALL' || source === 'MUHASEBE' || source === 'INVOICE';
+    const includeEarsiv = source === 'ALL' || source === 'EARSIV' || source === 'EFATURA';
+
+    const muhasebeWhere: any = {
+      taxpayerId: taxpayer.id,
+      ...(type ? { type } : {}),
+      ...(input?.status ? { status: input.status } : {}),
+      ...(Object.keys(dateFilter).length ? { issueDate: dateFilter } : {}),
+      ...(Object.keys(amountFilter).length ? { totalAmount: amountFilter } : {}),
+    };
+    const muhasebeRows = includeMuhasebe ? await this.prisma.invoice.findMany({
+      where: muhasebeWhere,
+      take: Math.min(limit, 50),
       orderBy: { issueDate: 'desc' },
-    });
+    }) : [];
 
-    const toplamTutar = rows.reduce((s, r) => s + this.toNum(r.totalAmount), 0);
-    const toplamKdv = rows.reduce((s, r) => s + this.toNum(r.vatAmount), 0);
+    const earsivWhere: any = { tenantId: ctx.tenantId, taxpayerId: taxpayer.id };
+    if (period) earsivWhere.donem = period;
+    if (type === 'SATIS' || type === 'ALIS') earsivWhere.tip = type;
+    if (Object.keys(dateFilter).length) earsivWhere.faturaTarihi = dateFilter;
+    if (Object.keys(amountFilter).length) earsivWhere.toplamTutar = amountFilter;
+    if (counterpartySearch) {
+      earsivWhere.OR = [
+        { satici: { contains: counterpartySearch, mode: 'insensitive' } },
+        { saticiVergiNo: { contains: counterpartySearch } },
+        { alici: { contains: counterpartySearch, mode: 'insensitive' } },
+        { aliciVergiNo: { contains: counterpartySearch } },
+        { faturaNo: { contains: counterpartySearch, mode: 'insensitive' } },
+      ];
+    }
+    const earsivRows = includeEarsiv ? await (this.prisma as any).earsivFatura.findMany({
+      where: earsivWhere,
+      take: Math.min(limit, 50),
+      orderBy: { faturaTarihi: 'desc' },
+    }) : [];
+
+    const toplamTutar = mihsapGroups.reduce(
+      (sum: number, group: any) => sum + this.toNum(group?._sum?.toplamTutar),
+      0,
+    );
 
     return {
-      count: rows.length,
+      modul: 'İşlenen Faturalar',
+      kaynak: 'MihsapInvoice',
+      filtre: {
+        mukellef: this.displayName(taxpayer),
+        mukellefId: taxpayer.id,
+        vkn_tckn: taxpayer.taxNumber,
+        donem: period || null,
+        tip: type || null,
+        karsiFirma: counterpartySearch || null,
+      },
+      count: mihsapCount,
       toplamTutar,
-      toplamKdv,
-      invoices: rows.map((r) => ({
-        id: r.id,
-        faturaNo: r.invoiceNo,
-        tip: r.type,
-        durum: r.status,
-        tarih: r.issueDate.toISOString().slice(0, 10),
-        vadeTarihi: r.dueDate?.toISOString().slice(0, 10),
-        matrah: this.toNum(r.subtotal),
-        kdv: this.toNum(r.vatAmount),
-        genelToplam: this.toNum(r.totalAmount),
-        parabirimi: r.currency,
+      ozet: mihsapGroups.map((group: any) => ({
+        faturaTuru: group.faturaTuru,
+        adet: group._count?._all || 0,
+        toplamTutar: this.toNum(group._sum?.toplamTutar),
       })),
+      invoices: mihsapRows.map((r: any) => ({
+        id: r.id,
+        kaynak: 'ISLENEN_FATURALAR',
+        donem: r.donem,
+        faturaNo: r.faturaNo,
+        tip: r.faturaTuru,
+        belgeTuru: r.belgeTuru,
+        karsiFirma: r.firmaUnvan,
+        karsiFirmaVknTckn: r.firmaKimlikNo,
+        tarih: r.faturaTarihi?.toISOString?.().slice(0, 10),
+        genelToplam: this.toNum(r.toplamTutar),
+        durum: r.onayDurumu,
+        dosyaVar: !!(r.storageKey || r.storageUrl || r.mihsapFileLink),
+        indirildi: !!r.downloadedAt,
+      })),
+      digerKaynaklar: {
+        muhasebeFaturalari: muhasebeRows.map((r) => ({
+          id: r.id,
+          kaynak: 'MUHASEBE',
+          faturaNo: r.invoiceNo,
+          tip: r.type,
+          durum: r.status,
+          tarih: r.issueDate.toISOString().slice(0, 10),
+          genelToplam: this.toNum(r.totalAmount),
+        })),
+        eFaturaEArsiv: earsivRows.map((r: any) => ({
+          id: r.id,
+          kaynak: r.belgeKaynak,
+          faturaNo: r.faturaNo,
+          tip: r.tip,
+          tarih: r.faturaTarihi?.toISOString?.().slice(0, 10),
+          satici: r.satici,
+          alici: r.alici,
+          matrah: this.toNum(r.matrah),
+          kdv: this.toNum(r.kdvTutari),
+          genelToplam: this.toNum(r.toplamTutar),
+        })),
+      },
+      not:
+        mihsapCount > limit
+          ? `İlk ${limit} kayıt döndü. Toplam ${mihsapCount} kayıt var; daha dar filtre istenebilir.`
+          : undefined,
     };
   }
 

@@ -100,6 +100,8 @@ YASAK: "Operasyon Briefing modülünü çağırabilir miyim?", "kontrol edeyim m
 - **"Bilanço / özkaynak / cari oran / borç"** → \`get_bilanco\`
 - **"KDV / matrah / indirim / devir"** → \`get_kdv_summary\`
 - **"Fatura / satış / alış"** → \`list_invoices\`
+- **"İşlenen faturalar / fatura modülü / Mihsap faturaları / /panel/faturalar"** → \`list_invoices\`. Kullanıcı mükellef adı + ay verdiyse ID isteme; \`taxpayerName\` ve \`period\` ile çağır.
+- Ay adı tek başına verilirse cari yılı kabul et. Örn. bugün ${context.currentDate}; "Nisan" denirse \`${context.currentPeriod.slice(0, 4)}-04\` dönemini kullan.
 - **"Personel / bordro / maaş / SGK primi"** → \`get_payroll_summary\` veya \`list_sgk_declarations\`
 - **"Evrak / sözleşme / belge"** → \`list_documents\`
 - **"Bu ay ne var / takvim / beyanname zamanı"** → \`get_tax_calendar\`

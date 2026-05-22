@@ -175,21 +175,33 @@ export const MOREN_AI_TOOLS: ToolDefinition[] = [
   {
     name: 'list_invoices',
     description:
-      'Mükellefin faturalarını listeler. Tip (satış/alış), durum (onaylı/taslak), tarih aralığı ve min/max tutara göre ' +
-      'filtrele. Fatura bazlı sorgular, müşteri analizi, tutar kontrolü için.',
+      'Mükellefin İşlenen Faturalar modülündeki faturalarını listeler (/panel/faturalar, MihsapInvoice). ' +
+      'taxpayerId bilinmiyorsa taxpayerName/mukellefName ile mükellefi bulur; period/donem YYYY-MM veya "Nisan" gibi ay adı olabilir. ' +
+      'Alış/satış tipi, karşı firma, tarih aralığı ve tutara göre filtreler; özet toplamları ve fatura satırlarını döndürür.',
     input_schema: {
       type: 'object',
       properties: {
-        taxpayerId: { type: 'string' },
+        taxpayerId: { type: 'string', description: 'Biliniyorsa mükellef ID' },
+        taxpayerName: { type: 'string', description: 'Mükellef adı/ünvanı. Örn: "Doğan Özkan"' },
+        mukellefName: { type: 'string', description: 'taxpayerName alternatifi' },
+        period: { type: 'string', description: 'YYYY-MM veya ay adı. Örn: "2026-04", "Nisan"' },
+        donem: { type: 'string', description: 'period alternatifi, YYYY-MM' },
+        source: {
+          type: 'string',
+          enum: ['ISLENEN_FATURALAR', 'EARSIV', 'EFATURA', 'MUHASEBE', 'ALL'],
+          description: 'Varsayılan ISLENEN_FATURALAR. ALL istenirse diğer fatura kaynaklarını da ekler.',
+        },
         type: { type: 'string', enum: ['SATIS', 'ALIS', 'ARSIV'] },
+        faturaTuru: { type: 'string', enum: ['SATIS', 'ALIS', 'ARSIV'] },
+        counterpartySearch: { type: 'string', description: 'Karşı firma adı, VKN/TCKN veya fatura no araması' },
+        firmaSearch: { type: 'string', description: 'counterpartySearch alternatifi' },
         status: { type: 'string' },
         startDate: { type: 'string', description: 'ISO tarih (YYYY-MM-DD)' },
         endDate: { type: 'string' },
         minAmount: { type: 'number' },
         maxAmount: { type: 'number' },
-        limit: { type: 'number', description: 'Varsayılan 20, max 100' },
+        limit: { type: 'number', description: 'Varsayılan 50, max 200' },
       },
-      required: ['taxpayerId'],
     },
   },
 
