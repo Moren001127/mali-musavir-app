@@ -371,8 +371,8 @@ function FaturaForm({ doc, taxpayerId, defterTuru, onApprove, onDelete, approvin
     : (Array.isArray(doc.ocrData?.validationIssues) ? doc.ocrData.validationIssues : []);
   const ownershipIssue = validationIssues.find((issue: any) => issue?.code === 'OWNERSHIP_MISMATCH');
   const entryGridColumns = isIsletme
-    ? 'minmax(112px,0.8fr) minmax(170px,1.35fr) 72px 104px 28px'
-    : '128px minmax(180px,1fr) 104px 104px 28px';
+    ? '120px minmax(190px,1.4fr) 78px 118px 28px'
+    : '126px minmax(210px,1.5fr) 118px 118px 28px';
 
   /* Hesap planı (taxpayer-bazlı) — autocomplete önerileri */
   const accountsQ = useQuery({
@@ -392,8 +392,8 @@ function FaturaForm({ doc, taxpayerId, defterTuru, onApprove, onDelete, approvin
       accountCode: l.accountCode || '',
       description: l.description || '',
       rate: l.rate || '',
-      debit: Number(l.debit || 0) > 0 ? String(l.debit) : '',
-      credit: Number(l.credit || 0) > 0 ? String(l.credit) : '',
+      debit: parseMoneyInput(l.debit) > 0 ? formatMoneyInput(l.debit) : '',
+      credit: parseMoneyInput(l.credit) > 0 ? formatMoneyInput(l.credit) : '',
     })),
   );
   const [dirty, setDirty] = useState(false);
@@ -424,8 +424,8 @@ function FaturaForm({ doc, taxpayerId, defterTuru, onApprove, onDelete, approvin
     setDirty(true);
   };
 
-  const sumDebit = lines.reduce((s, l) => s + Number(l.debit || 0), 0);
-  const sumCredit = lines.reduce((s, l) => s + Number(l.credit || 0), 0);
+  const sumDebit = lines.reduce((s, l) => s + parseMoneyInput(l.debit), 0);
+  const sumCredit = lines.reduce((s, l) => s + parseMoneyInput(l.credit), 0);
   const isBalanced = Math.abs(sumDebit - sumCredit) < 0.02;
   const matchesTotal = total > 0 ? Math.abs(Math.max(sumDebit, sumCredit) - total) < 0.02 : true;
 
@@ -436,8 +436,8 @@ function FaturaForm({ doc, taxpayerId, defterTuru, onApprove, onDelete, approvin
         accountCode: l.accountCode,
         description: l.description,
         rate: l.rate || null,
-        debit: l.debit || '0',
-        credit: l.credit || '0',
+        debit: moneyForApi(l.debit),
+        credit: moneyForApi(l.credit),
       })),
     }),
     onSuccess: () => {
@@ -472,28 +472,28 @@ function FaturaForm({ doc, taxpayerId, defterTuru, onApprove, onDelete, approvin
       {/* Kompakt başlık paneli */}
       <div className="rounded-lg p-2.5 space-y-2" style={{ background: 'var(--surface-2)', border: '1px solid var(--border)' }}>
         <div>
-          <div className="text-[10px] tracking-wider font-semibold mb-0.5" style={{ color: 'var(--text-light)' }}>FİRMA</div>
-          <div className="text-[13px] font-semibold leading-tight" style={{ color: 'var(--text)' }}>{supplierName}</div>
+          <div className="text-[11px] tracking-wider font-semibold mb-0.5" style={{ color: 'var(--text-light)' }}>FİRMA</div>
+          <div className="text-[14px] font-semibold leading-tight" style={{ color: 'var(--text)' }}>{supplierName}</div>
         </div>
         <div className="grid grid-cols-3 gap-2 text-[11px]" style={{ color: 'var(--text-muted)' }}>
           <div>
-            <div className="text-[9.5px] tracking-wider mb-0.5" style={{ color: 'var(--text-light)' }}>VKN/TC</div>
+            <div className="text-[11px] tracking-wider mb-0.5" style={{ color: 'var(--text-light)' }}>VKN/TC</div>
             <div className="font-mono" style={{ color: 'var(--text)' }}>{supplierVkn}</div>
           </div>
           <div>
-            <div className="text-[9.5px] tracking-wider mb-0.5" style={{ color: 'var(--text-light)' }}>BELGE NO</div>
+            <div className="text-[11px] tracking-wider mb-0.5" style={{ color: 'var(--text-light)' }}>BELGE NO</div>
             <div className="font-mono truncate" style={{ color: 'var(--text)' }}>{doc.belgeNo || '-'}</div>
           </div>
           <div>
-            <div className="text-[9.5px] tracking-wider mb-0.5" style={{ color: 'var(--text-light)' }}>TARİH</div>
+            <div className="text-[11px] tracking-wider mb-0.5" style={{ color: 'var(--text-light)' }}>TARİH</div>
             <div style={{ color: 'var(--text)' }}>{fmtDate(doc.faturaTarihi)}</div>
           </div>
         </div>
         <div className="flex items-center gap-3 pt-1.5 mt-0.5" style={{ borderTop: '1px solid var(--border-soft)' }}>
-          <span className="text-[10px] tracking-wider" style={{ color: 'var(--text-light)' }}>TOPLAM</span>
-          <span className="text-[15px] font-bold tabular-nums" style={{ color: 'var(--accent)' }}>{fmtTl(total)}</span>
+          <span className="text-[11px] tracking-wider" style={{ color: 'var(--text-light)' }}>TOPLAM</span>
+          <span className="text-[16px] font-bold tabular-nums" style={{ color: 'var(--accent)' }}>{fmtTl(total)}</span>
           <div className="flex-1" />
-          <span className="text-[10px] tracking-wider" style={{ color: 'var(--text-light)' }}>{doc.documentType || 'E_FATURA'} · {isSale ? 'SATIŞ' : 'ALIŞ'}</span>
+          <span className="text-[11px] tracking-wider" style={{ color: 'var(--text-light)' }}>{doc.documentType || 'E_FATURA'} · {isSale ? 'SATIŞ' : 'ALIŞ'}</span>
         </div>
       </div>
 
@@ -505,7 +505,7 @@ function FaturaForm({ doc, taxpayerId, defterTuru, onApprove, onDelete, approvin
             border: `1px solid ${ownershipIssue ? '#ef444455' : ownerVkn ? '#10b98140' : '#f59e0b40'}`,
           }}
         >
-          <div className="text-[9.5px] tracking-wider font-semibold" style={{ color: 'var(--text-light)' }}>VKN/TC KONTROL</div>
+          <div className="text-[11px] tracking-wider font-semibold" style={{ color: 'var(--text-light)' }}>VKN/TC KONTROL</div>
           <div className="text-[11.5px] font-semibold mt-0.5" style={{ color: ownershipIssue ? '#f87171' : ownerVkn ? '#34d399' : '#fbbf24' }}>
             {ownershipIssue ? 'Mükellefle uyuşmuyor' : ownerVkn ? 'Mükellef tarafı eşleşti' : 'VKN/TC okunamadı'}
           </div>
@@ -517,7 +517,7 @@ function FaturaForm({ doc, taxpayerId, defterTuru, onApprove, onDelete, approvin
             border: `1px solid ${isIsletme ? '#38bdf850' : '#a78bfa45'}`,
           }}
         >
-          <div className="text-[9.5px] tracking-wider font-semibold" style={{ color: 'var(--text-light)' }}>DEFTER AKIŞI</div>
+          <div className="text-[11px] tracking-wider font-semibold" style={{ color: 'var(--text-light)' }}>DEFTER AKIŞI</div>
           <div className="text-[11.5px] font-semibold mt-0.5" style={{ color: isIsletme ? '#7dd3fc' : '#c4b5fd' }}>
             {isIsletme ? 'İşletme kaydı' : 'Bilanço yevmiye'}
           </div>
@@ -577,8 +577,8 @@ function FaturaForm({ doc, taxpayerId, defterTuru, onApprove, onDelete, approvin
           ))}
         </datalist>
 
-        <div className="rounded-lg overflow-hidden" style={{ background: 'rgba(255,255,255,0.035)', border: '1px solid rgba(212,184,118,0.22)' }}>
-          <div className="grid gap-1.5 px-2 py-1.5 text-[9.5px] tracking-wider font-semibold" style={{ gridTemplateColumns: entryGridColumns, background: 'rgba(212,184,118,0.08)', color: 'var(--text-muted)', borderBottom: '1px solid rgba(212,184,118,0.18)' }}>
+        <div className="rounded-lg overflow-hidden" style={{ background: 'rgba(255,255,255,0.035)', border: '1px solid rgba(212,184,118,0.30)' }}>
+          <div className="grid gap-1.5 px-2.5 py-2 text-[11px] tracking-wider font-bold" style={{ gridTemplateColumns: entryGridColumns, background: 'rgba(212,184,118,0.11)', color: 'var(--text-secondary)', borderBottom: '1px solid rgba(212,184,118,0.24)' }}>
             <span>{isIsletme ? 'KAYIT' : 'HESAP'}</span>
             <span>AÇIKLAMA</span>
             <span className={isIsletme ? '' : 'text-right'}>{isIsletme ? 'KDV' : 'BORÇ'}</span>
@@ -593,14 +593,14 @@ function FaturaForm({ doc, taxpayerId, defterTuru, onApprove, onDelete, approvin
           {lines.map((line, idx) => (
             <div
               key={idx}
-              className="grid gap-1.5 px-2 py-1.5"
-              style={{ gridTemplateColumns: entryGridColumns, borderBottom: idx === lines.length - 1 ? 'none' : '1px solid rgba(212,184,118,0.10)' }}
+              className="grid gap-1.5 px-2.5 py-2"
+              style={{ gridTemplateColumns: entryGridColumns, borderBottom: idx === lines.length - 1 ? 'none' : '1px solid rgba(212,184,118,0.16)' }}
             >
               {isIsletme ? (
                 <select
                   value={line.group}
                   onChange={(e) => updateLine(idx, { group: e.target.value })}
-                  className="px-1.5 py-1 rounded text-[11px] outline-none"
+                  className="px-2 py-2 rounded text-[12.5px] outline-none"
                   style={{ background: 'rgba(56,189,248,0.10)', border: '1px solid rgba(56,189,248,0.28)', color: '#7dd3fc' }}
                 >
                   <option value="matrah">{isSale ? 'Gelir kalemi' : 'Gider kalemi'}</option>
@@ -615,7 +615,7 @@ function FaturaForm({ doc, taxpayerId, defterTuru, onApprove, onDelete, approvin
                   list={`accounts-${taxpayerId}`}
                   title={line.accountCode}
                   placeholder="191.01.020"
-                  className="px-1.5 py-1 rounded text-[12px] font-mono outline-none"
+                  className="px-2 py-2 rounded text-[13px] font-mono tabular-nums outline-none"
                   style={{ background: 'var(--surface)', border: '1px solid var(--border-soft)', color: 'var(--accent)' }}
                 />
               )}
@@ -625,7 +625,7 @@ function FaturaForm({ doc, taxpayerId, defterTuru, onApprove, onDelete, approvin
                 onChange={(e) => updateLine(idx, { description: e.target.value })}
                 title={line.description}
                 placeholder="Açıklama"
-                className="px-1.5 py-1 rounded text-[11.5px] outline-none"
+                className="px-2 py-2 rounded text-[13px] outline-none"
                 style={{ background: 'var(--surface)', border: '1px solid var(--border-soft)', color: 'var(--text)' }}
               />
               {isIsletme ? (
@@ -635,37 +635,40 @@ function FaturaForm({ doc, taxpayerId, defterTuru, onApprove, onDelete, approvin
                     value={line.rate || ''}
                     onChange={(e) => updateLine(idx, { rate: e.target.value })}
                     placeholder="%20"
-                    className="px-1.5 py-1 rounded text-[11.5px] font-mono outline-none"
+                    className="px-2 py-2 rounded text-[13px] font-mono outline-none"
                     style={{ background: 'var(--surface)', border: '1px solid var(--border-soft)', color: 'var(--text)' }}
                   />
                   <input
-                    type="number"
-                    step="0.01"
+                    type="text"
+                    inputMode="decimal"
                     value={line.debit || line.credit || ''}
                     onChange={(e) => updateBusinessAmount(idx, e.target.value)}
+                    onBlur={() => updateBusinessAmount(idx, formatMoneyInput(line.debit || line.credit))}
                     placeholder="0,00"
-                    className="px-1.5 py-1 rounded text-[11.5px] text-right font-mono tabular-nums outline-none"
+                    className="px-2 py-2 rounded text-[13px] text-right font-mono tabular-nums outline-none"
                     style={{ background: 'var(--surface)', border: '1px solid var(--border-soft)', color: 'var(--text)' }}
                   />
                 </>
               ) : (
                 <>
                   <input
-                    type="number"
-                    step="0.01"
+                    type="text"
+                    inputMode="decimal"
                     value={line.debit}
                     onChange={(e) => updateLine(idx, { debit: e.target.value, credit: e.target.value ? '' : line.credit })}
+                    onBlur={() => updateLine(idx, { debit: formatMoneyInput(line.debit) })}
                     placeholder="0,00"
-                    className="px-1.5 py-1 rounded text-[11.5px] text-right font-mono tabular-nums outline-none"
+                    className="px-2 py-2 rounded text-[13px] text-right font-mono tabular-nums outline-none"
                     style={{ background: 'var(--surface)', border: '1px solid var(--border-soft)', color: 'var(--text)' }}
                   />
                   <input
-                    type="number"
-                    step="0.01"
+                    type="text"
+                    inputMode="decimal"
                     value={line.credit}
                     onChange={(e) => updateLine(idx, { credit: e.target.value, debit: e.target.value ? '' : line.debit })}
+                    onBlur={() => updateLine(idx, { credit: formatMoneyInput(line.credit) })}
                     placeholder="0,00"
-                    className="px-1.5 py-1 rounded text-[11.5px] text-right font-mono tabular-nums outline-none"
+                    className="px-2 py-2 rounded text-[13px] text-right font-mono tabular-nums outline-none"
                     style={{ background: 'var(--surface)', border: '1px solid var(--border-soft)', color: 'var(--text)' }}
                   />
                 </>
@@ -682,18 +685,18 @@ function FaturaForm({ doc, taxpayerId, defterTuru, onApprove, onDelete, approvin
             </div>
           ))}
           {/* Toplam */}
-          <div className="grid gap-1.5 px-2 py-1.5 text-[11px] font-semibold" style={{ gridTemplateColumns: entryGridColumns, background: 'rgba(212,184,118,0.07)', borderTop: '1px solid rgba(212,184,118,0.18)' }}>
+          <div className="grid gap-1.5 px-2.5 py-2 text-[12px] font-semibold" style={{ gridTemplateColumns: entryGridColumns, background: 'rgba(212,184,118,0.10)', borderTop: '1px solid rgba(212,184,118,0.24)' }}>
             <span style={{ color: 'var(--text-muted)' }}>Toplam</span>
             <span style={{ color: isBalanced ? '#10b981' : '#ef4444' }}>
-              {isBalanced ? '✓ Dengeli' : `Fark ${(sumDebit - sumCredit).toFixed(2)}`}
+              {isBalanced ? '✓ Dengeli' : `Fark ${fmtAmount(sumDebit - sumCredit)}`}
             </span>
-            <span className="text-right font-mono tabular-nums" style={{ color: 'var(--text)' }}>{sumDebit.toFixed(2)}</span>
-            <span className="text-right font-mono tabular-nums" style={{ color: 'var(--text)' }}>{sumCredit.toFixed(2)}</span>
+            <span className="text-right font-mono tabular-nums" style={{ color: 'var(--text)' }}>{fmtAmount(sumDebit)}</span>
+            <span className="text-right font-mono tabular-nums" style={{ color: 'var(--text)' }}>{fmtAmount(sumCredit)}</span>
             <span></span>
           </div>
           {/* Belge tutarıyla karşılaştırma */}
           {total > 0 && (
-            <div className="px-2 py-1.5 text-[10.5px]" style={{ background: 'var(--surface)', borderTop: '1px solid var(--border-soft)', color: matchesTotal ? '#10b981' : '#ef4444' }}>
+            <div className="px-2.5 py-2 text-[12px]" style={{ background: 'var(--surface)', borderTop: '1px solid var(--border-soft)', color: matchesTotal ? '#10b981' : '#ef4444' }}>
               Belge tutarı: <span className="font-mono">{fmtTl(total)}</span>
               {!matchesTotal && (
                 <span> · Yevmiye toplamı uyumsuz ({fmtTl(Math.max(sumDebit, sumCredit))})</span>
@@ -701,7 +704,7 @@ function FaturaForm({ doc, taxpayerId, defterTuru, onApprove, onDelete, approvin
             </div>
           )}
         </div>
-        <div className="mt-1.5 text-[10px]" style={{ color: 'var(--text-muted)' }}>
+        <div className="mt-2 text-[12px] leading-relaxed" style={{ color: 'var(--text-muted)' }}>
           {isIsletme ? 'İşletme defterinde hesap kodu kullanılmaz; kayıt/gider-gelir kalemi ve KDV satırlarını kontrol et.' : 'Hesap kutusuna yazmaya başla → mükellefin hesap planından öneri gelir. Satır eklemek için + butonu.'}
         </div>
       </div>
@@ -741,9 +744,34 @@ function FaturaForm({ doc, taxpayerId, defterTuru, onApprove, onDelete, approvin
   );
 }
 
+function parseMoneyInput(value: any): number {
+  if (value === null || value === undefined || value === '') return 0;
+  if (typeof value === 'number') return Number.isFinite(value) ? value : 0;
+  const raw = String(value).trim();
+  if (!raw) return 0;
+  const normalized = raw.includes(',')
+    ? raw.replace(/\./g, '').replace(',', '.')
+    : raw.replace(/[^\d.-]/g, '');
+  const n = Number(normalized);
+  return Number.isFinite(n) ? n : 0;
+}
+
+function fmtAmount(value: number | string): string {
+  const n = parseMoneyInput(value);
+  return n.toLocaleString('tr-TR', { minimumFractionDigits: 2, maximumFractionDigits: 2 });
+}
+
+function formatMoneyInput(value: any): string {
+  const n = parseMoneyInput(value);
+  return Math.abs(n) > 0.000001 ? fmtAmount(n) : '';
+}
+
+function moneyForApi(value: any): string {
+  return parseMoneyInput(value).toFixed(2);
+}
+
 function fmtTl(value: number | string): string {
-  const n = Number(value || 0);
-  return `${n.toLocaleString('tr-TR', { minimumFractionDigits: 2, maximumFractionDigits: 2 })} ₺`;
+  return `${fmtAmount(value)} ₺`;
 }
 function fmtDate(value: any): string {
   if (!value) return '-';
