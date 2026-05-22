@@ -36,6 +36,7 @@ import { FaturaMuhasebelestirmeModule } from './fatura-muhasebelestirme/fatura-m
 import { EDefterControlModule } from './edefter-control/edefter-control.module';
 import { PortalAutomationModule } from './portal-automation/portal-automation.module';
 import { AutomationsModule } from './automations/automations.module';
+import { OfficeChatModule } from './office-chat/office-chat.module';
 import { ReminderCron } from './schedule/reminder.cron';
 import { HgsCron } from './schedule/hgs.cron';
 
@@ -78,6 +79,7 @@ import { HgsCron } from './schedule/hgs.cron';
     EDefterControlModule,
     PortalAutomationModule,
     AutomationsModule,
+    OfficeChatModule,
   ],
   providers: [ReminderCron, HgsCron],
 })

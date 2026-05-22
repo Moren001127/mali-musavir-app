@@ -28,6 +28,7 @@ type Notification = {
   createdAt?: string;
   link?: string;
   meta?: Record<string, unknown>;
+  metadata?: Record<string, unknown>;
 };
 
 const AUTO_CLOSE_MS = 8000;
@@ -79,7 +80,7 @@ export default function NotificationFlashOverlay() {
 
   const title = active.title || 'Yeni Bildirim';
   const message = active.message || active.body || '';
-  const meta = (active.meta as any) || {};
+  const meta = ((active.metadata || active.meta) as any) || {};
   const linkHref = active.link || meta.link || '/panel/bildirimler';
 
   const handleOpen = async () => {

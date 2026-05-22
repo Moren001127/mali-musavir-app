@@ -29,6 +29,7 @@ model Tenant {
   consents              Consent[]
   dataRetentionPolicies DataRetentionPolicy[]
   notifications         Notification[]
+  officeChatThreads     OfficeChatThread[]
   kdvSessions           KdvControlSession[]
   smsTemplate           SmsTemplate?
   officeBudgetCategories OfficeBudgetCategory[]
@@ -60,6 +61,9 @@ model User {
   userRoles    UserRole[]
   auditLogs    AuditLog[]
   notifications Notification[]
+  createdOfficeChatThreads OfficeChatThread[] @relation("OfficeChatThreadCreator")
+  officeChatParticipants OfficeChatParticipant[]
+  officeChatMessages OfficeChatMessage[]
 
   // v1.36.74 Faz 1: Gorevler & Hatirlatmalar iliskileri
   createdTasks       Task[]             @relation("TaskCreator")
@@ -684,6 +688,62 @@ model Notification {
 
   @@index([tenantId, isRead])
   @@map("notifications")
+}
+
+// ============================================================
+// OFIS ICI CHAT
+// ============================================================
+model OfficeChatThread {
+  id          String   @id @default(cuid())
+  tenantId    String
+  kind        String   @default("GENERAL") // GENERAL | DIRECT
+  title       String?
+  createdById String?
+  createdAt   DateTime @default(now())
+  updatedAt   DateTime @updatedAt
+
+  tenant      Tenant   @relation(fields: [tenantId], references: [id], onDelete: Cascade)
+  createdBy   User?    @relation("OfficeChatThreadCreator", fields: [createdById], references: [id], onDelete: SetNull)
+  participants OfficeChatParticipant[]
+  messages     OfficeChatMessage[]
+
+  @@index([tenantId, updatedAt])
+  @@index([tenantId, kind])
+  @@map("office_chat_threads")
+}
+
+model OfficeChatParticipant {
+  id         String   @id @default(cuid())
+  tenantId   String
+  threadId   String
+  userId     String
+  lastReadAt DateTime?
+  muted      Boolean  @default(false)
+  createdAt  DateTime @default(now())
+
+  thread     OfficeChatThread @relation(fields: [threadId], references: [id], onDelete: Cascade)
+  user       User             @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@unique([threadId, userId])
+  @@index([tenantId, userId])
+  @@map("office_chat_participants")
+}
+
+model OfficeChatMessage {
+  id        String   @id @default(cuid())
+  tenantId  String
+  threadId  String
+  senderId  String
+  content   String   @db.Text
+  editedAt  DateTime?
+  createdAt DateTime @default(now())
+
+  thread    OfficeChatThread @relation(fields: [threadId], references: [id], onDelete: Cascade)
+  sender    User             @relation(fields: [senderId], references: [id], onDelete: Cascade)
+
+  @@index([threadId, createdAt])
+  @@index([tenantId, createdAt])
+  @@map("office_chat_messages")
 }
 
 // ============================================================

@@ -295,7 +295,18 @@ export class MorenAiService {
     });
 
     // Konuşma geçmişini Anthropic formatına çevir
-    const deterministicAnswer = this.getDeterministicCriticalAnswer(userMessage);
+    const today = new Date();
+    const currentPeriod = `${today.getFullYear()}-${String(today.getMonth() + 1).padStart(2, '0')}`;
+    const user = userId
+      ? await this.prisma.user.findFirst({
+          where: { id: userId },
+          include: { tenant: true, userRoles: { include: { role: true } } },
+        })
+      : null;
+
+    const deterministicAnswer =
+      this.getIdentityAnswer(userMessage, user) ||
+      this.getDeterministicCriticalAnswer(userMessage);
     if (deterministicAnswer) {
       const durationMs = Date.now() - started;
       await this.prisma.aiMessage.create({
@@ -335,12 +346,6 @@ export class MorenAiService {
     const messages = this.buildMessages(conversation.messages, userMessage);
 
     // Tenant + kullanıcı + cari dönem bağlamı
-    const today = new Date();
-    const currentPeriod = `${today.getFullYear()}-${String(today.getMonth() + 1).padStart(2, '0')}`;
-    const user = userId
-      ? await this.prisma.user.findFirst({ where: { id: userId }, include: { tenant: true } })
-      : null;
-
     const systemPrompt = buildSystemPrompt({
       officeName: user?.tenant?.name,
       userName: cleanFirstName(user?.firstName) || cleanFirstName(user?.lastName),
@@ -378,7 +383,7 @@ export class MorenAiService {
     let stopReason = '';
 
     for (let iter = 0; iter < MAX_TOOL_ITERATIONS; iter++) {
-      const dynamicSystemContext = [taxpayerContext, memoryContext, effectiveVoiceHint].filter(Boolean).join('\n\n');
+      const dynamicSystemContext = [this.buildActiveUserContext(user, tenantId), taxpayerContext, memoryContext, effectiveVoiceHint].filter(Boolean).join('\n\n');
       const payload: any = {
         model,
         // Maliyet optimizasyonu: 4096 -> 1500. Normal sohbet cevabi 500-1000 token.
@@ -637,6 +642,57 @@ export class MorenAiService {
   // ==========================================================
   // YARDIMCILAR
   // ==========================================================
+  private getIdentityAnswer(text: string, user: any): string | null {
+    const normalized = this.normalizeForIntent(text);
+    const asksIdentity =
+      /beni taniyor musun|beni tanir misin|ben kimim|kim oldugumu biliyor musun|adim ne|ismim ne/.test(normalized);
+    if (!asksIdentity) return null;
+
+    const fullName = `${user?.firstName || ''} ${user?.lastName || ''}`.trim();
+    const officeName = user?.tenant?.name || 'bu ofis';
+    const roles = (user?.userRoles || [])
+      .map((ur: any) => ur?.role?.name)
+      .filter(Boolean)
+      .join(', ');
+    const roleText = roles ? ` Rolun: ${roles}.` : '';
+    const emailText = user?.email ? ` E-posta: ${user.email}.` : '';
+
+    if (!fullName) {
+      return `Seni aktif portal kullanicisi olarak goruyorum. ${officeName} oturumundasin.${roleText}${emailText}`;
+    }
+
+    return `Evet, seni ${fullName} olarak goruyorum. ${officeName} oturumundasin.${roleText}${emailText}`;
+  }
+
+  private buildActiveUserContext(user: any, tenantId: string): string {
+    const fullName = `${user?.firstName || ''} ${user?.lastName || ''}`.trim();
+    const roles = (user?.userRoles || [])
+      .map((ur: any) => ur?.role?.name)
+      .filter(Boolean)
+      .join(', ');
+
+    return [
+      '[AKTIF KULLANICI]',
+      `Ad Soyad: ${fullName || 'Bilinmiyor'}`,
+      `E-posta: ${user?.email || 'Bilinmiyor'}`,
+      `Rol: ${roles || 'Bilinmiyor'}`,
+      `Ofis: ${user?.tenant?.name || 'Bilinmiyor'}`,
+      `Tenant: ${tenantId}`,
+      'Kullanici "beni taniyor musun", "ben kimim", "adim ne" gibi sorarsa bu bilgiyi kisa cevapla.',
+    ].join('\n');
+  }
+
+  private normalizeForIntent(text: string) {
+    return String(text || '')
+      .toLocaleLowerCase('tr-TR')
+      .replace(/ı/g, 'i')
+      .normalize('NFD')
+      .replace(/[\u0300-\u036f]/g, '')
+      .replace(/[^a-z0-9\s]/g, ' ')
+      .replace(/\s+/g, ' ')
+      .trim();
+  }
+
   private getDeterministicCriticalAnswer(text: string): string | null {
     const normalized = text
       .toLocaleLowerCase('tr-TR')

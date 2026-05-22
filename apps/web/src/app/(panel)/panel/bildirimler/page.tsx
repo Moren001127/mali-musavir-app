@@ -26,6 +26,7 @@ const TYPE_LABELS: Record<string, string> = {
   AGENT: 'Ajan',
   WHATSAPP: 'WhatsApp',
   AI: 'Moren AI',
+  OFFICE_CHAT: 'Ofis Chat',
 };
 
 function typeLabel(t: string) {
@@ -46,6 +47,8 @@ function typeColor(t: string) {
       return '#10b981';
     case 'AI':
       return GOLD;
+    case 'OFFICE_CHAT':
+      return '#d4b876';
     default:
       return '#94a3b8';
   }
