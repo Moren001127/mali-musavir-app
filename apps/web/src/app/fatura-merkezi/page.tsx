@@ -462,6 +462,7 @@ export default function FaturaMerkeziPage() {
             <MukelleflerPanel
               taxpayers={taxpayers}
               loading={taxpayersQ.isLoading}
+              period={period}
               onRefresh={refresh}
               onSelectTaxpayer={(id) => { setTaxpayerId(id); setSection('gelen'); }}
             />

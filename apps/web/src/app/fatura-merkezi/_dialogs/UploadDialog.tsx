@@ -21,9 +21,9 @@ const UPLOAD_TYPES = [
   { id: 'BANKA_EXCEL',   label: 'Banka Ekstre Excel', icon: Banknote, color: '#06b6d4' },
 ];
 
-type Props = { taxpayer: any; onClose: () => void };
+type Props = { taxpayer: any; period: string; onClose: () => void };
 
-export default function UploadDialog({ taxpayer, onClose }: Props) {
+export default function UploadDialog({ taxpayer, period, onClose }: Props) {
   const qc = useQueryClient();
   const [tip, setTip] = useState<string>('ALIS_FATURA');
   const [direction, setDirection] = useState<'ALIS' | 'SATIS'>('ALIS');
@@ -40,6 +40,7 @@ export default function UploadDialog({ taxpayer, onClose }: Props) {
       fd.append('source', 'fatura-merkezi');
       fd.append('documentType', tip);
       fd.append('invoiceKind', direction);
+      fd.append('period', period);
       if (useClaudeOnly) fd.append('forceClaude', 'true');
 
       try {
@@ -92,7 +93,9 @@ export default function UploadDialog({ taxpayer, onClose }: Props) {
             </div>
             <div>
               <div className="text-[15.5px] font-semibold" style={{ color: 'var(--text)' }}>Belge Yükle</div>
-              <div className="text-[11.5px] mt-0.5" style={{ color: 'var(--text-muted)' }}>{taxpayerName(taxpayer)}</div>
+              <div className="text-[11.5px] mt-0.5" style={{ color: 'var(--text-muted)' }}>
+                {taxpayerName(taxpayer)} · Dönem {period}
+              </div>
             </div>
           </div>
           <button onClick={onClose} className="p-1 rounded-md hover:bg-[var(--surface-2)]" style={{ color: 'var(--text-muted)' }}>

@@ -192,6 +192,10 @@ function periodRange(period?: string | null) {
   return { start, end };
 }
 
+function periodAnchorDate(period?: string | null) {
+  return periodRange(period)?.start || null;
+}
+
 function periodWhere(period?: string | null) {
   const range = periodRange(period);
   if (!range) return {};
@@ -1820,6 +1824,7 @@ export class FaturaMuhasebelestirmeService {
       documentType?: string;
       invoiceKind?: string;
       forceClaude?: boolean;
+      period?: string;
     },
   ) {
     if (!files?.length) throw new BadRequestException('En az bir belge gerekli');
@@ -1832,6 +1837,7 @@ export class FaturaMuhasebelestirmeService {
       });
     }
     const created: any[] = [];
+    const uploadPeriodDate = periodAnchorDate(opts.period);
 
     for (const file of uploadFiles) {
       const ext = (file.originalname.split('.').pop() || 'bin').replace(/[^a-zA-Z0-9]/g, '').slice(0, 8) || 'bin';
@@ -1857,6 +1863,7 @@ export class FaturaMuhasebelestirmeService {
           documentType: opts.documentType || 'OKC_FIS',
           invoiceKind: opts.invoiceKind || 'ALIS',
           status: duplicate ? 'NEEDS_REVIEW' : isOcrSupported ? 'PROCESSING' : 'NEEDS_REVIEW',
+          faturaTarihi: uploadPeriodDate,
           duplicateOfId: duplicate?.duplicateOfId || null,
           duplicateReason: duplicate?.duplicateReason || null,
           duplicateSeverity: duplicate?.duplicateSeverity || null,
@@ -1944,6 +1951,7 @@ export class FaturaMuhasebelestirmeService {
           duplicateReason: true,
           duplicateSeverity: true,
           imageHash: true,
+          faturaTarihi: true,
         },
       });
       if (!existing) return;
@@ -1982,7 +1990,7 @@ export class FaturaMuhasebelestirmeService {
             duplicateSeverity: duplicate?.duplicateSeverity || existing.duplicateSeverity || null,
             imageHash,
             belgeNo: ocrResult.belgeNo || null,
-            faturaTarihi: parseDate(ocrResult.date || null),
+            faturaTarihi: parseDate(ocrResult.date || null) || existing.faturaTarihi || null,
             sellerVkn: ocrResult.saticiVkn || null,
             vendorName: ocrResult.satici || null,
             totalAmount: money(ocrResult.totalTutari),

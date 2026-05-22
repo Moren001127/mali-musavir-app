@@ -129,6 +129,7 @@ export class FaturaMuhasebelestirmeController {
     @Body('documentType') documentType?: string,
     @Body('invoiceKind') invoiceKind?: string,
     @Body('forceClaude') forceClaude?: string,
+    @Body('period') period?: string,
   ) {
     return this.service.uploadAndOcr(req.user.tenantId, req.user?.userId, files, {
       taxpayerId: taxpayerId || undefined,
@@ -136,6 +137,7 @@ export class FaturaMuhasebelestirmeController {
       documentType: documentType || 'OKC_FIS',
       invoiceKind: invoiceKind || 'ALIS',
       forceClaude: forceClaude === 'true',
+      period: period || undefined,
     });
   }
 

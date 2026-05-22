@@ -32,6 +32,7 @@ import MukellefAyarDialog from '../_dialogs/MukellefAyarDialog';
 type Props = {
   taxpayers: Array<any>;
   loading: boolean;
+  period: string;
   onRefresh: () => void;
   onSelectTaxpayer: (id: string) => void;
 };
@@ -52,7 +53,7 @@ const ACTIONS: Array<{
   { id: 'hesap',      label: 'Hesap Planı',       desc: 'Luca senkron + yeni hesap',         icon: BookOpen, color: '#a78bfa' },
 ];
 
-export default function MukelleflerPanel({ taxpayers, loading, onRefresh, onSelectTaxpayer }: Props) {
+export default function MukelleflerPanel({ taxpayers, loading, period, onRefresh, onSelectTaxpayer }: Props) {
   const [search, setSearch] = useState('');
   const [activeDialog, setActiveDialog] = useState<{ action: ActionId; taxpayer: any } | null>(null);
 
@@ -207,6 +208,7 @@ export default function MukelleflerPanel({ taxpayers, loading, onRefresh, onSele
       {activeDialog?.action === 'yukle' && (
         <UploadDialog
           taxpayer={activeDialog.taxpayer}
+          period={period}
           onClose={() => { setActiveDialog(null); onRefresh(); }}
         />
       )}
