@@ -296,7 +296,7 @@ export default function FaturaDetayDrawer({ taxpayerId, direction, period, defte
 
         {/* Sağ: kompakt editable form */}
         <div
-          className="w-[600px] max-w-[46vw] min-w-[540px] flex flex-col"
+          className="w-[640px] max-w-[52vw] min-w-[600px] flex flex-col"
           style={{
             background: 'linear-gradient(180deg, rgba(24,20,16,0.98), rgba(10,10,9,0.99))',
             borderLeft: '1px solid rgba(212,184,118,0.22)',
@@ -371,8 +371,8 @@ function FaturaForm({ doc, taxpayerId, defterTuru, onApprove, onDelete, approvin
     : (Array.isArray(doc.ocrData?.validationIssues) ? doc.ocrData.validationIssues : []);
   const ownershipIssue = validationIssues.find((issue: any) => issue?.code === 'OWNERSHIP_MISMATCH');
   const entryGridColumns = isIsletme
-    ? '120px minmax(190px,1.4fr) 78px 118px 28px'
-    : '126px minmax(210px,1.5fr) 118px 118px 28px';
+    ? '98px minmax(0,1fr) 58px 94px 24px'
+    : '100px minmax(0,1fr) 96px 96px 24px';
 
   /* Hesap planı (taxpayer-bazlı) — autocomplete önerileri */
   const accountsQ = useQuery({
@@ -579,10 +579,10 @@ function FaturaForm({ doc, taxpayerId, defterTuru, onApprove, onDelete, approvin
 
         <div className="rounded-lg overflow-hidden" style={{ background: 'rgba(255,255,255,0.035)', border: '1px solid rgba(212,184,118,0.30)' }}>
           <div className="grid gap-1.5 px-2.5 py-2 text-[11px] tracking-wider font-bold" style={{ gridTemplateColumns: entryGridColumns, background: 'rgba(212,184,118,0.11)', color: 'var(--text-secondary)', borderBottom: '1px solid rgba(212,184,118,0.24)' }}>
-            <span>{isIsletme ? 'KAYIT' : 'HESAP'}</span>
-            <span>AÇIKLAMA</span>
-            <span className={isIsletme ? '' : 'text-right'}>{isIsletme ? 'KDV' : 'BORÇ'}</span>
-            <span className="text-right">{isIsletme ? 'TUTAR' : 'ALACAK'}</span>
+            <span className="min-w-0 truncate">{isIsletme ? 'KAYIT' : 'HESAP'}</span>
+            <span className="min-w-0 truncate">AÇIKLAMA</span>
+            <span className={`min-w-0 truncate ${isIsletme ? '' : 'text-right'}`}>{isIsletme ? 'KDV' : 'BORÇ'}</span>
+            <span className="min-w-0 truncate text-right">{isIsletme ? 'TUTAR' : 'ALACAK'}</span>
             <span></span>
           </div>
           {lines.length === 0 && (
@@ -593,14 +593,14 @@ function FaturaForm({ doc, taxpayerId, defterTuru, onApprove, onDelete, approvin
           {lines.map((line, idx) => (
             <div
               key={idx}
-              className="grid gap-1.5 px-2.5 py-2"
+              className="grid gap-1.5 px-2.5 py-2 min-w-0"
               style={{ gridTemplateColumns: entryGridColumns, borderBottom: idx === lines.length - 1 ? 'none' : '1px solid rgba(212,184,118,0.16)' }}
             >
               {isIsletme ? (
                 <select
                   value={line.group}
                   onChange={(e) => updateLine(idx, { group: e.target.value })}
-                  className="px-2 py-2 rounded text-[12.5px] outline-none"
+                  className="w-full min-w-0 px-2 py-2 rounded text-[12.5px] outline-none"
                   style={{ background: 'rgba(56,189,248,0.10)', border: '1px solid rgba(56,189,248,0.28)', color: '#7dd3fc' }}
                 >
                   <option value="matrah">{isSale ? 'Gelir kalemi' : 'Gider kalemi'}</option>
@@ -615,7 +615,7 @@ function FaturaForm({ doc, taxpayerId, defterTuru, onApprove, onDelete, approvin
                   list={`accounts-${taxpayerId}`}
                   title={line.accountCode}
                   placeholder="191.01.020"
-                  className="px-2 py-2 rounded text-[13px] font-mono tabular-nums outline-none"
+                  className="w-full min-w-0 px-2 py-2 rounded text-[13px] font-mono tabular-nums outline-none"
                   style={{ background: 'var(--surface)', border: '1px solid var(--border-soft)', color: 'var(--accent)' }}
                 />
               )}
@@ -625,7 +625,7 @@ function FaturaForm({ doc, taxpayerId, defterTuru, onApprove, onDelete, approvin
                 onChange={(e) => updateLine(idx, { description: e.target.value })}
                 title={line.description}
                 placeholder="Açıklama"
-                className="px-2 py-2 rounded text-[13px] outline-none"
+                className="w-full min-w-0 px-2 py-2 rounded text-[13px] outline-none"
                 style={{ background: 'var(--surface)', border: '1px solid var(--border-soft)', color: 'var(--text)' }}
               />
               {isIsletme ? (
@@ -635,7 +635,7 @@ function FaturaForm({ doc, taxpayerId, defterTuru, onApprove, onDelete, approvin
                     value={line.rate || ''}
                     onChange={(e) => updateLine(idx, { rate: e.target.value })}
                     placeholder="%20"
-                    className="px-2 py-2 rounded text-[13px] font-mono outline-none"
+                    className="w-full min-w-0 px-2 py-2 rounded text-[13px] font-mono outline-none"
                     style={{ background: 'var(--surface)', border: '1px solid var(--border-soft)', color: 'var(--text)' }}
                   />
                   <input
@@ -645,7 +645,7 @@ function FaturaForm({ doc, taxpayerId, defterTuru, onApprove, onDelete, approvin
                     onChange={(e) => updateBusinessAmount(idx, e.target.value)}
                     onBlur={() => updateBusinessAmount(idx, formatMoneyInput(line.debit || line.credit))}
                     placeholder="0,00"
-                    className="px-2 py-2 rounded text-[13px] text-right font-mono tabular-nums outline-none"
+                    className="w-full min-w-0 px-2 py-2 rounded text-[13px] text-right font-mono tabular-nums outline-none"
                     style={{ background: 'var(--surface)', border: '1px solid var(--border-soft)', color: 'var(--text)' }}
                   />
                 </>
@@ -658,7 +658,7 @@ function FaturaForm({ doc, taxpayerId, defterTuru, onApprove, onDelete, approvin
                     onChange={(e) => updateLine(idx, { debit: e.target.value, credit: e.target.value ? '' : line.credit })}
                     onBlur={() => updateLine(idx, { debit: formatMoneyInput(line.debit) })}
                     placeholder="0,00"
-                    className="px-2 py-2 rounded text-[13px] text-right font-mono tabular-nums outline-none"
+                    className="w-full min-w-0 px-2 py-2 rounded text-[13px] text-right font-mono tabular-nums outline-none"
                     style={{ background: 'var(--surface)', border: '1px solid var(--border-soft)', color: 'var(--text)' }}
                   />
                   <input
@@ -668,7 +668,7 @@ function FaturaForm({ doc, taxpayerId, defterTuru, onApprove, onDelete, approvin
                     onChange={(e) => updateLine(idx, { credit: e.target.value, debit: e.target.value ? '' : line.debit })}
                     onBlur={() => updateLine(idx, { credit: formatMoneyInput(line.credit) })}
                     placeholder="0,00"
-                    className="px-2 py-2 rounded text-[13px] text-right font-mono tabular-nums outline-none"
+                    className="w-full min-w-0 px-2 py-2 rounded text-[13px] text-right font-mono tabular-nums outline-none"
                     style={{ background: 'var(--surface)', border: '1px solid var(--border-soft)', color: 'var(--text)' }}
                   />
                 </>
@@ -686,12 +686,12 @@ function FaturaForm({ doc, taxpayerId, defterTuru, onApprove, onDelete, approvin
           ))}
           {/* Toplam */}
           <div className="grid gap-1.5 px-2.5 py-2 text-[12px] font-semibold" style={{ gridTemplateColumns: entryGridColumns, background: 'rgba(212,184,118,0.10)', borderTop: '1px solid rgba(212,184,118,0.24)' }}>
-            <span style={{ color: 'var(--text-muted)' }}>Toplam</span>
-            <span style={{ color: isBalanced ? '#10b981' : '#ef4444' }}>
+            <span className="min-w-0 truncate" style={{ color: 'var(--text-muted)' }}>Toplam</span>
+            <span className="min-w-0 truncate" style={{ color: isBalanced ? '#10b981' : '#ef4444' }}>
               {isBalanced ? '✓ Dengeli' : `Fark ${fmtAmount(sumDebit - sumCredit)}`}
             </span>
-            <span className="text-right font-mono tabular-nums" style={{ color: 'var(--text)' }}>{fmtAmount(sumDebit)}</span>
-            <span className="text-right font-mono tabular-nums" style={{ color: 'var(--text)' }}>{fmtAmount(sumCredit)}</span>
+            <span className="min-w-0 text-right font-mono tabular-nums" style={{ color: 'var(--text)' }}>{fmtAmount(sumDebit)}</span>
+            <span className="min-w-0 text-right font-mono tabular-nums" style={{ color: 'var(--text)' }}>{fmtAmount(sumCredit)}</span>
             <span></span>
           </div>
           {/* Belge tutarıyla karşılaştırma */}
