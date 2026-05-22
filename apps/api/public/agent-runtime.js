@@ -4,7 +4,7 @@
 */
 (function () {
   // Agent versiyon — UI'da gösterilir, debug için kritik
-  const AGENT_VERSION = '1.37.90';
+  const AGENT_VERSION = '1.37.91';
   const AGENT_INSTANCE_ID = 'mai_' + Date.now().toString(36) + '_' + Math.random().toString(36).slice(2, 8);
 
   // === VERSION-AWARE RELOAD ===
@@ -1503,7 +1503,7 @@
               const e = (r.meta.entries || []).slice(0, 10).join(' | ');
               const diag = (r.meta.diagnostics || []).slice(0, 6).join(' || ');
               const errs = (r.meta.errors || []).slice(0, 5).join(' || ');
-              metaDetail = ` | bufferSize=${r.meta.bufferSize}B, totalEntries=${r.meta.totalEntries}, xmlCount=${r.meta.xmlCount}, entries=[${e}]`;
+              metaDetail = ` | bufferSize=${r.meta.bufferSize}B, totalEntries=${r.meta.totalEntries}, xmlCount=${r.meta.xmlCount}, pdf=${r.meta.pdfMatched || 0}/${r.meta.pdfCount || 0}, html=${r.meta.htmlMatched || 0}/${r.meta.htmlCount || 0}, entries=[${e}]`;
               if (diag) metaDetail += ` || diag=[${diag}]`;
               if (errs) metaDetail += ` || ❌ insert hatalari=[${errs}]`;
             }

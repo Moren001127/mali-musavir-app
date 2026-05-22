@@ -525,6 +525,8 @@ export class EarsivService {
             matrah: f.matrah,
             kdvTutari: f.kdvTutari,
             kdvOrani: f.kdvOrani,
+            // v2.1: çoklu KDV oranı detayı
+            kdvBreakdown: f.kdvBreakdown ?? undefined,
             toplamTutar: f.toplamTutar,
             paraBirimi: f.paraBirimi,
             xmlContent: f.xmlContent,
@@ -556,6 +558,8 @@ export class EarsivService {
       xmlCount: (parsed as any).__xmlCount || 0,
       entries: (parsed as any).__entries || [],
       diagnostics: (parsed as any).__diagnostics || [],
+      pdfCount: (parsed as any).__pdfCount || 0,
+      pdfMatched: (parsed as any).__pdfMatched || 0,
       htmlCount: (parsed as any).__htmlCount || 0,
       htmlMatched: (parsed as any).__htmlMatched || 0,
       pdfStored,

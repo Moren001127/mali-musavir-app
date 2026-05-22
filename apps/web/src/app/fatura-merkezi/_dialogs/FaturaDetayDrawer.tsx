@@ -19,6 +19,7 @@ type Props = {
   taxpayerId: string;
   direction: 'ALIS' | 'SATIS';
   period: string;
+  defterTuru?: string | null;
   onClose: () => void;
 };
 
@@ -32,7 +33,7 @@ type EditableLine = {
   credit: string;
 };
 
-export default function FaturaDetayDrawer({ taxpayerId, direction, period, onClose }: Props) {
+export default function FaturaDetayDrawer({ taxpayerId, direction, period, defterTuru, onClose }: Props) {
   const qc = useQueryClient();
   const [cursor, setCursor] = useState(0);
   const [fitToScreen, setFitToScreen] = useState(true);
@@ -294,12 +295,19 @@ export default function FaturaDetayDrawer({ taxpayerId, direction, period, onClo
         </div>
 
         {/* Sağ: kompakt editable form */}
-        <div className="w-[560px] max-w-[44vw] min-w-[520px] flex flex-col" style={{ background: 'var(--surface)', borderLeft: '1px solid var(--border)' }}>
+        <div
+          className="w-[600px] max-w-[46vw] min-w-[540px] flex flex-col"
+          style={{
+            background: 'linear-gradient(180deg, rgba(24,20,16,0.98), rgba(10,10,9,0.99))',
+            borderLeft: '1px solid rgba(212,184,118,0.22)',
+          }}
+        >
           {current ? (
             <FaturaForm
               key={current.id}
               doc={current}
               taxpayerId={taxpayerId}
+              defterTuru={defterTuru}
               onApprove={() => current?.id && approveMut.mutate(current.id)}
               onDelete={() => { if (confirm('Bu belgeyi silmek istiyor musun?')) deleteMut.mutate(current.id); }}
               approving={approveMut.isPending}
@@ -341,9 +349,10 @@ export default function FaturaDetayDrawer({ taxpayerId, direction, period, onClo
 }
 
 /* ─── Tek belge formu (kompakt + editable yevmiye) ─── */
-function FaturaForm({ doc, taxpayerId, onApprove, onDelete, approving, deleting, approveError }: {
+function FaturaForm({ doc, taxpayerId, defterTuru, onApprove, onDelete, approving, deleting, approveError }: {
   doc: any;
   taxpayerId: string;
+  defterTuru?: string | null;
   onApprove: () => void;
   onDelete: () => void;
   approving: boolean;
@@ -352,9 +361,18 @@ function FaturaForm({ doc, taxpayerId, onApprove, onDelete, approving, deleting,
 }) {
   const qc = useQueryClient();
   const isSale = String(doc.invoiceKind || '').toUpperCase() === 'SATIS';
+  const isIsletme = /ISLETME|DEFTER_BEYAN|İŞLETME/.test(String(defterTuru || doc.defterTuru || doc.mihsapDefterTuru || '').toLocaleUpperCase('tr-TR'));
   const supplierName = (isSale ? doc.customerName : doc.vendorName) || '—';
   const supplierVkn = (isSale ? doc.buyerVkn : doc.sellerVkn) || '—';
   const total = Number(doc.totalAmount ?? doc.toplamTutar ?? 0);
+  const ownerVkn = isSale ? doc.sellerVkn : doc.buyerVkn;
+  const validationIssues = Array.isArray(doc.validationIssues)
+    ? doc.validationIssues
+    : (Array.isArray(doc.ocrData?.validationIssues) ? doc.ocrData.validationIssues : []);
+  const ownershipIssue = validationIssues.find((issue: any) => issue?.code === 'OWNERSHIP_MISMATCH');
+  const entryGridColumns = isIsletme
+    ? 'minmax(112px,0.8fr) minmax(170px,1.35fr) 72px 104px 28px'
+    : '128px minmax(180px,1fr) 104px 104px 28px';
 
   /* Hesap planı (taxpayer-bazlı) — autocomplete önerileri */
   const accountsQ = useQuery({
@@ -362,7 +380,7 @@ function FaturaForm({ doc, taxpayerId, onApprove, onDelete, approving, deleting,
     queryFn: () => api
       .get('/fatura-muhasebelestirme/account-plan', { params: { taxpayerId, limit: 500 } })
       .then((r) => Array.isArray(r.data) ? r.data : (r.data?.accounts || r.data?.lines || r.data?.data || [])),
-    enabled: !!taxpayerId,
+    enabled: !!taxpayerId && !isIsletme,
   });
   const accounts: any[] = accountsQ.data || [];
 
@@ -382,6 +400,19 @@ function FaturaForm({ doc, taxpayerId, onApprove, onDelete, approving, deleting,
 
   const updateLine = (idx: number, patch: Partial<EditableLine>) => {
     setLines((arr) => arr.map((l, i) => (i === idx ? { ...l, ...patch } : l)));
+    setDirty(true);
+  };
+  const updateBusinessAmount = (idx: number, value: string) => {
+    setLines((arr) => arr.map((line, i) => {
+      if (i !== idx) return line;
+      const isCounterLine = line.group === 'cari';
+      const debitSide = isSale ? isCounterLine : !isCounterLine;
+      return {
+        ...line,
+        debit: debitSide ? value : '',
+        credit: debitSide ? '' : value,
+      };
+    }));
     setDirty(true);
   };
   const addLine = () => {
@@ -466,8 +497,35 @@ function FaturaForm({ doc, taxpayerId, onApprove, onDelete, approving, deleting,
         </div>
       </div>
 
+      <div className="grid grid-cols-2 gap-2">
+        <div
+          className="rounded-lg px-2.5 py-2"
+          style={{
+            background: ownershipIssue ? '#ef444414' : ownerVkn ? '#10b98112' : '#f59e0b12',
+            border: `1px solid ${ownershipIssue ? '#ef444455' : ownerVkn ? '#10b98140' : '#f59e0b40'}`,
+          }}
+        >
+          <div className="text-[9.5px] tracking-wider font-semibold" style={{ color: 'var(--text-light)' }}>VKN/TC KONTROL</div>
+          <div className="text-[11.5px] font-semibold mt-0.5" style={{ color: ownershipIssue ? '#f87171' : ownerVkn ? '#34d399' : '#fbbf24' }}>
+            {ownershipIssue ? 'Mükellefle uyuşmuyor' : ownerVkn ? 'Mükellef tarafı eşleşti' : 'VKN/TC okunamadı'}
+          </div>
+        </div>
+        <div
+          className="rounded-lg px-2.5 py-2"
+          style={{
+            background: isIsletme ? '#38bdf815' : '#a78bfa14',
+            border: `1px solid ${isIsletme ? '#38bdf850' : '#a78bfa45'}`,
+          }}
+        >
+          <div className="text-[9.5px] tracking-wider font-semibold" style={{ color: 'var(--text-light)' }}>DEFTER AKIŞI</div>
+          <div className="text-[11.5px] font-semibold mt-0.5" style={{ color: isIsletme ? '#7dd3fc' : '#c4b5fd' }}>
+            {isIsletme ? 'İşletme kaydı' : 'Bilanço yevmiye'}
+          </div>
+        </div>
+      </div>
+
       {/* Validation hata paneli */}
-      {(doc.validationStatus === 'INVALID' || doc.validationStatus === 'INCOMPLETE') && Array.isArray(doc.validationIssues) && doc.validationIssues.length > 0 && (
+      {(doc.validationStatus === 'INVALID' || doc.validationStatus === 'INCOMPLETE') && validationIssues.length > 0 && (
         <div
           className="p-2.5 rounded-lg"
           style={{
@@ -482,7 +540,7 @@ function FaturaForm({ doc, taxpayerId, onApprove, onDelete, approving, deleting,
             </span>
           </div>
           <ul className="space-y-0.5 text-[11px]" style={{ color: 'var(--text-secondary)' }}>
-            {doc.validationIssues.map((issue: any, idx: number) => (
+            {validationIssues.map((issue: any, idx: number) => (
               <li key={idx} className="leading-tight">· {issue.message}</li>
             ))}
           </ul>
@@ -496,11 +554,11 @@ function FaturaForm({ doc, taxpayerId, onApprove, onDelete, approving, deleting,
         </div>
       )}
 
-      {/* Yevmiye editor */}
+      {/* Kayit editor */}
       <div>
         <div className="flex items-center justify-between mb-1.5">
           <div className="text-[11px] tracking-wider font-semibold" style={{ color: 'var(--text-light)' }}>
-            YEVMİYE KAYDI ({lines.length})
+            {isIsletme ? 'ISLETME KAYDI' : 'YEVMİYE KAYDI'} ({lines.length})
           </div>
           <button
             type="button"
@@ -519,12 +577,12 @@ function FaturaForm({ doc, taxpayerId, onApprove, onDelete, approving, deleting,
           ))}
         </datalist>
 
-        <div className="rounded-lg overflow-hidden" style={{ background: 'var(--surface-2)', border: '1px solid var(--border)' }}>
-          <div className="grid grid-cols-[112px_minmax(160px,1fr)_96px_96px_28px] gap-1.5 px-2 py-1.5 text-[9.5px] tracking-wider font-semibold" style={{ background: 'var(--surface)', color: 'var(--text-muted)', borderBottom: '1px solid var(--border)' }}>
-            <span>HESAP</span>
+        <div className="rounded-lg overflow-hidden" style={{ background: 'rgba(255,255,255,0.035)', border: '1px solid rgba(212,184,118,0.22)' }}>
+          <div className="grid gap-1.5 px-2 py-1.5 text-[9.5px] tracking-wider font-semibold" style={{ gridTemplateColumns: entryGridColumns, background: 'rgba(212,184,118,0.08)', color: 'var(--text-muted)', borderBottom: '1px solid rgba(212,184,118,0.18)' }}>
+            <span>{isIsletme ? 'KAYIT' : 'HESAP'}</span>
             <span>AÇIKLAMA</span>
-            <span className="text-right">BORÇ</span>
-            <span className="text-right">ALACAK</span>
+            <span className={isIsletme ? '' : 'text-right'}>{isIsletme ? 'KDV' : 'BORÇ'}</span>
+            <span className="text-right">{isIsletme ? 'TUTAR' : 'ALACAK'}</span>
             <span></span>
           </div>
           {lines.length === 0 && (
@@ -535,19 +593,32 @@ function FaturaForm({ doc, taxpayerId, onApprove, onDelete, approving, deleting,
           {lines.map((line, idx) => (
             <div
               key={idx}
-              className="grid grid-cols-[112px_minmax(160px,1fr)_96px_96px_28px] gap-1.5 px-2 py-1.5"
-              style={{ borderBottom: idx === lines.length - 1 ? 'none' : '1px solid var(--border-soft)' }}
+              className="grid gap-1.5 px-2 py-1.5"
+              style={{ gridTemplateColumns: entryGridColumns, borderBottom: idx === lines.length - 1 ? 'none' : '1px solid rgba(212,184,118,0.10)' }}
             >
-              <input
-                type="text"
-                value={line.accountCode}
-                onChange={(e) => updateLine(idx, { accountCode: e.target.value })}
-                list={`accounts-${taxpayerId}`}
-                title={line.accountCode}
-                placeholder="191.01.020"
-                className="px-1.5 py-1 rounded text-[12px] font-mono outline-none"
-                style={{ background: 'var(--surface)', border: '1px solid var(--border-soft)', color: 'var(--accent)' }}
-              />
+              {isIsletme ? (
+                <select
+                  value={line.group}
+                  onChange={(e) => updateLine(idx, { group: e.target.value })}
+                  className="px-1.5 py-1 rounded text-[11px] outline-none"
+                  style={{ background: 'rgba(56,189,248,0.10)', border: '1px solid rgba(56,189,248,0.28)', color: '#7dd3fc' }}
+                >
+                  <option value="matrah">{isSale ? 'Gelir kalemi' : 'Gider kalemi'}</option>
+                  <option value="vergi">KDV</option>
+                  <option value="cari">Belge toplamı</option>
+                </select>
+              ) : (
+                <input
+                  type="text"
+                  value={line.accountCode}
+                  onChange={(e) => updateLine(idx, { accountCode: e.target.value })}
+                  list={`accounts-${taxpayerId}`}
+                  title={line.accountCode}
+                  placeholder="191.01.020"
+                  className="px-1.5 py-1 rounded text-[12px] font-mono outline-none"
+                  style={{ background: 'var(--surface)', border: '1px solid var(--border-soft)', color: 'var(--accent)' }}
+                />
+              )}
               <input
                 type="text"
                 value={line.description}
@@ -557,24 +628,48 @@ function FaturaForm({ doc, taxpayerId, onApprove, onDelete, approving, deleting,
                 className="px-1.5 py-1 rounded text-[11.5px] outline-none"
                 style={{ background: 'var(--surface)', border: '1px solid var(--border-soft)', color: 'var(--text)' }}
               />
-              <input
-                type="number"
-                step="0.01"
-                value={line.debit}
-                onChange={(e) => updateLine(idx, { debit: e.target.value, credit: e.target.value ? '' : line.credit })}
-                placeholder="0,00"
-                className="px-1.5 py-1 rounded text-[11.5px] text-right font-mono tabular-nums outline-none"
-                style={{ background: 'var(--surface)', border: '1px solid var(--border-soft)', color: 'var(--text)' }}
-              />
-              <input
-                type="number"
-                step="0.01"
-                value={line.credit}
-                onChange={(e) => updateLine(idx, { credit: e.target.value, debit: e.target.value ? '' : line.debit })}
-                placeholder="0,00"
-                className="px-1.5 py-1 rounded text-[11.5px] text-right font-mono tabular-nums outline-none"
-                style={{ background: 'var(--surface)', border: '1px solid var(--border-soft)', color: 'var(--text)' }}
-              />
+              {isIsletme ? (
+                <>
+                  <input
+                    type="text"
+                    value={line.rate || ''}
+                    onChange={(e) => updateLine(idx, { rate: e.target.value })}
+                    placeholder="%20"
+                    className="px-1.5 py-1 rounded text-[11.5px] font-mono outline-none"
+                    style={{ background: 'var(--surface)', border: '1px solid var(--border-soft)', color: 'var(--text)' }}
+                  />
+                  <input
+                    type="number"
+                    step="0.01"
+                    value={line.debit || line.credit || ''}
+                    onChange={(e) => updateBusinessAmount(idx, e.target.value)}
+                    placeholder="0,00"
+                    className="px-1.5 py-1 rounded text-[11.5px] text-right font-mono tabular-nums outline-none"
+                    style={{ background: 'var(--surface)', border: '1px solid var(--border-soft)', color: 'var(--text)' }}
+                  />
+                </>
+              ) : (
+                <>
+                  <input
+                    type="number"
+                    step="0.01"
+                    value={line.debit}
+                    onChange={(e) => updateLine(idx, { debit: e.target.value, credit: e.target.value ? '' : line.credit })}
+                    placeholder="0,00"
+                    className="px-1.5 py-1 rounded text-[11.5px] text-right font-mono tabular-nums outline-none"
+                    style={{ background: 'var(--surface)', border: '1px solid var(--border-soft)', color: 'var(--text)' }}
+                  />
+                  <input
+                    type="number"
+                    step="0.01"
+                    value={line.credit}
+                    onChange={(e) => updateLine(idx, { credit: e.target.value, debit: e.target.value ? '' : line.debit })}
+                    placeholder="0,00"
+                    className="px-1.5 py-1 rounded text-[11.5px] text-right font-mono tabular-nums outline-none"
+                    style={{ background: 'var(--surface)', border: '1px solid var(--border-soft)', color: 'var(--text)' }}
+                  />
+                </>
+              )}
               <button
                 type="button"
                 onClick={() => removeLine(idx)}
@@ -587,7 +682,7 @@ function FaturaForm({ doc, taxpayerId, onApprove, onDelete, approving, deleting,
             </div>
           ))}
           {/* Toplam */}
-          <div className="grid grid-cols-[112px_minmax(160px,1fr)_96px_96px_28px] gap-1.5 px-2 py-1.5 text-[11px] font-semibold" style={{ background: 'var(--surface)', borderTop: '1px solid var(--border)' }}>
+          <div className="grid gap-1.5 px-2 py-1.5 text-[11px] font-semibold" style={{ gridTemplateColumns: entryGridColumns, background: 'rgba(212,184,118,0.07)', borderTop: '1px solid rgba(212,184,118,0.18)' }}>
             <span style={{ color: 'var(--text-muted)' }}>Toplam</span>
             <span style={{ color: isBalanced ? '#10b981' : '#ef4444' }}>
               {isBalanced ? '✓ Dengeli' : `Fark ${(sumDebit - sumCredit).toFixed(2)}`}
@@ -607,7 +702,7 @@ function FaturaForm({ doc, taxpayerId, onApprove, onDelete, approving, deleting,
           )}
         </div>
         <div className="mt-1.5 text-[10px]" style={{ color: 'var(--text-muted)' }}>
-          Hesap kutusuna yazmaya başla → mukellefin hesap planından öneri gelir. Satır eklemek için + butonu.
+          {isIsletme ? 'İşletme defterinde hesap kodu kullanılmaz; kayıt/gider-gelir kalemi ve KDV satırlarını kontrol et.' : 'Hesap kutusuna yazmaya başla → mükellefin hesap planından öneri gelir. Satır eklemek için + butonu.'}
         </div>
       </div>
 

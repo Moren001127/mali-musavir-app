@@ -344,6 +344,34 @@ export class FaturaMuhasebelestirmeService {
     });
   }
 
+  private normalizeKdvBreakdown(items?: Array<{ rate: number; base: number; amount: number }> | null) {
+    const grouped = new Map<string, { rate: number; base: number; amount: number }>();
+    for (const item of Array.isArray(items) ? items : []) {
+      const rawRate = Number(item?.rate ?? 0);
+      const rate = Number.isFinite(rawRate) ? rawRate : 0;
+      const key = rate.toFixed(2);
+      const current = grouped.get(key) || { rate, base: 0, amount: 0 };
+      current.base += Number(item?.base || 0);
+      current.amount += Number(item?.amount || 0);
+      grouped.set(key, current);
+    }
+    return Array.from(grouped.values())
+      .filter((item) => Math.abs(item.base) > 0.0001 || Math.abs(item.amount) > 0.0001)
+      .sort((a, b) => a.rate - b.rate)
+      .map((item) => ({
+        rate: Math.round(item.rate * 100) / 100,
+        base: Math.round(item.base * 100) / 100,
+        amount: Math.round(item.amount * 100) / 100,
+      }));
+  }
+
+  private kdvAccountCode(isSale: boolean, rate?: number) {
+    const n = Number(rate);
+    if (!Number.isFinite(n) || n <= 0) return isSale ? '391.01.020' : '191.01.020';
+    const suffix = String(Math.round(n)).padStart(3, '0');
+    return `${isSale ? '391' : '191'}.01.${suffix}`;
+  }
+
   /**
    * Talimat ver/kaldır — config.taxpayers[key].talimat alanını günceller.
    * Aktif olduğunda scheduler her gece son 9 günün faturalarını çeker.
@@ -1188,8 +1216,6 @@ export class FaturaMuhasebelestirmeService {
       where: { tenantId, source: 'earsiv', sourceRefId: f.id },
       include: { lines: { orderBy: { orderNo: 'asc' } } },
     });
-    if (existing) return { created: false, duplicate: true, document: existing };
-
     const documentType = f.belgeKaynak === 'EFATURA' ? 'E_FATURA' : 'E_ARSIV';
     const invoiceKind = f.tip === 'SATIS' ? 'SATIS' : 'ALIS';
     const originalName = `${f.faturaNo || f.id}.${f.pdfStorageKey ? 'pdf' : f.htmlStorageKey ? 'html' : 'xml'}`;
@@ -1207,6 +1233,22 @@ export class FaturaMuhasebelestirmeService {
       vendorName: invoiceKind === 'ALIS' ? f.satici : f.alici,
       kdvBreakdown: breakdownArr,
     });
+
+    if (existing) {
+      const refreshed = await this.refreshExistingEarsivDocumentIfNeeded({
+        tenantId,
+        existing,
+        f,
+        documentType,
+        invoiceKind,
+        originalName,
+        sizeBytes,
+        lines,
+        kdvBreakdown: breakdownArr,
+      });
+      return { created: false, duplicate: true, refreshed: !!refreshed, document: refreshed || existing };
+    }
+
     const duplicate = await this.findDuplicate(tenantId, {
       taxpayerId: f.taxpayerId,
       belgeNo: f.faturaNo,
@@ -1289,6 +1331,131 @@ export class FaturaMuhasebelestirmeService {
     }
 
     return { created: true, document: doc };
+  }
+
+  private async refreshExistingEarsivDocumentIfNeeded(opts: {
+    tenantId: string;
+    existing: any;
+    f: any;
+    documentType: string;
+    invoiceKind: string;
+    originalName: string;
+    sizeBytes: number;
+    lines: any[];
+    kdvBreakdown: Array<{ rate: number; base: number; amount: number }> | null;
+  }) {
+    const { tenantId, existing, f, documentType, invoiceKind, originalName, sizeBytes, lines, kdvBreakdown } = opts;
+    if (existing.status === 'APPROVED') return null;
+
+    const needsLineRefresh = this.lineSignature(existing.lines || []) !== this.lineSignature(lines);
+    const currentOcrData: any = existing.ocrData || {};
+    const currentBreakdown = Array.isArray(currentOcrData.kdvBreakdown) ? currentOcrData.kdvBreakdown : null;
+    const needsBreakdownRefresh = JSON.stringify(currentBreakdown || null) !== JSON.stringify(kdvBreakdown || null);
+    const needsPreviewRefresh =
+      existing.mimeType !== (f.pdfStorageKey ? 'application/pdf' : f.htmlStorageKey ? 'text/html' : 'application/xml') ||
+      existing.originalName !== originalName ||
+      Number(existing.sizeBytes || 0) !== Number(sizeBytes || 0);
+
+    if (!needsLineRefresh && !needsBreakdownRefresh && !needsPreviewRefresh) return null;
+
+    const validation = await this.runValidation({
+      tenantId,
+      taxpayerId: f.taxpayerId,
+      invoiceKind,
+      lines,
+      totalAmount: f.toplamTutar,
+      sellerVkn: f.saticiVergiNo,
+      buyerVkn: f.aliciVergiNo,
+      matrah: f.matrah,
+      kdvTutari: f.kdvTutari,
+      kdvBreakdown,
+    });
+
+    await (this.prisma as any).$transaction(async (tx: any) => {
+      if (needsLineRefresh) {
+        await tx.invoiceAccountingLine.deleteMany({ where: { documentId: existing.id } });
+        if (lines.length) {
+          await tx.invoiceAccountingLine.createMany({
+            data: lines.map((line, index) => ({
+              documentId: existing.id,
+              group: line.group || 'matrah',
+              accountCode: line.accountCode || null,
+              description: line.description || null,
+              rate: line.rate || null,
+              debit: line.debit || new Prisma.Decimal(0),
+              credit: line.credit || new Prisma.Decimal(0),
+              orderNo: index,
+            })),
+          });
+        }
+      }
+
+      await tx.invoiceAccountingDocument.update({
+        where: { id: existing.id },
+        data: {
+          taxpayerId: f.taxpayerId,
+          documentType,
+          invoiceKind,
+          status: validation.status !== 'OK' ? 'NEEDS_REVIEW' : 'READY',
+          originalName,
+          mimeType: f.pdfStorageKey ? 'application/pdf' : f.htmlStorageKey ? 'text/html' : 'application/xml',
+          sizeBytes,
+          currency: f.paraBirimi || 'TL',
+          belgeNo: f.faturaNo || null,
+          faturaTarihi: f.faturaTarihi || null,
+          sellerVkn: f.saticiVergiNo || null,
+          buyerVkn: f.aliciVergiNo || null,
+          vendorName: f.satici || null,
+          customerName: f.alici || null,
+          totalAmount: money(f.toplamTutar),
+          ocrStatus: 'SUCCESS',
+          ocrEngine: 'ubl-direct',
+          ocrData: {
+            ...currentOcrData,
+            source: 'earsivFatura',
+            belgeKaynak: f.belgeKaynak,
+            tip: f.tip,
+            matrah: f.matrah,
+            kdvTutari: f.kdvTutari,
+            kdvOrani: f.kdvOrani,
+            kdvBreakdown,
+            validationStatus: validation.status,
+            validationIssues: validation.issues,
+            validationCheckedAt: new Date().toISOString(),
+          },
+        },
+      });
+    });
+
+    try {
+      await (this.prisma as any).$executeRawUnsafe(
+        `UPDATE "invoice_accounting_documents"
+         SET "validationStatus" = $1, "validationIssues" = $2::jsonb, "validationCheckedAt" = NOW()
+         WHERE "id" = $3`,
+        validation.status,
+        validation.issues.length ? JSON.stringify(validation.issues) : null,
+        existing.id,
+      );
+    } catch {
+      // kolonlar yoksa atla — ocrData içinde zaten saklı
+    }
+
+    return (this.prisma as any).invoiceAccountingDocument.findFirst({
+      where: { id: existing.id, tenantId },
+      include: { lines: { orderBy: { orderNo: 'asc' } } },
+    });
+  }
+
+  private lineSignature(lines: any[]) {
+    return (lines || [])
+      .map((line) => [
+        String(line.group || ''),
+        String(line.accountCode || ''),
+        String(line.rate || ''),
+        Number(line.debit || 0).toFixed(2),
+        Number(line.credit || 0).toFixed(2),
+      ].join('|'))
+      .join('~');
   }
 
   async backfillFromExistingEarsiv(
@@ -2477,13 +2644,12 @@ export class FaturaMuhasebelestirmeService {
     kdvBreakdown?: Array<{ rate: number; base: number; amount: number }> | null;
   }) {
     const isSale = opts.invoiceKind === 'SATIS';
-    const kdvCode = isSale ? '391.01.020' : '191.01.020';
     const cariCode = isSale ? '120.01.001' : '320.01.001';
     const matrahCode = isSale ? '600.01.001' : '770.01.010';
     const zero = () => new Prisma.Decimal(0);
 
     // Breakdown geçerli mi? — En az bir satırda base veya amount > 0 olmalı
-    const breakdown = Array.isArray(opts.kdvBreakdown) ? opts.kdvBreakdown : [];
+    const breakdown = this.normalizeKdvBreakdown(opts.kdvBreakdown);
     const hasBreakdown = breakdown.some((b) => Number(b.base || 0) > 0 || Number(b.amount || 0) > 0);
 
     const lines: any[] = [];
@@ -2515,7 +2681,7 @@ export class FaturaMuhasebelestirmeService {
         if (Number(item.amount || 0) > 0) {
           lines.push({
             group: 'vergi',
-            accountCode: kdvCode,
+            accountCode: this.kdvAccountCode(isSale, item.rate),
             description: isSale ? `Hesaplanan KDV ${rateLabel || ''}`.trim() : `İndirilecek KDV ${rateLabel || ''}`.trim(),
             rate: rateLabel,
             debit: isSale ? zero() : amount,
@@ -2540,7 +2706,8 @@ export class FaturaMuhasebelestirmeService {
     const matrah = money(opts.matrah) || zero();
     const kdv = money(opts.kdvTutari) || zero();
     const total = money(opts.total) || matrah.plus(kdv);
-    const rate = opts.kdvOrani ? `%${Number(opts.kdvOrani).toLocaleString('tr-TR')}` : undefined;
+    const rateNumber = opts.kdvOrani ? Number(opts.kdvOrani) : undefined;
+    const rate = rateNumber ? `%${rateNumber.toLocaleString('tr-TR')}` : undefined;
 
     return [
       {
@@ -2553,7 +2720,7 @@ export class FaturaMuhasebelestirmeService {
       },
       {
         group: 'vergi',
-        accountCode: kdvCode,
+        accountCode: this.kdvAccountCode(isSale, rateNumber),
         description: isSale ? 'Hesaplanan KDV' : 'İndirilecek KDV',
         rate,
         debit: isSale ? zero() : kdv,
@@ -2782,7 +2949,20 @@ export class FaturaMuhasebelestirmeService {
         const current = String(line.accountCode || '');
         const isPlaceholder =
           !current ||
-          ['770.01.010', '760.01.001', '740.01.001', '600.01.001', '191.01.020', '391.01.020', '320.01.001', '120.01.001'].includes(current);
+          [
+            '770.01.010',
+            '760.01.001',
+            '740.01.001',
+            '600.01.001',
+            '191.01.001',
+            '191.01.010',
+            '191.01.020',
+            '391.01.001',
+            '391.01.010',
+            '391.01.020',
+            '320.01.001',
+            '120.01.001',
+          ].includes(current);
         if (!isPlaceholder) continue;
         await (this.prisma as any).invoiceAccountingLine.update({
           where: { id: line.id },

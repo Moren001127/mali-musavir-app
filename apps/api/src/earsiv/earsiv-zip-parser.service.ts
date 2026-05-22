@@ -2,6 +2,12 @@ import { Injectable, Logger } from '@nestjs/common';
 import * as JSZip from 'jszip';
 import { XMLParser } from 'fast-xml-parser';
 
+export interface KdvBreakdownItem {
+  rate: number;          // %20, %10, %1 → 20, 10, 1
+  base: number;          // matrah (KDV'siz)
+  amount: number;        // bu orandaki KDV tutarı
+}
+
 export interface ParsedEarsivFatura {
   faturaNo: string;
   faturaTarihi: Date;
@@ -13,6 +19,7 @@ export interface ParsedEarsivFatura {
   matrah?: number;
   kdvTutari?: number;
   kdvOrani?: number;
+  kdvBreakdown?: KdvBreakdownItem[];   // çoklu KDV oranı detayı (UBL TaxSubtotal)
   toplamTutar?: number;
   paraBirimi?: string;
   aciklama?: string;
@@ -75,6 +82,7 @@ export class EarsivZipParserService {
           const nestedBuf = await (file as any).async('nodebuffer');
           await processZipBuffer(nestedBuf, fullPath);
         } else {
+          // Uzantısı belirsiz — XML olabilir mi kontrol et (ilk byte'lar)
           try {
             const raw = await (file as any).async('nodebuffer');
             if (this.looksLikePdf(raw)) {
@@ -85,7 +93,7 @@ export class EarsivZipParserService {
             const content = raw.toString('utf8');
             if (content.trim().startsWith('<?xml') || content.includes('<Invoice') || content.includes('<CreditNote')) {
               xmlFiles.push({ name: baseName, fullPath, content });
-              this.logger.log(`Uzantisiz XML olarak yorumlandi: ${fullPath}`);
+              this.logger.log(`Uzantısız XML olarak yorumlandı: ${fullPath}`);
             } else if (this.looksLikeHtml(content)) {
               htmlFiles.set(stem, { name: baseName, fullPath, content });
               this.logger.log(`Uzantisiz HTML olarak yorumlandi: ${fullPath}`);
@@ -116,9 +124,9 @@ export class EarsivZipParserService {
         if (parsed) {
           parsed.zipFileName = xml.fullPath || xml.name;
           parsed.sourcePath = xml.fullPath;
-          parsed.pdfBuffer = await this.matchPdfBuffer(parsed, xml.fullPath || xml.name, xmlFiles.length, pdfFiles, xmlIndex, pdfTextCache);
+          parsed.pdfBuffer = parsed.pdfBuffer || await this.matchPdfBuffer(parsed, xml.fullPath || xml.name, xmlFiles.length, pdfFiles, xmlIndex, pdfTextCache);
           if (parsed.pdfBuffer) pdfMatched++;
-          parsed.htmlContent = this.matchHtmlContent(parsed, xml.fullPath || xml.name, xmlFiles.length, htmlFiles, xmlIndex);
+          parsed.htmlContent = parsed.htmlContent || this.matchHtmlContent(parsed, xml.fullPath || xml.name, xmlFiles.length, htmlFiles, xmlIndex);
           if (parsed.htmlContent) htmlMatched++;
           results.push(parsed);
           parseDiagnostics.push(`${xml.name}:OK(${parsed.faturaNo},pdf=${parsed.pdfBuffer ? 'Y' : 'N'},html=${parsed.htmlContent ? 'Y' : 'N'})`);
@@ -130,9 +138,9 @@ export class EarsivZipParserService {
           if (fb) {
             fb.zipFileName = xml.fullPath || xml.name;
             fb.sourcePath = xml.fullPath;
-            fb.pdfBuffer = await this.matchPdfBuffer(fb, xml.fullPath || xml.name, xmlFiles.length, pdfFiles, xmlIndex, pdfTextCache);
+            fb.pdfBuffer = fb.pdfBuffer || await this.matchPdfBuffer(fb, xml.fullPath || xml.name, xmlFiles.length, pdfFiles, xmlIndex, pdfTextCache);
             if (fb.pdfBuffer) pdfMatched++;
-            fb.htmlContent = this.matchHtmlContent(fb, xml.fullPath || xml.name, xmlFiles.length, htmlFiles, xmlIndex);
+            fb.htmlContent = fb.htmlContent || this.matchHtmlContent(fb, xml.fullPath || xml.name, xmlFiles.length, htmlFiles, xmlIndex);
             if (fb.htmlContent) htmlMatched++;
             results.push(fb);
             parseDiagnostics.push(`${xml.name}:FALLBACK(${fb.faturaNo},pdf=${fb.pdfBuffer ? 'Y' : 'N'},html=${fb.htmlContent ? 'Y' : 'N'},keys=${topKeys})`);
@@ -148,9 +156,9 @@ export class EarsivZipParserService {
           if (fb) {
             fb.zipFileName = xml.fullPath || xml.name;
             fb.sourcePath = xml.fullPath;
-            fb.pdfBuffer = await this.matchPdfBuffer(fb, xml.fullPath || xml.name, xmlFiles.length, pdfFiles, xmlIndex, pdfTextCache);
+            fb.pdfBuffer = fb.pdfBuffer || await this.matchPdfBuffer(fb, xml.fullPath || xml.name, xmlFiles.length, pdfFiles, xmlIndex, pdfTextCache);
             if (fb.pdfBuffer) pdfMatched++;
-            fb.htmlContent = this.matchHtmlContent(fb, xml.fullPath || xml.name, xmlFiles.length, htmlFiles, xmlIndex);
+            fb.htmlContent = fb.htmlContent || this.matchHtmlContent(fb, xml.fullPath || xml.name, xmlFiles.length, htmlFiles, xmlIndex);
             if (fb.htmlContent) htmlMatched++;
             results.push(fb);
             parseDiagnostics.push(`${xml.name}:FALLBACK_AFTER_ERR(${fb.faturaNo},pdf=${fb.pdfBuffer ? 'Y' : 'N'},html=${fb.htmlContent ? 'Y' : 'N'},err=${e.message?.slice(0, 30)})`);
@@ -191,6 +199,52 @@ export class EarsivZipParserService {
   private looksLikeHtml(content: string): boolean {
     const head = String(content || '').trim().slice(0, 1000).toLowerCase();
     return head.startsWith('<!doctype html') || head.startsWith('<html') || /<body[\s>]/i.test(head);
+  }
+
+  private extractEmbeddedOriginalDocument(xml: string): { pdfBuffer?: Buffer; htmlContent?: string } {
+    const out: { pdfBuffer?: Buffer; htmlContent?: string } = {};
+    const re = /<(?:[a-z0-9_-]+:)?EmbeddedDocumentBinaryObject\b([^>]*)>([\s\S]*?)<\/(?:[a-z0-9_-]+:)?EmbeddedDocumentBinaryObject>/gi;
+    let match: RegExpExecArray | null;
+    while ((match = re.exec(xml))) {
+      const attrs = match[1] || '';
+      const context = xml.slice(Math.max(0, match.index - 800), match.index + 200).toLowerCase();
+      const marker = `${attrs} ${context}`.toLowerCase();
+      if (/xslt|xsl|stylesheet|style\s*sheet/.test(marker)) continue;
+
+      const mime = (attrs.match(/\bmimeCode=["']([^"']+)["']/i)?.[1] || '').toLowerCase();
+      const fileName = (attrs.match(/\bfilename=["']([^"']+)["']/i)?.[1] || '').toLowerCase();
+      const raw = String(match[2] || '')
+        .replace(/<!\[CDATA\[/gi, '')
+        .replace(/\]\]>/g, '')
+        .replace(/\s+/g, '')
+        .trim();
+      if (!raw) continue;
+
+      let buf: Buffer;
+      try {
+        buf = Buffer.from(raw, 'base64');
+      } catch {
+        continue;
+      }
+      if (!buf.length) continue;
+
+      if (!out.pdfBuffer && (mime.includes('pdf') || fileName.endsWith('.pdf') || this.looksLikePdf(buf))) {
+        if (this.looksLikePdf(buf)) out.pdfBuffer = buf;
+        continue;
+      }
+
+      if (!out.htmlContent && (mime.includes('html') || fileName.endsWith('.html') || fileName.endsWith('.htm'))) {
+        const html = buf.toString('utf8');
+        if (this.looksLikeHtml(html)) out.htmlContent = html;
+        continue;
+      }
+
+      if (!out.htmlContent) {
+        const text = buf.toString('utf8');
+        if (this.looksLikeHtml(text)) out.htmlContent = text;
+      }
+    }
+    return out;
   }
 
   private entryDir(value?: string | null): string {
@@ -266,16 +320,18 @@ export class EarsivZipParserService {
     const contentCandidates = [parsed.faturaNo, parsed.ettn]
       .map((v) => this.normalizeFileKey(v))
       .filter(Boolean);
-    for (const [stem, pdf] of pdfEntries) {
-      const cacheKey = `${stem}:${pdf.fullPath}`;
-      const text = this.normalizeFileKey(await this.pdfTextFor(cacheKey, pdf.buffer, pdfTextCache));
-      if (text && contentCandidates.some((candidate) => text.includes(candidate))) {
-        return pdf.buffer;
+    if (contentCandidates.length && pdfEntries.length <= 300) {
+      for (const [stem, pdf] of pdfEntries) {
+        const cacheKey = `${stem}:${pdf.fullPath}`;
+        const text = this.normalizeFileKey(await this.pdfTextFor(cacheKey, pdf.buffer, pdfTextCache));
+        if (text && contentCandidates.some((candidate) => text.includes(candidate))) {
+          return pdf.buffer;
+        }
       }
     }
 
-    // Luca bazen XML/PDF dosyalarina belge no tasimayan sira bazli ad verir.
-    // Sayilar birebir esitse ayni siradaki PDF'i orijinal goruntu olarak esle.
+    // Luca bazen XML/PDF dosyalarına belge no taşımayan sıra bazlı ad verir.
+    // Sayılar birebir eşitse aynı sıradaki PDF'i orijinal görüntü olarak eşle.
     if (xmlCount === pdfEntries.length && xmlIndex !== undefined && pdfEntries[xmlIndex]) {
       return pdfEntries[xmlIndex][1].buffer;
     }
@@ -393,6 +449,7 @@ export class EarsivZipParserService {
     const matrah = num(taxExclusiveMatch?.[1]) ?? num(lineExtMatch?.[1]);
     const kdvTutari = num(taxMatch?.[1]);
     const toplamTutar = num(taxInclusiveMatch?.[1]) ?? num(payableMatch?.[1]);
+    const embedded = this.extractEmbeddedOriginalDocument(xml);
 
     return {
       faturaNo: idMatch?.[1]?.trim() || uuidMatch?.[1]?.trim() || 'BILINMIYOR',
@@ -404,6 +461,8 @@ export class EarsivZipParserService {
       toplamTutar,
       paraBirimi: 'TL',
       xmlContent: xml,
+      pdfBuffer: embedded.pdfBuffer,
+      htmlContent: embedded.htmlContent,
       zipFileName: '',
     };
   }
@@ -559,13 +618,60 @@ export class EarsivZipParserService {
     const toplamTutar = num(monetaryTotal?.['TaxInclusiveAmount'])
       ?? num(monetaryTotal?.['PayableAmount']);
 
-    // KDV — TaxTotal array veya tek obje olabilir
+    // KDV — TaxTotal array veya tek obje olabilir; içinde TaxSubtotal'lar oran-bazlı detay
     const taxTotalRaw = get(['TaxTotal']);
-    const taxTotal = Array.isArray(taxTotalRaw) ? taxTotalRaw[0] : taxTotalRaw;
-    const kdvTutari = num(taxTotal?.['TaxAmount']);
+    const taxTotalList: any[] = Array.isArray(taxTotalRaw)
+      ? taxTotalRaw
+      : (taxTotalRaw ? [taxTotalRaw] : []);
+
+    // Tüm TaxSubtotal'ları topla — birden fazla KDV oranı olabilir (gıda %1 + diğer %20)
+    const breakdown: KdvBreakdownItem[] = [];
+    let kdvTutariToplam = 0;
+    for (const tt of taxTotalList) {
+      const subtotalRaw = tt?.['TaxSubtotal'];
+      const subtotalList: any[] = Array.isArray(subtotalRaw)
+        ? subtotalRaw
+        : (subtotalRaw ? [subtotalRaw] : []);
+
+      for (const st of subtotalList) {
+        const base = num(st?.['TaxableAmount']);
+        const amount = num(st?.['TaxAmount']);
+        // Oran TaxCategory.Percent altında veya doğrudan Percent olabilir
+        const ratePct =
+          num(st?.['TaxCategory']?.['Percent']) ??
+          num(st?.['Percent']) ??
+          (base && amount ? Math.round((amount / base) * 100) : undefined);
+
+        // Sadece anlamlı satırları al (KDV > 0 veya base > 0)
+        if (base !== undefined || amount !== undefined) {
+          breakdown.push({
+            rate: ratePct ?? 0,
+            base: base ?? 0,
+            amount: amount ?? 0,
+          });
+          if (amount) kdvTutariToplam += amount;
+        }
+      }
+      // TaxSubtotal yoksa ama TaxAmount toplam varsa onu kullan
+      if (subtotalList.length === 0) {
+        const totalTax = num(tt?.['TaxAmount']);
+        if (totalTax) kdvTutariToplam += totalTax;
+      }
+    }
+
+    // Geriye uyumluluk için tek-değer toplamlar
+    const kdvTutari = kdvTutariToplam > 0
+      ? kdvTutariToplam
+      : num(taxTotalList[0]?.['TaxAmount']);
 
     // Para birimi
     const paraBirimi = txt(get(['DocumentCurrencyCode'])) || 'TRY';
+
+    // Tek oran ise eski kdvOrani değerini de set et
+    const kdvOraniTek = breakdown.length === 1
+      ? breakdown[0].rate
+      : (matrah && kdvTutari ? Math.round((kdvTutari / matrah) * 100) : undefined);
+    const embedded = this.extractEmbeddedOriginalDocument(xml);
 
     return {
       faturaNo: faturaNo || 'BILINMIYOR',
@@ -577,10 +683,13 @@ export class EarsivZipParserService {
       aliciVergiNo,
       matrah,
       kdvTutari,
-      kdvOrani: matrah && kdvTutari ? Math.round((kdvTutari / matrah) * 100) : undefined,
+      kdvOrani: kdvOraniTek,
+      kdvBreakdown: breakdown.length > 0 ? breakdown : undefined,
       toplamTutar,
       paraBirimi: paraBirimi === 'TRY' ? 'TL' : paraBirimi,
       xmlContent: xml,
+      pdfBuffer: embedded.pdfBuffer,
+      htmlContent: embedded.htmlContent,
       zipFileName: '',
     };
   }

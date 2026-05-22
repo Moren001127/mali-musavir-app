@@ -15,7 +15,7 @@ export default function GelenBelgelerPanel({ taxpayerId, period }: Props) {
   const qc = useQueryClient();
   const [search, setSearch] = useState('');
   const [sortBy, setSortBy] = useState<'name' | 'pending' | 'approved'>('pending');
-  const [selectedDoc, setSelectedDoc] = useState<{ taxpayerId: string; direction: 'ALIS' | 'SATIS' } | null>(null);
+  const [selectedDoc, setSelectedDoc] = useState<{ taxpayerId: string; direction: 'ALIS' | 'SATIS'; defterTuru?: string | null } | null>(null);
 
   /* e-Arşiv ALIŞ kayıtlarını gelen belgeye çevir (toplu)
      — sadece tip=ALIS + belgeKaynak=EARSIV. Satış ve e-fatura akışları ayrı butonlarla. */
@@ -312,7 +312,7 @@ export default function GelenBelgelerPanel({ taxpayerId, period }: Props) {
                     <div className="flex items-center gap-2">
                       <button
                         type="button"
-                        onClick={() => setSelectedDoc({ taxpayerId: r.id, direction: 'ALIS' })}
+                        onClick={() => setSelectedDoc({ taxpayerId: r.id, direction: 'ALIS', defterTuru: r.defterTuru || r.mihsapDefterTuru })}
                         className="text-left hover:underline"
                       >
                         {taxpayerName(r)}
@@ -320,7 +320,7 @@ export default function GelenBelgelerPanel({ taxpayerId, period }: Props) {
                       {r.hasIssue > 0 && (
                         <button
                           type="button"
-                          onClick={() => setSelectedDoc({ taxpayerId: r.id, direction: r.pendingAlis > 0 ? 'ALIS' : 'SATIS' })}
+                          onClick={() => setSelectedDoc({ taxpayerId: r.id, direction: r.pendingAlis > 0 ? 'ALIS' : 'SATIS', defterTuru: r.defterTuru || r.mihsapDefterTuru })}
                           className="inline-flex items-center gap-1 px-1.5 py-0.5 rounded text-[10px] font-semibold tabular-nums"
                           style={{ background: '#ef444422', color: '#ef4444', border: '1px solid #ef444455' }}
                           title="Veri kontrolü uyarısı: yevmiye dengesi, belge toplamı, mükellef eşleşmesi veya eksik hesap nedeniyle inceleme bekleyen belge."
@@ -331,14 +331,14 @@ export default function GelenBelgelerPanel({ taxpayerId, period }: Props) {
                     </div>
                   </td>
                   <td className="px-3 py-2.5 text-[12px]" style={{ color: 'var(--text-secondary)', borderRight: '1px solid rgba(212,184,118,0.12)' }}>{taxpayerBookType(r)}</td>
-                  <NumCell value={r.pendingAlis} tone="#f59e0b" onClick={() => r.pendingAlis > 0 && setSelectedDoc({ taxpayerId: r.id, direction: 'ALIS' })} />
-                  <NumCell value={r.pendingSatis} tone="#f59e0b" onClick={() => r.pendingSatis > 0 && setSelectedDoc({ taxpayerId: r.id, direction: 'SATIS' })} />
+                  <NumCell value={r.pendingAlis} tone="#f59e0b" onClick={() => r.pendingAlis > 0 && setSelectedDoc({ taxpayerId: r.id, direction: 'ALIS', defterTuru: r.defterTuru || r.mihsapDefterTuru })} />
+                  <NumCell value={r.pendingSatis} tone="#f59e0b" onClick={() => r.pendingSatis > 0 && setSelectedDoc({ taxpayerId: r.id, direction: 'SATIS', defterTuru: r.defterTuru || r.mihsapDefterTuru })} />
                   <NumCell value={r.approvedAlis} tone="#10b981" />
                   <NumCell value={r.approvedSatis} tone="#10b981" />
                   <NumCell value={r.postedToLuca} tone="#a78bfa" />
                   <td className="px-3 py-2.5 text-right" style={{ borderLeft: '1px solid rgba(212,184,118,0.12)' }}>
                     <button
-                      onClick={() => setSelectedDoc({ taxpayerId: r.id, direction: 'ALIS' })}
+                      onClick={() => setSelectedDoc({ taxpayerId: r.id, direction: 'ALIS', defterTuru: r.defterTuru || r.mihsapDefterTuru })}
                       className="p-1 rounded-md transition-colors"
                       style={{ color: 'var(--text-muted)' }}
                       onMouseEnter={(e) => (e.currentTarget.style.color = 'var(--accent)')}
@@ -359,6 +359,7 @@ export default function GelenBelgelerPanel({ taxpayerId, period }: Props) {
           taxpayerId={selectedDoc.taxpayerId}
           direction={selectedDoc.direction}
           period={period}
+          defterTuru={selectedDoc.defterTuru}
           onClose={() => setSelectedDoc(null)}
         />
       )}

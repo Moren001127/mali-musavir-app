@@ -2084,6 +2084,14 @@ model InvoiceAccountingDocument {
   lucaAttemptCount Int       @default(0)
   lucaFisNo        String?   // Luca'nin atadığı yevmiye fiş numarasi
 
+  // v2.1: Veri kalitesi & sahiplik kontrolü
+  // validationStatus: OK | INCOMPLETE (matrah/KDV eksik) | INVALID (denge/uyum bozuk)
+  validationStatus String?
+  // [{ code, severity, message, expected?, actual? }]
+  // codes: INCOMPLETE_AMOUNTS | BALANCE_MISMATCH | TOTAL_MISMATCH | OWNERSHIP_MISMATCH
+  validationIssues    Json?
+  validationCheckedAt DateTime?
+
   lines        InvoiceAccountingLine[]
 
   @@index([tenantId, status, createdAt])
@@ -2093,6 +2101,7 @@ model InvoiceAccountingDocument {
   @@index([tenantId, duplicateOfId])
   @@index([imageHash])
   @@index([tenantId, lucaStatus])
+  @@index([tenantId, validationStatus])
   @@map("invoice_accounting_documents")
 }
 
@@ -2396,6 +2405,10 @@ model EarsivFatura {
   kdvOrani       Decimal?   @db.Decimal(5, 2)
   toplamTutar    Decimal?   @db.Decimal(18, 2)
   paraBirimi     String?    @default("TL")
+  // Çoklu KDV oranı desteği — UBL TaxSubtotal'lardan parse edilir.
+  // Şekil: [{ rate: 20, base: 1000.00, amount: 200.00 }, { rate: 1, base: 500, amount: 5 }]
+  // matrah/kdvTutari/kdvOrani alanları geriye uyumluluk için tutulur (toplamlar).
+  kdvBreakdown   Json?
   aciklama       String?
   durum          String?    // KABUL | RED | IPTAL | BEKLEMEDE
   xmlContent     String?    @db.Text  // orijinal UBL XML
