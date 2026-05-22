@@ -195,6 +195,12 @@ export default function GelenBelgelerPanel({ taxpayerId, period }: Props) {
         </div>
       )}
 
+      {!taxpayerId && (
+        <div className="mb-3 p-2.5 rounded-lg text-[12px]" style={{ background: '#a78bfa12', border: '1px solid #a78bfa35', color: '#c4b5fd' }}>
+          e-Ar?iv i?e aktar?m? toplu ?al??maz. ?stten tek m?kellef se?ince bu buton sadece o m?kellefin se?ili d?nem Gelen e-Ar?iv faturalar?n? Fatura ??leme Merkezi'ne al?r.
+        </div>
+      )}
+
       {/* v2.2: Orphan (mukellef bağı yok) belgeler uyarı bandı */}
       {(inboxSummaryQ.data?.orphanCount ?? 0) > 0 && (
         <div className="mb-3 p-3 rounded-lg flex items-center gap-3" style={{ background: '#f59e0b15', border: '1px solid #f59e0b60' }}>

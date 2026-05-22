@@ -101,15 +101,15 @@ export class EarsivZipParserService {
     let pdfMatched = 0;
     let htmlMatched = 0;
 
-    for (const xml of xmlFiles) {
+    for (const [xmlIndex, xml] of xmlFiles.entries()) {
       try {
         const parsed = this.parseUblInvoice(xml.content);
         if (parsed) {
           parsed.zipFileName = xml.fullPath || xml.name;
           parsed.sourcePath = xml.fullPath;
-          parsed.pdfBuffer = this.matchPdfBuffer(parsed, xml.name, xmlFiles.length, pdfFiles);
+          parsed.pdfBuffer = this.matchPdfBuffer(parsed, xml.name, xmlFiles.length, pdfFiles, xmlIndex);
           if (parsed.pdfBuffer) pdfMatched++;
-          parsed.htmlContent = this.matchHtmlContent(parsed, xml.name, xmlFiles.length, htmlFiles);
+          parsed.htmlContent = this.matchHtmlContent(parsed, xml.name, xmlFiles.length, htmlFiles, xmlIndex);
           if (parsed.htmlContent) htmlMatched++;
           results.push(parsed);
           parseDiagnostics.push(`${xml.name}:OK(${parsed.faturaNo},pdf=${parsed.pdfBuffer ? 'Y' : 'N'},html=${parsed.htmlContent ? 'Y' : 'N'})`);
@@ -121,9 +121,9 @@ export class EarsivZipParserService {
           if (fb) {
             fb.zipFileName = xml.fullPath || xml.name;
             fb.sourcePath = xml.fullPath;
-            fb.pdfBuffer = this.matchPdfBuffer(fb, xml.name, xmlFiles.length, pdfFiles);
+            fb.pdfBuffer = this.matchPdfBuffer(fb, xml.name, xmlFiles.length, pdfFiles, xmlIndex);
             if (fb.pdfBuffer) pdfMatched++;
-            fb.htmlContent = this.matchHtmlContent(fb, xml.name, xmlFiles.length, htmlFiles);
+            fb.htmlContent = this.matchHtmlContent(fb, xml.name, xmlFiles.length, htmlFiles, xmlIndex);
             if (fb.htmlContent) htmlMatched++;
             results.push(fb);
             parseDiagnostics.push(`${xml.name}:FALLBACK(${fb.faturaNo},pdf=${fb.pdfBuffer ? 'Y' : 'N'},html=${fb.htmlContent ? 'Y' : 'N'},keys=${topKeys})`);
@@ -139,9 +139,9 @@ export class EarsivZipParserService {
           if (fb) {
             fb.zipFileName = xml.fullPath || xml.name;
             fb.sourcePath = xml.fullPath;
-            fb.pdfBuffer = this.matchPdfBuffer(fb, xml.name, xmlFiles.length, pdfFiles);
+            fb.pdfBuffer = this.matchPdfBuffer(fb, xml.name, xmlFiles.length, pdfFiles, xmlIndex);
             if (fb.pdfBuffer) pdfMatched++;
-            fb.htmlContent = this.matchHtmlContent(fb, xml.name, xmlFiles.length, htmlFiles);
+            fb.htmlContent = this.matchHtmlContent(fb, xml.name, xmlFiles.length, htmlFiles, xmlIndex);
             if (fb.htmlContent) htmlMatched++;
             results.push(fb);
             parseDiagnostics.push(`${xml.name}:FALLBACK_AFTER_ERR(${fb.faturaNo},pdf=${fb.pdfBuffer ? 'Y' : 'N'},html=${fb.htmlContent ? 'Y' : 'N'},err=${e.message?.slice(0, 30)})`);
@@ -180,6 +180,7 @@ export class EarsivZipParserService {
     xmlName: string,
     xmlCount: number,
     pdfFiles: Map<string, { name: string; fullPath: string; buffer: Buffer }>,
+    xmlIndex?: number,
   ): Buffer | undefined {
     if (!pdfFiles.size) return undefined;
 
@@ -212,6 +213,12 @@ export class EarsivZipParserService {
       if (fuzzy) return fuzzy[1].buffer;
     }
 
+    // Luca bazen XML/PDF dosyalarina belge no tasimayan sira bazli ad verir.
+    // Sayilar birebir esitse ayni siradaki PDF'i orijinal goruntu olarak esle.
+    if (xmlCount === pdfEntries.length && xmlIndex !== undefined && pdfEntries[xmlIndex]) {
+      return pdfEntries[xmlIndex][1].buffer;
+    }
+
     return undefined;
   }
 
@@ -220,6 +227,7 @@ export class EarsivZipParserService {
     xmlName: string,
     xmlCount: number,
     htmlFiles: Map<string, { name: string; fullPath: string; content: string }>,
+    xmlIndex?: number,
   ): string | undefined {
     if (!htmlFiles.size) return undefined;
 
@@ -251,6 +259,10 @@ export class EarsivZipParserService {
         return keys.some((key) => key.includes(candidate) || candidate.includes(key));
       });
       if (fuzzy) return fuzzy[1].content;
+    }
+
+    if (xmlCount === htmlEntries.length && xmlIndex !== undefined && htmlEntries[xmlIndex]) {
+      return htmlEntries[xmlIndex][1].content;
     }
 
     return undefined;
