@@ -193,7 +193,7 @@ export default function Sidebar() {
       className="flex flex-col flex-shrink-0 overflow-hidden relative"
       data-collapsed={collapsed ? 'true' : 'false'}
       style={{
-        width: collapsed ? 76 : 256,
+        width: collapsed ? 72 : 236,
         background: 'linear-gradient(180deg, #15110d 0%, #0f0d0b 36%, #0b0a08 100%)',
         borderRight: '1px solid rgba(212,184,118,0.18)',
         transition: 'width 260ms cubic-bezier(0.16, 1, 0.3, 1)',
@@ -214,7 +214,7 @@ export default function Sidebar() {
 
       {/* === LOGO === */}
       <div
-        className={collapsed ? 'relative px-2 py-3' : 'relative px-3 py-3'}
+        className={collapsed ? 'relative px-2 py-3' : 'relative px-2.5 py-3'}
         style={{
           borderBottom: '1px solid rgba(212,184,118,0.18)',
           background: 'linear-gradient(180deg, rgba(212,184,118,0.075), rgba(15,13,11,0.28) 68%, transparent)',
@@ -224,7 +224,7 @@ export default function Sidebar() {
           href="/panel"
           className={collapsed
             ? 'group relative flex h-14 items-center justify-center rounded-xl border transition-all duration-300 hover:border-[#d4b87666]'
-            : 'group relative flex h-[92px] items-center justify-center rounded-2xl border transition-all duration-300 hover:border-[#d4b87666]'
+            : 'group relative flex h-[84px] items-center justify-center rounded-2xl border transition-all duration-300 hover:border-[#d4b87666]'
           }
           style={{
             background: 'linear-gradient(145deg, rgba(212,184,118,0.075), rgba(255,255,255,0.012) 52%, rgba(0,0,0,0.12))',
@@ -233,11 +233,11 @@ export default function Sidebar() {
           }}
           aria-label="Moren"
         >
-          <span className={collapsed ? 'block h-11 w-12 overflow-hidden' : 'block h-[78px] w-[122px] overflow-hidden'}>
+          <span className={collapsed ? 'block h-10 w-[60px]' : 'block h-[70px] w-[106px]'}>
             <img
-              src="/brand/moren-sidebar-horizontal.png"
+              src="/brand/moren-logo-mark.png"
               alt="Moren"
-              className={collapsed ? 'block h-11 w-auto max-w-none object-contain' : 'block h-[78px] w-auto max-w-none object-contain'}
+              className="block h-full w-full object-contain"
               style={{ filter: 'none' }}
             />
           </span>
@@ -363,6 +363,19 @@ export default function Sidebar() {
                       }}
                       aria-label={label}
                     >
+                      {collapsed && (
+                        <span
+                          className="pointer-events-none absolute left-[calc(100%+10px)] top-1/2 z-[90] -translate-y-1/2 whitespace-nowrap rounded-lg border px-2.5 py-1.5 text-[11px] font-semibold opacity-0 shadow-xl transition-all duration-150 group-hover:translate-x-1 group-hover:opacity-100"
+                          style={{
+                            background: 'linear-gradient(135deg, rgba(22,18,15,0.98), rgba(10,9,7,0.98))',
+                            borderColor: `${group.color}44`,
+                            color: '#fafaf9',
+                            boxShadow: `0 12px 28px rgba(0,0,0,0.34), 0 0 18px ${group.color}18`,
+                          }}
+                        >
+                          {label}
+                        </span>
+                      )}
                       <span
                         className="absolute inset-y-1 left-1 w-10 rounded-full opacity-0 blur-md transition-opacity duration-300 group-hover:opacity-70"
                         style={{ background: `${group.color}28` }}

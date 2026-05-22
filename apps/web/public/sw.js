@@ -1,4 +1,4 @@
-const VERSION = 'moren-pwa-v2';
+const VERSION = 'moren-pwa-v3';
 const STATIC_CACHE = `${VERSION}-static`;
 const RUNTIME_CACHE = `${VERSION}-runtime`;
 
@@ -9,6 +9,7 @@ const PRECACHE_URLS = [
   '/icons/moren-pwa-512.png',
   '/icons/apple-touch-icon.png',
   '/brand/moren-logo-gold.png',
+  '/brand/moren-logo-mark.png',
 ];
 
 self.addEventListener('install', (event) => {
