@@ -1,0 +1,72 @@
+<!doctype html>
+<html lang="tr">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <meta name="theme-color" content="#d4b876" />
+    <title>Moren | Çevrimdışı</title>
+    <style>
+      :root {
+        color-scheme: dark;
+        font-family:
+          Inter, ui-sans-serif, system-ui, -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif;
+        background: #0f0d0b;
+        color: #f7f1e2;
+      }
+
+      body {
+        min-height: 100vh;
+        margin: 0;
+        display: grid;
+        place-items: center;
+        padding: 24px;
+        background:
+          radial-gradient(circle at 20% 10%, rgba(212, 184, 118, 0.18), transparent 28rem),
+          #0f0d0b;
+      }
+
+      main {
+        width: min(100%, 420px);
+      }
+
+      img {
+        width: 88px;
+        height: 88px;
+        border-radius: 24px;
+        margin-bottom: 28px;
+      }
+
+      h1 {
+        margin: 0 0 12px;
+        font-size: clamp(28px, 8vw, 40px);
+        line-height: 1;
+      }
+
+      p {
+        margin: 0;
+        color: rgba(247, 241, 226, 0.72);
+        font-size: 16px;
+        line-height: 1.6;
+      }
+
+      button {
+        margin-top: 28px;
+        border: 1px solid rgba(212, 184, 118, 0.42);
+        border-radius: 8px;
+        background: #d4b876;
+        color: #17120b;
+        font: inherit;
+        font-weight: 700;
+        padding: 12px 18px;
+      }
+    </style>
+  </head>
+  <body>
+    <main>
+      <img src="/icons/moren-pwa-192.png" alt="" />
+      <h1>Bağlantı yok</h1>
+      <p>Portal şu an internete ulaşamıyor. Bağlantı geldiğinde kaldığın yerden devam edebilirsin.</p>
+      <button type="button" onclick="window.location.reload()">Tekrar dene</button>
+    </main>
+  </body>
+</html>

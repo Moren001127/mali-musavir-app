@@ -1,991 +1,706 @@
 'use client';
 
-import { useState } from 'react';
+import Link from 'next/link';
+import { useMemo, useState } from 'react';
 import {
-  Smartphone, Bell, FileText, ShieldCheck, Users, Sparkles, Mic, Camera,
-  ArrowRight, Brain, BookOpen, Receipt, Wallet, MessageSquare,
-  CreditCard, BarChart3, FolderOpen, Building, CheckSquare, Briefcase,
-  Phone, Send, Lock, Eye, AlertCircle,
+  BellRing,
+  BookMarked,
+  BookOpenText,
+  BotMessageSquare,
+  BrainCircuit,
+  Building2,
+  CheckCircle2,
+  ChevronRight,
+  ClipboardCheck,
+  Cpu,
+  DatabaseZap,
+  FileCheck2,
+  FileScan,
+  FileStack,
+  FileText,
+  Gauge,
+  Gavel,
+  HandCoins,
+  History,
+  Landmark,
+  LockKeyhole,
+  LucideIcon,
+  MailSearch,
+  Megaphone,
+  MessageSquareText,
+  PanelTop,
+  Printer,
+  QrCode,
+  ReceiptText,
+  Scale,
+  Settings2,
+  Shield,
+  ShieldAlert,
+  ShieldCheck,
+  Smartphone,
+  Stethoscope,
+  Table2,
+  TrendingUp,
+  UserCog,
+  UserRoundSearch,
+  WandSparkles,
+  Workflow,
 } from 'lucide-react';
 
 const GOLD = '#d4b876';
-const GOLD_DARK = '#b8a06f';
-const TEAL = '#6ba3c4';
+const ROSE = '#f09aa8';
+const SAGE = '#8fd7bd';
+const AMBER = '#d8ad70';
+const SKY = '#8cbde8';
+const COPPER = '#d9a06c';
+const STEEL = '#9da8b7';
 
-type Mode = 'ofis' | 'mukellef';
+type ModuleStatus = 'active' | 'planned';
+type ModulePriority = 'first' | 'second' | 'system' | 'planned';
+
+type PortalModule = {
+  href: string;
+  label: string;
+  desc: string;
+  icon: LucideIcon;
+  status?: ModuleStatus;
+  priority: ModulePriority;
+};
+
+type PortalGroup = {
+  label: string;
+  color: string;
+  icon: LucideIcon;
+  modules: PortalModule[];
+};
+
+const portalGroups: PortalGroup[] = [
+  {
+    label: 'Moren AI',
+    color: ROSE,
+    icon: BrainCircuit,
+    modules: [
+      { href: '/panel/moren-ai', label: 'MOREN AI', desc: 'Sohbet, analiz ve portal içi AI yardımcısı', icon: BrainCircuit, priority: 'first' },
+      { href: '/panel/otomasyonlar', label: 'Otomasyonlar', desc: 'Tanımlı otomasyonlar ve çalışma detayları', icon: WandSparkles, priority: 'second' },
+    ],
+  },
+  {
+    label: 'Genel',
+    color: GOLD,
+    icon: PanelTop,
+    modules: [
+      { href: '/panel', label: 'Gösterge Paneli', desc: 'Günlük özet, kritik uyarılar ve iş akışı', icon: Gauge, priority: 'first' },
+      { href: '/panel/mukellefler', label: 'Mükellef Listesi', desc: 'Arama, liste, profil ve hızlı işlemler', icon: UserRoundSearch, priority: 'first' },
+      { href: '/panel/is-yuku', label: 'İş Akışı', desc: 'Evrak, fatura, kontrol ve beyanname akışı', icon: Workflow, priority: 'first' },
+      { href: '/panel/gorevler', label: 'Görevler & Notlar', desc: 'Ofis görevleri, notlar ve hatırlatmalar', icon: ClipboardCheck, priority: 'first' },
+      { href: '/panel/bildirimler', label: 'Bildirimler', desc: 'Okunmamış uyarılar ve sistem mesajları', icon: BellRing, priority: 'first' },
+    ],
+  },
+  {
+    label: 'Fatura & Muhasebe',
+    color: SAGE,
+    icon: ReceiptText,
+    modules: [
+      { href: '/fatura-merkezi', label: 'Fatura Merkezi', desc: 'Yüklenen belgeler, aktarım ve süreç takibi', icon: FileStack, priority: 'first' },
+      { href: '/panel/e-arsiv', label: 'E-Fatura / E-Arşiv', desc: 'Belge sorgulama ve e-arşiv ekranı', icon: FileScan, priority: 'first' },
+      { href: '/panel/ajanlar/mihsap', label: 'Fatura İşleme', desc: 'MİHSAP akışı, OCR ve muhasebeleştirme', icon: BotMessageSquare, priority: 'first' },
+      { href: '/panel/faturalar', label: 'İşlenen Faturalar', desc: 'İşlenmiş fatura listesi ve durumları', icon: ReceiptText, priority: 'first' },
+      { href: '/panel/fis-yazdirma', label: 'Fiş Yazdırma', desc: 'Fiş çıktısı ve belge hazırlama ekranı', icon: Printer, priority: 'second' },
+      { href: '/panel/banka-takip', label: 'Banka Takip', desc: 'Hesap hareketleri ve mutabakat takibi', icon: Landmark, priority: 'second' },
+      { href: '/panel/ajanlar/profiller', label: 'Mükellef Profilleri', desc: 'MİHSAP ve mükellef bazlı ayarlar', icon: UserCog, priority: 'second' },
+    ],
+  },
+  {
+    label: 'Vergi & Beyanname',
+    color: AMBER,
+    icon: FileCheck2,
+    modules: [
+      { href: '/panel/kdv-kontrol', label: 'KDV Kontrol', desc: 'Alış, satış, LUCA ve beyan öncesi kontrol', icon: FileCheck2, priority: 'first' },
+      { href: '/panel/kdv-beyanname', label: 'KDV Beyanname', desc: 'KDV beyanname hazırlığı ve kayıtları', icon: FileCheck2, priority: 'first' },
+      { href: '/panel/beyannameler', label: 'Beyannameler', desc: 'Beyan takip listesi ve durum özetleri', icon: FileText, priority: 'first' },
+      { href: '/panel/ajanlar/tebligat', label: 'e-Tebligat Kontrol', desc: 'Route var, aktif işlev sınırlı', icon: MailSearch, status: 'planned', priority: 'planned' },
+      { href: '/panel/ajanlar/sgk', label: 'SGK Otomasyonu', desc: 'Route var, aktif işlev sınırlı', icon: ShieldAlert, status: 'planned', priority: 'planned' },
+    ],
+  },
+  {
+    label: 'Mali Veriler',
+    color: SKY,
+    icon: DatabaseZap,
+    modules: [
+      { href: '/panel/mizan', label: 'Mizan', desc: 'Mizan yükleme, kontrol ve sonuç ekranı', icon: Table2, priority: 'first' },
+      { href: '/panel/isletme-hesap-ozeti', label: 'İşletme Hesap Özeti', desc: 'İşletme defteri için dönem özeti', icon: BookOpenText, priority: 'second' },
+      { href: '/panel/gelir-tablosu', label: 'Gelir Tablosu', desc: 'Gelir tablosu hazırlama ve analiz ekranı', icon: TrendingUp, priority: 'second' },
+      { href: '/panel/bilanco', label: 'Bilanço', desc: 'Bilanço hazırlama ve kontrol ekranı', icon: Scale, priority: 'second' },
+      { href: '/panel/ajanlar/e-defter', label: 'E-Defter Kontrol', desc: 'E-defter kontrol ve hata yakalama akışı', icon: BookMarked, priority: 'second' },
+    ],
+  },
+  {
+    label: 'Ofis',
+    color: COPPER,
+    icon: Building2,
+    modules: [
+      { href: '/panel/cari-kasa', label: 'Cari Kasa & Tahsilat', desc: 'Ofis tahsilatları, kasa ve bakiye takibi', icon: HandCoins, priority: 'second' },
+      { href: '/panel/duyurular', label: 'Duyurular', desc: 'Mükellef duyuru hazırlığı ve yayınlama', icon: Megaphone, priority: 'second' },
+      { href: '/panel/galeri/hgs-ihlal', label: 'HGS İhlal Sorgulama', desc: 'HGS ihlal sorgulama ve takip ekranı', icon: Gavel, priority: 'second' },
+    ],
+  },
+  {
+    label: 'Teknik & Sistem',
+    color: STEEL,
+    icon: Settings2,
+    modules: [
+      { href: '/panel/hatirlatmalar', label: 'WhatsApp Otomasyonu', desc: 'Hatırlatma mesajları ve otomasyon akışı', icon: MessageSquareText, priority: 'system' },
+      { href: '/panel/whatsapp-qr', label: 'WhatsApp QR', desc: 'WhatsApp bağlantı ve QR ekranı', icon: QrCode, priority: 'system' },
+      { href: '/panel/ajanlar', label: 'Tüm Ajanlar', desc: 'Ajan modüllerinin genel görünümü', icon: Cpu, priority: 'system' },
+      { href: '/panel/ajanlar/luca', label: 'Luca Oturumu', desc: 'LUCA oturum ve bağlantı yönetimi', icon: ShieldCheck, priority: 'system' },
+      { href: '/panel/ajan-saglik', label: 'Sağlık Panosu', desc: 'Sistem ve ajan çalışma sağlığı', icon: Stethoscope, priority: 'system' },
+      { href: '/panel/ajanlar/loglar', label: 'Yapılan İşlemler', desc: 'Ajan logları ve işlem geçmişi', icon: History, priority: 'system' },
+      { href: '/panel/ayarlar', label: 'Ayarlar', desc: 'Genel ayarlar ve sistem tercihleri', icon: Settings2, priority: 'system' },
+      { href: '/panel/ayarlar/denetim', label: 'Denetim Günlüğü', desc: 'Audit kayıtları ve işlem izleri', icon: Shield, priority: 'system' },
+      { href: '/panel/sistem/kilitli-moduller', label: 'Kilitli Modüller', desc: 'Kilitlenen modüllerin yönetimi', icon: LockKeyhole, priority: 'system' },
+    ],
+  },
+];
+
+const firstWave = portalGroups.flatMap((group) => group.modules.filter((module) => module.priority === 'first'));
+const secondWave = portalGroups.flatMap((group) => group.modules.filter((module) => module.priority === 'second'));
+const systemWave = portalGroups.flatMap((group) => group.modules.filter((module) => module.priority === 'system'));
+const plannedWave = portalGroups.flatMap((group) => group.modules.filter((module) => module.status === 'planned'));
 
 export default function MobilTanitimPage() {
-  const [mode, setMode] = useState<Mode>('ofis');
+  const [selectedGroup, setSelectedGroup] = useState(portalGroups[1].label);
+  const activeGroup = portalGroups.find((group) => group.label === selectedGroup) ?? portalGroups[0];
+  const stats = useMemo(() => {
+    const allModules = portalGroups.flatMap((group) => group.modules);
+    return {
+      groups: portalGroups.length,
+      active: allModules.filter((module) => module.status !== 'planned').length,
+      planned: allModules.filter((module) => module.status === 'planned').length,
+      first: firstWave.length,
+    };
+  }, []);
 
   return (
     <div className="space-y-6">
-      {/* HERO */}
-      <section
-        className="rounded-2xl p-8 relative overflow-hidden"
-        style={{
-          background: 'radial-gradient(ellipse at top, rgba(212,184,118,0.08) 0%, rgba(15,11,21,0.95) 60%)',
-          border: '1px solid rgba(212,184,118,0.22)',
-        }}
-      >
-        <span
-          className="absolute top-0 left-12 right-12 h-px"
-          style={{ background: `linear-gradient(90deg, transparent, ${GOLD}, transparent)`, opacity: 0.55 }}
-        />
-        <div className="text-center max-w-4xl mx-auto">
-          <p className="text-[10.5px] uppercase font-bold tracking-[.22em] mb-3" style={{ color: GOLD }}>
-            Moren Mobil Tasarım Önizlemesi
-          </p>
-          <h1
-            style={{
-              fontFamily: 'Fraunces, serif',
-              fontSize: 48,
-              fontWeight: 700,
-              letterSpacing: '-0.03em',
-              lineHeight: 1.05,
-              background: 'linear-gradient(135deg, #fafaf9 0%, #d4b876 60%, #b8a06f 100%)',
-              WebkitBackgroundClip: 'text',
-              backgroundClip: 'text',
-              WebkitTextFillColor: 'transparent',
-            }}
-          >
-            İki Uygulama,<br />Tek Müşavirlik.
-          </h1>
-          <p className="mt-5 text-[14.5px] leading-relaxed max-w-2xl mx-auto" style={{ color: 'rgba(250,250,249,0.65)' }}>
-            Moren Mobil — portalın tamamını cebine taşıyan iki ayrı uygulama.
-            <strong style={{ color: GOLD }}> Ofis</strong> tarafı tüm operasyon yönetimi için;
-            <strong style={{ color: TEAL }}> Mükellef</strong> tarafı belge yükleme, fatura takibi ve ofise mesaj için.
-          </p>
-
-          {/* SEKME — Ofis / Mükellef */}
-          <div
-            className="inline-flex gap-1 mt-7 p-1 rounded-full"
-            style={{ background: 'rgba(0,0,0,0.4)', border: '1px solid rgba(255,255,255,0.06)' }}
-          >
-            <button
-              onClick={() => setMode('ofis')}
-              className="px-5 py-2 rounded-full text-[13px] font-bold flex items-center gap-2 transition"
-              style={{
-                background: mode === 'ofis' ? `linear-gradient(135deg, ${GOLD}, ${GOLD_DARK})` : 'transparent',
-                color: mode === 'ofis' ? '#0f0d0b' : 'rgba(250,250,249,0.65)',
-              }}
-            >
-              <Briefcase size={14} />
-              Ofis (Personel)
-            </button>
-            <button
-              onClick={() => setMode('mukellef')}
-              className="px-5 py-2 rounded-full text-[13px] font-bold flex items-center gap-2 transition"
-              style={{
-                background: mode === 'mukellef' ? `linear-gradient(135deg, ${TEAL}, #4a8aa8)` : 'transparent',
-                color: mode === 'mukellef' ? '#0f0d0b' : 'rgba(250,250,249,0.65)',
-              }}
-            >
-              <Building size={14} />
-              Mükellef Uygulaması
-            </button>
+      <section className="rounded-lg p-5 sm:p-6" style={{ background: '#0f0d0b', border: '1px solid rgba(212,184,118,0.18)' }}>
+        <div className="grid gap-5 lg:grid-cols-[1.15fr_.85fr] lg:items-end">
+          <div>
+            <div className="mb-4 flex h-11 w-11 items-center justify-center rounded-lg" style={{ background: 'rgba(212,184,118,0.14)', color: GOLD, border: '1px solid rgba(212,184,118,0.28)' }}>
+              <Smartphone size={22} />
+            </div>
+            <p className="mb-2 text-[12px] font-bold uppercase" style={{ color: GOLD, letterSpacing: 0 }}>
+              Mobil PWA Önizlemesi
+            </p>
+            <h1 className="max-w-3xl text-[28px] font-semibold leading-tight sm:text-[36px]" style={{ color: '#fafaf9', fontFamily: 'Fraunces, serif', letterSpacing: 0 }}>
+              Portalın gerçek modülleriyle telefonda kurulabilir kullanım
+            </h1>
+            <p className="mt-3 max-w-3xl text-[14px] leading-relaxed" style={{ color: 'rgba(250,250,249,0.64)' }}>
+              Bu ekran artık hayali mobil uygulama modüllerini değil, şu an portalda bulunan gerçek menüleri ve PWA ilk sürüm sırasını gösterir.
+              Aktif olmayan alanlar ayrı işaretlenir.
+            </p>
           </div>
 
-          <div className="mt-4 flex gap-2 flex-wrap justify-center">
-            <Badge icon={Smartphone} text="iOS · Android" />
-            {mode === 'ofis' ? (
-              <>
-                <Badge icon={Mic} text="Sesli AI Sohbet" />
-                <Badge icon={ShieldCheck} text="Onay Kuyruğu" />
-                <Badge icon={Bell} text="Anlık Bildirim" />
-              </>
-            ) : (
-              <>
-                <Badge icon={Camera} text="Belge + OCR" color={TEAL} />
-                <Badge icon={CreditCard} text="Cari & Ödeme" color={TEAL} />
-                <Badge icon={MessageSquare} text="Mesajlaşma" color={TEAL} />
-              </>
-            )}
+          <div className="grid grid-cols-2 gap-2 sm:grid-cols-4 lg:grid-cols-2">
+            <StatBox label="Grup" value={stats.groups} color={GOLD} />
+            <StatBox label="Aktif modül" value={stats.active} color={SAGE} />
+            <StatBox label="İlk mobil dalga" value={stats.first} color={ROSE} />
+            <StatBox label="Planlı" value={stats.planned} color={STEEL} />
           </div>
         </div>
       </section>
 
-      {/* SEKME İÇERİĞİ */}
-      {mode === 'ofis' ? <OfisScreens /> : <MukellefScreens />}
-
-      {/* PORTAL → MOBİL KARŞILAŞTIRMASI */}
-      <section className="rounded-2xl p-6" style={{ background: 'rgba(212,184,118,0.04)', border: '1px solid rgba(212,184,118,0.15)' }}>
-        <h2 style={{ fontFamily: 'Fraunces, serif', fontSize: 22, fontWeight: 600, color: '#fafaf9', letterSpacing: '-0.02em' }}>
-          Portalda Olan Her Şey Mobile Geliyor
-        </h2>
-        <p className="text-[13px] mt-1 mb-4" style={{ color: 'rgba(250,250,249,0.6)' }}>
-          Mobil uygulama portalın küçük bir parçası değil — tüm operasyon mobilden yönetilebilir.
-        </p>
-
-        {mode === 'ofis' ? <OfisFeatureGrid /> : <MukellefFeatureGrid />}
+      <section className="lg:hidden">
+        <MobileLivePreview />
       </section>
 
-      {/* AKIŞ */}
-      <section className="rounded-2xl p-6" style={{ background: 'rgba(0,0,0,0.30)', border: '1px solid rgba(212,184,118,0.18)' }}>
-        <h2 style={{ fontFamily: 'Fraunces, serif', fontSize: 20, fontWeight: 600, color: '#fafaf9', letterSpacing: '-0.02em', marginBottom: 6 }}>
-          Geliştirme Yol Haritası
-        </h2>
-        <p className="text-[12.5px] mb-4" style={{ color: 'rgba(250,250,249,0.55)' }}>
-          Tasarım sen onayladıktan sonra kodlama başlar. Beklenen aşamalar:
-        </p>
-        <div className="grid grid-cols-1 md:grid-cols-4 gap-3">
-          <Phase n="1" title="Tasarım Onay" desc="Bu sayfadaki mockup'lara bakıp tamam dersen sonraki adıma geçeriz." status="active" />
-          <Phase n="2" title="Ofis App MVP" desc="Login + Dashboard + Mükellef + AI Chat + Onay (1-2 hafta)" status="pending" />
-          <Phase n="3" title="Mükellef App MVP" desc="OTP login + Belge yükle + Faturalarım + Mesaj (1-2 hafta)" status="pending" />
-          <Phase n="4" title="TestFlight + Play Store" desc="iOS/Android build, mağaza onayı (1-3 hafta)" status="pending" />
+      <section className="hidden gap-5 lg:grid xl:grid-cols-3">
+        <PhoneMockup label="01, Ana ekran" accent={GOLD}>
+          <HomePhone />
+        </PhoneMockup>
+        <PhoneMockup label="02, Modül menüsü" accent={SAGE}>
+          <ModulesPhone />
+        </PhoneMockup>
+        <PhoneMockup label="03, İş akışı" accent={AMBER}>
+          <WorkflowPhone />
+        </PhoneMockup>
+      </section>
+
+      <section className="rounded-lg p-4 sm:p-5" style={{ background: 'rgba(255,255,255,0.025)', border: '1px solid rgba(255,255,255,0.07)' }}>
+        <div className="mb-4 flex flex-col gap-3 lg:flex-row lg:items-end lg:justify-between">
+          <div>
+            <h2 className="text-[22px] font-semibold" style={{ color: '#fafaf9', fontFamily: 'Fraunces, serif', letterSpacing: 0 }}>
+              Mevcut Portal Modül Haritası
+            </h2>
+            <p className="mt-1 text-[13px]" style={{ color: 'rgba(250,250,249,0.56)' }}>
+              Tasarım ve mobil menü bu listeye göre üretildi.
+            </p>
+          </div>
+          <div className="flex max-w-full gap-1 overflow-x-auto rounded-lg p-1" style={{ background: 'rgba(0,0,0,0.22)', border: '1px solid rgba(255,255,255,0.06)' }}>
+            {portalGroups.map((group) => {
+              const selected = group.label === selectedGroup;
+              const Icon = group.icon;
+              return (
+                <button
+                  key={group.label}
+                  type="button"
+                  onClick={() => setSelectedGroup(group.label)}
+                  className="flex flex-shrink-0 items-center gap-1.5 rounded-lg px-3 py-2 text-[12px] font-semibold"
+                  style={{
+                    background: selected ? `${group.color}20` : 'transparent',
+                    border: selected ? `1px solid ${group.color}45` : '1px solid transparent',
+                    color: selected ? group.color : 'rgba(250,250,249,0.52)',
+                  }}
+                >
+                  <Icon size={14} />
+                  {group.label}
+                </button>
+              );
+            })}
+          </div>
+        </div>
+
+        <div className="grid gap-2 md:grid-cols-2 xl:grid-cols-3">
+          {activeGroup.modules.map((module) => (
+            <ModuleCard key={module.href} module={module} color={activeGroup.color} />
+          ))}
         </div>
       </section>
+
+      <section className="grid gap-4 lg:grid-cols-4">
+        <RoadmapColumn title="İlk PWA sürümü" color={GOLD} items={firstWave} />
+        <RoadmapColumn title="İkinci dalga" color={SKY} items={secondWave} />
+        <RoadmapColumn title="Sistem ekranları" color={STEEL} items={systemWave} />
+        <RoadmapColumn title="Gizli / planlı" color={AMBER} items={plannedWave} />
+      </section>
     </div>
   );
 }
 
-/* ═══════════════════════════════════════════════════════════
-   OFİS (PERSONEL) — 8 EKRAN
-   ═══════════════════════════════════════════════════════════ */
+function MobileLivePreview() {
+  const quickModules = [
+    { href: '/panel', label: 'Panel', desc: 'Günlük özet', icon: Gauge, color: GOLD },
+    { href: '/panel/mukellefler', label: 'Mükellefler', desc: 'Liste ve profiller', icon: UserRoundSearch, color: GOLD },
+    { href: '/panel/ajanlar/mihsap', label: 'Fatura', desc: 'İşleme merkezi', icon: ReceiptText, color: SAGE },
+    { href: '/panel/kdv-kontrol', label: 'KDV', desc: 'Kontrol akışı', icon: FileCheck2, color: AMBER },
+  ];
 
-function OfisScreens() {
   return (
-    <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-6">
-      <PhoneMockup label="01 · Giriş & Biyometrik" accent={GOLD}><LoginScreen /></PhoneMockup>
-      <PhoneMockup label="02 · Gösterge Paneli" accent={GOLD}><DashboardScreen /></PhoneMockup>
-      <PhoneMockup label="03 · Mükellef Listesi" accent={GOLD}><MukellefListScreen /></PhoneMockup>
-      <PhoneMockup label="04 · Mükellef Detay" accent={GOLD}><MukellefDetayScreen /></PhoneMockup>
-      <PhoneMockup label="05 · Moren Ofis · AI" accent={GOLD}><AIChatScreen /></PhoneMockup>
-      <PhoneMockup label="06 · AI Onay Kuyruğu" accent={GOLD}><OnayScreen /></PhoneMockup>
-      <PhoneMockup label="07 · Görevler & Notlar" accent={GOLD}><GorevlerScreen /></PhoneMockup>
-      <PhoneMockup label="08 · Beyanname Takip" accent={GOLD}><BeyannameScreen /></PhoneMockup>
-      <PhoneMockup label="09 · Mizan / Bilanço" accent={GOLD}><MizanScreen /></PhoneMockup>
-      <PhoneMockup label="10 · Evrak + OCR" accent={GOLD}><EvrakScreen /></PhoneMockup>
-      <PhoneMockup label="11 · DENİZ Patrol" accent={GOLD}><DenizScreen /></PhoneMockup>
-      <PhoneMockup label="12 · Banka Takip" accent={GOLD}><BankaScreen /></PhoneMockup>
-    </div>
-  );
-}
+    <div className="space-y-4" style={{ fontFamily: 'Inter, system-ui, sans-serif' }}>
+      <div className="rounded-lg p-4" style={{ background: 'rgba(255,255,255,0.028)', border: '1px solid rgba(255,255,255,0.07)' }}>
+        <div className="mb-3 flex items-center gap-2">
+          <span className="flex h-9 w-9 items-center justify-center rounded-lg text-[14px] font-bold" style={{ background: 'linear-gradient(135deg, #d4b876, #8b7649)', color: '#0f0d0b', fontFamily: 'Fraunces, serif' }}>
+            M
+          </span>
+          <div className="min-w-0 flex-1">
+            <p className="text-[15px] font-semibold leading-tight" style={{ color: '#fafaf9' }}>Moren Portal PWA</p>
+            <p className="text-[12px] leading-tight" style={{ color: 'rgba(250,250,249,0.52)' }}>Telefonda gerçek kullanım düzeni</p>
+          </div>
+          <BellRing size={18} style={{ color: GOLD }} />
+        </div>
 
-/* ═══════════════════════════════════════════════════════════
-   MÜKELLEF (DIŞ KULLANICI) — 6 EKRAN
-   ═══════════════════════════════════════════════════════════ */
-
-function MukellefScreens() {
-  return (
-    <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-6">
-      <PhoneMockup label="01 · SMS ile Giriş" accent={TEAL}><MukOtpScreen /></PhoneMockup>
-      <PhoneMockup label="02 · Ana Sayfa" accent={TEAL}><MukDashboardScreen /></PhoneMockup>
-      <PhoneMockup label="03 · Belge Yükle (OCR)" accent={TEAL}><MukBelgeScreen /></PhoneMockup>
-      <PhoneMockup label="04 · Faturalarım" accent={TEAL}><MukFaturaScreen /></PhoneMockup>
-      <PhoneMockup label="05 · Beyannamelerim" accent={TEAL}><MukBeyanScreen /></PhoneMockup>
-      <PhoneMockup label="06 · Ofise Mesaj" accent={TEAL}><MukMesajScreen /></PhoneMockup>
-      <PhoneMockup label="07 · Cari / Ödeme" accent={TEAL}><MukCariScreen /></PhoneMockup>
-      <PhoneMockup label="08 · Bildirimler" accent={TEAL}><MukBildirimScreen /></PhoneMockup>
-    </div>
-  );
-}
-
-/* ════════════ Yardımcı bileşenler ════════════ */
-
-function Badge({ icon: Icon, text, color = GOLD }: { icon: any; text: string; color?: string }) {
-  return (
-    <span
-      className="inline-flex items-center gap-2 px-4 py-2 rounded-full text-[12px] font-semibold"
-      style={{ background: `${color}1a`, border: `1px solid ${color}55`, color }}
-    >
-      <Icon size={13} />
-      {text}
-    </span>
-  );
-}
-
-function Phase({ n, title, desc, status }: { n: string; title: string; desc: string; status: 'active' | 'pending' | 'done' }) {
-  const c = status === 'active' ? GOLD : status === 'done' ? '#86efac' : 'rgba(250,250,249,0.4)';
-  return (
-    <div className="rounded-xl p-3.5" style={{ background: status === 'active' ? `${GOLD}10` : 'rgba(255,255,255,0.025)', border: `1px solid ${status === 'active' ? `${GOLD}40` : 'rgba(255,255,255,0.06)'}` }}>
-      <div className="flex items-center gap-2 mb-1.5">
-        <span className="w-6 h-6 rounded-md flex items-center justify-center text-[11px] font-bold" style={{ background: status === 'active' ? GOLD : 'rgba(255,255,255,0.06)', color: status === 'active' ? '#0f0d0b' : c }}>
-          {n}
-        </span>
-        <h4 style={{ fontFamily: 'Fraunces, serif', fontSize: 13, fontWeight: 600, color: status === 'active' ? '#fafaf9' : c }}>{title}</h4>
+        <div className="grid grid-cols-2 gap-2">
+          {quickModules.map((item) => {
+            const Icon = item.icon;
+            return (
+              <Link
+                key={item.href}
+                href={item.href}
+                className="min-h-[82px] rounded-lg p-3"
+                style={{ background: `${item.color}10`, border: `1px solid ${item.color}28` }}
+              >
+                <div className="mb-2 flex items-center justify-between">
+                  <Icon size={18} style={{ color: item.color }} />
+                  <ChevronRight size={15} style={{ color: 'rgba(250,250,249,0.42)' }} />
+                </div>
+                <p className="text-[13px] font-semibold leading-tight" style={{ color: '#fafaf9' }}>{item.label}</p>
+                <p className="mt-1 text-[11px] leading-tight" style={{ color: 'rgba(250,250,249,0.48)' }}>{item.desc}</p>
+              </Link>
+            );
+          })}
+        </div>
       </div>
-      <p className="text-[11px] leading-relaxed" style={{ color: 'rgba(250,250,249,0.55)' }}>{desc}</p>
+
+      <div className="rounded-lg p-4" style={{ background: 'rgba(255,255,255,0.028)', border: '1px solid rgba(255,255,255,0.07)' }}>
+        <div className="mb-3 flex items-center justify-between">
+          <div>
+            <h2 className="text-[18px] font-semibold leading-tight" style={{ color: '#fafaf9', fontFamily: 'Fraunces, serif', letterSpacing: 0 }}>
+              İlk PWA modülleri
+            </h2>
+            <p className="mt-1 text-[12px] leading-relaxed" style={{ color: 'rgba(250,250,249,0.52)' }}>
+              Telefonda ilk açılacak aktif ekranlar
+            </p>
+          </div>
+          <span className="rounded-md px-2 py-1 text-[12px] font-bold" style={{ background: 'rgba(212,184,118,0.14)', color: GOLD }}>
+            {firstWave.length}
+          </span>
+        </div>
+
+        <div className="space-y-2">
+          {firstWave.map((module) => (
+            <MobileModuleRow key={module.href} module={module} />
+          ))}
+        </div>
+      </div>
+
+      <div className="rounded-lg p-4" style={{ background: 'rgba(255,255,255,0.028)', border: '1px solid rgba(255,255,255,0.07)' }}>
+        <h2 className="text-[18px] font-semibold leading-tight" style={{ color: '#fafaf9', fontFamily: 'Fraunces, serif', letterSpacing: 0 }}>
+          Tüm portal grupları
+        </h2>
+        <div className="mt-3 space-y-2">
+          {portalGroups.map((group) => (
+            <MobileGroupCard key={group.label} group={group} />
+          ))}
+        </div>
+      </div>
+    </div>
+  );
+}
+
+function MobileModuleRow({ module }: { module: PortalModule }) {
+  const Icon = module.icon;
+  const group = portalGroups.find((item) => item.modules.some((candidate) => candidate.href === module.href));
+  const color = group?.color ?? GOLD;
+
+  return (
+    <Link
+      href={module.href}
+      className="flex min-h-[58px] items-center gap-3 rounded-lg px-3 py-2"
+      style={{ background: `${color}0d`, border: `1px solid ${color}22` }}
+    >
+      <span className="flex h-9 w-9 flex-shrink-0 items-center justify-center rounded-lg" style={{ background: `${color}16`, color }}>
+        <Icon size={17} />
+      </span>
+      <span className="min-w-0 flex-1">
+        <span className="block truncate text-[13px] font-semibold leading-tight" style={{ color: '#fafaf9' }}>{module.label}</span>
+        <span className="mt-1 block truncate text-[11px] leading-tight" style={{ color: 'rgba(250,250,249,0.48)' }}>{group?.label}</span>
+      </span>
+      <ChevronRight size={16} style={{ color }} />
+    </Link>
+  );
+}
+
+function MobileGroupCard({ group }: { group: PortalGroup }) {
+  const Icon = group.icon;
+  const activeCount = group.modules.filter((module) => module.status !== 'planned').length;
+  const plannedCount = group.modules.length - activeCount;
+
+  return (
+    <div className="rounded-lg p-3" style={{ background: `${group.color}0c`, border: `1px solid ${group.color}22` }}>
+      <div className="flex items-center gap-3">
+        <span className="flex h-9 w-9 flex-shrink-0 items-center justify-center rounded-lg" style={{ background: `${group.color}16`, color: group.color }}>
+          <Icon size={17} />
+        </span>
+        <div className="min-w-0 flex-1">
+          <p className="truncate text-[13px] font-semibold leading-tight" style={{ color: '#fafaf9' }}>{group.label}</p>
+          <p className="mt-1 text-[11px] leading-tight" style={{ color: 'rgba(250,250,249,0.48)' }}>
+            {activeCount} aktif modül{plannedCount > 0 ? `, ${plannedCount} planlı` : ''}
+          </p>
+        </div>
+      </div>
+    </div>
+  );
+}
+
+function StatBox({ label, value, color }: { label: string; value: number; color: string }) {
+  return (
+    <div className="rounded-lg p-3" style={{ background: `${color}0f`, border: `1px solid ${color}28` }}>
+      <p className="text-[11px] font-semibold uppercase" style={{ color: 'rgba(250,250,249,0.52)', letterSpacing: 0 }}>
+        {label}
+      </p>
+      <p className="mt-1 text-[26px] font-bold leading-none" style={{ color, fontFamily: 'Fraunces, serif', letterSpacing: 0 }}>
+        {value}
+      </p>
     </div>
   );
 }
 
 function PhoneMockup({ label, accent, children }: { label: string; accent: string; children: React.ReactNode }) {
   return (
-    <div className="relative pb-10">
+    <div className="rounded-lg p-4" style={{ background: 'rgba(255,255,255,0.022)', border: '1px solid rgba(255,255,255,0.07)' }}>
       <div
         className="mx-auto"
         style={{
-          width: 280,
-          height: 580,
-          background: '#0f0d0b',
-          borderRadius: 36,
+          width: 286,
+          maxWidth: '100%',
+          height: 586,
+          borderRadius: 34,
           padding: 8,
-          boxShadow: `0 0 0 2px #1c1813, 0 0 0 8px #2a2419, 0 24px 50px rgba(0,0,0,0.5), 0 0 60px ${accent}10`,
-          position: 'relative',
+          background: '#0a0907',
+          border: '1px solid rgba(255,255,255,0.08)',
+          boxShadow: `0 18px 44px rgba(0,0,0,0.34), 0 0 36px ${accent}12`,
         }}
       >
-        <div
-          className="absolute z-10"
-          style={{
-            top: 4,
-            left: '50%',
-            transform: 'translateX(-50%)',
-            width: 95,
-            height: 22,
-            background: '#0a0907',
-            borderRadius: 16,
-          }}
-        />
-        <div
-          className="overflow-hidden relative flex flex-col"
-          style={{ width: '100%', height: '100%', background: '#0f0d0b', borderRadius: 28 }}
-        >
-          <div className="flex justify-between items-center px-6 pt-3 pb-1 text-[10px] font-bold" style={{ color: '#fafaf9' }}>
+        <div className="relative flex h-full flex-col overflow-hidden" style={{ borderRadius: 26, background: '#0f0d0b' }}>
+          <div className="absolute left-1/2 top-2 h-5 w-24 -translate-x-1/2 rounded-lg" style={{ background: '#050403' }} />
+          <div className="flex items-center justify-between px-5 pb-2 pt-3 text-[10px] font-bold" style={{ color: '#fafaf9' }}>
             <span>09:41</span>
-            <span>● ● ● 5G</span>
+            <span>5G</span>
           </div>
-          <div className="flex-1 px-3.5 py-2 overflow-hidden">
-            {children}
-          </div>
+          <div className="flex-1 overflow-hidden px-3 pb-3 pt-2">{children}</div>
         </div>
       </div>
-      <p className="text-center mt-3 text-[10.5px] uppercase font-bold tracking-[.18em]" style={{ color: `${accent}d0` }}>
+      <p className="mt-3 text-center text-[11px] font-bold uppercase" style={{ color: accent, letterSpacing: 0 }}>
         {label}
       </p>
     </div>
   );
 }
 
-function TopBar({ title, accent = GOLD }: { title: string; accent?: string }) {
+function PhoneHeader({ title, color = GOLD }: { title: string; color?: string }) {
   return (
-    <div className="flex items-center gap-2 mb-3">
-      <div
-        className="w-7 h-7 rounded-lg flex items-center justify-center text-[11px] font-bold"
-        style={{ background: `linear-gradient(135deg, ${accent}, ${accent === GOLD ? GOLD_DARK : '#4a8aa8'})`, color: '#0f0d0b', fontFamily: 'Fraunces, serif' }}
-      >
+    <div className="mb-3 flex items-center gap-2">
+      <span className="flex h-8 w-8 items-center justify-center rounded-lg text-[13px] font-bold" style={{ background: `linear-gradient(135deg, ${color}, #8b7649)`, color: '#0f0d0b', fontFamily: 'Fraunces, serif' }}>
         M
-      </div>
-      <span style={{ fontFamily: 'Fraunces, serif', fontSize: 13, fontWeight: 600, color: '#fafaf9' }}>{title}</span>
-      <div className="ml-auto w-6 h-6 rounded-md flex items-center justify-center" style={{ background: 'rgba(255,255,255,0.06)', position: 'relative' }}>
-        <Bell size={11} style={{ color: accent }} />
-        <span className="absolute top-[3px] right-[3px] w-1.5 h-1.5 rounded-full" style={{ background: '#ef4444' }} />
-      </div>
+      </span>
+      <span className="text-[13px] font-semibold" style={{ color: '#fafaf9', fontFamily: 'Fraunces, serif', letterSpacing: 0 }}>
+        {title}
+      </span>
+      <span className="ml-auto flex h-8 w-8 items-center justify-center rounded-lg" style={{ background: 'rgba(255,255,255,0.045)', color }}>
+        <BellRing size={14} />
+      </span>
     </div>
   );
 }
 
-/* ═══════════ OFİS EKRANLARI ═══════════ */
+function HomePhone() {
+  const quickModules = [
+    { href: '/panel/mukellefler', label: 'Mükellef', value: '42', icon: UserRoundSearch, color: GOLD },
+    { href: '/panel/ajanlar/mihsap', label: 'Fatura', value: '18', icon: ReceiptText, color: SAGE },
+    { href: '/panel/kdv-kontrol', label: 'KDV', value: '6', icon: FileCheck2, color: AMBER },
+    { href: '/panel/moren-ai', label: 'AI', value: 'Canlı', icon: BrainCircuit, color: ROSE },
+  ];
 
-function LoginScreen() {
   return (
-    <div className="h-full flex flex-col items-center justify-center text-center px-2">
-      <div className="w-16 h-16 rounded-2xl mb-5 flex items-center justify-center" style={{ background: `linear-gradient(135deg, ${GOLD}, ${GOLD_DARK})` }}>
-        <span style={{ fontFamily: 'Fraunces, serif', fontSize: 28, fontWeight: 700, color: '#0f0d0b' }}>M</span>
-      </div>
-      <h2 style={{ fontFamily: 'Fraunces, serif', fontSize: 22, fontWeight: 600, color: '#fafaf9', marginBottom: 4 }}>Moren Ofis</h2>
-      <p className="text-[11px] mb-6" style={{ color: 'rgba(250,250,249,0.55)' }}>Personel Girişi</p>
-      <input placeholder="E-posta" className="w-full mb-2 px-3 py-2 rounded-lg text-[12px]" style={{ background: 'rgba(0,0,0,0.4)', border: '1px solid rgba(212,184,118,0.22)', color: '#fafaf9' }} readOnly value="muzaffer@moren..." />
-      <input type="password" placeholder="Parola" className="w-full mb-3 px-3 py-2 rounded-lg text-[12px]" style={{ background: 'rgba(0,0,0,0.4)', border: '1px solid rgba(212,184,118,0.22)', color: '#fafaf9' }} readOnly value="••••••••" />
-      <div className="w-full px-3 py-2 rounded-lg text-[12px] font-bold text-center mb-2" style={{ background: `linear-gradient(135deg, ${GOLD}, ${GOLD_DARK})`, color: '#0f0d0b' }}>
-        Giriş Yap
-      </div>
-      <div className="w-full px-3 py-2 rounded-lg text-[11.5px] font-bold text-center flex items-center justify-center gap-1.5" style={{ background: 'rgba(255,255,255,0.05)', color: GOLD, border: `1px solid ${GOLD}30` }}>
-        <Lock size={11} /> Face ID ile Giriş
-      </div>
-    </div>
-  );
-}
+    <div className="flex h-full flex-col">
+      <PhoneHeader title="Gösterge Paneli" />
+      <h3 className="text-[18px] font-semibold leading-tight" style={{ color: '#fafaf9', fontFamily: 'Fraunces, serif', letterSpacing: 0 }}>
+        Bugünkü portal özeti
+      </h3>
+      <p className="mb-3 mt-1 text-[10.5px]" style={{ color: 'rgba(250,250,249,0.5)' }}>
+        Kritik işler, mükellefler ve bekleyen kontroller
+      </p>
 
-function DashboardScreen() {
-  return (
-    <>
-      <TopBar title="Moren" />
-      <h2 style={{ fontFamily: 'Fraunces, serif', fontSize: 18, fontWeight: 600, color: '#fafaf9', letterSpacing: '-0.02em' }}>Günaydın Muzaffer</h2>
-      <p className="text-[10px] mb-3" style={{ color: 'rgba(250,250,249,0.5)' }}>14 Mayıs · Perşembe</p>
-
-      <div className="grid grid-cols-2 gap-2 mb-3">
-        <MetricBox label="Bekleyen" value="3" color="#fca5a5" sub="2 kritik" />
-        <MetricBox label="Mükellef" value="42" color="#fafaf9" sub="aktif" />
-        <MetricBox label="Bu Hafta" value="8" color={GOLD} sub="beyanname" />
-        <MetricBox label="AI Maliyet" value="12¢" color="#86efac" sub="bugün" />
+      <div className="grid grid-cols-2 gap-2">
+        {quickModules.map((item) => {
+          const Icon = item.icon;
+          return (
+            <Link key={item.href} href={item.href} className="rounded-lg p-2" style={{ background: `${item.color}10`, border: `1px solid ${item.color}28` }}>
+              <div className="mb-2 flex items-center justify-between">
+                <Icon size={15} style={{ color: item.color }} />
+                <ChevronRight size={13} style={{ color: 'rgba(250,250,249,0.42)' }} />
+              </div>
+              <p className="text-[10px] font-semibold" style={{ color: 'rgba(250,250,249,0.58)' }}>{item.label}</p>
+              <p className="mt-1 text-[18px] font-bold leading-none" style={{ color: item.color, fontFamily: 'Fraunces, serif', letterSpacing: 0 }}>{item.value}</p>
+            </Link>
+          );
+        })}
       </div>
 
-      <div className="rounded-xl p-2.5 mb-2" style={{ background: 'linear-gradient(135deg, rgba(212,184,118,0.08), rgba(15,11,21,0.9))', border: '1px solid rgba(212,184,118,0.30)' }}>
-        <p className="text-[8.5px] uppercase font-bold tracking-[.18em] mb-1" style={{ color: GOLD }}>⚡ Brifing</p>
-        <p className="text-[10.5px]" style={{ color: 'rgba(250,250,249,0.85)' }}>3 mükellefin KDV son günü yarın</p>
-      </div>
-    </>
-  );
-}
-
-function MukellefListScreen() {
-  return (
-    <>
-      <TopBar title="Mükellefler" />
-      <div className="relative mb-3">
-        <input placeholder="🔍 Ara..." readOnly className="w-full px-2.5 py-1.5 rounded-lg text-[11px]" style={{ background: 'rgba(0,0,0,0.4)', border: '1px solid rgba(212,184,118,0.20)', color: 'rgba(250,250,249,0.55)' }} />
-      </div>
-      <p className="text-[9.5px] uppercase tracking-wider mb-2" style={{ color: 'rgba(250,250,249,0.45)' }}>42 aktif · 3 acil</p>
-
-      {[
-        { name: 'Petravet Veteriner', vkn: '7290854321', status: 'acil', sub: 'KDV son günü 2 gün' },
-        { name: 'Akgöz Otomotiv', vkn: '0540123456', status: 'normal', sub: 'Mizan kontrolü gerek' },
-        { name: 'Zırhlı Gıda Tic.', vkn: '9982016230', status: 'normal', sub: 'Beyanname gönderildi' },
-        { name: 'Yıldız Tekstil', vkn: '9123456789', status: 'ok', sub: 'Hepsi güncel' },
-        { name: 'Yeşil Market', vkn: '8765432109', status: 'normal', sub: '4 evrak bekleniyor' },
-      ].map((m, i) => (
-        <div key={i} className="rounded-lg p-2 mb-1.5 flex items-center gap-2" style={{ background: 'rgba(255,255,255,0.025)', border: '1px solid rgba(255,255,255,0.05)' }}>
-          <div className="w-7 h-7 rounded-full flex-shrink-0 flex items-center justify-center text-[10px] font-bold" style={{ background: m.status === 'acil' ? 'rgba(239,68,68,0.20)' : m.status === 'ok' ? 'rgba(34,197,94,0.20)' : 'rgba(212,184,118,0.18)', color: m.status === 'acil' ? '#fca5a5' : m.status === 'ok' ? '#86efac' : GOLD }}>
-            {m.name.split(' ').map(w => w[0]).slice(0, 2).join('')}
-          </div>
-          <div className="flex-1 min-w-0">
-            <p className="text-[11px] font-semibold truncate" style={{ color: '#fafaf9' }}>{m.name}</p>
-            <p className="text-[9px]" style={{ color: m.status === 'acil' ? '#fca5a5' : 'rgba(250,250,249,0.5)' }}>{m.sub}</p>
-          </div>
+      <div className="mt-3 rounded-lg p-3" style={{ background: 'rgba(255,255,255,0.035)', border: '1px solid rgba(255,255,255,0.06)' }}>
+        <div className="mb-2 flex items-center gap-2">
+          <Workflow size={14} style={{ color: GOLD }} />
+          <p className="text-[11px] font-bold" style={{ color: '#fafaf9' }}>İş Akışı</p>
+          <span className="ml-auto text-[10px]" style={{ color: 'rgba(250,250,249,0.42)' }}>Bu ay</span>
         </div>
-      ))}
-    </>
-  );
-}
-
-function MukellefDetayScreen() {
-  return (
-    <>
-      <TopBar title="Mükellef" />
-      <div className="rounded-xl p-3 mb-3" style={{ background: 'linear-gradient(135deg, rgba(212,184,118,0.08), rgba(15,11,21,0.85))', border: '1px solid rgba(212,184,118,0.25)' }}>
-        <p style={{ fontFamily: 'Fraunces, serif', fontSize: 15, fontWeight: 600, color: '#fafaf9' }}>Petravet Veteriner Klinik</p>
-        <p className="text-[9.5px] mt-1" style={{ color: 'rgba(250,250,249,0.5)', fontFamily: 'monospace' }}>VKN: 7290854321 · İstanbul</p>
-      </div>
-
-      <p className="text-[8.5px] uppercase tracking-wider mb-2" style={{ color: 'rgba(250,250,249,0.45)' }}>Bu ay özet</p>
-      <div className="grid grid-cols-3 gap-1.5 mb-3">
         {[
-          { l: 'Satış', v: '97.7K', c: '#86efac' },
-          { l: 'Alış', v: '36.3K', c: GOLD },
-          { l: 'Net KDV', v: '12.3K', c: '#fafaf9' },
-        ].map((x, i) => (
-          <div key={i} className="rounded-md py-1.5 px-1 text-center" style={{ background: 'rgba(255,255,255,0.025)' }}>
-            <p className="text-[7.5px] uppercase tracking-[.1em]" style={{ color: 'rgba(250,250,249,0.5)' }}>{x.l}</p>
-            <p style={{ fontFamily: 'Fraunces, serif', fontSize: 12, fontWeight: 700, color: x.c }}>{x.v}</p>
-          </div>
-        ))}
-      </div>
-
-      <p className="text-[8.5px] uppercase tracking-wider mb-2" style={{ color: 'rgba(250,250,249,0.45)' }}>Hızlı Aksiyon</p>
-      {['Mizan Çek', 'Belge Yükle', 'AI ile Sor', 'Hatırlatma'].map((a, i) => (
-        <div key={i} className="rounded-md py-1.5 px-2.5 mb-1 flex items-center gap-2 text-[10.5px]" style={{ background: 'rgba(212,184,118,0.06)', border: '1px solid rgba(212,184,118,0.18)', color: GOLD }}>
-          <ArrowRight size={10} /> {a}
-        </div>
-      ))}
-    </>
-  );
-}
-
-function AIChatScreen() {
-  return (
-    <>
-      <TopBar title="Moren Ofis" />
-      <div className="grid grid-cols-4 gap-1 mb-2.5">
-        {[
-          { name: 'AYLİN', bg: `linear-gradient(135deg,${GOLD},${GOLD_DARK})`, color: GOLD, initials: 'AY' },
-          { name: 'NEVRA', bg: 'linear-gradient(135deg,#60a5fa,#3b82f6)', color: '#60a5fa', initials: 'NV' },
-          { name: 'CEM', bg: 'linear-gradient(135deg,#a855f7,#7e22ce)', color: '#a855f7', initials: 'CM' },
-          { name: 'DENİZ', bg: 'linear-gradient(135deg,#6ba3c4,#4a8aa8)', color: '#6ba3c4', initials: 'DN' },
-        ].map((a) => (
-          <div key={a.name} className="rounded-lg py-1.5 px-1 text-center" style={{ background: 'linear-gradient(135deg, rgba(212,184,118,0.10), rgba(255,255,255,0.012))', border: '1px solid rgba(212,184,118,0.22)' }}>
-            <div className="w-5 h-5 rounded-full flex items-center justify-center mx-auto mb-1 text-[7px] font-bold" style={{ background: a.bg, color: '#0f0d0b', fontFamily: 'Fraunces,serif' }}>{a.initials}</div>
-            <p style={{ fontFamily: 'Fraunces,serif', fontSize: 9, fontWeight: 700, color: a.color }}>{a.name}</p>
-          </div>
-        ))}
-      </div>
-      <div className="rounded-xl p-2.5 flex flex-col gap-2" style={{ background: 'linear-gradient(135deg, rgba(212,184,118,0.05), rgba(15,11,21,0.85))', border: '1px solid rgba(212,184,118,0.22)', flex: 1, minHeight: 280 }}>
-        <div className="self-end max-w-[80%] rounded-lg px-2.5 py-1.5 text-[10px]" style={{ background: 'rgba(212,184,118,0.18)', color: '#fafaf9' }}>
-          Petravet Nisan KDV?
-        </div>
-        <ChatMsg color={GOLD} name="AYLİN" body="Tamam, Nevra'ya yönlendiriyorum. Cem mizan'a bakacak." />
-        <ChatMsg color="#60a5fa" name="NEVRA" body="Nisan: satış 97.729 TL, alış 36.319 TL. Net KDV ~12.300 TL." />
-        <div className="mt-auto flex gap-1 items-center">
-          <InputIcon>📎</InputIcon>
-          <InputIcon><Mic size={11} /></InputIcon>
-          <div className="flex-1 h-7 rounded-lg px-2 flex items-center text-[9.5px]" style={{ background: 'rgba(0,0,0,0.4)', color: 'rgba(250,250,249,0.5)' }}>
-            Ekibe sor...
-          </div>
-          <div className="w-7 h-7 rounded-lg flex items-center justify-center" style={{ background: `linear-gradient(135deg, ${GOLD}, ${GOLD_DARK})`, color: '#0f0d0b' }}>
-            <ArrowRight size={11} />
-          </div>
-        </div>
-      </div>
-    </>
-  );
-}
-
-function InputIcon({ children }: { children: React.ReactNode }) {
-  return (
-    <div className="w-7 h-7 rounded-lg flex items-center justify-center text-[10px]" style={{ background: 'rgba(255,255,255,0.05)', color: 'rgba(250,250,249,0.65)' }}>
-      {children}
-    </div>
-  );
-}
-
-function ChatMsg({ color, name, body }: { color: string; name: string; body: string }) {
-  return (
-    <div>
-      <div className="flex items-center gap-1 mb-1">
-        <span className="w-1.5 h-1.5 rounded-full" style={{ background: color }} />
-        <span className="text-[7.5px] uppercase font-bold tracking-[.14em]" style={{ color }}>{name}</span>
-      </div>
-      <div className="rounded-lg px-2.5 py-1.5 text-[10px] leading-relaxed" style={{ background: 'rgba(255,255,255,0.02)', color: 'rgba(250,250,249,0.92)' }}>{body}</div>
-    </div>
-  );
-}
-
-function OnayScreen() {
-  return (
-    <>
-      <TopBar title="AI Onay" />
-      <h2 style={{ fontFamily: 'Fraunces, serif', fontSize: 19, fontWeight: 600, color: '#fafaf9' }}>3 Bekliyor</h2>
-      <p className="text-[10px] mb-3" style={{ color: 'rgba(250,250,249,0.5)' }}>AI ekiplerin önerileri</p>
-
-      <div className="rounded-xl p-2 mb-1.5" style={{ background: 'rgba(239,68,68,0.06)', border: '1px solid rgba(239,68,68,0.30)' }}>
-        <div className="flex items-center gap-1.5 mb-1">
-          <span className="text-[7px] uppercase font-bold px-1 py-[1px] rounded" style={{ background: 'rgba(239,68,68,0.20)', color: '#fca5a5' }}>CRITICAL</span>
-          <span className="text-[7px] uppercase font-bold px-1 py-[1px] rounded" style={{ background: 'rgba(212,184,118,0.14)', color: GOLD }}>DENİZ</span>
-        </div>
-        <p className="text-[10.5px] font-bold" style={{ color: '#fafaf9' }}>Captcha modeli güncellensin</p>
-        <p className="text-[9px] mt-0.5" style={{ color: 'rgba(250,250,249,0.65)' }}>Son 24 saatte 8 başarısız Luca.</p>
-        <div className="flex gap-1 mt-1.5">
-          <div className="flex-1 h-5 rounded text-[8.5px] font-bold flex items-center justify-center" style={{ background: 'rgba(239,68,68,0.15)', color: '#fca5a5' }}>✕ Reddet</div>
-          <div className="flex-1 h-5 rounded text-[8.5px] font-bold flex items-center justify-center" style={{ background: `linear-gradient(135deg,${GOLD},${GOLD_DARK})`, color: '#0f0d0b' }}>✓ Onayla</div>
-        </div>
-      </div>
-
-      <div className="rounded-xl p-2 mb-1.5" style={{ background: 'rgba(255,255,255,0.025)', border: '1px solid rgba(255,255,255,0.05)' }}>
-        <div className="flex items-center gap-1.5 mb-1">
-          <span className="text-[7px] uppercase font-bold px-1 py-[1px] rounded" style={{ background: 'rgba(245,158,11,0.18)', color: '#fbbf24' }}>MEDIUM</span>
-          <span className="text-[7px] uppercase font-bold px-1 py-[1px] rounded" style={{ background: 'rgba(212,184,118,0.14)', color: GOLD }}>NEVRA</span>
-        </div>
-        <p className="text-[10.5px] font-bold" style={{ color: '#fafaf9' }}>Petravet KDV hatırlatması</p>
-        <p className="text-[9px] mt-0.5" style={{ color: 'rgba(250,250,249,0.65)' }}>Son tarih 28 Mayıs, 3 gün kaldı.</p>
-      </div>
-    </>
-  );
-}
-
-function GorevlerScreen() {
-  return (
-    <>
-      <TopBar title="Görevler" />
-      <h2 style={{ fontFamily: 'Fraunces, serif', fontSize: 18, fontWeight: 600, color: '#fafaf9' }}>7 Görev</h2>
-      <p className="text-[10px] mb-3" style={{ color: 'rgba(250,250,249,0.5)' }}>3 bugün · 4 bu hafta</p>
-
-      {[
-        { title: 'Petravet KDV beyan kontrolü', tag: 'BUGÜN', tagColor: '#fca5a5', done: false },
-        { title: 'Akgöz mizan denetimi', tag: 'YARIN', tagColor: '#fbbf24', done: false },
-        { title: 'Zırhlı Gıda evrak hazırla', tag: 'BU HAFTA', tagColor: GOLD, done: false },
-        { title: 'Banka mutabakat — Yıldız', tag: 'YAPILDI', tagColor: '#86efac', done: true },
-      ].map((t, i) => (
-        <div key={i} className="rounded-lg p-2 mb-1.5 flex items-start gap-2" style={{ background: 'rgba(255,255,255,0.025)', border: '1px solid rgba(255,255,255,0.05)' }}>
-          <div className="w-3.5 h-3.5 rounded-sm flex-shrink-0 mt-0.5" style={{ background: t.done ? '#86efac' : 'transparent', border: `1px solid ${t.done ? '#86efac' : 'rgba(255,255,255,0.20)'}` }}>
-            {t.done && <CheckSquare size={12} style={{ color: '#0f0d0b' }} />}
-          </div>
-          <div className="flex-1">
-            <p className="text-[11px] font-semibold" style={{ color: t.done ? 'rgba(250,250,249,0.45)' : '#fafaf9', textDecoration: t.done ? 'line-through' : 'none' }}>{t.title}</p>
-            <span className="inline-block mt-0.5 text-[8px] uppercase font-bold tracking-wider px-1 py-[1px] rounded" style={{ background: `${t.tagColor}20`, color: t.tagColor }}>{t.tag}</span>
-          </div>
-        </div>
-      ))}
-    </>
-  );
-}
-
-function BeyannameScreen() {
-  return (
-    <>
-      <TopBar title="Beyanname" />
-      <h2 style={{ fontFamily: 'Fraunces, serif', fontSize: 18, fontWeight: 600, color: '#fafaf9' }}>Mayıs 2026</h2>
-      <p className="text-[10px] mb-3" style={{ color: 'rgba(250,250,249,0.5)' }}>42 mükellef · 8 gönderildi · 12 hazır</p>
-
-      <div className="grid grid-cols-3 gap-1.5 mb-3">
-        <BeyanCard label="KDV" sent={8} pending={4} />
-        <BeyanCard label="GV" sent={3} pending={9} />
-        <BeyanCard label="MUH" sent={5} pending={6} />
-      </div>
-
-      <p className="text-[8.5px] uppercase tracking-wider mb-2" style={{ color: 'rgba(250,250,249,0.45)' }}>Yakın Son Tarihler</p>
-      {[
-        { name: 'Petravet', tip: 'KDV', date: '28 May', urgent: true },
-        { name: 'Akgöz', tip: 'KDV', date: '28 May', urgent: true },
-        { name: 'Yıldız', tip: 'Muh.', date: '26 May', urgent: false },
-      ].map((b, i) => (
-        <div key={i} className="rounded-md p-1.5 mb-1 flex items-center gap-2" style={{ background: 'rgba(255,255,255,0.025)' }}>
-          <span className="text-[8.5px] font-bold px-1.5 py-[1px] rounded" style={{ background: `${GOLD}20`, color: GOLD }}>{b.tip}</span>
-          <span className="text-[10.5px] flex-1" style={{ color: '#fafaf9' }}>{b.name}</span>
-          <span className="text-[9px] font-mono" style={{ color: b.urgent ? '#fca5a5' : 'rgba(250,250,249,0.6)' }}>{b.date}</span>
-        </div>
-      ))}
-    </>
-  );
-}
-
-function BeyanCard({ label, sent, pending }: { label: string; sent: number; pending: number }) {
-  return (
-    <div className="rounded-md p-2 text-center" style={{ background: 'rgba(255,255,255,0.025)', border: '1px solid rgba(255,255,255,0.05)' }}>
-      <p className="text-[8.5px] uppercase font-bold tracking-wider" style={{ color: GOLD }}>{label}</p>
-      <p style={{ fontFamily: 'Fraunces,serif', fontSize: 15, fontWeight: 700, color: '#86efac', lineHeight: 1.2 }}>{sent}</p>
-      <p className="text-[7.5px]" style={{ color: 'rgba(250,250,249,0.45)' }}>{pending} bekliyor</p>
-    </div>
-  );
-}
-
-function MizanScreen() {
-  return (
-    <>
-      <TopBar title="Mizan" />
-      <h2 style={{ fontFamily: 'Fraunces, serif', fontSize: 18, fontWeight: 600, color: '#fafaf9' }}>Petravet</h2>
-      <p className="text-[10px] mb-3" style={{ color: 'rgba(250,250,249,0.5)' }}>Nisan 2026 · Genel Mizan</p>
-
-      <div className="rounded-xl p-2.5 mb-2" style={{ background: 'rgba(255,255,255,0.025)', border: '1px solid rgba(212,184,118,0.18)' }}>
-        <p className="text-[8.5px] uppercase tracking-wider mb-1.5" style={{ color: GOLD }}>Brüt Kâr</p>
-        <p style={{ fontFamily: 'Fraunces,serif', fontSize: 22, fontWeight: 700, color: '#86efac', letterSpacing: '-0.02em' }}>93.383,38 TL</p>
-        <p className="text-[9px] mt-1" style={{ color: 'rgba(250,250,249,0.55)' }}>%95,6 marj</p>
-      </div>
-
-      <div className="grid grid-cols-2 gap-1.5">
-        <SmallMetric label="Satış" value="97.729" color="#86efac" />
-        <SmallMetric label="SMM" value="4.345" color="#fca5a5" />
-        <SmallMetric label="Giderler" value="104.026" color="#fca5a5" />
-        <SmallMetric label="Dönem Kar" value="-10.643" color="#fca5a5" />
-      </div>
-
-      <div className="mt-2.5 rounded-md p-2 flex items-center gap-2" style={{ background: 'rgba(239,68,68,0.06)', border: '1px solid rgba(239,68,68,0.20)' }}>
-        <AlertCircle size={11} style={{ color: '#fca5a5' }} />
-        <span className="text-[10px]" style={{ color: '#fca5a5' }}>CEM: Giderler %106 — kontrol gerek</span>
-      </div>
-    </>
-  );
-}
-
-function SmallMetric({ label, value, color }: { label: string; value: string; color: string }) {
-  return (
-    <div className="rounded-md p-1.5" style={{ background: 'rgba(255,255,255,0.025)' }}>
-      <p className="text-[8px] uppercase tracking-wider" style={{ color: 'rgba(250,250,249,0.5)' }}>{label}</p>
-      <p style={{ fontFamily: 'Fraunces,serif', fontSize: 13, fontWeight: 700, color }}>{value}</p>
-    </div>
-  );
-}
-
-function EvrakScreen() {
-  return (
-    <>
-      <TopBar title="Evrak + OCR" />
-      <h2 style={{ fontFamily: 'Fraunces, serif', fontSize: 18, fontWeight: 600, color: '#fafaf9' }}>Belge Yükle</h2>
-      <p className="text-[10px] mb-3" style={{ color: 'rgba(250,250,249,0.5)' }}>AI değerlendirir</p>
-
-      <div className="rounded-xl p-4 text-center mb-2" style={{ background: 'linear-gradient(135deg, rgba(212,184,118,0.06), rgba(15,11,21,0.85))', border: '2px dashed rgba(212,184,118,0.35)' }}>
-        <p style={{ fontSize: 28 }}>📎</p>
-        <h3 style={{ fontFamily: 'Fraunces, serif', fontSize: 13, color: '#fafaf9', fontWeight: 600 }}>Fatura / Mizan / PDF</h3>
-        <p className="text-[9px] mt-1 mb-2" style={{ color: 'rgba(250,250,249,0.55)' }}>Maks 10MB · 5 dosya</p>
-        <div className="flex gap-1.5 justify-center">
-          <div className="px-3 py-1 rounded-full text-[9.5px] font-bold flex items-center gap-1" style={{ background: `linear-gradient(135deg,${GOLD},${GOLD_DARK})`, color: '#0f0d0b' }}>
-            <Camera size={10} /> Kamera
-          </div>
-          <div className="px-3 py-1 rounded-full text-[9.5px] font-bold flex items-center gap-1" style={{ background: 'rgba(255,255,255,0.05)', color: GOLD, border: `1px solid ${GOLD}30` }}>
-            📁 Galeri
-          </div>
-        </div>
-      </div>
-
-      <FileRow icon="📄" name="eurorepar.pdf" size="245KB" status="✓" />
-      <FileRow icon="🖼" name="mizan-mayis.jpg" size="1.2MB" status="⟳" />
-
-      <div className="mt-2 px-3 py-2 rounded-xl text-[11px] font-bold text-center" style={{ background: `linear-gradient(135deg,${GOLD},${GOLD_DARK})`, color: '#0f0d0b' }}>
-        ⚡ Değerlendir (2)
-      </div>
-    </>
-  );
-}
-
-function FileRow({ icon, name, size, status }: { icon: string; name: string; size: string; status: string }) {
-  return (
-    <div className="rounded-md p-1.5 mb-1 flex items-center gap-2" style={{ background: 'rgba(255,255,255,0.025)' }}>
-      <span className="text-[14px]">{icon}</span>
-      <span className="flex-1 text-[10px] font-semibold" style={{ color: '#fafaf9' }}>{name}</span>
-      <span className="text-[8.5px] font-mono" style={{ color: 'rgba(250,250,249,0.5)' }}>{size}</span>
-      <span className="text-[12px]" style={{ color: GOLD }}>{status}</span>
-    </div>
-  );
-}
-
-function DenizScreen() {
-  return (
-    <>
-      <TopBar title="DENİZ" />
-      <div className="rounded-xl p-3 mb-3 text-center" style={{ background: 'linear-gradient(135deg, rgba(107,163,196,0.12), rgba(15,11,21,0.85))', border: '1px solid rgba(107,163,196,0.30)' }}>
-        <h3 style={{ fontFamily: 'Fraunces, serif', fontSize: 22, color: '#6ba3c4', fontWeight: 700 }}>DENİZ</h3>
-        <p className="text-[8.5px] uppercase tracking-[.18em] mt-1" style={{ color: 'rgba(107,163,196,0.7)' }}>Sistem · Aktif</p>
-      </div>
-      <p className="text-[10px] mb-2" style={{ color: 'rgba(250,250,249,0.5)' }}>Son 24h · 4 öneri</p>
-
-      <div className="rounded-lg p-2 mb-1" style={{ background: 'rgba(239,68,68,0.05)', border: '1px solid rgba(239,68,68,0.25)' }}>
-        <span className="text-[7px] uppercase font-bold px-1 py-[1px] rounded mb-1 inline-block" style={{ background: 'rgba(239,68,68,0.20)', color: '#fca5a5' }}>HIGH · Bug</span>
-        <p className="text-[10px] font-bold mt-1" style={{ color: '#fafaf9' }}>Stuck Luca — 60dk+</p>
-        <p className="text-[8.5px]" style={{ color: 'rgba(250,250,249,0.65)' }}>2 mizan iptal edildi.</p>
-      </div>
-      <div className="rounded-lg p-2 mb-1" style={{ background: 'rgba(255,255,255,0.025)', border: '1px solid rgba(255,255,255,0.05)' }}>
-        <span className="text-[7px] uppercase font-bold px-1 py-[1px] rounded mb-1 inline-block" style={{ background: 'rgba(245,158,11,0.18)', color: '#fbbf24' }}>MEDIUM · Perf</span>
-        <p className="text-[10px] font-bold mt-1" style={{ color: '#fafaf9' }}>Endpoint yavaş</p>
-        <p className="text-[8.5px]" style={{ color: 'rgba(250,250,249,0.65)' }}>/taxpayers p95 2.4s.</p>
-      </div>
-    </>
-  );
-}
-
-function BankaScreen() {
-  return (
-    <>
-      <TopBar title="Banka Takip" />
-      <h2 style={{ fontFamily: 'Fraunces, serif', fontSize: 18, fontWeight: 600, color: '#fafaf9' }}>Petravet</h2>
-      <p className="text-[10px] mb-3" style={{ color: 'rgba(250,250,249,0.5)' }}>3 hesap · Bu ay 124 hareket</p>
-
-      {[
-        { bank: 'AKBANK', iban: 'TR49 ***0307', balance: '24.530,15', color: '#86efac' },
-        { bank: 'GARANTİ', iban: 'TR14 ***8564', balance: '8.142,80', color: '#86efac' },
-        { bank: 'ZİRAAT', iban: 'TR07 ***5002', balance: '-2.340,50', color: '#fca5a5' },
-      ].map((b, i) => (
-        <div key={i} className="rounded-lg p-2 mb-1.5" style={{ background: 'rgba(255,255,255,0.025)', border: '1px solid rgba(255,255,255,0.05)' }}>
-          <div className="flex items-center justify-between mb-0.5">
-            <span className="text-[9.5px] uppercase font-bold tracking-wider" style={{ color: GOLD }}>{b.bank}</span>
-            <span style={{ fontFamily: 'Fraunces,serif', fontSize: 13, fontWeight: 700, color: b.color }}>{b.balance}</span>
-          </div>
-          <p className="text-[9px] font-mono" style={{ color: 'rgba(250,250,249,0.45)' }}>{b.iban}</p>
-        </div>
-      ))}
-    </>
-  );
-}
-
-function MetricBox({ label, value, color, sub }: { label: string; value: string; color: string; sub: string }) {
-  return (
-    <div className="rounded-xl p-2 relative overflow-hidden" style={{ background: 'linear-gradient(135deg, rgba(212,184,118,0.06), rgba(15,11,21,0.85))', border: '1px solid rgba(212,184,118,0.22)' }}>
-      <p className="text-[7.5px] uppercase font-bold tracking-[.14em]" style={{ color: 'rgba(250,250,249,0.55)' }}>{label}</p>
-      <p style={{ fontFamily: 'Fraunces,serif', fontSize: 17, fontWeight: 700, color, lineHeight: 1, marginTop: 3 }}>{value}</p>
-      <p className="text-[8px] mt-0.5" style={{ color: 'rgba(250,250,249,0.45)' }}>{sub}</p>
-    </div>
-  );
-}
-
-/* ═══════════ MÜKELLEF EKRANLARI ═══════════ */
-
-function MukOtpScreen() {
-  return (
-    <div className="h-full flex flex-col items-center justify-center text-center px-2">
-      <div className="w-16 h-16 rounded-2xl mb-5 flex items-center justify-center" style={{ background: `linear-gradient(135deg, ${TEAL}, #4a8aa8)` }}>
-        <span style={{ fontFamily: 'Fraunces, serif', fontSize: 28, fontWeight: 700, color: '#0f0d0b' }}>M</span>
-      </div>
-      <h2 style={{ fontFamily: 'Fraunces, serif', fontSize: 19, fontWeight: 600, color: '#fafaf9' }}>Moren Mükellef</h2>
-      <p className="text-[10.5px] mb-5" style={{ color: 'rgba(250,250,249,0.55)' }}>Cep numarana SMS göndereceğiz</p>
-
-      <input value="+90 532 *** 67 89" readOnly className="w-full mb-2 px-3 py-2 rounded-lg text-[12px]" style={{ background: 'rgba(0,0,0,0.4)', border: `1px solid ${TEAL}30`, color: '#fafaf9' }} />
-
-      <p className="text-[9px] mt-3 mb-1" style={{ color: 'rgba(250,250,249,0.55)' }}>Doğrulama Kodu</p>
-      <div className="flex gap-1.5 mb-3">
-        {['4', '7', '2', '9'].map((d, i) => (
-          <div key={i} className="w-10 h-12 rounded-lg flex items-center justify-center" style={{ background: 'rgba(0,0,0,0.4)', border: `1px solid ${TEAL}40`, fontFamily: 'Fraunces,serif', fontSize: 20, fontWeight: 700, color: '#fafaf9' }}>{d}</div>
-        ))}
-      </div>
-
-      <div className="w-full px-3 py-2 rounded-lg text-[12px] font-bold" style={{ background: `linear-gradient(135deg, ${TEAL}, #4a8aa8)`, color: '#0f0d0b' }}>
-        Devam Et
-      </div>
-      <p className="text-[9px] mt-3" style={{ color: 'rgba(250,250,249,0.4)' }}>53 saniye sonra tekrar gönder</p>
-    </div>
-  );
-}
-
-function MukDashboardScreen() {
-  return (
-    <>
-      <TopBar title="Hoş Geldin" accent={TEAL} />
-      <h2 style={{ fontFamily: 'Fraunces, serif', fontSize: 18, fontWeight: 600, color: '#fafaf9' }}>Doğan Özkan</h2>
-      <p className="text-[10px] mb-3" style={{ color: 'rgba(250,250,249,0.5)' }}>Zırhlı Gıda Tic. A.Ş.</p>
-
-      <div className="grid grid-cols-2 gap-2 mb-3">
-        <MukMetric label="Bu Ay Satış" value="3.831" sub="TL" color="#86efac" />
-        <MukMetric label="Toplam KDV" value="62" sub="TL" color={TEAL} />
-        <MukMetric label="Belge" value="42" sub="bekliyor: 3" color="#fafaf9" />
-        <MukMetric label="Borç" value="0" sub="ödeme yok" color="#86efac" />
-      </div>
-
-      <p className="text-[8.5px] uppercase tracking-wider mb-1.5" style={{ color: 'rgba(250,250,249,0.45)' }}>Hızlı Aksiyon</p>
-      {[
-        { icon: Camera, text: 'Belge / Fatura Yükle', color: TEAL },
-        { icon: MessageSquare, text: 'Ofise Mesaj Yaz', color: '#fafaf9' },
-        { icon: Receipt, text: 'Faturalarımı Gör', color: '#fafaf9' },
-      ].map((a, i) => (
-        <div key={i} className="rounded-md py-1.5 px-2.5 mb-1 flex items-center gap-2 text-[10.5px]" style={{ background: 'rgba(107,163,196,0.06)', border: '1px solid rgba(107,163,196,0.20)', color: a.color }}>
-          <a.icon size={11} /> {a.text}
-        </div>
-      ))}
-    </>
-  );
-}
-
-function MukMetric({ label, value, sub, color }: { label: string; value: string; sub: string; color: string }) {
-  return (
-    <div className="rounded-xl p-2" style={{ background: 'linear-gradient(135deg, rgba(107,163,196,0.08), rgba(15,11,21,0.85))', border: '1px solid rgba(107,163,196,0.22)' }}>
-      <p className="text-[7.5px] uppercase font-bold tracking-[.14em]" style={{ color: 'rgba(250,250,249,0.55)' }}>{label}</p>
-      <p style={{ fontFamily: 'Fraunces,serif', fontSize: 17, fontWeight: 700, color, lineHeight: 1, marginTop: 3 }}>{value}</p>
-      <p className="text-[8px] mt-0.5" style={{ color: 'rgba(250,250,249,0.45)' }}>{sub}</p>
-    </div>
-  );
-}
-
-function MukBelgeScreen() {
-  return (
-    <>
-      <TopBar title="Belge Gönder" accent={TEAL} />
-      <h2 style={{ fontFamily: 'Fraunces, serif', fontSize: 17, fontWeight: 600, color: '#fafaf9' }}>Faturayı Çek, Yolla</h2>
-      <p className="text-[10px] mb-3" style={{ color: 'rgba(250,250,249,0.5)' }}>OCR otomatik okur</p>
-
-      <div className="rounded-xl p-5 text-center mb-3" style={{ background: 'linear-gradient(135deg, rgba(107,163,196,0.10), rgba(15,11,21,0.85))', border: `2px dashed ${TEAL}50` }}>
-        <p style={{ fontSize: 38, marginBottom: 8 }}>📸</p>
-        <h3 style={{ fontFamily: 'Fraunces, serif', fontSize: 13, fontWeight: 600, color: '#fafaf9' }}>Kamera ile Çek</h3>
-        <p className="text-[9px] mt-1" style={{ color: 'rgba(250,250,249,0.55)' }}>veya galeriden seç</p>
-        <div className="mt-3 inline-flex px-4 py-2 rounded-full text-[10.5px] font-bold" style={{ background: `linear-gradient(135deg, ${TEAL}, #4a8aa8)`, color: '#0f0d0b' }}>
-          <Camera size={12} className="mr-1.5" /> Kamerayı Aç
-        </div>
-      </div>
-
-      <p className="text-[8.5px] uppercase tracking-wider mb-1.5" style={{ color: 'rgba(250,250,249,0.45)' }}>Son Yüklemeler</p>
-      <div className="rounded-md p-1.5 mb-1 flex items-center gap-2" style={{ background: 'rgba(255,255,255,0.025)' }}>
-        <span className="text-[14px]">📄</span>
-        <span className="flex-1 text-[10px] font-semibold" style={{ color: '#fafaf9' }}>migros-fatura-may.pdf</span>
-        <span className="text-[8.5px] font-bold" style={{ color: '#86efac' }}>✓ OCR</span>
-      </div>
-      <div className="rounded-md p-1.5 mb-1 flex items-center gap-2" style={{ background: 'rgba(255,255,255,0.025)' }}>
-        <span className="text-[14px]">🖼</span>
-        <span className="flex-1 text-[10px] font-semibold" style={{ color: '#fafaf9' }}>akaryakit-kasim.jpg</span>
-        <span className="text-[8.5px] font-bold" style={{ color: '#86efac' }}>✓ OCR</span>
-      </div>
-    </>
-  );
-}
-
-function MukFaturaScreen() {
-  return (
-    <>
-      <TopBar title="Faturalarım" accent={TEAL} />
-      <div className="flex gap-1 mb-3">
-        <Pill label="Satış" count={42} active />
-        <Pill label="Alış" count={18} />
-        <Pill label="Tümü" count={60} />
-      </div>
-
-      {[
-        { name: 'EUROREPAR', date: '08.04', amount: '12.000', kdv: '2.000', color: '#86efac' },
-        { name: 'MIGROS', date: '05.04', amount: '843', kdv: '22', color: '#86efac' },
-        { name: 'OPET', date: '03.04', amount: '1.250', kdv: '208', color: GOLD },
-        { name: 'BIM', date: '01.04', amount: '420', kdv: '67', color: '#86efac' },
-      ].map((f, i) => (
-        <div key={i} className="rounded-lg p-2 mb-1.5 flex items-center gap-2" style={{ background: 'rgba(255,255,255,0.025)' }}>
-          <div className="flex-1">
-            <p className="text-[11px] font-bold" style={{ color: '#fafaf9' }}>{f.name}</p>
-            <p className="text-[8.5px]" style={{ color: 'rgba(250,250,249,0.5)' }}>{f.date} · KDV {f.kdv}</p>
-          </div>
-          <p style={{ fontFamily: 'Fraunces,serif', fontSize: 13, fontWeight: 700, color: f.color }}>{f.amount}</p>
-        </div>
-      ))}
-    </>
-  );
-}
-
-function Pill({ label, count, active = false }: { label: string; count: number; active?: boolean }) {
-  return (
-    <span className="px-2 py-1 rounded-full text-[10px] font-bold flex items-center gap-1" style={{ background: active ? `${TEAL}25` : 'rgba(255,255,255,0.04)', border: `1px solid ${active ? `${TEAL}50` : 'rgba(255,255,255,0.06)'}`, color: active ? TEAL : 'rgba(250,250,249,0.55)' }}>
-      {label} <span className="opacity-70">{count}</span>
-    </span>
-  );
-}
-
-function MukBeyanScreen() {
-  return (
-    <>
-      <TopBar title="Beyannameler" accent={TEAL} />
-      <h2 style={{ fontFamily: 'Fraunces, serif', fontSize: 17, fontWeight: 600, color: '#fafaf9' }}>Beyannamelerin</h2>
-      <p className="text-[10px] mb-3" style={{ color: 'rgba(250,250,249,0.5)' }}>Gönderildi · Ödeme · Onay</p>
-
-      {[
-        { name: 'Nisan 2026 KDV', date: '28 Mayıs', status: 'ÖDENECEK', amount: '12.300', color: '#fbbf24' },
-        { name: 'Nisan 2026 Muh.', date: '26 Mayıs', status: 'BEKLİYOR', amount: '—', color: GOLD },
-        { name: 'Mart 2026 KDV', date: '28 Nisan', status: 'GÖNDERİLDİ', amount: '8.420', color: '#86efac' },
-      ].map((b, i) => (
-        <div key={i} className="rounded-lg p-2 mb-2" style={{ background: 'rgba(255,255,255,0.025)', border: '1px solid rgba(255,255,255,0.05)' }}>
-          <div className="flex items-start justify-between">
-            <div className="flex-1">
-              <p className="text-[11.5px] font-bold" style={{ color: '#fafaf9' }}>{b.name}</p>
-              <p className="text-[9px] mt-0.5" style={{ color: 'rgba(250,250,249,0.55)' }}>Son tarih: {b.date}</p>
-              <span className="inline-block mt-1 text-[8px] uppercase font-bold tracking-wider px-1.5 py-[1px] rounded" style={{ background: `${b.color}22`, color: b.color }}>{b.status}</span>
+          ['Evrak bekliyor', 8, STEEL],
+          ['Fatura işleme', 12, SAGE],
+          ['KDV kontrol', 6, AMBER],
+          ['Beyanname', 4, GOLD],
+        ].map(([label, value, color]) => (
+          <div key={String(label)} className="mb-2 last:mb-0">
+            <div className="mb-1 flex justify-between text-[10px]">
+              <span style={{ color: 'rgba(250,250,249,0.58)' }}>{label}</span>
+              <span style={{ color: String(color), fontWeight: 700 }}>{value}</span>
             </div>
-            {b.amount !== '—' && (
-              <p style={{ fontFamily: 'Fraunces,serif', fontSize: 13, fontWeight: 700, color: b.color }}>{b.amount}</p>
-            )}
+            <div className="h-1.5 overflow-hidden rounded-lg" style={{ background: 'rgba(255,255,255,0.06)' }}>
+              <div className="h-full rounded-lg" style={{ width: `${Number(value) * 6}%`, background: String(color) }} />
+            </div>
           </div>
-        </div>
-      ))}
-    </>
-  );
-}
-
-function MukMesajScreen() {
-  return (
-    <>
-      <TopBar title="Ofis Mesajı" accent={TEAL} />
-      <h2 style={{ fontFamily: 'Fraunces, serif', fontSize: 16, fontWeight: 600, color: '#fafaf9' }}>Moren Müşavirlik</h2>
-      <p className="text-[10px] mb-3" style={{ color: 'rgba(250,250,249,0.5)' }}>● Çevrimiçi</p>
-
-      <div className="flex flex-col gap-2 mb-3">
-        <div className="self-start max-w-[78%] rounded-lg px-2.5 py-1.5 text-[10.5px]" style={{ background: 'rgba(255,255,255,0.04)', color: '#fafaf9' }}>
-          Merhaba Doğan Bey, Nisan faturalarınız 2 eksik görünüyor.
-        </div>
-        <div className="self-start max-w-[78%] rounded-lg px-2.5 py-1.5 text-[10.5px]" style={{ background: 'rgba(255,255,255,0.04)', color: '#fafaf9' }}>
-          Migros ve Opet faturalarınızı gönderebilir misiniz?
-        </div>
-        <div className="self-end max-w-[78%] rounded-lg px-2.5 py-1.5 text-[10.5px]" style={{ background: `${TEAL}25`, color: '#fafaf9', border: `1px solid ${TEAL}40` }}>
-          Tamam, hemen yüklüyorum
-        </div>
-        <div className="self-start max-w-[78%] rounded-lg px-2.5 py-1.5 text-[10.5px]" style={{ background: 'rgba(255,255,255,0.04)', color: '#fafaf9' }}>
-          Teşekkürler! Alış kontrolü yapıp dönüyoruz.
-        </div>
+        ))}
       </div>
 
-      <div className="mt-auto flex gap-1 items-center">
-        <div className="w-7 h-7 rounded-lg flex items-center justify-center" style={{ background: 'rgba(255,255,255,0.05)' }}>📎</div>
-        <div className="flex-1 h-7 rounded-lg px-2 flex items-center text-[9.5px]" style={{ background: 'rgba(0,0,0,0.4)', color: 'rgba(250,250,249,0.5)' }}>
-          Yaz...
-        </div>
-        <div className="w-7 h-7 rounded-lg flex items-center justify-center" style={{ background: `linear-gradient(135deg, ${TEAL}, #4a8aa8)`, color: '#0f0d0b' }}>
-          <Send size={11} />
-        </div>
-      </div>
-    </>
-  );
-}
-
-function MukCariScreen() {
-  return (
-    <>
-      <TopBar title="Cari / Ödeme" accent={TEAL} />
-      <div className="rounded-xl p-3 mb-3 text-center" style={{ background: `linear-gradient(135deg, ${TEAL}1a, rgba(15,11,21,0.85))`, border: `1px solid ${TEAL}40` }}>
-        <p className="text-[8.5px] uppercase tracking-[.18em]" style={{ color: TEAL }}>Mevcut Bakiye</p>
-        <p style={{ fontFamily: 'Fraunces,serif', fontSize: 26, fontWeight: 700, color: '#86efac' }}>0,00 TL</p>
-        <p className="text-[9px] mt-1" style={{ color: 'rgba(250,250,249,0.5)' }}>Borcunuz bulunmuyor</p>
-      </div>
-
-      <p className="text-[8.5px] uppercase tracking-wider mb-2" style={{ color: 'rgba(250,250,249,0.45)' }}>Geçmiş Ödemeler</p>
-
-      {[
-        { date: '12.04.2026', desc: 'Mali Müşavirlik Ücreti — Mart', amount: '2.500,00', icon: '✓' },
-        { date: '12.03.2026', desc: 'Mali Müşavirlik Ücreti — Şubat', amount: '2.500,00', icon: '✓' },
-        { date: '12.02.2026', desc: 'Mali Müşavirlik Ücreti — Ocak', amount: '2.500,00', icon: '✓' },
-      ].map((p, i) => (
-        <div key={i} className="rounded-md p-1.5 mb-1 flex items-center gap-2" style={{ background: 'rgba(255,255,255,0.025)' }}>
-          <span style={{ color: '#86efac', fontSize: 12 }}>{p.icon}</span>
-          <div className="flex-1">
-            <p className="text-[10px] font-semibold" style={{ color: '#fafaf9' }}>{p.desc}</p>
-            <p className="text-[8.5px]" style={{ color: 'rgba(250,250,249,0.5)' }}>{p.date}</p>
-          </div>
-          <p className="text-[10.5px] font-bold" style={{ color: '#fafaf9', fontFamily: 'Fraunces,serif' }}>{p.amount}</p>
-        </div>
-      ))}
-    </>
-  );
-}
-
-function MukBildirimScreen() {
-  return (
-    <>
-      <TopBar title="Bildirimler" accent={TEAL} />
-      <h2 style={{ fontFamily: 'Fraunces, serif', fontSize: 17, fontWeight: 600, color: '#fafaf9' }}>5 Bildirim</h2>
-      <p className="text-[10px] mb-3" style={{ color: 'rgba(250,250,249,0.5)' }}>2 okunmamış</p>
-
-      {[
-        { title: 'KDV Beyannameniz Hazır', desc: 'Onay için ofisi inceleyin', tag: 'YENİ', tagColor: TEAL, time: '2 saat önce' },
-        { title: 'Mart KDV Ödemesi', desc: 'Son 3 gün — 12.300 TL', tag: 'ACİL', tagColor: '#fca5a5', time: '5 saat önce' },
-        { title: 'Ofise gönderilen belgeniz kabul edildi', desc: 'eurorepar.pdf işlendi', tag: '✓', tagColor: '#86efac', time: 'dün' },
-        { title: 'Mart Bordro Hazır', desc: 'Görmek için tıkla', tag: 'BİLGİ', tagColor: 'rgba(250,250,249,0.55)', time: '3 gün önce' },
-      ].map((n, i) => (
-        <div key={i} className="rounded-lg p-2 mb-1.5" style={{ background: 'rgba(255,255,255,0.025)', border: '1px solid rgba(255,255,255,0.05)' }}>
-          <div className="flex items-center gap-1.5 mb-0.5">
-            <span className="text-[8px] uppercase font-bold px-1 py-[1px] rounded" style={{ background: `${n.tagColor}22`, color: n.tagColor }}>{n.tag}</span>
-            <span className="text-[9px] ml-auto" style={{ color: 'rgba(250,250,249,0.4)' }}>{n.time}</span>
-          </div>
-          <p className="text-[10.5px] font-bold" style={{ color: '#fafaf9' }}>{n.title}</p>
-          <p className="text-[9px] mt-0.5" style={{ color: 'rgba(250,250,249,0.55)' }}>{n.desc}</p>
-        </div>
-      ))}
-    </>
-  );
-}
-
-/* ═══════════ FEATURE GRID'LER ═══════════ */
-
-function OfisFeatureGrid() {
-  const features = [
-    { icon: Users, title: 'Mükellef Yönetimi', desc: 'Liste, arama, profil, hızlı aksiyon, mizan/KDV bakış' },
-    { icon: Brain, title: '7 AI Ekibi', desc: 'AYLİN, NEVRA, CEM, VOLKAN, DEFNE, KAYRA, DENİZ — sesli sohbet' },
-    { icon: ShieldCheck, title: 'AI Onay Kuyruğu', desc: 'Toplu onay/reddet, kritik bildirim, audit log' },
-    { icon: CheckSquare, title: 'Görevler & Notlar', desc: 'Bugün/yarın/hafta, hatırlatma, müşteri notu' },
-    { icon: FileText, title: 'Beyanname Takip', desc: 'KDV/GV/Muhtasar — kim hazır, kim gönderildi' },
-    { icon: BarChart3, title: 'Mizan & Bilanço', desc: 'Cep boyutunda mali tablo, anomali uyarısı' },
-    { icon: Camera, title: 'Evrak + OCR', desc: 'Kamera ile çek, AI değerlendirir, otomatik kategorize' },
-    { icon: Building, title: 'Banka Takip', desc: 'Hesap bakiyesi, mutabakat, son hareketler' },
-    { icon: Sparkles, title: 'DENİZ Patrol', desc: 'Gece sistem raporları, otomatik müdahale, haftalık özet' },
-    { icon: Receipt, title: 'Cari Kasa', desc: 'Tahsilat, mükellef bakiyesi, ödeme planı' },
-    { icon: BookOpen, title: 'Vergi Takvimi', desc: 'Hangi mükellefin hangi tarihte ne yapacağı' },
-    { icon: FolderOpen, title: 'Belge Arşivi', desc: 'Tüm yüklü belgeler, hızlı arama, filtrele' },
-  ];
-  return (
-    <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-3">
-      {features.map((f, i) => (
-        <div key={i} className="rounded-xl p-3.5 flex items-start gap-3" style={{ background: 'rgba(212,184,118,0.04)', border: '1px solid rgba(212,184,118,0.15)' }}>
-          <div className="w-9 h-9 rounded-lg flex items-center justify-center flex-shrink-0" style={{ background: `${GOLD}15`, border: `1px solid ${GOLD}30` }}>
-            <f.icon size={15} style={{ color: GOLD }} />
-          </div>
-          <div className="flex-1">
-            <h4 style={{ fontFamily: 'Fraunces, serif', fontSize: 14, fontWeight: 600, color: '#fafaf9' }}>{f.title}</h4>
-            <p className="text-[11px] mt-0.5 leading-relaxed" style={{ color: 'rgba(250,250,249,0.6)' }}>{f.desc}</p>
-          </div>
-        </div>
-      ))}
+      <PhoneBottom active="Panel" />
     </div>
   );
 }
 
-function MukellefFeatureGrid() {
-  const features = [
-    { icon: Phone, title: 'SMS ile Giriş', desc: 'Telefon + OTP. E-posta/parola yok, biyometrik ile hızlı erişim' },
-    { icon: Camera, title: 'Belge Yükle (OCR)', desc: 'Faturayı/dekontu çek, AI otomatik okur, ofise gönderir' },
-    { icon: Receipt, title: 'Faturalarım', desc: 'Satış + alış, aylara göre, KDV ile birlikte özet' },
-    { icon: FileText, title: 'Beyannamelerim', desc: 'KDV, GV, Muhtasar — gönderildi mi, ne kadar ödenecek' },
-    { icon: MessageSquare, title: 'Ofise Mesaj', desc: 'WhatsApp gibi — soru sor, eksik evrak iste, durum öğren' },
-    { icon: CreditCard, title: 'Cari / Ödeme', desc: 'Mali müşavirlik ücreti bakiyesi, geçmiş ödemeler' },
-    { icon: BarChart3, title: 'Mali Özet', desc: 'Bu ay satış, alış, brüt kâr — sade görünüm' },
-    { icon: Bell, title: 'Akıllı Bildirim', desc: 'Beyanname son tarihi, eksik belge, mesaj geldi' },
-    { icon: BookOpen, title: 'Belgelerim', desc: 'Tüm yüklü belgeler kronolojik, indirilebilir' },
-  ];
+function ModulesPhone() {
+  const menuGroups = portalGroups.slice(0, 5);
+
   return (
-    <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-3">
-      {features.map((f, i) => (
-        <div key={i} className="rounded-xl p-3.5 flex items-start gap-3" style={{ background: `${TEAL}08`, border: `1px solid ${TEAL}25` }}>
-          <div className="w-9 h-9 rounded-lg flex items-center justify-center flex-shrink-0" style={{ background: `${TEAL}18`, border: `1px solid ${TEAL}40` }}>
-            <f.icon size={15} style={{ color: TEAL }} />
-          </div>
-          <div className="flex-1">
-            <h4 style={{ fontFamily: 'Fraunces, serif', fontSize: 14, fontWeight: 600, color: '#fafaf9' }}>{f.title}</h4>
-            <p className="text-[11px] mt-0.5 leading-relaxed" style={{ color: 'rgba(250,250,249,0.6)' }}>{f.desc}</p>
-          </div>
+    <div className="flex h-full flex-col">
+      <PhoneHeader title="Modüller" color={SAGE} />
+      <div className="mb-3 flex items-center justify-between rounded-lg p-2" style={{ background: 'rgba(143,215,189,0.08)', border: '1px solid rgba(143,215,189,0.24)' }}>
+        <div>
+          <p className="text-[11px] font-bold" style={{ color: '#fafaf9' }}>Aktif modüller</p>
+          <p className="text-[9.5px]" style={{ color: 'rgba(250,250,249,0.48)' }}>Gruplu mobil menü</p>
         </div>
-      ))}
+        <span className="text-[18px] font-bold" style={{ color: SAGE, fontFamily: 'Fraunces, serif' }}>34</span>
+      </div>
+
+      <div className="space-y-2 overflow-hidden">
+        {menuGroups.map((group) => {
+          const GroupIcon = group.icon;
+          return (
+            <div key={group.label} className="rounded-lg p-2" style={{ background: `${group.color}0c`, border: `1px solid ${group.color}22` }}>
+              <div className="mb-2 flex items-center gap-2">
+                <GroupIcon size={13} style={{ color: group.color }} />
+                <p className="text-[10px] font-bold uppercase" style={{ color: group.color, letterSpacing: 0 }}>{group.label}</p>
+                <span className="ml-auto text-[9px]" style={{ color: 'rgba(250,250,249,0.42)' }}>{group.modules.length}</span>
+              </div>
+              <div className="grid grid-cols-2 gap-1">
+                {group.modules.slice(0, 4).map((module) => {
+                  const Icon = module.icon;
+                  return (
+                    <Link key={module.href} href={module.href} className="flex min-h-8 items-center gap-1.5 rounded-lg px-2 text-[9.5px] font-semibold" style={{ background: 'rgba(255,255,255,0.03)', color: 'rgba(250,250,249,0.68)' }}>
+                      <Icon size={11} style={{ color: group.color }} />
+                      <span className="truncate">{module.label}</span>
+                    </Link>
+                  );
+                })}
+              </div>
+            </div>
+          );
+        })}
+      </div>
+
+      <PhoneBottom active="Modül" />
     </div>
+  );
+}
+
+function WorkflowPhone() {
+  return (
+    <div className="flex h-full flex-col">
+      <PhoneHeader title="İş Akışı" color={AMBER} />
+      <h3 className="text-[17px] font-semibold" style={{ color: '#fafaf9', fontFamily: 'Fraunces, serif', letterSpacing: 0 }}>
+        Mükellef bazlı takip
+      </h3>
+      <p className="mb-3 text-[10.5px]" style={{ color: 'rgba(250,250,249,0.48)' }}>
+        Evrak, fatura, KDV ve beyanname hattı
+      </p>
+
+      {[
+        { title: 'Petravet Veteriner', sub: 'KDV kontrol bekliyor', color: AMBER, icon: FileCheck2, href: '/panel/kdv-kontrol' },
+        { title: 'Akgöz Otomotiv', sub: 'Fatura işleme devam ediyor', color: SAGE, icon: ReceiptText, href: '/panel/ajanlar/mihsap' },
+        { title: 'Yıldız Tekstil', sub: 'Mizan yüklendi', color: SKY, icon: Table2, href: '/panel/mizan' },
+        { title: 'Yeşil Market', sub: 'Görev notu açık', color: GOLD, icon: ClipboardCheck, href: '/panel/gorevler' },
+      ].map((row) => {
+        const Icon = row.icon;
+        return (
+          <Link key={row.title} href={row.href} className="mb-2 flex items-center gap-2 rounded-lg p-2" style={{ background: 'rgba(255,255,255,0.032)', border: `1px solid ${row.color}22` }}>
+            <span className="flex h-8 w-8 flex-shrink-0 items-center justify-center rounded-lg" style={{ background: `${row.color}12`, color: row.color }}>
+              <Icon size={15} />
+            </span>
+            <span className="min-w-0 flex-1">
+              <span className="block truncate text-[11px] font-bold" style={{ color: '#fafaf9' }}>{row.title}</span>
+              <span className="block truncate text-[9.5px]" style={{ color: 'rgba(250,250,249,0.46)' }}>{row.sub}</span>
+            </span>
+            <ChevronRight size={13} style={{ color: row.color }} />
+          </Link>
+        );
+      })}
+
+      <div className="mt-auto rounded-lg p-3" style={{ background: 'rgba(216,173,112,0.09)', border: '1px solid rgba(216,173,112,0.26)' }}>
+        <div className="mb-2 flex items-center gap-2">
+          <CheckCircle2 size={14} style={{ color: AMBER }} />
+          <p className="text-[11px] font-bold" style={{ color: '#fafaf9' }}>Mobil öncelik</p>
+        </div>
+        <p className="text-[10px] leading-relaxed" style={{ color: 'rgba(250,250,249,0.58)' }}>
+          İlk ekranda işlem yapan modüller, planlı ekranlar menü dışında kalır.
+        </p>
+      </div>
+
+      <PhoneBottom active="Akış" />
+    </div>
+  );
+}
+
+function PhoneBottom({ active }: { active: string }) {
+  const items = [
+    { label: 'Panel', icon: Gauge },
+    { label: 'Mükellef', icon: UserRoundSearch },
+    { label: 'Fatura', icon: ReceiptText },
+    { label: 'KDV', icon: FileCheck2 },
+    { label: 'AI', icon: BrainCircuit },
+  ];
+
+  return (
+    <div className="mt-auto grid grid-cols-5 gap-1 rounded-lg p-1" style={{ background: 'rgba(0,0,0,0.28)', border: '1px solid rgba(255,255,255,0.06)' }}>
+      {items.map((item) => {
+        const selected = active === item.label || (active === 'Modül' && item.label === 'Panel') || (active === 'Akış' && item.label === 'KDV');
+        const Icon = item.icon;
+        return (
+          <div key={item.label} className="flex h-10 flex-col items-center justify-center gap-0.5 rounded-lg" style={{ background: selected ? 'rgba(212,184,118,0.14)' : 'transparent', color: selected ? GOLD : 'rgba(250,250,249,0.42)' }}>
+            <Icon size={14} />
+            <span className="text-[8px] font-semibold leading-none">{item.label}</span>
+          </div>
+        );
+      })}
+    </div>
+  );
+}
+
+function ModuleCard({ module, color }: { module: PortalModule; color: string }) {
+  const Icon = module.icon;
+  const planned = module.status === 'planned';
+  const priorityLabel: Record<ModulePriority, string> = {
+    first: 'İlk sürüm',
+    second: 'İkinci dalga',
+    system: 'Sistem',
+    planned: 'Planlı',
+  };
+
+  return (
+    <Link
+      href={module.href}
+      className="group flex min-h-[116px] items-start gap-3 rounded-lg p-3 transition"
+      style={{
+        background: planned ? 'rgba(255,255,255,0.018)' : `${color}0d`,
+        border: `1px solid ${planned ? 'rgba(255,255,255,0.06)' : `${color}24`}`,
+      }}
+    >
+      <span className="flex h-10 w-10 flex-shrink-0 items-center justify-center rounded-lg" style={{ background: `${color}14`, color }}>
+        <Icon size={18} />
+      </span>
+      <span className="min-w-0 flex-1">
+        <span className="flex items-center gap-2">
+          <span className="truncate text-[14px] font-semibold" style={{ color: '#fafaf9' }}>{module.label}</span>
+          <span className="rounded-md px-1.5 py-0.5 text-[9px] font-bold uppercase" style={{ background: planned ? 'rgba(255,255,255,0.06)' : `${color}16`, color: planned ? 'rgba(250,250,249,0.42)' : color }}>
+            {priorityLabel[module.priority]}
+          </span>
+        </span>
+        <span className="mt-1 block text-[12px] leading-relaxed" style={{ color: 'rgba(250,250,249,0.56)' }}>{module.desc}</span>
+      </span>
+      <ChevronRight size={16} className="mt-1 flex-shrink-0 opacity-70 transition group-hover:translate-x-0.5" style={{ color }} />
+    </Link>
+  );
+}
+
+function RoadmapColumn({ title, color, items }: { title: string; color: string; items: PortalModule[] }) {
+  return (
+    <section className="rounded-lg p-4" style={{ background: `${color}0a`, border: `1px solid ${color}22` }}>
+      <div className="mb-3 flex items-center justify-between">
+        <h3 className="text-[15px] font-semibold" style={{ color: '#fafaf9', fontFamily: 'Fraunces, serif', letterSpacing: 0 }}>{title}</h3>
+        <span className="rounded-md px-2 py-1 text-[11px] font-bold" style={{ background: `${color}16`, color }}>{items.length}</span>
+      </div>
+      <div className="space-y-2">
+        {items.slice(0, 8).map((item) => {
+          const Icon = item.icon;
+          return (
+            <Link key={item.href} href={item.href} className="flex items-center gap-2 rounded-lg px-2 py-2" style={{ background: 'rgba(255,255,255,0.025)', border: '1px solid rgba(255,255,255,0.045)' }}>
+              <Icon size={14} style={{ color }} />
+              <span className="min-w-0 flex-1 truncate text-[12px] font-semibold" style={{ color: 'rgba(250,250,249,0.72)' }}>{item.label}</span>
+            </Link>
+          );
+        })}
+        {items.length > 8 && (
+          <p className="px-2 text-[11px]" style={{ color: 'rgba(250,250,249,0.42)' }}>
+            +{items.length - 8} modül daha
+          </p>
+        )}
+      </div>
+    </section>
   );
 }

@@ -4,6 +4,7 @@ import { useRouter } from 'next/navigation';
 import { useEffect } from 'react';
 import Sidebar from '@/components/layout/Sidebar';
 import TopBar from '@/components/layout/TopBar';
+import MobilePanelNavigation from '@/components/layout/MobilePanelNavigation';
 import { LucaCaptchaOverlay } from '@/components/luca/LucaCaptchaOverlay';
 import NotificationFlashOverlay from '@/components/layout/NotificationFlashOverlay';
 
@@ -33,10 +34,15 @@ export default function PanelLayout({ children }: { children: React.ReactNode })
 
   return (
     <div className="flex h-screen overflow-hidden" style={{ background: 'rgba(255,255,255,0.03)' }}>
-      <Sidebar />
+      <div className="hidden lg:flex">
+        <Sidebar />
+      </div>
       <div className="flex-1 flex flex-col min-w-0">
-        <TopBar />
-        <main className="flex-1 overflow-auto p-6 animate-fade-up">
+        <MobilePanelNavigation />
+        <div className="hidden lg:block">
+          <TopBar />
+        </div>
+        <main className="flex-1 overflow-auto p-3 pb-24 sm:p-4 lg:p-6 lg:pb-6 animate-fade-up">
           {children}
         </main>
         <LucaCaptchaOverlay />
