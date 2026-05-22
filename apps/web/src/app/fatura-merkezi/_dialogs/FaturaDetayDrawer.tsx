@@ -1,10 +1,11 @@
 'use client';
 
-import { useState, useEffect, useMemo } from 'react';
+import { useState, useEffect, useMemo, useRef } from 'react';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import {
   X, ChevronLeft, ChevronRight, Check, Trash2, Save,
   Loader2, FileText, AlertTriangle, ListChecks, Plus,
+  Maximize2, Minimize2,
 } from 'lucide-react';
 import { api } from '@/lib/api';
 
@@ -34,6 +35,9 @@ type EditableLine = {
 export default function FaturaDetayDrawer({ taxpayerId, direction, period, onClose }: Props) {
   const qc = useQueryClient();
   const [cursor, setCursor] = useState(0);
+  const [fitToScreen, setFitToScreen] = useState(true);
+  const previewBoxRef = useRef<HTMLDivElement | null>(null);
+  const [fitScale, setFitScale] = useState(1);
 
   /* Bekleyen belge listesi */
   const listQ = useQuery({
@@ -105,6 +109,36 @@ export default function FaturaDetayDrawer({ taxpayerId, direction, period, onClo
   });
   const hasPreview = !!(fileQ.data?.url || fileQ.data?.inlineHtml);
   const previewSource = fileQ.data?.source;
+  const fitUrl = useMemo(() => {
+    const url = fileQ.data?.url;
+    if (!url || !fitToScreen) return url;
+    const glue = url.includes('#') ? '&' : '#';
+    return `${url}${glue}zoom=page-fit&view=Fit&toolbar=0&navpanes=0`;
+  }, [fileQ.data?.url, fitToScreen]);
+
+  useEffect(() => {
+    const box = previewBoxRef.current;
+    if (!box || !fitToScreen) {
+      setFitScale(1);
+      return;
+    }
+
+    const update = () => {
+      const width = Math.max(1, box.clientWidth - 24);
+      const height = Math.max(1, box.clientHeight - 24);
+      const scale = Math.min(width / 794, height / 1123, 1);
+      setFitScale(Math.max(0.35, Number(scale.toFixed(3))));
+    };
+
+    update();
+    const ro = new ResizeObserver(update);
+    ro.observe(box);
+    window.addEventListener('resize', update);
+    return () => {
+      ro.disconnect();
+      window.removeEventListener('resize', update);
+    };
+  }, [fitToScreen, current?.id, hasPreview]);
 
   return (
     <div className="fixed inset-0 z-50 flex flex-col" style={{ background: 'rgba(0,0,0,0.85)' }}>
@@ -162,9 +196,27 @@ export default function FaturaDetayDrawer({ taxpayerId, direction, period, onClo
               {previewSource === 'stored-file' && '✓ Kayıtlı dosya'}
               {previewSource === 'rendered-from-xml' && '⚠ Sistem render\'ı — Luca\'da bu fatura için PDF/HTML inmemiş, sadece XML var. Görüntü basit.'}
               {previewSource === 'placeholder' && '⚠ Orijinal belge dosyası yok'}
+              <div className="flex-1" />
+              <button
+                type="button"
+                onClick={() => setFitToScreen((v) => !v)}
+                className="inline-flex h-7 items-center gap-1.5 rounded-md px-2 text-[11px] font-semibold transition"
+                style={{
+                  background: fitToScreen ? '#ffffff20' : '#00000018',
+                  border: '1px solid #ffffff28',
+                  color: 'inherit',
+                }}
+                title={fitToScreen ? 'Faturayi normal boyutta goster' : 'Faturayi ekrana sigdir'}
+              >
+                {fitToScreen ? <Minimize2 size={12} /> : <Maximize2 size={12} />}
+                {fitToScreen ? `Sığdır (${Math.round(fitScale * 100)}%)` : 'Ekrana sığdır'}
+              </button>
             </div>
           )}
-          <div className="flex-1 flex items-center justify-center min-h-0">
+          <div
+            ref={previewBoxRef}
+            className={`flex-1 min-h-0 ${fitToScreen ? 'overflow-hidden flex items-start justify-center p-3' : 'overflow-auto flex items-center justify-center'}`}
+          >
             {!current && (
               <div className="text-center" style={{ color: 'var(--text-muted)' }}>
                 <Check size={42} className="mx-auto mb-3" style={{ color: '#10b981' }} />
@@ -176,10 +228,33 @@ export default function FaturaDetayDrawer({ taxpayerId, direction, period, onClo
               <Loader2 size={22} className="animate-spin" style={{ color: 'var(--accent)' }} />
             )}
             {current && fileQ.data?.url && (
-              <iframe src={fileQ.data.url} className="w-full h-full" style={{ background: 'white' }} title={current.belgeNo || current.id} />
+              <iframe
+                src={fitUrl || fileQ.data.url}
+                className={fitToScreen ? 'shrink-0 rounded-sm shadow-2xl' : 'w-full h-full'}
+                style={fitToScreen ? {
+                  width: 794,
+                  height: 1123,
+                  background: 'white',
+                  transform: `scale(${fitScale})`,
+                  transformOrigin: 'top center',
+                } : { background: 'white' }}
+                title={current.belgeNo || current.id}
+              />
             )}
             {current && !fileQ.data?.url && fileQ.data?.inlineHtml && (
-              <iframe srcDoc={fileQ.data.inlineHtml} className="w-full h-full" style={{ background: 'white' }} title={current.belgeNo || current.id} sandbox="allow-same-origin allow-scripts allow-modals allow-popups allow-forms" />
+              <iframe
+                srcDoc={fileQ.data.inlineHtml}
+                className={fitToScreen ? 'shrink-0 rounded-sm shadow-2xl' : 'w-full h-full'}
+                style={fitToScreen ? {
+                  width: 794,
+                  height: 1123,
+                  background: 'white',
+                  transform: `scale(${fitScale})`,
+                  transformOrigin: 'top center',
+                } : { background: 'white' }}
+                title={current.belgeNo || current.id}
+                sandbox="allow-same-origin allow-scripts allow-modals allow-popups allow-forms"
+              />
             )}
             {current && !fileQ.isLoading && !hasPreview && (
               <div className="text-center" style={{ color: 'var(--text-muted)' }}>
