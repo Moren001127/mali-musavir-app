@@ -2,7 +2,7 @@
 
 import { useEffect, useState, useMemo } from 'react';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
-import { BookOpen, X, Plus, RefreshCw, Send, Search, Loader2 } from 'lucide-react';
+import { BookOpen, X, Plus, RefreshCw, Send, Search, Loader2, CheckCircle2, AlertCircle } from 'lucide-react';
 import { api } from '@/lib/api';
 import { taxpayerName } from '../_lib/taxpayer';
 
@@ -15,6 +15,22 @@ import { taxpayerName } from '../_lib/taxpayer';
 
 type Props = { taxpayer: any; onClose: () => void };
 
+function jobLogLines(errorMsg?: string | null) {
+  return String(errorMsg || '')
+    .split('\n')
+    .map((line) => line.trim())
+    .filter(Boolean)
+    .slice(-8);
+}
+
+function jobStatusLabel(status?: string | null) {
+  if (status === 'done') return 'Tamamlandı';
+  if (status === 'failed') return 'Hata';
+  if (status === 'cancelled') return 'İptal';
+  if (status === 'running') return 'Çekiliyor';
+  return 'Sırada';
+}
+
 export default function HesapPlaniDialog({ taxpayer, onClose }: Props) {
   const qc = useQueryClient();
   const [search, setSearch] = useState('');
@@ -26,7 +42,16 @@ export default function HesapPlaniDialog({ taxpayer, onClose }: Props) {
     queryFn: () => api
       .get('/fatura-muhasebelestirme/account-plan', { params: { taxpayerId: taxpayer.id, limit: 1000 } })
       .then((r) => Array.isArray(r.data) ? r.data : (r.data.accounts || r.data.items || [])),
-    refetchInterval: queuedJob ? 5000 : false,
+  });
+
+  const jobQ = useQuery({
+    queryKey: ['fatura-merkezi', 'account-plan-job', queuedJob?.id],
+    enabled: !!queuedJob?.id,
+    queryFn: () => api.get(`/luca/jobs/${queuedJob.id}`).then((r) => r.data),
+    refetchInterval: (query) => {
+      const status = (query.state.data as any)?.status || queuedJob?.status;
+      return !status || status === 'pending' || status === 'running' ? 2000 : false;
+    },
   });
 
   const refreshMut = useMutation({
@@ -47,6 +72,10 @@ export default function HesapPlaniDialog({ taxpayer, onClose }: Props) {
   });
 
   const items: any[] = planQ.data || [];
+  const trackedJob = jobQ.data || queuedJob;
+  const trackedJobStatus = trackedJob?.status as string | undefined;
+  const trackedJobActive = trackedJobStatus === 'pending' || trackedJobStatus === 'running';
+  const trackedJobLogs = jobLogLines(trackedJob?.errorMsg);
 
   const filtered = useMemo(() => {
     if (!search) return items;
@@ -60,8 +89,18 @@ export default function HesapPlaniDialog({ taxpayer, onClose }: Props) {
   const unsynced = items.filter((i) => i.syncedToLuca === false || i.local === true);
 
   useEffect(() => {
-    if (queuedJob && items.length > 0) setQueuedJob(null);
-  }, [queuedJob, items.length]);
+    if (trackedJobStatus === 'done') {
+      qc.invalidateQueries({ queryKey: ['fatura-merkezi', 'account-plan', taxpayer.id] });
+      qc.invalidateQueries({ queryKey: ['fatura-merkezi', 'account-plan'] });
+    }
+  }, [trackedJobStatus, qc, taxpayer.id]);
+
+  const cancelJobMut = useMutation({
+    mutationFn: (jobId: string) => api.post(`/luca/jobs/${jobId}/cancel`).then((r) => r.data),
+    onSuccess: () => {
+      qc.invalidateQueries({ queryKey: ['fatura-merkezi', 'account-plan-job', queuedJob?.id] });
+    },
+  });
 
   return (
     <div className="fixed inset-0 z-50 flex items-center justify-center p-4" style={{ background: 'rgba(0,0,0,0.65)' }} onClick={onClose}>
@@ -101,13 +140,13 @@ export default function HesapPlaniDialog({ taxpayer, onClose }: Props) {
 
             <button
               onClick={() => refreshMut.mutate()}
-              disabled={refreshMut.isPending}
+              disabled={refreshMut.isPending || trackedJobActive}
               className="flex items-center gap-1.5 px-3 py-2 text-[12.5px] font-medium rounded-lg"
               style={{ background: 'var(--surface-2)', border: '1px solid var(--border)', color: 'var(--text-secondary)' }}
               title="Luca'dan hesap planını yeniden çek"
             >
-              <RefreshCw size={13} className={refreshMut.isPending ? 'animate-spin' : ''} />
-              Luca'dan Çek
+              <RefreshCw size={13} className={refreshMut.isPending || trackedJobActive ? 'animate-spin' : ''} />
+              {trackedJobActive ? 'Çekiliyor...' : "Luca'dan Çek"}
             </button>
 
             <button
@@ -153,15 +192,74 @@ export default function HesapPlaniDialog({ taxpayer, onClose }: Props) {
                 color: refreshMut.error || planQ.error || pushMut.error ? '#fca5a5' : '#c4b5fd',
               }}
             >
-              {queuedJob && (
+              {queuedJob && !trackedJob?.errorMsg && (
                 <span>
-                  Luca hesap planı çekimi kuyruğa alındı. Local Agent/uzantı Luca'dan Excel'i indirince liste otomatik yenilenecek.
+                  Luca hesap planı çekimi kuyruğa alındı. Loglar burada canlı görünecek.
                   {queuedJob.id ? <span className="ml-1 font-mono opacity-70">#{String(queuedJob.id).slice(0, 8)}</span> : null}
                 </span>
               )}
               {refreshMut.error && ((refreshMut.error as any)?.response?.data?.message || 'Luca hesap planı çekimi başlatılamadı.')}
               {planQ.error && ((planQ.error as any)?.response?.data?.message || 'Hesap planı okunamadı.')}
               {pushMut.error && ((pushMut.error as any)?.response?.data?.message || 'Luca aktarımı başlatılamadı.')}
+            </div>
+          )}
+
+          {trackedJob?.id && (
+            <div
+              className="mb-4 rounded-xl overflow-hidden"
+              style={{
+                background: trackedJobStatus === 'failed' ? '#ef444410' : trackedJobStatus === 'done' ? '#10b98110' : '#a78bfa10',
+                border: `1px solid ${trackedJobStatus === 'failed' ? '#ef444455' : trackedJobStatus === 'done' ? '#10b98155' : '#a78bfa45'}`,
+              }}
+            >
+              <div className="px-3 py-2 flex items-center justify-between gap-3" style={{ borderBottom: '1px solid var(--border-soft)' }}>
+                <div className="flex items-center gap-2 min-w-0">
+                  {trackedJobStatus === 'done' ? (
+                    <CheckCircle2 size={15} style={{ color: '#10b981' }} />
+                  ) : trackedJobStatus === 'failed' ? (
+                    <AlertCircle size={15} style={{ color: '#f87171' }} />
+                  ) : (
+                    <Loader2 size={15} className="animate-spin" style={{ color: '#c4b5fd' }} />
+                  )}
+                  <div className="min-w-0">
+                    <div className="text-[12.5px] font-semibold" style={{ color: 'var(--text)' }}>
+                      Luca çekim günlüğü · {jobStatusLabel(trackedJobStatus)}
+                    </div>
+                    <div className="text-[10.5px] font-mono" style={{ color: 'var(--text-muted)' }}>
+                      #{String(trackedJob.id).slice(0, 8)}
+                      {typeof trackedJob.recordCount === 'number' && trackedJobStatus === 'done' ? ` · ${trackedJob.recordCount} hesap` : ''}
+                    </div>
+                  </div>
+                </div>
+                <div className="flex items-center gap-2">
+                  {trackedJobActive && (
+                    <button
+                      type="button"
+                      onClick={() => cancelJobMut.mutate(trackedJob.id)}
+                      disabled={cancelJobMut.isPending}
+                      className="px-2.5 py-1 rounded-md text-[11px] font-semibold"
+                      style={{ color: '#fca5a5', border: '1px solid #ef444455', background: '#ef444410' }}
+                    >
+                      İptal
+                    </button>
+                  )}
+                </div>
+              </div>
+              <div className="px-3 py-2 max-h-40 overflow-y-auto space-y-1">
+                {trackedJobLogs.length > 0 ? trackedJobLogs.map((line, idx) => (
+                  <div
+                    key={`${idx}-${line}`}
+                    className="text-[11px] leading-relaxed font-mono whitespace-pre-wrap"
+                    style={{ color: line.includes('✅') || line.includes('✓') ? '#6ee7b7' : line.includes('hata') || line.includes('failed') || line.includes('X ') ? '#fca5a5' : '#d6d3d1' }}
+                  >
+                    {line}
+                  </div>
+                )) : (
+                  <div className="text-[11px]" style={{ color: 'var(--text-muted)' }}>
+                    Ajan sırayı alınca ilk log burada görünecek.
+                  </div>
+                )}
+              </div>
             </div>
           )}
 

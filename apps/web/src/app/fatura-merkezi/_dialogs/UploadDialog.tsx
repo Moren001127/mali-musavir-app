@@ -33,7 +33,8 @@ export default function UploadDialog({ taxpayer, onClose }: Props) {
 
   const uploadMut = useMutation({
     mutationFn: async (files: File[]) => {
-      const results = [];
+      const results: any[] = [];
+      const errors: Array<{ name: string; message: string }> = [];
       for (let i = 0; i < files.length; i++) {
         const file = files[i];
         const fd = new FormData();
@@ -43,16 +44,28 @@ export default function UploadDialog({ taxpayer, onClose }: Props) {
         fd.append('documentType', tip);
         fd.append('invoiceKind', direction);
         if (useClaudeOnly) fd.append('forceClaude', 'true');
-        const r = await api.post('/fatura-muhasebelestirme/documents/upload', fd, {
-          headers: { 'Content-Type': 'multipart/form-data' },
-        });
-        results.push(r.data);
+        try {
+          const r = await api.post('/fatura-muhasebelestirme/documents/upload', fd, {
+            headers: { 'Content-Type': 'multipart/form-data' },
+          });
+          results.push(r.data);
+        } catch (e: any) {
+          errors.push({
+            name: file.name,
+            message: e?.response?.data?.message || e?.message || 'Yukleme hatasi',
+          });
+        }
         setProgress({ done: i + 1, total: files.length });
       }
-      return results;
+      if (results.length === 0 && errors.length > 0) {
+        const err = new Error(errors[0]?.message || 'Yukleme hatasi') as Error & { uploadErrors?: typeof errors };
+        err.uploadErrors = errors;
+        throw err;
+      }
+      return { results, errors };
     },
-    onSuccess: () => {
-      setTimeout(() => onClose(), 800);
+    onSuccess: (data) => {
+      if (!data.errors.length) setTimeout(() => onClose(), 800);
     },
     onError: () => setProgress(null),
   });
@@ -168,7 +181,7 @@ export default function UploadDialog({ taxpayer, onClose }: Props) {
               ref={fileRef}
               type="file"
               multiple
-              accept=".pdf,.jpg,.jpeg,.png,.xml,.zip"
+              accept=".pdf,.jpg,.jpeg,.png,.webp,.tif,.tiff,.xml,.ubl,.zip"
               className="hidden"
               onChange={(e) => e.target.files && handleFiles(e.target.files)}
             />
@@ -184,9 +197,23 @@ export default function UploadDialog({ taxpayer, onClose }: Props) {
                 </div>
               ) : uploadMut.isSuccess ? (
                 <div style={{ color: '#10b981' }}>
-                  ✓ {progress.total} dosya yüklendi. OCR pipeline'a düştü.
+                  ✓ {uploadMut.data.results.length} dosya yüklendi. OCR pipeline'a düştü.
+                  {uploadMut.data.errors.length > 0 ? ` ${uploadMut.data.errors.length} dosya atlandı.` : ''}
                 </div>
               ) : null}
+            </div>
+          )}
+
+          {uploadMut.isSuccess && uploadMut.data.errors.length > 0 && (
+            <div className="mt-3 max-h-32 overflow-auto rounded-lg p-3 text-[11.5px]" style={{ background: '#f59e0b12', border: '1px solid #f59e0b40', color: '#fcd34d' }}>
+              <div className="mb-1 font-semibold">
+                {uploadMut.data.results.length} dosya yüklendi, {uploadMut.data.errors.length} dosya atlandı.
+              </div>
+              {uploadMut.data.errors.slice(0, 12).map((e, idx) => (
+                <div key={`${e.name}-${idx}`} className="break-all">
+                  <strong>{e.name}</strong>: {e.message}
+                </div>
+              ))}
             </div>
           )}
 
@@ -197,6 +224,16 @@ export default function UploadDialog({ taxpayer, onClose }: Props) {
           )}
 
           {/* QR mobil kısa kart */}
+          {uploadMut.isError && (uploadMut.error as any)?.uploadErrors?.length > 0 && (
+            <div className="mt-3 max-h-32 overflow-auto rounded-lg p-3 text-[11.5px]" style={{ background: '#ef444415', border: '1px solid #ef444440', color: '#fca5a5' }}>
+              {(uploadMut.error as any).uploadErrors.slice(0, 12).map((e: any, idx: number) => (
+                <div key={`${e.name}-${idx}`} className="break-all">
+                  <strong>{e.name}</strong>: {e.message}
+                </div>
+              ))}
+            </div>
+          )}
+
           <div className="mt-5 p-4 rounded-xl flex items-center gap-3" style={{ background: 'var(--accent-50)', border: '1px solid var(--border-soft)' }}>
             <div className="p-2 rounded-lg" style={{ background: 'var(--accent-light)', color: 'var(--accent)' }}>
               <Smartphone size={18} />

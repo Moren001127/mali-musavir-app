@@ -104,12 +104,15 @@ export default function FaturaDetayDrawer({ taxpayerId, direction, period, defte
     queryFn: () => api.get(`/fatura-muhasebelestirme/documents/${current.id}/file-url`).then((r) => ({
       url: (r.data?.url as string) || null,
       inlineHtml: (r.data?.inlineHtml as string) || null,
+      mimeType: (r.data?.mimeType as string) || null,
       source: (r.data?.source as string) || null,
     })),
     enabled: !!current?.id,
   });
   const hasPreview = !!(fileQ.data?.url || fileQ.data?.inlineHtml);
   const previewSource = fileQ.data?.source;
+  const previewMimeType = fileQ.data?.mimeType || current?.mimeType || '';
+  const previewIsImage = /^image\//i.test(previewMimeType);
   const fitUrl = useMemo(() => {
     const url = fileQ.data?.url;
     if (!url || !fitToScreen) return url;
@@ -227,7 +230,15 @@ export default function FaturaDetayDrawer({ taxpayerId, direction, period, defte
             {current && fileQ.isLoading && (
               <Loader2 size={22} className="animate-spin" style={{ color: 'var(--accent)' }} />
             )}
-            {current && fileQ.data?.url && (
+            {current && fileQ.data?.url && previewIsImage && (
+              <img
+                src={fileQ.data.url}
+                alt={current.originalName || current.belgeNo || 'Belge'}
+                className={fitToScreen ? 'max-w-full max-h-full object-contain rounded-sm shadow-2xl' : 'max-w-none rounded-sm shadow-2xl'}
+                style={{ background: 'white' }}
+              />
+            )}
+            {current && fileQ.data?.url && !previewIsImage && (
               fitToScreen ? (
                 <div
                   className="shrink-0 rounded-sm shadow-2xl overflow-hidden"
@@ -382,7 +393,14 @@ function FaturaForm({ doc, taxpayerId, defterTuru, onApprove, onDelete, approvin
       .then((r) => Array.isArray(r.data) ? r.data : (r.data?.accounts || r.data?.lines || r.data?.data || [])),
     enabled: !!taxpayerId && !isIsletme,
   });
-  const accounts: any[] = accountsQ.data || [];
+  const accounts: any[] = useMemo(
+    () => (accountsQ.data || []).map((account: any) => ({
+      id: account.id,
+      code: String(account.accountCode || account.code || '').trim(),
+      name: String(account.accountName || account.name || '').trim(),
+    })).filter((account: any) => account.code),
+    [accountsQ.data],
+  );
 
   /* Editable line state */
   const [lines, setLines] = useState<EditableLine[]>(() =>
@@ -573,7 +591,7 @@ function FaturaForm({ doc, taxpayerId, defterTuru, onApprove, onDelete, approvin
         {/* datalist — hesap kodu autocomplete (HTML5) */}
         <datalist id={`accounts-${taxpayerId}`}>
           {accounts.map((a: any) => (
-            <option key={a.accountCode} value={a.accountCode}>{a.accountName || a.name || ''}</option>
+            <option key={a.id || a.code} value={a.code}>{a.name}</option>
           ))}
         </datalist>
 

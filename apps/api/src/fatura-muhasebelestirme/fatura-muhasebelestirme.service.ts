@@ -8,6 +8,7 @@ import { StorageService } from '../storage/storage.service';
 import { OcrService, OcrResult } from '../kdv-control/ocr';
 import { EarsivRenderService } from '../earsiv/earsiv-render.service';
 import { encrypt, tryDecrypt } from '../common/crypto';
+import { VendorMemoryService } from '../vendor-memory/vendor-memory.service';
 
 type AccountingLineInput = {
   id?: string;
@@ -192,6 +193,7 @@ export class FaturaMuhasebelestirmeService {
     private readonly storage: StorageService,
     private readonly ocr: OcrService,
     private readonly earsivRender: EarsivRenderService,
+    private readonly vendorMemory: VendorMemoryService,
   ) {}
 
   async list(tenantId: string, opts: { status?: string; limit?: number; taxpayerId?: string; period?: string }) {
@@ -1071,6 +1073,84 @@ export class FaturaMuhasebelestirmeService {
     return doc;
   }
 
+  private inferUploadMimeType(originalName: string) {
+    const ext = (originalName.split('.').pop() || '').toLowerCase();
+    if (ext === 'pdf') return 'application/pdf';
+    if (ext === 'xml' || ext === 'ubl') return 'application/xml';
+    if (ext === 'jpg' || ext === 'jpeg') return 'image/jpeg';
+    if (ext === 'png') return 'image/png';
+    if (ext === 'webp') return 'image/webp';
+    if (ext === 'gif') return 'image/gif';
+    if (ext === 'tif' || ext === 'tiff') return 'image/tiff';
+    return 'application/octet-stream';
+  }
+
+  private isZipUpload(file: Express.Multer.File) {
+    const mime = String(file.mimetype || '').toLowerCase();
+    return (
+      mime.includes('zip') ||
+      /\.zip$/i.test(file.originalname || '') ||
+      (file.buffer?.length >= 2 && file.buffer[0] === 0x50 && file.buffer[1] === 0x4b)
+    );
+  }
+
+  private isOcrSupportedUpload(originalName: string, mimeType: string) {
+    const mime = String(mimeType || '').toLowerCase();
+    return (
+      mime.startsWith('image/') ||
+      mime === 'application/pdf' ||
+      mime.includes('xml') ||
+      /\.(pdf|jpe?g|png|webp|gif|tiff?|xml|ubl)$/i.test(originalName || '')
+    );
+  }
+
+  private async expandUploadedFiles(files: Express.Multer.File[]) {
+    const expanded: Express.Multer.File[] = [];
+    const maxExpandedFiles = 200;
+    const maxExpandedFileSize = 25 * 1024 * 1024;
+
+    for (const file of files) {
+      if (!this.isZipUpload(file)) {
+        expanded.push(file);
+        continue;
+      }
+
+      let zip: JSZip;
+      try {
+        zip = await JSZip.loadAsync(file.buffer);
+      } catch {
+        throw new BadRequestException(`ZIP arsivi okunamadi: ${file.originalname}`);
+      }
+
+      const entries = Object.values(zip.files).filter((entry) => !entry.dir);
+      for (const entry of entries) {
+        if (expanded.length >= maxExpandedFiles) {
+          throw new BadRequestException(`Tek yuklemede en fazla ${maxExpandedFiles} belge islenebilir`);
+        }
+        const entryName = String(entry.name || '').split('/').filter(Boolean).join('/');
+        if (!entryName) continue;
+        const mimeType = this.inferUploadMimeType(entryName);
+        if (!this.isOcrSupportedUpload(entryName, mimeType)) continue;
+
+        const buffer = await entry.async('nodebuffer');
+        if (buffer.length > maxExpandedFileSize) {
+          throw new BadRequestException(`ZIP icindeki dosya 25 MB ustunde: ${entryName}`);
+        }
+
+        const visibleName = entryName.split('/').pop() || entryName;
+        expanded.push({
+          ...file,
+          originalname: visibleName,
+          mimetype: mimeType,
+          size: buffer.length,
+          buffer,
+        } as Express.Multer.File);
+      }
+    }
+
+    return expanded;
+  }
+
   async uploadAndOcr(
     tenantId: string,
     userId: string | undefined,
@@ -1084,9 +1164,11 @@ export class FaturaMuhasebelestirmeService {
     },
   ) {
     if (!files?.length) throw new BadRequestException('En az bir belge gerekli');
+    const uploadFiles = await this.expandUploadedFiles(files);
+    if (!uploadFiles.length) throw new BadRequestException('Yuklenen arsivde islenebilir belge bulunamadi');
     const created: any[] = [];
 
-    for (const file of files) {
+    for (const file of uploadFiles) {
       const ext = (file.originalname.split('.').pop() || 'bin').replace(/[^a-zA-Z0-9]/g, '').slice(0, 8) || 'bin';
       const s3Key = `invoice-accounting/${tenantId}/${opts.taxpayerId || 'general'}/${randomUUID()}.${ext}`;
       await this.storage.putBuffer(s3Key, file.buffer, file.mimetype, {
@@ -1095,11 +1177,7 @@ export class FaturaMuhasebelestirmeService {
         source: opts.source || 'manual-web',
       });
 
-      const isOcrSupported =
-        file.mimetype.startsWith('image/') ||
-        file.mimetype === 'application/pdf' ||
-        file.mimetype.includes('xml') ||
-        /\.xml$/i.test(file.originalname);
+      const isOcrSupported = this.isOcrSupportedUpload(file.originalname, file.mimetype);
       let ocrResult: OcrResult | null = null;
       let ocrStatus = 'PENDING';
       if (isOcrSupported) {
@@ -1246,7 +1324,14 @@ export class FaturaMuhasebelestirmeService {
         lines,
         kdvBreakdown: breakdownArr,
       });
-      return { created: false, duplicate: true, refreshed: !!refreshed, document: refreshed || existing };
+      await this.rematchDocumentsWithLatestAccountPlan(tenantId, f.taxpayerId, [existing.id]).catch((e: any) => {
+        this.logger.warn(`Hesap plani mevcut belgeye uygulanamadi (${existing.id}): ${e?.message || e}`);
+      });
+      const current = await (this.prisma as any).invoiceAccountingDocument.findFirst({
+        where: { id: existing.id, tenantId },
+        include: { lines: { orderBy: { orderNo: 'asc' } } },
+      });
+      return { created: false, duplicate: true, refreshed: !!refreshed, document: current || refreshed || existing };
     }
 
     const duplicate = await this.findDuplicate(tenantId, {
@@ -1330,7 +1415,14 @@ export class FaturaMuhasebelestirmeService {
       // kolonlar yoksa atla — ocrData içinde zaten saklı
     }
 
-    return { created: true, document: doc };
+    await this.rematchDocumentsWithLatestAccountPlan(tenantId, f.taxpayerId, [doc.id]).catch((e: any) => {
+      this.logger.warn(`Hesap plani yeni belgeye uygulanamadi (${doc.id}): ${e?.message || e}`);
+    });
+    const current = await (this.prisma as any).invoiceAccountingDocument.findFirst({
+      where: { id: doc.id, tenantId },
+      include: { lines: { orderBy: { orderNo: 'asc' } } },
+    });
+    return { created: true, document: current || doc };
   }
 
   private async refreshExistingEarsivDocumentIfNeeded(opts: {
@@ -1575,8 +1667,8 @@ export class FaturaMuhasebelestirmeService {
       const html = mimeType.includes('html') ? raw : this.inlinePreviewHtml(raw);
       return { url: '', inlineHtml: html, mimeType: 'text/html', source: 'stored-html' as const };
     }
-    const url = await this.storage.getPresignedDownloadUrl(doc.s3Key, doc.originalName);
-    return { url, source: 'stored-file' as const };
+    const url = await this.storage.getPresignedInlineUrl(doc.s3Key, doc.originalName, mimeType || undefined);
+    return { url, mimeType, source: 'stored-file' as const };
   }
 
   private inlinePreviewHtml(raw: string) {
@@ -1770,7 +1862,45 @@ export class FaturaMuhasebelestirmeService {
       },
     });
 
+    await this.recordInvoiceAccountingMemory(tenantId, doc).catch((e: any) => {
+      this.logger.warn(`Fatura hafizasi kaydedilemedi (${id}): ${e?.message || e}`);
+    });
+
     return this.get(tenantId, id);
+  }
+
+  private async recordInvoiceAccountingMemory(tenantId: string, doc: any) {
+    if (!doc?.taxpayerId) return;
+    const isSale = String(doc.invoiceKind || '').toUpperCase() === 'SATIS';
+    const firmaKimlikNo = String((isSale ? doc.buyerVkn : doc.sellerVkn) || '').replace(/\D/g, '');
+    if (!firmaKimlikNo) return;
+    const firmaUnvan = String((isSale ? doc.customerName : doc.vendorName) || '').trim() || null;
+    const accountCodes = this.memoryAccountCodesFromLines(doc.lines || []);
+    if (!accountCodes.length) return;
+
+    for (const accountCode of accountCodes) {
+      await this.vendorMemory.recordDecision({
+        tenantId,
+        firmaKimlikNo,
+        firmaUnvan,
+        kararTipi: 'fatura',
+        kategori: accountCode,
+        taxpayerId: doc.taxpayerId,
+      });
+    }
+  }
+
+  private memoryAccountCodesFromLines(lines: any[]) {
+    const blockedPrefixes = ['191', '391', '120', '320', '321', '322', '329', '331'];
+    const isBlocked = (code: string) => blockedPrefixes.some((prefix) => code.startsWith(prefix));
+    const candidates = (lines || [])
+      .filter((line: any) => String(line.group || '').toLowerCase() === 'matrah')
+      .map((line: any) => String(line.accountCode || '').trim())
+      .filter((code: string) => code && !isBlocked(code));
+    const fallback = (lines || [])
+      .map((line: any) => String(line.accountCode || '').trim())
+      .filter((code: string) => code && !isBlocked(code));
+    return [...new Set(candidates.length ? candidates : fallback)].slice(0, 5);
   }
 
   // v1.38: Bir mukellef+donem icin TUM QUEUED belgeleri tek INVOICE_POST job
@@ -2914,7 +3044,23 @@ export class FaturaMuhasebelestirmeService {
     return { status, issues };
   }
 
-  private async rematchPendingDocumentsWithAccountPlan(tenantId: string, taxpayerId: string, snapshotId: string) {
+  private async rematchDocumentsWithLatestAccountPlan(tenantId: string, taxpayerId?: string | null, documentIds?: string[]) {
+    if (!taxpayerId) return;
+    const latest = await (this.prisma as any).lucaAccountPlanSnapshot.findFirst({
+      where: { tenantId, taxpayerId, status: 'READY' },
+      orderBy: { createdAt: 'desc' },
+      select: { id: true },
+    });
+    if (!latest?.id) return;
+    await this.rematchPendingDocumentsWithAccountPlan(tenantId, taxpayerId, latest.id, documentIds);
+  }
+
+  private async rematchPendingDocumentsWithAccountPlan(
+    tenantId: string,
+    taxpayerId: string,
+    snapshotId: string,
+    documentIds?: string[],
+  ) {
     const [accounts, docs] = await Promise.all([
       (this.prisma as any).lucaAccountPlanLine.findMany({
         where: { snapshotId },
@@ -2925,6 +3071,7 @@ export class FaturaMuhasebelestirmeService {
         where: {
           tenantId,
           taxpayerId,
+          ...(documentIds?.length ? { id: { in: documentIds } } : {}),
           status: { in: ['READY', 'NEEDS_REVIEW', 'DRAFT'] },
         },
         include: { lines: { orderBy: { orderNo: 'asc' } } },
@@ -2936,8 +3083,10 @@ export class FaturaMuhasebelestirmeService {
     for (const doc of docs) {
       const isSale = doc.invoiceKind === 'SATIS';
       const vendorName = isSale ? doc.customerName : doc.vendorName;
+      const vendorVkn = String((isSale ? doc.buyerVkn : doc.sellerVkn) || '').replace(/\D/g, '');
+      const memoryMatrah = await this.pickVendorMemoryAccount(tenantId, taxpayerId, vendorVkn, accounts);
       const replacements = {
-        matrah: this.pickAccount(accounts, isSale ? ['600'] : ['770', '760', '740', '730', ' gider '], vendorName),
+        matrah: memoryMatrah || this.pickAccount(accounts, isSale ? ['600'] : ['770', '760', '740', '730', ' gider '], vendorName),
         vergi: this.pickAccount(accounts, isSale ? ['391'] : ['191'], null),
         cari: this.pickAccount(accounts, isSale ? ['120'] : ['320', '329', '331'], vendorName),
       };
@@ -2973,6 +3122,32 @@ export class FaturaMuhasebelestirmeService {
         });
       }
     }
+  }
+
+  private async pickVendorMemoryAccount(
+    tenantId: string,
+    taxpayerId: string,
+    firmaKimlikNo: string,
+    accounts: Array<{ accountCode: string; accountName: string }>,
+  ) {
+    if (!firmaKimlikNo || !taxpayerId || !accounts.length) return null;
+    const accountByCode = new Map(accounts.map((account) => [String(account.accountCode || '').trim(), account]));
+    const memory = await (this.prisma as any).vendorMemory.findUnique({
+      where: { tenantId_firmaKimlikNo: { tenantId, firmaKimlikNo } },
+      include: {
+        decisions: {
+          where: { taxpayerId, kararTipi: 'fatura' },
+          orderBy: [{ onayAdedi: 'desc' }, { sonKullanim: 'desc' }],
+          take: 8,
+        },
+      },
+    });
+    for (const decision of memory?.decisions || []) {
+      const code = String(decision.kategori || '').trim();
+      const match = accountByCode.get(code);
+      if (match) return match;
+    }
+    return null;
   }
 
   private pickAccount(

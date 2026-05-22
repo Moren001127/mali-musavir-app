@@ -2,7 +2,7 @@
 
 import { useState } from 'react';
 import { useMutation } from '@tanstack/react-query';
-import { FileText, X, Search, Bell, BellOff, Loader2, LogOut } from 'lucide-react';
+import { AlertTriangle, FileText, X, Search, Bell, BellOff, Loader2, LogOut } from 'lucide-react';
 import { api } from '@/lib/api';
 import { taxpayerName } from '../_lib/taxpayer';
 
@@ -31,9 +31,13 @@ export default function GibPortalDialog({ taxpayer, onClose }: Props) {
   const [end, setEnd] = useState(formatYMD(today));
   const [tab, setTab] = useState<'aktarim' | 'arsiv'>('aktarim');
   const [hasTalimat, setHasTalimat] = useState(false);
+  const gibPortalAgentReady = false;
 
   const fetchMut = useMutation({
     mutationFn: async () => {
+      if (!gibPortalAgentReady) {
+        throw new Error('GIB Portal cekimi henuz aktif degil. Resmi portal API yok; bunun icin ayri tarayici/agent otomasyonu gerekir.');
+      }
       return api.post('/agent/gib-portal/fetch-earsiv-sales', {
         taxpayerId: taxpayer.id,
         startDate: start,
@@ -110,6 +114,13 @@ export default function GibPortalDialog({ taxpayer, onClose }: Props) {
                 <strong>Uyarı:</strong> Bu ekrandan sadece GİB Portal üzerinden oluşturduğunuz <strong>Satış</strong> faturalarını alabilirsiniz. Mukellefin GİB hesabı (e-imza/mali mühür) gerekiyor.
               </div>
 
+              <div className="rounded-lg p-3 mb-4 text-[12px] flex gap-2" style={{ background: '#ef444412', border: '1px solid #ef444440', color: '#fecaca' }}>
+                <AlertTriangle size={15} className="mt-0.5 shrink-0" />
+                <div>
+                  <strong>Bu akış şu an aktif değil.</strong> GİB e-Arşiv Portal için kullanılabilecek resmi bir fatura çekme API'si bağlı değil. Burayı çalıştırmak için ayrı tarayıcı/agent otomasyonu yazılmalı; şifre kaynağı da mükellef kartındaki Vergi Dairesi şifresi olmalı.
+                </div>
+              </div>
+
               <div className="flex items-end gap-2 mb-4">
                 <div className="flex-1">
                   <label className="block text-[11.5px] font-semibold mb-1" style={{ color: 'var(--text-secondary)' }}>Başlangıç</label>
@@ -133,19 +144,20 @@ export default function GibPortalDialog({ taxpayer, onClose }: Props) {
                 </div>
                 <button
                   onClick={() => fetchMut.mutate()}
-                  disabled={fetchMut.isPending}
+                  disabled={fetchMut.isPending || !gibPortalAgentReady}
                   className="flex items-center gap-1.5 px-4 py-2 text-[13px] font-semibold rounded-lg disabled:opacity-50"
                   style={{ background: 'var(--accent)', color: 'var(--bg)' }}
+                  title={gibPortalAgentReady ? 'GIB Portal sorgusu baslat' : 'GIB Portal agent otomasyonu henuz aktif degil'}
                 >
                   {fetchMut.isPending ? <Loader2 size={14} className="animate-spin" /> : <Search size={14} />}
-                  Sorgula
+                  {gibPortalAgentReady ? 'Sorgula' : 'Agent hazır değil'}
                 </button>
               </div>
 
               <div className="flex gap-2">
                 <button
                   onClick={() => talimatMut.mutate()}
-                  disabled={talimatMut.isPending}
+                  disabled={talimatMut.isPending || !gibPortalAgentReady}
                   className="flex-1 flex items-center justify-center gap-1.5 px-3 py-2 text-[12.5px] font-medium rounded-lg"
                   style={{
                     background: hasTalimat ? '#10b98115' : 'transparent',
@@ -160,7 +172,7 @@ export default function GibPortalDialog({ taxpayer, onClose }: Props) {
 
                 <button
                   onClick={() => logoutMut.mutate()}
-                  disabled={logoutMut.isPending}
+                  disabled={logoutMut.isPending || !gibPortalAgentReady}
                   className="flex items-center gap-1.5 px-3 py-2 text-[12.5px] font-medium rounded-lg"
                   style={{ background: 'transparent', border: '1px solid var(--border)', color: '#fbbf24' }}
                   title="GİB Portal'daki aktif oturumu sonlandır"

@@ -4,7 +4,7 @@
 */
 (function () {
   // Agent versiyon — UI'da gösterilir, debug için kritik
-  const AGENT_VERSION = '1.37.91';
+  const AGENT_VERSION = '1.37.93';
   const AGENT_INSTANCE_ID = 'mai_' + Date.now().toString(36) + '_' + Math.random().toString(36).slice(2, 8);
 
   // === VERSION-AWARE RELOAD ===
@@ -1033,13 +1033,15 @@
         return;
       }
 
-      const classicReady = await waitForClassicLucaReady(25000);
+      const allowClassicShellReady = jobs.length > 0 && jobs.every((job) => job?.tip === 'ACCOUNT_PLAN');
+      const classicReady = await waitForClassicLucaReady(25000, { allowShellReady: allowClassicShellReady });
       if (!classicReady) {
         const repairState = noteClassicLucaNotReady();
         const url = location.href.slice(0, 120);
         setStatus('Klasik Luca açıldı; firma ekranı yükleniyor');
+        const frameDiag = describeClassicLucaDomBrief();
         for (const job of jobs) {
-          await logPendingJob(job, `Klasik Luca URL acik ama frm4/SirketCombo henuz yuklenmedi; sayfa hazirlanıyor. URL=${url}`);
+          await logPendingJob(job, `Klasik Luca URL acik ama frm4/SirketCombo henuz yuklenmedi; sayfa hazirlaniyor. v${AGENT_VERSION}; ${frameDiag}. URL=${url}`);
         }
         const path = String(location.pathname || '');
         const bodyText = String(document.body?.textContent || '').replace(/\s+/g, ' ').trim();
@@ -6598,20 +6600,82 @@
     return `${String(lastDay).padStart(2, '0')}/${ay}/${yil}`;
   }
 
-  /** Bir frame referansını adıyla al */
+  /** Bir frame referansını adıyla al. Luca bazı oturumlarda klasik ekranı iç içe frame açıyor. */
   function getLucaFrame(name) {
-    return [...document.querySelectorAll('frame, iframe')].find((f) => f.name === name);
+    const wanted = String(name || '');
+    const seenDocs = new Set();
+    const scan = (doc, depth = 0) => {
+      if (!doc || depth > 7 || seenDocs.has(doc)) return null;
+      seenDocs.add(doc);
+      let frames = [];
+      try { frames = [...doc.querySelectorAll('frame, iframe')]; } catch { return null; }
+      for (const f of frames) {
+        const fname = String(f.name || f.id || f.getAttribute?.('name') || f.getAttribute?.('id') || '');
+        if (fname === wanted) return f;
+      }
+      for (const f of frames) {
+        try {
+          const found = scan(f.contentDocument, depth + 1);
+          if (found) return found;
+        } catch {}
+      }
+      return null;
+    };
+    return scan(document);
   }
 
   function getLucaFirmaCombo() {
     try {
-      return getLucaFrame('frm4')?.contentDocument?.getElementById('SirketCombo') || null;
-    } catch {
+      const direct = getLucaFrame('frm4')?.contentDocument?.getElementById('SirketCombo');
+      if (direct) return direct;
+    } catch {}
+    const seenDocs = new Set();
+    const scan = (doc, depth = 0) => {
+      if (!doc || depth > 7 || seenDocs.has(doc)) return null;
+      seenDocs.add(doc);
+      try {
+        const combo = doc.getElementById('SirketCombo') || doc.querySelector('select[name="SirketCombo"]');
+        if (combo) return combo;
+        for (const f of doc.querySelectorAll('frame, iframe')) {
+          const found = scan(f.contentDocument, depth + 1);
+          if (found) return found;
+        }
+      } catch {}
       return null;
-    }
+    };
+    return scan(document);
   }
 
-  async function waitForClassicLucaReady(maxMs = 25000) {
+  function describeClassicLucaDomBrief() {
+    const seenDocs = new Set();
+    const frames = [];
+    let comboFound = false;
+    const scan = (doc, depth = 0) => {
+      if (!doc || depth > 5 || seenDocs.has(doc)) return;
+      seenDocs.add(doc);
+      try {
+        if (doc.getElementById('SirketCombo') || doc.querySelector('select[name="SirketCombo"]')) comboFound = true;
+        for (const f of doc.querySelectorAll('frame, iframe')) {
+          const name = String(f.name || f.id || f.getAttribute?.('name') || f.getAttribute?.('id') || '(isimsiz)');
+          const src = String(f.src || '').split('/').pop().slice(0, 35);
+          frames.push(`${'>'.repeat(depth)}${name}${src ? `@${src}` : ''}`);
+          try { scan(f.contentDocument, depth + 1); } catch {}
+        }
+      } catch {}
+    };
+    try { scan(document); } catch {}
+    const bodyLen = (() => {
+      try { return String(document.body?.textContent || '').replace(/\s+/g, ' ').trim().length; } catch { return 0; }
+    })();
+    return `combo=${comboFound ? 'var' : 'yok'}; frames=${frames.slice(0, 12).join('|') || 'yok'}; body=${bodyLen}`;
+  }
+
+  function isClassicLucaFrameShellReady() {
+    const required = ['frm1', 'frm2', 'frm3', 'frm4'];
+    return required.every((name) => !!getLucaFrame(name));
+  }
+
+  async function waitForClassicLucaReady(maxMs = 25000, opts = {}) {
     const started = Date.now();
     // Daha sık polling (150ms) — frame yüklenmesini erken yakala.
     // Eski 300ms ile Luca'nın seçenekler async yüklemesi ile race condition
@@ -6619,6 +6683,10 @@
     while (Date.now() - started < maxMs) {
       const combo = getLucaFirmaCombo();
       if (combo && combo.options && combo.options.length > 0) return combo;
+      if (opts?.allowShellReady && isClassicLucaFrameShellReady()) {
+        await sleep(500);
+        if (isClassicLucaFrameShellReady()) return { shellReady: true };
+      }
       await sleep(150);
     }
     // Timeout sonrası son bir kontrol — race condition fix.
@@ -6626,6 +6694,9 @@
     const finalCheck = getLucaFirmaCombo();
     if (finalCheck && finalCheck.options && finalCheck.options.length > 0) {
       return finalCheck;
+    }
+    if (opts?.allowShellReady && isClassicLucaFrameShellReady()) {
+      return { shellReady: true };
     }
     return null;
   }

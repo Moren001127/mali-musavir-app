@@ -27,9 +27,13 @@ const documentUploadInterceptor = () =>
         file.mimetype.startsWith('image/') ||
         file.mimetype === 'application/pdf' ||
         file.mimetype.includes('xml') ||
+        file.mimetype === 'application/zip' ||
+        file.mimetype === 'application/x-zip-compressed' ||
+        /\.zip$/i.test(file.originalname) ||
+        /\.ubl$/i.test(file.originalname) ||
         /\.xml$/i.test(file.originalname);
       if (ok) cb(null, true);
-      else cb(new BadRequestException('Sadece görsel, PDF veya XML belge kabul edilir') as any, false);
+      else cb(new BadRequestException('Sadece görsel, PDF, XML veya ZIP belge kabul edilir') as any, false);
     },
   });
 
