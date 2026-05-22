@@ -1,6 +1,6 @@
 'use client';
 
-import React, { useEffect, useMemo, useRef, useState } from 'react';
+import React, { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import ReactMarkdown from 'react-markdown';
 import remarkGfm from 'remark-gfm';
@@ -43,6 +43,11 @@ import {
   type Message,
 } from '@/lib/moren-ai';
 import { api } from '@/lib/api';
+import {
+  getStoredMorenAiConversationId,
+  MOREN_AI_CONVERSATION_EVENT,
+  setStoredMorenAiConversationId,
+} from '@/lib/moren-ai-conversation-state';
 
 const GOLD = '#d4b876';
 const GOLD_DEEP = '#8b7649';
@@ -207,6 +212,7 @@ export default function MorenAIPage() {
   const [realtimeSessionTokens, setRealtimeSessionTokens] = useState(0);
   const [memoryText, setMemoryText] = useState('');
   const scrollRef = useRef<HTMLDivElement>(null);
+  const inputRef = useRef<HTMLTextAreaElement>(null);
   const audioRef = useRef<HTMLAudioElement>(null);
   const voiceModeRef = useRef(false);
   const voiceSendRef = useRef(false);
@@ -251,7 +257,9 @@ export default function MorenAIPage() {
 
   useEffect(() => {
     if (!activeConversationId && !isDraftingNewChat && conversations.length > 0) {
-      setActiveConversationId(conversations[0].id);
+      const stored = getStoredMorenAiConversationId();
+      const storedConversation = stored ? conversations.find((conversation) => conversation.id === stored) : null;
+      setActiveConversationId(storedConversation?.id || conversations[0].id);
     }
   }, [activeConversationId, conversations, isDraftingNewChat]);
 
@@ -267,11 +275,46 @@ export default function MorenAIPage() {
 
   useEffect(() => {
     activeConversationIdRef.current = activeConversationId;
+    if (activeConversationId) setStoredMorenAiConversationId(activeConversationId);
   }, [activeConversationId]);
+
+  useEffect(() => {
+    const handler = (event: Event) => {
+      const id = (event as CustomEvent<{ conversationId?: string | null }>).detail?.conversationId || null;
+      if (id) {
+        activeConversationIdRef.current = id;
+        setActiveConversationId(id);
+        setIsDraftingNewChat(false);
+      }
+    };
+    window.addEventListener(MOREN_AI_CONVERSATION_EVENT, handler);
+    return () => window.removeEventListener(MOREN_AI_CONVERSATION_EVENT, handler);
+  }, []);
 
   useEffect(() => {
     selectedTaxpayerIdRef.current = selectedTaxpayerId;
   }, [selectedTaxpayerId]);
+
+  const focusChatInput = useCallback(() => {
+    window.setTimeout(() => {
+      inputRef.current?.scrollIntoView({ behavior: 'smooth', block: 'center' });
+      inputRef.current?.focus();
+    }, 80);
+  }, []);
+
+  useEffect(() => {
+    const handler = () => focusChatInput();
+    window.addEventListener('moren-ai:focus-chat', handler);
+
+    let shouldFocus = window.location.hash === '#chat';
+    try {
+      shouldFocus = shouldFocus || window.sessionStorage.getItem('moren-ai-focus-chat') === '1';
+      window.sessionStorage.removeItem('moren-ai-focus-chat');
+    } catch {}
+    if (shouldFocus) focusChatInput();
+
+    return () => window.removeEventListener('moren-ai:focus-chat', handler);
+  }, [focusChatInput]);
 
   const stopRealtimeVoice = () => {
     realtimeActiveRef.current = false;
@@ -494,6 +537,7 @@ export default function MorenAIPage() {
       }),
     onSuccess: async (res) => {
       if (!activeConversationId) setActiveConversationId(res.conversationId);
+      setStoredMorenAiConversationId(res.conversationId);
       setIsDraftingNewChat(false);
       await qc.invalidateQueries({ queryKey: ['ai-conversation', res.conversationId] });
       await qc.invalidateQueries({ queryKey: ['ai-conversations'] });
@@ -685,6 +729,7 @@ export default function MorenAIPage() {
     setActiveConversationId(null);
     setIsDraftingNewChat(true);
     setInput('');
+    setStoredMorenAiConversationId(null);
   };
 
   const handleMic = async () => {
@@ -979,6 +1024,8 @@ export default function MorenAIPage() {
         <div className="border-t p-3" style={{ borderColor: LINE }}>
           <div className="flex items-end gap-2 rounded-lg border bg-black/20 p-2" style={{ borderColor: LINE }}>
             <textarea
+              ref={inputRef}
+              id="moren-ai-chat-input"
               name="moren-ai-question"
               autoComplete="off"
               autoCorrect="off"

@@ -2,14 +2,23 @@
 
 import React, { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { usePathname, useRouter } from 'next/navigation';
-import { useQueryClient } from '@tanstack/react-query';
-import { Bot, Loader2, MessageSquareText, Mic, MicOff, Minimize2, Radio, Sparkles, X } from 'lucide-react';
+import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
+import { Bot, Loader2, MessageSquareText, Mic, MicOff, Minimize2, Radio, Send, Sparkles, X } from 'lucide-react';
 import { toast } from 'sonner';
 import {
+  chat,
+  getConversation,
   getRealtimeVoiceToken,
+  listConversations,
   logRealtimeVoiceUsage,
   realtimePortalQuery,
+  type Message,
 } from '@/lib/moren-ai';
+import {
+  getStoredMorenAiConversationId,
+  MOREN_AI_CONVERSATION_EVENT,
+  setStoredMorenAiConversationId,
+} from '@/lib/moren-ai-conversation-state';
 
 const ROSE = '#f09aa8';
 const GOLD = '#d4b876';
@@ -131,6 +140,25 @@ function getCurrentRoute(pathname: string | null) {
     .find((route) => route.path !== '/panel' && path.startsWith(route.path)) || PORTAL_ROUTES[0];
 }
 
+function resolveLocalPortalCommand(text: string) {
+  const key = normalizeKey(text);
+  if (!key) return null;
+
+  if (/^(tamam|ok|olur|evet|hayir|hayır|sagol|sağol|tesekkurler|teşekkürler)$/.test(key)) {
+    return { type: 'ack' as const, message: 'Tamam.' };
+  }
+
+  const hasCommand = /(ac|aç|git|gid|gec|geç|goster|göster|listele|ekran|sayfa)/i.test(text);
+  for (const route of PORTAL_ROUTES) {
+    const names = [route.label, route.path, ...(route.aliases || [])].map(normalizeKey);
+    if (names.some((name) => key === name || (hasCommand && key.includes(name)))) {
+      return { type: 'navigate' as const, route };
+    }
+  }
+
+  return null;
+}
+
 function realtimeInstructions(currentModule: string, currentPath: string) {
   const moduleList = PORTAL_ROUTES.map((route) => `${route.label}: ${route.path}`).join(' | ');
   return [
@@ -153,6 +181,10 @@ export default function GlobalMorenVoice() {
   const [expanded, setExpanded] = useState(false);
   const [status, setStatus] = useState<VoiceStatus>('idle');
   const [conversationId, setConversationId] = useState<string | null>(null);
+  const [chatOpen, setChatOpen] = useState(false);
+  const [chatConversationId, setChatConversationId] = useState<string | null>(null);
+  const [chatInput, setChatInput] = useState('');
+  const [localChatNotice, setLocalChatNotice] = useState('');
   const [lastAction, setLastAction] = useState('Hazır');
   const [errorText, setErrorText] = useState('');
   const [sessionCost, setSessionCost] = useState(0);
@@ -170,9 +202,105 @@ export default function GlobalMorenVoice() {
   const isPortalPath = !!pathname && (pathname.startsWith('/panel') || pathname.startsWith('/fatura-merkezi'));
   const currentRoute = useMemo(() => getCurrentRoute(pathname), [pathname]);
 
+  const rememberConversationId = useCallback((id: string | null) => {
+    conversationIdRef.current = id;
+    setConversationId(id);
+    setChatConversationId(id);
+    setStoredMorenAiConversationId(id);
+  }, []);
+
   useEffect(() => {
     conversationIdRef.current = conversationId;
   }, [conversationId]);
+
+  useEffect(() => {
+    const stored = getStoredMorenAiConversationId();
+    if (stored) {
+      conversationIdRef.current = stored;
+      setConversationId(stored);
+      setChatConversationId(stored);
+    }
+
+    const handler = (event: Event) => {
+      const id = (event as CustomEvent<{ conversationId?: string | null }>).detail?.conversationId || null;
+      conversationIdRef.current = id;
+      setConversationId(id);
+      setChatConversationId(id);
+    };
+    window.addEventListener(MOREN_AI_CONVERSATION_EVENT, handler);
+    return () => window.removeEventListener(MOREN_AI_CONVERSATION_EVENT, handler);
+  }, []);
+
+  const resolveActiveConversationId = useCallback(async () => {
+    const existing = conversationIdRef.current || getStoredMorenAiConversationId();
+    if (existing) {
+      rememberConversationId(existing);
+      return existing;
+    }
+
+    try {
+      const latest = await qc.fetchQuery({
+        queryKey: ['ai-conversations', 'latest'],
+        queryFn: () => listConversations(1),
+        staleTime: 15_000,
+      });
+      const id = latest?.[0]?.id || null;
+      if (id) rememberConversationId(id);
+      return id;
+    } catch {
+      return null;
+    }
+  }, [qc, rememberConversationId]);
+
+  const { data: miniConversation, isFetching: miniConversationLoading } = useQuery({
+    queryKey: ['ai-conversation', chatConversationId],
+    queryFn: () => (chatConversationId ? getConversation(chatConversationId) : Promise.resolve(null)),
+    enabled: chatOpen && !!chatConversationId,
+    refetchOnWindowFocus: false,
+  });
+
+  const miniMessages: Message[] = miniConversation?.messages || [];
+
+  const sendMiniMessage = useMutation({
+    mutationFn: async (message: string) => {
+      const conversationIdForSend = await resolveActiveConversationId();
+      return chat({
+        conversationId: conversationIdForSend || undefined,
+        message,
+      });
+    },
+    onSuccess: async (result) => {
+      rememberConversationId(result.conversationId);
+      setChatInput('');
+      setLocalChatNotice('');
+      await qc.invalidateQueries({ queryKey: ['ai-conversations'] });
+      await qc.invalidateQueries({ queryKey: ['ai-conversation', result.conversationId] });
+    },
+    onError: (error: any) => {
+      toast.error('Mesaj gönderilemedi: ' + (error?.response?.data?.message || error?.message || 'Bağlantı hatası'));
+    },
+  });
+
+  const handleMiniChatSend = useCallback(async () => {
+    const text = chatInput.trim();
+    if (!text || sendMiniMessage.isPending) return;
+
+    const localCommand = resolveLocalPortalCommand(text);
+    if (localCommand?.type === 'ack') {
+      setChatInput('');
+      setLocalChatNotice(localCommand.message);
+      return;
+    }
+    if (localCommand?.type === 'navigate') {
+      setChatInput('');
+      router.push(localCommand.route.path);
+      setLocalChatNotice(`${localCommand.route.label} açıldı.`);
+      setLastAction(`${localCommand.route.label} açıldı`);
+      return;
+    }
+
+    sendMiniMessage.mutate(text);
+  }, [chatInput, router, sendMiniMessage]);
 
   const sendRealtimeEvent = useCallback((payload: any) => {
     const dc = dataChannelRef.current;
@@ -202,8 +330,9 @@ export default function GlobalMorenVoice() {
     if (!usage || !responseId || loggedResponsesRef.current.has(responseId)) return;
     loggedResponsesRef.current.add(responseId);
     try {
+      const activeConversationId = await resolveActiveConversationId();
       const logged = await logRealtimeVoiceUsage({
-        conversationId: conversationIdRef.current || undefined,
+        conversationId: activeConversationId || undefined,
         model: modelRef.current,
         responseId,
         usage,
@@ -214,7 +343,7 @@ export default function GlobalMorenVoice() {
     } catch {
       // Ses akışı maliyet logu yüzünden kesilmesin.
     }
-  }, []);
+  }, [resolveActiveConversationId]);
 
   const sendFunctionOutput = useCallback((call: any, output: any) => {
     sendRealtimeEvent({
@@ -236,13 +365,13 @@ export default function GlobalMorenVoice() {
 
     setStatus('thinking');
     setLastAction('Yanıt hazırlanıyor');
+    const activeConversationId = await resolveActiveConversationId();
     const result = await realtimePortalQuery({
-      conversationId: conversationIdRef.current || undefined,
+      conversationId: activeConversationId || undefined,
       question,
       currentPath: pathname || undefined,
     });
-    conversationIdRef.current = result.conversationId;
-    setConversationId(result.conversationId);
+    rememberConversationId(result.conversationId);
     await qc.invalidateQueries({ queryKey: ['ai-conversations'] });
     await qc.invalidateQueries({ queryKey: ['ai-conversation', result.conversationId] });
     sendFunctionOutput(call, {
@@ -252,7 +381,7 @@ export default function GlobalMorenVoice() {
       usage: result.usage,
     });
     setLastAction('Yanıt hazırlandı');
-  }, [pathname, qc, sendFunctionOutput]);
+  }, [pathname, qc, rememberConversationId, resolveActiveConversationId, sendFunctionOutput]);
 
   const runNavigation = useCallback((call: any, args: any) => {
     const route = resolveRoute(String(args?.target || ''));
@@ -440,6 +569,12 @@ export default function GlobalMorenVoice() {
     setLastAction(`${currentRoute.label} ekranındasınız`);
   }, [currentRoute.label, pathname, sendRealtimeEvent]);
 
+  const openMessaging = useCallback(() => {
+    setExpanded(false);
+    setChatOpen(true);
+    resolveActiveConversationId().catch(() => {});
+  }, [resolveActiveConversationId]);
+
   const statusLabel = status === 'connecting'
     ? 'Bağlanıyor'
     : status === 'listening'
@@ -468,7 +603,7 @@ export default function GlobalMorenVoice() {
           style={{
             background: `linear-gradient(135deg, ${ROSE}, #7d4350)`,
             boxShadow: '0 18px 45px rgba(240,154,168,0.28), inset 0 1px 0 rgba(255,255,255,0.24)',
-            color: '#160d10',
+            color: GOLD,
           }}
           title="Canlı MOREN AI"
           aria-label="Canlı MOREN AI"
@@ -478,8 +613,8 @@ export default function GlobalMorenVoice() {
             className="absolute -bottom-1 -left-1 flex h-6 w-6 items-center justify-center rounded-full"
             style={{
               background: '#17110f',
-              border: '1px solid rgba(240,154,168,0.42)',
-              color: ROSE,
+              border: '1px solid rgba(212,184,118,0.48)',
+              color: GOLD,
               boxShadow: '0 8px 18px rgba(0,0,0,0.28)',
             }}
           >
@@ -591,12 +726,9 @@ export default function GlobalMorenVoice() {
             <div className="flex gap-2">
               <button
                 type="button"
-                onClick={() => {
-                  setExpanded(false);
-                  router.push('/panel/moren-ai');
-                }}
+                onClick={openMessaging}
                 className="flex h-10 items-center justify-center gap-2 rounded-lg border px-3 text-[12.5px] font-semibold transition hover:bg-white/[0.06]"
-                style={{ borderColor: LINE, color: ROSE, background: 'rgba(240,154,168,0.07)' }}
+                style={{ borderColor: 'rgba(212,184,118,0.26)', color: GOLD, background: 'rgba(212,184,118,0.08)' }}
               >
                 <MessageSquareText size={15} />
                 Mesajlaşma
@@ -622,6 +754,118 @@ export default function GlobalMorenVoice() {
           </div>
         </div>
       )}
+      {chatOpen ? (
+        <div
+          className="fixed bottom-6 right-6 z-[86] flex max-h-[calc(100vh-48px)] w-[380px] max-w-[calc(100vw-32px)] flex-col overflow-hidden rounded-xl border shadow-2xl"
+          style={{
+            background: 'linear-gradient(180deg, rgba(18,14,12,0.99), rgba(9,8,6,0.99))',
+            borderColor: 'rgba(212,184,118,0.28)',
+            boxShadow: '0 24px 75px rgba(0,0,0,0.52), 0 0 36px rgba(212,184,118,0.12)',
+          }}
+        >
+          <div className="flex items-center gap-3 border-b px-4 py-3" style={{ borderColor: LINE }}>
+            <div
+              className="flex h-10 w-10 shrink-0 items-center justify-center rounded-lg"
+              style={{
+                background: 'rgba(212,184,118,0.12)',
+                border: '1px solid rgba(212,184,118,0.28)',
+                color: GOLD,
+              }}
+            >
+              <MessageSquareText size={18} />
+            </div>
+            <div className="min-w-0 flex-1">
+              <p className="truncate text-[13px] font-bold" style={{ color: TEXT }}>MOREN AI Mesajlaşma</p>
+              <p className="mt-0.5 truncate text-[11px]" style={{ color: MUTED }}>
+                {miniConversation?.title || currentRoute.label}
+              </p>
+            </div>
+            <button
+              type="button"
+              onClick={() => setChatOpen(false)}
+              className="flex h-8 w-8 items-center justify-center rounded-lg transition hover:bg-white/[0.06]"
+              style={{ color: MUTED }}
+              title="Kapat"
+            >
+              <X size={15} />
+            </button>
+          </div>
+
+          <div className="min-h-[260px] flex-1 space-y-3 overflow-y-auto px-4 py-4">
+            {miniConversationLoading ? (
+              <div className="flex items-center gap-2 text-[12px]" style={{ color: GOLD }}>
+                <Loader2 size={14} className="animate-spin" />
+                Konuşma yükleniyor...
+              </div>
+            ) : miniMessages.length === 0 && !localChatNotice ? (
+              <div className="rounded-lg border px-3 py-3 text-[12.5px] leading-relaxed" style={{ borderColor: LINE, color: MUTED, background: 'rgba(255,255,255,0.025)' }}>
+                Buradan modül değiştirmeden MOREN AI ile yazışabilirsiniz.
+              </div>
+            ) : null}
+
+            {miniMessages.slice(-8).map((message) => {
+              const isUser = message.role === 'user';
+              return (
+                <div key={message.id} className={`flex ${isUser ? 'justify-end' : 'justify-start'}`}>
+                  <div
+                    className="max-w-[82%] rounded-lg border px-3 py-2 text-[12.5px] leading-relaxed"
+                    style={{
+                      borderColor: isUser ? 'rgba(212,184,118,0.32)' : LINE,
+                      background: isUser ? 'rgba(212,184,118,0.13)' : 'rgba(255,255,255,0.035)',
+                      color: TEXT,
+                      whiteSpace: 'pre-wrap',
+                    }}
+                  >
+                    {message.content}
+                  </div>
+                </div>
+              );
+            })}
+
+            {localChatNotice ? (
+              <div className="rounded-lg border px-3 py-2 text-[12.5px]" style={{ borderColor: 'rgba(212,184,118,0.28)', color: GOLD, background: 'rgba(212,184,118,0.08)' }}>
+                {localChatNotice}
+              </div>
+            ) : null}
+
+            {sendMiniMessage.isPending ? (
+              <div className="flex items-center gap-2 text-[12px]" style={{ color: GOLD }}>
+                <Loader2 size={14} className="animate-spin" />
+                Yanıt hazırlanıyor...
+              </div>
+            ) : null}
+          </div>
+
+          <div className="border-t p-3" style={{ borderColor: LINE }}>
+            <div className="flex items-end gap-2 rounded-lg border bg-black/20 p-2" style={{ borderColor: LINE }}>
+              <textarea
+                value={chatInput}
+                onChange={(event) => setChatInput(event.target.value)}
+                onKeyDown={(event) => {
+                  if (event.key === 'Enter' && !event.shiftKey) {
+                    event.preventDefault();
+                    handleMiniChatSend();
+                  }
+                }}
+                rows={1}
+                placeholder="MOREN AI'a yaz..."
+                className="min-h-[40px] flex-1 resize-none border-0 bg-transparent px-2 py-2 text-sm outline-none"
+                style={{ color: TEXT, caretColor: GOLD, boxShadow: 'none' }}
+              />
+              <button
+                type="button"
+                onClick={handleMiniChatSend}
+                disabled={!chatInput.trim() || sendMiniMessage.isPending}
+                className="flex h-10 w-10 shrink-0 items-center justify-center rounded-lg font-semibold transition disabled:opacity-40"
+                style={{ background: `linear-gradient(135deg, ${GOLD}, #8b7649)`, color: '#0f0d0b' }}
+                title="Gönder"
+              >
+                {sendMiniMessage.isPending ? <Loader2 size={16} className="animate-spin" /> : <Send size={16} />}
+              </button>
+            </div>
+          </div>
+        </div>
+      ) : null}
     </>
   );
 }
