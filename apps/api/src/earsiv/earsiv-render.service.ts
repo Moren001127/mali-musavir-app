@@ -73,7 +73,8 @@ export class EarsivRenderService {
 
   /** XML'in içinde EmbeddedDocumentBinaryObject olarak XSLT var mı? */
   hasEmbeddedXslt(xml: string): boolean {
-    return /EmbeddedDocumentBinaryObject[^>]*(?:filename|mimeCode)=["'][^"']*(?:\.xsl|\.xslt|xslt|xsl)["']/i.test(xml);
+    return /EmbeddedDocumentBinaryObject[^>]*(?:filename|mimeCode)=["'][^"']*(?:\.xsl|\.xslt|xslt|xsl)["']/i.test(xml)
+      || /<[^>]*DocumentType[^>]*>\s*XSLT\s*<\/[^>]*DocumentType>/i.test(xml);
   }
 
   /** XML'i tarayıcıya gönder, gömülü XSLT'yi browser tarafında apply et.
@@ -193,25 +194,52 @@ export class EarsivRenderService {
   var morenSafeQrSvg = ${JSON.stringify(safeQrSvg)};
   function b64DecodeUnicode(str) {
     try {
-      return decodeURIComponent(atob(str).split('').map(function(c){
+      var bin = atob(str);
+      var bytes = new Uint8Array(bin.length);
+      for (var i = 0; i < bin.length; i++) bytes[i] = bin.charCodeAt(i);
+      if (window.TextDecoder) return new TextDecoder('utf-8').decode(bytes);
+      return decodeURIComponent(bin.split('').map(function(c){
         return '%' + ('00' + c.charCodeAt(0).toString(16)).slice(-2);
       }).join(''));
-    } catch(e) { return null; }
+    } catch(e) {
+      try { return atob(str); } catch(e2) { return null; }
+    }
   }
   function getXsltFromXml(xmlDoc) {
-    var nodes = xmlDoc.getElementsByTagName('cbc:EmbeddedDocumentBinaryObject');
-    if (!nodes || nodes.length === 0) {
-      nodes = xmlDoc.getElementsByTagName('EmbeddedDocumentBinaryObject');
+    function local(el) { return (el.localName || el.nodeName || '').replace(/^.*:/, ''); }
+    function textOfFirst(parent, names) {
+      var all = parent.getElementsByTagName('*');
+      for (var i = 0; i < all.length; i++) {
+        if (names.indexOf(local(all[i])) >= 0) return (all[i].textContent || '').trim();
+      }
+      return '';
     }
-    for (var i = 0; i < (nodes && nodes.length); i++) {
+    function ancestorMarksXslt(node) {
+      var p = node.parentNode;
+      for (var depth = 0; p && depth < 5; depth++, p = p.parentNode) {
+        var marker = textOfFirst(p, ['DocumentType', 'ID', 'DocumentDescription']);
+        if (/xsl|xslt/i.test(marker)) return true;
+      }
+      return false;
+    }
+    var nodes = [];
+    var all = xmlDoc.getElementsByTagName('*');
+    for (var a = 0; a < all.length; a++) {
+      if (local(all[a]) === 'EmbeddedDocumentBinaryObject') nodes.push(all[a]);
+    }
+    for (var i = 0; i < nodes.length; i++) {
       var n = nodes[i];
       var fn = n.getAttribute('filename') || '';
       var mime = n.getAttribute('mimeCode') || n.getAttribute('mimecode') || '';
-      if (/\\.(xsl|xslt)$/i.test(fn) || /xsl/i.test(mime)) {
-        var b64 = (n.textContent || '').trim();
-        var xsltStr = b64DecodeUnicode(b64);
-        if (xsltStr) {
-          try { return new DOMParser().parseFromString(xsltStr, 'text/xml'); } catch(e) {}
+      var raw = (n.textContent || '').trim();
+      var marked = /\\.(xsl|xslt)$/i.test(fn) || /xsl/i.test(mime) || ancestorMarksXslt(n);
+      if (marked || /^\\s*</.test(raw)) {
+        var xsltStr = /^\\s*</.test(raw) ? raw : b64DecodeUnicode(raw);
+        if (xsltStr && /stylesheet/i.test(xsltStr)) {
+          try {
+            var parsed = new DOMParser().parseFromString(xsltStr, 'text/xml');
+            if (!parsed.getElementsByTagName('parsererror').length) return parsed;
+          } catch(e) {}
         }
       }
     }

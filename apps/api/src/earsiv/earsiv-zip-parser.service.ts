@@ -64,7 +64,7 @@ export class EarsivZipParserService {
         if (lower.endsWith('.xml') || lower.endsWith('.ubl')) {
           const content = await (file as any).async('text');
           xmlFiles.push({ name: baseName, fullPath, content });
-        } else if (lower.endsWith('.html') || lower.endsWith('.htm')) {
+        } else if (lower.endsWith('.html') || lower.endsWith('.htm') || lower.endsWith('.xhtml')) {
           const content = await (file as any).async('text');
           htmlFiles.set(stem, { name: baseName, fullPath, content });
         } else if (lower.endsWith('.pdf')) {
@@ -75,12 +75,20 @@ export class EarsivZipParserService {
           const nestedBuf = await (file as any).async('nodebuffer');
           await processZipBuffer(nestedBuf, fullPath);
         } else {
-          // Uzantısı belirsiz — XML olabilir mi kontrol et (ilk byte'lar)
           try {
-            const content = await (file as any).async('text');
+            const raw = await (file as any).async('nodebuffer');
+            if (this.looksLikePdf(raw)) {
+              pdfFiles.set(stem, { name: baseName, fullPath, buffer: raw });
+              this.logger.log(`Uzantisiz PDF olarak yorumlandi: ${fullPath}`);
+              continue;
+            }
+            const content = raw.toString('utf8');
             if (content.trim().startsWith('<?xml') || content.includes('<Invoice') || content.includes('<CreditNote')) {
               xmlFiles.push({ name: baseName, fullPath, content });
-              this.logger.log(`Uzantısız XML olarak yorumlandı: ${fullPath}`);
+              this.logger.log(`Uzantisiz XML olarak yorumlandi: ${fullPath}`);
+            } else if (this.looksLikeHtml(content)) {
+              htmlFiles.set(stem, { name: baseName, fullPath, content });
+              this.logger.log(`Uzantisiz HTML olarak yorumlandi: ${fullPath}`);
             }
           } catch {}
         }
@@ -100,6 +108,7 @@ export class EarsivZipParserService {
 
     let pdfMatched = 0;
     let htmlMatched = 0;
+    const pdfTextCache = new Map<string, Promise<string>>();
 
     for (const [xmlIndex, xml] of xmlFiles.entries()) {
       try {
@@ -107,9 +116,9 @@ export class EarsivZipParserService {
         if (parsed) {
           parsed.zipFileName = xml.fullPath || xml.name;
           parsed.sourcePath = xml.fullPath;
-          parsed.pdfBuffer = this.matchPdfBuffer(parsed, xml.name, xmlFiles.length, pdfFiles, xmlIndex);
+          parsed.pdfBuffer = await this.matchPdfBuffer(parsed, xml.fullPath || xml.name, xmlFiles.length, pdfFiles, xmlIndex, pdfTextCache);
           if (parsed.pdfBuffer) pdfMatched++;
-          parsed.htmlContent = this.matchHtmlContent(parsed, xml.name, xmlFiles.length, htmlFiles, xmlIndex);
+          parsed.htmlContent = this.matchHtmlContent(parsed, xml.fullPath || xml.name, xmlFiles.length, htmlFiles, xmlIndex);
           if (parsed.htmlContent) htmlMatched++;
           results.push(parsed);
           parseDiagnostics.push(`${xml.name}:OK(${parsed.faturaNo},pdf=${parsed.pdfBuffer ? 'Y' : 'N'},html=${parsed.htmlContent ? 'Y' : 'N'})`);
@@ -121,9 +130,9 @@ export class EarsivZipParserService {
           if (fb) {
             fb.zipFileName = xml.fullPath || xml.name;
             fb.sourcePath = xml.fullPath;
-            fb.pdfBuffer = this.matchPdfBuffer(fb, xml.name, xmlFiles.length, pdfFiles, xmlIndex);
+            fb.pdfBuffer = await this.matchPdfBuffer(fb, xml.fullPath || xml.name, xmlFiles.length, pdfFiles, xmlIndex, pdfTextCache);
             if (fb.pdfBuffer) pdfMatched++;
-            fb.htmlContent = this.matchHtmlContent(fb, xml.name, xmlFiles.length, htmlFiles, xmlIndex);
+            fb.htmlContent = this.matchHtmlContent(fb, xml.fullPath || xml.name, xmlFiles.length, htmlFiles, xmlIndex);
             if (fb.htmlContent) htmlMatched++;
             results.push(fb);
             parseDiagnostics.push(`${xml.name}:FALLBACK(${fb.faturaNo},pdf=${fb.pdfBuffer ? 'Y' : 'N'},html=${fb.htmlContent ? 'Y' : 'N'},keys=${topKeys})`);
@@ -139,9 +148,9 @@ export class EarsivZipParserService {
           if (fb) {
             fb.zipFileName = xml.fullPath || xml.name;
             fb.sourcePath = xml.fullPath;
-            fb.pdfBuffer = this.matchPdfBuffer(fb, xml.name, xmlFiles.length, pdfFiles, xmlIndex);
+            fb.pdfBuffer = await this.matchPdfBuffer(fb, xml.fullPath || xml.name, xmlFiles.length, pdfFiles, xmlIndex, pdfTextCache);
             if (fb.pdfBuffer) pdfMatched++;
-            fb.htmlContent = this.matchHtmlContent(fb, xml.name, xmlFiles.length, htmlFiles, xmlIndex);
+            fb.htmlContent = this.matchHtmlContent(fb, xml.fullPath || xml.name, xmlFiles.length, htmlFiles, xmlIndex);
             if (fb.htmlContent) htmlMatched++;
             results.push(fb);
             parseDiagnostics.push(`${xml.name}:FALLBACK_AFTER_ERR(${fb.faturaNo},pdf=${fb.pdfBuffer ? 'Y' : 'N'},html=${fb.htmlContent ? 'Y' : 'N'},err=${e.message?.slice(0, 30)})`);
@@ -175,13 +184,48 @@ export class EarsivZipParserService {
       .replace(/[^a-z0-9]/g, '');
   }
 
-  private matchPdfBuffer(
+  private looksLikePdf(buffer: Buffer): boolean {
+    return buffer.length >= 5 && buffer.subarray(0, 5).toString('ascii') === '%PDF-';
+  }
+
+  private looksLikeHtml(content: string): boolean {
+    const head = String(content || '').trim().slice(0, 1000).toLowerCase();
+    return head.startsWith('<!doctype html') || head.startsWith('<html') || /<body[\s>]/i.test(head);
+  }
+
+  private entryDir(value?: string | null): string {
+    const normalized = String(value || '').replace(/\\/g, '/');
+    const index = normalized.lastIndexOf('/');
+    return index >= 0 ? normalized.slice(0, index) : '';
+  }
+
+  private async pdfTextFor(
+    cacheKey: string,
+    buffer: Buffer,
+    cache: Map<string, Promise<string>>,
+  ): Promise<string> {
+    if (!cache.has(cacheKey)) {
+      cache.set(cacheKey, (async () => {
+        try {
+          const pdfParse = require('pdf-parse');
+          const result = await pdfParse(buffer, { max: 2 });
+          return String(result?.text || '');
+        } catch {
+          return '';
+        }
+      })());
+    }
+    return cache.get(cacheKey)!;
+  }
+
+  private async matchPdfBuffer(
     parsed: Pick<ParsedEarsivFatura, 'faturaNo' | 'ettn'>,
     xmlName: string,
     xmlCount: number,
     pdfFiles: Map<string, { name: string; fullPath: string; buffer: Buffer }>,
     xmlIndex?: number,
-  ): Buffer | undefined {
+    pdfTextCache = new Map<string, Promise<string>>(),
+  ): Promise<Buffer | undefined> {
     if (!pdfFiles.size) return undefined;
 
     const pdfEntries = [...pdfFiles.entries()];
@@ -211,6 +255,23 @@ export class EarsivZipParserService {
         return keys.some((key) => key.includes(candidate) || candidate.includes(key));
       });
       if (fuzzy) return fuzzy[1].buffer;
+    }
+
+    const xmlDir = this.entryDir(xmlName);
+    if (xmlDir) {
+      const sameDir = pdfEntries.filter(([, pdf]) => this.entryDir(pdf.fullPath) === xmlDir);
+      if (sameDir.length === 1) return sameDir[0][1].buffer;
+    }
+
+    const contentCandidates = [parsed.faturaNo, parsed.ettn]
+      .map((v) => this.normalizeFileKey(v))
+      .filter(Boolean);
+    for (const [stem, pdf] of pdfEntries) {
+      const cacheKey = `${stem}:${pdf.fullPath}`;
+      const text = this.normalizeFileKey(await this.pdfTextFor(cacheKey, pdf.buffer, pdfTextCache));
+      if (text && contentCandidates.some((candidate) => text.includes(candidate))) {
+        return pdf.buffer;
+      }
     }
 
     // Luca bazen XML/PDF dosyalarina belge no tasimayan sira bazli ad verir.
@@ -259,6 +320,22 @@ export class EarsivZipParserService {
         return keys.some((key) => key.includes(candidate) || candidate.includes(key));
       });
       if (fuzzy) return fuzzy[1].content;
+    }
+
+    const xmlDir = this.entryDir(xmlName);
+    if (xmlDir) {
+      const sameDir = htmlEntries.filter(([, html]) => this.entryDir(html.fullPath) === xmlDir);
+      if (sameDir.length === 1) return sameDir[0][1].content;
+    }
+
+    const contentCandidates = [parsed.faturaNo, parsed.ettn]
+      .map((v) => this.normalizeFileKey(v))
+      .filter(Boolean);
+    for (const [, html] of htmlEntries) {
+      const text = this.normalizeFileKey(html.content);
+      if (text && contentCandidates.some((candidate) => text.includes(candidate))) {
+        return html.content;
+      }
     }
 
     if (xmlCount === htmlEntries.length && xmlIndex !== undefined && htmlEntries[xmlIndex]) {
