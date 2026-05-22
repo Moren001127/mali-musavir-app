@@ -194,6 +194,11 @@ export default function LucaAgentPanel() {
 
   const isIdle = totalActive === 0;
   const statusColor = activeChallenge ? '#f59e0b' : isIdle ? '#22c55e' : runningCount > 0 ? '#f59e0b' : '#64748b';
+  const lucaStatusLabel = activeChallenge
+    ? 'Luca güvenlik kodu bekliyor'
+    : isIdle
+      ? 'Luca ajanı boşta'
+      : `Luca ajanı · ${runningCount} çalışıyor${pendingCount > 0 ? `, ${pendingCount} sırada` : ''}`;
 
   return (
     <div ref={wrapperRef} className="relative">
@@ -208,7 +213,7 @@ export default function LucaAgentPanel() {
             : isIdle ? 'rgba(34,197,94,0.06)' : 'rgba(245,158,11,0.08)',
           border: `1px solid ${activeChallenge ? 'rgba(245,158,11,0.55)' : isIdle ? 'rgba(34,197,94,0.22)' : 'rgba(245,158,11,0.3)'}`,
         }}
-        title={activeChallenge ? 'Luca güvenlik kodu bekliyor' : isIdle ? 'Luca ajanı boşta' : `Luca ajanı · ${runningCount} çalışıyor${pendingCount > 0 ? `, ${pendingCount} sırada` : ''}`}
+        aria-label={lucaStatusLabel}
       >
         <div className="relative">
           {activeChallenge ? <KeyRound size={14} style={{ color: statusColor }} /> : <Bot size={14} style={{ color: statusColor }} />}

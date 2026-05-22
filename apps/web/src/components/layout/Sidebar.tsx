@@ -1,5 +1,5 @@
 'use client';
-import React from 'react';
+import React, { useEffect, useState } from 'react';
 import Link from 'next/link';
 import { usePathname } from 'next/navigation';
 import { useMe, useLogout } from '@/hooks/useAuth';
@@ -28,6 +28,8 @@ import {
   MailSearch,
   Megaphone,
   MessageSquareText,
+  PanelLeftClose,
+  PanelLeftOpen,
   PanelTop,
   Printer,
   QrCode,
@@ -55,6 +57,7 @@ const AMBER = '#d8ad70';
 const SKY = '#8cbde8';
 const COPPER = '#d9a06c';
 const STEEL = '#9da8b7';
+const SIDEBAR_COLLAPSED_KEY = 'moren-sidebar-collapsed';
 // Sidebar gruplari kullanicinin gunluk akisi icin siralandi.
 const navGroups = [
   {
@@ -148,6 +151,7 @@ export default function Sidebar() {
   const pathname = usePathname();
   const { data: user } = useMe();
   const logout = useLogout();
+  const [collapsed, setCollapsed] = useState(false);
 
   // Onay kuyrugu bekleyen sayisi — badge icin
   const { data: pendingCount } = useQuery({
@@ -157,6 +161,24 @@ export default function Sidebar() {
     staleTime: 10000,
   });
   const bekleyenSayisi = pendingCount?.bekleyen || 0;
+
+  useEffect(() => {
+    try {
+      setCollapsed(window.localStorage.getItem(SIDEBAR_COLLAPSED_KEY) === '1');
+    } catch {
+      setCollapsed(false);
+    }
+  }, []);
+
+  const toggleCollapsed = () => {
+    setCollapsed((current) => {
+      const next = !current;
+      try {
+        window.localStorage.setItem(SIDEBAR_COLLAPSED_KEY, next ? '1' : '0');
+      } catch {}
+      return next;
+    });
+  };
 
   const exactActiveHrefs = new Set(['/panel', '/panel/ajanlar', '/panel/ayarlar']);
   const isActive = (href: string) =>
@@ -168,52 +190,90 @@ export default function Sidebar() {
 
   return (
     <aside
-      className="w-64 flex flex-col flex-shrink-0 overflow-hidden relative"
-      style={{ background: '#0f0d0b', borderRight: '1px solid #1f1a15' }}
+      className="flex flex-col flex-shrink-0 overflow-hidden relative"
+      data-collapsed={collapsed ? 'true' : 'false'}
+      style={{
+        width: collapsed ? 76 : 256,
+        background: 'linear-gradient(180deg, #15110d 0%, #0f0d0b 36%, #0b0a08 100%)',
+        borderRight: '1px solid rgba(212,184,118,0.18)',
+        transition: 'width 260ms cubic-bezier(0.16, 1, 0.3, 1)',
+        boxShadow: 'inset -1px 0 0 rgba(255,255,255,0.025), 14px 0 42px rgba(0,0,0,0.18)',
+      }}
     >
       {/* Dekoratif radial gradient arka plan */}
       <div
         className="absolute inset-0 pointer-events-none opacity-40"
         style={{
-          background: 'radial-gradient(circle at 20% 0%, rgba(184,160,111,0.15), transparent 50%), radial-gradient(circle at 80% 100%, rgba(184,160,111,0.08), transparent 40%)',
+          background: 'radial-gradient(circle at 42% 0%, rgba(212,184,118,0.18), transparent 33%), radial-gradient(circle at 110% 28%, rgba(240,154,168,0.10), transparent 36%), radial-gradient(circle at 40% 100%, rgba(143,215,189,0.08), transparent 42%)',
         }}
+      />
+      <div
+        className="pointer-events-none absolute inset-y-0 right-0 w-px"
+        style={{ background: 'linear-gradient(180deg, transparent, rgba(212,184,118,0.38), transparent)' }}
       />
 
       {/* === LOGO === */}
       <div
-        className="relative px-1 py-3"
+        className={collapsed ? 'relative px-2 py-3' : 'relative px-3 py-3'}
         style={{
           borderBottom: '1px solid rgba(212,184,118,0.18)',
-          background:
-            'linear-gradient(180deg, rgba(212,184,118,0.035) 0%, rgba(15,13,11,0.08) 72%, transparent 100%)',
+          background: 'linear-gradient(180deg, rgba(212,184,118,0.075), rgba(15,13,11,0.28) 68%, transparent)',
         }}
       >
         <Link
           href="/panel"
-          className="group relative flex h-[112px] items-center justify-center transition-transform duration-300 hover:scale-[1.01]"
+          className={collapsed
+            ? 'group relative flex h-14 items-center justify-center rounded-xl border transition-all duration-300 hover:border-[#d4b87666]'
+            : 'group relative flex h-[92px] items-center justify-center rounded-2xl border transition-all duration-300 hover:border-[#d4b87666]'
+          }
+          style={{
+            background: 'linear-gradient(145deg, rgba(212,184,118,0.075), rgba(255,255,255,0.012) 52%, rgba(0,0,0,0.12))',
+            borderColor: 'rgba(212,184,118,0.16)',
+            boxShadow: 'inset 0 1px 0 rgba(255,255,255,0.055), 0 16px 34px rgba(0,0,0,0.18)',
+          }}
           aria-label="Moren"
         >
-          <span className="block h-[108px] w-[160px] overflow-hidden">
+          <span className={collapsed ? 'block h-11 w-12 overflow-hidden' : 'block h-[78px] w-[122px] overflow-hidden'}>
             <img
               src="/brand/moren-sidebar-horizontal.png"
               alt="Moren"
-              className="block h-[108px] w-auto max-w-none object-contain"
+              className={collapsed ? 'block h-11 w-auto max-w-none object-contain' : 'block h-[78px] w-auto max-w-none object-contain'}
               style={{ filter: 'none' }}
             />
           </span>
         </Link>
+        <button
+          type="button"
+          onClick={toggleCollapsed}
+          className={collapsed
+            ? 'absolute right-1 top-1 flex h-6 w-6 items-center justify-center rounded-lg border transition hover:bg-white/[0.06]'
+            : 'absolute right-5 top-5 flex h-7 w-7 items-center justify-center rounded-lg border transition hover:bg-white/[0.06]'
+          }
+          style={{
+            background: 'rgba(15,13,11,0.78)',
+            borderColor: 'rgba(212,184,118,0.28)',
+            color: GOLD,
+            boxShadow: '0 8px 18px rgba(0,0,0,0.22)',
+          }}
+          aria-label={collapsed ? 'Sol menuyu genislet' : 'Sol menuyu daralt'}
+        >
+          {collapsed ? <PanelLeftOpen size={14} /> : <PanelLeftClose size={14} />}
+        </button>
       </div>
 
       {/* === NAVIGASYON === */}
-      <nav className="flex-1 px-2 pt-3 pb-5 space-y-4 overflow-y-auto relative">
+      <nav className={collapsed ? 'flex-1 px-2 pt-3 pb-5 space-y-3 overflow-y-auto relative' : 'flex-1 px-2 pt-3 pb-5 space-y-4 overflow-y-auto relative'}>
         {navGroups.map((group) => {
           const GIcon = group.icon;
           return (
             <div key={group.label}>
               {/* Grup Başlığı */}
-              <div className="px-1.5 mb-2">
+              <div className={collapsed ? 'mb-1 flex justify-center px-0' : 'px-1.5 mb-2'}>
                 <div
-                  className="flex items-center gap-2 rounded-lg border px-2 py-1.5"
+                  className={collapsed
+                    ? 'flex h-9 w-9 items-center justify-center rounded-xl border'
+                    : 'flex items-center gap-2 rounded-lg border px-2 py-1.5'
+                  }
                   style={{
                     background: `linear-gradient(90deg, ${group.color}12 0%, rgba(255,255,255,0.018) 46%, transparent 100%)`,
                     borderColor: `${group.color}24`,
@@ -230,25 +290,29 @@ export default function Sidebar() {
                   >
                     <GIcon size={12} strokeWidth={2.15} style={{ color: group.color }} />
                   </span>
-                  <p
-                    className="text-[10.5px] font-extrabold uppercase flex-none"
-                    style={{
-                      color: group.color,
-                      letterSpacing: 0,
-                      textShadow: `0 0 16px ${group.color}26`,
-                    }}
-                  >
-                    {group.label}
-                  </p>
-                  <div
-                    className="h-px flex-1"
-                    style={{ background: `linear-gradient(90deg, ${group.color}44, transparent)` }}
-                  />
+                  {!collapsed && (
+                    <>
+                      <p
+                        className="text-[10.5px] font-extrabold uppercase flex-none"
+                        style={{
+                          color: group.color,
+                          letterSpacing: 0,
+                          textShadow: `0 0 16px ${group.color}26`,
+                        }}
+                      >
+                        {group.label}
+                      </p>
+                      <div
+                        className="h-px flex-1"
+                        style={{ background: `linear-gradient(90deg, ${group.color}44, transparent)` }}
+                      />
+                    </>
+                  )}
                 </div>
               </div>
 
               {/* Menü Öğeleri */}
-              <div className="ml-3 space-y-0.5">
+              <div className={collapsed ? 'space-y-1' : 'ml-3 space-y-0.5'}>
                 {group.items.map(({ href, label, icon: Icon }) => {
                   const active = isActive(href);
                   const baseBackground = active
@@ -264,7 +328,10 @@ export default function Sidebar() {
                     <Link
                       key={href}
                       href={href}
-                      className="group relative flex items-center gap-3 px-3 py-[9px] rounded-xl border text-[13px] overflow-hidden"
+                      className={collapsed
+                        ? 'group relative flex items-center justify-center rounded-xl border py-2.5 text-[13px] overflow-hidden'
+                        : 'group relative flex items-center gap-3 px-3 py-[9px] rounded-xl border text-[13px] overflow-hidden'
+                      }
                       style={{
                         color: baseColor,
                         background: baseBackground,
@@ -280,7 +347,7 @@ export default function Sidebar() {
                           el.style.background = `linear-gradient(135deg, ${group.color}20 0%, rgba(255,255,255,0.075) 48%, ${group.color}08 100%)`;
                           el.style.borderColor = `${group.color}55`;
                           el.style.color = '#fffaf2';
-                          el.style.transform = 'translateX(6px)';
+                          el.style.transform = collapsed ? 'translateY(-1px)' : 'translateX(6px)';
                           el.style.boxShadow = `inset 0 1px 0 rgba(255,255,255,0.11), 0 10px 28px ${group.color}18`;
                         }
                       }}
@@ -294,6 +361,7 @@ export default function Sidebar() {
                           el.style.boxShadow = baseShadow;
                         }
                       }}
+                      aria-label={label}
                     >
                       <span
                         className="absolute inset-y-1 left-1 w-10 rounded-full opacity-0 blur-md transition-opacity duration-300 group-hover:opacity-70"
@@ -330,9 +398,9 @@ export default function Sidebar() {
                       <div
                         className="relative flex items-center justify-center flex-shrink-0 transition-all duration-300 group-hover:scale-105"
                         style={{
-                          width: 24,
-                          height: 24,
-                          borderRadius: 8,
+                          width: collapsed ? 30 : 24,
+                          height: collapsed ? 30 : 24,
+                          borderRadius: collapsed ? 10 : 8,
                           background: active ? `${group.color}24` : `${group.color}0f`,
                           border: `1px solid ${active ? `${group.color}48` : `${group.color}1f`}`,
                           boxShadow: active
@@ -347,12 +415,17 @@ export default function Sidebar() {
                         />
                       </div>
 
-                      <span className="flex-1 leading-none relative transition-colors duration-200">{label}</span>
+                      {!collapsed && (
+                        <span className="flex-1 leading-none relative transition-colors duration-200">{label}</span>
+                      )}
 
                       {/* Bekleyen onay badge — Fatura İşleme menüsünde göster (Onay Kuyruğu oraya entegre) */}
                       {href === '/panel/ajanlar/mihsap' && bekleyenSayisi > 0 && (
                         <span
-                          className="inline-flex items-center justify-center px-1.5 h-4 text-[10px] font-bold rounded-full flex-shrink-0"
+                          className={collapsed
+                            ? 'absolute -right-0.5 -top-0.5 inline-flex h-4 min-w-4 items-center justify-center rounded-full px-1 text-[9px] font-bold'
+                            : 'inline-flex items-center justify-center px-1.5 h-4 text-[10px] font-bold rounded-full flex-shrink-0'
+                          }
                           style={{
                             background: '#d97706',
                             color: '#fafaf9',
@@ -365,7 +438,7 @@ export default function Sidebar() {
                       )}
 
                       {/* Sağ ok - aktifse */}
-                      {active && (
+                      {active && !collapsed && (
                         <ChevronRight
                           size={12}
                           className="transition-transform duration-300 group-hover:translate-x-0.5"
@@ -381,7 +454,30 @@ export default function Sidebar() {
         })}
 
         {/* === KULLANICI KARTI === */}
-        <div className="relative px-1 pt-4 pb-1" style={{ borderTop: '1px solid rgba(212,184,118,0.16)' }}>
+        <div className={collapsed ? 'relative px-0 pt-3 pb-1' : 'relative px-1 pt-4 pb-1'} style={{ borderTop: '1px solid rgba(212,184,118,0.16)' }}>
+          {collapsed ? (
+            <div className="flex flex-col items-center gap-2">
+              <div
+                className="relative h-10 w-10 rounded-xl flex items-center justify-center text-[12px] font-bold"
+                style={{
+                  background: 'linear-gradient(135deg, #d4b876, #8b7649)',
+                  color: '#0f0d0b',
+                  boxShadow: 'inset 0 1px 0 rgba(255,255,255,0.25), 0 8px 20px rgba(0,0,0,0.24)',
+                }}
+                aria-label={user ? `${user.firstName ?? ''} ${user.lastName ?? ''}`.trim() || user.email : 'Kullanici'}
+              >
+                {initials}
+              </div>
+              <button
+                onClick={() => logout.mutate()}
+                className="flex h-8 w-8 items-center justify-center rounded-lg border transition hover:bg-red-500/15"
+                style={{ borderColor: 'rgba(239,68,68,0.22)', color: '#ef4444' }}
+                aria-label="Cikis yap"
+              >
+                <LogOut size={13} />
+              </button>
+            </div>
+          ) : (
           <div
             className="relative overflow-hidden rounded-xl p-3 group transition-all duration-300"
             style={{
@@ -430,12 +526,15 @@ export default function Sidebar() {
               </button>
             </div>
           </div>
+          )}
+          {!collapsed && (
           <p
             className="text-center mt-3 text-[9px] uppercase tabular-nums"
             style={{ color: 'rgba(250,250,249,0.22)', letterSpacing: 0 }}
           >
             v0.1.0 · KVKK
           </p>
+          )}
         </div>
       </nav>
     </aside>

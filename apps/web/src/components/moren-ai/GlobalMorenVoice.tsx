@@ -731,7 +731,7 @@ export default function GlobalMorenVoice() {
         boxShadow: useTopbarActions ? 'none' : '0 18px 45px rgba(212,184,118,0.28), inset 0 1px 0 rgba(255,255,255,0.28)',
         color: useTopbarActions ? GOLD : '#0f0d0b',
       }}
-      title="Canlı MOREN AI"
+      title={useTopbarActions ? undefined : 'Canlı MOREN AI'}
       aria-label="Canlı MOREN AI"
     >
       <Radio size={useTopbarActions ? 18 : 22} />

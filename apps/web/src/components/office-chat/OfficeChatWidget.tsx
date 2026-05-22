@@ -137,7 +137,7 @@ export default function OfficeChatWidget({
             color: isTopbar ? CHAT : '#07110f',
             boxShadow: isTopbar ? 'none' : '0 18px 44px rgba(143,216,194,0.22), inset 0 1px 0 rgba(255,255,255,0.24)',
           }}
-          title="Ofis ici mesajlasma"
+          title={isTopbar ? undefined : 'Ofis ici mesajlasma'}
           aria-label="Ofis ici mesajlasma"
         >
           <MessageCircle size={21} />

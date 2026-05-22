@@ -72,6 +72,11 @@ export default function SystemHealthBell() {
 
   const buttonColor = isCritical ? '#f43f5e' : isWarning ? '#f59e0b' : 'rgba(250,250,249,0.7)';
   const Icon = isOk ? ShieldCheck : AlertTriangle;
+  const healthStatusLabel = isOk
+    ? 'Sistem saglikli'
+    : isCritical
+      ? `${critical} kritik sorun - Gosterge Paneli'nde Kritik Uyari kartini ac`
+      : `${warning} uyari - Gosterge Paneli'nde Kritik Uyari kartini ac`;
 
   // Severity sıralı liste
   const sorted = useMemo(() => {
@@ -160,13 +165,7 @@ export default function SystemHealthBell() {
           background: isCritical ? 'rgba(244,63,94,0.1)' : 'transparent',
           animation: isCritical ? 'morenHealthPulse 1.5s infinite' : 'none',
         }}
-        title={
-          isOk
-            ? 'Sistem sağlıklı'
-            : isCritical
-            ? `${critical} kritik sorun — Gösterge Paneli'nde Kritik Uyarı kartını aç`
-            : `${warning} uyarı — Gösterge Paneli'nde Kritik Uyarı kartını aç`
-        }
+        aria-label={healthStatusLabel}
       >
         <Icon size={16} style={{ color: buttonColor }} />
         {total > 0 && (
