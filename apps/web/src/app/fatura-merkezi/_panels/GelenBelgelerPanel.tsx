@@ -197,7 +197,7 @@ export default function GelenBelgelerPanel({ taxpayerId, period }: Props) {
 
       {!taxpayerId && (
         <div className="mb-3 p-2.5 rounded-lg text-[12px]" style={{ background: '#a78bfa12', border: '1px solid #a78bfa35', color: '#c4b5fd' }}>
-          e-Ar?iv i?e aktar?m? toplu ?al??maz. ?stten tek m?kellef se?ince bu buton sadece o m?kellefin se?ili d?nem Gelen e-Ar?iv faturalar?n? Fatura ??leme Merkezi'ne al?r.
+          e-Arşiv içe aktarımı toplu çalışmaz. Üstten tek mükellef seçince bu buton sadece o mükellefin seçili dönem Gelen e-Arşiv faturalarını Fatura İşleme Merkezi'ne alır.
         </div>
       )}
 
