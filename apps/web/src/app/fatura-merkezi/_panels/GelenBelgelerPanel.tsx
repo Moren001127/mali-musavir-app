@@ -2,7 +2,7 @@
 
 import { useMemo, useState } from 'react';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
-import { ChevronRight, Search, Inbox, ArrowUpDown, Download, Loader2 } from 'lucide-react';
+import { AlertTriangle, ChevronRight, Download, Loader2, Search } from 'lucide-react';
 import { api } from '@/lib/api';
 import { taxpayerName, taxpayerBookType, taxpayerSearchMatch } from '../_lib/taxpayer';
 import FaturaDetayDrawer from '../_dialogs/FaturaDetayDrawer';
@@ -101,7 +101,9 @@ export default function GelenBelgelerPanel({ taxpayerId, period }: Props) {
     approvedAlis: acc.approvedAlis + r.approvedAlis,
     approvedSatis: acc.approvedSatis + r.approvedSatis,
     approvedBanka: acc.approvedBanka + r.approvedBanka,
-  }), { pendingAlis: 0, pendingSatis: 0, pendingBanka: 0, approvedAlis: 0, approvedSatis: 0, approvedBanka: 0 }), [rows]);
+    issue: acc.issue + r.hasIssue,
+    postedToLuca: acc.postedToLuca + r.postedToLuca,
+  }), { pendingAlis: 0, pendingSatis: 0, pendingBanka: 0, approvedAlis: 0, approvedSatis: 0, approvedBanka: 0, issue: 0, postedToLuca: 0 }), [rows]);
 
   return (
     <div className="p-6 max-w-7xl mx-auto">
@@ -196,8 +198,9 @@ export default function GelenBelgelerPanel({ taxpayerId, period }: Props) {
       )}
 
       {!taxpayerId && (
-        <div className="mb-3 p-2.5 rounded-lg text-[12px]" style={{ background: '#a78bfa12', border: '1px solid #a78bfa35', color: '#c4b5fd' }}>
-          e-Arşiv içe aktarımı toplu çalışmaz. Üstten tek mükellef seçince bu buton sadece o mükellefin seçili dönem Gelen e-Arşiv faturalarını Fatura İşleme Merkezi'ne alır.
+        <div className="mb-3 inline-flex max-w-full items-center gap-2 rounded-lg px-3 py-2 text-[11.5px]" style={{ background: '#a78bfa12', border: '1px solid #a78bfa35', color: '#c4b5fd' }}>
+          <AlertTriangle size={13} className="shrink-0" />
+          <span>e-Arşiv içe aktar için üstten tek mükellef seç; bu yüzden toplu çekmez.</span>
         </div>
       )}
 
@@ -232,28 +235,38 @@ export default function GelenBelgelerPanel({ taxpayerId, period }: Props) {
         );
       })()}
 
-      {/* Hızlı özet kart */}
-      <div className="grid grid-cols-3 gap-3 mb-4">
-        <SummaryCard
-          label="Bekleyen Toplam"
-          alis={totals.pendingAlis}
-          satis={totals.pendingSatis}
+      {/* Kompakt özet bandı */}
+      <div className="grid grid-cols-2 md:grid-cols-5 gap-2 mb-3">
+        <MetricPill
+          label="Bekleyen"
+          value={totals.pendingAlis + totals.pendingSatis + totals.pendingBanka}
+          sub={`${totals.pendingAlis} alış · ${totals.pendingSatis} satış`}
           tone="#f59e0b"
         />
-        <SummaryCard
-          label="Onaylanan Toplam"
-          alis={totals.approvedAlis}
-          satis={totals.approvedSatis}
+        <MetricPill
+          label="Kontrol"
+          value={totals.issue}
+          sub="Onaydan önce bakılacak"
+          tone="#ef4444"
+        />
+        <MetricPill
+          label="Onaylanan"
+          value={totals.approvedAlis + totals.approvedSatis + totals.approvedBanka}
+          sub={`${totals.approvedAlis} alış · ${totals.approvedSatis} satış`}
           tone="#10b981"
         />
-        <div className="rounded-xl p-4 flex items-center justify-between" style={{ background: 'var(--surface)', border: '1px solid var(--border)' }}>
-          <div>
-            <div className="text-[10.5px] tracking-wider font-semibold" style={{ color: 'var(--text-light)' }}>HEDEF</div>
-            <div className="text-[15px] font-semibold mt-0.5" style={{ color: 'var(--text)' }}>Toplu Onayla</div>
-            <div className="text-[11.5px] mt-0.5" style={{ color: 'var(--text-muted)' }}>Sıraya almak için aşağıdaki satıra bas</div>
-          </div>
-          <Inbox size={28} style={{ color: 'var(--accent)' }} />
-        </div>
+        <MetricPill
+          label="Luca"
+          value={totals.postedToLuca}
+          sub="Aktarılan belge"
+          tone="#a78bfa"
+        />
+        <MetricPill
+          label="Mükellef"
+          value={rows.length}
+          sub={`Dönem ${period}`}
+          tone="var(--accent)"
+        />
       </div>
 
       {/* Tablo */}
@@ -298,13 +311,15 @@ export default function GelenBelgelerPanel({ taxpayerId, period }: Props) {
                         {taxpayerName(r)}
                       </button>
                       {r.hasIssue > 0 && (
-                        <span
+                        <button
+                          type="button"
+                          onClick={() => setSelectedDoc({ taxpayerId: r.id, direction: r.pendingAlis > 0 ? 'ALIS' : 'SATIS' })}
                           className="inline-flex items-center gap-1 px-1.5 py-0.5 rounded text-[10px] font-semibold tabular-nums"
                           style={{ background: '#ef444422', color: '#ef4444', border: '1px solid #ef444455' }}
-                          title="Bu mükellefte veri kontrolü hatası olan belgeler var — onaylanamaz"
+                          title="Veri kontrolü uyarısı: yevmiye dengesi, belge toplamı, mükellef eşleşmesi veya eksik hesap nedeniyle inceleme bekleyen belge."
                         >
-                          ⚠ {r.hasIssue} hata
-                        </span>
+                          <AlertTriangle size={10} /> {r.hasIssue} kontrol
+                        </button>
                       )}
                     </div>
                   </td>
@@ -381,27 +396,14 @@ function NumCell({ value, tone, onClick }: { value: number; tone: string; onClic
   );
 }
 
-function SummaryCard({ label, alis, satis, tone }: { label: string; alis: number; satis: number; tone: string }) {
-  const total = alis + satis;
+function MetricPill({ label, value, sub, tone }: { label: string; value: number | string; sub: string; tone: string }) {
   return (
-    <div className="rounded-xl p-4" style={{ background: 'var(--surface)', border: '1px solid var(--border)' }}>
-      <div className="flex items-center justify-between mb-2">
-        <div className="text-[10.5px] tracking-wider font-semibold" style={{ color: 'var(--text-light)' }}>{label.toUpperCase()}</div>
-        <div className="text-[22px] font-semibold tabular-nums" style={{ color: tone, fontFamily: 'var(--font-heading)' }}>{total}</div>
+    <div className="rounded-lg px-3 py-2" style={{ background: 'var(--surface)', border: '1px solid var(--border)' }}>
+      <div className="flex items-baseline justify-between gap-2">
+        <div className="text-[10px] tracking-wider font-semibold uppercase truncate" style={{ color: 'var(--text-light)' }}>{label}</div>
+        <div className="text-[18px] font-semibold tabular-nums" style={{ color: tone, fontFamily: 'var(--font-heading)' }}>{value}</div>
       </div>
-      <div className="grid grid-cols-2 gap-2 mt-3">
-        <SubStat label="Alış"  value={alis}  tone={tone} />
-        <SubStat label="Satış" value={satis} tone={tone} />
-      </div>
-    </div>
-  );
-}
-
-function SubStat({ label, value, tone }: { label: string; value: number; tone: string }) {
-  return (
-    <div className="text-center p-2 rounded-md" style={{ background: `${tone}22`, border: `1px solid ${tone}40` }}>
-      <div className="text-[18px] font-bold tabular-nums" style={{ color: tone }}>{value}</div>
-      <div className="text-[10.5px] font-medium" style={{ color: 'var(--text-secondary)' }}>{label}</div>
+      <div className="mt-0.5 text-[10.5px] truncate" style={{ color: 'var(--text-muted)' }}>{sub}</div>
     </div>
   );
 }

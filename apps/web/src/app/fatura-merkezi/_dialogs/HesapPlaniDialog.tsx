@@ -1,6 +1,6 @@
 'use client';
 
-import { useState, useMemo } from 'react';
+import { useEffect, useState, useMemo } from 'react';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import { BookOpen, X, Plus, RefreshCw, Send, Search, Loader2 } from 'lucide-react';
 import { api } from '@/lib/api';
@@ -19,25 +19,29 @@ export default function HesapPlaniDialog({ taxpayer, onClose }: Props) {
   const qc = useQueryClient();
   const [search, setSearch] = useState('');
   const [showAddForm, setShowAddForm] = useState(false);
+  const [queuedJob, setQueuedJob] = useState<any>(null);
 
   const planQ = useQuery({
     queryKey: ['fatura-merkezi', 'account-plan', taxpayer.id],
     queryFn: () => api
-      .get('/account-plan', { params: { taxpayerId: taxpayer.id } })
-      .then((r) => Array.isArray(r.data) ? r.data : (r.data.items || []))
-      .catch(() => []),
+      .get('/fatura-muhasebelestirme/account-plan', { params: { taxpayerId: taxpayer.id, limit: 1000 } })
+      .then((r) => Array.isArray(r.data) ? r.data : (r.data.accounts || r.data.items || [])),
+    refetchInterval: queuedJob ? 5000 : false,
   });
 
   const refreshMut = useMutation({
     mutationFn: async () => {
-      return api.post('/account-plan/refresh', { taxpayerId: taxpayer.id });
+      return api.post('/fatura-muhasebelestirme/account-plan/refresh', { taxpayerId: taxpayer.id });
     },
-    onSuccess: () => qc.invalidateQueries({ queryKey: ['fatura-merkezi', 'account-plan'] }),
+    onSuccess: (resp) => {
+      setQueuedJob(resp.data?.job || resp.data || {});
+      qc.invalidateQueries({ queryKey: ['fatura-merkezi', 'account-plan'] });
+    },
   });
 
   const pushMut = useMutation({
     mutationFn: async () => {
-      return api.post('/account-plan/push-to-luca', { taxpayerId: taxpayer.id });
+      return api.post('/fatura-muhasebelestirme/account-plan/push-to-luca', { taxpayerId: taxpayer.id });
     },
     onSuccess: () => qc.invalidateQueries({ queryKey: ['fatura-merkezi', 'account-plan'] }),
   });
@@ -54,6 +58,10 @@ export default function HesapPlaniDialog({ taxpayer, onClose }: Props) {
   }, [items, search]);
 
   const unsynced = items.filter((i) => i.syncedToLuca === false || i.local === true);
+
+  useEffect(() => {
+    if (queuedJob && items.length > 0) setQueuedJob(null);
+  }, [queuedJob, items.length]);
 
   return (
     <div className="fixed inset-0 z-50 flex items-center justify-center p-4" style={{ background: 'rgba(0,0,0,0.65)' }} onClick={onClose}>
@@ -136,6 +144,27 @@ export default function HesapPlaniDialog({ taxpayer, onClose }: Props) {
             />
           )}
 
+          {(queuedJob || refreshMut.error || planQ.error || pushMut.error) && (
+            <div
+              className="mb-4 rounded-xl px-3 py-2 text-[12px]"
+              style={{
+                background: refreshMut.error || planQ.error || pushMut.error ? '#ef444415' : '#a78bfa12',
+                border: `1px solid ${refreshMut.error || planQ.error || pushMut.error ? '#ef444455' : '#a78bfa45'}`,
+                color: refreshMut.error || planQ.error || pushMut.error ? '#fca5a5' : '#c4b5fd',
+              }}
+            >
+              {queuedJob && (
+                <span>
+                  Luca hesap planı çekimi kuyruğa alındı. Local Agent/uzantı Luca'dan Excel'i indirince liste otomatik yenilenecek.
+                  {queuedJob.id ? <span className="ml-1 font-mono opacity-70">#{String(queuedJob.id).slice(0, 8)}</span> : null}
+                </span>
+              )}
+              {refreshMut.error && ((refreshMut.error as any)?.response?.data?.message || 'Luca hesap planı çekimi başlatılamadı.')}
+              {planQ.error && ((planQ.error as any)?.response?.data?.message || 'Hesap planı okunamadı.')}
+              {pushMut.error && ((pushMut.error as any)?.response?.data?.message || 'Luca aktarımı başlatılamadı.')}
+            </div>
+          )}
+
           {/* Liste */}
           <div className="rounded-xl overflow-hidden" style={{ background: 'var(--surface-2)', border: '1px solid var(--border)', maxHeight: 420 }}>
             <div style={{ maxHeight: 420, overflowY: 'auto' }}>
@@ -191,7 +220,7 @@ function AddAccountForm({ taxpayerId, onSaved, onCancel }: { taxpayerId: string;
 
   const saveMut = useMutation({
     mutationFn: async () => {
-      return api.post('/account-plan', { taxpayerId, code, name });
+      return api.post('/fatura-muhasebelestirme/account-plan', { taxpayerId, code, name });
     },
     onSuccess: () => onSaved(),
   });

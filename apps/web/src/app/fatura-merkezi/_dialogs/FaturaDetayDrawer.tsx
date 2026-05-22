@@ -266,7 +266,7 @@ export default function FaturaDetayDrawer({ taxpayerId, direction, period, onClo
         </div>
 
         {/* Sağ: kompakt editable form */}
-        <div className="w-[480px] flex flex-col" style={{ background: 'var(--surface)', borderLeft: '1px solid var(--border)' }}>
+        <div className="w-[560px] max-w-[44vw] min-w-[520px] flex flex-col" style={{ background: 'var(--surface)', borderLeft: '1px solid var(--border)' }}>
           {current ? (
             <FaturaForm
               key={current.id}
@@ -333,7 +333,7 @@ function FaturaForm({ doc, taxpayerId, onApprove, onDelete, approving, deleting,
     queryKey: ['fatura-merkezi', 'account-plan', taxpayerId],
     queryFn: () => api
       .get('/fatura-muhasebelestirme/account-plan', { params: { taxpayerId, limit: 500 } })
-      .then((r) => Array.isArray(r.data) ? r.data : (r.data?.lines || r.data?.data || [])),
+      .then((r) => Array.isArray(r.data) ? r.data : (r.data?.accounts || r.data?.lines || r.data?.data || [])),
     enabled: !!taxpayerId,
   });
   const accounts: any[] = accountsQ.data || [];
@@ -409,9 +409,9 @@ function FaturaForm({ doc, taxpayerId, onApprove, onDelete, approving, deleting,
   const blocked = doc.validationStatus === 'INVALID' || doc.validationStatus === 'INCOMPLETE' || !isBalanced || !matchesTotal;
 
   return (
-    <div className="flex-1 overflow-y-auto p-4 space-y-3">
+    <div className="flex-1 overflow-y-auto p-3 space-y-2.5">
       {/* Kompakt başlık paneli */}
-      <div className="rounded-lg p-3 space-y-2" style={{ background: 'var(--surface-2)', border: '1px solid var(--border)' }}>
+      <div className="rounded-lg p-2.5 space-y-2" style={{ background: 'var(--surface-2)', border: '1px solid var(--border)' }}>
         <div>
           <div className="text-[10px] tracking-wider font-semibold mb-0.5" style={{ color: 'var(--text-light)' }}>FİRMA</div>
           <div className="text-[13px] font-semibold leading-tight" style={{ color: 'var(--text)' }}>{supplierName}</div>
@@ -492,7 +492,7 @@ function FaturaForm({ doc, taxpayerId, onApprove, onDelete, approving, deleting,
         </datalist>
 
         <div className="rounded-lg overflow-hidden" style={{ background: 'var(--surface-2)', border: '1px solid var(--border)' }}>
-          <div className="grid grid-cols-[90px_1fr_88px_88px_24px] gap-1 px-2 py-1.5 text-[9.5px] tracking-wider font-semibold" style={{ background: 'var(--surface)', color: 'var(--text-muted)', borderBottom: '1px solid var(--border)' }}>
+          <div className="grid grid-cols-[112px_minmax(160px,1fr)_96px_96px_28px] gap-1.5 px-2 py-1.5 text-[9.5px] tracking-wider font-semibold" style={{ background: 'var(--surface)', color: 'var(--text-muted)', borderBottom: '1px solid var(--border)' }}>
             <span>HESAP</span>
             <span>AÇIKLAMA</span>
             <span className="text-right">BORÇ</span>
@@ -507,7 +507,7 @@ function FaturaForm({ doc, taxpayerId, onApprove, onDelete, approving, deleting,
           {lines.map((line, idx) => (
             <div
               key={idx}
-              className="grid grid-cols-[90px_1fr_88px_88px_24px] gap-1 px-2 py-1.5"
+              className="grid grid-cols-[112px_minmax(160px,1fr)_96px_96px_28px] gap-1.5 px-2 py-1.5"
               style={{ borderBottom: idx === lines.length - 1 ? 'none' : '1px solid var(--border-soft)' }}
             >
               <input
@@ -515,14 +515,16 @@ function FaturaForm({ doc, taxpayerId, onApprove, onDelete, approving, deleting,
                 value={line.accountCode}
                 onChange={(e) => updateLine(idx, { accountCode: e.target.value })}
                 list={`accounts-${taxpayerId}`}
+                title={line.accountCode}
                 placeholder="191.01.020"
-                className="px-1.5 py-1 rounded text-[11px] font-mono outline-none"
+                className="px-1.5 py-1 rounded text-[12px] font-mono outline-none"
                 style={{ background: 'var(--surface)', border: '1px solid var(--border-soft)', color: 'var(--accent)' }}
               />
               <input
                 type="text"
                 value={line.description}
                 onChange={(e) => updateLine(idx, { description: e.target.value })}
+                title={line.description}
                 placeholder="Açıklama"
                 className="px-1.5 py-1 rounded text-[11.5px] outline-none"
                 style={{ background: 'var(--surface)', border: '1px solid var(--border-soft)', color: 'var(--text)' }}
@@ -557,7 +559,7 @@ function FaturaForm({ doc, taxpayerId, onApprove, onDelete, approving, deleting,
             </div>
           ))}
           {/* Toplam */}
-          <div className="grid grid-cols-[90px_1fr_88px_88px_24px] gap-1 px-2 py-1.5 text-[11px] font-semibold" style={{ background: 'var(--surface)', borderTop: '1px solid var(--border)' }}>
+          <div className="grid grid-cols-[112px_minmax(160px,1fr)_96px_96px_28px] gap-1.5 px-2 py-1.5 text-[11px] font-semibold" style={{ background: 'var(--surface)', borderTop: '1px solid var(--border)' }}>
             <span style={{ color: 'var(--text-muted)' }}>Toplam</span>
             <span style={{ color: isBalanced ? '#10b981' : '#ef4444' }}>
               {isBalanced ? '✓ Dengeli' : `Fark ${(sumDebit - sumCredit).toFixed(2)}`}
