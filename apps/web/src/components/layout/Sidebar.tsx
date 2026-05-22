@@ -233,7 +233,7 @@ export default function Sidebar() {
           }}
           aria-label="Moren"
         >
-          <span className={collapsed ? 'block h-8 w-[48px]' : 'block h-[54px] w-[86px]'}>
+          <span className={collapsed ? 'block h-9 w-[54px]' : 'block h-[62px] w-[124px]'}>
             <img
               src="/brand/moren-logo-mark.png"
               alt="Moren"
