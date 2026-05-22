@@ -190,15 +190,17 @@ export default function Sidebar() {
       >
         <Link
           href="/panel"
-          className="group relative flex h-[90px] items-center justify-center transition-transform duration-300 hover:scale-[1.01]"
-          aria-label="Moren Mali Müşavirlik"
+          className="group relative flex h-[112px] items-center justify-center transition-transform duration-300 hover:scale-[1.01]"
+          aria-label="Moren"
         >
-          <img
-            src="/brand/moren-sidebar-horizontal.png"
-            alt="Moren Mali Müşavirlik"
-            className="block h-auto w-[248px] max-w-full object-contain"
-            style={{ filter: 'none' }}
-          />
+          <span className="block h-[108px] w-[160px] overflow-hidden">
+            <img
+              src="/brand/moren-sidebar-horizontal.png"
+              alt="Moren"
+              className="block h-[108px] w-auto max-w-none object-contain"
+              style={{ filter: 'none' }}
+            />
+          </span>
         </Link>
       </div>
 

@@ -119,10 +119,8 @@ export default function OfficeChatWidget({ enabled }: { enabled: boolean }) {
         <button
           type="button"
           onClick={() => setOpen(true)}
-          className="fixed z-[84] flex h-14 w-14 items-center justify-center rounded-full transition hover:scale-[1.04]"
+          className="fixed right-24 top-20 z-[84] flex h-14 w-14 items-center justify-center rounded-full transition hover:scale-[1.04]"
           style={{
-            right: 24,
-            bottom: 92,
             background: `linear-gradient(135deg, ${CHAT}, ${CHAT_DARK})`,
             color: '#07110f',
             boxShadow: '0 18px 44px rgba(143,216,194,0.22), inset 0 1px 0 rgba(255,255,255,0.24)',
@@ -142,7 +140,7 @@ export default function OfficeChatWidget({ enabled }: { enabled: boolean }) {
         </button>
       ) : (
         <div
-          className="fixed bottom-6 left-6 z-[84] grid h-[560px] max-h-[calc(100vh-48px)] w-[720px] max-w-[calc(100vw-32px)] grid-cols-[210px_minmax(0,1fr)] overflow-hidden rounded-xl border shadow-2xl"
+          className="fixed right-6 top-36 z-[84] grid h-[560px] max-h-[calc(100vh-160px)] w-[720px] max-w-[calc(100vw-32px)] grid-cols-[210px_minmax(0,1fr)] overflow-hidden rounded-xl border shadow-2xl"
           style={{
             background: 'linear-gradient(180deg, rgba(18,14,12,0.99), rgba(9,8,6,0.99))',
             borderColor: 'rgba(212,184,118,0.28)',

@@ -693,10 +693,8 @@ export default function GlobalMorenVoice() {
             setExpanded(true);
             if (status === 'idle' || status === 'error') startVoice().catch(() => {});
           }}
-          className="fixed z-[85] flex h-14 w-14 items-center justify-center rounded-full transition hover:scale-[1.04]"
+          className="fixed right-6 top-20 z-[85] flex h-14 w-14 items-center justify-center rounded-full transition hover:scale-[1.04]"
           style={{
-            right: 24,
-            bottom: 24,
             background: `linear-gradient(135deg, ${GOLD}, #8b7649)`,
             boxShadow: '0 18px 45px rgba(212,184,118,0.28), inset 0 1px 0 rgba(255,255,255,0.28)',
             color: '#0f0d0b',
@@ -727,7 +725,7 @@ export default function GlobalMorenVoice() {
         </button>
       ) : (
         <div
-          className="fixed bottom-6 right-6 z-[85] w-[330px] overflow-hidden rounded-xl border shadow-2xl"
+          className="fixed right-6 top-36 z-[85] w-[330px] overflow-hidden rounded-xl border shadow-2xl"
           style={{
             background: 'linear-gradient(180deg, rgba(26,18,19,0.98), rgba(10,9,6,0.98))',
             borderColor: status === 'error' ? 'rgba(248,113,113,0.38)' : 'rgba(240,154,168,0.32)',
@@ -855,7 +853,7 @@ export default function GlobalMorenVoice() {
           ref={chatPanelRef}
           className="fixed z-[86] flex max-h-[calc(100vh-48px)] w-[380px] max-w-[calc(100vw-32px)] flex-col overflow-hidden rounded-xl border shadow-2xl"
           style={{
-            ...(chatPanelPosition ? { left: chatPanelPosition.x, top: chatPanelPosition.y } : { right: 24, bottom: 24 }),
+            ...(chatPanelPosition ? { left: chatPanelPosition.x, top: chatPanelPosition.y } : { right: 24, top: 144 }),
             background: 'linear-gradient(180deg, rgba(18,14,12,0.99), rgba(9,8,6,0.99))',
             borderColor: 'rgba(212,184,118,0.28)',
             boxShadow: '0 24px 75px rgba(0,0,0,0.52), 0 0 36px rgba(212,184,118,0.12)',
