@@ -187,6 +187,15 @@ function periodWhere(period?: string | null) {
 @Injectable()
 export class FaturaMuhasebelestirmeService {
   private readonly logger = new Logger(FaturaMuhasebelestirmeService.name);
+  private readonly uploadOcrConcurrency = Math.max(1, Number(process.env.INVOICE_OCR_CONCURRENCY || 2));
+  private uploadOcrActive = 0;
+  private readonly uploadOcrQueue: Array<{
+    tenantId: string;
+    documentId: string;
+    buffer: Buffer;
+    originalName: string;
+    forceClaude?: boolean;
+  }> = [];
 
   constructor(
     private readonly prisma: PrismaService,
@@ -203,7 +212,7 @@ export class FaturaMuhasebelestirmeService {
       const s = String(opts.status || '').toUpperCase();
       if (!s) return {};
       if (s === 'PENDING' || s === 'PROCESSING') {
-        return { status: { in: ['READY', 'NEEDS_REVIEW'] } };
+        return { status: { in: ['READY', 'NEEDS_REVIEW', 'PENDING', 'PROCESSING'] } };
       }
       return { status: s };
     })();
@@ -1178,36 +1187,9 @@ export class FaturaMuhasebelestirmeService {
       });
 
       const isOcrSupported = this.isOcrSupportedUpload(file.originalname, file.mimetype);
-      let ocrResult: OcrResult | null = null;
-      let ocrStatus = 'PENDING';
-      if (isOcrSupported) {
-        try {
-          ocrResult = await this.ocr.extractFromImage(file.buffer, file.originalname, {
-            forceClaude: opts.forceClaude,
-          });
-          ocrStatus = ocrResult.confidence >= 0.7 ? 'SUCCESS' : 'NEEDS_REVIEW';
-        } catch (e: any) {
-          ocrStatus = 'FAILED';
-          ocrResult = {
-            rawText: e?.message || 'OCR failed',
-            belgeNo: null,
-            date: null,
-            kdvTutari: null,
-            totalTutari: null,
-            confidence: 0,
-            fieldConfidence: { belgeNo: null, date: null, kdvTutari: null },
-            engine: 'failed',
-          };
-        }
-      }
-
-      const lines = this.linesFromOcr(ocrResult);
-      const imageHash = ocrResult?.imageHash || this.ocr.computeImageHash(file.buffer);
+      const imageHash = this.ocr.computeImageHash(file.buffer);
       const duplicate = await this.findDuplicate(tenantId, {
         taxpayerId: opts.taxpayerId || null,
-        belgeNo: ocrResult?.belgeNo || null,
-        sellerVkn: ocrResult?.saticiVkn || null,
-        totalAmount: ocrResult?.totalTutari || null,
         imageHash,
       });
       const doc = await (this.prisma as any).invoiceAccountingDocument.create({
@@ -1216,9 +1198,9 @@ export class FaturaMuhasebelestirmeService {
           taxpayerId: opts.taxpayerId || null,
           source: opts.source || 'manual-web',
           sourceRefId: null,
-          documentType: opts.documentType || ocrResult?.belgeTipi || 'OKC_FIS',
+          documentType: opts.documentType || 'OKC_FIS',
           invoiceKind: opts.invoiceKind || 'ALIS',
-          status: duplicate ? 'NEEDS_REVIEW' : ocrStatus === 'SUCCESS' ? 'READY' : 'NEEDS_REVIEW',
+          status: duplicate ? 'NEEDS_REVIEW' : isOcrSupported ? 'PROCESSING' : 'NEEDS_REVIEW',
           duplicateOfId: duplicate?.duplicateOfId || null,
           duplicateReason: duplicate?.duplicateReason || null,
           duplicateSeverity: duplicate?.duplicateSeverity || null,
@@ -1227,25 +1209,155 @@ export class FaturaMuhasebelestirmeService {
           sizeBytes: file.size,
           s3Key,
           imageHash,
-          belgeNo: ocrResult?.belgeNo || null,
-          faturaTarihi: parseDate(ocrResult?.date || null),
-          sellerVkn: ocrResult?.saticiVkn || null,
-          vendorName: ocrResult?.satici || null,
-          totalAmount: money(ocrResult?.totalTutari),
-          ocrStatus,
-          ocrEngine: ocrResult?.engine || null,
-          ocrRawText: ocrResult?.rawText || null,
-          ocrConfidence: ocrResult?.confidence ?? null,
-          ocrData: ocrResult ? (ocrResult as any) : undefined,
+          ocrStatus: isOcrSupported ? 'PENDING' : 'FAILED',
+          ocrEngine: isOcrSupported ? null : 'unsupported',
+          ocrRawText: isOcrSupported ? null : 'OCR desteklenmeyen dosya tipi',
+          ocrConfidence: isOcrSupported ? null : 0,
           createdBy: userId || null,
-          lines: { create: lines },
         },
         include: { lines: { orderBy: { orderNo: 'asc' } } },
       });
       created.push(doc);
+
+      if (isOcrSupported) {
+        this.enqueueUploadedDocumentOcr(tenantId, doc.id, file.buffer, file.originalname, opts.forceClaude);
+      }
     }
 
     return { uploaded: created.length, documents: created };
+  }
+
+  private enqueueUploadedDocumentOcr(
+    tenantId: string,
+    documentId: string,
+    buffer: Buffer,
+    originalName: string,
+    forceClaude?: boolean,
+  ) {
+    this.uploadOcrQueue.push({ tenantId, documentId, buffer, originalName, forceClaude });
+    this.drainUploadedOcrQueue();
+  }
+
+  private drainUploadedOcrQueue() {
+    while (this.uploadOcrActive < this.uploadOcrConcurrency && this.uploadOcrQueue.length) {
+      const job = this.uploadOcrQueue.shift();
+      if (!job) return;
+      this.uploadOcrActive++;
+      void this.processUploadedDocumentOcr(
+        job.tenantId,
+        job.documentId,
+        job.buffer,
+        job.originalName,
+        job.forceClaude,
+      )
+        .catch((e: any) => {
+          this.logger.error(`Yuklenen belge OCR arka plan islemi basarisiz (${job.documentId}): ${e?.message || e}`);
+        })
+        .finally(() => {
+          this.uploadOcrActive = Math.max(0, this.uploadOcrActive - 1);
+          this.drainUploadedOcrQueue();
+        });
+    }
+  }
+
+  private async processUploadedDocumentOcr(
+    tenantId: string,
+    documentId: string,
+    buffer: Buffer,
+    originalName: string,
+    forceClaude?: boolean,
+  ) {
+    await (this.prisma as any).invoiceAccountingDocument.updateMany({
+      where: { id: documentId, tenantId },
+      data: { ocrStatus: 'IN_PROGRESS' },
+    });
+
+    try {
+      const ocrResult = await this.ocr.extractFromImage(buffer, originalName, { forceClaude });
+      const existing = await (this.prisma as any).invoiceAccountingDocument.findFirst({
+        where: { id: documentId, tenantId },
+        select: {
+          id: true,
+          taxpayerId: true,
+          documentType: true,
+          duplicateOfId: true,
+          duplicateReason: true,
+          duplicateSeverity: true,
+          imageHash: true,
+        },
+      });
+      if (!existing) return;
+
+      const imageHash = ocrResult.imageHash || existing.imageHash || this.ocr.computeImageHash(buffer);
+      const duplicate = await this.findDuplicate(tenantId, {
+        taxpayerId: existing.taxpayerId || null,
+        belgeNo: ocrResult.belgeNo || null,
+        sellerVkn: ocrResult.saticiVkn || null,
+        totalAmount: ocrResult.totalTutari || null,
+        imageHash,
+      }, documentId);
+
+      const duplicateOfId = duplicate?.duplicateOfId || existing.duplicateOfId || null;
+      const ocrStatus = ocrResult.confidence >= 0.7 ? 'SUCCESS' : 'NEEDS_REVIEW';
+      const status = duplicateOfId ? 'NEEDS_REVIEW' : ocrStatus === 'SUCCESS' ? 'READY' : 'NEEDS_REVIEW';
+      const lines = this.linesFromOcr(ocrResult);
+
+      await (this.prisma as any).$transaction(async (tx: any) => {
+        await tx.invoiceAccountingLine.deleteMany({ where: { documentId } });
+        if (lines.length) {
+          await tx.invoiceAccountingLine.createMany({
+            data: lines.map((line) => ({
+              ...line,
+              documentId,
+            })),
+          });
+        }
+        await tx.invoiceAccountingDocument.update({
+          where: { id: documentId },
+          data: {
+            documentType: existing.documentType || ocrResult.belgeTipi || 'OKC_FIS',
+            status,
+            duplicateOfId,
+            duplicateReason: duplicate?.duplicateReason || existing.duplicateReason || null,
+            duplicateSeverity: duplicate?.duplicateSeverity || existing.duplicateSeverity || null,
+            imageHash,
+            belgeNo: ocrResult.belgeNo || null,
+            faturaTarihi: parseDate(ocrResult.date || null),
+            sellerVkn: ocrResult.saticiVkn || null,
+            vendorName: ocrResult.satici || null,
+            totalAmount: money(ocrResult.totalTutari),
+            ocrStatus,
+            ocrEngine: ocrResult.engine || null,
+            ocrRawText: ocrResult.rawText || null,
+            ocrConfidence: ocrResult.confidence ?? null,
+            ocrData: ocrResult as any,
+          },
+        });
+      });
+
+      const validation = await this.revalidateDocument(tenantId, documentId).catch((e: any) => {
+        this.logger.warn(`Yuklenen belge validation basarisiz (${documentId}): ${e?.message || e}`);
+        return null;
+      });
+      if (validation && validation.status !== 'OK' && status === 'READY') {
+        await (this.prisma as any).invoiceAccountingDocument.updateMany({
+          where: { id: documentId, tenantId, status: 'READY' },
+          data: { status: 'NEEDS_REVIEW' },
+        });
+      }
+    } catch (e: any) {
+      await (this.prisma as any).invoiceAccountingDocument.updateMany({
+        where: { id: documentId, tenantId },
+        data: {
+          status: 'NEEDS_REVIEW',
+          ocrStatus: 'FAILED',
+          ocrEngine: 'failed',
+          ocrRawText: e?.message || 'OCR failed',
+          ocrConfidence: 0,
+        },
+      });
+      throw e;
+    }
   }
 
   async ensureFromEarsivFatura(tenantId: string, faturaId: string) {

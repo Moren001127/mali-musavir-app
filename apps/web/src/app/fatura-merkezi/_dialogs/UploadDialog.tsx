@@ -1,7 +1,7 @@
 'use client';
 
 import { useState, useRef } from 'react';
-import { useMutation } from '@tanstack/react-query';
+import { useMutation, useQueryClient } from '@tanstack/react-query';
 import { Cloud, X, Upload, FileText, CreditCard, Banknote, Smartphone, Loader2 } from 'lucide-react';
 import { api } from '@/lib/api';
 import { taxpayerName } from '../_lib/taxpayer';
@@ -24,6 +24,7 @@ const UPLOAD_TYPES = [
 type Props = { taxpayer: any; onClose: () => void };
 
 export default function UploadDialog({ taxpayer, onClose }: Props) {
+  const qc = useQueryClient();
   const [tip, setTip] = useState<string>('ALIS_FATURA');
   const [direction, setDirection] = useState<'ALIS' | 'SATIS'>('ALIS');
   const [useClaudeOnly, setUseClaudeOnly] = useState(false);
@@ -65,6 +66,7 @@ export default function UploadDialog({ taxpayer, onClose }: Props) {
       return { results, errors };
     },
     onSuccess: (data) => {
+      qc.invalidateQueries({ queryKey: ['fatura-merkezi'] });
       if (!data.errors.length) setTimeout(() => onClose(), 800);
     },
     onError: () => setProgress(null),
