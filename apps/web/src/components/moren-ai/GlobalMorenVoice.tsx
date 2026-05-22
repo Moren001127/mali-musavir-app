@@ -26,9 +26,7 @@ const GOLD = '#d4b876';
 const LINE = 'rgba(255,255,255,0.08)';
 const TEXT = '#fafaf9';
 const MUTED = 'rgba(250,250,249,0.58)';
-const VOICE_BUTTON_SIZE = 56;
 const VOICE_BUTTON_MARGIN = 16;
-const VOICE_BUTTON_POSITION_KEY = 'moren-ai-voice-button-position';
 const CHAT_PANEL_DEFAULT_WIDTH = 380;
 const CHAT_PANEL_DEFAULT_HEIGHT = 520;
 const CHAT_PANEL_POSITION_KEY = 'moren-ai-chat-panel-position';
@@ -193,10 +191,6 @@ function clampFloatingRect(point: FloatingPoint, width: number, height: number):
   };
 }
 
-function clampFloatingPoint(point: FloatingPoint): FloatingPoint {
-  return clampFloatingRect(point, VOICE_BUTTON_SIZE, VOICE_BUTTON_SIZE);
-}
-
 export default function GlobalMorenVoice() {
   const pathname = usePathname();
   const router = useRouter();
@@ -212,7 +206,6 @@ export default function GlobalMorenVoice() {
   const [errorText, setErrorText] = useState('');
   const [sessionCost, setSessionCost] = useState(0);
   const [sessionTokens, setSessionTokens] = useState(0);
-  const [voiceButtonPosition, setVoiceButtonPosition] = useState<FloatingPoint | null>(null);
   const [chatPanelPosition, setChatPanelPosition] = useState<FloatingPoint | null>(null);
   const audioRef = useRef<HTMLAudioElement | null>(null);
   const chatPanelRef = useRef<HTMLDivElement | null>(null);
@@ -224,14 +217,6 @@ export default function GlobalMorenVoice() {
   const startedAtRef = useRef(0);
   const loggedResponsesRef = useRef<Set<string>>(new Set());
   const conversationIdRef = useRef<string | null>(null);
-  const buttonDragRef = useRef<{
-    pointerId: number;
-    startX: number;
-    startY: number;
-    startLeft: number;
-    startTop: number;
-    dragged: boolean;
-  } | null>(null);
   const chatPanelDragRef = useRef<{
     pointerId: number;
     startX: number;
@@ -242,21 +227,9 @@ export default function GlobalMorenVoice() {
     height: number;
     dragged: boolean;
   } | null>(null);
-  const suppressButtonClickRef = useRef(false);
 
   const isPortalPath = !!pathname && (pathname.startsWith('/panel') || pathname.startsWith('/fatura-merkezi'));
   const currentRoute = useMemo(() => getCurrentRoute(pathname), [pathname]);
-
-  useEffect(() => {
-    try {
-      const raw = window.localStorage.getItem(VOICE_BUTTON_POSITION_KEY);
-      if (!raw) return;
-      const parsed = JSON.parse(raw) as FloatingPoint;
-      if (Number.isFinite(parsed?.x) && Number.isFinite(parsed?.y)) {
-        setVoiceButtonPosition(clampFloatingPoint(parsed));
-      }
-    } catch {}
-  }, []);
 
   useEffect(() => {
     try {
@@ -268,56 +241,6 @@ export default function GlobalMorenVoice() {
       }
     } catch {}
   }, []);
-
-  const saveVoiceButtonPosition = useCallback((point: FloatingPoint) => {
-    const next = clampFloatingPoint(point);
-    setVoiceButtonPosition(next);
-    try {
-      window.localStorage.setItem(VOICE_BUTTON_POSITION_KEY, JSON.stringify(next));
-    } catch {}
-    return next;
-  }, []);
-
-  const handleVoiceButtonPointerDown = useCallback((event: React.PointerEvent<HTMLButtonElement>) => {
-    if (event.button !== 0) return;
-    const rect = event.currentTarget.getBoundingClientRect();
-    buttonDragRef.current = {
-      pointerId: event.pointerId,
-      startX: event.clientX,
-      startY: event.clientY,
-      startLeft: rect.left,
-      startTop: rect.top,
-      dragged: false,
-    };
-    event.currentTarget.setPointerCapture(event.pointerId);
-  }, []);
-
-  const handleVoiceButtonPointerMove = useCallback((event: React.PointerEvent<HTMLButtonElement>) => {
-    const drag = buttonDragRef.current;
-    if (!drag || drag.pointerId !== event.pointerId) return;
-    const dx = event.clientX - drag.startX;
-    const dy = event.clientY - drag.startY;
-    if (Math.abs(dx) > 3 || Math.abs(dy) > 3) drag.dragged = true;
-    if (!drag.dragged) return;
-    setVoiceButtonPosition(clampFloatingPoint({ x: drag.startLeft + dx, y: drag.startTop + dy }));
-  }, []);
-
-  const handleVoiceButtonPointerUp = useCallback((event: React.PointerEvent<HTMLButtonElement>) => {
-    const drag = buttonDragRef.current;
-    if (!drag || drag.pointerId !== event.pointerId) return;
-    try {
-      event.currentTarget.releasePointerCapture(event.pointerId);
-    } catch {}
-    buttonDragRef.current = null;
-
-    if (drag.dragged) {
-      suppressButtonClickRef.current = true;
-      saveVoiceButtonPosition({
-        x: drag.startLeft + event.clientX - drag.startX,
-        y: drag.startTop + event.clientY - drag.startY,
-      });
-    }
-  }, [saveVoiceButtonPosition]);
 
   const saveChatPanelPosition = useCallback((point: FloatingPoint, width = CHAT_PANEL_DEFAULT_WIDTH, height = CHAT_PANEL_DEFAULT_HEIGHT) => {
     const next = clampFloatingRect(point, width, height);
@@ -767,27 +690,16 @@ export default function GlobalMorenVoice() {
         <button
           type="button"
           onClick={() => {
-            if (suppressButtonClickRef.current) {
-              suppressButtonClickRef.current = false;
-              return;
-            }
             setExpanded(true);
             if (status === 'idle' || status === 'error') startVoice().catch(() => {});
           }}
-          onPointerDown={handleVoiceButtonPointerDown}
-          onPointerMove={handleVoiceButtonPointerMove}
-          onPointerUp={handleVoiceButtonPointerUp}
-          onPointerCancel={handleVoiceButtonPointerUp}
           className="fixed z-[85] flex h-14 w-14 items-center justify-center rounded-full transition hover:scale-[1.04]"
           style={{
-            ...(voiceButtonPosition
-              ? { left: voiceButtonPosition.x, top: voiceButtonPosition.y }
-              : { right: 24, bottom: 96 }),
+            right: 24,
+            bottom: 24,
             background: `linear-gradient(135deg, ${GOLD}, #8b7649)`,
             boxShadow: '0 18px 45px rgba(212,184,118,0.28), inset 0 1px 0 rgba(255,255,255,0.28)',
             color: '#0f0d0b',
-            cursor: 'grab',
-            touchAction: 'none',
           }}
           title="Canlı MOREN AI"
           aria-label="Canlı MOREN AI"
