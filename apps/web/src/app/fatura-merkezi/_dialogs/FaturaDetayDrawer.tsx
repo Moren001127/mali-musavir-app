@@ -157,6 +157,7 @@ export default function FaturaDetayDrawer({ taxpayerId, direction, period, onClo
             >
               {previewSource === 'original-pdf' && '📄 Orijinal PDF (Luca\'dan)'}
               {previewSource === 'original-html' && '✓ Luca orijinal HTML'}
+              {previewSource === 'original-xslt' && '✓ UBL/XSLT orijinal fatura görünümü'}
               {previewSource === 'stored-html' && '✓ Kayıtlı HTML'}
               {previewSource === 'stored-file' && '✓ Kayıtlı dosya'}
               {previewSource === 'rendered-from-xml' && '⚠ Sistem render\'ı — Luca\'da bu fatura için PDF/HTML inmemiş, sadece XML var. Görüntü basit.'}
@@ -178,7 +179,7 @@ export default function FaturaDetayDrawer({ taxpayerId, direction, period, onClo
               <iframe src={fileQ.data.url} className="w-full h-full" style={{ background: 'white' }} title={current.belgeNo || current.id} />
             )}
             {current && !fileQ.data?.url && fileQ.data?.inlineHtml && (
-              <iframe srcDoc={fileQ.data.inlineHtml} className="w-full h-full" style={{ background: 'white' }} title={current.belgeNo || current.id} sandbox="allow-same-origin" />
+              <iframe srcDoc={fileQ.data.inlineHtml} className="w-full h-full" style={{ background: 'white' }} title={current.belgeNo || current.id} sandbox="allow-same-origin allow-scripts allow-modals allow-popups allow-forms" />
             )}
             {current && !fileQ.isLoading && !hasPreview && (
               <div className="text-center" style={{ color: 'var(--text-muted)' }}>

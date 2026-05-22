@@ -21,8 +21,11 @@ export default function GelenBelgelerPanel({ taxpayerId, period }: Props) {
      — sadece tip=ALIS + belgeKaynak=EARSIV. Satış ve e-fatura akışları ayrı butonlarla. */
   const earsivBackfillMut = useMutation({
     mutationFn: async () => {
+      if (!taxpayerId) {
+        throw new Error('Önce tek bir mükellef seçmelisin');
+      }
       return api.post('/fatura-muhasebelestirme/documents/backfill-earsiv', {
-        taxpayerId: taxpayerId || undefined,
+        taxpayerId,
         donem: period,
         tip: 'ALIS',
         belgeKaynak: 'EARSIV',
@@ -138,10 +141,10 @@ export default function GelenBelgelerPanel({ taxpayerId, period }: Props) {
 
         <button
           onClick={() => earsivBackfillMut.mutate()}
-          disabled={earsivBackfillMut.isPending}
-          className="flex items-center gap-1.5 px-3 py-2 text-[12.5px] font-medium rounded-lg transition-colors whitespace-nowrap flex-shrink-0"
+          disabled={earsivBackfillMut.isPending || !taxpayerId}
+          className="flex items-center gap-1.5 px-3 py-2 text-[12.5px] font-medium rounded-lg transition-colors whitespace-nowrap flex-shrink-0 disabled:opacity-50 disabled:cursor-not-allowed"
           style={{ background: '#a78bfa15', border: '1px solid #a78bfa40', color: '#a78bfa' }}
-          title="e-Arşiv'den çekilmiş faturaları bu dönem için Gelen Belgeler'e aktarır"
+          title={taxpayerId ? "e-Arşiv'den çekilmiş faturaları bu dönem için Gelen Belgeler'e aktarır" : 'Tüm faturaları almamak için önce tek bir mükellef seç'}
         >
           {earsivBackfillMut.isPending ? <Loader2 size={13} className="animate-spin" /> : <Download size={13} />}
           e-Arşiv İçe Aktar

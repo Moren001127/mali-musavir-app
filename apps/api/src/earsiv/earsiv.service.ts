@@ -138,7 +138,12 @@ export class EarsivService {
     return this.render.renderHtml(fatura as any, { autoPrint: false });
   }
 
-  private async queueAccountingSafe(tenantId: string, faturaId: string) {
+  private async queueAccountingSafe(
+    tenantId: string,
+    faturaId: string,
+    scope?: { tip?: EarsivTip; belgeKaynak?: BelgeKaynak },
+  ) {
+    if (scope && (scope.tip !== 'ALIS' || scope.belgeKaynak !== 'EARSIV')) return;
     try {
       await this.accounting.ensureFromEarsivFatura(tenantId, faturaId);
     } catch (e: any) {
@@ -465,7 +470,7 @@ export class EarsivService {
               data: updateData,
             });
           }
-          await this.queueAccountingSafe(tenantId, existing.id);
+          await this.queueAccountingSafe(tenantId, existing.id, { tip, belgeKaynak });
           duplicate++;
           continue;
         }
@@ -532,7 +537,7 @@ export class EarsivService {
           // olmayabilir, default geri dönüşte SELECT ediyor ve patlıyordu (P2022).
           select: { id: true },
         });
-        await this.queueAccountingSafe(tenantId, created.id);
+        await this.queueAccountingSafe(tenantId, created.id, { tip, belgeKaynak });
         inserted++;
       } catch (e: any) {
         this.logger.warn(`Fatura kaydetme hata (${f.faturaNo}): ${e.message}`);

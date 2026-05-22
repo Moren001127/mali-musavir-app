@@ -72,7 +72,7 @@ export class EarsivRenderService {
   }
 
   /** XML'in içinde EmbeddedDocumentBinaryObject olarak XSLT var mı? */
-  private hasEmbeddedXslt(xml: string): boolean {
+  hasEmbeddedXslt(xml: string): boolean {
     return /EmbeddedDocumentBinaryObject[^>]*(?:filename|mimeCode)=["'][^"']*(?:\.xsl|\.xslt|xslt|xsl)["']/i.test(xml);
   }
 

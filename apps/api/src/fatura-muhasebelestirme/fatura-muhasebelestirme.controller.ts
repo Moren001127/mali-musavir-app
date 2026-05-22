@@ -198,7 +198,7 @@ export class FaturaMuhasebelestirmeController {
   @Post('documents/backfill-earsiv')
   backfillEarsiv(
     @Req() req: any,
-    @Body() body: { taxpayerId?: string; donem?: string; tip?: string; belgeKaynak?: string; limit?: number },
+    @Body() body: { taxpayerId?: string; donem?: string; tip?: string; belgeKaynak?: string; limit?: number; ids?: string[] },
   ) {
     return this.service.backfillFromExistingEarsiv(req.user.tenantId, {
       taxpayerId: body?.taxpayerId || undefined,
@@ -206,6 +206,7 @@ export class FaturaMuhasebelestirmeController {
       tip: body?.tip || undefined,
       belgeKaynak: body?.belgeKaynak || undefined,
       limit: body?.limit,
+      ids: Array.isArray(body?.ids) ? body.ids : undefined,
     });
   }
 

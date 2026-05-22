@@ -1193,10 +1193,7 @@ export class FaturaMuhasebelestirmeService {
     const documentType = f.belgeKaynak === 'EFATURA' ? 'E_FATURA' : 'E_ARSIV';
     const invoiceKind = f.tip === 'SATIS' ? 'SATIS' : 'ALIS';
     const originalName = `${f.faturaNo || f.id}.${f.pdfStorageKey ? 'pdf' : f.htmlStorageKey ? 'html' : 'xml'}`;
-    const s3Key =
-      f.pdfStorageKey ||
-      f.htmlStorageKey ||
-      `earsiv-inline://${f.id}`;
+    const s3Key = `earsiv-inline://${f.id}`;
     const sizeBytes = f.pdfStorageKey || f.htmlStorageKey ? 1 : Buffer.byteLength(f.xmlContent || '', 'utf8');
     const breakdownArr = Array.isArray((f as any).kdvBreakdown)
       ? (f as any).kdvBreakdown as Array<{ rate: number; base: number; amount: number }>
@@ -1296,9 +1293,18 @@ export class FaturaMuhasebelestirmeService {
 
   async backfillFromExistingEarsiv(
     tenantId: string,
-    opts: { taxpayerId?: string; donem?: string; tip?: string; belgeKaynak?: string; limit?: number } = {},
+    opts: { taxpayerId?: string; donem?: string; tip?: string; belgeKaynak?: string; limit?: number; ids?: string[] } = {},
   ) {
+    const ids = Array.isArray(opts.ids)
+      ? [...new Set(opts.ids.map((id) => String(id || '').trim()).filter(Boolean))]
+      : [];
+    if (ids.length > 500) throw new BadRequestException('Tek seferde en fazla 500 fatura aktarılabilir');
+    if (!opts.taxpayerId && ids.length === 0) {
+      throw new BadRequestException('Fatura Merkezi aktarımı için mükellef veya seçili fatura listesi gerekli');
+    }
+
     const where: any = { tenantId };
+    if (ids.length) where.id = { in: ids };
     if (opts.taxpayerId) where.taxpayerId = opts.taxpayerId;
     if (opts.donem) where.donem = opts.donem;
     if (opts.tip) where.tip = opts.tip;
@@ -1339,8 +1345,15 @@ export class FaturaMuhasebelestirmeService {
   async fileUrl(tenantId: string, id: string) {
     const doc = await this.get(tenantId, id);
     const mimeType = String(doc.mimeType || '');
-    if (String(doc.s3Key || '').startsWith('earsiv-inline://')) {
-      const refId = String((doc as any).sourceRefId || '').trim();
+    const inlineRefId = String(doc.s3Key || '').startsWith('earsiv-inline://')
+      ? String(doc.s3Key || '').slice('earsiv-inline://'.length)
+      : '';
+    const earsivRefId = String((doc as any).source || '') === 'earsiv'
+      ? String((doc as any).sourceRefId || inlineRefId || '').trim()
+      : inlineRefId;
+
+    if (earsivRefId) {
+      const refId = earsivRefId;
       const fatura = refId
         ? await (this.prisma as any).earsivFatura.findFirst({
             where: { tenantId, id: refId },
@@ -1366,7 +1379,8 @@ export class FaturaMuhasebelestirmeService {
         : null;
       if (fatura?.pdfStorageKey) {
         return {
-          url: await this.storage.getPresignedDownloadUrl(fatura.pdfStorageKey, `${fatura.faturaNo || 'fatura'}.pdf`),
+          url: await this.storage.getPresignedInlineUrl(fatura.pdfStorageKey, `${fatura.faturaNo || 'fatura'}.pdf`, 'application/pdf'),
+          mimeType: 'application/pdf',
           source: 'original-pdf' as const,
         };
       }
@@ -1383,7 +1397,9 @@ export class FaturaMuhasebelestirmeService {
         inlineHtml: html,
         mimeType: 'text/html',
         // v2.2: Luca'dan PDF/HTML inmemiş, biz XML'den render ettik — kullanıcı bilsin
-        source: fatura ? ('rendered-from-xml' as const) : ('placeholder' as const),
+        source: fatura?.xmlContent && this.earsivRender.hasEmbeddedXslt(fatura.xmlContent)
+          ? ('original-xslt' as const)
+          : fatura ? ('rendered-from-xml' as const) : ('placeholder' as const),
       };
     }
     if (/text\/html|xml/i.test(mimeType)) {
@@ -1744,7 +1760,7 @@ export class FaturaMuhasebelestirmeService {
   async remove(tenantId: string, id: string) {
     const doc = await this.get(tenantId, id);
     await (this.prisma as any).invoiceAccountingDocument.delete({ where: { id } });
-    if (!String(doc.s3Key || '').startsWith('earsiv-inline://')) {
+    if (String((doc as any).source || '') !== 'earsiv' && !String(doc.s3Key || '').startsWith('earsiv-inline://')) {
       this.storage.deleteObject(doc.s3Key).catch(() => {});
     }
     return { deleted: true };

@@ -74,6 +74,17 @@ export class StorageService {
     return getSignedUrl(this.s3, command, { expiresIn: 3600 });
   }
 
+  async getPresignedInlineUrl(s3Key: string, filename: string, contentType?: string): Promise<string> {
+    const command = new GetObjectCommand({
+      Bucket: this.bucket,
+      Key: s3Key,
+      ResponseContentDisposition: `inline; filename="${encodeURIComponent(filename)}"`,
+      ...(contentType ? { ResponseContentType: contentType } : {}),
+    });
+
+    return getSignedUrl(this.s3, command, { expiresIn: 3600 });
+  }
+
   /**
    * Nesne boyutunu ve varlığını kontrol eder
    */
