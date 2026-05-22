@@ -33,6 +33,7 @@ export default function TopBar() {
       </p>
 
       <div className="flex items-center gap-2">
+        <div id="moren-topbar-actions" className="flex items-center gap-2" />
         <LucaAgentPanel />
         <SystemHealthBell />
 

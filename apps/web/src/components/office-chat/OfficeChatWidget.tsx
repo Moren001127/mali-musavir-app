@@ -15,7 +15,13 @@ const CHAT_LINE = 'rgba(143,216,194,0.16)';
 const TEXT = '#fafaf9';
 const MUTED = 'rgba(250,250,249,0.52)';
 
-export default function OfficeChatWidget({ enabled }: { enabled: boolean }) {
+export default function OfficeChatWidget({
+  enabled,
+  triggerMode = 'floating',
+}: {
+  enabled: boolean;
+  triggerMode?: 'floating' | 'topbar';
+}) {
   const queryClient = useQueryClient();
   const { data: me } = useMe();
   const [open, setOpen] = useState(false);
@@ -103,6 +109,7 @@ export default function OfficeChatWidget({ enabled }: { enabled: boolean }) {
 
   if (!enabled) return null;
 
+  const isTopbar = triggerMode === 'topbar';
   const selectedThread = threadQuery.data || threads.find((thread) => thread.id === selectedThreadId);
   const currentUserId = (me as any)?.sub || (me as any)?.id;
   const users = (usersQuery.data || []).filter((user) => !user.isCurrent && matchesSearch(user, search));
@@ -119,11 +126,16 @@ export default function OfficeChatWidget({ enabled }: { enabled: boolean }) {
         <button
           type="button"
           onClick={() => setOpen(true)}
-          className="fixed right-24 top-20 z-[84] flex h-14 w-14 items-center justify-center rounded-full transition hover:scale-[1.04]"
+          className={
+            isTopbar
+              ? 'relative flex h-10 w-10 items-center justify-center rounded-lg transition hover:bg-white/[0.06]'
+              : 'fixed right-24 bottom-6 z-[84] flex h-14 w-14 items-center justify-center rounded-full transition hover:scale-[1.04] lg:hidden'
+          }
           style={{
-            background: `linear-gradient(135deg, ${CHAT}, ${CHAT_DARK})`,
-            color: '#07110f',
-            boxShadow: '0 18px 44px rgba(143,216,194,0.22), inset 0 1px 0 rgba(255,255,255,0.24)',
+            background: isTopbar ? 'rgba(143,216,194,0.10)' : `linear-gradient(135deg, ${CHAT}, ${CHAT_DARK})`,
+            border: isTopbar ? '1px solid rgba(143,216,194,0.28)' : undefined,
+            color: isTopbar ? CHAT : '#07110f',
+            boxShadow: isTopbar ? 'none' : '0 18px 44px rgba(143,216,194,0.22), inset 0 1px 0 rgba(255,255,255,0.24)',
           }}
           title="Ofis ici mesajlasma"
           aria-label="Ofis ici mesajlasma"
@@ -140,7 +152,7 @@ export default function OfficeChatWidget({ enabled }: { enabled: boolean }) {
         </button>
       ) : (
         <div
-          className="fixed right-6 top-36 z-[84] grid h-[560px] max-h-[calc(100vh-160px)] w-[720px] max-w-[calc(100vw-32px)] grid-cols-[210px_minmax(0,1fr)] overflow-hidden rounded-xl border shadow-2xl"
+          className="fixed right-6 top-16 z-[84] grid h-[560px] max-h-[calc(100vh-88px)] w-[720px] max-w-[calc(100vw-32px)] grid-cols-[210px_minmax(0,1fr)] overflow-hidden rounded-xl border shadow-2xl"
           style={{
             background: 'linear-gradient(180deg, rgba(18,14,12,0.99), rgba(9,8,6,0.99))',
             borderColor: 'rgba(212,184,118,0.28)',

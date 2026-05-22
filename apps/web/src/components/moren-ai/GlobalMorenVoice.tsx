@@ -1,6 +1,7 @@
 'use client';
 
 import React, { useCallback, useEffect, useMemo, useRef, useState } from 'react';
+import { createPortal } from 'react-dom';
 import { usePathname, useRouter } from 'next/navigation';
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import { Bot, Loader2, MessageSquareText, Mic, MicOff, Minimize2, Radio, Send, Sparkles, X } from 'lucide-react';
@@ -207,6 +208,8 @@ export default function GlobalMorenVoice() {
   const [sessionCost, setSessionCost] = useState(0);
   const [sessionTokens, setSessionTokens] = useState(0);
   const [chatPanelPosition, setChatPanelPosition] = useState<FloatingPoint | null>(null);
+  const [topbarActionsEl, setTopbarActionsEl] = useState<HTMLElement | null>(null);
+  const [desktopTopbar, setDesktopTopbar] = useState(false);
   const audioRef = useRef<HTMLAudioElement | null>(null);
   const chatPanelRef = useRef<HTMLDivElement | null>(null);
   const peerRef = useRef<RTCPeerConnection | null>(null);
@@ -230,6 +233,33 @@ export default function GlobalMorenVoice() {
 
   const isPortalPath = !!pathname && (pathname.startsWith('/panel') || pathname.startsWith('/fatura-merkezi'));
   const currentRoute = useMemo(() => getCurrentRoute(pathname), [pathname]);
+
+  useEffect(() => {
+    if (typeof window === 'undefined') return;
+    if (!isPortalPath) {
+      setDesktopTopbar(false);
+      setTopbarActionsEl(null);
+      return;
+    }
+    const media = window.matchMedia('(min-width: 1024px)');
+    let timer: number | null = null;
+    const sync = () => {
+      setDesktopTopbar(media.matches);
+      const target = document.getElementById('moren-topbar-actions');
+      setTopbarActionsEl(target);
+      if (target && timer) {
+        window.clearInterval(timer);
+        timer = null;
+      }
+    };
+    sync();
+    timer = window.setInterval(sync, 500);
+    media.addEventListener('change', sync);
+    return () => {
+      media.removeEventListener('change', sync);
+      if (timer) window.clearInterval(timer);
+    };
+  }, [isPortalPath, pathname]);
 
   useEffect(() => {
     try {
@@ -682,50 +712,73 @@ export default function GlobalMorenVoice() {
 
   if (!isPortalPath) return null;
 
+  const useTopbarActions = desktopTopbar && !!topbarActionsEl;
+  const voiceTrigger = !expanded ? (
+    <button
+      type="button"
+      onClick={() => {
+        setExpanded(true);
+        if (status === 'idle' || status === 'error') startVoice().catch(() => {});
+      }}
+      className={
+        useTopbarActions
+          ? 'relative flex h-10 w-10 items-center justify-center rounded-lg transition hover:bg-white/[0.06]'
+          : 'fixed right-6 bottom-6 z-[85] flex h-14 w-14 items-center justify-center rounded-full transition hover:scale-[1.04] lg:hidden'
+      }
+      style={{
+        background: useTopbarActions ? 'rgba(212,184,118,0.10)' : `linear-gradient(135deg, ${GOLD}, #8b7649)`,
+        border: useTopbarActions ? '1px solid rgba(212,184,118,0.28)' : undefined,
+        boxShadow: useTopbarActions ? 'none' : '0 18px 45px rgba(212,184,118,0.28), inset 0 1px 0 rgba(255,255,255,0.28)',
+        color: useTopbarActions ? GOLD : '#0f0d0b',
+      }}
+      title="Canlı MOREN AI"
+      aria-label="Canlı MOREN AI"
+    >
+      <Radio size={useTopbarActions ? 18 : 22} />
+      {!useTopbarActions ? (
+        <span
+          className="absolute -bottom-1 -left-1 flex h-6 w-6 items-center justify-center rounded-full"
+          style={{
+            background: '#17110f',
+            border: '1px solid rgba(212,184,118,0.48)',
+            color: GOLD,
+            boxShadow: '0 8px 18px rgba(0,0,0,0.28)',
+          }}
+        >
+          <MessageSquareText size={12} />
+        </span>
+      ) : null}
+      <span
+        className="absolute -right-1 -top-1 h-3.5 w-3.5 rounded-full"
+        style={{
+          background: status === 'idle' || status === 'error' ? GOLD : '#22c55e',
+          border: '2px solid #0f0d0b',
+          boxShadow: status === 'idle' || status === 'error' ? `0 0 12px ${GOLD}` : '0 0 12px rgba(34,197,94,0.8)',
+        }}
+      />
+    </button>
+  ) : null;
+
+  const topbarActions = useTopbarActions
+    ? createPortal(
+        <>
+          <OfficeChatWidget enabled={isPortalPath} triggerMode="topbar" />
+          {voiceTrigger}
+        </>,
+        topbarActionsEl,
+      )
+    : null;
+
   return (
     <>
-      <OfficeChatWidget enabled={isPortalPath} />
+      {topbarActions}
+      {!useTopbarActions ? <OfficeChatWidget enabled={isPortalPath} /> : null}
       <audio ref={audioRef} />
       {!expanded ? (
-        <button
-          type="button"
-          onClick={() => {
-            setExpanded(true);
-            if (status === 'idle' || status === 'error') startVoice().catch(() => {});
-          }}
-          className="fixed right-6 top-20 z-[85] flex h-14 w-14 items-center justify-center rounded-full transition hover:scale-[1.04]"
-          style={{
-            background: `linear-gradient(135deg, ${GOLD}, #8b7649)`,
-            boxShadow: '0 18px 45px rgba(212,184,118,0.28), inset 0 1px 0 rgba(255,255,255,0.28)',
-            color: '#0f0d0b',
-          }}
-          title="Canlı MOREN AI"
-          aria-label="Canlı MOREN AI"
-        >
-          <Radio size={22} />
-          <span
-            className="absolute -bottom-1 -left-1 flex h-6 w-6 items-center justify-center rounded-full"
-            style={{
-              background: '#17110f',
-              border: '1px solid rgba(212,184,118,0.48)',
-              color: GOLD,
-              boxShadow: '0 8px 18px rgba(0,0,0,0.28)',
-            }}
-          >
-            <MessageSquareText size={12} />
-          </span>
-          <span
-            className="absolute -right-0.5 -top-0.5 h-3.5 w-3.5 rounded-full"
-            style={{
-              background: status === 'idle' || status === 'error' ? GOLD : '#22c55e',
-              border: '2px solid #0f0d0b',
-              boxShadow: status === 'idle' || status === 'error' ? `0 0 12px ${GOLD}` : '0 0 12px rgba(34,197,94,0.8)',
-            }}
-          />
-        </button>
+        !useTopbarActions ? voiceTrigger : null
       ) : (
         <div
-          className="fixed right-6 top-36 z-[85] w-[330px] overflow-hidden rounded-xl border shadow-2xl"
+          className="fixed right-6 top-16 z-[85] w-[330px] overflow-hidden rounded-xl border shadow-2xl"
           style={{
             background: 'linear-gradient(180deg, rgba(26,18,19,0.98), rgba(10,9,6,0.98))',
             borderColor: status === 'error' ? 'rgba(248,113,113,0.38)' : 'rgba(240,154,168,0.32)',
@@ -853,7 +906,7 @@ export default function GlobalMorenVoice() {
           ref={chatPanelRef}
           className="fixed z-[86] flex max-h-[calc(100vh-48px)] w-[380px] max-w-[calc(100vw-32px)] flex-col overflow-hidden rounded-xl border shadow-2xl"
           style={{
-            ...(chatPanelPosition ? { left: chatPanelPosition.x, top: chatPanelPosition.y } : { right: 24, top: 144 }),
+            ...(chatPanelPosition ? { left: chatPanelPosition.x, top: chatPanelPosition.y } : { right: 24, top: 64 }),
             background: 'linear-gradient(180deg, rgba(18,14,12,0.99), rgba(9,8,6,0.99))',
             borderColor: 'rgba(212,184,118,0.28)',
             boxShadow: '0 24px 75px rgba(0,0,0,0.52), 0 0 36px rgba(212,184,118,0.12)',
