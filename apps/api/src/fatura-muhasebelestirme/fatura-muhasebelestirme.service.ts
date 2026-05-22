@@ -1082,16 +1082,36 @@ export class FaturaMuhasebelestirmeService {
     return doc;
   }
 
-  private inferUploadMimeType(originalName: string) {
+  private inferUploadMimeType(originalName: string, buffer?: Buffer, fallbackMimeType?: string) {
+    if (buffer?.length) {
+      if (buffer.length >= 4 && buffer[0] === 0x25 && buffer[1] === 0x50 && buffer[2] === 0x44 && buffer[3] === 0x46) return 'application/pdf';
+      if (buffer.length >= 3 && buffer[0] === 0xff && buffer[1] === 0xd8 && buffer[2] === 0xff) return 'image/jpeg';
+      if (buffer.length >= 8 && buffer[0] === 0x89 && buffer[1] === 0x50 && buffer[2] === 0x4e && buffer[3] === 0x47) return 'image/png';
+      if (buffer.length >= 4 && buffer[0] === 0x47 && buffer[1] === 0x49 && buffer[2] === 0x46) return 'image/gif';
+      if (buffer.length >= 4 && ((buffer[0] === 0x49 && buffer[1] === 0x49) || (buffer[0] === 0x4d && buffer[1] === 0x4d))) return 'image/tiff';
+      if (buffer.length >= 2 && buffer[0] === 0x42 && buffer[1] === 0x4d) return 'image/bmp';
+      if (buffer.length >= 12 && buffer.slice(0, 4).toString('ascii') === 'RIFF' && buffer.slice(8, 12).toString('ascii') === 'WEBP') return 'image/webp';
+      if (buffer.length >= 12 && buffer.slice(4, 8).toString('ascii') === 'ftyp') {
+        const brand = buffer.slice(8, 12).toString('ascii').toLowerCase();
+        if (brand.startsWith('heic') || brand.startsWith('heix') || brand.startsWith('hevc') || brand.startsWith('heif')) return 'image/heic';
+        if (brand.startsWith('avif')) return 'image/avif';
+      }
+      const head = buffer.slice(0, Math.min(buffer.length, 512)).toString('utf8').trimStart();
+      if (/^<\?xml|^<Invoice[\s>]|^<ArchiveInvoice[\s>]/i.test(head)) return 'application/xml';
+    }
+
     const ext = (originalName.split('.').pop() || '').toLowerCase();
     if (ext === 'pdf') return 'application/pdf';
     if (ext === 'xml' || ext === 'ubl') return 'application/xml';
-    if (ext === 'jpg' || ext === 'jpeg') return 'image/jpeg';
+    if (ext === 'jpg' || ext === 'jpeg' || ext === 'jpe' || ext === 'jfif') return 'image/jpeg';
     if (ext === 'png') return 'image/png';
     if (ext === 'webp') return 'image/webp';
     if (ext === 'gif') return 'image/gif';
     if (ext === 'tif' || ext === 'tiff') return 'image/tiff';
-    return 'application/octet-stream';
+    if (ext === 'bmp') return 'image/bmp';
+    if (ext === 'heic' || ext === 'heif') return 'image/heic';
+    if (ext === 'avif') return 'image/avif';
+    return fallbackMimeType || 'application/octet-stream';
   }
 
   private isZipUpload(file: Express.Multer.File) {
@@ -1109,18 +1129,24 @@ export class FaturaMuhasebelestirmeService {
       mime.startsWith('image/') ||
       mime === 'application/pdf' ||
       mime.includes('xml') ||
-      /\.(pdf|jpe?g|png|webp|gif|tiff?|xml|ubl)$/i.test(originalName || '')
+      /\.(pdf|jpe?g|jpe|jfif|png|webp|gif|tiff?|bmp|heic|heif|avif|xml|ubl)$/i.test(originalName || '')
     );
   }
 
   private async expandUploadedFiles(files: Express.Multer.File[]) {
     const expanded: Express.Multer.File[] = [];
+    const skipped: Array<{ name: string; reason: string }> = [];
     const maxExpandedFiles = 200;
     const maxExpandedFileSize = 25 * 1024 * 1024;
 
     for (const file of files) {
       if (!this.isZipUpload(file)) {
-        expanded.push(file);
+        const mimeType = this.inferUploadMimeType(file.originalname, file.buffer, file.mimetype);
+        if (!this.isOcrSupportedUpload(file.originalname, mimeType)) {
+          skipped.push({ name: file.originalname || 'isimsiz-dosya', reason: 'Desteklenmeyen dosya tipi' });
+          continue;
+        }
+        expanded.push({ ...file, mimetype: mimeType } as Express.Multer.File);
         continue;
       }
 
@@ -1138,15 +1164,19 @@ export class FaturaMuhasebelestirmeService {
         }
         const entryName = String(entry.name || '').split('/').filter(Boolean).join('/');
         if (!entryName) continue;
-        const mimeType = this.inferUploadMimeType(entryName);
-        if (!this.isOcrSupportedUpload(entryName, mimeType)) continue;
 
         const buffer = await entry.async('nodebuffer');
         if (buffer.length > maxExpandedFileSize) {
           throw new BadRequestException(`ZIP icindeki dosya 25 MB ustunde: ${entryName}`);
         }
-
         const visibleName = entryName.split('/').pop() || entryName;
+        if (/^(?:__MACOSX|\.DS_Store|Thumbs\.db)$/i.test(visibleName)) continue;
+        const mimeType = this.inferUploadMimeType(entryName, buffer);
+        if (!this.isOcrSupportedUpload(entryName, mimeType)) {
+          skipped.push({ name: entryName, reason: 'Desteklenmeyen dosya tipi' });
+          continue;
+        }
+
         expanded.push({
           ...file,
           originalname: visibleName,
@@ -1157,7 +1187,7 @@ export class FaturaMuhasebelestirmeService {
       }
     }
 
-    return expanded;
+    return { files: expanded, skipped };
   }
 
   async uploadAndOcr(
@@ -1173,8 +1203,14 @@ export class FaturaMuhasebelestirmeService {
     },
   ) {
     if (!files?.length) throw new BadRequestException('En az bir belge gerekli');
-    const uploadFiles = await this.expandUploadedFiles(files);
-    if (!uploadFiles.length) throw new BadRequestException('Yuklenen arsivde islenebilir belge bulunamadi');
+    const expandedUpload = await this.expandUploadedFiles(files);
+    const uploadFiles = expandedUpload.files;
+    if (!uploadFiles.length) {
+      throw new BadRequestException({
+        message: 'Yuklenen arsivde islenebilir belge bulunamadi',
+        skipped: expandedUpload.skipped,
+      });
+    }
     const created: any[] = [];
 
     for (const file of uploadFiles) {
@@ -1224,7 +1260,11 @@ export class FaturaMuhasebelestirmeService {
       }
     }
 
-    return { uploaded: created.length, documents: created };
+    this.logger.log(
+      `Belge yukleme tamamlandi: tenant=${tenantId} input=${files.length} expanded=${uploadFiles.length} skipped=${expandedUpload.skipped.length} created=${created.length}`,
+    );
+
+    return { uploaded: created.length, documents: created, skipped: expandedUpload.skipped };
   }
 
   private enqueueUploadedDocumentOcr(

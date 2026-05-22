@@ -1,5 +1,4 @@
 import {
-  BadRequestException,
   Body,
   Controller,
   Delete,
@@ -22,19 +21,9 @@ const documentUploadInterceptor = () =>
   FilesInterceptor('files', 100, {
     storage: memoryStorage(),
     limits: { fileSize: 25 * 1024 * 1024 },
-    fileFilter: (_req, file, cb) => {
-      const ok =
-        file.mimetype.startsWith('image/') ||
-        file.mimetype === 'application/pdf' ||
-        file.mimetype.includes('xml') ||
-        file.mimetype === 'application/zip' ||
-        file.mimetype === 'application/x-zip-compressed' ||
-        /\.zip$/i.test(file.originalname) ||
-        /\.ubl$/i.test(file.originalname) ||
-        /\.xml$/i.test(file.originalname);
-      if (ok) cb(null, true);
-      else cb(new BadRequestException('Sadece görsel, PDF, XML veya ZIP belge kabul edilir') as any, false);
-    },
+    // Tarayicilar bazi JPEG/PDF/ZIP dosyalarini application/octet-stream gonderebiliyor.
+    // Dosya tipi denetimini buffer geldikten sonra serviste magic-byte ile yapiyoruz.
+    fileFilter: (_req, _file, cb) => cb(null, true),
   });
 
 @Controller('fatura-muhasebelestirme')

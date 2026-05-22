@@ -34,40 +34,39 @@ export default function UploadDialog({ taxpayer, onClose }: Props) {
 
   const uploadMut = useMutation({
     mutationFn: async (files: File[]) => {
-      const results: any[] = [];
-      const errors: Array<{ name: string; message: string }> = [];
-      for (let i = 0; i < files.length; i++) {
-        const file = files[i];
-        const fd = new FormData();
-        fd.append('files', file);
-        fd.append('taxpayerId', taxpayer.id);
-        fd.append('source', 'fatura-merkezi');
-        fd.append('documentType', tip);
-        fd.append('invoiceKind', direction);
-        if (useClaudeOnly) fd.append('forceClaude', 'true');
-        try {
-          const r = await api.post('/fatura-muhasebelestirme/documents/upload', fd, {
-            headers: { 'Content-Type': 'multipart/form-data' },
-          });
-          results.push(r.data);
-        } catch (e: any) {
-          errors.push({
-            name: file.name,
-            message: e?.response?.data?.message || e?.message || 'Yukleme hatasi',
-          });
-        }
-        setProgress({ done: i + 1, total: files.length });
-      }
-      if (results.length === 0 && errors.length > 0) {
-        const err = new Error(errors[0]?.message || 'Yukleme hatasi') as Error & { uploadErrors?: typeof errors };
-        err.uploadErrors = errors;
+      const fd = new FormData();
+      for (const file of files) fd.append('files', file);
+      fd.append('taxpayerId', taxpayer.id);
+      fd.append('source', 'fatura-merkezi');
+      fd.append('documentType', tip);
+      fd.append('invoiceKind', direction);
+      if (useClaudeOnly) fd.append('forceClaude', 'true');
+
+      try {
+        const r = await api.post('/fatura-muhasebelestirme/documents/upload', fd, {
+          headers: { 'Content-Type': 'multipart/form-data' },
+        });
+        setProgress({ done: files.length, total: files.length });
+        const uploaded = Number(r.data?.uploaded || r.data?.documents?.length || 0);
+        const skipped = Array.isArray(r.data?.skipped) ? r.data.skipped : [];
+        return { results: [r.data], errors: [], skipped, uploaded };
+      } catch (e: any) {
+        const raw = e?.response?.data?.message;
+        const skipped = Array.isArray(raw?.skipped) ? raw.skipped : [];
+        const message = typeof raw === 'string'
+          ? raw
+          : raw?.message || e?.response?.data?.error || e?.message || 'Yukleme hatasi';
+        const err = new Error(message) as Error & { uploadErrors?: Array<{ name: string; message: string }> };
+        err.uploadErrors = skipped.map((item: any) => ({
+          name: item?.name || 'dosya',
+          message: item?.reason || message,
+        }));
         throw err;
       }
-      return { results, errors };
     },
     onSuccess: (data) => {
       qc.invalidateQueries({ queryKey: ['fatura-merkezi'] });
-      if (!data.errors.length) setTimeout(() => onClose(), 800);
+      if (!data.errors.length && !data.skipped.length) setTimeout(() => onClose(), 800);
     },
     onError: () => setProgress(null),
   });
@@ -183,7 +182,7 @@ export default function UploadDialog({ taxpayer, onClose }: Props) {
               ref={fileRef}
               type="file"
               multiple
-              accept=".pdf,.jpg,.jpeg,.png,.webp,.tif,.tiff,.xml,.ubl,.zip"
+              accept=".pdf,.jpg,.jpeg,.jpe,.jfif,.png,.webp,.gif,.tif,.tiff,.bmp,.heic,.heif,.avif,.xml,.ubl,.zip"
               className="hidden"
               onChange={(e) => e.target.files && handleFiles(e.target.files)}
             />
@@ -199,21 +198,21 @@ export default function UploadDialog({ taxpayer, onClose }: Props) {
                 </div>
               ) : uploadMut.isSuccess ? (
                 <div style={{ color: '#10b981' }}>
-                  ✓ {uploadMut.data.results.length} dosya yüklendi. OCR pipeline'a düştü.
-                  {uploadMut.data.errors.length > 0 ? ` ${uploadMut.data.errors.length} dosya atlandı.` : ''}
+                  ✓ {uploadMut.data.uploaded} belge yüklendi. OCR pipeline'a düştü.
+                  {uploadMut.data.skipped.length > 0 ? ` ${uploadMut.data.skipped.length} dosya atlandı.` : ''}
                 </div>
               ) : null}
             </div>
           )}
 
-          {uploadMut.isSuccess && uploadMut.data.errors.length > 0 && (
+          {uploadMut.isSuccess && uploadMut.data.skipped.length > 0 && (
             <div className="mt-3 max-h-32 overflow-auto rounded-lg p-3 text-[11.5px]" style={{ background: '#f59e0b12', border: '1px solid #f59e0b40', color: '#fcd34d' }}>
               <div className="mb-1 font-semibold">
-                {uploadMut.data.results.length} dosya yüklendi, {uploadMut.data.errors.length} dosya atlandı.
+                {uploadMut.data.uploaded} belge yüklendi, {uploadMut.data.skipped.length} dosya atlandı.
               </div>
-              {uploadMut.data.errors.slice(0, 12).map((e, idx) => (
+              {uploadMut.data.skipped.slice(0, 20).map((e: any, idx: number) => (
                 <div key={`${e.name}-${idx}`} className="break-all">
-                  <strong>{e.name}</strong>: {e.message}
+                  <strong>{e.name}</strong>: {e.reason || 'Desteklenmeyen dosya tipi'}
                 </div>
               ))}
             </div>
@@ -221,7 +220,7 @@ export default function UploadDialog({ taxpayer, onClose }: Props) {
 
           {uploadMut.error && (
             <div className="mt-3 p-3 rounded-lg text-[11.5px]" style={{ background: '#ef444415', border: '1px solid #ef444440', color: '#fca5a5' }}>
-              {(uploadMut.error as any)?.response?.data?.message || 'Yükleme hatası'}
+              {(uploadMut.error as any)?.message || 'Yükleme hatası'}
             </div>
           )}
 
