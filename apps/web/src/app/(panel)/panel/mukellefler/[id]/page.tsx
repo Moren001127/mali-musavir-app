@@ -44,12 +44,14 @@ import { TaxpayerPortalCredentialsCard } from '@/components/portal-automation/Po
 
 const GOLD = '#d4b876';
 const GOLD_DEEP = '#8b7649';
-const LINE = 'rgba(255,255,255,0.08)';
-const LINE_GOLD = 'rgba(212,184,118,0.24)';
+const LINE = 'rgba(255,255,255,0.10)';
+const LINE_GOLD = 'rgba(212,184,118,0.28)';
 const TEXT = '#fafaf9';
-const MUTED = 'rgba(250,250,249,0.58)';
-const SOFT = 'rgba(255,255,255,0.035)';
-const PANEL = '#0f0d0b';
+const MUTED = 'rgba(250,250,249,0.62)';
+const SOFT = 'rgba(255,255,255,0.055)';
+// Tema arka plan tonları — eskisinden biraz açık (siyah yerine koyu gri-kahve)
+const PANEL = '#1c1814';
+const PANEL_LIGHT = '#241f19';
 
 const TAXPAYER_TYPES = [
   { value: 'TUZEL_KISI', label: 'Tüzel Kişi', detail: 'Şirket veya kurum kaydı' },
@@ -371,7 +373,7 @@ export default function MukellefDetayPage() {
       {/* ============================================================
           HEADER — Logo + Kimlik + Durum İkonları + Navigasyon
       ============================================================ */}
-      <header className="rounded-xl border p-5" style={{ borderColor: LINE, background: `${PANEL}cc` }}>
+      <header className="rounded-xl border p-5" style={{ borderColor: LINE, background: PANEL }}>
         <div className="flex flex-col gap-4 xl:flex-row xl:items-start">
           <div className="flex min-w-0 flex-1 items-start gap-4">
             <Link
@@ -458,7 +460,7 @@ export default function MukellefDetayPage() {
           KISAYOLLAR (YENİ — Hattat tarzı)
       ============================================================ */}
       {!isNew && (
-        <section className="rounded-xl border p-5" style={{ borderColor: LINE, background: `${PANEL}cc` }}>
+        <section className="rounded-xl border p-5" style={{ borderColor: LINE, background: PANEL }}>
           <div className="mb-4 flex items-center gap-3">
             <div className="flex h-9 w-9 items-center justify-center rounded-lg border" style={{ borderColor: LINE_GOLD, background: 'rgba(212,184,118,0.09)', color: GOLD }}>
               <Zap size={17} />
@@ -499,7 +501,7 @@ export default function MukellefDetayPage() {
       <div className="grid gap-4 xl:grid-cols-[minmax(0,1fr)_360px]">
         <main className="space-y-4">
           {/* TAB NAVIGATION */}
-          <div className="overflow-hidden rounded-xl border" style={{ borderColor: LINE, background: `${PANEL}cc` }}>
+          <div className="overflow-hidden rounded-xl border" style={{ borderColor: LINE, background: PANEL }}>
             <div className="flex overflow-x-auto border-b" style={{ borderColor: LINE }}>
               {TABS.map((t) => {
                 const Icon = t.icon;
@@ -565,10 +567,9 @@ export default function MukellefDetayPage() {
               <TaxpayerStatsCard taxpayerId={id} />
               <DocumentExpiryWidget taxpayerId={id} compact={false} daysAhead={90} />
               <MukellefiyetlerCard taxpayerId={id} />
-              <TaxpayerPortalCredentialsCard taxpayerId={id} />
             </>
           ) : (
-            <div className="rounded-xl border p-5" style={{ borderColor: LINE, background: `${PANEL}cc` }}>
+            <div className="rounded-xl border p-5" style={{ borderColor: LINE, background: PANEL }}>
               <div className="mb-3 flex h-10 w-10 items-center justify-center rounded-lg border" style={{ borderColor: LINE_GOLD, color: GOLD, background: 'rgba(212,184,118,0.10)' }}>
                 <CheckCircle2 size={19} />
               </div>
@@ -582,7 +583,7 @@ export default function MukellefDetayPage() {
       </div>
 
       {/* ALT SABIT KAYDETME BARİ */}
-      <div className="sticky bottom-0 z-10 -mx-1 border-t bg-[#0a0906]/95 px-1 py-4 backdrop-blur" style={{ borderColor: LINE }}>
+      <div className="sticky bottom-0 z-10 -mx-1 border-t px-1 py-4 backdrop-blur" style={{ borderColor: LINE, background: 'rgba(28,24,20,0.95)' }}>
         <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
           <CardNavButtons />
           <div className="flex justify-end gap-2">
@@ -775,6 +776,20 @@ function BilgilerTab({
         </div>
       </AccordionPanel>
 
+      {/* Vergi Dairesi & SGK Şifreleri (YENİ - Hattat tarzı, sağdan taşındı) */}
+      {taxpayerId && (
+        <AccordionPanel
+          id="sifreler"
+          title="Vergi Dairesi & SGK Şifreleri"
+          subtitle="Portal giriş bilgileri (GİB, SGK, e-Bildirge, e-Devlet)"
+          icon={Lock}
+          open={openSection === 'sifreler'}
+          onToggle={(id) => setOpenSection((s) => (s === id ? '' : id))}
+        >
+          <TaxpayerPortalCredentialsCard taxpayerId={taxpayerId} />
+        </AccordionPanel>
+      )}
+
       {/* Bağ-Kur (YENİ) */}
       <AccordionPanel
         id="bagkur"
@@ -796,7 +811,7 @@ function BilgilerTab({
             <div className="flex items-center gap-2 font-semibold" style={{ color: GOLD }}>
               <Lock size={13} /> Şifre yönetimi
             </div>
-            <p className="mt-1.5">Bağ-Kur / e-Devlet şifreleri sağdaki <strong style={{ color: TEXT }}>Portal Şifreleri</strong> kartından (provider: <code>BAGKUR</code> / <code>EDEVLET</code>) güvenli şekilde yönetilir.</p>
+            <p className="mt-1.5">Bağ-Kur / e-Devlet şifreleri yukarıdaki <strong style={{ color: TEXT }}>Vergi Dairesi & SGK Şifreleri</strong> bölümünden yönetilir.</p>
           </div>
         </div>
       </AccordionPanel>
@@ -838,7 +853,7 @@ function BilgilerTab({
           </div>
         </div>
         <p className="mt-3 text-[12px]" style={{ color: MUTED }}>
-          Entegratör kullanıcı/şifresi yine sağdaki <strong style={{ color: TEXT }}>Portal Şifreleri</strong> kartından yönetilir (provider: <code>EFATURA_ENTEGRATOR</code>).
+          Entegratör kullanıcı/şifresi yukarıdaki <strong style={{ color: TEXT }}>Vergi Dairesi & SGK Şifreleri</strong> bölümünden yönetilir (provider: <code>EFATURA_ENTEGRATOR</code>).
         </p>
       </AccordionPanel>
 
