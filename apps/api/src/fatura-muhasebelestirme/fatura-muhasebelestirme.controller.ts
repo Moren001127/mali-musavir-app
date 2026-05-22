@@ -104,6 +104,15 @@ export class FaturaMuhasebelestirmeController {
     return this.service.summary(req.user.tenantId, { period, taxpayerId });
   }
 
+  @Get('kdv-client-report')
+  kdvClientReport(
+    @Req() req: any,
+    @Query('taxpayerId') taxpayerId?: string,
+    @Query('period') period?: string,
+  ) {
+    return this.service.kdvClientReport(req.user.tenantId, { taxpayerId, period });
+  }
+
   /** Her mukellef için bekleyen/onaylanan sayıları tek scan'de döner. */
   @Get('per-taxpayer-summary')
   perTaxpayerSummary(@Req() req: any, @Query('period') period?: string) {

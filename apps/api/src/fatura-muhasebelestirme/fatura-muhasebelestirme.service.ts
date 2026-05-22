@@ -6,6 +6,7 @@ import { XMLParser } from 'fast-xml-parser';
 import { PrismaService } from '../prisma/prisma.service';
 import { StorageService } from '../storage/storage.service';
 import { OcrService, OcrResult } from '../kdv-control/ocr';
+import { KdvControlService } from '../kdv-control/kdv-control.service';
 import { EarsivRenderService } from '../earsiv/earsiv-render.service';
 import { encrypt, tryDecrypt } from '../common/crypto';
 import { VendorMemoryService } from '../vendor-memory/vendor-memory.service';
@@ -48,6 +49,20 @@ type AccountPlanQuery = {
 type PeriodQuery = {
   period?: string;
 };
+
+type ReportBucket = {
+  base: number;
+  vat: number;
+  total: number;
+  count: number;
+};
+
+type ReportCounterparty = ReportBucket & {
+  name: string;
+  taxNo?: string | null;
+};
+
+type ReportCategoryKey = 'sales' | 'goods' | 'expenses' | 'unclassified';
 
 type DuplicateSignal = {
   duplicateOfId: string;
@@ -134,6 +149,10 @@ const PROVIDER_DEFAULT_BASE_URL: Record<string, string> = {
 };
 
 const I2I_SOAP_PROVIDERS = new Set(['IZIBIZ', 'FORIBA']);
+const GOODS_ACCOUNT_PREFIXES = ['150', '151', '152', '153', '157'];
+const EXPENSE_ACCOUNT_PREFIXES = ['7'];
+const SALES_ACCOUNT_PREFIXES = ['600', '601', '602'];
+const REPORT_EPSILON = 0.005;
 
 function parseDecimal(value: any, fallback = '0') {
   if (value === null || value === undefined || value === '') return new Prisma.Decimal(fallback);
@@ -201,6 +220,7 @@ export class FaturaMuhasebelestirmeService {
     private readonly prisma: PrismaService,
     private readonly storage: StorageService,
     private readonly ocr: OcrService,
+    private readonly kdvControl: KdvControlService,
     private readonly earsivRender: EarsivRenderService,
     private readonly vendorMemory: VendorMemoryService,
   ) {}
@@ -528,6 +548,606 @@ export class FaturaMuhasebelestirmeService {
    * Her mukellef için bekleyen/onaylanan/banka sayılarını tek scan'de döner.
    * Mihsap'ın "Gelen Belgeler" tablosunda gösterdiği verinin karşılığı.
    */
+  async kdvClientReport(
+    tenantId: string,
+    opts: { taxpayerId?: string; period?: string } = {},
+  ) {
+    const taxpayerId = String(opts.taxpayerId || '').trim();
+    if (!taxpayerId) throw new BadRequestException('Mükellef seçimi gerekli');
+    const period = this.normalizeReportPeriod(opts.period);
+
+    const taxpayer = await (this.prisma as any).taxpayer.findFirst({
+      where: { id: taxpayerId, tenantId },
+      select: {
+        id: true,
+        companyName: true,
+        firstName: true,
+        lastName: true,
+        taxNumber: true,
+        identityNumber: true,
+        defterTuru: true,
+        mihsapDefterTuru: true,
+      },
+    });
+    if (!taxpayer) throw new NotFoundException('Mükellef bulunamadı');
+
+    const [invoices, accountingDocs, breakdownByInvoiceId, controls] = await Promise.all([
+      (this.prisma as any).earsivFatura.findMany({
+        where: {
+          tenantId,
+          taxpayerId,
+          donem: period,
+          OR: [{ durum: null }, { durum: { notIn: ['IPTAL', 'RED'] } }],
+        },
+        select: {
+          id: true,
+          tip: true,
+          belgeKaynak: true,
+          donem: true,
+          faturaNo: true,
+          faturaTarihi: true,
+          satici: true,
+          saticiVergiNo: true,
+          alici: true,
+          aliciVergiNo: true,
+          matrah: true,
+          kdvTutari: true,
+          kdvOrani: true,
+          toplamTutar: true,
+          durum: true,
+        },
+        orderBy: [{ faturaTarihi: 'asc' }, { faturaNo: 'asc' }],
+      }),
+      (this.prisma as any).invoiceAccountingDocument.findMany({
+        where: {
+          tenantId,
+          taxpayerId,
+          invoiceKind: { in: ['ALIS', 'SATIS'] },
+          ...periodWhere(period),
+        },
+        include: { lines: { orderBy: { orderNo: 'asc' } } },
+        orderBy: [{ updatedAt: 'desc' }, { createdAt: 'desc' }],
+      }),
+      this.loadEarsivKdvBreakdowns(tenantId, taxpayerId, period),
+      this.buildKdvControlReport(tenantId, taxpayerId, period),
+    ]);
+
+    const docBySourceRef = new Map<string, any>();
+    const docByInvoiceNo = new Map<string, any>();
+    for (const doc of accountingDocs) {
+      const sourceRefId = String(doc.sourceRefId || '').trim();
+      const inlineRefId = String(doc.s3Key || '').startsWith('earsiv-inline://')
+        ? String(doc.s3Key || '').slice('earsiv-inline://'.length)
+        : '';
+      const ref = sourceRefId || inlineRefId;
+      if (ref && !docBySourceRef.has(ref)) docBySourceRef.set(ref, doc);
+      const invoiceKind = String(doc.invoiceKind || '').toUpperCase();
+      const belgeNo = String(doc.belgeNo || '').trim().toUpperCase();
+      if (invoiceKind && belgeNo && !docByInvoiceNo.has(`${invoiceKind}|${belgeNo}`)) {
+        docByInvoiceNo.set(`${invoiceKind}|${belgeNo}`, doc);
+      }
+    }
+
+    const categories: Record<ReportCategoryKey, ReportBucket> = {
+      sales: this.emptyReportBucket(),
+      goods: this.emptyReportBucket(),
+      expenses: this.emptyReportBucket(),
+      unclassified: this.emptyReportBucket(),
+    };
+    const vatByRate = new Map<string, any>();
+    const topSuppliers = new Map<string, ReportCounterparty>();
+    const topCustomers = new Map<string, ReportCounterparty>();
+    const sourceCounts = { efatura: 0, earsiv: 0, purchase: 0, sales: 0 };
+
+    let salesBase = 0;
+    let salesVat = 0;
+    let salesTotal = 0;
+    let purchaseBase = 0;
+    let purchaseVat = 0;
+    let purchaseTotal = 0;
+    let unclassifiedPurchaseInvoiceCount = 0;
+
+    for (const invoice of invoices) {
+      const side = String(invoice.tip || '').toUpperCase() === 'SATIS' ? 'SATIS' : 'ALIS';
+      const base = this.reportNumber(invoice.matrah);
+      const vat = this.reportNumber(invoice.kdvTutari);
+      const total = this.reportNumber(invoice.toplamTutar) || base + vat;
+      const breakdown = this.normalizeReportBreakdown(breakdownByInvoiceId.get(invoice.id), invoice.kdvOrani, base, vat);
+
+      if (invoice.belgeKaynak === 'EFATURA') sourceCounts.efatura += 1;
+      else sourceCounts.earsiv += 1;
+
+      this.addReportVatBreakdown(vatByRate, side, breakdown, base, vat);
+
+      if (side === 'SATIS') {
+        sourceCounts.sales += 1;
+        salesBase += base;
+        salesVat += vat;
+        salesTotal += total;
+        this.addReportBucket(categories.sales, base, vat, total);
+        this.addReportCounterparty(topCustomers, {
+          name: invoice.alici || 'Bilinmeyen alıcı',
+          taxNo: invoice.aliciVergiNo,
+          base,
+          vat,
+          total,
+        });
+      } else {
+        sourceCounts.purchase += 1;
+        purchaseBase += base;
+        purchaseVat += vat;
+        purchaseTotal += total;
+        this.addReportCounterparty(topSuppliers, {
+          name: invoice.satici || 'Bilinmeyen satıcı',
+          taxNo: invoice.saticiVergiNo,
+          base,
+          vat,
+          total,
+        });
+
+        const invoiceNoKey = `ALIS|${String(invoice.faturaNo || '').trim().toUpperCase()}`;
+        const doc = docBySourceRef.get(invoice.id) || docByInvoiceNo.get(invoiceNoKey);
+        const classified = this.classifyPurchaseInvoiceForReport(doc, { base, vat, total });
+        for (const row of classified) {
+          this.addReportBucket(categories[row.key], row.base, row.vat, row.total, row.count);
+        }
+        if (classified.some((row) => row.key === 'unclassified' && Math.abs(row.base) > REPORT_EPSILON)) {
+          unclassifiedPurchaseInvoiceCount += 1;
+        }
+      }
+    }
+
+    const missingAccountCodeCount = accountingDocs.filter((doc: any) => {
+      const lines = Array.isArray(doc.lines) ? doc.lines : [];
+      const relevant = lines.filter((line: any) => ['matrah', 'vergi'].includes(String(line.group || '').toLowerCase()));
+      return relevant.length === 0 || relevant.some((line: any) => !String(line.accountCode || '').trim());
+    }).length;
+    const validationIssueCount = accountingDocs.filter((doc: any) => {
+      const status = String((doc as any).validationStatus || doc.ocrData?.validationStatus || '').toUpperCase();
+      const issues = (doc as any).validationIssues || doc.ocrData?.validationIssues;
+      return ['INVALID', 'INCOMPLETE'].includes(status) || (Array.isArray(issues) && issues.length > 0);
+    }).length;
+    const statusCounts = accountingDocs.reduce((acc: Record<string, number>, doc: any) => {
+      const key = String(doc.status || 'UNKNOWN').toUpperCase();
+      acc[key] = (acc[key] || 0) + 1;
+      return acc;
+    }, {});
+    const pendingReviewCount = accountingDocs.filter((doc: any) =>
+      ['NEEDS_REVIEW', 'PENDING', 'PROCESSING', 'READY'].includes(String(doc.status || '').toUpperCase()),
+    ).length;
+
+    const totals = {
+      salesBase: this.roundReportMoney(salesBase),
+      salesVat: this.roundReportMoney(salesVat),
+      salesTotal: this.roundReportMoney(salesTotal),
+      purchaseBase: this.roundReportMoney(purchaseBase),
+      purchaseVat: this.roundReportMoney(purchaseVat),
+      purchaseTotal: this.roundReportMoney(purchaseTotal),
+      purchaseGoodsBase: this.roundReportMoney(categories.goods.base),
+      purchaseGoodsVat: this.roundReportMoney(categories.goods.vat),
+      purchaseGoodsTotal: this.roundReportMoney(categories.goods.total),
+      expensesBase: this.roundReportMoney(categories.expenses.base),
+      expensesVat: this.roundReportMoney(categories.expenses.vat),
+      expensesTotal: this.roundReportMoney(categories.expenses.total),
+      unclassifiedPurchaseBase: this.roundReportMoney(categories.unclassified.base),
+      unclassifiedPurchaseVat: this.roundReportMoney(categories.unclassified.vat),
+      unclassifiedPurchaseTotal: this.roundReportMoney(categories.unclassified.total),
+      deductibleVat: this.roundReportMoney(purchaseVat),
+      calculatedVat: this.roundReportMoney(salesVat),
+      periodVatDifference: this.roundReportMoney(salesVat - purchaseVat),
+      payableVat: null,
+      carryForwardVat: null,
+    };
+
+    const categoryRows = [
+      {
+        key: 'sales',
+        label: 'Satışlar',
+        side: 'SATIS',
+        accountPrefixes: SALES_ACCOUNT_PREFIXES,
+        ...this.roundReportBucket(categories.sales),
+      },
+      {
+        key: 'goods',
+        label: 'Mal / stok alışları',
+        side: 'ALIS',
+        accountPrefixes: GOODS_ACCOUNT_PREFIXES,
+        ...this.roundReportBucket(categories.goods),
+      },
+      {
+        key: 'expenses',
+        label: 'Masraf / giderler',
+        side: 'ALIS',
+        accountPrefixes: EXPENSE_ACCOUNT_PREFIXES,
+        ...this.roundReportBucket(categories.expenses),
+      },
+      {
+        key: 'unclassified',
+        label: 'Sınıflandırılamayan alışlar',
+        side: 'ALIS',
+        accountPrefixes: [],
+        ...this.roundReportBucket(categories.unclassified),
+      },
+    ];
+
+    const quality = {
+      invoiceCount: invoices.length,
+      accountingDocCount: accountingDocs.length,
+      missingAccountCodeCount,
+      unclassifiedCount: unclassifiedPurchaseInvoiceCount,
+      pendingReviewCount,
+      validationIssueCount,
+      sourceCounts,
+      statusCounts,
+    };
+
+    const report = {
+      taxpayer: {
+        id: taxpayer.id,
+        name: this.reportTaxpayerName(taxpayer),
+        taxNumber: this.reportTaxNumber(taxpayer),
+        ledgerType: taxpayer.defterTuru || taxpayer.mihsapDefterTuru || null,
+      },
+      period,
+      periodLabel: this.reportPeriodLabel(period),
+      generatedAt: new Date().toISOString(),
+      totals,
+      categoryRows,
+      vatByRate: Array.from(vatByRate.values())
+        .map((row: any) => ({ ...row, ...this.roundReportBucket(row) }))
+        .sort((a: any, b: any) => {
+          const sideOrder = a.side === b.side ? 0 : a.side === 'SATIS' ? -1 : 1;
+          if (sideOrder) return sideOrder;
+          return Number(a.rate ?? 999) - Number(b.rate ?? 999);
+        }),
+      topSuppliers: this.topReportCounterparties(topSuppliers),
+      topCustomers: this.topReportCounterparties(topCustomers),
+      quality,
+      controls,
+      warnings: controls.warnings,
+      assessment: [] as string[],
+    };
+
+    report.assessment = this.buildKdvClientAssessment(report);
+    return report;
+  }
+
+  private normalizeReportPeriod(period?: string | null) {
+    const value = String(period || '').trim();
+    if (!/^\d{4}-\d{2}$/.test(value)) {
+      throw new BadRequestException('Dönem YYYY-MM formatında olmalı');
+    }
+    const month = Number(value.slice(5, 7));
+    if (month < 1 || month > 12) throw new BadRequestException('Geçersiz dönem');
+    return value;
+  }
+
+  private reportPeriodLabel(period: string) {
+    const monthNames = [
+      'Ocak', 'Şubat', 'Mart', 'Nisan', 'Mayıs', 'Haziran',
+      'Temmuz', 'Ağustos', 'Eylül', 'Ekim', 'Kasım', 'Aralık',
+    ];
+    const [year, month] = period.split('-');
+    return `${monthNames[Number(month) - 1] || month} ${year}`;
+  }
+
+  private reportTaxpayerName(taxpayer: any) {
+    return taxpayer?.companyName || [taxpayer?.firstName, taxpayer?.lastName].filter(Boolean).join(' ') || 'Mükellef';
+  }
+
+  private reportTaxNumber(taxpayer: any) {
+    const raw = taxpayer?.taxNumber || taxpayer?.identityNumber || '';
+    return String(tryDecrypt(raw) || raw || '').replace(/[^\d]/g, '');
+  }
+
+  private reportNumber(value: any) {
+    if (value === null || value === undefined || value === '') return 0;
+    const n = typeof value === 'number' ? value : Number(value);
+    return Number.isFinite(n) ? n : 0;
+  }
+
+  private roundReportMoney(value: number) {
+    if (!Number.isFinite(value)) return 0;
+    return Math.round((value + Number.EPSILON) * 100) / 100;
+  }
+
+  private emptyReportBucket(): ReportBucket {
+    return { base: 0, vat: 0, total: 0, count: 0 };
+  }
+
+  private addReportBucket(bucket: ReportBucket, base: number, vat: number, total?: number, count = 1) {
+    bucket.base += Number.isFinite(base) ? base : 0;
+    bucket.vat += Number.isFinite(vat) ? vat : 0;
+    bucket.total += Number.isFinite(total) ? total || 0 : base + vat;
+    bucket.count += count;
+  }
+
+  private roundReportBucket<T extends ReportBucket>(bucket: T) {
+    return {
+      base: this.roundReportMoney(bucket.base),
+      vat: this.roundReportMoney(bucket.vat),
+      total: this.roundReportMoney(bucket.total),
+      count: bucket.count,
+    };
+  }
+
+  private classifyPurchaseInvoiceForReport(
+    doc: any | null | undefined,
+    invoice: { base: number; vat: number; total: number },
+  ): Array<{ key: ReportCategoryKey; base: number; vat: number; total: number; count: number }> {
+    const lines = Array.isArray(doc?.lines) ? doc.lines : [];
+    const matrahLines = lines.filter((line: any) => String(line.group || '').toLowerCase() === 'matrah');
+    const rawByCategory: Record<ReportCategoryKey, number> = {
+      sales: 0,
+      goods: 0,
+      expenses: 0,
+      unclassified: 0,
+    };
+
+    for (const line of matrahLines) {
+      const amount = this.reportLineAmount(line, 'debit');
+      if (amount <= REPORT_EPSILON) continue;
+      const key = this.classifyPurchaseAccountCode(line.accountCode);
+      rawByCategory[key] += amount;
+    }
+
+    const rawBase = rawByCategory.goods + rawByCategory.expenses + rawByCategory.unclassified;
+    if (rawBase <= REPORT_EPSILON) {
+      return [{
+        key: 'unclassified',
+        base: invoice.base,
+        vat: invoice.vat,
+        total: invoice.total || invoice.base + invoice.vat,
+        count: 1,
+      }];
+    }
+
+    const effectiveBase = invoice.base > REPORT_EPSILON ? invoice.base : rawBase;
+    const scale = effectiveBase > REPORT_EPSILON ? effectiveBase / rawBase : 1;
+    return (['goods', 'expenses', 'unclassified'] as ReportCategoryKey[])
+      .filter((key) => rawByCategory[key] > REPORT_EPSILON)
+      .map((key) => {
+        const base = rawByCategory[key] * scale;
+        const share = effectiveBase > REPORT_EPSILON ? base / effectiveBase : 0;
+        const vat = invoice.vat * share;
+        return {
+          key,
+          base,
+          vat,
+          total: base + vat,
+          count: 1,
+        };
+      });
+  }
+
+  private classifyPurchaseAccountCode(accountCode?: string | null): ReportCategoryKey {
+    if (!String(accountCode || '').trim()) return 'unclassified';
+    if (this.accountCodeStartsWith(accountCode, GOODS_ACCOUNT_PREFIXES)) return 'goods';
+    if (this.accountCodeStartsWith(accountCode, EXPENSE_ACCOUNT_PREFIXES)) return 'expenses';
+    return 'unclassified';
+  }
+
+  private accountCodeStartsWith(accountCode: any, prefixes: string[]) {
+    const raw = String(accountCode || '').trim();
+    const compact = raw.replace(/[^\d]/g, '');
+    return prefixes.some((prefix) => raw.startsWith(prefix) || compact.startsWith(prefix));
+  }
+
+  private reportLineAmount(line: any, preferredSide: 'debit' | 'credit') {
+    const debit = this.reportNumber(line?.debit);
+    const credit = this.reportNumber(line?.credit);
+    const signed = preferredSide === 'credit' ? credit - debit : debit - credit;
+    if (Math.abs(signed) > REPORT_EPSILON) return Math.abs(signed);
+    return Math.max(Math.abs(debit), Math.abs(credit));
+  }
+
+  private async loadEarsivKdvBreakdowns(tenantId: string, taxpayerId: string, period: string) {
+    const byId = new Map<string, any>();
+    try {
+      const rows: any[] = await (this.prisma as any).$queryRawUnsafe(
+        `SELECT "id", "kdvBreakdown" FROM "earsiv_faturalar" WHERE "tenantId" = $1 AND "taxpayerId" = $2 AND "donem" = $3`,
+        tenantId,
+        taxpayerId,
+        period,
+      );
+      for (const row of rows || []) byId.set(String(row.id), row.kdvBreakdown);
+    } catch {
+      // Eski ortamlarda kdvBreakdown kolonu olmayabilir; oran alanına fallback yapılır.
+    }
+    return byId;
+  }
+
+  private normalizeReportBreakdown(raw: any, fallbackRate: any, fallbackBase: number, fallbackVat: number) {
+    const parsed = typeof raw === 'string'
+      ? (() => {
+          try { return JSON.parse(raw); } catch { return null; }
+        })()
+      : raw;
+    const rows = Array.isArray(parsed) ? parsed : [];
+    const normalized = rows
+      .map((item: any) => {
+        const rate = this.reportNumber(item?.rate ?? item?.oran);
+        const base = this.reportNumber(item?.base ?? item?.matrah);
+        const vat = this.reportNumber(item?.amount ?? item?.tutar);
+        return { rate: Number.isFinite(rate) ? rate : null, base, vat };
+      })
+      .filter((item) => Math.abs(item.base) > REPORT_EPSILON || Math.abs(item.vat) > REPORT_EPSILON);
+    if (normalized.length > 0) return normalized;
+    return [{
+      rate: this.reportNumber(fallbackRate),
+      base: fallbackBase,
+      vat: fallbackVat,
+    }];
+  }
+
+  private addReportVatBreakdown(
+    target: Map<string, ReportBucket & { side: string; rate: number | null; label: string }>,
+    side: 'ALIS' | 'SATIS',
+    breakdown: Array<{ rate: number | null; base: number; vat: number }>,
+    fallbackBase: number,
+    fallbackVat: number,
+  ) {
+    const rows = breakdown.length ? breakdown : [{ rate: null, base: fallbackBase, vat: fallbackVat }];
+    for (const row of rows) {
+      const rate = Number.isFinite(Number(row.rate)) ? Number(row.rate) : null;
+      const label = rate === null ? 'Diğer' : `%${rate.toLocaleString('tr-TR', { maximumFractionDigits: 2 })}`;
+      const key = `${side}|${label}`;
+      const current = target.get(key) || { side, rate, label, ...this.emptyReportBucket() };
+      this.addReportBucket(current, row.base, row.vat, row.base + row.vat, 1);
+      target.set(key, current);
+    }
+  }
+
+  private addReportCounterparty(
+    target: Map<string, ReportCounterparty>,
+    input: { name: string; taxNo?: string | null; base: number; vat: number; total: number },
+  ) {
+    const cleanTaxNo = String(input.taxNo || '').replace(/[^\d]/g, '');
+    const name = String(input.name || 'Bilinmeyen firma').trim() || 'Bilinmeyen firma';
+    const key = cleanTaxNo || name.toLocaleUpperCase('tr-TR');
+    const current = target.get(key) || { name, taxNo: cleanTaxNo || null, ...this.emptyReportBucket() };
+    this.addReportBucket(current, input.base, input.vat, input.total, 1);
+    target.set(key, current);
+  }
+
+  private topReportCounterparties(target: Map<string, ReportCounterparty>) {
+    return Array.from(target.values())
+      .sort((a, b) => b.total - a.total)
+      .slice(0, 5)
+      .map((row) => ({ name: row.name, taxNo: row.taxNo || null, ...this.roundReportBucket(row) }));
+  }
+
+  private reportPeriodVariants(period: string) {
+    const [year, month] = period.split('-');
+    const looseMonth = String(Number(month));
+    return Array.from(new Set([period, `${year}/${month}`, `${year}/${looseMonth}`, `${year}-${looseMonth}`]));
+  }
+
+  private async buildKdvControlReport(tenantId: string, taxpayerId: string, period: string) {
+    const sessions = await (this.prisma as any).kdvControlSession.findMany({
+      where: {
+        tenantId,
+        taxpayerId,
+        periodLabel: { in: this.reportPeriodVariants(period) },
+        type: { in: ['KDV_191', 'ISLETME_GIDER', 'KDV_391', 'ISLETME_GELIR'] },
+      },
+      select: {
+        id: true,
+        type: true,
+        periodLabel: true,
+        status: true,
+        createdAt: true,
+        updatedAt: true,
+      },
+      orderBy: [{ createdAt: 'desc' }],
+    });
+
+    const purchaseSession = sessions.find((s: any) => ['KDV_191', 'ISLETME_GIDER'].includes(String(s.type)));
+    const salesSession = sessions.find((s: any) => ['KDV_391', 'ISLETME_GELIR'].includes(String(s.type)));
+    const [purchase, sales] = await Promise.all([
+      this.summarizeKdvControlSession(tenantId, purchaseSession),
+      this.summarizeKdvControlSession(tenantId, salesSession),
+    ]);
+
+    const warnings: string[] = [];
+    if (!purchase) warnings.push('Alış/indirilecek KDV için kontrol oturumu bulunamadı.');
+    if (!sales) warnings.push('Satış/hesaplanan KDV için kontrol oturumu bulunamadı.');
+    for (const item of [purchase, sales].filter(Boolean) as any[]) {
+      if ((item.issueTotal || 0) > 0) {
+        warnings.push(`${item.label} kontrolünde ${item.issueTotal} kayıt dikkat istiyor.`);
+      }
+      for (const warning of item.serialWarnings || []) warnings.push(warning.message || warning.mesaj || String(warning));
+    }
+
+    return { purchase, sales, warnings };
+  }
+
+  private async summarizeKdvControlSession(tenantId: string, session: any | null | undefined) {
+    if (!session) return null;
+    let stats: any = null;
+    try {
+      stats = await this.kdvControl.getSessionStats(session.id, tenantId);
+    } catch (e: any) {
+      this.logger.warn(`KDV kontrol istatistikleri okunamadi (${session.id}): ${e?.message || e}`);
+    }
+    const issueTotal =
+      this.reportNumber(stats?.partialMatch) +
+      this.reportNumber(stats?.unmatched) +
+      this.reportNumber(stats?.needsReview) +
+      this.reportNumber(stats?.rejected);
+    return {
+      id: session.id,
+      type: session.type,
+      label: ['KDV_191', 'ISLETME_GIDER'].includes(String(session.type))
+        ? 'Alış KDV'
+        : 'Satış KDV',
+      periodLabel: session.periodLabel,
+      status: session.status,
+      matched: this.reportNumber(stats?.matched),
+      partialMatch: this.reportNumber(stats?.partialMatch),
+      unmatched: this.reportNumber(stats?.unmatched),
+      needsReview: this.reportNumber(stats?.needsReview),
+      rejected: this.reportNumber(stats?.rejected),
+      totalRecords: this.reportNumber(stats?.totalRecords),
+      totalImages: this.reportNumber(stats?.totalImages),
+      issueTotal,
+      serialWarnings: Array.isArray(stats?.seriUyarilari) ? stats.seriUyarilari : [],
+      updatedAt: session.updatedAt,
+    };
+  }
+
+  private buildKdvClientAssessment(report: any) {
+    const totals = report.totals || {};
+    const quality = report.quality || {};
+    const controls = report.controls || {};
+    const diff = this.reportNumber(totals.periodVatDifference);
+    const sales = this.reportNumber(totals.salesTotal);
+    const purchase = this.reportNumber(totals.purchaseTotal);
+    const lines: string[] = [];
+
+    if (!quality.invoiceCount) {
+      return [
+        'Genel tablo: Bu dönem için fatura kaydı bulunamadı.',
+        'Kontrol notu: Raporu mükellefe göndermeden önce dönem ve mükellef seçiminin doğru olduğundan emin olunmalıdır.',
+      ];
+    }
+
+    lines.push(`Genel tablo: Bu dönem ${this.formatReportMoney(sales)} TL satış, ${this.formatReportMoney(purchase)} TL alış ve gider faturası görünmektedir.`);
+    if (diff > REPORT_EPSILON) {
+      lines.push(`KDV yönü: Fatura kayıtlarına göre hesaplanan KDV, indirilecek KDV'den ${this.formatReportMoney(diff)} TL fazla; dönem içi ödeme yönü oluşmaktadır.`);
+    } else if (diff < -REPORT_EPSILON) {
+      lines.push(`KDV yönü: Fatura kayıtlarına göre indirilecek KDV, hesaplanan KDV'den ${this.formatReportMoney(Math.abs(diff))} TL fazla; dönem içi devreden yönü oluşmaktadır.`);
+    } else {
+      lines.push('KDV yönü: Fatura kayıtlarına göre hesaplanan ve indirilecek KDV birbirine çok yakın görünmektedir.');
+    }
+
+    const goods = this.reportNumber(totals.purchaseGoodsTotal);
+    const expenses = this.reportNumber(totals.expensesTotal);
+    const unclassified = this.reportNumber(totals.unclassifiedPurchaseTotal);
+    lines.push(`Alış yapısı: Mal/stok alışları ${this.formatReportMoney(goods)} TL, masraf/giderler ${this.formatReportMoney(expenses)} TL seviyesindedir.`);
+    if (report.topSuppliers?.[0] || report.topCustomers?.[0]) {
+      const supplier = report.topSuppliers?.[0]?.name;
+      const customer = report.topCustomers?.[0]?.name;
+      lines.push(`Cari yoğunluk: En yüksek alış ${supplier || 'belirlenemeyen firma'}, en yüksek satış ${customer || 'belirlenemeyen müşteri'} tarafında yoğunlaşmaktadır.`);
+    }
+    if (unclassified > REPORT_EPSILON || quality.missingAccountCodeCount > 0) {
+      lines.push(`Hesap kodu kontrolü: ${quality.missingAccountCodeCount || 0} belgede hesap kodu eksikliği, ${quality.unclassifiedCount || 0} alış faturasında sınıflandırma ihtiyacı vardır.`);
+    }
+    if ((controls.warnings || []).length > 0) {
+      lines.push(`KDV kontrol notu: ${controls.warnings[0]} Bu uyarılar netleşmeden rapor nihai beyan sonucu gibi değerlendirilmemelidir.`);
+    } else {
+      lines.push('KDV kontrol notu: Bu rapor fatura kayıtlarına göre hazırlanmıştır; devreden KDV, tevkifat, istisna ve beyanname düzeltmeleri ayrıca kontrol edilmelidir.');
+    }
+    return lines.slice(0, 6);
+  }
+
+  private formatReportMoney(value: number) {
+    return this.roundReportMoney(value).toLocaleString('tr-TR', {
+      minimumFractionDigits: 2,
+      maximumFractionDigits: 2,
+    });
+  }
+
   async perTaxpayerSummary(
     tenantId: string,
     opts: { period?: string } = {},

@@ -3,6 +3,7 @@
 import { useState, useMemo } from 'react';
 import Link from 'next/link';
 import { useQuery } from '@tanstack/react-query';
+import { toast } from 'sonner';
 import {
   LayoutDashboard, Inbox, Users, Workflow, Send, Upload, Archive,
   FileSpreadsheet, ArrowLeftRight, ArrowLeft, RefreshCw, Palette,
@@ -20,6 +21,7 @@ import SurecTakipPanel from './_panels/SurecTakipPanel';
 import GenelBakisPanel from './_panels/GenelBakisPanel';
 import HesapPlaniPanel from './_panels/HesapPlaniPanel';
 import YuklenenlerPanel from './_panels/YuklenenlerPanel';
+import { buildKdvClientReportHtml, fetchKdvClientReport } from './_lib/kdv-client-report';
 
 /* ════════════════════════════════════════════════════════════════════
    FATURA İŞLEME MERKEZİ — v2 (Tam Sayfa)
@@ -72,6 +74,7 @@ export default function FaturaMerkeziPage() {
   });
   const [showTaxpayerPicker, setShowTaxpayerPicker] = useState(false);
   const [taxpayerSearch, setTaxpayerSearch] = useState('');
+  const [kdvReportLoading, setKdvReportLoading] = useState(false);
 
   /* ─── Mükellef listesi ─── */
   const taxpayersQ = useQuery({
@@ -107,6 +110,41 @@ export default function FaturaMerkeziPage() {
   const refresh = () => {
     taxpayersQ.refetch();
     summaryQ.refetch();
+  };
+
+  const handleKdvClientOutput = async () => {
+    if (!taxpayerId) {
+      toast.error('Önce mükellef seçin');
+      return;
+    }
+
+    setKdvReportLoading(true);
+    try {
+      const report = await fetchKdvClientReport({ taxpayerId, period });
+      const printWindow = window.open('', '_blank', 'width=980,height=760');
+      if (!printWindow) {
+        toast.error('Çıktı penceresi açılamadı. Tarayıcı pop-up iznini kontrol edin.');
+        return;
+      }
+
+      const reportHtml = buildKdvClientReportHtml(
+        report,
+        `${window.location.origin}/brand/moren-logo-gold.png`,
+      );
+      printWindow.document.open();
+      printWindow.document.write(reportHtml);
+      printWindow.document.close();
+      printWindow.focus();
+      printWindow.document.title = '';
+      setTimeout(() => {
+        printWindow.document.title = '';
+        printWindow.print();
+      }, 750);
+    } catch (e: any) {
+      toast.error(e?.response?.data?.message || e?.message || 'KDV mükellef çıktısı hazırlanamadı');
+    } finally {
+      setKdvReportLoading(false);
+    }
   };
 
   /* ─── Sidebar grupları ─── */
@@ -369,6 +407,24 @@ export default function FaturaMerkeziPage() {
           </div>
 
           <div className="flex-1" />
+
+          {/* KDV mukellef ciktisi */}
+          <button
+            type="button"
+            onClick={handleKdvClientOutput}
+            disabled={kdvReportLoading}
+            className="flex items-center gap-2 px-3 py-2 text-[13px] rounded-lg transition-colors"
+            style={{
+              background: 'var(--accent-light)',
+              border: '1px solid var(--border)',
+              color: 'var(--accent)',
+              opacity: kdvReportLoading ? 0.72 : 1,
+              fontWeight: 600,
+            }}
+          >
+            <FileText size={14} />
+            {kdvReportLoading ? 'Hazırlanıyor' : 'KDV Mükellef Çıktısı'}
+          </button>
 
           {/* Yenile */}
           <button
