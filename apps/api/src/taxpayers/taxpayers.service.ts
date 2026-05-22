@@ -134,6 +134,10 @@ export class TaxpayersService {
       where: { id, tenantId },
       include: {
         contacts: true,
+        yetkililer: {
+          where: { isActive: true },
+          orderBy: [{ isPrimary: 'desc' }, { createdAt: 'asc' }],
+        },
         _count: {
           select: {
             taxDeclarations: true,
@@ -146,6 +150,94 @@ export class TaxpayersService {
     });
     if (!taxpayer) throw new NotFoundException('Mükellef bulunamadı');
     return taxpayer;
+  }
+
+  // ============================================================
+  // v1.37.0: Firma Yetkilileri CRUD (TaxpayerYetkili)
+  // ============================================================
+  async listYetkililer(taxpayerId: string, tenantId: string) {
+    await this.assertOwnership(taxpayerId, tenantId);
+    return (this.prisma as any).taxpayerYetkili.findMany({
+      where: { taxpayerId, tenantId, isActive: true },
+      orderBy: [{ isPrimary: 'desc' }, { createdAt: 'asc' }],
+    });
+  }
+
+  async createYetkili(taxpayerId: string, tenantId: string, dto: any) {
+    await this.assertOwnership(taxpayerId, tenantId);
+    // İlk yetkili otomatik primary olsun
+    const existingCount = await (this.prisma as any).taxpayerYetkili.count({
+      where: { taxpayerId, isActive: true },
+    });
+    const isPrimary = dto.isPrimary || existingCount === 0;
+    if (isPrimary && existingCount > 0) {
+      // Diğer primary'leri temizle
+      await (this.prisma as any).taxpayerYetkili.updateMany({
+        where: { taxpayerId, isPrimary: true },
+        data: { isPrimary: false },
+      });
+    }
+    return (this.prisma as any).taxpayerYetkili.create({
+      data: {
+        tenantId,
+        taxpayerId,
+        firstName: dto.firstName,
+        lastName: dto.lastName,
+        tcNo: dto.tcNo || null,
+        gorev: dto.gorev || null,
+        telefon: dto.telefon || null,
+        eposta: dto.eposta || null,
+        notes: dto.notes || null,
+        isPrimary,
+      },
+    });
+  }
+
+  async updateYetkili(taxpayerId: string, yetkiliId: string, tenantId: string, dto: any) {
+    await this.assertOwnership(taxpayerId, tenantId);
+    const existing = await (this.prisma as any).taxpayerYetkili.findFirst({
+      where: { id: yetkiliId, taxpayerId, tenantId },
+    });
+    if (!existing) throw new NotFoundException('Yetkili bulunamadı');
+    if (dto.isPrimary && !existing.isPrimary) {
+      await (this.prisma as any).taxpayerYetkili.updateMany({
+        where: { taxpayerId, isPrimary: true, id: { not: yetkiliId } },
+        data: { isPrimary: false },
+      });
+    }
+    return (this.prisma as any).taxpayerYetkili.update({
+      where: { id: yetkiliId },
+      data: {
+        ...(dto.firstName !== undefined && { firstName: dto.firstName }),
+        ...(dto.lastName !== undefined && { lastName: dto.lastName }),
+        ...(dto.tcNo !== undefined && { tcNo: dto.tcNo || null }),
+        ...(dto.gorev !== undefined && { gorev: dto.gorev || null }),
+        ...(dto.telefon !== undefined && { telefon: dto.telefon || null }),
+        ...(dto.eposta !== undefined && { eposta: dto.eposta || null }),
+        ...(dto.notes !== undefined && { notes: dto.notes || null }),
+        ...(dto.isPrimary !== undefined && { isPrimary: dto.isPrimary }),
+      },
+    });
+  }
+
+  async deleteYetkili(taxpayerId: string, yetkiliId: string, tenantId: string) {
+    await this.assertOwnership(taxpayerId, tenantId);
+    const existing = await (this.prisma as any).taxpayerYetkili.findFirst({
+      where: { id: yetkiliId, taxpayerId, tenantId },
+    });
+    if (!existing) throw new NotFoundException('Yetkili bulunamadı');
+    return (this.prisma as any).taxpayerYetkili.update({
+      where: { id: yetkiliId },
+      data: { isActive: false },
+    });
+  }
+
+  private async assertOwnership(taxpayerId: string, tenantId: string) {
+    const tp = await this.prisma.taxpayer.findFirst({
+      where: { id: taxpayerId, tenantId },
+      select: { id: true },
+    });
+    if (!tp) throw new NotFoundException('Mükellef bulunamadı');
   }
 
   async create(tenantId: string, dto: any) {

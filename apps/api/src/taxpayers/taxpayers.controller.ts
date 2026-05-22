@@ -6,7 +6,11 @@ import { AuthGuard } from '@nestjs/passport';
 import { RolesGuard } from '../auth/guards/roles.guard';
 import { Roles } from '../auth/decorators/roles.decorator';
 import { TaxpayersService } from './taxpayers.service';
-import { CreateTaxpayerSchema } from '@mali-musavir/shared';
+import {
+  CreateTaxpayerSchema,
+  CreateTaxpayerYetkiliSchema,
+  UpdateTaxpayerYetkiliSchema,
+} from '@mali-musavir/shared';
 
 @Controller('taxpayers')
 @UseGuards(AuthGuard('jwt'), RolesGuard)
@@ -155,5 +159,59 @@ export class TaxpayersController {
       year ? parseInt(year, 10) : undefined,
       month ? parseInt(month, 10) : undefined,
     );
+  }
+
+  // ============================================================
+  // v1.37.0: Firma Yetkilileri CRUD
+  // ============================================================
+  @Get(':id/yetkililer')
+  listYetkililer(@Req() req: any, @Param('id') id: string) {
+    return this.taxpayersService.listYetkililer(id, req.user.tenantId);
+  }
+
+  @Post(':id/yetkililer')
+  @Roles('ADMIN', 'STAFF')
+  createYetkili(@Req() req: any, @Param('id') id: string, @Body() body: any) {
+    const result = CreateTaxpayerYetkiliSchema.safeParse(body);
+    if (!result.success) {
+      const messages = result.error.errors.map(
+        (e) => `${e.path.join('.')}: ${e.message}`,
+      );
+      throw new BadRequestException(messages);
+    }
+    return this.taxpayersService.createYetkili(id, req.user.tenantId, result.data);
+  }
+
+  @Put(':id/yetkililer/:yetkiliId')
+  @Roles('ADMIN', 'STAFF')
+  updateYetkili(
+    @Req() req: any,
+    @Param('id') id: string,
+    @Param('yetkiliId') yetkiliId: string,
+    @Body() body: any,
+  ) {
+    const result = UpdateTaxpayerYetkiliSchema.safeParse(body);
+    if (!result.success) {
+      const messages = result.error.errors.map(
+        (e) => `${e.path.join('.')}: ${e.message}`,
+      );
+      throw new BadRequestException(messages);
+    }
+    return this.taxpayersService.updateYetkili(
+      id,
+      yetkiliId,
+      req.user.tenantId,
+      result.data,
+    );
+  }
+
+  @Delete(':id/yetkililer/:yetkiliId')
+  @Roles('ADMIN', 'STAFF')
+  deleteYetkili(
+    @Req() req: any,
+    @Param('id') id: string,
+    @Param('yetkiliId') yetkiliId: string,
+  ) {
+    return this.taxpayersService.deleteYetkili(id, yetkiliId, req.user.tenantId);
   }
 }

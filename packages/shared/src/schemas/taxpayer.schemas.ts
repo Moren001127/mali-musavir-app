@@ -32,6 +32,35 @@ export const CreateTaxpayerSchema = z.object({
   // "BILANCO" → Bilanço esasında defter (Banka Takip listesinde görünür)
   // "ISLETME" → İşletme defteri (Banka Takip listesine girmez)
   defterTuru: z.enum(['BILANCO', 'ISLETME']).optional().nullable(),
+
+  // === v1.37.0: Mükellef kartı genişletme (Hattat tarzı) ===
+  logoUrl: z.string().url().optional().nullable().or(z.literal('')),
+  naceKodu: z.string().max(20).optional().nullable().or(z.literal('')),
+  ticaretSicilNo: z.string().max(50).optional().nullable().or(z.literal('')),
+  mersisNo: z.string().max(20).optional().nullable().or(z.literal('')),
+  odaSicilNo: z.string().max(50).optional().nullable().or(z.literal('')),
+  bagkurSicilNo: z.string().max(50).optional().nullable().or(z.literal('')),
+  kepAdresi: z.string().email('Geçerli KEP adresi giriniz').optional().nullable().or(z.literal('')),
+  webSitesi: z.string().optional().nullable().or(z.literal('')),
+  eFaturaEntegrator: z.string().max(50).optional().nullable().or(z.literal('')),
 });
 
 export type CreateTaxpayerDto = z.infer<typeof CreateTaxpayerSchema>;
+
+// ============================================================
+// v1.37.0: TaxpayerYetkili (firma yetkilileri) şemaları
+// ============================================================
+export const CreateTaxpayerYetkiliSchema = z.object({
+  firstName: z.string().min(2, 'Ad en az 2 karakter').max(100),
+  lastName: z.string().min(2, 'Soyad en az 2 karakter').max(100),
+  tcNo: z.string().regex(/^\d{11}$/, 'TC No 11 haneli olmalı').optional().nullable().or(z.literal('')),
+  gorev: z.string().max(100).optional().nullable().or(z.literal('')),
+  telefon: z.string().max(50).optional().nullable().or(z.literal('')),
+  eposta: z.string().email('Geçerli e-posta giriniz').optional().nullable().or(z.literal('')),
+  notes: z.string().max(500).optional().nullable().or(z.literal('')),
+  isPrimary: z.boolean().optional().default(false),
+});
+export type CreateTaxpayerYetkiliDto = z.infer<typeof CreateTaxpayerYetkiliSchema>;
+
+export const UpdateTaxpayerYetkiliSchema = CreateTaxpayerYetkiliSchema.partial();
+export type UpdateTaxpayerYetkiliDto = z.infer<typeof UpdateTaxpayerYetkiliSchema>;

@@ -38,6 +38,8 @@ model Tenant {
   officeFinancialAccounts OfficeFinancialAccount[]
   officeAccountTransfers  OfficeAccountTransfer[]
   automations             Automation[]
+  // v1.37.0: Firma yetkilileri
+  taxpayerYetkililer      TaxpayerYetkili[]
 
   @@map("tenants")
 }
@@ -173,6 +175,18 @@ model Taxpayer {
   // "ISLETME" → İşletme defteri tutuluyor
   defterTuru         String?  // "BILANCO" | "ISLETME"
   hattatId           String?  // Hattat yazılımındaki iç mükellef kodu (ZIP import eşleştirme için)
+
+  // === v1.37.0: Mükellef kartı genişletme (Hattat tarzı) ===
+  logoUrl            String?  // Mükellef logosu (S3/MinIO URL)
+  naceKodu           String?  // NACE faaliyet kodu (örn. "56.10.06")
+  ticaretSicilNo    String?  // Ticaret sicil numarası
+  mersisNo           String?  // MERSİS no (16 hane)
+  odaSicilNo         String?  // Oda sicil no (İTO/ATO vb.)
+  bagkurSicilNo     String?  // Bağ-Kur sicil no
+  kepAdresi          String?  // Kayıtlı Elektronik Posta adresi
+  webSitesi          String?  // Şirket web sitesi
+  eFaturaEntegrator String?  // "UYUMSOFT" | "BILGENET" | "FORIBA" | "GIB_PORTAL" | diğer
+
   createdAt   DateTime     @default(now())
   updatedAt   DateTime     @updatedAt
 
@@ -203,10 +217,41 @@ model Taxpayer {
   bankaEkstreKayitlari BankaEkstreKaydi[]
   // v1.36.74 Faz 1: Gorevler iliskisi
   tasks               Task[]
+  // v1.37.0: Firma yetkilileri (Hattat tarzı mükellef kartı)
+  yetkililer         TaxpayerYetkili[]
 
   @@index([tenantId])
   @@index([taxNumber])
   @@map("taxpayers")
+}
+
+// ============================================================
+// FIRMA YETKILI BILGILERI (v1.37.0 — Hattat tarzı mükellef kartı)
+// Şirket / mükellef adına yetkili kişiler:
+// müdür, ortak, imza yetkilisi, muhasebe sorumlusu vb.
+// ============================================================
+model TaxpayerYetkili {
+  id          String   @id @default(cuid())
+  tenantId    String
+  taxpayerId  String
+  firstName   String
+  lastName    String
+  tcNo        String?  // T.C. Kimlik No (opsiyonel)
+  gorev       String?  // "MUDUR" | "ORTAK" | "IMZA_YETKILI" | "MUHASEBE_SORUMLUSU" | serbest metin
+  telefon     String?
+  eposta      String?
+  notes       String?
+  isPrimary   Boolean  @default(false)  // Birincil iletişim kişisi mi
+  isActive    Boolean  @default(true)
+  createdAt   DateTime @default(now())
+  updatedAt   DateTime @updatedAt
+
+  tenant      Tenant   @relation(fields: [tenantId], references: [id], onDelete: Cascade)
+  taxpayer    Taxpayer @relation(fields: [taxpayerId], references: [id], onDelete: Cascade)
+
+  @@index([tenantId])
+  @@index([taxpayerId])
+  @@map("taxpayer_yetkililer")
 }
 
 // ============================================================
