@@ -29,6 +29,9 @@ const MUTED = 'rgba(250,250,249,0.58)';
 const VOICE_BUTTON_SIZE = 56;
 const VOICE_BUTTON_MARGIN = 16;
 const VOICE_BUTTON_POSITION_KEY = 'moren-ai-voice-button-position';
+const CHAT_PANEL_DEFAULT_WIDTH = 380;
+const CHAT_PANEL_DEFAULT_HEIGHT = 520;
+const CHAT_PANEL_POSITION_KEY = 'moren-ai-chat-panel-position';
 
 type VoiceStatus = 'idle' | 'connecting' | 'listening' | 'thinking' | 'speaking' | 'error';
 
@@ -180,14 +183,18 @@ function realtimeInstructions(currentModule: string, currentPath: string) {
   ].join(' ');
 }
 
-function clampFloatingPoint(point: FloatingPoint): FloatingPoint {
+function clampFloatingRect(point: FloatingPoint, width: number, height: number): FloatingPoint {
   if (typeof window === 'undefined') return point;
-  const maxX = Math.max(VOICE_BUTTON_MARGIN, window.innerWidth - VOICE_BUTTON_SIZE - VOICE_BUTTON_MARGIN);
-  const maxY = Math.max(VOICE_BUTTON_MARGIN, window.innerHeight - VOICE_BUTTON_SIZE - VOICE_BUTTON_MARGIN);
+  const maxX = Math.max(VOICE_BUTTON_MARGIN, window.innerWidth - width - VOICE_BUTTON_MARGIN);
+  const maxY = Math.max(VOICE_BUTTON_MARGIN, window.innerHeight - height - VOICE_BUTTON_MARGIN);
   return {
     x: Math.min(Math.max(point.x, VOICE_BUTTON_MARGIN), maxX),
     y: Math.min(Math.max(point.y, VOICE_BUTTON_MARGIN), maxY),
   };
+}
+
+function clampFloatingPoint(point: FloatingPoint): FloatingPoint {
+  return clampFloatingRect(point, VOICE_BUTTON_SIZE, VOICE_BUTTON_SIZE);
 }
 
 export default function GlobalMorenVoice() {
@@ -206,7 +213,9 @@ export default function GlobalMorenVoice() {
   const [sessionCost, setSessionCost] = useState(0);
   const [sessionTokens, setSessionTokens] = useState(0);
   const [voiceButtonPosition, setVoiceButtonPosition] = useState<FloatingPoint | null>(null);
+  const [chatPanelPosition, setChatPanelPosition] = useState<FloatingPoint | null>(null);
   const audioRef = useRef<HTMLAudioElement | null>(null);
+  const chatPanelRef = useRef<HTMLDivElement | null>(null);
   const peerRef = useRef<RTCPeerConnection | null>(null);
   const streamRef = useRef<MediaStream | null>(null);
   const dataChannelRef = useRef<RTCDataChannel | null>(null);
@@ -223,6 +232,16 @@ export default function GlobalMorenVoice() {
     startTop: number;
     dragged: boolean;
   } | null>(null);
+  const chatPanelDragRef = useRef<{
+    pointerId: number;
+    startX: number;
+    startY: number;
+    startLeft: number;
+    startTop: number;
+    width: number;
+    height: number;
+    dragged: boolean;
+  } | null>(null);
   const suppressButtonClickRef = useRef(false);
 
   const isPortalPath = !!pathname && (pathname.startsWith('/panel') || pathname.startsWith('/fatura-merkezi'));
@@ -235,6 +254,17 @@ export default function GlobalMorenVoice() {
       const parsed = JSON.parse(raw) as FloatingPoint;
       if (Number.isFinite(parsed?.x) && Number.isFinite(parsed?.y)) {
         setVoiceButtonPosition(clampFloatingPoint(parsed));
+      }
+    } catch {}
+  }, []);
+
+  useEffect(() => {
+    try {
+      const raw = window.localStorage.getItem(CHAT_PANEL_POSITION_KEY);
+      if (!raw) return;
+      const parsed = JSON.parse(raw) as FloatingPoint;
+      if (Number.isFinite(parsed?.x) && Number.isFinite(parsed?.y)) {
+        setChatPanelPosition(clampFloatingRect(parsed, CHAT_PANEL_DEFAULT_WIDTH, CHAT_PANEL_DEFAULT_HEIGHT));
       }
     } catch {}
   }, []);
@@ -288,6 +318,59 @@ export default function GlobalMorenVoice() {
       });
     }
   }, [saveVoiceButtonPosition]);
+
+  const saveChatPanelPosition = useCallback((point: FloatingPoint, width = CHAT_PANEL_DEFAULT_WIDTH, height = CHAT_PANEL_DEFAULT_HEIGHT) => {
+    const next = clampFloatingRect(point, width, height);
+    setChatPanelPosition(next);
+    try {
+      window.localStorage.setItem(CHAT_PANEL_POSITION_KEY, JSON.stringify(next));
+    } catch {}
+    return next;
+  }, []);
+
+  const handleChatPanelPointerDown = useCallback((event: React.PointerEvent<HTMLDivElement>) => {
+    if (event.button !== 0) return;
+    if ((event.target as HTMLElement).closest('button')) return;
+    const rect = chatPanelRef.current?.getBoundingClientRect();
+    if (!rect) return;
+    chatPanelDragRef.current = {
+      pointerId: event.pointerId,
+      startX: event.clientX,
+      startY: event.clientY,
+      startLeft: rect.left,
+      startTop: rect.top,
+      width: rect.width,
+      height: rect.height,
+      dragged: false,
+    };
+    event.currentTarget.setPointerCapture(event.pointerId);
+  }, []);
+
+  const handleChatPanelPointerMove = useCallback((event: React.PointerEvent<HTMLDivElement>) => {
+    const drag = chatPanelDragRef.current;
+    if (!drag || drag.pointerId !== event.pointerId) return;
+    const dx = event.clientX - drag.startX;
+    const dy = event.clientY - drag.startY;
+    if (Math.abs(dx) > 3 || Math.abs(dy) > 3) drag.dragged = true;
+    if (!drag.dragged) return;
+    setChatPanelPosition(clampFloatingRect({ x: drag.startLeft + dx, y: drag.startTop + dy }, drag.width, drag.height));
+  }, []);
+
+  const handleChatPanelPointerUp = useCallback((event: React.PointerEvent<HTMLDivElement>) => {
+    const drag = chatPanelDragRef.current;
+    if (!drag || drag.pointerId !== event.pointerId) return;
+    try {
+      event.currentTarget.releasePointerCapture(event.pointerId);
+    } catch {}
+    chatPanelDragRef.current = null;
+
+    if (drag.dragged) {
+      saveChatPanelPosition({
+        x: drag.startLeft + event.clientX - drag.startX,
+        y: drag.startTop + event.clientY - drag.startY,
+      }, drag.width, drag.height);
+    }
+  }, [saveChatPanelPosition]);
 
   const rememberConversationId = useCallback((id: string | null) => {
     conversationIdRef.current = id;
@@ -857,14 +940,23 @@ export default function GlobalMorenVoice() {
       )}
       {chatOpen ? (
         <div
-          className="fixed bottom-6 right-6 z-[86] flex max-h-[calc(100vh-48px)] w-[380px] max-w-[calc(100vw-32px)] flex-col overflow-hidden rounded-xl border shadow-2xl"
+          ref={chatPanelRef}
+          className="fixed z-[86] flex max-h-[calc(100vh-48px)] w-[380px] max-w-[calc(100vw-32px)] flex-col overflow-hidden rounded-xl border shadow-2xl"
           style={{
+            ...(chatPanelPosition ? { left: chatPanelPosition.x, top: chatPanelPosition.y } : { right: 24, bottom: 24 }),
             background: 'linear-gradient(180deg, rgba(18,14,12,0.99), rgba(9,8,6,0.99))',
             borderColor: 'rgba(212,184,118,0.28)',
             boxShadow: '0 24px 75px rgba(0,0,0,0.52), 0 0 36px rgba(212,184,118,0.12)',
           }}
         >
-          <div className="flex items-center gap-3 border-b px-4 py-3" style={{ borderColor: LINE }}>
+          <div
+            className="flex items-center gap-3 border-b px-4 py-3"
+            onPointerDown={handleChatPanelPointerDown}
+            onPointerMove={handleChatPanelPointerMove}
+            onPointerUp={handleChatPanelPointerUp}
+            onPointerCancel={handleChatPanelPointerUp}
+            style={{ borderColor: LINE, cursor: 'move', touchAction: 'none' }}
+          >
             <div
               className="flex h-10 w-10 shrink-0 items-center justify-center rounded-lg"
               style={{

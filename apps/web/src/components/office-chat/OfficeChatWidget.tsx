@@ -1,6 +1,7 @@
 'use client';
 
-import { useEffect, useMemo, useRef, useState } from 'react';
+import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
+import type { PointerEvent as ReactPointerEvent } from 'react';
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import { Hash, Loader2, MessageCircle, Search, Send, UserRound, Users, X } from 'lucide-react';
 import { toast } from 'sonner';
@@ -8,9 +9,27 @@ import { useMe } from '@/hooks/useAuth';
 import { officeChatApi, type OfficeChatThread, type OfficeChatUser } from '@/lib/office-chat';
 
 const GOLD = '#d4b876';
+const CHAT = '#8fd8c2';
+const CHAT_DARK = '#286d5f';
 const LINE = 'rgba(212,184,118,0.16)';
+const CHAT_LINE = 'rgba(143,216,194,0.16)';
 const TEXT = '#fafaf9';
 const MUTED = 'rgba(250,250,249,0.52)';
+const CHAT_BUTTON_SIZE = 48;
+const FLOATING_MARGIN = 16;
+const CHAT_BUTTON_POSITION_KEY = 'moren-office-chat-button-position';
+
+type FloatingPoint = { x: number; y: number };
+
+function clampFloatingPoint(point: FloatingPoint, size = CHAT_BUTTON_SIZE): FloatingPoint {
+  if (typeof window === 'undefined') return point;
+  const maxX = Math.max(FLOATING_MARGIN, window.innerWidth - size - FLOATING_MARGIN);
+  const maxY = Math.max(FLOATING_MARGIN, window.innerHeight - size - FLOATING_MARGIN);
+  return {
+    x: Math.min(Math.max(point.x, FLOATING_MARGIN), maxX),
+    y: Math.min(Math.max(point.y, FLOATING_MARGIN), maxY),
+  };
+}
 
 export default function OfficeChatWidget({ enabled }: { enabled: boolean }) {
   const queryClient = useQueryClient();
@@ -19,7 +38,17 @@ export default function OfficeChatWidget({ enabled }: { enabled: boolean }) {
   const [selectedThreadId, setSelectedThreadId] = useState<string | null>(null);
   const [input, setInput] = useState('');
   const [search, setSearch] = useState('');
+  const [buttonPosition, setButtonPosition] = useState<FloatingPoint | null>(null);
   const bottomRef = useRef<HTMLDivElement | null>(null);
+  const buttonDragRef = useRef<{
+    pointerId: number;
+    startX: number;
+    startY: number;
+    startLeft: number;
+    startTop: number;
+    dragged: boolean;
+  } | null>(null);
+  const suppressButtonClickRef = useRef(false);
 
   const threadsQuery = useQuery({
     queryKey: ['office-chat', 'threads'],
@@ -50,6 +79,68 @@ export default function OfficeChatWidget({ enabled }: { enabled: boolean }) {
       if (threadId) setSelectedThreadId(threadId);
     }
   }, [enabled]);
+
+  useEffect(() => {
+    if (typeof window === 'undefined') return;
+    try {
+      const raw = window.localStorage.getItem(CHAT_BUTTON_POSITION_KEY);
+      if (!raw) return;
+      const parsed = JSON.parse(raw) as FloatingPoint;
+      if (Number.isFinite(parsed?.x) && Number.isFinite(parsed?.y)) {
+        setButtonPosition(clampFloatingPoint(parsed));
+      }
+    } catch {}
+  }, []);
+
+  const saveButtonPosition = useCallback((point: FloatingPoint) => {
+    const next = clampFloatingPoint(point);
+    setButtonPosition(next);
+    try {
+      window.localStorage.setItem(CHAT_BUTTON_POSITION_KEY, JSON.stringify(next));
+    } catch {}
+    return next;
+  }, []);
+
+  const handleButtonPointerDown = useCallback((event: ReactPointerEvent<HTMLButtonElement>) => {
+    if (event.button !== 0) return;
+    const rect = event.currentTarget.getBoundingClientRect();
+    buttonDragRef.current = {
+      pointerId: event.pointerId,
+      startX: event.clientX,
+      startY: event.clientY,
+      startLeft: rect.left,
+      startTop: rect.top,
+      dragged: false,
+    };
+    event.currentTarget.setPointerCapture(event.pointerId);
+  }, []);
+
+  const handleButtonPointerMove = useCallback((event: ReactPointerEvent<HTMLButtonElement>) => {
+    const drag = buttonDragRef.current;
+    if (!drag || drag.pointerId !== event.pointerId) return;
+    const dx = event.clientX - drag.startX;
+    const dy = event.clientY - drag.startY;
+    if (Math.abs(dx) > 3 || Math.abs(dy) > 3) drag.dragged = true;
+    if (!drag.dragged) return;
+    setButtonPosition(clampFloatingPoint({ x: drag.startLeft + dx, y: drag.startTop + dy }));
+  }, []);
+
+  const handleButtonPointerUp = useCallback((event: ReactPointerEvent<HTMLButtonElement>) => {
+    const drag = buttonDragRef.current;
+    if (!drag || drag.pointerId !== event.pointerId) return;
+    try {
+      event.currentTarget.releasePointerCapture(event.pointerId);
+    } catch {}
+    buttonDragRef.current = null;
+
+    if (drag.dragged) {
+      suppressButtonClickRef.current = true;
+      saveButtonPosition({
+        x: drag.startLeft + event.clientX - drag.startX,
+        y: drag.startTop + event.clientY - drag.startY,
+      });
+    }
+  }, [saveButtonPosition]);
 
   useEffect(() => {
     if (!selectedThreadId && threads.length > 0) {
@@ -115,12 +206,25 @@ export default function OfficeChatWidget({ enabled }: { enabled: boolean }) {
       {!open ? (
         <button
           type="button"
-          onClick={() => setOpen(true)}
-          className="fixed bottom-6 left-6 z-[84] flex h-12 w-12 items-center justify-center rounded-full transition hover:scale-[1.04]"
+          onClick={() => {
+            if (suppressButtonClickRef.current) {
+              suppressButtonClickRef.current = false;
+              return;
+            }
+            setOpen(true);
+          }}
+          onPointerDown={handleButtonPointerDown}
+          onPointerMove={handleButtonPointerMove}
+          onPointerUp={handleButtonPointerUp}
+          onPointerCancel={handleButtonPointerUp}
+          className="fixed z-[84] flex h-12 w-12 items-center justify-center rounded-full transition hover:scale-[1.04]"
           style={{
-            background: 'linear-gradient(135deg, #d4b876, #8b7649)',
-            color: '#11100d',
-            boxShadow: '0 18px 44px rgba(212,184,118,0.24), inset 0 1px 0 rgba(255,255,255,0.28)',
+            ...(buttonPosition ? { left: buttonPosition.x, top: buttonPosition.y } : { left: 24, bottom: 24 }),
+            background: `linear-gradient(135deg, ${CHAT}, ${CHAT_DARK})`,
+            color: '#07110f',
+            boxShadow: '0 18px 44px rgba(143,216,194,0.22), inset 0 1px 0 rgba(255,255,255,0.24)',
+            cursor: 'grab',
+            touchAction: 'none',
           }}
           title="Ofis ici mesajlasma"
           aria-label="Ofis ici mesajlasma"
@@ -148,7 +252,7 @@ export default function OfficeChatWidget({ enabled }: { enabled: boolean }) {
             <div className="flex items-center gap-3 border-b px-3 py-3" style={{ borderColor: LINE }}>
               <div
                 className="flex h-9 w-9 shrink-0 items-center justify-center rounded-lg"
-                style={{ background: 'rgba(212,184,118,0.12)', border: '1px solid rgba(212,184,118,0.28)', color: GOLD }}
+                style={{ background: 'rgba(143,216,194,0.12)', border: '1px solid rgba(143,216,194,0.28)', color: CHAT }}
               >
                 <Users size={17} />
               </div>
@@ -161,7 +265,7 @@ export default function OfficeChatWidget({ enabled }: { enabled: boolean }) {
             </div>
 
             <div className="border-b p-2" style={{ borderColor: LINE }}>
-              <div className="flex items-center gap-2 rounded-lg border px-2" style={{ borderColor: LINE, background: 'rgba(255,255,255,0.025)' }}>
+              <div className="flex items-center gap-2 rounded-lg border px-2" style={{ borderColor: CHAT_LINE, background: 'rgba(255,255,255,0.025)' }}>
                 <Search size={13} style={{ color: MUTED }} />
                 <input
                   value={search}
@@ -220,7 +324,7 @@ export default function OfficeChatWidget({ enabled }: { enabled: boolean }) {
             <div className="flex items-center gap-3 border-b px-4 py-3" style={{ borderColor: LINE }}>
               <div
                 className="flex h-10 w-10 shrink-0 items-center justify-center rounded-lg"
-                style={{ background: 'rgba(212,184,118,0.12)', border: '1px solid rgba(212,184,118,0.28)', color: GOLD }}
+                style={{ background: 'rgba(143,216,194,0.12)', border: '1px solid rgba(143,216,194,0.28)', color: CHAT }}
               >
                 {selectedThread?.kind === 'GENERAL' ? <Hash size={18} /> : <UserRound size={18} />}
               </div>
