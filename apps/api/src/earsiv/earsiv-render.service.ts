@@ -194,6 +194,7 @@ export class EarsivRenderService {
   var morenSafeQrSvg = ${JSON.stringify(safeQrSvg)};
   function b64DecodeUnicode(str) {
     try {
+      str = String(str || '').replace(/\\s+/g, '');
       var bin = atob(str);
       var bytes = new Uint8Array(bin.length);
       for (var i = 0; i < bin.length; i++) bytes[i] = bin.charCodeAt(i);

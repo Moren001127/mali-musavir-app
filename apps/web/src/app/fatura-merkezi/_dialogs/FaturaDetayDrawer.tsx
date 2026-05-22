@@ -113,7 +113,7 @@ export default function FaturaDetayDrawer({ taxpayerId, direction, period, onClo
     const url = fileQ.data?.url;
     if (!url || !fitToScreen) return url;
     const glue = url.includes('#') ? '&' : '#';
-    return `${url}${glue}zoom=page-fit&view=Fit&toolbar=0&navpanes=0`;
+    return `${url}${glue}zoom=page-width&view=FitH&toolbar=0&navpanes=0`;
   }, [fileQ.data?.url, fitToScreen]);
 
   useEffect(() => {
@@ -125,8 +125,7 @@ export default function FaturaDetayDrawer({ taxpayerId, direction, period, onClo
 
     const update = () => {
       const width = Math.max(1, box.clientWidth - 24);
-      const height = Math.max(1, box.clientHeight - 24);
-      const scale = Math.min(width / 794, height / 1123, 1);
+      const scale = Math.min(width / 794, 1.8);
       setFitScale(Math.max(0.35, Number(scale.toFixed(3))));
     };
 
@@ -215,7 +214,7 @@ export default function FaturaDetayDrawer({ taxpayerId, direction, period, onClo
           )}
           <div
             ref={previewBoxRef}
-            className={`flex-1 min-h-0 ${fitToScreen ? 'overflow-hidden flex items-start justify-center p-3' : 'overflow-auto flex items-center justify-center'}`}
+            className={`flex-1 min-h-0 ${fitToScreen ? 'overflow-auto flex items-start justify-center p-3' : 'overflow-auto flex items-start justify-center'}`}
           >
             {!current && (
               <div className="text-center" style={{ color: 'var(--text-muted)' }}>
@@ -228,33 +227,62 @@ export default function FaturaDetayDrawer({ taxpayerId, direction, period, onClo
               <Loader2 size={22} className="animate-spin" style={{ color: 'var(--accent)' }} />
             )}
             {current && fileQ.data?.url && (
-              <iframe
-                src={fitUrl || fileQ.data.url}
-                className={fitToScreen ? 'shrink-0 rounded-sm shadow-2xl' : 'w-full h-full'}
-                style={fitToScreen ? {
-                  width: 794,
-                  height: 1123,
-                  background: 'white',
-                  transform: `scale(${fitScale})`,
-                  transformOrigin: 'top center',
-                } : { background: 'white' }}
-                title={current.belgeNo || current.id}
-              />
+              fitToScreen ? (
+                <div
+                  className="shrink-0 rounded-sm shadow-2xl overflow-hidden"
+                  style={{ width: 794 * fitScale, height: 1123 * fitScale, background: 'white' }}
+                >
+                  <iframe
+                    src={fitUrl || fileQ.data.url}
+                    className="border-0"
+                    style={{
+                      width: 794,
+                      height: 1123,
+                      background: 'white',
+                      transform: `scale(${fitScale})`,
+                      transformOrigin: 'top left',
+                    }}
+                    title={current.belgeNo || current.id}
+                  />
+                </div>
+              ) : (
+                <iframe
+                  src={fileQ.data.url}
+                  className="w-full h-full border-0"
+                  style={{ background: 'white' }}
+                  title={current.belgeNo || current.id}
+                />
+              )
             )}
             {current && !fileQ.data?.url && fileQ.data?.inlineHtml && (
-              <iframe
-                srcDoc={fileQ.data.inlineHtml}
-                className={fitToScreen ? 'shrink-0 rounded-sm shadow-2xl' : 'w-full h-full'}
-                style={fitToScreen ? {
-                  width: 794,
-                  height: 1123,
-                  background: 'white',
-                  transform: `scale(${fitScale})`,
-                  transformOrigin: 'top center',
-                } : { background: 'white' }}
-                title={current.belgeNo || current.id}
-                sandbox="allow-same-origin allow-scripts allow-modals allow-popups allow-forms"
-              />
+              fitToScreen ? (
+                <div
+                  className="shrink-0 rounded-sm shadow-2xl overflow-hidden"
+                  style={{ width: 794 * fitScale, height: 1123 * fitScale, background: 'white' }}
+                >
+                  <iframe
+                    srcDoc={fileQ.data.inlineHtml}
+                    className="border-0"
+                    style={{
+                      width: 794,
+                      height: 1123,
+                      background: 'white',
+                      transform: `scale(${fitScale})`,
+                      transformOrigin: 'top left',
+                    }}
+                    title={current.belgeNo || current.id}
+                    sandbox="allow-same-origin allow-scripts allow-modals allow-popups allow-forms"
+                  />
+                </div>
+              ) : (
+                <iframe
+                  srcDoc={fileQ.data.inlineHtml}
+                  className="w-full h-full border-0"
+                  style={{ background: 'white' }}
+                  title={current.belgeNo || current.id}
+                  sandbox="allow-same-origin allow-scripts allow-modals allow-popups allow-forms"
+                />
+              )
             )}
             {current && !fileQ.isLoading && !hasPreview && (
               <div className="text-center" style={{ color: 'var(--text-muted)' }}>

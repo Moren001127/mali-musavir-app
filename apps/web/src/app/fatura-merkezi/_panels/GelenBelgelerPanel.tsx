@@ -270,11 +270,18 @@ export default function GelenBelgelerPanel({ taxpayerId, period }: Props) {
       </div>
 
       {/* Tablo */}
-      <div className="rounded-xl overflow-hidden" style={{ background: 'var(--surface)', border: '1px solid var(--border)' }}>
+      <div
+        className="rounded-xl overflow-hidden"
+        style={{
+          background: 'var(--surface)',
+          border: '1px solid rgba(212,184,118,0.38)',
+          boxShadow: 'inset 0 0 0 1px rgba(255,255,255,0.035), 0 10px 30px rgba(0,0,0,0.20)',
+        }}
+      >
         <div className="overflow-x-auto">
-          <table className="w-full">
-            <thead style={{ background: 'var(--surface-2)' }}>
-              <tr style={{ borderBottom: '1px solid var(--border)' }}>
+          <table className="w-full" style={{ borderCollapse: 'collapse' }}>
+            <thead style={{ background: 'rgba(212,184,118,0.10)' }}>
+              <tr style={{ borderBottom: '1px solid rgba(212,184,118,0.30)' }}>
                 <Th>FİRMA / AD</Th>
                 <Th>DEFTER</Th>
                 <Th align="right" tone="#f59e0b">BEKL. ALIŞ</Th>
@@ -282,7 +289,7 @@ export default function GelenBelgelerPanel({ taxpayerId, period }: Props) {
                 <Th align="right" tone="#10b981">ONAY. ALIŞ</Th>
                 <Th align="right" tone="#10b981">ONAY. SATIŞ</Th>
                 <Th align="right">LUCA</Th>
-                <th className="px-3 py-2.5"></th>
+                <th className="px-3 py-2.5" style={{ borderLeft: '1px solid rgba(212,184,118,0.14)' }}></th>
               </tr>
             </thead>
             <tbody>
@@ -297,11 +304,11 @@ export default function GelenBelgelerPanel({ taxpayerId, period }: Props) {
               {rows.map((r, idx) => (
                 <tr
                   key={r.id}
-                  style={{ borderBottom: idx === rows.length - 1 ? 'none' : '1px solid var(--border-soft)' }}
-                  onMouseEnter={(e) => (e.currentTarget.style.background = 'var(--surface-2)')}
+                  style={{ borderBottom: idx === rows.length - 1 ? 'none' : '1px solid rgba(212,184,118,0.13)' }}
+                  onMouseEnter={(e) => (e.currentTarget.style.background = 'rgba(212,184,118,0.055)')}
                   onMouseLeave={(e) => (e.currentTarget.style.background = 'transparent')}
                 >
-                  <td className="px-3 py-2.5 text-[13px] font-medium" style={{ color: 'var(--text)' }}>
+                  <td className="px-3 py-2.5 text-[13px] font-medium" style={{ color: 'var(--text)', borderRight: '1px solid rgba(212,184,118,0.12)' }}>
                     <div className="flex items-center gap-2">
                       <button
                         type="button"
@@ -323,13 +330,13 @@ export default function GelenBelgelerPanel({ taxpayerId, period }: Props) {
                       )}
                     </div>
                   </td>
-                  <td className="px-3 py-2.5 text-[12px]" style={{ color: 'var(--text-secondary)' }}>{taxpayerBookType(r)}</td>
+                  <td className="px-3 py-2.5 text-[12px]" style={{ color: 'var(--text-secondary)', borderRight: '1px solid rgba(212,184,118,0.12)' }}>{taxpayerBookType(r)}</td>
                   <NumCell value={r.pendingAlis} tone="#f59e0b" onClick={() => r.pendingAlis > 0 && setSelectedDoc({ taxpayerId: r.id, direction: 'ALIS' })} />
                   <NumCell value={r.pendingSatis} tone="#f59e0b" onClick={() => r.pendingSatis > 0 && setSelectedDoc({ taxpayerId: r.id, direction: 'SATIS' })} />
                   <NumCell value={r.approvedAlis} tone="#10b981" />
                   <NumCell value={r.approvedSatis} tone="#10b981" />
                   <NumCell value={r.postedToLuca} tone="#a78bfa" />
-                  <td className="px-3 py-2.5 text-right">
+                  <td className="px-3 py-2.5 text-right" style={{ borderLeft: '1px solid rgba(212,184,118,0.12)' }}>
                     <button
                       onClick={() => setSelectedDoc({ taxpayerId: r.id, direction: 'ALIS' })}
                       className="p-1 rounded-md transition-colors"
@@ -364,7 +371,7 @@ function Th({ children, align, tone }: { children: React.ReactNode; align?: 'rig
   return (
     <th
       className={`px-3 py-2.5 text-[10.5px] font-semibold tracking-wide whitespace-nowrap ${align === 'right' ? 'text-right' : 'text-left'}`}
-      style={{ color: tone || 'var(--text-muted)' }}
+      style={{ color: tone || 'var(--text-muted)', borderRight: '1px solid rgba(212,184,118,0.14)' }}
     >
       {children}
     </th>
@@ -373,7 +380,7 @@ function Th({ children, align, tone }: { children: React.ReactNode; align?: 'rig
 
 function NumCell({ value, tone, onClick }: { value: number; tone: string; onClick?: () => void }) {
   return (
-    <td className="px-3 py-2.5 text-right">
+    <td className="px-3 py-2.5 text-right" style={{ borderRight: '1px solid rgba(212,184,118,0.10)' }}>
       {value > 0 ? (
         <button
           type="button"
