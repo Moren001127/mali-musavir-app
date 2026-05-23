@@ -1641,9 +1641,8 @@ export class FaturaMuhasebelestirmeService {
   }
 
   /**
-   * Toplu hesap planı yenileme — verilen mükellef id listesi (yoksa tüm aktif mükellefler)
-   * için tek tek refreshAccountPlan'i çağırır ve oluşturulan job sayısını döner.
-   * Luca Local Agent bu job'ları sırayla işler.
+   * Toplu hesap plani yenileme. Verilen mukellef id listesi (yoksa tum aktif mukellefler)
+   * icin sirayla refreshAccountPlan'i cagirir. Her biri icin Luca Local Agent'a job yaratir.
    */
   async refreshAccountPlanBulk(
     tenantId: string,
@@ -1672,13 +1671,7 @@ export class FaturaMuhasebelestirmeService {
       }
     }
     const success = results.filter((r) => r.ok).length;
-    return {
-      ok: true,
-      total: results.length,
-      success,
-      failed: results.length - success,
-      results,
-    };
+    return { ok: true, total: results.length, success, failed: results.length - success, results };
   }
 
   async importAccountPlanSnapshot(params: {
@@ -3954,4 +3947,51 @@ export class FaturaMuhasebelestirmeService {
     if (!firmaKimlikNo || !taxpayerId || !accounts.length) return null;
     const accountByCode = new Map(accounts.map((account) => [String(account.accountCode || '').trim(), account]));
     const memory = await (this.prisma as any).vendorMemory.findUnique({
-    
+      where: { tenantId_firmaKimlikNo: { tenantId, firmaKimlikNo } },
+      include: {
+        decisions: {
+          where: { taxpayerId, kararTipi: 'fatura' },
+          orderBy: [{ onayAdedi: 'desc' }, { sonKullanim: 'desc' }],
+          take: 8,
+        },
+      },
+    });
+    for (const decision of memory?.decisions || []) {
+      const code = String(decision.kategori || '').trim();
+      const match = accountByCode.get(code);
+      if (match) return match;
+    }
+    return null;
+  }
+
+  private pickAccount(
+    accounts: Array<{ accountCode: string; accountName: string }>,
+    prefixesOrNeedles: string[],
+    nameHint?: string | null,
+  ) {
+    const hint = this.norm(nameHint || '');
+    const candidates = accounts.filter((a) => {
+      const code = String(a.accountCode || '');
+      const name = ` ${this.norm(a.accountName || '')} `;
+      return prefixesOrNeedles.some((p) => {
+        const key = p.trim();
+        if (/^\d/.test(key)) return code.startsWith(key);
+        return name.includes(this.norm(key));
+      });
+    });
+    if (!candidates.length) return null;
+    if (hint) {
+      const hinted = candidates.find((a) => this.norm(a.accountName || '').includes(hint.slice(0, 18)));
+      if (hinted) return hinted;
+    }
+    return candidates[candidates.length - 1];
+  }
+
+  private norm(value: string) {
+    return String(value || '')
+      .toLocaleLowerCase('tr-TR')
+      .replace(/[^\p{L}\p{N}]+/gu, ' ')
+      .replace(/\s+/g, ' ')
+      .trim();
+  }
+}

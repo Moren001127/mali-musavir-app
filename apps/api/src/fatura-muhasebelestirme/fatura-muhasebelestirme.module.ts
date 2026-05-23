@@ -11,4 +11,7 @@ import { FaturaMuhasebelestirmeCron } from './fatura-muhasebelestirme.cron';
 @Module({
   imports: [PrismaModule, StorageModule, forwardRef(() => KdvControlModule), VendorMemoryModule],
   controllers: [FaturaMuhasebelestirmeController],
-  providers: [FaturaMuhasebelestirmeService, EarsivRenderService, FaturaMuhasebele
+  providers: [FaturaMuhasebelestirmeService, EarsivRenderService, FaturaMuhasebelestirmeCron],
+  exports: [FaturaMuhasebelestirmeService],
+})
+export class FaturaMuhasebelestirmeModule {}

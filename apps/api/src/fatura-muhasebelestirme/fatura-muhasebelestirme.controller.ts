@@ -268,4 +268,16 @@ export class FaturaMuhasebelestirmeController {
   }
 
   // v1.38: Bir mukellef+donem icin TUM QUEUED belgeleri tek toplu Excel olarak
-  // Luca'ya aktar (BAT
+  // Luca'ya aktar (BATCH_EXCEL job). Frontend Sahne 5'teki "Luca'ya Aktar"
+  // butonu bunu cagirir.
+  // Body: { taxpayerId: string; period?: "YYYY-MM"; documentIds?: string[] }
+  @Post('batch-post-to-luca')
+  batchPostToLuca(@Req() req: any, @Body() body: any) {
+    return this.service.batchPostToLuca(req.user.tenantId, body, req.user?.userId);
+  }
+
+  @Delete('documents/:id')
+  remove(@Req() req: any, @Param('id') id: string) {
+    return this.service.remove(req.user.tenantId, id);
+  }
+}
