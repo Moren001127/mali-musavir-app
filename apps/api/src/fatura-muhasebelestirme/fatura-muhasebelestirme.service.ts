@@ -1464,16 +1464,39 @@ export class FaturaMuhasebelestirmeService {
             errorMessage: failed && errors.length ? errors[0].message : null,
           },
         });
-        statuses.push({
-          provider: item.provider,
-          label: cfg.label,
-          status: failed && !created && !alreadyQueued ? 'FAILED' : 'SUCCESS',
-          fetched: payloads.length,
-          created,
-          alreadyQueued,
-          failed,
-          errors,
-        });
+        if (cfg.provider === 'TURMOB_EFATURA') {
+          // Luca'ya yonlendirildi; job arka planda calisacak
+          const recentJob = await (this.prisma as any).lucaFetchJob.findFirst({
+            where: { tenantId, mukellefId: taxpayerId, tip: { in: ['EFATURA_ALIS', 'EFATURA_SATIS'] } },
+            orderBy: { createdAt: 'desc' },
+            select: { id: true, status: true, createdAt: true },
+          });
+          statuses.push({
+            provider: item.provider,
+            label: cfg.label,
+            status: 'QUEUED_VIA_LUCA',
+            reason: 'Sorgu Luca Local Agent kuyruguna alindi. Agent acikken 1-3 dakika icinde fatura listesi Yuklenen Faturalar sekmesine duser.',
+            jobId: recentJob?.id || null,
+            jobStatus: recentJob?.status || 'pending',
+            viaLuca: true,
+            fetched: 0,
+            created: 0,
+            alreadyQueued: 0,
+            failed: 0,
+            errors: [],
+          });
+        } else {
+          statuses.push({
+            provider: item.provider,
+            label: cfg.label,
+            status: failed && !created && !alreadyQueued ? 'FAILED' : 'SUCCESS',
+            fetched: payloads.length,
+            created,
+            alreadyQueued,
+            failed,
+            errors,
+          });
+        }
       } catch (e: any) {
         totals.failed++;
         const message = e?.message || 'entegrator cekme hatasi';
@@ -1687,8 +1710,15 @@ export class FaturaMuhasebelestirmeService {
   ) {
     let ids: string[] = Array.isArray(opts.taxpayerIds) ? opts.taxpayerIds.filter(Boolean) : [];
     if (ids.length === 0) {
+      // Sadece aktif + Bilanço esasi defter tutan + isi birakmamis mukellefler
+      // Isletme defteri mukelleflerinde hesap plani yok (tek duzen muhasebe degil)
       const all = await (this.prisma as any).taxpayer.findMany({
-        where: { tenantId },
+        where: {
+          tenantId,
+          isActive: true,
+          defterTuru: 'BILANCO',
+          OR: [{ endDate: null }, { endDate: { gte: new Date() } }],
+        },
         select: { id: true },
         take: 2000,
       });

@@ -58,8 +58,12 @@ export default function EntegratorSorguPanel({ taxpayer, provider, providerLabel
     },
     onSuccess: (data) => {
       setSonuc(data);
+      const statuses: any[] = Array.isArray(data?.providers) ? data.providers : (Array.isArray(data?.statuses) ? data.statuses : []);
+      const lucaQueued = statuses.find((s) => s?.viaLuca || s?.status === 'QUEUED_VIA_LUCA');
       const created = data?.totals?.created ?? data?.created?.length ?? 0;
-      if (created > 0) {
+      if (lucaQueued) {
+        toast.success('Sorgu Luca\'ya gonderildi. Agent acikken 1-3 dk icinde Yuklenen Faturalar sekmesine duser.');
+      } else if (created > 0) {
         toast.success(`${created} belge kuyruga alindi`);
       } else {
         toast.info('Yeni belge bulunamadi (mevcut donem icin zaten cekilmis olabilir).');
@@ -207,7 +211,32 @@ export default function EntegratorSorguPanel({ taxpayer, provider, providerLabel
             </div>
           )}
 
-          {sonuc && !sorguMut.isPending && !sonuc.error && (
+          {sonuc && !sorguMut.isPending && !sonuc.error && (() => {
+            const statuses: any[] = Array.isArray(sonuc?.providers) ? sonuc.providers : (Array.isArray(sonuc?.statuses) ? sonuc.statuses : []);
+            const lucaQueued = statuses.find((s) => s?.viaLuca || s?.status === 'QUEUED_VIA_LUCA');
+            if (lucaQueued) {
+              return (
+                <div className="rounded-xl p-5" style={{ background: 'rgba(14,165,233,0.06)', border: '1px solid rgba(14,165,233,0.3)' }}>
+                  <div className="flex items-center gap-2 mb-3">
+                    <CheckCircle2 size={18} style={{ color: '#0ea5e9' }} />
+                    <div className="text-[14px] font-semibold" style={{ color: 'var(--text)' }}>
+                      Luca'ya yönlendirildi
+                    </div>
+                  </div>
+                  <div className="text-[12.5px] mb-3" style={{ color: 'var(--text-secondary)' }}>
+                    {lucaQueued.reason || 'Sorgu Luca Local Agent kuyruğuna alındı.'}
+                  </div>
+                  <div className="text-[11.5px] mb-3" style={{ color: 'var(--text-muted)' }}>
+                    <strong>Job ID:</strong> <span className="font-mono">{lucaQueued.jobId || '-'}</span>
+                    {lucaQueued.jobStatus ? <span> · Durum: <strong>{lucaQueued.jobStatus}</strong></span> : null}
+                  </div>
+                  <div className="text-[11.5px] p-2.5 rounded-md" style={{ background: 'rgba(245,158,11,0.08)', border: '1px solid rgba(245,158,11,0.2)', color: 'var(--text-secondary)' }}>
+                    <strong style={{ color: '#f59e0b' }}>Önemli:</strong> Luca Local Agent bilgisayarında <strong>açık olmalı</strong>. Açık değilse job pending kalır ve çekilmez.
+                  </div>
+                </div>
+              );
+            }
+            return (
             <div className="rounded-xl p-5" style={{ background: 'rgba(34,197,94,0.06)', border: '1px solid rgba(34,197,94,0.22)' }}>
               <div className="flex items-center gap-2 mb-3">
                 <CheckCircle2 size={18} style={{ color: '#22c55e' }} />
@@ -233,7 +262,8 @@ export default function EntegratorSorguPanel({ taxpayer, provider, providerLabel
                 </div>
               )}
             </div>
-          )}
+            );
+          })()}
 
           {sonuc?.error && !sorguMut.isPending && (
             <div className="rounded-xl p-5 text-[13px]" style={{ background: 'rgba(239,68,68,0.06)', border: '1px solid rgba(239,68,68,0.22)', color: '#ef4444' }}>

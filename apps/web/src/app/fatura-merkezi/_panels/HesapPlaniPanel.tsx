@@ -18,7 +18,14 @@ export default function HesapPlaniPanel({ taxpayerId }: { taxpayerId?: string })
   });
 
   const taxpayers: any[] = Array.isArray(taxpayersQ.data) ? taxpayersQ.data : (taxpayersQ.data?.items || []);
+  // Hesap plani sadece Bilanco esasi mukelleflerde olur (Isletme defterinde tek duzen hesap plani yok)
+  const bilancoTaxpayers = taxpayers.filter((t) =>
+    (t?.isActive ?? true) &&
+    (t?.defterTuru === 'BILANCO' || t?.mihsapDefterTuru === 'BILANCO') &&
+    (!t?.endDate || new Date(t.endDate) >= new Date())
+  );
   const selected = taxpayerId ? taxpayers.find((t) => t.id === taxpayerId) : null;
+  const selectedIsBilanco = selected && (selected?.defterTuru === 'BILANCO' || selected?.mihsapDefterTuru === 'BILANCO');
 
   const planQ = useQuery({
     queryKey: ['fatura-merkezi', 'account-plan', taxpayerId],
@@ -53,8 +60,13 @@ export default function HesapPlaniPanel({ taxpayerId }: { taxpayerId?: string })
             Hesap Plani
           </div>
           <div className="text-[12.5px] mt-0.5" style={{ color: 'var(--text-muted)' }}>
-            {selected ? `${taxpayerName(selected)} - ${taxpayerTaxNumber(selected) || '-'}` : `Mukellef sec ya da toplu yenile (${taxpayers.length} mukellef)`}
+            {selected ? `${taxpayerName(selected)} - ${taxpayerTaxNumber(selected) || '-'}` : `Mükellef seç ya da toplu yenile · ${bilancoTaxpayers.length} aktif Bilanço mükellefi`}
           </div>
+          {selected && !selectedIsBilanco && (
+            <div className="text-[11.5px] mt-1 px-2 py-1 rounded inline-block" style={{ background: 'rgba(245,158,11,0.1)', border: '1px solid rgba(245,158,11,0.3)', color: '#f59e0b' }}>
+              Bu mükellef İşletme defteri tutuyor — hesap planı yok.
+            </div>
+          )}
         </div>
         <div className="flex gap-2">
           {selected && (
@@ -62,14 +74,22 @@ export default function HesapPlaniPanel({ taxpayerId }: { taxpayerId?: string })
               <BookOpen size={14} /> Hesap Planini Ac
             </button>
           )}
-          <button onClick={() => bulkRefreshMut.mutate()} disabled={bulkRefreshMut.isPending || taxpayers.length === 0} className="flex items-center gap-1.5 px-3 py-2 text-[12.5px] rounded-lg disabled:opacity-50" style={{ background: 'var(--surface-2)', border: '1px solid var(--border)', color: 'var(--text-secondary)' }} title="Tum mukelleflerin hesap planini Luca'dan yenile">
+          <button onClick={() => bulkRefreshMut.mutate()} disabled={bulkRefreshMut.isPending || bilancoTaxpayers.length === 0} className="flex items-center gap-1.5 px-3 py-2 text-[12.5px] rounded-lg disabled:opacity-50" style={{ background: 'var(--surface-2)', border: '1px solid var(--border)', color: 'var(--text-secondary)' }} title={`${bilancoTaxpayers.length} aktif Bilanço mükellefinin hesap planını Luca'dan yenile`}>
             {bulkRefreshMut.isPending ? <Loader2 size={14} className="animate-spin" /> : <Users size={14} />}
-            Tumunu Luca'dan Yenile
+            {bilancoTaxpayers.length} Bilanço Mükellefini Yenile
           </button>
         </div>
       </div>
 
-      {selected ? (
+      {selected && !selectedIsBilanco ? (
+        <div className="rounded-xl p-8 text-center" style={{ background: 'var(--surface)', border: '1px solid var(--border)' }}>
+          <AlertCircle size={32} className="mx-auto mb-3" style={{ color: '#f59e0b' }} />
+          <h3 className="text-[15px] font-semibold mb-1.5" style={{ color: 'var(--text)' }}>İşletme defteri mükellefi</h3>
+          <p className="text-[12.5px] max-w-lg mx-auto" style={{ color: 'var(--text-muted)' }}>
+            Bu mükellef Tek Düzen Hesap Planı kullanmıyor. Hesap planı sadece Bilanço esası mükelleflerde olur.
+          </p>
+        </div>
+      ) : selected ? (
         <>
           <div className="grid grid-cols-3 gap-3 mb-5">
             <Stat label="Toplam Hesap" value={total} icon={BookOpen} tone="var(--accent)" />

@@ -141,9 +141,10 @@ export class EarsivService {
   private async queueAccountingSafe(
     tenantId: string,
     faturaId: string,
-    scope?: { tip?: EarsivTip; belgeKaynak?: BelgeKaynak },
+    _scope?: { tip?: EarsivTip; belgeKaynak?: BelgeKaynak },
   ) {
-    if (scope && (scope.tip !== 'ALIS' || scope.belgeKaynak !== 'EARSIV')) return;
+    // v2.3: 4 tip (GELEN/GIDEN x EFATURA/EARSIV) — hepsi Fatura Merkezi'ne otomatik aktarilir.
+    // Onceden sadece ALIS+EARSIV aktarilirdi (kullanici beklentisinin %25'i).
     try {
       await this.accounting.ensureFromEarsivFatura(tenantId, faturaId);
     } catch (e: any) {

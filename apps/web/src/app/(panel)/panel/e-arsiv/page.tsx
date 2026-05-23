@@ -516,6 +516,32 @@ export default function EarsivPage() {
   }, [rows, selected]);
 
   // Mihsap'a Yükle — sadece Gelen E-Arşiv faturalarını Gider Faturası olarak Mihsap'a aktar
+  const aktarMerkezeMut = useMutation({
+    mutationFn: async () => {
+      if (selected.size === 0) {
+        throw new Error('Once aktarilacak fatura(lar)i secin.');
+      }
+      const ids = Array.from(selected);
+      const r = await api.post('/fatura-muhasebelestirme/documents/backfill-earsiv', { ids });
+      return r.data as { ok?: boolean; created?: number; alreadyQueued?: number; failed?: number; errors?: Array<{ id: string; message: string }> };
+    },
+    onSuccess: (d) => {
+      const created = d?.created || 0;
+      const already = d?.alreadyQueued || 0;
+      const failed = d?.failed || 0;
+      const parts: string[] = [];
+      if (created) parts.push(`${created} yeni belge`);
+      if (already) parts.push(`${already} zaten vardi`);
+      if (failed) parts.push(`${failed} hata`);
+      toast.success(`Fatura Merkezi'ne aktarildi: ${parts.join(' . ') || 'islem bos'}`);
+      setSelected(new Set());
+      qc.invalidateQueries({ queryKey: ['earsiv', 'list'] });
+    },
+    onError: (e: any) => {
+      toast.error(e?.response?.data?.message || e?.message || 'Aktarim basarisiz');
+    },
+  });
+
   const mihsapYukleMut = useMutation({
     mutationFn: async () => {
       if (mihsapEligibleIds.length === 0) {
@@ -794,6 +820,16 @@ export default function EarsivPage() {
           {topluIndirMut.isPending ? <Loader2 size={14} className="animate-spin" /> : <Download size={14} />}
           Toplu İndir {selected.size > 0 ? `(${selected.size})` : ''}
         </button>
+          <button
+            onClick={() => aktarMerkezeMut.mutate()}
+            disabled={aktarMerkezeMut.isPending || selected.size === 0}
+            className="inline-flex items-center gap-1.5 px-3 py-2 rounded-lg text-[12.5px] font-semibold disabled:opacity-50"
+            style={{ background: '#0ea5e9', color: 'white' }}
+            title="Secili faturalari Fatura Isleme Merkezi'ne aktar"
+          >
+            {aktarMerkezeMut.isPending ? <Loader2 size={13} className="animate-spin" /> : <FileText size={13} />}
+            Fatura Merkezi&apos;ne Aktar ({selected.size})
+          </button>
 
         <button
           disabled={mihsapEligibleIds.length === 0 || mihsapYukleMut.isPending}
