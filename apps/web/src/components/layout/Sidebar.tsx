@@ -58,6 +58,8 @@ const SKY = '#8cbde8';
 const COPPER = '#d9a06c';
 const STEEL = '#9da8b7';
 const SIDEBAR_COLLAPSED_KEY = 'moren-sidebar-collapsed';
+const SIDEBAR_WIDTH = 284;
+const SIDEBAR_COLLAPSED_WIDTH = 68;
 // Sidebar gruplari kullanicinin gunluk akisi icin siralandi.
 const navGroups = [
   {
@@ -193,7 +195,7 @@ export default function Sidebar() {
       className="flex flex-col flex-shrink-0 overflow-hidden relative"
       data-collapsed={collapsed ? 'true' : 'false'}
       style={{
-        width: collapsed ? 64 : 204,
+        width: collapsed ? SIDEBAR_COLLAPSED_WIDTH : SIDEBAR_WIDTH,
         background: 'linear-gradient(180deg, #15110d 0%, #0f0d0b 36%, #0b0a08 100%)',
         borderRight: '1px solid rgba(212,184,118,0.18)',
         transition: 'width 260ms cubic-bezier(0.16, 1, 0.3, 1)',
@@ -214,7 +216,7 @@ export default function Sidebar() {
 
       {/* === LOGO === */}
       <div
-        className={collapsed ? 'relative px-1.5 py-2.5' : 'relative px-2 py-2.5'}
+        className={collapsed ? 'relative px-1.5 py-2.5' : 'relative px-3 py-3'}
         style={{
           borderBottom: '1px solid rgba(212,184,118,0.18)',
           background: 'linear-gradient(180deg, rgba(212,184,118,0.075), rgba(15,13,11,0.28) 68%, transparent)',
@@ -224,7 +226,7 @@ export default function Sidebar() {
           href="/panel"
           className={collapsed
             ? 'group relative flex h-12 items-center justify-center rounded-xl border transition-all duration-300 hover:border-[#d4b87666]'
-            : 'group relative flex h-[70px] items-center justify-center rounded-xl border transition-all duration-300 hover:border-[#d4b87666]'
+            : 'group relative flex h-[122px] items-center justify-center rounded-2xl border px-5 py-3 transition-all duration-300 hover:border-[#d4b87666]'
           }
           style={{
             background: 'linear-gradient(145deg, rgba(212,184,118,0.075), rgba(255,255,255,0.012) 52%, rgba(0,0,0,0.12))',
@@ -233,10 +235,10 @@ export default function Sidebar() {
           }}
           aria-label="Moren"
         >
-          <span className={collapsed ? 'block h-9 w-[54px]' : 'block h-[62px] w-[124px]'}>
+          <span className={collapsed ? 'block h-9 w-[54px]' : 'block h-[104px] w-[150px]'}>
             <img
-              src="/brand/moren-logo-mark.png"
-              alt="Moren"
+              src={collapsed ? '/brand/moren-logo-mark.png' : '/brand/moren-logo-gold.png'}
+              alt="Moren Mali Müşavirlik"
               className="block h-full w-full object-contain"
               style={{ filter: 'none' }}
             />
@@ -247,7 +249,7 @@ export default function Sidebar() {
           onClick={toggleCollapsed}
           className={collapsed
             ? 'absolute right-1 top-1 flex h-6 w-6 items-center justify-center rounded-lg border transition hover:bg-white/[0.06]'
-            : 'absolute right-4 top-4 flex h-6 w-6 items-center justify-center rounded-lg border transition hover:bg-white/[0.06]'
+            : 'absolute right-5 top-5 flex h-7 w-7 items-center justify-center rounded-lg border transition hover:bg-white/[0.06]'
           }
           style={{
             background: 'rgba(15,13,11,0.78)',
@@ -262,7 +264,7 @@ export default function Sidebar() {
       </div>
 
       {/* === NAVIGASYON === */}
-      <nav className={collapsed ? 'flex-1 px-1.5 pt-2.5 pb-4 space-y-2.5 overflow-y-auto relative' : 'flex-1 px-1.5 pt-2.5 pb-4 space-y-3 overflow-y-auto relative'}>
+      <nav className={collapsed ? 'flex-1 px-1.5 pt-2.5 pb-4 space-y-2.5 overflow-y-auto relative' : 'flex-1 px-2.5 pt-3 pb-4 space-y-3 overflow-y-auto relative'}>
         {navGroups.map((group) => {
           const GIcon = group.icon;
           return (
@@ -312,7 +314,7 @@ export default function Sidebar() {
               </div>
 
               {/* Menü Öğeleri */}
-              <div className={collapsed ? 'space-y-1' : 'ml-2 space-y-0.5'}>
+              <div className={collapsed ? 'space-y-1' : 'ml-2.5 space-y-1'}>
                 {group.items.map(({ href, label, icon: Icon }) => {
                   const active = isActive(href);
                   const baseBackground = active
@@ -330,7 +332,7 @@ export default function Sidebar() {
                       href={href}
                       className={collapsed
                         ? 'group relative flex items-center justify-center rounded-xl border py-2.5 text-[13px] overflow-hidden'
-                        : 'group relative flex items-center gap-2.5 px-2.5 py-[8px] rounded-xl border text-[12.5px] overflow-hidden'
+                        : 'group relative flex items-center gap-3 px-3 py-[9px] rounded-xl border text-[13.5px] overflow-hidden'
                       }
                       style={{
                         color: baseColor,
@@ -411,8 +413,8 @@ export default function Sidebar() {
                       <div
                         className="relative flex items-center justify-center flex-shrink-0 transition-all duration-300 group-hover:scale-105"
                         style={{
-                          width: collapsed ? 28 : 23,
-                          height: collapsed ? 28 : 23,
+                          width: collapsed ? 28 : 26,
+                          height: collapsed ? 28 : 26,
                           borderRadius: collapsed ? 10 : 8,
                           background: active ? `${group.color}24` : `${group.color}0f`,
                           border: `1px solid ${active ? `${group.color}48` : `${group.color}1f`}`,
