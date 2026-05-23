@@ -589,7 +589,6 @@ export class FaturaMuhasebelestirmeService {
         firstName: true,
         lastName: true,
         taxNumber: true,
-        identityNumber: true,
         defterTuru: true,
         mihsapDefterTuru: true,
       },
@@ -1346,7 +1345,6 @@ export class FaturaMuhasebelestirmeService {
         firstName: true,
         lastName: true,
         taxNumber: true,
-        identityNumber: true,
       },
     });
     if (!taxpayer) throw new NotFoundException('Mukellef bulunamadi');
