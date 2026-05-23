@@ -157,16 +157,16 @@ const PROVIDER_DEFAULT_BASE_URL: Record<string, string> = {
 
 // Saglayicilara ozel kullanici yardim metinleri (UI'da entegrator eklerken gosterilir)
 export const PROVIDER_AUTH_HINTS: Record<string, string> = {
-  UYUMSOFT: 'Uyumsoft kullanici adi/sifresi yeterli. Servis URL'i otomatik dolar.',
-  IZIBIZ: 'Izibiz kullanici/sifre + opsiyonel test/canli URL.',
-  FORIBA: 'Sovos Foriba bulut API + kullanici/sifre. URL Sovos\'tan alinmali.',
-  PARASUT: 'Parasut OAuth2: client_id + client_secret + kullanici/sifre. Firma No URL\'de.',
-  MIKRO: 'Mikro API anahtari ile baglanir. apidestek@mikro.com.tr\'den anahtar alin.',
-  ELOGO: 'eLogo kullanici/sifre + opsiyonel servis URL\'i.',
-  LOGO_ISBASI: 'Logo Isbasi API anahtari. developers.isbasi.com\'dan alin.',
-  KOLAYSOFT: 'Kolaysoft kullanici/sifre. Servis URL\'i hesabiniza ozel.',
-  TURMOB_EFATURA: 'TURMOB e-Fatura, Luca Local Agent uzerinden cekilir. Luca\'da TURMOB hesabiniz tanimli olmali; sorgu Luca\'ya yonlendirilir.',
-  GIB_PORTAL: 'GIB Portal: API yok, Luca Local Agent veya mali muhur ile portal otomasyonu gerekir.',
+  UYUMSOFT: "Uyumsoft kullanici adi ve sifresi yeterli. Servis URL otomatik dolar.",
+  IZIBIZ: "Izibiz kullanici ve sifre, opsiyonel test/canli URL.",
+  FORIBA: "Sovos Foriba bulut API icin kullanici ve sifre. URL Sovos tarafindan verilir.",
+  PARASUT: "Parasut OAuth2: client_id (apiKey), client_secret (apiSecret), kullanici ve sifre. Firma No senderVkn alanina yazilir.",
+  MIKRO: "Mikro API anahtari ile baglanir. apidestek@mikro.com.tr adresinden anahtar talep edin.",
+  ELOGO: "eLogo kullanici ve sifresi. Opsiyonel olarak servis URL girilebilir.",
+  LOGO_ISBASI: "Logo Isbasi API anahtari. developers.isbasi.com adresinden alin.",
+  KOLAYSOFT: "Kolaysoft kullanici ve sifresi. Servis URL hesabiniza ozeldir.",
+  TURMOB_EFATURA: "TURMOB e-Fatura Luca Local Agent uzerinden cekilir. Luca da TURMOB hesabiniz tanimli olmali. Sorgu Luca ya yonlendirilir, agent acik olmali.",
+  GIB_PORTAL: "GIB Portal: dogrudan API yok. Luca Local Agent veya mali muhur ile portal otomasyonu gerekir.",
 };
 
 const I2I_SOAP_PROVIDERS = new Set(['IZIBIZ', 'FORIBA']);
