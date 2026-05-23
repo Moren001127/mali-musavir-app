@@ -1366,7 +1366,7 @@ SADECE aşağıdaki JSON formatında cevap ver, başka hiçbir şey yazma (markd
 
 {
   "summary": "Tek kısa cümle; en fazla 150 karakter. Firma/mükellef adı yazma. Sayı + aksiyon ver, uzun açıklama yapma.",
-  "motivation": "Sağ üstte gösterilecek tek kısa AI motivasyon cümlesi. En fazla 105 karakter.",
+  "motivation": "Sağ üstte gösterilecek tek kısa AI motivasyon cümlesi. En fazla 72 karakter.",
   "alerts": [
     { "severity": "high|medium|low", "text": "Acil dikkat çeken konu; firma/mükellef adı yazma", "href": "/panel/is-yuku" }
   ],
@@ -1380,7 +1380,7 @@ SADECE aşağıdaki JSON formatında cevap ver, başka hiçbir şey yazma (markd
 KURALLAR:
 - summary: 150 karakteri geçmesin, tek cümle. Firma/mükellef adı yazma; kullanıcıya doğal ve kısa hitap et — adını söyleyebilirsin ("${c.userFirstName}") ama "Bey/Hanım" eki ekleme, sade kullan.
 - summary ve motivation içinde "şunları taradım", "Luca/Mihsap/KDV okundu", "portal verisi tarandı" gibi kaynak sayma cümlesi yazma. Kartta sadece sonuç ve odak görünsün.
-- motivation: tek cümle, sıcak ama kısa. Örnek: "Bugünün kilidi belli: takılan çekimleri açalım, fatura akışı rahatlasın."
+- motivation: tek cümle, sıcak ama kısa. Sayı, modül adı veya yapılacak iş detayı yazma. Örnek: "Sırayı sakin tutalım; birkaç net hamle günü toparlar."
 - alerts: 0-3 madde. Sadece gerçekten dikkat gerektiren konular. Firma/mükellef adı yazma. Boş varsa boş array.
 - suggestions: 1-3 madde. Tıklanabilir somut aksiyon. icon Lucide isim.
 - focus: tek kelime. calm=her şey iyi, busy=normal yoğun, critical=acil işler var, review=ay sonu/kontrol günü
@@ -1519,16 +1519,16 @@ KURALLAR:
     }
 
     const motivationBySource: Record<BrifingSourceKey, string> = {
-      luca: 'Bugünün kilidi belli: takılan çekimleri açalım, fatura akışı rahatlasın.',
-      mihsap: 'Fatura akışını toparlayalım; Mihsap işleri netleşince sıra hızlanır.',
-      finance: 'Bugün para akışını toparlayalım: yüksek riskli cariler ilk sırada.',
-      automation: 'Kapanış için güzel fırsat: otomasyon hatalarını temizleyip yarını hafifletelim.',
-      agents: 'Ajanları toparlayalım; çalışan otomasyon günün yükünü azaltır.',
-      approval: 'Bekleyen onayları netleştirelim; kuyruk hafifleyince akış açılır.',
-      calendar: 'Takvimi öne alalım; son tarih yaklaşmadan kontrolü kapatalım.',
-      tasks: 'Geciken görevleri kapatalım; günün sonu daha temiz görünür.',
+      luca: 'Önceliği net tutalım; akış bugün toparlanır.',
+      mihsap: 'Dağınık başlıkları sadeleştirelim; sıra hızlanır.',
+      finance: 'Odağı koruyalım; net liste günü rahatlatır.',
+      automation: 'Küçük pürüzleri kapatalım; yarın daha hafif başlar.',
+      agents: 'Akışı sakinleştirelim; düzenli sistem günü taşır.',
+      approval: 'Bekleyenleri netleştirelim; masa hızla ferahlar.',
+      calendar: 'Takvimi öne alalım; günü sakin kapatalım.',
+      tasks: 'Küçük kapanışlar büyük rahatlık getirir.',
       workflow: c.eskiBeklemeler.length > 0
-        ? 'Bugünün kilidi belli: takılan işleri çözelim, gün kendini toplar.'
+        ? 'Önceliği sadeleştirelim; gün kendini toplar.'
         : 'Sırayı sakin tutalım; birkaç net hamle günü toparlar.',
       notifications: 'Bildirimleri süzelim; önemli olanlar masada kalsın.',
     };
@@ -1566,7 +1566,7 @@ KURALLAR:
 
     return {
       summary: this.cleanBrifingActionText(summary),
-      motivation: this.cleanBrifingActionText(motivation),
+      motivation: this.cleanBrifingMotivation(motivation, motivationBySource.workflow),
       alerts: alerts.map((a) => ({ ...a, text: this.cleanBrifingActionText(a.text), href: a.href ? this.normalizeBrifingHref(a.href) : undefined })),
       suggestions: suggestions.map((s) => ({ ...s, href: this.normalizeBrifingHref(s.href), text: this.cleanBrifingActionText(s.text) })),
       focus,
@@ -1596,11 +1596,11 @@ KURALLAR:
 
   private applyRuleDecisions(aiPayload: BrifingPayload, rulePayload: BrifingPayload): BrifingPayload {
     const aiSummary = this.cleanBrifingActionText(aiPayload.summary || '');
-    const aiMotivation = this.cleanBrifingActionText(aiPayload.motivation || '');
+    const aiMotivation = this.cleanBrifingMotivation(aiPayload.motivation || '', rulePayload.motivation);
     return {
       ...rulePayload,
       summary: aiSummary.length >= 20 ? aiSummary.slice(0, 180) : rulePayload.summary,
-      motivation: aiMotivation.length >= 20 ? aiMotivation.slice(0, 130) : rulePayload.motivation,
+      motivation: aiMotivation.length >= 20 ? aiMotivation : rulePayload.motivation,
       metrics: {
         ...rulePayload.metrics,
         ...(aiPayload.metrics || {}),
@@ -1611,7 +1611,7 @@ KURALLAR:
   /** AI'dan gelen JSON'u doğrula, eksik alanları tamamla */
   private validatePayload(obj: any): BrifingPayload {
     const summary = this.cleanBrifingActionText(String(obj?.summary || '')).slice(0, 180);
-    const motivation = this.cleanBrifingActionText(String(obj?.motivation || '')).slice(0, 130);
+    const motivation = this.cleanBrifingMotivation(String(obj?.motivation || ''));
     const alerts = Array.isArray(obj?.alerts)
       ? obj.alerts.slice(0, 3).map((a: any) => ({
           severity: ['high', 'medium', 'low'].includes(a?.severity) ? a.severity : 'low',
@@ -1672,6 +1672,20 @@ KURALLAR:
       if (path === route || path.startsWith(`${route}/`)) return query ? `${route}?${query}` : route;
     }
     return '/panel';
+  }
+
+  private cleanBrifingMotivation(text: string, fallback = ''): string {
+    const cleaned = this.cleanBrifingActionText(text)
+      .replace(/\s*[—–-]\s*/g, '; ')
+      .replace(/\s+/g, ' ')
+      .trim();
+    const firstSentence = (cleaned.split(/(?<=[.!?])\s+/).find(Boolean) || '').trim();
+    const operational = /\d|\b(KDV|Luca|Mihsap|evrak|fatura|çekim|hata|mükellef|beyanname|otomasyon|ajan)\b/iu.test(firstSentence);
+    const value = !firstSentence || operational ? fallback : firstSentence;
+    return String(value || '')
+      .replace(/\s+/g, ' ')
+      .trim()
+      .slice(0, 78);
   }
 
   private cleanBrifingActionText(text: string): string {

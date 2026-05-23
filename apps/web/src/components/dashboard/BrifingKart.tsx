@@ -123,6 +123,7 @@ const MOTIVATION_BY_FOCUS: Record<string, string> = {
   review: 'Kısa kontrol, yarının yükünü bugünden hafifletir.',
 };
 
+const OPERATIONAL_MOTIVATION_RE = /\d|\b(KDV|Luca|Mihsap|evrak|fatura|çekim|hata|mükellef|beyanname|otomasyon|ajan)\b/iu;
 const COMPANY_WORD_RE = /\b(LİMİTED|ANONİM|ŞİRKETİ|TİCARET|SANAYİ|PAZARLAMA|GIDA|İNŞAAT|TURİZM|A\.Ş|LTD|LTD\.ŞTİ)\b/i;
 const TODAY_DAY = new Date().getDate();
 const EARLY_MONTH = TODAY_DAY <= 12;
@@ -214,10 +215,15 @@ function cleanBriefMotivation(text: string | undefined, focus: string): string {
     .replace(/\bMOREN AI\s+[^.;!?]{0,80}\btarad[ıi]\b\.?/gi, '')
     .replace(/\bportal verisi\s+[^.;!?]{0,40}\btarand[ıi]\b\.?/gi, '')
     .replace(/\bLuca,\s*Mihsap,\s*KDV\s+[^.;!?]{0,60}\b(okundu|tarandı)\b\.?/gi, '')
+    .replace(/\s*[—–-]\s*/g, '; ')
     .replace(/\s+/g, ' ')
     .trim();
-  const clean = value || MOTIVATION_BY_FOCUS[focus] || MOTIVATION_BY_FOCUS.busy;
-  return clean.length > 118 ? `${clean.slice(0, 115).trimEnd()}...` : clean;
+  const firstSentence = (value.split(/(?<=[.!?])\s+/).find(Boolean) || '').trim();
+  const fallback = MOTIVATION_BY_FOCUS[focus] || MOTIVATION_BY_FOCUS.busy;
+  const clean = !firstSentence || OPERATIONAL_MOTIVATION_RE.test(firstSentence)
+    ? fallback
+    : firstSentence;
+  return clean.length > 78 ? `${clean.slice(0, 75).trimEnd()}...` : clean;
 }
 
 function cleanBriefAlert(text: string): string {
@@ -320,27 +326,27 @@ export function BrifingKart({ userName }: { userName?: string }) {
       </div>
 
       {!isLoading && motivation && (
-        <div className="px-5 pb-1 flex justify-start xl:justify-end xl:absolute xl:right-5 xl:top-[68px] xl:p-0">
+        <div className="px-5 pt-1 pb-2 flex justify-start xl:justify-end">
           <div
-            className="w-full xl:w-[520px] rounded-2xl px-3.5 py-3 flex items-start gap-3"
+            className="w-full xl:w-auto xl:max-w-[460px] rounded-xl px-3 py-2 flex items-center gap-2.5 select-none"
             style={{
-              background: `linear-gradient(135deg, ${focusTone.bg}, rgba(255,255,255,0.022) 56%), rgba(7,12,10,0.32)`,
-              border: `1px solid ${focusTone.actionBorder}`,
-              boxShadow: 'inset 0 1px 0 rgba(255,255,255,0.045)',
+              background: `linear-gradient(135deg, ${focusTone.bg}, rgba(255,255,255,0.018)), rgba(8,9,7,0.42)`,
+              border: `1px solid ${focusTone.border}`,
+              boxShadow: 'inset 0 1px 0 rgba(255,255,255,0.04)',
             }}
           >
             <span
-              className="w-8 h-8 rounded-xl flex items-center justify-center text-[11px] font-black shrink-0"
+              className="w-7 h-7 rounded-lg flex items-center justify-center text-[10px] font-black shrink-0"
               style={{ background: focusTone.color, color: '#0b0a08' }}
             >
               AI
             </span>
-            <span className="min-w-0">
-              <span className="flex items-center gap-1.5 text-[9.5px] uppercase font-black tracking-[.16em]" style={{ color: focusTone.text }}>
+            <span className="min-w-0 flex-1">
+              <span className="flex items-center gap-1.5 text-[9px] uppercase font-black tracking-[.14em]" style={{ color: focusTone.text }}>
                 <Sparkles size={10} />
                 AI Motivasyon
               </span>
-              <span className="block mt-1 text-[13.5px] font-extrabold leading-snug" style={{ color: '#fafaf9' }}>
+              <span className="block mt-0.5 text-[12.5px] font-semibold leading-snug" style={{ color: 'rgba(250,250,249,0.88)' }}>
                 {motivation}
               </span>
             </span>
