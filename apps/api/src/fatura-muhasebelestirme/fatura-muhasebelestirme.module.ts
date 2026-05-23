@@ -6,11 +6,9 @@ import { VendorMemoryModule } from '../vendor-memory/vendor-memory.module';
 import { EarsivRenderService } from '../earsiv/earsiv-render.service';
 import { FaturaMuhasebelestirmeController } from './fatura-muhasebelestirme.controller';
 import { FaturaMuhasebelestirmeService } from './fatura-muhasebelestirme.service';
+import { FaturaMuhasebelestirmeCron } from './fatura-muhasebelestirme.cron';
 
 @Module({
   imports: [PrismaModule, StorageModule, forwardRef(() => KdvControlModule), VendorMemoryModule],
   controllers: [FaturaMuhasebelestirmeController],
-  providers: [FaturaMuhasebelestirmeService, EarsivRenderService],
-  exports: [FaturaMuhasebelestirmeService],
-})
-export class FaturaMuhasebelestirmeModule {}
+  providers: [FaturaMuhasebelestirmeService, EarsivRenderService, FaturaMuhasebele

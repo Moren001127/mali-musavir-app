@@ -21,6 +21,7 @@ import SurecTakipPanel from './_panels/SurecTakipPanel';
 import GenelBakisPanel from './_panels/GenelBakisPanel';
 import HesapPlaniPanel from './_panels/HesapPlaniPanel';
 import YuklenenlerPanel from './_panels/YuklenenlerPanel';
+import ArsivPanel from './_panels/ArsivPanel';
 import { buildKdvClientReportHtml, fetchKdvClientReport } from './_lib/kdv-client-report';
 
 /* ════════════════════════════════════════════════════════════════════
@@ -483,30 +484,11 @@ export default function FaturaMerkeziPage() {
             <VeriAktarimiPanel period={period} />
           )}
           {section === 'arsiv' && (
-            <ArsivPlaceholder />
+            <ArsivPanel taxpayerId={taxpayerId} />
           )}
         </main>
       </div>
     </div>
   );
 }
-
-/* ─── Geçici placeholder ─── */
-function ArsivPlaceholder() {
-  return (
-    <div className="p-8">
-      <div
-        className="rounded-xl p-8 text-center"
-        style={{ background: 'var(--surface)', border: '1px solid var(--border)' }}
-      >
-        <Archive size={36} className="mx-auto mb-3" style={{ color: 'var(--accent)' }} />
-        <h3 className="text-[16px] font-semibold mb-1" style={{ color: 'var(--text)' }}>
-          Arşiv modülü hazırlanıyor
-        </h3>
-        <p className="text-[13px]" style={{ color: 'var(--text-muted)' }}>
-          Onaylanmış faturalar, dönem kapanışları ve Luca'ya iletilen fişler buradan listelenecek.
-        </p>
-      </div>
-    </div>
-  );
-}
+                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                              
