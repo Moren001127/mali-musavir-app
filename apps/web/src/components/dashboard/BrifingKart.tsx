@@ -123,7 +123,7 @@ const MOTIVATION_BY_FOCUS: Record<string, string> = {
   review: 'Kısa kontrol, yarının yükünü bugünden hafifletir.',
 };
 
-const OPERATIONAL_MOTIVATION_RE = /\d|\b(KDV|Luca|Mihsap|evrak|fatura|çekim|hata|mükellef|beyanname|otomasyon|ajan)\b/iu;
+const OPERATIONAL_MOTIVATION_RE = /\d|\b(KDV|Luca|Mihsap|evrak|fatura|çekim|hata|mükellef|beyanname|otomasyon|ajan|dosya|takip|hız|hiz|artır|artir|gecik|geciken|liste|talep|kontrol|log|işlem|islem|kayıt|kayit|bekleyen)\b/iu;
 const COMPANY_WORD_RE = /\b(LİMİTED|ANONİM|ŞİRKETİ|TİCARET|SANAYİ|PAZARLAMA|GIDA|İNŞAAT|TURİZM|A\.Ş|LTD|LTD\.ŞTİ)\b/i;
 const TODAY_DAY = new Date().getDate();
 const EARLY_MONTH = TODAY_DAY <= 12;
@@ -325,10 +325,30 @@ export function BrifingKart({ userName }: { userName?: string }) {
         </div>
       </div>
 
-      {!isLoading && motivation && (
-        <div className="px-5 pt-1 pb-2 flex justify-start xl:justify-end">
+      {/* Selamlama + AI motivasyon */}
+      <div className="px-5 pt-2 pb-2 grid gap-3 xl:grid-cols-[minmax(0,1fr)_minmax(340px,460px)] xl:items-start">
+        <div className="min-w-0">
+          <h2
+            style={{
+              fontFamily: 'Fraunces, serif',
+              fontSize: 26,
+              fontWeight: 600,
+              color: '#fafaf9',
+              letterSpacing: '-.025em',
+              lineHeight: 1.1,
+            }}
+          >
+            {SELAMLAMA}
+            {sanitizeFirstName(userName) ? `, ${sanitizeFirstName(userName)}` : ''}
+          </h2>
+          <p className="text-[12px] mt-1 tabular-nums" style={{ color: 'rgba(250,250,249,0.42)' }}>
+            {KISA_TARIH}
+          </p>
+        </div>
+
+        {!isLoading && motivation && (
           <div
-            className="w-full xl:w-auto xl:max-w-[460px] rounded-xl px-3 py-2 flex items-center gap-2.5 select-none"
+            className="w-full rounded-xl px-3 py-2 flex items-center gap-2.5 select-none xl:justify-self-end"
             style={{
               background: `linear-gradient(135deg, ${focusTone.bg}, rgba(255,255,255,0.018)), rgba(8,9,7,0.42)`,
               border: `1px solid ${focusTone.border}`,
@@ -351,27 +371,7 @@ export function BrifingKart({ userName }: { userName?: string }) {
               </span>
             </span>
           </div>
-        </div>
-      )}
-
-      {/* Selamlama başlığı */}
-      <div className="px-5 pt-2 pb-2 max-w-[920px]">
-        <h2
-          style={{
-            fontFamily: 'Fraunces, serif',
-            fontSize: 26,
-            fontWeight: 600,
-            color: '#fafaf9',
-            letterSpacing: '-.025em',
-            lineHeight: 1.1,
-          }}
-        >
-          {SELAMLAMA}
-          {sanitizeFirstName(userName) ? `, ${sanitizeFirstName(userName)}` : ''}
-        </h2>
-        <p className="text-[12px] mt-1 tabular-nums" style={{ color: 'rgba(250,250,249,0.42)' }}>
-          {KISA_TARIH}
-        </p>
+        )}
       </div>
 
       {/* Ana özet metni */}

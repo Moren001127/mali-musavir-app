@@ -1680,7 +1680,7 @@ KURALLAR:
       .replace(/\s+/g, ' ')
       .trim();
     const firstSentence = (cleaned.split(/(?<=[.!?])\s+/).find(Boolean) || '').trim();
-    const operational = /\d|\b(KDV|Luca|Mihsap|evrak|fatura|çekim|hata|mükellef|beyanname|otomasyon|ajan)\b/iu.test(firstSentence);
+    const operational = /\d|\b(KDV|Luca|Mihsap|evrak|fatura|çekim|hata|mükellef|beyanname|otomasyon|ajan|dosya|takip|hız|hiz|artır|artir|gecik|geciken|liste|talep|kontrol|log|işlem|islem|kayıt|kayit|bekleyen)\b/iu.test(firstSentence);
     const value = !firstSentence || operational ? fallback : firstSentence;
     return String(value || '')
       .replace(/\s+/g, ' ')
