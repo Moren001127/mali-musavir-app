@@ -66,7 +66,15 @@ export function KritikUyariStatCard() {
   }, []);
 
   const todayErrors = useMemo(() => {
-    return agentEvents.filter((e: any) => {
+    const events = Array.isArray(agentEvents)
+      ? agentEvents
+      : Array.isArray((agentEvents as any)?.items)
+        ? (agentEvents as any).items
+        : Array.isArray((agentEvents as any)?.data)
+          ? (agentEvents as any).data
+          : [];
+
+    return events.filter((e: any) => {
       const r = e.ts || e.createdAt || e.timestamp;
       if (!r || new Date(r) < todayStart) return false;
       const status = String(e.status || '').toUpperCase();
@@ -89,9 +97,10 @@ export function KritikUyariStatCard() {
   const warning = regularHealthChecks.filter((c) => c.severity === 'WARNING').length;
   const moduleHashCritical = moduleHashCheck?.severity === 'CRITICAL' ? 1 : 0;
   const moduleHashWarning = moduleHashCheck && moduleHashCheck.severity !== 'CRITICAL' ? 1 : 0;
+  const unreadCount = typeof unread === 'number' ? unread : ((unread as any)?.count ?? 0);
 
   const criticalCount = critical + moduleHashCritical + todayErrors.length;
-  const totalUyari = criticalCount + warning + moduleHashWarning + (unread || 0);
+  const totalUyari = criticalCount + warning + moduleHashWarning + unreadCount;
   const hasIssue = totalUyari > 0;
 
   return (
@@ -133,7 +142,7 @@ export function KritikUyariStatCard() {
               {warning > 0 && <span>{warning} sistem uyarı · </span>}
               {moduleHashCheck && <span>1 kilit drift · </span>}
               {todayErrors.length > 0 && <span>{todayErrors.length} ajan hata · </span>}
-              {(unread || 0) > 0 && <span>{unread} okunmamış</span>}
+              {unreadCount > 0 && <span>{unreadCount} okunmamış</span>}
             </>
           )}
         </p>
@@ -246,11 +255,11 @@ export function KritikUyariStatCard() {
                   )}
 
                   {/* Okunmamış Bildirimler */}
-                  {(unread || 0) > 0 && (
+                  {unreadCount > 0 && (
                     <UyariBolumu
                       icon={Bell}
                       baslik="Okunmamış Bildirimler"
-                      sayi={unread || 0}
+                      sayi={unreadCount}
                       renk="#3b82f6"
                     >
                       <Link

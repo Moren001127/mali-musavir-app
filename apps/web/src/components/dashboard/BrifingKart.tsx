@@ -33,6 +33,7 @@ interface BrifingSuggestion {
 }
 interface BrifingResponse {
   summary: string;
+  motivation?: string;
   alerts: BrifingAlert[];
   suggestions: BrifingSuggestion[];
   focus: 'calm' | 'busy' | 'critical' | 'review';
@@ -43,6 +44,7 @@ interface BrifingResponse {
 
 const ICON_MAP: Record<string, any> = {
   Receipt, FileText, FileCheck, Bell, Sparkles, Zap, Calendar, Clock, ArrowRight,
+  RefreshCw,
 };
 
 /** v1.36.83: Görünen adın sonundaki Bey/Hanım/Bay/Bayan'ı temizle, ilk kelimeyi al.
@@ -132,6 +134,15 @@ const SAFE_PANEL_ROUTES = [
   '/panel/kdv-kontrol',
   '/panel/mukellefler',
   '/panel/ajanlar',
+  '/panel/faturalar',
+  '/panel/fatura-isleme',
+  '/panel/cari-kasa',
+  '/panel/banka-takip',
+  '/panel/otomasyonlar',
+  '/panel/onay-kuyrugu',
+  '/panel/e-arsiv',
+  '/panel/mizan',
+  '/panel/bildirimler',
 ];
 
 function normalizeDashboardHref(href?: string): string {
@@ -188,7 +199,25 @@ function cleanBriefSummary(summary: string | undefined, focus: string): string {
   picked = picked.replace(/"[^"]{14,}"/g, 'ilgili mükellef');
   if (COMPANY_WORD_RE.test(picked)) picked = fallbackSummary(focus);
   picked = softenCalendarTone(picked);
+  picked = picked
+    .replace(/\bMOREN AI\s+[^.;!?]{0,80}\btarad[ıi]\b\.?/gi, '')
+    .replace(/\bportal verisi\s+[^.;!?]{0,40}\btarand[ıi]\b\.?/gi, '')
+    .replace(/\bLuca,\s*Mihsap,\s*KDV\s+[^.;!?]{0,60}\b(okundu|tarandı)\b\.?/gi, '')
+    .replace(/\s+/g, ' ')
+    .trim();
+  if (!picked) return fallbackSummary(focus);
   return picked.length > 170 ? `${picked.slice(0, 167).trimEnd()}...` : picked;
+}
+
+function cleanBriefMotivation(text: string | undefined, focus: string): string {
+  const value = softenCalendarTone(String(text || MOTIVATION_BY_FOCUS[focus] || MOTIVATION_BY_FOCUS.busy))
+    .replace(/\bMOREN AI\s+[^.;!?]{0,80}\btarad[ıi]\b\.?/gi, '')
+    .replace(/\bportal verisi\s+[^.;!?]{0,40}\btarand[ıi]\b\.?/gi, '')
+    .replace(/\bLuca,\s*Mihsap,\s*KDV\s+[^.;!?]{0,60}\b(okundu|tarandı)\b\.?/gi, '')
+    .replace(/\s+/g, ' ')
+    .trim();
+  const clean = value || MOTIVATION_BY_FOCUS[focus] || MOTIVATION_BY_FOCUS.busy;
+  return clean.length > 118 ? `${clean.slice(0, 115).trimEnd()}...` : clean;
 }
 
 function cleanBriefAlert(text: string): string {
@@ -230,7 +259,7 @@ export function BrifingKart({ userName }: { userName?: string }) {
 
   const focus = data?.focus ?? 'busy';
   const focusTone = FOCUS_TONES[focus] ?? FOCUS_TONES.busy;
-  const motivation = MOTIVATION_BY_FOCUS[focus] ?? MOTIVATION_BY_FOCUS.busy;
+  const motivation = cleanBriefMotivation(data?.motivation, focus);
   const visibleSummary = cleanBriefSummary(data?.summary, focus);
 
   return (
@@ -258,6 +287,14 @@ export function BrifingKart({ userName }: { userName?: string }) {
               {focusTone.label}
             </span>
           )}
+          {data && (
+            <span
+              className="text-[9.5px] font-bold uppercase tracking-wider px-2 py-0.5 rounded inline-flex items-center gap-1"
+              style={{ background: 'rgba(20,85,72,0.14)', color: '#8ee6d0', border: '1px solid rgba(142,230,208,0.24)' }}
+            >
+              AI Destekli
+            </span>
+          )}
         </div>
         <div className="flex items-center gap-2">
           {data?.generatedAt && (
@@ -282,19 +319,31 @@ export function BrifingKart({ userName }: { userName?: string }) {
         </div>
       </div>
 
-      {data?.summary && (
-        <div className="px-5 pb-1 flex justify-start xl:justify-end xl:absolute xl:right-5 xl:top-[72px] xl:p-0">
+      {!isLoading && motivation && (
+        <div className="px-5 pb-1 flex justify-start xl:justify-end xl:absolute xl:right-5 xl:top-[68px] xl:p-0">
           <div
-            className="inline-flex w-full xl:w-auto xl:max-w-[520px] items-center gap-2 rounded-2xl px-3.5 py-2 text-[12.5px] font-semibold"
+            className="w-full xl:w-[520px] rounded-2xl px-3.5 py-3 flex items-start gap-3"
             style={{
-              background: `linear-gradient(135deg, ${focusTone.bg}, rgba(255,255,255,0.025))`,
-              color: focusTone.text,
+              background: `linear-gradient(135deg, ${focusTone.bg}, rgba(255,255,255,0.022) 56%), rgba(7,12,10,0.32)`,
               border: `1px solid ${focusTone.actionBorder}`,
-              boxShadow: 'inset 0 1px 0 rgba(255,255,255,0.035)',
+              boxShadow: 'inset 0 1px 0 rgba(255,255,255,0.045)',
             }}
           >
-            <Sparkles size={12} />
-            {motivation}
+            <span
+              className="w-8 h-8 rounded-xl flex items-center justify-center text-[11px] font-black shrink-0"
+              style={{ background: focusTone.color, color: '#0b0a08' }}
+            >
+              AI
+            </span>
+            <span className="min-w-0">
+              <span className="flex items-center gap-1.5 text-[9.5px] uppercase font-black tracking-[.16em]" style={{ color: focusTone.text }}>
+                <Sparkles size={10} />
+                AI Motivasyon
+              </span>
+              <span className="block mt-1 text-[13.5px] font-extrabold leading-snug" style={{ color: '#fafaf9' }}>
+                {motivation}
+              </span>
+            </span>
           </div>
         </div>
       )}

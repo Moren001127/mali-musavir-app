@@ -1009,6 +1009,20 @@ export default function DashboardPage() {
   const { data: agentStats } = useQuery<any>({ queryKey: ['agent-stats'], queryFn: () => api.get('/agent/stats').then((r) => r.data).catch(() => null) });
   const { data: agentStatuses = [] } = useQuery<any[]>({ queryKey: ['agent-statuses'], queryFn: () => api.get('/agent/status').then((r) => r.data).catch(() => []), refetchInterval: 30_000 });
   const { data: meUser } = useMe();
+  const agentEventList = useMemo(() => {
+    const raw = agentEvents as any;
+    if (Array.isArray(raw)) return raw;
+    if (Array.isArray(raw?.items)) return raw.items;
+    if (Array.isArray(raw?.data)) return raw.data;
+    return [];
+  }, [agentEvents]);
+  const agentStatusList = useMemo(() => {
+    const raw = agentStatuses as any;
+    if (Array.isArray(raw)) return raw;
+    if (Array.isArray(raw?.items)) return raw.items;
+    if (Array.isArray(raw?.data)) return raw.data;
+    return [];
+  }, [agentStatuses]);
 
   // v1.36.80: Aktif İş Yükü — gerçek workflow queue count'u (KONTROL/İŞLEME/BEYAN bekleyenler toplamı)
   const { data: workflowData } = useQuery<{ counts?: { evrak: number; islenme: number; kontrol: number; beyanname: number; tamam: number }; total?: number }>({
@@ -1116,19 +1130,19 @@ export default function DashboardPage() {
   const sorted = [...tasks].sort((a, b) => a.done !== b.done ? (a.done ? 1 : -1) : new Date(a.dueDate).getTime() - new Date(b.dueDate).getTime());
 
   const statMap: Record<string, boolean> = {};
-  for (const s of (agentStatuses as any[])) if (s?.agent) statMap[String(s.agent).toUpperCase()] = !!s.running;
+  for (const s of agentStatusList) if (s?.agent) statMap[String(s.agent).toUpperCase()] = !!s.running;
   const running = (k: string) => statMap[k.toUpperCase()] ?? false;
-  const stFor = (k: string) => (agentStatuses as any[]).find((s: any) => String(s.agent || '').toUpperCase().includes(k)) || {};
-  const mEv = (agentEvents as any[]).filter((e: any) => String(e.agent || '').toUpperCase().includes('MIHSAP'));
+  const stFor = (k: string) => agentStatusList.find((s: any) => String(s.agent || '').toUpperCase().includes(k)) || {};
+  const mEv = agentEventList.filter((e: any) => String(e.agent || '').toUpperCase().includes('MIHSAP'));
   const mOK = mEv.filter((e: any) => ['OK','KAYDET','BASARILI','ONAYLANDI','ONAY','DONE'].includes(String(e.status || '').toUpperCase())).length;
   const mRate = mEv.length ? Math.round((mOK / mEv.length) * 100) : null;
-  const todayCount: number = agentStats?.todayCount ?? (agentEvents as any[]).length ?? 0;
+  const todayCount: number = agentStats?.todayCount ?? agentEventList.length ?? 0;
   const successRate: number | null = agentStats?.successRate ?? null;
   const unread: number = typeof unreadRaw === 'number' ? unreadRaw : (unreadRaw?.count ?? 0);
   const todayTaskCount = sorted.filter((t) => !t.done && new Date(t.dueDate).toDateString() === new Date().toDateString()).length;
 
   // Stat card hesaplamaları
-  const tx = (taxpayers as any[]) || [];
+  const tx = Array.isArray(taxpayers) ? taxpayers : Array.isArray((taxpayers as any)?.items) ? (taxpayers as any).items : [];
   const activeCount = tx.filter((t: any) => (t?.isActive ?? t?.aktif ?? t?.active ?? true) !== false && !t?.deletedAt && !t?.pasif).length;
   const passiveCount = tx.length - activeCount;
   const totalTx = tx.length;
@@ -1137,7 +1151,7 @@ export default function DashboardPage() {
 
   // Bugünün ajan olay kırılımı
   const todayStart = new Date(); todayStart.setHours(0,0,0,0);
-  const todayEvents = (agentEvents as any[]).filter((e: any) => {
+  const todayEvents = agentEventList.filter((e: any) => {
     const r = e.ts || e.createdAt || e.timestamp || e.date;
     return r && new Date(r) >= todayStart;
   });

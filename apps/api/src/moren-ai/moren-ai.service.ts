@@ -997,6 +997,7 @@ export class MorenAiService {
         // JSON parse fail — düz metni summary olarak kullan
         parsed = {
           summary: rawText.slice(0, 500),
+          motivation: '',
           alerts: [],
           suggestions: [],
           focus: 'busy',
@@ -1349,6 +1350,13 @@ ${c.deadlines.length === 0 ? '- Bu hafta yaklaşan beyanname yok' : c.deadlines.
 - Son saatte ${c.ajan.sonSaatOlay} olay
 - 7 günlük başarı oranı: ${c.ajan.haftaBasariOrani != null ? '%' + c.ajan.haftaBasariOrani : 'veri yok'}
 
+## Portal Geneli Sinyaller
+- Luca çekimleri: ${c.portal.luca.pending} bekleyen, ${c.portal.luca.running} çalışan, ${c.portal.luca.failed} hata
+- Mihsap fatura çekimleri: ${c.portal.mihsap.pending} bekleyen, ${c.portal.mihsap.running} çalışan, ${c.portal.mihsap.failed} hata, bu dönem ${c.portal.mihsap.invoiceCount} fatura
+- Tahsilat/cari: ${c.portal.finance.borcluMukellef} mükellefte açık bakiye, toplam ${c.portal.finance.toplamBakiye} TL
+- Otomasyonlar: ${c.portal.automation.active} aktif, ${c.portal.automation.error} hata durumunda, ${c.portal.automation.failedRuns} sorunlu çalışma
+- Onay kuyruğu: ${c.portal.approval.pendingDecisions} AI kararı, ${c.portal.approval.pendingCommands} ajan komutu bekliyor, ${c.portal.approval.failedCommands} komut hata aldı
+
 ## Diğer
 - ${c.okunmamisBildirim} okunmamış bildirim
 
@@ -1358,6 +1366,7 @@ SADECE aşağıdaki JSON formatında cevap ver, başka hiçbir şey yazma (markd
 
 {
   "summary": "Tek kısa cümle; en fazla 150 karakter. Firma/mükellef adı yazma. Sayı + aksiyon ver, uzun açıklama yapma.",
+  "motivation": "Sağ üstte gösterilecek tek kısa AI motivasyon cümlesi. En fazla 105 karakter.",
   "alerts": [
     { "severity": "high|medium|low", "text": "Acil dikkat çeken konu; firma/mükellef adı yazma", "href": "/panel/is-yuku" }
   ],
@@ -1370,6 +1379,8 @@ SADECE aşağıdaki JSON formatında cevap ver, başka hiçbir şey yazma (markd
 
 KURALLAR:
 - summary: 150 karakteri geçmesin, tek cümle. Firma/mükellef adı yazma; kullanıcıya doğal ve kısa hitap et — adını söyleyebilirsin ("${c.userFirstName}") ama "Bey/Hanım" eki ekleme, sade kullan.
+- summary ve motivation içinde "şunları taradım", "Luca/Mihsap/KDV okundu", "portal verisi tarandı" gibi kaynak sayma cümlesi yazma. Kartta sadece sonuç ve odak görünsün.
+- motivation: tek cümle, sıcak ama kısa. Örnek: "Bugünün kilidi belli: takılan çekimleri açalım, fatura akışı rahatlasın."
 - alerts: 0-3 madde. Sadece gerçekten dikkat gerektiren konular. Firma/mükellef adı yazma. Boş varsa boş array.
 - suggestions: 1-3 madde. Tıklanabilir somut aksiyon. icon Lucide isim.
 - focus: tek kelime. calm=her şey iyi, busy=normal yoğun, critical=acil işler var, review=ay sonu/kontrol günü
@@ -1384,70 +1395,113 @@ KURALLAR:
     const erkenDonem = c.day <= 12;
     const hazirlikDonemi = c.day > 12 && c.day <= 16;
     const netUyariDonemi = c.day >= 17;
-    const alerts: BrifingPayload['alerts'] = [];
-    const suggestions: BrifingPayload['suggestions'] = [];
+    const alertCandidates: Array<BrifingPayload['alerts'][number] & { score: number }> = [];
+    const suggestionCandidates: Array<BrifingPayload['suggestions'][number] & { score: number }> = [];
+    const issueScores: Array<{ source: BrifingSourceKey; score: number }> = [];
     let focus: BrifingFocus = aktifIsYuku > 0 ? 'busy' : 'calm';
     let summary = '';
 
+    const addAlert = (score: number, source: BrifingSourceKey, severity: BrifingSeverity, text: string, href: string) => {
+      alertCandidates.push({ id: briefingId(`${source}-alert`, text), score, source, severity, text, href });
+      issueScores.push({ source, score });
+    };
+    const addSuggestion = (score: number, source: BrifingSourceKey, text: string, href: string, icon: string) => {
+      suggestionCandidates.push({ id: briefingId(`${source}-action`, text), score, source, text, href, icon });
+      issueScores.push({ source, score });
+    };
+    const formatAmount = (value: number) => {
+      const abs = Math.abs(value);
+      if (abs >= 1_000_000) return `${(value / 1_000_000).toLocaleString('tr-TR', { maximumFractionDigits: 1 })} milyon TL`;
+      return `${Math.round(value).toLocaleString('tr-TR')} TL`;
+    };
+
+    const lucaBekleyen = c.portal.luca.pending + c.portal.luca.running;
+    if (c.portal.luca.failed > 0) addAlert(98, 'luca', 'high', `${c.portal.luca.failed} Luca çekimi hata aldı; logları kontrol et`, '/panel/ajanlar');
+    if (lucaBekleyen > 0) addSuggestion(94, 'luca', `${lucaBekleyen} Luca çekimini kontrol et`, '/panel/ajanlar', 'RefreshCw');
+
+    const mihsapBekleyen = c.portal.mihsap.pending + c.portal.mihsap.running;
+    if (c.portal.mihsap.failed > 0) addAlert(96, 'mihsap', 'high', `${c.portal.mihsap.failed} Mihsap fatura çekimi hata aldı`, '/panel/faturalar');
+    if (mihsapBekleyen > 0) addSuggestion(91, 'mihsap', `${mihsapBekleyen} Mihsap fatura çekimini aç`, '/panel/faturalar', 'Receipt');
+    if (c.portal.mihsap.invoiceCount > 0 && mihsapBekleyen === 0 && c.portal.mihsap.failed === 0) {
+      addSuggestion(58, 'mihsap', `${c.portal.mihsap.invoiceCount} faturanın işlem durumunu kontrol et`, '/panel/fatura-isleme', 'Receipt');
+    }
+
+    const financeScore = c.portal.finance.toplamBakiye >= 100_000 ? 86 : c.portal.finance.borcluMukellef >= 5 ? 78 : 62;
+    if (c.portal.finance.borcluMukellef > 0) {
+      if (c.portal.finance.borcluMukellef >= 5 || c.portal.finance.toplamBakiye >= 100_000) {
+        addAlert(
+          financeScore,
+          'finance',
+          c.portal.finance.toplamBakiye >= 250_000 ? 'high' : 'medium',
+          `${c.portal.finance.borcluMukellef} mükellefte ${formatAmount(c.portal.finance.toplamBakiye)} açık bakiye var`,
+          '/panel/cari-kasa',
+        );
+      }
+      addSuggestion(financeScore - 2, 'finance', 'Riskli carileri sırala', '/panel/cari-kasa', 'Bell');
+    }
+
+    const automationIssue = c.portal.automation.error + c.portal.automation.failedRuns + c.ajan.bugunHata;
+    if (automationIssue > 0) {
+      addAlert(
+        automationIssue >= 5 ? 93 : 82,
+        'automation',
+        automationIssue >= 5 ? 'high' : 'medium',
+        `${automationIssue} otomasyon/ajan uyarısı kontrol istiyor`,
+        '/panel/otomasyonlar',
+      );
+      addSuggestion(automationIssue >= 5 ? 92 : 80, 'automation', 'Ajan ve otomasyon hatalarını incele', '/panel/otomasyonlar', 'Zap');
+    }
+
+    const totalApproval = c.portal.approval.pendingDecisions + c.portal.approval.pendingCommands;
+    if (totalApproval > 0) addSuggestion(76, 'approval', `${totalApproval} onay bekleyen aksiyonu aç`, '/panel/onay-kuyrugu', 'FileCheck');
+    if (c.portal.approval.failedCommands > 0) addAlert(84, 'approval', 'medium', `${c.portal.approval.failedCommands} ajan komutu hata aldı`, '/panel/onay-kuyrugu');
+
     if (c.eskiBeklemeler.length > 0 && !erkenDonem) {
       const text = `${c.eskiBeklemeler.length} iş 5+ gündür aynı aşamada; en eski kayıt ${c.eskiBeklemeler[0].gun} gündür bekliyor`;
-      alerts.push({
-        id: briefingId('workflow-late', text),
-        severity: netUyariDonemi ? 'high' : 'medium',
-        text,
-        href: '/panel/is-yuku?late=1',
-        source: 'workflow',
-      });
-      focus = netUyariDonemi ? 'critical' : 'review';
+      addAlert(netUyariDonemi ? 90 : 74, 'workflow', netUyariDonemi ? 'high' : 'medium', text, '/panel/is-yuku?late=1');
     }
 
     const yakin = c.deadlines.find((d) => d.gunFark <= 1);
     if (yakin) {
       const shifted = yakin.shifted && yakin.originalGun ? ` (${yakin.originalGun}'den iş gününe kaydı)` : '';
       const text = `${yakin.gunFark === 0 ? 'Bugün' : 'Yarın'}: ${yakin.tip} son tarih${shifted}`;
-      alerts.push({
-        id: briefingId('calendar', text),
-        severity: yakin.gunFark === 0 ? 'high' : 'medium',
-        text,
-        href: '/panel/beyannameler',
-        source: 'calendar',
-      });
-      focus = yakin.gunFark === 0 || focus === 'critical' ? 'critical' : 'review';
+      addAlert(yakin.gunFark === 0 ? 95 : 83, 'calendar', yakin.gunFark === 0 ? 'high' : 'medium', text, '/panel/beyannameler');
     }
 
     if (c.gorev.geciken > 0) {
       const text = `${c.gorev.geciken} görev son tarihini geçmiş`;
-      alerts.push({
-        id: briefingId('tasks-late', text),
-        severity: c.gorev.geciken >= 3 ? 'high' : 'medium',
-        text,
-        href: '/panel/gorevler',
-        source: 'tasks',
-      });
-      if (focus !== 'critical') focus = c.gorev.geciken >= 3 ? 'critical' : 'review';
+      addAlert(c.gorev.geciken >= 3 ? 88 : 70, 'tasks', c.gorev.geciken >= 3 ? 'high' : 'medium', text, '/panel/gorevler');
     }
 
-    if (c.ajan.bugunHata >= 3) {
-      const text = `Bugün ${c.ajan.bugunHata} ajan hatası var; logları kontrol et`;
-      alerts.push({
-        id: briefingId('agents-error', text),
-        severity: c.ajan.bugunHata >= 5 ? 'high' : 'medium',
-        text,
-        href: '/panel/ajanlar',
-        source: 'agents',
-      });
-      if (focus !== 'critical') focus = 'review';
+    if (c.ajan.bugunHata >= 3 && automationIssue === 0) {
+      addAlert(c.ajan.bugunHata >= 5 ? 91 : 78, 'agents', c.ajan.bugunHata >= 5 ? 'high' : 'medium', `Bugün ${c.ajan.bugunHata} ajan hatası var; logları kontrol et`, '/panel/ajanlar');
     }
 
-    if (c.workflow.bekliyorEvrak > 0 && erkenDonem) suggestions.push({ id: 'action-evrak-early', text: 'Evrak takip listesini hazırla', href: '/panel/mukellefler?filter=evrak-gelmedi', icon: 'FileText', source: 'workflow' });
-    if (c.workflow.bekliyorEvrak > 0 && hazirlikDonemi) suggestions.push({ id: 'action-evrak-prepare', text: `${c.workflow.bekliyorEvrak} evrak bekleyen için takip planı aç`, href: '/panel/mukellefler?filter=evrak-gelmedi', icon: 'FileText', source: 'workflow' });
-    if (c.workflow.bekliyorEvrak > 0 && netUyariDonemi) suggestions.push({ id: 'action-evrak-firm', text: `${c.workflow.bekliyorEvrak} evrak bekleyen kaydı sırala`, href: '/panel/mukellefler?filter=evrak-gelmedi', icon: 'FileText', source: 'workflow' });
-    if (c.workflow.isleniyor > 0) suggestions.push({ id: 'action-isleniyor', text: `${c.workflow.isleniyor} işleme bekleyen kaydı aç`, href: '/panel/is-yuku?stage=ISLENMEYI_BEKLIYOR', icon: 'Receipt', source: 'workflow' });
-    if (c.workflow.kontrol > 0) suggestions.push({ id: 'action-kdv', text: `${c.workflow.kontrol} KDV kontrolünü sıraya al`, href: '/panel/kdv-kontrol', icon: 'FileCheck', source: 'workflow' });
-    if (c.workflow.beyan > 0) suggestions.push({ id: 'action-beyan', text: `${c.workflow.beyan} beyanname hazırlığını aç`, href: '/panel/beyannameler', icon: 'FileText', source: 'workflow' });
-    if (suggestions.length === 0) suggestions.push({ id: 'action-flow', text: 'İş Akışı sayfasına git', href: '/panel/is-yuku', icon: 'Sparkles', source: 'workflow' });
+    if (c.workflow.bekliyorEvrak > 0 && erkenDonem) addSuggestion(56, 'workflow', 'Evrak takip listesini hazırla', '/panel/mukellefler?filter=evrak-gelmedi', 'FileText');
+    if (c.workflow.bekliyorEvrak > 0 && hazirlikDonemi) addSuggestion(66, 'workflow', `${c.workflow.bekliyorEvrak} evrak bekleyen için takip planı aç`, '/panel/mukellefler?filter=evrak-gelmedi', 'FileText');
+    if (c.workflow.bekliyorEvrak > 0 && netUyariDonemi) addSuggestion(82, 'workflow', `${c.workflow.bekliyorEvrak} evrak bekleyen kaydı sırala`, '/panel/mukellefler?filter=evrak-gelmedi', 'FileText');
+    if (c.workflow.isleniyor > 0) addSuggestion(72, 'workflow', `${c.workflow.isleniyor} işleme bekleyen kaydı aç`, '/panel/is-yuku?stage=ISLENMEYI_BEKLIYOR', 'Receipt');
+    if (c.workflow.kontrol > 0) addSuggestion(74, 'workflow', `${c.workflow.kontrol} KDV kontrolünü sıraya al`, '/panel/kdv-kontrol', 'FileCheck');
+    if (c.workflow.beyan > 0) addSuggestion(73, 'workflow', `${c.workflow.beyan} beyanname hazırlığını aç`, '/panel/beyannameler', 'FileText');
+    if (suggestionCandidates.length === 0) addSuggestion(40, 'workflow', 'İş Akışı sayfasına git', '/panel/is-yuku', 'Sparkles');
 
-    if (aktifIsYuku === 0) {
+    issueScores.sort((a, b) => b.score - a.score);
+    const topIssue = issueScores[0];
+    if (topIssue?.score >= 90) focus = 'critical';
+    else if (topIssue?.score >= 74) focus = 'review';
+    else if (topIssue?.score >= 50) focus = 'busy';
+
+    if (c.portal.luca.failed > 0 || lucaBekleyen > 0) {
+      const total = c.portal.luca.failed + lucaBekleyen;
+      summary = `Luca çekiminde ${total} iş bekliyor; fatura akışını açmak iyi olur.`;
+    } else if (c.portal.mihsap.failed > 0 || mihsapBekleyen > 0) {
+      const total = c.portal.mihsap.failed + mihsapBekleyen;
+      summary = `${total} Mihsap fatura işi kontrol istiyor; fatura akışını toparlayalım.`;
+    } else if (c.portal.finance.borcluMukellef > 0 && (c.portal.finance.borcluMukellef >= 5 || c.portal.finance.toplamBakiye >= 100_000)) {
+      summary = `${c.portal.finance.borcluMukellef} mükellefte açık bakiye var; tahsilat listesini öne al.`;
+    } else if (automationIssue > 0) {
+      summary = `${automationIssue} otomasyon/ajan uyarısı var; logları temizlemek günü rahatlatır.`;
+    } else if (aktifIsYuku === 0) {
       summary = c.workflow.total === 0
         ? `${c.userFirstName}, bu ay iş akışında kayıt yok; liste doluysa veri akışını kontrol edelim.`
         : erkenDonem
@@ -1464,11 +1518,34 @@ KURALLAR:
         : ' Sırayı bozmadan ilerlersek tablo temiz kalır.';
     }
 
+    const motivationBySource: Record<BrifingSourceKey, string> = {
+      luca: 'Bugünün kilidi belli: takılan çekimleri açalım, fatura akışı rahatlasın.',
+      mihsap: 'Fatura akışını toparlayalım; Mihsap işleri netleşince sıra hızlanır.',
+      finance: 'Bugün para akışını toparlayalım: yüksek riskli cariler ilk sırada.',
+      automation: 'Kapanış için güzel fırsat: otomasyon hatalarını temizleyip yarını hafifletelim.',
+      agents: 'Ajanları toparlayalım; çalışan otomasyon günün yükünü azaltır.',
+      approval: 'Bekleyen onayları netleştirelim; kuyruk hafifleyince akış açılır.',
+      calendar: 'Takvimi öne alalım; son tarih yaklaşmadan kontrolü kapatalım.',
+      tasks: 'Geciken görevleri kapatalım; günün sonu daha temiz görünür.',
+      workflow: c.eskiBeklemeler.length > 0
+        ? 'Bugünün kilidi belli: takılan işleri çözelim, gün kendini toplar.'
+        : 'Sırayı sakin tutalım; birkaç net hamle günü toparlar.',
+      notifications: 'Bildirimleri süzelim; önemli olanlar masada kalsın.',
+    };
+    const motivation = motivationBySource[topIssue?.source || 'workflow'];
+    const alerts = alertCandidates.sort((a, b) => b.score - a.score).slice(0, 3).map(({ score: _score, ...a }) => a);
+    const suggestions = suggestionCandidates.sort((a, b) => b.score - a.score).slice(0, 3).map(({ score: _score, ...s }) => s);
+
     const sourceTags: BrifingSourceTag[] = [
       { key: 'workflow', label: 'İş Akışı', count: c.workflow.total },
       ...(c.deadlines.length ? [{ key: 'calendar' as const, label: 'Takvim', count: c.deadlines.length }] : []),
       ...(c.gorev.bugun + c.gorev.geciken > 0 ? [{ key: 'tasks' as const, label: 'Görev', count: c.gorev.bugun + c.gorev.geciken }] : []),
       ...(c.ajan.bugunHata > 0 ? [{ key: 'agents' as const, label: 'Ajan', count: c.ajan.bugunHata }] : []),
+      ...(c.portal.luca.pending + c.portal.luca.running + c.portal.luca.failed > 0 ? [{ key: 'luca' as const, label: 'Luca', count: c.portal.luca.pending + c.portal.luca.running + c.portal.luca.failed }] : []),
+      ...(c.portal.mihsap.pending + c.portal.mihsap.running + c.portal.mihsap.failed > 0 ? [{ key: 'mihsap' as const, label: 'Mihsap', count: c.portal.mihsap.pending + c.portal.mihsap.running + c.portal.mihsap.failed }] : []),
+      ...(c.portal.finance.borcluMukellef > 0 ? [{ key: 'finance' as const, label: 'Cari', count: c.portal.finance.borcluMukellef }] : []),
+      ...(c.portal.automation.error + c.portal.automation.failedRuns > 0 ? [{ key: 'automation' as const, label: 'Otomasyon', count: c.portal.automation.error + c.portal.automation.failedRuns }] : []),
+      ...(c.portal.approval.pendingDecisions + c.portal.approval.pendingCommands > 0 ? [{ key: 'approval' as const, label: 'Onay', count: c.portal.approval.pendingDecisions + c.portal.approval.pendingCommands }] : []),
       ...(c.okunmamisBildirim > 0 ? [{ key: 'notifications' as const, label: 'Bildirim', count: c.okunmamisBildirim }] : []),
     ];
 
@@ -1480,15 +1557,18 @@ KURALLAR:
         : 'Bu hafta görünen son tarih yok',
     ];
     const riskItems = [
+      c.portal.luca.failed + c.portal.mihsap.failed > 0 ? `${c.portal.luca.failed + c.portal.mihsap.failed} çekim işi hata aldı` : '',
+      c.portal.finance.borcluMukellef > 0 ? `${c.portal.finance.borcluMukellef} açık bakiyeli mükellef` : '',
       c.eskiBeklemeler.length > 0 ? `${c.eskiBeklemeler.length} iş 5+ gündür aynı aşamada` : '5+ gün bekleyen kritik akış yok',
       c.gorev.geciken > 0 ? `${c.gorev.geciken} görev gecikmiş` : 'Geciken görev görünmüyor',
       c.ajan.bugunHata > 0 ? `${c.ajan.bugunHata} ajan hatası izlenmeli` : 'Bugün ajan hatası yok',
-    ];
+    ].filter(Boolean);
 
     return {
       summary: this.cleanBrifingActionText(summary),
-      alerts: alerts.slice(0, 3).map((a) => ({ ...a, text: this.cleanBrifingActionText(a.text), href: a.href ? this.normalizeBrifingHref(a.href) : undefined })),
-      suggestions: suggestions.slice(0, 3).map((s) => ({ ...s, href: this.normalizeBrifingHref(s.href), text: this.cleanBrifingActionText(s.text) })),
+      motivation: this.cleanBrifingActionText(motivation),
+      alerts: alerts.map((a) => ({ ...a, text: this.cleanBrifingActionText(a.text), href: a.href ? this.normalizeBrifingHref(a.href) : undefined })),
+      suggestions: suggestions.map((s) => ({ ...s, href: this.normalizeBrifingHref(s.href), text: this.cleanBrifingActionText(s.text) })),
       focus,
       sourceTags,
       sections: [
@@ -1498,6 +1578,14 @@ KURALLAR:
       ],
       metrics: {
         ...c.metrics,
+        lucaBekleyen,
+        lucaHata: c.portal.luca.failed,
+        mihsapBekleyen,
+        mihsapHata: c.portal.mihsap.failed,
+        borcluMukellef: c.portal.finance.borcluMukellef,
+        toplamBakiye: c.portal.finance.toplamBakiye,
+        otomasyonSorun: automationIssue,
+        bekleyenOnay: totalApproval,
         day: c.day,
         periodTone: erkenDonem ? 'early' : hazirlikDonemi ? 'prepare' : 'firm',
         bekliyorEvrak: c.workflow.bekliyorEvrak,
@@ -1508,9 +1596,11 @@ KURALLAR:
 
   private applyRuleDecisions(aiPayload: BrifingPayload, rulePayload: BrifingPayload): BrifingPayload {
     const aiSummary = this.cleanBrifingActionText(aiPayload.summary || '');
+    const aiMotivation = this.cleanBrifingActionText(aiPayload.motivation || '');
     return {
       ...rulePayload,
       summary: aiSummary.length >= 20 ? aiSummary.slice(0, 180) : rulePayload.summary,
+      motivation: aiMotivation.length >= 20 ? aiMotivation.slice(0, 130) : rulePayload.motivation,
       metrics: {
         ...rulePayload.metrics,
         ...(aiPayload.metrics || {}),
@@ -1521,6 +1611,7 @@ KURALLAR:
   /** AI'dan gelen JSON'u doğrula, eksik alanları tamamla */
   private validatePayload(obj: any): BrifingPayload {
     const summary = this.cleanBrifingActionText(String(obj?.summary || '')).slice(0, 180);
+    const motivation = this.cleanBrifingActionText(String(obj?.motivation || '')).slice(0, 130);
     const alerts = Array.isArray(obj?.alerts)
       ? obj.alerts.slice(0, 3).map((a: any) => ({
           severity: ['high', 'medium', 'low'].includes(a?.severity) ? a.severity : 'low',
@@ -1539,7 +1630,7 @@ KURALLAR:
     const metrics = (obj?.metrics && typeof obj.metrics === 'object') ? obj.metrics : {};
     const sourceTags = Array.isArray(obj?.sourceTags)
       ? obj.sourceTags.slice(0, 5).map((s: any) => ({
-          key: ['workflow', 'calendar', 'tasks', 'agents', 'notifications'].includes(s?.key) ? s.key : 'workflow',
+          key: ['workflow', 'calendar', 'tasks', 'agents', 'notifications', 'luca', 'mihsap', 'finance', 'automation', 'approval'].includes(s?.key) ? s.key : 'workflow',
           label: String(s?.label || 'Kaynak').slice(0, 24),
           count: Number(s?.count || 0),
         }))
@@ -1553,7 +1644,7 @@ KURALLAR:
             : [],
         })).filter((s: any) => s.items.length > 0)
       : [];
-    return { summary, alerts, suggestions, focus, sourceTags, sections, metrics };
+    return { summary, motivation, alerts, suggestions, focus, sourceTags, sections, metrics };
   }
 
   private normalizeBrifingHref(href: string): string {
@@ -1567,6 +1658,15 @@ KURALLAR:
       '/panel/kdv-kontrol',
       '/panel/mukellefler',
       '/panel/ajanlar',
+      '/panel/faturalar',
+      '/panel/fatura-isleme',
+      '/panel/cari-kasa',
+      '/panel/banka-takip',
+      '/panel/otomasyonlar',
+      '/panel/onay-kuyrugu',
+      '/panel/e-arsiv',
+      '/panel/mizan',
+      '/panel/bildirimler',
     ];
     for (const route of routes) {
       if (path === route || path.startsWith(`${route}/`)) return query ? `${route}?${query}` : route;
@@ -1586,6 +1686,9 @@ KURALLAR:
       .replace(/\bhızlandırılmalı\b/gi, 'takip edilmeli')
       .replace(/\bhizlandirilmali\b/gi, 'takip edilmeli')
       .replace(/\bhemen talep et\b/gi, 'talep planı çıkar')
+      .replace(/\bMOREN AI\s+[^.;!?]{0,80}\btarad[ıi]\b\.?/gi, '')
+      .replace(/\bportal verisi\s+[^.;!?]{0,40}\btarand[ıi]\b\.?/gi, '')
+      .replace(/\bLuca,\s*Mihsap,\s*KDV\s+[^.;!?]{0,60}\b(okundu|tarandı)\b\.?/gi, '')
       .replace(/\s+/g, ' ')
       .trim();
   }

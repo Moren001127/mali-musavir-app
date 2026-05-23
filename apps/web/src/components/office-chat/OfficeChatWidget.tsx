@@ -44,7 +44,7 @@ export default function OfficeChatWidget({
     staleTime: 60_000,
   });
 
-  const threads = threadsQuery.data || [];
+  const threads = Array.isArray(threadsQuery.data) ? threadsQuery.data : [];
   const unreadTotal = useMemo(
     () => threads.reduce((sum, thread) => sum + (thread.unreadCount || 0), 0),
     [threads],
@@ -112,7 +112,7 @@ export default function OfficeChatWidget({
   const isTopbar = triggerMode === 'topbar';
   const selectedThread = threadQuery.data || threads.find((thread) => thread.id === selectedThreadId);
   const currentUserId = (me as any)?.sub || (me as any)?.id;
-  const users = (usersQuery.data || []).filter((user) => !user.isCurrent && matchesSearch(user, search));
+  const users = (Array.isArray(usersQuery.data) ? usersQuery.data : []).filter((user) => !user.isCurrent && matchesSearch(user, search));
 
   const send = () => {
     const content = input.trim();
