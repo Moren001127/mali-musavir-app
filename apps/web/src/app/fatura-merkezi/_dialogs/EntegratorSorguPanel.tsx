@@ -66,9 +66,11 @@ export default function EntegratorSorguPanel({ taxpayer, provider, providerLabel
       }
     },
     onError: (e: any) => {
-      const msg = e?.response?.data?.message || e?.message || 'Sorgu basarisiz';
+      const data = e?.response?.data;
+      const msg = data?.message || e?.message || 'Sorgu basarisiz';
+      const detail = typeof data === 'object' && data !== null ? JSON.stringify(data, null, 2) : null;
       toast.error(msg);
-      setSonuc({ error: msg });
+      setSonuc({ error: msg, detail });
     },
   });
 
@@ -236,6 +238,12 @@ export default function EntegratorSorguPanel({ taxpayer, provider, providerLabel
           {sonuc?.error && !sorguMut.isPending && (
             <div className="rounded-xl p-5 text-[13px]" style={{ background: 'rgba(239,68,68,0.06)', border: '1px solid rgba(239,68,68,0.22)', color: '#ef4444' }}>
               <strong>Sorgu başarısız:</strong> {sonuc.error}
+              {sonuc?.detail && (
+                <details className="mt-2" style={{ color: 'var(--text-muted)' }}>
+                  <summary className="cursor-pointer text-[11.5px]">Teknik detay</summary>
+                  <pre className="text-[11px] mt-1 p-2 rounded overflow-auto" style={{ background: 'var(--surface)', maxHeight: 200 }}>{sonuc.detail}</pre>
+                </details>
+              )}
             </div>
           )}
 

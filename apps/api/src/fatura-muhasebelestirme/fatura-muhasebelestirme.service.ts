@@ -1288,6 +1288,24 @@ export class FaturaMuhasebelestirmeService {
     input: IntegrationFetchInput,
     userId?: string,
   ) {
+    try {
+      return await this._fetchConfiguredIntegrationsImpl(tenantId, input, userId);
+    } catch (err: any) {
+      this.logger.error(
+        `fetchConfiguredIntegrations hata (tenant=${tenantId}, tx=${input?.taxpayerId}): ${err?.message || err}`,
+        err?.stack,
+      );
+      throw new BadRequestException(
+        `Sorgu basarisiz: ${err?.message || 'bilinmeyen hata'}. Detaylar sunucu loglarinda.`,
+      );
+    }
+  }
+
+  private async _fetchConfiguredIntegrationsImpl(
+    tenantId: string,
+    input: IntegrationFetchInput,
+    userId?: string,
+  ) {
     const taxpayerId = String(input.taxpayerId || '').trim();
     if (!taxpayerId) throw new BadRequestException('taxpayerId gerekli');
     const direction = input.direction === 'SATIS' ? 'SATIS' : 'ALIS';

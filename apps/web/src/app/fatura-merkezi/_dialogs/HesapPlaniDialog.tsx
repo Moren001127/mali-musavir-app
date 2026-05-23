@@ -103,7 +103,7 @@ export default function HesapPlaniDialog({ taxpayer, onClose }: Props) {
   });
 
   return (
-    <div className="fixed inset-0 z-50 flex items-center justify-center p-4" style={{ background: 'rgba(0,0,0,0.65)' }} onClick={onClose}>
+    <div className="fixed inset-0 z-50 flex items-center justify-center p-4" style={{ background: 'rgba(0,0,0,0.65)' }} onClick={(e) => { if (e.target === e.currentTarget) onClose(); }}>
       <div
         className="w-full max-w-4xl rounded-2xl shadow-2xl overflow-hidden"
         style={{ background: 'var(--surface)', border: '1px solid var(--border)' }}
