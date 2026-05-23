@@ -47,4 +47,28 @@ export const edefterControlApi = {
       .post('/edefter-control/upload', fd, { headers: { 'Content-Type': 'multipart/form-data' } })
       .then((r) => r.data);
   },
+  updateFindingStatus: (
+    sessionId: string,
+    findingId: string,
+    body: { status: 'OPEN' | 'RESOLVED' | 'IGNORED'; note?: string | null },
+  ) =>
+    api
+      .patch(`/edefter-control/${sessionId}/findings/${findingId}`, body)
+      .then((r) => r.data),
+  downloadExcel: async (sessionId: string) => {
+    const res = await api.get(`/edefter-control/${sessionId}/export.xlsx`, {
+      responseType: 'blob',
+    });
+    const blob = new Blob([res.data], {
+      type: 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet',
+    });
+    const url = URL.createObjectURL(blob);
+    const a = document.createElement('a');
+    a.href = url;
+    a.download = `edefter-bulgular-${sessionId}.xlsx`;
+    document.body.appendChild(a);
+    a.click();
+    a.remove();
+    URL.revokeObjectURL(url);
+  },
 };

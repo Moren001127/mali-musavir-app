@@ -286,6 +286,110 @@ export class EDefterControlService {
     return { sessionId: session.id, rows: rows.length, vouchers: voucherCount, findings: findings.length };
   }
 
+  async updateFindingStatus(params: {
+    tenantId: string;
+    sessionId: string;
+    findingId: string;
+    status: 'OPEN' | 'RESOLVED' | 'IGNORED';
+    note?: string | null;
+    userId?: string | null;
+  }) {
+    const session = await (this.prisma as any).eDefterControlSession.findFirst({
+      where: { id: params.sessionId, tenantId: params.tenantId },
+      select: { id: true },
+    });
+    if (!session) throw new NotFoundException('e-Defter oturumu bulunamadi');
+
+    const finding = await (this.prisma as any).eDefterFinding.findFirst({
+      where: { id: params.findingId, sessionId: params.sessionId },
+    });
+    if (!finding) throw new NotFoundException('Bulgu bulunamadi');
+
+    const existingDetail =
+      finding.detail && typeof finding.detail === 'object' && !Array.isArray(finding.detail)
+        ? (finding.detail as Record<string, unknown>)
+        : {};
+    const newDetail: Record<string, unknown> = { ...existingDetail };
+
+    if (params.status === 'OPEN') {
+      delete newDetail.resolvedAt;
+      delete newDetail.resolvedBy;
+      delete newDetail.note;
+    } else {
+      newDetail.resolvedAt = new Date().toISOString();
+      if (params.userId) newDetail.resolvedBy = params.userId;
+      if (params.note != null) newDetail.note = String(params.note).slice(0, 1000);
+    }
+
+    return (this.prisma as any).eDefterFinding.update({
+      where: { id: params.findingId },
+      data: { status: params.status, detail: newDetail },
+    });
+  }
+
+  async exportFindingsAsExcel(sessionId: string, tenantId: string): Promise<Buffer> {
+    const session = await (this.prisma as any).eDefterControlSession.findFirst({
+      where: { id: sessionId, tenantId },
+      include: {
+        findings: { orderBy: [{ severity: 'desc' }, { createdAt: 'asc' }] },
+      },
+    });
+    if (!session) throw new NotFoundException('e-Defter oturumu bulunamadi');
+
+    const taxpayer = await (this.prisma as any).taxpayer.findFirst({
+      where: { id: session.taxpayerId, tenantId },
+      select: { firstName: true, lastName: true, companyName: true, taxNumber: true },
+    });
+    const taxpayerName =
+      taxpayer?.companyName ||
+      [taxpayer?.firstName, taxpayer?.lastName].filter(Boolean).join(' ') ||
+      taxpayer?.taxNumber ||
+      'Mukellef';
+
+    const XLSX = await import('xlsx');
+    const rows = session.findings.map((f: any, idx: number) => {
+      const detail = (f.detail && typeof f.detail === 'object' && !Array.isArray(f.detail)
+        ? f.detail
+        : {}) as Record<string, unknown>;
+      return {
+        Sira: idx + 1,
+        Seviye: f.severity,
+        Kategori: f.category,
+        Aciklama: f.message,
+        FisYevmiyeNo: f.voucherKey || '',
+        Satir: f.rowIndex || '',
+        HesapKodu: f.hesapKodu || '',
+        Durum: f.status || 'OPEN',
+        Not: (detail.note as string) || '',
+        DetayJson: f.detail ? JSON.stringify(f.detail) : '',
+        OlusmaTarihi: f.createdAt ? new Date(f.createdAt).toISOString().slice(0, 19) : '',
+      };
+    });
+
+    const wb = XLSX.utils.book_new();
+    const ws = XLSX.utils.json_to_sheet(rows);
+    ws['!cols'] = [
+      { wch: 5 }, { wch: 8 }, { wch: 30 }, { wch: 60 }, { wch: 18 },
+      { wch: 8 }, { wch: 14 }, { wch: 10 }, { wch: 30 }, { wch: 40 }, { wch: 18 },
+    ];
+    XLSX.utils.book_append_sheet(wb, ws, 'Bulgular');
+
+    const summary = [
+      ['Mukellef', taxpayerName],
+      ['Donem', session.donem || ''],
+      ['Donem Tipi', session.donemTipi || ''],
+      ['Toplam Fis', session.totalVouchers || 0],
+      ['Toplam Satir', session.totalLines || 0],
+      ['Toplam Bulgu', session.findingCount || 0],
+      ['Olusma Tarihi', session.createdAt ? new Date(session.createdAt).toISOString().slice(0, 19) : ''],
+    ];
+    const wsSum = XLSX.utils.aoa_to_sheet([['Alan', 'Deger'], ...summary]);
+    wsSum['!cols'] = [{ wch: 20 }, { wch: 40 }];
+    XLSX.utils.book_append_sheet(wb, wsSum, 'Ozet');
+
+    return XLSX.write(wb, { type: 'buffer', bookType: 'xlsx' });
+  }
+
   async findCompanionMizan(
     tenantId: string,
     taxpayerId: string,
@@ -347,6 +451,7 @@ export class EDefterControlService {
     for (const [voucherKey, group] of byVoucher.entries()) {
       voucherMeta.set(voucherKey, this.buildVoucherMeta(voucherKey, group));
     }
+    const hasBelgeTuruData = rows.some((r) => Boolean(r.belgeTuru));
     for (const row of rows) {
       const meta = voucherMeta.get(row.voucherKey);
       if (!row.hesapKodu) {
@@ -441,6 +546,8 @@ export class EDefterControlService {
         });
       }
       findings.push(...this.analyzeVoucherRisks(meta));
+      findings.push(...this.analyzeVoucherDocumentStructure(meta, hasBelgeTuruData));
+      findings.push(...this.analyzeVoucherVatRisks(meta));
     }
 
     findings.push(...this.analyzeMonthlyVat(rows, range, voucherMeta));
@@ -449,6 +556,10 @@ export class EDefterControlService {
     findings.push(...this.analyzeDailyCash(rows));
     findings.push(...this.analyzeCostReflectionPeriod(rows));
     findings.push(...this.analyzePeriodAccountingRisks(rows, range, voucherMeta));
+    findings.push(...this.analyzeDocumentDates(rows, range));
+    findings.push(...this.analyzeLedgerNumbering(rows));
+    findings.push(...this.analyzeTevsikParcalama(rows));
+    findings.push(...this.analyzeEmptyOrSingleLineVouchers(byVoucher));
 
     return findings.slice(0, 10000);
   }
@@ -1277,6 +1388,68 @@ export class EDefterControlService {
       }
     }
 
+    return findings;
+  }
+
+  private analyzeTevsikParcalama(rows: ParsedEDefterFisLine[]): FindingDraft[] {
+    const findings: FindingDraft[] = [];
+    const byPartyDay = new Map<string, ParsedEDefterFisLine[]>();
+    for (const row of rows) {
+      if (!row.fisTarihi) continue;
+      if (!/^100/.test(row.hesapKodu || '')) continue;
+      const vkn = String(row.vknTckn || '').replace(/\D/g, '');
+      if (!vkn || (vkn.length !== 10 && vkn.length !== 11)) continue;
+      const day = row.fisTarihi.toISOString().slice(0, 10);
+      const key = `${vkn}|${day}`;
+      if (!byPartyDay.has(key)) byPartyDay.set(key, []);
+      byPartyDay.get(key)!.push(row);
+    }
+    for (const [key, partyRows] of byPartyDay.entries()) {
+      if (partyRows.length < 2) continue;
+      const total = partyRows.reduce((sum, r) => sum + this.amountOf(r), 0);
+      if (total <= 30000) continue;
+      const [vkn, day] = key.split('|');
+      const first = partyRows[0];
+      findings.push({
+        severity: 'WARN',
+        category: 'KASA_TEVSIK_PARCALAMA',
+        message: `${this.fmtDate(new Date(`${day}T00:00:00.000Z`))} tarihinde ${vkn} VKN/TCKN icin ${partyRows.length} ayri 100 Kasa hareketi toplam ${this.fmt(total)} TL; VUK 459 acisindan parcalama riski.`,
+        voucherKey: first.voucherKey,
+        rowIndex: first.rowIndex,
+        hesapKodu: first.hesapKodu,
+        detail: { vknTckn: vkn, day, parcaSayisi: partyRows.length, toplam: total, limit: 30000 },
+      });
+    }
+    return findings;
+  }
+
+  private analyzeEmptyOrSingleLineVouchers(byVoucher: Map<string, ParsedEDefterFisLine[]>): FindingDraft[] {
+    const findings: FindingDraft[] = [];
+    for (const [voucherKey, group] of byVoucher.entries()) {
+      const first = group[0];
+      const hasReliableVoucherKey = Boolean(first.fisNo || first.yevmiyeNo);
+      if (!hasReliableVoucherKey) continue;
+      const nonZero = group.filter((r) => (r.borc || 0) !== 0 || (r.alacak || 0) !== 0);
+      if (nonZero.length === 0) {
+        findings.push({
+          severity: 'WARN',
+          category: 'BOS_FIS',
+          message: `Fis ${this.voucherLabel(first)} icinde hicbir hareket satiri yok; bos fis kontrol edilmeli.`,
+          voucherKey,
+          rowIndex: first.rowIndex,
+        });
+        continue;
+      }
+      if (nonZero.length === 1) {
+        findings.push({
+          severity: 'WARN',
+          category: 'TEK_SATIRLI_FIS',
+          message: `Fis ${this.voucherLabel(first)} sadece 1 hareket satirina sahip; cift tarafli kayit prensibi ihlali olabilir.`,
+          voucherKey,
+          rowIndex: first.rowIndex,
+        });
+      }
+    }
     return findings;
   }
 

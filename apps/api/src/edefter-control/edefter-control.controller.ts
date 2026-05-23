@@ -8,13 +8,16 @@ import {
   HttpCode,
   HttpStatus,
   Param,
+  Patch,
   Post,
   Query,
   Req,
+  Res,
   UploadedFile,
   UseGuards,
   UseInterceptors,
 } from '@nestjs/common';
+import type { Response } from 'express';
 import { AuthGuard } from '@nestjs/passport';
 import { FileInterceptor } from '@nestjs/platform-express';
 import { memoryStorage } from 'multer';
@@ -128,6 +131,39 @@ export class EDefterControlController {
       status: jobs.detailJob.status,
       mizanStatus: null,
     };
+  }
+
+  @Patch('edefter-control/:sessionId/findings/:findingId')
+  @UseGuards(AuthGuard('jwt'), RolesGuard)
+  @Roles('ADMIN', 'STAFF')
+  updateFindingStatus(
+    @Req() req: any,
+    @Param('sessionId') sessionId: string,
+    @Param('findingId') findingId: string,
+    @Body() body: { status?: 'OPEN' | 'RESOLVED' | 'IGNORED'; note?: string | null },
+  ) {
+    const status = body?.status;
+    if (!status || !['OPEN', 'RESOLVED', 'IGNORED'].includes(status)) {
+      throw new BadRequestException('status OPEN, RESOLVED veya IGNORED olmali');
+    }
+    return this.service.updateFindingStatus({
+      tenantId: req.user.tenantId,
+      sessionId,
+      findingId,
+      status,
+      note: body?.note ?? null,
+      userId: req.user.sub,
+    });
+  }
+
+  @Get('edefter-control/:id/export.xlsx')
+  @UseGuards(AuthGuard('jwt'), RolesGuard)
+  async exportExcel(@Req() req: any, @Param('id') id: string, @Res() res: Response) {
+    const buffer = await this.service.exportFindingsAsExcel(id, req.user.tenantId);
+    const fileName = `edefter-bulgular-${id}.xlsx`;
+    res.setHeader('Content-Type', 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet');
+    res.setHeader('Content-Disposition', `attachment; filename="${fileName}"`);
+    res.send(buffer);
   }
 
   @Post('edefter-control/upload')
