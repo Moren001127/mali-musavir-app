@@ -154,6 +154,7 @@ export default function Sidebar() {
   const { data: user } = useMe();
   const logout = useLogout();
   const [collapsed, setCollapsed] = useState(false);
+  const [collapsedTooltip, setCollapsedTooltip] = useState<{ label: string; color: string; top: number } | null>(null);
 
   // Onay kuyrugu bekleyen sayisi — badge icin
   const { data: pendingCount } = useQuery({
@@ -182,6 +183,20 @@ export default function Sidebar() {
     });
   };
 
+  useEffect(() => {
+    if (!collapsed) {
+      setCollapsedTooltip(null);
+    }
+  }, [collapsed]);
+
+  const showCollapsedTooltip = (event: React.MouseEvent<HTMLElement>, label: string, color = GOLD) => {
+    if (!collapsed) return;
+    const rect = event.currentTarget.getBoundingClientRect();
+    setCollapsedTooltip({ label, color, top: rect.top + rect.height / 2 });
+  };
+
+  const hideCollapsedTooltip = () => setCollapsedTooltip(null);
+
   const exactActiveHrefs = new Set(['/panel', '/panel/ajanlar', '/panel/ayarlar']);
   const isActive = (href: string) =>
     exactActiveHrefs.has(href) ? pathname === href : pathname.startsWith(href);
@@ -191,6 +206,7 @@ export default function Sidebar() {
     : '?';
 
   return (
+    <>
     <aside
       className="flex flex-col flex-shrink-0 overflow-hidden relative"
       data-collapsed={collapsed ? 'true' : 'false'}
@@ -234,6 +250,8 @@ export default function Sidebar() {
             boxShadow: 'inset 0 1px 0 rgba(255,255,255,0.055), 0 16px 34px rgba(0,0,0,0.18)',
           }}
           aria-label="Moren"
+          onMouseEnter={(e) => showCollapsedTooltip(e, 'Moren Mali Müşavirlik', GOLD)}
+          onMouseLeave={hideCollapsedTooltip}
         >
           <span className={collapsed ? 'block h-9 w-[54px]' : 'block h-[104px] w-[150px]'}>
             <img
@@ -258,6 +276,8 @@ export default function Sidebar() {
             boxShadow: '0 8px 18px rgba(0,0,0,0.22)',
           }}
           aria-label={collapsed ? 'Sol menuyu genislet' : 'Sol menuyu daralt'}
+          onMouseEnter={(e) => showCollapsedTooltip(e, 'Menüyü genişlet', GOLD)}
+          onMouseLeave={hideCollapsedTooltip}
         >
           {collapsed ? <PanelLeftOpen size={14} /> : <PanelLeftClose size={14} />}
         </button>
@@ -276,6 +296,8 @@ export default function Sidebar() {
                     ? 'flex h-8 w-8 items-center justify-center rounded-lg border'
                     : 'flex items-center gap-1.5 rounded-lg border px-2 py-1.5'
                   }
+                  onMouseEnter={(e) => showCollapsedTooltip(e, group.label, group.color)}
+                  onMouseLeave={hideCollapsedTooltip}
                   style={{
                     background: `linear-gradient(90deg, ${group.color}12 0%, rgba(255,255,255,0.018) 46%, transparent 100%)`,
                     borderColor: `${group.color}24`,
@@ -344,6 +366,7 @@ export default function Sidebar() {
                         transition: 'all 0.28s cubic-bezier(0.16, 1, 0.3, 1)',
                       }}
                       onMouseEnter={(e) => {
+                        showCollapsedTooltip(e, label, group.color);
                         if (!active) {
                           const el = e.currentTarget as HTMLElement;
                           el.style.background = `linear-gradient(135deg, ${group.color}20 0%, rgba(255,255,255,0.075) 48%, ${group.color}08 100%)`;
@@ -354,6 +377,7 @@ export default function Sidebar() {
                         }
                       }}
                       onMouseLeave={(e) => {
+                        hideCollapsedTooltip();
                         if (!active) {
                           const el = e.currentTarget as HTMLElement;
                           el.style.background = baseBackground;
@@ -365,19 +389,6 @@ export default function Sidebar() {
                       }}
                       aria-label={label}
                     >
-                      {collapsed && (
-                        <span
-                          className="pointer-events-none absolute left-[calc(100%+10px)] top-1/2 z-[90] -translate-y-1/2 whitespace-nowrap rounded-lg border px-2.5 py-1.5 text-[11px] font-semibold opacity-0 shadow-xl transition-all duration-150 group-hover:translate-x-1 group-hover:opacity-100"
-                          style={{
-                            background: 'linear-gradient(135deg, rgba(22,18,15,0.98), rgba(10,9,7,0.98))',
-                            borderColor: `${group.color}44`,
-                            color: '#fafaf9',
-                            boxShadow: `0 12px 28px rgba(0,0,0,0.34), 0 0 18px ${group.color}18`,
-                          }}
-                        >
-                          {label}
-                        </span>
-                      )}
                       <span
                         className="absolute inset-y-1 left-1 w-10 rounded-full opacity-0 blur-md transition-opacity duration-300 group-hover:opacity-70"
                         style={{ background: `${group.color}28` }}
@@ -474,6 +485,14 @@ export default function Sidebar() {
             <div className="flex flex-col items-center gap-2">
               <div
                 className="relative h-10 w-10 rounded-xl flex items-center justify-center text-[12px] font-bold"
+                onMouseEnter={(e) =>
+                  showCollapsedTooltip(
+                    e,
+                    user ? `${user.firstName ?? ''} ${user.lastName ?? ''}`.trim() || user.email : 'Kullanıcı',
+                    GOLD
+                  )
+                }
+                onMouseLeave={hideCollapsedTooltip}
                 style={{
                   background: 'linear-gradient(135deg, #d4b876, #8b7649)',
                   color: '#0f0d0b',
@@ -488,6 +507,8 @@ export default function Sidebar() {
                 className="flex h-8 w-8 items-center justify-center rounded-lg border transition hover:bg-red-500/15"
                 style={{ borderColor: 'rgba(239,68,68,0.22)', color: '#ef4444' }}
                 aria-label="Cikis yap"
+                onMouseEnter={(e) => showCollapsedTooltip(e, 'Çıkış yap', '#ef4444')}
+                onMouseLeave={hideCollapsedTooltip}
               >
                 <LogOut size={13} />
               </button>
@@ -553,5 +574,23 @@ export default function Sidebar() {
         </div>
       </nav>
     </aside>
+    {collapsed && collapsedTooltip && (
+      <div
+        className="pointer-events-none fixed z-[9999] max-w-[260px] rounded-lg border px-3 py-2 text-[12px] font-semibold shadow-2xl"
+        style={{
+          left: SIDEBAR_COLLAPSED_WIDTH + 10,
+          top: collapsedTooltip.top,
+          transform: 'translateY(-50%)',
+          background: 'linear-gradient(135deg, rgba(22,18,15,0.98), rgba(10,9,7,0.98))',
+          borderColor: `${collapsedTooltip.color}4d`,
+          color: '#fafaf9',
+          boxShadow: `0 14px 30px rgba(0,0,0,0.36), 0 0 20px ${collapsedTooltip.color}20`,
+          whiteSpace: 'nowrap',
+        }}
+      >
+        {collapsedTooltip.label}
+      </div>
+    )}
+    </>
   );
 }
