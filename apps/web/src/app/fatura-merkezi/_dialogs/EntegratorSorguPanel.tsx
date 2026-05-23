@@ -75,10 +75,15 @@ export default function EntegratorSorguPanel({ taxpayer, provider, providerLabel
   const activeTab = TABS.find((t) => t.id === yon)!;
 
   return (
-    <div className="fixed inset-0 z-50 flex items-center justify-center p-4" style={{ background: 'rgba(0,0,0,0.55)' }}>
+    <div
+      className="fixed inset-0 z-[60] flex items-center justify-center p-4"
+      style={{ background: 'rgba(0,0,0,0.55)' }}
+      onClick={(e) => { e.stopPropagation(); }}
+    >
       <div
         className="w-full max-w-3xl rounded-2xl overflow-hidden flex flex-col"
         style={{ background: 'var(--bg)', border: '1px solid var(--border)', maxHeight: '90vh' }}
+        onClick={(e) => e.stopPropagation()}
       >
         {/* Üst başlık */}
         <div className="px-5 py-4 flex items-center gap-3" style={{ borderBottom: '1px solid var(--border)' }}>
