@@ -146,6 +146,27 @@ const INTEGRATOR_CATALOG = [
 const PROVIDER_DEFAULT_BASE_URL: Record<string, string> = {
   UYUMSOFT: 'http://efatura.uyumsoft.com.tr/Services/BasicIntegration',
   IZIBIZ: 'https://efaturaws.izibiz.com.tr/EInvoiceWS',
+  FORIBA: 'https://api.fitbulut.com/servis',
+  PARASUT: 'https://api.parasut.com/v4',
+  MIKRO: 'https://apidocs.mikro.com.tr',
+  ELOGO: 'https://earsiv.elogo.com.tr',
+  LOGO_ISBASI: 'https://api.isbasi.com',
+  KOLAYSOFT: 'https://efatura.kolaysoft.com.tr',
+  TURMOB_EFATURA: 'https://turmobefatura.luca.com.tr',
+};
+
+// Saglayicilara ozel kullanici yardim metinleri (UI'da entegrator eklerken gosterilir)
+export const PROVIDER_AUTH_HINTS: Record<string, string> = {
+  UYUMSOFT: 'Uyumsoft kullanici adi/sifresi yeterli. Servis URL'i otomatik dolar.',
+  IZIBIZ: 'Izibiz kullanici/sifre + opsiyonel test/canli URL.',
+  FORIBA: 'Sovos Foriba bulut API + kullanici/sifre. URL Sovos\'tan alinmali.',
+  PARASUT: 'Parasut OAuth2: client_id + client_secret + kullanici/sifre. Firma No URL\'de.',
+  MIKRO: 'Mikro API anahtari ile baglanir. apidestek@mikro.com.tr\'den anahtar alin.',
+  ELOGO: 'eLogo kullanici/sifre + opsiyonel servis URL\'i.',
+  LOGO_ISBASI: 'Logo Isbasi API anahtari. developers.isbasi.com\'dan alin.',
+  KOLAYSOFT: 'Kolaysoft kullanici/sifre. Servis URL\'i hesabiniza ozel.',
+  TURMOB_EFATURA: 'TURMOB e-Fatura, Luca Local Agent uzerinden cekilir. Luca\'da TURMOB hesabiniz tanimli olmali; sorgu Luca\'ya yonlendirilir.',
+  GIB_PORTAL: 'GIB Portal: API yok, Luca Local Agent veya mali muhur ile portal otomasyonu gerekir.',
 };
 
 const I2I_SOAP_PROVIDERS = new Set(['IZIBIZ', 'FORIBA']);
@@ -2958,7 +2979,100 @@ export class FaturaMuhasebelestirmeService {
     if (I2I_SOAP_PROVIDERS.has(cfg.provider) || /EInvoiceWS/i.test(cfg.baseUrl)) {
       return this.fetchI2iInvoices(cfg, opts);
     }
+    if (cfg.provider === 'TURMOB_EFATURA') return this.fetchTurmobViaLuca(cfg, opts);
+    if (cfg.provider === 'PARASUT') return this.fetchParasutInvoices(cfg, opts);
     return this.fetchGenericRestInvoices(cfg, opts);
+  }
+
+  /**
+   * TURMOB e-Fatura cekme - turmobefatura.luca.com.tr Luca'nin uzantisi oldugu icin
+   * Luca Local Agent uzerinden cekilir. Yeni bir LucaFetchJob yaratir; agent islerse
+   * faturalari indirip portala yukler. Suresi: 1-3 dakika.
+   */
+  private async fetchTurmobViaLuca(
+    cfg: RuntimeIntegrationConfig,
+    opts: {
+      taxpayer: any;
+      direction: 'ALIS' | 'SATIS';
+      period: { donem: string; startDate: string; endDate: string };
+      limit: number;
+    },
+  ): Promise<ProviderInvoicePayload[]> {
+    // Luca'ya job yarat - agent bunu alip islemeli
+    const tip = opts.direction === 'ALIS' ? 'EFATURA_ALIS' : 'EFATURA_SATIS';
+    const job = await (this.prisma as any).lucaFetchJob.create({
+      data: {
+        tenantId: opts.taxpayer.tenantId || (cfg as any).tenantId,
+        sessionId: null,
+        mukellefId: opts.taxpayer.id,
+        donem: opts.period.donem,
+        tip,
+        status: 'pending',
+        createdBy: 'turmob-sorgu',
+        errorMsg: `[META] source=TURMOB_EFATURA dateFrom=${opts.period.startDate} dateTo=${opts.period.endDate}`,
+      },
+    });
+    this.logger.log(
+      `TURMOB e-Fatura icin Luca job yaratildi: jobId=${job.id} tip=${tip} tx=${opts.taxpayer.id}`,
+    );
+    // Job async olarak agent tarafindan islenecek - su anda 0 payload donulur,
+    // belge sayisi job tamamlandiginda gorunur olur.
+    return [];
+  }
+
+  /**
+   * Parasut OAuth2 + REST adapter. Erisim icin client_id + client_secret + user/pass gerek.
+   * Token al -> /v4/{firmaNo}/e_invoice_inboxes (ALIS) veya sales_invoices (SATIS) cek.
+   */
+  private async fetchParasutInvoices(
+    cfg: RuntimeIntegrationConfig,
+    opts: {
+      taxpayer: any;
+      direction: 'ALIS' | 'SATIS';
+      period: { donem: string; startDate: string; endDate: string };
+      limit: number;
+    },
+  ): Promise<ProviderInvoicePayload[]> {
+    const baseUrl = cfg.baseUrl || PROVIDER_DEFAULT_BASE_URL.PARASUT;
+    if (!cfg.username || !cfg.password || !(cfg as any).apiKey || !(cfg as any).apiSecret) {
+      throw new Error('Parasut OAuth2 icin client_id (apiKey) + client_secret (apiSecret) + kullanici + sifre gerekli');
+    }
+    const firmaNo = (cfg as any).senderVkn || (cfg as any).accountId;
+    if (!firmaNo) throw new Error('Parasut Firma No (senderVkn alaninda) gerekli');
+
+    // OAuth2 password grant
+    const tokenRes = await fetch('https://api.parasut.com/oauth/token', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({
+        grant_type: 'password',
+        client_id: (cfg as any).apiKey,
+        client_secret: (cfg as any).apiSecret,
+        username: cfg.username,
+        password: cfg.password,
+        redirect_uri: 'urn:ietf:wg:oauth:2.0:oob',
+      }),
+    });
+    if (!tokenRes.ok) throw new Error(`Parasut token alinamadi: ${tokenRes.status} ${await tokenRes.text()}`);
+    const tokenData: any = await tokenRes.json();
+    const accessToken = tokenData?.access_token;
+    if (!accessToken) throw new Error('Parasut access_token donmedi');
+
+    const path = opts.direction === 'ALIS' ? 'e_invoice_inboxes' : 'sales_invoices';
+    const url = `${baseUrl}/${firmaNo}/${path}?filter[issue_date]=${opts.period.startDate}..${opts.period.endDate}&page[size]=${opts.limit}`;
+    const res = await fetch(url, {
+      method: 'GET',
+      headers: { Authorization: `Bearer ${accessToken}`, Accept: 'application/json' },
+    });
+    if (!res.ok) throw new Error(`Parasut fatura listesi alinamadi: ${res.status} ${await res.text()}`);
+    const data: any = await res.json();
+    const items = Array.isArray(data?.data) ? data.data : [];
+    return items.map((it: any) => ({
+      externalId: it.id,
+      originalName: it?.attributes?.invoice_no || it.id,
+      xml: it?.attributes?.xml || '',
+      raw: it,
+    }));
   }
 
   private async fetchUyumsoftInvoices(
