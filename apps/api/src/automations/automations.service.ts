@@ -5,14 +5,16 @@ import {
   Logger,
   NotFoundException,
 } from '@nestjs/common';
-import { AutomationStatus, AutomationTriggerType, Prisma } from '@prisma/client';
+import { Automation, AutomationStatus, AutomationTriggerType, Prisma } from '@prisma/client';
 import { PrismaService } from '../prisma/prisma.service';
 import { AutomationRunnerService } from './automation-runner.service';
+import { ACTION_BY_NAME } from './action-catalog';
 import { CreateAutomationDto } from './dto/create-automation.dto';
 import { ListAutomationsQueryDto } from './dto/list-automations-query.dto';
 import { UpdateAutomationDto } from './dto/update-automation.dto';
 
 const DEFAULT_PAGE_SIZE = 20;
+const DISABLED_ACTIONS = new Set(['ocr_pdf', 'post_to_luca', 'send_sms']);
 
 /**
  * Otomasyon kayıtlarının CRUD işlemleri.
@@ -35,6 +37,7 @@ export class AutomationsService {
   async create(tenantId: string, userId: string, dto: CreateAutomationDto) {
     this.validateTriggerConfig(dto.triggerType as unknown as AutomationTriggerType, dto.triggerConfig);
     this.validateSteps(dto.steps);
+    this.validateFailurePolicy(dto.failurePolicy);
 
     const automation = await this.prisma.automation.create({
       data: {
@@ -47,6 +50,7 @@ export class AutomationsService {
         triggerConfig: dto.triggerConfig as Prisma.InputJsonValue,
         steps: dto.steps as Prisma.InputJsonValue,
         failurePolicy: dto.failurePolicy ?? 'notify',
+        estimatedCostPerRun: dto.estimatedCostPerRun,
         status: AutomationStatus.DRAFT,
       },
     });
@@ -116,12 +120,15 @@ export class AutomationsService {
     if (!existing) throw new NotFoundException('Otomasyon bulunamadı.');
     this.assertTenantOwnership(existing.tenantId, tenantId);
 
-    if (dto.triggerType && dto.triggerConfig) {
-      this.validateTriggerConfig(dto.triggerType as unknown as AutomationTriggerType, dto.triggerConfig);
-    } else if (dto.triggerConfig) {
-      this.validateTriggerConfig(existing.triggerType, dto.triggerConfig);
+    if (dto.triggerType !== undefined || dto.triggerConfig !== undefined) {
+      const nextTriggerType = (dto.triggerType ??
+        existing.triggerType) as unknown as AutomationTriggerType;
+      const nextTriggerConfig = (dto.triggerConfig ??
+        existing.triggerConfig) as Record<string, unknown>;
+      this.validateTriggerConfig(nextTriggerType, nextTriggerConfig);
     }
     if (dto.steps) this.validateSteps(dto.steps);
+    this.validateFailurePolicy(dto.failurePolicy);
 
     const updated = await this.prisma.automation.update({
       where: { id },
@@ -135,10 +142,29 @@ export class AutomationsService {
           triggerConfig: dto.triggerConfig as Prisma.InputJsonValue,
         }),
         ...(dto.steps !== undefined && { steps: dto.steps as Prisma.InputJsonValue }),
-        ...(dto.status !== undefined && { status: dto.status as unknown as AutomationStatus }),
         ...(dto.failurePolicy !== undefined && { failurePolicy: dto.failurePolicy }),
       },
     });
+
+    if (
+      existing.status === AutomationStatus.ACTIVE &&
+      (dto.triggerType !== undefined || dto.triggerConfig !== undefined)
+    ) {
+      try {
+        this.unregisterRunner(existing);
+        this.registerRunner(updated);
+      } catch (err: any) {
+        this.logger.error(`Aktif otomasyon yeniden register edilemedi id=${id}: ${err.message}`);
+        await this.prisma.automation.update({
+          where: { id },
+          data: { status: AutomationStatus.ERROR },
+        });
+        throw new BadRequestException(
+          `Otomasyon güncellendi ama tetikleyici yeniden kurulamadı: ${err.message}`,
+        );
+      }
+    }
+
     return updated;
   }
 
@@ -158,6 +184,13 @@ export class AutomationsService {
       );
     }
 
+    if (status === AutomationStatus.ACTIVE) {
+      this.validateTriggerConfig(
+        existing.triggerType,
+        existing.triggerConfig as Record<string, unknown>,
+      );
+    }
+
     const updated = await this.prisma.automation.update({
       where: { id },
       data: { status },
@@ -165,18 +198,10 @@ export class AutomationsService {
 
     // Runner'ı bilgilendir: CRON veya EVENT tetikleyici varsa register/unregister.
     try {
-      if (updated.triggerType === AutomationTriggerType.CRON) {
-        if (status === AutomationStatus.ACTIVE) {
-          this.runner.registerCron(updated);
-        } else {
-          this.runner.unregisterCron(updated.id);
-        }
-      } else if (updated.triggerType === AutomationTriggerType.EVENT) {
-        if (status === AutomationStatus.ACTIVE) {
-          this.runner.registerEvent(updated);
-        } else {
-          this.runner.unregisterEvent(updated.id);
-        }
+      if (status === AutomationStatus.ACTIVE) {
+        this.registerRunner(updated);
+      } else {
+        this.unregisterRunner(updated);
       }
     } catch (err: any) {
       this.logger.error(
@@ -255,7 +280,11 @@ export class AutomationsService {
     const oneWeekAgo = new Date();
     oneWeekAgo.setDate(oneWeekAgo.getDate() - 7);
 
-    const runScope = { automation: { tenantId }, startedAt: { gte: oneWeekAgo } };
+    const runScope = {
+      automation: { tenantId },
+      startedAt: { gte: oneWeekAgo },
+      NOT: [{ triggerPayload: { path: ['_mode'], equals: 'dry-run' } } as any],
+    } as Prisma.AutomationRunWhereInput;
 
     // groupBy yerine ayrı count'lar — Prisma 5.22 type inference daha temiz oluyor.
     const [
@@ -370,7 +399,11 @@ export class AutomationsService {
         }
         break;
       case AutomationTriggerType.WEBHOOK:
-        // Secret service tarafında otomatik üretilir — DTO'da zorunlu değil.
+        if (process.env.AUTOMATIONS_ENABLE_WEBHOOKS !== 'true') {
+          throw new BadRequestException(
+            'WEBHOOK tetikleyici bu sürümde aktif değil. AUTOMATIONS_ENABLE_WEBHOOKS=true olmadan kullanılamaz.',
+          );
+        }
         break;
       case AutomationTriggerType.MANUAL:
         // Konfigürasyon gerekmez.
@@ -390,7 +423,83 @@ export class AutomationsService {
     if (!Array.isArray(stepList) || stepList.length === 0) {
       throw new BadRequestException('steps.steps boş olmayan bir dizi olmalı.');
     }
-    // Adım doğrulaması (tool adı, parametreler) Faz 2'de parser tarafında daha sıkı yapılır.
+    const unknownTools = this.collectUnknownTools(stepList);
+    if (unknownTools.length > 0) {
+      throw new BadRequestException(`Bilinmeyen otomasyon aksiyonu: ${unknownTools.join(', ')}`);
+    }
+    const disabledTools = this.collectDisabledTools(stepList);
+    if (disabledTools.length > 0) {
+      throw new BadRequestException(
+        `Bu aksiyonlar henüz gerçek çalışmaya açık değil: ${disabledTools.join(', ')}.`,
+      );
+    }
+  }
+
+  private collectUnknownTools(steps: any[]): string[] {
+    const unknown = new Set<string>();
+    const walk = (list: any[]) => {
+      for (const step of list) {
+        if (!step || typeof step !== 'object') continue;
+        if (typeof step.tool !== 'string' || !ACTION_BY_NAME[step.tool]) {
+          unknown.add(String(step.tool ?? '(eksik)'));
+        }
+        if (Array.isArray(step.steps)) walk(step.steps);
+        if (Array.isArray(step.then)) walk(step.then);
+        if (Array.isArray(step.else)) walk(step.else);
+        if (Array.isArray(step.branches)) {
+          for (const branch of step.branches) {
+            if (Array.isArray(branch)) walk(branch);
+          }
+        }
+      }
+    };
+    walk(steps);
+    return [...unknown];
+  }
+
+  private collectDisabledTools(steps: any[]): string[] {
+    const disabled = new Set<string>();
+    const walk = (list: any[]) => {
+      for (const step of list) {
+        if (!step || typeof step !== 'object') continue;
+        if (typeof step.tool === 'string' && DISABLED_ACTIONS.has(step.tool)) {
+          disabled.add(step.tool);
+        }
+        if (Array.isArray(step.steps)) walk(step.steps);
+        if (Array.isArray(step.then)) walk(step.then);
+        if (Array.isArray(step.else)) walk(step.else);
+        if (Array.isArray(step.branches)) {
+          for (const branch of step.branches) {
+            if (Array.isArray(branch)) walk(branch);
+          }
+        }
+      }
+    };
+    walk(steps);
+    return [...disabled];
+  }
+
+  private validateFailurePolicy(policy?: string): void {
+    if (!policy) return;
+    if (!['notify', 'pause_after_3', 'ignore'].includes(policy)) {
+      throw new BadRequestException('failurePolicy notify, pause_after_3 veya ignore olmalı.');
+    }
+  }
+
+  private registerRunner(automation: Automation): void {
+    if (automation.triggerType === AutomationTriggerType.CRON) {
+      this.runner.registerCron(automation);
+    } else if (automation.triggerType === AutomationTriggerType.EVENT) {
+      this.runner.registerEvent(automation);
+    }
+  }
+
+  private unregisterRunner(automation: Pick<Automation, 'id' | 'triggerType'>): void {
+    if (automation.triggerType === AutomationTriggerType.CRON) {
+      this.runner.unregisterCron(automation.id);
+    } else if (automation.triggerType === AutomationTriggerType.EVENT) {
+      this.runner.unregisterEvent(automation.id);
+    }
   }
 
   private isAllowedTransition(from: AutomationStatus, to: AutomationStatus): boolean {

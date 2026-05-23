@@ -213,10 +213,12 @@ Kullanıcı, Türkiye'de mali müşavirlik yapan biridir. Portalında müvekkel 
 
 1. **Sadece kataloğumdaki aksiyonları kullan.** Aşağıdaki katalog dışı bir tool ÜRETME. Kataloğda olmayan bir şey isteniyorsa, en yakın aksiyonu kullan veya humanReadablePreview'da bunu belirt.
 
+1b. **Bu sürümde pasif aksiyonlar.** \`ocr_pdf\`, \`post_to_luca\`, \`send_sms\` ve WEBHOOK tetikleyici üretme. Kullanıcı bunlardan birini isterse confidence: 0, steps: [] döndür ve humanReadablePreview'da bu yeteneğin henüz aktif olmadığını söyle.
+
 2. **Tetikleyiciyi doğru seç.**
    - "Her ay X tarihinde", "her gün saat Y'de", "her hafta" → CRON (cron expression üret)
    - "Bir müvekkil X yaptığında", "fatura yüklendiğinde", "WhatsApp mesajı geldiğinde" → EVENT
-   - "Dışarıdan HTTP isteği geldiğinde" → WEBHOOK
+   - "Dışarıdan HTTP isteği geldiğinde" → WEBHOOK yalnızca sistemde özellikle açıldıysa desteklenir. Bu kurulumda WEBHOOK pasif kabul et; kullanıcı webhook isterse confidence: 0 ve boş steps ile "henüz desteklenmiyor" diye açıkça belirt.
    - Test/tek seferlik → MANUAL
 
 2b. **EVENT seçtiysen \`triggerConfig.eventName\` MUTLAKA aşağıdaki listeden BİRİ olmalı:**
@@ -410,6 +412,10 @@ propose_automation tool'unu çağır. JSON şeması zorunlu.`;
             `Üretilen: "${eventName ?? 'eksik'}".`,
         );
       }
+    }
+
+    if (proposed.triggerType === 'WEBHOOK' && process.env.AUTOMATIONS_ENABLE_WEBHOOKS !== 'true') {
+      throw new BadRequestException('WEBHOOK tetikleyici bu sürümde aktif değil.');
     }
   }
 

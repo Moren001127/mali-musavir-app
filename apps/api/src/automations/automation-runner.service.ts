@@ -1,11 +1,18 @@
 import {
+  BadRequestException,
   Injectable,
   Logger,
   NotFoundException,
   OnModuleInit,
 } from '@nestjs/common';
 import { SchedulerRegistry } from '@nestjs/schedule';
-import { Automation, AutomationStatus, AutomationTriggerType, Prisma } from '@prisma/client';
+import {
+  Automation,
+  AutomationRun,
+  AutomationStatus,
+  AutomationTriggerType,
+  Prisma,
+} from '@prisma/client';
 import { CronJob } from 'cron';
 import { PrismaService } from '../prisma/prisma.service';
 import { ACTION_BY_NAME } from './action-catalog';
@@ -26,6 +33,17 @@ interface StepLog {
   error?: string;
   ms: number;
   ts: string;
+}
+
+type LoadedAutomation = Automation & {
+  createdBy: { id: string; email: string; firstName: string; lastName: string } | null;
+  tenant: { id: string; name: string };
+};
+
+interface ExecuteOptions {
+  dryRun?: boolean;
+  requireActive?: boolean;
+  updateMetrics?: boolean;
 }
 
 /**
@@ -210,35 +228,90 @@ export class AutomationRunnerService implements OnModuleInit {
   async executeAutomation(
     automationId: string,
     triggerPayload?: Record<string, unknown>,
-    options?: { dryRun?: boolean },
+    options?: ExecuteOptions,
   ): Promise<{ runId: string; status: string; summary?: string }> {
+    const { automation, run } = await this.prepareRun(automationId, triggerPayload, options);
+    return this.executePreparedRun(automation, run, triggerPayload, options);
+  }
+
+  /**
+   * HTTP isteklerini uzun süre açık tutmamak için run kaydını hemen yaratır ve
+   * çalışmayı event loop'a bırakır. Kalıcı kuyruk ihtiyacı için Bull/Redis'e
+   * taşınabilecek tek giriş noktası burasıdır.
+   */
+  async enqueueAutomation(
+    automationId: string,
+    triggerPayload?: Record<string, unknown>,
+    options?: ExecuteOptions,
+  ): Promise<{ runId: string; status: string; summary: string }> {
+    const { automation, run } = await this.prepareRun(automationId, triggerPayload, options);
+    setImmediate(() => {
+      this.executePreparedRun(automation, run, triggerPayload, options).catch((err) => {
+        this.markRunFailure(run.id, err).catch((markErr) => {
+          this.logger.error(`Run ${run.id} hata olarak işaretlenemedi: ${markErr.message}`);
+        });
+      });
+    });
+    return {
+      runId: run.id,
+      status: 'running',
+      summary: options?.dryRun ? 'Dry-run kuyruğa alındı.' : 'Çalışma kuyruğa alındı.',
+    };
+  }
+
+  private async prepareRun(
+    automationId: string,
+    triggerPayload?: Record<string, unknown>,
+    options?: ExecuteOptions,
+  ): Promise<{ automation: LoadedAutomation; run: AutomationRun }> {
     const automation = await this.prisma.automation.findUnique({
       where: { id: automationId },
       include: { createdBy: { select: { id: true, email: true, firstName: true, lastName: true } }, tenant: true },
     });
     if (!automation) throw new NotFoundException('Otomasyon bulunamadı.');
 
-    if (
-      automation.status !== AutomationStatus.ACTIVE &&
-      automation.status !== AutomationStatus.DRAFT
-    ) {
-      // PAUSED/ERROR/ARCHIVED durumdayken manuel "şimdi çalıştır" gibi durumlarda
-      // yine de bilgi verelim
-      this.logger.warn(
-        `Çalıştırma reddedildi: id=${automationId} status=${automation.status}`,
-      );
-      throw new Error(`Otomasyon ${automation.status} durumda — önce ACTIVE'e alın.`);
-    }
+    this.assertRunnable(automation, options);
+
+    const storedPayload = {
+      ...(triggerPayload ?? {}),
+      ...(options?.dryRun ? { _mode: 'dry-run' } : {}),
+    };
 
     const run = await this.prisma.automationRun.create({
       data: {
         automationId,
         status: 'running',
-        triggerPayload: (triggerPayload ?? {}) as Prisma.InputJsonValue,
+        triggerPayload: storedPayload as Prisma.InputJsonValue,
         stepLogs: [] as unknown as Prisma.InputJsonValue,
       },
     });
 
+    return { automation: automation as LoadedAutomation, run };
+  }
+
+  private assertRunnable(automation: Automation, options?: ExecuteOptions): void {
+    if (options?.dryRun) {
+      if (automation.status === AutomationStatus.ARCHIVED) {
+        throw new BadRequestException('Arşivlenmiş otomasyon dry-run ile çalıştırılamaz.');
+      }
+      return;
+    }
+
+    const requireActive = options?.requireActive !== false;
+    if (requireActive && automation.status !== AutomationStatus.ACTIVE) {
+      this.logger.warn(`Çalıştırma reddedildi: id=${automation.id} status=${automation.status}`);
+      throw new BadRequestException(
+        `Otomasyon ${automation.status} durumda — gerçek çalışma için önce ACTIVE'e alın.`,
+      );
+    }
+  }
+
+  private async executePreparedRun(
+    automation: LoadedAutomation,
+    run: AutomationRun,
+    triggerPayload?: Record<string, unknown>,
+    options?: ExecuteOptions,
+  ): Promise<{ runId: string; status: string; summary?: string }> {
     const stepLogs: StepLog[] = [];
     const ctx: ResolveContext = {
       outputs: {},
@@ -302,9 +375,25 @@ export class AutomationRunnerService implements OnModuleInit {
     });
 
     // Otomasyon sayaçlarını ve son çalışma bilgisini güncelle
-    await this.updateCountersAfterRun(automation, status);
+    if (options?.updateMetrics !== false && options?.dryRun !== true) {
+      await this.updateCountersAfterRun(automation, status);
+    }
 
     return { runId: run.id, status, summary };
+  }
+
+  private async markRunFailure(runId: string, err: unknown): Promise<void> {
+    const errorMessage = err instanceof Error ? err.message : String(err);
+    this.logger.error(`Run ${runId} background fatal: ${errorMessage}`);
+    await this.prisma.automationRun.update({
+      where: { id: runId },
+      data: {
+        finishedAt: new Date(),
+        status: 'failure',
+        errorMessage,
+        summary: `Çalışma başlatılamadı: ${errorMessage}`,
+      },
+    });
   }
 
   // ---------------------------------------------------------------
@@ -362,11 +451,15 @@ export class AutomationRunnerService implements OnModuleInit {
 
     // Dry-run: sadece logla, gerçekten çalıştırma
     if (opts.dryRun) {
+      const output = { dryRun: true, message: 'Dry-run: gerçek çalıştırma yapılmadı' };
+      if (step.outputAs) {
+        ctx.outputs[step.outputAs] = output;
+      }
       log.push({
         stepId,
         tool,
         input: args,
-        output: { dryRun: true, message: 'Dry-run: gerçek çalıştırma yapılmadı' },
+        output,
         ms: 0,
         ts: new Date().toISOString(),
       });
@@ -571,7 +664,7 @@ export class AutomationRunnerService implements OnModuleInit {
   ): Promise<void> {
     const lastRunStatus = status;
     const incSuccess = status === 'success' ? 1 : 0;
-    const incFailure = status === 'failure' ? 1 : 0;
+    const incFailure = status === 'failure' || status === 'partial' ? 1 : 0;
 
     await this.prisma.automation.update({
       where: { id: automation.id },
@@ -586,23 +679,30 @@ export class AutomationRunnerService implements OnModuleInit {
 
     // Hata politikası: pause_after_3 — 3 ardışık başarısızsa duraklat
     if (
-      status === 'failure' &&
+      status !== 'success' &&
       automation.failurePolicy === 'pause_after_3'
     ) {
       const recent = await this.prisma.automationRun.findMany({
-        where: { automationId: automation.id },
+        where: {
+          automationId: automation.id,
+          NOT: [{ triggerPayload: { path: ['_mode'], equals: 'dry-run' } } as any],
+        },
         orderBy: { startedAt: 'desc' },
         take: 3,
         select: { status: true },
       });
-      if (recent.length === 3 && recent.every((r) => r.status === 'failure')) {
+      if (recent.length === 3 && recent.every((r) => r.status === 'failure' || r.status === 'partial')) {
         await this.prisma.automation.update({
           where: { id: automation.id },
           data: { status: AutomationStatus.PAUSED },
         });
-        this.unregisterCron(automation.id);
+        if (automation.triggerType === AutomationTriggerType.CRON) {
+          this.unregisterCron(automation.id);
+        } else if (automation.triggerType === AutomationTriggerType.EVENT) {
+          this.unregisterEvent(automation.id);
+        }
         this.logger.warn(
-          `Otomasyon ${automation.id} 3 ardışık hata sonrası PAUSED'a alındı.`,
+          `Otomasyon ${automation.id} 3 ardışık sorunlu run sonrası PAUSED'a alındı.`,
         );
       }
     }

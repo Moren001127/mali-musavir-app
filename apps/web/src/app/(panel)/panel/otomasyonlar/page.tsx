@@ -97,6 +97,11 @@ export default function OtomasyonlarPage() {
     mutationFn: (id: string) => automationsApi.runNow(id),
     onSuccess: (result) => {
       qc.invalidateQueries({ queryKey: ['automations'] });
+      qc.invalidateQueries({ queryKey: ['automations-recent-runs'] });
+      if (result.status === 'running') {
+        toast.info(result.summary || 'Çalışma kuyruğa alındı');
+        return;
+      }
       const icon =
         result.status === 'success' ? '✓' : result.status === 'failure' ? '✗' : '⚠';
       toast.success(`${icon} ${result.summary || 'Çalışma tamamlandı'}`);
@@ -109,6 +114,7 @@ export default function OtomasyonlarPage() {
   const dryRunMutation = useMutation({
     mutationFn: (id: string) => automationsApi.dryRun(id),
     onSuccess: (result) => {
+      qc.invalidateQueries({ queryKey: ['automations-recent-runs'] });
       toast.info(`Dry-run: ${result.summary || 'Adımlar simüle edildi'}`);
     },
     onError: (err: any) => {
@@ -129,6 +135,8 @@ export default function OtomasyonlarPage() {
       );
     },
   });
+
+  const weeklyCostUsd = Number(summary?.weeklyCostUsd ?? 0);
 
   return (
     <div className="mx-auto max-w-6xl px-4 py-8">
@@ -179,7 +187,7 @@ export default function OtomasyonlarPage() {
           <SummaryStat
             icon={<DollarSign className="h-4 w-4" style={{ color: GOLD }} />}
             label="Bu Hafta Maliyet"
-            value={`$${summary.weeklyCostUsd.toFixed(2)}`}
+            value={`$${weeklyCostUsd.toFixed(2)}`}
             subtitle="Anthropic API kullanımı"
           />
         </div>
@@ -217,7 +225,6 @@ export default function OtomasyonlarPage() {
           <option value="all">Tüm Tetikleyiciler</option>
           <option value="CRON">Zamanlı</option>
           <option value="EVENT">Olay</option>
-          <option value="WEBHOOK">Webhook</option>
           <option value="MANUAL">Manuel</option>
         </select>
       </div>
@@ -389,7 +396,7 @@ function Row({
       </td>
       <td className="px-4 py-3 text-right">
         <div className="inline-flex items-center gap-1">
-          {auto.status !== 'ARCHIVED' && (
+          {auto.status === 'ACTIVE' && (
             <>
               <button
                 onClick={(e) => { stop(e); onRunNow(auto.id); }}
@@ -408,7 +415,16 @@ function Row({
               </button>
             </>
           )}
-          {(auto.status === 'ACTIVE' || auto.status === 'PAUSED') && (
+          {auto.status !== 'ACTIVE' && auto.status !== 'ARCHIVED' && (
+            <button
+              onClick={(e) => { stop(e); onDryRun(auto.id); }}
+              className="rounded-md border border-stone-300 dark:border-stone-600 bg-white dark:bg-stone-900 p-1.5 text-stone-600 dark:text-stone-300 hover:bg-stone-50 dark:hover:bg-stone-800 dark:bg-stone-800"
+              title="Dry-Run (aksiyon yapmadan simüle et)"
+            >
+              <FlaskConical className="h-4 w-4" />
+            </button>
+          )}
+          {(auto.status === 'ACTIVE' || auto.status === 'PAUSED' || auto.status === 'DRAFT' || auto.status === 'ERROR') && (
             <button
               onClick={(e) => { stop(e); onToggleActive(auto.id, auto.status); }}
               className="rounded-md border border-stone-300 dark:border-stone-600 bg-white dark:bg-stone-900 p-1.5 text-stone-600 dark:text-stone-300 hover:bg-stone-50 dark:hover:bg-stone-800 dark:bg-stone-800"

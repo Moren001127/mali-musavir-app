@@ -94,6 +94,10 @@ export default function OtomasyonDetayPage() {
     onSuccess: (result) => {
       qc.invalidateQueries({ queryKey: ['automation', id] });
       qc.invalidateQueries({ queryKey: ['automation-runs', id] });
+      if (result.status === 'running') {
+        toast.info(result.summary || 'Çalışma kuyruğa alındı');
+        return;
+      }
       const icon = result.status === 'success' ? '✓' : result.status === 'failure' ? '✗' : '⚠';
       toast.success(`${icon} ${result.summary || 'Çalışma tamamlandı'}`);
     },
@@ -102,7 +106,10 @@ export default function OtomasyonDetayPage() {
 
   const dryRun = useMutation({
     mutationFn: () => automationsApi.dryRun(id),
-    onSuccess: (result) => toast.info(`Dry-run: ${result.summary || 'Simüle edildi'}`),
+    onSuccess: (result) => {
+      qc.invalidateQueries({ queryKey: ['automation-runs', id] });
+      toast.info(`Dry-run: ${result.summary || 'Simüle edildi'}`);
+    },
     onError: (err: any) => toast.error(err?.response?.data?.message || 'Dry-run başarısız'),
   });
 
@@ -175,7 +182,7 @@ export default function OtomasyonDetayPage() {
 
         {/* Aksiyon butonları */}
         <div className="flex flex-wrap items-center gap-2">
-          {auto.status !== 'ARCHIVED' && (
+          {auto.status === 'ACTIVE' && (
             <>
               <button
                 onClick={() => runNow.mutate()}
@@ -195,7 +202,17 @@ export default function OtomasyonDetayPage() {
               </button>
             </>
           )}
-          {(auto.status === 'ACTIVE' || auto.status === 'PAUSED') && (
+          {auto.status !== 'ACTIVE' && auto.status !== 'ARCHIVED' && (
+            <button
+              onClick={() => dryRun.mutate()}
+              disabled={dryRun.isPending}
+              className="inline-flex items-center gap-1 rounded-md border border-stone-300 dark:border-stone-600 bg-white dark:bg-stone-900 px-3 py-1.5 text-sm font-medium text-stone-700 dark:text-stone-200 hover:bg-stone-50 dark:hover:bg-stone-800"
+            >
+              {dryRun.isPending ? <Loader2 className="h-4 w-4 animate-spin" /> : <FlaskConical className="h-4 w-4" />}
+              Dry-Run
+            </button>
+          )}
+          {(auto.status === 'ACTIVE' || auto.status === 'PAUSED' || auto.status === 'DRAFT' || auto.status === 'ERROR') && (
             <button
               onClick={() =>
                 setStatus.mutate(auto.status === 'ACTIVE' ? 'PAUSED' : 'ACTIVE')

@@ -1,4 +1,4 @@
-import { IsEnum, IsObject, IsOptional, IsString, MaxLength, MinLength } from 'class-validator';
+import { IsEnum, IsIn, IsObject, IsOptional, IsString, MaxLength, MinLength } from 'class-validator';
 import { AutomationTriggerTypeDto } from './create-automation.dto';
 
 export enum AutomationStatusDto {
@@ -39,10 +39,7 @@ export class UpdateAutomationDto {
   steps?: Record<string, unknown>;
 
   @IsOptional()
-  @IsEnum(AutomationStatusDto)
-  status?: AutomationStatusDto;
-
-  @IsOptional()
   @IsString()
+  @IsIn(['notify', 'pause_after_3', 'ignore'])
   failurePolicy?: string;
 }

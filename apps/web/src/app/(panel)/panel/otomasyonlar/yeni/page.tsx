@@ -64,6 +64,7 @@ export default function YeniOtomasyonPage() {
         triggerType: parsed.triggerType,
         triggerConfig: parsed.triggerConfig,
         steps: parsed.steps,
+        estimatedCostPerRun: parsed.estimatedCostPerRun,
       });
       // Hemen ACTIVE'e geçir
       await automationsApi.setStatus(created.id, 'ACTIVE');
@@ -192,6 +193,7 @@ export default function YeniOtomasyonPage() {
               <li>• Portal arayüzündeki butonları tıklatma</li>
               <li>• PDF/Resim OCR (StorageService bağlantısı yok)</li>
               <li>• SMS gönderme (sağlayıcı yapılandırılmamış)</li>
+              <li>• Webhook ile dış sistemden tetiklenme (bu sürümde kapalı)</li>
               <li>• Dış sistemlerden veri çekme (allowlist dışı domain)</li>
               <li>• Dakikadan kısa sürede (saniye/realtime)</li>
             </ul>

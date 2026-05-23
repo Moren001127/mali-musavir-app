@@ -14,6 +14,8 @@ import {
 } from '@nestjs/common';
 import { AuthGuard } from '@nestjs/passport';
 import { AutomationStatus } from '@prisma/client';
+import { Roles } from '../auth/decorators/roles.decorator';
+import { RolesGuard } from '../auth/guards/roles.guard';
 import { AutomationParserService } from './automation-parser.service';
 import { AutomationRunnerService } from './automation-runner.service';
 import { AutomationsService } from './automations.service';
@@ -30,7 +32,7 @@ import { AUTOMATION_ACTION_CATALOG } from './action-catalog';
  * req.user.tenantId ve req.user.sub auth modülünden gelir.
  */
 @Controller('automations')
-@UseGuards(AuthGuard('jwt'))
+@UseGuards(AuthGuard('jwt'), RolesGuard)
 export class AutomationsController {
   constructor(
     private automationsService: AutomationsService,
@@ -44,6 +46,7 @@ export class AutomationsController {
 
   // POST /automations/parse  — cümleden öneri üret (KAYDETMEZ)
   @Post('parse')
+  @Roles('ADMIN', 'STAFF')
   @HttpCode(HttpStatus.OK)
   parse(@Body() dto: ParsePromptDto) {
     return this.parserService.parse(dto.prompt);
@@ -64,6 +67,7 @@ export class AutomationsController {
 
   // POST /automations/:id/duplicate  — yeni DRAFT olarak çoğalt
   @Post(':id/duplicate')
+  @Roles('ADMIN', 'STAFF')
   @HttpCode(HttpStatus.CREATED)
   duplicate(@Req() req: any, @Param('id') id: string) {
     return this.automationsService.duplicate(req.user.tenantId, req.user.sub, id);
@@ -111,6 +115,7 @@ export class AutomationsController {
 
   // POST /automations
   @Post()
+  @Roles('ADMIN', 'STAFF')
   @HttpCode(HttpStatus.CREATED)
   create(@Req() req: any, @Body() dto: CreateAutomationDto) {
     return this.automationsService.create(req.user.tenantId, req.user.sub, dto);
@@ -118,12 +123,14 @@ export class AutomationsController {
 
   // PATCH /automations/:id
   @Patch(':id')
+  @Roles('ADMIN', 'STAFF')
   update(@Req() req: any, @Param('id') id: string, @Body() dto: UpdateAutomationDto) {
     return this.automationsService.update(req.user.tenantId, id, dto);
   }
 
   // PATCH /automations/:id/status  — duraklat / aktive et / arşivle
   @Patch(':id/status')
+  @Roles('ADMIN', 'STAFF')
   setStatus(
     @Req() req: any,
     @Param('id') id: string,
@@ -138,6 +145,7 @@ export class AutomationsController {
 
   // DELETE /automations/:id  — yumuşak silme (ARCHIVED)
   @Delete(':id')
+  @Roles('ADMIN', 'STAFF')
   @HttpCode(HttpStatus.OK)
   archive(@Req() req: any, @Param('id') id: string) {
     return this.automationsService.archive(req.user.tenantId, id);
@@ -145,6 +153,7 @@ export class AutomationsController {
 
   // DELETE /automations/:id/hard  — sadece DRAFT için sert silme
   @Delete(':id/hard')
+  @Roles('ADMIN', 'STAFF')
   @HttpCode(HttpStatus.OK)
   hardDelete(@Req() req: any, @Param('id') id: string) {
     return this.automationsService.hardDelete(req.user.tenantId, id);
@@ -156,25 +165,27 @@ export class AutomationsController {
 
   // POST /automations/:id/run  — manuel "Şimdi Çalıştır"
   @Post(':id/run')
+  @Roles('ADMIN', 'STAFF')
   @HttpCode(HttpStatus.ACCEPTED)
   async runNow(@Req() req: any, @Param('id') id: string) {
     // Önce tenant kontrolü
     await this.automationsService.findOne(req.user.tenantId, id);
     // Background'da çalıştır — istemciye hemen run id döner
-    const result = await this.runner.executeAutomation(id, {
+    const result = await this.runner.enqueueAutomation(id, {
       source: 'manual',
       userId: req.user.sub,
       firedAt: new Date().toISOString(),
-    });
+    }, { requireActive: true });
     return result;
   }
 
   // POST /automations/:id/dry-run  — gerçek aksiyon yapmadan adımları logla
   @Post(':id/dry-run')
+  @Roles('ADMIN', 'STAFF')
   @HttpCode(HttpStatus.OK)
   async dryRun(@Req() req: any, @Param('id') id: string) {
     await this.automationsService.findOne(req.user.tenantId, id);
-    return this.runner.executeAutomation(
+    return this.runner.enqueueAutomation(
       id,
       { source: 'dry-run', userId: req.user.sub, firedAt: new Date().toISOString() },
       { dryRun: true },

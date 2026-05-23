@@ -70,6 +70,7 @@ export const automationsApi = {
     triggerConfig: Record<string, unknown>;
     steps: any;
     failurePolicy?: string;
+    estimatedCostPerRun?: number;
   }): Promise<Automation> {
     const { data } = await api.post('/automations', payload);
     return data;

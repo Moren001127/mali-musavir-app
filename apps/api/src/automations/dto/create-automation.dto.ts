@@ -1,4 +1,15 @@
-import { IsEnum, IsNotEmpty, IsObject, IsOptional, IsString, MaxLength, MinLength } from 'class-validator';
+import {
+  IsEnum,
+  IsIn,
+  IsNotEmpty,
+  IsNumber,
+  IsObject,
+  IsOptional,
+  IsString,
+  MaxLength,
+  Min,
+  MinLength,
+} from 'class-validator';
 
 export enum AutomationTriggerTypeDto {
   CRON = 'CRON',
@@ -46,5 +57,12 @@ export class CreateAutomationDto {
   /** "notify" (varsayılan) | "pause_after_3" | "ignore" */
   @IsOptional()
   @IsString()
+  @IsIn(['notify', 'pause_after_3', 'ignore'])
   failurePolicy?: string;
+
+  /** Parser'ın hesapladığı tahmini çalışma başı Claude maliyeti */
+  @IsOptional()
+  @IsNumber()
+  @Min(0)
+  estimatedCostPerRun?: number;
 }
