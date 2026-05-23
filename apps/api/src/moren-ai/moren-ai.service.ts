@@ -140,7 +140,17 @@ export interface ChatResponse {
 
 
 type BrifingFocus = 'calm' | 'busy' | 'critical' | 'review';
-type BrifingSourceKey = 'workflow' | 'calendar' | 'tasks' | 'agents' | 'notifications';
+type BrifingSourceKey =
+  | 'workflow'
+  | 'calendar'
+  | 'tasks'
+  | 'agents'
+  | 'notifications'
+  | 'luca'
+  | 'mihsap'
+  | 'finance'
+  | 'automation'
+  | 'approval';
 type BrifingSeverity = 'high' | 'medium' | 'low';
 
 interface BrifingSourceTag {
@@ -166,6 +176,7 @@ interface BrifingDeadline {
 
 interface BrifingPayload {
   summary: string;
+  motivation?: string;
   alerts: Array<{ id?: string; severity: BrifingSeverity; text: string; href?: string; source?: BrifingSourceKey }>;
   suggestions: Array<{ id?: string; text: string; href: string; icon?: string; source?: BrifingSourceKey }>;
   focus: BrifingFocus;
@@ -190,6 +201,13 @@ interface BrifingContext {
   gorev: { bugun: number; hafta: number; geciken: number };
   ajan: { bugunOlay: number; bugunHata: number; bugunBasariOrani: number | null; haftaOlay: number; haftaHata: number; haftaBasariOrani: number | null; sonSaatOlay: number };
   okunmamisBildirim: number;
+  portal: {
+    luca: { pending: number; running: number; failed: number };
+    mihsap: { pending: number; running: number; failed: number; invoiceCount: number };
+    finance: { borcluMukellef: number; toplamBakiye: number };
+    automation: { active: number; error: number; failedRuns: number };
+    approval: { pendingDecisions: number; pendingCommands: number; failedCommands: number };
+  };
   metrics: Record<string, any>;
 }
 
@@ -1045,6 +1063,7 @@ export class MorenAiService {
     // --- WORKFLOW DURUMU
     const firstDay = new Date(year, month - 1, 1);
     const lastDay = new Date(year, month, 0, 23, 59, 59);
+    const period = `${year}-${String(month).padStart(2, '0')}`;
     const taxpayers = await this.prisma.taxpayer.findMany({
       where: {
         tenantId,
@@ -1159,6 +1178,55 @@ export class MorenAiService {
       okunmamisBildirim = cnt;
     } catch {}
 
+    const portal: BrifingContext['portal'] = {
+      luca: { pending: 0, running: 0, failed: 0 },
+      mihsap: { pending: 0, running: 0, failed: 0, invoiceCount: 0 },
+      finance: { borcluMukellef: 0, toplamBakiye: 0 },
+      automation: { active: 0, error: 0, failedRuns: 0 },
+      approval: { pendingDecisions: 0, pendingCommands: 0, failedCommands: 0 },
+    };
+    try {
+      const [
+        lucaPending, lucaRunning, lucaFailed,
+        mihsapPending, mihsapRunning, mihsapFailed, mihsapInvoiceCount,
+        cariRows,
+        automationActive, automationError, automationFailedRuns,
+        pendingDecisions,
+        pendingCommands, failedCommands,
+      ] = await Promise.all([
+        (this.prisma as any).lucaFetchJob.count({ where: { tenantId, donem: period, status: 'pending' } }).catch(() => 0),
+        (this.prisma as any).lucaFetchJob.count({ where: { tenantId, donem: period, status: 'running' } }).catch(() => 0),
+        (this.prisma as any).lucaFetchJob.count({ where: { tenantId, donem: period, status: 'failed' } }).catch(() => 0),
+        (this.prisma as any).mihsapFetchJob.count({ where: { tenantId, donem: period, status: 'pending' } }).catch(() => 0),
+        (this.prisma as any).mihsapFetchJob.count({ where: { tenantId, donem: period, status: 'running' } }).catch(() => 0),
+        (this.prisma as any).mihsapFetchJob.count({ where: { tenantId, donem: period, status: 'failed' } }).catch(() => 0),
+        (this.prisma as any).mihsapInvoice.count({ where: { tenantId, donem: period } }).catch(() => 0),
+        (this.prisma as any).cariHareket.findMany({ where: { tenantId }, select: { taxpayerId: true, tip: true, tutar: true } }).catch(() => []),
+        (this.prisma as any).automation?.count ? (this.prisma as any).automation.count({ where: { tenantId, status: 'ACTIVE' } }).catch(() => 0) : Promise.resolve(0),
+        (this.prisma as any).automation?.count ? (this.prisma as any).automation.count({ where: { tenantId, status: 'ERROR' } }).catch(() => 0) : Promise.resolve(0),
+        (this.prisma as any).automationRun?.count ? (this.prisma as any).automationRun.count({ where: { automation: { tenantId }, status: { in: ['failure', 'partial'] } } }).catch(() => 0) : Promise.resolve(0),
+        (this.prisma as any).pendingDecision?.count ? (this.prisma as any).pendingDecision.count({ where: { tenantId, durum: 'bekliyor' } }).catch(() => 0) : Promise.resolve(0),
+        (this.prisma as any).agentCommand.count({ where: { tenantId, status: { in: ['pending', 'running'] } } }).catch(() => 0),
+        (this.prisma as any).agentCommand.count({ where: { tenantId, status: 'failed' } }).catch(() => 0),
+      ]);
+
+      const cariByTaxpayer = new Map<string, number>();
+      for (const h of cariRows || []) {
+        const tutar = Number(h.tutar || 0);
+        const sign = h.tip === 'TAHAKKUK' || h.tip === 'IADE' ? 1 : h.tip === 'TAHSILAT' ? -1 : 0;
+        cariByTaxpayer.set(h.taxpayerId, (cariByTaxpayer.get(h.taxpayerId) || 0) + sign * tutar);
+      }
+      const borclular = [...cariByTaxpayer.values()].filter((v) => v > 0);
+      portal.luca = { pending: lucaPending, running: lucaRunning, failed: lucaFailed };
+      portal.mihsap = { pending: mihsapPending, running: mihsapRunning, failed: mihsapFailed, invoiceCount: mihsapInvoiceCount };
+      portal.finance = {
+        borcluMukellef: borclular.length,
+        toplamBakiye: Math.round(borclular.reduce((sum, value) => sum + value, 0)),
+      };
+      portal.automation = { active: automationActive, error: automationError, failedRuns: automationFailedRuns };
+      portal.approval = { pendingDecisions, pendingCommands, failedCommands };
+    } catch {}
+
     return {
       now,
       year, month, day,
@@ -1173,12 +1241,22 @@ export class MorenAiService {
       gorev: { bugun: bugunGorev, hafta: haftaGorev, geciken },
       ajan: { bugunOlay, bugunHata, bugunBasariOrani, haftaOlay, haftaHata, haftaBasariOrani, sonSaatOlay },
       okunmamisBildirim,
+      portal,
       metrics: {
         aktifMukellef: aktif.length,
         aktifIsYuku: isleniyor + kontrol + beyan,
         bugunHata,
         haftaBasariOrani,
         ortalamaBekleme,
+        lucaBekleyen: portal.luca.pending + portal.luca.running,
+        lucaHata: portal.luca.failed,
+        mihsapBekleyen: portal.mihsap.pending + portal.mihsap.running,
+        mihsapHata: portal.mihsap.failed,
+        mihsapFatura: portal.mihsap.invoiceCount,
+        borcluMukellef: portal.finance.borcluMukellef,
+        toplamBakiye: portal.finance.toplamBakiye,
+        otomasyonHata: portal.automation.error + portal.automation.failedRuns,
+        bekleyenOnay: portal.approval.pendingDecisions,
       },
     };
   }
@@ -1218,7 +1296,21 @@ export class MorenAiService {
       : c.day <= 16
         ? 'hazırlık dönemi: takip dili netleşsin ama panik dili kullanma; son tarih yaklaşırken öncelik listesi öner.'
         : 'kritik dönem: son tarih yaklaştı/geçtiyse net uyar; geciken işlerde açık ve doğrudan konuş.';
-    const allowedRoutes = ['/panel/is-yuku', '/panel/gorevler', '/panel/beyannameler', '/panel/kdv-kontrol', '/panel/ajanlar/mihsap', '/panel/mukellefler'].join(', ');
+    const allowedRoutes = [
+      '/panel/is-yuku',
+      '/panel/gorevler',
+      '/panel/beyannameler',
+      '/panel/kdv-kontrol',
+      '/panel/ajanlar/mihsap',
+      '/panel/mukellefler',
+      '/panel/faturalar',
+      '/panel/fatura-isleme',
+      '/panel/cari-kasa',
+      '/panel/banka-takip',
+      '/panel/ajanlar',
+      '/panel/otomasyonlar',
+      '/panel/onay-kuyrugu',
+    ].join(', ');
 
     return `Sen ${c.userFirstName}'in mali müşavirlik ofisini analiz eden profesyonel bir AI asistanısın. Sayıları okur, anlam çıkarır, AKSİYON ÖNERİSİ sunarsın. Kısa, net, profesyonel Türkçe yazarsın. Gerektiğinde ofisi nazikçe eleştirirsin; aksayan iş varsa üstünü örtmezsin. Tonun canlıdır: küçük bir espri veya tatlı iğneleme kullanabilirsin ama kritik uyarılarda ciddiyeti bozmazsın.
 

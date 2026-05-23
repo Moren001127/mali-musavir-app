@@ -1225,6 +1225,7 @@ export default function EarsivPage() {
                 <th className="px-3 py-3 text-right text-[11px] uppercase tracking-wider font-semibold">Matrah</th>
                 <th className="px-3 py-3 text-right text-[11px] uppercase tracking-wider font-semibold">KDV</th>
                 <th className="px-3 py-3 text-right text-[11px] uppercase tracking-wider font-semibold">Toplam</th>
+                <th className="px-3 py-3 text-center text-[11px] uppercase tracking-wider font-semibold w-[130px]">Fatura Merkezi</th>
                 <th className="px-3 py-3 text-center text-[11px] uppercase tracking-wider font-semibold w-[140px]">İşlem</th>
               </tr>
             </thead>
@@ -1280,6 +1281,7 @@ export default function EarsivPage() {
                     <td className="px-3 py-3 text-right text-[13px] tabular-nums font-semibold" style={{ color: GOLD }}>
                       {fmtTRY(r.toplamTutar)}
                     </td>
+                        <td className="px-3 py-2 text-center"><FaturaMerkeziRozeti acc={(r as any).accounting} /></td>
                     <td className="px-3 py-3 text-center">
                       <div className="flex gap-1.5 justify-center items-center">
                         {/* Mihsap durum işareti — küçük icon-only rozet (Aç butonundan ÖNCE) */}
@@ -1859,3 +1861,58 @@ function BulkPrintModal({
 
   return createPortal(modalContent, document.body);
 }
+
+// v2.3: Fatura Merkezi durumu rozeti
+function FaturaMerkeziRozeti({ acc }: { acc: any }) {
+  if (!acc || !acc.id) {
+    return (
+      <span className="inline-flex items-center gap-1 px-1.5 py-0.5 rounded text-[10.5px] font-semibold" style={{ background: 'rgba(148,163,184,0.12)', color: '#94a3b8' }}>
+        ● Aktarilmadi
+      </span>
+    );
+  }
+  // Luca'ya gonderilmis?
+  if (acc.lucaStatus === 'POSTED' || acc.lucaStatus === 'SUCCESS') {
+    return (
+      <span className="inline-flex items-center gap-1 px-1.5 py-0.5 rounded text-[10.5px] font-semibold" style={{ background: 'rgba(34,197,94,0.16)', color: '#16a34a' }}>
+        ✓ Luca'da
+      </span>
+    );
+  }
+  // Onaylanmis (Luca'ya gitmemis veya kuyrukta)
+  if (acc.status === 'APPROVED') {
+    return (
+      <span className="inline-flex items-center gap-1 px-1.5 py-0.5 rounded text-[10.5px] font-semibold" style={{ background: 'rgba(34,197,94,0.12)', color: '#16a34a' }}>
+        ✓ Onayli
+      </span>
+    );
+  }
+  if (acc.status === 'READY') {
+    return (
+      <span className="inline-flex items-center gap-1 px-1.5 py-0.5 rounded text-[10.5px] font-semibold" style={{ background: 'rgba(59,130,246,0.14)', color: '#3b82f6' }}>
+        Hazir
+      </span>
+    );
+  }
+  if (acc.status === 'REJECTED') {
+    return (
+      <span className="inline-flex items-center gap-1 px-1.5 py-0.5 rounded text-[10.5px] font-semibold" style={{ background: 'rgba(239,68,68,0.14)', color: '#ef4444' }}>
+        ✕ Red
+      </span>
+    );
+  }
+  if (acc.ocrStatus === 'IN_PROGRESS' || acc.ocrStatus === 'PENDING') {
+    return (
+      <span className="inline-flex items-center gap-1 px-1.5 py-0.5 rounded text-[10.5px] font-semibold" style={{ background: 'rgba(168,85,247,0.14)', color: '#a855f7' }}>
+        OCR
+      </span>
+    );
+  }
+  // Default: NEEDS_REVIEW
+  return (
+    <span className="inline-flex items-center gap-1 px-1.5 py-0.5 rounded text-[10.5px] font-semibold" style={{ background: 'rgba(245,158,11,0.14)', color: '#f59e0b' }}>
+      ⚠ Inceleme
+    </span>
+  );
+}
+

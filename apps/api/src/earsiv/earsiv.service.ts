@@ -638,7 +638,37 @@ export class EarsivService {
       .filter((row: any) => this.invoiceTaxpayerMatches(row, row.taxpayer?.taxNumber, row.tip))
       .map(({ taxpayer, ...row }: any) => row);
 
-    return { rows: safeRows, total: safeRows.length, page, pageSize };
+    // v2.3: Her e-arsiv faturasi icin Fatura Merkezi (InvoiceAccountingDocument) durumunu join et
+    // - source='earsiv', sourceRefId=earsivFatura.id ile eslestir
+    // - UI bu durumu rozet olarak gosterir
+    const rowIds = safeRows.map((r: any) => r.id);
+    let accountingMap = new Map<string, { id: string; status: string; ocrStatus?: string; lucaStatus?: string }>();
+    if (rowIds.length > 0) {
+      try {
+        const accDocs = await (this.prisma as any).invoiceAccountingDocument.findMany({
+          where: { tenantId, source: 'earsiv', sourceRefId: { in: rowIds } },
+          select: { id: true, sourceRefId: true, status: true, ocrStatus: true, lucaStatus: true },
+        });
+        for (const d of accDocs) {
+          if (d.sourceRefId) {
+            accountingMap.set(d.sourceRefId, {
+              id: d.id,
+              status: d.status,
+              ocrStatus: d.ocrStatus || undefined,
+              lucaStatus: d.lucaStatus || undefined,
+            });
+          }
+        }
+      } catch (e: any) {
+        this.logger.warn(`InvoiceAccountingDocument join hata: ${e?.message || e}`);
+      }
+    }
+    const rowsWithAccounting = safeRows.map((r: any) => ({
+      ...r,
+      accounting: accountingMap.get(r.id) || null,
+    }));
+
+    return { rows: rowsWithAccounting, total: rowsWithAccounting.length, page, pageSize };
   }
 
   async getById(tenantId: string, id: string) {

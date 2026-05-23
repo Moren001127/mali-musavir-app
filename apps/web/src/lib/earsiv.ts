@@ -23,6 +23,12 @@ export interface EarsivFatura {
   durum?: string | null;
   taxpayerId: string;
   createdAt: string;
+  accounting?: {
+    id: string;
+    status: string;
+    ocrStatus?: string;
+    lucaStatus?: string;
+  } | null;
 }
 
 export interface LucaFetchJob {
