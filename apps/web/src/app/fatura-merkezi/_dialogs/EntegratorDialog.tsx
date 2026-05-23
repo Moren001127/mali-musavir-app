@@ -2,7 +2,8 @@
 
 import { useState, useEffect } from 'react';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
-import { Plug, X, Bell, BellOff, Trash2, Edit, Plus, Loader2 } from 'lucide-react';
+import { Plug, X, Bell, BellOff, Trash2, Edit, Plus, Loader2, Search } from 'lucide-react';
+import EntegratorSorguPanel from './EntegratorSorguPanel';
 import { api } from '@/lib/api';
 import { taxpayerName } from '../_lib/taxpayer';
 
@@ -55,6 +56,7 @@ export default function EntegratorDialog({ taxpayer, onClose }: Props) {
   const items = integrationsQ.data || [];
   const configured = items.filter((i: any) => i.configured);
 
+  const [sorgulananProvider, setSorgulananProvider] = useState<any | null>(null);
   const [mode, setMode] = useState<'list' | 'add' | 'edit'>(
     configured.length === 0 ? 'add' : 'list',
   );
@@ -149,6 +151,7 @@ export default function EntegratorDialog({ taxpayer, onClose }: Props) {
               onEdit={(item) => { setEditing(item); setMode('edit'); }}
               onDelete={(provider) => deleteMut.mutate(provider)}
               onTalimat={(provider, active) => talimatMut.mutate({ provider, active })}
+              onSorgula={(item) => setSorgulananProvider(item)}
               deleting={deleteMut.isPending}
               talimatPending={talimatMut.isPending}
             />
@@ -173,19 +176,28 @@ export default function EntegratorDialog({ taxpayer, onClose }: Props) {
           )}
         </div>
       </div>
+      {sorgulananProvider && (
+        <EntegratorSorguPanel
+          taxpayer={taxpayer}
+          provider={sorgulananProvider.provider}
+          providerLabel={(PROVIDERS.find((x) => x.id === sorgulananProvider.provider)?.label) || sorgulananProvider.provider}
+          onClose={() => setSorgulananProvider(null)}
+        />
+      )}
     </div>
   );
 }
 
 /* ─── Mevcut entegratörlerin listesi ─── */
 function EntegratorList({
-  items, onAdd, onEdit, onDelete, onTalimat, deleting, talimatPending,
+  items, onAdd, onEdit, onDelete, onTalimat, onSorgula, deleting, talimatPending,
 }: {
   items: any[];
   onAdd: () => void;
   onEdit: (item: any) => void;
   onDelete: (provider: string) => void;
   onTalimat: (provider: string, active: boolean) => void;
+  onSorgula: (item: any) => void;
   deleting: boolean;
   talimatPending: boolean;
 }) {
@@ -211,6 +223,14 @@ function EntegratorList({
                   {i.username || '(kullanıcı yok)'}
                 </div>
               </div>
+              <button
+                onClick={() => onSorgula(i)}
+                className="flex items-center gap-1 px-3 py-1.5 text-[11.5px] font-semibold rounded-md transition-colors"
+                style={{ background: '#0ea5e9', color: 'white' }}
+                title="Bu entegratörden fatura sorgula (tarih aralığı + alış/satış/e-arşiv)"
+              >
+                <Search size={12} /> Sorgula
+              </button>
               <button
                 onClick={() => onTalimat(i.provider, !i.talimat)}
                 disabled={talimatPending}
