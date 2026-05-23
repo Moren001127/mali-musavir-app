@@ -108,6 +108,7 @@ export default function MorenAiChat({ open, onClose }: { open: boolean; onClose:
       const res = await chat({
         conversationId: conversationId || undefined,
         message: text,
+        currentPath: typeof window !== 'undefined' ? window.location.pathname : undefined,
       });
       if (!conversationId) setConversationId(res.conversationId);
       setMessages((prev) => [

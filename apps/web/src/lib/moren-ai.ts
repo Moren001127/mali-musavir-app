@@ -61,6 +61,7 @@ export async function chat(body: {
   conversationId?: string;
   message: string;
   taxpayerId?: string;
+  currentPath?: string;
   voiceMode?: boolean;
   model?: string;
 }): Promise<ChatResponse> {

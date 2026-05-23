@@ -119,6 +119,7 @@ export interface ChatRequest {
   conversationId?: string;
   message: string;
   taxpayerId?: string;     // Opsiyonel kontekst
+  currentPath?: string;    // Aktif portal ekranı
   voiceMode?: boolean;
   model?: string;
 }
@@ -282,6 +283,7 @@ export class MorenAiService {
     const model = body.model || DEFAULT_MODEL;
     const userMessage = (body.message || '').trim();
     if (!userMessage) throw new BadRequestException('Mesaj boş olamaz');
+    const currentPath = String(body.currentPath || '').trim().slice(0, 180);
 
     // Konuşmayı getir ya da oluştur
     let conversation: any = body.conversationId
@@ -323,7 +325,7 @@ export class MorenAiService {
       : null;
 
     const deterministicAnswer =
-      this.getIdentityAnswer(userMessage, user) ||
+      this.getPortalMetaAnswer(userMessage, user, conversation.messages || [], currentPath) ||
       this.getDeterministicCriticalAnswer(userMessage);
     if (deterministicAnswer) {
       const durationMs = Date.now() - started;
@@ -401,7 +403,7 @@ export class MorenAiService {
     let stopReason = '';
 
     for (let iter = 0; iter < MAX_TOOL_ITERATIONS; iter++) {
-      const dynamicSystemContext = [this.buildActiveUserContext(user, tenantId), taxpayerContext, memoryContext, effectiveVoiceHint].filter(Boolean).join('\n\n');
+      const dynamicSystemContext = [this.buildActiveUserContext(user, tenantId, currentPath), taxpayerContext, memoryContext, effectiveVoiceHint].filter(Boolean).join('\n\n');
       const payload: any = {
         model,
         // Maliyet optimizasyonu: 4096 -> 1500. Normal sohbet cevabi 500-1000 token.
@@ -575,6 +577,7 @@ export class MorenAiService {
     return this.chat(tenantId, userId, {
       conversationId: body.conversationId,
       taxpayerId: body.taxpayerId,
+      currentPath,
       message: `${routeContext}${question.slice(0, 1200)}`,
       voiceMode: true,
     });
@@ -660,11 +663,15 @@ export class MorenAiService {
   // ==========================================================
   // YARDIMCILAR
   // ==========================================================
-  private getIdentityAnswer(text: string, user: any): string | null {
+  private getPortalMetaAnswer(text: string, user: any, history: any[] = [], currentPath?: string): string | null {
     const normalized = this.normalizeForIntent(text);
     const asksIdentity =
-      /beni taniyor musun|beni tanir misin|ben kimim|kim oldugumu biliyor musun|adim ne|ismim ne/.test(normalized);
-    if (!asksIdentity) return null;
+      /beni taniyor musun|beni tanir misin|sen beni taniyor musun|ben kimim|kim oldugumu biliyor musun|hangi kullaniciyim|adim ne|ismim ne/.test(normalized);
+    const asksReason =
+      /neden sordum|niye sordum|neden soruyorum|niye soruyorum|niye sordugumu|neden sordugumu|bunu neden soruyorum|bunu niye soruyorum/.test(normalized);
+    const asksCapability =
+      /(portal|moren ai|bu sistem).*(ne yapar|ne ise yarar|neye yarar|neler yapar|neler yapabili|neler yapam|yapamadigi|yapamadiklari|sinir|limit|kabiliyet|modul|ozellik|amac|kullanilir|fayda|hangi is)|neler yapabiliyorsun|ne yapabiliyorsun|ne ise yariyorsun|neye yariyorsun|hangi isleri yaparsin|hangi islerde yardim edersin|hangi moduller|neleri yapamazsin|neleri yapamiyorsun|limitin ne|sinirin ne/.test(normalized);
+    if (!asksIdentity && !asksReason && !asksCapability) return null;
 
     const fullName = `${user?.firstName || ''} ${user?.lastName || ''}`.trim();
     const officeName = user?.tenant?.name || 'bu ofis';
@@ -672,17 +679,75 @@ export class MorenAiService {
       .map((ur: any) => ur?.role?.name)
       .filter(Boolean)
       .join(', ');
-    const roleText = roles ? ` Rolun: ${roles}.` : '';
+    const routeLabel = this.describeCurrentPath(currentPath);
+    const activePlace = routeLabel ? ` Şu an ${routeLabel} ekranından yazıyorsun.` : '';
+    const roleText = roles ? ` Rolün: ${roles}.` : '';
     const emailText = user?.email ? ` E-posta: ${user.email}.` : '';
+    const answers: string[] = [];
 
-    if (!fullName) {
-      return `Seni aktif portal kullanicisi olarak goruyorum. ${officeName} oturumundasin.${roleText}${emailText}`;
+    if (asksIdentity) {
+      answers.push(fullName
+        ? `Seni ${fullName} olarak görüyorum. ${officeName} oturumundasın.${roleText}${emailText}${activePlace}`
+        : `Seni aktif portal kullanıcısı olarak görüyorum. ${officeName} oturumundasın.${roleText}${emailText}${activePlace}`);
     }
 
-    return `Evet, seni ${fullName} olarak goruyorum. ${officeName} oturumundasin.${roleText}${emailText}`;
+    if (asksCapability) {
+      answers.push(this.buildPortalCapabilityAnswer());
+    }
+
+    if (asksReason) {
+      answers.push(this.inferQuestionReason(history, currentPath, asksIdentity, asksCapability));
+    }
+
+    return answers.join('\n\n');
   }
 
-  private buildActiveUserContext(user: any, tenantId: string): string {
+  private inferQuestionReason(history: any[], currentPath?: string, asksIdentity = false, asksCapability = false): string {
+    const previousUserMessage = [...(history || [])]
+      .reverse()
+      .find((message: any) => message?.role === 'user')?.content;
+    const routeLabel = this.describeCurrentPath(currentPath);
+    const previousText = previousUserMessage
+      ? ` Önceki bağlamın: "${String(previousUserMessage).replace(/\s+/g, ' ').slice(0, 120)}".`
+      : '';
+    const routeText = routeLabel ? ` Aktif ekran: ${routeLabel}.` : '';
+    if (asksIdentity || asksCapability) {
+      return `Bunu, MOREN AI'nın seni, portalı ve konuşma bağlamını gerçekten taşıyıp taşımadığını test etmek için soruyorsun.${routeText}${previousText}`;
+    }
+    return `Bu soru, önceki konuşmanın niyetini ve aktif portal bağlamını anlayıp anlamadığımı test ediyor.${routeText}${previousText}`;
+  }
+
+  private buildPortalCapabilityAnswer(): string {
+    return [
+      'Portalın ana işi: mali müşavirlik ofisini tek yerden yönetmek; mükellef, evrak, fatura, KDV, beyanname, Luca/Mihsap, görev, bildirim, tahsilat ve ajan operasyonlarını birleştirir.',
+      'Yapabildikleri: mükellef durumlarını okur, eksik evrak/KDV/beyan riskini çıkarır, Luca ve Mihsap işlerini izler, fatura ve mizan verisini analiz eder, hatalı ajan/log durumlarını raporlar, onaylı işlerde komut kuyruğu oluşturur.',
+      'Yapamadıkları/sınırları: veri yoksa uydurmaz; resmi gönderim, silme, toplu mesaj, beyan veya entegrasyon işlemlerini onaysız yapmaz; agent altyapısında tanımlı olmayan işi doğrudan çalıştırmaz.',
+      'MOREN AI hedefi: sadece sohbet etmek değil, portalın tamamını bilen ve güvenli onayla iş başlatan ofis operatörü gibi çalışmak.',
+    ].join('\n');
+  }
+
+  private describeCurrentPath(path?: string): string | null {
+    const cleanPath = String(path || '').split('?')[0].replace(/\/+$/, '') || '/';
+    const routes: Array<[RegExp, string]> = [
+      [/^\/panel\/moren-ai/, 'MOREN AI'],
+      [/^\/panel\/kdv-kontrol/, 'KDV Kontrol'],
+      [/^\/panel\/kdv-beyanname/, 'KDV Beyanname'],
+      [/^\/panel\/beyannameler/, 'Beyannameler'],
+      [/^\/panel\/mukellefler/, 'Mükellefler'],
+      [/^\/panel\/ajanlar\/mihsap/, 'Mihsap Ajanı'],
+      [/^\/panel\/ajanlar\/luca/, 'Luca Ajanı'],
+      [/^\/panel\/ajanlar/, 'Ajanlar'],
+      [/^\/panel\/gorevler/, 'Görevler ve Notlar'],
+      [/^\/panel\/is-yuku/, 'İş Akışı'],
+      [/^\/panel\/bildirimler/, 'Bildirimler'],
+      [/^\/fatura-merkezi/, 'Fatura Merkezi'],
+      [/^\/panel$/, 'Gösterge Paneli'],
+      [/^\/panel\//, 'Portal'],
+    ];
+    return routes.find(([pattern]) => pattern.test(cleanPath))?.[1] || null;
+  }
+
+  private buildActiveUserContext(user: any, tenantId: string, currentPath?: string): string {
     const fullName = `${user?.firstName || ''} ${user?.lastName || ''}`.trim();
     const roles = (user?.userRoles || [])
       .map((ur: any) => ur?.role?.name)
@@ -695,8 +760,9 @@ export class MorenAiService {
       `E-posta: ${user?.email || 'Bilinmiyor'}`,
       `Rol: ${roles || 'Bilinmiyor'}`,
       `Ofis: ${user?.tenant?.name || 'Bilinmiyor'}`,
+      `Aktif ekran: ${this.describeCurrentPath(currentPath) || currentPath || 'Bilinmiyor'}`,
       `Tenant: ${tenantId}`,
-      'Kullanici "beni taniyor musun", "ben kimim", "adim ne" gibi sorarsa bu bilgiyi kisa cevapla.',
+      'Kullanıcı "beni tanıyor musun", "ben kimim", "portal ne yapar", "ne yapamıyorsun", "neden soruyorum" gibi meta sorular sorarsa bu bilgiyi kısa ve net cevapla; örnek isteme.',
     ].join('\n');
   }
 

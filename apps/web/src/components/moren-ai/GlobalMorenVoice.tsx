@@ -390,6 +390,7 @@ export default function GlobalMorenVoice() {
       return chat({
         conversationId: conversationIdForSend || undefined,
         message,
+        currentPath: pathname || undefined,
       });
     },
     onSuccess: async (result) => {

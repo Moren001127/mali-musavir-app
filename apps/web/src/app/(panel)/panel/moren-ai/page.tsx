@@ -533,6 +533,7 @@ export default function MorenAIPage() {
         conversationId: activeConversationId || undefined,
         message,
         taxpayerId: selectedTaxpayerId || undefined,
+        currentPath: typeof window !== 'undefined' ? window.location.pathname : undefined,
         voiceMode: vm,
       }),
     onSuccess: async (res) => {
