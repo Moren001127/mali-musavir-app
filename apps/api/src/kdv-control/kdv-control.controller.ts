@@ -294,6 +294,32 @@ export class KdvControlController {
    * Arka planda bir Luca fetch job yaratır; güvenlik kodu gerekirse
    * portal içindeki Luca Oturum Yöneticisi gösterir.
    */
+  @Post('sessions/:id/content-audit')
+  @Roles('ADMIN', 'STAFF')
+  @HttpCode(HttpStatus.ACCEPTED)
+  startContentAudit(
+    @Req() req: any,
+    @Param('id') id: string,
+    @Body() body?: { force?: boolean },
+  ) {
+    return this.kdvService.startContentAuditForSession(id, req.user.tenantId, req.user.sub, {
+      force: body?.force === true,
+    });
+  }
+
+  @Post('images/:imageId/content-audit')
+  @Roles('ADMIN', 'STAFF')
+  @HttpCode(HttpStatus.OK)
+  auditImageContent(
+    @Req() req: any,
+    @Param('imageId') imageId: string,
+    @Body() body?: { force?: boolean },
+  ) {
+    return this.kdvService.auditImageContent(imageId, req.user.tenantId, req.user.sub, {
+      force: body?.force === true,
+    });
+  }
+
   @Post('sessions/:id/import-from-luca')
   @Roles('ADMIN', 'STAFF')
   @HttpCode(HttpStatus.OK)

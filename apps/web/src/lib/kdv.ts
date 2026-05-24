@@ -209,6 +209,20 @@ export const kdvApi = {
       .then((r) => r.data as { queued: boolean; imageId: string; message: string }),
 
   /* ── EŞLEŞTİRME ── */
+  startContentAudit: (sessionId: string, opts?: { force?: boolean }) =>
+    api
+      .post(`/kdv-control/sessions/${sessionId}/content-audit`, {
+        force: opts?.force === true,
+      })
+      .then((r) => r.data as { queued: number; total: number; skipped: number; message?: string }),
+
+  auditImageContent: (imageId: string, opts?: { force?: boolean }) =>
+    api
+      .post(`/kdv-control/images/${imageId}/content-audit`, {
+        force: opts?.force === true,
+      })
+      .then((r) => r.data as { done: boolean; imageId: string; risk?: string; summary?: string; skipped?: boolean }),
+
   reconcile: (sessionId: string) =>
     api.post(`/kdv-control/sessions/${sessionId}/reconcile`).then((r) => r.data),
 

@@ -10,7 +10,7 @@ import {
   Play, Calendar, Users, Search, CheckCircle2, Loader2, Clock, FileSpreadsheet,
   ImageIcon, ScanLine, ChevronDown, X, Sparkles, Download, Trash2, Archive,
   ArrowRight, Activity, AlertTriangle, XCircle, FileText, Zap, Upload,
-  Lock, Unlock,
+  Lock, Unlock, ShieldCheck,
 } from 'lucide-react';
 import { OcrReviewPanel } from '@/components/kdv/OcrReviewPanel';
 import { MatchReviewPanel } from '@/components/kdv/MatchReviewPanel';
@@ -265,7 +265,9 @@ export default function KdvKontrolPage() {
     enabled: !!sessionId,
     refetchInterval: (q: any) => {
       const d = q?.state?.data;
-      return Array.isArray(d) && d.some((i: any) => ['PENDING', 'PROCESSING'].includes(i.ocrStatus)) ? 3000 : 8000;
+      return Array.isArray(d) && d.some((i: any) =>
+        ['PENDING', 'PROCESSING'].includes(i.ocrStatus) || i.contentAuditStatus === 'PROCESSING',
+      ) ? 3000 : 8000;
     },
   });
 
@@ -301,6 +303,12 @@ export default function KdvKontrolPage() {
   const hasRecords = (stats?.totalRecords ?? 0) > 0;
   const hasImages = (stats?.totalImages ?? 0) > 0;
   const ocrDone = hasImages && pendingOcrCount === 0 && processingCount === 0;
+  const contentAuditStats = (stats as any)?.contentAudit || {};
+  const contentAuditProcessingCount = images.filter((i: any) => i.contentAuditStatus === 'PROCESSING').length;
+  const contentAuditDoneCount =
+    Number(contentAuditStats.done ?? images.filter((i: any) => i.contentAuditStatus === 'DONE').length);
+  const contentAuditRiskCount =
+    Number(contentAuditStats.riskyTotal ?? images.filter((i: any) => ['RISKLI', 'ISLENMEMELI'].includes(i.contentAuditRisk)).length);
 
   // ── MUTASYONLAR ─────────────────────────────────────
   const ensureSession = useMutation({
@@ -628,6 +636,46 @@ export default function KdvKontrolPage() {
     },
   });
 
+  const runContentAudit = useMutation({
+    mutationFn: async () => {
+      const s = await ensureSession.mutateAsync();
+      pushFeed({
+        group: 'content',
+        kind: 'info',
+        title: 'İçerik denetimi başladı',
+        detail: 'Fatura içeriği ve mükellef faaliyeti birlikte değerlendiriliyor',
+      });
+      return kdvApi.startContentAudit(s.id);
+    },
+    onSuccess: (d: any) => {
+      clearFeedErrorsInGroup('content');
+      if ((d.queued ?? 0) === 0) {
+        pushFeed({
+          group: 'content',
+          kind: 'info',
+          title: 'İçerik denetimi: yeni belge yok',
+          detail: d.message || 'Denetlenecek yeni fatura bulunamadı',
+        });
+        toast(d.message || 'Denetlenecek yeni fatura yok');
+      } else {
+        pushFeed({
+          group: 'content',
+          kind: 'ok',
+          title: `${d.queued} içerik denetimi kuyruğa alındı`,
+          detail: 'Bulgular birazdan ayrı panelde görünecek',
+        });
+        toast.success(`${d.queued} fatura için içerik denetimi başladı`);
+      }
+      qc.invalidateQueries({ queryKey: ['kdv-images', sessionId] });
+      qc.invalidateQueries({ queryKey: ['kdv-stats', sessionId] });
+    },
+    onError: (e: any) => {
+      const msg = e?.response?.data?.message || e?.message || 'İçerik denetimi başlatılamadı';
+      pushFeed({ group: 'content', kind: 'err', title: 'İçerik denetimi hatası', detail: msg });
+      toast.error(msg);
+    },
+  });
+
   const runReconcile = useMutation({
     mutationFn: async () => {
       const s = await ensureSession.mutateAsync();
@@ -887,6 +935,12 @@ export default function KdvKontrolPage() {
   const filteredTaxpayers = taxpayers.filter((t) =>
     taxpayerName(t).toLowerCase().includes(pickerSearch.toLowerCase()),
   );
+  const contentAuditRows = useMemo(() => {
+    const rank: Record<string, number> = { ISLENMEMELI: 0, RISKLI: 1, KONTROL_ET: 2, UYGUN: 3 };
+    return (images as any[])
+      .filter((img) => img.contentAuditStatus || img.contentAuditRisk)
+      .sort((a, b) => (rank[a.contentAuditRisk] ?? 4) - (rank[b.contentAuditRisk] ?? 4));
+  }, [images]);
 
   // ── RENDER ──────────────────────────────────────────
   return (
@@ -1052,7 +1106,7 @@ export default function KdvKontrolPage() {
         </div>
 
         {/* AKSİYON BUTONLARI (4 adım — OCR otomatik) */}
-        <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-3 mt-5 pt-5 border-t" style={{ borderColor: 'rgba(255,255,255,0.05)' }}>
+        <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-5 gap-3 mt-5 pt-5 border-t" style={{ borderColor: 'rgba(255,255,255,0.05)' }}>
           <ActionBtn
             icon={Upload}
             label="Luca Excel Yükle"
@@ -1098,6 +1152,29 @@ export default function KdvKontrolPage() {
             done={hasImages && ocrDone}
             onClick={() => requireMukellef(() => runFaturalar.mutate())}
             loading={runFaturalar.isPending || ensureSession.isPending}
+          />
+          <ActionBtn
+            icon={ShieldCheck}
+            label="İçerik Denetimi"
+            sub={
+              activeLocked ? 'Kilitli seans'
+              : contentAuditProcessingCount > 0 ? `${contentAuditProcessingCount} denetleniyor...`
+              : contentAuditDoneCount > 0 ? `${contentAuditDoneCount} yorum · ${contentAuditRiskCount} risk`
+              : !taxpayerId ? 'Önce mükellef seçin'
+              : !hasImages ? 'Önce faturaları çek'
+              : !ocrDone ? 'OCR bitsin'
+              : 'Faaliyet uygunluğu'
+            }
+            color="#14b8a6"
+            done={contentAuditDoneCount > 0 && contentAuditRiskCount === 0}
+            onClick={() => {
+              if (!taxpayerId) return requireMukellef(() => runContentAudit.mutate());
+              if (activeLocked) return toast.error('Kilitli kontrol; önce kilidi açın');
+              if (!hasImages) return toast.error('Önce faturaları bağlayın');
+              if (!ocrDone) return toast.error('OCR devam ediyor, içerik denetimi için bitmesini bekleyin');
+              runContentAudit.mutate();
+            }}
+            loading={runContentAudit.isPending || contentAuditProcessingCount > 0}
           />
           <ActionBtn
             icon={Play}
@@ -1386,6 +1463,50 @@ export default function KdvKontrolPage() {
       )}
 
       {/* OCR TEYİT PANELİ — düşük güvenli alanlar için kullanıcı incelemesi */}
+      {activeSession && contentAuditRows.length > 0 && (
+        <div className="rounded-2xl overflow-hidden" style={{ background: 'rgba(20,184,166,0.055)', border: '1px solid rgba(20,184,166,0.22)' }}>
+          <div className="flex items-center gap-2.5 px-5 py-4" style={{ borderBottom: '1px solid rgba(20,184,166,0.14)' }}>
+            <ShieldCheck size={14} style={{ color: '#14b8a6' }} />
+            <h3 className="text-[13.5px] font-semibold" style={{ color: '#fafaf9' }}>İçerik Denetimi Bulguları</h3>
+            <span className="ml-auto text-[11px] font-bold uppercase tracking-wider px-2 py-0.5 rounded" style={{ background: 'rgba(20,184,166,0.15)', color: '#5eead4' }}>
+              {contentAuditDoneCount} yorum
+            </span>
+          </div>
+          <div className="p-5 space-y-2">
+            {contentAuditRows.slice(0, 10).map((img: any) => (
+              <div key={img.id} className="px-3.5 py-3 rounded-lg" style={{ background: 'rgba(255,255,255,0.025)', border: '1px solid rgba(255,255,255,0.055)' }}>
+                <div className="flex items-start gap-2.5">
+                  <ContentAuditBadge risk={img.contentAuditRisk} status={img.contentAuditStatus} />
+                  <div className="min-w-0 flex-1">
+                    <div className="flex items-center gap-2 min-w-0">
+                      <span className="text-[12.5px] font-semibold truncate" style={{ color: '#fafaf9' }}>{img.originalName || img.ocrBelgeNo || img.id}</span>
+                      {img.contentAuditConfidence != null && (
+                        <span className="text-[10px] tabular-nums" style={{ color: 'rgba(250,250,249,0.42)' }}>
+                          %{Math.round(Number(img.contentAuditConfidence || 0) * 100)}
+                        </span>
+                      )}
+                    </div>
+                    <p className="mt-1 text-[12px] leading-relaxed" style={{ color: 'rgba(250,250,249,0.72)' }}>
+                      {img.contentAuditSummary || (img.contentAuditStatus === 'PROCESSING' ? 'Denetleniyor...' : 'Yorum bekleniyor')}
+                    </p>
+                    {img.contentAuditSuggestion && (
+                      <p className="mt-1 text-[11.5px] leading-relaxed" style={{ color: 'rgba(94,234,212,0.82)' }}>
+                        {img.contentAuditSuggestion}
+                      </p>
+                    )}
+                  </div>
+                </div>
+              </div>
+            ))}
+            {contentAuditRows.length > 10 && (
+              <p className="text-[11px]" style={{ color: 'rgba(250,250,249,0.45)' }}>
+                +{contentAuditRows.length - 10} belge daha Excel yorumlarında yer alacak.
+              </p>
+            )}
+          </div>
+        </div>
+      )}
+
       {activeSession?.id && (
         <OcrReviewPanel sessionId={activeSession.id} images={images as any} sessionType={activeSession.type} />
       )}
@@ -1994,6 +2115,24 @@ function FeedRow({ item }: { item: FeedItem }) {
         )}
       </div>
     </div>
+  );
+}
+
+function ContentAuditBadge({ risk, status }: { risk?: string | null; status?: string | null }) {
+  const map: Record<string, { label: string; color: string; bg: string }> = {
+    UYGUN: { label: 'Uygun', color: '#22c55e', bg: 'rgba(34,197,94,0.14)' },
+    KONTROL_ET: { label: 'Kontrol Et', color: '#f59e0b', bg: 'rgba(245,158,11,0.15)' },
+    RISKLI: { label: 'Riskli', color: '#f43f5e', bg: 'rgba(244,63,94,0.15)' },
+    ISLENMEMELI: { label: 'İşlenmemeli', color: '#fb7185', bg: 'rgba(244,63,94,0.20)' },
+    PROCESSING: { label: 'İşleniyor', color: '#5eead4', bg: 'rgba(20,184,166,0.14)' },
+    FAILED: { label: 'Hata', color: '#f43f5e', bg: 'rgba(244,63,94,0.15)' },
+  };
+  const s = map[risk || ''] || map[status || ''] || { label: 'Denetlenmedi', color: 'rgba(250,250,249,0.5)', bg: 'rgba(255,255,255,0.06)' };
+  return (
+    <span className="text-[10.5px] font-bold uppercase tracking-wider px-2.5 py-1 rounded-md shrink-0"
+      style={{ background: s.bg, color: s.color }}>
+      {s.label}
+    </span>
   );
 }
 

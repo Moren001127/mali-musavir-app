@@ -20,11 +20,29 @@ import { LucaAutoScraperService } from '../luca/luca-auto-scraper.service';
 import { AgentEventsService } from '../agent-events/agent-events.service';
 import { AutomationEventBus } from '../automations/automation-event-bus.service';
 import { Optional } from '@nestjs/common';
-import { logAiUsage } from '../common/ai-usage-logger';
+import { computeCostUsd, logAiUsage } from '../common/ai-usage-logger';
 import { randomUUID } from 'crypto';
 import * as ExcelJS from 'exceljs';
 import * as path from 'path';
 import * as fs from 'fs';
+
+type ContentAuditRisk = 'UYGUN' | 'KONTROL_ET' | 'RISKLI' | 'ISLENMEMELI';
+
+type ContentAuditDecision = {
+  risk: ContentAuditRisk;
+  summary: string;
+  suggestion: string;
+  findings: Array<{ title: string; detail: string; severity?: ContentAuditRisk }>;
+  confidence: number;
+  model: string;
+  costUsd?: number;
+  usage?: {
+    input_tokens?: number;
+    output_tokens?: number;
+    cache_read_input_tokens?: number;
+    cache_creation_input_tokens?: number;
+  };
+};
 
 @Injectable()
 export class KdvControlService {
@@ -243,7 +261,19 @@ export class KdvControlService {
       where: { tenantId },
       include: {
         _count: { select: { kdvRecords: true, images: true, results: true } },
-        taxpayer: { select: { id: true, firstName: true, lastName: true, companyName: true, taxNumber: true } },
+        taxpayer: {
+          select: {
+            id: true,
+            firstName: true,
+            lastName: true,
+            companyName: true,
+            taxNumber: true,
+            defterTuru: true,
+            mihsapDefterTuru: true,
+            naceKodu: true,
+            notes: true,
+          },
+        },
         images: {
           // ReceiptImage modelinde createdAt yok, uploadedAt var (schema.prisma:705)
           select: { uploadedAt: true },
@@ -302,7 +332,19 @@ export class KdvControlService {
       where: { id, tenantId },
       include: {
         _count: { select: { kdvRecords: true, images: true } },
-        taxpayer: { select: { id: true, firstName: true, lastName: true, companyName: true, taxNumber: true } },
+        taxpayer: {
+          select: {
+            id: true,
+            firstName: true,
+            lastName: true,
+            companyName: true,
+            taxNumber: true,
+            defterTuru: true,
+            mihsapDefterTuru: true,
+            naceKodu: true,
+            notes: true,
+          },
+        },
       },
     });
     if (!session) throw new NotFoundException('Oturum bulunamadı');
@@ -1508,6 +1550,485 @@ export class KdvControlService {
    * niyetiyle basıyor, eski sonucu kopyalamak işe yaramaz. Manuel teyit
    * (isManuallyConfirmed) sıfırlanır ki yeni OCR sonucu yazılabilsin.
    */
+  async startContentAuditForSession(
+    sessionId: string,
+    tenantId: string,
+    userId?: string,
+    opts: { force?: boolean } = {},
+  ) {
+    const session = await this.findSession(sessionId, tenantId);
+    this.assertSessionUnlocked(session);
+
+    const images = await this.prisma.receiptImage.findMany({
+      where: {
+        sessionId,
+        ocrStatus: { in: ['SUCCESS', 'NEEDS_REVIEW', 'LOW_CONFIDENCE'] as any },
+      },
+      select: { id: true, contentAuditStatus: true },
+      orderBy: { uploadedAt: 'asc' },
+    });
+    const queue = images.filter((img: any) => opts.force || img.contentAuditStatus !== 'DONE');
+
+    if (queue.length === 0) {
+      return {
+        queued: 0,
+        total: images.length,
+        skipped: images.length,
+        message: images.length === 0
+          ? 'İçerik denetimi için önce OCR okuması tamamlanmalı'
+          : 'İçerik denetimi yapılacak yeni belge yok',
+      };
+    }
+
+    const ids = queue.map((img) => img.id);
+    await this.prisma.receiptImage.updateMany({
+      where: { sessionId, id: { in: ids } },
+      data: {
+        contentAuditStatus: 'PROCESSING',
+        contentAuditRisk: null,
+        contentAuditSummary: null,
+        contentAuditSuggestion: null,
+        contentAuditFindings: null,
+        contentAuditConfidence: null,
+        contentAuditModel: null,
+        contentAuditCostUsd: null,
+      } as any,
+    });
+
+    const mukellef = this.formatMukellefAdi(session);
+    await this.pushFeedEvent(tenantId, {
+      action: 'kdv-content-audit',
+      status: 'bilgi',
+      message: `${queue.length} fatura için içerik denetimi başlatıldı`,
+      mukellef,
+      meta: { sessionId, period: session.periodLabel, type: session.type, queued: queue.length },
+    });
+
+    void this.processContentAuditQueue(ids, tenantId, userId);
+
+    return {
+      queued: queue.length,
+      total: images.length,
+      skipped: images.length - queue.length,
+      message: 'İçerik denetimi arka planda başladı',
+    };
+  }
+
+  async auditImageContent(
+    imageId: string,
+    tenantId: string,
+    userId?: string,
+    opts: { force?: boolean } = {},
+  ) {
+    const image = await this.prisma.receiptImage.findFirst({
+      where: { id: imageId, session: { tenantId } },
+      include: { session: true },
+    });
+    if (!image) throw new NotFoundException('Görsel bulunamadı');
+    this.assertSessionUnlocked(image.session);
+
+    if (!opts.force && (image as any).contentAuditStatus === 'DONE') {
+      return {
+        done: true,
+        imageId,
+        risk: (image as any).contentAuditRisk,
+        summary: (image as any).contentAuditSummary,
+        skipped: true,
+      };
+    }
+
+    await this.prisma.receiptImage.update({
+      where: { id: imageId },
+      data: { contentAuditStatus: 'PROCESSING' } as any,
+    });
+    const updated = await this.runContentAuditForImage(imageId, tenantId, userId);
+    return {
+      done: true,
+      imageId,
+      risk: (updated as any)?.contentAuditRisk,
+      summary: (updated as any)?.contentAuditSummary,
+      skipped: false,
+    };
+  }
+
+  private async processContentAuditQueue(imageIds: string[], tenantId: string, userId?: string) {
+    const concurrency = Math.max(1, Math.min(4, Number(process.env.KDV_CONTENT_AUDIT_CONCURRENCY) || 2));
+    const queue = [...imageIds];
+    let done = 0;
+    let risky = 0;
+
+    const worker = async () => {
+      while (queue.length > 0) {
+        const imageId = queue.shift();
+        if (!imageId) return;
+        const updated = await this.runContentAuditForImage(imageId, tenantId, userId).catch((err) => {
+          this.logger.error(`KDV content audit failed [${imageId}]: ${err?.message || err}`);
+          return null;
+        });
+        done++;
+        const risk = (updated as any)?.contentAuditRisk;
+        if (risk === 'RISKLI' || risk === 'ISLENMEMELI') risky++;
+      }
+    };
+
+    await Promise.all(Array.from({ length: Math.min(concurrency, imageIds.length) }, worker));
+    this.logger.log(`KDV içerik denetimi tamamlandı: ${done}/${imageIds.length} belge, riskli=${risky}`);
+  }
+
+  private async runContentAuditForImage(imageId: string, tenantId: string, userId?: string) {
+    const image = await this.prisma.receiptImage.findFirst({
+      where: { id: imageId, session: { tenantId } },
+      include: {
+        session: {
+          include: {
+            taxpayer: {
+              select: {
+                id: true,
+                firstName: true,
+                lastName: true,
+                companyName: true,
+                taxNumber: true,
+                defterTuru: true,
+                mihsapDefterTuru: true,
+                naceKodu: true,
+                notes: true,
+              },
+            },
+          },
+        },
+      },
+    });
+    if (!image) return null;
+
+    const startedAt = Date.now();
+    try {
+      const decision = await this.buildContentAuditDecision(image as any, image.session as any, tenantId);
+      const updated = await this.prisma.receiptImage.update({
+        where: { id: imageId },
+        data: {
+          contentAuditStatus: 'DONE',
+          contentAuditRisk: decision.risk,
+          contentAuditSummary: decision.summary.slice(0, 1000),
+          contentAuditSuggestion: decision.suggestion.slice(0, 1000),
+          contentAuditFindings: decision.findings as any,
+          contentAuditConfidence: Math.max(0, Math.min(1, decision.confidence || 0)),
+          contentAuditModel: decision.model,
+          contentAuditCostUsd: decision.costUsd ?? 0,
+          contentAuditCheckedAt: new Date(),
+        } as any,
+      });
+
+      if (decision.usage) {
+        const tp = image.session.taxpayer;
+        const mukellef = this.formatMukellefAdi(image.session);
+        await logAiUsage(this.prisma, {
+          tenantId,
+          source: 'kdv-content-audit',
+          model: decision.model,
+          taxpayerId: image.session.taxpayerId || tp?.id || null,
+          mukellef,
+          belgeNo: (image as any).confirmedBelgeNo || image.ocrBelgeNo || null,
+          karar: decision.risk,
+          sebep: `session:${image.sessionId}`,
+          durationMs: Date.now() - startedAt,
+          usage: decision.usage,
+        });
+      }
+
+      if (decision.risk === 'RISKLI' || decision.risk === 'ISLENMEMELI') {
+        await this.pushMorenAiAlert(tenantId, {
+          title: 'MOREN AI uyarısı: Belge içerik denetimi',
+          body: `${this.formatMukellefAdi(image.session) || 'Seçili mükellef'} için ${image.originalName} belgesinde içerik uygunluğu dikkat istiyor: ${decision.summary}`,
+          severity: decision.risk === 'ISLENMEMELI' ? 'critical' : 'warning',
+          module: 'kdv-control',
+          metadata: { sessionId: image.sessionId, imageId, risk: decision.risk, userId },
+        });
+      }
+
+      return updated;
+    } catch (err: any) {
+      return this.prisma.receiptImage.update({
+        where: { id: imageId },
+        data: {
+          contentAuditStatus: 'FAILED',
+          contentAuditRisk: 'KONTROL_ET',
+          contentAuditSummary: 'İçerik denetimi tamamlanamadı',
+          contentAuditSuggestion: String(err?.message || 'Tekrar deneyin').slice(0, 500),
+          contentAuditFindings: [{ title: 'Sistem hatası', detail: String(err?.message || err).slice(0, 500), severity: 'KONTROL_ET' }] as any,
+          contentAuditConfidence: 0,
+          contentAuditModel: 'failed',
+          contentAuditCostUsd: 0,
+          contentAuditCheckedAt: new Date(),
+        } as any,
+      });
+    }
+  }
+
+  private async buildContentAuditDecision(image: any, session: any, tenantId: string): Promise<ContentAuditDecision> {
+    const fallback = await this.buildRuleBasedContentAudit(image, session, tenantId);
+    const apiKey = process.env.ANTHROPIC_API_KEY;
+    const disabled = String(process.env.KDV_CONTENT_AUDIT_AI_DISABLED || '').toLowerCase() === 'true';
+    if (!apiKey || disabled) return fallback;
+
+    const model = process.env.KDV_CONTENT_AUDIT_MODEL || 'claude-haiku-4-5-20251001';
+    try {
+      const prompt = await this.buildContentAuditPrompt(image, session, tenantId);
+      const res = await fetch('https://api.anthropic.com/v1/messages', {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+          'x-api-key': apiKey,
+          'anthropic-version': '2023-06-01',
+        },
+        body: JSON.stringify({
+          model,
+          max_tokens: 700,
+          temperature: 0,
+          system:
+            'Türk muhasebe KDV belge içerik uygunluğu için karar destek asistanısın. Nihai hukuki/mali karar vermezsin; riskleri kısa, denetlenebilir ve JSON formatında yazarsın.',
+          messages: [{ role: 'user', content: prompt }],
+        }),
+      });
+
+      if (!res.ok) {
+        throw new Error(`Anthropic API ${res.status}: ${(await res.text().catch(() => '')).slice(0, 120)}`);
+      }
+      const payload: any = await res.json();
+      const textBlock = payload?.content?.find((c: any) => c?.type === 'text');
+      const raw = String(textBlock?.text || '').trim();
+      const parsed = this.parseContentAuditJson(raw);
+      const usage = {
+        input_tokens: Number(payload?.usage?.input_tokens || 0),
+        output_tokens: Number(payload?.usage?.output_tokens || 0),
+        cache_read_input_tokens: Number(payload?.usage?.cache_read_input_tokens || 0),
+        cache_creation_input_tokens: Number(payload?.usage?.cache_creation_input_tokens || 0),
+      };
+      const costUsd = computeCostUsd(model, {
+        input: usage.input_tokens,
+        output: usage.output_tokens,
+        cacheRead: usage.cache_read_input_tokens,
+        cacheWrite: usage.cache_creation_input_tokens,
+      });
+      return {
+        risk: parsed.risk,
+        summary: parsed.summary,
+        suggestion: parsed.suggestion,
+        findings: parsed.findings,
+        confidence: parsed.confidence,
+        model,
+        costUsd,
+        usage,
+      };
+    } catch (err: any) {
+      return {
+        ...fallback,
+        model: 'rule-fallback',
+        confidence: Math.min(fallback.confidence, 0.55),
+        findings: [
+          {
+            title: 'AI servis uyarısı',
+            detail: `Kural tabanlı ön denetim kullanıldı: ${String(err?.message || err).slice(0, 180)}`,
+            severity: 'KONTROL_ET' as ContentAuditRisk,
+          },
+          ...fallback.findings,
+        ].slice(0, 6),
+      };
+    }
+  }
+
+  private async buildContentAuditPrompt(image: any, session: any, tenantId: string) {
+    const profile = await this.findTaxpayerContentProfile(session, tenantId);
+    const taxpayer = session.taxpayer || {};
+    const text = [
+      image.ocrRawText,
+      image.ocrKategori ? `Kategori: ${image.ocrKategori}` : '',
+      image.ocrBelgeTipi ? `Belge tipi: ${image.ocrBelgeTipi}` : '',
+    ].filter(Boolean).join('\n').slice(0, 3500);
+    const payload = {
+      mukellef: {
+        ad: this.formatMukellefAdi(session) || null,
+        defterTuru: taxpayer.defterTuru || taxpayer.mihsapDefterTuru || null,
+        naceKodu: taxpayer.naceKodu || null,
+        profilFaaliyet: profile?.faaliyet || null,
+        profilDefterTuru: profile?.defterTuru || null,
+        profil: profile?.profile || null,
+      },
+      kontrol: { tip: session.type, donem: session.periodLabel },
+      belge: {
+        dosyaAdi: image.originalName,
+        belgeNo: image.confirmedBelgeNo || image.ocrBelgeNo || null,
+        tarih: image.confirmedDate || image.ocrDate || null,
+        kdvTutari: image.confirmedKdvTutari || image.ocrKdvTutari || null,
+        kdvTevkifat: image.confirmedKdvTevkifat || image.ocrKdvTevkifat || null,
+        satici: image.ocrSatici || null,
+        saticiVkn: image.ocrSaticiVkn || null,
+        kategori: image.ocrKategori || null,
+        belgeTipi: image.ocrBelgeTipi || null,
+        metin: text || null,
+      },
+    };
+
+    return `Aşağıdaki belge mükellefin faaliyetine göre KDV kayıtlarına konu edilebilir mi, risk var mı değerlendir.
+
+Kurallar:
+- Sadece verilen veriye dayan; emin değilsen KONTROL_ET seç.
+- Faaliyetle açıkça ilgisiz özel harcama, ceza, alkol/tütün, hediye/lüks tüketim gibi kalemleri yükselt.
+- Yemek, otel, akaryakıt, seyahat gibi kalemlerde mükellef faaliyetini ve belge açıklamasını birlikte düşün.
+- Cevap sadece JSON olsun.
+
+JSON şeması:
+{
+  "risk": "UYGUN | KONTROL_ET | RISKLI | ISLENMEMELI",
+  "summary": "tek cümle kısa yorum",
+  "suggestion": "muhasebecinin yapacağı işlem önerisi",
+  "confidence": 0.0,
+  "findings": [
+    { "title": "kısa bulgu", "detail": "neden", "severity": "UYGUN | KONTROL_ET | RISKLI | ISLENMEMELI" }
+  ]
+}
+
+Veri:
+${JSON.stringify(payload, null, 2)}`;
+  }
+
+  private parseContentAuditJson(raw: string): Omit<ContentAuditDecision, 'model' | 'costUsd' | 'usage'> {
+    const jsonMatch = raw.match(/\{[\s\S]*\}/);
+    if (!jsonMatch) throw new Error('İçerik denetimi JSON dönmedi');
+    const parsed = JSON.parse(jsonMatch[0]);
+    const findings = Array.isArray(parsed.findings)
+      ? parsed.findings.slice(0, 8).map((f: any) => ({
+          title: String(f?.title || 'Bulgu').slice(0, 120),
+          detail: String(f?.detail || '').slice(0, 500),
+          severity: this.normalizeContentAuditRisk(f?.severity || parsed.risk),
+        }))
+      : [];
+    return {
+      risk: this.normalizeContentAuditRisk(parsed.risk),
+      summary: String(parsed.summary || 'İçerik denetimi yorum üretti').slice(0, 1000),
+      suggestion: String(parsed.suggestion || 'Muhasebeci kontrolü önerilir').slice(0, 1000),
+      findings,
+      confidence: Math.max(0, Math.min(1, Number(parsed.confidence || 0))),
+    };
+  }
+
+  private async findTaxpayerContentProfile(session: any, tenantId: string) {
+    const mukellef = this.formatMukellefAdi(session);
+    if (!mukellef) return null;
+    try {
+      return await (this.prisma as any).agentRule.findFirst({
+        where: { tenantId, mukellef },
+        select: { faaliyet: true, defterTuru: true, profile: true },
+      });
+    } catch {
+      return null;
+    }
+  }
+
+  private async buildRuleBasedContentAudit(image: any, session: any, tenantId: string): Promise<ContentAuditDecision> {
+    const profile = await this.findTaxpayerContentProfile(session, tenantId);
+    const taxpayer = session.taxpayer || {};
+    const readableText = [
+      image.ocrRawText,
+      image.ocrKategori,
+      image.ocrBelgeTipi,
+      image.ocrSatici,
+    ].filter(Boolean).join(' ').toLocaleLowerCase('tr-TR');
+    const text = [
+      readableText,
+      image.originalName,
+    ].filter(Boolean).join(' ').toLocaleLowerCase('tr-TR');
+    const nace = String(taxpayer.naceKodu || '').trim();
+    const activityText = [
+      taxpayer.companyName,
+      taxpayer.notes,
+      taxpayer.defterTuru,
+      taxpayer.mihsapDefterTuru,
+      taxpayer.naceKodu,
+      profile?.faaliyet,
+      JSON.stringify(profile?.profile || {}),
+    ].filter(Boolean).join(' ').toLocaleLowerCase('tr-TR');
+    const findings: ContentAuditDecision['findings'] = [];
+
+    const hasActivity = (codes: string[], pattern: RegExp) =>
+      codes.some((code) => nace.startsWith(code)) || pattern.test(activityText);
+    const add = (risk: ContentAuditRisk, title: string, detail: string) => {
+      findings.push({ title, detail, severity: risk });
+    };
+
+    if (!readableText.trim()) {
+      add('KONTROL_ET', 'OCR metni yetersiz', 'Belge içeriği okunamadığı için yalnızca belge no/tarih/KDV kontrolü güvenilir.');
+    }
+
+    const foodSector = hasActivity(['56', '10', '47.11'], /restoran|lokanta|gıda|gida|market|cafe|kafe|yemek|catering/);
+    const travelSector = hasActivity(['49', '50', '51', '52', '55', '79'], /turizm|otel|konaklama|seyahat|taşıma|tasima|nakliye|lojistik|servis|taksi/);
+    const fuelSector = hasActivity(['49', '52', '45', '46.71', '47.30'], /nakliye|lojistik|taşıma|tasima|servis|taksi|oto|araç|arac|akaryakıt|akaryakit/);
+    const retailSector = hasActivity(['47', '46'], /perakende|toptan|mağaza|magaza|market|giyim|kozmetik|aksesuar/);
+
+    if (/ceza|trafik cezası|trafik cezasi|gecikme zammı|gecikme zammi|usulsüzlük|usulsuzluk/.test(text)) {
+      add('ISLENMEMELI', 'Ceza/kanunen kabul edilmeyen gider sinyali', 'Belgede ceza veya gecikme benzeri ifade var; KDV indirimi açısından işlenmemeli olabilir.');
+    }
+    if (/alkol|sigara|tütün|tutun|tekel/.test(text)) {
+      add('ISLENMEMELI', 'Alkol/tütün sinyali', 'Belge içeriği KDV indirimine konu edilmeyecek özel tüketim kalemi olabilir.');
+    }
+    if (/otel|konaklama|hotel|tatil|uçak|ucak|bilet|seyahat/.test(text) && !travelSector) {
+      add('RISKLI', 'Faaliyet dışı seyahat/konaklama', 'Mükellef profilinde seyahat, taşıma veya konaklama faaliyeti belirgin değil.');
+    }
+    if (/akaryakıt|akaryakit|yakıt|yakit|benzin|motorin|otogaz/.test(text) && !fuelSector) {
+      add('KONTROL_ET', 'Akaryakıt uygunluğu', 'Araç/taşıma faaliyeti veya işletme aracı bağlantısı ayrıca kontrol edilmeli.');
+    }
+    if (/restoran|lokanta|yemek|cafe|kafe|kahve|market|gıda|gida/.test(text) && !foodSector && !retailSector) {
+      add('KONTROL_ET', 'Yemek/market uygunluğu', 'Belgenin personel, temsil ağırlama veya faaliyet bağlantısı netleştirilmeli.');
+    }
+    if (/giyim|kozmetik|hediye|aksesuar|kuyum|takı|taki|oyuncak/.test(text) && !retailSector) {
+      add('RISKLI', 'Özel tüketim riski', 'Belge içeriği mükellefin faaliyetinden bağımsız kişisel harcama gibi duruyor.');
+    }
+
+    if (findings.length === 0 && /telefon|internet|elektrik|su|doğalgaz|dogalgaz|kira|muhasebe|noter|yazılım|yazilim|kırtasiye|kirtasiye|ofis|kargo/.test(text)) {
+      add('UYGUN', 'Genel işletme gideri sinyali', 'Belge içeriği yaygın işletme giderleriyle uyumlu görünüyor.');
+    }
+
+    const riskRank: Record<ContentAuditRisk, number> = { UYGUN: 0, KONTROL_ET: 1, RISKLI: 2, ISLENMEMELI: 3 };
+    const risk = findings.reduce<ContentAuditRisk>(
+      (max, f) => riskRank[(f.severity || 'KONTROL_ET') as ContentAuditRisk] > riskRank[max]
+        ? (f.severity as ContentAuditRisk)
+        : max,
+      findings.length > 0 ? (findings[0].severity || 'KONTROL_ET') as ContentAuditRisk : 'UYGUN',
+    );
+    const summary = risk === 'UYGUN'
+      ? 'Belge içeriği mükellef faaliyetiyle belirgin şekilde çelişmiyor.'
+      : risk === 'KONTROL_ET'
+        ? 'Belge içeriği için muhasebeci yorumu veya ek dayanak gerekiyor.'
+        : risk === 'RISKLI'
+          ? 'Belge içeriği faaliyet uygunluğu açısından riskli görünüyor.'
+          : 'Belge içeriği KDV indirimi açısından işlenmemeli olabilir.';
+    const suggestion = risk === 'UYGUN'
+      ? 'Normal KDV kontrolüyle birlikte işlenebilir; nihai karar kullanıcıdadır.'
+      : risk === 'KONTROL_ET'
+        ? 'Belgenin faaliyetle bağlantısını ve gider dayanağını kontrol edin.'
+        : risk === 'RISKLI'
+          ? 'KDV indirimi öncesi belge içeriğini, faaliyet kodunu ve açıklamayı teyit edin.'
+          : 'KDV indirimine almadan önce kanunen kabul edilmeyen gider/özel harcama değerlendirmesi yapın.';
+
+    return {
+      risk,
+      summary,
+      suggestion,
+      findings: findings.length > 0 ? findings.slice(0, 6) : [{ title: 'Belirgin risk yok', detail: 'Kural tabanlı ön kontrolde açık risk sinyali bulunmadı.', severity: 'UYGUN' }],
+      confidence: readableText.trim() ? 0.62 : 0.35,
+      model: 'rule-based',
+      costUsd: 0,
+    };
+  }
+
+  private normalizeContentAuditRisk(value: any): ContentAuditRisk {
+    const s = String(value || '').toLocaleUpperCase('tr-TR');
+    if (/ISLEN|İŞLEN|ISLEME|İŞLEME|KKEG/.test(s)) return 'ISLENMEMELI';
+    if (/RISK|RİSK|RED|UYGUNSUZ/.test(s)) return 'RISKLI';
+    if (/KONTROL|İNCELE|INCELE|EMIN|EMİN|BELIRSIZ|BELİRSİZ/.test(s)) return 'KONTROL_ET';
+    if (/UYGUN|OK|NORMAL/.test(s)) return 'UYGUN';
+    return 'KONTROL_ET';
+  }
+
   async reocrSingleImage(imageId: string, tenantId: string, opts: { forceClaude?: boolean } = {}) {
     const image = await this.prisma.receiptImage.findFirst({
       where: { id: imageId, session: { tenantId } },
@@ -1987,6 +2508,9 @@ export class KdvControlService {
       { width: 14, style: { numFmt: '#,##0.00;[Red]-#,##0.00;0.00' } },
       { width: 16 },
       { width: 72 },
+      { width: 18 },
+      { width: 32 },
+      { width: 60 },
     ];
 
     // ─── MOREN LOGOLU BAŞLIK ─────────────────────────────
@@ -2007,7 +2531,7 @@ export class KdvControlService {
       this.logger.warn(`Moren logo Excel'e eklenemedi: ${e?.message}`);
     }
 
-    ws.mergeCells('A1:J1');
+    ws.mergeCells('A1:M1');
     const r1 = ws.getCell('A1');
     r1.value = 'MOREN MALİ MÜŞAVİRLİK';
     r1.font = { name: 'Calibri', size: 22, bold: true, color: { argb: GOLD } };
@@ -2015,7 +2539,7 @@ export class KdvControlService {
     r1.fill = { type: 'pattern', pattern: 'solid', fgColor: { argb: DARK } };
     ws.getRow(1).height = 50;
 
-    ws.mergeCells('A2:J2');
+    ws.mergeCells('A2:M2');
     const r2 = ws.getCell('A2');
     r2.value = 'KDV Kontrol Raporu';
     r2.font = { name: 'Calibri', size: 14, bold: true, color: { argb: 'FFFFFFFF' } };
@@ -2042,7 +2566,7 @@ export class KdvControlService {
         const c3 = ws.getCell(`E${r}`);
         c3.value = label2; c3.font = infoLabelStyle.font;
         c3.alignment = { horizontal: 'left', vertical: 'middle' };
-        ws.mergeCells(`F${r}:J${r}`);
+        ws.mergeCells(`F${r}:M${r}`);
         const c4 = ws.getCell(`F${r}`);
         c4.value = val2; c4.font = infoValueStyle.font;
         c4.alignment = { horizontal: 'left', vertical: 'middle' };
@@ -2055,7 +2579,7 @@ export class KdvControlService {
     ws.getRow(7).height = 8;
 
     // ÖZET başlığı
-    ws.mergeCells('A8:J8');
+    ws.mergeCells('A8:M8');
     const rOz = ws.getCell('A8');
     rOz.value = 'ÖZET';
     rOz.font = { bold: true, size: 12, color: { argb: GOLD } };
@@ -2082,7 +2606,7 @@ export class KdvControlService {
         c4.alignment = { horizontal: 'right', vertical: 'middle' };
       }
       ws.getRow(r).height = 22;
-      for (let col = 1; col <= 10; col++) {
+      for (let col = 1; col <= 13; col++) {
         const cell = ws.getCell(r, col);
         cell.fill = { type: 'pattern', pattern: 'solid', fgColor: { argb: 'FFFFFFFF' } };
         cell.border = {
@@ -2105,6 +2629,9 @@ export class KdvControlService {
       '#', 'LUCA TARİHİ', 'LUCA EVRAK NO', 'LUCA KDV (₺)',
       'FATURA TARİHİ', 'FATURA BELGE NO', 'FATURA KDV PAYI (₺)', 'FARK', 'DURUM', 'AÇIKLAMA / UYUMSUZLUK',
     ];
+    headerRow.getCell(11).value = 'İÇERİK RİSKİ';
+    headerRow.getCell(12).value = 'ÖNERİLEN İŞLEM';
+    headerRow.getCell(13).value = 'İÇERİK YORUMU';
     headerRow.height = 30;
     headerRow.eachCell((cell) => {
       cell.font = { bold: true, size: 11, color: { argb: 'FFFFFFFF' } };
@@ -2166,10 +2693,16 @@ export class KdvControlService {
           ? `Luca kaydı yok: ${faturaBelgeNo}`
           : (formattedReasons || (isMatchedStatus(r.status) ? 'Tam eşleşme' : 'İncele')) + noteSuffix;
 
+      const contentAudit = this.formatContentAuditForExport(r.image);
+
       row.values = [
         idx + 1, lucaTarih, lucaEvrak, lucaKdv,
         faturaTarih, faturaBelgeNo, faturaKdv, codexValue, durum, aciklama,
+        contentAudit.risk, contentAudit.suggestion, contentAudit.summary,
       ];
+      if (contentAudit.comment) {
+        (ws.getCell(rowNum, 13) as any).note = contentAudit.comment;
+      }
 
       // Duruma göre renk
       let rowBg = idx % 2 === 0 ? 'FFFFFFFF' : ALT_BG;
@@ -2196,7 +2729,7 @@ export class KdvControlService {
         cell.alignment = {
           horizontal: rightAlign ? 'right' : centerAlign ? 'center' : 'left',
           vertical: 'middle',
-          wrapText: colNum === 10,
+          wrapText: colNum === 10 || colNum === 12 || colNum === 13,
         };
         cell.border = {
           top:    { style: 'thin', color: { argb: 'FFE5E7EB' } },
@@ -2209,7 +2742,7 @@ export class KdvControlService {
 
     if (seriUyarilari.length > 0) {
       const startRow = 17 + results.length;
-      ws.mergeCells(`A${startRow}:J${startRow}`);
+      ws.mergeCells(`A${startRow}:M${startRow}`);
       const title = ws.getCell(`A${startRow}`);
       title.value = 'SATIŞ FATURA SERİ KONTROLÜ';
       title.font = { bold: true, size: 12, color: { argb: YELLOW_TEXT } };
@@ -2225,7 +2758,7 @@ export class KdvControlService {
       seriUyarilari.forEach((u, idx) => {
         const rowNum = startRow + idx + 1;
         ws.mergeCells(`A${rowNum}:B${rowNum}`);
-        ws.mergeCells(`C${rowNum}:J${rowNum}`);
+        ws.mergeCells(`C${rowNum}:M${rowNum}`);
         const tip = ws.getCell(`A${rowNum}`);
         const mesaj = ws.getCell(`C${rowNum}`);
         tip.value = u.tip === 'cross_break' ? 'Önceki dönem kopukluğu' : 'Oturum içi eksik seri';
@@ -2290,6 +2823,31 @@ export class KdvControlService {
     }
 
     return buffer;
+  }
+
+  private formatContentAuditForExport(image: any): { risk: string; suggestion: string; summary: string; comment: string } {
+    if (!image) return { risk: '—', suggestion: '—', summary: '—', comment: '' };
+    const status = image.contentAuditStatus;
+    const riskMap: Record<string, string> = {
+      UYGUN: 'Uygun',
+      KONTROL_ET: 'Kontrol et',
+      RISKLI: 'Riskli',
+      ISLENMEMELI: 'İşlenmemeli',
+    };
+    const risk = status === 'PROCESSING'
+      ? 'İşleniyor'
+      : status === 'FAILED'
+        ? 'Hata'
+        : riskMap[image.contentAuditRisk] || (status ? 'Kontrol et' : 'Denetlenmedi');
+    const suggestion = image.contentAuditSuggestion || (status ? 'Muhasebeci kontrolü önerilir' : 'İçerik denetimi yapılmadı');
+    const summary = image.contentAuditSummary || (status ? 'Yorum yok' : 'İçerik denetimi yapılmadı');
+    const findings = Array.isArray(image.contentAuditFindings) ? image.contentAuditFindings : [];
+    const comment = findings
+      .map((f: any, idx: number) => `${idx + 1}. ${f?.title || 'Bulgu'}: ${f?.detail || ''}`)
+      .filter(Boolean)
+      .join('\n')
+      .slice(0, 2000);
+    return { risk, suggestion, summary, comment };
   }
 
   private formatKdvExportReasons(reasons: string[]): string {
@@ -2370,7 +2928,15 @@ export class KdvControlService {
       }),
       this.prisma.receiptImage.findMany({
         where: { sessionId },
-        select: { ocrEngine: true, ocrStatus: true, imageHash: true, originalName: true },
+        select: {
+          ocrEngine: true,
+          ocrStatus: true,
+          imageHash: true,
+          originalName: true,
+          contentAuditStatus: true,
+          contentAuditRisk: true,
+          contentAuditCostUsd: true,
+        },
       }),
     ]);
     const totalRecords = records.filter((r) => !isAggregateLucaRecord(r)).length;
@@ -2433,6 +2999,35 @@ export class KdvControlService {
     );
     const estimatedCostUsd = engineStats.claudeReads * 0.0025;
     const estimatedSavedUsd = (engineStats.cacheHits + engineStats.xmlParsed) * 0.0025;
+    const contentAuditStats = images.reduce(
+      (acc: any, img: any) => {
+        const status = img.contentAuditStatus || 'PENDING';
+        const risk = img.contentAuditRisk || '';
+        if (status === 'DONE') acc.done++;
+        else if (status === 'PROCESSING') acc.processing++;
+        else if (status === 'FAILED') acc.failed++;
+        else if (status === 'SKIPPED') acc.skipped++;
+        else acc.pending++;
+        if (risk === 'UYGUN') acc.suitable++;
+        if (risk === 'KONTROL_ET') acc.review++;
+        if (risk === 'RISKLI') acc.risky++;
+        if (risk === 'ISLENMEMELI') acc.notAllowed++;
+        acc.actualCostUsd += Number(img.contentAuditCostUsd || 0);
+        return acc;
+      },
+      {
+        done: 0,
+        processing: 0,
+        pending: 0,
+        failed: 0,
+        skipped: 0,
+        suitable: 0,
+        review: 0,
+        risky: 0,
+        notAllowed: 0,
+        actualCostUsd: 0,
+      },
+    );
 
     return {
       totalRecords,
@@ -2445,6 +3040,11 @@ export class KdvControlService {
       rejected: statusMap['REJECTED'] ?? 0,
       needsOcrConfirm: needsConfirm,
       seriUyarilari, // ← yeni alan: array of {tip: 'eksik'|'cross_break', mesaj: string}
+      contentAudit: {
+        ...contentAuditStats,
+        total: totalImages,
+        riskyTotal: contentAuditStats.risky + contentAuditStats.notAllowed,
+      },
       ocrCost: {
         actualCostUsd,
         estimatedCostUsd,

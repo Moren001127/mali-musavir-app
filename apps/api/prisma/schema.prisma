@@ -1101,6 +1101,16 @@ model ReceiptImage {
   imageHash    String?  @db.VarChar(64)
   // Otomatik kategori — Claude prompt'undan: yakit, yemek, kirtasiye, telekom, kira, vb.
   ocrKategori  String?
+  // Belge içerik uygunluk denetimi. Mevcut OCR/KDV eşleştirme akışından bağımsızdır.
+  contentAuditStatus     String?
+  contentAuditRisk       String?
+  contentAuditSummary    String?
+  contentAuditSuggestion String?
+  contentAuditFindings   Json?
+  contentAuditConfidence Float?
+  contentAuditModel      String?
+  contentAuditCostUsd    Float?
+  contentAuditCheckedAt  DateTime?
   // Kullanıcı düzeltmesi
   confirmedBelgeNo   String?
   confirmedDate      String?
@@ -1117,6 +1127,7 @@ model ReceiptImage {
   results      ReconciliationResult[]
 
   @@index([sessionId, ocrStatus])
+  @@index([sessionId, contentAuditStatus])
   @@index([imageHash])
   @@map("receipt_images")
 }
