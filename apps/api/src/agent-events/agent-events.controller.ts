@@ -384,11 +384,18 @@ export class AgentEventsController {
     return this.service.updateCommand(tenantId, id, body);
   }
 
-  /** Tek komutu getir - agent cancel-check icin */
+  /** Tek komutu getir - agent cancel-check icin (agent-token) */
   @Get('commands/:id')
   async getCommandSingle(@Headers('x-agent-token') token: string, @Param('id') id: string) {
     const tenantId = await this.resolveTenantFromTokenAsync(token);
     return this.service.getCommand(tenantId, id);
+  }
+
+  /** Tek komutu JWT ile getir - frontend canli log paneli icin */
+  @Get('commands-jwt/:id')
+  @UseGuards(AuthGuard('jwt'))
+  async getCommandSingleJwt(@Req() req: any, @Param('id') id: string) {
+    return this.service.getCommand(req.user.tenantId, id);
   }
 
   /** Agent canlı log gönderir — result.logs array'ine append edilir. */

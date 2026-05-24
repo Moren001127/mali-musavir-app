@@ -57,7 +57,7 @@ export default function HgsIhlalPage() {
     queryKey: ['agent-command-detail', izlenenKomutId],
     queryFn: async () => {
       if (!izlenenKomutId) return null;
-      const { data } = await api.get(`/agent/commands/${izlenenKomutId}`, { headers: {} });
+      const { data } = await api.get(`/agent/commands-jwt/${izlenenKomutId}`);
       return data;
     },
     enabled: !!izlenenKomutId,
