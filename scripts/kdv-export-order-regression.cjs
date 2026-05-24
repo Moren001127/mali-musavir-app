@@ -330,11 +330,18 @@ async function runExcelLayoutRegression() {
   const workbook = new ExcelJS.Workbook();
   await workbook.xlsx.load(buffer);
   const worksheet = workbook.getWorksheet('KDV Kontrol');
-  const headerRow = worksheet.getRow(1);
-  const row = worksheet.getRow(2);
+  const headerRow = worksheet.getRow(4);
+  const row = worksheet.getRow(5);
 
-  assert.strictEqual(headerRow.getCell(1).value, '#', 'Excel ana tablo başlığı ilk satırda başlamalı');
-  assert.strictEqual(row.getCell(1).value, 1, 'Excel veri satırı ikinci satırda başlamalı');
+  assert.strictEqual(worksheet.getRow(1).getCell(1).value, 'MOREN MALİ MÜŞAVİRLİK · KDV Kontrol Raporu', 'Excel rapor başlığı korunmalı');
+  assert.strictEqual(worksheet.getRow(2).getCell(2).value, 'SERVİS PERSONEL TAŞIMACILIĞI TURİZM LİMİTED ŞİRKETİ', 'Excel üst bilgide mükellef adı korunmalı');
+  assert.strictEqual(worksheet.getRow(2).getCell(7).value, '2026/04', 'Excel üst bilgide dönem korunmalı');
+  assert.ok((worksheet.getRow(1).height || 0) <= 28, 'Excel rapor başlığı büyük boş blok oluşturmamalı');
+  assert.ok((worksheet.getRow(2).height || 0) <= 24, 'Excel mükellef üst bilgi satırı kompakt kalmalı');
+  assert.ok((worksheet.getRow(3).height || 0) <= 24, 'Excel özet üst bilgi satırı kompakt kalmalı');
+
+  assert.strictEqual(headerRow.getCell(1).value, '#', 'Excel ana tablo başlığı kompakt üst bilginin hemen altında başlamalı');
+  assert.strictEqual(row.getCell(1).value, 1, 'Excel veri satırı tablo başlığının hemen altında başlamalı');
   assert.strictEqual(row.height, 24, 'Excel veri satırı uzun yorum nedeniyle otomatik büyümemeli');
   assert.notStrictEqual(row.getCell(12).alignment.wrapText, true, 'Öneri hücresi satır sarma yapmamalı');
   assert.notStrictEqual(row.getCell(13).alignment.wrapText, true, 'İçerik yorumu hücresi satır sarma yapmamalı');

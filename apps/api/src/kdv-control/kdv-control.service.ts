@@ -2781,9 +2781,79 @@ ${JSON.stringify(payload, null, 2)}`;
       { width: 32 },
     ];
 
-    const tableHeaderRowNum = 1;
+    const tableHeaderRowNum = 4;
     const tableDataStartRowNum = tableHeaderRowNum + 1;
     ws.views = [{ state: 'frozen', ySplit: tableHeaderRowNum }];
+
+    // Kompakt rapor kimliği: firma/dönem bilgisi kalsın, tabloyu aşağı iten boş blok oluşmasın.
+    ws.mergeCells('A1:M1');
+    const titleCell = ws.getCell('A1');
+    titleCell.value = 'MOREN MALİ MÜŞAVİRLİK · KDV Kontrol Raporu';
+    titleCell.font = { bold: true, size: 14, color: { argb: GOLD } };
+    titleCell.fill = { type: 'pattern', pattern: 'solid', fgColor: { argb: DARK } };
+    titleCell.alignment = { horizontal: 'center', vertical: 'middle' };
+    ws.getRow(1).height = 26;
+
+    ws.mergeCells('B2:E2');
+    ws.mergeCells('I2:K2');
+    ws.getCell('A2').value = 'MÜKELLEF';
+    ws.getCell('B2').value = mukellefName || '—';
+    ws.getCell('F2').value = 'DÖNEM';
+    ws.getCell('G2').value = periodLabel;
+    ws.getCell('H2').value = 'KONTROL TÜRÜ';
+    ws.getCell('I2').value = typeLabel;
+    ws.getCell('L2').value = 'RAPOR TARİHİ';
+    ws.getCell('M2').value = tarihStr;
+
+    ws.getCell('A3').value = 'VKN/TCKN';
+    ws.getCell('B3').value = taxNo;
+    ws.getCell('C3').value = 'EŞLEŞEN';
+    ws.getCell('D3').value = `${matchedCount}/${results.length}`;
+    ws.getCell('E3').value = 'İNCELE';
+    ws.getCell('F3').value = partialCount;
+    ws.getCell('G3').value = 'HATALI';
+    ws.getCell('H3').value = unmatchedCount;
+    ws.getCell('I3').value = 'LUCA KDV';
+    ws.getCell('J3').value = sumLucaAll;
+    ws.getCell('K3').value = 'FATURA KDV';
+    ws.getCell('L3').value = sumOcrAll;
+    ws.getCell('M3').value = `Fark: ${fmtTl(zeroKurusTolerance(sumLucaAll - sumOcrAll))}`;
+    ws.getCell('J3').numFmt = '#,##0.00 "₺"';
+    ws.getCell('L3').numFmt = '#,##0.00 "₺"';
+    ws.getRow(2).height = 22;
+    ws.getRow(3).height = 22;
+
+    const metaLabelCells = new Set(['A2', 'F2', 'H2', 'L2', 'A3', 'C3', 'E3', 'G3', 'I3', 'K3']);
+    for (let metaRow = 1; metaRow <= 3; metaRow++) {
+      for (let col = 1; col <= 13; col++) {
+        const cell = ws.getCell(metaRow, col);
+        if (metaRow > 1) {
+          const isLabel = metaLabelCells.has(cell.address);
+          cell.fill = {
+            type: 'pattern',
+            pattern: 'solid',
+            fgColor: { argb: isLabel ? HEADER_BG : 'FFFFFFFF' },
+          };
+          cell.font = {
+            bold: isLabel,
+            size: 10,
+            color: { argb: isLabel ? 'FFFFFFFF' : 'FF111827' },
+          };
+          cell.alignment = {
+            horizontal: isLabel ? 'center' : 'left',
+            vertical: 'middle',
+            wrapText: false,
+            shrinkToFit: true,
+          };
+        }
+        cell.border = {
+          top: { style: 'thin', color: { argb: TABLE_BORDER_LIGHT } },
+          bottom: { style: 'thin', color: { argb: TABLE_BORDER_LIGHT } },
+          left: { style: 'thin', color: { argb: TABLE_BORDER_LIGHT } },
+          right: { style: 'thin', color: { argb: TABLE_BORDER_LIGHT } },
+        };
+      }
+    }
 
     // Tablo başlığı
     const headerRow = ws.getRow(tableHeaderRowNum);
