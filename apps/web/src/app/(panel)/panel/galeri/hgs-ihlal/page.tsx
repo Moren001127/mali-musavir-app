@@ -362,7 +362,16 @@ export default function HgsIhlalPage() {
               </tr>
             </thead>
             <tbody>
-              {araclar.map((a: Arac) => <AracRow key={a.id} arac={a} onDelete={() => deleteMut.mutate(a.id)} />)}
+              {araclar.map((a: Arac) => (
+                <AracRow
+                  key={a.id}
+                  arac={a}
+                  onDelete={() => deleteMut.mutate(a.id)}
+                  onSorgula={(aracId) => tekAracSorguMut.mutate(aracId)}
+                  sorguPending={tekAracSorguMut.isPending && tekAracSorguMut.variables === a.id}
+                  sorguDisabled={!!agentInfo?.aktifKomut}
+                />
+              ))}
             </tbody>
           </table>
         </div>
@@ -403,7 +412,19 @@ function OzetCard({ label, value, icon: Icon, color }: { label: string; value: n
 // ════════════════════════════════════════════════════════════
 // ARAC SATIRI
 // ════════════════════════════════════════════════════════════
-function AracRow({ arac, onDelete }: { arac: Arac; onDelete: () => void }) {
+function AracRow({
+  arac,
+  onDelete,
+  onSorgula,
+  sorguPending,
+  sorguDisabled,
+}: {
+  arac: Arac;
+  onDelete: () => void;
+  onSorgula: (aracId: string) => void;
+  sorguPending: boolean;
+  sorguDisabled: boolean;
+}) {
   const [sonucOpen, setSonucOpen] = useState(false);
   const s = arac.sonSorgu;
   const ihlalliMi = (s?.ihlalSayisi || 0) > 0;
@@ -443,15 +464,15 @@ function AracRow({ arac, onDelete }: { arac: Arac; onDelete: () => void }) {
         <td className="px-4 py-2.5 text-right">
           <div className="flex items-center gap-1 justify-end">
             <button
-              onClick={() => tekAracSorguMut.mutate(arac.id)}
-              disabled={tekAracSorguMut.isPending || !!agentInfo?.aktifKomut}
+              onClick={() => onSorgula(arac.id)}
+              disabled={sorguPending || sorguDisabled}
               className="text-[11px] font-medium px-2.5 py-1.5 rounded-md transition inline-flex items-center gap-1 disabled:opacity-50 disabled:cursor-not-allowed"
               style={{ background: `linear-gradient(135deg, ${GOLD}, #b8a06f)`, color: '#0f0d0b' }}
               title="Agent ile arka planda sorgula"
             >
-              {tekAracSorguMut.isPending && tekAracSorguMut.variables === arac.id
+              {sorguPending
                 ? <><RefreshCw size={11} className="animate-spin" /> Gönderiliyor</>
-                : !!agentInfo?.aktifKomut
+                : sorguDisabled
                   ? <><Clock size={11} /> Bekliyor</>
                   : <><PlayCircle size={11} /> Sorgula</>}
             </button>
