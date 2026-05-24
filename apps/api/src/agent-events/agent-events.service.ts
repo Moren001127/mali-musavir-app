@@ -6,7 +6,6 @@ import { logAiUsage } from '../common/ai-usage-logger';
 import { profileToPromptText } from '../common/profile-prompt';
 import { VendorMemoryService } from '../vendor-memory/vendor-memory.service';
 import { PendingDecisionsService } from '../pending-decisions/pending-decisions.service';
-import { WhatsAppService } from '../whatsapp/whatsapp.service';
 import {
   commandClaimAgentsForRunner,
   commandListAgentsForFilter,
@@ -60,7 +59,6 @@ export class AgentEventsService {
     private prisma: PrismaService,
     private vendorMemory: VendorMemoryService,
     private pendingDecisions: PendingDecisionsService,
-    private whatsappService: WhatsAppService,
   ) {}
 
   private getMihsapDecisionMode(): MihsapDecisionMode {
@@ -3316,12 +3314,31 @@ Fatura görüntüsünü incele. Yukarıdaki MEVCUT SEÇENEKLER'den Kayıt Türü
       `İyi günler.`,
     ].join('\n');
 
+    // WhatsApp gönderim — Meta Graph API'ye direkt HTTP çağrı (DI circular dep'i önlemek için)
     try {
-      const ok = await this.whatsappService.sendMessage(aliciNumara, mesaj);
-      if (ok) {
+      const accessToken = process.env.WHATSAPP_ACCESS_TOKEN;
+      const phoneNumberId = process.env.WHATSAPP_PHONE_NUMBER_ID;
+      const apiVersion = process.env.WHATSAPP_API_VERSION || 'v20.0';
+      if (!accessToken || !phoneNumberId) {
+        this.logger.warn(`[HGS WhatsApp] WHATSAPP_ACCESS_TOKEN/PHONE_NUMBER_ID env tanımsız — bildirim atlandı`);
+        return;
+      }
+      const url = `https://graph.facebook.com/${apiVersion}/${phoneNumberId}/messages`;
+      const res = await fetch(url, {
+        method: 'POST',
+        headers: { 'Authorization': `Bearer ${accessToken}`, 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          messaging_product: 'whatsapp',
+          to: aliciNumara,
+          type: 'text',
+          text: { body: mesaj, preview_url: false },
+        }),
+      });
+      if (res.ok) {
         this.logger.log(`[HGS WhatsApp] Bildirim gönderildi: ${aliciNumara} (${aracSayisi} araç, ${toplamIhlal} ihlal)`);
       } else {
-        this.logger.warn(`[HGS WhatsApp] Bildirim başarısız (WhatsApp yapılandırılmamış olabilir)`);
+        const errBody = await res.text();
+        this.logger.warn(`[HGS WhatsApp] Gönderim başarısız ${res.status}: ${errBody.slice(0, 300)}`);
       }
     } catch (err: any) {
       this.logger.warn(`[HGS WhatsApp] Gönderim hatası: ${err?.message || err}`);
