@@ -2778,102 +2778,49 @@ ${JSON.stringify(payload, null, 2)}`;
       { width: 32 },
     ];
 
-    // ─── MOREN LOGOLU BAŞLIK ─────────────────────────────
-    try {
-      const logoPath = path.join(__dirname, '..', 'assets', 'moren-logo.png');
-      if (fs.existsSync(logoPath)) {
-        const logoId = wb.addImage({
-          filename: logoPath,
-          extension: 'png',
-        });
-        // Sol üste yerleştir (A1–B3 bölgesi, ~180×80 px)
-        ws.addImage(logoId, {
-          tl: { col: 0.15, row: 0.15 },
-          ext: { width: 140, height: 80 },
-        });
-      }
-    } catch (e: any) {
-      this.logger.warn(`Moren logo Excel'e eklenemedi: ${e?.message}`);
-    }
+    const tableHeaderRowNum = 5;
+    const tableDataStartRowNum = tableHeaderRowNum + 1;
+    ws.views = [{ state: 'frozen', ySplit: tableHeaderRowNum }];
 
+    // Kompakt üst bilgi: ana tabloyu aşağı itmeyen kısa rapor bandı.
     ws.mergeCells('A1:M1');
     const r1 = ws.getCell('A1');
-    r1.value = 'MOREN MALİ MÜŞAVİRLİK';
-    r1.font = { name: 'Calibri', size: 22, bold: true, color: { argb: GOLD } };
+    r1.value = 'MOREN MALİ MÜŞAVİRLİK · KDV Kontrol Raporu';
+    r1.font = { name: 'Calibri', size: 16, bold: true, color: { argb: GOLD } };
     r1.alignment = { horizontal: 'center', vertical: 'middle' };
     r1.fill = { type: 'pattern', pattern: 'solid', fgColor: { argb: DARK } };
-    ws.getRow(1).height = 50;
-
-    ws.mergeCells('A2:M2');
-    const r2 = ws.getCell('A2');
-    r2.value = 'KDV Kontrol Raporu';
-    r2.font = { name: 'Calibri', size: 14, bold: true, color: { argb: 'FFFFFFFF' } };
-    r2.alignment = { horizontal: 'center' };
-    r2.fill = { type: 'pattern', pattern: 'solid', fgColor: { argb: DARK } };
-    ws.getRow(2).height = 22;
-
-    // Boş satır
-    ws.getRow(3).height = 8;
-
-    // Bilgi bloğu (2 kolonlu) — Label A+B merge (dar A sığmıyor), Value C+D merge
-    const infoLabelStyle = { font: { bold: true, color: { argb: 'FF666666' }, size: 10 } };
-    const infoValueStyle = { font: { color: { argb: 'FF1A1916' }, size: 11 } };
-    const setInfo = (r: number, label1: string, val1: string, label2?: string, val2?: string) => {
-      ws.mergeCells(`A${r}:B${r}`);
-      const c1 = ws.getCell(`A${r}`);
-      c1.value = label1; c1.font = infoLabelStyle.font;
-      c1.alignment = { horizontal: 'left', vertical: 'middle' };
-      ws.mergeCells(`C${r}:D${r}`);
-      const c2 = ws.getCell(`C${r}`);
-      c2.value = val1; c2.font = infoValueStyle.font;
-      c2.alignment = { horizontal: 'left', vertical: 'middle' };
-      if (label2) {
-        const c3 = ws.getCell(`E${r}`);
-        c3.value = label2; c3.font = infoLabelStyle.font;
-        c3.alignment = { horizontal: 'left', vertical: 'middle' };
-        ws.mergeCells(`F${r}:M${r}`);
-        const c4 = ws.getCell(`F${r}`);
-        c4.value = val2; c4.font = infoValueStyle.font;
-        c4.alignment = { horizontal: 'left', vertical: 'middle' };
-      }
+    r1.border = {
+      top: { style: 'medium', color: { argb: TABLE_BORDER } },
+      bottom: { style: 'medium', color: { argb: TABLE_BORDER } },
+      left: { style: 'medium', color: { argb: TABLE_BORDER } },
+      right: { style: 'medium', color: { argb: TABLE_BORDER } },
     };
-    setInfo(4, 'Mükellef',     mukellefName,  'Dönem',        periodLabel);
-    setInfo(5, 'Vergi No',     taxNo,         'Kontrol Türü', typeLabel);
-    setInfo(6, 'Rapor Tarihi', tarihStr);
+    ws.getRow(1).height = 28;
 
-    ws.getRow(7).height = 8;
-
-    // ÖZET başlığı
-    ws.mergeCells('A8:M8');
-    const rOz = ws.getCell('A8');
-    rOz.value = 'ÖZET';
-    rOz.font = { bold: true, size: 12, color: { argb: GOLD } };
-    rOz.alignment = { horizontal: 'center' };
-    rOz.fill = { type: 'pattern', pattern: 'solid', fgColor: { argb: 'FFF3F0E8' } };
-    ws.getRow(8).height = 20;
-
-    const setSummary = (r: number, l1: string, v1: any, l2?: string, v2?: any) => {
-      ws.mergeCells(`A${r}:C${r}`);
-      const c1 = ws.getCell(`A${r}`);
-      c1.value = l1; c1.font = { bold: true, color: { argb: 'FF444444' }, size: 10 };
-      c1.alignment = { horizontal: 'left', vertical: 'middle', wrapText: true };
-      const c2 = ws.getCell(`D${r}`);
-      c2.value = v1; c2.font = { size: 11 };
-      c2.alignment = { horizontal: 'right', vertical: 'middle' };
-      if (l2) {
-        ws.mergeCells(`E${r}:G${r}`);
-        const c3 = ws.getCell(`E${r}`);
-        c3.value = l2; c3.font = { bold: true, color: { argb: 'FF444444' }, size: 10 };
-        c3.alignment = { horizontal: 'left', vertical: 'middle', wrapText: true };
-        ws.mergeCells(`H${r}:I${r}`);
-        const c4 = ws.getCell(`H${r}`);
-        c4.value = v2; c4.font = { size: 11 };
-        c4.alignment = { horizontal: 'right', vertical: 'middle' };
-      }
+    const summaryRows = [
+      ['Mükellef', mukellefName, '', 'Dönem', periodLabel, '', 'Kontrol Türü', typeLabel, '', 'Eşleşen', `${matchedCount}/${results.length}`, 'Rapor', tarihStr],
+      ['Vergi No', taxNo, '', 'Luca Toplam', fmtTl(sumLucaAll), '', 'Fatura OCR', fmtTl(sumOcrAll), '', 'Kısmi', partialCount, 'Hatalı', unmatchedCount],
+      ['Eşleşen Fark', fmtTl(zeroKurusTolerance(sumLucaMatched - sumOcrMatched)), '', 'Luca Eşleşen', fmtTl(sumLucaMatched), '', 'Fatura Eşleşen', fmtTl(sumOcrMatched), '', 'Eşleşme', `%${Math.round((matchedCount / Math.max(results.length, 1)) * 100)}`, '', ''],
+    ];
+    summaryRows.forEach((values, idx) => {
+      const r = 2 + idx;
+      const row = ws.getRow(r);
+      row.values = values;
       ws.getRow(r).height = 22;
       for (let col = 1; col <= 13; col++) {
         const cell = ws.getCell(r, col);
         cell.fill = { type: 'pattern', pattern: 'solid', fgColor: { argb: 'FFFFFFFF' } };
+        cell.font = {
+          size: col % 3 === 1 || col === 10 || col === 12 ? 9 : 10,
+          bold: col % 3 === 1 || col === 10 || col === 12,
+          color: { argb: col % 3 === 1 || col === 10 || col === 12 ? 'FF4B5563' : 'FF111827' },
+        };
+        cell.alignment = {
+          horizontal: col === 11 || col === 13 ? 'center' : 'left',
+          vertical: 'middle',
+          wrapText: false,
+          shrinkToFit: true,
+        };
         cell.border = {
           top: { style: 'thin', color: { argb: TABLE_BORDER_LIGHT } },
           bottom: { style: 'thin', color: { argb: TABLE_BORDER_LIGHT } },
@@ -2881,17 +2828,10 @@ ${JSON.stringify(payload, null, 2)}`;
           right: { style: 'thin', color: { argb: TABLE_BORDER_LIGHT } },
         };
       }
-    };
-    setSummary(9,  'Toplam Satır',                       results.length,                                                    'Luca (tüm satırlar)',       fmtTl(sumLucaAll));
-    setSummary(10, '✓ Eşleşen (otomatik + onaylanan)',   matchedCount,                                                       'Fatura OCR (satır payı)',   fmtTl(sumOcrAll));
-    setSummary(11, '⚠ Kısmi / İnceleme',                 partialCount,                                                       'Luca (sadece eşleşen)',     fmtTl(sumLucaMatched));
-    setSummary(12, '✗ Hatalı (orphan + reddedilen)',     unmatchedCount,                                                     'Fatura (eşleşen satır payı)', fmtTl(sumOcrMatched));
-    setSummary(13, 'Eşleşme Oranı',                      `%${Math.round((matchedCount / Math.max(results.length, 1)) * 100)}`, 'Eşleşenler farkı',          fmtTl(zeroKurusTolerance(sumLucaMatched - sumOcrMatched)));
+    });
 
-    ws.getRow(14).height = 8;
-
-    // Tablo başlığı (15. satır)
-    const headerRow = ws.getRow(15);
+    // Tablo başlığı
+    const headerRow = ws.getRow(tableHeaderRowNum);
     headerRow.values = [
       '#', 'LUCA TARİHİ', 'LUCA EVRAK NO', 'LUCA KDV (₺)',
       'FATURA TARİHİ', 'FATURA BELGE NO', 'FATURA KDV PAYI (₺)', 'FARK', 'DURUM', 'AÇIKLAMA / UYUMSUZLUK',
@@ -2911,11 +2851,11 @@ ${JSON.stringify(payload, null, 2)}`;
         right: { style: 'thin', color: { argb: TABLE_BORDER } },
       };
     });
-    (ws as any).autoFilter = 'A15:M15';
+    (ws as any).autoFilter = `A${tableHeaderRowNum}:M${tableHeaderRowNum}`;
 
     // Veri satırları (16+)
     results.forEach((r: any, idx) => {
-      const rowNum = 16 + idx;
+      const rowNum = tableDataStartRowNum + idx;
       const row = ws.getRow(rowNum);
 
       const lucaTarih = r.kdvRecord?.belgeDate
@@ -3012,14 +2952,14 @@ ${JSON.stringify(payload, null, 2)}`;
       });
     });
 
-    const tableLastRow = 15 + results.length;
-    for (let tableRow = 15; tableRow <= tableLastRow; tableRow++) {
+    const tableLastRow = tableHeaderRowNum + results.length;
+    for (let tableRow = tableHeaderRowNum; tableRow <= tableLastRow; tableRow++) {
       for (let col = 1; col <= 13; col++) {
         const cell = ws.getCell(tableRow, col);
         cell.border = {
           top: {
-            style: tableRow === 15 ? 'medium' : 'thin',
-            color: { argb: tableRow === 15 ? TABLE_BORDER : TABLE_BORDER_LIGHT },
+            style: tableRow === tableHeaderRowNum ? 'medium' : 'thin',
+            color: { argb: tableRow === tableHeaderRowNum ? TABLE_BORDER : TABLE_BORDER_LIGHT },
           },
           bottom: {
             style: tableRow === tableLastRow ? 'medium' : 'thin',
@@ -3038,7 +2978,7 @@ ${JSON.stringify(payload, null, 2)}`;
     }
 
     if (seriUyarilari.length > 0) {
-      const startRow = 17 + results.length;
+      const startRow = tableLastRow + 2;
       ws.mergeCells(`A${startRow}:M${startRow}`);
       const title = ws.getCell(`A${startRow}`);
       title.value = 'SATIŞ FATURA SERİ KONTROLÜ';

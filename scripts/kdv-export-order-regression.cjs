@@ -297,8 +297,11 @@ async function runExcelLayoutRegression() {
   const workbook = new ExcelJS.Workbook();
   await workbook.xlsx.load(buffer);
   const worksheet = workbook.getWorksheet('KDV Kontrol');
-  const row = worksheet.getRow(16);
+  const headerRow = worksheet.getRow(5);
+  const row = worksheet.getRow(6);
 
+  assert.strictEqual(worksheet.getRow(2).getCell(1).value, 'Mükellef', 'Excel üst bilgi satırları kompakt başlamalı');
+  assert.strictEqual(headerRow.getCell(1).value, '#', 'Excel ana tablo başlığı boşluk bırakmadan 5. satırda başlamalı');
   assert.strictEqual(row.height, 24, 'Excel veri satırı uzun yorum nedeniyle otomatik büyümemeli');
   assert.notStrictEqual(row.getCell(12).alignment.wrapText, true, 'Öneri hücresi satır sarma yapmamalı');
   assert.notStrictEqual(row.getCell(13).alignment.wrapText, true, 'İçerik yorumu hücresi satır sarma yapmamalı');

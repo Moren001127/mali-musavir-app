@@ -951,9 +951,20 @@ export default function KdvKontrolPage() {
   const contentAuditReviewCount = contentAuditRows.filter((img: any) =>
     img.contentAuditRisk === 'KONTROL_ET' || img.contentAuditStatus === 'FAILED',
   ).length;
-  const contentAuditPanelRows = contentAuditAttentionRows.length > 0
-    ? contentAuditAttentionRows.slice(0, 5)
-    : contentAuditRows.slice(0, 3);
+  const contentAuditPanelRows = contentAuditRows;
+  const contentAuditTooltip = (img: any) => {
+    const findings = Array.isArray(img.contentAuditFindings)
+      ? img.contentAuditFindings
+          .map((finding: any, idx: number) => `${idx + 1}. ${finding?.title || 'Bulgu'}: ${finding?.detail || ''}`.trim())
+          .filter(Boolean)
+      : [];
+    return [
+      img.originalName || img.ocrBelgeNo || img.id,
+      img.contentAuditSummary,
+      img.contentAuditSuggestion,
+      ...findings,
+    ].filter(Boolean).join('\n');
+  };
 
   // ── RENDER ──────────────────────────────────────────
   return (
@@ -1507,37 +1518,37 @@ export default function KdvKontrolPage() {
               )}
             </div>
           </div>
-          <div className="p-4 space-y-2">
+          <div className="max-h-[240px] overflow-y-auto p-2">
             {contentAuditPanelRows.map((img: any) => (
-              <div key={img.id} className="px-3 py-2.5 rounded-lg" style={{ background: 'rgba(255,255,255,0.022)', border: '1px solid rgba(255,255,255,0.05)' }}>
-                <div className="flex items-start gap-2.5">
-                  <ContentAuditBadge risk={img.contentAuditRisk} status={img.contentAuditStatus} />
-                  <div className="min-w-0 flex-1">
-                    <div className="flex items-center gap-2 min-w-0">
-                      <span className="text-[12.5px] font-semibold truncate" style={{ color: '#fafaf9' }}>{img.originalName || img.ocrBelgeNo || img.id}</span>
-                      {img.contentAuditConfidence != null && (
-                        <span className="text-[10px] tabular-nums shrink-0" style={{ color: 'rgba(250,250,249,0.38)' }}>
-                          %{Math.round(Number(img.contentAuditConfidence || 0) * 100)}
-                        </span>
-                      )}
-                    </div>
-                    <p className="mt-1 text-[12px] leading-relaxed" style={{ color: 'rgba(250,250,249,0.68)' }}>
-                      {img.contentAuditSummary || (img.contentAuditStatus === 'PROCESSING' ? 'Denetleniyor...' : 'Yorum bekleniyor')}
-                    </p>
-                    {img.contentAuditSuggestion && (
-                      <p className="mt-1 text-[11.5px] leading-relaxed" style={{ color: 'rgba(94,234,212,0.78)' }}>
-                        {img.contentAuditSuggestion}
-                      </p>
+              <div
+                key={img.id}
+                title={contentAuditTooltip(img)}
+                className="grid min-h-[38px] grid-cols-[118px_minmax(130px,220px)_minmax(0,1fr)] items-center gap-3 border-b px-2.5 py-1.5 last:border-b-0"
+                style={{ borderColor: 'rgba(20,184,166,0.10)' }}
+              >
+                <ContentAuditBadge risk={img.contentAuditRisk} status={img.contentAuditStatus} />
+                <div className="min-w-0">
+                  <div className="flex min-w-0 items-center gap-2">
+                    <span className="truncate text-[12px] font-semibold" style={{ color: '#fafaf9' }}>{img.originalName || img.ocrBelgeNo || img.id}</span>
+                    {img.contentAuditConfidence != null && (
+                      <span className="shrink-0 tabular-nums text-[10px]" style={{ color: 'rgba(250,250,249,0.38)' }}>
+                        %{Math.round(Number(img.contentAuditConfidence || 0) * 100)}
+                      </span>
                     )}
                   </div>
                 </div>
+                <div className="min-w-0">
+                  <p className="truncate text-[12px]" style={{ color: 'rgba(250,250,249,0.68)' }}>
+                    {img.contentAuditSummary || (img.contentAuditStatus === 'PROCESSING' ? 'Denetleniyor...' : 'Yorum bekleniyor')}
+                  </p>
+                  {img.contentAuditSuggestion && (
+                    <p className="truncate text-[11px]" style={{ color: 'rgba(94,234,212,0.78)' }}>
+                      {img.contentAuditSuggestion}
+                    </p>
+                  )}
+                </div>
               </div>
             ))}
-            {contentAuditAttentionRows.length > contentAuditPanelRows.length && (
-              <p className="text-[11px]" style={{ color: 'rgba(250,250,249,0.45)' }}>
-                +{contentAuditAttentionRows.length - contentAuditPanelRows.length} kontrol notu daha Excel yorumlarında yer alacak.
-              </p>
-            )}
           </div>
         </div>
       )}
