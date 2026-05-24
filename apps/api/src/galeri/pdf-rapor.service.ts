@@ -116,16 +116,29 @@ export class PdfRaporService {
       genelTutar += tutar;
 
       const ihlalSatirlari = detaylar.length > 0
-        ? detaylar.map((d: any, i: number) => `
+        ? detaylar.map((d: any, i: number) => {
+            // Yeni parser format: { kaynak, tarih, giris, cikis, gecisUcreti, tutar, ham[] }
+            // Eski format: { tarih, saat, ucretNoktasi, aciklama, tutar }
+            const tarihStr = d.tarih || d.ihlalTarihi || '—';
+            const girisOut = d.giris || '';
+            const cikisOut = d.cikis || '';
+            const gecis = (girisOut && cikisOut)
+              ? `${this.esc(girisOut)} → ${this.esc(cikisOut)}`
+              : this.esc(d.ucretNoktasi || d.gecisNoktasi || '—');
+            const kaynakEtiket = d.kaynak
+              ? `<span class="kaynak-rozet">${this.esc(d.kaynak.replace('gv', ''))}</span>`
+              : '';
+            const aciklamaOut = d.aciklama || d.ihlalTuru || '';
+            return `
             <tr class="ihlal-satiri">
               <td class="s-no">${i + 1}</td>
-              <td>${this.esc(d.tarih || d.ihlalTarihi || '—')}</td>
-              <td>${this.esc(d.saat || '—')}</td>
-              <td>${this.esc(d.ucretNoktasi || d.gecisNoktasi || '—')}</td>
-              <td>${this.esc(d.aciklama || d.ihlalTuru || 'İhlalli geçiş')}</td>
+              <td>${this.esc(tarihStr)}</td>
+              <td>${gecis}${aciklamaOut ? `<br><span class="aciklama-alt">${this.esc(aciklamaOut)}</span>` : ''}</td>
+              <td>${kaynakEtiket}</td>
               <td class="s-tutar">${this.fmtTL(Number(d.tutar || 0))}</td>
             </tr>
-          `).join('')
+          `;
+          }).join('')
         : (ihlalSayisi > 0
             ? `<tr class="ihlal-satiri ozet">
                  <td class="s-no">—</td>
@@ -153,7 +166,7 @@ export class PdfRaporService {
           ${ihlalSatirlari}
           ${ihlalSayisi > 0 ? `
             <tr class="alt-toplam">
-              <td colspan="5">${this.fmtPlaka(a.plaka)} — Alt Toplam</td>
+              <td colspan="4">${this.fmtPlaka(a.plaka)} — ${ihlalSayisi} ihlal · Alt Toplam</td>
               <td class="s-tutar"><b>${this.fmtTL(tutar)}</b></td>
             </tr>
           ` : ''}
@@ -258,6 +271,24 @@ export class PdfRaporService {
     padding: 7px 12px;
     border-bottom: 1px solid #e8e8e8;
     background: #fff;
+    vertical-align: top;
+  }
+  .ihlal-satiri:nth-child(even) td { background: #fafaf7; }
+  .aciklama-alt {
+    font-size: 8pt;
+    color: #999;
+    font-style: italic;
+  }
+  .kaynak-rozet {
+    display: inline-block;
+    font-size: 7.5pt;
+    background: #f0e8d4;
+    color: #8a7240;
+    padding: 2px 7px;
+    border-radius: 8px;
+    letter-spacing: 0.5px;
+    text-transform: uppercase;
+    font-weight: 600;
   }
   .ihlal-satiri.bos td { text-align: center; color: #888; font-style: italic; padding: 12px; }
   .ihlal-satiri .ok { color: #2d7a3d; font-weight: 500; }
@@ -357,11 +388,10 @@ export class PdfRaporService {
     <thead>
       <tr style="font-size: 8pt; text-transform: uppercase; letter-spacing: 1.2px; color: #888;">
         <th style="width:32px; padding:6px 8px; text-align:center;">#</th>
-        <th style="padding:6px 12px; text-align:left;">Tarih</th>
-        <th style="padding:6px 12px; text-align:left;">Saat</th>
-        <th style="padding:6px 12px; text-align:left;">Ücret Noktası</th>
-        <th style="padding:6px 12px; text-align:left;">Açıklama</th>
-        <th style="padding:6px 12px; text-align:right;">Tutar</th>
+        <th style="width:130px; padding:6px 12px; text-align:left;">Tarih</th>
+        <th style="padding:6px 12px; text-align:left;">Geçiş (Giriş → Çıkış)</th>
+        <th style="width:80px; padding:6px 12px; text-align:center;">Kaynak</th>
+        <th style="width:100px; padding:6px 12px; text-align:right;">Ödenecek Tutar</th>
       </tr>
     </thead>
     ${plakaBloklari.join('\n')}

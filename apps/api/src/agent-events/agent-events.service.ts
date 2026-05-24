@@ -3316,12 +3316,41 @@ Fatura görüntüsünü incele. Yukarıdaki MEVCUT SEÇENEKLER'den Kayıt Türü
       `İyi günler.`,
     ].join('\n');
 
-    // WhatsApp gönderim — QR ile bağlı (Baileys) oturumdan
+    // WhatsApp gönderim — Meta Cloud API varsa onu, yoksa QR (Baileys) — fallback mantığı
+    const accessToken = process.env.WHATSAPP_ACCESS_TOKEN;
+    const phoneNumberId = process.env.WHATSAPP_PHONE_NUMBER_ID;
+
+    if (accessToken && phoneNumberId) {
+      // 1. yol: Meta Cloud API (kurumsal numara)
+      try {
+        const apiVersion = process.env.WHATSAPP_API_VERSION || 'v20.0';
+        const res = await fetch(`https://graph.facebook.com/${apiVersion}/${phoneNumberId}/messages`, {
+          method: 'POST',
+          headers: { 'Authorization': `Bearer ${accessToken}`, 'Content-Type': 'application/json' },
+          body: JSON.stringify({
+            messaging_product: 'whatsapp',
+            to: aliciNumara,
+            type: 'text',
+            text: { body: mesaj, preview_url: false },
+          }),
+        });
+        if (res.ok) {
+          this.logger.log(`[HGS WhatsApp Meta] Bildirim gönderildi: ${aliciNumara} (${aracSayisi} araç, ${toplamIhlal} ihlal)`);
+          return;
+        }
+        const errBody = await res.text();
+        this.logger.warn(`[HGS WhatsApp Meta] Başarısız ${res.status}: ${errBody.slice(0, 200)} — QR fallback deneniyor`);
+      } catch (err: any) {
+        this.logger.warn(`[HGS WhatsApp Meta] Hata: ${err?.message || err} — QR fallback deneniyor`);
+      }
+    }
+
+    // 2. yol: QR (Baileys) — kişisel WhatsApp
     try {
       const result = await this.whatsappQr.sendMessage(tenantId, aliciNumara, mesaj);
-      this.logger.log(`[HGS WhatsApp QR] Bildirim gönderildi: ${aliciNumara} (msgId=${result?.messageId || 'n/a'}, ${aracSayisi} araç, ${toplamIhlal} ihlal)`);
+      this.logger.log(`[HGS WhatsApp QR] Bildirim gönderildi: ${aliciNumara} (msgId=${result?.messageId || 'n/a'})`);
     } catch (err: any) {
-      this.logger.warn(`[HGS WhatsApp QR] Gönderim hatası: ${err?.message || err}`);
+      this.logger.warn(`[HGS WhatsApp QR] Gönderim hatası (atlandı, hgs cron etkilenmez): ${err?.message || err}`);
     }
   }
 
