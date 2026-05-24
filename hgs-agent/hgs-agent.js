@@ -3,8 +3,11 @@
  * =====================
  *
  * Bu script Node.js + Playwright ile KGM İhlal Takip sitesine
- * tam otomatik sorgu yapar. Portal'daki "Toplu Sorgula" butonu
- * AgentCommand yazar, bu script o komutu claim edip çalıştırır.
+ * tam otomatik sorgu yapar. Portal'daki "Toplu Sorgula" butonu (veya
+ * Pazartesi cron'u) AgentCommand yazar, bu script o komutu claim
+ * edip çalıştırır.
+ *
+ * Captcha çözümü: 2captcha API ile otomatik (image-to-text).
  *
  * Kurulum (bir kere):
  *   cd hgs-agent
@@ -15,24 +18,29 @@
  *   node hgs-agent.js
  *
  * Ortam değişkenleri (.env):
- *   PORTAL_URL   = https://mali-musavir-app-production.up.railway.app/api/v1
- *   AGENT_TOKEN  = <portaldan aldığın token>
+ *   PORTAL_URL          = https://mali-musavir-app-production.up.railway.app/api/v1
+ *   AGENT_TOKEN         = <portaldan alınan token>
+ *   TWOCAPTCHA_API_KEY  = <2captcha.com hesabından>
+ *   HEADLESS            = true | false   (default: true)
  *
  * Akış:
- *   1. Playwright headless=false ile Chromium açar (captcha görsün diye)
+ *   1. Playwright Chromium açar (HEADLESS=true ise arka planda)
  *   2. /agent/status/ping ile canlı olduğunu bildirir (her 15s)
  *   3. /agent/commands/claim?agent=hgs ile pending HGS komutlarını alır
  *   4. Her plaka için:
  *      - KGM İhlal sitesine gider
  *      - Plaka formu doldurur
- *      - Captcha çıkarsa — sen tarayıcıda manuel çözersin (30s bekler)
+ *      - Captcha resmini base64'e çevirip 2captcha'ya gönderir
+ *      - Dönen çözümü kod input'una yazar
  *      - Sorgula butonuna basar
  *      - Sonuç tablosu DOM'undan parse eder
+ *      - Captcha yanlışsa 1 kez retry yapar
  *      - Portal API /galeri/araclar/:id/hgs-sorgu-sonuc ile yazar
  *   5. /agent/commands/:id PUT ile done olarak işaretler
  */
 
 const { chromium } = require('playwright-core');
+const { Solver } = require('2captcha');
 const fs = require('fs');
 const path = require('path');
 
@@ -41,7 +49,9 @@ const envPath = path.join(__dirname, '.env');
 if (fs.existsSync(envPath)) {
   const envRaw = fs.readFileSync(envPath, 'utf8');
   for (const line of envRaw.split('\n')) {
-    const [k, ...rest] = line.split('=');
+    const trimmed = line.trim();
+    if (!trimmed || trimmed.startsWith('#')) continue;
+    const [k, ...rest] = trimmed.split('=');
     if (k && rest.length) {
       process.env[k.trim()] = rest.join('=').trim();
     }
@@ -50,6 +60,8 @@ if (fs.existsSync(envPath)) {
 
 const PORTAL = process.env.PORTAL_URL || 'https://mali-musavir-app-production.up.railway.app/api/v1';
 const TOKEN = process.env.AGENT_TOKEN;
+const TWOCAPTCHA_KEY = process.env.TWOCAPTCHA_API_KEY;
+const HEADLESS = (process.env.HEADLESS || 'true').toLowerCase() !== 'false';
 const KGM_URL = 'https://webihlaltakip.kgm.gov.tr/WebIhlalSorgulama/Sayfalar/Sorgulama.aspx';
 
 if (!TOKEN) {
@@ -57,6 +69,13 @@ if (!TOKEN) {
   console.error('   AGENT_TOKEN=<portal admin\'den alınan agent token>');
   process.exit(1);
 }
+if (!TWOCAPTCHA_KEY) {
+  console.error('❌ TWOCAPTCHA_API_KEY eksik. hgs-agent/.env dosyasına ekle:');
+  console.error('   TWOCAPTCHA_API_KEY=<2captcha.com hesabından>');
+  process.exit(1);
+}
+
+const solver = new Solver(TWOCAPTCHA_KEY);
 
 const log = (msg, ...args) => {
   const ts = new Date().toLocaleTimeString('tr-TR', { hour12: false });
@@ -119,10 +138,6 @@ async function updateCommand(id, status, result = {}) {
 }
 
 async function kaydetSorguSonucu(aracId, data) {
-  // Portal endpoint'i JWT ister — ama AgentCommand result içinden
-  // backend tarafından portal yazılabilir. Basitlik için önce
-  // direkt endpoint'i deneyelim (token ile) — olmazsa command result'a
-  // kaydederiz.
   try {
     return await api(`/galeri/araclar/${aracId}/hgs-sorgu-sonuc`, {
       method: 'POST',
@@ -134,15 +149,69 @@ async function kaydetSorguSonucu(aracId, data) {
   }
 }
 
-// === KGM sayfasında plaka sorgusu ===
-async function sorgulaPlaka(page, plaka) {
-  const plakaTemiz = (plaka || '').replace(/\s/g, '').toUpperCase();
-  log(`→ Plaka sorgulanıyor: ${plakaTemiz}`);
+// === 2captcha çözücü ===
+async function captchayiCoz(page) {
+  // Olası captcha img selector'ları (KGM ASP.NET WebForms genellikle bunlardan birini kullanır)
+  const captchaSelectors = [
+    'img[id*="Captcha" i]',
+    'img[src*="Captcha" i]',
+    'img[id*="GuvenlikKodu" i]',
+    'img[alt*="güvenlik" i]',
+    '#ctl00_ContentPlaceHolder1_imgCaptcha',
+    '#imgCaptcha',
+  ];
 
-  // Sayfaya git (her sorgu için baştan — session temiz olsun)
+  let captchaEl = null;
+  for (const s of captchaSelectors) {
+    const el = await page.$(s);
+    if (el) { captchaEl = el; break; }
+  }
+  if (!captchaEl) {
+    log('  ⓘ Captcha img bulunamadı — sayfa captcha sormamış olabilir');
+    return null;
+  }
+
+  // Captcha resmini screenshot olarak al (img src bazen oturumlu olduğundan
+  // ayrı fetch ile çağırmak yerine screenshot daha güvenli)
+  const buffer = await captchaEl.screenshot({ type: 'png' });
+  const base64 = buffer.toString('base64');
+
+  log('  🔐 Captcha 2captcha\'ya gönderiliyor...');
+  const t0 = Date.now();
+  let cozum;
+  try {
+    cozum = await solver.imageCaptcha(base64, {
+      numeric: 0,           // 0=karışık (harf+rakam)
+      min_len: 4,
+      max_len: 10,
+      language: 0,          // 0=tanımsız (sayı+ASCII harf)
+    });
+  } catch (err) {
+    throw new Error(`2captcha hatası: ${err.message || err}`);
+  }
+  const ms = Date.now() - t0;
+  log(`  ✓ Captcha çözümü: "${cozum.data}" (${ms}ms, id=${cozum.id})`);
+
+  return { cozum: cozum.data, captchaId: cozum.id };
+}
+
+async function captchaYanlisRapor(captchaId) {
+  if (!captchaId) return;
+  try {
+    await solver.reportBad(captchaId);
+    log(`  ⚠ Captcha (${captchaId}) yanlış olarak raporlandı (iade için)`);
+  } catch {
+    // Yoksay
+  }
+}
+
+// === KGM sayfasında plaka sorgusu ===
+async function sorgulaPlakaTekSefer(page, plaka) {
+  const plakaTemiz = (plaka || '').replace(/\s/g, '').toUpperCase();
+
   await page.goto(KGM_URL, { waitUntil: 'domcontentloaded', timeout: 30000 });
 
-  // Plaka input alanını bul (siteye göre çeşitli selector'lar)
+  // Plaka input
   const plakaSelectors = [
     'input[id*="Plaka"]',
     'input[name*="Plaka"]',
@@ -161,10 +230,46 @@ async function sorgulaPlaka(page, plaka) {
   await plakaInput.fill('');
   await plakaInput.type(plakaTemiz, { delay: 40 });
 
-  log('  ⏳ Captcha bekleniyor — tarayıcıda çöz ve SORGULA\'ya bas (60s)');
+  // Captcha çöz
+  const cozumBilgi = await captchayiCoz(page);
+  if (cozumBilgi) {
+    // Kod input alanı
+    const kodSelectors = [
+      'input[id*="Kod" i]:not([id*="Plaka" i])',
+      'input[id*="Captcha" i]',
+      'input[id*="Guvenlik" i]',
+      '#ctl00_ContentPlaceHolder1_txtKod',
+      '#txtKod',
+      '#txtCaptcha',
+    ];
+    let kodInput = null;
+    for (const s of kodSelectors) {
+      const el = await page.$(s);
+      if (el) { kodInput = el; break; }
+    }
+    if (!kodInput) throw new Error('Captcha kod input bulunamadı');
+    await kodInput.fill('');
+    await kodInput.type(cozumBilgi.cozum, { delay: 40 });
+  }
 
-  // Kullanıcı captcha'yı çözüp Sorgula'ya bassın — sonuç tablosu gözükmesini bekle
-  // Sonuç indikatörü: çeşitli olasılıklar
+  // Sorgula butonu
+  const btnSelectors = [
+    'input[id*="Sorgula"]',
+    'button[id*="Sorgula"]',
+    'input[value*="Sorgula" i]',
+    'button:has-text("Sorgula")',
+    '#ctl00_ContentPlaceHolder1_btnSorgula',
+    '#btnSorgula',
+  ];
+  let sorgulaBtn = null;
+  for (const s of btnSelectors) {
+    const el = await page.$(s);
+    if (el) { sorgulaBtn = el; break; }
+  }
+  if (!sorgulaBtn) throw new Error('Sorgula butonu bulunamadı');
+  await sorgulaBtn.click();
+
+  // Sonuç veya hata bekle
   const resultSelectors = [
     '#ctl00_ContentPlaceHolder1_grdSonuc',
     '#grdSonuc',
@@ -175,38 +280,41 @@ async function sorgulaPlaka(page, plaka) {
   ];
   const combined = resultSelectors.join(', ');
 
-  let basarili = false;
   try {
-    await page.waitForSelector(combined, { timeout: 120000 }); // 2 dk
-    basarili = true;
+    await Promise.race([
+      page.waitForSelector(combined, { timeout: 30000 }),
+      page.waitForSelector('text=/güvenlik kodu|captcha|yanlış|hatalı/i', { timeout: 30000 }),
+    ]);
   } catch {
-    log('  ⚠ Sonuç tablosu 120sn içinde gelmedi');
+    return { durum: 'hatali', hataMesaji: 'Sonuç gelmedi (30sn)', captchaId: cozumBilgi?.captchaId };
   }
 
-  if (!basarili) {
-    return { durum: 'hatali', hataMesaji: 'Sonuç gelmedi — captcha çözülmedi veya site hata verdi' };
+  // Captcha hatası var mı?
+  const sayfaIcerigi = await page.content();
+  const captchaHatali = /güvenlik kodu.*hatalı|captcha.*yanlış|kod.*hatalı/i.test(sayfaIcerigi);
+  if (captchaHatali) {
+    return { durum: 'captcha_yanlis', captchaId: cozumBilgi?.captchaId };
   }
 
   // Sonuç tablosundan ihlal satırlarını topla
   const sonuc = await page.evaluate((selectors) => {
     let table = null;
-    for (const s of selectors.split(',').map(x => x.trim())) {
-      table = document.querySelector(s);
-      if (table && table.tagName === 'TABLE') break;
-      if (table) {
-        const inner = table.querySelector('table');
+    for (const s of selectors.split(',').map((x) => x.trim())) {
+      const el = document.querySelector(s);
+      if (el && el.tagName === 'TABLE') { table = el; break; }
+      if (el) {
+        const inner = el.querySelector('table');
         if (inner) { table = inner; break; }
       }
     }
     if (!table) return { ihlaller: [], toplamTutar: 0, hata: 'Tablo bulunamadı' };
 
-    const rows = Array.from(table.querySelectorAll('tbody tr, tr')).filter(r => r.querySelectorAll('td').length > 0);
+    const rows = Array.from(table.querySelectorAll('tbody tr, tr')).filter((r) => r.querySelectorAll('td').length > 0);
     const ihlaller = [];
     let toplam = 0;
     for (const r of rows) {
-      const cells = Array.from(r.querySelectorAll('td')).map(c => c.innerText.trim());
+      const cells = Array.from(r.querySelectorAll('td')).map((c) => c.innerText.trim());
       if (cells.length < 2) continue;
-      // En az: tarih, saat, noktası, tutar
       const satir = {
         sira: cells[0] || '',
         tarih: cells[1] || '',
@@ -220,10 +328,8 @@ async function sorgulaPlaka(page, plaka) {
         toplam += satir.tutar;
       }
     }
-    // "İhlal Yok" kontrolü
     const bodyText = document.body.innerText.toLowerCase();
     const temiz = /ihlal\s*bulun|kayıt\s*bulun|sorgu\s*sonucunda|ihlalli\s*geçiş\s*yok/i.test(bodyText) && ihlaller.length === 0;
-
     return { ihlaller, toplamTutar: toplam, temiz };
   }, combined);
 
@@ -232,8 +338,31 @@ async function sorgulaPlaka(page, plaka) {
     ihlalSayisi: sonuc.ihlaller.length,
     toplamTutar: sonuc.toplamTutar,
     detaylar: sonuc.ihlaller,
-    kaynak: 'manuel',
+    temiz: sonuc.temiz,
+    kaynak: '2captcha',
+    captchaId: cozumBilgi?.captchaId,
   };
+}
+
+async function sorgulaPlaka(page, plaka) {
+  const plakaTemiz = (plaka || '').replace(/\s/g, '').toUpperCase();
+  log(`→ Plaka sorgulanıyor: ${plakaTemiz}`);
+
+  // İlk deneme
+  let sonuc = await sorgulaPlakaTekSefer(page, plaka);
+
+  // Captcha yanlışsa 1 kez retry
+  if (sonuc.durum === 'captcha_yanlis') {
+    log(`  ↻ Captcha yanlış, retry...`);
+    await captchaYanlisRapor(sonuc.captchaId);
+    sonuc = await sorgulaPlakaTekSefer(page, plaka);
+    if (sonuc.durum === 'captcha_yanlis') {
+      await captchaYanlisRapor(sonuc.captchaId);
+      return { durum: 'hatali', hataMesaji: '2 deneme captcha yanlış geldi' };
+    }
+  }
+
+  return sonuc;
 }
 
 // === Ana döngü ===
@@ -241,10 +370,11 @@ async function run() {
   log('🚗 HGS Agent başlatılıyor...');
   log(`📡 Portal: ${PORTAL}`);
   log(`🔑 Token: ${TOKEN.slice(0, 8)}...`);
+  log(`🤖 2captcha key: ${TWOCAPTCHA_KEY.slice(0, 6)}...`);
+  log(`🖥  Headless: ${HEADLESS}`);
 
-  // Playwright Chromium'u aç — headless=false ki captcha görülsün
   const browser = await chromium.launch({
-    headless: false,
+    headless: HEADLESS,
     args: ['--disable-blink-features=AutomationControlled'],
   });
   const context = await browser.newContext({
@@ -252,12 +382,10 @@ async function run() {
   });
   const page = await context.newPage();
 
-  // İlk ping + interval
   await ping({ startedAt: new Date().toISOString() });
   setInterval(() => ping({ lastCheck: new Date().toISOString() }), 15000);
 
-  // Komut polling döngüsü
-  log('✅ Hazır — portalda "Toplu Sorgu Başlat" butonuna bas');
+  log('✅ Hazır — komut bekleniyor (Pazartesi 08:00 cron veya manuel Toplu Sorgu)');
   while (true) {
     try {
       const commands = await claimCommands();
@@ -286,17 +414,17 @@ async function run() {
               await kaydetSorguSonucu(aracId, {
                 durum: 'hatali',
                 hataMesaji: err.message,
-                kaynak: 'manuel',
+                kaynak: '2captcha',
               });
             }
-            // İki sorgu arası kısa bekleme
-            await page.waitForTimeout(1500);
+            // İki sorgu arası kısa bekleme — KGM rate-limit dostu
+            await page.waitForTimeout(2000);
           }
 
           await updateCommand(cmd.id, 'done', {
             araclar: aracIds.length,
-            basarili: sonuclar.filter(s => s.durum === 'basarili').length,
-            hatali: sonuclar.filter(s => s.durum === 'hatali').length,
+            basarili: sonuclar.filter((s) => s.durum === 'basarili').length,
+            hatali: sonuclar.filter((s) => s.durum === 'hatali').length,
             tarih: new Date().toISOString(),
           });
           log(`✅ Komut tamamlandı: ${cmd.id}`);
@@ -305,8 +433,7 @@ async function run() {
     } catch (err) {
       log('⚠ Polling hatası:', err.message);
     }
-    // Yeni komut için 5 sn bekle
-    await new Promise(r => setTimeout(r, 5000));
+    await new Promise((r) => setTimeout(r, 5000));
   }
 }
 

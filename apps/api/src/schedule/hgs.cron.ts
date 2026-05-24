@@ -24,9 +24,9 @@ export class HgsCron {
     private galeri: GaleriService,
   ) {}
 
-  // NOT: Otomatik Pazartesi cron'u kullanıcı isteğiyle DEVRE DIŞI.
-  // İleride etkinleştirmek için @Cron('0 5 * * 1') satırını geri aç.
-  // Cron('0 5 * * 1')
+  // Her Pazartesi 08:00 TR (05:00 UTC) — tüm tenant'lar için HGS toplu sorgu.
+  // 2captcha entegrasyonuyla local hgs-agent captcha'yı otomatik çözer.
+  @Cron('0 5 * * 1')
   async pazartesiTopluSorgu() {
     try {
       // Tüm tenant'ları al (aktif kullanıcısı olanlar)
