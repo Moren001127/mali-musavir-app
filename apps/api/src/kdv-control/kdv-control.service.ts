@@ -1825,7 +1825,10 @@ export class KdvControlService {
     const fallback = await this.buildRuleBasedContentAudit(image, session, tenantId);
     const apiKey = process.env.ANTHROPIC_API_KEY;
     const disabled = String(process.env.KDV_CONTENT_AUDIT_AI_DISABLED || '').toLowerCase() === 'true';
-    if (!apiKey || disabled) return fallback;
+    if (!apiKey || disabled) {
+      const moderatedFallback = this.moderateContentAuditDecision(fallback, image, session);
+      return { ...fallback, ...moderatedFallback };
+    }
 
     const model = process.env.KDV_CONTENT_AUDIT_MODEL || 'claude-haiku-4-5-20251001';
     try {
@@ -1878,17 +1881,19 @@ export class KdvControlService {
         usage,
       };
     } catch (err: any) {
+      const moderatedFallback = this.moderateContentAuditDecision(fallback, image, session);
       return {
         ...fallback,
+        ...moderatedFallback,
         model: 'rule-fallback',
-        confidence: Math.min(fallback.confidence, 0.55),
+        confidence: Math.min(moderatedFallback.confidence, 0.55),
         findings: [
           {
             title: 'AI servis uyarısı',
             detail: `Kural tabanlı ön denetim kullanıldı: ${String(err?.message || err).slice(0, 180)}`,
             severity: 'KONTROL_ET' as ContentAuditRisk,
           },
-          ...fallback.findings,
+          ...moderatedFallback.findings,
         ].slice(0, 6),
       };
     }
@@ -1899,7 +1904,33 @@ export class KdvControlService {
     image: any,
     session: any,
   ): Omit<ContentAuditDecision, 'model' | 'costUsd' | 'usage'> {
-    if (decision.risk !== 'RISKLI' && decision.risk !== 'ISLENMEMELI') return decision;
+    const cleanFindings = (decision.findings || []).filter(
+      (finding) => !this.isContentAuditKdvArithmeticNoise(`${finding?.title || ''} ${finding?.detail || ''}`),
+    );
+    const defaultSummary: Record<ContentAuditRisk, string> = {
+      UYGUN: 'Belge faaliyete uygun görünüyor.',
+      KONTROL_ET: 'Belge için muhasebeci kontrolü önerilir.',
+      RISKLI: 'Belge faaliyet uygunluğu açısından dikkat istiyor.',
+      ISLENMEMELI: 'Belge için açık uygunsuzluk sinyali var.',
+    };
+    const defaultSuggestion: Record<ContentAuditRisk, string> = {
+      UYGUN: 'Normal kayıt; belge dayanağını dosyada saklayın.',
+      KONTROL_ET: 'Faaliyet bağlantısını ve belge dayanağını kontrol edin.',
+      RISKLI: 'KDV indirimi öncesi belge içeriğini ve faaliyet bağlantısını teyit edin.',
+      ISLENMEMELI: 'KDV indirimine almadan önce kanunen kabul edilmeyen gider/özel harcama değerlendirmesi yapın.',
+    };
+    const cleanSummary = this.stripContentAuditKdvArithmeticNoise(decision.summary)
+      || defaultSummary[decision.risk];
+    const cleanSuggestion = this.stripContentAuditKdvArithmeticNoise(decision.suggestion)
+      || defaultSuggestion[decision.risk];
+    const baseDecision = {
+      ...decision,
+      summary: cleanSummary,
+      suggestion: cleanSuggestion,
+      findings: cleanFindings.length > 0
+        ? cleanFindings
+        : [{ title: 'İçerik yorumu', detail: cleanSummary, severity: decision.risk }],
+    };
 
     const text = [
       image.ocrRawText,
@@ -1907,9 +1938,9 @@ export class KdvControlService {
       image.ocrBelgeTipi,
       image.ocrSatici,
       image.originalName,
-      decision.summary,
-      decision.suggestion,
-      JSON.stringify(decision.findings || []),
+      baseDecision.summary,
+      baseDecision.suggestion,
+      JSON.stringify(baseDecision.findings || []),
     ].filter(Boolean).join(' ').toLocaleLowerCase('tr-TR');
 
     const taxpayerText = [
@@ -1924,16 +1955,46 @@ export class KdvControlService {
       /trafik cezas[ıi]|ceza|gecikme zamm[ıi]|usuls[üu]zl[üu]k|kkeg|alkol|sigara|t[üu]t[üu]n|tekel/.test(text);
     const commonBusinessGreyArea =
       /yemek|restoran|lokanta|cafe|kafe|kahve|market|g[ıi]da|b[öo]rek|k[üu]nefe|baklava|temizlik|deterjan|sarf|akaryak[ıi]t|yak[ıi]t|benzin|motorin|otel|konaklama|seyahat|kargo|telefon|internet|elektrik|su|k[ıi]rtasiye|ofis/.test(text);
+    const fuelSignal = /akaryak[ıi]t|yak[ıi]t|motorin|benzin|otogaz|shell/.test(text);
+    const vehicleEvidence =
+      /plaka|utts|ta[şs][ıi]t tan[ıi]ma|shell card|kurumsal ödeme kart[ıi]|[0-9]{2}\s*[a-zçğıöşü]{1,3}\s*[0-9]{2,4}/i.test(text);
+    const transportActivity =
+      /servis|ta[şs][ıi]mac[ıi]l[ıi]k|turizm|nakliye|lojistik|taksi|rent a car|ara[çc] kiralama/.test(`${text} ${taxpayerText}`);
     const profileIsThin = taxpayerText.trim().length < 18;
-    const lowConfidence = Number(decision.confidence || 0) < 0.82;
+    const lowConfidence = Number(baseDecision.confidence || 0) < 0.82;
+
+    if (
+      baseDecision.risk === 'KONTROL_ET' &&
+      !hardBlockSignal &&
+      fuelSignal &&
+      vehicleEvidence &&
+      transportActivity
+    ) {
+      return {
+        risk: 'UYGUN',
+        summary: 'Akaryakıt belgesi servis/taşıt faaliyetiyle uyumlu görünüyor.',
+        suggestion: 'Normal kayıt; plaka, UTTS veya kurumsal kart bilgisini belge dayanağında saklayın.',
+        findings: [
+          {
+            title: 'Faaliyet bağlantısı güçlü',
+            detail: 'Belgede akaryakıt, taşıt/plaka veya kurumsal kart sinyali ve taşıma faaliyeti birlikte görünüyor.',
+            severity: 'UYGUN' as ContentAuditRisk,
+          },
+          ...baseDecision.findings.filter((finding) => finding.severity === 'UYGUN'),
+        ].slice(0, 6),
+        confidence: Math.max(Number(baseDecision.confidence || 0), 0.78),
+      };
+    }
+
+    if (baseDecision.risk !== 'RISKLI' && baseDecision.risk !== 'ISLENMEMELI') return baseDecision;
 
     const shouldDowngrade =
       !hardBlockSignal &&
-      (decision.risk === 'ISLENMEMELI' || commonBusinessGreyArea || lowConfidence || profileIsThin);
+      (baseDecision.risk === 'ISLENMEMELI' || commonBusinessGreyArea || lowConfidence || profileIsThin);
 
-    if (!shouldDowngrade) return decision;
+    if (!shouldDowngrade) return baseDecision;
 
-    const findings = (decision.findings || []).map((finding) => ({
+    const findings = (baseDecision.findings || []).map((finding) => ({
       ...finding,
       severity: finding.severity === 'RISKLI' || finding.severity === 'ISLENMEMELI'
         ? 'KONTROL_ET' as ContentAuditRisk
@@ -1952,8 +2013,24 @@ export class KdvControlService {
         },
         ...findings,
       ].slice(0, 8),
-      confidence: Math.min(Number(decision.confidence || 0), 0.74),
+      confidence: Math.min(Number(baseDecision.confidence || 0), 0.74),
     };
+  }
+
+  private isContentAuditKdvArithmeticNoise(value: any) {
+    const text = String(value || '').toLocaleLowerCase('tr-TR');
+    return /kdv.{0,80}(oran|hesap|matrah|beklen|br[üu]t|net|%|×|fark)|oran fark|%16[,.]67|%20[,.]17|700[,.]20|841[,.]75/.test(text);
+  }
+
+  private stripContentAuditKdvArithmeticNoise(value: any) {
+    const text = String(value || '').trim();
+    if (!this.isContentAuditKdvArithmeticNoise(text)) return text;
+    return text
+      .split(/(?:[.;]\s+|\n+)/)
+      .map((part) => part.trim())
+      .filter((part) => part && !this.isContentAuditKdvArithmeticNoise(part))
+      .join('; ')
+      .trim();
   }
 
   private async buildContentAuditPrompt(image: any, session: any, tenantId: string) {
@@ -1996,6 +2073,8 @@ Kurallar:
 - RISKLI için belge metninde açık özel/kişisel/lüks tüketim sinyali ve faaliyete bağlanamama birlikte bulunmalı.
 - ISLENMEMELI sadece ceza, gecikme zammı, KKEG, alkol/tütün veya kanunen açık indirim yasağı gibi çok net durumda kullanılmalı.
 - "Belge muhasebeleştirilmemeli" gibi kesin talimat verme; muhasebeciye kontrol adımı öner.
+- KDV tutarı ve oranı zaten ayrı KDV kontrol modülünde denetleniyor; içerik denetiminde brüt tutardan KDV oranı hesaplama, "%18 beklenir" gibi matematik yorumu yapma.
+- Akaryakıt belgesinde servis/taşımacılık/turizm faaliyetiyle birlikte plaka, UTTS, taşıt tanıma veya kurumsal yakıt kartı görülüyorsa normalde UYGUN seç; aynı taşıt bağlantısını her belgede tekrar KONTROL_ET yapma.
 - Sadece verilen veriye dayan; emin değilsen KONTROL_ET seç.
 - Faaliyetle açıkça ilgisiz özel harcama, ceza, alkol/tütün, hediye/lüks tüketim gibi kalemleri yükselt.
 - Yemek, otel, akaryakıt, seyahat gibi kalemlerde mükellef faaliyetini ve belge açıklamasını birlikte düşün.
@@ -2633,9 +2712,9 @@ ${JSON.stringify(payload, null, 2)}`;
       { width: 14, style: { numFmt: '#,##0.00;[Red]-#,##0.00;0.00' } },
       { width: 16 },
       { width: 72 },
-      { width: 18 },
-      { width: 32 },
-      { width: 60 },
+      { width: 14 },
+      { width: 30 },
+      { width: 42 },
     ];
 
     // ─── MOREN LOGOLU BAŞLIK ─────────────────────────────
@@ -2964,15 +3043,34 @@ ${JSON.stringify(payload, null, 2)}`;
       : status === 'FAILED'
         ? 'Hata'
         : riskMap[image.contentAuditRisk] || (status ? 'Kontrol et' : 'Denetlenmedi');
-    const suggestion = image.contentAuditSuggestion || (status ? 'Muhasebeci kontrolü önerilir' : 'İçerik denetimi yapılmadı');
-    const summary = image.contentAuditSummary || (status ? 'Yorum yok' : 'İçerik denetimi yapılmadı');
-    const findings = Array.isArray(image.contentAuditFindings) ? image.contentAuditFindings : [];
-    const comment = findings
-      .map((f: any, idx: number) => `${idx + 1}. ${f?.title || 'Bulgu'}: ${f?.detail || ''}`)
+    const rawSuggestion = image.contentAuditSuggestion || (status ? 'Muhasebeci kontrolü önerilir' : 'İçerik denetimi yapılmadı');
+    const rawSummary = image.contentAuditSummary || (status ? 'Yorum yok' : 'İçerik denetimi yapılmadı');
+    const suggestion = this.stripContentAuditKdvArithmeticNoise(rawSuggestion) || 'Muhasebeci kontrolü önerilir';
+    const summary = this.stripContentAuditKdvArithmeticNoise(rawSummary) || 'Yorum yok';
+    const findings = (Array.isArray(image.contentAuditFindings) ? image.contentAuditFindings : [])
+      .filter((f: any) => !this.isContentAuditKdvArithmeticNoise(`${f?.title || ''} ${f?.detail || ''}`));
+
+    const visibleSuggestion = risk === 'Uygun'
+      ? 'Normal kayıt; ayrıntı hücre notunda.'
+      : this.compactContentAuditText(suggestion, 180);
+    const visibleSummary = risk === 'Uygun'
+      ? this.compactContentAuditText(summary || 'Faaliyetle uyumlu görünüyor.', 150)
+      : this.compactContentAuditText(summary, 190);
+    const comment = [
+      summary && summary !== visibleSummary ? `Özet: ${summary}` : '',
+      suggestion && suggestion !== visibleSuggestion ? `Öneri: ${suggestion}` : '',
+      ...findings.map((f: any, idx: number) => `${idx + 1}. ${f?.title || 'Bulgu'}: ${f?.detail || ''}`),
+    ]
       .filter(Boolean)
       .join('\n')
       .slice(0, 2000);
-    return { risk, suggestion, summary, comment };
+    return { risk, suggestion: visibleSuggestion, summary: visibleSummary, comment };
+  }
+
+  private compactContentAuditText(value: any, max = 160) {
+    const text = String(value || '').replace(/\s+/g, ' ').trim();
+    if (text.length <= max) return text;
+    return `${text.slice(0, Math.max(0, max - 1)).trimEnd()}…`;
   }
 
   private formatKdvExportReasons(reasons: string[]): string {

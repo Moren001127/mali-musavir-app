@@ -641,9 +641,11 @@ export default function KdvKontrolPage() {
         group: 'content',
         kind: 'info',
         title: 'İçerik denetimi başladı',
-        detail: 'Fatura içeriği ve mükellef faaliyeti birlikte değerlendiriliyor',
+        detail: contentAuditDoneCount > 0
+          ? 'Mevcut yorumlar güncel kurallarla yeniden değerlendiriliyor'
+          : 'Fatura içeriği ve mükellef faaliyeti birlikte değerlendiriliyor',
       });
-      return kdvApi.startContentAudit(s.id);
+      return kdvApi.startContentAudit(s.id, { force: contentAuditDoneCount > 0 });
     },
     onSuccess: (d: any) => {
       clearFeedErrorsInGroup('content');
