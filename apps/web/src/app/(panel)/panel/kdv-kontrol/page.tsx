@@ -307,8 +307,6 @@ export default function KdvKontrolPage() {
   const contentAuditProcessingCount = images.filter((i: any) => i.contentAuditStatus === 'PROCESSING').length;
   const contentAuditDoneCount =
     Number(contentAuditStats.done ?? images.filter((i: any) => i.contentAuditStatus === 'DONE').length);
-  const contentAuditRiskCount =
-    Number(contentAuditStats.riskyTotal ?? images.filter((i: any) => ['RISKLI', 'ISLENMEMELI'].includes(i.contentAuditRisk)).length);
 
   // ── MUTASYONLAR ─────────────────────────────────────
   const ensureSession = useMutation({
@@ -941,6 +939,19 @@ export default function KdvKontrolPage() {
       .filter((img) => img.contentAuditStatus || img.contentAuditRisk)
       .sort((a, b) => (rank[a.contentAuditRisk] ?? 4) - (rank[b.contentAuditRisk] ?? 4));
   }, [images]);
+  const contentAuditAttentionRows = useMemo(
+    () => contentAuditRows.filter((img: any) => img.contentAuditRisk && img.contentAuditRisk !== 'UYGUN'),
+    [contentAuditRows],
+  );
+  const contentAuditHardRiskCount = contentAuditRows.filter((img: any) =>
+    ['RISKLI', 'ISLENMEMELI'].includes(img.contentAuditRisk),
+  ).length;
+  const contentAuditReviewCount = contentAuditRows.filter((img: any) =>
+    img.contentAuditRisk === 'KONTROL_ET' || img.contentAuditStatus === 'FAILED',
+  ).length;
+  const contentAuditPanelRows = contentAuditAttentionRows.length > 0
+    ? contentAuditAttentionRows.slice(0, 5)
+    : contentAuditRows.slice(0, 3);
 
   // ── RENDER ──────────────────────────────────────────
   return (
@@ -1159,14 +1170,16 @@ export default function KdvKontrolPage() {
             sub={
               activeLocked ? 'Kilitli seans'
               : contentAuditProcessingCount > 0 ? `${contentAuditProcessingCount} denetleniyor...`
-              : contentAuditDoneCount > 0 ? `${contentAuditDoneCount} yorum · ${contentAuditRiskCount} risk`
+              : contentAuditDoneCount > 0 && contentAuditHardRiskCount > 0 ? `${contentAuditDoneCount} yorum · ${contentAuditHardRiskCount} net risk`
+              : contentAuditDoneCount > 0 && contentAuditReviewCount > 0 ? `${contentAuditDoneCount} yorum · ${contentAuditReviewCount} kontrol`
+              : contentAuditDoneCount > 0 ? `${contentAuditDoneCount} yorum · belirgin risk yok`
               : !taxpayerId ? 'Önce mükellef seçin'
               : !hasImages ? 'Önce faturaları çek'
               : !ocrDone ? 'OCR bitsin'
               : 'Faaliyet uygunluğu'
             }
             color="#14b8a6"
-            done={contentAuditDoneCount > 0 && contentAuditRiskCount === 0}
+            done={contentAuditDoneCount > 0 && contentAuditHardRiskCount === 0}
             onClick={() => {
               if (!taxpayerId) return requireMukellef(() => runContentAudit.mutate());
               if (activeLocked) return toast.error('Kilitli kontrol; önce kilidi açın');
@@ -1462,35 +1475,55 @@ export default function KdvKontrolPage() {
         </div>
       )}
 
-      {/* OCR TEYİT PANELİ — düşük güvenli alanlar için kullanıcı incelemesi */}
+      {/* İçerik denetimi paneli */}
       {activeSession && contentAuditRows.length > 0 && (
-        <div className="rounded-2xl overflow-hidden" style={{ background: 'rgba(20,184,166,0.055)', border: '1px solid rgba(20,184,166,0.22)' }}>
-          <div className="flex items-center gap-2.5 px-5 py-4" style={{ borderBottom: '1px solid rgba(20,184,166,0.14)' }}>
+        <div
+          className="rounded-xl overflow-hidden"
+          style={{ background: 'rgba(20,184,166,0.035)', border: '1px solid rgba(20,184,166,0.16)' }}
+        >
+          <div className="flex flex-wrap items-center gap-2.5 px-4 py-3" style={{ borderBottom: '1px solid rgba(20,184,166,0.10)' }}>
             <ShieldCheck size={14} style={{ color: '#14b8a6' }} />
-            <h3 className="text-[13.5px] font-semibold" style={{ color: '#fafaf9' }}>İçerik Denetimi Bulguları</h3>
-            <span className="ml-auto text-[11px] font-bold uppercase tracking-wider px-2 py-0.5 rounded" style={{ background: 'rgba(20,184,166,0.15)', color: '#5eead4' }}>
-              {contentAuditDoneCount} yorum
+            <h3 className="text-[13px] font-semibold" style={{ color: '#fafaf9' }}>İçerik Denetimi</h3>
+            <span className="text-[10.5px]" style={{ color: 'rgba(250,250,249,0.48)' }}>
+              {contentAuditDoneCount} belge yorumlandı
             </span>
+            <div className="ml-auto flex flex-wrap items-center gap-1.5">
+              {contentAuditHardRiskCount > 0 && (
+                <span className="text-[10.5px] font-bold uppercase tracking-wider px-2 py-0.5 rounded" style={{ background: 'rgba(244,63,94,0.14)', color: '#fb7185' }}>
+                  {contentAuditHardRiskCount} net risk
+                </span>
+              )}
+              {contentAuditReviewCount > 0 && (
+                <span className="text-[10.5px] font-bold uppercase tracking-wider px-2 py-0.5 rounded" style={{ background: 'rgba(245,158,11,0.13)', color: '#fbbf24' }}>
+                  {contentAuditReviewCount} kontrol
+                </span>
+              )}
+              {contentAuditHardRiskCount === 0 && contentAuditReviewCount === 0 && (
+                <span className="text-[10.5px] font-bold uppercase tracking-wider px-2 py-0.5 rounded" style={{ background: 'rgba(34,197,94,0.13)', color: '#86efac' }}>
+                  belirgin risk yok
+                </span>
+              )}
+            </div>
           </div>
-          <div className="p-5 space-y-2">
-            {contentAuditRows.slice(0, 10).map((img: any) => (
-              <div key={img.id} className="px-3.5 py-3 rounded-lg" style={{ background: 'rgba(255,255,255,0.025)', border: '1px solid rgba(255,255,255,0.055)' }}>
+          <div className="p-4 space-y-2">
+            {contentAuditPanelRows.map((img: any) => (
+              <div key={img.id} className="px-3 py-2.5 rounded-lg" style={{ background: 'rgba(255,255,255,0.022)', border: '1px solid rgba(255,255,255,0.05)' }}>
                 <div className="flex items-start gap-2.5">
                   <ContentAuditBadge risk={img.contentAuditRisk} status={img.contentAuditStatus} />
                   <div className="min-w-0 flex-1">
                     <div className="flex items-center gap-2 min-w-0">
                       <span className="text-[12.5px] font-semibold truncate" style={{ color: '#fafaf9' }}>{img.originalName || img.ocrBelgeNo || img.id}</span>
                       {img.contentAuditConfidence != null && (
-                        <span className="text-[10px] tabular-nums" style={{ color: 'rgba(250,250,249,0.42)' }}>
+                        <span className="text-[10px] tabular-nums shrink-0" style={{ color: 'rgba(250,250,249,0.38)' }}>
                           %{Math.round(Number(img.contentAuditConfidence || 0) * 100)}
                         </span>
                       )}
                     </div>
-                    <p className="mt-1 text-[12px] leading-relaxed" style={{ color: 'rgba(250,250,249,0.72)' }}>
+                    <p className="mt-1 text-[12px] leading-relaxed" style={{ color: 'rgba(250,250,249,0.68)' }}>
                       {img.contentAuditSummary || (img.contentAuditStatus === 'PROCESSING' ? 'Denetleniyor...' : 'Yorum bekleniyor')}
                     </p>
                     {img.contentAuditSuggestion && (
-                      <p className="mt-1 text-[11.5px] leading-relaxed" style={{ color: 'rgba(94,234,212,0.82)' }}>
+                      <p className="mt-1 text-[11.5px] leading-relaxed" style={{ color: 'rgba(94,234,212,0.78)' }}>
                         {img.contentAuditSuggestion}
                       </p>
                     )}
@@ -1498,9 +1531,9 @@ export default function KdvKontrolPage() {
                 </div>
               </div>
             ))}
-            {contentAuditRows.length > 10 && (
+            {contentAuditAttentionRows.length > contentAuditPanelRows.length && (
               <p className="text-[11px]" style={{ color: 'rgba(250,250,249,0.45)' }}>
-                +{contentAuditRows.length - 10} belge daha Excel yorumlarında yer alacak.
+                +{contentAuditAttentionRows.length - contentAuditPanelRows.length} kontrol notu daha Excel yorumlarında yer alacak.
               </p>
             )}
           </div>

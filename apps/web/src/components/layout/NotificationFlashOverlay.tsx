@@ -6,18 +6,6 @@ import { Bell, X, ExternalLink } from 'lucide-react';
 import { useRouter } from 'next/navigation';
 import { api } from '@/lib/api';
 
-/**
- * NotificationFlashOverlay
- * Yeni bildirim geldiginde ekranin ortasinda BUYUK olarak yanip soner.
- * Hangi panel sayfasinda olursan ol her zaman gorunur (layout'a yerlesir).
- *
- * Davranis:
- *  - Her 5 sn'de /notifications endpoint'ini poll eder
- *  - Sayfa ilk acildiginda en yeni bildirimin ID'sini baseline alir (sessiz)
- *  - Sonra ID degisirse VE okunmamissa -> overlay'i acar
- *  - 8 sn sonra otomatik kapanir, kullanici tiklayarak da kapatabilir
- *  - "Detay" tiklarsa /panel/bildirimler'e gider ve bildirimi okundu isaretler
- */
 type Notification = {
   id: string;
   title?: string;
@@ -31,7 +19,7 @@ type Notification = {
   metadata?: Record<string, unknown>;
 };
 
-const AUTO_CLOSE_MS = 8000;
+const AUTO_CLOSE_MS = 9000;
 
 export default function NotificationFlashOverlay() {
   const lastSeenIdRef = useRef<string | null>(null);
@@ -53,17 +41,14 @@ export default function NotificationFlashOverlay() {
 
   useEffect(() => {
     if (!data || data.length === 0) return;
-    // En yeni bildirim listenin en basinda olmali (createdAt desc varsayim)
     const newest = data[0];
     if (!newest?.id) return;
 
     if (lastSeenIdRef.current === null) {
-      // Ilk yukleme — baseline al, ekrana cikarma
       lastSeenIdRef.current = newest.id;
       return;
     }
 
-    // Yeni ID geldi VE okunmamissa flash et
     if (newest.id !== lastSeenIdRef.current && !newest.readAt) {
       setActive(newest);
       lastSeenIdRef.current = newest.id;
@@ -78,17 +63,22 @@ export default function NotificationFlashOverlay() {
 
   if (!active) return null;
 
-  const title = active.title || 'Yeni Bildirim';
+  const title = active.title || 'Yeni bildirim';
   const message = active.message || active.body || '';
   const meta = ((active.metadata || active.meta) as any) || {};
   const linkHref = active.link || meta.link || '/panel/bildirimler';
+  const severity = String(meta.severity || active.type || '').toLowerCase();
+  const isCritical = severity.includes('critical') || severity.includes('error');
+  const tone = isCritical
+    ? { accent: '#fb7185', bg: 'rgba(69,10,10,0.96)', soft: 'rgba(251,113,133,0.16)' }
+    : { accent: '#d4b876', bg: 'rgba(24,22,17,0.96)', soft: 'rgba(212,184,118,0.16)' };
 
   const handleOpen = async () => {
     try {
       await api.patch(`/notifications/${active.id}/read`);
       queryClient.invalidateQueries({ queryKey: ['notifications'] });
     } catch {
-      // sessiz gec
+      // Bildirim aksiyonu ekrani bloke etmemeli.
     }
     setActive(null);
     if (linkHref) router.push(linkHref);
@@ -98,167 +88,119 @@ export default function NotificationFlashOverlay() {
 
   return (
     <div
-      className="fixed inset-0 z-[9999] flex items-center justify-center moren-flash-overlay"
-      onClick={handleClose}
-      role="alertdialog"
+      className="fixed right-3 top-20 z-[9999] w-[calc(100vw-24px)] max-w-[420px] pointer-events-none sm:right-5 moren-flash-wrap"
+      role="alert"
       aria-live="assertive"
     >
       <div
-        className="relative w-full max-w-2xl mx-4 p-10 rounded-3xl border-2 moren-flash-card"
-        onClick={(e) => e.stopPropagation()}
+        className="pointer-events-auto relative overflow-hidden rounded-2xl border shadow-2xl moren-flash-card"
         style={{
-          background:
-            'linear-gradient(135deg, rgba(26,22,15,0.96) 0%, rgba(45,35,20,0.96) 100%)',
-          borderColor: '#d4b876',
-          boxShadow:
-            '0 0 80px rgba(212, 184, 118, 0.45), 0 25px 60px rgba(0,0,0,0.6)',
-          backdropFilter: 'blur(20px)',
+          background: `linear-gradient(135deg, ${tone.bg} 0%, rgba(12,12,10,0.98) 100%)`,
+          borderColor: isCritical ? 'rgba(251,113,133,0.45)' : 'rgba(212,184,118,0.42)',
+          boxShadow: `0 18px 45px rgba(0,0,0,0.38), 0 0 0 1px rgba(255,255,255,0.04), 0 0 28px ${tone.soft}`,
+          backdropFilter: 'blur(14px)',
         }}
       >
-        {/* Kapatma */}
-        <button
-          onClick={handleClose}
-          aria-label="Kapat"
-          className="absolute top-4 right-4 w-10 h-10 rounded-full flex items-center justify-center transition-all hover:scale-110"
-          style={{
-            background: 'rgba(255,255,255,0.06)',
-            border: '1px solid rgba(255,255,255,0.12)',
-            color: 'rgba(250,250,249,0.7)',
-          }}
-        >
-          <X size={18} />
-        </button>
-
-        {/* Bell ikon */}
-        <div className="flex items-center justify-center mb-6">
+        <div className="flex items-start gap-3 p-4 pr-12">
           <div
-            className="w-20 h-20 rounded-2xl flex items-center justify-center moren-flash-bell"
-            style={{
-              background: 'rgba(212, 184, 118, 0.15)',
-              border: '2px solid #d4b876',
-              boxShadow: '0 0 40px rgba(212, 184, 118, 0.6)',
-            }}
+            className="mt-0.5 flex h-10 w-10 shrink-0 items-center justify-center rounded-xl"
+            style={{ background: tone.soft, color: tone.accent }}
           >
-            <Bell size={40} style={{ color: '#d4b876' }} strokeWidth={1.5} />
+            <Bell size={19} strokeWidth={1.8} />
+          </div>
+
+          <div className="min-w-0 flex-1">
+            <div className="flex items-center gap-2">
+              <span
+                className="h-2 w-2 shrink-0 rounded-full"
+                style={{ background: tone.accent, boxShadow: `0 0 16px ${tone.accent}` }}
+              />
+              <p className="truncate text-[13px] font-semibold" style={{ color: '#fafaf9' }}>
+                {title}
+              </p>
+            </div>
+
+            {message && (
+              <p
+                className="mt-1.5 text-[12.5px] leading-relaxed"
+                style={{
+                  color: 'rgba(250,250,249,0.68)',
+                  display: '-webkit-box',
+                  WebkitLineClamp: 3,
+                  WebkitBoxOrient: 'vertical',
+                  overflow: 'hidden',
+                }}
+              >
+                {message}
+              </p>
+            )}
+
+            <div className="mt-3 flex items-center gap-2">
+              <button
+                onClick={handleOpen}
+                className="inline-flex items-center gap-1.5 rounded-lg px-3 py-1.5 text-[12px] font-semibold transition hover:brightness-110"
+                style={{ background: tone.accent, color: '#15120c' }}
+              >
+                Detayı aç
+                <ExternalLink size={13} />
+              </button>
+              <button
+                onClick={handleClose}
+                className="rounded-lg px-3 py-1.5 text-[12px] font-medium transition hover:bg-white/10"
+                style={{ color: 'rgba(250,250,249,0.68)' }}
+              >
+                Kapat
+              </button>
+            </div>
           </div>
         </div>
 
-        {/* Baslik */}
-        <h2
-          className="text-center text-3xl font-semibold mb-3"
-          style={{
-            color: '#fafaf9',
-            fontFamily: 'Fraunces, ui-serif, Georgia, serif',
-            letterSpacing: '-0.01em',
-          }}
+        <button
+          onClick={handleClose}
+          aria-label="Kapat"
+          className="absolute right-3 top-3 flex h-7 w-7 items-center justify-center rounded-lg transition hover:bg-white/10"
+          style={{ color: 'rgba(250,250,249,0.62)' }}
         >
-          {title}
-        </h2>
+          <X size={15} />
+        </button>
 
-        {/* Mesaj */}
-        {message && (
-          <p
-            className="text-center text-lg leading-relaxed mb-8 max-h-48 overflow-auto"
-            style={{ color: 'rgba(250,250,249,0.75)' }}
-          >
-            {message}
-          </p>
-        )}
-
-        {/* Aksiyon dugmeleri */}
-        <div className="flex items-center justify-center gap-3">
-          <button
-            onClick={handleClose}
-            className="px-6 py-3 rounded-xl text-sm font-medium transition-all hover:opacity-80"
-            style={{
-              background: 'rgba(255,255,255,0.04)',
-              border: '1px solid rgba(255,255,255,0.12)',
-              color: 'rgba(250,250,249,0.85)',
-            }}
-          >
-            Kapat
-          </button>
-          <button
-            onClick={handleOpen}
-            className="px-6 py-3 rounded-xl text-sm font-semibold transition-all hover:scale-105 flex items-center gap-2"
-            style={{
-              background: 'linear-gradient(135deg, #d4b876 0%, #c0a079 100%)',
-              color: '#1a160f',
-              boxShadow: '0 8px 24px rgba(212, 184, 118, 0.4)',
-            }}
-          >
-            Detayı Aç
-            <ExternalLink size={16} />
-          </button>
-        </div>
-
-        {/* Sayaç barı (8sn) */}
-        <div
-          className="absolute bottom-0 left-0 right-0 h-1 rounded-b-3xl overflow-hidden"
-          style={{ background: 'rgba(255,255,255,0.05)' }}
-        >
-          <div
-            className="h-full moren-flash-progress"
-            style={{ background: '#d4b876' }}
-          />
+        <div className="h-1 w-full" style={{ background: 'rgba(255,255,255,0.06)' }}>
+          <div className="h-full moren-flash-progress" style={{ background: tone.accent }} />
         </div>
       </div>
 
       <style jsx global>{`
-        @keyframes morenFlashIn {
-          0% {
+        @keyframes morenFlashWrapIn {
+          from {
             opacity: 0;
-            backdrop-filter: blur(0px);
-            background: rgba(0, 0, 0, 0);
+            transform: translateY(-10px);
           }
-          100% {
+          to {
             opacity: 1;
-            backdrop-filter: blur(8px);
-            background: rgba(0, 0, 0, 0.55);
+            transform: translateY(0);
           }
         }
         @keyframes morenFlashCardIn {
           0% {
-            opacity: 0;
-            transform: scale(0.85) translateY(20px);
-          }
-          60% {
-            opacity: 1;
-            transform: scale(1.03) translateY(-3px);
+            transform: translateX(18px) scale(0.98);
           }
           100% {
-            opacity: 1;
-            transform: scale(1) translateY(0);
-          }
-        }
-        @keyframes morenFlashBellPulse {
-          0%,
-          100% {
-            transform: scale(1);
-            box-shadow: 0 0 40px rgba(212, 184, 118, 0.6);
-          }
-          50% {
-            transform: scale(1.08);
-            box-shadow: 0 0 60px rgba(212, 184, 118, 0.9);
+            transform: translateX(0) scale(1);
           }
         }
         @keyframes morenFlashProgress {
-          0% {
+          from {
             width: 100%;
           }
-          100% {
+          to {
             width: 0%;
           }
         }
-        .moren-flash-overlay {
-          animation: morenFlashIn 0.35s ease-out forwards;
+        .moren-flash-wrap {
+          animation: morenFlashWrapIn 180ms ease-out both;
         }
         .moren-flash-card {
-          animation: morenFlashCardIn 0.4s cubic-bezier(0.16, 1, 0.3, 1)
-            forwards;
-        }
-        .moren-flash-bell {
-          animation: morenFlashBellPulse 1.6s ease-in-out infinite;
+          animation: morenFlashCardIn 220ms cubic-bezier(0.16, 1, 0.3, 1) both;
         }
         .moren-flash-progress {
           animation: morenFlashProgress ${AUTO_CLOSE_MS}ms linear forwards;

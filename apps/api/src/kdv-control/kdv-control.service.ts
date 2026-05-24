@@ -44,6 +44,14 @@ type ContentAuditDecision = {
   };
 };
 
+type ContentAuditQueueContext = {
+  sessionId: string;
+  period?: string | null;
+  type?: string | null;
+  taxpayerId?: string | null;
+  mukellef?: string | null;
+};
+
 @Injectable()
 export class KdvControlService {
   private readonly logger = new Logger(KdvControlService.name);
@@ -1604,7 +1612,13 @@ export class KdvControlService {
       meta: { sessionId, period: session.periodLabel, type: session.type, queued: queue.length },
     });
 
-    void this.processContentAuditQueue(ids, tenantId, userId);
+    void this.processContentAuditQueue(ids, tenantId, userId, {
+      sessionId,
+      period: session.periodLabel,
+      type: session.type,
+      taxpayerId: session.taxpayerId,
+      mukellef,
+    });
 
     return {
       queued: queue.length,
@@ -1651,11 +1665,22 @@ export class KdvControlService {
     };
   }
 
-  private async processContentAuditQueue(imageIds: string[], tenantId: string, userId?: string) {
+  private async processContentAuditQueue(
+    imageIds: string[],
+    tenantId: string,
+    userId?: string,
+    context?: ContentAuditQueueContext,
+  ) {
     const concurrency = Math.max(1, Math.min(4, Number(process.env.KDV_CONTENT_AUDIT_CONCURRENCY) || 2));
     const queue = [...imageIds];
     let done = 0;
     let risky = 0;
+    const alertRows: Array<{
+      imageId: string;
+      originalName?: string | null;
+      risk: ContentAuditRisk;
+      summary?: string | null;
+    }> = [];
 
     const worker = async () => {
       while (queue.length > 0) {
@@ -1667,11 +1692,53 @@ export class KdvControlService {
         });
         done++;
         const risk = (updated as any)?.contentAuditRisk;
-        if (risk === 'RISKLI' || risk === 'ISLENMEMELI') risky++;
+        if (risk === 'RISKLI' || risk === 'ISLENMEMELI') {
+          risky++;
+          alertRows.push({
+            imageId,
+            originalName: (updated as any)?.originalName,
+            risk,
+            summary: (updated as any)?.contentAuditSummary,
+          });
+        }
       }
     };
 
     await Promise.all(Array.from({ length: Math.min(concurrency, imageIds.length) }, worker));
+
+    if (alertRows.length > 0) {
+      const notAllowedCount = alertRows.filter((row) => row.risk === 'ISLENMEMELI').length;
+      const riskyCount = alertRows.length - notAllowedCount;
+      const sample = alertRows.slice(0, 3)
+        .map((row) => `${row.originalName || row.imageId}: ${String(row.summary || '').slice(0, 140)}`)
+        .join('\n');
+      const summaryParts = [
+        `${context?.mukellef || 'Seçili mükellef'} için ${done} belge denetlendi.`,
+        `${alertRows.length} belgede net risk uyarısı var.`,
+        notAllowedCount > 0 ? `${notAllowedCount} işlenmemeli` : null,
+        riskyCount > 0 ? `${riskyCount} riskli` : null,
+      ].filter(Boolean);
+
+      await this.pushMorenAiAlert(tenantId, {
+        title: 'MOREN AI uyarısı: Belge içerik denetimi',
+        body: `${summaryParts.join(' ')}${sample ? `\n${sample}` : ''}`,
+        severity: notAllowedCount > 0 ? 'critical' : 'warning',
+        module: 'kdv-control',
+        metadata: {
+          source: 'kdv-content-audit',
+          sessionId: context?.sessionId,
+          taxpayerId: context?.taxpayerId,
+          period: context?.period,
+          type: context?.type,
+          totalAudited: done,
+          riskyCount,
+          notAllowedCount,
+          findingsCount: alertRows.length,
+          sample: alertRows.slice(0, 5),
+          userId,
+        },
+      });
+    }
     this.logger.log(`KDV içerik denetimi tamamlandı: ${done}/${imageIds.length} belge, riskli=${risky}`);
   }
 
@@ -1735,16 +1802,6 @@ export class KdvControlService {
         });
       }
 
-      if (decision.risk === 'RISKLI' || decision.risk === 'ISLENMEMELI') {
-        await this.pushMorenAiAlert(tenantId, {
-          title: 'MOREN AI uyarısı: Belge içerik denetimi',
-          body: `${this.formatMukellefAdi(image.session) || 'Seçili mükellef'} için ${image.originalName} belgesinde içerik uygunluğu dikkat istiyor: ${decision.summary}`,
-          severity: decision.risk === 'ISLENMEMELI' ? 'critical' : 'warning',
-          module: 'kdv-control',
-          metadata: { sessionId: image.sessionId, imageId, risk: decision.risk, userId },
-        });
-      }
-
       return updated;
     } catch (err: any) {
       return this.prisma.receiptImage.update({
@@ -1785,7 +1842,7 @@ export class KdvControlService {
           max_tokens: 700,
           temperature: 0,
           system:
-            'Türk muhasebe KDV belge içerik uygunluğu için karar destek asistanısın. Nihai hukuki/mali karar vermezsin; riskleri kısa, denetlenebilir ve JSON formatında yazarsın.',
+            'Türk muhasebe KDV belge içerik uygunluğu için karar destek asistanısın. Nihai hukuki/mali karar vermezsin; gri alanları KONTROL_ET seviyesinde tutar, riskleri kısa, denetlenebilir ve JSON formatında yazarsın.',
           messages: [{ role: 'user', content: prompt }],
         }),
       });
@@ -1797,6 +1854,7 @@ export class KdvControlService {
       const textBlock = payload?.content?.find((c: any) => c?.type === 'text');
       const raw = String(textBlock?.text || '').trim();
       const parsed = this.parseContentAuditJson(raw);
+      const moderated = this.moderateContentAuditDecision(parsed, image, session);
       const usage = {
         input_tokens: Number(payload?.usage?.input_tokens || 0),
         output_tokens: Number(payload?.usage?.output_tokens || 0),
@@ -1810,11 +1868,11 @@ export class KdvControlService {
         cacheWrite: usage.cache_creation_input_tokens,
       });
       return {
-        risk: parsed.risk,
-        summary: parsed.summary,
-        suggestion: parsed.suggestion,
-        findings: parsed.findings,
-        confidence: parsed.confidence,
+        risk: moderated.risk,
+        summary: moderated.summary,
+        suggestion: moderated.suggestion,
+        findings: moderated.findings,
+        confidence: moderated.confidence,
         model,
         costUsd,
         usage,
@@ -1834,6 +1892,68 @@ export class KdvControlService {
         ].slice(0, 6),
       };
     }
+  }
+
+  private moderateContentAuditDecision(
+    decision: Omit<ContentAuditDecision, 'model' | 'costUsd' | 'usage'>,
+    image: any,
+    session: any,
+  ): Omit<ContentAuditDecision, 'model' | 'costUsd' | 'usage'> {
+    if (decision.risk !== 'RISKLI' && decision.risk !== 'ISLENMEMELI') return decision;
+
+    const text = [
+      image.ocrRawText,
+      image.ocrKategori,
+      image.ocrBelgeTipi,
+      image.ocrSatici,
+      image.originalName,
+      decision.summary,
+      decision.suggestion,
+      JSON.stringify(decision.findings || []),
+    ].filter(Boolean).join(' ').toLocaleLowerCase('tr-TR');
+
+    const taxpayerText = [
+      session?.taxpayer?.companyName,
+      session?.taxpayer?.notes,
+      session?.taxpayer?.naceKodu,
+      session?.taxpayer?.defterTuru,
+      session?.taxpayer?.mihsapDefterTuru,
+    ].filter(Boolean).join(' ').toLocaleLowerCase('tr-TR');
+
+    const hardBlockSignal =
+      /trafik cezas[ıi]|ceza|gecikme zamm[ıi]|usuls[üu]zl[üu]k|kkeg|alkol|sigara|t[üu]t[üu]n|tekel/.test(text);
+    const commonBusinessGreyArea =
+      /yemek|restoran|lokanta|cafe|kafe|kahve|market|g[ıi]da|b[öo]rek|k[üu]nefe|baklava|temizlik|deterjan|sarf|akaryak[ıi]t|yak[ıi]t|benzin|motorin|otel|konaklama|seyahat|kargo|telefon|internet|elektrik|su|k[ıi]rtasiye|ofis/.test(text);
+    const profileIsThin = taxpayerText.trim().length < 18;
+    const lowConfidence = Number(decision.confidence || 0) < 0.82;
+
+    const shouldDowngrade =
+      !hardBlockSignal &&
+      (decision.risk === 'ISLENMEMELI' || commonBusinessGreyArea || lowConfidence || profileIsThin);
+
+    if (!shouldDowngrade) return decision;
+
+    const findings = (decision.findings || []).map((finding) => ({
+      ...finding,
+      severity: finding.severity === 'RISKLI' || finding.severity === 'ISLENMEMELI'
+        ? 'KONTROL_ET' as ContentAuditRisk
+        : finding.severity,
+    }));
+
+    return {
+      risk: 'KONTROL_ET',
+      summary: 'Belge otomatik olarak net uygunsuz sayılmadı; faaliyet bağlantısı için muhasebeci kontrolü önerilir.',
+      suggestion: 'Belgeyi reddetmeden önce açıklama, faaliyet bağlantısı ve gider dayanağını kontrol edin.',
+      findings: [
+        {
+          title: 'Seviye düşürüldü',
+          detail: 'AI yorumu gri alanda kaldığı için riskli yerine kontrol et seviyesinde tutuldu.',
+          severity: 'KONTROL_ET' as ContentAuditRisk,
+        },
+        ...findings,
+      ].slice(0, 8),
+      confidence: Math.min(Number(decision.confidence || 0), 0.74),
+    };
   }
 
   private async buildContentAuditPrompt(image: any, session: any, tenantId: string) {
@@ -1871,6 +1991,11 @@ export class KdvControlService {
     return `Aşağıdaki belge mükellefin faaliyetine göre KDV kayıtlarına konu edilebilir mi, risk var mı değerlendir.
 
 Kurallar:
+- Varsayılan seviye KONTROL_ET olsun; net kanıt yoksa RISKLI veya ISLENMEMELI seçme.
+- Sadece faaliyet farklı görünüyor diye yemek, market, temizlik, deterjan, akaryakıt, kargo, telefon, internet, ofis veya seyahat kalemlerini reddetme; bunlar gri alandır ve genelde KONTROL_ET kalmalıdır.
+- RISKLI için belge metninde açık özel/kişisel/lüks tüketim sinyali ve faaliyete bağlanamama birlikte bulunmalı.
+- ISLENMEMELI sadece ceza, gecikme zammı, KKEG, alkol/tütün veya kanunen açık indirim yasağı gibi çok net durumda kullanılmalı.
+- "Belge muhasebeleştirilmemeli" gibi kesin talimat verme; muhasebeciye kontrol adımı öner.
 - Sadece verilen veriye dayan; emin değilsen KONTROL_ET seç.
 - Faaliyetle açıkça ilgisiz özel harcama, ceza, alkol/tütün, hediye/lüks tüketim gibi kalemleri yükselt.
 - Yemek, otel, akaryakıt, seyahat gibi kalemlerde mükellef faaliyetini ve belge açıklamasını birlikte düşün.
