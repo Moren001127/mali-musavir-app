@@ -3230,9 +3230,21 @@ Fatura görüntüsünü incele. Yukarıdaki MEVCUT SEÇENEKLER'den Kayıt Türü
     data: { status?: string; result?: any },
   ) {
     const finishedAt = data.status === 'done' || data.status === 'failed' ? new Date() : undefined;
+    // Result alanını overwrite ETMEMEK için mevcut logs'u koru (canlı log akışı için kritik)
+    let mergedResult = data.result;
+    if (data.result !== undefined) {
+      const existing = await this.prisma.agentCommand.findUnique({
+        where: { id },
+        select: { result: true },
+      });
+      const existingLogs = (existing?.result as any)?.logs;
+      if (Array.isArray(existingLogs)) {
+        mergedResult = { ...data.result, logs: existingLogs };
+      }
+    }
     return this.prisma.agentCommand.update({
       where: { id },
-      data: { ...data, finishedAt } as any,
+      data: { ...data, ...(mergedResult !== undefined ? { result: mergedResult } : {}), finishedAt } as any,
     });
   }
 

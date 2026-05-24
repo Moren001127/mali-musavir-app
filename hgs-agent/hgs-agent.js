@@ -45,25 +45,45 @@ const solver = new Solver(TWOCAPTCHA_KEY);
 // Aktif komut ID'si — set edildiğinde log() ayrıca portala da gönderir.
 let activeCommandId = null;
 
-async function postLogToCommand(message, level = 'info') {
+// Log queue — race condition önlemek için sıralı POST. Aksi halde backend'de
+// "findFirst → push → update" eşzamanlı çalışırsa log'lar üzerine yazılır.
+const logQueue = [];
+let flushing = false;
+
+async function flushLogQueue() {
+  if (flushing) return;
+  flushing = true;
+  while (logQueue.length > 0) {
+    const entry = logQueue.shift();
+    if (!entry.commandId) continue;
+    try {
+      await fetch(PORTAL + '/agent/commands/' + entry.commandId + '/log', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json', 'X-Agent-Token': TOKEN },
+        body: JSON.stringify({ level: entry.level, message: entry.message }),
+      });
+    } catch {}
+  }
+  flushing = false;
+}
+
+function enqueueLog(message, level) {
   if (!activeCommandId) return;
-  try {
-    await fetch(PORTAL + '/agent/commands/' + activeCommandId + '/log', {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json', 'X-Agent-Token': TOKEN },
-      body: JSON.stringify({ level, message: String(message || '').slice(0, 500) }),
-    });
-  } catch {}
+  logQueue.push({
+    commandId: activeCommandId,
+    level,
+    message: String(message || '').slice(0, 500),
+  });
+  flushLogQueue();  // non-blocking; içerde sequential flush
 }
 
 const log = (msg, ...args) => {
   const ts = new Date().toLocaleTimeString('tr-TR', { hour12: false });
   console.log(`[${ts}] ${msg}`, ...args);
-  // Aktif komut varsa portala da gönder (fire-and-forget)
   if (activeCommandId) {
     const full = String(msg) + (args.length ? ' ' + args.map(a => typeof a === 'string' ? a : JSON.stringify(a)).join(' ') : '');
     const level = /hata|fail|✗|error|⚠/i.test(full) ? 'warn' : 'info';
-    postLogToCommand(full, level);
+    enqueueLog(full, level);
   }
 };
 
@@ -480,15 +500,23 @@ async function run() {
           }
 
           if (!iptalEdildi) {
+            log(`✅ Komut tamamlandı: ${cmd.id}`);
+          } else {
+            log(`🛑 Komut iptal edildi (${sonuclar.length}/${aracIds.length} plaka işlendi)`);
+          }
+          // Önce kuyruktaki tüm log'lar boşalsın, sonra activeCommandId'yi null yap
+          // Aksi halde updateCommand result'ı override eder ve son log'lar kaybolur
+          while (logQueue.length > 0 || flushing) {
+            await new Promise(r => setTimeout(r, 100));
+          }
+          // En son: result yazılır (logs alanı KORUNUR çünkü appendCommandLog logs'u merge ediyor)
+          if (!iptalEdildi) {
             await updateCommand(cmd.id, 'done', {
               araclar: aracIds.length,
               basarili: sonuclar.filter(s => s.durum === 'basarili').length,
               hatali: sonuclar.filter(s => s.durum === 'hatali').length,
               tarih: new Date().toISOString(),
             });
-            log(`✅ Komut tamamlandı: ${cmd.id}`);
-          } else {
-            log(`🛑 Komut iptal edildi (${sonuclar.length}/${aracIds.length} plaka işlendi)`);
           }
           activeCommandId = null;  // Log akışı kapat
         }
