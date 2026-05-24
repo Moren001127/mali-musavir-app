@@ -18,7 +18,7 @@ const PANEL_HOVER = 'rgba(255,255,255,0.045)';
 const BORDER = 'rgba(255,255,255,0.07)';
 const BORDER_STRONG = 'rgba(255,255,255,0.12)';
 
-type Taxpayer = { id: string; firstName?: string | null; lastName?: string | null; companyName?: string | null; taxNumber?: string | null };
+type Taxpayer = { id: string; firstName?: string | null; lastName?: string | null; companyName?: string | null; taxNumber?: string | null; defterTuru?: string | null };
 type PeriodMode = 'GECICI' | 'AYLIK' | 'YILLIK';
 type SeverityFilter = 'ALL' | 'ERROR' | 'WARN' | 'INFO';
 type StatusFilter = 'OPEN' | 'ALL' | 'RESOLVED' | 'IGNORED';
@@ -154,10 +154,12 @@ export default function EDefterAgentPage() {
   const donemTipi = periodDonemTipi(periodMode, quarter);
   const periodKey = normalizePeriodKey(donem, donemTipi);
 
-  const { data: taxpayers = [] } = useQuery<Taxpayer[]>({
+  const { data: allTaxpayers = [] } = useQuery<Taxpayer[]>({
     queryKey: ['taxpayers'],
     queryFn: () => api.get('/taxpayers').then((r) => apiArray<Taxpayer>(r.data)),
   });
+  // Sadece bilanço usulüne tabi mükellefler (e-Defter mükellefi olabilir)
+  const taxpayers = useMemo(() => allTaxpayers.filter((t) => String(t?.defterTuru || '').toUpperCase() === 'BILANCO'), [allTaxpayers]);
   useEffect(() => { if (!taxpayerId && taxpayers[0]?.id) setTaxpayerId(taxpayers[0].id); }, [taxpayers, taxpayerId]);
   const selectedTp = taxpayers.find((t) => t.id === taxpayerId);
 
@@ -408,8 +410,9 @@ export default function EDefterAgentPage() {
 
         {/* Selector bandı — hero altında compact tek satır */}
         <div className="px-5 py-2.5 flex flex-wrap items-center gap-2" style={{ background: 'rgba(0,0,0,.18)', borderTop: `1px solid ${BORDER}` }}>
-          <select value={taxpayerId} onChange={(e) => { setTaxpayerId(e.target.value); setSelectedSessionId(null); }} className="h-8 rounded-md px-2 text-xs min-w-[220px]" style={{ background: PANEL, border: `1px solid ${BORDER}`, color: '#fafaf9' }}>
-            {taxpayers.map((t) => (<option key={t.id} value={t.id}>{taxpayerName(t)}</option>))}
+          <select value={taxpayerId} onChange={(e) => { setTaxpayerId(e.target.value); setSelectedSessionId(null); }} className="h-8 rounded-md px-2 text-xs min-w-[260px] appearance-none cursor-pointer" style={{ background: PANEL, border: `1px solid ${BORDER}`, color: '#fafaf9', backgroundImage: 'url("data:image/svg+xml;utf8,<svg xmlns=\'http://www.w3.org/2000/svg\' width=\'12\' height=\'12\' viewBox=\'0 0 24 24\' fill=\'none\' stroke=\'%23d4b876\' stroke-width=\'2\'><polyline points=\'6 9 12 15 18 9\'/></svg>")', backgroundRepeat: 'no-repeat', backgroundPosition: 'right 8px center', paddingRight: '24px' }}>
+            {taxpayers.length === 0 && (<option value="" style={{ background: '#1a1a17', color: '#fafaf9' }}>Bilanço mükellefi yok</option>)}
+            {taxpayers.map((t) => (<option key={t.id} value={t.id} style={{ background: '#1a1a17', color: '#fafaf9' }}>{taxpayerName(t)}</option>))}
           </select>
           <input type="number" value={year} onChange={(e) => { setYear(Number(e.target.value) || now.getFullYear()); setSelectedSessionId(null); }} className="h-8 rounded-md px-2 text-xs w-20 tabular-nums" style={{ background: PANEL, border: `1px solid ${BORDER}`, color: '#fafaf9' }} />
           <div className="flex h-8 rounded-md overflow-hidden" style={{ border: `1px solid ${BORDER}` }}>
@@ -429,14 +432,14 @@ export default function EDefterAgentPage() {
             </div>
           )}
           {periodMode === 'AYLIK' && (
-            <select value={month} onChange={(e) => { setMonth(Number(e.target.value)); setSelectedSessionId(null); }} className="h-8 rounded-md px-2 text-xs" style={{ background: PANEL, border: `1px solid ${BORDER}`, color: '#fafaf9' }}>
-              {MONTH_LABELS.map((label, i) => (<option key={i + 1} value={i + 1}>{label}</option>))}
+            <select value={month} onChange={(e) => { setMonth(Number(e.target.value)); setSelectedSessionId(null); }} className="h-8 rounded-md px-2 text-xs appearance-none cursor-pointer" style={{ background: PANEL, border: `1px solid ${BORDER}`, color: '#fafaf9', backgroundImage: 'url("data:image/svg+xml;utf8,<svg xmlns=\'http://www.w3.org/2000/svg\' width=\'12\' height=\'12\' viewBox=\'0 0 24 24\' fill=\'none\' stroke=\'%23d4b876\' stroke-width=\'2\'><polyline points=\'6 9 12 15 18 9\'/></svg>")', backgroundRepeat: 'no-repeat', backgroundPosition: 'right 8px center', paddingRight: '24px' }}>
+              {MONTH_LABELS.map((label, i) => (<option key={i + 1} value={i + 1} style={{ background: '#1a1a17', color: '#fafaf9' }}>{label}</option>))}
             </select>
           )}
           {periodSessions.length > 1 && (
-            <select value={activeSessionId || ''} onChange={(e) => setSelectedSessionId(e.target.value)} className="h-8 rounded-md px-2 text-xs ml-auto" style={{ background: PANEL, border: `1px solid ${BORDER_STRONG}`, color: GOLD }}>
+            <select value={activeSessionId || ''} onChange={(e) => setSelectedSessionId(e.target.value)} className="h-8 rounded-md px-2 text-xs ml-auto appearance-none cursor-pointer" style={{ background: PANEL, border: `1px solid ${BORDER_STRONG}`, color: GOLD, backgroundImage: 'url("data:image/svg+xml;utf8,<svg xmlns=\'http://www.w3.org/2000/svg\' width=\'12\' height=\'12\' viewBox=\'0 0 24 24\' fill=\'none\' stroke=\'%23d4b876\' stroke-width=\'2\'><polyline points=\'6 9 12 15 18 9\'/></svg>")', backgroundRepeat: 'no-repeat', backgroundPosition: 'right 8px center', paddingRight: '24px' }}>
               {periodSessions.map((s: any, i: number) => (
-                <option key={s.id} value={s.id}>{i === 0 ? '★ ' : ''}v{periodSessions.length - i} · {fmtDateTime(s.createdAt)} · {s.findingCount} bulgu</option>
+                <option key={s.id} value={s.id} style={{ background: '#1a1a17', color: '#fafaf9' }}>{i === 0 ? '★ ' : ''}v{periodSessions.length - i} · {fmtDateTime(s.createdAt)} · {s.findingCount} bulgu</option>
               ))}
             </select>
           )}
@@ -924,7 +927,7 @@ function KurallarTab() {
           <div className="text-xs font-bold uppercase tracking-wider" style={{ color: GOLD }}>Yeni Manuel Kural</div>
           <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
             <Field label="Kural Adı *"><input value={form.ad} onChange={(e) => setForm({ ...form, ad: e.target.value })} placeholder="Örn: Kira ödemesi 5.000 TL üstü kontrol" className="w-full h-9 rounded-md px-3 text-sm" style={{ background: PANEL, border: `1px solid ${BORDER}`, color: '#fafaf9' }} /></Field>
-            <Field label="Seviye"><select value={form.severity} onChange={(e) => setForm({ ...form, severity: e.target.value as any })} className="w-full h-9 rounded-md px-3 text-sm" style={{ background: PANEL, border: `1px solid ${BORDER}`, color: '#fafaf9' }}><option value="ERROR">Hata</option><option value="WARN">Uyarı</option><option value="INFO">Bilgi</option></select></Field>
+            <Field label="Seviye"><select value={form.severity} onChange={(e) => setForm({ ...form, severity: e.target.value as any })} className="w-full h-9 rounded-md px-3 text-sm appearance-none cursor-pointer" style={{ background: PANEL, border: `1px solid ${BORDER}`, color: '#fafaf9', backgroundImage: 'url("data:image/svg+xml;utf8,<svg xmlns=\'http://www.w3.org/2000/svg\' width=\'12\' height=\'12\' viewBox=\'0 0 24 24\' fill=\'none\' stroke=\'%23d4b876\' stroke-width=\'2\'><polyline points=\'6 9 12 15 18 9\'/></svg>")', backgroundRepeat: 'no-repeat', backgroundPosition: 'right 10px center', paddingRight: '30px' }}><option value="ERROR" style={{ background: '#1a1a17', color: '#fafaf9' }}>Hata</option><option value="WARN" style={{ background: '#1a1a17', color: '#fafaf9' }}>Uyarı</option><option value="INFO" style={{ background: '#1a1a17', color: '#fafaf9' }}>Bilgi</option></select></Field>
             <Field label="Hesap Kodu Başlangıcı (opsiyonel)"><input value={form.hesapKoduPrefix} onChange={(e) => setForm({ ...form, hesapKoduPrefix: e.target.value })} placeholder="Örn: 770 veya 360.01" className="w-full h-9 rounded-md px-3 text-sm tabular-nums" style={{ background: PANEL, border: `1px solid ${BORDER}`, color: '#fafaf9' }} /></Field>
             <Field label="Tutar Eşiği TL (opsiyonel)"><input type="number" value={form.tutarEsigi} onChange={(e) => setForm({ ...form, tutarEsigi: e.target.value })} placeholder="Örn: 5000" className="w-full h-9 rounded-md px-3 text-sm tabular-nums" style={{ background: PANEL, border: `1px solid ${BORDER}`, color: '#fafaf9' }} /></Field>
           </div>
