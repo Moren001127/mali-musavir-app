@@ -103,6 +103,22 @@ export default function HgsIhlalPage() {
     },
   });
 
+  // Tek araç için sorgu — satırın yanındaki butona basınca agent o plakayı sorgular
+  const tekAracSorguMut = useMutation({
+    mutationFn: (aracId: string) => galeriApi.baslatTopluSorgu({ aracIds: [aracId], sadeceAktif: true }),
+    onSuccess: (data) => {
+      if (data.ok) {
+        toast.success(data.mesaj || 'Sorgu komutu oluşturuldu — agent yakında çalıştıracak');
+      } else {
+        toast.error(data.sebep || 'Sorgu başlatılamadı');
+      }
+      qc.invalidateQueries({ queryKey: ['galeri-agent-durumu'] });
+    },
+    onError: (err: any) => {
+      toast.error(err?.response?.data?.message || 'Bir hata oluştu');
+    },
+  });
+
   const deleteMut = useMutation({
     mutationFn: (id: string) => galeriApi.deleteArac(id),
     onSuccess: () => {
@@ -240,7 +256,7 @@ export default function HgsIhlalPage() {
       </div>
 
       {/* AGENT LOG PANELİ — aktif komut varken canlı, yoksa son komutun loglarını gösterir */}
-      {!!izlenenKomutId && canliLoglar.length > 0 && (
+      {!!izlenenKomutId && (
         <div
           className="rounded-xl overflow-hidden"
           style={{ background: 'rgba(10,10,15,0.6)', border: '1px solid rgba(184,160,111,0.2)' }}
@@ -278,7 +294,9 @@ export default function HgsIhlalPage() {
               style={{ background: 'rgba(0,0,0,0.4)', borderTop: '1px solid rgba(255,255,255,0.04)' }}
             >
               {canliLoglar.length === 0 ? (
-                <div style={{ color: 'rgba(250,250,249,0.4)' }}>Henüz log yok — agent komutu işlemeye başlamak üzere…</div>
+                <div style={{ color: 'rgba(250,250,249,0.4)' }}>
+                  {aktifKomutId ? 'Henüz log yok — agent komutu işlemeye başlamak üzere…' : 'Son sorgu için log kaydı bulunamadı (eski sorgular log akışı eklemeden önce yapılmış olabilir).'}
+                </div>
               ) : (
                 canliLoglar.map((l, i) => {
                   const t = new Date(l.ts).toLocaleTimeString('tr-TR', { hour12: false });
@@ -425,24 +443,17 @@ function AracRow({ arac, onDelete }: { arac: Arac; onDelete: () => void }) {
         <td className="px-4 py-2.5 text-right">
           <div className="flex items-center gap-1 justify-end">
             <button
-              onClick={() => {
-                const plakaTemiz = (arac.plaka || '').replace(/\s/g, '');
-                // Plaka clipboard'a kopyalansın — KGM formuna yapıştırılır
-                if (navigator.clipboard) {
-                  navigator.clipboard.writeText(plakaTemiz).catch(() => {});
-                }
-                const w = window.open(KGM_URL, '_blank', 'width=1200,height=820');
-                if (!w) {
-                  toast.error('Pop-up engellendi — tarayıcı ayarlarını kontrol et');
-                } else {
-                  toast.success(`${arac.plakaGorunum || arac.plaka} kopyalandı, yeni pencerede yapıştır`);
-                }
-              }}
-              className="text-[11px] font-medium px-2.5 py-1.5 rounded-md transition inline-flex items-center gap-1"
+              onClick={() => tekAracSorguMut.mutate(arac.id)}
+              disabled={tekAracSorguMut.isPending || !!agentInfo?.aktifKomut}
+              className="text-[11px] font-medium px-2.5 py-1.5 rounded-md transition inline-flex items-center gap-1 disabled:opacity-50 disabled:cursor-not-allowed"
               style={{ background: `linear-gradient(135deg, ${GOLD}, #b8a06f)`, color: '#0f0d0b' }}
-              title="KGM sitesini aç — plaka panoya kopyalanır"
+              title="Agent ile arka planda sorgula"
             >
-              <ExternalLink size={11} /> Sorgula
+              {tekAracSorguMut.isPending && tekAracSorguMut.variables === arac.id
+                ? <><RefreshCw size={11} className="animate-spin" /> Gönderiliyor</>
+                : !!agentInfo?.aktifKomut
+                  ? <><Clock size={11} /> Bekliyor</>
+                  : <><PlayCircle size={11} /> Sorgula</>}
             </button>
             <button
               onClick={() => setSonucOpen(true)}
