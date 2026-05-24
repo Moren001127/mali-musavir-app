@@ -363,6 +363,23 @@ async function sorgulaPlaka(page, plaka) {
 }
 
 // === Ana döngü ===
+async function ensureLiveBrowser(state) {
+  // state = { browser, context, page }
+  // Sayfa hâlâ canlı mı?
+  if (state.page && !state.page.isClosed()) return state;
+
+  log('  ♻ Tarayıcı kapanmış, yeniden açılıyor...');
+  try { if (state.browser) await state.browser.close().catch(() => {}); } catch {}
+
+  state.browser = await chromium.launch({
+    headless: HEADLESS,
+    args: ['--disable-blink-features=AutomationControlled'],
+  });
+  state.context = await state.browser.newContext({ viewport: { width: 1200, height: 900 } });
+  state.page = await state.context.newPage();
+  return state;
+}
+
 async function run() {
   log('🚗 HGS Agent v2 başlatılıyor...');
   log(`📡 Portal: ${PORTAL}`);
@@ -370,12 +387,8 @@ async function run() {
   log(`🤖 2captcha key: ${TWOCAPTCHA_KEY.slice(0, 6)}...`);
   log(`🖥  Headless: ${HEADLESS}`);
 
-  const browser = await chromium.launch({
-    headless: HEADLESS,
-    args: ['--disable-blink-features=AutomationControlled'],
-  });
-  const context = await browser.newContext({ viewport: { width: 1200, height: 900 } });
-  const page = await context.newPage();
+  const browserState = { browser: null, context: null, page: null };
+  await ensureLiveBrowser(browserState);
 
   await ping({ startedAt: new Date().toISOString() });
   setInterval(() => ping({ lastCheck: new Date().toISOString() }), 15000);
@@ -402,22 +415,23 @@ async function run() {
             const aracId = aracIds[i];
             const plaka = plakalar[i];
             try {
-              const sonuc = await sorgulaPlaka(page, plaka);
-              // Debug: HER sorguda HTML dump al (parser doğrulama için, geçici)
-              // veya 0 ihlal sonucu şüpheliyse mutlaka kaydet
+              // Her plaka öncesi tarayıcı canlı mı kontrol et, kapanmışsa yeniden aç
+              await ensureLiveBrowser(browserState);
+              const sonuc = await sorgulaPlaka(browserState.page, plaka);
               if (sonuc.durum !== 'basarili' || (sonuc.ihlalSayisi || 0) === 0) {
-                await debugDump(page, plaka, sonuc.durum === 'basarili' ? 'basarili_0_ihlal' : sonuc.durum);
+                try { await debugDump(browserState.page, plaka, sonuc.durum === 'basarili' ? 'basarili_0_ihlal' : sonuc.durum); } catch {}
               }
               await kaydetSorguSonucu(aracId, sonuc);
               sonuclar.push({ aracId, plaka, ...sonuc });
               log(`  ✓ ${plaka}: ${sonuc.durum} — ${sonuc.ihlalSayisi || 0} ihlal, ${(sonuc.toplamTutar || 0).toFixed(2)} ₺`);
             } catch (err) {
               log(`  ✗ ${plaka} hata: ${err.message}`);
-              await debugDump(page, plaka, 'exception');
+              try { await debugDump(browserState.page, plaka, 'exception'); } catch {}
               sonuclar.push({ aracId, plaka, durum: 'hatali', hataMesaji: err.message });
               await kaydetSorguSonucu(aracId, { durum: 'hatali', hataMesaji: err.message, kaynak: 'manuel' });
+              // Browser kapanmışsa bir sonraki plakada otomatik yeniden açılacak
             }
-            await page.waitForTimeout(2000);
+            try { if (browserState.page && !browserState.page.isClosed()) await browserState.page.waitForTimeout(2000); } catch {}
           }
 
           await updateCommand(cmd.id, 'done', {
