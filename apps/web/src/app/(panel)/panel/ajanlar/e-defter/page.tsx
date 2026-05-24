@@ -736,6 +736,9 @@ export default function EDefterAgentPage() {
         </div>
       )}
 
+      {/* TAB: KONTROL KURALLARI */}
+      {activeTab === 'KURALLAR' && (<KurallarTab />)}
+
       {/* TAB: GEÇMİŞ KONTROLLER */}
       {activeTab === 'GECMIS' && (
         <div className="space-y-3">
