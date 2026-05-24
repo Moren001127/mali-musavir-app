@@ -391,6 +391,17 @@ export class AgentEventsController {
     return this.service.getCommand(tenantId, id);
   }
 
+  /** Agent canlı log gönderir — result.logs array'ine append edilir. */
+  @Post('commands/:id/log')
+  async appendCommandLog(
+    @Headers('x-agent-token') token: string,
+    @Param('id') id: string,
+    @Body() body: { level?: string; message?: string },
+  ) {
+    const tenantId = await this.resolveTenantFromTokenAsync(token);
+    return this.service.appendCommandLog(tenantId, id, body?.level || 'info', body?.message || '');
+  }
+
   /** Web UI komutu iptal eder */
   @Post('commands/:id/cancel')
   @UseGuards(AuthGuard('jwt'))

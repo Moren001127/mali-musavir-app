@@ -1450,6 +1450,23 @@ ${ocr.text.slice(0, 14000)}`;
     return this.prisma.agentCommand.findFirst({ where: { id, tenantId } });
   }
 
+  /** Komuta canlı log satırı ekle — agent'tan çağrılır.
+   *  Loglar AgentCommand.result.logs array'inde tutulur (en son 200 satır).
+   */
+  async appendCommandLog(tenantId: string, id: string, level: string, message: string) {
+    const cmd = await this.prisma.agentCommand.findFirst({ where: { id, tenantId } });
+    if (!cmd) return null;
+    const result: any = (cmd.result as any) || {};
+    const logs: any[] = Array.isArray(result.logs) ? result.logs : [];
+    logs.push({ ts: new Date().toISOString(), level: level || 'info', message: String(message || '').slice(0, 500) });
+    // Son 200 satırı tut (çok büyümesin)
+    const trimmed = logs.slice(-200);
+    return this.prisma.agentCommand.update({
+      where: { id },
+      data: { result: { ...result, logs: trimmed } as any } as any,
+    });
+  }
+
   /** Komutu iptal et - agent cancel'i gorup duracak */
   async cancelCommand(tenantId: string, id: string) {
     const cmd = await this.prisma.agentCommand.findFirst({ where: { id, tenantId } });

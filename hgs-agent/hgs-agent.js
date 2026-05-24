@@ -42,9 +42,29 @@ if (!TWOCAPTCHA_KEY) { console.error('❌ TWOCAPTCHA_API_KEY eksik'); process.ex
 
 const solver = new Solver(TWOCAPTCHA_KEY);
 
+// Aktif komut ID'si — set edildiğinde log() ayrıca portala da gönderir.
+let activeCommandId = null;
+
+async function postLogToCommand(message, level = 'info') {
+  if (!activeCommandId) return;
+  try {
+    await fetch(PORTAL + '/agent/commands/' + activeCommandId + '/log', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json', 'X-Agent-Token': TOKEN },
+      body: JSON.stringify({ level, message: String(message || '').slice(0, 500) }),
+    });
+  } catch {}
+}
+
 const log = (msg, ...args) => {
   const ts = new Date().toLocaleTimeString('tr-TR', { hour12: false });
   console.log(`[${ts}] ${msg}`, ...args);
+  // Aktif komut varsa portala da gönder (fire-and-forget)
+  if (activeCommandId) {
+    const full = String(msg) + (args.length ? ' ' + args.map(a => typeof a === 'string' ? a : JSON.stringify(a)).join(' ') : '');
+    const level = /hata|fail|✗|error|⚠/i.test(full) ? 'warn' : 'info';
+    postLogToCommand(full, level);
+  }
 };
 
 // === API helpers ===
@@ -405,15 +425,28 @@ async function run() {
           if (cmd.agent !== 'hgs') continue;
           if (cmd.action !== 'toplu-sorgu') continue;
           log(`📥 Komut alındı: ${cmd.id}`);
+          activeCommandId = cmd.id;  // Bundan sonraki loglar portala da gidecek
 
           const payload = cmd.payload || {};
           const aracIds = payload.aracIds || [];
           const plakalar = payload.plakalar || [];
 
           const sonuclar = [];
+          let iptalEdildi = false;
           for (let i = 0; i < aracIds.length; i++) {
             const aracId = aracIds[i];
             const plaka = plakalar[i];
+
+            // İptal kontrolü — kullanıcı portal'dan iptal etmiş mi?
+            try {
+              const durum = await api(`/agent/commands/${cmd.id}`);
+              if (durum && durum.status === 'cancelled') {
+                log(`🛑 Komut iptal edildi, kalan ${aracIds.length - i} plaka atlanıyor`);
+                iptalEdildi = true;
+                break;
+              }
+            } catch {}
+
             try {
               // Her plaka öncesi tarayıcı canlı mı kontrol et, kapanmışsa yeniden aç
               await ensureLiveBrowser(browserState);
@@ -434,13 +467,18 @@ async function run() {
             try { if (browserState.page && !browserState.page.isClosed()) await browserState.page.waitForTimeout(2000); } catch {}
           }
 
-          await updateCommand(cmd.id, 'done', {
-            araclar: aracIds.length,
-            basarili: sonuclar.filter(s => s.durum === 'basarili').length,
-            hatali: sonuclar.filter(s => s.durum === 'hatali').length,
-            tarih: new Date().toISOString(),
-          });
-          log(`✅ Komut tamamlandı: ${cmd.id}`);
+          if (!iptalEdildi) {
+            await updateCommand(cmd.id, 'done', {
+              araclar: aracIds.length,
+              basarili: sonuclar.filter(s => s.durum === 'basarili').length,
+              hatali: sonuclar.filter(s => s.durum === 'hatali').length,
+              tarih: new Date().toISOString(),
+            });
+            log(`✅ Komut tamamlandı: ${cmd.id}`);
+          } else {
+            log(`🛑 Komut iptal edildi (${sonuclar.length}/${aracIds.length} plaka işlendi)`);
+          }
+          activeCommandId = null;  // Log akışı kapat
         }
       }
     } catch (err) { log('⚠ Polling hatası:', err.message); }

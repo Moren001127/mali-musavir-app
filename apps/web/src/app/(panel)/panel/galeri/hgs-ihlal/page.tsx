@@ -1,14 +1,15 @@
 'use client';
 
-import { useState, useMemo } from 'react';
+import { useState, useMemo, useEffect, useRef } from 'react';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import { galeriApi, Arac } from '@/lib/galeri';
 import {
   Gavel, Plus, Search, Trash2, ExternalLink, RefreshCw, Car,
   CheckCircle2, AlertCircle, Clock, X as IconX, Edit2, Save,
-  Zap, PlayCircle, Bot, FileText, Download,
+  Zap, PlayCircle, Bot, FileText, Download, Terminal, Square, ChevronDown, ChevronUp,
 } from 'lucide-react';
 import { toast } from 'sonner';
+import { api } from '@/lib/api';
 
 const GOLD = '#d4b876';
 const KGM_URL = 'https://webihlaltakip.kgm.gov.tr/WebIhlalSorgulama/Sayfalar/Sorgulama.aspx?lang=tr';
@@ -40,12 +41,47 @@ export default function HgsIhlalPage() {
     queryFn: () => galeriApi.ozet(),
   });
 
-  // Agent durumu — her 15 saniyede bir yenile
+  // Agent durumu — her 15 saniyede bir yenile, çalışan komut varken her 3 saniye
   const { data: agentInfo } = useQuery({
     queryKey: ['galeri-agent-durumu'],
     queryFn: () => galeriApi.agentDurumu(),
-    refetchInterval: 15000,
+    refetchInterval: (q) => ((q.state.data as any)?.aktifKomut ? 3000 : 15000),
   });
+
+  // Aktif komutun canlı log'larını çek (2 saniyede bir refresh)
+  const aktifKomutId = (agentInfo as any)?.aktifKomut?.id;
+  const [logsOpen, setLogsOpen] = useState(true);
+  const { data: aktifKomutDetay } = useQuery({
+    queryKey: ['agent-command-detail', aktifKomutId],
+    queryFn: async () => {
+      if (!aktifKomutId) return null;
+      const { data } = await api.get(`/agent/commands/${aktifKomutId}`, { headers: {} });
+      return data;
+    },
+    enabled: !!aktifKomutId,
+    refetchInterval: aktifKomutId ? 2000 : false,
+  });
+  const canliLoglar = ((aktifKomutDetay as any)?.result?.logs || []) as Array<{ ts: string; level: string; message: string }>;
+
+  // Komut iptal mutation
+  const iptalMut = useMutation({
+    mutationFn: async () => {
+      if (!aktifKomutId) throw new Error('Aktif komut yok');
+      const { data } = await api.post(`/agent/commands/${aktifKomutId}/cancel`);
+      return data;
+    },
+    onSuccess: () => {
+      toast.success('İptal komutu gönderildi — agent bir sonraki plakada duracak');
+      qc.invalidateQueries({ queryKey: ['galeri-agent-durumu'] });
+    },
+    onError: (err: any) => toast.error(err?.response?.data?.message || 'İptal başarısız'),
+  });
+
+  // Log paneli en alta otomatik kaydır
+  const logRef = useRef<HTMLDivElement>(null);
+  useEffect(() => {
+    if (logRef.current && logsOpen) logRef.current.scrollTop = logRef.current.scrollHeight;
+  }, [canliLoglar.length, logsOpen]);
 
   // Toplu sorgu başlatma mutation — AgentCommand tablosuna komut yazar
   const topluSorguMut = useMutation({
@@ -183,7 +219,66 @@ export default function HgsIhlalPage() {
         >
           <FileText size={14} /> PDF Rapor
         </button>
+        {!!aktifKomutId && (
+          <button
+            onClick={() => {
+              if (confirm('Çalışan toplu sorguyu iptal etmek istiyor musun? Agent bir sonraki plakada duracak.')) {
+                iptalMut.mutate();
+              }
+            }}
+            disabled={iptalMut.isPending}
+            className="inline-flex items-center gap-1.5 px-4 py-2.5 text-[13px] font-medium rounded-[10px] transition-all disabled:opacity-50"
+            style={{ background: 'rgba(239,68,68,0.12)', border: '1px solid rgba(239,68,68,0.4)', color: '#ef4444' }}
+          >
+            <Square size={14} /> İptal Et
+          </button>
+        )}
       </div>
+
+      {/* CANLI LOG PANELİ — sadece aktif komut varsa veya son komutun logları varsa */}
+      {!!aktifKomutId && (
+        <div
+          className="rounded-xl overflow-hidden"
+          style={{ background: 'rgba(10,10,15,0.6)', border: '1px solid rgba(184,160,111,0.2)' }}
+        >
+          <button
+            onClick={() => setLogsOpen(!logsOpen)}
+            className="w-full flex items-center justify-between px-4 py-2.5 hover:bg-white/[0.02] transition-colors"
+          >
+            <span className="flex items-center gap-2 text-[12px] font-semibold" style={{ color: GOLD }}>
+              <Terminal size={14} /> Canlı Agent Logları
+              <span className="inline-flex items-center gap-1 text-[10px] font-bold px-2 py-0.5 rounded-full ml-1"
+                style={{ background: 'rgba(34,197,94,0.15)', color: '#22c55e' }}
+              >
+                <span className="w-1.5 h-1.5 rounded-full bg-[#22c55e] animate-pulse" />
+                {canliLoglar.length} satır
+              </span>
+            </span>
+            {logsOpen ? <ChevronUp size={14} style={{ color: 'rgba(250,250,249,0.5)' }} /> : <ChevronDown size={14} style={{ color: 'rgba(250,250,249,0.5)' }} />}
+          </button>
+          {logsOpen && (
+            <div
+              ref={logRef}
+              className="px-4 py-3 max-h-[280px] overflow-y-auto font-mono text-[11.5px] leading-[1.55]"
+              style={{ background: 'rgba(0,0,0,0.4)', borderTop: '1px solid rgba(255,255,255,0.04)' }}
+            >
+              {canliLoglar.length === 0 ? (
+                <div style={{ color: 'rgba(250,250,249,0.4)' }}>Henüz log yok — agent komutu işlemeye başlamak üzere…</div>
+              ) : (
+                canliLoglar.map((l, i) => {
+                  const t = new Date(l.ts).toLocaleTimeString('tr-TR', { hour12: false });
+                  const c = l.level === 'warn' ? '#fbbf24' : l.level === 'error' ? '#ef4444' : 'rgba(250,250,249,0.85)';
+                  return (
+                    <div key={i} style={{ color: c, whiteSpace: 'pre-wrap', wordBreak: 'break-word' }}>
+                      <span style={{ color: 'rgba(250,250,249,0.35)' }}>[{t}]</span> {l.message}
+                    </div>
+                  );
+                })
+              )}
+            </div>
+          )}
+        </div>
+      )}
 
       {/* ARAMA */}
       <div className="relative max-w-md">
