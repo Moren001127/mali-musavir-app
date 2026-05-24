@@ -80,6 +80,16 @@ async function kaydetSorguSonucu(aracId, data) {
   catch (err) { log(`⚠ sonuç kaydedilemedi (${aracId}): ${err.message}`); return null; }
 }
 
+async function zombileriTemizle() {
+  try {
+    const r = await api('/galeri/agent/cleanup-stale', { method: 'POST', body: {} });
+    if (r && r.temizlenen > 0) log(`🧹 ${r.temizlenen} zombi komut temizlendi`);
+    else log('🧹 Zombi komut yok');
+  } catch (err) {
+    log(`⚠ Zombi temizleme başarısız: ${err.message}`);
+  }
+}
+
 // === Debug ===
 const DEBUG_DIR = path.join(__dirname, 'debug');
 function ensureDebugDir() { if (!fs.existsSync(DEBUG_DIR)) fs.mkdirSync(DEBUG_DIR, { recursive: true }); }
@@ -314,6 +324,9 @@ async function run() {
 
   await ping({ startedAt: new Date().toISOString() });
   setInterval(() => ping({ lastCheck: new Date().toISOString() }), 15000);
+
+  // Zombi komutları temizle (önceki Ctrl+C'lerden takılı kalan running komutlar)
+  await zombileriTemizle();
 
   log('✅ Hazır — komut bekleniyor (Pazartesi 08:00 cron veya manuel Toplu Sorgu)');
   while (true) {

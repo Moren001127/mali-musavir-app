@@ -53,4 +53,29 @@ export class GaleriAgentController {
     const tenantId = await this.resolveTenantFromToken(token);
     return this.svc.kaydetSorguSonucu(tenantId, aracId, body);
   }
+
+  /**
+   * Zombi komut temizleyici — agent başlangıçta çağırır.
+   *
+   * Önceki çalıştırmadan kalan "running" durumundaki HGS komutlarını
+   * "failed" olarak kapatır. Aksi takdirde `baslatTopluSorgu` "zaten
+   * çalışan komut var" diye reddeder ve yeni sorgu başlatılamaz.
+   */
+  @Post('cleanup-stale')
+  async cleanupStale(@Headers('x-agent-token') token: string) {
+    const tenantId = await this.resolveTenantFromToken(token);
+    const result = await (this.prisma as any).agentCommand.updateMany({
+      where: {
+        tenantId,
+        agent: 'hgs',
+        status: { in: ['pending', 'running'] },
+      },
+      data: {
+        status: 'failed',
+        result: { message: 'Agent yeniden başlatıldı — zombi komut iptal edildi', stale: true } as any,
+        finishedAt: new Date(),
+      },
+    });
+    return { ok: true, temizlenen: result.count };
+  }
 }
