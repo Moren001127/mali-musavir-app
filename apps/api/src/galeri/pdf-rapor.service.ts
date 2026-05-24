@@ -1,5 +1,6 @@
-import { Injectable } from '@nestjs/common';
+import { Injectable, Logger } from '@nestjs/common';
 import { PrismaService } from '../prisma/prisma.service';
+import { chromium } from 'playwright-core';
 
 /**
  * HGS İhlal Sorgu Raporu — print-optimize HTML üretir.
@@ -10,7 +11,34 @@ import { PrismaService } from '../prisma/prisma.service';
  */
 @Injectable()
 export class PdfRaporService {
+  private readonly logger = new Logger(PdfRaporService.name);
   constructor(private prisma: PrismaService) {}
+
+  /**
+   * HTML raporu Playwright ile gerçek PDF buffer'a çevirir.
+   * WhatsApp document attachment için kullanılır.
+   */
+  async generatePdfBuffer(
+    tenantId: string,
+    opts: { sadeceIhlalli?: boolean } = {},
+  ): Promise<Buffer> {
+    const html = await this.topluRaporHtml(tenantId, opts);
+    let browser: any;
+    try {
+      browser = await chromium.launch({ headless: true, args: ['--no-sandbox', '--disable-setuid-sandbox'] });
+      const context = await browser.newContext();
+      const page = await context.newPage();
+      await page.setContent(html, { waitUntil: 'networkidle' });
+      const pdfBuf = await page.pdf({
+        format: 'A4',
+        margin: { top: '14mm', right: '12mm', bottom: '14mm', left: '12mm' },
+        printBackground: true,
+      });
+      return Buffer.from(pdfBuf);
+    } finally {
+      try { if (browser) await browser.close(); } catch {}
+    }
+  }
 
   private fmtTarih(iso: Date | string | null): string {
     if (!iso) return '—';

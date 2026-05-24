@@ -178,6 +178,22 @@ export class WhatsAppQrService implements OnModuleInit {
           `Bağlantı koptu tenant=${tenantId} reason=${reason} attempts=${attempts} reconnect=${shouldReconnect}`,
         );
 
+        // Otomasyon tetiği — "WhatsApp QR bağlantısı kopunca" event'ini dinleyenler tetiklenir
+        if (this.eventBus) {
+          try {
+            this.eventBus.emit('WhatsApp.QrDisconnected', {
+              tenantId,
+              reason: String(reason || 'unknown'),
+              attempts,
+              loggedOut: reason === DisconnectReason.loggedOut,
+              willReconnect: shouldReconnect && attempts < 10,
+              previousPhone: cur?.phone || null,
+            });
+          } catch (err: any) {
+            this.logger.warn(`Disconnect event emit hatası: ${err?.message || err}`);
+          }
+        }
+
         if (reason === DisconnectReason.loggedOut) {
           // Telefondan log out edildi — auth'u sil
           fs.rm(authPath, { recursive: true, force: true }).catch(() => {});

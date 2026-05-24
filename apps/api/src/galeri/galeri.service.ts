@@ -227,8 +227,11 @@ export class GaleriService {
 
   /** Agent'ın son ping'i, running durumu, son meta bilgisi */
   async agentDurumu(tenantId: string) {
-    const status = await (this.prisma as any).agentStatus.findUnique({
-      where: { tenantId_agent: { tenantId, agent: 'hgs' } },
+    // findFirst ile deviceId-agnostik arama (composite key uyumsuzluğunu önler).
+    // En son lastPing'e göre sıralanmış kaydı al — birden çok deviceId varsa son ping kazansın.
+    const status = await (this.prisma as any).agentStatus.findFirst({
+      where: { tenantId, agent: 'hgs' },
+      orderBy: { lastPing: 'desc' },
     }).catch(() => null);
 
     // Aktif komut var mı?
