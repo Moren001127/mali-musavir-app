@@ -48,20 +48,24 @@ export default function HgsIhlalPage() {
     refetchInterval: (q) => ((q.state.data as any)?.aktifKomut ? 3000 : 15000),
   });
 
-  // Aktif komutun canlı log'larını çek (2 saniyede bir refresh)
+  // Aktif veya son komutun log'larını çek (aktifse 2sn polling, son komut için tek seferlik)
   const aktifKomutId = (agentInfo as any)?.aktifKomut?.id;
+  const sonKomutId = (agentInfo as any)?.sonKomut?.id;
+  const izlenenKomutId = aktifKomutId || sonKomutId;
   const [logsOpen, setLogsOpen] = useState(true);
-  const { data: aktifKomutDetay } = useQuery({
-    queryKey: ['agent-command-detail', aktifKomutId],
+  const { data: izlenenKomutDetay } = useQuery({
+    queryKey: ['agent-command-detail', izlenenKomutId],
     queryFn: async () => {
-      if (!aktifKomutId) return null;
-      const { data } = await api.get(`/agent/commands/${aktifKomutId}`, { headers: {} });
+      if (!izlenenKomutId) return null;
+      const { data } = await api.get(`/agent/commands/${izlenenKomutId}`, { headers: {} });
       return data;
     },
-    enabled: !!aktifKomutId,
-    refetchInterval: aktifKomutId ? 2000 : false,
+    enabled: !!izlenenKomutId,
+    // Aktif komut varsa 2sn'de bir, sadece son komut görüntüleniyorsa 15sn'de bir (statik)
+    refetchInterval: aktifKomutId ? 2000 : (izlenenKomutId ? 15000 : false),
   });
-  const canliLoglar = ((aktifKomutDetay as any)?.result?.logs || []) as Array<{ ts: string; level: string; message: string }>;
+  const canliLoglar = ((izlenenKomutDetay as any)?.result?.logs || []) as Array<{ ts: string; level: string; message: string }>;
+  const izlenenKomutStatus = (izlenenKomutDetay as any)?.status;
 
   // Komut iptal mutation
   const iptalMut = useMutation({
@@ -235,8 +239,8 @@ export default function HgsIhlalPage() {
         )}
       </div>
 
-      {/* CANLI LOG PANELİ — sadece aktif komut varsa veya son komutun logları varsa */}
-      {!!aktifKomutId && (
+      {/* AGENT LOG PANELİ — aktif komut varken canlı, yoksa son komutun loglarını gösterir */}
+      {!!izlenenKomutId && canliLoglar.length > 0 && (
         <div
           className="rounded-xl overflow-hidden"
           style={{ background: 'rgba(10,10,15,0.6)', border: '1px solid rgba(184,160,111,0.2)' }}
@@ -246,13 +250,24 @@ export default function HgsIhlalPage() {
             className="w-full flex items-center justify-between px-4 py-2.5 hover:bg-white/[0.02] transition-colors"
           >
             <span className="flex items-center gap-2 text-[12px] font-semibold" style={{ color: GOLD }}>
-              <Terminal size={14} /> Canlı Agent Logları
-              <span className="inline-flex items-center gap-1 text-[10px] font-bold px-2 py-0.5 rounded-full ml-1"
-                style={{ background: 'rgba(34,197,94,0.15)', color: '#22c55e' }}
-              >
-                <span className="w-1.5 h-1.5 rounded-full bg-[#22c55e] animate-pulse" />
-                {canliLoglar.length} satır
-              </span>
+              <Terminal size={14} /> {aktifKomutId ? 'Canlı Agent Logları' : 'Son Sorgu Logları'}
+              {aktifKomutId ? (
+                <span className="inline-flex items-center gap-1 text-[10px] font-bold px-2 py-0.5 rounded-full ml-1"
+                  style={{ background: 'rgba(34,197,94,0.15)', color: '#22c55e' }}
+                >
+                  <span className="w-1.5 h-1.5 rounded-full bg-[#22c55e] animate-pulse" />
+                  CANLI · {canliLoglar.length} satır
+                </span>
+              ) : (
+                <span className="inline-flex items-center gap-1 text-[10px] font-bold px-2 py-0.5 rounded-full ml-1"
+                  style={{
+                    background: izlenenKomutStatus === 'done' ? 'rgba(34,197,94,0.12)' : izlenenKomutStatus === 'failed' ? 'rgba(239,68,68,0.12)' : izlenenKomutStatus === 'cancelled' ? 'rgba(250,204,21,0.12)' : 'rgba(250,250,249,0.06)',
+                    color: izlenenKomutStatus === 'done' ? '#22c55e' : izlenenKomutStatus === 'failed' ? '#ef4444' : izlenenKomutStatus === 'cancelled' ? '#facc15' : 'rgba(250,250,249,0.6)',
+                  }}
+                >
+                  {izlenenKomutStatus === 'done' ? 'TAMAMLANDI' : izlenenKomutStatus === 'failed' ? 'HATALI' : izlenenKomutStatus === 'cancelled' ? 'İPTAL' : 'BİTTİ'} · {canliLoglar.length} satır
+                </span>
+              )}
             </span>
             {logsOpen ? <ChevronUp size={14} style={{ color: 'rgba(250,250,249,0.5)' }} /> : <ChevronDown size={14} style={{ color: 'rgba(250,250,249,0.5)' }} />}
           </button>

@@ -183,9 +183,21 @@ async function captchayiCoz(page) {
     throw new Error(`2captcha hatası: ${err.message || err}`);
   }
   const ms = Date.now() - t0;
-  const formatted = captchaCevabiniFormatla(cozum.data);
-  log(`  ✓ Captcha ham: "${cozum.data}" → formatlı: "${formatted}" (${ms}ms, id=${cozum.id})`);
-  return { ham: cozum.data, cevap: formatted, captchaId: cozum.id };
+  const ham = (cozum.data || '').trim();
+  const formatted = captchaCevabiniFormatla(ham);
+
+  // VALİDASYON: KGM captcha formatı "MATEMATIK SAYI" — sonuç en az "X NNNNN" gibi 7+ karakter olmalı.
+  // Eğer çok kısa (sadece sayı veya tek parça), 2captcha yanlış okumuş demektir, retry yap.
+  const parts = formatted.split(/\s+/);
+  const hasMath = ham.match(/[+\-*\/x×]/);
+  const isValid = parts.length >= 2 && parts.every(p => /^\d+$/.test(p)) && formatted.length >= 5;
+  log(`  ${isValid ? '✓' : '✗ FORMAT BOZUK'} Captcha ham: "${ham}" → formatlı: "${formatted}" (${ms}ms, id=${cozum.id})`);
+  if (!isValid) {
+    // Yanlış formatlı captcha — 2captcha'ya yanlış olarak raporla, retry sinyali ver
+    try { await solver.reportBad(cozum.id); } catch {}
+    return { ham, cevap: formatted, captchaId: cozum.id, formatBozuk: true };
+  }
+  return { ham, cevap: formatted, captchaId: cozum.id };
 }
 
 async function captchaYanlisRapor(captchaId) {
@@ -235,6 +247,10 @@ async function sorgulaPlakaTekSefer(page, plaka) {
   // 4. Captcha çöz
   const cozumBilgi = await captchayiCoz(page);
   if (!cozumBilgi) throw new Error('Captcha çözülemedi');
+  // Format bozuksa direkt captcha_yanlis dön — retry mantığı bu satıra dokunur
+  if (cozumBilgi.formatBozuk) {
+    return { durum: 'captcha_yanlis', captchaId: cozumBilgi.captchaId, hata: 'format bozuk' };
+  }
 
   // 5. Captcha cevabını textarea'ya yaz
   const kodInput = await page.$('#txtimgcode');
@@ -367,19 +383,15 @@ async function sorgulaPlaka(page, plaka) {
   const plakaTemiz = (plaka || '').replace(/\s/g, '').toUpperCase();
   log(`→ Plaka sorgulanıyor: ${plakaTemiz}`);
 
-  let sonuc = await sorgulaPlakaTekSefer(page, plaka);
-
-  if (sonuc.durum === 'captcha_yanlis') {
-    log(`  ↻ Captcha yanlış, retry...`);
-    await captchaYanlisRapor(sonuc.captchaId);
+  const MAX_DENEME = 4;
+  let sonuc = null;
+  for (let i = 1; i <= MAX_DENEME; i++) {
     sonuc = await sorgulaPlakaTekSefer(page, plaka);
-    if (sonuc.durum === 'captcha_yanlis') {
-      await captchaYanlisRapor(sonuc.captchaId);
-      return { durum: 'hatali', hataMesaji: '2 deneme captcha yanlış geldi' };
-    }
+    if (sonuc.durum !== 'captcha_yanlis') return sonuc;
+    log(`  ↻ Captcha yanlış (${i}/${MAX_DENEME}), retry...`);
+    await captchaYanlisRapor(sonuc.captchaId);
   }
-
-  return sonuc;
+  return { durum: 'hatali', hataMesaji: `${MAX_DENEME} deneme captcha yanlış geldi` };
 }
 
 // === Ana döngü ===
