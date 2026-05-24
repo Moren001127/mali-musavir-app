@@ -3,6 +3,7 @@ const assert = require('assert');
 const path = require('path');
 
 const ROOT = path.resolve(__dirname, '..');
+const ExcelJS = require(path.join(ROOT, 'apps', 'api', 'node_modules', 'exceljs'));
 
 function loadTsNode() {
   process.env.TS_NODE_TRANSPILE_ONLY = 'true';
@@ -132,4 +133,125 @@ assert.strictEqual(
   'Fan-out sifir KDV satirlari oturum ozetinde tutar uyumsuzlugu sayilmamali',
 );
 
-console.log('OK kdv-export-order-regression');
+const telekomDecision = service.moderateContentAuditDecision(
+  {
+    risk: 'KONTROL_ET',
+    summary: 'Türk Telekom mobil hizmet faturası, servis personel taşımacılığı faaliyetiyle ilişkili olabilir ancak belge metninde işletmesel kullanım amacı açıkça belirtilmemiştir.',
+    suggestion: 'Muhasebeci bu mobil hattın işletme faaliyetine ait olduğunu ayrıca belgelemelidir.',
+    findings: [],
+    confidence: 0.72,
+  },
+  {
+    originalName: 'BC12026026095937.html',
+    ocrRawText: 'TÜRK TELEKOM MOBİL HİZMET FATURASI kurumsal hat fatura hizmet bedeli',
+    ocrSatici: 'TÜRK TELEKOM',
+    ocrBelgeTipi: 'Fatura',
+  },
+  {
+    taxpayer: {
+      companyName: 'SERVİS PERSONEL TAŞIMACILIĞI TURİZM LİMİTED ŞİRKETİ',
+      notes: 'Servis personel taşımacılığı ve turizm faaliyeti',
+    },
+  },
+);
+
+assert.strictEqual(
+  telekomDecision.risk,
+  'UYGUN',
+  'Telekom/internet gibi olağan işletme giderleri kişisel kullanım sinyali yoksa tekrar kontrol uyarısı üretmemeli',
+);
+
+const visibleAudit = service.formatContentAuditForExport({
+  contentAuditStatus: 'DONE',
+  contentAuditRisk: 'KONTROL_ET',
+  contentAuditSummary: 'Türk Telekom mobil hizmet faturası, servis personel taşımacılığı faaliyetiyle ilişkili olabilir ancak belge metninde işletmesel kullanım amacı açıkça belirtilmemiştir ve muhasebeci tarafından doğrulanmalıdır.',
+  contentAuditSuggestion: 'Muhasebeci, bu mobil hattın işletme faaliyetine (personel taşımacılığı, depo/ofis yönetimi, sürücü iletişimi vb.) ait olduğunu belgelemeli; kişisel kullanım şüphesi varsa mükelleften yazılı açıklama almalıdır.',
+  contentAuditFindings: [
+    {
+      title: 'Uzun bulgu',
+      detail: 'Bu ayrıntılı değerlendirme hücre içinde satır yüksekliğini büyütmek yerine Excel hücre notunda kalmalıdır.',
+      severity: 'KONTROL_ET',
+    },
+  ],
+});
+
+assert.strictEqual(
+  visibleAudit.suggestion,
+  'Kontrol et; ayrıntı notta',
+  'Excel görünür öneri alanı uzun açıklamayla satır yüksekliğini şişirmemeli',
+);
+assert.ok(
+  visibleAudit.summary.length <= 80,
+  'Excel görünür içerik yorumu kısa kalmalı',
+);
+assert.ok(
+  visibleAudit.comment.includes('Muhasebeci, bu mobil hattın işletme faaliyetine'),
+  'Excel hücre notu uzun içerik denetimi detayını korumalı',
+);
+
+async function runExcelLayoutRegression() {
+  const exportService = Object.create(KdvControlService.prototype);
+  exportService.logger = { warn() {} };
+  exportService.findSession = async () => ({
+    id: 'session-layout',
+    type: 'ISLETME_GIDER',
+    periodLabel: '2026/04',
+    taxpayer: {
+      companyName: 'SERVİS PERSONEL TAŞIMACILIĞI TURİZM LİMİTED ŞİRKETİ',
+      taxNumber: '1234567890',
+    },
+  });
+  exportService.checkBelgeSeriContinuity = async () => [];
+  exportService.prisma = {
+    reconciliationResult: {
+      findMany: async () => [
+        {
+          id: 'layout-row',
+          status: 'MATCHED',
+          imageId: 'layout-image',
+          kdvRecordId: 'layout-record',
+          kdvRecord: {
+            belgeNo: 'BC12026026095937',
+            belgeDate: date('2026-04-09'),
+            kdvTutari: 62.2,
+            kdvOrani: 20,
+            rawData: {},
+          },
+          image: {
+            id: 'layout-image',
+            confirmedBelgeNo: 'BC12026026095937',
+            confirmedDate: '09.04.2026',
+            confirmedKdvTutari: '62,20',
+            contentAuditStatus: 'DONE',
+            contentAuditRisk: 'KONTROL_ET',
+            contentAuditSummary: visibleAudit.comment,
+            contentAuditSuggestion: visibleAudit.comment,
+            contentAuditFindings: [],
+          },
+          mismatchReasons: [],
+        },
+      ],
+    },
+  };
+
+  const buffer = await exportService.exportResultsToExcel('session-layout', 'tenant-layout', { autoArchive: false });
+  const workbook = new ExcelJS.Workbook();
+  await workbook.xlsx.load(buffer);
+  const worksheet = workbook.getWorksheet('KDV Kontrol');
+  const row = worksheet.getRow(16);
+
+  assert.strictEqual(row.height, 24, 'Excel veri satırı uzun yorum nedeniyle otomatik büyümemeli');
+  assert.notStrictEqual(row.getCell(12).alignment.wrapText, true, 'Öneri hücresi satır sarma yapmamalı');
+  assert.notStrictEqual(row.getCell(13).alignment.wrapText, true, 'İçerik yorumu hücresi satır sarma yapmamalı');
+  assert.strictEqual(row.getCell(12).value, 'Kontrol et; ayrıntı notta', 'Excel öneri hücresi kısa görünür metin taşımalı');
+  assert.ok(row.getCell(13).note, 'Uzun içerik denetimi detayı hücre notunda kalmalı');
+}
+
+runExcelLayoutRegression()
+  .then(() => {
+    console.log('OK kdv-export-order-regression');
+  })
+  .catch((error) => {
+    console.error(error);
+    process.exit(1);
+  });

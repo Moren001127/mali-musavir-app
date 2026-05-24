@@ -1960,6 +1960,10 @@ export class KdvControlService {
       /plaka|utts|ta[şs][ıi]t tan[ıi]ma|shell card|kurumsal ödeme kart[ıi]|[0-9]{2}\s*[a-zçğıöşü]{1,3}\s*[0-9]{2,4}/i.test(text);
     const transportActivity =
       /servis|ta[şs][ıi]mac[ıi]l[ıi]k|turizm|nakliye|lojistik|taksi|rent a car|ara[çc] kiralama/.test(`${text} ${taxpayerText}`);
+    const ordinaryOverheadSignal =
+      /t[üu]rk telekom|ttnet|turkcell|vodafone|superonline|telefon|mobil hizmet|gsm|internet|fiber|dsl|sabit hat|ileti[şs]im|elektrik|su fatur|do[ğg]algaz|kira|muhasebe|noter|yaz[ıi]l[ıi]m|k[ıi]rtasiye|ofis|kargo/.test(text);
+    const personalUseSignal =
+      /bireysel|ki[şs]isel|[öo]zel kullan[ıi]m|konut|ev interneti|ev telefonu|aile|hediye|l[üu]ks|oyun|e[ğg]lence/.test(text);
     const profileIsThin = taxpayerText.trim().length < 18;
     const lowConfidence = Number(baseDecision.confidence || 0) < 0.82;
 
@@ -1978,6 +1982,28 @@ export class KdvControlService {
           {
             title: 'Faaliyet bağlantısı güçlü',
             detail: 'Belgede akaryakıt, taşıt/plaka veya kurumsal kart sinyali ve taşıma faaliyeti birlikte görünüyor.',
+            severity: 'UYGUN' as ContentAuditRisk,
+          },
+          ...baseDecision.findings.filter((finding) => finding.severity === 'UYGUN'),
+        ].slice(0, 6),
+        confidence: Math.max(Number(baseDecision.confidence || 0), 0.78),
+      };
+    }
+
+    if (
+      baseDecision.risk === 'KONTROL_ET' &&
+      !hardBlockSignal &&
+      ordinaryOverheadSignal &&
+      !personalUseSignal
+    ) {
+      return {
+        risk: 'UYGUN',
+        summary: 'Belge olağan işletme haberleşme/ofis gideri niteliğinde görünüyor.',
+        suggestion: 'Normal kayıt; fatura işletme adına/işletme kullanımına aitse belge dayanağını dosyada saklayın.',
+        findings: [
+          {
+            title: 'Olağan işletme gideri',
+            detail: 'Telefon, internet, ofis veya benzeri genel işletme giderleri açık kişisel kullanım sinyali yoksa ayrıca faaliyet dışı sayılmadı.',
             severity: 'UYGUN' as ContentAuditRisk,
           },
           ...baseDecision.findings.filter((finding) => finding.severity === 'UYGUN'),
@@ -2075,6 +2101,7 @@ Kurallar:
 - "Belge muhasebeleştirilmemeli" gibi kesin talimat verme; muhasebeciye kontrol adımı öner.
 - KDV tutarı ve oranı zaten ayrı KDV kontrol modülünde denetleniyor; içerik denetiminde brüt tutardan KDV oranı hesaplama, "%18 beklenir" gibi matematik yorumu yapma.
 - Akaryakıt belgesinde servis/taşımacılık/turizm faaliyetiyle birlikte plaka, UTTS, taşıt tanıma veya kurumsal yakıt kartı görülüyorsa normalde UYGUN seç; aynı taşıt bağlantısını her belgede tekrar KONTROL_ET yapma.
+- Telefon, internet, mobil hat, elektrik, su, kira, muhasebe, noter, yazılım, kırtasiye, ofis ve kargo gibi olağan işletme giderlerini sadece kullanım amacı metinde tek tek yazmıyor diye KONTROL_ET yapma; bireysel/konut/kişisel kullanım sinyali varsa KONTROL_ET seç.
 - Sadece verilen veriye dayan; emin değilsen KONTROL_ET seç.
 - Faaliyetle açıkça ilgisiz özel harcama, ceza, alkol/tütün, hediye/lüks tüketim gibi kalemleri yükselt.
 - Yemek, otel, akaryakıt, seyahat gibi kalemlerde mükellef faaliyetini ve belge açıklamasını birlikte düşün.
@@ -2712,9 +2739,9 @@ ${JSON.stringify(payload, null, 2)}`;
       { width: 14, style: { numFmt: '#,##0.00;[Red]-#,##0.00;0.00' } },
       { width: 16 },
       { width: 72 },
-      { width: 14 },
-      { width: 30 },
-      { width: 42 },
+      { width: 13 },
+      { width: 24 },
+      { width: 32 },
     ];
 
     // ─── MOREN LOGOLU BAŞLIK ─────────────────────────────
@@ -2907,6 +2934,7 @@ ${JSON.stringify(payload, null, 2)}`;
       if (contentAudit.comment) {
         (ws.getCell(rowNum, 13) as any).note = contentAudit.comment;
       }
+      row.height = 24;
 
       // Duruma göre renk
       let rowBg = idx % 2 === 0 ? 'FFFFFFFF' : ALT_BG;
@@ -2933,7 +2961,8 @@ ${JSON.stringify(payload, null, 2)}`;
         cell.alignment = {
           horizontal: rightAlign ? 'right' : centerAlign ? 'center' : 'left',
           vertical: 'middle',
-          wrapText: colNum === 10 || colNum === 12 || colNum === 13,
+          wrapText: false,
+          shrinkToFit: colNum === 10 || colNum === 12 || colNum === 13,
         };
         cell.border = {
           top:    { style: 'thin', color: { argb: 'FFE5E7EB' } },
@@ -3050,12 +3079,16 @@ ${JSON.stringify(payload, null, 2)}`;
     const findings = (Array.isArray(image.contentAuditFindings) ? image.contentAuditFindings : [])
       .filter((f: any) => !this.isContentAuditKdvArithmeticNoise(`${f?.title || ''} ${f?.detail || ''}`));
 
-    const visibleSuggestion = risk === 'Uygun'
-      ? 'Normal kayıt; ayrıntı hücre notunda.'
-      : this.compactContentAuditText(suggestion, 180);
-    const visibleSummary = risk === 'Uygun'
-      ? this.compactContentAuditText(summary || 'Faaliyetle uyumlu görünüyor.', 150)
-      : this.compactContentAuditText(summary, 190);
+    const visibleSuggestion =
+      risk === 'Uygun' ? 'Normal kayıt'
+      : risk === 'Kontrol et' ? 'Kontrol et; ayrıntı notta'
+      : risk === 'Riskli' ? 'Detaylı incele; ayrıntı notta'
+      : risk === 'İşlenmemeli' ? 'İşleme alma; ayrıntı notta'
+      : this.compactContentAuditText(suggestion, 70);
+    const visibleSummary =
+      risk === 'Uygun' ? 'Faaliyetle uyumlu görünüyor'
+      : risk === 'Kontrol et' ? this.compactContentAuditText(summary, 80)
+      : this.compactContentAuditText(summary, 90);
     const comment = [
       summary && summary !== visibleSummary ? `Özet: ${summary}` : '',
       suggestion && suggestion !== visibleSuggestion ? `Öneri: ${suggestion}` : '',
