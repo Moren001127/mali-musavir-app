@@ -1,4 +1,4 @@
-import { Injectable } from '@nestjs/common';
+import { Injectable, Logger } from '@nestjs/common';
 import { createHash } from 'crypto';
 import { Prisma } from '@prisma/client';
 import { PrismaService } from '../prisma/prisma.service';
@@ -6,6 +6,7 @@ import { logAiUsage } from '../common/ai-usage-logger';
 import { profileToPromptText } from '../common/profile-prompt';
 import { VendorMemoryService } from '../vendor-memory/vendor-memory.service';
 import { PendingDecisionsService } from '../pending-decisions/pending-decisions.service';
+import { WhatsAppService } from '../whatsapp/whatsapp.service';
 import {
   commandClaimAgentsForRunner,
   commandListAgentsForFilter,
@@ -53,10 +54,13 @@ export class AgentEventsService {
   private readonly largeMetaKeyRe =
     /base64|image|gorsel|screenshot|html|pdf|buffer|raw|content|icerik|ocr|runtime/i;
 
+  private readonly logger = new Logger(AgentEventsService.name);
+
   constructor(
     private prisma: PrismaService,
     private vendorMemory: VendorMemoryService,
     private pendingDecisions: PendingDecisionsService,
+    private whatsappService: WhatsAppService,
   ) {}
 
   private getMihsapDecisionMode(): MihsapDecisionMode {
@@ -3242,10 +3246,86 @@ Fatura görüntüsünü incele. Yukarıdaki MEVCUT SEÇENEKLER'den Kayıt Türü
         mergedResult = { ...data.result, logs: existingLogs };
       }
     }
-    return this.prisma.agentCommand.update({
+    const updated = await this.prisma.agentCommand.update({
       where: { id },
       data: { ...data, ...(mergedResult !== undefined ? { result: mergedResult } : {}), finishedAt } as any,
     });
+
+    // HGS toplu-sorgu tamamlandığında otomatik WhatsApp bildirim
+    if (data.status === 'done' && updated.agent === 'hgs' && updated.action === 'toplu-sorgu') {
+      // Async olarak tetikle, response'u bekleyenleri yavaşlatma
+      this.hgsToplu_SorguTamamlandi(tenantId, id).catch((err) =>
+        this.logger.warn(`[HGS WhatsApp] Bildirim başarısız: ${err?.message || err}`),
+      );
+    }
+
+    return updated;
+  }
+
+  /** HGS toplu sorgu tamamlandığında WhatsApp ile özet gönder.
+   *  Alıcı: HGS_RAPOR_ALICI_NUMARA env veya default Halil Bey numarası.
+   */
+  private async hgsToplu_SorguTamamlandi(tenantId: string, commandId: string) {
+    const aliciNumara = process.env.HGS_RAPOR_ALICI_NUMARA || '905348610965';
+    const aliciAd = process.env.HGS_RAPOR_ALICI_AD || 'Halil Bey';
+
+    // Komut detaylarını al
+    const cmd = await this.prisma.agentCommand.findFirst({ where: { id: commandId, tenantId } });
+    if (!cmd) return;
+    const result: any = cmd.result || {};
+    const aracSayisi = result.araclar || 0;
+    const basariliSayisi = result.basarili || 0;
+
+    // Toplam ihlal ve tutar — son sorgulardan topla
+    const aracIds: string[] = (cmd.payload as any)?.aracIds || [];
+    let toplamIhlal = 0;
+    let toplamTutar = 0;
+    let ihlalliArac = 0;
+    if (aracIds.length > 0) {
+      const sonuclar = await (this.prisma as any).hgsIhlalSorguSonucu.findMany({
+        where: { tenantId, aracId: { in: aracIds } },
+        orderBy: [{ aracId: 'asc' }, { sorguTarihi: 'desc' }],
+      });
+      // Her araç için son sorguyu al
+      const sonPerArac = new Map<string, any>();
+      for (const s of sonuclar) {
+        if (!sonPerArac.has(s.aracId)) sonPerArac.set(s.aracId, s);
+      }
+      for (const s of sonPerArac.values()) {
+        const adet = s.ihlalSayisi || 0;
+        toplamIhlal += adet;
+        toplamTutar += Number(s.toplamTutar || 0);
+        if (adet > 0) ihlalliArac++;
+      }
+    }
+
+    const tutarFmt = new Intl.NumberFormat('tr-TR', { minimumFractionDigits: 2, maximumFractionDigits: 2 }).format(toplamTutar);
+    const mesaj = [
+      `${aliciAd} Merhabalar,`,
+      ``,
+      `HGS toplu sorgulama işleminiz tamamlanmıştır.`,
+      ``,
+      `📋 Özet:`,
+      `• Sorgulanan: ${basariliSayisi}/${aracSayisi} araç`,
+      `• İhlalli araç: ${ihlalliArac}`,
+      `• Toplam ihlal: ${toplamIhlal}`,
+      `• Toplam tutar: ${tutarFmt} ₺`,
+      ``,
+      `Detaylı döküm için: https://portal.morenmusavirlik.com/panel/galeri/hgs-ihlal`,
+      ``,
+      `İyi günler.`,
+    ].join('\n');
+
+    try {
+      const ok = await this.whatsappService.sendMessage(aliciNumara, mesaj);
+      if (ok) {
+        this.logger.log(`[HGS WhatsApp] Bildirim gönderildi: ${aliciNumara} (${aracSayisi} araç, ${toplamIhlal} ihlal)`);
+      } else {
+        this.logger.warn(`[HGS WhatsApp] Bildirim başarısız (WhatsApp yapılandırılmamış olabilir)`);
+      }
+    } catch (err: any) {
+      this.logger.warn(`[HGS WhatsApp] Gönderim hatası: ${err?.message || err}`);
+    }
   }
 
   /** Mihsap'tan çekilen mükellefleri toplu upsert (taxNumber ile eşle) */
