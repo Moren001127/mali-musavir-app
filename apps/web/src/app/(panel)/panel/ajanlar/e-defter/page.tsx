@@ -22,7 +22,7 @@ type Taxpayer = { id: string; firstName?: string | null; lastName?: string | nul
 type PeriodMode = 'GECICI' | 'AYLIK' | 'YILLIK';
 type SeverityFilter = 'ALL' | 'ERROR' | 'WARN' | 'INFO';
 type StatusFilter = 'OPEN' | 'ALL' | 'RESOLVED' | 'IGNORED';
-type Tab = 'BULGULAR' | 'SATIRLAR' | 'GECMIS';
+type Tab = 'BULGULAR' | 'SATIRLAR' | 'MIZAN' | 'KURALLAR' | 'GECMIS';
 
 const MONTH_LABELS = ['Ocak','Şubat','Mart','Nisan','Mayıs','Haziran','Temmuz','Ağustos','Eylül','Ekim','Kasım','Aralık'];
 
@@ -98,6 +98,7 @@ function categoryLabel(code: string) {
     BELGE_TARIHI_FIS_TARIHINDEN_SONRA: 'Belge tarihi > fiş tarihi',
     BELGE_TARIHI_DONEM_DISI: 'Belge tarihi dönem dışı',
     BOS_FIS: 'Boş fiş', TEK_SATIRLI_FIS: 'Tek satırlı fiş',
+    FIS_TARIHI_PARSE_HATASI: 'Fiş tarihi parse hatası',
     VKN_FORMAT_HATALI: 'VKN/TCKN format hatalı',
     VKN_ALGORITMA_HATALI: 'VKN/TCKN algoritması tutmuyor',
     GERCEK_MUKERRER_FATURA: 'Mükerrer fatura (VKN+No+Tutar)',
@@ -123,7 +124,7 @@ function categoryGroup(code: string): { id: string; label: string; order: number
   if (code.startsWith('YEVMIYE_') || code === 'FIS_DENGESIZ' || code === 'BOS_FIS' || code === 'TEK_SATIRLI_FIS')
     return { id: 'yevmiye', label: 'Yevmiye / Fiş Bütünlüğü', order: 7, icon: '📋' };
   if (code.includes('BELGE')) return { id: 'belge', label: 'Belge / Evrak', order: 8, icon: '📄' };
-  if (code === 'HESAP_KODU_EKSIK' || code === 'FIS_TARIHI_EKSIK' || code === 'DONEM_DISI_TARIH')
+  if (code === 'HESAP_KODU_EKSIK' || code === 'FIS_TARIHI_EKSIK' || code === 'FIS_TARIHI_PARSE_HATASI' || code === 'DONEM_DISI_TARIH')
     return { id: 'tem2', label: 'Temel Bütünlük', order: 0, icon: '🔍' };
   if (code === 'YUKSEK_TUTAR_ACIKLAMA_EKSIK') return { id: 'aciklama', label: 'Açıklama / Kalite', order: 10, icon: '📝' };
   return { id: 'diger', label: 'Diğer', order: 99, icon: '•' };
@@ -264,7 +265,16 @@ export default function EDefterAgentPage() {
   }, [allFindings]);
 
   const mizan = session?.companionMizan || jobQuery.data?.mizan || null;
-  const mizanAnomalies = mizan?.anomaliler || [];
+  const mizanAnomalies = useMemo(() => {
+    const all = (mizan?.anomaliler || []) as any[];
+    return all.filter((a: any) => {
+      const code = String(a.hesapKodu || '').trim();
+      if (!code) return true; // hesap yoksa (genel uyari) goster
+      // Sadece muavin/detay hesaplar: en az 2 nokta (orn 100.01.001)
+      const dotCount = (code.match(/\./g) || []).length;
+      return dotCount >= 2;
+    });
+  }, [mizan]);
 
   const visibleFindings = useMemo(() => {
     const query = findingSearch.trim().toLocaleLowerCase('tr-TR');
@@ -294,12 +304,41 @@ export default function EDefterAgentPage() {
 
   const lines = useMemo(() => session?.lines || [], [session]);
   const visibleLines = useMemo(() => {
-    const focusedVoucherKey = focusedFinding?.voucherKey || null;
-    const focusedRowIndex = focusedFinding?.rowIndex ? Number(focusedFinding.rowIndex) : null;
     const query = lineSearch.trim().toLocaleLowerCase('tr-TR');
+
+    // Focus aktifse, fis butununu kapsa
+    let focusedRows: Set<number> | null = null;
+    if (focusedFinding && lines.length > 0) {
+      focusedRows = new Set<number>();
+      const fVoucherKey = focusedFinding?.voucherKey || null;
+      const fRowIndex = focusedFinding?.rowIndex ? Number(focusedFinding.rowIndex) : null;
+      const focusedLine: any = fRowIndex != null ? lines.find((l: any) => Number(l.rowIndex) === fRowIndex) : null;
+      const fFisNo = focusedLine?.fisNo || null;
+      const fYevmiyeNo = focusedLine?.yevmiyeNo || null;
+
+      // 1) Ayni voucherKey
+      if (fVoucherKey) {
+        for (const l of lines) if (l.voucherKey === fVoucherKey) focusedRows.add(Number(l.rowIndex));
+      }
+      // 2) Ayni yevmiye no (varsa)
+      if (fYevmiyeNo) {
+        for (const l of lines) if (l.yevmiyeNo === fYevmiyeNo) focusedRows.add(Number(l.rowIndex));
+      }
+      // 3) Ayni fis no (varsa)
+      if (fFisNo) {
+        for (const l of lines) if (l.fisNo === fFisNo) focusedRows.add(Number(l.rowIndex));
+      }
+      // 4) Tek satir kaldiysa +/-5 satir baglam ekle
+      if (focusedRows.size <= 1 && fRowIndex != null) {
+        for (const l of lines) {
+          const ri = Number(l.rowIndex);
+          if (Math.abs(ri - fRowIndex) <= 5) focusedRows.add(ri);
+        }
+      }
+    }
+
     return lines.filter((line: any) => {
-      const matchesFocus = !focusedFinding || (focusedVoucherKey && line.voucherKey === focusedVoucherKey) || (focusedRowIndex && Number(line.rowIndex) === focusedRowIndex);
-      if (!matchesFocus) return false;
+      if (focusedRows && !focusedRows.has(Number(line.rowIndex))) return false;
       if (!query) return true;
       const haystack = [line.rowIndex, line.voucherKey, line.fisNo, line.yevmiyeNo, line.evrakNo, line.hesapKodu, line.hesapAdi, line.aciklama, fmtDate(line.fisTarihi)].filter(Boolean).join(' ').toLocaleLowerCase('tr-TR');
       return haystack.includes(query);
@@ -424,6 +463,8 @@ export default function EDefterAgentPage() {
       <div className="flex items-center gap-1 border-b" style={{ borderColor: BORDER_STRONG }}>
         <TabButton active={activeTab === 'BULGULAR'} onClick={() => setActiveTab('BULGULAR')} icon={LayoutGrid} label="Bulgular" badge={stats.open} />
         <TabButton active={activeTab === 'SATIRLAR'} onClick={() => setActiveTab('SATIRLAR')} icon={ListChecks} label="Fiş Satırları" badge={lines.length} />
+        <TabButton active={activeTab === 'MIZAN'} onClick={() => setActiveTab('MIZAN')} icon={FileSpreadsheet} label="Mizan Denetimi" badge={mizan?.anomalyCount} />
+        <TabButton active={activeTab === 'KURALLAR'} onClick={() => setActiveTab('KURALLAR')} icon={Sparkles} label="Kontrol Kuralları" />
         <TabButton active={activeTab === 'GECMIS'} onClick={() => setActiveTab('GECMIS')} icon={History} label="Geçmiş Kontroller" badge={periodSessions.length} />
         <div className="ml-auto flex items-center gap-2 pb-2">
           {activeTab === 'BULGULAR' && (
@@ -545,33 +586,73 @@ export default function EDefterAgentPage() {
             })}
           </div>
 
-          {/* Mizan — bulgular altında ince bir bant */}
-          {mizan && (
-            <div className="rounded-xl p-3.5" style={{ background: PANEL, border: `1px solid ${BORDER}` }}>
-              <div className="flex items-center gap-2 mb-2">
-                <FileSpreadsheet size={14} style={{ color: GOLD }} />
-                <span className="text-xs font-bold uppercase tracking-wider" style={{ color: '#fafaf9' }}>Mizan Kontrolü</span>
-                <span className="text-xs tabular-nums ml-auto" style={{ color: mizan?.anomalyCount ? '#f59e0b' : 'rgba(250,250,249,.45)' }}>{mizan.hesapCount || 0} hesap · {mizan.anomalyCount || 0} bulgu</span>
+        </div>
+      )}
+
+      {/* TAB: MIZAN DENETIMI — tam ekran */}
+      {activeTab === 'MIZAN' && (
+        <div className="space-y-3">
+          {!mizan ? (
+            <div className="rounded-2xl p-12 text-center" style={{ background: PANEL, border: `1px dashed ${BORDER_STRONG}` }}>
+              <div className="inline-flex h-14 w-14 rounded-full items-center justify-center mb-3" style={{ background: GOLD_SOFT, color: GOLD }}>
+                <FileSpreadsheet size={26} />
               </div>
+              <div className="text-base font-semibold mb-1" style={{ color: '#fafaf9' }}>Mizan henüz çekilmedi</div>
+              <div className="text-xs" style={{ color: 'rgba(250,250,249,.5)' }}>"Luca'dan Çek" butonunu kullandığında aynı dönemin mizanı otomatik olarak buraya gelir.</div>
+            </div>
+          ) : (
+            <>
+              <div className="grid grid-cols-2 md:grid-cols-4 gap-2.5">
+                <BigStat label="Toplam Hesap" value={mizan.hesapCount || 0} color="#fafaf9" />
+                <BigStat label="Mizan Bulgusu" value={mizan.anomalyCount || 0} color={mizan.anomalyCount ? '#f59e0b' : '#22c55e'} />
+                <div className="rounded-xl p-3" style={{ background: PANEL, border: `1px solid ${BORDER}` }}>
+                  <div className="text-[9px] uppercase tracking-[.18em] mb-1" style={{ color: 'rgba(250,250,249,.45)' }}>Durum</div>
+                  <div className="text-sm font-semibold" style={{ color: mizan.status === 'READY' ? '#22c55e' : GOLD }}>{mizan.status || '-'}</div>
+                </div>
+                <div className="rounded-xl p-3" style={{ background: PANEL, border: `1px solid ${BORDER}` }}>
+                  <div className="text-[9px] uppercase tracking-[.18em] mb-1" style={{ color: 'rgba(250,250,249,.45)' }}>Güncelleme</div>
+                  <div className="text-xs font-semibold tabular-nums" style={{ color: '#fafaf9' }}>{fmtDateTime(mizan.updatedAt || mizan.createdAt)}</div>
+                </div>
+              </div>
+
               {mizanAnomalies.length === 0 ? (
-                <div className="text-xs px-2 py-1.5 rounded" style={{ background: 'rgba(34,197,94,.08)', color: '#86efac' }}>Mizan kontrolünde bulgu yok.</div>
+                <div className="rounded-2xl p-10 text-center" style={{ background: 'rgba(34,197,94,.05)', border: '1px dashed rgba(34,197,94,.2)' }}>
+                  <div className="inline-flex h-12 w-12 rounded-full items-center justify-center mb-3" style={{ background: 'rgba(34,197,94,.15)', color: '#22c55e' }}>
+                    <CheckCircle2 size={24} />
+                  </div>
+                  <div className="text-base font-semibold mb-1" style={{ color: '#86efac' }}>Mizan kontrolünde bulgu yok</div>
+                  <div className="text-xs" style={{ color: 'rgba(250,250,249,.5)' }}>{mizan.hesapCount || 0} hesap kontrol edildi, mizan disiplini açısından temiz.</div>
+                </div>
               ) : (
-                <div className="grid grid-cols-1 md:grid-cols-2 gap-2">
-                  {mizanAnomalies.slice(0, 8).map((a: any) => (
-                    <div key={a.id} className="flex items-start gap-2 text-xs p-2 rounded" style={{ background: 'rgba(255,255,255,.02)' }}>
-                      <Severity value={a.seviye || 'WARN'} />
-                      <span className="font-semibold" style={{ color: 'rgba(250,250,249,.9)' }}>{a.hesapKodu}</span>
-                      <span style={{ color: 'rgba(250,250,249,.7)' }}>{a.mesaj}</span>
-                    </div>
-                  ))}
+                <div className="rounded-xl border overflow-hidden" style={{ background: PANEL, borderColor: BORDER }}>
+                  <table className="w-full text-sm">
+                    <thead style={{ background: 'rgba(0,0,0,.18)' }}>
+                      <tr style={{ color: 'rgba(250,250,249,.55)', borderBottom: `1px solid ${BORDER}` }}>
+                        <th className="text-left py-2.5 px-4 font-semibold text-xs uppercase tracking-wider">Seviye</th>
+                        <th className="text-left py-2.5 px-4 font-semibold text-xs uppercase tracking-wider">Tip</th>
+                        <th className="text-left py-2.5 px-4 font-semibold text-xs uppercase tracking-wider">Hesap</th>
+                        <th className="text-left py-2.5 px-4 font-semibold text-xs uppercase tracking-wider">Açıklama</th>
+                      </tr>
+                    </thead>
+                    <tbody>
+                      {mizanAnomalies.map((a: any) => (
+                        <tr key={a.id} style={{ borderBottom: `1px solid ${BORDER}`, color: '#fafaf9' }}>
+                          <td className="py-2.5 px-4"><Severity value={a.seviye || 'WARN'} /></td>
+                          <td className="py-2.5 px-4 text-xs font-semibold" style={{ color: GOLD }}>{a.tip || '-'}</td>
+                          <td className="py-2.5 px-4 font-semibold tabular-nums" style={{ color: '#fafaf9' }}>{a.hesapKodu || '-'}</td>
+                          <td className="py-2.5 px-4 text-xs" style={{ color: 'rgba(250,250,249,.85)' }}>{a.mesaj || '-'}</td>
+                        </tr>
+                      ))}
+                    </tbody>
+                  </table>
                 </div>
               )}
-            </div>
+            </>
           )}
         </div>
       )}
 
-      {/* TAB: SATIRLAR — tam ekran tablo */}
+      {/* TAB: SATIRLAR — fiş bazlı kart gruplama */}
       {activeTab === 'SATIRLAR' && (
         <div className="space-y-3">
           <div className="flex flex-wrap items-center gap-2">
@@ -587,42 +668,67 @@ export default function EDefterAgentPage() {
             )}
           </div>
 
-          <div className="rounded-xl border overflow-hidden" style={{ background: PANEL, borderColor: BORDER }}>
-            <div className="overflow-auto max-h-[640px]">
-              <table className="w-full text-xs">
-                <thead className="sticky top-0" style={{ background: 'rgb(20,20,18)' }}>
-                  <tr style={{ color: 'rgba(250,250,249,.55)', borderBottom: `1px solid ${BORDER_STRONG}` }}>
-                    <th className="text-left py-2.5 px-3 font-semibold">#</th>
-                    <th className="text-left py-2.5 px-3 font-semibold">Tarih</th>
-                    <th className="text-left py-2.5 px-3 font-semibold">Fiş</th>
-                    <th className="text-left py-2.5 px-3 font-semibold">Evrak</th>
-                    <th className="text-left py-2.5 px-3 font-semibold">Hesap</th>
-                    <th className="text-left py-2.5 px-3 font-semibold">Açıklama</th>
-                    <th className="text-right py-2.5 px-3 font-semibold">Borç</th>
-                    <th className="text-right py-2.5 px-3 font-semibold">Alacak</th>
-                  </tr>
-                </thead>
-                <tbody>
-                  {visibleLines.slice(0, 1000).map((line: any, idx: number) => (
-                    <tr key={line.id} ref={focusedFinding?.rowIndex && Number(focusedFinding.rowIndex) === Number(line.rowIndex) ? focusedLineRef : undefined} style={{ borderBottom: `1px solid ${BORDER}`, color: 'rgba(250,250,249,.82)', background: focusedFinding?.rowIndex && Number(focusedFinding.rowIndex) === Number(line.rowIndex) ? GOLD_SOFT : idx % 2 ? 'rgba(255,255,255,.012)' : 'transparent' }}>
-                      <td className="py-2 px-3 tabular-nums" style={{ color: 'rgba(250,250,249,.45)' }}>{line.rowIndex || '-'}</td>
-                      <td className="py-2 px-3 whitespace-nowrap">{fmtDate(line.fisTarihi)}</td>
-                      <td className="py-2 px-3 font-semibold" style={{ color: GOLD }}>{line.yevmiyeNo || line.fisNo || '-'}</td>
-                      <td className="py-2 px-3">{line.evrakNo || '-'}</td>
-                      <td className="py-2 px-3 whitespace-nowrap">
-                        <span className="font-semibold" style={{ color: '#fafaf9' }}>{line.hesapKodu || '-'}</span>
-                        <span className="ml-1.5" style={{ color: 'rgba(250,250,249,.5)' }}>{line.hesapAdi || ''}</span>
-                      </td>
-                      <td className="py-2 px-3 min-w-[220px]">{line.aciklama || '-'}</td>
-                      <td className="py-2 px-3 text-right tabular-nums font-mono">{Number(line.borc) > 0 ? fmtTRY(line.borc) : '-'}</td>
-                      <td className="py-2 px-3 text-right tabular-nums font-mono">{Number(line.alacak) > 0 ? fmtTRY(line.alacak) : '-'}</td>
-                    </tr>
-                  ))}
-                </tbody>
-              </table>
-              {session && visibleLines.length === 0 && (<div className="py-12 text-center text-sm" style={{ color: 'rgba(250,250,249,.45)' }}>Bu filtreyle satır bulunamadı.</div>)}
-              {!session && (<div className="py-12 text-center text-sm" style={{ color: 'rgba(250,250,249,.45)' }}>Bir dönem seç veya Luca'dan Detay Fiş Listesi çek.</div>)}
-            </div>
+          {session && visibleLines.length === 0 && (<div className="rounded-2xl p-12 text-center" style={{ background: PANEL, border: `1px dashed ${BORDER_STRONG}`, color: 'rgba(250,250,249,.45)' }}>Bu filtreyle satır bulunamadı.</div>)}
+          {!session && (<div className="rounded-2xl p-12 text-center" style={{ background: PANEL, border: `1px dashed ${BORDER_STRONG}`, color: 'rgba(250,250,249,.45)' }}>Bir dönem seç veya Luca'dan Detay Fiş Listesi çek.</div>)}
+
+          <div className="space-y-3 max-h-[720px] overflow-auto pr-1">
+            {(() => {
+              // Yevmiye bazli grupla
+              const groups: any[] = [];
+              const groupMap = new Map<string, any>();
+              for (const line of visibleLines.slice(0, 1000)) {
+                const key = line.voucherKey || `row-${line.rowIndex}`;
+                if (!groupMap.has(key)) {
+                  const g = { key, lines: [] as any[], first: line, borcSum: 0, alacakSum: 0 };
+                  groupMap.set(key, g);
+                  groups.push(g);
+                }
+                const g = groupMap.get(key);
+                g.lines.push(line);
+                g.borcSum += Number(line.borc || 0);
+                g.alacakSum += Number(line.alacak || 0);
+              }
+              return groups.map((g) => {
+                const fark = Math.abs(g.borcSum - g.alacakSum);
+                const dengesiz = fark > 0.01 && g.lines.length >= 2;
+                const focusedHere = focusedFinding?.rowIndex && g.lines.some((l: any) => Number(l.rowIndex) === Number(focusedFinding.rowIndex));
+                return (
+                  <div key={g.key} className="rounded-xl border overflow-hidden" style={{ background: PANEL, borderColor: focusedHere ? 'rgba(212,184,118,.45)' : (dengesiz ? 'rgba(239,68,68,.35)' : BORDER), borderLeftWidth: '3px', borderLeftColor: focusedHere ? GOLD : (dengesiz ? '#ef4444' : 'rgba(34,197,94,.5)') }}>
+                    {/* Fis baslik bandi */}
+                    <div className="flex flex-wrap items-center gap-3 px-3 py-2" style={{ background: focusedHere ? 'rgba(212,184,118,.10)' : 'rgba(0,0,0,.18)', borderBottom: `1px solid ${BORDER}` }}>
+                      <div className="flex items-center gap-2">
+                        <span className="text-[10px] uppercase tracking-wider" style={{ color: 'rgba(250,250,249,.45)' }}>Yevmiye</span>
+                        <span className="text-base font-bold" style={{ color: GOLD, fontFamily: 'monospace' }}>{g.first.yevmiyeNo || g.first.fisNo || '-'}</span>
+                      </div>
+                      <span className="text-xs" style={{ color: 'rgba(250,250,249,.55)' }}>{fmtDate(g.first.fisTarihi)}</span>
+                      {g.first.evrakNo && (<span className="text-xs px-2 py-0.5 rounded" style={{ background: 'rgba(255,255,255,.05)', color: 'rgba(250,250,249,.65)' }}>Evrak: {g.first.evrakNo}</span>)}
+                      <span className="text-xs tabular-nums ml-auto" style={{ color: 'rgba(250,250,249,.55)' }}>{g.lines.length} satır</span>
+                      <span className="text-xs tabular-nums px-2 py-0.5 rounded font-mono" style={{ background: 'rgba(255,255,255,.04)', color: 'rgba(250,250,249,.8)' }}>
+                        B: {fmtTRY(g.borcSum)} · A: {fmtTRY(g.alacakSum)}
+                      </span>
+                      {dengesiz && (<span className="text-[10px] font-bold px-2 py-0.5 rounded" style={{ background: 'rgba(239,68,68,.18)', color: '#ef4444' }}>DENGESİZ {fmtTRY(fark)}</span>)}
+                    </div>
+                    {/* Satirlar */}
+                    <table className="w-full text-xs">
+                      <tbody>
+                        {g.lines.map((line: any, idx: number) => (
+                          <tr key={line.id} ref={focusedFinding?.rowIndex && Number(focusedFinding.rowIndex) === Number(line.rowIndex) ? focusedLineRef : undefined} style={{ borderBottom: idx < g.lines.length - 1 ? `1px solid ${BORDER}` : undefined, color: 'rgba(250,250,249,.82)', background: focusedFinding?.rowIndex && Number(focusedFinding.rowIndex) === Number(line.rowIndex) ? GOLD_SOFT : 'transparent' }}>
+                            <td className="py-2 px-3 tabular-nums w-12" style={{ color: 'rgba(250,250,249,.4)' }}>{line.rowIndex || '-'}</td>
+                            <td className="py-2 px-3 whitespace-nowrap w-44">
+                              <span className="font-semibold" style={{ color: '#fafaf9' }}>{line.hesapKodu || '-'}</span>
+                            </td>
+                            <td className="py-2 px-3" style={{ color: 'rgba(250,250,249,.7)' }}>{line.hesapAdi || ''}</td>
+                            <td className="py-2 px-3 min-w-[180px]" style={{ color: 'rgba(250,250,249,.65)' }}>{line.aciklama || '-'}</td>
+                            <td className="py-2 px-3 text-right tabular-nums font-mono w-32" style={{ color: Number(line.borc) > 0 ? '#fafaf9' : 'rgba(250,250,249,.3)' }}>{Number(line.borc) > 0 ? fmtTRY(line.borc) : '-'}</td>
+                            <td className="py-2 px-3 text-right tabular-nums font-mono w-32" style={{ color: Number(line.alacak) > 0 ? '#fafaf9' : 'rgba(250,250,249,.3)' }}>{Number(line.alacak) > 0 ? fmtTRY(line.alacak) : '-'}</td>
+                          </tr>
+                        ))}
+                      </tbody>
+                    </table>
+                  </div>
+                );
+              });
+            })()}
           </div>
         </div>
       )}
@@ -729,3 +835,173 @@ function Severity({ value }: { value: string }) {
   const label = value === 'ERROR' ? 'HATA' : value === 'WARN' ? 'UYARI' : 'BİLGİ';
   return (<span className="text-[9px] font-bold px-1.5 py-0.5 rounded" style={{ background: `${color}1c`, color }}>{label}</span>);
 }
+
+type KuralDef = { kod: string; ad: string; aciklama: string; severity: 'ERROR' | 'WARN' | 'INFO'; grup: string; aktif: boolean };
+type ManuelKural = { id: string; ad: string; aciklama: string; severity: 'ERROR' | 'WARN' | 'INFO'; hesapKoduPrefix?: string; tutarEsigi?: number; createdAt: string };
+
+const STANDART_KURALLAR: KuralDef[] = [
+  { kod: 'DEFTER_GENELI_DENGESIZ', ad: 'Defter geneli borç=alacak', aciklama: 'Tüm dönem toplam borç ile alacak eşit değilse uyarır. Berat oluşturmadan önce mutlaka düzeltilmelidir.', severity: 'ERROR', grup: 'Temel Bütünlük', aktif: true },
+  { kod: 'HESAP_KODU_EKSIK', ad: 'Hesap kodu eksik', aciklama: 'Satırda hesap kodu boş bırakılmış.', severity: 'ERROR', grup: 'Temel Bütünlük', aktif: true },
+  { kod: 'DONEM_DISI_TARIH', ad: 'Dönem dışı tarih', aciklama: 'Fiş tarihi seçilen dönem aralığının dışında.', severity: 'ERROR', grup: 'Temel Bütünlük', aktif: true },
+  { kod: 'FIS_TARIHI_PARSE_HATASI', ad: 'Tarih parse hatası (aggregate)', aciklama: 'Excel sütununda tarih okunamayan satırların toplam sayısı.', severity: 'WARN', grup: 'Temel Bütünlük', aktif: true },
+  { kod: 'VKN_FORMAT_HATALI', ad: 'VKN/TCKN format hatası', aciklama: 'VKN/TCKN 10 veya 11 haneli değil.', severity: 'ERROR', grup: 'VKN / TCKN', aktif: true },
+  { kod: 'VKN_ALGORITMA_HATALI', ad: 'VKN/TCKN algoritması tutmuyor', aciklama: 'Hane sayısı doğru ama Maliye kontrol algoritması başarısız. BA/BS uyumsuzluğu yaratır.', severity: 'ERROR', grup: 'VKN / TCKN', aktif: true },
+  { kod: 'GERCEK_MUKERRER_FATURA', ad: 'Gerçek mükerrer fatura', aciklama: 'Aynı belge no + aynı VKN + aynı tutar üç alan birden eşleşiyor. KDV indirimi mükerrer inmiş olabilir.', severity: 'ERROR', grup: 'Mükerrer Kayıt', aktif: true },
+  { kod: 'AYNI_GUN_AYNI_TUTAR_AYNI_TARAF', ad: 'Aynı gün/tutar/taraf', aciklama: 'Aynı tarihte aynı VKN için aynı tutarlı 50.000+ TL kayıt birden fazla.', severity: 'WARN', grup: 'Mükerrer Kayıt', aktif: true },
+  { kod: 'HAVADA_KDV_KAYDI', ad: 'Havada KDV kaydı', aciklama: '191/391 KDV var ama matrah veya cari/kasa karşılık hesabı yok.', severity: 'ERROR', grup: 'KDV', aktif: true },
+  { kod: 'CARI_TERS_BAKIYE_120', ad: '120 ters bakiye', aciklama: '120 Alıcılar hesabı alacaklı bakiye veriyor — müşteri fazla ödeme yapmış veya kayıt hatası.', severity: 'WARN', grup: 'Cari Hesap', aktif: true },
+  { kod: 'CARI_TERS_BAKIYE_320', ad: '320 ters bakiye', aciklama: '320 Satıcılar hesabı borçlu bakiye veriyor — satıcıya fazla ödeme veya kayıt hatası.', severity: 'WARN', grup: 'Cari Hesap', aktif: true },
+  { kod: 'ORTAK_ALACAK_FAIZ_RISKI', ad: '131 ortak alacağı', aciklama: '131 Ortaklardan Alacaklar net bakiyesi 100.000+ TL. KKEG faiz hesaplaması gerekebilir.', severity: 'INFO', grup: 'KKEG', aktif: true },
+  { kod: 'KASA_GUNLUK_30000_TEVSIK_RISKI', ad: 'Kasa günlük 30.000 TL', aciklama: 'Bir günde 100 Kasa hareket toplamı 30.000 TL üzerinde — VUK 459 tevsik zorunluluğu.', severity: 'WARN', grup: 'Tevsik', aktif: true },
+  { kod: 'KASA_TEVSIK_PARCALAMA', ad: 'Tevsik parçalama riski', aciklama: 'Aynı VKN için bir günde birden fazla kasa hareketi toplamı 30.000 TL üstü — parçalama (smurfing).', severity: 'WARN', grup: 'Tevsik', aktif: true },
+  { kod: 'FIS_DENGESIZ', ad: 'Fiş dengesiz', aciklama: 'Tek fişin borç ve alacak toplamları eşit değil.', severity: 'ERROR', grup: 'Yevmiye', aktif: true },
+  { kod: 'YEVMIYE_NO_MUKERRER', ad: 'Yevmiye no mükerrer', aciklama: 'Aynı yevmiye numarası farklı tarihlerde / farklı fişlerde kullanılmış.', severity: 'ERROR', grup: 'Yevmiye', aktif: true },
+  { kod: 'YEVMIYE_NO_ATLAMA', ad: 'Yevmiye no atlama', aciklama: 'Yevmiye numarası sırasında atlanmış aralık var.', severity: 'WARN', grup: 'Yevmiye', aktif: true },
+  { kod: 'YEVMIYE_TARIH_SIRASI', ad: 'Yevmiye tarih sırası', aciklama: 'Yevmiye numarası ile fiş tarihleri sıralı değil.', severity: 'WARN', grup: 'Yevmiye', aktif: true },
+  { kod: 'BOS_FIS', ad: 'Boş fiş', aciklama: 'Fişte hiçbir hareket satırı yok.', severity: 'WARN', grup: 'Yevmiye', aktif: true },
+  { kod: 'TEK_SATIRLI_FIS', ad: 'Tek satırlı fiş', aciklama: 'Fişte sadece 1 hareket satırı var — çift taraflı kayıt prensibi ihlali.', severity: 'WARN', grup: 'Yevmiye', aktif: true },
+  { kod: 'BELGE_TARIHI_FIS_TARIHINDEN_SONRA', ad: 'Belge tarihi > fiş tarihi', aciklama: 'Belge tarihi fiş tarihinden sonra — mantıken belge kaydedildiği günden sonra düzenlenmiş.', severity: 'WARN', grup: 'Belge', aktif: true },
+  { kod: 'BELGE_TARIHI_DONEM_DISI', ad: 'Belge tarihi dönem dışı', aciklama: 'Belge tarihi seçilen dönem aralığının dışında.', severity: 'WARN', grup: 'Belge', aktif: true },
+  { kod: 'YUKSEK_TUTAR_ACIKLAMA_EKSIK', ad: 'Yüksek tutar açıklama eksik', aciklama: '50.000+ TL fişte açıklama 5 karakterden az — denetimde riskli.', severity: 'INFO', grup: 'Kalite', aktif: true },
+];
+
+function KurallarTab() {
+  const [search, setSearch] = useState('');
+  const [showForm, setShowForm] = useState(false);
+  const [manuel, setManuel] = useState<ManuelKural[]>([]);
+  const [form, setForm] = useState<{ ad: string; aciklama: string; severity: 'ERROR' | 'WARN' | 'INFO'; hesapKoduPrefix: string; tutarEsigi: string }>({ ad: '', aciklama: '', severity: 'WARN', hesapKoduPrefix: '', tutarEsigi: '' });
+
+  useEffect(() => {
+    try { const raw = localStorage.getItem('edefter-manuel-kurallar'); if (raw) setManuel(JSON.parse(raw)); } catch {}
+  }, []);
+
+  const saveManuel = (next: ManuelKural[]) => {
+    setManuel(next);
+    try { localStorage.setItem('edefter-manuel-kurallar', JSON.stringify(next)); } catch {}
+  };
+
+  const ekle = () => {
+    if (!form.ad.trim()) { toast.error('Kural adı boş olamaz'); return; }
+    const yeni: ManuelKural = {
+      id: `manuel-${Date.now()}`,
+      ad: form.ad.trim(),
+      aciklama: form.aciklama.trim(),
+      severity: form.severity,
+      hesapKoduPrefix: form.hesapKoduPrefix.trim() || undefined,
+      tutarEsigi: form.tutarEsigi ? Number(form.tutarEsigi) : undefined,
+      createdAt: new Date().toISOString(),
+    };
+    saveManuel([yeni, ...manuel]);
+    setForm({ ad: '', aciklama: '', severity: 'WARN', hesapKoduPrefix: '', tutarEsigi: '' });
+    setShowForm(false);
+    toast.success('Manuel kural eklendi (yerel kayıt)');
+  };
+
+  const sil = (id: string) => saveManuel(manuel.filter((k) => k.id !== id));
+
+  const q = search.trim().toLocaleLowerCase('tr-TR');
+  const filtered = STANDART_KURALLAR.filter((k) => !q || `${k.kod} ${k.ad} ${k.aciklama} ${k.grup}`.toLocaleLowerCase('tr-TR').includes(q));
+  const byGroup = new Map<string, KuralDef[]>();
+  for (const k of filtered) { if (!byGroup.has(k.grup)) byGroup.set(k.grup, []); byGroup.get(k.grup)!.push(k); }
+
+  return (
+    <div className="space-y-4">
+      {/* Üst aksiyon: arama + manuel kural ekle */}
+      <div className="flex flex-wrap items-center gap-2">
+        <div className="h-10 rounded-lg px-3 flex items-center gap-2 flex-1 min-w-[280px]" style={{ background: PANEL, border: `1px solid ${BORDER}`, color: 'rgba(250,250,249,.75)' }}>
+          <Search size={14} />
+          <input value={search} onChange={(e) => setSearch(e.target.value)} placeholder="Kural ara..." className="bg-transparent outline-none text-sm w-full" style={{ color: '#fafaf9' }} />
+        </div>
+        <span className="text-xs tabular-nums" style={{ color: 'rgba(250,250,249,.5)' }}>{STANDART_KURALLAR.length} standart · {manuel.length} manuel</span>
+        <button onClick={() => setShowForm(!showForm)} className="h-10 px-4 rounded-lg text-xs font-semibold inline-flex items-center gap-1.5" style={{ background: GOLD_SOFT, color: GOLD, border: '1px solid rgba(212,184,118,.3)' }}>
+          {showForm ? <XCircle size={13} /> : <Sparkles size={13} />} {showForm ? 'Vazgeç' : 'Manuel Kural Ekle'}
+        </button>
+      </div>
+
+      {/* Manuel kural ekleme formu */}
+      {showForm && (
+        <div className="rounded-xl p-4 space-y-3" style={{ background: GOLD_SOFT, border: '1px solid rgba(212,184,118,.3)' }}>
+          <div className="text-xs font-bold uppercase tracking-wider" style={{ color: GOLD }}>Yeni Manuel Kural</div>
+          <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
+            <Field label="Kural Adı *"><input value={form.ad} onChange={(e) => setForm({ ...form, ad: e.target.value })} placeholder="Örn: Kira ödemesi 5.000 TL üstü kontrol" className="w-full h-9 rounded-md px-3 text-sm" style={{ background: PANEL, border: `1px solid ${BORDER}`, color: '#fafaf9' }} /></Field>
+            <Field label="Seviye"><select value={form.severity} onChange={(e) => setForm({ ...form, severity: e.target.value as any })} className="w-full h-9 rounded-md px-3 text-sm" style={{ background: PANEL, border: `1px solid ${BORDER}`, color: '#fafaf9' }}><option value="ERROR">Hata</option><option value="WARN">Uyarı</option><option value="INFO">Bilgi</option></select></Field>
+            <Field label="Hesap Kodu Başlangıcı (opsiyonel)"><input value={form.hesapKoduPrefix} onChange={(e) => setForm({ ...form, hesapKoduPrefix: e.target.value })} placeholder="Örn: 770 veya 360.01" className="w-full h-9 rounded-md px-3 text-sm tabular-nums" style={{ background: PANEL, border: `1px solid ${BORDER}`, color: '#fafaf9' }} /></Field>
+            <Field label="Tutar Eşiği TL (opsiyonel)"><input type="number" value={form.tutarEsigi} onChange={(e) => setForm({ ...form, tutarEsigi: e.target.value })} placeholder="Örn: 5000" className="w-full h-9 rounded-md px-3 text-sm tabular-nums" style={{ background: PANEL, border: `1px solid ${BORDER}`, color: '#fafaf9' }} /></Field>
+          </div>
+          <Field label="Açıklama"><textarea value={form.aciklama} onChange={(e) => setForm({ ...form, aciklama: e.target.value })} placeholder="Bu kural ne yakalar, neden eklendi?" rows={2} className="w-full rounded-md px-3 py-2 text-sm" style={{ background: PANEL, border: `1px solid ${BORDER}`, color: '#fafaf9' }} /></Field>
+          <div className="flex justify-end">
+            <button onClick={ekle} className="h-9 px-4 rounded-md text-xs font-bold inline-flex items-center gap-1.5" style={{ background: GOLD, color: '#1a1a17' }}>
+              <CheckCircle2 size={13} /> Kaydet
+            </button>
+          </div>
+          <div className="text-[10px]" style={{ color: 'rgba(250,250,249,.5)' }}>Not: Manuel kurallar şimdilik yerel olarak (bu tarayıcıda) saklanır. Çalıştırma mantığı sonraki sürümde gelecek.</div>
+        </div>
+      )}
+
+      {/* Manuel kurallar */}
+      {manuel.length > 0 && (
+        <div className="rounded-xl overflow-hidden" style={{ background: PANEL, border: `1px solid ${BORDER}` }}>
+          <div className="px-4 py-2.5 flex items-center gap-2" style={{ background: PANEL_HOVER, borderBottom: `1px solid ${BORDER}` }}>
+            <Sparkles size={14} style={{ color: GOLD }} />
+            <span className="text-xs font-bold uppercase tracking-wider" style={{ color: GOLD }}>Senin Manuel Kuralların</span>
+            <span className="text-xs tabular-nums ml-auto" style={{ color: 'rgba(250,250,249,.5)' }}>{manuel.length}</span>
+          </div>
+          <div className="divide-y" style={{ borderColor: BORDER }}>
+            {manuel.map((k) => (
+              <div key={k.id} className="px-4 py-3 flex items-start gap-3" style={{ borderColor: BORDER }}>
+                <Severity value={k.severity} />
+                <div className="flex-1 min-w-0">
+                  <div className="text-sm font-semibold mb-0.5" style={{ color: '#fafaf9' }}>{k.ad}</div>
+                  {k.aciklama && (<div className="text-xs mb-1" style={{ color: 'rgba(250,250,249,.65)' }}>{k.aciklama}</div>)}
+                  <div className="flex flex-wrap gap-2 text-[10px]">
+                    {k.hesapKoduPrefix && (<span className="px-1.5 py-0.5 rounded tabular-nums" style={{ background: GOLD_SOFT, color: GOLD }}>Hesap: {k.hesapKoduPrefix}*</span>)}
+                    {k.tutarEsigi != null && (<span className="px-1.5 py-0.5 rounded tabular-nums" style={{ background: 'rgba(255,255,255,.05)', color: 'rgba(250,250,249,.6)' }}>Eşik: {fmtTRY(k.tutarEsigi)} TL</span>)}
+                    <span className="px-1.5 py-0.5 rounded" style={{ background: 'rgba(255,255,255,.04)', color: 'rgba(250,250,249,.45)' }}>{fmtDate(k.createdAt)}</span>
+                  </div>
+                </div>
+                <button onClick={() => sil(k.id)} className="h-7 w-7 rounded-md inline-flex items-center justify-center" style={{ background: 'rgba(239,68,68,.10)', color: '#ef4444', border: '1px solid rgba(239,68,68,.18)' }} title="Sil"><XCircle size={13} /></button>
+              </div>
+            ))}
+          </div>
+        </div>
+      )}
+
+      {/* Standart kurallar — gruplu */}
+      <div className="space-y-3">
+        {[...byGroup.entries()].map(([grupAd, kurallar]) => (
+          <div key={grupAd} className="rounded-xl overflow-hidden" style={{ background: PANEL, border: `1px solid ${BORDER}` }}>
+            <div className="px-4 py-2.5" style={{ background: PANEL_HOVER, borderBottom: `1px solid ${BORDER}` }}>
+              <span className="text-xs font-bold uppercase tracking-wider" style={{ color: GOLD }}>{grupAd}</span>
+              <span className="text-xs tabular-nums ml-2" style={{ color: 'rgba(250,250,249,.5)' }}>{kurallar.length}</span>
+            </div>
+            <div className="divide-y" style={{ borderColor: BORDER }}>
+              {kurallar.map((k) => (
+                <div key={k.kod} className="px-4 py-3 flex items-start gap-3" style={{ borderColor: BORDER }}>
+                  <Severity value={k.severity} />
+                  <div className="flex-1 min-w-0">
+                    <div className="flex items-center gap-2 mb-0.5">
+                      <span className="text-sm font-semibold" style={{ color: '#fafaf9' }}>{k.ad}</span>
+                      <span className="text-[10px] tabular-nums px-1.5 py-0.5 rounded font-mono" style={{ background: 'rgba(255,255,255,.04)', color: 'rgba(250,250,249,.45)' }}>{k.kod}</span>
+                    </div>
+                    <div className="text-xs" style={{ color: 'rgba(250,250,249,.65)' }}>{k.aciklama}</div>
+                  </div>
+                  <span className="text-[10px] uppercase tracking-wider font-bold" style={{ color: '#22c55e' }}>AKTİF</span>
+                </div>
+              ))}
+            </div>
+          </div>
+        ))}
+      </div>
+    </div>
+  );
+}
+
+function Field({ label, children }: { label: string; children: any }) {
+  return (
+    <div>
+      <div className="text-[10px] uppercase tracking-wider mb-1" style={{ color: 'rgba(250,250,249,.55)' }}>{label}</div>
+      {children}
+    </div>
+  );
+}
+

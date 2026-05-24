@@ -464,14 +464,7 @@ export class EDefterControlService {
         });
       }
       if (!row.fisTarihi) {
-        findings.push({
-          severity: 'ERROR',
-          category: 'FIS_TARIHI_EKSIK',
-          message: `Satir ${row.rowIndex}: fis tarihi okunamadi.`,
-          voucherKey: row.voucherKey,
-          rowIndex: row.rowIndex,
-          hesapKodu: row.hesapKodu,
-        });
+        // Tarih eksik satirlari agregate ediyoruz; asagidaki ozet finding yeterli.
       } else if (range && (row.fisTarihi < range.start || row.fisTarihi > range.end)) {
         findings.push({
           severity: 'ERROR',
@@ -568,6 +561,19 @@ export class EDefterControlService {
     findings.push(...this.analyzeHavadaKdv(rows, voucherMeta));
     findings.push(...this.analyzeMissingDescriptionHighValue(rows));
     findings.push(...this.analyzeOrtakAlacakFaiz(rows));
+
+    // FIS_TARIHI_EKSIK ozeti: tek bilgi olarak topla
+    const tarihEksik = rows.filter((r) => !r.fisTarihi);
+    if (tarihEksik.length > 0) {
+      findings.push({
+        severity: tarihEksik.length > rows.length * 0.5 ? 'ERROR' : 'WARN',
+        category: 'FIS_TARIHI_PARSE_HATASI',
+        message: `Excel dosyasinda ${tarihEksik.length} satirda fis tarihi okunamadi (toplam ${rows.length} satir). Luca rapor formati veya Tarih sutunu kontrol edilmeli.`,
+        voucherKey: tarihEksik[0].voucherKey,
+        rowIndex: tarihEksik[0].rowIndex,
+        detail: { eksikSatir: tarihEksik.length, toplamSatir: rows.length },
+      });
+    }
 
     // False-positive cikaran kurallari filtrele (kullanici geri bildirimine gore kapatildi).
     const DISABLED_CATEGORIES = new Set([
