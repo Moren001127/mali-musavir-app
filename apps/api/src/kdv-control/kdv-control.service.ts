@@ -2766,86 +2766,99 @@ ${JSON.stringify(payload, null, 2)}`;
     // Sütun tanımı (genişlikler + number formatları veri satırları için)
     // 10 sütun: # · Luca Tarihi · Luca Evrak · Luca KDV · Fatura Tarihi · Fatura Belge · Fatura KDV · Fark · Durum · Açıklama
     ws.columns = [
-      { width: 6 },
-      { width: 16 },
-      { width: 26 },
+      { width: 10 },
+      { width: 18 },
+      { width: 28 },
       { width: 16, style: { numFmt: '#,##0.00 "₺"' } },
       { width: 16 },
-      { width: 26 },
-      { width: 16, style: { numFmt: '#,##0.00 "₺"' } },
-      { width: 14, style: { numFmt: '#,##0.00;[Red]-#,##0.00;0.00' } },
+      { width: 28 },
+      { width: 17, style: { numFmt: '#,##0.00 "₺"' } },
+      { width: 13, style: { numFmt: '#,##0.00;[Red]-#,##0.00;0.00' } },
       { width: 16 },
-      { width: 72 },
-      { width: 13 },
-      { width: 24 },
-      { width: 32 },
+      { width: 52 },
+      { width: 15 },
+      { width: 22 },
+      { width: 30 },
     ];
 
-    const tableHeaderRowNum = 4;
+    const tableHeaderRowNum = 5;
     const tableDataStartRowNum = tableHeaderRowNum + 1;
     ws.views = [{ state: 'frozen', ySplit: tableHeaderRowNum }];
 
-    // Kompakt rapor kimliği: firma/dönem bilgisi kalsın, tabloyu aşağı iten boş blok oluşmasın.
-    ws.mergeCells('A1:M1');
-    const titleCell = ws.getCell('A1');
-    titleCell.value = 'MOREN MALİ MÜŞAVİRLİK · KDV Kontrol Raporu';
-    titleCell.font = { bold: true, size: 14, color: { argb: GOLD } };
-    titleCell.fill = { type: 'pattern', pattern: 'solid', fgColor: { argb: DARK } };
-    titleCell.alignment = { horizontal: 'center', vertical: 'middle' };
-    ws.getRow(1).height = 26;
+    // Kompakt rapor kimliği: üst bilgi okunur kalsın, tablo düzeni bozulmasın.
+    ws.mergeCells('A1:I1');
+    ws.mergeCells('J1:K1');
+    ws.mergeCells('L1:M1');
+    ws.mergeCells('A2:B2');
+    ws.mergeCells('C2:F2');
+    ws.mergeCells('G2:H2');
+    ws.mergeCells('J2:K2');
+    ws.mergeCells('L2:M2');
+    ws.mergeCells('A3:B3');
+    ws.mergeCells('D3:E3');
+    ws.mergeCells('G3:H3');
+    ws.mergeCells('J3:K3');
+    ws.mergeCells('A4:B4');
+    ws.mergeCells('C4:D4');
+    ws.mergeCells('E4:F4');
+    ws.mergeCells('G4:H4');
+    ws.mergeCells('I4:J4');
+    ws.mergeCells('K4:M4');
 
-    ws.mergeCells('B2:E2');
-    ws.mergeCells('I2:K2');
+    ws.getCell('A1').value = 'MOREN MALİ MÜŞAVİRLİK · KDV Kontrol Raporu';
+    ws.getCell('J1').value = 'RAPOR TARİHİ';
+    ws.getCell('L1').value = tarihStr;
+
     ws.getCell('A2').value = 'MÜKELLEF';
-    ws.getCell('B2').value = mukellefName || '—';
-    ws.getCell('F2').value = 'DÖNEM';
-    ws.getCell('G2').value = periodLabel;
-    ws.getCell('H2').value = 'KONTROL TÜRÜ';
-    ws.getCell('I2').value = typeLabel;
-    ws.getCell('L2').value = 'RAPOR TARİHİ';
-    ws.getCell('M2').value = tarihStr;
+    ws.getCell('C2').value = mukellefName || '—';
+    ws.getCell('G2').value = 'DÖNEM';
+    ws.getCell('I2').value = periodLabel;
+    ws.getCell('J2').value = 'KONTROL TÜRÜ';
+    ws.getCell('L2').value = typeLabel;
 
     ws.getCell('A3').value = 'VKN/TCKN';
-    ws.getCell('B3').value = taxNo;
-    ws.getCell('C3').value = 'EŞLEŞEN';
-    ws.getCell('D3').value = `${matchedCount}/${results.length}`;
-    ws.getCell('E3').value = 'İNCELE';
-    ws.getCell('F3').value = partialCount;
-    ws.getCell('G3').value = 'HATALI';
-    ws.getCell('H3').value = unmatchedCount;
-    ws.getCell('I3').value = 'LUCA KDV';
-    ws.getCell('J3').value = sumLucaAll;
-    ws.getCell('K3').value = 'FATURA KDV';
-    ws.getCell('L3').value = sumOcrAll;
-    ws.getCell('M3').value = `Fark: ${fmtTl(zeroKurusTolerance(sumLucaAll - sumOcrAll))}`;
-    ws.getCell('J3').numFmt = '#,##0.00 "₺"';
-    ws.getCell('L3').numFmt = '#,##0.00 "₺"';
+    ws.getCell('C3').value = taxNo;
+    ws.getCell('D3').value = 'EŞLEŞEN';
+    ws.getCell('F3').value = `${matchedCount}/${results.length}`;
+    ws.getCell('G3').value = 'İNCELE';
+    ws.getCell('I3').value = partialCount;
+    ws.getCell('J3').value = 'HATALI';
+    ws.getCell('L3').value = unmatchedCount;
+    ws.getCell('M3').value = results.length > 0 ? `Başarı: %${Math.round((matchedCount / results.length) * 100)}` : 'Başarı: —';
+
+    ws.getCell('A4').value = 'LUCA KDV';
+    ws.getCell('C4').value = sumLucaAll;
+    ws.getCell('E4').value = 'FATURA KDV';
+    ws.getCell('G4').value = sumOcrAll;
+    ws.getCell('I4').value = 'FARK';
+    ws.getCell('K4').value = zeroKurusTolerance(sumLucaAll - sumOcrAll);
+
+    ws.getRow(1).height = 24;
     ws.getRow(2).height = 22;
     ws.getRow(3).height = 22;
+    ws.getRow(4).height = 22;
 
-    const metaLabelCells = new Set(['A2', 'F2', 'H2', 'L2', 'A3', 'C3', 'E3', 'G3', 'I3', 'K3']);
-    for (let metaRow = 1; metaRow <= 3; metaRow++) {
+    const metaLabelCells = new Set(['J1', 'A2', 'G2', 'J2', 'A3', 'D3', 'G3', 'J3', 'A4', 'E4', 'I4']);
+    const metaValueCells = new Set(['A1', 'L1', 'C2', 'I2', 'L2', 'C3', 'F3', 'I3', 'L3', 'M3', 'C4', 'G4', 'K4']);
+    for (let metaRow = 1; metaRow <= 4; metaRow++) {
       for (let col = 1; col <= 13; col++) {
         const cell = ws.getCell(metaRow, col);
-        if (metaRow > 1) {
-          const isLabel = metaLabelCells.has(cell.address);
-          cell.fill = {
-            type: 'pattern',
-            pattern: 'solid',
-            fgColor: { argb: isLabel ? HEADER_BG : 'FFFFFFFF' },
-          };
-          cell.font = {
-            bold: isLabel,
-            size: 10,
-            color: { argb: isLabel ? 'FFFFFFFF' : 'FF111827' },
-          };
-          cell.alignment = {
-            horizontal: isLabel ? 'center' : 'left',
-            vertical: 'middle',
-            wrapText: false,
-            shrinkToFit: true,
-          };
-        }
+        cell.numFmt = 'General';
+        cell.fill = {
+          type: 'pattern',
+          pattern: 'solid',
+          fgColor: { argb: metaRow === 1 ? DARK : 'FFFFFFFF' },
+        };
+        cell.font = {
+          size: metaRow === 1 ? 11 : 10,
+          color: { argb: metaRow === 1 ? 'FFFFFFFF' : 'FF111827' },
+        };
+        cell.alignment = {
+          horizontal: 'left',
+          vertical: 'middle',
+          wrapText: false,
+          shrinkToFit: true,
+        };
         cell.border = {
           top: { style: 'thin', color: { argb: TABLE_BORDER_LIGHT } },
           bottom: { style: 'thin', color: { argb: TABLE_BORDER_LIGHT } },
@@ -2854,6 +2867,23 @@ ${JSON.stringify(payload, null, 2)}`;
         };
       }
     }
+
+    metaLabelCells.forEach((address) => {
+      const cell = ws.getCell(address);
+      cell.fill = { type: 'pattern', pattern: 'solid', fgColor: { argb: address === 'J1' ? DARK : HEADER_BG } };
+      cell.font = { bold: true, size: 10, color: { argb: 'FFFFFFFF' } };
+      cell.alignment = { horizontal: 'center', vertical: 'middle', wrapText: false, shrinkToFit: true };
+    });
+    metaValueCells.forEach((address) => {
+      const cell = ws.getCell(address);
+      const isTitle = address === 'A1';
+      cell.fill = { type: 'pattern', pattern: 'solid', fgColor: { argb: isTitle ? DARK : 'FFFFFFFF' } };
+      cell.font = { bold: isTitle, size: isTitle ? 14 : 10, color: { argb: isTitle ? GOLD : 'FF111827' } };
+      cell.alignment = { horizontal: isTitle ? 'left' : 'left', vertical: 'middle', wrapText: false, shrinkToFit: true };
+    });
+    ws.getCell('C4').numFmt = '#,##0.00 "₺"';
+    ws.getCell('G4').numFmt = '#,##0.00 "₺"';
+    ws.getCell('K4').numFmt = '#,##0.00 "₺"';
 
     // Tablo başlığı
     const headerRow = ws.getRow(tableHeaderRowNum);

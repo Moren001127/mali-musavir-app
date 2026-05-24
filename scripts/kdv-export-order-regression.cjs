@@ -330,15 +330,22 @@ async function runExcelLayoutRegression() {
   const workbook = new ExcelJS.Workbook();
   await workbook.xlsx.load(buffer);
   const worksheet = workbook.getWorksheet('KDV Kontrol');
-  const headerRow = worksheet.getRow(4);
-  const row = worksheet.getRow(5);
+  const headerRow = worksheet.getRow(5);
+  const row = worksheet.getRow(6);
 
   assert.strictEqual(worksheet.getRow(1).getCell(1).value, 'MOREN MALİ MÜŞAVİRLİK · KDV Kontrol Raporu', 'Excel rapor başlığı korunmalı');
-  assert.strictEqual(worksheet.getRow(2).getCell(2).value, 'SERVİS PERSONEL TAŞIMACILIĞI TURİZM LİMİTED ŞİRKETİ', 'Excel üst bilgide mükellef adı korunmalı');
-  assert.strictEqual(worksheet.getRow(2).getCell(7).value, '2026/04', 'Excel üst bilgide dönem korunmalı');
-  assert.ok((worksheet.getRow(1).height || 0) <= 28, 'Excel rapor başlığı büyük boş blok oluşturmamalı');
+  assert.strictEqual(worksheet.getRow(1).getCell(1).alignment.horizontal, 'left', 'Excel rapor başlığı sağa kaçmış gibi merkezlenmemeli');
+  assert.strictEqual(worksheet.getRow(1).getCell(10).value, 'RAPOR TARİHİ', 'Excel üst bilgide rapor tarihi etiketi korunmalı');
+  assert.strictEqual(worksheet.getColumn(1).width >= 10, true, 'Excel ilk sütun MÜKELLEF/VKN etiketlerini ezmeyecek genişlikte olmalı');
+  assert.strictEqual(worksheet.getRow(2).getCell(3).value, 'SERVİS PERSONEL TAŞIMACILIĞI TURİZM LİMİTED ŞİRKETİ', 'Excel üst bilgide mükellef adı korunmalı');
+  assert.strictEqual(worksheet.getRow(2).getCell(9).value, '2026/04', 'Excel üst bilgide dönem korunmalı');
+  assert.strictEqual(worksheet.getRow(3).getCell(12).value, 0, 'Excel hatalı sayısı normal sayı olarak görünmeli');
+  assert.notStrictEqual(worksheet.getRow(3).getCell(12).numFmt, '#,##0.00;[Red]-#,##0.00;0.00', 'Excel hatalı sayısı para/fark formatı miras almamalı');
+  assert.strictEqual(worksheet.getRow(4).getCell(3).numFmt, '#,##0.00 "₺"', 'Excel toplam tutar satırı para formatında olmalı');
+  assert.ok((worksheet.getRow(1).height || 0) <= 24, 'Excel rapor başlığı büyük boş blok oluşturmamalı');
   assert.ok((worksheet.getRow(2).height || 0) <= 24, 'Excel mükellef üst bilgi satırı kompakt kalmalı');
   assert.ok((worksheet.getRow(3).height || 0) <= 24, 'Excel özet üst bilgi satırı kompakt kalmalı');
+  assert.ok((worksheet.getRow(4).height || 0) <= 24, 'Excel tutar üst bilgi satırı kompakt kalmalı');
 
   assert.strictEqual(headerRow.getCell(1).value, '#', 'Excel ana tablo başlığı kompakt üst bilginin hemen altında başlamalı');
   assert.strictEqual(row.getCell(1).value, 1, 'Excel veri satırı tablo başlığının hemen altında başlamalı');
