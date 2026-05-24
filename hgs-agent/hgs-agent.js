@@ -227,10 +227,15 @@ async function sorgulaPlakaTekSefer(page, plaka) {
   if (!sorgulaBtn) throw new Error('Sorgula butonu (#btnSorgula) bulunamadı');
   await sorgulaBtn.click();
 
-  // 7. Sonuç bekle — tablo veya hata
+  // 7. Sonuç bekle — KGM tablosu veya "ihlal yok" mesajı (ikisinden biri çıkmalı)
   try {
-    await page.waitForLoadState('networkidle', { timeout: 30000 });
+    await Promise.race([
+      page.waitForSelector('#gvKgm tbody tr, #gvAvrasya tbody tr, [id^="gv"] tbody tr', { timeout: 20000 }),
+      page.waitForFunction(() => /ihlal\s*bulun|kayıt\s*bulun|sorgu\s*sonucunda|ihlalli\s*geçiş\s*yok|geçiş ihlaliniz/i.test(document.body.innerText || ''), { timeout: 20000 }),
+    ]);
   } catch {}
+  // Tüm tablolar render olsun
+  await page.waitForTimeout(1500);
 
   const sayfaIcerigi = await page.content();
   const captchaHatali = /güvenlik kodu.*hatalı|captcha.*yanlış|kod.*hatalı|matematiksel.*hatalı|tekrar deneyin/i.test(sayfaIcerigi);
@@ -238,44 +243,94 @@ async function sorgulaPlakaTekSefer(page, plaka) {
     return { durum: 'captcha_yanlis', captchaId: cozumBilgi?.captchaId };
   }
 
-  // 8. İhlal tablosu veya "ihlal yok" mesajı
+  // 8. İhlal tabloları: gvKgm, gvAvrasya ve diğer gv* tabloları
   const sonuc = await page.evaluate(() => {
-    // Tablo bul: ihlal listesi
-    const tables = Array.from(document.querySelectorAll('table'));
-    let table = null;
-    for (const t of tables) {
-      const txt = (t.innerText || '').toLowerCase();
-      if (/plaka|tarih|tutar|ihlal|geçiş/i.test(txt) && t.querySelectorAll('tr').length > 1) {
-        table = t; break;
-      }
+    function paraParse(s) {
+      if (!s) return 0;
+      const cleaned = s.replace(/[^\d,.\-₺TL ]/gi, '').replace(/[₺TL\s]/gi, '').trim();
+      // Türkçe format: "32,50" veya "1.234,56" — binlik ayracı nokta, ondalık virgül
+      const normalized = cleaned.replace(/\./g, '').replace(',', '.');
+      return parseFloat(normalized) || 0;
     }
+
+    // KGM birden çok tablo döndürür: gvKgm, gvAvrasya, gvOsmangazi, vb.
+    // Hepsi `id^="gv"` ile başlar veya class="dataTable" içerir.
+    const allTables = Array.from(document.querySelectorAll('table[id^="gv"], table.dataTable'));
+    // Tekrarlananları kaldır
+    const tables = [...new Set(allTables)];
 
     const ihlaller = [];
     let toplam = 0;
-    if (table) {
-      const rows = Array.from(table.querySelectorAll('tbody tr, tr')).filter(r => r.querySelectorAll('td').length > 0);
-      for (const r of rows) {
+    const tableDebug = [];
+
+    for (const t of tables) {
+      const tableId = t.id || '(no-id)';
+      // Sütun başlıklarını al — "Ödenecek Tutar" index'ini bul
+      const headerCells = Array.from(t.querySelectorAll('thead th, thead td'));
+      const headers = headerCells.map(h => h.innerText.trim());
+      const odenecekIdx = headers.findIndex(h => /Ödenecek\s*Tutar/i.test(h));
+      const gecisUcretIdx = headers.findIndex(h => /Geçiş\s*Ücreti/i.test(h));
+      const tarihIdx = headers.findIndex(h => /Çıkış\s*Tarih|Tarih/i.test(h));
+      const girisIdx = headers.findIndex(h => /Giriş/i.test(h));
+      const cikisIdx = headers.findIndex(h => /Çıkış\s*İstasyon|^Çıkış$/i.test(h));
+
+      const dataRows = Array.from(t.querySelectorAll('tbody tr')).filter(r => r.querySelectorAll('td').length > 0);
+      const tableSum = { tableId, rowCount: dataRows.length, headers, odenecekIdx, tarihIdx, satirlar: [] };
+
+      for (const r of dataRows) {
         const cells = Array.from(r.querySelectorAll('td')).map(c => c.innerText.trim());
         if (cells.length < 2) continue;
-        const tutar = parseFloat((cells[cells.length - 1] || '0').replace(/[^\d,.-]/g, '').replace(/\./g, '').replace(',', '.')) || 0;
-        if (tutar > 0 || /\d{2}\.\d{2}\.\d{4}/.test(cells.join(' '))) {
-          ihlaller.push({
-            tarih: cells[0] || '',
-            saat: cells[1] || '',
-            ucretNoktasi: cells[2] || '',
-            aciklama: cells[3] || '',
-            tutar,
-            ham: cells,
-          });
-          toplam += tutar;
+
+        let tutar = 0;
+        if (odenecekIdx >= 0 && cells[odenecekIdx]) {
+          tutar = paraParse(cells[odenecekIdx]);
         }
+        // Yedek: hiçbir tutar yoksa son TL içeren hücre
+        if (tutar === 0) {
+          for (let i = cells.length - 1; i >= 0; i--) {
+            if (/₺|TL/i.test(cells[i])) {
+              const v = paraParse(cells[i]);
+              if (v > 0) { tutar = v; break; }
+            }
+          }
+        }
+
+        const ihlal = {
+          kaynak: tableId,
+          tarih: tarihIdx >= 0 ? cells[tarihIdx] : '',
+          giris: girisIdx >= 0 ? cells[girisIdx] : '',
+          cikis: cikisIdx >= 0 ? cells[cikisIdx] : '',
+          gecisUcreti: gecisUcretIdx >= 0 ? paraParse(cells[gecisUcretIdx]) : 0,
+          tutar,
+          ham: cells,
+        };
+        ihlaller.push(ihlal);
+        toplam += tutar;
+        tableSum.satirlar.push({ tarih: ihlal.tarih, tutar });
       }
+      tableDebug.push(tableSum);
     }
 
     const bodyText = (document.body.innerText || '').toLowerCase();
     const temiz = /ihlal\s*bulun|kayıt\s*bulun|sorgu\s*sonucunda|ihlalli\s*geçiş\s*yok|geçiş ihlaliniz bulun/i.test(bodyText) && ihlaller.length === 0;
-    return { ihlaller, toplamTutar: toplam, temiz };
+    const kayitMatch = (document.body.innerText || '').match(/(\d+)\s*kayıt/);
+
+    return {
+      ihlaller, toplamTutar: toplam, temiz,
+      kayitSayisi: kayitMatch ? parseInt(kayitMatch[1], 10) : null,
+      _debug: {
+        toplamTablo: tables.length,
+        tablolar: tableDebug.map(t => ({ id: t.tableId, rowCount: t.rowCount, headers: t.headers, odenecekIdx: t.odenecekIdx, tarihIdx: t.tarihIdx, ilkSatir: t.satirlar[0] })),
+        bodyTextSample: bodyText.slice(0, 200),
+      },
+    };
   });
+
+  // Doğrulama: kayitSayisi (sayfadaki "26 kayıt") ile ihlaller.length aynı mı?
+  if (sonuc.kayitSayisi !== null && sonuc.kayitSayisi !== sonuc.ihlaller.length) {
+    log(`  ⚠ Kayıt sayısı uyuşmazlığı: sayfada "${sonuc.kayitSayisi} kayıt" yazıyor, parser ${sonuc.ihlaller.length} satır buldu`);
+  }
+  log(`  📊 ${sonuc.ihlaller.length} ihlal / ${sonuc.toplamTutar.toFixed(2)} ₺ — Debug: ${JSON.stringify(sonuc._debug, null, 0).slice(0, 350)}`);
 
   return {
     durum: 'basarili',
@@ -348,7 +403,11 @@ async function run() {
             const plaka = plakalar[i];
             try {
               const sonuc = await sorgulaPlaka(page, plaka);
-              if (sonuc.durum !== 'basarili') await debugDump(page, plaka, sonuc.durum);
+              // Debug: HER sorguda HTML dump al (parser doğrulama için, geçici)
+              // veya 0 ihlal sonucu şüpheliyse mutlaka kaydet
+              if (sonuc.durum !== 'basarili' || (sonuc.ihlalSayisi || 0) === 0) {
+                await debugDump(page, plaka, sonuc.durum === 'basarili' ? 'basarili_0_ihlal' : sonuc.durum);
+              }
               await kaydetSorguSonucu(aracId, sonuc);
               sonuclar.push({ aracId, plaka, ...sonuc });
               log(`  ✓ ${plaka}: ${sonuc.durum} — ${sonuc.ihlalSayisi || 0} ihlal, ${(sonuc.toplamTutar || 0).toFixed(2)} ₺`);
