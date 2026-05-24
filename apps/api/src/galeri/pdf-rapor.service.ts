@@ -217,7 +217,7 @@ export class PdfRaporService {
     display: grid;
     grid-template-columns: repeat(4, 1fr);
     gap: 8px;
-    margin-bottom: 18px;
+    margin-bottom: 14px;
   }
   .ozet-k {
     background: #faf7f1;
@@ -225,20 +225,38 @@ export class PdfRaporService {
     border-radius: 4px;
     padding: 9px 12px;
   }
-  .ozet-k .etiket { font-size: 8pt; color: #8a7240; letter-spacing: 1.5px; text-transform: uppercase; font-weight: 500; }
-  .ozet-k .deger { font-size: 14pt; font-weight: 500; color: #0f0d0b; margin-top: 4px; }
+  .ozet-k .etiket { font-size: 7.5pt; color: #8a7240; letter-spacing: 1.5px; text-transform: uppercase; font-weight: 500; }
+  .ozet-k .deger { font-size: 13pt; font-weight: 500; color: #0f0d0b; margin-top: 2px; }
   .ozet-k.kirmizi .deger { color: #b83939; }
   .ozet-k.yesil .deger { color: #2d7a3d; }
 
   table { width: 100%; border-collapse: collapse; font-size: 9.5pt; }
-  .plaka-blok { break-inside: avoid; }
+  .plaka-blok {
+    /* Plaka bloğu uzunsa sayfa içinde bölünsün — agresif break-inside kaldırıldı */
+  }
+  .plaka-baslik {
+    page-break-after: avoid;
+    break-after: avoid;
+    page-break-inside: avoid;
+    break-inside: avoid;
+  }
   .plaka-baslik td {
     background: #0f0d0b;
     color: #fff;
     padding: 8px 12px;
     font-weight: 500;
     letter-spacing: 0.3px;
-    border-top: 6px solid #b8956a;
+    border-top: 4px solid #b8956a;
+  }
+  .ihlal-satiri {
+    page-break-inside: avoid;
+    break-inside: avoid;
+  }
+  .alt-toplam {
+    page-break-before: avoid;
+    break-before: avoid;
+    page-break-inside: avoid;
+    break-inside: avoid;
   }
   .plaka-kutu {
     display: inline-block;
