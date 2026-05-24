@@ -1954,7 +1954,7 @@ export class KdvControlService {
     const hardBlockSignal =
       /trafik cezas[ıi]|ceza|gecikme zamm[ıi]|usuls[üu]zl[üu]k|kkeg|alkol|sigara|t[üu]t[üu]n|tekel/.test(text);
     const commonBusinessGreyArea =
-      /yemek|restoran|lokanta|cafe|kafe|kahve|market|g[ıi]da|b[öo]rek|k[üu]nefe|baklava|temizlik|deterjan|sarf|akaryak[ıi]t|yak[ıi]t|benzin|motorin|otel|konaklama|seyahat|kargo|telefon|internet|elektrik|su|k[ıi]rtasiye|ofis/.test(text);
+      /yemek|restoran|lokanta|cafe|kafe|kahve|ikram|catering|market|g[ıi]da|b[öo]rek|k[üu]nefe|baklava|temizlik|deterjan|sarf|akaryak[ıi]t|yak[ıi]t|benzin|motorin|otel|konaklama|seyahat|kargo|telefon|internet|elektrik|su|k[ıi]rtasiye|ofis|yedek par[çc]a|aksesuar|oto cam|cam malzemesi|bak[ıi]m|onar[ıi]m|lastik|ak[üu]|balata|filtre|motor ya[ğg][ıi]/.test(text);
     const fuelSignal = /akaryak[ıi]t|yak[ıi]t|motorin|benzin|otogaz|shell/.test(text);
     const vehicleEvidence =
       /plaka|utts|ta[şs][ıi]t tan[ıi]ma|shell card|kurumsal ödeme kart[ıi]|[0-9]{2}\s*[a-zçğıöşü]{1,3}\s*[0-9]{2,4}/i.test(text);
@@ -1962,8 +1962,17 @@ export class KdvControlService {
       /servis|ta[şs][ıi]mac[ıi]l[ıi]k|turizm|nakliye|lojistik|taksi|rent a car|ara[çc] kiralama/.test(`${text} ${taxpayerText}`);
     const ordinaryOverheadSignal =
       /t[üu]rk telekom|ttnet|turkcell|vodafone|superonline|telefon|mobil hizmet|gsm|internet|fiber|dsl|sabit hat|ileti[şs]im|elektrik|su fatur|do[ğg]algaz|kira|muhasebe|noter|yaz[ıi]l[ıi]m|k[ıi]rtasiye|ofis|kargo/.test(text);
+    const mealExpenseSignal =
+      /yemek|restoran|lokanta|cafe|kafe|kahve|ikram|catering|personel yeme[ğg]i|market|g[ıi]da|b[öo]rek|k[üu]nefe|baklava/.test(text);
+    const vehicleMaintenanceSignal =
+      /yedek par[çc]a|aksesuar|oto cam|cam malzemesi|bak[ıi]m|onar[ıi]m|lastik|ak[üu]|balata|filtre|motor ya[ğg][ıi]|ara[çc] servis|oto servis/.test(text);
     const personalUseSignal =
       /bireysel|ki[şs]isel|[öo]zel kullan[ıi]m|konut|ev interneti|ev telefonu|aile|hediye|l[üu]ks|oyun|e[ğg]lence/.test(text);
+    const ordinaryBusinessExpenseSignal =
+      ordinaryOverheadSignal ||
+      mealExpenseSignal ||
+      commonBusinessGreyArea ||
+      (vehicleMaintenanceSignal && (transportActivity || vehicleEvidence || /oto|ara[çc]|servis|ta[şs][ıi]ma/.test(taxpayerText)));
     const profileIsThin = taxpayerText.trim().length < 18;
     const lowConfidence = Number(baseDecision.confidence || 0) < 0.82;
 
@@ -2009,6 +2018,28 @@ export class KdvControlService {
           ...baseDecision.findings.filter((finding) => finding.severity === 'UYGUN'),
         ].slice(0, 6),
         confidence: Math.max(Number(baseDecision.confidence || 0), 0.78),
+      };
+    }
+
+    if (
+      baseDecision.risk === 'KONTROL_ET' &&
+      !hardBlockSignal &&
+      !personalUseSignal &&
+      ordinaryBusinessExpenseSignal
+    ) {
+      return {
+        risk: 'UYGUN',
+        summary: 'Belge olağan işletme gideri niteliğinde görünüyor.',
+        suggestion: 'Normal kayıt; işletme bağlantısı için belge dayanağını dosyada saklayın.',
+        findings: [
+          {
+            title: 'Olağan gider',
+            detail: 'Yemek, bakım, yedek parça, sarf, ofis veya benzeri olağan işletme giderlerinde açık kişisel kullanım sinyali yoksa otomatik kontrol uyarısı üretilmedi.',
+            severity: 'UYGUN' as ContentAuditRisk,
+          },
+          ...baseDecision.findings.filter((finding) => finding.severity === 'UYGUN'),
+        ].slice(0, 6),
+        confidence: Math.max(Number(baseDecision.confidence || 0), 0.76),
       };
     }
 
@@ -2094,15 +2125,16 @@ export class KdvControlService {
     return `Aşağıdaki belge mükellefin faaliyetine göre KDV kayıtlarına konu edilebilir mi, risk var mı değerlendir.
 
 Kurallar:
-- Varsayılan seviye KONTROL_ET olsun; net kanıt yoksa RISKLI veya ISLENMEMELI seçme.
-- Sadece faaliyet farklı görünüyor diye yemek, market, temizlik, deterjan, akaryakıt, kargo, telefon, internet, ofis veya seyahat kalemlerini reddetme; bunlar gri alandır ve genelde KONTROL_ET kalmalıdır.
+- Varsayılan seviye olağan işletme giderlerinde UYGUN olsun; KONTROL_ET yalnızca gerçekten anlamlı eksik kanıt veya kişisel kullanım şüphesi varsa seç.
+- Sadece faaliyet farklı görünüyor diye yemek, market, temizlik, deterjan, yedek parça, aksesuar, bakım/onarım, akaryakıt, kargo, telefon, internet, ofis veya seyahat kalemlerini reddetme ya da KONTROL_ET yapma; açık özel/kişisel/lüks/konut sinyali yoksa normal işletme gideri kabul et.
 - RISKLI için belge metninde açık özel/kişisel/lüks tüketim sinyali ve faaliyete bağlanamama birlikte bulunmalı.
 - ISLENMEMELI sadece ceza, gecikme zammı, KKEG, alkol/tütün veya kanunen açık indirim yasağı gibi çok net durumda kullanılmalı.
 - "Belge muhasebeleştirilmemeli" gibi kesin talimat verme; muhasebeciye kontrol adımı öner.
 - KDV tutarı ve oranı zaten ayrı KDV kontrol modülünde denetleniyor; içerik denetiminde brüt tutardan KDV oranı hesaplama, "%18 beklenir" gibi matematik yorumu yapma.
 - Akaryakıt belgesinde servis/taşımacılık/turizm faaliyetiyle birlikte plaka, UTTS, taşıt tanıma veya kurumsal yakıt kartı görülüyorsa normalde UYGUN seç; aynı taşıt bağlantısını her belgede tekrar KONTROL_ET yapma.
 - Telefon, internet, mobil hat, elektrik, su, kira, muhasebe, noter, yazılım, kırtasiye, ofis ve kargo gibi olağan işletme giderlerini sadece kullanım amacı metinde tek tek yazmıyor diye KONTROL_ET yapma; bireysel/konut/kişisel kullanım sinyali varsa KONTROL_ET seç.
-- Sadece verilen veriye dayan; emin değilsen KONTROL_ET seç.
+- Yemek/restoran/ikram ve araç bakım/yedek parça/aksesuar belgelerini işletmeler için olağan gider say; belge metninde şahsi tüketim, alkol, lüks eğlence veya konut/aile kullanımı yoksa UYGUN seç.
+- Sadece verilen veriye dayan; olağan giderlerde emin değilsen UYGUN kal, ancak açık kişisel kullanım/konut/lüks/ceza/alkol veya gerçekten kritik eksik kanıt varsa KONTROL_ET seç.
 - Faaliyetle açıkça ilgisiz özel harcama, ceza, alkol/tütün, hediye/lüks tüketim gibi kalemleri yükselt.
 - Yemek, otel, akaryakıt, seyahat gibi kalemlerde mükellef faaliyetini ve belge açıklamasını birlikte düşün.
 - Cevap sadece JSON olsun.
@@ -2725,6 +2757,8 @@ ${JSON.stringify(payload, null, 2)}`;
     const RED_TEXT = 'FFB91C1C';
     const HEADER_BG = 'FF2E2B26';
     const ALT_BG = 'FFF9FAFB';
+    const TABLE_BORDER = 'FF8E9F94';
+    const TABLE_BORDER_LIGHT = 'FFB9C8BF';
 
     // Sütun tanımı (genişlikler + number formatları veri satırları için)
     // 10 sütun: # · Luca Tarihi · Luca Evrak · Luca KDV · Fatura Tarihi · Fatura Belge · Fatura KDV · Fark · Durum · Açıklama
@@ -2841,8 +2875,10 @@ ${JSON.stringify(payload, null, 2)}`;
         const cell = ws.getCell(r, col);
         cell.fill = { type: 'pattern', pattern: 'solid', fgColor: { argb: 'FFFFFFFF' } };
         cell.border = {
-          top: { style: 'thin', color: { argb: 'FFE5E7EB' } },
-          bottom: { style: 'thin', color: { argb: 'FFE5E7EB' } },
+          top: { style: 'thin', color: { argb: TABLE_BORDER_LIGHT } },
+          bottom: { style: 'thin', color: { argb: TABLE_BORDER_LIGHT } },
+          left: { style: 'thin', color: { argb: TABLE_BORDER_LIGHT } },
+          right: { style: 'thin', color: { argb: TABLE_BORDER_LIGHT } },
         };
       }
     };
@@ -2869,10 +2905,13 @@ ${JSON.stringify(payload, null, 2)}`;
       cell.fill = { type: 'pattern', pattern: 'solid', fgColor: { argb: HEADER_BG } };
       cell.alignment = { horizontal: 'center', vertical: 'middle', wrapText: true };
       cell.border = {
-        top: { style: 'thin' }, bottom: { style: 'thin' },
-        left: { style: 'thin' }, right: { style: 'thin' },
+        top: { style: 'thin', color: { argb: TABLE_BORDER } },
+        bottom: { style: 'thin', color: { argb: TABLE_BORDER } },
+        left: { style: 'thin', color: { argb: TABLE_BORDER } },
+        right: { style: 'thin', color: { argb: TABLE_BORDER } },
       };
     });
+    (ws as any).autoFilter = 'A15:M15';
 
     // Veri satırları (16+)
     results.forEach((r: any, idx) => {
@@ -2965,13 +3004,38 @@ ${JSON.stringify(payload, null, 2)}`;
           shrinkToFit: colNum === 10 || colNum === 12 || colNum === 13,
         };
         cell.border = {
-          top:    { style: 'thin', color: { argb: 'FFE5E7EB' } },
-          bottom: { style: 'thin', color: { argb: 'FFE5E7EB' } },
-          left:   { style: 'thin', color: { argb: 'FFE5E7EB' } },
-          right:  { style: 'thin', color: { argb: 'FFE5E7EB' } },
+          top:    { style: 'thin', color: { argb: TABLE_BORDER_LIGHT } },
+          bottom: { style: 'thin', color: { argb: TABLE_BORDER_LIGHT } },
+          left:   { style: 'thin', color: { argb: TABLE_BORDER_LIGHT } },
+          right:  { style: 'thin', color: { argb: TABLE_BORDER_LIGHT } },
         };
       });
     });
+
+    const tableLastRow = 15 + results.length;
+    for (let tableRow = 15; tableRow <= tableLastRow; tableRow++) {
+      for (let col = 1; col <= 13; col++) {
+        const cell = ws.getCell(tableRow, col);
+        cell.border = {
+          top: {
+            style: tableRow === 15 ? 'medium' : 'thin',
+            color: { argb: tableRow === 15 ? TABLE_BORDER : TABLE_BORDER_LIGHT },
+          },
+          bottom: {
+            style: tableRow === tableLastRow ? 'medium' : 'thin',
+            color: { argb: tableRow === tableLastRow ? TABLE_BORDER : TABLE_BORDER_LIGHT },
+          },
+          left: {
+            style: col === 1 ? 'medium' : 'thin',
+            color: { argb: col === 1 ? TABLE_BORDER : TABLE_BORDER_LIGHT },
+          },
+          right: {
+            style: col === 13 ? 'medium' : 'thin',
+            color: { argb: col === 13 ? TABLE_BORDER : TABLE_BORDER_LIGHT },
+          },
+        };
+      }
+    }
 
     if (seriUyarilari.length > 0) {
       const startRow = 17 + results.length;
@@ -3087,7 +3151,7 @@ ${JSON.stringify(payload, null, 2)}`;
       : this.compactContentAuditText(suggestion, 70);
     const visibleSummary =
       risk === 'Uygun' ? 'Faaliyetle uyumlu görünüyor'
-      : risk === 'Kontrol et' ? this.compactContentAuditText(summary, 80)
+      : risk === 'Kontrol et' ? 'Ayrıntı hücre notunda'
       : this.compactContentAuditText(summary, 90);
     const comment = [
       summary && summary !== visibleSummary ? `Özet: ${summary}` : '',

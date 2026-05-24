@@ -161,6 +161,60 @@ assert.strictEqual(
   'Telekom/internet gibi olağan işletme giderleri kişisel kullanım sinyali yoksa tekrar kontrol uyarısı üretmemeli',
 );
 
+const mealDecision = service.moderateContentAuditDecision(
+  {
+    risk: 'KONTROL_ET',
+    summary: 'Servis taşımacılığı faaliyeti mükellefin restoran yemek fişi; işletme gideri olup olmadığı kontrol edilmelidir.',
+    suggestion: 'Muhasebeci yemek giderinin faaliyet bağlantısını ayrıca teyit etmelidir.',
+    findings: [],
+    confidence: 0.68,
+  },
+  {
+    originalName: 'restoran-fisi.image',
+    ocrRawText: 'RESTORAN YEMEK FİŞİ yemek hizmet bedeli',
+    ocrKategori: 'Yemek',
+  },
+  {
+    taxpayer: {
+      companyName: 'SERVİS PERSONEL TAŞIMACILIĞI TURİZM LİMİTED ŞİRKETİ',
+      notes: 'Servis personel taşımacılığı ve turizm faaliyeti',
+    },
+  },
+);
+
+assert.strictEqual(
+  mealDecision.risk,
+  'UYGUN',
+  'Yemek/restoran gibi olağan işletme giderleri açık kişisel/lüks sinyal yoksa anlamsız kontrol uyarısı üretmemeli',
+);
+
+const partsDecision = service.moderateContentAuditDecision(
+  {
+    risk: 'KONTROL_ET',
+    summary: 'Servis taşımacılığı faaliyetine yönelik yedek parça ve aksesuar satın alımı görünmektedir ancak bağlantı kurulmalıdır.',
+    suggestion: 'Muhasebeci yedek parçanın hangi araca ait olduğunu ayrıca kontrol etmelidir.',
+    findings: [],
+    confidence: 0.7,
+  },
+  {
+    originalName: 'yedek-parca.image',
+    ocrRawText: 'OTO YEDEK PARÇA AKSESUAR BAKIM MALZEMESİ',
+    ocrKategori: 'Yedek parça',
+  },
+  {
+    taxpayer: {
+      companyName: 'SERVİS PERSONEL TAŞIMACILIĞI TURİZM LİMİTED ŞİRKETİ',
+      notes: 'Servis personel taşımacılığı ve turizm faaliyeti',
+    },
+  },
+);
+
+assert.strictEqual(
+  partsDecision.risk,
+  'UYGUN',
+  'Yedek parça/bakım/aksesuar belgeleri taşıma faaliyetiyle olağan gider sayılmalı',
+);
+
 const visibleAudit = service.formatContentAuditForExport({
   contentAuditStatus: 'DONE',
   contentAuditRisk: 'KONTROL_ET',
@@ -183,6 +237,11 @@ assert.strictEqual(
 assert.ok(
   visibleAudit.summary.length <= 80,
   'Excel görünür içerik yorumu kısa kalmalı',
+);
+assert.strictEqual(
+  visibleAudit.summary,
+  'Ayrıntı hücre notunda',
+  'Kontrol satırında uzun yorum hücreye sıkışmamalı',
 );
 assert.ok(
   visibleAudit.comment.includes('Muhasebeci, bu mobil hattın işletme faaliyetine'),
@@ -244,7 +303,15 @@ async function runExcelLayoutRegression() {
   assert.notStrictEqual(row.getCell(12).alignment.wrapText, true, 'Öneri hücresi satır sarma yapmamalı');
   assert.notStrictEqual(row.getCell(13).alignment.wrapText, true, 'İçerik yorumu hücresi satır sarma yapmamalı');
   assert.strictEqual(row.getCell(12).value, 'Kontrol et; ayrıntı notta', 'Excel öneri hücresi kısa görünür metin taşımalı');
+  assert.strictEqual(row.getCell(13).value, 'Ayrıntı hücre notunda', 'Excel içerik yorumu hücresi kısa görünür metin taşımalı');
   assert.ok(row.getCell(13).note, 'Uzun içerik denetimi detayı hücre notunda kalmalı');
+  for (let col = 1; col <= 13; col++) {
+    const border = row.getCell(col).border || {};
+    assert.ok(border.top?.style, `Excel tablo satırı ${col}. hücre üst kenarlığı olmalı`);
+    assert.ok(border.bottom?.style, `Excel tablo satırı ${col}. hücre alt kenarlığı olmalı`);
+    assert.ok(border.left?.style, `Excel tablo satırı ${col}. hücre sol kenarlığı olmalı`);
+    assert.ok(border.right?.style, `Excel tablo satırı ${col}. hücre sağ kenarlığı olmalı`);
+  }
 }
 
 runExcelLayoutRegression()
