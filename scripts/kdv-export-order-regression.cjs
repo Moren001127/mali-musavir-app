@@ -188,6 +188,39 @@ assert.strictEqual(
   'Yemek/restoran gibi olağan işletme giderleri açık kişisel/lüks sinyal yoksa anlamsız kontrol uyarısı üretmemeli',
 );
 
+const baklavaDecision = service.moderateContentAuditDecision(
+  {
+    risk: 'KONTROL_ET',
+    summary: 'Servis taşımacılığı faaliyeti ile baklava satın alımı arasında doğrudan bağlantı kurulması gerekir; belge metninde işletme amacı açık değildir.',
+    suggestion: 'Muhasebeci baklava satın alımının personel ikramı mı yoksa kişisel/özel tüketim mi olduğunu kontrol etmelidir.',
+    findings: [
+      {
+        title: 'İhtiyat yorumu',
+        detail: 'AI çıktısı kişisel kullanım ihtimalinden söz etse bile belge metninde böyle bir sinyal yoktur.',
+        severity: 'KONTROL_ET',
+      },
+    ],
+    confidence: 0.72,
+  },
+  {
+    originalName: '0003.image',
+    ocrRawText: 'BAKLAVA SATIŞ FİŞİ tatlı gıda bedeli',
+    ocrKategori: 'Baklava',
+  },
+  {
+    taxpayer: {
+      companyName: 'SERVİS PERSONEL TAŞIMACILIĞI TURİZM LİMİTED ŞİRKETİ',
+      notes: 'Servis personel taşımacılığı ve turizm faaliyeti',
+    },
+  },
+);
+
+assert.strictEqual(
+  baklavaDecision.risk,
+  'UYGUN',
+  'Baklava/ikram belgesinde kişisel kullanım sadece AI ihtiyat metninde geçiyorsa kontrol uyarısı kalmamalı',
+);
+
 const partsDecision = service.moderateContentAuditDecision(
   {
     risk: 'KONTROL_ET',
@@ -297,11 +330,11 @@ async function runExcelLayoutRegression() {
   const workbook = new ExcelJS.Workbook();
   await workbook.xlsx.load(buffer);
   const worksheet = workbook.getWorksheet('KDV Kontrol');
-  const headerRow = worksheet.getRow(5);
-  const row = worksheet.getRow(6);
+  const headerRow = worksheet.getRow(1);
+  const row = worksheet.getRow(2);
 
-  assert.strictEqual(worksheet.getRow(2).getCell(1).value, 'Mükellef', 'Excel üst bilgi satırları kompakt başlamalı');
-  assert.strictEqual(headerRow.getCell(1).value, '#', 'Excel ana tablo başlığı boşluk bırakmadan 5. satırda başlamalı');
+  assert.strictEqual(headerRow.getCell(1).value, '#', 'Excel ana tablo başlığı ilk satırda başlamalı');
+  assert.strictEqual(row.getCell(1).value, 1, 'Excel veri satırı ikinci satırda başlamalı');
   assert.strictEqual(row.height, 24, 'Excel veri satırı uzun yorum nedeniyle otomatik büyümemeli');
   assert.notStrictEqual(row.getCell(12).alignment.wrapText, true, 'Öneri hücresi satır sarma yapmamalı');
   assert.notStrictEqual(row.getCell(13).alignment.wrapText, true, 'İçerik yorumu hücresi satır sarma yapmamalı');

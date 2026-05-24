@@ -1932,16 +1932,19 @@ export class KdvControlService {
         : [{ title: 'İçerik yorumu', detail: cleanSummary, severity: decision.risk }],
     };
 
-    const text = [
+    const sourceText = [
       image.ocrRawText,
       image.ocrKategori,
       image.ocrBelgeTipi,
       image.ocrSatici,
       image.originalName,
+    ].filter(Boolean).join(' ').toLocaleLowerCase('tr-TR');
+    const aiText = [
       baseDecision.summary,
       baseDecision.suggestion,
       JSON.stringify(baseDecision.findings || []),
     ].filter(Boolean).join(' ').toLocaleLowerCase('tr-TR');
+    const text = `${sourceText} ${aiText}`.trim();
 
     const taxpayerText = [
       session?.taxpayer?.companyName,
@@ -1952,7 +1955,7 @@ export class KdvControlService {
     ].filter(Boolean).join(' ').toLocaleLowerCase('tr-TR');
 
     const hardBlockSignal =
-      /trafik cezas[ıi]|ceza|gecikme zamm[ıi]|usuls[üu]zl[üu]k|kkeg|alkol|sigara|t[üu]t[üu]n|tekel/.test(text);
+      /trafik cezas[ıi]|ceza|gecikme zamm[ıi]|usuls[üu]zl[üu]k|kkeg|alkol|sigara|t[üu]t[üu]n|tekel/.test(sourceText);
     const commonBusinessGreyArea =
       /yemek|restoran|lokanta|cafe|kafe|kahve|ikram|catering|market|g[ıi]da|b[öo]rek|k[üu]nefe|baklava|temizlik|deterjan|sarf|akaryak[ıi]t|yak[ıi]t|benzin|motorin|otel|konaklama|seyahat|kargo|telefon|internet|elektrik|su|k[ıi]rtasiye|ofis|yedek par[çc]a|aksesuar|oto cam|cam malzemesi|bak[ıi]m|onar[ıi]m|lastik|ak[üu]|balata|filtre|motor ya[ğg][ıi]/.test(text);
     const fuelSignal = /akaryak[ıi]t|yak[ıi]t|motorin|benzin|otogaz|shell/.test(text);
@@ -1967,7 +1970,7 @@ export class KdvControlService {
     const vehicleMaintenanceSignal =
       /yedek par[çc]a|aksesuar|oto cam|cam malzemesi|bak[ıi]m|onar[ıi]m|lastik|ak[üu]|balata|filtre|motor ya[ğg][ıi]|ara[çc] servis|oto servis/.test(text);
     const personalUseSignal =
-      /bireysel|ki[şs]isel|[öo]zel kullan[ıi]m|konut|ev interneti|ev telefonu|aile|hediye|l[üu]ks|oyun|e[ğg]lence/.test(text);
+      /bireysel|ki[şs]isel|[öo]zel kullan[ıi]m|konut|ev interneti|ev telefonu|aile|hediye|l[üu]ks|oyun|e[ğg]lence/.test(sourceText);
     const ordinaryBusinessExpenseSignal =
       ordinaryOverheadSignal ||
       mealExpenseSignal ||
@@ -2022,7 +2025,7 @@ export class KdvControlService {
     }
 
     if (
-      baseDecision.risk === 'KONTROL_ET' &&
+      (baseDecision.risk === 'KONTROL_ET' || baseDecision.risk === 'RISKLI') &&
       !hardBlockSignal &&
       !personalUseSignal &&
       ordinaryBusinessExpenseSignal
@@ -2757,8 +2760,8 @@ ${JSON.stringify(payload, null, 2)}`;
     const RED_TEXT = 'FFB91C1C';
     const HEADER_BG = 'FF2E2B26';
     const ALT_BG = 'FFF9FAFB';
-    const TABLE_BORDER = 'FF8E9F94';
-    const TABLE_BORDER_LIGHT = 'FFB9C8BF';
+    const TABLE_BORDER = 'FF6B7280';
+    const TABLE_BORDER_LIGHT = 'FFB8C0CA';
 
     // Sütun tanımı (genişlikler + number formatları veri satırları için)
     // 10 sütun: # · Luca Tarihi · Luca Evrak · Luca KDV · Fatura Tarihi · Fatura Belge · Fatura KDV · Fark · Durum · Açıklama
@@ -2778,57 +2781,9 @@ ${JSON.stringify(payload, null, 2)}`;
       { width: 32 },
     ];
 
-    const tableHeaderRowNum = 5;
+    const tableHeaderRowNum = 1;
     const tableDataStartRowNum = tableHeaderRowNum + 1;
     ws.views = [{ state: 'frozen', ySplit: tableHeaderRowNum }];
-
-    // Kompakt üst bilgi: ana tabloyu aşağı itmeyen kısa rapor bandı.
-    ws.mergeCells('A1:M1');
-    const r1 = ws.getCell('A1');
-    r1.value = 'MOREN MALİ MÜŞAVİRLİK · KDV Kontrol Raporu';
-    r1.font = { name: 'Calibri', size: 16, bold: true, color: { argb: GOLD } };
-    r1.alignment = { horizontal: 'center', vertical: 'middle' };
-    r1.fill = { type: 'pattern', pattern: 'solid', fgColor: { argb: DARK } };
-    r1.border = {
-      top: { style: 'medium', color: { argb: TABLE_BORDER } },
-      bottom: { style: 'medium', color: { argb: TABLE_BORDER } },
-      left: { style: 'medium', color: { argb: TABLE_BORDER } },
-      right: { style: 'medium', color: { argb: TABLE_BORDER } },
-    };
-    ws.getRow(1).height = 28;
-
-    const summaryRows = [
-      ['Mükellef', mukellefName, '', 'Dönem', periodLabel, '', 'Kontrol Türü', typeLabel, '', 'Eşleşen', `${matchedCount}/${results.length}`, 'Rapor', tarihStr],
-      ['Vergi No', taxNo, '', 'Luca Toplam', fmtTl(sumLucaAll), '', 'Fatura OCR', fmtTl(sumOcrAll), '', 'Kısmi', partialCount, 'Hatalı', unmatchedCount],
-      ['Eşleşen Fark', fmtTl(zeroKurusTolerance(sumLucaMatched - sumOcrMatched)), '', 'Luca Eşleşen', fmtTl(sumLucaMatched), '', 'Fatura Eşleşen', fmtTl(sumOcrMatched), '', 'Eşleşme', `%${Math.round((matchedCount / Math.max(results.length, 1)) * 100)}`, '', ''],
-    ];
-    summaryRows.forEach((values, idx) => {
-      const r = 2 + idx;
-      const row = ws.getRow(r);
-      row.values = values;
-      ws.getRow(r).height = 22;
-      for (let col = 1; col <= 13; col++) {
-        const cell = ws.getCell(r, col);
-        cell.fill = { type: 'pattern', pattern: 'solid', fgColor: { argb: 'FFFFFFFF' } };
-        cell.font = {
-          size: col % 3 === 1 || col === 10 || col === 12 ? 9 : 10,
-          bold: col % 3 === 1 || col === 10 || col === 12,
-          color: { argb: col % 3 === 1 || col === 10 || col === 12 ? 'FF4B5563' : 'FF111827' },
-        };
-        cell.alignment = {
-          horizontal: col === 11 || col === 13 ? 'center' : 'left',
-          vertical: 'middle',
-          wrapText: false,
-          shrinkToFit: true,
-        };
-        cell.border = {
-          top: { style: 'thin', color: { argb: TABLE_BORDER_LIGHT } },
-          bottom: { style: 'thin', color: { argb: TABLE_BORDER_LIGHT } },
-          left: { style: 'thin', color: { argb: TABLE_BORDER_LIGHT } },
-          right: { style: 'thin', color: { argb: TABLE_BORDER_LIGHT } },
-        };
-      }
-    });
 
     // Tablo başlığı
     const headerRow = ws.getRow(tableHeaderRowNum);
