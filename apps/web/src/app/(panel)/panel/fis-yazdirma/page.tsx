@@ -296,10 +296,10 @@ export default function FisYazdirmaPage() {
       default:
         return {
           label: 'Yazdırılmadı',
-          detail: undefined,
-          color: 'rgba(250,250,249,0.55)',
-          bg: 'rgba(255,255,255,0.045)',
-          border: 'rgba(255,255,255,0.08)',
+          detail: 'bekliyor',
+          color: '#d4b876',
+          bg: 'rgba(212,184,118,0.10)',
+          border: 'rgba(212,184,118,0.22)',
           icon: X,
         };
     }
@@ -983,13 +983,13 @@ export default function FisYazdirmaPage() {
                               className="h-8 px-3 rounded-lg inline-flex items-center gap-1.5 text-[11px] font-semibold transition-colors disabled:opacity-50"
                               title={isPrinted ? 'Yazdırılmadı olarak işaretle' : 'Yazdırıldı olarak işaretle'}
                               style={{
-                                color: isPrinted ? 'rgba(250,250,249,0.65)' : '#22c55e',
-                                background: isPrinted ? 'rgba(255,255,255,0.045)' : 'rgba(34,197,94,0.12)',
-                                border: `1px solid ${isPrinted ? 'rgba(255,255,255,0.08)' : 'rgba(34,197,94,0.24)'}`,
+                                color: isPrinted ? 'rgba(250,250,249,0.65)' : '#d4b876',
+                                background: isPrinted ? 'rgba(255,255,255,0.045)' : 'rgba(212,184,118,0.08)',
+                                border: `1px solid ${isPrinted ? 'rgba(255,255,255,0.08)' : 'rgba(212,184,118,0.22)'}`,
                               }}
                             >
                               {isMarking ? <Loader2 size={13} className="animate-spin" /> : isPrinted ? <X size={13} /> : <CheckCircle2 size={13} />}
-                              {isPrinted ? 'Yazdırılmadı' : 'Yazdırıldı'}
+                              {isPrinted ? 'Geri al' : 'İşaretle'}
                             </button>
                             <button
                               onClick={() => downloadOutput(o.id, o.filename)}
