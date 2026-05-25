@@ -17,6 +17,7 @@ const PANEL = 'rgba(255,255,255,0.025)';
 const PANEL_HOVER = 'rgba(255,255,255,0.045)';
 const BORDER = 'rgba(255,255,255,0.07)';
 const BORDER_STRONG = 'rgba(255,255,255,0.12)';
+const EMPTY_LIST: any[] = [];
 
 type Taxpayer = { id: string; firstName?: string | null; lastName?: string | null; companyName?: string | null; taxNumber?: string | null; defterTuru?: string | null };
 type PeriodMode = 'GECICI' | 'AYLIK' | 'YILLIK';
@@ -252,7 +253,7 @@ export default function EDefterAgentPage() {
     }
   }, [jobQuery.data, qc, taxpayerId]);
 
-  const allFindings = (session?.findings || []) as any[];
+  const allFindings = useMemo<any[]>(() => (Array.isArray(session?.findings) ? session.findings : EMPTY_LIST), [session?.findings]);
   const stats = useMemo(() => {
     const open = allFindings.filter((f) => (f.status || 'OPEN') === 'OPEN');
     return {
@@ -301,10 +302,21 @@ export default function EDefterAgentPage() {
   }, [visibleFindings]);
 
   useEffect(() => {
-    setExpandedGroups((prev) => { const next = { ...prev }; for (const g of groupedFindings) if (next[g.id] === undefined) next[g.id] = true; return next; });
+    if (groupedFindings.length === 0) return;
+    setExpandedGroups((prev) => {
+      let changed = false;
+      const next = { ...prev };
+      for (const g of groupedFindings) {
+        if (next[g.id] === undefined) {
+          next[g.id] = true;
+          changed = true;
+        }
+      }
+      return changed ? next : prev;
+    });
   }, [groupedFindings]);
 
-  const lines = useMemo(() => session?.lines || [], [session]);
+  const lines = useMemo<any[]>(() => (Array.isArray(session?.lines) ? session.lines : EMPTY_LIST), [session?.lines]);
   const visibleLines = useMemo(() => {
     const query = lineSearch.trim().toLocaleLowerCase('tr-TR');
 

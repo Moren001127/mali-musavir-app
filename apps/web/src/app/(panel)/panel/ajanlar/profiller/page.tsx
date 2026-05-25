@@ -953,7 +953,7 @@ function FirmRuleEditor({
         </span>
       </div>
 
-      <div className="mb-3 flex flex-wrap gap-2">
+      <div className="hidden">
         {FIRM_RULE_TEMPLATES.map((template) => (
           <button
             type="button"
