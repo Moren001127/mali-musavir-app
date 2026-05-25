@@ -139,10 +139,15 @@ export default function FisYazdirmaPage() {
     filename: string;
     fileSize: number;
     createdAt: string;
+    printStatus: 'REQUESTED' | 'PRINTING' | 'DONE' | 'FAILED' | null;
+    printedAt: string | null;
+    printError: string | null;
+    printDeviceId: string | null;
   }
   const [outputs, setOutputs] = useState<OutputRec[]>([]);
   const [outputsLoading, setOutputsLoading] = useState(false);
   const [showOutputs, setShowOutputs] = useState(false);
+  const [markingPrintId, setMarkingPrintId] = useState<string | null>(null);
 
   const loadOutputs = async () => {
     setOutputsLoading(true);
@@ -197,6 +202,30 @@ export default function FisYazdirmaPage() {
     }
   };
 
+  const setOutputPrinted = async (output: OutputRec, printed: boolean) => {
+    setMarkingPrintId(output.id);
+    try {
+      const res = await fetch(`${API}/fis-yazdirma/outputs/${output.id}/print-status`, {
+        method: 'POST',
+        headers: {
+          Authorization: `Bearer ${getToken()}`,
+          'Content-Type': 'application/json',
+        },
+        body: JSON.stringify({ printed }),
+      });
+      if (!res.ok) {
+        const err = await res.json().catch(() => ({}));
+        throw new Error(err.message ?? 'Yazdırma durumu güncellenemedi');
+      }
+      const updated = await res.json();
+      setOutputs((prev) => prev.map((o) => (o.id === output.id ? { ...o, ...updated } : o)));
+    } catch (e: any) {
+      alert(`Yazdırma durumu hatası: ${e.message ?? 'bilinmeyen'}`);
+    } finally {
+      setMarkingPrintId(null);
+    }
+  };
+
   const formatSize = (b: number) => {
     if (b < 1024) return `${b} B`;
     if (b < 1024 * 1024) return `${(b / 1024).toFixed(1)} KB`;
@@ -214,6 +243,65 @@ export default function FisYazdirmaPage() {
       ).padStart(2, '0')}`;
     } catch {
       return iso;
+    }
+  };
+
+  const printSummary = outputs.reduce(
+    (acc, o) => {
+      if (o.printStatus === 'DONE') acc.printed += 1;
+      else acc.unprinted += 1;
+      return acc;
+    },
+    { printed: 0, unprinted: 0 },
+  );
+
+  const printStatusInfo = (o: OutputRec) => {
+    switch (o.printStatus) {
+      case 'DONE':
+        return {
+          label: 'Yazdırıldı',
+          detail: o.printedAt ? formatDateTime(o.printedAt) : undefined,
+          color: '#22c55e',
+          bg: 'rgba(34,197,94,0.12)',
+          border: 'rgba(34,197,94,0.24)',
+          icon: CheckCircle2,
+        };
+      case 'REQUESTED':
+        return {
+          label: 'Kuyrukta',
+          detail: 'agent bekliyor',
+          color: '#d4b876',
+          bg: 'rgba(212,184,118,0.12)',
+          border: 'rgba(212,184,118,0.25)',
+          icon: Clock,
+        };
+      case 'PRINTING':
+        return {
+          label: 'Yazdırılıyor',
+          detail: o.printDeviceId || undefined,
+          color: '#60a5fa',
+          bg: 'rgba(96,165,250,0.12)',
+          border: 'rgba(96,165,250,0.24)',
+          icon: Loader2,
+        };
+      case 'FAILED':
+        return {
+          label: 'Yazdırılamadı',
+          detail: o.printError || undefined,
+          color: '#f43f5e',
+          bg: 'rgba(244,63,94,0.12)',
+          border: 'rgba(244,63,94,0.24)',
+          icon: AlertCircle,
+        };
+      default:
+        return {
+          label: 'Yazdırılmadı',
+          detail: undefined,
+          color: 'rgba(250,250,249,0.55)',
+          bg: 'rgba(255,255,255,0.045)',
+          border: 'rgba(255,255,255,0.08)',
+          icon: X,
+        };
     }
   };
 
@@ -788,6 +876,22 @@ export default function FisYazdirmaPage() {
                 >
                   {outputs.length}
                 </span>
+                {outputs.length > 0 && (
+                  <div className="hidden sm:flex items-center gap-1.5">
+                    <span
+                      className="text-[10px] px-2 py-0.5 rounded-full font-semibold"
+                      style={{ background: 'rgba(34,197,94,0.12)', color: '#22c55e' }}
+                    >
+                      {printSummary.printed} yazdırıldı
+                    </span>
+                    <span
+                      className="text-[10px] px-2 py-0.5 rounded-full font-semibold"
+                      style={{ background: 'rgba(255,255,255,0.045)', color: 'rgba(250,250,249,0.55)' }}
+                    >
+                      {printSummary.unprinted} bekliyor
+                    </span>
+                  </div>
+                )}
               </div>
               <span className="text-xs" style={{ color: 'rgba(250,250,249,0.45)' }}>
                 {showOutputs ? 'Gizle' : 'Göster'}
@@ -816,61 +920,97 @@ export default function FisYazdirmaPage() {
                   </div>
                 ) : (
                   <div className="max-h-96 overflow-y-auto">
-                    {outputs.map((o) => (
-                      <div
-                        key={o.id}
-                        className="px-4 py-3 flex items-center gap-3"
-                        style={{ borderBottom: '1px solid rgba(255,255,255,0.05)' }}
-                      >
+                    {outputs.map((o) => {
+                      const info = printStatusInfo(o);
+                      const StatusIcon = info.icon;
+                      const isMarking = markingPrintId === o.id;
+                      const isPrinted = o.printStatus === 'DONE';
+                      return (
                         <div
-                          className="w-9 h-9 rounded-lg flex items-center justify-center flex-shrink-0"
-                          style={{ background: 'rgba(184,160,111,.12)' }}
+                          key={o.id}
+                          className="px-4 py-3 flex flex-col gap-3 sm:flex-row sm:items-center"
+                          style={{ borderBottom: '1px solid rgba(255,255,255,0.05)' }}
                         >
-                          <FileText size={16} style={{ color: '#b8a06f' }} />
-                        </div>
-                        <div className="flex-1 min-w-0">
-                          <p
-                            className="text-sm font-medium truncate"
-                            style={{ color: '#fafaf9' }}
-                          >
-                            {o.mukellefName || '(mükellef yok)'}
-                            {o.donem && (
-                              <span
-                                className="ml-2 text-xs font-normal"
+                          <div className="flex items-center gap-3 min-w-0 flex-1">
+                            <div
+                              className="w-9 h-9 rounded-lg flex items-center justify-center flex-shrink-0"
+                              style={{ background: 'rgba(184,160,111,.12)' }}
+                            >
+                              <FileText size={16} style={{ color: '#b8a06f' }} />
+                            </div>
+                            <div className="flex-1 min-w-0">
+                              <p
+                                className="text-sm font-medium truncate"
+                                style={{ color: '#fafaf9' }}
+                              >
+                                {o.mukellefName || '(mükellef yok)'}
+                                {o.donem && (
+                                  <span
+                                    className="ml-2 text-xs font-normal"
+                                    style={{ color: 'rgba(250,250,249,0.45)' }}
+                                  >
+                                    · {o.donem}
+                                  </span>
+                                )}
+                              </p>
+                              <p
+                                className="text-[11px] mt-0.5 truncate"
                                 style={{ color: 'rgba(250,250,249,0.45)' }}
                               >
-                                · {o.donem}
-                              </span>
-                            )}
-                          </p>
-                          <p
-                            className="text-[11px] mt-0.5 truncate"
-                            style={{ color: 'rgba(250,250,249,0.45)' }}
-                          >
-                            {o.fileCount} fiş · {formatSize(o.fileSize)} ·{' '}
-                            {formatDateTime(o.createdAt)}
-                          </p>
+                                {o.fileCount} fiş · {formatSize(o.fileSize)} ·{' '}
+                                {formatDateTime(o.createdAt)}
+                              </p>
+                            </div>
+                          </div>
+
+                          <div className="flex flex-wrap items-center gap-2 sm:justify-end sm:flex-shrink-0">
+                            <span
+                              className="inline-flex items-center gap-1.5 rounded-full border px-2.5 py-1 text-[11px] font-semibold"
+                              style={{ background: info.bg, borderColor: info.border, color: info.color }}
+                              title={info.detail}
+                            >
+                              <StatusIcon size={13} className={o.printStatus === 'PRINTING' ? 'animate-spin' : ''} />
+                              {info.label}
+                              {info.detail && (
+                                <span className="hidden md:inline font-normal opacity-75">
+                                  · {info.detail}
+                                </span>
+                              )}
+                            </span>
+                            <button
+                              onClick={() => setOutputPrinted(o, !isPrinted)}
+                              disabled={isMarking}
+                              className="h-8 px-3 rounded-lg inline-flex items-center gap-1.5 text-[11px] font-semibold transition-colors disabled:opacity-50"
+                              title={isPrinted ? 'Yazdırılmadı olarak işaretle' : 'Yazdırıldı olarak işaretle'}
+                              style={{
+                                color: isPrinted ? 'rgba(250,250,249,0.65)' : '#22c55e',
+                                background: isPrinted ? 'rgba(255,255,255,0.045)' : 'rgba(34,197,94,0.12)',
+                                border: `1px solid ${isPrinted ? 'rgba(255,255,255,0.08)' : 'rgba(34,197,94,0.24)'}`,
+                              }}
+                            >
+                              {isMarking ? <Loader2 size={13} className="animate-spin" /> : isPrinted ? <X size={13} /> : <CheckCircle2 size={13} />}
+                              {isPrinted ? 'Yazdırılmadı' : 'Yazdırıldı'}
+                            </button>
+                            <button
+                              onClick={() => downloadOutput(o.id, o.filename)}
+                              className="h-8 w-8 rounded-lg inline-flex items-center justify-center hover:bg-black/5 transition-colors"
+                              title="İndir"
+                              style={{ color: '#b8a06f' }}
+                            >
+                              <Download size={15} />
+                            </button>
+                            <button
+                              onClick={() => removeOutput(o.id)}
+                              className="h-8 w-8 rounded-lg inline-flex items-center justify-center hover:bg-black/5 transition-colors"
+                              title="Sil"
+                              style={{ color: '#f43f5e' }}
+                            >
+                              <Trash2 size={14} />
+                            </button>
+                          </div>
                         </div>
-                        <div className="flex items-center gap-1 flex-shrink-0">
-                          <button
-                            onClick={() => downloadOutput(o.id, o.filename)}
-                            className="p-2 rounded-lg hover:bg-black/5 transition-colors"
-                            title="İndir"
-                            style={{ color: '#b8a06f' }}
-                          >
-                            <Download size={15} />
-                          </button>
-                          <button
-                            onClick={() => removeOutput(o.id)}
-                            className="p-2 rounded-lg hover:bg-black/5 transition-colors"
-                            title="Sil"
-                            style={{ color: '#f43f5e' }}
-                          >
-                            <Trash2 size={14} />
-                          </button>
-                        </div>
-                      </div>
-                    ))}
+                      );
+                    })}
                   </div>
                 )}
               </div>

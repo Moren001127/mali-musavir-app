@@ -943,6 +943,41 @@ export class FisYazdirmaService {
     });
   }
 
+  async setOutputPrinted(
+    tenantId: string,
+    outputId: string,
+    printed: boolean,
+  ): Promise<{
+    id: string;
+    printStatus: string | null;
+    printedAt: Date | null;
+    printError: string | null;
+    printDeviceId: string | null;
+  }> {
+    const output = await (this.prisma as any).fisYazdirmaOutput.findFirst({
+      where: { id: outputId, tenantId },
+      select: { id: true },
+    });
+    if (!output) throw new BadRequestException('Cikti bulunamadi');
+
+    return (this.prisma as any).fisYazdirmaOutput.update({
+      where: { id: outputId },
+      data: {
+        printStatus: printed ? 'DONE' : null,
+        printedAt: printed ? new Date() : null,
+        printError: null,
+        printDeviceId: printed ? 'manual' : null,
+      },
+      select: {
+        id: true,
+        printStatus: true,
+        printedAt: true,
+        printError: true,
+        printDeviceId: true,
+      },
+    });
+  }
+
   async listOutputs(tenantId: string, limit = 100) {
     return (this.prisma as any).fisYazdirmaOutput.findMany({
       where: { tenantId },
@@ -957,6 +992,10 @@ export class FisYazdirmaService {
         filename: true,
         fileSize: true,
         createdAt: true,
+        printStatus: true,
+        printedAt: true,
+        printError: true,
+        printDeviceId: true,
       },
     });
   }

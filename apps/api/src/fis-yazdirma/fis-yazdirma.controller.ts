@@ -177,6 +177,23 @@ export class FisYazdirmaController {
       body?.deviceId,
     );
   }
+
+  /**
+   * POST /api/v1/fis-yazdirma/outputs/:id/print-status
+   * Fiziksel cikti alindi/alınmadi bilgisini manuel isaretle.
+   */
+  @Post('outputs/:id/print-status')
+  async setPrintStatus(
+    @Req() req: any,
+    @Param('id') id: string,
+    @Body() body: { printed?: boolean } = {},
+  ) {
+    return this.fisYazdirmaService.setOutputPrinted(
+      req.user.tenantId,
+      id,
+      !!body?.printed,
+    );
+  }
 }
 
 /**
