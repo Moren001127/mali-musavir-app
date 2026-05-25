@@ -176,7 +176,10 @@ export class MihsapService {
       method: 'POST',
       headers: {
         'Content-Type': 'application/json',
+        Accept: 'application/json, text/plain, */*',
         Authorization: `Bearer ${token}`,
+        Origin: MIHSAP_BASE,
+        Referer: `${MIHSAP_BASE}/`,
       },
       body: JSON.stringify(body),
     });
@@ -186,12 +189,28 @@ export class MihsapService {
         'MIHSAP token süresi dolmuş. MIHSAP sayfasını yenileyin; eklenti yeni token gönderecek.',
       );
     }
+    // Cevap gövdesini önce text olarak al → bos/HTML cevap durumunda
+    // anlamsiz 'Unexpected end of JSON input' yerine net hata mesaji ver.
+    const ct = res.headers.get('content-type') || '';
+    const rawText = await res.text();
+    const preview = rawText.slice(0, 400);
     if (!res.ok) {
-      const t = await res.text();
-      this.logger.error(`MIHSAP all-faturas error ${res.status}: ${t.slice(0, 300)}`);
-      throw new BadRequestException(`MIHSAP hata ${res.status}`);
+      this.logger.error(`MIHSAP all-faturas error ${res.status} (ct=${ct}, len=${rawText.length}): ${preview}`);
+      throw new BadRequestException(`MIHSAP hata ${res.status}: ${preview.slice(0, 120)}`);
     }
-    const json: any = await res.json();
+    if (!rawText || rawText.length === 0) {
+      this.logger.error(`MIHSAP bos govde (status=${res.status}, ct=${ct}, url=${url})`);
+      throw new BadRequestException('MIHSAP bos cevap. Token süresi dolmus olabilir — MIHSAP sayfasini yenileyin.');
+    }
+    if (!ct.includes('json') && !rawText.trim().startsWith('{')) {
+      this.logger.error(`MIHSAP non-JSON cevap (ct=${ct}): ${preview}`);
+      throw new BadRequestException(`MIHSAP beklenmedik cevap: ${preview.slice(0, 120)}`);
+    }
+    let json: any;
+    try { json = JSON.parse(rawText); } catch (e: any) {
+      this.logger.error(`MIHSAP JSON parse hatasi: ${preview}`);
+      throw new BadRequestException(`MIHSAP JSON parse hatasi: ${e?.message}. Preview: ${preview.slice(0, 120)}`);
+    }
     const content = json?.sonucValue?.content || [];
     const total = json?.sonucValue?.totalElements ?? content.length;
     return { total, items: content };
