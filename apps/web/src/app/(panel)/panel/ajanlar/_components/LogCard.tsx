@@ -50,7 +50,7 @@ function collectWarnings(event: LogEvent, rows: FieldRow[]) {
 
   const onaylandi = ['onaylandi', 'basarili', 'ok'].includes(String(event.status || '').toLowerCase());
   const missingCritical = rows.filter((row) =>
-    row.status === 'missing' && /^(Matrah|KDV|Cari|Belge|Toplam Tutar|Onay)/i.test(row.label),
+    row.status === 'missing' && /^(Tarih|Matrah|KDV|Cari|Belge|Toplam Tutar|Onay)/i.test(row.label),
   );
   if (onaylandi && missingCritical.length > 0) {
     warnings.push(`Onayli kayitta eksik alan: ${missingCritical.map((r) => r.label).join(', ')}`);

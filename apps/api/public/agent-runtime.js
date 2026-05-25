@@ -11622,12 +11622,34 @@
     });
   }
 
+  function readHesapKodlariFromDom() {
+    const codeRe = /\b\d{3}\.\d{1,3}(?:\.\d{1,3}){0,4}\b/g;
+    const els = [...document.querySelectorAll('.ant-select-selection-item, .ant-select-selector, .ant-select-selector [title]')]
+      .filter((e) => e && (e.offsetParent !== null || e.getClientRects().length > 0));
+    const codes = [];
+    for (const e of els) {
+      const candidates = [
+        (e.textContent || '').trim(),
+        (e.getAttribute('title') || '').trim(),
+      ];
+      for (const raw of candidates) {
+        const text = raw.replace(/\s+/g, ' ').trim();
+        if (!text) continue;
+        const matches = text.match(codeRe) || [];
+        if (/^\d{3}\.\d/.test(text) && matches.length <= 1) {
+          codes.push(text);
+        } else {
+          codes.push(...matches);
+        }
+      }
+    }
+    return [...new Set(codes.filter((t) => /^\d{3}\.\d/.test(t)))];
+  }
+
   async function readHesapKodlari(timeoutMs = 15000) {
     const t0 = Date.now();
     while (Date.now() - t0 < timeoutMs) {
-      const els = [...document.querySelectorAll('.ant-select-selection-item')];
-      const all = els.map((e) => (e.textContent || '').trim()).filter(Boolean);
-      const codes = all.filter((t) => /^\d{3}\.\d/.test(t));
+      const codes = readHesapKodlariFromDom();
       if (codes.length >= 1) return codes;
       await sleep(500);
     }
@@ -14281,13 +14303,13 @@
 
         if (saved) {
           counters.onay++; counters.toplam++; setCount();
-          await logEvent(mukellef.id, mukellef.ad, 'ok', `F2 · ${sebep}`, { firma: meta.firma, firmaKimlikNo: meta.firmaKimlikNo, belgeNo: meta.belgeNo, tutar: meta.tutar, hesapKodu: codes[0], hesapKodlari: codes, kdv: readKdvOrani(), kdvOranlari: readAllKdvOranlari(), satirSayisi: codes.length, decisionTrace, faturaDecisionCandidate, aiCallReason: decision?.aiCallReason || null, ...safety.compareMeta });
+          await logEvent(mukellef.id, mukellef.ad, 'ok', `F2 · ${sebep}`, { firma: meta.firma, firmaKimlikNo: meta.firmaKimlikNo, tarih: meta.tarih, belgeTuru: meta.belgeTuru, faturaTuru: meta.faturaTuru, belgeNo: meta.belgeNo, tutar: meta.tutar, hesapKodu: codes[0], hesapKodlari: codes, kdv: readKdvOrani(), kdvOranlari: readAllKdvOranlari(), satirSayisi: codes.length, decisionTrace, faturaDecisionCandidate, aiCallReason: decision?.aiCallReason || null, ...safety.compareMeta });
         } else {
           counters.atla++; counters.toplam++; setCount();
           const atlamaSebebi = validationFailed
             ? `eksik alan (MIHSAP): ${validationFailed.slice(0, 60)}`
             : `F2 sonuçlanmadı · ${sebep}`;
-          await logEvent(mukellef.id, mukellef.ad, 'skip', atlamaSebebi, { firma: meta.firma, belgeNo: meta.belgeNo, tutar: meta.tutar, hesapKodu: codes[0], hesapKodlari: codes, kdv: readKdvOrani(), kdvOranlari: readAllKdvOranlari(), satirSayisi: codes.length });
+          await logEvent(mukellef.id, mukellef.ad, 'skip', atlamaSebebi, { firma: meta.firma, tarih: meta.tarih, belgeTuru: meta.belgeTuru, faturaTuru: meta.faturaTuru, belgeNo: meta.belgeNo, tutar: meta.tutar, hesapKodu: codes[0], hesapKodlari: codes, kdv: readKdvOrani(), kdvOranlari: readAllKdvOranlari(), satirSayisi: codes.length });
           await clickIleri(fid);
         }
       } catch (e) {

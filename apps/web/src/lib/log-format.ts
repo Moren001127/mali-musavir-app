@@ -140,6 +140,7 @@ export function splitLogMessage(msg: string): string[] {
 export function buildFieldRows(event: {
   ts?: string | Date;
   action?: string;
+  firma?: string;
   fisNo?: string;
   tutar?: number | string;
   hesapKodu?: string;
@@ -171,7 +172,13 @@ export function buildFieldRows(event: {
     value: belgeNo || '-',
   });
 
-  const cari = (event.meta?.cari || event.meta?.firma || '').toString().trim();
+  const cari = (
+    event.meta?.cari ||
+    event.meta?.firma ||
+    event.firma ||
+    event.meta?.decisionTrace?.belge?.cari ||
+    ''
+  ).toString().trim();
   const belgeTuru = inferBelgeTuru(event.action, event.meta, event.message);
   const isZRaporu = /z[\s_-]*rapor/i.test([cari, belgeTuru, belgeNo].join(' '));
   rows.push({
@@ -270,9 +277,49 @@ export function buildFieldRows(event: {
   };
 
   // v1.36.60: Çok satırlı fatura — meta'da hesapKodlari (array) varsa her satırı ayrı göster
-  const hesapKodlari: string[] = Array.isArray(event.meta?.hesapKodlari) ? event.meta.hesapKodlari : [];
+  const normalizeAccountText = (value: unknown) => String(value ?? '').trim().replace(/\s+/g, ' ');
+  const accountKey = (value: unknown) => {
+    const text = normalizeAccountText(value);
+    const match = text.match(/\b\d{3}(?:\.\d{1,3}){1,4}\b/);
+    return (match?.[0] || text).toUpperCase();
+  };
+  const uniqueAccountTexts = (values: unknown[]) => {
+    const seen = new Set<string>();
+    const out: string[] = [];
+    for (const value of values) {
+      const text = normalizeAccountText(value);
+      if (!/^\d{3}\.\d/.test(text)) continue;
+      const key = accountKey(text);
+      if (seen.has(key)) continue;
+      seen.add(key);
+      out.push(text);
+    }
+    return out;
+  };
+  const metaHesapKodlari: unknown[] = Array.isArray(event.meta?.hesapKodlari) ? event.meta.hesapKodlari : [];
+  const traceHesapKodlari: unknown[] = Array.isArray(event.meta?.decisionTrace?.ekran?.hesapKodlari)
+    ? event.meta.decisionTrace.ekran.hesapKodlari
+    : [];
+  const hesapKodlari: string[] = uniqueAccountTexts([...metaHesapKodlari, ...traceHesapKodlari, event.hesapKodu]);
   const kdvOranlari: string[] = Array.isArray(event.meta?.kdvOranlari) ? event.meta.kdvOranlari : [];
   const cokSatir = hesapKodlari.length > 1 || kdvOranlari.length > 1;
+  const isKdvAccount = (code: string) => /^(191|391)\./.test(code);
+  const isCariAccount = (code: string) => /^(120|320)\./.test(code);
+  const isPaymentAccount = (code: string) =>
+    /^(100|101|102|103|108|121|321|309|329|331|335|336)\./.test(code);
+  const kdvHesapKodlari = hesapKodlari.filter(isKdvAccount);
+  const cariKodlari = hesapKodlari.filter(isCariAccount);
+  const odemeTahsilatKodlari = hesapKodlari.filter(isPaymentAccount);
+  const matrahHesapKodlari = hesapKodlari.filter(
+    (code) => !isKdvAccount(code) && !isCariAccount(code) && !isPaymentAccount(code),
+  );
+  const unshownAccounts = (shown: Set<string>) => hesapKodlari.filter((code) => !shown.has(accountKey(code)));
+  const pushAccountGroup = (label: string, codes: string[], shown: Set<string>) => {
+    const fresh = codes.filter((code) => !shown.has(accountKey(code)));
+    if (fresh.length === 0) return;
+    for (const code of fresh) shown.add(accountKey(code));
+    rows.push({ label, status: 'full', value: fresh.join(' - ') });
+  };
 
   const checkField = (label: 'Matrah' | 'KDV', existingValue?: string) => {
     const isBos = parsed.bosAlanlar.some((b) => b.toLowerCase() === label.toLowerCase());
@@ -343,13 +390,9 @@ export function buildFieldRows(event: {
   // Sıra: her satır için "Matrah N: 153.x" + "KDV N: %X - 191.x" formatında.
   // Cari kodu en altta ayrı satır.
   if (cokSatir) {
-    // MATRAH kodları: stok grupları (150-157), satış (600-602), maliyet (740, 770)
-    const matrahPrefixes = /^(150|151|152|153|157|600|601|602|740|770)\./;
-    const matrahKodlari = hesapKodlari.filter((k) => matrahPrefixes.test(k));
-    // KDV-hesap kodları (191/391)
-    const kdvHesapKodlari = hesapKodlari.filter((k) => /^(191|391)\./.test(k));
-    // Cari kodlar (120/320)
-    const cariKodlari = hesapKodlari.filter((k) => /^(120|320)\./.test(k));
+    // Matrah/gider/gelir/stok/maliyet kodlari: KDV, cari ve odeme disinda kalan hesaplar.
+    const shownAccounts = new Set<string>();
+    const matrahKodlari = matrahHesapKodlari;
 
     const extractRate = (raw?: string | null): string | null => {
       const text = String(raw || '');
@@ -425,6 +468,7 @@ export function buildFieldRows(event: {
       const lineAmounts = lineCount === 1 ? splitAmountForRate(lineRate) : null;
 
       if (matrahKodu) {
+        shownAccounts.add(accountKey(matrahKodu));
         rows.push({
           label: `Matrah ${i + 1}`,
           status: 'full',
@@ -433,6 +477,7 @@ export function buildFieldRows(event: {
       }
       // KDV satırı: oran + ayraç + KDV hesap kodu birlikte
       if (oran || kdvKodu) {
+        if (kdvKodu) shownAccounts.add(accountKey(kdvKodu));
         const parts = [lineAmounts ? fmtTL(lineAmounts.kdv) : null, extractRate(kdvKodu) || oran, kdvKodu].filter(Boolean);
         rows.push({
           label: `KDV ${i + 1}`,
@@ -444,18 +489,33 @@ export function buildFieldRows(event: {
     }
 
     // Cari kodu en altta
-    if (cariKodlari.length > 0) {
-      rows.push({
-        label: 'Cari Hesabı',
-        status: 'full',
-        value: cariKodlari.join(' - '),
-      });
-    }
+    pushAccountGroup('Cari Hesabı', cariKodlari, shownAccounts);
+    pushAccountGroup('Ödeme/Tahsilat', odemeTahsilatKodlari, shownAccounts);
+    pushAccountGroup('Diğer Hesaplar', unshownAccounts(shownAccounts), shownAccounts);
   } else {
     // v1.36.63: ÖKC Fişi vb. tek-kalem belgelerde mesaj içinden "B1:..." parse'la
     // (Matrah için hesap kodu kaynağı). Eğer event.hesapKodu boşsa B1'i fallback olarak göster.
     const blokMatches = Array.from(msg.matchAll(/B(\d+):([^·\n]+?)(?=\s+B\d+:|·|$)/g));
     const isIsletmeKategoriLog = /Isletme|FatT:|AST:/i.test(msg) && blokMatches.length > 0 && !event.hesapKodu;
+    const shownAccounts = new Set<string>();
+    const pushKdvDetailRow = () => {
+      if (!event.kdv && kdvHesapKodlari.length === 0) return false;
+      for (const code of kdvHesapKodlari) shownAccounts.add(accountKey(code));
+      const value = [event.kdv ? String(event.kdv) : null, ...kdvHesapKodlari].filter(Boolean).join(' - ');
+      const missingRate = !event.kdv;
+      const missingCode = kdvHesapKodlari.length === 0;
+      rows.push({
+        label: 'KDV',
+        status: missingRate || missingCode ? 'warning' : 'full',
+        value,
+        meta: missingRate
+          ? 'KDV orani logta gorunmuyor'
+          : missingCode
+            ? 'KDV orani var, hesap kodu gorunmuyor'
+            : undefined,
+      });
+      return true;
+    };
 
     if (isIsletmeKategoriLog) {
       for (const match of blokMatches) {
@@ -473,25 +533,22 @@ export function buildFieldRows(event: {
       const b1Hesap = blokMatches[0]?.[2]?.trim() || '';
       const giderHesabi = event.hesapKodu || b1Hesap;
       if (giderHesabi) {
+        shownAccounts.add(accountKey(giderHesabi));
         // Genelde KDV ayrımı yok ÖKC Fişlerinde — sadece hesap kodu göster
         rows.push({
           label: belgeTuru === 'ÖKC Fişi' || belgeTuru === 'FİS' ? 'Gider Hesabı' : 'Matrah',
           status: 'full',
           value: giderHesabi,
         });
-        // KDV oranı varsa onu da göster
-        if (event.kdv) {
-          rows.push({
-            label: 'KDV',
-            status: 'full',
-            value: String(event.kdv),
-          });
-        }
+        pushKdvDetailRow();
       } else {
         checkField('Matrah', event.hesapKodu);
-        checkField('KDV', event.kdv);
+        if (!pushKdvDetailRow()) checkField('KDV', event.kdv);
       }
     }
+    pushAccountGroup('Cari Hesabı', cariKodlari, shownAccounts);
+    pushAccountGroup('Ödeme/Tahsilat', odemeTahsilatKodlari, shownAccounts);
+    pushAccountGroup('Diğer Hesaplar', unshownAccounts(shownAccounts), shownAccounts);
   }
 
   // 7) İçerik (AI ocrOzet veya meta.icerik)
@@ -542,6 +599,16 @@ function extractFaturaTarihi(meta?: any, message?: string, eventTs?: string | Da
       const t = String(v).trim();
       if (t && !/^\?+$/.test(t)) return normalizeTarih(t);
     }
+  }
+  // 2.5) Yeni agent guvenlik izi: Mihsap ekrani ve OCR belge tarihi ayri alanlarda gelir.
+  for (const value of [
+    meta?.mihsapTarih,
+    meta?.decisionTrace?.ekran?.tarih,
+    meta?.belgeTarih,
+    meta?.decisionTrace?.belge?.tarih,
+  ]) {
+    const t = String(value || '').trim();
+    if (t && !/^\?+$/.test(t)) return normalizeTarih(t);
   }
   // 3) Mesaj prefix'inden parse — "31.03.2026 - ..." veya "2026-03-31 - ..."
   if (message) {
@@ -614,6 +681,8 @@ function inferBelgeTuru(action?: string, meta?: any, message?: string): string |
 
   // 1) meta.belgeTuru — extension explicit göndermişse en doğru (insanca formatla)
   if (meta?.belgeTuru) return formatBelgeTuru(String(meta.belgeTuru));
+  if (meta?.decisionTrace?.ekran?.belgeTuru) return formatBelgeTuru(String(meta.decisionTrace.ekran.belgeTuru));
+  if (meta?.decisionTrace?.belge?.belgeTuru) return formatBelgeTuru(String(meta.decisionTrace.belge.belgeTuru));
   // 2) meta.faturaTuru — bazı durumlarda belgeTuru yok ama faturaTuru var
   if (meta?.faturaTuru) {
     const ft = String(meta.faturaTuru).toUpperCase();
