@@ -229,15 +229,30 @@ export class KdvControlService {
     const visibleResults = results.filter((r) => !r.kdvRecord || !isAggregateLucaRecord(r.kdvRecord));
     const statusMap: Record<string, number> = {};
     visibleResults.forEach((r) => (statusMap[r.status] = (statusMap[r.status] ?? 0) + 1));
+    const isReviewStatus = (status: string) => status === 'PARTIAL_MATCH' || status === 'NEEDS_REVIEW';
+    const isRejectedStatus = (status: string) => status === 'REJECTED' || status === 'MISMATCH';
+    const isAmountMismatch = (r: (typeof visibleResults)[number]) =>
+      this.isKdvMatchedStatus(r.status) && Math.abs(this.getExportFarkValue(r, visibleResults, sessionType)) > 0.01;
     const partialMatch = statusMap['PARTIAL_MATCH'] ?? 0;
     const needsReview = statusMap['NEEDS_REVIEW'] ?? 0;
     const unmatched = statusMap['UNMATCHED'] ?? 0;
     const rejected = statusMap['REJECTED'] ?? 0;
     const mismatch = statusMap['MISMATCH'] ?? 0;
-    const matchedAmountMismatch = visibleResults.filter((r) =>
-      this.isKdvMatchedStatus(r.status) && Math.abs(this.getExportFarkValue(r, visibleResults, sessionType)) > 0.01,
-    ).length;
+    const matchedAmountMismatch = visibleResults.filter(isAmountMismatch).length;
     const matchedRaw = (statusMap['MATCHED'] ?? 0) + (statusMap['CONFIRMED'] ?? 0);
+    const lucaOnlyMissing = visibleResults.filter((r) => r.status === 'UNMATCHED' && !!r.kdvRecordId && !r.imageId).length;
+    const imageOnlyMissing = visibleResults.filter((r) => r.status === 'UNMATCHED' && !!r.imageId && !r.kdvRecordId).length;
+    const otherUnmatched = Math.max(0, unmatched - lucaOnlyMissing - imageOnlyMissing);
+    const effectiveMatchedRows = visibleResults.filter((r) => this.isKdvMatchedStatus(r.status) && !isAmountMismatch(r));
+    const reviewRows = visibleResults.filter((r) => isReviewStatus(r.status) || isAmountMismatch(r));
+    const rejectedRows = visibleResults.filter((r) => isRejectedStatus(r.status));
+    const uniqueImages = (rows: typeof visibleResults) => {
+      const ids = new Set<string>();
+      rows.forEach((r) => {
+        if (r.imageId) ids.add(r.imageId);
+      });
+      return ids.size;
+    };
     return {
       matched: Math.max(0, matchedRaw - matchedAmountMismatch),
       partialMatch,
@@ -245,10 +260,27 @@ export class KdvControlService {
       amountMismatch: matchedAmountMismatch,
       reviewTotal: partialMatch + needsReview + matchedAmountMismatch,
       unmatched,
+      lucaOnlyMissing,
+      imageOnlyMissing,
+      otherUnmatched,
       rejected,
       mismatch,
       issueTotal: partialMatch + needsReview + matchedAmountMismatch + unmatched + rejected + mismatch,
       totalResults: visibleResults.length,
+      balance: {
+        luca: {
+          matched: effectiveMatchedRows.filter((r) => !!r.kdvRecordId).length,
+          review: reviewRows.filter((r) => !!r.kdvRecordId).length,
+          missingInvoice: lucaOnlyMissing,
+          rejected: rejectedRows.filter((r) => !!r.kdvRecordId).length,
+        },
+        image: {
+          matched: uniqueImages(effectiveMatchedRows),
+          review: uniqueImages(reviewRows),
+          missingLuca: imageOnlyMissing,
+          rejected: uniqueImages(rejectedRows),
+        },
+      },
     };
   }
 
@@ -3215,7 +3247,7 @@ ${JSON.stringify(payload, null, 2)}`;
       this.prisma.receiptImage.count({ where: { sessionId } }),
       this.prisma.reconciliationResult.findMany({
         where: { sessionId },
-        include: { kdvRecord: true },
+        include: { kdvRecord: true, image: true },
       }),
       this.prisma.receiptImage.findMany({
         where: { sessionId },
@@ -3232,9 +3264,7 @@ ${JSON.stringify(payload, null, 2)}`;
     ]);
     const totalRecords = records.filter((r) => !isAggregateLucaRecord(r)).length;
     const visibleResults = results.filter((r) => !r.kdvRecord || !isAggregateLucaRecord(r.kdvRecord));
-
-    const statusMap: Record<string, number> = {};
-    visibleResults.forEach((r) => (statusMap[r.status] = (statusMap[r.status] ?? 0) + 1));
+    const matchSummary = this.buildMatchSummary(visibleResults, session.type);
 
     const needsConfirm = await this.prisma.receiptImage.count({
       where: {
@@ -3323,12 +3353,21 @@ ${JSON.stringify(payload, null, 2)}`;
     return {
       totalRecords,
       totalImages,
-      matched: (statusMap['MATCHED'] ?? 0) + (statusMap['CONFIRMED'] ?? 0),
-      partialMatch: statusMap['PARTIAL_MATCH'] ?? 0,
-      unmatched: statusMap['UNMATCHED'] ?? 0,
-      needsReview: statusMap['NEEDS_REVIEW'] ?? 0,
-      confirmed: statusMap['CONFIRMED'] ?? 0,
-      rejected: statusMap['REJECTED'] ?? 0,
+      matched: matchSummary.matched,
+      partialMatch: matchSummary.partialMatch,
+      unmatched: matchSummary.unmatched,
+      needsReview: matchSummary.needsReview,
+      confirmed: visibleResults.filter((r) => r.status === 'CONFIRMED').length,
+      rejected: matchSummary.rejected,
+      mismatch: matchSummary.mismatch,
+      amountMismatch: matchSummary.amountMismatch,
+      reviewTotal: matchSummary.reviewTotal,
+      issueTotal: matchSummary.issueTotal,
+      lucaOnlyMissing: matchSummary.lucaOnlyMissing,
+      imageOnlyMissing: matchSummary.imageOnlyMissing,
+      otherUnmatched: matchSummary.otherUnmatched,
+      balance: matchSummary.balance,
+      matchSummary,
       needsOcrConfirm: needsConfirm,
       seriUyarilari, // ← yeni alan: array of {tip: 'eksik'|'cross_break', mesaj: string}
       contentAudit: {

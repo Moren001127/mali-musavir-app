@@ -1299,22 +1299,24 @@ export default function KdvKontrolPage() {
                 //   (2) Fatura var, Luca yok  → imageOnlyMissing (Fatura tarafı orphan)
                 //   Ayrıca kullanıcı reddettikleri (REJECTED) → ayrı satır
                 const _matched = stats.matched ?? 0;
-                const _review = (stats.needsReview ?? 0) + (stats.partialMatch ?? 0);
-                const _rejected = stats.rejected ?? 0;
-                const _lucaOrphan = Math.max(0, (stats.totalRecords ?? 0) - _matched - _review - _rejected);
-                const _imageOrphan = Math.max(0, (stats.totalImages ?? 0) - _matched - _review - _rejected);
+                const _review = stats.reviewTotal ?? ((stats.needsReview ?? 0) + (stats.partialMatch ?? 0) + (stats.amountMismatch ?? 0));
+                const _rejected = (stats.rejected ?? 0) + (stats.mismatch ?? 0);
+                const _lucaOrphan = stats.lucaOnlyMissing ?? Math.max(0, (stats.totalRecords ?? 0) - _matched - _review - _rejected);
+                const _imageOrphan = stats.imageOnlyMissing ?? Math.max(0, (stats.totalImages ?? 0) - _matched - _review - _rejected);
+                const _otherUnmatched = stats.otherUnmatched ?? Math.max(0, (stats.unmatched ?? 0) - _lucaOrphan - _imageOrphan);
                 const failedSubParts: string[] = [];
                 if (_lucaOrphan > 0) failedSubParts.push(`${_lucaOrphan} fatura yok`);
-                if (_imageOrphan > 0) failedSubParts.push(`${_imageOrphan} Luca yok`);
+                if (_imageOrphan > 0) failedSubParts.push(`${_imageOrphan} Luca'da yok`);
+                if (_otherUnmatched > 0) failedSubParts.push(`${_otherUnmatched} eşleşmedi`);
                 if (_rejected > 0) failedSubParts.push(`${_rejected} reddedilen`);
                 return [
                   { key: 'luca',    label: 'Luca Satırı',       val: stats.totalRecords, color: GOLD,       icon: FileText },
                   { key: 'uploaded',label: 'Yüklenen Fatura',   val: stats.totalImages,  color: '#a855f7',  icon: ImageIcon },
                   { key: 'read',    label: 'OCR Fatura Okuma',  val: readCount,          color: '#60a5fa',  icon: ScanLine, showRerun: hasImages },
                   { key: 'pending', label: 'OCR Teyit Bekler',  val: stats.needsOcrConfirm ?? 0, color: '#f59e0b', icon: AlertTriangle, showRerun: (stats.needsOcrConfirm ?? 0) > 0 },
-                  { key: 'matched', label: 'Tam Eşleşme',       val: stats.matched,      color: '#22c55e',  icon: CheckCircle2 },
+                  { key: 'matched', label: 'Tam Eşleşme',       val: stats.matched,      color: '#22c55e',  icon: CheckCircle2, sub: stats.balance?.image?.matched != null && stats.balance.image.matched !== stats.matched ? `${stats.balance.image.matched} fatura` : null },
                   { key: 'review',  label: 'Eşleşme İncele',    val: _review, color: '#fb923c', icon: AlertTriangle },
-                  { key: 'failed',  label: 'Eşleşme Hatalı',    val: _lucaOrphan + _imageOrphan + _rejected, color: '#f43f5e', icon: XCircle, sub: failedSubParts.join(' · ') || null },
+                  { key: 'failed',  label: 'Eşleşme Hatalı',    val: _lucaOrphan + _imageOrphan + _otherUnmatched + _rejected, color: '#f43f5e', icon: XCircle, sub: failedSubParts.join(' · ') || null },
                 ];
               })().map(({ key, label, val, color, icon: Icon, showRerun, sub }: any) => (
                 <div key={key} className="rounded-xl p-4" style={{ background: 'rgba(255,255,255,0.02)', border: '1px solid rgba(255,255,255,0.05)' }}>
@@ -1357,10 +1359,18 @@ export default function KdvKontrolPage() {
                 Luca'da yok. Kullanıcı neden 22+7+4=33 ≠ 31 olduğunu burada anlıyor. */}
             {(() => {
               const matched = stats.matched ?? 0;
-              const review = (stats.needsReview ?? 0) + (stats.partialMatch ?? 0);
-              const rejected = stats.rejected ?? 0;
-              const lucaOnlyMissing = Math.max(0, (stats.totalRecords ?? 0) - matched - review - rejected);
-              const imageOnlyMissing = Math.max(0, (stats.totalImages ?? 0) - matched - review - rejected);
+              const review = stats.reviewTotal ?? ((stats.needsReview ?? 0) + (stats.partialMatch ?? 0) + (stats.amountMismatch ?? 0));
+              const rejected = (stats.rejected ?? 0) + (stats.mismatch ?? 0);
+              const balance = stats.balance || {};
+              const lucaMatched = balance.luca?.matched ?? matched;
+              const lucaReview = balance.luca?.review ?? review;
+              const lucaRejected = balance.luca?.rejected ?? rejected;
+              const imageMatched = balance.image?.matched ?? Math.min(matched, stats.totalImages ?? matched);
+              const imageReview = balance.image?.review ?? review;
+              const imageRejected = balance.image?.rejected ?? rejected;
+              const lucaOnlyMissing = stats.lucaOnlyMissing ?? Math.max(0, (stats.totalRecords ?? 0) - lucaMatched - lucaReview - lucaRejected);
+              const imageOnlyMissing = stats.imageOnlyMissing ?? Math.max(0, (stats.totalImages ?? 0) - imageMatched - imageReview - imageRejected);
+              const otherUnmatched = stats.otherUnmatched ?? Math.max(0, (stats.unmatched ?? 0) - lucaOnlyMissing - imageOnlyMissing);
               return (
                 <div
                   className="mt-4 px-4 py-3 rounded-xl text-[11.5px] tabular-nums space-y-1"
@@ -1369,20 +1379,21 @@ export default function KdvKontrolPage() {
                   <div className="flex items-center gap-2 flex-wrap" style={{ color: 'rgba(250,250,249,0.6)' }}>
                     <span style={{ color: GOLD, fontWeight: 600 }}>{stats.totalRecords ?? 0} Luca satırı</span>
                     <span>=</span>
-                    <span style={{ color: '#22c55e', fontWeight: 600 }}>{matched} tam</span>
+                    <span style={{ color: '#22c55e', fontWeight: 600 }}>{lucaMatched} tam</span>
                     <span>+</span>
-                    <span style={{ color: '#fb923c', fontWeight: 600 }}>{review} incele</span>
-                    {rejected > 0 && <><span>+</span><span style={{ color: '#f43f5e', fontWeight: 600 }}>{rejected} reddedilen</span></>}
+                    <span style={{ color: '#fb923c', fontWeight: 600 }}>{lucaReview} incele</span>
+                    {lucaRejected > 0 && <><span>+</span><span style={{ color: '#f43f5e', fontWeight: 600 }}>{lucaRejected} reddedilen</span></>}
                     <span>+</span>
                     <span style={{ color: '#f43f5e', fontWeight: 600 }}>{lucaOnlyMissing} faturası yok</span>
+                    {otherUnmatched > 0 && <><span>+</span><span style={{ color: '#f43f5e', fontWeight: 600 }}>{otherUnmatched} eşleşmedi</span></>}
                   </div>
                   <div className="flex items-center gap-2 flex-wrap" style={{ color: 'rgba(250,250,249,0.6)' }}>
                     <span style={{ color: '#a855f7', fontWeight: 600 }}>{stats.totalImages ?? 0} Fatura</span>
                     <span>=</span>
-                    <span style={{ color: '#22c55e', fontWeight: 600 }}>{matched} tam</span>
+                    <span style={{ color: '#22c55e', fontWeight: 600 }}>{imageMatched} tam</span>
                     <span>+</span>
-                    <span style={{ color: '#fb923c', fontWeight: 600 }}>{review} incele</span>
-                    {rejected > 0 && <><span>+</span><span style={{ color: '#f43f5e', fontWeight: 600 }}>{rejected} reddedilen</span></>}
+                    <span style={{ color: '#fb923c', fontWeight: 600 }}>{imageReview} incele</span>
+                    {imageRejected > 0 && <><span>+</span><span style={{ color: '#f43f5e', fontWeight: 600 }}>{imageRejected} reddedilen</span></>}
                     <span>+</span>
                     <span style={{ color: '#f43f5e', fontWeight: 600 }}>{imageOnlyMissing} Luca'da yok</span>
                   </div>
