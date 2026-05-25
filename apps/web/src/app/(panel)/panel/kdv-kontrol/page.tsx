@@ -307,6 +307,26 @@ export default function KdvKontrolPage() {
   const contentAuditProcessingCount = images.filter((i: any) => i.contentAuditStatus === 'PROCESSING').length;
   const contentAuditDoneCount =
     Number(contentAuditStats.done ?? images.filter((i: any) => i.contentAuditStatus === 'DONE').length);
+  const contentAuditFailedCount =
+    Number(contentAuditStats.failed ?? images.filter((i: any) => i.contentAuditStatus === 'FAILED').length);
+  const contentAuditFallbackCount =
+    Number(contentAuditStats.fallback ?? images.filter((i: any) => i.contentAuditModel === 'rule-fallback').length);
+  const contentAuditRuleBasedCount =
+    Number(contentAuditStats.ruleBased ?? images.filter((i: any) => i.contentAuditModel === 'rule-based').length);
+  const contentAuditProviderIssueCount =
+    Number(contentAuditStats.providerIssue ?? (contentAuditFallbackCount + contentAuditFailedCount));
+  const contentAuditAuditableCount = readCount;
+  const contentAuditPendingAuditCount = Math.max(
+    0,
+    contentAuditAuditableCount - contentAuditDoneCount - contentAuditFailedCount - contentAuditProcessingCount,
+  );
+  const contentAuditComplete =
+    hasImages &&
+    ocrDone &&
+    contentAuditAuditableCount > 0 &&
+    contentAuditDoneCount >= contentAuditAuditableCount &&
+    contentAuditProcessingCount === 0 &&
+    contentAuditFailedCount === 0;
 
   // ── MUTASYONLAR ─────────────────────────────────────
   const ensureSession = useMutation({
@@ -960,6 +980,7 @@ export default function KdvKontrolPage() {
       : [];
     return [
       img.originalName || img.ocrBelgeNo || img.id,
+      img.contentAuditModel ? `Model: ${img.contentAuditModel}` : null,
       img.contentAuditSummary,
       img.contentAuditSuggestion,
       ...findings,
@@ -1183,8 +1204,12 @@ export default function KdvKontrolPage() {
             sub={
               activeLocked ? 'Kilitli seans'
               : contentAuditProcessingCount > 0 ? `${contentAuditProcessingCount} denetleniyor...`
+              : contentAuditFailedCount > 0 ? `${contentAuditFailedCount} hata · kontrol gerekiyor`
+              : contentAuditPendingAuditCount > 0 && contentAuditDoneCount > 0 ? `${contentAuditDoneCount}/${contentAuditAuditableCount} yorum · ${contentAuditPendingAuditCount} bekliyor`
               : contentAuditDoneCount > 0 && contentAuditHardRiskCount > 0 ? `${contentAuditDoneCount} yorum · ${contentAuditHardRiskCount} net risk`
               : contentAuditDoneCount > 0 && contentAuditReviewCount > 0 ? `${contentAuditDoneCount} yorum · ${contentAuditReviewCount} kontrol`
+              : contentAuditDoneCount > 0 && contentAuditProviderIssueCount > 0 ? `${contentAuditDoneCount} yorum · AI yok, kural`
+              : contentAuditDoneCount > 0 && contentAuditRuleBasedCount > 0 ? `${contentAuditDoneCount} yorum · kural denetimi`
               : contentAuditDoneCount > 0 ? `${contentAuditDoneCount} yorum · belirgin risk yok`
               : !taxpayerId ? 'Önce mükellef seçin'
               : !hasImages ? 'Önce faturaları çek'
@@ -1192,7 +1217,7 @@ export default function KdvKontrolPage() {
               : 'Faaliyet uygunluğu'
             }
             color="#14b8a6"
-            done={contentAuditDoneCount > 0 && contentAuditHardRiskCount === 0}
+            done={contentAuditComplete && contentAuditHardRiskCount === 0 && contentAuditReviewCount === 0 && contentAuditProviderIssueCount === 0}
             onClick={() => {
               if (!taxpayerId) return requireMukellef(() => runContentAudit.mutate());
               if (activeLocked) return toast.error('Kilitli kontrol; önce kilidi açın');
@@ -1522,7 +1547,17 @@ export default function KdvKontrolPage() {
                   {contentAuditReviewCount} kontrol
                 </span>
               )}
-              {contentAuditHardRiskCount === 0 && contentAuditReviewCount === 0 && (
+              {contentAuditProviderIssueCount > 0 && (
+                <span className="text-[10.5px] font-bold uppercase tracking-wider px-2 py-0.5 rounded" style={{ background: 'rgba(96,165,250,0.13)', color: '#93c5fd' }}>
+                  AI yok, kural
+                </span>
+              )}
+              {contentAuditPendingAuditCount > 0 && (
+                <span className="text-[10.5px] font-bold uppercase tracking-wider px-2 py-0.5 rounded" style={{ background: 'rgba(250,250,249,0.08)', color: 'rgba(250,250,249,0.62)' }}>
+                  {contentAuditPendingAuditCount} bekliyor
+                </span>
+              )}
+              {contentAuditHardRiskCount === 0 && contentAuditReviewCount === 0 && contentAuditProviderIssueCount === 0 && contentAuditPendingAuditCount === 0 && (
                 <span className="text-[10.5px] font-bold uppercase tracking-wider px-2 py-0.5 rounded" style={{ background: 'rgba(34,197,94,0.13)', color: '#86efac' }}>
                   belirgin risk yok
                 </span>
@@ -1546,6 +1581,7 @@ export default function KdvKontrolPage() {
                         %{Math.round(Number(img.contentAuditConfidence || 0) * 100)}
                       </span>
                     )}
+                    {img.contentAuditModel && <ContentAuditModelBadge model={img.contentAuditModel} />}
                   </div>
                 </div>
                 <div className="min-w-0">
@@ -2172,6 +2208,24 @@ function FeedRow({ item }: { item: FeedItem }) {
         )}
       </div>
     </div>
+  );
+}
+
+function ContentAuditModelBadge({ model }: { model?: string | null }) {
+  const m = String(model || '');
+  const isFallback = /^rule-fallback/i.test(m);
+  const isRule = /^rule-based/i.test(m);
+  const label = isFallback ? 'Kural fallback' : isRule ? 'Kural' : 'AI';
+  const color = isFallback ? '#93c5fd' : isRule ? '#fbbf24' : '#5eead4';
+  const bg = isFallback ? 'rgba(96,165,250,0.13)' : isRule ? 'rgba(245,158,11,0.12)' : 'rgba(20,184,166,0.12)';
+  return (
+    <span
+      className="shrink-0 text-[9px] font-bold uppercase tracking-wider px-1.5 py-0.5 rounded"
+      style={{ background: bg, color }}
+      title={m}
+    >
+      {label}
+    </span>
   );
 }
 

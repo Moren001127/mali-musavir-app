@@ -1865,8 +1865,12 @@ export class KdvControlService {
     const model = process.env.KDV_CONTENT_AUDIT_MODEL || 'claude-haiku-4-5-20251001';
     try {
       const prompt = await this.buildContentAuditPrompt(image, session, tenantId);
+      const timeoutMs = Math.max(3000, Math.min(45000, Number(process.env.KDV_CONTENT_AUDIT_TIMEOUT_MS) || 15000));
+      const controller = new AbortController();
+      const timer = setTimeout(() => controller.abort(), timeoutMs);
       const res = await fetch('https://api.anthropic.com/v1/messages', {
         method: 'POST',
+        signal: controller.signal,
         headers: {
           'Content-Type': 'application/json',
           'x-api-key': apiKey,
@@ -1880,7 +1884,7 @@ export class KdvControlService {
             'Türk muhasebe KDV belge içerik uygunluğu için karar destek asistanısın. Nihai hukuki/mali karar vermezsin; gri alanları KONTROL_ET seviyesinde tutar, riskleri kısa, denetlenebilir ve JSON formatında yazarsın.',
           messages: [{ role: 'user', content: prompt }],
         }),
-      });
+      }).finally(() => clearTimeout(timer));
 
       if (!res.ok) {
         throw new Error(`Anthropic API ${res.status}: ${(await res.text().catch(() => '')).slice(0, 120)}`);
@@ -1914,15 +1918,26 @@ export class KdvControlService {
       };
     } catch (err: any) {
       const moderatedFallback = this.moderateContentAuditDecision(fallback, image, session);
+      const providerMessage = err?.name === 'AbortError'
+        ? 'Anthropic API zaman asimina ugradi'
+        : String(err?.message || err);
+      const fallbackSummary = moderatedFallback.risk === 'UYGUN'
+        ? 'Kural tabanli on denetimde belirgin icerik riski bulunmadi.'
+        : moderatedFallback.summary;
+      const fallbackSuggestion = moderatedFallback.risk === 'UYGUN'
+        ? 'AI servisi kullanilamadigi icin sonuc kural tabanlidir; olagan disi belgeleri manuel gozden gecirin.'
+        : moderatedFallback.suggestion;
       return {
         ...fallback,
         ...moderatedFallback,
+        summary: fallbackSummary,
+        suggestion: fallbackSuggestion,
         model: 'rule-fallback',
         confidence: Math.min(moderatedFallback.confidence, 0.55),
         findings: [
           {
             title: 'AI servis uyarısı',
-            detail: `Kural tabanlı ön denetim kullanıldı: ${String(err?.message || err).slice(0, 180)}`,
+            detail: `Kural tabanli on denetim kullanildi: ${providerMessage.slice(0, 180)}`,
             severity: 'KONTROL_ET' as ContentAuditRisk,
           },
           ...moderatedFallback.findings,
@@ -3145,18 +3160,23 @@ ${JSON.stringify(payload, null, 2)}`;
     const summary = this.stripContentAuditKdvArithmeticNoise(rawSummary) || 'Yorum yok';
     const findings = (Array.isArray(image.contentAuditFindings) ? image.contentAuditFindings : [])
       .filter((f: any) => !this.isContentAuditKdvArithmeticNoise(`${f?.title || ''} ${f?.detail || ''}`));
+    const model = String(image.contentAuditModel || '');
+    const isProviderFallback = /^rule-fallback/i.test(model);
 
     const visibleSuggestion =
-      risk === 'Uygun' ? 'Normal kayıt'
+      isProviderFallback ? 'AI yok; kural denetimi'
+      : risk === 'Uygun' ? 'Normal kayıt'
       : risk === 'Kontrol et' ? 'Kontrol et; ayrıntı notta'
       : risk === 'Riskli' ? 'Detaylı incele; ayrıntı notta'
       : risk === 'İşlenmemeli' ? 'İşleme alma; ayrıntı notta'
       : this.compactContentAuditText(suggestion, 70);
     const visibleSummary =
-      risk === 'Uygun' ? 'Faaliyetle uyumlu görünüyor'
+      isProviderFallback ? 'Kural tabanlı ön denetim'
+      : risk === 'Uygun' ? 'Faaliyetle uyumlu görünüyor'
       : risk === 'Kontrol et' ? 'Ayrıntı hücre notunda'
       : this.compactContentAuditText(summary, 90);
     const comment = [
+      isProviderFallback ? 'Not: AI servisi kullanılamadığı için içerik denetimi kural tabanlı fallback ile yapılmıştır.' : '',
       summary && summary !== visibleSummary ? `Özet: ${summary}` : '',
       suggestion && suggestion !== visibleSuggestion ? `Öneri: ${suggestion}` : '',
       ...findings.map((f: any, idx: number) => `${idx + 1}. ${f?.title || 'Bulgu'}: ${f?.detail || ''}`),
@@ -3258,6 +3278,7 @@ ${JSON.stringify(payload, null, 2)}`;
           originalName: true,
           contentAuditStatus: true,
           contentAuditRisk: true,
+          contentAuditModel: true,
           contentAuditCostUsd: true,
         },
       }),
@@ -3324,9 +3345,23 @@ ${JSON.stringify(payload, null, 2)}`;
       (acc: any, img: any) => {
         const status = img.contentAuditStatus || 'PENDING';
         const risk = img.contentAuditRisk || '';
-        if (status === 'DONE') acc.done++;
+        const model = String(img.contentAuditModel || '');
+        if (status === 'DONE') {
+          acc.done++;
+          if (/^rule-fallback/i.test(model)) {
+            acc.fallback++;
+            acc.providerIssue++;
+          } else if (/^rule-based/i.test(model)) {
+            acc.ruleBased++;
+          } else if (model) {
+            acc.ai++;
+          }
+        }
         else if (status === 'PROCESSING') acc.processing++;
-        else if (status === 'FAILED') acc.failed++;
+        else if (status === 'FAILED') {
+          acc.failed++;
+          acc.providerIssue++;
+        }
         else if (status === 'SKIPPED') acc.skipped++;
         else acc.pending++;
         if (risk === 'UYGUN') acc.suitable++;
@@ -3346,6 +3381,10 @@ ${JSON.stringify(payload, null, 2)}`;
         review: 0,
         risky: 0,
         notAllowed: 0,
+        ai: 0,
+        ruleBased: 0,
+        fallback: 0,
+        providerIssue: 0,
         actualCostUsd: 0,
       },
     );
