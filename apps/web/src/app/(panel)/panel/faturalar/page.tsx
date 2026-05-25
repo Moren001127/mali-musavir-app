@@ -117,7 +117,10 @@ export default function FaturalarPage() {
       donem: string;
       faturaTuru?: 'ALIS' | 'SATIS';
       forceRefresh?: boolean;
-    }) => agentsApi.mihsapFetch(body),
+    }) => agentsApi.mihsapFetch(body).then((data) => {
+      if (data?.errorMsg) throw new Error(data.errorMsg);
+      return data;
+    }),
     onSuccess: () => {
       qc.invalidateQueries({ queryKey: ['mihsap-invoices'] });
       qc.invalidateQueries({ queryKey: ['mihsap-jobs'] });
@@ -258,8 +261,9 @@ ${isPdf
           forceRefresh,
         });
       } catch (e: any) {
-        errors.push(`${name}: ${e?.message || 'bilinmeyen hata'}`);
-        setBulkProgress((prev) => prev && { ...prev, errors: [...prev.errors, `${name}: ${e?.message || 'hata'}`] });
+        const msg = e?.response?.data?.message || e?.message || 'bilinmeyen hata';
+        errors.push(`${name}: ${msg}`);
+        setBulkProgress((prev) => prev && { ...prev, errors: [...prev.errors, `${name}: ${msg}`] });
       }
       // Peş peşe istek MIHSAP'ı yormasın diye küçük gecikme
       await new Promise((r) => setTimeout(r, 400));
@@ -312,7 +316,8 @@ ${isPdf
         },
         onError: (e: any) => {
           console.error('[Faturalar] mutate ERROR:', e?.response?.status, JSON.stringify(e?.response?.data || {}), e?.message);
-          toast.error(`Mihsap hata: ${e?.response?.status || ''} ${e?.message}`, { duration: 12000 });
+          const msg = e?.response?.data?.message || e?.message || 'hata';
+          toast.error(`Mihsap hata: ${e?.response?.status || ''} ${msg}`, { duration: 12000 });
         },
       },
     );

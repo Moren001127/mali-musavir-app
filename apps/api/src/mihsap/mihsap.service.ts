@@ -58,12 +58,29 @@ export class MihsapService {
   async getSession(tenantId: string) {
     const s = await (this.prisma as any).mihsapSession.findUnique({ where: { tenantId } });
     if (!s) return null;
+    const expiresAt = this.getJwtExpiresAt(s.token);
+    const expired = !!expiresAt && expiresAt.getTime() <= Date.now() + 30_000;
     return {
-      connected: true,
+      connected: !expired,
       email: s.email,
       updatedAt: s.updatedAt,
       tokenLength: s.token?.length || 0,
+      expiresAt,
+      expired,
     };
+  }
+
+  private getJwtExpiresAt(token?: string | null): Date | null {
+    try {
+      const part = String(token || '').split('.')[1];
+      if (!part) return null;
+      const normalized = part.replace(/-/g, '+').replace(/_/g, '/');
+      const payload = JSON.parse(Buffer.from(normalized, 'base64').toString('utf8'));
+      const exp = Number(payload?.exp);
+      return Number.isFinite(exp) ? new Date(exp * 1000) : null;
+    } catch {
+      return null;
+    }
   }
 
   private async getToken(tenantId: string): Promise<string> {
@@ -148,6 +165,7 @@ export class MihsapService {
     // Ayın son günü
     const lastDay = new Date(Number(year), Number(month), 0).getDate();
     const endDate = `${year}-${month}-${String(lastDay).padStart(2, '0')}`;
+    return this.listInvoicesRobust(params, token, startDate, endDate);
 
     const body = {
       sortAlanlari: [
@@ -219,6 +237,157 @@ export class MihsapService {
   /** Tüm sayfaları çek (pagination loop). Büyük mükellef dosyaları (1500+) için güvenli:
    *  100'lük sayfalarla ilerler, Mihsap'ın döndürdüğü 'total' değerine ulaşınca durur.
    *  Safety cap: 100 sayfa × 100 = 10,000 fatura üst sınırı. */
+  private async listInvoicesRobust(
+    params: {
+      tenantId: string;
+      mukellefMihsapId: string | number;
+      donem: string;
+      faturaTuru: 'ALIS' | 'SATIS';
+      pageSize?: number;
+      pageIndex?: number;
+      kaynak?: 'arsiv' | 'bekleyen';
+    },
+    token: string,
+    startDate: string,
+    endDate: string,
+  ): Promise<{ total: number; items: MihsapInvoiceSummary[] }> {
+    const baseValueList = [
+      { alanId: FIELD.FATURA_TURU, operator: 'Equals', values: [params.faturaTuru] },
+      { alanId: FIELD.MUKELLEF_ID, operator: 'Equals', values: [String(params.mukellefMihsapId)] },
+      { alanId: FIELD.FATURA_TARIHI, operator: 'Between', values: [startDate, endDate] },
+    ];
+    const buildBody = (includeOnayDurumu: boolean) => ({
+      sortAlanlari: [
+        { siralamaYonu: 'ASCENDING', sortAlanId: 2 },
+        { siralamaYonu: 'DESCENDING', sortAlanId: FIELD.FATURA_TARIHI },
+      ],
+      valueList: includeOnayDurumu
+        ? [...baseValueList, { alanId: FIELD.ONAY_DURUMU, operator: 'Equals', values: [1] }]
+        : baseValueList,
+    });
+    const buildUrl = (onayliMi: boolean) => {
+      const qs = new URLSearchParams();
+      if (onayliMi) qs.set('onayliMi', 'true');
+      if (params.pageSize) qs.set('size', String(params.pageSize));
+      if (params.pageIndex !== undefined) qs.set('page', String(params.pageIndex));
+      return `${MIHSAP_BASE}/api/mali-musavir/all-faturas${qs.toString() ? '?' + qs.toString() : ''}`;
+    };
+    const attempts = (params.kaynak || 'arsiv') === 'arsiv'
+      ? [
+          { name: 'arsiv-query', url: buildUrl(true), body: buildBody(false) },
+          { name: 'arsiv-query-legacy-status', url: buildUrl(true), body: buildBody(true) },
+          { name: 'legacy-status-no-query', url: buildUrl(false), body: buildBody(true) },
+        ]
+      : [
+          { name: 'bekleyen', url: buildUrl(false), body: buildBody(false) },
+        ];
+
+    let lastError: Error | null = null;
+    for (const attempt of attempts) {
+      const res = await fetch(attempt.url, {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+          Accept: 'application/json, text/plain, */*',
+          'Accept-Language': 'tr-TR,tr;q=0.9,en-US;q=0.8,en;q=0.7',
+          Authorization: `Bearer ${token}`,
+          Origin: MIHSAP_BASE,
+          Referer: `${MIHSAP_BASE}/`,
+          'User-Agent':
+            'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/121.0.0.0 Safari/537.36',
+        },
+        body: JSON.stringify(attempt.body),
+      });
+
+      if (res.status === 401 || res.status === 403) {
+        throw new UnauthorizedException(
+          'MIHSAP token süresi dolmuş. MIHSAP sayfasını yenileyin; eklenti yeni token gönderecek.',
+        );
+      }
+      const ct = res.headers.get('content-type') || '';
+      const rawText = await res.text();
+      const preview = rawText.slice(0, 400);
+      if (!res.ok) {
+        this.logger.warn(`MIHSAP all-faturas ${attempt.name} error ${res.status} (ct=${ct}, len=${rawText.length}): ${preview}`);
+        lastError = new BadRequestException(`MIHSAP hata ${res.status}: ${preview.slice(0, 120)}`);
+        continue;
+      }
+      if (!rawText || rawText.trim().length === 0) {
+        this.logger.warn(`MIHSAP all-faturas ${attempt.name} bos govde (status=${res.status}, ct=${ct}, url=${attempt.url})`);
+        lastError = new BadRequestException('MIHSAP bos cevap. Token suresi dolmus olabilir veya MIHSAP liste filtresi degismis olabilir.');
+        continue;
+      }
+      if (!ct.includes('json') && !rawText.trim().startsWith('{') && !rawText.trim().startsWith('[')) {
+        this.logger.warn(`MIHSAP all-faturas ${attempt.name} non-JSON cevap (ct=${ct}): ${preview}`);
+        lastError = new BadRequestException(`MIHSAP beklenmedik cevap: ${preview.slice(0, 120)}`);
+        continue;
+      }
+      try {
+        const json = JSON.parse(rawText);
+        const normalized = this.normalizeAllFaturasResponse(json, {
+          mukellefMihsapId: params.mukellefMihsapId,
+          faturaTuru: params.faturaTuru,
+        });
+        this.logger.log(`MIHSAP all-faturas ${attempt.name}: total=${normalized.total}, items=${normalized.items.length}`);
+        return normalized;
+      } catch (e: any) {
+        this.logger.warn(`MIHSAP all-faturas ${attempt.name} JSON parse/normalize hatasi: ${preview}`);
+        lastError = new BadRequestException(`MIHSAP JSON parse hatasi: ${e?.message}. Preview: ${preview.slice(0, 120)}`);
+      }
+    }
+    throw lastError || new BadRequestException('MIHSAP fatura listesi alinamadi');
+  }
+
+  private normalizeAllFaturasResponse(
+    json: any,
+    fallback: { mukellefMihsapId: string | number; faturaTuru: 'ALIS' | 'SATIS' },
+  ): { total: number; items: MihsapInvoiceSummary[] } {
+    const root = json?.sonucValue ?? json?.data ?? json?.result ?? json;
+    const rawItems =
+      (Array.isArray(root) && root) ||
+      (Array.isArray(root?.content) && root.content) ||
+      (Array.isArray(root?.items) && root.items) ||
+      (Array.isArray(root?.list) && root.list) ||
+      (Array.isArray(root?.rows) && root.rows) ||
+      (Array.isArray(root?.records) && root.records) ||
+      [];
+    const totalRaw =
+      root?.totalElements ??
+      root?.totalCount ??
+      root?.total ??
+      root?.numberOfElements ??
+      rawItems.length;
+    const total = Number.isFinite(Number(totalRaw)) ? Number(totalRaw) : rawItems.length;
+    return {
+      total,
+      items: rawItems.map((item: any) => this.normalizeMihsapInvoiceItem(item, fallback)),
+    };
+  }
+
+  private normalizeMihsapInvoiceItem(
+    item: any,
+    fallback: { mukellefMihsapId: string | number; faturaTuru: 'ALIS' | 'SATIS' },
+  ): MihsapInvoiceSummary {
+    return {
+      ...item,
+      id: item?.id ?? item?.faturaId ?? item?.fileId ?? item?.defterDataId,
+      fileId: item?.fileId ?? item?.dosyaId ?? item?.file?.id,
+      faturaId: item?.faturaId ?? item?.fatura?.id,
+      userFirmaBilgisiId: item?.userFirmaBilgisiId ?? item?.mukellefMihsapId ?? item?.firmaId ?? Number(fallback.mukellefMihsapId),
+      belgeTuru: item?.belgeTuru ?? item?.belgeTipi ?? item?.documentType ?? '',
+      faturaNo: item?.faturaNo ?? item?.belgeNo ?? item?.fisNo ?? item?.invoiceNo ?? '',
+      firmaKimlikNo: item?.firmaKimlikNo ?? item?.faturaFirmaKimlikNo ?? item?.vknTckn ?? item?.vergiKimlikNo,
+      firmaUnvan: item?.firmaUnvan ?? item?.faturaFirmaAdi ?? item?.firmaAdi ?? item?.cariUnvan,
+      faturaTuru: item?.faturaTuru ?? item?.alisSatisTuru ?? fallback.faturaTuru,
+      faturaTarihi: item?.faturaTarihi ?? item?.tarih ?? item?.belgeTarihi,
+      faturaTarihiStr: item?.faturaTarihiStr ?? item?.tarihStr ?? item?.belgeTarihiStr,
+      toplamTutar: item?.toplamTutar ?? item?.tutar ?? item?.genelToplam ?? item?.odenecekTutar,
+      fileLink: item?.fileLink ?? item?.fileDownloadLink ?? item?.dosyaLink ?? item?.gorselLink ?? item?.url,
+      fileDownloadLink: item?.fileDownloadLink,
+      orjDosyaTuru: item?.orjDosyaTuru ?? item?.dosyaTuru ?? item?.fileType,
+    };
+  }
+
   async listAllInvoices(params: {
     tenantId: string;
     mukellefMihsapId: string | number;
@@ -270,8 +439,13 @@ export class MihsapService {
     donem: string,
   ): Promise<{ stored: boolean; skipped?: boolean; reason?: string }> {
     // Daha önce kaydedilmiş mi? mihsapId unique
+    const mihsapInternalId =
+      item.id ??
+      item.faturaId ??
+      item.fileId ??
+      `${item.userFirmaBilgisiId || 'mukellef'}-${item.faturaTuru || 'TUR'}-${item.faturaNo || 'NO'}-${item.faturaTarihi || item.faturaTarihiStr || 'TARIH'}`;
     const existing = await (this.prisma as any).mihsapInvoice.findUnique({
-      where: { mihsapId: String(item.id) },
+      where: { mihsapId: String(mihsapInternalId) },
     });
     if (existing?.mihsapFileLink) {
       return { stored: false, skipped: true, reason: 'already-stored' };
@@ -306,7 +480,7 @@ export class MihsapService {
         mihsapFileId: item.fileId ? String(item.fileId) : null,
         mihsapFaturaId: item.faturaId ? String(item.faturaId) : null,
         orjDosyaTuru: item.orjDosyaTuru || null,
-        mihsapFileLink: item.fileLink || null,
+        mihsapFileLink: item.fileLink || item.fileDownloadLink || null,
         raw: item as any,
         ...(storageKey ? { storageKey, storageUrl, downloadedAt: new Date() } : {}),
       },
@@ -323,13 +497,13 @@ export class MihsapService {
         faturaTarihi,
         toplamTutar: item.toplamTutar ?? 0,
         onayDurumu: item.onayDurumu || null,
-        mihsapId: String(item.id),
+        mihsapId: String(mihsapInternalId),
         mihsapFileId: item.fileId ? String(item.fileId) : null,
         mihsapFaturaId: item.faturaId ? String(item.faturaId) : null,
         orjDosyaTuru: item.orjDosyaTuru || null,
         storageKey: storageKey || null,
         storageUrl: storageUrl || null,
-        mihsapFileLink: item.fileLink || null,
+        mihsapFileLink: item.fileLink || item.fileDownloadLink || null,
         downloadedAt: storageKey ? new Date() : null,
         raw: item as any,
       },
@@ -429,6 +603,10 @@ export class MihsapService {
         finishedAt: new Date(),
       },
     });
+
+    if (errorMsg) {
+      throw new BadRequestException(errorMsg);
+    }
 
     return { jobId: job.id, total, fetched, errorMsg };
   }

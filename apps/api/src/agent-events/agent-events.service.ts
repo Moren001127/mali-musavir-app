@@ -785,30 +785,36 @@ ${ocr.text.slice(0, 14000)}`;
 
   private async recordFaturaMemoryAfterSuccessfulSave(tenantId: string, input: AgentEventInput) {
     const meta = input.meta || {};
-    const candidate = meta.faturaDecisionCandidate || meta.memoryCandidate || null;
-    const kararTipi = candidate?.kararTipi || meta.kararTipi || 'fatura';
-    if (kararTipi !== 'fatura') return false;
+    const rawCandidates = Array.isArray(meta.memoryCandidates)
+      ? meta.memoryCandidates
+      : [meta.faturaDecisionCandidate || meta.memoryCandidate || { kararTipi: meta.kararTipi || 'fatura' }];
+    let recorded = false;
+    for (const candidate of rawCandidates.filter(Boolean)) {
+      const kararTipi = candidate?.kararTipi || meta.kararTipi || 'fatura';
+      if (kararTipi !== 'fatura' && kararTipi !== 'isletme') continue;
 
-    const firmaKimlikNo = meta.firmaKimlikNo || candidate?.firmaKimlikNo || null;
-    const firmaUnvan = input.firma || meta.firma || candidate?.firmaUnvan || null;
-    const kategori =
-      candidate?.hesapKodu ||
-      candidate?.kategori ||
-      meta.finalHesapKodu ||
-      input.hesapKodu ||
-      null;
-    if (!firmaKimlikNo || !kategori) return false;
+      const firmaKimlikNo = meta.firmaKimlikNo || candidate?.firmaKimlikNo || null;
+      const firmaUnvan = input.firma || meta.firma || candidate?.firmaUnvan || null;
+      const kategori =
+        candidate?.hesapKodu ||
+        candidate?.kategori ||
+        meta.finalHesapKodu ||
+        input.hesapKodu ||
+        null;
+      if (!firmaKimlikNo || !kategori) continue;
 
-    await this.vendorMemory.recordDecision({
-      tenantId,
-      firmaKimlikNo,
-      firmaUnvan,
-      kararTipi: 'fatura',
-      kategori,
-      altKategori: null,
-      taxpayerId: meta.mukellefId || candidate?.taxpayerId || null,
-    });
-    return true;
+      await this.vendorMemory.recordDecision({
+        tenantId,
+        firmaKimlikNo,
+        firmaUnvan,
+        kararTipi,
+        kategori,
+        altKategori: candidate?.altKategori || null,
+        taxpayerId: meta.mukellefId || candidate?.taxpayerId || null,
+      });
+      recorded = true;
+    }
+    return recorded;
   }
 
   async listEvents(
@@ -2857,19 +2863,6 @@ Fatura görüntüsünü incele. Yukarıdaki MEVCUT SEÇENEKLER'den Kayıt Türü
         fallbackReason: cheapDecision!.fallbackReason || null,
         cheapConfidence: cheapDecision!.confidence,
       };
-      if (input.tenantId && input.firmaKimlikNo && parsed.kayitTuru) {
-        try {
-          await this.vendorMemory.recordDecision({
-            tenantId: input.tenantId,
-            firmaKimlikNo: input.firmaKimlikNo,
-            firmaUnvan: input.firma,
-            kararTipi: 'isletme',
-            kategori: String(parsed.kayitTuru),
-            altKategori: parsed.altTuru || null,
-            taxpayerId: input.mukellefId || null,
-          });
-        } catch {}
-      }
       return parsed;
     }
 
@@ -3028,18 +3021,8 @@ Fatura görüntüsünü incele. Yukarıdaki MEVCUT SEÇENEKLER'den Kayıt Türü
                     }
                   }
                 }
-                // Sapma yok → memory'ye kaydet
-                try {
-                  await this.vendorMemory.recordDecision({
-                    tenantId: input.tenantId,
-                    firmaKimlikNo: input.firmaKimlikNo,
-                    firmaUnvan: input.firma,
-                    kararTipi: 'isletme',
-                    kategori: String(parsed.kayitTuru),
-                    altKategori: altTuruKey,
-                    taxpayerId: input.mukellefId || null,
-                  });
-                } catch {}
+                // Sapma yoksa hafiza kaydi burada yapilmaz; F2 basari log'u geldikten
+                // sonra createEvent icinde kaydedilir.
               }
               // === /FIRMA HAFIZASI ===
             }

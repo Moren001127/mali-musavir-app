@@ -4,7 +4,7 @@
 */
 (function () {
   // Agent versiyon — UI'da gösterilir, debug için kritik
-  const AGENT_VERSION = '1.37.93';
+  const AGENT_VERSION = '1.37.94';
   const AGENT_INSTANCE_ID = 'mai_' + Date.now().toString(36) + '_' + Math.random().toString(36).slice(2, 8);
 
   // === VERSION-AWARE RELOAD ===
@@ -530,11 +530,51 @@
   // === MIHSAP TOKEN SENKRONİZASYONU ===
   // MIHSAP JWT'sini backend'e gönder (fatura çekme için gerekli)
   let lastSyncedMihsapToken = '';
+  let lastSyncedMihsapTokenAt = 0;
+  function mihsapJwtExpMs(token) {
+    try {
+      const payload = JSON.parse(atob(String(token || '').split('.')[1].replace(/-/g, '+').replace(/_/g, '/')));
+      return Number(payload?.exp || 0) * 1000;
+    } catch {
+      return 0;
+    }
+  }
+  function getBestMihsapToken() {
+    const candidates = [];
+    const readStore = (store) => {
+      try {
+        for (let i = 0; i < store.length; i++) {
+          const key = store.key(i) || '';
+          const val = String(store.getItem(key) || '').trim().replace(/^Bearer\s+/i, '');
+          if (val.length < 20) continue;
+          if (!/token|jwt|auth|access/i.test(key) && !/^[A-Za-z0-9_-]+\.[A-Za-z0-9_-]+\./.test(val)) continue;
+          candidates.push({ key, val, exp: mihsapJwtExpMs(val) });
+        }
+      } catch {}
+    };
+    readStore(localStorage);
+    readStore(sessionStorage);
+    try {
+      for (const part of String(document.cookie || '').split(';')) {
+        const [rawKey, ...rest] = part.split('=');
+        const key = (rawKey || '').trim();
+        const val = decodeURIComponent(rest.join('=') || '').trim().replace(/^Bearer\s+/i, '');
+        if (val.length >= 20 && (/token|jwt|auth|access/i.test(key) || /^[A-Za-z0-9_-]+\.[A-Za-z0-9_-]+\./.test(val))) {
+          candidates.push({ key, val, exp: mihsapJwtExpMs(val) });
+        }
+      }
+    } catch {}
+    const now = Date.now();
+    const live = candidates.filter((c) => !c.exp || c.exp > now + 30_000);
+    const pool = live.length ? live : candidates;
+    pool.sort((a, b) => (b.exp || 0) - (a.exp || 0) || b.val.length - a.val.length);
+    return pool[0]?.val || '';
+  }
   async function syncMihsapToken() {
     try {
-      const mihsapToken = localStorage.getItem('token');
+      const mihsapToken = getBestMihsapToken();
       if (!mihsapToken || mihsapToken.length < 20) return;
-      if (mihsapToken === lastSyncedMihsapToken) return; // değişmemiş
+      if (mihsapToken === lastSyncedMihsapToken && Date.now() - lastSyncedMihsapTokenAt < 5 * 60 * 1000) return; // değişmemiş
       const email = localStorage.getItem('rememberedEmail') || '';
       const r = await fetch(API + '/agent/mihsap/token', {
         method: 'POST',
@@ -546,6 +586,7 @@
       });
       if (r.ok) {
         lastSyncedMihsapToken = mihsapToken;
+        lastSyncedMihsapTokenAt = Date.now();
         console.log('[Moren] MIHSAP token backend ile senkronize edildi');
       }
     } catch (e) {
@@ -10075,6 +10116,14 @@
   let $count = null;
   let setStatus = (_s) => {};
   let setCount = () => {};
+  function resetCounters() {
+    counters.onay = 0;
+    counters.atla = 0;
+    counters.demirbas = 0;
+    counters.hata = 0;
+    counters.toplam = 0;
+    setCount();
+  }
 
   if (window === window.top) {
     // Pozisyon kalici: localStorage'da sakla, default sag alt kose
@@ -11004,6 +11053,19 @@
     });
   }
 
+  function markValidationFailure(text) {
+    window.__morenLastValidationDialog = {
+      ts: Date.now(),
+      text: String(text || 'MIHSAP validation').replace(/\s+/g, ' ').slice(0, 220),
+    };
+  }
+
+  function recentValidationFailure(maxAgeMs = 8000) {
+    const last = window.__morenLastValidationDialog;
+    if (!last || Date.now() - last.ts > maxAgeMs) return null;
+    return last.text || 'MIHSAP validation';
+  }
+
   async function handleDialogs() {
     await sleep(150);
     const modals = getVisibleModals();
@@ -11013,6 +11075,7 @@
       const findIn = (needle) => btns.find((b) => b.textContent.trim() === needle);
       const findInStarts = (needle) =>
         btns.find((b) => b.textContent.trim().toLowerCase().startsWith(needle.toLowerCase()));
+      const findByRegex = (re) => btns.find((b) => re.test((b.textContent || '').trim()));
 
       // Mükerrer fatura uyarısı → İptal
       if (/Mükerrer/i.test(text)) {
@@ -11033,10 +11096,11 @@
           /tutar.*farklı/i.test(text) ||
           /farklı.*onayl/i.test(text) ||
           /kredi.*farklı/i.test(text)) {
-        const onayla =
-          findIn('Onayla') || findIn('Evet') || findIn('Tamam') ||
-          findInStarts('Onayla') || findInStarts('Evet') || findInStarts('Tamam');
-        if (onayla) { await click(onayla); await sleep(700); return 'resubmit'; }
+        markValidationFailure(`MIHSAP tutar farki: ${text}`);
+        const cancel = findByRegex(/Vazge|Iptal|\u0130ptal|Hayir|Hay\u0131r/i);
+        const ok = findIn('Tamam') || findInStarts('Tamam');
+        if (cancel || ok) { await click(cancel || ok); await sleep(500); return 'validation'; }
+        return 'validation';
       }
       // Hesap kodu boş uyarısı → Evet/Tamam ile devam et (atlamak için)
       if (/Hesap kodu girilmemiş/i.test(text) ||
@@ -11044,11 +11108,15 @@
           /kod.*eksik/i.test(text) ||
           /satır mevcut/i.test(text) ||
           /kaydetme.*devam/i.test(text) ||
-          /onaylamadan/i.test(text)) {
-        const ok =
-          findIn('Evet') || findIn('Tamam') || findIn('Devam') || findIn('Devam et') ||
-          findInStarts('Evet') || findInStarts('Tamam') || findInStarts('Devam');
-        if (ok) { await click(ok); await sleep(300); return 'tamam'; }
+          /onaylamadan/i.test(text) ||
+          /zorunlu/i.test(text) ||
+          /girilmem/i.test(text) ||
+          /se.?ilmem/i.test(text)) {
+        markValidationFailure(`MIHSAP eksik alan: ${text}`);
+        const cancel = findByRegex(/Vazge|Iptal|\u0130ptal|Hayir|Hay\u0131r/i);
+        const ok = findIn('Tamam') || findInStarts('Tamam');
+        if (cancel || ok) { await click(cancel || ok); await sleep(500); return 'validation'; }
+        return 'validation';
       }
       // Onay dialog'u (genel) — "emin misiniz?" gibi. Atlama işlemi yapıyoruz, Evet/Tamam.
       if (/emin misiniz/i.test(text) || /onaylıyor musunuz/i.test(text)) {
@@ -11057,14 +11125,12 @@
           findInStarts('Onayla') || findInStarts('Evet') || findInStarts('Tamam');
         if (ok) { await click(ok); await sleep(300); return 'evet'; }
       }
-      // Genel fallback: Mihsap uyarilarinda pozitif aksiyon oncelikli.
-      // "Vazgec" bazi uyarilarda ayni faturayi tekrar F2 dongusune sokuyor.
+      // Genel fallback: bilinmeyen MIHSAP uyarilarinda otomatik onay verme.
       const ok2 =
-        findIn('Onayla') || findIn('Tamam') || findIn('Evet') || findIn('Devam') || findIn('Devam et') ||
-        findInStarts('Onayla') || findInStarts('Tamam') || findInStarts('Evet') || findInStarts('Devam');
-      if (ok2) { await click(ok2); await sleep(300); return 'tamam'; }
-      const vazgec = findIn('Vazgeç') || findIn('İptal');
+        findIn('Tamam') || findInStarts('Tamam');
+      const vazgec = findByRegex(/Vazge|Iptal|\u0130ptal|Hayir|Hay\u0131r/i);
       if (vazgec) { await click(vazgec); await sleep(300); return 'vazgec'; }
+      if (ok2) { await click(ok2); await sleep(300); return 'tamam'; }
     }
     return 'ok';
   }
@@ -11190,6 +11256,7 @@
   }
 
   async function clickIleri(currentFid) {
+    window.__morenLastValidationDialog = null;
     // Dialog varsa önce kapat
     if (getVisibleModals().length > 0) await handleDialogs();
     await pressF9Once(currentFid);
@@ -11283,6 +11350,7 @@
     let tries = 0;
     while (tries < 4 && getVisibleModals().length > 0) {
       const result = await handleDialogs();
+      if (result === 'validation') break;
       if (result === 'resubmit' || result === 'retry-f2') {
         // Onayla'dan önceki fid'i referans al (fidAtStart — bu fonksiyonun girişindeki fid).
         // 5 sn bekle + URL kontrolü; hâlâ aynı faturadaysak F2 bas, değilse bırak.
@@ -11309,6 +11377,7 @@
       }
       if (getVisibleModals().length > 0) {
         const r = await handleDialogs();
+        if (r === 'validation') return { saved: false, validationFailed: recentValidationFailure() };
         if (r === 'not-pending') return { saved: true, validationFailed: null };
         if (r === 'resubmit' || r === 'retry-f2') {
           const res = await onaylaSonrasiF2(fid);
@@ -11338,6 +11407,7 @@
 
       if (getVisibleModals().length > 0) {
         const r = await handleDialogs();
+        if (r === 'validation') return { saved: false, validationFailed: recentValidationFailure() };
         if (r === 'not-pending') return { saved: true, validationFailed: null };
         if (r === 'resubmit' || r === 'retry-f2') {
           const res = await onaylaSonrasiF2(fid);
@@ -11496,8 +11566,9 @@
       );
       if (canvases.length > 0) {
         try {
-          // İlk sayfa yeterli (detaylar görünsün diye çözünürlük artır)
-          const pages = canvases.slice(0, 1);
+          // Multi-page invoices can carry totals or notes after page 1; cap pages to keep vision cost bounded.
+          const maxPages = Math.max(1, Math.min(Number(window.__morenAgent?.maxOcrPages || 3), 3));
+          const pages = canvases.slice(0, maxPages);
           // v1.36.64: Claude Vision maliyetini dusurmek icin gereksiz buyuk gorsel gonderme.
           // 900px fatura satirlari icin yeterli, 1100px'e gore daha az image token uretir.
           const targetW = Math.min(pages[0].width, 900);
@@ -11525,7 +11596,7 @@
     return null;
   }
 
-  async function aiDecide({ codes, tarih, hedefAy, belgeNo, belgeTuru, faturaTuru, mukellef, firma, firmaKimlikNo, tutar, action, bosAlanSecenekleri }) {
+  async function aiDecide({ codes, tarih, hedefAy, belgeNo, belgeTuru, faturaTuru, mukellef, mukellefId, firma, firmaKimlikNo, tutar, action, bosAlanSecenekleri }) {
     const img = await getFaturaImageBase64();
     if (!img) return { karar: 'emin_degil', sebep: 'fatura görüntüsü alınamadı' };
     return await api('/agent/ai/decide-fatura', {
@@ -11539,6 +11610,7 @@
         belgeTuru: belgeTuru || (bosAlanSecenekleri ? 'BILINMIYOR' : belgeTuru),
         faturaTuru,
         mukellef,
+        mukellefId,
         firma,
         firmaKimlikNo, // Firma Hafizasi icin VKN/TCKN
         tutar,
@@ -12187,6 +12259,8 @@
   // F2 sonrası validation uyarısı kontrolü
   // "Tahsilat/Ödeme hesabı seçilmemiş", "Hesap kodu girilmemiş" gibi
   function validationDialogVarMi() {
+    const remembered = recentValidationFailure();
+    if (remembered) return remembered;
     const pageErrors = [...document.querySelectorAll('.ant-message-error, .ant-notification-notice-error')]
       .map((el) => (el.textContent || '').trim())
       .filter(Boolean);
@@ -13113,8 +13187,8 @@
     const ai = String(aiBelgeTuru || '').toUpperCase();
     const m = String(mihsapBelgeTuru || '').toLowerCase();
     if (!ai || !m) return true;
-    if (ai.includes('E_FATURA')) return /e-?fatura/.test(m);
-    if (ai.includes('E_ARSIV') || ai.includes('E_ARŞIV')) return /e-?ar[sş]iv/.test(m);
+    if (ai.includes('E_FATURA')) return /e[_\s-]?fatura/.test(m);
+    if (ai.includes('E_ARSIV') || ai.includes('E_ARŞIV')) return /e[_\s-]?ar[sş]iv/.test(m);
     if (ai.includes('FIS') || ai.includes('FIŞ')) return /fi[sş]|fis/.test(m);
     return true;
   }
@@ -13146,49 +13220,148 @@
     };
   }
 
+  function getDecisionBelgeValue(decision, key) {
+    if (!decision) return null;
+    const traceBelge = decision.decisionTrace?.belge || {};
+    return decision[key] ?? traceBelge[key] ?? null;
+  }
+
+  function compareFaturaDecisionFields(decision, meta) {
+    const sorunlar = [];
+    const aiTarihRaw = getDecisionBelgeValue(decision, 'tarih');
+    const aiBelgeNo = getDecisionBelgeValue(decision, 'belgeNo');
+    const aiBelgeTuru = getDecisionBelgeValue(decision, 'belgeTuru');
+    const aiTarih = parseDateToIso(aiTarihRaw);
+    const mihsapTarih = parseDateToIso(meta?.tarih);
+    if (meta?.tarih && !aiTarih) sorunlar.push('belge tarihi OCR okunamadi');
+    if (aiTarih && mihsapTarih && aiTarih !== mihsapTarih) {
+      sorunlar.push(`tarih belge:${aiTarih} mihsap:${mihsapTarih}`);
+    }
+    if (meta?.belgeNo && !normDocNo(aiBelgeNo)) sorunlar.push('belge no OCR okunamadi');
+    if (aiBelgeNo && meta?.belgeNo && !docNoMatches(aiBelgeNo, meta.belgeNo)) {
+      sorunlar.push(`belgeNo belge:${aiBelgeNo} mihsap:${meta.belgeNo}`);
+    }
+    if (meta?.belgeTuru && !aiBelgeTuru) sorunlar.push('belge turu OCR okunamadi');
+    if (aiBelgeTuru && meta?.belgeTuru && !belgeTuruMatches(aiBelgeTuru, meta.belgeTuru)) {
+      sorunlar.push(`belgeTuru belge:${aiBelgeTuru} mihsap:${meta.belgeTuru}`);
+    }
+    const belgeToplam = parseAmountLoose(getDecisionBelgeValue(decision, 'ocrToplam'));
+    const belgeMatrah = parseAmountLoose(getDecisionBelgeValue(decision, 'ocrMatrah'));
+    const belgeKdvTutari = parseAmountLoose(getDecisionBelgeValue(decision, 'ocrKdvTutari'));
+    const mihsapToplam = parseAmountLoose(meta?.tutar);
+    if (mihsapToplam != null && belgeToplam == null) sorunlar.push('belge toplam OCR okunamadi');
+    if (belgeToplam != null && mihsapToplam != null && Math.abs(belgeToplam - mihsapToplam) > 1) {
+      sorunlar.push(`toplam belge:${belgeToplam.toFixed(2)} mihsap:${mihsapToplam.toFixed(2)}`);
+    }
+    return {
+      ok: sorunlar.length === 0,
+      sorunlar,
+      belgeToplam,
+      belgeMatrah,
+      belgeKdvTutari,
+      mihsapToplam,
+      belgeTarih: aiTarih || null,
+      mihsapTarih: mihsapTarih || null,
+      belgeNo: aiBelgeNo || null,
+      belgeTuru: aiBelgeTuru || null,
+    };
+  }
+
+  function checkFaturaKdvCodeMatch(codes, kdvOranlari) {
+    const tutarsizSatirlar = [];
+    const minLen = Math.min((codes || []).length, (kdvOranlari || []).length);
+    for (let i = 0; i < minLen; i++) {
+      const koduFull = codes[i] || '';
+      const pctMatch = koduFull.match(/-?%(\d{1,2})\b/);
+      if (!pctMatch) continue;
+      const fatKdvStr = (kdvOranlari[i] || '').replace(/^%/, '').trim();
+      if (!fatKdvStr) continue;
+      const koduPct = String(parseInt(pctMatch[1], 10));
+      const fatPct = String(parseInt(fatKdvStr, 10));
+      if (koduPct !== fatPct) {
+        tutarsizSatirlar.push(`satir ${i + 1}: hesap %${koduPct} != KDV %${fatPct}`);
+      }
+    }
+    return {
+      ok: tutarsizSatirlar.length === 0,
+      sebep: tutarsizSatirlar.join(' | '),
+      tutarsizSatirlar,
+    };
+  }
+
+  function finalSafetyCheckFatura({ decision, meta, codes, kdvOranlari }) {
+    const karar = decision?.karar || decision?.decisionTrace?.karar?.sonuc || 'emin_degil';
+    const cmp = compareFaturaDecisionFields(decision, meta);
+    const sorunlar = [...cmp.sorunlar];
+    if (karar !== 'onay') {
+      sorunlar.unshift(`AI karar onay degil: ${karar}`);
+    }
+    const kdvCheck = checkFaturaKdvCodeMatch(codes || [], kdvOranlari || []);
+    if (!kdvCheck.ok) sorunlar.push(`KDV oran tutarsiz: ${kdvCheck.sebep}`);
+    return {
+      ok: sorunlar.length === 0,
+      sebep: sorunlar.join(' | '),
+      karar,
+      compareMeta: {
+        belgeToplam: cmp.belgeToplam,
+        belgeMatrah: cmp.belgeMatrah,
+        belgeKdvTutari: cmp.belgeKdvTutari,
+        mihsapToplam: cmp.mihsapToplam,
+        belgeTarih: cmp.belgeTarih,
+        mihsapTarih: cmp.mihsapTarih,
+        belgeNo: cmp.belgeNo,
+        belgeTuru: cmp.belgeTuru,
+        kdvOranlari,
+        kdvTutarsizSatirlar: kdvCheck.tutarsizSatirlar,
+      },
+    };
+  }
+
   async function validateIsletmeBeforeF2({ blok, meta, ust, mukellef, action }) {
     const tumAltOptions = [];
     for (const vals of Object.values(ISLETME_KAYIT_ALT_MAP)) {
       for (const v of vals) if (!tumAltOptions.includes(v)) tumAltOptions.push(v);
     }
-    const d = blok.detay[0];
-    if (!d) return { ok: false, sebep: 'blok yok' };
-    const karar = await aiDecideIsletme({
-      kayitOptions: ISLETME_KAYIT_TURU_LIST_ALIS,
-      altOptions: tumAltOptions,
-      tarih: meta.tarih,
-      belgeNo: meta.belgeNo,
-      belgeTuru: ust.belgeTuru,
-      faturaTuru: ust.faturaTuru,
-      mukellef: mukellef.ad,
-      mukellefId: mukellef.id,
-      firma: meta.firma,
-      firmaKimlikNo: meta.firmaKimlikNo,
-      tutar: meta.tutar,
-      matrah: d.matrah,
-      kdv: d.kdv,
-      action,
-      blokIndex: 1,
-      blokToplam: blok.detay.length,
-    });
-    if (karar?.karar === 'onay_bekliyor') {
-      return { ok: false, sebep: `Onay kuyrugu: ${(karar.sapmaSebep || karar.sebep || '').slice(0, 120)}` };
+    if (!blok.detay?.length) return { ok: false, sebep: 'blok yok' };
+    const ozet = [];
+    for (let bi = 0; bi < blok.detay.length; bi++) {
+      const d = blok.detay[bi];
+      const karar = await aiDecideIsletme({
+        kayitOptions: ISLETME_KAYIT_TURU_LIST_ALIS,
+        altOptions: tumAltOptions,
+        tarih: meta.tarih,
+        belgeNo: meta.belgeNo,
+        belgeTuru: ust.belgeTuru,
+        faturaTuru: ust.faturaTuru,
+        mukellef: mukellef.ad,
+        mukellefId: mukellef.id,
+        firma: meta.firma,
+        firmaKimlikNo: meta.firmaKimlikNo,
+        tutar: meta.tutar,
+        matrah: d.matrah,
+        kdv: d.kdv,
+        action,
+        blokIndex: bi + 1,
+        blokToplam: blok.detay.length,
+      });
+      const tag = `B${bi + 1}`;
+      if (karar?.karar === 'onay_bekliyor') {
+        return { ok: false, sebep: `${tag} onay kuyrugu: ${(karar.sapmaSebep || karar.sebep || '').slice(0, 120)}` };
+      }
+      if (!karar?.emin || !karar.kayitTuru || !karar.altTuru) {
+        return { ok: false, sebep: `${tag} OCR/AI emin degil: ${(karar?.sebep || '').slice(0, 120)}` };
+      }
+      if (d.kayitDeger && karar.kayitTuru && d.kayitDeger !== karar.kayitTuru) {
+        return { ok: false, sebep: `${tag} kayit turu uyusmaz: belge:${karar.kayitTuru} mihsap:${d.kayitDeger}` };
+      }
+      if (d.altDeger && karar.altTuru && d.altDeger !== karar.altTuru) {
+        return { ok: false, sebep: `${tag} k.alt turu uyusmaz: belge:${karar.altTuru} mihsap:${d.altDeger}` };
+      }
+      const cmp = compareIsletmeOcrFields(karar, meta, ust);
+      if (!cmp.ok) return { ok: false, sebep: `${tag} belge-Mihsap uyusmaz: ${cmp.sorunlar.join(' | ')}`, cmp };
+      ozet.push(`${tag}:${karar.kayitTuru}/${karar.altTuru} OCR toplam:${cmp.belgeToplam ?? '-'} matrah:${cmp.belgeMatrah ?? '-'} kdv:${cmp.belgeKdvTutari ?? '-'}`);
     }
-    if (!karar?.emin || !karar.kayitTuru || !karar.altTuru) {
-      return { ok: false, sebep: `OCR/AI emin degil: ${(karar?.sebep || '').slice(0, 120)}` };
-    }
-    if (d.kayitDeger && karar.kayitTuru && d.kayitDeger !== karar.kayitTuru) {
-      return { ok: false, sebep: `Kayit turu uyusmaz: belge:${karar.kayitTuru} mihsap:${d.kayitDeger}` };
-    }
-    if (d.altDeger && karar.altTuru && d.altDeger !== karar.altTuru) {
-      return { ok: false, sebep: `K.alt turu uyusmaz: belge:${karar.altTuru} mihsap:${d.altDeger}` };
-    }
-    const cmp = compareIsletmeOcrFields(karar, meta, ust);
-    if (!cmp.ok) return { ok: false, sebep: `Belge-Mihsap uyusmaz: ${cmp.sorunlar.join(' | ')}`, cmp };
-    return {
-      ok: true,
-      sebep: `OCR toplam:${cmp.belgeToplam ?? '-'} matrah:${cmp.belgeMatrah ?? '-'} kdv:${cmp.belgeKdvTutari ?? '-'} · OCR:${karar.kayitTuru}/${karar.altTuru}`,
-    };
+    return { ok: true, sebep: ozet.join(' · ') };
   }
 
   async function checkPauseAndWait() {
@@ -13647,12 +13820,22 @@
             const aiNot = aiKullanildi ? ` · AI` : '';
             const logMsg = `${mTag} · F2 · FatT:${ust.faturaTuru} BT:${ust.belgeTuru} AST:${ust.alisSatisTuru} · ${blokLog}${aiNot}`;
             await logEvent(mukellef.id, mukellef.ad, 'ok', logMsg, {
-              firma: meta.firma, belgeNo: meta.belgeNo, tutar: meta.tutar,
+              firma: meta.firma, firmaKimlikNo: meta.firmaKimlikNo, belgeNo: meta.belgeNo, tutar: meta.tutar,
               belgeTuru: ust.belgeTuru,
               faturaTuru: ust.faturaTuru,
               alisSatisTuru: ust.alisSatisTuru,
               hesapKodlari: blok.detay.map((d) => d.kayitDeger).filter(Boolean),
               kdvOranlari: blok.detay.map((d) => d.kdv).filter(Boolean),
+              memoryCandidates: blok.detay
+                .filter((d) => d.kayitDeger)
+                .map((d) => ({
+                  kararTipi: 'isletme',
+                  kategori: d.kayitDeger,
+                  altKategori: d.altDeger || null,
+                  firmaKimlikNo: meta.firmaKimlikNo || null,
+                  firmaUnvan: meta.firma || null,
+                  taxpayerId: mukellef.id || null,
+                })),
               aiOzet: aiOzet.length ? aiOzet.join(' · ') : undefined,
             });
             if (getCurrentFid() === fid && !/count=0/.test(location.href)) {
@@ -13777,6 +13960,52 @@
               }
 
               if (fillResult.dolduruldu) {
+                const finalCodes = await readHesapKodlari(4000);
+                const finalHesapKodlari = finalCodes.length > 0
+                  ? finalCodes
+                  : [o.matrahHesapKodu, o.kdvHesapKodu, o.cariHesapKodu, o.odemeHesapKodu || o.tahsilatOdemeHesapKodu || (secenekler.odemeKodlari || [])[0]].filter(Boolean);
+                const primaryHesapKodu = o.matrahHesapKodu
+                  || finalHesapKodlari.find((c) => /^(600|601|602|150|153|157|740|760|770)\./.test(c))
+                  || finalHesapKodlari[0]
+                  || codes[0]
+                  || null;
+                setStatus(`${mukellef.ad} · #${fid} F2 güvenlik kontrol...`);
+                const finalDecision = await aiDecide({
+                  codes: finalHesapKodlari,
+                  tarih,
+                  hedefAy,
+                  belgeNo: meta.belgeNo,
+                  belgeTuru: meta.belgeTuru,
+                  faturaTuru: meta.faturaTuru,
+                  mukellef: mukellef.ad,
+                  mukellefId: mukellef.id,
+                  firma: meta.firma,
+                  firmaKimlikNo: meta.firmaKimlikNo,
+                  tutar: meta.tutar,
+                  action,
+                });
+                const finalSafety = finalSafetyCheckFatura({
+                  decision: finalDecision,
+                  meta,
+                  codes: finalHesapKodlari,
+                  kdvOranlari: readAllKdvOranlari(),
+                });
+                if (!finalSafety.ok) {
+                  satirlar.push(`Sonuç: F2 güvenlik iptal — ${finalSafety.sebep}`);
+                  logMesaji = satirlar.join('\n');
+                  counters.atla++; counters.toplam++; setCount();
+                  await logEvent(mukellef.id, mukellef.ad, 'skip', logMesaji,
+                    logMeta({
+                      hesapKodu: primaryHesapKodu,
+                      hesapKodlari: finalHesapKodlari,
+                      kdv: readKdvOrani(),
+                      decisionTrace: finalDecision?.decisionTrace || null,
+                      aiCallReason: finalDecision?.aiCallReason || null,
+                      ...finalSafety.compareMeta,
+                    }));
+                  await clickIleri(fid);
+                  continue;
+                }
                 setStatus(`${mukellef.ad} · #${fid} F2 ile kaydediyor…`);
                 const kayitSonucu = await kaydetOnaylaVeBekle(fid, {
                   timeoutMs: 6500,
@@ -13791,10 +14020,12 @@
                       firmaKimlikNo: meta.firmaKimlikNo,
                       belgeNo: meta.belgeNo,
                       tutar: meta.tutar,
-                      hesapKodu: o.matrahHesapKodu || codes[0] || null,
-                      hesapKodlari: [o.matrahHesapKodu, o.kdvHesapKodu, o.cariHesapKodu, o.odemeHesapKodu || o.tahsilatOdemeHesapKodu || (secenekler.odemeKodlari || [])[0]].filter(Boolean),
-                      decisionTrace: oneriKarari?.decisionTrace || null,
-                      faturaDecisionCandidate: oneriKarari?.faturaDecisionCandidate || null,
+                      hesapKodu: primaryHesapKodu,
+                      hesapKodlari: finalHesapKodlari,
+                      decisionTrace: finalDecision?.decisionTrace || null,
+                      faturaDecisionCandidate: finalDecision?.faturaDecisionCandidate || null,
+                      aiCallReason: finalDecision?.aiCallReason || null,
+                      ...finalSafety.compareMeta,
                     });
                   if (getCurrentFid() === fid && !isZeroCount()) {
                     await clickIleri(fid);
@@ -13859,76 +14090,31 @@
       const sebep = (decision?.sebep || '').slice(0, 120);
       const decisionTrace = decision?.decisionTrace || null;
       const faturaDecisionCandidate = decision?.faturaDecisionCandidate || null;
-      // === v1.36.21: BELGE ↔ MIHSAP TUTAR KARŞILAŞTIRMA ===
-      // AI fatura görselinden ocrToplam, ocrMatrah, ocrKdvTutari çıkarıyor.
-      // Mihsap'taki değer (meta.tutar = toplam) ile karşılaştır — uyuşmuyorsa ATLA.
-      // Kullanıcının istediği insan-tarzı kontrol: belgeye bak, mihsap'a bak, eşleşmiyorsa F2 yapma.
-      const TOLERANS = 1.00; // 1 TL tolerans (yuvarlama farkları için)
-      const belgeToplam = Number(decision?.ocrToplam) || null;
-      const belgeMatrah = Number(decision?.ocrMatrah) || null;
-      const belgeKdvTutari = Number(decision?.ocrKdvTutari) || null;
-      const mihsapToplam = Number(meta.tutar) || null;
-      // Mismatch tespiti — belge değerleri varsa karşılaştır
-      let mismatchSebep = null;
-      if (belgeToplam !== null && mihsapToplam !== null && Math.abs(belgeToplam - mihsapToplam) > TOLERANS) {
-        mismatchSebep = `Toplam tutar uyuşmadı (belge: ${belgeToplam.toFixed(2)} ≠ mihsap: ${mihsapToplam.toFixed(2)})`;
-      }
-      // Karşılaştırma meta'sı — log'da görünsün
-      const compareMeta = {
-        belgeToplam, belgeMatrah, belgeKdvTutari,
-        mihsapToplam,
-      };
-      if (mismatchSebep) {
+      const safety = finalSafetyCheckFatura({
+        decision,
+        meta,
+        codes,
+        kdvOranlari: readAllKdvOranlari(),
+      });
+      if (!safety.ok) {
         counters.atla++; counters.toplam++; setCount();
+        const sapma = karar === 'onay_bekliyor'
+          ? (decision?.sapmaSebep || sebep || safety.sebep).slice(0, 180)
+          : safety.sebep;
         await logEvent(mukellef.id, mukellef.ad, 'skip',
-          `🔍 ${mismatchSebep} — F2 atlandı, manuel kontrol gerekli`,
-          logMeta({ hesapKodu: codes[0], hesapKodlari: codes, kdv: readKdvOrani(), kdvOranlari: readAllKdvOranlari(), satirSayisi: codes.length, decisionTrace, ...compareMeta }));
+          `F2 güvenlik iptal: ${sapma}`,
+          logMeta({
+            hesapKodu: codes[0],
+            hesapKodlari: codes,
+            kdv: readKdvOrani(),
+            satirSayisi: codes.length,
+            decisionTrace,
+            cacheHit: !!decision?.cacheHit,
+            aiCallReason: decision?.aiCallReason || null,
+            ...safety.compareMeta,
+          }));
         await clickIleri(fid); continue;
       }
-      // onay_bekliyor: AI karari gecmisle celisiyor, insan onayi bekler.
-      // AUTO ONAY YAPMA, sadece ileri gec ve log'a dus.
-      if (karar === 'onay_bekliyor') {
-        counters.atla++; counters.toplam++; setCount();
-        const sapma = (decision?.sapmaSebep || sebep || '').slice(0, 150);
-        await logEvent(mukellef.id, mukellef.ad, 'skip',
-          `⏸ Onay kuyruguna dustu: ${sapma}`,
-          logMeta({ hesapKodu: codes[0], hesapKodlari: codes, kdv: readKdvOrani(), kdvOranlari: readAllKdvOranlari(), satirSayisi: codes.length, decisionTrace, ...compareMeta }));
-        await clickIleri(fid); continue;
-      }
-      if (karar === 'atla' || karar === 'emin_degil') {
-        counters.atla++; counters.toplam++; setCount();
-        await logEvent(mukellef.id, mukellef.ad, 'skip', `${karar}: ${sebep}`, logMeta({ hesapKodu: codes[0], hesapKodlari: codes, kdv: readKdvOrani(), kdvOranlari: readAllKdvOranlari(), satirSayisi: codes.length, decisionTrace, cacheHit: !!decision?.cacheHit, aiCallReason: decision?.aiCallReason || null, ...compareMeta }));
-        await clickIleri(fid); continue;
-      }
-      // === v1.36.54: KDV ORAN GÜVENLİK NETİ — ÇOK SATIRLI FATURA DESTEĞİ ===
-      // Faturada birden fazla KDV oranı olabilir (ör. %1 ve %10).
-      // Her matrah satırı kendi KDV oranıyla pozisyonel eşleşir: codes[i] ↔ kdvOranlari[i].
-      // Hesap adında %X yazıyorsa o satırın KDV oranı da %X olmak zorunda — değilse onay_bekliyor.
-      try {
-        const kdvOranlari = readAllKdvOranlari();
-        const tutarsizSatirlar = [];
-        const minLen = Math.min(codes.length, kdvOranlari.length);
-        for (let i = 0; i < minLen; i++) {
-          const koduFull = codes[i] || '';
-          const pctMatch = koduFull.match(/-?%(\d{1,2})\b/);
-          if (!pctMatch) continue; // hesap adında oran yoksa kontrol edilmez
-          const fatKdvStr = (kdvOranlari[i] || '').replace(/^%/, '').trim();
-          if (!fatKdvStr) continue;
-          const koduPct = String(parseInt(pctMatch[1], 10));
-          const fatPct = String(parseInt(fatKdvStr, 10));
-          if (koduPct !== fatPct) {
-            tutarsizSatirlar.push(`satir ${i + 1}: hesap %${koduPct} ≠ KDV %${fatPct}`);
-          }
-        }
-        if (tutarsizSatirlar.length > 0) {
-          counters.atla++; counters.toplam++; setCount();
-          const sapma = `KDV oran tutarsiz · ${tutarsizSatirlar.join(' · ')}`;
-          await logEvent(mukellef.id, mukellef.ad, 'skip',
-            `⏸ Onay kuyruguna dustu (guvenlik): ${sapma}`,
-            logMeta({ hesapKodlari: codes, kdvOranlari, satirSayisi: codes.length, ...compareMeta }));
-          await clickIleri(fid); continue;
-        }
-      } catch (kdvCheckErr) { /* sessizce gec — guvenlik neti hata yapsa bile akis bozulmasin */ }
       try {
         let validationFailed = null;
 
@@ -13951,6 +14137,10 @@
             }
             if (getVisibleModals().length > 0) {
               const r = await handleDialogs();
+              if (r === 'validation') {
+                validationFailed = recentValidationFailure();
+                return false;
+              }
               if (r === 'resubmit') {
                 // Onayla → 5 sn bekle → fid değişmediyse F2 (aksi halde F2
                 // sonraki faturayı tetikler ve mevcut işlem log'suz kalır).
@@ -13980,6 +14170,10 @@
 
             if (getVisibleModals().length > 0) {
               const r = await handleDialogs();
+              if (r === 'validation') {
+                validationFailed = recentValidationFailure();
+                return false;
+              }
               if (r === 'resubmit') {
                 // Onayla → 5 sn bekle → fid değişmediyse F2.
                 // URL değiştiyse ana loop zaten sonraki turda saved=true görür.
@@ -14011,7 +14205,7 @@
 
         if (saved) {
           counters.onay++; counters.toplam++; setCount();
-          await logEvent(mukellef.id, mukellef.ad, 'ok', `F2 · ${sebep}`, { firma: meta.firma, firmaKimlikNo: meta.firmaKimlikNo, belgeNo: meta.belgeNo, tutar: meta.tutar, hesapKodu: codes[0], hesapKodlari: codes, kdv: readKdvOrani(), kdvOranlari: readAllKdvOranlari(), satirSayisi: codes.length, decisionTrace, faturaDecisionCandidate });
+          await logEvent(mukellef.id, mukellef.ad, 'ok', `F2 · ${sebep}`, { firma: meta.firma, firmaKimlikNo: meta.firmaKimlikNo, belgeNo: meta.belgeNo, tutar: meta.tutar, hesapKodu: codes[0], hesapKodlari: codes, kdv: readKdvOrani(), kdvOranlari: readAllKdvOranlari(), satirSayisi: codes.length, decisionTrace, faturaDecisionCandidate, aiCallReason: decision?.aiCallReason || null, ...safety.compareMeta });
         } else {
           counters.atla++; counters.toplam++; setCount();
           const atlamaSebebi = validationFailed
@@ -14044,6 +14238,7 @@
         if (Array.isArray(cmds) && cmds.length > 0) {
           for (const cmd of cmds) {
             try {
+              resetCounters();
               setStatus(`CMD: ${cmd.action}`);
               await processBatch({
                 ay: cmd.payload?.ay,
