@@ -11596,13 +11596,47 @@
     return null;
   }
 
-  async function aiDecide({ codes, tarih, hedefAy, belgeNo, belgeTuru, faturaTuru, mukellef, mukellefId, firma, firmaKimlikNo, tutar, action, bosAlanSecenekleri, forceFresh }) {
-    const img = await getFaturaImageBase64();
-    if (!img) return { karar: 'emin_degil', sebep: 'fatura görüntüsü alınamadı' };
+  function readFreeFaturaTextSnapshot(maxChars = 14000) {
+    const docs = [];
+    const seen = new Set();
+    const visit = (win) => {
+      try {
+        if (!win || seen.has(win)) return;
+        seen.add(win);
+        if (win.document) docs.push(win.document);
+        Array.from(win.document?.querySelectorAll('iframe,frame') || []).forEach((fr) => {
+          try { visit(fr.contentWindow); } catch {}
+        });
+      } catch {}
+    };
+    visit(window);
+    const chunks = [];
+    const wanted = /fatura|belge|mal\s*hizmet|kdv|toplam|tutar|vergi|tevkifat|araç|arac|otomobil|bilgisayar|makine|demirbaş|demirbas|taşıt|tasit/i;
+    for (const doc of docs) {
+      const nodes = [
+        ...Array.from(doc.querySelectorAll('[class*="invoice"], [class*="fatura"], [class*="pdf"], [class*="viewer"], [role="dialog"], .ant-modal, .ant-drawer')),
+        doc.body,
+      ].filter(Boolean);
+      for (const node of nodes) {
+        const text = String(node.innerText || node.textContent || '').replace(/\s+/g, ' ').trim();
+        if (text.length < 40 || !wanted.test(text)) continue;
+        chunks.push(text.slice(0, 4000));
+        if (chunks.join(' ').length >= maxChars) break;
+      }
+      if (chunks.join(' ').length >= maxChars) break;
+    }
+    return [...new Set(chunks)].join('\n').slice(0, maxChars);
+  }
+
+  async function aiDecide({ codes, tarih, hedefAy, belgeNo, belgeTuru, faturaTuru, mukellef, mukellefId, firma, firmaKimlikNo, tutar, action, bosAlanSecenekleri, forceFresh, ruleOnly }) {
+    const img = ruleOnly ? '' : await getFaturaImageBase64();
+    if (!ruleOnly && !img) return { karar: 'emin_degil', sebep: 'fatura görüntüsü alınamadı' };
+    const faturaText = readFreeFaturaTextSnapshot();
     return await api('/agent/ai/decide-fatura', {
       method: 'POST',
       body: JSON.stringify({
         faturaImageBase64: img,
+        ...(faturaText ? { faturaText } : {}),
         hesapKodlari: codes,
         faturaTarihi: tarih,
         hedefAy,
@@ -11616,6 +11650,7 @@
         tutar,
         action,
         forceFresh: !!forceFresh,
+        ruleOnly: !!ruleOnly,
         // Aşama 2a: boş alan seçenekleri gönderilirse AI öneri verir
         ...(bosAlanSecenekleri ? { bosAlanSecenekleri } : {}),
       }),
@@ -13951,6 +13986,35 @@
       }
       // Ekrandaki select'lerden herhangi biri boşsa (matrah/KDV/cari)
       if (hasBosSelect) {
+        const isAlisBosKodAtla = action === 'isle_alis' || action === 'isle_alis_isletme';
+        if (isAlisBosKodAtla) {
+          const durumlar = normalizeBosAlanDurumlari({
+            matrahDolu: bolumHesapKoduDolu(/^Matrah\s*\(/i) ?? bolumHesapKoduDolu(/^Matrah$/i),
+            vergiDolu: bolumHesapKoduDolu(/^Vergi\s*\(/i) ?? bolumHesapKoduDolu(/^KDV/i) ?? bolumHesapKoduDolu(/^Vergi$/i),
+            cariDolu: bolumHesapKoduDolu(/^Cari Hesap\s*\(/i) ?? bolumHesapKoduDolu(/^Cari Hesap$/i) ?? bolumHesapKoduDolu(/^Cari$/i),
+            odemeDolu: bolumHesapKoduDolu(ODEME_HESABI_RE),
+          }, isletmeAccountCodeFlow);
+          const bosAlanlar = [
+            durumlar.matrahDolu === false && 'Matrah',
+            durumlar.vergiDolu === false && 'KDV',
+            durumlar.cariDolu === false && 'Cari',
+            durumlar.odemeDolu === false && 'Tahsilat/Odeme',
+          ].filter(Boolean);
+          counters.atla++; counters.toplam++; setCount();
+          await logEvent(
+            mukellef.id,
+            mukellef.ad,
+            'skip',
+            `Alışta boş muhasebe alanı var: ${bosAlanlar.join(', ') || 'Hesap Kodu'} — manuel işlenecek, seçim/AI atlandı`,
+            logMeta({
+              hesapKodlari: codes,
+              kdv: readKdvOrani(),
+              aiCallReason: 'alis_bos_kod_manual',
+            }),
+          );
+          await clickIleri(fid);
+          continue;
+        }
         // ================================================================
         // v1.12.0 — AŞAMA 1 (Doldur, kaydetme) — SADECE Bilanço SATIŞ:
         // Eşikler: Cari %95, Matrah %90, KDV %90.
@@ -14154,8 +14218,8 @@
         await logEvent(mukellef.id, mukellef.ad, 'skip', logMesaji, { firma: meta.firma, belgeNo: meta.belgeNo, tutar: meta.tutar });
         await clickIleri(fid); continue;
       }
-      // LLM karar
-      setStatus(`${mukellef.ad} · #${fid} Claude inceliyor…`);
+      // Kural/firma hafızası hızlı karar; eşleşme yoksa görüntülü AI kararına düşer.
+      setStatus(`${mukellef.ad} · #${fid} kural/hafıza kontrolü…`);
       const decisionArgs = {
         codes, tarih, hedefAy,
         belgeNo: meta.belgeNo, belgeTuru: meta.belgeTuru, faturaTuru: meta.faturaTuru,
@@ -14166,7 +14230,11 @@
         tutar: meta.tutar,
         action,
       };
-      let decision = await aiDecide(decisionArgs);
+      let decision = await aiDecide({ ...decisionArgs, ruleOnly: true });
+      if (decision?.karar === 'needs_ai') {
+        setStatus(`${mukellef.ad} · #${fid} AI inceliyor…`);
+        decision = await aiDecide(decisionArgs);
+      }
       let karar = decision?.karar || 'emin_degil';
       let sebep = (decision?.sebep || '').slice(0, 120);
       let decisionTrace = decision?.decisionTrace || null;

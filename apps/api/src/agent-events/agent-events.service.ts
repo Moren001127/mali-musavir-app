@@ -4,6 +4,7 @@ import { Prisma } from '@prisma/client';
 import { PrismaService } from '../prisma/prisma.service';
 import { logAiUsage } from '../common/ai-usage-logger';
 import { profileToPromptText } from '../common/profile-prompt';
+import { SISTEM_KURALLARI } from '../common/sistem-kurallari';
 import { VendorMemoryService } from '../vendor-memory/vendor-memory.service';
 import { PendingDecisionsService } from '../pending-decisions/pending-decisions.service';
 import { WhatsAppQrService } from '../whatsapp-qr/whatsapp-qr.service';
@@ -165,6 +166,68 @@ export class AgentEventsService {
     if (a === e) return true;
     const faturaSet = new Set(['FATURA', 'E_FATURA', 'E_ARSIV']);
     return faturaSet.has(a) && faturaSet.has(e);
+  }
+
+  private getMihsapVendorRuleMinOnay(): number {
+    const parsed = Number(process.env.MIHSAP_VENDOR_RULE_MIN_ONAY || 5);
+    if (!Number.isFinite(parsed)) return 5;
+    return Math.min(50, Math.max(3, Math.floor(parsed)));
+  }
+
+  private extractAccountCode(value: any): string {
+    const match = String(value || '').match(/\b\d{3}(?:\.\d{1,3}){1,4}\b/);
+    return match?.[0] || '';
+  }
+
+  private pickPrimaryFaturaAccount(codes: string[]): string {
+    const values = (codes || []).map((code) => String(code || '').trim()).filter(Boolean);
+    const isAccount = (code: string) => !!this.extractAccountCode(code);
+    const isAuxiliary = (code: string) => /^(191|391|120|320|100|101|102|103|108|121|321|309|329|331|335|336)\./.test(
+      this.extractAccountCode(code),
+    );
+    return values.find((code) => isAccount(code) && !isAuxiliary(code)) || values.find(isAccount) || values[0] || '';
+  }
+
+  private analyzeFreeFaturaContent(text: any): { available: boolean; risk: boolean; sebep?: string } {
+    const raw = String(text || '').slice(0, 20000);
+    const normalized = raw
+      .toLocaleLowerCase('tr-TR')
+      .normalize('NFD')
+      .replace(/[\u0300-\u036f]/g, '')
+      .replace(/ı/g, 'i')
+      .replace(/\s+/g, ' ')
+      .trim();
+    if (normalized.length < 40) return { available: false, risk: false };
+
+    const allowedVehicleExpense = [
+      /arac\s+bakim/,
+      /bakim\s+onarim/,
+      /servis\s+hizmeti/,
+      /motor\s+yag/,
+      /akaryakit|motorin|benzin|yakit/,
+      /nakliye|tasima|lojistik|sefer\s+bedeli/,
+      /otopark|hgs|ogs|lastik/,
+    ].some((re) => re.test(normalized));
+
+    const riskyAsset = [
+      /arac\s+(satis|alim|bedel|teslim)/,
+      /tasit\s+(satis|alim|bedel|teslim)/,
+      /binek\s+oto|otomobil|kamyon|kamyonet|minibus|motosiklet|traktor/,
+      /sifir\s+arac|ikinci\s+el\s+arac|2\.?\s*el\s+arac/,
+      /bilgisayar|laptop|notebook|telefon|yazici|printer|tablet/,
+      /mobilya|masa|sandalye|koltuk|dolap/,
+      /klima|kombi|televizyon|buzdolabi/,
+      /makine|tezgah|kompresor|jenerator|ekipman|cihaz/,
+    ].some((re) => re.test(normalized));
+
+    if (riskyAsset && !allowedVehicleExpense) {
+      return {
+        available: true,
+        risk: true,
+        sebep: 'Kural tabanli icerik riski: tasit/demirbas/sabit kiymet ifadesi gorundu; otomatik F2 yapilmaz',
+      };
+    }
+    return { available: true, risk: false };
   }
 
   private classifyClaudeApiError(status: number, body: string) {
@@ -1597,6 +1660,7 @@ ${ocr.text.slice(0, 14000)}`;
   async decideFatura(input: {
     faturaImageBase64: string;
     faturaImageMediaType?: string;
+    faturaText?: string;
     hesapKodlari: string[];
     faturaTarihi?: string;
     hedefAy?: string;
@@ -1611,6 +1675,7 @@ ${ocr.text.slice(0, 14000)}`;
     action?: string; // 'isle_alis' | 'isle_satis' | 'isle_alis_isletme' | 'isle_satis_isletme'
     tenantId?: string;
     forceFresh?: boolean;
+    ruleOnly?: boolean;
     /**
      * Boş alanlar için dropdown seçenekleri. Runner, Mihsap'ta boş alana tıkladığında
      * Luca entegrasyonundan gelen hesap kodu listesini buraya koyar.
@@ -1760,6 +1825,7 @@ ${ocr.text.slice(0, 14000)}`;
     const hasAlis  = pfxs.some(p => ALIS_PFX.includes(p));
     const demirbas = pfxs.some(p => p === '253' || p === '255');
     const codeType = hasSatis && !hasAlis ? 'SATIŞ' : hasAlis && !hasSatis ? 'ALIŞ' : 'KARIŞIK';
+    const primaryFaturaAccount = this.pickPrimaryFaturaAccount(codesArr);
 
     // Demirbaş → atla
     if (demirbas) {
@@ -1800,6 +1866,61 @@ ${ocr.text.slice(0, 14000)}`;
         cacheHit,
         usage: { input_tokens: 0, output_tokens: 0 },
       });
+
+    const ruleDecisionTrace = (sonuc: string, sebep: string, memoryCategory: string | null = null, vendorHintUsed = false) => ({
+      belge: {
+        tarih: input.faturaTarihi || null,
+        belgeNo: input.belgeNo || null,
+        cari: input.firma || null,
+        belgeTuru: input.belgeTuru || null,
+        kdvOrani: null,
+        ocrToplam: input.tutar ?? null,
+      },
+      ekran: {
+        tarih: input.faturaTarihi || null,
+        belgeNo: input.belgeNo || null,
+        belgeTuru: input.belgeTuru || null,
+        faturaTuru: input.faturaTuru || null,
+        tutar: input.tutar ?? null,
+        hesapKodlari: input.hesapKodlari || [],
+      },
+      karar: {
+        sonuc,
+        sebep,
+        icerikSinifi: null,
+        memoryCategory,
+        vendorHintUsed,
+      },
+    });
+
+    if (ALIS_ACTIONS.includes(input.action || '') && hasBosAlanSecenekleri) {
+      const sebep = 'rule_fast_path: Alista bos muhasebe alani var; manuel islenecek, secim/Claude atlandi';
+      await logZeroUsage('mihsap-fatura-rule', 'atla', sebep);
+      return {
+        karar: 'atla',
+        sebep,
+        aiCallReason: 'alis_bos_kod_manual',
+        decisionProvider: 'rule-based',
+        decisionTrace: ruleDecisionTrace('atla', sebep, primaryFaturaAccount || null),
+      };
+    }
+
+    const tutarNum = Number(input.tutar);
+    const hasKasaAccount = !!(
+      SISTEM_KURALLARI.kasaLimit.aktif &&
+      codesArr.some((code) => this.extractAccountCode(code).startsWith(`${SISTEM_KURALLARI.kasaLimit.hesapPrefix}.`))
+    );
+    if (hasKasaAccount && Number.isFinite(tutarNum) && tutarNum > SISTEM_KURALLARI.kasaLimit.maxTutar) {
+      const sebep = `rule_fast_path: Kasa hesabi ${SISTEM_KURALLARI.kasaLimit.maxTutar.toLocaleString('tr-TR')} TL limitini asiyor; manuel kontrol`;
+      await logZeroUsage('mihsap-fatura-rule', 'atla', sebep);
+      return {
+        karar: 'atla',
+        sebep,
+        aiCallReason: 'kasa_limit_rule',
+        decisionProvider: 'rule-based',
+        decisionTrace: ruleDecisionTrace('atla', sebep, primaryFaturaAccount || null),
+      };
+    }
 
     const imageHash = input.faturaImageBase64
       ? createHash('sha256').update(input.faturaImageBase64).digest('hex')
@@ -1862,7 +1983,7 @@ ${ocr.text.slice(0, 14000)}`;
       Number.isFinite(Number(input.tutar)) &&
       !vendorHint;
     if (canUseDeterministicZRaporu) {
-      const memoryCategory = codesArr.find((c) => /^(600|601|602|150|153|157|740|770)\./.test(c)) || codesArr[0];
+      const memoryCategory = primaryFaturaAccount || codesArr.find((c) => /^(600|601|602|150|153|157|740|770)\./.test(c)) || codesArr[0];
       const deterministicDecision = {
         karar: 'onay',
         sebep: 'rule_fast_path: Z raporu, kod/tarih/tutar ekran verisi yeterli; Claude cagrilmadi',
@@ -1909,6 +2030,73 @@ ${ocr.text.slice(0, 14000)}`;
       });
       await logZeroUsage('mihsap-fatura-rule', 'onay', deterministicDecision.sebep);
       return { ...deterministicDecision, aiCallReason: 'rule_fast_path' };
+    }
+
+    const freeContent = this.analyzeFreeFaturaContent(input.faturaText);
+    if (!hasBosAlanSecenekleri && freeContent.risk) {
+      const sebep = freeContent.sebep || 'Kural tabanli icerik riski; otomatik F2 yapilmaz';
+      await logZeroUsage('mihsap-fatura-content-rule', 'atla', sebep);
+      return {
+        karar: 'atla',
+        sebep,
+        aiCallReason: 'free_content_rule_risk',
+        decisionProvider: 'rule-based',
+        decisionTrace: ruleDecisionTrace('atla', sebep, primaryFaturaAccount || null, !!vendorHint),
+      };
+    }
+
+    const primaryAccountCode = this.extractAccountCode(primaryFaturaAccount);
+    const vendorMemoryMatch = primaryAccountCode && vendorHint?.topKategoriler
+      ? vendorHint.topKategoriler.find(
+          (row) =>
+            this.extractAccountCode(row.kategori) === primaryAccountCode &&
+            (row.onayAdedi || 0) >= this.getMihsapVendorRuleMinOnay(),
+        )
+      : null;
+    if (
+      !input.forceFresh &&
+      !hasBosAlanSecenekleri &&
+      vendorMemoryMatch &&
+      freeContent.available &&
+      !freeContent.risk &&
+      primaryFaturaAccount &&
+      codeType !== 'KARIŞIK' &&
+      Number.isFinite(Number(input.tutar))
+    ) {
+      const memoryCategory = vendorMemoryMatch.kategori || primaryFaturaAccount;
+      const sebep = `rule_fast_path: Firma hafizasi ${vendorMemoryMatch.onayAdedi} onay, ayni hesap (${primaryAccountCode}) ve ucretsiz icerik kontrolu temiz; Claude cagrilmadi`;
+      const deterministicDecision = {
+        karar: 'onay',
+        sebep,
+        icerikSinifi: 'Firma Hafizasi',
+        ocrOzet: `${input.firma || 'Firma'} gecmis hesap hafizasi ile uyumlu`,
+        decisionProvider: 'rule-based',
+        faturaDecisionCandidate: input.firmaKimlikNo
+          ? {
+              kararTipi: 'fatura',
+              hesapKodu: memoryCategory,
+              firmaKimlikNo: input.firmaKimlikNo || null,
+              firmaUnvan: input.firma || null,
+              taxpayerId: input.mukellefId || null,
+            }
+          : undefined,
+        decisionTrace: ruleDecisionTrace('onay', sebep, memoryCategory, true),
+      };
+      this.faturaDecisionCache.set(decisionCacheKey, {
+        expiresAt: Date.now() + 6 * 60 * 60 * 1000,
+        value: deterministicDecision,
+      });
+      await logZeroUsage('mihsap-fatura-vendor-rule', 'onay', sebep);
+      return { ...deterministicDecision, aiCallReason: 'vendor_memory_rule_fast_path' };
+    }
+
+    if (input.ruleOnly) {
+      return {
+        karar: 'needs_ai',
+        sebep: 'rule_only_no_match',
+        aiCallReason: 'rule_only_no_match',
+        decisionProvider: 'rule-based',
+      };
     }
 
     if (!hasBosAlanSecenekleri) aiCallReasons.add('manuel_kontrol');
@@ -2385,9 +2573,8 @@ Fatura görüntüsünü incele ve yukarıdaki sistem talimatlarına göre JSON d
       const nonGreedy = text.match(/\{[\s\S]*?"karar"[\s\S]*?\}/);
       if (nonGreedy) candidates.push(nonGreedy[0]);
 
-      // kategori key (Firma Hafizasi icin) — fatura modunda ilk hesap kodu
-      // (Mihsap satirinda AI bu kodu onayladi sayilir). Liste bossa memory skip edilir.
-      const ekranKategoriAdayi = (input.hesapKodlari?.[0] || '').trim();
+      // kategori key (Firma Hafizasi icin) — KDV/cari/odeme hesabi yerine asıl matrah/gider hesabini kullan.
+      const ekranKategoriAdayi = primaryFaturaAccount || (input.hesapKodlari?.[0] || '').trim();
 
       for (const c of candidates) {
         try {

@@ -423,8 +423,9 @@ export class AgentEventsController {
   async decideFatura(
     @Headers('x-agent-token') token: string,
     @Body() body: {
-      faturaImageBase64: string;
+      faturaImageBase64?: string;
       faturaImageMediaType?: string;
+      faturaText?: string;
       hesapKodlari: string[];
       faturaTarihi?: string;
       hedefAy?: string;
@@ -438,6 +439,7 @@ export class AgentEventsController {
       tutar?: number | string;
       action?: string;
       forceFresh?: boolean;
+      ruleOnly?: boolean;
       bosAlanSecenekleri?: {
         matrahKodlari?: string[];
         kdvKodlari?: string[];
@@ -446,10 +448,10 @@ export class AgentEventsController {
     },
   ) {
     const tenantId = await this.resolveTenantFromTokenAsync(token);
-    if (!body?.faturaImageBase64 || !Array.isArray(body?.hesapKodlari)) {
+    if ((!body?.faturaImageBase64 && !body?.ruleOnly) || !Array.isArray(body?.hesapKodlari)) {
       throw new BadRequestException('faturaImageBase64 ve hesapKodlari gerekli');
     }
-    return this.service.decideFatura({ ...body, tenantId });
+    return this.service.decideFatura({ ...body, faturaImageBase64: body.faturaImageBase64 || '', tenantId });
   }
 
   /** Claude ile İşletme Defteri Kayıt Türü + K. Alt Türü kararı */
