@@ -15,23 +15,33 @@ import {
 } from '@nestjs/common';
 import { AuthGuard } from '@nestjs/passport';
 import { MihsapService } from './mihsap.service';
+import { PrismaService } from '../prisma/prisma.service';
 
 @Controller('agent/mihsap')
 export class MihsapController {
-  constructor(private readonly service: MihsapService) {}
+  constructor(
+    private readonly service: MihsapService,
+    private readonly prisma: PrismaService,
+  ) {}
 
   /** Tenant'ı agent token'dan çöz (eklenti kullanımı için) */
-  private resolveTenantFromAgentToken(token?: string): string {
+  private async resolveTenantFromAgentToken(token?: string): Promise<string> {
     if (!token) throw new UnauthorizedException('Missing X-Agent-Token');
+    const t = token.trim();
     const raw = process.env.AGENT_INGEST_TOKENS || '';
     const map: Record<string, string> = {};
     for (const pair of raw.split(',')) {
       const [tid, tok] = pair.split(':');
       if (tid && tok) map[tok.trim()] = tid.trim();
     }
-    const tenantId = map[token.trim()];
-    if (!tenantId) throw new UnauthorizedException('Invalid agent token');
-    return tenantId;
+    if (map[t]) return map[t];
+
+    const tenant = await (this.prisma as any).tenant.findFirst({
+      where: { OR: [{ slug: t }, { id: t }] },
+      select: { id: true },
+    });
+    if (!tenant) throw new UnauthorizedException('Invalid agent token');
+    return tenant.id;
   }
 
   /** Eklenti MIHSAP token'ını gönderir (X-Agent-Token ile kimlik doğrulama) */
@@ -41,7 +51,7 @@ export class MihsapController {
     @Body() body: { token: string; email?: string },
   ) {
     if (!body?.token) throw new BadRequestException('token gerekli');
-    const tenantId = this.resolveTenantFromAgentToken(agentToken);
+    const tenantId = await this.resolveTenantFromAgentToken(agentToken);
     await this.service.saveToken(
       tenantId,
       body.token,
