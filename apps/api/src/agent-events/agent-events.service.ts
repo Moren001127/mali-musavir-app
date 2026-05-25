@@ -64,9 +64,9 @@ export class AgentEventsService {
   ) {}
 
   private getMihsapDecisionMode(): MihsapDecisionMode {
-    const value = String(process.env.MIHSAP_DECISION_MODE || 'shadow').toLowerCase();
+    const value = String(process.env.MIHSAP_DECISION_MODE || 'balanced').toLowerCase();
     if (value === 'balanced' || value === 'claude_only' || value === 'shadow') return value;
-    return 'shadow';
+    return 'balanced';
   }
 
   private getMihsapOcrProvider(): MihsapOcrProvider {
@@ -141,6 +141,30 @@ export class AgentEventsService {
       .toLocaleUpperCase('tr-TR')
       .replace(/[^A-Z0-9]/g, '')
       .trim();
+  }
+
+  private normalizeDecisionBelgeTuru(value: any): string {
+    const raw = String(value || '')
+      .toLocaleUpperCase('tr-TR')
+      .replace(/[İI]/g, 'I')
+      .replace(/[^A-Z0-9]+/g, '_')
+      .replace(/^_+|_+$/g, '');
+    if (!raw) return '';
+    if (raw.includes('E_ARSIV') || raw.includes('EARSIV') || raw.includes('ARSIV')) return 'E_ARSIV';
+    if (raw.includes('E_FATURA') || raw.includes('EFATURA')) return 'E_FATURA';
+    if (raw.includes('YAZARKASA') || raw.includes('OKC') || raw === 'FIS' || raw.includes('_FIS')) return 'FIS';
+    if (raw.includes('IRSALIYE')) return 'IRSALIYE';
+    if (raw.includes('FATURA') || raw === 'FAT') return 'FATURA';
+    return raw;
+  }
+
+  private decisionBelgeTuruMatches(actual: any, expected: any): boolean {
+    const a = this.normalizeDecisionBelgeTuru(actual);
+    const e = this.normalizeDecisionBelgeTuru(expected);
+    if (!a || !e) return false;
+    if (a === e) return true;
+    const faturaSet = new Set(['FATURA', 'E_FATURA', 'E_ARSIV']);
+    return faturaSet.has(a) && faturaSet.has(e);
   }
 
   private classifyClaudeApiError(status: number, body: string) {
@@ -571,7 +595,7 @@ ${ocr.text.slice(0, 14000)}`;
 
   private isCheapFaturaAcceptable(
     cheap: MihsapCheapDecisionResult | null | undefined,
-    input: { belgeNo?: string; faturaTarihi?: string; bosAlanSecenekleri?: any },
+    input: { belgeNo?: string; faturaTarihi?: string; belgeTuru?: string; bosAlanSecenekleri?: any },
     vendorHint: any,
   ): boolean {
     if (!cheap?.parsed) return false;
@@ -581,10 +605,16 @@ ${ocr.text.slice(0, 14000)}`;
     if (cheap.parsed.karar !== 'onay') return false;
     const expectedNo = this.normalizeDecisionNo(input.belgeNo);
     const actualNo = this.normalizeDecisionNo(cheap.parsed.belgeNo);
+    if (expectedNo && !actualNo) return false;
     if (expectedNo && actualNo && expectedNo !== actualNo) return false;
     const expectedDate = this.normalizeDecisionDate(input.faturaTarihi);
     const actualDate = this.normalizeDecisionDate(cheap.parsed.tarih);
+    if (expectedDate && !actualDate) return false;
     if (expectedDate && actualDate && expectedDate !== actualDate) return false;
+    const expectedBelgeTuru = this.normalizeDecisionBelgeTuru(input.belgeTuru);
+    const actualBelgeTuru = this.normalizeDecisionBelgeTuru(cheap.parsed.belgeTuru);
+    if (expectedBelgeTuru && !actualBelgeTuru) return false;
+    if (expectedBelgeTuru && actualBelgeTuru && !this.decisionBelgeTuruMatches(actualBelgeTuru, expectedBelgeTuru)) return false;
     return true;
   }
 
@@ -745,8 +775,14 @@ ${ocr.text.slice(0, 14000)}`;
       tutar: true,
       hesapKodu: true,
       kdv: true,
+      meta: true,
       ts: true,
     } as const;
+  }
+
+  private publicEventMeta(meta: any) {
+    if (!meta || typeof meta !== 'object') return null;
+    return this.sanitizeMetaForStorage(meta);
   }
 
   async createEvent(tenantId: string, input: AgentEventInput) {
@@ -870,7 +906,7 @@ ${ocr.text.slice(0, 14000)}`;
       take: Math.min(limit, 1000),
       select: this.lightEventSelect(),
     });
-    return events.map((event) => ({ ...event, meta: null }));
+    return events.map((event) => ({ ...event, meta: this.publicEventMeta((event as any).meta) }));
   }
 
   async stats(tenantId: string) {

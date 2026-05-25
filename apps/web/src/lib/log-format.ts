@@ -153,10 +153,12 @@ export function buildFieldRows(event: {
 
   // 1) Tarih — meta.tarih > mesaj prefix'inden > meta.donem > event.ts (son çare)
   const faturaTarihi = extractFaturaTarihi(event.meta, event.message, event.ts);
+  const dateCheckedWithoutValue = !faturaTarihi && /tarih\s+uyumlu/i.test(String(event.message || ''));
   rows.push({
     label: 'Tarih',
-    status: faturaTarihi ? 'full' : 'missing',
-    value: faturaTarihi || '—',
+    status: faturaTarihi ? 'full' : dateCheckedWithoutValue ? 'warning' : 'missing',
+    value: faturaTarihi || (dateCheckedWithoutValue ? 'Kontrol edildi' : '—'),
+    meta: dateCheckedWithoutValue ? 'Eski logta tarih degeri gonderilmemis' : undefined,
   });
 
   const belgeNo = String(
@@ -308,6 +310,39 @@ export function buildFieldRows(event: {
   const isPaymentAccount = (code: string) =>
     /^(100|101|102|103|108|121|321|309|329|331|335|336)\./.test(code);
   const kdvHesapKodlari = hesapKodlari.filter(isKdvAccount);
+  const extractKdvRate = (raw?: unknown): string | null => {
+    const text = String(raw || '');
+    const explicit = text.match(/%+\s*(1|8|10|18|20)(?=\D|$)/);
+    if (explicit) return `%${explicit[1]}`;
+    const bare = text.trim().match(/^(1|8|10|18|20)(?:[.,]0+)?$/);
+    if (bare) return `%${bare[1]}`;
+    const codeSuffix = text.match(/\.(001|008|010|018|020)(?:\D|$)/);
+    if (codeSuffix) {
+      const n = codeSuffix[1].replace(/^0+/, '');
+      return `%${n || '0'}`;
+    }
+    return null;
+  };
+  const inferredKdvHesapKodu = (() => {
+    if (kdvHesapKodlari.length > 0) return null;
+    const rate =
+      extractKdvRate(event.kdv) ||
+      kdvOranlari.map(extractKdvRate).find(Boolean) ||
+      extractKdvRate(event.meta?.decisionTrace?.belge?.kdvOrani);
+    if (!rate) return null;
+    const rateNo = (rate.match(/\d{1,2}/)?.[0] || '').padStart(3, '0');
+    const context = `${event.action || ''} ${event.meta?.faturaTuru || ''} ${event.message || ''}`;
+    const isSatis = /satis|satış/i.test(context);
+    const prefix = isSatis ? '391.01' : '191.01';
+    const label = isSatis ? 'HESAPLANAN KDV' : 'INDIRILECEK KDV';
+    return `${prefix}.${rateNo} - ${label}`;
+  })();
+  const displayKdvHesapKodlari = kdvHesapKodlari.length > 0
+    ? kdvHesapKodlari
+    : inferredKdvHesapKodu
+      ? [inferredKdvHesapKodu]
+      : [];
+  const inferredKdvMeta = inferredKdvHesapKodu ? 'KDV hesabi kuraldan gosterildi' : undefined;
   const cariKodlari = hesapKodlari.filter(isCariAccount);
   const odemeTahsilatKodlari = hesapKodlari.filter(isPaymentAccount);
   const matrahHesapKodlari = hesapKodlari.filter(
@@ -407,7 +442,7 @@ export function buildFieldRows(event: {
     };
 
     const matrahRates = new Set(matrahKodlari.map(extractRate).filter(Boolean) as string[]);
-    const kdvCodeRates = new Set(kdvHesapKodlari.map(extractRate).filter(Boolean) as string[]);
+    const kdvCodeRates = new Set(displayKdvHesapKodlari.map(extractRate).filter(Boolean) as string[]);
 
     // KDV oranlarını dedupe + temizle (bazıları "%20", bazıları "%20 Kdv" gelir, sırayla unique)
     let orderedOranlar: string[] = [];
@@ -429,7 +464,7 @@ export function buildFieldRows(event: {
       orderedOranlar = orderedOranlar.filter((oran) => trustedRates.has(oran));
     }
 
-    const kdvRows = kdvHesapKodlari.map((kod, i) => {
+    const kdvRows = displayKdvHesapKodlari.map((kod, i) => {
       const codeRate = extractRate(kod);
       const oran =
         codeRate ||
@@ -482,7 +517,7 @@ export function buildFieldRows(event: {
         rows.push({
           label: `KDV ${i + 1}`,
           status: oran && !kdvKodu ? 'warning' : 'full',
-          meta: oran && !kdvKodu ? 'KDV orani var, hesap kodu gorunmuyor' : undefined,
+          meta: oran && !kdvKodu ? 'KDV orani var, hesap kodu gorunmuyor' : inferredKdvMeta,
           value: parts.join(' - '),
         });
       }
@@ -499,11 +534,12 @@ export function buildFieldRows(event: {
     const isIsletmeKategoriLog = /Isletme|FatT:|AST:/i.test(msg) && blokMatches.length > 0 && !event.hesapKodu;
     const shownAccounts = new Set<string>();
     const pushKdvDetailRow = () => {
-      if (!event.kdv && kdvHesapKodlari.length === 0) return false;
-      for (const code of kdvHesapKodlari) shownAccounts.add(accountKey(code));
-      const value = [event.kdv ? String(event.kdv) : null, ...kdvHesapKodlari].filter(Boolean).join(' - ');
-      const missingRate = !event.kdv;
-      const missingCode = kdvHesapKodlari.length === 0;
+      if (!event.kdv && displayKdvHesapKodlari.length === 0) return false;
+      for (const code of displayKdvHesapKodlari) shownAccounts.add(accountKey(code));
+      const kdvRateValue = event.kdv ? String(event.kdv) : extractKdvRate(displayKdvHesapKodlari[0]);
+      const value = [kdvRateValue, ...displayKdvHesapKodlari].filter(Boolean).join(' - ');
+      const missingRate = !kdvRateValue;
+      const missingCode = displayKdvHesapKodlari.length === 0;
       rows.push({
         label: 'KDV',
         status: missingRate || missingCode ? 'warning' : 'full',
@@ -512,7 +548,7 @@ export function buildFieldRows(event: {
           ? 'KDV orani logta gorunmuyor'
           : missingCode
             ? 'KDV orani var, hesap kodu gorunmuyor'
-            : undefined,
+            : inferredKdvMeta,
       });
       return true;
     };
