@@ -4,7 +4,7 @@
 */
 (function () {
   // Agent versiyon — UI'da gösterilir, debug için kritik
-  const AGENT_VERSION = '1.37.97';
+  const AGENT_VERSION = '1.37.98';
   const AGENT_INSTANCE_ID = 'mai_' + Date.now().toString(36) + '_' + Math.random().toString(36).slice(2, 8);
 
   // === VERSION-AWARE RELOAD ===
@@ -89,6 +89,44 @@
 
   function sleep(ms) {
     return new Promise((resolve) => setTimeout(resolve, ms));
+  }
+
+  function createPerfTracker() {
+    const start = Date.now();
+    let last = start;
+    const steps = {};
+    return {
+      mark(name) {
+        const now = Date.now();
+        steps[name] = { totalMs: now - start, stepMs: now - last };
+        last = now;
+      },
+      snapshot() {
+        return { totalMs: Date.now() - start, steps };
+      },
+    };
+  }
+
+  async function withTimeoutValue(factory, timeoutMs, fallback) {
+    let timedOut = false;
+    let timer = null;
+    const work = Promise.resolve()
+      .then(factory)
+      .catch((e) => {
+        if (timedOut) return typeof fallback === 'function' ? fallback() : fallback;
+        throw e;
+      });
+    const timeout = new Promise((resolve) => {
+      timer = setTimeout(() => {
+        timedOut = true;
+        resolve(typeof fallback === 'function' ? fallback() : fallback);
+      }, timeoutMs);
+    });
+    try {
+      return await Promise.race([work, timeout]);
+    } finally {
+      if (timer) clearTimeout(timer);
+    }
   }
 
   function compareAgentVersions(a, b) {
@@ -10976,6 +11014,52 @@
     if (!res.ok) throw new Error(`${path} ${res.status}`);
     return res.json();
   }
+
+  const agentEventQueue = [];
+  let agentEventFlushRunning = false;
+  let agentEventFlushTimer = null;
+
+  function scheduleAgentEventFlush(delayMs = 0) {
+    if (agentEventFlushTimer) return;
+    agentEventFlushTimer = setTimeout(() => {
+      agentEventFlushTimer = null;
+      flushAgentEventQueue().catch((e) => console.warn('[Moren] log queue fail', e));
+    }, delayMs);
+  }
+
+  async function flushAgentEventQueue() {
+    if (agentEventFlushRunning) return;
+    agentEventFlushRunning = true;
+    try {
+      while (agentEventQueue.length > 0) {
+        const item = agentEventQueue.shift();
+        try {
+          await api('/agent/events/ingest', {
+            method: 'POST',
+            body: JSON.stringify(item.payload),
+          });
+        } catch (e) {
+          item.attempts = (item.attempts || 0) + 1;
+          if (item.attempts <= 3) {
+            agentEventQueue.unshift(item);
+            scheduleAgentEventFlush(1500 * item.attempts);
+          } else {
+            console.warn('[Moren] log dropped', e);
+          }
+          break;
+        }
+      }
+    } finally {
+      agentEventFlushRunning = false;
+      if (agentEventQueue.length > 0 && !agentEventFlushTimer) scheduleAgentEventFlush(500);
+    }
+  }
+
+  function enqueueAgentEvent(payload) {
+    agentEventQueue.push({ payload, attempts: 0 });
+    scheduleAgentEventFlush(0);
+  }
+
   function findBtnExact(label) {
     return [...document.querySelectorAll('button')].find(
       (b) => b.textContent.trim() === label && b.offsetParent !== null,
@@ -11017,27 +11101,25 @@
       // Bu sayede tarih hicbir yerden okunamasa bile log-format.ts meta.donem'den
       // ayin 15'ini turetebilir (yaniltici "kayit ani" yerine gercek donem).
       const currentDonem = window.__morenAgent?.currentDonem || extra.donem || null;
-      await api('/agent/events/ingest', {
-        method: 'POST',
-        body: JSON.stringify({
-          agent: 'mihsap',
-          action: currentAction,
-          mukellef: mukellefAd,
-          status,
-          message: detail,
-          firma: extra.firma || null,
-          fisNo: extra.belgeNo || null,
-          tutar: extra.tutar ? Number(extra.tutar) : null,
-          hesapKodu: extra.hesapKodu || null,
-          kdv: extra.kdv || null,
-          meta: {
-            mukellefId,
-            tarih: extra.tarih || null,
-            donem: currentDonem,
-            agentVersion: AGENT_VERSION,
-            ...extra,
-          },
-        }),
+      enqueueAgentEvent({
+        agent: 'mihsap',
+        action: currentAction,
+        mukellef: mukellefAd,
+        status,
+        message: detail,
+        firma: extra.firma || null,
+        fisNo: extra.belgeNo || null,
+        tutar: extra.tutar ? Number(extra.tutar) : null,
+        hesapKodu: extra.hesapKodu || null,
+        kdv: extra.kdv || null,
+        meta: {
+          mukellefId,
+          tarih: extra.tarih || null,
+          donem: currentDonem,
+          agentVersion: AGENT_VERSION,
+          queuedLog: true,
+          ...extra,
+        },
       });
     } catch (e) { console.warn('[Moren] log fail', e); }
   }
@@ -11161,13 +11243,13 @@
       const signature = `${location.href}|${bodyText.length}|${buttons.length}`;
       const ready = !spinning && hasSave && hasEditorInput;
       if (ready && signature === lastSignature) {
-        stableSince += 200;
-        if (stableSince >= 500) return true;
+        stableSince += 120;
+        if (stableSince >= 240) return true;
       } else {
         stableSince = 0;
         lastSignature = signature;
       }
-      await sleep(200);
+      await sleep(120);
     }
     return false;
   }
@@ -11264,13 +11346,13 @@
     // 1) URL değişimini bekle (yeni faturaya geçildi mi?)
     const t0 = Date.now();
     let urlChanged = false;
-    while (Date.now() - t0 < 4500) {
+    while (Date.now() - t0 < 2500) {
       const m = location.href.match(/\/(\d+)\?count=/);
       if (m && m[1] !== currentFid) { urlChanged = true; break; }
       if (/count=0/.test(location.href)) { urlChanged = true; break; }
       // Yeni dialog geldiyse yine kapat
       if (getVisibleModals().length > 0) { await handleDialogs(); }
-      await sleep(150);
+      await sleep(100);
     }
     if (!urlChanged) return;
 
@@ -11324,7 +11406,7 @@
     // Onayla sonrası Mihsap bazen state'i birkaç saniye sonra güncelliyor.
     // Erken F2 "Sadece onay bekleyen..." hatasına düşürdüğü için kısa akıllı bekle.
     const __t0 = Date.now();
-    while (Date.now() - __t0 < 4000) {
+    while (Date.now() - __t0 < 1800) {
       const fidNow = getCurrentFid();
       if (isZeroCount() || (fidBefore && fidNow && fidNow !== fidBefore)) {
         return 'already-advanced';
@@ -11332,18 +11414,18 @@
       await sleep(150);
     }
     await pressF2Once();
-    await sleep(800);
+    await sleep(500);
     return 'f2';
   }
 
   async function clickKaydetOnayla(actionSince = Date.now()) {
     const fidAtStart = getCurrentFid();
     await pressF2Once();
-    await sleep(850);
-    if (!faturaAdvancedFrom(fidAtStart) && getVisibleModals().length === 0 && !hasRecentMihsapSaveNetworkActivity(actionSince, 3000)) {
+    await sleep(550);
+    if (!faturaAdvancedFrom(fidAtStart) && getVisibleModals().length === 0 && !hasRecentMihsapSaveNetworkActivity(actionSince, 1800)) {
       dispatchShortcutKey('F2', 'F2', 113);
       window.__morenLastF2Debug = `${window.__morenLastF2Debug || 'btn:bilinmiyor'} + key:F2`;
-      await sleep(450);
+      await sleep(250);
     }
     // Her türlü dialog'u kapat (mükerrer, hesap kodu uyarı, tutar farkı vs)
     // Tutar farkı onayında Onayla sonrası aynı faturada bir kez daha F2 dene.
@@ -11357,7 +11439,7 @@
         const r = await onaylaSonrasiF2(fidAtStart);
         if (r === 'already-advanced') break; // sonraki faturaya geçtik, döngüden çık
       } else {
-        await sleep(300);
+        await sleep(180);
       }
       tries++;
     }
@@ -11365,7 +11447,7 @@
 
   async function waitFaturaKayitSonucu(fid, timeoutMs = 12000, netSince = 0) {
     const t0 = Date.now();
-    const minWaitMs = 900;
+    const minWaitMs = 450;
     let validationFailed = null;
 
     while (Date.now() - t0 < minWaitMs) {
@@ -11425,9 +11507,9 @@
   }
 
   async function kaydetOnaylaVeBekle(fid, opts = {}) {
-    const timeoutMs = opts.timeoutMs ?? 6500;
-    const retryTimeoutMs = opts.retryTimeoutMs ?? 3000;
-    const retryDelayMs = opts.retryDelayMs ?? 250;
+    const timeoutMs = opts.timeoutMs ?? 4500;
+    const retryTimeoutMs = opts.retryTimeoutMs ?? 1800;
+    const retryDelayMs = opts.retryDelayMs ?? 150;
     const retry = opts.retry !== false;
 
     const firstSince = Date.now();
@@ -11442,7 +11524,7 @@
     return sonuc;
   }
 
-  async function getFaturaMeta(fid) {
+  async function getFaturaMeta(fid, opts = {}) {
     try {
       const jwt = localStorage.getItem('token');
       const r = await fetch(`/api/mali-musavir/all-faturas/getFaturaBeforeUpdate/${fid}`, {
@@ -11494,7 +11576,10 @@
       // v1.36.4 fix — TARIH KOKTEN COZUM: API yaniti bos donerse DOM polling
       // 250ms araliklarla 12 deneme (3sn toplam) — Mihsap form yuklenirken yakala
       if (!tarih) {
-        for (let attempt = 0; attempt < 12; attempt++) {
+        const domDateFallbackMs = Math.max(250, Number(opts.domDateFallbackMs || 1000));
+        const sleepMs = 125;
+        const attempts = Math.max(1, Math.ceil(domDateFallbackMs / sleepMs));
+        for (let attempt = 0; attempt < attempts; attempt++) {
           // Form input'larindan tarih alanini ara
           const tarihInputs = [...document.querySelectorAll('input')].filter(inp => {
             const id = (inp.id || '').toLowerCase();
@@ -11523,7 +11608,7 @@
               break;
             }
           }
-          await sleep(250);
+          await sleep(sleepMs);
         }
       }
       const belgeNo = v.faturaNo || v.belgeNo || null;
@@ -11556,11 +11641,11 @@
     } catch { return {}; }
   }
 
-  async function getFaturaImageBase64() {
+  async function getFaturaImageBase64(maxWaitMs = 4500) {
     // Mihsap fatura editöründe görsel CANVAS elementlerinde render ediliyor.
     // Birden fazla sayfa varsa hepsini dikey birleştir.
     const t0 = Date.now();
-    while (Date.now() - t0 < 10000) {
+    while (Date.now() - t0 < maxWaitMs) {
       const canvases = [...document.querySelectorAll('canvas')].filter(
         (c) => c.width > 200 && c.height > 200,
       );
@@ -11629,9 +11714,9 @@
   }
 
   async function aiDecide({ codes, tarih, hedefAy, belgeNo, belgeTuru, faturaTuru, mukellef, mukellefId, firma, firmaKimlikNo, tutar, action, bosAlanSecenekleri, forceFresh, ruleOnly }) {
-    const img = ruleOnly ? '' : await getFaturaImageBase64();
+    const img = ruleOnly ? '' : await getFaturaImageBase64(4500);
     if (!ruleOnly && !img) return { karar: 'emin_degil', sebep: 'fatura görüntüsü alınamadı' };
-    const faturaText = readFreeFaturaTextSnapshot();
+    const faturaText = getFaturaTextSnapshotCached(ruleOnly ? 9000 : 14000);
     return await api('/agent/ai/decide-fatura', {
       method: 'POST',
       body: JSON.stringify({
@@ -11655,6 +11740,30 @@
         ...(bosAlanSecenekleri ? { bosAlanSecenekleri } : {}),
       }),
     });
+  }
+
+  function getFaturaTextSnapshotCached(maxChars = 9000) {
+    const fid = getCurrentFid() || location.href;
+    const cache = window.__morenFaturaTextCache || null;
+    if (cache && cache.fid === fid && cache.maxChars >= maxChars && Date.now() - cache.ts < 15000) {
+      return cache.text.slice(0, maxChars);
+    }
+    const text = readFreeFaturaTextSnapshot(maxChars);
+    window.__morenFaturaTextCache = { fid, maxChars, text, ts: Date.now() };
+    return text;
+  }
+
+  async function aiDecideTimed(args, timeoutMs, fallbackReason) {
+    return await withTimeoutValue(
+      () => aiDecide(args),
+      timeoutMs,
+      () => ({
+        karar: 'emin_degil',
+        sebep: fallbackReason || 'karar zaman asimi',
+        aiCallReason: args?.ruleOnly ? 'rule_decision_timeout' : 'ai_decision_timeout',
+        decisionProvider: 'timeout',
+      }),
+    );
   }
 
   function readHesapKodlariFromDom() {
@@ -11706,7 +11815,7 @@
       lastCodes = codes;
       lastBlank = blank;
       lastBlankSections = blankState.bosBolumler;
-      await sleep(250);
+      await sleep(150);
     }
     const finalBlankState = faturaBlankSelectState();
     return {
@@ -13474,7 +13583,11 @@
 
   async function freshFaturaDecisionRetry({ safety, decision, decideArgs, meta, codes, kdvOranlari }) {
     if (!needsFreshFaturaRetry(safety, decision)) return null;
-    const retryDecision = await aiDecide({ ...decideArgs, forceFresh: true });
+    const retryDecision = await aiDecideTimed(
+      { ...decideArgs, forceFresh: true },
+      6500,
+      'taze karar zaman asimi - manuel kontrol',
+    );
     const retrySafety = finalSafetyCheckFatura({
       decision: retryDecision,
       meta,
@@ -13608,6 +13721,7 @@
       setStatus(`→ ${m.ad}`);
       await processMukellef({ ay, mukellef: m, action });
     }
+    await flushAgentEventQueue();
     setStatus(`Tamamlandı · ${counters.toplam} fatura`);
     if (window.__morenAgent) window.__morenAgent.currentAction = null;
     if (window.__morenAgent) window.__morenAgent.currentDonem = null;
@@ -13694,13 +13808,16 @@
         return;
       }
       seenFids.add(fid);
-      await waitForFaturaEditorReady(fid, 7000);
+      const perf = createPerfTracker();
+      await waitForFaturaEditorReady(fid, 3500);
+      perf.mark('editorReady');
       if (initialCount && seenFids.size > initialCount + 5) {
         setStatus(`Başlangıç (${initialCount}) aşıldı, durduruldu`);
         return;
       }
 
-      const meta = await getFaturaMeta(fid);
+      const meta = await getFaturaMeta(fid, { domDateFallbackMs: 1000 });
+      perf.mark('meta');
       const logMeta = (extra = {}) => ({
         firma: meta.firma,
         firmaKimlikNo: meta.firmaKimlikNo,
@@ -13708,6 +13825,7 @@
         belgeTuru: meta.belgeTuru,
         faturaTuru: meta.faturaTuru,
         tutar: meta.tutar,
+        perf: perf.snapshot(),
         ...extra,
       });
       const tarih = meta.tarih;
@@ -14086,6 +14204,7 @@
       const fastCodeState = await readCodesOrBlankState(isletmeAccountCodeFlow ? 800 : 1800);
       const codes = fastCodeState.codes;
       const hasBosSelect = fastCodeState.hasBosSelect || isletmeAccountCodeFlow;
+      perf.mark('codes');
       if (!tumKodlarDolu(codes) && !hasBosSelect) {
         counters.atla++; counters.toplam++; setCount();
         await logEvent(mukellef.id, mukellef.ad, 'skip', 'kod boş (hiç kod yok)', logMeta());
@@ -14158,12 +14277,12 @@
 
             if (adetM + adetK + adetC + adetO > 0) {
               const oneriKarari = (adetM + adetK + adetC > 0)
-                ? await aiDecide({
+                ? await aiDecideTimed({
                     codes: codes, tarih, hedefAy,
                     belgeNo: meta.belgeNo, belgeTuru: meta.belgeTuru, faturaTuru: meta.faturaTuru,
                     mukellef: mukellef.ad, mukellefId: mukellef.id, firma: meta.firma, firmaKimlikNo: meta.firmaKimlikNo, tutar: meta.tutar,
                     action, bosAlanSecenekleri: secenekler,
-                  })
+                  }, 6500, 'bos alan AI onerisi zaman asimi - manuel kontrol')
                 : { onerilenler: { confidence: { odeme: 0.95 } } };
               let o = oneriKarari?.onerilenler || {};
               // AI bazen bos alanlar icin hic oneride bulunmuyor. Ekrandaki uygun hesap
@@ -14222,7 +14341,7 @@
                   tutar: meta.tutar,
                   action,
                 };
-                let finalDecision = await aiDecide(finalDecisionArgs);
+                let finalDecision = await aiDecideTimed(finalDecisionArgs, 6500, 'F2 guvenlik karari zaman asimi - manuel kontrol');
                 const faturaKdvOranlari = readAllKdvOranlari();
                 let finalSafety = finalSafetyCheckFatura({
                   decision: finalDecision,
@@ -14364,7 +14483,13 @@
           }));
         await clickIleri(fid); continue;
       }
-      let decision = await aiDecide({ ...decisionArgs, ruleOnly: true });
+      perf.mark('preDecision');
+      let decision = await aiDecideTimed(
+        { ...decisionArgs, ruleOnly: true },
+        2500,
+        'kural/firma hafizasi zaman asimi - manuel kontrol',
+      );
+      perf.mark('ruleDecision');
       if (decision?.karar === 'needs_ai') {
         const isAlisFreeManual = action === 'isle_alis' || action === 'isle_alis_isletme';
         if (isAlisFreeManual) {
@@ -14382,7 +14507,8 @@
           await clickIleri(fid); continue;
         }
         setStatus(`${mukellef.ad} · #${fid} AI inceliyor…`);
-        decision = await aiDecide(decisionArgs);
+        decision = await aiDecideTimed(decisionArgs, 7500, 'AI karar zaman asimi - manuel kontrol');
+        perf.mark('aiDecision');
       }
       let karar = decision?.karar || 'emin_degil';
       let sebep = (decision?.sebep || '').slice(0, 120);
@@ -14440,7 +14566,7 @@
         // Ayrıca "tutar farkı onay" dialog'u (resubmit) gelirse Onayla + tekrar F2 yapıyoruz.
         const waitSaved = async (timeoutMs) => {
           const t0 = Date.now();
-          const minWaitMs = 900;
+          const minWaitMs = 450;
           // 1) Asgari bekleme penceresi — bu sürede sadece validation / dialog işle,
           //    URL değişimine "saved" denip hemen dönme. Ekran gerçekten oturduktan sonra karar ver.
           while (Date.now() - t0 < minWaitMs) {
@@ -14503,19 +14629,19 @@
               const m3 = location.href.match(/\/(\d+)\?count=/);
               if (m3 && m3[1] !== fid) return true;
             }
-            await sleep(250);
+            await sleep(150);
           }
           return false;
         };
 
         await clickKaydetOnayla();
-        let saved = await waitSaved(6500);
+        let saved = await waitSaved(4500);
 
         // Validation hatası varsa retry YAPMA (zaten alan eksik)
         if (!saved && !validationFailed) {
-          await sleep(250);
+          await sleep(150);
           await clickKaydetOnayla();
-          saved = await waitSaved(3000);
+          saved = await waitSaved(1800);
         }
 
         if (saved) {
