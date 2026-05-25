@@ -4,7 +4,7 @@
 */
 (function () {
   // Agent versiyon — UI'da gösterilir, debug için kritik
-  const AGENT_VERSION = '1.37.96';
+  const AGENT_VERSION = '1.37.97';
   const AGENT_INSTANCE_ID = 'mai_' + Date.now().toString(36) + '_' + Math.random().toString(36).slice(2, 8);
 
   // === VERSION-AWARE RELOAD ===
@@ -11282,7 +11282,7 @@
     if (/count=0/.test(location.href)) { await sleep(200); return; }
 
     const nextFid = getCurrentFid();
-    await waitForFaturaEditorReady(nextFid, 7000);
+    await waitForFaturaEditorReady(nextFid, 1200);
   }
 
   async function pressF2Once() {
@@ -11695,19 +11695,25 @@
     const t0 = Date.now();
     let lastCodes = [];
     let lastBlank = false;
+    let lastBlankSections = [];
     while (Date.now() - t0 < timeoutMs) {
       const codes = readHesapKodlariFromDom();
-      const blank = bosSelectVarMi();
+      const blankState = faturaBlankSelectState();
+      const blank = blankState.bosBolumler.length > 0;
       if (codes.length > 0 || blank) {
-        return { codes, hasBosSelect: blank };
+        return { codes, hasBosSelect: blank, blankSections: blankState.bosBolumler, blankState };
       }
       lastCodes = codes;
       lastBlank = blank;
+      lastBlankSections = blankState.bosBolumler;
       await sleep(250);
     }
+    const finalBlankState = faturaBlankSelectState();
     return {
       codes: lastCodes.length ? lastCodes : readHesapKodlariFromDom(),
-      hasBosSelect: lastBlank || bosSelectVarMi(),
+      hasBosSelect: lastBlank || finalBlankState.bosBolumler.length > 0,
+      blankSections: lastBlankSections.length ? lastBlankSections : finalBlankState.bosBolumler,
+      blankState: finalBlankState,
     };
   }
 
@@ -11777,7 +11783,7 @@
   }
 
   // Matrah / Vergi(KDV) / Cari Hesap hesap kodlarından herhangi biri BOŞ mu?
-  function bosSelectVarMi() {
+  function faturaBlankSelectState() {
     const sonuc = {
       matrah: bolumHesapKoduDolu(/^Matrah\s*\(/i) ?? bolumHesapKoduDolu(/^Matrah$/i),
       vergi: bolumHesapKoduDolu(/^Vergi\s*\(/i) ?? bolumHesapKoduDolu(/^KDV/i) ?? bolumHesapKoduDolu(/^Vergi$/i),
@@ -11791,7 +11797,12 @@
     if (bosBolumler.length > 0) {
       console.log('[Moren] BOS BOLUMLER:', bosBolumler, sonuc);
     }
-    return bosBolumler.length > 0;
+    return { sonuc, bosBolumler };
+  }
+
+  function bosSelectVarMi() {
+    const state = faturaBlankSelectState();
+    return state.bosBolumler.length > 0;
   }
 
   // ==========================================================
@@ -14072,7 +14083,7 @@
       // ==========================================================
       // BİLANÇO DALI (BILANCO/1 · BILANCO/2) — mevcut akış
       // ==========================================================
-      const fastCodeState = await readCodesOrBlankState(isletmeAccountCodeFlow ? 1200 : 3500);
+      const fastCodeState = await readCodesOrBlankState(isletmeAccountCodeFlow ? 800 : 1800);
       const codes = fastCodeState.codes;
       const hasBosSelect = fastCodeState.hasBosSelect || isletmeAccountCodeFlow;
       if (!tumKodlarDolu(codes) && !hasBosSelect) {
@@ -14084,6 +14095,7 @@
       if (hasBosSelect) {
         const isAlisBosKodAtla = action === 'isle_alis' || action === 'isle_alis_isletme';
         if (isAlisBosKodAtla) {
+          const fastBlankSections = Array.isArray(fastCodeState.blankSections) ? fastCodeState.blankSections : [];
           const durumlar = normalizeBosAlanDurumlari({
             matrahDolu: bolumHesapKoduDolu(/^Matrah\s*\(/i) ?? bolumHesapKoduDolu(/^Matrah$/i),
             vergiDolu: bolumHesapKoduDolu(/^Vergi\s*\(/i) ?? bolumHesapKoduDolu(/^KDV/i) ?? bolumHesapKoduDolu(/^Vergi$/i),
@@ -14096,16 +14108,17 @@
             durumlar.cariDolu === false && 'Cari',
             durumlar.odemeDolu === false && 'Tahsilat/Odeme',
           ].filter(Boolean);
+          if (!bosAlanlar.length && fastBlankSections.length) bosAlanlar.push(...fastBlankSections);
           counters.atla++; counters.toplam++; setCount();
           await logEvent(
             mukellef.id,
             mukellef.ad,
             'skip',
-            `Alışta boş muhasebe alanı var: ${bosAlanlar.join(', ') || 'Hesap Kodu'} — manuel işlenecek, seçim/AI atlandı`,
+            `Alışta boş muhasebe alanı var: ${bosAlanlar.join(', ') || 'Hesap Kodu'} — manuel işlenecek, yerel hızlı atlandı`,
             logMeta({
               hesapKodlari: codes,
               kdv: readKdvOrani(),
-              aiCallReason: 'alis_bos_kod_manual',
+              aiCallReason: 'local_alis_blank_skip',
             }),
           );
           await clickIleri(fid);
@@ -14326,8 +14339,48 @@
         tutar: meta.tutar,
         action,
       };
+      const localKdvOranlari = readAllKdvOranlari();
+      const localVehicleRisk = detectVehiclePurchaseRisk({
+        firma: meta.firma,
+        tutar: meta.tutar,
+        codes,
+        text: '',
+        decision: null,
+      });
+      const localKdvCheck = checkFaturaKdvCodeMatch(codes, localKdvOranlari);
+      if (localVehicleRisk || !localKdvCheck.ok) {
+        counters.atla++; counters.toplam++; setCount();
+        const localReason = localVehicleRisk || `KDV oran tutarsiz: ${localKdvCheck.sebep}`;
+        await logEvent(mukellef.id, mukellef.ad, 'skip',
+          `Yerel guvenlik iptal: ${localReason}`,
+          logMeta({
+            hesapKodu: codes[0],
+            hesapKodlari: codes,
+            kdv: readKdvOrani(),
+            kdvOranlari: localKdvOranlari,
+            satirSayisi: codes.length,
+            aiCallReason: localVehicleRisk ? 'local_vehicle_rule_skip' : 'local_kdv_code_rule_skip',
+            kdvTutarsizSatirlar: localKdvCheck.tutarsizSatirlar,
+          }));
+        await clickIleri(fid); continue;
+      }
       let decision = await aiDecide({ ...decisionArgs, ruleOnly: true });
       if (decision?.karar === 'needs_ai') {
+        const isAlisFreeManual = action === 'isle_alis' || action === 'isle_alis_isletme';
+        if (isAlisFreeManual) {
+          counters.atla++; counters.toplam++; setCount();
+          await logEvent(mukellef.id, mukellef.ad, 'skip',
+            'Kural/firma hafizasi eslesmedi - ucretsiz hizli modda manuel islenecek, Claude cagrilmadi',
+            logMeta({
+              hesapKodu: codes[0],
+              hesapKodlari: codes,
+              kdv: readKdvOrani(),
+              kdvOranlari: localKdvOranlari,
+              satirSayisi: codes.length,
+              aiCallReason: 'rule_only_no_match_free_manual',
+            }));
+          await clickIleri(fid); continue;
+        }
         setStatus(`${mukellef.ad} · #${fid} AI inceliyor…`);
         decision = await aiDecide(decisionArgs);
       }
@@ -14335,7 +14388,7 @@
       let sebep = (decision?.sebep || '').slice(0, 120);
       let decisionTrace = decision?.decisionTrace || null;
       let faturaDecisionCandidate = decision?.faturaDecisionCandidate || null;
-      const currentKdvOranlari = readAllKdvOranlari();
+      const currentKdvOranlari = localKdvOranlari;
       let safety = finalSafetyCheckFatura({
         decision,
         meta,
