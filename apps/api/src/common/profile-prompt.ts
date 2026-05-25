@@ -76,6 +76,26 @@ export function profileToPromptText(p: any): string {
     if (p.demirbasTalimat) lines.push(`Demirbas talimati: ${p.demirbasTalimat}`);
   }
 
+  if (p.ozelKararKurallari && String(p.ozelKararKurallari).trim()) {
+    lines.push('');
+    lines.push('=== MUKELLEF OZEL KARAR KURALLARI ===');
+    lines.push('Bu kurallar bu mukellefe ozeldir ve firma hafizasindan once dikkate alinir.');
+    lines.push(String(p.ozelKararKurallari).trim());
+  }
+
+  if (p.firmaOzelTalimatlar && String(p.firmaOzelTalimatlar).trim()) {
+    lines.push('');
+    lines.push('=== FIRMA OZEL TALIMATLAR ===');
+    lines.push('Her satir karsi firma bazli karar talimatidir. Eslesen firma satiri varsa genel firma hafizasindan once uygula.');
+    lines.push(String(p.firmaOzelTalimatlar).trim());
+  }
+
+  if (p.otomatikOnayNotlari && String(p.otomatikOnayNotlari).trim()) {
+    lines.push('');
+    lines.push('=== OTOMATIK ONAY NOTLARI ===');
+    lines.push(String(p.otomatikOnayNotlari).trim());
+  }
+
   lines.push('');
   lines.push('=== SISTEM KURALLARI ===');
   if (SISTEM_KURALLARI.tevkifat.aktif) {

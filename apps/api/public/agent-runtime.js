@@ -11691,6 +11691,26 @@
     return [];
   }
 
+  async function readCodesOrBlankState(timeoutMs = 3500) {
+    const t0 = Date.now();
+    let lastCodes = [];
+    let lastBlank = false;
+    while (Date.now() - t0 < timeoutMs) {
+      const codes = readHesapKodlariFromDom();
+      const blank = bosSelectVarMi();
+      if (codes.length > 0 || blank) {
+        return { codes, hasBosSelect: blank };
+      }
+      lastCodes = codes;
+      lastBlank = blank;
+      await sleep(250);
+    }
+    return {
+      codes: lastCodes.length ? lastCodes : readHesapKodlariFromDom(),
+      hasBosSelect: lastBlank || bosSelectVarMi(),
+    };
+  }
+
   function readKdvOrani() {
     const els = [...document.querySelectorAll('.ant-select-selection-item')];
     const kdv = els.map((e) => (e.textContent || '').trim()).find((t) => /^%\d/.test(t));
@@ -13367,6 +13387,73 @@
     return null;
   }
 
+  function normalizeRuleText(value) {
+    return String(value || '')
+      .slice(0, 24000)
+      .toLocaleLowerCase('tr-TR')
+      .normalize('NFD')
+      .replace(/[\u0300-\u036f]/g, '')
+      .replace(/ı/g, 'i')
+      .replace(/[^a-z0-9%.,\s/-]+/g, ' ')
+      .replace(/\s+/g, ' ')
+      .trim();
+  }
+
+  function parseRuleMoney(value) {
+    if (typeof value === 'number') return value;
+    const raw = String(value || '').replace(/[^\d,.-]/g, '').trim();
+    if (!raw) return NaN;
+    const comma = raw.lastIndexOf(',');
+    const dot = raw.lastIndexOf('.');
+    if (comma > dot) return Number(raw.replace(/\./g, '').replace(',', '.'));
+    return Number(raw.replace(/,/g, ''));
+  }
+
+  function extractAccountCode(value) {
+    return String(value || '').match(/\b\d{3}(?:\.\d{1,3}){1,4}\b/)?.[0] || '';
+  }
+
+  function detectVehiclePurchaseRisk({ firma, tutar, codes, text, decision }) {
+    const invoiceText = normalizeRuleText([
+      text,
+      decision?.ocrOzet,
+      decision?.sebep,
+      decision?.icerikSinifi,
+    ].filter(Boolean).join('\n'));
+    const sellerText = normalizeRuleText(firma);
+    const sellerOrText = `${sellerText} ${invoiceText}`;
+    const amount = parseRuleMoney(tutar);
+    const primaryAccount = (codes || []).find((c) => {
+      const code = extractAccountCode(c);
+      return code && !/^(191|391|120|320|100|101|102|103|108|121|321|309|329|331|335|336)\./.test(code);
+    }) || (codes || [])[0] || '';
+    const account = extractAccountCode(primaryAccount);
+    const strongVehicle = [
+      /sasi\s*(no|numara|numarasi)?/,
+      /sase\s*(no|numara|numarasi)?/,
+      /motor\s*(no|numara|numarasi)/,
+      /model\s*yili/,
+      /otv\s+matrah/,
+      /hesaplanan\s+otv/,
+      /gumruk\s+(beyanname|makbuz|idare)/,
+      /sap\s+fatura/,
+      /tescil|ruhsat/,
+      /arac\s+(satis|alim|teslim|bedel)/,
+      /tasit\s+(satis|alim|teslim|bedel)/,
+      /binek\s+oto|otomobil|kamyonet|minibus|motosiklet|traktor/,
+      /\b(peugeot|rifter|bluehdi|hdi|renault|toyota|hyundai|volkswagen|mercedes|bmw|audi|fiat|citroen|opel|nissan)\b/,
+    ].some((re) => re.test(invoiceText));
+    const automotiveSeller = /otomotiv|motorlu|oto\s|cetas|peugeot|renault|toyota|hyundai|volkswagen|honda|mercedes|bmw|audi|fiat|citroen|opel|nissan|ford/.test(sellerOrText);
+    const suspiciousExpenseAccount = !account || /^(740|760|770|150|153|157)\./.test(account);
+    if (strongVehicle) {
+      return 'Tasit/otomobil alimi sinyali var; amortisman kontrolu olmadan otomatik F2 iptal';
+    }
+    if (automotiveSeller && Number.isFinite(amount) && amount >= 200000 && suspiciousExpenseAccount) {
+      return `Otomotiv tedarikcisi + yuksek tutar; ${account || 'hesap kodu yok'} ile otomatik gider yazilamaz`;
+    }
+    return null;
+  }
+
   function needsFreshFaturaRetry(safety, decision) {
     if (!safety || safety.ok) return false;
     if (faturaProviderErrorMessage(decision)) return false;
@@ -13394,6 +13481,14 @@
     if (karar !== 'onay' && !providerError) {
       sorunlar.unshift(`AI karar onay degil: ${karar}`);
     }
+    const vehicleRisk = detectVehiclePurchaseRisk({
+      firma: meta?.firma,
+      tutar: meta?.tutar,
+      codes: codes || [],
+      text: readFreeFaturaTextSnapshot(),
+      decision,
+    });
+    if (vehicleRisk) sorunlar.push(vehicleRisk);
     const kdvCheck = checkFaturaKdvCodeMatch(codes || [], kdvOranlari || []);
     if (!kdvCheck.ok) sorunlar.push(`KDV oran tutarsiz: ${kdvCheck.sebep}`);
     return {
@@ -13977,8 +14072,9 @@
       // ==========================================================
       // BİLANÇO DALI (BILANCO/1 · BILANCO/2) — mevcut akış
       // ==========================================================
-      const codes = await readHesapKodlari(isletmeAccountCodeFlow ? 1500 : 15000);
-      const hasBosSelect = bosSelectVarMi() || isletmeAccountCodeFlow;
+      const fastCodeState = await readCodesOrBlankState(isletmeAccountCodeFlow ? 1200 : 3500);
+      const codes = fastCodeState.codes;
+      const hasBosSelect = fastCodeState.hasBosSelect || isletmeAccountCodeFlow;
       if (!tumKodlarDolu(codes) && !hasBosSelect) {
         counters.atla++; counters.toplam++; setCount();
         await logEvent(mukellef.id, mukellef.ad, 'skip', 'kod boş (hiç kod yok)', logMeta());

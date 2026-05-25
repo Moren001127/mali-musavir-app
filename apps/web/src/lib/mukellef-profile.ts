@@ -50,6 +50,10 @@ export interface MukellefProfile {
   demirbasAnahtarKelimeler?: string;
   demirbasTalimat?: string;
 
+  ozelKararKurallari?: string;
+  firmaOzelTalimatlar?: string;
+  otomatikOnayNotlari?: string;
+
   talimat?: string;
 }
 
@@ -100,6 +104,26 @@ export function profileToPromptText(p: MukellefProfile | null | undefined): stri
     lines.push('Arac, bilgisayar, telefon, klima, TV, mobilya, makine, ekipman, cihaz veya uzun omurlu varlik satis/alisinda otomatik F2 yapma; karar onay_bekliyor olsun.');
     if (p.demirbasAnahtarKelimeler) lines.push(`Demirbas anahtar kelimeleri: ${p.demirbasAnahtarKelimeler}`);
     if (p.demirbasTalimat) lines.push(`Demirbas talimati: ${p.demirbasTalimat}`);
+  }
+
+  if (p.ozelKararKurallari && p.ozelKararKurallari.trim()) {
+    lines.push('');
+    lines.push('=== MUKELLEF OZEL KARAR KURALLARI ===');
+    lines.push('Bu kurallar bu mukellefe ozeldir ve firma hafizasindan once dikkate alinir.');
+    lines.push(p.ozelKararKurallari.trim());
+  }
+
+  if (p.firmaOzelTalimatlar && p.firmaOzelTalimatlar.trim()) {
+    lines.push('');
+    lines.push('=== FIRMA OZEL TALIMATLAR ===');
+    lines.push('Her satir karsi firma bazli karar talimatidir. Eslesen firma satiri varsa genel firma hafizasindan once uygula.');
+    lines.push(p.firmaOzelTalimatlar.trim());
+  }
+
+  if (p.otomatikOnayNotlari && p.otomatikOnayNotlari.trim()) {
+    lines.push('');
+    lines.push('=== OTOMATIK ONAY NOTLARI ===');
+    lines.push(p.otomatikOnayNotlari.trim());
   }
 
   lines.push('');

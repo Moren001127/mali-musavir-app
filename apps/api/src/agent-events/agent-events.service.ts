@@ -188,7 +188,101 @@ export class AgentEventsService {
     return values.find((code) => isAccount(code) && !isAuxiliary(code)) || values.find(isAccount) || values[0] || '';
   }
 
+  private normalizeRuleText(value: any): string {
+    return String(value || '')
+      .slice(0, 24000)
+      .toLocaleLowerCase('tr-TR')
+      .normalize('NFD')
+      .replace(/[\u0300-\u036f]/g, '')
+      .replace(/ı/g, 'i')
+      .replace(/[^a-z0-9%.,\s/-]+/g, ' ')
+      .replace(/\s+/g, ' ')
+      .trim();
+  }
+
+  private parseRuleMoney(value: any): number {
+    if (typeof value === 'number') return value;
+    const raw = String(value || '').replace(/[^\d,.-]/g, '').trim();
+    if (!raw) return NaN;
+    const comma = raw.lastIndexOf(',');
+    const dot = raw.lastIndexOf('.');
+    if (comma > dot) return Number(raw.replace(/\./g, '').replace(',', '.'));
+    return Number(raw.replace(/,/g, ''));
+  }
+
+  private hasStrongVehiclePurchaseText(text: any): boolean {
+    const normalized = this.normalizeRuleText(text);
+    if (normalized.length < 20) return false;
+    return [
+      /sasi\s*(no|numara|numarasi)?/,
+      /sase\s*(no|numara|numarasi)?/,
+      /motor\s*(no|numara|numarasi)/,
+      /model\s*yili/,
+      /otv\s+matrah/,
+      /hesaplanan\s+otv/,
+      /gumruk\s+(beyanname|makbuz|idare)/,
+      /sap\s+fatura/,
+      /tescil|ruhsat/,
+      /arac\s+(satis|alim|teslim|bedel)/,
+      /tasit\s+(satis|alim|teslim|bedel)/,
+      /binek\s+oto|otomobil|kamyonet|minibus|motosiklet|traktor/,
+      /\b(peugeot|rifter|bluehdi|hdi|renault|toyota|hyundai|volkswagen|mercedes|bmw|audi|fiat|citroen|opel|nissan)\b/,
+    ].some((re) => re.test(normalized));
+  }
+
+  private detectProfileFirmaManualRule(profile: any, firma: any): string | null {
+    const firmaNorm = this.normalizeRuleText(firma);
+    if (!firmaNorm || firmaNorm.length < 4) return null;
+    const raw = String(profile?.firmaOzelTalimatlar || '');
+    if (!raw.trim()) return null;
+    const firmWords = firmaNorm.split(' ').filter((w) => w.length >= 4).slice(0, 4);
+    for (const rawLine of raw.split(/\r?\n/)) {
+      const line = this.normalizeRuleText(rawLine);
+      if (line.length < 8) continue;
+      const firmMatch = firmWords.some((word) => line.includes(word)) || line.includes(firmaNorm.slice(0, 18));
+      if (!firmMatch) continue;
+      if (/otomatik\s+(onaylama|f2\s*yapma)|manuel|elle\s+isle|onay\s+bekliyor|atla|beklet/.test(line)) {
+        return `Profil firma ozel kurali: ${rawLine.trim().slice(0, 160)}`;
+      }
+    }
+    return null;
+  }
+
+  private detectFaturaVehiclePurchaseRisk(input: {
+    action?: string;
+    firma?: any;
+    tutar?: any;
+    primaryAccount?: any;
+    faturaText?: any;
+  }): string | null {
+    const isAlis = ['isle_alis', 'isle_alis_isletme'].includes(String(input.action || ''));
+    if (!isAlis) return null;
+
+    const account = this.extractAccountCode(input.primaryAccount);
+    const amount = this.parseRuleMoney(input.tutar);
+    const sellerText = this.normalizeRuleText(input.firma);
+    const invoiceText = this.normalizeRuleText(input.faturaText);
+    const sellerOrText = `${sellerText} ${invoiceText}`;
+    const automotiveSeller = /otomotiv|motorlu|oto\s|cetas|peugeot|renault|toyota|hyundai|volkswagen|honda|mercedes|bmw|audi|fiat|citroen|opel|nissan|ford/.test(sellerOrText);
+    const suspiciousExpenseAccount = !account || /^(740|760|770|150|153|157)\./.test(account);
+
+    if (this.hasStrongVehiclePurchaseText(input.faturaText)) {
+      return 'Kural tabanli risk: tasit/otomobil alimi sinyali var; amortisman gerektirebilir, otomatik F2 yapilmaz';
+    }
+    if (automotiveSeller && Number.isFinite(amount) && amount >= 200000 && suspiciousExpenseAccount) {
+      return `Kural tabanli risk: otomotiv tedarikcisi + yuksek tutar (${Math.round(amount).toLocaleString('tr-TR')} TL); ${account || 'hesap kodu yok'} ile otomatik gider yazilmaz`;
+    }
+    return null;
+  }
+
   private analyzeFreeFaturaContent(text: any): { available: boolean; risk: boolean; sebep?: string } {
+    if (this.hasStrongVehiclePurchaseText(text)) {
+      return {
+        available: true,
+        risk: true,
+        sebep: 'Kural tabanli icerik riski: tasit/demirbas/sabit kiymet ifadesi gorundu; otomatik F2 yapilmaz',
+      };
+    }
     const raw = String(text || '').slice(0, 20000);
     const normalized = raw
       .toLocaleLowerCase('tr-TR')
@@ -1922,6 +2016,30 @@ ${ocr.text.slice(0, 14000)}`;
       };
     }
 
+    const freeContent = this.analyzeFreeFaturaContent(input.faturaText);
+    const vehiclePurchaseRisk = this.detectFaturaVehiclePurchaseRisk({
+      action: input.action,
+      firma: input.firma,
+      tutar: input.tutar,
+      primaryAccount: primaryFaturaAccount,
+      faturaText: input.faturaText,
+    });
+    const firmManualRule = this.detectProfileFirmaManualRule(rule?.profile, input.firma);
+    const earlyRuleRisk = freeContent.risk
+      ? freeContent.sebep
+      : vehiclePurchaseRisk || firmManualRule;
+    if (!hasBosAlanSecenekleri && earlyRuleRisk) {
+      const sebep = earlyRuleRisk || 'Kural tabanli icerik riski; otomatik F2 yapilmaz';
+      await logZeroUsage('mihsap-fatura-content-rule', 'atla', sebep);
+      return {
+        karar: 'atla',
+        sebep,
+        aiCallReason: vehiclePurchaseRisk ? 'vehicle_purchase_rule_risk' : firmManualRule ? 'profile_firma_rule_risk' : 'free_content_rule_risk',
+        decisionProvider: 'rule-based',
+        decisionTrace: ruleDecisionTrace('atla', sebep, primaryFaturaAccount || null, !!vendorHint),
+      };
+    }
+
     const imageHash = input.faturaImageBase64
       ? createHash('sha256').update(input.faturaImageBase64).digest('hex')
       : '';
@@ -2030,19 +2148,6 @@ ${ocr.text.slice(0, 14000)}`;
       });
       await logZeroUsage('mihsap-fatura-rule', 'onay', deterministicDecision.sebep);
       return { ...deterministicDecision, aiCallReason: 'rule_fast_path' };
-    }
-
-    const freeContent = this.analyzeFreeFaturaContent(input.faturaText);
-    if (!hasBosAlanSecenekleri && freeContent.risk) {
-      const sebep = freeContent.sebep || 'Kural tabanli icerik riski; otomatik F2 yapilmaz';
-      await logZeroUsage('mihsap-fatura-content-rule', 'atla', sebep);
-      return {
-        karar: 'atla',
-        sebep,
-        aiCallReason: 'free_content_rule_risk',
-        decisionProvider: 'rule-based',
-        decisionTrace: ruleDecisionTrace('atla', sebep, primaryFaturaAccount || null, !!vendorHint),
-      };
     }
 
     const primaryAccountCode = this.extractAccountCode(primaryFaturaAccount);
