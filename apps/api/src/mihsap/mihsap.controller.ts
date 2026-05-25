@@ -59,7 +59,9 @@ export class MihsapController {
     return s || { connected: false };
   }
 
-  /** MIHSAP'tan toplu fatura çek + storage + DB */
+  /** MIHSAP'tan toplu fatura çek + storage + DB.
+   *  kaynak (varsayilan 'arsiv'): ONAYLANMIS/ISLENMIS faturalar.
+   *  'bekleyen' verilirse Gelen Belgeler sekmesindeki bekleyenler cekilir. */
   @Post('fetch')
   @UseGuards(AuthGuard('jwt'))
   async fetch(
@@ -71,6 +73,7 @@ export class MihsapController {
       donem: string; // "2026-03"
       faturaTuru?: 'ALIS' | 'SATIS';
       forceRefresh?: boolean;
+      kaynak?: 'arsiv' | 'bekleyen';
     },
   ) {
     if (!body?.mukellefId || !body?.mukellefMihsapId || !body?.donem) {
@@ -83,6 +86,7 @@ export class MihsapController {
       donem: body.donem,
       faturaTuru: body.faturaTuru,
       forceRefresh: body.forceRefresh,
+      kaynak: body.kaynak,
       createdBy: req.user.userId,
     });
   }

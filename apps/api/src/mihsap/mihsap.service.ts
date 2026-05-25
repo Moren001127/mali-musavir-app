@@ -131,7 +131,8 @@ export class MihsapService {
 
   // ==================== MIHSAP API PROXY ====================
 
-  /** Belirli mükellef + ay için fatura listesini MIHSAP'tan çeker */
+  /** Belirli mükellef + ay için fatura listesini MIHSAP'tan çeker.
+   *  kaynak: 'arsiv' (varsayilan, ONAYLANMIS) | 'bekleyen' (Gelen Belgeler) */
   async listInvoices(params: {
     tenantId: string;
     mukellefMihsapId: string | number;
@@ -139,6 +140,7 @@ export class MihsapService {
     faturaTuru: 'ALIS' | 'SATIS';
     pageSize?: number;
     pageIndex?: number;
+    kaynak?: 'arsiv' | 'bekleyen';
   }): Promise<{ total: number; items: MihsapInvoiceSummary[] }> {
     const token = await this.getToken(params.tenantId);
     const [year, month] = params.donem.split('-');
@@ -162,6 +164,10 @@ export class MihsapService {
     };
 
     const qs = new URLSearchParams();
+    // ÖNEMLI: MIHSAP Arşivim sayfası ?onayliMi=true gönderiyor (Network'ten teyit).
+    // Bunsuz "Gelen Belgeler" (bekleyen) sonucu donuyor → bu kullanicinin
+    // "Faturalar gelmiyor" sikayetinin sebebi.
+    if ((params.kaynak || 'arsiv') === 'arsiv') qs.set('onayliMi', 'true');
     if (params.pageSize) qs.set('size', String(params.pageSize));
     if (params.pageIndex !== undefined) qs.set('page', String(params.pageIndex));
 
@@ -199,6 +205,7 @@ export class MihsapService {
     mukellefMihsapId: string | number;
     donem: string;
     faturaTuru: 'ALIS' | 'SATIS';
+    kaynak?: 'arsiv' | 'bekleyen';
   }): Promise<MihsapInvoiceSummary[]> {
     const PAGE_SIZE = 100;
     let pageIndex = 0;
@@ -328,7 +335,8 @@ export class MihsapService {
     return { deleted: count };
   }
 
-  /** Kullanıcı "MIHSAP'tan Çek" dediğinde çalışır */
+  /** Kullanıcı "MIHSAP'tan Çek" dediğinde çalışır.
+   *  kaynak (varsayilan 'arsiv'): ONAYLANMIS/ISLENMIS faturalari ceker. */
   async fetchAndStoreInvoices(params: {
     tenantId: string;
     mukellefId: string;
@@ -337,6 +345,7 @@ export class MihsapService {
     faturaTuru?: 'ALIS' | 'SATIS';
     createdBy?: string;
     forceRefresh?: boolean; // true: önce mevcut kayıtları sil, sonra çek
+    kaynak?: 'arsiv' | 'bekleyen';
   }) {
     if (params.forceRefresh) {
       await this.clearPeriod(params.tenantId, params.mukellefId, params.donem);
@@ -367,6 +376,7 @@ export class MihsapService {
           mukellefMihsapId: params.mukellefMihsapId,
           donem: params.donem,
           faturaTuru: side,
+          kaynak: params.kaynak || 'arsiv',
         });
         total += items.length;
         // Paralel 3'erli indirme (rate limit dostu)
