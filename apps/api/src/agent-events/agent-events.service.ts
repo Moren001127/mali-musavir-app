@@ -143,6 +143,29 @@ export class AgentEventsService {
       .trim();
   }
 
+  private classifyClaudeApiError(status: number, body: string) {
+    const text = String(body || '').replace(/\s+/g, ' ').trim();
+    const lower = text.toLowerCase();
+    const isBilling =
+      status === 402 ||
+      lower.includes('credit') ||
+      lower.includes('billing') ||
+      lower.includes('balance') ||
+      lower.includes('quota');
+    const isRateLimit = status === 429 || lower.includes('rate limit') || lower.includes('too many requests');
+    const code = isBilling ? 'claude_billing_or_quota' : isRateLimit ? 'claude_rate_limit' : `claude_api_${status}`;
+    const prefix = isBilling
+      ? 'Claude API kredi/kota hatasi'
+      : isRateLimit
+        ? 'Claude API rate limit hatasi'
+        : 'Claude API hatasi';
+    return {
+      code,
+      userMessage: `${prefix} (${status}): ${text.slice(0, 120)}`,
+      logMessage: `${prefix} (${status})`,
+    };
+  }
+
   private decisionValuesDiffer(a: any, b: any): boolean {
     const av = a == null ? '' : JSON.stringify(a);
     const bv = b == null ? '' : JSON.stringify(b);
@@ -532,8 +555,9 @@ ${ocr.text.slice(0, 14000)}`;
     system: string,
     userText: string,
     rule: any,
+    allowClaudeOnlyFallback = false,
   ): Promise<MihsapCheapDecisionResult | null> {
-    if (this.getMihsapDecisionMode() === 'claude_only') return null;
+    if (!allowClaudeOnlyFallback && this.getMihsapDecisionMode() === 'claude_only') return null;
     if (!this.hasMihsapCheapModelKey()) return null;
     const ocr = await this.runMihsapImageOcr(input, 'mihsap-fatura-ocr');
     if (!ocr) return null;
@@ -641,8 +665,9 @@ ${ocr.text.slice(0, 14000)}`;
     },
     system: string,
     userText: string,
+    allowClaudeOnlyFallback = false,
   ): Promise<MihsapCheapDecisionResult | null> {
-    if (this.getMihsapDecisionMode() === 'claude_only') return null;
+    if (!allowClaudeOnlyFallback && this.getMihsapDecisionMode() === 'claude_only') return null;
     if (!this.hasMihsapCheapModelKey()) return null;
     const ocr = await this.runMihsapImageOcr(input, 'mihsap-isletme-ocr');
     if (!ocr) return null;
@@ -1549,6 +1574,7 @@ ${ocr.text.slice(0, 14000)}`;
     tutar?: number | string;
     action?: string; // 'isle_alis' | 'isle_satis' | 'isle_alis_isletme' | 'isle_satis_isletme'
     tenantId?: string;
+    forceFresh?: boolean;
     /**
      * Boş alanlar için dropdown seçenekleri. Runner, Mihsap'ta boş alana tıkladığında
      * Luca entegrasyonundan gelen hesap kodu listesini buraya koyar.
@@ -1752,12 +1778,12 @@ ${ocr.text.slice(0, 14000)}`;
     ].join('|');
 
     const memCached = this.faturaDecisionCache.get(decisionCacheKey);
-    if (memCached && memCached.expiresAt > Date.now()) {
+    if (!input.forceFresh && memCached && memCached.expiresAt > Date.now()) {
       await logZeroUsage('mihsap-fatura-cache', memCached.value?.karar || 'cache_hit', 'cache_hit: memory decision reused');
       return { ...memCached.value, cacheHit: true, aiCallReason: 'cache_hit' };
     }
 
-    if (input.tenantId && input.belgeNo && input.mukellef) {
+    if (!input.forceFresh && input.tenantId && input.belgeNo && input.mukellef) {
       try {
         const previous = await this.prisma.agentEvent.findFirst({
           where: {
@@ -2206,12 +2232,24 @@ Fatura görüntüsünü incele ve yukarıdaki sistem talimatlarına göre JSON d
       });
     };
 
-    const cheapDecision =
+    let cheapDecision =
       decisionMode === 'claude_only'
         ? null
         : await this.tryMihsapCheapFaturaDecision(input, system, userText, rule);
 
     if (decisionMode === 'balanced' && this.isCheapFaturaAcceptable(cheapDecision, input, vendorHint)) {
+      return this.finalizeCheapFaturaDecision(
+        cheapDecision!,
+        input,
+        decisionCacheKey,
+        (input.hesapKodlari?.[0] || '').trim(),
+      );
+    }
+
+    if (!apiKey && !cheapDecision) {
+      cheapDecision = await this.tryMihsapCheapFaturaDecision(input, system, userText, rule, true);
+    }
+    if (!apiKey && this.isCheapFaturaAcceptable(cheapDecision, input, vendorHint)) {
       return this.finalizeCheapFaturaDecision(
         cheapDecision!,
         input,
@@ -2273,13 +2311,28 @@ Fatura görüntüsünü incele ve yukarıdaki sistem talimatlarına göre JSON d
       });
       if (!res.ok) {
         const errText = await res.text();
-        await logUsage('emin_degil', `API ${res.status}`);
+        const claudeError = this.classifyClaudeApiError(res.status, errText);
+        if (!cheapDecision && (claudeError.code === 'claude_billing_or_quota' || claudeError.code === 'claude_rate_limit')) {
+          cheapDecision = await this.tryMihsapCheapFaturaDecision(input, system, userText, rule, true);
+        }
+        if (this.isCheapFaturaAcceptable(cheapDecision, input, vendorHint)) {
+          await logUsage('onay', `${claudeError.code}: cheap fallback kullanildi`);
+          return this.finalizeCheapFaturaDecision(
+            cheapDecision!,
+            input,
+            decisionCacheKey,
+            (input.hesapKodlari?.[0] || '').trim(),
+          );
+        }
+        await logUsage('emin_degil', claudeError.logMessage);
         return {
           karar: 'emin_degil',
-          sebep: `Claude API ${res.status}: ${errText.slice(0, 100)}`,
+          sebep: claudeError.userMessage,
           decisionProvider: 'claude',
+          providerError: true,
+          providerErrorCode: claudeError.code,
           ocrProvider: cheapDecision?.ocrProvider || null,
-          fallbackReason: cheapDecision?.fallbackReason || `claude_api_${res.status}`,
+          fallbackReason: cheapDecision?.fallbackReason || claudeError.code,
           cheapConfidence: cheapDecision?.confidence ?? null,
         };
       }
@@ -2514,6 +2567,15 @@ Fatura görüntüsünü incele ve yukarıdaki sistem talimatlarına göre JSON d
         };
       }
 
+      if (this.isCheapFaturaAcceptable(cheapDecision, input, vendorHint)) {
+        await logUsage('onay', 'claude_json_parse_fail: cheap fallback kullanildi', usage);
+        return this.finalizeCheapFaturaDecision(
+          cheapDecision!,
+          input,
+          decisionCacheKey,
+          (input.hesapKodlari?.[0] || '').trim(),
+        );
+      }
       await logUsage('emin_degil', 'JSON parse fail', usage);
       return {
         karar: 'emin_degil',
@@ -2525,11 +2587,25 @@ Fatura görüntüsünü incele ve yukarıdaki sistem talimatlarına göre JSON d
         cheapConfidence: cheapDecision?.confidence ?? null,
       };
     } catch (e: any) {
+      if (!cheapDecision) {
+        cheapDecision = await this.tryMihsapCheapFaturaDecision(input, system, userText, rule, true);
+      }
+      if (this.isCheapFaturaAcceptable(cheapDecision, input, vendorHint)) {
+        await logUsage('onay', `claude_network_error: cheap fallback kullanildi`);
+        return this.finalizeCheapFaturaDecision(
+          cheapDecision!,
+          input,
+          decisionCacheKey,
+          (input.hesapKodlari?.[0] || '').trim(),
+        );
+      }
       await logUsage('emin_degil', `Network: ${e?.message || 'unknown'}`);
       return {
         karar: 'emin_degil',
         sebep: `Network: ${e?.message || 'unknown'}`,
         decisionProvider: 'claude',
+        providerError: true,
+        providerErrorCode: 'claude_network_error',
         ocrProvider: cheapDecision?.ocrProvider || null,
         fallbackReason: cheapDecision?.fallbackReason || 'claude_network_error',
         cheapConfidence: cheapDecision?.confidence ?? null,
@@ -2850,7 +2926,7 @@ Fatura görüntüsünü incele. Yukarıdaki MEVCUT SEÇENEKLER'den Kayıt Türü
         usage,
       });
 
-    const cheapDecision =
+    let cheapDecision =
       decisionMode === 'claude_only'
         ? null
         : await this.tryMihsapCheapIsletmeDecision(input, system, userText);
@@ -2864,6 +2940,19 @@ Fatura görüntüsünü incele. Yukarıdaki MEVCUT SEÇENEKLER'den Kayıt Türü
         cheapConfidence: cheapDecision!.confidence,
       };
       return parsed;
+    }
+
+    if (!apiKey && !cheapDecision) {
+      cheapDecision = await this.tryMihsapCheapIsletmeDecision(input, system, userText, true);
+    }
+    if (!apiKey && this.isCheapIsletmeAcceptable(cheapDecision, input, vendorHintIsletme)) {
+      return {
+        ...(cheapDecision!.parsed || {}),
+        decisionProvider: cheapDecision!.provider,
+        ocrProvider: cheapDecision!.ocrProvider,
+        fallbackReason: cheapDecision!.fallbackReason || 'anthropic_key_missing',
+        cheapConfidence: cheapDecision!.confidence,
+      };
     }
 
     if (!apiKey) {
@@ -2913,13 +3002,29 @@ Fatura görüntüsünü incele. Yukarıdaki MEVCUT SEÇENEKLER'den Kayıt Türü
       });
       if (!res.ok) {
         const errText = await res.text();
-        await logUsage('emin_degil', `API ${res.status}`);
+        const claudeError = this.classifyClaudeApiError(res.status, errText);
+        if (!cheapDecision && (claudeError.code === 'claude_billing_or_quota' || claudeError.code === 'claude_rate_limit')) {
+          cheapDecision = await this.tryMihsapCheapIsletmeDecision(input, system, userText, true);
+        }
+        if (this.isCheapIsletmeAcceptable(cheapDecision, input, vendorHintIsletme)) {
+          await logUsage('onay', `${claudeError.code}: cheap fallback kullanildi`);
+          return {
+            ...(cheapDecision!.parsed || {}),
+            decisionProvider: cheapDecision!.provider,
+            ocrProvider: cheapDecision!.ocrProvider,
+            fallbackReason: cheapDecision!.fallbackReason || claudeError.code,
+            cheapConfidence: cheapDecision!.confidence,
+          };
+        }
+        await logUsage('emin_degil', claudeError.logMessage);
         return {
           emin: false,
-          sebep: `Claude API ${res.status}: ${errText.slice(0, 80)}`,
+          sebep: claudeError.userMessage,
           decisionProvider: 'claude',
+          providerError: true,
+          providerErrorCode: claudeError.code,
           ocrProvider: cheapDecision?.ocrProvider || null,
-          fallbackReason: cheapDecision?.fallbackReason || `claude_api_${res.status}`,
+          fallbackReason: cheapDecision?.fallbackReason || claudeError.code,
           cheapConfidence: cheapDecision?.confidence ?? null,
         };
       }
@@ -3040,6 +3145,16 @@ Fatura görüntüsünü incele. Yukarıdaki MEVCUT SEÇENEKLER'den Kayıt Türü
         } catch {}
       }
 
+      if (this.isCheapIsletmeAcceptable(cheapDecision, input, vendorHintIsletme)) {
+        await logUsage('onay', 'claude_json_parse_fail: cheap fallback kullanildi', usage);
+        return {
+          ...(cheapDecision!.parsed || {}),
+          decisionProvider: cheapDecision!.provider,
+          ocrProvider: cheapDecision!.ocrProvider,
+          fallbackReason: cheapDecision!.fallbackReason || 'claude_json_parse_fail',
+          cheapConfidence: cheapDecision!.confidence,
+        };
+      }
       await logUsage('emin_degil', 'JSON parse fail', usage);
       return {
         emin: false,
@@ -3051,11 +3166,26 @@ Fatura görüntüsünü incele. Yukarıdaki MEVCUT SEÇENEKLER'den Kayıt Türü
         cheapConfidence: cheapDecision?.confidence ?? null,
       };
     } catch (e: any) {
+      if (!cheapDecision) {
+        cheapDecision = await this.tryMihsapCheapIsletmeDecision(input, system, userText, true);
+      }
+      if (this.isCheapIsletmeAcceptable(cheapDecision, input, vendorHintIsletme)) {
+        await logUsage('onay', `claude_network_error: cheap fallback kullanildi`);
+        return {
+          ...(cheapDecision!.parsed || {}),
+          decisionProvider: cheapDecision!.provider,
+          ocrProvider: cheapDecision!.ocrProvider,
+          fallbackReason: cheapDecision!.fallbackReason || 'claude_network_error',
+          cheapConfidence: cheapDecision!.confidence,
+        };
+      }
       await logUsage('emin_degil', `Network: ${e?.message || 'unknown'}`);
       return {
         emin: false,
         sebep: `Network: ${e?.message || 'unknown'}`,
         decisionProvider: 'claude',
+        providerError: true,
+        providerErrorCode: 'claude_network_error',
         ocrProvider: cheapDecision?.ocrProvider || null,
         fallbackReason: cheapDecision?.fallbackReason || 'claude_network_error',
         cheapConfidence: cheapDecision?.confidence ?? null,

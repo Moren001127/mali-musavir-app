@@ -4,7 +4,7 @@
 */
 (function () {
   // Agent versiyon — UI'da gösterilir, debug için kritik
-  const AGENT_VERSION = '1.37.95';
+  const AGENT_VERSION = '1.37.96';
   const AGENT_INSTANCE_ID = 'mai_' + Date.now().toString(36) + '_' + Math.random().toString(36).slice(2, 8);
 
   // === VERSION-AWARE RELOAD ===
@@ -11596,7 +11596,7 @@
     return null;
   }
 
-  async function aiDecide({ codes, tarih, hedefAy, belgeNo, belgeTuru, faturaTuru, mukellef, mukellefId, firma, firmaKimlikNo, tutar, action, bosAlanSecenekleri }) {
+  async function aiDecide({ codes, tarih, hedefAy, belgeNo, belgeTuru, faturaTuru, mukellef, mukellefId, firma, firmaKimlikNo, tutar, action, bosAlanSecenekleri, forceFresh }) {
     const img = await getFaturaImageBase64();
     if (!img) return { karar: 'emin_degil', sebep: 'fatura görüntüsü alınamadı' };
     return await api('/agent/ai/decide-fatura', {
@@ -11615,6 +11615,7 @@
         firmaKimlikNo, // Firma Hafizasi icin VKN/TCKN
         tutar,
         action,
+        forceFresh: !!forceFresh,
         // Aşama 2a: boş alan seçenekleri gönderilirse AI öneri verir
         ...(bosAlanSecenekleri ? { bosAlanSecenekleri } : {}),
       }),
@@ -13289,11 +13290,51 @@
     };
   }
 
+  function faturaProviderErrorMessage(decision) {
+    const sebep = String(decision?.sebep || '');
+    const fallback = String(decision?.fallbackReason || decision?.providerErrorCode || '');
+    if (
+      decision?.providerError ||
+      /^Claude API/i.test(sebep) ||
+      /^Network:/i.test(sebep) ||
+      /^claude_/i.test(fallback)
+    ) {
+      if (/billing|quota|credit|kredi|kota/i.test(`${sebep} ${fallback}`)) {
+        return 'AI servis kredi/kota hatasi: Claude bakiyesi veya limiti yetersiz';
+      }
+      if (/rate/i.test(`${sebep} ${fallback}`)) {
+        return 'AI servis yogunluk/rate limit hatasi: biraz sonra tekrar deneyin';
+      }
+      return `AI servis hatasi: ${sebep || fallback || 'karar alinamadi'}`;
+    }
+    return null;
+  }
+
+  function needsFreshFaturaRetry(safety, decision) {
+    if (!safety || safety.ok) return false;
+    if (faturaProviderErrorMessage(decision)) return false;
+    const reason = String(safety.sebep || '');
+    return !!decision?.cacheHit || decision?.aiCallReason === 'cache_hit' || /OCR okunamadi/i.test(reason);
+  }
+
+  async function freshFaturaDecisionRetry({ safety, decision, decideArgs, meta, codes, kdvOranlari }) {
+    if (!needsFreshFaturaRetry(safety, decision)) return null;
+    const retryDecision = await aiDecide({ ...decideArgs, forceFresh: true });
+    const retrySafety = finalSafetyCheckFatura({
+      decision: retryDecision,
+      meta,
+      codes,
+      kdvOranlari,
+    });
+    return { decision: retryDecision, safety: retrySafety };
+  }
+
   function finalSafetyCheckFatura({ decision, meta, codes, kdvOranlari }) {
     const karar = decision?.karar || decision?.decisionTrace?.karar?.sonuc || 'emin_degil';
     const cmp = compareFaturaDecisionFields(decision, meta);
-    const sorunlar = [...cmp.sorunlar];
-    if (karar !== 'onay') {
+    const providerError = faturaProviderErrorMessage(decision);
+    const sorunlar = providerError ? [providerError] : [...cmp.sorunlar];
+    if (karar !== 'onay' && !providerError) {
       sorunlar.unshift(`AI karar onay degil: ${karar}`);
     }
     const kdvCheck = checkFaturaKdvCodeMatch(codes || [], kdvOranlari || []);
@@ -13311,6 +13352,8 @@
         mihsapTarih: cmp.mihsapTarih,
         belgeNo: cmp.belgeNo,
         belgeTuru: cmp.belgeTuru,
+        providerErrorCode: decision?.providerErrorCode || null,
+        fallbackReason: decision?.fallbackReason || null,
         kdvOranlari,
         kdvTutarsizSatirlar: kdvCheck.tutarsizSatirlar,
       },
@@ -13970,7 +14013,7 @@
                   || codes[0]
                   || null;
                 setStatus(`${mukellef.ad} · #${fid} F2 güvenlik kontrol...`);
-                const finalDecision = await aiDecide({
+                const finalDecisionArgs = {
                   codes: finalHesapKodlari,
                   tarih,
                   hedefAy,
@@ -13983,13 +14026,28 @@
                   firmaKimlikNo: meta.firmaKimlikNo,
                   tutar: meta.tutar,
                   action,
-                });
-                const finalSafety = finalSafetyCheckFatura({
+                };
+                let finalDecision = await aiDecide(finalDecisionArgs);
+                const faturaKdvOranlari = readAllKdvOranlari();
+                let finalSafety = finalSafetyCheckFatura({
                   decision: finalDecision,
                   meta,
                   codes: finalHesapKodlari,
-                  kdvOranlari: readAllKdvOranlari(),
+                  kdvOranlari: faturaKdvOranlari,
                 });
+                const finalRetry = await freshFaturaDecisionRetry({
+                  safety: finalSafety,
+                  decision: finalDecision,
+                  decideArgs: finalDecisionArgs,
+                  meta,
+                  codes: finalHesapKodlari,
+                  kdvOranlari: faturaKdvOranlari,
+                });
+                if (finalRetry) {
+                  finalDecision = finalRetry.decision;
+                  finalSafety = finalRetry.safety;
+                  satirlar.push('Not: OCR eksik/cache sonucu nedeniyle taze kontrol tekrarlandi.');
+                }
                 if (!finalSafety.ok) {
                   satirlar.push(`Sonuç: F2 güvenlik iptal — ${finalSafety.sebep}`);
                   logMesaji = satirlar.join('\n');
@@ -14076,7 +14134,7 @@
       }
       // LLM karar
       setStatus(`${mukellef.ad} · #${fid} Claude inceliyor…`);
-      const decision = await aiDecide({
+      const decisionArgs = {
         codes, tarih, hedefAy,
         belgeNo: meta.belgeNo, belgeTuru: meta.belgeTuru, faturaTuru: meta.faturaTuru,
         mukellef: mukellef.ad,
@@ -14085,17 +14143,35 @@
         firmaKimlikNo: meta.firmaKimlikNo,
         tutar: meta.tutar,
         action,
-      });
-      const karar = decision?.karar || 'emin_degil';
-      const sebep = (decision?.sebep || '').slice(0, 120);
-      const decisionTrace = decision?.decisionTrace || null;
-      const faturaDecisionCandidate = decision?.faturaDecisionCandidate || null;
-      const safety = finalSafetyCheckFatura({
+      };
+      let decision = await aiDecide(decisionArgs);
+      let karar = decision?.karar || 'emin_degil';
+      let sebep = (decision?.sebep || '').slice(0, 120);
+      let decisionTrace = decision?.decisionTrace || null;
+      let faturaDecisionCandidate = decision?.faturaDecisionCandidate || null;
+      const currentKdvOranlari = readAllKdvOranlari();
+      let safety = finalSafetyCheckFatura({
         decision,
         meta,
         codes,
-        kdvOranlari: readAllKdvOranlari(),
+        kdvOranlari: currentKdvOranlari,
       });
+      const retryResult = await freshFaturaDecisionRetry({
+        safety,
+        decision,
+        decideArgs: decisionArgs,
+        meta,
+        codes,
+        kdvOranlari: currentKdvOranlari,
+      });
+      if (retryResult) {
+        decision = retryResult.decision;
+        safety = retryResult.safety;
+        karar = decision?.karar || 'emin_degil';
+        sebep = (decision?.sebep || '').slice(0, 120);
+        decisionTrace = decision?.decisionTrace || null;
+        faturaDecisionCandidate = decision?.faturaDecisionCandidate || null;
+      }
       if (!safety.ok) {
         counters.atla++; counters.toplam++; setCount();
         const sapma = karar === 'onay_bekliyor'

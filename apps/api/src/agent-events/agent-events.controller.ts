@@ -437,6 +437,7 @@ export class AgentEventsController {
       firmaKimlikNo?: string; // VKN/TCKN — Firma Hafizasi icin
       tutar?: number | string;
       action?: string;
+      forceFresh?: boolean;
       bosAlanSecenekleri?: {
         matrahKodlari?: string[];
         kdvKodlari?: string[];
