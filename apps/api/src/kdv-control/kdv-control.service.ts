@@ -1856,8 +1856,9 @@ export class KdvControlService {
   private async buildContentAuditDecision(image: any, session: any, tenantId: string): Promise<ContentAuditDecision> {
     const fallback = await this.buildRuleBasedContentAudit(image, session, tenantId);
     const apiKey = process.env.ANTHROPIC_API_KEY;
+    const aiEnabled = String(process.env.KDV_CONTENT_AUDIT_AI_ENABLED || '').toLowerCase() === 'true';
     const disabled = String(process.env.KDV_CONTENT_AUDIT_AI_DISABLED || '').toLowerCase() === 'true';
-    if (!apiKey || disabled) {
+    if (!apiKey || disabled || !aiEnabled) {
       const moderatedFallback = this.moderateContentAuditDecision(fallback, image, session);
       return { ...fallback, ...moderatedFallback };
     }
