@@ -4,6 +4,8 @@ import { useMemo, useState, type ReactNode } from 'react';
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import {
   AlertTriangle,
+  ArrowDown,
+  ArrowUp,
   BookOpen,
   Bot,
   Building2,
@@ -11,13 +13,16 @@ import {
   FileText,
   Gauge,
   ListChecks,
+  Plus,
   ReceiptText,
   Save,
   Search,
   Settings2,
   ShieldCheck,
+  Sparkles,
   Trash2,
   WalletCards,
+  X,
 } from 'lucide-react';
 import { toast } from 'sonner';
 import { api } from '@/lib/api';
@@ -127,6 +132,61 @@ function countFilledKdv(values?: KdvOranBazli) {
   return ['yuzde1', 'yuzde8', 'yuzde10', 'yuzde18', 'yuzde20'].filter(
     (key) => !!String(values[key as keyof KdvOranBazli] || '').trim(),
   ).length;
+}
+
+function parseRuleLines(value?: string) {
+  return String(value || '')
+    .split(/\r?\n/)
+    .map((line) => line.trim())
+    .filter(Boolean);
+}
+
+function joinRuleLines(lines: string[]) {
+  return lines.map((line) => line.trim()).filter(Boolean).join('\n');
+}
+
+function countManagedRules(value?: string) {
+  return parseRuleLines(value).length;
+}
+
+function parseKeywords(value?: string) {
+  return String(value || '')
+    .split(/[,;\n]+/)
+    .map((item) => item.trim())
+    .filter(Boolean);
+}
+
+function joinKeywords(values: string[]) {
+  return Array.from(new Set(values.map((item) => item.trim()).filter(Boolean))).join(', ');
+}
+
+function parseFirmRules(value?: string) {
+  return parseRuleLines(value).map((line) => {
+    const colonIndex = line.indexOf(':');
+    const arrowIndex = line.indexOf('->');
+    const splitIndex =
+      colonIndex >= 0 && arrowIndex >= 0
+        ? Math.min(colonIndex, arrowIndex)
+        : colonIndex >= 0
+          ? colonIndex
+          : arrowIndex;
+    if (splitIndex < 0) return { firm: '', instruction: line };
+    const firm = line.slice(0, splitIndex).trim();
+    const instruction = line.slice(splitIndex + (line.slice(splitIndex, splitIndex + 2) === '->' ? 2 : 1)).trim();
+    return { firm, instruction };
+  });
+}
+
+function joinFirmRules(rules: Array<{ firm: string; instruction: string }>) {
+  return rules
+    .map((rule) => {
+      const firm = rule.firm.trim();
+      const instruction = rule.instruction.trim();
+      if (!firm && !instruction) return '';
+      return firm ? `${firm}: ${instruction}` : instruction;
+    })
+    .filter(Boolean)
+    .join('\n');
 }
 
 export default function ProfillerPage() {
@@ -318,9 +378,9 @@ function ProfileForm({
   const ruleCount = [
     profile.demirbasKontrolAktif !== false,
     !!profile.tevkifataTabi,
-    !!profile.ozelKararKurallari?.trim(),
-    !!profile.firmaOzelTalimatlar?.trim(),
-    !!profile.talimat?.trim(),
+    ...Array(countManagedRules(profile.ozelKararKurallari)).fill(true),
+    ...Array(countManagedRules(profile.firmaOzelTalimatlar)).fill(true),
+    ...Array(countManagedRules(profile.talimat)).fill(true),
   ].filter(Boolean).length;
 
   return (
@@ -427,29 +487,61 @@ function ProfileForm({
                 checked={!!profile.tevkifataTabi}
                 onChange={(v) => onUpdate('tevkifataTabi', v)}
               />
-              <Textarea className="lg:col-span-2" label="Risk anahtar kelimeleri" value={profile.demirbasAnahtarKelimeler || ''} onChange={(v) => onUpdate('demirbasAnahtarKelimeler', v)} rows={4} placeholder="araç, otomobil, şasi, motor no, ÖTV, bilgisayar, makine, demirbaş..." />
-              <Textarea className="lg:col-span-2" label="Demirbaş / olağan dışı işlem talimatı" value={profile.demirbasTalimat || ''} onChange={(v) => onUpdate('demirbasTalimat', v)} rows={4} placeholder="Demirbaş adayı ise otomatik F2 yapma; onay bekliyor kararına düşür." />
-              <Textarea className="lg:col-span-2" label="Özel karar kuralları" value={profile.ozelKararKurallari || ''} onChange={(v) => onUpdate('ozelKararKurallari', v)} rows={6} placeholder={`Nakliye işi için akaryakıt ve araç bakım gideri 740 olabilir.\nAncak taşıt/araç alımı, şasi-motor no veya ÖTV içeren faturalarda otomatik F2 yapma.\nTutar çok yüksek ve satıcı otomotiv ise manuel incelemeye düşür.`} />
-              <Textarea className="lg:col-span-2" label="Otomatik onay notları" value={profile.otomatikOnayNotlari || ''} onChange={(v) => onUpdate('otomatikOnayNotlari', v)} rows={4} placeholder="Güvenle otomatik geçilebilecek tekrar eden durumları yaz." />
+              <KeywordEditor
+                className="lg:col-span-2"
+                label="Risk anahtar kelimeleri"
+                value={profile.demirbasAnahtarKelimeler || ''}
+                onChange={(v) => onUpdate('demirbasAnahtarKelimeler', v)}
+                suggestions={['şasi', 'motor no', 'ÖTV', 'taşıt alımı', 'otomobil', 'kamyonet', 'demirbaş', 'sabit kıymet']}
+              />
+              <RuleListEditor
+                className="lg:col-span-2"
+                title="Demirbaş / olağan dışı işlem talimatları"
+                description="Bu talimatlar risk anahtar kelimeleri yakalandığında otomatik onay yerine manuel inceleme mantığını belirler."
+                lineLabel="Talimat"
+                value={profile.demirbasTalimat || ''}
+                onChange={(v) => onUpdate('demirbasTalimat', v)}
+                placeholder="Örn: Demirbaş adayı ise otomatik F2 yapma; onay bekliyor kararına düşür."
+                templates={RISK_RULE_TEMPLATES}
+              />
+              <RuleListEditor
+                className="lg:col-span-2"
+                title="Özel karar kuralları"
+                description="Mükellefe özel karar kuralları firma hafızasından önce uygulanır. Her kart ayrı bir kuraldır."
+                lineLabel="Kural"
+                value={profile.ozelKararKurallari || ''}
+                onChange={(v) => onUpdate('ozelKararKurallari', v)}
+                placeholder="Örn: Otomotiv firmalarından yüksek tutarlı alışlarda 740 hesabıyla otomatik onay verme."
+                templates={DECISION_RULE_TEMPLATES}
+              />
+              <RuleListEditor
+                className="lg:col-span-2"
+                title="Otomatik onay notları"
+                description="Sadece gerçekten güvenli, tekrar eden ve düşük riskli durumları buraya ekle."
+                lineLabel="Onay notu"
+                value={profile.otomatikOnayNotlari || ''}
+                onChange={(v) => onUpdate('otomatikOnayNotlari', v)}
+                placeholder="Örn: Aynı dönem içindeki küçük tutarlı sabit telefon faturaları otomatik onaylanabilir."
+                templates={APPROVAL_NOTE_TEMPLATES}
+              />
             </Panel>
           </>
         )}
 
         {tab === 'firma' && (
           <Panel title="Firma Özel Talimatları" icon={<Building2 size={18} />} columns={1}>
-            <Textarea
-              label="Karşı firma bazlı manuel kurallar"
+            <FirmRuleEditor
               value={profile.firmaOzelTalimatlar || ''}
               onChange={(v) => onUpdate('firmaOzelTalimatlar', v)}
-              rows={12}
-              placeholder={`ÇETAŞ OTOMOTİV: araç/taşıt alımı veya ÖTV/şasi/motor no varsa otomatik F2 yapma; bakım-onarım faturası değilse manuel.\nOPET: akaryakıt faturaları 740.01.001, taşıt/lastik/demirbaş alımı varsa manuel.\nTTNET: internet gideri 770.01.001; yeni cihaz/modem satışı varsa manuel.`}
             />
-            <Textarea
-              label="Genel serbest talimat"
+            <RuleListEditor
+              title="Genel serbest talimatlar"
+              description="Firma adı fark etmeksizin bu mükellefin bütün fatura kararlarına eklenen notlar."
+              lineLabel="Talimat"
               value={profile.talimat || ''}
               onChange={(v) => onUpdate('talimat', v)}
-              rows={8}
-              placeholder={`Bu mükellef için fatura agentının uygulayacağı ek talimatları yaz.\nFirma hafızası geçmişte aynı kodu göstermiş olsa bile içerik farklıysa gerçek fatura içeriğine göre karar ver.`}
+              placeholder="Örn: Firma hafızası geçmişte aynı kodu göstermiş olsa bile içerik farklıysa gerçek fatura içeriğine göre karar ver."
+              templates={GENERAL_INSTRUCTION_TEMPLATES}
             />
           </Panel>
         )}
@@ -497,6 +589,44 @@ const CARI_POLICY_OPTIONS: Array<{ value: string; label: string }> = [
   { value: 'cari_yoksa_onay', label: 'Cari yoksa onay iste' },
 ];
 
+const RISK_RULE_TEMPLATES = [
+  'Demirbaş, taşıt, sabit kıymet veya olağan dışı yüksek tutarlı alımlarda otomatik F2 yapma; manuel incelemeye düşür.',
+  'Şasi, motor no, ÖTV, ruhsat veya tescil ifadesi varsa fatura araç alımı olabilir; firma hafızasını kullanma.',
+  'Bilgisayar, makine, ekipman, klima veya mobilya alımlarında tutar ve hesap kodu net değilse otomatik onay verme.',
+];
+
+const DECISION_RULE_TEMPLATES = [
+  'Otomotiv firmalarından gelen yüksek tutarlı alışlarda 740 bakım-onarım hesabıyla otomatik onay verme.',
+  'Araç bakımı gider olabilir; araç satın alma, ÖTV, şasi veya motor no içeren faturalar manuel incelensin.',
+  'Geçmiş firma hafızası sadece fatura içeriği aynıysa kullanılabilir; içerik farklıysa manuel incelemeye düşür.',
+  'Alış tarafında matrah, KDV veya cari hesap kodu boşsa otomatik seçim yapma; faturayı atla.',
+];
+
+const APPROVAL_NOTE_TEMPLATES = [
+  'Küçük tutarlı ve aynı içerikli tekrar eden telefon/internet faturaları, tarih-belge-tutar uyumluysa otomatik onaylanabilir.',
+  'Akaryakıt faturaları tutar ve KDV oranı uyumluysa, mükellef talimatındaki gider hesabıyla otomatik onaylanabilir.',
+];
+
+const GENERAL_INSTRUCTION_TEMPLATES = [
+  'Firma hafızası geçmişte aynı kodu göstermiş olsa bile içerik farklıysa gerçek fatura içeriğine göre karar ver.',
+  'Emin olunmayan veya hesap kodu açıkça görünmeyen alış faturalarında otomatik F2 yapma.',
+];
+
+const FIRM_RULE_TEMPLATES = [
+  {
+    firm: 'ÇETAŞ OTOMOTİV',
+    instruction: 'Araç/taşıt alımı, ÖTV, şasi veya motor no varsa otomatik F2 yapma; manuel incele.',
+  },
+  {
+    firm: 'OPET',
+    instruction: 'Akaryakıt faturası gider hesabına gidebilir; lastik, ekipman veya demirbaş alımı varsa manuel incele.',
+  },
+  {
+    firm: 'TTNET',
+    instruction: 'İnternet hizmet faturası otomatik işlenebilir; cihaz/modem satışı varsa manuel incele.',
+  },
+];
+
 function Metric({ label, value, tone = 'default' }: { label: string; value: number; tone?: 'default' | 'green' | 'amber' }) {
   const color = tone === 'green' ? '#86efac' : tone === 'amber' ? '#facc15' : '#d9c78f';
   return (
@@ -542,6 +672,391 @@ function Panel({
       </div>
       <div className={`grid gap-3 p-4 ${gridClass}`}>{children}</div>
     </section>
+  );
+}
+
+function KeywordEditor({
+  label,
+  value,
+  onChange,
+  suggestions = [],
+  className = '',
+}: {
+  label: string;
+  value: string;
+  onChange: (value: string) => void;
+  suggestions?: string[];
+  className?: string;
+}) {
+  const [draft, setDraft] = useState('');
+  const keywords = parseKeywords(value);
+  const addKeyword = (keyword: string) => {
+    const clean = keyword.trim();
+    if (!clean) return;
+    onChange(joinKeywords([...keywords, clean]));
+    setDraft('');
+  };
+  const removeKeyword = (index: number) => {
+    onChange(joinKeywords(keywords.filter((_, i) => i !== index)));
+  };
+
+  return (
+    <div className={`rounded-xl border border-white/[0.06] bg-white/[0.02] p-4 ${className}`}>
+      <div className="mb-3 flex flex-col gap-1 sm:flex-row sm:items-center sm:justify-between">
+        <div>
+          <div className="text-[11px] font-semibold uppercase tracking-[.12em] text-white/35">{label}</div>
+          <p className="mt-1 text-xs text-white/40">Bu kelimeler yakalanınca risk talimatları devreye girer.</p>
+        </div>
+        <span className="rounded-full bg-amber-400/10 px-2.5 py-1 text-xs font-semibold text-amber-200">
+          {keywords.length} kelime
+        </span>
+      </div>
+
+      <div className="mb-3 flex flex-wrap gap-2">
+        {keywords.map((keyword, index) => (
+          <span
+            key={`${keyword}-${index}`}
+            className="inline-flex min-h-9 items-center gap-2 rounded-full border border-amber-300/20 bg-amber-400/10 px-3 text-sm font-semibold text-amber-100"
+          >
+            {keyword}
+            <button
+              type="button"
+              onClick={() => removeKeyword(index)}
+              className="inline-flex h-5 w-5 items-center justify-center rounded-full text-amber-100/70 hover:bg-white/10 hover:text-amber-50"
+              aria-label={`${keyword} kelimesini sil`}
+            >
+              <X size={13} />
+            </button>
+          </span>
+        ))}
+      </div>
+
+      <div className="flex flex-col gap-2 md:flex-row">
+        <input
+          value={draft}
+          onChange={(e) => setDraft(e.target.value)}
+          onKeyDown={(e) => {
+            if (e.key === 'Enter') {
+              e.preventDefault();
+              addKeyword(draft);
+            }
+          }}
+          placeholder="Yeni anahtar kelime"
+          className="h-10 min-w-0 flex-1 rounded-lg border border-white/[0.07] bg-white/[0.035] px-3 text-sm text-[#e5e7eb] outline-none placeholder:text-white/24 focus:border-[#d4b876]/45"
+        />
+        <button
+          type="button"
+          onClick={() => addKeyword(draft)}
+          className="inline-flex h-10 items-center justify-center gap-2 rounded-lg border border-emerald-400/25 bg-emerald-500/15 px-3 text-sm font-semibold text-emerald-200"
+        >
+          <Plus size={15} /> Ekle
+        </button>
+      </div>
+
+      {suggestions.length > 0 && (
+        <div className="mt-3 flex flex-wrap gap-2">
+          {suggestions.map((suggestion) => (
+            <button
+              type="button"
+              key={suggestion}
+              onClick={() => addKeyword(suggestion)}
+              className="inline-flex h-8 items-center gap-1.5 rounded-full border border-white/[0.07] bg-white/[0.03] px-3 text-xs font-semibold text-white/55 hover:text-[#d9c78f]"
+            >
+              <Plus size={12} /> {suggestion}
+            </button>
+          ))}
+        </div>
+      )}
+    </div>
+  );
+}
+
+function RuleListEditor({
+  title,
+  description,
+  value,
+  onChange,
+  placeholder,
+  lineLabel,
+  templates = [],
+  className = '',
+}: {
+  title: string;
+  description?: string;
+  value: string;
+  onChange: (value: string) => void;
+  placeholder: string;
+  lineLabel: string;
+  templates?: string[];
+  className?: string;
+}) {
+  const [draft, setDraft] = useState('');
+  const lines = parseRuleLines(value);
+
+  const addLine = (line: string) => {
+    const clean = line.trim();
+    if (!clean) return;
+    onChange(joinRuleLines([...lines, clean]));
+    setDraft('');
+  };
+  const updateLine = (index: number, line: string) => {
+    const next = [...lines];
+    next[index] = line;
+    onChange(joinRuleLines(next));
+  };
+  const removeLine = (index: number) => {
+    onChange(joinRuleLines(lines.filter((_, i) => i !== index)));
+  };
+  const moveLine = (index: number, direction: -1 | 1) => {
+    const next = [...lines];
+    const target = index + direction;
+    if (target < 0 || target >= next.length) return;
+    [next[index], next[target]] = [next[target], next[index]];
+    onChange(joinRuleLines(next));
+  };
+
+  return (
+    <div className={`rounded-xl border border-white/[0.06] bg-white/[0.02] p-4 ${className}`}>
+      <div className="mb-3 flex flex-col gap-2 lg:flex-row lg:items-start lg:justify-between">
+        <div>
+          <div className="flex items-center gap-2 text-sm font-semibold text-[#d9c78f]">
+            <ListChecks size={16} />
+            {title}
+          </div>
+          {description && <p className="mt-1 max-w-3xl text-xs leading-5 text-white/42">{description}</p>}
+        </div>
+        <span className="w-fit rounded-full bg-emerald-400/10 px-2.5 py-1 text-xs font-semibold text-emerald-200">
+          {lines.length} kayıt
+        </span>
+      </div>
+
+      {templates.length > 0 && (
+        <div className="mb-3 flex flex-wrap gap-2">
+          {templates.map((template) => (
+            <button
+              type="button"
+              key={template}
+              onClick={() => addLine(template)}
+              className="inline-flex min-h-8 max-w-full items-center gap-1.5 rounded-full border border-[#d4b876]/20 bg-[#d4b876]/10 px-3 text-xs font-semibold text-[#ead79b] hover:bg-[#d4b876]/15"
+            >
+              <Sparkles size={12} className="shrink-0" />
+              <span className="max-w-[520px] truncate">{template}</span>
+            </button>
+          ))}
+        </div>
+      )}
+
+      <div className="space-y-2">
+        {lines.map((line, index) => (
+          <div key={`${line}-${index}`} className="rounded-lg border border-white/[0.06] bg-black/20 p-3">
+            <div className="mb-2 flex items-center justify-between gap-2">
+              <span className="text-xs font-semibold uppercase tracking-[.1em] text-white/32">
+                {lineLabel} {index + 1}
+              </span>
+              <div className="flex items-center gap-1">
+                <IconButton label="Yukarı taşı" onClick={() => moveLine(index, -1)} disabled={index === 0}>
+                  <ArrowUp size={14} />
+                </IconButton>
+                <IconButton label="Aşağı taşı" onClick={() => moveLine(index, 1)} disabled={index === lines.length - 1}>
+                  <ArrowDown size={14} />
+                </IconButton>
+                <IconButton label="Sil" onClick={() => removeLine(index)} tone="danger">
+                  <Trash2 size={14} />
+                </IconButton>
+              </div>
+            </div>
+            <textarea
+              value={line}
+              onChange={(e) => updateLine(index, e.target.value)}
+              rows={2}
+              className="w-full resize-y rounded-lg border border-white/[0.07] bg-white/[0.035] px-3 py-2 text-sm leading-6 text-[#e5e7eb] outline-none placeholder:text-white/24 focus:border-[#d4b876]/45"
+            />
+          </div>
+        ))}
+
+        {lines.length === 0 && (
+          <div className="rounded-lg border border-dashed border-white/[0.09] px-4 py-6 text-center text-sm text-white/35">
+            Henüz kayıt yok. Aşağıdan yeni {lineLabel.toLocaleLowerCase('tr-TR')} ekleyebilirsin.
+          </div>
+        )}
+      </div>
+
+      <div className="mt-3 rounded-lg border border-white/[0.06] bg-black/15 p-3">
+        <div className="mb-2 text-xs font-semibold uppercase tracking-[.1em] text-white/32">Yeni {lineLabel}</div>
+        <textarea
+          value={draft}
+          onChange={(e) => setDraft(e.target.value)}
+          rows={3}
+          placeholder={placeholder}
+          className="w-full rounded-lg border border-white/[0.07] bg-white/[0.035] px-3 py-2 text-sm leading-6 text-[#e5e7eb] outline-none placeholder:text-white/24 focus:border-[#d4b876]/45"
+        />
+        <div className="mt-2 flex justify-end">
+          <button
+            type="button"
+            onClick={() => addLine(draft)}
+            className="inline-flex h-10 items-center gap-2 rounded-lg border border-emerald-400/25 bg-emerald-500/15 px-3 text-sm font-semibold text-emerald-200"
+          >
+            <Plus size={15} /> {lineLabel} Ekle
+          </button>
+        </div>
+      </div>
+    </div>
+  );
+}
+
+function FirmRuleEditor({
+  value,
+  onChange,
+}: {
+  value: string;
+  onChange: (value: string) => void;
+}) {
+  const [draftFirm, setDraftFirm] = useState('');
+  const [draftInstruction, setDraftInstruction] = useState('');
+  const rules = parseFirmRules(value);
+
+  const commit = (rule: { firm: string; instruction: string }) => {
+    if (!rule.firm.trim() && !rule.instruction.trim()) return;
+    onChange(joinFirmRules([...rules, rule]));
+    setDraftFirm('');
+    setDraftInstruction('');
+  };
+  const update = (index: number, patch: Partial<{ firm: string; instruction: string }>) => {
+    const next = rules.map((rule, i) => (i === index ? { ...rule, ...patch } : rule));
+    onChange(joinFirmRules(next));
+  };
+  const remove = (index: number) => {
+    onChange(joinFirmRules(rules.filter((_, i) => i !== index)));
+  };
+  const move = (index: number, direction: -1 | 1) => {
+    const next = [...rules];
+    const target = index + direction;
+    if (target < 0 || target >= next.length) return;
+    [next[index], next[target]] = [next[target], next[index]];
+    onChange(joinFirmRules(next));
+  };
+
+  return (
+    <div className="rounded-xl border border-white/[0.06] bg-white/[0.02] p-4">
+      <div className="mb-3 flex flex-col gap-2 lg:flex-row lg:items-start lg:justify-between">
+        <div>
+          <div className="flex items-center gap-2 text-sm font-semibold text-[#d9c78f]">
+            <Building2 size={16} />
+            Karşı firma bazlı manuel kurallar
+          </div>
+          <p className="mt-1 max-w-3xl text-xs leading-5 text-white/42">
+            Firma adı eşleşirse bu talimat genel firma hafızasından önce uygulanır.
+          </p>
+        </div>
+        <span className="w-fit rounded-full bg-emerald-400/10 px-2.5 py-1 text-xs font-semibold text-emerald-200">
+          {rules.length} firma kuralı
+        </span>
+      </div>
+
+      <div className="mb-3 flex flex-wrap gap-2">
+        {FIRM_RULE_TEMPLATES.map((template) => (
+          <button
+            type="button"
+            key={`${template.firm}-${template.instruction}`}
+            onClick={() => commit(template)}
+            className="inline-flex min-h-8 items-center gap-1.5 rounded-full border border-[#d4b876]/20 bg-[#d4b876]/10 px-3 text-xs font-semibold text-[#ead79b] hover:bg-[#d4b876]/15"
+          >
+            <Sparkles size={12} /> {template.firm}
+          </button>
+        ))}
+      </div>
+
+      <div className="space-y-2">
+        {rules.map((rule, index) => (
+          <div key={`${rule.firm}-${rule.instruction}-${index}`} className="rounded-lg border border-white/[0.06] bg-black/20 p-3">
+            <div className="mb-2 flex items-center justify-between gap-2">
+              <span className="text-xs font-semibold uppercase tracking-[.1em] text-white/32">Firma Kuralı {index + 1}</span>
+              <div className="flex items-center gap-1">
+                <IconButton label="Yukarı taşı" onClick={() => move(index, -1)} disabled={index === 0}>
+                  <ArrowUp size={14} />
+                </IconButton>
+                <IconButton label="Aşağı taşı" onClick={() => move(index, 1)} disabled={index === rules.length - 1}>
+                  <ArrowDown size={14} />
+                </IconButton>
+                <IconButton label="Sil" onClick={() => remove(index)} tone="danger">
+                  <Trash2 size={14} />
+                </IconButton>
+              </div>
+            </div>
+            <div className="grid gap-2 lg:grid-cols-[260px_minmax(0,1fr)]">
+              <Input label="Firma" value={rule.firm} onChange={(firm) => update(index, { firm })} placeholder="ÇETAŞ OTOMOTİV" />
+              <Textarea
+                label="Talimat"
+                value={rule.instruction}
+                onChange={(instruction) => update(index, { instruction })}
+                rows={2}
+                placeholder="Araç alımı veya ÖTV varsa otomatik F2 yapma."
+              />
+            </div>
+          </div>
+        ))}
+
+        {rules.length === 0 && (
+          <div className="rounded-lg border border-dashed border-white/[0.09] px-4 py-6 text-center text-sm text-white/35">
+            Henüz firma kuralı yok. Aşağıdan firma ve talimat ekleyebilirsin.
+          </div>
+        )}
+      </div>
+
+      <div className="mt-3 rounded-lg border border-white/[0.06] bg-black/15 p-3">
+        <div className="mb-2 text-xs font-semibold uppercase tracking-[.1em] text-white/32">Yeni Firma Kuralı</div>
+        <div className="grid gap-2 lg:grid-cols-[260px_minmax(0,1fr)]">
+          <Input label="Firma" value={draftFirm} onChange={setDraftFirm} placeholder="Firma adı" />
+          <Textarea
+            label="Talimat"
+            value={draftInstruction}
+            onChange={setDraftInstruction}
+            rows={3}
+            placeholder="Bu firma için karar kuralını yaz."
+          />
+        </div>
+        <div className="mt-2 flex justify-end">
+          <button
+            type="button"
+            onClick={() => commit({ firm: draftFirm, instruction: draftInstruction })}
+            className="inline-flex h-10 items-center gap-2 rounded-lg border border-emerald-400/25 bg-emerald-500/15 px-3 text-sm font-semibold text-emerald-200"
+          >
+            <Plus size={15} /> Firma Kuralı Ekle
+          </button>
+        </div>
+      </div>
+    </div>
+  );
+}
+
+function IconButton({
+  label,
+  onClick,
+  children,
+  disabled = false,
+  tone = 'default',
+}: {
+  label: string;
+  onClick: () => void;
+  children: ReactNode;
+  disabled?: boolean;
+  tone?: 'default' | 'danger';
+}) {
+  const toneClass =
+    tone === 'danger'
+      ? 'border-red-400/20 text-red-300 hover:bg-red-500/10'
+      : 'border-white/[0.07] text-white/45 hover:bg-white/[0.06] hover:text-white/70';
+  return (
+    <button
+      type="button"
+      title={label}
+      aria-label={label}
+      onClick={onClick}
+      disabled={disabled}
+      className={`inline-flex h-8 w-8 items-center justify-center rounded-lg border disabled:cursor-not-allowed disabled:opacity-30 ${toneClass}`}
+    >
+      {children}
+    </button>
   );
 }
 
