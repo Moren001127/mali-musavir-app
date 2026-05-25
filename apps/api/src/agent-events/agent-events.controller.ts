@@ -215,6 +215,25 @@ export class AgentEventsController {
     return this.service.aiUsageDiag(req.user.tenantId);
   }
 
+  /**
+   * Local agent token ile dar maliyet teshisi.
+   * Canli loglarda "bu islemde API parasi gitti mi?" sorusunu JWT olmadan kontrol etmek icin.
+   */
+  @Get('diag/mihsap-cost')
+  async mihsapCostDiag(
+    @Headers('x-agent-token') token: string,
+    @Query('mukellef') mukellef?: string,
+    @Query('limit') limit?: string,
+    @Query('since') since?: string,
+  ) {
+    const tenantId = await this.resolveTenantFromTokenAsync(token);
+    return this.service.mihsapCostDiag(tenantId, {
+      mukellef,
+      limit: limit ? parseInt(limit, 10) : undefined,
+      since,
+    });
+  }
+
   /** Kontör yükleme kaydet */
   @Post('ai/credit-topup')
   @UseGuards(AuthGuard('jwt'))

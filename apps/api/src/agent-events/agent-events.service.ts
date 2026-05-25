@@ -1269,11 +1269,188 @@ ${ocr.text.slice(0, 14000)}`;
     }
   }
 
+  /** Agent token ile son Mihsap eventleri ve AI usage maliyetlerini eslestirir. */
+  async mihsapCostDiag(
+    tenantId: string,
+    opts: { mukellef?: string; limit?: number; since?: string } = {},
+  ) {
+    const target = String(opts.mukellef || '').trim();
+    const limitRaw = Number(opts.limit || 80);
+    const limit = Math.min(200, Math.max(1, Number.isFinite(limitRaw) ? Math.floor(limitRaw) : 80));
+    const parsedSince = opts.since ? new Date(opts.since) : null;
+    const sinceDate = parsedSince && Number.isFinite(parsedSince.getTime()) ? parsedSince : null;
+
+    const eventWhere: any = { tenantId, agent: 'mihsap' };
+    if (sinceDate) eventWhere.ts = { gte: sinceDate };
+    if (target) {
+      eventWhere.OR = [
+        { mukellef: { contains: target, mode: 'insensitive' } },
+        { firma: { contains: target, mode: 'insensitive' } },
+        { message: { contains: target, mode: 'insensitive' } },
+      ];
+    }
+
+    const events = await this.prisma.agentEvent.findMany({
+      where: eventWhere,
+      orderBy: { ts: 'desc' },
+      take: limit,
+      select: this.lightEventSelect(),
+    });
+
+    const metaOf = (value: any): Record<string, any> =>
+      value && typeof value === 'object' && !Array.isArray(value) ? (value as Record<string, any>) : {};
+    const num = (value: any) => {
+      const n = Number(value || 0);
+      return Number.isFinite(n) ? n : 0;
+    };
+    const text = (value: any, max = 180) => String(value || '').replace(/\s+/g, ' ').trim().slice(0, max);
+    const normalizeKey = (value: any) =>
+      String(value || '')
+        .toLocaleUpperCase('tr-TR')
+        .replace(/[^A-Z0-9]/g, '');
+
+    const eventRows = events.map((event: any) => {
+      const meta = metaOf(event.meta);
+      const belgeNo = event.fisNo || meta.belgeNo || meta?.belge?.belgeNo || null;
+      const aiCostUsd = num(meta.aiCostUsd ?? meta.costUsd ?? meta?.ai?.costUsd ?? meta?.maliyetUsd);
+      return {
+        ts: event.ts,
+        status: event.status,
+        action: event.action,
+        mukellef: event.mukellef,
+        firma: event.firma,
+        belgeNo,
+        tutar: event.tutar == null ? null : num(event.tutar),
+        hesapKodu: event.hesapKodu,
+        kdv: event.kdv,
+        message: text(event.message, 240),
+        aiCostUsd,
+        decisionProvider: meta.decisionProvider || meta.provider || null,
+        aiCallReason: meta.aiCallReason || meta.reason || null,
+        cacheHit: meta.cacheHit ?? null,
+        runtime: meta.runtime || meta.version || null,
+      };
+    });
+
+    const belgeNos = Array.from(new Set(eventRows.map((row) => normalizeKey(row.belgeNo)).filter(Boolean)));
+    const eventTimes = eventRows.map((row) => new Date(row.ts).getTime()).filter(Number.isFinite);
+    const earliestEventTs = eventTimes.length ? new Date(Math.min(...eventTimes)) : null;
+    const usageSince = sinceDate || earliestEventTs || new Date(Date.now() - 36 * 60 * 60 * 1000);
+
+    const allUsageRows = await this.prisma.aiUsageLog.findMany({
+      where: {
+        tenantId,
+        createdAt: { gte: usageSince },
+        source: { startsWith: 'mihsap' },
+      } as any,
+      orderBy: { createdAt: 'desc' },
+      take: 500,
+      select: {
+        createdAt: true,
+        source: true,
+        mukellef: true,
+        model: true,
+        inputTokens: true,
+        outputTokens: true,
+        cacheReadTokens: true,
+        cacheWriteTokens: true,
+        costUsd: true,
+        karar: true,
+        sebep: true,
+        belgeNo: true,
+        durationMs: true,
+        cacheHit: true,
+      },
+    });
+
+    const targetNorm = normalizeKey(target);
+    const matchedUsageRows = allUsageRows.filter((row) => {
+      if (!targetNorm && belgeNos.length === 0) return true;
+      const mukellefMatch = targetNorm && normalizeKey(row.mukellef).includes(targetNorm);
+      const belgeMatch = belgeNos.length > 0 && belgeNos.includes(normalizeKey(row.belgeNo));
+      return !!mukellefMatch || !!belgeMatch;
+    });
+    const usageRows = target || belgeNos.length ? matchedUsageRows : allUsageRows;
+
+    const usageJson = usageRows.map((row) => ({
+      createdAt: row.createdAt,
+      source: row.source,
+      mukellef: row.mukellef,
+      belgeNo: row.belgeNo,
+      model: row.model,
+      inputTokens: row.inputTokens,
+      outputTokens: row.outputTokens,
+      cacheReadTokens: row.cacheReadTokens,
+      cacheWriteTokens: row.cacheWriteTokens,
+      costUsd: num(row.costUsd),
+      karar: row.karar,
+      sebep: text(row.sebep, 180),
+      durationMs: row.durationMs,
+      cacheHit: row.cacheHit,
+    }));
+
+    const paidRows = usageJson.filter((row) => row.costUsd > 0);
+    const tokenRows = usageJson.filter(
+      (row) =>
+        !row.cacheHit &&
+        (num(row.inputTokens) + num(row.outputTokens) + num(row.cacheReadTokens) + num(row.cacheWriteTokens) > 0),
+    );
+    const sourceBreakdown = Object.values(
+      usageJson.reduce<Record<string, { source: string; count: number; costUsd: number; inputTokens: number; outputTokens: number }>>(
+        (acc, row) => {
+          const key = row.source || 'unknown';
+          const item = acc[key] || { source: key, count: 0, costUsd: 0, inputTokens: 0, outputTokens: 0 };
+          item.count += 1;
+          item.costUsd += num(row.costUsd);
+          item.inputTokens += num(row.inputTokens);
+          item.outputTokens += num(row.outputTokens);
+          acc[key] = item;
+          return acc;
+        },
+        {},
+      ),
+    ).map((item) => ({ ...item, costUsd: Number(item.costUsd.toFixed(6)) }));
+
+    const totalCostUsd = usageJson.reduce((acc, row) => acc + num(row.costUsd), 0);
+    const eventReportedCostUsd = eventRows.reduce((acc, row) => acc + num(row.aiCostUsd), 0);
+    const usageKeys = new Set(
+      usageRows.map((row) => `${row.createdAt.toISOString()}|${row.source}|${row.belgeNo || ''}|${row.model}`),
+    );
+    const unmatchedPaidInWindow = allUsageRows.filter(
+      (row) => !usageKeys.has(`${row.createdAt.toISOString()}|${row.source}|${row.belgeNo || ''}|${row.model}`) && num(row.costUsd) > 0,
+    );
+
+    return {
+      ok: true,
+      tenantId,
+      filter: {
+        mukellef: target || null,
+        since: usageSince,
+        limit,
+      },
+      summary: {
+        eventCount: eventRows.length,
+        usageCount: usageJson.length,
+        totalCostUsd: Number(totalCostUsd.toFixed(6)),
+        eventReportedCostUsd: Number(eventReportedCostUsd.toFixed(6)),
+        paidUsageRows: paidRows.length,
+        apiTokenUsageRows: tokenRows.length,
+        cacheOrRuleRows: usageJson.length - tokenRows.length,
+        unmatchedPaidInWindow: unmatchedPaidInWindow.length,
+      },
+      sourceBreakdown,
+      paidRows: paidRows.slice(0, 50),
+      tokenRows: tokenRows.slice(0, 50),
+      usages: usageJson.slice(0, 120),
+      events: eventRows.slice(0, 80),
+    };
+  }
+
   /**
-   * Bu ayda AI USD harcamasını çıkarır:
-   *  - perMukellef: mukellef adı dolu olan kayıtlar gruplanır
-   *  - digerUsd: mukellef field NULL/boş olan kayıtların toplamı (eski extension)
-   *  - toplamAiUsd: dönemdeki TÜM AI USD (Toplam Maliyet kpi için)
+   * Bu ayda AI USD harcamasini cikarir:
+   *  - perMukellef: mukellef adi dolu olan kayitlar gruplanir
+   *  - digerUsd: mukellef field NULL/bos olan kayitlarin toplami (eski extension)
+   *  - toplamAiUsd: donemdeki tum AI USD (Toplam Maliyet kpi icin)
    */
   private async aiMaliyetByMukellef(
     tenantId: string,
