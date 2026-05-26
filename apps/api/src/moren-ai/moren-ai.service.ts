@@ -1253,6 +1253,7 @@ export class MorenAiService {
       approval: { pendingDecisions: 0, pendingCommands: 0, failedCommands: 0 },
     };
     try {
+      const recentFailureSince = new Date(now.getTime() - 24 * 60 * 60 * 1000);
       const [
         lucaPending, lucaRunning, lucaFailed,
         mihsapPending, mihsapRunning, mihsapFailed, mihsapInvoiceCount,
@@ -1263,10 +1264,30 @@ export class MorenAiService {
       ] = await Promise.all([
         (this.prisma as any).lucaFetchJob.count({ where: { tenantId, donem: period, status: 'pending' } }).catch(() => 0),
         (this.prisma as any).lucaFetchJob.count({ where: { tenantId, donem: period, status: 'running' } }).catch(() => 0),
-        (this.prisma as any).lucaFetchJob.count({ where: { tenantId, donem: period, status: 'failed' } }).catch(() => 0),
+        (this.prisma as any).lucaFetchJob.count({
+          where: {
+            tenantId,
+            donem: period,
+            status: 'failed',
+            OR: [
+              { finishedAt: { gte: recentFailureSince } },
+              { finishedAt: null, createdAt: { gte: recentFailureSince } },
+            ],
+          },
+        }).catch(() => 0),
         (this.prisma as any).mihsapFetchJob.count({ where: { tenantId, donem: period, status: 'pending' } }).catch(() => 0),
         (this.prisma as any).mihsapFetchJob.count({ where: { tenantId, donem: period, status: 'running' } }).catch(() => 0),
-        (this.prisma as any).mihsapFetchJob.count({ where: { tenantId, donem: period, status: 'failed' } }).catch(() => 0),
+        (this.prisma as any).mihsapFetchJob.count({
+          where: {
+            tenantId,
+            donem: period,
+            status: 'failed',
+            OR: [
+              { finishedAt: { gte: recentFailureSince } },
+              { finishedAt: null, createdAt: { gte: recentFailureSince } },
+            ],
+          },
+        }).catch(() => 0),
         (this.prisma as any).mihsapInvoice.count({ where: { tenantId, donem: period } }).catch(() => 0),
         (this.prisma as any).cariHareket.findMany({ where: { tenantId }, select: { taxpayerId: true, tip: true, tutar: true } }).catch(() => []),
         (this.prisma as any).automation?.count ? (this.prisma as any).automation.count({ where: { tenantId, status: 'ACTIVE' } }).catch(() => 0) : Promise.resolve(0),

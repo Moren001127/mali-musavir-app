@@ -116,6 +116,16 @@ const FOCUS_TONES: Record<string, { label: string; color: string; bg: string; gl
   },
 };
 
+const BRIEFING_CHROME_TONE = {
+  color: '#8ee6d0',
+  bg: 'rgba(20,85,72,0.14)',
+  glow: 'rgba(20,85,72,0.18)',
+  border: 'rgba(142,230,208,0.24)',
+  actionBg: 'linear-gradient(135deg, rgba(142,230,208,0.14), rgba(212,184,118,0.07))',
+  actionBorder: 'rgba(142,230,208,0.24)',
+  text: '#bdeee0',
+};
+
 const MOTIVATION_BY_FOCUS: Record<string, string> = {
   calm: 'Bugün küçük işleri sakince kapatmak için güzel bir aralık var.',
   busy: 'Sırayı sakin tutalım; birkaç net hamle günü toparlar.',
@@ -265,6 +275,7 @@ export function BrifingKart({ userName }: { userName?: string }) {
 
   const focus = data?.focus ?? 'busy';
   const focusTone = FOCUS_TONES[focus] ?? FOCUS_TONES.busy;
+  const chromeTone = BRIEFING_CHROME_TONE;
   const motivation = cleanBriefMotivation(data?.motivation, focus);
   const visibleSummary = cleanBriefSummary(data?.summary, focus);
 
@@ -272,16 +283,16 @@ export function BrifingKart({ userName }: { userName?: string }) {
     <div
       className="rounded-[28px] overflow-hidden relative"
       style={{
-        background: `radial-gradient(circle at 12% 0%, ${focusTone.glow}, transparent 42%), radial-gradient(circle at 88% 18%, rgba(212,184,118,0.10), transparent 34%), linear-gradient(135deg, rgba(35,30,24,0.84), rgba(14,13,10,0.96))`,
-        border: '1px solid rgba(212,184,118,0.22)',
+        background: `radial-gradient(circle at 12% 0%, ${chromeTone.glow}, transparent 42%), radial-gradient(circle at 88% 18%, rgba(212,184,118,0.10), transparent 34%), linear-gradient(135deg, rgba(24,32,27,0.84), rgba(14,13,10,0.96))`,
+        border: `1px solid ${chromeTone.border}`,
         boxShadow: '0 12px 36px rgba(0,0,0,0.28), inset 0 1px 0 rgba(255,255,255,0.04)',
       }}
     >
       {/* Üst etiket bandı */}
       <div className="px-5 pt-4 pb-1 flex items-center justify-between gap-3 flex-wrap">
         <div className="flex items-center gap-2.5">
-          <Sparkles size={14} style={{ color: focusTone.color }} />
-          <span className="text-[10px] uppercase font-bold tracking-[.22em]" style={{ color: focusTone.text }}>
+          <Sparkles size={14} style={{ color: chromeTone.color }} />
+          <span className="text-[10px] uppercase font-bold tracking-[.22em]" style={{ color: chromeTone.text }}>
             Bugünkü Brifing
           </span>
           {data && (
@@ -296,7 +307,7 @@ export function BrifingKart({ userName }: { userName?: string }) {
           {data && (
             <span
               className="text-[9.5px] font-bold uppercase tracking-wider px-2 py-0.5 rounded inline-flex items-center gap-1"
-              style={{ background: 'rgba(20,85,72,0.14)', color: '#8ee6d0', border: '1px solid rgba(142,230,208,0.24)' }}
+              style={{ background: chromeTone.bg, color: chromeTone.color, border: `1px solid ${chromeTone.border}` }}
             >
               AI Destekli
             </span>
@@ -350,19 +361,19 @@ export function BrifingKart({ userName }: { userName?: string }) {
           <div
             className="w-full rounded-xl px-3 py-2 flex items-center gap-2.5 select-none xl:justify-self-end"
             style={{
-              background: `linear-gradient(135deg, ${focusTone.bg}, rgba(255,255,255,0.018)), rgba(8,9,7,0.42)`,
-              border: `1px solid ${focusTone.border}`,
+              background: `linear-gradient(135deg, ${chromeTone.bg}, rgba(255,255,255,0.018)), rgba(8,9,7,0.42)`,
+              border: `1px solid ${chromeTone.border}`,
               boxShadow: 'inset 0 1px 0 rgba(255,255,255,0.04)',
             }}
           >
             <span
               className="w-7 h-7 rounded-lg flex items-center justify-center text-[10px] font-black shrink-0"
-              style={{ background: focusTone.color, color: '#0b0a08' }}
+              style={{ background: chromeTone.color, color: '#0b0a08' }}
             >
               AI
             </span>
             <span className="min-w-0 flex-1">
-              <span className="flex items-center gap-1.5 text-[9px] uppercase font-black tracking-[.14em]" style={{ color: focusTone.text }}>
+              <span className="flex items-center gap-1.5 text-[9px] uppercase font-black tracking-[.14em]" style={{ color: chromeTone.text }}>
                 <Sparkles size={10} />
                 AI Motivasyon
               </span>
@@ -405,10 +416,10 @@ export function BrifingKart({ userName }: { userName?: string }) {
           {data.alerts.slice(0, 2).map((a, i) => {
             const effectiveSeverity = EARLY_MONTH && /evrak/i.test(a.text) ? 'low' : a.severity;
             const cfg = effectiveSeverity === 'high'
-              ? { color: '#ef4444', bg: 'rgba(239,68,68,0.12)', border: 'rgba(239,68,68,0.32)' }
+              ? { color: '#f59e0b', bg: 'rgba(245,158,11,0.10)', border: 'rgba(245,158,11,0.28)' }
               : effectiveSeverity === 'medium'
                 ? { color: '#7dd3fc', bg: 'rgba(125,211,252,0.10)', border: 'rgba(125,211,252,0.28)' }
-                : { color: '#f5a6b8', bg: 'rgba(245,166,184,0.10)', border: 'rgba(245,166,184,0.28)' };
+                : { color: '#8ee6d0', bg: 'rgba(142,230,208,0.09)', border: 'rgba(142,230,208,0.24)' };
             const href = a.href ? normalizeDashboardHref(a.href) : undefined;
             const Inner = (
               <div
@@ -450,9 +461,9 @@ export function BrifingKart({ userName }: { userName?: string }) {
                 href={href}
                 className="inline-flex items-center justify-between gap-2 px-3 py-1.5 rounded-lg text-[12.5px] font-semibold transition hover:scale-[1.015]"
                 style={{
-                  background: focusTone.actionBg,
-                  color: focusTone.text,
-                  border: `1px solid ${focusTone.actionBorder}`,
+                  background: chromeTone.actionBg,
+                  color: chromeTone.text,
+                  border: `1px solid ${chromeTone.actionBorder}`,
                 }}
               >
                 <Icon size={12} />
