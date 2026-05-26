@@ -12,6 +12,7 @@ import {
   Copy,
   ExternalLink,
   FileCheck2,
+  KeyRound,
   Loader2,
   Mail,
   MessageCircle,
@@ -26,15 +27,23 @@ import {
 import Link from 'next/link';
 import { AdvisorPortalCredentialCard } from '@/components/portal-automation/PortalCredentialCards';
 
+// ---- Renkler — daha yumuşak, kahverengi tonu ile boğmayan tema ----
 const GOLD = '#d4b876';
 const GOLD_DEEP = '#8b7649';
-const LINE = 'rgba(255,255,255,0.08)';
-const LINE_GOLD = 'rgba(212,184,118,0.24)';
+const LINE = 'rgba(212,184,118,0.12)';
+const LINE_GOLD = 'rgba(212,184,118,0.28)';
 const TEXT = '#fafaf9';
-const MUTED = 'rgba(250,250,249,0.58)';
-const SOFT = 'rgba(255,255,255,0.035)';
+const MUTED = 'rgba(250,250,249,0.62)';
+const SOFT = 'rgba(255,255,255,0.04)';
+const CARD = 'rgba(28,22,18,0.85)';        // siyah yerine sıcak koyu kahve
+const CARD_HOVER = 'rgba(40,32,26,0.92)';
 const GREEN = '#4ade80';
 const RED = '#f87171';
+// Sayfa arka planı için sıcak gradient
+const PAGE_BG =
+  'radial-gradient(1200px 600px at 20% -10%, rgba(212,184,118,0.05), transparent 60%),' +
+  ' radial-gradient(900px 500px at 100% 100%, rgba(139,118,73,0.04), transparent 60%),' +
+  ' linear-gradient(180deg, #1a1612 0%, #14110e 100%)';
 
 // =====================================================================
 // ANA SAYFA
@@ -42,13 +51,32 @@ const RED = '#f87171';
 
 export default function AyarlarPage() {
   return (
-    <div className="mx-auto max-w-6xl space-y-5 pb-12">
-      <PageHeader />
-      <StatusStrip />
-      <SettingsGrid />
-      <PortalCredentialsSection />
-      <MessageTemplatesSection />
-      <AgentSection />
+    <div
+      className="min-h-full"
+      style={{ background: PAGE_BG, marginInline: '-1rem', paddingInline: '1rem', paddingBlock: '0.5rem' }}
+    >
+      <div className="mx-auto max-w-6xl space-y-5 pb-12 pt-2">
+        <PageHeader />
+        <StatusStrip />
+        <SettingsGrid />
+        <CollapsibleSection
+          id="portal-creds"
+          icon={KeyRound}
+          title="Portal Şifreleri"
+          subtitle="e-Beyanname, Vergi Dairesi ve diğer mali müşavir portal girişleri"
+        >
+          <AdvisorPortalCredentialCard />
+        </CollapsibleSection>
+        <MessageTemplatesSection />
+        <CollapsibleSection
+          id="agent"
+          icon={Bot}
+          title="Moren Agent — Tarayıcı Eklentisi"
+          subtitle="Token + bookmarklet kodu (tek seferlik kurulum)"
+        >
+          <AgentContent />
+        </CollapsibleSection>
+      </div>
     </div>
   );
 }
@@ -59,7 +87,10 @@ export default function AyarlarPage() {
 
 function PageHeader() {
   return (
-    <header className="rounded-lg border bg-[#0f0d0b]/80 p-5" style={{ borderColor: LINE }}>
+    <header
+      className="rounded-xl border p-5"
+      style={{ borderColor: LINE, background: CARD }}
+    >
       <p className="text-[11px] font-semibold uppercase tracking-[0.14em]" style={{ color: GOLD }}>
         Sistem
       </p>
@@ -74,7 +105,7 @@ function PageHeader() {
 }
 
 // =====================================================================
-// HIZLI DURUM ŞERİDİ — tek bakışta hangisi bağlı
+// HIZLI DURUM ŞERİDİ
 // =====================================================================
 
 function StatusStrip() {
@@ -96,7 +127,7 @@ function StatusStrip() {
       label: 'E-posta',
       ok: !!emailCfg?.configured,
       icon: Mail,
-      detail: emailCfg?.config?.host ? `${emailCfg.config.host}` : 'Bağlı değil',
+      detail: emailCfg?.config?.host || 'Bağlı değil',
       href: '/panel/ayarlar/entegrasyonlar',
     },
     {
@@ -120,15 +151,17 @@ function StatusStrip() {
       {items.map((it) => {
         const Inner = (
           <div
-            className="flex items-center gap-3 rounded-lg border bg-[#0f0d0b]/80 px-4 py-3 transition hover:bg-white/[0.04]"
-            style={{ borderColor: LINE }}
+            className="flex items-center gap-3 rounded-xl border px-4 py-3 transition"
+            style={{ borderColor: LINE, background: CARD }}
+            onMouseEnter={(e) => (e.currentTarget.style.background = CARD_HOVER)}
+            onMouseLeave={(e) => (e.currentTarget.style.background = CARD)}
           >
             <div
               className="flex h-9 w-9 shrink-0 items-center justify-center rounded-lg border"
               style={{
                 borderColor: it.ok ? 'rgba(74,222,128,0.35)' : 'rgba(248,113,113,0.35)',
                 color: it.ok ? GREEN : RED,
-                background: it.ok ? 'rgba(74,222,128,0.06)' : 'rgba(248,113,113,0.06)',
+                background: it.ok ? 'rgba(74,222,128,0.07)' : 'rgba(248,113,113,0.07)',
               }}
             >
               <it.icon size={16} />
@@ -219,8 +252,10 @@ function SettingsTile({
   return (
     <Link
       href={href}
-      className="group rounded-lg border bg-[#0f0d0b]/80 p-4 transition hover:bg-white/[0.04]"
-      style={{ borderColor: LINE }}
+      className="group rounded-xl border p-4 transition"
+      style={{ borderColor: LINE, background: CARD }}
+      onMouseEnter={(e) => (e.currentTarget.style.background = CARD_HOVER)}
+      onMouseLeave={(e) => (e.currentTarget.style.background = CARD)}
     >
       <div className="flex items-center gap-3">
         <div
@@ -244,11 +279,72 @@ function SettingsTile({
 }
 
 // =====================================================================
-// PORTAL ŞİFRELERİ (e-Beyanname, SGK, vs.)
+// KATLANAN GENEL SECTION (Portal Şifreleri, Agent için kullanılır)
 // =====================================================================
 
-function PortalCredentialsSection() {
-  return <AdvisorPortalCredentialCard />;
+function CollapsibleSection({
+  id,
+  icon: Icon,
+  title,
+  subtitle,
+  defaultOpen = false,
+  children,
+}: {
+  id: string;
+  icon: React.ElementType;
+  title: string;
+  subtitle: string;
+  defaultOpen?: boolean;
+  children: React.ReactNode;
+}) {
+  const [open, setOpen] = useState(defaultOpen);
+  return (
+    <section
+      id={id}
+      className="rounded-xl border overflow-hidden"
+      style={{ borderColor: LINE, background: CARD }}
+    >
+      <button
+        type="button"
+        onClick={() => setOpen((v) => !v)}
+        className="flex w-full items-center gap-3 p-5 text-left transition"
+        onMouseEnter={(e) => (e.currentTarget.style.background = 'rgba(255,255,255,0.02)')}
+        onMouseLeave={(e) => (e.currentTarget.style.background = 'transparent')}
+      >
+        <div
+          className="flex h-10 w-10 shrink-0 items-center justify-center rounded-lg border"
+          style={{ borderColor: LINE_GOLD, background: 'rgba(212,184,118,0.09)', color: GOLD }}
+        >
+          <Icon size={18} />
+        </div>
+        <div className="min-w-0 flex-1">
+          <h2 className="text-[15px] font-semibold" style={{ color: TEXT }}>
+            {title}
+          </h2>
+          <p className="mt-0.5 text-[12px]" style={{ color: MUTED }}>
+            {subtitle}
+          </p>
+        </div>
+        <span
+          className="text-[11px] font-medium uppercase tracking-wider"
+          style={{ color: open ? GOLD : MUTED }}
+        >
+          {open ? 'Gizle' : 'Aç'}
+        </span>
+        <ArrowRight
+          size={16}
+          className="transition"
+          style={{ color: GOLD, transform: open ? 'rotate(90deg)' : 'none' }}
+        />
+      </button>
+
+      {open && (
+        <div className="border-t px-5 pb-5 pt-4" style={{ borderColor: LINE }}>
+          {children}
+        </div>
+      )}
+    </section>
+  );
 }
 
 // =====================================================================
@@ -285,7 +381,7 @@ function MessageTemplatesSection() {
   };
 
   return (
-    <section className="rounded-lg border bg-[#0f0d0b]/80 p-5" style={{ borderColor: LINE }}>
+    <section className="rounded-xl border p-5" style={{ borderColor: LINE, background: CARD }}>
       <SectionHeader
         icon={MessageSquareText}
         title="Mesaj Şablonları"
@@ -349,11 +445,10 @@ function MessageTemplatesSection() {
 }
 
 // =====================================================================
-// MOREN AGENT (token + bookmarklet) — collapsible
+// MOREN AGENT — token + bookmarklet (CollapsibleSection içine giriyor)
 // =====================================================================
 
-function AgentSection() {
-  const [open, setOpen] = useState(false);
+function AgentContent() {
   const [copiedToken, setCopiedToken] = useState(false);
   const [copiedBookmarklet, setCopiedBookmarklet] = useState(false);
 
@@ -363,7 +458,6 @@ function AgentSection() {
       api.get('/agent/me/token').then(
         (res) => res.data as { token: string; tenantName: string | null },
       ),
-    enabled: open,
   });
 
   const portalOrigin = typeof window !== 'undefined' ? window.location.origin : '';
@@ -389,90 +483,53 @@ function AgentSection() {
     }
   };
 
+  if (isLoading) return <LoadingLine />;
+
   return (
-    <section id="agent" className="rounded-lg border bg-[#0f0d0b]/80" style={{ borderColor: LINE }}>
-      <button
-        type="button"
-        onClick={() => setOpen((v) => !v)}
-        className="flex w-full items-center gap-3 p-5 text-left transition hover:bg-white/[0.02]"
+    <div className="space-y-3">
+      <a
+        href={bookmarkletCode}
+        onClick={(event) => event.preventDefault()}
+        className="inline-flex h-9 items-center gap-1.5 rounded-md px-3 text-[12.5px] font-bold"
+        style={{ background: `linear-gradient(135deg, ${GOLD}, ${GOLD_DEEP})`, color: '#0f0d0b' }}
       >
-        <div
-          className="flex h-10 w-10 shrink-0 items-center justify-center rounded-lg border"
-          style={{ borderColor: LINE_GOLD, background: 'rgba(212,184,118,0.09)', color: GOLD }}
-        >
-          <Bot size={18} />
-        </div>
-        <div className="min-w-0 flex-1">
-          <h2 className="text-[15px] font-semibold" style={{ color: TEXT }}>
-            Moren Agent — Tarayıcı Eklentisi
-          </h2>
-          <p className="mt-0.5 text-[12px]" style={{ color: MUTED }}>
-            Token + bookmarklet kodu (kurulum tek seferlik){open ? '' : ' — aç'}
-          </p>
-        </div>
-        <ArrowRight
-          size={16}
-          className="transition"
-          style={{ color: GOLD, transform: open ? 'rotate(90deg)' : 'none' }}
-        />
-      </button>
+        <ExternalLink size={14} /> Bookmarklet'i Çalıştır
+      </a>
 
-      {open && (
-        <div className="border-t px-5 pb-5 pt-4" style={{ borderColor: LINE }}>
-          {isLoading ? (
-            <LoadingLine />
-          ) : (
-            <div className="space-y-3">
-              <a
-                href={bookmarkletCode}
-                onClick={(event) => event.preventDefault()}
-                className="inline-flex h-9 items-center gap-1.5 rounded-md px-3 text-[12.5px] font-bold"
-                style={{ background: `linear-gradient(135deg, ${GOLD}, ${GOLD_DEEP})`, color: '#0f0d0b' }}
-              >
-                <ExternalLink size={14} /> Bookmarklet'i Çalıştır
-              </a>
-
-              <Field label="Agent Token">
-                <div className="flex gap-2">
-                  <input
-                    type="text"
-                    readOnly
-                    value={info?.token || ''}
-                    className="h-9 flex-1 rounded-md border px-2.5 font-mono text-[11.5px] outline-none"
-                    style={{ background: SOFT, borderColor: LINE, color: TEXT }}
-                    onFocus={(event) => event.currentTarget.select()}
-                  />
-                  <SmallButton onClick={() => copy(info?.token || '', 'token')} active={copiedToken}>
-                    {copiedToken ? <Check size={13} /> : <Copy size={13} />}
-                    {copiedToken ? 'Kopyalandı' : 'Kopyala'}
-                  </SmallButton>
-                </div>
-              </Field>
-
-              <Field label="Bookmarklet Kodu">
-                <div className="flex gap-2">
-                  <input
-                    type="text"
-                    readOnly
-                    value={bookmarkletCode}
-                    className="h-9 flex-1 rounded-md border px-2.5 font-mono text-[11.5px] outline-none"
-                    style={{ background: SOFT, borderColor: LINE, color: TEXT }}
-                    onFocus={(event) => event.currentTarget.select()}
-                  />
-                  <SmallButton
-                    onClick={() => copy(bookmarkletCode, 'bookmarklet')}
-                    active={copiedBookmarklet}
-                  >
-                    {copiedBookmarklet ? <Check size={13} /> : <Copy size={13} />}
-                    {copiedBookmarklet ? 'Kopyalandı' : 'Kopyala'}
-                  </SmallButton>
-                </div>
-              </Field>
-            </div>
-          )}
+      <Field label="Agent Token">
+        <div className="flex gap-2">
+          <input
+            type="text"
+            readOnly
+            value={info?.token || ''}
+            className="h-9 flex-1 rounded-md border px-2.5 font-mono text-[11.5px] outline-none"
+            style={{ background: SOFT, borderColor: LINE, color: TEXT }}
+            onFocus={(event) => event.currentTarget.select()}
+          />
+          <SmallButton onClick={() => copy(info?.token || '', 'token')} active={copiedToken}>
+            {copiedToken ? <Check size={13} /> : <Copy size={13} />}
+            {copiedToken ? 'Kopyalandı' : 'Kopyala'}
+          </SmallButton>
         </div>
-      )}
-    </section>
+      </Field>
+
+      <Field label="Bookmarklet Kodu">
+        <div className="flex gap-2">
+          <input
+            type="text"
+            readOnly
+            value={bookmarkletCode}
+            className="h-9 flex-1 rounded-md border px-2.5 font-mono text-[11.5px] outline-none"
+            style={{ background: SOFT, borderColor: LINE, color: TEXT }}
+            onFocus={(event) => event.currentTarget.select()}
+          />
+          <SmallButton onClick={() => copy(bookmarkletCode, 'bookmarklet')} active={copiedBookmarklet}>
+            {copiedBookmarklet ? <Check size={13} /> : <Copy size={13} />}
+            {copiedBookmarklet ? 'Kopyalandı' : 'Kopyala'}
+          </SmallButton>
+        </div>
+      </Field>
+    </div>
   );
 }
 
