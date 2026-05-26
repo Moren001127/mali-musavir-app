@@ -117,13 +117,13 @@ const FOCUS_TONES: Record<string, { label: string; color: string; bg: string; gl
 };
 
 const BRIEFING_CHROME_TONE = {
-  color: '#8ee6d0',
-  bg: 'rgba(20,85,72,0.14)',
-  glow: 'rgba(20,85,72,0.18)',
-  border: 'rgba(142,230,208,0.24)',
-  actionBg: 'linear-gradient(135deg, rgba(142,230,208,0.14), rgba(212,184,118,0.07))',
-  actionBorder: 'rgba(142,230,208,0.24)',
-  text: '#bdeee0',
+  color: '#e8c77e',
+  bg: 'rgba(113,83,37,0.16)',
+  glow: 'rgba(232,199,126,0.12)',
+  border: 'rgba(232,199,126,0.20)',
+  actionBg: 'linear-gradient(135deg, rgba(232,199,126,0.12), rgba(255,255,255,0.035))',
+  actionBorder: 'rgba(232,199,126,0.20)',
+  text: '#ead6a6',
 };
 
 const MOTIVATION_BY_FOCUS: Record<string, string> = {
@@ -281,11 +281,11 @@ export function BrifingKart({ userName }: { userName?: string }) {
 
   return (
     <div
-      className="rounded-[28px] overflow-hidden relative"
+      className="rounded-2xl overflow-hidden relative"
       style={{
-        background: `radial-gradient(circle at 12% 0%, ${chromeTone.glow}, transparent 42%), radial-gradient(circle at 88% 18%, rgba(212,184,118,0.10), transparent 34%), linear-gradient(135deg, rgba(24,32,27,0.84), rgba(14,13,10,0.96))`,
+        background: `radial-gradient(circle at 12% 0%, ${chromeTone.glow}, transparent 40%), radial-gradient(circle at 88% 18%, rgba(143,216,194,0.06), transparent 34%), linear-gradient(135deg, rgba(22,18,14,0.96), rgba(8,10,10,0.94))`,
         border: `1px solid ${chromeTone.border}`,
-        boxShadow: '0 12px 36px rgba(0,0,0,0.28), inset 0 1px 0 rgba(255,255,255,0.04)',
+        boxShadow: '0 16px 42px rgba(0,0,0,0.24), inset 0 1px 0 rgba(255,255,255,0.04)',
       }}
     >
       {/* Üst etiket bandı */}
@@ -325,9 +325,9 @@ export function BrifingKart({ userName }: { userName?: string }) {
             title="Brifingi yeniden üret"
             className="text-[11px] inline-flex items-center gap-1.5 px-2.5 py-1 rounded-md transition disabled:opacity-50"
             style={{
-              background: 'rgba(255,255,255,0.04)',
-              border: '1px solid rgba(255,255,255,0.08)',
-              color: 'rgba(250,250,249,0.6)',
+              background: 'rgba(255,255,255,0.035)',
+              border: '1px solid rgba(232,199,126,0.16)',
+              color: 'rgba(250,250,249,0.68)',
             }}
           >
             {isFetching ? <Loader2 size={11} className="animate-spin" /> : <RefreshCw size={11} />}
@@ -361,7 +361,7 @@ export function BrifingKart({ userName }: { userName?: string }) {
           <div
             className="w-full rounded-xl px-3 py-2 flex items-center gap-2.5 select-none xl:justify-self-end"
             style={{
-              background: `linear-gradient(135deg, ${chromeTone.bg}, rgba(255,255,255,0.018)), rgba(8,9,7,0.42)`,
+              background: `linear-gradient(135deg, ${chromeTone.bg}, rgba(255,255,255,0.018)), rgba(8,8,7,0.44)`,
               border: `1px solid ${chromeTone.border}`,
               boxShadow: 'inset 0 1px 0 rgba(255,255,255,0.04)',
             }}

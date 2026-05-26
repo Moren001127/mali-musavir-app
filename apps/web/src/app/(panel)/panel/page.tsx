@@ -43,6 +43,25 @@ import { BuHaftaTakvim } from '@/components/dashboard/BuHaftaTakvim';
 const GOLD = '#d4b876';
 const TRACK_BLUE = '#7dd3fc';
 const TRACK_BLUE_SOFT = '#93c5fd';
+const BEYAN_TONE = {
+  accent: '#d8bd86',
+  accentSoft: '#f2d8a1',
+  title: '#f8f4ec',
+  muted: 'rgba(244,239,229,0.58)',
+  header: 'rgba(244,239,229,0.52)',
+  approved: '#3ddc84',
+  waiting: '#f2c46d',
+  error: '#ff7a8c',
+  remaining: '#f0a6b6',
+  status: '#8cc8ff',
+  border: 'rgba(216,189,134,0.20)',
+  borderSoft: 'rgba(244,239,229,0.08)',
+  bg: 'rgba(216,189,134,0.08)',
+  bgSoft: 'rgba(244,239,229,0.035)',
+  rowAlt: 'rgba(255,255,255,0.018)',
+  tableBg: 'rgba(8,8,7,0.36)',
+  headBg: 'rgba(244,239,229,0.035)',
+};
 
 function displayUserName(user: any): string | undefined {
   const first = String(user?.firstName || '').trim();
@@ -115,11 +134,11 @@ const WORKFLOW_STEPS: Array<{
   bg: string;
   border: string;
 }> = [
-  { key: 'evrak', label: 'Evrak Bekliyor', sub: 'Mükelleften gelecek', href: '/panel/is-yuku', icon: FileInput, color: '#a7a29a', bg: 'rgba(167,162,154,0.08)', border: 'rgba(167,162,154,0.20)' },
-  { key: 'islenme', label: 'Fatura İşleme', sub: 'Belge merkezi', href: '/panel/fatura-isleme', icon: Receipt, color: '#d4b876', bg: 'rgba(212,184,118,0.10)', border: 'rgba(212,184,118,0.28)' },
-  { key: 'kontrol', label: 'KDV Kontrol', sub: 'Kontrol bekliyor', href: '/panel/kdv-kontrol', icon: FileCheck, color: '#c0a079', bg: 'rgba(192,160,121,0.10)', border: 'rgba(192,160,121,0.28)' },
-  { key: 'beyanname', label: 'Beyanname', sub: 'Hazırlanacak', href: '/panel/beyannameler', icon: FileText, color: '#9ec5e8', bg: 'rgba(96,165,250,0.10)', border: 'rgba(158,197,232,0.26)' },
-  { key: 'tamam', label: 'Tamamlandı', sub: 'Bu ay kapandı', href: '/panel/is-yuku', icon: CheckCircle2, color: '#86a97b', bg: 'rgba(134,169,123,0.10)', border: 'rgba(134,169,123,0.28)' },
+  { key: 'evrak', label: 'Evrak Bekliyor', sub: 'Mükelleften gelecek', href: '/panel/is-yuku', icon: FileInput, color: '#d9c6a3', bg: 'rgba(217,198,163,0.11)', border: 'rgba(217,198,163,0.25)' },
+  { key: 'islenme', label: 'Fatura İşleme', sub: 'Belge merkezi', href: '/panel/fatura-isleme', icon: Receipt, color: '#f2b56b', bg: 'rgba(242,181,107,0.11)', border: 'rgba(242,181,107,0.27)' },
+  { key: 'kontrol', label: 'KDV Kontrol', sub: 'Kontrol bekliyor', href: '/panel/kdv-kontrol', icon: FileCheck, color: '#77c7dc', bg: 'rgba(119,199,220,0.10)', border: 'rgba(119,199,220,0.24)' },
+  { key: 'beyanname', label: 'Beyanname', sub: 'Hazırlanacak', href: '/panel/beyannameler', icon: FileText, color: '#e6a1b2', bg: 'rgba(230,161,178,0.11)', border: 'rgba(230,161,178,0.26)' },
+  { key: 'tamam', label: 'Tamamlandı', sub: 'Bu ay kapandı', href: '/panel/is-yuku', icon: CheckCircle2, color: '#87d7a5', bg: 'rgba(135,215,165,0.10)', border: 'rgba(135,215,165,0.24)' },
 ];
 
 function WorkflowOverview({ counts, total, activeCount }: { counts?: WorkflowCounts; total: number; activeCount: number }) {
@@ -130,35 +149,41 @@ function WorkflowOverview({ counts, total, activeCount }: { counts?: WorkflowCou
   const outside = Math.max(activeCount - scopedTotal, 0);
 
   return (
-    <div className="rounded-2xl overflow-hidden" style={{ background: 'linear-gradient(180deg, rgba(13,18,17,0.78), rgba(9,10,9,0.56))', border: '1px solid rgba(156,200,166,0.15)' }}>
-      <div className="flex flex-wrap items-center justify-between gap-3 px-4 py-2.5" style={{ borderBottom: '1px solid rgba(255,255,255,0.05)' }}>
-        <div className="flex items-center gap-2.5">
-          <span className="w-[3px] h-4 rounded-sm" style={{ background: GOLD }} />
+    <div
+      className="rounded-2xl overflow-hidden"
+      style={{
+        background: 'linear-gradient(135deg, rgba(13,20,21,0.94), rgba(12,10,9,0.88))',
+        border: '1px solid rgba(143,216,194,0.20)',
+        boxShadow: '0 18px 44px rgba(0,0,0,0.20), inset 0 1px 0 rgba(255,255,255,0.035)',
+      }}
+    >
+      <div className="flex flex-wrap items-center justify-between gap-3 px-5 py-4" style={{ borderBottom: '1px solid rgba(143,216,194,0.10)' }}>
+        <div className="flex items-center gap-3">
+          <span className="w-[4px] h-9 rounded-sm" style={{ background: 'linear-gradient(180deg, #8fd8c2, #d4b876)' }} />
           <div>
-            <h3 className="text-[13px] font-semibold" style={{ color: '#fafaf9' }}>Bu Ay İş Akışı</h3>
-            <p className="text-[10.5px] mt-0.5" style={{ color: 'rgba(250,250,249,0.42)' }}>
-              {scopedTotal} mükellef iş akışında · {activeCount} aktif
+            <h3 className="text-[18px] font-semibold leading-tight" style={{ color: '#fafaf9' }}>Bu Ay İş Akışı</h3>
+            <p className="text-[12px] mt-1" style={{ color: 'rgba(250,250,249,0.50)' }}>
+              {scopedTotal} mükellef akışta · {activeCount} aktif mükellef
             </p>
           </div>
         </div>
-        <div className="flex flex-wrap items-center gap-1.5">
-          <span className="text-[10.5px] font-semibold px-2 py-0.5 rounded-md" style={{ background: 'rgba(212,184,118,0.10)', border: '1px solid rgba(212,184,118,0.25)', color: GOLD }}>
+        <div className="flex flex-wrap items-center gap-2">
+          <span className="text-[11.5px] font-semibold px-3 py-1 rounded-lg" style={{ background: 'rgba(242,181,107,0.11)', border: '1px solid rgba(242,181,107,0.25)', color: '#f2b56b' }}>
             {activeWork} aktif
           </span>
-          <span className="text-[10.5px] font-semibold px-2 py-0.5 rounded-md" style={{ background: 'rgba(134,169,123,0.10)', border: '1px solid rgba(134,169,123,0.24)', color: '#a8c59f' }}>
+          <span className="text-[11.5px] font-semibold px-3 py-1 rounded-lg" style={{ background: 'rgba(135,215,165,0.10)', border: '1px solid rgba(135,215,165,0.24)', color: '#87d7a5' }}>
             {completed} tamam
           </span>
           {outside > 0 && (
-            <span className="text-[10.5px] font-semibold px-2 py-0.5 rounded-md" style={{ background: 'rgba(255,255,255,0.04)', border: '1px solid rgba(255,255,255,0.08)', color: 'rgba(250,250,249,0.55)' }}>
+            <span className="text-[11.5px] font-semibold px-3 py-1 rounded-lg" style={{ background: 'rgba(255,255,255,0.035)', border: '1px solid rgba(255,255,255,0.08)', color: 'rgba(250,250,249,0.58)' }}>
               {outside} dışında
             </span>
           )}
         </div>
       </div>
 
-      {/* TEK SATIR SEGMENT BAR — eski 5 büyük kartın yerini aldı */}
-      <div className="px-4 py-3">
-        <div className="flex h-2 w-full overflow-hidden rounded-full" style={{ background: 'rgba(255,255,255,0.04)' }}>
+      <div className="px-5 py-4">
+        <div className="flex h-2.5 w-full overflow-hidden rounded-full" style={{ background: 'rgba(255,255,255,0.055)' }}>
           {WORKFLOW_STEPS.map((step) => {
             const value = c[step.key] || 0;
             const pct = scopedTotal > 0 ? (value / scopedTotal) * 100 : 0;
@@ -173,8 +198,7 @@ function WorkflowOverview({ counts, total, activeCount }: { counts?: WorkflowCou
           })}
         </div>
 
-        {/* Inline mini-cell satırı: ikon + sayı + label, tek satır */}
-        <div className="mt-3 grid grid-cols-5 gap-2">
+        <div className="mt-4 grid grid-cols-1 gap-3 sm:grid-cols-2 xl:grid-cols-5">
           {WORKFLOW_STEPS.map((step) => {
             const value = c[step.key] || 0;
             const pct = scopedTotal > 0 ? Math.round((value / scopedTotal) * 100) : 0;
@@ -183,20 +207,30 @@ function WorkflowOverview({ counts, total, activeCount }: { counts?: WorkflowCou
               <Link
                 key={step.key}
                 href={step.href}
-                className="group flex items-center gap-2 rounded-lg px-2 py-1.5 transition-all"
-                style={{ border: '1px solid rgba(255,255,255,0.05)' }}
-                onMouseEnter={(e) => { e.currentTarget.style.background = step.bg; e.currentTarget.style.borderColor = step.border; }}
-                onMouseLeave={(e) => { e.currentTarget.style.background = 'transparent'; e.currentTarget.style.borderColor = 'rgba(255,255,255,0.05)'; }}
+                className="group min-h-[112px] rounded-xl px-3.5 py-3 transition-all"
+                style={{
+                  background: `linear-gradient(180deg, ${step.bg}, rgba(255,255,255,0.018))`,
+                  border: `1px solid ${step.border}`,
+                  boxShadow: 'inset 0 1px 0 rgba(255,255,255,0.035)',
+                }}
+                onMouseEnter={(e) => { e.currentTarget.style.transform = 'translateY(-2px)'; e.currentTarget.style.background = step.bg; }}
+                onMouseLeave={(e) => { e.currentTarget.style.transform = 'translateY(0)'; e.currentTarget.style.background = `linear-gradient(180deg, ${step.bg}, rgba(255,255,255,0.018))`; }}
               >
-                <div className="w-7 h-7 rounded-md flex items-center justify-center flex-shrink-0" style={{ background: step.bg, border: `1px solid ${step.border}`, color: step.color }}>
-                  <Icon size={13} />
-                </div>
-                <div className="min-w-0 flex-1">
-                  <div className="flex items-baseline gap-1.5">
-                    <span className="text-[16px] leading-none tabular-nums font-bold" style={{ color: step.color, fontFamily: 'Fraunces, serif' }}>{value}</span>
-                    <span className="text-[9.5px] font-semibold tabular-nums" style={{ color: 'rgba(250,250,249,0.4)' }}>%{pct}</span>
+                <div className="flex items-start justify-between gap-2">
+                  <div className="w-9 h-9 rounded-lg flex items-center justify-center flex-shrink-0" style={{ background: 'rgba(5,7,7,0.30)', border: `1px solid ${step.border}`, color: step.color }}>
+                    <Icon size={16} />
                   </div>
-                  <div className="text-[10.5px] font-medium truncate" style={{ color: '#fafaf9' }}>{step.label}</div>
+                  <span className="rounded-md px-2 py-0.5 text-[10.5px] font-bold tabular-nums" style={{ color: step.color, background: 'rgba(0,0,0,0.14)', border: `1px solid ${step.border}` }}>
+                    %{pct}
+                  </span>
+                </div>
+                <div className="mt-3">
+                  <div className="text-[30px] leading-none tabular-nums font-bold" style={{ color: step.color, fontFamily: 'Fraunces, serif', letterSpacing: 0 }}>{value}</div>
+                  <div className="mt-1 text-[12.5px] font-semibold truncate" style={{ color: '#fafaf9' }}>{step.label}</div>
+                  <div className="mt-0.5 text-[10.5px] truncate" style={{ color: 'rgba(250,250,249,0.46)' }}>{step.sub}</div>
+                </div>
+                <div className="mt-3 h-1.5 overflow-hidden rounded-full" style={{ background: 'rgba(255,255,255,0.075)' }}>
+                  <div className="h-full rounded-full transition-all duration-500" style={{ width: `${pct}%`, background: step.color }} />
                 </div>
               </Link>
             );
@@ -314,19 +348,19 @@ function ToplubeyannamePanel() {
 
   return (
     <div>
-      <div className="px-4 py-3" style={{ borderBottom: '1px solid rgba(255,255,255,0.05)' }}>
+      <div className="px-5 py-4" style={{ borderBottom: `1px solid ${BEYAN_TONE.border}` }}>
         <div className="grid gap-3 xl:grid-cols-[minmax(300px,1fr)_auto] xl:items-center">
           <div className="flex min-w-0 items-center gap-2.5">
-            <span className="flex h-8 w-8 shrink-0 items-center justify-center rounded-lg" style={{ background: 'rgba(212,184,118,0.10)', border: '1px solid rgba(212,184,118,0.18)', color: GOLD }}>
+            <span className="flex h-9 w-9 shrink-0 items-center justify-center rounded-lg" style={{ background: BEYAN_TONE.bg, border: `1px solid ${BEYAN_TONE.border}`, color: BEYAN_TONE.accentSoft }}>
               <FileCheck2 size={15} />
             </span>
             <div className="min-w-0">
-              <h3 className="truncate text-[16px] font-semibold leading-tight" style={{ color: '#fafaf9' }}>Beyanname Durum Takibi</h3>
-              <p className="mt-0.5 truncate text-[11.5px]" style={{ color: 'rgba(250,250,249,0.48)' }}>{modeLabel} - {selectedDonem} - {modeNote}</p>
+              <h3 className="truncate text-[16px] font-semibold leading-tight" style={{ color: BEYAN_TONE.title }}>Beyanname Durum Takibi</h3>
+              <p className="mt-0.5 truncate text-[11.5px]" style={{ color: BEYAN_TONE.muted }}>{modeLabel} - {selectedDonem} - {modeNote}</p>
             </div>
           </div>
           <div className="flex flex-wrap items-center justify-start gap-2 xl:justify-end">
-            <div className="inline-flex rounded-md p-0.5" style={{ background: 'rgba(255,255,255,0.035)', border: '1px solid rgba(255,255,255,0.08)' }}>
+            <div className="inline-flex rounded-md p-0.5" style={{ background: 'rgba(244,239,229,0.03)', border: `1px solid ${BEYAN_TONE.borderSoft}` }}>
               {([
                 ['VERILME', 'Verilme dönemi'],
                 ['VERGI', 'Vergi dönemi'],
@@ -337,9 +371,9 @@ function ToplubeyannamePanel() {
                   onClick={() => setDonemTuru(value)}
                   className="rounded-md px-2.5 py-1 text-[11.5px] font-semibold transition"
                   style={{
-                    background: donemTuru === value ? 'rgba(212,184,118,0.16)' : 'transparent',
-                    color: donemTuru === value ? GOLD : 'rgba(250,250,249,0.58)',
-                    border: donemTuru === value ? '1px solid rgba(212,184,118,0.28)' : '1px solid transparent',
+                    background: donemTuru === value ? BEYAN_TONE.bg : 'transparent',
+                    color: donemTuru === value ? BEYAN_TONE.accentSoft : BEYAN_TONE.muted,
+                    border: donemTuru === value ? `1px solid ${BEYAN_TONE.border}` : '1px solid transparent',
                   }}
                 >
                   {label}
@@ -350,7 +384,7 @@ function ToplubeyannamePanel() {
               value={donem}
               onChange={(e) => setDonem(e.target.value)}
               className="h-9 w-[150px] cursor-pointer rounded-lg px-3 text-[12.5px] font-semibold outline-none"
-              style={{ background: 'rgba(255,255,255,0.04)', border: '1px solid rgba(184,160,111,0.25)', color: '#fafaf9' }}
+              style={{ background: 'rgba(244,239,229,0.035)', border: `1px solid ${BEYAN_TONE.border}`, color: BEYAN_TONE.title }}
             >
               {donemOptions.map((o) => (
                 <option key={o.value} value={o.value} style={{ background: '#1a1814' }}>{o.label}</option>
@@ -359,14 +393,14 @@ function ToplubeyannamePanel() {
             <button
               onClick={() => refetch()}
               className="inline-flex h-9 items-center gap-1.5 rounded-lg px-3 text-[12px] font-semibold transition-all"
-              style={{ background: 'rgba(184,160,111,0.12)', border: '1px solid rgba(184,160,111,0.3)', color: GOLD }}
+              style={{ background: 'rgba(140,200,255,0.09)', border: '1px solid rgba(140,200,255,0.24)', color: BEYAN_TONE.status }}
             >
               <SearchIcon size={13} /> Sorgula
             </button>
             <Link
               href="/panel/ayarlar/beyanname-takip"
               className="inline-flex h-9 items-center gap-1.5 rounded-lg px-3 text-[12px] font-semibold transition-all"
-              style={{ background: 'rgba(255,255,255,0.03)', border: '1px solid rgba(255,255,255,0.08)', color: 'rgba(250,250,249,0.75)' }}
+              style={{ background: 'rgba(244,239,229,0.025)', border: `1px solid ${BEYAN_TONE.borderSoft}`, color: BEYAN_TONE.muted }}
             >
               <Settings size={13} /> Ayarlar
             </Link>
@@ -375,10 +409,10 @@ function ToplubeyannamePanel() {
 
         <div className="hidden">
           <BeyanMetric label="Toplam" value={totals.toplam} color="#fafaf9" sub={`${activeRows.length} takip kalemi`} />
-          <BeyanMetric label="Onaylanan" value={totals.onaylanan} color="#22c55e" />
-          <BeyanMetric label="Bekleyen" value={totals.bekleyen} color={TRACK_BLUE_SOFT} />
-          <BeyanMetric label="Hatalı" value={totals.hatali} color="#f472b6" />
-          <BeyanMetric label="Kalan" value={totals.kalan} color={totals.kalan > 0 ? TRACK_BLUE : '#22c55e'} sub={`%${totalYuzde} tamam`} />
+          <BeyanMetric label="Onaylanan" value={totals.onaylanan} color={BEYAN_TONE.approved} />
+          <BeyanMetric label="Bekleyen" value={totals.bekleyen} color={BEYAN_TONE.waiting} />
+          <BeyanMetric label="Hatalı" value={totals.hatali} color={BEYAN_TONE.error} />
+          <BeyanMetric label="Kalan" value={totals.kalan} color={totals.kalan > 0 ? BEYAN_TONE.remaining : BEYAN_TONE.approved} sub={`%${totalYuzde} tamam`} />
         </div>
       </div>
 
@@ -428,19 +462,19 @@ function BeyanCompactTable({
   compact?: boolean;
 }) {
   return (
-    <div className={compact ? 'px-4 pb-3' : 'px-4 py-3'}>
+    <div className={compact ? 'px-5 pb-4' : 'px-5 py-4'}>
       <div className="mb-2.5 flex items-center justify-between gap-3">
-        <div className="text-[11px] font-bold uppercase tracking-[0.14em]" style={{ color: 'rgba(250,250,249,0.48)' }}>
+        <div className="text-[11px] font-bold uppercase tracking-[0.14em]" style={{ color: BEYAN_TONE.accentSoft }}>
           {title}
         </div>
-        <div className="text-[11px] font-semibold tabular-nums" style={{ color: 'rgba(250,250,249,0.5)', fontFamily: 'Inter, ui-sans-serif, system-ui, sans-serif' }}>
+        <div className="text-[11px] font-semibold tabular-nums" style={{ color: BEYAN_TONE.muted, fontFamily: 'Inter, ui-sans-serif, system-ui, sans-serif' }}>
           {donem}
         </div>
       </div>
-      <div className="overflow-x-auto rounded-xl" style={{ border: '1px solid rgba(255,255,255,0.08)', background: 'rgba(255,255,255,0.018)' }}>
-        <table className="w-full min-w-[760px] border-collapse text-[12px]" style={{ color: 'rgba(250,250,249,0.82)' }}>
+      <div className="overflow-x-auto rounded-xl" style={{ border: `1px solid ${BEYAN_TONE.borderSoft}`, background: BEYAN_TONE.tableBg }}>
+        <table className="w-full min-w-[760px] border-collapse text-[12px]" style={{ color: BEYAN_TONE.title }}>
           <thead>
-            <tr style={{ background: 'rgba(255,255,255,0.035)', borderBottom: '1px solid rgba(255,255,255,0.07)' }}>
+            <tr style={{ background: BEYAN_TONE.headBg, borderBottom: `1px solid ${BEYAN_TONE.borderSoft}` }}>
               <BeyanHeaderCell align="left">Beyanname</BeyanHeaderCell>
               <BeyanHeaderCell>Takip</BeyanHeaderCell>
               <BeyanHeaderCell>{onayLabel}</BeyanHeaderCell>
@@ -471,12 +505,12 @@ function YardimciBeyanGrid({
   onNumberClick: (tip: BeyanTipi, filter: BeyanFilter) => void;
 }) {
   return (
-    <div className="px-4 pb-3">
+    <div className="px-5 pb-4">
       <div className="mb-2.5 flex items-center justify-between gap-3">
-        <div className="text-[11px] font-bold uppercase tracking-[0.14em]" style={{ color: 'rgba(250,250,249,0.48)' }}>
+        <div className="text-[11px] font-bold uppercase tracking-[0.14em]" style={{ color: BEYAN_TONE.accentSoft }}>
           Bildirge ve E-Defter
         </div>
-        <div className="text-[11px] font-semibold tabular-nums" style={{ color: 'rgba(250,250,249,0.5)', fontFamily: 'Inter, ui-sans-serif, system-ui, sans-serif' }}>
+        <div className="text-[11px] font-semibold tabular-nums" style={{ color: BEYAN_TONE.muted, fontFamily: 'Inter, ui-sans-serif, system-ui, sans-serif' }}>
           {donem}
         </div>
       </div>
@@ -501,31 +535,31 @@ function YardimciBeyanCard({
   const label = BEYAN_ETIKETLER[row.beyanTipi];
   const pct = Math.max(0, Math.min(100, row.yuzde));
   const done = row.kalan <= 0 && row.hatali <= 0;
-  const barColor = row.hatali > 0 ? '#f472b6' : done ? '#22c55e' : TRACK_BLUE;
+  const barColor = row.hatali > 0 ? BEYAN_TONE.error : done ? BEYAN_TONE.approved : BEYAN_TONE.status;
   const statusLabel = row.hatali > 0 ? 'Hata var' : done ? 'Tamam' : 'Devam ediyor';
   const onayText = row.beyanTipi === 'EDEFTER' ? 'Verilen' : 'Onaylanan';
 
   return (
-    <div className="overflow-hidden rounded-xl" style={{ background: 'rgba(255,255,255,0.018)', border: '1px solid rgba(125,211,252,0.18)' }}>
-      <div className="grid grid-cols-[minmax(140px,1fr)_82px_92px_82px_minmax(150px,1fr)] items-center gap-0 border-b border-white/[0.06] px-3 py-2">
+    <div className="overflow-hidden rounded-xl" style={{ background: BEYAN_TONE.rowAlt, border: `1px solid ${BEYAN_TONE.borderSoft}` }}>
+      <div className="grid grid-cols-[minmax(140px,1fr)_82px_92px_82px_minmax(150px,1fr)] items-center gap-0 px-3 py-2">
         <button
           type="button"
           onClick={() => onNumberClick(row.beyanTipi, 'toplam')}
           className="truncate text-left text-[13px] font-bold transition hover:underline decoration-dotted underline-offset-4"
-          style={{ color: GOLD }}
+          style={{ color: BEYAN_TONE.title }}
           title="Mükellef listesini göster"
         >
           {label} <span className="font-semibold opacity-55">({donem})</span>
         </button>
         <YardimciBeyanNumber label="Toplam" value={row.toplam} color="#fafaf9" onClick={() => onNumberClick(row.beyanTipi, 'toplam')} />
-        <YardimciBeyanNumber label={onayText} value={row.onaylanan} color="#22c55e" onClick={() => onNumberClick(row.beyanTipi, 'onaylanan')} />
-        <YardimciBeyanNumber label="Kalan" value={row.kalan} color={row.kalan > 0 ? TRACK_BLUE : '#22c55e'} onClick={() => onNumberClick(row.beyanTipi, 'kalan')} />
+        <YardimciBeyanNumber label={onayText} value={row.onaylanan} color={BEYAN_TONE.approved} onClick={() => onNumberClick(row.beyanTipi, 'onaylanan')} />
+        <YardimciBeyanNumber label="Kalan" value={row.kalan} color={row.kalan > 0 ? BEYAN_TONE.remaining : BEYAN_TONE.approved} onClick={() => onNumberClick(row.beyanTipi, 'kalan')} />
         <div className="min-w-0 pl-3">
           <div className="flex items-center justify-between gap-2">
             <span className="truncate text-[11px] font-bold" style={{ color: barColor }}>{statusLabel}</span>
             <span className="text-[11px] font-bold tabular-nums" style={{ color: barColor, fontFamily: 'Inter, ui-sans-serif, system-ui, sans-serif' }}>{pct}%</span>
           </div>
-          <div className="mt-1 h-1.5 overflow-hidden rounded-full" style={{ background: 'rgba(255,255,255,0.06)' }}>
+          <div className="mt-1 h-1.5 overflow-hidden rounded-full" style={{ background: 'rgba(244,239,229,0.08)' }}>
             <div
               className="h-full rounded-full transition-all duration-500"
               style={{ width: `${pct}%`, background: `linear-gradient(90deg, ${barColor}99, ${barColor})` }}
@@ -547,7 +581,7 @@ function YardimciBeyanNumber({ label, value, color, onClick }: { label: string; 
       className={`min-w-0 px-2 text-right transition ${clickable ? 'hover:bg-white/[0.055] hover:underline decoration-dotted underline-offset-4' : ''}`}
       title={clickable ? 'Mükellef listesini göster' : undefined}
     >
-      <div className="truncate text-[9.5px] font-black uppercase tracking-[0.08em]" style={{ color: 'rgba(250,250,249,0.46)' }}>{label}</div>
+      <div className="truncate text-[9.5px] font-black uppercase tracking-[0.08em]" style={{ color: BEYAN_TONE.header }}>{label}</div>
       <div className="mt-0.5 text-[14px] font-bold leading-none tabular-nums" style={{ color, fontFamily: 'Inter, ui-sans-serif, system-ui, sans-serif', letterSpacing: 0 }}>
         {value}
       </div>
@@ -559,7 +593,7 @@ function BeyanHeaderCell({ children, align = 'right' }: { children: ReactNode; a
   return (
     <th
       className={`px-3 py-1.5 text-[10px] font-black uppercase tracking-[0.12em] ${align === 'right' ? 'text-right' : 'text-left'}`}
-      style={{ color: 'rgba(250,250,249,0.48)' }}
+      style={{ color: BEYAN_TONE.header }}
     >
       {children}
     </th>
@@ -576,20 +610,22 @@ function BeyanCompactRow({
   const label = BEYAN_ETIKETLER[row.beyanTipi];
   const pct = Math.max(0, Math.min(100, row.yuzde));
   const done = row.kalan <= 0 && row.hatali <= 0;
-  const barColor = row.hatali > 0 ? '#f472b6' : done ? '#22c55e' : TRACK_BLUE;
+  const barColor = row.hatali > 0 ? BEYAN_TONE.error : done ? BEYAN_TONE.approved : BEYAN_TONE.status;
   const statusLabel = row.hatali > 0 ? 'Hata var' : done ? 'Tamam' : 'Devam ediyor';
 
   return (
     <tr
-      className="transition hover:bg-white/[0.025]"
-      style={{ borderTop: '1px solid rgba(255,255,255,0.045)' }}
+      className="transition"
+      style={{ borderTop: `1px solid ${BEYAN_TONE.borderSoft}`, background: BEYAN_TONE.rowAlt }}
+      onMouseEnter={(e) => { e.currentTarget.style.background = BEYAN_TONE.bgSoft; }}
+      onMouseLeave={(e) => { e.currentTarget.style.background = BEYAN_TONE.rowAlt; }}
     >
       <td className="px-3 py-2">
         <button
           type="button"
           onClick={() => onNumberClick(row.beyanTipi, 'toplam')}
           className="max-w-[250px] truncate text-left text-[13px] font-bold transition hover:underline decoration-dotted underline-offset-4"
-          style={{ color: GOLD }}
+          style={{ color: BEYAN_TONE.title }}
           title="Mükellef listesini göster"
         >
           {label}
@@ -598,15 +634,15 @@ function BeyanCompactRow({
           {row.toplam} mükellef takipte
         </div>
       </td>
-      <BeyanNumberCell value={row.toplam} color="#fafaf9" onClick={() => onNumberClick(row.beyanTipi, 'toplam')} />
-      <BeyanNumberCell value={row.onaylanan} color="#22c55e" onClick={() => onNumberClick(row.beyanTipi, 'onaylanan')} />
-      <BeyanNumberCell value={row.bekleyen} color="rgba(250,250,249,0.68)" onClick={() => onNumberClick(row.beyanTipi, 'bekleyen')} />
-      <BeyanNumberCell value={row.hatali} color={row.hatali > 0 ? '#f472b6' : 'rgba(250,250,249,0.34)'} onClick={() => onNumberClick(row.beyanTipi, 'hatali')} />
-      <BeyanNumberCell value={row.kalan} color={row.kalan > 0 ? TRACK_BLUE : '#22c55e'} onClick={() => onNumberClick(row.beyanTipi, 'kalan')} />
+      <BeyanNumberCell value={row.toplam} color={BEYAN_TONE.title} onClick={() => onNumberClick(row.beyanTipi, 'toplam')} />
+      <BeyanNumberCell value={row.onaylanan} color={BEYAN_TONE.approved} onClick={() => onNumberClick(row.beyanTipi, 'onaylanan')} />
+      <BeyanNumberCell value={row.bekleyen} color={row.bekleyen > 0 ? BEYAN_TONE.waiting : 'rgba(244,239,229,0.34)'} onClick={() => onNumberClick(row.beyanTipi, 'bekleyen')} />
+      <BeyanNumberCell value={row.hatali} color={row.hatali > 0 ? BEYAN_TONE.error : 'rgba(244,239,229,0.34)'} onClick={() => onNumberClick(row.beyanTipi, 'hatali')} />
+      <BeyanNumberCell value={row.kalan} color={row.kalan > 0 ? BEYAN_TONE.remaining : BEYAN_TONE.approved} onClick={() => onNumberClick(row.beyanTipi, 'kalan')} />
       <td className="px-3 py-2">
         <div className="grid grid-cols-[82px,1fr,38px] items-center gap-2">
           <span className="text-[11px] font-bold" style={{ color: barColor }}>{statusLabel}</span>
-          <div className="h-1.5 overflow-hidden rounded-full" style={{ background: 'rgba(255,255,255,0.06)' }}>
+          <div className="h-1.5 overflow-hidden rounded-full" style={{ background: 'rgba(244,239,229,0.08)' }}>
             <div
               className="h-full rounded-full transition-all duration-500"
               style={{ width: `${pct}%`, background: `linear-gradient(90deg, ${barColor}99, ${barColor})` }}
@@ -1883,7 +1919,14 @@ export default function DashboardPage() {
 
       <DashboardSectionBridge from="Brifing" to="Beyanname Takibi" />
 
-      <div className="rounded-2xl overflow-hidden" style={{ background: 'linear-gradient(180deg, rgba(8,24,29,0.62), rgba(12,13,11,0.82))', border: '1px solid rgba(125,211,252,0.18)', boxShadow: '0 16px 42px rgba(0,0,0,0.18)' }}>
+      <div
+        className="rounded-2xl overflow-hidden"
+        style={{
+          background: 'radial-gradient(circle at 6% 0%, rgba(216,189,134,0.12), transparent 34%), radial-gradient(circle at 92% 12%, rgba(140,200,255,0.07), transparent 30%), linear-gradient(180deg, rgba(19,19,17,0.94), rgba(12,11,10,0.91))',
+          border: `1px solid ${BEYAN_TONE.border}`,
+          boxShadow: '0 18px 44px rgba(0,0,0,0.20), inset 0 1px 0 rgba(255,255,255,0.035)',
+        }}
+      >
         <ToplubeyannameTable />
       </div>
 
