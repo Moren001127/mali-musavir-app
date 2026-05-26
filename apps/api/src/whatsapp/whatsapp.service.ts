@@ -296,14 +296,7 @@ export class WhatsAppService {
   private async callGraphApiDetailed(cfg: WhatsAppConfig, payload: any, to: string): Promise<WhatsAppSendResult> {
     const url = `https://graph.facebook.com/${cfg.apiVersion || 'v20.0'}/${cfg.phoneNumberId}/messages`;
     try {
-      const res = await fetch(url, {
-        method: 'POST',
-        headers: {
-          'Authorization': `Bearer ${cfg.accessToken}`,
-          'Content-Type': 'application/json',
-        },
-        body: JSON.stringify(payload),
-      });
+      const res = await this.postGraphMessages(url, cfg, payload);
       const bodyText = await res.text();
       const data = (() => { try { return JSON.parse(bodyText); } catch { return null; } })();
       if (!res.ok) {
@@ -316,23 +309,17 @@ export class WhatsAppService {
       this.logger.log(`[WhatsApp] Gonderildi ${to} wamid=${wamid || 'n/a'}`);
       return { ok: true, providerMessageId: wamid || undefined };
     } catch (err: any) {
-      const error = `WhatsApp ag hatasi: ${err?.message || err}`;
-      this.logger.error(`[WhatsApp] Ag hatasi ${to}: ${err?.message || err}`);
-      return { ok: false, error };
+      const network = this.describeFetchFailure(err);
+      const error = `WhatsApp ag hatasi: ${network}`;
+      this.logger.error(`[WhatsApp] Ag hatasi ${to}: ${network}`);
+      return { ok: false, error, errorCode: 'META_NETWORK' };
     }
   }
 
   private async callGraphApi(cfg: WhatsAppConfig, payload: any, to: string): Promise<boolean> {
     const url = `https://graph.facebook.com/${cfg.apiVersion || 'v20.0'}/${cfg.phoneNumberId}/messages`;
     try {
-      const res = await fetch(url, {
-        method: 'POST',
-        headers: {
-          'Authorization': `Bearer ${cfg.accessToken}`,
-          'Content-Type': 'application/json',
-        },
-        body: JSON.stringify(payload),
-      });
+      const res = await this.postGraphMessages(url, cfg, payload);
       const bodyText = await res.text();
       if (!res.ok) {
         this.logger.error(`[WhatsApp] Gonderim hatasi ${to}: HTTP ${res.status} - ${bodyText.slice(0, 400)}`);
@@ -343,9 +330,48 @@ export class WhatsAppService {
       this.logger.log(`[WhatsApp] Gonderildi ${to} wamid=${wamid || 'n/a'}`);
       return true;
     } catch (err: any) {
-      this.logger.error(`[WhatsApp] Ag hatasi ${to}: ${err?.message || err}`);
+      this.logger.error(`[WhatsApp] Ag hatasi ${to}: ${this.describeFetchFailure(err)}`);
       return false;
     }
+  }
+
+  private async postGraphMessages(url: string, cfg: WhatsAppConfig, payload: any): Promise<Response> {
+    let lastError: any = null;
+    for (let attempt = 1; attempt <= 2; attempt++) {
+      const controller = new AbortController();
+      const timeout = setTimeout(() => controller.abort(), 25_000);
+      try {
+        return await fetch(url, {
+          method: 'POST',
+          headers: {
+            'Authorization': `Bearer ${String(cfg.accessToken || '').trim()}`,
+            'Content-Type': 'application/json',
+            'Accept': 'application/json',
+            'User-Agent': 'moren-portal-whatsapp/1.0',
+          },
+          body: JSON.stringify(payload),
+          signal: controller.signal,
+        });
+      } catch (err: any) {
+        lastError = err;
+        if (attempt >= 2) break;
+        await new Promise((resolve) => setTimeout(resolve, 600));
+      } finally {
+        clearTimeout(timeout);
+      }
+    }
+    throw lastError;
+  }
+
+  private describeFetchFailure(err: any): string {
+    const cause = err?.cause;
+    const code = cause?.code || err?.code;
+    const reason = cause?.message || err?.message || String(err || 'fetch failed');
+    if (err?.name === 'AbortError') {
+      return 'Meta Graph API zaman asimina ulasti. Biraz sonra tekrar deneyin.';
+    }
+    if (code) return `${reason} (${code})`;
+    return reason;
   }
 
   async downloadMedia(

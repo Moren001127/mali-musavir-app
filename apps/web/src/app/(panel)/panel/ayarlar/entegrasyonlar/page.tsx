@@ -412,7 +412,7 @@ function WhatsAppCard() {
         .then((r) => r.data as { sent: boolean; error?: string }),
     onSuccess: (res) => {
       if (res.sent) toast.success('Test mesajı gönderildi.');
-      else toast.error('Gönderim başarısız (24s pencere veya şablon kontrolü yapın).');
+      else toast.error(res.error || 'Gönderim başarısız (24s pencere veya şablon kontrolü yapın).');
     },
     onError: (e: any) => toast.error('Hata: ' + (e?.message || '')),
   });
