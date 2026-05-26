@@ -1,7 +1,7 @@
 import { Body, Controller, Get, Param, Post, Query, Req, UploadedFile, UseGuards, UseInterceptors } from '@nestjs/common';
 import { AuthGuard } from '@nestjs/passport';
 import { FileInterceptor } from '@nestjs/platform-express';
-import { randomUUID } from 'crypto';
+import { randomBytes, randomUUID } from 'crypto';
 import { memoryStorage } from 'multer';
 import { WhatsAppService } from './whatsapp.service';
 import { PrismaService } from '../prisma/prisma.service';
@@ -30,6 +30,19 @@ type LinkConversationBody = {
 type SendMediaBody = {
   documentId?: string;
   caption?: string;
+};
+
+type PortalMessageBody = {
+  taxpayerIds?: string[];
+  message?: string;
+  useTemplate?: boolean;
+  templateName?: string;
+  templateParams?: string[];
+  sendToAllPhones?: boolean;
+  requireApproval?: boolean;
+  previewId?: string;
+  confirmationText?: string;
+  period?: string;
 };
 
 @Controller('whatsapp')
@@ -799,7 +812,12 @@ export class WhatsAppController {
   }
 
   @Post('portal-message/preview')
-  async previewPortalMessage(@Req() req: any, @Body() body: { taxpayerIds?: string[]; message?: string; useTemplate?: boolean; templateName?: string }) {
+  async previewPortalMessage(@Req() req: any, @Body() body: PortalMessageBody) {
+    return this.buildPortalMessagePreview(req.user.tenantId, body, {
+      createApproval: true,
+      userId: this.requestUserId(req),
+    });
+
     const taxpayerIds = Array.isArray(body?.taxpayerIds) ? body.taxpayerIds : [];
     const message = String(body?.message || '').trim();
     const taxpayers = await this.prisma.taxpayer.findMany({
@@ -827,14 +845,76 @@ export class WhatsAppController {
   }
 
   @Post('portal-message/send')
-  async sendPortalMessage(@Req() req: any, @Body() body: { taxpayerIds?: string[]; message?: string; useTemplate?: boolean; templateName?: string }) {
+  async sendPortalMessage(@Req() req: any, @Body() body: PortalMessageBody) {
+    {
+      const tenantId = req.user.tenantId;
+      const approval = await this.resolvePortalMessageApproval(tenantId, this.requestUserId(req), body);
+      if (!approval.ok) return approval;
+
+      const preview = await this.buildPortalMessagePreview(tenantId, approval.body || body, { createApproval: false });
+      let basarili = 0;
+      let hatali = 0;
+      const results: any[] = [];
+
+      for (const row of preview.rows as any[]) {
+        if (!row.gonderilecek) {
+          results.push({ taxpayerId: row.id, ad: row.ad, ok: false, skipped: true, error: row.sebep });
+          continue;
+        }
+
+        const errors: string[] = [];
+        let delivered = false;
+        for (const phone of row.phones) {
+          const result = preview.template
+            ? await this.whatsappService.sendTemplateDetailed(phone, row.templateParams || [], preview.template, tenantId)
+            : await this.whatsappService.sendMessageDetailed(phone, row.mesaj, tenantId);
+          if (result.ok) delivered = true;
+          else errors.push(`${phone}: ${result.error || 'WhatsApp gonderimi basarisiz.'}`);
+        }
+
+        delivered ? basarili++ : hatali++;
+        const logContent = preview.template
+          ? `[Sablon: ${preview.template}] ${(row.templateParams || []).join(' | ')}`
+          : row.mesaj;
+        await this.prisma.communicationLog.create({
+          data: {
+            taxpayerId: row.id,
+            channel: 'WHATSAPP',
+            subject: delivered ? 'Portal WhatsApp mesaji' : 'Portal WhatsApp mesaji (gonderilemedi)',
+            content: delivered ? logContent : `${logContent}\n\nHata: ${errors.join(' | ') || 'WhatsApp gonderimi basarisiz.'}`,
+            occurredAt: new Date(),
+          },
+        });
+        results.push({ taxpayerId: row.id, ad: row.ad, phones: row.phones, ok: delivered, error: delivered ? undefined : errors.join(' | ') });
+      }
+
+      if (approval.approvalId) {
+        await (this.prisma as any).ownerApprovalRequest.update({
+          where: { id: approval.approvalId },
+          data: {
+            status: 'EXECUTED',
+            approvedAt: new Date(),
+            consumedAt: new Date(),
+            responseText: body?.confirmationText || body?.previewId || null,
+          },
+        }).catch(() => null);
+        await this.writeOwnerApprovalAudit(tenantId, this.requestUserId(req), 'EXECUTE', approval.approvalId, {
+          previewId: approval.previewId,
+          basarili,
+          hatali,
+        });
+      }
+
+      return { ...preview, basarili, hatali, results, previewId: approval.previewId || preview.previewId || null };
+    }
+
     const preview = await this.previewPortalMessage(req, body);
     let basarili = 0;
     let hatali = 0;
     for (const row of preview.rows as any[]) {
       if (!row.gonderilecek) continue;
       const ok = preview.template
-        ? await this.whatsappService.sendTemplate(row.phone, [row.ad, preview.mesaj], preview.template, req.user.tenantId)
+        ? await this.whatsappService.sendTemplate(row.phone, [row.ad, preview.mesaj], preview.template || undefined, req.user.tenantId)
         : await this.whatsappService.sendMessage(row.phone, preview.mesaj, req.user.tenantId);
       if (ok) {
         basarili++;
@@ -876,6 +956,250 @@ export class WhatsAppController {
       ok ? basarili++ : hatali++;
     }
     return { ok: basarili > 0, basarili, hatali, hedef: rawPhones.length };
+  }
+
+  private requestUserId(req: any): string | null {
+    return req?.user?.sub || req?.user?.userId || req?.user?.id || null;
+  }
+
+  private async buildPortalMessagePreview(
+    tenantId: string,
+    body: PortalMessageBody = {},
+    opts: { createApproval?: boolean; userId?: string | null } = {},
+  ) {
+    const taxpayerIds = Array.isArray(body?.taxpayerIds)
+      ? Array.from(new Set(body.taxpayerIds.map((id) => String(id || '').trim()).filter(Boolean)))
+      : [];
+    const messageTemplate = String(body?.message || '').trim();
+    const useTemplate = Boolean(body?.useTemplate);
+    const status = await this.whatsappService.getStatus(tenantId);
+    const template = useTemplate
+      ? String(body?.templateName || status.portalTemplateName || status.templateName || process.env.WHATSAPP_PORTAL_TEMPLATE_NAME || process.env.WHATSAPP_TEMPLATE_NAME || '').trim()
+      : '';
+    const period = this.portalPeriodLabel(body?.period);
+    const paramTemplates = Array.isArray(body?.templateParams)
+      ? body.templateParams.map((p) => String(p ?? '').trim()).filter(Boolean)
+      : [];
+
+    const taxpayers = taxpayerIds.length
+      ? await this.prisma.taxpayer.findMany({
+          where: { tenantId, id: { in: taxpayerIds } },
+          select: {
+            id: true,
+            companyName: true,
+            firstName: true,
+            lastName: true,
+            taxNumber: true,
+            phone: true,
+            phones: true,
+          },
+          orderBy: [{ companyName: 'asc' }, { firstName: 'asc' }],
+        })
+      : [];
+
+    const rows = taxpayers.map((t: any) => {
+      const allPhones = this.taxpayerPhones(t);
+      const phones = body?.sendToAllPhones ? allPhones : allPhones.slice(0, 1);
+      const context = this.portalTemplateContext(t, messageTemplate, period, phones[0] || allPhones[0] || '');
+      const mesaj = this.renderPortalTemplate(messageTemplate, context);
+      const effectiveParamTemplates = template
+        ? (paramTemplates.length ? paramTemplates : this.defaultPortalTemplateParams(template, messageTemplate))
+        : [];
+      const templateParams = effectiveParamTemplates.map((value) => this.renderPortalTemplate(value, context));
+      const reasons: string[] = [];
+      if (!phones.length) reasons.push('telefon yok');
+      if (!template && !mesaj) reasons.push('mesaj bos');
+      if (template && !template.trim()) reasons.push('sablon adi yok');
+
+      return {
+        id: t.id,
+        ad: context.ad,
+        taxNumber: this.publicTaxNumber(t.taxNumber),
+        phone: phones[0] || null,
+        phones,
+        mesaj,
+        templateParams,
+        gonderilecek: reasons.length === 0,
+        sebep: reasons.join(', ') || null,
+      };
+    });
+
+    const gonderilecek = rows.filter((r) => r.gonderilecek).length;
+    const targetCount = rows.filter((r) => r.gonderilecek).reduce((sum, row) => sum + row.phones.length, 0);
+    let approval: any = null;
+    if (opts.createApproval && gonderilecek > 0) {
+      const payload: PortalMessageBody = {
+        taxpayerIds,
+        message: messageTemplate,
+        useTemplate,
+        templateName: template || undefined,
+        templateParams: paramTemplates,
+        sendToAllPhones: Boolean(body?.sendToAllPhones),
+        period,
+      };
+      approval = await this.createPortalOwnerApproval(
+        tenantId,
+        opts.userId || null,
+        payload,
+        `${targetCount} WhatsApp hedefi icin ${template ? `Meta sablonu (${template})` : 'serbest portal mesaji'} hazirlandi.`,
+      );
+    }
+
+    return {
+      whatsapp: status,
+      mesaj: messageTemplate,
+      template: template || null,
+      period,
+      sendToAllPhones: Boolean(body?.sendToAllPhones),
+      gonderilecek,
+      atlanacak: rows.filter((r) => !r.gonderilecek).length,
+      targetCount,
+      approvalRecommended: targetCount > 1,
+      requiresConfirmation: Boolean(approval),
+      previewId: approval?.previewId || null,
+      expiresAt: approval?.expiresAt || null,
+      confirmationText: approval ? `ONAYLIYORUM #${approval.previewId}` : null,
+      variables: ['{{ad}}', '{{mukellef}}', '{{vkn}}', '{{telefon}}', '{{donem}}', '{{mesaj}}'],
+      rows,
+    };
+  }
+
+  private async resolvePortalMessageApproval(tenantId: string, userId: string | null, body: PortalMessageBody = {}) {
+    const previewId = this.extractPreviewId(body?.confirmationText || body?.previewId);
+    if (!previewId) {
+      if (body?.requireApproval) {
+        return { ok: false, error: 'Toplu gonderim icin once preview alin ve ONAYLIYORUM #PRV-XXXX formatinda onay girin.' };
+      }
+      return { ok: true as const, body: null as PortalMessageBody | null, approvalId: null as string | null, previewId: null as string | null };
+    }
+
+    const confirmation = String(body?.confirmationText || '').trim().toLocaleUpperCase('tr-TR');
+    if (confirmation !== `ONAYLIYORUM #${previewId}`) {
+      return { ok: false, error: `Onay metni gecersiz. Beklenen format: ONAYLIYORUM #${previewId}` };
+    }
+
+    const approval = await (this.prisma as any).ownerApprovalRequest.findFirst({
+      where: { tenantId, previewId, agent: 'whatsapp', action: 'portal_message_send' },
+    });
+    if (!approval) return { ok: false, error: `Preview bulunamadi: ${previewId}` };
+    if (approval.status !== 'PENDING') return { ok: false, error: `Preview artik kullanilamaz: ${approval.status}` };
+    if (new Date(approval.expiresAt).getTime() < Date.now()) {
+      await (this.prisma as any).ownerApprovalRequest.update({
+        where: { id: approval.id },
+        data: { status: 'EXPIRED', responseText: body?.confirmationText || null },
+      }).catch(() => null);
+      await this.writeOwnerApprovalAudit(tenantId, userId, 'EXPIRE', approval.id, { previewId });
+      return { ok: false, error: `Preview suresi doldu: ${previewId}. Yeni onizleme olusturun.` };
+    }
+
+    return {
+      ok: true as const,
+      body: approval.payload as PortalMessageBody,
+      approvalId: approval.id as string,
+      previewId,
+    };
+  }
+
+  private async createPortalOwnerApproval(tenantId: string, userId: string | null, payload: PortalMessageBody, impact: string) {
+    const previewId = await this.nextPreviewId();
+    const expiresAt = new Date(Date.now() + 5 * 60 * 1000);
+    const approval = await (this.prisma as any).ownerApprovalRequest.create({
+      data: {
+        tenantId,
+        userId,
+        previewId,
+        agent: 'whatsapp',
+        action: 'portal_message_send',
+        payload,
+        impact,
+        expiresAt,
+      },
+    });
+    await this.writeOwnerApprovalAudit(tenantId, userId, 'CREATE', approval.id, { previewId, impact, payload, expiresAt });
+    return approval;
+  }
+
+  private async writeOwnerApprovalAudit(tenantId: string, userId: string | null, action: string, resourceId: string | null, data: any) {
+    await this.prisma.auditLog.create({
+      data: {
+        tenantId,
+        userId,
+        action,
+        resource: 'owner_approval_request',
+        resourceId,
+        newData: data,
+      },
+    }).catch(() => null);
+  }
+
+  private async nextPreviewId(): Promise<string> {
+    for (let attempt = 0; attempt < 8; attempt++) {
+      const previewId = `PRV-${randomBytes(2).toString('hex').toUpperCase()}`;
+      const exists = await (this.prisma as any).ownerApprovalRequest.findUnique({ where: { previewId } }).catch(() => null);
+      if (!exists) return previewId;
+    }
+    return `PRV-${randomBytes(2).toString('hex').toUpperCase()}`;
+  }
+
+  private extractPreviewId(value: any): string | null {
+    const raw = String(value || '').trim().toLocaleUpperCase('tr-TR');
+    const match = raw.match(/#?(PRV-[A-F0-9]{4})\b/);
+    return match ? match[1] : null;
+  }
+
+  private defaultPortalTemplateParams(templateName: string, message: string): string[] {
+    const normalized = String(templateName || '').trim().toLocaleLowerCase('tr-TR');
+    if (!normalized) return [];
+    if (normalized === 'evrak_iletisim') return ['{{ad}}'];
+    return String(message || '').trim() ? ['{{ad}}', '{{mesaj}}'] : ['{{ad}}'];
+  }
+
+  private portalTemplateContext(t: any, message: string, period: string, phone: string) {
+    const ad = this.taxpayerDisplayName(t);
+    return {
+      ad,
+      mukellef: ad,
+      unvan: ad,
+      firstName: String(t.firstName || '').trim(),
+      lastName: String(t.lastName || '').trim(),
+      vkn: String(t.taxNumber || '').trim(),
+      taxNumber: String(t.taxNumber || '').trim(),
+      telefon: phone,
+      phone,
+      donem: period,
+      period,
+      mesaj: message,
+      message,
+    };
+  }
+
+  private renderPortalTemplate(value: string, context: Record<string, any>): string {
+    const aliases = new Map<string, string>();
+    Object.entries(context).forEach(([key, raw]) => {
+      const value = String(raw ?? '');
+      aliases.set(key.toLocaleLowerCase('tr-TR'), value);
+      aliases.set(`taxpayer.${key}`.toLocaleLowerCase('tr-TR'), value);
+    });
+    aliases.set('taxpayer.name', String(context.ad || ''));
+    aliases.set('taxpayer.taxnumber', String(context.taxNumber || context.vkn || ''));
+
+    return String(value || '').replace(/\{\{\s*([a-zA-Z0-9_.-]+)\s*\}\}|\{\s*([a-zA-Z0-9_.-]+)\s*\}/g, (all, key1, key2) => {
+      const key = String(key1 || key2 || '').toLocaleLowerCase('tr-TR');
+      return aliases.has(key) ? aliases.get(key)! : all;
+    }).trim();
+  }
+
+  private portalPeriodLabel(raw?: string): string {
+    const value = String(raw || '').trim();
+    const match = value.match(/^(\d{4})-(\d{1,2})$/);
+    if (match) {
+      const year = Number(match[1]);
+      const month = Math.min(12, Math.max(1, Number(match[2])));
+      return `${this.aylarTr[month - 1]} ${year}`;
+    }
+    if (value) return value;
+    const now = new Date();
+    return `${this.aylarTr[now.getMonth()]} ${now.getFullYear()}`;
   }
 
   private async ensureManualWhatsAppContact(tenantId: string, phone: string, displayName?: string) {

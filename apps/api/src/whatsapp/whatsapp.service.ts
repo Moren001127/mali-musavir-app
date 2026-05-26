@@ -27,6 +27,9 @@ export interface WhatsAppConfig {
 export interface WhatsAppSendResult {
   ok: boolean;
   error?: string;
+  errorCode?: string;
+  actionRequired?: string;
+  helpUrl?: string;
   status?: number;
   providerMessageId?: string;
 }
@@ -304,11 +307,10 @@ export class WhatsAppService {
       const bodyText = await res.text();
       const data = (() => { try { return JSON.parse(bodyText); } catch { return null; } })();
       if (!res.ok) {
-        const metaError = data?.error;
-        const detail = metaError?.error_data?.details || metaError?.message || bodyText.slice(0, 220);
-        const error = `Meta WhatsApp hata verdi (HTTP ${res.status}${metaError?.code ? ` / ${metaError.code}` : ''}): ${detail}`;
+        const meta = this.describeMetaError(res.status, data?.error, bodyText);
+        const error = meta.error;
         this.logger.error(`[WhatsApp] Gonderim hatasi ${to}: ${error}`);
-        return { ok: false, status: res.status, error };
+        return { ok: false, status: res.status, ...meta };
       }
       const wamid = data?.messages?.[0]?.id;
       this.logger.log(`[WhatsApp] Gonderildi ${to} wamid=${wamid || 'n/a'}`);
@@ -474,7 +476,9 @@ export class WhatsAppService {
       });
       const bodyText = await res.text();
       if (!res.ok) {
-        return { ok: false, error: `HTTP ${res.status} - ${bodyText.slice(0, 300)}` };
+        const data = (() => { try { return JSON.parse(bodyText); } catch { return null; } })();
+        const meta = this.describeMetaError(res.status, data?.error, bodyText);
+        return { ok: false, error: meta.error, ...(meta as any) };
       }
       const data = (() => { try { return JSON.parse(bodyText); } catch { return null; } })();
       return { ok: true, phoneInfo: data };
@@ -490,6 +494,53 @@ export class WhatsAppService {
     }
     const result = await this.sendMessageDetailed(to, 'Moren Portal - Test mesaji (' + new Date().toLocaleString('tr-TR') + ')', tenantId);
     return { sent: result.ok, error: result.error };
+  }
+
+  private describeMetaError(status: number, metaError: any, rawBody: string): {
+    error: string;
+    errorCode: string;
+    actionRequired?: string;
+    helpUrl?: string;
+  } {
+    const code = metaError?.code ? Number(metaError.code) : undefined;
+    const subcode = metaError?.error_subcode ? Number(metaError.error_subcode) : undefined;
+    const detail = String(metaError?.error_data?.details || metaError?.message || rawBody || 'Bilinmeyen Meta hatasi')
+      .replace(/\s+/g, ' ')
+      .trim()
+      .slice(0, 300);
+
+    if (status === 401 || code === 190) {
+      return {
+        error: `Meta WhatsApp access token gecersiz veya suresi dolmus (HTTP ${status}${code ? ` / ${code}` : ''}). Ayarlar > Entegrasyonlar > WhatsApp icinden yeni System User token kaydedin.`,
+        errorCode: 'META_AUTH',
+        actionRequired: 'Meta Business Settings > System Users bolumunden whatsapp_business_messaging ve whatsapp_business_management izinli yeni token uretin.',
+        helpUrl: 'https://business.facebook.com/settings/system-users',
+      };
+    }
+
+    if (code === 131047) {
+      return {
+        error: '24 saatlik WhatsApp musteri penceresi kapali. Serbest mesaj yerine Meta onayli sablon gonderin.',
+        errorCode: 'META_24H_WINDOW_CLOSED',
+        actionRequired: 'Onayli bir templateName ile sablon mesaji gonderin.',
+        helpUrl: 'https://developers.facebook.com/docs/whatsapp/cloud-api/guides/send-message-templates',
+      };
+    }
+
+    if (code === 132000 || code === 132012 || code === 132015) {
+      return {
+        error: `Meta sablon hatasi (HTTP ${status}${code ? ` / ${code}` : ''}${subcode ? ` / ${subcode}` : ''}): ${detail}`,
+        errorCode: 'META_TEMPLATE',
+        actionRequired: 'Sablon adini, dil kodunu ve degisken sayisini Meta WhatsApp Manager ile ayni olacak sekilde kontrol edin.',
+        helpUrl: 'https://business.facebook.com/wa/manage/message-templates/',
+      };
+    }
+
+    return {
+      error: `Meta WhatsApp hata verdi (HTTP ${status}${code ? ` / ${code}` : ''}${subcode ? ` / ${subcode}` : ''}): ${detail}`,
+      errorCode: 'META_ERROR',
+      helpUrl: 'https://developers.facebook.com/docs/whatsapp/cloud-api/support/error-codes',
+    };
   }
 
   private async loadConfigFromDb(tenantId: string): Promise<WhatsAppConfig | null> {
