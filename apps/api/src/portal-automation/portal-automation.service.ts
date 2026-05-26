@@ -72,6 +72,7 @@ type AgentDeclarationInput = {
   taxpayerId: string;
   beyanTipi: string;
   donem: string;
+  status?: string | null;
   beyanTarihi?: string | null;
   tahakkukTutari?: number | null;
   odemeTutari?: number | null;
@@ -115,6 +116,28 @@ function parseDateOrNull(value?: string | null): Date | null {
   if (!value) return null;
   const d = new Date(value);
   return Number.isNaN(d.getTime()) ? null : d;
+}
+
+function normalizeAgentDeclarationStatus(input: AgentDeclarationInput): 'onaylandi' | 'beklemede' | 'hatali' {
+  const rawStatus = [
+    input.status,
+    input.raw?.status,
+    input.raw?.durum,
+    input.raw?.phase,
+    input.raw?.state,
+  ].filter(Boolean).join(' ').toLowerCase();
+
+  if (/onay\s*bek|beklemede|pending|approval|awaiting/.test(rawStatus)) return 'beklemede';
+  if (/hata|hatali|failed|fail|error/.test(rawStatus)) return 'hatali';
+  return 'onaylandi';
+}
+
+function agentDeclarationStatusNote(input: AgentDeclarationInput, status: 'beklemede' | 'hatali') {
+  const prefix = status === 'beklemede'
+    ? 'GIB agent onay bekliyor'
+    : 'GIB agent hata';
+  const raw = input.raw ? JSON.stringify({ source: 'portal-automation', raw: input.raw }) : '';
+  return raw ? `${prefix} | ${raw}`.slice(0, 1000) : prefix;
 }
 
 function parseIstanbulDateBoundary(value: string | undefined, boundary: 'start' | 'end'): Date | null {
@@ -717,6 +740,36 @@ export class PortalAutomationService {
       select: { id: true, taxNumber: true },
     });
     if (!taxpayer) throw new NotFoundException('Beyanname mukellefi bulunamadi');
+
+    const declarationStatus = normalizeAgentDeclarationStatus(input);
+    if (declarationStatus !== 'onaylandi') {
+      return (this.prisma as any).beyanDurumu.upsert({
+        where: {
+          tenantId_taxpayerId_beyanTipi_donem: {
+            tenantId,
+            taxpayerId: taxpayer.id,
+            beyanTipi: input.beyanTipi,
+            donem: input.donem,
+          },
+        },
+        create: {
+          tenantId,
+          taxpayerId: taxpayer.id,
+          beyanTipi: input.beyanTipi,
+          donem: input.donem,
+          durum: declarationStatus,
+          onayTarihi: null,
+          tahakkukTutari: input.tahakkukTutari ?? null,
+          notlar: agentDeclarationStatusNote(input, declarationStatus),
+        },
+        update: {
+          durum: declarationStatus,
+          onayTarihi: null,
+          tahakkukTutari: input.tahakkukTutari ?? null,
+          notlar: agentDeclarationStatusNote(input, declarationStatus),
+        },
+      });
+    }
 
     const base = `${tenantId}/${taxpayer.id}/gib-beyan/${input.beyanTipi}_${input.donem}`;
     const beyannameUrl = await this.storeBase64IfPresent(

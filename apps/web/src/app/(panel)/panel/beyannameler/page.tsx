@@ -17,6 +17,7 @@ import {
   CheckCircle2, AlertCircle, FileQuestion, Loader2, X as IconX,
   FolderUp, FileX2, Archive, Sparkles, Eye, Mail, MessageCircle,
   MessageSquareText, Filter, CalendarDays, UserRound, RotateCcw,
+  Clock, ServerCog, KeyRound, Play,
 } from 'lucide-react';
 import { toast } from 'sonner';
 
@@ -134,6 +135,12 @@ export default function BeyannamelerPage() {
   const [pullFrom, setPullFrom] = useState(defaultPullRange.from);
   const [pullTo, setPullTo] = useState(defaultPullRange.to);
 
+  const { data: portalSummary } = useQuery({
+    queryKey: ['portal-automation-summary', 'beyanname-page'],
+    queryFn: () => portalAutomationApi.summary(),
+    refetchInterval: 8000,
+  });
+
   const { data: kayitlar = [], isLoading } = useQuery<BeyanKaydi[]>({
     queryKey: ['beyan-kayitlari', 'redesign'],
     queryFn: () => beyanKayitlariApi.list({ limit: 1500 }),
@@ -167,6 +174,16 @@ export default function BeyannamelerPage() {
       }
     },
     onError: (e: any) => toast.error(e?.message || 'e-Beyanname çekme işi başlatılamadı'),
+  });
+
+  const nightlyMut = useMutation({
+    mutationFn: () => portalAutomationApi.nightlyRunNow(),
+    onSuccess: (res) => {
+      qc.invalidateQueries({ queryKey: ['portal-automation-summary'] });
+      toast.success(`${res.created?.length || 0} gece işi kuyruğa alındı`);
+      if (res.skipped?.length) toast.warning(`${res.skipped.length} iş atlandı`);
+    },
+    onError: (e: any) => toast.error(e?.message || 'Gece akışı başlatılamadı'),
   });
 
   const taxpayerOptions = useMemo(() => {
@@ -338,18 +355,18 @@ export default function BeyannamelerPage() {
           <div className="min-w-0">
             <div className="flex items-center gap-2 mb-2">
               <span className="w-7 h-px" style={{ background: GOLD }} />
-              <span className="text-[10.5px] uppercase font-bold tracking-[.18em]" style={{ color: '#b8a06f' }}>Belgeler</span>
+              <span className="text-[10.5px] uppercase font-bold tracking-[.18em]" style={{ color: '#b8a06f' }}>e-Beyanname</span>
             </div>
-            <h1 className="text-[30px] font-semibold tracking-[-.03em]" style={{ color: '#fafaf9' }}>Beyannameler</h1>
+            <h1 className="text-[30px] font-semibold tracking-[-.03em]" style={{ color: '#fafaf9' }}>Beyanname Indirme</h1>
             <p className="text-[13px] mt-1" style={{ color: 'rgba(250,250,249,0.52)' }}>
-              Hattat, GIB ve manuel yüklemeler tek listede; mükellef, dönem ve belge durumuna göre izlenir.
+              Mali musavir e-Beyanname sifresiyle portala girer, beyannameleri ve tahakkuklari sunucu kuyruguna indirir.
             </p>
           </div>
           <div className="flex items-center gap-2">
             <button
               type="button"
               onClick={exportCsv}
-              className="h-10 px-4 rounded-[10px] inline-flex items-center gap-2 text-[13px] font-semibold"
+              className="hidden"
               style={{ background: 'rgba(255,255,255,0.04)', border: '1px solid rgba(255,255,255,0.08)', color: 'rgba(250,250,249,0.82)' }}
             >
               <FileText size={15} /> Listeyi İndir
@@ -357,7 +374,7 @@ export default function BeyannamelerPage() {
             <button
               type="button"
               onClick={() => setImportModal(true)}
-              className="h-10 px-4 rounded-[10px] inline-flex items-center gap-2 text-[13px] font-bold"
+              className="hidden"
               style={{ background: `linear-gradient(135deg, ${GOLD}, #b8a06f)`, color: '#0f0d0b' }}
             >
               <FolderUp size={15} /> PDF / ZIP Aktar
@@ -375,7 +392,7 @@ export default function BeyannamelerPage() {
       </section>
 
       <section
-        className="rounded-2xl overflow-hidden"
+        className="hidden"
         style={{ background: 'rgba(255,255,255,0.025)', border: '1px solid rgba(255,255,255,0.07)' }}
       >
         <div className="px-4 py-3 text-[13px] font-semibold" style={{ background: 'rgba(255,255,255,0.035)', color: '#fafaf9', borderBottom: '1px solid rgba(255,255,255,0.06)' }}>
@@ -429,7 +446,7 @@ export default function BeyannamelerPage() {
         </div>
       </section>
 
-      <section className="rounded-2xl overflow-hidden" style={{ background: 'rgba(255,255,255,0.025)', border: '1px solid rgba(255,255,255,0.07)' }}>
+      <section className="hidden" style={{ background: 'rgba(255,255,255,0.025)', border: '1px solid rgba(255,255,255,0.07)' }}>
         <div className="px-4 py-3 text-[13px] font-semibold" style={{ background: 'rgba(255,255,255,0.035)', color: '#fafaf9', borderBottom: '1px solid rgba(255,255,255,0.06)' }}>
           E-Beyannameleri Çek
         </div>
@@ -459,7 +476,7 @@ export default function BeyannamelerPage() {
         </div>
       </section>
 
-      <details className="hidden" style={{ background: 'rgba(255,255,255,0.02)', border: '1px solid rgba(255,255,255,0.07)' }}>
+      <details open className="rounded-2xl overflow-hidden" style={{ background: 'rgba(255,255,255,0.02)', border: '1px solid rgba(255,255,255,0.07)' }}>
         <summary className="cursor-pointer px-4 py-3 text-[13px] font-semibold" style={{ color: '#fafaf9' }}>
           e-Beyanname sunucu çekme paneli
         </summary>
@@ -468,7 +485,7 @@ export default function BeyannamelerPage() {
         </div>
       </details>
 
-      <section className="rounded-2xl overflow-hidden" style={{ background: 'rgba(255,255,255,0.02)', border: '1px solid rgba(255,255,255,0.07)' }}>
+      <section className="hidden" style={{ background: 'rgba(255,255,255,0.02)', border: '1px solid rgba(255,255,255,0.07)' }}>
         <div className="px-4 py-3 flex items-center justify-between gap-3" style={{ borderBottom: '1px solid rgba(255,255,255,0.06)' }}>
           <div>
             <h2 className="text-[15px] font-semibold" style={{ color: '#fafaf9' }}>Beyanname Listesi</h2>
@@ -579,7 +596,7 @@ export default function BeyannamelerPage() {
         )}
       </section>
 
-      {importModal && (
+      {false && importModal && (
         <ImportModal
           onClose={() => setImportModal(false)}
           onDone={() => {

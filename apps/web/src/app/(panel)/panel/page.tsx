@@ -423,7 +423,7 @@ function BeyanCompactTable({
   compact?: boolean;
 }) {
   return (
-    <div className={compact ? 'px-5 pb-4' : 'px-5 py-4'}>
+    <div className={compact ? 'px-4 pb-3' : 'px-4 py-3'}>
       <div className="mb-2.5 flex items-center justify-between gap-3">
         <div className="text-[11px] font-bold uppercase tracking-[0.14em]" style={{ color: 'rgba(250,250,249,0.48)' }}>
           {title}
@@ -432,10 +432,10 @@ function BeyanCompactTable({
           {donem}
         </div>
       </div>
-      <div className="overflow-x-auto rounded-xl" style={{ border: '1px solid rgba(125,211,252,0.13)', background: 'rgba(255,255,255,0.018)' }}>
-        <table className="w-full min-w-[820px] border-collapse text-[12px]" style={{ color: 'rgba(250,250,249,0.82)' }}>
+      <div className="overflow-x-auto rounded-xl" style={{ border: '1px solid rgba(255,255,255,0.08)', background: 'rgba(255,255,255,0.018)' }}>
+        <table className="w-full min-w-[760px] border-collapse text-[12px]" style={{ color: 'rgba(250,250,249,0.82)' }}>
           <thead>
-            <tr style={{ background: 'rgba(125,211,252,0.055)', borderBottom: '1px solid rgba(125,211,252,0.11)' }}>
+            <tr style={{ background: 'rgba(255,255,255,0.035)', borderBottom: '1px solid rgba(255,255,255,0.07)' }}>
               <BeyanHeaderCell align="left">Beyanname</BeyanHeaderCell>
               <BeyanHeaderCell>Takip</BeyanHeaderCell>
               <BeyanHeaderCell>Onaylanan</BeyanHeaderCell>
@@ -459,7 +459,7 @@ function BeyanCompactTable({
 function BeyanHeaderCell({ children, align = 'right' }: { children: ReactNode; align?: 'left' | 'right' }) {
   return (
     <th
-      className={`px-3 py-2 text-[10px] font-black uppercase tracking-[0.12em] ${align === 'right' ? 'text-right' : 'text-left'}`}
+      className={`px-3 py-1.5 text-[10px] font-black uppercase tracking-[0.12em] ${align === 'right' ? 'text-right' : 'text-left'}`}
       style={{ color: 'rgba(250,250,249,0.48)' }}
     >
       {children}
@@ -485,7 +485,7 @@ function BeyanCompactRow({
       className="transition hover:bg-white/[0.025]"
       style={{ borderTop: '1px solid rgba(255,255,255,0.045)' }}
     >
-      <td className="px-3 py-2.5">
+      <td className="px-3 py-2">
         <button
           type="button"
           onClick={() => onNumberClick(row.beyanTipi, 'toplam')}
@@ -495,7 +495,7 @@ function BeyanCompactRow({
         >
           {label}
         </button>
-        <div className="mt-0.5 text-[10.5px] tabular-nums" style={{ color: 'rgba(250,250,249,0.38)', fontFamily: 'Inter, ui-sans-serif, system-ui, sans-serif' }}>
+        <div className="hidden">
           {row.toplam} mükellef takipte
         </div>
       </td>
@@ -504,8 +504,8 @@ function BeyanCompactRow({
       <BeyanNumberCell value={row.bekleyen} color="rgba(250,250,249,0.68)" onClick={() => onNumberClick(row.beyanTipi, 'bekleyen')} />
       <BeyanNumberCell value={row.hatali} color={row.hatali > 0 ? '#f472b6' : 'rgba(250,250,249,0.34)'} onClick={() => onNumberClick(row.beyanTipi, 'hatali')} />
       <BeyanNumberCell value={row.kalan} color={row.kalan > 0 ? TRACK_BLUE : '#22c55e'} onClick={() => onNumberClick(row.beyanTipi, 'kalan')} />
-      <td className="px-3 py-2.5">
-        <div className="grid grid-cols-[96px,1fr,44px] items-center gap-2">
+      <td className="px-3 py-2">
+        <div className="grid grid-cols-[82px,1fr,38px] items-center gap-2">
           <span className="text-[11px] font-bold" style={{ color: barColor }}>{statusLabel}</span>
           <div className="h-1.5 overflow-hidden rounded-full" style={{ background: 'rgba(255,255,255,0.06)' }}>
             <div
@@ -528,12 +528,12 @@ function BeyanCompactRow({
 function BeyanNumberCell({ value, color, onClick }: { value: number; color: string; onClick: () => void }) {
   const clickable = value > 0;
   return (
-    <td className="px-3 py-2.5 text-right">
+    <td className="px-3 py-2 text-right">
       <button
         type="button"
         disabled={!clickable}
         onClick={clickable ? onClick : undefined}
-        className={`min-w-8 rounded-md px-2 py-1 text-right text-[14px] font-extrabold tabular-nums transition ${clickable ? 'hover:bg-white/[0.055] hover:underline decoration-dotted underline-offset-4' : ''}`}
+        className={`min-w-8 rounded-md px-2 py-0.5 text-right text-[13px] font-bold tabular-nums transition ${clickable ? 'hover:bg-white/[0.055] hover:underline decoration-dotted underline-offset-4' : ''}`}
         style={{ color, fontFamily: 'Inter, ui-sans-serif, system-ui, sans-serif', letterSpacing: 0 }}
         title={clickable ? 'Mükellef listesini göster' : undefined}
       >
@@ -890,7 +890,7 @@ function MiniTable({ title, row, donem, accent, onNumberClick }: { title: string
 // ══════════════════════════════════════════════════════════
 function BeyanDetayModal({ state, onClose }: { state: { beyanTipi: BeyanTipi; filter: BeyanFilter; donem: string; donemTuru: DonemTuru }; onClose: () => void }) {
   const { data: detay, isLoading } = useQuery({
-    queryKey: ['beyanname-detay', state.donem, state.donemTuru],
+    queryKey: ['beyanname-detay', state.donem, state.donemTuru, state.beyanTipi, state.filter],
     queryFn: () => beyannameTakipApi.listDetay(state.donem, state.donemTuru),
     staleTime: 2 * 60 * 1000,
   });
@@ -989,10 +989,10 @@ function BeyanDetayModal({ state, onClose }: { state: { beyanTipi: BeyanTipi; fi
     >
       <div
         onClick={(e) => e.stopPropagation()}
-        className="flex w-full max-w-5xl flex-col overflow-hidden rounded-2xl"
+        className="flex w-full max-w-4xl flex-col overflow-hidden rounded-2xl"
         style={{ background: '#101412', border: `1px solid ${filterColor[state.filter]}55`, maxHeight: '86vh', boxShadow: '0 28px 90px rgba(0,0,0,0.48)' }}
       >
-        <div className="flex items-start justify-between gap-4 px-6 py-5" style={{ borderBottom: '1px solid rgba(255,255,255,0.07)', background: 'linear-gradient(180deg, rgba(255,255,255,0.035), rgba(255,255,255,0.01))' }}>
+        <div className="flex items-start justify-between gap-4 px-4 py-3" style={{ borderBottom: '1px solid rgba(255,255,255,0.07)', background: 'linear-gradient(180deg, rgba(255,255,255,0.035), rgba(255,255,255,0.01))' }}>
           <div>
             <div className="text-[11px] font-black uppercase tracking-[0.16em]" style={{ color: filterColor[state.filter] }}>
               {BEYAN_ETIKETLER[state.beyanTipi]} · {state.donem} · {periodModeText}

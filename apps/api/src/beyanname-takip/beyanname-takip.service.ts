@@ -381,12 +381,22 @@ function resolveBeyanState(
     const durumKaydi = durumIndex.get(key);
     const beyanKaydi = kayitIndex.get(key);
     if (durumKaydi) {
-      const durum = beyanKaydi && durumKaydi.durum === 'beklemede' ? 'onaylandi' : durumKaydi.durum;
+      if (durumKaydi.durum === 'beklemede') {
+        if (beyanKaydi) return { durum: 'onaylandi', durumKaydi, beyanKaydi };
+        if (isEDeclarationApprovalPending(durumKaydi)) return { durum: 'beklemede', durumKaydi, beyanKaydi };
+        continue;
+      }
+      const durum = durumKaydi.durum;
       return { durum, durumKaydi, beyanKaydi };
     }
     if (beyanKaydi) return { durum: 'onaylandi', durumKaydi: null, beyanKaydi };
   }
   return { durum: 'kalan', durumKaydi: null, beyanKaydi: null };
+}
+
+function isEDeclarationApprovalPending(durumKaydi: any): boolean {
+  const note = String(durumKaydi?.notlar || '').toLowerCase();
+  return /gib agent onay bekliyor|e-beyanname onay bekliyor|portal-automation.*onay/.test(note);
 }
 
 function lookupKeysForExpected(tip: BeyanTipi, yil: number, ay: number, donem: string, donemTuru: DonemTuru) {
