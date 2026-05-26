@@ -79,6 +79,7 @@ const navGroups = [
       { href: '/panel', label: 'Gösterge Paneli', icon: Gauge },
       { href: '/panel/mukellefler', label: 'Mükellef Listesi', icon: UserRoundSearch },
       { href: '/panel/mesajlar', label: 'Mesajlar', icon: MessageCircle },
+      { href: '/panel/bot-kalite', label: 'Bot Kalite', icon: ShieldCheck },
       { href: '/panel/is-yuku', label: 'İş Akışı', icon: Workflow },
       { href: '/panel/gorevler', label: 'Görevler & Notlar', icon: ClipboardCheck },
       { href: '/panel/bildirimler', label: 'Bildirimler', icon: BellRing },

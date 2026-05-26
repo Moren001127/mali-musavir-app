@@ -93,6 +93,54 @@ export class WhatsAppService {
     };
   }
 
+  async listTemplates(tenantId?: string): Promise<{ ok: boolean; templates: any[]; error?: string }> {
+    const cfg = await this.getEffectiveConfig(tenantId);
+    if (!cfg.accessToken || !cfg.businessAccountId) {
+      return {
+        ok: false,
+        templates: [],
+        error: 'Meta sablonlarini cekmek icin Access Token ve Business Account ID gerekli.',
+      };
+    }
+
+    const version = cfg.apiVersion || 'v20.0';
+    let url = `https://graph.facebook.com/${version}/${cfg.businessAccountId}/message_templates?fields=name,language,status,category,components&limit=100`;
+    const templates: any[] = [];
+
+    try {
+      for (let page = 0; page < 5 && url; page++) {
+        const res = await fetch(url, {
+          headers: {
+            'Authorization': `Bearer ${String(cfg.accessToken || '').trim()}`,
+            'Accept': 'application/json',
+          },
+        });
+        const bodyText = await res.text();
+        const data = (() => { try { return JSON.parse(bodyText); } catch { return null; } })();
+        if (!res.ok) {
+          const meta = this.describeMetaError(res.status, data?.error, bodyText);
+          return { ok: false, templates, error: meta.error };
+        }
+
+        for (const item of data?.data || []) {
+          templates.push({
+            id: item.id || `${item.name}:${item.language}`,
+            name: item.name,
+            language: item.language,
+            status: item.status,
+            category: item.category,
+            components: item.components || [],
+          });
+        }
+        url = data?.paging?.next || '';
+      }
+
+      return { ok: true, templates };
+    } catch (err: any) {
+      return { ok: false, templates, error: `Meta sablonlari alinamadi: ${this.describeFetchFailure(err)}` };
+    }
+  }
+
   getQr(): string | null {
     return null;
   }

@@ -1299,6 +1299,51 @@ model AiUsageLog {
 }
 
 // Anthropic kontör (credit) yüklemeleri — kalan bakiye hesabı için
+model BotQualityLog {
+  id             String   @id @default(cuid())
+  tenantId       String
+  taxpayerId     String?
+  conversationId String?
+  messageId      String?
+  source         String   // ONLINE_EVAL | SYNTHETIC_TEST
+  status         String   // PASSED | LOW_SCORE | RETRY_USED | FALLBACK_USED | SYNTHETIC_FAIL | EVAL_WARN
+  score          Int      @default(0)
+  intent         String?
+  reasons        Json     @default("[]")
+  originalReply  String?  @db.Text
+  finalReply     String?  @db.Text
+  retryCount     Int      @default(0)
+  fallbackUsed   Boolean  @default(false)
+  evalModel      String?
+  inputTokens    Int      @default(0)
+  outputTokens   Int      @default(0)
+  costUsd        Float    @default(0)
+  scenarioKey    String?
+  metadata       Json?
+  createdAt      DateTime @default(now())
+
+  @@index([tenantId, createdAt])
+  @@index([tenantId, status])
+  @@index([tenantId, source, createdAt])
+  @@map("bot_quality_logs")
+}
+
+model BotQualityFeedback {
+  id             String   @id @default(cuid())
+  tenantId       String
+  qualityLogId   String?
+  conversationId String?
+  messageId      String?
+  rating         String   // UP | DOWN
+  reason         String?
+  createdBy      String?
+  createdAt      DateTime @default(now())
+
+  @@index([tenantId, createdAt])
+  @@index([tenantId, qualityLogId])
+  @@map("bot_quality_feedback")
+}
+
 model AiCreditTopup {
   id         String   @id @default(cuid())
   tenantId   String

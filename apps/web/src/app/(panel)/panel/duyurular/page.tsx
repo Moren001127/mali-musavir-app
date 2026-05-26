@@ -1,7 +1,7 @@
 'use client';
 
 import { api } from '@/lib/api';
-import { Download, Edit3, FilePlus2, Globe, Mail, MapPin, MessageCircle, Phone, Save, Send, Trash2, Users } from 'lucide-react';
+import { Bot, Download, Edit3, FilePlus2, Globe, Mail, MapPin, MessageCircle, Phone, Save, Send, Trash2, Users } from 'lucide-react';
 import { toJpeg } from 'html-to-image';
 import type { ReactNode, Ref } from 'react';
 import { useEffect, useMemo, useRef, useState } from 'react';
@@ -92,6 +92,7 @@ export default function DuyurularPage() {
   const [items, setItems] = useState<Duyuru[]>([]);
   const [taxpayers, setTaxpayers] = useState<Taxpayer[]>([]);
   const [sending, setSending] = useState(false);
+  const [agentPreviewing, setAgentPreviewing] = useState(false);
   const previewRef = useRef<HTMLDivElement>(null);
 
   useEffect(() => {
@@ -197,6 +198,35 @@ export default function DuyurularPage() {
     }
   };
 
+  const previewAgentSend = async () => {
+    if (!draft.baslik.trim() || !draft.icerik.trim()) {
+      toast.error('Başlık ve içerik boş bırakılamaz');
+      return;
+    }
+    if (!whatsappTargets.length) {
+      toast.error('Telefon numarası kayıtlı mükellef bulunamadı');
+      return;
+    }
+
+    setAgentPreviewing(true);
+    try {
+      const resp = await api.post('/moren-ai/agent-command/preview', {
+        agent: 'whatsapp',
+        action: 'portal_message_preview',
+        payload: {
+          taxpayerIds: whatsappTargets.map((t) => t.id),
+          message: plainMessage,
+        },
+      });
+      const previewId = resp.data?.previewId;
+      toast.success(previewId ? `Agent önizleme hazır: ONAYLIYORUM #${previewId}` : 'Agent önizleme hazır');
+    } catch (error: any) {
+      toast.error(error?.response?.data?.message || 'Agent önizleme oluşturulamadı');
+    } finally {
+      setAgentPreviewing(false);
+    }
+  };
+
   return (
     <div className="flex h-full min-h-0 flex-col overflow-hidden px-5 py-4 text-white" style={{ fontFamily: SANS }}>
       <div className="mb-3 flex shrink-0 flex-wrap items-end justify-between gap-3">
@@ -216,6 +246,7 @@ export default function DuyurularPage() {
           <ActionButton icon={<FilePlus2 size={17} />} label="Yeni Oluştur" onClick={startNew} tone="dark" />
           <ActionButton icon={<Download size={17} />} label="JPEG İndir" onClick={downloadJpeg} tone="dark" />
           <ActionButton icon={<Save size={17} />} label="Kaydet" onClick={save} tone="gold" />
+          <ActionButton icon={<Bot size={17} />} label={agentPreviewing ? 'Hazırlanıyor' : 'Agent Önizle'} onClick={previewAgentSend} disabled={agentPreviewing || sending} tone="dark" />
           <ActionButton icon={<Send size={17} />} label={sending ? 'Gönderiliyor' : 'Gönder'} onClick={sendPortalMessage} disabled={sending} tone="blue" />
           <a
             href={whatsappUrl}

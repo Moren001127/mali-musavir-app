@@ -104,6 +104,15 @@ export class ReminderCron {
         },
       });
 
+      const tenantActiveCache = new Map<string, boolean>();
+      for (const tenantId of Array.from(new Set(taxpayers.map((t) => t.tenantId).filter(Boolean)))) {
+        const active = await this.whatsapp.isAutomationActive(tenantId);
+        tenantActiveCache.set(tenantId, active);
+        if (!active) {
+          this.logger.log(`[ReminderCron] tenant=${tenantId} WhatsApp master switch pasif - evrak hatirlatmalari atlanacak.`);
+        }
+      }
+
       // Tenant başına şablonu önbelleğe al — tek tenant için tek SQL sorgusu
       const templateCache = new Map<string, string>();
       const getTemplate = async (tenantId: string): Promise<string> => {
@@ -115,9 +124,11 @@ export class ReminderCron {
         return text;
       };
 
-      let sent = 0, skippedAlreadyArrived = 0, skippedNoPhone = 0, failed = 0;
+      let sent = 0, skippedAlreadyArrived = 0, skippedNoPhone = 0, skippedMasterSwitch = 0, failed = 0;
 
       for (const taxpayer of taxpayers) {
+        if (tenantActiveCache.get(taxpayer.tenantId) === false) { skippedMasterSwitch++; continue; }
+
         // 3) Evraklar zaten geldiyse atla
         const status = await this.prisma.taxpayerMonthlyStatus.findUnique({
           where: {
@@ -144,11 +155,15 @@ export class ReminderCron {
 
         // Her telefon numarasına gönder — şablon önceliklidir (24s pencere dışı için)
         let anyDelivered = false;
+        const deliveredPhones: string[] = [];
         for (const phone of phones) {
           const ok = process.env.WHATSAPP_TEMPLATE_NAME
             ? await this.whatsapp.sendTemplate(phone, [ad, donem], undefined, taxpayer.tenantId)
             : await this.whatsapp.sendMessage(phone, renderedMessage, taxpayer.tenantId);
-          if (ok) anyDelivered = true;
+          if (ok) {
+            anyDelivered = true;
+            deliveredPhones.push(phone);
+          }
         }
 
         if (anyDelivered) {
@@ -164,7 +179,7 @@ export class ReminderCron {
                 taxpayerId: taxpayer.id,
                 channel: 'WHATSAPP',
                 subject: `Evrak hatırlatma — ${donem}`,
-                content: renderedMessage,
+                content: this.withWhatsAppPhone(renderedMessage, deliveredPhones[0] || phones[0]),
                 occurredAt: new Date(),
               },
             });
@@ -178,7 +193,8 @@ export class ReminderCron {
 
       this.logger.log(
         `[ReminderCron] ${donem} · ${taxpayers.length} aday → gönderilen: ${sent}, ` +
-        `evrak zaten geldi: ${skippedAlreadyArrived}, telefon yok: ${skippedNoPhone}, başarısız: ${failed}`,
+        `evrak zaten geldi: ${skippedAlreadyArrived}, telefon yok: ${skippedNoPhone}, ` +
+        `master switch pasif: ${skippedMasterSwitch}, başarısız: ${failed}`,
       );
     } catch (err: any) {
       this.logger.error(`[ReminderCron] Hata: ${err.message}`);
@@ -189,4 +205,17 @@ export class ReminderCron {
     'Ocak', 'Şubat', 'Mart', 'Nisan', 'Mayıs', 'Haziran',
     'Temmuz', 'Ağustos', 'Eylül', 'Ekim', 'Kasım', 'Aralık',
   ];
+
+  private normalizePhone(value?: string | null): string {
+    let digits = String(value || '').replace(/[^\d]/g, '');
+    if (digits.startsWith('00')) digits = digits.slice(2);
+    if (digits.startsWith('0') && digits.length === 11) digits = `90${digits.slice(1)}`;
+    if (digits.length === 10 && digits.startsWith('5')) digits = `90${digits}`;
+    return digits;
+  }
+
+  private withWhatsAppPhone(content: string, phone?: string | null): string {
+    const normalized = this.normalizePhone(phone);
+    return normalized ? `[[wa_phone:${normalized}]]\n${content}` : content;
+  }
 }

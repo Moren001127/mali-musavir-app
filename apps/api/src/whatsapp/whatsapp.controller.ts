@@ -64,6 +64,11 @@ export class WhatsAppController {
     return this.whatsappService.getStatus(req.user.tenantId);
   }
 
+  @Get('templates')
+  getTemplates(@Req() req: any) {
+    return this.whatsappService.listTemplates(req.user.tenantId);
+  }
+
   @Get('inbox')
   async getInbox(@Req() req: any, @Query('limit') limit?: string) {
     const take = Math.min(100, Math.max(1, Number(limit) || 30));
@@ -155,17 +160,20 @@ export class WhatsAppController {
       const tId = log.taxpayer.id;
       const subject = log.subject || '';
       const incoming = /gelen/i.test(subject);
+      const phone = this.extractWhatsAppPhone(log.content) || this.defaultWhatsAppPhone(log.taxpayer);
+      const conversationId = this.conversationId(tId, phone);
       const name =
         log.taxpayer.companyName ||
         `${log.taxpayer.firstName || ''} ${log.taxpayer.lastName || ''}`.trim() ||
         'Mukellef';
 
-      if (!conversations.has(tId)) {
-        conversations.set(tId, {
+      if (!conversations.has(conversationId)) {
+        conversations.set(conversationId, {
+          conversationId,
           taxpayerId: tId,
           taxpayerName: name,
           unknownContact: this.isWhatsAppVirtualTaxNumber(log.taxpayer.taxNumber),
-          phone: log.taxpayer.phone || (Array.isArray(log.taxpayer.phones) ? log.taxpayer.phones[0] : null),
+          phone,
           lastMessage: this.publicMessageContent(log.content).slice(0, 100),
           lastMessageAt: log.occurredAt,
           lastMessageDirection: incoming ? 'incoming' : 'outgoing',
@@ -176,7 +184,7 @@ export class WhatsAppController {
           totalMessages: 0,
         });
       }
-      const conv = conversations.get(tId);
+      const conv = conversations.get(conversationId);
       conv.totalMessages++;
       // İlk işlenen log en yeni (orderBy desc) — son mesaj olarak işaretle
       if (incoming) {
@@ -285,8 +293,10 @@ export class WhatsAppController {
    * Bir mükellefin tüm WhatsApp mesaj geçmişi (kronolojik sıralı — eski üstte)
    */
   @Get('conversations/:taxpayerId')
-  async getConversationMessages(@Req() req: any, @Param('taxpayerId') taxpayerId: string) {
+  async getConversationMessages(@Req() req: any, @Param('taxpayerId') taxpayerRef: string) {
     const tenantId = req.user.tenantId;
+    const ref = this.parseConversationRef(taxpayerRef);
+    const taxpayerId = ref.taxpayerId;
     // Mükellef bu tenant'a ait mi kontrol et
     const taxpayer = await this.prisma.taxpayer.findFirst({
       where: { id: taxpayerId, tenantId },
@@ -297,12 +307,15 @@ export class WhatsAppController {
     });
     if (!taxpayer) return { error: 'Mükellef bulunamadı', messages: [] };
 
-    const logs = await this.prisma.communicationLog.findMany({
+    const allLogs = await this.prisma.communicationLog.findMany({
       where: { taxpayerId, channel: 'WHATSAPP' },
       orderBy: { occurredAt: 'asc' },
       take: 500,
       select: { id: true, subject: true, content: true, occurredAt: true },
     });
+    const logs = ref.phone
+      ? allLogs.filter((log) => this.logMatchesConversation(log.content, ref.phone, taxpayer))
+      : allLogs;
 
     const now = Date.now();
     let lastInboundAt: Date | null = null;
@@ -336,10 +349,11 @@ export class WhatsAppController {
       : null;
 
     return {
+      conversationId: this.conversationId(taxpayer.id, ref.phone || this.defaultWhatsAppPhone(taxpayer)),
       taxpayer: {
         id: taxpayer.id,
         name: taxpayer.companyName || `${taxpayer.firstName || ''} ${taxpayer.lastName || ''}`.trim() || 'Mükellef',
-        phone: taxpayer.phone || (Array.isArray(taxpayer.phones) ? taxpayer.phones[0] : null),
+        phone: ref.phone || this.defaultWhatsAppPhone(taxpayer),
         taxNumber: this.publicTaxNumber(taxpayer.taxNumber),
         unknownContact: this.isWhatsAppVirtualTaxNumber(taxpayer.taxNumber),
       },
@@ -357,10 +371,12 @@ export class WhatsAppController {
   @Post('conversations/:taxpayerId/link')
   async linkConversationToTaxpayer(
     @Req() req: any,
-    @Param('taxpayerId') taxpayerId: string,
+    @Param('taxpayerId') taxpayerRef: string,
     @Body() body: LinkConversationBody,
   ) {
     const tenantId = req.user.tenantId;
+    const ref = this.parseConversationRef(taxpayerRef);
+    const taxpayerId = ref.taxpayerId;
     const targetTaxpayerId = String(body?.targetTaxpayerId || '').trim();
     if (!targetTaxpayerId) return { ok: false, error: 'Hedef mukellef secimi zorunlu' };
 
@@ -390,9 +406,17 @@ export class WhatsAppController {
     ].filter(Boolean);
     const mergedPhones = Array.from(new Map(targetPhones.map((phone) => [this.normalizePhoneForWhatsApp(phone) || phone, phone])).values());
 
+    const sourceLogs = await this.prisma.communicationLog.findMany({
+      where: { taxpayerId: source.id, channel: 'WHATSAPP' },
+      select: { id: true, content: true },
+    });
+    const logIdsToMove = ref.phone
+      ? sourceLogs.filter((log) => this.logMatchesConversation(log.content, ref.phone, source)).map((log) => log.id)
+      : sourceLogs.map((log) => log.id);
+
     await this.prisma.$transaction([
       this.prisma.communicationLog.updateMany({
-        where: { taxpayerId: source.id, channel: 'WHATSAPP' },
+        where: { id: { in: logIdsToMove.length ? logIdsToMove : ['__none__'] }, channel: 'WHATSAPP' },
         data: { taxpayerId: target.id },
       }),
       this.prisma.taxpayer.update({
@@ -411,16 +435,18 @@ export class WhatsAppController {
       }),
     ]);
 
-    return { ok: true, taxpayerId: target.id };
+    return { ok: true, taxpayerId: target.id, conversationId: this.conversationId(target.id, ref.phone || sourcePhones[0] || target.phone) };
   }
 
   @Post('conversations/:taxpayerId/media')
   async sendConversationMedia(
     @Req() req: any,
-    @Param('taxpayerId') taxpayerId: string,
+    @Param('taxpayerId') taxpayerRef: string,
     @Body() body: SendMediaBody,
   ) {
     const tenantId = req.user.tenantId;
+    const ref = this.parseConversationRef(taxpayerRef);
+    const taxpayerId = ref.taxpayerId;
     const documentId = String(body?.documentId || '').trim();
     if (!documentId) return { ok: false, error: 'documentId zorunlu' };
 
@@ -436,7 +462,8 @@ export class WhatsAppController {
     });
     if (!doc) return { ok: false, error: 'Belge bulunamadi' };
 
-    const phones = this.taxpayerPhones(taxpayer);
+    const targetPhone = ref.phone || this.defaultWhatsAppPhone(taxpayer);
+    const phones = targetPhone ? [targetPhone] : [];
     if (!phones.length) return { ok: false, error: 'Telefon numarasi yok' };
 
     const filename = this.documentFilename(doc.title, doc.mimeType);
@@ -462,7 +489,10 @@ export class WhatsAppController {
         taxpayerId,
         channel: 'WHATSAPP',
         subject: delivered ? 'WhatsApp portal medya' : 'WhatsApp portal medya (gonderilemedi)',
-        content: delivered ? content : `${content}\n\nHata: ${errors.join(' | ') || 'WhatsApp medya gonderimi basarisiz.'}`,
+        content: this.withWhatsAppPhone(
+          delivered ? content : `${content}\n\nHata: ${errors.join(' | ') || 'WhatsApp medya gonderimi basarisiz.'}`,
+          targetPhone,
+        ),
         occurredAt: new Date(),
       },
     });
@@ -481,11 +511,13 @@ export class WhatsAppController {
   }))
   async uploadAndSendConversationMedia(
     @Req() req: any,
-    @Param('taxpayerId') taxpayerId: string,
+    @Param('taxpayerId') taxpayerRef: string,
     @UploadedFile() file: Express.Multer.File,
     @Body() body: { caption?: string },
   ) {
     const tenantId = req.user.tenantId;
+    const ref = this.parseConversationRef(taxpayerRef);
+    const taxpayerId = ref.taxpayerId;
     if (!file?.buffer?.length) return { ok: false, error: 'Dosya zorunlu' };
 
     const taxpayer = await this.prisma.taxpayer.findFirst({
@@ -494,7 +526,8 @@ export class WhatsAppController {
     });
     if (!taxpayer) return { ok: false, error: 'Mukellef bulunamadi' };
 
-    const phones = this.taxpayerPhones(taxpayer);
+    const targetPhone = ref.phone || this.defaultWhatsAppPhone(taxpayer);
+    const phones = targetPhone ? [targetPhone] : [];
     if (!phones.length) return { ok: false, error: 'Telefon numarasi yok' };
 
     const originalName = this.safeMediaFilename(file.originalname || 'whatsapp-dosya.bin');
@@ -554,7 +587,10 @@ export class WhatsAppController {
         taxpayerId,
         channel: 'WHATSAPP',
         subject: delivered ? 'WhatsApp portal medya' : 'WhatsApp portal medya (gonderilemedi)',
-        content: delivered ? content : `${content}\n\nHata: ${errors.join(' | ') || 'WhatsApp medya gonderimi basarisiz.'}`,
+        content: this.withWhatsAppPhone(
+          delivered ? content : `${content}\n\nHata: ${errors.join(' | ') || 'WhatsApp medya gonderimi basarisiz.'}`,
+          targetPhone,
+        ),
         occurredAt: new Date(),
       },
     });
@@ -569,19 +605,20 @@ export class WhatsAppController {
   @Post('conversations/:taxpayerId/reply')
   async replyToConversation(
     @Req() req: any,
-    @Param('taxpayerId') taxpayerId: string,
+    @Param('taxpayerId') taxpayerRef: string,
     @Body() body: { message?: string; templateName?: string; templateParams?: string[] },
   ) {
     const tenantId = req.user.tenantId;
+    const ref = this.parseConversationRef(taxpayerRef);
+    const taxpayerId = ref.taxpayerId;
     const taxpayer = await this.prisma.taxpayer.findFirst({
       where: { id: taxpayerId, tenantId },
       select: { id: true, companyName: true, firstName: true, lastName: true, phone: true, phones: true },
     });
     if (!taxpayer) return { ok: false, error: 'Mükellef bulunamadı' };
 
-    const phones = (Array.isArray(taxpayer.phones) && taxpayer.phones.length > 0)
-      ? taxpayer.phones.filter(Boolean)
-      : (taxpayer.phone ? [taxpayer.phone] : []);
+    const targetPhone = ref.phone || this.defaultWhatsAppPhone(taxpayer);
+    const phones = targetPhone ? [targetPhone] : [];
     if (phones.length === 0) return { ok: false, error: 'Mükellefin telefon numarası yok' };
 
     const message = String(body?.message || '').trim();
@@ -617,7 +654,10 @@ export class WhatsAppController {
         subject: detailedDelivered
           ? (detailedMethod === 'template' ? `WhatsApp sablon - ${templateName}` : 'WhatsApp portal cevabi')
           : (detailedMethod === 'template' ? `WhatsApp sablon gonderilemedi - ${templateName}` : 'WhatsApp portal cevabi (gonderilemedi)'),
-        content: detailedDelivered ? detailedLogContent : `${detailedLogContent}\n\nHata: ${detailedErrors.join(' | ') || 'WhatsApp gonderimi basarisiz.'}`,
+        content: this.withWhatsAppPhone(
+          detailedDelivered ? detailedLogContent : `${detailedLogContent}\n\nHata: ${detailedErrors.join(' | ') || 'WhatsApp gonderimi basarisiz.'}`,
+          targetPhone,
+        ),
         occurredAt: new Date(),
       },
     });
@@ -626,6 +666,7 @@ export class WhatsAppController {
       ok: detailedDelivered,
       method: detailedMethod,
       phones,
+      conversationId: this.conversationId(taxpayerId, targetPhone),
       error: detailedDelivered ? undefined : (detailedErrors.join(' | ') || 'WhatsApp gonderimi basarisiz.'),
     };
 
@@ -685,9 +726,12 @@ export class WhatsAppController {
           taxpayerId: contact.id,
           channel: 'WHATSAPP',
           subject: manualResult.ok ? `WhatsApp sablon - ${manualTemplateName}` : `WhatsApp sablon gonderilemedi - ${manualTemplateName}`,
-          content: manualResult.ok
-            ? `[Sablon: ${manualTemplateName}] ${manualParams.join(' | ')}`
-            : `[Sablon: ${manualTemplateName}] ${manualParams.join(' | ')}\n\nHata: ${manualResult.error || 'WhatsApp gonderimi basarisiz.'}`,
+          content: this.withWhatsAppPhone(
+            manualResult.ok
+              ? `[Sablon: ${manualTemplateName}] ${manualParams.join(' | ')}`
+              : `[Sablon: ${manualTemplateName}] ${manualParams.join(' | ')}\n\nHata: ${manualResult.error || 'WhatsApp gonderimi basarisiz.'}`,
+            manualPhone,
+          ),
           occurredAt: new Date(),
         },
       });
@@ -696,6 +740,7 @@ export class WhatsAppController {
         method: 'template',
         taxpayerId: contact.id,
         phone: manualPhone,
+        conversationId: this.conversationId(contact.id, manualPhone),
         templateName: manualTemplateName,
         error: manualResult.error,
       };
@@ -740,14 +785,17 @@ export class WhatsAppController {
         taxpayerId,
         channel: 'WHATSAPP',
         subject: startResult.ok ? `WhatsApp sablon - ${templateName}` : `WhatsApp sablon gonderilemedi - ${templateName}`,
-        content: startResult.ok
-          ? `[Sablon: ${templateName}] ${params.join(' | ')}`
-          : `[Sablon: ${templateName}] ${params.join(' | ')}\n\nHata: ${startResult.error || 'WhatsApp gonderimi basarisiz.'}`,
+        content: this.withWhatsAppPhone(
+          startResult.ok
+            ? `[Sablon: ${templateName}] ${params.join(' | ')}`
+            : `[Sablon: ${templateName}] ${params.join(' | ')}\n\nHata: ${startResult.error || 'WhatsApp gonderimi basarisiz.'}`,
+          phone,
+        ),
         occurredAt: new Date(),
       },
     });
 
-    return { ok: startResult.ok, method: 'template', taxpayerId, phone, templateName, error: startResult.error };
+    return { ok: startResult.ok, method: 'template', taxpayerId, phone, conversationId: this.conversationId(taxpayerId, phone), templateName, error: startResult.error };
     /*
     const ok = await this.whatsappService.sendTemplate(phone, params, templateName, tenantId);
     await this.prisma.communicationLog.create({
@@ -862,12 +910,14 @@ export class WhatsAppController {
           continue;
         }
 
+        const phoneResults: Array<{ phone: string; ok: boolean; error?: string }> = [];
         const errors: string[] = [];
         let delivered = false;
         for (const phone of row.phones) {
           const result = preview.template
             ? await this.whatsappService.sendTemplateDetailed(phone, row.templateParams || [], preview.template, tenantId)
             : await this.whatsappService.sendMessageDetailed(phone, row.mesaj, tenantId);
+          phoneResults.push({ phone, ok: result.ok, error: result.error });
           if (result.ok) delivered = true;
           else errors.push(`${phone}: ${result.error || 'WhatsApp gonderimi basarisiz.'}`);
         }
@@ -876,15 +926,20 @@ export class WhatsAppController {
         const logContent = preview.template
           ? `[Sablon: ${preview.template}] ${(row.templateParams || []).join(' | ')}`
           : row.mesaj;
-        await this.prisma.communicationLog.create({
-          data: {
-            taxpayerId: row.id,
-            channel: 'WHATSAPP',
-            subject: delivered ? 'Portal WhatsApp mesaji' : 'Portal WhatsApp mesaji (gonderilemedi)',
-            content: delivered ? logContent : `${logContent}\n\nHata: ${errors.join(' | ') || 'WhatsApp gonderimi basarisiz.'}`,
-            occurredAt: new Date(),
-          },
-        });
+        for (const phoneResult of phoneResults) {
+          await this.prisma.communicationLog.create({
+            data: {
+              taxpayerId: row.id,
+              channel: 'WHATSAPP',
+              subject: phoneResult.ok ? 'Portal WhatsApp mesaji' : 'Portal WhatsApp mesaji (gonderilemedi)',
+              content: this.withWhatsAppPhone(
+                phoneResult.ok ? logContent : `${logContent}\n\nHata: ${phoneResult.error || 'WhatsApp gonderimi basarisiz.'}`,
+                phoneResult.phone,
+              ),
+              occurredAt: new Date(),
+            },
+          });
+        }
         results.push({ taxpayerId: row.id, ad: row.ad, phones: row.phones, ok: delivered, error: delivered ? undefined : errors.join(' | ') });
       }
 
@@ -1446,6 +1501,43 @@ export class WhatsAppController {
     return digits;
   }
 
+  private conversationId(taxpayerId: string, phone?: string | null): string {
+    const normalized = this.normalizePhoneForWhatsApp(phone);
+    return normalized ? `${taxpayerId}__wa__${normalized}` : taxpayerId;
+  }
+
+  private parseConversationRef(ref: string): { taxpayerId: string; phone: string | null } {
+    const raw = decodeURIComponent(String(ref || '').trim());
+    const marker = '__wa__';
+    const index = raw.indexOf(marker);
+    if (index < 0) return { taxpayerId: raw, phone: null };
+    return {
+      taxpayerId: raw.slice(0, index),
+      phone: this.normalizePhoneForWhatsApp(raw.slice(index + marker.length)) || null,
+    };
+  }
+
+  private defaultWhatsAppPhone(taxpayer: any): string | null {
+    return this.normalizePhoneForWhatsApp(taxpayer?.phone || (Array.isArray(taxpayer?.phones) ? taxpayer.phones[0] : null)) || null;
+  }
+
+  private extractWhatsAppPhone(content?: string | null): string | null {
+    const match = String(content || '').match(/\[\[wa_phone:([0-9+ ]+)\]\]/);
+    return match ? (this.normalizePhoneForWhatsApp(match[1]) || null) : null;
+  }
+
+  private withWhatsAppPhone(content: string, phone?: string | null): string {
+    const normalized = this.normalizePhoneForWhatsApp(phone);
+    return normalized ? `[[wa_phone:${normalized}]]\n${content}` : content;
+  }
+
+  private logMatchesConversation(content: string | null | undefined, requestedPhone: string | null, taxpayer: any): boolean {
+    if (!requestedPhone) return true;
+    const logPhone = this.extractWhatsAppPhone(content);
+    if (logPhone) return logPhone === requestedPhone;
+    return requestedPhone === this.defaultWhatsAppPhone(taxpayer);
+  }
+
   private isFailedSubject(subject?: string | null): boolean {
     return /gonderilemedi|gönderilemedi|basarisiz|başarısız|hata/i.test(String(subject || ''));
   }
@@ -1466,10 +1558,36 @@ export class WhatsAppController {
 
   private publicMessageParts(content?: string | null): { text: string; documents: Array<{ id: string; title: string }> } {
     const documents: Array<{ id: string; title: string }> = [];
-    const text = String(content || '').replace(/\[\[document:([^|\]]+)\|([^\]]+)\]\]/g, (_all, id, title) => {
-      documents.push({ id, title });
-      return '';
-    }).trim();
-    return { text, documents };
+    const rawText = String(content || '')
+      .replace(/\[\[wa_phone:[^\]]+\]\]\s*/g, '')
+      .replace(/\[\[document:([^|\]]+)\|([^\]]+)\]\]/g, (_all, id, title) => {
+        documents.push({ id, title });
+        return '';
+      }).trim();
+    return { text: this.renderWhatsAppLogText(rawText), documents };
+  }
+
+  private renderWhatsAppLogText(rawText: string): string {
+    const raw = String(rawText || '').trim();
+    const templateMatch = raw.match(/^\[Sablon:\s*([^\]]+)\]\s*([\s\S]*?)(?:\n\nHata:\s*([\s\S]+))?$/i);
+    if (!templateMatch) return raw;
+
+    const templateName = templateMatch[1].trim();
+    const params = templateMatch[2]
+      .split('|')
+      .map((item) => item.trim())
+      .filter(Boolean);
+    const error = templateMatch[3]?.trim();
+    let text = '';
+
+    if (templateName.toLocaleLowerCase('tr-TR') === 'evrak_iletisim' && params[0]) {
+      text = `Merhaba ${params[0]}, d\u00f6nem evrak ve muhasebe i\u015flemlerinizle ilgili ileti\u015fim i\u00e7in size bu hattan ula\u015f\u0131yoruz. Uygun oldu\u011funuzda yan\u0131t verebilirsiniz.`;
+    } else {
+      text = `\u015eablon g\u00f6nderildi: ${templateName}`;
+      if (params.length) text += `\n${params.join(' | ')}`;
+    }
+
+    if (error) text += `\n\nG\u00f6nderim hatas\u0131: ${error}`;
+    return text;
   }
 }

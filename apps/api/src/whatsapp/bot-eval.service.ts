@@ -1,0 +1,277 @@
+import { Injectable, Logger } from '@nestjs/common';
+import { PrismaService } from '../prisma/prisma.service';
+import { computeCostUsd, logAiUsage } from '../common/ai-usage-logger';
+
+const ANTHROPIC_URL = 'https://api.anthropic.com/v1/messages';
+const DEFAULT_MODEL = process.env.BOT_EVAL_MODEL || 'claude-haiku-4-5-20251001';
+const SAFE_FALLBACK =
+  'Mesaj\u0131n\u0131z ofise iletildi, en k\u0131sa s\u00fcrede size d\u00f6n\u00fc\u015f yapaca\u011f\u0131z.';
+
+export type BotEvalContext = {
+  tenantId?: string;
+  taxpayerId?: string | null;
+  intent?: string | null;
+  message?: string | null;
+  contextBlock?: string | null;
+  source?: string;
+};
+
+export type BotEvalResult = {
+  score: number;
+  reasons: string[];
+  shouldRetry: boolean;
+  fallback: string | null;
+  model?: string | null;
+  inputTokens: number;
+  outputTokens: number;
+  costUsd: number;
+  warning?: string | null;
+};
+
+@Injectable()
+export class BotEvalService {
+  private readonly logger = new Logger(BotEvalService.name);
+
+  constructor(private readonly prisma: PrismaService) {}
+
+  async evaluateReply(
+    reply: string,
+    context: BotEvalContext,
+    lastOutgoing: string[] = [],
+    options?: { allowLlm?: boolean },
+  ): Promise<BotEvalResult> {
+    const local = this.localEval(reply, context, lastOutgoing);
+    const allowLlm = options?.allowLlm ?? process.env.BOT_EVAL_DISABLE_LLM !== '1';
+    const apiKey = process.env.ANTHROPIC_API_KEY;
+
+    if (!allowLlm || !apiKey) {
+      return this.toResult(local.score, local.reasons, null, 0, 0, 0, apiKey ? null : 'ANTHROPIC_API_KEY yok; lokal eval kullanildi');
+    }
+
+    try {
+      const judged = await this.judgeWithHaiku(reply, context, lastOutgoing, apiKey);
+      const reasons = Array.from(new Set([...local.reasons, ...judged.reasons]));
+      const score = Math.max(0, Math.min(10, Math.min(local.score, judged.score)));
+      return this.toResult(score, reasons, judged.model, judged.inputTokens, judged.outputTokens, judged.costUsd, null);
+    } catch (err: any) {
+      const warning = `Eval LLM hatasi: ${err?.message || err}`;
+      this.logger.warn(warning);
+      return this.toResult(local.score, [...local.reasons, 'EVAL_LLM_WARN'], DEFAULT_MODEL, 0, 0, 0, warning);
+    }
+  }
+
+  buildRetryPrompt(originalReply: string, reasons: string[], context: BotEvalContext, lastOutgoing: string[]): string {
+    return [
+      'Onceki WhatsApp cevabin kalite kontrolunden gecemedi.',
+      'Sadece mukellefe gidecek nihai cevabi yeniden yaz.',
+      '1-2 kisa cumle kullan, markdown/emoji kullanma, kesin taahhut verme.',
+      'Son cevaplari tekrar etme; ayni kaliplari kullanma.',
+      `Intent: ${context.intent || 'GENEL'}`,
+      `Sorunlar: ${reasons.join(', ') || 'belirsiz'}`,
+      `Son ofis cevaplari: ${lastOutgoing.slice(0, 3).join(' | ') || '(yok)'}`,
+      `Mukellef mesaji: ${context.message || ''}`,
+      `Onceki cevap: ${originalReply}`,
+    ].join('\n');
+  }
+
+  safeFallback(): string {
+    return SAFE_FALLBACK;
+  }
+
+  private localEval(reply: string, context: BotEvalContext, lastOutgoing: string[]) {
+    const reasons: string[] = [];
+    const text = String(reply || '').trim();
+    let score = 10;
+
+    if (!text) {
+      return { score: 0, reasons: ['EMPTY_REPLY'] };
+    }
+
+    const maxSimilarity = Math.max(0, ...lastOutgoing.map((old) => this.similarity(text, old)));
+    if (maxSimilarity > 0.7) {
+      reasons.push(`DUPLICATE_REPLY:${maxSimilarity.toFixed(2)}`);
+      score -= 4;
+    }
+
+    const forbidden = text.match(/\b(hemen|kesin|garanti|yar\u0131na kadar|yarina kadar|bug\u00fcn kesin|bugun kesin)\b/i);
+    if (forbidden) {
+      reasons.push(`FORBIDDEN_WORD:${forbidden[1]}`);
+      score -= 3;
+    }
+
+    const sentenceCount = this.sentenceCount(text);
+    if (sentenceCount > 2 || text.length > 250) {
+      reasons.push(sentenceCount > 2 ? `TOO_MANY_SENTENCES:${sentenceCount}` : `TOO_LONG:${text.length}`);
+      score -= 2;
+    }
+
+    const intentReason = this.intentMismatch(text, context.intent || undefined, context.message || '');
+    if (intentReason) {
+      reasons.push(intentReason);
+      score -= 3;
+    }
+
+    if (/[*_`>#]/.test(text)) {
+      reasons.push('MARKDOWN_LEAK');
+      score -= 2;
+    }
+
+    const emojiCount = Array.from(text).filter((char) => /\p{Extended_Pictographic}/u.test(char)).length;
+    if (emojiCount > 1) {
+      reasons.push(`TOO_MANY_EMOJI:${emojiCount}`);
+      score -= 1;
+    }
+
+    return { score: Math.max(0, Math.min(10, score)), reasons };
+  }
+
+  private async judgeWithHaiku(reply: string, context: BotEvalContext, lastOutgoing: string[], apiKey: string) {
+    const model = DEFAULT_MODEL;
+    const prompt = [
+      'You are a strict Turkish WhatsApp bot QA judge for an accounting office.',
+      'Return ONLY JSON: {"score":0-10,"reasons":["..."]}.',
+      'Check duplicate wording, intent fit, forbidden promises, length, tone, privacy.',
+      'Forbidden promises include hemen, kesin, garanti, yarina kadar.',
+      'The answer should be mostly one sentence, max two short sentences.',
+      `Intent: ${context.intent || 'GENEL'}`,
+      `Customer message: ${context.message || ''}`,
+      `Last outgoing replies: ${JSON.stringify(lastOutgoing.slice(0, 3))}`,
+      `Context: ${String(context.contextBlock || '').slice(0, 1800)}`,
+      `Reply: ${reply}`,
+    ].join('\n');
+
+    const started = Date.now();
+    const res = await fetch(ANTHROPIC_URL, {
+      method: 'POST',
+      headers: {
+        'content-type': 'application/json',
+        'x-api-key': apiKey,
+        'anthropic-version': '2023-06-01',
+      },
+      body: JSON.stringify({
+        model,
+        max_tokens: 180,
+        temperature: 0,
+        messages: [{ role: 'user', content: prompt }],
+      }),
+    });
+
+    if (!res.ok) {
+      const errText = await res.text().catch(() => '');
+      throw new Error(`HTTP ${res.status}: ${errText.slice(0, 220)}`);
+    }
+
+    const data = await res.json();
+    const content = Array.isArray(data?.content)
+      ? data.content.map((part: any) => part?.text || '').join('\n')
+      : '';
+    const parsed = this.parseJudgeJson(content);
+    const inputTokens = Number(data?.usage?.input_tokens || 0);
+    const outputTokens = Number(data?.usage?.output_tokens || 0);
+    const costUsd = computeCostUsd(model, { input: inputTokens, output: outputTokens });
+
+    if (context.tenantId) {
+      await logAiUsage(this.prisma, {
+        tenantId: context.tenantId,
+        taxpayerId: context.taxpayerId || null,
+        source: 'whatsapp-bot-eval',
+        model,
+        karar: parsed.score >= 6 ? 'ok' : 'low_score',
+        sebep: (parsed.reasons || []).join(', ').slice(0, 200),
+        durationMs: Date.now() - started,
+        usage: { input_tokens: inputTokens, output_tokens: outputTokens },
+      });
+    }
+
+    return {
+      score: parsed.score,
+      reasons: parsed.reasons,
+      model,
+      inputTokens,
+      outputTokens,
+      costUsd,
+    };
+  }
+
+  private parseJudgeJson(raw: string): { score: number; reasons: string[] } {
+    const match = raw.match(/\{[\s\S]*\}/);
+    const parsed = JSON.parse(match ? match[0] : raw);
+    const score = Math.max(0, Math.min(10, Number(parsed.score ?? 10)));
+    const reasons = Array.isArray(parsed.reasons) ? parsed.reasons.map((r: any) => String(r).slice(0, 80)) : [];
+    return { score, reasons };
+  }
+
+  private toResult(
+    score: number,
+    reasons: string[],
+    model: string | null,
+    inputTokens: number,
+    outputTokens: number,
+    costUsd: number,
+    warning: string | null,
+  ): BotEvalResult {
+    const safeScore = Math.max(0, Math.min(10, Math.round(score)));
+    return {
+      score: safeScore,
+      reasons,
+      shouldRetry: safeScore < 6,
+      fallback: safeScore < 6 ? SAFE_FALLBACK : null,
+      model,
+      inputTokens,
+      outputTokens,
+      costUsd,
+      warning,
+    };
+  }
+
+  private intentMismatch(reply: string, intent?: string, message?: string): string | null {
+    const r = this.normalize(reply);
+    const m = this.normalize(message || '');
+    switch (intent) {
+      case 'SIKAYET':
+        return /(kusura bakmayin|anliyoruz|oncelik|dogrudan|iletildi|ulasti|dönecek|donecek)/.test(r)
+          ? null
+          : 'INTENT_MISMATCH:SIKAYET';
+      case 'BEYANNAME_ONAY_TALEBI':
+        return /(gonderildi|gonderiyoruz|tamam gonder|isleme alindi)/.test(r)
+          ? 'INTENT_MISMATCH:BEYANNAME_COMMIT'
+          : null;
+      case 'TARIH_TALEBI':
+        return /\b(olur|uygundur|bekleriz|gelin)\b/.test(r) && /\b(yarin|bugun|saat|randevu|gelsem)\b/.test(m)
+          ? 'INTENT_MISMATCH:DATE_COMMIT'
+          : null;
+      default:
+        return null;
+    }
+  }
+
+  private sentenceCount(text: string): number {
+    const parts = text.match(/[^.!?]+[.!?]?/g)?.map((part) => part.trim()).filter(Boolean) || [];
+    return Math.max(1, parts.length);
+  }
+
+  private similarity(a: string, b: string): number {
+    const aw = new Set(this.normalize(a).split(/\s+/).filter(Boolean));
+    const bw = new Set(this.normalize(b).split(/\s+/).filter(Boolean));
+    if (!aw.size || !bw.size) return 0;
+    let common = 0;
+    for (const word of aw) if (bw.has(word)) common++;
+    return common / Math.max(aw.size, bw.size);
+  }
+
+  private normalize(raw: string): string {
+    return String(raw || '')
+      .toLocaleLowerCase('tr-TR')
+      .normalize('NFD')
+      .replace(/[\u0300-\u036f]/g, '')
+      .replace(/ı/g, 'i')
+      .replace(/ğ/g, 'g')
+      .replace(/ü/g, 'u')
+      .replace(/ş/g, 's')
+      .replace(/ö/g, 'o')
+      .replace(/ç/g, 'c')
+      .replace(/[^a-z0-9\s]/g, ' ')
+      .replace(/\s+/g, ' ')
+      .trim();
+  }
+}

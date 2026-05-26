@@ -13,6 +13,7 @@ import { toast } from 'sonner';
 const GOLD = '#d4b876';
 
 interface Conversation {
+  conversationId?: string;
   taxpayerId: string;
   taxpayerName: string;
   phone: string | null;
@@ -36,6 +37,7 @@ interface ChatMessage {
 }
 
 interface ChatData {
+  conversationId?: string;
   taxpayer: { id: string; name: string; phone: string | null; taxNumber: string; unknownContact?: boolean };
   messages: ChatMessage[];
   windowOpen: boolean;
@@ -47,6 +49,12 @@ interface WhatsAppConfigShape {
   templateName?: string;
   portalTemplateName?: string;
   documentTemplateName?: string;
+}
+
+interface WhatsAppTemplate {
+  name: string;
+  language?: string;
+  status?: string;
 }
 
 interface WhatsAppContactPhone {
@@ -96,11 +104,36 @@ function fmtFullTime(iso: string): string {
 
 function parseMessageContent(content: string): { text: string; docs: Array<{ id: string; title: string; mimeType?: string; sizeBytes?: number; url?: string | null }> } {
   const docs: Array<{ id: string; title: string; mimeType?: string; sizeBytes?: number; url?: string | null }> = [];
-  const text = String(content || '').replace(/\[\[document:([^|\]]+)\|([^\]]+)\]\]/g, (_all, id, title) => {
+  const rawText = String(content || '').replace(/\[\[document:([^|\]]+)\|([^\]]+)\]\]/g, (_all, id, title) => {
     docs.push({ id, title });
     return '';
   }).trim();
+  const text = renderWhatsAppLogText(rawText);
   return { text, docs };
+}
+
+function renderWhatsAppLogText(content: string): string {
+  const raw = String(content || '').trim();
+  const templateMatch = raw.match(/^\[Sablon:\s*([^\]]+)\]\s*([\s\S]*?)(?:\n\nHata:\s*([\s\S]+))?$/i);
+  if (!templateMatch) return raw;
+
+  const templateName = templateMatch[1].trim();
+  const params = templateMatch[2]
+    .split('|')
+    .map((item) => item.trim())
+    .filter(Boolean);
+  const error = templateMatch[3]?.trim();
+  let text = '';
+
+  if (templateName.toLocaleLowerCase('tr-TR') === 'evrak_iletisim' && params[0]) {
+    text = `Merhaba ${params[0]}, dönem evrak ve muhasebe işlemlerinizle ilgili iletişim için size bu hattan ulaşıyoruz. Uygun olduğunuzda yanıt verebilirsiniz.`;
+  } else {
+    text = `Şablon gönderildi: ${templateName}`;
+    if (params.length) text += `\n${params.join(' | ')}`;
+  }
+
+  if (error) text += `\n\nGönderim hatası: ${error}`;
+  return text;
 }
 
 function isImageDoc(doc: { mimeType?: string; title?: string }): boolean {
@@ -154,6 +187,12 @@ export default function MesajlarPage() {
     queryFn: () => api.get('/integrations/whatsapp').then((r) => r.data),
   });
 
+  const { data: metaTemplates } = useQuery<{ ok: boolean; templates: WhatsAppTemplate[] }>({
+    queryKey: ['whatsapp-meta-templates'],
+    queryFn: () => api.get('/whatsapp/templates').then((r) => r.data),
+    staleTime: 60_000,
+  });
+
   const { data: contacts = [], isLoading: contactsLoading } = useQuery<WhatsAppContact[]>({
     queryKey: ['whatsapp-contacts', contactSearch],
     queryFn: () => api.get('/whatsapp/contacts', { params: { search: contactSearch || undefined } }).then((r) => r.data),
@@ -181,6 +220,9 @@ export default function MesajlarPage() {
   const templateOptions = useMemo(() => {
     const names = [
       whatsappConfig?.portalTemplateName,
+      ...(metaTemplates?.templates || [])
+        .filter((tpl) => !tpl.status || tpl.status === 'APPROVED')
+        .map((tpl) => tpl.name),
       'evrak_iletisim',
       whatsappConfig?.templateName,
       whatsappConfig?.documentTemplateName,
@@ -190,7 +232,7 @@ export default function MesajlarPage() {
       .map((name) => String(name || '').trim())
       .filter(Boolean);
     return Array.from(new Set(names));
-  }, [whatsappConfig]);
+  }, [metaTemplates, whatsappConfig]);
 
   useEffect(() => {
     if (!startTemplateName && templateOptions.length > 0) {
@@ -200,7 +242,11 @@ export default function MesajlarPage() {
 
   useEffect(() => {
     if (selectedContact) {
-      setSelectedPhone(selectedContact.primaryPhone || selectedContact.phones[0]?.phone || '');
+      setSelectedPhone((current) => {
+        const stillAvailable = selectedContact.phones.some((item) => item.phone === current);
+        if (stillAvailable) return current;
+        return selectedContact.primaryPhone || selectedContact.phones[0]?.phone || '';
+      });
     }
   }, [selectedContact]);
 
@@ -244,9 +290,12 @@ export default function MesajlarPage() {
       }
       if (!selectedContact) throw new Error('Mükellef seçimi zorunlu');
       const templateName = startTemplateName.trim();
+      const phone = selectedContact.phones.some((item) => item.phone === selectedPhone)
+        ? selectedPhone
+        : (selectedContact.primaryPhone || selectedContact.phones[0]?.phone || '');
       return api.post('/whatsapp/conversations/start', {
         taxpayerId: selectedContact.taxpayerId,
-        phone: selectedPhone || selectedContact.primaryPhone,
+        phone,
         templateName,
         templateParams: buildStartTemplateParams(templateName, selectedContact.taxpayerName, startExtraParam),
       }).then((r) => r.data);
@@ -255,18 +304,18 @@ export default function MesajlarPage() {
       if (res.ok) {
         toast.success('Şablon gönderildi');
         setShowStartModal(false);
-        setSelectedId(res.taxpayerId);
+        setSelectedId(res.conversationId || res.taxpayerId);
         setStartExtraParam('');
         setManualPhone('');
         setManualName('');
-        qc.invalidateQueries({ queryKey: ['whatsapp-chat', res.taxpayerId] });
+        qc.invalidateQueries({ queryKey: ['whatsapp-chat', res.conversationId || res.taxpayerId] });
         qc.invalidateQueries({ queryKey: ['whatsapp-conversations'] });
         qc.invalidateQueries({ queryKey: ['whatsapp-contacts'] });
       } else {
         toast.error(res.error || 'Şablon gönderilemedi');
         if (res.taxpayerId) {
-          setSelectedId(res.taxpayerId);
-          qc.invalidateQueries({ queryKey: ['whatsapp-chat', res.taxpayerId] });
+          setSelectedId(res.conversationId || res.taxpayerId);
+          qc.invalidateQueries({ queryKey: ['whatsapp-chat', res.conversationId || res.taxpayerId] });
           qc.invalidateQueries({ queryKey: ['whatsapp-conversations'] });
         }
       }
@@ -284,7 +333,7 @@ export default function MesajlarPage() {
       if (res.ok) {
         toast.success('Konusma mukellefe baglandi');
         setShowLinkModal(false);
-        setSelectedId(res.taxpayerId);
+        setSelectedId(res.conversationId || res.taxpayerId);
         setSelectedLinkContactId(null);
         qc.invalidateQueries({ queryKey: ['whatsapp-conversations'] });
         qc.invalidateQueries({ queryKey: ['whatsapp-chat'] });
@@ -428,12 +477,13 @@ export default function MesajlarPage() {
             </div>
           ) : (
             filteredConversations.map((c) => {
-              const isSelected = c.taxpayerId === selectedId;
+              const id = c.conversationId || c.taxpayerId;
+              const isSelected = id === selectedId;
               return (
                 <button
-                  key={c.taxpayerId}
+                  key={id}
                   type="button"
-                  onClick={() => setSelectedId(c.taxpayerId)}
+                  onClick={() => setSelectedId(id)}
                   className="w-full px-3 py-2.5 text-left flex items-start gap-2.5 transition-colors"
                   style={{
                     background: isSelected ? 'rgba(212,184,118,0.08)' : 'transparent',
@@ -466,8 +516,13 @@ export default function MesajlarPage() {
                       {c.lastMessageDirection === 'outgoing' && (
                         <Send size={9} style={{ color: 'rgba(250,250,249,0.35)' }} />
                       )}
+                      {c.phone && (
+                        <span className="text-[10px] flex-shrink-0" style={{ color: 'rgba(250,250,249,0.38)' }}>
+                          {c.phone}
+                        </span>
+                      )}
                       <span className="text-[11.5px] truncate flex-1" style={{ color: 'rgba(250,250,249,0.55)' }}>
-                        {c.lastMessage || '(boş mesaj)'}
+                        {renderWhatsAppLogText(c.lastMessage) || '(boş mesaj)'}
                       </span>
                     </div>
                     {c.windowOpen ? (
@@ -586,7 +641,7 @@ export default function MesajlarPage() {
                           borderTopRightRadius: incoming ? 14 : 4,
                         }}
                       >
-                        <div className="whitespace-pre-wrap break-words">{m.content || '(boş)'}</div>
+                        <div className="whitespace-pre-wrap break-words">{parsed.text || '(boş)'}</div>
                         {docs.length > 0 && (
                           <div className="mt-2 space-y-1.5">
                             {docs.map((doc) => (

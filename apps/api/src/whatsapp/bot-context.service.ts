@@ -54,6 +54,17 @@ export class WhatsAppBotContextService {
       return sum;
     }, 0);
 
+    const chronologicalMessages = recentMessages.reverse().map((log: any) => ({
+      direction: /gelen/i.test(log.subject || '') ? 'incoming' : 'outgoing',
+      text: this.cleanMessage(log.content),
+      occurredAt: log.occurredAt,
+    }));
+    const lastOutgoingReplies = chronologicalMessages
+      .filter((message) => message.direction === 'outgoing')
+      .slice(-3)
+      .map((message) => message.text)
+      .filter(Boolean);
+
     const payload = {
       taxpayer: {
         id: taxpayer.id,
@@ -76,11 +87,8 @@ export class WhatsAppBotContextService {
         title: task.title,
         dueAt: task.dueDate,
       })),
-      recentMessages: recentMessages.reverse().map((log: any) => ({
-        direction: /gelen/i.test(log.subject || '') ? 'incoming' : 'outgoing',
-        text: this.cleanMessage(log.content),
-        occurredAt: log.occurredAt,
-      })),
+      recentMessages: chronologicalMessages,
+      lastOutgoingReplies,
       outstandingBalance: outstandingBalance > 0 ? outstandingBalance : null,
     };
 
@@ -112,12 +120,35 @@ export class WhatsAppBotContextService {
     return [
       '## Bu kisiyle son WhatsApp konusmalari',
       'Cevabi bu gecmise gore baglamli ver; ayni bilgiyi gereksiz tekrar etme. Gecmisteki belirsiz bilgileri kesin bilgi gibi sunma.',
+      'Son cevaplarini tekrar etme, varyasyon kullan. Art arda "ofise iletildi", "kontrol edilecek", "donus yapacak" kaliplarini kullanma; daha dogal ve kisa soyle.',
       rows.join('\n'),
     ].join('\n');
   }
 
+  async getRecentOutgoingReplies(taxpayerId: string, limit = 3): Promise<string[]> {
+    const logs: Array<{ subject: string | null; content: string | null }> = await this.prisma.communicationLog.findMany({
+      where: { taxpayerId, channel: 'WHATSAPP' },
+      orderBy: { occurredAt: 'desc' },
+      take: 20,
+      select: { subject: true, content: true },
+    }).catch(() => [] as Array<{ subject: string | null; content: string | null }>);
+
+    return logs
+      .filter((log) => this.isOutgoingSubject(log.subject))
+      .slice(0, limit)
+      .map((log) => this.cleanMessage(log.content))
+      .filter(Boolean);
+  }
+
+  private isOutgoingSubject(subject?: string | null): boolean {
+    const s = String(subject || '').toLocaleLowerCase('tr-TR');
+    if (/gelen|mukellef sorusu|müvekkelden|kayitsiz numara|kayıtsız numara|owner gelen/.test(s)) return false;
+    return /bot|cevab|cevap|portal|sablon|medya|gonder|gönder|rate limit/.test(s);
+  }
+
   private cleanMessage(content?: string | null): string {
     return String(content || '')
+      .replace(/\[\[wa_phone:[^\]]+\]\]/g, '')
       .replace(/\[\[document:([^|\]]+)\|([^\]]+)\]\]/g, '[dosya: $2]')
       .replace(/\s+/g, ' ')
       .trim()
