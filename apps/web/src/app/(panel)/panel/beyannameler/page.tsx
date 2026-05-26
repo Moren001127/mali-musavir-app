@@ -1,6 +1,6 @@
 'use client';
 
-import { useState, useMemo, useRef } from 'react';
+import { useState, useMemo, useRef, type ReactNode } from 'react';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import {
   beyanKayitlariApi,
@@ -12,15 +12,17 @@ import {
 } from '@/lib/beyan-kayitlari';
 import PortalAutomationPanel from '@/components/portal-automation/PortalAutomationPanel';
 import {
-  Search, Download, Upload, FileText, Trash2, ChevronRight,
+  Search, Upload, FileText, Trash2,
   CheckCircle2, AlertCircle, FileQuestion, Loader2, X as IconX,
-  FolderUp, FileX2, Wallet, Archive, Sparkles,
+  FolderUp, FileX2, Archive, Sparkles, Eye, Mail, MessageCircle,
+  MessageSquareText, Filter, CalendarDays, UserRound, RotateCcw,
 } from 'lucide-react';
 import { toast } from 'sonner';
 
 const GOLD = '#d4b876';
 
 type FilterKey = 'all' | BeyanTipi;
+type BelgeFilter = 'all' | 'beyanname' | 'tahakkuk' | 'eksik';
 
 const FILTER_KEYS: { key: FilterKey; label: string }[] = [
   { key: 'all', label: 'Tümü' },
@@ -51,7 +53,508 @@ function fmtDonem(d: string): string {
   return d;
 }
 
+function fmtCurrency(n: number | null): string {
+  if (n == null) return '—';
+  return new Intl.NumberFormat('tr-TR', { minimumFractionDigits: 2, maximumFractionDigits: 2 }).format(n) + ' TL';
+}
+
+function periodSortValue(donem: string): number {
+  const monthly = donem.match(/^(\d{4})-(\d{2})$/);
+  if (monthly) return Number(monthly[1]) * 100 + Number(monthly[2]);
+  const yearly = donem.match(/^(\d{4})-YIL$/);
+  if (yearly) return Number(yearly[1]) * 100 + 12;
+  return 0;
+}
+
+function periodInRange(donem: string, start: string, end: string): boolean {
+  const value = periodSortValue(donem);
+  if (!value) return true;
+  const min = start ? periodSortValue(start) : 0;
+  const max = end ? periodSortValue(end) : 999999;
+  return value >= min && value <= max;
+}
+
+function fmtDate(value?: string | null): string {
+  if (!value) return '—';
+  const d = new Date(value);
+  if (!Number.isFinite(d.getTime())) return '—';
+  return d.toLocaleDateString('tr-TR');
+}
+
+function firstContact(values?: Array<string | null | undefined>): string {
+  return (values || []).map((v) => String(v || '').trim()).find(Boolean) || '';
+}
+
+function taxpayerEmail(k: BeyanKaydi): string {
+  return firstContact([k.taxpayer?.email, ...(k.taxpayer?.emails || [])]);
+}
+
+function taxpayerPhone(k: BeyanKaydi): string {
+  return firstContact([k.taxpayer?.phone, ...(k.taxpayer?.phones || [])]);
+}
+
+function whatsappPhone(raw: string): string {
+  const digits = raw.replace(/\D/g, '');
+  if (digits.length === 10) return `90${digits}`;
+  if (digits.length === 11 && digits.startsWith('0')) return `9${digits}`;
+  return digits;
+}
+
+function declarationSubject(k: BeyanKaydi): string {
+  return `${beyanKaydiMukellefAdi(k)} - ${BEYAN_TIPI_LABEL[k.beyanTipi]} - ${fmtDonem(k.donem)}`;
+}
+
+function declarationMessage(k: BeyanKaydi): string {
+  const tutar = k.tahakkukTutari != null ? ` Tahakkuk: ${fmtCurrency(k.tahakkukTutari)}.` : '';
+  return `${fmtDonem(k.donem)} dönemi ${BEYAN_TIPI_LABEL[k.beyanTipi]} kaydınız hazır.${tutar}`;
+}
+
 export default function BeyannamelerPage() {
+  const qc = useQueryClient();
+  const [search, setSearch] = useState('');
+  const [typeFilter, setTypeFilter] = useState<FilterKey>('all');
+  const [docFilter, setDocFilter] = useState<BelgeFilter>('all');
+  const [selectedTaxpayer, setSelectedTaxpayer] = useState('all');
+  const [periodStart, setPeriodStart] = useState('');
+  const [periodEnd, setPeriodEnd] = useState('');
+  const [importModal, setImportModal] = useState(false);
+
+  const { data: kayitlar = [], isLoading } = useQuery<BeyanKaydi[]>({
+    queryKey: ['beyan-kayitlari', 'redesign'],
+    queryFn: () => beyanKayitlariApi.list({ limit: 1500 }),
+  });
+
+  const deleteMut = useMutation({
+    mutationFn: (id: string) => beyanKayitlariApi.remove(id),
+    onSuccess: () => {
+      qc.invalidateQueries({ queryKey: ['beyan-kayitlari'] });
+      qc.invalidateQueries({ queryKey: ['beyan-kayitlari-ozet'] });
+      toast.success('Kayıt silindi');
+    },
+    onError: (e: any) => toast.error(e?.message || 'Silinemedi'),
+  });
+
+  const taxpayerOptions = useMemo(() => {
+    const map = new Map<string, { id: string; name: string; taxNumber: string }>();
+    for (const row of kayitlar) {
+      if (!row.taxpayerId) continue;
+      map.set(row.taxpayerId, {
+        id: row.taxpayerId,
+        name: beyanKaydiMukellefAdi(row),
+        taxNumber: row.taxpayer?.taxNumber || '',
+      });
+    }
+    return Array.from(map.values()).sort((a, b) => a.name.localeCompare(b.name, 'tr'));
+  }, [kayitlar]);
+
+  const periodOptions = useMemo(() => {
+    return Array.from(new Set(kayitlar.map((k) => k.donem).filter(Boolean)))
+      .sort((a, b) => periodSortValue(b) - periodSortValue(a));
+  }, [kayitlar]);
+
+  const filtered = useMemo(() => {
+    const q = search.trim().toLocaleLowerCase('tr-TR');
+    return kayitlar
+      .filter((k) => {
+        if (selectedTaxpayer !== 'all' && k.taxpayerId !== selectedTaxpayer) return false;
+        if (typeFilter !== 'all' && k.beyanTipi !== typeFilter) return false;
+        if (!periodInRange(k.donem, periodStart, periodEnd)) return false;
+        if (docFilter === 'beyanname' && !k.beyannameUrl) return false;
+        if (docFilter === 'tahakkuk' && !k.pdfUrl) return false;
+        if (docFilter === 'eksik' && (k.beyannameUrl || k.pdfUrl)) return false;
+        if (!q) return true;
+        const haystack = [
+          beyanKaydiMukellefAdi(k),
+          k.taxpayer?.taxNumber,
+          k.onayNo,
+          k.donem,
+          BEYAN_TIPI_LABEL[k.beyanTipi],
+          k.beyanTipi,
+        ].filter(Boolean).join(' ').toLocaleLowerCase('tr-TR');
+        return haystack.includes(q);
+      })
+      .sort((a, b) => {
+        const ad = new Date(a.beyanTarihi || a.createdAt || 0).getTime();
+        const bd = new Date(b.beyanTarihi || b.createdAt || 0).getTime();
+        if (bd !== ad) return bd - ad;
+        return periodSortValue(b.donem) - periodSortValue(a.donem);
+      });
+  }, [kayitlar, search, selectedTaxpayer, typeFilter, docFilter, periodStart, periodEnd]);
+
+  const summary = useMemo(() => {
+    const withBeyan = filtered.filter((k) => !!k.beyannameUrl).length;
+    const withTahakkuk = filtered.filter((k) => !!k.pdfUrl).length;
+    const missing = filtered.filter((k) => !k.beyannameUrl && !k.pdfUrl).length;
+    const totalAmount = filtered.reduce((sum, k) => sum + (k.tahakkukTutari || 0), 0);
+    return { total: filtered.length, withBeyan, withTahakkuk, missing, totalAmount };
+  }, [filtered]);
+
+  const typeCounts = useMemo(() => {
+    const map: Record<string, number> = { all: kayitlar.length };
+    for (const row of kayitlar) map[row.beyanTipi] = (map[row.beyanTipi] || 0) + 1;
+    return map;
+  }, [kayitlar]);
+
+  const clearFilters = () => {
+    setSearch('');
+    setTypeFilter('all');
+    setDocFilter('all');
+    setSelectedTaxpayer('all');
+    setPeriodStart('');
+    setPeriodEnd('');
+  };
+
+  const openDocument = (row: BeyanKaydi, kind: 'beyanname' | 'tahakkuk' = 'beyanname') => {
+    const url = kind === 'beyanname'
+      ? (row.beyannameUrl ? beyanKayitlariApi.beyannameUrl(row.id) : row.pdfUrl ? beyanKayitlariApi.pdfUrl(row.id) : '')
+      : (row.pdfUrl ? beyanKayitlariApi.pdfUrl(row.id) : row.beyannameUrl ? beyanKayitlariApi.beyannameUrl(row.id) : '');
+    if (!url) {
+      toast.warning('Bu kayıt için görüntülenecek PDF yok');
+      return;
+    }
+    window.open(url, '_blank', 'noopener,noreferrer');
+  };
+
+  const sendEmail = (row: BeyanKaydi) => {
+    const email = taxpayerEmail(row);
+    if (!email) {
+      toast.warning('Mükellef kartında e-posta yok');
+      return;
+    }
+    window.location.href = `mailto:${email}?subject=${encodeURIComponent(declarationSubject(row))}&body=${encodeURIComponent(declarationMessage(row))}`;
+  };
+
+  const sendWhatsapp = (row: BeyanKaydi) => {
+    const phone = whatsappPhone(taxpayerPhone(row));
+    if (!phone) {
+      toast.warning('Mükellef kartında telefon yok');
+      return;
+    }
+    window.open(`https://wa.me/${phone}?text=${encodeURIComponent(declarationMessage(row))}`, '_blank', 'noopener,noreferrer');
+  };
+
+  const sendSms = (row: BeyanKaydi) => {
+    const phone = taxpayerPhone(row).replace(/\s+/g, '');
+    if (!phone) {
+      toast.warning('Mükellef kartında telefon yok');
+      return;
+    }
+    window.location.href = `sms:${phone}?body=${encodeURIComponent(declarationMessage(row))}`;
+  };
+
+  const exportCsv = () => {
+    const cell = (value: unknown) => `"${String(value ?? '').replace(/"/g, '""')}"`;
+    const lines = [
+      ['Mükellef', 'VKN/TCKN', 'Tip', 'Dönem', 'Beyan Tarihi', 'Onay No', 'Tahakkuk', 'Beyanname PDF', 'Tahakkuk PDF']
+        .map(cell).join(';'),
+      ...filtered.map((k) => [
+        beyanKaydiMukellefAdi(k),
+        k.taxpayer?.taxNumber || '',
+        BEYAN_TIPI_LABEL[k.beyanTipi],
+        k.donem,
+        fmtDate(k.beyanTarihi),
+        k.onayNo || '',
+        k.tahakkukTutari ?? '',
+        k.beyannameUrl ? 'var' : 'yok',
+        k.pdfUrl ? 'var' : 'yok',
+      ].map(cell).join(';')),
+    ];
+    const blob = new Blob([`\uFEFF${lines.join('\n')}`], { type: 'text/csv;charset=utf-8' });
+    const url = URL.createObjectURL(blob);
+    const a = document.createElement('a');
+    a.href = url;
+    a.download = `beyanname-listesi-${new Date().toISOString().slice(0, 10)}.csv`;
+    a.click();
+    URL.revokeObjectURL(url);
+  };
+
+  return (
+    <div className="max-w-[1500px] space-y-4">
+      <section
+        className="rounded-2xl px-5 py-4"
+        style={{
+          background: 'linear-gradient(135deg, rgba(14,23,22,0.92), rgba(16,14,11,0.96))',
+          border: '1px solid rgba(125,211,252,0.13)',
+          boxShadow: 'inset 0 1px 0 rgba(255,255,255,0.04)',
+        }}
+      >
+        <div className="flex items-center justify-between gap-4 flex-wrap">
+          <div className="min-w-0">
+            <div className="flex items-center gap-2 mb-2">
+              <span className="w-7 h-px" style={{ background: GOLD }} />
+              <span className="text-[10.5px] uppercase font-bold tracking-[.18em]" style={{ color: '#b8a06f' }}>Belgeler</span>
+            </div>
+            <h1 className="text-[30px] font-semibold tracking-[-.03em]" style={{ color: '#fafaf9' }}>Beyannameler</h1>
+            <p className="text-[13px] mt-1" style={{ color: 'rgba(250,250,249,0.52)' }}>
+              Hattat, GIB ve manuel yüklemeler tek listede; mükellef, dönem ve belge durumuna göre izlenir.
+            </p>
+          </div>
+          <div className="flex items-center gap-2">
+            <button
+              type="button"
+              onClick={exportCsv}
+              className="h-10 px-4 rounded-[10px] inline-flex items-center gap-2 text-[13px] font-semibold"
+              style={{ background: 'rgba(255,255,255,0.04)', border: '1px solid rgba(255,255,255,0.08)', color: 'rgba(250,250,249,0.82)' }}
+            >
+              <FileText size={15} /> Listeyi İndir
+            </button>
+            <button
+              type="button"
+              onClick={() => setImportModal(true)}
+              className="h-10 px-4 rounded-[10px] inline-flex items-center gap-2 text-[13px] font-bold"
+              style={{ background: `linear-gradient(135deg, ${GOLD}, #b8a06f)`, color: '#0f0d0b' }}
+            >
+              <FolderUp size={15} /> PDF / ZIP Aktar
+            </button>
+          </div>
+        </div>
+      </section>
+
+      <section className="grid grid-cols-2 xl:grid-cols-5 gap-3">
+        <StatTile label="Listelenen" value={summary.total} sub={`${kayitlar.length} toplam kayıt`} tone="gold" />
+        <StatTile label="Beyanname PDF" value={summary.withBeyan} sub="görüntülenebilir" tone="green" />
+        <StatTile label="Tahakkuk PDF" value={summary.withTahakkuk} sub="fiş mevcut" tone="blue" />
+        <StatTile label="Eksik Belge" value={summary.missing} sub="pdf bulunmuyor" tone="rose" />
+        <StatTile label="Tahakkuk Toplamı" value={fmtCurrency(summary.totalAmount)} sub="filtre sonucu" tone="gold" />
+      </section>
+
+      <section
+        className="rounded-2xl p-4 space-y-3"
+        style={{ background: 'rgba(255,255,255,0.025)', border: '1px solid rgba(255,255,255,0.07)' }}
+      >
+        <div className="grid xl:grid-cols-[minmax(260px,1fr),260px,180px,180px,180px,180px,auto] gap-2">
+          <div className="relative">
+            <Search size={16} className="absolute left-3 top-1/2 -translate-y-1/2" style={{ color: 'rgba(250,250,249,0.38)' }} />
+            <input
+              value={search}
+              onChange={(e) => setSearch(e.target.value)}
+              placeholder="Mükellef, VKN, onay no, dönem ara..."
+              className="w-full h-11 pl-10 pr-3 rounded-[10px] text-[13px] outline-none"
+              style={{ background: 'rgba(0,0,0,0.18)', border: '1px solid rgba(255,255,255,0.08)', color: '#fafaf9' }}
+            />
+          </div>
+          <SelectBox icon={UserRound} value={selectedTaxpayer} onChange={setSelectedTaxpayer}>
+            <option value="all">Tüm mükellefler</option>
+            {taxpayerOptions.map((t) => (
+              <option key={t.id} value={t.id}>{t.name}</option>
+            ))}
+          </SelectBox>
+          <SelectBox icon={Filter} value={typeFilter} onChange={(v) => setTypeFilter(v as FilterKey)}>
+            {FILTER_KEYS.map((f) => (
+              <option key={f.key} value={f.key}>{f.label} ({typeCounts[f.key] || 0})</option>
+            ))}
+          </SelectBox>
+          <SelectBox icon={FileText} value={docFilter} onChange={(v) => setDocFilter(v as BelgeFilter)}>
+            <option value="all">Tüm belgeler</option>
+            <option value="beyanname">Beyanname var</option>
+            <option value="tahakkuk">Tahakkuk var</option>
+            <option value="eksik">Belgesi eksik</option>
+          </SelectBox>
+          <SelectBox icon={CalendarDays} value={periodStart} onChange={setPeriodStart}>
+            <option value="">İlk dönem</option>
+            {periodOptions.map((p) => <option key={p} value={p}>{fmtDonem(p)}</option>)}
+          </SelectBox>
+          <SelectBox icon={CalendarDays} value={periodEnd} onChange={setPeriodEnd}>
+            <option value="">Son dönem</option>
+            {periodOptions.map((p) => <option key={p} value={p}>{fmtDonem(p)}</option>)}
+          </SelectBox>
+          <button
+            type="button"
+            onClick={clearFilters}
+            className="h-11 px-3 rounded-[10px] inline-flex items-center justify-center"
+            style={{ background: 'rgba(255,255,255,0.035)', border: '1px solid rgba(255,255,255,0.08)', color: 'rgba(250,250,249,0.68)' }}
+            title="Filtreleri temizle"
+          >
+            <RotateCcw size={16} />
+          </button>
+        </div>
+      </section>
+
+      <details className="rounded-2xl overflow-hidden" style={{ background: 'rgba(255,255,255,0.02)', border: '1px solid rgba(255,255,255,0.07)' }}>
+        <summary className="cursor-pointer px-4 py-3 text-[13px] font-semibold" style={{ color: '#fafaf9' }}>
+          e-Beyanname sunucu çekme paneli
+        </summary>
+        <div className="p-4 pt-0">
+          <PortalAutomationPanel focus="beyanname" />
+        </div>
+      </details>
+
+      <section className="rounded-2xl overflow-hidden" style={{ background: 'rgba(255,255,255,0.02)', border: '1px solid rgba(255,255,255,0.07)' }}>
+        <div className="px-4 py-3 flex items-center justify-between gap-3" style={{ borderBottom: '1px solid rgba(255,255,255,0.06)' }}>
+          <div>
+            <h2 className="text-[15px] font-semibold" style={{ color: '#fafaf9' }}>Beyanname Listesi</h2>
+            <p className="text-[12px] mt-0.5" style={{ color: 'rgba(250,250,249,0.45)' }}>
+              Tarihe göre yeni kayıtlar üstte gösterilir. Satır aksiyonları doğrudan mükellef iletişim bilgilerini kullanır.
+            </p>
+          </div>
+          <span className="text-[12px] tabular-nums" style={{ color: 'rgba(250,250,249,0.5)' }}>{filtered.length} kayıt</span>
+        </div>
+
+        {isLoading ? (
+          <div className="p-10 text-center text-[13px]" style={{ color: 'rgba(250,250,249,0.5)' }}>
+            <Loader2 size={18} className="animate-spin mx-auto mb-3" /> Kayıtlar yükleniyor...
+          </div>
+        ) : filtered.length === 0 ? (
+          <div className="p-12 text-center">
+            <FileQuestion size={34} className="mx-auto mb-3" style={{ color: 'rgba(250,250,249,0.24)' }} />
+            <p className="text-[14px]" style={{ color: 'rgba(250,250,249,0.58)' }}>Bu filtrelerle beyanname bulunamadı.</p>
+            <button type="button" onClick={clearFilters} className="mt-3 text-[13px] font-semibold" style={{ color: GOLD }}>
+              Filtreleri temizle
+            </button>
+          </div>
+        ) : (
+          <div className="overflow-x-auto">
+            <table className="w-full min-w-[1120px] text-[13px]">
+              <thead style={{ background: 'rgba(255,255,255,0.025)' }}>
+                <tr className="text-left uppercase tracking-[.12em] text-[10.5px]" style={{ color: 'rgba(250,250,249,0.45)' }}>
+                  <th className="px-4 py-3">Mükellef</th>
+                  <th className="px-4 py-3">Beyan</th>
+                  <th className="px-4 py-3">Dönem / Tarih</th>
+                  <th className="px-4 py-3">Tahakkuk</th>
+                  <th className="px-4 py-3">Belgeler</th>
+                  <th className="px-4 py-3 text-right">İşlem</th>
+                </tr>
+              </thead>
+              <tbody>
+                {filtered.map((row) => (
+                  <tr key={row.id} style={{ borderTop: '1px solid rgba(255,255,255,0.055)' }}>
+                    <td className="px-4 py-3">
+                      <button
+                        type="button"
+                        onClick={() => setSelectedTaxpayer(row.taxpayerId)}
+                        className="text-left max-w-[360px]"
+                        title="Bu mükellefe filtrele"
+                      >
+                        <div className="font-semibold truncate" style={{ color: '#fafaf9' }}>{beyanKaydiMukellefAdi(row)}</div>
+                        <div className="text-[11.5px] font-mono mt-0.5" style={{ color: 'rgba(250,250,249,0.38)' }}>{row.taxpayer?.taxNumber || '-'}</div>
+                      </button>
+                    </td>
+                    <td className="px-4 py-3">
+                      <div className="inline-flex items-center rounded-full px-2.5 py-1 text-[11.5px] font-bold" style={{ background: 'rgba(212,184,118,0.12)', border: '1px solid rgba(212,184,118,0.22)', color: GOLD }}>
+                        {BEYAN_TIPI_LABEL[row.beyanTipi]}
+                      </div>
+                      <div className="text-[11px] mt-1" style={{ color: 'rgba(250,250,249,0.42)' }}>{row.kaynak || 'kayıt'}</div>
+                    </td>
+                    <td className="px-4 py-3">
+                      <div className="font-semibold" style={{ color: '#fafaf9' }}>{fmtDonem(row.donem)}</div>
+                      <div className="text-[11.5px] mt-0.5" style={{ color: 'rgba(250,250,249,0.42)' }}>{fmtDate(row.beyanTarihi || row.createdAt)}</div>
+                    </td>
+                    <td className="px-4 py-3">
+                      <div className="font-semibold tabular-nums" style={{ color: row.tahakkukTutari ? '#fafaf9' : 'rgba(250,250,249,0.35)' }}>{fmtCurrency(row.tahakkukTutari)}</div>
+                      <div className="text-[11px] mt-0.5 font-mono" style={{ color: 'rgba(250,250,249,0.36)' }}>{row.onayNo || 'onay no yok'}</div>
+                    </td>
+                    <td className="px-4 py-3">
+                      <div className="flex flex-wrap gap-1.5">
+                        <DocButton active={!!row.beyannameUrl} label="Beyanname" onClick={() => openDocument(row, 'beyanname')} />
+                        <DocButton active={!!row.pdfUrl} label="Tahakkuk" onClick={() => openDocument(row, 'tahakkuk')} />
+                      </div>
+                    </td>
+                    <td className="px-4 py-3">
+                      <div className="flex items-center justify-end gap-1.5">
+                        <IconButton label="Görüntüle" icon={Eye} onClick={() => openDocument(row)} />
+                        <IconButton label="E-posta" icon={Mail} onClick={() => sendEmail(row)} />
+                        <IconButton label="WhatsApp" icon={MessageCircle} onClick={() => sendWhatsapp(row)} />
+                        <IconButton label="SMS" icon={MessageSquareText} onClick={() => sendSms(row)} />
+                        <IconButton
+                          label="Sil"
+                          icon={Trash2}
+                          danger
+                          onClick={() => {
+                            if (confirm(`${beyanKaydiMukellefAdi(row)} kaydı silinsin mi?`)) deleteMut.mutate(row.id);
+                          }}
+                        />
+                      </div>
+                    </td>
+                  </tr>
+                ))}
+              </tbody>
+            </table>
+          </div>
+        )}
+      </section>
+
+      {importModal && (
+        <ImportModal
+          onClose={() => setImportModal(false)}
+          onDone={() => {
+            qc.invalidateQueries({ queryKey: ['beyan-kayitlari'] });
+            qc.invalidateQueries({ queryKey: ['beyan-kayitlari-ozet'] });
+          }}
+        />
+      )}
+    </div>
+  );
+}
+
+function StatTile({ label, value, sub, tone }: { label: string; value: string | number; sub: string; tone: 'gold' | 'green' | 'blue' | 'rose' }) {
+  const colors = {
+    gold: '#d4b876',
+    green: '#22c55e',
+    blue: '#7dd3fc',
+    rose: '#fb7185',
+  } as const;
+  const color = colors[tone];
+  return (
+    <div className="rounded-2xl p-4" style={{ background: 'rgba(255,255,255,0.025)', border: `1px solid ${color}33` }}>
+      <div className="text-[10.5px] uppercase font-bold tracking-[.14em]" style={{ color: 'rgba(250,250,249,0.46)' }}>{label}</div>
+      <div className="mt-2 text-[24px] font-semibold tabular-nums tracking-[-.02em]" style={{ color }}>{value}</div>
+      <div className="text-[11.5px] mt-1" style={{ color: 'rgba(250,250,249,0.42)' }}>{sub}</div>
+    </div>
+  );
+}
+
+function SelectBox({ icon: Icon, value, onChange, children }: { icon: any; value: string; onChange: (value: string) => void; children: ReactNode }) {
+  return (
+    <label className="relative block">
+      <Icon size={15} className="absolute left-3 top-1/2 -translate-y-1/2 pointer-events-none" style={{ color: 'rgba(250,250,249,0.38)' }} />
+      <select
+        value={value}
+        onChange={(e) => onChange(e.target.value)}
+        className="w-full h-11 pl-9 pr-8 rounded-[10px] text-[13px] font-semibold outline-none appearance-none"
+        style={{ background: 'rgba(0,0,0,0.18)', border: '1px solid rgba(255,255,255,0.08)', color: '#fafaf9' }}
+      >
+        {children}
+      </select>
+    </label>
+  );
+}
+
+function DocButton({ active, label, onClick }: { active: boolean; label: string; onClick: () => void }) {
+  return (
+    <button
+      type="button"
+      onClick={onClick}
+      className="px-2.5 py-1 rounded-md text-[11px] font-semibold"
+      style={{
+        background: active ? 'rgba(34,197,94,0.10)' : 'rgba(255,255,255,0.035)',
+        border: `1px solid ${active ? 'rgba(34,197,94,0.25)' : 'rgba(255,255,255,0.08)'}`,
+        color: active ? '#86efac' : 'rgba(250,250,249,0.38)',
+      }}
+    >
+      {active ? '✓ ' : '– '}{label}
+    </button>
+  );
+}
+
+function IconButton({ label, icon: Icon, onClick, danger }: { label: string; icon: any; onClick: () => void; danger?: boolean }) {
+  return (
+    <button
+      type="button"
+      title={label}
+      onClick={onClick}
+      className="w-9 h-9 rounded-[9px] inline-flex items-center justify-center"
+      style={{
+        background: danger ? 'rgba(244,63,94,0.08)' : 'rgba(255,255,255,0.035)',
+        border: `1px solid ${danger ? 'rgba(244,63,94,0.22)' : 'rgba(255,255,255,0.08)'}`,
+        color: danger ? '#fb7185' : 'rgba(250,250,249,0.72)',
+      }}
+    >
+      <Icon size={15} />
+    </button>
+  );
+}
+
+function LegacyBeyannamelerPage() {
   const qc = useQueryClient();
   const [search, setSearch] = useState('');
   const [filter, setFilter] = useState<FilterKey>('all');

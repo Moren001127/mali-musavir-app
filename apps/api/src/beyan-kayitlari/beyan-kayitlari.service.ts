@@ -296,7 +296,19 @@ export class BeyanKayitlariService {
     return (this.prisma as any).beyanKaydi.findMany({
       where,
       include: {
-        taxpayer: { select: { id: true, companyName: true, firstName: true, lastName: true, taxNumber: true } },
+        taxpayer: {
+          select: {
+            id: true,
+            companyName: true,
+            firstName: true,
+            lastName: true,
+            taxNumber: true,
+            email: true,
+            emails: true,
+            phone: true,
+            phones: true,
+          },
+        },
       },
       orderBy: [{ donem: 'desc' }, { beyanTipi: 'asc' }],
       take: opts.limit || 500,

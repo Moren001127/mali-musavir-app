@@ -42,6 +42,10 @@ export interface BeyanKaydi {
     firstName: string | null;
     lastName: string | null;
     taxNumber: string;
+    email?: string | null;
+    emails?: string[];
+    phone?: string | null;
+    phones?: string[];
   };
 }
 
