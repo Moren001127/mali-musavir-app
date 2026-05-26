@@ -19,8 +19,6 @@ import {
 import Link from 'next/link';
 import { api } from '@/lib/api';
 
-const GOLD = '#d4b876';
-
 interface BrifingAlert {
   severity: 'high' | 'medium' | 'low';
   text: string;
@@ -59,14 +57,6 @@ function sanitizeFirstName(raw?: string): string | undefined {
   return cleaned || undefined;
 }
 
-const SELAMLAMA = (() => {
-  const h = new Date().getHours();
-  if (h < 6) return 'İyi geceler';
-  if (h < 12) return 'Günaydın';
-  if (h < 18) return 'İyi günler';
-  return 'İyi akşamlar';
-})();
-
 const KISA_TARIH = new Date().toLocaleDateString('tr-TR', {
   weekday: 'long',
   day: 'numeric',
@@ -76,54 +66,54 @@ const KISA_TARIH = new Date().toLocaleDateString('tr-TR', {
 const FOCUS_TONES: Record<string, { label: string; color: string; bg: string; glow: string; border: string; actionBg: string; actionBorder: string; text: string }> = {
   calm: {
     label: 'Sakin',
-    color: '#7dd3a8',
-    bg: 'rgba(42,118,89,0.16)',
-    glow: 'rgba(42,118,89,0.18)',
-    border: 'rgba(125,211,168,0.28)',
-    actionBg: 'linear-gradient(135deg, rgba(125,211,168,0.14), rgba(125,211,168,0.06))',
-    actionBorder: 'rgba(125,211,168,0.28)',
-    text: '#b8e6c9',
+    color: '#86c7a0',
+    bg: 'rgba(134,199,160,0.08)',
+    glow: 'rgba(134,199,160,0.08)',
+    border: 'rgba(134,199,160,0.16)',
+    actionBg: 'rgba(255,255,255,0.026)',
+    actionBorder: 'rgba(255,255,255,0.075)',
+    text: '#bddbc8',
   },
   busy: {
     label: 'Yoğun',
-    color: '#d4b876',
-    bg: 'rgba(212,184,118,0.13)',
-    glow: 'rgba(212,184,118,0.13)',
-    border: 'rgba(212,184,118,0.26)',
-    actionBg: 'linear-gradient(135deg, rgba(212,184,118,0.14), rgba(212,184,118,0.06))',
-    actionBorder: 'rgba(212,184,118,0.28)',
-    text: GOLD,
+    color: '#d8bd86',
+    bg: 'rgba(216,189,134,0.075)',
+    glow: 'rgba(216,189,134,0.08)',
+    border: 'rgba(216,189,134,0.16)',
+    actionBg: 'rgba(255,255,255,0.026)',
+    actionBorder: 'rgba(255,255,255,0.075)',
+    text: '#d8c38f',
   },
   critical: {
     label: 'Kritik',
-    color: '#fb7185',
-    bg: 'rgba(190,18,60,0.14)',
-    glow: 'rgba(190,18,60,0.20)',
-    border: 'rgba(251,113,133,0.34)',
-    actionBg: 'linear-gradient(135deg, rgba(251,113,133,0.16), rgba(251,113,133,0.06))',
-    actionBorder: 'rgba(251,113,133,0.34)',
-    text: '#fda4af',
+    color: '#e58c9b',
+    bg: 'rgba(229,140,155,0.075)',
+    glow: 'rgba(229,140,155,0.08)',
+    border: 'rgba(229,140,155,0.16)',
+    actionBg: 'rgba(255,255,255,0.026)',
+    actionBorder: 'rgba(255,255,255,0.075)',
+    text: '#e8b8c1',
   },
   review: {
     label: 'Kontrol',
-    color: '#93c5fd',
-    bg: 'rgba(37,99,235,0.13)',
-    glow: 'rgba(37,99,235,0.17)',
-    border: 'rgba(147,197,253,0.30)',
-    actionBg: 'linear-gradient(135deg, rgba(147,197,253,0.14), rgba(147,197,253,0.06))',
-    actionBorder: 'rgba(147,197,253,0.30)',
-    text: '#bfdbfe',
+    color: '#8db6c6',
+    bg: 'rgba(141,182,198,0.075)',
+    glow: 'rgba(141,182,198,0.08)',
+    border: 'rgba(141,182,198,0.16)',
+    actionBg: 'rgba(255,255,255,0.026)',
+    actionBorder: 'rgba(255,255,255,0.075)',
+    text: '#b7d2dc',
   },
 };
 
 const BRIEFING_CHROME_TONE = {
-  color: '#e8c77e',
-  bg: 'rgba(113,83,37,0.16)',
-  glow: 'rgba(232,199,126,0.12)',
-  border: 'rgba(232,199,126,0.20)',
-  actionBg: 'linear-gradient(135deg, rgba(232,199,126,0.12), rgba(255,255,255,0.035))',
-  actionBorder: 'rgba(232,199,126,0.20)',
-  text: '#ead6a6',
+  color: '#d8bd86',
+  bg: 'rgba(216,189,134,0.07)',
+  glow: 'rgba(216,189,134,0.06)',
+  border: 'rgba(216,189,134,0.13)',
+  actionBg: 'rgba(255,255,255,0.026)',
+  actionBorder: 'rgba(255,255,255,0.075)',
+  text: '#d8c38f',
 };
 
 const MOTIVATION_BY_FOCUS: Record<string, string> = {
@@ -283,9 +273,9 @@ export function BrifingKart({ userName }: { userName?: string }) {
     <div
       className="rounded-2xl overflow-hidden relative"
       style={{
-        background: `radial-gradient(circle at 12% 0%, ${chromeTone.glow}, transparent 40%), radial-gradient(circle at 88% 18%, rgba(143,216,194,0.06), transparent 34%), linear-gradient(135deg, rgba(22,18,14,0.96), rgba(8,10,10,0.94))`,
-        border: `1px solid ${chromeTone.border}`,
-        boxShadow: '0 16px 42px rgba(0,0,0,0.24), inset 0 1px 0 rgba(255,255,255,0.04)',
+        background: 'linear-gradient(180deg, rgba(17,17,15,0.93), rgba(10,11,10,0.91))',
+        border: '1px solid rgba(255,255,255,0.08)',
+        boxShadow: '0 12px 28px rgba(0,0,0,0.16), inset 0 1px 0 rgba(255,255,255,0.025)',
       }}
     >
       {/* Üst etiket bandı */}
@@ -297,8 +287,8 @@ export function BrifingKart({ userName }: { userName?: string }) {
           </span>
           {data && (
             <span
-              className="text-[9.5px] font-bold uppercase tracking-wider px-2 py-0.5 rounded ml-1 inline-flex items-center gap-1"
-              style={{ background: focusTone.bg, color: focusTone.color, border: `1px solid ${focusTone.color}30` }}
+              className="text-[9.5px] font-bold uppercase tracking-wider px-2 py-0.5 rounded-md ml-1 inline-flex items-center gap-1"
+              style={{ background: focusTone.bg, color: focusTone.color, border: `1px solid ${focusTone.border}` }}
             >
               <span className="w-1 h-1 rounded-full" style={{ background: focusTone.color }} />
               {focusTone.label}
@@ -306,8 +296,8 @@ export function BrifingKart({ userName }: { userName?: string }) {
           )}
           {data && (
             <span
-              className="text-[9.5px] font-bold uppercase tracking-wider px-2 py-0.5 rounded inline-flex items-center gap-1"
-              style={{ background: chromeTone.bg, color: chromeTone.color, border: `1px solid ${chromeTone.border}` }}
+              className="text-[9.5px] font-bold uppercase tracking-wider px-2 py-0.5 rounded-md inline-flex items-center gap-1"
+              style={{ background: 'rgba(255,255,255,0.025)', color: 'rgba(250,250,249,0.48)', border: '1px solid rgba(255,255,255,0.07)' }}
             >
               AI Destekli
             </span>
@@ -325,9 +315,9 @@ export function BrifingKart({ userName }: { userName?: string }) {
             title="Brifingi yeniden üret"
             className="text-[11px] inline-flex items-center gap-1.5 px-2.5 py-1 rounded-md transition disabled:opacity-50"
             style={{
-              background: 'rgba(255,255,255,0.035)',
-              border: '1px solid rgba(232,199,126,0.16)',
-              color: 'rgba(250,250,249,0.68)',
+              background: 'rgba(255,255,255,0.025)',
+              border: '1px solid rgba(255,255,255,0.075)',
+              color: 'rgba(250,250,249,0.62)',
             }}
           >
             {isFetching ? <Loader2 size={11} className="animate-spin" /> : <RefreshCw size={11} />}
@@ -337,45 +327,44 @@ export function BrifingKart({ userName }: { userName?: string }) {
       </div>
 
       {/* Selamlama + AI motivasyon */}
-      <div className="px-5 pt-2 pb-2 grid gap-3 xl:grid-cols-[minmax(0,1fr)_minmax(340px,460px)] xl:items-start">
+      <div className="px-5 pt-2 pb-2 grid gap-3 xl:grid-cols-[minmax(0,1fr)_minmax(320px,430px)] xl:items-start">
         <div className="min-w-0">
           <h2
             style={{
-              fontFamily: 'Fraunces, serif',
-              fontSize: 26,
-              fontWeight: 600,
-              color: '#fafaf9',
-              letterSpacing: '-.025em',
+              fontFamily: 'Inter, ui-sans-serif, system-ui, sans-serif',
+              fontSize: 20,
+              fontWeight: 700,
+              color: '#f2efe8',
+              letterSpacing: 0,
               lineHeight: 1.1,
             }}
           >
-            {SELAMLAMA}
-            {sanitizeFirstName(userName) ? `, ${sanitizeFirstName(userName)}` : ''}
+            Bugünkü Öncelikler
           </h2>
           <p className="text-[12px] mt-1 tabular-nums" style={{ color: 'rgba(250,250,249,0.42)' }}>
-            {KISA_TARIH}
+            {KISA_TARIH}{sanitizeFirstName(userName) ? ` · ${sanitizeFirstName(userName)}` : ''}
           </p>
         </div>
 
         {!isLoading && motivation && (
           <div
-            className="w-full rounded-xl px-3 py-2 flex items-center gap-2.5 select-none xl:justify-self-end"
+            className="w-full rounded-lg px-3 py-2 flex items-center gap-2.5 select-none xl:justify-self-end"
             style={{
-              background: `linear-gradient(135deg, ${chromeTone.bg}, rgba(255,255,255,0.018)), rgba(8,8,7,0.44)`,
-              border: `1px solid ${chromeTone.border}`,
-              boxShadow: 'inset 0 1px 0 rgba(255,255,255,0.04)',
+              background: 'rgba(255,255,255,0.025)',
+              border: '1px solid rgba(255,255,255,0.075)',
+              boxShadow: 'inset 0 1px 0 rgba(255,255,255,0.025)',
             }}
           >
             <span
-              className="w-7 h-7 rounded-lg flex items-center justify-center text-[10px] font-black shrink-0"
-              style={{ background: chromeTone.color, color: '#0b0a08' }}
+              className="w-7 h-7 rounded-md flex items-center justify-center text-[10px] font-black shrink-0"
+              style={{ background: focusTone.bg, border: `1px solid ${focusTone.border}`, color: focusTone.color }}
             >
-              AI
+              <Sparkles size={13} />
             </span>
             <span className="min-w-0 flex-1">
               <span className="flex items-center gap-1.5 text-[9px] uppercase font-black tracking-[.14em]" style={{ color: chromeTone.text }}>
                 <Sparkles size={10} />
-                AI Motivasyon
+                Odak Notu
               </span>
               <span className="block mt-0.5 text-[12.5px] font-semibold leading-snug" style={{ color: 'rgba(250,250,249,0.88)' }}>
                 {motivation}
@@ -416,10 +405,10 @@ export function BrifingKart({ userName }: { userName?: string }) {
           {data.alerts.slice(0, 2).map((a, i) => {
             const effectiveSeverity = EARLY_MONTH && /evrak/i.test(a.text) ? 'low' : a.severity;
             const cfg = effectiveSeverity === 'high'
-              ? { color: '#f59e0b', bg: 'rgba(245,158,11,0.10)', border: 'rgba(245,158,11,0.28)' }
+              ? { color: '#d8bd86', bg: 'rgba(255,255,255,0.024)', border: 'rgba(216,189,134,0.17)' }
               : effectiveSeverity === 'medium'
-                ? { color: '#7dd3fc', bg: 'rgba(125,211,252,0.10)', border: 'rgba(125,211,252,0.28)' }
-                : { color: '#8ee6d0', bg: 'rgba(142,230,208,0.09)', border: 'rgba(142,230,208,0.24)' };
+                ? { color: '#8db6c6', bg: 'rgba(255,255,255,0.022)', border: 'rgba(141,182,198,0.14)' }
+                : { color: '#86c7a0', bg: 'rgba(255,255,255,0.020)', border: 'rgba(134,199,160,0.13)' };
             const href = a.href ? normalizeDashboardHref(a.href) : undefined;
             const Inner = (
               <div
@@ -459,10 +448,10 @@ export function BrifingKart({ userName }: { userName?: string }) {
               <Link
                 key={i}
                 href={href}
-                className="inline-flex items-center justify-between gap-2 px-3 py-1.5 rounded-lg text-[12.5px] font-semibold transition hover:scale-[1.015]"
+                className="inline-flex items-center justify-between gap-2 px-3 py-1.5 rounded-lg text-[12.5px] font-semibold transition hover:bg-white/[0.035]"
                 style={{
                   background: chromeTone.actionBg,
-                  color: chromeTone.text,
+                  color: 'rgba(238,229,205,0.78)',
                   border: `1px solid ${chromeTone.actionBorder}`,
                 }}
               >

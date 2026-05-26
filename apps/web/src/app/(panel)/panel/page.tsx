@@ -44,23 +44,23 @@ const GOLD = '#d4b876';
 const TRACK_BLUE = '#7dd3fc';
 const TRACK_BLUE_SOFT = '#93c5fd';
 const BEYAN_TONE = {
-  accent: '#d8bd86',
-  accentSoft: '#f2d8a1',
-  title: '#f8f4ec',
-  muted: 'rgba(244,239,229,0.58)',
-  header: 'rgba(244,239,229,0.52)',
-  approved: '#3ddc84',
-  waiting: '#f2c46d',
-  error: '#ff7a8c',
-  remaining: '#f0a6b6',
-  status: '#8cc8ff',
-  border: 'rgba(216,189,134,0.20)',
-  borderSoft: 'rgba(244,239,229,0.08)',
-  bg: 'rgba(216,189,134,0.08)',
-  bgSoft: 'rgba(244,239,229,0.035)',
-  rowAlt: 'rgba(255,255,255,0.018)',
-  tableBg: 'rgba(8,8,7,0.36)',
-  headBg: 'rgba(244,239,229,0.035)',
+  accent: '#c8ad73',
+  accentSoft: '#d8c38f',
+  title: '#e9e6de',
+  muted: 'rgba(232,226,216,0.54)',
+  header: 'rgba(232,226,216,0.44)',
+  approved: '#4ade80',
+  waiting: '#d8bd86',
+  error: '#f87171',
+  remaining: '#d8bd86',
+  status: '#94a3b8',
+  border: 'rgba(216,189,134,0.13)',
+  borderSoft: 'rgba(255,255,255,0.07)',
+  bg: 'rgba(216,189,134,0.055)',
+  bgSoft: 'rgba(255,255,255,0.03)',
+  rowAlt: 'rgba(255,255,255,0.010)',
+  tableBg: 'rgba(5,6,6,0.28)',
+  headBg: 'rgba(255,255,255,0.022)',
 };
 
 function displayUserName(user: any): string | undefined {
@@ -134,11 +134,11 @@ const WORKFLOW_STEPS: Array<{
   bg: string;
   border: string;
 }> = [
-  { key: 'evrak', label: 'Evrak Bekliyor', sub: 'Mükelleften gelecek', href: '/panel/is-yuku', icon: FileInput, color: '#d9c6a3', bg: 'rgba(217,198,163,0.11)', border: 'rgba(217,198,163,0.25)' },
-  { key: 'islenme', label: 'Fatura İşleme', sub: 'Belge merkezi', href: '/panel/fatura-isleme', icon: Receipt, color: '#f2b56b', bg: 'rgba(242,181,107,0.11)', border: 'rgba(242,181,107,0.27)' },
-  { key: 'kontrol', label: 'KDV Kontrol', sub: 'Kontrol bekliyor', href: '/panel/kdv-kontrol', icon: FileCheck, color: '#77c7dc', bg: 'rgba(119,199,220,0.10)', border: 'rgba(119,199,220,0.24)' },
-  { key: 'beyanname', label: 'Beyanname', sub: 'Hazırlanacak', href: '/panel/beyannameler', icon: FileText, color: '#e6a1b2', bg: 'rgba(230,161,178,0.11)', border: 'rgba(230,161,178,0.26)' },
-  { key: 'tamam', label: 'Tamamlandı', sub: 'Bu ay kapandı', href: '/panel/is-yuku', icon: CheckCircle2, color: '#87d7a5', bg: 'rgba(135,215,165,0.10)', border: 'rgba(135,215,165,0.24)' },
+  { key: 'evrak', label: 'Evrak Bekliyor', sub: 'Mükelleften gelecek', href: '/panel/is-yuku', icon: FileInput, color: '#d8caa9', bg: 'rgba(255,255,255,0.022)', border: 'rgba(216,189,134,0.15)' },
+  { key: 'islenme', label: 'Fatura İşleme', sub: 'Belge merkezi', href: '/panel/fatura-isleme', icon: Receipt, color: '#d2b06f', bg: 'rgba(255,255,255,0.020)', border: 'rgba(210,176,111,0.16)' },
+  { key: 'kontrol', label: 'KDV Kontrol', sub: 'Kontrol bekliyor', href: '/panel/kdv-kontrol', icon: FileCheck, color: '#8db6c6', bg: 'rgba(255,255,255,0.020)', border: 'rgba(141,182,198,0.16)' },
+  { key: 'beyanname', label: 'Beyanname', sub: 'Hazırlanacak', href: '/panel/beyannameler', icon: FileText, color: '#cda2ad', bg: 'rgba(255,255,255,0.020)', border: 'rgba(205,162,173,0.15)' },
+  { key: 'tamam', label: 'Tamamlandı', sub: 'Bu ay kapandı', href: '/panel/is-yuku', icon: CheckCircle2, color: '#86c7a0', bg: 'rgba(255,255,255,0.020)', border: 'rgba(134,199,160,0.16)' },
 ];
 
 function WorkflowOverview({ counts, total, activeCount }: { counts?: WorkflowCounts; total: number; activeCount: number }) {
@@ -152,30 +152,30 @@ function WorkflowOverview({ counts, total, activeCount }: { counts?: WorkflowCou
     <div
       className="rounded-2xl overflow-hidden"
       style={{
-        background: 'linear-gradient(135deg, rgba(13,20,21,0.94), rgba(12,10,9,0.88))',
-        border: '1px solid rgba(143,216,194,0.20)',
-        boxShadow: '0 18px 44px rgba(0,0,0,0.20), inset 0 1px 0 rgba(255,255,255,0.035)',
+        background: 'linear-gradient(180deg, rgba(16,17,16,0.92), rgba(10,11,10,0.90))',
+        border: '1px solid rgba(255,255,255,0.08)',
+        boxShadow: '0 12px 28px rgba(0,0,0,0.16), inset 0 1px 0 rgba(255,255,255,0.028)',
       }}
     >
-      <div className="flex flex-wrap items-center justify-between gap-3 px-5 py-4" style={{ borderBottom: '1px solid rgba(143,216,194,0.10)' }}>
+      <div className="flex flex-wrap items-center justify-between gap-3 px-5 py-4" style={{ borderBottom: '1px solid rgba(255,255,255,0.065)' }}>
         <div className="flex items-center gap-3">
-          <span className="w-[4px] h-9 rounded-sm" style={{ background: 'linear-gradient(180deg, #8fd8c2, #d4b876)' }} />
+          <span className="w-[3px] h-8 rounded-sm" style={{ background: '#d8bd86' }} />
           <div>
-            <h3 className="text-[18px] font-semibold leading-tight" style={{ color: '#fafaf9' }}>Bu Ay İş Akışı</h3>
+            <h3 className="text-[17px] font-semibold leading-tight" style={{ color: '#f2efe8' }}>Bu Ay İş Akışı</h3>
             <p className="text-[12px] mt-1" style={{ color: 'rgba(250,250,249,0.50)' }}>
               {scopedTotal} mükellef akışta · {activeCount} aktif mükellef
             </p>
           </div>
         </div>
         <div className="flex flex-wrap items-center gap-2">
-          <span className="text-[11.5px] font-semibold px-3 py-1 rounded-lg" style={{ background: 'rgba(242,181,107,0.11)', border: '1px solid rgba(242,181,107,0.25)', color: '#f2b56b' }}>
+          <span className="text-[11.5px] font-semibold px-3 py-1 rounded-md" style={{ background: 'rgba(216,189,134,0.075)', border: '1px solid rgba(216,189,134,0.16)', color: '#d8bd86' }}>
             {activeWork} aktif
           </span>
-          <span className="text-[11.5px] font-semibold px-3 py-1 rounded-lg" style={{ background: 'rgba(135,215,165,0.10)', border: '1px solid rgba(135,215,165,0.24)', color: '#87d7a5' }}>
+          <span className="text-[11.5px] font-semibold px-3 py-1 rounded-md" style={{ background: 'rgba(134,199,160,0.075)', border: '1px solid rgba(134,199,160,0.16)', color: '#86c7a0' }}>
             {completed} tamam
           </span>
           {outside > 0 && (
-            <span className="text-[11.5px] font-semibold px-3 py-1 rounded-lg" style={{ background: 'rgba(255,255,255,0.035)', border: '1px solid rgba(255,255,255,0.08)', color: 'rgba(250,250,249,0.58)' }}>
+            <span className="text-[11.5px] font-semibold px-3 py-1 rounded-md" style={{ background: 'rgba(255,255,255,0.025)', border: '1px solid rgba(255,255,255,0.07)', color: 'rgba(250,250,249,0.56)' }}>
               {outside} dışında
             </span>
           )}
@@ -183,7 +183,7 @@ function WorkflowOverview({ counts, total, activeCount }: { counts?: WorkflowCou
       </div>
 
       <div className="px-5 py-4">
-        <div className="flex h-2.5 w-full overflow-hidden rounded-full" style={{ background: 'rgba(255,255,255,0.055)' }}>
+        <div className="flex h-1.5 w-full overflow-hidden rounded-full" style={{ background: 'rgba(255,255,255,0.06)' }}>
           {WORKFLOW_STEPS.map((step) => {
             const value = c[step.key] || 0;
             const pct = scopedTotal > 0 ? (value / scopedTotal) * 100 : 0;
@@ -207,17 +207,17 @@ function WorkflowOverview({ counts, total, activeCount }: { counts?: WorkflowCou
               <Link
                 key={step.key}
                 href={step.href}
-                className="group min-h-[112px] rounded-xl px-3.5 py-3 transition-all"
+                className="group min-h-[96px] rounded-lg px-3.5 py-3 transition-all"
                 style={{
-                  background: `linear-gradient(180deg, ${step.bg}, rgba(255,255,255,0.018))`,
+                  background: `linear-gradient(180deg, ${step.bg}, rgba(255,255,255,0.012))`,
                   border: `1px solid ${step.border}`,
-                  boxShadow: 'inset 0 1px 0 rgba(255,255,255,0.035)',
+                  boxShadow: 'inset 0 1px 0 rgba(255,255,255,0.025)',
                 }}
-                onMouseEnter={(e) => { e.currentTarget.style.transform = 'translateY(-2px)'; e.currentTarget.style.background = step.bg; }}
-                onMouseLeave={(e) => { e.currentTarget.style.transform = 'translateY(0)'; e.currentTarget.style.background = `linear-gradient(180deg, ${step.bg}, rgba(255,255,255,0.018))`; }}
+                onMouseEnter={(e) => { e.currentTarget.style.transform = 'translateY(-1px)'; e.currentTarget.style.background = 'rgba(255,255,255,0.032)'; }}
+                onMouseLeave={(e) => { e.currentTarget.style.transform = 'translateY(0)'; e.currentTarget.style.background = `linear-gradient(180deg, ${step.bg}, rgba(255,255,255,0.012))`; }}
               >
                 <div className="flex items-start justify-between gap-2">
-                  <div className="w-9 h-9 rounded-lg flex items-center justify-center flex-shrink-0" style={{ background: 'rgba(5,7,7,0.30)', border: `1px solid ${step.border}`, color: step.color }}>
+                  <div className="w-8 h-8 rounded-md flex items-center justify-center flex-shrink-0" style={{ background: 'rgba(5,7,7,0.24)', border: `1px solid ${step.border}`, color: step.color }}>
                     <Icon size={16} />
                   </div>
                   <span className="rounded-md px-2 py-0.5 text-[10.5px] font-bold tabular-nums" style={{ color: step.color, background: 'rgba(0,0,0,0.14)', border: `1px solid ${step.border}` }}>
@@ -225,11 +225,11 @@ function WorkflowOverview({ counts, total, activeCount }: { counts?: WorkflowCou
                   </span>
                 </div>
                 <div className="mt-3">
-                  <div className="text-[30px] leading-none tabular-nums font-bold" style={{ color: step.color, fontFamily: 'Fraunces, serif', letterSpacing: 0 }}>{value}</div>
+                  <div className="text-[25px] leading-none tabular-nums font-bold" style={{ color: step.color, fontFamily: 'Inter, ui-sans-serif, system-ui, sans-serif', letterSpacing: 0 }}>{value}</div>
                   <div className="mt-1 text-[12.5px] font-semibold truncate" style={{ color: '#fafaf9' }}>{step.label}</div>
                   <div className="mt-0.5 text-[10.5px] truncate" style={{ color: 'rgba(250,250,249,0.46)' }}>{step.sub}</div>
                 </div>
-                <div className="mt-3 h-1.5 overflow-hidden rounded-full" style={{ background: 'rgba(255,255,255,0.075)' }}>
+                <div className="mt-3 h-1 overflow-hidden rounded-full" style={{ background: 'rgba(255,255,255,0.07)' }}>
                   <div className="h-full rounded-full transition-all duration-500" style={{ width: `${pct}%`, background: step.color }} />
                 </div>
               </Link>
@@ -348,10 +348,10 @@ function ToplubeyannamePanel() {
 
   return (
     <div>
-      <div className="px-5 py-4" style={{ borderBottom: `1px solid ${BEYAN_TONE.border}` }}>
+      <div className="px-5 py-4" style={{ borderBottom: `1px solid ${BEYAN_TONE.borderSoft}` }}>
         <div className="grid gap-3 xl:grid-cols-[minmax(300px,1fr)_auto] xl:items-center">
           <div className="flex min-w-0 items-center gap-2.5">
-            <span className="flex h-9 w-9 shrink-0 items-center justify-center rounded-lg" style={{ background: BEYAN_TONE.bg, border: `1px solid ${BEYAN_TONE.border}`, color: BEYAN_TONE.accentSoft }}>
+            <span className="flex h-9 w-9 shrink-0 items-center justify-center rounded-md" style={{ background: BEYAN_TONE.bg, border: `1px solid ${BEYAN_TONE.border}`, color: BEYAN_TONE.accentSoft }}>
               <FileCheck2 size={15} />
             </span>
             <div className="min-w-0">
@@ -360,7 +360,7 @@ function ToplubeyannamePanel() {
             </div>
           </div>
           <div className="flex flex-wrap items-center justify-start gap-2 xl:justify-end">
-            <div className="inline-flex rounded-md p-0.5" style={{ background: 'rgba(244,239,229,0.03)', border: `1px solid ${BEYAN_TONE.borderSoft}` }}>
+            <div className="inline-flex rounded-md p-0.5" style={{ background: 'rgba(255,255,255,0.022)', border: `1px solid ${BEYAN_TONE.borderSoft}` }}>
               {([
                 ['VERILME', 'Verilme dönemi'],
                 ['VERGI', 'Vergi dönemi'],
@@ -383,7 +383,7 @@ function ToplubeyannamePanel() {
             <select
               value={donem}
               onChange={(e) => setDonem(e.target.value)}
-              className="h-9 w-[150px] cursor-pointer rounded-lg px-3 text-[12.5px] font-semibold outline-none"
+              className="h-9 w-[150px] cursor-pointer rounded-md px-3 text-[12.5px] font-semibold outline-none"
               style={{ background: 'rgba(244,239,229,0.035)', border: `1px solid ${BEYAN_TONE.border}`, color: BEYAN_TONE.title }}
             >
               {donemOptions.map((o) => (
@@ -392,14 +392,14 @@ function ToplubeyannamePanel() {
             </select>
             <button
               onClick={() => refetch()}
-              className="inline-flex h-9 items-center gap-1.5 rounded-lg px-3 text-[12px] font-semibold transition-all"
-              style={{ background: 'rgba(140,200,255,0.09)', border: '1px solid rgba(140,200,255,0.24)', color: BEYAN_TONE.status }}
+              className="inline-flex h-9 items-center gap-1.5 rounded-md px-3 text-[12px] font-semibold transition-all"
+              style={{ background: 'rgba(141,182,198,0.075)', border: '1px solid rgba(141,182,198,0.17)', color: '#9ec5d6' }}
             >
               <SearchIcon size={13} /> Sorgula
             </button>
             <Link
               href="/panel/ayarlar/beyanname-takip"
-              className="inline-flex h-9 items-center gap-1.5 rounded-lg px-3 text-[12px] font-semibold transition-all"
+              className="inline-flex h-9 items-center gap-1.5 rounded-md px-3 text-[12px] font-semibold transition-all"
               style={{ background: 'rgba(244,239,229,0.025)', border: `1px solid ${BEYAN_TONE.borderSoft}`, color: BEYAN_TONE.muted }}
             >
               <Settings size={13} /> Ayarlar
@@ -464,14 +464,14 @@ function BeyanCompactTable({
   return (
     <div className={compact ? 'px-5 pb-4' : 'px-5 py-4'}>
       <div className="mb-2.5 flex items-center justify-between gap-3">
-        <div className="text-[11px] font-bold uppercase tracking-[0.14em]" style={{ color: BEYAN_TONE.accentSoft }}>
+        <div className="text-[11px] font-bold uppercase tracking-[0.14em]" style={{ color: BEYAN_TONE.header }}>
           {title}
         </div>
         <div className="text-[11px] font-semibold tabular-nums" style={{ color: BEYAN_TONE.muted, fontFamily: 'Inter, ui-sans-serif, system-ui, sans-serif' }}>
           {donem}
         </div>
       </div>
-      <div className="overflow-x-auto rounded-xl" style={{ border: `1px solid ${BEYAN_TONE.borderSoft}`, background: BEYAN_TONE.tableBg }}>
+      <div className="overflow-x-auto rounded-lg" style={{ border: `1px solid ${BEYAN_TONE.borderSoft}`, background: BEYAN_TONE.tableBg }}>
         <table className="w-full min-w-[760px] border-collapse text-[12px]" style={{ color: BEYAN_TONE.title }}>
           <thead>
             <tr style={{ background: BEYAN_TONE.headBg, borderBottom: `1px solid ${BEYAN_TONE.borderSoft}` }}>
@@ -507,7 +507,7 @@ function YardimciBeyanGrid({
   return (
     <div className="px-5 pb-4">
       <div className="mb-2.5 flex items-center justify-between gap-3">
-        <div className="text-[11px] font-bold uppercase tracking-[0.14em]" style={{ color: BEYAN_TONE.accentSoft }}>
+        <div className="text-[11px] font-bold uppercase tracking-[0.14em]" style={{ color: BEYAN_TONE.header }}>
           Bildirge ve E-Defter
         </div>
         <div className="text-[11px] font-semibold tabular-nums" style={{ color: BEYAN_TONE.muted, fontFamily: 'Inter, ui-sans-serif, system-ui, sans-serif' }}>
@@ -540,7 +540,7 @@ function YardimciBeyanCard({
   const onayText = row.beyanTipi === 'EDEFTER' ? 'Verilen' : 'Onaylanan';
 
   return (
-    <div className="overflow-hidden rounded-xl" style={{ background: BEYAN_TONE.rowAlt, border: `1px solid ${BEYAN_TONE.borderSoft}` }}>
+    <div className="overflow-hidden rounded-lg" style={{ background: BEYAN_TONE.rowAlt, border: `1px solid ${BEYAN_TONE.borderSoft}` }}>
       <div className="grid grid-cols-[minmax(140px,1fr)_82px_92px_82px_minmax(150px,1fr)] items-center gap-0 px-3 py-2">
         <button
           type="button"
@@ -1922,9 +1922,9 @@ export default function DashboardPage() {
       <div
         className="rounded-2xl overflow-hidden"
         style={{
-          background: 'radial-gradient(circle at 6% 0%, rgba(216,189,134,0.12), transparent 34%), radial-gradient(circle at 92% 12%, rgba(140,200,255,0.07), transparent 30%), linear-gradient(180deg, rgba(19,19,17,0.94), rgba(12,11,10,0.91))',
+          background: 'linear-gradient(180deg, rgba(17,17,15,0.93), rgba(10,11,10,0.91))',
           border: `1px solid ${BEYAN_TONE.border}`,
-          boxShadow: '0 18px 44px rgba(0,0,0,0.20), inset 0 1px 0 rgba(255,255,255,0.035)',
+          boxShadow: '0 12px 28px rgba(0,0,0,0.16), inset 0 1px 0 rgba(255,255,255,0.025)',
         }}
       >
         <ToplubeyannameTable />
