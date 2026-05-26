@@ -11,6 +11,7 @@ import {
   beyanKaydiMukellefAdi,
 } from '@/lib/beyan-kayitlari';
 import { portalAutomationApi } from '@/lib/portal-automation';
+import { api } from '@/lib/api';
 import PortalAutomationPanel from '@/components/portal-automation/PortalAutomationPanel';
 import {
   Search, Upload, FileText, Trash2,
