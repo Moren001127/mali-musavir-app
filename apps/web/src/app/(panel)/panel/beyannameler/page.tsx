@@ -1,6 +1,6 @@
 'use client';
 
-import { useState, useMemo, useRef, type ReactNode } from 'react';
+import { useState, useMemo, useRef, useEffect, type ReactNode } from 'react';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import {
   beyanKayitlariApi,
@@ -640,18 +640,91 @@ function DateField({ label, value, onChange }: { label: string; value: string; o
 }
 
 function SelectBox({ icon: Icon, value, onChange, children }: { icon: any; value: string; onChange: (value: string) => void; children: ReactNode }) {
+  // Children içindeki <option> elementlerini parse et — dark dropdown için
+  const items = useMemo(() => {
+    const list: { value: string; label: string }[] = [];
+    const walk = (node: any) => {
+      if (!node) return;
+      if (Array.isArray(node)) { node.forEach(walk); return; }
+      if (typeof node === 'object' && node?.type === 'option') {
+        list.push({
+          value: String(node.props?.value ?? ''),
+          label: String(node.props?.children ?? ''),
+        });
+      } else if (typeof node === 'object' && node?.props?.children) {
+        walk(node.props.children);
+      }
+    };
+    walk(children);
+    return list;
+  }, [children]);
+
+  const [open, setOpen] = useState(false);
+  const ref = useRef<HTMLDivElement>(null);
+  const currentLabel = items.find((it) => it.value === value)?.label || items[0]?.label || '—';
+
+  useEffect(() => {
+    if (!open) return;
+    const handler = (e: MouseEvent) => {
+      if (ref.current && !ref.current.contains(e.target as Node)) setOpen(false);
+    };
+    document.addEventListener('mousedown', handler);
+    return () => document.removeEventListener('mousedown', handler);
+  }, [open]);
+
   return (
-    <label className="relative block">
-      <Icon size={15} className="absolute left-3 top-1/2 -translate-y-1/2 pointer-events-none" style={{ color: 'rgba(250,250,249,0.38)' }} />
-      <select
-        value={value}
-        onChange={(e) => onChange(e.target.value)}
-        className="w-full h-11 pl-9 pr-8 rounded-[10px] text-[13px] font-semibold outline-none appearance-none beyan-dark-select"
+    <div ref={ref} className="relative">
+      <button
+        type="button"
+        onClick={() => setOpen((v) => !v)}
+        className="w-full h-11 pl-9 pr-8 rounded-[10px] text-[13px] font-semibold outline-none text-left flex items-center"
         style={{ background: 'rgba(0,0,0,0.18)', border: '1px solid rgba(255,255,255,0.08)', color: '#fafaf9' }}
       >
-        {children}
-      </select>
-    </label>
+        <Icon size={15} className="absolute left-3 pointer-events-none" style={{ color: 'rgba(250,250,249,0.38)' }} />
+        <span className="truncate">{currentLabel}</span>
+        <svg className="absolute right-2.5 pointer-events-none" width="12" height="12" viewBox="0 0 12 12" fill="none">
+          <path d="M3 4.5L6 7.5L9 4.5" stroke="rgba(250,250,249,0.55)" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round" />
+        </svg>
+      </button>
+      {open && (
+        <div
+          className="absolute z-50 mt-1 max-h-[280px] overflow-y-auto rounded-[10px] py-1"
+          style={{
+            top: '100%',
+            left: 0,
+            right: 0,
+            background: '#1c1813',
+            border: '1px solid rgba(212,184,118,0.22)',
+            boxShadow: '0 8px 24px rgba(0,0,0,0.5)',
+          }}
+        >
+          {items.length === 0 ? (
+            <div className="px-3 py-2 text-[12px]" style={{ color: 'rgba(250,250,249,0.45)' }}>Liste boş</div>
+          ) : (
+            items.map((it) => {
+              const active = it.value === value;
+              return (
+                <button
+                  key={it.value}
+                  type="button"
+                  onClick={() => { onChange(it.value); setOpen(false); }}
+                  className="w-full text-left px-3 py-2 text-[12.5px] flex items-center justify-between transition"
+                  style={{
+                    background: active ? 'rgba(212,184,118,0.12)' : 'transparent',
+                    color: active ? '#d4b876' : '#fafaf9',
+                  }}
+                  onMouseEnter={(e) => { if (!active) e.currentTarget.style.background = 'rgba(255,255,255,0.04)'; }}
+                  onMouseLeave={(e) => { if (!active) e.currentTarget.style.background = 'transparent'; }}
+                >
+                  <span className="truncate">{it.label}</span>
+                  {active && <span style={{ color: '#d4b876' }}>✓</span>}
+                </button>
+              );
+            })
+          )}
+        </div>
+      )}
+    </div>
   );
 }
 
