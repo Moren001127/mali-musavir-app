@@ -28,6 +28,7 @@ import {
   MailSearch,
   Megaphone,
   MessageSquareText,
+  MessageCircle,
   PanelLeftClose,
   PanelLeftOpen,
   PanelTop,
@@ -78,6 +79,7 @@ const navGroups = [
     items: [
       { href: '/panel', label: 'Gösterge Paneli', icon: Gauge },
       { href: '/panel/mukellefler', label: 'Mükellef Listesi', icon: UserRoundSearch },
+      { href: '/panel/mesajlar', label: 'Mesajlar', icon: MessageCircle },
       { href: '/panel/is-yuku', label: 'İş Akışı', icon: Workflow },
       { href: '/panel/gorevler', label: 'Görevler & Notlar', icon: ClipboardCheck },
       { href: '/panel/bildirimler', label: 'Bildirimler', icon: BellRing },
@@ -212,17 +214,17 @@ export default function Sidebar() {
       data-collapsed={collapsed ? 'true' : 'false'}
       style={{
         width: collapsed ? SIDEBAR_COLLAPSED_WIDTH : SIDEBAR_WIDTH,
-        background: 'linear-gradient(180deg, #15110d 0%, #0f0d0b 36%, #0b0a08 100%)',
-        borderRight: '1px solid rgba(212,184,118,0.18)',
+        background: 'linear-gradient(180deg, #241f18 0%, #1b1712 42%, #16130f 100%)',
+        borderRight: '1px solid rgba(212,184,118,0.22)',
         transition: 'width 260ms cubic-bezier(0.16, 1, 0.3, 1)',
-        boxShadow: 'inset -1px 0 0 rgba(255,255,255,0.025), 14px 0 42px rgba(0,0,0,0.18)',
+        boxShadow: 'inset -1px 0 0 rgba(255,255,255,0.035), 14px 0 42px rgba(0,0,0,0.14)',
       }}
     >
       {/* Dekoratif radial gradient arka plan */}
       <div
         className="absolute inset-0 pointer-events-none opacity-40"
         style={{
-          background: 'radial-gradient(circle at 42% 0%, rgba(212,184,118,0.18), transparent 33%), radial-gradient(circle at 110% 28%, rgba(240,154,168,0.10), transparent 36%), radial-gradient(circle at 40% 100%, rgba(143,215,189,0.08), transparent 42%)',
+          background: 'radial-gradient(circle at 42% 0%, rgba(212,184,118,0.22), transparent 33%), radial-gradient(circle at 110% 28%, rgba(240,154,168,0.12), transparent 36%), radial-gradient(circle at 40% 100%, rgba(143,215,189,0.10), transparent 42%)',
         }}
       />
       <div
@@ -235,7 +237,7 @@ export default function Sidebar() {
         className={collapsed ? 'relative px-1.5 py-2.5' : 'relative px-3 py-3'}
         style={{
           borderBottom: '1px solid rgba(212,184,118,0.18)',
-          background: 'linear-gradient(180deg, rgba(212,184,118,0.075), rgba(15,13,11,0.28) 68%, transparent)',
+          background: 'linear-gradient(180deg, rgba(212,184,118,0.095), rgba(28,24,19,0.36) 68%, transparent)',
         }}
       >
         <Link

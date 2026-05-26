@@ -1,4 +1,4 @@
-import { Body, Controller, Get, Post, Query, Req, UseGuards } from '@nestjs/common';
+import { Body, Controller, Get, Param, Post, Query, Req, UseGuards } from '@nestjs/common';
 import { AuthGuard } from '@nestjs/passport';
 import { WhatsAppService } from './whatsapp.service';
 import { PrismaService } from '../prisma/prisma.service';
@@ -76,6 +76,212 @@ export class WhatsAppController {
         },
       };
     });
+  }
+
+  /**
+   * MESAJ MERKEZİ — mükellef bazlı konuşma listesi
+   * Her mükellef için: son mesaj snippet'i, son zamanı, okunmamış sayısı,
+   * 24h penceresi açık mı (son inbound mesajdan beri 24 saat geçmediyse açık).
+   */
+  @Get('conversations')
+  async getConversations(@Req() req: any) {
+    const tenantId = req.user.tenantId;
+    // Tüm WhatsApp loglarını çek, mükellef bazlı grupla
+    const logs = await this.prisma.communicationLog.findMany({
+      where: {
+        channel: 'WHATSAPP',
+        taxpayer: { tenantId },
+      },
+      orderBy: { occurredAt: 'desc' },
+      take: 2000,
+      select: {
+        id: true,
+        subject: true,
+        content: true,
+        occurredAt: true,
+        taxpayer: {
+          select: {
+            id: true,
+            companyName: true,
+            firstName: true,
+            lastName: true,
+            phone: true,
+            phones: true,
+          },
+        },
+      },
+    });
+
+    const now = Date.now();
+    const conversations = new Map<string, any>();
+
+    for (const log of logs) {
+      const tId = log.taxpayer.id;
+      const subject = log.subject || '';
+      const incoming = /gelen/i.test(subject);
+      const name =
+        log.taxpayer.companyName ||
+        `${log.taxpayer.firstName || ''} ${log.taxpayer.lastName || ''}`.trim() ||
+        'Mukellef';
+
+      if (!conversations.has(tId)) {
+        conversations.set(tId, {
+          taxpayerId: tId,
+          taxpayerName: name,
+          phone: log.taxpayer.phone || (Array.isArray(log.taxpayer.phones) ? log.taxpayer.phones[0] : null),
+          lastMessage: log.content?.slice(0, 100) || '',
+          lastMessageAt: log.occurredAt,
+          lastMessageDirection: incoming ? 'incoming' : 'outgoing',
+          unreadCount: 0,
+          windowOpen: false, // 24h pencere açık mı
+          lastInboundAt: null as Date | null,
+          totalMessages: 0,
+        });
+      }
+      const conv = conversations.get(tId);
+      conv.totalMessages++;
+      // İlk işlenen log en yeni (orderBy desc) — son mesaj olarak işaretle
+      if (incoming) {
+        if (!conv.lastInboundAt || log.occurredAt > conv.lastInboundAt) {
+          conv.lastInboundAt = log.occurredAt;
+        }
+      }
+    }
+
+    // 24h penceresi: son inbound + 24 saat
+    const result = Array.from(conversations.values()).map((c) => {
+      if (c.lastInboundAt) {
+        const elapsed = now - new Date(c.lastInboundAt).getTime();
+        c.windowOpen = elapsed < 24 * 60 * 60 * 1000;
+      }
+      return c;
+    });
+
+    // Son mesaj zamanına göre sırala (en yeni üstte)
+    result.sort((a, b) => new Date(b.lastMessageAt).getTime() - new Date(a.lastMessageAt).getTime());
+    return result;
+  }
+
+  /**
+   * Bir mükellefin tüm WhatsApp mesaj geçmişi (kronolojik sıralı — eski üstte)
+   */
+  @Get('conversations/:taxpayerId')
+  async getConversationMessages(@Req() req: any, @Param('taxpayerId') taxpayerId: string) {
+    const tenantId = req.user.tenantId;
+    // Mükellef bu tenant'a ait mi kontrol et
+    const taxpayer = await this.prisma.taxpayer.findFirst({
+      where: { id: taxpayerId, tenantId },
+      select: {
+        id: true, companyName: true, firstName: true, lastName: true,
+        phone: true, phones: true, taxNumber: true,
+      },
+    });
+    if (!taxpayer) return { error: 'Mükellef bulunamadı', messages: [] };
+
+    const logs = await this.prisma.communicationLog.findMany({
+      where: { taxpayerId, channel: 'WHATSAPP' },
+      orderBy: { occurredAt: 'asc' },
+      take: 500,
+      select: { id: true, subject: true, content: true, occurredAt: true },
+    });
+
+    const now = Date.now();
+    let lastInboundAt: Date | null = null;
+    const messages = logs.map((log) => {
+      const subject = log.subject || '';
+      const incoming = /gelen/i.test(subject);
+      if (incoming) lastInboundAt = log.occurredAt;
+      return {
+        id: log.id,
+        direction: incoming ? 'incoming' : 'outgoing',
+        subject,
+        content: log.content || '',
+        occurredAt: log.occurredAt,
+      };
+    });
+
+    const windowOpen = lastInboundAt
+      ? (now - new Date(lastInboundAt).getTime()) < 24 * 60 * 60 * 1000
+      : false;
+    const windowExpiresAt = lastInboundAt
+      ? new Date(new Date(lastInboundAt).getTime() + 24 * 60 * 60 * 1000)
+      : null;
+
+    return {
+      taxpayer: {
+        id: taxpayer.id,
+        name: taxpayer.companyName || `${taxpayer.firstName || ''} ${taxpayer.lastName || ''}`.trim() || 'Mükellef',
+        phone: taxpayer.phone || (Array.isArray(taxpayer.phones) ? taxpayer.phones[0] : null),
+        taxNumber: taxpayer.taxNumber,
+      },
+      messages,
+      windowOpen,
+      windowExpiresAt,
+    };
+  }
+
+  /**
+   * Bir mükellefe serbest metin gönder.
+   * 24h pencere açıksa → serbest metin
+   * Kapalıysa → templateName ile şablon gönderir (frontend onaylı şablon seçer)
+   */
+  @Post('conversations/:taxpayerId/reply')
+  async replyToConversation(
+    @Req() req: any,
+    @Param('taxpayerId') taxpayerId: string,
+    @Body() body: { message?: string; templateName?: string; templateParams?: string[] },
+  ) {
+    const tenantId = req.user.tenantId;
+    const taxpayer = await this.prisma.taxpayer.findFirst({
+      where: { id: taxpayerId, tenantId },
+      select: { id: true, companyName: true, firstName: true, lastName: true, phone: true, phones: true },
+    });
+    if (!taxpayer) return { ok: false, error: 'Mükellef bulunamadı' };
+
+    const phones = (Array.isArray(taxpayer.phones) && taxpayer.phones.length > 0)
+      ? taxpayer.phones.filter(Boolean)
+      : (taxpayer.phone ? [taxpayer.phone] : []);
+    if (phones.length === 0) return { ok: false, error: 'Mükellefin telefon numarası yok' };
+
+    const message = String(body?.message || '').trim();
+    const templateName = body?.templateName?.trim();
+
+    if (!message && !templateName) {
+      return { ok: false, error: 'message veya templateName zorunlu' };
+    }
+
+    let delivered = false;
+    let usedMethod: 'free-form' | 'template' = 'free-form';
+    let logContent = message;
+
+    for (const phone of phones) {
+      let ok = false;
+      if (templateName) {
+        usedMethod = 'template';
+        const params = body?.templateParams || [
+          taxpayer.companyName || `${taxpayer.firstName || ''} ${taxpayer.lastName || ''}`.trim() || 'Sayın Mükellef',
+        ];
+        ok = await this.whatsappService.sendTemplate(phone, params, templateName, tenantId);
+        logContent = `[Şablon: ${templateName}] ${params.join(' | ')}`;
+      } else {
+        ok = await this.whatsappService.sendMessage(phone, message, tenantId);
+      }
+      if (ok) delivered = true;
+    }
+
+    if (delivered) {
+      await this.prisma.communicationLog.create({
+        data: {
+          taxpayerId,
+          channel: 'WHATSAPP',
+          subject: usedMethod === 'template' ? `WhatsApp şablon — ${templateName}` : 'WhatsApp portal cevabı',
+          content: logContent,
+          occurredAt: new Date(),
+        },
+      });
+    }
+
+    return { ok: delivered, method: usedMethod, phones };
   }
 
   @Post('evrak-reminders/preview')
