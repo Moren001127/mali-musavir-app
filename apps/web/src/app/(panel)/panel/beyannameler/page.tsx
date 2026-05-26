@@ -392,11 +392,11 @@ export default function BeyannamelerPage() {
       </section>
 
       <section
-        className="hidden"
+        className="rounded-2xl overflow-hidden"
         style={{ background: 'rgba(255,255,255,0.025)', border: '1px solid rgba(255,255,255,0.07)' }}
       >
-        <div className="px-4 py-3 text-[13px] font-semibold" style={{ background: 'rgba(255,255,255,0.035)', color: '#fafaf9', borderBottom: '1px solid rgba(255,255,255,0.06)' }}>
-          E-Beyanname Filtreleme
+        <div className="px-4 py-3 text-[12.5px] font-semibold flex items-center gap-2" style={{ background: 'rgba(255,255,255,0.035)', color: 'rgba(250,250,249,0.78)', borderBottom: '1px solid rgba(255,255,255,0.06)' }}>
+          <Search size={13} style={{ color: 'rgba(250,250,249,0.5)' }} /> Filtrele
         </div>
         <div className="grid xl:grid-cols-[minmax(260px,1fr),260px,180px,180px,180px,180px,auto] gap-2 p-4">
           <div className="relative">
@@ -446,9 +446,10 @@ export default function BeyannamelerPage() {
         </div>
       </section>
 
-      <section className="hidden" style={{ background: 'rgba(255,255,255,0.025)', border: '1px solid rgba(255,255,255,0.07)' }}>
-        <div className="px-4 py-3 text-[13px] font-semibold" style={{ background: 'rgba(255,255,255,0.035)', color: '#fafaf9', borderBottom: '1px solid rgba(255,255,255,0.06)' }}>
-          E-Beyannameleri Çek
+      <section className="rounded-2xl overflow-hidden" style={{ background: 'rgba(255,255,255,0.025)', border: '1px solid rgba(125,211,252,0.18)' }}>
+        <div className="px-4 py-3 text-[13px] font-semibold flex items-center gap-2" style={{ background: 'rgba(125,211,252,0.06)', color: '#fafaf9', borderBottom: '1px solid rgba(255,255,255,0.06)' }}>
+          <span className="w-1.5 h-1.5 rounded-full" style={{ background: '#7dd3fc' }} />
+          Mali Müşavir Şifresiyle E-Beyannameleri Çek
         </div>
         <div className="grid gap-3 p-4 lg:grid-cols-[1fr,1fr,auto,auto]">
           <DateField label="Başlangıç Tarihi" value={pullFrom} onChange={setPullFrom} />
@@ -476,16 +477,17 @@ export default function BeyannamelerPage() {
         </div>
       </section>
 
-      <details open className="rounded-2xl overflow-hidden" style={{ background: 'rgba(255,255,255,0.02)', border: '1px solid rgba(255,255,255,0.07)' }}>
-        <summary className="cursor-pointer px-4 py-3 text-[13px] font-semibold" style={{ color: '#fafaf9' }}>
-          e-Beyanname sunucu çekme paneli
+      <details className="rounded-2xl overflow-hidden" style={{ background: 'rgba(255,255,255,0.02)', border: '1px solid rgba(255,255,255,0.07)' }}>
+        <summary className="cursor-pointer px-4 py-3 text-[12.5px] font-semibold flex items-center gap-2" style={{ color: 'rgba(250,250,249,0.72)' }}>
+          <span className="w-1.5 h-1.5 rounded-full" style={{ background: 'rgba(250,250,249,0.45)' }} />
+          Gelişmiş: Otomatik çekim paneli (sunucu kuyruğu, zamanlanmış görevler)
         </summary>
         <div className="p-4 pt-0">
           <PortalAutomationPanel focus="beyanname" />
         </div>
       </details>
 
-      <section className="hidden" style={{ background: 'rgba(255,255,255,0.02)', border: '1px solid rgba(255,255,255,0.07)' }}>
+      <section className="rounded-2xl overflow-hidden" style={{ background: 'rgba(255,255,255,0.02)', border: '1px solid rgba(255,255,255,0.07)' }}>
         <div className="px-4 py-3 flex items-center justify-between gap-3" style={{ borderBottom: '1px solid rgba(255,255,255,0.06)' }}>
           <div>
             <h2 className="text-[15px] font-semibold" style={{ color: '#fafaf9' }}>Beyanname Listesi</h2>
