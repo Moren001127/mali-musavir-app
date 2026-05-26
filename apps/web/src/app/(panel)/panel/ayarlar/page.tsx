@@ -64,6 +64,7 @@ export default function AyarlarPage() {
           icon={KeyRound}
           title="Portal Şifreleri"
           subtitle="e-Beyanname, Vergi Dairesi ve diğer mali müşavir portal girişleri"
+          tone="gold"
         >
           <AdvisorPortalCredentialCard />
         </CollapsibleSection>
@@ -73,6 +74,7 @@ export default function AyarlarPage() {
           icon={Bot}
           title="Moren Agent — Tarayıcı Eklentisi"
           subtitle="Token + bookmarklet kodu (tek seferlik kurulum)"
+          tone="violet"
         >
           <AgentContent />
         </CollapsibleSection>
@@ -196,36 +198,41 @@ function StatusStrip() {
 // =====================================================================
 
 function SettingsGrid() {
-  const links = [
+  const links: Array<{ href: string; title: string; text: string; icon: any; tone: 'blue'|'purple'|'green'|'teal'|'amber'|'pink' }> = [
     {
       href: '/panel/ayarlar/entegrasyonlar',
       title: 'Entegrasyonlar',
       text: 'E-posta (SMTP) + WhatsApp Cloud API',
       icon: Plug,
+      tone: 'blue',
     },
     {
       href: '/panel/ayarlar/kullanicilar',
       title: 'Kullanıcılar & Erişim',
       text: 'Personel hesapları, roller',
       icon: UsersRound,
+      tone: 'purple',
     },
     {
       href: '/panel/ayarlar/beyanname-takip',
       title: 'Beyanname Takip',
       text: 'Beyan türleri ve dönem ayarları',
       icon: FileCheck2,
+      tone: 'green',
     },
     {
       href: '/panel/hatirlatmalar',
       title: 'WhatsApp Otomasyonu',
       text: 'Evrak ve tahsilat hatırlatma akışları',
       icon: MessageSquareText,
+      tone: 'teal',
     },
     {
       href: '/panel/ayarlar/denetim',
       title: 'Denetim Günlüğü',
       text: 'Sistem kayıtları ve izler',
       icon: ShieldCheck,
+      tone: 'amber',
     },
   ];
 
@@ -243,12 +250,25 @@ function SettingsTile({
   title,
   text,
   icon: Icon,
+  tone = 'gold',
 }: {
   href: string;
   title: string;
   text: string;
   icon: React.ElementType;
+  tone?: 'gold' | 'blue' | 'purple' | 'green' | 'teal' | 'amber' | 'pink' | 'violet';
 }) {
+  const TONES: Record<string, { fg: string; bg: string; bd: string }> = {
+    gold:   { fg: '#d4b876', bg: 'rgba(212,184,118,0.10)', bd: 'rgba(212,184,118,0.32)' },
+    blue:   { fg: '#60a5fa', bg: 'rgba(96,165,250,0.10)',  bd: 'rgba(96,165,250,0.32)' },
+    purple: { fg: '#c084fc', bg: 'rgba(192,132,252,0.10)', bd: 'rgba(192,132,252,0.32)' },
+    green:  { fg: '#4ade80', bg: 'rgba(74,222,128,0.10)',  bd: 'rgba(74,222,128,0.32)' },
+    teal:   { fg: '#2dd4bf', bg: 'rgba(45,212,191,0.10)',  bd: 'rgba(45,212,191,0.32)' },
+    amber:  { fg: '#fbbf24', bg: 'rgba(251,191,36,0.10)',  bd: 'rgba(251,191,36,0.32)' },
+    pink:   { fg: '#f472b6', bg: 'rgba(244,114,182,0.10)', bd: 'rgba(244,114,182,0.32)' },
+    violet: { fg: '#a78bfa', bg: 'rgba(167,139,250,0.10)', bd: 'rgba(167,139,250,0.32)' },
+  };
+  const t = TONES[tone] || TONES.gold;
   return (
     <Link
       href={href}
@@ -260,7 +280,7 @@ function SettingsTile({
       <div className="flex items-center gap-3">
         <div
           className="flex h-10 w-10 shrink-0 items-center justify-center rounded-lg border"
-          style={{ borderColor: LINE_GOLD, color: GOLD, background: 'rgba(212,184,118,0.08)' }}
+          style={{ borderColor: t.bd, color: t.fg, background: t.bg }}
         >
           <Icon size={18} />
         </div>
@@ -272,7 +292,7 @@ function SettingsTile({
             {text}
           </p>
         </div>
-        <ArrowRight size={15} className="transition group-hover:translate-x-0.5" style={{ color: GOLD }} />
+        <ArrowRight size={15} className="transition group-hover:translate-x-0.5" style={{ color: t.fg }} />
       </div>
     </Link>
   );
@@ -288,6 +308,7 @@ function CollapsibleSection({
   title,
   subtitle,
   defaultOpen = false,
+  tone = 'gold',
   children,
 }: {
   id: string;
@@ -295,8 +316,20 @@ function CollapsibleSection({
   title: string;
   subtitle: string;
   defaultOpen?: boolean;
+  tone?: 'gold' | 'blue' | 'purple' | 'green' | 'teal' | 'amber' | 'pink' | 'violet';
   children: React.ReactNode;
 }) {
+  const TONES: Record<string, { fg: string; bg: string; bd: string }> = {
+    gold:   { fg: '#d4b876', bg: 'rgba(212,184,118,0.10)', bd: 'rgba(212,184,118,0.32)' },
+    blue:   { fg: '#60a5fa', bg: 'rgba(96,165,250,0.10)',  bd: 'rgba(96,165,250,0.32)' },
+    purple: { fg: '#c084fc', bg: 'rgba(192,132,252,0.10)', bd: 'rgba(192,132,252,0.32)' },
+    green:  { fg: '#4ade80', bg: 'rgba(74,222,128,0.10)',  bd: 'rgba(74,222,128,0.32)' },
+    teal:   { fg: '#2dd4bf', bg: 'rgba(45,212,191,0.10)',  bd: 'rgba(45,212,191,0.32)' },
+    amber:  { fg: '#fbbf24', bg: 'rgba(251,191,36,0.10)',  bd: 'rgba(251,191,36,0.32)' },
+    pink:   { fg: '#f472b6', bg: 'rgba(244,114,182,0.10)', bd: 'rgba(244,114,182,0.32)' },
+    violet: { fg: '#a78bfa', bg: 'rgba(167,139,250,0.10)', bd: 'rgba(167,139,250,0.32)' },
+  };
+  const t = TONES[tone] || TONES.gold;
   const [open, setOpen] = useState(defaultOpen);
   return (
     <section
@@ -313,7 +346,7 @@ function CollapsibleSection({
       >
         <div
           className="flex h-10 w-10 shrink-0 items-center justify-center rounded-lg border"
-          style={{ borderColor: LINE_GOLD, background: 'rgba(212,184,118,0.09)', color: GOLD }}
+          style={{ borderColor: t.bd, background: t.bg, color: t.fg }}
         >
           <Icon size={18} />
         </div>
@@ -386,6 +419,7 @@ function MessageTemplatesSection() {
         icon={MessageSquareText}
         title="Mesaj Şablonları"
         subtitle="WhatsApp/SMS otomasyonlarında kullanılan metinler"
+        tone="pink"
         action={
           !editing ? (
             <SmallButton onClick={handleEdit}>
@@ -542,17 +576,30 @@ function SectionHeader({
   title,
   subtitle,
   action,
+  tone = 'gold',
 }: {
   icon: React.ElementType;
   title: string;
   subtitle: string;
   action?: React.ReactNode;
+  tone?: 'gold' | 'blue' | 'purple' | 'green' | 'teal' | 'amber' | 'pink' | 'violet';
 }) {
+  const TONES: Record<string, { fg: string; bg: string; bd: string }> = {
+    gold:   { fg: '#d4b876', bg: 'rgba(212,184,118,0.10)', bd: 'rgba(212,184,118,0.32)' },
+    blue:   { fg: '#60a5fa', bg: 'rgba(96,165,250,0.10)',  bd: 'rgba(96,165,250,0.32)' },
+    purple: { fg: '#c084fc', bg: 'rgba(192,132,252,0.10)', bd: 'rgba(192,132,252,0.32)' },
+    green:  { fg: '#4ade80', bg: 'rgba(74,222,128,0.10)',  bd: 'rgba(74,222,128,0.32)' },
+    teal:   { fg: '#2dd4bf', bg: 'rgba(45,212,191,0.10)',  bd: 'rgba(45,212,191,0.32)' },
+    amber:  { fg: '#fbbf24', bg: 'rgba(251,191,36,0.10)',  bd: 'rgba(251,191,36,0.32)' },
+    pink:   { fg: '#f472b6', bg: 'rgba(244,114,182,0.10)', bd: 'rgba(244,114,182,0.32)' },
+    violet: { fg: '#a78bfa', bg: 'rgba(167,139,250,0.10)', bd: 'rgba(167,139,250,0.32)' },
+  };
+  const t = TONES[tone] || TONES.gold;
   return (
     <div className="mb-4 flex items-start gap-3">
       <div
         className="flex h-9 w-9 shrink-0 items-center justify-center rounded-lg border"
-        style={{ borderColor: LINE_GOLD, background: 'rgba(212,184,118,0.09)', color: GOLD }}
+        style={{ borderColor: t.bd, background: t.bg, color: t.fg }}
       >
         <Icon size={16} />
       </div>
