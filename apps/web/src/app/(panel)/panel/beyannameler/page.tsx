@@ -25,7 +25,8 @@ import { toast } from 'sonner';
 const GOLD = '#d4b876';
 
 type FilterKey = 'all' | BeyanTipi;
-type BelgeFilter = 'all' | 'beyanname' | 'tahakkuk' | 'eksik';
+type BelgeFilter = 'all' | 'beyanname' | 'tahakkuk';
+type DurumFilter = 'all' | 'gonderilen' | 'gonderilmeyen' | 'okunan' | 'okunmayan' | 'sms_gonderilen' | 'sms_gonderilmeyen';
 
 const FILTER_KEYS: { key: FilterKey; label: string }[] = [
   { key: 'all', label: 'Tümü' },
@@ -128,6 +129,7 @@ export default function BeyannamelerPage() {
   const [search, setSearch] = useState('');
   const [typeFilter, setTypeFilter] = useState<FilterKey>('all');
   const [docFilter, setDocFilter] = useState<BelgeFilter>('all');
+  const [durumFilter, setDurumFilter] = useState<DurumFilter>('all');
   const [selectedTaxpayer, setSelectedTaxpayer] = useState('all');
   const [periodStart, setPeriodStart] = useState('');
   const [periodEnd, setPeriodEnd] = useState('');
@@ -213,13 +215,17 @@ export default function BeyannamelerPage() {
 
   const periodOptions = useMemo(() => {
     const fromRecords = new Set(kayitlar.map((k) => k.donem).filter(Boolean));
-    // Kayıt olmasa bile son 24 ay defaultta seçilebilir (sadece geçmiş + bu ay; ileri ay yok)
+    // İleri 12 ay + bu ay + geçmiş 36 ay (vergi planlaması için ileri dönem seçilebilsin)
     const now = new Date();
-    for (let i = 0; i <= 24; i++) {
+    for (let i = -12; i <= 36; i++) {
       const d = new Date(now.getFullYear(), now.getMonth() - i, 1);
       const yyyy = d.getFullYear();
       const mm = String(d.getMonth() + 1).padStart(2, '0');
       fromRecords.add(`${yyyy}-${mm}`);
+    }
+    // Yıllık dönemler de eklensin (Kurumlar/Gelir/Yıllık beyan için)
+    for (let y = now.getFullYear() - 3; y <= now.getFullYear() + 1; y++) {
+      fromRecords.add(`${y}-YIL`);
     }
     return Array.from(fromRecords).sort((a, b) => periodSortValue(b) - periodSortValue(a));
   }, [kayitlar]);
@@ -233,7 +239,14 @@ export default function BeyannamelerPage() {
         if (!periodInRange(k.donem, periodStart, periodEnd)) return false;
         if (docFilter === 'beyanname' && !k.beyannameUrl) return false;
         if (docFilter === 'tahakkuk' && !k.pdfUrl) return false;
-        if (docFilter === 'eksik' && (k.beyannameUrl || k.pdfUrl)) return false;
+        // Durum filtresi — onayNo / beyannameUrl mevcudiyetine göre best-effort
+        // (OKUNAN/OKUNMAYAN ve SMS alanları henüz veri modelinde yok; eklendiğinde buraya bağlanacak)
+        if (durumFilter === 'gonderilen' && !(k.onayNo || k.beyannameUrl)) return false;
+        if (durumFilter === 'gonderilmeyen' && (k.onayNo || k.beyannameUrl)) return false;
+        if (durumFilter === 'okunan' && !(k.onayNo && k.beyannameUrl)) return false;
+        if (durumFilter === 'okunmayan' && (k.onayNo && k.beyannameUrl)) return false;
+        if (durumFilter === 'sms_gonderilen' && !(k.taxpayer?.phone || (k.taxpayer?.phones && k.taxpayer.phones.length))) return false;
+        if (durumFilter === 'sms_gonderilmeyen' && (k.taxpayer?.phone || (k.taxpayer?.phones && k.taxpayer.phones.length))) return false;
         if (!q) return true;
         const haystack = [
           beyanKaydiMukellefAdi(k),
@@ -251,7 +264,7 @@ export default function BeyannamelerPage() {
         if (bd !== ad) return bd - ad;
         return periodSortValue(b.donem) - periodSortValue(a.donem);
       });
-  }, [kayitlar, search, selectedTaxpayer, typeFilter, docFilter, periodStart, periodEnd]);
+  }, [kayitlar, search, selectedTaxpayer, typeFilter, docFilter, durumFilter, periodStart, periodEnd]);
 
   const bulkDeleteMut = useMutation({
     mutationFn: (ids: string[]) => beyanKayitlariApi.bulkDeleteIds(ids),
@@ -292,6 +305,7 @@ export default function BeyannamelerPage() {
     setSearch('');
     setTypeFilter('all');
     setDocFilter('all');
+    setDurumFilter('all');
     setSelectedTaxpayer('all');
     setPeriodStart('');
     setPeriodEnd('');
@@ -419,16 +433,6 @@ export default function BeyannamelerPage() {
           <Search size={13} style={{ color: 'rgba(250,250,249,0.5)' }} /> Filtrele
         </div>
         <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-2 p-4">
-          <div className="relative">
-            <Search size={16} className="absolute left-3 top-1/2 -translate-y-1/2" style={{ color: 'rgba(250,250,249,0.38)' }} />
-            <input
-              value={search}
-              onChange={(e) => setSearch(e.target.value)}
-              placeholder="Mükellef, VKN, onay no, dönem ara..."
-              className="w-full h-11 pl-10 pr-3 rounded-[10px] text-[13px] outline-none"
-              style={{ background: 'rgba(0,0,0,0.18)', border: '1px solid rgba(255,255,255,0.08)', color: '#fafaf9' }}
-            />
-          </div>
           <SelectBox icon={UserRound} value={selectedTaxpayer} onChange={setSelectedTaxpayer}>
             <option value="all">Tüm mükellefler</option>
             {taxpayerOptions.map((t) => (
@@ -441,10 +445,18 @@ export default function BeyannamelerPage() {
             ))}
           </SelectBox>
           <SelectBox icon={FileText} value={docFilter} onChange={(v) => setDocFilter(v as BelgeFilter)}>
-            <option value="all">Tüm belgeler</option>
-            <option value="beyanname">Beyanname var</option>
-            <option value="tahakkuk">Tahakkuk var</option>
-            <option value="eksik">Belgesi eksik</option>
+            <option value="all">Tür Seçiniz</option>
+            <option value="beyanname">Beyanname</option>
+            <option value="tahakkuk">Tahakkuk</option>
+          </SelectBox>
+          <SelectBox icon={CheckCircle2} value={durumFilter} onChange={(v) => setDurumFilter(v as DurumFilter)}>
+            <option value="all">Durum Seçiniz</option>
+            <option value="gonderilen">GÖNDERİLENLER</option>
+            <option value="gonderilmeyen">GÖNDERİLMEYENLER</option>
+            <option value="okunan">OKUNANLAR</option>
+            <option value="okunmayan">OKUNMAYANLAR</option>
+            <option value="sms_gonderilen">SMS GÖNDERİLENLER</option>
+            <option value="sms_gonderilmeyen">SMS GÖNDERİLMEYENLER</option>
           </SelectBox>
           <SelectBox icon={CalendarDays} value={periodStart} onChange={setPeriodStart}>
             <option value="">Tüm dönemler (başlangıç)</option>
