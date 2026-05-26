@@ -9,6 +9,7 @@ import { IntentClassifierService } from './intent-classifier.service';
 import { WhatsAppBotContextService } from './bot-context.service';
 import { WhatsAppBotPostFilterService } from './bot-post-filter.service';
 import { WhatsAppRateLimiterService } from './rate-limiter.service';
+import { WhatsAppBotCacheService } from './bot-cache.service';
 import { BotEvalService } from './bot-eval.service';
 import { QualityLogService } from './quality-log.service';
 
@@ -38,6 +39,7 @@ export class WhatsAppBotController {
     private readonly botContext: WhatsAppBotContextService,
     private readonly postFilter: WhatsAppBotPostFilterService,
     private readonly rateLimiter: WhatsAppRateLimiterService,
+    private readonly botCache: WhatsAppBotCacheService,
     private readonly botEval: BotEvalService,
     private readonly qualityLog: QualityLogService,
     @Optional() private readonly eventBus?: AutomationEventBus,
@@ -853,6 +855,30 @@ export class WhatsAppBotController {
       return;
     }
 
+    // ─── Cache lookup ──────────────────────────────────────────────
+    // Aynı mükelleften son 24 saatte aynı (normalize edilmiş) soru gelmişse
+    // AI'ya gitmeden son onaylı cevabı dön. Hata/generic cevaplar shouldNotCache
+    // filtresiyle zaten cache'lenmiyor (bkz. bot-cache.service.ts).
+    const cachedReply = this.botCache.get(taxpayer.tenantId, taxpayer.id, msg.text);
+    if (cachedReply) {
+      const filteredCached = this.postFilter.filterTaxpayerReply(cachedReply, { recentReplies });
+      if (filteredCached) {
+        const sent = await this.whatsapp.sendMessage(msg.from, filteredCached, taxpayer.tenantId);
+        await this.prisma.communicationLog.create({
+          data: {
+            taxpayerId: taxpayer.id,
+            channel: 'WHATSAPP',
+            subject: sent ? 'WhatsApp bot cevabı (cache hit)' : 'WhatsApp bot cevabı cache hit (gönderilemedi)',
+            content: this.withWhatsAppPhone(filteredCached, msg.from),
+            occurredAt: new Date(),
+          },
+        });
+        this.refreshTaxpayerMemory(taxpayer.tenantId, taxpayer.id);
+        return;
+      }
+    }
+    // ───────────────────────────────────────────────────────────────
+
     const taxpayerContext = await this.botContext.buildTaxpayerContextBlock(taxpayer.tenantId, taxpayer.id);
     const recentContext = await this.botContext.buildRecentWhatsAppContext(taxpayer.id);
     const prompt = [
@@ -932,6 +958,10 @@ export class WhatsAppBotController {
     });
     const reply = this.postFilter.filterTaxpayerReply(qualityReply, { recentReplies });
     if (reply) {
+      // Cache'e yaz — sonraki aynı soru AI'ya gitmeden bu cevapla dönsün.
+      // shouldNotCache filtresi (bot-cache.service.ts) generic/hata cevaplarını eler.
+      this.botCache.set(taxpayer.tenantId, taxpayer.id, msg.text, reply);
+
       const sent = await this.whatsapp.sendMessage(msg.from, reply, taxpayer.tenantId);
       await this.prisma.communicationLog.create({
         data: {
