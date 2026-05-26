@@ -1272,13 +1272,69 @@ ${ocr.text.slice(0, 14000)}`;
       const d = new Date(Number(m[3]), Number(m[2]) - 1, Number(m[1]));
       return Number.isFinite(d.getTime()) ? d : null;
     };
-    const readBelgeNo = (event: any, meta: Record<string, any>) =>
-      text(event.fisNo || meta.belgeNo || meta?.belge?.belgeNo || meta?.decisionTrace?.belge?.belgeNo || meta?.decisionTrace?.ekran?.belgeNo, 80);
+    const firstClean = (...values: any[]) => {
+      for (const value of values) {
+        const out = text(value, 120);
+        if (out && !['-', '?', '??', 'null', 'undefined'].includes(out.toLowerCase())) return out;
+      }
+      return '';
+    };
+    const readBelgeNo = (event: any, meta: Record<string, any>) => {
+      const direct = firstClean(
+        event.fisNo,
+        meta.belgeNo,
+        meta.faturaNo,
+        meta.fisNo,
+        meta.evrakNo,
+        meta.documentNo,
+        meta.invoiceNo,
+        meta.belgeNumarasi,
+        meta.faturaNumarasi,
+        meta?.belge?.belgeNo,
+        meta?.belge?.faturaNo,
+        meta?.belge?.fisNo,
+        meta?.ekran?.belgeNo,
+        meta?.ekran?.faturaNo,
+        meta?.ocr?.belgeNo,
+        meta?.ocr?.faturaNo,
+        meta?.parsed?.belgeNo,
+        meta?.parsed?.faturaNo,
+        meta?.decisionTrace?.belge?.belgeNo,
+        meta?.decisionTrace?.belge?.faturaNo,
+        meta?.decisionTrace?.ekran?.belgeNo,
+        meta?.decisionTrace?.ekran?.faturaNo,
+      );
+      if (direct) return text(direct, 80);
+      const msg = String(event.message || '');
+      const patterns = [
+        /(?:belge|fatura|fiş|fis|evrak)\s*(?:no|numarası|numarasi)?\s*[:#-]\s*([A-Z0-9][A-Z0-9/._-]{2,})/i,
+        /\bBelge\s+([A-Z0-9][A-Z0-9/._-]{2,})\b/i,
+        /#([A-Z0-9][A-Z0-9/._-]{2,})\b/i,
+      ];
+      for (const pattern of patterns) {
+        const match = msg.match(pattern);
+        if (match?.[1]) return text(match[1], 80);
+      }
+      return '';
+    };
     const readFaturaTarihi = (meta: Record<string, any>, message?: string) => {
-      for (const key of ['tarih', 'faturaTarihi', 'belgeTarihi', 'duzenlemeTarihi', 'evrakTarihi', 'mihsapTarih', 'belgeTarih']) {
+      for (const key of ['tarih', 'tarihi', 'faturaTarihi', 'belgeTarihi', 'duzenlemeTarihi', 'evrakTarihi', 'mihsapTarih', 'belgeTarih', 'invoiceDate', 'date']) {
         if (meta[key]) return trDay(meta[key]);
       }
-      for (const value of [meta?.decisionTrace?.ekran?.tarih, meta?.decisionTrace?.belge?.tarih]) {
+      for (const value of [
+        meta?.belge?.tarih,
+        meta?.belge?.faturaTarihi,
+        meta?.ekran?.tarih,
+        meta?.ekran?.faturaTarihi,
+        meta?.ocr?.tarih,
+        meta?.ocr?.faturaTarihi,
+        meta?.parsed?.tarih,
+        meta?.parsed?.faturaTarihi,
+        meta?.decisionTrace?.ekran?.tarih,
+        meta?.decisionTrace?.ekran?.faturaTarihi,
+        meta?.decisionTrace?.belge?.tarih,
+        meta?.decisionTrace?.belge?.faturaTarihi,
+      ]) {
         if (value) return trDay(value);
       }
       const match = String(message || '').match(/(\d{1,2}[./-]\d{1,2}[./-]\d{2,4}|\d{4}[./-]\d{1,2}[./-]\d{1,2})/);
@@ -1468,6 +1524,7 @@ ${ocr.text.slice(0, 14000)}`;
       usageByBelge.set(key, list);
     }
 
+    const matchedUsageIds = new Set<string>();
     const reportRows = filteredEvents.map((event: any, index) => {
       const meta = metaOf(event.meta);
       const periodInfo = eventPeriodInfo(event, meta);
@@ -1488,6 +1545,7 @@ ${ocr.text.slice(0, 14000)}`;
         if (event.mukellef && usage.mukellef) return normText(usage.mukellef) === normText(event.mukellef);
         return true;
       });
+      matchedUsage.forEach((usage) => matchedUsageIds.add(usage.id));
       const aiCostUsd = matchedUsage.length
         ? matchedUsage.reduce((acc, usage) => acc + numberOf(usage.costUsd), 0)
         : numberOf(meta.aiCostUsd ?? meta.costUsd ?? meta?.ai?.costUsd ?? meta?.maliyetUsd);
@@ -1528,6 +1586,8 @@ ${ocr.text.slice(0, 14000)}`;
         hamMesaj: text(event.message, 1500),
       };
     });
+    const matchedUsageRows = usageRows.filter((row) => matchedUsageIds.has(row.id));
+    const matchedUsageTotalUsd = matchedUsageRows.reduce((acc, row) => acc + numberOf(row.costUsd), 0);
 
     const totals = reportRows.reduce(
       (acc, row) => {
@@ -1543,6 +1603,7 @@ ${ocr.text.slice(0, 14000)}`;
       },
       { toplam: 0, temiz: 0, kontrol: 0, atlandi: 0, hata: 0, bilgi: 0, tutar: 0, aiMaliyetUsd: 0 },
     );
+    const reportAiCostUsd = matchedUsageRows.length ? matchedUsageTotalUsd : totals.aiMaliyetUsd;
 
     const byMukellef = Array.from(
       reportRows.reduce<Map<string, any>>((map, row) => {
@@ -1593,30 +1654,33 @@ ${ocr.text.slice(0, 14000)}`;
       ['İşlenmedi - Hata', totals.hata, 'Ajan veya Mihsap hatası'],
       ['Bilgi', totals.bilgi, 'İşlem sonucu olmayan bilgilendirme logları'],
       ['Toplam tutar', totals.tutar, 'Loglarda görünen toplam belge tutarı'],
-      ['AI / OCR maliyeti USD', Number(totals.aiMaliyetUsd.toFixed(6)), 'Eşleşen kullanım kayıtlarından hesaplandı'],
+      ['AI kullanım satırı', matchedUsageRows.length, 'Sadece bu rapordaki fatura no ile eşleşen AI/OCR kayıtları'],
+      ['AI / OCR maliyeti USD', Number(reportAiCostUsd.toFixed(6)), 'Rapor faturalarıyla eşleşen kullanım kayıtları ve varsa log içi maliyet bilgisinden hesaplandı'],
     ].forEach((row) => summary.addRow(row));
     summary.columns = [{ width: 28 }, { width: 18 }, { width: 80 }, { width: 18 }, { width: 18 }, { width: 18 }, { width: 18 }, { width: 18 }];
     summary.getColumn(2).numFmt = '#,##0.00';
 
-    const byTaxpayerSheet = wb.addWorksheet('Mükellef Özeti');
-    styleHeader(byTaxpayerSheet.addRow(['Mükellef', 'Toplam', 'Temiz', 'Kontrol Gerek', 'Atlandı', 'Hata', 'Toplam Tutar', 'AI Maliyet USD']));
-    byMukellef.forEach((row) =>
-      byTaxpayerSheet.addRow([
-        row.mukellef,
-        row.toplam,
-        row.temiz,
-        row.kontrol,
-        row.atlandi,
-        row.hata,
-        Number(row.tutar.toFixed(2)),
-        Number(row.aiMaliyetUsd.toFixed(6)),
-      ]),
-    );
-    byTaxpayerSheet.columns = [{ width: 48 }, { width: 10 }, { width: 10 }, { width: 14 }, { width: 10 }, { width: 10 }, { width: 16 }, { width: 16 }];
-    byTaxpayerSheet.getColumn(7).numFmt = '#,##0.00';
-    byTaxpayerSheet.getColumn(8).numFmt = '#,##0.000000';
-    byTaxpayerSheet.views = [{ state: 'frozen', ySplit: 1 }];
-    byTaxpayerSheet.autoFilter = 'A1:H1';
+    if (byMukellef.length > 1) {
+      const byTaxpayerSheet = wb.addWorksheet('Mükellef Dağılımı');
+      styleHeader(byTaxpayerSheet.addRow(['Mükellef', 'Toplam', 'Temiz', 'Kontrol Gerek', 'Atlandı', 'Hata', 'Toplam Tutar', 'AI Maliyet USD']));
+      byMukellef.forEach((row) =>
+        byTaxpayerSheet.addRow([
+          row.mukellef,
+          row.toplam,
+          row.temiz,
+          row.kontrol,
+          row.atlandi,
+          row.hata,
+          Number(row.tutar.toFixed(2)),
+          Number(row.aiMaliyetUsd.toFixed(6)),
+        ]),
+      );
+      byTaxpayerSheet.columns = [{ width: 48 }, { width: 10 }, { width: 10 }, { width: 14 }, { width: 10 }, { width: 10 }, { width: 16 }, { width: 16 }];
+      byTaxpayerSheet.getColumn(7).numFmt = '#,##0.00';
+      byTaxpayerSheet.getColumn(8).numFmt = '#,##0.000000';
+      byTaxpayerSheet.views = [{ state: 'frozen', ySplit: 1 }];
+      byTaxpayerSheet.autoFilter = 'A1:H1';
+    }
 
     const detail = wb.addWorksheet('Fatura Logları');
     detail.columns = [
@@ -1624,13 +1688,13 @@ ${ocr.text.slice(0, 14000)}`;
       { header: 'İşlem Zamanı', key: 'islemZamani', width: 20 },
       { header: 'Dönem', key: 'donem', width: 10 },
       { header: 'Mükellef', key: 'mukellef', width: 42 },
+      { header: 'Fatura Tarihi', key: 'faturaTarihi', width: 15 },
+      { header: 'Fatura / Belge No', key: 'belgeNo', width: 24 },
+      { header: 'Tarih Filtre Kaynağı', key: 'tarihFiltreKaynak', width: 19 },
+      { header: 'Karşı Firma', key: 'firma', width: 36 },
       { header: 'İşlem', key: 'action', width: 18 },
       { header: 'Sonuç', key: 'sonuc', width: 24 },
       { header: 'Durum Kodu', key: 'status', width: 12 },
-      { header: 'Karşı Firma', key: 'firma', width: 36 },
-      { header: 'Belge No', key: 'belgeNo', width: 22 },
-      { header: 'Fatura Tarihi', key: 'faturaTarihi', width: 15 },
-      { header: 'Tarih Filtre Kaynağı', key: 'tarihFiltreKaynak', width: 19 },
       { header: 'Belge Türü', key: 'belgeTuru', width: 18 },
       { header: 'Fatura Türü', key: 'faturaTuru', width: 18 },
       { header: 'Tutar', key: 'tutar', width: 14 },
@@ -1657,16 +1721,17 @@ ${ocr.text.slice(0, 14000)}`;
     detail.eachRow((row, rowNo) => {
       row.alignment = { vertical: 'top', wrapText: true };
       if (rowNo === 1) return;
-      const result = String(row.getCell(6).value || '');
-      if (result.includes('Hata')) row.getCell(6).fill = { type: 'pattern', pattern: 'solid', fgColor: { argb: 'FFFFD9D9' } };
-      else if (result.includes('Atlandı')) row.getCell(6).fill = { type: 'pattern', pattern: 'solid', fgColor: { argb: 'FFFFE8BF' } };
-      else if (result.includes('Kontrol')) row.getCell(6).fill = { type: 'pattern', pattern: 'solid', fgColor: { argb: 'FFFFF3C4' } };
-      else if (result.includes('Temiz')) row.getCell(6).fill = { type: 'pattern', pattern: 'solid', fgColor: { argb: 'FFDDF7E7' } };
+      const resultCell = row.getCell('sonuc');
+      const result = String(resultCell.value || '');
+      if (result.includes('Hata')) resultCell.fill = { type: 'pattern', pattern: 'solid', fgColor: { argb: 'FFFFD9D9' } };
+      else if (result.includes('Atlandı')) resultCell.fill = { type: 'pattern', pattern: 'solid', fgColor: { argb: 'FFFFE8BF' } };
+      else if (result.includes('Kontrol')) resultCell.fill = { type: 'pattern', pattern: 'solid', fgColor: { argb: 'FFFFF3C4' } };
+      else if (result.includes('Temiz')) resultCell.fill = { type: 'pattern', pattern: 'solid', fgColor: { argb: 'FFDDF7E7' } };
     });
 
     const usageSheet = wb.addWorksheet('AI Kullanımı');
     styleHeader(usageSheet.addRow(['Zaman', 'Kaynak', 'Mükellef', 'Belge No', 'Model', 'Input', 'Output', 'Cache Read', 'Cache Write', 'Cost USD', 'Karar', 'Sebep', 'Süre ms', 'Cache Hit']));
-    usageRows.forEach((row) =>
+    matchedUsageRows.forEach((row) =>
       usageSheet.addRow([
         trDate(row.createdAt),
         row.source,
