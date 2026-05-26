@@ -5,6 +5,17 @@ import { PrismaService } from '../prisma/prisma.service';
 export class WhatsAppBotContextService {
   constructor(private readonly prisma: PrismaService) {}
 
+  /**
+   * Mükellef konuşma hafızasını yenile (no-op placeholder).
+   * İleride bot-eval'den feedback alıp learned memory'i güncellemek için kullanılacak.
+   * Şimdilik sadece bir hook — hata vermez.
+   */
+  async refreshConversationMemory(tenantId: string, taxpayerId: string): Promise<void> {
+    // Phase 1 placeholder: ileride conversation summarization burada yapılacak.
+    void tenantId;
+    void taxpayerId;
+  }
+
   async buildTaxpayerContextBlock(tenantId: string, taxpayerId: string): Promise<string> {
     const now = new Date();
     const year = now.getFullYear();

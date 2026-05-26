@@ -488,7 +488,7 @@ export class WhatsAppBotController {
   }
 
   private refreshTaxpayerMemory(tenantId: string, taxpayerId: string): void {
-    void this.botContext.refreshConversationMemory(tenantId, taxpayerId).catch((err) => {
+    void this.botContext.refreshConversationMemory(tenantId, taxpayerId).catch((err: any) => {
       this.logger.warn(`WhatsApp hafiza guncellenemedi ${taxpayerId}: ${err?.message || err}`);
     });
   }
