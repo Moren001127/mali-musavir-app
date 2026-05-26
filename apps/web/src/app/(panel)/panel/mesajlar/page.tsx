@@ -9,7 +9,6 @@ import {
   Paperclip, Image as ImageIcon, Link2,
 } from 'lucide-react';
 import { toast } from 'sonner';
-import { documentsApi } from '@/lib/documents';
 
 const GOLD = '#d4b876';
 
@@ -295,17 +294,11 @@ export default function MesajlarPage() {
   const mediaMut = useMutation({
     mutationFn: async (file: File) => {
       if (!selectedId) throw new Error('Konusma secimi yok');
-      const doc = await documentsApi.upload({
-        taxpayerId: selectedId,
-        title: file.name.replace(/\.[^.]+$/, '') || file.name,
-        category: 'EVRAK' as any,
-        file,
-        tags: ['whatsapp-giden'],
-      });
-      return api.post(`/whatsapp/conversations/${selectedId}/media`, {
-        documentId: doc.id,
-        caption: composeText.trim() || undefined,
-      }).then((r) => r.data);
+      const formData = new FormData();
+      formData.append('file', file);
+      const caption = composeText.trim();
+      if (caption) formData.append('caption', caption);
+      return api.post(`/whatsapp/conversations/${selectedId}/media/upload`, formData).then((r) => r.data);
     },
     onSuccess: (res) => {
       if (res.ok) {

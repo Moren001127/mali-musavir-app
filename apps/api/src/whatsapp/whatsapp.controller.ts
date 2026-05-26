@@ -1,5 +1,8 @@
-import { Body, Controller, Get, Param, Post, Query, Req, UseGuards } from '@nestjs/common';
+import { Body, Controller, Get, Param, Post, Query, Req, UploadedFile, UseGuards, UseInterceptors } from '@nestjs/common';
 import { AuthGuard } from '@nestjs/passport';
+import { FileInterceptor } from '@nestjs/platform-express';
+import { randomUUID } from 'crypto';
+import { memoryStorage } from 'multer';
 import { WhatsAppService } from './whatsapp.service';
 import { PrismaService } from '../prisma/prisma.service';
 import { StorageService } from '../storage/storage.service';
@@ -422,6 +425,98 @@ export class WhatsAppController {
 
     const phones = this.taxpayerPhones(taxpayer);
     if (!phones.length) return { ok: false, error: 'Telefon numarasi yok' };
+
+    const filename = this.documentFilename(doc.title, doc.mimeType);
+    const mediaUrl = await this.storage.getPresignedDownloadUrl(doc.s3Key, filename);
+    const caption = String(body?.caption || '').trim();
+    const errors: string[] = [];
+    let delivered = false;
+
+    for (const phone of phones) {
+      const result = await this.whatsappService.sendMediaDetailed(phone, {
+        url: mediaUrl,
+        mimeType: doc.mimeType,
+        filename,
+        caption,
+      }, tenantId);
+      if (result.ok) delivered = true;
+      else if (result.error) errors.push(`${phone}: ${result.error}`);
+    }
+
+    const content = `${caption || `[Medya: ${doc.title}]`}\n[[document:${doc.id}|${doc.title}]]`;
+    await this.prisma.communicationLog.create({
+      data: {
+        taxpayerId,
+        channel: 'WHATSAPP',
+        subject: delivered ? 'WhatsApp portal medya' : 'WhatsApp portal medya (gonderilemedi)',
+        content: delivered ? content : `${content}\n\nHata: ${errors.join(' | ') || 'WhatsApp medya gonderimi basarisiz.'}`,
+        occurredAt: new Date(),
+      },
+    });
+
+    return {
+      ok: delivered,
+      document: { id: doc.id, title: doc.title, mimeType: doc.mimeType, sizeBytes: doc.sizeBytes, url: mediaUrl },
+      error: delivered ? undefined : (errors.join(' | ') || 'WhatsApp medya gonderimi basarisiz.'),
+    };
+  }
+
+  @Post('conversations/:taxpayerId/media/upload')
+  @UseInterceptors(FileInterceptor('file', {
+    storage: memoryStorage(),
+    limits: { fileSize: 25 * 1024 * 1024 },
+  }))
+  async uploadAndSendConversationMedia(
+    @Req() req: any,
+    @Param('taxpayerId') taxpayerId: string,
+    @UploadedFile() file: Express.Multer.File,
+    @Body() body: { caption?: string },
+  ) {
+    const tenantId = req.user.tenantId;
+    if (!file?.buffer?.length) return { ok: false, error: 'Dosya zorunlu' };
+
+    const taxpayer = await this.prisma.taxpayer.findFirst({
+      where: { id: taxpayerId, tenantId },
+      select: { id: true, phone: true, phones: true },
+    });
+    if (!taxpayer) return { ok: false, error: 'Mukellef bulunamadi' };
+
+    const phones = this.taxpayerPhones(taxpayer);
+    if (!phones.length) return { ok: false, error: 'Telefon numarasi yok' };
+
+    const originalName = this.safeMediaFilename(file.originalname || 'whatsapp-dosya.bin');
+    const mimeType = file.mimetype || 'application/octet-stream';
+    const s3Key = `${tenantId}/${taxpayerId}/whatsapp/${randomUUID()}-${originalName}`;
+    const sizeBytes = file.size || file.buffer.length;
+
+    await this.storage.putBuffer(s3Key, file.buffer, mimeType, {
+      source: 'whatsapp-portal',
+      originalName: encodeURIComponent(originalName),
+    });
+
+    const doc = await (this.prisma as any).document.create({
+      data: {
+        taxpayerId,
+        title: originalName,
+        category: 'EVRAK',
+        mimeType,
+        sizeBytes,
+        s3Key,
+        notes: 'WhatsApp portal mesajindan manuel gonderildi.',
+      },
+      select: { id: true, title: true, mimeType: true, sizeBytes: true, s3Key: true },
+    });
+
+    await (this.prisma as any).documentVersion.create({
+      data: {
+        documentId: doc.id,
+        versionNo: 1,
+        s3Key,
+        sizeBytes,
+        uploadedBy: req.user?.sub || req.user?.userId || 'whatsapp-portal',
+        notes: 'WhatsApp portal medya gonderimi',
+      },
+    });
 
     const filename = this.documentFilename(doc.title, doc.mimeType);
     const mediaUrl = await this.storage.getPresignedDownloadUrl(doc.s3Key, filename);
@@ -964,6 +1059,14 @@ export class WhatsAppController {
     if (/\.[a-z0-9]{2,8}$/i.test(safeTitle)) return safeTitle;
     const subtype = String(mimeType || '').split('/')[1] || 'bin';
     return `${safeTitle}.${subtype.split(';')[0] || 'bin'}`;
+  }
+
+  private safeMediaFilename(value: string): string {
+    const cleaned = String(value || 'whatsapp-dosya.bin')
+      .replace(/[^\w.\-]+/g, '_')
+      .replace(/^_+|_+$/g, '')
+      .slice(0, 120);
+    return cleaned || 'whatsapp-dosya.bin';
   }
 
   private taxpayerDisplayName(t: any) {
