@@ -407,7 +407,7 @@ export function BrifingKart({ userName }: { userName?: string }) {
             const cfg = effectiveSeverity === 'high'
               ? { color: '#ef4444', bg: 'rgba(239,68,68,0.12)', border: 'rgba(239,68,68,0.32)' }
               : effectiveSeverity === 'medium'
-                ? { color: '#f59e0b', bg: 'rgba(245,158,11,0.12)', border: 'rgba(245,158,11,0.32)' }
+                ? { color: '#7dd3fc', bg: 'rgba(125,211,252,0.10)', border: 'rgba(125,211,252,0.28)' }
                 : { color: '#f5a6b8', bg: 'rgba(245,166,184,0.10)', border: 'rgba(245,166,184,0.28)' };
             const href = a.href ? normalizeDashboardHref(a.href) : undefined;
             const Inner = (

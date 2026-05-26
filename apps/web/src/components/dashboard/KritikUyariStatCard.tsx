@@ -187,14 +187,14 @@ export function KritikUyariStatCard() {
                       icon={ShieldCheck}
                       baslik="Sistem Sağlık Uyarıları"
                       sayi={regularHealthChecks.length}
-                      renk={critical > 0 ? '#f43f5e' : '#f59e0b'}
+                      renk={critical > 0 ? '#f43f5e' : '#7dd3fc'}
                     >
                       {regularHealthChecks
                         .slice(0, 5)
                         .map((c) => (
                           <UyariSatir
                             key={c.id}
-                            renk={c.severity === 'CRITICAL' ? '#f43f5e' : '#f59e0b'}
+                            renk={c.severity === 'CRITICAL' ? '#f43f5e' : '#7dd3fc'}
                             etiket={c.severity}
                             mesaj={c.message}
                             altMesaj={c.acilTavsiye || undefined}
@@ -233,12 +233,12 @@ export function KritikUyariStatCard() {
                       icon={Bot}
                       baslik="Bugün Ajan Hataları"
                       sayi={todayErrors.length}
-                      renk="#f59e0b"
+                      renk="#7dd3fc"
                     >
                       {todayErrors.slice(0, 5).map((e: any, i: number) => (
                         <UyariSatir
                           key={i}
-                          renk="#f59e0b"
+                          renk="#7dd3fc"
                           etiket={e.agent || 'AJAN'}
                           mesaj={e.message || e.action || 'Hata oluştu'}
                           altMesaj={e.mukellef || undefined}

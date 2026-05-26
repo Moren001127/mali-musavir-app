@@ -40,6 +40,8 @@ import { BrifingKart } from '@/components/dashboard/BrifingKart';
 import { BuHaftaTakvim } from '@/components/dashboard/BuHaftaTakvim';
 
 const GOLD = '#d4b876';
+const TRACK_BLUE = '#7dd3fc';
+const TRACK_BLUE_SOFT = '#93c5fd';
 
 function displayUserName(user: any): string | undefined {
   const first = String(user?.firstName || '').trim();
@@ -71,11 +73,11 @@ const ACCENT_TONES: Record<StatAccent, { color: string; bg: string; border: stri
   gold:      { color: '#d4b876', bg: 'rgba(212,184,118,0.12)', border: 'rgba(212,184,118,0.28)', hoverBg: 'rgba(212,184,118,0.06)', hoverBorder: 'rgba(212,184,118,0.32)' },
   champagne: { color: '#e8d6a0', bg: 'rgba(232,214,160,0.14)', border: 'rgba(232,214,160,0.32)', hoverBg: 'rgba(232,214,160,0.06)', hoverBorder: 'rgba(232,214,160,0.36)' },
   bronze:    { color: '#c0a079', bg: 'rgba(192,160,121,0.14)', border: 'rgba(192,160,121,0.32)', hoverBg: 'rgba(192,160,121,0.06)', hoverBorder: 'rgba(192,160,121,0.36)' },
-  copper:    { color: '#d99560', bg: 'rgba(217,149,96,0.14)',  border: 'rgba(217,149,96,0.32)',  hoverBg: 'rgba(217,149,96,0.06)',  hoverBorder: 'rgba(217,149,96,0.36)' },
+  copper:    { color: '#c98896', bg: 'rgba(201,136,150,0.12)', border: 'rgba(201,136,150,0.30)', hoverBg: 'rgba(201,136,150,0.07)', hoverBorder: 'rgba(201,136,150,0.36)' },
   burgundy:  { color: '#c98896', bg: 'rgba(201,136,150,0.14)', border: 'rgba(201,136,150,0.34)', hoverBg: 'rgba(201,136,150,0.08)', hoverBorder: 'rgba(201,136,150,0.38)' },
   sage:      { color: '#9cc8a6', bg: 'rgba(92,150,112,0.12)', border: 'rgba(156,200,166,0.25)', hoverBg: 'rgba(92,150,112,0.06)', hoverBorder: 'rgba(156,200,166,0.32)' },
   sky:       { color: '#9ec5e8', bg: 'rgba(96,165,250,0.11)', border: 'rgba(158,197,232,0.24)', hoverBg: 'rgba(96,165,250,0.06)', hoverBorder: 'rgba(158,197,232,0.30)' },
-  amber:     { color: '#d8b982', bg: 'rgba(217,149,96,0.12)', border: 'rgba(216,185,130,0.26)', hoverBg: 'rgba(217,149,96,0.06)', hoverBorder: 'rgba(216,185,130,0.32)' },
+  amber:     { color: '#8bd3dd', bg: 'rgba(125,211,252,0.10)', border: 'rgba(125,211,252,0.23)', hoverBg: 'rgba(125,211,252,0.06)', hoverBorder: 'rgba(125,211,252,0.30)' },
 };
 
 function StatCard({ title, value, icon: Icon, href, sub, trend, trendKind, accent = 'gold' }: { title: string; value: number | string; icon: any; href?: string; sub?: string; trend?: string; trendKind?: 'up'|'down'|'flat'; accent?: StatAccent }) {
@@ -115,7 +117,7 @@ const WORKFLOW_STEPS: Array<{
   { key: 'evrak', label: 'Evrak Bekliyor', sub: 'Mükelleften gelecek', href: '/panel/is-yuku', icon: FileInput, color: '#a7a29a', bg: 'rgba(167,162,154,0.08)', border: 'rgba(167,162,154,0.20)' },
   { key: 'islenme', label: 'Fatura İşleme', sub: 'Belge merkezi', href: '/panel/fatura-isleme', icon: Receipt, color: '#d4b876', bg: 'rgba(212,184,118,0.10)', border: 'rgba(212,184,118,0.28)' },
   { key: 'kontrol', label: 'KDV Kontrol', sub: 'Kontrol bekliyor', href: '/panel/kdv-kontrol', icon: FileCheck, color: '#c0a079', bg: 'rgba(192,160,121,0.10)', border: 'rgba(192,160,121,0.28)' },
-  { key: 'beyanname', label: 'Beyanname', sub: 'Hazırlanacak', href: '/panel/beyannameler', icon: FileText, color: '#d99560', bg: 'rgba(217,149,96,0.10)', border: 'rgba(217,149,96,0.28)' },
+  { key: 'beyanname', label: 'Beyanname', sub: 'Hazırlanacak', href: '/panel/beyannameler', icon: FileText, color: '#9ec5e8', bg: 'rgba(96,165,250,0.10)', border: 'rgba(158,197,232,0.26)' },
   { key: 'tamam', label: 'Tamamlandı', sub: 'Bu ay kapandı', href: '/panel/is-yuku', icon: CheckCircle2, color: '#86a97b', bg: 'rgba(134,169,123,0.10)', border: 'rgba(134,169,123,0.28)' },
 ];
 
@@ -128,7 +130,7 @@ function WorkflowOverview({ counts, total, activeCount }: { counts?: WorkflowCou
   const outside = Math.max(activeCount - scopedTotal, 0);
 
   return (
-    <div className="rounded-2xl overflow-hidden" style={{ background: 'rgba(255,255,255,0.02)', border: '1px solid rgba(255,255,255,0.05)' }}>
+    <div className="rounded-2xl overflow-hidden" style={{ background: 'linear-gradient(180deg, rgba(13,18,17,0.78), rgba(9,10,9,0.56))', border: '1px solid rgba(156,200,166,0.15)' }}>
       <div className="flex flex-wrap items-center justify-between gap-3 px-4 py-3.5" style={{ borderBottom: '1px solid rgba(255,255,255,0.05)' }}>
         <div className="flex items-center gap-2.5">
           <span className="w-[3px] h-4 rounded-sm" style={{ background: GOLD }} />
@@ -268,6 +270,7 @@ function ToplubeyannamePanel() {
   const beyanRows = rows.filter((r) => beyanTipleri.includes(r.beyanTipi) && r.toplam > 0);
   const bildirgeRow = rows.find((r) => r.beyanTipi === 'BILDIRGE' && r.toplam > 0);
   const edefterRow = rows.find((r) => r.beyanTipi === 'EDEFTER' && r.toplam > 0);
+  const yardimciRows = [bildirgeRow, edefterRow].filter((r): r is OzetRow => Boolean(r));
   const activeRows = rows.filter((r) => r.toplam > 0);
   const totals = activeRows.reduce(
     (acc, row) => ({
@@ -364,9 +367,9 @@ function ToplubeyannamePanel() {
         <div className="mt-5 grid grid-cols-2 gap-2 md:grid-cols-5">
           <BeyanMetric label="Toplam" value={totals.toplam} color="#fafaf9" sub={`${activeRows.length} takip kalemi`} />
           <BeyanMetric label="Onaylanan" value={totals.onaylanan} color="#22c55e" />
-          <BeyanMetric label="Bekleyen" value={totals.bekleyen} color="#f59e0b" />
-          <BeyanMetric label="Hatalı" value={totals.hatali} color="#ef4444" />
-          <BeyanMetric label="Kalan" value={totals.kalan} color={totals.kalan > 0 ? '#f59e0b' : '#22c55e'} sub={`%${totalYuzde} tamam`} />
+          <BeyanMetric label="Bekleyen" value={totals.bekleyen} color={TRACK_BLUE_SOFT} />
+          <BeyanMetric label="Hatalı" value={totals.hatali} color="#f472b6" />
+          <BeyanMetric label="Kalan" value={totals.kalan} color={totals.kalan > 0 ? TRACK_BLUE : '#22c55e'} sub={`%${totalYuzde} tamam`} />
         </div>
       </div>
 
@@ -405,14 +408,21 @@ function ToplubeyannamePanel() {
         </div>
       )}
 
-      {(bildirgeRow || edefterRow) && (
-        <div className="grid grid-cols-1 gap-3 px-5 pb-5 lg:grid-cols-2">
-          {bildirgeRow && (
-            <BeyanStatusRow row={bildirgeRow} title="Bildirge" compact onNumberClick={openModal} />
-          )}
-          {edefterRow && (
-            <BeyanStatusRow row={edefterRow} title="E-Defter" compact onNumberClick={openModal} />
-          )}
+      {yardimciRows.length > 0 && (
+        <div className="px-5 pb-5">
+          <div className="mb-3 flex items-center justify-between gap-3">
+            <div className="text-[12px] font-bold uppercase tracking-[0.13em]" style={{ color: 'rgba(250,250,249,0.45)' }}>
+              Bildirge ve E-Defter
+            </div>
+            <div className="text-[12px] font-semibold" style={{ color: 'rgba(250,250,249,0.55)' }}>
+              {selectedDonem}
+            </div>
+          </div>
+          <div className="space-y-2">
+            {yardimciRows.map((r) => (
+              <BeyanStatusRow key={r.beyanTipi} row={r} onNumberClick={openModal} />
+            ))}
+          </div>
         </div>
       )}
 
@@ -436,35 +446,31 @@ function BeyanMetric({ label, value, color, sub }: { label: string; value: numbe
 
 function BeyanStatusRow({
   row,
-  title,
-  compact,
   onNumberClick,
 }: {
   row: OzetRow;
-  title?: string;
-  compact?: boolean;
   onNumberClick: (tip: BeyanTipi, filter: BeyanFilter) => void;
 }) {
-  const label = title || BEYAN_ETIKETLER[row.beyanTipi];
-  const barColor = row.hatali > 0 ? '#ef4444' : row.kalan > 0 ? '#f59e0b' : '#22c55e';
+  const label = BEYAN_ETIKETLER[row.beyanTipi];
+  const barColor = row.hatali > 0 ? '#f472b6' : row.kalan > 0 ? TRACK_BLUE : '#22c55e';
   const statusLabel = row.hatali > 0 ? 'Hata var' : row.kalan > 0 ? 'Devam ediyor' : 'Tamam';
 
   return (
     <div
-      className={`grid gap-4 rounded-xl px-4 py-3 transition-all lg:grid-cols-[minmax(170px,1fr)_minmax(360px,1.8fr)_minmax(190px,.9fr)] ${compact ? 'min-h-[118px]' : 'min-h-[92px]'}`}
-      style={{ background: 'rgba(255,255,255,0.025)', border: `1px solid ${row.kalan > 0 || row.hatali > 0 ? 'rgba(245,158,11,0.18)' : 'rgba(34,197,94,0.16)'}` }}
+      className="grid gap-4 rounded-xl px-4 py-3 transition-all xl:grid-cols-[minmax(170px,.82fr)_minmax(430px,1.8fr)_minmax(190px,.7fr)]"
+      style={{ background: row.hatali > 0 ? 'rgba(244,114,182,0.035)' : row.kalan > 0 ? 'rgba(125,211,252,0.035)' : 'rgba(34,197,94,0.026)', border: `1px solid ${row.hatali > 0 ? 'rgba(244,114,182,0.22)' : row.kalan > 0 ? 'rgba(125,211,252,0.22)' : 'rgba(34,197,94,0.18)'}` }}
     >
       <div className="min-w-0">
         <div className="text-[15px] font-bold leading-tight" style={{ color: GOLD }}>{label}</div>
         <div className="mt-1 text-[12px]" style={{ color: 'rgba(250,250,249,0.45)' }}>{row.toplam} mükellef takipte</div>
       </div>
 
-      <div className="grid grid-cols-2 gap-2 sm:grid-cols-5">
+      <div className="grid min-w-0 grid-cols-5 overflow-hidden rounded-lg" style={{ background: 'rgba(255,255,255,0.026)', border: '1px solid rgba(255,255,255,0.055)' }}>
         <BeyanCount label="Toplam" value={row.toplam} color="#fafaf9" onClick={() => onNumberClick(row.beyanTipi, 'toplam')} />
         <BeyanCount label="Onay" value={row.onaylanan} color="#22c55e" onClick={() => onNumberClick(row.beyanTipi, 'onaylanan')} />
         <BeyanCount label="Bekleyen" value={row.bekleyen} color="rgba(250,250,249,0.62)" onClick={() => onNumberClick(row.beyanTipi, 'bekleyen')} />
-        <BeyanCount label="Hatalı" value={row.hatali} color={row.hatali > 0 ? '#ef4444' : 'rgba(250,250,249,0.35)'} onClick={() => onNumberClick(row.beyanTipi, 'hatali')} />
-        <BeyanCount label="Kalan" value={row.kalan} color={row.kalan > 0 ? '#f59e0b' : '#22c55e'} onClick={() => onNumberClick(row.beyanTipi, 'kalan')} />
+        <BeyanCount label="Hatalı" value={row.hatali} color={row.hatali > 0 ? '#f472b6' : 'rgba(250,250,249,0.35)'} onClick={() => onNumberClick(row.beyanTipi, 'hatali')} />
+        <BeyanCount label="Kalan" value={row.kalan} color={row.kalan > 0 ? TRACK_BLUE : '#22c55e'} onClick={() => onNumberClick(row.beyanTipi, 'kalan')} />
       </div>
 
       <div className="flex flex-col justify-center gap-2">
@@ -490,11 +496,11 @@ function BeyanCount({ label, value, color, onClick }: { label: string; value: nu
       type="button"
       disabled={!clickable}
       onClick={clickable ? onClick : undefined}
-      className="min-h-[52px] rounded-lg px-3 py-2 text-left transition disabled:cursor-default"
-      style={{ background: clickable ? 'rgba(255,255,255,0.035)' : 'rgba(255,255,255,0.018)', border: '1px solid rgba(255,255,255,0.055)' }}
+      className="min-w-0 px-3 py-2 text-left transition disabled:cursor-default"
+      style={{ background: clickable ? 'transparent' : 'rgba(255,255,255,0.012)', borderRight: '1px solid rgba(255,255,255,0.052)' }}
       title={clickable ? 'Mükellef listesini göster' : undefined}
     >
-      <div className="text-[10px] font-bold uppercase tracking-[0.1em]" style={{ color: 'rgba(250,250,249,0.38)' }}>{label}</div>
+      <div className="truncate text-[10px] font-bold uppercase tracking-[0.08em]" style={{ color: 'rgba(250,250,249,0.38)' }}>{label}</div>
       <div className="mt-0.5 text-[18px] font-bold leading-none tabular-nums" style={{ color, fontFamily: 'JetBrains Mono, monospace' }}>{value}</div>
     </button>
   );
@@ -690,7 +696,7 @@ function Num({
 
 function BeyanTr({ row, onNumberClick }: { row: OzetRow; onNumberClick: (tip: BeyanTipi, filter: BeyanFilter) => void }) {
   const kind = row.yuzde >= 90 ? 'ok' : row.yuzde >= 50 ? 'warn' : 'danger';
-  const barColor = kind === 'ok' ? '#22c55e' : kind === 'warn' ? '#f59e0b' : '#ef4444';
+  const barColor = kind === 'ok' ? '#22c55e' : kind === 'warn' ? TRACK_BLUE : '#ef4444';
   return (
     <tr style={{ borderTop: '1px solid rgba(255,255,255,0.04)' }}>
       <td className="px-2.5 py-2 font-semibold" style={{ color: GOLD }}>{BEYAN_ETIKETLER[row.beyanTipi]}</td>
@@ -698,7 +704,7 @@ function BeyanTr({ row, onNumberClick }: { row: OzetRow; onNumberClick: (tip: Be
       <Num value={row.onaylanan} color="#22c55e"                                                             onClick={() => onNumberClick(row.beyanTipi, 'onaylanan')} />
       <Num value={row.bekleyen}  color="rgba(250,250,249,0.5)"                                               onClick={() => onNumberClick(row.beyanTipi, 'bekleyen')} />
       <Num value={row.hatali}    color={row.hatali > 0 ? '#ef4444' : 'rgba(250,250,249,0.3)'}                onClick={() => onNumberClick(row.beyanTipi, 'hatali')} />
-      <Num value={row.kalan}     color={row.kalan > 0 ? '#f59e0b' : '#22c55e'} bold                          onClick={() => onNumberClick(row.beyanTipi, 'kalan')} />
+      <Num value={row.kalan}     color={row.kalan > 0 ? TRACK_BLUE : '#22c55e'} bold                          onClick={() => onNumberClick(row.beyanTipi, 'kalan')} />
       <td className="px-2.5 py-2">
         <div className="flex items-center gap-2">
           <div className="flex-1 h-2 rounded-full overflow-hidden" style={{ background: 'rgba(255,255,255,0.05)' }}>
@@ -717,7 +723,7 @@ function BeyanTr({ row, onNumberClick }: { row: OzetRow; onNumberClick: (tip: Be
 function MiniTable({ title, row, donem, accent, onNumberClick }: { title: string; row: OzetRow; donem: string; accent: StatAccent; onNumberClick: (tip: BeyanTipi, filter: BeyanFilter) => void }) {
   const tone = ACCENT_TONES[accent];
   const kind = row.yuzde >= 90 ? 'ok' : row.yuzde >= 50 ? 'warn' : 'danger';
-  const barColor = kind === 'ok' ? '#22c55e' : kind === 'warn' ? '#f59e0b' : '#ef4444';
+  const barColor = kind === 'ok' ? '#22c55e' : kind === 'warn' ? TRACK_BLUE : '#ef4444';
   const miniCell = (label: string, value: number, color: string, filter: BeyanFilter) => {
     const clickable = value > 0;
     return (
@@ -747,7 +753,7 @@ function MiniTable({ title, row, donem, accent, onNumberClick }: { title: string
       <div className="px-4 py-3 grid grid-cols-3 gap-3 text-[11px]" style={{ color: 'rgba(250,250,249,0.6)' }}>
         {miniCell('Toplam', row.toplam, '#fafaf9', 'toplam')}
         {miniCell(title === 'E-Defter' ? 'Verilen' : 'Onaylanan', row.onaylanan, '#22c55e', 'onaylanan')}
-        {miniCell('Kalan', row.kalan, row.kalan > 0 ? '#f59e0b' : '#22c55e', 'kalan')}
+        {miniCell('Kalan', row.kalan, row.kalan > 0 ? TRACK_BLUE : '#22c55e', 'kalan')}
       </div>
       <div className="px-4 pb-3">
         <div className="flex items-center gap-2">
@@ -805,7 +811,7 @@ function BeyanDetayModal({ state, onClose }: { state: { beyanTipi: BeyanTipi; fi
     onaylanan: '#22c55e',
     bekleyen: 'rgba(250,250,249,0.6)',
     hatali: '#ef4444',
-    kalan: '#f59e0b',
+    kalan: TRACK_BLUE,
   };
 
   return (
@@ -855,7 +861,7 @@ function BeyanDetayModal({ state, onClose }: { state: { beyanTipi: BeyanTipi; fi
                   beklemede: 'rgba(250,250,249,0.5)',
                   hatali:    '#ef4444',
                   muaf:      '#d4b876',
-                  kalan:     '#f59e0b',
+                  kalan:     TRACK_BLUE,
                 };
                 const durumEtiket: Record<string, string> = {
                   onaylandi: 'Onaylandı',
@@ -894,7 +900,7 @@ function BeyanDetayModal({ state, onClose }: { state: { beyanTipi: BeyanTipi; fi
         {/* Alt bilgi */}
         <div className="px-5 py-2.5 text-[11px] flex items-center justify-between" style={{ borderTop: '1px solid rgba(255,255,255,0.06)', color: 'rgba(250,250,249,0.4)' }}>
           <span>{filteredTaxpayers.length} mükellef</span>
-          <button onClick={onClose} className="font-medium hover:text-amber-400 transition">Kapat</button>
+          <button onClick={onClose} className="font-medium hover:text-cyan-300 transition">Kapat</button>
         </div>
       </div>
     </div>
@@ -1581,7 +1587,7 @@ export default function DashboardPage() {
               ? `${workflowData.counts.kontrol} kontrol · ${workflowData.counts.beyanname} beyan`
               : 'Sıradaki yapılacak işleri gör'
           }
-          accent="amber"
+          accent="sky"
         />
         {/* Kritik Uyarı — tıklanabilir kart, detayı altta açılır panel */}
         <KritikUyariStatCard />
@@ -1589,7 +1595,7 @@ export default function DashboardPage() {
 
       <BrifingKart userName={displayUserName(meUser)} />
 
-      <div className="rounded-2xl overflow-hidden" style={{ background: 'rgba(255,255,255,0.02)', border: '1px solid rgba(212,184,118,0.16)' }}>
+      <div className="rounded-2xl overflow-hidden" style={{ background: 'linear-gradient(180deg, rgba(8,24,29,0.62), rgba(12,13,11,0.82))', border: '1px solid rgba(125,211,252,0.18)', boxShadow: '0 16px 42px rgba(0,0,0,0.18)' }}>
         <ToplubeyannameTable />
       </div>
 
