@@ -115,6 +115,13 @@ function isPdfDoc(doc: { mimeType?: string; title?: string }): boolean {
   return mime.includes('pdf') || /\.pdf$/i.test(title);
 }
 
+function buildStartTemplateParams(templateName: string, primaryName: string, extraParam: string): string[] {
+  const primary = primaryName.trim();
+  if (templateName.trim().toLocaleLowerCase('tr-TR') === 'evrak_iletisim') return [primary];
+  const extra = extraParam.trim();
+  return extra ? [primary, extra] : [primary];
+}
+
 export default function MesajlarPage() {
   const qc = useQueryClient();
   const [search, setSearch] = useState('');
@@ -174,6 +181,7 @@ export default function MesajlarPage() {
   const templateOptions = useMemo(() => {
     const names = [
       whatsappConfig?.portalTemplateName,
+      'evrak_iletisim',
       whatsappConfig?.templateName,
       whatsappConfig?.documentTemplateName,
       'sohbet_baslat',
@@ -186,7 +194,7 @@ export default function MesajlarPage() {
 
   useEffect(() => {
     if (!startTemplateName && templateOptions.length > 0) {
-      setStartTemplateName(templateOptions[0]);
+      setStartTemplateName(templateOptions.includes('evrak_iletisim') ? 'evrak_iletisim' : templateOptions[0]);
     }
   }, [startTemplateName, templateOptions]);
 
@@ -225,25 +233,22 @@ export default function MesajlarPage() {
     mutationFn: () => {
       if (startMode === 'manual') {
         if (!manualPhone.trim()) throw new Error('Telefon numarasi zorunlu');
+        const templateName = startTemplateName.trim();
+        const displayName = manualName.trim() || manualPhone.trim();
         return api.post('/whatsapp/conversations/start', {
           phone: manualPhone.trim(),
           displayName: manualName.trim() || undefined,
-          templateName: startTemplateName.trim(),
-          templateParams: [
-            manualName.trim() || manualPhone.trim(),
-            ...(startExtraParam.trim() ? [startExtraParam.trim()] : []),
-          ],
+          templateName,
+          templateParams: buildStartTemplateParams(templateName, displayName, startExtraParam),
         }).then((r) => r.data);
       }
       if (!selectedContact) throw new Error('Mükellef seçimi zorunlu');
+      const templateName = startTemplateName.trim();
       return api.post('/whatsapp/conversations/start', {
         taxpayerId: selectedContact.taxpayerId,
         phone: selectedPhone || selectedContact.primaryPhone,
-        templateName: startTemplateName.trim(),
-        templateParams: [
-          selectedContact.taxpayerName,
-          ...(startExtraParam.trim() ? [startExtraParam.trim()] : []),
-        ],
+        templateName,
+        templateParams: buildStartTemplateParams(templateName, selectedContact.taxpayerName, startExtraParam),
       }).then((r) => r.data);
     },
     onSuccess: (res) => {
@@ -989,6 +994,7 @@ export default function MesajlarPage() {
             </p>
             <div className="space-y-2">
               {[
+                { name: 'evrak_iletisim', label: 'Evrak Iletisim', desc: 'Onayli iletisim baslatma mesaji' },
                 { name: 'evrak_hatirlatma', label: 'Evrak Hatırlatma', desc: 'Belge teslimi bekleniyor' },
                 { name: 'sohbet_baslat', label: 'Sohbet Başlat', desc: 'Genel bir kapı çal mesajı' },
               ].map((t) => (
