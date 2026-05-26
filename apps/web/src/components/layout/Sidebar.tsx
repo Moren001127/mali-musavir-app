@@ -213,30 +213,30 @@ export default function Sidebar() {
       data-collapsed={collapsed ? 'true' : 'false'}
       style={{
         width: collapsed ? SIDEBAR_COLLAPSED_WIDTH : SIDEBAR_WIDTH,
-        background: 'linear-gradient(180deg, #241f18 0%, #1b1712 42%, #16130f 100%)',
-        borderRight: '1px solid rgba(212,184,118,0.22)',
+        background: 'linear-gradient(180deg, #090807 0%, #070706 46%, #050505 100%)',
+        borderRight: '1px solid rgba(212,184,118,0.12)',
         transition: 'width 260ms cubic-bezier(0.16, 1, 0.3, 1)',
-        boxShadow: 'inset -1px 0 0 rgba(255,255,255,0.035), 14px 0 42px rgba(0,0,0,0.14)',
+        boxShadow: 'inset -1px 0 0 rgba(255,255,255,0.022), 14px 0 42px rgba(0,0,0,0.28)',
       }}
     >
       {/* Dekoratif radial gradient arka plan */}
       <div
-        className="absolute inset-0 pointer-events-none opacity-40"
+        className="absolute inset-0 pointer-events-none opacity-25"
         style={{
-          background: 'radial-gradient(circle at 42% 0%, rgba(212,184,118,0.22), transparent 33%), radial-gradient(circle at 110% 28%, rgba(240,154,168,0.12), transparent 36%), radial-gradient(circle at 40% 100%, rgba(143,215,189,0.10), transparent 42%)',
+          background: 'radial-gradient(circle at 42% 0%, rgba(212,184,118,0.10), transparent 33%), radial-gradient(circle at 110% 28%, rgba(240,154,168,0.045), transparent 36%), radial-gradient(circle at 40% 100%, rgba(143,215,189,0.04), transparent 42%)',
         }}
       />
       <div
         className="pointer-events-none absolute inset-y-0 right-0 w-px"
-        style={{ background: 'linear-gradient(180deg, transparent, rgba(212,184,118,0.38), transparent)' }}
+        style={{ background: 'linear-gradient(180deg, transparent, rgba(212,184,118,0.20), transparent)' }}
       />
 
       {/* === LOGO === */}
       <div
         className={collapsed ? 'relative px-1.5 py-2.5' : 'relative px-3 py-3'}
         style={{
-          borderBottom: '1px solid rgba(212,184,118,0.18)',
-          background: 'linear-gradient(180deg, rgba(212,184,118,0.095), rgba(28,24,19,0.36) 68%, transparent)',
+          borderBottom: '1px solid rgba(212,184,118,0.10)',
+          background: 'linear-gradient(180deg, rgba(212,184,118,0.045), rgba(5,5,5,0.20) 68%, transparent)',
         }}
       >
         <Link
@@ -246,9 +246,9 @@ export default function Sidebar() {
             : 'group relative flex h-[122px] items-center justify-center rounded-2xl border px-5 py-3 transition-all duration-300 hover:border-[#d4b87666]'
           }
           style={{
-            background: 'linear-gradient(145deg, rgba(212,184,118,0.075), rgba(255,255,255,0.012) 52%, rgba(0,0,0,0.12))',
-            borderColor: 'rgba(212,184,118,0.16)',
-            boxShadow: 'inset 0 1px 0 rgba(255,255,255,0.055), 0 16px 34px rgba(0,0,0,0.18)',
+            background: 'linear-gradient(145deg, rgba(212,184,118,0.045), rgba(255,255,255,0.008) 52%, rgba(0,0,0,0.20))',
+            borderColor: 'rgba(212,184,118,0.11)',
+            boxShadow: 'inset 0 1px 0 rgba(255,255,255,0.035), 0 16px 34px rgba(0,0,0,0.24)',
           }}
           aria-label="Moren"
           onMouseEnter={(e) => showCollapsedTooltip(e, 'Moren Mali Müşavirlik', GOLD)}
@@ -300,9 +300,9 @@ export default function Sidebar() {
                   onMouseEnter={(e) => showCollapsedTooltip(e, group.label, group.color)}
                   onMouseLeave={hideCollapsedTooltip}
                   style={{
-                    background: `linear-gradient(90deg, ${group.color}12 0%, rgba(255,255,255,0.018) 46%, transparent 100%)`,
-                    borderColor: `${group.color}24`,
-                    boxShadow: `inset 0 1px 0 rgba(255,255,255,0.045), 0 6px 18px ${group.color}08`,
+                    background: `linear-gradient(90deg, ${group.color}0d 0%, rgba(255,255,255,0.010) 46%, transparent 100%)`,
+                    borderColor: `${group.color}1c`,
+                    boxShadow: `inset 0 1px 0 rgba(255,255,255,0.025), 0 6px 18px ${group.color}05`,
                   }}
                 >
                   <span
@@ -341,13 +341,13 @@ export default function Sidebar() {
                 {group.items.map(({ href, label, icon: Icon }) => {
                   const active = isActive(href);
                   const baseBackground = active
-                    ? `linear-gradient(135deg, ${group.color}24 0%, rgba(255,255,255,0.04) 50%, ${group.color}0f 100%)`
-                    : 'rgba(255,255,255,0.012)';
-                  const baseBorder = active ? `${group.color}5c` : 'rgba(255,255,255,0.035)';
+                    ? `linear-gradient(135deg, ${group.color}1a 0%, rgba(255,255,255,0.03) 50%, ${group.color}0b 100%)`
+                    : 'rgba(255,255,255,0.006)';
+                  const baseBorder = active ? `${group.color}42` : 'rgba(255,255,255,0.026)';
                   const baseColor = active ? '#fafaf9' : 'rgba(250,250,249,0.58)';
                   const baseShadow = active
-                    ? `inset 0 1px 0 rgba(255,255,255,0.08), 0 8px 22px ${group.color}12`
-                    : 'inset 0 1px 0 rgba(255,255,255,0.025)';
+                    ? `inset 0 1px 0 rgba(255,255,255,0.055), 0 8px 22px ${group.color}0d`
+                    : 'inset 0 1px 0 rgba(255,255,255,0.016)';
 
                   return (
                     <Link
@@ -370,11 +370,11 @@ export default function Sidebar() {
                         showCollapsedTooltip(e, label, group.color);
                         if (!active) {
                           const el = e.currentTarget as HTMLElement;
-                          el.style.background = `linear-gradient(135deg, ${group.color}20 0%, rgba(255,255,255,0.075) 48%, ${group.color}08 100%)`;
-                          el.style.borderColor = `${group.color}55`;
+                          el.style.background = `linear-gradient(135deg, ${group.color}16 0%, rgba(255,255,255,0.045) 48%, ${group.color}06 100%)`;
+                          el.style.borderColor = `${group.color}42`;
                           el.style.color = '#fffaf2';
                           el.style.transform = collapsed ? 'translateY(-1px)' : 'translateX(6px)';
-                          el.style.boxShadow = `inset 0 1px 0 rgba(255,255,255,0.11), 0 10px 28px ${group.color}18`;
+                          el.style.boxShadow = `inset 0 1px 0 rgba(255,255,255,0.075), 0 10px 28px ${group.color}10`;
                         }
                       }}
                       onMouseLeave={(e) => {
@@ -391,8 +391,8 @@ export default function Sidebar() {
                       aria-label={label}
                     >
                       <span
-                        className="absolute inset-y-1 left-1 w-10 rounded-full opacity-0 blur-md transition-opacity duration-300 group-hover:opacity-70"
-                        style={{ background: `${group.color}28` }}
+                        className="absolute inset-y-1 left-1 w-10 rounded-full opacity-0 blur-md transition-opacity duration-300 group-hover:opacity-50"
+                        style={{ background: `${group.color}1b` }}
                       />
                       <span
                         className="absolute inset-0 opacity-0 transition-opacity duration-300 group-hover:opacity-100"
@@ -428,8 +428,8 @@ export default function Sidebar() {
                           width: collapsed ? 28 : 26,
                           height: collapsed ? 28 : 26,
                           borderRadius: collapsed ? 10 : 8,
-                          background: active ? `${group.color}24` : `${group.color}0f`,
-                          border: `1px solid ${active ? `${group.color}48` : `${group.color}1f`}`,
+                          background: active ? `${group.color}1f` : `${group.color}0c`,
+                          border: `1px solid ${active ? `${group.color}3a` : `${group.color}18`}`,
                           boxShadow: active
                             ? `0 0 14px ${group.color}20`
                             : `inset 0 1px 0 rgba(255,255,255,0.035)`,
@@ -481,7 +481,7 @@ export default function Sidebar() {
         })}
 
         {/* === KULLANICI KARTI === */}
-        <div className={collapsed ? 'relative px-0 pt-3 pb-1' : 'relative px-1 pt-4 pb-1'} style={{ borderTop: '1px solid rgba(212,184,118,0.16)' }}>
+        <div className={collapsed ? 'relative px-0 pt-3 pb-1' : 'relative px-1 pt-4 pb-1'} style={{ borderTop: '1px solid rgba(212,184,118,0.10)' }}>
           {collapsed ? (
             <div className="flex flex-col items-center gap-2">
               <div
@@ -518,9 +518,9 @@ export default function Sidebar() {
           <div
             className="relative overflow-hidden rounded-xl p-3 group transition-all duration-300"
             style={{
-              background: 'linear-gradient(135deg, rgba(212,184,118,0.10), rgba(255,255,255,0.025))',
-              border: '1px solid rgba(212,184,118,0.16)',
-              boxShadow: 'inset 0 1px 0 rgba(255,255,255,0.06)',
+              background: 'linear-gradient(135deg, rgba(212,184,118,0.055), rgba(255,255,255,0.012))',
+              border: '1px solid rgba(212,184,118,0.11)',
+              boxShadow: 'inset 0 1px 0 rgba(255,255,255,0.032)',
             }}
           >
             <div

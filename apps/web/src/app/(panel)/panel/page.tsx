@@ -44,23 +44,23 @@ const GOLD = '#d4b876';
 const TRACK_BLUE = '#7dd3fc';
 const TRACK_BLUE_SOFT = '#93c5fd';
 const BEYAN_TONE = {
-  accent: '#c8ad73',
-  accentSoft: '#d8c38f',
-  title: '#e9e6de',
-  muted: 'rgba(232,226,216,0.54)',
-  header: 'rgba(232,226,216,0.44)',
-  approved: '#4ade80',
-  waiting: '#d8bd86',
-  error: '#f87171',
-  remaining: '#d8bd86',
-  status: '#94a3b8',
-  border: 'rgba(216,189,134,0.13)',
-  borderSoft: 'rgba(255,255,255,0.07)',
-  bg: 'rgba(216,189,134,0.055)',
-  bgSoft: 'rgba(255,255,255,0.03)',
-  rowAlt: 'rgba(255,255,255,0.010)',
-  tableBg: 'rgba(5,6,6,0.28)',
-  headBg: 'rgba(255,255,255,0.022)',
+  accent: '#d8bd86',
+  accentSoft: '#f2d8a1',
+  title: '#f8f4ec',
+  muted: 'rgba(244,239,229,0.58)',
+  header: 'rgba(244,239,229,0.52)',
+  approved: '#3ddc84',
+  waiting: '#f2c46d',
+  error: '#ff7a8c',
+  remaining: '#f0a6b6',
+  status: '#8cc8ff',
+  border: 'rgba(216,189,134,0.20)',
+  borderSoft: 'rgba(244,239,229,0.08)',
+  bg: 'rgba(216,189,134,0.08)',
+  bgSoft: 'rgba(244,239,229,0.035)',
+  rowAlt: 'rgba(255,255,255,0.018)',
+  tableBg: 'rgba(8,8,7,0.36)',
+  headBg: 'rgba(244,239,229,0.035)',
 };
 
 function displayUserName(user: any): string | undefined {
@@ -348,10 +348,10 @@ function ToplubeyannamePanel() {
 
   return (
     <div>
-      <div className="px-5 py-4" style={{ borderBottom: `1px solid ${BEYAN_TONE.borderSoft}` }}>
+      <div className="px-5 py-4" style={{ borderBottom: `1px solid ${BEYAN_TONE.border}` }}>
         <div className="grid gap-3 xl:grid-cols-[minmax(300px,1fr)_auto] xl:items-center">
           <div className="flex min-w-0 items-center gap-2.5">
-            <span className="flex h-9 w-9 shrink-0 items-center justify-center rounded-md" style={{ background: BEYAN_TONE.bg, border: `1px solid ${BEYAN_TONE.border}`, color: BEYAN_TONE.accentSoft }}>
+            <span className="flex h-9 w-9 shrink-0 items-center justify-center rounded-lg" style={{ background: BEYAN_TONE.bg, border: `1px solid ${BEYAN_TONE.border}`, color: BEYAN_TONE.accentSoft }}>
               <FileCheck2 size={15} />
             </span>
             <div className="min-w-0">
@@ -360,7 +360,7 @@ function ToplubeyannamePanel() {
             </div>
           </div>
           <div className="flex flex-wrap items-center justify-start gap-2 xl:justify-end">
-            <div className="inline-flex rounded-md p-0.5" style={{ background: 'rgba(255,255,255,0.022)', border: `1px solid ${BEYAN_TONE.borderSoft}` }}>
+            <div className="inline-flex rounded-lg p-0.5" style={{ background: 'rgba(244,239,229,0.03)', border: `1px solid ${BEYAN_TONE.borderSoft}` }}>
               {([
                 ['VERILME', 'Verilme dönemi'],
                 ['VERGI', 'Vergi dönemi'],
@@ -383,7 +383,7 @@ function ToplubeyannamePanel() {
             <select
               value={donem}
               onChange={(e) => setDonem(e.target.value)}
-              className="h-9 w-[150px] cursor-pointer rounded-md px-3 text-[12.5px] font-semibold outline-none"
+              className="h-9 w-[150px] cursor-pointer rounded-lg px-3 text-[12.5px] font-semibold outline-none"
               style={{ background: 'rgba(244,239,229,0.035)', border: `1px solid ${BEYAN_TONE.border}`, color: BEYAN_TONE.title }}
             >
               {donemOptions.map((o) => (
@@ -392,14 +392,14 @@ function ToplubeyannamePanel() {
             </select>
             <button
               onClick={() => refetch()}
-              className="inline-flex h-9 items-center gap-1.5 rounded-md px-3 text-[12px] font-semibold transition-all"
-              style={{ background: 'rgba(141,182,198,0.075)', border: '1px solid rgba(141,182,198,0.17)', color: '#9ec5d6' }}
+              className="inline-flex h-9 items-center gap-1.5 rounded-lg px-3 text-[12px] font-semibold transition-all"
+              style={{ background: 'rgba(140,200,255,0.09)', border: '1px solid rgba(140,200,255,0.22)', color: BEYAN_TONE.status }}
             >
               <SearchIcon size={13} /> Sorgula
             </button>
             <Link
               href="/panel/ayarlar/beyanname-takip"
-              className="inline-flex h-9 items-center gap-1.5 rounded-md px-3 text-[12px] font-semibold transition-all"
+              className="inline-flex h-9 items-center gap-1.5 rounded-lg px-3 text-[12px] font-semibold transition-all"
               style={{ background: 'rgba(244,239,229,0.025)', border: `1px solid ${BEYAN_TONE.borderSoft}`, color: BEYAN_TONE.muted }}
             >
               <Settings size={13} /> Ayarlar
@@ -464,14 +464,14 @@ function BeyanCompactTable({
   return (
     <div className={compact ? 'px-5 pb-4' : 'px-5 py-4'}>
       <div className="mb-2.5 flex items-center justify-between gap-3">
-        <div className="text-[11px] font-bold uppercase tracking-[0.14em]" style={{ color: BEYAN_TONE.header }}>
+        <div className="text-[11px] font-bold uppercase tracking-[0.14em]" style={{ color: BEYAN_TONE.accentSoft }}>
           {title}
         </div>
         <div className="text-[11px] font-semibold tabular-nums" style={{ color: BEYAN_TONE.muted, fontFamily: 'Inter, ui-sans-serif, system-ui, sans-serif' }}>
           {donem}
         </div>
       </div>
-      <div className="overflow-x-auto rounded-lg" style={{ border: `1px solid ${BEYAN_TONE.borderSoft}`, background: BEYAN_TONE.tableBg }}>
+      <div className="overflow-x-auto rounded-xl" style={{ border: `1px solid ${BEYAN_TONE.borderSoft}`, background: BEYAN_TONE.tableBg }}>
         <table className="w-full min-w-[760px] border-collapse text-[12px]" style={{ color: BEYAN_TONE.title }}>
           <thead>
             <tr style={{ background: BEYAN_TONE.headBg, borderBottom: `1px solid ${BEYAN_TONE.borderSoft}` }}>
@@ -507,7 +507,7 @@ function YardimciBeyanGrid({
   return (
     <div className="px-5 pb-4">
       <div className="mb-2.5 flex items-center justify-between gap-3">
-        <div className="text-[11px] font-bold uppercase tracking-[0.14em]" style={{ color: BEYAN_TONE.header }}>
+        <div className="text-[11px] font-bold uppercase tracking-[0.14em]" style={{ color: BEYAN_TONE.accentSoft }}>
           Bildirge ve E-Defter
         </div>
         <div className="text-[11px] font-semibold tabular-nums" style={{ color: BEYAN_TONE.muted, fontFamily: 'Inter, ui-sans-serif, system-ui, sans-serif' }}>
@@ -540,7 +540,7 @@ function YardimciBeyanCard({
   const onayText = row.beyanTipi === 'EDEFTER' ? 'Verilen' : 'Onaylanan';
 
   return (
-    <div className="overflow-hidden rounded-lg" style={{ background: BEYAN_TONE.rowAlt, border: `1px solid ${BEYAN_TONE.borderSoft}` }}>
+    <div className="overflow-hidden rounded-xl" style={{ background: BEYAN_TONE.rowAlt, border: `1px solid ${BEYAN_TONE.borderSoft}` }}>
       <div className="grid grid-cols-[minmax(140px,1fr)_82px_92px_82px_minmax(150px,1fr)] items-center gap-0 px-3 py-2">
         <button
           type="button"
@@ -1922,9 +1922,9 @@ export default function DashboardPage() {
       <div
         className="rounded-2xl overflow-hidden"
         style={{
-          background: 'linear-gradient(180deg, rgba(17,17,15,0.93), rgba(10,11,10,0.91))',
+          background: 'radial-gradient(circle at 6% 0%, rgba(216,189,134,0.12), transparent 34%), radial-gradient(circle at 92% 12%, rgba(140,200,255,0.07), transparent 30%), linear-gradient(180deg, rgba(19,19,17,0.94), rgba(12,11,10,0.91))',
           border: `1px solid ${BEYAN_TONE.border}`,
-          boxShadow: '0 12px 28px rgba(0,0,0,0.16), inset 0 1px 0 rgba(255,255,255,0.025)',
+          boxShadow: '0 18px 44px rgba(0,0,0,0.20), inset 0 1px 0 rgba(255,255,255,0.035)',
         }}
       >
         <ToplubeyannameTable />

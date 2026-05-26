@@ -175,6 +175,12 @@ export default function MesajlarPage() {
   const scrollRef = useRef<HTMLDivElement>(null);
   const mediaInputRef = useRef<HTMLInputElement>(null);
 
+  useEffect(() => {
+    const params = new URLSearchParams(window.location.search);
+    const conversation = params.get('conversation') || params.get('taxpayerId');
+    if (conversation) setSelectedId(conversation);
+  }, []);
+
   // Konuşma listesi — her 8 saniyede yenilenir
   const { data: conversations = [], isLoading } = useQuery<Conversation[]>({
     queryKey: ['whatsapp-conversations'],

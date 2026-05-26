@@ -24,11 +24,12 @@ export default function TopBar() {
     <header
       className="h-14 flex items-center justify-between px-6 flex-shrink-0"
       style={{
-        background: 'rgba(255,255,255,0.045)',
-        borderBottom: '1px solid rgba(255,255,255,0.07)',
+        background: '#080807',
+        borderBottom: '1px solid rgba(212,184,118,0.08)',
+        boxShadow: '0 1px 0 rgba(0,0,0,0.55)',
       }}
     >
-      <p className="text-sm capitalize" style={{ color: 'rgba(250,250,249,0.45)' }}>
+      <p className="text-sm capitalize" style={{ color: 'rgba(250,250,249,0.42)' }}>
         {today}
       </p>
 
