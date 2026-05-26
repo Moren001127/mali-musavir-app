@@ -40,7 +40,7 @@ import { KritikUyariStatCard } from '@/components/dashboard/KritikUyariStatCard'
 import { BrifingKart } from '@/components/dashboard/BrifingKart';
 import { BuHaftaTakvim } from '@/components/dashboard/BuHaftaTakvim';
 
-const GOLD = '#8b6a2a';
+const GOLD = '#d4b876';
 const TRACK_BLUE = '#7dd3fc';
 const TRACK_BLUE_SOFT = '#93c5fd';
 
@@ -71,7 +71,7 @@ type Task = {
 // Elit Boutique altın ailesi — dashboard'a renk dokunuşları için
 type StatAccent = 'gold' | 'champagne' | 'bronze' | 'copper' | 'burgundy' | 'sage' | 'sky' | 'amber';
 const ACCENT_TONES: Record<StatAccent, { color: string; bg: string; border: string; hoverBg: string; hoverBorder: string }> = {
-  gold:      { color: '#8b6a2a', bg: 'rgba(212,184,118,0.12)', border: 'rgba(212,184,118,0.28)', hoverBg: 'rgba(139,106,42,0.06)', hoverBorder: 'rgba(212,184,118,0.32)' },
+  gold:      { color: '#d4b876', bg: 'rgba(212,184,118,0.12)', border: 'rgba(212,184,118,0.28)', hoverBg: 'rgba(212,184,118,0.06)', hoverBorder: 'rgba(212,184,118,0.32)' },
   champagne: { color: '#e8d6a0', bg: 'rgba(232,214,160,0.14)', border: 'rgba(232,214,160,0.32)', hoverBg: 'rgba(232,214,160,0.06)', hoverBorder: 'rgba(232,214,160,0.36)' },
   bronze:    { color: '#c0a079', bg: 'rgba(192,160,121,0.14)', border: 'rgba(192,160,121,0.32)', hoverBg: 'rgba(192,160,121,0.06)', hoverBorder: 'rgba(192,160,121,0.36)' },
   copper:    { color: '#c98896', bg: 'rgba(201,136,150,0.12)', border: 'rgba(201,136,150,0.30)', hoverBg: 'rgba(201,136,150,0.07)', hoverBorder: 'rgba(201,136,150,0.36)' },
@@ -84,18 +84,18 @@ const ACCENT_TONES: Record<StatAccent, { color: string; bg: string; border: stri
 function StatCard({ title, value, icon: Icon, href, sub, trend, trendKind, accent = 'gold' }: { title: string; value: number | string; icon: any; href?: string; sub?: string; trend?: string; trendKind?: 'up'|'down'|'flat'; accent?: StatAccent }) {
   const t = ACCENT_TONES[accent];
   const c = (
-    <div className="group relative overflow-hidden rounded-xl p-3 transition-all duration-300" style={{ background: `linear-gradient(135deg, ${t.bg}, rgba(31,24,18,0.02))`, border: `1px solid ${t.border}`, cursor: href ? 'pointer' : 'default' }}
+    <div className="group relative overflow-hidden rounded-xl p-3 transition-all duration-300" style={{ background: `linear-gradient(135deg, ${t.bg}, rgba(255,255,255,0.012))`, border: `1px solid ${t.border}`, cursor: href ? 'pointer' : 'default' }}
       onMouseEnter={(e) => { const el = e.currentTarget as HTMLElement; el.style.background = t.hoverBg; el.style.borderColor = t.hoverBorder; el.style.transform = 'translateY(-2px)'; el.style.boxShadow = '0 8px 24px rgba(0,0,0,0.24)'; }}
-      onMouseLeave={(e) => { const el = e.currentTarget as HTMLElement; el.style.background = `linear-gradient(135deg, ${t.bg}, rgba(31,24,18,0.02))`; el.style.borderColor = t.border; el.style.transform = 'translateY(0)'; el.style.boxShadow = 'none'; }}>
+      onMouseLeave={(e) => { const el = e.currentTarget as HTMLElement; el.style.background = `linear-gradient(135deg, ${t.bg}, rgba(255,255,255,0.012))`; el.style.borderColor = t.border; el.style.transform = 'translateY(0)'; el.style.boxShadow = 'none'; }}>
       {/* Üstten ince altın hairline (kendi tonunda, hover'da belirginleşir) */}
       <span className="absolute top-0 left-4 right-4 h-px transition-opacity duration-300 group-hover:opacity-100" style={{ background: `linear-gradient(90deg, transparent, ${t.color}, transparent)`, opacity: 0.35 }} />
       <div className="mb-2 flex items-center justify-between">
         <div className="flex h-8 w-8 items-center justify-center rounded-lg" style={{ background: 'rgba(15,13,11,0.28)', border: `1px solid ${t.border}`, color: t.color }}><Icon size={15} /></div>
-        {trend && <span className="text-[10px] font-bold px-2.5 py-[3px] rounded-md" style={{ background: trendKind === 'up' ? 'rgba(34,197,94,0.1)' : trendKind === 'down' ? 'rgba(244,63,94,0.1)' : 'rgba(31,24,18,0.05)', color: trendKind === 'up' ? '#22c55e' : trendKind === 'down' ? '#f43f5e' : 'rgba(31,24,18,0.42)' }}>{trend}</span>}
+        {trend && <span className="text-[10px] font-bold px-2.5 py-[3px] rounded-md" style={{ background: trendKind === 'up' ? 'rgba(34,197,94,0.1)' : trendKind === 'down' ? 'rgba(244,63,94,0.1)' : 'rgba(255,255,255,0.04)', color: trendKind === 'up' ? '#22c55e' : trendKind === 'down' ? '#f43f5e' : 'rgba(250,250,249,0.35)' }}>{trend}</span>}
       </div>
-      <p className="text-[10.5px] uppercase font-bold tracking-[.11em]" style={{ color: 'rgba(31,24,18,0.44)' }}>{title}</p>
+      <p className="text-[10.5px] uppercase font-bold tracking-[.11em]" style={{ color: 'rgba(250,250,249,0.44)' }}>{title}</p>
       <p className="mt-1 leading-none tabular-nums" style={{ fontFamily: 'Inter, ui-sans-serif, system-ui, sans-serif', fontSize: 26, fontWeight: 900, letterSpacing: 0, color: t.color }}>{value ?? 0}</p>
-      {sub && <p className="text-[10.5px] mt-0.5" style={{ color: 'rgba(31,24,18,0.36)' }}>{sub}</p>}
+      {sub && <p className="text-[10.5px] mt-0.5" style={{ color: 'rgba(250,250,249,0.36)' }}>{sub}</p>}
     </div>
   );
   return href ? <Link href={href} className="block">{c}</Link> : c;
@@ -116,7 +116,7 @@ const WORKFLOW_STEPS: Array<{
   border: string;
 }> = [
   { key: 'evrak', label: 'Evrak Bekliyor', sub: 'Mükelleften gelecek', href: '/panel/is-yuku', icon: FileInput, color: '#a7a29a', bg: 'rgba(167,162,154,0.08)', border: 'rgba(167,162,154,0.20)' },
-  { key: 'islenme', label: 'Fatura İşleme', sub: 'Belge merkezi', href: '/panel/fatura-isleme', icon: Receipt, color: '#8b6a2a', bg: 'rgba(139,106,42,0.10)', border: 'rgba(212,184,118,0.28)' },
+  { key: 'islenme', label: 'Fatura İşleme', sub: 'Belge merkezi', href: '/panel/fatura-isleme', icon: Receipt, color: '#d4b876', bg: 'rgba(212,184,118,0.10)', border: 'rgba(212,184,118,0.28)' },
   { key: 'kontrol', label: 'KDV Kontrol', sub: 'Kontrol bekliyor', href: '/panel/kdv-kontrol', icon: FileCheck, color: '#c0a079', bg: 'rgba(192,160,121,0.10)', border: 'rgba(192,160,121,0.28)' },
   { key: 'beyanname', label: 'Beyanname', sub: 'Hazırlanacak', href: '/panel/beyannameler', icon: FileText, color: '#9ec5e8', bg: 'rgba(96,165,250,0.10)', border: 'rgba(158,197,232,0.26)' },
   { key: 'tamam', label: 'Tamamlandı', sub: 'Bu ay kapandı', href: '/panel/is-yuku', icon: CheckCircle2, color: '#86a97b', bg: 'rgba(134,169,123,0.10)', border: 'rgba(134,169,123,0.28)' },
@@ -132,25 +132,25 @@ function WorkflowOverview({ counts, total, activeCount }: { counts?: WorkflowCou
 
   return (
     <div className="rounded-2xl overflow-hidden" style={{ background: 'linear-gradient(180deg, rgba(13,18,17,0.78), rgba(9,10,9,0.56))', border: '1px solid rgba(156,200,166,0.15)' }}>
-      <div className="flex flex-wrap items-center justify-between gap-3 px-4 py-3.5" style={{ borderBottom: '1px solid rgba(31,24,18,0.07)' }}>
+      <div className="flex flex-wrap items-center justify-between gap-3 px-4 py-3.5" style={{ borderBottom: '1px solid rgba(255,255,255,0.05)' }}>
         <div className="flex items-center gap-2.5">
           <span className="w-[3px] h-4 rounded-sm" style={{ background: GOLD }} />
           <div>
-            <h3 className="text-[13.5px] font-semibold" style={{ color: '#1f1812' }}>Bu Ay İş Akışı</h3>
-            <p className="text-[11px] mt-0.5" style={{ color: 'rgba(31,24,18,0.48)' }}>
+            <h3 className="text-[13.5px] font-semibold" style={{ color: '#fafaf9' }}>Bu Ay İş Akışı</h3>
+            <p className="text-[11px] mt-0.5" style={{ color: 'rgba(250,250,249,0.42)' }}>
               {scopedTotal} mükellef iş akışında · {activeCount} aktif mükellef listede
             </p>
           </div>
         </div>
         <div className="flex flex-wrap items-center gap-2">
-          <span className="text-[11px] font-semibold px-2.5 py-1 rounded-md" style={{ background: 'rgba(139,106,42,0.10)', border: '1px solid rgba(212,184,118,0.25)', color: GOLD }}>
+          <span className="text-[11px] font-semibold px-2.5 py-1 rounded-md" style={{ background: 'rgba(212,184,118,0.10)', border: '1px solid rgba(212,184,118,0.25)', color: GOLD }}>
             {activeWork} aktif iş
           </span>
           <span className="text-[11px] font-semibold px-2.5 py-1 rounded-md" style={{ background: 'rgba(134,169,123,0.10)', border: '1px solid rgba(134,169,123,0.24)', color: '#a8c59f' }}>
             {completed} tamam
           </span>
           {outside > 0 && (
-            <span className="text-[11px] font-semibold px-2.5 py-1 rounded-md" style={{ background: 'rgba(31,24,18,0.05)', border: '1px solid rgba(31,24,18,0.10)', color: 'rgba(31,24,18,0.55)' }}>
+            <span className="text-[11px] font-semibold px-2.5 py-1 rounded-md" style={{ background: 'rgba(255,255,255,0.04)', border: '1px solid rgba(255,255,255,0.08)', color: 'rgba(250,250,249,0.55)' }}>
               {outside} akış dışında
             </span>
           )}
@@ -168,8 +168,8 @@ function WorkflowOverview({ counts, total, activeCount }: { counts?: WorkflowCou
               href={step.href}
               className="group p-3.5 transition-all min-h-[112px] overflow-hidden"
               style={{
-                borderRight: index < WORKFLOW_STEPS.length - 1 ? '1px solid rgba(31,24,18,0.07)' : undefined,
-                borderBottom: '1px solid rgba(31,24,18,0.04)',
+                borderRight: index < WORKFLOW_STEPS.length - 1 ? '1px solid rgba(255,255,255,0.05)' : undefined,
+                borderBottom: '1px solid rgba(255,255,255,0.03)',
               }}
               onMouseEnter={(e) => { e.currentTarget.style.background = step.bg; }}
               onMouseLeave={(e) => { e.currentTarget.style.background = 'transparent'; }}
@@ -178,7 +178,7 @@ function WorkflowOverview({ counts, total, activeCount }: { counts?: WorkflowCou
                 <div className="w-8 h-8 rounded-xl flex items-center justify-center" style={{ background: step.bg, border: `1px solid ${step.border}`, color: step.color }}>
                   <Icon size={15} />
                 </div>
-                <span className="text-[10.5px] font-bold tabular-nums px-2 py-1 rounded-md" style={{ background: 'rgba(31,24,18,0.05)', color: 'rgba(31,24,18,0.55)' }}>
+                <span className="text-[10.5px] font-bold tabular-nums px-2 py-1 rounded-md" style={{ background: 'rgba(255,255,255,0.04)', color: 'rgba(250,250,249,0.55)' }}>
                   %{pct}
                 </span>
               </div>
@@ -186,10 +186,10 @@ function WorkflowOverview({ counts, total, activeCount }: { counts?: WorkflowCou
                 <div className="text-[24px] leading-none tabular-nums" style={{ fontFamily: 'Fraunces, serif', fontWeight: 700, color: step.color }}>
                   {value}
                 </div>
-                <div className="text-[12px] font-semibold mt-2" style={{ color: '#1f1812' }}>{step.label}</div>
-                <div className="text-[10.5px] mt-1" style={{ color: 'rgba(31,24,18,0.38)' }}>{step.sub}</div>
+                <div className="text-[12px] font-semibold mt-2" style={{ color: '#fafaf9' }}>{step.label}</div>
+                <div className="text-[10.5px] mt-1" style={{ color: 'rgba(250,250,249,0.38)' }}>{step.sub}</div>
               </div>
-              <div className="mt-3 h-1.5 rounded-full overflow-hidden" style={{ background: 'rgba(31,24,18,0.07)' }}>
+              <div className="mt-3 h-1.5 rounded-full overflow-hidden" style={{ background: 'rgba(255,255,255,0.05)' }}>
                 <div className="h-full rounded-full transition-all" style={{ width: `${pct}%`, background: step.color }} />
               </div>
             </Link>
@@ -210,10 +210,10 @@ function DashboardSectionBridge({
   return (
     <div className="relative py-0.5">
       <div className="absolute left-0 right-0 top-1/2 h-px" style={{ background: 'linear-gradient(90deg, transparent, rgba(125,211,252,0.28), rgba(245,166,184,0.2), transparent)' }} />
-      <div className="relative mx-auto flex w-fit items-center gap-2 rounded-full px-3.5 py-1.5 text-[10px] font-bold uppercase tracking-[.13em]" style={{ background: 'rgba(11,16,16,0.94)', border: '1px solid rgba(125,211,252,0.16)', color: 'rgba(31,24,18,0.58)', boxShadow: '0 8px 24px rgba(0,0,0,0.22)' }}>
+      <div className="relative mx-auto flex w-fit items-center gap-2 rounded-full px-3.5 py-1.5 text-[10px] font-bold uppercase tracking-[.13em]" style={{ background: 'rgba(11,16,16,0.94)', border: '1px solid rgba(125,211,252,0.16)', color: 'rgba(250,250,249,0.58)', boxShadow: '0 8px 24px rgba(0,0,0,0.22)' }}>
         <span className="h-1.5 w-1.5 rounded-full" style={{ background: GOLD }} />
         {from}
-        <ArrowRight size={13} style={{ color: 'rgba(31,24,18,0.38)' }} />
+        <ArrowRight size={13} style={{ color: 'rgba(250,250,249,0.38)' }} />
         {to}
         <span className="h-1.5 w-1.5 rounded-full" style={{ background: '#f5a6b8' }} />
       </div>
@@ -223,15 +223,15 @@ function DashboardSectionBridge({
 
 function AgentMini({ href, icon: Icon, name, stat, running }: { href: string; icon: any; name: string; stat: string; running: boolean }) {
   return (
-    <Link href={href} className="flex items-center gap-3 p-3 rounded-xl transition-all duration-300" style={{ background: 'rgba(31,24,18,0.025)', border: '1px solid rgba(31,24,18,0.07)' }}
+    <Link href={href} className="flex items-center gap-3 p-3 rounded-xl transition-all duration-300" style={{ background: 'rgba(255,255,255,0.02)', border: '1px solid rgba(255,255,255,0.05)' }}
       onMouseEnter={(e) => { const el = e.currentTarget as HTMLElement; el.style.background = 'rgba(184,160,111,0.05)'; el.style.borderColor = 'rgba(184,160,111,0.22)'; el.style.transform = 'translateY(-3px)'; }}
-      onMouseLeave={(e) => { const el = e.currentTarget as HTMLElement; el.style.background = 'rgba(31,24,18,0.025)'; el.style.borderColor = 'rgba(31,24,18,0.07)'; el.style.transform = 'translateY(0)'; }}>
+      onMouseLeave={(e) => { const el = e.currentTarget as HTMLElement; el.style.background = 'rgba(255,255,255,0.02)'; el.style.borderColor = 'rgba(255,255,255,0.05)'; el.style.transform = 'translateY(0)'; }}>
       <div className="w-9 h-9 rounded-xl flex items-center justify-center flex-shrink-0" style={{ background: 'rgba(184,160,111,0.08)', border: '1px solid rgba(184,160,111,0.15)', color: GOLD }}><Icon size={16} /></div>
       <div className="flex-1 min-w-0">
-        <div className="text-[13px] font-semibold truncate" style={{ color: '#1f1812' }}>{name}</div>
-        <div className="text-[10.5px] mt-0.5" style={{ fontFamily: 'JetBrains Mono, monospace', color: 'rgba(31,24,18,0.4)' }}>{stat}</div>
+        <div className="text-[13px] font-semibold truncate" style={{ color: '#fafaf9' }}>{name}</div>
+        <div className="text-[10.5px] mt-0.5" style={{ fontFamily: 'JetBrains Mono, monospace', color: 'rgba(250,250,249,0.4)' }}>{stat}</div>
       </div>
-      <div className="w-2 h-2 rounded-full flex-shrink-0" style={{ background: running ? '#22c55e' : 'rgba(31,24,18,0.18)', boxShadow: running ? '0 0 8px rgba(34,197,94,0.6)' : 'none', animation: running ? 'moren-pulse 2s infinite' : 'none' }} />
+      <div className="w-2 h-2 rounded-full flex-shrink-0" style={{ background: running ? '#22c55e' : 'rgba(255,255,255,0.18)', boxShadow: running ? '0 0 8px rgba(34,197,94,0.6)' : 'none', animation: running ? 'moren-pulse 2s infinite' : 'none' }} />
     </Link>
   );
 }
@@ -310,19 +310,19 @@ function ToplubeyannamePanel() {
 
   return (
     <div>
-      <div className="px-4 py-3" style={{ borderBottom: '1px solid rgba(31,24,18,0.07)' }}>
+      <div className="px-4 py-3" style={{ borderBottom: '1px solid rgba(255,255,255,0.05)' }}>
         <div className="grid gap-3 xl:grid-cols-[minmax(300px,1fr)_auto] xl:items-center">
           <div className="flex min-w-0 items-center gap-2.5">
-            <span className="flex h-8 w-8 shrink-0 items-center justify-center rounded-lg" style={{ background: 'rgba(139,106,42,0.10)', border: '1px solid rgba(212,184,118,0.18)', color: GOLD }}>
+            <span className="flex h-8 w-8 shrink-0 items-center justify-center rounded-lg" style={{ background: 'rgba(212,184,118,0.10)', border: '1px solid rgba(212,184,118,0.18)', color: GOLD }}>
               <FileCheck2 size={15} />
             </span>
             <div className="min-w-0">
-              <h3 className="truncate text-[16px] font-semibold leading-tight" style={{ color: '#1f1812' }}>Beyanname Durum Takibi</h3>
-              <p className="mt-0.5 truncate text-[11.5px]" style={{ color: 'rgba(31,24,18,0.52)' }}>{modeLabel} - {selectedDonem} - {modeNote}</p>
+              <h3 className="truncate text-[16px] font-semibold leading-tight" style={{ color: '#fafaf9' }}>Beyanname Durum Takibi</h3>
+              <p className="mt-0.5 truncate text-[11.5px]" style={{ color: 'rgba(250,250,249,0.48)' }}>{modeLabel} - {selectedDonem} - {modeNote}</p>
             </div>
           </div>
           <div className="flex flex-wrap items-center justify-start gap-2 xl:justify-end">
-            <div className="inline-flex rounded-md p-0.5" style={{ background: 'rgba(31,24,18,0.04)', border: '1px solid rgba(31,24,18,0.10)' }}>
+            <div className="inline-flex rounded-md p-0.5" style={{ background: 'rgba(255,255,255,0.035)', border: '1px solid rgba(255,255,255,0.08)' }}>
               {([
                 ['VERILME', 'Verilme dönemi'],
                 ['VERGI', 'Vergi dönemi'],
@@ -334,7 +334,7 @@ function ToplubeyannamePanel() {
                   className="rounded-md px-2.5 py-1 text-[11.5px] font-semibold transition"
                   style={{
                     background: donemTuru === value ? 'rgba(212,184,118,0.16)' : 'transparent',
-                    color: donemTuru === value ? GOLD : 'rgba(31,24,18,0.58)',
+                    color: donemTuru === value ? GOLD : 'rgba(250,250,249,0.58)',
                     border: donemTuru === value ? '1px solid rgba(212,184,118,0.28)' : '1px solid transparent',
                   }}
                 >
@@ -346,23 +346,23 @@ function ToplubeyannamePanel() {
               value={donem}
               onChange={(e) => setDonem(e.target.value)}
               className="h-9 w-[150px] cursor-pointer rounded-lg px-3 text-[12.5px] font-semibold outline-none"
-              style={{ background: 'rgba(31,24,18,0.05)', border: '1px solid rgba(184,160,111,0.25)', color: '#1f1812' }}
+              style={{ background: 'rgba(255,255,255,0.04)', border: '1px solid rgba(184,160,111,0.25)', color: '#fafaf9' }}
             >
               {donemOptions.map((o) => (
-                <option key={o.value} value={o.value} style={{ background: '#ffffff' }}>{o.label}</option>
+                <option key={o.value} value={o.value} style={{ background: '#1a1814' }}>{o.label}</option>
               ))}
             </select>
             <button
               onClick={() => refetch()}
               className="inline-flex h-9 items-center gap-1.5 rounded-lg px-3 text-[12px] font-semibold transition-all"
-              style={{ background: 'rgba(139,106,42,0.12)', border: '1px solid rgba(139,106,42,0.28)', color: GOLD }}
+              style={{ background: 'rgba(184,160,111,0.12)', border: '1px solid rgba(184,160,111,0.3)', color: GOLD }}
             >
               <SearchIcon size={13} /> Sorgula
             </button>
             <Link
               href="/panel/ayarlar/beyanname-takip"
               className="inline-flex h-9 items-center gap-1.5 rounded-lg px-3 text-[12px] font-semibold transition-all"
-              style={{ background: 'rgba(31,24,18,0.04)', border: '1px solid rgba(31,24,18,0.10)', color: 'rgba(31,24,18,0.75)' }}
+              style={{ background: 'rgba(255,255,255,0.03)', border: '1px solid rgba(255,255,255,0.08)', color: 'rgba(250,250,249,0.75)' }}
             >
               <Settings size={13} /> Ayarlar
             </Link>
@@ -370,7 +370,7 @@ function ToplubeyannamePanel() {
         </div>
 
         <div className="hidden">
-          <BeyanMetric label="Toplam" value={totals.toplam} color="#1f1812" sub={`${activeRows.length} takip kalemi`} />
+          <BeyanMetric label="Toplam" value={totals.toplam} color="#fafaf9" sub={`${activeRows.length} takip kalemi`} />
           <BeyanMetric label="Onaylanan" value={totals.onaylanan} color="#22c55e" />
           <BeyanMetric label="Bekleyen" value={totals.bekleyen} color={TRACK_BLUE_SOFT} />
           <BeyanMetric label="Hatalı" value={totals.hatali} color="#f472b6" />
@@ -379,17 +379,17 @@ function ToplubeyannamePanel() {
       </div>
 
       {isLoading && (
-        <div className="px-5 py-12 text-center text-[13px]" style={{ color: 'rgba(31,24,18,0.50)' }}>
+        <div className="px-5 py-12 text-center text-[13px]" style={{ color: 'rgba(250,250,249,0.45)' }}>
           Yükleniyor...
         </div>
       )}
 
       {!isLoading && beyanRows.length === 0 && !bildirgeRow && !edefterRow && (
         <div className="px-5 py-10 text-center">
-          <p className="text-[12.5px]" style={{ color: 'rgba(31,24,18,0.50)' }}>
+          <p className="text-[12.5px]" style={{ color: 'rgba(250,250,249,0.45)' }}>
             Bu dönem için takip edilecek beyanname bulunmadı.
           </p>
-          <p className="text-[11px] mt-1.5" style={{ color: 'rgba(31,24,18,0.3)' }}>
+          <p className="text-[11px] mt-1.5" style={{ color: 'rgba(250,250,249,0.3)' }}>
             Mükellef kartlarındaki beyanname dönemleri ve türleri kontrol edilmeli.
           </p>
         </div>
@@ -426,17 +426,17 @@ function BeyanCompactTable({
   return (
     <div className={compact ? 'px-4 pb-3' : 'px-4 py-3'}>
       <div className="mb-2.5 flex items-center justify-between gap-3">
-        <div className="text-[11px] font-bold uppercase tracking-[0.14em]" style={{ color: 'rgba(31,24,18,0.52)' }}>
+        <div className="text-[11px] font-bold uppercase tracking-[0.14em]" style={{ color: 'rgba(250,250,249,0.48)' }}>
           {title}
         </div>
-        <div className="text-[11px] font-semibold tabular-nums" style={{ color: 'rgba(31,24,18,0.55)', fontFamily: 'Inter, ui-sans-serif, system-ui, sans-serif' }}>
+        <div className="text-[11px] font-semibold tabular-nums" style={{ color: 'rgba(250,250,249,0.5)', fontFamily: 'Inter, ui-sans-serif, system-ui, sans-serif' }}>
           {donem}
         </div>
       </div>
-      <div className="overflow-x-auto rounded-xl" style={{ border: '1px solid rgba(31,24,18,0.10)', background: 'rgba(31,24,18,0.04)' }}>
-        <table className="w-full min-w-[760px] border-collapse text-[12px]" style={{ color: 'rgba(31,24,18,0.82)' }}>
+      <div className="overflow-x-auto rounded-xl" style={{ border: '1px solid rgba(255,255,255,0.08)', background: 'rgba(255,255,255,0.018)' }}>
+        <table className="w-full min-w-[760px] border-collapse text-[12px]" style={{ color: 'rgba(250,250,249,0.82)' }}>
           <thead>
-            <tr style={{ background: 'rgba(31,24,18,0.04)', borderBottom: '1px solid rgba(31,24,18,0.09)' }}>
+            <tr style={{ background: 'rgba(255,255,255,0.035)', borderBottom: '1px solid rgba(255,255,255,0.07)' }}>
               <BeyanHeaderCell align="left">Beyanname</BeyanHeaderCell>
               <BeyanHeaderCell>Takip</BeyanHeaderCell>
               <BeyanHeaderCell>{onayLabel}</BeyanHeaderCell>
@@ -469,10 +469,10 @@ function YardimciBeyanGrid({
   return (
     <div className="px-4 pb-3">
       <div className="mb-2.5 flex items-center justify-between gap-3">
-        <div className="text-[11px] font-bold uppercase tracking-[0.14em]" style={{ color: 'rgba(31,24,18,0.52)' }}>
+        <div className="text-[11px] font-bold uppercase tracking-[0.14em]" style={{ color: 'rgba(250,250,249,0.48)' }}>
           Bildirge ve E-Defter
         </div>
-        <div className="text-[11px] font-semibold tabular-nums" style={{ color: 'rgba(31,24,18,0.55)', fontFamily: 'Inter, ui-sans-serif, system-ui, sans-serif' }}>
+        <div className="text-[11px] font-semibold tabular-nums" style={{ color: 'rgba(250,250,249,0.5)', fontFamily: 'Inter, ui-sans-serif, system-ui, sans-serif' }}>
           {donem}
         </div>
       </div>
@@ -502,7 +502,7 @@ function YardimciBeyanCard({
   const onayText = row.beyanTipi === 'EDEFTER' ? 'Verilen' : 'Onaylanan';
 
   return (
-    <div className="overflow-hidden rounded-xl" style={{ background: 'rgba(31,24,18,0.04)', border: '1px solid rgba(125,211,252,0.18)' }}>
+    <div className="overflow-hidden rounded-xl" style={{ background: 'rgba(255,255,255,0.018)', border: '1px solid rgba(125,211,252,0.18)' }}>
       <div className="grid grid-cols-[minmax(140px,1fr)_82px_92px_82px_minmax(150px,1fr)] items-center gap-0 border-b border-white/[0.06] px-3 py-2">
         <button
           type="button"
@@ -513,7 +513,7 @@ function YardimciBeyanCard({
         >
           {label} <span className="font-semibold opacity-55">({donem})</span>
         </button>
-        <YardimciBeyanNumber label="Toplam" value={row.toplam} color="#1f1812" onClick={() => onNumberClick(row.beyanTipi, 'toplam')} />
+        <YardimciBeyanNumber label="Toplam" value={row.toplam} color="#fafaf9" onClick={() => onNumberClick(row.beyanTipi, 'toplam')} />
         <YardimciBeyanNumber label={onayText} value={row.onaylanan} color="#22c55e" onClick={() => onNumberClick(row.beyanTipi, 'onaylanan')} />
         <YardimciBeyanNumber label="Kalan" value={row.kalan} color={row.kalan > 0 ? TRACK_BLUE : '#22c55e'} onClick={() => onNumberClick(row.beyanTipi, 'kalan')} />
         <div className="min-w-0 pl-3">
@@ -521,7 +521,7 @@ function YardimciBeyanCard({
             <span className="truncate text-[11px] font-bold" style={{ color: barColor }}>{statusLabel}</span>
             <span className="text-[11px] font-bold tabular-nums" style={{ color: barColor, fontFamily: 'Inter, ui-sans-serif, system-ui, sans-serif' }}>{pct}%</span>
           </div>
-          <div className="mt-1 h-1.5 overflow-hidden rounded-full" style={{ background: 'rgba(31,24,18,0.08)' }}>
+          <div className="mt-1 h-1.5 overflow-hidden rounded-full" style={{ background: 'rgba(255,255,255,0.06)' }}>
             <div
               className="h-full rounded-full transition-all duration-500"
               style={{ width: `${pct}%`, background: `linear-gradient(90deg, ${barColor}99, ${barColor})` }}
@@ -543,7 +543,7 @@ function YardimciBeyanNumber({ label, value, color, onClick }: { label: string; 
       className={`min-w-0 px-2 text-right transition ${clickable ? 'hover:bg-white/[0.055] hover:underline decoration-dotted underline-offset-4' : ''}`}
       title={clickable ? 'Mükellef listesini göster' : undefined}
     >
-      <div className="truncate text-[9.5px] font-black uppercase tracking-[0.08em]" style={{ color: 'rgba(31,24,18,0.46)' }}>{label}</div>
+      <div className="truncate text-[9.5px] font-black uppercase tracking-[0.08em]" style={{ color: 'rgba(250,250,249,0.46)' }}>{label}</div>
       <div className="mt-0.5 text-[14px] font-bold leading-none tabular-nums" style={{ color, fontFamily: 'Inter, ui-sans-serif, system-ui, sans-serif', letterSpacing: 0 }}>
         {value}
       </div>
@@ -555,7 +555,7 @@ function BeyanHeaderCell({ children, align = 'right' }: { children: ReactNode; a
   return (
     <th
       className={`px-3 py-1.5 text-[10px] font-black uppercase tracking-[0.12em] ${align === 'right' ? 'text-right' : 'text-left'}`}
-      style={{ color: 'rgba(31,24,18,0.52)' }}
+      style={{ color: 'rgba(250,250,249,0.48)' }}
     >
       {children}
     </th>
@@ -578,7 +578,7 @@ function BeyanCompactRow({
   return (
     <tr
       className="transition hover:bg-white/[0.025]"
-      style={{ borderTop: '1px solid rgba(31,24,18,0.045)' }}
+      style={{ borderTop: '1px solid rgba(255,255,255,0.045)' }}
     >
       <td className="px-3 py-2">
         <button
@@ -594,15 +594,15 @@ function BeyanCompactRow({
           {row.toplam} mükellef takipte
         </div>
       </td>
-      <BeyanNumberCell value={row.toplam} color="#1f1812" onClick={() => onNumberClick(row.beyanTipi, 'toplam')} />
+      <BeyanNumberCell value={row.toplam} color="#fafaf9" onClick={() => onNumberClick(row.beyanTipi, 'toplam')} />
       <BeyanNumberCell value={row.onaylanan} color="#22c55e" onClick={() => onNumberClick(row.beyanTipi, 'onaylanan')} />
-      <BeyanNumberCell value={row.bekleyen} color="rgba(31,24,18,0.68)" onClick={() => onNumberClick(row.beyanTipi, 'bekleyen')} />
-      <BeyanNumberCell value={row.hatali} color={row.hatali > 0 ? '#f472b6' : 'rgba(31,24,18,0.34)'} onClick={() => onNumberClick(row.beyanTipi, 'hatali')} />
+      <BeyanNumberCell value={row.bekleyen} color="rgba(250,250,249,0.68)" onClick={() => onNumberClick(row.beyanTipi, 'bekleyen')} />
+      <BeyanNumberCell value={row.hatali} color={row.hatali > 0 ? '#f472b6' : 'rgba(250,250,249,0.34)'} onClick={() => onNumberClick(row.beyanTipi, 'hatali')} />
       <BeyanNumberCell value={row.kalan} color={row.kalan > 0 ? TRACK_BLUE : '#22c55e'} onClick={() => onNumberClick(row.beyanTipi, 'kalan')} />
       <td className="px-3 py-2">
         <div className="grid grid-cols-[82px,1fr,38px] items-center gap-2">
           <span className="text-[11px] font-bold" style={{ color: barColor }}>{statusLabel}</span>
-          <div className="h-1.5 overflow-hidden rounded-full" style={{ background: 'rgba(31,24,18,0.08)' }}>
+          <div className="h-1.5 overflow-hidden rounded-full" style={{ background: 'rgba(255,255,255,0.06)' }}>
             <div
               className="h-full rounded-full transition-all duration-500"
               style={{ width: `${pct}%`, background: `linear-gradient(90deg, ${barColor}99, ${barColor})` }}
@@ -642,11 +642,11 @@ function BeyanMetric({ label, value, color, sub }: { label: string; value: numbe
   return (
     <div
       className="min-h-[76px] rounded-xl px-4 py-3 text-left"
-      style={{ background: 'rgba(31,24,18,0.03)', border: '1px solid rgba(31,24,18,0.08)' }}
+      style={{ background: 'rgba(255,255,255,0.025)', border: '1px solid rgba(255,255,255,0.06)' }}
     >
-      <div className="text-[10.5px] font-black uppercase tracking-[0.1em]" style={{ color: 'rgba(31,24,18,0.55)' }}>{label}</div>
+      <div className="text-[10.5px] font-black uppercase tracking-[0.1em]" style={{ color: 'rgba(250,250,249,0.5)' }}>{label}</div>
       <div className="mt-1 text-[28px] font-black leading-none tabular-nums" style={{ color, fontFamily: 'Inter, ui-sans-serif, system-ui, sans-serif', textShadow: '0 1px 14px rgba(0,0,0,0.28)' }}>{value}</div>
-      {sub && <div className="mt-1 text-[11px]" style={{ color: 'rgba(31,24,18,0.48)' }}>{sub}</div>}
+      {sub && <div className="mt-1 text-[11px]" style={{ color: 'rgba(250,250,249,0.42)' }}>{sub}</div>}
     </div>
   );
 }
@@ -669,14 +669,14 @@ function BeyanStatusRow({
     >
       <div className="min-w-0">
         <div className="text-[14px] font-bold leading-tight" style={{ color: GOLD }}>{label}</div>
-        <div className="mt-0.5 text-[11px]" style={{ color: 'rgba(31,24,18,0.50)' }}>{row.toplam} mükellef takipte</div>
+        <div className="mt-0.5 text-[11px]" style={{ color: 'rgba(250,250,249,0.45)' }}>{row.toplam} mükellef takipte</div>
       </div>
 
-      <div className="grid min-w-0 grid-cols-5 overflow-hidden rounded-lg" style={{ background: 'rgba(31,24,18,0.04)', border: '1px solid rgba(31,24,18,0.055)' }}>
-        <BeyanCount label="Toplam" value={row.toplam} color="#1f1812" onClick={() => onNumberClick(row.beyanTipi, 'toplam')} />
+      <div className="grid min-w-0 grid-cols-5 overflow-hidden rounded-lg" style={{ background: 'rgba(255,255,255,0.026)', border: '1px solid rgba(255,255,255,0.055)' }}>
+        <BeyanCount label="Toplam" value={row.toplam} color="#fafaf9" onClick={() => onNumberClick(row.beyanTipi, 'toplam')} />
         <BeyanCount label="Onay" value={row.onaylanan} color="#22c55e" onClick={() => onNumberClick(row.beyanTipi, 'onaylanan')} />
-        <BeyanCount label="Bekleyen" value={row.bekleyen} color="rgba(31,24,18,0.62)" onClick={() => onNumberClick(row.beyanTipi, 'bekleyen')} />
-        <BeyanCount label="Hatalı" value={row.hatali} color={row.hatali > 0 ? '#f472b6' : 'rgba(31,24,18,0.42)'} onClick={() => onNumberClick(row.beyanTipi, 'hatali')} />
+        <BeyanCount label="Bekleyen" value={row.bekleyen} color="rgba(250,250,249,0.62)" onClick={() => onNumberClick(row.beyanTipi, 'bekleyen')} />
+        <BeyanCount label="Hatalı" value={row.hatali} color={row.hatali > 0 ? '#f472b6' : 'rgba(250,250,249,0.35)'} onClick={() => onNumberClick(row.beyanTipi, 'hatali')} />
         <BeyanCount label="Kalan" value={row.kalan} color={row.kalan > 0 ? TRACK_BLUE : '#22c55e'} onClick={() => onNumberClick(row.beyanTipi, 'kalan')} />
       </div>
 
@@ -685,7 +685,7 @@ function BeyanStatusRow({
           <span className="text-[11px] font-semibold" style={{ color: barColor }}>{statusLabel}</span>
           <span className="text-[12px] font-bold tabular-nums" style={{ color: barColor, fontFamily: 'JetBrains Mono, monospace' }}>%{row.yuzde}</span>
         </div>
-        <div className="h-2 overflow-hidden rounded-full" style={{ background: 'rgba(31,24,18,0.08)' }}>
+        <div className="h-2 overflow-hidden rounded-full" style={{ background: 'rgba(255,255,255,0.06)' }}>
           <div
             className="h-full rounded-full transition-all duration-500"
             style={{ width: `${Math.max(0, Math.min(100, row.yuzde))}%`, background: `linear-gradient(90deg, ${barColor}88, ${barColor})` }}
@@ -702,10 +702,10 @@ function BeyanCount({ label, value, color, onClick }: { label: string; value: nu
       type="button"
       onClick={onClick}
       className="group min-w-0 px-2.5 py-1.5 text-left transition hover:bg-white/[0.035]"
-      style={{ background: 'transparent', borderRight: '1px solid rgba(31,24,18,0.052)' }}
+      style={{ background: 'transparent', borderRight: '1px solid rgba(255,255,255,0.052)' }}
       title="Mükellef listesini göster"
     >
-      <div className="truncate text-[9.5px] font-black uppercase tracking-[0.08em]" style={{ color: 'rgba(31,24,18,0.52)' }}>{label}</div>
+      <div className="truncate text-[9.5px] font-black uppercase tracking-[0.08em]" style={{ color: 'rgba(250,250,249,0.48)' }}>{label}</div>
       <div
         className="mt-0.5 text-[18px] font-black leading-none tabular-nums group-hover:underline decoration-dotted underline-offset-4"
         style={{ color, fontFamily: 'Inter, ui-sans-serif, system-ui, sans-serif', textShadow: '0 1px 12px rgba(0,0,0,0.35)' }}
@@ -765,33 +765,33 @@ function ToplubeyannameTableLegacy() {
   return (
     <div>
       {/* Başlık bandı */}
-      <div className="flex items-center justify-between px-5 py-4 flex-wrap gap-3" style={{ borderBottom: '1px solid rgba(31,24,18,0.05)' }}>
+      <div className="flex items-center justify-between px-5 py-4 flex-wrap gap-3" style={{ borderBottom: '1px solid rgba(255,255,255,0.04)' }}>
         <div className="flex items-center gap-2.5">
           <FileCheck2 size={16} style={{ color: GOLD }} />
-          <h3 className="text-[13.5px] font-semibold" style={{ color: '#1f1812' }}>Toplu Beyanname — SGK ve E-Defter Kontrol</h3>
+          <h3 className="text-[13.5px] font-semibold" style={{ color: '#fafaf9' }}>Toplu Beyanname — SGK ve E-Defter Kontrol</h3>
         </div>
         <div className="flex items-center gap-2">
           <select
             value={donem}
             onChange={(e) => setDonem(e.target.value)}
             className="text-[12px] px-2.5 py-1.5 rounded-md outline-none cursor-pointer"
-            style={{ background: 'rgba(31,24,18,0.05)', border: '1px solid rgba(184,160,111,0.25)', color: '#1f1812' }}
+            style={{ background: 'rgba(255,255,255,0.04)', border: '1px solid rgba(184,160,111,0.25)', color: '#fafaf9' }}
           >
             {donemOptions.map((o) => (
-              <option key={o.value} value={o.value} style={{ background: '#ffffff' }}>{o.label}</option>
+              <option key={o.value} value={o.value} style={{ background: '#1a1814' }}>{o.label}</option>
             ))}
           </select>
           <button
             onClick={() => refetch()}
             className="text-[11px] font-medium px-3 py-1.5 rounded-md transition-all inline-flex items-center gap-1.5"
-            style={{ background: 'rgba(139,106,42,0.12)', border: '1px solid rgba(139,106,42,0.28)', color: GOLD }}
+            style={{ background: 'rgba(184,160,111,0.12)', border: '1px solid rgba(184,160,111,0.3)', color: GOLD }}
           >
             <SearchIcon size={11} /> Sorgula
           </button>
           <Link
             href="/panel/ayarlar/beyanname-takip"
             className="text-[11px] font-medium px-3 py-1.5 rounded-md transition-all inline-flex items-center gap-1.5"
-            style={{ background: 'rgba(31,24,18,0.04)', border: '1px solid rgba(31,24,18,0.10)', color: 'rgba(31,24,18,0.75)' }}
+            style={{ background: 'rgba(255,255,255,0.03)', border: '1px solid rgba(255,255,255,0.08)', color: 'rgba(250,250,249,0.75)' }}
           >
             <Settings size={11} /> Ayarlar
           </Link>
@@ -799,17 +799,17 @@ function ToplubeyannameTableLegacy() {
       </div>
 
       {isLoading && (
-        <div className="px-5 py-10 text-center text-[12px]" style={{ color: 'rgba(31,24,18,0.4)' }}>
+        <div className="px-5 py-10 text-center text-[12px]" style={{ color: 'rgba(250,250,249,0.4)' }}>
           Yükleniyor...
         </div>
       )}
 
       {!isLoading && beyanRows.length === 0 && !bildirgeRow && !edefterRow && (
         <div className="px-5 py-10 text-center">
-          <p className="text-[12.5px]" style={{ color: 'rgba(31,24,18,0.50)' }}>
+          <p className="text-[12.5px]" style={{ color: 'rgba(250,250,249,0.45)' }}>
             Bu dönem için hiçbir mükellefin beyan yükümlülüğü yok.
           </p>
-          <p className="text-[11px] mt-1.5" style={{ color: 'rgba(31,24,18,0.3)' }}>
+          <p className="text-[11px] mt-1.5" style={{ color: 'rgba(250,250,249,0.3)' }}>
             Ayarlar → Mükellef Beyanname Takip sayfasından mükellef konfigürasyonlarını düzenle.
           </p>
         </div>
@@ -818,7 +818,7 @@ function ToplubeyannameTableLegacy() {
       {/* Beyannameler tablosu */}
       {beyanRows.length > 0 && (
         <div className="px-1.5 py-1.5">
-          <table className="w-full text-[12px]" style={{ color: 'rgba(31,24,18,0.85)', tableLayout: 'fixed' }}>
+          <table className="w-full text-[12px]" style={{ color: 'rgba(250,250,249,0.85)', tableLayout: 'fixed' }}>
             <colgroup>
               <col style={{ width: '120px' }} />
               <col style={{ width: '68px' }} />
@@ -870,7 +870,7 @@ function Th({ children, right, className }: { children: ReactNode; right?: boole
   return (
     <th
       className={`text-[10.5px] font-semibold uppercase tracking-wider px-2.5 py-2 ${right ? 'text-right' : 'text-left'} ${className || ''}`}
-      style={{ color: 'rgba(31,24,18,0.65)' }}
+      style={{ color: 'rgba(250,250,249,0.6)' }}
     >
       {children}
     </th>
@@ -908,16 +908,16 @@ function BeyanTr({ row, onNumberClick }: { row: OzetRow; onNumberClick: (tip: Be
   const kind = row.yuzde >= 90 ? 'ok' : row.yuzde >= 50 ? 'warn' : 'danger';
   const barColor = kind === 'ok' ? '#22c55e' : kind === 'warn' ? TRACK_BLUE : '#ef4444';
   return (
-    <tr style={{ borderTop: '1px solid rgba(31,24,18,0.05)' }}>
+    <tr style={{ borderTop: '1px solid rgba(255,255,255,0.04)' }}>
       <td className="px-2.5 py-2 font-semibold" style={{ color: GOLD }}>{BEYAN_ETIKETLER[row.beyanTipi]}</td>
-      <Num value={row.toplam}    color="rgba(31,24,18,0.85)"                                              onClick={() => onNumberClick(row.beyanTipi, 'toplam')} />
+      <Num value={row.toplam}    color="rgba(250,250,249,0.85)"                                              onClick={() => onNumberClick(row.beyanTipi, 'toplam')} />
       <Num value={row.onaylanan} color="#22c55e"                                                             onClick={() => onNumberClick(row.beyanTipi, 'onaylanan')} />
-      <Num value={row.bekleyen}  color="rgba(31,24,18,0.55)"                                               onClick={() => onNumberClick(row.beyanTipi, 'bekleyen')} />
-      <Num value={row.hatali}    color={row.hatali > 0 ? '#ef4444' : 'rgba(31,24,18,0.3)'}                onClick={() => onNumberClick(row.beyanTipi, 'hatali')} />
+      <Num value={row.bekleyen}  color="rgba(250,250,249,0.5)"                                               onClick={() => onNumberClick(row.beyanTipi, 'bekleyen')} />
+      <Num value={row.hatali}    color={row.hatali > 0 ? '#ef4444' : 'rgba(250,250,249,0.3)'}                onClick={() => onNumberClick(row.beyanTipi, 'hatali')} />
       <Num value={row.kalan}     color={row.kalan > 0 ? TRACK_BLUE : '#22c55e'} bold                          onClick={() => onNumberClick(row.beyanTipi, 'kalan')} />
       <td className="px-2.5 py-2">
         <div className="flex items-center gap-2">
-          <div className="flex-1 h-2 rounded-full overflow-hidden" style={{ background: 'rgba(31,24,18,0.07)' }}>
+          <div className="flex-1 h-2 rounded-full overflow-hidden" style={{ background: 'rgba(255,255,255,0.05)' }}>
             <div
               className="h-full transition-all duration-500 rounded-full"
               style={{ width: `${row.yuzde}%`, background: `linear-gradient(90deg, ${barColor}aa, ${barColor})` }}
@@ -953,21 +953,21 @@ function MiniTable({ title, row, donem, accent, onNumberClick }: { title: string
     );
   };
   return (
-    <div className="rounded-xl overflow-hidden" style={{ background: 'rgba(31,24,18,0.025)', border: `1px solid ${tone.border}` }}>
+    <div className="rounded-xl overflow-hidden" style={{ background: 'rgba(255,255,255,0.02)', border: `1px solid ${tone.border}` }}>
       <div className="flex items-center justify-between px-4 py-2.5" style={{ background: tone.bg }}>
         <div className="flex items-center gap-2">
           <span className="w-[3px] h-3.5 rounded-sm" style={{ background: tone.color }} />
           <span className="text-[12px] font-semibold" style={{ color: tone.color }}>{title} ({donem})</span>
         </div>
       </div>
-      <div className="px-4 py-3 grid grid-cols-3 gap-3 text-[11px]" style={{ color: 'rgba(31,24,18,0.65)' }}>
-        {miniCell('Toplam', row.toplam, '#1f1812', 'toplam')}
+      <div className="px-4 py-3 grid grid-cols-3 gap-3 text-[11px]" style={{ color: 'rgba(250,250,249,0.6)' }}>
+        {miniCell('Toplam', row.toplam, '#fafaf9', 'toplam')}
         {miniCell(title === 'E-Defter' ? 'Verilen' : 'Onaylanan', row.onaylanan, '#22c55e', 'onaylanan')}
         {miniCell('Kalan', row.kalan, row.kalan > 0 ? TRACK_BLUE : '#22c55e', 'kalan')}
       </div>
       <div className="px-4 pb-3">
         <div className="flex items-center gap-2">
-          <div className="flex-1 h-2 rounded-full overflow-hidden" style={{ background: 'rgba(31,24,18,0.07)' }}>
+          <div className="flex-1 h-2 rounded-full overflow-hidden" style={{ background: 'rgba(255,255,255,0.05)' }}>
             <div
               className="h-full transition-all duration-500 rounded-full"
               style={{ width: `${row.yuzde}%`, background: `linear-gradient(90deg, ${barColor}aa, ${barColor})` }}
@@ -1022,9 +1022,9 @@ function BeyanDetayModal({ state, onClose }: { state: { beyanTipi: BeyanTipi; fi
   }, [detay, state.beyanTipi, state.filter]);
 
   const filterColor: Record<BeyanFilter, string> = {
-    toplam: '#8b6a2a',
+    toplam: '#d4b876',
     onaylanan: '#22c55e',
-    bekleyen: 'rgba(31,24,18,0.65)',
+    bekleyen: 'rgba(250,250,249,0.6)',
     hatali: '#ef4444',
     kalan: TRACK_BLUE,
   };
@@ -1090,17 +1090,17 @@ function BeyanDetayModal({ state, onClose }: { state: { beyanTipi: BeyanTipi; fi
       <div
         onClick={(e) => e.stopPropagation()}
         className="flex w-full max-w-4xl flex-col overflow-hidden rounded-2xl"
-        style={{ background: '#ffffff', border: `1px solid ${filterColor[state.filter]}55`, maxHeight: '86vh', boxShadow: '0 28px 90px rgba(0,0,0,0.48)' }}
+        style={{ background: '#101412', border: `1px solid ${filterColor[state.filter]}55`, maxHeight: '86vh', boxShadow: '0 28px 90px rgba(0,0,0,0.48)' }}
       >
-        <div className="flex items-start justify-between gap-4 px-4 py-3" style={{ borderBottom: '1px solid rgba(31,24,18,0.09)', background: 'linear-gradient(180deg, rgba(31,24,18,0.04), rgba(31,24,18,0.04))' }}>
+        <div className="flex items-start justify-between gap-4 px-4 py-3" style={{ borderBottom: '1px solid rgba(255,255,255,0.07)', background: 'linear-gradient(180deg, rgba(255,255,255,0.035), rgba(255,255,255,0.01))' }}>
           <div>
             <div className="text-[11px] font-black uppercase tracking-[0.16em]" style={{ color: filterColor[state.filter] }}>
               {BEYAN_ETIKETLER[state.beyanTipi]} · {state.donem} · {periodModeText}
             </div>
-            <h3 className="mt-1 text-[24px] font-black leading-tight" style={{ color: '#1f1812' }}>
+            <h3 className="mt-1 text-[24px] font-black leading-tight" style={{ color: '#fafaf9' }}>
               {filterLabels[state.filter]}
             </h3>
-            <p className="mt-1 text-[12.5px]" style={{ color: 'rgba(31,24,18,0.52)' }}>
+            <p className="mt-1 text-[12.5px]" style={{ color: 'rgba(250,250,249,0.48)' }}>
               Sayaçtaki rakama dahil olan mükelleflerin dönem bazlı listesi.
             </p>
           </div>
@@ -1114,7 +1114,7 @@ function BeyanDetayModal({ state, onClose }: { state: { beyanTipi: BeyanTipi; fi
             >
               <Download size={15} /> Listeyi İndir
             </button>
-            <button onClick={onClose} className="rounded-lg p-2 transition hover:bg-white/5" style={{ color: 'rgba(31,24,18,0.55)' }}>
+            <button onClick={onClose} className="rounded-lg p-2 transition hover:bg-white/5" style={{ color: 'rgba(250,250,249,0.55)' }}>
               <IconX size={19} />
             </button>
           </div>
@@ -1122,37 +1122,37 @@ function BeyanDetayModal({ state, onClose }: { state: { beyanTipi: BeyanTipi; fi
 
         <div className="flex-1 overflow-y-auto p-5">
           {isLoading && (
-            <div className="px-4 py-14 text-center text-[12px]" style={{ color: 'rgba(31,24,18,0.4)' }}>
+            <div className="px-4 py-14 text-center text-[12px]" style={{ color: 'rgba(250,250,249,0.4)' }}>
               Yükleniyor...
             </div>
           )}
           {!isLoading && filteredItems.length === 0 && (
-            <div className="rounded-xl px-4 py-14 text-center text-[13px]" style={{ color: 'rgba(31,24,18,0.52)', border: '1px dashed rgba(31,24,18,0.1)', background: 'rgba(31,24,18,0.04)' }}>
+            <div className="rounded-xl px-4 py-14 text-center text-[13px]" style={{ color: 'rgba(250,250,249,0.48)', border: '1px dashed rgba(255,255,255,0.10)', background: 'rgba(255,255,255,0.018)' }}>
               {emptyText}
             </div>
           )}
           {!isLoading && filteredItems.length > 0 && (
-            <div className="overflow-hidden rounded-xl" style={{ border: '1px solid rgba(31,24,18,0.10)' }}>
-              <div className="grid grid-cols-[64px_minmax(260px,1.6fr)_160px_130px_150px] gap-0 px-4 py-3 text-[11px] font-black uppercase tracking-[0.11em]" style={{ background: 'rgba(31,24,18,0.05)', color: 'rgba(31,24,18,0.52)' }}>
+            <div className="overflow-hidden rounded-xl" style={{ border: '1px solid rgba(255,255,255,0.08)' }}>
+              <div className="grid grid-cols-[64px_minmax(260px,1.6fr)_160px_130px_150px] gap-0 px-4 py-3 text-[11px] font-black uppercase tracking-[0.11em]" style={{ background: 'rgba(255,255,255,0.04)', color: 'rgba(250,250,249,0.52)' }}>
                 <div>No</div>
                 <div>Mükellef</div>
                 <div>Durum</div>
                 <div>Tarih</div>
                 <div className="text-right">Tahakkuk</div>
               </div>
-              <div className="divide-y" style={{ borderColor: 'rgba(31,24,18,0.055)' }}>
+              <div className="divide-y" style={{ borderColor: 'rgba(255,255,255,0.055)' }}>
                 {filteredItems.map(({ taxpayer, beyan }, i) => {
-                  const tone = durumRenk[beyan.durum] || 'rgba(31,24,18,0.65)';
+                  const tone = durumRenk[beyan.durum] || 'rgba(250,250,249,0.6)';
                   return (
                     <div
                       key={`${taxpayer.taxpayerId}-${state.beyanTipi}`}
                       className="grid grid-cols-[64px_minmax(260px,1.6fr)_160px_130px_150px] items-center gap-0 px-4 py-3 text-[13px]"
-                      style={{ background: i % 2 === 0 ? `${tone}10` : 'rgba(31,24,18,0.02)' }}
+                      style={{ background: i % 2 === 0 ? `${tone}10` : 'rgba(255,255,255,0.012)' }}
                     >
-                      <div className="font-black tabular-nums" style={{ color: 'rgba(31,24,18,0.48)', fontFamily: 'Inter, ui-sans-serif, system-ui, sans-serif' }}>{i + 1}</div>
+                      <div className="font-black tabular-nums" style={{ color: 'rgba(250,250,249,0.42)', fontFamily: 'Inter, ui-sans-serif, system-ui, sans-serif' }}>{i + 1}</div>
                       <div className="min-w-0 pr-4">
-                        <div className="truncate text-[14px] font-black" style={{ color: '#1f1812' }}>{taxpayer.ad}</div>
-                        <div className="mt-0.5 text-[11px]" style={{ color: 'rgba(31,24,18,0.48)' }}>
+                        <div className="truncate text-[14px] font-black" style={{ color: '#fafaf9' }}>{taxpayer.ad}</div>
+                        <div className="mt-0.5 text-[11px]" style={{ color: 'rgba(250,250,249,0.42)' }}>
                           {BEYAN_ETIKETLER[state.beyanTipi]} · {state.donem}
                         </div>
                       </div>
@@ -1164,10 +1164,10 @@ function BeyanDetayModal({ state, onClose }: { state: { beyanTipi: BeyanTipi; fi
                           {durumEtiket[beyan.durum] || beyan.durum}
                         </span>
                       </div>
-                      <div className="text-[12px] font-semibold tabular-nums" style={{ color: 'rgba(31,24,18,0.66)' }}>
+                      <div className="text-[12px] font-semibold tabular-nums" style={{ color: 'rgba(250,250,249,0.66)' }}>
                         {formatDate(beyan.onayTarihi)}
                       </div>
-                      <div className="text-right text-[12px] font-black tabular-nums" style={{ color: 'rgba(31,24,18,0.78)', fontFamily: 'Inter, ui-sans-serif, system-ui, sans-serif' }}>
+                      <div className="text-right text-[12px] font-black tabular-nums" style={{ color: 'rgba(250,250,249,0.78)', fontFamily: 'Inter, ui-sans-serif, system-ui, sans-serif' }}>
                         {formatMoney(beyan.tahakkukTutari)}
                       </div>
                     </div>
@@ -1178,7 +1178,7 @@ function BeyanDetayModal({ state, onClose }: { state: { beyanTipi: BeyanTipi; fi
           )}
         </div>
 
-        <div className="flex items-center justify-between px-6 py-3 text-[11.5px]" style={{ borderTop: '1px solid rgba(31,24,18,0.09)', color: 'rgba(31,24,18,0.52)' }}>
+        <div className="flex items-center justify-between px-6 py-3 text-[11.5px]" style={{ borderTop: '1px solid rgba(255,255,255,0.07)', color: 'rgba(250,250,249,0.48)' }}>
           <span><strong style={{ color: filterColor[state.filter] }}>{filteredItems.length}</strong> mükellef listeleniyor</span>
           <button onClick={onClose} className="font-bold transition hover:text-cyan-300">Kapat</button>
         </div>
@@ -1232,14 +1232,14 @@ function TrendChart({ events }: { events: any[] }) {
 
   return (
     <div>
-      <div className="flex items-center justify-between px-5 py-4" style={{ borderBottom: '1px solid rgba(31,24,18,0.05)' }}>
+      <div className="flex items-center justify-between px-5 py-4" style={{ borderBottom: '1px solid rgba(255,255,255,0.04)' }}>
         <div className="flex items-center gap-2.5">
           <span className="w-[3px] h-4 rounded-sm" style={{ background: GOLD }} />
-          <h3 className="text-[13.5px] font-semibold" style={{ color: '#1f1812' }}>Aylık İşlem Trendi</h3>
+          <h3 className="text-[13.5px] font-semibold" style={{ color: '#fafaf9' }}>Aylık İşlem Trendi</h3>
         </div>
         <div className="flex gap-1">
-          <button onClick={() => setMode('weekly')} className="px-3 py-1.5 text-[11px] font-medium rounded-md transition-all" style={{ background: mode === 'weekly' ? 'rgba(139,106,42,0.12)' : 'rgba(31,24,18,0.04)', border: `1px solid ${mode === 'weekly' ? 'rgba(139,106,42,0.28)' : 'rgba(31,24,18,0.10)'}`, color: mode === 'weekly' ? GOLD : 'rgba(31,24,18,0.65)' }}>Haftalık</button>
-          <button onClick={() => setMode('monthly')} className="px-3 py-1.5 text-[11px] font-medium rounded-md transition-all" style={{ background: mode === 'monthly' ? 'rgba(139,106,42,0.12)' : 'rgba(31,24,18,0.04)', border: `1px solid ${mode === 'monthly' ? 'rgba(139,106,42,0.28)' : 'rgba(31,24,18,0.10)'}`, color: mode === 'monthly' ? GOLD : 'rgba(31,24,18,0.65)' }}>Aylık</button>
+          <button onClick={() => setMode('weekly')} className="px-3 py-1.5 text-[11px] font-medium rounded-md transition-all" style={{ background: mode === 'weekly' ? 'rgba(184,160,111,0.12)' : 'rgba(255,255,255,0.03)', border: `1px solid ${mode === 'weekly' ? 'rgba(184,160,111,0.3)' : 'rgba(255,255,255,0.08)'}`, color: mode === 'weekly' ? GOLD : 'rgba(250,250,249,0.6)' }}>Haftalık</button>
+          <button onClick={() => setMode('monthly')} className="px-3 py-1.5 text-[11px] font-medium rounded-md transition-all" style={{ background: mode === 'monthly' ? 'rgba(184,160,111,0.12)' : 'rgba(255,255,255,0.03)', border: `1px solid ${mode === 'monthly' ? 'rgba(184,160,111,0.3)' : 'rgba(255,255,255,0.08)'}`, color: mode === 'monthly' ? GOLD : 'rgba(250,250,249,0.6)' }}>Aylık</button>
         </div>
       </div>
       {hasAny ? (
@@ -1251,19 +1251,19 @@ function TrendChart({ events }: { events: any[] }) {
                 <div className="flex-1 w-full flex items-end">
                   <div className="w-full rounded-t-[4px] transition-all group-hover/bar:opacity-100" style={{ height: h, background: `linear-gradient(180deg, ${GOLD}, rgba(184,160,111,0.35))`, opacity: 0.85 }} />
                 </div>
-                <span className="text-[10px] font-semibold mt-1.5" style={{ color: 'rgba(31,24,18,0.38)' }}>{b.label}</span>
-                <span className="text-[9.5px] tabular-nums" style={{ color: 'rgba(31,24,18,0.55)', fontFamily: 'JetBrains Mono, monospace' }}>{b.count || ''}</span>
+                <span className="text-[10px] font-semibold mt-1.5" style={{ color: 'rgba(250,250,249,0.32)' }}>{b.label}</span>
+                <span className="text-[9.5px] tabular-nums" style={{ color: 'rgba(250,250,249,0.5)', fontFamily: 'JetBrains Mono, monospace' }}>{b.count || ''}</span>
               </div>
             );
           })}
         </div>
       ) : (
         <div className="flex items-center justify-center h-[130px] px-5">
-          <p className="text-[12px]" style={{ color: 'rgba(31,24,18,0.42)' }}>Henüz işlem verisi yok</p>
+          <p className="text-[12px]" style={{ color: 'rgba(250,250,249,0.35)' }}>Henüz işlem verisi yok</p>
         </div>
       )}
-      <div className="flex gap-4 px-[22px] py-2.5 pt-2" style={{ borderTop: '1px solid rgba(31,24,18,0.05)' }}>
-        <div className="flex items-center gap-1.5 text-[10.5px]" style={{ color: 'rgba(31,24,18,0.55)' }}>
+      <div className="flex gap-4 px-[22px] py-2.5 pt-2" style={{ borderTop: '1px solid rgba(255,255,255,0.04)' }}>
+        <div className="flex items-center gap-1.5 text-[10.5px]" style={{ color: 'rgba(250,250,249,0.5)' }}>
           <div className="w-2 h-2 rounded-[3px]" style={{ background: GOLD }} />Toplam İşlem Hacmi
         </div>
       </div>
@@ -1275,7 +1275,7 @@ function TrendChart({ events }: { events: any[] }) {
 function MukellefDonut({ total, segments }: { total: number; segments: { label: string; value: number; color: string }[] }) {
   const sum = segments.reduce((s, x) => s + x.value, 0);
   const grad = useMemo(() => {
-    if (sum === 0) return 'rgba(31,24,18,0.08)';
+    if (sum === 0) return 'rgba(255,255,255,0.06)';
     let acc = 0;
     const parts = segments.map((s) => {
       const start = (acc / sum) * 100;
@@ -1288,25 +1288,25 @@ function MukellefDonut({ total, segments }: { total: number; segments: { label: 
 
   return (
     <div>
-      <div className="flex items-center justify-between px-5 py-4" style={{ borderBottom: '1px solid rgba(31,24,18,0.05)' }}>
+      <div className="flex items-center justify-between px-5 py-4" style={{ borderBottom: '1px solid rgba(255,255,255,0.04)' }}>
         <div className="flex items-center gap-2.5">
           <span className="w-[3px] h-4 rounded-sm" style={{ background: GOLD }} />
-          <h3 className="text-[13.5px] font-semibold" style={{ color: '#1f1812' }}>Mükellef Durumu</h3>
+          <h3 className="text-[13.5px] font-semibold" style={{ color: '#fafaf9' }}>Mükellef Durumu</h3>
         </div>
       </div>
       <div className="flex items-center justify-center gap-5 px-5 py-6">
         <div className="w-[120px] h-[120px] rounded-full flex items-center justify-center flex-shrink-0" style={{ background: grad }}>
-          <div className="w-[76px] h-[76px] rounded-full flex flex-col items-center justify-center" style={{ background: '#ffffff' }}>
+          <div className="w-[76px] h-[76px] rounded-full flex flex-col items-center justify-center" style={{ background: '#0c0a08' }}>
             <div style={{ fontFamily: 'Fraunces, serif', fontSize: 24, fontWeight: 700, color: GOLD }}>{total}</div>
-            <div className="text-[8.5px] font-semibold uppercase mt-0.5" style={{ color: 'rgba(31,24,18,0.42)', letterSpacing: '.14em' }}>Toplam</div>
+            <div className="text-[8.5px] font-semibold uppercase mt-0.5" style={{ color: 'rgba(250,250,249,0.35)', letterSpacing: '.14em' }}>Toplam</div>
           </div>
         </div>
         <div className="flex flex-col gap-2.5 flex-1">
           {segments.map((s, i) => (
-            <div key={i} className="flex items-center gap-2.5 text-[11.5px]" style={{ color: 'rgba(31,24,18,0.65)' }}>
+            <div key={i} className="flex items-center gap-2.5 text-[11.5px]" style={{ color: 'rgba(250,250,249,0.65)' }}>
               <div className="w-2.5 h-2.5 rounded-[3px] flex-shrink-0" style={{ background: s.color }} />
               {s.label}
-              <span className="ml-auto font-bold tabular-nums" style={{ fontFamily: 'JetBrains Mono, monospace', fontSize: 12, color: '#1f1812' }}>{s.value}</span>
+              <span className="ml-auto font-bold tabular-nums" style={{ fontFamily: 'JetBrains Mono, monospace', fontSize: 12, color: '#fafaf9' }}>{s.value}</span>
             </div>
           ))}
         </div>
@@ -1317,7 +1317,7 @@ function MukellefDonut({ total, segments }: { total: number; segments: { label: 
 
 const MOBILE_COLORS = {
   ai: '#f09aa8',
-  general: '#8b6a2a',
+  general: '#d4b876',
   invoice: '#8fd7bd',
   tax: '#d8ad70',
   finance: '#8cbde8',
@@ -1393,13 +1393,13 @@ function MobilePortalHome({
         className="rounded-lg p-4"
         style={{
           background: 'linear-gradient(135deg, rgba(212,184,118,0.11), rgba(15,13,11,0.98))',
-          border: '1px solid rgba(139,106,42,0.22)',
+          border: '1px solid rgba(212,184,118,0.22)',
         }}
       >
         <div className="flex items-center gap-3">
           <span
             className="flex h-10 w-10 flex-shrink-0 items-center justify-center rounded-lg"
-            style={{ background: 'linear-gradient(135deg, #8b6a2a, #8b7649)', color: '#ffffff', fontFamily: 'Fraunces, serif', fontWeight: 800 }}
+            style={{ background: 'linear-gradient(135deg, #d4b876, #8b7649)', color: '#0f0d0b', fontFamily: 'Fraunces, serif', fontWeight: 800 }}
           >
             M
           </span>
@@ -1407,12 +1407,12 @@ function MobilePortalHome({
             <p className="text-[10px] font-bold uppercase" style={{ color: GOLD, letterSpacing: 0 }}>
               Kurulu Mobil Portal
             </p>
-            <h1 className="mt-1 text-[22px] leading-[1.1]" style={{ color: '#1f1812', fontFamily: 'Fraunces, serif', letterSpacing: 0 }}>
+            <h1 className="mt-1 text-[22px] leading-[1.1]" style={{ color: '#fafaf9', fontFamily: 'Fraunces, serif', letterSpacing: 0 }}>
               Moren Portal
             </h1>
           </div>
         </div>
-        <p className="mt-3 text-[13px] leading-6" style={{ color: 'rgba(31,24,18,0.62)' }}>
+        <p className="mt-3 text-[13px] leading-6" style={{ color: 'rgba(250,250,249,0.62)' }}>
           Telefonda ilk ekran artık gerçek modüllere giden mobil ana menüdür. Masaüstü panel düzeni bu ekranda zorlanmaz.
         </p>
       </section>
@@ -1427,7 +1427,7 @@ function MobilePortalHome({
               style={{ background: `${stat.color}10`, border: `1px solid ${stat.color}28` }}
             >
               <div className="mb-2 flex items-center justify-between gap-2">
-                <span className="text-[10px] font-bold uppercase" style={{ color: 'rgba(31,24,18,0.52)', letterSpacing: 0 }}>
+                <span className="text-[10px] font-bold uppercase" style={{ color: 'rgba(250,250,249,0.52)', letterSpacing: 0 }}>
                   {stat.label}
                 </span>
                 <Icon size={14} style={{ color: stat.color }} />
@@ -1435,7 +1435,7 @@ function MobilePortalHome({
               <div className="tabular-nums text-[25px] leading-none" style={{ color: stat.color, fontFamily: 'Fraunces, serif', fontWeight: 700 }}>
                 {stat.value}
               </div>
-              <div className="mt-1 truncate text-[11px]" style={{ color: 'rgba(31,24,18,0.46)' }}>
+              <div className="mt-1 truncate text-[11px]" style={{ color: 'rgba(250,250,249,0.46)' }}>
                 {stat.sub}
               </div>
             </div>
@@ -1446,10 +1446,10 @@ function MobilePortalHome({
       <section className="space-y-2">
         <div className="flex items-end justify-between gap-3">
           <div>
-            <h2 className="text-[18px] leading-tight" style={{ color: '#1f1812', fontFamily: 'Fraunces, serif', letterSpacing: 0 }}>
+            <h2 className="text-[18px] leading-tight" style={{ color: '#fafaf9', fontFamily: 'Fraunces, serif', letterSpacing: 0 }}>
               Hızlı işlemler
             </h2>
-            <p className="mt-1 text-[12px]" style={{ color: 'rgba(31,24,18,0.46)' }}>
+            <p className="mt-1 text-[12px]" style={{ color: 'rgba(250,250,249,0.46)' }}>
               Telefonda en sık açılacak ekranlar
             </p>
           </div>
@@ -1466,12 +1466,12 @@ function MobilePortalHome({
               >
                 <div className="flex items-center justify-between gap-2">
                   <Icon size={18} style={{ color: item.color }} />
-                  <ArrowRight size={15} style={{ color: 'rgba(31,24,18,0.48)' }} />
+                  <ArrowRight size={15} style={{ color: 'rgba(250,250,249,0.42)' }} />
                 </div>
-                <div className="mt-4 truncate text-[14px] font-bold" style={{ color: '#1f1812' }}>
+                <div className="mt-4 truncate text-[14px] font-bold" style={{ color: '#fafaf9' }}>
                   {item.label}
                 </div>
-                <div className="mt-1 truncate text-[11px]" style={{ color: 'rgba(31,24,18,0.46)' }}>
+                <div className="mt-1 truncate text-[11px]" style={{ color: 'rgba(250,250,249,0.46)' }}>
                   {item.sub}
                 </div>
               </Link>
@@ -1483,10 +1483,10 @@ function MobilePortalHome({
       <section className="space-y-2">
         <div className="flex items-center justify-between gap-3">
           <div>
-            <h2 className="text-[18px] leading-tight" style={{ color: '#1f1812', fontFamily: 'Fraunces, serif', letterSpacing: 0 }}>
+            <h2 className="text-[18px] leading-tight" style={{ color: '#fafaf9', fontFamily: 'Fraunces, serif', letterSpacing: 0 }}>
               İlk PWA modülleri
             </h2>
-            <p className="mt-1 text-[12px]" style={{ color: 'rgba(31,24,18,0.46)' }}>
+            <p className="mt-1 text-[12px]" style={{ color: 'rgba(250,250,249,0.46)' }}>
               Kurulu uygulamada doğrudan erişim
             </p>
           </div>
@@ -1511,10 +1511,10 @@ function MobilePortalHome({
                   <Icon size={16} />
                 </span>
                 <span className="min-w-0 flex-1">
-                  <span className="block truncate text-[13.5px] font-bold" style={{ color: '#1f1812' }}>
+                  <span className="block truncate text-[13.5px] font-bold" style={{ color: '#fafaf9' }}>
                     {item.label}
                   </span>
-                  <span className="mt-0.5 block truncate text-[11px]" style={{ color: 'rgba(31,24,18,0.46)' }}>
+                  <span className="mt-0.5 block truncate text-[11px]" style={{ color: 'rgba(250,250,249,0.46)' }}>
                     {item.sub}
                   </span>
                 </span>
@@ -1527,10 +1527,10 @@ function MobilePortalHome({
 
       <section className="space-y-2">
         <div>
-          <h2 className="text-[18px] leading-tight" style={{ color: '#1f1812', fontFamily: 'Fraunces, serif', letterSpacing: 0 }}>
+          <h2 className="text-[18px] leading-tight" style={{ color: '#fafaf9', fontFamily: 'Fraunces, serif', letterSpacing: 0 }}>
             Modül grupları
           </h2>
-          <p className="mt-1 text-[12px]" style={{ color: 'rgba(31,24,18,0.46)' }}>
+          <p className="mt-1 text-[12px]" style={{ color: 'rgba(250,250,249,0.46)' }}>
             Portal yapısı mobil menüde bu gruplarla açılır
           </p>
         </div>
@@ -1550,10 +1550,10 @@ function MobilePortalHome({
                   <Icon size={16} />
                 </span>
                 <span className="min-w-0 flex-1">
-                  <span className="block truncate text-[13.5px] font-bold" style={{ color: '#1f1812' }}>
+                  <span className="block truncate text-[13.5px] font-bold" style={{ color: '#fafaf9' }}>
                     {group.label}
                   </span>
-                  <span className="mt-0.5 block text-[11px]" style={{ color: 'rgba(31,24,18,0.46)' }}>
+                  <span className="mt-0.5 block text-[11px]" style={{ color: 'rgba(250,250,249,0.46)' }}>
                     {group.count}
                   </span>
                 </span>
@@ -1737,7 +1737,7 @@ export default function DashboardPage() {
       { label: 'Tamamlanan', value: 0, color: ACCENT_TONES.gold.color },
       { label: 'Devam Eden', value: 0, color: ACCENT_TONES.champagne.color },
       { label: 'Bekleyen', value: 0, color: ACCENT_TONES.bronze.color },
-      { label: 'Başlanmadı', value: 0, color: 'rgba(31,24,18,0.10)' },
+      { label: 'Başlanmadı', value: 0, color: 'rgba(255,255,255,0.08)' },
     ];
     const byStatus: Record<string, number> = {};
     for (const t of tx) {
@@ -1790,10 +1790,10 @@ export default function DashboardPage() {
             <AlertTriangle size={18} style={{ color: '#f43f5e' }} />
           </div>
           <div className="flex-1 min-w-0">
-            <div className="text-[13.5px] font-bold mb-0.5" style={{ color: '#1f1812' }}>
+            <div className="text-[13.5px] font-bold mb-0.5" style={{ color: '#fafaf9' }}>
               {dueTasks.length} hatırlatma zamanı geldi
             </div>
-            <div className="text-[12px]" style={{ color: 'rgba(31,24,18,0.72)' }}>
+            <div className="text-[12px]" style={{ color: 'rgba(250,250,249,0.7)' }}>
               {dueTasks.slice(0, 3).map((t) => t.title).join(' · ')}
               {dueTasks.length > 3 && ` · +${dueTasks.length - 3} daha`}
             </div>
@@ -1803,7 +1803,7 @@ export default function DashboardPage() {
               <button
                 onClick={() => dismissReminder(dueTasks[0].id)}
                 className="text-[11.5px] font-medium px-3 py-1.5 rounded-md transition"
-                style={{ background: 'rgba(31,24,18,0.08)', border: '1px solid rgba(31,24,18,0.12)', color: 'rgba(31,24,18,0.85)' }}
+                style={{ background: 'rgba(255,255,255,0.06)', border: '1px solid rgba(255,255,255,0.12)', color: 'rgba(250,250,249,0.85)' }}
               >
                 Anladım
               </button>
@@ -1812,7 +1812,7 @@ export default function DashboardPage() {
               <button
                 onClick={() => dueTasks.forEach((t) => dismissReminder(t.id))}
                 className="text-[11.5px] font-medium px-3 py-1.5 rounded-md transition"
-                style={{ background: 'rgba(31,24,18,0.08)', border: '1px solid rgba(31,24,18,0.12)', color: 'rgba(31,24,18,0.85)' }}
+                style={{ background: 'rgba(255,255,255,0.06)', border: '1px solid rgba(255,255,255,0.12)', color: 'rgba(250,250,249,0.85)' }}
               >
                 Hepsini anladım
               </button>
@@ -1831,16 +1831,16 @@ export default function DashboardPage() {
       >
         <div>
           <div className="mb-1.5 flex items-center gap-2.5"><span className="w-[26px] h-px" style={{ background: GOLD }} /><span className="text-[9.5px] uppercase font-bold tracking-[.18em]" style={{ color: '#b8a06f' }}>Gösterge</span></div>
-          <h1 style={{ fontFamily: 'Fraunces, serif', fontSize: 28, fontWeight: 650, color: '#1f1812', letterSpacing: '-.02em' }}>Ofis Paneli</h1>
-          <p className="text-[12.5px] mt-1" style={{ color: 'rgba(31,24,18,0.46)' }}>{new Date().toLocaleDateString('tr-TR', { month: 'long', year: 'numeric' })} · Mükellefler · Beyannameler · Ajanlar</p>
+          <h1 style={{ fontFamily: 'Fraunces, serif', fontSize: 28, fontWeight: 650, color: '#fafaf9', letterSpacing: '-.02em' }}>Ofis Paneli</h1>
+          <p className="text-[12.5px] mt-1" style={{ color: 'rgba(250,250,249,0.46)' }}>{new Date().toLocaleDateString('tr-TR', { month: 'long', year: 'numeric' })} · Mükellefler · Beyannameler · Ajanlar</p>
         </div>
         <div className="flex items-center gap-2">
-          <Link href="/panel/evraklar" className="inline-flex items-center gap-1.5 rounded-[10px] px-3.5 py-2 text-[12.5px] font-semibold transition-all" style={{ background: 'rgba(31,24,18,0.04)', border: '1px solid rgba(31,24,18,0.10)', color: 'rgba(31,24,18,0.75)' }}
-            onMouseEnter={(e) => { e.currentTarget.style.background = 'rgba(184,160,111,0.08)'; e.currentTarget.style.borderColor = 'rgba(184,160,111,0.2)'; e.currentTarget.style.color = '#1f1812'; }}
-            onMouseLeave={(e) => { e.currentTarget.style.background = 'rgba(31,24,18,0.04)'; e.currentTarget.style.borderColor = 'rgba(31,24,18,0.10)'; e.currentTarget.style.color = 'rgba(31,24,18,0.75)'; }}>
+          <Link href="/panel/evraklar" className="inline-flex items-center gap-1.5 rounded-[10px] px-3.5 py-2 text-[12.5px] font-semibold transition-all" style={{ background: 'rgba(255,255,255,0.03)', border: '1px solid rgba(255,255,255,0.08)', color: 'rgba(250,250,249,0.75)' }}
+            onMouseEnter={(e) => { e.currentTarget.style.background = 'rgba(184,160,111,0.08)'; e.currentTarget.style.borderColor = 'rgba(184,160,111,0.2)'; e.currentTarget.style.color = '#fafaf9'; }}
+            onMouseLeave={(e) => { e.currentTarget.style.background = 'rgba(255,255,255,0.03)'; e.currentTarget.style.borderColor = 'rgba(255,255,255,0.08)'; e.currentTarget.style.color = 'rgba(250,250,249,0.75)'; }}>
             <Download size={14} /> İçe Aktar
           </Link>
-          <Link href="/panel/mukellefler/yeni" className="inline-flex items-center gap-1.5 rounded-[10px] px-4 py-2 text-[12.5px] font-bold transition-all" style={{ background: `linear-gradient(135deg, ${GOLD}, #b8a06f)`, color: '#ffffff' }}><Plus size={14} /> Yeni Mükellef</Link>
+          <Link href="/panel/mukellefler/yeni" className="inline-flex items-center gap-1.5 rounded-[10px] px-4 py-2 text-[12.5px] font-bold transition-all" style={{ background: `linear-gradient(135deg, ${GOLD}, #b8a06f)`, color: '#0f0d0b' }}><Plus size={14} /> Yeni Mükellef</Link>
         </div>
       </div>
 

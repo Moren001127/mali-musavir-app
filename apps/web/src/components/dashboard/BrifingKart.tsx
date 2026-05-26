@@ -19,7 +19,7 @@ import {
 import Link from 'next/link';
 import { api } from '@/lib/api';
 
-const GOLD = '#8b6a2a';
+const GOLD = '#d4b876';
 
 interface BrifingAlert {
   severity: 'high' | 'medium' | 'low';
@@ -86,11 +86,11 @@ const FOCUS_TONES: Record<string, { label: string; color: string; bg: string; gl
   },
   busy: {
     label: 'Yoğun',
-    color: '#8b6a2a',
-    bg: 'rgba(139,106,42,0.13)',
-    glow: 'rgba(139,106,42,0.13)',
+    color: '#d4b876',
+    bg: 'rgba(212,184,118,0.13)',
+    glow: 'rgba(212,184,118,0.13)',
     border: 'rgba(212,184,118,0.26)',
-    actionBg: 'linear-gradient(135deg, rgba(212,184,118,0.14), rgba(139,106,42,0.06))',
+    actionBg: 'linear-gradient(135deg, rgba(212,184,118,0.14), rgba(212,184,118,0.06))',
     actionBorder: 'rgba(212,184,118,0.28)',
     text: GOLD,
   },
@@ -272,9 +272,9 @@ export function BrifingKart({ userName }: { userName?: string }) {
     <div
       className="rounded-[28px] overflow-hidden relative"
       style={{
-        background: `radial-gradient(circle at 12% 0%, ${focusTone.glow}, transparent 42%), radial-gradient(circle at 88% 18%, rgba(139,106,42,0.10), transparent 34%), linear-gradient(135deg, rgba(31,24,18,0.85), rgba(14,13,10,0.96))`,
+        background: `radial-gradient(circle at 12% 0%, ${focusTone.glow}, transparent 42%), radial-gradient(circle at 88% 18%, rgba(212,184,118,0.10), transparent 34%), linear-gradient(135deg, rgba(35,30,24,0.84), rgba(14,13,10,0.96))`,
         border: '1px solid rgba(212,184,118,0.22)',
-        boxShadow: '0 12px 36px rgba(0,0,0,0.28), inset 0 1px 0 rgba(31,24,18,0.04)',
+        boxShadow: '0 12px 36px rgba(0,0,0,0.28), inset 0 1px 0 rgba(255,255,255,0.04)',
       }}
     >
       {/* Üst etiket bandı */}
@@ -304,7 +304,7 @@ export function BrifingKart({ userName }: { userName?: string }) {
         </div>
         <div className="flex items-center gap-2">
           {data?.generatedAt && (
-            <span className="text-[10.5px]" style={{ color: 'rgba(31,24,18,0.4)' }}>
+            <span className="text-[10.5px]" style={{ color: 'rgba(250,250,249,0.4)' }}>
               {data.fromCache ? '↻' : '✓'} {formatRelativeTime(data.generatedAt)}
             </span>
           )}
@@ -314,9 +314,9 @@ export function BrifingKart({ userName }: { userName?: string }) {
             title="Brifingi yeniden üret"
             className="text-[11px] inline-flex items-center gap-1.5 px-2.5 py-1 rounded-md transition disabled:opacity-50"
             style={{
-              background: 'rgba(31,24,18,0.04)',
-              border: '1px solid rgba(31,24,18,0.08)',
-              color: 'rgba(31,24,18,0.6)',
+              background: 'rgba(255,255,255,0.04)',
+              border: '1px solid rgba(255,255,255,0.08)',
+              color: 'rgba(250,250,249,0.6)',
             }}
           >
             {isFetching ? <Loader2 size={11} className="animate-spin" /> : <RefreshCw size={11} />}
@@ -333,7 +333,7 @@ export function BrifingKart({ userName }: { userName?: string }) {
               fontFamily: 'Fraunces, serif',
               fontSize: 26,
               fontWeight: 600,
-              color: '#1f1812',
+              color: '#fafaf9',
               letterSpacing: '-.025em',
               lineHeight: 1.1,
             }}
@@ -341,7 +341,7 @@ export function BrifingKart({ userName }: { userName?: string }) {
             {SELAMLAMA}
             {sanitizeFirstName(userName) ? `, ${sanitizeFirstName(userName)}` : ''}
           </h2>
-          <p className="text-[12px] mt-1 tabular-nums" style={{ color: 'rgba(31,24,18,0.42)' }}>
+          <p className="text-[12px] mt-1 tabular-nums" style={{ color: 'rgba(250,250,249,0.42)' }}>
             {KISA_TARIH}
           </p>
         </div>
@@ -350,9 +350,9 @@ export function BrifingKart({ userName }: { userName?: string }) {
           <div
             className="w-full rounded-xl px-3 py-2 flex items-center gap-2.5 select-none xl:justify-self-end"
             style={{
-              background: `linear-gradient(135deg, ${focusTone.bg}, rgba(31,24,18,0.04)), rgba(31,24,18,0.85)`,
+              background: `linear-gradient(135deg, ${focusTone.bg}, rgba(255,255,255,0.018)), rgba(8,9,7,0.42)`,
               border: `1px solid ${focusTone.border}`,
-              boxShadow: 'inset 0 1px 0 rgba(31,24,18,0.04)',
+              boxShadow: 'inset 0 1px 0 rgba(255,255,255,0.04)',
             }}
           >
             <span
@@ -366,7 +366,7 @@ export function BrifingKart({ userName }: { userName?: string }) {
                 <Sparkles size={10} />
                 AI Motivasyon
               </span>
-              <span className="block mt-0.5 text-[12.5px] font-semibold leading-snug" style={{ color: 'rgba(31,24,18,0.85)' }}>
+              <span className="block mt-0.5 text-[12.5px] font-semibold leading-snug" style={{ color: 'rgba(250,250,249,0.88)' }}>
                 {motivation}
               </span>
             </span>
@@ -377,7 +377,7 @@ export function BrifingKart({ userName }: { userName?: string }) {
       {/* Ana özet metni */}
       <div className="px-5 pt-1.5 pb-1 max-w-[1120px]">
         {isLoading ? (
-          <div className="text-[14px] flex items-center gap-2" style={{ color: 'rgba(31,24,18,0.5)' }}>
+          <div className="text-[14px] flex items-center gap-2" style={{ color: 'rgba(250,250,249,0.5)' }}>
             <Loader2 size={14} className="animate-spin" />
             Brifing hazırlanıyor...
           </div>
@@ -385,7 +385,7 @@ export function BrifingKart({ userName }: { userName?: string }) {
           <p
             className="text-[14px]"
             style={{
-              color: 'rgba(31,24,18,0.85)',
+              color: 'rgba(250,250,249,0.85)',
               lineHeight: 1.55,
               fontFamily: 'Inter, sans-serif',
             }}
@@ -393,7 +393,7 @@ export function BrifingKart({ userName }: { userName?: string }) {
             {visibleSummary}
           </p>
         ) : (
-          <p className="text-[13.5px]" style={{ color: 'rgba(31,24,18,0.5)' }}>
+          <p className="text-[13.5px]" style={{ color: 'rgba(250,250,249,0.5)' }}>
             Brifing alınamadı. Yenile butonuna basıp tekrar dene.
           </p>
         )}
@@ -419,7 +419,7 @@ export function BrifingKart({ userName }: { userName?: string }) {
                 }}
               >
                 <AlertTriangle size={13} style={{ color: cfg.color }} />
-                <span className="text-[13px] flex-1" style={{ color: '#1f1812' }}>
+                <span className="text-[13px] flex-1" style={{ color: '#fafaf9' }}>
                   {cleanBriefAlert(a.text)}
                 </span>
                 {href && (

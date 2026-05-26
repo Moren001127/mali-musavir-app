@@ -16,7 +16,7 @@ import { useQuery } from '@tanstack/react-query';
 import { Calendar, FileText, Receipt, FileCheck, Bell, Bookmark } from 'lucide-react';
 import { api } from '@/lib/api';
 
-const GOLD = '#8b6a2a';
+const GOLD = '#d4b876';
 const GOLD_SOFT = '#b8a06f';
 const ROSE = '#f5a6b8';
 const ROSE_SOFT = '#f0b4c0';
@@ -107,7 +107,7 @@ function urgencyTone(gunFark: number) {
   if (gunFark === 0) return { accent: '#fb7185', bg: 'rgba(245,166,184,0.085)', border: 'rgba(245,166,184,0.50)', pillBg: 'rgba(245,166,184,0.15)', pillBorder: 'rgba(245,166,184,0.56)', pillText: '#ffc4cf', label: 'Bugün' };
   if (gunFark === 1) return { accent: '#f5a6b8', bg: 'rgba(245,166,184,0.065)', border: 'rgba(245,166,184,0.42)', pillBg: 'rgba(245,166,184,0.13)', pillBorder: 'rgba(245,166,184,0.46)', pillText: '#f8c6d0', label: 'Yarın' };
   if (gunFark <= 3) return { accent: '#f0b4c0', bg: 'rgba(245,166,184,0.052)', border: 'rgba(245,166,184,0.34)', pillBg: 'rgba(245,166,184,0.11)', pillBorder: 'rgba(245,166,184,0.40)', pillText: ROSE, label: `${gunFark} gün` };
-  if (gunFark <= 5) return { accent: '#8b6a2a', bg: 'rgba(212,184,118,0.04)', border: 'rgba(212,184,118,0.28)', pillBg: 'rgba(139,106,42,0.10)', pillBorder: 'rgba(212,184,118,0.36)', pillText: '#e4c986', label: `${gunFark} gün` };
+  if (gunFark <= 5) return { accent: '#d4b876', bg: 'rgba(212,184,118,0.04)', border: 'rgba(212,184,118,0.28)', pillBg: 'rgba(212,184,118,0.10)', pillBorder: 'rgba(212,184,118,0.36)', pillText: '#e4c986', label: `${gunFark} gün` };
   if (gunFark <= 7) return { accent: '#c0a079', bg: 'rgba(192,160,121,0.035)', border: 'rgba(192,160,121,0.24)', pillBg: 'rgba(192,160,121,0.09)', pillBorder: 'rgba(192,160,121,0.30)', pillText: '#d8c19a', label: `${gunFark} gün` };
   return { accent: '#94a3b8', bg: 'rgba(148,163,184,0.04)', border: 'rgba(148,163,184,0.22)', pillBg: 'rgba(148,163,184,0.08)', pillBorder: 'rgba(148,163,184,0.28)', pillText: '#cbd5e1', label: `${gunFark} gün` };
 }
@@ -210,13 +210,13 @@ export function BuHaftaTakvim() {
     <div
       className="rounded-2xl p-4 sm:p-5"
       style={{
-        background: 'linear-gradient(180deg, rgba(245,166,184,0.052), rgba(31,24,18,0.04))',
+        background: 'linear-gradient(180deg, rgba(245,166,184,0.052), rgba(255,255,255,0.014))',
         border: '1px solid rgba(245,166,184,0.16)',
       }}
     >
       <div className="flex flex-wrap items-center gap-2.5 mb-3">
         <span className="w-[3px] h-4 rounded-sm" style={{ background: ROSE }} />
-        <h3 className="text-[14px] font-semibold flex items-center gap-2" style={{ color: '#1f1812' }}>
+        <h3 className="text-[14px] font-semibold flex items-center gap-2" style={{ color: '#fafaf9' }}>
           <Calendar size={14} style={{ color: ROSE_SOFT }} />
           Bu Ay Mali Takvim
         </h3>
@@ -231,7 +231,7 @@ export function BuHaftaTakvim() {
         <span
           className="text-[10px] font-bold uppercase tracking-wider px-2 py-0.5 rounded"
           title="e-Defter: aylık tercih için gelir vergisi mükelleflerinde ayın 10'u, kurumlar/diğer mükelleflerde ayın 14'ü · KDV2: ayın 25'i · MUHSGK/Damga/Konaklama: ayın 26'sı · KDV1: ayın 28'i · Geçici Vergi: Şubat/Mayıs/Ağustos/Kasım 17'si · Ay sonu: Turizm Payı"
-          style={{ background: 'rgba(31,24,18,0.045)', color: 'rgba(31,24,18,0.58)', border: '1px solid rgba(31,24,18,0.09)' }}
+          style={{ background: 'rgba(255,255,255,0.045)', color: 'rgba(250,250,249,0.58)', border: '1px solid rgba(255,255,255,0.09)' }}
         >
           {CURRENT_MONTH_LABEL}
         </span>
@@ -251,7 +251,7 @@ export function BuHaftaTakvim() {
             {noteCount} not
           </span>
         )}
-        <span className="ml-auto text-[11px]" style={{ color: 'rgba(31,24,18,0.45)' }}>
+        <span className="ml-auto text-[11px]" style={{ color: 'rgba(250,250,249,0.45)' }}>
           {monthStart.toLocaleDateString('tr-TR', { day: 'numeric', month: 'short' })} — {monthEnd.toLocaleDateString('tr-TR', { day: 'numeric', month: 'short' })}
         </span>
       </div>
@@ -265,8 +265,8 @@ export function BuHaftaTakvim() {
       </div>
 
       {rows.length === 0 ? (
-        <div className="rounded-2xl py-10 text-center" style={{ background: 'rgba(31,24,18,0.04)', border: '1px solid rgba(31,24,18,0.05)' }}>
-          <p className="text-[13px]" style={{ color: 'rgba(31,24,18,0.5)' }}>
+        <div className="rounded-2xl py-10 text-center" style={{ background: 'rgba(255,255,255,0.02)', border: '1px solid rgba(255,255,255,0.05)' }}>
+          <p className="text-[13px]" style={{ color: 'rgba(250,250,249,0.5)' }}>
             Kalan günlerde beyanname, bildirim veya e-Defter son tarihi yok.
           </p>
         </div>
@@ -299,17 +299,17 @@ function CalendarDayTile({ day }: { day: ReturnType<typeof buildCalendarDays>[nu
       className="min-h-[76px] rounded-xl p-2.5 transition-all"
       title={titleParts.join('\n')}
       style={{
-        background: hasDeadline ? tone.bg : hasTask ? 'rgba(96,165,250,0.07)' : 'rgba(31,24,18,0.04)',
-        border: hasDeadline ? `1px solid ${tone.border}` : hasTask ? '1px solid rgba(212,184,118,0.28)' : '1px solid rgba(31,24,18,0.05)',
-        boxShadow: hasDeadline || hasTask ? 'inset 0 1px 0 rgba(31,24,18,0.04)' : 'none',
+        background: hasDeadline ? tone.bg : hasTask ? 'rgba(96,165,250,0.07)' : 'rgba(255,255,255,0.016)',
+        border: hasDeadline ? `1px solid ${tone.border}` : hasTask ? '1px solid rgba(212,184,118,0.28)' : '1px solid rgba(255,255,255,0.05)',
+        boxShadow: hasDeadline || hasTask ? 'inset 0 1px 0 rgba(255,255,255,0.035)' : 'none',
       }}
     >
       <div className="flex items-start justify-between gap-2">
         <div>
-          <div className="text-[17px] leading-none tabular-nums" style={{ fontFamily: 'Fraunces, serif', fontWeight: 700, color: hasDeadline ? tone.pillText : hasTask ? '#93c5fd' : 'rgba(31,24,18,0.72)' }}>
+          <div className="text-[17px] leading-none tabular-nums" style={{ fontFamily: 'Fraunces, serif', fontWeight: 700, color: hasDeadline ? tone.pillText : hasTask ? '#93c5fd' : 'rgba(250,250,249,0.72)' }}>
             {day.date.getDate()}
           </div>
-          <div className="text-[9px] uppercase font-bold mt-1" style={{ color: 'rgba(31,24,18,0.38)' }}>{month}</div>
+          <div className="text-[9px] uppercase font-bold mt-1" style={{ color: 'rgba(250,250,249,0.38)' }}>{month}</div>
         </div>
         {(hasDeadline || hasTask) && (
           <div className="flex items-center gap-1">
@@ -357,13 +357,13 @@ function DeadlineRowItem({ row, dayTasks }: { row: DeadlineRow; dayTasks: string
             fontFamily: 'Fraunces, serif',
             fontSize: 22,
             fontWeight: 700,
-            color: '#1f1812',
+            color: '#fafaf9',
             letterSpacing: '-.03em',
           }}
         >
           {row.date.getDate()}
         </span>
-        <span className="text-[10px] uppercase font-bold tracking-wider mt-0.5" style={{ color: 'rgba(31,24,18,0.4)' }}>
+        <span className="text-[10px] uppercase font-bold tracking-wider mt-0.5" style={{ color: 'rgba(250,250,249,0.4)' }}>
           {MONTHS_TR[month]}
         </span>
       </div>
@@ -381,10 +381,10 @@ function DeadlineRowItem({ row, dayTasks }: { row: DeadlineRow; dayTasks: string
           <Icon size={15} />
         </div>
         <div className="min-w-0 flex-1">
-          <div className="text-[13px] font-semibold truncate" style={{ color: '#1f1812', letterSpacing: '-0.01em' }}>
+          <div className="text-[13px] font-semibold truncate" style={{ color: '#fafaf9', letterSpacing: '-0.01em' }}>
             {row.title}
           </div>
-          <div className="text-[11px] mt-0.5 truncate" style={{ color: 'rgba(31,24,18,0.5)' }}>
+          <div className="text-[11px] mt-0.5 truncate" style={{ color: 'rgba(250,250,249,0.5)' }}>
             {row.subtitle}
           </div>
         </div>
