@@ -212,13 +212,19 @@ export class WhatsAppBotController {
       .map((p) => this.normalize(p))
       .filter(Boolean);
 
+    this.logger.log(`[OwnerCheck] incoming=${normalized} envPhones=${ownerPhones.join('|')} match=${ownerPhones.includes(normalized)}`);
+
     if (ownerPhones.includes(normalized)) {
       const tenantSlug = process.env.MOREN_OWNER_TENANT_SLUG || process.env.DEFAULT_TENANT_SLUG || 'moren';
       const tenant = await this.prisma.tenant.findFirst({
         where: { slug: tenantSlug },
         select: { id: true, name: true, slug: true, phone: true },
       });
-      if (tenant) return tenant;
+      if (tenant) {
+        this.logger.log(`[OwnerCheck] tenant matched via env: ${tenant.id} (${tenant.slug})`);
+        return tenant;
+      }
+      this.logger.warn(`[OwnerCheck] env phone matched but tenant slug=${tenantSlug} not found`);
     }
 
     const integrationRows = await (this.prisma as any).integrationConnection.findMany({
@@ -302,15 +308,24 @@ export class WhatsAppBotController {
       },
     });
     if (existing) {
-      if (kind === 'owner' && existing.taxNumber !== taxNumber) {
+      // Owner: eski "Kayıtsız" kaydı bulunduysa veya isim hâlâ "Kayitsiz" prefix'iyle başlıyorsa
+      // tam olarak owner'a dönüştür (companyName + taxNumber + notes hepsi güncellensin)
+      const isStaleUnknown =
+        kind === 'owner' &&
+        (
+          existing.taxNumber !== taxNumber ||
+          /^(Kayitsiz|Kayıtsız)\s+WhatsApp/i.test(String(existing.companyName || ''))
+        );
+
+      if (isStaleUnknown) {
         return this.prisma.taxpayer.update({
           where: { id: existing.id },
           data: {
-            companyName: displayName || 'Ofis Sahibi WhatsApp',
+            companyName: displayName || 'OFİS SAHİBİ',
             taxNumber,
             taxOffice: 'WHATSAPP',
             notes: 'Mesaj Merkezi icin ofis sahibi WhatsApp kaydina donusturuldu.',
-            isActive: false,
+            isActive: true,  // ✅ Owner aktif olmalı (mesaj merkezinde görünmesi için)
           },
           select: {
             id: true,
@@ -330,7 +345,7 @@ export class WhatsAppBotController {
 
     const companyName =
       kind === 'owner'
-        ? (displayName || 'Ofis Sahibi WhatsApp')
+        ? (displayName || 'OFİS SAHİBİ')
         : `Kayitsiz WhatsApp ${normalized || phone}`;
 
     return this.prisma.taxpayer.create({
@@ -346,7 +361,8 @@ export class WhatsAppBotController {
         notes: kind === 'owner'
           ? 'Mesaj Merkezi icin otomatik olusturulan ofis sahibi WhatsApp kaydi.'
           : 'Mesaj Merkezi icin otomatik olusturulan kayitsiz WhatsApp kisi kaydi.',
-        isActive: false,
+        // ✅ Owner aktif olmalı (mesaj merkezi üst sıra). Unknown pasif kalır.
+        isActive: kind === 'owner',
         whatsappEvrakTalep: false,
         whatsappEvrakGeldi: false,
       },
