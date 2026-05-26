@@ -34,6 +34,7 @@ import { beyannameTakipApi, BEYAN_ETIKETLER } from '@/lib/beyanname-takip';
 import type { OzetRow, BeyanTipi, DonemTuru } from '@/lib/beyanname-takip';
 import Link from 'next/link';
 import { ReactNode, useEffect, useMemo, useState } from 'react';
+import { createPortal } from 'react-dom';
 import { useMe } from '@/hooks/useAuth';
 import { KritikUyariStatCard } from '@/components/dashboard/KritikUyariStatCard';
 import { BrifingKart } from '@/components/dashboard/BrifingKart';
@@ -309,21 +310,19 @@ function ToplubeyannamePanel() {
 
   return (
     <div>
-      <div className="px-5 py-4" style={{ borderBottom: '1px solid rgba(255,255,255,0.05)' }}>
-        <div className="flex flex-wrap items-start justify-between gap-4">
-          <div className="min-w-0">
-            <div className="flex items-center gap-2.5">
-              <span className="flex h-9 w-9 items-center justify-center rounded-lg" style={{ background: 'rgba(212,184,118,0.10)', border: '1px solid rgba(212,184,118,0.18)', color: GOLD }}>
-                <FileCheck2 size={17} />
-              </span>
-              <div>
-                <h3 className="text-[18px] font-semibold leading-tight" style={{ color: '#fafaf9' }}>Beyanname Durum Takibi</h3>
-                <p className="mt-1 text-[12.5px]" style={{ color: 'rgba(250,250,249,0.48)' }}>{modeLabel} - {selectedDonem} - {modeNote}</p>
-              </div>
+      <div className="px-4 py-3" style={{ borderBottom: '1px solid rgba(255,255,255,0.05)' }}>
+        <div className="grid gap-3 xl:grid-cols-[minmax(300px,1fr)_auto] xl:items-center">
+          <div className="flex min-w-0 items-center gap-2.5">
+            <span className="flex h-8 w-8 shrink-0 items-center justify-center rounded-lg" style={{ background: 'rgba(212,184,118,0.10)', border: '1px solid rgba(212,184,118,0.18)', color: GOLD }}>
+              <FileCheck2 size={15} />
+            </span>
+            <div className="min-w-0">
+              <h3 className="truncate text-[16px] font-semibold leading-tight" style={{ color: '#fafaf9' }}>Beyanname Durum Takibi</h3>
+              <p className="mt-0.5 truncate text-[11.5px]" style={{ color: 'rgba(250,250,249,0.48)' }}>{modeLabel} - {selectedDonem} - {modeNote}</p>
             </div>
           </div>
-          <div className="flex flex-wrap items-center justify-end gap-2">
-            <div className="inline-flex rounded-lg p-1" style={{ background: 'rgba(255,255,255,0.035)', border: '1px solid rgba(255,255,255,0.08)' }}>
+          <div className="flex flex-wrap items-center justify-start gap-2 xl:justify-end">
+            <div className="inline-flex rounded-md p-0.5" style={{ background: 'rgba(255,255,255,0.035)', border: '1px solid rgba(255,255,255,0.08)' }}>
               {([
                 ['VERILME', 'Verilme dönemi'],
                 ['VERGI', 'Vergi dönemi'],
@@ -332,7 +331,7 @@ function ToplubeyannamePanel() {
                   key={value}
                   type="button"
                   onClick={() => setDonemTuru(value)}
-                  className="rounded-md px-3 py-1.5 text-[12px] font-semibold transition"
+                  className="rounded-md px-2.5 py-1 text-[11.5px] font-semibold transition"
                   style={{
                     background: donemTuru === value ? 'rgba(212,184,118,0.16)' : 'transparent',
                     color: donemTuru === value ? GOLD : 'rgba(250,250,249,0.58)',
@@ -346,7 +345,7 @@ function ToplubeyannamePanel() {
             <select
               value={donem}
               onChange={(e) => setDonem(e.target.value)}
-              className="min-h-[36px] cursor-pointer rounded-lg px-3 text-[13px] font-semibold outline-none"
+              className="h-9 w-[150px] cursor-pointer rounded-lg px-3 text-[12.5px] font-semibold outline-none"
               style={{ background: 'rgba(255,255,255,0.04)', border: '1px solid rgba(184,160,111,0.25)', color: '#fafaf9' }}
             >
               {donemOptions.map((o) => (
@@ -355,14 +354,14 @@ function ToplubeyannamePanel() {
             </select>
             <button
               onClick={() => refetch()}
-              className="inline-flex min-h-[36px] items-center gap-1.5 rounded-lg px-3 text-[12px] font-semibold transition-all"
+              className="inline-flex h-9 items-center gap-1.5 rounded-lg px-3 text-[12px] font-semibold transition-all"
               style={{ background: 'rgba(184,160,111,0.12)', border: '1px solid rgba(184,160,111,0.3)', color: GOLD }}
             >
               <SearchIcon size={13} /> Sorgula
             </button>
             <Link
               href="/panel/ayarlar/beyanname-takip"
-              className="inline-flex min-h-[36px] items-center gap-1.5 rounded-lg px-3 text-[12px] font-semibold transition-all"
+              className="inline-flex h-9 items-center gap-1.5 rounded-lg px-3 text-[12px] font-semibold transition-all"
               style={{ background: 'rgba(255,255,255,0.03)', border: '1px solid rgba(255,255,255,0.08)', color: 'rgba(250,250,249,0.75)' }}
             >
               <Settings size={13} /> Ayarlar
@@ -401,7 +400,7 @@ function ToplubeyannamePanel() {
       )}
 
       {yardimciRows.length > 0 && (
-        <BeyanCompactTable title="Bildirge ve E-Defter" rows={yardimciRows} donem={selectedDonem} onNumberClick={openModal} compact />
+        <YardimciBeyanGrid rows={yardimciRows} donem={selectedDonem} onNumberClick={openModal} />
       )}
 
       {modal && <BeyanDetayModal state={modal} onClose={() => setModal(null)} />}
@@ -414,12 +413,14 @@ function BeyanCompactTable({
   rows,
   donem,
   onNumberClick,
+  onayLabel = 'Onaylanan',
   compact,
 }: {
   title: string;
   rows: OzetRow[];
   donem: string;
   onNumberClick: (tip: BeyanTipi, filter: BeyanFilter) => void;
+  onayLabel?: string;
   compact?: boolean;
 }) {
   return (
@@ -438,7 +439,7 @@ function BeyanCompactTable({
             <tr style={{ background: 'rgba(255,255,255,0.035)', borderBottom: '1px solid rgba(255,255,255,0.07)' }}>
               <BeyanHeaderCell align="left">Beyanname</BeyanHeaderCell>
               <BeyanHeaderCell>Takip</BeyanHeaderCell>
-              <BeyanHeaderCell>Onaylanan</BeyanHeaderCell>
+              <BeyanHeaderCell>{onayLabel}</BeyanHeaderCell>
               <BeyanHeaderCell>Bekleyen</BeyanHeaderCell>
               <BeyanHeaderCell>Hatalı</BeyanHeaderCell>
               <BeyanHeaderCell>Kalan</BeyanHeaderCell>
@@ -453,6 +454,100 @@ function BeyanCompactTable({
         </table>
       </div>
     </div>
+  );
+}
+
+function YardimciBeyanGrid({
+  rows,
+  donem,
+  onNumberClick,
+}: {
+  rows: OzetRow[];
+  donem: string;
+  onNumberClick: (tip: BeyanTipi, filter: BeyanFilter) => void;
+}) {
+  return (
+    <div className="px-4 pb-3">
+      <div className="mb-2.5 flex items-center justify-between gap-3">
+        <div className="text-[11px] font-bold uppercase tracking-[0.14em]" style={{ color: 'rgba(250,250,249,0.48)' }}>
+          Bildirge ve E-Defter
+        </div>
+        <div className="text-[11px] font-semibold tabular-nums" style={{ color: 'rgba(250,250,249,0.5)', fontFamily: 'Inter, ui-sans-serif, system-ui, sans-serif' }}>
+          {donem}
+        </div>
+      </div>
+      <div className="grid grid-cols-1 gap-3 lg:grid-cols-2">
+        {rows.map((row) => (
+          <YardimciBeyanCard key={row.beyanTipi} row={row} donem={donem} onNumberClick={onNumberClick} />
+        ))}
+      </div>
+    </div>
+  );
+}
+
+function YardimciBeyanCard({
+  row,
+  donem,
+  onNumberClick,
+}: {
+  row: OzetRow;
+  donem: string;
+  onNumberClick: (tip: BeyanTipi, filter: BeyanFilter) => void;
+}) {
+  const label = BEYAN_ETIKETLER[row.beyanTipi];
+  const pct = Math.max(0, Math.min(100, row.yuzde));
+  const done = row.kalan <= 0 && row.hatali <= 0;
+  const barColor = row.hatali > 0 ? '#f472b6' : done ? '#22c55e' : TRACK_BLUE;
+  const statusLabel = row.hatali > 0 ? 'Hata var' : done ? 'Tamam' : 'Devam ediyor';
+  const onayText = row.beyanTipi === 'EDEFTER' ? 'Verilen' : 'Onaylanan';
+
+  return (
+    <div className="overflow-hidden rounded-xl" style={{ background: 'rgba(255,255,255,0.018)', border: '1px solid rgba(125,211,252,0.18)' }}>
+      <div className="grid grid-cols-[minmax(140px,1fr)_82px_92px_82px_minmax(150px,1fr)] items-center gap-0 border-b border-white/[0.06] px-3 py-2">
+        <button
+          type="button"
+          onClick={() => onNumberClick(row.beyanTipi, 'toplam')}
+          className="truncate text-left text-[13px] font-bold transition hover:underline decoration-dotted underline-offset-4"
+          style={{ color: GOLD }}
+          title="Mükellef listesini göster"
+        >
+          {label} <span className="font-semibold opacity-55">({donem})</span>
+        </button>
+        <YardimciBeyanNumber label="Toplam" value={row.toplam} color="#fafaf9" onClick={() => onNumberClick(row.beyanTipi, 'toplam')} />
+        <YardimciBeyanNumber label={onayText} value={row.onaylanan} color="#22c55e" onClick={() => onNumberClick(row.beyanTipi, 'onaylanan')} />
+        <YardimciBeyanNumber label="Kalan" value={row.kalan} color={row.kalan > 0 ? TRACK_BLUE : '#22c55e'} onClick={() => onNumberClick(row.beyanTipi, 'kalan')} />
+        <div className="min-w-0 pl-3">
+          <div className="flex items-center justify-between gap-2">
+            <span className="truncate text-[11px] font-bold" style={{ color: barColor }}>{statusLabel}</span>
+            <span className="text-[11px] font-bold tabular-nums" style={{ color: barColor, fontFamily: 'Inter, ui-sans-serif, system-ui, sans-serif' }}>{pct}%</span>
+          </div>
+          <div className="mt-1 h-1.5 overflow-hidden rounded-full" style={{ background: 'rgba(255,255,255,0.06)' }}>
+            <div
+              className="h-full rounded-full transition-all duration-500"
+              style={{ width: `${pct}%`, background: `linear-gradient(90deg, ${barColor}99, ${barColor})` }}
+            />
+          </div>
+        </div>
+      </div>
+    </div>
+  );
+}
+
+function YardimciBeyanNumber({ label, value, color, onClick }: { label: string; value: number; color: string; onClick: () => void }) {
+  const clickable = value > 0;
+  return (
+    <button
+      type="button"
+      disabled={!clickable}
+      onClick={clickable ? onClick : undefined}
+      className={`min-w-0 px-2 text-right transition ${clickable ? 'hover:bg-white/[0.055] hover:underline decoration-dotted underline-offset-4' : ''}`}
+      title={clickable ? 'Mükellef listesini göster' : undefined}
+    >
+      <div className="truncate text-[9.5px] font-black uppercase tracking-[0.08em]" style={{ color: 'rgba(250,250,249,0.46)' }}>{label}</div>
+      <div className="mt-0.5 text-[14px] font-bold leading-none tabular-nums" style={{ color, fontFamily: 'Inter, ui-sans-serif, system-ui, sans-serif', letterSpacing: 0 }}>
+        {value}
+      </div>
+    </button>
   );
 }
 
@@ -889,11 +984,16 @@ function MiniTable({ title, row, donem, accent, onNumberClick }: { title: string
 // BEYAN DETAY MODAL — rakama tıklanınca açılır, filtreye göre mükellef listesi
 // ══════════════════════════════════════════════════════════
 function BeyanDetayModal({ state, onClose }: { state: { beyanTipi: BeyanTipi; filter: BeyanFilter; donem: string; donemTuru: DonemTuru }; onClose: () => void }) {
+  const [mounted, setMounted] = useState(false);
   const { data: detay, isLoading } = useQuery({
     queryKey: ['beyanname-detay', state.donem, state.donemTuru, state.beyanTipi, state.filter],
     queryFn: () => beyannameTakipApi.listDetay(state.donem, state.donemTuru),
     staleTime: 2 * 60 * 1000,
   });
+
+  useEffect(() => {
+    setMounted(true);
+  }, []);
 
   const filterLabels: Record<BeyanFilter, string> = {
     toplam: 'Takipteki Mükellefler',
@@ -981,9 +1081,9 @@ function BeyanDetayModal({ state, onClose }: { state: { beyanTipi: BeyanTipi; fi
       ? 'Bu grupta verilmemiş beyanname yok.'
       : 'Bu kategoride mükellef yok.';
 
-  return (
+  const modal = (
     <div
-      className="fixed inset-0 z-50 flex items-center justify-center p-4"
+      className="fixed inset-0 z-[9999] flex items-center justify-center p-4"
       style={{ background: 'rgba(0,0,0,0.75)', backdropFilter: 'blur(4px)' }}
       onClick={onClose}
     >
@@ -1085,6 +1185,8 @@ function BeyanDetayModal({ state, onClose }: { state: { beyanTipi: BeyanTipi; fi
       </div>
     </div>
   );
+
+  return mounted ? createPortal(modal, document.body) : null;
 }
 
 // ── Aylık İşlem Trendi — Bar Chart
