@@ -274,27 +274,14 @@ function DashboardSectionBridge({
     },
   }[tone];
   return (
-    <div
-      className="relative my-4 overflow-hidden rounded-2xl px-4 py-3 sm:px-6"
-      style={{
-        background: `linear-gradient(180deg, rgba(1,1,1,0.98), rgba(0,0,0,0.92)), linear-gradient(90deg, ${tones.bg}, rgba(255,255,255,0.016) 50%, ${tones.bg})`,
-        border: `1px solid ${tones.border}`,
-        boxShadow: '0 22px 46px rgba(0,0,0,0.34), inset 0 1px 0 rgba(255,255,255,0.026)',
-      }}
-    >
-      <div className="pointer-events-none absolute inset-x-0 top-0 h-px" style={{ background: `linear-gradient(90deg, transparent, ${tones.accent}66, transparent)` }} />
-      <div className="pointer-events-none absolute inset-x-0 bottom-0 h-px" style={{ background: `linear-gradient(90deg, transparent, ${tones.accent2}55, transparent)` }} />
-      <div className="pointer-events-none absolute left-0 top-1/2 h-10 w-1 -translate-y-1/2 rounded-r-full" style={{ background: `linear-gradient(180deg, ${tones.accent}, ${tones.accent2})` }} />
-      <div className="pointer-events-none absolute right-0 top-1/2 h-10 w-1 -translate-y-1/2 rounded-l-full" style={{ background: `linear-gradient(180deg, ${tones.accent2}, ${tones.accent})` }} />
-
-      <div className="flex flex-col gap-3 sm:flex-row sm:items-center">
-        <div className="h-[3px] flex-1 rounded-full" style={{ background: `linear-gradient(90deg, transparent, ${tones.accent}, ${tones.accent2}88)` }} />
+    <div className="relative my-5 flex items-center gap-4 px-2 sm:px-6">
+      <div className="h-[2px] flex-1 rounded-full" style={{ background: `linear-gradient(90deg, transparent, ${tones.accent}88, ${tones.accent2}55)` }} />
         <div
           className="flex min-w-0 flex-wrap items-center justify-center gap-2 rounded-2xl px-3 py-2 sm:flex-nowrap"
           style={{
-            background: 'rgba(6,6,6,0.9)',
+            background: 'rgba(3,3,3,0.92)',
             border: `1px solid ${tones.border}`,
-            boxShadow: `0 0 0 5px rgba(0,0,0,0.26), 0 0 28px ${tones.accent}1f`,
+            boxShadow: `0 10px 24px rgba(0,0,0,0.26), 0 0 0 4px rgba(0,0,0,0.18)`,
           }}
         >
           <span className="rounded-xl px-3 py-1.5 text-[10px] font-black uppercase tracking-[.14em]" style={{ background: `${tones.bg}`, color: tones.text, border: `1px solid ${tones.border}` }}>
@@ -307,8 +294,7 @@ function DashboardSectionBridge({
             {to}
           </span>
         </div>
-        <div className="h-[3px] flex-1 rounded-full" style={{ background: `linear-gradient(90deg, ${tones.accent}88, ${tones.accent2}, transparent)` }} />
-      </div>
+      <div className="h-[2px] flex-1 rounded-full" style={{ background: `linear-gradient(90deg, ${tones.accent2}55, ${tones.accent}88, transparent)` }} />
     </div>
   );
 }
@@ -1908,14 +1894,7 @@ export default function DashboardPage() {
         </div>
       )}
 
-      <div
-        className="flex items-end justify-between rounded-2xl px-4 py-3"
-        style={{
-          background: 'linear-gradient(135deg, rgba(212,184,118,0.055), rgba(8,18,18,0.72))',
-          border: '1px solid rgba(212,184,118,0.12)',
-          boxShadow: '0 14px 34px rgba(0,0,0,0.14)',
-        }}
-      >
+      <div className="flex flex-col gap-3 px-0 py-1 sm:flex-row sm:items-end sm:justify-between">
         <div>
           <div className="mb-1.5 flex items-center gap-2.5"><span className="w-[26px] h-px" style={{ background: GOLD }} /><span className="text-[9.5px] uppercase font-bold tracking-[.18em]" style={{ color: '#b8a06f' }}>Gösterge</span></div>
           <h1 style={{ fontFamily: 'Fraunces, serif', fontSize: 28, fontWeight: 650, color: '#fafaf9', letterSpacing: '-.02em' }}>Ofis Paneli</h1>
