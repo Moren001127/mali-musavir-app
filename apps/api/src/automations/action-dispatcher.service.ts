@@ -6,6 +6,7 @@ import { WhatsAppService } from '../whatsapp/whatsapp.service';
 import { WhatsAppQrService } from '../whatsapp-qr/whatsapp-qr.service';
 import { FisYazdirmaService } from '../fis-yazdirma/fis-yazdirma.service';
 import { MihsapService } from '../mihsap/mihsap.service';
+import { EmailService } from '../email/email.service';
 import { ACTION_BY_NAME } from './action-catalog';
 
 /**
@@ -35,6 +36,7 @@ export class ActionDispatcherService {
     private readonly whatsappQr: WhatsAppQrService,
     private readonly fisYazdirma: FisYazdirmaService,
     private readonly mihsap: MihsapService,
+    private readonly email: EmailService,
   ) {}
 
   /**
@@ -65,9 +67,9 @@ export class ActionDispatcherService {
     switch (toolName) {
       // ---------------- İLETİŞİM ----------------
       case 'send_whatsapp_template':
-        return this.sendWhatsAppTemplate(args);
+        return this.sendWhatsAppTemplate(args, ctx);
       case 'send_whatsapp_freeform':
-        return this.sendWhatsAppFreeform(args);
+        return this.sendWhatsAppFreeform(args, ctx);
       case 'send_whatsapp_qr':
         return this.sendWhatsAppQr(args, ctx);
       case 'send_email':
@@ -120,7 +122,7 @@ export class ActionDispatcherService {
   // İLETİŞİM AKSİYONLARI
   // ---------------------------------------------------------------
 
-  private async sendWhatsAppTemplate(args: any) {
+  private async sendWhatsAppTemplate(args: any, ctx: { tenantId: string }) {
     const phone = String(args.to ?? '');
     const templateName = String(args.templateName ?? '');
     const variables: Record<string, string> = args.variables ?? {};
@@ -129,14 +131,14 @@ export class ActionDispatcherService {
     const ordered = Object.keys(variables)
       .sort((a, b) => Number(a) - Number(b))
       .map((k) => String(variables[k]));
-    const ok = await this.whatsapp.sendTemplate(phone, ordered, templateName || undefined);
+    const ok = await this.whatsapp.sendTemplate(phone, ordered, templateName || undefined, ctx.tenantId);
     return { sent: ok, to: phone, template: templateName };
   }
 
-  private async sendWhatsAppFreeform(args: any) {
+  private async sendWhatsAppFreeform(args: any, ctx: { tenantId: string }) {
     const phone = String(args.to ?? '');
     const message = String(args.message ?? '').slice(0, 4096);
-    const ok = await this.whatsapp.sendMessage(phone, message);
+    const ok = await this.whatsapp.sendMessage(phone, message, ctx.tenantId);
     return { sent: ok, to: phone };
   }
 
@@ -148,25 +150,17 @@ export class ActionDispatcherService {
   }
 
   private async sendEmail(args: any, ctx: { tenantId: string }) {
-    // Mevcut nodemailer entegrasyonu için ayrı bir Email servisi yok — burada
-    // doğrudan nodemailer kullanıyoruz. SMTP env değişkenleri zaten kullanımda.
-    const nodemailer = await import('nodemailer');
-    const transport = nodemailer.createTransport({
-      host: process.env.SMTP_HOST,
-      port: Number(process.env.SMTP_PORT ?? 587),
-      secure: process.env.SMTP_SECURE === 'true',
-      auth:
-        process.env.SMTP_USER && process.env.SMTP_PASS
-          ? { user: process.env.SMTP_USER, pass: process.env.SMTP_PASS }
-          : undefined,
-    });
-    const info = await transport.sendMail({
-      from: process.env.SMTP_FROM || 'noreply@morenmusavirlik.com',
-      to: String(args.to ?? ''),
-      subject: String(args.subject ?? ''),
-      [args.isHtml ? 'html' : 'text']: String(args.body ?? ''),
-    });
-    return { sent: true, messageId: info.messageId, to: args.to };
+    // Merkezi EmailService — tenant'a ozel SMTP config'i (DB) veya env fallback
+    const result = await this.email.send(
+      {
+        to: String(args.to ?? ''),
+        subject: String(args.subject ?? ''),
+        html: args.isHtml ? String(args.body ?? '') : undefined,
+        text: !args.isHtml ? String(args.body ?? '') : undefined,
+      },
+      ctx.tenantId,
+    );
+    return { sent: result.sent, messageId: result.messageId, to: args.to };
   }
 
   private async sendSms(args: any, _ctx: { tenantId: string }) {

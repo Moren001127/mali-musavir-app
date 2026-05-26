@@ -25,8 +25,8 @@ export class WhatsAppController {
   ) {}
 
   @Get('status')
-  getStatus() {
-    return this.whatsappService.getStatus();
+  getStatus(@Req() req: any) {
+    return this.whatsappService.getStatus(req.user.tenantId);
   }
 
   @Get('inbox')
@@ -93,8 +93,8 @@ export class WhatsAppController {
       let delivered = false;
       for (const phone of row.phones) {
         const ok = templateName
-          ? await this.whatsappService.sendTemplate(phone, [row.ad, preview.donem], templateName)
-          : await this.whatsappService.sendMessage(phone, row.mesaj);
+          ? await this.whatsappService.sendTemplate(phone, [row.ad, preview.donem], templateName, req.user.tenantId)
+          : await this.whatsappService.sendMessage(phone, row.mesaj, req.user.tenantId);
         delivered = delivered || ok;
       }
 
@@ -144,7 +144,7 @@ export class WhatsAppController {
       };
     });
     return {
-      whatsapp: this.whatsappService.getStatus(),
+      whatsapp: await this.whatsappService.getStatus(req.user.tenantId),
       mesaj: message,
       template: body?.useTemplate ? (body?.templateName || process.env.WHATSAPP_PORTAL_TEMPLATE_NAME || process.env.WHATSAPP_TEMPLATE_NAME || null) : null,
       gonderilecek: rows.filter((r) => r.gonderilecek).length,
@@ -161,8 +161,8 @@ export class WhatsAppController {
     for (const row of preview.rows as any[]) {
       if (!row.gonderilecek) continue;
       const ok = preview.template
-        ? await this.whatsappService.sendTemplate(row.phone, [row.ad, preview.mesaj], preview.template)
-        : await this.whatsappService.sendMessage(row.phone, preview.mesaj);
+        ? await this.whatsappService.sendTemplate(row.phone, [row.ad, preview.mesaj], preview.template, req.user.tenantId)
+        : await this.whatsappService.sendMessage(row.phone, preview.mesaj, req.user.tenantId);
       if (ok) {
         basarili++;
         await this.prisma.communicationLog.create({
@@ -198,8 +198,8 @@ export class WhatsAppController {
     for (const phone of rawPhones) {
       const templateName = body?.templateName || process.env.WHATSAPP_OWNER_ALERT_TEMPLATE_NAME || '';
       const ok = templateName
-        ? await this.whatsappService.sendTemplate(phone, [tenant?.name || 'Moren', message], templateName)
-        : await this.whatsappService.sendMessage(phone, message);
+        ? await this.whatsappService.sendTemplate(phone, [tenant?.name || 'Moren', message], templateName, req.user.tenantId)
+        : await this.whatsappService.sendMessage(phone, message, req.user.tenantId);
       ok ? basarili++ : hatali++;
     }
     return { ok: basarili > 0, basarili, hatali, hedef: rawPhones.length };

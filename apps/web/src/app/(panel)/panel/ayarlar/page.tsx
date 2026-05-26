@@ -13,7 +13,9 @@ import {
   FileCheck2,
   KeyRound,
   Loader2,
+  Mail,
   MessageSquareText,
+  Plug,
   Save,
   Send,
   Settings2,
@@ -228,6 +230,12 @@ export default function AyarlarPage() {
       title: 'Kullanıcılar & Erişim',
       text: 'Personel hesapları ve roller',
       icon: UsersRound,
+    },
+    {
+      href: '/panel/ayarlar/entegrasyonlar',
+      title: 'Entegrasyonlar (E-posta + WhatsApp)',
+      text: 'SMTP, WhatsApp Cloud API ayarları ve test',
+      icon: Plug,
     },
     {
       href: '/panel/ayarlar/beyanname-takip',

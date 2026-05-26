@@ -37,6 +37,7 @@ import { EDefterControlModule } from './edefter-control/edefter-control.module';
 import { PortalAutomationModule } from './portal-automation/portal-automation.module';
 import { AutomationsModule } from './automations/automations.module';
 import { OfficeChatModule } from './office-chat/office-chat.module';
+import { EmailModule } from './email/email.module';
 import { ReminderCron } from './schedule/reminder.cron';
 import { HgsCron } from './schedule/hgs.cron';
 
@@ -80,6 +81,7 @@ import { HgsCron } from './schedule/hgs.cron';
     PortalAutomationModule,
     AutomationsModule,
     OfficeChatModule,
+    EmailModule,
   ],
   providers: [ReminderCron, HgsCron],
 })

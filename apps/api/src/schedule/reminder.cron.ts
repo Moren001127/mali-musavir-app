@@ -91,8 +91,8 @@ export class ReminderCron {
         let anyDelivered = false;
         for (const phone of phones) {
           const ok = process.env.WHATSAPP_TEMPLATE_NAME
-            ? await this.whatsapp.sendTemplate(phone, [ad, donem])
-            : await this.whatsapp.sendMessage(phone, renderedMessage);
+            ? await this.whatsapp.sendTemplate(phone, [ad, donem], undefined, taxpayer.tenantId)
+            : await this.whatsapp.sendMessage(phone, renderedMessage, taxpayer.tenantId);
           if (ok) anyDelivered = true;
         }
 
