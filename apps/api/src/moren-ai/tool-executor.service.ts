@@ -1,6 +1,7 @@
 import { Injectable, Logger } from '@nestjs/common';
 import { PrismaService } from '../prisma/prisma.service';
 import { MIHSAP_FATURA_ACTIONS, isMihsapFaturaCommandAgent } from '../agent-events/agent-registry';
+import { randomBytes } from 'crypto';
 
 const OFFICIAL_SOURCE_DOMAINS = [
   'gib.gov.tr',
@@ -36,12 +37,17 @@ export class ToolExecutorService {
   async execute(
     name: string,
     input: any,
-    ctx: { tenantId: string; userId?: string | null },
+    ctx: { tenantId: string; userId?: string | null; taxpayerId?: string | null },
   ): Promise<any> {
     try {
       switch (name) {
         case 'list_taxpayers':      return this.listTaxpayers(input, ctx);
         case 'get_taxpayer':        return this.getTaxpayer(input, ctx);
+        case 'get_my_profile':      return this.getMyProfile(ctx);
+        case 'get_my_work_status':  return this.getMyWorkStatus(input, ctx);
+        case 'get_my_documents':    return this.getMyDocuments(input, ctx);
+        case 'get_my_open_tasks':   return this.getMyOpenTasks(input, ctx);
+        case 'get_my_recent_messages': return this.getMyRecentMessages(input, ctx);
         case 'list_taxpayers_monthly_status': return this.listTaxpayersMonthlyStatus(input, ctx);
         case 'list_mizan_periods':  return this.listMizanPeriods(input, ctx);
         case 'get_mizan':           return this.getMizan(input, ctx);
@@ -103,6 +109,118 @@ export class ToolExecutorService {
   private displayName(t: { companyName?: string | null; firstName?: string | null; lastName?: string | null }) {
     if (t.companyName) return t.companyName;
     return `${t.firstName || ''} ${t.lastName || ''}`.trim() || '(isimsiz)';
+  }
+
+  private async scopedTaxpayer(ctx: { tenantId: string; taxpayerId?: string | null }) {
+    if (!ctx.taxpayerId) return null;
+    return this.prisma.taxpayer.findFirst({
+      where: { id: ctx.taxpayerId, tenantId: ctx.tenantId },
+      select: {
+        id: true,
+        type: true,
+        companyName: true,
+        firstName: true,
+        lastName: true,
+        taxNumber: true,
+        taxOffice: true,
+        isActive: true,
+      },
+    });
+  }
+
+  private async getMyProfile(ctx: { tenantId: string; taxpayerId?: string | null }) {
+    const taxpayer = await this.scopedTaxpayer(ctx);
+    if (!taxpayer) return { error: 'Aktif mukellef baglami yok.' };
+    return {
+      id: taxpayer.id,
+      ad: this.displayName(taxpayer),
+      tip: taxpayer.type,
+      vkn: taxpayer.taxNumber,
+      vergiDairesi: taxpayer.taxOffice,
+      aktif: taxpayer.isActive,
+    };
+  }
+
+  private async getMyWorkStatus(input: any, ctx: { tenantId: string; taxpayerId?: string | null }) {
+    const taxpayer = await this.scopedTaxpayer(ctx);
+    if (!taxpayer) return { error: 'Aktif mukellef baglami yok.' };
+    return this.getTaxpayerWorkStatus({ ...input, taxpayerId: taxpayer.id }, ctx);
+  }
+
+  private async getMyDocuments(input: any, ctx: { tenantId: string; taxpayerId?: string | null }) {
+    const taxpayer = await this.scopedTaxpayer(ctx);
+    if (!taxpayer) return { error: 'Aktif mukellef baglami yok.' };
+    const limit = Math.min(Math.max(Number(input?.limit) || 10, 1), 20);
+    const docs = await this.prisma.document.findMany({
+      where: { taxpayerId: taxpayer.id, isDeleted: false },
+      orderBy: { updatedAt: 'desc' },
+      take: limit,
+      select: {
+        id: true,
+        title: true,
+        category: true,
+        mimeType: true,
+        sizeBytes: true,
+        updatedAt: true,
+      },
+    });
+    return {
+      count: docs.length,
+      documents: docs.map((d) => ({
+        id: d.id,
+        baslik: d.title,
+        kategori: d.category,
+        mimeType: d.mimeType,
+        boyutKb: Math.round((d.sizeBytes || 0) / 1024),
+        tarih: d.updatedAt.toISOString().slice(0, 10),
+      })),
+    };
+  }
+
+  private async getMyOpenTasks(input: any, ctx: { tenantId: string; taxpayerId?: string | null }) {
+    const taxpayer = await this.scopedTaxpayer(ctx);
+    if (!taxpayer) return { error: 'Aktif mukellef baglami yok.' };
+    const limit = Math.min(Math.max(Number(input?.limit) || 8, 1), 20);
+    const reminders = await this.prisma.taskReminder.findMany({
+      where: { taxpayerId: taxpayer.id, isCompleted: false },
+      orderBy: { dueDate: 'asc' },
+      take: limit,
+      select: { id: true, title: true, description: true, dueDate: true },
+    });
+    return {
+      count: reminders.length,
+      tasks: reminders.map((task) => ({
+        id: task.id,
+        baslik: task.title,
+        aciklama: task.description,
+        tarih: task.dueDate?.toISOString().slice(0, 10),
+      })),
+    };
+  }
+
+  private async getMyRecentMessages(input: any, ctx: { tenantId: string; taxpayerId?: string | null }) {
+    const taxpayer = await this.scopedTaxpayer(ctx);
+    if (!taxpayer) return { error: 'Aktif mukellef baglami yok.' };
+    const limit = Math.min(Math.max(Number(input?.limit) || 8, 1), 20);
+    const logs = await this.prisma.communicationLog.findMany({
+      where: { taxpayerId: taxpayer.id, channel: 'WHATSAPP' },
+      orderBy: { occurredAt: 'desc' },
+      take: limit,
+      select: { id: true, subject: true, content: true, occurredAt: true },
+    });
+    return {
+      count: logs.length,
+      messages: logs.reverse().map((log) => ({
+        id: log.id,
+        direction: /gelen/i.test(log.subject || '') ? 'incoming' : 'outgoing',
+        text: String(log.content || '')
+          .replace(/\[\[document:([^|\]]+)\|([^\]]+)\]\]/g, '[dosya: $2]')
+          .replace(/\s+/g, ' ')
+          .trim()
+          .slice(0, 500),
+        occurredAt: log.occurredAt,
+      })),
+    };
   }
 
   private normalizeSearchText(value: any): string {
@@ -1554,17 +1672,74 @@ export class ToolExecutorService {
     };
   }
 
+  private async writeOwnerApprovalAudit(
+    ctx: { tenantId: string; userId?: string | null },
+    action: string,
+    resourceId: string | null,
+    data: any,
+  ) {
+    await this.prisma.auditLog.create({
+      data: {
+        tenantId: ctx.tenantId,
+        userId: ctx.userId || null,
+        action,
+        resource: 'owner_approval_request',
+        resourceId,
+        newData: data,
+      },
+    }).catch(() => null);
+  }
+
+  private extractPreviewId(value: any): string | null {
+    const raw = String(value || '').trim().toLocaleUpperCase('tr-TR');
+    const match = raw.match(/#?(PRV-[A-F0-9]{4})\b/);
+    return match ? match[1] : null;
+  }
+
+  private async nextPreviewId(): Promise<string> {
+    for (let i = 0; i < 8; i++) {
+      const previewId = `PRV-${randomBytes(2).toString('hex').toUpperCase()}`;
+      const exists = await (this.prisma as any).ownerApprovalRequest.findUnique({
+        where: { previewId },
+        select: { id: true },
+      }).catch(() => null);
+      if (!exists) return previewId;
+    }
+    return `PRV-${Date.now().toString(36).slice(-4).toUpperCase()}`;
+  }
+
   private async createAgentCommand(input: any, ctx: { tenantId: string; userId?: string | null }) {
-    const confirmation = String(input?.confirmationText || '').trim().toLocaleUpperCase('tr-TR');
-    if (confirmation !== 'ONAYLIYORUM') {
+    const confirmationRaw = String(input?.confirmationText || '').trim();
+    const previewId = this.extractPreviewId(input?.previewId || confirmationRaw);
+    const confirmation = confirmationRaw.toLocaleUpperCase('tr-TR');
+    if (!previewId || confirmation !== `ONAYLIYORUM #${previewId}`) {
       return {
-        error: 'Komut oluşturulmadı. Önce kullanıcıya yapılacak işlemi özetle ve net onay iste.',
+        error: 'Komut olusturulmadi. Once preview_agent_command ile 5 dakika gecerliligi olan bir preview olustur ve kullanicidan "ONAYLIYORUM #PRV-XXXX" formatinda onay iste.',
         requiresConfirmation: true,
+        confirmationFormat: 'ONAYLIYORUM #PRV-XXXX',
       };
     }
-    const agent = String(input?.agent || '').trim();
-    const action = String(input?.action || '').trim();
-    const payload = input?.payload && typeof input.payload === 'object' ? input.payload : {};
+    const approval = await (this.prisma as any).ownerApprovalRequest.findFirst({
+      where: { tenantId: ctx.tenantId, previewId },
+    });
+    if (!approval) {
+      return { error: `Preview bulunamadi veya tenant ile eslesmedi: ${previewId}`, requiresConfirmation: true };
+    }
+    if (approval.status !== 'PENDING') {
+      return { error: `Preview artik kullanilamaz: ${approval.status}`, requiresConfirmation: true, previewId };
+    }
+    if (new Date(approval.expiresAt).getTime() < Date.now()) {
+      await (this.prisma as any).ownerApprovalRequest.update({
+        where: { id: approval.id },
+        data: { status: 'EXPIRED', responseText: confirmationRaw },
+      }).catch(() => null);
+      await this.writeOwnerApprovalAudit(ctx, 'EXPIRE', approval.id, { previewId, agent: approval.agent, action: approval.action });
+      return { error: `Preview suresi doldu: ${previewId}. Yeni onizleme olusturun.`, requiresConfirmation: true, expired: true };
+    }
+
+    const agent = String(approval.agent || '').trim();
+    const action = String(approval.action || '').trim();
+    const payload = approval.payload && typeof approval.payload === 'object' ? approval.payload : {};
     const allowedAgents = ['mihsap', 'mihsap-supervised-agent', 'mihsap-fatura-isleme-agent', 'luca', 'sgk', 'tebligat', 'kdv', 'beyan-hazirlik', 'luca-beyanname', 'kdv-beyan', 'tahsilat', 'banka-ekstre', 'edefter', 'whatsapp'];
     const allowedMihsapActions = [...MIHSAP_FATURA_ACTIONS];
     if (!allowedAgents.includes(agent)) return { error: `Desteklenmeyen agent: ${agent}` };
@@ -1585,9 +1760,26 @@ export class ToolExecutorService {
         createdBy: ctx.userId || null,
       },
     });
+    await (this.prisma as any).ownerApprovalRequest.update({
+      where: { id: approval.id },
+      data: {
+        status: 'EXECUTED',
+        approvedAt: new Date(),
+        consumedAt: new Date(),
+        responseText: confirmationRaw,
+      },
+    });
+    await this.writeOwnerApprovalAudit(ctx, 'EXECUTE', approval.id, {
+      previewId,
+      commandId: cmd.id,
+      agent,
+      action,
+      payload,
+    });
     return {
       ok: true,
       commandId: cmd.id,
+      previewId,
       agent: cmd.agent,
       action: cmd.action,
       status: cmd.status,
@@ -1782,7 +1974,7 @@ export class ToolExecutorService {
     return { agent, status, commands, events };
   }
 
-  private previewAgentCommand(input: any, ctx: { tenantId: string }) {
+  private async previewAgentCommand(input: any, ctx: { tenantId: string; userId?: string | null }) {
     const agent = String(input?.agent || '').trim();
     const action = String(input?.action || '').trim();
     const payload = input?.payload && typeof input.payload === 'object' ? input.payload : {};
@@ -1809,16 +2001,44 @@ export class ToolExecutorService {
     if (isMihsapFaturaCommandAgent(agent) && (!payload.ay || !Array.isArray(payload.mukellefler) || payload.mukellefler.length === 0)) {
       errors.push('Mihsap komutu için payload.ay ve payload.mukellefler gerekir');
     }
+    const impact = this.describeAgentImpact(agent, action, payload);
+    let approval: any = null;
+    if (errors.length === 0) {
+      const previewId = await this.nextPreviewId();
+      const expiresAt = new Date(Date.now() + 5 * 60 * 1000);
+      approval = await (this.prisma as any).ownerApprovalRequest.create({
+        data: {
+          tenantId: ctx.tenantId,
+          userId: ctx.userId || null,
+          previewId,
+          agent,
+          action,
+          payload,
+          impact,
+          expiresAt,
+        },
+      });
+      await this.writeOwnerApprovalAudit(ctx, 'CREATE', approval.id, {
+        previewId,
+        agent,
+        action,
+        payload,
+        expiresAt,
+      });
+    }
     return {
       ok: errors.length === 0,
       errors,
       requiresConfirmation,
-      confirmationText: 'ONAYLIYORUM',
+      previewId: approval?.previewId || null,
+      expiresAt: approval?.expiresAt || null,
+      validForSeconds: approval ? 300 : 0,
+      confirmationText: approval ? `ONAYLIYORUM #${approval.previewId}` : 'ONAYLIYORUM #PRV-XXXX',
       agent,
       action,
       payload,
-      etki: this.describeAgentImpact(agent, action, payload),
-      not: 'Bu önizleme komut oluşturmaz. Kullanıcı net onay verirse create_confirmed_agent_command çalıştırılır.',
+      etki: impact,
+      not: 'Bu onizleme komut olusturmaz. Kullanici 5 dakika icinde confirmationText degerini aynen yazarsa create_confirmed_agent_command calisir.',
     };
   }
 
@@ -1908,7 +2128,7 @@ export class ToolExecutorService {
         { module: 'Mevzuat Araştırma', tools: ['research_official_sources'], scope: 'GİB, SGK, Resmi Gazete, mevzuat.gov.tr ve resmi kurum kaynakları' },
       ],
       commandAndAction: actionAgents,
-      executionRule: 'Okuma ve analiz doğrudan yapılır. Portalda işlem başlatan komutlar önce preview_agent_command ile özetlenir, kullanıcı ONAYLIYORUM derse create_confirmed_agent_command çalışır.',
+      executionRule: 'Okuma ve analiz dogrudan yapilir. Portalda islem baslatan komutlar once preview_agent_command ile previewId uretir; kullanici ONAYLIYORUM #PRV-XXXX yazarsa create_confirmed_agent_command calisir.',
       currentLimits: [
         'Agent tarafında olmayan yeni bir işlem doğrudan yapılmaz; önce uygun agent/action olarak komut kuyruğuna alınır.',
         'Resmi kaynak araştırması internet erişimi ve resmi sitelerin erişilebilirliğine bağlıdır.',

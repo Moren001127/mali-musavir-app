@@ -46,6 +46,14 @@ const CORE_TOOL_NAMES = [
   'get_portal_capability_map',
 ];
 
+const TAXPAYER_READONLY_TOOL_NAMES = [
+  'get_my_profile',
+  'get_my_work_status',
+  'get_my_documents',
+  'get_my_open_tasks',
+  'get_my_recent_messages',
+];
+
 const TOOL_GROUPS: Array<{ pattern: RegExp; tools: string[] }> = [
   { pattern: /mizan|hesap kod|gelir tablos|bilanço|bilanco|rasyo|oran|likidite|özkaynak|ozkaynak/i, tools: ['list_mizan_periods', 'get_mizan', 'get_gelir_tablosu', 'get_bilanco', 'compare_periods', 'calculate_financial_ratios'] },
   { pattern: /kdv|beyan|muhtasar|muhsgk|kurumlar|damga|tahakkuk|onay no|hattat/i, tools: ['get_kdv_summary', 'list_beyan_kayitlari', 'get_beyanname_config', 'get_beyan_ozet', 'get_beyanname_readiness_summary', 'get_tax_calendar'] },
@@ -121,6 +129,7 @@ export interface ChatRequest {
   taxpayerId?: string;     // Opsiyonel kontekst
   currentPath?: string;    // Aktif portal ekranı
   voiceMode?: boolean;
+  toolMode?: 'owner' | 'taxpayer-readonly' | 'none';
   model?: string;
 }
 
@@ -393,7 +402,7 @@ export class MorenAiService {
       ? '\n\n[SES MODU AKTIF — gerçek konuşma gibi cevap ver: 1-3 kısa cümle, maksimum 45 kelime, tablo ve başlık yok.]'
       : voiceHint;
     const responseMaxTokens = body.voiceMode ? VOICE_MAX_TOKENS : NORMAL_MAX_TOKENS;
-    const selectedTools = this.selectToolsForMessage(userMessage);
+    const selectedTools = this.selectToolsForMessage(userMessage, body.toolMode || 'owner');
 
     const toolUsesLog: Array<{ name: string; input: any; result: any }> = [];
     let totalInput = 0, totalOutput = 0, totalCacheR = 0, totalCacheW = 0;
@@ -463,7 +472,11 @@ export class MorenAiService {
       // Tool'ları paralel çalıştır
       const toolResults = await Promise.all(
         toolUseBlocks.map(async (tb: any) => {
-          const result = await this.toolExecutor.execute(tb.name, tb.input || {}, { tenantId, userId });
+          const result = await this.toolExecutor.execute(tb.name, tb.input || {}, {
+            tenantId,
+            userId,
+            taxpayerId: body.taxpayerId || conversation.taxpayerId || undefined,
+          });
           toolUsesLog.push({ name: tb.name, input: tb.input, result });
           return {
             type: 'tool_result',
@@ -816,7 +829,12 @@ export class MorenAiService {
     return null;
   }
 
-  private selectToolsForMessage(text: string) {
+  private selectToolsForMessage(text: string, mode: 'owner' | 'taxpayer-readonly' | 'none' = 'owner') {
+    if (mode === 'none') return [];
+    if (mode === 'taxpayer-readonly') {
+      return MOREN_AI_TOOLS.filter((tool: any) => TAXPAYER_READONLY_TOOL_NAMES.includes(tool.name));
+    }
+
     const selected = new Set<string>(CORE_TOOL_NAMES);
     for (const group of TOOL_GROUPS) {
       if (group.pattern.test(text)) {

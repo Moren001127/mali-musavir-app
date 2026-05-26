@@ -5,6 +5,10 @@ import { WhatsAppService } from './whatsapp.service';
 import { AutomationEventBus } from '../automations/automation-event-bus.service';
 import { StorageService } from '../storage/storage.service';
 import { randomUUID } from 'crypto';
+import { IntentClassifierService } from './intent-classifier.service';
+import { WhatsAppBotContextService } from './bot-context.service';
+import { WhatsAppBotPostFilterService } from './bot-post-filter.service';
+import { WhatsAppRateLimiterService } from './rate-limiter.service';
 
 type IncomingWhatsAppMessage = {
   from: string;
@@ -28,6 +32,10 @@ export class WhatsAppBotController {
     private readonly prisma: PrismaService,
     private readonly morenAi: MorenAiService,
     private readonly whatsapp: WhatsAppService,
+    private readonly intentClassifier: IntentClassifierService,
+    private readonly botContext: WhatsAppBotContextService,
+    private readonly postFilter: WhatsAppBotPostFilterService,
+    private readonly rateLimiter: WhatsAppRateLimiterService,
     @Optional() private readonly eventBus?: AutomationEventBus,
     @Optional() private readonly storage?: StorageService,
   ) {}
@@ -387,7 +395,7 @@ export class WhatsAppBotController {
         },
       });
 
-      const recentContext = await this.buildRecentWhatsAppContext(ownerContact.id);
+      const recentContext = await this.botContext.buildRecentWhatsAppContext(ownerContact.id);
       const prompt = [
         'Bu mesaj ofis sahibinden WhatsApp uzerinden geldi.',
         'Cevap kisa ve is odakli olsun. Portal verilerini kullan, gerekirse tool calistir.',
@@ -400,6 +408,7 @@ export class WhatsAppBotController {
       const answer = await this.morenAi.chat(ownerTenant.id, null, {
         message: prompt,
         voiceMode: true,
+        toolMode: 'owner',
       });
       const reply = (answer.assistantMessage || '').slice(0, 1400);
       if (reply) {
@@ -469,6 +478,37 @@ export class WhatsAppBotController {
           source: 'meta',
         });
       }
+
+      const automationActive = await this.whatsapp.isAutomationActive(tenant.id);
+      if (!automationActive) {
+        await this.prisma.communicationLog.create({
+          data: {
+            taxpayerId: contact.id,
+            channel: 'WHATSAPP',
+            subject: 'WhatsApp kayitsiz bot cevabi atlandi - master switch pasif',
+            content: 'Master switch pasif oldugu icin kayitsiz numaraya otomatik cevap gonderilmedi.',
+            occurredAt: new Date(),
+          },
+        });
+        return;
+      }
+
+      const rate = this.rateLimiter.registerIncoming(tenant.id, contact.id);
+      if (!rate.limited || rate.shouldNotify) {
+        const reply = this.postFilter.filterTaxpayerReply(
+          'Merhaba, Moren Mali Musavirlik hattina ulastiniz. Kaydinizi eslestirebilmemiz icin ad/unvan ve VKN/TCKN bilginizi yazabilirsiniz; ofisimiz kontrol edip size donus yapacak.',
+        );
+        const sent = await this.whatsapp.sendMessage(msg.from, reply, tenant.id);
+        await this.prisma.communicationLog.create({
+          data: {
+            taxpayerId: contact.id,
+            channel: 'WHATSAPP',
+            subject: sent ? 'WhatsApp kayitsiz bot cevabi' : 'WhatsApp kayitsiz bot cevabi (gonderilemedi - master switch veya hata)',
+            content: reply,
+            occurredAt: new Date(),
+          },
+        });
+      }
       return;
     }
     // Otomasyon event'i: müvekkelden WhatsApp mesajı geldi
@@ -521,24 +561,61 @@ export class WhatsAppBotController {
       `WhatsApp mesaji: ${taxpayerName}\n${msg.text.slice(0, 900)}`,
     );
 
+    const classified = this.intentClassifier.classify(msg.text);
     await this.maybeCreateDocumentRequestTask(taxpayer, msg.text);
 
-    const guardedReply = this.buildGuardedTaxpayerReply(msg.text);
-    if (guardedReply) {
-      const sent = await this.whatsapp.sendMessage(msg.from, guardedReply, taxpayer.tenantId);
+    const automationActive = await this.whatsapp.isAutomationActive(taxpayer.tenantId);
+    if (!automationActive) {
       await this.prisma.communicationLog.create({
         data: {
           taxpayerId: taxpayer.id,
           channel: 'WHATSAPP',
-          subject: sent ? 'WhatsApp bot cevabi' : 'WhatsApp bot cevabi (gönderilemedi - master switch veya hata)',
-          content: guardedReply,
+          subject: 'WhatsApp bot cevabi atlandi - master switch pasif',
+          content: `Intent: ${classified.intent}. Master switch pasif oldugu icin otomatik cevap gonderilmedi.`,
           occurredAt: new Date(),
         },
       });
       return;
     }
 
-    const recentContext = await this.buildRecentWhatsAppContext(taxpayer.id);
+    const rate = this.rateLimiter.registerIncoming(taxpayer.tenantId, taxpayer.id);
+    if (rate.limited) {
+      if (rate.shouldNotify) {
+        const limitedReply = this.postFilter.filterTaxpayerReply(
+          'Mesajlariniz alindi. Konusma yogun oldugu icin ofisimiz kayitlari kontrol edip size donus yapacak.',
+        );
+        const sent = await this.whatsapp.sendMessage(msg.from, limitedReply, taxpayer.tenantId);
+        await this.prisma.communicationLog.create({
+          data: {
+            taxpayerId: taxpayer.id,
+            channel: 'WHATSAPP',
+            subject: sent ? 'WhatsApp bot rate limit cevabi' : 'WhatsApp bot rate limit cevabi (gonderilemedi - master switch veya hata)',
+            content: limitedReply,
+            occurredAt: new Date(),
+          },
+        });
+      }
+      return;
+    }
+
+    const guardedReply = this.intentClassifier.cannedReply(classified.intent) || this.buildGuardedTaxpayerReply(msg.text);
+    if (guardedReply) {
+      const filteredReply = this.postFilter.filterTaxpayerReply(guardedReply);
+      const sent = await this.whatsapp.sendMessage(msg.from, filteredReply, taxpayer.tenantId);
+      await this.prisma.communicationLog.create({
+        data: {
+          taxpayerId: taxpayer.id,
+          channel: 'WHATSAPP',
+          subject: sent ? 'WhatsApp bot cevabi' : 'WhatsApp bot cevabi (gönderilemedi - master switch veya hata)',
+          content: filteredReply,
+          occurredAt: new Date(),
+        },
+      });
+      return;
+    }
+
+    const taxpayerContext = await this.botContext.buildTaxpayerContextBlock(taxpayer.tenantId, taxpayer.id);
+    const recentContext = await this.botContext.buildRecentWhatsAppContext(taxpayer.id);
     const prompt = [
       'Bu mesaj WhatsApp mukellef botundan geldi.',
       'KURAL USTUNLUGU: Bu WhatsApp mukellef cevabi kurallari genel Moren AI ton kurallarinin ustundedir.',
@@ -553,6 +630,9 @@ export class WhatsAppBotController {
       'Dekont/evrak/belge bildirimi varsa alindigini soyle, kontrol icin ofise iletildigini belirt; tarih/saat taahhudu verme.',
       'Kendi kendine gun, tarih, saat, sure, "hemen", "bugun", "yarin", "haftaya kadar" gibi taahhut ekleme.',
       'Mukellef tarih onerirse kabul/ret verme; "Notunuzu aldik, ofis takvimine gore kontrol edecegiz." de.',
+      `Intent: ${classified.intent}`,
+      'Gerekirse sadece get_my_* read-only toollarini kullan. Tool inputuna taxpayerId yazma; backend aktif mukellefi kendisi baglar.',
+      taxpayerContext,
       recentContext,
       `Mukellef mesaji: ${msg.text}`,
     ].join('\n');
@@ -561,9 +641,10 @@ export class WhatsAppBotController {
       taxpayerId: taxpayer.id,
       message: prompt,
       voiceMode: true,
+      toolMode: 'taxpayer-readonly',
     });
 
-    const reply = (answer.assistantMessage || '').slice(0, 1200);
+    const reply = this.postFilter.filterTaxpayerReply(answer.assistantMessage || '');
     if (reply) {
       const sent = await this.whatsapp.sendMessage(msg.from, reply, taxpayer.tenantId);
       await this.prisma.communicationLog.create({

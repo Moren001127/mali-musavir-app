@@ -392,6 +392,9 @@ export class WhatsAppService {
     const fromDb = await this.loadConfigFromDb(tenantId);
     const env = this.envConfig;
     const effective = fromDb && fromDb.accessToken ? fromDb : env;
+    await this.reconcileOwnerContacts(tenantId, effective.ownerPhones || '').catch((err) => {
+      this.logger.warn(`[WhatsApp] Owner kaydi senkronize edilemedi: ${err?.message || err}`);
+    });
     return {
       source: fromDb && fromDb.accessToken ? 'db' : (env.accessToken ? 'env' : 'none'),
       configured: this.isConfigured(effective),
@@ -450,6 +453,10 @@ export class WhatsAppService {
       where: { tenantId_provider: { tenantId, provider: 'WHATSAPP_META' } },
       update: { config: configJson, isActive: true, updatedAt: new Date() },
       create: { tenantId, provider: 'WHATSAPP_META', config: configJson, isActive: true },
+    });
+
+    await this.reconcileOwnerContacts(tenantId, merged.ownerPhones || '').catch((err) => {
+      this.logger.warn(`[WhatsApp] Owner kaydi senkronize edilemedi: ${err?.message || err}`);
     });
 
     this.logger.log(`[WhatsApp] Konfig kaydedildi tenant=${tenantId} phoneNumberId=${merged.phoneNumberId}`);
@@ -516,6 +523,89 @@ export class WhatsAppService {
     } catch (err: any) {
       this.logger.warn(`[WhatsApp] DB konfig okuma hata: ${err?.message || err}`);
       return null;
+    }
+  }
+
+  private async reconcileOwnerContacts(tenantId: string, ownerPhonesRaw: string): Promise<void> {
+    const ownerPhones = Array.from(new Set(
+      String(ownerPhonesRaw || '')
+        .split(',')
+        .map((phone) => this.normalizePhone(phone))
+        .filter(Boolean) as string[],
+    ));
+    if (!ownerPhones.length) return;
+
+    const ownerTaxNumber = `WHATSAPP-OWNER-${tenantId}`;
+    const ownerName = 'Ofis Sahibi WhatsApp';
+    const existingOwner = await this.prisma.taxpayer.findFirst({
+      where: { tenantId, taxNumber: ownerTaxNumber },
+      select: { id: true, phone: true, phones: true },
+    });
+
+    const virtualMatches = (await Promise.all(ownerPhones.map((phone) =>
+      this.prisma.taxpayer.findFirst({
+        where: {
+          tenantId,
+          taxNumber: { startsWith: 'WHATSAPP-' },
+          OR: [
+            { taxNumber: `WHATSAPP-${phone}` },
+            { phone },
+            { phones: { has: phone } },
+          ],
+        },
+        select: { id: true, phone: true, phones: true },
+      }),
+    ))).filter(Boolean) as Array<{ id: string; phone: string | null; phones: string[] }>;
+
+    const primary = existingOwner || virtualMatches[0] || await this.prisma.taxpayer.create({
+      data: {
+        tenantId,
+        type: 'GERCEK_KISI',
+        companyName: ownerName,
+        taxNumber: ownerTaxNumber,
+        taxOffice: 'WHATSAPP',
+        phone: ownerPhones[0],
+        phones: ownerPhones,
+        emails: [],
+        notes: 'Mesaj Merkezi icin otomatik olusturulan ofis sahibi WhatsApp kaydi.',
+        isActive: false,
+        whatsappEvrakTalep: false,
+        whatsappEvrakGeldi: false,
+      },
+      select: { id: true, phone: true, phones: true },
+    });
+
+    const mergedPhones = Array.from(new Set([
+      ...(Array.isArray(primary.phones) ? primary.phones : []),
+      primary.phone || '',
+      ...ownerPhones,
+    ].map((phone) => this.normalizePhone(phone) || String(phone || '').trim()).filter(Boolean)));
+
+    await this.prisma.taxpayer.update({
+      where: { id: primary.id },
+      data: {
+        companyName: ownerName,
+        taxNumber: ownerTaxNumber,
+        taxOffice: 'WHATSAPP',
+        phone: mergedPhones[0] || primary.phone,
+        phones: mergedPhones,
+        notes: 'Mesaj Merkezi icin ofis sahibi WhatsApp kaydi.',
+        isActive: false,
+      },
+    });
+
+    for (const duplicate of virtualMatches.filter((item) => item.id !== primary.id)) {
+      await this.prisma.communicationLog.updateMany({
+        where: { taxpayerId: duplicate.id, channel: 'WHATSAPP' },
+        data: { taxpayerId: primary.id },
+      });
+      await this.prisma.taxpayer.update({
+        where: { id: duplicate.id },
+        data: {
+          isActive: false,
+          notes: `Bu kayitsiz WhatsApp kaydi owner kaydina tasindi: ${primary.id}`,
+        },
+      });
     }
   }
 }

@@ -55,6 +55,64 @@ export const MOREN_AI_TOOLS: ToolDefinition[] = [
     },
   },
   {
+    name: 'get_my_profile',
+    description:
+      'Taxpayer WhatsApp mode only. Aktif WhatsApp konusmasindaki mukellefin temel profilini getirir. ' +
+      'Backend aktif mukellefi kendisi baglar; taxpayerId veya baska mukellef bilgisi gonderme.',
+    input_schema: {
+      type: 'object',
+      properties: {},
+    },
+  },
+  {
+    name: 'get_my_work_status',
+    description:
+      'Taxpayer WhatsApp mode only. Aktif mukellefin kendi donem evrak/islem durumunu read-only getirir. ' +
+      'Backend aktif mukellefi kendisi baglar; taxpayerId veya baska mukellef bilgisi gonderme.',
+    input_schema: {
+      type: 'object',
+      properties: {
+        period: { type: 'string', description: 'Opsiyonel donem: YYYY-MM. Bos ise guncel ay.' },
+      },
+    },
+  },
+  {
+    name: 'get_my_documents',
+    description:
+      'Taxpayer WhatsApp mode only. Aktif mukellefin kendi yuklu evrak listesini read-only getirir. ' +
+      'Dosya URL veya gizli anahtar dondurmez. Backend aktif mukellefi kendisi baglar.',
+    input_schema: {
+      type: 'object',
+      properties: {
+        limit: { type: 'number', description: 'Varsayilan 10, max 20.' },
+      },
+    },
+  },
+  {
+    name: 'get_my_open_tasks',
+    description:
+      'Taxpayer WhatsApp mode only. Aktif mukellefle ilgili acik takip/gorevleri read-only getirir. ' +
+      'Backend aktif mukellefi kendisi baglar; taxpayerId gonderme.',
+    input_schema: {
+      type: 'object',
+      properties: {
+        limit: { type: 'number', description: 'Varsayilan 8, max 20.' },
+      },
+    },
+  },
+  {
+    name: 'get_my_recent_messages',
+    description:
+      'Taxpayer WhatsApp mode only. Aktif mukellefin kendi son WhatsApp konusma gecmisini read-only getirir. ' +
+      'Backend aktif mukellefi kendisi baglar; baska mukellef gecmisi asla okunmaz.',
+    input_schema: {
+      type: 'object',
+      properties: {
+        limit: { type: 'number', description: 'Varsayilan 8, max 20.' },
+      },
+    },
+  },
+  {
     name: 'list_taxpayers_monthly_status',
     description:
       'TEK ÇAĞRIDA ofisteki TÜM mükelleflerin belirli bir aydaki evrak/işlem durumunu listeler. ' +
@@ -476,7 +534,7 @@ export const MOREN_AI_TOOLS: ToolDefinition[] = [
   {
     name: 'preview_agent_command',
     description:
-      'Riskli bir LUCA/Mihsap/KDV agent komutunu çalıştırmadan önce önizler. Komutu DB’ye yazmaz. Kullanıcıya onay metni ve etki özeti göstermek için kullan.',
+      'Riskli bir LUCA/Mihsap/KDV agent komutunu çalıştırmadan önce önizler. OwnerApprovalRequest, previewId ve 5 dakika geçerlilik üretir. Kullanıcıya onay metni ve etki özeti göstermek için kullan.',
     input_schema: {
       type: 'object',
       properties: {
@@ -490,16 +548,17 @@ export const MOREN_AI_TOOLS: ToolDefinition[] = [
   {
     name: 'create_confirmed_agent_command',
     description:
-      'Sadece kullanıcı net onay verdikten sonra agent komutu oluşturur. confirmationText kesin olarak ONAYLIYORUM olmalıdır.',
+      'Sadece kullanıcı net onay verdikten sonra agent komutu oluşturur. confirmationText kesin olarak ONAYLIYORUM #PRV-XXXX formatında olmalıdır; agent/action/payload preview kaydından okunur.',
     input_schema: {
       type: 'object',
       properties: {
         agent: { type: 'string', enum: ['mihsap', 'mihsap-supervised-agent', 'mihsap-fatura-isleme-agent', 'luca', 'sgk', 'tebligat', 'kdv', 'beyan-hazirlik', 'luca-beyanname', 'kdv-beyan', 'tahsilat', 'banka-ekstre', 'edefter', 'whatsapp'] },
         action: { type: 'string' },
         payload: { type: 'object' },
-        confirmationText: { type: 'string' },
+        previewId: { type: 'string', description: 'Preview ID, orn PRV-AB12. Opsiyonel; confirmationText icinden de okunur.' },
+        confirmationText: { type: 'string', description: 'ONAYLIYORUM #PRV-XXXX formatinda kullanici onayi.' },
       },
-      required: ['agent', 'action', 'payload', 'confirmationText'],
+      required: ['confirmationText'],
     },
   },
   {
@@ -589,18 +648,18 @@ export const MOREN_AI_TOOLS: ToolDefinition[] = [
   {
     name: 'create_agent_command',
     description:
-      'Kullanıcı AÇIKÇA ONAYLADIKTAN sonra yerel ajana işlem komutu gönderir. İlk istekte bu tool kullanılmaz; önce yapılacak işi özetle ve onay iste. ' +
-      'Sadece kullanıcı "onaylıyorum", "başlat", "evet başlat" gibi net ikinci onay verdikten sonra çağır. ' +
-      'Fatura işleme için agent="mihsap", action="isle_alis" veya "isle_satis", payload.ay="YYYY-MM", payload.mukellefler=[{id, ad, mihsapId?}] gönder.',
+      'Kullanıcı AÇIKÇA ONAYLADIKTAN sonra yerel ajana işlem komutu gönderir. İlk istekte bu tool kullanılmaz; önce preview_agent_command ile previewId oluştur. ' +
+      'Sadece kullanıcı "ONAYLIYORUM #PRV-XXXX" formatında net ikinci onay verdikten sonra çağır. Agent/action/payload preview kaydından okunur.',
     input_schema: {
       type: 'object',
       properties: {
         agent: { type: 'string', enum: ['mihsap', 'mihsap-supervised-agent', 'mihsap-fatura-isleme-agent', 'luca', 'sgk', 'tebligat', 'kdv', 'beyan-hazirlik', 'luca-beyanname', 'kdv-beyan', 'tahsilat', 'banka-ekstre', 'edefter', 'whatsapp'] },
         action: { type: 'string', description: 'Örn: isle_alis, isle_satis, isle_alis_isletme, isle_satis_isletme.' },
         payload: { type: 'object', description: 'Ajanın beklediği komut yükü.' },
-        confirmationText: { type: 'string', description: 'Güvenlik için kullanıcı onay metni. ONAYLIYORUM olmalı.' },
+        previewId: { type: 'string', description: 'Preview ID, örn. PRV-AB12. Opsiyonel; confirmationText içinden de okunur.' },
+        confirmationText: { type: 'string', description: 'Güvenlik için kullanıcı onay metni. ONAYLIYORUM #PRV-XXXX olmalı.' },
       },
-      required: ['agent', 'action', 'payload', 'confirmationText'],
+      required: ['confirmationText'],
     },
   },
   {

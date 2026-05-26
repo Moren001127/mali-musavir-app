@@ -1132,7 +1132,8 @@ export class WhatsAppController {
   }
 
   private isWhatsAppVirtualTaxNumber(taxNumber?: string | null): boolean {
-    return String(taxNumber || '').startsWith('WHATSAPP-');
+    const value = String(taxNumber || '');
+    return value.startsWith('WHATSAPP-') && !value.startsWith('WHATSAPP-OWNER-');
   }
 
   private publicMessageContent(content?: string | null): string {

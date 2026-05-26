@@ -1952,6 +1952,31 @@ model AgentCommand {
   @@map("agent_commands")
 }
 
+model OwnerApprovalRequest {
+  id               String   @id @default(cuid())
+  tenantId         String
+  previewId        String   @unique
+  userId           String?
+  ownerPhone       String?
+  aiConversationId String?
+  agent            String
+  action           String
+  payload          Json
+  impact           String?  @db.Text
+  status           String   @default("PENDING") // PENDING | EXECUTED | EXPIRED | REJECTED
+  expiresAt        DateTime
+  approvedAt       DateTime?
+  rejectedAt       DateTime?
+  consumedAt       DateTime?
+  responseText     String?
+  createdAt        DateTime @default(now())
+  updatedAt        DateTime @updatedAt
+
+  @@index([tenantId, status, expiresAt])
+  @@index([tenantId, createdAt])
+  @@map("owner_approval_requests")
+}
+
 // ============================================================
 // SMS / WHATSAPP ŞABLONLARI
 // ============================================================
