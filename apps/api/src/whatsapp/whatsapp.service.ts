@@ -63,7 +63,6 @@ export class WhatsAppService {
     if (!this.isConfigured(cfg)) {
       return {
         ready: false,
-        hasQr: false,
         provider: 'meta-cloud',
         webhookReady: Boolean(cfg.webhookVerifyToken),
         error: 'WhatsApp Cloud API ayarlanmamış. Ayarlar > Entegrasyonlar sayfasından bağlayın.',
@@ -71,7 +70,6 @@ export class WhatsAppService {
     }
     return {
       ready: true,
-      hasQr: false,
       provider: 'meta-cloud',
       phoneNumberId: cfg.phoneNumberId,
       templateName: cfg.templateName || null,

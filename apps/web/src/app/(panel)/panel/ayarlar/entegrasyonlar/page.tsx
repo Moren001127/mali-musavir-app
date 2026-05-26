@@ -14,7 +14,6 @@ import {
   MessageCircle,
   Save,
   Send,
-  ShieldAlert,
   TestTube2,
   XCircle,
 } from 'lucide-react';
@@ -586,14 +585,6 @@ function WhatsAppCard() {
           </p>
         </div>
 
-        <div className="rounded-md border p-3 text-[11px]" style={{ borderColor: LINE, background: 'rgba(96,165,250,0.05)', color: MUTED }}>
-          <div className="flex items-start gap-2">
-            <ShieldAlert size={14} style={{ color: BLUE }} className="mt-0.5 shrink-0" />
-            <div>
-              Kişisel WhatsApp (QR kod ile, Baileys) için bkz. <Link href="/panel/whatsapp-qr" className="underline" style={{ color: BLUE }}>WhatsApp QR</Link> sayfası. Bu kart sadece resmi Meta Business API içindir.
-            </div>
-          </div>
-        </div>
       </div>
     </section>
   );

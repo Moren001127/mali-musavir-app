@@ -8,7 +8,6 @@ import { profileToPromptText } from '../common/profile-prompt';
 import { SISTEM_KURALLARI } from '../common/sistem-kurallari';
 import { VendorMemoryService } from '../vendor-memory/vendor-memory.service';
 import { PendingDecisionsService } from '../pending-decisions/pending-decisions.service';
-import { WhatsAppQrService } from '../whatsapp-qr/whatsapp-qr.service';
 import {
   commandClaimAgentsForRunner,
   commandListAgentsForFilter,
@@ -62,7 +61,6 @@ export class AgentEventsService {
     private prisma: PrismaService,
     private vendorMemory: VendorMemoryService,
     private pendingDecisions: PendingDecisionsService,
-    private whatsappQr: WhatsAppQrService,  // @Global module — circular dep yaratmaz
   ) {}
 
   private getMihsapDecisionMode(): MihsapDecisionMode {
@@ -4479,7 +4477,7 @@ Fatura görüntüsünü incele. Yukarıdaki MEVCUT SEÇENEKLER'den Kayıt Türü
       `İyi günler.`,
     ].join('\n');
 
-    // WhatsApp gönderim — Meta Cloud API varsa onu, yoksa QR (Baileys) — fallback mantığı
+    // WhatsApp gönderim: yalnızca resmi Meta Cloud API.
     const accessToken = process.env.WHATSAPP_ACCESS_TOKEN;
     const phoneNumberId = process.env.WHATSAPP_PHONE_NUMBER_ID;
 
@@ -4502,18 +4500,12 @@ Fatura görüntüsünü incele. Yukarıdaki MEVCUT SEÇENEKLER'den Kayıt Türü
           return;
         }
         const errBody = await res.text();
-        this.logger.warn(`[HGS WhatsApp Meta] Başarısız ${res.status}: ${errBody.slice(0, 200)} — QR fallback deneniyor`);
+        this.logger.warn(`[HGS WhatsApp Meta] Başarısız ${res.status}: ${errBody.slice(0, 200)}`);
       } catch (err: any) {
-        this.logger.warn(`[HGS WhatsApp Meta] Hata: ${err?.message || err} — QR fallback deneniyor`);
+        this.logger.warn(`[HGS WhatsApp Meta] Hata: ${err?.message || err}`);
       }
-    }
-
-    // 2. yol: QR (Baileys) — kişisel WhatsApp
-    try {
-      const result = await this.whatsappQr.sendMessage(tenantId, aliciNumara, mesaj);
-      this.logger.log(`[HGS WhatsApp QR] Bildirim gönderildi: ${aliciNumara} (msgId=${result?.messageId || 'n/a'})`);
-    } catch (err: any) {
-      this.logger.warn(`[HGS WhatsApp QR] Gönderim hatası (atlandı, hgs cron etkilenmez): ${err?.message || err}`);
+    } else {
+      this.logger.warn('[HGS WhatsApp Meta] WHATSAPP_ACCESS_TOKEN veya WHATSAPP_PHONE_NUMBER_ID eksik; bildirim atlandı');
     }
   }
 

@@ -1337,7 +1337,6 @@ const MOBILE_PRIORITY_MODULES = [
   { label: 'KDV Kontrol', sub: 'Vergi & Beyanname', href: '/panel/kdv-kontrol', icon: FileCheck2, color: MOBILE_COLORS.tax },
   { label: 'KDV Beyanname', sub: 'Vergi & Beyanname', href: '/panel/kdv-beyanname', icon: FileCheck2, color: MOBILE_COLORS.tax },
   { label: 'Beyannameler', sub: 'Vergi & Beyanname', href: '/panel/beyannameler', icon: FileText, color: MOBILE_COLORS.tax },
-  { label: 'WhatsApp QR', sub: 'Teknik & Sistem', href: '/panel/whatsapp-qr', icon: MessageSquareText, color: MOBILE_COLORS.system },
 ];
 
 const MOBILE_GROUPS = [

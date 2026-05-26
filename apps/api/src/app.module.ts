@@ -20,7 +20,6 @@ import { MizanModule } from './mizan/mizan.module';
 import { EarsivModule } from './earsiv/earsiv.module';
 import { MorenAiModule } from './moren-ai/moren-ai.module';
 import { WhatsAppModule } from './whatsapp/whatsapp.module';
-import { WhatsAppQrModule } from './whatsapp-qr/whatsapp-qr.module';
 import { VendorMemoryModule } from './vendor-memory/vendor-memory.module';
 import { PendingDecisionsModule } from './pending-decisions/pending-decisions.module';
 import { BeyannameTakipModule } from './beyanname-takip/beyanname-takip.module';
@@ -64,7 +63,6 @@ import { HgsCron } from './schedule/hgs.cron';
     EarsivModule,
     MorenAiModule,
     WhatsAppModule,
-    WhatsAppQrModule,
     VendorMemoryModule,
     PendingDecisionsModule,
     BeyannameTakipModule,

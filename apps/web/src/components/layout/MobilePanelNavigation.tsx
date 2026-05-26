@@ -30,7 +30,6 @@ import {
   MessageSquareText,
   PanelTop,
   Printer,
-  QrCode,
   ReceiptText,
   Scale,
   Settings2,
@@ -149,7 +148,6 @@ const moduleGroups: ModuleGroup[] = [
     icon: Settings2,
     items: [
       { href: '/panel/hatirlatmalar', label: 'WhatsApp Otomasyonu', icon: MessageSquareText },
-      { href: '/panel/whatsapp-qr', label: 'WhatsApp QR', icon: QrCode },
       { href: '/panel/ajanlar', label: 'Tüm Ajanlar', icon: Cpu },
       { href: '/panel/ajanlar/luca', label: 'Luca Oturumu', icon: ShieldCheck },
       { href: '/panel/ajan-saglik', label: 'Sağlık Panosu', icon: Stethoscope },

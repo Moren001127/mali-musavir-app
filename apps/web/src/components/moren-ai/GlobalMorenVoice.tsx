@@ -71,7 +71,6 @@ const PORTAL_ROUTES: PortalRoute[] = [
   { label: 'Duyurular', path: '/panel/duyurular', aliases: ['duyuru'] },
   { label: 'HGS İhlal Sorgulama', path: '/panel/galeri/hgs-ihlal', aliases: ['hgs'] },
   { label: 'WhatsApp Otomasyonu', path: '/panel/hatirlatmalar', aliases: ['whatsapp otomasyon', 'hatırlatmalar'] },
-  { label: 'WhatsApp QR', path: '/panel/whatsapp-qr', aliases: ['whatsapp qr', 'qr'] },
   { label: 'Tüm Ajanlar', path: '/panel/ajanlar', aliases: ['ajanlar', 'tüm ajanlar'] },
   { label: 'Luca Oturumu', path: '/panel/ajanlar/luca', aliases: ['luca'] },
   { label: 'Sağlık Panosu', path: '/panel/ajan-saglik', aliases: ['sağlık', 'ajan sağlık'] },

@@ -30,7 +30,6 @@ import {
   MessageSquareText,
   PanelTop,
   Printer,
-  QrCode,
   ReceiptText,
   Scale,
   Settings2,
@@ -150,7 +149,6 @@ const portalGroups: PortalGroup[] = [
     icon: Settings2,
     modules: [
       { href: '/panel/hatirlatmalar', label: 'WhatsApp Otomasyonu', desc: 'Hatırlatma mesajları ve otomasyon akışı', icon: MessageSquareText, priority: 'system' },
-      { href: '/panel/whatsapp-qr', label: 'WhatsApp QR', desc: 'WhatsApp bağlantı ve QR ekranı', icon: QrCode, priority: 'system' },
       { href: '/panel/ajanlar', label: 'Tüm Ajanlar', desc: 'Ajan modüllerinin genel görünümü', icon: Cpu, priority: 'system' },
       { href: '/panel/ajanlar/luca', label: 'Luca Oturumu', desc: 'LUCA oturum ve bağlantı yönetimi', icon: ShieldCheck, priority: 'system' },
       { href: '/panel/ajan-saglik', label: 'Sağlık Panosu', desc: 'Sistem ve ajan çalışma sağlığı', icon: Stethoscope, priority: 'system' },

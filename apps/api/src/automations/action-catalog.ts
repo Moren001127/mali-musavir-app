@@ -95,25 +95,6 @@ const COMMUNICATION_ACTIONS: AutomationAction[] = [
     },
   },
   {
-    name: 'send_whatsapp_qr',
-    category: 'WRITE',
-    estimatedClaudeCostPerCall: 0,
-    requires: ['whatsapp-qr'],
-    description:
-      'QR ile bağlanan kişisel WhatsApp hesabından serbest mesaj gönderir. ' +
-      'Meta resmi olmayan yol — şablon onayı gerekmez ama toplu mesajda ban riski vardır. ' +
-      'Tek tek/az sayıda mesajlar için, hatırlatma ve onay isteme gibi durumlar için kullan. ' +
-      'Önce /panel/whatsapp-qr sayfasından QR kodu okutulmalı.',
-    input_schema: {
-      type: 'object',
-      properties: {
-        to: { type: 'string', description: 'Telefon numarası (Türkiye için 5XXXXXXXXX yeterli).' },
-        message: { type: 'string', description: 'Mesaj metni (max 4000 karakter).' },
-      },
-      required: ['to', 'message'],
-    },
-  },
-  {
     name: 'send_email',
     category: 'WRITE',
     estimatedClaudeCostPerCall: 0,
