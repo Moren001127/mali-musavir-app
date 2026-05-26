@@ -843,20 +843,14 @@ function ToplubeyannameTableLegacy() {
               {beyanRows.map((r) => (
                 <BeyanTr key={r.beyanTipi} row={r} onNumberClick={openModal} />
               ))}
+              {bildirgeRow && (
+                <BeyanTr key={bildirgeRow.beyanTipi} row={bildirgeRow} onNumberClick={openModal} />
+              )}
+              {edefterRow && (
+                <BeyanTr key={edefterRow.beyanTipi} row={edefterRow} onNumberClick={openModal} />
+              )}
             </tbody>
           </table>
-        </div>
-      )}
-
-      {/* Bildirge + E-Defter yan yana */}
-      {(bildirgeRow || edefterRow) && (
-        <div className="grid grid-cols-1 lg:grid-cols-2 gap-3 px-1.5 pb-2">
-          {bildirgeRow && (
-            <MiniTable title="Bildirge" row={bildirgeRow} donem={data?.donem || donem} accent="copper" onNumberClick={openModal} />
-          )}
-          {edefterRow && (
-            <MiniTable title="E-Defter" row={edefterRow} donem={data?.donem || donem} accent="bronze" onNumberClick={openModal} />
-          )}
         </div>
       )}
 
