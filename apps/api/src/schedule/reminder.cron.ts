@@ -6,17 +6,65 @@ import { WhatsAppService } from '../whatsapp/whatsapp.service';
 /**
  * Evrak teslim hatırlatma cron'u.
  *
- * Her iş günü (Pzt-Cum) saat 09:00 TR (06:00 UTC) çalışır.
+ * Her iş günü (Pzt-Cum) saat 10:00 TR (07:00 UTC) çalışır.
+ * Resmi tatillerde (Türkiye) atılmaz.
  * Kuralları:
  *   1) Mükellefin evrakTeslimGunu <= bugünün günü olmalı (vade geldi/geçti)
  *   2) whatsappEvrakTalep = true olmalı (mükellef bu tipi onaylamış)
  *   3) Bu ay için TaxpayerMonthlyStatus.evraklarGeldi = false olmalı
+ *      (mükellef listesinde "evraklar geldi" işaretlenmediyse devam eder)
  *   4) Son 2 günde hatırlatma gönderilmemiş olmalı (spam koruma)
  *   5) Mükellef aktif olmalı
+ *   6) Bugün Türkiye resmi tatili olmamalı
  *
  * Mesaj kaynağı: SmsTemplate.evrakTalepMesaji (tenant başına özel)
  * Değişkenler: {ad}, {dönem}
  */
+
+// Türkiye resmi tatil günleri (2026-2028) — sabit + dini bayramlar
+// Kaynak: T.C. resmi takvim. Bayram tarihleri her yıl değişir, manuel güncellenmeli.
+const TURKIYE_RESMI_TATILLERI = new Set<string>([
+  // 2026
+  '2026-01-01', // Yılbaşı
+  '2026-03-19', // Ramazan Bayramı arifesi (yarım gün - tam tatil sayıyoruz)
+  '2026-03-20', // Ramazan Bayramı 1. gün
+  '2026-03-21', // Ramazan Bayramı 2. gün
+  '2026-03-22', // Ramazan Bayramı 3. gün
+  '2026-04-23', // Ulusal Egemenlik ve Çocuk Bayramı
+  '2026-05-01', // Emek ve Dayanışma Günü
+  '2026-05-19', // Atatürk'ü Anma, Gençlik ve Spor Bayramı
+  '2026-05-26', // Kurban Bayramı arifesi (yarım gün)
+  '2026-05-27', // Kurban Bayramı 1. gün
+  '2026-05-28', // Kurban Bayramı 2. gün
+  '2026-05-29', // Kurban Bayramı 3. gün
+  '2026-05-30', // Kurban Bayramı 4. gün
+  '2026-07-15', // Demokrasi ve Milli Birlik Günü
+  '2026-08-30', // Zafer Bayramı
+  '2026-10-28', // Cumhuriyet Bayramı arifesi (yarım gün)
+  '2026-10-29', // Cumhuriyet Bayramı
+  // 2027
+  '2027-01-01', // Yılbaşı
+  '2027-03-09', // Ramazan Bayramı 1. gün (tahmini)
+  '2027-03-10', // Ramazan Bayramı 2. gün
+  '2027-03-11', // Ramazan Bayramı 3. gün
+  '2027-04-23', // Çocuk Bayramı
+  '2027-05-01', // İşçi Bayramı
+  '2027-05-16', // Kurban Bayramı 1. gün (tahmini)
+  '2027-05-17', // Kurban Bayramı 2. gün
+  '2027-05-18', // Kurban Bayramı 3. gün
+  '2027-05-19', // Atatürk'ü Anma + Kurban Bayramı 4. gün
+  '2027-07-15', // Demokrasi Günü
+  '2027-08-30', // Zafer Bayramı
+  '2027-10-29', // Cumhuriyet Bayramı
+]);
+
+function bugunResmiTatilMi(date: Date): boolean {
+  const yyyy = date.getFullYear();
+  const mm = String(date.getMonth() + 1).padStart(2, '0');
+  const dd = String(date.getDate()).padStart(2, '0');
+  return TURKIYE_RESMI_TATILLERI.has(`${yyyy}-${mm}-${dd}`);
+}
+
 @Injectable()
 export class ReminderCron {
   private readonly logger = new Logger(ReminderCron.name);
@@ -26,9 +74,16 @@ export class ReminderCron {
     private whatsapp: WhatsAppService,
   ) {}
 
-  @Cron('0 6 * * 1-5')
+  @Cron('0 7 * * 1-5')
   async sendEvrakReminderMessages() {
     const today = new Date();
+
+    // Resmi tatil kontrolü - tatildeyse erken çık
+    if (bugunResmiTatilMi(today)) {
+      this.logger.log(`[ReminderCron] ${today.toISOString().slice(0, 10)} resmi tatil — hatırlatma atılmadı.`);
+      return;
+    }
+
     const todayDay = today.getDate();
     const year = today.getFullYear();
     const month = today.getMonth() + 1;
