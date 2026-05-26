@@ -212,8 +212,17 @@ export default function BeyannamelerPage() {
   }, [allTaxpayers, kayitlar]);
 
   const periodOptions = useMemo(() => {
-    return Array.from(new Set(kayitlar.map((k) => k.donem).filter(Boolean)))
-      .sort((a, b) => periodSortValue(b) - periodSortValue(a));
+    // Mevcut beyan kayıtlarından dönemler
+    const fromRecords = new Set(kayitlar.map((k) => k.donem).filter(Boolean));
+    // Kayıt olmasa bile son 24 ay + sonraki 3 ay default seçilebilir olsun
+    const now = new Date();
+    for (let i = -3; i <= 24; i++) {
+      const d = new Date(now.getFullYear(), now.getMonth() - i, 1);
+      const yyyy = d.getFullYear();
+      const mm = String(d.getMonth() + 1).padStart(2, '0');
+      fromRecords.add(`${yyyy}-${mm}`);
+    }
+    return Array.from(fromRecords).sort((a, b) => periodSortValue(b) - periodSortValue(a));
   }, [kayitlar]);
 
   const filtered = useMemo(() => {
@@ -641,16 +650,25 @@ function DateField({ label, value, onChange }: { label: string; value: string; o
 }
 
 function SelectBox({ icon: Icon, value, onChange, children }: { icon: any; value: string; onChange: (value: string) => void; children: ReactNode }) {
+  // React children'i flat string'e çevir (array, sayı, undefined hepsini düzgün)
+  const childrenToText = (node: any): string => {
+    if (node == null || node === false) return '';
+    if (typeof node === 'string' || typeof node === 'number') return String(node);
+    if (Array.isArray(node)) return node.map(childrenToText).join('');
+    if (typeof node === 'object' && node.props?.children !== undefined) return childrenToText(node.props.children);
+    return '';
+  };
+
   // Children içindeki <option> elementlerini parse et — dark dropdown için
   const items = useMemo(() => {
     const list: { value: string; label: string }[] = [];
     const walk = (node: any) => {
-      if (!node) return;
+      if (node == null || node === false) return;
       if (Array.isArray(node)) { node.forEach(walk); return; }
       if (typeof node === 'object' && node?.type === 'option') {
         list.push({
           value: String(node.props?.value ?? ''),
-          label: String(node.props?.children ?? ''),
+          label: childrenToText(node.props?.children).trim(),
         });
       } else if (typeof node === 'object' && node?.props?.children) {
         walk(node.props.children);
@@ -689,14 +707,15 @@ function SelectBox({ icon: Icon, value, onChange, children }: { icon: any; value
       </button>
       {open && (
         <div
-          className="absolute z-50 mt-1 max-h-[280px] overflow-y-auto rounded-[10px] py-1"
+          className="absolute mt-1 max-h-[320px] overflow-y-auto rounded-[10px] py-1"
           style={{
             top: '100%',
             left: 0,
             right: 0,
+            zIndex: 9999,
             background: '#1c1813',
-            border: '1px solid rgba(212,184,118,0.22)',
-            boxShadow: '0 8px 24px rgba(0,0,0,0.5)',
+            border: '1px solid rgba(212,184,118,0.32)',
+            boxShadow: '0 12px 36px rgba(0,0,0,0.7), 0 0 0 1px rgba(0,0,0,0.4)',
           }}
         >
           {items.length === 0 ? (
