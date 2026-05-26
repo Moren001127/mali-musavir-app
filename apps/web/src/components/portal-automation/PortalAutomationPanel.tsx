@@ -49,6 +49,17 @@ function fmtDate(value?: string | null) {
   return d.toLocaleString('tr-TR', { dateStyle: 'short', timeStyle: 'short' });
 }
 
+function dateInputValue(d: Date) {
+  return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}-${String(d.getDate()).padStart(2, '0')}`;
+}
+
+function previousDayRange() {
+  const d = new Date();
+  d.setDate(d.getDate() - 1);
+  const value = dateInputValue(d);
+  return { from: value, to: value };
+}
+
 function statusStyle(status: PortalJob['status']) {
   switch (status) {
     case 'done': return { label: 'Tamam', color: '#22c55e', bg: 'rgba(34,197,94,.12)' };
@@ -62,6 +73,9 @@ function statusStyle(status: PortalJob['status']) {
 export default function PortalAutomationPanel({ focus = 'all' }: { focus?: Focus }) {
   const qc = useQueryClient();
   const [selectedTaxpayer, setSelectedTaxpayer] = useState('__ALL__');
+  const defaultBeyanRange = useMemo(() => previousDayRange(), []);
+  const [beyanFrom, setBeyanFrom] = useState(defaultBeyanRange.from);
+  const [beyanTo, setBeyanTo] = useState(defaultBeyanRange.to);
 
   const { data: summary, isLoading } = useQuery({
     queryKey: ['portal-automation-summary'],
@@ -105,6 +119,7 @@ export default function PortalAutomationPanel({ focus = 'all' }: { focus?: Focus
   const showBeyanname = focus === 'all' || focus === 'beyanname';
   const showTebligat = focus === 'all' || focus === 'tebligat';
   const showSgk = focus === 'all' || focus === 'sgk';
+  const needsTaxpayerTarget = showTebligat || showSgk;
 
   return (
     <div className="space-y-4">
@@ -158,29 +173,37 @@ export default function PortalAutomationPanel({ focus = 'all' }: { focus?: Focus
           </div>
         </div>
 
-        <div className="grid lg:grid-cols-[minmax(240px,360px),1fr] gap-3">
-          <div>
-            <label className="block text-[11px] uppercase font-semibold tracking-[.12em] mb-1.5" style={{ color: 'rgba(250,250,249,.45)' }}>
-              Hedef mukellef
-            </label>
-            <TaxpayerSelect
-              taxpayers={taxpayers}
-              value={selectedTaxpayer}
-              onChange={setSelectedTaxpayer}
-              allLabel="Tum uygun mukellefler"
-              allValue="__ALL__"
-            />
-          </div>
-
-          <div className="grid sm:grid-cols-3 gap-2">
-            {showBeyanname && (
-              <ActionButton
-                icon={Download}
-                title="Onceki gun beyannameleri"
-                desc="Mali musavir e-Beyanname sifresi ile indir"
-                loading={runMut.isPending}
-                onClick={() => runMut.mutate({ scope: 'beyanname', taxpayerIds: [] })}
+        <div className={needsTaxpayerTarget ? 'grid lg:grid-cols-[minmax(240px,360px),1fr] gap-3' : 'grid gap-3'}>
+          {needsTaxpayerTarget && (
+            <div>
+              <label className="block text-[11px] uppercase font-semibold tracking-[.12em] mb-1.5" style={{ color: 'rgba(250,250,249,.45)' }}>
+                Hedef mukellef
+              </label>
+              <TaxpayerSelect
+                taxpayers={taxpayers}
+                value={selectedTaxpayer}
+                onChange={setSelectedTaxpayer}
+                allLabel="Tum uygun mukellefler"
+                allValue="__ALL__"
               />
+            </div>
+          )}
+
+          <div className={showBeyanname && !showTebligat && !showSgk ? 'grid lg:grid-cols-[minmax(320px,520px),minmax(220px,320px)] gap-3' : 'grid sm:grid-cols-3 gap-2'}>
+            {showBeyanname && (
+              <>
+                <div className="grid sm:grid-cols-2 gap-2 rounded-xl p-3" style={{ background: 'rgba(255,255,255,.035)', border: `1px solid ${LINE}` }}>
+                  <DateField label="Baslangic" value={beyanFrom} onChange={setBeyanFrom} />
+                  <DateField label="Bitis" value={beyanTo} onChange={setBeyanTo} />
+                </div>
+                <ActionButton
+                  icon={Download}
+                  title="Beyanname cek"
+                  desc={`${beyanFrom || '-'} / ${beyanTo || '-'} araligini indir`}
+                  loading={runMut.isPending}
+                  onClick={() => runMut.mutate({ scope: 'beyanname', taxpayerIds: [], dateFrom: beyanFrom, dateTo: beyanTo })}
+                />
+              </>
             )}
             {showTebligat && (
               <ActionButton
@@ -224,6 +247,28 @@ function Metric({ icon: Icon, label, value, sub, danger }: { icon: any; label: s
         <div className="text-[11px] truncate" style={{ color: 'rgba(250,250,249,.42)' }}>{sub}</div>
       </div>
     </div>
+  );
+}
+
+function DateField({ label, value, onChange }: { label: string; value: string; onChange: (value: string) => void }) {
+  return (
+    <label className="block">
+      <span className="block text-[10.5px] uppercase tracking-[.12em] font-semibold mb-1.5" style={{ color: 'rgba(250,250,249,.45)' }}>
+        {label}
+      </span>
+      <input
+        type="date"
+        value={value}
+        onChange={(e) => onChange(e.target.value)}
+        className="w-full h-10 rounded-[9px] px-3 text-[13px] font-semibold outline-none"
+        style={{
+          background: 'rgba(0,0,0,.18)',
+          border: `1px solid ${LINE}`,
+          color: '#fafaf9',
+          colorScheme: 'dark',
+        }}
+      />
+    </label>
   );
 }
 

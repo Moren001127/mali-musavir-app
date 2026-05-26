@@ -643,13 +643,11 @@ export class PortalAutomationRailwayRunnerService implements OnModuleInit {
     notes.push(...downloaded.notes);
 
     if (!declarations.length && !documents.length) {
-      throw new Error(
-        `Railway e-Beyanname girisi basarili; ancak onceki gun beyanname/tahakkuk indirme linkleri bulunamadi. URL=${this.safeUrl(page.url())}`,
-      );
+      notes.push(`Indirilecek beyanname/tahakkuk bulunamadi. URL=${this.safeUrl(page.url())}`);
     }
 
     return {
-      phase: 'download_collected',
+      phase: declarations.length || documents.length ? 'download_collected' : 'no_records',
       declarations,
       documents,
       notes,
@@ -742,10 +740,10 @@ export class PortalAutomationRailwayRunnerService implements OnModuleInit {
     const declarations: any[] = [];
     const documents: any[] = [];
     const notes: string[] = [];
-    const max = Math.max(1, Math.min(20, Number(process.env.PORTAL_AUTOMATION_EBEYANNAME_MAX_DOWNLOADS || 8)));
+    const max = Math.max(1, Math.min(200, Number(process.env.PORTAL_AUTOMATION_EBEYANNAME_MAX_DOWNLOADS || 80)));
     const selector = process.env.PORTAL_AUTOMATION_EBEYANNAME_DOWNLOAD_SELECTOR || 'a, button, input[type="button"], input[type="submit"]';
     const candidates = page.locator(selector);
-    const count = Math.min(await candidates.count().catch(() => 0), 200);
+    const count = Math.min(await candidates.count().catch(() => 0), 1000);
     let clicked = 0;
 
     for (let i = 0; i < count && clicked < max; i++) {
@@ -782,32 +780,39 @@ export class PortalAutomationRailwayRunnerService implements OnModuleInit {
       const contextText = `${suggested} ${haystack}`;
       const taxpayerId = this.matchTaxpayerId(contextText, taxpayers);
       const kind = this.guessDownloadKind(contextText);
+      const fallbackDonem = job.donem || this.inferDonem(job.periodEnd);
+      const donem = this.guessDonem(contextText, fallbackDonem);
+      const beyanTipi = this.guessBeyanTipi(contextText);
+      const onayNo = this.guessApprovalNo(contextText);
+      const tahakkukTutari = this.guessMoneyAmount(contextText);
 
       if (taxpayerId) {
         declarations.push({
           taxpayerId,
-          beyanTipi: this.guessBeyanTipi(contextText),
-          donem: job.donem || this.inferDonem(job.periodEnd),
+          beyanTipi,
+          donem,
           beyanTarihi: job.periodEnd || new Date().toISOString(),
+          tahakkukTutari: kind === 'tahakkuk' ? tahakkukTutari : null,
+          onayNo,
           beyannameBase64: kind === 'beyanname' ? base64 : null,
           tahakkukBase64: kind === 'tahakkuk' ? base64 : null,
           xmlBase64: kind === 'xml' ? base64 : null,
           beyannameFileName: kind === 'beyanname' ? suggested : null,
           tahakkukFileName: kind === 'tahakkuk' ? suggested : null,
-          raw: { runner: 'railway', rowText: this.compact(meta?.rowText || ''), fileName: suggested },
+          raw: { runner: 'railway', rowText: this.compact(meta?.rowText || ''), fileName: suggested, beyanTipi, donem, onayNo },
         });
       } else {
         documents.push({
           taxpayerId: null,
           belgeTuru: kind === 'tahakkuk' ? 'GIB_TAHAKKUK' : kind === 'xml' ? 'GIB_XML' : 'GIB_BEYANNAME',
           title: suggested || 'e-Beyanname belgesi',
-          period: job.donem || this.inferDonem(job.periodEnd),
+          period: donem,
           issuedAt: job.periodEnd || null,
           receivedAt: new Date().toISOString(),
           mimeType: this.mimeFromName(suggested),
           originalName: suggested,
           base64,
-          raw: { runner: 'railway', rowText: this.compact(meta?.rowText || ''), matchedTaxpayer: false },
+          raw: { runner: 'railway', rowText: this.compact(meta?.rowText || ''), matchedTaxpayer: false, beyanTipi, donem, onayNo },
         });
       }
     }
@@ -830,19 +835,87 @@ export class PortalAutomationRailwayRunnerService implements OnModuleInit {
       const taxNumber = (taxpayer.taxNumber || '').replace(/\D/g, '');
       if (taxNumber && normalized.includes(taxNumber)) return taxpayer.id;
     }
+    const textKey = this.normalizeTextKey(text);
+    const names = taxpayers
+      .map((taxpayer) => {
+        const name = taxpayer.companyName || [taxpayer.firstName, taxpayer.lastName].filter(Boolean).join(' ');
+        return { taxpayer, key: this.normalizeTextKey(name) };
+      })
+      .filter((item) => item.key.length >= 8)
+      .sort((a, b) => b.key.length - a.key.length);
+
+    for (const item of names) {
+      if (textKey.includes(item.key)) return item.taxpayer.id;
+    }
     return null;
   }
 
   private guessDownloadKind(text: string) {
+    const key = this.normalizeTextKey(text);
+    if (/\bXML\b/.test(key)) return 'xml';
+    if (/TAHAKKUK|FIS/.test(key)) return 'tahakkuk';
     if (/xml/i.test(text)) return 'xml';
     if (/tahakkuk|fis|fiş/i.test(text)) return 'tahakkuk';
     return 'beyanname';
   }
 
   private guessBeyanTipi(text: string) {
+    const key = this.normalizeTextKey(text);
+    if (/\bKDV\s*1\b|KDV1|KDVBEYANNAMESI/.test(key)) return 'KDV1';
+    if (/\bKDV\s*2\b|KDV2|TEVKIFAT/.test(key)) return 'KDV2';
+    if (/MUHSGK|MUHTASAR|MUHTASARPRIM|PRIMHIZMET/.test(key)) return 'MUHSGK';
+    if (/DAMGA/.test(key)) return 'DAMGA';
+    if (/POSET|GEKAP/.test(key)) return 'POSET';
+    if (/KURUMLAR/.test(key)) return 'KURUMLAR';
+    if (/GELIR/.test(key)) return 'GELIR';
+    if (/GECICI/.test(key)) return 'GECICI_VERGI';
+    if (/EDEFTER|E DEFTER|BERAT/.test(key)) return 'EDEFTER';
     const upper = text.toLocaleUpperCase('tr-TR');
     const known = ['KDV1', 'KDV2', 'KDV2B', 'KDV4', 'MUHSGK', 'MUHTASAR', 'KURUMLAR', 'GECICI', 'GEÇICI', 'DAMGA', 'BA_BS'];
-    return known.find((k) => upper.includes(k)) || 'EBEYANNAME';
+    return known.find((k) => upper.includes(k)) || 'DIGER';
+  }
+
+  private guessDonem(text: string, fallback: string) {
+    const normalized = String(text || '').replace(/\s+/g, ' ');
+    const iso = normalized.match(/\b(20\d{2})[-/.](0?[1-9]|1[0-2])\b/);
+    if (iso) return `${iso[1]}-${String(Number(iso[2])).padStart(2, '0')}`;
+    const monthYear = normalized.match(/\b(0?[1-9]|1[0-2])[-/.](20\d{2})\b/);
+    if (monthYear) return `${monthYear[2]}-${String(Number(monthYear[1])).padStart(2, '0')}`;
+
+    const key = this.normalizeTextKey(normalized);
+    const quarter = key.match(/\b(20\d{2})\s*([1-4])\s*(DONEM|GECICI)\b/);
+    if (quarter) return `${quarter[1]}-${String(Number(quarter[2]) * 3).padStart(2, '0')}`;
+    const yearly = key.match(/\b(20\d{2})\b/);
+    if (yearly && /(YILLIK|KURUMLAR|GELIR)/.test(key)) return `${yearly[1]}-YIL`;
+    return fallback;
+  }
+
+  private guessApprovalNo(text: string) {
+    const normalized = String(text || '').replace(/\s+/g, ' ');
+    const labelled = normalized.match(/(?:onay|tahakkuk|fis|fiş)\s*(?:no|numarasi|numarası)?\s*[:#-]?\s*([A-Z0-9-]{6,40})/i);
+    if (labelled) return labelled[1].slice(0, 80);
+    const plain = normalized.match(/\b\d{7,18}\b/);
+    return plain ? plain[0] : null;
+  }
+
+  private guessMoneyAmount(text: string) {
+    const matches = Array.from(String(text || '').matchAll(/(?:^|[^\d])(\d{1,3}(?:\.\d{3})*,\d{2}|\d+,\d{2})(?:\s*(?:TL|TRY|\u20BA))?/gi));
+    if (!matches.length) return null;
+    const values = matches
+      .map((m) => Number(m[1].replace(/\./g, '').replace(',', '.')))
+      .filter((n) => Number.isFinite(n) && n >= 0);
+    if (!values.length) return null;
+    return Math.max(...values);
+  }
+
+  private normalizeTextKey(value?: string | null) {
+    return String(value || '')
+      .toLocaleUpperCase('tr-TR')
+      .normalize('NFD')
+      .replace(/[\u0300-\u036f]/g, '')
+      .replace(/[^A-Z0-9]+/g, ' ')
+      .replace(/\s+/g, ' ')
+      .trim();
   }
 
   private mimeFromName(name: string) {

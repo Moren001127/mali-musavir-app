@@ -117,6 +117,15 @@ function parseDateOrNull(value?: string | null): Date | null {
   return Number.isNaN(d.getTime()) ? null : d;
 }
 
+function parseIstanbulDateBoundary(value: string | undefined, boundary: 'start' | 'end'): Date | null {
+  if (!value) return null;
+  const text = String(value).trim();
+  if (/^\d{4}-\d{2}-\d{2}$/.test(text)) {
+    return new Date(`${text}T${boundary === 'start' ? '00:00:00.000' : '23:59:59.999'}+03:00`);
+  }
+  return parseDateOrNull(text);
+}
+
 function cleanBase64(input?: string | null): string | null {
   if (!input) return null;
   return input.replace(/^data:[^;]+;base64,/, '').trim();
@@ -637,8 +646,8 @@ export class PortalAutomationService {
   }
 
   private resolvePeriod(input: ManualRunInput) {
-    const from = parseDateOrNull(input.dateFrom);
-    const to = parseDateOrNull(input.dateTo);
+    const from = parseIstanbulDateBoundary(input.dateFrom, 'start');
+    const to = parseIstanbulDateBoundary(input.dateTo, 'end');
     if (from && to) return { start: from, end: to };
     return previousIstanbulDayRange();
   }
