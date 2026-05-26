@@ -5,7 +5,7 @@ import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import { api } from '@/lib/api';
 import {
   MessageCircle, Send, Search, Clock, AlertCircle, CheckCircle2,
-  Loader2, Phone, User, Sparkles, X,
+  Loader2, Phone, User, Sparkles, X, FileText, AlertTriangle, Plus, Users,
 } from 'lucide-react';
 import { toast } from 'sonner';
 
@@ -29,6 +29,8 @@ interface ChatMessage {
   subject: string;
   content: string;
   occurredAt: string;
+  failed?: boolean;
+  documents?: Array<{ id: string; title: string }>;
 }
 
 interface ChatData {
@@ -36,6 +38,30 @@ interface ChatData {
   messages: ChatMessage[];
   windowOpen: boolean;
   windowExpiresAt: string | null;
+}
+
+interface WhatsAppConfigShape {
+  configured: boolean;
+  templateName?: string;
+  portalTemplateName?: string;
+  documentTemplateName?: string;
+}
+
+interface WhatsAppContactPhone {
+  phone: string;
+  label: string;
+  primary: boolean;
+}
+
+interface WhatsAppContact {
+  taxpayerId: string;
+  taxpayerName: string;
+  taxNumber: string;
+  phones: WhatsAppContactPhone[];
+  primaryPhone: string | null;
+  hasConversation: boolean;
+  lastMessageAt: string | null;
+  windowOpen: boolean;
 }
 
 function fmtTime(iso: string): string {
@@ -66,12 +92,27 @@ function fmtFullTime(iso: string): string {
   });
 }
 
+function parseMessageContent(content: string): { text: string; docs: Array<{ id: string; title: string }> } {
+  const docs: Array<{ id: string; title: string }> = [];
+  const text = String(content || '').replace(/\[\[document:([^|\]]+)\|([^\]]+)\]\]/g, (_all, id, title) => {
+    docs.push({ id, title });
+    return '';
+  }).trim();
+  return { text, docs };
+}
+
 export default function MesajlarPage() {
   const qc = useQueryClient();
   const [search, setSearch] = useState('');
   const [selectedId, setSelectedId] = useState<string | null>(null);
   const [composeText, setComposeText] = useState('');
   const [showTemplatePicker, setShowTemplatePicker] = useState(false);
+  const [showStartModal, setShowStartModal] = useState(false);
+  const [contactSearch, setContactSearch] = useState('');
+  const [selectedContactId, setSelectedContactId] = useState<string | null>(null);
+  const [selectedPhone, setSelectedPhone] = useState('');
+  const [startTemplateName, setStartTemplateName] = useState('');
+  const [startExtraParam, setStartExtraParam] = useState('');
   const scrollRef = useRef<HTMLDivElement>(null);
 
   // Konuşma listesi — her 8 saniyede yenilenir
@@ -79,6 +120,18 @@ export default function MesajlarPage() {
     queryKey: ['whatsapp-conversations'],
     queryFn: () => api.get('/whatsapp/conversations').then((r) => r.data),
     refetchInterval: 8000,
+  });
+
+  const { data: whatsappConfig } = useQuery<WhatsAppConfigShape>({
+    queryKey: ['integration-whatsapp'],
+    queryFn: () => api.get('/integrations/whatsapp').then((r) => r.data),
+  });
+
+  const { data: contacts = [], isLoading: contactsLoading } = useQuery<WhatsAppContact[]>({
+    queryKey: ['whatsapp-contacts', contactSearch],
+    queryFn: () => api.get('/whatsapp/contacts', { params: { search: contactSearch || undefined } }).then((r) => r.data),
+    enabled: showStartModal,
+    staleTime: 10_000,
   });
 
   // Seçili mükellefin mesajları
@@ -89,9 +142,46 @@ export default function MesajlarPage() {
     refetchInterval: selectedId ? 5000 : false,
   });
 
+  const selectedContact = useMemo(
+    () => contacts.find((contact) => contact.taxpayerId === selectedContactId) || null,
+    [contacts, selectedContactId],
+  );
+
+  const templateOptions = useMemo(() => {
+    const names = [
+      whatsappConfig?.portalTemplateName,
+      whatsappConfig?.templateName,
+      whatsappConfig?.documentTemplateName,
+      'sohbet_baslat',
+      'evrak_hatirlatma',
+    ]
+      .map((name) => String(name || '').trim())
+      .filter(Boolean);
+    return Array.from(new Set(names));
+  }, [whatsappConfig]);
+
+  useEffect(() => {
+    if (!startTemplateName && templateOptions.length > 0) {
+      setStartTemplateName(templateOptions[0]);
+    }
+  }, [startTemplateName, templateOptions]);
+
+  useEffect(() => {
+    if (selectedContact) {
+      setSelectedPhone(selectedContact.primaryPhone || selectedContact.phones[0]?.phone || '');
+    }
+  }, [selectedContact]);
+
+  useEffect(() => {
+    if (showStartModal && !selectedContactId && contacts.length > 0) {
+      const first = contacts.find((contact) => contact.phones.length > 0) || contacts[0];
+      setSelectedContactId(first.taxpayerId);
+    }
+  }, [contacts, selectedContactId, showStartModal]);
+
   // Mesaj gönderme
   const sendMut = useMutation({
-    mutationFn: (payload: { message?: string; templateName?: string }) =>
+    mutationFn: (payload: { message?: string; templateName?: string; templateParams?: string[] }) =>
       api.post(`/whatsapp/conversations/${selectedId}/reply`, payload).then((r) => r.data),
     onSuccess: (res) => {
       if (res.ok) {
@@ -107,6 +197,40 @@ export default function MesajlarPage() {
   });
 
   // Konuşma listesi filtrele
+  const startMut = useMutation({
+    mutationFn: () => {
+      if (!selectedContact) throw new Error('Mükellef seçimi zorunlu');
+      return api.post('/whatsapp/conversations/start', {
+        taxpayerId: selectedContact.taxpayerId,
+        phone: selectedPhone || selectedContact.primaryPhone,
+        templateName: startTemplateName.trim(),
+        templateParams: [
+          selectedContact.taxpayerName,
+          ...(startExtraParam.trim() ? [startExtraParam.trim()] : []),
+        ],
+      }).then((r) => r.data);
+    },
+    onSuccess: (res) => {
+      if (res.ok) {
+        toast.success('Şablon gönderildi');
+        setShowStartModal(false);
+        setSelectedId(res.taxpayerId);
+        setStartExtraParam('');
+        qc.invalidateQueries({ queryKey: ['whatsapp-chat', res.taxpayerId] });
+        qc.invalidateQueries({ queryKey: ['whatsapp-conversations'] });
+        qc.invalidateQueries({ queryKey: ['whatsapp-contacts'] });
+      } else {
+        toast.error(res.error || 'Şablon gönderilemedi');
+        if (res.taxpayerId) {
+          setSelectedId(res.taxpayerId);
+          qc.invalidateQueries({ queryKey: ['whatsapp-chat', res.taxpayerId] });
+          qc.invalidateQueries({ queryKey: ['whatsapp-conversations'] });
+        }
+      }
+    },
+    onError: (e: any) => toast.error(e?.response?.data?.message || e?.message || 'Gönderim hatası'),
+  });
+
   const filteredConversations = useMemo(() => {
     const q = search.trim().toLocaleLowerCase('tr-TR');
     if (!q) return conversations;
@@ -140,6 +264,24 @@ export default function MesajlarPage() {
     setShowTemplatePicker(false);
   };
 
+  const openStartModal = () => {
+    setShowStartModal(true);
+    if (!startTemplateName && templateOptions.length > 0) {
+      setStartTemplateName(templateOptions[0]);
+    }
+  };
+
+  const openDocument = async (documentId: string) => {
+    try {
+      const res = await api.get(`/documents/${documentId}/download`);
+      const url = res.data?.url;
+      if (url) window.open(url, '_blank', 'noopener,noreferrer');
+      else toast.error('Dosya bağlantısı alınamadı');
+    } catch (err: any) {
+      toast.error(err?.response?.data?.message || 'Dosya açılamadı');
+    }
+  };
+
   const unreadTotal = conversations.filter((c) => c.windowOpen).length;
 
   return (
@@ -156,6 +298,15 @@ export default function MesajlarPage() {
           <span className="text-[11px] tabular-nums" style={{ color: 'rgba(250,250,249,0.5)' }}>
             {conversations.length} kişi
           </span>
+          <button
+            type="button"
+            onClick={openStartModal}
+            title="Yeni konuşma"
+            className="h-8 w-8 rounded-[9px] flex items-center justify-center"
+            style={{ background: 'rgba(212,184,118,0.12)', border: '1px solid rgba(212,184,118,0.24)', color: GOLD }}
+          >
+            <Plus size={15} />
+          </button>
         </div>
         <div className="p-3" style={{ borderBottom: '1px solid rgba(255,255,255,0.05)' }}>
           <div className="relative">
@@ -319,6 +470,8 @@ export default function MesajlarPage() {
               ) : (
                 chatData.messages.map((m) => {
                   const incoming = m.direction === 'incoming';
+                  const parsed = parseMessageContent(m.content);
+                  const docs = m.documents?.length ? m.documents : parsed.docs;
                   return (
                     <div key={m.id} className={`flex ${incoming ? 'justify-start' : 'justify-end'}`}>
                       <div
@@ -332,6 +485,31 @@ export default function MesajlarPage() {
                         }}
                       >
                         <div className="whitespace-pre-wrap break-words">{m.content || '(boş)'}</div>
+                        {docs.length > 0 && (
+                          <div className="mt-2 space-y-1.5">
+                            {docs.map((doc) => (
+                              <button
+                                key={doc.id}
+                                type="button"
+                                onClick={() => openDocument(doc.id)}
+                                className="flex max-w-full items-center gap-1.5 rounded-md border px-2 py-1 text-left text-[11.5px]"
+                                style={{
+                                  borderColor: incoming ? 'rgba(255,255,255,0.12)' : 'rgba(212,184,118,0.28)',
+                                  background: incoming ? 'rgba(255,255,255,0.04)' : 'rgba(212,184,118,0.08)',
+                                  color: '#fafaf9',
+                                }}
+                              >
+                                <FileText size={13} className="shrink-0" />
+                                <span className="truncate">{doc.title}</span>
+                              </button>
+                            ))}
+                          </div>
+                        )}
+                        {m.failed && (
+                          <div className="mt-2 flex items-center gap-1.5 text-[10.5px]" style={{ color: '#fca5a5' }}>
+                            <AlertTriangle size={11} /> WhatsApp'a gonderilemedi
+                          </div>
+                        )}
                         <div className="text-[10px] mt-1 text-right" style={{ color: 'rgba(250,250,249,0.4)' }}>
                           {fmtFullTime(m.occurredAt)}
                         </div>
@@ -400,6 +578,148 @@ export default function MesajlarPage() {
       </div>
 
       {/* ŞABLON SEÇİCİ MODAL */}
+      {showStartModal && (
+        <div
+          className="fixed inset-0 z-50 flex items-center justify-center p-4"
+          style={{ background: 'rgba(0,0,0,0.6)', backdropFilter: 'blur(4px)' }}
+          onClick={() => setShowStartModal(false)}
+        >
+          <div
+            className="rounded-2xl p-5 w-full max-w-3xl"
+            style={{ background: '#1c1813', border: '1px solid rgba(255,255,255,0.1)' }}
+            onClick={(e) => e.stopPropagation()}
+          >
+            <div className="flex items-center justify-between mb-4">
+              <div className="flex items-center gap-2">
+                <Users size={17} style={{ color: GOLD }} />
+                <h3 className="text-[15px] font-semibold" style={{ color: '#fafaf9' }}>Rehberden Konuşma Başlat</h3>
+              </div>
+              <button onClick={() => setShowStartModal(false)} style={{ color: 'rgba(250,250,249,0.5)' }}>
+                <X size={18} />
+              </button>
+            </div>
+
+            <div className="grid gap-4 md:grid-cols-[1.15fr_0.85fr]">
+              <div className="min-h-[360px] rounded-[12px] border p-3" style={{ borderColor: 'rgba(255,255,255,0.08)', background: 'rgba(0,0,0,0.16)' }}>
+                <div className="relative mb-3">
+                  <Search size={14} className="absolute left-3 top-1/2 -translate-y-1/2" style={{ color: 'rgba(250,250,249,0.38)' }} />
+                  <input
+                    value={contactSearch}
+                    onChange={(e) => {
+                      setContactSearch(e.target.value);
+                      setSelectedContactId(null);
+                    }}
+                    placeholder="Rehberde ara..."
+                    className="w-full h-10 pl-9 pr-3 rounded-[10px] text-[12.5px] outline-none"
+                    style={{ background: 'rgba(255,255,255,0.035)', border: '1px solid rgba(255,255,255,0.08)', color: '#fafaf9' }}
+                  />
+                </div>
+
+                <div className="max-h-[310px] overflow-y-auto space-y-1">
+                  {contactsLoading ? (
+                    <div className="py-10 text-center text-[12.5px]" style={{ color: 'rgba(250,250,249,0.5)' }}>
+                      <Loader2 size={16} className="animate-spin mx-auto mb-2" /> Yükleniyor...
+                    </div>
+                  ) : contacts.length === 0 ? (
+                    <div className="py-10 text-center text-[12.5px]" style={{ color: 'rgba(250,250,249,0.45)' }}>
+                      Kayıt bulunamadı.
+                    </div>
+                  ) : contacts.map((contact) => {
+                    const active = contact.taxpayerId === selectedContactId;
+                    const canSend = contact.phones.length > 0;
+                    return (
+                      <button
+                        key={contact.taxpayerId}
+                        type="button"
+                        onClick={() => setSelectedContactId(contact.taxpayerId)}
+                        disabled={!canSend}
+                        className="w-full rounded-[10px] px-3 py-2 text-left disabled:opacity-45"
+                        style={{
+                          background: active ? 'rgba(212,184,118,0.1)' : 'rgba(255,255,255,0.03)',
+                          border: `1px solid ${active ? 'rgba(212,184,118,0.28)' : 'rgba(255,255,255,0.06)'}`,
+                        }}
+                      >
+                        <div className="flex items-center justify-between gap-3">
+                          <div className="min-w-0">
+                            <div className="truncate text-[13px] font-semibold" style={{ color: '#fafaf9' }}>{contact.taxpayerName}</div>
+                            <div className="mt-0.5 flex items-center gap-2 text-[11px]" style={{ color: 'rgba(250,250,249,0.45)' }}>
+                              <span className="truncate">{contact.primaryPhone || 'Telefon yok'}</span>
+                              {contact.windowOpen && <span style={{ color: '#86efac' }}>24h açık</span>}
+                            </div>
+                          </div>
+                          {contact.hasConversation && (
+                            <span className="rounded-md px-2 py-1 text-[10px]" style={{ background: 'rgba(34,197,94,0.09)', color: '#86efac' }}>
+                              Sohbet
+                            </span>
+                          )}
+                        </div>
+                      </button>
+                    );
+                  })}
+                </div>
+              </div>
+
+              <div className="rounded-[12px] border p-3" style={{ borderColor: 'rgba(255,255,255,0.08)', background: 'rgba(255,255,255,0.025)' }}>
+                <label className="block text-[11px] font-medium uppercase tracking-wider" style={{ color: 'rgba(250,250,249,0.45)' }}>
+                  Telefon
+                </label>
+                <select
+                  value={selectedPhone}
+                  onChange={(e) => setSelectedPhone(e.target.value)}
+                  disabled={!selectedContact}
+                  className="mt-1.5 w-full rounded-[10px] border bg-transparent px-3 py-2 text-[13px] outline-none"
+                  style={{ borderColor: 'rgba(255,255,255,0.08)', color: '#fafaf9' }}
+                >
+                  {(selectedContact?.phones || []).map((item) => (
+                    <option key={`${item.label}-${item.phone}`} value={item.phone} style={{ background: '#1c1813', color: '#fafaf9' }}>
+                      {item.label} - {item.phone}
+                    </option>
+                  ))}
+                </select>
+
+                <label className="mt-3 block text-[11px] font-medium uppercase tracking-wider" style={{ color: 'rgba(250,250,249,0.45)' }}>
+                  Şablon adı
+                </label>
+                <input
+                  value={startTemplateName}
+                  onChange={(e) => setStartTemplateName(e.target.value)}
+                  list="whatsapp-template-options"
+                  placeholder="sohbet_baslat"
+                  className="mt-1.5 w-full rounded-[10px] border bg-transparent px-3 py-2 text-[13px] outline-none"
+                  style={{ borderColor: 'rgba(255,255,255,0.08)', color: '#fafaf9' }}
+                />
+                <datalist id="whatsapp-template-options">
+                  {templateOptions.map((name) => <option key={name} value={name} />)}
+                </datalist>
+
+                <label className="mt-3 block text-[11px] font-medium uppercase tracking-wider" style={{ color: 'rgba(250,250,249,0.45)' }}>
+                  Ek parametre
+                </label>
+                <textarea
+                  value={startExtraParam}
+                  onChange={(e) => setStartExtraParam(e.target.value)}
+                  rows={4}
+                  placeholder="Şablonda ikinci değişken varsa buraya yaz"
+                  className="mt-1.5 w-full resize-none rounded-[10px] border bg-transparent px-3 py-2 text-[13px] outline-none"
+                  style={{ borderColor: 'rgba(255,255,255,0.08)', color: '#fafaf9' }}
+                />
+
+                <button
+                  type="button"
+                  onClick={() => startMut.mutate()}
+                  disabled={!selectedContact || !selectedPhone || !startTemplateName.trim() || startMut.isPending}
+                  className="mt-4 h-11 w-full rounded-[10px] flex items-center justify-center gap-1.5 text-[13px] font-semibold disabled:opacity-50"
+                  style={{ background: `linear-gradient(135deg, ${GOLD}, #b8a06f)`, color: '#0f0d0b' }}
+                >
+                  {startMut.isPending ? <Loader2 size={14} className="animate-spin" /> : <Send size={14} />}
+                  Şablonla Başlat
+                </button>
+              </div>
+            </div>
+          </div>
+        </div>
+      )}
+
       {showTemplatePicker && (
         <div
           className="fixed inset-0 z-50 flex items-center justify-center p-4"

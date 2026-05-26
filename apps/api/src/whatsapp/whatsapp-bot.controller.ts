@@ -3,6 +3,22 @@ import { PrismaService } from '../prisma/prisma.service';
 import { MorenAiService } from '../moren-ai/moren-ai.service';
 import { WhatsAppService } from './whatsapp.service';
 import { AutomationEventBus } from '../automations/automation-event-bus.service';
+import { StorageService } from '../storage/storage.service';
+import { randomUUID } from 'crypto';
+
+type IncomingWhatsAppMessage = {
+  from: string;
+  text: string;
+  id?: string;
+  phoneNumberId?: string;
+  media?: {
+    kind: string;
+    id?: string;
+    mimeType?: string;
+    filename?: string;
+    caption?: string;
+  };
+};
 
 @Controller('whatsapp/webhook')
 export class WhatsAppBotController {
@@ -13,6 +29,7 @@ export class WhatsAppBotController {
     private readonly morenAi: MorenAiService,
     private readonly whatsapp: WhatsAppService,
     @Optional() private readonly eventBus?: AutomationEventBus,
+    @Optional() private readonly storage?: StorageService,
   ) {}
 
   @Get()
@@ -40,17 +57,53 @@ export class WhatsAppBotController {
     return { ok: true, count: messages.length };
   }
 
-  private extractMessages(body: any): Array<{ from: string; text: string; id?: string }> {
-    const out: Array<{ from: string; text: string; id?: string }> = [];
+  private extractMessages(body: any): IncomingWhatsAppMessage[] {
+    const out: IncomingWhatsAppMessage[] = [];
     for (const entry of body?.entry || []) {
       for (const change of entry?.changes || []) {
+        const phoneNumberId = change?.value?.metadata?.phone_number_id;
         for (const m of change?.value?.messages || []) {
-          const text = m?.text?.body || m?.button?.text || '';
-          if (m?.from && text) out.push({ from: m.from, text, id: m.id });
+          const parsed = this.describeMetaMessage(m);
+          if (m?.from && parsed.text) {
+            out.push({ from: m.from, text: parsed.text, id: m.id, phoneNumberId, media: parsed.media });
+          }
         }
       }
     }
     return out;
+  }
+
+  private describeMetaMessage(m: any): Pick<IncomingWhatsAppMessage, 'text' | 'media'> {
+    const text = m?.text?.body || m?.button?.text || '';
+    if (text) return { text };
+
+    const mediaKeys = ['image', 'document', 'audio', 'video', 'sticker'] as const;
+    for (const key of mediaKeys) {
+      const media = m?.[key];
+      if (!media) continue;
+      const caption = String(media.caption || '').trim();
+      const filename = String(media.filename || '').trim();
+      const label =
+        key === 'image' ? 'Gorsel' :
+        key === 'document' ? 'Belge/PDF' :
+        key === 'audio' ? 'Ses kaydi' :
+        key === 'video' ? 'Video' :
+        'Sticker';
+      const details = [filename, caption].filter(Boolean).join(' - ');
+      return {
+        text: details ? `[${label}] ${details}` : `[${label} mesaji]`,
+        media: {
+          kind: key,
+          id: media.id,
+          mimeType: media.mime_type,
+          filename,
+          caption,
+        },
+      };
+    }
+
+    if (m?.type) return { text: `[Desteklenmeyen WhatsApp mesaji: ${m.type}]` };
+    return { text: '' };
   }
 
   private normalize(raw?: string | null): string {
@@ -72,6 +125,8 @@ export class WhatsAppBotController {
         companyName: true,
         firstName: true,
         lastName: true,
+        type: true,
+        taxNumber: true,
         phone: true,
         phones: true,
       },
@@ -107,9 +162,186 @@ export class WhatsAppBotController {
     return tenants.find((t) => this.normalize(t.phone) === normalized) || null;
   }
 
-  private async handleMessage(msg: { from: string; text: string; id?: string }) {
+  private async findTenantForInbound(msg: IncomingWhatsAppMessage) {
+    if (msg.phoneNumberId) {
+      const rows = await (this.prisma as any).integrationConnection.findMany({
+        where: { provider: 'WHATSAPP_META' },
+        select: { tenantId: true, config: true },
+        take: 200,
+      }).catch(() => []);
+      const match = rows.find((row: any) => String(row?.config?.phoneNumberId || '') === String(msg.phoneNumberId));
+      if (match?.tenantId) {
+        const tenant = await this.prisma.tenant.findUnique({
+          where: { id: match.tenantId },
+          select: { id: true, name: true, slug: true, phone: true },
+        });
+        if (tenant) return tenant;
+      }
+    }
+
+    const tenantSlug = process.env.MOREN_OWNER_TENANT_SLUG || process.env.DEFAULT_TENANT_SLUG || 'moren';
+    return this.prisma.tenant.findFirst({
+      where: { slug: tenantSlug },
+      select: { id: true, name: true, slug: true, phone: true },
+    });
+  }
+
+  private async ensureWhatsAppConversationContact(
+    tenantId: string,
+    phone: string,
+    kind: 'owner' | 'unknown',
+    displayName?: string,
+  ) {
+    const normalized = this.normalize(phone) || String(phone || '').replace(/[^\d]/g, '');
+    const suffix = normalized || 'unknown';
+    const taxNumber = kind === 'owner' ? `WHATSAPP-OWNER-${tenantId}` : `WHATSAPP-${suffix}`;
+    const phoneWhere = normalized ? [{ phone: normalized }, { phones: { has: normalized } }] : [];
+
+    const existing = await this.prisma.taxpayer.findFirst({
+      where: {
+        tenantId,
+        OR: [{ taxNumber }, ...phoneWhere],
+      },
+      select: {
+        id: true,
+        tenantId: true,
+        companyName: true,
+        firstName: true,
+        lastName: true,
+        type: true,
+        taxNumber: true,
+        phone: true,
+        phones: true,
+      },
+    });
+    if (existing) return existing;
+
+    const companyName =
+      kind === 'owner'
+        ? (displayName || 'Ofis Sahibi WhatsApp')
+        : `Kayitsiz WhatsApp ${normalized || phone}`;
+
+    return this.prisma.taxpayer.create({
+      data: {
+        tenantId,
+        type: 'GERCEK_KISI',
+        companyName,
+        taxNumber,
+        taxOffice: 'WHATSAPP',
+        phone: normalized || phone,
+        phones: normalized ? [normalized] : [],
+        emails: [],
+        notes: kind === 'owner'
+          ? 'Mesaj Merkezi icin otomatik olusturulan ofis sahibi WhatsApp kaydi.'
+          : 'Mesaj Merkezi icin otomatik olusturulan kayitsiz WhatsApp kisi kaydi.',
+        isActive: false,
+        whatsappEvrakTalep: false,
+        whatsappEvrakGeldi: false,
+      },
+      select: {
+        id: true,
+        tenantId: true,
+        companyName: true,
+        firstName: true,
+        lastName: true,
+        type: true,
+        taxNumber: true,
+        phone: true,
+        phones: true,
+      },
+    });
+  }
+
+  private displayName(t: any): string {
+    return t?.companyName || `${t?.firstName || ''} ${t?.lastName || ''}`.trim() || 'Mukellef';
+  }
+
+  private async contentWithSavedMedia(
+    tenantId: string,
+    taxpayerId: string,
+    msg: IncomingWhatsAppMessage,
+  ): Promise<string> {
+    if (!msg.media?.id || !this.storage) return msg.text;
+    try {
+      const downloaded = await this.whatsapp.downloadMedia(msg.media.id, tenantId);
+      if (!downloaded?.buffer?.length) return `${msg.text}\n[Medya dosyasi indirilemedi]`;
+
+      const filename = this.safeMediaFilename(msg.media.filename || `whatsapp-${msg.media.kind}.${this.extFromMime(downloaded.mimeType)}`);
+      const s3Key = `${tenantId}/${taxpayerId}/whatsapp/${randomUUID()}-${filename}`;
+      await this.storage.putBuffer(s3Key, downloaded.buffer, downloaded.mimeType, {
+        source: 'whatsapp-meta',
+        mediaId: msg.media.id,
+      });
+
+      const doc = await (this.prisma as any).document.create({
+        data: {
+          taxpayerId,
+          title: filename,
+          category: 'EVRAK',
+          mimeType: downloaded.mimeType,
+          sizeBytes: downloaded.sizeBytes,
+          s3Key,
+          notes: `WhatsApp ${msg.media.kind} mesajindan otomatik kaydedildi.`,
+        },
+        select: { id: true, title: true },
+      });
+      await (this.prisma as any).documentVersion.create({
+        data: {
+          documentId: doc.id,
+          versionNo: 1,
+          s3Key,
+          sizeBytes: downloaded.sizeBytes,
+          uploadedBy: 'whatsapp-webhook',
+          notes: `WhatsApp mediaId=${msg.media.id}`,
+        },
+      });
+
+      return `${msg.text}\n[[document:${doc.id}|${doc.title}]]`;
+    } catch (err: any) {
+      this.logger.warn(`WhatsApp medya kaydetme hatasi: ${err?.message || err}`);
+      return `${msg.text}\n[Medya dosyasi kaydedilemedi]`;
+    }
+  }
+
+  private safeMediaFilename(value: string): string {
+    const cleaned = String(value || 'whatsapp-media.bin')
+      .replace(/[^\w.\-]+/g, '_')
+      .replace(/^_+|_+$/g, '')
+      .slice(0, 120);
+    return cleaned || 'whatsapp-media.bin';
+  }
+
+  private extFromMime(mimeType: string): string {
+    if (/pdf/i.test(mimeType)) return 'pdf';
+    if (/png/i.test(mimeType)) return 'png';
+    if (/jpe?g/i.test(mimeType)) return 'jpg';
+    if (/webp/i.test(mimeType)) return 'webp';
+    if (/mp4/i.test(mimeType)) return 'mp4';
+    if (/mpeg|mp3/i.test(mimeType)) return 'mp3';
+    if (/ogg|opus/i.test(mimeType)) return 'ogg';
+    return 'bin';
+  }
+
+  private async handleMessage(msg: IncomingWhatsAppMessage) {
     const ownerTenant = await this.findOwnerTenantByPhone(msg.from);
     if (ownerTenant) {
+      const ownerContact = await this.ensureWhatsAppConversationContact(
+        ownerTenant.id,
+        msg.from,
+        'owner',
+        `${ownerTenant.name || 'Ofis'} sahibi`,
+      );
+      const incomingContent = await this.contentWithSavedMedia(ownerTenant.id, ownerContact.id, msg);
+      await this.prisma.communicationLog.create({
+        data: {
+          taxpayerId: ownerContact.id,
+          channel: 'WHATSAPP',
+          subject: 'WhatsApp owner gelen mesaj',
+          content: incomingContent,
+          occurredAt: new Date(),
+        },
+      });
+
       const prompt = [
         'Bu mesaj ofis sahibinden WhatsApp uzerinden geldi.',
         'Cevap kisa ve is odakli olsun. Portal verilerini kullan, gerekirse tool calistir.',
@@ -123,16 +355,70 @@ export class WhatsAppBotController {
         voiceMode: true,
       });
       const reply = (answer.assistantMessage || '').slice(0, 1400);
-      if (reply) await this.whatsapp.sendMessage(msg.from, reply);
+      if (reply) {
+        const sent = await this.whatsapp.sendMessage(msg.from, reply, ownerTenant.id);
+        await this.prisma.communicationLog.create({
+          data: {
+            taxpayerId: ownerContact.id,
+            channel: 'WHATSAPP',
+            subject: sent ? 'WhatsApp owner bot cevabi' : 'WhatsApp owner bot cevabi (gonderilemedi - master switch veya hata)',
+            content: reply,
+            occurredAt: new Date(),
+          },
+        });
+      }
       return;
     }
 
     const taxpayer: any = await this.findTaxpayerByPhone(msg.from);
     if (!taxpayer) {
-      this.logger.warn(`WhatsApp bot: telefon eşleşmedi ${msg.from}`);
+      const tenant = await this.findTenantForInbound(msg);
+      if (!tenant) {
+        this.logger.warn(`WhatsApp bot: telefon eslesmedi ve tenant bulunamadi ${msg.from}`);
+        return;
+      }
+      const contact = await this.ensureWhatsAppConversationContact(tenant.id, msg.from, 'unknown');
+      const incomingContent = await this.contentWithSavedMedia(tenant.id, contact.id, msg);
+      await this.prisma.communicationLog.create({
+        data: {
+          taxpayerId: contact.id,
+          channel: 'WHATSAPP',
+          subject: 'WhatsApp gelen kayitsiz numara mesaji',
+          content: incomingContent,
+          occurredAt: new Date(),
+        },
+      });
+
+      await this.prisma.notification.create({
+        data: {
+          tenantId: tenant.id,
+          type: 'WHATSAPP',
+          title: `Kayitsiz WhatsApp mesaji: ${msg.from}`,
+          body: msg.text.slice(0, 240),
+          metadata: {
+            taxpayerId: contact.id,
+            phone: msg.from,
+            messageId: msg.id || null,
+            unknownContact: true,
+          },
+        },
+      }).catch(() => null);
+
+      if (this.eventBus) {
+        this.eventBus.emit('WhatsApp.MessageReceived', {
+          tenantId: tenant.id,
+          taxpayerId: contact.id,
+          taxpayerUnvan: this.displayName(contact),
+          taxpayerVkn: contact.taxNumber ?? '',
+          from: msg.from,
+          text: msg.text,
+          messageId: msg.id,
+          unknownContact: true,
+          source: 'meta',
+        });
+      }
       return;
     }
-
     // Otomasyon event'i: müvekkelden WhatsApp mesajı geldi
     if (this.eventBus) {
       const unvan =
@@ -155,7 +441,7 @@ export class WhatsAppBotController {
         taxpayerId: taxpayer.id,
         channel: 'WHATSAPP',
         subject: 'WhatsApp gelen mükellef sorusu',
-        content: msg.text,
+        content: await this.contentWithSavedMedia(taxpayer.tenantId, taxpayer.id, msg),
         occurredAt: new Date(),
       },
     });
@@ -182,12 +468,12 @@ export class WhatsAppBotController {
 
     const guardedReply = this.buildGuardedTaxpayerReply(msg.text);
     if (guardedReply) {
-      await this.whatsapp.sendMessage(msg.from, guardedReply);
+      const sent = await this.whatsapp.sendMessage(msg.from, guardedReply, taxpayer.tenantId);
       await this.prisma.communicationLog.create({
         data: {
           taxpayerId: taxpayer.id,
           channel: 'WHATSAPP',
-          subject: 'WhatsApp bot cevabi',
+          subject: sent ? 'WhatsApp bot cevabi' : 'WhatsApp bot cevabi (gönderilemedi - master switch veya hata)',
           content: guardedReply,
           occurredAt: new Date(),
         },
@@ -220,12 +506,12 @@ export class WhatsAppBotController {
 
     const reply = (answer.assistantMessage || '').slice(0, 1200);
     if (reply) {
-      await this.whatsapp.sendMessage(msg.from, reply);
+      const sent = await this.whatsapp.sendMessage(msg.from, reply, taxpayer.tenantId);
       await this.prisma.communicationLog.create({
         data: {
           taxpayerId: taxpayer.id,
           channel: 'WHATSAPP',
-          subject: 'WhatsApp bot cevabı',
+          subject: sent ? 'WhatsApp bot cevabı (MOREN AI)' : 'WhatsApp bot cevabı (gönderilemedi - master switch veya hata)',
           content: reply,
           occurredAt: new Date(),
         },

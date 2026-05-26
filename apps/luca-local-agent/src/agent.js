@@ -1115,11 +1115,69 @@ async function loginToLuca(page) {
     }
   }
 
-  // CAPTCHA kontrolü
+  // CAPTCHA kontrolü — 2captcha ile otomatik çözüm (TWOCAPTCHA_API_KEY env'inden)
   await page.waitForTimeout(1500);
   const captchaImg = await page.$('img[src*="captcha" i], img[alt*="güvenlik" i], #captcha-input');
   if (captchaImg) {
-    throw new Error('CAPTCHA ekranı geldi — manuel müdahale gerekli. Bir kez tarayıcı ile login olup oturumu sıcak tutun veya 2FA kapatın.');
+    const twoCaptchaKey = process.env.TWOCAPTCHA_API_KEY || process.env.TWO_CAPTCHA_API_KEY;
+    if (twoCaptchaKey) {
+      log.info('CAPTCHA tespit edildi, 2captcha ile çözülüyor...');
+      try {
+        const buffer = await captchaImg.screenshot({ type: 'png' });
+        const base64 = buffer.toString('base64');
+        const { Solver } = require('2captcha');
+        const solver = new Solver(twoCaptchaKey);
+        const t0 = Date.now();
+        const cozum = await solver.imageCaptcha(base64, {
+          numeric: 0,
+          min_len: 4,
+          max_len: 10,
+          language: 0,
+        });
+        const ms = Date.now() - t0;
+        log.info(`2captcha çözümü: "${cozum.data}" (${ms}ms, id=${cozum.id})`);
+        // Captcha kod input'unu bul ve doldur
+        const kodSelectors = [
+          'input[id*="captcha" i]:not([id*="img" i])',
+          'input[name*="captcha" i]',
+          'input[id*="GuvenlikKod" i]',
+          'input[id*="Kod" i]:not([id*="Plaka" i])',
+          'input[placeholder*="güvenlik" i]',
+          'input[placeholder*="kod" i]',
+          '#captcha-input',
+        ];
+        let kodInput = null;
+        for (const s of kodSelectors) {
+          const el = await page.$(s);
+          if (el) { kodInput = el; break; }
+        }
+        if (!kodInput) {
+          throw new Error('Captcha kod input bulunamadı — 2captcha çözdü ama nereye yazılacağı belli değil');
+        }
+        await kodInput.fill('');
+        await kodInput.type(cozum.data, { delay: 50 });
+        // Submit veya Devam butonu
+        const submitBtn = await page.$('button[type="submit"], input[type="submit"], button:has-text("Giriş"), button:has-text("Onay"), button:has-text("Devam")');
+        if (submitBtn) {
+          const navPromise = page.waitForNavigation({ waitUntil: 'domcontentloaded', timeout: 30_000 }).catch(() => null);
+          await submitBtn.click().catch(() => {});
+          await navPromise;
+        }
+        await page.waitForTimeout(2000);
+        // Tekrar captcha varsa hala başarısız — manuel'a düş
+        const captchaImg2 = await page.$('img[src*="captcha" i], img[alt*="güvenlik" i], #captcha-input');
+        if (captchaImg2) {
+          try { await solver.reportBad(cozum.id); } catch {}
+          throw new Error('2captcha çözümü yanlış — captcha tekrar geldi');
+        }
+        log.info('CAPTCHA otomatik çözüldü ✓');
+      } catch (err) {
+        log.warn(`2captcha hatası: ${err.message} — manuel müdahale gerekli`);
+        throw new Error(`CAPTCHA ekranı: 2captcha çözemedi (${err.message}). Manuel kod girin veya .env'de TWOCAPTCHA_API_KEY kontrol edin.`);
+      }
+    } else {
+      throw new Error('CAPTCHA ekranı geldi — TWOCAPTCHA_API_KEY env tanımsız, manuel müdahale gerekli. .env\'e TWOCAPTCHA_API_KEY ekleyin.');
+    }
   }
 
   const url = page.url();

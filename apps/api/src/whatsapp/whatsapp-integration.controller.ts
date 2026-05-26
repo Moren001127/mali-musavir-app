@@ -33,4 +33,14 @@ export class WhatsAppIntegrationController {
     if (!body?.to) return { sent: false, error: 'to (telefon) zorunlu' };
     return this.whatsapp.sendTestMessage(req.user.tenantId, body.to, body.templateName, body.params);
   }
+
+  /**
+   * Master switch toggle — tüm WhatsApp otomasyonlarını AÇ/KAPA
+   * Body: { active: boolean }
+   */
+  @Put('toggle')
+  async toggleAutomation(@Req() req: any, @Body() body: { active?: boolean }) {
+    const active = body?.active === true;
+    return this.whatsapp.setAutomationActive(req.user.tenantId, active);
+  }
 }

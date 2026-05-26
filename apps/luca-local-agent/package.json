@@ -9,9 +9,10 @@
     "install:browsers": "playwright install chromium"
   },
   "dependencies": {
+    "2captcha": "^3.0.7",
     "axios": "^1.7.7",
+    "dotenv": "^16.4.5",
     "form-data": "^4.0.1",
-    "playwright": "^1.48.0",
-    "dotenv": "^16.4.5"
+    "playwright": "^1.48.0"
   }
 }

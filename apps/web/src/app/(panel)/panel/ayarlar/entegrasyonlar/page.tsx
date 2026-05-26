@@ -64,6 +64,7 @@ type WhatsAppConfigShape = {
   ownerAlertTemplateName: string;
   hasAccessToken: boolean;
   hasWebhookToken: boolean;
+  automationActive: boolean;
 };
 
 export default function EntegrasyonlarPage() {
@@ -413,6 +414,16 @@ function WhatsAppCard() {
     onError: (e: any) => toast.error('Hata: ' + (e?.message || '')),
   });
 
+  const toggleMut = useMutation({
+    mutationFn: (active: boolean) => api.put('/integrations/whatsapp/toggle', { active }).then((r) => r.data),
+    onSuccess: (res) => {
+      toast.success(res.active ? 'WhatsApp otomasyonlari aktif' : 'WhatsApp otomasyonlari pasif');
+      qc.invalidateQueries({ queryKey: ['integration-whatsapp'] });
+      qc.invalidateQueries({ queryKey: ['integration-whatsapp-status'] });
+    },
+    onError: (e: any) => toast.error(e?.response?.data?.message || 'Durum degistirilemedi'),
+  });
+
   return (
     <section className="rounded-lg border bg-[#0f0d0b]/80 p-5" style={{ borderColor: LINE }}>
       <div className="flex items-start gap-3">
@@ -434,6 +445,34 @@ function WhatsAppCard() {
       </div>
 
       <div className="mt-4 space-y-3">
+        <div
+          className="flex items-center justify-between gap-3 rounded-md border p-3"
+          style={{
+            borderColor: data?.automationActive ? 'rgba(74,222,128,0.28)' : 'rgba(248,113,113,0.28)',
+            background: data?.automationActive ? 'rgba(74,222,128,0.06)' : 'rgba(248,113,113,0.06)',
+          }}
+        >
+          <div>
+            <div className="text-[12.5px] font-semibold" style={{ color: TEXT }}>Master Switch</div>
+            <div className="text-[11px]" style={{ color: MUTED }}>
+              Meta, QR ve otomasyon WhatsApp gonderimlerini tek yerden acar/kapatir.
+            </div>
+          </div>
+          <button
+            type="button"
+            onClick={() => toggleMut.mutate(!data?.automationActive)}
+            disabled={toggleMut.isPending}
+            className="inline-flex h-8 items-center gap-1.5 rounded-md border px-3 text-[12px] font-bold disabled:opacity-60"
+            style={{
+              borderColor: data?.automationActive ? 'rgba(74,222,128,0.35)' : 'rgba(248,113,113,0.35)',
+              color: data?.automationActive ? GREEN : RED,
+              background: 'rgba(0,0,0,0.16)',
+            }}
+          >
+            {toggleMut.isPending ? <Loader2 size={13} className="animate-spin" /> : data?.automationActive ? <CheckCircle2 size={13} /> : <XCircle size={13} />}
+            {data?.automationActive ? 'Aktif' : 'Pasif'}
+          </button>
+        </div>
         <div>
           <label className="mb-1.5 block text-[11px] font-medium uppercase tracking-wider" style={{ color: MUTED }}>
             Access Token {data?.hasAccessToken && <span className="ml-1 normal-case" style={{ color: GREEN }}>(kayıtlı)</span>}

@@ -858,11 +858,11 @@ export class LucaService {
         tenantId,
         jobId: challenge.jobId,
         id: { not: challenge.id },
-        answeredBy: 'auto-ocr',
+        answeredBy: { in: ['auto-ocr', 'auto-2captcha'] },
         createdAt: { gt: new Date(Date.now() - 10 * 60 * 1000) },
       },
     }).catch(() => 0);
-    if (priorAutoAttempts >= Number(process.env.LUCA_CAPTCHA_OCR_MAX_ATTEMPTS || 1)) {
+    if (priorAutoAttempts >= Number(process.env.LUCA_CAPTCHA_OCR_MAX_ATTEMPTS || 3)) {
       return (this.prisma as any).lucaCaptchaChallenge.update({
         where: { id: challenge.id },
         data: {
@@ -889,7 +889,7 @@ export class LucaService {
       && ocr.text.length >= minLength
       && ocr.text.length <= maxLength;
 
-    const context = {
+    const context: any = {
       ...(challenge.context || {}),
       autoOcr: {
         attempted: true,
@@ -902,29 +902,159 @@ export class LucaService {
       },
     };
 
-    const updated = await (this.prisma as any).lucaCaptchaChallenge.update({
-      where: { id: challenge.id },
-      data: accepted
-        ? {
-            status: 'answered',
-            answer: ocr.text,
-            answeredBy: 'auto-ocr',
-            answeredAt: new Date(),
-            context,
-          }
-        : { context },
-    });
+    if (accepted) {
+      const updated = await (this.prisma as any).lucaCaptchaChallenge.update({
+        where: { id: challenge.id },
+        data: {
+          status: 'answered',
+          answer: ocr.text,
+          answeredBy: 'auto-ocr',
+          answeredAt: new Date(),
+          context,
+        },
+      });
+      if (challenge.jobId) {
+        await this.appendJobLog(
+          challenge.jobId,
+          `Luca guvenlik kodu OCR ile otomatik okundu (guven=${Math.round(ocr.confidence)}); agent'a gonderildi`,
+        ).catch(() => {});
+      }
+      return updated;
+    }
 
-    if (challenge.jobId) {
+    // Tesseract düşük güvenle okudu — 2captcha fallback'a düş
+    const twoCaptchaKey = process.env.TWOCAPTCHA_API_KEY || process.env.TWO_CAPTCHA_API_KEY;
+    if (twoCaptchaKey) {
+      if (challenge.jobId) {
+        await this.appendJobLog(
+          challenge.jobId,
+          `Luca guvenlik kodu OCR yetersiz (guven=${Math.round(ocr.confidence)}, okunan="${ocr.text || '-'}"); 2captcha'ya gonderiliyor`,
+        ).catch(() => {});
+      }
+      try {
+        const twoResult = await this.solveCaptchaWith2Captcha(challenge.captchaImage, twoCaptchaKey);
+        const cleanText = String(twoResult.text || '').replace(/[^0-9A-Za-z]/g, '');
+        const twoOk = cleanText.length >= minLength && cleanText.length <= maxLength;
+
+        context.twoCaptcha = {
+          attempted: true,
+          autoSubmitted: twoOk,
+          text: cleanText || null,
+          rawText: twoResult.text || null,
+          id: twoResult.id || null,
+          at: new Date().toISOString(),
+        };
+
+        if (twoOk) {
+          const updated = await (this.prisma as any).lucaCaptchaChallenge.update({
+            where: { id: challenge.id },
+            data: {
+              status: 'answered',
+              answer: cleanText,
+              answeredBy: 'auto-2captcha',
+              answeredAt: new Date(),
+              context,
+            },
+          });
+          if (challenge.jobId) {
+            await this.appendJobLog(
+              challenge.jobId,
+              `Luca guvenlik kodu 2captcha ile cozuldu ("${cleanText}"); agent'a gonderildi`,
+            ).catch(() => {});
+          }
+          return updated;
+        }
+
+        // 2captcha cevap verdi ama format uymadı
+        if (challenge.jobId) {
+          await this.appendJobLog(
+            challenge.jobId,
+            `Luca guvenlik kodu 2captcha cevabi format disinda ("${twoResult.text || '-'}"); portalda manuel bekliyor`,
+          ).catch(() => {});
+        }
+      } catch (err: any) {
+        context.twoCaptcha = {
+          attempted: true,
+          autoSubmitted: false,
+          error: err?.message || String(err),
+          at: new Date().toISOString(),
+        };
+        if (challenge.jobId) {
+          await this.appendJobLog(
+            challenge.jobId,
+            `Luca guvenlik kodu 2captcha hatasi: ${err?.message || err}; portalda manuel bekliyor`,
+          ).catch(() => {});
+        }
+        this.logger.warn(`Luca 2captcha hatasi: ${err?.message || err}`);
+      }
+    } else if (challenge.jobId) {
       await this.appendJobLog(
         challenge.jobId,
-        accepted
-          ? `Luca guvenlik kodu OCR ile otomatik okundu (guven=${Math.round(ocr.confidence)}); agent'a gonderildi`
-          : `Luca guvenlik kodu OCR ile guvenli okunamadi (guven=${Math.round(ocr.confidence)}, okunan="${ocr.text || '-'}"); portalda manuel bekliyor`,
+        `Luca guvenlik kodu OCR ile guvenli okunamadi (guven=${Math.round(ocr.confidence)}, okunan="${ocr.text || '-'}"); portalda manuel bekliyor`,
       ).catch(() => {});
     }
 
+    const updated = await (this.prisma as any).lucaCaptchaChallenge.update({
+      where: { id: challenge.id },
+      data: { context },
+    });
+
     return updated;
+  }
+
+  /**
+   * 2captcha API ile base64 image captcha çözer.
+   * https://2captcha.com/2captcha-api
+   *
+   * 1) POST in.php → captcha id döner
+   * 2) GET res.php → 5sn aralıkla poll edilir, çözüm gelene kadar
+   */
+  private async solveCaptchaWith2Captcha(
+    dataUrl: string,
+    apiKey: string,
+  ): Promise<{ text: string; id: string | null }> {
+    const match = String(dataUrl || '').match(/^data:image\/[a-zA-Z0-9.+-]+;base64,(.+)$/);
+    if (!match) throw new Error('captchaImage data:image formatinda degil');
+    const base64 = match[1];
+
+    // 1. captcha gönder
+    const inForm = new URLSearchParams();
+    inForm.append('key', apiKey);
+    inForm.append('method', 'base64');
+    inForm.append('body', base64);
+    inForm.append('json', '0');
+
+    const inRes = await fetch('https://2captcha.com/in.php', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/x-www-form-urlencoded' },
+      body: inForm.toString(),
+    });
+    const inText = (await inRes.text()).trim();
+    if (!inText.startsWith('OK|')) {
+      throw new Error(`2captcha in.php: ${inText}`);
+    }
+    const captchaId = inText.slice(3);
+
+    // 2. poll res.php
+    const maxAttempts = Number(process.env.LUCA_2CAPTCHA_MAX_POLL || 30); // ~ 2.5 dk
+    const pollInterval = Number(process.env.LUCA_2CAPTCHA_POLL_INTERVAL_MS || 5000);
+    // ilk istek için 5sn bekle (2captcha öneriyor)
+    await new Promise((r) => setTimeout(r, pollInterval));
+
+    for (let i = 0; i < maxAttempts; i++) {
+      const resUrl = `https://2captcha.com/res.php?key=${encodeURIComponent(apiKey)}&action=get&id=${encodeURIComponent(captchaId)}&json=0`;
+      const r = await fetch(resUrl);
+      const t = (await r.text()).trim();
+      if (t === 'CAPCHA_NOT_READY') {
+        await new Promise((r) => setTimeout(r, pollInterval));
+        continue;
+      }
+      if (t.startsWith('OK|')) {
+        return { text: t.slice(3), id: captchaId };
+      }
+      throw new Error(`2captcha res.php: ${t}`);
+    }
+    throw new Error(`2captcha zaman asimi (${maxAttempts} deneme)`);
   }
 
   private async readCaptchaWithOcr(dataUrl: string): Promise<{ text: string; rawText: string; confidence: number }> {

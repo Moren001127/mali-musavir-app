@@ -760,7 +760,7 @@ export class CariKasaService {
       gonderilecek: rows.filter((r: any) => r.gonderilebilir).length,
       atlanacak: rows.filter((r: any) => !r.gonderilebilir).length,
       rows,
-      whatsapp: this.whatsApp.getStatus(),
+      whatsapp: this.whatsApp.getStatus(tenantId),
     };
   }
 
@@ -770,7 +770,7 @@ export class CariKasaService {
     const results: any[] = [];
 
     for (const row of preview.rows.filter((r: any) => r.gonderilebilir)) {
-      const ok = await this.whatsApp.sendTemplate(row.phone, row.templateParameters, templateName);
+      const ok = await this.whatsApp.sendTemplate(row.phone, row.templateParameters, templateName, tenantId);
       await (this.prisma as any).communicationLog.create({
         data: {
           taxpayerId: row.taxpayerId,

@@ -24,8 +24,8 @@ export default function TopBar() {
     <header
       className="h-14 flex items-center justify-between px-6 flex-shrink-0"
       style={{
-        background: 'rgba(255,255,255,0.03)',
-        borderBottom: '1px solid rgba(255,255,255,0.05)',
+        background: 'rgba(255,255,255,0.045)',
+        borderBottom: '1px solid rgba(255,255,255,0.07)',
       }}
     >
       <p className="text-sm capitalize" style={{ color: 'rgba(250,250,249,0.45)' }}>

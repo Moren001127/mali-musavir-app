@@ -561,6 +561,18 @@ export class EDefterControlService {
     findings.push(...this.analyzeHavadaKdv(rows, voucherMeta));
     findings.push(...this.analyzeMissingDescriptionHighValue(rows));
     findings.push(...this.analyzeOrtakAlacakFaiz(rows));
+    findings.push(...this.analyzeDonemSonu191391Bakiye(rows));
+    findings.push(...this.analyzeBordroTahakkukAylik(rows, range));
+    findings.push(...this.analyzeStopajKontrolleri(rows, range));
+    findings.push(...this.analyzeAcilisFisiKontrol(rows, range));
+    findings.push(...this.analyzeYillikKapanisKontrol(rows, range, voucherMeta));
+    findings.push(...this.analyzeAvansKapanmamis(rows));
+    findings.push(...this.analyzeVadesiGecmisCekSenet(rows, range));
+    findings.push(...this.analyzeBankaEksiBakiye(rows));
+    findings.push(...this.analyzePOSValor108(rows));
+    findings.push(...this.analyzeKKEG689(rows));
+    findings.push(...this.analyzeAmortismanYilSonu(rows, range));
+    findings.push(...this.analyzeVergiKarsiligi370(rows, range));
 
     // FIS_TARIHI_EKSIK ozeti: tek bilgi olarak topla
     const tarihEksik = rows.filter((r) => !r.fisTarihi);
@@ -581,13 +593,15 @@ export class EDefterControlService {
       'SATIRDA_BORC_ALACAK_BIRLIKTE',
       '191_TERS_CALISMA',
       '391_TERS_CALISMA',
-      'KDV_TAHAKKUK_EKSIK',
+      // Asagidakiler aktif (e-defter onceki kontrol icin onemli):
+      // - KDV_TAHAKKUK_EKSIK: ay sonu tahakkuk olmamasi kritik
+      // - KDV_ODENECEK_360_UYUMSUZ: odenecek KDV 360'a aktarilmali
+      // - KDV_DEVREDEN_190_UYUMSUZ: devreden KDV 190'a aktarilmali
+      // Asagidakiler hala kapali (gurultu):
       'KDV_TAHAKKUK_MUKERRER',
       'KDV_TAHAKKUK_AY_SONU_DEGIL',
       'KDV_TAHAKKUK_191_TUTAR_UYUMSUZ',
       'KDV_TAHAKKUK_391_TUTAR_UYUMSUZ',
-      'KDV_ODENECEK_360_UYUMSUZ',
-      'KDV_DEVREDEN_190_UYUMSUZ',
       'KDV_ORANI_OLAGAN_DISI',
       'KDV_MATRAH_KARSILIK_YOK',
       'MUKERRER_EVRAK_NO',
@@ -1712,6 +1726,51 @@ export class EDefterControlService {
     return findings;
   }
 
+  // Donem sonu 191 ve 391 hesap bakiye kontrolu.
+  // KDV tahakkuk yapilmissa bu hesaplar donem sonunda sifirlanmis olmali.
+  private analyzeDonemSonu191391Bakiye(rows: ParsedEDefterFisLine[]): FindingDraft[] {
+    const findings: FindingDraft[] = [];
+    const calc = (prefix: RegExp) => {
+      let borc = 0, alacak = 0;
+      let first: ParsedEDefterFisLine | null = null;
+      for (const r of rows) {
+        if (!prefix.test(r.hesapKodu || '')) continue;
+        borc += Number(r.borc || 0);
+        alacak += Number(r.alacak || 0);
+        if (!first) first = r;
+      }
+      return { borc, alacak, fark: borc - alacak, first };
+    };
+
+    const k191 = calc(/^191/);
+    if (k191.first && Math.abs(k191.fark) > 1) {
+      findings.push({
+        severity: 'WARN',
+        category: 'DONEM_SONU_191_BAKIYE',
+        message: `Donem sonu 191 Indirilecek KDV bakiyesi sifirlanmamis (borc ${this.fmt(k191.borc)} - alacak ${this.fmt(k191.alacak)} = ${this.fmt(k191.fark)} TL). Tahakkuk fisi kontrol edilmeli.`,
+        voucherKey: k191.first.voucherKey,
+        rowIndex: k191.first.rowIndex,
+        hesapKodu: '191',
+        detail: { borc: k191.borc, alacak: k191.alacak, fark: k191.fark },
+      });
+    }
+
+    const k391 = calc(/^391/);
+    if (k391.first && Math.abs(k391.fark) > 1) {
+      findings.push({
+        severity: 'WARN',
+        category: 'DONEM_SONU_391_BAKIYE',
+        message: `Donem sonu 391 Hesaplanan KDV bakiyesi sifirlanmamis (alacak ${this.fmt(k391.alacak)} - borc ${this.fmt(k391.borc)} = ${this.fmt(-k391.fark)} TL). Tahakkuk fisi kontrol edilmeli.`,
+        voucherKey: k391.first.voucherKey,
+        rowIndex: k391.first.rowIndex,
+        hesapKodu: '391',
+        detail: { borc: k391.borc, alacak: k391.alacak, fark: k391.fark },
+      });
+    }
+
+    return findings;
+  }
+
   private analyzeOrtakAlacakFaiz(rows: ParsedEDefterFisLine[]): FindingDraft[] {
     let borc = 0, alacak = 0;
     let first: ParsedEDefterFisLine | null = null;
@@ -1731,6 +1790,339 @@ export class EDefterControlService {
       rowIndex: first.rowIndex,
       hesapKodu: first.hesapKodu,
     }];
+  }
+
+  // Aylik bordro tahakkuku: her ay 770 veya 772 personel gider hesabi olmali
+  private analyzeBordroTahakkukAylik(rows: ParsedEDefterFisLine[], range: { start: Date; end: Date } | null): FindingDraft[] {
+    if (!range) return [];
+    const findings: FindingDraft[] = [];
+    const months = this.monthKeysInRange(range.start, range.end);
+    for (const mk of months) {
+      const monthRows = rows.filter((r) => r.fisTarihi && this.monthKey(r.fisTarihi) === mk);
+      if (!monthRows.length) continue;
+      const hasBordro = monthRows.some((r) => /^(770|772)/.test(r.hesapKodu || ''));
+      const hasPersonel = monthRows.some((r) => /^335/.test(r.hesapKodu || ''));
+      const hasSgk = monthRows.some((r) => /^361/.test(r.hesapKodu || ''));
+      if (!hasBordro && !hasPersonel && !hasSgk) continue;
+      if (!hasBordro || !hasPersonel || !hasSgk) {
+        const first = monthRows[0];
+        findings.push({
+          severity: 'WARN',
+          category: 'BORDRO_TAHAKKUK_EKSIK',
+          message: `${this.describeMonth(mk)} bordro tahakkuku eksik gorunuyor (770/772 gider: ${hasBordro}, 335 net ucret: ${hasPersonel}, 361 SGK: ${hasSgk}).`,
+          voucherKey: first.voucherKey,
+          rowIndex: first.rowIndex,
+          detail: { ay: mk, hasBordro, hasPersonel, hasSgk },
+        });
+      }
+    }
+    return findings;
+  }
+
+  // Stopaj kontrolleri: kira (360.01.006), SMM (360.01.007), damga (360.01.002), gelir vergisi (360.01.001)
+  private analyzeStopajKontrolleri(rows: ParsedEDefterFisLine[], range: { start: Date; end: Date } | null): FindingDraft[] {
+    const findings: FindingDraft[] = [];
+    // Kira odemesi varsa stopaj kontrolu
+    const kiraRows = rows.filter((r) => /^(770|760|730)/.test(r.hesapKodu || '') && /kira|isyeri/i.test(`${r.aciklama || ''} ${r.hesapAdi || ''}`));
+    if (kiraRows.length) {
+      const stopajRows = rows.filter((r) => /^360\.01\.006/.test(r.hesapKodu || ''));
+      const kiraTotal = kiraRows.reduce((s, r) => s + Number(r.borc || 0), 0);
+      const stopajTotal = stopajRows.reduce((s, r) => s + Number(r.alacak || 0), 0);
+      if (kiraTotal > 1 && stopajTotal < 1) {
+        findings.push({
+          severity: 'ERROR',
+          category: 'KIRA_STOPAJI_EKSIK',
+          message: `Donemde kira gideri ${this.fmt(kiraTotal)} TL gorunuyor ancak 360.01.006 kira stopaji hesabinda kayit yok. %20 stopaj kesintisi yapilmali (GVK 94).`,
+          voucherKey: kiraRows[0].voucherKey,
+          rowIndex: kiraRows[0].rowIndex,
+          hesapKodu: kiraRows[0].hesapKodu,
+          detail: { kiraTotal, stopajTotal },
+        });
+      } else if (kiraTotal > 1 && stopajTotal > 1) {
+        const oran = (stopajTotal / kiraTotal) * 100;
+        if (oran < 15 || oran > 25) {
+          findings.push({
+            severity: 'WARN',
+            category: 'KIRA_STOPAJI_ORAN',
+            message: `Kira gideri ${this.fmt(kiraTotal)} TL, stopaj ${this.fmt(stopajTotal)} TL (oran %${oran.toFixed(1)}). Beklenen %20 (GVK 94). Brut/net hesaplama kontrol edilmeli.`,
+            voucherKey: kiraRows[0].voucherKey,
+            rowIndex: kiraRows[0].rowIndex,
+            hesapKodu: kiraRows[0].hesapKodu,
+            detail: { kiraTotal, stopajTotal, oran },
+          });
+        }
+      }
+    }
+
+    // Serbest meslek odemesi varsa stopaj kontrolu (740 hizmet alimi + 360.01.007)
+    const smmRows = rows.filter((r) => /^(740|770)/.test(r.hesapKodu || '') && /smm|musavir|avukat|noter|serbest meslek|muhasebe|tercume/i.test(`${r.aciklama || ''} ${r.hesapAdi || ''}`));
+    if (smmRows.length) {
+      const stopajRows = rows.filter((r) => /^360\.01\.007/.test(r.hesapKodu || ''));
+      if (stopajRows.length === 0) {
+        findings.push({
+          severity: 'WARN',
+          category: 'SMM_STOPAJI_KONTROL',
+          message: `Donemde serbest meslek odemesi gorunuyor ancak 360.01.007 serbest meslek stopaji hesabi bos. %20 tevkifat zorunlu (GVK 94).`,
+          voucherKey: smmRows[0].voucherKey,
+          rowIndex: smmRows[0].rowIndex,
+          hesapKodu: smmRows[0].hesapKodu,
+        });
+      }
+    }
+
+    // Personel ucreti varsa damga vergisi kontrolu (335 var + 360.01.002 olmali)
+    const personelOdeme = rows.filter((r) => /^335/.test(r.hesapKodu || '') && Number(r.alacak || 0) > 0);
+    if (personelOdeme.length) {
+      const damga = rows.filter((r) => /^360\.01\.002/.test(r.hesapKodu || ''));
+      if (damga.length === 0) {
+        findings.push({
+          severity: 'INFO',
+          category: 'DAMGA_VERGISI_KONTROL',
+          message: `Personel ucret odemesi var ama 360.01.002 damga vergisi hesabi bos. Ucret damga vergisi binde 7.59 kontrol edilmeli.`,
+          voucherKey: personelOdeme[0].voucherKey,
+          rowIndex: personelOdeme[0].rowIndex,
+          hesapKodu: personelOdeme[0].hesapKodu,
+        });
+      }
+    }
+
+    return findings;
+  }
+
+  // Acilis fisi kontrolu: 1 Ocak'ta veya donem basinda olmali, sadece bilanco (1-5) hesaplari olmali
+  private analyzeAcilisFisiKontrol(rows: ParsedEDefterFisLine[], range: { start: Date; end: Date } | null): FindingDraft[] {
+    if (!range) return [];
+    const findings: FindingDraft[] = [];
+    const startMonth = range.start.getUTCMonth();
+    // Sadece Q1 veya yillik kontrol
+    if (startMonth !== 0) return findings;
+    const acilisRows = rows.filter((r) => /acilis|acilis fisi|acilis kaydi/i.test(`${r.aciklama || ''} ${r.fisTipi || ''}`));
+    if (acilisRows.length === 0) {
+      findings.push({
+        severity: 'WARN',
+        category: 'ACILIS_FISI_YOK',
+        message: `Donem basinda acilis fisi bulunamadi. Yil basi (1 Ocak) acilis kaydi zorunludur, geceniliyilin kapanis mizaniyla bire bir tutmali.`,
+        voucherKey: rows[0]?.voucherKey,
+        rowIndex: rows[0]?.rowIndex,
+      });
+    } else {
+      // Acilis fisinde gelir/gider/maliyet hesabi (5/6/7) olmamali
+      const yanlisHesap = acilisRows.filter((r) => /^[567]/.test(r.hesapKodu || ''));
+      if (yanlisHesap.length) {
+        findings.push({
+          severity: 'ERROR',
+          category: 'ACILIS_FISINDE_GELIR_GIDER',
+          message: `Acilis fisinde ${yanlisHesap.length} adet gelir/gider/maliyet (5xx/6xx/7xx) hesap kaydi var. Acilis sadece bilanco (1xx-5xx aktif/pasif) hesaplarini icermeli.`,
+          voucherKey: yanlisHesap[0].voucherKey,
+          rowIndex: yanlisHesap[0].rowIndex,
+          hesapKodu: yanlisHesap[0].hesapKodu,
+        });
+      }
+    }
+    return findings;
+  }
+
+  // Yillik kapanis kontrolu: 690 donem kari/zarari hesabi kullanilmis mi (sadece yil sonunda)
+  private analyzeYillikKapanisKontrol(rows: ParsedEDefterFisLine[], range: { start: Date; end: Date } | null, voucherMeta: Map<string, VoucherMeta>): FindingDraft[] {
+    if (!range) return [];
+    const findings: FindingDraft[] = [];
+    const endMonth = range.end.getUTCMonth();
+    if (endMonth !== 11) return findings; // Sadece yilsonu
+    const has690 = rows.some((r) => /^690/.test(r.hesapKodu || ''));
+    if (!has690) {
+      const has6xxOr7xx = rows.some((r) => /^[67]/.test(r.hesapKodu || ''));
+      if (has6xxOr7xx) {
+        findings.push({
+          severity: 'WARN',
+          category: 'YILLIK_KAPANIS_690_EKSIK',
+          message: `Yil sonu donemde 6xx/7xx gelir-gider hesaplari var ama 690 Donem Kari/Zarari hesabi kullanilmamis. Kapanis fisi atilmis mi kontrol edilmeli.`,
+          voucherKey: rows[0]?.voucherKey,
+          rowIndex: rows[0]?.rowIndex,
+        });
+      }
+    }
+    return findings;
+  }
+
+  // Avans kontrolu: 159 verilen siparis avansi uzun suredir kapatilmamis
+  private analyzeAvansKapanmamis(rows: ParsedEDefterFisLine[]): FindingDraft[] {
+    const findings: FindingDraft[] = [];
+    const calc = (prefix: RegExp, code: string, ad: string) => {
+      let borc = 0, alacak = 0;
+      let first: ParsedEDefterFisLine | null = null;
+      for (const r of rows) {
+        if (!prefix.test(r.hesapKodu || '')) continue;
+        borc += Number(r.borc || 0);
+        alacak += Number(r.alacak || 0);
+        if (!first) first = r;
+      }
+      const net = borc - alacak;
+      if (first && net > 10000) {
+        findings.push({
+          severity: 'INFO',
+          category: `AVANS_KAPANMAMIS_${code}`,
+          message: `${code} ${ad} hesabinda ${this.fmt(net)} TL acik bakiye. Mal/hizmet teslim alindiysa kapatma kaydi yapilmali.`,
+          voucherKey: first.voucherKey,
+          rowIndex: first.rowIndex,
+          hesapKodu: code,
+          detail: { borc, alacak, net },
+        });
+      }
+    };
+    calc(/^159/, '159', 'Verilen Siparis Avanslari');
+    calc(/^340/, '340', 'Alinan Siparis Avanslari');
+    return findings;
+  }
+
+  // Vadesi gecmis cek-senet
+  private analyzeVadesiGecmisCekSenet(rows: ParsedEDefterFisLine[], range: { start: Date; end: Date } | null): FindingDraft[] {
+    if (!range) return [];
+    const findings: FindingDraft[] = [];
+    const calc = (prefix: RegExp, code: string, ad: string) => {
+      let borc = 0, alacak = 0;
+      let first: ParsedEDefterFisLine | null = null;
+      for (const r of rows) {
+        if (!prefix.test(r.hesapKodu || '')) continue;
+        borc += Number(r.borc || 0);
+        alacak += Number(r.alacak || 0);
+        if (!first) first = r;
+      }
+      const net = code.startsWith('12') ? borc - alacak : alacak - borc;
+      if (first && net > 1000) {
+        findings.push({
+          severity: 'INFO',
+          category: `CEK_SENET_BAKIYE_${code}`,
+          message: `${code} ${ad} hesabi donem sonu bakiyesi ${this.fmt(net)} TL. Vadesi gecmis cek/senet var mi kontrol edilmeli.`,
+          voucherKey: first.voucherKey,
+          rowIndex: first.rowIndex,
+          hesapKodu: code,
+        });
+      }
+    };
+    calc(/^121/, '121', 'Alinan Cekler');
+    calc(/^122/, '122', 'Alinan Senetler');
+    calc(/^322/, '322', 'Verilen Cekler');
+    calc(/^323/, '323', 'Verilen Senetler');
+    return findings;
+  }
+
+  // Banka eksi bakiye = kredi mi, dogru hesapta mi (102 negatif olamaz, 300 olmali)
+  private analyzeBankaEksiBakiye(rows: ParsedEDefterFisLine[]): FindingDraft[] {
+    const findings: FindingDraft[] = [];
+    const byCode = new Map<string, { borc: number; alacak: number; first: ParsedEDefterFisLine }>();
+    for (const row of rows) {
+      const code = String(row.hesapKodu || '');
+      if (!/^102/.test(code)) continue;
+      if (!byCode.has(code)) byCode.set(code, { borc: 0, alacak: 0, first: row });
+      const agg = byCode.get(code)!;
+      agg.borc += Number(row.borc || 0);
+      agg.alacak += Number(row.alacak || 0);
+    }
+    for (const [code, agg] of byCode.entries()) {
+      const net = agg.borc - agg.alacak;
+      if (net < -100) {
+        findings.push({
+          severity: 'ERROR',
+          category: 'BANKA_EKSI_BAKIYE_102',
+          message: `${code} hesabi alacak bakiye veriyor (${this.fmt(Math.abs(net))} TL). Banka hesabi negatif olamaz; bu tutar 300 Kisa Vadeli Banka Kredileri hesabinda olmali.`,
+          voucherKey: agg.first.voucherKey,
+          rowIndex: agg.first.rowIndex,
+          hesapKodu: code,
+          detail: { borc: agg.borc, alacak: agg.alacak, net },
+        });
+      }
+    }
+    return findings;
+  }
+
+  // 108 Kredi Kartlari (POS) - valor tarihi gecmis ama kapanmamis
+  private analyzePOSValor108(rows: ParsedEDefterFisLine[]): FindingDraft[] {
+    let borc = 0, alacak = 0;
+    let first: ParsedEDefterFisLine | null = null;
+    for (const r of rows) {
+      if (!/^108/.test(r.hesapKodu || '')) continue;
+      borc += Number(r.borc || 0);
+      alacak += Number(r.alacak || 0);
+      if (!first) first = r;
+    }
+    const net = borc - alacak;
+    if (first && net > 5000) {
+      return [{
+        severity: 'INFO',
+        category: 'POS_VALOR_108_BAKIYE',
+        message: `108 POS Kredi Kartlari hesabi bakiyesi ${this.fmt(net)} TL. Valor tarihi gecip 102'ye gecmesi gereken kayitlar var mi kontrol edilmeli.`,
+        voucherKey: first.voucherKey,
+        rowIndex: first.rowIndex,
+        hesapKodu: '108',
+      }];
+    }
+    return [];
+  }
+
+  // 689 KKEG hesabi - kullanilan tutar Kurumlar Vergisi beyannamesinde matraha eklenmeli
+  private analyzeKKEG689(rows: ParsedEDefterFisLine[]): FindingDraft[] {
+    let net = 0;
+    let first: ParsedEDefterFisLine | null = null;
+    for (const r of rows) {
+      if (!/^689/.test(r.hesapKodu || '')) continue;
+      net += Number(r.borc || 0) - Number(r.alacak || 0);
+      if (!first) first = r;
+    }
+    if (first && net > 1000) {
+      return [{
+        severity: 'INFO',
+        category: 'KKEG_689_KONTROL',
+        message: `689 Diger Olaganustu Gider hesabinda ${this.fmt(net)} TL hareket var. KKEG (kanunen kabul edilmeyen gider) ise Kurumlar Vergisi beyannamesinde matraha eklenmeli.`,
+        voucherKey: first.voucherKey,
+        rowIndex: first.rowIndex,
+        hesapKodu: '689',
+      }];
+    }
+    return [];
+  }
+
+  // Yil sonu amortisman kontrolu (257/268)
+  private analyzeAmortismanYilSonu(rows: ParsedEDefterFisLine[], range: { start: Date; end: Date } | null): FindingDraft[] {
+    if (!range || range.end.getUTCMonth() !== 11) return [];
+    const findings: FindingDraft[] = [];
+    const hasFixedAsset = rows.some((r) => /^25[2-9]|^260|^264/.test(r.hesapKodu || ''));
+    if (!hasFixedAsset) return [];
+    const hasAmortisman = rows.some((r) => /^(257|268)/.test(r.hesapKodu || ''));
+    const hasGiderAmortisman = rows.some((r) => /^(770|760|730)/.test(r.hesapKodu || '') && /amortisman/i.test(`${r.aciklama || ''} ${r.hesapAdi || ''}`));
+    if (!hasAmortisman || !hasGiderAmortisman) {
+      const first = rows.find((r) => /^25[2-9]|^260|^264/.test(r.hesapKodu || ''))!;
+      findings.push({
+        severity: 'WARN',
+        category: 'YILSONU_AMORTISMAN_EKSIK',
+        message: `Yil sonu donemde sabit kiymet var ama amortisman kaydi (257/268 birikmis veya 770/760/730 gider) eksik gorunuyor. VUK 333 ile amortisman ayrilmali.`,
+        voucherKey: first.voucherKey,
+        rowIndex: first.rowIndex,
+        hesapKodu: first.hesapKodu,
+      });
+    }
+    return findings;
+  }
+
+  // 370 / 371 Donem Kari Vergi Karsiligi - yil sonu hesaplanmis mi
+  private analyzeVergiKarsiligi370(rows: ParsedEDefterFisLine[], range: { start: Date; end: Date } | null): FindingDraft[] {
+    if (!range || range.end.getUTCMonth() !== 11) return [];
+    const findings: FindingDraft[] = [];
+    const has690 = rows.some((r) => /^690/.test(r.hesapKodu || ''));
+    if (!has690) return [];
+    const has370 = rows.some((r) => /^370/.test(r.hesapKodu || ''));
+    const has371 = rows.some((r) => /^371/.test(r.hesapKodu || ''));
+    if (!has370 && !has371) {
+      const first = rows.find((r) => /^690/.test(r.hesapKodu || ''))!;
+      findings.push({
+        severity: 'WARN',
+        category: 'VERGI_KARSILIGI_370_YOK',
+        message: `Yil sonu 690 Donem Kari kullanilmis ancak 370/371 Donem Kari Vergi Karsiligi hesabi kullanilmamis. Kurumlar Vergisi tahakkuku eksik.`,
+        voucherKey: first.voucherKey,
+        rowIndex: first.rowIndex,
+        hesapKodu: '690',
+      });
+    }
+    return findings;
   }
 
   private normalizeDocumentNo(value?: string | null) {

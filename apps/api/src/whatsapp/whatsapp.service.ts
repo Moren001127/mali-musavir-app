@@ -97,7 +97,44 @@ export class WhatsAppService {
     return digits;
   }
 
+  /**
+   * Master switch: tenant'ın WhatsApp otomasyonları aktif mi?
+   * IntegrationConnection.isActive=false ise hiçbir mesaj gönderilmez.
+   */
+  async isAutomationActive(tenantId?: string): Promise<boolean> {
+    if (!tenantId) return true; // tenantId yoksa fallback: aktif kabul et (eski env-based çağrılar)
+    try {
+      const row = await (this.prisma as any).integrationConnection.findUnique({
+        where: { tenantId_provider: { tenantId, provider: 'WHATSAPP_META' } },
+        select: { isActive: true },
+      });
+      // DB kaydı yoksa eski env-based kurulumları kırma; env yapılandırılmışsa aktif say.
+      if (!row) return this.isConfigured(this.envConfig);
+      return row.isActive === true;
+    } catch {
+      return false;
+    }
+  }
+
+  /**
+   * Master switch toggle — UI'dan çağrılır
+   */
+  async setAutomationActive(tenantId: string, active: boolean): Promise<{ active: boolean }> {
+    await (this.prisma as any).integrationConnection.upsert({
+      where: { tenantId_provider: { tenantId, provider: 'WHATSAPP_META' } },
+      update: { isActive: active, updatedAt: new Date() },
+      create: { tenantId, provider: 'WHATSAPP_META', config: {}, isActive: active },
+    });
+    this.logger.log(`[WhatsApp] Master switch tenant=${tenantId} → ${active ? 'AKTİF' : 'PASİF'}`);
+    return { active };
+  }
+
   async sendMessage(phone: string, message: string, tenantId?: string): Promise<boolean> {
+    // MASTER SWITCH KONTROLÜ
+    if (tenantId && !(await this.isAutomationActive(tenantId))) {
+      this.logger.warn(`[WhatsApp] Master switch PASİF - mesaj atlandı: ${phone}`);
+      return false;
+    }
     const cfg = await this.getEffectiveConfig(tenantId);
     if (!this.isConfigured(cfg)) {
       this.logger.warn(`[WhatsApp] Yapilandirilmamis - mesaj atlandi: ${phone}`);
@@ -122,6 +159,11 @@ export class WhatsAppService {
     templateName?: string,
     tenantId?: string,
   ): Promise<boolean> {
+    // MASTER SWITCH KONTROLÜ
+    if (tenantId && !(await this.isAutomationActive(tenantId))) {
+      this.logger.warn(`[WhatsApp] Master switch PASİF - şablon atlandı: ${phone}`);
+      return false;
+    }
     const cfg = await this.getEffectiveConfig(tenantId);
     if (!this.isConfigured(cfg)) return false;
     const name = templateName || cfg.templateName;
@@ -170,6 +212,44 @@ export class WhatsAppService {
     }
   }
 
+  async downloadMedia(
+    mediaId: string,
+    tenantId?: string,
+  ): Promise<{ buffer: Buffer; mimeType: string; sizeBytes: number } | null> {
+    const cfg = await this.getEffectiveConfig(tenantId);
+    if (!this.isConfigured(cfg) || !mediaId) return null;
+
+    const metaUrl = `https://graph.facebook.com/${cfg.apiVersion || 'v20.0'}/${mediaId}`;
+    try {
+      const metaRes = await fetch(metaUrl, {
+        headers: { Authorization: `Bearer ${cfg.accessToken}` },
+      });
+      const metaText = await metaRes.text();
+      if (!metaRes.ok) {
+        this.logger.warn(`[WhatsApp] Medya bilgisi alinamadi ${mediaId}: HTTP ${metaRes.status} - ${metaText.slice(0, 200)}`);
+        return null;
+      }
+      const meta = (() => { try { return JSON.parse(metaText); } catch { return null; } })();
+      const url = meta?.url;
+      if (!url) return null;
+
+      const fileRes = await fetch(url, {
+        headers: { Authorization: `Bearer ${cfg.accessToken}` },
+      });
+      if (!fileRes.ok) {
+        this.logger.warn(`[WhatsApp] Medya indirilemedi ${mediaId}: HTTP ${fileRes.status}`);
+        return null;
+      }
+      const arrayBuffer = await fileRes.arrayBuffer();
+      const buffer = Buffer.from(arrayBuffer);
+      const mimeType = meta?.mime_type || fileRes.headers.get('content-type') || 'application/octet-stream';
+      return { buffer, mimeType, sizeBytes: buffer.length };
+    } catch (err: any) {
+      this.logger.warn(`[WhatsApp] Medya indirme hatasi ${mediaId}: ${err?.message || err}`);
+      return null;
+    }
+  }
+
   // ===================================================================
   // KONFIGURASYON YONETIMI - UI / IntegrationConnection
   // ===================================================================
@@ -191,6 +271,7 @@ export class WhatsAppService {
       ownerAlertTemplateName: effective.ownerAlertTemplateName || '',
       hasAccessToken: Boolean(effective.accessToken),
       hasWebhookToken: Boolean(effective.webhookVerifyToken),
+      automationActive: await this.isAutomationActive(tenantId),
     };
   }
 

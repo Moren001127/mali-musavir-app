@@ -4,6 +4,7 @@ import makeWASocket, {
   DisconnectReason,
   WASocket,
   fetchLatestBaileysVersion,
+  downloadMediaMessage,
 } from '@whiskeysockets/baileys';
 import { Boom } from '@hapi/boom';
 import * as QRCode from 'qrcode';
@@ -12,6 +13,8 @@ import * as fs from 'fs/promises';
 import * as fssync from 'fs';
 import { PrismaService } from '../prisma/prisma.service';
 import { AutomationEventBus } from '../automations/automation-event-bus.service';
+import { StorageService } from '../storage/storage.service';
+import { randomUUID } from 'crypto';
 
 interface TenantStatus {
   connected: boolean;
@@ -47,6 +50,7 @@ export class WhatsAppQrService implements OnModuleInit {
   constructor(
     @Optional() private readonly prisma?: PrismaService,
     @Optional() private readonly eventBus?: AutomationEventBus,
+    @Optional() private readonly storage?: StorageService,
   ) {}
 
   private getAuthPath(tenantId: string): string {
@@ -224,12 +228,8 @@ export class WhatsAppQrService implements OnModuleInit {
         // Sadece bireysel mesajlar (grup değil)
         if (!remoteJid.endsWith('@s.whatsapp.net')) continue;
         const from = remoteJid.replace('@s.whatsapp.net', '');
-        const text =
-          msg.message?.conversation ||
-          msg.message?.extendedTextMessage?.text ||
-          msg.message?.imageMessage?.caption ||
-          msg.message?.videoMessage?.caption ||
-          '';
+        const described = this.describeIncomingMessage(msg);
+        const text = described.text;
         if (!text) continue;
 
         this.logger.debug(
@@ -275,6 +275,18 @@ export class WhatsAppQrService implements OnModuleInit {
             }
           }
 
+          if (!taxpayerId && this.prisma) {
+            const contact = await this.ensureWhatsAppConversationContact(tenantId, from);
+            if (contact) {
+              taxpayerId = contact.id;
+              taxpayerVkn = contact.taxNumber ?? '';
+              taxpayerUnvan =
+                contact.companyName ||
+                `${contact.firstName ?? ''} ${contact.lastName ?? ''}`.trim() ||
+                '(bilinmeyen numara)';
+            }
+          }
+
           this.eventBus.emit('WhatsApp.MessageReceived', {
             tenantId,
             taxpayerId,
@@ -295,7 +307,7 @@ export class WhatsAppQrService implements OnModuleInit {
                   taxpayerId,
                   channel: 'WHATSAPP',
                   subject: 'WhatsApp QR gelen mesaj',
-                  content: text.slice(0, 4000),
+                  content: (await this.contentWithSavedQrMedia(tenantId, taxpayerId, msg, described)).slice(0, 4000),
                   occurredAt: new Date(),
                 },
               });
@@ -380,7 +392,131 @@ export class WhatsAppQrService implements OnModuleInit {
   /**
    * QR oturumu üzerinden mesaj gönder. Otomasyon dispatcher'ı çağırır.
    */
+  private describeIncomingMessage(msg: any): { text: string; hasMedia: boolean; filename?: string; mimeType?: string; kind?: string } {
+    const m = msg.message || {};
+    const text =
+      m.conversation ||
+      m.extendedTextMessage?.text ||
+      m.imageMessage?.caption ||
+      m.videoMessage?.caption ||
+      m.documentMessage?.caption ||
+      '';
+    if (text) return { text, hasMedia: Boolean(m.imageMessage || m.videoMessage || m.documentMessage || m.audioMessage || m.stickerMessage) };
+    if (m.imageMessage) return { text: '[Gorsel mesaji]', hasMedia: true, mimeType: m.imageMessage.mimetype, kind: 'image' };
+    if (m.documentMessage) {
+      const filename = m.documentMessage.fileName || 'whatsapp-belge';
+      return { text: `[Belge/PDF] ${filename}`, hasMedia: true, filename, mimeType: m.documentMessage.mimetype, kind: 'document' };
+    }
+    if (m.audioMessage) return { text: '[Ses kaydi]', hasMedia: true, mimeType: m.audioMessage.mimetype, kind: 'audio' };
+    if (m.videoMessage) return { text: '[Video mesaji]', hasMedia: true, mimeType: m.videoMessage.mimetype, kind: 'video' };
+    if (m.stickerMessage) return { text: '[Sticker mesaji]', hasMedia: true, mimeType: m.stickerMessage.mimetype, kind: 'sticker' };
+    return { text: '', hasMedia: false };
+  }
+
+  private async ensureWhatsAppConversationContact(tenantId: string, phone: string) {
+    if (!this.prisma) return null;
+    const normalized = this.normalizePhoneSearch(phone);
+    const taxNumber = `WHATSAPP-${normalized || phone}`;
+    const existing = await this.prisma.taxpayer.findFirst({
+      where: {
+        tenantId,
+        OR: [{ taxNumber }, { phone: normalized }, { phones: { has: normalized } }],
+      },
+      select: { id: true, companyName: true, firstName: true, lastName: true, type: true, taxNumber: true },
+    });
+    if (existing) return existing;
+    return this.prisma.taxpayer.create({
+      data: {
+        tenantId,
+        type: 'GERCEK_KISI',
+        companyName: `Kayitsiz WhatsApp ${normalized || phone}`,
+        taxNumber,
+        taxOffice: 'WHATSAPP',
+        phone: normalized || phone,
+        phones: normalized ? [normalized] : [],
+        emails: [],
+        notes: 'Mesaj Merkezi icin otomatik olusturulan kayitsiz WhatsApp QR kisi kaydi.',
+        isActive: false,
+        whatsappEvrakTalep: false,
+        whatsappEvrakGeldi: false,
+      },
+      select: { id: true, companyName: true, firstName: true, lastName: true, type: true, taxNumber: true },
+    });
+  }
+
+  private async contentWithSavedQrMedia(
+    tenantId: string,
+    taxpayerId: string,
+    msg: any,
+    described: { text: string; hasMedia: boolean; filename?: string; mimeType?: string; kind?: string },
+  ): Promise<string> {
+    if (!described.hasMedia || !this.storage || !this.prisma) return described.text;
+    try {
+      const buffer = await downloadMediaMessage(msg, 'buffer', {});
+      if (!Buffer.isBuffer(buffer) || !buffer.length) return `${described.text}\n[Medya dosyasi indirilemedi]`;
+      const mimeType = described.mimeType || 'application/octet-stream';
+      const filename = this.safeMediaFilename(described.filename || `whatsapp-${described.kind || 'media'}.${this.extFromMime(mimeType)}`);
+      const s3Key = `${tenantId}/${taxpayerId}/whatsapp-qr/${randomUUID()}-${filename}`;
+      await this.storage.putBuffer(s3Key, buffer, mimeType, { source: 'whatsapp-qr' });
+      const doc = await (this.prisma as any).document.create({
+        data: {
+          taxpayerId,
+          title: filename,
+          category: 'EVRAK',
+          mimeType,
+          sizeBytes: buffer.length,
+          s3Key,
+          notes: 'WhatsApp QR mesajindan otomatik kaydedildi.',
+        },
+        select: { id: true, title: true },
+      });
+      await (this.prisma as any).documentVersion.create({
+        data: {
+          documentId: doc.id,
+          versionNo: 1,
+          s3Key,
+          sizeBytes: buffer.length,
+          uploadedBy: 'whatsapp-qr',
+          notes: 'WhatsApp QR gelen medya',
+        },
+      });
+      return `${described.text}\n[[document:${doc.id}|${doc.title}]]`;
+    } catch (err: any) {
+      this.logger.warn(`QR medya kaydetme hatasi: ${err?.message || err}`);
+      return `${described.text}\n[Medya dosyasi kaydedilemedi]`;
+    }
+  }
+
+  private safeMediaFilename(value: string): string {
+    const cleaned = String(value || 'whatsapp-media.bin')
+      .replace(/[^\w.\-]+/g, '_')
+      .replace(/^_+|_+$/g, '')
+      .slice(0, 120);
+    return cleaned || 'whatsapp-media.bin';
+  }
+
+  private extFromMime(mimeType: string): string {
+    if (/pdf/i.test(mimeType)) return 'pdf';
+    if (/png/i.test(mimeType)) return 'png';
+    if (/jpe?g/i.test(mimeType)) return 'jpg';
+    if (/webp/i.test(mimeType)) return 'webp';
+    if (/mp4/i.test(mimeType)) return 'mp4';
+    if (/mpeg|mp3/i.test(mimeType)) return 'mp3';
+    if (/ogg|opus/i.test(mimeType)) return 'ogg';
+    return 'bin';
+  }
+
   async sendMessage(tenantId: string, phone: string, text: string): Promise<{ messageId?: string }> {
+    if (this.prisma) {
+      const row = await (this.prisma as any).integrationConnection.findUnique({
+        where: { tenantId_provider: { tenantId, provider: 'WHATSAPP_META' } },
+        select: { isActive: true },
+      }).catch(() => null);
+      if (row && row.isActive === false) {
+        throw new BadRequestException('WhatsApp otomasyonlari pasif. Ayarlar > Entegrasyonlar ekranindan aktif edin.');
+      }
+    }
+
     const sock = this.sockets.get(tenantId);
     if (!sock || !this.statuses.get(tenantId)?.connected) {
       throw new BadRequestException(

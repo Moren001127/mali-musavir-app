@@ -5,9 +5,10 @@ import { WhatsAppBotController } from './whatsapp-bot.controller';
 import { WhatsAppIntegrationController } from './whatsapp-integration.controller';
 import { PrismaModule } from '../prisma/prisma.module';
 import { MorenAiModule } from '../moren-ai/moren-ai.module';
+import { StorageModule } from '../storage/storage.module';
 
 @Module({
-  imports: [PrismaModule, MorenAiModule],
+  imports: [PrismaModule, MorenAiModule, StorageModule],
   providers: [WhatsAppService],
   controllers: [WhatsAppController, WhatsAppBotController, WhatsAppIntegrationController],
   exports: [WhatsAppService],
