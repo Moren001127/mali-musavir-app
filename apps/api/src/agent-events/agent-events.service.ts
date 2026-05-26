@@ -1265,6 +1265,13 @@ ${ocr.text.slice(0, 14000)}`;
       if (tr) return `${tr[1].padStart(2, '0')}.${tr[2].padStart(2, '0')}.${tr[3].length === 2 ? `20${tr[3]}` : tr[3]}`;
       return raw;
     };
+    const parseTrDay = (value: any): Date | null => {
+      const raw = String(value || '').trim();
+      const m = raw.match(/^(\d{1,2})[.](\d{1,2})[.](\d{4})$/);
+      if (!m) return null;
+      const d = new Date(Number(m[3]), Number(m[2]) - 1, Number(m[1]));
+      return Number.isFinite(d.getTime()) ? d : null;
+    };
     const readBelgeNo = (event: any, meta: Record<string, any>) =>
       text(event.fisNo || meta.belgeNo || meta?.belge?.belgeNo || meta?.decisionTrace?.belge?.belgeNo || meta?.decisionTrace?.ekran?.belgeNo, 80);
     const readFaturaTarihi = (meta: Record<string, any>, message?: string) => {
@@ -1373,11 +1380,35 @@ ${ocr.text.slice(0, 14000)}`;
       select: this.lightEventSelect(),
     });
 
+    const eventPeriodInfo = (event: any, meta: Record<string, any>) => {
+      const faturaTarihi = readFaturaTarihi(meta, event.message);
+      const faturaDate = parseTrDay(faturaTarihi);
+      if (faturaDate) {
+        return {
+          faturaTarihi,
+          inPeriod: faturaDate >= periodStart && faturaDate < periodEnd,
+          source: 'Fatura tarihi',
+        };
+      }
+      const rowDonem = String(meta.donem || '').trim();
+      if (rowDonem) {
+        return {
+          faturaTarihi,
+          inPeriod: rowDonem === donemStr,
+          source: 'Komut dönemi',
+        };
+      }
+      const rowTs = new Date(event.ts);
+      return {
+        faturaTarihi,
+        inPeriod: rowTs >= periodStart && rowTs < periodEnd,
+        source: 'Log zamanı',
+      };
+    };
+
     const filteredEvents = events.filter((event: any) => {
       const meta = metaOf(event.meta);
-      const rowDonem = String(meta.donem || '').trim();
-      const rowTs = new Date(event.ts);
-      const inPeriod = rowDonem ? rowDonem === donemStr : rowTs >= periodStart && rowTs < periodEnd;
+      const { inPeriod } = eventPeriodInfo(event, meta);
       if (!inPeriod) return false;
       if (taxpayerIds.length) {
         return taxpayerIds.includes(String(meta.mukellefId || '')) || selectedNames.has(String(event.mukellef || ''));
@@ -1439,6 +1470,7 @@ ${ocr.text.slice(0, 14000)}`;
 
     const reportRows = filteredEvents.map((event: any, index) => {
       const meta = metaOf(event.meta);
+      const periodInfo = eventPeriodInfo(event, meta);
       const belgeNo = readBelgeNo(event, meta);
       const hesaplar = readAccounts(event, meta);
       const missing = readMissingFields(event.message, meta);
@@ -1476,7 +1508,8 @@ ${ocr.text.slice(0, 14000)}`;
         status: event.status || '',
         firma: event.firma || meta.firma || '',
         belgeNo,
-        faturaTarihi: readFaturaTarihi(meta, event.message),
+        faturaTarihi: periodInfo.faturaTarihi,
+        tarihFiltreKaynak: periodInfo.source,
         belgeTuru: readBelgeTuru(meta, event.message),
         faturaTuru: readFaturaTuru(meta, event.message),
         tutar: event.tutar == null ? null : numberOf(event.tutar),
@@ -1549,6 +1582,7 @@ ${ocr.text.slice(0, 14000)}`;
     summary.getRow(1).font = { bold: true, size: 16, color: { argb: dark } };
     summary.addRow(['Dönem', donemStr, 'Mükellef filtresi', selectedNames.size ? Array.from(selectedNames).join(', ') : target || 'Tümü']);
     summary.addRow(['Rapor tarihi', new Date().toLocaleString('tr-TR', { timeZone: 'Europe/Istanbul' }), 'İşlem filtresi', actions.length ? actions.map(actionLabel).join(', ') : 'Tümü']);
+    summary.addRow(['Tarih filtresi', 'Önce fatura tarihi; yoksa komut dönemi; o da yoksa log zamanı', 'Dönem', donemStr]);
     summary.addRow([]);
     styleHeader(summary.addRow(['Sayaç', 'Adet', 'Açıklama']));
     [
@@ -1596,6 +1630,7 @@ ${ocr.text.slice(0, 14000)}`;
       { header: 'Karşı Firma', key: 'firma', width: 36 },
       { header: 'Belge No', key: 'belgeNo', width: 22 },
       { header: 'Fatura Tarihi', key: 'faturaTarihi', width: 15 },
+      { header: 'Tarih Filtre Kaynağı', key: 'tarihFiltreKaynak', width: 19 },
       { header: 'Belge Türü', key: 'belgeTuru', width: 18 },
       { header: 'Fatura Türü', key: 'faturaTuru', width: 18 },
       { header: 'Tutar', key: 'tutar', width: 14 },
@@ -1616,7 +1651,7 @@ ${ocr.text.slice(0, 14000)}`;
     styleHeader(detail.getRow(1));
     detail.addRows(reportRows);
     detail.views = [{ state: 'frozen', ySplit: 1 }];
-    detail.autoFilter = 'A1:Z1';
+    detail.autoFilter = 'A1:AA1';
     detail.getColumn('tutar').numFmt = '#,##0.00';
     detail.getColumn('aiMaliyetUsd').numFmt = '#,##0.000000';
     detail.eachRow((row, rowNo) => {

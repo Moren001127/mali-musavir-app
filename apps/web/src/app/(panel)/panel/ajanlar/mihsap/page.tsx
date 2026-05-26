@@ -310,6 +310,16 @@ export default function MihsapAgentPage() {
   const selectedNames = selectedIds
     .map((id) => taxpayers.find((t) => t.id === id))
     .filter(Boolean) as Taxpayer[];
+  const reportPeriodLabel = new Date(`${ay}-01T00:00:00`).toLocaleDateString('tr-TR', {
+    month: 'long',
+    year: 'numeric',
+  });
+  const reportScopeLabel =
+    selectedIds.length === 0
+      ? `${reportPeriodLabel} · tüm mükellefler`
+      : selectedIds.length === 1
+        ? `${reportPeriodLabel} · ${selectedNames[0] ? taxpayerName(selectedNames[0]) : 'seçili mükellef'}`
+        : `${reportPeriodLabel} · ${selectedIds.length} mükellef`;
 
   return (
     <div className="space-y-3.5 max-w-7xl">
@@ -600,7 +610,7 @@ export default function MihsapAgentPage() {
               <Zap size={14} style={{ color: '#b8a06f' }} /> Canlı İşlem Akışı
             </h2>
             <p className="text-xs mt-0.5" style={{ color: 'rgba(250,250,249,0.45)' }}>
-              Son {events.length} işlem — 3 saniyede bir yenilenir
+              Son {events.length} işlem — 3 saniyede bir yenilenir · Excel: {reportScopeLabel}
             </p>
           </div>
           <div className="flex items-center gap-2">
@@ -614,10 +624,10 @@ export default function MihsapAgentPage() {
                 borderColor: 'rgba(184,160,111,0.28)',
                 color: '#d4b876',
               }}
-              title={selectedIds.length > 0 ? 'Seçili mükellef ve dönem için Excel döküm al' : 'Seçili dönem için tüm Mihsap loglarını Excel dök'}
+              title={`${reportScopeLabel} · fatura tarihine göre süzülür`}
             >
               {exportingReport ? <Loader2 size={13} className="animate-spin" /> : <Download size={13} />}
-              Excel Döküm
+              {selectedIds.length === 0 ? 'Tüm Dönem Excel' : 'Seçili Excel'}
             </button>
             <Link
               href="/panel/ajanlar/loglar?agent=mihsap"
