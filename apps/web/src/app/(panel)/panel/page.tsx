@@ -244,17 +244,49 @@ function WorkflowOverview({ counts, total, activeCount }: { counts?: WorkflowCou
 function DashboardSectionBridge({
   from = 'İş Akışı',
   to = 'Son Tarihler',
+  tone = 'gold',
 }: {
   from?: string;
   to?: string;
+  tone?: 'mint' | 'gold' | 'rose';
 }) {
+  const tones = {
+    mint: {
+      accent: '#8fd7bd',
+      accent2: '#d8bd86',
+      bg: 'rgba(143,215,189,0.040)',
+      border: 'rgba(143,215,189,0.15)',
+      text: '#bfe9dc',
+    },
+    gold: {
+      accent: '#d8bd86',
+      accent2: '#8cc8ff',
+      bg: 'rgba(216,189,134,0.038)',
+      border: 'rgba(216,189,134,0.15)',
+      text: '#d8c38f',
+    },
+    rose: {
+      accent: '#f0a6b6',
+      accent2: '#d8bd86',
+      bg: 'rgba(240,166,182,0.038)',
+      border: 'rgba(240,166,182,0.15)',
+      text: '#e8b8c1',
+    },
+  }[tone];
   return (
-    <div className="relative flex items-center gap-3 py-1">
-      <div className="h-px flex-1" style={{ background: 'rgba(255,255,255,0.08)' }} />
-      <span className="text-[9.5px] font-semibold uppercase tracking-[.16em]" style={{ color: 'rgba(250,250,249,0.32)' }}>
+    <div
+      className="relative flex min-h-9 items-center gap-3 overflow-hidden rounded-xl px-3 py-1.5"
+      style={{
+        background: `linear-gradient(90deg, transparent, ${tones.bg} 18%, rgba(255,255,255,0.012) 50%, ${tones.bg} 82%, transparent)`,
+        border: `1px solid ${tones.border}`,
+        boxShadow: 'inset 0 1px 0 rgba(255,255,255,0.018)',
+      }}
+    >
+      <div className="h-px flex-1" style={{ background: `linear-gradient(90deg, transparent, ${tones.accent}66)` }} />
+      <span className="inline-flex items-center gap-2 rounded-full px-3 py-1 text-[9.5px] font-bold uppercase tracking-[.16em]" style={{ background: 'rgba(5,5,5,0.62)', border: `1px solid ${tones.border}`, color: tones.text }}>
         {from} · {to}
       </span>
-      <div className="h-px flex-1" style={{ background: 'rgba(255,255,255,0.08)' }} />
+      <div className="h-px flex-1" style={{ background: `linear-gradient(90deg, ${tones.accent2}66, transparent)` }} />
     </div>
   );
 }
@@ -1917,7 +1949,7 @@ export default function DashboardPage() {
 
       <BrifingKart userName={displayUserName(meUser)} />
 
-      <DashboardSectionBridge from="Brifing" to="Beyanname Takibi" />
+      <DashboardSectionBridge from="Brifing" to="Beyanname Takibi" tone="mint" />
 
       <div
         className="rounded-2xl overflow-hidden"
@@ -1934,7 +1966,7 @@ export default function DashboardPage() {
 
       <WorkflowOverview counts={workflowCounts} total={workflowTotal} activeCount={activeCount || totalTx} />
 
-      <DashboardSectionBridge />
+      <DashboardSectionBridge tone="rose" />
 
       <BuHaftaTakvim />
       </div>

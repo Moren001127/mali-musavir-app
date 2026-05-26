@@ -107,13 +107,14 @@ const FOCUS_TONES: Record<string, { label: string; color: string; bg: string; gl
 };
 
 const BRIEFING_CHROME_TONE = {
-  color: '#d8bd86',
-  bg: 'rgba(216,189,134,0.07)',
-  glow: 'rgba(216,189,134,0.06)',
-  border: 'rgba(216,189,134,0.13)',
-  actionBg: 'rgba(255,255,255,0.026)',
-  actionBorder: 'rgba(255,255,255,0.075)',
-  text: '#d8c38f',
+  color: '#8fd7bd',
+  colorWarm: '#d8bd86',
+  bg: 'rgba(143,215,189,0.075)',
+  glow: 'rgba(143,215,189,0.07)',
+  border: 'rgba(143,215,189,0.18)',
+  actionBg: 'rgba(143,215,189,0.050)',
+  actionBorder: 'rgba(143,215,189,0.15)',
+  text: '#bfe9dc',
 };
 
 const MOTIVATION_BY_FOCUS: Record<string, string> = {
@@ -273,13 +274,24 @@ export function BrifingKart({ userName }: { userName?: string }) {
     <div
       className="rounded-2xl overflow-hidden relative"
       style={{
-        background: 'linear-gradient(180deg, rgba(17,17,15,0.93), rgba(10,11,10,0.91))',
-        border: '1px solid rgba(255,255,255,0.08)',
-        boxShadow: '0 12px 28px rgba(0,0,0,0.16), inset 0 1px 0 rgba(255,255,255,0.025)',
+        background: 'radial-gradient(circle at 7% 0%, rgba(143,215,189,0.11), transparent 34%), radial-gradient(circle at 95% 10%, rgba(216,189,134,0.08), transparent 31%), linear-gradient(180deg, rgba(8,14,13,0.96), rgba(5,7,7,0.94))',
+        border: `1px solid ${chromeTone.border}`,
+        boxShadow: '0 18px 44px rgba(0,0,0,0.22), inset 0 1px 0 rgba(255,255,255,0.035)',
       }}
     >
       {/* Üst etiket bandı */}
-      <div className="px-5 pt-4 pb-1 flex items-center justify-between gap-3 flex-wrap">
+      <div
+        className="pointer-events-none absolute inset-x-0 top-0 h-px"
+        style={{ background: 'linear-gradient(90deg, transparent, rgba(143,215,189,0.65), rgba(216,189,134,0.38), transparent)' }}
+      />
+      <div
+        className="pointer-events-none absolute inset-y-5 left-0 w-[3px] rounded-r-full"
+        style={{ background: 'linear-gradient(180deg, #8fd7bd, #d8bd86)', boxShadow: '0 0 18px rgba(143,215,189,0.22)' }}
+      />
+      <div
+        className="px-5 pt-4 pb-2 flex items-center justify-between gap-3 flex-wrap"
+        style={{ borderBottom: '1px solid rgba(143,215,189,0.08)' }}
+      >
         <div className="flex items-center gap-2.5">
           <Sparkles size={14} style={{ color: chromeTone.color }} />
           <span className="text-[10px] uppercase font-bold tracking-[.22em]" style={{ color: chromeTone.text }}>
@@ -297,7 +309,7 @@ export function BrifingKart({ userName }: { userName?: string }) {
           {data && (
             <span
               className="text-[9.5px] font-bold uppercase tracking-wider px-2 py-0.5 rounded-md inline-flex items-center gap-1"
-              style={{ background: 'rgba(255,255,255,0.025)', color: 'rgba(250,250,249,0.48)', border: '1px solid rgba(255,255,255,0.07)' }}
+              style={{ background: 'rgba(216,189,134,0.075)', color: '#d8c38f', border: '1px solid rgba(216,189,134,0.18)' }}
             >
               AI Destekli
             </span>
@@ -315,9 +327,9 @@ export function BrifingKart({ userName }: { userName?: string }) {
             title="Brifingi yeniden üret"
             className="text-[11px] inline-flex items-center gap-1.5 px-2.5 py-1 rounded-md transition disabled:opacity-50"
             style={{
-              background: 'rgba(255,255,255,0.025)',
-              border: '1px solid rgba(255,255,255,0.075)',
-              color: 'rgba(250,250,249,0.62)',
+              background: 'rgba(143,215,189,0.055)',
+              border: '1px solid rgba(143,215,189,0.14)',
+              color: 'rgba(221,246,238,0.72)',
             }}
           >
             {isFetching ? <Loader2 size={11} className="animate-spin" /> : <RefreshCw size={11} />}
@@ -327,14 +339,14 @@ export function BrifingKart({ userName }: { userName?: string }) {
       </div>
 
       {/* Selamlama + AI motivasyon */}
-      <div className="px-5 pt-2 pb-2 grid gap-3 xl:grid-cols-[minmax(0,1fr)_minmax(320px,430px)] xl:items-start">
+      <div className="px-5 pt-3 pb-2 grid gap-3 xl:grid-cols-[minmax(0,1fr)_minmax(320px,440px)] xl:items-start">
         <div className="min-w-0">
           <h2
             style={{
               fontFamily: 'Inter, ui-sans-serif, system-ui, sans-serif',
-              fontSize: 20,
-              fontWeight: 700,
-              color: '#f2efe8',
+              fontSize: 22,
+              fontWeight: 800,
+              color: '#f6fbf7',
               letterSpacing: 0,
               lineHeight: 1.1,
             }}
@@ -350,8 +362,8 @@ export function BrifingKart({ userName }: { userName?: string }) {
           <div
             className="w-full rounded-lg px-3 py-2 flex items-center gap-2.5 select-none xl:justify-self-end"
             style={{
-              background: 'rgba(255,255,255,0.025)',
-              border: '1px solid rgba(255,255,255,0.075)',
+              background: 'linear-gradient(135deg, rgba(143,215,189,0.075), rgba(216,189,134,0.045))',
+              border: '1px solid rgba(143,215,189,0.16)',
               boxShadow: 'inset 0 1px 0 rgba(255,255,255,0.025)',
             }}
           >
@@ -362,7 +374,7 @@ export function BrifingKart({ userName }: { userName?: string }) {
               <Sparkles size={13} />
             </span>
             <span className="min-w-0 flex-1">
-              <span className="flex items-center gap-1.5 text-[9px] uppercase font-black tracking-[.14em]" style={{ color: chromeTone.text }}>
+              <span className="flex items-center gap-1.5 text-[9px] uppercase font-black tracking-[.14em]" style={{ color: '#d8c38f' }}>
                 <Sparkles size={10} />
                 Odak Notu
               </span>
@@ -375,25 +387,34 @@ export function BrifingKart({ userName }: { userName?: string }) {
       </div>
 
       {/* Ana özet metni */}
-      <div className="px-5 pt-1.5 pb-1 max-w-[1120px]">
+      <div className="px-5 pt-1.5 pb-2 max-w-[1180px]">
         {isLoading ? (
-          <div className="text-[14px] flex items-center gap-2" style={{ color: 'rgba(250,250,249,0.5)' }}>
+          <div className="rounded-xl px-4 py-3 text-[14px] flex items-center gap-2" style={{ color: 'rgba(250,250,249,0.5)', background: 'rgba(255,255,255,0.018)', border: '1px solid rgba(255,255,255,0.06)' }}>
             <Loader2 size={14} className="animate-spin" />
             Brifing hazırlanıyor...
           </div>
         ) : visibleSummary ? (
+          <div
+            className="rounded-xl px-4 py-3"
+            style={{
+              background: 'rgba(255,255,255,0.018)',
+              border: '1px solid rgba(143,215,189,0.10)',
+              boxShadow: 'inset 3px 0 0 rgba(143,215,189,0.55)',
+            }}
+          >
           <p
             className="text-[14px]"
             style={{
-              color: 'rgba(250,250,249,0.85)',
-              lineHeight: 1.55,
+              color: 'rgba(250,250,249,0.88)',
+              lineHeight: 1.58,
               fontFamily: 'Inter, sans-serif',
             }}
           >
             {visibleSummary}
           </p>
+          </div>
         ) : (
-          <p className="text-[13.5px]" style={{ color: 'rgba(250,250,249,0.5)' }}>
+          <p className="rounded-xl px-4 py-3 text-[13.5px]" style={{ color: 'rgba(250,250,249,0.5)', background: 'rgba(255,255,255,0.018)', border: '1px solid rgba(255,255,255,0.06)' }}>
             Brifing alınamadı. Yenile butonuna basıp tekrar dene.
           </p>
         )}
@@ -414,8 +435,9 @@ export function BrifingKart({ userName }: { userName?: string }) {
               <div
                 className="flex items-center gap-2.5 px-3 py-2 rounded-lg transition group"
                 style={{
-                  background: cfg.bg,
+                  background: `linear-gradient(90deg, ${cfg.bg}, rgba(255,255,255,0.012))`,
                   border: `1px solid ${cfg.border}`,
+                  boxShadow: 'inset 0 1px 0 rgba(255,255,255,0.018)',
                 }}
               >
                 <AlertTriangle size={13} style={{ color: cfg.color }} />
@@ -450,8 +472,8 @@ export function BrifingKart({ userName }: { userName?: string }) {
                 href={href}
                 className="inline-flex items-center justify-between gap-2 px-3 py-1.5 rounded-lg text-[12.5px] font-semibold transition hover:bg-white/[0.035]"
                 style={{
-                  background: chromeTone.actionBg,
-                  color: 'rgba(238,229,205,0.78)',
+                  background: `linear-gradient(135deg, ${chromeTone.actionBg}, rgba(216,189,134,0.035))`,
+                  color: 'rgba(228,248,241,0.80)',
                   border: `1px solid ${chromeTone.actionBorder}`,
                 }}
               >
