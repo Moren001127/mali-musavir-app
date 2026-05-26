@@ -110,6 +110,30 @@ function categoryLabel(code: string) {
     HAVADA_KDV_KAYDI: 'Havada KDV kaydı',
     YUKSEK_TUTAR_ACIKLAMA_EKSIK: 'Yüksek tutar açıklama eksik',
     ORTAK_ALACAK_FAIZ_RISKI: '131 ortak alacağı faiz riski',
+    KDV_TAHAKKUK_EKSIK: 'KDV tahakkuk eksik',
+    KDV_ODENECEK_360_UYUMSUZ: 'Ödenecek KDV 360\'a aktarılmamış',
+    KDV_DEVREDEN_190_UYUMSUZ: 'Devreden KDV 190\'a aktarılmamış',
+    DONEM_SONU_191_BAKIYE: '191 dönem sonu bakiye var',
+    DONEM_SONU_391_BAKIYE: '391 dönem sonu bakiye var',
+    BORDRO_TAHAKKUK_EKSIK: 'Bordro tahakkuk eksik (aylık)',
+    KIRA_STOPAJI_EKSIK: 'Kira stopajı kesilmemiş',
+    KIRA_STOPAJI_ORAN: 'Kira stopaj oranı sapma',
+    SMM_STOPAJI_KONTROL: 'Serbest meslek stopaj eksik',
+    DAMGA_VERGISI_KONTROL: 'Damga vergisi eksik',
+    ACILIS_FISI_YOK: 'Açılış fişi yok',
+    ACILIS_FISINDE_GELIR_GIDER: 'Açılış fişinde gelir/gider hesabı',
+    YILLIK_KAPANIS_690_EKSIK: 'Yıllık kapanış 690 eksik',
+    AVANS_KAPANMAMIS_159: '159 Verilen avans açık',
+    AVANS_KAPANMAMIS_340: '340 Alınan avans açık',
+    CEK_SENET_BAKIYE_121: '121 Alınan çek bakiyesi',
+    CEK_SENET_BAKIYE_122: '122 Alınan senet bakiyesi',
+    CEK_SENET_BAKIYE_322: '322 Verilen çek bakiyesi',
+    CEK_SENET_BAKIYE_323: '323 Verilen senet bakiyesi',
+    BANKA_EKSI_BAKIYE_102: '102 Banka eksi bakiye (kredi?)',
+    POS_VALOR_108_BAKIYE: '108 POS valör bakiyesi',
+    KKEG_689_KONTROL: '689 KKEG kontrolü',
+    YILSONU_AMORTISMAN_EKSIK: 'Yıl sonu amortisman eksik',
+    VERGI_KARSILIGI_370_YOK: '370 Vergi karşılığı yok',
   };
   return dict[code] || code.replace(/_/g, ' ').toLocaleLowerCase('tr-TR');
 }
@@ -118,7 +142,7 @@ function categoryGroup(code: string): { id: string; label: string; order: number
   if (code === 'DEFTER_GENELI_DENGESIZ') return { id: 'temel', label: 'Temel Bütünlük', order: 0, icon: '🔍' };
   if (code.startsWith('VKN_')) return { id: 'vkn', label: 'VKN / TCKN Doğrulama', order: 1, icon: '🆔' };
   if (code === 'GERCEK_MUKERRER_FATURA' || code === 'AYNI_GUN_AYNI_TUTAR_AYNI_TARAF') return { id: 'mukerrer', label: 'Mükerrer Kayıt Kontrolü', order: 2, icon: '⚠️' };
-  if (code === 'HAVADA_KDV_KAYDI') return { id: 'kdv', label: 'KDV Kontrolleri', order: 3, icon: '🧾' };
+  if (code === 'HAVADA_KDV_KAYDI' || code.startsWith('KDV_') || code === 'DONEM_SONU_191_BAKIYE' || code === 'DONEM_SONU_391_BAKIYE') return { id: 'kdv', label: 'KDV Kontrolleri', order: 3, icon: '🧾' };
   if (code.startsWith('CARI_TERS_BAKIYE')) return { id: 'cari', label: 'Cari Hesap Tutarlılığı', order: 4, icon: '👥' };
   if (code === 'ORTAK_ALACAK_FAIZ_RISKI') return { id: 'ortak', label: 'Ortak Alacakları / KKEG', order: 5, icon: '⚖️' };
   if (code.startsWith('KASA_')) return { id: 'tevsik', label: 'Tevsik / Kasa', order: 6, icon: '💰' };
@@ -128,6 +152,13 @@ function categoryGroup(code: string): { id: string; label: string; order: number
   if (code === 'HESAP_KODU_EKSIK' || code === 'FIS_TARIHI_EKSIK' || code === 'FIS_TARIHI_PARSE_HATASI' || code === 'DONEM_DISI_TARIH')
     return { id: 'tem2', label: 'Temel Bütünlük', order: 0, icon: '🔍' };
   if (code === 'YUKSEK_TUTAR_ACIKLAMA_EKSIK') return { id: 'aciklama', label: 'Açıklama / Kalite', order: 10, icon: '📝' };
+  if (code === 'BORDRO_TAHAKKUK_EKSIK') return { id: 'bordro', label: 'Bordro / SGK', order: 5, icon: '👷' };
+  if (code.startsWith('KIRA_STOPAJI') || code === 'SMM_STOPAJI_KONTROL' || code === 'DAMGA_VERGISI_KONTROL') return { id: 'stopaj', label: 'Stopaj / Vergi Kesintisi', order: 6, icon: '💸' };
+  if (code === 'ACILIS_FISI_YOK' || code === 'ACILIS_FISINDE_GELIR_GIDER' || code === 'YILLIK_KAPANIS_690_EKSIK' || code === 'VERGI_KARSILIGI_370_YOK' || code === 'YILSONU_AMORTISMAN_EKSIK') return { id: 'donem-baslangic', label: 'Açılış / Kapanış / Yıl Sonu', order: 7, icon: '📅' };
+  if (code.startsWith('AVANS_KAPANMAMIS')) return { id: 'avans', label: 'Avans Hesapları', order: 8, icon: '💳' };
+  if (code.startsWith('CEK_SENET_BAKIYE')) return { id: 'cek-senet', label: 'Çek / Senet', order: 9, icon: '📜' };
+  if (code === 'BANKA_EKSI_BAKIYE_102' || code === 'POS_VALOR_108_BAKIYE') return { id: 'banka', label: 'Banka / POS', order: 10, icon: '🏦' };
+  if (code === 'KKEG_689_KONTROL') return { id: 'kkeg', label: 'KKEG / KVK', order: 11, icon: '⚖️' };
   return { id: 'diger', label: 'Diğer', order: 99, icon: '•' };
 }
 
@@ -881,6 +912,30 @@ const STANDART_KURALLAR: KuralDef[] = [
   { kod: 'BELGE_TARIHI_FIS_TARIHINDEN_SONRA', ad: 'Belge tarihi > fiş tarihi', aciklama: 'Belge tarihi fiş tarihinden sonra — mantıken belge kaydedildiği günden sonra düzenlenmiş.', severity: 'WARN', grup: 'Belge', aktif: true },
   { kod: 'BELGE_TARIHI_DONEM_DISI', ad: 'Belge tarihi dönem dışı', aciklama: 'Belge tarihi seçilen dönem aralığının dışında.', severity: 'WARN', grup: 'Belge', aktif: true },
   { kod: 'YUKSEK_TUTAR_ACIKLAMA_EKSIK', ad: 'Yüksek tutar açıklama eksik', aciklama: '50.000+ TL fişte açıklama 5 karakterden az — denetimde riskli.', severity: 'INFO', grup: 'Kalite', aktif: true },
+  { kod: 'DONEM_SONU_191_BAKIYE', ad: '191 dönem sonu bakiye', aciklama: 'Dönem sonu 191 İndirilecek KDV bakiyesi sıfırlanmamış — tahakkuk fişi eksik.', severity: 'WARN', grup: 'KDV', aktif: true },
+  { kod: 'DONEM_SONU_391_BAKIYE', ad: '391 dönem sonu bakiye', aciklama: 'Dönem sonu 391 Hesaplanan KDV bakiyesi sıfırlanmamış — tahakkuk fişi eksik.', severity: 'WARN', grup: 'KDV', aktif: true },
+  { kod: 'KDV_TAHAKKUK_EKSIK', ad: 'KDV tahakkuk fişi eksik', aciklama: 'Ay içinde 191/391 hareketi var ama tahakkuk fişi bulunamadı.', severity: 'ERROR', grup: 'KDV', aktif: true },
+  { kod: 'KDV_ODENECEK_360_UYUMSUZ', ad: 'Ödenecek KDV 360 uyumsuz', aciklama: 'Ödenecek KDV tutarı 360 hesabına doğru aktarılmamış.', severity: 'WARN', grup: 'KDV', aktif: true },
+  { kod: 'KDV_DEVREDEN_190_UYUMSUZ', ad: 'Devreden KDV 190 uyumsuz', aciklama: 'Devreden KDV tutarı 190 hesabına doğru aktarılmamış.', severity: 'WARN', grup: 'KDV', aktif: true },
+  { kod: 'BORDRO_TAHAKKUK_EKSIK', ad: 'Aylık bordro tahakkuku eksik', aciklama: 'Her ay 770/772 personel gideri + 335 net ücret + 361 SGK kayıtları olmalı.', severity: 'WARN', grup: 'Bordro / SGK', aktif: true },
+  { kod: 'KIRA_STOPAJI_EKSIK', ad: 'Kira stopajı eksik', aciklama: 'Kira gideri var ama 360.01.006 kira stopajı kayıtsız. %20 stopaj zorunlu (GVK 94).', severity: 'ERROR', grup: 'Stopaj', aktif: true },
+  { kod: 'KIRA_STOPAJI_ORAN', ad: 'Kira stopaj oranı sapma', aciklama: 'Kira/stopaj oranı %20 dışında — brüt/net hesaplama hatalı olabilir.', severity: 'WARN', grup: 'Stopaj', aktif: true },
+  { kod: 'SMM_STOPAJI_KONTROL', ad: 'Serbest meslek stopajı eksik', aciklama: 'SMM/avukat/noter/tercüme ödemesi var ama 360.01.007 boş. %20 tevkifat zorunlu.', severity: 'WARN', grup: 'Stopaj', aktif: true },
+  { kod: 'DAMGA_VERGISI_KONTROL', ad: 'Damga vergisi eksik', aciklama: 'Personel ücret ödemesi var ama 360.01.002 damga vergisi boş.', severity: 'INFO', grup: 'Stopaj', aktif: true },
+  { kod: 'ACILIS_FISI_YOK', ad: 'Açılış fişi yok', aciklama: 'Dönem başında (1 Ocak) açılış kaydı bulunamadı; geçen yıl kapanış mizanıyla bire bir olmalı.', severity: 'WARN', grup: 'Açılış / Kapanış', aktif: true },
+  { kod: 'ACILIS_FISINDE_GELIR_GIDER', ad: 'Açılış fişinde 5/6/7xx', aciklama: 'Açılış fişinde gelir-gider-maliyet (5xx/6xx/7xx) hesabı olmamalı.', severity: 'ERROR', grup: 'Açılış / Kapanış', aktif: true },
+  { kod: 'YILLIK_KAPANIS_690_EKSIK', ad: 'Yıllık kapanış 690 eksik', aciklama: 'Yıl sonunda 6xx/7xx var ama 690 Dönem Kârı/Zararı hesabı kullanılmamış.', severity: 'WARN', grup: 'Açılış / Kapanış', aktif: true },
+  { kod: 'VERGI_KARSILIGI_370_YOK', ad: '370 Vergi karşılığı yok', aciklama: 'Yıl sonu 690 kullanılmış ama 370/371 vergi karşılığı hesaplanmamış.', severity: 'WARN', grup: 'Açılış / Kapanış', aktif: true },
+  { kod: 'YILSONU_AMORTISMAN_EKSIK', ad: 'Yıl sonu amortisman eksik', aciklama: 'Sabit kıymet var ama 257/268 birikmiş amortisman + 770/760/730 amortisman gider kaydı eksik (VUK 333).', severity: 'WARN', grup: 'Açılış / Kapanış', aktif: true },
+  { kod: 'AVANS_KAPANMAMIS_159', ad: '159 Verilen avans açık', aciklama: '159 Verilen Sipariş Avansları hesabında 10.000+ TL açık bakiye — mal/hizmet teslim alındıysa kapatılmalı.', severity: 'INFO', grup: 'Avans', aktif: true },
+  { kod: 'AVANS_KAPANMAMIS_340', ad: '340 Alınan avans açık', aciklama: '340 Alınan Sipariş Avansları hesabında 10.000+ TL açık bakiye.', severity: 'INFO', grup: 'Avans', aktif: true },
+  { kod: 'CEK_SENET_BAKIYE_121', ad: '121 Alınan çek bakiyesi', aciklama: 'Dönem sonu 121 bakiyesi var — vadesi geçmiş çek olabilir.', severity: 'INFO', grup: 'Çek / Senet', aktif: true },
+  { kod: 'CEK_SENET_BAKIYE_122', ad: '122 Alınan senet bakiyesi', aciklama: 'Dönem sonu 122 bakiyesi var — vadesi geçmiş senet olabilir.', severity: 'INFO', grup: 'Çek / Senet', aktif: true },
+  { kod: 'CEK_SENET_BAKIYE_322', ad: '322 Verilen çek bakiyesi', aciklama: 'Dönem sonu 322 bakiyesi var — vadesi geçmiş çek olabilir.', severity: 'INFO', grup: 'Çek / Senet', aktif: true },
+  { kod: 'CEK_SENET_BAKIYE_323', ad: '323 Verilen senet bakiyesi', aciklama: 'Dönem sonu 323 bakiyesi var.', severity: 'INFO', grup: 'Çek / Senet', aktif: true },
+  { kod: 'BANKA_EKSI_BAKIYE_102', ad: '102 Banka eksi bakiye', aciklama: 'Banka hesabı alacak bakiye veriyor — bu tutar 300 Kısa Vadeli Banka Kredileri hesabında olmalı.', severity: 'ERROR', grup: 'Banka', aktif: true },
+  { kod: 'POS_VALOR_108_BAKIYE', ad: '108 POS valör bakiyesi', aciklama: '108 POS hesabında bakiye — valör tarihi geçip 102 banka hesabına geçmesi gereken kayıtlar olabilir.', severity: 'INFO', grup: 'Banka', aktif: true },
+  { kod: 'KKEG_689_KONTROL', ad: '689 KKEG kontrolü', aciklama: '689 Diğer Olağandışı Gider hesabında hareket var — KKEG ise Kurumlar Vergisi matrahına eklenmeli.', severity: 'INFO', grup: 'KKEG', aktif: true },
 ];
 
 function KurallarTab() {
@@ -1022,4 +1077,3 @@ function Field({ label, children }: { label: string; children: any }) {
     </div>
   );
 }
-

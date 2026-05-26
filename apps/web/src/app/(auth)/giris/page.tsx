@@ -20,7 +20,7 @@ export default function GirisPage() {
   const login = useLogin();
 
   return (
-    <div className="min-h-screen flex" style={{ background: '#0a0906' }}>
+    <div className="min-h-screen flex" style={{ background: '#17130f' }}>
       {/* ═════ SOL — BRAND PANEL ═════ */}
       <div
         className="hidden lg:flex flex-col justify-between relative overflow-hidden"
@@ -31,7 +31,7 @@ export default function GirisPage() {
             'radial-gradient(ellipse at 15% 5%, rgba(184,160,111,.22), transparent 55%),' +
             'radial-gradient(ellipse at 85% 95%, rgba(184,160,111,.12), transparent 50%),' +
             'radial-gradient(ellipse at 50% 50%, rgba(212,184,118,.04), transparent 70%),' +
-            'linear-gradient(160deg, #12100c 0%, #0a0906 100%)',
+            'linear-gradient(160deg, #211c15 0%, #17130f 100%)',
         }}
       >
         {/* Dekoratif halkalar */}
@@ -129,7 +129,7 @@ export default function GirisPage() {
         style={{
           background:
             'radial-gradient(ellipse at 50% 0%, rgba(184,160,111,.06), transparent 50%),' +
-            '#0f0d0b',
+            '#1c1813',
         }}
       >
         {/* Üst çizgi */}
