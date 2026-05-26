@@ -1,5 +1,5 @@
 import {
-  Controller, Get, Post, Delete, Query, Param, Req, UseGuards,
+  Controller, Get, Post, Delete, Query, Param, Req, Body, UseGuards,
   UseInterceptors, UploadedFiles, UploadedFile, BadRequestException, Res,
 } from '@nestjs/common';
 import { FilesInterceptor, FileInterceptor } from '@nestjs/platform-express';
@@ -37,7 +37,28 @@ export class BeyanKayitlariController {
     return this.svc.ozet(req.user.tenantId);
   }
 
+  @Delete('bulk')
+  bulkDelete(
+    @Req() req: any,
+    @Query('taxpayerId') taxpayerId?: string,
+    @Query('beyanTipi') beyanTipi?: string,
+    @Query('donem') donem?: string,
+    @Query('search') search?: string,
+  ) {
+    return this.svc.bulkDelete(req.user.tenantId, { taxpayerId, beyanTipi, donem, search });
+  }
+
   // ── PDF İNDİRME (presigned URL redirect) ────────────
+  @Post('bulk-delete')
+  bulkDeleteByIds(
+    @Req() req: any,
+    @Body('ids') ids?: string[],
+  ) {
+    const safeIds = Array.isArray(ids) ? ids.filter(Boolean) : [];
+    if (safeIds.length === 0) return { deleted: 0, statusDeleted: 0 };
+    return this.svc.bulkDelete(req.user.tenantId, { ids: safeIds });
+  }
+
   @Get(':id/pdf')
   async pdf(@Req() req: any, @Param('id') id: string, @Res() res: Response) {
     const url = await this.svc.getPdfUrl(req.user.tenantId, id);

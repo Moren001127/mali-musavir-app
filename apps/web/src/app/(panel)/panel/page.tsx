@@ -309,7 +309,7 @@ function ToplubeyannamePanel() {
 
   return (
     <div>
-      <div className="px-5 py-5" style={{ borderBottom: '1px solid rgba(255,255,255,0.05)' }}>
+      <div className="px-5 py-4" style={{ borderBottom: '1px solid rgba(255,255,255,0.05)' }}>
         <div className="flex flex-wrap items-start justify-between gap-4">
           <div className="min-w-0">
             <div className="flex items-center gap-2.5">
@@ -370,7 +370,7 @@ function ToplubeyannamePanel() {
           </div>
         </div>
 
-        <div className="mt-5 grid grid-cols-2 gap-2 md:grid-cols-5">
+        <div className="hidden">
           <BeyanMetric label="Toplam" value={totals.toplam} color="#fafaf9" sub={`${activeRows.length} takip kalemi`} />
           <BeyanMetric label="Onaylanan" value={totals.onaylanan} color="#22c55e" />
           <BeyanMetric label="Bekleyen" value={totals.bekleyen} color={TRACK_BLUE_SOFT} />
@@ -397,43 +397,149 @@ function ToplubeyannamePanel() {
       )}
 
       {beyanRows.length > 0 && (
-        <div className="px-5 py-4">
-          <div className="mb-3 flex items-center justify-between gap-3">
-            <div className="text-[12px] font-bold uppercase tracking-[0.13em]" style={{ color: 'rgba(250,250,249,0.45)' }}>
-              Beyannameler
-            </div>
-            <div className="text-[12px] font-semibold" style={{ color: 'rgba(250,250,249,0.55)' }}>
-              {selectedDonem}
-            </div>
-          </div>
-          <div className="space-y-1.5">
-            {beyanRows.map((r) => (
-              <BeyanStatusRow key={r.beyanTipi} row={r} onNumberClick={openModal} />
-            ))}
-          </div>
-        </div>
+        <BeyanCompactTable title="Beyannameler" rows={beyanRows} donem={selectedDonem} onNumberClick={openModal} />
       )}
 
       {yardimciRows.length > 0 && (
-        <div className="px-5 pb-5">
-          <div className="mb-3 flex items-center justify-between gap-3">
-            <div className="text-[12px] font-bold uppercase tracking-[0.13em]" style={{ color: 'rgba(250,250,249,0.45)' }}>
-              Bildirge ve E-Defter
-            </div>
-            <div className="text-[12px] font-semibold" style={{ color: 'rgba(250,250,249,0.55)' }}>
-              {selectedDonem}
-            </div>
-          </div>
-          <div className="space-y-1.5">
-            {yardimciRows.map((r) => (
-              <BeyanStatusRow key={r.beyanTipi} row={r} onNumberClick={openModal} />
-            ))}
-          </div>
-        </div>
+        <BeyanCompactTable title="Bildirge ve E-Defter" rows={yardimciRows} donem={selectedDonem} onNumberClick={openModal} compact />
       )}
 
       {modal && <BeyanDetayModal state={modal} onClose={() => setModal(null)} />}
     </div>
+  );
+}
+
+function BeyanCompactTable({
+  title,
+  rows,
+  donem,
+  onNumberClick,
+  compact,
+}: {
+  title: string;
+  rows: OzetRow[];
+  donem: string;
+  onNumberClick: (tip: BeyanTipi, filter: BeyanFilter) => void;
+  compact?: boolean;
+}) {
+  return (
+    <div className={compact ? 'px-5 pb-4' : 'px-5 py-4'}>
+      <div className="mb-2.5 flex items-center justify-between gap-3">
+        <div className="text-[11px] font-bold uppercase tracking-[0.14em]" style={{ color: 'rgba(250,250,249,0.48)' }}>
+          {title}
+        </div>
+        <div className="text-[11px] font-semibold tabular-nums" style={{ color: 'rgba(250,250,249,0.5)', fontFamily: 'Inter, ui-sans-serif, system-ui, sans-serif' }}>
+          {donem}
+        </div>
+      </div>
+      <div className="overflow-x-auto rounded-xl" style={{ border: '1px solid rgba(125,211,252,0.13)', background: 'rgba(255,255,255,0.018)' }}>
+        <table className="w-full min-w-[820px] border-collapse text-[12px]" style={{ color: 'rgba(250,250,249,0.82)' }}>
+          <thead>
+            <tr style={{ background: 'rgba(125,211,252,0.055)', borderBottom: '1px solid rgba(125,211,252,0.11)' }}>
+              <BeyanHeaderCell align="left">Beyanname</BeyanHeaderCell>
+              <BeyanHeaderCell>Takip</BeyanHeaderCell>
+              <BeyanHeaderCell>Onaylanan</BeyanHeaderCell>
+              <BeyanHeaderCell>Bekleyen</BeyanHeaderCell>
+              <BeyanHeaderCell>Hatalı</BeyanHeaderCell>
+              <BeyanHeaderCell>Kalan</BeyanHeaderCell>
+              <BeyanHeaderCell align="left">Durum</BeyanHeaderCell>
+            </tr>
+          </thead>
+          <tbody>
+            {rows.map((row) => (
+              <BeyanCompactRow key={row.beyanTipi} row={row} onNumberClick={onNumberClick} />
+            ))}
+          </tbody>
+        </table>
+      </div>
+    </div>
+  );
+}
+
+function BeyanHeaderCell({ children, align = 'right' }: { children: ReactNode; align?: 'left' | 'right' }) {
+  return (
+    <th
+      className={`px-3 py-2 text-[10px] font-black uppercase tracking-[0.12em] ${align === 'right' ? 'text-right' : 'text-left'}`}
+      style={{ color: 'rgba(250,250,249,0.48)' }}
+    >
+      {children}
+    </th>
+  );
+}
+
+function BeyanCompactRow({
+  row,
+  onNumberClick,
+}: {
+  row: OzetRow;
+  onNumberClick: (tip: BeyanTipi, filter: BeyanFilter) => void;
+}) {
+  const label = BEYAN_ETIKETLER[row.beyanTipi];
+  const pct = Math.max(0, Math.min(100, row.yuzde));
+  const done = row.kalan <= 0 && row.hatali <= 0;
+  const barColor = row.hatali > 0 ? '#f472b6' : done ? '#22c55e' : TRACK_BLUE;
+  const statusLabel = row.hatali > 0 ? 'Hata var' : done ? 'Tamam' : 'Devam ediyor';
+
+  return (
+    <tr
+      className="transition hover:bg-white/[0.025]"
+      style={{ borderTop: '1px solid rgba(255,255,255,0.045)' }}
+    >
+      <td className="px-3 py-2.5">
+        <button
+          type="button"
+          onClick={() => onNumberClick(row.beyanTipi, 'toplam')}
+          className="max-w-[250px] truncate text-left text-[13px] font-bold transition hover:underline decoration-dotted underline-offset-4"
+          style={{ color: GOLD }}
+          title="Mükellef listesini göster"
+        >
+          {label}
+        </button>
+        <div className="mt-0.5 text-[10.5px] tabular-nums" style={{ color: 'rgba(250,250,249,0.38)', fontFamily: 'Inter, ui-sans-serif, system-ui, sans-serif' }}>
+          {row.toplam} mükellef takipte
+        </div>
+      </td>
+      <BeyanNumberCell value={row.toplam} color="#fafaf9" onClick={() => onNumberClick(row.beyanTipi, 'toplam')} />
+      <BeyanNumberCell value={row.onaylanan} color="#22c55e" onClick={() => onNumberClick(row.beyanTipi, 'onaylanan')} />
+      <BeyanNumberCell value={row.bekleyen} color="rgba(250,250,249,0.68)" onClick={() => onNumberClick(row.beyanTipi, 'bekleyen')} />
+      <BeyanNumberCell value={row.hatali} color={row.hatali > 0 ? '#f472b6' : 'rgba(250,250,249,0.34)'} onClick={() => onNumberClick(row.beyanTipi, 'hatali')} />
+      <BeyanNumberCell value={row.kalan} color={row.kalan > 0 ? TRACK_BLUE : '#22c55e'} onClick={() => onNumberClick(row.beyanTipi, 'kalan')} />
+      <td className="px-3 py-2.5">
+        <div className="grid grid-cols-[96px,1fr,44px] items-center gap-2">
+          <span className="text-[11px] font-bold" style={{ color: barColor }}>{statusLabel}</span>
+          <div className="h-1.5 overflow-hidden rounded-full" style={{ background: 'rgba(255,255,255,0.06)' }}>
+            <div
+              className="h-full rounded-full transition-all duration-500"
+              style={{ width: `${pct}%`, background: `linear-gradient(90deg, ${barColor}99, ${barColor})` }}
+            />
+          </div>
+          <span
+            className="text-right text-[11px] font-bold tabular-nums"
+            style={{ color: barColor, fontFamily: 'Inter, ui-sans-serif, system-ui, sans-serif', letterSpacing: 0 }}
+          >
+            {pct}%
+          </span>
+        </div>
+      </td>
+    </tr>
+  );
+}
+
+function BeyanNumberCell({ value, color, onClick }: { value: number; color: string; onClick: () => void }) {
+  const clickable = value > 0;
+  return (
+    <td className="px-3 py-2.5 text-right">
+      <button
+        type="button"
+        disabled={!clickable}
+        onClick={clickable ? onClick : undefined}
+        className={`min-w-8 rounded-md px-2 py-1 text-right text-[14px] font-extrabold tabular-nums transition ${clickable ? 'hover:bg-white/[0.055] hover:underline decoration-dotted underline-offset-4' : ''}`}
+        style={{ color, fontFamily: 'Inter, ui-sans-serif, system-ui, sans-serif', letterSpacing: 0 }}
+        title={clickable ? 'Mükellef listesini göster' : undefined}
+      >
+        {value}
+      </button>
+    </td>
   );
 }
 

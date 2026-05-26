@@ -84,6 +84,12 @@ export const beyanKayitlariApi = {
   remove: (id: string) =>
     api.delete(`/beyan-kayitlari/${id}`).then((r) => r.data),
 
+  bulkDelete: (params?: { taxpayerId?: string; beyanTipi?: string; donem?: string; search?: string }) =>
+    api.delete<{ deleted: number; statusDeleted: number }>('/beyan-kayitlari/bulk', { params }).then((r) => r.data),
+
+  bulkDeleteIds: (ids: string[]) =>
+    api.post<{ deleted: number; statusDeleted: number }>('/beyan-kayitlari/bulk-delete', { ids }).then((r) => r.data),
+
   pdfUrl: (id: string): string => {
     const base = (api.defaults.baseURL || '').replace(/\/$/, '');
     return `${base}/beyan-kayitlari/${id}/pdf`;

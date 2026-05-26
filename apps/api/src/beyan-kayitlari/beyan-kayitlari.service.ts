@@ -329,6 +329,69 @@ export class BeyanKayitlariService {
   }
 
   /** Tahakkuk PDF için presigned URL */
+  async bulkDelete(
+    tenantId: string,
+    opts: { ids?: string[]; taxpayerId?: string; beyanTipi?: string; donem?: string; search?: string } = {},
+  ) {
+    const where: any = { tenantId };
+    if (opts.ids?.length) where.id = { in: opts.ids.slice(0, 2000) };
+    if (opts.taxpayerId) where.taxpayerId = opts.taxpayerId;
+    if (opts.beyanTipi) where.beyanTipi = opts.beyanTipi;
+    if (opts.donem) where.donem = opts.donem;
+    if (opts.search && opts.search.trim()) {
+      const q = opts.search.trim();
+      where.OR = [
+        { onayNo: { contains: q, mode: 'insensitive' } },
+        { taxpayer: { companyName: { contains: q, mode: 'insensitive' } } },
+        { taxpayer: { taxNumber: { contains: q } } },
+      ];
+    }
+
+    type BeyanKaydiDeleteRow = {
+      id: string;
+      taxpayerId: string;
+      beyanTipi: string;
+      donem: string;
+      pdfUrl: string | null;
+      beyannameUrl: string | null;
+      xmlUrl: string | null;
+    };
+
+    const rows = await (this.prisma as any).beyanKaydi.findMany({
+      where,
+      select: {
+        id: true,
+        taxpayerId: true,
+        beyanTipi: true,
+        donem: true,
+        pdfUrl: true,
+        beyannameUrl: true,
+        xmlUrl: true,
+      },
+    }) as BeyanKaydiDeleteRow[];
+    if (rows.length === 0) return { deleted: 0, statusDeleted: 0 };
+
+    for (const row of rows) {
+      for (const key of [row.pdfUrl, row.beyannameUrl, row.xmlUrl]) {
+        if (key) {
+          try { await this.storage.deleteObject(key); } catch {}
+        }
+      }
+    }
+
+    const statusKeys = rows
+      .filter((r) => r.taxpayerId && r.beyanTipi && r.donem)
+      .map((r) => ({ taxpayerId: r.taxpayerId, beyanTipi: r.beyanTipi, donem: r.donem }));
+
+    return (this.prisma as any).$transaction(async (tx: any) => {
+      const statusDeleted = statusKeys.length
+        ? await tx.beyanDurumu.deleteMany({ where: { tenantId, OR: statusKeys } })
+        : { count: 0 };
+      const deleted = await tx.beyanKaydi.deleteMany({ where: { tenantId, id: { in: rows.map((r) => r.id) } } });
+      return { deleted: deleted.count, statusDeleted: statusDeleted.count };
+    });
+  }
+
   async getPdfUrl(tenantId: string, id: string, filename = 'tahakkuk.pdf'): Promise<string> {
     const kayit = await (this.prisma as any).beyanKaydi.findFirst({
       where: { id, tenantId },

@@ -10,6 +10,7 @@ import {
   ImportResult,
   beyanKaydiMukellefAdi,
 } from '@/lib/beyan-kayitlari';
+import { portalAutomationApi } from '@/lib/portal-automation';
 import PortalAutomationPanel from '@/components/portal-automation/PortalAutomationPanel';
 import {
   Search, Upload, FileText, Trash2,
@@ -81,6 +82,17 @@ function fmtDate(value?: string | null): string {
   return d.toLocaleDateString('tr-TR');
 }
 
+function dateInputValue(d: Date): string {
+  return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}-${String(d.getDate()).padStart(2, '0')}`;
+}
+
+function yesterdayRange(): { from: string; to: string } {
+  const d = new Date();
+  d.setDate(d.getDate() - 1);
+  const v = dateInputValue(d);
+  return { from: v, to: v };
+}
+
 function firstContact(values?: Array<string | null | undefined>): string {
   return (values || []).map((v) => String(v || '').trim()).find(Boolean) || '';
 }
@@ -118,6 +130,9 @@ export default function BeyannamelerPage() {
   const [periodStart, setPeriodStart] = useState('');
   const [periodEnd, setPeriodEnd] = useState('');
   const [importModal, setImportModal] = useState(false);
+  const defaultPullRange = useMemo(() => yesterdayRange(), []);
+  const [pullFrom, setPullFrom] = useState(defaultPullRange.from);
+  const [pullTo, setPullTo] = useState(defaultPullRange.to);
 
   const { data: kayitlar = [], isLoading } = useQuery<BeyanKaydi[]>({
     queryKey: ['beyan-kayitlari', 'redesign'],
@@ -132,6 +147,26 @@ export default function BeyannamelerPage() {
       toast.success('Kayıt silindi');
     },
     onError: (e: any) => toast.error(e?.message || 'Silinemedi'),
+  });
+
+  const pullMut = useMutation({
+    mutationFn: () => portalAutomationApi.manualRun({
+      scope: 'beyanname',
+      jobTypes: ['EBEYANNAME_DAILY_DOWNLOAD'],
+      dateFrom: pullFrom,
+      dateTo: pullTo,
+      force: true,
+    }),
+    onSuccess: (res) => {
+      qc.invalidateQueries({ queryKey: ['portal-automation-summary'] });
+      const created = res.created?.length || 0;
+      if (created > 0) {
+        toast.success(`${created} e-Beyanname işi kuyruğa alındı${res.runnerWake ? ' ve sunucu uyandırıldı' : ''}.`);
+      } else {
+        toast.info(res.message || 'Yeni e-Beyanname işi oluşmadı.');
+      }
+    },
+    onError: (e: any) => toast.error(e?.message || 'e-Beyanname çekme işi başlatılamadı'),
   });
 
   const taxpayerOptions = useMemo(() => {
@@ -180,6 +215,27 @@ export default function BeyannamelerPage() {
         return periodSortValue(b.donem) - periodSortValue(a.donem);
       });
   }, [kayitlar, search, selectedTaxpayer, typeFilter, docFilter, periodStart, periodEnd]);
+
+  const bulkDeleteMut = useMutation({
+    mutationFn: (ids: string[]) => beyanKayitlariApi.bulkDeleteIds(ids),
+    onSuccess: (res) => {
+      qc.invalidateQueries({ queryKey: ['beyan-kayitlari'] });
+      qc.invalidateQueries({ queryKey: ['beyan-kayitlari-ozet'] });
+      toast.success(`${res.deleted} kayıt temizlendi`);
+    },
+    onError: (e: any) => toast.error(e?.message || 'Kayıtlar temizlenemedi'),
+  });
+
+  const clearVisibleRecords = () => {
+    const ids = filtered.map((row) => row.id).filter(Boolean);
+    if (ids.length === 0) {
+      toast.info('Temizlenecek görünür kayıt yok');
+      return;
+    }
+    if (confirm(`Ekranda görünen ${ids.length} beyanname kaydı silinsin mi?`)) {
+      bulkDeleteMut.mutate(ids);
+    }
+  };
 
   const summary = useMemo(() => {
     const withBeyan = filtered.filter((k) => !!k.beyannameUrl).length;
@@ -310,7 +366,7 @@ export default function BeyannamelerPage() {
         </div>
       </section>
 
-      <section className="grid grid-cols-2 xl:grid-cols-5 gap-3">
+      <section className="hidden">
         <StatTile label="Listelenen" value={summary.total} sub={`${kayitlar.length} toplam kayıt`} tone="gold" />
         <StatTile label="Beyanname PDF" value={summary.withBeyan} sub="görüntülenebilir" tone="green" />
         <StatTile label="Tahakkuk PDF" value={summary.withTahakkuk} sub="fiş mevcut" tone="blue" />
@@ -319,10 +375,13 @@ export default function BeyannamelerPage() {
       </section>
 
       <section
-        className="rounded-2xl p-4 space-y-3"
+        className="rounded-2xl overflow-hidden"
         style={{ background: 'rgba(255,255,255,0.025)', border: '1px solid rgba(255,255,255,0.07)' }}
       >
-        <div className="grid xl:grid-cols-[minmax(260px,1fr),260px,180px,180px,180px,180px,auto] gap-2">
+        <div className="px-4 py-3 text-[13px] font-semibold" style={{ background: 'rgba(255,255,255,0.035)', color: '#fafaf9', borderBottom: '1px solid rgba(255,255,255,0.06)' }}>
+          E-Beyanname Filtreleme
+        </div>
+        <div className="grid xl:grid-cols-[minmax(260px,1fr),260px,180px,180px,180px,180px,auto] gap-2 p-4">
           <div className="relative">
             <Search size={16} className="absolute left-3 top-1/2 -translate-y-1/2" style={{ color: 'rgba(250,250,249,0.38)' }} />
             <input
@@ -370,7 +429,37 @@ export default function BeyannamelerPage() {
         </div>
       </section>
 
-      <details className="rounded-2xl overflow-hidden" style={{ background: 'rgba(255,255,255,0.02)', border: '1px solid rgba(255,255,255,0.07)' }}>
+      <section className="rounded-2xl overflow-hidden" style={{ background: 'rgba(255,255,255,0.025)', border: '1px solid rgba(255,255,255,0.07)' }}>
+        <div className="px-4 py-3 text-[13px] font-semibold" style={{ background: 'rgba(255,255,255,0.035)', color: '#fafaf9', borderBottom: '1px solid rgba(255,255,255,0.06)' }}>
+          E-Beyannameleri Çek
+        </div>
+        <div className="grid gap-3 p-4 lg:grid-cols-[1fr,1fr,auto,auto]">
+          <DateField label="Başlangıç Tarihi" value={pullFrom} onChange={setPullFrom} />
+          <DateField label="Bitiş Tarihi" value={pullTo} onChange={setPullTo} />
+          <button
+            type="button"
+            onClick={() => pullMut.mutate()}
+            disabled={pullMut.isPending}
+            className="h-12 self-end rounded-[10px] px-5 text-[13px] font-bold inline-flex items-center justify-center gap-2"
+            style={{ background: `linear-gradient(135deg, ${GOLD}, #b8a06f)`, color: '#0f0d0b', opacity: pullMut.isPending ? 0.65 : 1 }}
+          >
+            {pullMut.isPending ? <Loader2 size={15} className="animate-spin" /> : <Upload size={15} />}
+            Beyannameleri Çek
+          </button>
+          <button
+            type="button"
+            onClick={() => pullMut.mutate()}
+            disabled={pullMut.isPending}
+            className="h-12 self-end rounded-[10px] px-5 text-[13px] font-bold inline-flex items-center justify-center gap-2"
+            style={{ background: 'rgba(34,197,94,0.12)', border: '1px solid rgba(34,197,94,0.28)', color: '#86efac', opacity: pullMut.isPending ? 0.65 : 1 }}
+          >
+            <Archive size={15} />
+            Yeni Beyanname Sitesinden Çek
+          </button>
+        </div>
+      </section>
+
+      <details className="hidden" style={{ background: 'rgba(255,255,255,0.02)', border: '1px solid rgba(255,255,255,0.07)' }}>
         <summary className="cursor-pointer px-4 py-3 text-[13px] font-semibold" style={{ color: '#fafaf9' }}>
           e-Beyanname sunucu çekme paneli
         </summary>
@@ -387,7 +476,24 @@ export default function BeyannamelerPage() {
               Tarihe göre yeni kayıtlar üstte gösterilir. Satır aksiyonları doğrudan mükellef iletişim bilgilerini kullanır.
             </p>
           </div>
-          <span className="text-[12px] tabular-nums" style={{ color: 'rgba(250,250,249,0.5)' }}>{filtered.length} kayıt</span>
+          <div className="flex items-center gap-2">
+            <span className="text-[12px] tabular-nums" style={{ color: 'rgba(250,250,249,0.5)' }}>{filtered.length} kayıt</span>
+            <button
+              type="button"
+              onClick={clearVisibleRecords}
+              disabled={filtered.length === 0 || bulkDeleteMut.isPending}
+              className="h-9 rounded-[9px] px-3 text-[12px] font-semibold inline-flex items-center gap-1.5"
+              style={{
+                background: 'rgba(244,63,94,0.08)',
+                border: '1px solid rgba(244,63,94,0.24)',
+                color: '#fb7185',
+                opacity: filtered.length === 0 || bulkDeleteMut.isPending ? 0.55 : 1,
+              }}
+            >
+              {bulkDeleteMut.isPending ? <Loader2 size={14} className="animate-spin" /> : <Trash2 size={14} />}
+              Görünenleri Temizle
+            </button>
+          </div>
         </div>
 
         {isLoading ? (
@@ -500,6 +606,26 @@ function StatTile({ label, value, sub, tone }: { label: string; value: string | 
       <div className="mt-2 text-[24px] font-semibold tabular-nums tracking-[-.02em]" style={{ color }}>{value}</div>
       <div className="text-[11.5px] mt-1" style={{ color: 'rgba(250,250,249,0.42)' }}>{sub}</div>
     </div>
+  );
+}
+
+function DateField({ label, value, onChange }: { label: string; value: string; onChange: (value: string) => void }) {
+  return (
+    <label className="block">
+      <span className="mb-1.5 block text-[10.5px] font-black uppercase tracking-[0.13em]" style={{ color: 'rgba(250,250,249,0.46)' }}>
+        {label}
+      </span>
+      <span className="relative block">
+        <CalendarDays size={15} className="absolute left-3 top-1/2 -translate-y-1/2 pointer-events-none" style={{ color: 'rgba(250,250,249,0.38)' }} />
+        <input
+          type="date"
+          value={value}
+          onChange={(e) => onChange(e.target.value)}
+          className="h-12 w-full rounded-[10px] pl-9 pr-3 text-[13px] font-semibold outline-none"
+          style={{ background: 'rgba(0,0,0,0.18)', border: '1px solid rgba(255,255,255,0.08)', color: '#fafaf9' }}
+        />
+      </span>
+    </label>
   );
 }
 
