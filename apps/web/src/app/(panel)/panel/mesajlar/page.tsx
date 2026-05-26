@@ -740,25 +740,59 @@ export default function MesajlarPage() {
                     Gönder
                   </button>
                 </div>
-              ) : (
-                <div className="space-y-2">
-                  <div className="flex items-start gap-2 px-3 py-2 rounded-[10px]" style={{ background: 'rgba(251,191,36,0.06)', border: '1px solid rgba(251,191,36,0.18)' }}>
-                    <AlertCircle size={14} className="flex-shrink-0 mt-0.5" style={{ color: '#fbbf24' }} />
-                    <div className="text-[12px]" style={{ color: 'rgba(250,250,249,0.7)' }}>
-                      Bu mükellef son 24 saatte sana yazmamış. Serbest metin gönderemezsin.
-                      <strong> Meta onaylı bir şablon</strong> kullanarak "kapı çal" mesajı gönder — müşteri yazdığında pencere açılır, sonra serbest yazabilirsin.
+              ) : (() => {
+                // En son giden şablon mesajı var mı (son 24 saat içinde)?
+                const lastOutgoing = [...(chatData?.messages || [])].reverse().find((m) => m.direction === 'outgoing');
+                const isTemplateRecent =
+                  lastOutgoing &&
+                  /[Şş]ablon|Sablon|template|hatirlat|iletisim|baslat/i.test(lastOutgoing.subject || '') &&
+                  (Date.now() - new Date(lastOutgoing.occurredAt).getTime()) < 24 * 60 * 60 * 1000;
+
+                if (isTemplateRecent) {
+                  // Şablon zaten yollanmış, müşteri yanıtı bekleniyor
+                  return (
+                    <div className="space-y-2">
+                      <div className="flex items-start gap-2 px-3 py-2 rounded-[10px]" style={{ background: 'rgba(125,211,252,0.06)', border: '1px solid rgba(125,211,252,0.2)' }}>
+                        <Clock size={14} className="flex-shrink-0 mt-0.5" style={{ color: '#7dd3fc' }} />
+                        <div className="text-[12px]" style={{ color: 'rgba(250,250,249,0.78)' }}>
+                          <strong>Şablon gönderildi</strong> ({fmtFullTime(lastOutgoing!.occurredAt)}). Müşteri yanıt vermedi, henüz 24 saatlik pencere açılmadı.
+                          <br />
+                          Müşteri yazdığında <strong>serbest mesaj</strong> kutusu otomatik açılır. Hatırlatma göndermek istersen aşağıdaki butonu kullan.
+                        </div>
+                      </div>
+                      <button
+                        type="button"
+                        onClick={() => setShowTemplatePicker(true)}
+                        className="w-full h-11 rounded-[10px] flex items-center justify-center gap-1.5 text-[13px] font-semibold"
+                        style={{ background: 'rgba(255,255,255,0.04)', border: '1px solid rgba(255,255,255,0.12)', color: 'rgba(250,250,249,0.85)' }}
+                      >
+                        <Sparkles size={14} /> Hatırlatma Şablonu Gönder
+                      </button>
                     </div>
+                  );
+                }
+
+                // İlk defa şablon gönderilecek
+                return (
+                  <div className="space-y-2">
+                    <div className="flex items-start gap-2 px-3 py-2 rounded-[10px]" style={{ background: 'rgba(251,191,36,0.06)', border: '1px solid rgba(251,191,36,0.18)' }}>
+                      <AlertCircle size={14} className="flex-shrink-0 mt-0.5" style={{ color: '#fbbf24' }} />
+                      <div className="text-[12px]" style={{ color: 'rgba(250,250,249,0.7)' }}>
+                        Bu mükellef son 24 saatte sana yazmamış. Serbest metin gönderemezsin.
+                        <strong> Meta onaylı bir şablon</strong> kullanarak "kapı çal" mesajı gönder — müşteri yazdığında pencere açılır, sonra serbest yazabilirsin.
+                      </div>
+                    </div>
+                    <button
+                      type="button"
+                      onClick={() => setShowTemplatePicker(true)}
+                      className="w-full h-11 rounded-[10px] flex items-center justify-center gap-1.5 text-[13px] font-semibold"
+                      style={{ background: `linear-gradient(135deg, ${GOLD}, #b8a06f)`, color: '#0f0d0b' }}
+                    >
+                      <Sparkles size={14} /> Şablonla Konuşma Başlat
+                    </button>
                   </div>
-                  <button
-                    type="button"
-                    onClick={() => setShowTemplatePicker(true)}
-                    className="w-full h-11 rounded-[10px] flex items-center justify-center gap-1.5 text-[13px] font-semibold"
-                    style={{ background: `linear-gradient(135deg, ${GOLD}, #b8a06f)`, color: '#0f0d0b' }}
-                  >
-                    <Sparkles size={14} /> Şablonla Konuşma Başlat
-                  </button>
-                </div>
-              )}
+                );
+              })()}
             </div>
           </>
         )}
