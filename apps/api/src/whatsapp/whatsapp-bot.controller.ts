@@ -165,7 +165,9 @@ export class WhatsAppBotController {
     if (input.unknown) {
       return [
         `\ud83d\udce9 Kay\u0131ts\u0131z numaradan mesaj \u2014 ${phoneFormatted}`,
+        '',
         body,
+        '',
         `\u2192 Portal > Mesajlar'dan m\u00fckellefe ba\u011flayabilirsin`,
       ].join('\n');
     }
@@ -173,6 +175,7 @@ export class WhatsAppBotController {
     const name = input.taxpayerName || 'M\u00fckellef';
     return [
       `\ud83d\udce9 ${name} \u2014 yeni WhatsApp mesaj\u0131`,
+      '',
       body,
     ].join('\n');
   }
@@ -484,6 +487,12 @@ export class WhatsAppBotController {
     return 'bin';
   }
 
+  private refreshTaxpayerMemory(tenantId: string, taxpayerId: string): void {
+    void this.botContext.refreshConversationMemory(tenantId, taxpayerId).catch((err) => {
+      this.logger.warn(`WhatsApp hafiza guncellenemedi ${taxpayerId}: ${err?.message || err}`);
+    });
+  }
+
   private async handleMessage(msg: IncomingWhatsAppMessage) {
     const ownerTenant = await this.findOwnerTenantByPhone(msg.from);
     if (ownerTenant) {
@@ -503,6 +512,7 @@ export class WhatsAppBotController {
           occurredAt: new Date(),
         },
       });
+      this.refreshTaxpayerMemory(ownerTenant.id, ownerContact.id);
 
       const recentContext = await this.botContext.buildRecentWhatsAppContext(ownerContact.id);
       const prompt = [
@@ -531,6 +541,7 @@ export class WhatsAppBotController {
             occurredAt: new Date(),
           },
         });
+        this.refreshTaxpayerMemory(ownerTenant.id, ownerContact.id);
       }
       return;
     }
@@ -553,6 +564,7 @@ export class WhatsAppBotController {
           occurredAt: new Date(),
         },
       });
+      this.refreshTaxpayerMemory(tenant.id, contact.id);
 
       const automationActive = await this.whatsapp.isAutomationActive(tenant.id);
       const unknownActionText = `Portal > Mesajlar'dan m\u00fckellefe ba\u011flayabilirsin`;
@@ -612,6 +624,7 @@ export class WhatsAppBotController {
             occurredAt: new Date(),
           },
         });
+        this.refreshTaxpayerMemory(tenant.id, contact.id);
         return;
       }
 
@@ -660,6 +673,7 @@ export class WhatsAppBotController {
             occurredAt: new Date(),
           },
         });
+        this.refreshTaxpayerMemory(tenant.id, contact.id);
       }
       return;
     }
@@ -689,6 +703,7 @@ export class WhatsAppBotController {
         occurredAt: new Date(),
       },
     });
+    this.refreshTaxpayerMemory(taxpayer.tenantId, taxpayer.id);
 
     const taxpayerName =
       taxpayer.companyName ||
@@ -745,6 +760,7 @@ export class WhatsAppBotController {
           occurredAt: new Date(),
         },
       });
+      this.refreshTaxpayerMemory(taxpayer.tenantId, taxpayer.id);
       return;
     }
 
@@ -771,6 +787,7 @@ export class WhatsAppBotController {
             occurredAt: new Date(),
           },
         });
+        this.refreshTaxpayerMemory(taxpayer.tenantId, taxpayer.id);
       }
       return;
     }
@@ -797,6 +814,7 @@ export class WhatsAppBotController {
           occurredAt: new Date(),
         },
       });
+      this.refreshTaxpayerMemory(taxpayer.tenantId, taxpayer.id);
       return;
     }
 
@@ -876,6 +894,7 @@ export class WhatsAppBotController {
           occurredAt: new Date(),
         },
       });
+      this.refreshTaxpayerMemory(taxpayer.tenantId, taxpayer.id);
     }
   }
 
