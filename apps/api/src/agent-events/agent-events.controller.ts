@@ -8,6 +8,7 @@ import {
   Param,
   Query,
   Req,
+  Res,
   UseGuards,
   Headers,
   UnauthorizedException,
@@ -195,6 +196,36 @@ export class AgentEventsController {
       throw new BadRequestException('geçerli year ve month gerekli');
     }
     return this.service.eventSummaryByMukellef(req.user.tenantId, agent, y, m);
+  }
+
+  /** Mihsap fatura isleme loglarini firma + donem bazinda Excel'e dok. */
+  @Get('events/mihsap-report.xlsx')
+  @UseGuards(AuthGuard('jwt'))
+  async mihsapProcessingReportXlsx(
+    @Req() req: any,
+    @Res() res: any,
+    @Query('year') year: string,
+    @Query('month') month: string,
+    @Query('taxpayerIds') taxpayerIds?: string,
+    @Query('mukellef') mukellef?: string,
+    @Query('actions') actions?: string,
+  ) {
+    const y = parseInt(year, 10);
+    const m = parseInt(month, 10);
+    if (!y || !m || m < 1 || m > 12) {
+      throw new BadRequestException('gecerli year ve month gerekli');
+    }
+    const buffer = await this.service.mihsapProcessingReportXlsx(req.user.tenantId, {
+      year: y,
+      month: m,
+      taxpayerIds,
+      mukellef,
+      actions,
+    });
+    const filename = `mihsap-fatura-islem-raporu-${y}-${String(m).padStart(2, '0')}.xlsx`;
+    res.setHeader('Content-Type', 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet');
+    res.setHeader('Content-Disposition', `attachment; filename="${filename}"`);
+    res.send(buffer);
   }
 
   /** AI kullanım istatistikleri (bugün / bu ay / toplam + bakiye) */

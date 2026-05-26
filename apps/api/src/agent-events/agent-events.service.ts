@@ -1,6 +1,7 @@
 import { Injectable, Logger } from '@nestjs/common';
 import { createHash } from 'crypto';
 import { Prisma } from '@prisma/client';
+import * as ExcelJS from 'exceljs';
 import { PrismaService } from '../prisma/prisma.service';
 import { logAiUsage } from '../common/ai-usage-logger';
 import { profileToPromptText } from '../common/profile-prompt';
@@ -1218,6 +1219,450 @@ ${ocr.text.slice(0, 14000)}`;
         birimMaliyetUsd: toplam.birimMaliyetUsd,
       },
     };
+  }
+
+  /** Mihsap fatura isleme loglarini analiz edilebilir Excel raporuna cevirir. */
+  async mihsapProcessingReportXlsx(
+    tenantId: string,
+    opts: { year: number; month: number; taxpayerIds?: string; mukellef?: string; actions?: string },
+  ): Promise<Buffer> {
+    const csvList = (value?: string) =>
+      String(value || '')
+        .split(',')
+        .map((item) => item.trim())
+        .filter(Boolean);
+    const metaOf = (value: any): Record<string, any> =>
+      value && typeof value === 'object' && !Array.isArray(value) ? (value as Record<string, any>) : {};
+    const text = (value: any, max = 500) => String(value || '').replace(/\s+/g, ' ').trim().slice(0, max);
+    const numberOf = (value: any) => {
+      const n = Number(value || 0);
+      return Number.isFinite(n) ? n : 0;
+    };
+    const normalized = (value: any) =>
+      String(value || '')
+        .toLocaleUpperCase('tr-TR')
+        .replace(/[^A-Z0-9]/g, '');
+    const normText = (value: any) =>
+      String(value || '')
+        .toLocaleLowerCase('tr-TR')
+        .normalize('NFD')
+        .replace(/[\u0300-\u036f]/g, '')
+        .replace(/ı/g, 'i')
+        .replace(/\s+/g, ' ')
+        .trim();
+    const trDate = (value: any) => {
+      if (!value) return '';
+      const d = value instanceof Date ? value : new Date(value);
+      if (!Number.isFinite(d.getTime())) return '';
+      return d.toLocaleString('tr-TR', { timeZone: 'Europe/Istanbul' });
+    };
+    const trDay = (value: any) => {
+      if (!value) return '';
+      const raw = String(value).trim();
+      const iso = raw.match(/^(\d{4})[./-](\d{1,2})[./-](\d{1,2})$/);
+      if (iso) return `${iso[3].padStart(2, '0')}.${iso[2].padStart(2, '0')}.${iso[1]}`;
+      const tr = raw.match(/^(\d{1,2})[./-](\d{1,2})[./-](\d{2,4})$/);
+      if (tr) return `${tr[1].padStart(2, '0')}.${tr[2].padStart(2, '0')}.${tr[3].length === 2 ? `20${tr[3]}` : tr[3]}`;
+      return raw;
+    };
+    const readBelgeNo = (event: any, meta: Record<string, any>) =>
+      text(event.fisNo || meta.belgeNo || meta?.belge?.belgeNo || meta?.decisionTrace?.belge?.belgeNo || meta?.decisionTrace?.ekran?.belgeNo, 80);
+    const readFaturaTarihi = (meta: Record<string, any>, message?: string) => {
+      for (const key of ['tarih', 'faturaTarihi', 'belgeTarihi', 'duzenlemeTarihi', 'evrakTarihi', 'mihsapTarih', 'belgeTarih']) {
+        if (meta[key]) return trDay(meta[key]);
+      }
+      for (const value of [meta?.decisionTrace?.ekran?.tarih, meta?.decisionTrace?.belge?.tarih]) {
+        if (value) return trDay(value);
+      }
+      const match = String(message || '').match(/(\d{1,2}[./-]\d{1,2}[./-]\d{2,4}|\d{4}[./-]\d{1,2}[./-]\d{1,2})/);
+      return match ? trDay(match[1]) : '';
+    };
+    const readBelgeTuru = (meta: Record<string, any>, message?: string) =>
+      text(
+        meta.belgeTuru ||
+          meta.faturaTuru ||
+          meta?.decisionTrace?.ekran?.belgeTuru ||
+          meta?.decisionTrace?.belge?.belgeTuru ||
+          (String(message || '').match(/\bBT\s*:\s*([^·\n]+?)(?=\s*[·|]|\s+(?:AST|FatT|B\d+)\s*:|$)/i)?.[1] || ''),
+        80,
+      );
+    const readFaturaTuru = (meta: Record<string, any>, message?: string) =>
+      text(meta.faturaTuru || (String(message || '').match(/\bFatT\s*:\s*([^·\n]+?)(?:\s+BT:|$)/i)?.[1] || ''), 80);
+    const readMissingFields = (message?: string, meta?: Record<string, any>) => {
+      const raw: string[] = [];
+      if (Array.isArray(meta?.missingFields)) raw.push(...meta!.missingFields.map(String));
+      const msg = String(message || '');
+      const m = msg.match(/Bo[sş]\s*alanlar\s*:\s*([^\n]+)/i);
+      if (m) raw.push(...m[1].split(',').map((x) => x.trim()));
+      return [...new Set(raw.map((x) => x.replace(/\(yok\)/i, '').trim()).filter(Boolean))];
+    };
+    const accountKey = (value: any) => {
+      const match = String(value || '').match(/\b\d{3}(?:\.\d{1,3}){1,4}\b/);
+      return match?.[0] || String(value || '').trim();
+    };
+    const readAccounts = (event: any, meta: Record<string, any>) => {
+      const values = [
+        ...(Array.isArray(meta.hesapKodlari) ? meta.hesapKodlari : []),
+        ...(Array.isArray(meta?.decisionTrace?.ekran?.hesapKodlari) ? meta.decisionTrace.ekran.hesapKodlari : []),
+        event.hesapKodu,
+      ];
+      const seen = new Set<string>();
+      const all: string[] = [];
+      for (const value of values) {
+        const out = text(value, 160);
+        const key = accountKey(out);
+        if (!key || seen.has(key)) continue;
+        seen.add(key);
+        all.push(out);
+      }
+      const isKdv = (code: string) => /^(191|391)\./.test(accountKey(code));
+      const isCari = (code: string) => /^(120|320)\./.test(accountKey(code));
+      const isPayment = (code: string) => /^(100|101|102|103|108|121|321|309|329|331|335|336)\./.test(accountKey(code));
+      return {
+        all,
+        matrah: all.filter((code) => !isKdv(code) && !isCari(code) && !isPayment(code)),
+        kdv: all.filter(isKdv),
+        cari: all.filter((code) => isCari(code) || isPayment(code)),
+      };
+    };
+    const actionLabel = (action?: string | null) => {
+      const value = String(action || '');
+      if (value === 'isle_alis') return 'Bilanço - Alış';
+      if (value === 'isle_satis') return 'Bilanço - Satış';
+      if (value === 'isle_alis_isletme') return 'İşletme - Alış';
+      if (value === 'isle_satis_isletme') return 'İşletme - Satış';
+      return value || 'Belirsiz';
+    };
+    const statusLabel = (status?: string | null) => {
+      const value = String(status || '').toLowerCase();
+      if (['ok', 'onaylandi', 'basarili'].includes(value)) return 'İşlendi';
+      if (['skip', 'atlandi'].includes(value)) return 'İşlenmedi - Atlandı';
+      if (['error', 'hata'].includes(value)) return 'İşlenmedi - Hata';
+      return 'Bilgi';
+    };
+
+    const year = opts.year;
+    const month = opts.month;
+    const donemStr = `${year}-${String(month).padStart(2, '0')}`;
+    const periodStart = new Date(year, month - 1, 1);
+    const periodEnd = new Date(year, month, 1);
+    const wideStart = new Date(year, month - 3, 1);
+    const wideEnd = new Date(year, month + 2, 1);
+    const taxpayerIds = csvList(opts.taxpayerIds);
+    const actions = csvList(opts.actions);
+    const target = String(opts.mukellef || '').trim();
+
+    const selectedTaxpayers = taxpayerIds.length
+      ? await this.prisma.taxpayer.findMany({
+          where: { tenantId, id: { in: taxpayerIds } },
+          select: { id: true, firstName: true, lastName: true, companyName: true },
+        })
+      : [];
+    const taxpayerName = (t: any) => t.companyName || [t.firstName, t.lastName].filter(Boolean).join(' ') || '';
+    const selectedNames = new Set(selectedTaxpayers.map(taxpayerName).filter(Boolean));
+
+    const events = await this.prisma.agentEvent.findMany({
+      where: {
+        tenantId,
+        agent: 'mihsap',
+        ts: { gte: wideStart, lt: wideEnd },
+        ...(actions.length ? { action: { in: actions } } : {}),
+      } as any,
+      orderBy: { ts: 'asc' },
+      take: 10000,
+      select: this.lightEventSelect(),
+    });
+
+    const filteredEvents = events.filter((event: any) => {
+      const meta = metaOf(event.meta);
+      const rowDonem = String(meta.donem || '').trim();
+      const rowTs = new Date(event.ts);
+      const inPeriod = rowDonem ? rowDonem === donemStr : rowTs >= periodStart && rowTs < periodEnd;
+      if (!inPeriod) return false;
+      if (taxpayerIds.length) {
+        return taxpayerIds.includes(String(meta.mukellefId || '')) || selectedNames.has(String(event.mukellef || ''));
+      }
+      if (target) {
+        const haystack = normText([event.mukellef, event.firma, event.message].filter(Boolean).join(' '));
+        return haystack.includes(normText(target));
+      }
+      return true;
+    });
+
+    const eventTimes = filteredEvents.map((event: any) => new Date(event.ts).getTime()).filter(Number.isFinite);
+    const usageStart = eventTimes.length ? new Date(Math.min(...eventTimes) - 30 * 60 * 1000) : periodStart;
+    const usageEnd = eventTimes.length ? new Date(Math.max(...eventTimes) + 30 * 60 * 1000) : periodEnd;
+    const usageWhere: any = {
+      tenantId,
+      source: { startsWith: 'mihsap' },
+      createdAt: { gte: usageStart, lte: usageEnd },
+    };
+    if (taxpayerIds.length) {
+      usageWhere.OR = [
+        { taxpayerId: { in: taxpayerIds } },
+        ...(selectedNames.size ? [{ mukellef: { in: Array.from(selectedNames) } }] : []),
+      ];
+    } else if (target) {
+      usageWhere.mukellef = { contains: target, mode: 'insensitive' };
+    }
+    const usageRows = await this.prisma.aiUsageLog.findMany({
+      where: usageWhere,
+      orderBy: { createdAt: 'asc' },
+      take: 10000,
+      select: {
+        id: true,
+        createdAt: true,
+        source: true,
+        mukellef: true,
+        taxpayerId: true,
+        model: true,
+        inputTokens: true,
+        outputTokens: true,
+        cacheReadTokens: true,
+        cacheWriteTokens: true,
+        costUsd: true,
+        karar: true,
+        sebep: true,
+        belgeNo: true,
+        durationMs: true,
+        cacheHit: true,
+      },
+    });
+    const usageByBelge = new Map<string, any[]>();
+    for (const usage of usageRows) {
+      const key = normalized(usage.belgeNo);
+      if (!key) continue;
+      const list = usageByBelge.get(key) || [];
+      list.push(usage);
+      usageByBelge.set(key, list);
+    }
+
+    const reportRows = filteredEvents.map((event: any, index) => {
+      const meta = metaOf(event.meta);
+      const belgeNo = readBelgeNo(event, meta);
+      const hesaplar = readAccounts(event, meta);
+      const missing = readMissingFields(event.message, meta);
+      const msgNorm = normText(event.message);
+      const status = String(event.status || '').toLowerCase();
+      const success = ['ok', 'onaylandi', 'basarili'].includes(status);
+      const warnings: string[] = [];
+      if (success && missing.length) warnings.push(`Onaylı kayıtta eksik alan: ${missing.join(', ')}`);
+      if (/kdv orani var.*hesap kodu|hesap kodu gorunmuyor|kontrol gerekli|uyari|risk|fark|uyumsuz|eksik/.test(msgNorm)) {
+        warnings.push(text(event.message, 160));
+      }
+      const matchedUsage = (usageByBelge.get(normalized(belgeNo)) || []).filter((usage) => {
+        const metaTaxpayerId = String(meta.mukellefId || '');
+        if (metaTaxpayerId && usage.taxpayerId) return usage.taxpayerId === metaTaxpayerId;
+        if (event.mukellef && usage.mukellef) return normText(usage.mukellef) === normText(event.mukellef);
+        return true;
+      });
+      const aiCostUsd = matchedUsage.length
+        ? matchedUsage.reduce((acc, usage) => acc + numberOf(usage.costUsd), 0)
+        : numberOf(meta.aiCostUsd ?? meta.costUsd ?? meta?.ai?.costUsd ?? meta?.maliyetUsd);
+      const aiSources = [...new Set(matchedUsage.map((usage) => usage.source).filter(Boolean))];
+      const category =
+        success && warnings.length
+          ? 'İşlendi - Kontrol Gerek'
+          : success
+            ? 'İşlendi - Temiz'
+            : statusLabel(status);
+      return {
+        no: index + 1,
+        islemZamani: trDate(event.ts),
+        donem: String(meta.donem || donemStr),
+        mukellef: event.mukellef || '',
+        action: actionLabel(event.action),
+        sonuc: category,
+        status: event.status || '',
+        firma: event.firma || meta.firma || '',
+        belgeNo,
+        faturaTarihi: readFaturaTarihi(meta, event.message),
+        belgeTuru: readBelgeTuru(meta, event.message),
+        faturaTuru: readFaturaTuru(meta, event.message),
+        tutar: event.tutar == null ? null : numberOf(event.tutar),
+        kdv: event.kdv || meta.kdvOrani || meta?.decisionTrace?.belge?.kdvOrani || '',
+        matrahHesaplari: hesaplar.matrah.join('\n'),
+        kdvHesaplari: hesaplar.kdv.join('\n'),
+        cariHesaplari: hesaplar.cari.join('\n'),
+        tumHesaplar: hesaplar.all.join('\n'),
+        eksikAlanlar: missing.join(', '),
+        uyarilar: [...new Set(warnings)].join('\n'),
+        kararSebebi: text(meta?.decisionTrace?.karar?.sebep || meta.sebep || event.message, 800),
+        aiKaynak: aiSources.join(', ') || meta.decisionProvider || meta.provider || '',
+        aiCagrisi: matchedUsage.length,
+        aiMaliyetUsd: Number(aiCostUsd.toFixed(6)),
+        agentVersion: meta.agentVersion || meta.runtime || meta.version || '',
+        hamMesaj: text(event.message, 1500),
+      };
+    });
+
+    const totals = reportRows.reduce(
+      (acc, row) => {
+        acc.toplam += 1;
+        acc.tutar += numberOf(row.tutar);
+        acc.aiMaliyetUsd += numberOf(row.aiMaliyetUsd);
+        if (row.sonuc === 'İşlendi - Temiz') acc.temiz += 1;
+        else if (row.sonuc === 'İşlendi - Kontrol Gerek') acc.kontrol += 1;
+        else if (row.sonuc.includes('Atlandı')) acc.atlandi += 1;
+        else if (row.sonuc.includes('Hata')) acc.hata += 1;
+        else acc.bilgi += 1;
+        return acc;
+      },
+      { toplam: 0, temiz: 0, kontrol: 0, atlandi: 0, hata: 0, bilgi: 0, tutar: 0, aiMaliyetUsd: 0 },
+    );
+
+    const byMukellef = Array.from(
+      reportRows.reduce<Map<string, any>>((map, row) => {
+        const key = row.mukellef || '(mükellef yok)';
+        const item = map.get(key) || { mukellef: key, toplam: 0, temiz: 0, kontrol: 0, atlandi: 0, hata: 0, tutar: 0, aiMaliyetUsd: 0 };
+        item.toplam += 1;
+        item.tutar += numberOf(row.tutar);
+        item.aiMaliyetUsd += numberOf(row.aiMaliyetUsd);
+        if (row.sonuc === 'İşlendi - Temiz') item.temiz += 1;
+        else if (row.sonuc === 'İşlendi - Kontrol Gerek') item.kontrol += 1;
+        else if (row.sonuc.includes('Atlandı')) item.atlandi += 1;
+        else if (row.sonuc.includes('Hata')) item.hata += 1;
+        map.set(key, item);
+        return map;
+      }, new Map()).values(),
+    ).sort((a, b) => b.toplam - a.toplam);
+
+    const wb = new ExcelJS.Workbook();
+    wb.creator = 'Moren Mali Musavirlik';
+    wb.created = new Date();
+    const gold = 'FFD4B876';
+    const dark = 'FF1F1B16';
+    const headerFill = 'FFF2E5C2';
+    const thinBorder = { style: 'thin', color: { argb: 'FFD7C99D' } } as any;
+    const styleHeader = (row: ExcelJS.Row) => {
+      row.font = { bold: true, color: { argb: 'FF17130F' } };
+      row.fill = { type: 'pattern', pattern: 'solid', fgColor: { argb: headerFill } };
+      row.alignment = { vertical: 'middle', wrapText: true };
+      row.eachCell((cell) => {
+        cell.border = { top: thinBorder, left: thinBorder, bottom: thinBorder, right: thinBorder };
+      });
+    };
+
+    const summary = wb.addWorksheet('Özet', { properties: { tabColor: { argb: gold } } });
+    summary.addRow(['Mihsap Fatura İşleme Raporu']);
+    summary.mergeCells('A1:H1');
+    summary.getRow(1).font = { bold: true, size: 16, color: { argb: dark } };
+    summary.addRow(['Dönem', donemStr, 'Mükellef filtresi', selectedNames.size ? Array.from(selectedNames).join(', ') : target || 'Tümü']);
+    summary.addRow(['Rapor tarihi', new Date().toLocaleString('tr-TR', { timeZone: 'Europe/Istanbul' }), 'İşlem filtresi', actions.length ? actions.map(actionLabel).join(', ') : 'Tümü']);
+    summary.addRow([]);
+    styleHeader(summary.addRow(['Sayaç', 'Adet', 'Açıklama']));
+    [
+      ['Toplam log', totals.toplam, 'Seçilen dönem ve firma filtresine giren kayıtlar'],
+      ['İşlendi - Temiz', totals.temiz, 'Onaylandı ve belirgin uyarı yok'],
+      ['İşlendi - Kontrol Gerek', totals.kontrol, 'Onaylandı ama eksik alan/uyarı var'],
+      ['İşlenmedi - Atlandı', totals.atlandi, 'Manuel işlem veya kural nedeniyle atlandı'],
+      ['İşlenmedi - Hata', totals.hata, 'Ajan veya Mihsap hatası'],
+      ['Bilgi', totals.bilgi, 'İşlem sonucu olmayan bilgilendirme logları'],
+      ['Toplam tutar', totals.tutar, 'Loglarda görünen toplam belge tutarı'],
+      ['AI / OCR maliyeti USD', Number(totals.aiMaliyetUsd.toFixed(6)), 'Eşleşen kullanım kayıtlarından hesaplandı'],
+    ].forEach((row) => summary.addRow(row));
+    summary.columns = [{ width: 28 }, { width: 18 }, { width: 80 }, { width: 18 }, { width: 18 }, { width: 18 }, { width: 18 }, { width: 18 }];
+    summary.getColumn(2).numFmt = '#,##0.00';
+
+    const byTaxpayerSheet = wb.addWorksheet('Mükellef Özeti');
+    styleHeader(byTaxpayerSheet.addRow(['Mükellef', 'Toplam', 'Temiz', 'Kontrol Gerek', 'Atlandı', 'Hata', 'Toplam Tutar', 'AI Maliyet USD']));
+    byMukellef.forEach((row) =>
+      byTaxpayerSheet.addRow([
+        row.mukellef,
+        row.toplam,
+        row.temiz,
+        row.kontrol,
+        row.atlandi,
+        row.hata,
+        Number(row.tutar.toFixed(2)),
+        Number(row.aiMaliyetUsd.toFixed(6)),
+      ]),
+    );
+    byTaxpayerSheet.columns = [{ width: 48 }, { width: 10 }, { width: 10 }, { width: 14 }, { width: 10 }, { width: 10 }, { width: 16 }, { width: 16 }];
+    byTaxpayerSheet.getColumn(7).numFmt = '#,##0.00';
+    byTaxpayerSheet.getColumn(8).numFmt = '#,##0.000000';
+    byTaxpayerSheet.views = [{ state: 'frozen', ySplit: 1 }];
+    byTaxpayerSheet.autoFilter = 'A1:H1';
+
+    const detail = wb.addWorksheet('Fatura Logları');
+    detail.columns = [
+      { header: 'No', key: 'no', width: 7 },
+      { header: 'İşlem Zamanı', key: 'islemZamani', width: 20 },
+      { header: 'Dönem', key: 'donem', width: 10 },
+      { header: 'Mükellef', key: 'mukellef', width: 42 },
+      { header: 'İşlem', key: 'action', width: 18 },
+      { header: 'Sonuç', key: 'sonuc', width: 24 },
+      { header: 'Durum Kodu', key: 'status', width: 12 },
+      { header: 'Karşı Firma', key: 'firma', width: 36 },
+      { header: 'Belge No', key: 'belgeNo', width: 22 },
+      { header: 'Fatura Tarihi', key: 'faturaTarihi', width: 15 },
+      { header: 'Belge Türü', key: 'belgeTuru', width: 18 },
+      { header: 'Fatura Türü', key: 'faturaTuru', width: 18 },
+      { header: 'Tutar', key: 'tutar', width: 14 },
+      { header: 'KDV', key: 'kdv', width: 10 },
+      { header: 'Matrah/Gider Hesabı', key: 'matrahHesaplari', width: 34 },
+      { header: 'KDV Hesabı', key: 'kdvHesaplari', width: 30 },
+      { header: 'Cari/Ödeme Hesabı', key: 'cariHesaplari', width: 30 },
+      { header: 'Tüm Hesaplar', key: 'tumHesaplar', width: 44 },
+      { header: 'Eksik Alanlar', key: 'eksikAlanlar', width: 28 },
+      { header: 'Uyarılar', key: 'uyarilar', width: 44 },
+      { header: 'Karar / Sebep', key: 'kararSebebi', width: 62 },
+      { header: 'AI Kaynak', key: 'aiKaynak', width: 24 },
+      { header: 'AI Çağrısı', key: 'aiCagrisi', width: 10 },
+      { header: 'AI Maliyet USD', key: 'aiMaliyetUsd', width: 15 },
+      { header: 'Agent Versiyon', key: 'agentVersion', width: 14 },
+      { header: 'Ham Mesaj', key: 'hamMesaj', width: 70 },
+    ];
+    styleHeader(detail.getRow(1));
+    detail.addRows(reportRows);
+    detail.views = [{ state: 'frozen', ySplit: 1 }];
+    detail.autoFilter = 'A1:Z1';
+    detail.getColumn('tutar').numFmt = '#,##0.00';
+    detail.getColumn('aiMaliyetUsd').numFmt = '#,##0.000000';
+    detail.eachRow((row, rowNo) => {
+      row.alignment = { vertical: 'top', wrapText: true };
+      if (rowNo === 1) return;
+      const result = String(row.getCell(6).value || '');
+      if (result.includes('Hata')) row.getCell(6).fill = { type: 'pattern', pattern: 'solid', fgColor: { argb: 'FFFFD9D9' } };
+      else if (result.includes('Atlandı')) row.getCell(6).fill = { type: 'pattern', pattern: 'solid', fgColor: { argb: 'FFFFE8BF' } };
+      else if (result.includes('Kontrol')) row.getCell(6).fill = { type: 'pattern', pattern: 'solid', fgColor: { argb: 'FFFFF3C4' } };
+      else if (result.includes('Temiz')) row.getCell(6).fill = { type: 'pattern', pattern: 'solid', fgColor: { argb: 'FFDDF7E7' } };
+    });
+
+    const usageSheet = wb.addWorksheet('AI Kullanımı');
+    styleHeader(usageSheet.addRow(['Zaman', 'Kaynak', 'Mükellef', 'Belge No', 'Model', 'Input', 'Output', 'Cache Read', 'Cache Write', 'Cost USD', 'Karar', 'Sebep', 'Süre ms', 'Cache Hit']));
+    usageRows.forEach((row) =>
+      usageSheet.addRow([
+        trDate(row.createdAt),
+        row.source,
+        row.mukellef || '',
+        row.belgeNo || '',
+        row.model,
+        row.inputTokens,
+        row.outputTokens,
+        row.cacheReadTokens,
+        row.cacheWriteTokens,
+        Number(numberOf(row.costUsd).toFixed(6)),
+        row.karar || '',
+        row.sebep || '',
+        row.durationMs || '',
+        row.cacheHit ? 'Evet' : 'Hayır',
+      ]),
+    );
+    usageSheet.columns = [{ width: 20 }, { width: 28 }, { width: 42 }, { width: 22 }, { width: 28 }, { width: 10 }, { width: 10 }, { width: 12 }, { width: 12 }, { width: 14 }, { width: 12 }, { width: 42 }, { width: 10 }, { width: 10 }];
+    usageSheet.getColumn(10).numFmt = '#,##0.000000';
+    usageSheet.views = [{ state: 'frozen', ySplit: 1 }];
+    usageSheet.autoFilter = 'A1:N1';
+
+    for (const ws of wb.worksheets) {
+      ws.eachRow((row) => {
+        row.eachCell((cell) => {
+          cell.border = cell.border || { top: thinBorder, left: thinBorder, bottom: thinBorder, right: thinBorder };
+        });
+      });
+    }
+
+    return Buffer.from((await wb.xlsx.writeBuffer()) as any);
   }
 
   /**

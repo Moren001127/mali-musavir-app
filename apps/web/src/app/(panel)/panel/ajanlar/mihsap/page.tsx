@@ -8,7 +8,7 @@ import Link from 'next/link';
 import {
   Play, Pause, Calendar, Users, Search, CheckCircle2, AlertCircle, Loader2, Clock,
   Receipt, ArrowRight, Zap, ChevronDown, X, AlertTriangle, Edit3, ThumbsUp, ThumbsDown,
-  PlayCircle,
+  PlayCircle, Download,
 } from 'lucide-react';
 import { toast } from 'sonner';
 import { LogCard, LogEvent } from '../_components/LogCard';
@@ -108,6 +108,7 @@ export default function MihsapAgentPage() {
   // Çoklu seçim — aynı defter (Bilanço veya İşletme) içinde Alış+Satış birlikte seçilebilir.
   // Farklı defter karışımı engelli (Mihsap URL'si farklı, runner aynı session içinde geçemez).
   const [actions, setActions] = useState<ActionKey[]>(['isle_alis']);
+  const [exportingReport, setExportingReport] = useState(false);
 
   const toggleAction = (a: ActionKey) => {
     const isIsletme = (k: ActionKey) => k.endsWith('_isletme');
@@ -205,6 +206,38 @@ export default function MihsapAgentPage() {
     },
     refetchInterval: 5000,
   });
+
+  const downloadProcessingReport = async () => {
+    const [yStr, mStr] = ay.split('-');
+    setExportingReport(true);
+    try {
+      const resp = await api.get('/agent/events/mihsap-report.xlsx', {
+        params: {
+          year: yStr,
+          month: mStr,
+          taxpayerIds: selectedIds.join(',') || undefined,
+          actions: actions.join(',') || undefined,
+        },
+        responseType: 'blob',
+      });
+      const blob = new Blob([resp.data], {
+        type: 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet',
+      });
+      const url = window.URL.createObjectURL(blob);
+      const a = document.createElement('a');
+      a.href = url;
+      a.download = `mihsap-fatura-islem-raporu-${ay}.xlsx`;
+      document.body.appendChild(a);
+      a.click();
+      a.remove();
+      window.URL.revokeObjectURL(url);
+      toast.success('Excel döküm indirildi');
+    } catch (e: any) {
+      toast.error(e?.response?.data?.message || e?.message || 'Excel döküm alınamadı');
+    } finally {
+      setExportingReport(false);
+    }
+  };
 
   const statusInfo: any = status.find((s: any) => s.agent === 'mihsap');
   const calisiyor = statusInfo?.running === true;
@@ -570,13 +603,30 @@ export default function MihsapAgentPage() {
               Son {events.length} işlem — 3 saniyede bir yenilenir
             </p>
           </div>
-          <Link
-            href="/panel/ajanlar/loglar?agent=mihsap"
-            className="text-xs inline-flex items-center gap-1"
-            style={{ color: 'rgba(250,250,249,0.45)' }}
-          >
-            Tümü <ArrowRight size={11} />
-          </Link>
+          <div className="flex items-center gap-2">
+            <button
+              type="button"
+              onClick={downloadProcessingReport}
+              disabled={exportingReport}
+              className="text-xs inline-flex items-center gap-1.5 px-3 py-2 rounded-lg border disabled:opacity-50"
+              style={{
+                background: 'rgba(184,160,111,0.10)',
+                borderColor: 'rgba(184,160,111,0.28)',
+                color: '#d4b876',
+              }}
+              title={selectedIds.length > 0 ? 'Seçili mükellef ve dönem için Excel döküm al' : 'Seçili dönem için tüm Mihsap loglarını Excel dök'}
+            >
+              {exportingReport ? <Loader2 size={13} className="animate-spin" /> : <Download size={13} />}
+              Excel Döküm
+            </button>
+            <Link
+              href="/panel/ajanlar/loglar?agent=mihsap"
+              className="text-xs inline-flex items-center gap-1"
+              style={{ color: 'rgba(250,250,249,0.45)' }}
+            >
+              Tümü <ArrowRight size={11} />
+            </Link>
+          </div>
         </div>
         <div className="p-2 space-y-2 max-h-[680px] overflow-y-auto">
           {events.length === 0 ? (
