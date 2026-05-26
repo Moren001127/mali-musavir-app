@@ -9,29 +9,29 @@
    Sıcak, kurumsal, karakterli
    ══════════════════════════════════════════════════════════ */
 
-/* ─── TEMA A: Moren Hibrit Cream (Varsayılan · 26 May 2026) ─── */
-/* Koyu sidebar (marka) + açık krem içerik (uzun-oturum-rahat). */
+/* ─── TEMA A: Moren Yumuşak Antrasit (Varsayılan · 26 May 2026) ─── */
+/* Mevcut dark vibe korunur, ancak siyahtan 3 ton açılır — bunaltmaz. */
 :root, [data-theme="A"] {
-  --bg:           #efe9dc;
-  --surface:      #ffffff;
-  --surface-2:    #f5efe2;
-  --surface-3:    #ebe4d2;
-  --card-bg:      #ffffff;
-  --border:       #d6cebc;
-  --border-soft:  #e2dbc9;
-  --border-hover: #b8a87f;
-  --accent:       #8b6a2a;
-  --accent-soft:  #b89530;
-  --accent-light: rgba(139,106,42,0.10);
-  --accent-50:    rgba(139,106,42,0.04);
-  --gold-accent:  #b89530;
-  --gold-deep:    #6e5320;
-  --text:           #1f1812;
-  --text-primary:   #1f1812;
-  --text-secondary: rgba(31,24,18,0.72);
-  --text-muted:     rgba(31,24,18,0.55);
-  --text-light:     rgba(31,24,18,0.36);
-  --text-serif:     #1f1812;
+  --bg:           #2a2e38;
+  --surface:      #2d323e;
+  --surface-2:    #353a45;
+  --surface-3:    #3d424f;
+  --card-bg:      #2d323e;
+  --border:       #404553;
+  --border-soft:  #353a45;
+  --border-hover: #565b6a;
+  --accent:       #d4b876;
+  --accent-soft:  #b8a06f;
+  --accent-light: rgba(212,184,118,0.14);
+  --accent-50:    rgba(212,184,118,0.06);
+  --gold-accent:  #d4b876;
+  --gold-deep:    #8b7649;
+  --text:           #f5f5f5;
+  --text-primary:   #f5f5f5;
+  --text-secondary: rgba(245,245,245,0.72);
+  --text-muted:     rgba(245,245,245,0.55);
+  --text-light:     rgba(245,245,245,0.36);
+  --text-serif:     #f5f5f5;
   --font-heading: 'Fraunces', Georgia, serif;
   --font-body:    'Inter', system-ui, sans-serif;
   --font-mono:    'JetBrains Mono', 'Roboto Mono', monospace;
@@ -396,14 +396,11 @@ input:focus, select:focus, textarea:focus {
   box-shadow: 0 0 0 3px var(--accent-light);
 }
 input::placeholder, textarea::placeholder { color: var(--text-light); }
+/* Date picker icon — dark tema için beyaz invert */
 input[type="date"]::-webkit-calendar-picker-indicator,
 input[type="month"]::-webkit-calendar-picker-indicator {
-  cursor: pointer;
-  /* Tema A (light) için varsayılan: filter yok. A-DARK ise inverse uygulanır. */
-}
-[data-theme="A-DARK"] input[type="date"]::-webkit-calendar-picker-indicator,
-[data-theme="A-DARK"] input[type="month"]::-webkit-calendar-picker-indicator {
   filter: invert(1) opacity(0.6);
+  cursor: pointer;
 }
 
 label {
