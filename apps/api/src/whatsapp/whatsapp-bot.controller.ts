@@ -856,25 +856,38 @@ export class WhatsAppBotController {
     const taxpayerContext = await this.botContext.buildTaxpayerContextBlock(taxpayer.tenantId, taxpayer.id);
     const recentContext = await this.botContext.buildRecentWhatsAppContext(taxpayer.id);
     const prompt = [
-      'Bu mesaj WhatsApp mukellef botundan geldi.',
-      'KURAL USTUNLUGU: Bu WhatsApp mukellef cevabi kurallari genel Moren AI ton kurallarinin ustundedir.',
-      'SADECE mukellefe gidecek nihai WhatsApp cevabini yaz.',
-      'Baslik, markdown, madde isareti, emoji, ic not, ofis notu, neden bu cevap, test modu, arac/tool aciklamasi YAZMA.',
-      'Kendine Moren AI deme; "ofisimiz" veya "Moren Mali Musavirlik" gibi konus.',
-      'Cevap 1-2 kisa cumle olsun; mumkunse tek cumlede sicak, net, profesyonel ve taahhut vermeyen bir dil kullan.',
-      'Onceki cevaplarinla ayni kaliplari tekrar etme. "ofise iletildi", "kontrol edilecek", "donus yapacak" ifadelerini art arda kullanma; sinonim ve dogal varyasyon sec.',
-      'Sadece kendi kayitlariyla ilgili konus. Portal verisi yoksa rakam veya durum uydurma; kisa bir inceleme/bilgilendirme cumlesi kur.',
-      'Tool/veri sonucu yoksa evrak listesi, KDV tutari, odeme tarihi, beyanname durumu, tahsilat ve cari bakiye konularinda kesin bilgi verme; kayitlarin incelenecegini kisa soyle.',
-      'Evrak listesi, donem, tutar, mail gonderimi, isleme alma, eksik var/yok gibi bilgileri tool/veri sonucu olmadan ASLA uydurma.',
-      'Beyanname gonderme, odeme taahhudu, hukuki/vergisel kesin karar gibi kritik konularda kesin taahhut verme; mali musavir kontrolu gerektigini kisa ve farkli cumleyle soyle.',
-      'Dekont/evrak/belge bildirimi varsa alindigini soyle, kayda eklendigini belirt; tarih/saat taahhudu verme.',
-      'Kendi kendine gun, tarih, saat, sure, "hemen", "bugun", "yarin", "haftaya kadar" gibi taahhut ekleme.',
-      'Mukellef tarih onerirse kabul/ret verme; "Notunuzu aldik, ofis takvimine gore kontrol edecegiz." de.',
+      'Sen Moren Mali Müşavirlik ofisinin WhatsApp asistanısın. Karşındaki kişi BU OFİSİN MÜKELLEFİ.',
+      '',
+      '★ TEMEL GÖREVİN: SORUYU CEVAPLA. Aşağıdaki MÜKELLEF VERİSİNDE cevap varsa DİREKT SÖYLE.',
+      '   Örnek: "KDV ne kadar?" → currentMonth.tahakkukTutari varsa "Mayıs KDV tahakkukunuz 4.520 TL"',
+      '   Örnek: "Beyannamem hazır mı?" → beyannameVerildi true/false durumunu söyle.',
+      '   Örnek: "Evraklarım geldi mi?" → evraklarGeldi true/false durumunu söyle.',
+      '',
+      '★ Veri YOKSA (context boş ise): "Kayıtlarınızı kontrol edip kısa sürede dönüş yapacağız" gibi tek cümle.',
+      '   ASLA rakam/tarih/durum UYDURMA. Context\'te yoksa "kontrol edilecek" de.',
+      '',
+      '★ Beyanname GÖNDERME / onaylama gibi kritik komutlar için: "Mali müşavirimizin son kontrolünden sonra ilerletilecek" de — bot ASLA otomatik onaylamaz.',
+      '',
+      'YAZIM KURALLARI:',
+      '- Cevap 1-2 cümle, kısa ve net.',
+      '- ASLA markdown (** _ # > * ` ~) yok, başlık yok, madde işareti yok.',
+      '- ASLA "Anladım", "Müşteri...", "Şimdilik:", "Yapılacak:", "Plan:" gibi iç düşünce yazma.',
+      '- ASLA "Cevap:" diye etiketle başlama, doğrudan cevap yaz.',
+      '- "ofisimiz" / "Moren Mali Müşavirlik" diye konuş, "Moren AI" / "yapay zeka" deme.',
+      '- "hemen", "bugün kesin", "yarın kesin" gibi taahhüt verme.',
+      '- Önceki 3 cevapla AYNI kalıbı tekrar etme.',
+      '',
       `Intent: ${classified.intent}`,
-      'Gerekirse sadece get_my_* read-only toollarini kullan. Tool inputuna taxpayerId yazma; backend aktif mukellefi kendisi baglar.',
+      'Gerekirse get_my_* read-only tool çağır. taxpayerId verme — backend kendisi bağlar.',
+      '',
+      '═══ MÜKELLEF VERİSİ (cevap burada arasın) ═══',
       taxpayerContext,
       recentContext,
-      `Mukellef mesaji: ${msg.text}`,
+      '═══════════════════════════════════════════',
+      '',
+      `Mükellef sorusu: ${msg.text}`,
+      '',
+      'SADECE müşteriye gidecek FINAL cevabı yaz — başka hiçbir şey yazma.',
     ].join('\n');
 
     const answer = await this.morenAi.chat(taxpayer.tenantId, null, {
@@ -1034,29 +1047,21 @@ export class WhatsAppBotController {
     return finalReply;
   }
 
+  /**
+   * SADECE gerçek yan etkili komutlar için hazır cevap döndür.
+   * Bilgi sorularını (KDV ne kadar, beyannamem hazır mı vs.) AI'ya bırak
+   * — AI context'teki gerçek veriyi kullanıp cevaplasın.
+   */
   private buildGuardedTaxpayerReply(text: string): string | null {
     const t = this.normalizeText(text);
 
-    if (/(beyanname|beyan|tahakkuk)/i.test(t) && /(ver|gonder|gonderin|onay|imza|imzala)/i.test(t)) {
-      return 'Beyanname islemi mali musavir kontrolunden gecmeden yapilmaz. Kontrol sonrasi size net bilgi verilecek.';
+    // Sadece BEYANNAME ONAY/GÖNDERME KOMUTU için hazır guard
+    // (Müşteri "beyannameyi onaylıyorum, gönder" dediğinde bot asla otomatik göndermesin)
+    if (/(beyanname|beyan|tahakkuk)/i.test(t) && /(onayliyorum|onayladim|imzaladim|gonder hemen|gonderebilirsin)/i.test(t)) {
+      return 'Onay bilginiz alindi; son kontrol tamamlaninca size net bilgi verilecek.';
     }
 
-    if (/(kdv|borc|borcu|odeme|tutar|ne kadar)/i.test(t)) {
-      return 'KDV tutari ve odeme tarihi kayitlar uzerinden incelenecek; netlesince size bilgi verilecek.';
-    }
-
-    if (/(dekont|makbuz)/i.test(t)) {
-      return 'Dekont bilginiz alindi; kayitlarla eslestirme yapilacak.';
-    }
-
-    if (/(bugun|yarin|gelemeyecegim|gelemem|getirsem|ugrasam|biraksam)/i.test(t)) {
-      return 'Takvim notunuz alindi; uygunluk durumuna gore size bilgi verilecek.';
-    }
-
-    if (/(evrak|belge|fis|fatura)/i.test(t) && /(hangi|ne|gerek|eksik|getir|gonder|ilettim|gonderdim)/i.test(t)) {
-      return 'Evrak durumunuz ve donem takviminiz incelenecek; gerekiyorsa belge listesi paylasilacak.';
-    }
-
+    // Diğer her şey AI'ya gider — context'teki veriyle cevap üretsin
     return null;
   }
 
