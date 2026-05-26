@@ -141,17 +141,51 @@ export class WhatsAppBotController {
     mediaKind?: string;
     filename?: string;
   }): string {
-    const lines = [
-      input.unknown ? 'Yeni WhatsApp mesaj\u0131 geldi (kay\u0131ts\u0131z numara).' : 'Yeni WhatsApp mesaj\u0131 geldi.',
-      input.taxpayerName ? `M\u00fckellef: ${input.taxpayerName}` : null,
-      `Telefon: ${this.formatPhone(input.phone)}`,
-      input.mediaKind ? `Medya: ${input.mediaKind}${input.filename ? ` - ${input.filename}` : ''}` : null,
-      `Mesaj: ${String(input.text || '(metin yok)').slice(0, 700)}`,
-      input.unknown
-        ? 'Aksiyon: Portal > Mesajlar ekran\u0131nda "M\u00fckellefe Ba\u011fla" ile kayda e\u015fle\u015ftirebilirsin.'
-        : 'Durum: Portal > Mesajlar ekran\u0131na kaydedildi. Yan\u0131t\u0131 portaldan verirsen sadece bu numaraya gider.',
-    ].filter(Boolean);
-    return lines.join('\n');
+    // Sade format: 2-3 sat\u0131r, h\u0131zl\u0131 okunur
+    // Kay\u0131tl\u0131:  "\ud83d\udce9 MAL\u0130 M\u00dc\u015eAV\u0130RL\u0130K firmas\u0131ndan yeni mesaj
+    //            "Merhaba, evrak g\u00f6nderece\u011fim""
+    // Kay\u0131ts\u0131z: "\ud83d\udce9 Kay\u0131ts\u0131z numaradan mesaj \u2014 +90 535 058 74 75
+    //            "te\u015fekk\u00fcr ederim, iyiyim siz nas\u0131ls\u0131n\u0131z"
+    //            \u2192 Portal > Mesajlar'dan m\u00fckellefe ba\u011flayabilirsin"
+
+    const phoneFormatted = this.formatPhone(input.phone);
+    const mediaLabel = input.mediaKind
+      ? `\ud83d\udcce ${this.mediaKindLabel(input.mediaKind)}${input.filename ? ` (${input.filename})` : ''}`
+      : null;
+
+    let body: string;
+    if (input.mediaKind && !input.text) {
+      body = mediaLabel || '(medya mesaj\u0131)';
+    } else {
+      const msgText = String(input.text || '').slice(0, 400).trim();
+      body = msgText ? `"${msgText}"` : '(metin yok)';
+      if (mediaLabel) body = `${body}\n${mediaLabel}`;
+    }
+
+    if (input.unknown) {
+      return [
+        `\ud83d\udce9 Kay\u0131ts\u0131z numaradan mesaj \u2014 ${phoneFormatted}`,
+        body,
+        `\u2192 Portal > Mesajlar'dan m\u00fckellefe ba\u011flayabilirsin`,
+      ].join('\n');
+    }
+
+    const name = input.taxpayerName || 'M\u00fckellef';
+    return [
+      `\ud83d\udce9 ${name} \u2014 yeni WhatsApp mesaj\u0131`,
+      body,
+    ].join('\n');
+  }
+
+  private mediaKindLabel(kind: string): string {
+    switch (kind) {
+      case 'image': return 'G\u00f6rsel';
+      case 'audio': return 'Ses kayd\u0131';
+      case 'video': return 'Video';
+      case 'sticker': return 'Sticker';
+      case 'document': return 'Belge/PDF';
+      default: return 'Medya';
+    }
   }
 
   private formatPhone(phone: string): string {
@@ -584,7 +618,28 @@ export class WhatsAppBotController {
       const rate = this.rateLimiter.registerIncoming(tenant.id, contact.id);
       if (!rate.limited || rate.shouldNotify) {
         const recentUnknownReplies = await this.botContext.getRecentOutgoingReplies(contact.id).catch(() => []);
-        const rawReply = 'Merhaba, Moren Mali Musavirlik hattina ulastiniz. Kaydinizi eslestirebilmemiz icin ad/unvan ve VKN/TCKN bilginizi paylasabilir misiniz?';
+
+        // Kayıtsız numara için intent'e göre değişken cevap
+        const intentResult = this.intentClassifier.classify(msg.text || '');
+        let rawReply: string;
+        const totalLogs = await this.prisma.communicationLog.count({
+          where: { taxpayerId: contact.id, channel: 'WHATSAPP' },
+        }).catch(() => 0);
+        const isFirstContact = totalLogs <= 1; // bu gelen mesaj zaten log'a yazıldı (1)
+
+        if (isFirstContact) {
+          // İlk temas — kendini tanıt + kim olduğunu sor
+          rawReply = 'Merhaba, Moren Mali Müşavirlik iletişim hattına hoş geldiniz. Size yardımcı olabilmemiz için adınızı veya firma unvanınızı paylaşır mısınız?';
+        } else if (intentResult.intent === 'SELAMLAMA') {
+          // Selamlama — sıcak ve doğal cevap
+          rawReply = 'Merhaba, iyiyim teşekkür ederim. Size nasıl yardımcı olabiliriz? Mali müşavirlik işlemleriniz için ad veya firma unvanınızı paylaşırsanız sizi kayıtlarımızda bulabiliriz.';
+        } else if (intentResult.intent === 'BILGI_SORUSU') {
+          rawReply = 'Sorduğunuz konuyu mali müşavirimize iletmek için sizi sistemimizde tanıyabilmemiz gerekiyor. Adınızı veya firma unvanınızı paylaşır mısınız?';
+        } else if (intentResult.intent === 'EVRAK_TESLIM' || intentResult.intent === 'ODEME_BILDIRIMI') {
+          rawReply = 'Bilginiz alındı. Kayıtlarımıza işleyebilmemiz için adınızı veya firma unvanınızı paylaşır mısınız?';
+        } else {
+          rawReply = 'Mesajınız alındı, mali müşavirimiz en kısa sürede size dönüş yapacak. Aramızda kayıtlı görünmüyorsunuz; adınızı veya firma unvanınızı paylaşırsanız ekibimiz hızlıca eşleştirme yapabilir.';
+        }
         const qualityReply = await this.qualityGateReply({
           tenantId: tenant.id,
           taxpayerId: contact.id,
