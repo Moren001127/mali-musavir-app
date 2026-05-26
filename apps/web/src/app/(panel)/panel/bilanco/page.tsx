@@ -152,15 +152,15 @@ export default function BilancoPage() {
   const denk = Math.abs(fark) < 0.01;
 
   return (
-    <div className="financial-report-readable space-y-5 max-w-7xl">
-      <div className="pb-5" style={{ borderBottom: '1px solid rgba(255,255,255,0.05)' }}>
+    <div className="financial-report-readable space-y-3 max-w-7xl">
+      <div className="pb-3" style={{ borderBottom: '1px solid rgba(255,255,255,0.05)' }}>
         <div className="flex items-center gap-2.5 mb-2">
           <span className="w-[26px] h-px" style={{ background: GOLD }} />
           <span className="text-[10px] uppercase font-bold tracking-[.18em]" style={{ color: '#b8a06f' }}>
             <Sparkles size={10} className="inline mr-1" /> Mali Rapor
           </span>
         </div>
-        <h1 style={{ fontFamily: REPORT_FONT, fontSize: 34, fontWeight: 700, color: '#fafaf9', letterSpacing: 0 }}>
+        <h1 style={{ fontFamily: REPORT_FONT, fontSize: 30, fontWeight: 700, color: '#fafaf9', letterSpacing: 0 }}>
           Bilanço
           {selectedTp && (
             <span style={{ color: GOLD, fontWeight: 700, fontSize: 22, marginLeft: 12 }}>

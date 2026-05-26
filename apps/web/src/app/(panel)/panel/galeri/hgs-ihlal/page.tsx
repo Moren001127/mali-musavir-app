@@ -129,15 +129,15 @@ export default function HgsIhlalPage() {
   });
 
   return (
-    <div className="space-y-5 max-w-7xl">
+    <div className="space-y-3 max-w-7xl">
       {/* HEADER */}
-      <div className="flex items-end justify-between pb-5 flex-wrap gap-3" style={{ borderBottom: '1px solid rgba(255,255,255,0.05)' }}>
+      <div className="flex items-end justify-between pb-3 flex-wrap gap-3" style={{ borderBottom: '1px solid rgba(255,255,255,0.05)' }}>
         <div>
           <div className="flex items-center gap-2.5 mb-2">
             <span className="w-[26px] h-px" style={{ background: GOLD }} />
             <span className="text-[10px] uppercase font-bold tracking-[.18em]" style={{ color: '#b8a06f' }}>Galeri</span>
           </div>
-          <h1 style={{ fontFamily: 'Fraunces, serif', fontSize: 36, fontWeight: 600, color: '#fafaf9', letterSpacing: '-.03em' }}>HGS İhlal Sorgulama</h1>
+          <h1 style={{ fontFamily: 'Fraunces, serif', fontSize: 30, fontWeight: 600, color: '#fafaf9', letterSpacing: '-.03em' }}>HGS İhlal Sorgulama</h1>
           <p className="text-[13px] mt-1.5" style={{ color: 'rgba(250,250,249,0.42)' }}>
             Araç plakalarını kaydet, KGM sisteminden ihlalli geçişlerini sorgula ve raporla.
           </p>

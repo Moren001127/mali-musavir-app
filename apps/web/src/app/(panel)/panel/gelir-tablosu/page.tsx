@@ -729,15 +729,15 @@ export default function GelirTablosuPage() {
   };
 
   return (
-    <div className="financial-report-readable space-y-5 max-w-7xl">
-      <div className="pb-5" style={{ borderBottom: '1px solid rgba(255,255,255,0.05)' }}>
+    <div className="financial-report-readable space-y-3 max-w-7xl">
+      <div className="pb-3" style={{ borderBottom: '1px solid rgba(255,255,255,0.05)' }}>
         <div className="flex items-center gap-2.5 mb-2">
           <span className="w-[26px] h-px" style={{ background: GOLD }} />
           <span className="text-[10px] uppercase font-bold tracking-[.18em]" style={{ color: '#b8a06f' }}>
             <Sparkles size={10} className="inline mr-1" /> Mali Rapor
           </span>
         </div>
-        <h1 style={{ fontFamily: REPORT_FONT, fontSize: 34, fontWeight: 700, color: '#fafaf9', letterSpacing: 0 }}>
+        <h1 style={{ fontFamily: REPORT_FONT, fontSize: 30, fontWeight: 700, color: '#fafaf9', letterSpacing: 0 }}>
           Gelir Tablosu
         </h1>
         <p className="text-[13px] mt-1.5" style={{ color: 'rgba(250,250,249,0.42)' }}>
@@ -1178,7 +1178,7 @@ export default function GelirTablosuPage() {
           const allKodlar = [...stokKodList, ...maliyetKodList];
 
           return (
-            <div key={qi} className="space-y-5 pt-2" style={{ borderTop: displayIdx > 0 ? '1px dashed rgba(184,160,111,0.15)' : 'none', paddingTop: displayIdx > 0 ? 24 : 0 }}>
+            <div key={qi} className="space-y-3 pt-2" style={{ borderTop: displayIdx > 0 ? '1px dashed rgba(184,160,111,0.15)' : 'none', paddingTop: displayIdx > 0 ? 24 : 0 }}>
               {/* Dönem başlığı */}
               <div className="flex items-baseline gap-3">
                 <span className="w-1 h-7 rounded-sm" style={{ background: GOLD }} />

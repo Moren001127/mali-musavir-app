@@ -373,7 +373,7 @@ function AnnouncementCanvas({
         <div className="grid h-full grid-cols-[320px_1fr]">
           <aside className="flex flex-col items-center bg-[#0d1238] px-8 py-14 text-center text-white">
             <div className="mb-10 flex w-full flex-col items-center">
-              <div className="mb-6 flex h-[170px] w-[200px] items-center justify-center">
+              <div className="mb-3 flex h-[170px] w-[200px] items-center justify-center">
                 <img src={ANNOUNCEMENT_LOGO} alt="Moren Mali Müşavirlik" className="h-full w-full object-contain" />
               </div>
               <div className="h-[1.5px] w-[60px] bg-white/40" />

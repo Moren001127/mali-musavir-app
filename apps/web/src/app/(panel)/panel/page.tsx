@@ -83,18 +83,18 @@ const ACCENT_TONES: Record<StatAccent, { color: string; bg: string; border: stri
 function StatCard({ title, value, icon: Icon, href, sub, trend, trendKind, accent = 'gold' }: { title: string; value: number | string; icon: any; href?: string; sub?: string; trend?: string; trendKind?: 'up'|'down'|'flat'; accent?: StatAccent }) {
   const t = ACCENT_TONES[accent];
   const c = (
-    <div className="group rounded-2xl p-4 transition-all duration-300 relative overflow-hidden" style={{ background: `linear-gradient(135deg, ${t.bg}, rgba(255,255,255,0.012))`, border: `1px solid ${t.border}`, cursor: href ? 'pointer' : 'default' }}
-      onMouseEnter={(e) => { const el = e.currentTarget as HTMLElement; el.style.background = t.hoverBg; el.style.borderColor = t.hoverBorder; el.style.transform = 'translateY(-3px)'; el.style.boxShadow = '0 10px 30px rgba(0,0,0,0.3)'; }}
+    <div className="group relative overflow-hidden rounded-xl p-3 transition-all duration-300" style={{ background: `linear-gradient(135deg, ${t.bg}, rgba(255,255,255,0.012))`, border: `1px solid ${t.border}`, cursor: href ? 'pointer' : 'default' }}
+      onMouseEnter={(e) => { const el = e.currentTarget as HTMLElement; el.style.background = t.hoverBg; el.style.borderColor = t.hoverBorder; el.style.transform = 'translateY(-2px)'; el.style.boxShadow = '0 8px 24px rgba(0,0,0,0.24)'; }}
       onMouseLeave={(e) => { const el = e.currentTarget as HTMLElement; el.style.background = `linear-gradient(135deg, ${t.bg}, rgba(255,255,255,0.012))`; el.style.borderColor = t.border; el.style.transform = 'translateY(0)'; el.style.boxShadow = 'none'; }}>
       {/* Üstten ince altın hairline (kendi tonunda, hover'da belirginleşir) */}
       <span className="absolute top-0 left-4 right-4 h-px transition-opacity duration-300 group-hover:opacity-100" style={{ background: `linear-gradient(90deg, transparent, ${t.color}, transparent)`, opacity: 0.35 }} />
-      <div className="flex items-center justify-between mb-3.5">
-        <div className="w-9 h-9 rounded-xl flex items-center justify-center" style={{ background: 'rgba(15,13,11,0.28)', border: `1px solid ${t.border}`, color: t.color }}><Icon size={16} /></div>
+      <div className="mb-2 flex items-center justify-between">
+        <div className="flex h-8 w-8 items-center justify-center rounded-lg" style={{ background: 'rgba(15,13,11,0.28)', border: `1px solid ${t.border}`, color: t.color }}><Icon size={15} /></div>
         {trend && <span className="text-[10px] font-bold px-2.5 py-[3px] rounded-md" style={{ background: trendKind === 'up' ? 'rgba(34,197,94,0.1)' : trendKind === 'down' ? 'rgba(244,63,94,0.1)' : 'rgba(255,255,255,0.04)', color: trendKind === 'up' ? '#22c55e' : trendKind === 'down' ? '#f43f5e' : 'rgba(250,250,249,0.35)' }}>{trend}</span>}
       </div>
-      <p className="text-[11px] uppercase font-semibold tracking-[.12em]" style={{ color: 'rgba(250,250,249,0.38)' }}>{title}</p>
-      <p className="mt-1.5 leading-none tabular-nums" style={{ fontFamily: 'Fraunces, serif', fontSize: 32, fontWeight: 700, letterSpacing: '-0.03em', color: t.color }}>{value ?? 0}</p>
-      {sub && <p className="text-[11px] mt-1" style={{ color: 'rgba(250,250,249,0.32)' }}>{sub}</p>}
+      <p className="text-[10.5px] uppercase font-bold tracking-[.11em]" style={{ color: 'rgba(250,250,249,0.44)' }}>{title}</p>
+      <p className="mt-1 leading-none tabular-nums" style={{ fontFamily: 'Inter, ui-sans-serif, system-ui, sans-serif', fontSize: 26, fontWeight: 900, letterSpacing: 0, color: t.color }}>{value ?? 0}</p>
+      {sub && <p className="text-[10.5px] mt-0.5" style={{ color: 'rgba(250,250,249,0.36)' }}>{sub}</p>}
     </div>
   );
   return href ? <Link href={href} className="block">{c}</Link> : c;
@@ -443,8 +443,8 @@ function BeyanMetric({ label, value, color, sub }: { label: string; value: numbe
       className="min-h-[76px] rounded-xl px-4 py-3 text-left"
       style={{ background: 'rgba(255,255,255,0.025)', border: '1px solid rgba(255,255,255,0.06)' }}
     >
-      <div className="text-[10.5px] font-bold uppercase tracking-[0.12em]" style={{ color: 'rgba(250,250,249,0.42)' }}>{label}</div>
-      <div className="mt-1 text-[28px] font-bold leading-none tabular-nums" style={{ color, fontFamily: 'Fraunces, serif' }}>{value}</div>
+      <div className="text-[10.5px] font-black uppercase tracking-[0.1em]" style={{ color: 'rgba(250,250,249,0.5)' }}>{label}</div>
+      <div className="mt-1 text-[28px] font-black leading-none tabular-nums" style={{ color, fontFamily: 'Inter, ui-sans-serif, system-ui, sans-serif', textShadow: '0 1px 14px rgba(0,0,0,0.28)' }}>{value}</div>
       {sub && <div className="mt-1 text-[11px]" style={{ color: 'rgba(250,250,249,0.42)' }}>{sub}</div>}
     </div>
   );
@@ -496,18 +496,21 @@ function BeyanStatusRow({
 }
 
 function BeyanCount({ label, value, color, onClick }: { label: string; value: number; color: string; onClick: () => void }) {
-  const clickable = value > 0;
   return (
     <button
       type="button"
-      disabled={!clickable}
-      onClick={clickable ? onClick : undefined}
-      className="min-w-0 px-2.5 py-1.5 text-left transition disabled:cursor-default"
-      style={{ background: clickable ? 'transparent' : 'rgba(255,255,255,0.012)', borderRight: '1px solid rgba(255,255,255,0.052)' }}
-      title={clickable ? 'Mükellef listesini göster' : undefined}
+      onClick={onClick}
+      className="group min-w-0 px-2.5 py-1.5 text-left transition hover:bg-white/[0.035]"
+      style={{ background: 'transparent', borderRight: '1px solid rgba(255,255,255,0.052)' }}
+      title="Mükellef listesini göster"
     >
-      <div className="truncate text-[9.5px] font-bold uppercase tracking-[0.08em]" style={{ color: 'rgba(250,250,249,0.38)' }}>{label}</div>
-      <div className="mt-0.5 text-[16px] font-bold leading-none tabular-nums" style={{ color, fontFamily: 'JetBrains Mono, monospace' }}>{value}</div>
+      <div className="truncate text-[9.5px] font-black uppercase tracking-[0.08em]" style={{ color: 'rgba(250,250,249,0.48)' }}>{label}</div>
+      <div
+        className="mt-0.5 text-[18px] font-black leading-none tabular-nums group-hover:underline decoration-dotted underline-offset-4"
+        style={{ color, fontFamily: 'Inter, ui-sans-serif, system-ui, sans-serif', textShadow: '0 1px 12px rgba(0,0,0,0.35)' }}
+      >
+        {value}
+      </div>
     </button>
   );
 }
@@ -787,25 +790,25 @@ function BeyanDetayModal({ state, onClose }: { state: { beyanTipi: BeyanTipi; fi
   });
 
   const filterLabels: Record<BeyanFilter, string> = {
-    toplam: 'Tüm Yükümlüler',
-    onaylanan: 'Onaylananlar',
-    bekleyen: 'Bekleyenler',
-    hatali: 'Hatalı Olanlar',
-    kalan: 'Henüz Verilmeyenler',
+    toplam: 'Takipteki Mükellefler',
+    onaylanan: 'Beyannamesi Verilmiş Mükellefler',
+    bekleyen: 'Onay Bekleyen Mükellefler',
+    hatali: 'Hatalı Beyanname Mükellefleri',
+    kalan: 'Beyannamesi Verilmemiş Mükellefler',
   };
 
-  const filteredTaxpayers = useMemo(() => {
+  const filteredItems = useMemo(() => {
     if (!detay) return [];
     return detay
       .map((row) => {
         const b = row.beyanlar.find((x) => x.beyanTipi === state.beyanTipi);
         if (!b) return null;
         switch (state.filter) {
-          case 'toplam':    return row;
-          case 'onaylanan': return b.durum === 'onaylandi' ? row : null;
-          case 'bekleyen':  return b.durum === 'beklemede' ? row : null;
-          case 'hatali':    return b.durum === 'hatali' ? row : null;
-          case 'kalan':     return b.durum === 'kalan' ? row : null;
+          case 'toplam':    return { taxpayer: row, beyan: b };
+          case 'onaylanan': return b.durum === 'onaylandi' ? { taxpayer: row, beyan: b } : null;
+          case 'bekleyen':  return b.durum === 'beklemede' ? { taxpayer: row, beyan: b } : null;
+          case 'hatali':    return b.durum === 'hatali' ? { taxpayer: row, beyan: b } : null;
+          case 'kalan':     return b.durum === 'kalan' ? { taxpayer: row, beyan: b } : null;
           default: return null;
         }
       })
@@ -820,6 +823,58 @@ function BeyanDetayModal({ state, onClose }: { state: { beyanTipi: BeyanTipi; fi
     kalan: TRACK_BLUE,
   };
 
+  const durumRenk: Record<string, string> = {
+    onaylandi: '#22c55e',
+    beklemede: TRACK_BLUE_SOFT,
+    hatali: '#f472b6',
+    muaf: GOLD,
+    kalan: TRACK_BLUE,
+  };
+  const durumEtiket: Record<string, string> = {
+    onaylandi: 'Verildi',
+    beklemede: 'Onay Bekliyor',
+    hatali: 'Hatalı',
+    muaf: 'Muaf',
+    kalan: 'Verilmedi',
+  };
+  const formatDate = (value: string | null) => {
+    if (!value) return '-';
+    const date = new Date(value);
+    if (Number.isNaN(date.getTime())) return '-';
+    return date.toLocaleDateString('tr-TR');
+  };
+  const formatMoney = (value: number | null) => {
+    if (value === null || value === undefined) return '-';
+    return new Intl.NumberFormat('tr-TR', { style: 'currency', currency: 'TRY', maximumFractionDigits: 2 }).format(value);
+  };
+  const csvCell = (value: unknown) => `"${String(value ?? '').replace(/"/g, '""')}"`;
+  const downloadList = () => {
+    const header = ['Sıra', 'Mükellef', 'Beyanname', 'Dönem', 'Durum', 'Onay/Tarih', 'Tahakkuk'];
+    const body = filteredItems.map(({ taxpayer, beyan }, index) => [
+      index + 1,
+      taxpayer.ad,
+      BEYAN_ETIKETLER[state.beyanTipi],
+      state.donem,
+      durumEtiket[beyan.durum] || beyan.durum,
+      formatDate(beyan.onayTarihi),
+      formatMoney(beyan.tahakkukTutari),
+    ]);
+    const csv = [header, ...body].map((row) => row.map(csvCell).join(';')).join('\r\n');
+    const blob = new Blob(['\ufeff' + csv], { type: 'text/csv;charset=utf-8;' });
+    const url = URL.createObjectURL(blob);
+    const link = document.createElement('a');
+    link.href = url;
+    link.download = `beyanname-${state.beyanTipi.toLowerCase()}-${state.filter}-${state.donem}.csv`;
+    link.click();
+    URL.revokeObjectURL(url);
+  };
+  const periodModeText = state.donemTuru === 'VERILME' ? 'Verilme dönemi' : 'Vergi dönemi';
+  const emptyText = state.filter === 'onaylanan'
+    ? 'Bu grupta verilmiş beyanname yok.'
+    : state.filter === 'kalan'
+      ? 'Bu grupta verilmemiş beyanname yok.'
+      : 'Bu kategoride mükellef yok.';
+
   return (
     <div
       className="fixed inset-0 z-50 flex items-center justify-center p-4"
@@ -828,85 +883,98 @@ function BeyanDetayModal({ state, onClose }: { state: { beyanTipi: BeyanTipi; fi
     >
       <div
         onClick={(e) => e.stopPropagation()}
-        className="w-full max-w-lg rounded-2xl overflow-hidden flex flex-col"
-        style={{ background: '#11100c', border: '1px solid rgba(184,160,111,0.3)', maxHeight: '80vh' }}
+        className="flex w-full max-w-5xl flex-col overflow-hidden rounded-2xl"
+        style={{ background: '#101412', border: `1px solid ${filterColor[state.filter]}55`, maxHeight: '86vh', boxShadow: '0 28px 90px rgba(0,0,0,0.48)' }}
       >
-        {/* Başlık */}
-        <div className="px-5 py-4 flex items-center justify-between" style={{ borderBottom: '1px solid rgba(255,255,255,0.06)' }}>
+        <div className="flex items-start justify-between gap-4 px-6 py-5" style={{ borderBottom: '1px solid rgba(255,255,255,0.07)', background: 'linear-gradient(180deg, rgba(255,255,255,0.035), rgba(255,255,255,0.01))' }}>
           <div>
-            <div className="text-[11px] uppercase tracking-wider" style={{ color: 'rgba(250,250,249,0.5)' }}>
-              {BEYAN_ETIKETLER[state.beyanTipi]} · {state.donem}
+            <div className="text-[11px] font-black uppercase tracking-[0.16em]" style={{ color: filterColor[state.filter] }}>
+              {BEYAN_ETIKETLER[state.beyanTipi]} · {state.donem} · {periodModeText}
             </div>
-            <h3 className="text-[16px] font-semibold mt-0.5" style={{ fontFamily: 'Fraunces, serif', color: filterColor[state.filter] }}>
+            <h3 className="mt-1 text-[24px] font-black leading-tight" style={{ color: '#fafaf9' }}>
               {filterLabels[state.filter]}
             </h3>
+            <p className="mt-1 text-[12.5px]" style={{ color: 'rgba(250,250,249,0.48)' }}>
+              Sayaçtaki rakama dahil olan mükelleflerin dönem bazlı listesi.
+            </p>
           </div>
-          <button onClick={onClose} className="p-1.5 rounded-md hover:bg-white/5" style={{ color: 'rgba(250,250,249,0.5)' }}>
-            <IconX size={18} />
-          </button>
+          <div className="flex items-center gap-2">
+            <button
+              type="button"
+              onClick={downloadList}
+              disabled={filteredItems.length === 0}
+              className="inline-flex min-h-[38px] items-center gap-2 rounded-lg px-3 text-[12.5px] font-bold transition disabled:cursor-not-allowed disabled:opacity-45"
+              style={{ background: 'rgba(125,211,252,0.12)', border: '1px solid rgba(125,211,252,0.28)', color: TRACK_BLUE }}
+            >
+              <Download size={15} /> Listeyi İndir
+            </button>
+            <button onClick={onClose} className="rounded-lg p-2 transition hover:bg-white/5" style={{ color: 'rgba(250,250,249,0.55)' }}>
+              <IconX size={19} />
+            </button>
+          </div>
         </div>
 
-        {/* İçerik */}
-        <div className="flex-1 overflow-y-auto px-2 py-2">
+        <div className="flex-1 overflow-y-auto p-5">
           {isLoading && (
-            <div className="px-4 py-8 text-center text-[12px]" style={{ color: 'rgba(250,250,249,0.4)' }}>
+            <div className="px-4 py-14 text-center text-[12px]" style={{ color: 'rgba(250,250,249,0.4)' }}>
               Yükleniyor...
             </div>
           )}
-          {!isLoading && filteredTaxpayers.length === 0 && (
-            <div className="px-4 py-8 text-center text-[12.5px]" style={{ color: 'rgba(250,250,249,0.45)' }}>
-              Bu kategoride mükellef yok.
+          {!isLoading && filteredItems.length === 0 && (
+            <div className="rounded-xl px-4 py-14 text-center text-[13px]" style={{ color: 'rgba(250,250,249,0.48)', border: '1px dashed rgba(255,255,255,0.10)', background: 'rgba(255,255,255,0.018)' }}>
+              {emptyText}
             </div>
           )}
-          {!isLoading && filteredTaxpayers.length > 0 && (
-            <ul className="divide-y" style={{ borderColor: 'rgba(255,255,255,0.04)' }}>
-              {filteredTaxpayers.map((tp, i) => {
-                const b = tp.beyanlar.find((x) => x.beyanTipi === state.beyanTipi);
-                const durumRenk: Record<string, string> = {
-                  onaylandi: '#22c55e',
-                  beklemede: 'rgba(250,250,249,0.5)',
-                  hatali:    '#ef4444',
-                  muaf:      '#d4b876',
-                  kalan:     TRACK_BLUE,
-                };
-                const durumEtiket: Record<string, string> = {
-                  onaylandi: 'Onaylandı',
-                  beklemede: 'Bekliyor',
-                  hatali:    'Hatalı',
-                  muaf:      'Muaf',
-                  kalan:     'Kalan',
-                };
-                return (
-                  <li key={tp.taxpayerId} className="px-3 py-2.5 flex items-center justify-between gap-3">
-                    <div className="flex items-center gap-2.5 min-w-0 flex-1">
-                      <span className="text-[10.5px] font-semibold tabular-nums w-6 text-right" style={{ color: 'rgba(250,250,249,0.3)', fontFamily: 'JetBrains Mono, monospace' }}>
-                        {i + 1}
-                      </span>
-                      <span className="text-[13px] truncate" style={{ color: '#fafaf9' }}>{tp.ad}</span>
+          {!isLoading && filteredItems.length > 0 && (
+            <div className="overflow-hidden rounded-xl" style={{ border: '1px solid rgba(255,255,255,0.08)' }}>
+              <div className="grid grid-cols-[64px_minmax(260px,1.6fr)_160px_130px_150px] gap-0 px-4 py-3 text-[11px] font-black uppercase tracking-[0.11em]" style={{ background: 'rgba(255,255,255,0.04)', color: 'rgba(250,250,249,0.52)' }}>
+                <div>No</div>
+                <div>Mükellef</div>
+                <div>Durum</div>
+                <div>Tarih</div>
+                <div className="text-right">Tahakkuk</div>
+              </div>
+              <div className="divide-y" style={{ borderColor: 'rgba(255,255,255,0.055)' }}>
+                {filteredItems.map(({ taxpayer, beyan }, i) => {
+                  const tone = durumRenk[beyan.durum] || 'rgba(250,250,249,0.6)';
+                  return (
+                    <div
+                      key={`${taxpayer.taxpayerId}-${state.beyanTipi}`}
+                      className="grid grid-cols-[64px_minmax(260px,1.6fr)_160px_130px_150px] items-center gap-0 px-4 py-3 text-[13px]"
+                      style={{ background: i % 2 === 0 ? `${tone}10` : 'rgba(255,255,255,0.012)' }}
+                    >
+                      <div className="font-black tabular-nums" style={{ color: 'rgba(250,250,249,0.42)', fontFamily: 'Inter, ui-sans-serif, system-ui, sans-serif' }}>{i + 1}</div>
+                      <div className="min-w-0 pr-4">
+                        <div className="truncate text-[14px] font-black" style={{ color: '#fafaf9' }}>{taxpayer.ad}</div>
+                        <div className="mt-0.5 text-[11px]" style={{ color: 'rgba(250,250,249,0.42)' }}>
+                          {BEYAN_ETIKETLER[state.beyanTipi]} · {state.donem}
+                        </div>
+                      </div>
+                      <div>
+                        <span
+                          className="inline-flex rounded-md px-2.5 py-1 text-[10.5px] font-black uppercase tracking-[0.08em]"
+                          style={{ background: `${tone}1f`, border: `1px solid ${tone}55`, color: tone }}
+                        >
+                          {durumEtiket[beyan.durum] || beyan.durum}
+                        </span>
+                      </div>
+                      <div className="text-[12px] font-semibold tabular-nums" style={{ color: 'rgba(250,250,249,0.66)' }}>
+                        {formatDate(beyan.onayTarihi)}
+                      </div>
+                      <div className="text-right text-[12px] font-black tabular-nums" style={{ color: 'rgba(250,250,249,0.78)', fontFamily: 'Inter, ui-sans-serif, system-ui, sans-serif' }}>
+                        {formatMoney(beyan.tahakkukTutari)}
+                      </div>
                     </div>
-                    {b && (
-                      <span
-                        className="text-[10.5px] font-semibold px-2 py-0.5 rounded-md uppercase tracking-wider flex-shrink-0"
-                        style={{
-                          background: `${durumRenk[b.durum]}22`,
-                          border: `1px solid ${durumRenk[b.durum]}55`,
-                          color: durumRenk[b.durum],
-                        }}
-                      >
-                        {durumEtiket[b.durum] || b.durum}
-                      </span>
-                    )}
-                  </li>
-                );
-              })}
-            </ul>
+                  );
+                })}
+              </div>
+            </div>
           )}
         </div>
 
-        {/* Alt bilgi */}
-        <div className="px-5 py-2.5 text-[11px] flex items-center justify-between" style={{ borderTop: '1px solid rgba(255,255,255,0.06)', color: 'rgba(250,250,249,0.4)' }}>
-          <span>{filteredTaxpayers.length} mükellef</span>
-          <button onClick={onClose} className="font-medium hover:text-cyan-300 transition">Kapat</button>
+        <div className="flex items-center justify-between px-6 py-3 text-[11.5px]" style={{ borderTop: '1px solid rgba(255,255,255,0.07)', color: 'rgba(250,250,249,0.48)' }}>
+          <span><strong style={{ color: filterColor[state.filter] }}>{filteredItems.length}</strong> mükellef listeleniyor</span>
+          <button onClick={onClose} className="font-bold transition hover:text-cyan-300">Kapat</button>
         </div>
       </div>
     </div>
@@ -1498,7 +1566,7 @@ export default function DashboardPage() {
         />
       </section>
 
-      <div className="hidden space-y-5 max-w-none pr-3 lg:block xl:pr-5">
+      <div className="hidden space-y-3 max-w-none pr-3 lg:block xl:pr-5">
       {/* Hatırlatma bannerı — bugün veya geçmiş tarihli tamamlanmamış görevler için sürekli uyarı.
           v1.36.74: scale-siz pulse — banner ekrandan taşmıyor, sadece glow nefes alıyor. */}
       {dueTasks.length > 0 && (
@@ -1545,24 +1613,31 @@ export default function DashboardPage() {
         </div>
       )}
 
-      <div className="flex items-end justify-between pb-3" style={{ borderBottom: '1px solid rgba(255,255,255,0.05)' }}>
+      <div
+        className="flex items-end justify-between rounded-2xl px-4 py-3"
+        style={{
+          background: 'linear-gradient(135deg, rgba(212,184,118,0.055), rgba(8,18,18,0.72))',
+          border: '1px solid rgba(212,184,118,0.12)',
+          boxShadow: '0 14px 34px rgba(0,0,0,0.14)',
+        }}
+      >
         <div>
-          <div className="flex items-center gap-2.5 mb-2"><span className="w-[26px] h-px" style={{ background: GOLD }} /><span className="text-[10px] uppercase font-bold tracking-[.18em]" style={{ color: '#b8a06f' }}>Gösterge</span></div>
-          <h1 style={{ fontFamily: 'Fraunces, serif', fontSize: 32, fontWeight: 600, color: '#fafaf9', letterSpacing: '-.03em' }}>Ofis Paneli</h1>
-          <p className="text-[13px] mt-1.5" style={{ color: 'rgba(250,250,249,0.42)' }}>{new Date().toLocaleDateString('tr-TR', { month: 'long', year: 'numeric' })} · Mükellefler · Beyannameler · Ajanlar</p>
+          <div className="mb-1.5 flex items-center gap-2.5"><span className="w-[26px] h-px" style={{ background: GOLD }} /><span className="text-[9.5px] uppercase font-bold tracking-[.18em]" style={{ color: '#b8a06f' }}>Gösterge</span></div>
+          <h1 style={{ fontFamily: 'Fraunces, serif', fontSize: 28, fontWeight: 650, color: '#fafaf9', letterSpacing: '-.02em' }}>Ofis Paneli</h1>
+          <p className="text-[12.5px] mt-1" style={{ color: 'rgba(250,250,249,0.46)' }}>{new Date().toLocaleDateString('tr-TR', { month: 'long', year: 'numeric' })} · Mükellefler · Beyannameler · Ajanlar</p>
         </div>
         <div className="flex items-center gap-2">
-          <Link href="/panel/evraklar" className="inline-flex items-center gap-1.5 px-[18px] py-2.5 text-[13px] font-medium rounded-[10px] transition-all" style={{ background: 'rgba(255,255,255,0.03)', border: '1px solid rgba(255,255,255,0.08)', color: 'rgba(250,250,249,0.75)' }}
+          <Link href="/panel/evraklar" className="inline-flex items-center gap-1.5 rounded-[10px] px-3.5 py-2 text-[12.5px] font-semibold transition-all" style={{ background: 'rgba(255,255,255,0.03)', border: '1px solid rgba(255,255,255,0.08)', color: 'rgba(250,250,249,0.75)' }}
             onMouseEnter={(e) => { e.currentTarget.style.background = 'rgba(184,160,111,0.08)'; e.currentTarget.style.borderColor = 'rgba(184,160,111,0.2)'; e.currentTarget.style.color = '#fafaf9'; }}
             onMouseLeave={(e) => { e.currentTarget.style.background = 'rgba(255,255,255,0.03)'; e.currentTarget.style.borderColor = 'rgba(255,255,255,0.08)'; e.currentTarget.style.color = 'rgba(250,250,249,0.75)'; }}>
             <Download size={14} /> İçe Aktar
           </Link>
-          <Link href="/panel/mukellefler/yeni" className="inline-flex items-center gap-1.5 px-5 py-2.5 text-[13px] font-bold rounded-[10px] transition-all" style={{ background: `linear-gradient(135deg, ${GOLD}, #b8a06f)`, color: '#0f0d0b' }}><Plus size={14} /> Yeni Mükellef</Link>
+          <Link href="/panel/mukellefler/yeni" className="inline-flex items-center gap-1.5 rounded-[10px] px-4 py-2 text-[12.5px] font-bold transition-all" style={{ background: `linear-gradient(135deg, ${GOLD}, #b8a06f)`, color: '#0f0d0b' }}><Plus size={14} /> Yeni Mükellef</Link>
         </div>
       </div>
 
       {/* v1.36.81: AI sabah brifingi — günün özetini 2-3 cümlede anlatır */}
-      <div className="grid grid-cols-1 sm:grid-cols-2 xl:grid-cols-4 gap-3.5">
+      <div className="grid grid-cols-1 sm:grid-cols-2 xl:grid-cols-4 gap-2.5">
         <StatCard
           title="Aktif Mükellef"
           value={activeCount || totalTx}

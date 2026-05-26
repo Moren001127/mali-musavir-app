@@ -8,6 +8,7 @@ import { Search, Upload, Plus, AlertCircle, PhoneOff, Check as CheckIcon } from 
 
 const GOLD = '#d4b876';
 const GOLD_SOFT = '#b8a06f';
+const CYAN = '#7dd3fc';
 const TAXPAYER_TABLE_GRID = '34px minmax(230px, 1.35fr) repeat(6, minmax(54px, 0.34fr)) minmax(190px, 0.95fr)';
 
 type MonthlyStatus = {
@@ -271,16 +272,23 @@ export default function MukelleflerPage() {
   const donemStr = `${AYLAR_TR[month - 1]} ${year}`;
 
   return (
-    <div className="space-y-5 max-w-none">
+    <div className="space-y-3 max-w-none">
       {/* HEADER */}
-      <div className="flex items-end justify-between pb-5" style={{ borderBottom: '1px solid rgba(255,255,255,0.05)' }}>
+      <div
+        className="flex items-end justify-between rounded-2xl px-4 py-3"
+        style={{
+          background: 'linear-gradient(135deg, rgba(212,184,118,0.055), rgba(10,17,16,0.70))',
+          border: '1px solid rgba(212,184,118,0.12)',
+          boxShadow: '0 14px 34px rgba(0,0,0,0.14)',
+        }}
+      >
         <div>
-          <div className="flex items-center gap-2.5 mb-2">
-            <span className="w-[26px] h-px" style={{ background: GOLD }} />
-            <span className="text-[10px] uppercase font-bold tracking-[.18em]" style={{ color: '#b8a06f' }}>Ana Modül</span>
+          <div className="mb-1.5 flex items-center gap-2.5">
+            <span className="h-px w-[26px]" style={{ background: GOLD }} />
+            <span className="text-[9.5px] uppercase font-bold tracking-[.18em]" style={{ color: '#b8a06f' }}>Ana Modül</span>
           </div>
-          <h1 style={{ fontFamily: 'Manrope, Inter, system-ui, sans-serif', fontSize: 32, fontWeight: 700, color: '#fafaf9', letterSpacing: 0 }}>Mükellef Listesi</h1>
-          <p className="text-[13px] mt-1.5 font-medium" style={{ color: 'rgba(250,250,249,0.52)' }}>
+          <h1 style={{ fontFamily: 'Manrope, Inter, system-ui, sans-serif', fontSize: 28, fontWeight: 800, color: '#fafaf9', letterSpacing: 0 }}>Mükellef Listesi</h1>
+          <p className="mt-1 text-[12.5px] font-medium" style={{ color: 'rgba(250,250,249,0.52)' }}>
             {donemStr} döneminde aktif {counts.total} mükellef
           </p>
         </div>
@@ -316,14 +324,14 @@ export default function MukelleflerPage() {
               a.click();
               URL.revokeObjectURL(url);
             }}
-            className="inline-flex items-center gap-1.5 px-[18px] py-2.5 text-[13px] font-medium rounded-[10px] transition-all"
+            className="inline-flex items-center gap-1.5 rounded-[10px] px-3.5 py-2 text-[12.5px] font-semibold transition-all"
             style={{ background: 'rgba(255,255,255,0.03)', border: '1px solid rgba(255,255,255,0.08)', color: 'rgba(250,250,249,0.75)' }}
           >
             <Upload size={14} /> Dışa Aktar
           </button>
           <Link
             href="/panel/mukellefler/yeni"
-            className="inline-flex items-center gap-1.5 px-5 py-2.5 text-[13px] font-bold rounded-[10px] transition-all"
+            className="inline-flex items-center gap-1.5 rounded-[10px] px-4 py-2 text-[12.5px] font-bold transition-all"
             style={{ background: `linear-gradient(135deg, ${GOLD}, ${GOLD_SOFT})`, color: '#0f0d0b' }}
           >
             <Plus size={14} /> Yeni Mükellef
@@ -332,7 +340,8 @@ export default function MukelleflerPage() {
       </div>
 
       {/* TOOLBAR: Search + Period + Filters */}
-      <div className="flex flex-wrap items-center gap-3">
+      <div className="rounded-xl px-3 py-2.5" style={{ background: 'linear-gradient(180deg, rgba(8,24,29,0.34), rgba(255,255,255,0.015))', border: '1px solid rgba(125,211,252,0.12)' }}>
+      <div className="flex flex-wrap items-center gap-2">
         <div className="flex-1 min-w-[240px] relative">
           <Search size={14} className="absolute left-3.5 top-1/2 -translate-y-1/2" style={{ color: 'rgba(250,250,249,0.4)' }} />
           <input
@@ -340,7 +349,7 @@ export default function MukelleflerPage() {
             value={search}
             onChange={(e) => { setSearch(e.target.value); setPage(1); }}
             placeholder="İsim, VKN/TC veya VD ara..."
-            className="w-full pl-10 pr-3 py-2.5 text-[13px] rounded-[10px] outline-none"
+            className="w-full rounded-[10px] py-2 pl-10 pr-3 text-[12.5px] outline-none"
             style={{ background: 'rgba(255,255,255,0.03)', border: '1px solid rgba(255,255,255,0.08)', color: '#fafaf9' }}
           />
         </div>
@@ -375,7 +384,7 @@ export default function MukelleflerPage() {
               key={b.key}
               type="button"
               onClick={() => { setFilter(b.key); if (b.key === 'all') setProfileFilter('all'); setPage(1); }}
-              className="px-3.5 py-2 text-[12px] font-medium rounded-[9px] transition-all"
+              className="rounded-[9px] px-3 py-1.5 text-[11.5px] font-semibold transition-all"
               style={{
                 background: active ? 'rgba(184,160,111,0.1)' : 'rgba(255,255,255,0.03)',
                 border: `1px solid ${active ? 'rgba(184,160,111,0.3)' : 'rgba(255,255,255,0.08)'}`,
@@ -394,7 +403,7 @@ export default function MukelleflerPage() {
               key={b.key}
               type="button"
               onClick={() => { setProfileFilter(active ? 'all' : (b.key as ProfileFilterKey)); setPage(1); }}
-              className="px-3.5 py-2 text-[12px] font-medium rounded-[9px] transition-all inline-flex items-center gap-1.5"
+              className="inline-flex items-center gap-1.5 rounded-[9px] px-3 py-1.5 text-[11.5px] font-semibold transition-all"
               style={{
                 background: active ? 'rgba(239,68,68,0.12)' : 'rgba(255,255,255,0.03)',
                 border: `1px solid ${active ? 'rgba(239,68,68,0.32)' : 'rgba(255,255,255,0.08)'}`,
@@ -408,13 +417,14 @@ export default function MukelleflerPage() {
       </div>
 
       {/* STAT CARDS */}
-      <div className="grid grid-cols-2 md:grid-cols-3 xl:grid-cols-6 gap-2.5">
+      <div className="mt-2 grid grid-cols-2 gap-1.5 md:grid-cols-3 xl:grid-cols-6">
         <StatCard variant="gold" label="Dönemde Aktif" value={String(counts.total)} />
         <StatCard variant="ok" label="Evrak Geldi" value={String(counts.evrakGeldi)} sub={counts.total ? `%${((counts.evrakGeldi / counts.total) * 100).toFixed(0)}` : ''} />
         <StatCard variant="danger" label="Evrak Gelmedi" value={String(counts.evrakGelmedi)} sub={counts.evrakGelmedi > 0 ? 'hatırlat' : ''} />
         <StatCard variant="warn" label="İşlenmedi" value={String(counts.islenmedi)} sub={counts.islenmedi > 0 ? 'işle' : ''} />
         <StatCard variant="warn" label="Beyanname Bekliyor" value={String(counts.beyannameBekliyor)} sub={counts.beyannameBekliyor > 0 ? 'gönder' : ''} />
         <StatCard variant="gold" label="Beyanname Verildi" value={`${counts.beyannameVerildi} / ${counts.total}`} sub={counts.total ? `%${((counts.beyannameVerildi / counts.total) * 100).toFixed(0)}` : ''} />
+      </div>
       </div>
 
       {/* TABLE */}
@@ -517,16 +527,16 @@ function StatCard({
   const palette = {
     gold:   { line: GOLD,       val: GOLD,       lbl: 'rgba(212,184,118,0.7)', bg: 'linear-gradient(135deg, rgba(212,184,118,0.06), rgba(212,184,118,0.015))', border: 'rgba(212,184,118,0.18)' },
     ok:     { line: '#22c55e',  val: '#22c55e',  lbl: 'rgba(34,197,94,0.65)',  bg: 'linear-gradient(135deg, rgba(34,197,94,0.06), rgba(34,197,94,0.015))',    border: 'rgba(34,197,94,0.16)' },
-    warn:   { line: '#f59e0b',  val: '#f59e0b',  lbl: 'rgba(245,158,11,0.7)',  bg: 'linear-gradient(135deg, rgba(245,158,11,0.06), rgba(245,158,11,0.015))',  border: 'rgba(245,158,11,0.16)' },
+    warn:   { line: CYAN,       val: CYAN,       lbl: 'rgba(125,211,252,0.72)', bg: 'linear-gradient(135deg, rgba(125,211,252,0.055), rgba(125,211,252,0.014))', border: 'rgba(125,211,252,0.16)' },
     danger: { line: '#ef4444',  val: '#ef4444',  lbl: 'rgba(239,68,68,0.7)',   bg: 'linear-gradient(135deg, rgba(239,68,68,0.06), rgba(239,68,68,0.015))',    border: 'rgba(239,68,68,0.16)' },
   }[variant];
   return (
-    <div className="relative rounded-[10px] px-3.5 py-2.5 overflow-hidden" style={{ background: palette.bg, border: `1px solid ${palette.border}` }}>
-      <span className="absolute left-0 top-3 bottom-3 w-[2px] rounded" style={{ background: palette.line }} />
+    <div className="relative overflow-hidden rounded-[9px] px-3 py-2" style={{ background: palette.bg, border: `1px solid ${palette.border}` }}>
+      <span className="absolute bottom-2 left-0 top-2 w-[2px] rounded" style={{ background: palette.line }} />
       <div className="pl-1.5">
-        <div className="text-[10px] uppercase font-semibold tracking-[0.11em] mb-1.5" style={{ color: palette.lbl }}>{label}</div>
-        <div className="text-[20px] leading-none font-bold tabular-nums" style={{ fontFamily: 'Manrope, Inter, system-ui, sans-serif', letterSpacing: 0, color: palette.val }}>{value}</div>
-        {sub && <div className="text-[10.5px] mt-1 font-medium" style={{ color: 'rgba(250,250,249,0.42)', fontFamily: 'Manrope, Inter, system-ui, sans-serif' }}>{sub}</div>}
+        <div className="mb-1 text-[9.5px] uppercase font-bold tracking-[0.11em]" style={{ color: palette.lbl }}>{label}</div>
+        <div className="text-[18px] leading-none font-black tabular-nums" style={{ fontFamily: 'Manrope, Inter, system-ui, sans-serif', letterSpacing: 0, color: palette.val }}>{value}</div>
+        {sub && <div className="mt-0.5 text-[10px] font-semibold" style={{ color: 'rgba(250,250,249,0.42)', fontFamily: 'Manrope, Inter, system-ui, sans-serif' }}>{sub}</div>}
       </div>
     </div>
   );

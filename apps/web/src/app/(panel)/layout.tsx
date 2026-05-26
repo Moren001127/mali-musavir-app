@@ -42,7 +42,7 @@ export default function PanelLayout({ children }: { children: React.ReactNode })
         <div className="hidden lg:block">
           <TopBar />
         </div>
-        <main data-panel-main className="flex-1 min-w-0 max-w-full overflow-y-auto overflow-x-hidden p-3 pb-24 sm:p-4 lg:overflow-auto lg:p-6 lg:pb-6 animate-fade-up">
+        <main data-panel-main className="flex-1 min-w-0 max-w-full overflow-y-auto overflow-x-hidden p-3 pb-24 sm:p-4 lg:overflow-auto lg:p-4 lg:pb-4 animate-fade-up">
           {children}
         </main>
         <LucaCaptchaOverlay />

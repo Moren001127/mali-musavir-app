@@ -101,9 +101,9 @@ export default function BildirimlerPage() {
   });
 
   return (
-    <div className="space-y-5 max-w-5xl">
+    <div className="space-y-3 max-w-5xl">
       {/* Header */}
-      <div className="pb-5" style={{ borderBottom: '1px solid rgba(255,255,255,0.05)' }}>
+      <div className="pb-3" style={{ borderBottom: '1px solid rgba(255,255,255,0.05)' }}>
         <div className="flex items-center gap-2.5 mb-2">
           <span className="w-[26px] h-px" style={{ background: GOLD }} />
           <span
@@ -118,7 +118,7 @@ export default function BildirimlerPage() {
             <h1
               style={{
                 fontFamily: 'Fraunces, serif',
-                fontSize: 34,
+                fontSize: 30,
                 fontWeight: 600,
                 color: '#fafaf9',
                 letterSpacing: '-.03em',

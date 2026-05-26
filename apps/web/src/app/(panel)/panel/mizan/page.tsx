@@ -717,16 +717,16 @@ export default function MizanPage() {
   const toplamAlacak = mizan?.toplamAlacak ?? 0;
 
   return (
-    <div className="financial-report-readable space-y-5 max-w-7xl">
+    <div className="financial-report-readable space-y-3 max-w-7xl">
       {/* Header */}
-      <div className="pb-5" style={{ borderBottom: '1px solid rgba(255,255,255,0.05)' }}>
+      <div className="pb-3" style={{ borderBottom: '1px solid rgba(255,255,255,0.05)' }}>
         <div className="flex items-center gap-2.5 mb-2">
           <span className="w-[26px] h-px" style={{ background: GOLD }} />
           <span className="text-[10px] uppercase font-bold tracking-[.18em]" style={{ color: '#b8a06f' }}>
             <Sparkles size={10} className="inline mr-1" /> Kontrol
           </span>
         </div>
-        <h1 style={{ fontFamily: REPORT_FONT, fontSize: 34, fontWeight: 700, color: '#fafaf9', letterSpacing: 0 }}>
+        <h1 style={{ fontFamily: REPORT_FONT, fontSize: 30, fontWeight: 700, color: '#fafaf9', letterSpacing: 0 }}>
           Mizan
         </h1>
         <p className="text-[13px] mt-1.5" style={{ color: 'rgba(250,250,249,0.42)' }}>

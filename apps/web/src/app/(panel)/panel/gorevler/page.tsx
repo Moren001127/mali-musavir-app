@@ -176,9 +176,9 @@ export default function GorevlerPage() {
   }, [tasks]);
 
   return (
-    <div className="space-y-5 max-w-none">
+    <div className="space-y-3 max-w-none">
       {/* Header */}
-      <div className="pb-5 flex items-end justify-between" style={{ borderBottom: '1px solid rgba(255,255,255,0.05)' }}>
+      <div className="pb-3 flex items-end justify-between" style={{ borderBottom: '1px solid rgba(255,255,255,0.05)' }}>
         <div>
           <div className="flex items-center gap-2.5 mb-2">
             <span className="w-[26px] h-px" style={{ background: GOLD }} />
@@ -186,7 +186,7 @@ export default function GorevlerPage() {
               <CheckSquare size={10} className="inline mr-1" /> Görevler
             </span>
           </div>
-          <h1 style={{ fontFamily: 'Fraunces, serif', fontSize: 34, fontWeight: 600, color: '#fafaf9', letterSpacing: '-.03em' }}>
+          <h1 style={{ fontFamily: 'Fraunces, serif', fontSize: 30, fontWeight: 600, color: '#fafaf9', letterSpacing: '-.03em' }}>
             Görevler & Notlar
           </h1>
           <p className="text-[13px] mt-1.5" style={{ color: 'rgba(250,250,249,0.42)' }}>
@@ -313,7 +313,7 @@ export default function GorevlerPage() {
           onEdit={(t: Task) => { setEditingTask(t); setShowNewModal(true); }}
         />
       ) : (
-        <div className="space-y-5">
+        <div className="space-y-3">
           <TaskGroup title="GECİKMİŞ" tasks={grouped.overdue} accent="#ef4444" pulse onComplete={(id: string) => completeMut.mutate(id)} onReopen={(id: string) => reopenMut.mutate(id)} onStart={(id: string) => startMut.mutate(id)} onCancel={(id: string) => cancelMut.mutate(id)} onSnooze={(t: Task) => { setSnoozeTarget(t); const d = new Date(); d.setDate(d.getDate() + 1); setSnoozeUntil(d.toISOString().slice(0,10)); }} onAddNote={(t: Task) => { setNoteTarget(t); setNoteContent(''); }} onDelete={(id: string) => deleteMut.mutate(id)} onEdit={(t: Task) => { setEditingTask(t); setShowNewModal(true); }} />
           <TaskGroup title="BUGÜN" tasks={grouped.today} accent="#3b82f6" onComplete={(id: string) => completeMut.mutate(id)} onReopen={(id: string) => reopenMut.mutate(id)} onStart={(id: string) => startMut.mutate(id)} onCancel={(id: string) => cancelMut.mutate(id)} onSnooze={(t: Task) => { setSnoozeTarget(t); const d = new Date(); d.setDate(d.getDate() + 1); setSnoozeUntil(d.toISOString().slice(0,10)); }} onAddNote={(t: Task) => { setNoteTarget(t); setNoteContent(''); }} onDelete={(id: string) => deleteMut.mutate(id)} onEdit={(t: Task) => { setEditingTask(t); setShowNewModal(true); }} />
           <TaskGroup title="YARIN" tasks={grouped.tomorrow} accent="#f59e0b" onComplete={(id: string) => completeMut.mutate(id)} onReopen={(id: string) => reopenMut.mutate(id)} onStart={(id: string) => startMut.mutate(id)} onCancel={(id: string) => cancelMut.mutate(id)} onSnooze={(t: Task) => { setSnoozeTarget(t); const d = new Date(); d.setDate(d.getDate() + 1); setSnoozeUntil(d.toISOString().slice(0,10)); }} onAddNote={(t: Task) => { setNoteTarget(t); setNoteContent(''); }} onDelete={(id: string) => deleteMut.mutate(id)} onEdit={(t: Task) => { setEditingTask(t); setShowNewModal(true); }} />
