@@ -252,16 +252,41 @@ export class WhatsAppBotController {
     this.logger.log(`[OwnerCheck] incoming=${normalized} envPhones=${ownerPhones.join('|')} match=${ownerPhones.includes(normalized)}`);
 
     if (ownerPhones.includes(normalized)) {
+      // 1) Önce env'de TENANT_ID varsa direkt onu kullan (en sağlam yol)
+      const tenantId = process.env.MOREN_OWNER_TENANT_ID;
+      if (tenantId) {
+        const tenant = await this.prisma.tenant.findUnique({
+          where: { id: tenantId },
+          select: { id: true, name: true, slug: true, phone: true },
+        }).catch(() => null);
+        if (tenant) {
+          this.logger.log(`[OwnerCheck] tenant matched via env TENANT_ID: ${tenant.id} (${tenant.slug})`);
+          return tenant;
+        }
+        this.logger.warn(`[OwnerCheck] env TENANT_ID=${tenantId} bulunamadi, slug fallback denenecek`);
+      }
+
+      // 2) Slug ile dene (default "moren")
       const tenantSlug = process.env.MOREN_OWNER_TENANT_SLUG || process.env.DEFAULT_TENANT_SLUG || 'moren';
       const tenant = await this.prisma.tenant.findFirst({
         where: { slug: tenantSlug },
         select: { id: true, name: true, slug: true, phone: true },
       });
       if (tenant) {
-        this.logger.log(`[OwnerCheck] tenant matched via env: ${tenant.id} (${tenant.slug})`);
+        this.logger.log(`[OwnerCheck] tenant matched via env slug: ${tenant.id} (${tenant.slug})`);
         return tenant;
       }
       this.logger.warn(`[OwnerCheck] env phone matched but tenant slug=${tenantSlug} not found`);
+
+      // 3) Son fallback: tek tenant varsa direkt onu kullan (single-tenant kurulum)
+      const allTenants = await this.prisma.tenant.findMany({
+        select: { id: true, name: true, slug: true, phone: true },
+        take: 2,
+      });
+      if (allTenants.length === 1) {
+        this.logger.log(`[OwnerCheck] tek tenant tespit edildi, owner kabul edildi: ${allTenants[0].id} (${allTenants[0].slug})`);
+        return allTenants[0];
+      }
     }
 
     const integrationRows = await (this.prisma as any).integrationConnection.findMany({
