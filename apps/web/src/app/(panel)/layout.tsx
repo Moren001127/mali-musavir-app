@@ -18,13 +18,13 @@ export default function PanelLayout({ children }: { children: React.ReactNode })
 
   if (isLoading) {
     return (
-      <div className="min-h-screen flex items-center justify-center" style={{ background: 'rgba(255,255,255,0.03)' }}>
+      <div className="min-h-screen flex items-center justify-center" style={{ background: 'var(--bg)' }}>
         <div className="text-center">
           <div
             className="w-10 h-10 rounded-full border-2 border-transparent animate-spin mx-auto"
             style={{ borderTopColor: '#d4b876', borderRightColor: '#d4b876' }}
           />
-          <p className="text-sm mt-3" style={{ color: 'rgba(250,250,249,0.45)' }}>Yükleniyor...</p>
+          <p className="text-sm mt-3" style={{ color: 'var(--text-muted)' }}>Yükleniyor...</p>
         </div>
       </div>
     );
@@ -33,7 +33,7 @@ export default function PanelLayout({ children }: { children: React.ReactNode })
   if (!user) return null;
 
   return (
-    <div data-panel-shell className="flex h-screen w-full max-w-full overflow-hidden" style={{ background: 'rgba(255,255,255,0.03)' }}>
+    <div data-panel-shell className="flex h-screen w-full max-w-full overflow-hidden" style={{ background: 'var(--bg)' }}>
       <div className="hidden lg:flex">
         <Sidebar />
       </div>

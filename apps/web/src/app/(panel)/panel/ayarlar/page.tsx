@@ -39,11 +39,7 @@ const CARD = 'rgba(28,22,18,0.85)';        // siyah yerine sıcak koyu kahve
 const CARD_HOVER = 'rgba(40,32,26,0.92)';
 const GREEN = '#4ade80';
 const RED = '#f87171';
-// Sayfa arka planı için sıcak gradient
-const PAGE_BG =
-  'radial-gradient(1200px 600px at 20% -10%, rgba(212,184,118,0.05), transparent 60%),' +
-  ' radial-gradient(900px 500px at 100% 100%, rgba(139,118,73,0.04), transparent 60%),' +
-  ' linear-gradient(180deg, #1a1612 0%, #14110e 100%)';
+
 
 // =====================================================================
 // ANA SAYFA
@@ -51,11 +47,7 @@ const PAGE_BG =
 
 export default function AyarlarPage() {
   return (
-    <div
-      className="min-h-full"
-      style={{ background: PAGE_BG, marginInline: '-1rem', paddingInline: '1rem', paddingBlock: '0.5rem' }}
-    >
-      <div className="mx-auto max-w-6xl space-y-5 pb-12 pt-2">
+    <div className="mx-auto max-w-6xl space-y-5 pb-12">
         <PageHeader />
         <StatusStrip />
         <SettingsGrid />
@@ -78,7 +70,6 @@ export default function AyarlarPage() {
         >
           <AgentContent />
         </CollapsibleSection>
-      </div>
     </div>
   );
 }
