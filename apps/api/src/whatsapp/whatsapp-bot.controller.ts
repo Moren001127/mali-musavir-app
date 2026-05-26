@@ -154,6 +154,26 @@ export class WhatsAppBotController {
       if (tenant) return tenant;
     }
 
+    const integrationRows = await (this.prisma as any).integrationConnection.findMany({
+      where: { provider: 'WHATSAPP_META', isActive: true },
+      select: { tenantId: true, config: true },
+      take: 200,
+    }).catch(() => []);
+    const integrationMatch = integrationRows.find((row: any) => {
+      const phones = String(row?.config?.ownerPhones || '')
+        .split(',')
+        .map((p) => this.normalize(p))
+        .filter(Boolean);
+      return phones.includes(normalized);
+    });
+    if (integrationMatch?.tenantId) {
+      const tenant = await this.prisma.tenant.findUnique({
+        where: { id: integrationMatch.tenantId },
+        select: { id: true, name: true, slug: true, phone: true },
+      });
+      if (tenant) return tenant;
+    }
+
     const tenants = await this.prisma.tenant.findMany({
       where: { phone: { not: null } },
       select: { id: true, name: true, slug: true, phone: true },

@@ -61,6 +61,7 @@ type WhatsAppConfigShape = {
   documentTemplateName: string;
   portalTemplateName: string;
   ownerAlertTemplateName: string;
+  ownerPhones: string;
   hasAccessToken: boolean;
   hasWebhookToken: boolean;
   automationActive: boolean;
@@ -342,6 +343,7 @@ function WhatsAppCard() {
   const [documentTemplateName, setDocumentTemplateName] = useState('');
   const [portalTemplateName, setPortalTemplateName] = useState('');
   const [ownerAlertTemplateName, setOwnerAlertTemplateName] = useState('');
+  const [ownerPhones, setOwnerPhones] = useState('');
   const [webhookVerifyToken, setWebhookVerifyToken] = useState('');
   const [showToken, setShowToken] = useState(false);
   const [testTo, setTestTo] = useState('');
@@ -362,6 +364,7 @@ function WhatsAppCard() {
       setDocumentTemplateName(data.documentTemplateName);
       setPortalTemplateName(data.portalTemplateName);
       setOwnerAlertTemplateName(data.ownerAlertTemplateName);
+      setOwnerPhones(data.ownerPhones || '');
     }
   }, [data]);
 
@@ -378,6 +381,7 @@ function WhatsAppCard() {
           documentTemplateName,
           portalTemplateName,
           ownerAlertTemplateName,
+          ownerPhones,
           webhookVerifyToken,
         })
         .then((r) => r.data),
@@ -523,6 +527,7 @@ function WhatsAppCard() {
             <FieldText label="Evrak Hatırlatma Şablonu" value={documentTemplateName} onChange={setDocumentTemplateName} placeholder="evrak_hatirlatma" />
             <FieldText label="Portal Mesajı Şablonu" value={portalTemplateName} onChange={setPortalTemplateName} placeholder="portal_mesaji" />
             <FieldText label="Patron Uyarı Şablonu" value={ownerAlertTemplateName} onChange={setOwnerAlertTemplateName} placeholder="ofis_uyari" />
+            <FieldText label="Ofis / Owner WhatsApp Numaralari" value={ownerPhones} onChange={setOwnerPhones} placeholder="905xxxxxxxxx,905yyyyyyyyy" />
             <FieldText label="API Versiyonu" value={apiVersion} onChange={setApiVersion} placeholder="v20.0" />
             <FieldText
               label={`Webhook Doğrulama Token'ı ${data?.hasWebhookToken ? '(kayıtlı)' : ''}`}

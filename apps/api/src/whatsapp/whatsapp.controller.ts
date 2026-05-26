@@ -2,6 +2,7 @@ import { Body, Controller, Get, Param, Post, Query, Req, UseGuards } from '@nest
 import { AuthGuard } from '@nestjs/passport';
 import { WhatsAppService } from './whatsapp.service';
 import { PrismaService } from '../prisma/prisma.service';
+import { StorageService } from '../storage/storage.service';
 
 type EvrakReminderBody = {
   taxpayerIds?: string[];
@@ -14,8 +15,18 @@ type EvrakReminderBody = {
 type StartConversationBody = {
   taxpayerId?: string;
   phone?: string;
+  displayName?: string;
   templateName?: string;
   templateParams?: string[];
+};
+
+type LinkConversationBody = {
+  targetTaxpayerId?: string;
+};
+
+type SendMediaBody = {
+  documentId?: string;
+  caption?: string;
 };
 
 @Controller('whatsapp')
@@ -29,6 +40,7 @@ export class WhatsAppController {
   constructor(
     private whatsappService: WhatsAppService,
     private prisma: PrismaService,
+    private storage: StorageService,
   ) {}
 
   @Get('status')
@@ -112,6 +124,7 @@ export class WhatsAppController {
             companyName: true,
             firstName: true,
             lastName: true,
+            taxNumber: true,
             phone: true,
             phones: true,
           },
@@ -135,6 +148,7 @@ export class WhatsAppController {
         conversations.set(tId, {
           taxpayerId: tId,
           taxpayerName: name,
+          unknownContact: this.isWhatsAppVirtualTaxNumber(log.taxpayer.taxNumber),
           phone: log.taxpayer.phone || (Array.isArray(log.taxpayer.phones) ? log.taxpayer.phones[0] : null),
           lastMessage: this.publicMessageContent(log.content).slice(0, 100),
           lastMessageAt: log.occurredAt,
@@ -292,6 +306,12 @@ export class WhatsAppController {
       };
     });
 
+    const documentIds = Array.from(new Set(messages.flatMap((m) => m.documents.map((doc) => doc.id))));
+    const documentMap = await this.buildPublicDocumentMap(tenantId, documentIds);
+    for (const message of messages) {
+      message.documents = message.documents.map((doc) => documentMap.get(doc.id) || doc);
+    }
+
     const windowOpen = lastInboundAt
       ? (now - new Date(lastInboundAt).getTime()) < 24 * 60 * 60 * 1000
       : false;
@@ -305,6 +325,7 @@ export class WhatsAppController {
         name: taxpayer.companyName || `${taxpayer.firstName || ''} ${taxpayer.lastName || ''}`.trim() || 'Mükellef',
         phone: taxpayer.phone || (Array.isArray(taxpayer.phones) ? taxpayer.phones[0] : null),
         taxNumber: this.publicTaxNumber(taxpayer.taxNumber),
+        unknownContact: this.isWhatsAppVirtualTaxNumber(taxpayer.taxNumber),
       },
       messages,
       windowOpen,
@@ -317,6 +338,126 @@ export class WhatsAppController {
    * 24h pencere açıksa → serbest metin
    * Kapalıysa → templateName ile şablon gönderir (frontend onaylı şablon seçer)
    */
+  @Post('conversations/:taxpayerId/link')
+  async linkConversationToTaxpayer(
+    @Req() req: any,
+    @Param('taxpayerId') taxpayerId: string,
+    @Body() body: LinkConversationBody,
+  ) {
+    const tenantId = req.user.tenantId;
+    const targetTaxpayerId = String(body?.targetTaxpayerId || '').trim();
+    if (!targetTaxpayerId) return { ok: false, error: 'Hedef mukellef secimi zorunlu' };
+
+    const [source, target] = await Promise.all([
+      this.prisma.taxpayer.findFirst({
+        where: { id: taxpayerId, tenantId },
+        select: { id: true, taxNumber: true, phone: true, phones: true, companyName: true },
+      }),
+      this.prisma.taxpayer.findFirst({
+        where: { id: targetTaxpayerId, tenantId, isActive: true },
+        select: { id: true, phone: true, phones: true },
+      }),
+    ]);
+
+    if (!source) return { ok: false, error: 'Konusma bulunamadi' };
+    if (!target) return { ok: false, error: 'Hedef mukellef bulunamadi' };
+    if (!this.isWhatsAppVirtualTaxNumber(source.taxNumber)) {
+      return { ok: false, error: 'Sadece kayitsiz WhatsApp konusmalari baglanabilir' };
+    }
+
+    const sourcePhones = [source.phone, ...(Array.isArray(source.phones) ? source.phones : [])]
+      .map((p) => this.normalizePhoneForWhatsApp(p))
+      .filter(Boolean);
+    const targetPhones = [
+      ...(Array.isArray(target.phones) ? target.phones : []),
+      ...sourcePhones,
+    ].filter(Boolean);
+    const mergedPhones = Array.from(new Map(targetPhones.map((phone) => [this.normalizePhoneForWhatsApp(phone) || phone, phone])).values());
+
+    await this.prisma.$transaction([
+      this.prisma.communicationLog.updateMany({
+        where: { taxpayerId: source.id, channel: 'WHATSAPP' },
+        data: { taxpayerId: target.id },
+      }),
+      this.prisma.taxpayer.update({
+        where: { id: target.id },
+        data: {
+          phone: target.phone || mergedPhones[0] || null,
+          phones: mergedPhones,
+        },
+      }),
+      this.prisma.taxpayer.update({
+        where: { id: source.id },
+        data: {
+          notes: `Bu kayitsiz WhatsApp konusmasi mukellef kaydina baglandi: ${target.id}`,
+          isActive: false,
+        },
+      }),
+    ]);
+
+    return { ok: true, taxpayerId: target.id };
+  }
+
+  @Post('conversations/:taxpayerId/media')
+  async sendConversationMedia(
+    @Req() req: any,
+    @Param('taxpayerId') taxpayerId: string,
+    @Body() body: SendMediaBody,
+  ) {
+    const tenantId = req.user.tenantId;
+    const documentId = String(body?.documentId || '').trim();
+    if (!documentId) return { ok: false, error: 'documentId zorunlu' };
+
+    const taxpayer = await this.prisma.taxpayer.findFirst({
+      where: { id: taxpayerId, tenantId },
+      select: { id: true, phone: true, phones: true },
+    });
+    if (!taxpayer) return { ok: false, error: 'Mukellef bulunamadi' };
+
+    const doc = await (this.prisma as any).document.findFirst({
+      where: { id: documentId, isDeleted: false, taxpayerId, taxpayer: { tenantId } },
+      select: { id: true, title: true, mimeType: true, sizeBytes: true, s3Key: true },
+    });
+    if (!doc) return { ok: false, error: 'Belge bulunamadi' };
+
+    const phones = this.taxpayerPhones(taxpayer);
+    if (!phones.length) return { ok: false, error: 'Telefon numarasi yok' };
+
+    const filename = this.documentFilename(doc.title, doc.mimeType);
+    const mediaUrl = await this.storage.getPresignedDownloadUrl(doc.s3Key, filename);
+    const caption = String(body?.caption || '').trim();
+    const errors: string[] = [];
+    let delivered = false;
+
+    for (const phone of phones) {
+      const result = await this.whatsappService.sendMediaDetailed(phone, {
+        url: mediaUrl,
+        mimeType: doc.mimeType,
+        filename,
+        caption,
+      }, tenantId);
+      if (result.ok) delivered = true;
+      else if (result.error) errors.push(`${phone}: ${result.error}`);
+    }
+
+    const content = `${caption || `[Medya: ${doc.title}]`}\n[[document:${doc.id}|${doc.title}]]`;
+    await this.prisma.communicationLog.create({
+      data: {
+        taxpayerId,
+        channel: 'WHATSAPP',
+        subject: delivered ? 'WhatsApp portal medya' : 'WhatsApp portal medya (gonderilemedi)',
+        content: delivered ? content : `${content}\n\nHata: ${errors.join(' | ') || 'WhatsApp medya gonderimi basarisiz.'}`,
+        occurredAt: new Date(),
+      },
+    });
+
+    return {
+      ok: delivered,
+      document: { id: doc.id, title: doc.title, mimeType: doc.mimeType, sizeBytes: doc.sizeBytes, url: mediaUrl },
+      error: delivered ? undefined : (errors.join(' | ') || 'WhatsApp medya gonderimi basarisiz.'),
+    };
+  }
+
   @Post('conversations/:taxpayerId/reply')
   async replyToConversation(
     @Req() req: any,
@@ -342,6 +483,45 @@ export class WhatsAppController {
       return { ok: false, error: 'message veya templateName zorunlu' };
     }
 
+    const detailedErrors: string[] = [];
+    let detailedDelivered = false;
+    let detailedMethod: 'free-form' | 'template' = 'free-form';
+    let detailedLogContent = message;
+
+    for (const phone of phones) {
+      let result: { ok: boolean; error?: string } = { ok: false };
+      if (templateName) {
+        detailedMethod = 'template';
+        const params = body?.templateParams || [this.taxpayerDisplayName(taxpayer)];
+        result = await this.whatsappService.sendTemplateDetailed(phone, params, templateName, tenantId);
+        detailedLogContent = `[Sablon: ${templateName}] ${params.join(' | ')}`;
+      } else {
+        result = await this.whatsappService.sendMessageDetailed(phone, message, tenantId);
+      }
+      if (result.ok) detailedDelivered = true;
+      else if (result.error) detailedErrors.push(`${phone}: ${result.error}`);
+    }
+
+    await this.prisma.communicationLog.create({
+      data: {
+        taxpayerId,
+        channel: 'WHATSAPP',
+        subject: detailedDelivered
+          ? (detailedMethod === 'template' ? `WhatsApp sablon - ${templateName}` : 'WhatsApp portal cevabi')
+          : (detailedMethod === 'template' ? `WhatsApp sablon gonderilemedi - ${templateName}` : 'WhatsApp portal cevabi (gonderilemedi)'),
+        content: detailedDelivered ? detailedLogContent : `${detailedLogContent}\n\nHata: ${detailedErrors.join(' | ') || 'WhatsApp gonderimi basarisiz.'}`,
+        occurredAt: new Date(),
+      },
+    });
+
+    return {
+      ok: detailedDelivered,
+      method: detailedMethod,
+      phones,
+      error: detailedDelivered ? undefined : (detailedErrors.join(' | ') || 'WhatsApp gonderimi basarisiz.'),
+    };
+
+    /*
     let delivered = false;
     let usedMethod: 'free-form' | 'template' = 'free-form';
     let logContent = message;
@@ -374,12 +554,44 @@ export class WhatsAppController {
     }
 
     return { ok: delivered, method: usedMethod, phones };
+    */
   }
 
   @Post('conversations/start')
   async startConversation(@Req() req: any, @Body() body: StartConversationBody) {
     const tenantId = req.user.tenantId;
     const taxpayerId = String(body?.taxpayerId || '').trim();
+    const manualPhone = String(body?.phone || '').trim();
+    if (!taxpayerId && manualPhone) {
+      const contact = await this.ensureManualWhatsAppContact(tenantId, manualPhone, body?.displayName);
+      const status = await this.whatsappService.getStatus(tenantId);
+      const manualTemplateName = String(body?.templateName || status.portalTemplateName || status.templateName || '').trim();
+      if (!manualTemplateName) return { ok: false, error: 'Ilk mesaj icin Meta onayli sablon adi zorunlu' };
+      const manualName = this.taxpayerDisplayName(contact);
+      const manualParams = Array.isArray(body?.templateParams) && body.templateParams.length
+        ? body.templateParams.map((p) => String(p ?? '').trim()).filter(Boolean)
+        : [manualName];
+      const manualResult = await this.whatsappService.sendTemplateDetailed(manualPhone, manualParams, manualTemplateName, tenantId);
+      await this.prisma.communicationLog.create({
+        data: {
+          taxpayerId: contact.id,
+          channel: 'WHATSAPP',
+          subject: manualResult.ok ? `WhatsApp sablon - ${manualTemplateName}` : `WhatsApp sablon gonderilemedi - ${manualTemplateName}`,
+          content: manualResult.ok
+            ? `[Sablon: ${manualTemplateName}] ${manualParams.join(' | ')}`
+            : `[Sablon: ${manualTemplateName}] ${manualParams.join(' | ')}\n\nHata: ${manualResult.error || 'WhatsApp gonderimi basarisiz.'}`,
+          occurredAt: new Date(),
+        },
+      });
+      return {
+        ok: manualResult.ok,
+        method: 'template',
+        taxpayerId: contact.id,
+        phone: manualPhone,
+        templateName: manualTemplateName,
+        error: manualResult.error,
+      };
+    }
     if (!taxpayerId) return { ok: false, error: 'Mükellef seçimi zorunlu' };
 
     const taxpayer = await this.prisma.taxpayer.findFirst({
@@ -414,6 +626,21 @@ export class WhatsAppController {
       ? body.templateParams.map((p) => String(p ?? '').trim()).filter(Boolean)
       : [displayName];
 
+    const startResult = await this.whatsappService.sendTemplateDetailed(phone, params, templateName, tenantId);
+    await this.prisma.communicationLog.create({
+      data: {
+        taxpayerId,
+        channel: 'WHATSAPP',
+        subject: startResult.ok ? `WhatsApp sablon - ${templateName}` : `WhatsApp sablon gonderilemedi - ${templateName}`,
+        content: startResult.ok
+          ? `[Sablon: ${templateName}] ${params.join(' | ')}`
+          : `[Sablon: ${templateName}] ${params.join(' | ')}\n\nHata: ${startResult.error || 'WhatsApp gonderimi basarisiz.'}`,
+        occurredAt: new Date(),
+      },
+    });
+
+    return { ok: startResult.ok, method: 'template', taxpayerId, phone, templateName, error: startResult.error };
+    /*
     const ok = await this.whatsappService.sendTemplate(phone, params, templateName, tenantId);
     await this.prisma.communicationLog.create({
       data: {
@@ -426,6 +653,7 @@ export class WhatsAppController {
     });
 
     return { ok, method: 'template', taxpayerId, phone, templateName };
+    */
   }
 
   @Post('evrak-reminders/preview')
@@ -555,6 +783,39 @@ export class WhatsAppController {
     return { ok: basarili > 0, basarili, hatali, hedef: rawPhones.length };
   }
 
+  private async ensureManualWhatsAppContact(tenantId: string, phone: string, displayName?: string) {
+    const normalized = this.normalizePhoneForWhatsApp(phone);
+    const phoneValue = normalized || String(phone || '').trim();
+    const taxNumber = `WHATSAPP-${phoneValue || 'MANUAL'}`;
+    const phoneWhere = phoneValue ? [{ phone: phoneValue }, { phones: { has: phoneValue } }] : [];
+    const existing = await this.prisma.taxpayer.findFirst({
+      where: {
+        tenantId,
+        OR: [{ taxNumber }, ...phoneWhere],
+      },
+      select: { id: true, companyName: true, firstName: true, lastName: true, phone: true, phones: true, taxNumber: true },
+    });
+    if (existing) return existing;
+
+    return this.prisma.taxpayer.create({
+      data: {
+        tenantId,
+        type: 'GERCEK_KISI',
+        companyName: String(displayName || '').trim() || `Kayitsiz WhatsApp ${phoneValue}`,
+        taxNumber,
+        taxOffice: 'WHATSAPP',
+        phone: phoneValue,
+        phones: phoneValue ? [phoneValue] : [],
+        emails: [],
+        notes: 'Mesaj Merkezi manuel konusma baslatma ile olusturulan kayitsiz WhatsApp kisi kaydi.',
+        isActive: false,
+        whatsappEvrakTalep: false,
+        whatsappEvrakGeldi: false,
+      },
+      select: { id: true, companyName: true, firstName: true, lastName: true, phone: true, phones: true, taxNumber: true },
+    });
+  }
+
   private async buildEvrakReminderPreview(tenantId: string, body: EvrakReminderBody) {
     const now = new Date();
     const year = Number(body.year) || now.getFullYear();
@@ -666,6 +927,45 @@ export class WhatsAppController {
     };
   }
 
+  private async buildPublicDocumentMap(tenantId: string, documentIds: string[]): Promise<Map<string, any>> {
+    const result = new Map<string, any>();
+    if (!documentIds.length) return result;
+
+    const documents = await (this.prisma as any).document.findMany({
+      where: {
+        id: { in: documentIds },
+        isDeleted: false,
+        taxpayer: { tenantId },
+      },
+      select: { id: true, title: true, mimeType: true, sizeBytes: true, s3Key: true },
+    });
+
+    for (const doc of documents) {
+      let url: string | null = null;
+      try {
+        url = await this.storage.getPresignedDownloadUrl(doc.s3Key, this.documentFilename(doc.title, doc.mimeType));
+      } catch {
+        url = null;
+      }
+      result.set(doc.id, {
+        id: doc.id,
+        title: doc.title,
+        mimeType: doc.mimeType,
+        sizeBytes: doc.sizeBytes,
+        url,
+      });
+    }
+
+    return result;
+  }
+
+  private documentFilename(title?: string | null, mimeType?: string | null): string {
+    const safeTitle = String(title || 'belge').trim() || 'belge';
+    if (/\.[a-z0-9]{2,8}$/i.test(safeTitle)) return safeTitle;
+    const subtype = String(mimeType || '').split('/')[1] || 'bin';
+    return `${safeTitle}.${subtype.split(';')[0] || 'bin'}`;
+  }
+
   private taxpayerDisplayName(t: any) {
     return t.companyName || `${t.firstName || ''} ${t.lastName || ''}`.trim() || 'Sayin Mukellef';
   }
@@ -711,6 +1011,14 @@ export class WhatsAppController {
     return String(value || '').replace(/[^\d]/g, '');
   }
 
+  private normalizePhoneForWhatsApp(value?: string | null): string {
+    let digits = this.phoneDigits(value);
+    if (digits.startsWith('00')) digits = digits.slice(2);
+    if (digits.startsWith('0') && digits.length === 11) digits = `90${digits.slice(1)}`;
+    if (digits.length === 10 && digits.startsWith('5')) digits = `90${digits}`;
+    return digits;
+  }
+
   private isFailedSubject(subject?: string | null): boolean {
     return /gonderilemedi|gönderilemedi|basarisiz|başarısız|hata/i.test(String(subject || ''));
   }
@@ -718,6 +1026,10 @@ export class WhatsAppController {
   private publicTaxNumber(taxNumber?: string | null): string {
     const value = String(taxNumber || '');
     return value.startsWith('WHATSAPP-') ? '' : value;
+  }
+
+  private isWhatsAppVirtualTaxNumber(taxNumber?: string | null): boolean {
+    return String(taxNumber || '').startsWith('WHATSAPP-');
   }
 
   private publicMessageContent(content?: string | null): string {

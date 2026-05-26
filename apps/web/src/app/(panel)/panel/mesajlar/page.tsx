@@ -6,8 +6,10 @@ import { api } from '@/lib/api';
 import {
   MessageCircle, Send, Search, Clock, AlertCircle, CheckCircle2,
   Loader2, Phone, User, Sparkles, X, FileText, AlertTriangle, Plus, Users,
+  Paperclip, Image as ImageIcon, Link2,
 } from 'lucide-react';
 import { toast } from 'sonner';
+import { documentsApi } from '@/lib/documents';
 
 const GOLD = '#d4b876';
 
@@ -21,6 +23,7 @@ interface Conversation {
   windowOpen: boolean;
   lastInboundAt: string | null;
   totalMessages: number;
+  unknownContact?: boolean;
 }
 
 interface ChatMessage {
@@ -30,11 +33,11 @@ interface ChatMessage {
   content: string;
   occurredAt: string;
   failed?: boolean;
-  documents?: Array<{ id: string; title: string }>;
+  documents?: Array<{ id: string; title: string; mimeType?: string; sizeBytes?: number; url?: string | null }>;
 }
 
 interface ChatData {
-  taxpayer: { id: string; name: string; phone: string | null; taxNumber: string };
+  taxpayer: { id: string; name: string; phone: string | null; taxNumber: string; unknownContact?: boolean };
   messages: ChatMessage[];
   windowOpen: boolean;
   windowExpiresAt: string | null;
@@ -92,13 +95,25 @@ function fmtFullTime(iso: string): string {
   });
 }
 
-function parseMessageContent(content: string): { text: string; docs: Array<{ id: string; title: string }> } {
-  const docs: Array<{ id: string; title: string }> = [];
+function parseMessageContent(content: string): { text: string; docs: Array<{ id: string; title: string; mimeType?: string; sizeBytes?: number; url?: string | null }> } {
+  const docs: Array<{ id: string; title: string; mimeType?: string; sizeBytes?: number; url?: string | null }> = [];
   const text = String(content || '').replace(/\[\[document:([^|\]]+)\|([^\]]+)\]\]/g, (_all, id, title) => {
     docs.push({ id, title });
     return '';
   }).trim();
   return { text, docs };
+}
+
+function isImageDoc(doc: { mimeType?: string; title?: string }): boolean {
+  const mime = String(doc.mimeType || '').toLowerCase();
+  const title = String(doc.title || '').toLowerCase();
+  return mime.startsWith('image/') || /\.(png|jpe?g|webp|gif|heic)$/i.test(title);
+}
+
+function isPdfDoc(doc: { mimeType?: string; title?: string }): boolean {
+  const mime = String(doc.mimeType || '').toLowerCase();
+  const title = String(doc.title || '').toLowerCase();
+  return mime.includes('pdf') || /\.pdf$/i.test(title);
 }
 
 export default function MesajlarPage() {
@@ -113,7 +128,13 @@ export default function MesajlarPage() {
   const [selectedPhone, setSelectedPhone] = useState('');
   const [startTemplateName, setStartTemplateName] = useState('');
   const [startExtraParam, setStartExtraParam] = useState('');
+  const [startMode, setStartMode] = useState<'contacts' | 'manual'>('contacts');
+  const [manualPhone, setManualPhone] = useState('');
+  const [manualName, setManualName] = useState('');
+  const [showLinkModal, setShowLinkModal] = useState(false);
+  const [selectedLinkContactId, setSelectedLinkContactId] = useState<string | null>(null);
   const scrollRef = useRef<HTMLDivElement>(null);
+  const mediaInputRef = useRef<HTMLInputElement>(null);
 
   // Konuşma listesi — her 8 saniyede yenilenir
   const { data: conversations = [], isLoading } = useQuery<Conversation[]>({
@@ -130,7 +151,7 @@ export default function MesajlarPage() {
   const { data: contacts = [], isLoading: contactsLoading } = useQuery<WhatsAppContact[]>({
     queryKey: ['whatsapp-contacts', contactSearch],
     queryFn: () => api.get('/whatsapp/contacts', { params: { search: contactSearch || undefined } }).then((r) => r.data),
-    enabled: showStartModal,
+    enabled: showStartModal || showLinkModal,
     staleTime: 10_000,
   });
 
@@ -145,6 +166,10 @@ export default function MesajlarPage() {
   const selectedContact = useMemo(
     () => contacts.find((contact) => contact.taxpayerId === selectedContactId) || null,
     [contacts, selectedContactId],
+  );
+  const selectedLinkContact = useMemo(
+    () => contacts.find((contact) => contact.taxpayerId === selectedLinkContactId) || null,
+    [contacts, selectedLinkContactId],
   );
 
   const templateOptions = useMemo(() => {
@@ -199,6 +224,18 @@ export default function MesajlarPage() {
   // Konuşma listesi filtrele
   const startMut = useMutation({
     mutationFn: () => {
+      if (startMode === 'manual') {
+        if (!manualPhone.trim()) throw new Error('Telefon numarasi zorunlu');
+        return api.post('/whatsapp/conversations/start', {
+          phone: manualPhone.trim(),
+          displayName: manualName.trim() || undefined,
+          templateName: startTemplateName.trim(),
+          templateParams: [
+            manualName.trim() || manualPhone.trim(),
+            ...(startExtraParam.trim() ? [startExtraParam.trim()] : []),
+          ],
+        }).then((r) => r.data);
+      }
       if (!selectedContact) throw new Error('Mükellef seçimi zorunlu');
       return api.post('/whatsapp/conversations/start', {
         taxpayerId: selectedContact.taxpayerId,
@@ -216,6 +253,8 @@ export default function MesajlarPage() {
         setShowStartModal(false);
         setSelectedId(res.taxpayerId);
         setStartExtraParam('');
+        setManualPhone('');
+        setManualName('');
         qc.invalidateQueries({ queryKey: ['whatsapp-chat', res.taxpayerId] });
         qc.invalidateQueries({ queryKey: ['whatsapp-conversations'] });
         qc.invalidateQueries({ queryKey: ['whatsapp-contacts'] });
@@ -229,6 +268,56 @@ export default function MesajlarPage() {
       }
     },
     onError: (e: any) => toast.error(e?.response?.data?.message || e?.message || 'Gönderim hatası'),
+  });
+
+  const linkMut = useMutation({
+    mutationFn: () => {
+      if (!selectedId) throw new Error('Konusma secimi yok');
+      if (!selectedLinkContactId) throw new Error('Mukellef secimi zorunlu');
+      return api.post(`/whatsapp/conversations/${selectedId}/link`, { targetTaxpayerId: selectedLinkContactId }).then((r) => r.data);
+    },
+    onSuccess: (res) => {
+      if (res.ok) {
+        toast.success('Konusma mukellefe baglandi');
+        setShowLinkModal(false);
+        setSelectedId(res.taxpayerId);
+        setSelectedLinkContactId(null);
+        qc.invalidateQueries({ queryKey: ['whatsapp-conversations'] });
+        qc.invalidateQueries({ queryKey: ['whatsapp-chat'] });
+        qc.invalidateQueries({ queryKey: ['whatsapp-contacts'] });
+      } else {
+        toast.error(res.error || 'Baglanamadi');
+      }
+    },
+    onError: (e: any) => toast.error(e?.response?.data?.message || e?.message || 'Baglama hatasi'),
+  });
+
+  const mediaMut = useMutation({
+    mutationFn: async (file: File) => {
+      if (!selectedId) throw new Error('Konusma secimi yok');
+      const doc = await documentsApi.upload({
+        taxpayerId: selectedId,
+        title: file.name.replace(/\.[^.]+$/, '') || file.name,
+        category: 'EVRAK' as any,
+        file,
+        tags: ['whatsapp-giden'],
+      });
+      return api.post(`/whatsapp/conversations/${selectedId}/media`, {
+        documentId: doc.id,
+        caption: composeText.trim() || undefined,
+      }).then((r) => r.data);
+    },
+    onSuccess: (res) => {
+      if (res.ok) {
+        toast.success('Dosya WhatsApp ile gonderildi');
+        setComposeText('');
+      } else {
+        toast.error(res.error || 'Dosya gonderilemedi');
+      }
+      qc.invalidateQueries({ queryKey: ['whatsapp-chat', selectedId] });
+      qc.invalidateQueries({ queryKey: ['whatsapp-conversations'] });
+    },
+    onError: (e: any) => toast.error(e?.response?.data?.message || e?.message || 'Dosya gonderim hatasi'),
   });
 
   const filteredConversations = useMemo(() => {
@@ -262,6 +351,11 @@ export default function MesajlarPage() {
     if (!selectedId) return;
     sendMut.mutate({ templateName });
     setShowTemplatePicker(false);
+  };
+
+  const handleMediaPicked = (file?: File | null) => {
+    if (!file) return;
+    mediaMut.mutate(file);
   };
 
   const openStartModal = () => {
@@ -445,6 +539,16 @@ export default function MesajlarPage() {
                   )}
                 </div>
               </div>
+              {chatData?.taxpayer?.unknownContact && (
+                <button
+                  type="button"
+                  onClick={() => setShowLinkModal(true)}
+                  className="h-8 px-3 rounded-md flex items-center gap-1.5 text-[11px] font-semibold"
+                  style={{ background: 'rgba(212,184,118,0.12)', border: '1px solid rgba(212,184,118,0.24)', color: GOLD }}
+                >
+                  <Link2 size={12} /> Mükellefe Bağla
+                </button>
+              )}
               {/* 24h pencere durumu */}
               {chatData?.windowOpen ? (
                 <div className="text-[11px] flex items-center gap-1.5 px-2.5 py-1 rounded-md" style={{ background: 'rgba(34,197,94,0.1)', color: '#86efac' }}>
@@ -488,20 +592,30 @@ export default function MesajlarPage() {
                         {docs.length > 0 && (
                           <div className="mt-2 space-y-1.5">
                             {docs.map((doc) => (
-                              <button
+                              <div
                                 key={doc.id}
-                                type="button"
-                                onClick={() => openDocument(doc.id)}
-                                className="flex max-w-full items-center gap-1.5 rounded-md border px-2 py-1 text-left text-[11.5px]"
+                                className="overflow-hidden rounded-md border"
                                 style={{
                                   borderColor: incoming ? 'rgba(255,255,255,0.12)' : 'rgba(212,184,118,0.28)',
                                   background: incoming ? 'rgba(255,255,255,0.04)' : 'rgba(212,184,118,0.08)',
-                                  color: '#fafaf9',
                                 }}
                               >
-                                <FileText size={13} className="shrink-0" />
-                                <span className="truncate">{doc.title}</span>
-                              </button>
+                                {isImageDoc(doc) && doc.url ? (
+                                  <button type="button" onClick={() => openDocument(doc.id)} className="block w-full">
+                                    <img src={doc.url} alt={doc.title} className="max-h-64 w-full object-contain" />
+                                  </button>
+                                ) : (
+                                  <button
+                                    type="button"
+                                    onClick={() => openDocument(doc.id)}
+                                    className="flex max-w-full items-center gap-2 px-2.5 py-2 text-left text-[11.5px]"
+                                    style={{ color: '#fafaf9' }}
+                                  >
+                                    {isPdfDoc(doc) ? <FileText size={16} className="shrink-0" /> : <ImageIcon size={16} className="shrink-0" />}
+                                    <span className="min-w-0 flex-1 truncate">{doc.title}</span>
+                                  </button>
+                                )}
+                              </div>
                             ))}
                           </div>
                         )}
@@ -524,6 +638,26 @@ export default function MesajlarPage() {
             <div className="p-3" style={{ borderTop: '1px solid rgba(255,255,255,0.06)', background: 'rgba(255,255,255,0.015)' }}>
               {chatData?.windowOpen ? (
                 <div className="flex items-end gap-2">
+                  <input
+                    ref={mediaInputRef}
+                    type="file"
+                    className="hidden"
+                    accept="image/*,application/pdf,.pdf,.doc,.docx,.xls,.xlsx"
+                    onChange={(e) => {
+                      handleMediaPicked(e.target.files?.[0]);
+                      e.currentTarget.value = '';
+                    }}
+                  />
+                  <button
+                    type="button"
+                    onClick={() => mediaInputRef.current?.click()}
+                    disabled={mediaMut.isPending}
+                    title="Dosya gönder"
+                    className="h-11 w-11 rounded-[10px] flex items-center justify-center disabled:opacity-50"
+                    style={{ background: 'rgba(255,255,255,0.04)', border: '1px solid rgba(255,255,255,0.08)', color: GOLD }}
+                  >
+                    {mediaMut.isPending ? <Loader2 size={14} className="animate-spin" /> : <Paperclip size={15} />}
+                  </button>
                   <textarea
                     value={composeText}
                     onChange={(e) => setComposeText(e.target.value)}
@@ -585,7 +719,7 @@ export default function MesajlarPage() {
           onClick={() => setShowStartModal(false)}
         >
           <div
-            className="rounded-2xl p-5 w-full max-w-3xl"
+            className="rounded-2xl p-5 w-full max-w-5xl"
             style={{ background: '#1c1813', border: '1px solid rgba(255,255,255,0.1)' }}
             onClick={(e) => e.stopPropagation()}
           >
@@ -599,7 +733,27 @@ export default function MesajlarPage() {
               </button>
             </div>
 
-            <div className="grid gap-4 md:grid-cols-[1.15fr_0.85fr]">
+            <div className="mb-4 grid grid-cols-2 gap-2 rounded-[12px] border p-1" style={{ borderColor: 'rgba(255,255,255,0.08)', background: 'rgba(0,0,0,0.16)' }}>
+              {[
+                { key: 'contacts', label: 'Rehber' },
+                { key: 'manual', label: 'Manuel Numara' },
+              ].map((mode) => (
+                <button
+                  key={mode.key}
+                  type="button"
+                  onClick={() => setStartMode(mode.key as 'contacts' | 'manual')}
+                  className="h-9 rounded-[10px] text-[12px] font-semibold"
+                  style={{
+                    background: startMode === mode.key ? 'rgba(212,184,118,0.16)' : 'transparent',
+                    color: startMode === mode.key ? GOLD : 'rgba(250,250,249,0.58)',
+                  }}
+                >
+                  {mode.label}
+                </button>
+              ))}
+            </div>
+
+            <div className="grid gap-4 lg:grid-cols-[minmax(0,1fr)_360px]">
               <div className="min-h-[360px] rounded-[12px] border p-3" style={{ borderColor: 'rgba(255,255,255,0.08)', background: 'rgba(0,0,0,0.16)' }}>
                 <div className="relative mb-3">
                   <Search size={14} className="absolute left-3 top-1/2 -translate-y-1/2" style={{ color: 'rgba(250,250,249,0.38)' }} />
@@ -660,22 +814,58 @@ export default function MesajlarPage() {
               </div>
 
               <div className="rounded-[12px] border p-3" style={{ borderColor: 'rgba(255,255,255,0.08)', background: 'rgba(255,255,255,0.025)' }}>
-                <label className="block text-[11px] font-medium uppercase tracking-wider" style={{ color: 'rgba(250,250,249,0.45)' }}>
-                  Telefon
-                </label>
-                <select
-                  value={selectedPhone}
-                  onChange={(e) => setSelectedPhone(e.target.value)}
-                  disabled={!selectedContact}
-                  className="mt-1.5 w-full rounded-[10px] border bg-transparent px-3 py-2 text-[13px] outline-none"
-                  style={{ borderColor: 'rgba(255,255,255,0.08)', color: '#fafaf9' }}
-                >
-                  {(selectedContact?.phones || []).map((item) => (
-                    <option key={`${item.label}-${item.phone}`} value={item.phone} style={{ background: '#1c1813', color: '#fafaf9' }}>
-                      {item.label} - {item.phone}
-                    </option>
-                  ))}
-                </select>
+                {startMode === 'manual' ? (
+                  <>
+                    <label className="block text-[11px] font-medium uppercase tracking-wider" style={{ color: 'rgba(250,250,249,0.45)' }}>
+                      Telefon
+                    </label>
+                    <input
+                      value={manualPhone}
+                      onChange={(e) => setManualPhone(e.target.value)}
+                      placeholder="905xxxxxxxxx"
+                      className="mt-1.5 w-full rounded-[10px] border bg-transparent px-3 py-2 text-[13px] outline-none"
+                      style={{ borderColor: 'rgba(255,255,255,0.08)', color: '#fafaf9' }}
+                    />
+                    <label className="mt-3 block text-[11px] font-medium uppercase tracking-wider" style={{ color: 'rgba(250,250,249,0.45)' }}>
+                      Kayıt adı
+                    </label>
+                    <input
+                      value={manualName}
+                      onChange={(e) => setManualName(e.target.value)}
+                      placeholder="Opsiyonel"
+                      className="mt-1.5 w-full rounded-[10px] border bg-transparent px-3 py-2 text-[13px] outline-none"
+                      style={{ borderColor: 'rgba(255,255,255,0.08)', color: '#fafaf9' }}
+                    />
+                  </>
+                ) : (
+                  <>
+                    <label className="block text-[11px] font-medium uppercase tracking-wider" style={{ color: 'rgba(250,250,249,0.45)' }}>
+                      Telefon
+                    </label>
+                    <div className="mt-1.5 space-y-2">
+                      {(selectedContact?.phones || []).length ? selectedContact!.phones.map((item) => (
+                        <button
+                          key={`${item.label}-${item.phone}`}
+                          type="button"
+                          onClick={() => setSelectedPhone(item.phone)}
+                          className="w-full rounded-[10px] border px-3 py-2 text-left"
+                          style={{
+                            borderColor: selectedPhone === item.phone ? 'rgba(212,184,118,0.34)' : 'rgba(255,255,255,0.08)',
+                            background: selectedPhone === item.phone ? 'rgba(212,184,118,0.1)' : 'rgba(0,0,0,0.12)',
+                            color: '#fafaf9',
+                          }}
+                        >
+                          <div className="text-[12px] font-semibold">{item.phone}</div>
+                          <div className="mt-0.5 text-[10.5px]" style={{ color: 'rgba(250,250,249,0.48)' }}>{item.label}</div>
+                        </button>
+                      )) : (
+                        <div className="rounded-[10px] border px-3 py-3 text-[12px]" style={{ borderColor: 'rgba(255,255,255,0.08)', color: 'rgba(250,250,249,0.45)' }}>
+                          Telefon yok
+                        </div>
+                      )}
+                    </div>
+                  </>
+                )}
 
                 <label className="mt-3 block text-[11px] font-medium uppercase tracking-wider" style={{ color: 'rgba(250,250,249,0.45)' }}>
                   Şablon adı
@@ -707,7 +897,7 @@ export default function MesajlarPage() {
                 <button
                   type="button"
                   onClick={() => startMut.mutate()}
-                  disabled={!selectedContact || !selectedPhone || !startTemplateName.trim() || startMut.isPending}
+                  disabled={(startMode === 'contacts' ? (!selectedContact || !selectedPhone) : !manualPhone.trim()) || !startTemplateName.trim() || startMut.isPending}
                   className="mt-4 h-11 w-full rounded-[10px] flex items-center justify-center gap-1.5 text-[13px] font-semibold disabled:opacity-50"
                   style={{ background: `linear-gradient(135deg, ${GOLD}, #b8a06f)`, color: '#0f0d0b' }}
                 >
@@ -716,6 +906,70 @@ export default function MesajlarPage() {
                 </button>
               </div>
             </div>
+          </div>
+        </div>
+      )}
+
+      {showLinkModal && (
+        <div
+          className="fixed inset-0 z-50 flex items-center justify-center p-4"
+          style={{ background: 'rgba(0,0,0,0.6)', backdropFilter: 'blur(4px)' }}
+          onClick={() => setShowLinkModal(false)}
+        >
+          <div
+            className="rounded-2xl p-5 w-full max-w-2xl"
+            style={{ background: '#1c1813', border: '1px solid rgba(255,255,255,0.1)' }}
+            onClick={(e) => e.stopPropagation()}
+          >
+            <div className="mb-4 flex items-center justify-between">
+              <div className="flex items-center gap-2">
+                <Link2 size={17} style={{ color: GOLD }} />
+                <h3 className="text-[15px] font-semibold" style={{ color: '#fafaf9' }}>Kayıtsız Konuşmayı Bağla</h3>
+              </div>
+              <button onClick={() => setShowLinkModal(false)} style={{ color: 'rgba(250,250,249,0.5)' }}>
+                <X size={18} />
+              </button>
+            </div>
+            <div className="relative mb-3">
+              <Search size={14} className="absolute left-3 top-1/2 -translate-y-1/2" style={{ color: 'rgba(250,250,249,0.38)' }} />
+              <input
+                value={contactSearch}
+                onChange={(e) => setContactSearch(e.target.value)}
+                placeholder="Mükellef ara..."
+                className="w-full h-10 pl-9 pr-3 rounded-[10px] text-[12.5px] outline-none"
+                style={{ background: 'rgba(255,255,255,0.035)', border: '1px solid rgba(255,255,255,0.08)', color: '#fafaf9' }}
+              />
+            </div>
+            <div className="max-h-[320px] overflow-y-auto space-y-1">
+              {contacts.map((contact) => {
+                const active = selectedLinkContactId === contact.taxpayerId;
+                return (
+                  <button
+                    key={contact.taxpayerId}
+                    type="button"
+                    onClick={() => setSelectedLinkContactId(contact.taxpayerId)}
+                    className="w-full rounded-[10px] px-3 py-2 text-left"
+                    style={{
+                      background: active ? 'rgba(212,184,118,0.1)' : 'rgba(255,255,255,0.03)',
+                      border: `1px solid ${active ? 'rgba(212,184,118,0.28)' : 'rgba(255,255,255,0.06)'}`,
+                    }}
+                  >
+                    <div className="text-[13px] font-semibold" style={{ color: '#fafaf9' }}>{contact.taxpayerName}</div>
+                    <div className="mt-0.5 text-[11px]" style={{ color: 'rgba(250,250,249,0.45)' }}>{contact.primaryPhone || 'Telefon yok'}</div>
+                  </button>
+                );
+              })}
+            </div>
+            <button
+              type="button"
+              onClick={() => linkMut.mutate()}
+              disabled={!selectedLinkContact || linkMut.isPending}
+              className="mt-4 h-11 w-full rounded-[10px] flex items-center justify-center gap-1.5 text-[13px] font-semibold disabled:opacity-50"
+              style={{ background: `linear-gradient(135deg, ${GOLD}, #b8a06f)`, color: '#0f0d0b' }}
+            >
+              {linkMut.isPending ? <Loader2 size={14} className="animate-spin" /> : <Link2 size={14} />}
+              Mükellefe Bağla
+            </button>
           </div>
         </div>
       )}

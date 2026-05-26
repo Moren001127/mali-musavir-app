@@ -19,8 +19,16 @@ export interface WhatsAppConfig {
   documentTemplateName?: string;
   portalTemplateName?: string;
   ownerAlertTemplateName?: string;
+  ownerPhones?: string;
   webhookVerifyToken?: string;
   businessAccountId?: string;
+}
+
+export interface WhatsAppSendResult {
+  ok: boolean;
+  error?: string;
+  status?: number;
+  providerMessageId?: string;
 }
 
 @Injectable()
@@ -39,6 +47,7 @@ export class WhatsAppService {
       documentTemplateName: process.env.WHATSAPP_DOCUMENT_TEMPLATE_NAME || '',
       portalTemplateName: process.env.WHATSAPP_PORTAL_TEMPLATE_NAME || '',
       ownerAlertTemplateName: process.env.WHATSAPP_OWNER_ALERT_TEMPLATE_NAME || '',
+      ownerPhones: process.env.MOREN_OWNER_WHATSAPP_PHONES || process.env.MOREN_OWNER_WHATSAPP_PHONE || '',
       webhookVerifyToken: process.env.WHATSAPP_WEBHOOK_VERIFY_TOKEN || '',
       businessAccountId: process.env.WHATSAPP_BUSINESS_ACCOUNT_ID || '',
     };
@@ -76,6 +85,7 @@ export class WhatsAppService {
       documentTemplateName: cfg.documentTemplateName || cfg.templateName || null,
       portalTemplateName: cfg.portalTemplateName || cfg.templateName || null,
       ownerAlertTemplateName: cfg.ownerAlertTemplateName || null,
+      ownerPhones: cfg.ownerPhones || '',
       webhookReady: Boolean(cfg.webhookVerifyToken),
     };
   }
@@ -125,6 +135,102 @@ export class WhatsAppService {
     });
     this.logger.log(`[WhatsApp] Master switch tenant=${tenantId} → ${active ? 'AKTİF' : 'PASİF'}`);
     return { active };
+  }
+
+  async sendMessageDetailed(phone: string, message: string, tenantId?: string): Promise<WhatsAppSendResult> {
+    if (tenantId && !(await this.isAutomationActive(tenantId))) {
+      const error = 'WhatsApp master switch pasif. Ayarlar > Entegrasyonlar > WhatsApp icinden aktif edin.';
+      this.logger.warn(`[WhatsApp] Master switch PASIF - mesaj atlandi: ${phone}`);
+      return { ok: false, error };
+    }
+    const cfg = await this.getEffectiveConfig(tenantId);
+    if (!this.isConfigured(cfg)) {
+      this.logger.warn(`[WhatsApp] Yapilandirilmamis - mesaj atlandi: ${phone}`);
+      return { ok: false, error: 'WhatsApp Cloud API ayarlari eksik: Access Token veya Phone Number ID yok.' };
+    }
+    const to = this.normalizePhone(phone);
+    if (!to) {
+      this.logger.warn(`[WhatsApp] Gecersiz telefon: ${phone}`);
+      return { ok: false, error: `Gecersiz telefon numarasi: ${phone}` };
+    }
+    return this.callGraphApiDetailed(cfg, {
+      messaging_product: 'whatsapp',
+      to,
+      type: 'text',
+      text: { body: message, preview_url: false },
+    }, to);
+  }
+
+  async sendTemplateDetailed(
+    phone: string,
+    parameters: string[],
+    templateName?: string,
+    tenantId?: string,
+  ): Promise<WhatsAppSendResult> {
+    if (tenantId && !(await this.isAutomationActive(tenantId))) {
+      const error = 'WhatsApp master switch pasif. Ayarlar > Entegrasyonlar > WhatsApp icinden aktif edin.';
+      this.logger.warn(`[WhatsApp] Master switch PASIF - sablon atlandi: ${phone}`);
+      return { ok: false, error };
+    }
+    const cfg = await this.getEffectiveConfig(tenantId);
+    if (!this.isConfigured(cfg)) {
+      return { ok: false, error: 'WhatsApp Cloud API ayarlari eksik: Access Token veya Phone Number ID yok.' };
+    }
+    const name = templateName || cfg.templateName;
+    if (!name) {
+      return this.sendMessageDetailed(phone, parameters.join(' - '), tenantId);
+    }
+    const to = this.normalizePhone(phone);
+    if (!to) return { ok: false, error: `Gecersiz telefon numarasi: ${phone}` };
+    return this.callGraphApiDetailed(cfg, {
+      messaging_product: 'whatsapp',
+      to,
+      type: 'template',
+      template: {
+        name,
+        language: { code: cfg.templateLang || 'tr' },
+        components: parameters.length
+          ? [{ type: 'body', parameters: parameters.map((text) => ({ type: 'text', text })) }]
+          : [],
+      },
+    }, to);
+  }
+
+  async sendMediaDetailed(
+    phone: string,
+    media: { url: string; mimeType?: string | null; filename?: string | null; caption?: string | null },
+    tenantId?: string,
+  ): Promise<WhatsAppSendResult> {
+    if (tenantId && !(await this.isAutomationActive(tenantId))) {
+      const error = 'WhatsApp master switch pasif. Ayarlar > Entegrasyonlar > WhatsApp icinden aktif edin.';
+      this.logger.warn(`[WhatsApp] Master switch PASIF - medya atlandi: ${phone}`);
+      return { ok: false, error };
+    }
+    const cfg = await this.getEffectiveConfig(tenantId);
+    if (!this.isConfigured(cfg)) {
+      return { ok: false, error: 'WhatsApp Cloud API ayarlari eksik: Access Token veya Phone Number ID yok.' };
+    }
+    const to = this.normalizePhone(phone);
+    if (!to) return { ok: false, error: `Gecersiz telefon numarasi: ${phone}` };
+
+    const mimeType = String(media.mimeType || '').toLowerCase();
+    const caption = String(media.caption || '').trim();
+    const filename = String(media.filename || 'belge').trim();
+    const mediaType =
+      mimeType.startsWith('image/') ? 'image' :
+      mimeType.startsWith('video/') ? 'video' :
+      mimeType.startsWith('audio/') ? 'audio' :
+      'document';
+    const body: any = { link: media.url };
+    if (mediaType === 'document') body.filename = filename;
+    if (caption && mediaType !== 'audio') body.caption = caption.slice(0, 1024);
+
+    return this.callGraphApiDetailed(cfg, {
+      messaging_product: 'whatsapp',
+      to,
+      type: mediaType,
+      [mediaType]: body,
+    }, to);
   }
 
   async sendMessage(phone: string, message: string, tenantId?: string): Promise<boolean> {
@@ -182,6 +288,36 @@ export class WhatsAppService {
           : [],
       },
     }, to);
+  }
+
+  private async callGraphApiDetailed(cfg: WhatsAppConfig, payload: any, to: string): Promise<WhatsAppSendResult> {
+    const url = `https://graph.facebook.com/${cfg.apiVersion || 'v20.0'}/${cfg.phoneNumberId}/messages`;
+    try {
+      const res = await fetch(url, {
+        method: 'POST',
+        headers: {
+          'Authorization': `Bearer ${cfg.accessToken}`,
+          'Content-Type': 'application/json',
+        },
+        body: JSON.stringify(payload),
+      });
+      const bodyText = await res.text();
+      const data = (() => { try { return JSON.parse(bodyText); } catch { return null; } })();
+      if (!res.ok) {
+        const metaError = data?.error;
+        const detail = metaError?.error_data?.details || metaError?.message || bodyText.slice(0, 220);
+        const error = `Meta WhatsApp hata verdi (HTTP ${res.status}${metaError?.code ? ` / ${metaError.code}` : ''}): ${detail}`;
+        this.logger.error(`[WhatsApp] Gonderim hatasi ${to}: ${error}`);
+        return { ok: false, status: res.status, error };
+      }
+      const wamid = data?.messages?.[0]?.id;
+      this.logger.log(`[WhatsApp] Gonderildi ${to} wamid=${wamid || 'n/a'}`);
+      return { ok: true, providerMessageId: wamid || undefined };
+    } catch (err: any) {
+      const error = `WhatsApp ag hatasi: ${err?.message || err}`;
+      this.logger.error(`[WhatsApp] Ag hatasi ${to}: ${err?.message || err}`);
+      return { ok: false, error };
+    }
   }
 
   private async callGraphApi(cfg: WhatsAppConfig, payload: any, to: string): Promise<boolean> {
@@ -267,6 +403,7 @@ export class WhatsAppService {
       documentTemplateName: effective.documentTemplateName || '',
       portalTemplateName: effective.portalTemplateName || '',
       ownerAlertTemplateName: effective.ownerAlertTemplateName || '',
+      ownerPhones: effective.ownerPhones || '',
       hasAccessToken: Boolean(effective.accessToken),
       hasWebhookToken: Boolean(effective.webhookVerifyToken),
       automationActive: await this.isAutomationActive(tenantId),
@@ -285,6 +422,7 @@ export class WhatsAppService {
       documentTemplateName: input.documentTemplateName ?? existing?.documentTemplateName ?? '',
       portalTemplateName: input.portalTemplateName ?? existing?.portalTemplateName ?? '',
       ownerAlertTemplateName: input.ownerAlertTemplateName ?? existing?.ownerAlertTemplateName ?? '',
+      ownerPhones: input.ownerPhones ?? existing?.ownerPhones ?? '',
       webhookVerifyToken: input.webhookVerifyToken && input.webhookVerifyToken.length > 0
         ? input.webhookVerifyToken
         : (existing?.webhookVerifyToken || ''),
@@ -303,6 +441,7 @@ export class WhatsAppService {
       documentTemplateName: merged.documentTemplateName,
       portalTemplateName: merged.portalTemplateName,
       ownerAlertTemplateName: merged.ownerAlertTemplateName,
+      ownerPhones: merged.ownerPhones,
       accessTokenEncrypted: encrypt(merged.accessToken),
       webhookTokenEncrypted: merged.webhookVerifyToken ? encrypt(merged.webhookVerifyToken) : '',
     };
@@ -339,11 +478,11 @@ export class WhatsAppService {
 
   async sendTestMessage(tenantId: string, to: string, templateName?: string, params?: string[]) {
     if (templateName) {
-      const ok = await this.sendTemplate(to, params || ['Test'], templateName, tenantId);
-      return { sent: ok };
+      const result = await this.sendTemplateDetailed(to, params || ['Test'], templateName, tenantId);
+      return { sent: result.ok, error: result.error };
     }
-    const ok = await this.sendMessage(to, 'Moren Portal - Test mesaji (' + new Date().toLocaleString('tr-TR') + ')', tenantId);
-    return { sent: ok };
+    const result = await this.sendMessageDetailed(to, 'Moren Portal - Test mesaji (' + new Date().toLocaleString('tr-TR') + ')', tenantId);
+    return { sent: result.ok, error: result.error };
   }
 
   private async loadConfigFromDb(tenantId: string): Promise<WhatsAppConfig | null> {
@@ -371,6 +510,7 @@ export class WhatsAppService {
         documentTemplateName: String(c?.documentTemplateName || ''),
         portalTemplateName: String(c?.portalTemplateName || ''),
         ownerAlertTemplateName: String(c?.ownerAlertTemplateName || ''),
+        ownerPhones: String(c?.ownerPhones || ''),
         webhookVerifyToken,
       };
     } catch (err: any) {
