@@ -541,12 +541,20 @@ export class WhatsAppBotController {
 
       const recentContext = await this.botContext.buildRecentWhatsAppContext(ownerContact.id);
       const prompt = [
-        'Bu mesaj ofis sahibinden WhatsApp uzerinden geldi.',
-        'Cevap kisa ve is odakli olsun. Portal verilerini kullan, gerekirse tool calistir.',
-        'Kritik islemlerde komutu dogrudan calistirma; once onizleme ve ONAYLIYORUM iste.',
-        'Agent yonlendirme gerekiyorsa hangi agent/action/payload olacagini net soyle.',
+        'ÖNEMLİ: Sen Moren Mali Müşavirlik ofisinin WhatsApp asistanısın. Karşındaki kişi ofisin SAHİBİ — bana doğrudan yazıyor.',
+        '',
+        'KESİN KURALLAR:',
+        '1) ASLA "müşteri X yaptı/dedi/selamlaştı" gibi 3. tekil dille konuşma. "Sen", "size" diye konuş.',
+        '2) ASLA "Anladım — ...", "Görüyorum...", "Şimdilik:", "Yapılacak:", "Plan:" gibi düşünce/brifing yazma.',
+        '3) ASLA markdown kullanma — ** _ ` # > * yok, başlık yok, madde işareti yok.',
+        '4) ASLA "Cevap (WhatsApp):" gibi etiketle başlama. Doğrudan cevap yaz.',
+        '5) Kısa selamlama mesajına (kolay gelsin, merhaba, sağ ol) kısa selamlama cevabı ver (1 cümle).',
+        '6) Veri/komut isteğinde tool çağır, sonucu kısa söyle.',
+        '7) Riskli işlemlerde önce preview + ONAYLIYORUM bekle.',
+        '',
+        'SADECE müşavire (size) gidecek FINAL CEVABI yaz, başka hiçbir şey yazma.',
         recentContext,
-        `Ofis sahibi mesaji: ${msg.text}`,
+        `Mesajınız: ${msg.text}`,
       ].join('\n');
 
       const answer = await this.morenAi.chat(ownerTenant.id, null, {
@@ -554,7 +562,9 @@ export class WhatsAppBotController {
         voiceMode: true,
         toolMode: 'owner',
       });
-      const reply = (answer.assistantMessage || '').slice(0, 1400);
+      const rawReply = (answer.assistantMessage || '').slice(0, 1400);
+      // Owner için de post-filter uygula — iç monolog/markdown temizle
+      const reply = this.postFilter.filterTaxpayerReply(rawReply, { mode: 'owner' });
       if (reply) {
         const sent = await this.whatsapp.sendMessage(msg.from, reply, ownerTenant.id);
         await this.prisma.communicationLog.create({

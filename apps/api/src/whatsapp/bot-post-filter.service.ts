@@ -2,11 +2,37 @@ import { Injectable } from '@nestjs/common';
 
 @Injectable()
 export class WhatsAppBotPostFilterService {
-  filterTaxpayerReply(raw: string, options?: { recentReplies?: string[] }): string {
+  filterTaxpayerReply(raw: string, options?: { recentReplies?: string[]; mode?: 'taxpayer' | 'owner' | 'unknown' }): string {
     let text = String(raw || '').trim();
+
+    // 1. Code block + markdown formatting sil
     text = text
       .replace(/```[\s\S]*?```/g, '')
-      .replace(/[*_`>#]/g, '')
+      .replace(/\*\*([^*]+)\*\*/g, '$1')
+      .replace(/__([^_]+)__/g, '$1')
+      .replace(/[*_`>#~]/g, '');
+
+    // 2. AI iç-monolog / brifing prefix'lerini sil
+    // Cümle başında "Anladım", "Görüyorum", "Müşteri X yapıyor" gibi meta-yorumları kes
+    text = text
+      .replace(/^\s*(Anlad[ıi]m|G[öo]r[üu]yorum|Tamam|Pekala|Pekâla|Hmm)[\s,:—–-]+/gi, '')
+      .replace(/^\s*M[üu][şs]teri\s+[^.]*?(g[öo]nder|yaz|y[öo]nelt|selaml[aa][şs])[^.]*?\.\s*/gi, '')
+      .replace(/^\s*Sistem\s+otomat[ıi]k[^.]*?\.\s*/gi, '')
+      .replace(/(?:^|\n)\s*(Yap[ıi]lacak|Plan|Aksiyon|Strateji|Önemli not)[\s:]+/gi, '\n')
+      .replace(/(?:^|\n)\s*Şimdilik\s*[:]?\s*/gi, '\n')
+      .replace(/\bCevap\s*\(WhatsApp\)\s*[:]?\s*/gi, '')
+      .replace(/\b(?:cevab[ıi]|yan[ıi]t[ıi])m\s*[:]?\s*/gi, '');
+
+    // 3. Markdown listeler (1. 2. 3.) ve madde işaretleri
+    text = text
+      .replace(/^\s*\d+\.\s+/gm, '')
+      .replace(/^\s*[-•]\s+/gm, '');
+
+    // 4. Çift tırnaklı blokları açığa çıkar ("..." içeriğini bırak)
+    text = text.replace(/^"([^"]+)"$/g, '$1');
+
+    // 5. Klasik düzeltmeler
+    text = text
       .replace(/\bMoren AI\b/gi, 'ofisimiz')
       .replace(/\byapay zeka\b/gi, 'ofisimiz')
       .replace(/\bhemen\b/gi, 'kontrol sonrasi')
