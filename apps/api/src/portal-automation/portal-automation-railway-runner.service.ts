@@ -415,72 +415,6 @@ export class PortalAutomationRailwayRunnerService implements OnModuleInit {
     return false;
   }
 
-  /**
-   * e-Beyanname özel indirme akışı.
-   *
-   * Giriş yapıldıktan sonra "Beyannamelerim" / "Onaylanan" / "Tahakkuk" gibi
-   * menülere tıklayıp PDF/XML linklerini toplar. clickAndCollectPortalDocuments
-   * generic indirme mantığını kullanır — link metni "indir/pdf/xml/tahakkuk/beyanname"
-   * regex'i ile yakalanır.
-   *
-   * NOT: GİB e-Beyanname sayfası periyodik değişebilir; bu generic yaklaşım
-   * her zaman çalışmayabilir. PORTAL_AUTOMATION_DOCUMENT_DOWNLOAD_SELECTOR ve
-   * PORTAL_AUTOMATION_DOCUMENT_MAX_DOWNLOADS env ile tune edilebilir.
-   */
-  private async collectEBeyannameDownloads(
-    _tenantId: string,
-    page: any,
-    job: any,
-    downloadsPath: string,
-  ): Promise<{
-    declarations: any[];
-    documents: any[];
-    phase: string;
-    notes: string[];
-  }> {
-    const notes: string[] = ['e-Beyanname girisi basarili'];
-
-    // 1) Beyannameler menüsüne / onaylanan listesine gitmeyi dene
-    const navTexts = [
-      'Onaylanan Beyannameler',
-      'Onaylanan',
-      'Beyannamelerim',
-      'Beyannameler',
-      'Tahakkuklarim',
-      'Tahakkuklarım',
-      'Tahakkuk',
-    ];
-    const navigated = await this.tryNavigateByTexts(page, navTexts);
-    notes.push(navigated ? 'Beyannameler/Tahakkuklar listesi acildi' : 'Liste menusu otomatik bulunamadi, mevcut ekranda indirilebilir aranacak');
-
-    // 2) Tarih aralığını doldurmayı dene (varsa)
-    if (job.periodStart || job.periodEnd) {
-      await this.fillDateRangeIfPossible(page, job.periodStart, job.periodEnd)
-        .catch((err) => notes.push(`Tarih doldurma atlandi: ${err?.message || err}`));
-      await this.clickSearchIfPossible(page)
-        .catch((err) => notes.push(`Sorgu butonu atlandi: ${err?.message || err}`));
-    }
-
-    // 3) Generic collector ile PDF/XML linklerini topla
-    const collection = await this.clickAndCollectPortalDocuments(
-      page,
-      downloadsPath,
-      job,
-      'EBEYANNAME_DAILY_DOWNLOAD' as any,
-    );
-    notes.push(...collection.notes);
-
-    // 4) Result formatına çevir — declarations + documents ayrımı
-    // Şimdilik tümünü documents'a koyuyoruz; ileride PDF/XML icine bakip
-    // declaration metadata'sini parse edebiliriz.
-    return {
-      declarations: [],
-      documents: collection.documents,
-      phase: 'ebeyanname_collection',
-      notes,
-    };
-  }
-
   private async clickAndCollectPortalDocuments(
     page: any,
     downloadsPath: string,
@@ -651,4 +585,390 @@ export class PortalAutomationRailwayRunnerService implements OnModuleInit {
       'a:has-text("Giris")',
     ];
     for (const selector of selectors) {
-      const loc = page.locator(selector).f
+      const loc = page.locator(selector).first();
+      if (await loc.isVisible().catch(() => false)) {
+        await Promise.all([
+          page.waitForLoadState('domcontentloaded', { timeout: 20_000 }).catch(() => {}),
+          loc.click(),
+        ]);
+        return;
+      }
+    }
+    await page.keyboard.press('Enter');
+  }
+
+  private async assertLoggedIn(page: any) {
+    const body = await this.bodyText(page);
+    if (TEXT.captcha.test(body)) {
+      throw new Error('GIB ek dogrulama/CAPTCHA istedi; Railway headless runner tek basina gecemedi');
+    }
+    if (TEXT.loginError.test(body)) {
+      throw new Error('e-Beyanname girisi basarisiz gorunuyor; kullanici kodu/parola/sifre veya ek dogrulama kontrol edilmeli');
+    }
+    const visibleFields = await page
+      .locator('input:not([type="hidden"]):not([type="submit"]):not([type="button"]):not([type="image"])')
+      .evaluateAll((els: any[]) => els.filter((el) => {
+        const r = el.getBoundingClientRect();
+        const style = window.getComputedStyle(el);
+        return r.width > 0 && r.height > 0 && style.visibility !== 'hidden' && style.display !== 'none';
+      }).length)
+      .catch(() => 0);
+    if (visibleFields >= 3 && /kullanici|kullanıcı|parola|sifre|şifre/i.test(body)) {
+      throw new Error('e-Beyanname giris ekrani gecilemedi');
+    }
+  }
+
+  private async collectEBeyannameDownloads(tenantId: string, page: any, job: any, downloadsPath: string) {
+    const notes: string[] = [];
+    const declarations: any[] = [];
+    const documents: any[] = [];
+    const taxpayers = await this.loadTaxpayers(tenantId);
+
+    const listUrl = process.env.PORTAL_AUTOMATION_EBEYANNAME_LIST_URL;
+    if (listUrl) {
+      await page.goto(listUrl, { waitUntil: 'domcontentloaded', timeout: 45_000 });
+      await page.waitForTimeout(1000);
+      notes.push('Liste URL env ile acildi');
+    } else {
+      const navigated = await this.tryNavigateToDeclarationList(page);
+      notes.push(navigated ? 'Beyanname liste ekrani metinle acildi' : 'Beyanname liste ekrani otomatik bulunamadi');
+    }
+
+    await this.fillDateRangeIfPossible(page, job.periodStart, job.periodEnd).catch((err) => notes.push(`Tarih doldurma atlandi: ${err?.message || err}`));
+    await this.clickSearchIfPossible(page).catch((err) => notes.push(`Sorgu butonu atlandi: ${err?.message || err}`));
+
+    const downloaded = await this.clickAndCollectDownloadLinks(page, downloadsPath, taxpayers, job);
+    declarations.push(...downloaded.declarations);
+    documents.push(...downloaded.documents);
+    notes.push(...downloaded.notes);
+
+    if (!declarations.length && !documents.length) {
+      notes.push(`Indirilecek beyanname/tahakkuk bulunamadi. URL=${this.safeUrl(page.url())}`);
+    }
+
+    return {
+      phase: declarations.length || documents.length ? 'download_collected' : 'no_records',
+      declarations,
+      documents,
+      notes,
+    };
+  }
+
+  private async tryNavigateToDeclarationList(page: any) {
+    const candidates = [
+      'Verilen Beyannameler',
+      'Gonderilen Beyannameler',
+      'Gönderilen Beyannameler',
+      'Beyanname Sorgulama',
+      'Paket Sorgulama',
+      'Paket Listesi',
+      'Onaylanan Beyannameler',
+      'Tahakkuk',
+      'Beyannamelerim',
+    ];
+    for (const text of candidates) {
+      const loc = page.getByText(text, { exact: false }).first();
+      if (!(await loc.isVisible().catch(() => false))) continue;
+      await Promise.all([
+        page.waitForLoadState('domcontentloaded', { timeout: 15_000 }).catch(() => {}),
+        loc.click({ timeout: 5000 }),
+      ]).catch(() => {});
+      await page.waitForTimeout(1000);
+      const body = await this.bodyText(page);
+      if (/beyanname|tahakkuk|paket|liste|sorgu/i.test(body)) return true;
+    }
+    return false;
+  }
+
+  private async fillDateRangeIfPossible(page: any, start?: string | Date | null, end?: string | Date | null) {
+    const startText = this.formatDateInput(start);
+    const endText = this.formatDateInput(end);
+    if (!startText || !endText) return;
+
+    const visible = page.locator('input:not([type="hidden"]):not([type="submit"]):not([type="button"]):not([type="image"])');
+    const count = await visible.count().catch(() => 0);
+    const dateInputs: any[] = [];
+    for (let i = 0; i < count; i++) {
+      const loc = visible.nth(i);
+      if (!(await loc.isVisible().catch(() => false))) continue;
+      const attrs = await loc.evaluate((el: any) => ({
+        name: el.getAttribute('name') || '',
+        id: el.getAttribute('id') || '',
+        placeholder: el.getAttribute('placeholder') || '',
+        type: el.getAttribute('type') || '',
+        value: el.value || '',
+      })).catch(() => null);
+      const haystack = `${attrs?.name || ''} ${attrs?.id || ''} ${attrs?.placeholder || ''} ${attrs?.type || ''}`;
+      if (/tarih|date|baslangic|başlangıç|bitis|bitiş|ilk|son/i.test(haystack)) dateInputs.push(loc);
+    }
+    if (dateInputs.length >= 2) {
+      await dateInputs[0].fill(startText);
+      await dateInputs[1].fill(endText);
+    }
+  }
+
+  private async clickSearchIfPossible(page: any) {
+    const selectors = [
+      'button:has-text("Sorgula")',
+      'button:has-text("Listele")',
+      'button:has-text("Ara")',
+      'input[value*="Sorgula" i]',
+      'input[value*="Listele" i]',
+      'input[value*="Ara" i]',
+      'a:has-text("Sorgula")',
+      'a:has-text("Listele")',
+    ];
+    for (const selector of selectors) {
+      const loc = page.locator(selector).first();
+      if (await loc.isVisible().catch(() => false)) {
+        await Promise.all([
+          page.waitForLoadState('domcontentloaded', { timeout: 15_000 }).catch(() => {}),
+          loc.click({ timeout: 5000 }),
+        ]);
+        await page.waitForTimeout(1500);
+        return;
+      }
+    }
+  }
+
+  private async clickAndCollectDownloadLinks(
+    page: any,
+    downloadsPath: string,
+    taxpayers: TaxpayerMatch[],
+    job: any,
+  ) {
+    const declarations: any[] = [];
+    const documents: any[] = [];
+    const notes: string[] = [];
+    const max = Math.max(1, Math.min(200, Number(process.env.PORTAL_AUTOMATION_EBEYANNAME_MAX_DOWNLOADS || 80)));
+    const selector = process.env.PORTAL_AUTOMATION_EBEYANNAME_DOWNLOAD_SELECTOR || 'a, button, input[type="button"], input[type="submit"]';
+    const candidates = page.locator(selector);
+    const count = Math.min(await candidates.count().catch(() => 0), 1000);
+    let clicked = 0;
+
+    for (let i = 0; i < count && clicked < max; i++) {
+      const loc = candidates.nth(i);
+      if (!(await loc.isVisible().catch(() => false))) continue;
+      const meta = await loc.evaluate((el: any) => {
+        const row = el.closest('tr') || el.closest('[role="row"]') || el.parentElement;
+        return {
+          text: `${el.innerText || el.value || el.getAttribute('title') || ''}`.trim(),
+          href: el.getAttribute('href') || '',
+          download: el.getAttribute('download') || '',
+          rowText: `${row?.innerText || ''}`.trim(),
+        };
+      }).catch(() => null);
+      const haystack = `${meta?.text || ''} ${meta?.href || ''} ${meta?.download || ''} ${meta?.rowText || ''}`;
+      if (!TEXT.download.test(haystack)) continue;
+
+      const download = await Promise.all([
+        page.waitForEvent('download', { timeout: 12_000 }).catch(() => null),
+        loc.click({ timeout: 8000 }).catch(() => null),
+      ]).then(([d]) => d).catch(() => null);
+
+      if (!download) {
+        notes.push(`Tiklandi ama download gelmedi: ${this.compact(meta?.text || meta?.href || 'isimsiz')}`);
+        continue;
+      }
+
+      clicked++;
+      const suggested = await download.suggestedFilename().catch(() => `ebeyanname-${clicked}.pdf`);
+      const filePath = join(downloadsPath, `${clicked}-${this.safeFileName(suggested)}`);
+      await download.saveAs(filePath);
+      const buffer = await readFile(filePath);
+      const base64 = buffer.toString('base64');
+      const contextText = `${suggested} ${haystack}`;
+      const taxpayerId = this.matchTaxpayerId(contextText, taxpayers);
+      const kind = this.guessDownloadKind(contextText);
+      const fallbackDonem = job.donem || this.inferDonem(job.periodEnd);
+      const donem = this.guessDonem(contextText, fallbackDonem);
+      const beyanTipi = this.guessBeyanTipi(contextText);
+      const onayNo = this.guessApprovalNo(contextText);
+      const tahakkukTutari = this.guessMoneyAmount(contextText);
+
+      if (taxpayerId) {
+        declarations.push({
+          taxpayerId,
+          beyanTipi,
+          donem,
+          beyanTarihi: job.periodEnd || new Date().toISOString(),
+          tahakkukTutari: kind === 'tahakkuk' ? tahakkukTutari : null,
+          onayNo,
+          beyannameBase64: kind === 'beyanname' ? base64 : null,
+          tahakkukBase64: kind === 'tahakkuk' ? base64 : null,
+          xmlBase64: kind === 'xml' ? base64 : null,
+          beyannameFileName: kind === 'beyanname' ? suggested : null,
+          tahakkukFileName: kind === 'tahakkuk' ? suggested : null,
+          raw: { runner: 'railway', rowText: this.compact(meta?.rowText || ''), fileName: suggested, beyanTipi, donem, onayNo },
+        });
+      } else {
+        documents.push({
+          taxpayerId: null,
+          belgeTuru: kind === 'tahakkuk' ? 'GIB_TAHAKKUK' : kind === 'xml' ? 'GIB_XML' : 'GIB_BEYANNAME',
+          title: suggested || 'e-Beyanname belgesi',
+          period: donem,
+          issuedAt: job.periodEnd || null,
+          receivedAt: new Date().toISOString(),
+          mimeType: this.mimeFromName(suggested),
+          originalName: suggested,
+          base64,
+          raw: { runner: 'railway', rowText: this.compact(meta?.rowText || ''), matchedTaxpayer: false, beyanTipi, donem, onayNo },
+        });
+      }
+    }
+
+    notes.push(`${clicked} download yakalandi`);
+    return { declarations, documents, notes };
+  }
+
+  private async loadTaxpayers(tenantId: string): Promise<TaxpayerMatch[]> {
+    return (this.prisma as any).taxpayer.findMany({
+      where: { tenantId, isActive: true },
+      select: { id: true, taxNumber: true, companyName: true, firstName: true, lastName: true },
+      take: 5000,
+    });
+  }
+
+  private matchTaxpayerId(text: string, taxpayers: TaxpayerMatch[]) {
+    const normalized = text.replace(/\D/g, '');
+    for (const taxpayer of taxpayers) {
+      const taxNumber = (taxpayer.taxNumber || '').replace(/\D/g, '');
+      if (taxNumber && normalized.includes(taxNumber)) return taxpayer.id;
+    }
+    const textKey = this.normalizeTextKey(text);
+    const names = taxpayers
+      .map((taxpayer) => {
+        const name = taxpayer.companyName || [taxpayer.firstName, taxpayer.lastName].filter(Boolean).join(' ');
+        return { taxpayer, key: this.normalizeTextKey(name) };
+      })
+      .filter((item) => item.key.length >= 8)
+      .sort((a, b) => b.key.length - a.key.length);
+
+    for (const item of names) {
+      if (textKey.includes(item.key)) return item.taxpayer.id;
+    }
+    return null;
+  }
+
+  private guessDownloadKind(text: string) {
+    const key = this.normalizeTextKey(text);
+    if (/\bXML\b/.test(key)) return 'xml';
+    if (/TAHAKKUK|FIS/.test(key)) return 'tahakkuk';
+    if (/xml/i.test(text)) return 'xml';
+    if (/tahakkuk|fis|fiş/i.test(text)) return 'tahakkuk';
+    return 'beyanname';
+  }
+
+  private guessBeyanTipi(text: string) {
+    const key = this.normalizeTextKey(text);
+    if (/\bKDV\s*1\b|KDV1|KDVBEYANNAMESI/.test(key)) return 'KDV1';
+    if (/\bKDV\s*2\b|KDV2|TEVKIFAT/.test(key)) return 'KDV2';
+    if (/MUHSGK|MUHTASAR|MUHTASARPRIM|PRIMHIZMET/.test(key)) return 'MUHSGK';
+    if (/DAMGA/.test(key)) return 'DAMGA';
+    if (/POSET|GEKAP/.test(key)) return 'POSET';
+    if (/KURUMLAR/.test(key)) return 'KURUMLAR';
+    if (/GELIR/.test(key)) return 'GELIR';
+    if (/GECICI/.test(key)) return 'GECICI_VERGI';
+    if (/EDEFTER|E DEFTER|BERAT/.test(key)) return 'EDEFTER';
+    const upper = text.toLocaleUpperCase('tr-TR');
+    const known = ['KDV1', 'KDV2', 'KDV2B', 'KDV4', 'MUHSGK', 'MUHTASAR', 'KURUMLAR', 'GECICI', 'GEÇICI', 'DAMGA', 'BA_BS'];
+    return known.find((k) => upper.includes(k)) || 'DIGER';
+  }
+
+  private guessDonem(text: string, fallback: string) {
+    const normalized = String(text || '').replace(/\s+/g, ' ');
+    const iso = normalized.match(/\b(20\d{2})[-/.](0?[1-9]|1[0-2])\b/);
+    if (iso) return `${iso[1]}-${String(Number(iso[2])).padStart(2, '0')}`;
+    const monthYear = normalized.match(/\b(0?[1-9]|1[0-2])[-/.](20\d{2})\b/);
+    if (monthYear) return `${monthYear[2]}-${String(Number(monthYear[1])).padStart(2, '0')}`;
+
+    const key = this.normalizeTextKey(normalized);
+    const quarter = key.match(/\b(20\d{2})\s*([1-4])\s*(DONEM|GECICI)\b/);
+    if (quarter) return `${quarter[1]}-${String(Number(quarter[2]) * 3).padStart(2, '0')}`;
+    const yearly = key.match(/\b(20\d{2})\b/);
+    if (yearly && /(YILLIK|KURUMLAR|GELIR)/.test(key)) return `${yearly[1]}-YIL`;
+    return fallback;
+  }
+
+  private guessApprovalNo(text: string) {
+    const normalized = String(text || '').replace(/\s+/g, ' ');
+    const labelled = normalized.match(/(?:onay|tahakkuk|fis|fiş)\s*(?:no|numarasi|numarası)?\s*[:#-]?\s*([A-Z0-9-]{6,40})/i);
+    if (labelled) return labelled[1].slice(0, 80);
+    const plain = normalized.match(/\b\d{7,18}\b/);
+    return plain ? plain[0] : null;
+  }
+
+  private guessMoneyAmount(text: string) {
+    const matches = Array.from(String(text || '').matchAll(/(?:^|[^\d])(\d{1,3}(?:\.\d{3})*,\d{2}|\d+,\d{2})(?:\s*(?:TL|TRY|\u20BA))?/gi));
+    if (!matches.length) return null;
+    const values = matches
+      .map((m) => Number(m[1].replace(/\./g, '').replace(',', '.')))
+      .filter((n) => Number.isFinite(n) && n >= 0);
+    if (!values.length) return null;
+    return Math.max(...values);
+  }
+
+  private normalizeTextKey(value?: string | null) {
+    return String(value || '')
+      .toLocaleUpperCase('tr-TR')
+      .normalize('NFD')
+      .replace(/[\u0300-\u036f]/g, '')
+      .replace(/[^A-Z0-9]+/g, ' ')
+      .replace(/\s+/g, ' ')
+      .trim();
+  }
+
+  private mimeFromName(name: string) {
+    const lower = String(name || '').toLowerCase();
+    if (lower.endsWith('.xml')) return 'application/xml';
+    if (lower.endsWith('.zip')) return 'application/zip';
+    if (lower.endsWith('.xls')) return 'application/vnd.ms-excel';
+    if (lower.endsWith('.xlsx')) return 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet';
+    return 'application/pdf';
+  }
+
+  private formatDateInput(value?: string | Date | null) {
+    if (!value) return null;
+    const d = value instanceof Date ? value : new Date(value);
+    if (Number.isNaN(d.getTime())) return null;
+    const fmt = new Intl.DateTimeFormat('tr-TR', {
+      timeZone: 'Europe/Istanbul',
+      day: '2-digit',
+      month: '2-digit',
+      year: 'numeric',
+    });
+    return fmt.format(d);
+  }
+
+  private inferDonem(value?: string | Date | null) {
+    const d = value ? new Date(value) : new Date();
+    const parts = new Intl.DateTimeFormat('en-CA', {
+      timeZone: 'Europe/Istanbul',
+      year: 'numeric',
+      month: '2-digit',
+    }).formatToParts(d);
+    const year = parts.find((p) => p.type === 'year')?.value || String(d.getFullYear());
+    const month = parts.find((p) => p.type === 'month')?.value || String(d.getMonth() + 1).padStart(2, '0');
+    return `${year}-${month}`;
+  }
+
+  private async bodyText(page: any) {
+    return ((await page.textContent('body').catch(() => '')) || '').slice(0, 20_000);
+  }
+
+  private publicError(err: any) {
+    return String(err?.message || err || 'Railway runner hatasi').replace(/\s+/g, ' ').slice(0, 1000);
+  }
+
+  private compact(value: string) {
+    return String(value || '').replace(/\s+/g, ' ').trim().slice(0, 500);
+  }
+
+  private safeUrl(url: string) {
+    return String(url || '').replace(/([?&](?:password|sifre|parola|token|kod)=)[^&]+/gi, '$1***');
+  }
+
+  private safeFileName(value: string) {
+    return String(value || 'download.bin').replace(/[^A-Za-z0-9._-]/g, '_').slice(0, 120);
+  }
+}
