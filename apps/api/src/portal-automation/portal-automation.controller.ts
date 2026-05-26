@@ -15,11 +15,15 @@ import { AuthGuard } from '@nestjs/passport';
 import { RolesGuard } from '../auth/guards/roles.guard';
 import { Roles } from '../auth/decorators/roles.decorator';
 import { PortalAutomationService } from './portal-automation.service';
+import { PortalAutomationRailwayRunnerService } from './portal-automation-railway-runner.service';
 
 @Controller('portal-automation')
 @UseGuards(AuthGuard('jwt'), RolesGuard)
 export class PortalAutomationController {
-  constructor(private readonly service: PortalAutomationService) {}
+  constructor(
+    private readonly service: PortalAutomationService,
+    private readonly runner: PortalAutomationRailwayRunnerService,
+  ) {}
 
   @Get('summary')
   summary(@Req() req: any) {
@@ -59,19 +63,21 @@ export class PortalAutomationController {
   @Post('manual-run')
   @Roles('ADMIN', 'STAFF')
   @HttpCode(HttpStatus.OK)
-  manualRun(@Req() req: any, @Body() body: any) {
-    return this.service.manualRun(
+  async manualRun(@Req() req: any, @Body() body: any) {
+    const result = await this.service.manualRun(
       req.user.tenantId,
       req.user.userId || req.user.sub || null,
       body || {},
     );
+    return { ...result, runnerWake: this.runner.wake('manual-run') };
   }
 
   @Post('nightly-run')
   @Roles('ADMIN', 'STAFF')
   @HttpCode(HttpStatus.OK)
-  nightlyRunNow(@Req() req: any) {
-    return this.service.createNightlyJobsForTenant(req.user.tenantId);
+  async nightlyRunNow(@Req() req: any) {
+    const result = await this.service.createNightlyJobsForTenant(req.user.tenantId);
+    return { ...result, runnerWake: this.runner.wake('nightly-run-now') };
   }
 
   @Get('documents')

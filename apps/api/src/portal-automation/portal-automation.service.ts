@@ -201,6 +201,12 @@ export class PortalAutomationService {
         timezone: 'Europe/Istanbul',
         declarationRange: { start, end },
       },
+      runner: {
+        enabled: this.runnerEnabled(),
+        includeNightly: this.runnerIncludeNightly(),
+        deviceId: process.env.PORTAL_AUTOMATION_RAILWAY_DEVICE_ID || 'railway-portal-runner',
+        jobTypes: this.runnerJobTypes(),
+      },
       stats: { activeJobs, failed24h, done24h, docs7d, tebligat7d },
       credentials,
       latestJobs,
@@ -942,5 +948,31 @@ export class PortalAutomationService {
     });
     if (!tenant) throw new UnauthorizedException('Invalid agent token');
     return tenant.id;
+  }
+
+  private envFlag(value?: string | null) {
+    return ['1', 'true', 'yes', 'on', 'evet'].includes(String(value || '').trim().toLowerCase());
+  }
+
+  private runnerEnabled() {
+    const raw = process.env.PORTAL_AUTOMATION_RAILWAY_RUNNER_ENABLED;
+    if (raw != null) return this.envFlag(raw);
+    return process.env.NODE_ENV === 'production';
+  }
+
+  private runnerIncludeNightly() {
+    const raw = process.env.PORTAL_AUTOMATION_RAILWAY_RUNNER_INCLUDE_NIGHTLY;
+    if (raw != null) return this.envFlag(raw);
+    return this.runnerEnabled();
+  }
+
+  private runnerJobTypes() {
+    const raw = process.env.PORTAL_AUTOMATION_RAILWAY_RUNNER_JOB_TYPES;
+    if (!raw) return PORTAL_JOB_TYPES;
+    const parsed = raw
+      .split(',')
+      .map((s) => s.trim().toUpperCase())
+      .filter(isPortalJobType);
+    return parsed.length ? parsed : PORTAL_JOB_TYPES;
   }
 }

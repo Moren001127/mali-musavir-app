@@ -93,6 +93,12 @@ export interface PortalSummary {
     timezone: string;
     declarationRange: { start: string; end: string };
   };
+  runner?: {
+    enabled: boolean;
+    includeNightly: boolean;
+    deviceId: string;
+    jobTypes: PortalJobType[];
+  };
   stats: {
     activeJobs: number;
     failed24h: number;
@@ -154,12 +160,12 @@ export const portalAutomationApi = {
     dateTo?: string;
     donem?: string;
     force?: boolean;
-  }) => api.post<{ created: PortalJob[]; skipped: Array<{ jobType: string; taxpayerId?: string; reason: string }>; message: string }>(
+  }) => api.post<{ created: PortalJob[]; skipped: Array<{ jobType: string; taxpayerId?: string; reason: string }>; message: string; runnerWake?: boolean }>(
     '/portal-automation/manual-run',
     data,
   ).then((r) => r.data),
   nightlyRunNow: () =>
-    api.post<{ created: PortalJob[]; skipped: Array<{ jobType: string; taxpayerId?: string; reason: string }> }>(
+    api.post<{ created: PortalJob[]; skipped: Array<{ jobType: string; taxpayerId?: string; reason: string }>; runnerWake?: boolean }>(
       '/portal-automation/nightly-run',
     ).then((r) => r.data),
 };

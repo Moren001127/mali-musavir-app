@@ -11,6 +11,7 @@ import {
   Mailbox,
   Play,
   RefreshCw,
+  ServerCog,
   ShieldCheck,
 } from 'lucide-react';
 import Link from 'next/link';
@@ -84,7 +85,7 @@ export default function PortalAutomationPanel({ focus = 'all' }: { focus?: Focus
       qc.invalidateQueries({ queryKey: ['portal-automation-summary'] });
       qc.invalidateQueries({ queryKey: ['portal-automation-jobs'] });
       const skipped = res.skipped?.length || 0;
-      if (res.created.length) toast.success(`${res.created.length} is kuyruga alindi`);
+      if (res.created.length) toast.success(`${res.created.length} is kuyruga alindi${res.runnerWake ? ' ve sunucu runner uyandirildi' : ''}`);
       if (skipped) toast.warning(`${skipped} is atlandi; sifre veya tekrar kaydi eksik olabilir`);
       if (!res.created.length && !skipped) toast.info('Baslatilacak is bulunamadi');
     },
@@ -95,7 +96,7 @@ export default function PortalAutomationPanel({ focus = 'all' }: { focus?: Focus
     mutationFn: () => portalAutomationApi.nightlyRunNow(),
     onSuccess: (res) => {
       qc.invalidateQueries({ queryKey: ['portal-automation-summary'] });
-      toast.success(`${res.created.length} gece isi kuyruga alindi`);
+      toast.success(`${res.created.length} gece isi kuyruga alindi${res.runnerWake ? ' ve sunucu runner uyandirildi' : ''}`);
       if (res.skipped.length) toast.warning(`${res.skipped.length} is atlandi`);
     },
     onError: (e: any) => toast.error(e?.response?.data?.message || e?.message || 'Gece akisi baslatilamadi'),
@@ -107,8 +108,9 @@ export default function PortalAutomationPanel({ focus = 'all' }: { focus?: Focus
 
   return (
     <div className="space-y-4">
-      <div className="grid grid-cols-2 lg:grid-cols-5 gap-3">
+      <div className="grid grid-cols-2 lg:grid-cols-6 gap-3">
         <Metric icon={Clock} label="Gece akisi" value={summary?.nightly?.time || '02:15'} sub="Her gece otomatik" />
+        <Metric icon={ServerCog} label="Sunucu runner" value={summary?.runner?.enabled ? 'Aktif' : 'Pasif'} sub={summary?.runner?.includeNightly ? 'Gece + manuel' : 'Manuel'} danger={!summary?.runner?.enabled} />
         <Metric icon={FileCheck2} label="e-Beyanname" value={summary?.credentials.eBeyannameReady ? 'Hazir' : 'Sifre yok'} sub="Mali musavir hesabi" danger={!summary?.credentials.eBeyannameReady} />
         <Metric icon={Mailbox} label="e-Tebligat" value={summary?.credentials.eTebligatTaxpayerCount || 0} sub="Sifreli mukellef" />
         <Metric icon={ShieldCheck} label="SGK" value={summary?.credentials.sgkTaxpayerCount || 0} sub="Sifreli mukellef" />
