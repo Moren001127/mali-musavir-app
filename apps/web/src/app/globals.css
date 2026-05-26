@@ -832,3 +832,13 @@ select option:hover {
   background-color: #2a1f12 !important;
   color: #d4b876 !important;
 }
+
+/* ─── Date input (native picker) dark tema ─── */
+/* Chrome/Edge/Firefox: native takvim popup'ı dark görünür */
+input[type="date"],
+input[type="datetime-local"],
+input[type="month"],
+input[type="week"],
+input[type="time"] {
+  color-scheme: dark;
+}

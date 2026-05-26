@@ -212,11 +212,10 @@ export default function BeyannamelerPage() {
   }, [allTaxpayers, kayitlar]);
 
   const periodOptions = useMemo(() => {
-    // Mevcut beyan kayıtlarından dönemler
     const fromRecords = new Set(kayitlar.map((k) => k.donem).filter(Boolean));
-    // Kayıt olmasa bile son 24 ay + sonraki 3 ay default seçilebilir olsun
+    // Kayıt olmasa bile son 24 ay defaultta seçilebilir (sadece geçmiş + bu ay; ileri ay yok)
     const now = new Date();
-    for (let i = -3; i <= 24; i++) {
+    for (let i = 0; i <= 24; i++) {
       const d = new Date(now.getFullYear(), now.getMonth() - i, 1);
       const yyyy = d.getFullYear();
       const mm = String(d.getMonth() + 1).padStart(2, '0');
@@ -419,7 +418,7 @@ export default function BeyannamelerPage() {
         <div className="px-4 py-3 text-[12.5px] font-semibold flex items-center gap-2" style={{ background: 'rgba(255,255,255,0.035)', color: 'rgba(250,250,249,0.78)', borderBottom: '1px solid rgba(255,255,255,0.06)', borderRadius: '16px 16px 0 0' }}>
           <Search size={13} style={{ color: 'rgba(250,250,249,0.5)' }} /> Filtrele
         </div>
-        <div className="grid grid-cols-[minmax(220px,1fr)_repeat(auto-fit,minmax(150px,1fr))_auto] gap-2 p-4">
+        <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-2 p-4">
           <div className="relative">
             <Search size={16} className="absolute left-3 top-1/2 -translate-y-1/2" style={{ color: 'rgba(250,250,249,0.38)' }} />
             <input
