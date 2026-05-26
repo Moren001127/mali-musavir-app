@@ -199,15 +199,21 @@ function WorkflowOverview({ counts, total, activeCount }: { counts?: WorkflowCou
   );
 }
 
-function DashboardSectionBridge() {
+function DashboardSectionBridge({
+  from = 'İş Akışı',
+  to = 'Son Tarihler',
+}: {
+  from?: string;
+  to?: string;
+}) {
   return (
-    <div className="relative py-1">
-      <div className="absolute left-0 right-0 top-1/2 h-px" style={{ background: 'linear-gradient(90deg, transparent, rgba(212,184,118,0.32), rgba(245,166,184,0.26), transparent)' }} />
-      <div className="relative mx-auto flex w-fit items-center gap-2 rounded-full px-4 py-2 text-[11px] font-bold uppercase tracking-[.13em]" style={{ background: 'rgba(15,13,11,0.92)', border: '1px solid rgba(212,184,118,0.18)', color: 'rgba(250,250,249,0.62)', boxShadow: '0 8px 28px rgba(0,0,0,0.28)' }}>
+    <div className="relative py-0.5">
+      <div className="absolute left-0 right-0 top-1/2 h-px" style={{ background: 'linear-gradient(90deg, transparent, rgba(125,211,252,0.28), rgba(245,166,184,0.2), transparent)' }} />
+      <div className="relative mx-auto flex w-fit items-center gap-2 rounded-full px-3.5 py-1.5 text-[10px] font-bold uppercase tracking-[.13em]" style={{ background: 'rgba(11,16,16,0.94)', border: '1px solid rgba(125,211,252,0.16)', color: 'rgba(250,250,249,0.58)', boxShadow: '0 8px 24px rgba(0,0,0,0.22)' }}>
         <span className="h-1.5 w-1.5 rounded-full" style={{ background: GOLD }} />
-        İş Akışı
+        {from}
         <ArrowRight size={13} style={{ color: 'rgba(250,250,249,0.38)' }} />
-        Son Tarihler
+        {to}
         <span className="h-1.5 w-1.5 rounded-full" style={{ background: '#f5a6b8' }} />
       </div>
     </div>
@@ -400,7 +406,7 @@ function ToplubeyannamePanel() {
               {selectedDonem}
             </div>
           </div>
-          <div className="space-y-2">
+          <div className="space-y-1.5">
             {beyanRows.map((r) => (
               <BeyanStatusRow key={r.beyanTipi} row={r} onNumberClick={openModal} />
             ))}
@@ -418,7 +424,7 @@ function ToplubeyannamePanel() {
               {selectedDonem}
             </div>
           </div>
-          <div className="space-y-2">
+          <div className="space-y-1.5">
             {yardimciRows.map((r) => (
               <BeyanStatusRow key={r.beyanTipi} row={r} onNumberClick={openModal} />
             ))}
@@ -457,12 +463,12 @@ function BeyanStatusRow({
 
   return (
     <div
-      className="grid gap-4 rounded-xl px-4 py-3 transition-all xl:grid-cols-[minmax(170px,.82fr)_minmax(430px,1.8fr)_minmax(190px,.7fr)]"
+      className="grid gap-3 rounded-lg px-3.5 py-2.5 transition-all xl:grid-cols-[minmax(160px,.78fr)_minmax(410px,1.78fr)_minmax(180px,.66fr)]"
       style={{ background: row.hatali > 0 ? 'rgba(244,114,182,0.035)' : row.kalan > 0 ? 'rgba(125,211,252,0.035)' : 'rgba(34,197,94,0.026)', border: `1px solid ${row.hatali > 0 ? 'rgba(244,114,182,0.22)' : row.kalan > 0 ? 'rgba(125,211,252,0.22)' : 'rgba(34,197,94,0.18)'}` }}
     >
       <div className="min-w-0">
-        <div className="text-[15px] font-bold leading-tight" style={{ color: GOLD }}>{label}</div>
-        <div className="mt-1 text-[12px]" style={{ color: 'rgba(250,250,249,0.45)' }}>{row.toplam} mükellef takipte</div>
+        <div className="text-[14px] font-bold leading-tight" style={{ color: GOLD }}>{label}</div>
+        <div className="mt-0.5 text-[11px]" style={{ color: 'rgba(250,250,249,0.45)' }}>{row.toplam} mükellef takipte</div>
       </div>
 
       <div className="grid min-w-0 grid-cols-5 overflow-hidden rounded-lg" style={{ background: 'rgba(255,255,255,0.026)', border: '1px solid rgba(255,255,255,0.055)' }}>
@@ -473,12 +479,12 @@ function BeyanStatusRow({
         <BeyanCount label="Kalan" value={row.kalan} color={row.kalan > 0 ? TRACK_BLUE : '#22c55e'} onClick={() => onNumberClick(row.beyanTipi, 'kalan')} />
       </div>
 
-      <div className="flex flex-col justify-center gap-2">
+      <div className="flex flex-col justify-center gap-1.5">
         <div className="flex items-center justify-between gap-2">
-          <span className="text-[12px] font-semibold" style={{ color: barColor }}>{statusLabel}</span>
-          <span className="text-[13px] font-bold tabular-nums" style={{ color: barColor, fontFamily: 'JetBrains Mono, monospace' }}>%{row.yuzde}</span>
+          <span className="text-[11px] font-semibold" style={{ color: barColor }}>{statusLabel}</span>
+          <span className="text-[12px] font-bold tabular-nums" style={{ color: barColor, fontFamily: 'JetBrains Mono, monospace' }}>%{row.yuzde}</span>
         </div>
-        <div className="h-2.5 overflow-hidden rounded-full" style={{ background: 'rgba(255,255,255,0.06)' }}>
+        <div className="h-2 overflow-hidden rounded-full" style={{ background: 'rgba(255,255,255,0.06)' }}>
           <div
             className="h-full rounded-full transition-all duration-500"
             style={{ width: `${Math.max(0, Math.min(100, row.yuzde))}%`, background: `linear-gradient(90deg, ${barColor}88, ${barColor})` }}
@@ -496,12 +502,12 @@ function BeyanCount({ label, value, color, onClick }: { label: string; value: nu
       type="button"
       disabled={!clickable}
       onClick={clickable ? onClick : undefined}
-      className="min-w-0 px-3 py-2 text-left transition disabled:cursor-default"
+      className="min-w-0 px-2.5 py-1.5 text-left transition disabled:cursor-default"
       style={{ background: clickable ? 'transparent' : 'rgba(255,255,255,0.012)', borderRight: '1px solid rgba(255,255,255,0.052)' }}
       title={clickable ? 'Mükellef listesini göster' : undefined}
     >
-      <div className="truncate text-[10px] font-bold uppercase tracking-[0.08em]" style={{ color: 'rgba(250,250,249,0.38)' }}>{label}</div>
-      <div className="mt-0.5 text-[18px] font-bold leading-none tabular-nums" style={{ color, fontFamily: 'JetBrains Mono, monospace' }}>{value}</div>
+      <div className="truncate text-[9.5px] font-bold uppercase tracking-[0.08em]" style={{ color: 'rgba(250,250,249,0.38)' }}>{label}</div>
+      <div className="mt-0.5 text-[16px] font-bold leading-none tabular-nums" style={{ color, fontFamily: 'JetBrains Mono, monospace' }}>{value}</div>
     </button>
   );
 }
@@ -1595,9 +1601,13 @@ export default function DashboardPage() {
 
       <BrifingKart userName={displayUserName(meUser)} />
 
+      <DashboardSectionBridge from="Brifing" to="Beyanname Takibi" />
+
       <div className="rounded-2xl overflow-hidden" style={{ background: 'linear-gradient(180deg, rgba(8,24,29,0.62), rgba(12,13,11,0.82))', border: '1px solid rgba(125,211,252,0.18)', boxShadow: '0 16px 42px rgba(0,0,0,0.18)' }}>
         <ToplubeyannameTable />
       </div>
+
+      <DashboardSectionBridge from="Beyanname Takibi" to="Bu Ay İş Akışı" />
 
       <WorkflowOverview counts={workflowCounts} total={workflowTotal} activeCount={activeCount || totalTx} />
 
