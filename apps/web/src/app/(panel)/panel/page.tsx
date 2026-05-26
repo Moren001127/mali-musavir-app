@@ -275,18 +275,40 @@ function DashboardSectionBridge({
   }[tone];
   return (
     <div
-      className="relative flex min-h-9 items-center gap-3 overflow-hidden rounded-xl px-3 py-1.5"
+      className="relative my-4 overflow-hidden rounded-2xl px-4 py-3 sm:px-6"
       style={{
-        background: `linear-gradient(90deg, transparent, ${tones.bg} 18%, rgba(255,255,255,0.012) 50%, ${tones.bg} 82%, transparent)`,
+        background: `linear-gradient(180deg, rgba(1,1,1,0.98), rgba(0,0,0,0.92)), linear-gradient(90deg, ${tones.bg}, rgba(255,255,255,0.016) 50%, ${tones.bg})`,
         border: `1px solid ${tones.border}`,
-        boxShadow: 'inset 0 1px 0 rgba(255,255,255,0.018)',
+        boxShadow: '0 22px 46px rgba(0,0,0,0.34), inset 0 1px 0 rgba(255,255,255,0.026)',
       }}
     >
-      <div className="h-px flex-1" style={{ background: `linear-gradient(90deg, transparent, ${tones.accent}66)` }} />
-      <span className="inline-flex items-center gap-2 rounded-full px-3 py-1 text-[9.5px] font-bold uppercase tracking-[.16em]" style={{ background: 'rgba(5,5,5,0.62)', border: `1px solid ${tones.border}`, color: tones.text }}>
-        {from} · {to}
-      </span>
-      <div className="h-px flex-1" style={{ background: `linear-gradient(90deg, ${tones.accent2}66, transparent)` }} />
+      <div className="pointer-events-none absolute inset-x-0 top-0 h-px" style={{ background: `linear-gradient(90deg, transparent, ${tones.accent}66, transparent)` }} />
+      <div className="pointer-events-none absolute inset-x-0 bottom-0 h-px" style={{ background: `linear-gradient(90deg, transparent, ${tones.accent2}55, transparent)` }} />
+      <div className="pointer-events-none absolute left-0 top-1/2 h-10 w-1 -translate-y-1/2 rounded-r-full" style={{ background: `linear-gradient(180deg, ${tones.accent}, ${tones.accent2})` }} />
+      <div className="pointer-events-none absolute right-0 top-1/2 h-10 w-1 -translate-y-1/2 rounded-l-full" style={{ background: `linear-gradient(180deg, ${tones.accent2}, ${tones.accent})` }} />
+
+      <div className="flex flex-col gap-3 sm:flex-row sm:items-center">
+        <div className="h-[3px] flex-1 rounded-full" style={{ background: `linear-gradient(90deg, transparent, ${tones.accent}, ${tones.accent2}88)` }} />
+        <div
+          className="flex min-w-0 flex-wrap items-center justify-center gap-2 rounded-2xl px-3 py-2 sm:flex-nowrap"
+          style={{
+            background: 'rgba(6,6,6,0.9)',
+            border: `1px solid ${tones.border}`,
+            boxShadow: `0 0 0 5px rgba(0,0,0,0.26), 0 0 28px ${tones.accent}1f`,
+          }}
+        >
+          <span className="rounded-xl px-3 py-1.5 text-[10px] font-black uppercase tracking-[.14em]" style={{ background: `${tones.bg}`, color: tones.text, border: `1px solid ${tones.border}` }}>
+            {from}
+          </span>
+          <span className="flex h-7 w-7 items-center justify-center rounded-full" style={{ background: 'rgba(255,255,255,0.035)', color: tones.accent, border: `1px solid ${tones.border}` }}>
+            <ArrowRight size={14} />
+          </span>
+          <span className="rounded-xl px-3 py-1.5 text-[10px] font-black uppercase tracking-[.14em]" style={{ background: `${tones.bg}`, color: tones.text, border: `1px solid ${tones.border}` }}>
+            {to}
+          </span>
+        </div>
+        <div className="h-[3px] flex-1 rounded-full" style={{ background: `linear-gradient(90deg, ${tones.accent}88, ${tones.accent2}, transparent)` }} />
+      </div>
     </div>
   );
 }
