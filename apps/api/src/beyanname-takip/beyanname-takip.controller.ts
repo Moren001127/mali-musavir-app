@@ -4,6 +4,7 @@ import {
 import { AuthGuard } from '@nestjs/passport';
 import { RolesGuard } from '../auth/guards/roles.guard';
 import { BeyannameTakipService, BeyanTipi } from './beyanname-takip.service';
+import type { DonemTuru } from './beyanname-takip.service';
 
 const GECERLI_TIPLER: BeyanTipi[] = [
   'KURUMLAR', 'GELIR',
@@ -33,20 +34,20 @@ export class BeyannameTakipController {
 
   // ── DONEM ÖZETİ (Dashboard tablosu için) ────────────
   @Get('ozet')
-  listOzet(@Req() req: any, @Query('donem') donem: string) {
+  listOzet(@Req() req: any, @Query('donem') donem: string, @Query('donemTuru') donemTuru?: string) {
     if (!donem || !/^\d{4}-\d{2}$/.test(donem)) {
       throw new BadRequestException('donem parametresi yyyy-mm formatında olmalı');
     }
-    return this.svc.listDonemOzet(req.user.tenantId, donem);
+    return this.svc.listDonemOzet(req.user.tenantId, donem, normalizeDonemTuru(donemTuru));
   }
 
   // ── DONEM DETAY (mükellef bazında tam liste) ────────
   @Get('detay')
-  listDetay(@Req() req: any, @Query('donem') donem: string) {
+  listDetay(@Req() req: any, @Query('donem') donem: string, @Query('donemTuru') donemTuru?: string) {
     if (!donem || !/^\d{4}-\d{2}$/.test(donem)) {
       throw new BadRequestException('donem parametresi yyyy-mm formatında olmalı');
     }
-    return this.svc.listDonemDetay(req.user.tenantId, donem);
+    return this.svc.listDonemDetay(req.user.tenantId, donem, normalizeDonemTuru(donemTuru));
   }
 
   // ── DURUM GÜNCELLEME (beyanname onay/red) ───────────
@@ -66,4 +67,8 @@ export class BeyannameTakipController {
     }
     return this.svc.upsertDurum(req.user.tenantId, taxpayerId, beyanTipi as BeyanTipi, donem, body);
   }
+}
+
+function normalizeDonemTuru(value?: string): DonemTuru {
+  return value === 'VERGI' ? 'VERGI' : 'VERILME';
 }

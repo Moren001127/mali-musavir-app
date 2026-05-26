@@ -1,6 +1,7 @@
 import { api } from './api';
 
 export type Period = 'AYLIK' | 'UCAYLIK' | null;
+export type DonemTuru = 'VERILME' | 'VERGI';
 export type BeyanTipi =
   | 'KURUMLAR' | 'GELIR' | 'KDV1' | 'KDV2'
   | 'KDV4' | 'KDV9015' | 'DAMGA' | 'MUHSGK' | 'MUHSGK2'
@@ -82,6 +83,7 @@ export interface OzetRow {
 
 export interface OzetResponse {
   donem: string;
+  donemTuru: DonemTuru;
   rows: OzetRow[];
 }
 
@@ -103,11 +105,11 @@ export const beyannameTakipApi = {
   upsertConfig: (taxpayerId: string, cfg: Partial<TaxpayerBeyanConfig>) =>
     api.put<TaxpayerBeyanConfig>(`/beyanname-takip/configs/${taxpayerId}`, cfg).then((r) => r.data),
 
-  listOzet: (donem: string) =>
-    api.get<OzetResponse>('/beyanname-takip/ozet', { params: { donem } }).then((r) => r.data),
+  listOzet: (donem: string, donemTuru: DonemTuru = 'VERILME') =>
+    api.get<OzetResponse>('/beyanname-takip/ozet', { params: { donem, donemTuru } }).then((r) => r.data),
 
-  listDetay: (donem: string) =>
-    api.get<DetayRow[]>('/beyanname-takip/detay', { params: { donem } }).then((r) => r.data),
+  listDetay: (donem: string, donemTuru: DonemTuru = 'VERILME') =>
+    api.get<DetayRow[]>('/beyanname-takip/detay', { params: { donem, donemTuru } }).then((r) => r.data),
 
   upsertDurum: (
     taxpayerId: string,

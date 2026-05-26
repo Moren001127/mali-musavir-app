@@ -30,7 +30,8 @@ import {
   UserRoundSearch,
   Workflow,
 } from 'lucide-react';
-import { beyannameTakipApi, BEYAN_ETIKETLER, OzetRow, BeyanTipi } from '@/lib/beyanname-takip';
+import { beyannameTakipApi, BEYAN_ETIKETLER } from '@/lib/beyanname-takip';
+import type { OzetRow, BeyanTipi, DonemTuru } from '@/lib/beyanname-takip';
 import Link from 'next/link';
 import { ReactNode, useEffect, useMemo, useState } from 'react';
 import { useMe } from '@/hooks/useAuth';
@@ -231,9 +232,275 @@ function AgentMini({ href, icon: Icon, name, stat, running }: { href: string; ic
 // Dönem seçici + beyanname/SGK/E-defter tabloları progress bar ile
 // ══════════════════════════════════════════════════════════
 type BeyanFilter = 'toplam' | 'onaylanan' | 'bekleyen' | 'hatali' | 'kalan';
-type ModalState = { beyanTipi: BeyanTipi; filter: BeyanFilter; donem: string } | null;
+type ModalState = { beyanTipi: BeyanTipi; filter: BeyanFilter; donem: string; donemTuru: DonemTuru } | null;
 
 function ToplubeyannameTable() {
+  return <ToplubeyannamePanel />;
+}
+
+function ToplubeyannamePanel() {
+  const [donem, setDonem] = useState<string>(() => {
+    const now = new Date();
+    return `${now.getFullYear()}-${String(now.getMonth() + 1).padStart(2, '0')}`;
+  });
+  const [donemTuru, setDonemTuru] = useState<DonemTuru>('VERILME');
+  const [modal, setModal] = useState<ModalState>(null);
+
+  const { data, isLoading, refetch } = useQuery({
+    queryKey: ['beyanname-ozet', donem, donemTuru],
+    queryFn: () => beyannameTakipApi.listOzet(donem, donemTuru),
+    staleTime: 5 * 60 * 1000,
+  });
+
+  const rows = data?.rows || [];
+  const openModal = (beyanTipi: BeyanTipi, filter: BeyanFilter) =>
+    setModal({ beyanTipi, filter, donem: data?.donem || donem, donemTuru });
+
+  const beyanTipleri: BeyanTipi[] = [
+    'KURUMLAR', 'GELIR',
+    'KDV1', 'KDV2', 'KDV4', 'KDV9015',
+    'DAMGA', 'POSET',
+    'MUHSGK', 'MUHSGK2',
+    'GGECICI', 'KGECICI',
+    'TURIZM', 'KONAKLAMA', 'OIV', 'GMSI',
+    'OTV1', 'OTV3A', 'OTV3B', 'OTV4',
+  ];
+  const beyanRows = rows.filter((r) => beyanTipleri.includes(r.beyanTipi) && r.toplam > 0);
+  const bildirgeRow = rows.find((r) => r.beyanTipi === 'BILDIRGE' && r.toplam > 0);
+  const edefterRow = rows.find((r) => r.beyanTipi === 'EDEFTER' && r.toplam > 0);
+  const activeRows = rows.filter((r) => r.toplam > 0);
+  const totals = activeRows.reduce(
+    (acc, row) => ({
+      toplam: acc.toplam + row.toplam,
+      onaylanan: acc.onaylanan + row.onaylanan,
+      bekleyen: acc.bekleyen + row.bekleyen,
+      hatali: acc.hatali + row.hatali,
+      kalan: acc.kalan + row.kalan,
+    }),
+    { toplam: 0, onaylanan: 0, bekleyen: 0, hatali: 0, kalan: 0 },
+  );
+  const totalYuzde = totals.toplam > 0 ? Math.round((totals.onaylanan / totals.toplam) * 100) : 0;
+  const selectedDonem = data?.donem || donem;
+  const modeLabel = donemTuru === 'VERILME' ? 'Verilme dönemi' : 'Vergi dönemi';
+  const modeNote = donemTuru === 'VERILME'
+    ? 'Seçilen ayda verilmesi gerekenler'
+    : 'Seçilen vergi dönemine ait olanlar';
+
+  const donemOptions = useMemo(() => {
+    const now = new Date();
+    const arr: { value: string; label: string }[] = [];
+    const aylar = ['Ocak', 'Şubat', 'Mart', 'Nisan', 'Mayıs', 'Haziran', 'Temmuz', 'Ağustos', 'Eylül', 'Ekim', 'Kasım', 'Aralık'];
+    for (let i = 0; i < 12; i++) {
+      const d = new Date(now.getFullYear(), now.getMonth() - i, 1);
+      const v = `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}`;
+      arr.push({ value: v, label: `${d.getFullYear()}/${aylar[d.getMonth()]}` });
+    }
+    return arr;
+  }, []);
+
+  return (
+    <div>
+      <div className="px-5 py-5" style={{ borderBottom: '1px solid rgba(255,255,255,0.05)' }}>
+        <div className="flex flex-wrap items-start justify-between gap-4">
+          <div className="min-w-0">
+            <div className="flex items-center gap-2.5">
+              <span className="flex h-9 w-9 items-center justify-center rounded-lg" style={{ background: 'rgba(212,184,118,0.10)', border: '1px solid rgba(212,184,118,0.18)', color: GOLD }}>
+                <FileCheck2 size={17} />
+              </span>
+              <div>
+                <h3 className="text-[18px] font-semibold leading-tight" style={{ color: '#fafaf9' }}>Beyanname Durum Takibi</h3>
+                <p className="mt-1 text-[12.5px]" style={{ color: 'rgba(250,250,249,0.48)' }}>{modeLabel} - {selectedDonem} - {modeNote}</p>
+              </div>
+            </div>
+          </div>
+          <div className="flex flex-wrap items-center justify-end gap-2">
+            <div className="inline-flex rounded-lg p-1" style={{ background: 'rgba(255,255,255,0.035)', border: '1px solid rgba(255,255,255,0.08)' }}>
+              {([
+                ['VERILME', 'Verilme dönemi'],
+                ['VERGI', 'Vergi dönemi'],
+              ] as const).map(([value, label]) => (
+                <button
+                  key={value}
+                  type="button"
+                  onClick={() => setDonemTuru(value)}
+                  className="rounded-md px-3 py-1.5 text-[12px] font-semibold transition"
+                  style={{
+                    background: donemTuru === value ? 'rgba(212,184,118,0.16)' : 'transparent',
+                    color: donemTuru === value ? GOLD : 'rgba(250,250,249,0.58)',
+                    border: donemTuru === value ? '1px solid rgba(212,184,118,0.28)' : '1px solid transparent',
+                  }}
+                >
+                  {label}
+                </button>
+              ))}
+            </div>
+            <select
+              value={donem}
+              onChange={(e) => setDonem(e.target.value)}
+              className="min-h-[36px] cursor-pointer rounded-lg px-3 text-[13px] font-semibold outline-none"
+              style={{ background: 'rgba(255,255,255,0.04)', border: '1px solid rgba(184,160,111,0.25)', color: '#fafaf9' }}
+            >
+              {donemOptions.map((o) => (
+                <option key={o.value} value={o.value} style={{ background: '#1a1814' }}>{o.label}</option>
+              ))}
+            </select>
+            <button
+              onClick={() => refetch()}
+              className="inline-flex min-h-[36px] items-center gap-1.5 rounded-lg px-3 text-[12px] font-semibold transition-all"
+              style={{ background: 'rgba(184,160,111,0.12)', border: '1px solid rgba(184,160,111,0.3)', color: GOLD }}
+            >
+              <SearchIcon size={13} /> Sorgula
+            </button>
+            <Link
+              href="/panel/ayarlar/beyanname-takip"
+              className="inline-flex min-h-[36px] items-center gap-1.5 rounded-lg px-3 text-[12px] font-semibold transition-all"
+              style={{ background: 'rgba(255,255,255,0.03)', border: '1px solid rgba(255,255,255,0.08)', color: 'rgba(250,250,249,0.75)' }}
+            >
+              <Settings size={13} /> Ayarlar
+            </Link>
+          </div>
+        </div>
+
+        <div className="mt-5 grid grid-cols-2 gap-2 md:grid-cols-5">
+          <BeyanMetric label="Toplam" value={totals.toplam} color="#fafaf9" sub={`${activeRows.length} takip kalemi`} />
+          <BeyanMetric label="Onaylanan" value={totals.onaylanan} color="#22c55e" />
+          <BeyanMetric label="Bekleyen" value={totals.bekleyen} color="#f59e0b" />
+          <BeyanMetric label="Hatalı" value={totals.hatali} color="#ef4444" />
+          <BeyanMetric label="Kalan" value={totals.kalan} color={totals.kalan > 0 ? '#f59e0b' : '#22c55e'} sub={`%${totalYuzde} tamam`} />
+        </div>
+      </div>
+
+      {isLoading && (
+        <div className="px-5 py-12 text-center text-[13px]" style={{ color: 'rgba(250,250,249,0.45)' }}>
+          Yükleniyor...
+        </div>
+      )}
+
+      {!isLoading && beyanRows.length === 0 && !bildirgeRow && !edefterRow && (
+        <div className="px-5 py-10 text-center">
+          <p className="text-[12.5px]" style={{ color: 'rgba(250,250,249,0.45)' }}>
+            Bu dönem için takip edilecek beyanname bulunmadı.
+          </p>
+          <p className="text-[11px] mt-1.5" style={{ color: 'rgba(250,250,249,0.3)' }}>
+            Mükellef kartlarındaki beyanname dönemleri ve türleri kontrol edilmeli.
+          </p>
+        </div>
+      )}
+
+      {beyanRows.length > 0 && (
+        <div className="px-5 py-4">
+          <div className="mb-3 flex items-center justify-between gap-3">
+            <div className="text-[12px] font-bold uppercase tracking-[0.13em]" style={{ color: 'rgba(250,250,249,0.45)' }}>
+              Beyannameler
+            </div>
+            <div className="text-[12px] font-semibold" style={{ color: 'rgba(250,250,249,0.55)' }}>
+              {selectedDonem}
+            </div>
+          </div>
+          <div className="space-y-2">
+            {beyanRows.map((r) => (
+              <BeyanStatusRow key={r.beyanTipi} row={r} onNumberClick={openModal} />
+            ))}
+          </div>
+        </div>
+      )}
+
+      {(bildirgeRow || edefterRow) && (
+        <div className="grid grid-cols-1 gap-3 px-5 pb-5 lg:grid-cols-2">
+          {bildirgeRow && (
+            <BeyanStatusRow row={bildirgeRow} title="Bildirge" compact onNumberClick={openModal} />
+          )}
+          {edefterRow && (
+            <BeyanStatusRow row={edefterRow} title="E-Defter" compact onNumberClick={openModal} />
+          )}
+        </div>
+      )}
+
+      {modal && <BeyanDetayModal state={modal} onClose={() => setModal(null)} />}
+    </div>
+  );
+}
+
+function BeyanMetric({ label, value, color, sub }: { label: string; value: number; color: string; sub?: string }) {
+  return (
+    <div
+      className="min-h-[76px] rounded-xl px-4 py-3 text-left"
+      style={{ background: 'rgba(255,255,255,0.025)', border: '1px solid rgba(255,255,255,0.06)' }}
+    >
+      <div className="text-[10.5px] font-bold uppercase tracking-[0.12em]" style={{ color: 'rgba(250,250,249,0.42)' }}>{label}</div>
+      <div className="mt-1 text-[28px] font-bold leading-none tabular-nums" style={{ color, fontFamily: 'Fraunces, serif' }}>{value}</div>
+      {sub && <div className="mt-1 text-[11px]" style={{ color: 'rgba(250,250,249,0.42)' }}>{sub}</div>}
+    </div>
+  );
+}
+
+function BeyanStatusRow({
+  row,
+  title,
+  compact,
+  onNumberClick,
+}: {
+  row: OzetRow;
+  title?: string;
+  compact?: boolean;
+  onNumberClick: (tip: BeyanTipi, filter: BeyanFilter) => void;
+}) {
+  const label = title || BEYAN_ETIKETLER[row.beyanTipi];
+  const barColor = row.hatali > 0 ? '#ef4444' : row.kalan > 0 ? '#f59e0b' : '#22c55e';
+  const statusLabel = row.hatali > 0 ? 'Hata var' : row.kalan > 0 ? 'Devam ediyor' : 'Tamam';
+
+  return (
+    <div
+      className={`grid gap-4 rounded-xl px-4 py-3 transition-all lg:grid-cols-[minmax(170px,1fr)_minmax(360px,1.8fr)_minmax(190px,.9fr)] ${compact ? 'min-h-[118px]' : 'min-h-[92px]'}`}
+      style={{ background: 'rgba(255,255,255,0.025)', border: `1px solid ${row.kalan > 0 || row.hatali > 0 ? 'rgba(245,158,11,0.18)' : 'rgba(34,197,94,0.16)'}` }}
+    >
+      <div className="min-w-0">
+        <div className="text-[15px] font-bold leading-tight" style={{ color: GOLD }}>{label}</div>
+        <div className="mt-1 text-[12px]" style={{ color: 'rgba(250,250,249,0.45)' }}>{row.toplam} mükellef takipte</div>
+      </div>
+
+      <div className="grid grid-cols-2 gap-2 sm:grid-cols-5">
+        <BeyanCount label="Toplam" value={row.toplam} color="#fafaf9" onClick={() => onNumberClick(row.beyanTipi, 'toplam')} />
+        <BeyanCount label="Onay" value={row.onaylanan} color="#22c55e" onClick={() => onNumberClick(row.beyanTipi, 'onaylanan')} />
+        <BeyanCount label="Bekleyen" value={row.bekleyen} color="rgba(250,250,249,0.62)" onClick={() => onNumberClick(row.beyanTipi, 'bekleyen')} />
+        <BeyanCount label="Hatalı" value={row.hatali} color={row.hatali > 0 ? '#ef4444' : 'rgba(250,250,249,0.35)'} onClick={() => onNumberClick(row.beyanTipi, 'hatali')} />
+        <BeyanCount label="Kalan" value={row.kalan} color={row.kalan > 0 ? '#f59e0b' : '#22c55e'} onClick={() => onNumberClick(row.beyanTipi, 'kalan')} />
+      </div>
+
+      <div className="flex flex-col justify-center gap-2">
+        <div className="flex items-center justify-between gap-2">
+          <span className="text-[12px] font-semibold" style={{ color: barColor }}>{statusLabel}</span>
+          <span className="text-[13px] font-bold tabular-nums" style={{ color: barColor, fontFamily: 'JetBrains Mono, monospace' }}>%{row.yuzde}</span>
+        </div>
+        <div className="h-2.5 overflow-hidden rounded-full" style={{ background: 'rgba(255,255,255,0.06)' }}>
+          <div
+            className="h-full rounded-full transition-all duration-500"
+            style={{ width: `${Math.max(0, Math.min(100, row.yuzde))}%`, background: `linear-gradient(90deg, ${barColor}88, ${barColor})` }}
+          />
+        </div>
+      </div>
+    </div>
+  );
+}
+
+function BeyanCount({ label, value, color, onClick }: { label: string; value: number; color: string; onClick: () => void }) {
+  const clickable = value > 0;
+  return (
+    <button
+      type="button"
+      disabled={!clickable}
+      onClick={clickable ? onClick : undefined}
+      className="min-h-[52px] rounded-lg px-3 py-2 text-left transition disabled:cursor-default"
+      style={{ background: clickable ? 'rgba(255,255,255,0.035)' : 'rgba(255,255,255,0.018)', border: '1px solid rgba(255,255,255,0.055)' }}
+      title={clickable ? 'Mükellef listesini göster' : undefined}
+    >
+      <div className="text-[10px] font-bold uppercase tracking-[0.1em]" style={{ color: 'rgba(250,250,249,0.38)' }}>{label}</div>
+      <div className="mt-0.5 text-[18px] font-bold leading-none tabular-nums" style={{ color, fontFamily: 'JetBrains Mono, monospace' }}>{value}</div>
+    </button>
+  );
+}
+
+function ToplubeyannameTableLegacy() {
   // Varsayılan: içinde bulunduğumuz ay
   const [donem, setDonem] = useState<string>(() => {
     const now = new Date();
@@ -250,7 +517,7 @@ function ToplubeyannameTable() {
 
   const rows = data?.rows || [];
   const openModal = (beyanTipi: BeyanTipi, filter: BeyanFilter) =>
-    setModal({ beyanTipi, filter, donem });
+    setModal({ beyanTipi, filter, donem, donemTuru: 'VERILME' });
 
   // Tablo gruplamaları
   const beyanTipleri: BeyanTipi[] = [
@@ -500,10 +767,10 @@ function MiniTable({ title, row, donem, accent, onNumberClick }: { title: string
 // ══════════════════════════════════════════════════════════
 // BEYAN DETAY MODAL — rakama tıklanınca açılır, filtreye göre mükellef listesi
 // ══════════════════════════════════════════════════════════
-function BeyanDetayModal({ state, onClose }: { state: { beyanTipi: BeyanTipi; filter: BeyanFilter; donem: string }; onClose: () => void }) {
+function BeyanDetayModal({ state, onClose }: { state: { beyanTipi: BeyanTipi; filter: BeyanFilter; donem: string; donemTuru: DonemTuru }; onClose: () => void }) {
   const { data: detay, isLoading } = useQuery({
-    queryKey: ['beyanname-detay', state.donem],
-    queryFn: () => beyannameTakipApi.listDetay(state.donem),
+    queryKey: ['beyanname-detay', state.donem, state.donemTuru],
+    queryFn: () => beyannameTakipApi.listDetay(state.donem, state.donemTuru),
     staleTime: 2 * 60 * 1000,
   });
 

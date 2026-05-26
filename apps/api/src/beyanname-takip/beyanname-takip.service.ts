@@ -26,6 +26,7 @@ export type BeyanTipi =
   | 'TURIZM';
 
 type Period = 'AYLIK' | 'UCAYLIK' | 'ON_BES_GUNLUK' | null;
+export type DonemTuru = 'VERILME' | 'VERGI';
 
 const ALL_BEYAN_TIPLERI: BeyanTipi[] = [
   'KURUMLAR', 'GELIR',
@@ -132,7 +133,7 @@ export class BeyannameTakipService {
    * Config'e göre mükelleflerin o dönem vermesi gereken beyannameler hesaplanır,
    * BeyanDurumu ile birleştirilir, beyan tipi bazında aggregate edilir.
    */
-  async listDonemOzet(tenantId: string, donem: string) {
+  async listDonemOzet(tenantId: string, donem: string, donemTuru: DonemTuru = 'VERILME') {
     // donem: "2026-03" formatı
     const [yilStr, ayStr] = donem.split('-');
     const yil = parseInt(yilStr, 10);
@@ -175,11 +176,11 @@ export class BeyannameTakipService {
     for (const tp of taxpayers) {
       if (!isTaxpayerActiveInPeriod(tp, yil, ay)) continue;
       const cfg = tp.beyanConfig || defaultConfig();
-      const beklenen = beklenenBeyanlar(cfg, yil, ay);
+      const beklenen = beklenenBeyanlar(cfg, yil, ay, donemTuru);
 
       for (const tip of beklenen) {
         agg[tip].toplam++;
-        const resolved = resolveBeyanState(durumMap, kayitMap, tp.id, tip, yil, ay, donem);
+        const resolved = resolveBeyanState(durumMap, kayitMap, tp.id, tip, yil, ay, donem, donemTuru);
         switch (resolved.durum) {
           case 'onaylandi': agg[tip].onaylanan++; break;
           case 'hatali':    agg[tip].hatali++; break;
@@ -195,7 +196,7 @@ export class BeyannameTakipService {
       yuzde: r.toplam > 0 ? Math.round(((r.onaylanan) / r.toplam) * 100) : 0,
     }));
 
-    return { donem, rows };
+    return { donem, donemTuru, rows };
   }
 
   /** Belirli bir mükellefin belirli bir beyannamesinin durumunu güncelle */
@@ -223,7 +224,7 @@ export class BeyannameTakipService {
   }
 
   /** Dönem detayı — her mükellef satırda, her beyan tipi sütun */
-  async listDonemDetay(tenantId: string, donem: string) {
+  async listDonemDetay(tenantId: string, donem: string, donemTuru: DonemTuru = 'VERILME') {
     const [yilStr, ayStr] = donem.split('-');
     const yil = parseInt(yilStr, 10);
     const ay = parseInt(ayStr, 10);
@@ -257,9 +258,9 @@ export class BeyannameTakipService {
       .filter((tp: any) => isTaxpayerActiveInPeriod(tp, yil, ay))
       .map((tp: any) => {
         const cfg = tp.beyanConfig || defaultConfig();
-        const beklenen = beklenenBeyanlar(cfg, yil, ay);
+        const beklenen = beklenenBeyanlar(cfg, yil, ay, donemTuru);
         const beyanlar = beklenen.map((tip) => {
-          const resolved = resolveBeyanState(durumMap, kayitMap, tp.id, tip, yil, ay, donem);
+          const resolved = resolveBeyanState(durumMap, kayitMap, tp.id, tip, yil, ay, donem, donemTuru);
           return {
             beyanTipi: tip,
             durum: resolved.durum,
@@ -330,10 +331,14 @@ function isTaxpayerActiveInPeriod(tp: any, yil: number, ay: number): boolean {
   return tp.isActive !== false;
 }
 
-function periodDue(period: Period | undefined, ay: number): boolean {
+function periodDue(period: Period | undefined, ay: number, donemTuru: DonemTuru): boolean {
   if (period === 'AYLIK' || period === 'ON_BES_GUNLUK') return true;
-  if (period === 'UCAYLIK') return [3, 6, 9, 12].includes(ay);
+  if (period === 'UCAYLIK') return (donemTuru === 'VERGI' ? [3, 6, 9, 12] : [1, 4, 7, 10]).includes(ay);
   return false;
+}
+
+function posetDue(ay: number, donemTuru: DonemTuru): boolean {
+  return (donemTuru === 'VERGI' ? [3, 6, 9, 12] : [1, 4, 7, 10]).includes(ay);
 }
 
 function previousMonth(yil: number, ay: number) {
@@ -369,8 +374,9 @@ function resolveBeyanState(
   yil: number,
   ay: number,
   donem: string,
+  donemTuru: DonemTuru,
 ) {
-  for (const candidate of lookupKeysForExpected(tip, yil, ay, donem)) {
+  for (const candidate of lookupKeysForExpected(tip, yil, ay, donem, donemTuru)) {
     const key = `${taxpayerId}::${candidate.tip}::${candidate.donem}`;
     const durumKaydi = durumIndex.get(key);
     const beyanKaydi = kayitIndex.get(key);
@@ -383,21 +389,19 @@ function resolveBeyanState(
   return { durum: 'kalan', durumKaydi: null, beyanKaydi: null };
 }
 
-function lookupKeysForExpected(tip: BeyanTipi, yil: number, ay: number, donem: string) {
+function lookupKeysForExpected(tip: BeyanTipi, yil: number, ay: number, donem: string, donemTuru: DonemTuru) {
   const prev = previousMonth(yil, ay);
   const tipler = new Set<string>([tip]);
   if (tip === 'GGECICI' || tip === 'KGECICI') tipler.add('GECICI_VERGI');
   if (tip === 'MUHSGK2') tipler.add('MUHSGK');
 
-  const donemler = new Set<string>([donem]);
+  const donemler = new Set<string>();
   if (tip === 'KURUMLAR' || tip === 'GELIR' || tip === 'GMSI') {
-    donemler.add(`${yil - 1}-YIL`);
-    donemler.add(`${yil}-YIL`);
+    donemler.add(donemTuru === 'VERGI' ? `${yil}-YIL` : `${yil - 1}-YIL`);
   } else if (tip === 'GGECICI' || tip === 'KGECICI') {
-    donemler.add(quarterDonem(yil, ay));
-    donemler.add(quarterDonem(prev.yil, prev.ay));
+    donemler.add(donemTuru === 'VERGI' ? quarterDonem(yil, ay) : quarterDonem(prev.yil, prev.ay));
   } else {
-    donemler.add(monthDonem(prev.yil, prev.ay));
+    donemler.add(donemTuru === 'VERGI' ? donem : monthDonem(prev.yil, prev.ay));
   }
 
   const keys: Array<{ tip: string; donem: string }> = [];
@@ -417,51 +421,51 @@ function lookupKeysForExpected(tip: BeyanTipi, yil: number, ay: number, donem: s
  * Gelir: sadece Mart (3. ay)
  * E-Defter aylık: her ay; 3 aylık: 3/6/9/12
  */
-function beklenenBeyanlar(cfg: any, yil: number, ay: number): BeyanTipi[] {
+function beklenenBeyanlar(cfg: any, yil: number, ay: number, donemTuru: DonemTuru): BeyanTipi[] {
   const tipler: BeyanTipi[] = [];
 
   // KDV1
   if (cfg.kdv1Period === 'AYLIK') tipler.push('KDV1');
-  else if (cfg.kdv1Period === 'UCAYLIK' && [3, 6, 9, 12].includes(ay)) tipler.push('KDV1');
+  else if (periodDue(cfg.kdv1Period, ay, donemTuru)) tipler.push('KDV1');
 
   // KDV2 (her ay, tevkifat aylık zorunlu)
   if (cfg.kdv2Enabled) tipler.push('KDV2');
-  if (periodDue(cfg.kdv4Period, ay)) tipler.push('KDV4');
-  if (periodDue(cfg.kdv9015Period, ay)) tipler.push('KDV9015');
+  if (periodDue(cfg.kdv4Period, ay, donemTuru)) tipler.push('KDV4');
+  if (periodDue(cfg.kdv9015Period, ay, donemTuru)) tipler.push('KDV9015');
 
   // Muhtasar/MUHSGK
   if (cfg.muhtasarPeriod === 'AYLIK') tipler.push('MUHSGK');
-  else if (cfg.muhtasarPeriod === 'UCAYLIK' && [3, 6, 9, 12].includes(ay)) tipler.push('MUHSGK');
-  if (periodDue(cfg.muhtasar2Period, ay)) tipler.push('MUHSGK2');
-  if (periodDue(cfg.gelirGeciciPeriod, ay)) tipler.push('GGECICI');
-  if (periodDue(cfg.kurumGeciciPeriod, ay)) tipler.push('KGECICI');
+  else if (periodDue(cfg.muhtasarPeriod, ay, donemTuru)) tipler.push('MUHSGK');
+  if (periodDue(cfg.muhtasar2Period, ay, donemTuru)) tipler.push('MUHSGK2');
+  if (periodDue(cfg.gelirGeciciPeriod, ay, donemTuru)) tipler.push('GGECICI');
+  if (periodDue(cfg.kurumGeciciPeriod, ay, donemTuru)) tipler.push('KGECICI');
 
   // Damga (sürekli mükellef → aylık)
   if (cfg.damgaEnabled) tipler.push('DAMGA');
 
   // Poşet (3 aylık — 1/4/7/10)
-  if (cfg.posetEnabled && [1, 4, 7, 10].includes(ay)) tipler.push('POSET');
+  if (cfg.posetEnabled && posetDue(ay, donemTuru)) tipler.push('POSET');
 
   // SGK Bildirge (aylık, MUHSGK zaten birleşik ama ayrı bildirgeler için)
   if (cfg.sgkBildirgeEnabled) tipler.push('BILDIRGE');
 
   // E-Defter
   if (cfg.eDefterPeriod === 'AYLIK') tipler.push('EDEFTER');
-  else if (cfg.eDefterPeriod === 'UCAYLIK' && [3, 6, 9, 12].includes(ay)) tipler.push('EDEFTER');
-  if (periodDue(cfg.otv1Period, ay)) tipler.push('OTV1');
-  if (periodDue(cfg.otv3aPeriod, ay)) tipler.push('OTV3A');
-  if (periodDue(cfg.otv3bPeriod, ay)) tipler.push('OTV3B');
-  if (periodDue(cfg.otv4Period, ay)) tipler.push('OTV4');
+  else if (periodDue(cfg.eDefterPeriod, ay, donemTuru)) tipler.push('EDEFTER');
+  if (periodDue(cfg.otv1Period, ay, donemTuru)) tipler.push('OTV1');
+  if (periodDue(cfg.otv3aPeriod, ay, donemTuru)) tipler.push('OTV3A');
+  if (periodDue(cfg.otv3bPeriod, ay, donemTuru)) tipler.push('OTV3B');
+  if (periodDue(cfg.otv4Period, ay, donemTuru)) tipler.push('OTV4');
   if (cfg.konaklamaEnabled) tipler.push('KONAKLAMA');
   if (cfg.oivEnabled) tipler.push('OIV');
-  if (cfg.gmsiEnabled && ay === 3) tipler.push('GMSI');
-  if (periodDue(cfg.turizmPeriod, ay)) tipler.push('TURIZM');
+  if (cfg.gmsiEnabled && (donemTuru === 'VERGI' ? ay === 12 : ay === 3)) tipler.push('GMSI');
+  if (periodDue(cfg.turizmPeriod, ay, donemTuru)) tipler.push('TURIZM');
 
   // Kurumlar (sadece Nisan — önceki yıla ait)
-  if (cfg.incomeTaxType === 'KURUMLAR' && ay === 4) tipler.push('KURUMLAR');
+  if (cfg.incomeTaxType === 'KURUMLAR' && (donemTuru === 'VERGI' ? ay === 12 : ay === 4)) tipler.push('KURUMLAR');
 
   // Gelir (sadece Mart — önceki yıla ait)
-  if (cfg.incomeTaxType === 'GELIR' && ay === 3) tipler.push('GELIR');
+  if (cfg.incomeTaxType === 'GELIR' && (donemTuru === 'VERGI' ? ay === 12 : ay === 3)) tipler.push('GELIR');
 
   return tipler;
 }
