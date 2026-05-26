@@ -427,11 +427,11 @@ export default function BeyannamelerPage() {
             <option value="eksik">Belgesi eksik</option>
           </SelectBox>
           <SelectBox icon={CalendarDays} value={periodStart} onChange={setPeriodStart}>
-            <option value="">İlk dönem</option>
+            <option value="">Tüm dönemler (başlangıç)</option>
             {periodOptions.map((p) => <option key={p} value={p}>{fmtDonem(p)}</option>)}
           </SelectBox>
           <SelectBox icon={CalendarDays} value={periodEnd} onChange={setPeriodEnd}>
-            <option value="">Son dönem</option>
+            <option value="">Tüm dönemler (bitiş)</option>
             {periodOptions.map((p) => <option key={p} value={p}>{fmtDonem(p)}</option>)}
           </SelectBox>
           <button
@@ -451,7 +451,7 @@ export default function BeyannamelerPage() {
           <span className="w-1.5 h-1.5 rounded-full" style={{ background: '#7dd3fc' }} />
           Mali Müşavir Şifresiyle E-Beyannameleri Çek
         </div>
-        <div className="grid gap-3 p-4 lg:grid-cols-[1fr,1fr,auto,auto]">
+        <div className="grid gap-3 p-4 lg:grid-cols-[1fr,1fr,auto]">
           <DateField label="Başlangıç Tarihi" value={pullFrom} onChange={setPullFrom} />
           <DateField label="Bitiş Tarihi" value={pullTo} onChange={setPullTo} />
           <button
@@ -464,16 +464,7 @@ export default function BeyannamelerPage() {
             {pullMut.isPending ? <Loader2 size={15} className="animate-spin" /> : <Upload size={15} />}
             Beyannameleri Çek
           </button>
-          <button
-            type="button"
-            onClick={() => pullMut.mutate()}
-            disabled={pullMut.isPending}
-            className="h-12 self-end rounded-[10px] px-5 text-[13px] font-bold inline-flex items-center justify-center gap-2"
-            style={{ background: 'rgba(34,197,94,0.12)', border: '1px solid rgba(34,197,94,0.28)', color: '#86efac', opacity: pullMut.isPending ? 0.65 : 1 }}
-          >
-            <Archive size={15} />
-            Yeni Beyanname Sitesinden Çek
-          </button>
+
         </div>
       </section>
 
@@ -497,21 +488,7 @@ export default function BeyannamelerPage() {
           </div>
           <div className="flex items-center gap-2">
             <span className="text-[12px] tabular-nums" style={{ color: 'rgba(250,250,249,0.5)' }}>{filtered.length} kayıt</span>
-            <button
-              type="button"
-              onClick={clearVisibleRecords}
-              disabled={filtered.length === 0 || bulkDeleteMut.isPending}
-              className="h-9 rounded-[9px] px-3 text-[12px] font-semibold inline-flex items-center gap-1.5"
-              style={{
-                background: 'rgba(244,63,94,0.08)',
-                border: '1px solid rgba(244,63,94,0.24)',
-                color: '#fb7185',
-                opacity: filtered.length === 0 || bulkDeleteMut.isPending ? 0.55 : 1,
-              }}
-            >
-              {bulkDeleteMut.isPending ? <Loader2 size={14} className="animate-spin" /> : <Trash2 size={14} />}
-              Görünenleri Temizle
-            </button>
+
           </div>
         </div>
 
@@ -522,8 +499,11 @@ export default function BeyannamelerPage() {
         ) : filtered.length === 0 ? (
           <div className="p-12 text-center">
             <FileQuestion size={34} className="mx-auto mb-3" style={{ color: 'rgba(250,250,249,0.24)' }} />
-            <p className="text-[14px]" style={{ color: 'rgba(250,250,249,0.58)' }}>Bu filtrelerle beyanname bulunamadı.</p>
-            <button type="button" onClick={clearFilters} className="mt-3 text-[13px] font-semibold" style={{ color: GOLD }}>
+            <p className="text-[14px] font-semibold" style={{ color: 'rgba(250,250,249,0.78)' }}>Henüz indirilmiş beyanname yok</p>
+            <p className="text-[12.5px] mt-1.5" style={{ color: 'rgba(250,250,249,0.5)' }}>
+              Üstteki <b style={{ color: GOLD }}>Beyannameleri Çek</b> ile mali müşavir şifresiyle e-Beyanname sisteminden indirin.
+            </p>
+            <button type="button" onClick={clearFilters} className="mt-3 text-[12.5px] font-semibold" style={{ color: GOLD }}>
               Filtreleri temizle
             </button>
           </div>
@@ -655,11 +635,17 @@ function SelectBox({ icon: Icon, value, onChange, children }: { icon: any; value
       <select
         value={value}
         onChange={(e) => onChange(e.target.value)}
-        className="w-full h-11 pl-9 pr-8 rounded-[10px] text-[13px] font-semibold outline-none appearance-none"
+        className="w-full h-11 pl-9 pr-8 rounded-[10px] text-[13px] font-semibold outline-none appearance-none beyan-select"
         style={{ background: 'rgba(0,0,0,0.18)', border: '1px solid rgba(255,255,255,0.08)', color: '#fafaf9' }}
       >
         {children}
       </select>
+      {/* Native dropdown menusunun (option list) koyu tema ile uyumlu olmasi icin
+          her option'a inline dark styling uygulanir. Chrome/Edge destekler. */}
+      <style jsx>{`
+        .beyan-select option { background-color: #1c1813; color: #fafaf9; }
+        .beyan-select option:checked { background-color: #2a1f12; color: #d4b876; }
+      `}</style>
     </label>
   );
 }
