@@ -811,3 +811,24 @@ input, textarea { caret-color: #d4b876; }
   letter-spacing: 0 !important;
   font-style: normal !important;
 }
+
+/* ─── Dark select option (native dropdown popup) ─── */
+/* Tüm <select> option'larında koyu arkaplan, beyaz yazı. Chrome/Edge/Firefox destekler. */
+select option {
+  background-color: #1c1813;
+  color: #fafaf9;
+}
+select option:checked,
+select option:hover {
+  background-color: #2a1f12;
+  color: #d4b876;
+}
+/* beyan-dark-select için açık vurgu */
+.beyan-dark-select option {
+  background-color: #1c1813 !important;
+  color: #fafaf9 !important;
+}
+.beyan-dark-select option:checked {
+  background-color: #2a1f12 !important;
+  color: #d4b876 !important;
+}

@@ -186,18 +186,29 @@ export default function BeyannamelerPage() {
     onError: (e: any) => toast.error(e?.message || 'Gece akışı başlatılamadı'),
   });
 
+  // Mükellef dropdown'u: TÜM aktif mükellefleri /taxpayers'tan çek
+  const { data: allTaxpayers = [] } = useQuery<any[]>({
+    queryKey: ['taxpayers-for-beyanname-filter'],
+    queryFn: () => api.get('/taxpayers').then((r) => r.data || []),
+  });
+
   const taxpayerOptions = useMemo(() => {
-    const map = new Map<string, { id: string; name: string; taxNumber: string }>();
+    const list = (allTaxpayers || []).map((t: any) => ({
+      id: t.id,
+      name: t.companyName || [t.firstName, t.lastName].filter(Boolean).join(' ') || '(isim yok)',
+      taxNumber: t.taxNumber || '',
+    }));
+    // Beyanname kayıtlarından da fallback ekle (filtreyle eşleşsin diye)
     for (const row of kayitlar) {
-      if (!row.taxpayerId) continue;
-      map.set(row.taxpayerId, {
+      if (!row.taxpayerId || list.some((x) => x.id === row.taxpayerId)) continue;
+      list.push({
         id: row.taxpayerId,
         name: beyanKaydiMukellefAdi(row),
         taxNumber: row.taxpayer?.taxNumber || '',
       });
     }
-    return Array.from(map.values()).sort((a, b) => a.name.localeCompare(b.name, 'tr'));
-  }, [kayitlar]);
+    return list.sort((a, b) => a.name.localeCompare(b.name, 'tr'));
+  }, [allTaxpayers, kayitlar]);
 
   const periodOptions = useMemo(() => {
     return Array.from(new Set(kayitlar.map((k) => k.donem).filter(Boolean)))
@@ -635,17 +646,11 @@ function SelectBox({ icon: Icon, value, onChange, children }: { icon: any; value
       <select
         value={value}
         onChange={(e) => onChange(e.target.value)}
-        className="w-full h-11 pl-9 pr-8 rounded-[10px] text-[13px] font-semibold outline-none appearance-none beyan-select"
+        className="w-full h-11 pl-9 pr-8 rounded-[10px] text-[13px] font-semibold outline-none appearance-none beyan-dark-select"
         style={{ background: 'rgba(0,0,0,0.18)', border: '1px solid rgba(255,255,255,0.08)', color: '#fafaf9' }}
       >
         {children}
       </select>
-      {/* Native dropdown menusunun (option list) koyu tema ile uyumlu olmasi icin
-          her option'a inline dark styling uygulanir. Chrome/Edge destekler. */}
-      <style jsx>{`
-        .beyan-select option { background-color: #1c1813; color: #fafaf9; }
-        .beyan-select option:checked { background-color: #2a1f12; color: #d4b876; }
-      `}</style>
     </label>
   );
 }
