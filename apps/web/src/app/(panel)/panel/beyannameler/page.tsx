@@ -419,7 +419,7 @@ export default function BeyannamelerPage() {
         <div className="px-4 py-3 text-[12.5px] font-semibold flex items-center gap-2" style={{ background: 'rgba(255,255,255,0.035)', color: 'rgba(250,250,249,0.78)', borderBottom: '1px solid rgba(255,255,255,0.06)', borderRadius: '16px 16px 0 0' }}>
           <Search size={13} style={{ color: 'rgba(250,250,249,0.5)' }} /> Filtrele
         </div>
-        <div className="grid xl:grid-cols-[minmax(260px,1fr),260px,180px,180px,180px,180px,auto] gap-2 p-4">
+        <div className="grid grid-cols-[minmax(220px,1fr)_repeat(auto-fit,minmax(150px,1fr))_auto] gap-2 p-4">
           <div className="relative">
             <Search size={16} className="absolute left-3 top-1/2 -translate-y-1/2" style={{ color: 'rgba(250,250,249,0.38)' }} />
             <input
