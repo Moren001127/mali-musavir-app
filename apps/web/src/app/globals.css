@@ -9,36 +9,8 @@
    Sıcak, kurumsal, karakterli
    ══════════════════════════════════════════════════════════ */
 
-/* ─── TEMA A: Moren Yumuşak Antrasit (Varsayılan · 26 May 2026) ─── */
-/* Mevcut dark vibe korunur, ancak siyahtan 3 ton açılır — bunaltmaz. */
+/* ─── TEMA A: Moren Dark-Gold (Varsayılan · Yeni 2026) ─── */
 :root, [data-theme="A"] {
-  --bg:           #2a2e38;
-  --surface:      #2d323e;
-  --surface-2:    #353a45;
-  --surface-3:    #3d424f;
-  --card-bg:      #2d323e;
-  --border:       #404553;
-  --border-soft:  #353a45;
-  --border-hover: #565b6a;
-  --accent:       #d4b876;
-  --accent-soft:  #b8a06f;
-  --accent-light: rgba(212,184,118,0.14);
-  --accent-50:    rgba(212,184,118,0.06);
-  --gold-accent:  #d4b876;
-  --gold-deep:    #8b7649;
-  --text:           #f5f5f5;
-  --text-primary:   #f5f5f5;
-  --text-secondary: rgba(245,245,245,0.72);
-  --text-muted:     rgba(245,245,245,0.55);
-  --text-light:     rgba(245,245,245,0.36);
-  --text-serif:     #f5f5f5;
-  --font-heading: 'Fraunces', Georgia, serif;
-  --font-body:    'Inter', system-ui, sans-serif;
-  --font-mono:    'JetBrains Mono', 'Roboto Mono', monospace;
-}
-
-/* ─── TEMA A-DARK: Eski Moren Dark-Gold (geri dönüş için saklandı) ─── */
-[data-theme="A-DARK"] {
   --bg:           #17130f;
   --surface:      #1c1813;
   --surface-2:    #221d17;
