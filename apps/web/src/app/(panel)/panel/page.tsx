@@ -126,75 +126,82 @@ function WorkflowOverview({ counts, total, activeCount }: { counts?: WorkflowCou
   const c = counts || EMPTY_WORKFLOW_COUNTS;
   const scopedTotal = total || Object.values(c).reduce((sum, v) => sum + (Number(v) || 0), 0);
   const activeWork = c.islenme + c.kontrol + c.beyanname;
-  const waiting = c.evrak;
   const completed = c.tamam;
   const outside = Math.max(activeCount - scopedTotal, 0);
 
   return (
     <div className="rounded-2xl overflow-hidden" style={{ background: 'linear-gradient(180deg, rgba(13,18,17,0.78), rgba(9,10,9,0.56))', border: '1px solid rgba(156,200,166,0.15)' }}>
-      <div className="flex flex-wrap items-center justify-between gap-3 px-4 py-3.5" style={{ borderBottom: '1px solid rgba(255,255,255,0.05)' }}>
+      <div className="flex flex-wrap items-center justify-between gap-3 px-4 py-2.5" style={{ borderBottom: '1px solid rgba(255,255,255,0.05)' }}>
         <div className="flex items-center gap-2.5">
           <span className="w-[3px] h-4 rounded-sm" style={{ background: GOLD }} />
           <div>
-            <h3 className="text-[13.5px] font-semibold" style={{ color: '#fafaf9' }}>Bu Ay İş Akışı</h3>
-            <p className="text-[11px] mt-0.5" style={{ color: 'rgba(250,250,249,0.42)' }}>
-              {scopedTotal} mükellef iş akışında · {activeCount} aktif mükellef listede
+            <h3 className="text-[13px] font-semibold" style={{ color: '#fafaf9' }}>Bu Ay İş Akışı</h3>
+            <p className="text-[10.5px] mt-0.5" style={{ color: 'rgba(250,250,249,0.42)' }}>
+              {scopedTotal} mükellef iş akışında · {activeCount} aktif
             </p>
           </div>
         </div>
-        <div className="flex flex-wrap items-center gap-2">
-          <span className="text-[11px] font-semibold px-2.5 py-1 rounded-md" style={{ background: 'rgba(212,184,118,0.10)', border: '1px solid rgba(212,184,118,0.25)', color: GOLD }}>
-            {activeWork} aktif iş
+        <div className="flex flex-wrap items-center gap-1.5">
+          <span className="text-[10.5px] font-semibold px-2 py-0.5 rounded-md" style={{ background: 'rgba(212,184,118,0.10)', border: '1px solid rgba(212,184,118,0.25)', color: GOLD }}>
+            {activeWork} aktif
           </span>
-          <span className="text-[11px] font-semibold px-2.5 py-1 rounded-md" style={{ background: 'rgba(134,169,123,0.10)', border: '1px solid rgba(134,169,123,0.24)', color: '#a8c59f' }}>
+          <span className="text-[10.5px] font-semibold px-2 py-0.5 rounded-md" style={{ background: 'rgba(134,169,123,0.10)', border: '1px solid rgba(134,169,123,0.24)', color: '#a8c59f' }}>
             {completed} tamam
           </span>
           {outside > 0 && (
-            <span className="text-[11px] font-semibold px-2.5 py-1 rounded-md" style={{ background: 'rgba(255,255,255,0.04)', border: '1px solid rgba(255,255,255,0.08)', color: 'rgba(250,250,249,0.55)' }}>
-              {outside} akış dışında
+            <span className="text-[10.5px] font-semibold px-2 py-0.5 rounded-md" style={{ background: 'rgba(255,255,255,0.04)', border: '1px solid rgba(255,255,255,0.08)', color: 'rgba(250,250,249,0.55)' }}>
+              {outside} dışında
             </span>
           )}
         </div>
       </div>
 
-      <div className="grid grid-cols-1 sm:grid-cols-2 xl:grid-cols-5 gap-0">
-        {WORKFLOW_STEPS.map((step, index) => {
-          const value = c[step.key] || 0;
-          const pct = scopedTotal > 0 ? Math.round((value / scopedTotal) * 100) : 0;
-          const Icon = step.icon;
-          return (
-            <Link
-              key={step.key}
-              href={step.href}
-              className="group p-3.5 transition-all min-h-[112px] overflow-hidden"
-              style={{
-                borderRight: index < WORKFLOW_STEPS.length - 1 ? '1px solid rgba(255,255,255,0.05)' : undefined,
-                borderBottom: '1px solid rgba(255,255,255,0.03)',
-              }}
-              onMouseEnter={(e) => { e.currentTarget.style.background = step.bg; }}
-              onMouseLeave={(e) => { e.currentTarget.style.background = 'transparent'; }}
-            >
-              <div className="flex items-start justify-between gap-3">
-                <div className="w-8 h-8 rounded-xl flex items-center justify-center" style={{ background: step.bg, border: `1px solid ${step.border}`, color: step.color }}>
-                  <Icon size={15} />
+      {/* TEK SATIR SEGMENT BAR — eski 5 büyük kartın yerini aldı */}
+      <div className="px-4 py-3">
+        <div className="flex h-2 w-full overflow-hidden rounded-full" style={{ background: 'rgba(255,255,255,0.04)' }}>
+          {WORKFLOW_STEPS.map((step) => {
+            const value = c[step.key] || 0;
+            const pct = scopedTotal > 0 ? (value / scopedTotal) * 100 : 0;
+            if (pct <= 0) return null;
+            return (
+              <div
+                key={step.key}
+                title={`${step.label}: ${value} (${Math.round(pct)}%)`}
+                style={{ width: `${pct}%`, background: step.color, transition: 'width 0.4s' }}
+              />
+            );
+          })}
+        </div>
+
+        {/* Inline mini-cell satırı: ikon + sayı + label, tek satır */}
+        <div className="mt-3 grid grid-cols-5 gap-2">
+          {WORKFLOW_STEPS.map((step) => {
+            const value = c[step.key] || 0;
+            const pct = scopedTotal > 0 ? Math.round((value / scopedTotal) * 100) : 0;
+            const Icon = step.icon;
+            return (
+              <Link
+                key={step.key}
+                href={step.href}
+                className="group flex items-center gap-2 rounded-lg px-2 py-1.5 transition-all"
+                style={{ border: '1px solid rgba(255,255,255,0.05)' }}
+                onMouseEnter={(e) => { e.currentTarget.style.background = step.bg; e.currentTarget.style.borderColor = step.border; }}
+                onMouseLeave={(e) => { e.currentTarget.style.background = 'transparent'; e.currentTarget.style.borderColor = 'rgba(255,255,255,0.05)'; }}
+              >
+                <div className="w-7 h-7 rounded-md flex items-center justify-center flex-shrink-0" style={{ background: step.bg, border: `1px solid ${step.border}`, color: step.color }}>
+                  <Icon size={13} />
                 </div>
-                <span className="text-[10.5px] font-bold tabular-nums px-2 py-1 rounded-md" style={{ background: 'rgba(255,255,255,0.04)', color: 'rgba(250,250,249,0.55)' }}>
-                  %{pct}
-                </span>
-              </div>
-              <div className="mt-3.5">
-                <div className="text-[24px] leading-none tabular-nums" style={{ fontFamily: 'Fraunces, serif', fontWeight: 700, color: step.color }}>
-                  {value}
+                <div className="min-w-0 flex-1">
+                  <div className="flex items-baseline gap-1.5">
+                    <span className="text-[16px] leading-none tabular-nums font-bold" style={{ color: step.color, fontFamily: 'Fraunces, serif' }}>{value}</span>
+                    <span className="text-[9.5px] font-semibold tabular-nums" style={{ color: 'rgba(250,250,249,0.4)' }}>%{pct}</span>
+                  </div>
+                  <div className="text-[10.5px] font-medium truncate" style={{ color: '#fafaf9' }}>{step.label}</div>
                 </div>
-                <div className="text-[12px] font-semibold mt-2" style={{ color: '#fafaf9' }}>{step.label}</div>
-                <div className="text-[10.5px] mt-1" style={{ color: 'rgba(250,250,249,0.38)' }}>{step.sub}</div>
-              </div>
-              <div className="mt-3 h-1.5 rounded-full overflow-hidden" style={{ background: 'rgba(255,255,255,0.05)' }}>
-                <div className="h-full rounded-full transition-all" style={{ width: `${pct}%`, background: step.color }} />
-              </div>
-            </Link>
-          );
-        })}
+              </Link>
+            );
+          })}
+        </div>
       </div>
     </div>
   );
@@ -208,15 +215,12 @@ function DashboardSectionBridge({
   to?: string;
 }) {
   return (
-    <div className="relative py-0.5">
-      <div className="absolute left-0 right-0 top-1/2 h-px" style={{ background: 'linear-gradient(90deg, transparent, rgba(125,211,252,0.28), rgba(245,166,184,0.2), transparent)' }} />
-      <div className="relative mx-auto flex w-fit items-center gap-2 rounded-full px-3.5 py-1.5 text-[10px] font-bold uppercase tracking-[.13em]" style={{ background: 'rgba(11,16,16,0.94)', border: '1px solid rgba(125,211,252,0.16)', color: 'rgba(250,250,249,0.58)', boxShadow: '0 8px 24px rgba(0,0,0,0.22)' }}>
-        <span className="h-1.5 w-1.5 rounded-full" style={{ background: GOLD }} />
-        {from}
-        <ArrowRight size={13} style={{ color: 'rgba(250,250,249,0.38)' }} />
-        {to}
-        <span className="h-1.5 w-1.5 rounded-full" style={{ background: '#f5a6b8' }} />
-      </div>
+    <div className="relative flex items-center gap-3 py-1">
+      <div className="h-px flex-1" style={{ background: 'rgba(255,255,255,0.08)' }} />
+      <span className="text-[9.5px] font-semibold uppercase tracking-[.16em]" style={{ color: 'rgba(250,250,249,0.32)' }}>
+        {from} · {to}
+      </span>
+      <div className="h-px flex-1" style={{ background: 'rgba(255,255,255,0.08)' }} />
     </div>
   );
 }
