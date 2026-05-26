@@ -6,7 +6,13 @@ import { RolesGuard } from '../auth/guards/roles.guard';
 import { BeyannameTakipService, BeyanTipi } from './beyanname-takip.service';
 
 const GECERLI_TIPLER: BeyanTipi[] = [
-  'KURUMLAR', 'GELIR', 'KDV1', 'KDV2', 'DAMGA', 'MUHSGK', 'POSET', 'BILDIRGE', 'EDEFTER',
+  'KURUMLAR', 'GELIR',
+  'KDV1', 'KDV2', 'KDV4', 'KDV9015',
+  'DAMGA', 'MUHSGK', 'MUHSGK2',
+  'GGECICI', 'KGECICI',
+  'POSET', 'BILDIRGE', 'EDEFTER',
+  'OTV1', 'OTV3A', 'OTV3B', 'OTV4',
+  'KONAKLAMA', 'OIV', 'GMSI', 'TURIZM',
 ];
 
 @Controller('beyanname-takip')

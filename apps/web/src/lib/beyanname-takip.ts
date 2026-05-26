@@ -3,30 +3,59 @@ import { api } from './api';
 export type Period = 'AYLIK' | 'UCAYLIK' | null;
 export type BeyanTipi =
   | 'KURUMLAR' | 'GELIR' | 'KDV1' | 'KDV2'
-  | 'DAMGA' | 'MUHSGK' | 'POSET' | 'BILDIRGE' | 'EDEFTER';
+  | 'KDV4' | 'KDV9015' | 'DAMGA' | 'MUHSGK' | 'MUHSGK2'
+  | 'GGECICI' | 'KGECICI' | 'POSET' | 'BILDIRGE' | 'EDEFTER'
+  | 'OTV1' | 'OTV3A' | 'OTV3B' | 'OTV4'
+  | 'KONAKLAMA' | 'OIV' | 'GMSI' | 'TURIZM';
 
-export type BeyanDurum = 'beklemede' | 'onaylandi' | 'hatali' | 'muaf';
+export type BeyanDurum = 'beklemede' | 'onaylandi' | 'hatali' | 'muaf' | 'kalan';
 
 export const BEYAN_ETIKETLER: Record<BeyanTipi, string> = {
   KURUMLAR: 'Kurumlar',
   GELIR:    'Gelir',
   KDV1:     'KDV1',
   KDV2:     'KDV2',
+  KDV4:     'KDV4',
+  KDV9015:  'KDV9015',
   DAMGA:    'Damga',
   MUHSGK:   'MUHSGK',
+  MUHSGK2:  'MUHSGK2',
+  GGECICI:  'Gelir Geçici',
+  KGECICI:  'Kurum Geçici',
   POSET:    'Poşet',
   BILDIRGE: 'Bildirge',
   EDEFTER:  'E-Defter',
+  OTV1:     'ÖTV1',
+  OTV3A:    'ÖTV3A',
+  OTV3B:    'ÖTV3B',
+  OTV4:     'ÖTV4',
+  KONAKLAMA:'Konaklama',
+  OIV:      'ÖİV',
+  GMSI:     'GMSİ',
+  TURIZM:   'Turizm Payı',
 };
 
 export interface TaxpayerBeyanConfig {
   incomeTaxType: 'KURUMLAR' | 'GELIR' | 'BASIT_USUL' | null;
   kdv1Period: Period;
   kdv2Enabled: boolean;
+  kdv4Period?: Period;
+  kdv9015Period?: Period;
   muhtasarPeriod: Period;
+  muhtasar2Period?: Period;
+  gelirGeciciPeriod?: Period;
+  kurumGeciciPeriod?: Period;
+  otv1Period?: Period;
+  otv3aPeriod?: Period;
+  otv3bPeriod?: Period | 'ON_BES_GUNLUK';
+  otv4Period?: Period;
   damgaEnabled: boolean;
   posetEnabled: boolean;
   sgkBildirgeEnabled: boolean;
+  konaklamaEnabled?: boolean;
+  oivEnabled?: boolean;
+  gmsiEnabled?: boolean;
+  turizmPeriod?: Period;
   eDefterPeriod: Period;
   notes: string | null;
 }

@@ -37,7 +37,6 @@ import { useMe } from '@/hooks/useAuth';
 import { KritikUyariStatCard } from '@/components/dashboard/KritikUyariStatCard';
 import { BrifingKart } from '@/components/dashboard/BrifingKart';
 import { BuHaftaTakvim } from '@/components/dashboard/BuHaftaTakvim';
-import { MorenAiOzetWidget } from '@/components/dashboard/MorenAiOzetWidget';
 
 const GOLD = '#d4b876';
 
@@ -254,7 +253,15 @@ function ToplubeyannameTable() {
     setModal({ beyanTipi, filter, donem });
 
   // Tablo gruplamaları
-  const beyanTipleri: BeyanTipi[] = ['KURUMLAR', 'GELIR', 'KDV1', 'KDV2', 'DAMGA', 'POSET', 'MUHSGK'];
+  const beyanTipleri: BeyanTipi[] = [
+    'KURUMLAR', 'GELIR',
+    'KDV1', 'KDV2', 'KDV4', 'KDV9015',
+    'DAMGA', 'POSET',
+    'MUHSGK', 'MUHSGK2',
+    'GGECICI', 'KGECICI',
+    'TURIZM', 'KONAKLAMA', 'OIV', 'GMSI',
+    'OTV1', 'OTV3A', 'OTV3B', 'OTV4',
+  ];
   const beyanRows = rows.filter((r) => beyanTipleri.includes(r.beyanTipi) && r.toplam > 0);
   const bildirgeRow = rows.find((r) => r.beyanTipi === 'BILDIRGE' && r.toplam > 0);
   const edefterRow = rows.find((r) => r.beyanTipi === 'EDEFTER' && r.toplam > 0);
@@ -519,7 +526,7 @@ function BeyanDetayModal({ state, onClose }: { state: { beyanTipi: BeyanTipi; fi
           case 'onaylanan': return b.durum === 'onaylandi' ? row : null;
           case 'bekleyen':  return b.durum === 'beklemede' ? row : null;
           case 'hatali':    return b.durum === 'hatali' ? row : null;
-          case 'kalan':     return (b.durum === 'beklemede' || b.durum === 'hatali') ? row : null;
+          case 'kalan':     return b.durum === 'kalan' ? row : null;
           default: return null;
         }
       })
@@ -581,12 +588,14 @@ function BeyanDetayModal({ state, onClose }: { state: { beyanTipi: BeyanTipi; fi
                   beklemede: 'rgba(250,250,249,0.5)',
                   hatali:    '#ef4444',
                   muaf:      '#d4b876',
+                  kalan:     '#f59e0b',
                 };
                 const durumEtiket: Record<string, string> = {
                   onaylandi: 'Onaylandı',
                   beklemede: 'Bekliyor',
                   hatali:    'Hatalı',
                   muaf:      'Muaf',
+                  kalan:     'Kalan',
                 };
                 return (
                   <li key={tp.taxpayerId} className="px-3 py-2.5 flex items-center justify-between gap-3">
@@ -1313,13 +1322,14 @@ export default function DashboardPage() {
 
       <BrifingKart userName={displayUserName(meUser)} />
 
-      <MorenAiOzetWidget />
+      <div className="rounded-2xl overflow-hidden" style={{ background: 'rgba(255,255,255,0.02)', border: '1px solid rgba(212,184,118,0.16)' }}>
+        <ToplubeyannameTable />
+      </div>
 
       <WorkflowOverview counts={workflowCounts} total={workflowTotal} activeCount={activeCount || totalTx} />
 
       <DashboardSectionBridge />
 
-      {/* v1.36.81: ToplubeyannameTable kaldırıldı — Beyannameler ayrı sayfada (/panel/beyannameler) */}
       <BuHaftaTakvim />
       </div>
     </div>

@@ -122,12 +122,12 @@ const DIGER_GRUBU: BeyannameDef[] = [
 export function MukellefiyetlerCard({ taxpayerId }: { taxpayerId: string }) {
   const qc = useQueryClient();
 
-  const { data: configData, isLoading } = useQuery<{ items: any[] }>({
+  const { data: configData = [], isLoading } = useQuery<any[]>({
     queryKey: ['beyan-config-list'],
-    queryFn: () => api.get('/beyanname-takip/configs').then((r) => r.data).catch(() => ({ items: [] })),
+    queryFn: () => api.get('/beyanname-takip/configs').then((r) => Array.isArray(r.data) ? r.data : (r.data?.items || [])).catch(() => []),
   });
 
-  const existingConfig = configData?.items?.find((i: any) => i.taxpayerId === taxpayerId)?.config;
+  const existingConfig = configData.find((i: any) => i.taxpayerId === taxpayerId)?.config;
   const [form, setForm] = useState<BeyanConfig>(DEFAULT);
 
   useEffect(() => {
