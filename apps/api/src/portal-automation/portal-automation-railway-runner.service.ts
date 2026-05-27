@@ -731,6 +731,11 @@ export class PortalAutomationRailwayRunnerService implements OnModuleInit {
     inForm.append('method', 'base64');
     inForm.append('body', base64);
     inForm.append('json', '0');
+    // GIB CAPTCHA case-sensitive (genelde BUYUK HARF) — 2captcha varsayilan
+    // kucuk harf donduyor, bu yuzden regsense=1 zorunlu.
+    inForm.append('regsense', '1');
+    inForm.append('min_len', '4');
+    inForm.append('max_len', '6');
 
     const inRes = await fetch('https://2captcha.com/in.php', {
       method: 'POST',
