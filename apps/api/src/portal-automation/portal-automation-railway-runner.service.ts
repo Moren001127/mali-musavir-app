@@ -597,10 +597,144 @@ export class PortalAutomationRailwayRunnerService implements OnModuleInit {
     await page.keyboard.press('Enter');
   }
 
+  /**
+   * GIB e-Beyanname submit sonrasi sayfada CAPTCHA varsa, 2captcha API'sine gonderip
+   * cozumu input'a yazip submit eder. Basariliysa true, basarisizsa false.
+   * Env: TWOCAPTCHA_API_KEY (Luca icin zaten kullanilan key, ayni kullanilabilir).
+   */
+  private async tryAutoSolveCaptcha(page: any): Promise<boolean> {
+    const apiKey = process.env.TWOCAPTCHA_API_KEY || process.env.TWO_CAPTCHA_API_KEY;
+    if (!apiKey) {
+      this.logger.warn('[eBeyanname] TWOCAPTCHA_API_KEY env yok, otomatik CAPTCHA cozumu atlandi');
+      return false;
+    }
+
+    // CAPTCHA gorseli yakala (cesitli selector denenir)
+    const captchaSelectors = [
+      'img[src*="captcha" i]',
+      'img[src*="Captcha"]',
+      'img[id*="captcha" i]',
+      'img[alt*="captcha" i]',
+      'img[alt*="güvenlik" i]',
+      'img[alt*="dogrulama" i]',
+      '.captcha img',
+      '#captcha img',
+    ];
+    let captchaImg: any = null;
+    for (const sel of captchaSelectors) {
+      captchaImg = await page.$(sel).catch(() => null);
+      if (captchaImg) break;
+    }
+    if (!captchaImg) {
+      this.logger.warn('[eBeyanname] CAPTCHA gorsel selector\'leri eslesmiyor');
+      return false;
+    }
+
+    let base64: string;
+    try {
+      const buffer = await captchaImg.screenshot({ type: 'png' });
+      base64 = buffer.toString('base64');
+    } catch (err: any) {
+      this.logger.warn(`[eBeyanname] CAPTCHA screenshot hata: ${err?.message || err}`);
+      return false;
+    }
+
+    let captchaText: string;
+    try {
+      captchaText = await this.solveCaptchaWith2Captcha(base64, apiKey);
+    } catch (err: any) {
+      this.logger.warn(`[eBeyanname] 2captcha cozum hata: ${err?.message || err}`);
+      return false;
+    }
+
+    // Cozum sonucunu input'a yaz
+    const inputSelectors = [
+      'input[name*="captcha" i]',
+      'input[id*="captcha" i]',
+      'input[placeholder*="captcha" i]',
+      'input[placeholder*="güvenlik" i]',
+      'input[placeholder*="dogrulama" i]',
+      'input[placeholder*="kod" i]',
+    ];
+    let filled = false;
+    for (const sel of inputSelectors) {
+      const inp = await page.$(sel).catch(() => null);
+      if (inp) {
+        await inp.fill(captchaText).catch(() => null);
+        filled = true;
+        break;
+      }
+    }
+    if (!filled) {
+      this.logger.warn('[eBeyanname] CAPTCHA input bulunamadi');
+      return false;
+    }
+
+    // Submit dene
+    await this.submitLogin(page).catch(() => null);
+    await page.waitForLoadState('domcontentloaded', { timeout: 20_000 }).catch(() => {});
+    await page.waitForTimeout(1500);
+
+    // Hala CAPTCHA varsa basarisiz say
+    const body = await this.bodyText(page);
+    if (TEXT.captcha.test(body)) {
+      this.logger.warn('[eBeyanname] CAPTCHA gozuktugu icin 2captcha cozumu yetersiz kaldi');
+      return false;
+    }
+    this.logger.log('[eBeyanname] CAPTCHA 2captcha ile otomatik cozuldu');
+    return true;
+  }
+
+  /** 2captcha API: base64 captcha → text. Luca'daki ile ayni protokol. */
+  private async solveCaptchaWith2Captcha(base64: string, apiKey: string): Promise<string> {
+    const inForm = new URLSearchParams();
+    inForm.append('key', apiKey);
+    inForm.append('method', 'base64');
+    inForm.append('body', base64);
+    inForm.append('json', '0');
+
+    const inRes = await fetch('https://2captcha.com/in.php', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/x-www-form-urlencoded' },
+      body: inForm.toString(),
+    });
+    const inText = (await inRes.text()).trim();
+    if (!inText.startsWith('OK|')) throw new Error(`2captcha in.php: ${inText}`);
+    const captchaId = inText.slice(3);
+
+    const maxAttempts = Number(process.env.PORTAL_2CAPTCHA_MAX_POLL || 30);
+    const pollInterval = Number(process.env.PORTAL_2CAPTCHA_POLL_INTERVAL_MS || 5000);
+    await new Promise((r) => setTimeout(r, pollInterval));
+
+    for (let i = 0; i < maxAttempts; i++) {
+      const resUrl = `https://2captcha.com/res.php?key=${encodeURIComponent(apiKey)}&action=get&id=${encodeURIComponent(captchaId)}&json=0`;
+      const r = await fetch(resUrl);
+      const t = (await r.text()).trim();
+      if (t === 'CAPCHA_NOT_READY') {
+        await new Promise((r) => setTimeout(r, pollInterval));
+        continue;
+      }
+      if (t.startsWith('OK|')) {
+        return String(t.slice(3)).replace(/[^0-9A-Za-z]/g, '');
+      }
+      throw new Error(`2captcha res.php: ${t}`);
+    }
+    throw new Error(`2captcha zaman asimi (${maxAttempts} deneme)`);
+  }
+
   private async assertLoggedIn(page: any) {
     const body = await this.bodyText(page);
     if (TEXT.captcha.test(body)) {
-      throw new Error('GIB ek dogrulama/CAPTCHA istedi; Railway headless runner tek basina gecemedi');
+      // CAPTCHA tespit → 2captcha ile otomatik cozum dene
+      const solved = await this.tryAutoSolveCaptcha(page);
+      if (!solved) {
+        throw new Error('GIB CAPTCHA istedi, 2captcha cozumu basarisiz (TWOCAPTCHA_API_KEY var mi/kredi yeterli mi?)');
+      }
+      // Cozulduyse devam et — recursive bir kez daha kontrol
+      const body2 = await this.bodyText(page);
+      if (TEXT.captcha.test(body2)) {
+        throw new Error('CAPTCHA cozuldu ama hala CAPTCHA gorunuyor; site UI degismis olabilir');
+      }
     }
     if (TEXT.loginError.test(body)) {
       throw new Error('e-Beyanname girisi basarisiz gorunuyor; kullanici kodu/parola/sifre veya ek dogrulama kontrol edilmeli');
