@@ -12,6 +12,7 @@ import { WhatsAppRateLimiterService } from './rate-limiter.service';
 import { WhatsAppBotCacheService } from './bot-cache.service';
 import { BotEvalService } from './bot-eval.service';
 import { QualityLogService } from './quality-log.service';
+import { BuseGunaydinCron } from '../schedule/buse-gunaydin.cron';
 
 type IncomingWhatsAppMessage = {
   from: string;
@@ -42,9 +43,16 @@ export class WhatsAppBotController {
     private readonly botCache: WhatsAppBotCacheService,
     private readonly botEval: BotEvalService,
     private readonly qualityLog: QualityLogService,
+    private readonly buseGunaydin: BuseGunaydinCron,
     @Optional() private readonly eventBus?: AutomationEventBus,
     @Optional() private readonly storage?: StorageService,
   ) {}
+
+  /** Manuel günaydın testi: POST /whatsapp/webhook/test-buse-gunaydin */
+  @Post('test-buse-gunaydin')
+  async testBuseGunaydin() {
+    return this.buseGunaydin.send('manual');
+  }
 
   @Get()
   verify(
