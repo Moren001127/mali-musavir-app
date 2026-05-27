@@ -380,15 +380,16 @@ export class MorenAiService {
         })
       : null;
 
-    // getPortalMetaAnswer SADECE portal web UI (user != null) için anlamlı.
-    // WhatsApp owner/taxpayer akışında userId null geliyor + 'userMessage' aslında
-    // recentContext + kurallar dahil TAM PROMPT oluyor. Tarihçedeki eski "ben kimim"
-    // gibi bir mesaj normalize edilince regex'i tetikleyip canned cevap üretiyordu;
-    // bu cevap log'a yazılınca bir sonraki recentContext yine tetikleyip kendini
-    // besleyen sonsuz döngü kuruyordu. User yoksa bu kestirmeyi atla.
-    const deterministicAnswer =
-      (user ? this.getPortalMetaAnswer(userMessage, user, conversation.messages || [], currentPath) : null) ||
-      this.getDeterministicCriticalAnswer(userMessage);
+    // Hem getPortalMetaAnswer hem getDeterministicCriticalAnswer SADECE portal web UI
+    // (user != null) için anlamlı. WhatsApp owner/taxpayer akışında userId null geliyor +
+    // 'userMessage' aslında recentContext + kurallar dahil TAM PROMPT oluyor. Tarihçedeki
+    // eski "ben kimim" veya "4/A personel ayrılış" cevapları regex'i tetikleyip canned cevap
+    // üretiyor, log'a yazılınca bir sonraki recentContext yine tetikleyip kendini besleyen
+    // sonsuz döngü kuruyordu. User yoksa her iki kestirmeyi de atla.
+    const deterministicAnswer = user
+      ? (this.getPortalMetaAnswer(userMessage, user, conversation.messages || [], currentPath) ||
+         this.getDeterministicCriticalAnswer(userMessage))
+      : null;
     if (deterministicAnswer) {
       const durationMs = Date.now() - started;
       await this.prisma.aiMessage.create({
