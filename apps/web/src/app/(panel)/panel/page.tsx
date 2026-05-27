@@ -183,22 +183,7 @@ function WorkflowOverview({ counts, total, activeCount }: { counts?: WorkflowCou
       </div>
 
       <div className="px-5 py-4">
-        <div className="flex h-1.5 w-full overflow-hidden rounded-full" style={{ background: 'rgba(255,255,255,0.06)' }}>
-          {WORKFLOW_STEPS.map((step) => {
-            const value = c[step.key] || 0;
-            const pct = scopedTotal > 0 ? (value / scopedTotal) * 100 : 0;
-            if (pct <= 0) return null;
-            return (
-              <div
-                key={step.key}
-                title={`${step.label}: ${value} (${Math.round(pct)}%)`}
-                style={{ width: `${pct}%`, background: step.color, transition: 'width 0.4s' }}
-              />
-            );
-          })}
-        </div>
-
-        <div className="mt-4 grid grid-cols-1 gap-3 sm:grid-cols-2 xl:grid-cols-5">
+        <div className="grid grid-cols-1 gap-3 sm:grid-cols-2 xl:grid-cols-5">
           {WORKFLOW_STEPS.map((step) => {
             const value = c[step.key] || 0;
             const pct = scopedTotal > 0 ? Math.round((value / scopedTotal) * 100) : 0;
