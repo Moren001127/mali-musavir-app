@@ -854,7 +854,9 @@ export class WhatsAppBotController {
       const answer = await this.morenAi.chat(ownerTenant.id, null, {
         conversationId,
         message: prompt,
-        voiceMode: true,
+        // voiceMode KAPALI — owner WhatsApp text yaziyor, sesli degil.
+        // Sesli olunca max token 260'a duser ve cevaplar yarida kesilir.
+        voiceMode: false,
         toolMode: 'owner',
       });
       const rawReply = (answer.assistantMessage || '').slice(0, 1400);
