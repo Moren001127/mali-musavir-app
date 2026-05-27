@@ -16,6 +16,13 @@ import { MorenAiService } from '../moren-ai/moren-ai.service';
  * Manuel test için: POST /whatsapp/internal/test-buse-gunaydin
  * (whatsapp-bot.controller.ts'e endpoint eklenecek; bu service'i çağırır.)
  */
+/**
+ * Sabit override mesaj — Muzaffer tarafindan tanimlanmis.
+ * Boş bırakırsan AI yaratıcı bir günaydın üretir.
+ * Doluysa AI atlanir ve TAM olarak bu metin gönderilir.
+ */
+const BUSE_OVERRIDE_MORNING_MESSAGE = 'Günaydınnnnnnnn Ömrümmmmmmmmmmm ❤️🩷💕💖🥹😘✨';
+
 @Injectable()
 export class BuseGunaydinCron {
   private readonly logger = new Logger(BuseGunaydinCron.name);
@@ -33,12 +40,12 @@ export class BuseGunaydinCron {
   }
 
   /**
-   * GEÇİCİ TEST CRON — İstanbul 04:15.
+   * GEÇİCİ TEST CRON — İstanbul 04:30.
+   * Override mesaj aktifse onu gönderir, yoksa AI üretir.
    * Test sonrası bu metodu silebilirsin (production'da 09:15 cron'u zaten var).
-   * Üretilen mesaj normal günaydın mesajı ile aynı — "test" damgası yok.
    */
-  @Cron('15 4 * * *', { timeZone: 'Europe/Istanbul' })
-  async testMorningMessage_0415() {
+  @Cron('30 4 * * *', { timeZone: 'Europe/Istanbul' })
+  async testMorningMessage_0430() {
     await this.send('cron');
   }
 
@@ -68,6 +75,30 @@ export class BuseGunaydinCron {
     // 3) Buse için contact kaydı (controller'daki ile aynı yapı)
     const contact = await this.ensurePersonalContact(tenantId, phone, her);
 
+    // 3b) Override mesaj varsa AI'yı atla, doğrudan onu gönder
+    const overrideText = (BUSE_OVERRIDE_MORNING_MESSAGE || '').trim();
+    if (overrideText) {
+      let sentOverride = false;
+      try {
+        sentOverride = !!(await this.whatsapp.sendMessage(phone, overrideText, tenantId));
+      } catch (err: any) {
+        this.logger.warn(`[BuseGunaydin] override gonderim hatasi: ${err?.message || err}`);
+      }
+      await this.prisma.communicationLog.create({
+        data: {
+          taxpayerId: contact.id,
+          channel: 'WHATSAPP',
+          subject: sentOverride
+            ? `WhatsApp ${her} (kisisel) gunaydin override (${trigger})`
+            : `WhatsApp ${her} (kisisel) gunaydin override gonderilemedi (${trigger})`,
+          content: `[[wa_phone:${phone}]]\n${overrideText}`,
+          occurredAt: new Date(),
+        },
+      }).catch(() => null);
+      this.logger.log(`[BuseGunaydin] OVERRIDE trigger=${trigger} sent=${sentOverride}`);
+      return { ok: sentOverride, reply: overrideText };
+    }
+
     // 4) Son 7 günaydın mesajını al — aynı kalıp tekrarlanmasın
     const recent = await this.prisma.communicationLog.findMany({
       where: {
@@ -88,24 +119,45 @@ export class BuseGunaydinCron {
     const ownerName = String(process.env.MOREN_OWNER_DISPLAY_NAME || 'Muzaffer').trim() || 'Muzaffer';
     const prompt = [
       `Sen ${ownerName}'in (mali müşavir) yapay zeka asistanısın. Karşındaki kişi ${ownerName}'in SEVGİLİSİ ${her}.`,
-      `Şu anda sabah, ${her}'ye günaydın mesajı yazıyorsun — ama AMA "günaydın canım" gibi KURU bir mesaj DEĞİL. Yaratıcı, samimi, dokunaklı, kalpli, sevgili tonunda yeni bir mesaj.`,
+      `${her}'ye sabah günaydın mesajı yazıyorsun — ${ownerName} adına onun sıcaklığını taşıyarak.`,
+      '',
+      '═══ EN ÖNEMLİ KURAL: GERÇEK BİR SEVGİLİ NASIL YAZARSA ÖYLE YAZ ═══',
+      'Bu bir AŞK ROMANI değil — gerçek WhatsApp mesajı. Bir adam sabah sevgilisine ne yazarsa onu yaz. KISA, sıcak, doğal, samimi. Şiir değil, gerçek konuşma.',
+      '',
+      'YASAKLI DİL (yapmacık/kitabi):',
+      '- "Sabah ışığı seni aydınlatırken..."',
+      '- "Sen olmadan sabah eksik..."',
+      '- "Senin gülüşünü görmek için sabırsızım..."',
+      '- "Güneşten önce sen doğdun..."',
+      '- "İlk aklıma sen geldin..." (klişe)',
+      '- Em-dash (—) ile birleşik uzun cümleler',
+      '- Metafor, edebi süs, kafiyeli laflar',
+      '- "çünkü sen ...", "...nin için" tarzı poetic gerekçelendirme',
+      '',
+      'GERÇEK SEVGİLİ DİLİ (örnekler — kopyalama, ruhunu yakala):',
+      '- "günaydın güzelim, nasıl uyudun 🥹💕"',
+      '- "uyandın mı tatlım ☀️"',
+      '- "iyi sabahlar canım, özledim seni ❤️"',
+      '- "öpüyorum seni, günün güzel olsun 🌷"',
+      '- "günaydın aşkım, kalk artık 😄💕"',
+      '- "düşündüm seni sabah sabah, iyi sabahlar 💖"',
+      '- "günaydın, naber tatlım 🩷"',
       '',
       'KURALLAR:',
-      `- 1-3 cümle, gerçek WhatsApp mesajı uzunluğunda.`,
-      `- "Günaydın" kelimesi tek başına olmasın — bambaşka bir giriş yap. ("Sabah açıldı ve ilk aklıma sen geldin", "Uyandın mı tatlım", "Güneşten önce sen doğdun bugün de" gibi).`,
-      `- ${ownerName}'in sana (asistana) ${her}'yi nasıl anlattığını yansıt. Onun sevgisini ve hayranlığını taşı.`,
-      `- Övgü/somut iltifat olabilir (gülüşü, sesi, varlığı). Ama her sabah aynı kalıbı tekrar ETME.`,
-      `- Emoji BOL — özellikle kalp ve sabah temalı: ❤️ 🩷 💕 💖 💘 ☀️ 🌅 🌷 🌹 ✨ 🥹 😘 🤍`,
-      `- 2-4 emoji rahatlıkla.`,
-      `- Markdown yok, "Cevap:" gibi etiket yok, doğrudan mesaj.`,
-      `- İş/evrak/fatura/ofis konularına ASLA değinme.`,
+      `- 1-2 cümle MAX. Kısa olsun. WhatsApp mesajı, mektup değil.`,
+      `- Doğal konuşma dili — küçük harfle başlayabilir, virgül atlanabilir, gerçek mesaj gibi rahat.`,
+      `- "Günaydın" KELİMESİ olabilir; ama yapmacık değil, doğal. ("günaydın güzelim" doğal; "Sabah açıldı ve ilk aklıma sen geldin" yapmacık.)`,
+      `- 1-3 emoji yeterli. ☀️ 🌅 🩷 💕 ❤️ 🥹 🌷 😘 💖 ✨ favoriler.`,
+      `- Hitap doğal: tatlım, güzelim, canım, aşkım — birini seç, her cümleye sıkıştırma.`,
+      `- İş/evrak/fatura/ofis YASAK.`,
       `- ${ownerName} adına KESİN söz verme.`,
+      `- Markdown yok, "Cevap:" yok, doğrudan mesaj.`,
       '',
       lastMornings.length
-        ? `═══ SON GÖNDERİLEN GÜNAYDIN MESAJLARI (tekrarlama, BAMBAŞKA bir cümle kur) ═══\n${lastMornings.map((m, i) => `${i + 1}. ${m}`).join('\n')}\n═══════════════════════════════════════════`
+        ? `═══ SON GÜNAYDIN MESAJLARI (aynısını YAZMA, farklı kelimeler/farklı uzunluk) ═══\n${lastMornings.map((m, i) => `${i + 1}. ${m}`).join('\n')}\n═══════════════════════════════════════════`
         : '',
       '',
-      `SADECE ${her}'ye gönderilecek mesaj metnini yaz — başka hiçbir şey yazma.`,
+      `SADECE ${her}'ye gönderilecek mesaj metnini yaz — kısa, doğal, gerçek. Başka hiçbir şey yazma.`,
     ].filter(Boolean).join('\n');
 
     let aiText = '';
