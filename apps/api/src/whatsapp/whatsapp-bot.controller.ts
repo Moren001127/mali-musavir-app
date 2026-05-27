@@ -754,6 +754,29 @@ export class WhatsAppBotController {
    * cevap üretir. Format: `MOREN_PERSONAL_CONTACT_PHONES=905363048246:Buse,905001234567:Anne`
    * (phone:displayName virgül ile ayrılır)
    */
+  /**
+   * WhatsApp owner sohbetleri tek bir AI conversation'da birikir.
+   * Yan etki: portal "MOREN AI" listesinde tek satır, başlık temiz, system prompt cache'leniyor.
+   */
+  private async getOrCreateOwnerWhatsAppConversation(
+    tenantId: string,
+    ownerContactId: string,
+    tenantName?: string | null,
+  ): Promise<string> {
+    const title = `📱 WhatsApp Sohbeti — ${tenantName || 'Ofis'}`;
+    const existing = await this.prisma.aiConversation.findFirst({
+      where: { tenantId, taxpayerId: ownerContactId, title },
+      select: { id: true },
+      orderBy: { createdAt: 'desc' },
+    }).catch(() => null);
+    if (existing) return existing.id;
+    const created = await this.prisma.aiConversation.create({
+      data: { tenantId, userId: null, taxpayerId: ownerContactId, title },
+      select: { id: true },
+    });
+    return created.id;
+  }
+
   private findPersonalContactByPhone(phone: string): { phone: string; name: string } | null {
     const normalized = this.normalize(phone);
     if (!normalized) return null;
@@ -824,7 +847,12 @@ export class WhatsAppBotController {
         `Mesajınız: ${msg.text}`,
       ].join('\n');
 
+      // Portal'da WhatsApp owner sohbetleri tek bir persistent conversation'a yazılır.
+      // Bu hem listede kirlilik yapmaz hem prompt-caching ile maliyeti düşürür.
+      const conversationId = await this.getOrCreateOwnerWhatsAppConversation(ownerTenant.id, ownerContact.id, ownerTenant.name);
+
       const answer = await this.morenAi.chat(ownerTenant.id, null, {
+        conversationId,
         message: prompt,
         voiceMode: true,
         toolMode: 'owner',

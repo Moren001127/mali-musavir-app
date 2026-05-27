@@ -6,17 +6,54 @@ import { buildSystemPrompt } from './system-prompt';
 import { computeCostUsd, computeRealtimeCostUsd } from '../common/ai-usage-logger';
 
 const ANTHROPIC_URL = 'https://api.anthropic.com/v1/messages';
-// Mod-bazli model secimi:
-//   owner            → Sonnet 4.6 (derin mevzuat analizi, yorum, oneri)
-//   taxpayer-readonly→ Haiku 4.5 (kisa musteri cevabi, ucuz)
-//   none             → Haiku 4.5 (kisisel/Buse vs., ucuz)
-// body.model verilirse onunla override edilir. Brifing/cron'larda explicit Haiku gecirilebilir.
-const DEFAULT_MODEL = 'claude-haiku-4-5-20251001';        // genel fallback (taxpayer/none)
-const DEFAULT_MODEL_OWNER = 'claude-sonnet-4-6';          // owner derin analiz
-function pickDefaultModel(toolMode?: string): string {
-  // Owner (web UI default'u veya WhatsApp owner branch) → Sonnet
-  // Taxpayer-readonly / none (kisisel) → Haiku
-  if (!toolMode || toolMode === 'owner') return DEFAULT_MODEL_OWNER;
+// Hibrit model secimi — maliyet/kalite dengesi:
+//   taxpayer-readonly → her zaman Haiku 4.5 (kisa musteri cevabi, ucuz)
+//   none              → her zaman Haiku 4.5 (kisisel/Buse, ucuz)
+//   owner / undefined → soru tipine gore:
+//     - Veri/data sorgusu, kisa sohbet → Haiku 4.5 (ucuz, hizli)
+//     - Mevzuat/kanun/analiz/yorum/oneri → Sonnet 4.6 (derin)
+// body.model verilirse override eder. Brifing/cron'larda explicit Haiku gecirilebilir.
+const DEFAULT_MODEL = 'claude-haiku-4-5-20251001';        // genel fallback + basit sorular
+const DEFAULT_MODEL_OWNER_DEEP = 'claude-sonnet-4-6';     // mevzuat/analiz/yorum gerekiyorsa
+
+/**
+ * Kullanici mesajinda mali musavir derinligi gerektiren sinyaller var mi?
+ * Tek kelimelik veri sorguları (KDV ne kadar, kac mukellef, hangi belge) Haiku'da kalir.
+ * Mevzuat/kanun/yorum/oneri/risk sinyalleri Sonnet'i tetikler.
+ */
+function needsDeepModel(userMessage: string): boolean {
+  if (!userMessage) return false;
+  const text = String(userMessage)
+    .toLocaleLowerCase('tr-TR')
+    .replace(/ı/g, 'i')
+    .normalize('NFD')
+    .replace(/[̀-ͯ]/g, '');
+
+  const deepPatterns: RegExp[] = [
+    // Mevzuat referansi
+    /\b(vuk|gvk|kvk|kdv kanunu|sgk|ttk|btmv|otv|damga|6183|5510|6111|6661|7103|213|193)\b/,
+    /\b(mevzuat|kanun|yonetmelik|teblig|sirkuler|resmi gazete|madde\s*\d+|m\.\s*\d+)\b/,
+    // Yorum/analiz
+    /\b(oner|tavsiye|gorus|fikir|analiz|yorumla|degerlendir|karsilastir|risk|sakinca|usul)\b/,
+    /\b(nasil yapmali|ne yapmali|hangi adim|ne olur|nasil hesaplan|hesaplan(?:ir|acak)|formul)\b/,
+    /\b(istisna|indirim|matrah|iade(?:de|si|ne|ye)?|tahakkuk\s+(usul|yolu|tarz)|tahsil)\b/,
+    // Karmasik kavramlar
+    /\b(yillara sari|amortisman|envanter|degerleme|reel|enflasyon|kurumlar gecisi|tasfiye|birlesme|bolunme|nakit akis|finansal kiralama)\b/,
+    /\b(usulsuzluk|sahte fatura|naylon|incelemeye|denetim|tarhiyat|ihtirazi|yargilama|itiraz|temyiz)\b/,
+    // "Ne yaparim / nasil olur" tipi sorular
+    /\b(yapmali miyim|edebilir miyim|olabilir mi|gerekiyor mu|sart mi|zorunlu mu|uygun mu|dogru mu)\b/,
+    // Calisma hukuku derinligi
+    /\b(kidem|ihbar|fesih|haklı sebep|isçi\s+(alacak|hak|ayrilis bildirim)|sgk(\s+ceza|\s+bildirim)|asgari ucret istisna)\b/,
+  ];
+
+  return deepPatterns.some((p) => p.test(text));
+}
+
+function pickDefaultModel(toolMode?: string, userMessage?: string): string {
+  // Kişisel/mükellef için her zaman Haiku
+  if (toolMode === 'taxpayer-readonly' || toolMode === 'none') return DEFAULT_MODEL;
+  // Owner için: mesaj derin analiz istiyorsa Sonnet, degilse Haiku
+  if (userMessage && needsDeepModel(userMessage)) return DEFAULT_MODEL_OWNER_DEEP;
   return DEFAULT_MODEL;
 }
 const BRIFING_ALLOWED_ROUTES = [
