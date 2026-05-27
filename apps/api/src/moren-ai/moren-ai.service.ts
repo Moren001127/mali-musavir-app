@@ -610,9 +610,21 @@ export class MorenAiService {
       assistantMessage: finalText || '',
     });
 
+    // AI tool dongusu tamamlandi ama final text uretmedi — kullanIcIya anlamli mesaj don.
+    // Sebepler: max iteration doldu, tool sonuclari arasinda bir karara varamadi vb.
+    let outboundMessage = finalText;
+    if (!outboundMessage) {
+      if (toolUsesLog.length > 0) {
+        const toolNames = Array.from(new Set(toolUsesLog.map((t) => t.name))).slice(0, 3).join(', ');
+        outboundMessage = `${toolNames} icin islem baslatildi. Sonucu kisa surede ileteceğim.`;
+      } else {
+        outboundMessage = 'Su an net bir cevap uretemedim. Soruyu biraz daha kisa veya farkli yazar misin?';
+      }
+    }
+
     return {
       conversationId: conversation.id,
-      assistantMessage: finalText || '(Cevap boş)',
+      assistantMessage: outboundMessage,
       toolUses: toolUsesLog,
       usage: {
         inputTokens: totalInput,
