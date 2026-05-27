@@ -1319,6 +1319,13 @@ export class WhatsAppBotController {
     recentReplies?: string[];
     retry?: (reasons: string[]) => Promise<string>;
   }): Promise<string> {
+    // Maliyet tasarrufu: live cevaplarin %X'i eval'den gecsin (varsayilan %20).
+    // Gece synthetic test'ler ayri cron'da, bu sample etkilemez.
+    // Ayarlama: MOREN_AI_EVAL_SAMPLE_RATE=0.2 (0-1 arasi)
+    const sampleRate = Number(process.env.MOREN_AI_EVAL_SAMPLE_RATE || 0.2);
+    if (sampleRate < 1 && Math.random() > sampleRate) {
+      return input.reply;
+    }
     const recentReplies = input.recentReplies || [];
     const firstEval = await this.botEval.evaluateReply(
       input.reply,

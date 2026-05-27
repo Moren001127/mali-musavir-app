@@ -79,7 +79,7 @@ const TAX_DEADLINE_RULES: Array<{ day: number | 'last'; tip: string; months?: nu
 // hard-code edilmez. Bu katman en azından hafta sonu ve sabit tatil kaydırmasını sağlar.
 const TR_FIXED_HOLIDAYS = new Set(['01-01', '04-23', '05-01', '05-19', '07-15', '08-30', '10-29']);
 const MAX_TOOL_ITERATIONS = 8;              // Tool döngüsünde en fazla 8 tur
-const MAX_HISTORY_MESSAGES = Number(process.env.MOREN_AI_HISTORY_LIMIT || 8); // Maliyet kontrolü: son mesaj penceresi + kalıcı hafıza
+const MAX_HISTORY_MESSAGES = Number(process.env.MOREN_AI_HISTORY_LIMIT || 5); // Maliyet kontrolü: son mesaj penceresi (8 → 5, paket A tasarrufu)
 const NORMAL_MAX_TOKENS = Number(process.env.MOREN_AI_MAX_TOKENS || 650);
 const VOICE_MAX_TOKENS = Number(process.env.MOREN_AI_VOICE_MAX_TOKENS || 260);
 
