@@ -274,7 +274,7 @@ function DashboardSectionBridge({
     },
   }[tone];
   return (
-    <div className="relative my-5 flex items-center gap-4 px-2 sm:px-6">
+    <div className="relative my-7 flex items-center gap-4 px-2 sm:px-6">
       <div className="h-[2px] flex-1 rounded-full" style={{ background: `linear-gradient(90deg, transparent, ${tones.accent}88, ${tones.accent2}55)` }} />
         <div
           className="flex min-w-0 flex-wrap items-center justify-center gap-2 rounded-2xl px-3 py-2 sm:flex-nowrap"
@@ -1847,7 +1847,7 @@ export default function DashboardPage() {
         />
       </section>
 
-      <div className="hidden space-y-3 max-w-none pr-3 lg:block xl:pr-5">
+      <div className="hidden space-y-4 max-w-none pr-3 lg:block xl:pr-5">
       {/* Hatırlatma bannerı — bugün veya geçmiş tarihli tamamlanmamış görevler için sürekli uyarı.
           v1.36.74: scale-siz pulse — banner ekrandan taşmıyor, sadece glow nefes alıyor. */}
       {dueTasks.length > 0 && (
@@ -1911,7 +1911,7 @@ export default function DashboardPage() {
       </div>
 
       {/* v1.36.81: AI sabah brifingi — günün özetini 2-3 cümlede anlatır */}
-      <div className="grid grid-cols-1 sm:grid-cols-2 xl:grid-cols-4 gap-2.5">
+      <div className="grid grid-cols-1 gap-2.5 pb-4 sm:grid-cols-2 xl:grid-cols-4">
         <StatCard
           title="Aktif Mükellef"
           value={activeCount || totalTx}

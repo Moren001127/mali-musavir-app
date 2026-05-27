@@ -128,9 +128,10 @@ export function KritikUyariStatCard() {
           </div>
         </div>
         <p className="leading-none tabular-nums" style={{
-          fontFamily: 'Fraunces, serif',
-          fontSize: 32,
-          fontWeight: 700,
+          fontFamily: 'Inter, ui-sans-serif, system-ui, sans-serif',
+          fontSize: 26,
+          fontWeight: 900,
+          letterSpacing: 0,
           color: hasIssue ? '#f43f5e' : '#fafaf9',
         }}>
           {totalUyari}
