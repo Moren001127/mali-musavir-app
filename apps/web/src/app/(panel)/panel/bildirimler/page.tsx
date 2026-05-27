@@ -41,13 +41,18 @@ type Notification = {
 type FilterMode = 'all' | 'unread' | 'read';
 
 const TYPE_LABELS: Record<string, string> = {
+  AUTOMATION: 'Otomasyon',
   TAX_DEADLINE: 'Vergi Tarihi',
   TASK_DUE: 'Görev',
   SYSTEM: 'Sistem',
   AGENT: 'Ajan',
   WHATSAPP: 'WhatsApp',
+  'WhatsApp': 'WhatsApp',
   AI: 'Moren AI',
-  OFFICE_CHAT: 'Ofis Chat',
+  MOREN_AI: 'Moren AI',
+  'Moren AI': 'Moren AI',
+  MOREN_AI_ALERT: 'Moren AI Uyarısı',
+  OFFICE_CHAT: 'Ofis Sohbeti',
 };
 
 function typeLabel(t: string) {
@@ -56,6 +61,8 @@ function typeLabel(t: string) {
 
 function typeMeta(t: string) {
   switch (t) {
+    case 'AUTOMATION':
+      return { color: '#d4b876', Icon: CheckCircle2 };
     case 'TAX_DEADLINE':
       return { color: '#ff7a8c', Icon: CalendarClock };
     case 'TASK_DUE':
@@ -65,8 +72,12 @@ function typeMeta(t: string) {
     case 'AGENT':
       return { color: '#8cc8ff', Icon: Bot };
     case 'WHATSAPP':
+    case 'WhatsApp':
       return { color: '#27d39a', Icon: MessageCircle };
     case 'AI':
+    case 'MOREN_AI':
+    case 'Moren AI':
+    case 'MOREN_AI_ALERT':
       return { color: GOLD, Icon: Sparkles };
     case 'OFFICE_CHAT':
       return { color: '#8fd7bd', Icon: Inbox };
@@ -449,10 +460,10 @@ function NotificationRow({ notification, onMarkRead }: { notification: Notificat
           </span>
         </div>
 
-        <h2 className="mt-2 truncate text-[15px] font-semibold" style={{ color: unread ? '#fafaf9' : 'rgba(250,250,249,0.72)' }}>
+        <h2 className="mt-2 truncate text-[14.5px] font-extrabold leading-snug" style={{ fontFamily: 'Inter, ui-sans-serif, system-ui, sans-serif', letterSpacing: 0, color: unread ? '#f6f2ea' : 'rgba(250,250,249,0.78)' }}>
           {notification.title}
         </h2>
-        <p className="mt-1 line-clamp-2 text-[13px] leading-relaxed" style={{ color: unread ? 'rgba(250,250,249,0.66)' : 'rgba(250,250,249,0.48)' }}>
+        <p className="mt-1 line-clamp-2 text-[13px] font-medium leading-6" style={{ fontFamily: 'Inter, ui-sans-serif, system-ui, sans-serif', letterSpacing: 0, color: unread ? 'rgba(250,250,249,0.74)' : 'rgba(250,250,249,0.56)' }}>
           {notification.body}
         </p>
       </div>

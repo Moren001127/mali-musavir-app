@@ -274,7 +274,7 @@ function DashboardSectionBridge({
     },
   }[tone];
   return (
-    <div className="relative my-7 flex items-center gap-4 px-2 sm:px-6">
+    <div className="relative my-9 flex items-center gap-4 px-2 sm:px-6">
       <div className="h-[2px] flex-1 rounded-full" style={{ background: `linear-gradient(90deg, transparent, ${tones.accent}88, ${tones.accent2}55)` }} />
         <div
           className="flex min-w-0 flex-wrap items-center justify-center gap-2 rounded-2xl px-3 py-2 sm:flex-nowrap"
@@ -1942,7 +1942,7 @@ export default function DashboardPage() {
               ? `${workflowData.counts.kontrol} kontrol · ${workflowData.counts.beyanname} beyan`
               : 'Sıradaki yapılacak işleri gör'
           }
-          accent="sky"
+          accent="champagne"
         />
         {/* Kritik Uyarı — tıklanabilir kart, detayı altta açılır panel */}
         <KritikUyariStatCard />
