@@ -6,9 +6,19 @@ import { buildSystemPrompt } from './system-prompt';
 import { computeCostUsd, computeRealtimeCostUsd } from '../common/ai-usage-logger';
 
 const ANTHROPIC_URL = 'https://api.anthropic.com/v1/messages';
-// Maliyet optimizasyonu: Haiku 4.5 — Sonnet'ten 12x ucuz, mali musavir sohbet kalitesi
-// icin yeterli. Istek gelirse body.model ile override edilebilir ('claude-sonnet-4-6').
-const DEFAULT_MODEL = 'claude-haiku-4-5-20251001';
+// Mod-bazli model secimi:
+//   owner            → Sonnet 4.6 (derin mevzuat analizi, yorum, oneri)
+//   taxpayer-readonly→ Haiku 4.5 (kisa musteri cevabi, ucuz)
+//   none             → Haiku 4.5 (kisisel/Buse vs., ucuz)
+// body.model verilirse onunla override edilir. Brifing/cron'larda explicit Haiku gecirilebilir.
+const DEFAULT_MODEL = 'claude-haiku-4-5-20251001';        // genel fallback (taxpayer/none)
+const DEFAULT_MODEL_OWNER = 'claude-sonnet-4-6';          // owner derin analiz
+function pickDefaultModel(toolMode?: string): string {
+  // Owner (web UI default'u veya WhatsApp owner branch) → Sonnet
+  // Taxpayer-readonly / none (kisisel) → Haiku
+  if (!toolMode || toolMode === 'owner') return DEFAULT_MODEL_OWNER;
+  return DEFAULT_MODEL;
+}
 const BRIFING_ALLOWED_ROUTES = [
   '/panel/ajanlar/mihsap',
   '/panel/is-yuku',
@@ -289,7 +299,7 @@ export class MorenAiService {
     }
 
     const started = Date.now();
-    const model = body.model || DEFAULT_MODEL;
+    const model = body.model || pickDefaultModel(body.toolMode);
     const userMessage = (body.message || '').trim();
     if (!userMessage) throw new BadRequestException('Mesaj boş olamaz');
     const currentPath = String(body.currentPath || '').trim().slice(0, 180);
