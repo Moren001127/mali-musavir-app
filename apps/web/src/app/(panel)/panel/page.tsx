@@ -152,23 +152,23 @@ function WorkflowOverview({ counts, total, activeCount }: { counts?: WorkflowCou
     <div
       className="rounded-2xl overflow-hidden"
       style={{
-        background: 'linear-gradient(180deg, rgba(16,17,16,0.92), rgba(10,11,10,0.90))',
-        border: '1px solid rgba(255,255,255,0.08)',
-        boxShadow: '0 12px 28px rgba(0,0,0,0.16), inset 0 1px 0 rgba(255,255,255,0.028)',
+        background: 'radial-gradient(circle at 8% 0%, rgba(125,211,252,0.10), transparent 30%), radial-gradient(circle at 92% 14%, rgba(143,215,189,0.07), transparent 28%), linear-gradient(180deg, rgba(8,15,16,0.96), rgba(5,9,10,0.92))',
+        border: '1px solid rgba(125,211,252,0.14)',
+        boxShadow: '0 14px 34px rgba(0,0,0,0.20), inset 0 1px 0 rgba(180,230,240,0.035)',
       }}
     >
-      <div className="flex flex-wrap items-center justify-between gap-3 px-5 py-4" style={{ borderBottom: '1px solid rgba(255,255,255,0.065)' }}>
+      <div className="flex flex-wrap items-center justify-between gap-3 px-5 py-4" style={{ borderBottom: '1px solid rgba(125,211,252,0.10)' }}>
         <div className="flex items-center gap-3">
-          <span className="w-[3px] h-8 rounded-sm" style={{ background: '#d8bd86' }} />
+          <span className="w-[3px] h-8 rounded-sm" style={{ background: '#8bd3dd' }} />
           <div>
-            <h3 className="text-[17px] font-semibold leading-tight" style={{ color: '#f2efe8' }}>Bu Ay İş Akışı</h3>
+            <h3 className="text-[17px] font-semibold leading-tight" style={{ color: '#eefafa' }}>Bu Ay İş Akışı</h3>
             <p className="text-[12px] mt-1" style={{ color: 'rgba(250,250,249,0.50)' }}>
               {scopedTotal} mükellef akışta · {activeCount} aktif mükellef
             </p>
           </div>
         </div>
         <div className="flex flex-wrap items-center gap-2">
-          <span className="text-[11.5px] font-semibold px-3 py-1 rounded-md" style={{ background: 'rgba(216,189,134,0.075)', border: '1px solid rgba(216,189,134,0.16)', color: '#d8bd86' }}>
+          <span className="text-[11.5px] font-semibold px-3 py-1 rounded-md" style={{ background: 'rgba(125,211,252,0.075)', border: '1px solid rgba(125,211,252,0.18)', color: '#8bd3dd' }}>
             {activeWork} aktif
           </span>
           <span className="text-[11.5px] font-semibold px-3 py-1 rounded-md" style={{ background: 'rgba(134,199,160,0.075)', border: '1px solid rgba(134,199,160,0.16)', color: '#86c7a0' }}>

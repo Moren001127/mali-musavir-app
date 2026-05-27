@@ -851,15 +851,36 @@ export class WhatsAppBotController {
       // Bu hem listede kirlilik yapmaz hem prompt-caching ile maliyeti düşürür.
       const conversationId = await this.getOrCreateOwnerWhatsAppConversation(ownerTenant.id, ownerContact.id, ownerTenant.name);
 
-      const answer = await this.morenAi.chat(ownerTenant.id, null, {
-        conversationId,
-        message: prompt,
-        // voiceMode KAPALI — owner WhatsApp text yaziyor, sesli degil.
-        // Sesli olunca max token 260'a duser ve cevaplar yarida kesilir.
-        voiceMode: false,
-        toolMode: 'owner',
-      });
-      const rawReply = (answer.assistantMessage || '').slice(0, 1400);
+      // AI çağrısı — fetch failed gibi geçici sorunlarda kullanıcıya bos kalmasın diye
+      // try/catch + fallback. Eskiden hata sessizce yakalanıyor, kullanıcı bekliyordu.
+      let answer: any;
+      try {
+        answer = await this.morenAi.chat(ownerTenant.id, null, {
+          conversationId,
+          message: prompt,
+          // voiceMode KAPALI — owner WhatsApp text yaziyor, sesli degil.
+          // Sesli olunca max token 260'a duser ve cevaplar yarida kesilir.
+          voiceMode: false,
+          toolMode: 'owner',
+        });
+      } catch (err: any) {
+        this.logger.warn(`Owner AI cevabi uretilemedi (fetch hatasi?): ${err?.message || err}`);
+        const fallbackText = `Su an cevap uretemedim (gecici servis sorunu olabilir). Lutfen birazdan tekrar dener misin?`;
+        try {
+          await this.whatsapp.sendMessage(msg.from, fallbackText, ownerTenant.id);
+          await this.prisma.communicationLog.create({
+            data: {
+              taxpayerId: ownerContact.id,
+              channel: 'WHATSAPP',
+              subject: 'WhatsApp owner fallback (AI fetch failed)',
+              content: this.withWhatsAppPhone(fallbackText, msg.from),
+              occurredAt: new Date(),
+            },
+          });
+        } catch { /* en kotu ihtimal, sessiz hata */ }
+        return;
+      }
+      const rawReply = (answer?.assistantMessage || '').slice(0, 1400);
       // Owner için de post-filter uygula — iç monolog/markdown temizle
       const reply = this.postFilter.filterTaxpayerReply(rawReply, { mode: 'owner' });
       if (reply) {
