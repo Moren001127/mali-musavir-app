@@ -14,6 +14,7 @@ import { QualityLogService } from './quality-log.service';
 import { BotTestRunnerService } from './bot-test-runner.service';
 import { BotQACron } from '../schedule/bot-qa.cron';
 import { BuseGunaydinCron } from '../schedule/buse-gunaydin.cron';
+import { OwnerNotifierService } from './owner-notifier.service';
 import { PrismaModule } from '../prisma/prisma.module';
 import { MorenAiModule } from '../moren-ai/moren-ai.module';
 import { StorageModule } from '../storage/storage.module';
@@ -34,6 +35,7 @@ import { NotificationsModule } from '../notifications/notifications.module';
     BotTestRunnerService,
     BotQACron,
     BuseGunaydinCron,
+    OwnerNotifierService,
   ],
   controllers: [WhatsAppController, WhatsAppBotController, WhatsAppIntegrationController, WhatsAppQualityController],
   exports: [WhatsAppService, QualityLogService, BotTestRunnerService],
