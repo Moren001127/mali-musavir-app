@@ -225,13 +225,35 @@ export class PortalAutomationRailwayRunnerService implements OnModuleInit {
 
       await page.goto(loginUrl, { waitUntil: 'domcontentloaded', timeout: 60_000 });
       await page.waitForTimeout(2000); // Vue/React app yuklensin
-      // Yeni GIB UI'sinda CAPTCHA login form'unun ICINDE → submit'ten ONCE doldur
-      await this.fillEBeyannameLogin(page, credential.userCode, credential.password);
-      await this.fillEBeyannameCaptcha(page);
-      await this.submitLogin(page);
-      await page.waitForLoadState('domcontentloaded', { timeout: 20_000 }).catch(() => {});
-      await page.waitForTimeout(2000);
-      await this.assertLoggedIn(page);
+
+      // 2captcha bazen GIB CAPTCHA'sini yanlis cozer (~%5-10 oran).
+      // 3 deneme + her fail'de CAPTCHA refresh ile basari sansini %99+'a cikariyoruz.
+      const MAX_LOGIN_ATTEMPTS = 3;
+      for (let attempt = 1; attempt <= MAX_LOGIN_ATTEMPTS; attempt++) {
+        try {
+          if (attempt > 1) {
+            this.logger.warn('[eBeyanname] Login denemesi #' + attempt + ': sayfa refresh + CAPTCHA yenile');
+            await page.reload({ waitUntil: 'domcontentloaded', timeout: 30_000 }).catch(() => {});
+            await page.waitForTimeout(2000);
+          }
+          await this.fillEBeyannameLogin(page, credential.userCode, credential.password);
+          await this.fillEBeyannameCaptcha(page);
+          await this.submitLogin(page);
+          await page.waitForLoadState('domcontentloaded', { timeout: 20_000 }).catch(() => {});
+          await page.waitForTimeout(2000);
+          await this.assertLoggedIn(page);
+          if (attempt > 1) {
+            this.logger.log('[eBeyanname] Login denemesi #' + attempt + ' BASARILI');
+          }
+          break;
+        } catch (loginErr: any) {
+          const msg = String(loginErr?.message || loginErr).slice(0, 200);
+          this.logger.warn('[eBeyanname] Login denemesi #' + attempt + '/' + MAX_LOGIN_ATTEMPTS + ' basarisiz: ' + msg);
+          if (attempt === MAX_LOGIN_ATTEMPTS) {
+            throw new Error('e-Beyanname login ' + MAX_LOGIN_ATTEMPTS + ' denemede basarisiz. Son hata: ' + msg);
+          }
+        }
+      }
 
       const collection = await this.collectEBeyannameDownloads(tenantId, page, bundle.job, downloadsPath);
       await context.close().catch(() => {});
