@@ -194,9 +194,11 @@ export class PortalAutomationRailwayRunnerService implements OnModuleInit {
 
   private async runEBeyanname(tenantId: string, bundle: RunnerJobBundle) {
     const credential = bundle.credential;
-    // YENI GIB UI'sinda 2. parola tamamen kaldirildi (2026 Dijital Vergi Dairesi gecisi).
-    // Sadece kullanici kodu + sifre yeterli. secondaryPassword artik kullanilmiyor.
-    if (!credential.userCode || !credential.password) {
+    // YENI GIB UI'sinda (2026 Dijital Vergi Dairesi) eski "Parola" alani kaldirildi.
+    // GIB'in "Sifre" alani portaldaki "Sifre" (=secondaryPassword) degeriyle doldurulur.
+    // Eski portal "Parola" (=password) alani artik kullanilmiyor.
+    const ebeyannameSifre = credential.secondaryPassword || credential.password;
+    if (!credential.userCode || !ebeyannameSifre) {
       throw new Error('Mali musavir e-Beyanname kullanici kodu ve sifre eksik');
     }
 
@@ -236,7 +238,7 @@ export class PortalAutomationRailwayRunnerService implements OnModuleInit {
             await page.reload({ waitUntil: 'domcontentloaded', timeout: 30_000 }).catch(() => {});
             await page.waitForTimeout(2000);
           }
-          await this.fillEBeyannameLogin(page, credential.userCode, credential.password);
+          await this.fillEBeyannameLogin(page, credential.userCode, ebeyannameSifre);
           await this.fillEBeyannameCaptcha(page);
           await this.submitLogin(page);
           await page.waitForLoadState('domcontentloaded', { timeout: 20_000 }).catch(() => {});
