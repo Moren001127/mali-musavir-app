@@ -225,19 +225,14 @@ export class PortalAutomationRailwayRunnerService implements OnModuleInit {
       const page = await context.newPage();
       page.setDefaultTimeout(15_000);
 
-      await page.goto(loginUrl, { waitUntil: 'domcontentloaded', timeout: 60_000 });
-      await page.waitForTimeout(2000); // Vue/React app yuklensin
-
       // 2captcha bazen GIB CAPTCHA'sini yanlis cozer (~%5-10 oran).
-      // 3 deneme + her fail'de CAPTCHA refresh ile basari sansini %99+'a cikariyoruz.
+      // 3 deneme + her denemede temiz login sayfasi ile stale/error page riskini dusuruyoruz.
       const MAX_LOGIN_ATTEMPTS = 3;
       for (let attempt = 1; attempt <= MAX_LOGIN_ATTEMPTS; attempt++) {
         try {
-          if (attempt > 1) {
-            this.logger.warn('[eBeyanname] Login denemesi #' + attempt + ': sayfa refresh + CAPTCHA yenile');
-            await page.reload({ waitUntil: 'domcontentloaded', timeout: 30_000 }).catch(() => {});
-            await page.waitForTimeout(2000);
-          }
+          this.logger.log('[eBeyanname] Login denemesi #' + attempt + ': GIB login sayfasi aciliyor');
+          await page.goto(loginUrl, { waitUntil: 'domcontentloaded', timeout: 60_000 });
+          await this.waitForEBeyannameLoginForm(page);
           await this.fillEBeyannameLogin(page, credential.userCode, ebeyannameSifre);
           await this.fillEBeyannameCaptcha(page);
           await this.submitLogin(page);
@@ -552,18 +547,29 @@ export class PortalAutomationRailwayRunnerService implements OnModuleInit {
    * CAPTCHA ayri fonksiyonda doldurulur (fillEBeyannameCaptcha).
    */
   private async fillEBeyannameLogin(page: any, userCode: string, password: string) {
-    // Kesin selector'lar — yeni UI'da name/id ayni: userid, sifre, dk
-    const userInput = page.locator('input[name="userid"], input[id="userid"]').first();
-    await userInput.waitFor({ state: 'visible', timeout: 10_000 }).catch(() => null);
-    if (!(await userInput.isVisible().catch(() => false))) {
-      throw new Error('Kullanici kodu alani bulunamadi (userid)');
-    }
+    const userSelectors = [
+      'input[name="userid"]',
+      'input[id="userid"]',
+      'input[name*="user" i]',
+      'input[id*="user" i]',
+      'input[autocomplete="username"]',
+      'input[type="text"]',
+    ];
+    const passwordSelectors = [
+      'input[name="sifre"]',
+      'input[id="sifre"]',
+      'input[name*="sifre" i]',
+      'input[id*="sifre" i]',
+      'input[autocomplete="current-password"]',
+      'input[type="password"]',
+    ];
+
+    const userInput = await this.firstVisibleLocator(page, userSelectors, 15_000);
+    if (!userInput) throw new Error(await this.loginFieldError(page, 'Kullanici kodu alani bulunamadi (userid)'));
     await userInput.fill(userCode);
 
-    const passwordInput = page.locator('input[name="sifre"], input[id="sifre"], input[type="password"]').first();
-    if (!(await passwordInput.isVisible().catch(() => false))) {
-      throw new Error('Sifre alani bulunamadi (sifre)');
-    }
+    const passwordInput = await this.firstVisibleLocator(page, passwordSelectors, 5_000);
+    if (!passwordInput) throw new Error(await this.loginFieldError(page, 'Sifre alani bulunamadi (sifre)'));
     await passwordInput.fill(password);
   }
 
@@ -578,7 +584,13 @@ export class PortalAutomationRailwayRunnerService implements OnModuleInit {
     }
 
     // CAPTCHA goruntusunu yakala — yeni UI'da img alt="captchaImg"
-    const captchaImg = await page.$('img[alt="captchaImg"], img[alt*="captcha" i]').catch(() => null);
+    const captchaImg = await this.firstVisibleElementHandle(page, [
+      'img[alt="captchaImg"]',
+      'img[alt*="captcha" i]',
+      'img[src*="captcha" i]',
+      'img[id*="captcha" i]',
+      'canvas',
+    ], 10_000);
     if (!captchaImg) {
       throw new Error('CAPTCHA gorsel bulunamadi (img[alt="captchaImg"])');
     }
@@ -590,15 +602,116 @@ export class PortalAutomationRailwayRunnerService implements OnModuleInit {
       throw new Error(`CAPTCHA screenshot hata: ${err?.message || err}`);
     }
 
-    const captchaText = await this.solveCaptchaWith2Captcha(base64, apiKey);
+    const captchaText = (await this.solveCaptchaWith2Captcha(base64, apiKey)).toUpperCase();
     this.logger.log(`[eBeyanname] CAPTCHA cozuldu: "${captchaText}" (${captchaText.length} karakter)`);
 
     // "dk" (Dogrulama Kodu) input'una yaz
-    const dkInput = page.locator('input[name="dk"], input[id="dk"]').first();
-    if (!(await dkInput.isVisible().catch(() => false))) {
+    const dkInput = await this.firstVisibleLocator(page, [
+      'input[name="dk"]',
+      'input[id="dk"]',
+      'input[name*="dogrulama" i]',
+      'input[id*="dogrulama" i]',
+      'input[placeholder*="dogrulama" i]',
+      'input[placeholder*="guvenlik" i]',
+      'input[placeholder*="kod" i]',
+      'input[maxlength="6"]',
+    ], 5_000);
+    if (!dkInput) {
       throw new Error('Dogrulama kodu (dk) alani bulunamadi');
     }
     await dkInput.fill(captchaText);
+  }
+
+  private async waitForEBeyannameLoginForm(page: any) {
+    await page.waitForLoadState('domcontentloaded', { timeout: 60_000 }).catch(() => {});
+    await page.waitForTimeout(1000);
+    const ready = await this.firstVisibleLocator(page, [
+      'input[name="userid"]',
+      'input[id="userid"]',
+      'input[name*="user" i]',
+      'input[id*="user" i]',
+      'input[autocomplete="username"]',
+    ], 20_000);
+    if (!ready) throw new Error(await this.loginFieldError(page, 'Kullanici kodu alani bulunamadi (userid)'));
+  }
+
+  private async firstVisibleLocator(page: any, selectors: string[], timeoutMs = 0) {
+    const deadline = Date.now() + timeoutMs;
+    do {
+      for (const selector of selectors) {
+        const loc = page.locator(selector).first();
+        if (await loc.isVisible().catch(() => false)) return loc;
+      }
+      if (!timeoutMs || Date.now() >= deadline) break;
+      await page.waitForTimeout(250);
+    } while (Date.now() < deadline);
+    return null;
+  }
+
+  private async firstVisibleElementHandle(page: any, selectors: string[], timeoutMs = 0) {
+    const deadline = Date.now() + timeoutMs;
+    do {
+      for (const selector of selectors) {
+        const loc = page.locator(selector).first();
+        if (await loc.isVisible().catch(() => false)) {
+          const handle = await loc.elementHandle().catch(() => null);
+          if (handle) return handle;
+        }
+      }
+      if (!timeoutMs || Date.now() >= deadline) break;
+      await page.waitForTimeout(250);
+    } while (Date.now() < deadline);
+    return null;
+  }
+
+  private async loginFieldError(page: any, fallback: string) {
+    const url = this.safeUrl(page.url());
+    const alertText = await this.visibleAlertText(page);
+    const title = await page.title().catch(() => '');
+    return `${fallback}; url=${url}; title=${this.compact(title)}${alertText ? `; mesaj=${this.compact(alertText)}` : ''}`;
+  }
+
+  private async isEBeyannameLoginFormVisible(page: any) {
+    const user = await this.firstVisibleLocator(page, [
+      'input[name="userid"]',
+      'input[id="userid"]',
+      'input[name*="user" i]',
+      'input[id*="user" i]',
+      'input[autocomplete="username"]',
+    ]);
+    const pass = await this.firstVisibleLocator(page, [
+      'input[name="sifre"]',
+      'input[id="sifre"]',
+      'input[name*="sifre" i]',
+      'input[id*="sifre" i]',
+      'input[type="password"]',
+    ]);
+    return !!(user && pass);
+  }
+
+  private async visibleAlertText(page: any) {
+    const selectors = [
+      '[role="alert"]',
+      '.alert',
+      '.error',
+      '.text-danger',
+      '.invalid-feedback',
+      '.notification',
+      '.toast',
+      '.message',
+    ];
+    const pieces: string[] = [];
+    for (const selector of selectors) {
+      const loc = page.locator(selector);
+      const count = Math.min(await loc.count().catch(() => 0), 5);
+      for (let i = 0; i < count; i++) {
+        const item = loc.nth(i);
+        if (!(await item.isVisible().catch(() => false))) continue;
+        const text = await item.innerText().catch(() => '');
+        if (text && !pieces.includes(text.trim())) pieces.push(text.trim());
+      }
+    }
+    return pieces.join(' | ').slice(0, 500);
   }
 
   private async fillFirst(page: any, selectors: string[], value: string) {
@@ -770,31 +883,13 @@ export class PortalAutomationRailwayRunnerService implements OnModuleInit {
 
   private async assertLoggedIn(page: any) {
     const body = await this.bodyText(page);
-    if (TEXT.captcha.test(body)) {
-      // CAPTCHA tespit → 2captcha ile otomatik cozum dene
-      const solved = await this.tryAutoSolveCaptcha(page);
-      if (!solved) {
-        throw new Error('GIB CAPTCHA istedi, 2captcha cozumu basarisiz (TWOCAPTCHA_API_KEY var mi/kredi yeterli mi?)');
-      }
-      // Cozulduyse devam et — recursive bir kez daha kontrol
-      const body2 = await this.bodyText(page);
-      if (TEXT.captcha.test(body2)) {
-        throw new Error('CAPTCHA cozuldu ama hala CAPTCHA gorunuyor; site UI degismis olabilir');
-      }
-    }
-    if (TEXT.loginError.test(body)) {
-      throw new Error('e-Beyanname girisi basarisiz gorunuyor; kullanici kodu/parola/sifre veya ek dogrulama kontrol edilmeli');
-    }
-    const visibleFields = await page
-      .locator('input:not([type="hidden"]):not([type="submit"]):not([type="button"]):not([type="image"])')
-      .evaluateAll((els: any[]) => els.filter((el) => {
-        const r = el.getBoundingClientRect();
-        const style = window.getComputedStyle(el);
-        return r.width > 0 && r.height > 0 && style.visibility !== 'hidden' && style.display !== 'none';
-      }).length)
-      .catch(() => 0);
-    if (visibleFields >= 3 && /kullanici|kullanıcı|parola|sifre|şifre/i.test(body)) {
-      throw new Error('e-Beyanname giris ekrani gecilemedi');
+    const loginFormVisible = await this.isEBeyannameLoginFormVisible(page);
+    if (!loginFormVisible) return;
+
+    const alertText = await this.visibleAlertText(page);
+    const reason = alertText || (TEXT.loginError.test(body) ? 'GIB giris hata mesaji algilandi' : 'login formu hala gorunuyor');
+    if (TEXT.captcha.test(body) || TEXT.loginError.test(body) || loginFormVisible) {
+      throw new Error(`CAPTCHA veya sifre reddedildi: ${this.compact(reason)}`);
     }
   }
 
