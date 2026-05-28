@@ -636,6 +636,7 @@ export class PortalAutomationService {
       userId: string | null;
       period: { start: Date; end: Date };
       donem?: string;
+      force?: boolean;
     },
   ) {
     const meta = JOB_META[jobType];
@@ -656,6 +657,7 @@ export class PortalAutomationService {
           label: meta.label,
           provider: meta.provider,
           ownerType: meta.ownerType,
+          force: opts.force === true,
           dateFrom: opts.period.start.toISOString(),
           dateTo: opts.period.end.toISOString(),
           instruction: this.instructionForJob(jobType),
@@ -914,13 +916,13 @@ export class PortalAutomationService {
 
     const data: any = {
       beyanTarihi: parseDateOrNull(input.beyanTarihi),
-      tahakkukTutari,
-      odemeTutari: input.odemeTutari ?? null,
-      onayNo,
       kaynak: 'gib_agent',
       importBatchId: jobId,
       notlar: input.raw ? JSON.stringify({ source: 'portal-automation', raw: input.raw }).slice(0, 1000) : null,
     };
+    if (tahakkukTutari != null) data.tahakkukTutari = tahakkukTutari;
+    if (input.odemeTutari != null) data.odemeTutari = input.odemeTutari;
+    if (onayNo) data.onayNo = onayNo;
     if (beyannameUrl) data.beyannameUrl = beyannameUrl;
     if (pdfUrl) data.pdfUrl = pdfUrl;
     if (xmlUrl) data.xmlUrl = xmlUrl;
@@ -939,10 +941,19 @@ export class PortalAutomationService {
         taxpayerId: taxpayer.id,
         beyanTipi: input.beyanTipi,
         donem: input.donem,
+        tahakkukTutari: tahakkukTutari ?? null,
+        odemeTutari: input.odemeTutari ?? null,
+        onayNo,
         ...data,
       },
       update: data,
     });
+
+    const durumUpdate: any = {
+      durum: 'onaylandi',
+      onayTarihi: parseDateOrNull(input.beyanTarihi) || new Date(),
+    };
+    if (tahakkukTutari != null) durumUpdate.tahakkukTutari = tahakkukTutari;
 
     await (this.prisma as any).beyanDurumu.upsert({
       where: {
@@ -963,11 +974,7 @@ export class PortalAutomationService {
           tahakkukTutari,
           notlar: 'GIB agent tarafindan indirildi',
         },
-        update: {
-          durum: 'onaylandi',
-          onayTarihi: parseDateOrNull(input.beyanTarihi) || new Date(),
-          tahakkukTutari,
-        },
+        update: durumUpdate,
       }).catch(() => {});
 
     return kayit;
@@ -1131,6 +1138,12 @@ export class PortalAutomationService {
       update: data,
     });
 
+    const durumUpdate: any = {
+      durum: 'onaylandi',
+      onayTarihi: parsedDate || new Date(),
+    };
+    if (parsed.tahakkukTutari != null) durumUpdate.tahakkukTutari = parsed.tahakkukTutari;
+
     await (this.prisma as any).beyanDurumu.upsert({
       where: {
         tenantId_taxpayerId_beyanTipi_donem: {
@@ -1151,9 +1164,7 @@ export class PortalAutomationService {
         notlar: 'GIB agent PDF parse ile indirildi',
       },
       update: {
-        durum: 'onaylandi',
-        onayTarihi: parsedDate || new Date(),
-        tahakkukTutari: parsed.tahakkukTutari,
+        ...durumUpdate,
       },
     }).catch(() => {});
 

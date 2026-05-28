@@ -1,6 +1,7 @@
 import { Injectable, Logger, OnModuleInit } from '@nestjs/common';
 import { Cron, CronExpression } from '@nestjs/schedule';
 import { chromium as pwChromium } from 'playwright-core';
+import { PDFParse } from 'pdf-parse';
 import { mkdir, readFile, rm, writeFile } from 'fs/promises';
 import { tmpdir } from 'os';
 import { join } from 'path';
@@ -1838,7 +1839,7 @@ export class PortalAutomationRailwayRunnerService implements OnModuleInit {
 
         const identity = this.ebeyannameIdentityFromRow(row, taxpayers, job);
         const existing = await this.existingBeyanKaydiFiles(tenantId, identity);
-        const skipExisting = !!existing && !identity?.isCorrection;
+        const skipExisting = !!existing && !identity?.isCorrection && !this.shouldRefreshExistingEBeyanname(job);
         const skipBeyanname = skipExisting && !!existing.beyannameUrl;
         const skipTahakkuk = skipExisting && !!existing.pdfUrl;
         if (skipBeyanname && skipTahakkuk) {
@@ -1848,10 +1849,10 @@ export class PortalAutomationRailwayRunnerService implements OnModuleInit {
 
         const beyanname = skipBeyanname
           ? null
-          : await this.downloadEBeyannameRowFile(page, row.rowIndex, 'beyanname', downloadsPath, processedRows, notes);
+          : await this.downloadEBeyannameRowFile(page, row, 'beyanname', downloadsPath, processedRows, notes);
         const tahakkuk = skipTahakkuk
           ? null
-          : await this.downloadEBeyannameRowFile(page, row.rowIndex, 'tahakkuk', downloadsPath, processedRows, notes);
+          : await this.downloadEBeyannameRowFile(page, row, 'tahakkuk', downloadsPath, processedRows, notes);
         const declaration = this.declarationFromEBeyannameRow(row, 'onaylandi', taxpayers, job, { beyanname, tahakkuk });
 
         if (declaration) {
@@ -1919,16 +1920,16 @@ export class PortalAutomationRailwayRunnerService implements OnModuleInit {
 
   private async downloadEBeyannameRowFile(
     page: any,
-    rowIndex: number,
+    resultRow: EBeyannameResultRow,
     kind: 'beyanname' | 'tahakkuk',
     downloadsPath: string,
     sequence: number,
     notes: string[],
   ): Promise<EBeyannameFilePayload | null> {
     const target = await this.findEBeyannameResultTarget(page) || page;
-    const row = target.locator('tr').filter({ hasText: /\b\d{10,11}\b/ }).nth(rowIndex);
+    const row = await this.findEBeyannameResultRowLocator(target, resultRow);
     if (!(await row.isVisible().catch(() => false))) {
-      notes.push(`${kind}: satir ${rowIndex + 1} gorunur degil`);
+      notes.push(`${kind}: satir ${resultRow.rowIndex + 1} gorunur degil`);
       return null;
     }
 
@@ -1955,17 +1956,95 @@ export class PortalAutomationRailwayRunnerService implements OnModuleInit {
 
     const picked = this.pickEBeyannameFileCandidate(metas, kind);
     if (picked == null) {
-      notes.push(`${kind}: satir ${rowIndex + 1} icin PDF ikonu bulunamadi`);
+      notes.push(`${kind}: satir ${resultRow.rowIndex + 1} icin PDF ikonu bulunamadi`);
       return null;
     }
 
     const loc = candidates.nth(picked);
     const clicked = await this.captureEBeyannameDownload(page, loc, downloadsPath, `ebeyanname-${sequence}-${kind}`);
     if (!clicked) {
-      notes.push(`${kind}: satir ${rowIndex + 1} tiklandi ama PDF alinamadi`);
+      notes.push(`${kind}: satir ${resultRow.rowIndex + 1} tiklandi ama PDF alinamadi`);
       return null;
     }
+    if (!(await this.validateEBeyannameFileOwner(resultRow, clicked, kind, notes))) return null;
     return clicked;
+  }
+
+  private shouldRefreshExistingEBeyanname(job: any) {
+    return job?.source === 'manual' && job?.payload?.force === true;
+  }
+
+  private async findEBeyannameResultRowLocator(target: any, row: EBeyannameResultRow) {
+    const rows = target.locator('tr').filter({ hasText: /\b\d{10,11}\b/ });
+    const indexed = rows.nth(row.rowIndex);
+    const indexedScore = this.ebeyannameRowMatchScore(await this.locatorText(indexed), row);
+    if (indexedScore >= 80) return indexed;
+
+    const candidates = row.taxNumber ? rows.filter({ hasText: row.taxNumber }) : rows;
+    const count = Math.min(await candidates.count().catch(() => 0), 500);
+    let best = indexed;
+    let bestScore = indexedScore;
+    for (let i = 0; i < count; i++) {
+      const candidate = candidates.nth(i);
+      const score = this.ebeyannameRowMatchScore(await this.locatorText(candidate), row);
+      if (score > bestScore) {
+        best = candidate;
+        bestScore = score;
+      }
+      if (score >= 95) break;
+    }
+    return best;
+  }
+
+  private async locatorText(locator: any) {
+    return locator.evaluate((el: any) => String(el?.innerText || el?.textContent || '').replace(/\s+/g, ' ').trim()).catch(() => '');
+  }
+
+  private ebeyannameRowMatchScore(text: string, row: EBeyannameResultRow) {
+    const digits = String(text || '').replace(/\D/g, '');
+    const key = this.normalizeTextKey(text);
+    let score = 0;
+    if (row.taxNumber && digits.includes(row.taxNumber.replace(/\D/g, ''))) score += 60;
+    if (row.beyanTipiRaw && key.includes(this.normalizeTextKey(row.beyanTipiRaw))) score += 15;
+    if (row.taxPeriod && key.includes(this.normalizeTextKey(row.taxPeriod))) score += 15;
+    if (row.uploadTime && key.includes(this.normalizeTextKey(row.uploadTime))) score += 10;
+    if (row.mahiyetText && key.includes(this.normalizeTextKey(row.mahiyetText))) score += 5;
+    return score;
+  }
+
+  private async validateEBeyannameFileOwner(
+    row: EBeyannameResultRow,
+    file: EBeyannameFilePayload,
+    kind: 'beyanname' | 'tahakkuk',
+    notes: string[],
+  ) {
+    const expectedTaxNumber = (row.taxNumber || '').replace(/\D/g, '');
+    if (!expectedTaxNumber || !/pdf/i.test(file.mimeType || file.fileName || '')) return true;
+
+    const text = await this.pdfTextFromBase64(file.base64).catch((err) => {
+      notes.push(`${kind}: satir ${row.rowIndex + 1} PDF VKN kontrolu yapilamadi: ${this.compact(err?.message || err)}`);
+      return '';
+    });
+    const compactDigits = text.replace(/\D/g, '');
+    if (compactDigits.includes(expectedTaxNumber)) return true;
+
+    const seenTaxNumbers = Array.from(new Set(Array.from(text.matchAll(/\b\d{10,11}\b/g)).map((m) => m[0])));
+    if (seenTaxNumbers.length) {
+      notes.push(`${kind}: satir ${row.rowIndex + 1} PDF VKN uyusmadi; beklenen ${expectedTaxNumber}, PDF ${seenTaxNumbers.slice(0, 3).join(', ')}. Kayda baglanmadi.`);
+      return false;
+    }
+    return true;
+  }
+
+  private async pdfTextFromBase64(base64: string) {
+    const parser = new PDFParse({ data: Buffer.from(base64, 'base64') });
+    try {
+      const result = await parser.getText();
+      return String(result?.text || '').replace(/\s+/g, ' ').trim();
+    } finally {
+      const destroy = (parser as any).destroy;
+      if (typeof destroy === 'function') await destroy.call(parser).catch(() => {});
+    }
   }
 
   private pickEBeyannameFileCandidate(

@@ -765,7 +765,7 @@ export default function BeyannamelerPage() {
           </div>
         ) : (
           <div className="overflow-x-auto">
-            <table className="w-full min-w-[1080px] text-[13px]">
+            <table className="w-full min-w-[1040px] text-[13px]">
               <thead style={{ background: 'rgba(255,255,255,0.025)' }}>
                 <tr className="text-left uppercase tracking-[.12em] text-[10.5px]" style={{ color: 'rgba(250,250,249,0.45)' }}>
                   <th className="px-3 py-3 w-[42px]">
@@ -781,7 +781,7 @@ export default function BeyannamelerPage() {
                   <th className="px-3 py-3">Belge Mahiyeti</th>
                   <th className="px-3 py-3">Tur</th>
                   <th className="px-3 py-3">Tutar</th>
-                  <th className="px-3 py-3 w-[176px] text-right">Durum</th>
+                  <th className="px-3 py-3 w-[140px] text-right">Durum</th>
                 </tr>
               </thead>
               <tbody>
@@ -826,9 +826,9 @@ export default function BeyannamelerPage() {
                         <span
                           className="rounded-md px-2 py-1 text-[11px] font-bold"
                           style={{
-                            background: mahiyet === 'DUZELTME' ? 'rgba(245,158,11,0.13)' : 'rgba(34,197,94,0.10)',
-                            border: `1px solid ${mahiyet === 'DUZELTME' ? 'rgba(245,158,11,0.24)' : 'rgba(34,197,94,0.20)'}`,
-                            color: mahiyet === 'DUZELTME' ? '#fcd34d' : '#86efac',
+                            background: mahiyet === 'DUZELTME' ? 'rgba(245,158,11,0.13)' : 'rgba(212,184,118,0.10)',
+                            border: `1px solid ${mahiyet === 'DUZELTME' ? 'rgba(245,158,11,0.24)' : 'rgba(212,184,118,0.24)'}`,
+                            color: mahiyet === 'DUZELTME' ? '#fcd34d' : '#e7d6a1',
                           }}
                         >
                           {mahiyet === 'DUZELTME' ? 'DUZELTME' : 'ASIL'}
@@ -836,14 +836,14 @@ export default function BeyannamelerPage() {
                       </td>
                       <td className="px-3 py-3" style={{ color: '#fafaf9' }}>{item.tur}</td>
                       <td className="px-3 py-3">
-                        <div className="font-semibold tabular-nums" style={{ color: row.tahakkukTutari ? '#fafaf9' : 'rgba(250,250,249,0.42)' }}>
-                          {fmtCurrency(row.tahakkukTutari)}
+                        <div className="font-semibold tabular-nums" style={{ color: row.tahakkukTutari != null ? '#fafaf9' : '#fcd34d' }}>
+                          {row.tahakkukTutari != null ? fmtCurrency(row.tahakkukTutari) : 'Tutar okunamadi'}
                         </div>
                         <div className="text-[10.5px] mt-0.5" style={{ color: 'rgba(250,250,249,0.36)' }}>
                           {item.kind === 'tahakkuk' ? 'Tahakkuk tutari' : 'Tahakkuk eslesmesi'}
                         </div>
                       </td>
-                      <td className="w-[176px] px-3 py-3">
+                      <td className="w-[140px] px-3 py-3">
                         <div className="flex items-center justify-end gap-1">
                           <IconButton
                             label={item.hasFile ? (viewed ? 'Goruntulendi' : `${item.tur} goruntule`) : `${item.tur} PDF yok`}
@@ -872,14 +872,6 @@ export default function BeyannamelerPage() {
                             tone={smsSent ? 'green' : 'sms'}
                             disabled={!hasPhone}
                             onClick={() => sendSms(row)}
-                          />
-                          <IconButton
-                            label="Sil"
-                            icon={Trash2}
-                            danger
-                            onClick={() => {
-                              if (confirm(`${beyanKaydiMukellefAdi(row)} kaydi silinsin mi?`)) deleteMut.mutate(row.id);
-                            }}
                           />
                         </div>
                       </td>
