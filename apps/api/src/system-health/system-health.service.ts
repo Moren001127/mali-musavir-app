@@ -1,6 +1,8 @@
-import { Injectable, Logger } from '@nestjs/common';
+import { Injectable, Logger, Optional } from '@nestjs/common';
 import { Cron, CronExpression } from '@nestjs/schedule';
 import { PrismaService } from '../prisma/prisma.service';
+import { NotificationsService } from '../notifications/notifications.service';
+import { NOTIFICATION_TYPES } from '../notifications/notification-types';
 import * as crypto from 'crypto';
 import * as fs from 'fs';
 import * as path from 'path';
@@ -28,7 +30,10 @@ import * as path from 'path';
 export class SystemHealthService {
   private readonly logger = new Logger(SystemHealthService.name);
 
-  constructor(private readonly prisma: PrismaService) {}
+  constructor(
+    private readonly prisma: PrismaService,
+    @Optional() private readonly notifications?: NotificationsService,
+  ) {}
 
   // === ENTRY POINT — CRON ===
   @Cron(CronExpression.EVERY_5_MINUTES)
@@ -525,6 +530,44 @@ export class SystemHealthService {
           resolved: false,
         },
       });
+
+      // === IN-APP BILDIRIM: Yeni CRITICAL system health uyarisi ===
+      // Sadece CRITICAL ve sadece YENI (existing yoksa) durumda. WARNING'leri spam etmemek icin.
+      if (args.severity === 'CRITICAL' && this.notifications) {
+        // tenantId yoksa tum tenantlara at — ama bu spam olabilir, sadece tenantId varsa tenant'a at.
+        if (args.tenantId) {
+          await this.notifications.createForTenant({
+            tenantId: args.tenantId,
+            type: NOTIFICATION_TYPES.SYSTEM,
+            title: `🚨 Sistem uyarısı: ${args.type}`,
+            body: `${args.message}${args.acilTavsiye ? `\n\nÖneri: ${args.acilTavsiye}` : ''}`,
+            metadata: {
+              healthCheckType: args.type,
+              status: args.status,
+              detail: args.detail,
+              link: '/panel/ayarlar',
+            },
+            dedupeKey: `sys-health:${args.type}`,
+            dedupeWindowMin: 60 * 6, // 6 saat
+          }).catch((e) => {
+            this.logger.warn(`SYSTEM notif failed: ${(e as Error).message}`);
+          });
+        } else {
+          // Tenant geneli kritik (DB_HEALTH gibi) — tum tenantlara at
+          const tenants = await (this.prisma as any).tenant.findMany({ select: { id: true } }).catch(() => []);
+          for (const t of tenants) {
+            await this.notifications.createForTenant({
+              tenantId: t.id,
+              type: NOTIFICATION_TYPES.SYSTEM,
+              title: `🚨 Sistem uyarısı: ${args.type}`,
+              body: `${args.message}${args.acilTavsiye ? `\n\nÖneri: ${args.acilTavsiye}` : ''}`,
+              metadata: { healthCheckType: args.type, status: args.status, link: '/panel/ayarlar' },
+              dedupeKey: `sys-health:${args.type}`,
+              dedupeWindowMin: 60 * 6,
+            }).catch(() => null);
+          }
+        }
+      }
     }
   }
 
