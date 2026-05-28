@@ -1,5 +1,7 @@
-import { Injectable, NotFoundException, BadRequestException } from '@nestjs/common';
+import { Injectable, NotFoundException, BadRequestException, Logger } from '@nestjs/common';
 import { PrismaService } from '../prisma/prisma.service';
+import { NotificationsService } from '../notifications/notifications.service';
+import { NOTIFICATION_TYPES } from '../notifications/notification-types';
 
 /**
  * Mükellef Banka Takip servisi.
@@ -12,7 +14,12 @@ import { PrismaService } from '../prisma/prisma.service';
  */
 @Injectable()
 export class BankaTakipService {
-  constructor(private readonly prisma: PrismaService) {}
+  private readonly logger = new Logger(BankaTakipService.name);
+
+  constructor(
+    private readonly prisma: PrismaService,
+    private readonly notifications: NotificationsService,
+  ) {}
 
   // ============= BANKA HESABI CRUD =============
 
@@ -154,26 +161,73 @@ export class BankaTakipService {
         donem: data.donem,
       },
     });
+    let result;
     if (existing) {
-      return (this.prisma as any).bankaEkstreKaydi.update({
+      result = await (this.prisma as any).bankaEkstreKaydi.update({
         where: { id: existing.id },
         data: updateData,
       });
+    } else {
+      result = await (this.prisma as any).bankaEkstreKaydi.create({
+        data: {
+          tenantId,
+          taxpayerId: data.taxpayerId,
+          bankaHesapId: data.bankaHesapId || null,
+          donem: data.donem,
+          ekstreGeldi: data.ekstreGeldi ?? false,
+          geldiTarihi: data.ekstreGeldi ? now : null,
+          ekstreIslendi: data.ekstreIslendi ?? false,
+          islenmeTarihi: data.ekstreIslendi ? now : null,
+          islenmeNotu: data.islenmeNotu || null,
+          notlar: data.notlar || null,
+        },
+      });
     }
-    return (this.prisma as any).bankaEkstreKaydi.create({
-      data: {
-        tenantId,
-        taxpayerId: data.taxpayerId,
-        bankaHesapId: data.bankaHesapId || null,
-        donem: data.donem,
-        ekstreGeldi: data.ekstreGeldi ?? false,
-        geldiTarihi: data.ekstreGeldi ? now : null,
-        ekstreIslendi: data.ekstreIslendi ?? false,
-        islenmeTarihi: data.ekstreIslendi ? now : null,
-        islenmeNotu: data.islenmeNotu || null,
-        notlar: data.notlar || null,
-      },
-    });
+
+    // === IN-APP BILDIRIM: ekstreGeldi false -> true geçişinde ===
+    // Ekstre yeni geldiğinde tenant'a haber ver.
+    const transitionedToGeldi = data.ekstreGeldi === true &&
+      (!existing || existing.ekstreGeldi !== true);
+    if (transitionedToGeldi) {
+      try {
+        const tp = await (this.prisma as any).taxpayer.findFirst({
+          where: { id: data.taxpayerId, tenantId },
+          select: { companyName: true, firstName: true, lastName: true },
+        });
+        const mukellefAdi = tp?.companyName ||
+          [tp?.firstName, tp?.lastName].filter(Boolean).join(' ') ||
+          'mükellef';
+        let bankaLabel = '';
+        if (data.bankaHesapId) {
+          const bh = await (this.prisma as any).bankaHesap.findFirst({
+            where: { id: data.bankaHesapId, tenantId },
+            select: { bankaAdi: true, hesapNo: true },
+          });
+          if (bh) bankaLabel = `${bh.bankaAdi}${bh.hesapNo ? ` ${bh.hesapNo}` : ''}`;
+        }
+        await this.notifications.createForTenant({
+          tenantId,
+          type: NOTIFICATION_TYPES.BANK_TRANSACTION_ALERT,
+          title: `🏦 Ekstre geldi: ${mukellefAdi} (${data.donem})`,
+          body: bankaLabel
+            ? `${bankaLabel} ekstresi alındı. İşlemek için Banka Takip sayfasına gidin.`
+            : `${data.donem} dönemi banka ekstresi alındı. İşlemek için Banka Takip sayfasına gidin.`,
+          metadata: {
+            ekstreKaydiId: result.id,
+            taxpayerId: data.taxpayerId,
+            bankaHesapId: data.bankaHesapId || null,
+            donem: data.donem,
+            link: `/panel/banka-takip?donem=${encodeURIComponent(data.donem)}`,
+          },
+          dedupeKey: `bank-ekstre:${result.id}`,
+          dedupeWindowMin: 60 * 24,
+        });
+      } catch (e) {
+        this.logger.warn(`BANK_TRANSACTION_ALERT notif failed: ${(e as Error).message}`);
+      }
+    }
+
+    return result;
   }
 
   // ============= ANA LİSTE — Banka Takip sayfası için =============
