@@ -1,12 +1,14 @@
 'use client';
 
-import { useMemo, useState } from 'react';
+import { useEffect, useMemo, useState } from 'react';
 import Link from 'next/link';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import { api } from '@/lib/api';
 import { toast } from 'sonner';
 import {
   AlertCircle,
+  AlertTriangle,
+  Banknote,
   Bell,
   Bot,
   CalendarClock,
@@ -14,13 +16,22 @@ import {
   CheckCheck,
   CheckCircle2,
   ChevronRight,
+  FileText,
+  HandCoins,
   Inbox,
+  Key,
+  Lightbulb,
   Loader2,
+  Mail,
   MessageCircle,
+  Receipt,
   Search,
+  ShieldAlert,
   SlidersHorizontal,
   Sparkles,
+  Upload,
   X,
+  Zap,
 } from 'lucide-react';
 
 const GOLD = '#d4b876';
@@ -41,18 +52,34 @@ type Notification = {
 type FilterMode = 'all' | 'unread' | 'read';
 
 const TYPE_LABELS: Record<string, string> = {
+  // Mevcut/aktif
   AUTOMATION: 'Otomasyon',
-  TAX_DEADLINE: 'Vergi Tarihi',
-  TASK_DUE: 'Görev',
-  SYSTEM: 'Sistem',
-  AGENT: 'Ajan',
   WHATSAPP: 'WhatsApp',
   'WhatsApp': 'WhatsApp',
+  OFFICE_CHAT: 'Ofis Sohbeti',
   AI: 'Moren AI',
   MOREN_AI: 'Moren AI',
   'Moren AI': 'Moren AI',
   MOREN_AI_ALERT: 'Moren AI Uyarısı',
-  OFFICE_CHAT: 'Ofis Sohbeti',
+  AI_PROPOSAL: 'AI Önerisi',
+  AI_COST_LIMIT: 'AI Maliyet Limiti',
+  E_TEBLIGAT: 'e-Tebligat',
+  // Yeni — kritik
+  TASK_DUE: 'Görev',
+  PORTAL_CREDENTIAL_FAIL: 'Portal Şifre Hatası',
+  LUCA_SYNC_ERROR: 'Luca Aktarım Hatası',
+  // Yeni — orta
+  TAX_DEADLINE: 'Vergi Tarihi',
+  KDV_RESULT: 'KDV Kontrol Sonucu',
+  DOCUMENT_UPLOADED: 'Yeni Evrak',
+  PENDING_DECISION: 'Onay Bekliyor',
+  BANK_TRANSACTION_ALERT: 'Banka Hareketi',
+  // Yeni — düşük
+  SYSTEM: 'Sistem',
+  AGENT: 'Ajan',
+  AUTH_NEW_DEVICE: 'Yeni Cihaz Girişi',
+  INVOICE_OVERDUE: 'Vadesi Geçen Fatura',
+  MIHSAP_RESULT: 'Mihsap Sonucu',
 };
 
 function typeLabel(t: string) {
@@ -79,8 +106,32 @@ function typeMeta(t: string) {
     case 'Moren AI':
     case 'MOREN_AI_ALERT':
       return { color: GOLD, Icon: Sparkles };
+    case 'AI_PROPOSAL':
+      return { color: '#e7cf91', Icon: Lightbulb };
+    case 'AI_COST_LIMIT':
+      return { color: '#ff7a8c', Icon: HandCoins };
     case 'OFFICE_CHAT':
       return { color: '#8fd7bd', Icon: Inbox };
+    case 'E_TEBLIGAT':
+      return { color: '#9ec5ff', Icon: Mail };
+    case 'PORTAL_CREDENTIAL_FAIL':
+      return { color: '#ff7a8c', Icon: Key };
+    case 'LUCA_SYNC_ERROR':
+      return { color: '#ff7a8c', Icon: AlertTriangle };
+    case 'KDV_RESULT':
+      return { color: '#c8ad73', Icon: Receipt };
+    case 'DOCUMENT_UPLOADED':
+      return { color: '#8fd7bd', Icon: Upload };
+    case 'PENDING_DECISION':
+      return { color: '#f2c46d', Icon: AlertTriangle };
+    case 'BANK_TRANSACTION_ALERT':
+      return { color: '#8cc8ff', Icon: Banknote };
+    case 'AUTH_NEW_DEVICE':
+      return { color: '#ff9aaa', Icon: ShieldAlert };
+    case 'INVOICE_OVERDUE':
+      return { color: '#ff7a8c', Icon: Receipt };
+    case 'MIHSAP_RESULT':
+      return { color: '#c8ad73', Icon: FileText };
     default:
       return { color: '#9da8b7', Icon: Bell };
   }
@@ -117,9 +168,23 @@ function notificationHref(n: Notification) {
   }
   if (n.type === 'OFFICE_CHAT') return '/panel?officeChat=open';
   if (n.type === 'TASK_DUE') return '/panel/gorevler';
-  if (n.type === 'TAX_DEADLINE') return '/panel';
+  if (n.type === 'TAX_DEADLINE') return '/panel/beyannameler';
   if (n.type === 'AGENT') return '/panel/ajanlar';
-  if (n.type === 'AI') return '/panel/moren-ai';
+  if (n.type === 'AI' || n.type === 'MOREN_AI_ALERT' || n.type === 'AI_PROPOSAL' || n.type === 'AI_COST_LIMIT') return '/panel/moren-ai';
+  if (n.type === 'E_TEBLIGAT') return '/panel/beyannameler';
+  if (n.type === 'PORTAL_CREDENTIAL_FAIL') return '/panel/ayarlar/entegrasyonlar';
+  if (n.type === 'LUCA_SYNC_ERROR') return '/panel/luca';
+  if (n.type === 'KDV_RESULT') {
+    const sid = metadata.sessionId ? String(metadata.sessionId) : '';
+    return sid ? `/panel/kdv-kontrol/${encodeURIComponent(sid)}` : '/panel/kdv-kontrol';
+  }
+  if (n.type === 'DOCUMENT_UPLOADED') return '/panel/evraklar';
+  if (n.type === 'PENDING_DECISION') return '/panel/onay-bekleyen';
+  if (n.type === 'BANK_TRANSACTION_ALERT') return '/panel/banka-takip';
+  if (n.type === 'INVOICE_OVERDUE') return '/panel/faturalar';
+  if (n.type === 'MIHSAP_RESULT') return '/panel/ajanlar/mihsap';
+  if (n.type === 'AUTH_NEW_DEVICE') return '/panel/ayarlar';
+  if (n.type === 'SYSTEM') return '/panel';
   return '';
 }
 
@@ -145,10 +210,28 @@ export default function BildirimlerPage() {
   const [filter, setFilter] = useState<FilterMode>('all');
   const [typeFilter, setTypeFilter] = useState<string>('');
   const [search, setSearch] = useState('');
+  const [showPrefs, setShowPrefs] = useState(false);
+
+  // Window focus invalidation — kullanici sekmeye geri donunce taze veri
+  useEffect(() => {
+    const handler = () => {
+      qc.invalidateQueries({ queryKey: ['notifications'] });
+      qc.invalidateQueries({ queryKey: ['notifications', 'unread'] });
+    };
+    window.addEventListener('focus', handler);
+    return () => window.removeEventListener('focus', handler);
+  }, [qc]);
 
   const { data: notifications = [], isLoading } = useQuery<Notification[]>({
     queryKey: ['notifications'],
     queryFn: () => api.get('/notifications').then((r) => r.data),
+    refetchInterval: 20_000, // 20sn polling
+    refetchIntervalInBackground: false,
+  });
+
+  const { data: prefs, refetch: refetchPrefs } = useQuery<{ mutedTypes: string[] }>({
+    queryKey: ['notifications', 'preferences'],
+    queryFn: () => api.get('/notifications/preferences').then((r) => r.data),
   });
 
   const markRead = useMutation({
@@ -169,6 +252,20 @@ export default function BildirimlerPage() {
     },
     onError: (e: any) =>
       toast.error(e?.response?.data?.message || 'İşaretlenemedi'),
+  });
+
+  const togglePref = useMutation({
+    mutationFn: async (type: string) => {
+      const current = prefs?.mutedTypes || [];
+      const next = current.includes(type) ? current.filter((t) => t !== type) : [...current, type];
+      await api.put('/notifications/preferences', { mutedTypes: next });
+      return next;
+    },
+    onSuccess: () => {
+      refetchPrefs();
+      toast.success('Tercih güncellendi');
+    },
+    onError: (e: any) => toast.error(e?.response?.data?.message || 'Güncellenemedi'),
   });
 
   const unreadCount = useMemo(
@@ -237,27 +334,76 @@ export default function BildirimlerPage() {
             </p>
           </div>
 
-          {unreadCount > 0 && (
+          <div className="flex items-center gap-2">
             <button
-              onClick={() => markAll.mutate()}
-              disabled={markAll.isPending}
-              className="inline-flex h-11 items-center justify-center gap-2 rounded-lg px-4 text-[13px] font-semibold transition disabled:opacity-50"
+              onClick={() => setShowPrefs(!showPrefs)}
+              className="inline-flex h-11 items-center justify-center gap-2 rounded-lg px-4 text-[13px] font-semibold transition"
               style={{
-                background: 'rgba(212,184,118,0.12)',
-                color: '#e7cf91',
-                border: '1px solid rgba(212,184,118,0.30)',
-                boxShadow: 'inset 0 1px 0 rgba(255,255,255,0.04)',
+                background: showPrefs ? 'rgba(212,184,118,0.18)' : 'rgba(255,255,255,0.05)',
+                color: showPrefs ? '#e7cf91' : 'rgba(250,250,249,0.7)',
+                border: '1px solid rgba(212,184,118,0.18)',
               }}
             >
-              {markAll.isPending ? (
-                <Loader2 size={15} className="animate-spin" />
-              ) : (
-                <CheckCheck size={15} />
-              )}
-              Tümünü okundu işaretle
+              <SlidersHorizontal size={15} /> Tercihler
             </button>
-          )}
+            {unreadCount > 0 && (
+              <button
+                onClick={() => markAll.mutate()}
+                disabled={markAll.isPending}
+                className="inline-flex h-11 items-center justify-center gap-2 rounded-lg px-4 text-[13px] font-semibold transition disabled:opacity-50"
+                style={{
+                  background: 'rgba(212,184,118,0.12)',
+                  color: '#e7cf91',
+                  border: '1px solid rgba(212,184,118,0.30)',
+                  boxShadow: 'inset 0 1px 0 rgba(255,255,255,0.04)',
+                }}
+              >
+                {markAll.isPending ? (
+                  <Loader2 size={15} className="animate-spin" />
+                ) : (
+                  <CheckCheck size={15} />
+                )}
+                Tümünü okundu işaretle
+              </button>
+            )}
+          </div>
         </div>
+
+        {showPrefs && (
+          <div className="border-t p-5" style={{ borderColor: SOFT_BORDER }}>
+            <div className="mb-3 text-[12px] font-bold uppercase tracking-[0.12em]" style={{ color: '#c8ad73' }}>
+              Bildirim Tercihleri — Kapatmak istediklerini seç
+            </div>
+            <div className="flex flex-wrap gap-2">
+              {Object.keys(TYPE_LABELS).filter((t, i, arr) => arr.indexOf(t) === i && !['WhatsApp', 'MOREN_AI', 'Moren AI'].includes(t)).map((t) => {
+                const muted = (prefs?.mutedTypes || []).includes(t);
+                const meta = typeMeta(t);
+                return (
+                  <button
+                    key={t}
+                    onClick={() => togglePref.mutate(t)}
+                    disabled={togglePref.isPending}
+                    className="inline-flex items-center gap-1.5 rounded-md px-2.5 py-1.5 text-[11.5px] font-semibold transition disabled:opacity-50"
+                    style={{
+                      background: muted ? 'rgba(255,122,140,0.10)' : `${meta.color}14`,
+                      border: `1px solid ${muted ? 'rgba(255,122,140,0.30)' : `${meta.color}30`}`,
+                      color: muted ? '#ff9aaa' : meta.color,
+                      textDecoration: muted ? 'line-through' : 'none',
+                    }}
+                    title={muted ? 'Şu an susturuldu — tekrar açmak için tıkla' : 'Susturmak için tıkla'}
+                  >
+                    {typeLabel(t)} {muted ? '🔕' : ''}
+                  </button>
+                );
+              })}
+            </div>
+            {(prefs?.mutedTypes?.length || 0) > 0 && (
+              <p className="mt-3 text-[11px]" style={{ color: 'rgba(250,250,249,0.42)' }}>
+                {prefs!.mutedTypes.length} tür şu an susturuldu. Yine de tenant geneli (tüm kullanıcılara) atılan bildirimler bell badge'inde görünebilir.
+              </p>
+            )}
+          </div>
+        )}
 
         <div className="grid gap-2 border-t p-4 sm:grid-cols-2 xl:grid-cols-4" style={{ borderColor: SOFT_BORDER }}>
           <NotificationStat label="Okunmamış" value={unreadCount} color={unreadCount > 0 ? '#ff7a8c' : '#8fd7bd'} />

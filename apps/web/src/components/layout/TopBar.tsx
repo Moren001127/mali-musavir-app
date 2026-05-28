@@ -1,17 +1,33 @@
 'use client';
 import { Bell } from 'lucide-react';
 import Link from 'next/link';
-import { useQuery } from '@tanstack/react-query';
+import { useEffect } from 'react';
+import { useQuery, useQueryClient } from '@tanstack/react-query';
 import { api } from '@/lib/api';
 import SystemHealthBell from './SystemHealthBell';
 import LucaAgentPanel from './LucaAgentPanel';
 
 export default function TopBar() {
+  const qc = useQueryClient();
   const { data: unread } = useQuery({
     queryKey: ['notifications', 'unread'],
     queryFn: () => api.get('/notifications/unread-count').then((r) => r.data),
-    refetchInterval: 60_000,
+    // 60sn -> 15sn (daha hizli refresh)
+    refetchInterval: 15_000,
+    refetchIntervalInBackground: false,
   });
+
+  // Window focus event: kullanici sekmeye geri donunce taze veri
+  useEffect(() => {
+    const onFocus = () => qc.invalidateQueries({ queryKey: ['notifications', 'unread'] });
+    const onVisibility = () => { if (document.visibilityState === 'visible') onFocus(); };
+    window.addEventListener('focus', onFocus);
+    document.addEventListener('visibilitychange', onVisibility);
+    return () => {
+      window.removeEventListener('focus', onFocus);
+      document.removeEventListener('visibilitychange', onVisibility);
+    };
+  }, [qc]);
 
   const today = new Date().toLocaleDateString('tr-TR', {
     weekday: 'long',
