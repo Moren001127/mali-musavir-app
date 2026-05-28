@@ -395,8 +395,8 @@ export default function BeyannamelerPage() {
           boxShadow: 'inset 0 1px 0 rgba(255,255,255,0.04)',
         }}
       >
-        <div className="flex items-center justify-between gap-4 flex-wrap">
-          <div className="min-w-0">
+        <div className="flex items-start justify-between gap-4 flex-wrap lg:flex-nowrap">
+          <div className="min-w-0 flex-1">
             <div className="flex items-center gap-2 mb-2">
               <span className="w-7 h-px" style={{ background: GOLD }} />
               <span className="text-[10.5px] uppercase font-bold tracking-[.18em]" style={{ color: '#b8a06f' }}>e-Beyanname</span>
@@ -406,24 +406,7 @@ export default function BeyannamelerPage() {
               Mali musavir e-Beyanname sifresiyle portala girer, beyannameleri ve tahakkuklari sunucu kuyruguna indirir.
             </p>
           </div>
-          <div className="flex items-center gap-2">
-            <button
-              type="button"
-              onClick={exportCsv}
-              className="hidden"
-              style={{ background: 'rgba(255,255,255,0.04)', border: '1px solid rgba(255,255,255,0.08)', color: 'rgba(250,250,249,0.82)' }}
-            >
-              <FileText size={15} /> Listeyi İndir
-            </button>
-            <button
-              type="button"
-              onClick={() => setImportModal(true)}
-              className="hidden"
-              style={{ background: `linear-gradient(135deg, ${GOLD}, #b8a06f)`, color: '#0f0d0b' }}
-            >
-              <FolderUp size={15} /> PDF / ZIP Aktar
-            </button>
-          </div>
+          <HeroLastJob jobs={portalSummary?.latestJobs || []} />
         </div>
       </section>
 
@@ -435,8 +418,7 @@ export default function BeyannamelerPage() {
           boxShadow: 'inset 0 1px 0 rgba(255,255,255,0.04)',
         }}
       >
-        <div className="grid gap-0 xl:grid-cols-[minmax(0,1.15fr),minmax(360px,0.85fr)]">
-          <div className="p-4 sm:p-5" style={{ borderRight: '1px solid rgba(255,255,255,0.06)' }}>
+        <div className="p-4 sm:p-5">
             <div className="mb-4 flex flex-wrap items-start justify-between gap-3">
               <div>
                 <div className="mb-2 flex items-center gap-2">
@@ -487,9 +469,6 @@ export default function BeyannamelerPage() {
                 <Clock size={13} /> {portalSummary?.nightly?.time || '02:15'} Europe/Istanbul
               </span>
             </div>
-          </div>
-
-          <AutomationJobList jobs={portalSummary?.latestJobs || []} />
         </div>
       </section>
 
@@ -671,46 +650,40 @@ function AutomationPill({ label, value, tone }: { label: string; value: string |
   );
 }
 
-function AutomationJobList({ jobs }: { jobs: PortalJob[] }) {
-  const visibleJobs = jobs.slice(0, 4);
+function HeroLastJob({ jobs }: { jobs: PortalJob[] }) {
+  const job = jobs[0];
+  if (!job) {
+    return (
+      <div className="w-full shrink-0 rounded-xl p-3 lg:w-[420px]" style={{ background: 'rgba(255,255,255,0.025)', border: '1px solid rgba(255,255,255,0.06)' }}>
+        <div className="text-[10.5px] font-bold uppercase tracking-[0.14em]" style={{ color: 'rgba(250,250,249,0.42)' }}>Son iş</div>
+        <div className="mt-1 text-[13px] font-semibold" style={{ color: 'rgba(250,250,249,0.58)' }}>Henüz indirme işi yok</div>
+      </div>
+    );
+  }
+
+  const status = portalJobStatus(job.status);
   return (
-    <div className="p-4 sm:p-5">
-      <div className="mb-3 flex items-center justify-between gap-3">
-        <h3 className="text-[14px] font-semibold" style={{ color: '#fafaf9' }}>Son İşler</h3>
+    <div className="w-full shrink-0 rounded-xl p-3 lg:w-[460px]" style={{ background: 'rgba(255,255,255,0.025)', border: `1px solid ${status.border}` }}>
+      <div className="mb-1.5 flex items-center justify-between gap-3">
+        <span className="text-[10.5px] font-bold uppercase tracking-[0.14em]" style={{ color: 'rgba(250,250,249,0.42)' }}>Son iş</span>
+        <span className="shrink-0 rounded-md px-2 py-1 text-[10.5px] font-bold" style={{ background: status.bg, color: status.color }}>
+          {status.label}
+        </span>
       </div>
-      <div className="grid gap-2">
-        {visibleJobs.length === 0 && (
-          <div className="rounded-xl px-4 py-5 text-center text-[12.5px]" style={{ background: 'rgba(255,255,255,0.025)', border: '1px solid rgba(255,255,255,0.06)', color: 'rgba(250,250,249,0.48)' }}>
-            Henüz indirme işi yok.
-          </div>
-        )}
-        {visibleJobs.map((job) => {
-          const status = portalJobStatus(job.status);
-          return (
-            <div key={job.id} className="rounded-xl p-3" style={{ background: 'rgba(255,255,255,0.025)', border: `1px solid ${status.border}` }}>
-              <div className="flex items-start justify-between gap-3">
-                <div className="min-w-0">
-                  <div className="truncate text-[13px] font-semibold" style={{ color: '#fafaf9' }}>
-                    {PORTAL_JOB_LABEL[job.jobType] || job.jobType}
-                  </div>
-                  <div className="mt-1 truncate text-[11.5px]" style={{ color: 'rgba(250,250,249,0.44)' }}>
-                    {portalTaxpayerName(job)} · {job.source === 'nightly' ? 'gece' : 'manuel'} · {fmtDateTime(job.createdAt)}
-                  </div>
-                </div>
-                <span className="shrink-0 rounded-md px-2 py-1 text-[10.5px] font-bold" style={{ background: status.bg, color: status.color }}>
-                  {status.label}
-                </span>
-              </div>
-              {job.errorMessage && (
-                <div className="mt-2 flex items-start gap-1.5 text-[11.5px] leading-5" style={{ color: '#fca5a5' }}>
-                  <AlertCircle size={13} className="mt-[3px] shrink-0" />
-                  <span>{job.errorMessage.slice(0, 180)}</span>
-                </div>
-              )}
-            </div>
-          );
-        })}
+      <div className="truncate text-[13px] font-semibold" style={{ color: '#fafaf9' }}>
+        {PORTAL_JOB_LABEL[job.jobType] || job.jobType}
       </div>
+      <div className="mt-1 truncate text-[11.5px]" style={{ color: 'rgba(250,250,249,0.44)' }}>
+        {portalTaxpayerName(job)} · {job.source === 'nightly' ? 'gece' : 'manuel'} · {fmtDateTime(job.createdAt)}
+      </div>
+      {job.errorMessage && (
+        <div className="mt-2 flex items-start gap-1.5 text-[11.5px] leading-5" style={{ color: '#fca5a5' }}>
+          <AlertCircle size={13} className="mt-[3px] shrink-0" />
+          <span style={{ display: '-webkit-box', WebkitLineClamp: 2, WebkitBoxOrient: 'vertical', overflow: 'hidden' }}>
+            {job.errorMessage.slice(0, 180)}
+          </span>
+        </div>
+      )}
     </div>
   );
 }
