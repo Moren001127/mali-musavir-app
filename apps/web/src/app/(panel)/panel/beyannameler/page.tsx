@@ -36,6 +36,12 @@ type BeyanTableRow = {
   tur: 'EBeyanname' | 'Tahakkuk';
   hasFile: boolean;
 };
+type PdfPreview = {
+  url: string;
+  title: string;
+  subtitle: string;
+  docKey: string;
+};
 
 const FILTER_KEYS: { key: FilterKey; label: string }[] = [
   { key: 'all', label: 'Tümü' },
@@ -119,6 +125,46 @@ function fmtDateTime(value?: string | null): string {
   return d.toLocaleString('tr-TR', { dateStyle: 'short', timeStyle: 'short' });
 }
 
+function textKey(value?: string | null): string {
+  return String(value || '')
+    .toLocaleUpperCase('tr-TR')
+    .normalize('NFD')
+    .replace(/[\u0300-\u036f]/g, '')
+    .replace(/[^A-Z0-9]+/g, ' ')
+    .replace(/\s+/g, ' ')
+    .trim();
+}
+
+function beyanMahiyeti(row: BeyanKaydi): 'ASIL' | 'DUZELTME' {
+  const raw = (() => {
+    if (!row.notlar) return '';
+    try {
+      return JSON.stringify(JSON.parse(row.notlar));
+    } catch {
+      return row.notlar;
+    }
+  })();
+  return /\bDUZELTME\b/.test(textKey(raw)) ? 'DUZELTME' : 'ASIL';
+}
+
+function portalJobProgress(job: PortalJob) {
+  const progress = job.payload?.progress && typeof job.payload.progress === 'object' ? job.payload.progress : {};
+  const current = Number(progress.current);
+  const total = Number(progress.total);
+  const records = Number(progress.records);
+  const pct = Number.isFinite(current) && Number.isFinite(total) && total > 0
+    ? Math.max(0, Math.min(100, Math.round((current / total) * 100)))
+    : null;
+  return {
+    message: typeof progress.message === 'string' ? progress.message : '',
+    detail: typeof progress.detail === 'string' ? progress.detail : '',
+    current: Number.isFinite(current) ? current : null,
+    total: Number.isFinite(total) ? total : null,
+    records: Number.isFinite(records) ? records : null,
+    pct,
+  };
+}
+
 function portalTaxpayerName(job: PortalJob): string {
   const taxpayer = job.taxpayer;
   if (!taxpayer) return 'Tüm ofis';
@@ -188,11 +234,17 @@ export default function BeyannamelerPage() {
   const [pullFrom, setPullFrom] = useState(defaultPullRange.from);
   const [pullTo, setPullTo] = useState(defaultPullRange.to);
   const [selectedDocKeys, setSelectedDocKeys] = useState<Set<string>>(() => new Set());
+  const [viewedDocKeys, setViewedDocKeys] = useState<Set<string>>(() => new Set());
+  const [sentEmailRows, setSentEmailRows] = useState<Set<string>>(() => new Set());
+  const [sentWhatsappRows, setSentWhatsappRows] = useState<Set<string>>(() => new Set());
+  const [sentSmsRows, setSentSmsRows] = useState<Set<string>>(() => new Set());
+  const [pdfPreview, setPdfPreview] = useState<PdfPreview | null>(null);
+  const pdfPreviewUrlRef = useRef<string | null>(null);
 
   const { data: portalSummary } = useQuery({
     queryKey: ['portal-automation-summary', 'beyanname-page'],
     queryFn: () => portalAutomationApi.summary(),
-    refetchInterval: 8000,
+    refetchInterval: 3000,
   });
 
   const { data: kayitlar = [], isLoading } = useQuery<BeyanKaydi[]>({
@@ -206,6 +258,12 @@ export default function BeyannamelerPage() {
     qc.invalidateQueries({ queryKey: ['beyan-kayitlari'] });
     qc.invalidateQueries({ queryKey: ['beyan-kayitlari-ozet'] });
   }, [qc, latestBeyanJob?.id, latestBeyanJob?.status, latestBeyanJob?.finishedAt, latestBeyanJob?.recordCount]);
+
+  useEffect(() => {
+    return () => {
+      if (pdfPreviewUrlRef.current) URL.revokeObjectURL(pdfPreviewUrlRef.current);
+    };
+  }, []);
 
   const deleteMut = useMutation({
     mutationFn: (id: string) => beyanKayitlariApi.remove(id),
@@ -392,6 +450,29 @@ export default function BeyannamelerPage() {
     setPeriodEnd('');
   };
 
+  const previewTitle = (row: BeyanKaydi, kind: BeyanDocKind) =>
+    `${beyanKaydiMukellefAdi(row)} - ${row.beyanTipi} - ${fmtDonemHattat(row.donem)} - ${kind === 'beyanname' ? 'Beyanname' : 'Tahakkuk'}`;
+
+  const closePdfPreview = () => {
+    if (pdfPreviewUrlRef.current) URL.revokeObjectURL(pdfPreviewUrlRef.current);
+    pdfPreviewUrlRef.current = null;
+    setPdfPreview(null);
+  };
+
+  const showPdfPreview = (blob: Blob, row: BeyanKaydi, kind: BeyanDocKind) => {
+    if (pdfPreviewUrlRef.current) URL.revokeObjectURL(pdfPreviewUrlRef.current);
+    const url = URL.createObjectURL(blob);
+    const docKey = `${row.id}:${kind}`;
+    pdfPreviewUrlRef.current = url;
+    setViewedDocKeys((prev) => new Set(prev).add(docKey));
+    setPdfPreview({
+      url,
+      docKey,
+      title: previewTitle(row, kind),
+      subtitle: `${beyanMahiyeti(row)} · ${fmtDate(row.beyanTarihi || row.createdAt)} · ${fmtCurrency(row.tahakkukTutari)}`,
+    });
+  };
+
   const openDocument = (row: BeyanKaydi, kind: 'beyanname' | 'tahakkuk' = 'beyanname') => {
     const url = kind === 'beyanname'
       ? (row.beyannameUrl ? beyanKayitlariApi.beyannameUrl(row.id) : row.pdfUrl ? beyanKayitlariApi.pdfUrl(row.id) : '')
@@ -414,18 +495,15 @@ export default function BeyannamelerPage() {
   };
 
   const openDocumentBlob = async (row: BeyanKaydi, kind: BeyanDocKind = 'beyanname') => {
-    const fallbackKind: BeyanDocKind = kind === 'beyanname' && !row.beyannameUrl && row.pdfUrl ? 'tahakkuk' : kind;
-    const blob = await fetchDocumentBlob(row, fallbackKind).catch((err) => {
+    const blob = await fetchDocumentBlob(row, kind).catch((err) => {
       toast.error(err?.message || 'PDF acilamadi');
       return null;
     });
     if (!blob) {
-      toast.warning('Bu kayit icin goruntulenecek PDF yok');
+      toast.warning(`${kind === 'beyanname' ? 'Beyanname' : 'Tahakkuk'} PDF yok`);
       return;
     }
-    const url = URL.createObjectURL(blob);
-    window.open(url, '_blank', 'noopener,noreferrer');
-    setTimeout(() => URL.revokeObjectURL(url), 60_000);
+    showPdfPreview(blob, row, kind);
   };
 
   const downloadDocument = async (item: BeyanTableRow) => {
@@ -455,6 +533,7 @@ export default function BeyannamelerPage() {
       toast.warning('Mükellef kartında e-posta yok');
       return;
     }
+    setSentEmailRows((prev) => new Set(prev).add(row.id));
     window.location.href = `mailto:${email}?subject=${encodeURIComponent(declarationSubject(row))}&body=${encodeURIComponent(declarationMessage(row))}`;
   };
 
@@ -464,6 +543,7 @@ export default function BeyannamelerPage() {
       toast.warning('Mükellef kartında telefon yok');
       return;
     }
+    setSentWhatsappRows((prev) => new Set(prev).add(row.id));
     window.open(`https://wa.me/${phone}?text=${encodeURIComponent(declarationMessage(row))}`, '_blank', 'noopener,noreferrer');
   };
 
@@ -473,6 +553,7 @@ export default function BeyannamelerPage() {
       toast.warning('Mükellef kartında telefon yok');
       return;
     }
+    setSentSmsRows((prev) => new Set(prev).add(row.id));
     window.location.href = `sms:${phone}?body=${encodeURIComponent(declarationMessage(row))}`;
   };
 
@@ -691,6 +772,13 @@ export default function BeyannamelerPage() {
               <tbody>
                 {tableRows.map((item) => {
                   const row = item.row;
+                  const mahiyet = beyanMahiyeti(row);
+                  const viewed = viewedDocKeys.has(item.key);
+                  const hasEmail = !!taxpayerEmail(row);
+                  const hasPhone = !!taxpayerPhone(row);
+                  const emailSent = sentEmailRows.has(row.id);
+                  const whatsappSent = sentWhatsappRows.has(row.id);
+                  const smsSent = sentSmsRows.has(row.id);
                   return (
                     <tr key={item.key} style={{ borderTop: '1px solid rgba(255,255,255,0.055)' }}>
                       <td className="px-4 py-3">
@@ -719,19 +807,57 @@ export default function BeyannamelerPage() {
                         <div className="font-semibold" style={{ color: '#fafaf9' }}>{row.beyanTipi === 'GECICI_VERGI' ? 'KGECICI' : row.beyanTipi}</div>
                         <div className="text-[11px] mt-0.5" style={{ color: 'rgba(250,250,249,0.42)' }}>{BEYAN_TIPI_LABEL[row.beyanTipi]}</div>
                       </td>
-                      <td className="px-4 py-3" style={{ color: 'rgba(250,250,249,0.76)' }}>ASIL</td>
+                      <td className="px-4 py-3">
+                        <span
+                          className="rounded-md px-2 py-1 text-[11px] font-bold"
+                          style={{
+                            background: mahiyet === 'DUZELTME' ? 'rgba(245,158,11,0.13)' : 'rgba(34,197,94,0.10)',
+                            border: `1px solid ${mahiyet === 'DUZELTME' ? 'rgba(245,158,11,0.24)' : 'rgba(34,197,94,0.20)'}`,
+                            color: mahiyet === 'DUZELTME' ? '#fcd34d' : '#86efac',
+                          }}
+                        >
+                          {mahiyet === 'DUZELTME' ? 'DUZELTME' : 'ASIL'}
+                        </span>
+                      </td>
                       <td className="px-4 py-3" style={{ color: '#fafaf9' }}>{item.tur}</td>
                       <td className="px-4 py-3">
-                        <div className="font-semibold tabular-nums" style={{ color: item.kind === 'tahakkuk' && row.tahakkukTutari ? '#fafaf9' : 'rgba(250,250,249,0.55)' }}>
-                          {item.kind === 'tahakkuk' ? fmtCurrency(row.tahakkukTutari) : '-'}
+                        <div className="font-semibold tabular-nums" style={{ color: row.tahakkukTutari ? '#fafaf9' : 'rgba(250,250,249,0.42)' }}>
+                          {fmtCurrency(row.tahakkukTutari)}
+                        </div>
+                        <div className="text-[10.5px] mt-0.5" style={{ color: 'rgba(250,250,249,0.36)' }}>
+                          {item.kind === 'tahakkuk' ? 'Tahakkuk tutari' : 'Tahakkuk eslesmesi'}
                         </div>
                       </td>
                       <td className="px-4 py-3">
                         <div className="flex items-center justify-end gap-1.5">
-                          <IconButton label="Goruntule" icon={Eye} onClick={() => openDocumentBlob(row, item.kind)} />
-                          <IconButton label="E-posta" icon={Mail} onClick={() => sendEmail(row)} />
-                          <IconButton label="WhatsApp" icon={MessageCircle} onClick={() => sendWhatsapp(row)} />
-                          <IconButton label="SMS" icon={MessageSquareText} onClick={() => sendSms(row)} />
+                          <IconButton
+                            label={item.hasFile ? (viewed ? 'Goruntulendi' : `${item.tur} goruntule`) : `${item.tur} PDF yok`}
+                            icon={Eye}
+                            tone={!item.hasFile ? 'muted' : viewed ? 'green' : 'rose'}
+                            disabled={!item.hasFile}
+                            onClick={() => openDocumentBlob(row, item.kind)}
+                          />
+                          <IconButton
+                            label={!hasEmail ? 'E-posta yok' : emailSent ? 'E-posta hazirlandi' : 'E-posta gonder'}
+                            icon={Mail}
+                            tone={!hasEmail ? 'muted' : emailSent ? 'green' : 'rose'}
+                            disabled={!hasEmail}
+                            onClick={() => sendEmail(row)}
+                          />
+                          <IconButton
+                            label={!hasPhone ? 'Telefon yok' : whatsappSent ? 'WhatsApp hazirlandi' : 'WhatsApp gonder'}
+                            icon={MessageCircle}
+                            tone={!hasPhone ? 'muted' : whatsappSent ? 'green' : 'rose'}
+                            disabled={!hasPhone}
+                            onClick={() => sendWhatsapp(row)}
+                          />
+                          <IconButton
+                            label={!hasPhone ? 'Telefon yok' : smsSent ? 'SMS hazirlandi' : 'SMS gonder'}
+                            icon={MessageSquareText}
+                            tone={!hasPhone ? 'muted' : smsSent ? 'green' : 'rose'}
+                            disabled={!hasPhone}
+                            onClick={() => sendSms(row)}
+                          />
                           <IconButton
                             label="Sil"
                             icon={Trash2}
@@ -796,6 +922,60 @@ export default function BeyannamelerPage() {
           }}
         />
       )}
+
+      {pdfPreview && (
+        <div
+          className="fixed inset-0 z-[80] flex items-center justify-center p-4"
+          style={{ background: 'rgba(0,0,0,0.72)' }}
+          onClick={closePdfPreview}
+        >
+          <div
+            className="flex h-[92vh] w-full max-w-[1180px] flex-col overflow-hidden rounded-[10px]"
+            style={{ background: '#12100d', border: '1px solid rgba(255,255,255,0.12)' }}
+            onClick={(e) => e.stopPropagation()}
+          >
+            <div className="flex items-center justify-between gap-3 px-4 py-3" style={{ borderBottom: '1px solid rgba(255,255,255,0.08)' }}>
+              <div className="min-w-0">
+                <div className="truncate text-[14px] font-semibold" style={{ color: '#fafaf9' }}>{pdfPreview.title}</div>
+                <div className="mt-0.5 truncate text-[11.5px]" style={{ color: 'rgba(250,250,249,0.48)' }}>{pdfPreview.subtitle}</div>
+              </div>
+              <div className="flex shrink-0 items-center gap-2">
+                <a
+                  href={pdfPreview.url}
+                  download={`${pdfPreview.title}.pdf`.replace(/[\\/:*?"<>|]/g, '_')}
+                  className="inline-flex h-9 w-9 items-center justify-center rounded-[9px]"
+                  title="PDF indir"
+                  style={{ background: 'rgba(56,189,248,0.12)', border: '1px solid rgba(56,189,248,0.24)', color: '#bae6fd' }}
+                >
+                  <Download size={15} />
+                </a>
+                <button
+                  type="button"
+                  onClick={() => {
+                    const frame = document.getElementById('beyan-pdf-preview') as HTMLIFrameElement | null;
+                    frame?.contentWindow?.print();
+                  }}
+                  className="inline-flex h-9 w-9 items-center justify-center rounded-[9px]"
+                  title="Yazdir"
+                  style={{ background: 'rgba(255,255,255,0.045)', border: '1px solid rgba(255,255,255,0.09)', color: 'rgba(250,250,249,0.72)' }}
+                >
+                  <Printer size={15} />
+                </button>
+                <button
+                  type="button"
+                  onClick={closePdfPreview}
+                  className="inline-flex h-9 w-9 items-center justify-center rounded-[9px]"
+                  title="Kapat"
+                  style={{ background: 'rgba(244,63,94,0.10)', border: '1px solid rgba(244,63,94,0.24)', color: '#fda4af' }}
+                >
+                  <IconX size={16} />
+                </button>
+              </div>
+            </div>
+            <iframe key={pdfPreview.docKey} id="beyan-pdf-preview" title={pdfPreview.title} src={pdfPreview.url} className="min-h-0 flex-1 bg-white" />
+          </div>
+        </div>
+      )}
     </div>
   );
 }
@@ -830,10 +1010,13 @@ function HeroLastJob({ job }: { job?: PortalJob }) {
   const status = noRecords
     ? { label: 'Kayit yok', color: '#fbbf24', bg: 'rgba(251,191,36,0.12)', border: 'rgba(251,191,36,0.24)' }
     : portalJobStatus(job.status);
+  const progress = portalJobProgress(job);
   const recordText = job.status === 'done'
     ? `${Number(job.recordCount || 0).toLocaleString('tr-TR')} kayit`
     : job.status === 'running'
-      ? 'isleniyor'
+      ? progress.records != null
+        ? `${progress.records.toLocaleString('tr-TR')} satir tarandi`
+        : 'isleniyor'
       : '';
   return (
     <div className="w-full shrink-0 rounded-xl p-3 lg:w-[460px]" style={{ background: 'rgba(255,255,255,0.025)', border: `1px solid ${status.border}` }}>
@@ -852,6 +1035,30 @@ function HeroLastJob({ job }: { job?: PortalJob }) {
       {recordText && (
         <div className="mt-1 text-[11.5px]" style={{ color: noRecords ? '#fcd34d' : 'rgba(250,250,249,0.52)' }}>
           {recordText}
+        </div>
+      )}
+      {(job.status === 'running' || job.status === 'pending') && (
+        <div className="mt-2">
+          <div className="flex items-center justify-between gap-3 text-[11.5px]" style={{ color: 'rgba(250,250,249,0.58)' }}>
+            <span className="truncate">{progress.message || (job.status === 'pending' ? 'Kuyrukta bekliyor.' : 'Islem suruyor.')}</span>
+            {progress.current != null && progress.total != null && (
+              <span className="shrink-0 tabular-nums">{progress.current}/{progress.total}</span>
+            )}
+          </div>
+          <div className="mt-2 h-1.5 overflow-hidden rounded-full" style={{ background: 'rgba(255,255,255,0.08)' }}>
+            <div
+              className="h-full rounded-full transition-all"
+              style={{
+                width: `${progress.pct ?? (job.status === 'running' ? 45 : 12)}%`,
+                background: job.status === 'running' ? '#38bdf8' : '#f59e0b',
+              }}
+            />
+          </div>
+          {progress.detail && (
+            <div className="mt-1 truncate text-[10.5px]" style={{ color: 'rgba(250,250,249,0.38)' }}>
+              {progress.detail}
+            </div>
+          )}
         </div>
       )}
       {noRecords && (
@@ -1007,17 +1214,42 @@ function DocButton({ active, label, onClick }: { active: boolean; label: string;
   );
 }
 
-function IconButton({ label, icon: Icon, onClick, danger }: { label: string; icon: any; onClick: () => void; danger?: boolean }) {
+function IconButton({
+  label,
+  icon: Icon,
+  onClick,
+  danger,
+  disabled,
+  tone = 'default',
+}: {
+  label: string;
+  icon: any;
+  onClick: () => void;
+  danger?: boolean;
+  disabled?: boolean;
+  tone?: 'default' | 'green' | 'rose' | 'muted';
+}) {
+  const tones = {
+    default: { background: 'rgba(255,255,255,0.035)', border: 'rgba(255,255,255,0.08)', color: 'rgba(250,250,249,0.72)' },
+    green: { background: 'rgba(34,197,94,0.12)', border: 'rgba(34,197,94,0.28)', color: '#86efac' },
+    rose: { background: 'rgba(244,63,94,0.10)', border: 'rgba(244,63,94,0.25)', color: '#fda4af' },
+    muted: { background: 'rgba(255,255,255,0.025)', border: 'rgba(255,255,255,0.06)', color: 'rgba(250,250,249,0.28)' },
+  } as const;
+  const c = danger ? { background: 'rgba(244,63,94,0.08)', border: 'rgba(244,63,94,0.22)', color: '#fb7185' } : tones[tone];
   return (
     <button
       type="button"
       title={label}
+      aria-label={label}
       onClick={onClick}
+      disabled={disabled}
       className="w-9 h-9 rounded-[9px] inline-flex items-center justify-center"
       style={{
-        background: danger ? 'rgba(244,63,94,0.08)' : 'rgba(255,255,255,0.035)',
-        border: `1px solid ${danger ? 'rgba(244,63,94,0.22)' : 'rgba(255,255,255,0.08)'}`,
-        color: danger ? '#fb7185' : 'rgba(250,250,249,0.72)',
+        background: c.background,
+        border: `1px solid ${c.border}`,
+        color: c.color,
+        cursor: disabled ? 'not-allowed' : 'pointer',
+        opacity: disabled ? 0.75 : 1,
       }}
     >
       <Icon size={15} />

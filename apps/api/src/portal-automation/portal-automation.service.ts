@@ -167,6 +167,16 @@ function cleanBase64(input?: string | null): string | null {
   return input.replace(/^data:[^;]+;base64,/, '').trim();
 }
 
+function normalizeTextKey(value?: string | null) {
+  return String(value || '')
+    .toLocaleUpperCase('tr-TR')
+    .normalize('NFD')
+    .replace(/[\u0300-\u036f]/g, '')
+    .replace(/[^A-Z0-9]+/g, ' ')
+    .replace(/\s+/g, ' ')
+    .trim();
+}
+
 function startOfIstanbulDay(d: Date): Date {
   const parts = new Intl.DateTimeFormat('en-CA', {
     timeZone: 'Europe/Istanbul',
@@ -852,22 +862,46 @@ export class PortalAutomationService {
       });
     }
 
+    const existingKayit = await (this.prisma as any).beyanKaydi.findUnique({
+      where: {
+        tenantId_taxpayerId_beyanTipi_donem: {
+          tenantId,
+          taxpayerId: taxpayer.id,
+          beyanTipi: input.beyanTipi,
+          donem: input.donem,
+        },
+      },
+      select: { id: true, beyannameUrl: true, pdfUrl: true, xmlUrl: true },
+    });
+    const isCorrection = this.isCorrectionDeclarationInput(input);
+    const skipBeyannameStorage = !!existingKayit?.beyannameUrl && !isCorrection;
+    const skipTahakkukStorage = !!existingKayit?.pdfUrl && !isCorrection;
+    const skipXmlStorage = !!existingKayit?.xmlUrl && !isCorrection;
+    const hasIncomingFile = !!(cleanBase64(input.beyannameBase64) || cleanBase64(input.tahakkukBase64) || cleanBase64(input.xmlBase64));
+    const hasMissingIncomingFile =
+      (!!cleanBase64(input.beyannameBase64) && !skipBeyannameStorage)
+      || (!!cleanBase64(input.tahakkukBase64) && !skipTahakkukStorage)
+      || (!!cleanBase64(input.xmlBase64) && !skipXmlStorage);
+    if (existingKayit && !isCorrection && hasIncomingFile && !hasMissingIncomingFile && input.tahakkukTutari == null && !input.onayNo) {
+      return existingKayit;
+    }
+
     const base = `${tenantId}/${taxpayer.id}/gib-beyan/${input.beyanTipi}_${input.donem}`;
     const beyannameUrl = await this.storeBase64IfPresent(
       `${base}_Beyanname_${randomUUID()}.pdf`,
-      input.beyannameBase64,
+      skipBeyannameStorage ? null : input.beyannameBase64,
       'application/pdf',
       input.beyannameFileName || 'beyanname.pdf',
     );
     const pdfUrl = await this.storeBase64IfPresent(
       `${base}_Tahakkuk_${randomUUID()}.pdf`,
-      input.tahakkukBase64,
+      skipTahakkukStorage ? null : input.tahakkukBase64,
       'application/pdf',
       input.tahakkukFileName || 'tahakkuk.pdf',
     );
     const xmlUrl = await this.storeBase64IfPresent(
       `${base}_${randomUUID()}.xml`,
-      input.xmlBase64,
+      skipXmlStorage ? null : input.xmlBase64,
       'application/xml',
       'beyanname.xml',
     );
@@ -1196,6 +1230,16 @@ export class PortalAutomationService {
       if (Number.isFinite(value)) return Math.round(value * 100) / 100;
     }
     return null;
+  }
+
+  private isCorrectionDeclarationInput(input: AgentDeclarationInput) {
+    const text = [
+      input.raw?.isCorrection ? 'DUZELTME' : '',
+      input.raw?.mahiyet,
+      input.raw?.rowText,
+      Array.isArray(input.raw?.cells) ? input.raw.cells.join(' ') : '',
+    ].filter(Boolean).join(' ');
+    return /\bDUZELTME\b/.test(normalizeTextKey(text));
   }
 
   private extensionFromMime(mimeType: string, originalName?: string | null) {

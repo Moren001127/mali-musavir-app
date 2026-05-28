@@ -39,6 +39,8 @@ type EBeyannameResultRow = {
   cells: string[];
   rowText: string;
   beyanTipiRaw: string | null;
+  mahiyetText: string | null;
+  isCorrection: boolean;
   taxNumber: string | null;
   taxpayerName: string | null;
   taxOffice: string | null;
@@ -51,6 +53,13 @@ type EBeyannameFilePayload = {
   base64: string;
   fileName: string;
   mimeType: string;
+};
+
+type EBeyannameRowIdentity = {
+  taxpayerId: string;
+  beyanTipi: string;
+  donem: string;
+  isCorrection: boolean;
 };
 
 // GIB 2026'da e-Beyanname'yi Dijital Vergi Dairesi portali altinda topladi.
@@ -1679,17 +1688,24 @@ export class PortalAutomationRailwayRunnerService implements OnModuleInit {
     const taxIndex = cells.findIndex((cell) => /\b\d{10,11}\b/.test(cell));
     const taxNumber = taxIndex >= 0 ? (cells[taxIndex].match(/\b\d{10,11}\b/) || [null])[0] : null;
     const beyanTipiRaw = taxIndex > 0 ? cells[taxIndex - 1] : cells.find((cell) => /KDV|MUH|DAMGA|GECICI|GE[CÇ]ICI|KURUMLAR|GELIR|OTV|OIV|POSET/i.test(cell)) || null;
+    const mahiyetText = cells.find((cell) => {
+      const key = this.normalizeTextKey(cell);
+      return /ASIL|DUZELTME|IHTIRAZ|EK/.test(key);
+    }) || null;
     const taxpayerName = taxIndex >= 0 ? cells[taxIndex + 1] || null : null;
     const taxOffice = taxIndex >= 0 ? cells[taxIndex + 2] || null : null;
     const taxPeriod = cells.find((cell) => /\b\d{2}\/\d{4}\s*-\s*\d{2}\/\d{4}\b/.test(cell)) || null;
     const uploadTime = cells.find((cell) => /\b\d{2}\.\d{2}\.\d{4}\b/.test(cell)) || null;
     const statusText = cells.find((cell) => /onay|hata|bekl|iptal/i.test(this.normalizeTextKey(cell))) || null;
+    const isCorrection = this.isEBeyannameCorrectionText(`${raw.rowText} ${mahiyetText || ''}`);
 
     return {
       rowIndex,
       cells,
       rowText: raw.rowText,
       beyanTipiRaw,
+      mahiyetText,
+      isCorrection,
       taxNumber,
       taxpayerName,
       taxOffice,
@@ -1741,6 +1757,8 @@ export class PortalAutomationRailwayRunnerService implements OnModuleInit {
         rowText: this.compact(row.rowText),
         cells: row.cells,
         beyanTipiRaw: row.beyanTipiRaw,
+        mahiyet: row.mahiyetText,
+        isCorrection: row.isCorrection,
         taxNumber: row.taxNumber,
         taxpayerName: row.taxpayerName,
         taxOffice: row.taxOffice,
@@ -1748,6 +1766,42 @@ export class PortalAutomationRailwayRunnerService implements OnModuleInit {
         uploadTime: row.uploadTime,
       },
     };
+  }
+
+  private ebeyannameIdentityFromRow(
+    row: EBeyannameResultRow,
+    taxpayers: TaxpayerMatch[],
+    job: any,
+  ): EBeyannameRowIdentity | null {
+    const contextText = [
+      row.rowText,
+      row.beyanTipiRaw,
+      row.taxNumber,
+      row.taxpayerName,
+      row.taxPeriod,
+      row.uploadTime,
+    ].filter(Boolean).join(' ');
+    const taxpayerId = this.matchTaxpayerId(contextText, taxpayers);
+    if (!taxpayerId) return null;
+
+    const beyanTipi = this.guessBeyanTipi(row.beyanTipiRaw || row.rowText);
+    const donem = this.ebeyannameDonemFromRow(row, beyanTipi, job);
+    return { taxpayerId, beyanTipi, donem, isCorrection: row.isCorrection };
+  }
+
+  private async existingBeyanKaydiFiles(tenantId: string, identity: EBeyannameRowIdentity | null) {
+    if (!identity) return null;
+    return (this.prisma as any).beyanKaydi.findUnique({
+      where: {
+        tenantId_taxpayerId_beyanTipi_donem: {
+          tenantId,
+          taxpayerId: identity.taxpayerId,
+          beyanTipi: identity.beyanTipi,
+          donem: identity.donem,
+        },
+      },
+      select: { id: true, beyannameUrl: true, pdfUrl: true, onayNo: true },
+    });
   }
 
   private async collectApprovedEBeyannamePages(
@@ -1781,8 +1835,23 @@ export class PortalAutomationRailwayRunnerService implements OnModuleInit {
             records: processedRows,
           });
         }
-        const beyanname = await this.downloadEBeyannameRowFile(page, row.rowIndex, 'beyanname', downloadsPath, processedRows, notes);
-        const tahakkuk = await this.downloadEBeyannameRowFile(page, row.rowIndex, 'tahakkuk', downloadsPath, processedRows, notes);
+
+        const identity = this.ebeyannameIdentityFromRow(row, taxpayers, job);
+        const existing = await this.existingBeyanKaydiFiles(tenantId, identity);
+        const skipExisting = !!existing && !identity?.isCorrection;
+        const skipBeyanname = skipExisting && !!existing.beyannameUrl;
+        const skipTahakkuk = skipExisting && !!existing.pdfUrl;
+        if (skipBeyanname && skipTahakkuk) {
+          notes.push(`onaylandi: ${identity?.beyanTipi || '-'} ${identity?.donem || '-'} ${row.taxNumber || row.taxpayerName || ''} zaten var, tekrar indirilmedi`);
+          continue;
+        }
+
+        const beyanname = skipBeyanname
+          ? null
+          : await this.downloadEBeyannameRowFile(page, row.rowIndex, 'beyanname', downloadsPath, processedRows, notes);
+        const tahakkuk = skipTahakkuk
+          ? null
+          : await this.downloadEBeyannameRowFile(page, row.rowIndex, 'tahakkuk', downloadsPath, processedRows, notes);
         const declaration = this.declarationFromEBeyannameRow(row, 'onaylandi', taxpayers, job, { beyanname, tahakkuk });
 
         if (declaration) {
@@ -2037,18 +2106,33 @@ export class PortalAutomationRailwayRunnerService implements OnModuleInit {
   private async clickEBeyannameNextPage(page: any, before: { start: number; end: number; total: number }) {
     const target = await this.findEBeyannameResultTarget(page) || page;
     const clicked = await target.evaluate(() => {
+      const norm = (value: string) => String(value || '')
+        .toLocaleUpperCase('tr-TR')
+        .normalize('NFD')
+        .replace(/[\u0300-\u036f]/g, '')
+        .replace(/\s+/g, ' ')
+        .trim();
       const isDisabled = (el: any) => !!el.disabled || /\bdisabled\b/i.test(String(el.className || '')) || el.getAttribute?.('aria-disabled') === 'true';
       const isVisible = (el: Element) => {
         const anyEl = el as HTMLElement;
         return !!(anyEl.offsetWidth || anyEl.offsetHeight || anyEl.getClientRects().length);
       };
       const controls = Array.from(document.querySelectorAll<HTMLElement>('button, input[type="button"], input[type="submit"], a'));
-      const target = controls.find((el: any) => {
-        const text = `${el.textContent || ''} ${el.value || ''} ${el.getAttribute?.('title') || ''}`.replace(/\s+/g, '').trim();
-        return isVisible(el) && !isDisabled(el) && text === '>>';
-      });
-      if (!target) return false;
-      target.click();
+      const candidates = controls
+        .filter((el: any) => isVisible(el) && !isDisabled(el))
+        .map((el: any) => {
+          const compact = `${el.textContent || ''} ${el.value || ''} ${el.getAttribute?.('title') || ''} ${el.getAttribute?.('aria-label') || ''} ${el.alt || ''}`.replace(/\s+/g, '').trim();
+          const key = norm(`${el.textContent || ''} ${el.value || ''} ${el.getAttribute?.('title') || ''} ${el.getAttribute?.('aria-label') || ''} ${el.alt || ''}`);
+          let score = 0;
+          if (compact === '>' || compact === '›') score = 100;
+          else if (/SONRAKI|ILERI|NEXT/.test(key)) score = 90;
+          else if (compact === '>>' || compact === '»') score = 50;
+          return { el, score };
+        })
+        .filter((item) => item.score > 0)
+        .sort((a, b) => b.score - a.score);
+      if (!candidates.length) return false;
+      candidates[0].el.click();
       return true;
     }).catch(() => false);
     if (!clicked) return false;
@@ -2490,6 +2574,10 @@ export class PortalAutomationRailwayRunnerService implements OnModuleInit {
       .replace(/[^A-Z0-9]+/g, ' ')
       .replace(/\s+/g, ' ')
       .trim();
+  }
+
+  private isEBeyannameCorrectionText(value?: string | null) {
+    return /\bDUZELTME\b/.test(this.normalizeTextKey(value));
   }
 
   private mimeFromName(name: string) {
