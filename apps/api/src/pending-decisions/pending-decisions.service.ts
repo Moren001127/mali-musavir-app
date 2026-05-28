@@ -1,6 +1,8 @@
-import { Injectable, NotFoundException, BadRequestException } from '@nestjs/common';
+import { Injectable, NotFoundException, BadRequestException, Logger } from '@nestjs/common';
 import { PrismaService } from '../prisma/prisma.service';
 import { VendorMemoryService } from '../vendor-memory/vendor-memory.service';
+import { NotificationsService } from '../notifications/notifications.service';
+import { NOTIFICATION_TYPES } from '../notifications/notification-types';
 
 /**
  * Onay Kuyrugu — AI sapma tespit ettiginde PendingDecision olusturur,
@@ -8,9 +10,12 @@ import { VendorMemoryService } from '../vendor-memory/vendor-memory.service';
  */
 @Injectable()
 export class PendingDecisionsService {
+  private readonly logger = new Logger(PendingDecisionsService.name);
+
   constructor(
     private prisma: PrismaService,
     private vendorMemory: VendorMemoryService,
+    private notifications: NotificationsService,
   ) {}
 
   /** Yeni bekleyen karar olustur (decideFatura / decideIsletme icinden cagrilir) */
@@ -70,7 +75,7 @@ export class PendingDecisionsService {
     });
     if (existing) return existing;
 
-    return (this.prisma as any).pendingDecision.create({
+    const created = await (this.prisma as any).pendingDecision.create({
       data: {
         tenantId,
         taxpayerId: taxpayerId || null,
@@ -94,6 +99,34 @@ export class PendingDecisionsService {
         sapmaSebep: true,
       },
     });
+
+    // === IN-APP BILDIRIM: Yeni onay bekleyen karar ===
+    try {
+      const firmaLabel = firmaUnvan || firmaKimlikNo || 'firma';
+      const mukellefLabel = mukellef || 'mükellef';
+      const tutarLabel = tutar != null ? ` (${tutar.toLocaleString('tr-TR', { minimumFractionDigits: 2 })} TL)` : '';
+      await this.notifications.createForTenant({
+        tenantId,
+        type: NOTIFICATION_TYPES.PENDING_DECISION,
+        title: `⏳ Onay bekliyor: ${mukellefLabel} - ${firmaLabel}${tutarLabel}`,
+        body: `${kararTipi === 'fatura' ? 'Fatura' : 'İşletme'} kararı — ${(sapmaSebep || '').slice(0, 200)}`,
+        metadata: {
+          pendingDecisionId: created.id,
+          taxpayerId: taxpayerId || null,
+          firmaKimlikNo: firmaKimlikNo || null,
+          firmaUnvan: firmaUnvan || null,
+          belgeNo: belgeNo || null,
+          kararTipi,
+          link: `/panel/onay-bekleyen?id=${created.id}`,
+        },
+        dedupeKey: `pending-decision:${created.id}`,
+        dedupeWindowMin: 60 * 24,
+      });
+    } catch (e) {
+      this.logger.warn(`PENDING_DECISION notif failed: ${(e as Error).message}`);
+    }
+
+    return created;
   }
 
   /** Bekleyenler listesi (ve onaylanmislar/reddedilenler dahil — durum filter) */
