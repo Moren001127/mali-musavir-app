@@ -1107,14 +1107,25 @@ export class PortalAutomationRailwayRunnerService implements OnModuleInit {
       notes.push('Beyanname Ara formu zaten acik');
       return;
     }
+    if (await this.hasEBeyannameResultList(page)) {
+      await this.closeEBeyannameResultList(page).catch(() => {});
+      if (await this.hasEBeyannameSearchForm(page)) {
+        notes.push('Beyanname Ara listesi acikti; liste kapatildi ve forma donuldu');
+        return;
+      }
+    }
 
-    const clicked = await this.clickVisibleText(page, ['Beyanname Ara']);
+    const clicked = await this.clickVisibleText(page, ['Beyanname Ara']) || await this.clickNormalizedText(page, ['BEYANNAME ARA']);
     if (!clicked) {
+      if (await this.hasEBeyannameSearchControls(page)) {
+        notes.push('Beyanname Ara menusu gorunmedi ama sorgu formu aktif; mevcut form kullaniliyor');
+        return;
+      }
       throw new Error(`e-Beyanname sekmesinde Beyanname Ara menusu bulunamadi. Gorunen kontroller: ${await this.visibleActionSnapshot(page)}`);
     }
 
     for (let i = 0; i < 20; i++) {
-      if (await this.hasEBeyannameSearchForm(page)) {
+      if (await this.hasEBeyannameSearchForm(page) || await this.hasEBeyannameSearchControls(page)) {
         notes.push('Beyanname Ara formu acildi');
         return;
       }
@@ -1132,7 +1143,34 @@ export class PortalAutomationRailwayRunnerService implements OnModuleInit {
         .replace(/[\u0300-\u036f]/g, '')
         .replace(/\s+/g, ' ');
       const text = norm(document.body?.innerText || '');
-      return text.includes('BEYANNAME ARA') && (text.includes('YUKLEME TARIH') || text.includes('DURUM'));
+      return text.includes('BEYANNAME ARA') && (text.includes('YUKLEME TARIH') || text.includes('DURUM') || text.includes('SORGULA'));
+    }).catch(() => false);
+  }
+
+  private async hasEBeyannameSearchControls(page: any) {
+    return page.evaluate(() => {
+      const norm = (value: string) => String(value || '')
+        .toLocaleUpperCase('tr-TR')
+        .normalize('NFD')
+        .replace(/[\u0300-\u036f]/g, '')
+        .replace(/\s+/g, ' ')
+        .trim();
+      const isVisible = (el: Element) => {
+        const anyEl = el as HTMLElement;
+        return !!(anyEl.offsetWidth || anyEl.offsetHeight || anyEl.getClientRects().length);
+      };
+      const visibleText = [
+        document.body?.innerText || '',
+        ...Array.from(document.querySelectorAll<HTMLElement>('button, input, select, option, label, a, td, th'))
+          .filter(isVisible)
+          .map((el: any) => `${el.innerText || ''} ${el.value || ''} ${el.title || ''} ${el.name || ''} ${el.id || ''}`),
+      ].join(' ');
+      const text = norm(visibleText);
+      const hasSearch = text.includes('SORGULA') || Array.from(document.querySelectorAll<HTMLInputElement>('input[type="submit"], input[type="button"], button'))
+        .some((el: any) => isVisible(el) && norm(`${el.value || ''} ${el.innerText || ''}`).includes('SORGULA'));
+      const hasStatus = text.includes('HATALI') || text.includes('ONAY BEKLIYOR') || text.includes('ONAYLANDI') || document.querySelectorAll('input[type="radio"]').length >= 3;
+      const hasDate = text.includes('YUKLEME TARIH') || text.includes('BASLANGIC TARIHI') || text.includes('BITIS TARIHI') || document.querySelectorAll('input[type="text"]').length >= 6;
+      return !!(hasSearch && hasStatus && hasDate);
     }).catch(() => false);
   }
 
@@ -1863,6 +1901,30 @@ export class PortalAutomationRailwayRunnerService implements OnModuleInit {
       }
     }
     return false;
+  }
+
+  private async clickNormalizedText(page: any, normalizedTexts: string[]) {
+    return page.evaluate((normalizedTexts: string[]) => {
+      const norm = (value: string) => String(value || '')
+        .toLocaleUpperCase('tr-TR')
+        .normalize('NFD')
+        .replace(/[\u0300-\u036f]/g, '')
+        .replace(/\s+/g, ' ')
+        .trim();
+      const isVisible = (el: Element) => {
+        const anyEl = el as HTMLElement;
+        return !!(anyEl.offsetWidth || anyEl.offsetHeight || anyEl.getClientRects().length);
+      };
+      const controls = Array.from(document.querySelectorAll<HTMLElement>('a, button, input[type="button"], input[type="submit"], td, span, div'));
+      const target = controls.find((el: any) => {
+        if (!isVisible(el)) return false;
+        const text = norm(`${el.innerText || ''} ${el.value || ''} ${el.title || ''} ${el.name || ''} ${el.id || ''}`);
+        return normalizedTexts.some((wanted) => text.includes(wanted));
+      });
+      if (!target) return false;
+      target.click();
+      return true;
+    }, normalizedTexts).catch(() => false);
   }
 
   private async isAnyTextVisible(page: any, texts: string[]) {
