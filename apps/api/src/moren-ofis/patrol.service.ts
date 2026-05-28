@@ -313,6 +313,30 @@ Sadece JSON, başka açıklama yok.`;
   async manualPatrol(tenantId: string) {
     await this.lightPatrol(); // light cleanup
     const analysis = await this.runDeepAnalysisForTenant(tenantId);
+
+    // === IN-APP BILDIRIM: DENIZ agent tarama tamamladi ===
+    try {
+      const proposalCount = Array.isArray((analysis as any)?.proposals) ? (analysis as any).proposals.length : 0;
+      const summary = String((analysis as any)?.summary || 'Tarama tamamlandı').slice(0, 400);
+      await (this.prisma as any).notification.create({
+        data: {
+          tenantId,
+          userId: null,
+          title: `🤖 DENİZ tarama tamamlandı (${proposalCount} öneri)`,
+          body: summary,
+          type: 'AGENT',
+          metadata: {
+            agent: 'DENIZ',
+            source: 'manual_patrol',
+            proposalCount,
+            link: '/panel/ajanlar',
+          },
+        },
+      }).catch(() => {});
+    } catch (e) {
+      this.logger.warn(`AGENT notif failed: ${(e as Error).message}`);
+    }
+
     return analysis;
   }
 
