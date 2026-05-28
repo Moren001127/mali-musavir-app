@@ -7,12 +7,6 @@ import { encrypt, tryDecrypt } from '../common/crypto';
 import { BeyanKayitlariService } from '../beyan-kayitlari/beyan-kayitlari.service';
 import { NotificationsService } from '../notifications/notifications.service';
 import { NOTIFICATION_TYPES } from '../notifications/notification-types';
-import { NotificationsService } from '../notifications/notifications.service';
-import { NOTIFICATION_TYPES } from '../notifications/notification-types';
-import { NotificationsService } from '../notifications/notifications.service';
-import { NOTIFICATION_TYPES } from '../notifications/notification-types';
-import { NotificationsService } from '../notifications/notifications.service';
-import { NOTIFICATION_TYPES } from '../notifications/notification-types';
 
 export const PORTAL_PROVIDERS = ['GIB_EBEYANNAME', 'GIB_IVD', 'SGK_EBILDIRGE'] as const;
 export type PortalProvider = (typeof PORTAL_PROVIDERS)[number];

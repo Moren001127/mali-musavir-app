@@ -1139,7 +1139,7 @@ export class PortalAutomationRailwayRunnerService implements OnModuleInit {
       }
     }
 
-    const clicked = await this.clickVisibleText(page, ['Beyanname Ara']) || await this.clickNormalizedText(page, ['BEYANNAME ARA']);
+    const clicked = await this.clickEBeyannameSearchMenu(page);
     if (!clicked) {
       if (await this.hasEBeyannameSearchControls(page)) {
         notes.push('Beyanname Ara menusu gorunmedi ama sorgu formu aktif; mevcut form kullaniliyor');
@@ -1168,6 +1168,9 @@ export class PortalAutomationRailwayRunnerService implements OnModuleInit {
 
   private async hasEBeyannameSearchFormIn(target: any) {
     return target.evaluate(() => {
+      if (document.querySelector('form#taxReturnSearchForm')) return true;
+      const cmd = document.querySelector<HTMLInputElement>('input[name="cmd"]');
+      if (cmd?.value === 'BEYANNAMELISTESI') return true;
       const norm = (value: string) => String(value || '')
         .toLocaleUpperCase('tr-TR')
         .normalize('NFD')
@@ -1176,6 +1179,46 @@ export class PortalAutomationRailwayRunnerService implements OnModuleInit {
       const text = norm(document.body?.innerText || '');
       return text.includes('BEYANNAME ARA') && (text.includes('YUKLEME TARIH') || text.includes('DURUM') || text.includes('SORGULA'));
     }).catch(() => false);
+  }
+
+  private async clickEBeyannameSearchMenu(page: any) {
+    for (const target of this.ebeyannameDomTargets(page)) {
+      const clicked = await target.evaluate(() => {
+        const norm = (value: string) => String(value || '')
+          .toLocaleUpperCase('tr-TR')
+          .normalize('NFD')
+          .replace(/[\u0300-\u036f]/g, '')
+          .replace(/\s+/g, ' ')
+          .trim();
+        const isVisible = (el: Element) => {
+          const anyEl = el as HTMLElement;
+          return !!(anyEl.offsetWidth || anyEl.offsetHeight || anyEl.getClientRects().length);
+        };
+        const controls = Array.from(document.querySelectorAll<HTMLElement>('span[onclick], a[onclick], button, input[type="button"], input[type="submit"]'))
+          .filter(isVisible);
+
+        const exact = controls.find((el) => /beyannameAraFormu\s*\(/i.test(el.getAttribute('onclick') || ''));
+        if (exact) {
+          exact.click();
+          return true;
+        }
+
+        const fallback = controls.find((el: any) => {
+          const onclick = el.getAttribute('onclick') || '';
+          if (/ARSIVBEYANNAMESORGU|Arşiv Beyanname Ara|Arsiv Beyanname Ara/i.test(onclick)) return false;
+          const text = norm(`${el.textContent || ''} ${el.value || ''} ${el.title || ''}`);
+          return text === 'BEYANNAME ARA';
+        });
+        if (!fallback) return false;
+        fallback.click();
+        return true;
+      }).catch(() => false);
+      if (clicked) {
+        await page.waitForTimeout(800);
+        return true;
+      }
+    }
+    return false;
   }
 
   private async hasEBeyannameSearchControls(page: any) {
@@ -1266,6 +1309,27 @@ export class PortalAutomationRailwayRunnerService implements OnModuleInit {
         }
       }
 
+      const directValues: Record<string, string> = {
+        baslangicTarihiGun: start.day,
+        baslangicTarihiAy: start.month,
+        baslangicTarihiYil: start.year,
+        baslangicTarihi: `${start.year}${start.month}${start.day}`,
+        bitisTarihiGun: end.day,
+        bitisTarihiAy: end.month,
+        bitisTarihiYil: end.year,
+        bitisTarihi: `${end.year}${end.month}${end.day}`,
+      };
+      let directSet = 0;
+      for (const [id, value] of Object.entries(directValues)) {
+        const input = document.getElementById(id) as HTMLInputElement | null;
+        if (!input) continue;
+        setInput(input, value);
+        directSet++;
+      }
+      if (directSet >= 6) {
+        return { ok: true, inputCount: directSet, direct: true };
+      }
+
       const scopes = Array.from(document.querySelectorAll<HTMLElement>('tr, tbody, table, div'))
         .filter((el) => isVisible(el) && norm(el.textContent || '').includes('YUKLEME TARIH'))
         .sort((a, b) => (a.textContent || '').length - (b.textContent || '').length);
@@ -1314,6 +1378,7 @@ export class PortalAutomationRailwayRunnerService implements OnModuleInit {
           ? 'ONAY BEKLIYOR'
           : 'ONAYLANDI';
       const order = status === 'hatali' ? 0 : status === 'beklemede' ? 1 : 2;
+      const value = status === 'hatali' ? '0' : status === 'beklemede' ? '1' : '2';
       const norm = (value: string) => String(value || '')
         .toLocaleUpperCase('tr-TR')
         .normalize('NFD')
@@ -1328,6 +1393,20 @@ export class PortalAutomationRailwayRunnerService implements OnModuleInit {
         el.dispatchEvent(new Event('input', { bubbles: true }));
         el.dispatchEvent(new Event('change', { bubbles: true }));
       };
+
+      const directStatusCheckbox = document.querySelector<HTMLInputElement>('#sorguTipiD');
+      if (directStatusCheckbox && !directStatusCheckbox.checked) {
+        directStatusCheckbox.click();
+        directStatusCheckbox.checked = true;
+        fire(directStatusCheckbox);
+      }
+      const directRadio = document.querySelector<HTMLInputElement>(`input[name="durum"][value="${value}"]`);
+      if (directRadio) {
+        directRadio.click();
+        directRadio.checked = true;
+        fire(directRadio);
+        return true;
+      }
 
       const statusScopes = Array.from(document.querySelectorAll<HTMLElement>('tr, tbody, table, div'))
         .filter((el) => {
@@ -1448,6 +1527,11 @@ export class PortalAutomationRailwayRunnerService implements OnModuleInit {
         const anyEl = el as HTMLElement;
         return !!(anyEl.offsetWidth || anyEl.offsetHeight || anyEl.getClientRects().length);
       };
+      const direct = document.querySelector<HTMLElement>('#sorgulaButon, input[name="sorgulaButon"], input[onclick*="taxReturnSearchFormPost"]');
+      if (direct && isVisible(direct)) {
+        direct.click();
+        return true;
+      }
       const controls = Array.from(document.querySelectorAll<HTMLElement>('button, input[type="button"], input[type="submit"], a'));
       const target = controls.find((el) => {
         const text = norm(`${el.textContent || ''} ${(el as HTMLInputElement).value || ''} ${el.getAttribute('title') || ''}`);
@@ -1738,6 +1822,12 @@ export class PortalAutomationRailwayRunnerService implements OnModuleInit {
       ...meta,
       key: this.normalizeTextKey(`${meta.text} ${meta.haystack}`),
     }));
+    const directIcon = normalized.find((meta) => {
+      if (kind === 'beyanname') return /PDF\s*B|BEYANNAMEGORUNTULE/.test(meta.key);
+      return /PDF\s*T|TAHAKKUKGORUNTULE/.test(meta.key);
+    });
+    if (directIcon) return directIcon.index;
+
     const direct = normalized.find((meta) => {
       if (kind === 'beyanname') return /BEYANNAME|BEYAN|\bB\b/.test(meta.key);
       return /TAHAKKUK|TAH|FIS|\bT\b/.test(meta.key);
@@ -1898,7 +1988,12 @@ export class PortalAutomationRailwayRunnerService implements OnModuleInit {
         const anyEl = el as HTMLElement;
         return !!(anyEl.offsetWidth || anyEl.offsetHeight || anyEl.getClientRects().length);
       };
-      const controls = Array.from(document.querySelectorAll<HTMLElement>('button, input[type="button"], a, img'));
+      const directClose = document.querySelector<HTMLElement>('div[id^="bynList"][id$="_close"], .alphacube_close');
+      if (directClose && isVisible(directClose)) {
+        directClose.click();
+        return true;
+      }
+      const controls = Array.from(document.querySelectorAll<HTMLElement>('button, input[type="button"], a, img, div'));
       const belongsToList = (el: HTMLElement) => {
         let node: HTMLElement | null = el;
         for (let i = 0; node && i < 8; i++) {
@@ -2015,10 +2110,16 @@ export class PortalAutomationRailwayRunnerService implements OnModuleInit {
           const anyEl = el as HTMLElement;
           return !!(anyEl.offsetWidth || anyEl.offsetHeight || anyEl.getClientRects().length);
         };
-        return Array.from(document.querySelectorAll<HTMLElement>('a, button, input, select'))
+        return Array.from(document.querySelectorAll<HTMLElement>('a, button, input, select, span[onclick], div[onclick], form'))
           .filter(isVisible)
-          .slice(0, 40)
-          .map((el: any) => `${el.tagName}:${(el.innerText || el.value || el.placeholder || el.title || el.name || el.id || '').replace(/\s+/g, ' ').trim()}`)
+          .slice(0, 60)
+          .map((el: any) => {
+            const label = (el.innerText || el.value || el.placeholder || el.title || el.name || el.id || '').replace(/\s+/g, ' ').trim();
+            const marker = [el.id, el.name, el.getAttribute?.('onclick')]
+              .filter(Boolean)
+              .join(' ');
+            return `${el.tagName}:${label}${marker ? ` [${marker}]` : ''}`;
+          })
           .filter(Boolean)
           .join(' | ')
           .slice(0, 1000);

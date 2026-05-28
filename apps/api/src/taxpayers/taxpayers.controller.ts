@@ -43,7 +43,7 @@ export class TaxpayersController {
     const result = CreateTaxpayerSchema.safeParse(body);
     if (!result.success) {
       const messages = result.error.errors.map(
-        (e) => `${e.path.join('.')}: ${e.message}`,
+        (e: any) => `${e.path.join('.')}: ${e.message}`,
       );
       throw new BadRequestException(messages);
     }
@@ -175,7 +175,7 @@ export class TaxpayersController {
     const result = CreateTaxpayerYetkiliSchema.safeParse(body);
     if (!result.success) {
       const messages = result.error.errors.map(
-        (e) => `${e.path.join('.')}: ${e.message}`,
+        (e: any) => `${e.path.join('.')}: ${e.message}`,
       );
       throw new BadRequestException(messages);
     }
@@ -193,7 +193,7 @@ export class TaxpayersController {
     const result = UpdateTaxpayerYetkiliSchema.safeParse(body);
     if (!result.success) {
       const messages = result.error.errors.map(
-        (e) => `${e.path.join('.')}: ${e.message}`,
+        (e: any) => `${e.path.join('.')}: ${e.message}`,
       );
       throw new BadRequestException(messages);
     }

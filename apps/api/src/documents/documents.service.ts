@@ -68,7 +68,7 @@ export class DocumentsService {
           sizeBytes: meta.sizeBytes,
           s3Key: dto.s3Key,
           tags: dto.tags
-            ? { create: dto.tags.map((tag) => ({ tag })) }
+            ? { create: dto.tags.map((tag: string) => ({ tag })) }
             : undefined,
         },
         include: { tags: true },
@@ -297,7 +297,7 @@ export class DocumentsService {
         await tx.documentTag.deleteMany({ where: { documentId: id } });
         if (dto.tags.length > 0) {
           await tx.documentTag.createMany({
-            data: dto.tags.map((tag) => ({ documentId: id, tag })),
+            data: dto.tags.map((tag: string) => ({ documentId: id, tag })),
           });
         }
       }

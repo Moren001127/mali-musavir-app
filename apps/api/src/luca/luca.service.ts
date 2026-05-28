@@ -10,12 +10,6 @@ import { join } from 'path';
 import { PrismaService } from '../prisma/prisma.service';
 import { NotificationsService } from '../notifications/notifications.service';
 import { NOTIFICATION_TYPES } from '../notifications/notification-types';
-import { NotificationsService } from '../notifications/notifications.service';
-import { NOTIFICATION_TYPES } from '../notifications/notification-types';
-import { NotificationsService } from '../notifications/notifications.service';
-import { NOTIFICATION_TYPES } from '../notifications/notification-types';
-import { NotificationsService } from '../notifications/notifications.service';
-import { NOTIFICATION_TYPES } from '../notifications/notification-types';
 
 /**
  * Luca entegrasyonu — Mihsap deseninin Luca'ya uyarlanmış hali.
