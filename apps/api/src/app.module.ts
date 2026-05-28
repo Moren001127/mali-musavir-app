@@ -39,7 +39,6 @@ import { OfficeChatModule } from './office-chat/office-chat.module';
 import { EmailModule } from './email/email.module';
 import { ReminderCron } from './schedule/reminder.cron';
 import { HgsCron } from './schedule/hgs.cron';
-import { TaskReminderCron } from './schedule/task-reminder.cron';
 
 @Module({
   imports: [
@@ -82,6 +81,6 @@ import { TaskReminderCron } from './schedule/task-reminder.cron';
     OfficeChatModule,
     EmailModule,
   ],
-  providers: [ReminderCron, HgsCron, TaskReminderCron],
+  providers: [ReminderCron, HgsCron],
 })
 export class AppModule {}

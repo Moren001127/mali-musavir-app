@@ -32,7 +32,9 @@ type TaxpayerMatch = {
   lastName: string | null;
 };
 
-const DEFAULT_EBEYANNAME_LOGIN_URL = 'https://ebeyanname.gib.gov.tr/giris.html';
+// GIB 2026'da e-Beyanname'yi Dijital Vergi Dairesi portali altinda topladi.
+// Eski URL (ebeyanname.gib.gov.tr/giris.html) artik ana sayfaya redirect ediyor.
+const DEFAULT_EBEYANNAME_LOGIN_URL = 'https://dijital.gib.gov.tr/portal/login';
 const DEFAULT_GIB_IVD_LOGIN_URL = 'https://dijital.gib.gov.tr/';
 const DEFAULT_SGK_LOGIN_URL = 'https://uyg.sgk.gov.tr/';
 
@@ -192,8 +194,12 @@ export class PortalAutomationRailwayRunnerService implements OnModuleInit {
 
   private async runEBeyanname(tenantId: string, bundle: RunnerJobBundle) {
     const credential = bundle.credential;
-    if (!credential.userCode || !credential.password || !credential.secondaryPassword) {
-      throw new Error('Mali musavir e-Beyanname kullanici kodu, parola ve sifre eksik');
+    // YENI GIB UI'sinda (2026 Dijital Vergi Dairesi) eski "Parola" alani kaldirildi.
+    // GIB'in "Sifre" alani portaldaki "Sifre" (=secondaryPassword) degeriyle doldurulur.
+    // Eski portal "Parola" (=password) alani artik kullanilmiyor.
+    const ebeyannameSifre = credential.secondaryPassword || credential.password;
+    if (!credential.userCode || !ebeyannameSifre) {
+      throw new Error('Mali musavir e-Beyanname kullanici kodu ve sifre eksik');
     }
 
     const loginUrl = process.env.PORTAL_AUTOMATION_EBEYANNAME_LOGIN_URL || DEFAULT_EBEYANNAME_LOGIN_URL;
@@ -219,12 +225,35 @@ export class PortalAutomationRailwayRunnerService implements OnModuleInit {
       const page = await context.newPage();
       page.setDefaultTimeout(15_000);
 
-      await page.goto(loginUrl, { waitUntil: 'domcontentloaded', timeout: 60_000 });
-      await this.fillEBeyannameLogin(page, credential.userCode, credential.password, credential.secondaryPassword);
-      await this.submitLogin(page);
-      await page.waitForLoadState('domcontentloaded', { timeout: 20_000 }).catch(() => {});
-      await page.waitForTimeout(1500);
-      await this.assertLoggedIn(page);
+      // 2captcha bazen GIB CAPTCHA'sini yanlis cozer (~%5-10 oran).
+      // Her denemede login URL'sini bastan acariz; yanlis CAPTCHA sonrasi
+      // ayni hata ekranini reload etmek alan bulunamadi hatasina yol acabiliyor.
+      const MAX_LOGIN_ATTEMPTS = 3;
+      for (let attempt = 1; attempt <= MAX_LOGIN_ATTEMPTS; attempt++) {
+        try {
+          if (attempt > 1) {
+            this.logger.warn('[eBeyanname] Login denemesi #' + attempt + ': login ekrani bastan aciliyor');
+          }
+          await page.goto(loginUrl, { waitUntil: 'domcontentloaded', timeout: 60_000 });
+          await this.waitForEBeyannameLoginForm(page, loginUrl);
+          await this.fillEBeyannameLogin(page, credential.userCode, ebeyannameSifre);
+          await this.fillEBeyannameCaptcha(page);
+          await this.submitLogin(page);
+          await page.waitForLoadState('domcontentloaded', { timeout: 20_000 }).catch(() => {});
+          await page.waitForTimeout(2000);
+          await this.assertLoggedIn(page);
+          if (attempt > 1) {
+            this.logger.log('[eBeyanname] Login denemesi #' + attempt + ' BASARILI');
+          }
+          break;
+        } catch (loginErr: any) {
+          const msg = String(loginErr?.message || loginErr).slice(0, 200);
+          this.logger.warn('[eBeyanname] Login denemesi #' + attempt + '/' + MAX_LOGIN_ATTEMPTS + ' basarisiz: ' + msg);
+          if (attempt === MAX_LOGIN_ATTEMPTS) {
+            throw new Error('e-Beyanname login ' + MAX_LOGIN_ATTEMPTS + ' denemede basarisiz. Son hata: ' + msg);
+          }
+        }
+      }
 
       const collection = await this.collectEBeyannameDownloads(tenantId, page, bundle.job, downloadsPath);
       await context.close().catch(() => {});
@@ -516,50 +545,136 @@ export class PortalAutomationRailwayRunnerService implements OnModuleInit {
     return m ? m[0].slice(0, 80) : null;
   }
 
-  private async fillEBeyannameLogin(page: any, userCode: string, password: string, secondaryPassword: string) {
-    const fields: any[] = [];
-    const inputs = page.locator('input:not([type="hidden"]):not([type="submit"]):not([type="button"]):not([type="image"]), textarea');
-    const count = await inputs.count().catch(() => 0);
-    for (let i = 0; i < count; i++) {
-      const loc = inputs.nth(i);
-      if (await loc.isVisible().catch(() => false)) fields.push(loc);
+  /**
+   * Yeni GIB Dijital Vergi Dairesi (2026) login form'u: userid + sifre.
+   * CAPTCHA ayri fonksiyonda doldurulur (fillEBeyannameCaptcha).
+   */
+  private async fillEBeyannameLogin(page: any, userCode: string, password: string) {
+    const userInput = await this.firstVisibleLocator(page, [
+      'input[name="userid"]',
+      'input[id="userid"]',
+      'input[placeholder*="Kullanici Kodu" i]',
+      'input[placeholder*="Kullanıcı Kodu" i]',
+      'input[placeholder*="Vergi Kimlik" i]',
+      'input[placeholder*="T.C." i]',
+      'input[autocomplete="username"]',
+    ]);
+    if (!userInput) throw new Error(await this.loginFieldError(page, 'Kullanici kodu alani bulunamadi'));
+    await userInput.fill(userCode);
+
+    const passwordInput = await this.firstVisibleLocator(page, [
+      'input[name="sifre"]',
+      'input[id="sifre"]',
+      'input[placeholder*="Sifre" i]',
+      'input[placeholder*="Şifre" i]',
+      'input[type="password"]',
+    ]);
+    if (!passwordInput) throw new Error(await this.loginFieldError(page, 'Sifre alani bulunamadi'));
+    await passwordInput.fill(password);
+  }
+
+  /**
+   * Login form'undaki CAPTCHA (img alt="captchaImg") yakalanip 2captcha ile cozuluyor,
+   * sonra "dk" input'una yaziliyor. Submit'i CALLER yapacak.
+   */
+  private async fillEBeyannameCaptcha(page: any): Promise<void> {
+    const apiKey = process.env.TWOCAPTCHA_API_KEY || process.env.TWO_CAPTCHA_API_KEY;
+    if (!apiKey) {
+      throw new Error('TWOCAPTCHA_API_KEY env yok; e-Beyanname CAPTCHA cozulemez');
     }
 
-    if (fields.length >= 3) {
-      await fields[0].fill(userCode);
-      await fields[1].fill(password);
-      await fields[2].fill(secondaryPassword);
-      return;
+    // CAPTCHA goruntusunu yakala - yeni UI'da img alt="captchaImg".
+    const captchaSelectors = [
+      'img[alt="captchaImg"]',
+      'img[alt*="captcha" i]',
+      'img[src^="data:image"]',
+      'img[src*="captcha" i]',
+    ];
+    await page.locator(captchaSelectors.join(', ')).first().waitFor({ state: 'visible', timeout: 15_000 }).catch(() => {});
+    const captchaImg = await this.firstVisibleElementHandle(page, captchaSelectors);
+    if (!captchaImg) {
+      throw new Error(await this.loginFieldError(page, 'CAPTCHA gorsel bulunamadi'));
+    }
+    let base64: string;
+    try {
+      const buffer = await captchaImg.screenshot({ type: 'png' });
+      base64 = buffer.toString('base64');
+    } catch (err: any) {
+      throw new Error(`CAPTCHA screenshot hata: ${err?.message || err}`);
     }
 
-    await this.fillFirst(page, [
-      'input[name*="kullanici" i]',
-      'input[id*="kullanici" i]',
-      'input[name*="user" i]',
-      'input[id*="user" i]',
-      'input[name*="kod" i]',
-      'input[id*="kod" i]',
-    ], userCode);
+    const captchaText = (await this.solveCaptchaWith2Captcha(base64, apiKey)).toLocaleUpperCase('tr-TR');
+    this.logger.log(`[eBeyanname] CAPTCHA cozuldu: "${captchaText}" (${captchaText.length} karakter)`);
 
-    const passwordFields = page.locator('input[type="password"]');
-    const passwordCount = await passwordFields.count().catch(() => 0);
-    if (passwordCount >= 2) {
-      await passwordFields.nth(0).fill(password);
-      await passwordFields.nth(1).fill(secondaryPassword);
-      return;
-    }
-    if (passwordCount === 1) {
-      await passwordFields.nth(0).fill(password);
-      await this.fillFirst(page, [
-        'input[name*="sifre" i]:not([type="password"])',
-        'input[id*="sifre" i]:not([type="password"])',
-        'input[name*="şifre" i]:not([type="password"])',
-        'input[id*="şifre" i]:not([type="password"])',
-      ], secondaryPassword);
-      return;
-    }
+    // "dk" (Dogrulama Kodu) input'una yaz.
+    const dkInput = await this.firstVisibleLocator(page, [
+      'input[name="dk"]',
+      'input[id="dk"]',
+      'input[name*="captcha" i]',
+      'input[id*="captcha" i]',
+      'input[placeholder*="Dogrulama" i]',
+      'input[placeholder*="Doğrulama" i]',
+      'input[placeholder*="kod" i]',
+    ]);
+    if (!dkInput) throw new Error(await this.loginFieldError(page, 'Dogrulama kodu alani bulunamadi'));
+    await dkInput.fill(captchaText);
+  }
 
-    throw new Error('e-Beyanname giris alanlari bulunamadi');
+  private async waitForEBeyannameLoginForm(page: any, loginUrl: string) {
+    const selector = [
+      'input[name="userid"]',
+      'input[id="userid"]',
+      'input[placeholder*="Kullanici Kodu" i]',
+      'input[placeholder*="Kullanıcı Kodu" i]',
+      'input[placeholder*="Vergi Kimlik" i]',
+    ].join(', ');
+    const appeared = await page.locator(selector).first().waitFor({ state: 'visible', timeout: 25_000 })
+      .then(() => true)
+      .catch(() => false);
+    if (appeared) return;
+
+    await page.goto(loginUrl, { waitUntil: 'domcontentloaded', timeout: 60_000 }).catch(() => {});
+    const appearedAfterRetry = await page.locator(selector).first().waitFor({ state: 'visible', timeout: 15_000 })
+      .then(() => true)
+      .catch(() => false);
+    if (!appearedAfterRetry) throw new Error(await this.loginFieldError(page, 'Kullanici kodu alani bulunamadi'));
+  }
+
+  private async firstVisibleLocator(page: any, selectors: string[]) {
+    for (const selector of selectors) {
+      const loc = page.locator(selector).first();
+      if (await loc.isVisible().catch(() => false)) return loc;
+    }
+    return null;
+  }
+
+  private async firstVisibleElementHandle(page: any, selectors: string[]) {
+    for (const selector of selectors) {
+      const loc = page.locator(selector).first();
+      if (await loc.isVisible().catch(() => false)) return loc.elementHandle().catch(() => null);
+    }
+    return null;
+  }
+
+  private async loginFieldError(page: any, prefix: string) {
+    const inputs = await page.locator('input, textarea').evaluateAll((els: any[]) => els.map((el) => {
+      const r = el.getBoundingClientRect();
+      const s = window.getComputedStyle(el);
+      return {
+        id: el.getAttribute('id') || '',
+        name: el.getAttribute('name') || '',
+        type: el.getAttribute('type') || '',
+        placeholder: el.getAttribute('placeholder') || '',
+        visible: r.width > 0 && r.height > 0 && s.visibility !== 'hidden' && s.display !== 'none',
+      };
+    })).catch(() => []);
+    const visibleInputs = inputs
+      .filter((input: any) => input.visible)
+      .map((input: any) => `${input.id || input.name || input.type || 'input'}:${input.placeholder || '-'}`)
+      .join(', ')
+      .slice(0, 300);
+    const body = this.compact(await this.bodyText(page));
+    return `${prefix}; URL=${this.safeUrl(page.url())}; alanlar=${visibleInputs || 'yok'}; ekran=${body.slice(0, 300)}`;
   }
 
   private async fillFirst(page: any, selectors: string[], value: string) {
@@ -575,6 +690,8 @@ export class PortalAutomationRailwayRunnerService implements OnModuleInit {
 
   private async submitLogin(page: any) {
     const selectors = [
+      'button:has-text("Giriş Yap")',  // yeni GIB Dijital Vergi Dairesi UI
+      'button:has-text("Giris Yap")',
       'button[type="submit"]',
       'input[type="submit"]',
       'button:has-text("Giriş")',
@@ -692,6 +809,11 @@ export class PortalAutomationRailwayRunnerService implements OnModuleInit {
     inForm.append('method', 'base64');
     inForm.append('body', base64);
     inForm.append('json', '0');
+    // GIB CAPTCHA case-sensitive (genelde BUYUK HARF) — 2captcha varsayilan
+    // kucuk harf donduyor, bu yuzden regsense=1 zorunlu.
+    inForm.append('regsense', '1');
+    inForm.append('min_len', '4');
+    inForm.append('max_len', '6');
 
     const inRes = await fetch('https://2captcha.com/in.php', {
       method: 'POST',
@@ -723,33 +845,59 @@ export class PortalAutomationRailwayRunnerService implements OnModuleInit {
   }
 
   private async assertLoggedIn(page: any) {
+    const loginFormVisible = await this.isEBeyannameLoginFormVisible(page);
+    const alertText = await this.visibleAlertText(page);
     const body = await this.bodyText(page);
-    if (TEXT.captcha.test(body)) {
-      // CAPTCHA tespit → 2captcha ile otomatik cozum dene
-      const solved = await this.tryAutoSolveCaptcha(page);
-      if (!solved) {
-        throw new Error('GIB CAPTCHA istedi, 2captcha cozumu basarisiz (TWOCAPTCHA_API_KEY var mi/kredi yeterli mi?)');
-      }
-      // Cozulduyse devam et — recursive bir kez daha kontrol
-      const body2 = await this.bodyText(page);
-      if (TEXT.captcha.test(body2)) {
-        throw new Error('CAPTCHA cozuldu ama hala CAPTCHA gorunuyor; site UI degismis olabilir');
-      }
+
+    if (!loginFormVisible) {
+      if (alertText && TEXT.loginError.test(alertText)) throw new Error(this.compact(alertText));
+      return;
     }
-    if (TEXT.loginError.test(body)) {
-      throw new Error('e-Beyanname girisi basarisiz gorunuyor; kullanici kodu/parola/sifre veya ek dogrulama kontrol edilmeli');
+
+    if (alertText) throw new Error(this.compact(alertText));
+
+    if (/captcha|guvenlik|güvenlik|dogrulama|doğrulama/i.test(body)) {
+      throw new Error('e-Beyanname giris formu gecilemedi; CAPTCHA veya sifre reddedildi');
     }
-    const visibleFields = await page
-      .locator('input:not([type="hidden"]):not([type="submit"]):not([type="button"]):not([type="image"])')
-      .evaluateAll((els: any[]) => els.filter((el) => {
+    throw new Error('e-Beyanname giris ekrani gecilemedi');
+  }
+
+  private async isEBeyannameLoginFormVisible(page: any) {
+    return page.locator('input[name="userid"], input[id="userid"], input[name="sifre"], input[id="sifre"], input[name="dk"], input[id="dk"]')
+      .evaluateAll((els: any[]) => els.some((el) => {
         const r = el.getBoundingClientRect();
         const style = window.getComputedStyle(el);
         return r.width > 0 && r.height > 0 && style.visibility !== 'hidden' && style.display !== 'none';
-      }).length)
-      .catch(() => 0);
-    if (visibleFields >= 3 && /kullanici|kullanıcı|parola|sifre|şifre/i.test(body)) {
-      throw new Error('e-Beyanname giris ekrani gecilemedi');
+      }))
+      .catch(() => false);
+  }
+
+  private async visibleAlertText(page: any) {
+    const selectors = [
+      '[role="alert"]',
+      '.MuiAlert-message',
+      '.MuiFormHelperText-root',
+      '.MuiSnackbarContent-message',
+      '.Toastify__toast-body',
+      '.error',
+      '.hata',
+      '[class*="error" i]',
+      '[class*="hata" i]',
+    ];
+    const texts: string[] = [];
+    for (const selector of selectors) {
+      const value = await page.locator(selector).evaluateAll((els: any[]) => els
+        .filter((el) => {
+          const r = el.getBoundingClientRect();
+          const style = window.getComputedStyle(el);
+          return r.width > 0 && r.height > 0 && style.visibility !== 'hidden' && style.display !== 'none';
+        })
+        .map((el) => String(el.textContent || '').trim())
+        .filter(Boolean)
+      ).catch(() => []);
+      texts.push(...value);
     }
+    return Array.from(new Set(texts)).join(' | ').slice(0, 500);
   }
 
   private async collectEBeyannameDownloads(tenantId: string, page: any, job: any, downloadsPath: string) {
@@ -1011,98 +1159,4 @@ export class PortalAutomationRailwayRunnerService implements OnModuleInit {
 
   private guessDonem(text: string, fallback: string) {
     const normalized = String(text || '').replace(/\s+/g, ' ');
-    const iso = normalized.match(/\b(20\d{2})[-/.](0?[1-9]|1[0-2])\b/);
-    if (iso) return `${iso[1]}-${String(Number(iso[2])).padStart(2, '0')}`;
-    const monthYear = normalized.match(/\b(0?[1-9]|1[0-2])[-/.](20\d{2})\b/);
-    if (monthYear) return `${monthYear[2]}-${String(Number(monthYear[1])).padStart(2, '0')}`;
-
-    const key = this.normalizeTextKey(normalized);
-    const quarter = key.match(/\b(20\d{2})\s*([1-4])\s*(DONEM|GECICI)\b/);
-    if (quarter) return `${quarter[1]}-${String(Number(quarter[2]) * 3).padStart(2, '0')}`;
-    const yearly = key.match(/\b(20\d{2})\b/);
-    if (yearly && /(YILLIK|KURUMLAR|GELIR)/.test(key)) return `${yearly[1]}-YIL`;
-    return fallback;
-  }
-
-  private guessApprovalNo(text: string) {
-    const normalized = String(text || '').replace(/\s+/g, ' ');
-    const labelled = normalized.match(/(?:onay|tahakkuk|fis|fiş)\s*(?:no|numarasi|numarası)?\s*[:#-]?\s*([A-Z0-9-]{6,40})/i);
-    if (labelled) return labelled[1].slice(0, 80);
-    const plain = normalized.match(/\b\d{7,18}\b/);
-    return plain ? plain[0] : null;
-  }
-
-  private guessMoneyAmount(text: string) {
-    const matches = Array.from(String(text || '').matchAll(/(?:^|[^\d])(\d{1,3}(?:\.\d{3})*,\d{2}|\d+,\d{2})(?:\s*(?:TL|TRY|\u20BA))?/gi));
-    if (!matches.length) return null;
-    const values = matches
-      .map((m) => Number(m[1].replace(/\./g, '').replace(',', '.')))
-      .filter((n) => Number.isFinite(n) && n >= 0);
-    if (!values.length) return null;
-    return Math.max(...values);
-  }
-
-  private normalizeTextKey(value?: string | null) {
-    return String(value || '')
-      .toLocaleUpperCase('tr-TR')
-      .normalize('NFD')
-      .replace(/[\u0300-\u036f]/g, '')
-      .replace(/[^A-Z0-9]+/g, ' ')
-      .replace(/\s+/g, ' ')
-      .trim();
-  }
-
-  private mimeFromName(name: string) {
-    const lower = String(name || '').toLowerCase();
-    if (lower.endsWith('.xml')) return 'application/xml';
-    if (lower.endsWith('.zip')) return 'application/zip';
-    if (lower.endsWith('.xls')) return 'application/vnd.ms-excel';
-    if (lower.endsWith('.xlsx')) return 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet';
-    return 'application/pdf';
-  }
-
-  private formatDateInput(value?: string | Date | null) {
-    if (!value) return null;
-    const d = value instanceof Date ? value : new Date(value);
-    if (Number.isNaN(d.getTime())) return null;
-    const fmt = new Intl.DateTimeFormat('tr-TR', {
-      timeZone: 'Europe/Istanbul',
-      day: '2-digit',
-      month: '2-digit',
-      year: 'numeric',
-    });
-    return fmt.format(d);
-  }
-
-  private inferDonem(value?: string | Date | null) {
-    const d = value ? new Date(value) : new Date();
-    const parts = new Intl.DateTimeFormat('en-CA', {
-      timeZone: 'Europe/Istanbul',
-      year: 'numeric',
-      month: '2-digit',
-    }).formatToParts(d);
-    const year = parts.find((p) => p.type === 'year')?.value || String(d.getFullYear());
-    const month = parts.find((p) => p.type === 'month')?.value || String(d.getMonth() + 1).padStart(2, '0');
-    return `${year}-${month}`;
-  }
-
-  private async bodyText(page: any) {
-    return ((await page.textContent('body').catch(() => '')) || '').slice(0, 20_000);
-  }
-
-  private publicError(err: any) {
-    return String(err?.message || err || 'Railway runner hatasi').replace(/\s+/g, ' ').slice(0, 1000);
-  }
-
-  private compact(value: string) {
-    return String(value || '').replace(/\s+/g, ' ').trim().slice(0, 500);
-  }
-
-  private safeUrl(url: string) {
-    return String(url || '').replace(/([?&](?:password|sifre|parola|token|kod)=)[^&]+/gi, '$1***');
-  }
-
-  private safeFileName(value: string) {
-    return String(value || 'download.bin').replace(/[^A-Za-z0-9._-]/g, '_').slice(0, 120);
-  }
-}
+    const iso = normalized.match(/\b(20\d{2
