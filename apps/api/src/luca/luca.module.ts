@@ -11,12 +11,13 @@ import { KdvBeyannameModule } from '../kdv-beyanname/kdv-beyanname.module';
 import { IsletmeHesapOzetiModule } from '../isletme-hesap-ozeti/isletme-hesap-ozeti.module';
 import { EarsivModule } from '../earsiv/earsiv.module';
 import { FaturaMuhasebelestirmeModule } from '../fatura-muhasebelestirme/fatura-muhasebelestirme.module';
+import { NotificationsModule } from '../notifications/notifications.module';
 
 @Module({
   imports: [
-    // 200 MB — büyük e-fatura ZIP'leri (300+ fatura, gib_efatura_alis ≥ 64 MB)
     MulterModule.register({ limits: { fileSize: 200 * 1024 * 1024 } }),
     PrismaModule,
+    NotificationsModule,
     forwardRef(() => KdvControlModule),
     forwardRef(() => MizanModule),
     forwardRef(() => KdvBeyannameModule),

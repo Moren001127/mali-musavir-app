@@ -8,6 +8,14 @@ import {
 import { existsSync } from 'fs';
 import { join } from 'path';
 import { PrismaService } from '../prisma/prisma.service';
+import { NotificationsService } from '../notifications/notifications.service';
+import { NOTIFICATION_TYPES } from '../notifications/notification-types';
+import { NotificationsService } from '../notifications/notifications.service';
+import { NOTIFICATION_TYPES } from '../notifications/notification-types';
+import { NotificationsService } from '../notifications/notifications.service';
+import { NOTIFICATION_TYPES } from '../notifications/notification-types';
+import { NotificationsService } from '../notifications/notifications.service';
+import { NOTIFICATION_TYPES } from '../notifications/notification-types';
 
 /**
  * Luca entegrasyonu — Mihsap deseninin Luca'ya uyarlanmış hali.
@@ -38,7 +46,10 @@ const LUCA_ENDPOINTS = {
 export class LucaService {
   private readonly logger = new Logger(LucaService.name);
 
-  constructor(private readonly prisma: PrismaService) {}
+  constructor(
+    private readonly prisma: PrismaService,
+    private readonly notifications: NotificationsService,
+  ) {}
 
   private canClaimUnassignedLucaJob(deviceId?: string) {
     const id = deviceId?.trim();
@@ -359,11 +370,139 @@ export class LucaService {
       where: { id: jobId, status: { notIn: ['cancelled'] } },
       data: { status: 'failed', finishedAt: new Date() },
     });
+
+    // === IN-APP BILDIRIM: LUCA_SYNC_ERROR ===
+    if (job?.tenantId) {
+      let mukellefLabel = '';
+      if (job.mukellefId) {
+        const tp = await (this.prisma as any).taxpayer.findFirst({
+          where: { id: job.mukellefId, tenantId: job.tenantId },
+          select: { companyName: true, firstName: true, lastName: true },
+        }).catch(() => null);
+        if (tp) mukellefLabel = tp.companyName || [tp.firstName, tp.lastName].filter(Boolean).join(' ') || '';
+      }
+      const titleSuffix = mukellefLabel ? ` (${mukellefLabel})` : '';
+      await this.notifications.createForTenant({
+        tenantId: job.tenantId,
+        type: NOTIFICATION_TYPES.LUCA_SYNC_ERROR,
+        title: `Luca aktarim hatasi: ${job.tip || 'job'}${titleSuffix}`,
+        body: errorMsg.slice(0, 400),
+        metadata: {
+          jobId, jobTip: job.tip,
+          mukellefId: job.mukellefId || null,
+          mukellefLabel: mukellefLabel || null,
+          sessionId: job.sessionId || null,
+          donem: job.donem || null,
+          link: '/panel/luca',
+        },
+        dedupeKey: `luca-fail:${job.tip}:${job.mukellefId || 'all'}:${job.donem || 'na'}`,
+        dedupeWindowMin: 60 * 4,
+      }).catch((e) => {
+        this.logger.warn(`LUCA_SYNC_ERROR notif failed: ${(e as Error).message}`);
+      });
+    }
+
+    // === IN-APP BILDIRIM: LUCA_SYNC_ERROR ===
+    if (job?.tenantId) {
+      let mukellefLabel = '';
+      if (job.mukellefId) {
+        const tp = await (this.prisma as any).taxpayer.findFirst({
+          where: { id: job.mukellefId, tenantId: job.tenantId },
+          select: { companyName: true, firstName: true, lastName: true },
+        }).catch(() => null);
+        if (tp) mukellefLabel = tp.companyName || [tp.firstName, tp.lastName].filter(Boolean).join(' ') || '';
+      }
+      const titleSuffix = mukellefLabel ? ` (${mukellefLabel})` : '';
+      await this.notifications.createForTenant({
+        tenantId: job.tenantId,
+        type: NOTIFICATION_TYPES.LUCA_SYNC_ERROR,
+        title: `Luca aktarim hatasi: ${job.tip || 'job'}${titleSuffix}`,
+        body: errorMsg.slice(0, 400),
+        metadata: {
+          jobId, jobTip: job.tip,
+          mukellefId: job.mukellefId || null,
+          mukellefLabel: mukellefLabel || null,
+          sessionId: job.sessionId || null,
+          donem: job.donem || null,
+          link: '/panel/luca',
+        },
+        dedupeKey: `luca-fail:${job.tip}:${job.mukellefId || 'all'}:${job.donem || 'na'}`,
+        dedupeWindowMin: 60 * 4,
+      }).catch((e) => {
+        this.logger.warn(`LUCA_SYNC_ERROR notif failed: ${(e as Error).message}`);
+      });
+    }
+
+    // === IN-APP BILDIRIM: LUCA_SYNC_ERROR ===
+    if (job?.tenantId) {
+      let mukellefLabel = '';
+      if (job.mukellefId) {
+        const tp = await (this.prisma as any).taxpayer.findFirst({
+          where: { id: job.mukellefId, tenantId: job.tenantId },
+          select: { companyName: true, firstName: true, lastName: true },
+        }).catch(() => null);
+        if (tp) mukellefLabel = tp.companyName || [tp.firstName, tp.lastName].filter(Boolean).join(' ') || '';
+      }
+      const titleSuffix = mukellefLabel ? ` (${mukellefLabel})` : '';
+      await this.notifications.createForTenant({
+        tenantId: job.tenantId,
+        type: NOTIFICATION_TYPES.LUCA_SYNC_ERROR,
+        title: `Luca aktarim hatasi: ${job.tip || 'job'}${titleSuffix}`,
+        body: errorMsg.slice(0, 400),
+        metadata: {
+          jobId, jobTip: job.tip,
+          mukellefId: job.mukellefId || null,
+          mukellefLabel: mukellefLabel || null,
+          sessionId: job.sessionId || null,
+          donem: job.donem || null,
+          link: '/panel/luca',
+        },
+        dedupeKey: `luca-fail:${job.tip}:${job.mukellefId || 'all'}:${job.donem || 'na'}`,
+        dedupeWindowMin: 60 * 4,
+      }).catch((e) => {
+        this.logger.warn(`LUCA_SYNC_ERROR notif failed: ${(e as Error).message}`);
+      });
+    }
     if (job?.sessionId && ['KDV_191', 'KDV_391', 'ISLETME_GELIR', 'ISLETME_GIDER'].includes(job.tip)) {
       await this.prisma.kdvControlSession.updateMany({
         where: { id: job.sessionId, tenantId: job.tenantId, status: 'PROCESSING' },
         data: { status: 'REVIEWING' },
       }).catch(() => undefined);
+    }
+
+    // === IN-APP BILDIRIM: Luca aktarim hatasi ===
+    if (job?.tenantId) {
+      // Mukellef adi
+      let mukellefLabel = '';
+      if (job.mukellefId) {
+        const tp = await (this.prisma as any).taxpayer.findFirst({
+          where: { id: job.mukellefId, tenantId: job.tenantId },
+          select: { companyName: true, firstName: true, lastName: true },
+        }).catch(() => null);
+        if (tp) {
+          mukellefLabel = tp.companyName || [tp.firstName, tp.lastName].filter(Boolean).join(' ') || '';
+        }
+      }
+      const titleSuffix = mukellefLabel ? ` (${mukellefLabel})` : '';
+      await this.notifications.createForTenant({
+        tenantId: job.tenantId,
+        type: NOTIFICATION_TYPES.LUCA_SYNC_ERROR,
+        title: `⚠️ Luca aktarım hatası: ${job.tip || 'job'}${titleSuffix}`,
+        body: `${errorMsg.slice(0, 400)}`,
+        metadata: {
+          jobId,
+          jobTip: job.tip,
+          mukellefId: job.mukellefId || null,
+          mukellefLabel: mukellefLabel || null,
+          sessionId: job.sessionId || null,
+          donem: job.donem || null,
+          link: '/panel/luca',
+        },
+        dedupeKey: `luca-fail:${job.tip}:${job.mukellefId || 'all'}:${job.donem || 'na'}`,
+        dedupeWindowMin: 60 * 4, // 4 saat
+      }).catch((e) => {
+        this.logger.warn(`LUCA_SYNC_ERROR notif failed: ${(e as Error).message}`);
+      });
     }
 
     // v1.38: INVOICE_POST -> InvoiceAccountingDocument.lucaStatus = FAILED
