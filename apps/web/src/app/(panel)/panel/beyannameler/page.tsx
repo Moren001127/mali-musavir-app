@@ -413,7 +413,7 @@ export default function BeyannamelerPage() {
               Mali musavir e-Beyanname sifresiyle portala girer, beyannameleri ve tahakkuklari sunucu kuyruguna indirir.
             </p>
           </div>
-          <HeroLastJob jobs={portalSummary?.latestJobs || []} />
+          <HeroLastJob job={latestBeyanJob} />
         </div>
       </section>
 
@@ -657,8 +657,7 @@ function AutomationPill({ label, value, tone }: { label: string; value: string |
   );
 }
 
-function HeroLastJob({ jobs }: { jobs: PortalJob[] }) {
-  const job = jobs[0];
+function HeroLastJob({ job }: { job?: PortalJob }) {
   if (!job) {
     return (
       <div className="w-full shrink-0 rounded-xl p-3 lg:w-[420px]" style={{ background: 'rgba(255,255,255,0.025)', border: '1px solid rgba(255,255,255,0.06)' }}>
