@@ -1,7 +1,7 @@
 import { Injectable, Logger, OnModuleInit } from '@nestjs/common';
 import { Cron, CronExpression } from '@nestjs/schedule';
 import { chromium as pwChromium } from 'playwright-core';
-import { mkdir, readFile, rm } from 'fs/promises';
+import { mkdir, readFile, rm, writeFile } from 'fs/promises';
 import { tmpdir } from 'os';
 import { join } from 'path';
 import { randomUUID } from 'crypto';
@@ -30,6 +30,27 @@ type TaxpayerMatch = {
   companyName: string | null;
   firstName: string | null;
   lastName: string | null;
+};
+
+type EBeyannameStatus = 'hatali' | 'beklemede' | 'onaylandi';
+
+type EBeyannameResultRow = {
+  rowIndex: number;
+  cells: string[];
+  rowText: string;
+  beyanTipiRaw: string | null;
+  taxNumber: string | null;
+  taxpayerName: string | null;
+  taxOffice: string | null;
+  taxPeriod: string | null;
+  uploadTime: string | null;
+  statusText: string | null;
+};
+
+type EBeyannameFilePayload = {
+  base64: string;
+  fileName: string;
+  mimeType: string;
 };
 
 // GIB 2026'da e-Beyanname'yi Dijital Vergi Dairesi portali altinda topladi.
@@ -255,7 +276,11 @@ export class PortalAutomationRailwayRunnerService implements OnModuleInit {
         }
       }
 
-      const collection = await this.collectEBeyannameDownloads(tenantId, page, bundle.job, downloadsPath);
+      const eBeyannamePage = await this.openEBeyannameApplication(context, page);
+      const collection = await this.collectEBeyannameDownloads(tenantId, eBeyannamePage, bundle.job, downloadsPath);
+      await this.safeLogoutFromDigitalTaxOffice(context, page, eBeyannamePage, collection.notes).catch((err) => {
+        collection.notes.push(`GIB guvenli cikis tamamlanamadi: ${this.compact(err?.message || err)}`);
+      });
       await context.close().catch(() => {});
 
       return {
@@ -265,7 +290,7 @@ export class PortalAutomationRailwayRunnerService implements OnModuleInit {
         result: {
           runner: 'railway',
           phase: collection.phase,
-          url: this.safeUrl(page.url()),
+          url: this.safeUrl(eBeyannamePage.url()),
           declarations: collection.declarations.length,
           documents: collection.documents.length,
           notes: collection.notes,
@@ -909,23 +934,27 @@ export class PortalAutomationRailwayRunnerService implements OnModuleInit {
     const documents: any[] = [];
     const taxpayers = await this.loadTaxpayers(tenantId);
 
-    const listUrl = process.env.PORTAL_AUTOMATION_EBEYANNAME_LIST_URL;
-    if (listUrl) {
-      await page.goto(listUrl, { waitUntil: 'domcontentloaded', timeout: 45_000 });
-      await page.waitForTimeout(1000);
-      notes.push('Liste URL env ile acildi');
-    } else {
-      const navigated = await this.tryNavigateToDeclarationList(page);
-      notes.push(navigated ? 'Beyanname liste ekrani metinle acildi' : 'Beyanname liste ekrani otomatik bulunamadi');
+    await this.openEBeyannameSearch(page, notes);
+    await this.fillEBeyannameSearchCriteria(page, job, notes);
+
+    const statusPlan: Array<{ status: EBeyannameStatus; label: string; download: boolean }> = [
+      { status: 'hatali', label: 'Hatali', download: false },
+      { status: 'beklemede', label: 'Onay bekliyor', download: false },
+      { status: 'onaylandi', label: 'Onaylandi', download: true },
+    ];
+
+    for (const item of statusPlan) {
+      await this.selectEBeyannameStatus(page, item.status);
+      const collected = await this.queryEBeyannameStatus(page, item.status, item.download, downloadsPath, taxpayers, job, notes);
+      declarations.push(...collected.declarations);
+      documents.push(...collected.documents);
+
+      if (item.status !== 'onaylandi') {
+        await this.closeEBeyannameResultList(page).catch((err) => {
+          notes.push(`${item.label} listesi kapatilamadi: ${this.compact(err?.message || err)}`);
+        });
+      }
     }
-
-    await this.fillDateRangeIfPossible(page, job.periodStart, job.periodEnd).catch((err) => notes.push(`Tarih doldurma atlandi: ${err?.message || err}`));
-    await this.clickSearchIfPossible(page).catch((err) => notes.push(`Sorgu butonu atlandi: ${err?.message || err}`));
-
-    const downloaded = await this.clickAndCollectDownloadLinks(page, downloadsPath, taxpayers, job);
-    declarations.push(...downloaded.declarations);
-    documents.push(...downloaded.documents);
-    notes.push(...downloaded.notes);
 
     if (!declarations.length && !documents.length) {
       notes.push(`Indirilecek beyanname/tahakkuk bulunamadi. URL=${this.safeUrl(page.url())}`);
@@ -937,6 +966,934 @@ export class PortalAutomationRailwayRunnerService implements OnModuleInit {
       documents,
       notes,
     };
+  }
+
+  private async openEBeyannameApplication(context: any, page: any) {
+    const alreadyOpen = this.findOpenPageByHost(context, 'ebeyanname.gib.gov.tr');
+    if (alreadyOpen) return alreadyOpen;
+    if (/ebeyanname\.gib\.gov\.tr/i.test(page.url())) return page;
+
+    const popupAfterTile = context.waitForEvent('page', { timeout: 8_000 }).catch(() => null);
+    const tileClicked = await this.clickVisibleText(page, ['e-Beyanname']);
+    if (!tileClicked) {
+      throw new Error(`Dijital Vergi Dairesi ana ekranda e-Beyanname uygulamasi bulunamadi. Gorunen kontroller: ${await this.visibleActionSnapshot(page)}`);
+    }
+
+    const directPopup = await Promise.race([
+      popupAfterTile,
+      page.waitForTimeout(900).then(() => null),
+    ]);
+    if (directPopup) {
+      await directPopup.waitForLoadState('domcontentloaded', { timeout: 20_000 }).catch(() => {});
+      return directPopup;
+    }
+
+    const confirmVisible = await this.isAnyTextVisible(page, ['ONAYLA', 'Onayla', 'Devam etmek istiyor musunuz']);
+    if (confirmVisible) {
+      const popupAfterConfirm = context.waitForEvent('page', { timeout: 25_000 }).catch(() => null);
+      const confirmed = await this.clickVisibleText(page, ['ONAYLA', 'Onayla']);
+      if (!confirmed) {
+        throw new Error(`e-Beyanname yonlendirme onayi acildi ama ONAYLA butonu tiklanamadi. Gorunen kontroller: ${await this.visibleActionSnapshot(page)}`);
+      }
+
+      const popup = await popupAfterConfirm;
+      if (popup) {
+        await popup.waitForLoadState('domcontentloaded', { timeout: 20_000 }).catch(() => {});
+        await popup.bringToFront().catch(() => {});
+        return popup;
+      }
+    }
+
+    for (let i = 0; i < 15; i++) {
+      const opened = this.findOpenPageByHost(context, 'ebeyanname.gib.gov.tr');
+      if (opened) {
+        await opened.waitForLoadState('domcontentloaded', { timeout: 20_000 }).catch(() => {});
+        return opened;
+      }
+      if (/ebeyanname\.gib\.gov\.tr/i.test(page.url())) return page;
+      await page.waitForTimeout(1000);
+    }
+
+    throw new Error(`e-Beyanname sekmesi acilmadi. Mevcut URL=${this.safeUrl(page.url())}. Gorunen kontroller: ${await this.visibleActionSnapshot(page)}`);
+  }
+
+  private async safeLogoutFromDigitalTaxOffice(context: any, mainPage: any, eBeyannamePage: any, notes: string[]) {
+    if (eBeyannamePage && eBeyannamePage !== mainPage && !eBeyannamePage.isClosed?.()) {
+      await eBeyannamePage.close({ runBeforeUnload: false }).catch(() => {});
+      notes.push('e-Beyanname sekmesi kapatildi');
+    }
+
+    const candidates = (context.pages?.() || []).filter((candidate: any) => !candidate.isClosed?.());
+    let portalPage = candidates.find((candidate: any) => /dijital\.gib\.gov\.tr/i.test(String(candidate.url?.() || ''))) || mainPage;
+    if (!portalPage || portalPage.isClosed?.()) {
+      portalPage = await context.newPage();
+      await portalPage.goto(DEFAULT_GIB_IVD_LOGIN_URL, { waitUntil: 'domcontentloaded', timeout: 30_000 }).catch(() => {});
+    }
+
+    await portalPage.bringToFront().catch(() => {});
+    await portalPage.waitForLoadState('domcontentloaded', { timeout: 10_000 }).catch(() => {});
+
+    const menuOpened = await this.openDigitalTaxUserMenu(portalPage);
+    if (!menuOpened) {
+      notes.push(`Dijital Vergi Dairesi kullanici menusu acilamadi; sekmeler kapatilacak. URL=${this.safeUrl(portalPage.url())}`);
+      return;
+    }
+
+    const logoutClicked = await this.clickVisibleText(portalPage, ['Çıkış Yap', 'Cikis Yap', 'Güvenli Çıkış', 'Guvenli Cikis']);
+    if (!logoutClicked) {
+      notes.push(`Cikis Yap butonu bulunamadi. Gorunen kontroller: ${await this.visibleActionSnapshot(portalPage)}`);
+      return;
+    }
+
+    await portalPage.waitForLoadState('domcontentloaded', { timeout: 15_000 }).catch(() => {});
+    await portalPage.waitForTimeout(1000);
+    notes.push('Dijital Vergi Dairesi guvenli cikis yapildi');
+  }
+
+  private async openDigitalTaxUserMenu(page: any) {
+    for (const text of ['MUZAFFER ÖREN', 'MUZAFFER OREN']) {
+      const loc = page.getByText(text, { exact: false }).first();
+      if (await loc.isVisible().catch(() => false)) {
+        await loc.click({ timeout: 8_000 }).catch(() => {});
+        await page.waitForTimeout(500);
+        if (await this.isAnyTextVisible(page, ['Çıkış Yap', 'Cikis Yap', 'Profil'])) return true;
+      }
+    }
+
+    const clicked = await page.evaluate(() => {
+      const norm = (value: string) => String(value || '')
+        .toLocaleUpperCase('tr-TR')
+        .normalize('NFD')
+        .replace(/[\u0300-\u036f]/g, '')
+        .replace(/\s+/g, ' ')
+        .trim();
+      const isVisible = (el: Element) => {
+        const anyEl = el as HTMLElement;
+        return !!(anyEl.offsetWidth || anyEl.offsetHeight || anyEl.getClientRects().length);
+      };
+      const controls = Array.from(document.querySelectorAll<HTMLElement>('button, a, div, span'));
+      const target = controls
+        .filter(isVisible)
+        .find((el) => {
+          const text = norm(el.textContent || '');
+          return text.includes('MUZAFFER') || text.includes('PROFIL') || text.includes('KULLANICI');
+        });
+      if (!target) return false;
+      target.click();
+      return true;
+    }).catch(() => false);
+    if (!clicked) return false;
+    await page.waitForTimeout(500);
+    return await this.isAnyTextVisible(page, ['Çıkış Yap', 'Cikis Yap', 'Profil']);
+  }
+
+  private findOpenPageByHost(context: any, host: string) {
+    const escaped = host.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
+    const re = new RegExp(escaped, 'i');
+    return (context.pages?.() || []).find((p: any) => re.test(String(p.url?.() || ''))) || null;
+  }
+
+  private async openEBeyannameSearch(page: any, notes: string[]) {
+    const listUrl = process.env.PORTAL_AUTOMATION_EBEYANNAME_LIST_URL;
+    if (listUrl) {
+      await page.goto(listUrl, { waitUntil: 'domcontentloaded', timeout: 45_000 });
+      await page.waitForTimeout(1000);
+      notes.push('Beyanname Ara URL env ile acildi');
+      return;
+    }
+
+    await page.waitForLoadState('domcontentloaded', { timeout: 20_000 }).catch(() => {});
+    if (await this.hasEBeyannameSearchForm(page)) {
+      notes.push('Beyanname Ara formu zaten acik');
+      return;
+    }
+
+    const clicked = await this.clickVisibleText(page, ['Beyanname Ara']);
+    if (!clicked) {
+      throw new Error(`e-Beyanname sekmesinde Beyanname Ara menusu bulunamadi. Gorunen kontroller: ${await this.visibleActionSnapshot(page)}`);
+    }
+
+    for (let i = 0; i < 20; i++) {
+      if (await this.hasEBeyannameSearchForm(page)) {
+        notes.push('Beyanname Ara formu acildi');
+        return;
+      }
+      await page.waitForTimeout(500);
+    }
+
+    throw new Error(`Beyanname Ara formu acilmadi. Gorunen kontroller: ${await this.visibleActionSnapshot(page)}`);
+  }
+
+  private async hasEBeyannameSearchForm(page: any) {
+    return page.evaluate(() => {
+      const norm = (value: string) => String(value || '')
+        .toLocaleUpperCase('tr-TR')
+        .normalize('NFD')
+        .replace(/[\u0300-\u036f]/g, '')
+        .replace(/\s+/g, ' ');
+      const text = norm(document.body?.innerText || '');
+      return text.includes('BEYANNAME ARA') && (text.includes('YUKLEME TARIH') || text.includes('DURUM'));
+    }).catch(() => false);
+  }
+
+  private async fillEBeyannameSearchCriteria(page: any, job: any, notes: string[]) {
+    const start = this.istanbulDateParts(job.periodStart);
+    const end = this.istanbulDateParts(job.periodEnd);
+    if (!start || !end) {
+      notes.push('Yukleme tarih araligi doldurulamadi: job tarihleri gecersiz');
+      return;
+    }
+
+    const result = await page.evaluate(({ start, end }: {
+      start: { day: string; month: string; year: string; display: string };
+      end: { day: string; month: string; year: string; display: string };
+    }) => {
+      const norm = (value: string) => String(value || '')
+        .toLocaleUpperCase('tr-TR')
+        .normalize('NFD')
+        .replace(/[\u0300-\u036f]/g, '')
+        .replace(/\s+/g, ' ')
+        .trim();
+      const isVisible = (el: Element) => {
+        const anyEl = el as HTMLElement;
+        return !!(anyEl.offsetWidth || anyEl.offsetHeight || anyEl.getClientRects().length);
+      };
+      const fire = (el: HTMLInputElement) => {
+        el.dispatchEvent(new Event('input', { bubbles: true }));
+        el.dispatchEvent(new Event('change', { bubbles: true }));
+        el.dispatchEvent(new Event('blur', { bubbles: true }));
+      };
+      const setInput = (el: HTMLInputElement, value: string) => {
+        el.removeAttribute('disabled');
+        el.readOnly = false;
+        el.value = value;
+        fire(el);
+      };
+
+      const checkboxes = Array.from(document.querySelectorAll<HTMLInputElement>('input[type="checkbox"]'));
+      for (const checkbox of checkboxes) {
+        const scope = checkbox.closest('tr') || checkbox.parentElement;
+        const scopeText = norm(scope?.textContent || '');
+        if (scopeText.includes('YUKLEME TARIH') && !checkbox.checked) {
+          checkbox.click();
+          checkbox.checked = true;
+          fire(checkbox);
+        }
+      }
+
+      const scopes = Array.from(document.querySelectorAll<HTMLElement>('tr, tbody, table, div'))
+        .filter((el) => isVisible(el) && norm(el.textContent || '').includes('YUKLEME TARIH'))
+        .sort((a, b) => (a.textContent || '').length - (b.textContent || '').length);
+
+      let selectedInputs: HTMLInputElement[] = [];
+      for (const scope of scopes) {
+        const inputs = Array.from(scope.querySelectorAll<HTMLInputElement>('input')).filter((input) => {
+          const type = (input.getAttribute('type') || 'text').toLowerCase();
+          return isVisible(input) && !['checkbox', 'radio', 'submit', 'button', 'hidden', 'image'].includes(type);
+        });
+        if (inputs.length >= 6) {
+          selectedInputs = inputs.slice(-6);
+          break;
+        }
+      }
+
+      if (selectedInputs.length < 6) {
+        const allInputs = Array.from(document.querySelectorAll<HTMLInputElement>('input')).filter((input) => {
+          const type = (input.getAttribute('type') || 'text').toLowerCase();
+          return isVisible(input) && !['checkbox', 'radio', 'submit', 'button', 'hidden', 'image'].includes(type);
+        });
+        selectedInputs = allInputs.slice(-6);
+      }
+
+      if (selectedInputs.length < 6) {
+        return { ok: false, inputCount: selectedInputs.length };
+      }
+
+      const values = [start.day, start.month, start.year, end.day, end.month, end.year];
+      selectedInputs.slice(0, 6).forEach((input, index) => setInput(input, values[index]));
+      return { ok: true, inputCount: selectedInputs.length };
+    }, { start, end }).catch((err: any) => ({ ok: false, error: String(err?.message || err) }));
+
+    if (!result?.ok) {
+      throw new Error(`e-Beyanname Yukleme Tarih Araligi doldurulamadi: ${this.compact(result?.error || `inputCount=${result?.inputCount || 0}`)}`);
+    }
+    notes.push(`Yukleme Tarih Araligi ${start.display} - ${end.display} olarak dolduruldu`);
+  }
+
+  private async selectEBeyannameStatus(page: any, status: EBeyannameStatus) {
+    const ok = await page.evaluate((status: EBeyannameStatus) => {
+      const wanted = status === 'hatali'
+        ? 'HATALI'
+        : status === 'beklemede'
+          ? 'ONAY BEKLIYOR'
+          : 'ONAYLANDI';
+      const order = status === 'hatali' ? 0 : status === 'beklemede' ? 1 : 2;
+      const norm = (value: string) => String(value || '')
+        .toLocaleUpperCase('tr-TR')
+        .normalize('NFD')
+        .replace(/[\u0300-\u036f]/g, '')
+        .replace(/\s+/g, ' ')
+        .trim();
+      const isVisible = (el: Element) => {
+        const anyEl = el as HTMLElement;
+        return !!(anyEl.offsetWidth || anyEl.offsetHeight || anyEl.getClientRects().length);
+      };
+      const fire = (el: HTMLInputElement) => {
+        el.dispatchEvent(new Event('input', { bubbles: true }));
+        el.dispatchEvent(new Event('change', { bubbles: true }));
+      };
+
+      const statusScopes = Array.from(document.querySelectorAll<HTMLElement>('tr, tbody, table, div'))
+        .filter((el) => {
+          const text = norm(el.textContent || '');
+          return isVisible(el) && text.includes('DURUM') && text.includes('HATALI') && text.includes('ONAY');
+        })
+        .sort((a, b) => (a.textContent || '').length - (b.textContent || '').length);
+      const scope = statusScopes[0] || document.body;
+
+      const statusCheckbox = Array.from(scope.querySelectorAll<HTMLInputElement>('input[type="checkbox"]'))
+        .find((checkbox) => {
+          const text = norm((checkbox.closest('tr') || checkbox.parentElement)?.textContent || '');
+          return text.includes('DURUM') && !text.includes('YUKLEME');
+        });
+      if (statusCheckbox && !statusCheckbox.checked) {
+        statusCheckbox.click();
+        statusCheckbox.checked = true;
+        fire(statusCheckbox);
+      }
+
+      const radios = Array.from(scope.querySelectorAll<HTMLInputElement>('input[type="radio"]')).filter(isVisible);
+      const textForRadio = (radio: HTMLInputElement) => {
+        const pieces: string[] = [];
+        if (radio.id) {
+          const label = document.querySelector(`label[for="${CSS.escape(radio.id)}"]`);
+          if (label?.textContent) pieces.push(label.textContent);
+        }
+        let sibling: ChildNode | null = radio.nextSibling;
+        while (sibling && pieces.join(' ').length < 80) {
+          const text = sibling.textContent || '';
+          if (text.trim()) pieces.push(text);
+          if (sibling.nodeType === Node.ELEMENT_NODE && (sibling as Element).matches('input')) break;
+          sibling = sibling.nextSibling;
+        }
+        if (!pieces.length) pieces.push(radio.parentElement?.textContent || '');
+        return norm(pieces.join(' '));
+      };
+
+      let radio = radios.find((candidate) => textForRadio(candidate).includes(wanted));
+      if (!radio && radios[order]) radio = radios[order];
+      if (!radio) return false;
+      radio.click();
+      radio.checked = true;
+      fire(radio);
+      return true;
+    }, status).catch(() => false);
+
+    if (!ok) {
+      throw new Error(`e-Beyanname Durum secenegi tiklanamadi: ${status}. Gorunen kontroller: ${await this.visibleActionSnapshot(page)}`);
+    }
+  }
+
+  private async queryEBeyannameStatus(
+    page: any,
+    status: EBeyannameStatus,
+    downloadApproved: boolean,
+    downloadsPath: string,
+    taxpayers: TaxpayerMatch[],
+    job: any,
+    notes: string[],
+  ) {
+    const declarations: any[] = [];
+    const documents: any[] = [];
+    const dialogMessages: string[] = [];
+    const dialogHandler = async (dialog: any) => {
+      dialogMessages.push(dialog.message());
+      await dialog.accept().catch(() => {});
+    };
+
+    page.on('dialog', dialogHandler);
+    try {
+      await this.clickEBeyannameSearchButton(page);
+      for (let i = 0; i < 30; i++) {
+        if (dialogMessages.length) break;
+        if (await this.hasEBeyannameResultList(page)) break;
+        await page.waitForTimeout(500);
+      }
+    } finally {
+      page.off('dialog', dialogHandler);
+    }
+
+    if (dialogMessages.length) {
+      notes.push(`${status}: GIB uyarisi: ${this.compact(dialogMessages.join(' | '))}`);
+      return { declarations, documents };
+    }
+
+    if (!(await this.hasEBeyannameResultList(page))) {
+      notes.push(`${status}: liste acilmadi, sonuc yok kabul edildi. URL=${this.safeUrl(page.url())}`);
+      return { declarations, documents };
+    }
+
+    if (downloadApproved) {
+      const approved = await this.collectApprovedEBeyannamePages(page, downloadsPath, taxpayers, job, notes);
+      declarations.push(...approved.declarations);
+      documents.push(...approved.documents);
+      return { declarations, documents };
+    }
+
+    const rows = await this.collectStatusOnlyEBeyannamePages(page, status, notes);
+    for (const row of rows) {
+      const declaration = this.declarationFromEBeyannameRow(row, status, taxpayers, job);
+      if (declaration) declarations.push(declaration);
+    }
+    notes.push(`${status}: ${rows.length} satir okundu, ${declarations.length} takip kaydi eslendi`);
+    return { declarations, documents };
+  }
+
+  private async clickEBeyannameSearchButton(page: any) {
+    const clicked = await page.evaluate(() => {
+      const norm = (value: string) => String(value || '')
+        .toLocaleUpperCase('tr-TR')
+        .normalize('NFD')
+        .replace(/[\u0300-\u036f]/g, '')
+        .replace(/\s+/g, ' ')
+        .trim();
+      const isVisible = (el: Element) => {
+        const anyEl = el as HTMLElement;
+        return !!(anyEl.offsetWidth || anyEl.offsetHeight || anyEl.getClientRects().length);
+      };
+      const controls = Array.from(document.querySelectorAll<HTMLElement>('button, input[type="button"], input[type="submit"], a'));
+      const target = controls.find((el) => {
+        const text = norm(`${el.textContent || ''} ${(el as HTMLInputElement).value || ''} ${el.getAttribute('title') || ''}`);
+        return isVisible(el) && text.includes('SORGULA');
+      });
+      if (!target) return false;
+      target.click();
+      return true;
+    }).catch(() => false);
+    if (!clicked) {
+      await this.clickSearchIfPossible(page);
+    }
+  }
+
+  private async hasEBeyannameResultList(page: any) {
+    return page.evaluate(() => {
+      const norm = (value: string) => String(value || '')
+        .toLocaleUpperCase('tr-TR')
+        .normalize('NFD')
+        .replace(/[\u0300-\u036f]/g, '')
+        .replace(/\s+/g, ' ');
+      const text = norm(document.body?.innerText || '');
+      if (!text.includes('BEYANNAME LISTESI')) return false;
+      return Array.from(document.querySelectorAll('table')).some((table) => {
+        const tableText = norm(table.textContent || '');
+        return tableText.includes('BEYANNAME TURU') && tableText.includes('VERGI TAHAKKUKU');
+      });
+    }).catch(() => false);
+  }
+
+  private async parseEBeyannameResultRows(page: any): Promise<EBeyannameResultRow[]> {
+    const rawRows = await page.evaluate(() => {
+      const norm = (value: string) => String(value || '')
+        .toLocaleUpperCase('tr-TR')
+        .normalize('NFD')
+        .replace(/[\u0300-\u036f]/g, '')
+        .replace(/\s+/g, ' ');
+      const tables = Array.from(document.querySelectorAll('table'));
+      const table = tables.find((candidate) => {
+        const text = norm(candidate.textContent || '');
+        return text.includes('BEYANNAME TURU') && text.includes('VERGI TAHAKKUKU');
+      });
+      if (!table) return [];
+      return Array.from(table.querySelectorAll('tr'))
+        .map((tr) => ({
+          cells: Array.from(tr.querySelectorAll('td, th')).map((cell) => (cell as HTMLElement).innerText.replace(/\s+/g, ' ').trim()),
+          rowText: (tr as HTMLElement).innerText.replace(/\s+/g, ' ').trim(),
+        }))
+        .filter((row) => /\b\d{10,11}\b/.test(row.rowText) && !norm(row.rowText).includes('VERGI KIMLIK NUMARASI'));
+    }).catch(() => []);
+
+    return rawRows.map((row: any, rowIndex: number) => this.normalizeEBeyannameResultRow(row, rowIndex));
+  }
+
+  private normalizeEBeyannameResultRow(raw: { cells: string[]; rowText: string }, rowIndex: number): EBeyannameResultRow {
+    const cells = (raw.cells || []).map((cell) => String(cell || '').trim()).filter(Boolean);
+    const taxIndex = cells.findIndex((cell) => /\b\d{10,11}\b/.test(cell));
+    const taxNumber = taxIndex >= 0 ? (cells[taxIndex].match(/\b\d{10,11}\b/) || [null])[0] : null;
+    const beyanTipiRaw = taxIndex > 0 ? cells[taxIndex - 1] : cells.find((cell) => /KDV|MUH|DAMGA|GECICI|GE[CÇ]ICI|KURUMLAR|GELIR|OTV|OIV|POSET/i.test(cell)) || null;
+    const taxpayerName = taxIndex >= 0 ? cells[taxIndex + 1] || null : null;
+    const taxOffice = taxIndex >= 0 ? cells[taxIndex + 2] || null : null;
+    const taxPeriod = cells.find((cell) => /\b\d{2}\/\d{4}\s*-\s*\d{2}\/\d{4}\b/.test(cell)) || null;
+    const uploadTime = cells.find((cell) => /\b\d{2}\.\d{2}\.\d{4}\b/.test(cell)) || null;
+    const statusText = cells.find((cell) => /onay|hata|bekl|iptal/i.test(this.normalizeTextKey(cell))) || null;
+
+    return {
+      rowIndex,
+      cells,
+      rowText: raw.rowText,
+      beyanTipiRaw,
+      taxNumber,
+      taxpayerName,
+      taxOffice,
+      taxPeriod,
+      uploadTime,
+      statusText,
+    };
+  }
+
+  private declarationFromEBeyannameRow(
+    row: EBeyannameResultRow,
+    status: EBeyannameStatus,
+    taxpayers: TaxpayerMatch[],
+    job: any,
+    files?: { beyanname?: EBeyannameFilePayload | null; tahakkuk?: EBeyannameFilePayload | null },
+  ) {
+    const contextText = [
+      row.rowText,
+      row.beyanTipiRaw,
+      row.taxNumber,
+      row.taxpayerName,
+      row.taxPeriod,
+      row.uploadTime,
+    ].filter(Boolean).join(' ');
+    const taxpayerId = this.matchTaxpayerId(contextText, taxpayers);
+    if (!taxpayerId) return null;
+
+    const beyanTipi = this.guessBeyanTipi(row.beyanTipiRaw || row.rowText);
+    const donem = this.ebeyannameDonemFromRow(row, beyanTipi, job);
+    const beyanTarihi = this.parseEBeyannameUploadTime(row.uploadTime) || job.periodEnd || new Date().toISOString();
+
+    return {
+      taxpayerId,
+      beyanTipi,
+      donem,
+      status,
+      beyanTarihi,
+      tahakkukTutari: null,
+      onayNo: null,
+      beyannameBase64: files?.beyanname?.base64 || null,
+      tahakkukBase64: files?.tahakkuk?.base64 || null,
+      xmlBase64: null,
+      beyannameFileName: files?.beyanname?.fileName || null,
+      tahakkukFileName: files?.tahakkuk?.fileName || null,
+      raw: {
+        runner: 'railway',
+        source: 'ebeyanname-beyanname-ara',
+        status,
+        rowText: this.compact(row.rowText),
+        cells: row.cells,
+        beyanTipiRaw: row.beyanTipiRaw,
+        taxNumber: row.taxNumber,
+        taxpayerName: row.taxpayerName,
+        taxOffice: row.taxOffice,
+        taxPeriod: row.taxPeriod,
+        uploadTime: row.uploadTime,
+      },
+    };
+  }
+
+  private async collectApprovedEBeyannamePages(
+    page: any,
+    downloadsPath: string,
+    taxpayers: TaxpayerMatch[],
+    job: any,
+    notes: string[],
+  ) {
+    const declarations: any[] = [];
+    const documents: any[] = [];
+    const maxRows = Math.max(1, Math.min(3000, Number(process.env.PORTAL_AUTOMATION_EBEYANNAME_MAX_APPROVED_ROWS || 1000)));
+    let processedRows = 0;
+    let pageNo = 0;
+
+    while (processedRows < maxRows && pageNo < 120) {
+      pageNo++;
+      const rows = await this.parseEBeyannameResultRows(page);
+      notes.push(`onaylandi sayfa ${pageNo}: ${rows.length} satir`);
+
+      for (const row of rows) {
+        if (processedRows >= maxRows) break;
+        processedRows++;
+        const beyanname = await this.downloadEBeyannameRowFile(page, row.rowIndex, 'beyanname', downloadsPath, processedRows, notes);
+        const tahakkuk = await this.downloadEBeyannameRowFile(page, row.rowIndex, 'tahakkuk', downloadsPath, processedRows, notes);
+        const declaration = this.declarationFromEBeyannameRow(row, 'onaylandi', taxpayers, job, { beyanname, tahakkuk });
+
+        if (declaration) {
+          declarations.push(declaration);
+          continue;
+        }
+
+        for (const file of [beyanname, tahakkuk].filter(Boolean) as EBeyannameFilePayload[]) {
+          documents.push({
+            taxpayerId: null,
+            belgeTuru: file === tahakkuk ? 'GIB_TAHAKKUK' : 'GIB_BEYANNAME',
+            title: file.fileName,
+            period: this.ebeyannameDonemFromRow(row, this.guessBeyanTipi(row.beyanTipiRaw || row.rowText), job),
+            issuedAt: this.parseEBeyannameUploadTime(row.uploadTime) || job.periodEnd || null,
+            receivedAt: new Date().toISOString(),
+            mimeType: file.mimeType,
+            originalName: file.fileName,
+            base64: file.base64,
+            raw: {
+              runner: 'railway',
+              source: 'ebeyanname-beyanname-ara',
+              matchedTaxpayer: false,
+              rowText: this.compact(row.rowText),
+              taxNumber: row.taxNumber,
+              taxpayerName: row.taxpayerName,
+            },
+          });
+        }
+      }
+
+      const pagination = await this.readEBeyannamePagination(page);
+      if (!pagination || pagination.end >= pagination.total) break;
+      const moved = await this.clickEBeyannameNextPage(page, pagination);
+      if (!moved) {
+        notes.push(`onaylandi: sonraki sayfaya gecilemedi (${pagination.start}-${pagination.end}/${pagination.total})`);
+        break;
+      }
+    }
+
+    notes.push(`onaylandi: ${processedRows} satir islendi, ${declarations.length} takip kaydi eslendi, ${documents.length} eslesmeyen belge`);
+    return { declarations, documents };
+  }
+
+  private async collectStatusOnlyEBeyannamePages(page: any, status: EBeyannameStatus, notes: string[]) {
+    const rows: EBeyannameResultRow[] = [];
+    const maxRows = Math.max(1, Math.min(3000, Number(process.env.PORTAL_AUTOMATION_EBEYANNAME_MAX_STATUS_ROWS || 1000)));
+    let pageNo = 0;
+
+    while (rows.length < maxRows && pageNo < 120) {
+      pageNo++;
+      const pageRows = await this.parseEBeyannameResultRows(page);
+      rows.push(...pageRows.slice(0, Math.max(0, maxRows - rows.length)));
+
+      const pagination = await this.readEBeyannamePagination(page);
+      if (!pagination || pagination.end >= pagination.total) break;
+      const moved = await this.clickEBeyannameNextPage(page, pagination);
+      if (!moved) {
+        notes.push(`${status}: sonraki sayfaya gecilemedi (${pagination.start}-${pagination.end}/${pagination.total})`);
+        break;
+      }
+    }
+
+    return rows;
+  }
+
+  private async downloadEBeyannameRowFile(
+    page: any,
+    rowIndex: number,
+    kind: 'beyanname' | 'tahakkuk',
+    downloadsPath: string,
+    sequence: number,
+    notes: string[],
+  ): Promise<EBeyannameFilePayload | null> {
+    const row = page.locator('tr').filter({ hasText: /\b\d{10,11}\b/ }).nth(rowIndex);
+    if (!(await row.isVisible().catch(() => false))) {
+      notes.push(`${kind}: satir ${rowIndex + 1} gorunur degil`);
+      return null;
+    }
+
+    const candidates = row.locator('a, button, input[type="button"], input[type="image"], img');
+    const count = await candidates.count().catch(() => 0);
+    const metas: Array<{ index: number; tag: string; text: string; haystack: string }> = [];
+    for (let i = 0; i < count; i++) {
+      const meta = await candidates.nth(i).evaluate((el: any) => {
+        const tag = String(el.tagName || '').toUpperCase();
+        const text = `${el.innerText || el.value || el.alt || el.title || el.getAttribute?.('aria-label') || ''}`.trim();
+        const haystack = [
+          text,
+          el.getAttribute?.('href') || '',
+          el.getAttribute?.('src') || '',
+          el.getAttribute?.('onclick') || '',
+          el.getAttribute?.('title') || '',
+          el.getAttribute?.('alt') || '',
+          el.outerHTML || '',
+        ].join(' ');
+        return { tag, text, haystack: haystack.slice(0, 1200) };
+      }).catch(() => null);
+      if (meta) metas.push({ index: i, ...meta });
+    }
+
+    const picked = this.pickEBeyannameFileCandidate(metas, kind);
+    if (picked == null) {
+      notes.push(`${kind}: satir ${rowIndex + 1} icin PDF ikonu bulunamadi`);
+      return null;
+    }
+
+    const loc = candidates.nth(picked);
+    const clicked = await this.captureEBeyannameDownload(page, loc, downloadsPath, `ebeyanname-${sequence}-${kind}`);
+    if (!clicked) {
+      notes.push(`${kind}: satir ${rowIndex + 1} tiklandi ama PDF alinamadi`);
+      return null;
+    }
+    return clicked;
+  }
+
+  private pickEBeyannameFileCandidate(
+    metas: Array<{ index: number; tag: string; text: string; haystack: string }>,
+    kind: 'beyanname' | 'tahakkuk',
+  ) {
+    if (!metas.length) return null;
+    const normalized = metas.map((meta) => ({
+      ...meta,
+      key: this.normalizeTextKey(`${meta.text} ${meta.haystack}`),
+    }));
+    const direct = normalized.find((meta) => {
+      if (kind === 'beyanname') return /BEYANNAME|BEYAN|\bB\b/.test(meta.key);
+      return /TAHAKKUK|TAH|FIS|\bT\b/.test(meta.key);
+    });
+    if (direct) return direct.index;
+
+    const fileActions = normalized.filter((meta) => {
+      const key = meta.key;
+      if (/MAIL|MESAJ|ZARF|ENVELOPE/.test(key)) return false;
+      return meta.tag === 'A' || meta.tag === 'BUTTON' || meta.tag === 'INPUT' || /PDF|ADOBE|INDIR|GORUNTULE|GOSTER|DOWNLOAD/.test(key);
+    });
+    if (!fileActions.length) return null;
+    if (kind === 'beyanname') return fileActions.length >= 2 ? fileActions[fileActions.length - 2].index : fileActions[0].index;
+    return fileActions[fileActions.length - 1].index;
+  }
+
+  private async captureEBeyannameDownload(
+    page: any,
+    loc: any,
+    downloadsPath: string,
+    fallbackName: string,
+  ): Promise<EBeyannameFilePayload | null> {
+    const beforeUrl = String(page.url?.() || '');
+    await loc.evaluate((el: any) => {
+      const anchor = el.closest?.('a');
+      if (anchor) anchor.setAttribute('target', '_blank');
+    }).catch(() => {});
+
+    const downloadPromise = page.waitForEvent('download', { timeout: 15_000 })
+      .then((download: any) => ({ type: 'download', value: download }))
+      .catch(() => null);
+    const popupPromise = page.context().waitForEvent('page', { timeout: 10_000 })
+      .then((popup: any) => ({ type: 'popup', value: popup }))
+      .catch(() => null);
+
+    await loc.click({ timeout: 8_000 }).catch(() => null);
+    const event: any = await Promise.race([
+      downloadPromise,
+      popupPromise,
+      this.wait(15_000).then(() => null),
+    ]);
+
+    if (event?.type === 'download') {
+      return this.savePlaywrightDownload(event.value, downloadsPath, fallbackName);
+    }
+
+    if (event?.type === 'popup') {
+      return this.savePdfFromPopup(event.value, downloadsPath, fallbackName);
+    }
+
+    const afterUrl = String(page.url?.() || '');
+    if (afterUrl && afterUrl !== beforeUrl) {
+      const saved = await this.savePdfFromPageUrl(page, downloadsPath, fallbackName).catch(() => null);
+      await page.goBack({ waitUntil: 'domcontentloaded', timeout: 15_000 }).catch(() => {});
+      return saved;
+    }
+
+    return null;
+  }
+
+  private async savePlaywrightDownload(download: any, downloadsPath: string, fallbackName: string): Promise<EBeyannameFilePayload> {
+    const suggested = await download.suggestedFilename().catch(() => `${fallbackName}.pdf`);
+    const fileName = this.safeFileName(suggested || `${fallbackName}.pdf`);
+    const filePath = join(downloadsPath, `${randomUUID()}-${fileName}`);
+    await download.saveAs(filePath);
+    const buffer = await readFile(filePath);
+    return { base64: buffer.toString('base64'), fileName, mimeType: this.mimeFromName(fileName) };
+  }
+
+  private async savePdfFromPopup(popup: any, downloadsPath: string, fallbackName: string): Promise<EBeyannameFilePayload | null> {
+    try {
+      await popup.waitForLoadState('domcontentloaded', { timeout: 10_000 }).catch(() => {});
+      const popupDownload = await popup.waitForEvent('download', { timeout: 3_000 }).catch(() => null);
+      if (popupDownload) return await this.savePlaywrightDownload(popupDownload, downloadsPath, fallbackName);
+      return await this.savePdfFromPageUrl(popup, downloadsPath, fallbackName);
+    } finally {
+      await popup.close?.().catch(() => {});
+    }
+  }
+
+  private async savePdfFromPageUrl(page: any, downloadsPath: string, fallbackName: string): Promise<EBeyannameFilePayload | null> {
+    const url = String(page.url?.() || '');
+    let buffer: Buffer | null = null;
+    let mimeType = 'application/pdf';
+    if (/^blob:/i.test(url)) {
+      const base64 = await page.evaluate(async () => {
+        const response = await fetch(window.location.href);
+        const arrayBuffer = await response.arrayBuffer();
+        let binary = '';
+        const bytes = new Uint8Array(arrayBuffer);
+        for (let i = 0; i < bytes.byteLength; i++) binary += String.fromCharCode(bytes[i]);
+        return btoa(binary);
+      }).catch(() => null);
+      if (base64) buffer = Buffer.from(base64, 'base64');
+    } else if (/^https?:/i.test(url)) {
+      const response = await page.context().request.get(url, { timeout: 15_000 }).catch(() => null);
+      if (response?.ok()) {
+        const headers = response.headers();
+        mimeType = headers['content-type'] || mimeType;
+        buffer = Buffer.from(await response.body());
+      }
+    }
+
+    if (!buffer || buffer.length < 200) return null;
+    const fileName = this.safeFileName(`${fallbackName}.pdf`);
+    const filePath = join(downloadsPath, `${randomUUID()}-${fileName}`);
+    await writeFile(filePath, buffer).catch(() => {});
+    return { base64: buffer.toString('base64'), fileName, mimeType };
+  }
+
+  private async readEBeyannamePagination(page: any): Promise<{ start: number; end: number; total: number } | null> {
+    return page.evaluate(() => {
+      const text = document.body?.innerText || '';
+      const match = text.match(/\b(\d+)\s*-\s*(\d+)\s*\/\s*(\d+)\b/);
+      if (!match) return null;
+      return { start: Number(match[1]), end: Number(match[2]), total: Number(match[3]) };
+    }).catch(() => null);
+  }
+
+  private async clickEBeyannameNextPage(page: any, before: { start: number; end: number; total: number }) {
+    const clicked = await page.evaluate(() => {
+      const isDisabled = (el: any) => !!el.disabled || /\bdisabled\b/i.test(String(el.className || '')) || el.getAttribute?.('aria-disabled') === 'true';
+      const isVisible = (el: Element) => {
+        const anyEl = el as HTMLElement;
+        return !!(anyEl.offsetWidth || anyEl.offsetHeight || anyEl.getClientRects().length);
+      };
+      const controls = Array.from(document.querySelectorAll<HTMLElement>('button, input[type="button"], input[type="submit"], a'));
+      const target = controls.find((el: any) => {
+        const text = `${el.textContent || ''} ${el.value || ''} ${el.getAttribute?.('title') || ''}`.replace(/\s+/g, '').trim();
+        return isVisible(el) && !isDisabled(el) && text === '>>';
+      });
+      if (!target) return false;
+      target.click();
+      return true;
+    }).catch(() => false);
+    if (!clicked) return false;
+
+    for (let i = 0; i < 20; i++) {
+      await page.waitForTimeout(500);
+      const current = await this.readEBeyannamePagination(page);
+      if (current && (current.start !== before.start || current.end !== before.end)) return true;
+    }
+    return false;
+  }
+
+  private async closeEBeyannameResultList(page: any) {
+    const closed = await page.evaluate(() => {
+      const norm = (value: string) => String(value || '')
+        .toLocaleUpperCase('tr-TR')
+        .normalize('NFD')
+        .replace(/[\u0300-\u036f]/g, '')
+        .replace(/\s+/g, ' ')
+        .trim();
+      const isVisible = (el: Element) => {
+        const anyEl = el as HTMLElement;
+        return !!(anyEl.offsetWidth || anyEl.offsetHeight || anyEl.getClientRects().length);
+      };
+      const controls = Array.from(document.querySelectorAll<HTMLElement>('button, input[type="button"], a, img'));
+      const belongsToList = (el: HTMLElement) => {
+        let node: HTMLElement | null = el;
+        for (let i = 0; node && i < 8; i++) {
+          if (norm(node.textContent || '').includes('BEYANNAME LISTESI')) return true;
+          node = node.parentElement;
+        }
+        return false;
+      };
+      const closeControls = controls
+        .filter((el: any) => {
+          if (!isVisible(el)) return false;
+          if (!belongsToList(el)) return false;
+          const text = norm(`${el.textContent || ''} ${el.value || ''} ${el.alt || ''} ${el.title || ''} ${el.getAttribute?.('aria-label') || ''} ${el.className || ''}`);
+          return text === 'X' || text.includes('CLOSE') || text.includes('KAPAT');
+        })
+        .sort((a, b) => {
+          const ar = a.getBoundingClientRect();
+          const br = b.getBoundingClientRect();
+          return ar.top - br.top || br.left - ar.left;
+        });
+      const target = closeControls[0];
+      if (!target) return false;
+      target.click();
+      return true;
+    }).catch(() => false);
+
+    if (!closed) {
+      await page.keyboard.press('Escape').catch(() => {});
+    }
+    await page.waitForTimeout(500);
+  }
+
+  private ebeyannameDonemFromRow(row: EBeyannameResultRow, beyanTipi: string, job: any) {
+    const fallback = job.donem || this.inferDonem(job.periodEnd);
+    const text = String(row.taxPeriod || '');
+    const match = text.match(/\b(0?[1-9]|1[0-2])\/(20\d{2})\s*-\s*(0?[1-9]|1[0-2])\/(20\d{2})\b/);
+    if (!match) return fallback;
+    const startMonth = Number(match[1]);
+    const startYear = Number(match[2]);
+    const endMonth = Number(match[3]);
+    const endYear = Number(match[4]);
+    if (!startYear || !endYear) return fallback;
+    if (startYear !== endYear) return `${endYear}-YIL`;
+    if (beyanTipi === 'KURUMLAR' || beyanTipi === 'GELIR') return `${startYear}-YIL`;
+    if (endMonth - startMonth >= 2 || /GECICI/.test(beyanTipi)) {
+      return `${endYear}-Q${Math.ceil(endMonth / 3)}`;
+    }
+    return `${endYear}-${String(endMonth).padStart(2, '0')}`;
+  }
+
+  private parseEBeyannameUploadTime(value?: string | null) {
+    const text = String(value || '');
+    const match = text.match(/\b(\d{2})\.(\d{2})\.(20\d{2})(?:\s*-\s*(\d{2}):(\d{2})(?::(\d{2}))?)?/);
+    if (!match) return null;
+    const [, day, month, year, hour = '12', minute = '00', second = '00'] = match;
+    return `${year}-${month}-${day}T${hour}:${minute}:${second}+03:00`;
+  }
+
+  private async clickVisibleText(page: any, texts: string[]) {
+    for (const text of texts) {
+      const loc = page.getByText(text, { exact: false }).first();
+      if (await loc.isVisible().catch(() => false)) {
+        await loc.click({ timeout: 8_000 });
+        return true;
+      }
+    }
+    return false;
+  }
+
+  private async isAnyTextVisible(page: any, texts: string[]) {
+    for (const text of texts) {
+      if (await page.getByText(text, { exact: false }).first().isVisible().catch(() => false)) return true;
+    }
+    return false;
+  }
+
+  private async visibleActionSnapshot(page: any) {
+    return page.evaluate(() => {
+      const isVisible = (el: Element) => {
+        const anyEl = el as HTMLElement;
+        return !!(anyEl.offsetWidth || anyEl.offsetHeight || anyEl.getClientRects().length);
+      };
+      return Array.from(document.querySelectorAll<HTMLElement>('a, button, input, select'))
+        .filter(isVisible)
+        .slice(0, 40)
+        .map((el: any) => `${el.tagName}:${(el.innerText || el.value || el.placeholder || el.title || el.name || el.id || '').replace(/\s+/g, ' ').trim()}`)
+        .filter(Boolean)
+        .join(' | ')
+        .slice(0, 1000);
+    }).catch(() => '');
+  }
+
+  private istanbulDateParts(value?: string | Date | null) {
+    const display = this.formatDateInput(value);
+    if (!display) return null;
+    const parts = display.split('.');
+    if (parts.length !== 3) return null;
+    return { day: parts[0], month: parts[1], year: parts[2], display };
   }
 
   private async tryNavigateToDeclarationList(page: any) {
@@ -1247,6 +2204,10 @@ export class PortalAutomationRailwayRunnerService implements OnModuleInit {
 
   private compact(value: string) {
     return String(value || '').replace(/\s+/g, ' ').trim().slice(0, 500);
+  }
+
+  private wait(ms: number) {
+    return new Promise((resolve) => setTimeout(resolve, ms));
   }
 
   private safeUrl(url: string) {
