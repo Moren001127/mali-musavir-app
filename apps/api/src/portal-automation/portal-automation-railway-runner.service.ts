@@ -1093,6 +1093,30 @@ export class PortalAutomationRailwayRunnerService implements OnModuleInit {
     return (context.pages?.() || []).find((p: any) => re.test(String(p.url?.() || ''))) || null;
   }
 
+  private ebeyannameDomTargets(page: any) {
+    const targets: any[] = [page];
+    const mainFrame = page.mainFrame?.();
+    for (const frame of page.frames?.() || []) {
+      if (!frame || frame === mainFrame || frame.isDetached?.()) continue;
+      targets.push(frame);
+    }
+    return targets;
+  }
+
+  private async findEBeyannameSearchTarget(page: any) {
+    for (const target of this.ebeyannameDomTargets(page)) {
+      if (await this.hasEBeyannameSearchFormIn(target) || await this.hasEBeyannameSearchControlsIn(target)) return target;
+    }
+    return null;
+  }
+
+  private async findEBeyannameResultTarget(page: any) {
+    for (const target of this.ebeyannameDomTargets(page)) {
+      if (await this.hasEBeyannameResultListIn(target)) return target;
+    }
+    return null;
+  }
+
   private async openEBeyannameSearch(page: any, notes: string[]) {
     const listUrl = process.env.PORTAL_AUTOMATION_EBEYANNAME_LIST_URL;
     if (listUrl) {
@@ -1136,7 +1160,14 @@ export class PortalAutomationRailwayRunnerService implements OnModuleInit {
   }
 
   private async hasEBeyannameSearchForm(page: any) {
-    return page.evaluate(() => {
+    for (const target of this.ebeyannameDomTargets(page)) {
+      if (await this.hasEBeyannameSearchFormIn(target)) return true;
+    }
+    return false;
+  }
+
+  private async hasEBeyannameSearchFormIn(target: any) {
+    return target.evaluate(() => {
       const norm = (value: string) => String(value || '')
         .toLocaleUpperCase('tr-TR')
         .normalize('NFD')
@@ -1148,7 +1179,14 @@ export class PortalAutomationRailwayRunnerService implements OnModuleInit {
   }
 
   private async hasEBeyannameSearchControls(page: any) {
-    return page.evaluate(() => {
+    for (const target of this.ebeyannameDomTargets(page)) {
+      if (await this.hasEBeyannameSearchControlsIn(target)) return true;
+    }
+    return false;
+  }
+
+  private async hasEBeyannameSearchControlsIn(target: any) {
+    return target.evaluate(() => {
       const norm = (value: string) => String(value || '')
         .toLocaleUpperCase('tr-TR')
         .normalize('NFD')
@@ -1166,10 +1204,18 @@ export class PortalAutomationRailwayRunnerService implements OnModuleInit {
           .map((el: any) => `${el.innerText || ''} ${el.value || ''} ${el.title || ''} ${el.name || ''} ${el.id || ''}`),
       ].join(' ');
       const text = norm(visibleText);
-      const hasSearch = text.includes('SORGULA') || Array.from(document.querySelectorAll<HTMLInputElement>('input[type="submit"], input[type="button"], button'))
-        .some((el: any) => isVisible(el) && norm(`${el.value || ''} ${el.innerText || ''}`).includes('SORGULA'));
-      const hasStatus = text.includes('HATALI') || text.includes('ONAY BEKLIYOR') || text.includes('ONAYLANDI') || document.querySelectorAll('input[type="radio"]').length >= 3;
-      const hasDate = text.includes('YUKLEME TARIH') || text.includes('BASLANGIC TARIHI') || text.includes('BITIS TARIHI') || document.querySelectorAll('input[type="text"]').length >= 6;
+      const actionControls = Array.from(document.querySelectorAll<HTMLInputElement | HTMLButtonElement>('input[type="submit"], input[type="button"], button'));
+      const hasSearch = text.includes('SORGULA') || actionControls
+        .some((el: any) => isVisible(el) && norm(`${el.value || ''} ${el.innerText || ''} ${el.name || ''} ${el.id || ''}`).includes('SORGULA'));
+      const radios = Array.from(document.querySelectorAll<HTMLInputElement>('input[type="radio"]')).filter(isVisible);
+      const hasStatus = text.includes('HATALI') || text.includes('ONAY BEKLIYOR') || text.includes('ONAYLANDI') || radios.length >= 3;
+      const dateInputs = Array.from(document.querySelectorAll<HTMLInputElement>('input')).filter((input: any) => {
+        const type = (input.getAttribute('type') || 'text').toLowerCase();
+        if (!isVisible(input) || ['checkbox', 'radio', 'submit', 'button', 'hidden', 'image'].includes(type)) return false;
+        const haystack = norm(`${input.name || ''} ${input.id || ''} ${input.placeholder || ''} ${input.title || ''}`);
+        return /TARIH|DATE|BASLANGIC|BITIS|GUN|AY|YIL|DAY|MONTH|YEAR|DP/.test(haystack) || /^\d{1,4}$/.test(String(input.value || ''));
+      });
+      const hasDate = text.includes('YUKLEME TARIH') || text.includes('BASLANGIC TARIHI') || text.includes('BITIS TARIHI') || dateInputs.length >= 6;
       return !!(hasSearch && hasStatus && hasDate);
     }).catch(() => false);
   }
@@ -1182,7 +1228,8 @@ export class PortalAutomationRailwayRunnerService implements OnModuleInit {
       return;
     }
 
-    const result = await page.evaluate(({ start, end }: {
+    const target = await this.findEBeyannameSearchTarget(page) || page;
+    const result = await target.evaluate(({ start, end }: {
       start: { day: string; month: string; year: string; display: string };
       end: { day: string; month: string; year: string; display: string };
     }) => {
@@ -1259,7 +1306,8 @@ export class PortalAutomationRailwayRunnerService implements OnModuleInit {
   }
 
   private async selectEBeyannameStatus(page: any, status: EBeyannameStatus) {
-    const ok = await page.evaluate((status: EBeyannameStatus) => {
+    const target = await this.findEBeyannameSearchTarget(page) || page;
+    const ok = await target.evaluate((status: EBeyannameStatus) => {
       const wanted = status === 'hatali'
         ? 'HATALI'
         : status === 'beklemede'
@@ -1388,7 +1436,8 @@ export class PortalAutomationRailwayRunnerService implements OnModuleInit {
   }
 
   private async clickEBeyannameSearchButton(page: any) {
-    const clicked = await page.evaluate(() => {
+    const target = await this.findEBeyannameSearchTarget(page) || page;
+    const clicked = await target.evaluate(() => {
       const norm = (value: string) => String(value || '')
         .toLocaleUpperCase('tr-TR')
         .normalize('NFD')
@@ -1414,7 +1463,14 @@ export class PortalAutomationRailwayRunnerService implements OnModuleInit {
   }
 
   private async hasEBeyannameResultList(page: any) {
-    return page.evaluate(() => {
+    for (const target of this.ebeyannameDomTargets(page)) {
+      if (await this.hasEBeyannameResultListIn(target)) return true;
+    }
+    return false;
+  }
+
+  private async hasEBeyannameResultListIn(target: any) {
+    return target.evaluate(() => {
       const norm = (value: string) => String(value || '')
         .toLocaleUpperCase('tr-TR')
         .normalize('NFD')
@@ -1424,13 +1480,16 @@ export class PortalAutomationRailwayRunnerService implements OnModuleInit {
       if (!text.includes('BEYANNAME LISTESI')) return false;
       return Array.from(document.querySelectorAll('table')).some((table) => {
         const tableText = norm(table.textContent || '');
-        return tableText.includes('BEYANNAME TURU') && tableText.includes('VERGI TAHAKKUKU');
+        const hasTaxRows = /\d{10,11}/.test(tableText);
+        return (tableText.includes('BEYANNAME TURU') && tableText.includes('VERGI TAHAKKUKU'))
+          || (hasTaxRows && (tableText.includes('VERGI TAHAKKUKU') || tableText.includes('ONAY') || tableText.includes('HATALI')));
       });
     }).catch(() => false);
   }
 
   private async parseEBeyannameResultRows(page: any): Promise<EBeyannameResultRow[]> {
-    const rawRows = await page.evaluate(() => {
+    const target = await this.findEBeyannameResultTarget(page) || page;
+    const rawRows = await target.evaluate(() => {
       const norm = (value: string) => String(value || '')
         .toLocaleUpperCase('tr-TR')
         .normalize('NFD')
@@ -1439,7 +1498,9 @@ export class PortalAutomationRailwayRunnerService implements OnModuleInit {
       const tables = Array.from(document.querySelectorAll('table'));
       const table = tables.find((candidate) => {
         const text = norm(candidate.textContent || '');
-        return text.includes('BEYANNAME TURU') && text.includes('VERGI TAHAKKUKU');
+        const hasTaxRows = /\d{10,11}/.test(text);
+        return (text.includes('BEYANNAME TURU') && text.includes('VERGI TAHAKKUKU'))
+          || (hasTaxRows && (text.includes('VERGI TAHAKKUKU') || text.includes('ONAY') || text.includes('HATALI')));
       });
       if (!table) return [];
       return Array.from(table.querySelectorAll('tr'))
@@ -1625,7 +1686,8 @@ export class PortalAutomationRailwayRunnerService implements OnModuleInit {
     sequence: number,
     notes: string[],
   ): Promise<EBeyannameFilePayload | null> {
-    const row = page.locator('tr').filter({ hasText: /\b\d{10,11}\b/ }).nth(rowIndex);
+    const target = await this.findEBeyannameResultTarget(page) || page;
+    const row = target.locator('tr').filter({ hasText: /\b\d{10,11}\b/ }).nth(rowIndex);
     if (!(await row.isVisible().catch(() => false))) {
       notes.push(`${kind}: satir ${rowIndex + 1} gorunur degil`);
       return null;
@@ -1787,7 +1849,8 @@ export class PortalAutomationRailwayRunnerService implements OnModuleInit {
   }
 
   private async readEBeyannamePagination(page: any): Promise<{ start: number; end: number; total: number } | null> {
-    return page.evaluate(() => {
+    const target = await this.findEBeyannameResultTarget(page) || page;
+    return target.evaluate(() => {
       const text = document.body?.innerText || '';
       const match = text.match(/\b(\d+)\s*-\s*(\d+)\s*\/\s*(\d+)\b/);
       if (!match) return null;
@@ -1796,7 +1859,8 @@ export class PortalAutomationRailwayRunnerService implements OnModuleInit {
   }
 
   private async clickEBeyannameNextPage(page: any, before: { start: number; end: number; total: number }) {
-    const clicked = await page.evaluate(() => {
+    const target = await this.findEBeyannameResultTarget(page) || page;
+    const clicked = await target.evaluate(() => {
       const isDisabled = (el: any) => !!el.disabled || /\bdisabled\b/i.test(String(el.className || '')) || el.getAttribute?.('aria-disabled') === 'true';
       const isVisible = (el: Element) => {
         const anyEl = el as HTMLElement;
@@ -1822,7 +1886,8 @@ export class PortalAutomationRailwayRunnerService implements OnModuleInit {
   }
 
   private async closeEBeyannameResultList(page: any) {
-    const closed = await page.evaluate(() => {
+    const target = await this.findEBeyannameResultTarget(page) || page;
+    const closed = await target.evaluate(() => {
       const norm = (value: string) => String(value || '')
         .toLocaleUpperCase('tr-TR')
         .normalize('NFD')
@@ -1893,61 +1958,77 @@ export class PortalAutomationRailwayRunnerService implements OnModuleInit {
   }
 
   private async clickVisibleText(page: any, texts: string[]) {
-    for (const text of texts) {
-      const loc = page.getByText(text, { exact: false }).first();
-      if (await loc.isVisible().catch(() => false)) {
-        await loc.click({ timeout: 8_000 });
-        return true;
+    for (const target of this.ebeyannameDomTargets(page)) {
+      for (const text of texts) {
+        const loc = target.getByText(text, { exact: false }).first();
+        if (await loc.isVisible().catch(() => false)) {
+          await loc.click({ timeout: 8_000 });
+          return true;
+        }
       }
     }
     return false;
   }
 
   private async clickNormalizedText(page: any, normalizedTexts: string[]) {
-    return page.evaluate((normalizedTexts: string[]) => {
-      const norm = (value: string) => String(value || '')
-        .toLocaleUpperCase('tr-TR')
-        .normalize('NFD')
-        .replace(/[\u0300-\u036f]/g, '')
-        .replace(/\s+/g, ' ')
-        .trim();
-      const isVisible = (el: Element) => {
-        const anyEl = el as HTMLElement;
-        return !!(anyEl.offsetWidth || anyEl.offsetHeight || anyEl.getClientRects().length);
-      };
-      const controls = Array.from(document.querySelectorAll<HTMLElement>('a, button, input[type="button"], input[type="submit"], td, span, div'));
-      const target = controls.find((el: any) => {
-        if (!isVisible(el)) return false;
-        const text = norm(`${el.innerText || ''} ${el.value || ''} ${el.title || ''} ${el.name || ''} ${el.id || ''}`);
-        return normalizedTexts.some((wanted) => text.includes(wanted));
-      });
-      if (!target) return false;
-      target.click();
-      return true;
-    }, normalizedTexts).catch(() => false);
+    for (const target of this.ebeyannameDomTargets(page)) {
+      const clicked = await target.evaluate((normalizedTexts: string[]) => {
+        const norm = (value: string) => String(value || '')
+          .toLocaleUpperCase('tr-TR')
+          .normalize('NFD')
+          .replace(/[\u0300-\u036f]/g, '')
+          .replace(/\s+/g, ' ')
+          .trim();
+        const isVisible = (el: Element) => {
+          const anyEl = el as HTMLElement;
+          return !!(anyEl.offsetWidth || anyEl.offsetHeight || anyEl.getClientRects().length);
+        };
+        const controls = Array.from(document.querySelectorAll<HTMLElement>('a, button, input[type="button"], input[type="submit"], td, span, div'));
+        const picked = controls.find((el: any) => {
+          if (!isVisible(el)) return false;
+          const text = norm(`${el.innerText || ''} ${el.value || ''} ${el.title || ''} ${el.name || ''} ${el.id || ''}`);
+          return normalizedTexts.some((wanted) => text.includes(wanted));
+        });
+        if (!picked) return false;
+        picked.click();
+        return true;
+      }, normalizedTexts).catch(() => false);
+      if (clicked) return true;
+    }
+    return false;
   }
 
   private async isAnyTextVisible(page: any, texts: string[]) {
-    for (const text of texts) {
-      if (await page.getByText(text, { exact: false }).first().isVisible().catch(() => false)) return true;
+    for (const target of this.ebeyannameDomTargets(page)) {
+      for (const text of texts) {
+        if (await target.getByText(text, { exact: false }).first().isVisible().catch(() => false)) return true;
+      }
     }
     return false;
   }
 
   private async visibleActionSnapshot(page: any) {
-    return page.evaluate(() => {
-      const isVisible = (el: Element) => {
-        const anyEl = el as HTMLElement;
-        return !!(anyEl.offsetWidth || anyEl.offsetHeight || anyEl.getClientRects().length);
-      };
-      return Array.from(document.querySelectorAll<HTMLElement>('a, button, input, select'))
-        .filter(isVisible)
-        .slice(0, 40)
-        .map((el: any) => `${el.tagName}:${(el.innerText || el.value || el.placeholder || el.title || el.name || el.id || '').replace(/\s+/g, ' ').trim()}`)
-        .filter(Boolean)
-        .join(' | ')
-        .slice(0, 1000);
-    }).catch(() => '');
+    const pieces: string[] = [];
+    for (const target of this.ebeyannameDomTargets(page)) {
+      const snapshot = await target.evaluate(() => {
+        const isVisible = (el: Element) => {
+          const anyEl = el as HTMLElement;
+          return !!(anyEl.offsetWidth || anyEl.offsetHeight || anyEl.getClientRects().length);
+        };
+        return Array.from(document.querySelectorAll<HTMLElement>('a, button, input, select'))
+          .filter(isVisible)
+          .slice(0, 40)
+          .map((el: any) => `${el.tagName}:${(el.innerText || el.value || el.placeholder || el.title || el.name || el.id || '').replace(/\s+/g, ' ').trim()}`)
+          .filter(Boolean)
+          .join(' | ')
+          .slice(0, 1000);
+      }).catch(() => '');
+      if (snapshot) {
+        const url = String(target.url?.() || '').replace(/([?&](?:password|sifre|parola|token|kod)=)[^&]+/gi, '$1***');
+        pieces.push(`${url || 'page'} => ${snapshot}`);
+      }
+    }
+    return pieces.join(' || ').slice(0, 1200);
   }
 
   private istanbulDateParts(value?: string | Date | null) {
@@ -2022,15 +2103,17 @@ export class PortalAutomationRailwayRunnerService implements OnModuleInit {
       'a:has-text("Sorgula")',
       'a:has-text("Listele")',
     ];
-    for (const selector of selectors) {
-      const loc = page.locator(selector).first();
-      if (await loc.isVisible().catch(() => false)) {
-        await Promise.all([
-          page.waitForLoadState('domcontentloaded', { timeout: 15_000 }).catch(() => {}),
-          loc.click({ timeout: 5000 }),
-        ]);
-        await page.waitForTimeout(1500);
-        return;
+    for (const target of this.ebeyannameDomTargets(page)) {
+      for (const selector of selectors) {
+        const loc = target.locator(selector).first();
+        if (await loc.isVisible().catch(() => false)) {
+          await Promise.all([
+            page.waitForLoadState('domcontentloaded', { timeout: 15_000 }).catch(() => {}),
+            loc.click({ timeout: 5000 }),
+          ]);
+          await page.waitForTimeout(1500);
+          return;
+        }
       }
     }
   }
