@@ -1,6 +1,7 @@
 'use client';
 
 import { useState, useMemo, useRef, useEffect, type ReactNode } from 'react';
+import { createPortal } from 'react-dom';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import {
   beyanKayitlariApi,
@@ -239,6 +240,7 @@ export default function BeyannamelerPage() {
   const [sentWhatsappRows, setSentWhatsappRows] = useState<Set<string>>(() => new Set());
   const [sentSmsRows, setSentSmsRows] = useState<Set<string>>(() => new Set());
   const [pdfPreview, setPdfPreview] = useState<PdfPreview | null>(null);
+  const [previewPortalReady, setPreviewPortalReady] = useState(false);
   const pdfPreviewUrlRef = useRef<string | null>(null);
 
   const { data: portalSummary } = useQuery({
@@ -264,6 +266,19 @@ export default function BeyannamelerPage() {
       if (pdfPreviewUrlRef.current) URL.revokeObjectURL(pdfPreviewUrlRef.current);
     };
   }, []);
+
+  useEffect(() => {
+    setPreviewPortalReady(true);
+  }, []);
+
+  useEffect(() => {
+    if (!pdfPreview) return;
+    const previousOverflow = document.body.style.overflow;
+    document.body.style.overflow = 'hidden';
+    return () => {
+      document.body.style.overflow = previousOverflow;
+    };
+  }, [pdfPreview]);
 
   const deleteMut = useMutation({
     mutationFn: (id: string) => beyanKayitlariApi.remove(id),
@@ -750,23 +765,23 @@ export default function BeyannamelerPage() {
           </div>
         ) : (
           <div className="overflow-x-auto">
-            <table className="w-full min-w-[1180px] text-[13px]">
+            <table className="w-full min-w-[1080px] text-[13px]">
               <thead style={{ background: 'rgba(255,255,255,0.025)' }}>
                 <tr className="text-left uppercase tracking-[.12em] text-[10.5px]" style={{ color: 'rgba(250,250,249,0.45)' }}>
-                  <th className="px-4 py-3 w-[44px]">
+                  <th className="px-3 py-3 w-[42px]">
                     <input
                       type="checkbox"
                       checked={tableRows.length > 0 && selectedDocKeys.size === tableRows.length}
                       onChange={(e) => setSelectedDocKeys(e.target.checked ? new Set(tableRows.map((item) => item.key)) : new Set())}
                     />
                   </th>
-                  <th className="px-4 py-3">Mukellef</th>
-                  <th className="px-4 py-3">Beyanname Donemi</th>
-                  <th className="px-4 py-3">Beyanname Turu</th>
-                  <th className="px-4 py-3">Belge Mahiyeti</th>
-                  <th className="px-4 py-3">Tur</th>
-                  <th className="px-4 py-3">Tutar</th>
-                  <th className="px-4 py-3 text-right">Durum</th>
+                  <th className="px-3 py-3">Mukellef</th>
+                  <th className="px-3 py-3 w-[150px] whitespace-nowrap">Beyanname Donemi</th>
+                  <th className="px-3 py-3">Beyanname Turu</th>
+                  <th className="px-3 py-3">Belge Mahiyeti</th>
+                  <th className="px-3 py-3">Tur</th>
+                  <th className="px-3 py-3">Tutar</th>
+                  <th className="px-3 py-3 w-[176px] text-right">Durum</th>
                 </tr>
               </thead>
               <tbody>
@@ -781,33 +796,33 @@ export default function BeyannamelerPage() {
                   const smsSent = sentSmsRows.has(row.id);
                   return (
                     <tr key={item.key} style={{ borderTop: '1px solid rgba(255,255,255,0.055)' }}>
-                      <td className="px-4 py-3">
+                      <td className="px-3 py-3">
                         <input
                           type="checkbox"
                           checked={selectedDocKeys.has(item.key)}
                           onChange={(e) => toggleDocSelection(item.key, e.target.checked)}
                         />
                       </td>
-                      <td className="px-4 py-3">
+                      <td className="px-3 py-3">
                         <button
                           type="button"
                           onClick={() => setSelectedTaxpayer(row.taxpayerId)}
-                          className="text-left max-w-[300px]"
+                          className="text-left max-w-[260px]"
                           title="Bu mukellefe filtrele"
                         >
                           <div className="font-semibold truncate" style={{ color: '#fafaf9' }}>{beyanKaydiMukellefAdi(row)}</div>
                           <div className="text-[11.5px] font-mono mt-0.5" style={{ color: 'rgba(250,250,249,0.38)' }}>{row.taxpayer?.taxNumber || '-'}</div>
                         </button>
                       </td>
-                      <td className="px-4 py-3">
-                        <div className="font-semibold" style={{ color: '#fafaf9' }}>{fmtDonemHattat(row.donem)}</div>
+                      <td className="px-3 py-3">
+                        <div className="whitespace-nowrap font-semibold tabular-nums" style={{ color: '#fafaf9' }}>{fmtDonemHattat(row.donem)}</div>
                         <div className="text-[11.5px] mt-0.5" style={{ color: 'rgba(250,250,249,0.42)' }}>{fmtDate(row.beyanTarihi || row.createdAt)}</div>
                       </td>
-                      <td className="px-4 py-3">
+                      <td className="px-3 py-3">
                         <div className="font-semibold" style={{ color: '#fafaf9' }}>{row.beyanTipi === 'GECICI_VERGI' ? 'KGECICI' : row.beyanTipi}</div>
                         <div className="text-[11px] mt-0.5" style={{ color: 'rgba(250,250,249,0.42)' }}>{BEYAN_TIPI_LABEL[row.beyanTipi]}</div>
                       </td>
-                      <td className="px-4 py-3">
+                      <td className="px-3 py-3">
                         <span
                           className="rounded-md px-2 py-1 text-[11px] font-bold"
                           style={{
@@ -819,8 +834,8 @@ export default function BeyannamelerPage() {
                           {mahiyet === 'DUZELTME' ? 'DUZELTME' : 'ASIL'}
                         </span>
                       </td>
-                      <td className="px-4 py-3" style={{ color: '#fafaf9' }}>{item.tur}</td>
-                      <td className="px-4 py-3">
+                      <td className="px-3 py-3" style={{ color: '#fafaf9' }}>{item.tur}</td>
+                      <td className="px-3 py-3">
                         <div className="font-semibold tabular-nums" style={{ color: row.tahakkukTutari ? '#fafaf9' : 'rgba(250,250,249,0.42)' }}>
                           {fmtCurrency(row.tahakkukTutari)}
                         </div>
@@ -828,8 +843,8 @@ export default function BeyannamelerPage() {
                           {item.kind === 'tahakkuk' ? 'Tahakkuk tutari' : 'Tahakkuk eslesmesi'}
                         </div>
                       </td>
-                      <td className="px-4 py-3">
-                        <div className="flex items-center justify-end gap-1.5">
+                      <td className="w-[176px] px-3 py-3">
+                        <div className="flex items-center justify-end gap-1">
                           <IconButton
                             label={item.hasFile ? (viewed ? 'Goruntulendi' : `${item.tur} goruntule`) : `${item.tur} PDF yok`}
                             icon={Eye}
@@ -840,21 +855,21 @@ export default function BeyannamelerPage() {
                           <IconButton
                             label={!hasEmail ? 'E-posta yok' : emailSent ? 'E-posta hazirlandi' : 'E-posta gonder'}
                             icon={Mail}
-                            tone={!hasEmail ? 'muted' : emailSent ? 'green' : 'rose'}
+                            tone={emailSent ? 'green' : 'mail'}
                             disabled={!hasEmail}
                             onClick={() => sendEmail(row)}
                           />
                           <IconButton
                             label={!hasPhone ? 'Telefon yok' : whatsappSent ? 'WhatsApp hazirlandi' : 'WhatsApp gonder'}
                             icon={MessageCircle}
-                            tone={!hasPhone ? 'muted' : whatsappSent ? 'green' : 'rose'}
+                            tone={whatsappSent ? 'green' : 'whatsapp'}
                             disabled={!hasPhone}
                             onClick={() => sendWhatsapp(row)}
                           />
                           <IconButton
                             label={!hasPhone ? 'Telefon yok' : smsSent ? 'SMS hazirlandi' : 'SMS gonder'}
                             icon={MessageSquareText}
-                            tone={!hasPhone ? 'muted' : smsSent ? 'green' : 'rose'}
+                            tone={smsSent ? 'green' : 'sms'}
                             disabled={!hasPhone}
                             onClick={() => sendSms(row)}
                           />
@@ -923,14 +938,14 @@ export default function BeyannamelerPage() {
         />
       )}
 
-      {pdfPreview && (
+      {previewPortalReady && pdfPreview && createPortal((
         <div
-          className="fixed inset-0 z-[80] flex items-center justify-center p-4"
+          className="fixed inset-0 z-[9999] flex items-center justify-center p-3 sm:p-4"
           style={{ background: 'rgba(0,0,0,0.72)' }}
           onClick={closePdfPreview}
         >
           <div
-            className="flex h-[92vh] w-full max-w-[1180px] flex-col overflow-hidden rounded-[10px]"
+            className="flex h-[min(92vh,900px)] w-full max-w-[1180px] flex-col overflow-hidden rounded-[10px]"
             style={{ background: '#12100d', border: '1px solid rgba(255,255,255,0.12)' }}
             onClick={(e) => e.stopPropagation()}
           >
@@ -975,7 +990,7 @@ export default function BeyannamelerPage() {
             <iframe key={pdfPreview.docKey} id="beyan-pdf-preview" title={pdfPreview.title} src={pdfPreview.url} className="min-h-0 flex-1 bg-white" />
           </div>
         </div>
-      )}
+      ), document.body)}
     </div>
   );
 }
@@ -1227,13 +1242,16 @@ function IconButton({
   onClick: () => void;
   danger?: boolean;
   disabled?: boolean;
-  tone?: 'default' | 'green' | 'rose' | 'muted';
+  tone?: 'default' | 'green' | 'rose' | 'muted' | 'mail' | 'whatsapp' | 'sms';
 }) {
   const tones = {
     default: { background: 'rgba(255,255,255,0.035)', border: 'rgba(255,255,255,0.08)', color: 'rgba(250,250,249,0.72)' },
     green: { background: 'rgba(34,197,94,0.12)', border: 'rgba(34,197,94,0.28)', color: '#86efac' },
     rose: { background: 'rgba(244,63,94,0.10)', border: 'rgba(244,63,94,0.25)', color: '#fda4af' },
     muted: { background: 'rgba(255,255,255,0.025)', border: 'rgba(255,255,255,0.06)', color: 'rgba(250,250,249,0.28)' },
+    mail: { background: 'rgba(56,189,248,0.11)', border: 'rgba(56,189,248,0.28)', color: '#7dd3fc' },
+    whatsapp: { background: 'rgba(34,197,94,0.11)', border: 'rgba(34,197,94,0.28)', color: '#86efac' },
+    sms: { background: 'rgba(245,158,11,0.12)', border: 'rgba(245,158,11,0.30)', color: '#fcd34d' },
   } as const;
   const c = danger ? { background: 'rgba(244,63,94,0.08)', border: 'rgba(244,63,94,0.22)', color: '#fb7185' } : tones[tone];
   return (
@@ -1243,16 +1261,16 @@ function IconButton({
       aria-label={label}
       onClick={onClick}
       disabled={disabled}
-      className="w-9 h-9 rounded-[9px] inline-flex items-center justify-center"
+      className="inline-flex h-8 w-8 shrink-0 items-center justify-center rounded-[8px]"
       style={{
         background: c.background,
         border: `1px solid ${c.border}`,
         color: c.color,
         cursor: disabled ? 'not-allowed' : 'pointer',
-        opacity: disabled ? 0.75 : 1,
+        opacity: disabled ? 0.62 : 1,
       }}
     >
-      <Icon size={15} />
+      <Icon size={14} strokeWidth={2.2} />
     </button>
   );
 }
