@@ -1,4 +1,4 @@
-import { Controller, Get, Patch, Param, UseGuards, Req, HttpCode, HttpStatus } from '@nestjs/common';
+import { Controller, Get, Patch, Put, Param, UseGuards, Req, Body, HttpCode, HttpStatus, BadRequestException } from '@nestjs/common';
 import { AuthGuard } from '@nestjs/passport';
 import { NotificationsService } from './notifications.service';
 
@@ -17,9 +17,21 @@ export class NotificationsController {
     return this.notificationsService.getUnreadCount(req.user.tenantId, req.user.sub);
   }
 
-  /** DİKKAT: read-all parametresiz route, :id/read'den ÖNCE tanımlı olmalı.
-   * NestJS dynamic param route'unu (`:id/read`) literal'den (`read-all`) sonra
-   * deklare edersek "read-all" değeri id olarak yakalanır. */
+  /** Kullanicinin bildirim tercihleri (mute edilmis tipler) */
+  @Get('preferences')
+  getPreferences(@Req() req: any) {
+    return this.notificationsService.getPreferences(req.user.sub);
+  }
+
+  /** Bildirim tercihlerini guncelle. Body: { mutedTypes: string[] } */
+  @Put('preferences')
+  setPreferences(@Req() req: any, @Body() body: { mutedTypes?: string[] }) {
+    const types = Array.isArray(body?.mutedTypes) ? body.mutedTypes : [];
+    if (types.length > 50) throw new BadRequestException('En fazla 50 tip mute edilebilir');
+    return this.notificationsService.setPreferences(req.user.tenantId, req.user.sub, types);
+  }
+
+  /** DIKKAT: read-all parametresiz route, :id/read'den ONCE tanimli olmali. */
   @Patch('read-all')
   @HttpCode(HttpStatus.OK)
   markAllRead(@Req() req: any) {
