@@ -4,6 +4,7 @@ import { randomUUID } from 'crypto';
 import { PrismaService } from '../prisma/prisma.service';
 import { StorageService } from '../storage/storage.service';
 import { encrypt, tryDecrypt } from '../common/crypto';
+import { BeyanKayitlariService } from '../beyan-kayitlari/beyan-kayitlari.service';
 
 export const PORTAL_PROVIDERS = ['GIB_EBEYANNAME', 'GIB_IVD', 'SGK_EBILDIRGE'] as const;
 export type PortalProvider = (typeof PORTAL_PROVIDERS)[number];
@@ -179,6 +180,7 @@ export class PortalAutomationService {
   constructor(
     private prisma: PrismaService,
     private storage: StorageService,
+    private beyanKayitlari: BeyanKayitlariService,
   ) {}
 
   @Cron('0 15 2 * * *', { timeZone: 'Europe/Istanbul' })
@@ -858,7 +860,7 @@ export class PortalAutomationService {
     input: AgentDocumentInput,
     jobType: string,
   ) {
-    const taxpayerId = input.taxpayerId || null;
+    let taxpayerId = input.taxpayerId || null;
     if (taxpayerId) {
       const tp = await (this.prisma as any).taxpayer.findFirst({ where: { id: taxpayerId, tenantId }, select: { id: true } });
       if (!tp) throw new NotFoundException('Belge mukellefi bulunamadi');
@@ -878,6 +880,12 @@ export class PortalAutomationService {
         belgeTuru: input.belgeTuru,
       });
     }
+
+    const linkedBeyan = await this.linkEBeyannameDocumentToBeyanKaydi(tenantId, jobId, input, jobType, storageKey).catch((err) => {
+      this.logger.warn(`e-Beyanname PDF kayda baglanamadi: ${err?.message || err}`);
+      return null;
+    });
+    if (!taxpayerId && linkedBeyan?.taxpayerId) taxpayerId = linkedBeyan.taxpayerId;
 
     let documentId: string | null = null;
     if (taxpayerId && storageKey && sizeBytes != null) {
@@ -929,6 +937,108 @@ export class PortalAutomationService {
         raw: input.raw || null,
       },
     });
+  }
+
+  private async linkEBeyannameDocumentToBeyanKaydi(
+    tenantId: string,
+    jobId: string,
+    input: AgentDocumentInput,
+    jobType: string,
+    storageKey: string | null,
+  ): Promise<{ taxpayerId: string; beyanKaydiId: string } | null> {
+    if (jobType !== 'EBEYANNAME_DAILY_DOWNLOAD') return null;
+    if (!storageKey) return null;
+    if (input.belgeTuru === 'GIB_XML') return null;
+
+    const name = input.originalName || input.title || '';
+    const mimeType = input.mimeType || '';
+    if (!/pdf/i.test(mimeType) && !/\.pdf$/i.test(name)) return null;
+
+    const base64 = cleanBase64(input.base64);
+    if (!base64) return null;
+
+    const parsed = await this.beyanKayitlari.parseBeyannamePdf(base64);
+    const taxpayer = parsed.vkn
+      ? await (this.prisma as any).taxpayer.findFirst({
+          where: { tenantId, taxNumber: parsed.vkn },
+          select: { id: true },
+        })
+      : null;
+
+    if (!taxpayer?.id || !parsed.beyanTipi || !parsed.donem) return null;
+
+    const isTahakkuk = input.belgeTuru === 'GIB_TAHAKKUK' || /tahakkuk|fis|fiş/i.test(name);
+    const parsedDate = parsed.beyanTarihi ? parseDateOrNull(parsed.beyanTarihi) : null;
+    const rawNote = JSON.stringify({
+      source: 'portal-automation-pdf-parse',
+      fileName: name,
+      parsed,
+      raw: input.raw || null,
+    }).slice(0, 1000);
+
+    const data: any = {
+      kaynak: 'gib_agent',
+      importBatchId: jobId,
+      notlar: rawNote,
+    };
+    if (parsedDate) data.beyanTarihi = parsedDate;
+    if (parsed.tahakkukTutari != null) data.tahakkukTutari = parsed.tahakkukTutari;
+    if (parsed.onayNo) data.onayNo = parsed.onayNo;
+    if (isTahakkuk) data.pdfUrl = storageKey;
+    else data.beyannameUrl = storageKey;
+
+    const kayit = await (this.prisma as any).beyanKaydi.upsert({
+      where: {
+        tenantId_taxpayerId_beyanTipi_donem: {
+          tenantId,
+          taxpayerId: taxpayer.id,
+          beyanTipi: parsed.beyanTipi,
+          donem: parsed.donem,
+        },
+      },
+      create: {
+        tenantId,
+        taxpayerId: taxpayer.id,
+        beyanTipi: parsed.beyanTipi,
+        donem: parsed.donem,
+        beyanTarihi: parsedDate,
+        tahakkukTutari: parsed.tahakkukTutari,
+        onayNo: parsed.onayNo,
+        kaynak: 'gib_agent',
+        importBatchId: jobId,
+        notlar: rawNote,
+        ...(isTahakkuk ? { pdfUrl: storageKey } : { beyannameUrl: storageKey }),
+      },
+      update: data,
+    });
+
+    await (this.prisma as any).beyanDurumu.upsert({
+      where: {
+        tenantId_taxpayerId_beyanTipi_donem: {
+          tenantId,
+          taxpayerId: taxpayer.id,
+          beyanTipi: parsed.beyanTipi,
+          donem: parsed.donem,
+        },
+      },
+      create: {
+        tenantId,
+        taxpayerId: taxpayer.id,
+        beyanTipi: parsed.beyanTipi,
+        donem: parsed.donem,
+        durum: 'onaylandi',
+        onayTarihi: parsedDate || new Date(),
+        tahakkukTutari: parsed.tahakkukTutari,
+        notlar: 'GIB agent PDF parse ile indirildi',
+      },
+      update: {
+        durum: 'onaylandi',
+        onayTarihi: parsedDate || new Date(),
+        tahakkukTutari: parsed.tahakkukTutari,
+      },
+    }).catch(() => {});
+
+    return { taxpayerId: taxpayer.id, beyanKaydiId: kayit.id };
   }
 
   private async storeBase64IfPresent(s3Key: string, base64Input: string | null | undefined, mimeType: string, originalName: string) {

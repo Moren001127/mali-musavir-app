@@ -173,6 +173,13 @@ export default function BeyannamelerPage() {
     queryFn: () => beyanKayitlariApi.list({ limit: 1500 }),
   });
 
+  const latestBeyanJob = portalSummary?.latestJobs?.find((job) => job.jobType === 'EBEYANNAME_DAILY_DOWNLOAD');
+  useEffect(() => {
+    if (!latestBeyanJob || latestBeyanJob.status === 'pending' || latestBeyanJob.status === 'running') return;
+    qc.invalidateQueries({ queryKey: ['beyan-kayitlari'] });
+    qc.invalidateQueries({ queryKey: ['beyan-kayitlari-ozet'] });
+  }, [qc, latestBeyanJob?.id, latestBeyanJob?.status, latestBeyanJob?.finishedAt, latestBeyanJob?.recordCount]);
+
   const deleteMut = useMutation({
     mutationFn: (id: string) => beyanKayitlariApi.remove(id),
     onSuccess: () => {
@@ -661,7 +668,15 @@ function HeroLastJob({ jobs }: { jobs: PortalJob[] }) {
     );
   }
 
-  const status = portalJobStatus(job.status);
+  const noRecords = job.status === 'done' && Number(job.recordCount || 0) === 0;
+  const status = noRecords
+    ? { label: 'Kayit yok', color: '#fbbf24', bg: 'rgba(251,191,36,0.12)', border: 'rgba(251,191,36,0.24)' }
+    : portalJobStatus(job.status);
+  const recordText = job.status === 'done'
+    ? `${Number(job.recordCount || 0).toLocaleString('tr-TR')} kayit`
+    : job.status === 'running'
+      ? 'isleniyor'
+      : '';
   return (
     <div className="w-full shrink-0 rounded-xl p-3 lg:w-[460px]" style={{ background: 'rgba(255,255,255,0.025)', border: `1px solid ${status.border}` }}>
       <div className="mb-1.5 flex items-center justify-between gap-3">
@@ -676,6 +691,16 @@ function HeroLastJob({ jobs }: { jobs: PortalJob[] }) {
       <div className="mt-1 truncate text-[11.5px]" style={{ color: 'rgba(250,250,249,0.44)' }}>
         {portalTaxpayerName(job)} · {job.source === 'nightly' ? 'gece' : 'manuel'} · {fmtDateTime(job.createdAt)}
       </div>
+      {recordText && (
+        <div className="mt-1 text-[11.5px]" style={{ color: noRecords ? '#fcd34d' : 'rgba(250,250,249,0.52)' }}>
+          {recordText}
+        </div>
+      )}
+      {noRecords && (
+        <div className="mt-2 text-[11.5px] leading-5" style={{ color: '#fcd34d' }}>
+          Bu tarih araliginda GIB tarafindan indirilecek beyanname/tahakkuk bulunamadi.
+        </div>
+      )}
       {job.errorMessage && (
         <div className="mt-2 flex items-start gap-1.5 text-[11.5px] leading-5" style={{ color: '#fca5a5' }}>
           <AlertCircle size={13} className="mt-[3px] shrink-0" />

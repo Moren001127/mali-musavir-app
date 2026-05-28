@@ -3,9 +3,10 @@ import { PortalAutomationController, PortalAutomationAgentController } from './p
 import { PortalAutomationService } from './portal-automation.service';
 import { PortalAutomationRailwayRunnerService } from './portal-automation-railway-runner.service';
 import { StorageModule } from '../storage/storage.module';
+import { BeyanKayitlariModule } from '../beyan-kayitlari/beyan-kayitlari.module';
 
 @Module({
-  imports: [StorageModule],
+  imports: [StorageModule, BeyanKayitlariModule],
   controllers: [PortalAutomationController, PortalAutomationAgentController],
   providers: [PortalAutomationService, PortalAutomationRailwayRunnerService],
   exports: [PortalAutomationService],
