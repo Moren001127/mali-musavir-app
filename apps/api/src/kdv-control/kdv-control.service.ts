@@ -21,6 +21,8 @@ import { AgentEventsService } from '../agent-events/agent-events.service';
 import { AutomationEventBus } from '../automations/automation-event-bus.service';
 import { Optional } from '@nestjs/common';
 import { computeCostUsd, logAiUsage } from '../common/ai-usage-logger';
+import { NotificationsService } from '../notifications/notifications.service';
+import { NOTIFICATION_TYPES } from '../notifications/notification-types';
 import { randomUUID } from 'crypto';
 import * as ExcelJS from 'exceljs';
 import * as path from 'path';
@@ -67,6 +69,7 @@ export class KdvControlService {
     @Inject(forwardRef(() => LucaAutoScraperService))
     private lucaAutoScraper: LucaAutoScraperService,
     private agentEvents: AgentEventsService,
+    private notifications: NotificationsService,
     @Optional() private readonly automationEventBus?: AutomationEventBus,
   ) {}
 
@@ -2448,6 +2451,96 @@ ${JSON.stringify(payload, null, 2)}`;
           data: { status: 'REVIEWING' },
         });
       }
+      // === IN-APP BILDIRIM: KDV_RESULT ===
+      try {
+        const matchedCount = Number(result.matched || 0);
+        const summary = issueCount === 0
+          ? `Tum ${matchedCount} kayit sorunsuz eslesti.`
+          : `${matchedCount} tam - ${reviewCount} inceleme - ${unmatchedCount} hatali.`;
+        await this.notifications.createForTenant({
+          tenantId,
+          type: NOTIFICATION_TYPES.KDV_RESULT,
+          title: `KDV kontrol: ${mukellefAdi || 'mukellef'} (${session.periodLabel})`,
+          body: summary,
+          metadata: {
+            sessionId,
+            taxpayerId: session.taxpayerId,
+            taxpayerName: mukellefAdi,
+            period: session.periodLabel,
+            type: session.type,
+            matched: matchedCount,
+            partial: result.partial,
+            needsReview: result.needsReview,
+            unmatched: result.unmatched,
+            link: `/panel/kdv-kontrol/${sessionId}`,
+          },
+          dedupeKey: `kdv-result:${sessionId}`,
+          dedupeWindowMin: 30,
+        });
+      } catch (e) {
+        this.logger.warn(`KDV_RESULT notif failed: ${(e as Error).message}`);
+      }
+
+      // === IN-APP BILDIRIM: KDV_RESULT ===
+      try {
+        const matchedCount = Number(result.matched || 0);
+        const summary = issueCount === 0
+          ? `Tum ${matchedCount} kayit sorunsuz eslesti.`
+          : `${matchedCount} tam - ${reviewCount} inceleme - ${unmatchedCount} hatali.`;
+        await this.notifications.createForTenant({
+          tenantId,
+          type: NOTIFICATION_TYPES.KDV_RESULT,
+          title: `KDV kontrol: ${mukellefAdi || 'mukellef'} (${session.periodLabel})`,
+          body: summary,
+          metadata: {
+            sessionId,
+            taxpayerId: session.taxpayerId,
+            taxpayerName: mukellefAdi,
+            period: session.periodLabel,
+            type: session.type,
+            matched: matchedCount,
+            partial: result.partial,
+            needsReview: result.needsReview,
+            unmatched: result.unmatched,
+            link: `/panel/kdv-kontrol/${sessionId}`,
+          },
+          dedupeKey: `kdv-result:${sessionId}`,
+          dedupeWindowMin: 30,
+        });
+      } catch (e) {
+        this.logger.warn(`KDV_RESULT notif failed: ${(e as Error).message}`);
+      }
+
+      // === IN-APP BILDIRIM: KDV_RESULT ===
+      try {
+        const matchedCount = Number(result.matched || 0);
+        const summary = issueCount === 0
+          ? `Tum ${matchedCount} kayit sorunsuz eslesti.`
+          : `${matchedCount} tam - ${reviewCount} inceleme - ${unmatchedCount} hatali.`;
+        await this.notifications.createForTenant({
+          tenantId,
+          type: NOTIFICATION_TYPES.KDV_RESULT,
+          title: `KDV kontrol: ${mukellefAdi || 'mukellef'} (${session.periodLabel})`,
+          body: summary,
+          metadata: {
+            sessionId,
+            taxpayerId: session.taxpayerId,
+            taxpayerName: mukellefAdi,
+            period: session.periodLabel,
+            type: session.type,
+            matched: matchedCount,
+            partial: result.partial,
+            needsReview: result.needsReview,
+            unmatched: result.unmatched,
+            link: `/panel/kdv-kontrol/${sessionId}`,
+          },
+          dedupeKey: `kdv-result:${sessionId}`,
+          dedupeWindowMin: 30,
+        });
+      } catch (e) {
+        this.logger.warn(`KDV_RESULT notif failed: ${(e as Error).message}`);
+      }
+
       if (issueCount > 0) {
         await this.pushMorenAiAlert(tenantId, {
           title: 'MOREN AI uyarısı: KDV kontrol',
@@ -2467,6 +2560,37 @@ ${JSON.stringify(payload, null, 2)}`;
           },
         });
       }
+
+      // === KDV_RESULT: Reconciliation sonucunu bildir ===
+      // Issue varsa veya yoksa her durumda kullaniciya "sonuc hazir" bildirimi
+      const matchedCount = Number(result.matched || 0);
+      const emoji = issueCount === 0 ? '✅' : (unmatchedCount > 0 ? '❌' : '⚠️');
+      const summary = issueCount === 0
+        ? `Tüm ${matchedCount} kayıt sorunsuz eşleşti.`
+        : `${matchedCount} tam · ${reviewCount} inceleme · ${unmatchedCount} hatalı.`;
+      await this.notifications.createForTenant({
+        tenantId,
+        type: NOTIFICATION_TYPES.KDV_RESULT,
+        title: `${emoji} KDV kontrol: ${mukellefAdi || 'mükellef'} (${session.periodLabel})`,
+        body: summary,
+        metadata: {
+          sessionId,
+          taxpayerId: session.taxpayerId,
+          taxpayerName: mukellefAdi,
+          period: session.periodLabel,
+          type: session.type,
+          matched: matchedCount,
+          partial: result.partial,
+          needsReview: result.needsReview,
+          unmatched: result.unmatched,
+          link: `/panel/kdv-kontrol/${sessionId}`,
+        },
+        dedupeKey: `kdv-result:${sessionId}`,
+        dedupeWindowMin: 30,
+      }).catch((e) => {
+        this.logger.warn(`KDV_RESULT notif failed: ${(e as Error).message}`);
+      });
+
       return result;
     } catch (err) {
       await this.pushFeedEvent(tenantId, {

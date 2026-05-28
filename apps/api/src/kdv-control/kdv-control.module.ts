@@ -7,12 +7,14 @@ import { OcrService } from './ocr';
 import { ReconciliationEngine } from './reconciliation';
 import { LucaModule } from '../luca/luca.module';
 import { AgentEventsModule } from '../agent-events/agent-events.module';
+import { NotificationsModule } from '../notifications/notifications.module';
 
 @Module({
   imports: [
     MulterModule.register({ limits: { fileSize: 50 * 1024 * 1024 } }),
     forwardRef(() => LucaModule),
-    AgentEventsModule, // KDV işlemleri "Canlı Sistem Akışı"na (gösterge paneli) düşsün diye
+    AgentEventsModule,
+    NotificationsModule,
   ],
   providers: [KdvControlService, ExcelParserService, OcrService, ReconciliationEngine],
   controllers: [KdvControlController],
