@@ -1,19 +1,24 @@
-import { Injectable, UnauthorizedException, ConflictException } from '@nestjs/common';
+import { Injectable, UnauthorizedException, ConflictException, Logger, Optional } from '@nestjs/common';
 import { JwtService } from '@nestjs/jwt';
 import { ConfigService } from '@nestjs/config';
 import * as argon2 from 'argon2';
 import { PrismaService } from '../prisma/prisma.service';
 import { UsersService } from '../users/users.service';
+import { NotificationsService } from '../notifications/notifications.service';
+import { NOTIFICATION_TYPES } from '../notifications/notification-types';
 import { RegisterDto } from '@mali-musavir/shared';
 import { randomBytes, createHash } from 'crypto';
 
 @Injectable()
 export class AuthService {
+  private readonly logger = new Logger(AuthService.name);
+
   constructor(
     private prisma: PrismaService,
     private usersService: UsersService,
     private jwtService: JwtService,
     private config: ConfigService,
+    @Optional() private notifications?: NotificationsService,
   ) {}
 
   async validateUser(email: string, password: string) {
@@ -37,6 +42,35 @@ export class AuthService {
       tenantId: user.tenantId,
       roles: user.userRoles?.map((ur: any) => ur.role.name) || [],
     };
+
+    // === AUTH_NEW_DEVICE: Yeni IP'den giris tespit ===
+    // Bu IP daha once bu kullanici icin refresh token olusturmus mu?
+    if (ipAddress && this.notifications) {
+      try {
+        const knownIp = await this.prisma.refreshToken.findFirst({
+          where: { userId: user.id, ipAddress },
+          select: { id: true },
+        }).catch(() => null);
+        if (!knownIp) {
+          await this.notifications.create({
+            tenantId: user.tenantId,
+            userId: user.id,
+            type: NOTIFICATION_TYPES.AUTH_NEW_DEVICE,
+            title: `🔐 Yeni cihazdan giriş`,
+            body: `Hesabınıza yeni bir IP adresinden (${ipAddress}) giriş yapıldı. Bu siz değilseniz şifrenizi hemen değiştirin.`,
+            metadata: {
+              ipAddress,
+              loginAt: new Date().toISOString(),
+              link: '/panel/ayarlar',
+            },
+            dedupeKey: `auth-new-device:${user.id}:${ipAddress}`,
+            dedupeWindowMin: 60 * 24 * 7, // 7 gun
+          });
+        }
+      } catch (e) {
+        this.logger.warn(`AUTH_NEW_DEVICE check failed: ${(e as Error).message}`);
+      }
+    }
 
     const accessToken = this.jwtService.sign(payload);
     const refreshToken = await this.generateRefreshToken(user.id, ipAddress);
