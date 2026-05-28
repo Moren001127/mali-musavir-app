@@ -2,6 +2,8 @@ import { Injectable, Logger } from '@nestjs/common';
 import { Cron } from '@nestjs/schedule';
 import { PrismaService } from '../prisma/prisma.service';
 import { EmailService } from '../email/email.service';
+import { NotificationsService } from '../notifications/notifications.service';
+import { NOTIFICATION_TYPES } from '../notifications/notification-types';
 
 /**
  * Gorev (Task) mail hatirlatma cron'u.
@@ -34,6 +36,7 @@ export class TaskReminderCron {
   constructor(
     private prisma: PrismaService,
     private email: EmailService,
+    private notifications: NotificationsService,
   ) {}
 
   /** Her sabah 07:00 Europe/Istanbul */
@@ -72,11 +75,12 @@ export class TaskReminderCron {
   private async runForTenant(tenant: { id: string; name: string | null; email: string | null }) {
     const { todayStart, todayEnd, tomorrowStart, tomorrowEnd, todayKey } = this.istanbulWindow();
 
-    // Hedef: dueDate bugun veya yarin olan, aktif, notifyEmail=true gorevler
+    // Hedef: dueDate bugun veya yarin olan, aktif gorevler.
+    // notifyEmail filtresi kaldirildi cunku in-app bildirimi HER zaman gondermek istiyoruz;
+    // e-posta gonderimi for-loop icinde notifyEmail kontrol edilerek atilir.
     const tasks = await (this.prisma as any).task.findMany({
       where: {
         tenantId: tenant.id,
-        notifyEmail: true,
         status: { notIn: ['COMPLETED', 'CANCELLED'] },
         dueDate: { gte: todayStart, lt: tomorrowEnd },
       },
@@ -95,6 +99,41 @@ export class TaskReminderCron {
     let failed = 0;
 
     for (const task of tasks) {
+      const dueWindow = task.dueDate && new Date(task.dueDate) >= tomorrowStart ? 'yarin' : 'bugun';
+
+      // === IN-APP BILDIRIM (her zaman, e-postadan bagimsiz) ===
+      // Sadece olusturan kullanici icin, gunluk bir kez (dedupeKey).
+      // Bell badge'de gorunsun diye TASK_DUE tipinde.
+      if (task.createdById) {
+        await this.notifications.create({
+          tenantId: tenant.id,
+          userId: task.createdById,
+          type: NOTIFICATION_TYPES.TASK_DUE,
+          title: dueWindow === 'bugun'
+            ? `Bugün vadesi: ${String(task.title || 'Görev').slice(0, 80)}`
+            : `Yarın vadesi: ${String(task.title || 'Görev').slice(0, 80)}`,
+          body: this.buildShortBody(task, dueWindow),
+          metadata: {
+            taskId: task.id,
+            dueDate: task.dueDate,
+            dueWindow,
+            priority: task.priority || 'MEDIUM',
+            taxpayerId: task.taxpayer?.id || null,
+            link: `/panel/gorevler?id=${task.id}`,
+          },
+          dedupeKey: `task-due:${task.id}:${this.istanbulWindow().todayKey}`,
+          dedupeWindowMin: 60 * 20, // 20 saat
+        }).catch((e) => {
+          this.logger.warn(`[TaskReminderCron] in-app notification failed task=${task.id}: ${e?.message || e}`);
+        });
+      }
+
+      // === E-POSTA (notifyEmail aciksa) ===
+      if (!task.notifyEmail) {
+        skipped++;
+        continue;
+      }
+
       // Duplicate koruma: bugun icin EMAIL/SENT log var mi?
       const existing = await (this.prisma as any).taskReminderLog.findFirst({
         where: {
@@ -122,7 +161,6 @@ export class TaskReminderCron {
         continue;
       }
 
-      const dueWindow = task.dueDate && new Date(task.dueDate) >= tomorrowStart ? 'yarin' : 'bugun';
       const subject = this.buildSubject(task, dueWindow);
       const { text, html } = this.buildBody(task, dueWindow, tenant);
 
@@ -170,6 +208,21 @@ export class TaskReminderCron {
     const tomorrowEnd = new Date(todayStart.getTime() + 48 * 3600 * 1000);
     const todayEnd = tomorrowStart;
     return { todayStart, todayEnd, tomorrowStart, tomorrowEnd, todayKey };
+  }
+
+  private buildShortBody(task: any, dueWindow: 'bugun' | 'yarin'): string {
+    const parts: string[] = [];
+    parts.push(dueWindow === 'bugun' ? 'Bugün vade dolar.' : 'Yarın vade dolar.');
+    if (task.dueTime) parts.push(`Saat: ${task.dueTime}`);
+    if (task.priority && task.priority !== 'MEDIUM') {
+      parts.push(`Öncelik: ${this.priorityLabel(task.priority)}`);
+    }
+    if (task.taxpayer) {
+      const name = task.taxpayer.companyName ||
+        [task.taxpayer.firstName, task.taxpayer.lastName].filter(Boolean).join(' ');
+      if (name) parts.push(`Mükellef: ${name}`);
+    }
+    return parts.join(' • ').slice(0, 500);
   }
 
   private buildSubject(task: any, dueWindow: 'bugun' | 'yarin'): string {
