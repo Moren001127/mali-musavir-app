@@ -227,7 +227,10 @@ export class PortalAutomationRailwayRunnerService implements OnModuleInit {
 
       // 2captcha bazen GIB CAPTCHA'sini yanlis cozer (~%5-10 oran).
       // 3 deneme + her denemede temiz login sayfasi ile stale/error page riskini dusuruyoruz.
-      const MAX_LOGIN_ATTEMPTS = 3;
+      const MAX_LOGIN_ATTEMPTS = Math.max(
+        3,
+        Math.min(8, Number(process.env.PORTAL_AUTOMATION_EBEYANNAME_LOGIN_ATTEMPTS || 5)),
+      );
       for (let attempt = 1; attempt <= MAX_LOGIN_ATTEMPTS; attempt++) {
         try {
           this.logger.log('[eBeyanname] Login denemesi #' + attempt + ': GIB login sayfasi aciliyor');
@@ -594,15 +597,9 @@ export class PortalAutomationRailwayRunnerService implements OnModuleInit {
     if (!captchaImg) {
       throw new Error('CAPTCHA gorsel bulunamadi (img[alt="captchaImg"])');
     }
-    let base64: string;
-    try {
-      const buffer = await captchaImg.screenshot({ type: 'png' });
-      base64 = buffer.toString('base64');
-    } catch (err: any) {
-      throw new Error(`CAPTCHA screenshot hata: ${err?.message || err}`);
-    }
+    const base64 = await this.captchaImageBase64(captchaImg);
 
-    const captchaText = (await this.solveCaptchaWith2Captcha(base64, apiKey)).toUpperCase();
+    const captchaText = await this.solveCaptchaWith2Captcha(base64, apiKey);
     this.logger.log(`[eBeyanname] CAPTCHA cozuldu: "${captchaText}" (${captchaText.length} karakter)`);
 
     // "dk" (Dogrulama Kodu) input'una yaz
@@ -620,6 +617,19 @@ export class PortalAutomationRailwayRunnerService implements OnModuleInit {
       throw new Error('Dogrulama kodu (dk) alani bulunamadi');
     }
     await dkInput.fill(captchaText);
+  }
+
+  private async captchaImageBase64(captchaImg: any): Promise<string> {
+    const src = await captchaImg.evaluate((el: any) => el.getAttribute('src') || '').catch(() => '');
+    const dataMatch = String(src || '').match(/^data:image\/[a-zA-Z0-9.+-]+;base64,(.+)$/);
+    if (dataMatch?.[1]) return dataMatch[1].trim();
+
+    try {
+      const buffer = await captchaImg.screenshot({ type: 'png' });
+      return buffer.toString('base64');
+    } catch (err: any) {
+      throw new Error(`CAPTCHA screenshot hata: ${err?.message || err}`);
+    }
   }
 
   private async waitForEBeyannameLoginForm(page: any) {
