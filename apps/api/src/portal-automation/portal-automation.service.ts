@@ -5,6 +5,14 @@ import { PrismaService } from '../prisma/prisma.service';
 import { StorageService } from '../storage/storage.service';
 import { encrypt, tryDecrypt } from '../common/crypto';
 import { BeyanKayitlariService } from '../beyan-kayitlari/beyan-kayitlari.service';
+import { NotificationsService } from '../notifications/notifications.service';
+import { NOTIFICATION_TYPES } from '../notifications/notification-types';
+import { NotificationsService } from '../notifications/notifications.service';
+import { NOTIFICATION_TYPES } from '../notifications/notification-types';
+import { NotificationsService } from '../notifications/notifications.service';
+import { NOTIFICATION_TYPES } from '../notifications/notification-types';
+import { NotificationsService } from '../notifications/notifications.service';
+import { NOTIFICATION_TYPES } from '../notifications/notification-types';
 
 export const PORTAL_PROVIDERS = ['GIB_EBEYANNAME', 'GIB_IVD', 'SGK_EBILDIRGE'] as const;
 export type PortalProvider = (typeof PORTAL_PROVIDERS)[number];
@@ -181,6 +189,7 @@ export class PortalAutomationService {
     private prisma: PrismaService,
     private storage: StorageService,
     private beyanKayitlari: BeyanKayitlariService,
+    private notifications: NotificationsService,
   ) {}
 
   @Cron('0 15 2 * * *', { timeZone: 'Europe/Istanbul' })
@@ -1088,6 +1097,55 @@ export class PortalAutomationService {
       where: { tenantId: job.tenantId, provider: meta.provider, ownerType: meta.ownerType, ownerId },
       data: { lastCheckedAt: new Date(), lastError: errorMessage.slice(0, 1000) },
     });
+
+    // === IN-APP BILDIRIM: Portal sifresi hatasi ===
+    // Sadece kimlik-bilgisi hatasi gibi gorunenler icin (timeout/network degil)
+    const looksLikeCredentialIssue = this.classifyCredentialError(errorMessage);
+    if (!looksLikeCredentialIssue) return;
+
+    // Taxpayer-owned credential icin mukellef adini cek
+    let scopeLabel = meta.provider.replace(/_/g, ' ');
+    if (meta.ownerType === 'TAXPAYER' && job.taxpayerId) {
+      const tp = await (this.prisma as any).taxpayer.findFirst({
+        where: { id: job.taxpayerId, tenantId: job.tenantId },
+        select: { companyName: true, firstName: true, lastName: true },
+      }).catch(() => null);
+      if (tp) {
+        const name = tp.companyName || [tp.firstName, tp.lastName].filter(Boolean).join(' ');
+        if (name) scopeLabel = `${scopeLabel} — ${name}`;
+      }
+    }
+
+    await this.notifications.createForTenant({
+      tenantId: job.tenantId,
+      type: NOTIFICATION_TYPES.PORTAL_CREDENTIAL_FAIL,
+      title: `🔑 Portal şifre hatası: ${scopeLabel}`,
+      body: `${meta.label} işlemi sırasında giriş yapılamadı. Lütfen ayarlardan parolayı güncelleyin. (${errorMessage.slice(0, 200)})`,
+      metadata: {
+        provider: meta.provider,
+        ownerType: meta.ownerType,
+        ownerId,
+        jobId: job.id,
+        jobType: job.jobType,
+        link: '/panel/ayarlar/entegrasyonlar',
+      },
+      dedupeKey: `portal-cred-fail:${meta.provider}:${ownerId}`,
+      dedupeWindowMin: 60 * 12, // 12 saat — ayni gun icinde tekrar etmesin
+    }).catch((e) => {
+      this.logger.warn(`PORTAL_CREDENTIAL_FAIL notif failed: ${(e as Error).message}`);
+    });
+  }
+
+  /** Hata mesaji credential/parola/login hatasi gibi mi? */
+  private classifyCredentialError(message: string): boolean {
+    if (!message) return false;
+    const m = message.toLowerCase();
+    const triggers = [
+      'sifre', 'şifre', 'parola', 'password', 'login fail', 'kullan', 'invalid credential',
+      'unauthorized', 'authentication', 'auth failed', 'gecersiz', 'geçersiz', 'kimlik',
+      '401', 'forbidden', '403', 'oturum',
+    ];
+    return triggers.some((t) => m.includes(t));
   }
 
   private async markCredentialSuccess(job: any) {
