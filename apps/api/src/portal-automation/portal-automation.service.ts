@@ -1,6 +1,7 @@
 import { BadRequestException, Injectable, Logger, NotFoundException, UnauthorizedException } from '@nestjs/common';
 import { Cron } from '@nestjs/schedule';
 import { randomUUID } from 'crypto';
+import { PDFParse } from 'pdf-parse';
 import { PrismaService } from '../prisma/prisma.service';
 import { StorageService } from '../storage/storage.service';
 import { encrypt, tryDecrypt } from '../common/crypto';
@@ -69,6 +70,15 @@ type ManualRunInput = {
   dateTo?: string;
   donem?: string;
   force?: boolean;
+};
+
+type JobProgressUpdate = {
+  step?: string;
+  message?: string;
+  detail?: string;
+  current?: number;
+  total?: number;
+  records?: number;
 };
 
 type AgentDeclarationInput = {
@@ -442,17 +452,36 @@ export class PortalAutomationService {
   }
 
   async markRunning(tenantId: string, jobId: string, deviceId?: string) {
-    const updated = await (this.prisma as any).portalAutomationJob.updateMany({
+    const job = await (this.prisma as any).portalAutomationJob.findFirst({
       where: { id: jobId, tenantId, status: 'pending' },
+      select: { id: true, payload: true },
+    });
+    if (!job) throw new NotFoundException('Baslatilacak job bulunamadi');
+    return (this.prisma as any).portalAutomationJob.update({
+      where: { id: jobId },
       data: {
         status: 'running',
         startedAt: new Date(),
         attempts: { increment: 1 },
         ...(deviceId ? { targetDeviceId: deviceId } : {}),
+        payload: this.withJobProgress(job.payload, {
+          step: 'runner',
+          message: 'Sunucu isi aldi, giris hazirligi yapiliyor.',
+        }),
       },
     });
-    if (!updated.count) throw new NotFoundException('Baslatilacak job bulunamadi');
-    return (this.prisma as any).portalAutomationJob.findUnique({ where: { id: jobId } });
+  }
+
+  async updateJobProgress(tenantId: string, jobId: string, progress: JobProgressUpdate) {
+    const job = await (this.prisma as any).portalAutomationJob.findFirst({
+      where: { id: jobId, tenantId },
+      select: { id: true, payload: true },
+    });
+    if (!job) throw new NotFoundException('Job bulunamadi');
+    return (this.prisma as any).portalAutomationJob.update({
+      where: { id: jobId },
+      data: { payload: this.withJobProgress(job.payload, progress) },
+    });
   }
 
   async markFailed(tenantId: string, jobId: string, errorMessage: string) {
@@ -461,7 +490,16 @@ export class PortalAutomationService {
     await this.markCredentialError(job, errorMessage).catch(() => {});
     return (this.prisma as any).portalAutomationJob.update({
       where: { id: jobId },
-      data: { status: 'failed', errorMessage: errorMessage.slice(0, 2000), finishedAt: new Date() },
+      data: {
+        status: 'failed',
+        errorMessage: errorMessage.slice(0, 2000),
+        finishedAt: new Date(),
+        payload: this.withJobProgress(job.payload, {
+          step: 'failed',
+          message: 'Is hata ile durdu.',
+          detail: errorMessage.slice(0, 500),
+        }),
+      },
     });
   }
 
@@ -495,6 +533,11 @@ export class PortalAutomationService {
         result: input?.result || { declarations: declarations.length, documents: documents.length },
         recordCount: finalCount,
         finishedAt: new Date(),
+        payload: this.withJobProgress(job.payload, {
+          step: 'done',
+          message: finalCount > 0 ? `${finalCount} kayit portala yazildi.` : 'GIB sorgusu tamamlandi, indirilecek kayit bulunamadi.',
+          records: finalCount,
+        }),
       },
     });
 
@@ -606,10 +649,43 @@ export class PortalAutomationService {
           dateFrom: opts.period.start.toISOString(),
           dateTo: opts.period.end.toISOString(),
           instruction: this.instructionForJob(jobType),
+          progress: {
+            at: new Date().toISOString(),
+            step: 'pending',
+            message: 'Kuyrukta, runner bekleniyor.',
+          },
+          progressLog: [
+            {
+              at: new Date().toISOString(),
+              step: 'pending',
+              message: 'Kuyrukta, runner bekleniyor.',
+            },
+          ],
         },
       },
       include: { taxpayer: { select: { id: true, companyName: true, firstName: true, lastName: true, taxNumber: true } } },
     });
+  }
+
+  private withJobProgress(payload: any, progress: JobProgressUpdate) {
+    const base = payload && typeof payload === 'object' && !Array.isArray(payload) ? { ...payload } : {};
+    const previous = base.progress && typeof base.progress === 'object' && !Array.isArray(base.progress) ? base.progress : {};
+    const entry: Record<string, any> = {
+      at: new Date().toISOString(),
+      step: String(progress.step || previous.step || 'progress').slice(0, 80),
+      message: String(progress.message || previous.message || 'Islem suruyor.').slice(0, 300),
+    };
+    if (progress.detail) entry.detail = String(progress.detail).slice(0, 500);
+    if (Number.isFinite(Number(progress.current))) entry.current = Number(progress.current);
+    if (Number.isFinite(Number(progress.total))) entry.total = Number(progress.total);
+    if (Number.isFinite(Number(progress.records))) entry.records = Number(progress.records);
+
+    const existingLog = Array.isArray(base.progressLog) ? base.progressLog : [];
+    return {
+      ...base,
+      progress: { ...previous, ...entry },
+      progressLog: [...existingLog.slice(-11), entry],
+    };
   }
 
   private async findDuplicateJob(
@@ -795,12 +871,18 @@ export class PortalAutomationService {
       'application/xml',
       'beyanname.xml',
     );
+    const pdfMeta: { tahakkukTutari?: number | null; onayNo?: string | null } = await this.extractTahakkukMetaFromBase64(input.tahakkukBase64 || input.beyannameBase64).catch((err) => {
+      this.logger.warn(`Tahakkuk PDF meta okunamadi: ${err?.message || err}`);
+      return {};
+    });
+    const tahakkukTutari = input.tahakkukTutari ?? pdfMeta.tahakkukTutari ?? null;
+    const onayNo = input.onayNo || pdfMeta.onayNo || null;
 
     const data: any = {
       beyanTarihi: parseDateOrNull(input.beyanTarihi),
-      tahakkukTutari: input.tahakkukTutari ?? null,
+      tahakkukTutari,
       odemeTutari: input.odemeTutari ?? null,
-      onayNo: input.onayNo || null,
+      onayNo,
       kaynak: 'gib_agent',
       importBatchId: jobId,
       notlar: input.raw ? JSON.stringify({ source: 'portal-automation', raw: input.raw }).slice(0, 1000) : null,
@@ -840,19 +922,19 @@ export class PortalAutomationService {
       create: {
         tenantId,
         taxpayerId: taxpayer.id,
-        beyanTipi: input.beyanTipi,
-        donem: input.donem,
-        durum: 'onaylandi',
-        onayTarihi: parseDateOrNull(input.beyanTarihi) || new Date(),
-        tahakkukTutari: input.tahakkukTutari ?? null,
-        notlar: 'GIB agent tarafindan indirildi',
-      },
-      update: {
-        durum: 'onaylandi',
-        onayTarihi: parseDateOrNull(input.beyanTarihi) || new Date(),
-        tahakkukTutari: input.tahakkukTutari ?? null,
-      },
-    }).catch(() => {});
+          beyanTipi: input.beyanTipi,
+          donem: input.donem,
+          durum: 'onaylandi',
+          onayTarihi: parseDateOrNull(input.beyanTarihi) || new Date(),
+          tahakkukTutari,
+          notlar: 'GIB agent tarafindan indirildi',
+        },
+        update: {
+          durum: 'onaylandi',
+          onayTarihi: parseDateOrNull(input.beyanTarihi) || new Date(),
+          tahakkukTutari,
+        },
+      }).catch(() => {});
 
     return kayit;
   }
@@ -1053,6 +1135,67 @@ export class PortalAutomationService {
       source: 'portal-automation',
     });
     return s3Key;
+  }
+
+  private async extractTahakkukMetaFromBase64(base64Input: string | null | undefined): Promise<{ tahakkukTutari?: number | null; onayNo?: string | null }> {
+    const base64 = cleanBase64(base64Input);
+    if (!base64) return {};
+    const buffer = Buffer.from(base64, 'base64');
+    if (buffer.length < 200) return {};
+
+    const parser = new PDFParse({ data: buffer });
+    try {
+      const result = await parser.getText();
+      const text = String(result?.text || '').replace(/\s+/g, ' ').trim();
+      return {
+        tahakkukTutari: this.extractTahakkukAmount(text),
+        onayNo: this.extractTahakkukOnayNo(text),
+      };
+    } finally {
+      const destroy = (parser as any).destroy;
+      if (typeof destroy === 'function') await destroy.call(parser).catch(() => {});
+    }
+  }
+
+  private extractTahakkukAmount(text: string): number | null {
+    const compact = String(text || '').replace(/\s+/g, ' ');
+    const preferredLabels = [
+      /terkin\s+sonrasi\s+kalan\s+vergi\s+tutari/i,
+      /tahakkuk\s+eden\s+(?:vergi\s+)?tutar/i,
+      /odenecek\s+(?:vergi\s+)?tutar/i,
+      /odenmesi\s+gereken\s+(?:vergi\s+)?tutar/i,
+      /toplam\s+tahakkuk/i,
+      /toplam\s+vergi/i,
+    ];
+    for (const label of preferredLabels) {
+      const match = compact.match(new RegExp(`${label.source}.{0,180}`, 'i'));
+      const amount = match ? this.lastTurkishMoney(match[0]) : null;
+      if (amount != null) return amount;
+    }
+
+    const lines = String(text || '').split(/\r?\n| {2,}/).map((line) => line.trim()).filter(Boolean);
+    for (const line of lines) {
+      if (!/tahakkuk|odenecek|ödenecek|terkin|kalan vergi|toplam/i.test(line)) continue;
+      const amount = this.lastTurkishMoney(line);
+      if (amount != null) return amount;
+    }
+    return null;
+  }
+
+  private extractTahakkukOnayNo(text: string): string | null {
+    const compact = String(text || '').replace(/\s+/g, ' ');
+    const match = compact.match(/(?:onay|tahakkuk|fis|fiş)\s*(?:no|numarasi|numarası)?\s*[:\-]?\s*([A-Z0-9][A-Z0-9./-]{5,})/i);
+    return match?.[1]?.slice(0, 80) || null;
+  }
+
+  private lastTurkishMoney(text: string): number | null {
+    const matches = Array.from(String(text || '').matchAll(/\b\d{1,3}(?:\.\d{3})*,\d{2}\b|\b\d{4,},\d{2}\b|\b\d{1,3},\d{2}\b/g)).map((m) => m[0]);
+    for (const raw of matches.reverse()) {
+      const normalized = raw.replace(/\./g, '').replace(',', '.');
+      const value = Number(normalized);
+      if (Number.isFinite(value)) return Math.round(value * 100) / 100;
+    }
+    return null;
   }
 
   private extensionFromMime(mimeType: string, originalName?: string | null) {

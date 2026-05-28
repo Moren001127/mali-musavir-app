@@ -213,8 +213,14 @@ export class PortalAutomationRailwayRunnerService implements OnModuleInit {
     }
   }
 
+  private async jobProgress(tenantId: string, job: any, step: string, message: string, extra: Record<string, any> = {}) {
+    this.logger.log(`[PortalRailwayRunner] ${job?.id || '-'} ${step}: ${message}`);
+    await this.portalAutomation.updateJobProgress(tenantId, job.id, { step, message, ...extra }).catch(() => {});
+  }
+
   private async runEBeyanname(tenantId: string, bundle: RunnerJobBundle) {
     const credential = bundle.credential;
+    await this.jobProgress(tenantId, bundle.job, 'credential', 'e-Beyanname sifresi kontrol ediliyor.');
     // YENI GIB UI'sinda (2026 Dijital Vergi Dairesi) eski "Parola" alani kaldirildi.
     // GIB'in "Sifre" alani portaldaki "Sifre" (=secondaryPassword) degeriyle doldurulur.
     // Eski portal "Parola" (=password) alani artik kullanilmiyor.
@@ -226,6 +232,7 @@ export class PortalAutomationRailwayRunnerService implements OnModuleInit {
     const loginUrl = process.env.PORTAL_AUTOMATION_EBEYANNAME_LOGIN_URL || DEFAULT_EBEYANNAME_LOGIN_URL;
     const downloadsPath = join(tmpdir(), `moren-ebeyanname-${randomUUID()}`);
     await mkdir(downloadsPath, { recursive: true });
+    await this.jobProgress(tenantId, bundle.job, 'browser', 'Sunucu tarayicisi baslatiliyor.');
 
     const browser = await pwChromium.launch({
       executablePath: process.env.PLAYWRIGHT_CHROMIUM_EXECUTABLE_PATH || process.env.CHROMIUM_PATH,
@@ -254,21 +261,34 @@ export class PortalAutomationRailwayRunnerService implements OnModuleInit {
       );
       for (let attempt = 1; attempt <= MAX_LOGIN_ATTEMPTS; attempt++) {
         try {
+          await this.jobProgress(tenantId, bundle.job, 'login', `GIB login denemesi ${attempt}/${MAX_LOGIN_ATTEMPTS}: sayfa aciliyor.`, {
+            current: attempt,
+            total: MAX_LOGIN_ATTEMPTS,
+          });
           this.logger.log('[eBeyanname] Login denemesi #' + attempt + ': GIB login sayfasi aciliyor');
           await page.goto(loginUrl, { waitUntil: 'domcontentloaded', timeout: 60_000 });
           await this.waitForEBeyannameLoginForm(page);
+          await this.jobProgress(tenantId, bundle.job, 'login', `GIB login denemesi ${attempt}/${MAX_LOGIN_ATTEMPTS}: bilgiler ve CAPTCHA dolduruluyor.`, {
+            current: attempt,
+            total: MAX_LOGIN_ATTEMPTS,
+          });
           await this.fillEBeyannameLogin(page, credential.userCode, ebeyannameSifre);
           await this.fillEBeyannameCaptcha(page);
           await this.submitLogin(page);
           await page.waitForLoadState('domcontentloaded', { timeout: 20_000 }).catch(() => {});
           await page.waitForTimeout(2000);
           await this.assertLoggedIn(page);
+          await this.jobProgress(tenantId, bundle.job, 'login', 'Dijital Vergi Dairesi girisi basarili.');
           if (attempt > 1) {
             this.logger.log('[eBeyanname] Login denemesi #' + attempt + ' BASARILI');
           }
           break;
         } catch (loginErr: any) {
           const msg = String(loginErr?.message || loginErr).slice(0, 200);
+          await this.jobProgress(tenantId, bundle.job, 'login_retry', `Login denemesi basarisiz, tekrar denenecek: ${msg}`, {
+            current: attempt,
+            total: MAX_LOGIN_ATTEMPTS,
+          });
           this.logger.warn('[eBeyanname] Login denemesi #' + attempt + '/' + MAX_LOGIN_ATTEMPTS + ' basarisiz: ' + msg);
           if (attempt === MAX_LOGIN_ATTEMPTS) {
             throw new Error('e-Beyanname login ' + MAX_LOGIN_ATTEMPTS + ' denemede basarisiz. Son hata: ' + msg);
@@ -276,8 +296,11 @@ export class PortalAutomationRailwayRunnerService implements OnModuleInit {
         }
       }
 
+      await this.jobProgress(tenantId, bundle.job, 'open_app', 'e-Beyanname uygulamasi aciliyor.');
       const eBeyannamePage = await this.openEBeyannameApplication(context, page);
+      await this.jobProgress(tenantId, bundle.job, 'search_form', 'Beyanname Ara ekrani hazirlaniyor.');
       const collection = await this.collectEBeyannameDownloads(tenantId, eBeyannamePage, bundle.job, downloadsPath);
+      await this.jobProgress(tenantId, bundle.job, 'logout', 'GIB sekmeleri kapatiliyor ve guvenli cikis yapiliyor.');
       await this.safeLogoutFromDigitalTaxOffice(context, page, eBeyannamePage, collection.notes).catch((err) => {
         collection.notes.push(`GIB guvenli cikis tamamlanamadi: ${this.compact(err?.message || err)}`);
       });
@@ -934,7 +957,9 @@ export class PortalAutomationRailwayRunnerService implements OnModuleInit {
     const documents: any[] = [];
     const taxpayers = await this.loadTaxpayers(tenantId);
 
+    await this.jobProgress(tenantId, job, 'search_open', 'Beyanname Ara menusu aciliyor.');
     await this.openEBeyannameSearch(page, notes);
+    await this.jobProgress(tenantId, job, 'criteria', 'Tarih araligi ve sorgu kriterleri dolduruluyor.');
     await this.fillEBeyannameSearchCriteria(page, job, notes);
 
     const statusPlan: Array<{ status: EBeyannameStatus; label: string; download: boolean }> = [
@@ -944,10 +969,16 @@ export class PortalAutomationRailwayRunnerService implements OnModuleInit {
     ];
 
     for (const item of statusPlan) {
+      await this.jobProgress(tenantId, job, `status_${item.status}`, `${item.label} beyannameler sorgulaniyor.`);
       await this.selectEBeyannameStatus(page, item.status);
-      const collected = await this.queryEBeyannameStatus(page, item.status, item.download, downloadsPath, taxpayers, job, notes);
+      const beforeCount = declarations.length + documents.length;
+      const collected = await this.queryEBeyannameStatus(tenantId, page, item.status, item.download, downloadsPath, taxpayers, job, notes);
       declarations.push(...collected.declarations);
       documents.push(...collected.documents);
+      const added = declarations.length + documents.length - beforeCount;
+      await this.jobProgress(tenantId, job, `status_${item.status}_done`, `${item.label} sorgusu tamamlandi: ${added} kayit eklendi.`, {
+        records: declarations.length + documents.length,
+      });
 
       if (item.status !== 'onaylandi') {
         await this.closeEBeyannameResultList(page).catch((err) => {
@@ -1495,6 +1526,7 @@ export class PortalAutomationRailwayRunnerService implements OnModuleInit {
   }
 
   private async queryEBeyannameStatus(
+    tenantId: string,
     page: any,
     status: EBeyannameStatus,
     downloadApproved: boolean,
@@ -1513,6 +1545,7 @@ export class PortalAutomationRailwayRunnerService implements OnModuleInit {
 
     page.on('dialog', dialogHandler);
     try {
+      await this.jobProgress(tenantId, job, `status_${status}_search`, `${this.ebeyanStatusLabel(status)} icin Sorgula tiklaniyor.`);
       await this.clickEBeyannameSearchButton(page);
       for (let i = 0; i < 30; i++) {
         if (dialogMessages.length) break;
@@ -1525,16 +1558,18 @@ export class PortalAutomationRailwayRunnerService implements OnModuleInit {
 
     if (dialogMessages.length) {
       notes.push(`${status}: GIB uyarisi: ${this.compact(dialogMessages.join(' | '))}`);
+      await this.jobProgress(tenantId, job, `status_${status}_empty`, `${this.ebeyanStatusLabel(status)} icin GIB kayit bulamadi.`);
       return { declarations, documents };
     }
 
     if (!(await this.hasEBeyannameResultList(page))) {
       notes.push(`${status}: liste acilmadi, sonuc yok kabul edildi. URL=${this.safeUrl(page.url())}`);
+      await this.jobProgress(tenantId, job, `status_${status}_empty`, `${this.ebeyanStatusLabel(status)} listesi acilmadi, kayit yok kabul edildi.`);
       return { declarations, documents };
     }
 
     if (downloadApproved) {
-      const approved = await this.collectApprovedEBeyannamePages(page, downloadsPath, taxpayers, job, notes);
+      const approved = await this.collectApprovedEBeyannamePages(tenantId, page, downloadsPath, taxpayers, job, notes);
       declarations.push(...approved.declarations);
       documents.push(...approved.documents);
       return { declarations, documents };
@@ -1547,6 +1582,12 @@ export class PortalAutomationRailwayRunnerService implements OnModuleInit {
     }
     notes.push(`${status}: ${rows.length} satir okundu, ${declarations.length} takip kaydi eslendi`);
     return { declarations, documents };
+  }
+
+  private ebeyanStatusLabel(status: EBeyannameStatus) {
+    if (status === 'hatali') return 'Hatali';
+    if (status === 'beklemede') return 'Onay bekliyor';
+    return 'Onaylandi';
   }
 
   private async clickEBeyannameSearchButton(page: any) {
@@ -1710,6 +1751,7 @@ export class PortalAutomationRailwayRunnerService implements OnModuleInit {
   }
 
   private async collectApprovedEBeyannamePages(
+    tenantId: string,
     page: any,
     downloadsPath: string,
     taxpayers: TaxpayerMatch[],
@@ -1726,10 +1768,19 @@ export class PortalAutomationRailwayRunnerService implements OnModuleInit {
       pageNo++;
       const rows = await this.parseEBeyannameResultRows(page);
       notes.push(`onaylandi sayfa ${pageNo}: ${rows.length} satir`);
+      await this.jobProgress(tenantId, job, 'approved_page', `Onaylandi listesi sayfa ${pageNo}: ${rows.length} satir okunuyor.`, {
+        current: pageNo,
+        records: processedRows,
+      });
 
       for (const row of rows) {
         if (processedRows >= maxRows) break;
         processedRows++;
+        if (processedRows === 1 || processedRows % 10 === 0) {
+          await this.jobProgress(tenantId, job, 'approved_download', `Onaylandi belgeler indiriliyor: ${processedRows}. satir.`, {
+            records: processedRows,
+          });
+        }
         const beyanname = await this.downloadEBeyannameRowFile(page, row.rowIndex, 'beyanname', downloadsPath, processedRows, notes);
         const tahakkuk = await this.downloadEBeyannameRowFile(page, row.rowIndex, 'tahakkuk', downloadsPath, processedRows, notes);
         const declaration = this.declarationFromEBeyannameRow(row, 'onaylandi', taxpayers, job, { beyanname, tahakkuk });

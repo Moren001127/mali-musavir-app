@@ -15,7 +15,7 @@ import { api } from '@/lib/api';
 import PortalAutomationPanel from '@/components/portal-automation/PortalAutomationPanel';
 import Link from 'next/link';
 import {
-  Search, Upload, Download, FileText, Trash2,
+  Search, Upload, Download, FileText, Trash2, Printer,
   CheckCircle2, AlertCircle, FileQuestion, Loader2, X as IconX,
   FolderUp, FileX2, Archive, Sparkles, Eye, Mail, MessageCircle,
   MessageSquareText, Filter, CalendarDays, UserRound, RotateCcw,
@@ -28,6 +28,14 @@ const GOLD = '#d4b876';
 type FilterKey = 'all' | BeyanTipi;
 type BelgeFilter = 'all' | 'beyanname' | 'tahakkuk';
 type DurumFilter = 'all' | 'gonderilen' | 'gonderilmeyen' | 'okunan' | 'okunmayan' | 'sms_gonderilen' | 'sms_gonderilmeyen';
+type BeyanDocKind = 'beyanname' | 'tahakkuk';
+type BeyanTableRow = {
+  key: string;
+  row: BeyanKaydi;
+  kind: BeyanDocKind;
+  tur: 'EBeyanname' | 'Tahakkuk';
+  hasFile: boolean;
+};
 
 const FILTER_KEYS: { key: FilterKey; label: string }[] = [
   { key: 'all', label: 'Tümü' },
@@ -66,9 +74,27 @@ function fmtCurrency(n: number | null): string {
 function periodSortValue(donem: string): number {
   const monthly = donem.match(/^(\d{4})-(\d{2})$/);
   if (monthly) return Number(monthly[1]) * 100 + Number(monthly[2]);
+  const quarter = donem.match(/^(\d{4})-Q([1-4])$/i);
+  if (quarter) return Number(quarter[1]) * 100 + Number(quarter[2]) * 3;
   const yearly = donem.match(/^(\d{4})-YIL$/);
   if (yearly) return Number(yearly[1]) * 100 + 12;
   return 0;
+}
+
+function fmtDonemHattat(donem: string): string {
+  const quarter = donem.match(/^(\d{4})-Q([1-4])$/i);
+  if (quarter) {
+    const start = (Number(quarter[2]) - 1) * 3 + 1;
+    return `${quarter[1]}/${start} - ${quarter[1]}/${start + 2}`;
+  }
+  const monthly = donem.match(/^(\d{4})-(\d{2})$/);
+  if (monthly) {
+    const month = Number(monthly[2]);
+    return `${monthly[1]}/${month} - ${monthly[1]}/${month}`;
+  }
+  const yearly = donem.match(/^(\d{4})-YIL$/);
+  if (yearly) return yearly[1];
+  return donem;
 }
 
 function periodInRange(donem: string, start: string, end: string): boolean {
@@ -161,6 +187,7 @@ export default function BeyannamelerPage() {
   const defaultPullRange = useMemo(() => yesterdayRange(), []);
   const [pullFrom, setPullFrom] = useState(defaultPullRange.from);
   const [pullTo, setPullTo] = useState(defaultPullRange.to);
+  const [selectedDocKeys, setSelectedDocKeys] = useState<Set<string>>(() => new Set());
 
   const { data: portalSummary } = useQuery({
     queryKey: ['portal-automation-summary', 'beyanname-page'],
@@ -297,6 +324,43 @@ export default function BeyannamelerPage() {
       });
   }, [kayitlar, search, selectedTaxpayer, typeFilter, docFilter, durumFilter, periodStart, periodEnd]);
 
+  const tableRows = useMemo<BeyanTableRow[]>(() => {
+    return filtered.flatMap((row) => {
+      const rows: BeyanTableRow[] = [];
+      if (docFilter !== 'tahakkuk' && (row.beyannameUrl || !row.pdfUrl)) {
+        rows.push({ key: `${row.id}:beyanname`, row, kind: 'beyanname', tur: 'EBeyanname', hasFile: !!row.beyannameUrl });
+      }
+      if (docFilter !== 'beyanname' && row.pdfUrl) {
+        rows.push({ key: `${row.id}:tahakkuk`, row, kind: 'tahakkuk', tur: 'Tahakkuk', hasFile: !!row.pdfUrl });
+      }
+      return rows;
+    });
+  }, [filtered, docFilter]);
+
+  const selectedTableRows = useMemo(
+    () => tableRows.filter((item) => selectedDocKeys.has(item.key)),
+    [tableRows, selectedDocKeys],
+  );
+
+  const selectedUniqueRows = useMemo(() => {
+    const seen = new Set<string>();
+    return selectedTableRows
+      .map((item) => item.row)
+      .filter((row) => {
+        if (seen.has(row.id)) return false;
+        seen.add(row.id);
+        return true;
+      });
+  }, [selectedTableRows]);
+
+  useEffect(() => {
+    const visible = new Set(tableRows.map((item) => item.key));
+    setSelectedDocKeys((prev) => {
+      const next = new Set(Array.from(prev).filter((key) => visible.has(key)));
+      return next.size === prev.size ? prev : next;
+    });
+  }, [tableRows]);
+
   const bulkDeleteMut = useMutation({
     mutationFn: (ids: string[]) => beyanKayitlariApi.bulkDeleteIds(ids),
     onSuccess: (res) => {
@@ -337,6 +401,52 @@ export default function BeyannamelerPage() {
       return;
     }
     window.open(url, '_blank', 'noopener,noreferrer');
+  };
+
+  const fetchDocumentBlob = async (row: BeyanKaydi, kind: BeyanDocKind) => {
+    const hasFile = kind === 'beyanname' ? !!row.beyannameUrl : !!row.pdfUrl;
+    if (!hasFile) return null;
+    const endpoint = kind === 'beyanname'
+      ? `/beyan-kayitlari/${row.id}/beyanname`
+      : `/beyan-kayitlari/${row.id}/pdf`;
+    const res = await api.get(endpoint, { responseType: 'blob' });
+    return res.data instanceof Blob ? res.data : new Blob([res.data], { type: 'application/pdf' });
+  };
+
+  const openDocumentBlob = async (row: BeyanKaydi, kind: BeyanDocKind = 'beyanname') => {
+    const fallbackKind: BeyanDocKind = kind === 'beyanname' && !row.beyannameUrl && row.pdfUrl ? 'tahakkuk' : kind;
+    const blob = await fetchDocumentBlob(row, fallbackKind).catch((err) => {
+      toast.error(err?.message || 'PDF acilamadi');
+      return null;
+    });
+    if (!blob) {
+      toast.warning('Bu kayit icin goruntulenecek PDF yok');
+      return;
+    }
+    const url = URL.createObjectURL(blob);
+    window.open(url, '_blank', 'noopener,noreferrer');
+    setTimeout(() => URL.revokeObjectURL(url), 60_000);
+  };
+
+  const downloadDocument = async (item: BeyanTableRow) => {
+    const blob = await fetchDocumentBlob(item.row, item.kind).catch(() => null);
+    if (!blob) return;
+    const url = URL.createObjectURL(blob);
+    const a = document.createElement('a');
+    a.href = url;
+    a.download = `${beyanKaydiMukellefAdi(item.row)}-${item.row.beyanTipi}-${fmtDonemHattat(item.row.donem)}-${item.tur}.pdf`.replace(/[\\/:*?"<>|]/g, '_');
+    a.click();
+    URL.revokeObjectURL(url);
+  };
+
+  const toggleDocSelection = (key: string, checked?: boolean) => {
+    setSelectedDocKeys((prev) => {
+      const next = new Set(prev);
+      const shouldSelect = checked ?? !next.has(key);
+      if (shouldSelect) next.add(key);
+      else next.delete(key);
+      return next;
+    });
   };
 
   const sendEmail = (row: BeyanKaydi) => {
@@ -559,71 +669,120 @@ export default function BeyannamelerPage() {
           </div>
         ) : (
           <div className="overflow-x-auto">
-            <table className="w-full min-w-[1120px] text-[13px]">
+            <table className="w-full min-w-[1180px] text-[13px]">
               <thead style={{ background: 'rgba(255,255,255,0.025)' }}>
                 <tr className="text-left uppercase tracking-[.12em] text-[10.5px]" style={{ color: 'rgba(250,250,249,0.45)' }}>
-                  <th className="px-4 py-3">Mükellef</th>
-                  <th className="px-4 py-3">Beyan</th>
-                  <th className="px-4 py-3">Dönem / Tarih</th>
-                  <th className="px-4 py-3">Tahakkuk</th>
-                  <th className="px-4 py-3">Belgeler</th>
-                  <th className="px-4 py-3 text-right">İşlem</th>
+                  <th className="px-4 py-3 w-[44px]">
+                    <input
+                      type="checkbox"
+                      checked={tableRows.length > 0 && selectedDocKeys.size === tableRows.length}
+                      onChange={(e) => setSelectedDocKeys(e.target.checked ? new Set(tableRows.map((item) => item.key)) : new Set())}
+                    />
+                  </th>
+                  <th className="px-4 py-3">Mukellef</th>
+                  <th className="px-4 py-3">Beyanname Donemi</th>
+                  <th className="px-4 py-3">Beyanname Turu</th>
+                  <th className="px-4 py-3">Belge Mahiyeti</th>
+                  <th className="px-4 py-3">Tur</th>
+                  <th className="px-4 py-3">Tutar</th>
+                  <th className="px-4 py-3 text-right">Durum</th>
                 </tr>
               </thead>
               <tbody>
-                {filtered.map((row) => (
-                  <tr key={row.id} style={{ borderTop: '1px solid rgba(255,255,255,0.055)' }}>
-                    <td className="px-4 py-3">
-                      <button
-                        type="button"
-                        onClick={() => setSelectedTaxpayer(row.taxpayerId)}
-                        className="text-left max-w-[360px]"
-                        title="Bu mükellefe filtrele"
-                      >
-                        <div className="font-semibold truncate" style={{ color: '#fafaf9' }}>{beyanKaydiMukellefAdi(row)}</div>
-                        <div className="text-[11.5px] font-mono mt-0.5" style={{ color: 'rgba(250,250,249,0.38)' }}>{row.taxpayer?.taxNumber || '-'}</div>
-                      </button>
-                    </td>
-                    <td className="px-4 py-3">
-                      <div className="inline-flex items-center rounded-full px-2.5 py-1 text-[11.5px] font-bold" style={{ background: 'rgba(212,184,118,0.12)', border: '1px solid rgba(212,184,118,0.22)', color: GOLD }}>
-                        {BEYAN_TIPI_LABEL[row.beyanTipi]}
-                      </div>
-                      <div className="text-[11px] mt-1" style={{ color: 'rgba(250,250,249,0.42)' }}>{row.kaynak || 'kayıt'}</div>
-                    </td>
-                    <td className="px-4 py-3">
-                      <div className="font-semibold" style={{ color: '#fafaf9' }}>{fmtDonem(row.donem)}</div>
-                      <div className="text-[11.5px] mt-0.5" style={{ color: 'rgba(250,250,249,0.42)' }}>{fmtDate(row.beyanTarihi || row.createdAt)}</div>
-                    </td>
-                    <td className="px-4 py-3">
-                      <div className="font-semibold tabular-nums" style={{ color: row.tahakkukTutari ? '#fafaf9' : 'rgba(250,250,249,0.35)' }}>{fmtCurrency(row.tahakkukTutari)}</div>
-                      <div className="text-[11px] mt-0.5 font-mono" style={{ color: 'rgba(250,250,249,0.36)' }}>{row.onayNo || 'onay no yok'}</div>
-                    </td>
-                    <td className="px-4 py-3">
-                      <div className="flex flex-wrap gap-1.5">
-                        <DocButton active={!!row.beyannameUrl} label="Beyanname" onClick={() => openDocument(row, 'beyanname')} />
-                        <DocButton active={!!row.pdfUrl} label="Tahakkuk" onClick={() => openDocument(row, 'tahakkuk')} />
-                      </div>
-                    </td>
-                    <td className="px-4 py-3">
-                      <div className="flex items-center justify-end gap-1.5">
-                        <IconButton label="Görüntüle" icon={Eye} onClick={() => openDocument(row)} />
-                        <IconButton label="E-posta" icon={Mail} onClick={() => sendEmail(row)} />
-                        <IconButton label="WhatsApp" icon={MessageCircle} onClick={() => sendWhatsapp(row)} />
-                        <IconButton label="SMS" icon={MessageSquareText} onClick={() => sendSms(row)} />
-                        <IconButton
-                          label="Sil"
-                          icon={Trash2}
-                          danger
-                          onClick={() => {
-                            if (confirm(`${beyanKaydiMukellefAdi(row)} kaydı silinsin mi?`)) deleteMut.mutate(row.id);
-                          }}
+                {tableRows.map((item) => {
+                  const row = item.row;
+                  return (
+                    <tr key={item.key} style={{ borderTop: '1px solid rgba(255,255,255,0.055)' }}>
+                      <td className="px-4 py-3">
+                        <input
+                          type="checkbox"
+                          checked={selectedDocKeys.has(item.key)}
+                          onChange={(e) => toggleDocSelection(item.key, e.target.checked)}
                         />
-                      </div>
-                    </td>
-                  </tr>
-                ))}
+                      </td>
+                      <td className="px-4 py-3">
+                        <button
+                          type="button"
+                          onClick={() => setSelectedTaxpayer(row.taxpayerId)}
+                          className="text-left max-w-[300px]"
+                          title="Bu mukellefe filtrele"
+                        >
+                          <div className="font-semibold truncate" style={{ color: '#fafaf9' }}>{beyanKaydiMukellefAdi(row)}</div>
+                          <div className="text-[11.5px] font-mono mt-0.5" style={{ color: 'rgba(250,250,249,0.38)' }}>{row.taxpayer?.taxNumber || '-'}</div>
+                        </button>
+                      </td>
+                      <td className="px-4 py-3">
+                        <div className="font-semibold" style={{ color: '#fafaf9' }}>{fmtDonemHattat(row.donem)}</div>
+                        <div className="text-[11.5px] mt-0.5" style={{ color: 'rgba(250,250,249,0.42)' }}>{fmtDate(row.beyanTarihi || row.createdAt)}</div>
+                      </td>
+                      <td className="px-4 py-3">
+                        <div className="font-semibold" style={{ color: '#fafaf9' }}>{row.beyanTipi === 'GECICI_VERGI' ? 'KGECICI' : row.beyanTipi}</div>
+                        <div className="text-[11px] mt-0.5" style={{ color: 'rgba(250,250,249,0.42)' }}>{BEYAN_TIPI_LABEL[row.beyanTipi]}</div>
+                      </td>
+                      <td className="px-4 py-3" style={{ color: 'rgba(250,250,249,0.76)' }}>ASIL</td>
+                      <td className="px-4 py-3" style={{ color: '#fafaf9' }}>{item.tur}</td>
+                      <td className="px-4 py-3">
+                        <div className="font-semibold tabular-nums" style={{ color: item.kind === 'tahakkuk' && row.tahakkukTutari ? '#fafaf9' : 'rgba(250,250,249,0.55)' }}>
+                          {item.kind === 'tahakkuk' ? fmtCurrency(row.tahakkukTutari) : '-'}
+                        </div>
+                      </td>
+                      <td className="px-4 py-3">
+                        <div className="flex items-center justify-end gap-1.5">
+                          <IconButton label="Goruntule" icon={Eye} onClick={() => openDocumentBlob(row, item.kind)} />
+                          <IconButton label="E-posta" icon={Mail} onClick={() => sendEmail(row)} />
+                          <IconButton label="WhatsApp" icon={MessageCircle} onClick={() => sendWhatsapp(row)} />
+                          <IconButton label="SMS" icon={MessageSquareText} onClick={() => sendSms(row)} />
+                          <IconButton
+                            label="Sil"
+                            icon={Trash2}
+                            danger
+                            onClick={() => {
+                              if (confirm(`${beyanKaydiMukellefAdi(row)} kaydi silinsin mi?`)) deleteMut.mutate(row.id);
+                            }}
+                          />
+                        </div>
+                      </td>
+                    </tr>
+                  );
+                })}
               </tbody>
             </table>
+            <div className="px-4 py-3 text-[12.5px]" style={{ color: 'rgba(250,250,249,0.55)', borderTop: '1px solid rgba(255,255,255,0.055)' }}>
+              Toplam {tableRows.length.toLocaleString('tr-TR')} satir gosteriliyor.
+            </div>
+            <div className="flex flex-wrap gap-2 px-4 pb-4">
+              <button type="button" onClick={() => selectedTableRows[0] ? sendEmail(selectedTableRows[0].row) : toast.warning('Secili kayit yok')} className="inline-flex items-center gap-2 rounded-[8px] px-3 py-2 text-[12.5px] font-semibold" style={{ background: 'rgba(34,197,94,0.14)', border: '1px solid rgba(34,197,94,0.26)', color: '#86efac' }}>
+                <Mail size={15} /> Secili Beyann. / Tahakk. E-Posta Gonder
+              </button>
+              <button type="button" onClick={() => selectedUniqueRows[0] ? sendEmail(selectedUniqueRows[0]) : toast.warning('Secili kayit yok')} className="inline-flex items-center gap-2 rounded-[8px] px-3 py-2 text-[12.5px] font-semibold" style={{ background: 'rgba(56,189,248,0.13)', border: '1px solid rgba(56,189,248,0.28)', color: '#bae6fd' }}>
+                <Mail size={15} /> Secilenlere Gonder
+              </button>
+              <button type="button" onClick={() => {
+                const target = selectedTableRows.find((item) => item.kind === 'tahakkuk')?.row || selectedUniqueRows[0];
+                target ? sendSms(target) : toast.warning('Secili kayit yok');
+              }} className="inline-flex items-center gap-2 rounded-[8px] px-3 py-2 text-[12.5px] font-semibold" style={{ background: 'rgba(245,158,11,0.14)', border: '1px solid rgba(245,158,11,0.28)', color: '#fde68a' }}>
+                <MessageSquareText size={15} /> Secili Tahakk. SMS Gonder
+              </button>
+              <button type="button" onClick={() => selectedUniqueRows[0] ? sendWhatsapp(selectedUniqueRows[0]) : toast.warning('Secili kayit yok')} className="inline-flex items-center gap-2 rounded-[8px] px-3 py-2 text-[12.5px] font-semibold" style={{ background: 'rgba(34,197,94,0.14)', border: '1px solid rgba(34,197,94,0.26)', color: '#86efac' }}>
+                <MessageCircle size={15} /> WhatsApp Gonder
+              </button>
+              <button type="button" onClick={() => selectedTableRows[0] ? openDocumentBlob(selectedTableRows[0].row, selectedTableRows[0].kind) : toast.warning('Secili kayit yok')} className="inline-flex items-center gap-2 rounded-[8px] px-3 py-2 text-[12.5px] font-semibold" style={{ background: 'rgba(148,163,184,0.12)', border: '1px solid rgba(148,163,184,0.24)', color: '#e2e8f0' }}>
+                <Printer size={15} /> Secilenleri Yazdir
+              </button>
+              <button type="button" onClick={() => selectedTableRows.forEach((item) => downloadDocument(item))} className="inline-flex items-center gap-2 rounded-[8px] px-3 py-2 text-[12.5px] font-semibold" style={{ background: 'rgba(56,189,248,0.12)', border: '1px solid rgba(56,189,248,0.24)', color: '#bae6fd' }}>
+                <Download size={15} /> Secilenleri Indir ({selectedTableRows.length})
+              </button>
+              <button type="button" onClick={() => {
+                const ids = Array.from(new Set(selectedUniqueRows.map((row) => row.id)));
+                if (!ids.length) return toast.warning('Secili kayit yok');
+                if (confirm(`${ids.length} kayit silinsin mi?`)) bulkDeleteMut.mutate(ids);
+              }} className="inline-flex items-center gap-2 rounded-[8px] px-3 py-2 text-[12.5px] font-semibold" style={{ background: 'rgba(244,63,94,0.12)', border: '1px solid rgba(244,63,94,0.24)', color: '#fda4af' }}>
+                <Trash2 size={15} /> Secilenleri Sil
+              </button>
+              <button type="button" onClick={() => setSelectedDocKeys(new Set())} className="rounded-[8px] px-3 py-2 text-[12.5px] font-semibold" style={{ background: 'rgba(255,255,255,0.04)', border: '1px solid rgba(255,255,255,0.09)', color: 'rgba(250,250,249,0.72)' }}>
+                Secimi Temizle
+              </button>
+            </div>
           </div>
         )}
       </section>

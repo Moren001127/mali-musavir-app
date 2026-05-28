@@ -401,6 +401,19 @@ export class BeyanKayitlariService {
     return this.storage.getPresignedDownloadUrl(kayit.pdfUrl, filename);
   }
 
+  async getPdfFile(tenantId: string, id: string, filename = 'tahakkuk.pdf') {
+    const kayit = await (this.prisma as any).beyanKaydi.findFirst({
+      where: { id, tenantId },
+      select: { pdfUrl: true },
+    });
+    if (!kayit || !kayit.pdfUrl) throw new NotFoundException('Tahakkuk PDF bulunamadi');
+    return {
+      buffer: await this.storage.getBuffer(kayit.pdfUrl),
+      filename,
+      mimeType: 'application/pdf',
+    };
+  }
+
   /** Beyanname PDF için presigned URL */
   async getBeyannameUrl(tenantId: string, id: string, filename = 'beyanname.pdf'): Promise<string> {
     const kayit = await (this.prisma as any).beyanKaydi.findFirst({
@@ -409,6 +422,19 @@ export class BeyanKayitlariService {
     });
     if (!kayit || !kayit.beyannameUrl) throw new NotFoundException('Beyanname PDF bulunamadı');
     return this.storage.getPresignedDownloadUrl(kayit.beyannameUrl, filename);
+  }
+
+  async getBeyannameFile(tenantId: string, id: string, filename = 'beyanname.pdf') {
+    const kayit = await (this.prisma as any).beyanKaydi.findFirst({
+      where: { id, tenantId },
+      select: { beyannameUrl: true },
+    });
+    if (!kayit || !kayit.beyannameUrl) throw new NotFoundException('Beyanname PDF bulunamadi');
+    return {
+      buffer: await this.storage.getBuffer(kayit.beyannameUrl),
+      filename,
+      mimeType: 'application/pdf',
+    };
   }
 
   // ══════════════════════════════════════════════════════════

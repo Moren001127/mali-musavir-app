@@ -61,14 +61,18 @@ export class BeyanKayitlariController {
 
   @Get(':id/pdf')
   async pdf(@Req() req: any, @Param('id') id: string, @Res() res: Response) {
-    const url = await this.svc.getPdfUrl(req.user.tenantId, id);
-    res.redirect(url);
+    const file = await this.svc.getPdfFile(req.user.tenantId, id);
+    res.setHeader('Content-Type', file.mimeType);
+    res.setHeader('Content-Disposition', `inline; filename="${encodeURIComponent(file.filename)}"`);
+    res.send(file.buffer);
   }
 
   @Get(':id/beyanname')
   async beyanname(@Req() req: any, @Param('id') id: string, @Res() res: Response) {
-    const url = await this.svc.getBeyannameUrl(req.user.tenantId, id);
-    res.redirect(url);
+    const file = await this.svc.getBeyannameFile(req.user.tenantId, id);
+    res.setHeader('Content-Type', file.mimeType);
+    res.setHeader('Content-Disposition', `inline; filename="${encodeURIComponent(file.filename)}"`);
+    res.send(file.buffer);
   }
 
   // ── SİL ─────────────────────────────────────────────
