@@ -25,8 +25,7 @@ type FieldSpec = {
 };
 
 type PasswordSpec = {
-  // GIB_EBEYANNAME yeni UI'de "Parola" alani kaldirildi; null = field gosterme.
-  passwordLabel: string | null;
+  passwordLabel: string;
   secondaryPasswordLabel: string;
 };
 
@@ -43,7 +42,7 @@ const FIELD_SPECS: Record<PortalProvider, FieldSpec[]> = {
 };
 
 const PASSWORD_SPECS: Record<PortalProvider, PasswordSpec> = {
-  GIB_EBEYANNAME: { passwordLabel: null, secondaryPasswordLabel: 'Şifre' }, // YENI GIB UI'sinde Parola alani yok
+  GIB_EBEYANNAME: { passwordLabel: 'Parola', secondaryPasswordLabel: 'Şifre' },
   GIB_IVD: { passwordLabel: 'Parola', secondaryPasswordLabel: 'Şifre' },
   SGK_EBILDIRGE: { passwordLabel: 'Sistem şifresi', secondaryPasswordLabel: 'İşyeri şifresi' },
 };
@@ -167,11 +166,7 @@ function CredentialEditor({
     saveMut.isPending ||
     (provider !== 'GIB_EBEYANNAME' && !taxpayerId) ||
     !hasIdentity ||
-    (!credential && (
-      passwordSpec.passwordLabel
-        ? (!password || !secondaryPassword)
-        : !secondaryPassword
-    ));
+    (!credential && (!password || !secondaryPassword));
 
   return (
     <div className="rounded-lg border p-4" style={{ background: compact ? 'rgba(255,255,255,0.025)' : SOFT, borderColor: LINE }}>
@@ -199,14 +194,12 @@ function CredentialEditor({
             placeholder={field.placeholder}
           />
         ))}
-        {passwordSpec.passwordLabel && (
-          <PasswordInput
-            label={passwordSpec.passwordLabel}
-            value={password}
-            onChange={setPassword}
-            hasSaved={!!credential?.hasPassword}
-          />
-        )}
+        <PasswordInput
+          label={passwordSpec.passwordLabel}
+          value={password}
+          onChange={setPassword}
+          hasSaved={!!credential?.hasPassword}
+        />
         <PasswordInput
           label={passwordSpec.secondaryPasswordLabel}
           value={secondaryPassword}
