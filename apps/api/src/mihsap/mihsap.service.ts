@@ -1,6 +1,8 @@
-import { Injectable, Logger, BadRequestException, UnauthorizedException } from '@nestjs/common';
+import { Injectable, Logger, BadRequestException, UnauthorizedException, Optional } from '@nestjs/common';
 import { PrismaService } from '../prisma/prisma.service';
 import { StorageService } from '../storage/storage.service';
+import { NotificationsService } from '../notifications/notifications.service';
+import { NOTIFICATION_TYPES } from '../notifications/notification-types';
 
 const MIHSAP_BASE = 'https://app.mihsap.com';
 // MIHSAP all-faturas body'sinde kullanılan alan id'leri (keşif yoluyla bulundu)
@@ -39,6 +41,7 @@ export class MihsapService {
   constructor(
     private readonly prisma: PrismaService,
     private readonly storage: StorageService,
+    @Optional() private readonly notifications?: NotificationsService,
   ) {}
 
   // ==================== TOKEN YÖNETİMİ ====================
@@ -603,6 +606,48 @@ export class MihsapService {
         finishedAt: new Date(),
       },
     });
+
+    // === IN-APP BILDIRIM: Mihsap toplu islem tamamlandi ===
+    if (this.notifications) {
+      try {
+        let mukellefLabel = '';
+        if (params.mukellefId) {
+          const tp = await (this.prisma as any).taxpayer.findFirst({
+            where: { id: params.mukellefId, tenantId: params.tenantId },
+            select: { companyName: true, firstName: true, lastName: true },
+          }).catch(() => null);
+          if (tp) {
+            mukellefLabel = tp.companyName || [tp.firstName, tp.lastName].filter(Boolean).join(' ') || '';
+          }
+        }
+        const emoji = errorMsg ? '❌' : '✅';
+        const title = errorMsg
+          ? `${emoji} Mihsap aktarım hatası${mukellefLabel ? ` - ${mukellefLabel}` : ''}`
+          : `${emoji} Mihsap aktarım tamam${mukellefLabel ? ` - ${mukellefLabel}` : ''} (${fetched}/${total})`;
+        const body = errorMsg
+          ? `${params.donem} dönemi: ${String(errorMsg).slice(0, 300)}`
+          : `${params.donem} dönemi: ${fetched} fatura indirildi/güncellendi.`;
+        await this.notifications.createForTenant({
+          tenantId: params.tenantId,
+          type: NOTIFICATION_TYPES.MIHSAP_RESULT,
+          title,
+          body,
+          metadata: {
+            jobId: job.id,
+            mukellefId: params.mukellefId || null,
+            donem: params.donem,
+            total,
+            fetched,
+            errorMsg: errorMsg || null,
+            link: '/panel/ajanlar/mihsap',
+          },
+          dedupeKey: `mihsap-result:${job.id}`,
+          dedupeWindowMin: 60,
+        });
+      } catch (e) {
+        this.logger.warn(`MIHSAP_RESULT notif failed: ${(e as Error).message}`);
+      }
+    }
 
     if (errorMsg) {
       throw new BadRequestException(errorMsg);
