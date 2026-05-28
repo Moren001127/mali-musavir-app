@@ -32,9 +32,7 @@ type TaxpayerMatch = {
   lastName: string | null;
 };
 
-// GIB 2026'da e-Beyanname'yi Dijital Vergi Dairesi portali altinda topladi.
-// Eski URL (ebeyanname.gib.gov.tr/giris.html) artik ana sayfaya redirect ediyor.
-const DEFAULT_EBEYANNAME_LOGIN_URL = 'https://dijital.gib.gov.tr/portal/login';
+const DEFAULT_EBEYANNAME_LOGIN_URL = 'https://ebeyanname.gib.gov.tr/giris.html';
 const DEFAULT_GIB_IVD_LOGIN_URL = 'https://dijital.gib.gov.tr/';
 const DEFAULT_SGK_LOGIN_URL = 'https://uyg.sgk.gov.tr/';
 
@@ -194,12 +192,8 @@ export class PortalAutomationRailwayRunnerService implements OnModuleInit {
 
   private async runEBeyanname(tenantId: string, bundle: RunnerJobBundle) {
     const credential = bundle.credential;
-    // YENI GIB UI'sinda (2026 Dijital Vergi Dairesi) eski "Parola" alani kaldirildi.
-    // GIB'in "Sifre" alani portaldaki "Sifre" (=secondaryPassword) degeriyle doldurulur.
-    // Eski portal "Parola" (=password) alani artik kullanilmiyor.
-    const ebeyannameSifre = credential.secondaryPassword || credential.password;
-    if (!credential.userCode || !ebeyannameSifre) {
-      throw new Error('Mali musavir e-Beyanname kullanici kodu ve sifre eksik');
+    if (!credential.userCode || !credential.password || !credential.secondaryPassword) {
+      throw new Error('Mali musavir e-Beyanname kullanici kodu, parola ve sifre eksik');
     }
 
     const loginUrl = process.env.PORTAL_AUTOMATION_EBEYANNAME_LOGIN_URL || DEFAULT_EBEYANNAME_LOGIN_URL;
@@ -226,36 +220,11 @@ export class PortalAutomationRailwayRunnerService implements OnModuleInit {
       page.setDefaultTimeout(15_000);
 
       await page.goto(loginUrl, { waitUntil: 'domcontentloaded', timeout: 60_000 });
-      await page.waitForTimeout(2000); // Vue/React app yuklensin
-
-      // 2captcha bazen GIB CAPTCHA'sini yanlis cozer (~%5-10 oran).
-      // 3 deneme + her fail'de CAPTCHA refresh ile basari sansini %99+'a cikariyoruz.
-      const MAX_LOGIN_ATTEMPTS = 3;
-      for (let attempt = 1; attempt <= MAX_LOGIN_ATTEMPTS; attempt++) {
-        try {
-          if (attempt > 1) {
-            this.logger.warn('[eBeyanname] Login denemesi #' + attempt + ': sayfa refresh + CAPTCHA yenile');
-            await page.reload({ waitUntil: 'domcontentloaded', timeout: 30_000 }).catch(() => {});
-            await page.waitForTimeout(2000);
-          }
-          await this.fillEBeyannameLogin(page, credential.userCode, ebeyannameSifre);
-          await this.fillEBeyannameCaptcha(page);
-          await this.submitLogin(page);
-          await page.waitForLoadState('domcontentloaded', { timeout: 20_000 }).catch(() => {});
-          await page.waitForTimeout(2000);
-          await this.assertLoggedIn(page);
-          if (attempt > 1) {
-            this.logger.log('[eBeyanname] Login denemesi #' + attempt + ' BASARILI');
-          }
-          break;
-        } catch (loginErr: any) {
-          const msg = String(loginErr?.message || loginErr).slice(0, 200);
-          this.logger.warn('[eBeyanname] Login denemesi #' + attempt + '/' + MAX_LOGIN_ATTEMPTS + ' basarisiz: ' + msg);
-          if (attempt === MAX_LOGIN_ATTEMPTS) {
-            throw new Error('e-Beyanname login ' + MAX_LOGIN_ATTEMPTS + ' denemede basarisiz. Son hata: ' + msg);
-          }
-        }
-      }
+      await this.fillEBeyannameLogin(page, credential.userCode, credential.password, credential.secondaryPassword);
+      await this.submitLogin(page);
+      await page.waitForLoadState('domcontentloaded', { timeout: 20_000 }).catch(() => {});
+      await page.waitForTimeout(1500);
+      await this.assertLoggedIn(page);
 
       const collection = await this.collectEBeyannameDownloads(tenantId, page, bundle.job, downloadsPath);
       await context.close().catch(() => {});
@@ -547,58 +516,50 @@ export class PortalAutomationRailwayRunnerService implements OnModuleInit {
     return m ? m[0].slice(0, 80) : null;
   }
 
-  /**
-   * Yeni GIB Dijital Vergi Dairesi (2026) login form'u: userid + sifre.
-   * CAPTCHA ayri fonksiyonda doldurulur (fillEBeyannameCaptcha).
-   */
-  private async fillEBeyannameLogin(page: any, userCode: string, password: string) {
-    // Kesin selector'lar — yeni UI'da name/id ayni: userid, sifre, dk
-    const userInput = page.locator('input[name="userid"], input[id="userid"]').first();
-    await userInput.waitFor({ state: 'visible', timeout: 10_000 }).catch(() => null);
-    if (!(await userInput.isVisible().catch(() => false))) {
-      throw new Error('Kullanici kodu alani bulunamadi (userid)');
-    }
-    await userInput.fill(userCode);
-
-    const passwordInput = page.locator('input[name="sifre"], input[id="sifre"], input[type="password"]').first();
-    if (!(await passwordInput.isVisible().catch(() => false))) {
-      throw new Error('Sifre alani bulunamadi (sifre)');
-    }
-    await passwordInput.fill(password);
-  }
-
-  /**
-   * Login form'undaki CAPTCHA (img alt="captchaImg") yakalanip 2captcha ile cozuluyor,
-   * sonra "dk" input'una yaziliyor. Submit'i CALLER yapacak.
-   */
-  private async fillEBeyannameCaptcha(page: any): Promise<void> {
-    const apiKey = process.env.TWOCAPTCHA_API_KEY || process.env.TWO_CAPTCHA_API_KEY;
-    if (!apiKey) {
-      throw new Error('TWOCAPTCHA_API_KEY env yok; e-Beyanname CAPTCHA cozulemez');
+  private async fillEBeyannameLogin(page: any, userCode: string, password: string, secondaryPassword: string) {
+    const fields: any[] = [];
+    const inputs = page.locator('input:not([type="hidden"]):not([type="submit"]):not([type="button"]):not([type="image"]), textarea');
+    const count = await inputs.count().catch(() => 0);
+    for (let i = 0; i < count; i++) {
+      const loc = inputs.nth(i);
+      if (await loc.isVisible().catch(() => false)) fields.push(loc);
     }
 
-    // CAPTCHA goruntusunu yakala — yeni UI'da img alt="captchaImg"
-    const captchaImg = await page.$('img[alt="captchaImg"], img[alt*="captcha" i]').catch(() => null);
-    if (!captchaImg) {
-      throw new Error('CAPTCHA gorsel bulunamadi (img[alt="captchaImg"])');
-    }
-    let base64: string;
-    try {
-      const buffer = await captchaImg.screenshot({ type: 'png' });
-      base64 = buffer.toString('base64');
-    } catch (err: any) {
-      throw new Error(`CAPTCHA screenshot hata: ${err?.message || err}`);
+    if (fields.length >= 3) {
+      await fields[0].fill(userCode);
+      await fields[1].fill(password);
+      await fields[2].fill(secondaryPassword);
+      return;
     }
 
-    const captchaText = await this.solveCaptchaWith2Captcha(base64, apiKey);
-    this.logger.log(`[eBeyanname] CAPTCHA cozuldu: "${captchaText}" (${captchaText.length} karakter)`);
+    await this.fillFirst(page, [
+      'input[name*="kullanici" i]',
+      'input[id*="kullanici" i]',
+      'input[name*="user" i]',
+      'input[id*="user" i]',
+      'input[name*="kod" i]',
+      'input[id*="kod" i]',
+    ], userCode);
 
-    // "dk" (Dogrulama Kodu) input'una yaz
-    const dkInput = page.locator('input[name="dk"], input[id="dk"]').first();
-    if (!(await dkInput.isVisible().catch(() => false))) {
-      throw new Error('Dogrulama kodu (dk) alani bulunamadi');
+    const passwordFields = page.locator('input[type="password"]');
+    const passwordCount = await passwordFields.count().catch(() => 0);
+    if (passwordCount >= 2) {
+      await passwordFields.nth(0).fill(password);
+      await passwordFields.nth(1).fill(secondaryPassword);
+      return;
     }
-    await dkInput.fill(captchaText);
+    if (passwordCount === 1) {
+      await passwordFields.nth(0).fill(password);
+      await this.fillFirst(page, [
+        'input[name*="sifre" i]:not([type="password"])',
+        'input[id*="sifre" i]:not([type="password"])',
+        'input[name*="şifre" i]:not([type="password"])',
+        'input[id*="şifre" i]:not([type="password"])',
+      ], secondaryPassword);
+      return;
+    }
+
+    throw new Error('e-Beyanname giris alanlari bulunamadi');
   }
 
   private async fillFirst(page: any, selectors: string[], value: string) {
@@ -614,8 +575,6 @@ export class PortalAutomationRailwayRunnerService implements OnModuleInit {
 
   private async submitLogin(page: any) {
     const selectors = [
-      'button:has-text("Giriş Yap")',  // yeni GIB Dijital Vergi Dairesi UI
-      'button:has-text("Giris Yap")',
       'button[type="submit"]',
       'input[type="submit"]',
       'button:has-text("Giriş")',
@@ -733,11 +692,6 @@ export class PortalAutomationRailwayRunnerService implements OnModuleInit {
     inForm.append('method', 'base64');
     inForm.append('body', base64);
     inForm.append('json', '0');
-    // GIB CAPTCHA case-sensitive (genelde BUYUK HARF) — 2captcha varsayilan
-    // kucuk harf donduyor, bu yuzden regsense=1 zorunlu.
-    inForm.append('regsense', '1');
-    inForm.append('min_len', '4');
-    inForm.append('max_len', '6');
 
     const inRes = await fetch('https://2captcha.com/in.php', {
       method: 'POST',
