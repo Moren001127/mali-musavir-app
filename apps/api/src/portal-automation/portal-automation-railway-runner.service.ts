@@ -1168,16 +1168,31 @@ export class PortalAutomationRailwayRunnerService implements OnModuleInit {
 
   private async hasEBeyannameSearchFormIn(target: any) {
     return target.evaluate(() => {
-      if (document.querySelector('form#taxReturnSearchForm')) return true;
-      const cmd = document.querySelector<HTMLInputElement>('input[name="cmd"]');
-      if (cmd?.value === 'BEYANNAMELISTESI') return true;
+      const hasRealSearchFields = () => {
+        const radios = Array.from(document.querySelectorAll<HTMLInputElement>('input[type="radio"], input[name="durum"]'));
+        const hasStatusRadios = ['0', '1', '2'].every((value) =>
+          radios.some((radio) => radio.name === 'durum' && radio.value === value),
+        );
+        const dateIds = [
+          'baslangicTarihiGun',
+          'baslangicTarihiAy',
+          'baslangicTarihiYil',
+          'bitisTarihiGun',
+          'bitisTarihiAy',
+          'bitisTarihiYil',
+        ];
+        const hasDateIds = dateIds.every((id) => document.getElementById(id));
+        return hasStatusRadios && hasDateIds && !!document.querySelector('#sorgulaButon, input[name="sorgulaButon"]');
+      };
+      const form = document.querySelector('form#taxReturnSearchForm');
+      if (form && hasRealSearchFields()) return true;
       const norm = (value: string) => String(value || '')
         .toLocaleUpperCase('tr-TR')
         .normalize('NFD')
         .replace(/[\u0300-\u036f]/g, '')
         .replace(/\s+/g, ' ');
       const text = norm(document.body?.innerText || '');
-      return text.includes('BEYANNAME ARA') && (text.includes('YUKLEME TARIH') || text.includes('DURUM') || text.includes('SORGULA'));
+      return hasRealSearchFields() && text.includes('BEYANNAME ARA') && (text.includes('YUKLEME TARIH') || text.includes('DURUM') || text.includes('SORGULA'));
     }).catch(() => false);
   }
 
@@ -1370,8 +1385,14 @@ export class PortalAutomationRailwayRunnerService implements OnModuleInit {
   }
 
   private async selectEBeyannameStatus(page: any, status: EBeyannameStatus) {
+    if (await this.hasEBeyannameResultList(page)) {
+      await this.closeEBeyannameResultList(page).catch(() => {});
+    }
+    if (!(await this.hasEBeyannameSearchForm(page))) {
+      await this.openEBeyannameSearch(page, []).catch(() => {});
+    }
     const target = await this.findEBeyannameSearchTarget(page) || page;
-    const ok = await target.evaluate((status: EBeyannameStatus) => {
+    const result = await target.evaluate((status: EBeyannameStatus) => {
       const wanted = status === 'hatali'
         ? 'HATALI'
         : status === 'beklemede'
@@ -1392,20 +1413,34 @@ export class PortalAutomationRailwayRunnerService implements OnModuleInit {
       const fire = (el: HTMLInputElement) => {
         el.dispatchEvent(new Event('input', { bubbles: true }));
         el.dispatchEvent(new Event('change', { bubbles: true }));
+        el.dispatchEvent(new MouseEvent('click', { bubbles: true, cancelable: true, view: window }));
       };
+      const inspect = () => ({
+        url: window.location.href,
+        form: !!document.querySelector('form#taxReturnSearchForm'),
+        statusCheckbox: !!document.querySelector('#sorguTipiD'),
+        radios: Array.from(document.querySelectorAll<HTMLInputElement>('input[type="radio"], input[name="durum"]'))
+          .map((radio) => ({
+            id: radio.id,
+            name: radio.name,
+            value: radio.value,
+            checked: radio.checked,
+            visible: isVisible(radio),
+            text: norm((radio.closest('tr') || radio.parentElement)?.textContent || '').slice(0, 120),
+          })),
+      });
 
       const directStatusCheckbox = document.querySelector<HTMLInputElement>('#sorguTipiD');
       if (directStatusCheckbox && !directStatusCheckbox.checked) {
-        directStatusCheckbox.click();
         directStatusCheckbox.checked = true;
         fire(directStatusCheckbox);
       }
       const directRadio = document.querySelector<HTMLInputElement>(`input[name="durum"][value="${value}"]`);
       if (directRadio) {
-        directRadio.click();
+        directRadio.removeAttribute('disabled');
         directRadio.checked = true;
         fire(directRadio);
-        return true;
+        return directRadio.checked ? { ok: true, inspect: inspect() } : { ok: false, inspect: inspect() };
       }
 
       const statusScopes = Array.from(document.querySelectorAll<HTMLElement>('tr, tbody, table, div'))
@@ -1422,7 +1457,6 @@ export class PortalAutomationRailwayRunnerService implements OnModuleInit {
           return text.includes('DURUM') && !text.includes('YUKLEME');
         });
       if (statusCheckbox && !statusCheckbox.checked) {
-        statusCheckbox.click();
         statusCheckbox.checked = true;
         fire(statusCheckbox);
       }
@@ -1447,15 +1481,16 @@ export class PortalAutomationRailwayRunnerService implements OnModuleInit {
 
       let radio = radios.find((candidate) => textForRadio(candidate).includes(wanted));
       if (!radio && radios[order]) radio = radios[order];
-      if (!radio) return false;
-      radio.click();
+      if (!radio) return { ok: false, inspect: inspect() };
+      radio.removeAttribute('disabled');
       radio.checked = true;
       fire(radio);
-      return true;
-    }, status).catch(() => false);
+      return radio.checked ? { ok: true, inspect: inspect() } : { ok: false, inspect: inspect() };
+    }, status).catch((err: any) => ({ ok: false, error: String(err?.message || err) }));
 
-    if (!ok) {
-      throw new Error(`e-Beyanname Durum secenegi tiklanamadi: ${status}. Gorunen kontroller: ${await this.visibleActionSnapshot(page)}`);
+    if (!result?.ok) {
+      const detail = this.compact(JSON.stringify(result?.inspect || result?.error || {}));
+      throw new Error(`e-Beyanname Durum secenegi tiklanamadi: ${status}. Detay: ${detail}. Gorunen kontroller: ${await this.visibleActionSnapshot(page)}`);
     }
   }
 
