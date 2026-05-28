@@ -1,14 +1,19 @@
-import { Injectable, NotFoundException, ForbiddenException, BadRequestException, Optional } from '@nestjs/common';
+import { Injectable, NotFoundException, ForbiddenException, BadRequestException, Optional, Logger } from '@nestjs/common';
 import { PrismaService } from '../prisma/prisma.service';
 import { StorageService } from '../storage/storage.service';
 import { InitiateUploadDto, UpdateDocumentDto } from '@mali-musavir/shared';
 import { AutomationEventBus } from '../automations/automation-event-bus.service';
+import { NotificationsService } from '../notifications/notifications.service';
+import { NOTIFICATION_TYPES } from '../notifications/notification-types';
 
 @Injectable()
 export class DocumentsService {
+  private readonly logger = new Logger(DocumentsService.name);
+
   constructor(
     private prisma: PrismaService,
     private storage: StorageService,
+    private notifications: NotificationsService,
     @Optional() private readonly eventBus?: AutomationEventBus,
   ) {}
 
@@ -101,6 +106,34 @@ export class DocumentsService {
         sizeBytes: meta.sizeBytes,
         uploadedBy: userId,
       });
+    }
+
+    // === IN-APP BILDIRIM: Yeni evrak yuklendi ===
+    // Sadece tenant'in mukellef'i adina (yukleyen kullanici 3. parti veya mukellefin kendisi olabilir)
+    // Yukleyenden farkli kullanicilara bildirim.
+    try {
+      const mukellefAdi = taxpayer.companyName ||
+        [taxpayer.firstName, taxpayer.lastName].filter(Boolean).join(' ') ||
+        'Mükellef';
+      const sizeKb = Math.round((meta.sizeBytes || 0) / 1024);
+      await this.notifications.createForTenant({
+        tenantId,
+        type: NOTIFICATION_TYPES.DOCUMENT_UPLOADED,
+        title: `📤 Yeni evrak: ${mukellefAdi} - ${dto.title}`,
+        body: `${dto.category || 'Belge'} kategorisinde, ${sizeKb} KB. Evrak detayını incelemek için tıklayın.`,
+        metadata: {
+          documentId: document.id,
+          taxpayerId: dto.taxpayerId,
+          taxpayerName: mukellefAdi,
+          category: dto.category,
+          mimeType: dto.mimeType,
+          sizeBytes: meta.sizeBytes,
+          uploadedBy: userId,
+          link: `/panel/evraklar/${document.id}`,
+        },
+      });
+    } catch (e) {
+      this.logger.warn(`DOCUMENT_UPLOADED notif failed: ${(e as Error).message}`);
     }
 
     return document;
