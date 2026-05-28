@@ -10,11 +10,12 @@ import {
   ImportResult,
   beyanKaydiMukellefAdi,
 } from '@/lib/beyan-kayitlari';
-import { portalAutomationApi } from '@/lib/portal-automation';
+import { PORTAL_JOB_LABEL, PortalJob, portalAutomationApi } from '@/lib/portal-automation';
 import { api } from '@/lib/api';
 import PortalAutomationPanel from '@/components/portal-automation/PortalAutomationPanel';
+import Link from 'next/link';
 import {
-  Search, Upload, FileText, Trash2,
+  Search, Upload, Download, FileText, Trash2,
   CheckCircle2, AlertCircle, FileQuestion, Loader2, X as IconX,
   FolderUp, FileX2, Archive, Sparkles, Eye, Mail, MessageCircle,
   MessageSquareText, Filter, CalendarDays, UserRound, RotateCcw,
@@ -83,6 +84,29 @@ function fmtDate(value?: string | null): string {
   const d = new Date(value);
   if (!Number.isFinite(d.getTime())) return '—';
   return d.toLocaleDateString('tr-TR');
+}
+
+function fmtDateTime(value?: string | null): string {
+  if (!value) return '—';
+  const d = new Date(value);
+  if (!Number.isFinite(d.getTime())) return '—';
+  return d.toLocaleString('tr-TR', { dateStyle: 'short', timeStyle: 'short' });
+}
+
+function portalTaxpayerName(job: PortalJob): string {
+  const taxpayer = job.taxpayer;
+  if (!taxpayer) return 'Tüm ofis';
+  return taxpayer.companyName || [taxpayer.firstName, taxpayer.lastName].filter(Boolean).join(' ') || taxpayer.taxNumber || 'Mükellef';
+}
+
+function portalJobStatus(status: PortalJob['status']) {
+  switch (status) {
+    case 'done': return { label: 'Tamam', color: '#22c55e', bg: 'rgba(34,197,94,0.12)', border: 'rgba(34,197,94,0.22)' };
+    case 'running': return { label: 'Çalışıyor', color: '#38bdf8', bg: 'rgba(56,189,248,0.12)', border: 'rgba(56,189,248,0.22)' };
+    case 'failed': return { label: 'Hata', color: '#fb7185', bg: 'rgba(244,63,94,0.12)', border: 'rgba(244,63,94,0.24)' };
+    case 'cancelled': return { label: 'İptal', color: '#94a3b8', bg: 'rgba(148,163,184,0.12)', border: 'rgba(148,163,184,0.22)' };
+    default: return { label: 'Kuyrukta', color: '#f59e0b', bg: 'rgba(245,158,11,0.12)', border: 'rgba(245,158,11,0.22)' };
+  }
 }
 
 function dateInputValue(d: Date): string {
@@ -287,20 +311,6 @@ export default function BeyannamelerPage() {
     }
   };
 
-  const summary = useMemo(() => {
-    const withBeyan = filtered.filter((k) => !!k.beyannameUrl).length;
-    const withTahakkuk = filtered.filter((k) => !!k.pdfUrl).length;
-    const missing = filtered.filter((k) => !k.beyannameUrl && !k.pdfUrl).length;
-    const totalAmount = filtered.reduce((sum, k) => sum + (k.tahakkukTutari || 0), 0);
-    return { total: filtered.length, withBeyan, withTahakkuk, missing, totalAmount };
-  }, [filtered]);
-
-  const typeCounts = useMemo(() => {
-    const map: Record<string, number> = { all: kayitlar.length };
-    for (const row of kayitlar) map[row.beyanTipi] = (map[row.beyanTipi] || 0) + 1;
-    return map;
-  }, [kayitlar]);
-
   const clearFilters = () => {
     setSearch('');
     setTypeFilter('all');
@@ -417,12 +427,70 @@ export default function BeyannamelerPage() {
         </div>
       </section>
 
-      <section className="hidden">
-        <StatTile label="Listelenen" value={summary.total} sub={`${kayitlar.length} toplam kayıt`} tone="gold" />
-        <StatTile label="Beyanname PDF" value={summary.withBeyan} sub="görüntülenebilir" tone="green" />
-        <StatTile label="Tahakkuk PDF" value={summary.withTahakkuk} sub="fiş mevcut" tone="blue" />
-        <StatTile label="Eksik Belge" value={summary.missing} sub="pdf bulunmuyor" tone="rose" />
-        <StatTile label="Tahakkuk Toplamı" value={fmtCurrency(summary.totalAmount)} sub="filtre sonucu" tone="gold" />
+      <section
+        className="rounded-2xl overflow-hidden"
+        style={{
+          background: 'linear-gradient(135deg, rgba(17,24,22,0.94), rgba(12,11,10,0.98))',
+          border: '1px solid rgba(125,211,252,0.16)',
+          boxShadow: 'inset 0 1px 0 rgba(255,255,255,0.04)',
+        }}
+      >
+        <div className="grid gap-0 xl:grid-cols-[minmax(0,1.15fr),minmax(360px,0.85fr)]">
+          <div className="p-4 sm:p-5" style={{ borderRight: '1px solid rgba(255,255,255,0.06)' }}>
+            <div className="mb-4 flex flex-wrap items-start justify-between gap-3">
+              <div>
+                <div className="mb-2 flex items-center gap-2">
+                  <ServerCog size={16} style={{ color: '#7dd3fc' }} />
+                  <h2 className="text-[15px] font-semibold" style={{ color: '#fafaf9' }}>Sunucu İndirme Akışı</h2>
+                </div>
+                <div className="flex flex-wrap gap-2">
+                  <AutomationPill label="Runner" value={portalSummary?.runner?.enabled ? 'Aktif' : 'Pasif'} tone={portalSummary?.runner?.enabled ? 'blue' : 'rose'} />
+                  <AutomationPill label="Şifre" value={portalSummary?.credentials.eBeyannameReady ? 'Hazır' : 'Eksik'} tone={portalSummary?.credentials.eBeyannameReady ? 'green' : 'rose'} />
+                </div>
+              </div>
+              <Link
+                href="/panel/ayarlar"
+                className="inline-flex h-9 items-center gap-1.5 rounded-[9px] px-3 text-[12.5px] font-semibold"
+                style={{ background: 'rgba(255,255,255,0.04)', border: '1px solid rgba(255,255,255,0.08)', color: 'rgba(250,250,249,0.78)' }}
+              >
+                <KeyRound size={14} /> Şifre Ayarları
+              </Link>
+            </div>
+
+            <div className="grid gap-3 lg:grid-cols-[1fr,1fr,minmax(180px,220px)]">
+              <DateField label="Başlangıç Tarihi" value={pullFrom} onChange={setPullFrom} />
+              <DateField label="Bitiş Tarihi" value={pullTo} onChange={setPullTo} />
+              <button
+                type="button"
+                onClick={() => pullMut.mutate()}
+                disabled={pullMut.isPending}
+                className="h-12 self-end rounded-[10px] px-5 text-[13px] font-bold inline-flex items-center justify-center gap-2"
+                style={{ background: `linear-gradient(135deg, ${GOLD}, #b8a06f)`, color: '#0f0d0b', opacity: pullMut.isPending ? 0.65 : 1 }}
+              >
+                {pullMut.isPending ? <Loader2 size={15} className="animate-spin" /> : <Download size={15} />}
+                Beyannameleri Çek
+              </button>
+            </div>
+
+            <div className="mt-3 flex flex-wrap items-center gap-2">
+              <button
+                type="button"
+                onClick={() => nightlyMut.mutate()}
+                disabled={nightlyMut.isPending}
+                className="inline-flex h-9 items-center gap-1.5 rounded-[9px] px-3 text-[12.5px] font-semibold disabled:opacity-50"
+                style={{ background: 'rgba(125,211,252,0.08)', border: '1px solid rgba(125,211,252,0.18)', color: '#bae6fd' }}
+              >
+                {nightlyMut.isPending ? <Loader2 size={14} className="animate-spin" /> : <Play size={14} />}
+                Gece Akışını Çalıştır
+              </button>
+              <span className="inline-flex h-9 items-center gap-1.5 rounded-[9px] px-3 text-[12px]" style={{ background: 'rgba(255,255,255,0.025)', border: '1px solid rgba(255,255,255,0.06)', color: 'rgba(250,250,249,0.52)' }}>
+                <Clock size={13} /> {portalSummary?.nightly?.time || '02:15'} Europe/Istanbul
+              </span>
+            </div>
+          </div>
+
+          <AutomationJobList jobs={portalSummary?.latestJobs || []} />
+        </div>
       </section>
 
       <section
@@ -432,7 +500,7 @@ export default function BeyannamelerPage() {
         <div className="px-4 py-3 text-[12.5px] font-semibold flex items-center gap-2" style={{ background: 'rgba(255,255,255,0.035)', color: 'rgba(250,250,249,0.78)', borderBottom: '1px solid rgba(255,255,255,0.06)', borderRadius: '16px 16px 0 0' }}>
           <Search size={13} style={{ color: 'rgba(250,250,249,0.5)' }} /> Filtrele
         </div>
-        <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-2 p-4">
+        <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-[minmax(220px,1.3fr),repeat(5,minmax(160px,1fr)),52px] gap-2 p-4">
           <SelectBox icon={UserRound} value={selectedTaxpayer} onChange={setSelectedTaxpayer}>
             <option value="all">Tüm mükellefler</option>
             {taxpayerOptions.map((t) => (
@@ -441,7 +509,7 @@ export default function BeyannamelerPage() {
           </SelectBox>
           <SelectBox icon={Filter} value={typeFilter} onChange={(v) => setTypeFilter(v as FilterKey)}>
             {FILTER_KEYS.map((f) => (
-              <option key={f.key} value={f.key}>{f.label} ({typeCounts[f.key] || 0})</option>
+              <option key={f.key} value={f.key}>{f.label}</option>
             ))}
           </SelectBox>
           <SelectBox icon={FileText} value={docFilter} onChange={(v) => setDocFilter(v as BelgeFilter)}>
@@ -478,38 +546,6 @@ export default function BeyannamelerPage() {
         </div>
       </section>
 
-      <section className="rounded-2xl overflow-hidden" style={{ background: 'rgba(255,255,255,0.025)', border: '1px solid rgba(125,211,252,0.18)' }}>
-        <div className="px-4 py-3 text-[13px] font-semibold flex items-center gap-2" style={{ background: 'rgba(125,211,252,0.06)', color: '#fafaf9', borderBottom: '1px solid rgba(255,255,255,0.06)' }}>
-          <span className="w-1.5 h-1.5 rounded-full" style={{ background: '#7dd3fc' }} />
-          Mali Müşavir Şifresiyle E-Beyannameleri Çek
-        </div>
-        <div className="grid gap-3 p-4 lg:grid-cols-[1fr,1fr,auto]">
-          <DateField label="Başlangıç Tarihi" value={pullFrom} onChange={setPullFrom} />
-          <DateField label="Bitiş Tarihi" value={pullTo} onChange={setPullTo} />
-          <button
-            type="button"
-            onClick={() => pullMut.mutate()}
-            disabled={pullMut.isPending}
-            className="h-12 self-end rounded-[10px] px-5 text-[13px] font-bold inline-flex items-center justify-center gap-2"
-            style={{ background: `linear-gradient(135deg, ${GOLD}, #b8a06f)`, color: '#0f0d0b', opacity: pullMut.isPending ? 0.65 : 1 }}
-          >
-            {pullMut.isPending ? <Loader2 size={15} className="animate-spin" /> : <Upload size={15} />}
-            Beyannameleri Çek
-          </button>
-
-        </div>
-      </section>
-
-      <details className="rounded-2xl overflow-hidden" style={{ background: 'rgba(255,255,255,0.02)', border: '1px solid rgba(255,255,255,0.07)' }}>
-        <summary className="cursor-pointer px-4 py-3 text-[12.5px] font-semibold flex items-center gap-2" style={{ color: 'rgba(250,250,249,0.72)' }}>
-          <span className="w-1.5 h-1.5 rounded-full" style={{ background: 'rgba(250,250,249,0.45)' }} />
-          Gelişmiş: Otomatik çekim paneli (sunucu kuyruğu, zamanlanmış görevler)
-        </summary>
-        <div className="p-4 pt-0">
-          <PortalAutomationPanel focus="beyanname" />
-        </div>
-      </details>
-
       <section className="rounded-2xl overflow-hidden" style={{ background: 'rgba(255,255,255,0.02)', border: '1px solid rgba(255,255,255,0.07)' }}>
         <div className="px-4 py-3 flex items-center justify-between gap-3" style={{ borderBottom: '1px solid rgba(255,255,255,0.06)' }}>
           <div>
@@ -517,10 +553,6 @@ export default function BeyannamelerPage() {
             <p className="text-[12px] mt-0.5" style={{ color: 'rgba(250,250,249,0.45)' }}>
               Tarihe göre yeni kayıtlar üstte gösterilir. Satır aksiyonları doğrudan mükellef iletişim bilgilerini kullanır.
             </p>
-          </div>
-          <div className="flex items-center gap-2">
-            <span className="text-[12px] tabular-nums" style={{ color: 'rgba(250,250,249,0.5)' }}>{filtered.length} kayıt</span>
-
           </div>
         </div>
 
@@ -623,19 +655,62 @@ export default function BeyannamelerPage() {
   );
 }
 
-function StatTile({ label, value, sub, tone }: { label: string; value: string | number; sub: string; tone: 'gold' | 'green' | 'blue' | 'rose' }) {
+function AutomationPill({ label, value, tone }: { label: string; value: string | number; tone: 'green' | 'blue' | 'rose' | 'muted' }) {
   const colors = {
-    gold: '#d4b876',
-    green: '#22c55e',
-    blue: '#7dd3fc',
-    rose: '#fb7185',
+    green: { color: '#86efac', bg: 'rgba(34,197,94,0.10)', border: 'rgba(34,197,94,0.20)' },
+    blue: { color: '#7dd3fc', bg: 'rgba(56,189,248,0.10)', border: 'rgba(56,189,248,0.20)' },
+    rose: { color: '#fda4af', bg: 'rgba(244,63,94,0.10)', border: 'rgba(244,63,94,0.22)' },
+    muted: { color: 'rgba(250,250,249,0.62)', bg: 'rgba(255,255,255,0.035)', border: 'rgba(255,255,255,0.07)' },
   } as const;
-  const color = colors[tone];
+  const c = colors[tone];
   return (
-    <div className="rounded-2xl p-4" style={{ background: 'rgba(255,255,255,0.025)', border: `1px solid ${color}33` }}>
-      <div className="text-[10.5px] uppercase font-bold tracking-[.14em]" style={{ color: 'rgba(250,250,249,0.46)' }}>{label}</div>
-      <div className="mt-2 text-[24px] font-semibold tabular-nums tracking-[-.02em]" style={{ color }}>{value}</div>
-      <div className="text-[11.5px] mt-1" style={{ color: 'rgba(250,250,249,0.42)' }}>{sub}</div>
+    <span className="inline-flex h-8 items-center gap-2 rounded-[9px] px-3 text-[11.5px] font-semibold" style={{ background: c.bg, border: `1px solid ${c.border}`, color: c.color }}>
+      <span style={{ color: 'rgba(250,250,249,0.46)' }}>{label}</span>
+      <span className="tabular-nums">{value}</span>
+    </span>
+  );
+}
+
+function AutomationJobList({ jobs }: { jobs: PortalJob[] }) {
+  const visibleJobs = jobs.slice(0, 4);
+  return (
+    <div className="p-4 sm:p-5">
+      <div className="mb-3 flex items-center justify-between gap-3">
+        <h3 className="text-[14px] font-semibold" style={{ color: '#fafaf9' }}>Son İşler</h3>
+      </div>
+      <div className="grid gap-2">
+        {visibleJobs.length === 0 && (
+          <div className="rounded-xl px-4 py-5 text-center text-[12.5px]" style={{ background: 'rgba(255,255,255,0.025)', border: '1px solid rgba(255,255,255,0.06)', color: 'rgba(250,250,249,0.48)' }}>
+            Henüz indirme işi yok.
+          </div>
+        )}
+        {visibleJobs.map((job) => {
+          const status = portalJobStatus(job.status);
+          return (
+            <div key={job.id} className="rounded-xl p-3" style={{ background: 'rgba(255,255,255,0.025)', border: `1px solid ${status.border}` }}>
+              <div className="flex items-start justify-between gap-3">
+                <div className="min-w-0">
+                  <div className="truncate text-[13px] font-semibold" style={{ color: '#fafaf9' }}>
+                    {PORTAL_JOB_LABEL[job.jobType] || job.jobType}
+                  </div>
+                  <div className="mt-1 truncate text-[11.5px]" style={{ color: 'rgba(250,250,249,0.44)' }}>
+                    {portalTaxpayerName(job)} · {job.source === 'nightly' ? 'gece' : 'manuel'} · {fmtDateTime(job.createdAt)}
+                  </div>
+                </div>
+                <span className="shrink-0 rounded-md px-2 py-1 text-[10.5px] font-bold" style={{ background: status.bg, color: status.color }}>
+                  {status.label}
+                </span>
+              </div>
+              {job.errorMessage && (
+                <div className="mt-2 flex items-start gap-1.5 text-[11.5px] leading-5" style={{ color: '#fca5a5' }}>
+                  <AlertCircle size={13} className="mt-[3px] shrink-0" />
+                  <span>{job.errorMessage.slice(0, 180)}</span>
+                </div>
+              )}
+            </div>
+          );
+        })}
+      </div>
     </div>
   );
 }
