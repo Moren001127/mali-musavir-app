@@ -6,6 +6,7 @@ import { useQuery, useQueryClient } from '@tanstack/react-query';
 import { api } from '@/lib/api';
 import { toast } from 'sonner';
 import { ButcePlanView, GelirGiderTablosuView, KasaBankaView } from './ButceTakipView';
+import { CariTahsilatWorkspace } from './CariTahsilatWorkspace';
 import {
   Wallet, Calendar, Plus, Download, Trash2, Loader2,
   TrendingUp, TrendingDown, X, Edit3, Search, ArrowLeft, FileText, Receipt,
@@ -129,7 +130,7 @@ export default function CariKasaPage() {
 
   // Tüm hook'lar çağrıldı — şimdi early return güvenli (Rules of Hooks uyumlu)
   if (!taxpayerId) {
-    return <GenelListeView onSelect={setTaxpayerId} />;
+    return <CariTahsilatWorkspace onSelect={setTaxpayerId} />;
   }
 
   const selectedTaxpayer = taxpayers.find((t) => t.id === taxpayerId);
