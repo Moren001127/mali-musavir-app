@@ -194,11 +194,11 @@ export class PortalAutomationRailwayRunnerService implements OnModuleInit {
       where: {
         status: 'running',
         targetDeviceId: this.deviceId,
-        startedAt: { lt: cutoff },
+        updatedAt: { lt: cutoff },
       },
       data: {
         status: 'failed',
-        errorMessage: `Railway runner zaman asimi (${minutes} dk)`,
+        errorMessage: `Railway runner hareketsizlik zaman asimi (${minutes} dk)`,
         finishedAt: new Date(),
       },
     });
@@ -325,11 +325,12 @@ export class PortalAutomationRailwayRunnerService implements OnModuleInit {
       return {
         declarations: collection.declarations,
         documents: collection.documents,
-        recordCount: collection.declarations.length + collection.documents.length,
+        recordCount: collection.persistedCount + collection.declarations.length + collection.documents.length,
         result: {
           runner: 'railway',
           phase: collection.phase,
           url: this.safeUrl(eBeyannamePage.url()),
+          persistedCount: collection.persistedCount,
           declarations: collection.declarations.length,
           documents: collection.documents.length,
           notes: collection.notes,
@@ -971,6 +972,7 @@ export class PortalAutomationRailwayRunnerService implements OnModuleInit {
     const notes: string[] = [];
     const declarations: any[] = [];
     const documents: any[] = [];
+    let persistedCount = 0;
     const taxpayers = await this.loadTaxpayers(tenantId);
 
     await this.jobProgress(tenantId, job, 'search_open', 'Beyanname Ara menusu aciliyor.');
@@ -989,11 +991,12 @@ export class PortalAutomationRailwayRunnerService implements OnModuleInit {
       await this.selectEBeyannameStatus(page, item.status);
       const beforeCount = declarations.length + documents.length;
       const collected = await this.queryEBeyannameStatus(tenantId, page, item.status, item.download, downloadsPath, taxpayers, job, notes);
+      persistedCount += collected.persistedCount || 0;
       declarations.push(...collected.declarations);
       documents.push(...collected.documents);
-      const added = declarations.length + documents.length - beforeCount;
+      const added = (collected.persistedCount || 0) + declarations.length + documents.length - beforeCount;
       await this.jobProgress(tenantId, job, `status_${item.status}_done`, `${item.label} sorgusu tamamlandi: ${added} kayit eklendi.`, {
-        records: declarations.length + documents.length,
+        records: persistedCount + declarations.length + documents.length,
       });
 
       if (item.status !== 'onaylandi') {
@@ -1003,12 +1006,13 @@ export class PortalAutomationRailwayRunnerService implements OnModuleInit {
       }
     }
 
-    if (!declarations.length && !documents.length) {
+    if (!persistedCount && !declarations.length && !documents.length) {
       notes.push(`Indirilecek beyanname/tahakkuk bulunamadi. URL=${this.safeUrl(page.url())}`);
     }
 
     return {
-      phase: declarations.length || documents.length ? 'download_collected' : 'no_records',
+      phase: persistedCount || declarations.length || documents.length ? 'download_collected' : 'no_records',
+      persistedCount,
       declarations,
       documents,
       notes,
@@ -1575,20 +1579,20 @@ export class PortalAutomationRailwayRunnerService implements OnModuleInit {
     if (dialogMessages.length) {
       notes.push(`${status}: GIB uyarisi: ${this.compact(dialogMessages.join(' | '))}`);
       await this.jobProgress(tenantId, job, `status_${status}_empty`, `${this.ebeyanStatusLabel(status)} icin GIB kayit bulamadi.`);
-      return { declarations, documents };
+      return { declarations, documents, persistedCount: 0 };
     }
 
     if (!(await this.hasEBeyannameResultList(page))) {
       notes.push(`${status}: liste acilmadi, sonuc yok kabul edildi. URL=${this.safeUrl(page.url())}`);
       await this.jobProgress(tenantId, job, `status_${status}_empty`, `${this.ebeyanStatusLabel(status)} listesi acilmadi, kayit yok kabul edildi.`);
-      return { declarations, documents };
+      return { declarations, documents, persistedCount: 0 };
     }
 
     if (downloadApproved) {
       const approved = await this.collectApprovedEBeyannamePages(tenantId, page, downloadsPath, taxpayers, job, notes);
       declarations.push(...approved.declarations);
       documents.push(...approved.documents);
-      return { declarations, documents };
+      return { declarations, documents, persistedCount: approved.persistedCount || 0 };
     }
 
     const rows = await this.collectStatusOnlyEBeyannamePages(page, status, notes);
@@ -1597,7 +1601,7 @@ export class PortalAutomationRailwayRunnerService implements OnModuleInit {
       if (declaration) declarations.push(declaration);
     }
     notes.push(`${status}: ${rows.length} satir okundu, ${declarations.length} takip kaydi eslendi`);
-    return { declarations, documents };
+    return { declarations, documents, persistedCount: 0 };
   }
 
   private ebeyanStatusLabel(status: EBeyannameStatus) {
@@ -1822,6 +1826,7 @@ export class PortalAutomationRailwayRunnerService implements OnModuleInit {
   ) {
     const declarations: any[] = [];
     const documents: any[] = [];
+    let persistedCount = 0;
     const maxRows = Math.max(1, Math.min(3000, Number(process.env.PORTAL_AUTOMATION_EBEYANNAME_MAX_APPROVED_ROWS || 1000)));
     let processedRows = 0;
     let pageNo = 0;
@@ -1922,6 +1927,10 @@ export class PortalAutomationRailwayRunnerService implements OnModuleInit {
           });
         }
         if (declaration) declarations.push(declaration);
+
+        if (declarations.length + documents.length >= this.ebeyannamePartialFlushSize()) {
+          persistedCount += await this.flushPartialEBeyannameResults(tenantId, job, declarations, documents, notes);
+        }
       }
 
       const pagination = await this.readEBeyannamePagination(page);
@@ -1933,8 +1942,34 @@ export class PortalAutomationRailwayRunnerService implements OnModuleInit {
       }
     }
 
-    notes.push(`onaylandi: ${processedRows} satir islendi, ${declarations.length} takip kaydi eslendi, ${documents.length} eslesmeyen belge`);
-    return { declarations, documents };
+    notes.push(`onaylandi: ${processedRows} satir islendi, ${persistedCount + declarations.length} takip kaydi eslendi, ${documents.length} eslesmeyen belge`);
+    return { declarations, documents, persistedCount };
+  }
+
+  private ebeyannamePartialFlushSize() {
+    return Math.max(1, Math.min(50, Number(process.env.PORTAL_AUTOMATION_EBEYANNAME_PARTIAL_FLUSH_ROWS || 10)));
+  }
+
+  private async flushPartialEBeyannameResults(
+    tenantId: string,
+    job: any,
+    declarations: any[],
+    documents: any[],
+    notes: string[],
+  ) {
+    if (!declarations.length && !documents.length) return 0;
+    const decls = declarations.splice(0, declarations.length);
+    const docs = documents.splice(0, documents.length);
+    try {
+      const saved = await this.portalAutomation.savePartialJobResults(tenantId, job.id, { declarations: decls, documents: docs });
+      if (saved > 0) notes.push(`ara kayit: ${saved} belge/beyanname DB'ye yazildi`);
+      return saved;
+    } catch (err: any) {
+      declarations.unshift(...decls);
+      documents.unshift(...docs);
+      notes.push(`ara kayit yazilamadi: ${this.compact(err?.message || err)}`);
+      return 0;
+    }
   }
 
   private async collectStatusOnlyEBeyannamePages(page: any, status: EBeyannameStatus, notes: string[]) {
@@ -2015,7 +2050,7 @@ export class PortalAutomationRailwayRunnerService implements OnModuleInit {
   }
 
   private ebeyannameFileTimeoutMs() {
-    return Math.max(20_000, Math.min(180_000, Number(process.env.PORTAL_AUTOMATION_EBEYANNAME_FILE_TIMEOUT_MS || 45_000)));
+    return Math.max(8_000, Math.min(180_000, Number(process.env.PORTAL_AUTOMATION_EBEYANNAME_FILE_TIMEOUT_MS || 20_000)));
   }
 
   private async withTimeout<T>(promise: Promise<T>, timeoutMs: number, onTimeout: () => Promise<T> | T): Promise<T> {

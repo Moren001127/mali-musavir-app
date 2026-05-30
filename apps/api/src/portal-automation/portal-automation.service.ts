@@ -566,6 +566,46 @@ export class PortalAutomationService {
     return updated;
   }
 
+  async savePartialJobResults(
+    tenantId: string,
+    jobId: string,
+    input: { declarations?: AgentDeclarationInput[]; documents?: AgentDocumentInput[] },
+  ) {
+    const job = await (this.prisma as any).portalAutomationJob.findFirst({ where: { id: jobId, tenantId } });
+    if (!job) throw new NotFoundException('Job bulunamadi');
+    if (job.status !== 'running') throw new BadRequestException(`Job ara kayit icin running degil: ${job.status}`);
+
+    let recordCount = 0;
+    const declarations = Array.isArray(input?.declarations) ? input.declarations : [];
+    const documents = Array.isArray(input?.documents) ? input.documents : [];
+
+    for (const decl of declarations) {
+      await this.storeDeclarationFromAgent(tenantId, jobId, decl);
+      recordCount++;
+    }
+    for (const doc of documents) {
+      await this.storePortalDocumentFromAgent(tenantId, jobId, doc, job.jobType);
+      recordCount++;
+    }
+
+    if (recordCount > 0) {
+      const previousResult = job.result && typeof job.result === 'object' && !Array.isArray(job.result) ? job.result : {};
+      await (this.prisma as any).portalAutomationJob.update({
+        where: { id: jobId },
+        data: {
+          recordCount: { increment: recordCount },
+          result: {
+            ...previousResult,
+            partialSaved: Number((previousResult as any).partialSaved || 0) + recordCount,
+            partialSavedAt: new Date().toISOString(),
+          },
+        },
+      });
+    }
+
+    return recordCount;
+  }
+
   resolveTenantFromAgentToken(token?: string): Promise<string> {
     return this.resolveTenantFromToken(token);
   }
