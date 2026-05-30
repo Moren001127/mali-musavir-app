@@ -807,7 +807,7 @@ export class EDefterControlService {
   }
 
   private analyzeVoucherDocumentStructure(meta: VoucherMeta, hasBelgeTuruData: boolean): FindingDraft[] {
-    if (meta.isVatAccrual || this.isClosingLikeVoucher(meta) || this.isCostReflectionVoucher(meta) || this.isPayrollVoucher(meta)) {
+    if (meta.isVatAccrual || this.isOpeningLikeVoucher(meta) || this.isClosingLikeVoucher(meta) || this.isCostReflectionVoucher(meta) || this.isPayrollVoucher(meta)) {
       return [];
     }
     const docRows = meta.rows.filter((r) => this.requiresDocumentFields(r, meta));
@@ -877,7 +877,7 @@ export class EDefterControlService {
   }
 
   private analyzeVoucherVatRisks(meta: VoucherMeta): FindingDraft[] {
-    if (meta.isVatAccrual || this.isClosingLikeVoucher(meta) || this.isCostReflectionVoucher(meta)) return [];
+    if (meta.isVatAccrual || this.isOpeningLikeVoucher(meta) || this.isClosingLikeVoucher(meta) || this.isCostReflectionVoucher(meta)) return [];
     const findings: FindingDraft[] = [];
     const desc = this.normalizeLoose(meta.description);
     const hasExceptionText = /tevkifat|istisna|iade|kur fark|kurfark|otv|oiv|ozel iletisim|istisnai/.test(desc);
@@ -1052,6 +1052,15 @@ export class EDefterControlService {
     return findings;
   }
 
+  private isOpeningLikeText(value?: string | null) {
+    const text = this.normalizeLoose(value);
+    return /(?:^|\s)a?cilis(?:\s+fisi|\s+kaydi)?(?:\s|$)/.test(text);
+  }
+
+  private isOpeningLikeVoucher(meta: VoucherMeta) {
+    return this.isOpeningLikeText(meta.description) || meta.rows.some((r) => this.isOpeningLikeText(this.rowText(r)));
+  }
+
   private isClosingLikeVoucher(meta: VoucherMeta) {
     const desc = this.normalizeLoose(meta.description);
     return /kapanis|yansitma|devir|virman|mahsup|aktarma|duzeltme/.test(desc);
@@ -1076,7 +1085,7 @@ export class EDefterControlService {
 
   private requiresDocumentFields(row: ParsedEDefterFisLine, meta?: VoucherMeta | null) {
     if (!row.hesapKodu) return false;
-    if (meta && (meta.isVatAccrual || this.isClosingLikeVoucher(meta) || this.isCostReflectionVoucher(meta) || this.isPayrollVoucher(meta))) {
+    if (meta && (meta.isVatAccrual || this.isOpeningLikeVoucher(meta) || this.isClosingLikeVoucher(meta) || this.isCostReflectionVoucher(meta) || this.isPayrollVoucher(meta))) {
       return false;
     }
 
@@ -1872,9 +1881,16 @@ export class EDefterControlService {
     const findings: FindingDraft[] = [];
     const months = this.monthKeysInRange(range.start, range.end);
     for (const mk of months) {
-      const monthRows = rows.filter((r) => r.fisTarihi && this.monthKey(r.fisTarihi) === mk);
+      const monthRows = rows
+        .filter((r) => r.fisTarihi && this.monthKey(r.fisTarihi) === mk)
+        .filter((r) => {
+          const text = this.rowText(r);
+          return !this.isOpeningLikeText(text) && !/kapanis|donem sonu/.test(text);
+        });
       if (!monthRows.length) continue;
-      const hasBordro = monthRows.some((r) => /^(770|772)/.test(r.hesapKodu || ''));
+      const payrollRows = monthRows.filter((r) => /ucret|maas|personel|bordro|sgk|ssk/.test(this.rowText(r)) || /^(335|361)/.test(r.hesapKodu || ''));
+      if (!payrollRows.length) continue;
+      const hasBordro = payrollRows.some((r) => /^(770|772)/.test(r.hesapKodu || ''));
       const hasPersonel = monthRows.some((r) => /^335/.test(r.hesapKodu || ''));
       const hasSgk = monthRows.some((r) => /^361/.test(r.hesapKodu || ''));
       if (!hasBordro && !hasPersonel && !hasSgk) continue;
@@ -1893,13 +1909,22 @@ export class EDefterControlService {
     return findings;
   }
 
-  // Stopaj kontrolleri: kira (360.01.006), SMM (360.01.007), damga (360.01.002), gelir vergisi (360.01.001)
+  // Stopaj kontrolleri: kira, SMM, damga ve gelir vergisi hesaplari.
   private analyzeStopajKontrolleri(rows: ParsedEDefterFisLine[], range: { start: Date; end: Date } | null): FindingDraft[] {
     const findings: FindingDraft[] = [];
+    const operationalRows = rows.filter((r) => {
+      const text = this.rowText(r);
+      return !this.isOpeningLikeText(text) && !/kapanis|donem sonu/.test(text);
+    });
+    const byVoucher = new Map<string, ParsedEDefterFisLine[]>();
+    for (const row of operationalRows) {
+      if (!byVoucher.has(row.voucherKey)) byVoucher.set(row.voucherKey, []);
+      byVoucher.get(row.voucherKey)!.push(row);
+    }
     // Kira odemesi varsa stopaj kontrolu
-    const kiraRows = rows.filter((r) => /^(770|760|730)/.test(r.hesapKodu || '') && /kira|isyeri/i.test(`${r.aciklama || ''} ${r.hesapAdi || ''}`));
+    const kiraRows = operationalRows.filter((r) => /^(770|760|730)/.test(r.hesapKodu || '') && /kira|isyeri/i.test(`${r.aciklama || ''} ${r.hesapAdi || ''}`));
     if (kiraRows.length) {
-      const stopajRows = rows.filter((r) => /^360\.01\.006/.test(r.hesapKodu || ''));
+      const stopajRows = operationalRows.filter((r) => /^360\.01\.006/.test(r.hesapKodu || ''));
       const kiraTotal = kiraRows.reduce((s, r) => s + Number(r.borc || 0), 0);
       const stopajTotal = stopajRows.reduce((s, r) => s + Number(r.alacak || 0), 0);
       if (kiraTotal > 1 && stopajTotal < 1) {
@@ -1928,15 +1953,19 @@ export class EDefterControlService {
       }
     }
 
-    // Serbest meslek odemesi varsa stopaj kontrolu (740 hizmet alimi + 360.01.007)
-    const smmRows = rows.filter((r) => /^(740|770)/.test(r.hesapKodu || '') && /smm|musavir|avukat|noter|serbest meslek|muhasebe|tercume/i.test(`${r.aciklama || ''} ${r.hesapAdi || ''}`));
+    // Serbest meslek odemesi varsa stopaj kontrolu. Hesap kodu ofis planinda 360.01.005/007 gibi degisebilir.
+    const smmRows = operationalRows.filter((r) => /^(740|770)/.test(r.hesapKodu || '') && /smm|musavir|müşavir|avukat|noter|serbest meslek|muhasebe|tercume|tercüme/i.test(`${r.aciklama || ''} ${r.hesapAdi || ''}`));
     if (smmRows.length) {
-      const stopajRows = rows.filter((r) => /^360\.01\.007/.test(r.hesapKodu || ''));
+      const stopajRows = operationalRows.filter((r) => {
+        if (!/^360/.test(r.hesapKodu || '')) return false;
+        const text = this.rowText(r);
+        return /^360\.01\.(005|007)/.test(r.hesapKodu || '') || /serbest meslek|smm/.test(text);
+      });
       if (stopajRows.length === 0) {
         findings.push({
           severity: 'WARN',
           category: 'SMM_STOPAJI_KONTROL',
-          message: `Donemde serbest meslek odemesi gorunuyor ancak 360.01.007 serbest meslek stopaji hesabi bos. %20 tevkifat zorunlu (GVK 94).`,
+          message: `Donemde serbest meslek odemesi gorunuyor ancak 360 altinda serbest meslek stopaji hesabi bulunamadi. %20 tevkifat zorunlu (GVK 94).`,
           voucherKey: smmRows[0].voucherKey,
           rowIndex: smmRows[0].rowIndex,
           hesapKodu: smmRows[0].hesapKodu,
@@ -1944,10 +1973,16 @@ export class EDefterControlService {
       }
     }
 
-    // Personel ucreti varsa damga vergisi kontrolu (335 var + 360.01.002 olmali)
-    const personelOdeme = rows.filter((r) => /^335/.test(r.hesapKodu || '') && Number(r.alacak || 0) > 0);
+    // Personel ucreti varsa damga vergisi kontrolu. Acilis bakiyesindeki 335 personel odemesi sayilmaz.
+    const personelOdeme = operationalRows.filter((r) => {
+      if (!/^335/.test(r.hesapKodu || '') || Number(r.alacak || 0) <= 0) return false;
+      const voucherRows = byVoucher.get(r.voucherKey) || [];
+      const voucherText = this.normalizeLoose(voucherRows.map((x) => this.rowText(x)).join(' '));
+      return /ucret|maas|personel|bordro/.test(voucherText) ||
+        voucherRows.some((x) => /^(770|772|361)/.test(x.hesapKodu || ''));
+    });
     if (personelOdeme.length) {
-      const damga = rows.filter((r) => /^360\.01\.002/.test(r.hesapKodu || ''));
+      const damga = operationalRows.filter((r) => /^360\.01\.002/.test(r.hesapKodu || '') || (/^360/.test(r.hesapKodu || '') && /damga/.test(this.rowText(r))));
       if (damga.length === 0) {
         findings.push({
           severity: 'INFO',
@@ -1970,7 +2005,7 @@ export class EDefterControlService {
     const startMonth = range.start.getUTCMonth();
     // Sadece Q1 veya yillik kontrol
     if (startMonth !== 0) return findings;
-    const acilisRows = rows.filter((r) => /acilis(?: fisi| kaydi)?/.test(this.rowText(r)));
+    const acilisRows = rows.filter((r) => this.isOpeningLikeText(this.rowText(r)));
     if (acilisRows.length === 0) {
       findings.push({
         severity: 'WARN',
