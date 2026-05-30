@@ -206,6 +206,35 @@ export class PortalAutomationService {
     private notifications: NotificationsService,
   ) {}
 
+  private isTemporaryTaxType(type?: string | null) {
+    return /^(GECICI_VERGI|GGECICI|KGECICI)$/i.test(String(type || ''));
+  }
+
+  private normalizeTextKey(value?: string | null) {
+    return String(value || '')
+      .toLocaleUpperCase('tr-TR')
+      .normalize('NFD')
+      .replace(/[\u0300-\u036f]/g, '')
+      .replace(/[^A-Z0-9]+/g, ' ')
+      .replace(/\s+/g, ' ')
+      .trim();
+  }
+
+  private canonicalDeclarationIdentity(input: AgentDeclarationInput) {
+    let beyanTipi = String(input.beyanTipi || '').toUpperCase();
+    let donem = String(input.donem || '');
+    if (beyanTipi === 'GECICI_VERGI') {
+      const rawKey = this.normalizeTextKey(JSON.stringify(input.raw || {})).replace(/\s+/g, '');
+      if (/GGECICI|GELIRGECICI|GELIRVERGISIGECICI/.test(rawKey)) beyanTipi = 'GGECICI';
+      else if (/KGECICI|KURUMGECICI|KURUMLARGECICI|KURUMLARVERGISIGECICI/.test(rawKey)) beyanTipi = 'KGECICI';
+    }
+    if (this.isTemporaryTaxType(beyanTipi)) {
+      const monthly = donem.match(/^(20\d{2})-(0[1-9]|1[0-2])$/);
+      if (monthly) donem = `${monthly[1]}-Q${Math.ceil(Number(monthly[2]) / 3)}`;
+    }
+    return { beyanTipi, donem };
+  }
+
   @Cron('0 15 2 * * *', { timeZone: 'Europe/Istanbul' })
   async nightlyTick() {
     try {
@@ -874,6 +903,9 @@ export class PortalAutomationService {
     });
     if (!taxpayer) throw new NotFoundException('Beyanname mukellefi bulunamadi');
 
+    const identity = this.canonicalDeclarationIdentity(input);
+    const beyanTipi = identity.beyanTipi;
+    const donem = identity.donem;
     const declarationStatus = normalizeAgentDeclarationStatus(input);
     if (declarationStatus !== 'onaylandi') {
       return (this.prisma as any).beyanDurumu.upsert({
@@ -881,15 +913,15 @@ export class PortalAutomationService {
           tenantId_taxpayerId_beyanTipi_donem: {
             tenantId,
             taxpayerId: taxpayer.id,
-            beyanTipi: input.beyanTipi,
-            donem: input.donem,
+            beyanTipi,
+            donem,
           },
         },
         create: {
           tenantId,
           taxpayerId: taxpayer.id,
-          beyanTipi: input.beyanTipi,
-          donem: input.donem,
+          beyanTipi,
+          donem,
           durum: declarationStatus,
           onayTarihi: null,
           tahakkukTutari: input.tahakkukTutari ?? null,
@@ -909,8 +941,8 @@ export class PortalAutomationService {
         tenantId_taxpayerId_beyanTipi_donem: {
           tenantId,
           taxpayerId: taxpayer.id,
-          beyanTipi: input.beyanTipi,
-          donem: input.donem,
+          beyanTipi,
+          donem,
         },
       },
       select: { id: true, beyannameUrl: true, pdfUrl: true, xmlUrl: true },
@@ -931,7 +963,7 @@ export class PortalAutomationService {
       return existingKayit;
     }
 
-    const base = `${tenantId}/${taxpayer.id}/gib-beyan/${input.beyanTipi}_${input.donem}`;
+    const base = `${tenantId}/${taxpayer.id}/gib-beyan/${beyanTipi}_${donem}`;
     const beyannameUrl = await this.storeBase64IfPresent(
       `${base}_Beyanname_${randomUUID()}.pdf`,
       skipBeyannameStorage ? null : beyannameCheck.base64,
@@ -982,15 +1014,15 @@ export class PortalAutomationService {
         tenantId_taxpayerId_beyanTipi_donem: {
           tenantId,
           taxpayerId: taxpayer.id,
-          beyanTipi: input.beyanTipi,
-          donem: input.donem,
+          beyanTipi,
+          donem,
         },
       },
       create: {
         tenantId,
         taxpayerId: taxpayer.id,
-        beyanTipi: input.beyanTipi,
-        donem: input.donem,
+        beyanTipi,
+        donem,
         tahakkukTutari: tahakkukTutari ?? null,
         odemeTutari: input.odemeTutari ?? null,
         onayNo,
@@ -1010,15 +1042,15 @@ export class PortalAutomationService {
         tenantId_taxpayerId_beyanTipi_donem: {
           tenantId,
           taxpayerId: taxpayer.id,
-          beyanTipi: input.beyanTipi,
-          donem: input.donem,
+          beyanTipi,
+          donem,
         },
       },
       create: {
         tenantId,
         taxpayerId: taxpayer.id,
-          beyanTipi: input.beyanTipi,
-          donem: input.donem,
+          beyanTipi,
+          donem,
           durum: 'onaylandi',
           onayTarihi: parseDateOrNull(input.beyanTarihi) || new Date(),
           tahakkukTutari,

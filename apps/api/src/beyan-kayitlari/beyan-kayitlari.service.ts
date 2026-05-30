@@ -73,6 +73,154 @@ export class BeyanKayitlariService {
     private storage: StorageService,
   ) {}
 
+  private isTemporaryTaxType(type?: string | null) {
+    return /^(GECICI_VERGI|GGECICI|KGECICI)$/i.test(String(type || ''));
+  }
+
+  private normalizeTextKey(value?: string | null) {
+    return String(value || '')
+      .toLocaleUpperCase('tr-TR')
+      .normalize('NFD')
+      .replace(/[\u0300-\u036f]/g, '')
+      .replace(/[^A-Z0-9]+/g, ' ')
+      .replace(/\s+/g, ' ')
+      .trim();
+  }
+
+  private rawNoteText(notlar?: string | null) {
+    if (!notlar) return '';
+    try {
+      const parsed = JSON.parse(notlar);
+      return JSON.stringify(parsed?.raw || parsed);
+    } catch {
+      return String(notlar || '');
+    }
+  }
+
+  private canonicalTemporaryType(type: string, notlar?: string | null) {
+    const current = String(type || '').toUpperCase();
+    if (current === 'GGECICI' || current === 'KGECICI') return current;
+    if (current !== 'GECICI_VERGI') return current;
+    const key = this.normalizeTextKey(this.rawNoteText(notlar)).replace(/\s+/g, '');
+    if (/GGECICI|GELIRGECICI|GELIRVERGISIGECICI/.test(key)) return 'GGECICI';
+    if (/KGECICI|KURUMGECICI|KURUMLARGECICI|KURUMLARVERGISIGECICI/.test(key)) return 'KGECICI';
+    return 'GECICI_VERGI';
+  }
+
+  private canonicalTemporaryPeriod(type: string, donem: string) {
+    if (!this.isTemporaryTaxType(type)) return donem;
+    const monthly = String(donem || '').match(/^(20\d{2})-(0[1-9]|1[0-2])$/);
+    if (!monthly) return donem;
+    return `${monthly[1]}-Q${Math.ceil(Number(monthly[2]) / 3)}`;
+  }
+
+  private canonicalTemporaryIdentity(row: { taxpayerId: string; beyanTipi: string; donem: string; notlar?: string | null }) {
+    if (!this.isTemporaryTaxType(row.beyanTipi)) return null;
+    const beyanTipi = this.canonicalTemporaryType(row.beyanTipi, row.notlar);
+    const donem = this.canonicalTemporaryPeriod(beyanTipi, row.donem);
+    return { taxpayerId: row.taxpayerId, beyanTipi, donem };
+  }
+
+  private beyanKaydiMergeScore(row: any) {
+    return (row.beyannameUrl ? 8 : 0)
+      + (row.pdfUrl ? 8 : 0)
+      + (row.xmlUrl ? 2 : 0)
+      + (row.tahakkukTutari != null ? 4 : 0)
+      + (row.onayNo ? 2 : 0)
+      + (/^20\d{2}-Q[1-4]$/i.test(row.donem) ? 1 : 0);
+  }
+
+  private async repairTemporaryTaxDuplicates(tenantId: string) {
+    const rows = await (this.prisma as any).beyanKaydi.findMany({
+      where: { tenantId, beyanTipi: { in: ['GECICI_VERGI', 'GGECICI', 'KGECICI'] } },
+      select: {
+        id: true,
+        tenantId: true,
+        taxpayerId: true,
+        beyanTipi: true,
+        donem: true,
+        beyanTarihi: true,
+        tahakkukTutari: true,
+        odemeTutari: true,
+        onayNo: true,
+        pdfUrl: true,
+        beyannameUrl: true,
+        xmlUrl: true,
+        kaynak: true,
+        importBatchId: true,
+        notlar: true,
+        createdAt: true,
+      },
+    });
+    const groups = new Map<string, any[]>();
+    for (const row of rows) {
+      const key = this.canonicalTemporaryIdentity(row);
+      if (!key) continue;
+      const groupKey = `${key.taxpayerId}|${key.beyanTipi}|${key.donem}`;
+      if (!groups.has(groupKey)) groups.set(groupKey, []);
+      groups.get(groupKey)!.push({ ...row, canonical: key });
+    }
+
+    for (const groupRows of groups.values()) {
+      if (groupRows.length < 2 && groupRows[0]?.beyanTipi === groupRows[0]?.canonical.beyanTipi && groupRows[0]?.donem === groupRows[0]?.canonical.donem) continue;
+      const canonical = groupRows[0].canonical;
+      try {
+        await (this.prisma as any).$transaction(async (tx: any) => {
+          const canonicalExisting = groupRows.find((row) => row.beyanTipi === canonical.beyanTipi && row.donem === canonical.donem);
+          const target = canonicalExisting || [...groupRows].sort((a, b) => this.beyanKaydiMergeScore(b) - this.beyanKaydiMergeScore(a))[0];
+          const valueFor = (field: string) => target[field] ?? groupRows.find((row) => row[field] != null)?.[field] ?? null;
+          await tx.beyanKaydi.update({
+            where: { id: target.id },
+            data: {
+              beyanTipi: canonical.beyanTipi,
+              donem: canonical.donem,
+              beyanTarihi: valueFor('beyanTarihi'),
+              tahakkukTutari: valueFor('tahakkukTutari'),
+              odemeTutari: valueFor('odemeTutari'),
+              onayNo: valueFor('onayNo'),
+              pdfUrl: valueFor('pdfUrl'),
+              beyannameUrl: valueFor('beyannameUrl'),
+              xmlUrl: valueFor('xmlUrl'),
+              kaynak: valueFor('kaynak') || 'gib_agent',
+              importBatchId: valueFor('importBatchId'),
+              notlar: valueFor('notlar'),
+            },
+          });
+
+          const duplicateIds = groupRows.filter((row) => row.id !== target.id).map((row) => row.id);
+          if (duplicateIds.length) await tx.beyanKaydi.deleteMany({ where: { id: { in: duplicateIds } } });
+
+          const sourceKeys = [
+            { beyanTipi: canonical.beyanTipi, donem: canonical.donem },
+            ...groupRows.map((row) => ({ beyanTipi: row.beyanTipi, donem: row.donem })),
+          ];
+          const statuses = await tx.beyanDurumu.findMany({
+            where: { tenantId, taxpayerId: canonical.taxpayerId, OR: sourceKeys },
+          });
+          if (statuses.length) {
+            const statusTarget = statuses.find((row: any) => row.beyanTipi === canonical.beyanTipi && row.donem === canonical.donem) || statuses[0];
+            const statusValueFor = (field: string) => statusTarget[field] ?? statuses.find((row: any) => row[field] != null)?.[field] ?? null;
+            await tx.beyanDurumu.update({
+              where: { id: statusTarget.id },
+              data: {
+                beyanTipi: canonical.beyanTipi,
+                donem: canonical.donem,
+                durum: statusValueFor('durum') || 'onaylandi',
+                onayTarihi: statusValueFor('onayTarihi'),
+                tahakkukTutari: statusValueFor('tahakkukTutari'),
+                notlar: statusValueFor('notlar'),
+              },
+            });
+            const statusDuplicateIds = statuses.filter((row: any) => row.id !== statusTarget.id).map((row: any) => row.id);
+            if (statusDuplicateIds.length) await tx.beyanDurumu.deleteMany({ where: { id: { in: statusDuplicateIds } } });
+          }
+        });
+      } catch (err: any) {
+        this.logger.warn(`Gecici vergi mukerrer onarimi atlandi: ${err?.message || err}`);
+      }
+    }
+  }
+
   /** Tek PDF için Claude'a metadata parse isteği gönder */
   async parseBeyannamePdf(pdfBase64: string): Promise<ParsedBeyan> {
     const apiKey = process.env.ANTHROPIC_API_KEY;
@@ -287,6 +435,10 @@ export class BeyanKayitlariService {
     tenantId: string,
     opts: { taxpayerId?: string; beyanTipi?: string; donem?: string; search?: string; limit?: number } = {},
   ) {
+    await this.repairTemporaryTaxDuplicates(tenantId).catch((err) => {
+      this.logger.warn(`Gecici vergi liste onarimi calismadi: ${err?.message || err}`);
+    });
+
     const where: any = { tenantId };
     if (opts.taxpayerId) where.taxpayerId = opts.taxpayerId;
     if (opts.beyanTipi) where.beyanTipi = opts.beyanTipi;

@@ -2506,13 +2506,13 @@ export class PortalAutomationRailwayRunnerService implements OnModuleInit {
 
   private ebeyannameDonemFromRow(row: EBeyannameResultRow, beyanTipi: string, job: any) {
     const fallback = job.donem || this.inferDonem(job.periodEnd);
-    const text = String(row.taxPeriod || '');
-    const match = text.match(/\b(0?[1-9]|1[0-2])\/(20\d{2})\s*-\s*(0?[1-9]|1[0-2])\/(20\d{2})\b/);
-    if (!match) return fallback;
-    const startMonth = Number(match[1]);
-    const startYear = Number(match[2]);
-    const endMonth = Number(match[3]);
-    const endYear = Number(match[4]);
+    const text = `${row.taxPeriod || ''} ${row.rowText || ''}`;
+    const match = text.match(/\b(?:(0?[1-9]|1[0-2])\/(20\d{2})|(20\d{2})\/(0?[1-9]|1[0-2]))\s*-\s*(?:(0?[1-9]|1[0-2])\/(20\d{2})|(20\d{2})\/(0?[1-9]|1[0-2]))\b/);
+    if (!match) return /GECICI/.test(beyanTipi) ? this.canonicalTemporaryDonem(fallback) : fallback;
+    const startMonth = Number(match[1] || match[4]);
+    const startYear = Number(match[2] || match[3]);
+    const endMonth = Number(match[5] || match[8]);
+    const endYear = Number(match[6] || match[7]);
     if (!startYear || !endYear) return fallback;
     if (startYear !== endYear) return `${endYear}-YIL`;
     if (beyanTipi === 'KURUMLAR' || beyanTipi === 'GELIR') return `${startYear}-YIL`;
@@ -2520,6 +2520,12 @@ export class PortalAutomationRailwayRunnerService implements OnModuleInit {
       return `${endYear}-Q${Math.ceil(endMonth / 3)}`;
     }
     return `${endYear}-${String(endMonth).padStart(2, '0')}`;
+  }
+
+  private canonicalTemporaryDonem(donem: string) {
+    const monthly = String(donem || '').match(/^(20\d{2})-(0[1-9]|1[0-2])$/);
+    if (!monthly) return donem;
+    return `${monthly[1]}-Q${Math.ceil(Number(monthly[2]) / 3)}`;
   }
 
   private parseEBeyannameUploadTime(value?: string | null) {
