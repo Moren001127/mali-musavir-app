@@ -1860,10 +1860,13 @@ export class PortalAutomationRailwayRunnerService implements OnModuleInit {
         }
 
         const fileTimeoutMs = this.ebeyannameFileTimeoutMs();
+        const rowLocator = (!skipBeyanname || !skipTahakkuk)
+          ? await this.findEBeyannameResultRowLocator(await this.findEBeyannameResultTarget(page) || page, row)
+          : null;
         const beyannameResult = skipBeyanname
           ? { file: null, ownerMismatch: false }
           : await this.withTimeout(
-              this.downloadEBeyannameRowFile(page, row, 'beyanname', downloadsPath, processedRows, notes),
+              this.downloadEBeyannameRowFile(page, row, 'beyanname', downloadsPath, processedRows, notes, rowLocator),
               fileTimeoutMs,
               async () => {
                 notes.push(`beyanname: ${processedRows}. satir zaman asimi (${Math.round(fileTimeoutMs / 1000)} sn), atlandi`);
@@ -1876,7 +1879,7 @@ export class PortalAutomationRailwayRunnerService implements OnModuleInit {
         const tahakkukResult = skipTahakkuk
           ? { file: null, ownerMismatch: false }
           : await this.withTimeout(
-              this.downloadEBeyannameRowFile(page, row, 'tahakkuk', downloadsPath, processedRows, notes),
+              this.downloadEBeyannameRowFile(page, row, 'tahakkuk', downloadsPath, processedRows, notes, rowLocator),
               fileTimeoutMs,
               async () => {
                 notes.push(`tahakkuk: ${processedRows}. satir zaman asimi (${Math.round(fileTimeoutMs / 1000)} sn), atlandi`);
@@ -2001,9 +2004,9 @@ export class PortalAutomationRailwayRunnerService implements OnModuleInit {
     downloadsPath: string,
     sequence: number,
     notes: string[],
+    rowLocator?: any,
   ): Promise<EBeyannameFileDownloadResult> {
-    const target = await this.findEBeyannameResultTarget(page) || page;
-    const row = await this.findEBeyannameResultRowLocator(target, resultRow);
+    const row = rowLocator || await this.findEBeyannameResultRowLocator(await this.findEBeyannameResultTarget(page) || page, resultRow);
     if (!(await row.isVisible().catch(() => false))) {
       notes.push(`${kind}: satir ${resultRow.rowIndex + 1} gorunur degil`);
       return { file: null, ownerMismatch: false };
@@ -2050,7 +2053,7 @@ export class PortalAutomationRailwayRunnerService implements OnModuleInit {
   }
 
   private ebeyannameFileTimeoutMs() {
-    return Math.max(8_000, Math.min(180_000, Number(process.env.PORTAL_AUTOMATION_EBEYANNAME_FILE_TIMEOUT_MS || 20_000)));
+    return Math.max(6_000, Math.min(180_000, Number(process.env.PORTAL_AUTOMATION_EBEYANNAME_FILE_TIMEOUT_MS || 12_000)));
   }
 
   private async withTimeout<T>(promise: Promise<T>, timeoutMs: number, onTimeout: () => Promise<T> | T): Promise<T> {
@@ -2129,6 +2132,7 @@ export class PortalAutomationRailwayRunnerService implements OnModuleInit {
     kind: 'beyanname' | 'tahakkuk',
     notes: string[],
   ) {
+    if (!this.shouldValidateEBeyannameOwnerInRunner()) return true;
     const expectedTaxNumber = (row.taxNumber || '').replace(/\D/g, '');
     if (!expectedTaxNumber || !/pdf/i.test(file.mimeType || file.fileName || '')) return true;
 
@@ -2157,6 +2161,11 @@ export class PortalAutomationRailwayRunnerService implements OnModuleInit {
       const destroy = (parser as any).destroy;
       if (typeof destroy === 'function') await destroy.call(parser).catch(() => {});
     }
+  }
+
+  private shouldValidateEBeyannameOwnerInRunner() {
+    const raw = String(process.env.PORTAL_AUTOMATION_EBEYANNAME_RUNNER_VALIDATE_PDF_OWNER || '').trim().toLowerCase();
+    return raw === '1' || raw === 'true' || raw === 'yes';
   }
 
   private pickEBeyannameFileCandidate(
@@ -2202,18 +2211,19 @@ export class PortalAutomationRailwayRunnerService implements OnModuleInit {
       if (anchor) anchor.setAttribute('target', '_blank');
     }).catch(() => {});
 
-    const downloadPromise = page.waitForEvent('download', { timeout: 15_000 })
+    const eventTimeoutMs = this.ebeyannameDownloadEventTimeoutMs();
+    const downloadPromise = page.waitForEvent('download', { timeout: eventTimeoutMs })
       .then((download: any) => ({ type: 'download', value: download }))
       .catch(() => null);
-    const popupPromise = page.context().waitForEvent('page', { timeout: 10_000 })
+    const popupPromise = page.context().waitForEvent('page', { timeout: eventTimeoutMs })
       .then((popup: any) => ({ type: 'popup', value: popup }))
       .catch(() => null);
 
-    await loc.click({ timeout: 8_000 }).catch(() => null);
+    await loc.click({ timeout: Math.min(8_000, eventTimeoutMs) }).catch(() => null);
     const event: any = await Promise.race([
       downloadPromise,
       popupPromise,
-      this.wait(15_000).then(() => null),
+      this.wait(eventTimeoutMs).then(() => null),
     ]);
 
     if (event?.type === 'download') {
@@ -2249,6 +2259,10 @@ export class PortalAutomationRailwayRunnerService implements OnModuleInit {
     if (!saved) return null;
     const buffer = await readFile(filePath);
     return { base64: buffer.toString('base64'), fileName, mimeType: this.mimeFromName(fileName) };
+  }
+
+  private ebeyannameDownloadEventTimeoutMs() {
+    return Math.max(5_000, Math.min(60_000, Number(process.env.PORTAL_AUTOMATION_EBEYANNAME_DOWNLOAD_EVENT_TIMEOUT_MS || 10_000)));
   }
 
   private async savePdfFromPopup(popup: any, downloadsPath: string, fallbackName: string): Promise<EBeyannameFilePayload | null> {

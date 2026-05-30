@@ -950,10 +950,15 @@ export class PortalAutomationService {
       'application/xml',
       'beyanname.xml',
     );
-    const pdfMeta: { tahakkukTutari?: number | null; onayNo?: string | null } = await this.extractTahakkukMetaFromBase64(tahakkukCheck.base64).catch((err) => {
-      this.logger.warn(`Tahakkuk PDF meta okunamadi: ${err?.message || err}`);
-      return {};
-    });
+    const pdfMeta: { tahakkukTutari?: number | null; onayNo?: string | null } = tahakkukCheck.text
+      ? {
+          tahakkukTutari: this.extractTahakkukAmount(tahakkukCheck.text),
+          onayNo: this.extractTahakkukOnayNo(tahakkukCheck.text),
+        }
+      : await this.extractTahakkukMetaFromBase64(tahakkukCheck.base64).catch((err) => {
+          this.logger.warn(`Tahakkuk PDF meta okunamadi: ${err?.message || err}`);
+          return {};
+        });
     const tahakkukTutari = input.tahakkukTutari ?? pdfMeta.tahakkukTutari ?? null;
     const onayNo = input.onayNo || pdfMeta.onayNo || null;
 
@@ -1032,21 +1037,21 @@ export class PortalAutomationService {
     taxpayer: { id: string; taxNumber?: string | null },
     kind: 'beyanname' | 'tahakkuk',
     skipStorage: boolean,
-  ): Promise<{ base64: string | null; clearCurrent: boolean }> {
-    if (skipStorage) return { base64: null, clearCurrent: false };
+  ): Promise<{ base64: string | null; clearCurrent: boolean; text?: string | null }> {
+    if (skipStorage) return { base64: null, clearCurrent: false, text: null };
 
     const base64 = cleanBase64(kind === 'beyanname' ? input.beyannameBase64 : input.tahakkukBase64);
-    if (!base64) return { base64: null, clearCurrent: false };
+    if (!base64) return { base64: null, clearCurrent: false, text: null };
 
     const expectedTaxNo = this.normalizeTaxNoValue(taxpayer.taxNumber);
-    if (!expectedTaxNo) return { base64, clearCurrent: false };
+    if (!expectedTaxNo) return { base64, clearCurrent: false, text: null };
 
     const text = await this.pdfTextFromBase64(base64).catch((err) => {
       this.logger.warn(`${kind} PDF VKN kontrolu yapilamadi: ${err?.message || err}`);
       return '';
     });
     const compactDigits = text.replace(/\D/g, '');
-    if (compactDigits.includes(expectedTaxNo)) return { base64, clearCurrent: false };
+    if (compactDigits.includes(expectedTaxNo)) return { base64, clearCurrent: false, text };
 
     const seenTaxNos = this.extractTaxNumbers(text);
     let ownerTaxNo = seenTaxNos.find((taxNo) => taxNo !== expectedTaxNo) || null;
@@ -1057,13 +1062,13 @@ export class PortalAutomationService {
         return null;
       });
       const parsedTaxNo = this.normalizeTaxNoValue(parsed?.vkn);
-      if (parsedTaxNo === expectedTaxNo) return { base64, clearCurrent: false };
+      if (parsedTaxNo === expectedTaxNo) return { base64, clearCurrent: false, text };
       ownerTaxNo = parsedTaxNo || null;
     }
 
     if (!ownerTaxNo) {
       this.logger.warn(`${kind} PDF kayda yazilmadi: beklenen VKN/TCKN ${expectedTaxNo}, PDF sahibi dogrulanamadi.`);
-      return { base64: null, clearCurrent: true };
+      return { base64: null, clearCurrent: true, text };
     }
 
     await this.storePortalDocumentFromAgent(tenantId, jobId, {
@@ -1093,7 +1098,7 @@ export class PortalAutomationService {
       this.logger.warn(`${kind} PDF dogru mukellefe tasinamadi: ${err?.message || err}`);
     });
 
-    return { base64: null, clearCurrent: true };
+    return { base64: null, clearCurrent: true, text };
   }
 
   private async storePortalDocumentFromAgent(
