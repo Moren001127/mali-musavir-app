@@ -14,6 +14,7 @@ export const edefterControlApi = {
       .get('/edefter-control', { params: taxpayerId ? { taxpayerId } : {} })
       .then((r) => r.data),
   get: (id: string) => api.get(`/edefter-control/${id}`).then((r) => r.data),
+  reanalyze: (id: string) => api.post(`/edefter-control/${id}/reanalyze`).then((r) => r.data),
   fetchFromLucaAgent: (data: {
     mukellefId: string;
     donem: string;

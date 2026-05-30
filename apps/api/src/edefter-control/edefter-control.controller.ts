@@ -156,6 +156,14 @@ export class EDefterControlController {
     });
   }
 
+  @Post('edefter-control/:id/reanalyze')
+  @UseGuards(AuthGuard('jwt'), RolesGuard)
+  @Roles('ADMIN', 'STAFF')
+  @HttpCode(HttpStatus.OK)
+  reanalyze(@Req() req: any, @Param('id') id: string) {
+    return this.service.reanalyzeSession(id, req.user.tenantId);
+  }
+
   @Get('edefter-control/:id/export.xlsx')
   @UseGuards(AuthGuard('jwt'), RolesGuard)
   async exportExcel(@Req() req: any, @Param('id') id: string, @Res() res: Response) {

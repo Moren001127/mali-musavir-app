@@ -327,6 +327,79 @@ export class EDefterControlService {
     });
   }
 
+  async reanalyzeSession(sessionId: string, tenantId: string) {
+    const session = await (this.prisma as any).eDefterControlSession.findFirst({
+      where: { id: sessionId, tenantId },
+    });
+    if (!session) throw new NotFoundException('e-Defter oturumu bulunamadi');
+    if (!session.rawExcelBytes) {
+      throw new BadRequestException('Bu oturumda yeniden analiz icin Excel snapshot bulunamadi');
+    }
+
+    const donemTipi = this.normalizeDonemTipi(session.donem, session.donemTipi);
+    const range = this.donemToRange(session.donem, donemTipi);
+    const rawExcelBytes = Buffer.from(session.rawExcelBytes);
+    const rows = this.parser.parse(rawExcelBytes, { defaultYear: range?.start.getUTCFullYear() });
+    const voucherCount = new Set(rows.map((r) => r.voucherKey)).size;
+    const findings = this.analyze(rows, range);
+    const lineRows = rows.map((r) => ({
+      sessionId: session.id,
+      rowIndex: r.rowIndex,
+      voucherKey: r.voucherKey,
+      fisNo: this.slice(r.fisNo, 80),
+      yevmiyeNo: this.slice(r.yevmiyeNo, 80),
+      fisTarihi: r.fisTarihi || null,
+      fisTipi: this.slice(r.fisTipi, 80),
+      evrakNo: this.slice(r.evrakNo, 120),
+      evrakTarihi: r.evrakTarihi || null,
+      belgeTuru: this.slice(r.belgeTuru, 80),
+      hesapKodu: this.slice(r.hesapKodu, 80),
+      hesapAdi: this.slice(r.hesapAdi, 240),
+      aciklama: this.slice(r.aciklama, 600),
+      karsiHesap: this.slice(r.karsiHesap, 120),
+      vknTckn: this.slice(r.vknTckn, 20),
+      borc: r.borc || 0,
+      alacak: r.alacak || 0,
+      rawData: r.rawData || null,
+    }));
+
+    await (this.prisma as any).$transaction(async (tx: any) => {
+      await tx.eDefterFinding.deleteMany({ where: { sessionId: session.id } });
+      await tx.eDefterVoucherLine.deleteMany({ where: { sessionId: session.id } });
+      for (const chunk of this.chunks(lineRows, 700)) {
+        await tx.eDefterVoucherLine.createMany({ data: chunk });
+      }
+      for (const chunk of this.chunks(findings, 700)) {
+        await tx.eDefterFinding.createMany({
+          data: chunk.map((f) => ({
+            sessionId: session.id,
+            severity: f.severity,
+            category: f.category,
+            message: f.message,
+            voucherKey: f.voucherKey || null,
+            rowIndex: f.rowIndex || null,
+            hesapKodu: f.hesapKodu || null,
+            detail: f.detail || null,
+          })),
+        });
+      }
+      await tx.eDefterControlSession.update({
+        where: { id: session.id },
+        data: {
+          donemTipi,
+          donemBaslangic: range?.start || null,
+          donemBitis: range?.end || null,
+          totalLines: rows.length,
+          totalVouchers: voucherCount,
+          findingCount: findings.length,
+          status: findings.some((f) => f.severity === 'ERROR') || findings.length ? 'REVIEWING' : 'READY',
+        },
+      });
+    });
+
+    return this.getSession(session.id, tenantId);
+  }
+
   async exportFindingsAsExcel(sessionId: string, tenantId: string): Promise<Buffer> {
     const session = await (this.prisma as any).eDefterControlSession.findFirst({
       where: { id: sessionId, tenantId },

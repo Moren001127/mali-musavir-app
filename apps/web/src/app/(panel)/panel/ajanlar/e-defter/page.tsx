@@ -252,6 +252,16 @@ export default function EDefterAgentPage() {
     onError: (e: any) => toast.error(e?.response?.data?.message || e?.message || 'Excel indirilemedi'),
   });
 
+  const reanalyzeMut = useMutation({
+    mutationFn: () => edefterControlApi.reanalyze(activeSessionId!),
+    onSuccess: (data: any) => {
+      qc.setQueryData(['edefter-control-session', activeSessionId], data);
+      qc.invalidateQueries({ queryKey: ['edefter-control-list', taxpayerId] });
+      toast.success('Mevcut Excel snapshot yeniden analiz edildi');
+    },
+    onError: (e: any) => toast.error(e?.response?.data?.message || e?.message || 'Yeniden analiz edilemedi'),
+  });
+
   const jobQuery = useQuery({
     queryKey: ['edefter-luca-job', lucaJobId],
     queryFn: () => edefterControlApi.getLucaJob(lucaJobId!),
@@ -433,6 +443,9 @@ export default function EDefterAgentPage() {
             )}
             <button disabled={!activeSessionId || exportMut.isPending} onClick={() => exportMut.mutate()} className="h-9 px-3 rounded-lg text-xs font-semibold inline-flex items-center gap-1.5 disabled:opacity-40" style={{ background: PANEL, color: 'rgba(250,250,249,.85)', border: `1px solid ${BORDER_STRONG}` }}>
               {exportMut.isPending ? <Loader2 size={13} className="animate-spin" /> : <Download size={13} />} Excel
+            </button>
+            <button disabled={!activeSessionId || reanalyzeMut.isPending} onClick={() => reanalyzeMut.mutate()} className="h-9 px-3 rounded-lg text-xs font-semibold inline-flex items-center gap-1.5 disabled:opacity-40" style={{ background: PANEL, color: 'rgba(250,250,249,.85)', border: `1px solid ${BORDER_STRONG}` }}>
+              {reanalyzeMut.isPending ? <Loader2 size={13} className="animate-spin" /> : <RotateCcw size={13} />} Yeniden Analiz
             </button>
             <button disabled={!taxpayerId || fetchMut.isPending || !!lucaJobId} onClick={() => fetchMut.mutate()} className="h-9 px-3 rounded-lg text-xs font-semibold inline-flex items-center gap-1.5 disabled:opacity-50" style={{ background: 'rgba(212,184,118,.18)', color: GOLD, border: '1px solid rgba(212,184,118,.32)' }}>
               {fetchMut.isPending || lucaJobId ? <Loader2 size={13} className="animate-spin" /> : <Play size={13} />} Luca'dan Çek
