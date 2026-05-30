@@ -2150,8 +2150,8 @@ export class PortalAutomationRailwayRunnerService implements OnModuleInit {
       notes.push(`${kind}: satir ${row.rowIndex + 1} PDF VKN uyusmadi; beklenen ${expectedTaxNumber}, PDF ${seenTaxNumbers.slice(0, 3).join(', ')}. Kayda baglanmadi.`);
       return false;
     }
-    notes.push(`${kind}: satir ${row.rowIndex + 1} PDF icinde VKN/TCKN okunamadi; satir eslesmesiyle kayda baglandi (${expectedTaxNumber}).`);
-    return true;
+    notes.push(`${kind}: satir ${row.rowIndex + 1} PDF icinde VKN/TCKN okunamadi; kayda baglanmadi (${expectedTaxNumber}).`);
+    return false;
   }
 
   private async pdfTextFromBase64(base64: string) {
@@ -2167,7 +2167,7 @@ export class PortalAutomationRailwayRunnerService implements OnModuleInit {
 
   private shouldValidateEBeyannameOwnerInRunner() {
     const raw = String(process.env.PORTAL_AUTOMATION_EBEYANNAME_RUNNER_VALIDATE_PDF_OWNER || '').trim().toLowerCase();
-    return raw === '1' || raw === 'true' || raw === 'yes';
+    return !['0', 'false', 'no', 'off'].includes(raw);
   }
 
   private pickEBeyannameFileCandidate(

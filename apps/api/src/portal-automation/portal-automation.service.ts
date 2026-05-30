@@ -1122,8 +1122,33 @@ export class PortalAutomationService {
     }
 
     if (!ownerTaxNo) {
-      this.logger.warn(`${kind} PDF icinde VKN/TCKN okunamadi; satir eslesmesine guvenilerek kayda baglanacak. Beklenen: ${expectedTaxNo}.`);
-      return { base64, clearCurrent: false, text };
+      this.logger.warn(`${kind} PDF icinde VKN/TCKN okunamadi; kayda baglanmayacak. Beklenen: ${expectedTaxNo}.`);
+      await this.storePortalDocumentFromAgent(tenantId, jobId, {
+        taxpayerId: null,
+        belgeTuru: kind === 'tahakkuk' ? 'GIB_TAHAKKUK' : 'GIB_BEYANNAME',
+        title: kind === 'tahakkuk'
+          ? input.tahakkukFileName || 'tahakkuk.pdf'
+          : input.beyannameFileName || 'beyanname.pdf',
+        period: input.donem,
+        issuedAt: input.beyanTarihi || null,
+        receivedAt: new Date().toISOString(),
+        mimeType: 'application/pdf',
+        originalName: kind === 'tahakkuk'
+          ? input.tahakkukFileName || 'tahakkuk.pdf'
+          : input.beyannameFileName || 'beyanname.pdf',
+        base64,
+        raw: {
+          runner: 'portal-automation',
+          source: 'declaration-owner-unknown',
+          ownerUnknown: true,
+          expectedTaxNo,
+          originalTaxpayerId: taxpayer.id,
+          originalRaw: input.raw || null,
+        },
+      }, 'EBEYANNAME_DAILY_DOWNLOAD').catch((err) => {
+        this.logger.warn(`${kind} PDF eslesmeyen belge olarak saklanamadi: ${err?.message || err}`);
+      });
+      return { base64: null, clearCurrent: true, text };
     }
 
     await this.storePortalDocumentFromAgent(tenantId, jobId, {

@@ -716,14 +716,6 @@ export default function BeyannamelerPage() {
                   <AutomationPill label="Şifre" value={portalSummary?.credentials.eBeyannameReady ? 'Hazır' : 'Eksik'} tone={portalSummary?.credentials.eBeyannameReady ? 'green' : 'rose'} />
                 </div>
               </div>
-              <button
-                type="button"
-                onClick={() => setImportModal(true)}
-                className="inline-flex h-9 items-center gap-1.5 rounded-[9px] px-3 text-[12.5px] font-semibold"
-                style={{ background: 'rgba(34,197,94,0.10)', border: '1px solid rgba(34,197,94,0.22)', color: '#86efac' }}
-              >
-                <FolderUp size={14} /> Klasor/ZIP Aktar
-              </button>
               <Link
                 href="/panel/ayarlar"
                 className="inline-flex h-9 items-center gap-1.5 rounded-[9px] px-3 text-[12.5px] font-semibold"
