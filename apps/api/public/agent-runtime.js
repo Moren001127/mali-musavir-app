@@ -252,8 +252,10 @@
   let lucaCredentialCacheAt = 0;
   let activeCaptchaChallengeId = '';
   let activeCaptchaSignature = '';
+  let activeCaptchaRequestSignature = '';
+  let activeCaptchaRequestPromise = null;
   const captchaChallengeCounts = new Map();
-  const MAX_CAPTCHA_CHALLENGES_PER_JOB = 2;
+  const MAX_CAPTCHA_CHALLENGES_PER_JOB = 5;
   let lucaLoginBusy = false;
 
   async function getLucaCredentialForAgent() {
@@ -465,47 +467,65 @@
     const signature = `${parts.image.src || ''}|${parts.input.name || parts.input.id || ''}|${location.href}`;
     try {
       if (!activeCaptchaChallengeId || activeCaptchaSignature !== signature) {
-        const captchaKey = job.id || 'global';
-        const storageKey = `moren_luca_captcha_count_${captchaKey}`;
-        let previousCount = captchaChallengeCounts.get(captchaKey) || 0;
-        try {
-          previousCount = Math.max(previousCount, Number(localStorage.getItem(storageKey) || 0));
-        } catch {}
-        const nextCount = previousCount + 1;
-        captchaChallengeCounts.set(captchaKey, nextCount);
-        try { localStorage.setItem(storageKey, String(nextCount)); } catch {}
-        if (nextCount > MAX_CAPTCHA_CHALLENGES_PER_JOB) {
-          const msg = `Luca guvenlik kodu ${MAX_CAPTCHA_CHALLENGES_PER_JOB} kez tekrarlandi; ajan durduruldu. Kullanici/sifre veya CAPTCHA cevabi kontrol edilmeli.`;
-          setStatus(msg);
-          if (log) await log(msg);
-          window.__morenAgent.stopRequested = true;
-          await fetch(API + `/agent/luca/jobs/${job.id}/fail`, {
-            method: 'POST',
-            headers: { 'Content-Type': 'application/json', 'X-Agent-Token': TOKEN },
-            body: JSON.stringify({ error: msg }),
-          }).catch(() => {});
-          return true;
+        let data = null;
+        if (activeCaptchaRequestPromise && activeCaptchaRequestSignature === signature) {
+          setStatus('Luca guvenlik kodu otomatik cozum bekliyor');
+          if (log) await log('Luca guvenlik kodu otomatik cozum bekliyor');
+          data = await activeCaptchaRequestPromise.catch(() => null);
         }
-        const captchaImage = await imageElementToDataUrl(parts.image);
-        if (!captchaImage || !captchaImage.startsWith('data:image/')) return false;
-        const r = await fetch(API + '/agent/luca/captcha', {
-          method: 'POST',
-          headers: { 'Content-Type': 'application/json', 'X-Agent-Token': TOKEN },
-          body: JSON.stringify({
-            jobId: job?.id || null,
-            deviceId: DEVICE_ID,
-            captchaImage,
-            expiresInSec: 180,
-            context: {
-              url: location.href,
-              title: document.title,
-              jobTip: job?.tip || null,
-              donem: job?.donem || null,
-            },
-          }),
-        });
-        if (!r.ok) return false;
-        const data = await r.json();
+        if (!data) {
+          const captchaKey = job.id || 'global';
+          const storageKey = `moren_luca_captcha_count_${captchaKey}`;
+          let previousCount = captchaChallengeCounts.get(captchaKey) || 0;
+          try {
+            previousCount = Math.max(previousCount, Number(localStorage.getItem(storageKey) || 0));
+          } catch {}
+          const nextCount = previousCount + 1;
+          captchaChallengeCounts.set(captchaKey, nextCount);
+          try { localStorage.setItem(storageKey, String(nextCount)); } catch {}
+          if (nextCount > MAX_CAPTCHA_CHALLENGES_PER_JOB) {
+            const msg = `Luca guvenlik kodu ${MAX_CAPTCHA_CHALLENGES_PER_JOB} kez tekrarlandi; ajan durduruldu. Kullanici/sifre veya CAPTCHA cevabi kontrol edilmeli.`;
+            setStatus(msg);
+            if (log) await log(msg);
+            window.__morenAgent.stopRequested = true;
+            await fetch(API + `/agent/luca/jobs/${job.id}/fail`, {
+              method: 'POST',
+              headers: { 'Content-Type': 'application/json', 'X-Agent-Token': TOKEN },
+              body: JSON.stringify({ error: msg }),
+            }).catch(() => {});
+            return true;
+          }
+          const captchaImage = await imageElementToDataUrl(parts.image);
+          if (!captchaImage || !captchaImage.startsWith('data:image/')) return false;
+          activeCaptchaRequestSignature = signature;
+          activeCaptchaRequestPromise = (async () => {
+            const r = await fetch(API + '/agent/luca/captcha', {
+              method: 'POST',
+              headers: { 'Content-Type': 'application/json', 'X-Agent-Token': TOKEN },
+              body: JSON.stringify({
+                jobId: job?.id || null,
+                deviceId: DEVICE_ID,
+                captchaImage,
+                expiresInSec: 180,
+                context: {
+                  url: location.href,
+                  title: document.title,
+                  jobTip: job?.tip || null,
+                  donem: job?.donem || null,
+                },
+              }),
+            });
+            if (!r.ok) return null;
+            return r.json();
+          })();
+          try {
+            data = await activeCaptchaRequestPromise;
+          } finally {
+            activeCaptchaRequestPromise = null;
+            activeCaptchaRequestSignature = '';
+          }
+        }
+        if (!data) return false;
         activeCaptchaChallengeId = data?.challenge?.id || '';
         activeCaptchaSignature = signature;
         if (data?.challenge?.status === 'answered') {
