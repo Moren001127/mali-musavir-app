@@ -104,7 +104,7 @@ export class PortalAutomationRailwayRunnerService implements OnModuleInit {
   onModuleInit() {
     if (!this.isEnabled()) return;
     this.logger.log(
-      `[PortalRailwayRunner] aktif: device=${this.deviceId}, jobs=${this.enabledJobTypes().join(',')}, nightly=${this.includeNightly()}`,
+      `[PortalRailwayRunner] aktif: kind=${this.runnerKind()}, device=${this.deviceId}, jobs=${this.enabledJobTypes().join(',')}, nightly=${this.includeNightly()}`,
     );
     this.cancelInterruptedEBeyannameJobsOnBoot().catch((err) => {
       this.logger.warn(`boot e-Beyanname iptal temizligi hata: ${err?.message || err}`);
@@ -193,6 +193,7 @@ export class PortalAutomationRailwayRunnerService implements OnModuleInit {
 
   private async cancelInterruptedEBeyannameJobsOnBoot() {
     if (!this.localFirstEBeyannameEnabled()) return;
+    if (this.isLocalRunner()) return;
     const result = await (this.prisma as any).portalAutomationJob.updateMany({
       where: {
         jobType: 'EBEYANNAME_DAILY_DOWNLOAD',
@@ -219,9 +220,23 @@ export class PortalAutomationRailwayRunnerService implements OnModuleInit {
     return ['local', 'local_only', 'local-only', 'local_first_with_server_fallback', 'server_fallback', 'fallback'].includes(raw);
   }
 
+  private runnerKind() {
+    const raw = String(process.env.PORTAL_AUTOMATION_RUNNER_KIND || '').trim().toLowerCase();
+    if (['local', 'office', 'office_pc', 'office-pc'].includes(raw)) return 'local';
+    return 'server';
+  }
+
+  private isLocalRunner() {
+    return this.runnerKind() === 'local';
+  }
+
   private shouldRailwayHandleJob(job: any) {
     if (job?.jobType !== 'EBEYANNAME_DAILY_DOWNLOAD') return true;
     const mode = String(job?.payload?.runnerMode || '').toLowerCase();
+    if (this.isLocalRunner()) {
+      if (mode === 'local_first' || mode === 'local_first_with_server_fallback') return true;
+      return this.envFlag(process.env.PORTAL_AUTOMATION_LOCAL_RUNNER_ACCEPT_SERVER_JOBS || '');
+    }
     if (!mode || mode === 'server') return true;
     if (mode === 'local_first') return false;
     if (mode === 'local_first_with_server_fallback') {

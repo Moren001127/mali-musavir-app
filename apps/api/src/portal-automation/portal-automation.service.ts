@@ -260,6 +260,7 @@ export class PortalAutomationService {
 
   @Cron('0 15 2 * * *', { timeZone: 'Europe/Istanbul' })
   async nightlyTick() {
+    if (this.envFlag(process.env.PORTAL_AUTOMATION_DISABLE_NIGHTLY || '')) return;
     try {
       const tenants = await (this.prisma as any).tenant.findMany({ select: { id: true, name: true } });
       for (const tenant of tenants) {
