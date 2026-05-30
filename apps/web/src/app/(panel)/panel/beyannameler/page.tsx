@@ -484,7 +484,9 @@ export default function BeyannamelerPage() {
       url,
       docKey,
       title: previewTitle(row, kind),
-      subtitle: `${beyanMahiyeti(row)} · ${fmtDate(row.beyanTarihi || row.createdAt)} · ${fmtCurrency(row.tahakkukTutari)}`,
+      subtitle: kind === 'tahakkuk'
+        ? `${beyanMahiyeti(row)} · ${fmtDate(row.beyanTarihi || row.createdAt)} · ${fmtCurrency(row.tahakkukTutari)}`
+        : `${beyanMahiyeti(row)} · ${fmtDate(row.beyanTarihi || row.createdAt)}`,
     });
   };
 
@@ -823,25 +825,22 @@ export default function BeyannamelerPage() {
                         <div className="text-[11px] mt-0.5" style={{ color: 'rgba(250,250,249,0.42)' }}>{BEYAN_TIPI_LABEL[row.beyanTipi]}</div>
                       </td>
                       <td className="px-3 py-3">
-                        <span
-                          className="rounded-md px-2 py-1 text-[11px] font-bold"
-                          style={{
-                            background: mahiyet === 'DUZELTME' ? 'rgba(245,158,11,0.13)' : 'rgba(212,184,118,0.10)',
-                            border: `1px solid ${mahiyet === 'DUZELTME' ? 'rgba(245,158,11,0.24)' : 'rgba(212,184,118,0.24)'}`,
-                            color: mahiyet === 'DUZELTME' ? '#fcd34d' : '#e7d6a1',
-                          }}
-                        >
+                        <span className="text-[12.5px] font-semibold">
                           {mahiyet === 'DUZELTME' ? 'DUZELTME' : 'ASIL'}
                         </span>
                       </td>
                       <td className="px-3 py-3" style={{ color: '#fafaf9' }}>{item.tur}</td>
                       <td className="px-3 py-3">
-                        <div className="font-semibold tabular-nums" style={{ color: row.tahakkukTutari != null ? '#fafaf9' : '#fcd34d' }}>
-                          {row.tahakkukTutari != null ? fmtCurrency(row.tahakkukTutari) : 'Tutar okunamadi'}
-                        </div>
-                        <div className="text-[10.5px] mt-0.5" style={{ color: 'rgba(250,250,249,0.36)' }}>
-                          {item.kind === 'tahakkuk' ? 'Tahakkuk tutari' : 'Tahakkuk eslesmesi'}
-                        </div>
+                        {item.kind === 'tahakkuk' ? (
+                          <>
+                            <div className="font-semibold tabular-nums" style={{ color: row.tahakkukTutari != null ? '#fafaf9' : '#fcd34d' }}>
+                              {row.tahakkukTutari != null ? fmtCurrency(row.tahakkukTutari) : 'Tutar okunamadi'}
+                            </div>
+                            <div className="text-[10.5px] mt-0.5" style={{ color: 'rgba(250,250,249,0.36)' }}>
+                              Tahakkuk tutari
+                            </div>
+                          </>
+                        ) : null}
                       </td>
                       <td className="w-[140px] px-3 py-3">
                         <div className="flex items-center justify-end gap-1">

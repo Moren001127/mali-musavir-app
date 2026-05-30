@@ -56,6 +56,11 @@ type EBeyannameFilePayload = {
   mimeType: string;
 };
 
+type EBeyannameFileDownloadResult = {
+  file: EBeyannameFilePayload | null;
+  ownerMismatch: boolean;
+};
+
 type EBeyannameRowIdentity = {
   taxpayerId: string;
   beyanTipi: string;
@@ -1756,6 +1761,7 @@ export class PortalAutomationRailwayRunnerService implements OnModuleInit {
         source: 'ebeyanname-beyanname-ara',
         status,
         rowText: this.compact(row.rowText),
+        forceRefresh: this.shouldRefreshExistingEBeyanname(job),
         cells: row.cells,
         beyanTipiRaw: row.beyanTipiRaw,
         mahiyet: row.mahiyetText,
@@ -1847,40 +1853,53 @@ export class PortalAutomationRailwayRunnerService implements OnModuleInit {
           continue;
         }
 
-        const beyanname = skipBeyanname
-          ? null
+        const beyannameResult = skipBeyanname
+          ? { file: null, ownerMismatch: false }
           : await this.downloadEBeyannameRowFile(page, row, 'beyanname', downloadsPath, processedRows, notes);
-        const tahakkuk = skipTahakkuk
-          ? null
+        const tahakkukResult = skipTahakkuk
+          ? { file: null, ownerMismatch: false }
           : await this.downloadEBeyannameRowFile(page, row, 'tahakkuk', downloadsPath, processedRows, notes);
+        if (identity && beyannameResult.ownerMismatch) {
+          await this.clearExistingEBeyannameFile(tenantId, identity, 'beyanname').catch((err) => {
+            notes.push(`beyanname: eski hatali bag temizlenemedi: ${this.compact(err?.message || err)}`);
+          });
+        }
+        if (identity && tahakkukResult.ownerMismatch) {
+          await this.clearExistingEBeyannameFile(tenantId, identity, 'tahakkuk').catch((err) => {
+            notes.push(`tahakkuk: eski hatali bag temizlenemedi: ${this.compact(err?.message || err)}`);
+          });
+        }
+        const beyanname = beyannameResult.ownerMismatch ? null : beyannameResult.file;
+        const tahakkuk = tahakkukResult.ownerMismatch ? null : tahakkukResult.file;
         const declaration = this.declarationFromEBeyannameRow(row, 'onaylandi', taxpayers, job, { beyanname, tahakkuk });
 
-        if (declaration) {
-          declarations.push(declaration);
-          continue;
-        }
-
-        for (const file of [beyanname, tahakkuk].filter(Boolean) as EBeyannameFilePayload[]) {
+        const unmatchedFiles = [
+          { file: beyannameResult.file, kind: 'beyanname', ownerMismatch: beyannameResult.ownerMismatch },
+          { file: tahakkukResult.file, kind: 'tahakkuk', ownerMismatch: tahakkukResult.ownerMismatch },
+        ].filter((item) => item.file && (!declaration || item.ownerMismatch)) as Array<{ file: EBeyannameFilePayload; kind: 'beyanname' | 'tahakkuk'; ownerMismatch: boolean }>;
+        for (const item of unmatchedFiles) {
           documents.push({
             taxpayerId: null,
-            belgeTuru: file === tahakkuk ? 'GIB_TAHAKKUK' : 'GIB_BEYANNAME',
-            title: file.fileName,
+            belgeTuru: item.kind === 'tahakkuk' ? 'GIB_TAHAKKUK' : 'GIB_BEYANNAME',
+            title: item.file.fileName,
             period: this.ebeyannameDonemFromRow(row, this.guessBeyanTipi(row.beyanTipiRaw || row.rowText), job),
             issuedAt: this.parseEBeyannameUploadTime(row.uploadTime) || job.periodEnd || null,
             receivedAt: new Date().toISOString(),
-            mimeType: file.mimeType,
-            originalName: file.fileName,
-            base64: file.base64,
+            mimeType: item.file.mimeType,
+            originalName: item.file.fileName,
+            base64: item.file.base64,
             raw: {
               runner: 'railway',
               source: 'ebeyanname-beyanname-ara',
               matchedTaxpayer: false,
+              ownerMismatch: item.ownerMismatch,
               rowText: this.compact(row.rowText),
               taxNumber: row.taxNumber,
               taxpayerName: row.taxpayerName,
             },
           });
         }
+        if (declaration) declarations.push(declaration);
       }
 
       const pagination = await this.readEBeyannamePagination(page);
@@ -1925,12 +1944,12 @@ export class PortalAutomationRailwayRunnerService implements OnModuleInit {
     downloadsPath: string,
     sequence: number,
     notes: string[],
-  ): Promise<EBeyannameFilePayload | null> {
+  ): Promise<EBeyannameFileDownloadResult> {
     const target = await this.findEBeyannameResultTarget(page) || page;
     const row = await this.findEBeyannameResultRowLocator(target, resultRow);
     if (!(await row.isVisible().catch(() => false))) {
       notes.push(`${kind}: satir ${resultRow.rowIndex + 1} gorunur degil`);
-      return null;
+      return { file: null, ownerMismatch: false };
     }
 
     const candidates = row.locator('a, button, input[type="button"], input[type="image"], img');
@@ -1957,21 +1976,37 @@ export class PortalAutomationRailwayRunnerService implements OnModuleInit {
     const picked = this.pickEBeyannameFileCandidate(metas, kind);
     if (picked == null) {
       notes.push(`${kind}: satir ${resultRow.rowIndex + 1} icin PDF ikonu bulunamadi`);
-      return null;
+      return { file: null, ownerMismatch: false };
     }
 
     const loc = candidates.nth(picked);
     const clicked = await this.captureEBeyannameDownload(page, loc, downloadsPath, `ebeyanname-${sequence}-${kind}`);
     if (!clicked) {
       notes.push(`${kind}: satir ${resultRow.rowIndex + 1} tiklandi ama PDF alinamadi`);
-      return null;
+      return { file: null, ownerMismatch: false };
     }
-    if (!(await this.validateEBeyannameFileOwner(resultRow, clicked, kind, notes))) return null;
-    return clicked;
+    const ownerOk = await this.validateEBeyannameFileOwner(resultRow, clicked, kind, notes);
+    return { file: clicked, ownerMismatch: !ownerOk };
   }
 
   private shouldRefreshExistingEBeyanname(job: any) {
     return job?.source === 'manual' && job?.payload?.force === true;
+  }
+
+  private async clearExistingEBeyannameFile(
+    tenantId: string,
+    identity: EBeyannameRowIdentity,
+    kind: 'beyanname' | 'tahakkuk',
+  ) {
+    await (this.prisma as any).beyanKaydi.updateMany({
+      where: {
+        tenantId,
+        taxpayerId: identity.taxpayerId,
+        beyanTipi: identity.beyanTipi,
+        donem: identity.donem,
+      },
+      data: kind === 'beyanname' ? { beyannameUrl: null } : { pdfUrl: null },
+    });
   }
 
   private async findEBeyannameResultRowLocator(target: any, row: EBeyannameResultRow) {

@@ -876,9 +876,10 @@ export class PortalAutomationService {
       select: { id: true, beyannameUrl: true, pdfUrl: true, xmlUrl: true },
     });
     const isCorrection = this.isCorrectionDeclarationInput(input);
-    const skipBeyannameStorage = !!existingKayit?.beyannameUrl && !isCorrection;
-    const skipTahakkukStorage = !!existingKayit?.pdfUrl && !isCorrection;
-    const skipXmlStorage = !!existingKayit?.xmlUrl && !isCorrection;
+    const forceRefresh = input.raw?.forceRefresh === true;
+    const skipBeyannameStorage = !!existingKayit?.beyannameUrl && !isCorrection && !forceRefresh;
+    const skipTahakkukStorage = !!existingKayit?.pdfUrl && !isCorrection && !forceRefresh;
+    const skipXmlStorage = !!existingKayit?.xmlUrl && !isCorrection && !forceRefresh;
     const hasIncomingFile = !!(cleanBase64(input.beyannameBase64) || cleanBase64(input.tahakkukBase64) || cleanBase64(input.xmlBase64));
     const hasMissingIncomingFile =
       (!!cleanBase64(input.beyannameBase64) && !skipBeyannameStorage)
@@ -907,7 +908,7 @@ export class PortalAutomationService {
       'application/xml',
       'beyanname.xml',
     );
-    const pdfMeta: { tahakkukTutari?: number | null; onayNo?: string | null } = await this.extractTahakkukMetaFromBase64(input.tahakkukBase64 || input.beyannameBase64).catch((err) => {
+    const pdfMeta: { tahakkukTutari?: number | null; onayNo?: string | null } = await this.extractTahakkukMetaFromBase64(input.tahakkukBase64).catch((err) => {
       this.logger.warn(`Tahakkuk PDF meta okunamadi: ${err?.message || err}`);
       return {};
     });
@@ -1108,7 +1109,7 @@ export class PortalAutomationService {
       notlar: rawNote,
     };
     if (parsedDate) data.beyanTarihi = parsedDate;
-    if (parsed.tahakkukTutari != null) data.tahakkukTutari = parsed.tahakkukTutari;
+    if (isTahakkuk && parsed.tahakkukTutari != null) data.tahakkukTutari = parsed.tahakkukTutari;
     if (parsed.onayNo) data.onayNo = parsed.onayNo;
     if (isTahakkuk) data.pdfUrl = storageKey;
     else data.beyannameUrl = storageKey;
@@ -1128,7 +1129,7 @@ export class PortalAutomationService {
         beyanTipi: parsed.beyanTipi,
         donem: parsed.donem,
         beyanTarihi: parsedDate,
-        tahakkukTutari: parsed.tahakkukTutari,
+        tahakkukTutari: isTahakkuk ? parsed.tahakkukTutari : null,
         onayNo: parsed.onayNo,
         kaynak: 'gib_agent',
         importBatchId: jobId,
@@ -1142,7 +1143,7 @@ export class PortalAutomationService {
       durum: 'onaylandi',
       onayTarihi: parsedDate || new Date(),
     };
-    if (parsed.tahakkukTutari != null) durumUpdate.tahakkukTutari = parsed.tahakkukTutari;
+    if (isTahakkuk && parsed.tahakkukTutari != null) durumUpdate.tahakkukTutari = parsed.tahakkukTutari;
 
     await (this.prisma as any).beyanDurumu.upsert({
       where: {
@@ -1160,7 +1161,7 @@ export class PortalAutomationService {
         donem: parsed.donem,
         durum: 'onaylandi',
         onayTarihi: parsedDate || new Date(),
-        tahakkukTutari: parsed.tahakkukTutari,
+        tahakkukTutari: isTahakkuk ? parsed.tahakkukTutari : null,
         notlar: 'GIB agent PDF parse ile indirildi',
       },
       update: {
