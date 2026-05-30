@@ -26,6 +26,17 @@ type ParserOptions = {
   defaultYear?: number;
 };
 
+type CarryVoucherContext = {
+  fisNo: string | null;
+  yevmiyeNo: string | null;
+  fisTarihi: Date | null;
+  fisTipi: string | null;
+  evrakNo: string | null;
+  evrakTarihi: Date | null;
+  belgeTuru: string | null;
+  vknTckn: string | null;
+};
+
 @Injectable()
 export class EDefterFisListesiParserService {
   private readonly logger = new Logger(EDefterFisListesiParserService.name);
@@ -58,9 +69,13 @@ export class EDefterFisListesiParserService {
 
     const rows: ParsedEDefterFisLine[] = [];
     let reportBlockNo = 1;
+    let carryVoucher: CarryVoucherContext | null = null;
     for (let r = headerRowIdx + 1; r < grid.length; r++) {
       const row = grid[r] || [];
-      if (row.every((c) => this.cellText(c) === '')) continue;
+      if (row.every((c) => this.cellText(c) === '')) {
+        carryVoucher = null;
+        continue;
+      }
 
       const rawData: Record<string, unknown> = {};
       headers.forEach((h, idx) => {
@@ -89,25 +104,47 @@ export class EDefterFisListesiParserService {
       const inlineVoucher = this.parseInlineVoucher(aciklama, opts.defaultYear);
       if (inlineVoucher.description) aciklama = inlineVoucher.description;
 
-      const fisNo = this.readString(row, headerMap, [/^fis$/, /^fis\s*no/, /^fisno$/, /^fis\s*numara/]) || inlineVoucher.no;
-      const yevmiyeNo = this.readString(row, headerMap, [/^yevmiye\s*no/, /^yevmiye$/, /^yevmiye\s*numara/]);
-      const fisTarihi = this.readDate(row, headerMap, [/^fis\s*tarih/, /^fistarih/, /^tarih$/]) || inlineVoucher.date;
-      const evrakNo = this.readString(row, headerMap, [/^evrak\s*no/, /^belge\s*no/, /^dokuman\s*no/, /^document\s*no/]) || inlineVoucher.no;
-      const evrakTarihi = this.readDate(row, headerMap, [/^evrak\s*tarih/, /^belge\s*tarih/, /^document\s*date/]) || inlineVoucher.date;
-      const fisTipi = this.readString(row, headerMap, [/^fis\s*tip/, /^fistipi$/, /^tip$/]);
-      const belgeTuru = this.readString(row, headerMap, [/^belge\s*tur/, /^evrak\s*tur/, /^document\s*type/]);
-      const vknTckn = this.readString(row, headerMap, [/^vkn/, /^tckn/, /^vergi\s*no/, /^tc\s*no/, /^tax\s*no/]);
+      let fisNo = this.readString(row, headerMap, [/^fis$/, /^fis\s*no/, /^fisno$/, /^fis\s*numara/]) || inlineVoucher.no;
+      let yevmiyeNo = this.readString(row, headerMap, [/^yevmiye\s*no/, /^yevmiye$/, /^yevmiye\s*numara/]);
+      let fisTarihi = this.readDate(row, headerMap, [/^fis\s*tarih/, /^fistarih/, /^tarih$/]) || inlineVoucher.date;
+      let evrakNo = this.readString(row, headerMap, [/^evrak\s*no/, /^belge\s*no/, /^dokuman\s*no/, /^document\s*no/]) || inlineVoucher.no;
+      let evrakTarihi = this.readDate(row, headerMap, [/^evrak\s*tarih/, /^belge\s*tarih/, /^document\s*date/]) || inlineVoucher.date;
+      let fisTipi = this.readString(row, headerMap, [/^fis\s*tip/, /^fistipi$/, /^tip$/]);
+      let belgeTuru = this.readString(row, headerMap, [/^belge\s*tur/, /^evrak\s*tur/, /^document\s*type/]);
+      let vknTckn = this.readString(row, headerMap, [/^vkn/, /^tckn/, /^vergi\s*no/, /^tc\s*no/, /^tax\s*no/]);
       const karsiHesap = this.readString(row, headerMap, [/^karsi\s*hesap/, /^karsi\s*kod/]);
 
       if (this.isReportTotalRow({ hesapKodu, hesapAdi, aciklama })) {
         reportBlockNo += 1;
+        carryVoucher = null;
         continue;
       }
       if (this.isReportScaffoldRow({ hesapKodu, hesapAdi, aciklama, borc, alacak, fisNo, yevmiyeNo })) {
         continue;
       }
 
+      const hasMovement = Boolean(hesapKodu || hesapAdi || borc !== 0 || alacak !== 0);
+      const rowVoucherId = yevmiyeNo || fisNo;
+      const carry = carryVoucher as CarryVoucherContext | null;
+      const carryVoucherId = carry ? carry.yevmiyeNo || carry.fisNo : null;
+      const canCarryVoucher = Boolean(
+        hasMovement &&
+        carry &&
+        ((!rowVoucherId && !fisTarihi) || (rowVoucherId && carryVoucherId && rowVoucherId === carryVoucherId)),
+      );
+      if (canCarryVoucher && carry) {
+        fisNo ||= carry.fisNo;
+        yevmiyeNo ||= carry.yevmiyeNo;
+        fisTarihi ||= carry.fisTarihi;
+        fisTipi ||= carry.fisTipi;
+        evrakNo ||= carry.evrakNo;
+        evrakTarihi ||= carry.evrakTarihi;
+        belgeTuru ||= carry.belgeTuru;
+        vknTckn ||= carry.vknTckn;
+      }
+
       if (!hesapKodu && !hesapAdi && borc === 0 && alacak === 0 && !fisNo && !yevmiyeNo) {
+        carryVoucher = null;
         continue;
       }
 
@@ -133,6 +170,9 @@ export class EDefterFisListesiParserService {
         alacak,
         rawData,
       });
+      if (hasMovement && (fisNo || yevmiyeNo || fisTarihi)) {
+        carryVoucher = { fisNo, yevmiyeNo, fisTarihi, fisTipi, evrakNo, evrakTarihi, belgeTuru, vknTckn };
+      }
     }
 
     if (!rows.length) {

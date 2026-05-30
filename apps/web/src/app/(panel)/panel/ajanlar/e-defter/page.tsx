@@ -300,14 +300,7 @@ export default function EDefterAgentPage() {
 
   const mizan = session?.companionMizan || jobQuery.data?.mizan || null;
   const mizanAnomalies = useMemo(() => {
-    const all = (mizan?.anomaliler || []) as any[];
-    return all.filter((a: any) => {
-      const code = String(a.hesapKodu || '').trim();
-      if (!code) return true; // hesap yoksa (genel uyari) goster
-      // Sadece muavin/detay hesaplar: en az 2 nokta (orn 100.01.001)
-      const dotCount = (code.match(/\./g) || []).length;
-      return dotCount >= 2;
-    });
+    return (mizan?.anomaliler || []) as any[];
   }, [mizan]);
 
   const visibleFindings = useMemo(() => {

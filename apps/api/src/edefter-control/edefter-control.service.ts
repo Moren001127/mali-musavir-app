@@ -575,12 +575,12 @@ export class EDefterControlService {
     findings.push(...this.analyzeVergiKarsiligi370(rows, range));
 
     // FIS_TARIHI_EKSIK ozeti: tek bilgi olarak topla
-    const tarihEksik = rows.filter((r) => !r.fisTarihi);
+    const tarihEksik = rows.filter((r) => !r.fisTarihi && !voucherMeta.get(r.voucherKey)?.date);
     if (tarihEksik.length > 0) {
       findings.push({
         severity: tarihEksik.length > rows.length * 0.5 ? 'ERROR' : 'WARN',
         category: 'FIS_TARIHI_PARSE_HATASI',
-        message: `Excel dosyasinda ${tarihEksik.length} satirda fis tarihi okunamadi (toplam ${rows.length} satir). Luca rapor formati veya Tarih sutunu kontrol edilmeli.`,
+        message: `Excel dosyasinda ${tarihEksik.length} fis satirinin bagli oldugu fiste tarih okunamadi (toplam ${rows.length} satir). Luca rapor formati veya Tarih sutunu kontrol edilmeli.`,
         voucherKey: tarihEksik[0].voucherKey,
         rowIndex: tarihEksik[0].rowIndex,
         detail: { eksikSatir: tarihEksik.length, toplamSatir: rows.length },
@@ -1687,10 +1687,11 @@ export class EDefterControlService {
   ): FindingDraft[] {
     const findings: FindingDraft[] = [];
     for (const meta of voucherMeta.values()) {
+      if (meta.isVatAccrual) continue;
       const hasKdv = meta.rows.some((r) => /^(191|391)/.test(r.hesapKodu || '') && this.amountOf(r) > 1);
       if (!hasKdv) continue;
       const hasMatrah = meta.rows.some((r) => /^(150|151|152|153|157|159|600|601|602|710|720|730|740|750|760|770|780)/.test(r.hesapKodu || ''));
-      const hasCariOrCash = meta.rows.some((r) => /^(100|101|102|103|108|120|320|321|329|331|335|336)/.test(r.hesapKodu || ''));
+      const hasCariOrCash = meta.rows.some((r) => /^(100|101|102|103|108|120|190|320|321|329|331|335|336|360)/.test(r.hesapKodu || ''));
       if (!hasMatrah && !hasCariOrCash) {
         findings.push({
           severity: 'ERROR',
@@ -1896,7 +1897,7 @@ export class EDefterControlService {
     const startMonth = range.start.getUTCMonth();
     // Sadece Q1 veya yillik kontrol
     if (startMonth !== 0) return findings;
-    const acilisRows = rows.filter((r) => /acilis|acilis fisi|acilis kaydi/i.test(`${r.aciklama || ''} ${r.fisTipi || ''}`));
+    const acilisRows = rows.filter((r) => /acilis(?: fisi| kaydi)?/.test(this.rowText(r)));
     if (acilisRows.length === 0) {
       findings.push({
         severity: 'WARN',
@@ -1906,13 +1907,13 @@ export class EDefterControlService {
         rowIndex: rows[0]?.rowIndex,
       });
     } else {
-      // Acilis fisinde gelir/gider/maliyet hesabi (5/6/7) olmamali
-      const yanlisHesap = acilisRows.filter((r) => /^[567]/.test(r.hesapKodu || ''));
+      // Acilis fisinde gelir/gider/maliyet hesabi (6/7) olmamali; 5xx ozkaynak acilis icin normaldir.
+      const yanlisHesap = acilisRows.filter((r) => /^[67]/.test(r.hesapKodu || ''));
       if (yanlisHesap.length) {
         findings.push({
           severity: 'ERROR',
           category: 'ACILIS_FISINDE_GELIR_GIDER',
-          message: `Acilis fisinde ${yanlisHesap.length} adet gelir/gider/maliyet (5xx/6xx/7xx) hesap kaydi var. Acilis sadece bilanco (1xx-5xx aktif/pasif) hesaplarini icermeli.`,
+          message: `Acilis fisinde ${yanlisHesap.length} adet gelir/gider/maliyet (6xx/7xx) hesap kaydi var. Acilis sadece bilanco (1xx-5xx aktif/pasif) hesaplarini icermeli.`,
           voucherKey: yanlisHesap[0].voucherKey,
           rowIndex: yanlisHesap[0].rowIndex,
           hesapKodu: yanlisHesap[0].hesapKodu,
