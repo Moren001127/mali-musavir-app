@@ -812,7 +812,7 @@ export class PortalAutomationService {
     if (['server', 'railway', 'cloud'].includes(raw)) return 'server';
     if (['local', 'local_only', 'local-only'].includes(raw)) return 'local_first';
     if (['local_first_with_server_fallback', 'server_fallback', 'fallback'].includes(raw)) return 'local_first_with_server_fallback';
-    return source === 'nightly' ? 'local_first_with_server_fallback' : 'local_first';
+    return 'server';
   }
 
   private withJobProgress(payload: any, progress: JobProgressUpdate) {

@@ -701,7 +701,7 @@ export default function BeyannamelerPage() {
             </div>
             <h1 className="text-[30px] font-semibold tracking-[-.03em]" style={{ color: '#fafaf9' }}>Beyanname Indirme</h1>
             <p className="text-[13px] mt-1" style={{ color: 'rgba(250,250,249,0.52)' }}>
-              Mali musavir e-Beyanname sifresiyle isi yerel Moren ajanina verir, beyannameleri ve tahakkuklari portala kaydeder.
+              Mali musavir e-Beyanname sifresiyle isi ajan kuyruğuna verir, beyannameleri ve tahakkuklari portala kaydeder.
             </p>
           </div>
           <HeroLastJob
@@ -726,7 +726,7 @@ export default function BeyannamelerPage() {
               <div>
                 <div className="mb-2 flex items-center gap-2">
                   <ServerCog size={16} style={{ color: '#7dd3fc' }} />
-                  <h2 className="text-[15px] font-semibold" style={{ color: '#fafaf9' }}>Yerel Ajan Indirme Akisi</h2>
+                  <h2 className="text-[15px] font-semibold" style={{ color: '#fafaf9' }}>Ajan Indirme Akisi</h2>
                 </div>
                 <div className="flex flex-wrap gap-2">
                   <AutomationPill label="Runner" value={portalSummary?.runner?.enabled ? 'Aktif' : 'Pasif'} tone={portalSummary?.runner?.enabled ? 'blue' : 'rose'} />

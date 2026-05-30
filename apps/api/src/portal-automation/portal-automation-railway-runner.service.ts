@@ -216,7 +216,7 @@ export class PortalAutomationRailwayRunnerService implements OnModuleInit {
 
   private localFirstEBeyannameEnabled() {
     const raw = String(process.env.PORTAL_AUTOMATION_EBEYANNAME_RUNNER_MODE || '').trim().toLowerCase();
-    return !['server', 'railway', 'cloud'].includes(raw);
+    return ['local', 'local_only', 'local-only', 'local_first_with_server_fallback', 'server_fallback', 'fallback'].includes(raw);
   }
 
   private shouldRailwayHandleJob(job: any) {
