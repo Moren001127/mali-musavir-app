@@ -105,7 +105,10 @@ export const beyanKayitlariApi = {
   // Toplu PDF yükleme — FormData ile
   importPdfs: async (files: File[], onProgress?: (p: number) => void): Promise<ImportResponse> => {
     const fd = new FormData();
-    for (const f of files) fd.append('files', f);
+    for (const f of files) {
+      const relativeName = ((f as any).webkitRelativePath || f.name) as string;
+      fd.append('files', f, relativeName);
+    }
     const { data } = await api.post<ImportResponse>('/beyan-kayitlari/import-pdf', fd, {
       headers: { 'Content-Type': 'multipart/form-data' },
       onUploadProgress: (ev) => {

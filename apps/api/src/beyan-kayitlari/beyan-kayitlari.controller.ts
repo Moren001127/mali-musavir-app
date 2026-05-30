@@ -101,7 +101,7 @@ export class BeyanKayitlariController {
       throw new BadRequestException('Yüklenen dosyalar arasında PDF yok');
     }
 
-    return this.svc.importPdfBatch(
+    return this.svc.importPdfBatchSafe(
       req.user.tenantId,
       pdfs.map((f) => ({ originalName: f.originalname, buffer: f.buffer })),
     );

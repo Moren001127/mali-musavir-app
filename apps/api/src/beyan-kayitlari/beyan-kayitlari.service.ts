@@ -55,6 +55,37 @@ export type ImportResult = {
   parsed?: ParsedBeyan;
 };
 
+type BeyanPdfRole = 'beyanname' | 'tahakkuk' | 'unknown';
+
+type TaxpayerLite = {
+  id: string;
+  taxNumber?: string | null;
+  companyName?: string | null;
+  firstName?: string | null;
+  lastName?: string | null;
+};
+
+type SafePdfParse = {
+  originalName: string;
+  buffer: Buffer;
+  role: BeyanPdfRole;
+  taxpayer: TaxpayerLite | null;
+  parsed: ParsedBeyan;
+  text: string;
+};
+
+type SafeImportGroup = {
+  taxpayer: TaxpayerLite;
+  beyanTipi: string;
+  donem: string;
+  files: SafePdfParse[];
+  beyanname?: SafePdfParse;
+  tahakkuk?: SafePdfParse;
+  onayNo: string | null;
+  beyanTarihi: string | null;
+  tahakkukTutari: number | null;
+};
+
 /**
  * Beyan Kayıtları — Hattat'tan PDF klasörü import + listeleme.
  *
@@ -383,6 +414,468 @@ export class BeyanKayitlariService {
   }
 
   /** Toplu PDF import. Her dosya için parse + DB kaydı + S3 yükleme. */
+  private basename(path: string) {
+    return String(path || '').replace(/\\/g, '/').split('/').filter(Boolean).pop() || String(path || '');
+  }
+
+  private fullPathKey(path: string, text = '') {
+    return this.normalizeTextKey(`${path || ''} ${text || ''}`);
+  }
+
+  private taxpayerDisplayName(taxpayer?: TaxpayerLite | null) {
+    if (!taxpayer) return null;
+    return taxpayer.companyName || [taxpayer.firstName, taxpayer.lastName].filter(Boolean).join(' ') || taxpayer.taxNumber || null;
+  }
+
+  private buildTaxpayerLookup(taxpayers: TaxpayerLite[]) {
+    const byTaxNo = new Map<string, TaxpayerLite>();
+    for (const taxpayer of taxpayers) {
+      const taxNo = this.normalizeTaxNo(taxpayer.taxNumber);
+      if (taxNo) byTaxNo.set(taxNo, taxpayer);
+    }
+    return byTaxNo;
+  }
+
+  private inferPdfRole(originalName: string, text: string, amount: number | null): BeyanPdfRole {
+    const pathKey = this.fullPathKey(originalName);
+    if (/\bTAHAKKUK\b|\bTAHAKUK\b|\bFIS\b|\bFISI\b/.test(pathKey)) return 'tahakkuk';
+    if (/\bBEYANNAME\b|\bEBEYANNAME\b|\bBEYAN\b/.test(pathKey)) return 'beyanname';
+    const textKey = this.fullPathKey('', text.slice(0, 4000));
+    if (/\bTAHAKKUK\s+FISI\b|\bTAHAKKUK\s+NO\b/.test(textKey)) return 'tahakkuk';
+    if (/\bBEYANNAME\b|\bEBEYANNAME\b/.test(textKey)) return 'beyanname';
+    if (amount != null) return 'tahakkuk';
+    return 'unknown';
+  }
+
+  private inferBeyanTipi(originalName: string, text: string, taxpayer?: TaxpayerLite | null): string | null {
+    const filenameInfo = parsePdfAd(this.basename(originalName));
+    if (filenameInfo) {
+      const mapped = mapBeyanTipi(filenameInfo.tip);
+      if (mapped && mapped !== 'DIGER') return this.canonicalTemporaryType(mapped, null, taxpayer);
+    }
+
+    const parts = String(originalName || '').replace(/\\/g, '/').split('/').filter(Boolean);
+    for (const part of parts.reverse()) {
+      const folderTip = parseBeyanTipiKlasoru(part);
+      if (!folderTip) continue;
+      const mapped = mapBeyanTipi(folderTip);
+      if (mapped && mapped !== 'DIGER') return this.canonicalTemporaryType(mapped, null, taxpayer);
+    }
+
+    const key = this.fullPathKey(originalName, text).replace(/\s+/g, ' ');
+    let type: string | null = null;
+    if (/\bKGECICI\b|\bKURUM\b.{0,40}\bGECICI\b|\bKURUMLAR\b.{0,40}\bGECICI\b/.test(key)) type = 'KGECICI';
+    else if (/\bGGECICI\b|\bGELIR\b.{0,40}\bGECICI\b/.test(key)) type = 'GGECICI';
+    else if (/\bGECICI\b.{0,30}\bVERGI\b|\bGECICI_VERGI\b/.test(key)) type = 'GECICI_VERGI';
+    else if (/\bKDV2\b|\bKDV\s*2\b|\b2\s*NOLU\b.{0,60}\bKDV\b|\bTEVKIFAT\b/.test(key)) type = 'KDV2';
+    else if (/\bKDV1\b|\bKDV\s*1\b|\b1\s*NOLU\b.{0,60}\bKDV\b|\bKATMA\b.{0,30}\bDEGER\b.{0,30}\bVERGISI\b/.test(key)) type = 'KDV1';
+    else if (/\bMUHSGK\b|\bMUHTASAR\b|\bPRIM\b.{0,20}\bHIZMET\b/.test(key)) type = 'MUHSGK';
+    else if (/\bDAMGA\b/.test(key)) type = 'DAMGA';
+    else if (/\bPOSET\b|\bGERI\b.{0,20}\bKAZANIM\b|\bKATILIM\b.{0,20}\bPAYI\b/.test(key)) type = 'POSET';
+    else if (/\bKURUMLAR\b/.test(key)) type = 'KURUMLAR';
+    else if (/\bGELIR\b/.test(key)) type = 'GELIR';
+    else if (/\bEDEFTER\b|\bE\s*DEFTER\b/.test(key)) type = 'EDEFTER';
+    else if (/\bBILDIRGE\b/.test(key)) type = 'BILDIRGE';
+
+    return type ? this.canonicalTemporaryType(type, null, taxpayer) : null;
+  }
+
+  private inferDonem(originalName: string, text: string, beyanTipi?: string | null): string | null {
+    const filenameInfo = parsePdfAd(this.basename(originalName));
+    if (filenameInfo) {
+      const mapped = beyanTipi || mapBeyanTipi(filenameInfo.tip);
+      return this.canonicalTemporaryPeriod(mapped, formatDonem(mapped, filenameInfo.ay, filenameInfo.yil));
+    }
+
+    const raw = `${originalName || ''} ${text || ''}`;
+    const annual = (beyanTipi === 'KURUMLAR' || beyanTipi === 'GELIR') ? raw.match(/\b(20\d{2})\b/) : null;
+    if (annual) return `${annual[1]}-YIL`;
+
+    const rangeYearMonth = raw.match(/\b(20\d{2})\s*[\/.-]\s*(0?[1-9]|1[0-2])\s*[-–—]\s*(20\d{2})\s*[\/.-]\s*(0?[1-9]|1[0-2])\b/);
+    if (rangeYearMonth) {
+      const monthly = `${rangeYearMonth[3]}-${String(Number(rangeYearMonth[4])).padStart(2, '0')}`;
+      return beyanTipi ? this.canonicalTemporaryPeriod(beyanTipi, monthly) : monthly;
+    }
+
+    const rangeMonthYear = raw.match(/\b(0?[1-9]|1[0-2])\s*[\/.-]\s*(20\d{2})\s*[-–—]\s*(0?[1-9]|1[0-2])\s*[\/.-]\s*(20\d{2})\b/);
+    if (rangeMonthYear) {
+      const monthly = `${rangeMonthYear[4]}-${String(Number(rangeMonthYear[3])).padStart(2, '0')}`;
+      return beyanTipi ? this.canonicalTemporaryPeriod(beyanTipi, monthly) : monthly;
+    }
+
+    const quarter = raw.match(/\b(20\d{2})\s*[-/ ]?\s*Q\s*([1-4])\b/i);
+    if (quarter) return `${quarter[1]}-Q${quarter[2]}`;
+
+    const singleYearMonth = raw.match(/\b(20\d{2})\s*[\/.-]\s*(0?[1-9]|1[0-2])\b/);
+    if (singleYearMonth) {
+      const monthly = `${singleYearMonth[1]}-${String(Number(singleYearMonth[2])).padStart(2, '0')}`;
+      return beyanTipi ? this.canonicalTemporaryPeriod(beyanTipi, monthly) : monthly;
+    }
+
+    const singleMonthYear = raw.match(/\b(0?[1-9]|1[0-2])\s*[\/.-]\s*(20\d{2})\b/);
+    if (singleMonthYear) {
+      const monthly = `${singleMonthYear[2]}-${String(Number(singleMonthYear[1])).padStart(2, '0')}`;
+      return beyanTipi ? this.canonicalTemporaryPeriod(beyanTipi, monthly) : monthly;
+    }
+
+    return null;
+  }
+
+  private inferBeyanTarihi(text: string): string | null {
+    const match = String(text || '').match(/\b(\d{1,2})[./-](\d{1,2})[./-](20\d{2})\b/);
+    if (!match) return null;
+    return `${match[3]}-${match[2].padStart(2, '0')}-${match[1].padStart(2, '0')}`;
+  }
+
+  private inferOnayNo(originalName: string, text: string): string | null {
+    const filenameInfo = parsePdfAd(this.basename(originalName));
+    if (filenameInfo?.onayNo) return filenameInfo.onayNo;
+    const compact = this.fullPathKey(originalName, text);
+    const labelled = compact.match(/\b(?:ONAY|TAHAKKUK|FIS|FISI)\s*(?:NO|NUMARASI)?\s*[:#-]?\s*([A-Z0-9-]{6,40})\b/);
+    return labelled?.[1] || null;
+  }
+
+  private async parsePdfForSafeImport(
+    tenantId: string,
+    file: { originalName: string; buffer: Buffer },
+    taxpayerByTaxNo: Map<string, TaxpayerLite>,
+  ): Promise<SafePdfParse | ImportResult> {
+    const text = await this.pdfText(file.buffer).catch((err) => {
+      this.logger.warn(`PDF metni okunamadi [${file.originalName}]: ${err?.message || err}`);
+      return '';
+    });
+    const taxCandidates = this.extractTaxNumbers(`${file.originalName} ${text}`);
+    let taxpayer = taxCandidates.map((taxNo) => taxpayerByTaxNo.get(taxNo)).find(Boolean) || null;
+
+    let aiParsed: ParsedBeyan | null = null;
+    let beyanTipi = this.inferBeyanTipi(file.originalName, text, taxpayer);
+    let donem = this.inferDonem(file.originalName, text, beyanTipi);
+    const fastAmount = this.extractTahakkukAmount(text);
+    let role = this.inferPdfRole(file.originalName, text, fastAmount);
+
+    if (!taxpayer || !beyanTipi || !donem || (role === 'tahakkuk' && fastAmount == null)) {
+      aiParsed = await this.parseBeyannamePdf(file.buffer.toString('base64')).catch((err) => {
+        this.logger.warn(`AI fallback atlandi [${file.originalName}]: ${err?.message || err}`);
+        return null;
+      });
+    }
+
+    if (!taxpayer && aiParsed?.vkn) taxpayer = taxpayerByTaxNo.get(this.normalizeTaxNo(aiParsed.vkn)) || null;
+    if (!taxpayer) {
+      return {
+        dosyaAdi: file.originalName,
+        durum: 'mukellef_yok',
+        sebep: taxCandidates.length ? `PDF icindeki VKN/TCKN portaldaki mukelleflerle eslesmedi: ${taxCandidates.join(', ')}` : 'PDF icinde portaldaki mukellefle eslesen VKN/TCKN bulunamadi',
+        parsed: aiParsed || {
+          vkn: taxCandidates[0] || null,
+          mukellefAdi: null,
+          beyanTipi: beyanTipi || null,
+          donem: donem || null,
+          beyanTarihi: null,
+          tahakkukTutari: null,
+          onayNo: null,
+          guven: text ? 'ORTA' : 'DUSUK',
+        },
+      };
+    }
+
+    beyanTipi = beyanTipi || aiParsed?.beyanTipi || null;
+    if (beyanTipi) beyanTipi = this.canonicalTemporaryType(beyanTipi, null, taxpayer);
+    donem = donem || this.inferDonem(file.originalName, text, beyanTipi) || aiParsed?.donem || null;
+    if (beyanTipi && donem) donem = this.canonicalTemporaryPeriod(beyanTipi, donem);
+    if (!beyanTipi || !donem) {
+      return {
+        dosyaAdi: file.originalName,
+        durum: 'parse_hatasi',
+        sebep: 'Beyan tipi veya donem guvenli sekilde okunamadi',
+        parsed: aiParsed || {
+          vkn: this.normalizeTaxNo(taxpayer.taxNumber),
+          mukellefAdi: this.taxpayerDisplayName(taxpayer),
+          beyanTipi,
+          donem,
+          beyanTarihi: null,
+          tahakkukTutari: null,
+          onayNo: null,
+          guven: 'DUSUK',
+        },
+      };
+    }
+
+    let tahakkukTutari = role === 'tahakkuk' ? fastAmount : null;
+    if (role === 'unknown' && (fastAmount != null || aiParsed?.tahakkukTutari != null)) role = 'tahakkuk';
+    if (role === 'unknown') role = 'beyanname';
+    if (role === 'tahakkuk' && tahakkukTutari == null) tahakkukTutari = aiParsed?.tahakkukTutari ?? null;
+
+    const parsed: ParsedBeyan = {
+      vkn: this.normalizeTaxNo(taxpayer.taxNumber),
+      mukellefAdi: aiParsed?.mukellefAdi || this.taxpayerDisplayName(taxpayer),
+      beyanTipi,
+      donem,
+      beyanTarihi: aiParsed?.beyanTarihi || this.inferBeyanTarihi(text),
+      tahakkukTutari,
+      onayNo: this.inferOnayNo(file.originalName, text) || aiParsed?.onayNo || null,
+      guven: text ? 'YUKSEK' : (aiParsed?.guven || 'ORTA'),
+    };
+
+    return { originalName: file.originalName, buffer: file.buffer, role, taxpayer, parsed, text };
+  }
+
+  private async persistSafeImportGroup(
+    tenantId: string,
+    batchId: string,
+    group: SafeImportGroup,
+  ): Promise<ImportResult> {
+    const existing = await (this.prisma as any).beyanKaydi.findUnique({
+      where: {
+        tenantId_taxpayerId_beyanTipi_donem: {
+          tenantId,
+          taxpayerId: group.taxpayer.id,
+          beyanTipi: group.beyanTipi,
+          donem: group.donem,
+        },
+      },
+      select: {
+        id: true,
+        pdfUrl: true,
+        beyannameUrl: true,
+        onayNo: true,
+        tahakkukTutari: true,
+        beyanTarihi: true,
+        importBatchId: true,
+      },
+    });
+
+    const base = `${tenantId}/${group.taxpayer.id}/beyan`;
+    let tahakkukKey: string | null = null;
+    let beyannameKey: string | null = null;
+    const names = group.files.map((file) => file.originalName);
+
+    if (group.tahakkuk && !existing?.pdfUrl) {
+      tahakkukKey = `${base}/${group.beyanTipi}_${group.donem}_Tahakkuk_${randomUUID()}.pdf`;
+      await this.storage.putBuffer(tahakkukKey, group.tahakkuk.buffer, 'application/pdf', {
+        originalName: encodeURIComponent(group.tahakkuk.originalName),
+        vkn: this.normalizeTaxNo(group.taxpayer.taxNumber),
+        donem: group.donem,
+        rolu: 'tahakkuk',
+      });
+    }
+
+    if (group.beyanname && !existing?.beyannameUrl) {
+      beyannameKey = `${base}/${group.beyanTipi}_${group.donem}_Beyanname_${randomUUID()}.pdf`;
+      await this.storage.putBuffer(beyannameKey, group.beyanname.buffer, 'application/pdf', {
+        originalName: encodeURIComponent(group.beyanname.originalName),
+        vkn: this.normalizeTaxNo(group.taxpayer.taxNumber),
+        donem: group.donem,
+        rolu: 'beyanname',
+      });
+    }
+
+    const rawNotlar = JSON.stringify({
+      import: 'safe_pdf',
+      files: names,
+      roles: group.files.map((file) => ({ name: file.originalName, role: file.role })),
+    });
+
+    const updateData: any = {};
+    if (tahakkukKey) updateData.pdfUrl = tahakkukKey;
+    if (beyannameKey) updateData.beyannameUrl = beyannameKey;
+    if (!existing?.onayNo && group.onayNo) updateData.onayNo = group.onayNo;
+    if (group.tahakkukTutari != null && existing?.tahakkukTutari !== group.tahakkukTutari) updateData.tahakkukTutari = group.tahakkukTutari;
+    if (!existing?.beyanTarihi && group.beyanTarihi) updateData.beyanTarihi = new Date(group.beyanTarihi);
+    if (Object.keys(updateData).length > 0) {
+      updateData.importBatchId = existing?.importBatchId || batchId;
+      updateData.notlar = rawNotlar;
+    }
+
+    let kayit: any;
+    let changed = false;
+    if (existing) {
+      changed = Object.keys(updateData).length > 0;
+      kayit = changed
+        ? await (this.prisma as any).beyanKaydi.update({ where: { id: existing.id }, data: updateData })
+        : existing;
+    } else {
+      kayit = await (this.prisma as any).beyanKaydi.create({
+        data: {
+          tenantId,
+          taxpayerId: group.taxpayer.id,
+          beyanTipi: group.beyanTipi,
+          donem: group.donem,
+          beyanTarihi: group.beyanTarihi ? new Date(group.beyanTarihi) : null,
+          tahakkukTutari: group.tahakkukTutari,
+          onayNo: group.onayNo,
+          pdfUrl: tahakkukKey,
+          beyannameUrl: beyannameKey,
+          kaynak: 'drive_import',
+          importBatchId: batchId,
+          notlar: rawNotlar,
+        },
+      });
+      changed = true;
+    }
+
+    await this.syncBeyanDurumuFromKayit(tenantId, {
+      taxpayerId: group.taxpayer.id,
+      beyanTipi: group.beyanTipi,
+      donem: group.donem,
+      beyanTarihi: group.beyanTarihi,
+      tahakkukTutari: group.tahakkukTutari,
+      notlar: rawNotlar,
+    }).catch((err) => {
+      this.logger.warn(`BeyanDurumu senkronize edilemedi: ${err?.message || err}`);
+    });
+
+    return {
+      dosyaAdi: names.join(' + '),
+      durum: changed ? 'ok' : 'mevcut',
+      sebep: existing ? (changed ? 'Mevcut kayit eksik PDF/tutar ile tamamlandi' : 'Bu beyanname/tahakkuk zaten kayitli') : undefined,
+      beyanKaydiId: kayit.id,
+      parsed: {
+        vkn: this.normalizeTaxNo(group.taxpayer.taxNumber),
+        mukellefAdi: this.taxpayerDisplayName(group.taxpayer),
+        beyanTipi: group.beyanTipi,
+        donem: group.donem,
+        beyanTarihi: group.beyanTarihi,
+        tahakkukTutari: group.tahakkukTutari,
+        onayNo: group.onayNo,
+        guven: 'YUKSEK',
+      },
+    };
+  }
+
+  private async syncBeyanDurumuFromKayit(
+    tenantId: string,
+    row: {
+      taxpayerId: string;
+      beyanTipi: string;
+      donem: string;
+      beyanTarihi: string | null;
+      tahakkukTutari: number | null;
+      notlar?: string | null;
+    },
+  ) {
+    const data: any = {
+      durum: 'onaylandi',
+      notlar: row.notlar || null,
+    };
+    if (row.beyanTarihi) data.onayTarihi = new Date(row.beyanTarihi);
+    if (row.tahakkukTutari != null) data.tahakkukTutari = row.tahakkukTutari;
+    await (this.prisma as any).beyanDurumu.upsert({
+      where: {
+        tenantId_taxpayerId_beyanTipi_donem: {
+          tenantId,
+          taxpayerId: row.taxpayerId,
+          beyanTipi: row.beyanTipi,
+          donem: row.donem,
+        },
+      },
+      create: {
+        tenantId,
+        taxpayerId: row.taxpayerId,
+        beyanTipi: row.beyanTipi,
+        donem: row.donem,
+        ...data,
+      },
+      update: data,
+    });
+  }
+
+  async importPdfBatchSafe(
+    tenantId: string,
+    files: Array<{ originalName: string; buffer: Buffer }>,
+  ): Promise<{ batchId: string; results: ImportResult[] }> {
+    const batchId = randomUUID();
+    const results: ImportResult[] = [];
+
+    const taxpayers = await (this.prisma as any).taxpayer.findMany({
+      where: { tenantId, isActive: true },
+      select: { id: true, taxNumber: true, companyName: true, firstName: true, lastName: true },
+      take: 10000,
+    }) as TaxpayerLite[];
+    const taxpayerByTaxNo = this.buildTaxpayerLookup(taxpayers);
+    const groups = new Map<string, SafeImportGroup>();
+
+    for (const file of files) {
+      try {
+        const parsed = await this.parsePdfForSafeImport(tenantId, file, taxpayerByTaxNo);
+        if ('durum' in parsed) {
+          results.push(parsed);
+          continue;
+        }
+
+        const taxpayer = parsed.taxpayer;
+        const beyanTipi = parsed.parsed.beyanTipi;
+        const donem = parsed.parsed.donem;
+        if (!taxpayer || !beyanTipi || !donem) {
+          results.push({
+            dosyaAdi: parsed.originalName,
+            durum: 'parse_hatasi',
+            sebep: 'PDF icindeki mukellef, beyan tipi veya donem guvenli sekilde okunamadi',
+            parsed: parsed.parsed,
+          });
+          continue;
+        }
+
+        const key = `${taxpayer.id}|${beyanTipi}|${donem}`;
+        let group = groups.get(key);
+        if (!group) {
+          group = {
+            taxpayer,
+            beyanTipi,
+            donem,
+            files: [],
+            onayNo: null,
+            beyanTarihi: null,
+            tahakkukTutari: null,
+          };
+          groups.set(key, group);
+        }
+
+        group.files.push(parsed);
+        group.onayNo = group.onayNo || parsed.parsed.onayNo || null;
+        group.beyanTarihi = group.beyanTarihi || parsed.parsed.beyanTarihi || null;
+        if (parsed.role === 'tahakkuk') {
+          group.tahakkuk = group.tahakkuk || parsed;
+          if (parsed.parsed.tahakkukTutari != null) group.tahakkukTutari = parsed.parsed.tahakkukTutari;
+        } else {
+          group.beyanname = group.beyanname || parsed;
+        }
+      } catch (e: any) {
+        this.logger.error(`Guvenli PDF import hatasi [${file.originalName}]: ${e?.message || e}`);
+        results.push({
+          dosyaAdi: file.originalName,
+          durum: 'hata',
+          sebep: (e?.message || 'Bilinmeyen hata').slice(0, 200),
+        });
+      }
+    }
+
+    for (const group of groups.values()) {
+      try {
+        results.push(await this.persistSafeImportGroup(tenantId, batchId, group));
+      } catch (e: any) {
+        this.logger.error(`Guvenli PDF kayit hatasi [${group.taxpayer.id}/${group.beyanTipi}/${group.donem}]: ${e?.message || e}`);
+        results.push({
+          dosyaAdi: group.files.map((file) => file.originalName).join(' + '),
+          durum: 'hata',
+          sebep: (e?.message || 'Kayit sirasinda hata').slice(0, 200),
+          parsed: {
+            vkn: this.normalizeTaxNo(group.taxpayer.taxNumber),
+            mukellefAdi: this.taxpayerDisplayName(group.taxpayer),
+            beyanTipi: group.beyanTipi,
+            donem: group.donem,
+            beyanTarihi: group.beyanTarihi,
+            tahakkukTutari: group.tahakkukTutari,
+            onayNo: group.onayNo,
+            guven: 'ORTA',
+          },
+        });
+      }
+    }
+
+    return { batchId, results };
+  }
+
   async importPdfBatch(
     tenantId: string,
     files: Array<{ originalName: string; buffer: Buffer }>,
@@ -805,8 +1298,12 @@ export class BeyanKayitlariService {
     const preferredLabels = [
       /terkin\s+sonrasi\s+kalan\s+vergi\s+tutari/i,
       /tahakkuk\s+eden\s+(?:vergi\s+)?tutar/i,
+      /tahakkuk\s+tutar[ıi]/i,
+      /tahakkuk\s+fi[şs]i\s+tutar[ıi]/i,
       /odenecek\s+(?:vergi\s+)?tutar/i,
+      /ödenecek\s+(?:vergi\s+)?tutar/i,
       /odenmesi\s+gereken\s+(?:vergi\s+)?tutar/i,
+      /ödenmesi\s+gereken\s+(?:vergi\s+)?tutar/i,
       /toplam\s+tahakkuk/i,
       /toplam\s+vergi/i,
     ];

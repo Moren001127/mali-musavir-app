@@ -309,14 +309,17 @@ export default function BeyannamelerPage() {
     refetchInterval: 3000,
   });
 
+  const latestBeyanJob = portalSummary?.latestJobs?.find((job) => job.jobType === 'EBEYANNAME_DAILY_DOWNLOAD');
+  const isBeyanJobRunning = latestBeyanJob?.status === 'running';
+
   const { data: kayitlar = [], isLoading } = useQuery<BeyanKaydi[]>({
     queryKey: ['beyan-kayitlari', 'redesign'],
     queryFn: () => beyanKayitlariApi.list({ limit: 1500 }),
+    refetchInterval: isBeyanJobRunning ? 5000 : false,
   });
 
-  const latestBeyanJob = portalSummary?.latestJobs?.find((job) => job.jobType === 'EBEYANNAME_DAILY_DOWNLOAD');
   useEffect(() => {
-    if (!latestBeyanJob || latestBeyanJob.status === 'pending' || latestBeyanJob.status === 'running') return;
+    if (!latestBeyanJob || latestBeyanJob.status === 'pending') return;
     qc.invalidateQueries({ queryKey: ['beyan-kayitlari'] });
     qc.invalidateQueries({ queryKey: ['beyan-kayitlari-ozet'] });
   }, [qc, latestBeyanJob?.id, latestBeyanJob?.status, latestBeyanJob?.finishedAt, latestBeyanJob?.recordCount]);
@@ -713,6 +716,14 @@ export default function BeyannamelerPage() {
                   <AutomationPill label="Şifre" value={portalSummary?.credentials.eBeyannameReady ? 'Hazır' : 'Eksik'} tone={portalSummary?.credentials.eBeyannameReady ? 'green' : 'rose'} />
                 </div>
               </div>
+              <button
+                type="button"
+                onClick={() => setImportModal(true)}
+                className="inline-flex h-9 items-center gap-1.5 rounded-[9px] px-3 text-[12.5px] font-semibold"
+                style={{ background: 'rgba(34,197,94,0.10)', border: '1px solid rgba(34,197,94,0.22)', color: '#86efac' }}
+              >
+                <FolderUp size={14} /> Klasor/ZIP Aktar
+              </button>
               <Link
                 href="/panel/ayarlar"
                 className="inline-flex h-9 items-center gap-1.5 rounded-[9px] px-3 text-[12.5px] font-semibold"
@@ -992,7 +1003,7 @@ export default function BeyannamelerPage() {
         )}
       </section>
 
-      {false && importModal && (
+      {importModal && (
         <ImportModal
           onClose={() => setImportModal(false)}
           onDone={() => {
@@ -1090,6 +1101,7 @@ function HeroLastJob({ job, visibleRows }: { job?: PortalJob; visibleRows?: numb
     ? { label: 'Kayit yok', color: '#fbbf24', bg: 'rgba(251,191,36,0.12)', border: 'rgba(251,191,36,0.24)' }
     : portalJobStatus(job.status);
   const progress = portalJobProgress(job);
+  const savedCount = Number(job.recordCount || 0);
   const recordText = job.status === 'done'
     ? `${Number(job.recordCount || 0).toLocaleString('tr-TR')} islem${visibleRows != null ? ` · tabloda ${visibleRows.toLocaleString('tr-TR')} satir` : ''}`
     : job.status === 'running'
@@ -1114,6 +1126,11 @@ function HeroLastJob({ job, visibleRows }: { job?: PortalJob; visibleRows?: numb
       {recordText && (
         <div className="mt-1 text-[11.5px]" style={{ color: noRecords ? '#fcd34d' : 'rgba(250,250,249,0.52)' }}>
           {recordText}
+        </div>
+      )}
+      {job.status === 'running' && (
+        <div className="mt-1 text-[11px]" style={{ color: savedCount > 0 ? '#86efac' : 'rgba(250,250,249,0.42)' }}>
+          Portala yazilan kayit: {savedCount.toLocaleString('tr-TR')}
         </div>
       )}
       {(job.status === 'running' || job.status === 'pending') && (
@@ -1610,8 +1627,9 @@ function ImportModal({ onClose, onDone }: { onClose: () => void; onDone: () => v
     if (!fl) return;
     const onlyPdf = Array.from(fl).filter((f) => f.type === 'application/pdf' || f.name.toLowerCase().endsWith('.pdf'));
     setFiles((prev) => {
-      const existing = new Set(prev.map((x) => `${x.name}-${x.size}`));
-      const fresh = onlyPdf.filter((f) => !existing.has(`${f.name}-${f.size}`));
+      const fileKey = (f: File) => `${((f as any).webkitRelativePath || f.name)}-${f.size}`;
+      const existing = new Set(prev.map(fileKey));
+      const fresh = onlyPdf.filter((f) => !existing.has(fileKey(f)));
       return [...prev, ...fresh];
     });
   };
@@ -1706,7 +1724,7 @@ function ImportModal({ onClose, onDone }: { onClose: () => void; onDone: () => v
                     borderLeft: '1px solid rgba(255,255,255,0.08)',
                   }}
                 >
-                  <Sparkles size={15} /> Tek Tek PDF (AI parse)
+                  <Sparkles size={15} /> PDF/Klasor (Hizli)
                 </button>
               </div>
 
@@ -1840,7 +1858,7 @@ function ImportModal({ onClose, onDone }: { onClose: () => void; onDone: () => v
                   <ul className="max-h-[200px] overflow-y-auto divide-y" style={{ borderColor: 'rgba(255,255,255,0.04)' }}>
                     {files.slice(0, 50).map((f, i) => (
                       <li key={i} className="px-4 py-1.5 flex items-center justify-between text-[12px]" style={{ color: 'rgba(250,250,249,0.7)' }}>
-                        <span className="truncate flex-1">{f.name}</span>
+                        <span className="truncate flex-1">{((f as any).webkitRelativePath || f.name) as string}</span>
                         <span className="text-[10.5px] font-mono ml-3" style={{ color: 'rgba(250,250,249,0.4)' }}>{(f.size / 1024).toFixed(0)} KB</span>
                       </li>
                     ))}
