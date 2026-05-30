@@ -1067,8 +1067,8 @@ export class PortalAutomationService {
     }
 
     if (!ownerTaxNo) {
-      this.logger.warn(`${kind} PDF kayda yazilmadi: beklenen VKN/TCKN ${expectedTaxNo}, PDF sahibi dogrulanamadi.`);
-      return { base64: null, clearCurrent: true, text };
+      this.logger.warn(`${kind} PDF icinde VKN/TCKN okunamadi; satir eslesmesine guvenilerek kayda baglanacak. Beklenen: ${expectedTaxNo}.`);
+      return { base64, clearCurrent: false, text };
     }
 
     await this.storePortalDocumentFromAgent(tenantId, jobId, {

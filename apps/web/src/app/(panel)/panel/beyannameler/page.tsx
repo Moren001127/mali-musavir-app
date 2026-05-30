@@ -400,15 +400,22 @@ export default function BeyannamelerPage() {
   const tableRows = useMemo<BeyanTableRow[]>(() => {
     return filtered.flatMap((row) => {
       const rows: BeyanTableRow[] = [];
-      if (docFilter !== 'tahakkuk' && (row.beyannameUrl || !row.pdfUrl)) {
-        rows.push({ key: `${row.id}:beyanname`, row, kind: 'beyanname', tur: 'EBeyanname', hasFile: !!row.beyannameUrl });
+      if (docFilter !== 'tahakkuk' && row.beyannameUrl) {
+        rows.push({ key: `${row.id}:beyanname`, row, kind: 'beyanname', tur: 'EBeyanname', hasFile: true });
       }
       if (docFilter !== 'beyanname' && row.pdfUrl) {
-        rows.push({ key: `${row.id}:tahakkuk`, row, kind: 'tahakkuk', tur: 'Tahakkuk', hasFile: !!row.pdfUrl });
+        rows.push({ key: `${row.id}:tahakkuk`, row, kind: 'tahakkuk', tur: 'Tahakkuk', hasFile: true });
       }
       return rows;
     });
   }, [filtered, docFilter]);
+
+  const missingFileStats = useMemo(() => {
+    const beyanname = filtered.filter((row) => !row.beyannameUrl).length;
+    const tahakkuk = filtered.filter((row) => !row.pdfUrl).length;
+    const both = filtered.filter((row) => !row.beyannameUrl && !row.pdfUrl).length;
+    return { beyanname, tahakkuk, both };
+  }, [filtered]);
 
   const selectedTableRows = useMemo(
     () => tableRows.filter((item) => selectedDocKeys.has(item.key)),
@@ -621,7 +628,7 @@ export default function BeyannamelerPage() {
               Mali musavir e-Beyanname sifresiyle portala girer, beyannameleri ve tahakkuklari sunucu kuyruguna indirir.
             </p>
           </div>
-          <HeroLastJob job={latestBeyanJob} />
+          <HeroLastJob job={latestBeyanJob} visibleRows={tableRows.length} />
         </div>
       </section>
 
@@ -880,7 +887,12 @@ export default function BeyannamelerPage() {
               </tbody>
             </table>
             <div className="px-4 py-3 text-[12.5px]" style={{ color: 'rgba(250,250,249,0.55)', borderTop: '1px solid rgba(255,255,255,0.055)' }}>
-              Toplam {tableRows.length.toLocaleString('tr-TR')} satir gosteriliyor.
+              Toplam {tableRows.length.toLocaleString('tr-TR')} acilabilir belge satiri gosteriliyor.
+              {(missingFileStats.beyanname > 0 || missingFileStats.tahakkuk > 0) && (
+                <span style={{ color: '#fcd34d' }}>
+                  {' '}PDF eksik: {missingFileStats.beyanname.toLocaleString('tr-TR')} beyanname, {missingFileStats.tahakkuk.toLocaleString('tr-TR')} tahakkuk{missingFileStats.both ? `, ${missingFileStats.both.toLocaleString('tr-TR')} tamamen bos kayit` : ''}.
+                </span>
+              )}
             </div>
             <div className="flex flex-wrap gap-2 px-4 pb-4">
               <button type="button" onClick={() => selectedTableRows[0] ? sendEmail(selectedTableRows[0].row) : toast.warning('Secili kayit yok')} className="inline-flex items-center gap-2 rounded-[8px] px-3 py-2 text-[12.5px] font-semibold" style={{ background: 'rgba(34,197,94,0.14)', border: '1px solid rgba(34,197,94,0.26)', color: '#86efac' }}>
@@ -1002,7 +1014,7 @@ function AutomationPill({ label, value, tone }: { label: string; value: string |
   );
 }
 
-function HeroLastJob({ job }: { job?: PortalJob }) {
+function HeroLastJob({ job, visibleRows }: { job?: PortalJob; visibleRows?: number }) {
   if (!job) {
     return (
       <div className="w-full shrink-0 rounded-xl p-3 lg:w-[420px]" style={{ background: 'rgba(255,255,255,0.025)', border: '1px solid rgba(255,255,255,0.06)' }}>
@@ -1018,7 +1030,7 @@ function HeroLastJob({ job }: { job?: PortalJob }) {
     : portalJobStatus(job.status);
   const progress = portalJobProgress(job);
   const recordText = job.status === 'done'
-    ? `${Number(job.recordCount || 0).toLocaleString('tr-TR')} kayit`
+    ? `${Number(job.recordCount || 0).toLocaleString('tr-TR')} islem${visibleRows != null ? ` · tabloda ${visibleRows.toLocaleString('tr-TR')} satir` : ''}`
     : job.status === 'running'
       ? progress.records != null
         ? `${progress.records.toLocaleString('tr-TR')} satir tarandi`
