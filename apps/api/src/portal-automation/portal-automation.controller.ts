@@ -80,6 +80,17 @@ export class PortalAutomationController {
     return { ...result, runnerWake: this.runner.wake('nightly-run-now') };
   }
 
+  @Post('jobs/:id/cancel')
+  @Roles('ADMIN', 'STAFF')
+  @HttpCode(HttpStatus.OK)
+  cancelJob(@Req() req: any, @Param('id') id: string, @Body() body: any) {
+    return this.service.cancelJob(
+      req.user.tenantId,
+      id,
+      body?.reason || 'Kullanici iptal etti',
+    );
+  }
+
   @Get('documents')
   documents(
     @Req() req: any,

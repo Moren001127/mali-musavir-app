@@ -150,6 +150,8 @@ export const portalAutomationApi = {
   }) => api.post<PortalCredentialPublic>('/portal-automation/credentials', data).then((r) => r.data),
   jobs: (params?: { limit?: number; status?: string; jobType?: string }) =>
     api.get<PortalJob[]>('/portal-automation/jobs', { params }).then((r) => r.data),
+  cancelJob: (id: string, reason?: string) =>
+    api.post<PortalJob>(`/portal-automation/jobs/${id}/cancel`, { reason }).then((r) => r.data),
   documents: (params?: { limit?: number; taxpayerId?: string; belgeTuru?: string }) =>
     api.get<PortalDocument[]>('/portal-automation/documents', { params }).then((r) => r.data),
   manualRun: (data: {

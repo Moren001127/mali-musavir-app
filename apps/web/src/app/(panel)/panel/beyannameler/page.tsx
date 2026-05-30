@@ -311,6 +311,7 @@ export default function BeyannamelerPage() {
 
   const latestBeyanJob = portalSummary?.latestJobs?.find((job) => job.jobType === 'EBEYANNAME_DAILY_DOWNLOAD');
   const isBeyanJobRunning = latestBeyanJob?.status === 'running';
+  const isBeyanJobActive = latestBeyanJob?.status === 'running' || latestBeyanJob?.status === 'pending';
 
   const { data: kayitlar = [], isLoading } = useQuery<BeyanKaydi[]>({
     queryKey: ['beyan-kayitlari', 'redesign'],
@@ -371,6 +372,17 @@ export default function BeyannamelerPage() {
       }
     },
     onError: (e: any) => toast.error(e?.message || 'e-Beyanname çekme işi başlatılamadı'),
+  });
+
+  const cancelJobMut = useMutation({
+    mutationFn: (id: string) => portalAutomationApi.cancelJob(id, 'Kullanici Beyannameler ekranindan iptal etti'),
+    onSuccess: () => {
+      qc.invalidateQueries({ queryKey: ['portal-automation-summary'] });
+      qc.invalidateQueries({ queryKey: ['beyan-kayitlari'] });
+      qc.invalidateQueries({ queryKey: ['beyan-kayitlari-ozet'] });
+      toast.info('e-Beyanname isi iptal edildi');
+    },
+    onError: (e: any) => toast.error(e?.message || 'Is iptal edilemedi'),
   });
 
   const nightlyMut = useMutation({
@@ -689,10 +701,15 @@ export default function BeyannamelerPage() {
             </div>
             <h1 className="text-[30px] font-semibold tracking-[-.03em]" style={{ color: '#fafaf9' }}>Beyanname Indirme</h1>
             <p className="text-[13px] mt-1" style={{ color: 'rgba(250,250,249,0.52)' }}>
-              Mali musavir e-Beyanname sifresiyle portala girer, beyannameleri ve tahakkuklari sunucu kuyruguna indirir.
+              Mali musavir e-Beyanname sifresiyle isi yerel Moren ajanina verir, beyannameleri ve tahakkuklari portala kaydeder.
             </p>
           </div>
-          <HeroLastJob job={latestBeyanJob} visibleRows={tableRows.length} />
+          <HeroLastJob
+            job={latestBeyanJob}
+            visibleRows={tableRows.length}
+            onCancel={isBeyanJobActive && latestBeyanJob ? () => cancelJobMut.mutate(latestBeyanJob.id) : undefined}
+            cancelPending={cancelJobMut.isPending}
+          />
         </div>
       </section>
 
@@ -709,7 +726,7 @@ export default function BeyannamelerPage() {
               <div>
                 <div className="mb-2 flex items-center gap-2">
                   <ServerCog size={16} style={{ color: '#7dd3fc' }} />
-                  <h2 className="text-[15px] font-semibold" style={{ color: '#fafaf9' }}>Sunucu İndirme Akışı</h2>
+                  <h2 className="text-[15px] font-semibold" style={{ color: '#fafaf9' }}>Yerel Ajan Indirme Akisi</h2>
                 </div>
                 <div className="flex flex-wrap gap-2">
                   <AutomationPill label="Runner" value={portalSummary?.runner?.enabled ? 'Aktif' : 'Pasif'} tone={portalSummary?.runner?.enabled ? 'blue' : 'rose'} />
@@ -1078,7 +1095,17 @@ function AutomationPill({ label, value, tone }: { label: string; value: string |
   );
 }
 
-function HeroLastJob({ job, visibleRows }: { job?: PortalJob; visibleRows?: number }) {
+function HeroLastJob({
+  job,
+  visibleRows,
+  onCancel,
+  cancelPending,
+}: {
+  job?: PortalJob;
+  visibleRows?: number;
+  onCancel?: () => void;
+  cancelPending?: boolean;
+}) {
   if (!job) {
     return (
       <div className="w-full shrink-0 rounded-xl p-3 lg:w-[420px]" style={{ background: 'rgba(255,255,255,0.025)', border: '1px solid rgba(255,255,255,0.06)' }}>
@@ -1105,9 +1132,23 @@ function HeroLastJob({ job, visibleRows }: { job?: PortalJob; visibleRows?: numb
     <div className="w-full shrink-0 rounded-xl p-3 lg:w-[460px]" style={{ background: 'rgba(255,255,255,0.025)', border: `1px solid ${status.border}` }}>
       <div className="mb-1.5 flex items-center justify-between gap-3">
         <span className="text-[10.5px] font-bold uppercase tracking-[0.14em]" style={{ color: 'rgba(250,250,249,0.42)' }}>Son iş</span>
-        <span className="shrink-0 rounded-md px-2 py-1 text-[10.5px] font-bold" style={{ background: status.bg, color: status.color }}>
-          {status.label}
-        </span>
+        <div className="flex shrink-0 items-center gap-2">
+          {onCancel && (
+            <button
+              type="button"
+              onClick={onCancel}
+              disabled={cancelPending}
+              className="inline-flex h-7 items-center gap-1 rounded-md px-2 text-[10.5px] font-bold disabled:opacity-50"
+              style={{ background: 'rgba(248,113,113,0.12)', border: '1px solid rgba(248,113,113,0.28)', color: '#fca5a5' }}
+            >
+              {cancelPending ? <Loader2 size={12} className="animate-spin" /> : <IconX size={12} />}
+              Iptal Et
+            </button>
+          )}
+          <span className="rounded-md px-2 py-1 text-[10.5px] font-bold" style={{ background: status.bg, color: status.color }}>
+            {status.label}
+          </span>
+        </div>
       </div>
       <div className="truncate text-[13px] font-semibold" style={{ color: '#fafaf9' }}>
         {PORTAL_JOB_LABEL[job.jobType] || job.jobType}

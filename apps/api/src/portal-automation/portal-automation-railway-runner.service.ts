@@ -106,6 +106,9 @@ export class PortalAutomationRailwayRunnerService implements OnModuleInit {
     this.logger.log(
       `[PortalRailwayRunner] aktif: device=${this.deviceId}, jobs=${this.enabledJobTypes().join(',')}, nightly=${this.includeNightly()}`,
     );
+    this.cancelInterruptedEBeyannameJobsOnBoot().catch((err) => {
+      this.logger.warn(`boot e-Beyanname iptal temizligi hata: ${err?.message || err}`);
+    });
     setTimeout(() => this.tick().catch((err) => this.logger.warn(`ilk tick hata: ${err?.message || err}`)), 10_000).unref();
   }
 
@@ -179,12 +182,59 @@ export class PortalAutomationRailwayRunnerService implements OnModuleInit {
       jobType: { in: this.enabledJobTypes() },
     };
     if (!this.includeNightly()) where.source = 'manual';
-    return (this.prisma as any).portalAutomationJob.findMany({
+    const jobs = await (this.prisma as any).portalAutomationJob.findMany({
       where,
       include: { taxpayer: { select: { id: true, companyName: true, firstName: true, lastName: true, taxNumber: true } } },
       orderBy: [{ priority: 'desc' }, { createdAt: 'asc' }],
-      take: this.maxJobsPerTick(),
+      take: this.maxJobsPerTick() * 5,
     });
+    return jobs.filter((job: any) => this.shouldRailwayHandleJob(job)).slice(0, this.maxJobsPerTick());
+  }
+
+  private async cancelInterruptedEBeyannameJobsOnBoot() {
+    if (!this.localFirstEBeyannameEnabled()) return;
+    const result = await (this.prisma as any).portalAutomationJob.updateMany({
+      where: {
+        jobType: 'EBEYANNAME_DAILY_DOWNLOAD',
+        status: 'running',
+        OR: [
+          { targetDeviceId: this.deviceId },
+          { targetDeviceId: { startsWith: 'railway' } },
+          { targetDeviceId: null },
+        ],
+      },
+      data: {
+        status: 'cancelled',
+        errorMessage: 'Sunucu e-Beyanname isi yerel ajana gecis icin iptal edildi',
+        finishedAt: new Date(),
+      },
+    });
+    if (result?.count) {
+      this.logger.warn(`[PortalRailwayRunner] ${result.count} aktif e-Beyanname isi yerel ajana gecis icin iptal edildi.`);
+    }
+  }
+
+  private localFirstEBeyannameEnabled() {
+    const raw = String(process.env.PORTAL_AUTOMATION_EBEYANNAME_RUNNER_MODE || '').trim().toLowerCase();
+    return !['server', 'railway', 'cloud'].includes(raw);
+  }
+
+  private shouldRailwayHandleJob(job: any) {
+    if (job?.jobType !== 'EBEYANNAME_DAILY_DOWNLOAD') return true;
+    const mode = String(job?.payload?.runnerMode || '').toLowerCase();
+    if (!mode || mode === 'server') return true;
+    if (mode === 'local_first') return false;
+    if (mode === 'local_first_with_server_fallback') {
+      if (!this.eBeyannameServerFallbackEnabled()) return false;
+      const minutes = Math.max(10, Number(process.env.PORTAL_AUTOMATION_EBEYANNAME_SERVER_FALLBACK_AFTER_MIN || 120));
+      const createdAt = new Date(job.createdAt || Date.now()).getTime();
+      return Date.now() - createdAt >= minutes * 60 * 1000;
+    }
+    return false;
+  }
+
+  private eBeyannameServerFallbackEnabled() {
+    return this.envFlag(process.env.PORTAL_AUTOMATION_EBEYANNAME_SERVER_FALLBACK_ENABLED || '');
   }
 
   private async failStaleRunnerJobs() {

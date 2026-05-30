@@ -464,6 +464,28 @@ export class PortalAutomationService {
     }));
   }
 
+  async cancelJob(tenantId: string, jobId: string, reason = 'Kullanici iptal etti') {
+    const job = await (this.prisma as any).portalAutomationJob.findFirst({
+      where: { id: jobId, tenantId },
+      select: { id: true, status: true, payload: true },
+    });
+    if (!job) throw new NotFoundException('Job bulunamadi');
+    if (['done', 'failed', 'cancelled'].includes(job.status)) return job;
+    return (this.prisma as any).portalAutomationJob.update({
+      where: { id: jobId },
+      data: {
+        status: 'cancelled',
+        errorMessage: reason.slice(0, 2000),
+        finishedAt: new Date(),
+        payload: this.withJobProgress(job.payload, {
+          step: 'cancelled',
+          message: 'Is iptal edildi.',
+          detail: reason.slice(0, 500),
+        }),
+      },
+    });
+  }
+
   async getCredentialForJob(tenantId: string, jobId: string) {
     const job = await (this.prisma as any).portalAutomationJob.findFirst({
       where: { id: jobId, tenantId },
@@ -519,6 +541,10 @@ export class PortalAutomationService {
       select: { id: true, payload: true },
     });
     if (!job) throw new NotFoundException('Baslatilacak job bulunamadi');
+    const mode = String(job.payload?.runnerMode || '');
+    const message = mode.startsWith('local')
+      ? 'Yerel ajan isi aldi, giris hazirligi yapiliyor.'
+      : 'Runner isi aldi, giris hazirligi yapiliyor.';
     return (this.prisma as any).portalAutomationJob.update({
       where: { id: jobId },
       data: {
@@ -528,7 +554,7 @@ export class PortalAutomationService {
         ...(deviceId ? { targetDeviceId: deviceId } : {}),
         payload: this.withJobProgress(job.payload, {
           step: 'runner',
-          message: 'Sunucu isi aldi, giris hazirligi yapiliyor.',
+          message,
         }),
       },
     });
@@ -537,9 +563,10 @@ export class PortalAutomationService {
   async updateJobProgress(tenantId: string, jobId: string, progress: JobProgressUpdate) {
     const job = await (this.prisma as any).portalAutomationJob.findFirst({
       where: { id: jobId, tenantId },
-      select: { id: true, payload: true },
+      select: { id: true, status: true, payload: true },
     });
     if (!job) throw new NotFoundException('Job bulunamadi');
+    if (job.status === 'cancelled') throw new BadRequestException('Job iptal edildi');
     return (this.prisma as any).portalAutomationJob.update({
       where: { id: jobId },
       data: { payload: this.withJobProgress(job.payload, progress) },
@@ -549,6 +576,7 @@ export class PortalAutomationService {
   async markFailed(tenantId: string, jobId: string, errorMessage: string) {
     const job = await (this.prisma as any).portalAutomationJob.findFirst({ where: { id: jobId, tenantId } });
     if (!job) throw new NotFoundException('Job bulunamadi');
+    if (job.status === 'cancelled') return job;
     await this.markCredentialError(job, errorMessage).catch(() => {});
     return (this.prisma as any).portalAutomationJob.update({
       where: { id: jobId },
@@ -572,6 +600,7 @@ export class PortalAutomationService {
   ) {
     const job = await (this.prisma as any).portalAutomationJob.findFirst({ where: { id: jobId, tenantId } });
     if (!job) throw new NotFoundException('Job bulunamadi');
+    if (job.status === 'cancelled') return job;
 
     let recordCount = 0;
     const declarations = Array.isArray(input?.declarations) ? input.declarations : [];
@@ -625,6 +654,7 @@ export class PortalAutomationService {
   ) {
     const job = await (this.prisma as any).portalAutomationJob.findFirst({ where: { id: jobId, tenantId } });
     if (!job) throw new NotFoundException('Job bulunamadi');
+    if (job.status === 'cancelled') return job;
     if (job.status !== 'running') throw new BadRequestException(`Job ara kayit icin running degil: ${job.status}`);
 
     let recordCount = 0;
@@ -732,6 +762,10 @@ export class PortalAutomationService {
     },
   ) {
     const meta = JOB_META[jobType];
+    const runnerMode = this.runnerModeForJob(jobType, opts.source);
+    const pendingMessage = runnerMode === 'local_first' || runnerMode === 'local_first_with_server_fallback'
+      ? 'Kuyrukta, yerel Moren ajan bekleniyor.'
+      : 'Kuyrukta, runner bekleniyor.';
     return (this.prisma as any).portalAutomationJob.create({
       data: {
         tenantId,
@@ -749,6 +783,7 @@ export class PortalAutomationService {
           label: meta.label,
           provider: meta.provider,
           ownerType: meta.ownerType,
+          runnerMode,
           force: opts.force === true,
           dateFrom: opts.period.start.toISOString(),
           dateTo: opts.period.end.toISOString(),
@@ -756,19 +791,28 @@ export class PortalAutomationService {
           progress: {
             at: new Date().toISOString(),
             step: 'pending',
-            message: 'Kuyrukta, runner bekleniyor.',
+            message: pendingMessage,
           },
           progressLog: [
             {
               at: new Date().toISOString(),
               step: 'pending',
-              message: 'Kuyrukta, runner bekleniyor.',
+              message: pendingMessage,
             },
           ],
         },
       },
       include: { taxpayer: { select: { id: true, companyName: true, firstName: true, lastName: true, taxNumber: true } } },
     });
+  }
+
+  private runnerModeForJob(jobType: PortalJobType, source: 'manual' | 'nightly') {
+    if (jobType !== 'EBEYANNAME_DAILY_DOWNLOAD') return 'server';
+    const raw = String(process.env.PORTAL_AUTOMATION_EBEYANNAME_RUNNER_MODE || '').trim().toLowerCase();
+    if (['server', 'railway', 'cloud'].includes(raw)) return 'server';
+    if (['local', 'local_only', 'local-only'].includes(raw)) return 'local_first';
+    if (['local_first_with_server_fallback', 'server_fallback', 'fallback'].includes(raw)) return 'local_first_with_server_fallback';
+    return source === 'nightly' ? 'local_first_with_server_fallback' : 'local_first';
   }
 
   private withJobProgress(payload: any, progress: JobProgressUpdate) {
