@@ -2,8 +2,10 @@ import { Injectable, Logger, BadRequestException, NotFoundException } from '@nes
 import { randomUUID } from 'crypto';
 import * as AdmZip from 'adm-zip';
 import * as iconv from 'iconv-lite';
+import { PDFParse } from 'pdf-parse';
 import { PrismaService } from '../prisma/prisma.service';
 import { StorageService } from '../storage/storage.service';
+import { tryDecrypt } from '../common/crypto';
 import {
   parseMukellefKlasoru, parseBeyanTipiKlasoru, mapBeyanTipi,
   parsePdfAd, formatDonem, adBenzerlik, normalizeAd,
@@ -175,8 +177,13 @@ export class BeyanKayitlariService {
     };
     const normalizeTutar = (t: any): number | null => {
       if (t == null || t === '') return null;
-      const n = Number(String(t).replace(/[^\d.]/g, '').replace(',', '.'));
-      return Number.isFinite(n) ? Math.round(n) : null;
+      if (typeof t === 'number') return Number.isFinite(t) ? Math.round(t * 100) / 100 : null;
+      const raw = String(t).trim();
+      const normalized = raw.includes(',')
+        ? raw.replace(/[^\d,.-]/g, '').replace(/\./g, '').replace(',', '.')
+        : raw.replace(/[^\d.-]/g, '');
+      const n = Number(normalized);
+      return Number.isFinite(n) ? Math.round(n * 100) / 100 : null;
     };
     const normalizeGuven = (g: any): 'YUKSEK' | 'ORTA' | 'DUSUK' | null => {
       const s = String(g || '').toUpperCase();
@@ -404,11 +411,24 @@ export class BeyanKayitlariService {
   async getPdfFile(tenantId: string, id: string, filename = 'tahakkuk.pdf') {
     const kayit = await (this.prisma as any).beyanKaydi.findFirst({
       where: { id, tenantId },
-      select: { pdfUrl: true },
+      select: {
+        id: true,
+        tenantId: true,
+        taxpayerId: true,
+        beyanTipi: true,
+        donem: true,
+        pdfUrl: true,
+        taxpayer: { select: { taxNumber: true } },
+      },
     });
     if (!kayit || !kayit.pdfUrl) throw new NotFoundException('Tahakkuk PDF bulunamadi');
+    const buffer = await this.storage.getBuffer(kayit.pdfUrl);
+    await this.ensureBeyanFileOwnerOrRepair(tenantId, kayit, 'tahakkuk', kayit.pdfUrl, buffer);
+    await this.updateTahakkukAmountFromPdf(kayit.id, buffer).catch((err) => {
+      this.logger.warn(`Tahakkuk tutari PDF'den guncellenemedi: ${err?.message || err}`);
+    });
     return {
-      buffer: await this.storage.getBuffer(kayit.pdfUrl),
+      buffer,
       filename,
       mimeType: 'application/pdf',
     };
@@ -427,14 +447,211 @@ export class BeyanKayitlariService {
   async getBeyannameFile(tenantId: string, id: string, filename = 'beyanname.pdf') {
     const kayit = await (this.prisma as any).beyanKaydi.findFirst({
       where: { id, tenantId },
-      select: { beyannameUrl: true },
+      select: {
+        id: true,
+        tenantId: true,
+        taxpayerId: true,
+        beyanTipi: true,
+        donem: true,
+        beyannameUrl: true,
+        taxpayer: { select: { taxNumber: true } },
+      },
     });
     if (!kayit || !kayit.beyannameUrl) throw new NotFoundException('Beyanname PDF bulunamadi');
+    const buffer = await this.storage.getBuffer(kayit.beyannameUrl);
+    await this.ensureBeyanFileOwnerOrRepair(tenantId, kayit, 'beyanname', kayit.beyannameUrl, buffer);
     return {
-      buffer: await this.storage.getBuffer(kayit.beyannameUrl),
+      buffer,
       filename,
       mimeType: 'application/pdf',
     };
+  }
+
+  private async ensureBeyanFileOwnerOrRepair(
+    tenantId: string,
+    kayit: {
+      id: string;
+      taxpayerId: string;
+      beyanTipi: string;
+      donem: string;
+      taxpayer?: { taxNumber?: string | null } | null;
+    },
+    kind: 'beyanname' | 'tahakkuk',
+    storageKey: string,
+    buffer: Buffer,
+  ) {
+    const expectedTaxNo = this.normalizeTaxNo(kayit.taxpayer?.taxNumber);
+    if (!expectedTaxNo) return;
+
+    const text = await this.pdfText(buffer).catch((err) => {
+      this.logger.warn(`${kind} PDF VKN kontrolu yapilamadi: ${err?.message || err}`);
+      return '';
+    });
+    let ownerTaxNo: string | null = null;
+    let parsed: ParsedBeyan | null = null;
+
+    if (text) {
+      const digits = text.replace(/\D/g, '');
+      if (digits.includes(expectedTaxNo)) return;
+
+      const seenTaxNos = this.extractTaxNumbers(text);
+      ownerTaxNo = seenTaxNos.find((taxNo) => taxNo !== expectedTaxNo) || null;
+    }
+
+    if (!ownerTaxNo) {
+      parsed = await this.parseBeyannamePdf(buffer.toString('base64')).catch((err) => {
+        this.logger.warn(`${kind} PDF AI VKN kontrolu yapilamadi: ${err?.message || err}`);
+        return null;
+      });
+      const parsedTaxNo = this.normalizeTaxNo(parsed?.vkn);
+      if (parsedTaxNo === expectedTaxNo) return;
+      ownerTaxNo = parsedTaxNo || null;
+    }
+
+    await this.clearBeyanFileLink(kayit.id, kind, storageKey);
+
+    if (ownerTaxNo) {
+      const owner = await this.findTaxpayerByTaxNo(tenantId, ownerTaxNo);
+      if (owner?.id) {
+        await this.moveBeyanFileLinkToOwner(
+          tenantId,
+          owner.id,
+          {
+            beyanTipi: parsed?.beyanTipi || kayit.beyanTipi,
+            donem: parsed?.donem || kayit.donem,
+          },
+          kind,
+          storageKey,
+        );
+      }
+    }
+
+    throw new NotFoundException(
+      `${kind === 'beyanname' ? 'Beyanname' : 'Tahakkuk'} PDF bu mukellefe ait degil; hatali bag temizlendi. Listeyi yenileyin.`,
+    );
+  }
+
+  private async clearBeyanFileLink(kayitId: string, kind: 'beyanname' | 'tahakkuk', storageKey: string) {
+    await (this.prisma as any).beyanKaydi.updateMany({
+      where: {
+        id: kayitId,
+        ...(kind === 'beyanname' ? { beyannameUrl: storageKey } : { pdfUrl: storageKey }),
+      },
+      data: kind === 'beyanname' ? { beyannameUrl: null } : { pdfUrl: null },
+    });
+  }
+
+  private async moveBeyanFileLinkToOwner(
+    tenantId: string,
+    ownerTaxpayerId: string,
+    source: { beyanTipi: string; donem: string },
+    kind: 'beyanname' | 'tahakkuk',
+    storageKey: string,
+  ) {
+    await (this.prisma as any).beyanKaydi.upsert({
+      where: {
+        tenantId_taxpayerId_beyanTipi_donem: {
+          tenantId,
+          taxpayerId: ownerTaxpayerId,
+          beyanTipi: source.beyanTipi,
+          donem: source.donem,
+        },
+      },
+      create: {
+        tenantId,
+        taxpayerId: ownerTaxpayerId,
+        beyanTipi: source.beyanTipi,
+        donem: source.donem,
+        kaynak: 'gib_agent',
+        ...(kind === 'beyanname' ? { beyannameUrl: storageKey } : { pdfUrl: storageKey }),
+      },
+      update: kind === 'beyanname' ? { beyannameUrl: storageKey } : { pdfUrl: storageKey },
+    });
+  }
+
+  private normalizeTaxNo(value?: string | null): string {
+    return String(tryDecrypt(value) || value || '').replace(/\D/g, '');
+  }
+
+  private async findTaxpayerByTaxNo(tenantId: string, taxNo: string): Promise<{ id: string } | null> {
+    const normalized = String(taxNo || '').replace(/\D/g, '');
+    if (!normalized) return null;
+    const direct = await (this.prisma as any).taxpayer.findFirst({
+      where: { tenantId, taxNumber: normalized },
+      select: { id: true },
+    });
+    if (direct?.id) return direct;
+
+    const taxpayers = await (this.prisma as any).taxpayer.findMany({
+      where: { tenantId },
+      select: { id: true, taxNumber: true },
+      take: 5000,
+    });
+    return taxpayers.find((taxpayer: any) => this.normalizeTaxNo(taxpayer.taxNumber) === normalized) || null;
+  }
+
+  private extractTaxNumbers(text: string): string[] {
+    return Array.from(new Set(
+      Array.from(String(text || '').matchAll(/\b\d{10,11}\b/g))
+        .map((m) => m[0])
+        .filter((value) => value.length === 10 || value.length === 11),
+    ));
+  }
+
+  private async pdfText(buffer: Buffer): Promise<string> {
+    const parser = new PDFParse({ data: buffer });
+    try {
+      const result = await parser.getText();
+      return String(result?.text || '').replace(/\s+/g, ' ').trim();
+    } finally {
+      const destroy = (parser as any).destroy;
+      if (typeof destroy === 'function') await destroy.call(parser).catch(() => {});
+    }
+  }
+
+  private async updateTahakkukAmountFromPdf(kayitId: string, buffer: Buffer) {
+    const text = await this.pdfText(buffer);
+    const tahakkukTutari = this.extractTahakkukAmount(text);
+    if (tahakkukTutari == null) return;
+    await (this.prisma as any).beyanKaydi.update({
+      where: { id: kayitId },
+      data: { tahakkukTutari },
+    });
+  }
+
+  private extractTahakkukAmount(text: string): number | null {
+    const compact = String(text || '').replace(/\s+/g, ' ');
+    const preferredLabels = [
+      /terkin\s+sonrasi\s+kalan\s+vergi\s+tutari/i,
+      /tahakkuk\s+eden\s+(?:vergi\s+)?tutar/i,
+      /odenecek\s+(?:vergi\s+)?tutar/i,
+      /odenmesi\s+gereken\s+(?:vergi\s+)?tutar/i,
+      /toplam\s+tahakkuk/i,
+      /toplam\s+vergi/i,
+    ];
+    for (const label of preferredLabels) {
+      const match = compact.match(new RegExp(`${label.source}.{0,180}`, 'i'));
+      const amount = match ? this.lastTurkishMoney(match[0]) : null;
+      if (amount != null) return amount;
+    }
+
+    const lines = String(text || '').split(/\r?\n| {2,}/).map((line) => line.trim()).filter(Boolean);
+    for (const line of lines) {
+      if (!/tahakkuk|odenecek|ödenecek|terkin|kalan vergi|toplam/i.test(line)) continue;
+      const amount = this.lastTurkishMoney(line);
+      if (amount != null) return amount;
+    }
+    return null;
+  }
+
+  private lastTurkishMoney(text: string): number | null {
+    const matches = Array.from(String(text || '').matchAll(/\b\d{1,3}(?:\.\d{3})*,\d{2}\b|\b\d{4,},\d{2}\b|\b\d{1,3},\d{2}\b/g)).map((m) => m[0]);
+    for (const raw of matches.reverse()) {
+      const normalized = raw.replace(/\./g, '').replace(',', '.');
+      const value = Number(normalized);
+      if (Number.isFinite(value)) return Math.round(value * 100) / 100;
+    }
+    return null;
   }
 
   // ══════════════════════════════════════════════════════════

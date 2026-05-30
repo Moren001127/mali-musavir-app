@@ -880,10 +880,12 @@ export class PortalAutomationService {
     const skipBeyannameStorage = !!existingKayit?.beyannameUrl && !isCorrection && !forceRefresh;
     const skipTahakkukStorage = !!existingKayit?.pdfUrl && !isCorrection && !forceRefresh;
     const skipXmlStorage = !!existingKayit?.xmlUrl && !isCorrection && !forceRefresh;
-    const hasIncomingFile = !!(cleanBase64(input.beyannameBase64) || cleanBase64(input.tahakkukBase64) || cleanBase64(input.xmlBase64));
+    const beyannameCheck = await this.prepareIncomingDeclarationPdf(tenantId, jobId, input, taxpayer, 'beyanname', skipBeyannameStorage);
+    const tahakkukCheck = await this.prepareIncomingDeclarationPdf(tenantId, jobId, input, taxpayer, 'tahakkuk', skipTahakkukStorage);
+    const hasIncomingFile = !!(cleanBase64(beyannameCheck.base64) || cleanBase64(tahakkukCheck.base64) || cleanBase64(input.xmlBase64));
     const hasMissingIncomingFile =
-      (!!cleanBase64(input.beyannameBase64) && !skipBeyannameStorage)
-      || (!!cleanBase64(input.tahakkukBase64) && !skipTahakkukStorage)
+      (!!cleanBase64(beyannameCheck.base64) && !skipBeyannameStorage)
+      || (!!cleanBase64(tahakkukCheck.base64) && !skipTahakkukStorage)
       || (!!cleanBase64(input.xmlBase64) && !skipXmlStorage);
     if (existingKayit && !isCorrection && hasIncomingFile && !hasMissingIncomingFile && input.tahakkukTutari == null && !input.onayNo) {
       return existingKayit;
@@ -892,13 +894,13 @@ export class PortalAutomationService {
     const base = `${tenantId}/${taxpayer.id}/gib-beyan/${input.beyanTipi}_${input.donem}`;
     const beyannameUrl = await this.storeBase64IfPresent(
       `${base}_Beyanname_${randomUUID()}.pdf`,
-      skipBeyannameStorage ? null : input.beyannameBase64,
+      skipBeyannameStorage ? null : beyannameCheck.base64,
       'application/pdf',
       input.beyannameFileName || 'beyanname.pdf',
     );
     const pdfUrl = await this.storeBase64IfPresent(
       `${base}_Tahakkuk_${randomUUID()}.pdf`,
-      skipTahakkukStorage ? null : input.tahakkukBase64,
+      skipTahakkukStorage ? null : tahakkukCheck.base64,
       'application/pdf',
       input.tahakkukFileName || 'tahakkuk.pdf',
     );
@@ -908,7 +910,7 @@ export class PortalAutomationService {
       'application/xml',
       'beyanname.xml',
     );
-    const pdfMeta: { tahakkukTutari?: number | null; onayNo?: string | null } = await this.extractTahakkukMetaFromBase64(input.tahakkukBase64).catch((err) => {
+    const pdfMeta: { tahakkukTutari?: number | null; onayNo?: string | null } = await this.extractTahakkukMetaFromBase64(tahakkukCheck.base64).catch((err) => {
       this.logger.warn(`Tahakkuk PDF meta okunamadi: ${err?.message || err}`);
       return {};
     });
@@ -925,7 +927,9 @@ export class PortalAutomationService {
     if (input.odemeTutari != null) data.odemeTutari = input.odemeTutari;
     if (onayNo) data.onayNo = onayNo;
     if (beyannameUrl) data.beyannameUrl = beyannameUrl;
+    else if (beyannameCheck.clearCurrent) data.beyannameUrl = null;
     if (pdfUrl) data.pdfUrl = pdfUrl;
+    else if (tahakkukCheck.clearCurrent) data.pdfUrl = null;
     if (xmlUrl) data.xmlUrl = xmlUrl;
 
     const kayit = await (this.prisma as any).beyanKaydi.upsert({
@@ -979,6 +983,77 @@ export class PortalAutomationService {
       }).catch(() => {});
 
     return kayit;
+  }
+
+  private async prepareIncomingDeclarationPdf(
+    tenantId: string,
+    jobId: string,
+    input: AgentDeclarationInput,
+    taxpayer: { id: string; taxNumber?: string | null },
+    kind: 'beyanname' | 'tahakkuk',
+    skipStorage: boolean,
+  ): Promise<{ base64: string | null; clearCurrent: boolean }> {
+    if (skipStorage) return { base64: null, clearCurrent: false };
+
+    const base64 = cleanBase64(kind === 'beyanname' ? input.beyannameBase64 : input.tahakkukBase64);
+    if (!base64) return { base64: null, clearCurrent: false };
+
+    const expectedTaxNo = this.normalizeTaxNoValue(taxpayer.taxNumber);
+    if (!expectedTaxNo) return { base64, clearCurrent: false };
+
+    const text = await this.pdfTextFromBase64(base64).catch((err) => {
+      this.logger.warn(`${kind} PDF VKN kontrolu yapilamadi: ${err?.message || err}`);
+      return '';
+    });
+    const compactDigits = text.replace(/\D/g, '');
+    if (compactDigits.includes(expectedTaxNo)) return { base64, clearCurrent: false };
+
+    const seenTaxNos = this.extractTaxNumbers(text);
+    let ownerTaxNo = seenTaxNos.find((taxNo) => taxNo !== expectedTaxNo) || null;
+    let parsed: any = null;
+    if (!ownerTaxNo) {
+      parsed = await this.beyanKayitlari.parseBeyannamePdf(base64).catch((err) => {
+        this.logger.warn(`${kind} PDF AI VKN kontrolu yapilamadi: ${err?.message || err}`);
+        return null;
+      });
+      const parsedTaxNo = this.normalizeTaxNoValue(parsed?.vkn);
+      if (parsedTaxNo === expectedTaxNo) return { base64, clearCurrent: false };
+      ownerTaxNo = parsedTaxNo || null;
+    }
+
+    if (!ownerTaxNo) {
+      this.logger.warn(`${kind} PDF kayda yazilmadi: beklenen VKN/TCKN ${expectedTaxNo}, PDF sahibi dogrulanamadi.`);
+      return { base64: null, clearCurrent: true };
+    }
+
+    await this.storePortalDocumentFromAgent(tenantId, jobId, {
+      taxpayerId: null,
+      belgeTuru: kind === 'tahakkuk' ? 'GIB_TAHAKKUK' : 'GIB_BEYANNAME',
+      title: kind === 'tahakkuk'
+        ? input.tahakkukFileName || 'tahakkuk.pdf'
+        : input.beyannameFileName || 'beyanname.pdf',
+      period: input.donem,
+      issuedAt: input.beyanTarihi || null,
+      receivedAt: new Date().toISOString(),
+      mimeType: 'application/pdf',
+      originalName: kind === 'tahakkuk'
+        ? input.tahakkukFileName || 'tahakkuk.pdf'
+        : input.beyannameFileName || 'beyanname.pdf',
+      base64,
+      raw: {
+        runner: 'portal-automation',
+        source: 'declaration-owner-repair',
+        ownerMismatch: true,
+        expectedTaxNo,
+        ownerTaxNo,
+        originalTaxpayerId: taxpayer.id,
+        originalRaw: input.raw || null,
+      },
+    }, 'EBEYANNAME_DAILY_DOWNLOAD').catch((err) => {
+      this.logger.warn(`${kind} PDF dogru mukellefe tasinamadi: ${err?.message || err}`);
+    });
+
+    return { base64: null, clearCurrent: true };
   }
 
   private async storePortalDocumentFromAgent(
@@ -1085,12 +1160,7 @@ export class PortalAutomationService {
     if (!base64) return null;
 
     const parsed = await this.beyanKayitlari.parseBeyannamePdf(base64);
-    const taxpayer = parsed.vkn
-      ? await (this.prisma as any).taxpayer.findFirst({
-          where: { tenantId, taxNumber: parsed.vkn },
-          select: { id: true },
-        })
-      : null;
+    const taxpayer = parsed.vkn ? await this.findTaxpayerByTaxNo(tenantId, parsed.vkn) : null;
 
     if (!taxpayer?.id || !parsed.beyanTipi || !parsed.donem) return null;
 
@@ -1170,6 +1240,46 @@ export class PortalAutomationService {
     }).catch(() => {});
 
     return { taxpayerId: taxpayer.id, beyanKaydiId: kayit.id };
+  }
+
+  private normalizeTaxNoValue(value?: string | null): string {
+    return String(tryDecrypt(value) || value || '').replace(/\D/g, '');
+  }
+
+  private extractTaxNumbers(text: string): string[] {
+    return Array.from(new Set(
+      Array.from(String(text || '').matchAll(/\b\d{10,11}\b/g))
+        .map((m) => m[0])
+        .filter((value) => value.length === 10 || value.length === 11),
+    ));
+  }
+
+  private async findTaxpayerByTaxNo(tenantId: string, taxNo: string): Promise<{ id: string } | null> {
+    const normalized = this.normalizeTaxNoValue(taxNo);
+    if (!normalized) return null;
+    const direct = await (this.prisma as any).taxpayer.findFirst({
+      where: { tenantId, taxNumber: normalized },
+      select: { id: true },
+    });
+    if (direct?.id) return direct;
+
+    const taxpayers = await (this.prisma as any).taxpayer.findMany({
+      where: { tenantId },
+      select: { id: true, taxNumber: true },
+      take: 5000,
+    });
+    return taxpayers.find((taxpayer: any) => this.normalizeTaxNoValue(taxpayer.taxNumber) === normalized) || null;
+  }
+
+  private async pdfTextFromBase64(base64: string) {
+    const parser = new PDFParse({ data: Buffer.from(base64, 'base64') });
+    try {
+      const result = await parser.getText();
+      return String(result?.text || '').replace(/\s+/g, ' ').trim();
+    } finally {
+      const destroy = (parser as any).destroy;
+      if (typeof destroy === 'function') await destroy.call(parser).catch(() => {});
+    }
   }
 
   private async storeBase64IfPresent(s3Key: string, base64Input: string | null | undefined, mimeType: string, originalName: string) {

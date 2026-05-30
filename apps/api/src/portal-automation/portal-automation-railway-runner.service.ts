@@ -8,6 +8,7 @@ import { join } from 'path';
 import { randomUUID } from 'crypto';
 import { PrismaService } from '../prisma/prisma.service';
 import { PortalAutomationService, PortalJobType } from './portal-automation.service';
+import { tryDecrypt } from '../common/crypto';
 
 type RunnerCredential = {
   provider: string;
@@ -2068,7 +2069,8 @@ export class PortalAutomationRailwayRunnerService implements OnModuleInit {
       notes.push(`${kind}: satir ${row.rowIndex + 1} PDF VKN uyusmadi; beklenen ${expectedTaxNumber}, PDF ${seenTaxNumbers.slice(0, 3).join(', ')}. Kayda baglanmadi.`);
       return false;
     }
-    return true;
+    notes.push(`${kind}: satir ${row.rowIndex + 1} PDF icinde beklenen VKN/TCKN bulunamadi (${expectedTaxNumber}). Kayda baglanmadi, PDF parse ile yeniden eslestirilecek.`);
+    return false;
   }
 
   private async pdfTextFromBase64(base64: string) {
@@ -2604,7 +2606,7 @@ export class PortalAutomationRailwayRunnerService implements OnModuleInit {
   private matchTaxpayerId(text: string, taxpayers: TaxpayerMatch[]) {
     const normalized = text.replace(/\D/g, '');
     for (const taxpayer of taxpayers) {
-      const taxNumber = (taxpayer.taxNumber || '').replace(/\D/g, '');
+      const taxNumber = String(tryDecrypt(taxpayer.taxNumber) || taxpayer.taxNumber || '').replace(/\D/g, '');
       if (taxNumber && normalized.includes(taxNumber)) return taxpayer.id;
     }
     const textKey = this.normalizeTextKey(text);
