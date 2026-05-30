@@ -1165,11 +1165,20 @@ export class PortalAutomationService {
     if (!taxpayer?.id || !parsed.beyanTipi || !parsed.donem) return null;
 
     const isTahakkuk = input.belgeTuru === 'GIB_TAHAKKUK' || /tahakkuk|fis|fiş/i.test(name);
+    const tahakkukMeta: { tahakkukTutari?: number | null; onayNo?: string | null } = isTahakkuk
+      ? await this.extractTahakkukMetaFromBase64(base64).catch((err) => {
+          this.logger.warn(`Tahakkuk PDF meta okunamadi: ${err?.message || err}`);
+          return {};
+        })
+      : {};
+    const tahakkukTutari = isTahakkuk ? tahakkukMeta.tahakkukTutari ?? parsed.tahakkukTutari ?? null : null;
+    const onayNo = tahakkukMeta.onayNo || parsed.onayNo || null;
     const parsedDate = parsed.beyanTarihi ? parseDateOrNull(parsed.beyanTarihi) : null;
     const rawNote = JSON.stringify({
       source: 'portal-automation-pdf-parse',
       fileName: name,
       parsed,
+      tahakkukMeta,
       raw: input.raw || null,
     }).slice(0, 1000);
 
@@ -1179,8 +1188,8 @@ export class PortalAutomationService {
       notlar: rawNote,
     };
     if (parsedDate) data.beyanTarihi = parsedDate;
-    if (isTahakkuk && parsed.tahakkukTutari != null) data.tahakkukTutari = parsed.tahakkukTutari;
-    if (parsed.onayNo) data.onayNo = parsed.onayNo;
+    if (isTahakkuk && tahakkukTutari != null) data.tahakkukTutari = tahakkukTutari;
+    if (onayNo) data.onayNo = onayNo;
     if (isTahakkuk) data.pdfUrl = storageKey;
     else data.beyannameUrl = storageKey;
 
@@ -1199,8 +1208,8 @@ export class PortalAutomationService {
         beyanTipi: parsed.beyanTipi,
         donem: parsed.donem,
         beyanTarihi: parsedDate,
-        tahakkukTutari: isTahakkuk ? parsed.tahakkukTutari : null,
-        onayNo: parsed.onayNo,
+        tahakkukTutari,
+        onayNo,
         kaynak: 'gib_agent',
         importBatchId: jobId,
         notlar: rawNote,
@@ -1213,7 +1222,7 @@ export class PortalAutomationService {
       durum: 'onaylandi',
       onayTarihi: parsedDate || new Date(),
     };
-    if (isTahakkuk && parsed.tahakkukTutari != null) durumUpdate.tahakkukTutari = parsed.tahakkukTutari;
+    if (isTahakkuk && tahakkukTutari != null) durumUpdate.tahakkukTutari = tahakkukTutari;
 
     await (this.prisma as any).beyanDurumu.upsert({
       where: {
@@ -1231,7 +1240,7 @@ export class PortalAutomationService {
         donem: parsed.donem,
         durum: 'onaylandi',
         onayTarihi: parsedDate || new Date(),
-        tahakkukTutari: isTahakkuk ? parsed.tahakkukTutari : null,
+        tahakkukTutari,
         notlar: 'GIB agent PDF parse ile indirildi',
       },
       update: {

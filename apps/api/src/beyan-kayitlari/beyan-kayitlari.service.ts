@@ -86,7 +86,7 @@ export class BeyanKayitlariService {
   "beyanTipi": "BEYANNAME TİPİ kodu — sadece şunlardan biri: KDV1 | KDV2 | MUHSGK | DAMGA | POSET | KURUMLAR | GELIR | BILDIRGE | EDEFTER | GECICI_VERGI | DIGER",
   "donem": "yyyy-mm formatı (aylık beyanlar için, örn 2026-03). Yıllık beyanlar (Kurumlar/Gelir) için yyyy-YIL (örn 2025-YIL)",
   "beyanTarihi": "yyyy-mm-dd (beyannamenin verildiği tarih; bulamazsan null)",
-  "tahakkukTutari": "TL cinsinden tahakkuk eden tutar — sadece sayı, kuruşsuz (örn 12450). Tahakkuk yoksa null",
+  "tahakkukTutari": "TL cinsinden tahakkuk eden tutar — sadece sayı, kuruşu koru (örn 1085.20). Tahakkuk yoksa null",
   "onayNo": "GİB onay/tahakkuk numarası (string; bulamazsan null)",
   "guven": "YUKSEK | ORTA | DUSUK — verinin ne kadar net okunduğuna göre"
 }
@@ -98,7 +98,7 @@ export class BeyanKayitlariService {
 - POSET = Geri Kazanım Katılım Payı Beyannamesi (poşet).
 - GECICI_VERGI = Geçici Vergi Beyannamesi.
 - VKN numarasından diğer rakamları filtrele (sadece haneleri al).
-- Tutar varsa nokta/virgül temizleyip tam sayı (kuruşsuz) ver.`;
+- Tutar varsa Türkçe para formatını sayıya çevir ve kuruşu koru; örn 1.085,20 -> 1085.20.`;
 
     const payload = {
       model: CLAUDE_MODEL,
