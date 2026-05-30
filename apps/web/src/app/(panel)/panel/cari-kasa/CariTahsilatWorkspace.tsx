@@ -556,17 +556,27 @@ function TahsilatTable({
 
   return (
     <div className="overflow-x-auto">
-      <table className="w-full min-w-[1080px] text-[13px]">
+      <table className="w-full table-fixed text-[12.5px]">
+        <colgroup>
+          <col style={{ width: 42 }} />
+          <col style={{ width: '32%' }} />
+          <col style={{ width: '12%' }} />
+          <col style={{ width: '15%' }} />
+          <col style={{ width: '15%' }} />
+          <col style={{ width: '9%' }} />
+          <col style={{ width: '9%' }} />
+          <col style={{ width: 88 }} />
+        </colgroup>
         <thead>
           <tr style={{ color: SOFT, background: 'rgba(255,255,255,0.035)', borderBottom: `1px solid ${LINE}` }}>
-            <th className="w-[44px] px-3 py-3 text-left"></th>
-            <th className="px-3 py-3 text-left font-bold">Mükellef</th>
-            <th className="px-3 py-3 text-right font-bold">Açık Bakiye</th>
-            <th className="px-3 py-3 text-left font-bold">Yaşlandırma</th>
-            <th className="px-3 py-3 text-left font-bold">Son Durum</th>
-            <th className="px-3 py-3 text-right font-bold">Tahakkuk</th>
-            <th className="px-3 py-3 text-right font-bold">Tahsilat</th>
-            <th className="px-3 py-3 text-center font-bold">Aksiyon</th>
+            <th className="px-2 py-2.5 text-left"></th>
+            <th className="px-2 py-2.5 text-left font-bold">Mükellef</th>
+            <th className="px-2 py-2.5 text-right font-bold">Bakiye</th>
+            <th className="px-2 py-2.5 text-left font-bold">Yaş</th>
+            <th className="px-2 py-2.5 text-left font-bold">Durum</th>
+            <th className="px-2 py-2.5 text-right font-bold">Borç</th>
+            <th className="px-2 py-2.5 text-right font-bold">Alacak</th>
+            <th className="px-2 py-2.5 text-center font-bold"></th>
           </tr>
         </thead>
         <tbody style={{ color: TEXT }}>
@@ -574,7 +584,7 @@ function TahsilatTable({
             const style = bucketStyle(row.maxBucket);
             return (
               <tr key={row.id} style={{ borderTop: '1px solid rgba(255,255,255,0.065)' }}>
-                <td className="px-3 py-3">
+                <td className="px-2 py-2.5">
                   <input
                     type="checkbox"
                     checked={selectedIds.includes(row.id)}
@@ -584,55 +594,63 @@ function TahsilatTable({
                     title={row.whatsappUygun ? 'WhatsApp hedefi' : 'Telefon yok'}
                   />
                 </td>
-                <td className="px-3 py-3">
-                  <button onClick={() => onOpen(row.id)} className="block text-left min-w-0">
-                    <div className="font-bold truncate max-w-[340px]" style={{ color: TEXT }}>{row.ad}</div>
-                    <div className="mt-1 flex items-center gap-2 text-[12px] font-semibold" style={{ color: SOFT }}>
-                      <span className="tabular-nums">{row.taxNumber || '-'}</span>
-                      <span style={{ color: 'rgba(255,255,255,0.18)' }}>|</span>
-                      <span className="inline-flex items-center gap-1">
+                <td className="px-2 py-2.5 min-w-0">
+                  <button onClick={() => onOpen(row.id)} className="block w-full text-left min-w-0">
+                    <div className="font-bold truncate" style={{ color: TEXT }}>{row.ad}</div>
+                    <div className="mt-1 flex items-center gap-2 text-[11.5px] font-semibold min-w-0" style={{ color: SOFT }}>
+                      <span className="tabular-nums shrink-0">{row.taxNumber || '-'}</span>
+                      <span className="shrink-0" style={{ color: 'rgba(255,255,255,0.18)' }}>|</span>
+                      <span className="inline-flex items-center gap-1 truncate min-w-0">
                         <Phone size={12} /> {row.phone || 'telefon yok'}
                       </span>
                     </div>
                   </button>
                 </td>
-                <td className="px-3 py-3 text-right">
-                  <div className="text-[16px] font-bold tabular-nums" style={{ color: row.bakiye > 0 ? BORDO : row.bakiye < 0 ? '#4ade80' : SOFT, fontFamily: MONEY }}>
+                <td className="px-2 py-2.5 text-right">
+                  <div className="text-[14px] font-bold tabular-nums whitespace-nowrap" style={{ color: row.bakiye > 0 ? BORDO : row.bakiye < 0 ? '#4ade80' : SOFT, fontFamily: MONEY }}>
                     {fmt(row.bakiye)} TL
                   </div>
                   {row.aylikMuhasebeUcreti > 0 && (
-                    <div className="text-[11.5px] font-semibold" style={{ color: SOFT }}>
+                    <div className="text-[11px] font-semibold truncate" style={{ color: SOFT }}>
                       aylık {fmt(row.aylikMuhasebeUcreti)} TL
                     </div>
                   )}
                 </td>
-                <td className="px-3 py-3 min-w-[210px]">
-                  <div className="inline-flex items-center rounded-[7px] px-2.5 py-1 text-[11.5px] font-bold" style={{ color: style.color, background: style.background, border: `1px solid ${style.border}` }}>
+                <td className="px-2 py-2.5">
+                  <div className="inline-flex items-center rounded-[7px] px-2 py-1 text-[11px] font-bold whitespace-nowrap" style={{ color: style.color, background: style.background, border: `1px solid ${style.border}` }}>
                     {row.maxBucket}
                   </div>
-                  <AgingBar aging={row.aging} />
+                  {row.bakiye > 0 && <AgingBar aging={row.aging} />}
                 </td>
-                <td className="px-3 py-3 text-[12px] font-semibold" style={{ color: MUTED }}>
-                  <div>{row.sonTahsilatTarihi ? `Son tahsilat: ${new Date(row.sonTahsilatTarihi).toLocaleDateString('tr-TR')}` : 'Tahsilat kaydı yok'}</div>
-                  <div className="mt-1">{row.sonHatirlatmaTarihi ? `Son hatırlatma: ${new Date(row.sonHatirlatmaTarihi).toLocaleDateString('tr-TR')}` : row.whatsappUygun ? 'Hatırlatma bekliyor' : 'WhatsApp uygun değil'}</div>
+                <td className="px-2 py-2.5">
+                  <div className="flex flex-col gap-1 text-[11.5px] font-bold leading-none">
+                    <span className="inline-flex w-fit max-w-full rounded-[6px] px-2 py-1 truncate" style={{ color: MUTED, background: 'rgba(255,255,255,0.045)', border: `1px solid ${LINE}` }}>
+                      {row.sonTahsilatTarihi ? `Tahsilat ${new Date(row.sonTahsilatTarihi).toLocaleDateString('tr-TR')}` : 'Tahsilat yok'}
+                    </span>
+                    <span className="inline-flex w-fit max-w-full rounded-[6px] px-2 py-1 truncate" style={{ color: row.whatsappUygun ? '#86efac' : SOFT, background: row.whatsappUygun ? 'rgba(34,197,94,0.08)' : 'rgba(255,255,255,0.035)', border: `1px solid ${row.whatsappUygun ? 'rgba(34,197,94,0.20)' : LINE}` }}>
+                      {row.sonHatirlatmaTarihi ? `Hat. ${new Date(row.sonHatirlatmaTarihi).toLocaleDateString('tr-TR')}` : row.whatsappUygun ? 'Hatırlatma bekliyor' : 'WhatsApp yok'}
+                    </span>
+                  </div>
                 </td>
-                <td className="px-3 py-3 text-right tabular-nums font-bold" style={{ color: '#93c5fd', fontFamily: MONEY }}>
+                <td className="px-2 py-2.5 text-right tabular-nums font-bold whitespace-nowrap" style={{ color: '#93c5fd', fontFamily: MONEY }}>
                   {fmt(row.tahakkuk)} TL
                 </td>
-                <td className="px-3 py-3 text-right tabular-nums font-bold" style={{ color: '#86efac', fontFamily: MONEY }}>
+                <td className="px-2 py-2.5 text-right tabular-nums font-bold whitespace-nowrap" style={{ color: '#86efac', fontFamily: MONEY }}>
                   {fmt(row.tahsilat)} TL
                 </td>
-                <td className="px-3 py-3">
-                  <div className="flex items-center justify-center gap-1.5">
+                <td className="px-2 py-2.5">
+                  <div className="flex items-center justify-end gap-1.5">
                     <button
                       onClick={() => onQuickTahsilat(row)}
                       disabled={row.bakiye <= 0}
-                      className="h-9 px-2.5 rounded-[8px] text-[12px] font-bold inline-flex items-center gap-1.5 disabled:opacity-40"
+                      aria-label={`${row.ad} tahsilat gir`}
+                      title="Tahsilat gir"
+                      className="h-9 w-9 rounded-[8px] inline-flex items-center justify-center disabled:opacity-35"
                       style={greenButtonStyle}
                     >
-                      <Plus size={14} /> Tahsilat
+                      <Plus size={15} />
                     </button>
-                    <button onClick={() => onOpen(row.id)} className="h-9 w-9 rounded-[8px] inline-flex items-center justify-center" style={ghostButtonStyle} title="Detay">
+                    <button onClick={() => onOpen(row.id)} aria-label={`${row.ad} detay`} className="h-9 w-9 rounded-[8px] inline-flex items-center justify-center" style={ghostButtonStyle} title="Detay">
                       <Receipt size={15} />
                     </button>
                   </div>
