@@ -508,8 +508,13 @@
         const data = await r.json();
         activeCaptchaChallengeId = data?.challenge?.id || '';
         activeCaptchaSignature = signature;
-        setStatus('Luca guvenlik kodu portalda bekleniyor');
-        if (log) await log('Luca guvenlik kodu portalda bekleniyor');
+        if (data?.challenge?.status === 'answered') {
+          setStatus('Luca guvenlik kodu otomatik cozuldu; uygulanıyor');
+          if (log) await log('Luca guvenlik kodu otomatik cozuldu; uygulanıyor');
+        } else {
+          setStatus('Luca guvenlik kodu portalda bekleniyor');
+          if (log) await log('Luca guvenlik kodu portalda bekleniyor');
+        }
       }
       const started = Date.now();
       while (Date.now() - started < 180000 && activeCaptchaChallengeId) {

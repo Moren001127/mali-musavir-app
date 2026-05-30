@@ -662,7 +662,7 @@ export class LucaService {
     });
     const sanitizedLog = String(refreshed?.errorMsg || '')
       .split('\n')
-      .filter((logLine) => !/TRANSIENT_LUCA_CLASSIC_FRAME_STUCK_RESET|TRANSIENT_LUCA_RELOAD_STUCK/i.test(logLine))
+      .filter((logLine) => !/TRANSIENT_LUCA/i.test(logLine))
       .filter((logLine) => !/Iptal edildi: kullanici durdurdu/i.test(logLine))
       .slice(-20)
       .join('\n')
@@ -973,7 +973,7 @@ export class LucaService {
       }).catch(() => null);
       return created;
     });
-    if (body.jobId) {
+    if (body.jobId && challenge.status === 'pending') {
       await this.appendJobLog(body.jobId, 'Luca guvenlik kodu bekleniyor; kod portalda gosterildi').catch(() => {});
     }
     return { ok: true, challenge: this.publicCaptchaChallenge(challenge, challenge.status === 'pending') };

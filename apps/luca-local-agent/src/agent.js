@@ -21,6 +21,10 @@ const axios = require('axios');
 const FormData = require('form-data');
 const { chromium } = require('playwright');
 
+// Scheduled Task node'u direkt calistirdigi icin .env otomatik yuklenmez.
+// 2captcha gibi yerel anahtarlar bu dosyadan okunur.
+require('dotenv').config({ path: path.join(__dirname, '..', '.env') });
+
 // --------- Konfigürasyon yükleme ---------
 const CONFIG_PATH = path.join(__dirname, '..', 'config.json');
 const DEVICE_ID_PATH = path.join(__dirname, '..', '.device-id');
@@ -470,6 +474,7 @@ async function logJob(jobId, line) {
 async function waitForJobFinalStatus(jobId, timeoutMs = JOB_TIMEOUT) {
   const started = Date.now();
   let lastStatus = '';
+  let lastJobLog = null;
   let lastPollError = '';
   let pollErrorCount = 0;
   while (Date.now() - started < timeoutMs) {
@@ -494,7 +499,16 @@ async function waitForJobFinalStatus(jobId, timeoutMs = JOB_TIMEOUT) {
       lastStatus = status;
     }
     const jobLog = String(data?.errorMsg || '');
-    if (/TRANSIENT_LUCA_(CLASSIC_(FRAME_STUCK_RESET|GIRIS_DO_BLANK)|FIRMA_OR_FRAME_STUCK_RESET|FIRMA_CHANGE_STUCK_RESET)/i.test(jobLog)) {
+    const newJobLog =
+      lastJobLog === null
+        ? ''
+        : jobLog.startsWith(lastJobLog)
+          ? jobLog.slice(lastJobLog.length)
+          : jobLog === lastJobLog
+            ? ''
+            : jobLog;
+    lastJobLog = jobLog;
+    if (/TRANSIENT_LUCA_(CLASSIC_(FRAME_STUCK_RESET|GIRIS_DO_BLANK)|FIRMA_OR_FRAME_STUCK_RESET|FIRMA_CHANGE_STUCK_RESET)/i.test(newJobLog)) {
       throw new Error('TRANSIENT_LUCA_RELOAD_STUCK: Klasik Luca firma/frame akisi takildi; browser oturumu resetlenecek');
     }
     if (['done', 'failed', 'cancelled'].includes(status)) return data;
