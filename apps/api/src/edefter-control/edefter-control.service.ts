@@ -1177,6 +1177,31 @@ export class EDefterControlService {
     return this.normalizeLoose([row.hesapKodu, row.hesapAdi, row.aciklama, row.fisTipi, row.belgeTuru].filter(Boolean).join(' '));
   }
 
+  private isMinimumWagePayrollExemptionLikely(voucherRows: ParsedEDefterFisLine[]) {
+    const voucherText = this.normalizeLoose(voucherRows.map((r) => this.rowText(r)).join(' '));
+    if (!/ucret|maas|personel|bordro/.test(voucherText)) return false;
+
+    const grossWage = voucherRows
+      .filter((r) => /^(720|730|740|750|760|770|772)/.test(r.hesapKodu || '') && Number(r.borc || 0) > 0)
+      .filter((r) => {
+        const text = this.rowText(r);
+        if (/isveren|sgk|ssk|issizlik|prim|damga|gelir vergisi|stopaj/.test(text)) return false;
+        return /brut|ucret|maas|personel|bordro/.test(text);
+      })
+      .reduce((sum, r) => sum + Number(r.borc || 0), 0);
+
+    const netWage = voucherRows
+      .filter((r) => /^335/.test(r.hesapKodu || '') && Number(r.alacak || 0) > 0)
+      .reduce((sum, r) => sum + Number(r.alacak || 0), 0);
+
+    const hasSgkLiability = voucherRows.some((r) => /^361/.test(r.hesapKodu || '') && Number(r.alacak || 0) > 0);
+    const hasPayrollTax = voucherRows.some((r) => /^360/.test(r.hesapKodu || '') && /(gelir|damga|ucret|maas|personel)/.test(this.rowText(r)));
+    if (grossWage <= 0 || netWage <= 0 || !hasSgkLiability || hasPayrollTax) return false;
+
+    const employeeDeductionRatio = (grossWage - netWage) / grossWage;
+    return employeeDeductionRatio >= 0.12 && employeeDeductionRatio <= 0.18;
+  }
+
   private hasMeaningfulDescription(row: ParsedEDefterFisLine) {
     const desc = this.normalizeLoose(row.aciklama);
     if (desc.length < 8) return false;
@@ -1981,17 +2006,20 @@ export class EDefterControlService {
       return /ucret|maas|personel|bordro/.test(voucherText) ||
         voucherRows.some((x) => /^(770|772|361)/.test(x.hesapKodu || ''));
     });
-    if (personelOdeme.length) {
-      const damga = operationalRows.filter((r) => /^360\.01\.002/.test(r.hesapKodu || '') || (/^360/.test(r.hesapKodu || '') && /damga/.test(this.rowText(r))));
-      if (damga.length === 0) {
+    for (const personelRow of personelOdeme) {
+      const voucherRows = byVoucher.get(personelRow.voucherKey) || [];
+      if (this.isMinimumWagePayrollExemptionLikely(voucherRows)) continue;
+      const hasDamga = voucherRows.some((r) => /^360\.01\.002/.test(r.hesapKodu || '') || (/^360/.test(r.hesapKodu || '') && /damga/.test(this.rowText(r))));
+      if (!hasDamga) {
         findings.push({
           severity: 'INFO',
           category: 'DAMGA_VERGISI_KONTROL',
           message: `Personel ucret odemesi var ama 360.01.002 damga vergisi hesabi bos. Ucret damga vergisi binde 7.59 kontrol edilmeli.`,
-          voucherKey: personelOdeme[0].voucherKey,
-          rowIndex: personelOdeme[0].rowIndex,
-          hesapKodu: personelOdeme[0].hesapKodu,
+          voucherKey: personelRow.voucherKey,
+          rowIndex: personelRow.rowIndex,
+          hesapKodu: personelRow.hesapKodu,
         });
+        break;
       }
     }
 
