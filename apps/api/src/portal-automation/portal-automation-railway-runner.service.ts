@@ -1833,10 +1833,13 @@ export class PortalAutomationRailwayRunnerService implements OnModuleInit {
 
     while (processedRows < maxRows && pageNo < 120) {
       pageNo++;
+      const pagePagination = await this.readEBeyannamePagination(page);
+      const totalRows = Math.min(maxRows, pagePagination?.total || maxRows);
       const rows = await this.parseEBeyannameResultRows(page);
       notes.push(`onaylandi sayfa ${pageNo}: ${rows.length} satir`);
       await this.jobProgress(tenantId, job, 'approved_page', `Onaylandi listesi sayfa ${pageNo}: ${rows.length} satir okunuyor.`, {
-        current: pageNo,
+        current: Math.min(processedRows, totalRows),
+        total: totalRows,
         records: processedRows,
       });
 
@@ -1845,6 +1848,8 @@ export class PortalAutomationRailwayRunnerService implements OnModuleInit {
         processedRows++;
         if (processedRows === 1 || processedRows % 10 === 0) {
           await this.jobProgress(tenantId, job, 'approved_download', `Onaylandi belgeler indiriliyor: ${processedRows}. satir.`, {
+            current: Math.min(processedRows, totalRows),
+            total: totalRows,
             records: processedRows,
           });
         }
@@ -1859,33 +1864,20 @@ export class PortalAutomationRailwayRunnerService implements OnModuleInit {
           continue;
         }
 
-        const fileTimeoutMs = this.ebeyannameFileTimeoutMs();
         const rowLocator = (!skipBeyanname || !skipTahakkuk)
           ? await this.findEBeyannameResultRowLocator(await this.findEBeyannameResultTarget(page) || page, row)
           : null;
         const beyannameResult = skipBeyanname
           ? { file: null, ownerMismatch: false }
-          : await this.withTimeout(
-              this.downloadEBeyannameRowFile(page, row, 'beyanname', downloadsPath, processedRows, notes, rowLocator),
-              fileTimeoutMs,
-              async () => {
-                notes.push(`beyanname: ${processedRows}. satir zaman asimi (${Math.round(fileTimeoutMs / 1000)} sn), atlandi`);
-                return { file: null, ownerMismatch: false };
-              },
-            ).catch((err) => {
+          : await this.downloadEBeyannameRowFile(page, row, 'beyanname', downloadsPath, processedRows, notes, rowLocator)
+            .catch((err) => {
               notes.push(`beyanname: ${processedRows}. satir hata nedeniyle atlandi: ${this.compact(err?.message || err)}`);
               return { file: null, ownerMismatch: false };
             });
         const tahakkukResult = skipTahakkuk
           ? { file: null, ownerMismatch: false }
-          : await this.withTimeout(
-              this.downloadEBeyannameRowFile(page, row, 'tahakkuk', downloadsPath, processedRows, notes, rowLocator),
-              fileTimeoutMs,
-              async () => {
-                notes.push(`tahakkuk: ${processedRows}. satir zaman asimi (${Math.round(fileTimeoutMs / 1000)} sn), atlandi`);
-                return { file: null, ownerMismatch: false };
-              },
-            ).catch((err) => {
+          : await this.downloadEBeyannameRowFile(page, row, 'tahakkuk', downloadsPath, processedRows, notes, rowLocator)
+            .catch((err) => {
               notes.push(`tahakkuk: ${processedRows}. satir hata nedeniyle atlandi: ${this.compact(err?.message || err)}`);
               return { file: null, ownerMismatch: false };
             });
@@ -2014,21 +2006,24 @@ export class PortalAutomationRailwayRunnerService implements OnModuleInit {
 
     const candidates = row.locator('a, button, input[type="button"], input[type="image"], img');
     const count = await candidates.count().catch(() => 0);
-    const metas: Array<{ index: number; tag: string; text: string; haystack: string }> = [];
+    const metas: Array<{ index: number; tag: string; text: string; href: string; src: string; onclick: string; haystack: string }> = [];
     for (let i = 0; i < count; i++) {
       const meta = await candidates.nth(i).evaluate((el: any) => {
         const tag = String(el.tagName || '').toUpperCase();
         const text = `${el.innerText || el.value || el.alt || el.title || el.getAttribute?.('aria-label') || ''}`.trim();
+        const href = el.getAttribute?.('href') || '';
+        const src = el.getAttribute?.('src') || '';
+        const onclick = el.getAttribute?.('onclick') || '';
         const haystack = [
           text,
-          el.getAttribute?.('href') || '',
-          el.getAttribute?.('src') || '',
-          el.getAttribute?.('onclick') || '',
+          href,
+          src,
+          onclick,
           el.getAttribute?.('title') || '',
           el.getAttribute?.('alt') || '',
           el.outerHTML || '',
         ].join(' ');
-        return { tag, text, haystack: haystack.slice(0, 1200) };
+        return { tag, text, href, src, onclick, haystack: haystack.slice(0, 1200) };
       }).catch(() => null);
       if (meta) metas.push({ index: i, ...meta });
     }
@@ -2040,7 +2035,12 @@ export class PortalAutomationRailwayRunnerService implements OnModuleInit {
     }
 
     const loc = candidates.nth(picked);
-    const clicked = await this.captureEBeyannameDownload(page, loc, downloadsPath, `ebeyanname-${sequence}-${kind}`).catch((err) => {
+    const fallbackName = `ebeyanname-${sequence}-${kind}`;
+    const direct = await this.tryDownloadEBeyannameDirect(page, metas.find((meta) => meta.index === picked), downloadsPath, fallbackName).catch((err) => {
+      notes.push(`${kind}: satir ${resultRow.rowIndex + 1} dogrudan PDF denemesi basarisiz: ${this.compact(err?.message || err)}`);
+      return null;
+    });
+    const clicked = direct || await this.captureEBeyannameDownload(page, loc, downloadsPath, fallbackName).catch((err) => {
       notes.push(`${kind}: satir ${resultRow.rowIndex + 1} PDF indirme hatasi: ${this.compact(err?.message || err)}`);
       return null;
     });
@@ -2053,7 +2053,7 @@ export class PortalAutomationRailwayRunnerService implements OnModuleInit {
   }
 
   private ebeyannameFileTimeoutMs() {
-    return Math.max(6_000, Math.min(180_000, Number(process.env.PORTAL_AUTOMATION_EBEYANNAME_FILE_TIMEOUT_MS || 12_000)));
+    return Math.max(5_000, Math.min(180_000, Number(process.env.PORTAL_AUTOMATION_EBEYANNAME_FILE_TIMEOUT_MS || 10_000)));
   }
 
   private async withTimeout<T>(promise: Promise<T>, timeoutMs: number, onTimeout: () => Promise<T> | T): Promise<T> {
@@ -2148,8 +2148,8 @@ export class PortalAutomationRailwayRunnerService implements OnModuleInit {
       notes.push(`${kind}: satir ${row.rowIndex + 1} PDF VKN uyusmadi; beklenen ${expectedTaxNumber}, PDF ${seenTaxNumbers.slice(0, 3).join(', ')}. Kayda baglanmadi.`);
       return false;
     }
-    notes.push(`${kind}: satir ${row.rowIndex + 1} PDF icinde beklenen VKN/TCKN bulunamadi (${expectedTaxNumber}). Kayda baglanmadi, PDF parse ile yeniden eslestirilecek.`);
-    return false;
+    notes.push(`${kind}: satir ${row.rowIndex + 1} PDF icinde VKN/TCKN okunamadi; satir eslesmesiyle kayda baglandi (${expectedTaxNumber}).`);
+    return true;
   }
 
   private async pdfTextFromBase64(base64: string) {
@@ -2197,6 +2197,101 @@ export class PortalAutomationRailwayRunnerService implements OnModuleInit {
     if (!fileActions.length) return null;
     if (kind === 'beyanname') return fileActions.length >= 2 ? fileActions[fileActions.length - 2].index : fileActions[0].index;
     return fileActions[fileActions.length - 1].index;
+  }
+
+  private async tryDownloadEBeyannameDirect(
+    page: any,
+    meta: { href?: string; onclick?: string } | undefined,
+    downloadsPath: string,
+    fallbackName: string,
+  ): Promise<EBeyannameFilePayload | null> {
+    if (!meta || !this.ebeyannameFastDirectFetch()) return null;
+    const url = this.directEBeyannameUrlFromMeta(page, meta);
+    if (!url) return null;
+    return this.savePdfFromRequestUrl(page, url, downloadsPath, fallbackName);
+  }
+
+  private ebeyannameFastDirectFetch() {
+    const raw = String(process.env.PORTAL_AUTOMATION_EBEYANNAME_DIRECT_FETCH ?? '1').trim().toLowerCase();
+    return raw !== '0' && raw !== 'false' && raw !== 'no';
+  }
+
+  private directEBeyannameUrlFromMeta(page: any, meta: { href?: string; onclick?: string }) {
+    const candidates = [
+      meta.href || '',
+      ...this.extractUrlCandidates(meta.onclick || ''),
+    ];
+    for (const candidate of candidates) {
+      const cleaned = String(candidate || '').trim().replace(/&amp;/g, '&');
+      if (!cleaned || /^(javascript:|#|mailto:|tel:|data:|blob:)/i.test(cleaned)) continue;
+      if (!/^(https?:)?\/\//i.test(cleaned) && !cleaned.startsWith('/')) continue;
+      let url = '';
+      try {
+        url = new URL(cleaned, String(page.url?.() || '')).toString();
+      } catch {
+        continue;
+      }
+      if (/pdf|beyan|tahakkuk|download|indir|goruntule|goster/i.test(url)) return url;
+    }
+    return null;
+  }
+
+  private extractUrlCandidates(value: string) {
+    const text = String(value || '');
+    const matches = [
+      ...Array.from(text.matchAll(/https?:\/\/[^'"<>\s)]+/gi)).map((m) => m[0]),
+      ...Array.from(text.matchAll(/['"]([^'"]+)['"]/g)).map((m) => m[1]),
+    ];
+    return matches.filter((item) => /^https?:\/\//i.test(item) || item.startsWith('/'));
+  }
+
+  private async savePdfFromRequestUrl(
+    page: any,
+    url: string,
+    downloadsPath: string,
+    fallbackName: string,
+  ): Promise<EBeyannameFilePayload | null> {
+    const response = await page.context().request.get(url, {
+      timeout: this.ebeyannameDirectFetchTimeoutMs(),
+      headers: { referer: String(page.url?.() || '') },
+    }).catch(() => null);
+    if (!response?.ok()) return null;
+    const headers = response.headers();
+    const mimeType = headers['content-type'] || 'application/pdf';
+    const buffer = Buffer.from(await response.body());
+    const pdfish = /^%PDF/.test(buffer.subarray(0, 5).toString('latin1'))
+      || /pdf|octet-stream/i.test(mimeType)
+      || /\.pdf(?:$|[?#])/i.test(url);
+    if (!pdfish || buffer.length < 200) return null;
+    const fileName = this.safeFileName(this.fileNameFromResponse(url, headers, fallbackName));
+    const filePath = join(downloadsPath, `${randomUUID()}-${fileName}`);
+    await writeFile(filePath, buffer).catch(() => {});
+    return { base64: buffer.toString('base64'), fileName, mimeType };
+  }
+
+  private ebeyannameDirectFetchTimeoutMs() {
+    return Math.max(3_000, Math.min(30_000, Number(process.env.PORTAL_AUTOMATION_EBEYANNAME_DIRECT_FETCH_TIMEOUT_MS || 5_000)));
+  }
+
+  private fileNameFromResponse(url: string, headers: Record<string, string>, fallbackName: string) {
+    const disposition = headers['content-disposition'] || '';
+    const encoded = disposition.match(/filename\*\s*=\s*UTF-8''([^;]+)/i)?.[1];
+    if (encoded) {
+      try {
+        return decodeURIComponent(encoded).replace(/"/g, '');
+      } catch {
+        return encoded.replace(/"/g, '');
+      }
+    }
+    const plain = disposition.match(/filename\s*=\s*"?([^";]+)"?/i)?.[1];
+    if (plain) return plain;
+    try {
+      const last = new URL(url).pathname.split('/').filter(Boolean).pop();
+      if (last) return /\.pdf$/i.test(last) ? last : `${last}.pdf`;
+    } catch {
+      // Fallback below.
+    }
+    return `${fallbackName}.pdf`;
   }
 
   private async captureEBeyannameDownload(
@@ -2262,7 +2357,7 @@ export class PortalAutomationRailwayRunnerService implements OnModuleInit {
   }
 
   private ebeyannameDownloadEventTimeoutMs() {
-    return Math.max(5_000, Math.min(60_000, Number(process.env.PORTAL_AUTOMATION_EBEYANNAME_DOWNLOAD_EVENT_TIMEOUT_MS || 10_000)));
+    return Math.max(3_000, Math.min(60_000, Number(process.env.PORTAL_AUTOMATION_EBEYANNAME_DOWNLOAD_EVENT_TIMEOUT_MS || 6_000)));
   }
 
   private async savePdfFromPopup(popup: any, downloadsPath: string, fallbackName: string): Promise<EBeyannameFilePayload | null> {
@@ -2737,9 +2832,13 @@ export class PortalAutomationRailwayRunnerService implements OnModuleInit {
     if (/MUHSGK|MUHTASAR|MUHTASARPRIM|PRIMHIZMET/.test(key)) return 'MUHSGK';
     if (/DAMGA/.test(key)) return 'DAMGA';
     if (/POSET|GEKAP/.test(key)) return 'POSET';
+    if (/GECICI/.test(key)) {
+      if (/GGECICI|GELIR|GELIRVERGISI/.test(key)) return 'GGECICI';
+      if (/KGECICI|KURUM|KURUMLAR/.test(key)) return 'KGECICI';
+      return 'GECICI_VERGI';
+    }
     if (/KURUMLAR/.test(key)) return 'KURUMLAR';
     if (/GELIR/.test(key)) return 'GELIR';
-    if (/GECICI/.test(key)) return 'GECICI_VERGI';
     if (/EDEFTER|E DEFTER|BERAT/.test(key)) return 'EDEFTER';
     const upper = text.toLocaleUpperCase('tr-TR');
     const known = ['KDV1', 'KDV2', 'KDV2B', 'KDV4', 'MUHSGK', 'MUHTASAR', 'KURUMLAR', 'GECICI', 'GEÇICI', 'DAMGA', 'BA_BS'];

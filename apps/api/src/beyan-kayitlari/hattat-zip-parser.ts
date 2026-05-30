@@ -42,8 +42,8 @@ export function mapBeyanTipi(hattatTipi: string): string {
     'MUHSGK': 'MUHSGK',
     'MUHTASAR': 'MUHSGK',
     'MUH': 'MUHSGK',
-    'KGECICI': 'GECICI_VERGI',     // Kurum Geçici Vergi
-    'GGECICI': 'GECICI_VERGI',     // Gelir Geçici Vergi
+    'KGECICI': 'KGECICI',          // Kurum Geçici Vergi
+    'GGECICI': 'GGECICI',          // Gelir Geçici Vergi
     'GECICI': 'GECICI_VERGI',
     'GVG': 'GECICI_VERGI',
     'DAMGA': 'DAMGA',
@@ -104,7 +104,7 @@ export function parsePdfAd(filename: string): {
  * - Yıllık (KURUMLAR, GELIR): "yyyy-YIL"
  */
 export function formatDonem(beyanTipi: string, ay: number, yil: number): string {
-  if (beyanTipi === 'GECICI_VERGI') {
+  if (beyanTipi === 'GECICI_VERGI' || beyanTipi === 'GGECICI' || beyanTipi === 'KGECICI') {
     // Hattat'ın ay alanı geçici vergi döneminin kendisi (1-4) ya da son çeyrek ayı olabilir.
     // Uygulamada genelde dönem numarası (1,2,3,4) geliyor. 1-4 ise Q{n}, 3/6/9/12 ise çeyrek sonu.
     if (ay >= 1 && ay <= 4) return `${yil}-Q${ay}`;

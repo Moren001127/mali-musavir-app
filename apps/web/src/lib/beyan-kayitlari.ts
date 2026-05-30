@@ -3,7 +3,7 @@ import { api } from './api';
 export type BeyanTipi =
   | 'KDV1' | 'KDV2' | 'MUHSGK' | 'DAMGA' | 'POSET'
   | 'KURUMLAR' | 'GELIR' | 'BILDIRGE' | 'EDEFTER'
-  | 'GECICI_VERGI' | 'DIGER';
+  | 'GGECICI' | 'KGECICI' | 'GECICI_VERGI' | 'DIGER';
 
 export const BEYAN_TIPI_LABEL: Record<BeyanTipi, string> = {
   KDV1: 'KDV (1 No\'lu)',
@@ -15,6 +15,8 @@ export const BEYAN_TIPI_LABEL: Record<BeyanTipi, string> = {
   GELIR: 'Gelir V.',
   BILDIRGE: 'SGK Bildirge',
   EDEFTER: 'E-Defter',
+  GGECICI: 'Gelir Geçici',
+  KGECICI: 'Kurum Geçici',
   GECICI_VERGI: 'Geçici Vergi',
   DIGER: 'Diğer',
 };

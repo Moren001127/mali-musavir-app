@@ -362,7 +362,7 @@ model BeyanKaydi {
   id              String    @id @default(cuid())
   tenantId        String
   taxpayerId      String
-  beyanTipi       String    // "KDV1" | "KDV2" | "MUHSGK" | "DAMGA" | "POSET" | "KURUMLAR" | "GELIR" | "BILDIRGE" | "EDEFTER" | "GECICI_VERGI" | "DIGER"
+  beyanTipi       String    // "KDV1" | "KDV2" | "MUHSGK" | "DAMGA" | "POSET" | "KURUMLAR" | "GELIR" | "BILDIRGE" | "EDEFTER" | "GGECICI" | "KGECICI" | "GECICI_VERGI" | "DIGER"
   donem           String    // "2026-03" format (yyyy-mm), yıllık beyanlar için "2025-YIL"
   beyanTarihi     DateTime? // Beyannamenin verildiği tarih
   tahakkukTutari  Decimal?  @db.Decimal(14, 2)

@@ -53,7 +53,8 @@ const FILTER_KEYS: { key: FilterKey; label: string }[] = [
   { key: 'POSET', label: 'Poşet' },
   { key: 'KURUMLAR', label: 'Kurumlar' },
   { key: 'GELIR', label: 'Gelir' },
-  { key: 'GECICI_VERGI', label: 'Geçici V.' },
+  { key: 'GGECICI', label: 'Gelir Geçici' },
+  { key: 'KGECICI', label: 'Kurum Geçici' },
   { key: 'EDEFTER', label: 'E-Defter' },
 ];
 
@@ -205,6 +206,45 @@ function taxpayerPhone(k: BeyanKaydi): string {
   return firstContact([k.taxpayer?.phone, ...(k.taxpayer?.phones || [])]);
 }
 
+function declarationRawText(k: BeyanKaydi): string {
+  try {
+    const parsed = JSON.parse(k.notlar || '{}');
+    const raw = parsed?.raw || parsed;
+    return [
+      raw?.beyanTipiRaw,
+      raw?.mahiyet,
+      raw?.rowText,
+      Array.isArray(raw?.cells) ? raw.cells.join(' ') : '',
+    ].filter(Boolean).join(' ');
+  } catch {
+    return k.notlar || '';
+  }
+}
+
+function declarationTypeCode(k: BeyanKaydi): string {
+  if (k.beyanTipi === 'GGECICI' || k.beyanTipi === 'KGECICI') return k.beyanTipi;
+  if (k.beyanTipi !== 'GECICI_VERGI') return k.beyanTipi;
+  const key = declarationRawText(k)
+    .toLocaleUpperCase('tr-TR')
+    .normalize('NFD')
+    .replace(/[\u0300-\u036f]/g, '')
+    .replace(/\s+/g, '');
+  if (/GGECICI|GELIRGECICI|GELIRVERGISIGECICI/.test(key)) return 'GGECICI';
+  if (/KGECICI|KURUMGECICI|KURUMLARGECICI|KURUMLARVERGISIGECICI/.test(key)) return 'KGECICI';
+  return 'GECICI_VERGI';
+}
+
+function declarationTypeLabel(k: BeyanKaydi): string {
+  const code = declarationTypeCode(k) as BeyanTipi;
+  return BEYAN_TIPI_LABEL[code] || BEYAN_TIPI_LABEL[k.beyanTipi] || code;
+}
+
+function declarationTypeMatches(k: BeyanKaydi, filter: FilterKey): boolean {
+  if (filter === 'all') return true;
+  if (filter === 'GECICI_VERGI') return ['GECICI_VERGI', 'GGECICI', 'KGECICI'].includes(declarationTypeCode(k));
+  return k.beyanTipi === filter || declarationTypeCode(k) === filter;
+}
+
 function whatsappPhone(raw: string): string {
   const digits = raw.replace(/\D/g, '');
   if (digits.length === 10) return `90${digits}`;
@@ -213,12 +253,12 @@ function whatsappPhone(raw: string): string {
 }
 
 function declarationSubject(k: BeyanKaydi): string {
-  return `${beyanKaydiMukellefAdi(k)} - ${BEYAN_TIPI_LABEL[k.beyanTipi]} - ${fmtDonem(k.donem)}`;
+  return `${beyanKaydiMukellefAdi(k)} - ${declarationTypeLabel(k)} - ${fmtDonem(k.donem)}`;
 }
 
 function declarationMessage(k: BeyanKaydi): string {
   const tutar = k.tahakkukTutari != null ? ` Tahakkuk: ${fmtCurrency(k.tahakkukTutari)}.` : '';
-  return `${fmtDonem(k.donem)} dönemi ${BEYAN_TIPI_LABEL[k.beyanTipi]} kaydınız hazır.${tutar}`;
+  return `${fmtDonem(k.donem)} dönemi ${declarationTypeLabel(k)} kaydınız hazır.${tutar}`;
 }
 
 export default function BeyannamelerPage() {
@@ -366,7 +406,7 @@ export default function BeyannamelerPage() {
     return kayitlar
       .filter((k) => {
         if (selectedTaxpayer !== 'all' && k.taxpayerId !== selectedTaxpayer) return false;
-        if (typeFilter !== 'all' && k.beyanTipi !== typeFilter) return false;
+        if (!declarationTypeMatches(k, typeFilter)) return false;
         if (!periodInRange(k.donem, periodStart, periodEnd)) return false;
         if (docFilter === 'beyanname' && !k.beyannameUrl) return false;
         if (docFilter === 'tahakkuk' && !k.pdfUrl) return false;
@@ -384,7 +424,8 @@ export default function BeyannamelerPage() {
           k.taxpayer?.taxNumber,
           k.onayNo,
           k.donem,
-          BEYAN_TIPI_LABEL[k.beyanTipi],
+          declarationTypeLabel(k),
+          declarationTypeCode(k),
           k.beyanTipi,
         ].filter(Boolean).join(' ').toLocaleLowerCase('tr-TR');
         return haystack.includes(q);
@@ -473,7 +514,7 @@ export default function BeyannamelerPage() {
   };
 
   const previewTitle = (row: BeyanKaydi, kind: BeyanDocKind) =>
-    `${beyanKaydiMukellefAdi(row)} - ${row.beyanTipi} - ${fmtDonemHattat(row.donem)} - ${kind === 'beyanname' ? 'Beyanname' : 'Tahakkuk'}`;
+    `${beyanKaydiMukellefAdi(row)} - ${declarationTypeCode(row)} - ${fmtDonemHattat(row.donem)} - ${kind === 'beyanname' ? 'Beyanname' : 'Tahakkuk'}`;
 
   const closePdfPreview = () => {
     if (pdfPreviewUrlRef.current) URL.revokeObjectURL(pdfPreviewUrlRef.current);
@@ -536,7 +577,7 @@ export default function BeyannamelerPage() {
     const url = URL.createObjectURL(blob);
     const a = document.createElement('a');
     a.href = url;
-    a.download = `${beyanKaydiMukellefAdi(item.row)}-${item.row.beyanTipi}-${fmtDonemHattat(item.row.donem)}-${item.tur}.pdf`.replace(/[\\/:*?"<>|]/g, '_');
+    a.download = `${beyanKaydiMukellefAdi(item.row)}-${declarationTypeCode(item.row)}-${fmtDonemHattat(item.row.donem)}-${item.tur}.pdf`.replace(/[\\/:*?"<>|]/g, '_');
     a.click();
     URL.revokeObjectURL(url);
   };
@@ -589,7 +630,7 @@ export default function BeyannamelerPage() {
       ...filtered.map((k) => [
         beyanKaydiMukellefAdi(k),
         k.taxpayer?.taxNumber || '',
-        BEYAN_TIPI_LABEL[k.beyanTipi],
+        declarationTypeLabel(k),
         k.donem,
         fmtDate(k.beyanTarihi),
         k.onayNo || '',
@@ -828,8 +869,8 @@ export default function BeyannamelerPage() {
                         <div className="text-[11.5px] mt-0.5" style={{ color: 'rgba(250,250,249,0.42)' }}>{fmtDate(row.beyanTarihi || row.createdAt)}</div>
                       </td>
                       <td className="px-3 py-3">
-                        <div className="font-semibold" style={{ color: '#fafaf9' }}>{row.beyanTipi === 'GECICI_VERGI' ? 'KGECICI' : row.beyanTipi}</div>
-                        <div className="text-[11px] mt-0.5" style={{ color: 'rgba(250,250,249,0.42)' }}>{BEYAN_TIPI_LABEL[row.beyanTipi]}</div>
+                        <div className="font-semibold" style={{ color: '#fafaf9' }}>{declarationTypeCode(row)}</div>
+                        <div className="text-[11px] mt-0.5" style={{ color: 'rgba(250,250,249,0.42)' }}>{declarationTypeLabel(row)}</div>
                       </td>
                       <td className="px-3 py-3">
                         <span className="text-[12.5px] font-semibold">
@@ -1354,7 +1395,7 @@ function LegacyBeyannamelerPage() {
           <OzetCard label="Toplam Beyanname" value={ozet.toplam.toLocaleString('tr-TR')} icon={FileText} />
           <OzetCard label="KDV Kayıtları" value={(ozet.byTip.KDV1 || 0) + (ozet.byTip.KDV2 || 0)} icon={FileText} />
           <OzetCard label="MUHSGK Kayıtları" value={ozet.byTip.MUHSGK || 0} icon={FileText} />
-          <OzetCard label="Geçici Vergi" value={ozet.byTip.GECICI_VERGI || 0} icon={FileText} />
+          <OzetCard label="Geçici Vergi" value={(ozet.byTip.GECICI_VERGI || 0) + (ozet.byTip.GGECICI || 0) + (ozet.byTip.KGECICI || 0)} icon={FileText} />
         </div>
       )}
 
@@ -1442,7 +1483,7 @@ function LegacyBeyannamelerPage() {
                   </td>
                   <td className="px-4 py-2.5">
                     <span className="text-[11px] font-semibold px-2 py-[3px] rounded-md" style={{ background: 'rgba(212,184,118,0.12)', color: GOLD, border: '1px solid rgba(212,184,118,0.25)' }}>
-                      {BEYAN_TIPI_LABEL[k.beyanTipi]}
+                      {declarationTypeLabel(k)}
                     </span>
                   </td>
                   <td className="px-4 py-2.5 text-[12.5px]">{fmtDonem(k.donem)}</td>
@@ -1481,7 +1522,7 @@ function LegacyBeyannamelerPage() {
                     <div className="flex items-center gap-1.5 justify-end opacity-0 group-hover:opacity-100 transition">
                       <button
                         onClick={() => {
-                          if (confirm(`Bu kaydı silmek istediğine emin misin?\n\n${beyanKaydiMukellefAdi(k)} · ${BEYAN_TIPI_LABEL[k.beyanTipi]} · ${fmtDonem(k.donem)}`)) {
+                          if (confirm(`Bu kaydı silmek istediğine emin misin?\n\n${beyanKaydiMukellefAdi(k)} · ${declarationTypeLabel(k)} · ${fmtDonem(k.donem)}`)) {
                             deleteMut.mutate(k.id);
                           }
                         }}

@@ -83,7 +83,7 @@ export class BeyanKayitlariService {
 {
   "vkn": "mükellefin 10 haneli VKN'si veya 11 haneli TCKN'si (bulamazsan null)",
   "mukellefAdi": "Mükellef adı veya şirket unvanı (bulamazsan null)",
-  "beyanTipi": "BEYANNAME TİPİ kodu — sadece şunlardan biri: KDV1 | KDV2 | MUHSGK | DAMGA | POSET | KURUMLAR | GELIR | BILDIRGE | EDEFTER | GECICI_VERGI | DIGER",
+  "beyanTipi": "BEYANNAME TİPİ kodu — sadece şunlardan biri: KDV1 | KDV2 | MUHSGK | DAMGA | POSET | KURUMLAR | GELIR | BILDIRGE | EDEFTER | GGECICI | KGECICI | GECICI_VERGI | DIGER",
   "donem": "yyyy-mm formatı (aylık beyanlar için, örn 2026-03). Yıllık beyanlar (Kurumlar/Gelir) için yyyy-YIL (örn 2025-YIL)",
   "beyanTarihi": "yyyy-mm-dd (beyannamenin verildiği tarih; bulamazsan null)",
   "tahakkukTutari": "TL cinsinden tahakkuk eden tutar — sadece sayı, kuruşu koru (örn 1085.20). Tahakkuk yoksa null",
@@ -96,7 +96,7 @@ export class BeyanKayitlariService {
 - KDV1 = 1 No'lu KDV Beyannamesi (satıcı/genel KDV). KDV2 = 2 No'lu KDV (tevkifat).
 - MUHSGK = Muhtasar ve Prim Hizmet Beyannamesi (birleşik).
 - POSET = Geri Kazanım Katılım Payı Beyannamesi (poşet).
-- GECICI_VERGI = Geçici Vergi Beyannamesi.
+- GGECICI = Gelir Geçici Vergi Beyannamesi. KGECICI = Kurum Geçici Vergi Beyannamesi. Sadece ayrım okunamıyorsa GECICI_VERGI yaz.
 - VKN numarasından diğer rakamları filtrele (sadece haneleri al).
 - Tutar varsa Türkçe para formatını sayıya çevir ve kuruşu koru; örn 1.085,20 -> 1085.20.`;
 
@@ -154,7 +154,7 @@ export class BeyanKayitlariService {
     const normalizeTipi = (t: any): string | null => {
       if (!t) return null;
       const up = String(t).toUpperCase().replace(/\s+/g, '_');
-      const validKoder = ['KDV1', 'KDV2', 'MUHSGK', 'DAMGA', 'POSET', 'KURUMLAR', 'GELIR', 'BILDIRGE', 'EDEFTER', 'GECICI_VERGI', 'DIGER'];
+      const validKoder = ['KDV1', 'KDV2', 'MUHSGK', 'DAMGA', 'POSET', 'KURUMLAR', 'GELIR', 'BILDIRGE', 'EDEFTER', 'GGECICI', 'KGECICI', 'GECICI_VERGI', 'DIGER'];
       return validKoder.includes(up) ? up : 'DIGER';
     };
     const normalizeDonem = (d: any): string | null => {
