@@ -1744,7 +1744,8 @@ export class PortalAutomationRailwayRunnerService implements OnModuleInit {
     const taxpayerId = this.matchTaxpayerId(contextText, taxpayers);
     if (!taxpayerId) return null;
 
-    const beyanTipi = this.guessBeyanTipi(row.beyanTipiRaw || row.rowText);
+    const taxpayer = taxpayers.find((item) => item.id === taxpayerId) || null;
+    const beyanTipi = this.guessBeyanTipi(row.beyanTipiRaw || row.rowText, taxpayer);
     const donem = this.ebeyannameDonemFromRow(row, beyanTipi, job);
     const beyanTarihi = this.parseEBeyannameUploadTime(row.uploadTime) || job.periodEnd || new Date().toISOString();
 
@@ -1796,7 +1797,8 @@ export class PortalAutomationRailwayRunnerService implements OnModuleInit {
     const taxpayerId = this.matchTaxpayerId(contextText, taxpayers);
     if (!taxpayerId) return null;
 
-    const beyanTipi = this.guessBeyanTipi(row.beyanTipiRaw || row.rowText);
+    const taxpayer = taxpayers.find((item) => item.id === taxpayerId) || null;
+    const beyanTipi = this.guessBeyanTipi(row.beyanTipiRaw || row.rowText, taxpayer);
     const donem = this.ebeyannameDonemFromRow(row, beyanTipi, job);
     return { taxpayerId, beyanTipi, donem, isCorrection: row.isCorrection };
   }
@@ -2831,7 +2833,23 @@ export class PortalAutomationRailwayRunnerService implements OnModuleInit {
     return 'beyanname';
   }
 
-  private guessBeyanTipi(text: string) {
+  private taxpayerLooksCorporate(taxpayer?: TaxpayerMatch | null) {
+    const taxNumber = String(taxpayer?.taxNumber || '').replace(/\D/g, '');
+    const nameKey = this.normalizeTextKey([
+      taxpayer?.companyName,
+      taxpayer?.firstName,
+      taxpayer?.lastName,
+    ].filter(Boolean).join(' '));
+    if (/\b(LIMITED|LTD|ANONIM|A S|AS|SIRKET|SIRKETI|STI|KOOPERATIF)\b/.test(nameKey)) return true;
+    return taxNumber.length === 10;
+  }
+
+  private taxpayerLooksPersonal(taxpayer?: TaxpayerMatch | null) {
+    const taxNumber = String(taxpayer?.taxNumber || '').replace(/\D/g, '');
+    return taxNumber.length === 11 && !this.taxpayerLooksCorporate(taxpayer);
+  }
+
+  private guessBeyanTipi(text: string, taxpayer?: TaxpayerMatch | null) {
     const key = this.normalizeTextKey(text);
     if (/\bKDV\s*1\b|KDV1|KDVBEYANNAMESI/.test(key)) return 'KDV1';
     if (/\bKDV\s*2\b|KDV2|TEVKIFAT/.test(key)) return 'KDV2';
@@ -2839,8 +2857,10 @@ export class PortalAutomationRailwayRunnerService implements OnModuleInit {
     if (/DAMGA/.test(key)) return 'DAMGA';
     if (/POSET|GEKAP/.test(key)) return 'POSET';
     if (/GECICI/.test(key)) {
-      if (/GGECICI|GELIR|GELIRVERGISI/.test(key)) return 'GGECICI';
+      if (this.taxpayerLooksCorporate(taxpayer)) return 'KGECICI';
+      if (this.taxpayerLooksPersonal(taxpayer)) return 'GGECICI';
       if (/KGECICI|KURUM|KURUMLAR/.test(key)) return 'KGECICI';
+      if (/GGECICI|GELIR|GELIRVERGISI/.test(key)) return 'GGECICI';
       return 'GECICI_VERGI';
     }
     if (/KURUMLAR/.test(key)) return 'KURUMLAR';

@@ -97,8 +97,30 @@ export class BeyanKayitlariService {
     }
   }
 
-  private canonicalTemporaryType(type: string, notlar?: string | null) {
+  private taxpayerLooksCorporate(taxpayer?: { taxNumber?: string | null; companyName?: string | null; firstName?: string | null; lastName?: string | null } | null) {
+    const taxNumber = String(taxpayer?.taxNumber || '').replace(/\D/g, '');
+    const nameKey = this.normalizeTextKey([
+      taxpayer?.companyName,
+      taxpayer?.firstName,
+      taxpayer?.lastName,
+    ].filter(Boolean).join(' '));
+    if (/\b(LIMITED|LTD|ANONIM|A S|AS|SIRKET|SIRKETI|STI|KOOPERATIF)\b/.test(nameKey)) return true;
+    return taxNumber.length === 10;
+  }
+
+  private taxpayerLooksPersonal(taxpayer?: { taxNumber?: string | null; companyName?: string | null; firstName?: string | null; lastName?: string | null } | null) {
+    const taxNumber = String(taxpayer?.taxNumber || '').replace(/\D/g, '');
+    return taxNumber.length === 11 && !this.taxpayerLooksCorporate(taxpayer);
+  }
+
+  private canonicalTemporaryType(
+    type: string,
+    notlar?: string | null,
+    taxpayer?: { taxNumber?: string | null; companyName?: string | null; firstName?: string | null; lastName?: string | null } | null,
+  ) {
     const current = String(type || '').toUpperCase();
+    if (this.isTemporaryTaxType(current) && this.taxpayerLooksCorporate(taxpayer)) return 'KGECICI';
+    if (this.isTemporaryTaxType(current) && this.taxpayerLooksPersonal(taxpayer)) return 'GGECICI';
     if (current === 'GGECICI' || current === 'KGECICI') return current;
     if (current !== 'GECICI_VERGI') return current;
     const key = this.normalizeTextKey(this.rawNoteText(notlar)).replace(/\s+/g, '');
@@ -114,9 +136,15 @@ export class BeyanKayitlariService {
     return `${monthly[1]}-Q${Math.ceil(Number(monthly[2]) / 3)}`;
   }
 
-  private canonicalTemporaryIdentity(row: { taxpayerId: string; beyanTipi: string; donem: string; notlar?: string | null }) {
+  private canonicalTemporaryIdentity(row: {
+    taxpayerId: string;
+    beyanTipi: string;
+    donem: string;
+    notlar?: string | null;
+    taxpayer?: { taxNumber?: string | null; companyName?: string | null; firstName?: string | null; lastName?: string | null } | null;
+  }) {
     if (!this.isTemporaryTaxType(row.beyanTipi)) return null;
-    const beyanTipi = this.canonicalTemporaryType(row.beyanTipi, row.notlar);
+    const beyanTipi = this.canonicalTemporaryType(row.beyanTipi, row.notlar, row.taxpayer);
     const donem = this.canonicalTemporaryPeriod(beyanTipi, row.donem);
     return { taxpayerId: row.taxpayerId, beyanTipi, donem };
   }
@@ -150,6 +178,7 @@ export class BeyanKayitlariService {
         importBatchId: true,
         notlar: true,
         createdAt: true,
+        taxpayer: { select: { taxNumber: true, companyName: true, firstName: true, lastName: true } },
       },
     });
     const groups = new Map<string, any[]>();

@@ -220,10 +220,33 @@ export class PortalAutomationService {
       .trim();
   }
 
-  private canonicalDeclarationIdentity(input: AgentDeclarationInput) {
+  private taxpayerLooksCorporate(taxpayer?: { taxNumber?: string | null; companyName?: string | null; firstName?: string | null; lastName?: string | null } | null) {
+    const taxNumber = String(taxpayer?.taxNumber || '').replace(/\D/g, '');
+    const nameKey = this.normalizeTextKey([
+      taxpayer?.companyName,
+      taxpayer?.firstName,
+      taxpayer?.lastName,
+    ].filter(Boolean).join(' '));
+    if (/\b(LIMITED|LTD|ANONIM|A S|AS|SIRKET|SIRKETI|STI|KOOPERATIF)\b/.test(nameKey)) return true;
+    return taxNumber.length === 10;
+  }
+
+  private taxpayerLooksPersonal(taxpayer?: { taxNumber?: string | null; companyName?: string | null; firstName?: string | null; lastName?: string | null } | null) {
+    const taxNumber = String(taxpayer?.taxNumber || '').replace(/\D/g, '');
+    return taxNumber.length === 11 && !this.taxpayerLooksCorporate(taxpayer);
+  }
+
+  private canonicalDeclarationIdentity(
+    input: AgentDeclarationInput,
+    taxpayer?: { taxNumber?: string | null; companyName?: string | null; firstName?: string | null; lastName?: string | null } | null,
+  ) {
     let beyanTipi = String(input.beyanTipi || '').toUpperCase();
     let donem = String(input.donem || '');
-    if (beyanTipi === 'GECICI_VERGI') {
+    if (this.isTemporaryTaxType(beyanTipi) && this.taxpayerLooksCorporate(taxpayer)) {
+      beyanTipi = 'KGECICI';
+    } else if (this.isTemporaryTaxType(beyanTipi) && this.taxpayerLooksPersonal(taxpayer)) {
+      beyanTipi = 'GGECICI';
+    } else if (beyanTipi === 'GECICI_VERGI') {
       const rawKey = this.normalizeTextKey(JSON.stringify(input.raw || {})).replace(/\s+/g, '');
       if (/GGECICI|GELIRGECICI|GELIRVERGISIGECICI/.test(rawKey)) beyanTipi = 'GGECICI';
       else if (/KGECICI|KURUMGECICI|KURUMLARGECICI|KURUMLARVERGISIGECICI/.test(rawKey)) beyanTipi = 'KGECICI';
@@ -899,11 +922,11 @@ export class PortalAutomationService {
     }
     const taxpayer = await (this.prisma as any).taxpayer.findFirst({
       where: { id: input.taxpayerId, tenantId },
-      select: { id: true, taxNumber: true },
+      select: { id: true, taxNumber: true, companyName: true, firstName: true, lastName: true },
     });
     if (!taxpayer) throw new NotFoundException('Beyanname mukellefi bulunamadi');
 
-    const identity = this.canonicalDeclarationIdentity(input);
+    const identity = this.canonicalDeclarationIdentity(input, taxpayer);
     const beyanTipi = identity.beyanTipi;
     const donem = identity.donem;
     const declarationStatus = normalizeAgentDeclarationStatus(input);

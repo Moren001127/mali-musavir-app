@@ -206,6 +206,22 @@ function taxpayerPhone(k: BeyanKaydi): string {
   return firstContact([k.taxpayer?.phone, ...(k.taxpayer?.phones || [])]);
 }
 
+function taxpayerLooksCorporate(k: BeyanKaydi): boolean {
+  const taxNumber = String(k.taxpayer?.taxNumber || '').replace(/\D/g, '');
+  const nameKey = textKey([
+    k.taxpayer?.companyName,
+    k.taxpayer?.firstName,
+    k.taxpayer?.lastName,
+  ].filter(Boolean).join(' '));
+  if (/\b(LIMITED|LTD|ANONIM|A S|AS|SIRKET|SIRKETI|STI|KOOPERATIF)\b/.test(nameKey)) return true;
+  return taxNumber.length === 10;
+}
+
+function taxpayerLooksPersonal(k: BeyanKaydi): boolean {
+  const taxNumber = String(k.taxpayer?.taxNumber || '').replace(/\D/g, '');
+  return taxNumber.length === 11 && !taxpayerLooksCorporate(k);
+}
+
 function declarationRawText(k: BeyanKaydi): string {
   try {
     const parsed = JSON.parse(k.notlar || '{}');
@@ -222,6 +238,10 @@ function declarationRawText(k: BeyanKaydi): string {
 }
 
 function declarationTypeCode(k: BeyanKaydi): string {
+  if (['GECICI_VERGI', 'GGECICI', 'KGECICI'].includes(k.beyanTipi)) {
+    if (taxpayerLooksCorporate(k)) return 'KGECICI';
+    if (taxpayerLooksPersonal(k)) return 'GGECICI';
+  }
   if (k.beyanTipi === 'GGECICI' || k.beyanTipi === 'KGECICI') return k.beyanTipi;
   if (k.beyanTipi !== 'GECICI_VERGI') return k.beyanTipi;
   const key = declarationRawText(k)
