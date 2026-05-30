@@ -695,7 +695,7 @@ export class PortalAutomationService {
     const existingLog = Array.isArray(base.progressLog) ? base.progressLog : [];
     return {
       ...base,
-      progress: { ...previous, ...entry },
+      progress: entry,
       progressLog: [...existingLog.slice(-11), entry],
     };
   }
