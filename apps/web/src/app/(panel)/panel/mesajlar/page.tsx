@@ -49,6 +49,7 @@ interface WhatsAppConfigShape {
   templateName?: string;
   portalTemplateName?: string;
   documentTemplateName?: string;
+  templateLang?: string;
 }
 
 interface WhatsAppTemplate {
@@ -224,25 +225,34 @@ export default function MesajlarPage() {
   );
 
   const templateOptions = useMemo(() => {
-    const names = [
+    const templateLang = String(whatsappConfig?.templateLang || 'tr').trim().toLocaleLowerCase('tr-TR');
+    const approvedNames = (metaTemplates?.templates || [])
+      .filter((tpl) => {
+        const approved = !tpl.status || tpl.status === 'APPROVED';
+        const sameLanguage = !tpl.language || tpl.language.toLocaleLowerCase('tr-TR') === templateLang;
+        return approved && sameLanguage;
+      })
+      .map((tpl) => tpl.name);
+    const configuredNames = [
       whatsappConfig?.portalTemplateName,
-      ...(metaTemplates?.templates || [])
-        .filter((tpl) => !tpl.status || tpl.status === 'APPROVED')
-        .map((tpl) => tpl.name),
       'evrak_iletisim',
       whatsappConfig?.templateName,
       whatsappConfig?.documentTemplateName,
-      'sohbet_baslat',
-      'evrak_hatirlatma',
     ]
       .map((name) => String(name || '').trim())
       .filter(Boolean);
+    const approvedSet = new Set(approvedNames);
+    const metaListLoaded = Boolean(metaTemplates?.ok && (metaTemplates.templates || []).length > 0);
+    const names = [
+      ...approvedNames,
+      ...configuredNames.filter((name) => !metaListLoaded || approvedSet.has(name)),
+    ];
     return Array.from(new Set(names));
   }, [metaTemplates, whatsappConfig]);
 
   useEffect(() => {
-    if (!startTemplateName && templateOptions.length > 0) {
-      setStartTemplateName(templateOptions.includes('evrak_iletisim') ? 'evrak_iletisim' : templateOptions[0]);
+    if (templateOptions.length > 0 && (!startTemplateName || !templateOptions.includes(startTemplateName))) {
+      setStartTemplateName(templateOptions[0]);
     }
   }, [startTemplateName, templateOptions]);
 
@@ -967,7 +977,7 @@ export default function MesajlarPage() {
                   value={startTemplateName}
                   onChange={(e) => setStartTemplateName(e.target.value)}
                   list="whatsapp-template-options"
-                  placeholder="sohbet_baslat"
+                  placeholder={templateOptions[0] || 'Meta onayli sablon adi'}
                   className="mt-1.5 w-full rounded-[10px] border bg-transparent px-3 py-2 text-[13px] outline-none"
                   style={{ borderColor: 'rgba(255,255,255,0.08)', color: '#fafaf9' }}
                 />
@@ -1088,22 +1098,25 @@ export default function MesajlarPage() {
               Meta'da onaylı bir şablon seç. Mükellef adı otomatik doldurulacak.
             </p>
             <div className="space-y-2">
-              {[
-                { name: 'evrak_iletisim', label: 'Evrak Iletisim', desc: 'Onayli iletisim baslatma mesaji' },
-                { name: 'evrak_hatirlatma', label: 'Evrak Hatırlatma', desc: 'Belge teslimi bekleniyor' },
-                { name: 'sohbet_baslat', label: 'Sohbet Başlat', desc: 'Genel bir kapı çal mesajı' },
-              ].map((t) => (
+              {templateOptions.length === 0 ? (
+                <div
+                  className="rounded-[10px] px-4 py-3 text-[12px]"
+                  style={{ background: 'rgba(255,255,255,0.04)', border: '1px solid rgba(255,255,255,0.08)', color: 'rgba(250,250,249,0.62)' }}
+                >
+                  Meta'da bu dil icin onayli sablon bulunamadi.
+                </div>
+              ) : templateOptions.map((name) => (
                 <button
-                  key={t.name}
+                  key={name}
                   type="button"
-                  onClick={() => handleSendTemplate(t.name)}
+                  onClick={() => handleSendTemplate(name)}
                   disabled={sendMut.isPending}
                   className="w-full px-4 py-3 rounded-[10px] text-left transition-colors"
                   style={{ background: 'rgba(255,255,255,0.04)', border: '1px solid rgba(255,255,255,0.08)' }}
                 >
-                  <div className="text-[13px] font-semibold" style={{ color: '#fafaf9' }}>{t.label}</div>
+                  <div className="text-[13px] font-semibold" style={{ color: '#fafaf9' }}>{name}</div>
                   <div className="text-[11px] mt-0.5" style={{ color: 'rgba(250,250,249,0.5)' }}>
-                    {t.desc} <span className="font-mono">({t.name})</span>
+                    Meta onayli sablon
                   </div>
                 </button>
               ))}

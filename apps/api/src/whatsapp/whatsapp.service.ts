@@ -601,7 +601,7 @@ export class WhatsAppService {
       };
     }
 
-    if (code === 132000 || code === 132012 || code === 132015) {
+    if (code === 132000 || code === 132001 || code === 132012 || code === 132015) {
       return {
         error: `Meta sablon hatasi (HTTP ${status}${code ? ` / ${code}` : ''}${subcode ? ` / ${subcode}` : ''}): ${detail}`,
         errorCode: 'META_TEMPLATE',
