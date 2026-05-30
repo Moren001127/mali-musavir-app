@@ -1854,12 +1854,33 @@ export class PortalAutomationRailwayRunnerService implements OnModuleInit {
           continue;
         }
 
+        const fileTimeoutMs = this.ebeyannameFileTimeoutMs();
         const beyannameResult = skipBeyanname
           ? { file: null, ownerMismatch: false }
-          : await this.downloadEBeyannameRowFile(page, row, 'beyanname', downloadsPath, processedRows, notes);
+          : await this.withTimeout(
+              this.downloadEBeyannameRowFile(page, row, 'beyanname', downloadsPath, processedRows, notes),
+              fileTimeoutMs,
+              async () => {
+                notes.push(`beyanname: ${processedRows}. satir zaman asimi (${Math.round(fileTimeoutMs / 1000)} sn), atlandi`);
+                return { file: null, ownerMismatch: false };
+              },
+            ).catch((err) => {
+              notes.push(`beyanname: ${processedRows}. satir hata nedeniyle atlandi: ${this.compact(err?.message || err)}`);
+              return { file: null, ownerMismatch: false };
+            });
         const tahakkukResult = skipTahakkuk
           ? { file: null, ownerMismatch: false }
-          : await this.downloadEBeyannameRowFile(page, row, 'tahakkuk', downloadsPath, processedRows, notes);
+          : await this.withTimeout(
+              this.downloadEBeyannameRowFile(page, row, 'tahakkuk', downloadsPath, processedRows, notes),
+              fileTimeoutMs,
+              async () => {
+                notes.push(`tahakkuk: ${processedRows}. satir zaman asimi (${Math.round(fileTimeoutMs / 1000)} sn), atlandi`);
+                return { file: null, ownerMismatch: false };
+              },
+            ).catch((err) => {
+              notes.push(`tahakkuk: ${processedRows}. satir hata nedeniyle atlandi: ${this.compact(err?.message || err)}`);
+              return { file: null, ownerMismatch: false };
+            });
         if (identity && beyannameResult.ownerMismatch) {
           await this.clearExistingEBeyannameFile(tenantId, identity, 'beyanname').catch((err) => {
             notes.push(`beyanname: eski hatali bag temizlenemedi: ${this.compact(err?.message || err)}`);
@@ -1981,13 +2002,32 @@ export class PortalAutomationRailwayRunnerService implements OnModuleInit {
     }
 
     const loc = candidates.nth(picked);
-    const clicked = await this.captureEBeyannameDownload(page, loc, downloadsPath, `ebeyanname-${sequence}-${kind}`);
+    const clicked = await this.captureEBeyannameDownload(page, loc, downloadsPath, `ebeyanname-${sequence}-${kind}`).catch((err) => {
+      notes.push(`${kind}: satir ${resultRow.rowIndex + 1} PDF indirme hatasi: ${this.compact(err?.message || err)}`);
+      return null;
+    });
     if (!clicked) {
       notes.push(`${kind}: satir ${resultRow.rowIndex + 1} tiklandi ama PDF alinamadi`);
       return { file: null, ownerMismatch: false };
     }
     const ownerOk = await this.validateEBeyannameFileOwner(resultRow, clicked, kind, notes);
     return { file: clicked, ownerMismatch: !ownerOk };
+  }
+
+  private ebeyannameFileTimeoutMs() {
+    return Math.max(20_000, Math.min(180_000, Number(process.env.PORTAL_AUTOMATION_EBEYANNAME_FILE_TIMEOUT_MS || 45_000)));
+  }
+
+  private async withTimeout<T>(promise: Promise<T>, timeoutMs: number, onTimeout: () => Promise<T> | T): Promise<T> {
+    let timer: NodeJS.Timeout | null = null;
+    const timeout = new Promise<T>((resolve) => {
+      timer = setTimeout(async () => resolve(await onTimeout()), timeoutMs);
+    });
+    try {
+      return await Promise.race([promise, timeout]);
+    } finally {
+      if (timer) clearTimeout(timer);
+    }
   }
 
   private shouldRefreshExistingEBeyanname(job: any) {
@@ -2159,11 +2199,19 @@ export class PortalAutomationRailwayRunnerService implements OnModuleInit {
     return null;
   }
 
-  private async savePlaywrightDownload(download: any, downloadsPath: string, fallbackName: string): Promise<EBeyannameFilePayload> {
+  private async savePlaywrightDownload(download: any, downloadsPath: string, fallbackName: string): Promise<EBeyannameFilePayload | null> {
     const suggested = await download.suggestedFilename().catch(() => `${fallbackName}.pdf`);
     const fileName = this.safeFileName(suggested || `${fallbackName}.pdf`);
     const filePath = join(downloadsPath, `${randomUUID()}-${fileName}`);
-    await download.saveAs(filePath);
+    const saved = await this.withTimeout(
+      download.saveAs(filePath).then(() => true),
+      this.ebeyannameFileTimeoutMs(),
+      async () => {
+        await download.cancel?.().catch(() => {});
+        return false;
+      },
+    );
+    if (!saved) return null;
     const buffer = await readFile(filePath);
     return { base64: buffer.toString('base64'), fileName, mimeType: this.mimeFromName(fileName) };
   }
