@@ -178,6 +178,9 @@ export interface ChatRequest {
   voiceMode?: boolean;
   toolMode?: 'owner' | 'taxpayer-readonly' | 'none';
   model?: string;
+  /** Maliyet logu için kaynak/modül etiketi (varsayılan 'moren-ai').
+   *  WhatsApp botu 'whatsapp-bot' / 'whatsapp-owner' geçer → maliyet ekranında ayrı görünür. */
+  source?: string;
 }
 
 export interface ChatResponse {
@@ -590,7 +593,7 @@ export class MorenAiService {
       await this.prisma.aiUsageLog.create({
         data: {
           tenantId,
-          source: 'moren-ai',
+          source: body.source || 'moren-ai',
           model,
           inputTokens: totalInput,
           outputTokens: totalOutput,

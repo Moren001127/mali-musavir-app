@@ -672,6 +672,7 @@ export class WhatsAppBotController implements OnModuleInit {
         message: prompt,
         voiceMode: false,
         toolMode: 'none',
+        source: 'whatsapp-bot',
         // model belirtmiyoruz → DEFAULT_MODEL (Haiku) ucuz ve yeterli
       } as any);
       rawReply = (answer.assistantMessage || '').slice(0, 800);
@@ -908,6 +909,7 @@ export class WhatsAppBotController implements OnModuleInit {
           // Sesli olunca max token 260'a duser ve cevaplar yarida kesilir.
           voiceMode: false,
           toolMode: 'owner',
+          source: 'whatsapp-owner',
         });
       } catch (err: any) {
         this.logger.warn(`Owner AI cevabi uretilemedi (fetch hatasi?): ${err?.message || err}`);
@@ -1295,6 +1297,7 @@ export class WhatsAppBotController implements OnModuleInit {
       // ve compactFinalAnswer 220 karakterde keser => cevaplar yarida kalir (sacma/eksik).
       voiceMode: false,
       toolMode: 'taxpayer-readonly',
+      source: 'whatsapp-bot',
     });
 
     const rawAiReply = answer.assistantMessage || '';
@@ -1326,6 +1329,7 @@ export class WhatsAppBotController implements OnModuleInit {
           message: retryPrompt,
           voiceMode: false,
           toolMode: 'taxpayer-readonly',
+          source: 'whatsapp-bot',
         });
         return retryAnswer.assistantMessage || '';
       },

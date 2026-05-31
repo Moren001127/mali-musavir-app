@@ -28,6 +28,7 @@ const SOURCE_LABELS: Record<string, string> = {
   'whatsapp-portal': 'WhatsApp Bot',
   'whatsapp-meta': 'WhatsApp Bot',
   'whatsapp-bot': 'WhatsApp Bot',
+  'whatsapp-owner': 'WhatsApp (Yönetici)',
   'fis-yazdirma': 'Fiş Yazdırma',
   'earsiv': 'e-Arşiv',
   'earsivFatura': 'e-Arşiv',
