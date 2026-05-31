@@ -48,9 +48,8 @@ RUN pnpm install --no-frozen-lockfile
 # npm ile garanti et ve build asamasinda require ederek dogrula.
 RUN mkdir -p /tmp/sharp-linux \
  && npm install --prefix /tmp/sharp-linux --include=optional --os=linux --cpu=x64 sharp@0.34.5 \
- && rm -rf /app/apps/api/node_modules/sharp /app/apps/api/node_modules/@img \
- && cp -R /tmp/sharp-linux/node_modules/sharp /app/apps/api/node_modules/sharp \
- && cp -R /tmp/sharp-linux/node_modules/@img /app/apps/api/node_modules/@img \
+ && rm -rf /app/apps/api/node_modules/sharp /app/apps/api/node_modules/@img /app/apps/api/node_modules/detect-libc /app/apps/api/node_modules/semver \
+ && cp -R /tmp/sharp-linux/node_modules/. /app/apps/api/node_modules/ \
  && cd /app/apps/api \
  && node -e "const sharp=require('sharp'); console.log('>> sharp ok, libvips=' + sharp.versions.vips)"
 
