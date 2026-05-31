@@ -3031,7 +3031,10 @@ export class PortalAutomationRailwayRunnerService implements OnModuleInit {
 
   private async savePdfFromPopup(popup: any, downloadsPath: string, fallbackName: string): Promise<EBeyannameFilePayload | null> {
     try {
-      await this.waitForPopupTargetUrl(popup, Math.max(8_000, this.ebeyannameDownloadEventTimeoutMs())).catch(() => null);
+      const popupUrl = await this.waitForPopupTargetUrl(popup, Math.max(8_000, this.ebeyannameDownloadEventTimeoutMs())).catch(() => null);
+      if (this.ebeyannameDebugEnabled()) {
+        this.logger.warn(`[EBDBG] popup ${fallbackName} url=${this.safeUrl(String(popupUrl || popup.url?.() || ''))}`);
+      }
       await popup.waitForLoadState('domcontentloaded', { timeout: 10_000 }).catch(() => {});
       const popupDownload = await popup.waitForEvent('download', { timeout: 3_000 }).catch(() => null);
       if (popupDownload) return await this.savePlaywrightDownload(popupDownload, downloadsPath, fallbackName);
@@ -3075,6 +3078,9 @@ export class PortalAutomationRailwayRunnerService implements OnModuleInit {
       }
     }
 
+    if (this.ebeyannameDebugEnabled()) {
+      this.logger.warn(`[EBDBG] pageurl ${fallbackName} mime=${mimeType} bytes=${buffer?.length || 0} url=${this.safeUrl(url)}`);
+    }
     if (!buffer || buffer.length < 200) return null;
     const fileName = this.safeFileName(`${fallbackName}.pdf`);
     const filePath = join(downloadsPath, `${randomUUID()}-${fileName}`);
@@ -3118,6 +3124,9 @@ export class PortalAutomationRailwayRunnerService implements OnModuleInit {
     const buffer = Buffer.from(base64.base64, 'base64');
     const mimeType = base64.mimeType || 'application/pdf';
     const pdfish = /^%PDF/.test(buffer.subarray(0, 5).toString('latin1')) || /pdf|octet-stream/i.test(mimeType);
+    if (this.ebeyannameDebugEnabled()) {
+      this.logger.warn(`[EBDBG] loaded ${fallbackName} ok=${base64.ok} mime=${mimeType} bytes=${buffer.length} pdfish=${pdfish} url=${this.safeUrl(String(page.url?.() || ''))}`);
+    }
     if (!pdfish || buffer.length < 200) return null;
     const fileName = this.safeFileName(`${fallbackName}.pdf`);
     const filePath = join(downloadsPath, `${randomUUID()}-${fileName}`);
