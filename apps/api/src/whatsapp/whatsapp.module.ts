@@ -1,5 +1,6 @@
 import { Module } from '@nestjs/common';
 import { WhatsAppService } from './whatsapp.service';
+import { BaileysService } from './baileys.service';
 import { WhatsAppController } from './whatsapp.controller';
 import { WhatsAppBotController } from './whatsapp-bot.controller';
 import { WhatsAppIntegrationController } from './whatsapp-integration.controller';
@@ -25,6 +26,7 @@ import { NotificationsModule } from '../notifications/notifications.module';
   imports: [PrismaModule, MorenAiModule, StorageModule, EmailModule, NotificationsModule],
   providers: [
     WhatsAppService,
+    BaileysService,
     IntentClassifierService,
     WhatsAppBotContextService,
     WhatsAppBotPostFilterService,

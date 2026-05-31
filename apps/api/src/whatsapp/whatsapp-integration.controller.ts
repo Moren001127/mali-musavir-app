@@ -1,6 +1,7 @@
 import { Body, Controller, Get, Post, Put, Req, UseGuards } from '@nestjs/common';
 import { AuthGuard } from '@nestjs/passport';
 import { WhatsAppService, WhatsAppConfig } from './whatsapp.service';
+import { BaileysService } from './baileys.service';
 
 /**
  * WhatsApp Meta Cloud API entegrasyon yönetimi — sadece konfigürasyon
@@ -10,7 +11,33 @@ import { WhatsAppService, WhatsAppConfig } from './whatsapp.service';
 @Controller('integrations/whatsapp')
 @UseGuards(AuthGuard('jwt'))
 export class WhatsAppIntegrationController {
-  constructor(private readonly whatsapp: WhatsAppService) {}
+  constructor(
+    private readonly whatsapp: WhatsAppService,
+    private readonly baileys: BaileysService,
+  ) {}
+
+  // ─── QR (Baileys) — Meta'sız, QR ile bağlanma ───────────────────────
+  /** Bağlantıyı başlat — QR üretir (telefondan okutulacak). */
+  @Post('qr/connect')
+  async qrConnect(@Req() req: any) {
+    await this.baileys.connect(req.user.tenantId);
+    // QR'ın üretilmesi için kısa bekleme, sonra durumu dön.
+    await new Promise((r) => setTimeout(r, 1200));
+    return this.baileys.getStatus(req.user.tenantId);
+  }
+
+  /** Durum + QR (data URL). Portal bunu birkaç saniyede bir çağırıp QR/bağlı durumunu gösterir. */
+  @Get('qr/status')
+  async qrStatus(@Req() req: any) {
+    return this.baileys.getStatus(req.user.tenantId);
+  }
+
+  /** Bağlantıyı kes ve kayıtlı oturumu temizle (yeniden QR gerekir). */
+  @Post('qr/logout')
+  async qrLogout(@Req() req: any) {
+    await this.baileys.logout(req.user.tenantId);
+    return { ok: true };
+  }
 
   @Get()
   async getConfig(@Req() req: any) {

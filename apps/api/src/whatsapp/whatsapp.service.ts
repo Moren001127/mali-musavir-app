@@ -1,6 +1,7 @@
 import { Injectable, Logger } from '@nestjs/common';
 import { PrismaService } from '../prisma/prisma.service';
 import { encrypt, decrypt } from '../common/crypto';
+import { BaileysService } from './baileys.service';
 
 /**
  * WhatsApp Servisi — Meta WhatsApp Cloud API entegrasyonu
@@ -38,7 +39,10 @@ export interface WhatsAppSendResult {
 export class WhatsAppService {
   private readonly logger = new Logger(WhatsAppService.name);
 
-  constructor(private prisma: PrismaService) {}
+  constructor(
+    private prisma: PrismaService,
+    private readonly baileys: BaileysService,
+  ) {}
 
   private get envConfig(): WhatsAppConfig {
     return {
@@ -167,9 +171,12 @@ export class WhatsAppService {
         where: { tenantId_provider: { tenantId, provider: 'WHATSAPP_META' } },
         select: { isActive: true },
       });
+      // Meta toggle kaydı varsa o belirler (master switch — her iki sağlayıcı için geçerli).
+      if (row) return row.isActive === true;
+      // Meta hiç kurulmamış ama QR (Baileys) bağlıysa aktif say.
+      if (this.baileys?.isConnected(tenantId)) return true;
       // DB kaydı yoksa eski env-based kurulumları kırma; env yapılandırılmışsa aktif say.
-      if (!row) return this.isConfigured(this.envConfig);
-      return row.isActive === true;
+      return this.isConfigured(this.envConfig);
     } catch {
       return false;
     }
@@ -193,6 +200,10 @@ export class WhatsAppService {
       const error = 'WhatsApp master switch pasif. Ayarlar > Entegrasyonlar > WhatsApp icinden aktif edin.';
       this.logger.warn(`[WhatsApp] Master switch PASIF - mesaj atlandi: ${phone}`);
       return { ok: false, error };
+    }
+    if (tenantId && this.baileys.isConnected(tenantId)) {
+      const ok = await this.baileys.sendText(tenantId, phone, message);
+      return ok ? { ok: true } : { ok: false, error: 'Baileys (QR) gönderimi başarısız — bağlantı kopmuş olabilir.' };
     }
     const cfg = await this.getEffectiveConfig(tenantId);
     if (!this.isConfigured(cfg)) {
@@ -222,6 +233,11 @@ export class WhatsAppService {
       const error = 'WhatsApp master switch pasif. Ayarlar > Entegrasyonlar > WhatsApp icinden aktif edin.';
       this.logger.warn(`[WhatsApp] Master switch PASIF - sablon atlandi: ${phone}`);
       return { ok: false, error };
+    }
+    // Baileys'te Meta şablonu yok → parametreleri düz metin gönder.
+    if (tenantId && this.baileys.isConnected(tenantId)) {
+      const ok = await this.baileys.sendText(tenantId, phone, parameters.join(' - '));
+      return ok ? { ok: true } : { ok: false, error: 'Baileys (QR) gönderimi başarısız.' };
     }
     const cfg = await this.getEffectiveConfig(tenantId);
     if (!this.isConfigured(cfg)) {
@@ -257,6 +273,10 @@ export class WhatsAppService {
       this.logger.warn(`[WhatsApp] Master switch PASIF - medya atlandi: ${phone}`);
       return { ok: false, error };
     }
+    if (tenantId && this.baileys.isConnected(tenantId)) {
+      const ok = await this.baileys.sendMedia(tenantId, phone, media);
+      return ok ? { ok: true } : { ok: false, error: 'Baileys (QR) medya gönderimi başarısız.' };
+    }
     const cfg = await this.getEffectiveConfig(tenantId);
     if (!this.isConfigured(cfg)) {
       return { ok: false, error: 'WhatsApp Cloud API ayarlari eksik: Access Token veya Phone Number ID yok.' };
@@ -290,6 +310,10 @@ export class WhatsAppService {
       this.logger.warn(`[WhatsApp] Master switch PASİF - mesaj atlandı: ${phone}`);
       return false;
     }
+    // Baileys (QR) bağlıysa çıkışı oradan yap.
+    if (tenantId && this.baileys.isConnected(tenantId)) {
+      return this.baileys.sendText(tenantId, phone, message);
+    }
     const cfg = await this.getEffectiveConfig(tenantId);
     if (!this.isConfigured(cfg)) {
       this.logger.warn(`[WhatsApp] Yapilandirilmamis - mesaj atlandi: ${phone}`);
@@ -318,6 +342,9 @@ export class WhatsAppService {
     if (tenantId && !(await this.isAutomationActive(tenantId))) {
       this.logger.warn(`[WhatsApp] Master switch PASİF - şablon atlandı: ${phone}`);
       return false;
+    }
+    if (tenantId && this.baileys.isConnected(tenantId)) {
+      return this.baileys.sendText(tenantId, phone, parameters.join(' - '));
     }
     const cfg = await this.getEffectiveConfig(tenantId);
     if (!this.isConfigured(cfg)) return false;

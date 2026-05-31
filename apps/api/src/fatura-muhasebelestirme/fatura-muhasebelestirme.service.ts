@@ -160,7 +160,7 @@ export const PROVIDER_AUTH_HINTS: Record<string, string> = {
   UYUMSOFT: "Uyumsoft kullanici adi ve sifresi yeterli. Servis URL otomatik dolar.",
   IZIBIZ: "Izibiz kullanici ve sifre, opsiyonel test/canli URL.",
   FORIBA: "Sovos Foriba bulut API icin kullanici ve sifre. URL Sovos tarafindan verilir.",
-  PARASUT: "Parasut OAuth2: client_id (apiKey), client_secret (apiSecret), kullanici ve sifre. Firma No senderVkn alanina yazilir.",
+  PARASUT: "Parasut OAuth2: client_id (apiKey), client_secret (apiSecret), kullanici, sifre ve Firma No gerekir.",
   MIKRO: "Mikro API anahtari ile baglanir. apidestek@mikro.com.tr adresinden anahtar talep edin.",
   ELOGO: "eLogo kullanici ve sifresi. Opsiyonel olarak servis URL girilebilir.",
   LOGO_ISBASI: "Logo Isbasi API anahtari. developers.isbasi.com adresinden alin.",
@@ -366,14 +366,46 @@ export class FaturaMuhasebelestirmeService {
     return INTEGRATOR_CATALOG.map((item) => {
       const row = byProvider.get(item.provider);
       const config = (row?.config || {}) as any;
-      const taxpayerConfig = config.taxpayers?.[taxpayerKey] || config.taxpayers?.global || null;
+      const globalConfig = config.taxpayers?.global || null;
+      const scopedConfig = config.taxpayers?.[taxpayerKey] || null;
+      const taxpayerConfig = scopedConfig
+        ? { ...(globalConfig || {}), ...scopedConfig }
+        : (taxpayerKey === 'global' ? globalConfig : null);
+      const hasProviderEnvApiKey = item.provider === 'PARASUT' && Boolean(process.env.PARASUT_CLIENT_ID);
+      const hasProviderEnvApiSecret = item.provider === 'PARASUT' && Boolean(process.env.PARASUT_CLIENT_SECRET);
       const configured = Boolean(
-        taxpayerConfig?.hasApiKey ||
-          taxpayerConfig?.hasApiSecret ||
-          taxpayerConfig?.hasPassword ||
-          taxpayerConfig?.username ||
-          taxpayerConfig?.baseUrl ||
-          taxpayerConfig?.senderVkn,
+        scopedConfig?.hasApiKey ||
+          scopedConfig?.hasApiSecret ||
+          scopedConfig?.hasPassword ||
+          scopedConfig?.username ||
+          scopedConfig?.baseUrl ||
+          scopedConfig?.senderVkn ||
+          scopedConfig?.accountId ||
+          (taxpayerKey === 'global' && (
+            globalConfig?.hasApiKey ||
+            globalConfig?.hasApiSecret ||
+            globalConfig?.hasPassword ||
+            globalConfig?.username ||
+            globalConfig?.baseUrl ||
+            globalConfig?.senderVkn ||
+            globalConfig?.accountId ||
+            hasProviderEnvApiKey ||
+            hasProviderEnvApiSecret
+          ))
+      );
+      const hasApiKey = Boolean(
+        scopedConfig?.hasApiKey ||
+          globalConfig?.hasApiKey ||
+          hasProviderEnvApiKey
+      );
+      const hasApiSecret = Boolean(
+        scopedConfig?.hasApiSecret ||
+          globalConfig?.hasApiSecret ||
+          hasProviderEnvApiSecret
+      );
+      const hasPassword = Boolean(
+        scopedConfig?.hasPassword ||
+          (taxpayerKey === 'global' && globalConfig?.hasPassword)
       );
       return {
         provider: item.provider,
@@ -382,16 +414,17 @@ export class FaturaMuhasebelestirmeService {
         tone: item.tone,
         isActive: row?.isActive !== false && taxpayerConfig?.isActive !== false,
         configured,
-        taxpayerScoped: Boolean(config.taxpayers?.[taxpayerKey]),
+        taxpayerScoped: Boolean(scopedConfig),
         baseUrl: taxpayerConfig?.baseUrl || '',
         username: taxpayerConfig?.username || '',
         senderVkn: taxpayerConfig?.senderVkn || '',
         accountId: taxpayerConfig?.accountId || '',
         note: taxpayerConfig?.note || '',
-        hasApiKey: Boolean(taxpayerConfig?.hasApiKey),
-        hasApiSecret: Boolean(taxpayerConfig?.hasApiSecret),
-        hasPassword: Boolean(taxpayerConfig?.hasPassword),
-        // v2: Talimat — otomatik gece çekim aktif mi?
+        hasApiKey,
+        hasApiSecret,
+        hasPassword,
+        globalApiConfigured: Boolean(globalConfig?.hasApiKey || globalConfig?.hasApiSecret || hasProviderEnvApiKey || hasProviderEnvApiSecret),
+        // v2: Talimat - otomatik gece cekim aktif mi?
         talimat: Boolean(taxpayerConfig?.talimat),
         talimatUpdatedAt: taxpayerConfig?.talimatUpdatedAt || null,
         lastSyncAt: row?.lastSyncAt || null,
@@ -1279,6 +1312,22 @@ export class FaturaMuhasebelestirmeService {
     if (apiSecret) nextTaxpayer.encryptedApiSecret = encrypt(apiSecret);
     if (password) nextTaxpayer.encryptedPassword = encrypt(password);
 
+    const currentGlobal = currentConfig.taxpayers?.global || {};
+    const nextGlobal = provider === 'PARASUT' && (apiKey || apiSecret)
+      ? {
+          ...currentGlobal,
+          taxpayerId: null,
+          label: String(currentGlobal.label || catalog.label).trim(),
+          isActive: currentGlobal.isActive !== false,
+          hasApiKey: apiKey ? true : Boolean(currentGlobal.hasApiKey),
+          hasApiSecret: apiSecret ? true : Boolean(currentGlobal.hasApiSecret),
+          updatedAt: new Date().toISOString(),
+          updatedBy: updatedBy || null,
+          ...(apiKey ? { encryptedApiKey: encrypt(apiKey) } : {}),
+          ...(apiSecret ? { encryptedApiSecret: encrypt(apiSecret) } : {}),
+        }
+      : currentGlobal;
+
     const config = {
       version: 1,
       provider,
@@ -1286,6 +1335,7 @@ export class FaturaMuhasebelestirmeService {
       kind: catalog.kind,
       taxpayers: {
         ...(currentConfig.taxpayers || {}),
+        ...(provider === 'PARASUT' && (apiKey || apiSecret) ? { global: nextGlobal } : {}),
         [taxpayerKey]: nextTaxpayer,
       },
       updatedAt: new Date().toISOString(),
@@ -2951,15 +3001,23 @@ export class FaturaMuhasebelestirmeService {
   ): RuntimeIntegrationConfig | null {
     if (!row) return null;
     const config = ((row.config || {}) as any) || {};
-    const scoped = config.taxpayers?.[taxpayerId] || config.taxpayers?.global || null;
+    const globalScoped = config.taxpayers?.global || null;
+    const taxpayerScoped = config.taxpayers?.[taxpayerId] || null;
+    const scoped = taxpayerScoped || globalScoped || null;
     if (!scoped) return null;
     const password = tryDecrypt(scoped.encryptedPassword) || '';
-    const apiKey = tryDecrypt(scoped.encryptedApiKey) || '';
-    const apiSecret = tryDecrypt(scoped.encryptedApiSecret) || '';
+    const apiKey =
+      tryDecrypt(scoped.encryptedApiKey) ||
+      tryDecrypt(globalScoped?.encryptedApiKey) ||
+      (catalog.provider === 'PARASUT' ? String(process.env.PARASUT_CLIENT_ID || '').trim() : '');
+    const apiSecret =
+      tryDecrypt(scoped.encryptedApiSecret) ||
+      tryDecrypt(globalScoped?.encryptedApiSecret) ||
+      (catalog.provider === 'PARASUT' ? String(process.env.PARASUT_CLIENT_SECRET || '').trim() : '');
     return {
       provider: catalog.provider,
       label: scoped.label || config.label || catalog.label,
-      baseUrl: String(scoped.baseUrl || PROVIDER_DEFAULT_BASE_URL[catalog.provider] || '').trim(),
+      baseUrl: String(scoped.baseUrl || globalScoped?.baseUrl || PROVIDER_DEFAULT_BASE_URL[catalog.provider] || '').trim(),
       username: String(scoped.username || '').trim(),
       password,
       apiKey,
@@ -2971,6 +3029,15 @@ export class FaturaMuhasebelestirmeService {
   }
 
   private providerCredentialProblem(cfg: RuntimeIntegrationConfig): string | null {
+    if (cfg.provider === 'PARASUT') {
+      const missing: string[] = [];
+      if (!cfg.apiKey) missing.push('client_id');
+      if (!cfg.apiSecret) missing.push('client_secret');
+      if (!cfg.username) missing.push('kullanici');
+      if (!cfg.password) missing.push('sifre');
+      if (!cfg.accountId && !cfg.senderVkn) missing.push('Firma No');
+      return missing.length ? `Parasut bilgileri eksik: ${missing.join(', ')}` : null;
+    }
     if (cfg.provider === 'UYUMSOFT' && (!cfg.username || !cfg.password)) return 'Uyumsoft kullanici/sifre eksik';
     if (I2I_SOAP_PROVIDERS.has(cfg.provider) && (!cfg.username || !cfg.password)) return 'Izibiz/i2i kullanici/sifre eksik';
     if (cfg.provider !== 'UYUMSOFT' && !I2I_SOAP_PROVIDERS.has(cfg.provider) && !cfg.baseUrl) return 'API adresi eksik';
@@ -3050,7 +3117,7 @@ export class FaturaMuhasebelestirmeService {
 
   /**
    * Parasut OAuth2 + REST adapter. Erisim icin client_id + client_secret + user/pass gerek.
-   * Token al -> /v4/{firmaNo}/e_invoice_inboxes (ALIS) veya sales_invoices (SATIS) cek.
+   * Token al -> /v4/{firmaNo}/purchase_bills (ALIS) veya sales_invoices (SATIS) cek.
    */
   private async fetchParasutInvoices(
     cfg: RuntimeIntegrationConfig,
@@ -3065,42 +3132,145 @@ export class FaturaMuhasebelestirmeService {
     if (!cfg.username || !cfg.password || !(cfg as any).apiKey || !(cfg as any).apiSecret) {
       throw new Error('Parasut OAuth2 icin client_id (apiKey) + client_secret (apiSecret) + kullanici + sifre gerekli');
     }
-    const firmaNo = (cfg as any).senderVkn || (cfg as any).accountId;
-    if (!firmaNo) throw new Error('Parasut Firma No (senderVkn alaninda) gerekli');
+    const firmaNo = (cfg as any).accountId || (cfg as any).senderVkn;
+    if (!firmaNo) throw new Error('Parasut Firma No gerekli');
 
-    // OAuth2 password grant
+    const tokenBody = new URLSearchParams({
+      grant_type: 'password',
+      client_id: (cfg as any).apiKey,
+      client_secret: (cfg as any).apiSecret,
+      username: cfg.username,
+      password: cfg.password,
+      redirect_uri: 'urn:ietf:wg:oauth:2.0:oob',
+    });
     const tokenRes = await fetch('https://api.parasut.com/oauth/token', {
       method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({
-        grant_type: 'password',
-        client_id: (cfg as any).apiKey,
-        client_secret: (cfg as any).apiSecret,
-        username: cfg.username,
-        password: cfg.password,
-        redirect_uri: 'urn:ietf:wg:oauth:2.0:oob',
-      }),
+      body: tokenBody,
     });
     if (!tokenRes.ok) throw new Error(`Parasut token alinamadi: ${tokenRes.status} ${await tokenRes.text()}`);
     const tokenData: any = await tokenRes.json();
     const accessToken = tokenData?.access_token;
     if (!accessToken) throw new Error('Parasut access_token donmedi');
 
-    const path = opts.direction === 'ALIS' ? 'e_invoice_inboxes' : 'sales_invoices';
-    const url = `${baseUrl}/${firmaNo}/${path}?filter[issue_date]=${opts.period.startDate}..${opts.period.endDate}&page[size]=${opts.limit}`;
-    const res = await fetch(url, {
-      method: 'GET',
-      headers: { Authorization: `Bearer ${accessToken}`, Accept: 'application/json' },
-    });
-    if (!res.ok) throw new Error(`Parasut fatura listesi alinamadi: ${res.status} ${await res.text()}`);
-    const data: any = await res.json();
-    const items = Array.isArray(data?.data) ? data.data : [];
-    return items.map((it: any) => ({
-      externalId: it.id,
-      originalName: it?.attributes?.invoice_no || it.id,
-      xml: it?.attributes?.xml || '',
-      raw: it,
-    }));
+    const path = opts.direction === 'ALIS' ? 'purchase_bills' : 'sales_invoices';
+    const include = opts.direction === 'ALIS'
+      ? 'spender,pay_to,details,details.product,active_e_document'
+      : 'contact,details,details.product,active_e_document';
+    const pageSize = Math.min(Math.max(Number(opts.limit || 25), 1), 25);
+    const maxPages = Math.max(1, Math.ceil(opts.limit / pageSize));
+    const payloads: ProviderInvoicePayload[] = [];
+
+    for (let page = 1; page <= maxPages && payloads.length < opts.limit; page++) {
+      const params = new URLSearchParams({
+        'filter[issue_date]': `${opts.period.startDate}..${opts.period.endDate}`,
+        'page[number]': String(page),
+        'page[size]': String(pageSize),
+        include,
+      });
+      const url = `${baseUrl.replace(/\/+$/, '')}/${firmaNo}/${path}?${params.toString()}`;
+      const res = await fetch(url, {
+        method: 'GET',
+        headers: { Authorization: `Bearer ${accessToken}`, Accept: 'application/json' },
+      });
+      if (!res.ok) throw new Error(`Parasut fatura listesi alinamadi: ${res.status} ${await res.text()}`);
+      const data: any = await res.json();
+      const items = Array.isArray(data?.data) ? data.data : [];
+      const included = Array.isArray(data?.included) ? data.included : [];
+      for (const item of items) {
+        if (payloads.length >= opts.limit) break;
+        payloads.push(this.parasutInvoicePayload(item, included, opts.direction, opts.taxpayer, path));
+      }
+      if (items.length < pageSize) break;
+    }
+    return payloads;
+  }
+
+  private parasutInvoicePayload(
+    item: any,
+    included: any[],
+    direction: 'ALIS' | 'SATIS',
+    taxpayer: any,
+    path: string,
+  ): ProviderInvoicePayload {
+    const attrs = item?.attributes || {};
+    const invoiceNo = String(attrs.invoice_no || attrs.invoice_id || item?.id || '').trim();
+    return {
+      externalId: `${path}:${item?.id || invoiceNo}`,
+      originalName: invoiceNo ? `${invoiceNo}.xml` : `parasut-${path}-${item?.id || randomUUID()}.xml`,
+      xml: this.syntheticParasutXml(item, included, direction, taxpayer),
+    };
+  }
+
+  private syntheticParasutXml(item: any, included: any[], direction: 'ALIS' | 'SATIS', taxpayer: any) {
+    const attrs = item?.attributes || {};
+    const counterparty = this.parasutCounterparty(item, included);
+    const counterAttrs = counterparty?.attributes || {};
+    const ownName = this.reportTaxpayerName(taxpayer);
+    const ownTaxNo = this.reportTaxNumber(taxpayer);
+    const counterName = String(counterAttrs.name || attrs.description || 'BILINMIYOR').trim();
+    const counterTaxNo = String(counterAttrs.tax_number || '').replace(/\D/g, '');
+    const invoiceNo = String(attrs.invoice_no || attrs.invoice_id || item?.id || '').trim() || 'BILINMIYOR';
+    const issueDate = String(attrs.issue_date || attrs.created_at || '').slice(0, 10);
+    const currency = String(attrs.currency || 'TRL').toUpperCase() === 'TRL' ? 'TRY' : String(attrs.currency || 'TRY').toUpperCase();
+    const totalVat = this.parasutNumber(attrs.total_vat);
+    const total = this.parasutNumber(attrs.net_total ?? attrs.gross_total);
+    const taxExclusive = this.parasutNumber(
+      attrs.before_taxes_total ?? attrs.gross_total ?? (Number.isFinite(total) && Number.isFinite(totalVat) ? total - totalVat : undefined),
+    );
+    const supplier = direction === 'SATIS'
+      ? { name: ownName, taxNo: ownTaxNo }
+      : { name: counterName, taxNo: counterTaxNo };
+    const customer = direction === 'SATIS'
+      ? { name: counterName, taxNo: counterTaxNo }
+      : { name: ownName, taxNo: ownTaxNo };
+    const uuid = String(attrs.uuid || attrs.external_id || item?.id || '').trim();
+
+    return `<?xml version="1.0" encoding="UTF-8"?>
+<Invoice>
+  <ID>${this.xmlEscape(invoiceNo)}</ID>
+  ${uuid ? `<UUID>${this.xmlEscape(uuid)}</UUID>` : ''}
+  ${issueDate ? `<IssueDate>${this.xmlEscape(issueDate)}</IssueDate>` : ''}
+  <DocumentCurrencyCode>${this.xmlEscape(currency)}</DocumentCurrencyCode>
+  ${this.syntheticParasutPartyXml('AccountingSupplierParty', supplier.name, supplier.taxNo)}
+  ${this.syntheticParasutPartyXml('AccountingCustomerParty', customer.name, customer.taxNo)}
+  <TaxTotal><TaxAmount currencyID="${this.xmlEscape(currency)}">${this.parasutMoney(totalVat)}</TaxAmount></TaxTotal>
+  <LegalMonetaryTotal>
+    <TaxExclusiveAmount currencyID="${this.xmlEscape(currency)}">${this.parasutMoney(taxExclusive)}</TaxExclusiveAmount>
+    <TaxInclusiveAmount currencyID="${this.xmlEscape(currency)}">${this.parasutMoney(total)}</TaxInclusiveAmount>
+    <PayableAmount currencyID="${this.xmlEscape(currency)}">${this.parasutMoney(total)}</PayableAmount>
+  </LegalMonetaryTotal>
+</Invoice>`;
+  }
+
+  private syntheticParasutPartyXml(tag: string, name: string, taxNo: string) {
+    const scheme = taxNo.length === 11 ? 'TCKN' : 'VKN';
+    const taxXml = taxNo.length === 10 || taxNo.length === 11
+      ? `<PartyIdentification><ID schemeID="${scheme}">${this.xmlEscape(taxNo)}</ID></PartyIdentification>`
+      : '';
+    return `<${tag}><Party><PartyName><Name>${this.xmlEscape(name || 'BILINMIYOR')}</Name></PartyName>${taxXml}</Party></${tag}>`;
+  }
+
+  private parasutCounterparty(item: any, included: any[]) {
+    const rels = item?.relationships || {};
+    const keys = ['contact', 'supplier', 'spender', 'pay_to', 'customer'];
+    for (const key of keys) {
+      const data = rels?.[key]?.data;
+      const ref = Array.isArray(data) ? data[0] : data;
+      if (!ref?.id) continue;
+      const found = included.find((inc) => String(inc?.type) === String(ref.type || 'contacts') && String(inc?.id) === String(ref.id));
+      if (found) return found;
+    }
+    return included.find((inc) => String(inc?.type) === 'contacts') || null;
+  }
+
+  private parasutNumber(value: any): number {
+    if (value === null || value === undefined || value === '') return 0;
+    const n = typeof value === 'number' ? value : Number(String(value).replace(',', '.'));
+    return Number.isFinite(n) ? n : 0;
+  }
+
+  private parasutMoney(value: any) {
+    return this.parasutNumber(value).toFixed(2);
   }
 
   private async fetchUyumsoftInvoices(

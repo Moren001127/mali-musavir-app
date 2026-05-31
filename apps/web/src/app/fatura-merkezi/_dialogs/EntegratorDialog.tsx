@@ -43,6 +43,16 @@ type Props = {
   onClose: () => void;
 };
 
+type IntegrationFormPayload = {
+  provider: string;
+  username: string;
+  password: string;
+  apiKey?: string;
+  apiSecret?: string;
+  senderVkn?: string;
+  accountId?: string;
+};
+
 export default function EntegratorDialog({ taxpayer, onClose }: Props) {
   const qc = useQueryClient();
 
@@ -69,12 +79,16 @@ export default function EntegratorDialog({ taxpayer, onClose }: Props) {
   }, [integrationsQ.isLoading, configured.length, mode]);
 
   const saveMut = useMutation({
-    mutationFn: async (payload: { provider: string; username: string; password: string }) => {
+    mutationFn: async (payload: IntegrationFormPayload) => {
       return api.post('/fatura-muhasebelestirme/integrations', {
         taxpayerId: taxpayer.id,
         provider: payload.provider,
         username: payload.username,
         password: payload.password,
+        apiKey: payload.apiKey,
+        apiSecret: payload.apiSecret,
+        senderVkn: payload.senderVkn,
+        accountId: payload.accountId,
       });
     },
     onSuccess: () => {
@@ -285,7 +299,7 @@ function EntegratorForm({
 }: {
   editing?: any | null;
   configuredProviders: string[];
-  onSubmit: (payload: { provider: string; username: string; password: string }) => void;
+  onSubmit: (payload: IntegrationFormPayload) => void;
   onCancel: () => void;
   saving: boolean;
   error: any;
@@ -293,15 +307,29 @@ function EntegratorForm({
   const [provider, setProvider] = useState<string>(editing?.provider || '');
   const [username, setUsername] = useState<string>(editing?.username || '');
   const [password, setPassword] = useState<string>('');
+  const [apiKey, setApiKey] = useState<string>('');
+  const [apiSecret, setApiSecret] = useState<string>('');
+  const [firmaNo, setFirmaNo] = useState<string>(editing?.accountId || editing?.senderVkn || '');
   const [showPwd, setShowPwd] = useState(false);
 
   const isEdit = !!editing;
   const provInfo = PROVIDERS.find((p) => p.id === provider);
+  const isParasut = provider === 'PARASUT';
+  const missingParasutFirmaNo = isParasut && !firmaNo;
+  const formInvalid = !provider || !username || (!isEdit && !password) || missingParasutFirmaNo;
 
   const handleSubmit = (e: React.FormEvent) => {
     e.preventDefault();
-    if (!provider || !username || (!isEdit && !password)) return;
-    onSubmit({ provider, username, password: password || editing?.password || '' });
+    if (formInvalid) return;
+    onSubmit({
+      provider,
+      username,
+      password: password || '',
+      apiKey,
+      apiSecret,
+      accountId: firmaNo,
+      senderVkn: firmaNo,
+    });
   };
 
   // Available providers: hepsi (edit modunda) veya henüz tanımlı olmayanlar (yeni)
@@ -379,6 +407,51 @@ function EntegratorForm({
           </div>
         </div>
 
+        {isParasut && (
+          <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
+            <div>
+              <label className="block text-[12px] font-semibold mb-1.5" style={{ color: 'var(--text-secondary)' }}>
+                Client ID {editing?.hasApiKey ? '(ofis genelinde kayitli)' : '(opsiyonel - bir kere girilirse tum firmalarda kullanilir)'}
+              </label>
+              <input
+                type="text"
+                value={apiKey}
+                onChange={(e) => setApiKey(e.target.value)}
+                placeholder={editing?.hasApiKey ? 'Kayitli' : 'Parasut client_id'}
+                className="w-full px-3 py-2.5 text-[13px] outline-none rounded-lg font-mono"
+                style={{ background: 'var(--surface-2)', border: '1px solid var(--border)', color: 'var(--text)' }}
+              />
+            </div>
+            <div>
+              <label className="block text-[12px] font-semibold mb-1.5" style={{ color: 'var(--text-secondary)' }}>
+                Client Secret {editing?.hasApiSecret ? '(ofis genelinde kayitli)' : '(opsiyonel - bir kere girilirse tum firmalarda kullanilir)'}
+              </label>
+              <input
+                type="password"
+                value={apiSecret}
+                onChange={(e) => setApiSecret(e.target.value)}
+                placeholder={editing?.hasApiSecret ? 'Kayitli' : 'Parasut client_secret'}
+                className="w-full px-3 py-2.5 text-[13px] outline-none rounded-lg font-mono"
+                style={{ background: 'var(--surface-2)', border: '1px solid var(--border)', color: 'var(--text)' }}
+              />
+            </div>
+            <div className="md:col-span-2">
+              <label className="block text-[12px] font-semibold mb-1.5" style={{ color: 'var(--text-secondary)' }}>
+                Firma No <span style={{ color: '#ef4444' }}>*</span>
+              </label>
+              <input
+                type="text"
+                value={firmaNo}
+                onChange={(e) => setFirmaNo(e.target.value.replace(/[^\d]/g, ''))}
+                placeholder="Parasut firma/company ID"
+                required
+                className="w-full px-3 py-2.5 text-[13px] outline-none rounded-lg font-mono"
+                style={{ background: 'var(--surface-2)', border: '1px solid var(--border)', color: 'var(--text)' }}
+              />
+            </div>
+          </div>
+        )}
+
         {/* Bilgi notu */}
         {provInfo?.hint && (
           <div
@@ -394,7 +467,9 @@ function EntegratorForm({
             className="p-3 rounded-lg text-[11.5px]"
             style={{ background: 'var(--surface-2)', border: '1px solid var(--border)', color: 'var(--text-muted)' }}
           >
-            Servis URL'i sağlayıcıya göre otomatik atanır. Manuel değiştirmek istersen sonra Düzenle'den yapabilirsin.
+            {isParasut
+              ? 'Parasut Client ID/Secret ofis geneline bir kere kaydedilir. Sonraki firmalarda sadece kullanici, sifre ve Firma No yeterlidir.'
+              : 'Servis URL saglayiciya gore otomatik atanir. Manuel degistirmek istersen sonra Duzenle ile yapabilirsin.'}
           </div>
         )}
 
@@ -422,7 +497,7 @@ function EntegratorForm({
         </button>
         <button
           type="submit"
-          disabled={saving || !provider || !username || (!isEdit && !password)}
+          disabled={saving || formInvalid}
           className="flex items-center gap-2 px-4 py-2 text-[13px] font-semibold rounded-lg transition-colors disabled:opacity-50"
           style={{ background: 'var(--accent)', color: 'var(--bg)' }}
         >

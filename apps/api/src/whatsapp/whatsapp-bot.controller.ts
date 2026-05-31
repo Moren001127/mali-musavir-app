@@ -1,7 +1,9 @@
-import { Body, Controller, Get, Logger, Optional, Post, Query, Res } from '@nestjs/common';
+import { Body, Controller, Get, Logger, Optional, OnModuleInit, Post, Query, Res } from '@nestjs/common';
 import { PrismaService } from '../prisma/prisma.service';
 import { MorenAiService } from '../moren-ai/moren-ai.service';
 import { WhatsAppService } from './whatsapp.service';
+import { BaileysService } from './baileys.service';
+import { BAILEYS_PROVIDER } from './baileys-auth-store';
 import { AutomationEventBus } from '../automations/automation-event-bus.service';
 import { StorageService } from '../storage/storage.service';
 import { randomUUID } from 'crypto';
@@ -29,7 +31,7 @@ type IncomingWhatsAppMessage = {
 };
 
 @Controller('whatsapp/webhook')
-export class WhatsAppBotController {
+export class WhatsAppBotController implements OnModuleInit {
   private readonly logger = new Logger(WhatsAppBotController.name);
 
   constructor(
@@ -44,9 +46,34 @@ export class WhatsAppBotController {
     private readonly botEval: BotEvalService,
     private readonly qualityLog: QualityLogService,
     private readonly buseGunaydin: BuseGunaydinCron,
+    private readonly baileys: BaileysService,
     @Optional() private readonly eventBus?: AutomationEventBus,
     @Optional() private readonly storage?: StorageService,
   ) {}
+
+  /**
+   * Baileys (QR) gelen mesajlarını webhook ile BİREBİR aynı bot hattına bağlar
+   * ve sunucu açılışında kayıtlı QR oturumlarını otomatik yeniden bağlar
+   * (deploy sonrası QR tekrar okutmaya gerek kalmaz).
+   */
+  async onModuleInit() {
+    this.baileys.setInboundHandler((msg) => this.handleMessage(msg as IncomingWhatsAppMessage));
+    try {
+      const rows = await (this.prisma as any).integrationConnection.findMany({
+        where: { provider: BAILEYS_PROVIDER },
+        select: { tenantId: true, config: true },
+      });
+      for (const r of rows || []) {
+        if ((r?.config as any)?.credsJson) {
+          this.logger.log(`[Baileys] tenant=${r.tenantId} kayıtlı oturum bulundu, yeniden bağlanılıyor`);
+          this.baileys.connect(r.tenantId).catch((e: any) =>
+            this.logger.warn(`[Baileys] otomatik bağlanma hatası tenant=${r.tenantId}: ${e?.message || e}`));
+        }
+      }
+    } catch (e: any) {
+      this.logger.warn(`[Baileys] başlangıç oturum taraması hatası: ${e?.message || e}`);
+    }
+  }
 
   /** Manuel günaydın testi: POST /whatsapp/webhook/test-buse-gunaydin */
   @Post('test-buse-gunaydin')
@@ -1160,7 +1187,11 @@ export class WhatsAppBotController {
       return;
     }
 
-    const guardedReply = this.intentClassifier.cannedReply(classified.intent, recentReplies) || this.buildGuardedTaxpayerReply(msg.text);
+    // Mesaj bir SORU / bilgi talebi ise hazir sablonu ATLA — AI gercek mukellef verisiyle cevaplasin.
+    // (Genis kelime eslesmesi gercek sorulari "kayda alindi" gibi alakasiz sablonlara dusuruyordu = sacma cevap.)
+    const needsRealAnswer = this.messageLooksLikeQuestion(msg.text);
+    const guardedReply = (needsRealAnswer ? null : this.intentClassifier.cannedReply(classified.intent, recentReplies))
+      || this.buildGuardedTaxpayerReply(msg.text);
     if (guardedReply) {
       const qualityReply = await this.qualityGateReply({
         tenantId: taxpayer.tenantId,
@@ -1215,10 +1246,17 @@ export class WhatsAppBotController {
     const prompt = [
       'Sen Moren Mali Müşavirlik ofisinin WhatsApp asistanısın. Karşındaki kişi BU OFİSİN MÜKELLEFİ.',
       '',
-      '★ TEMEL GÖREVİN: SORUYU CEVAPLA. Aşağıdaki MÜKELLEF VERİSİNDE cevap varsa DİREKT SÖYLE.',
-      '   Örnek: "KDV ne kadar?" → currentMonth.tahakkukTutari varsa "Mayıs KDV tahakkukunuz 4.520 TL"',
+      '★ TEMEL GÖREVİN: SADECE SORULAN ŞEYE CEVAP VER. Mükellef NE SORDUYSA onu yanıtla.',
+      '   Örnek: "KDV ne kadar?" → currentMonth verisinde varsa tutarı söyle.',
       '   Örnek: "Beyannamem hazır mı?" → beyannameVerildi true/false durumunu söyle.',
       '   Örnek: "Evraklarım geldi mi?" → evraklarGeldi true/false durumunu söyle.',
+      '',
+      '★ SELAMLAMA / sohbet ("merhaba", "günaydın", "nasılsın") gelirse: SADECE kısa ve nazik selam ver, "size nasıl yardımcı olabilirim?" de.',
+      '   ASLA selamlamaya karşılık evrak/beyanname/ödeme DURUMU DÖKME. Sorulmayan durumu KENDİLİĞİNDEN duyurma.',
+      '',
+      '★ SORULMAYAN bilgiyi söyleme: Mükellef sormadan "evraklarınız alındı / işleme alındı" gibi DURUM CÜMLESİ KURMA.',
+      '   Mükellef "ben evrak göndermedim / böyle bir şey yok" diyorsa, evraklarGeldi true olsa bile ISRAR ETME;',
+      '   "kontrol edip size netini bildirelim" de. Kendi önceki cümlenle ÇELİŞME.',
       '',
       '★ Veri YOKSA (context boş ise): "Kayıtlarınızı kontrol edip kısa sürede dönüş yapacağız" gibi tek cümle.',
       '   ASLA rakam/tarih/durum UYDURMA. Context\'te yoksa "kontrol edilecek" de.',
@@ -1250,7 +1288,9 @@ export class WhatsAppBotController {
     const answer = await this.morenAi.chat(taxpayer.tenantId, null, {
       taxpayerId: taxpayer.id,
       message: prompt,
-      voiceMode: true,
+      // voiceMode KAPALI — WhatsApp metin cevabi. Sesli/true olunca max_token 260'a duser
+      // ve compactFinalAnswer 220 karakterde keser => cevaplar yarida kalir (sacma/eksik).
+      voiceMode: false,
       toolMode: 'taxpayer-readonly',
     });
 
@@ -1281,7 +1321,7 @@ export class WhatsAppBotController {
         const retryAnswer = await this.morenAi.chat(taxpayer.tenantId, null, {
           taxpayerId: taxpayer.id,
           message: retryPrompt,
-          voiceMode: true,
+          voiceMode: false,
           toolMode: 'taxpayer-readonly',
         });
         return retryAnswer.assistantMessage || '';
@@ -1420,6 +1460,14 @@ export class WhatsAppBotController {
    * Bilgi sorularını (KDV ne kadar, beyannamem hazır mı vs.) AI'ya bırak
    * — AI context'teki gerçek veriyi kullanıp cevaplasın.
    */
+  // Mesaj bir soru / bilgi talebi gibi mi? Oyleyse hazir sablon yerine AI cevaplamali.
+  private messageLooksLikeQuestion(raw: string): boolean {
+    if (!raw) return false;
+    if (raw.includes('?')) return true;
+    const t = this.normalizeText(raw);
+    return /\bm[iu]\b|m[iu]sin|m[iu]siniz|m[iu]sun|m[iu]sunuz|\bne kadar\b|\bne zaman\b|\bkac\b|\bnedir\b|\bhangi\b|\bnasil\b|ogrenebilir|soyler|bakar m|hazir m|geldi m|oldu m|kaldi m|var m|yok m|odendi m|\bborc|\bbakiye|\bkalan\b/.test(t);
+  }
+
   private buildGuardedTaxpayerReply(text: string): string | null {
     const t = this.normalizeText(text);
 

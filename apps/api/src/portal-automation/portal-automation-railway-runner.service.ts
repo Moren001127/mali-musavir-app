@@ -62,6 +62,13 @@ type EBeyannameFileDownloadResult = {
   ownerMismatch: boolean;
 };
 
+type EBeyannameCapturedResponse = {
+  url: string;
+  headers: Record<string, string>;
+  buffer: Buffer;
+  mimeType: string;
+};
+
 type EBeyannameRowIdentity = {
   taxpayerId: string;
   beyanTipi: string;
@@ -95,6 +102,7 @@ export class PortalAutomationRailwayRunnerService implements OnModuleInit {
   private readonly logger = new Logger(PortalAutomationRailwayRunnerService.name);
   private readonly deviceId = process.env.PORTAL_AUTOMATION_RAILWAY_DEVICE_ID || 'railway-portal-runner';
   private busy = false;
+  private ebeyannameJsDebugLogged = false;
 
   constructor(
     private prisma: PrismaService,
@@ -165,6 +173,38 @@ export class PortalAutomationRailwayRunnerService implements OnModuleInit {
       .map((s) => s.trim().toUpperCase())
       .filter((s): s is PortalJobType => allowed.has(s as PortalJobType));
     return parsed.length ? parsed : JOB_TYPES_DEFAULT;
+  }
+
+  private browserHeadless() {
+    const raw = process.env.PORTAL_AUTOMATION_BROWSER_HEADLESS;
+    if (raw != null) return this.envFlag(raw);
+    return true;
+  }
+
+  private ebeyannameBrowserUserDataDir() {
+    const raw = process.env.PORTAL_AUTOMATION_EBEYANNAME_BROWSER_USER_DATA_DIR
+      || process.env.PORTAL_AUTOMATION_BROWSER_USER_DATA_DIR;
+    const dir = String(raw || '').trim();
+    return dir || null;
+  }
+
+  private browserLaunchArgs() {
+    return [
+      '--no-sandbox',
+      '--disable-setuid-sandbox',
+      '--disable-dev-shm-usage',
+      '--disable-blink-features=AutomationControlled',
+    ];
+  }
+
+  private async applyBrowserStealth(context: any) {
+    await context.addInitScript(() => {
+      try {
+        Object.defineProperty(navigator, 'webdriver', { get: () => undefined });
+      } catch {
+        // Best-effort only.
+      }
+    }).catch(() => {});
   }
 
   private maxJobsPerTick() {
@@ -347,23 +387,38 @@ export class PortalAutomationRailwayRunnerService implements OnModuleInit {
     await mkdir(downloadsPath, { recursive: true });
     await this.jobProgress(tenantId, bundle.job, 'browser', 'Sunucu tarayicisi baslatiliyor.');
 
-    const browser = await pwChromium.launch({
-      executablePath: process.env.PLAYWRIGHT_CHROMIUM_EXECUTABLE_PATH || process.env.CHROMIUM_PATH,
-      headless: true,
-      downloadsPath,
-      args: ['--no-sandbox', '--disable-setuid-sandbox', '--disable-dev-shm-usage'],
-    });
-
+    let browser: any = null;
+    let context: any = null;
     try {
-      const context = await browser.newContext({
+      const contextOptions = {
         acceptDownloads: true,
         viewport: { width: 1440, height: 950 },
         locale: 'tr-TR',
         timezoneId: 'Europe/Istanbul',
         userAgent:
           'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/124.0.0.0 Safari/537.36',
-      });
-      const page = await context.newPage();
+      };
+      const persistentDir = this.ebeyannameBrowserUserDataDir();
+      if (persistentDir) {
+        await mkdir(persistentDir, { recursive: true });
+        context = await pwChromium.launchPersistentContext(persistentDir, {
+          ...contextOptions,
+          executablePath: process.env.PLAYWRIGHT_CHROMIUM_EXECUTABLE_PATH || process.env.CHROMIUM_PATH,
+          headless: this.browserHeadless(),
+          downloadsPath,
+          args: this.browserLaunchArgs(),
+        });
+      } else {
+        browser = await pwChromium.launch({
+          executablePath: process.env.PLAYWRIGHT_CHROMIUM_EXECUTABLE_PATH || process.env.CHROMIUM_PATH,
+          headless: this.browserHeadless(),
+          downloadsPath,
+          args: this.browserLaunchArgs(),
+        });
+        context = await browser.newContext(contextOptions);
+      }
+      await this.applyBrowserStealth(context);
+      const page = context.pages?.()[0] || await context.newPage();
       page.setDefaultTimeout(15_000);
 
       // 2captcha bazen GIB CAPTCHA'sini yanlis cozer (~%5-10 oran).
@@ -418,6 +473,7 @@ export class PortalAutomationRailwayRunnerService implements OnModuleInit {
         collection.notes.push(`GIB guvenli cikis tamamlanamadi: ${this.compact(err?.message || err)}`);
       });
       await context.close().catch(() => {});
+      context = null;
 
       return {
         declarations: collection.declarations,
@@ -434,7 +490,8 @@ export class PortalAutomationRailwayRunnerService implements OnModuleInit {
         },
       };
     } finally {
-      await browser.close().catch(() => {});
+      await context?.close?.().catch(() => {});
+      await browser?.close?.().catch(() => {});
       await rm(downloadsPath, { recursive: true, force: true }).catch(() => {});
     }
   }
@@ -458,9 +515,9 @@ export class PortalAutomationRailwayRunnerService implements OnModuleInit {
 
     const browser = await pwChromium.launch({
       executablePath: process.env.PLAYWRIGHT_CHROMIUM_EXECUTABLE_PATH || process.env.CHROMIUM_PATH,
-      headless: true,
+      headless: this.browserHeadless(),
       downloadsPath,
-      args: ['--no-sandbox', '--disable-setuid-sandbox', '--disable-dev-shm-usage'],
+      args: this.browserLaunchArgs(),
     });
 
     try {
@@ -472,6 +529,7 @@ export class PortalAutomationRailwayRunnerService implements OnModuleInit {
         userAgent:
           'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/124.0.0.0 Safari/537.36',
       });
+      await this.applyBrowserStealth(context);
       const page = await context.newPage();
       page.setDefaultTimeout(15_000);
 
@@ -1946,6 +2004,7 @@ export class PortalAutomationRailwayRunnerService implements OnModuleInit {
       const pagePagination = await this.readEBeyannamePagination(page);
       const totalRows = Math.min(maxRows, pagePagination?.total || maxRows);
       const rows = await this.parseEBeyannameResultRows(page);
+      await this.maybeLogEBeyannameJsDebug(await this.findEBeyannameResultTarget(page) || page);
       notes.push(`onaylandi sayfa ${pageNo}: ${rows.length} satir`);
       await this.jobProgress(tenantId, job, 'approved_page', `Onaylandi listesi sayfa ${pageNo}: ${rows.length} satir okunuyor.`, {
         current: Math.min(processedRows, totalRows),
@@ -1998,7 +2057,7 @@ export class PortalAutomationRailwayRunnerService implements OnModuleInit {
       //         kararsizliga/donmaya yol actigi icin enumerate/locator islemleri seri yapilir.
       //    (2b) PARALEL: sadece HTTP indirme (page.context().request.get) — sayfadan bagimsiz, guvenle paralel.
       const directCache = new Map<string, EBeyannameFileDownloadResult>();
-      if (this.ebeyannameParallelEnabled() && rowPlans.length) {
+      if (this.ebeyannameParallelEnabled() && this.ebeyannameFastDirectFetch() && rowPlans.length) {
         await this.jobProgress(tenantId, job, 'approved_resolve', 'Belge linkleri taraniyor.');
         const urlTasks: Array<{ row: any; kind: 'beyanname' | 'tahakkuk'; url: string; seq: number }> = [];
         for (const plan of rowPlans) {
@@ -2106,6 +2165,10 @@ export class PortalAutomationRailwayRunnerService implements OnModuleInit {
             beyanname = fixed.beyanname;
             tahakkuk = fixed.tahakkuk;
           } catch { /* icerik okunamazsa oldugu gibi birak */ }
+        }
+        if (!beyanname && !tahakkuk && (!skipBeyanname || !skipTahakkuk)) {
+          notes.push(`onaylandi: ${seq}. satir PDF alinamadigi icin bos beyan kaydi yazilmadi`);
+          continue;
         }
         const declaration = this.declarationFromEBeyannameRow(row, 'onaylandi', taxpayers, job, { beyanname, tahakkuk });
 
@@ -2243,7 +2306,7 @@ export class PortalAutomationRailwayRunnerService implements OnModuleInit {
     // 1) EN GUVENILIR YOL: onclick icindeki beyannameGoruntule/tahakkukGoruntule zincirini
     //    gercek tiklama yapmadan calistir, window.open URL'ini yakala ve HTTP ile indir.
     let viaResolvedUrl: EBeyannameFilePayload | null = null;
-    if (!opts?.skipDirect) {
+    if (!opts?.skipDirect && this.ebeyannameFastDirectFetch()) {
       const resolvedUrl = (await this.withTimeout(
         this.captureEBeyannameUrlViaOnclick(page, loc).catch(() => null),
         this.ebeyannameUrlResolveTimeoutMs(),
@@ -2261,7 +2324,7 @@ export class PortalAutomationRailwayRunnerService implements OnModuleInit {
     // 2) Fallback: bazi eski/degisik ekranlarda onclick dogrudan calismayabilir; o zaman
     //    gercek tiklamadan once window.open'u intercept et.
     let viaClick: EBeyannameFilePayload | null = null;
-    if (!viaResolvedUrl && !opts?.directOnly && !opts?.skipDirect) {
+    if (!viaResolvedUrl && !opts?.directOnly && !opts?.skipDirect && this.ebeyannameFastDirectFetch()) {
       const clickUrl = await this.withTimeout(
         this.captureEBeyannameUrlViaClick(page, loc).catch(() => null),
         this.ebeyannameUrlResolveTimeoutMs(),
@@ -2274,7 +2337,7 @@ export class PortalAutomationRailwayRunnerService implements OnModuleInit {
         viaClick = await this.savePdfFromRequestUrl(page, clickUrl, downloadsPath, fallbackName).catch(() => null);
       }
     }
-    const direct = viaResolvedUrl || viaClick || (opts?.skipDirect
+    const direct = viaResolvedUrl || viaClick || (opts?.skipDirect || !this.ebeyannameFastDirectFetch()
       ? null
       : await this.tryDownloadEBeyannameDirect(page, meta, downloadsPath, fallbackName).catch((err) => {
           if (!opts?.directOnly) notes.push(`${kind}: satir ${resultRow.rowIndex + 1} dogrudan PDF denemesi basarisiz: ${this.compact(err?.message || err)}`);
@@ -2525,6 +2588,8 @@ export class PortalAutomationRailwayRunnerService implements OnModuleInit {
   }
 
   private shouldRefreshExistingEBeyanname(job: any) {
+    const raw = process.env.PORTAL_AUTOMATION_EBEYANNAME_FORCE_REFRESH;
+    if (raw != null) return this.envFlag(raw);
     return job?.source === 'manual' && job?.payload?.force === true;
   }
 
@@ -2712,6 +2777,89 @@ export class PortalAutomationRailwayRunnerService implements OnModuleInit {
     return ['1', 'true', 'yes', 'on', 'evet'].includes(raw);
   }
 
+  private ebeyannameJsDebugEnabled() {
+    const raw = String(process.env.PORTAL_AUTOMATION_EBEYANNAME_JS_DEBUG || '').trim().toLowerCase();
+    return ['1', 'true', 'yes', 'on', 'evet'].includes(raw);
+  }
+
+  private async maybeLogEBeyannameJsDebug(target: any) {
+    if (!this.ebeyannameJsDebugEnabled() || this.ebeyannameJsDebugLogged) return;
+    this.ebeyannameJsDebugLogged = true;
+    const debug = await target.evaluate(() => {
+      const w = window as any;
+      const names = [
+        'beyannameGoruntule',
+        'tahakkukGoruntule',
+        'callMenuUrlPopUp',
+        'getTOKEN',
+        'getParameterForArsiv',
+      ];
+      const functions = names.map((name) => {
+        const value = w[name];
+        return {
+          name,
+          type: typeof value,
+          source: typeof value === 'function' ? String(value).slice(0, 4_000) : '',
+        };
+      });
+      const onclicks = Array.from(document.querySelectorAll<HTMLElement>('[onclick]'))
+        .map((el) => String(el.getAttribute('onclick') || '').trim())
+        .filter((text) => /Goruntule|Arsiv|IMAJ|TAHAKKUK|BEYANNAME/i.test(text))
+        .slice(0, 12);
+      const scripts = Array.from(document.scripts)
+        .map((script) => script.src || `inline:${String(script.textContent || '').slice(0, 180)}`)
+        .filter(Boolean)
+        .slice(0, 40);
+      const forms = Array.from(document.forms)
+        .map((form) => ({
+          name: form.getAttribute('name') || '',
+          id: form.id || '',
+          method: form.method || '',
+          action: form.action || '',
+          target: form.target || '',
+          inputs: Array.from(form.querySelectorAll<HTMLInputElement | HTMLSelectElement | HTMLTextAreaElement>('input,select,textarea'))
+            .map((input) => input.name || input.id || input.getAttribute('type') || '')
+            .filter(Boolean)
+            .slice(0, 30),
+        }))
+        .slice(0, 20);
+      const isVisible = (el: Element) => {
+        const anyEl = el as HTMLElement;
+        return !!(anyEl.offsetWidth || anyEl.offsetHeight || anyEl.getClientRects().length);
+      };
+      const controls = Array.from(document.querySelectorAll<HTMLElement>('a,button,input,select,span[onclick],div[onclick]'))
+        .filter(isVisible)
+        .map((el: any) => ({
+          tag: el.tagName || '',
+          type: el.getAttribute?.('type') || '',
+          name: el.name || '',
+          id: el.id || '',
+          text: String(el.innerText || el.value || el.title || el.alt || el.placeholder || '').replace(/\s+/g, ' ').trim(),
+          onclick: String(el.getAttribute?.('onclick') || '').trim(),
+        }))
+        .filter((item) => item.text || item.name || item.id || item.onclick)
+        .slice(0, 120);
+      return { url: window.location.href, functions, onclicks, scripts, forms, controls };
+    }).catch((err: any) => ({ error: String(err?.message || err) }));
+
+    this.logger.warn(`[EBDBGJS] url=${this.safeUrl(String(debug?.url || ''))} error=${this.safeDebugText(String(debug?.error || ''))}`);
+    for (const fn of debug?.functions || []) {
+      this.logger.warn(`[EBDBGJS] function ${fn.name} type=${fn.type} source="${this.safeDebugText(fn.source || '').slice(0, 1_500)}"`);
+    }
+    for (const onclick of debug?.onclicks || []) {
+      this.logger.warn(`[EBDBGJS] onclick "${this.safeDebugText(onclick).slice(0, 800)}"`);
+    }
+    for (const form of debug?.forms || []) {
+      this.logger.warn(`[EBDBGJS] form ${JSON.stringify(form).slice(0, 1_000)}`);
+    }
+    for (const control of debug?.controls || []) {
+      this.logger.warn(`[EBDBGJS] control ${JSON.stringify(control).slice(0, 1_000)}`);
+    }
+    for (const script of debug?.scripts || []) {
+      this.logger.warn(`[EBDBGJS] script "${this.safeUrl(String(script)).slice(0, 1_000)}"`);
+    }
+  }
+
   private pickEBeyannameFileCandidate(
     metas: Array<{ index: number; tag: string; text: string; haystack: string }>,
     kind: 'beyanname' | 'tahakkuk',
@@ -2795,35 +2943,75 @@ export class PortalAutomationRailwayRunnerService implements OnModuleInit {
     downloadsPath: string,
     fallbackName: string,
   ): Promise<EBeyannameFilePayload | null> {
-    const response = await page.context().request.get(url, {
-      timeout: this.ebeyannameDirectFetchTimeoutMs(),
-      headers: { referer: String(page.url?.() || '') },
-    }).catch(() => null);
-    if (response?.ok()) {
-      const headers = response.headers();
-      const mimeType = headers['content-type'] || 'application/pdf';
-      const buffer = Buffer.from(await response.body());
-      const pdfish = /^%PDF/.test(buffer.subarray(0, 5).toString('latin1'))
-        || /pdf|octet-stream/i.test(mimeType)
-        || /\.pdf(?:$|[?#])/i.test(url);
-      if (this.ebeyannameDebugEnabled()) {
-        this.logger.warn(`[EBDBG] request ${fallbackName} status=${response.status()} mime=${mimeType} bytes=${buffer.length} pdfish=${pdfish}`);
+    const variants = this.ebeyannamePdfRequestUrlVariants(url);
+    for (const requestUrl of variants) {
+      const response = await page.context().request.get(requestUrl, {
+        timeout: this.ebeyannameDirectFetchTimeoutMs(),
+        headers: { referer: String(page.url?.() || '') },
+      }).catch(() => null);
+      if (response?.ok()) {
+        const headers = response.headers();
+        const mimeType = headers['content-type'] || 'application/pdf';
+        const buffer = Buffer.from(await response.body());
+        const pdfish = /^%PDF/.test(buffer.subarray(0, 5).toString('latin1'))
+          || /pdf|octet-stream/i.test(mimeType)
+          || /\.pdf(?:$|[?#])/i.test(requestUrl);
+        if (this.ebeyannameDebugEnabled()) {
+          this.logger.warn(`[EBDBG] request ${fallbackName} status=${response.status()} mime=${mimeType} bytes=${buffer.length} pdfish=${pdfish} url=${this.safeUrl(requestUrl)}`);
+        }
+        if (pdfish && buffer.length >= 200) {
+          return this.persistPdfBuffer(requestUrl, headers, buffer, downloadsPath, fallbackName, mimeType);
+        }
+      } else if (this.ebeyannameDebugEnabled()) {
+        const body = response ? await response.text().catch(() => '') : '';
+        this.logger.warn(`[EBDBG] request ${fallbackName} status=${response?.status?.() || 'null'} body="${this.safeDebugText(body).slice(0, 220)}" url=${this.safeUrl(requestUrl)}`);
       }
-      if (pdfish && buffer.length >= 200) {
-        return this.persistPdfBuffer(url, headers, buffer, downloadsPath, fallbackName, mimeType);
-      }
-    } else if (this.ebeyannameDebugEnabled()) {
-      const body = response ? await response.text().catch(() => '') : '';
-      this.logger.warn(`[EBDBG] request ${fallbackName} status=${response?.status?.() || 'null'} body="${this.compact(body).slice(0, 220)}" url=${this.safeUrl(url)}`);
     }
 
-    const viaBrowserFetch = await this.savePdfFromBrowserFetch(page, url, downloadsPath, fallbackName).catch(() => null);
-    if (viaBrowserFetch) return viaBrowserFetch;
+    for (const requestUrl of variants) {
+      const viaBrowserFetch = await this.savePdfFromBrowserFetch(page, requestUrl, downloadsPath, fallbackName).catch(() => null);
+      if (viaBrowserFetch) return viaBrowserFetch;
+    }
 
-    const viaNavigation = await this.savePdfFromBrowserNavigationUrl(page, url, downloadsPath, fallbackName).catch(() => null);
-    if (viaNavigation) return viaNavigation;
+    for (const requestUrl of variants) {
+      const viaNavigation = await this.savePdfFromBrowserNavigationUrl(page, requestUrl, downloadsPath, fallbackName).catch(() => null);
+      if (viaNavigation) return viaNavigation;
+    }
 
     return null;
+  }
+
+  private ebeyannamePdfRequestUrlVariants(url: string) {
+    const variants: string[] = [];
+    const add = (value: string) => {
+      const trimmed = String(value || '').trim();
+      if (trimmed && !variants.includes(trimmed)) variants.push(trimmed);
+    };
+    try {
+      const parsed = new URL(url);
+      if (parsed.searchParams.has('inline')) {
+        const noInline = new URL(parsed.toString());
+        noInline.searchParams.delete('inline');
+        add(noInline.toString());
+        const inlineFalse = new URL(parsed.toString());
+        inlineFalse.searchParams.set('inline', 'false');
+        add(inlineFalse.toString());
+      }
+      if (!parsed.searchParams.has('ARSIV')) {
+        const arsiv = new URL(parsed.toString());
+        arsiv.searchParams.set('ARSIV', 'T');
+        add(arsiv.toString());
+        if (arsiv.searchParams.has('inline')) {
+          const arsivNoInline = new URL(arsiv.toString());
+          arsivNoInline.searchParams.delete('inline');
+          add(arsivNoInline.toString());
+        }
+      }
+    } catch {
+      // Original URL is still tried below.
+    }
+    add(url);
+    return variants;
   }
 
   private async savePdfFromBrowserNavigationUrl(
@@ -2988,6 +3176,8 @@ export class PortalAutomationRailwayRunnerService implements OnModuleInit {
     }).catch(() => {});
 
     const eventTimeoutMs = this.ebeyannameDownloadEventTimeoutMs();
+    const pdfResponsePromise = this.waitForEBeyannamePdfResponse(page.context(), eventTimeoutMs, fallbackName)
+      .catch(() => null);
     const downloadPromise = page.waitForEvent('download', { timeout: eventTimeoutMs })
       .then((download: any) => ({ type: 'download', value: download }))
       .catch(() => null);
@@ -2998,6 +3188,7 @@ export class PortalAutomationRailwayRunnerService implements OnModuleInit {
     await loc.click({ timeout: Math.min(8_000, eventTimeoutMs) }).catch(() => null);
     const event: any = await Promise.race([
       downloadPromise,
+      pdfResponsePromise.then((value) => value ? ({ type: 'response', value }) : null),
       popupPromise,
       this.wait(eventTimeoutMs).then(() => null),
     ]);
@@ -3006,7 +3197,16 @@ export class PortalAutomationRailwayRunnerService implements OnModuleInit {
       return this.savePlaywrightDownload(event.value, downloadsPath, fallbackName);
     }
 
+    if (event?.type === 'response') {
+      return this.persistCapturedPdfResponse(event.value, downloadsPath, fallbackName);
+    }
+
     if (event?.type === 'popup') {
+      const responseFile = await Promise.race([
+        pdfResponsePromise,
+        this.wait(2_000).then(() => null),
+      ]);
+      if (responseFile) return this.persistCapturedPdfResponse(responseFile, downloadsPath, fallbackName);
       return this.savePdfFromPopup(event.value, downloadsPath, fallbackName);
     }
 
@@ -3017,7 +3217,80 @@ export class PortalAutomationRailwayRunnerService implements OnModuleInit {
       return saved;
     }
 
+    const lateResponse = await Promise.race([
+      pdfResponsePromise,
+      this.wait(500).then(() => null),
+    ]);
+    if (lateResponse) return this.persistCapturedPdfResponse(lateResponse, downloadsPath, fallbackName);
+
     return null;
+  }
+
+  private waitForEBeyannamePdfResponse(
+    context: any,
+    timeoutMs: number,
+    fallbackName: string,
+  ): Promise<EBeyannameCapturedResponse | null> {
+    return new Promise((resolve) => {
+      let finished = false;
+      let timer: NodeJS.Timeout | null = null;
+      const finish = (value: EBeyannameCapturedResponse | null) => {
+        if (finished) return;
+        finished = true;
+        if (timer) clearTimeout(timer);
+        context.off?.('response', handler);
+        resolve(value);
+      };
+      const handler = (response: any) => {
+        const url = String(response?.url?.() || '');
+        const headers = (response?.headers?.() || {}) as Record<string, string>;
+        const mimeType = headers['content-type'] || '';
+        if (!this.isEBeyannamePdfResponseCandidate(url, mimeType)) return;
+        void (async () => {
+          const status = Number(response?.status?.() || 0);
+          let buffer = Buffer.alloc(0);
+          try {
+            buffer = Buffer.from(await response.body());
+          } catch {
+            buffer = Buffer.alloc(0);
+          }
+          const pdfish = /^%PDF/.test(buffer.subarray(0, 5).toString('latin1'))
+            || /pdf|octet-stream/i.test(mimeType)
+            || /\.pdf(?:$|[?#])/i.test(url);
+          if (this.ebeyannameDebugEnabled()) {
+            const bodyPreview = !pdfish && buffer.length && /json|text|html|javascript/i.test(mimeType)
+              ? ` body="${this.safeDebugText(buffer.toString('utf8').slice(0, 1_000))}"`
+              : '';
+            this.logger.warn(`[EBDBG] netresp ${fallbackName} status=${status} mime=${mimeType || '-'} bytes=${buffer.length} pdfish=${pdfish}${bodyPreview} url=${this.safeUrl(url)}`);
+          }
+          if (status >= 200 && status < 300 && pdfish && buffer.length >= 200) {
+            finish({ url, headers, buffer, mimeType: mimeType || 'application/pdf' });
+          }
+        })();
+      };
+      timer = setTimeout(() => finish(null), timeoutMs);
+      context.on?.('response', handler);
+    });
+  }
+
+  private isEBeyannamePdfResponseCandidate(url: string, mimeType: string) {
+    const text = `${url || ''} ${mimeType || ''}`;
+    return /cmd=IMAJ|subcmd=[^&]*(?:BEYANNAME|TAHAKKUK)GORUNTULE|application\/pdf|octet-stream|\.pdf(?:$|[?#])/i.test(text);
+  }
+
+  private async persistCapturedPdfResponse(
+    response: EBeyannameCapturedResponse,
+    downloadsPath: string,
+    fallbackName: string,
+  ): Promise<EBeyannameFilePayload> {
+    return this.persistPdfBuffer(
+      response.url,
+      response.headers,
+      response.buffer,
+      downloadsPath,
+      fallbackName,
+      response.mimeType || response.headers['content-type'] || 'application/pdf',
+    );
   }
 
   private async savePlaywrightDownload(download: any, downloadsPath: string, fallbackName: string): Promise<EBeyannameFilePayload | null> {
@@ -3713,6 +3986,12 @@ export class PortalAutomationRailwayRunnerService implements OnModuleInit {
 
   private safeUrl(url: string) {
     return String(url || '').replace(/([?&](?:password|sifre|parola|token|kod)=)[^&]+/gi, '$1***');
+  }
+
+  private safeDebugText(value: string) {
+    return this.compact(value)
+      .replace(/((?:TOKEN|token|password|sifre|parola|kod)\s*["':=]\s*)[^"',\s}&]+/gi, '$1***')
+      .replace(/([?&](?:password|sifre|parola|token|kod)=)[^&\s"']+/gi, '$1***');
   }
 
   private safeFileName(value: string) {

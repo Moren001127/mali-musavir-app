@@ -60,7 +60,7 @@ export default function EntegratorSorguPanel({ taxpayer, provider, providerLabel
       setSonuc(data);
       const statuses: any[] = Array.isArray(data?.providers) ? data.providers : (Array.isArray(data?.statuses) ? data.statuses : []);
       const lucaQueued = statuses.find((s) => s?.viaLuca || s?.status === 'QUEUED_VIA_LUCA');
-      const created = data?.totals?.created ?? data?.created?.length ?? 0;
+      const created = Number(data?.totals?.created ?? data?.created ?? data?.created?.length ?? 0);
       if (lucaQueued) {
         toast.success('Sorgu Luca\'ya gonderildi. Agent acikken 1-3 dk icinde Yuklenen Faturalar sekmesine duser.');
       } else if (created > 0) {
@@ -236,6 +236,7 @@ export default function EntegratorSorguPanel({ taxpayer, provider, providerLabel
                 </div>
               );
             }
+            const stat = (key: string) => Number(sonuc?.totals?.[key] ?? sonuc?.[key] ?? 0);
             return (
             <div className="rounded-xl p-5" style={{ background: 'rgba(34,197,94,0.06)', border: '1px solid rgba(34,197,94,0.22)' }}>
               <div className="flex items-center gap-2 mb-3">
@@ -245,14 +246,14 @@ export default function EntegratorSorguPanel({ taxpayer, provider, providerLabel
                 </div>
               </div>
               <div className="grid grid-cols-2 md:grid-cols-4 gap-3 text-center">
-                <ResultStat label="Yeni" value={sonuc?.totals?.created ?? 0} tone="#22c55e" />
-                <ResultStat label="Zaten kuyrukta" value={sonuc?.totals?.alreadyQueued ?? 0} tone="#0ea5e9" />
-                <ResultStat label="Atlanan" value={sonuc?.totals?.skipped ?? 0} tone="#f59e0b" />
-                <ResultStat label="Hata" value={sonuc?.totals?.failed ?? 0} tone="#ef4444" />
+                <ResultStat label="Yeni" value={stat('created')} tone="#22c55e" />
+                <ResultStat label="Zaten kuyrukta" value={stat('alreadyQueued')} tone="#0ea5e9" />
+                <ResultStat label="Atlanan" value={stat('skipped')} tone="#f59e0b" />
+                <ResultStat label="Hata" value={stat('failed')} tone="#ef4444" />
               </div>
-              {Array.isArray(sonuc?.statuses) && sonuc.statuses.length > 0 && (
+              {statuses.length > 0 && (
                 <div className="mt-4 text-[11.5px]" style={{ color: 'var(--text-muted)' }}>
-                  {sonuc.statuses.map((s: any, i: number) => (
+                  {statuses.map((s: any, i: number) => (
                     <div key={i} className="mt-1">
                       <strong style={{ color: 'var(--text)' }}>{s.label || s.provider}:</strong>{' '}
                       {s.status}
