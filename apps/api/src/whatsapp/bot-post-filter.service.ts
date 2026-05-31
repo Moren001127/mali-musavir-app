@@ -54,17 +54,12 @@ export class WhatsAppBotPostFilterService {
       return 'Bunu bir kontrol edeyim, size net bilgiyle döneyim.';
     }
 
+    // Owner raporlari yukarida formatOwnerReport ile donuyor; buraya sadece
+    // taxpayer/unknown (sohbet) cevaplari gelir → kisa tut.
     text = this.avoidRepeatedPhrases(text, options?.recentReplies || []);
-    // Owner mali musavir uzun teknik cevap alir; ayrica '17.000 TL' gibi sayilarda
-    // nokta cumle bitisi sanildigi icin limitSentences cevaplari yanlislikla kesiyordu.
-    // Sadece taxpayer/unknown mode'larinda kisitla.
-    if (options?.mode !== 'owner') {
-      text = this.limitSentences(text);
-    }
+    text = this.limitSentences(text);
 
-    // Owner'a daha uzun cevap izni (mevzuat tarifesi vs.), digerlerine kisa.
-    const defaultMax = options?.mode === 'owner' ? 1300 : 480;
-    const maxChars = Number(process.env.WHATSAPP_BOT_REPLY_MAX_CHARS || defaultMax);
+    const maxChars = Number(process.env.WHATSAPP_BOT_REPLY_MAX_CHARS || 480);
     if (text.length > maxChars) text = text.slice(0, maxChars).replace(/\s+\S*$/, '').trim();
     return text || 'Bir bakıp size döneyim.';
   }
