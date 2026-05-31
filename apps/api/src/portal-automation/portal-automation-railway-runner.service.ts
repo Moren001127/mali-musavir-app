@@ -3031,6 +3031,7 @@ export class PortalAutomationRailwayRunnerService implements OnModuleInit {
 
   private async savePdfFromPopup(popup: any, downloadsPath: string, fallbackName: string): Promise<EBeyannameFilePayload | null> {
     try {
+      await this.waitForPopupTargetUrl(popup, Math.max(8_000, this.ebeyannameDownloadEventTimeoutMs())).catch(() => null);
       await popup.waitForLoadState('domcontentloaded', { timeout: 10_000 }).catch(() => {});
       const popupDownload = await popup.waitForEvent('download', { timeout: 3_000 }).catch(() => null);
       if (popupDownload) return await this.savePlaywrightDownload(popupDownload, downloadsPath, fallbackName);
@@ -3039,6 +3040,16 @@ export class PortalAutomationRailwayRunnerService implements OnModuleInit {
     } finally {
       await popup.close?.().catch(() => {});
     }
+  }
+
+  private async waitForPopupTargetUrl(popup: any, timeoutMs: number) {
+    const started = Date.now();
+    while (Date.now() - started < timeoutMs) {
+      const url = String(popup.url?.() || '');
+      if (url && !/^about:blank$/i.test(url)) return url;
+      await popup.waitForTimeout?.(250).catch(() => this.wait(250));
+    }
+    return String(popup.url?.() || '');
   }
 
   private async savePdfFromPageUrl(page: any, downloadsPath: string, fallbackName: string): Promise<EBeyannameFilePayload | null> {
