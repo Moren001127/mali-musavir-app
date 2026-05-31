@@ -17,6 +17,7 @@ function buildAllowedOrigins() {
   const defaults = [
     process.env.FRONTEND_URL,
     process.env.NEXT_PUBLIC_APP_URL,
+    'https://portal.morenmusavirlik.com',
     'https://app.morenmusavirlik.com',
     'https://morenmusavirlik.com',
     'https://www.morenmusavirlik.com',
