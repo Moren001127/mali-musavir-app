@@ -2757,12 +2757,18 @@ export class PortalAutomationRailwayRunnerService implements OnModuleInit {
     downloadsPath: string,
     fallbackName: string,
   ): Promise<EBeyannameFilePayload | null> {
+    const viaNavigation = await this.savePdfFromBrowserNavigationUrl(page, url, downloadsPath, fallbackName).catch(() => null);
+    if (viaNavigation) return viaNavigation;
+
+    const viaBrowserFetch = await this.savePdfFromBrowserFetch(page, url, downloadsPath, fallbackName).catch(() => null);
+    if (viaBrowserFetch) return viaBrowserFetch;
+
     const response = await page.context().request.get(url, {
       timeout: this.ebeyannameDirectFetchTimeoutMs(),
       headers: { referer: String(page.url?.() || '') },
     }).catch(() => null);
     if (!response?.ok()) {
-      return this.savePdfFromBrowserFetch(page, url, downloadsPath, fallbackName);
+      return null;
     }
     const headers = response.headers();
     const mimeType = headers['content-type'] || 'application/pdf';
@@ -2771,9 +2777,61 @@ export class PortalAutomationRailwayRunnerService implements OnModuleInit {
       || /pdf|octet-stream/i.test(mimeType)
       || /\.pdf(?:$|[?#])/i.test(url);
     if (!pdfish || buffer.length < 200) {
-      return this.savePdfFromBrowserFetch(page, url, downloadsPath, fallbackName);
+      return null;
     }
     return this.persistPdfBuffer(url, headers, buffer, downloadsPath, fallbackName, mimeType);
+  }
+
+  private async savePdfFromBrowserNavigationUrl(
+    page: any,
+    url: string,
+    downloadsPath: string,
+    fallbackName: string,
+  ): Promise<EBeyannameFilePayload | null> {
+    const popup = await page.context().newPage();
+    try {
+      const timeout = Math.max(this.ebeyannameDirectFetchTimeoutMs(), 8_000);
+      const downloadPromise = popup.waitForEvent('download', { timeout })
+        .then((download: any) => download)
+        .catch(() => null);
+      const gotoPromise = popup.goto(url, {
+        waitUntil: 'domcontentloaded',
+        timeout,
+        referer: String(page.url?.() || ''),
+      }).catch(() => null);
+
+      const response = await Promise.race([
+        gotoPromise,
+        downloadPromise.then(() => null),
+      ]);
+      const download = await Promise.race([
+        downloadPromise,
+        this.wait(250).then(() => null),
+      ]);
+      if (download) return this.savePlaywrightDownload(download, downloadsPath, fallbackName);
+
+      if (response?.ok()) {
+        const headers = response.headers();
+        const mimeType = headers['content-type'] || 'application/pdf';
+        const buffer = Buffer.from(await response.body());
+        const pdfish = /^%PDF/.test(buffer.subarray(0, 5).toString('latin1'))
+          || /pdf|octet-stream/i.test(mimeType)
+          || /\.pdf(?:$|[?#])/i.test(url);
+        if (pdfish && buffer.length >= 200) {
+          return this.persistPdfBuffer(url, headers, buffer, downloadsPath, fallbackName, mimeType);
+        }
+      }
+
+      const lateDownload = await Promise.race([
+        downloadPromise,
+        this.wait(750).then(() => null),
+      ]);
+      if (lateDownload) return this.savePlaywrightDownload(lateDownload, downloadsPath, fallbackName);
+
+      return this.savePdfFromLoadedPage(popup, downloadsPath, fallbackName).catch(() => null);
+    } finally {
+      await popup.close?.().catch(() => {});
+    }
   }
 
   private async savePdfFromBrowserFetch(
@@ -2961,6 +3019,33 @@ export class PortalAutomationRailwayRunnerService implements OnModuleInit {
     }
 
     if (!buffer || buffer.length < 200) return null;
+    const fileName = this.safeFileName(`${fallbackName}.pdf`);
+    const filePath = join(downloadsPath, `${randomUUID()}-${fileName}`);
+    await writeFile(filePath, buffer).catch(() => {});
+    return { base64: buffer.toString('base64'), fileName, mimeType };
+  }
+
+  private async savePdfFromLoadedPage(page: any, downloadsPath: string, fallbackName: string): Promise<EBeyannameFilePayload | null> {
+    const base64 = await page.evaluate(async () => {
+      const response = await fetch(window.location.href, { credentials: 'include', cache: 'no-store' });
+      const arrayBuffer = await response.arrayBuffer();
+      const bytes = new Uint8Array(arrayBuffer);
+      let binary = '';
+      const chunkSize = 0x8000;
+      for (let i = 0; i < bytes.length; i += chunkSize) {
+        binary += String.fromCharCode(...bytes.subarray(i, i + chunkSize));
+      }
+      return {
+        ok: response.ok,
+        mimeType: response.headers.get('content-type') || 'application/pdf',
+        base64: btoa(binary),
+      };
+    }).catch(() => null);
+    if (!base64?.ok || !base64.base64) return null;
+    const buffer = Buffer.from(base64.base64, 'base64');
+    const mimeType = base64.mimeType || 'application/pdf';
+    const pdfish = /^%PDF/.test(buffer.subarray(0, 5).toString('latin1')) || /pdf|octet-stream/i.test(mimeType);
+    if (!pdfish || buffer.length < 200) return null;
     const fileName = this.safeFileName(`${fallbackName}.pdf`);
     const filePath = join(downloadsPath, `${randomUUID()}-${fileName}`);
     await writeFile(filePath, buffer).catch(() => {});
