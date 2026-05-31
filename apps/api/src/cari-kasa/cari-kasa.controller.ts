@@ -1,10 +1,35 @@
 import {
   Controller, Get, Post, Put, Delete, Body, Param, Query, Req, Res,
-  UseGuards, HttpCode, HttpStatus, BadRequestException,
+  UseGuards, HttpCode, HttpStatus, BadRequestException, Headers, UnauthorizedException,
 } from '@nestjs/common';
 import { AuthGuard } from '@nestjs/passport';
 import { CariKasaService } from './cari-kasa.service';
 import * as ExcelJS from 'exceljs';
+import { PrismaService } from '../prisma/prisma.service';
+import { createHash, timingSafeEqual } from 'crypto';
+
+function safeEqual(a: string, b: string) {
+  const ah = createHash('sha256').update(a).digest();
+  const bh = createHash('sha256').update(b).digest();
+  return timingSafeEqual(ah, bh);
+}
+
+function parseAgentTokenMap(raw: string) {
+  return raw
+    .split(',')
+    .map((pair) => pair.trim())
+    .filter(Boolean)
+    .map((pair) => {
+      const idx = pair.indexOf(':');
+      if (idx <= 0) return null;
+      return { tenantId: pair.slice(0, idx).trim(), token: pair.slice(idx + 1).trim() };
+    })
+    .filter((pair): pair is { tenantId: string; token: string } => Boolean(pair?.tenantId && pair?.token));
+}
+
+function envFlag(value?: string | null) {
+  return ['1', 'true', 'yes', 'on', 'evet'].includes(String(value || '').trim().toLowerCase());
+}
 
 @Controller('cari-kasa')
 @UseGuards(AuthGuard('jwt'))
@@ -57,6 +82,16 @@ export class CariKasaController {
   @Post('tahakkuk')
   createManuelTahakkuk(@Req() req: any, @Body() body: any) {
     return this.service.createManuelTahakkuk(req.user.tenantId, body, req.user.sub);
+  }
+
+  @Post('import/hattat')
+  @HttpCode(HttpStatus.OK)
+  importHattatCariKasa(@Req() req: any, @Body() body: any) {
+    return this.service.importHattatCariKasa(
+      req.user.tenantId,
+      body || {},
+      req.user.userId || req.user.sub || 'portal-user',
+    );
   }
 
   @Delete('hareket/:id')
@@ -444,5 +479,44 @@ export class CariKasaController {
     const donem = body?.donem ||
       `${new Date().getFullYear()}-${String(new Date().getMonth() + 1).padStart(2, '0')}`;
     return this.service.otoTahakkukUret(donem);
+  }
+}
+
+@Controller('agent/cari-kasa')
+export class CariKasaAgentController {
+  constructor(
+    private readonly service: CariKasaService,
+    private readonly prisma: PrismaService,
+  ) {}
+
+  @Post('hattat/import')
+  @HttpCode(HttpStatus.OK)
+  async importHattatCariKasa(
+    @Headers('x-agent-token') agentToken: string,
+    @Body() body: any,
+  ) {
+    const tenantId = await this.resolveTenantFromAgentToken(agentToken);
+    return this.service.importHattatCariKasa(tenantId, body || {}, 'hattat-local-agent');
+  }
+
+  private async resolveTenantFromAgentToken(token?: string): Promise<string> {
+    const presented = String(token || '').trim();
+    if (!presented) throw new UnauthorizedException('Missing X-Agent-Token');
+
+    const pairs = parseAgentTokenMap(process.env.AGENT_INGEST_TOKENS || '');
+    for (const pair of pairs) {
+      if (safeEqual(presented, pair.token)) return pair.tenantId;
+    }
+    if (pairs.length > 0) throw new UnauthorizedException('Invalid agent token');
+
+    const allowLegacyLookup =
+      envFlag(process.env.AGENT_TOKEN_ALLOW_TENANT_ID) || process.env.NODE_ENV !== 'production';
+    if (!allowLegacyLookup) throw new UnauthorizedException('Agent token map is not configured');
+    const tenant = await (this.prisma as any).tenant.findFirst({
+      where: { OR: [{ slug: presented }, { id: presented }] },
+      select: { id: true },
+    });
+    if (!tenant) throw new UnauthorizedException('Invalid agent token');
+    return tenant.id;
   }
 }

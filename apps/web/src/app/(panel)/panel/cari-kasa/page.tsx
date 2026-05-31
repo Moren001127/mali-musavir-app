@@ -785,7 +785,7 @@ function GenelListeView({ onSelect }: { onSelect: (id: string) => void }) {
   const filtered = useMemo(() => {
     const s = search.toLocaleLowerCase('tr');
     return ozet.filter((o) => {
-      if (sadecaBakiyeli && o.bakiye === 0) return false;
+      if (sadecaBakiyeli && o.bakiye <= 0.004) return false;
       if (s) {
         const name = (o.ad || '').toLocaleLowerCase('tr');
         const vkn = (o.taxNumber || '').toLowerCase();
@@ -967,7 +967,7 @@ function GenelListeView({ onSelect }: { onSelect: (id: string) => void }) {
             checked={sadecaBakiyeli}
             onChange={(e) => setSadecaBakiyeli(e.target.checked)}
           />
-          <span>Sadece bakiyesi olanlar</span>
+          <span>Sadece açık borcu olanlar</span>
         </label>
         <button
           onClick={indirExcelToplu}

@@ -2421,6 +2421,9 @@ model CariHareket {
   belgeNo        String?   // Dekont/makbuz no
   donem          String?   // "2026-04" — tahakkuk hangi ayın, tahsilat hangi aya ait
   otoOlusturuldu Boolean   @default(false)
+  source         String?
+  sourceRef      String?
+  importBatchId  String?
   createdAt      DateTime  @default(now())
   createdBy      String?
 
@@ -2432,6 +2435,7 @@ model CariHareket {
   @@index([tenantId, tarih])
   @@index([tenantId, tip])
   @@index([tenantId, accountId])
+  @@index([tenantId, source])
   @@map("cari_hareketler")
 }
 

@@ -159,12 +159,14 @@ export function CariTahsilatWorkspace({ onSelect }: { onSelect: (id: string) => 
     const ajandaById = new Map((ajanda?.rows || []).map((row) => [row.id, row]));
     return ozet.map((row) => {
       const agenda = ajandaById.get(row.id);
+      const rowBakiye = Number(row.bakiye);
+      const bakiye = Number.isFinite(rowBakiye) ? rowBakiye : Number(agenda?.bakiye || 0);
       return {
         ...row,
         phone: agenda?.phone || row.phone || null,
-        bakiye: Number(row.bakiye || agenda?.bakiye || 0),
+        bakiye,
         aging: agenda?.aging || emptyAging,
-        maxBucket: agenda?.maxBucket || (Number(row.bakiye || 0) > 0 ? 'Güncel' : 'Yok'),
+        maxBucket: agenda?.maxBucket || (bakiye > 0 ? 'Güncel' : 'Yok'),
         sonTahsilatTarihi: agenda?.sonTahsilatTarihi || null,
         sonHatirlatmaTarihi: agenda?.sonHatirlatmaTarihi || null,
         telefonVar: Boolean(agenda?.telefonVar || row.phone),
@@ -176,13 +178,13 @@ export function CariTahsilatWorkspace({ onSelect }: { onSelect: (id: string) => 
   const filteredRows = useMemo(() => {
     const needle = normalize(search.trim());
     const filtered = rows.filter((row) => {
-      const debt = row.bakiye > 0;
+      const debt = row.bakiye > 0.004;
       if (riskFilter === 'debt' && !debt) return false;
       if (riskFilter === 'over30' && bucketRank(row.maxBucket) < 3) return false;
       if (riskFilter === 'over90' && row.maxBucket !== '90+') return false;
-      if (riskFilter === 'whatsapp' && !row.whatsappUygun) return false;
+      if (riskFilter === 'whatsapp' && !(row.whatsappUygun && debt)) return false;
       if (riskFilter === 'noPhone' && !(debt && !row.telefonVar)) return false;
-      if (riskFilter === 'clean' && row.bakiye !== 0) return false;
+      if (riskFilter === 'clean' && Math.abs(row.bakiye) > 0.004) return false;
       if (!needle) return true;
       return normalize([row.ad, row.taxNumber || '', row.phone || '', row.email || ''].join(' ')).includes(needle);
     });

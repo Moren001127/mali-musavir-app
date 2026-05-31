@@ -1,6 +1,28 @@
 import { Injectable, Logger, BadRequestException, NotFoundException } from '@nestjs/common';
+import { createHash } from 'crypto';
 import { PrismaService } from '../prisma/prisma.service';
 import { WhatsAppService } from '../whatsapp/whatsapp.service';
+
+type HattatCariKasaImportRow = {
+  hattatCustomerId?: string | null;
+  taxpayerName?: string | null;
+  date?: string | number | Date | null;
+  serviceType?: string | null;
+  collectionType?: string | null;
+  description?: string | null;
+  debit?: number | string | null;
+  credit?: number | string | null;
+  rawBalance?: number | string | null;
+  sourceRowNo?: number | string | null;
+};
+
+type HattatCariKasaImportInput = {
+  rows?: HattatCariKasaImportRow[];
+  beginDate?: string;
+  endDate?: string;
+  importBatchId?: string;
+  dryRun?: boolean;
+};
 
 /**
  * Cari Kasa Servisi — muhasebe ofisi müşteri hesapları.
@@ -83,6 +105,91 @@ export class CariKasaService {
 
   private taxpayerName(t: any) {
     return (t?.companyName || `${t?.firstName || ''} ${t?.lastName || ''}`.trim() || t?.taxNumber || '').trim();
+  }
+
+  private normalizeImportKey(value?: string | null) {
+    return String(value || '')
+      .toLocaleUpperCase('tr-TR')
+      .normalize('NFD')
+      .replace(/[\u0300-\u036f]/g, '')
+      .replace(/&/g, ' VE ')
+      .replace(/[^A-Z0-9]+/g, ' ')
+      .replace(/\s+/g, ' ')
+      .trim();
+  }
+
+  private parseImportMoney(value: any) {
+    if (value == null || value === '') return 0;
+    if (typeof value === 'number') return this.roundMoney(value);
+    const raw = String(value).trim();
+    if (!raw) return 0;
+    let cleaned = raw.replace(/[^\d,.-]/g, '');
+    if (!cleaned || cleaned === '-' || cleaned === ',') return 0;
+    const comma = cleaned.lastIndexOf(',');
+    const dot = cleaned.lastIndexOf('.');
+    if (comma > dot) cleaned = cleaned.replace(/\./g, '').replace(',', '.');
+    else cleaned = cleaned.replace(/,/g, '');
+    const parsed = Number(cleaned);
+    return Number.isFinite(parsed) ? this.roundMoney(Math.abs(parsed)) : 0;
+  }
+
+  private parseHattatDate(value: any): Date | null {
+    if (!value) return null;
+    if (value instanceof Date && !Number.isNaN(value.getTime())) return value;
+    if (typeof value === 'number' && Number.isFinite(value)) {
+      const ms = Math.round((value - 25569) * 86400 * 1000);
+      const d = new Date(ms);
+      return Number.isNaN(d.getTime()) ? null : d;
+    }
+    const text = String(value).trim();
+    const tr = text.match(/^(\d{1,2})[./-](\d{1,2})[./-](20\d{2})$/);
+    if (tr) {
+      const [, day, month, year] = tr;
+      return new Date(`${year}-${month.padStart(2, '0')}-${day.padStart(2, '0')}T00:00:00+03:00`);
+    }
+    const iso = text.match(/^(20\d{2})-(\d{1,2})-(\d{1,2})/);
+    if (iso) {
+      const [, year, month, day] = iso;
+      return new Date(`${year}-${month.padStart(2, '0')}-${day.padStart(2, '0')}T00:00:00+03:00`);
+    }
+    const d = new Date(text);
+    return Number.isNaN(d.getTime()) ? null : d;
+  }
+
+  private istanbulDateParts(date: Date) {
+    const parts = new Intl.DateTimeFormat('en-CA', {
+      timeZone: 'Europe/Istanbul',
+      year: 'numeric',
+      month: '2-digit',
+      day: '2-digit',
+    }).formatToParts(date);
+    const get = (type: string) => parts.find((p) => p.type === type)?.value || '';
+    return { year: get('year'), month: get('month'), day: get('day') };
+  }
+
+  private importDateKey(date: Date) {
+    const p = this.istanbulDateParts(date);
+    return `${p.year}-${p.month}-${p.day}`;
+  }
+
+  private importPeriod(date: Date) {
+    const p = this.istanbulDateParts(date);
+    return `${p.year}-${p.month}`;
+  }
+
+  private hattatAciklama(row: HattatCariKasaImportRow, tip: 'TAHAKKUK' | 'TAHSILAT') {
+    const pieces = [
+      row.description,
+      row.serviceType,
+      tip === 'TAHSILAT' ? row.collectionType : null,
+    ]
+      .map((v) => String(v || '').trim())
+      .filter(Boolean);
+    return Array.from(new Set(pieces)).join(' | ').slice(0, 500) || (tip === 'TAHAKKUK' ? 'Hattat hizmet borcu' : 'Hattat tahsilat');
+  }
+
+  private hattatSourceRef(base: string, occurrence: number) {
+    return createHash('sha1').update(`${base}|${occurrence}`).digest('hex');
   }
 
   // ==================== HİZMET CRUD ====================
@@ -308,6 +415,196 @@ export class CariKasaService {
     const h = await (this.prisma as any).cariHareket.findFirst({ where: { id, tenantId } });
     if (!h) throw new NotFoundException('Hareket bulunamadı');
     return (this.prisma as any).cariHareket.delete({ where: { id } });
+  }
+
+  async importHattatCariKasa(
+    tenantId: string,
+    input: HattatCariKasaImportInput,
+    createdBy = 'hattat-web-import',
+  ) {
+    const rows = Array.isArray(input?.rows) ? input.rows : [];
+    if (!rows.length) throw new BadRequestException('Aktarilacak Hattat hareket satiri yok');
+    if (rows.length > 20000) throw new BadRequestException('Tek aktarimda en fazla 20000 Hattat satiri alinabilir');
+
+    const source = 'HATTAT_CARI_KASA';
+    const importBatchId = input.importBatchId || createHash('sha1')
+      .update(`${source}|${tenantId}|${input.beginDate || ''}|${input.endDate || ''}|${Date.now()}`)
+      .digest('hex');
+
+    const taxpayers = await (this.prisma as any).taxpayer.findMany({
+      where: { tenantId },
+      select: {
+        id: true,
+        firstName: true,
+        lastName: true,
+        companyName: true,
+        taxNumber: true,
+        hattatId: true,
+      },
+    });
+
+    const byHattatId = new Map<string, any>();
+    const byName = new Map<string, any[]>();
+    for (const taxpayer of taxpayers) {
+      if (taxpayer.hattatId) byHattatId.set(String(taxpayer.hattatId), taxpayer);
+      const key = this.normalizeImportKey(this.taxpayerName(taxpayer));
+      if (!key) continue;
+      const list = byName.get(key) || [];
+      list.push(taxpayer);
+      byName.set(key, list);
+    }
+
+    const occurrences = new Map<string, number>();
+    const movements: any[] = [];
+    const unmatched = new Map<string, { taxpayerName: string; hattatCustomerId?: string | null; rows: number }>();
+    const invalidRows: Array<{ row: number; reason: string }> = [];
+    const matchedTaxpayers = new Set<string>();
+    const hattatIdUpdates = new Map<string, string>();
+    let skippedZeroRows = 0;
+    let debitTotal = 0;
+    let creditTotal = 0;
+
+    const addMovement = (
+      row: HattatCariKasaImportRow,
+      taxpayer: any,
+      date: Date,
+      tip: 'TAHAKKUK' | 'TAHSILAT',
+      amount: number,
+    ) => {
+      const dateKey = this.importDateKey(date);
+      const nameKey = this.normalizeImportKey(row.taxpayerName || this.taxpayerName(taxpayer));
+      const serviceKey = this.normalizeImportKey(row.serviceType || '');
+      const collectionKey = this.normalizeImportKey(row.collectionType || '');
+      const descKey = this.normalizeImportKey(row.description || '');
+      const sourceBase = [
+        String(row.hattatCustomerId || taxpayer.hattatId || ''),
+        nameKey,
+        dateKey,
+        tip,
+        amount.toFixed(2),
+        serviceKey,
+        collectionKey,
+        descKey,
+      ].join('|');
+      const occurrence = (occurrences.get(sourceBase) || 0) + 1;
+      occurrences.set(sourceBase, occurrence);
+      const sourceRef = this.hattatSourceRef(`${source}|${sourceBase}`, occurrence);
+      movements.push({
+        tenantId,
+        taxpayerId: taxpayer.id,
+        accountId: null,
+        hizmetId: null,
+        tarih: date,
+        tip,
+        tutar: amount,
+        aciklama: this.hattatAciklama(row, tip),
+        odemeYontemi: tip === 'TAHSILAT' ? String(row.collectionType || 'HATTAT').trim().slice(0, 60) || 'HATTAT' : null,
+        belgeNo: row.sourceRowNo ? `HATTAT:${row.sourceRowNo}` : null,
+        donem: this.importPeriod(date),
+        otoOlusturuldu: false,
+        source,
+        sourceRef,
+        importBatchId,
+        createdBy,
+      });
+      if (tip === 'TAHAKKUK') debitTotal = this.roundMoney(debitTotal + amount);
+      else creditTotal = this.roundMoney(creditTotal + amount);
+      matchedTaxpayers.add(taxpayer.id);
+    };
+
+    rows.forEach((row, index) => {
+      const rowNo = Number(row.sourceRowNo || index + 2);
+      const debit = this.parseImportMoney(row.debit);
+      const credit = this.parseImportMoney(row.credit);
+      if (debit <= 0 && credit <= 0) {
+        skippedZeroRows++;
+        return;
+      }
+      const date = this.parseHattatDate(row.date);
+      if (!date) {
+        invalidRows.push({ row: rowNo, reason: 'Tarih okunamadi' });
+        return;
+      }
+
+      const hattatCustomerId = String(row.hattatCustomerId || '').trim();
+      const taxpayerName = String(row.taxpayerName || '').trim();
+      const nameKey = this.normalizeImportKey(taxpayerName);
+      let taxpayer = hattatCustomerId ? byHattatId.get(hattatCustomerId) : null;
+      if (!taxpayer && nameKey) {
+        const matches = byName.get(nameKey) || [];
+        if (matches.length === 1) taxpayer = matches[0];
+      }
+
+      if (!taxpayer) {
+        const key = `${hattatCustomerId || '-'}|${nameKey || taxpayerName || 'isimsiz'}`;
+        const current = unmatched.get(key) || { taxpayerName: taxpayerName || '(isimsiz)', hattatCustomerId: hattatCustomerId || null, rows: 0 };
+        current.rows += 1;
+        unmatched.set(key, current);
+        return;
+      }
+
+      if (hattatCustomerId && !taxpayer.hattatId) {
+        hattatIdUpdates.set(taxpayer.id, hattatCustomerId);
+        taxpayer.hattatId = hattatCustomerId;
+        byHattatId.set(hattatCustomerId, taxpayer);
+      }
+
+      if (debit > 0) addMovement(row, taxpayer, date, 'TAHAKKUK', debit);
+      if (credit > 0) addMovement(row, taxpayer, date, 'TAHSILAT', credit);
+    });
+
+    const sourceRefs = movements.map((m) => m.sourceRef);
+    const existingRefs = new Set<string>();
+    for (let i = 0; i < sourceRefs.length; i += 1000) {
+      const chunk = sourceRefs.slice(i, i + 1000);
+      const existing = await (this.prisma as any).cariHareket.findMany({
+        where: { tenantId, source, sourceRef: { in: chunk } },
+        select: { sourceRef: true },
+      });
+      for (const row of existing) if (row.sourceRef) existingRefs.add(row.sourceRef);
+    }
+
+    const createData = movements.filter((m) => !existingRefs.has(m.sourceRef));
+    let createdMovements = 0;
+    let updatedHattatIds = 0;
+    if (!input.dryRun) {
+      for (const [taxpayerId, hattatId] of hattatIdUpdates) {
+        await (this.prisma as any).taxpayer.update({
+          where: { id: taxpayerId },
+          data: { hattatId },
+        });
+        updatedHattatIds++;
+      }
+      for (let i = 0; i < createData.length; i += 1000) {
+        const chunk = createData.slice(i, i + 1000);
+        const result = await (this.prisma as any).cariHareket.createMany({
+          data: chunk,
+          skipDuplicates: true,
+        });
+        createdMovements += Number(result?.count || 0);
+      }
+    }
+
+    return {
+      ok: true,
+      dryRun: Boolean(input.dryRun),
+      source,
+      importBatchId,
+      rowsReceived: rows.length,
+      movementsPrepared: movements.length,
+      createdMovements,
+      skippedDuplicates: movements.length - createData.length + (input.dryRun ? 0 : createData.length - createdMovements),
+      skippedZeroRows,
+      invalidRows,
+      unmatchedTaxpayers: Array.from(unmatched.values()).slice(0, 100),
+      unmatchedCount: unmatched.size,
+      matchedTaxpayerCount: matchedTaxpayers.size,
+      updatedHattatIds: input.dryRun ? hattatIdUpdates.size : updatedHattatIds,
+      totals: {
+        tahakkuk: debitTotal,
+        tahsilat: creditTotal,
+      },
+    };
   }
 
   // ==================== BAKİYE ====================
