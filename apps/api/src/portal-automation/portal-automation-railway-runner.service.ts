@@ -2019,16 +2019,18 @@ export class PortalAutomationRailwayRunnerService implements OnModuleInit {
             total: urlTasks.length,
           });
           let done = 0;
+          let saved = 0;
           await this.mapWithConcurrency(urlTasks, this.ebeyannameConcurrency(), async (task) => {
             const fallbackName = `ebeyanname-${task.seq}-${task.kind}`;
             const file = await this.savePdfFromRequestUrl(page, task.url, downloadsPath, fallbackName).catch(() => null);
             if (file) {
+              saved++;
               const ownerOk = await this.validateEBeyannameFileOwner(task.row, file, task.kind, notes);
               directCache.set(`${task.row.rowIndex}:${task.kind}`, { file, ownerMismatch: !ownerOk });
             }
             done++;
             if (done % 5 === 0 || done === urlTasks.length) {
-              await this.jobProgress(tenantId, job, 'approved_prefetch', `Paralel indirme: ${done}/${urlTasks.length} dosya.`, {
+              await this.jobProgress(tenantId, job, 'approved_prefetch', `Paralel indirme: ${saved}/${urlTasks.length} PDF kaydedildi (${done} deneme bitti).`, {
                 current: done,
                 total: urlTasks.length,
               });
@@ -2755,18 +2757,78 @@ export class PortalAutomationRailwayRunnerService implements OnModuleInit {
       timeout: this.ebeyannameDirectFetchTimeoutMs(),
       headers: { referer: String(page.url?.() || '') },
     }).catch(() => null);
-    if (!response?.ok()) return null;
+    if (!response?.ok()) {
+      return this.savePdfFromBrowserFetch(page, url, downloadsPath, fallbackName);
+    }
     const headers = response.headers();
     const mimeType = headers['content-type'] || 'application/pdf';
     const buffer = Buffer.from(await response.body());
     const pdfish = /^%PDF/.test(buffer.subarray(0, 5).toString('latin1'))
       || /pdf|octet-stream/i.test(mimeType)
       || /\.pdf(?:$|[?#])/i.test(url);
+    if (!pdfish || buffer.length < 200) {
+      return this.savePdfFromBrowserFetch(page, url, downloadsPath, fallbackName);
+    }
+    return this.persistPdfBuffer(url, headers, buffer, downloadsPath, fallbackName, mimeType);
+  }
+
+  private async savePdfFromBrowserFetch(
+    page: any,
+    url: string,
+    downloadsPath: string,
+    fallbackName: string,
+  ): Promise<EBeyannameFilePayload | null> {
+    const fetched = await page.evaluate(async (targetUrl: string) => {
+      const response = await fetch(targetUrl, {
+        credentials: 'include',
+        cache: 'no-store',
+        headers: { accept: 'application/pdf,*/*' },
+      });
+      const contentType = response.headers.get('content-type') || 'application/pdf';
+      const disposition = response.headers.get('content-disposition') || '';
+      const buffer = await response.arrayBuffer();
+      const bytes = new Uint8Array(buffer);
+      let binary = '';
+      const chunkSize = 0x8000;
+      for (let i = 0; i < bytes.length; i += chunkSize) {
+        binary += String.fromCharCode(...bytes.subarray(i, i + chunkSize));
+      }
+      return {
+        ok: response.ok,
+        status: response.status,
+        mimeType: contentType,
+        disposition,
+        base64: btoa(binary),
+      };
+    }, url).catch(() => null);
+    if (!fetched?.ok || !fetched.base64) return null;
+    const buffer = Buffer.from(fetched.base64, 'base64');
+    const pdfish = /^%PDF/.test(buffer.subarray(0, 5).toString('latin1'))
+      || /pdf|octet-stream/i.test(fetched.mimeType)
+      || /\.pdf(?:$|[?#])/i.test(url);
     if (!pdfish || buffer.length < 200) return null;
+    return this.persistPdfBuffer(
+      url,
+      { 'content-type': fetched.mimeType, 'content-disposition': fetched.disposition },
+      buffer,
+      downloadsPath,
+      fallbackName,
+      fetched.mimeType,
+    );
+  }
+
+  private async persistPdfBuffer(
+    url: string,
+    headers: Record<string, string>,
+    buffer: Buffer,
+    downloadsPath: string,
+    fallbackName: string,
+    mimeType?: string,
+  ): Promise<EBeyannameFilePayload> {
     const fileName = this.safeFileName(this.fileNameFromResponse(url, headers, fallbackName));
     const filePath = join(downloadsPath, `${randomUUID()}-${fileName}`);
     await writeFile(filePath, buffer).catch(() => {});
-    return { base64: buffer.toString('base64'), fileName, mimeType };
+    return { base64: buffer.toString('base64'), fileName, mimeType: mimeType || headers['content-type'] || 'application/pdf' };
   }
 
   private ebeyannameDirectFetchTimeoutMs() {
