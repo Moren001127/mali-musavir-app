@@ -1780,11 +1780,22 @@ export class PortalAutomationRailwayRunnerService implements OnModuleInit {
           || (hasTaxRows && (text.includes('VERGI TAHAKKUKU') || text.includes('ONAY') || text.includes('HATALI')));
       });
       if (!table) return [];
+      const directCellText = (cell: Element) => {
+        const clone = cell.cloneNode(true) as HTMLElement;
+        clone.querySelectorAll('table').forEach((nested) => nested.remove());
+        return (clone.innerText || clone.textContent || '').replace(/\s+/g, ' ').trim();
+      };
       return Array.from(table.querySelectorAll('tr'))
-        .map((tr) => ({
-          cells: Array.from(tr.querySelectorAll('td, th')).map((cell) => (cell as HTMLElement).innerText.replace(/\s+/g, ' ').trim()),
-          rowText: (tr as HTMLElement).innerText.replace(/\s+/g, ' ').trim(),
-        }))
+        .map((tr) => {
+          const cells = Array.from(tr.children)
+            .filter((child) => child.matches('td, th'))
+            .map(directCellText)
+            .filter(Boolean);
+          return {
+            cells,
+            rowText: cells.join(' ').replace(/\s+/g, ' ').trim(),
+          };
+        })
         .filter((row) => /\b\d{10,11}\b/.test(row.rowText) && !norm(row.rowText).includes('VERGI KIMLIK NUMARASI'));
     }).catch(() => []);
 
@@ -2528,30 +2539,50 @@ export class PortalAutomationRailwayRunnerService implements OnModuleInit {
   }
 
   private async findEBeyannameResultRowLocator(target: any, row: EBeyannameResultRow) {
-    const rows = target.locator('tr').filter({ hasText: /\b\d{10,11}\b/ });
-    const indexed = rows.nth(row.rowIndex);
-    const indexedScore = this.ebeyannameRowMatchScore(await this.locatorText(indexed), row);
-    if (indexedScore >= 80) return indexed;
-
-    const candidates = row.taxNumber ? rows.filter({ hasText: row.taxNumber }) : rows;
-    const count = Math.min(await candidates.count().catch(() => 0), 500);
-    let best = indexed;
-    let bestScore = indexedScore;
+    const rows = target.locator('tr');
+    const count = Math.min(await rows.count().catch(() => 0), 1000);
+    let best: any = null;
+    let bestScore = -1;
+    let taxRowOrdinal = 0;
     for (let i = 0; i < count; i++) {
-      const candidate = candidates.nth(i);
-      const score = this.ebeyannameRowMatchScore(await this.locatorText(candidate), row);
+      const candidate = rows.nth(i);
+      const text = await this.locatorDirectRowText(candidate);
+      if (!/\b\d{10,11}\b/.test(text)) continue;
+      if (this.normalizeTextKey(text).includes('VERGI KIMLIK NUMARASI')) continue;
+      let score = this.ebeyannameRowMatchScore(text, row);
+      if (taxRowOrdinal === row.rowIndex) score += 20;
       if (score > bestScore) {
         best = candidate;
         bestScore = score;
       }
-      if (score >= 95) break;
+      taxRowOrdinal++;
+      if (score >= 100) break;
     }
-    return best;
+    if (best) return best;
+    return rows.nth(Math.max(0, row.rowIndex));
   }
 
   private async locatorText(locator: any) {
     return locator.evaluate(
       (el: any) => String(el?.innerText || el?.textContent || '').replace(/\s+/g, ' ').trim(),
+      undefined,
+      { timeout: this.ebeyannameLocatorTimeoutMs() },
+    ).catch(() => '');
+  }
+
+  private async locatorDirectRowText(locator: any) {
+    return locator.evaluate(
+      (el: any) => {
+        const cells = Array.from(el?.children || [])
+          .filter((child: any) => child?.matches?.('td, th'))
+          .map((cell: any) => {
+            const clone = cell.cloneNode(true);
+            clone.querySelectorAll?.('table')?.forEach((nested: any) => nested.remove());
+            return String(clone.innerText || clone.textContent || '').replace(/\s+/g, ' ').trim();
+          })
+          .filter(Boolean);
+        return cells.join(' ').replace(/\s+/g, ' ').trim();
+      },
       undefined,
       { timeout: this.ebeyannameLocatorTimeoutMs() },
     ).catch(() => '');
