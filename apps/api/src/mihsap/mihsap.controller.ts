@@ -10,12 +10,12 @@ import {
   Headers,
   UseGuards,
   BadRequestException,
-  UnauthorizedException,
   NotFoundException,
 } from '@nestjs/common';
 import { AuthGuard } from '@nestjs/passport';
 import { MihsapService } from './mihsap.service';
 import { PrismaService } from '../prisma/prisma.service';
+import { resolveTenantFromAgentToken as resolveAgentTenant } from '../common/agent-token';
 
 @Controller('agent/mihsap')
 export class MihsapController {
@@ -26,22 +26,7 @@ export class MihsapController {
 
   /** Tenant'ı agent token'dan çöz (eklenti kullanımı için) */
   private async resolveTenantFromAgentToken(token?: string): Promise<string> {
-    if (!token) throw new UnauthorizedException('Missing X-Agent-Token');
-    const t = token.trim();
-    const raw = process.env.AGENT_INGEST_TOKENS || '';
-    const map: Record<string, string> = {};
-    for (const pair of raw.split(',')) {
-      const [tid, tok] = pair.split(':');
-      if (tid && tok) map[tok.trim()] = tid.trim();
-    }
-    if (map[t]) return map[t];
-
-    const tenant = await (this.prisma as any).tenant.findFirst({
-      where: { OR: [{ slug: t }, { id: t }] },
-      select: { id: true },
-    });
-    if (!tenant) throw new UnauthorizedException('Invalid agent token');
-    return tenant.id;
+    return resolveAgentTenant(token, this.prisma as any);
   }
 
   /** Eklenti MIHSAP token'ını gönderir (X-Agent-Token ile kimlik doğrulama) */

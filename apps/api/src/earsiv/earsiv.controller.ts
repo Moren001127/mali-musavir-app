@@ -13,6 +13,7 @@ import { EarsivService, EarsivTip, BelgeKaynak } from './earsiv.service';
 import { EarsivRenderService } from './earsiv-render.service';
 import { LucaService } from '../luca/luca.service';
 import { PrismaService } from '../prisma/prisma.service';
+import { resolveTenantFromAgentToken as resolveAgentTenant } from '../common/agent-token';
 
 @Controller()
 export class EarsivController {
@@ -308,14 +309,7 @@ export class EarsivController {
 
   // === Helpers ===
 
-  private async resolveTenantFromAgentToken(agentToken: string): Promise<string> {
-    if (!agentToken) throw new BadRequestException('X-Agent-Token gerekli');
-    const t = (agentToken || '').trim();
-    const tenant = await (this.prisma as any).tenant.findFirst({
-      where: { OR: [{ slug: t }, { id: t }] },
-      select: { id: true },
-    });
-    if (!tenant) throw new BadRequestException('Geçersiz X-Agent-Token');
-    return tenant.id;
+  private async resolveTenantFromAgentToken(agentToken?: string): Promise<string> {
+    return resolveAgentTenant(agentToken, this.prisma as any);
   }
 }

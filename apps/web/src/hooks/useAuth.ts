@@ -20,7 +20,7 @@ export function useLogin() {
     mutationFn: ({ email, password }: { email: string; password: string }) =>
       authApi.login(email, password),
     onSuccess: (data) => {
-      saveTokens(data.accessToken, data.refreshToken);
+      saveTokens(data.accessToken);
       queryClient.setQueryData(['me'], data.user);
       router.push('/panel');
     },

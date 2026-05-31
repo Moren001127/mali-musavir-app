@@ -17,7 +17,6 @@ import {
   Headers,
   Header,
   BadRequestException,
-  ForbiddenException,
   Inject,
   forwardRef,
 } from '@nestjs/common';
@@ -39,6 +38,7 @@ import { EarsivService, EarsivTip, BelgeKaynak } from '../earsiv/earsiv.service'
 import { MizanParserService } from '../mizan/mizan-parser.service';
 import { FaturaMuhasebelestirmeService } from '../fatura-muhasebelestirme/fatura-muhasebelestirme.service';
 import { buildLucaImportExcel } from '../fatura-muhasebelestirme/luca-excel.service';
+import { resolveTenantFromAgentToken as resolveAgentTenant } from '../common/agent-token';
 
 /**
  * Luca entegrasyon controller'ı.
@@ -984,23 +984,6 @@ export class LucaController {
   }
 
   private async resolveTenantFromAgentToken(token?: string): Promise<string> {
-    if (!token) throw new ForbiddenException('Agent token eksik');
-    const t = token.trim();
-
-    // 1. AGENT_INGEST_TOKENS env'i (format: "tenantId1:token1,tenantId2:token2")
-    const raw = process.env.AGENT_INGEST_TOKENS || '';
-    const map: Record<string, string> = {};
-    for (const pair of raw.split(',')) {
-      const [tid, tok] = pair.split(':');
-      if (tid && tok) map[tok.trim()] = tid.trim();
-    }
-    if (map[t]) return map[t];
-
-    // 2. Fallback: tenant.slug veya tenant.id direkt
-    const tenant = await (this.prisma as any).tenant.findFirst({
-      where: { OR: [{ slug: t }, { id: t }] },
-    });
-    if (!tenant) throw new ForbiddenException('Agent token geçersiz');
-    return tenant.id;
+    return resolveAgentTenant(token, this.prisma as any);
   }
 }

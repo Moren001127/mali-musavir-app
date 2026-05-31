@@ -150,7 +150,7 @@ export class AuthService {
     return this.sanitizeUser(result.user);
   }
 
-  async refreshTokens(token: string) {
+  async refreshTokens(token?: string) {
     if (!token || typeof token !== 'string') {
       throw new UnauthorizedException('Refresh token gereklidir');
     }

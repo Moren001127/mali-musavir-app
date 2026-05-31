@@ -4,6 +4,7 @@ import React, { useState, useRef, useCallback, useEffect } from 'react';
 import { createPortal } from 'react-dom';
 import { PageHeader } from '@/components/ui/PageHeader';
 import TaxpayerSelect from '@/components/ui/TaxpayerSelect';
+import { API_BASE, authorizedFetch } from '@/lib/api';
 import {
   Upload,
   FileImage,
@@ -49,12 +50,7 @@ interface ScanResponse {
 }
 
 /* ─── Yardımcı ──────────────────────────────────────────────── */
-const API = process.env.NEXT_PUBLIC_API_URL ?? 'http://localhost:3001/api/v1';
-
-function getToken() {
-  if (typeof window === 'undefined') return '';
-  return localStorage.getItem('accessToken') ?? '';
-}
+const API = API_BASE;
 
 function isoToDisplay(iso: string) {
   if (!iso) return '';
@@ -152,9 +148,7 @@ export default function FisYazdirmaPage() {
   const loadOutputs = async () => {
     setOutputsLoading(true);
     try {
-      const res = await fetch(`${API}/fis-yazdirma/outputs?limit=100`, {
-        headers: { Authorization: `Bearer ${getToken()}` },
-      });
+      const res = await authorizedFetch(`${API}/fis-yazdirma/outputs?limit=100`);
       if (res.ok) {
         const list = await res.json();
         setOutputs(Array.isArray(list) ? list : []);
@@ -172,9 +166,7 @@ export default function FisYazdirmaPage() {
 
   const downloadOutput = async (id: string, filename: string) => {
     try {
-      const res = await fetch(`${API}/fis-yazdirma/outputs/${id}/download`, {
-        headers: { Authorization: `Bearer ${getToken()}` },
-      });
+      const res = await authorizedFetch(`${API}/fis-yazdirma/outputs/${id}/download`);
       if (!res.ok) throw new Error('İndirilemedi');
       const blob = await res.blob();
       const url = URL.createObjectURL(blob);
@@ -191,9 +183,8 @@ export default function FisYazdirmaPage() {
   const removeOutput = async (id: string) => {
     if (!confirm('Bu arşiv kaydını silmek istediğinizden emin misiniz?')) return;
     try {
-      const res = await fetch(`${API}/fis-yazdirma/outputs/${id}`, {
+      const res = await authorizedFetch(`${API}/fis-yazdirma/outputs/${id}`, {
         method: 'DELETE',
-        headers: { Authorization: `Bearer ${getToken()}` },
       });
       if (!res.ok) throw new Error('Silinemedi');
       setOutputs((prev) => prev.filter((o) => o.id !== id));
@@ -205,10 +196,9 @@ export default function FisYazdirmaPage() {
   const setOutputPrinted = async (output: OutputRec, printed: boolean) => {
     setMarkingPrintId(output.id);
     try {
-      const res = await fetch(`${API}/fis-yazdirma/outputs/${output.id}/print-status`, {
+      const res = await authorizedFetch(`${API}/fis-yazdirma/outputs/${output.id}/print-status`, {
         method: 'POST',
         headers: {
-          Authorization: `Bearer ${getToken()}`,
           'Content-Type': 'application/json',
         },
         body: JSON.stringify({ printed }),
@@ -306,7 +296,7 @@ export default function FisYazdirmaPage() {
   };
 
   useEffect(() => {
-    fetch(`${API}/taxpayers`, { headers: { Authorization: `Bearer ${getToken()}` } })
+    authorizedFetch(`${API}/taxpayers`)
       .then((r) => r.json())
       .then((list: any[]) =>
         setTaxpayers(
@@ -350,9 +340,7 @@ export default function FisYazdirmaPage() {
         fetchMukellefId,
       )}&donem=${encodeURIComponent(fetchDonem)}&belgeTuru=FIS&limit=500`;
 
-      const listRes = await fetch(listUrl, {
-        headers: { Authorization: `Bearer ${getToken()}` },
-      });
+      const listRes = await authorizedFetch(listUrl);
       if (!listRes.ok) throw new Error(`Liste alınamadı: ${listRes.status}`);
       const invoices: any[] = await listRes.json();
 
@@ -376,9 +364,8 @@ export default function FisYazdirmaPage() {
 
         try {
           // Backend proxy üzerinden direkt binary al (CORS yok, JWT var)
-          const imgRes = await fetch(
+          const imgRes = await authorizedFetch(
             `${API}/agent/mihsap/invoices/${inv.id}/file`,
-            { headers: { Authorization: `Bearer ${getToken()}` } },
           );
           if (!imgRes.ok) {
             if (!firstError) {
@@ -563,9 +550,8 @@ export default function FisYazdirmaPage() {
     if (donem && /^\d{4}-\d{2}$/.test(donem)) fd.append('donem', donem);
 
     try {
-      const res = await fetch(`${API}/fis-yazdirma/scan`, {
+      const res = await authorizedFetch(`${API}/fis-yazdirma/scan`, {
         method: 'POST',
-        headers: { Authorization: `Bearer ${getToken()}` },
         body: fd,
       });
       if (!res.ok) throw new Error(`Sunucu hatası: ${res.status}`);
@@ -623,9 +609,8 @@ export default function FisYazdirmaPage() {
     fd.append('pagesPerSheet', String(pagesPerSheet));
 
     try {
-      const res = await fetch(`${API}/fis-yazdirma/process`, {
+      const res = await authorizedFetch(`${API}/fis-yazdirma/process`, {
         method: 'POST',
-        headers: { Authorization: `Bearer ${getToken()}` },
         body: fd,
       });
       if (!res.ok) {

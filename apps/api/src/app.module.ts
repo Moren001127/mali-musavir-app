@@ -1,6 +1,7 @@
 import { Module } from '@nestjs/common';
+import { APP_GUARD } from '@nestjs/core';
 import { ConfigModule } from '@nestjs/config';
-import { ThrottlerModule } from '@nestjs/throttler';
+import { ThrottlerGuard, ThrottlerModule } from '@nestjs/throttler';
 import { ScheduleModule } from '@nestjs/schedule';
 import { PrismaModule } from './prisma/prisma.module';
 import { StorageModule } from './storage/storage.module';
@@ -84,6 +85,13 @@ import { InvoiceOverdueCron } from './schedule/invoice-overdue.cron';
     OfficeChatModule,
     EmailModule,
   ],
-  providers: [ReminderCron, HgsCron, TaskReminderCron, BeyannameDeadlineCron, InvoiceOverdueCron],
+  providers: [
+    { provide: APP_GUARD, useClass: ThrottlerGuard },
+    ReminderCron,
+    HgsCron,
+    TaskReminderCron,
+    BeyannameDeadlineCron,
+    InvoiceOverdueCron,
+  ],
 })
 export class AppModule {}

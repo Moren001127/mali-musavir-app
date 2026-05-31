@@ -283,6 +283,15 @@ export class TaxpayersService {
     return this.prisma.taxpayer.update({ where: { id }, data: { isActive: false } });
   }
 
+  private assertValidYearMonth(year: number, month: number) {
+    if (!Number.isInteger(year) || year < 2000 || year > 2100) {
+      throw new BadRequestException('year 2000-2100 araliginda olmali');
+    }
+    if (!Number.isInteger(month) || month < 1 || month > 12) {
+      throw new BadRequestException('month 1-12 araliginda olmali');
+    }
+  }
+
   /**
    * v1.36.76: Mükellef profil tamamlığı.
    * Üç katman puanlama (toplam 100):
@@ -673,6 +682,7 @@ export class TaxpayersService {
   }
 
   async getMonthlyStatus(taxpayerId: string, tenantId: string, year: number, month: number) {
+    this.assertValidYearMonth(year, month);
     const taxpayer = await this.prisma.taxpayer.findFirst({ where: { id: taxpayerId, tenantId } });
     if (!taxpayer) throw new NotFoundException('Mükellef bulunamadı');
 
@@ -700,6 +710,7 @@ export class TaxpayersService {
       notes?: string | null;
     },
   ) {
+    this.assertValidYearMonth(year, month);
     const taxpayer = await this.prisma.taxpayer.findFirst({ where: { id: taxpayerId, tenantId } });
     if (!taxpayer) throw new NotFoundException('Mükellef bulunamadı');
 

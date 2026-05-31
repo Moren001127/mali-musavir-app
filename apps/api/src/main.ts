@@ -5,10 +5,37 @@ import { AppModule } from './app.module';
 import * as cookieParser from 'cookie-parser';
 import helmet from 'helmet';
 
+function csv(value?: string | null) {
+  return String(value || '')
+    .split(',')
+    .map((item) => item.trim())
+    .filter(Boolean);
+}
+
+function buildAllowedOrigins() {
+  const configured = csv(process.env.CORS_ALLOWED_ORIGINS);
+  const defaults = [
+    process.env.FRONTEND_URL,
+    process.env.NEXT_PUBLIC_APP_URL,
+    'https://app.morenmusavirlik.com',
+    'https://morenmusavirlik.com',
+    'https://www.morenmusavirlik.com',
+    'https://ofis.mihsap.com.tr',
+  ].filter(Boolean) as string[];
+
+  if (process.env.NODE_ENV !== 'production') {
+    defaults.push('http://localhost:3000', 'http://localhost:3001', 'http://127.0.0.1:3000');
+  }
+
+  return new Set([...defaults, ...configured]);
+}
+
 async function bootstrap() {
   const app = await NestFactory.create<NestExpressApplication>(AppModule, {
     bodyParser: false,
   });
+  const allowedOrigins = buildAllowedOrigins();
+  const allowedSuffixes = csv(process.env.CORS_ALLOWED_SUFFIXES);
 
   // Multipart upload'larda body-parser calismaz; buyuk ZIP/PDF'ler zaten multer ile alinir.
   // JSON'u sinirsiza yakin tutmak Railway'de ajanlar reconnect oldugunda buyuk meta/base64
@@ -23,19 +50,8 @@ async function bootstrap() {
       if (!origin) return callback(null, true);
 
       const allowed =
-        /^https?:\/\/localhost(:\d+)?$/.test(origin) ||
-        /\.mihsap\.com$/.test(origin) ||
-        /\.mihsap\.com\.tr$/.test(origin) ||
-        /\.morenmusavirlik\.com$/.test(origin) ||
-        /\.vercel\.app$/.test(origin) ||
-        /\.luca\.com\.tr$/.test(origin) ||
-        /\.luca\.net\.tr$/.test(origin) ||
-        [
-          'https://app.mihsap.com',
-          'https://ofis.mihsap.com.tr',
-          'https://luca.com.tr',
-          'https://luca.net.tr',
-        ].includes(origin);
+        allowedOrigins.has(origin) ||
+        allowedSuffixes.some((suffix) => origin.endsWith(suffix));
 
       if (allowed) return callback(null, true);
       console.warn(`[CORS] Blocked origin: ${origin}`);

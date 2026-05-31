@@ -8,9 +8,35 @@ import { Roles } from '../auth/decorators/roles.decorator';
 import { TaxpayersService } from './taxpayers.service';
 import {
   CreateTaxpayerSchema,
+  UpdateTaxpayerSchema,
   CreateTaxpayerYetkiliSchema,
   UpdateTaxpayerYetkiliSchema,
 } from '@mali-musavir/shared';
+
+const MONTHLY_STATUS_FIELDS = new Set([
+  'evraklarGeldi',
+  'evraklarIslendi',
+  'kontrolEdildi',
+  'beyannameVerildi',
+  'kdvKontrolEdildi',
+  'indirilecekKdvKontrol',
+  'hesaplananKdvKontrol',
+  'eArsivKontrol',
+  'notes',
+]);
+
+function zodMessages(result: any) {
+  return result.error.errors.map((e: any) => `${e.path.join('.')}: ${e.message}`);
+}
+
+function normalizeTaxpayerDto(data: Record<string, any>) {
+  const dto = Object.fromEntries(
+    Object.entries(data).map(([k, v]) => [k, v === '' ? null : v]),
+  ) as any;
+  if (dto.startDate) dto.startDate = new Date(dto.startDate);
+  if (dto.endDate) dto.endDate = new Date(dto.endDate);
+  return dto;
+}
 
 @Controller('taxpayers')
 @UseGuards(AuthGuard('jwt'), RolesGuard)
@@ -42,14 +68,9 @@ export class TaxpayersController {
   create(@Req() req: any, @Body() body: any) {
     const result = CreateTaxpayerSchema.safeParse(body);
     if (!result.success) {
-      const messages = result.error.errors.map(
-        (e: any) => `${e.path.join('.')}: ${e.message}`,
-      );
-      throw new BadRequestException(messages);
+      throw new BadRequestException(zodMessages(result));
     }
-    const dto = Object.fromEntries(
-      Object.entries(result.data).map(([k, v]) => [k, v === '' ? null : v]),
-    ) as any;
+    const dto = normalizeTaxpayerDto(result.data);
     // Tarih alanlarını Date nesnesine çevir
     if (dto.startDate) dto.startDate = new Date(dto.startDate);
     if (dto.endDate) dto.endDate = new Date(dto.endDate);
@@ -59,7 +80,12 @@ export class TaxpayersController {
   @Put(':id')
   @Roles('ADMIN', 'STAFF')
   update(@Req() req: any, @Param('id') id: string, @Body() body: any) {
-    return this.taxpayersService.update(id, req.user.tenantId, body);
+    const result = UpdateTaxpayerSchema.safeParse(body);
+    if (!result.success) {
+      throw new BadRequestException(zodMessages(result));
+    }
+    const dto = normalizeTaxpayerDto(result.data);
+    return this.taxpayersService.update(id, req.user.tenantId, dto);
   }
 
   @Delete(':id')
@@ -89,7 +115,33 @@ export class TaxpayersController {
     @Param('id') id: string,
     @Body() body: { year: number; month: number; [key: string]: any },
   ) {
-    const { year, month, ...data } = body;
+    const year = Number(body?.year);
+    const month = Number(body?.month);
+    if (!Number.isInteger(year) || year < 2000 || year > 2100) {
+      throw new BadRequestException('year 2000-2100 araliginda olmali');
+    }
+    if (!Number.isInteger(month) || month < 1 || month > 12) {
+      throw new BadRequestException('month 1-12 araliginda olmali');
+    }
+    const extras = Object.keys(body || {}).filter(
+      (key) => key !== 'year' && key !== 'month' && !MONTHLY_STATUS_FIELDS.has(key),
+    );
+    if (extras.length) {
+      throw new BadRequestException(`Gecersiz alanlar: ${extras.join(', ')}`);
+    }
+    const data: Record<string, any> = {};
+    for (const key of MONTHLY_STATUS_FIELDS) {
+      if (body?.[key] !== undefined) data[key] = body[key];
+    }
+    for (const [key, value] of Object.entries(data)) {
+      if (key === 'notes') {
+        if (value !== null && typeof value !== 'string') {
+          throw new BadRequestException('notes metin olmali');
+        }
+      } else if (typeof value !== 'boolean') {
+        throw new BadRequestException(`${key} boolean olmali`);
+      }
+    }
     return this.taxpayersService.updateMonthlyStatus(
       id, req.user.tenantId, year, month, data,
     );

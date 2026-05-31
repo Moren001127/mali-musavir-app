@@ -2,7 +2,6 @@ import {
   BadRequestException,
   Body,
   Controller,
-  ForbiddenException,
   Get,
   Headers,
   HttpCode,
@@ -26,6 +25,7 @@ import { RolesGuard } from '../auth/guards/roles.guard';
 import { LucaService } from '../luca/luca.service';
 import { PrismaService } from '../prisma/prisma.service';
 import { EDefterControlService, EDefterDonemTipi } from './edefter-control.service';
+import { resolveTenantFromAgentToken as resolveAgentTenant } from '../common/agent-token';
 
 @Controller()
 export class EDefterControlController {
@@ -266,21 +266,6 @@ export class EDefterControlController {
   }
 
   private async resolveTenantFromAgentToken(token?: string): Promise<string> {
-    if (!token) throw new ForbiddenException('Agent token eksik');
-    const t = token.trim();
-
-    const raw = process.env.AGENT_INGEST_TOKENS || '';
-    const map: Record<string, string> = {};
-    for (const pair of raw.split(',')) {
-      const [tenantId, tok] = pair.split(':');
-      if (tenantId && tok) map[tok.trim()] = tenantId.trim();
-    }
-    if (map[t]) return map[t];
-
-    const tenant = await (this.prisma as any).tenant.findFirst({
-      where: { OR: [{ slug: t }, { id: t }] },
-    });
-    if (!tenant) throw new ForbiddenException('Agent token gecersiz');
-    return tenant.id;
+    return resolveAgentTenant(token, this.prisma as any);
   }
 }

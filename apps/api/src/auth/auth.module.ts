@@ -16,10 +16,16 @@ import { NotificationsModule } from '../notifications/notifications.module';
     PassportModule,
     JwtModule.registerAsync({
       imports: [ConfigModule],
-      useFactory: (config: ConfigService) => ({
-        secret: config.get('JWT_SECRET'),
-        signOptions: { expiresIn: config.get('JWT_EXPIRES_IN', '15m') },
-      }),
+      useFactory: (config: ConfigService) => {
+        const secret = config.get<string>('JWT_SECRET');
+        if (!secret || secret.length < 32 || /change-this/i.test(secret)) {
+          throw new Error('JWT_SECRET must be a non-default secret with at least 32 characters');
+        }
+        return {
+          secret,
+          signOptions: { expiresIn: config.get('JWT_EXPIRES_IN', '15m') },
+        };
+      },
       inject: [ConfigService],
     }),
   ],

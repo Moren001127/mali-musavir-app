@@ -14,13 +14,13 @@ import {
   UploadedFiles,
   BadRequestException,
   NotFoundException,
-  UnauthorizedException,
 } from '@nestjs/common';
 import { PrismaService } from '../prisma/prisma.service';
 import { AuthGuard } from '@nestjs/passport';
 import { FilesInterceptor } from '@nestjs/platform-express';
 import { FisYazdirmaService } from './fis-yazdirma.service';
 import { memoryStorage } from 'multer';
+import { resolveTenantFromAgentToken as resolveAgentTenant } from '../common/agent-token';
 
 const imageInterceptor = () =>
   FilesInterceptor('images', 300, {
@@ -207,15 +207,8 @@ export class FisYazdirmaAgentController {
     private prisma: PrismaService,
   ) {}
 
-  private async resolveTenantId(token: string): Promise<string> {
-    const t = (token || '').trim();
-    if (!t) throw new UnauthorizedException('X-Agent-Token gerekli');
-    const tenant = await (this.prisma as any).tenant.findFirst({
-      where: { OR: [{ slug: t }, { id: t }] },
-      select: { id: true },
-    });
-    if (!tenant) throw new UnauthorizedException('Gecersiz agent token');
-    return tenant.id;
+  private async resolveTenantId(token?: string): Promise<string> {
+    return resolveAgentTenant(token, this.prisma as any);
   }
 
   /** GET /api/v1/agent/print-queue/pending?deviceId=X */

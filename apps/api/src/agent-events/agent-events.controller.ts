@@ -11,12 +11,12 @@ import {
   Res,
   UseGuards,
   Headers,
-  UnauthorizedException,
   BadRequestException,
 } from '@nestjs/common';
 import { AuthGuard } from '@nestjs/passport';
 import { AgentEventsService, AgentEventInput } from './agent-events.service';
 import { PrismaService } from '../prisma/prisma.service';
+import { resolveTenantFromAgentToken } from '../common/agent-token';
 
 /**
  * Ajanlar için API.
@@ -33,41 +33,9 @@ export class AgentEventsController {
     private readonly prisma: PrismaService,
   ) {}
 
-  private resolveTenantFromToken(token?: string): string {
-    if (!token) throw new UnauthorizedException('Missing X-Agent-Token');
-    const raw = process.env.AGENT_INGEST_TOKENS || '';
-    const map: Record<string, string> = {};
-    for (const pair of raw.split(',')) {
-      const [tid, tok] = pair.split(':');
-      if (tid && tok) map[tok.trim()] = tid.trim();
-    }
-    const tenantId = map[token.trim()];
-    if (!tenantId) throw new UnauthorizedException('Invalid agent token');
-    return tenantId;
-  }
-
   /** Async resolver — DB tenant.slug/id lookup. Status ping için kullanılır. */
   private async resolveTenantFromTokenAsync(token?: string): Promise<string> {
-    if (!token) throw new UnauthorizedException('Missing X-Agent-Token');
-    // Eski env map (geriye uyumlu)
-    const raw = process.env.AGENT_INGEST_TOKENS || '';
-    if (raw) {
-      const map: Record<string, string> = {};
-      for (const pair of raw.split(',')) {
-        const [tid, tok] = pair.split(':');
-        if (tid && tok) map[tok.trim()] = tid.trim();
-      }
-      const fromEnv = map[token.trim()];
-      if (fromEnv) return fromEnv;
-    }
-    // DB lookup — tenant.slug veya tenant.id ile
-    const t = (token || '').trim();
-    const tenant = await (this.prisma as any).tenant.findFirst({
-      where: { OR: [{ slug: t }, { id: t }] },
-      select: { id: true },
-    });
-    if (!tenant) throw new UnauthorizedException('Invalid agent token');
-    return tenant.id;
+    return resolveTenantFromAgentToken(token, this.prisma as any);
   }
 
   // ---- VERSION LATEST (extension auto-update banner için) ----

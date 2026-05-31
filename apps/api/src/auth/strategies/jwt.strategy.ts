@@ -7,15 +7,14 @@ import { PrismaService } from '../../prisma/prisma.service';
 @Injectable()
 export class JwtStrategy extends PassportStrategy(Strategy) {
   constructor(config: ConfigService, private prisma: PrismaService) {
+    const secret = config.get<string>('JWT_SECRET');
+    if (!secret || secret.length < 32 || /change-this/i.test(secret)) {
+      throw new Error('JWT_SECRET must be a non-default secret with at least 32 characters');
+    }
     super({
-      // Header VEYA query string'den token kabul et — window.open ile yeni sekmede
-      // açılan HTML render endpoint'leri için (Authorization header gönderilmiyor).
-      jwtFromRequest: ExtractJwt.fromExtractors([
-        ExtractJwt.fromAuthHeaderAsBearerToken(),
-        (req: any) => (req?.query?.token as string) || null,
-      ]),
+      jwtFromRequest: ExtractJwt.fromAuthHeaderAsBearerToken(),
       ignoreExpiration: false,
-      secretOrKey: config.get('JWT_SECRET'),
+      secretOrKey: secret,
     });
   }
 

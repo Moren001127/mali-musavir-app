@@ -1,24 +1,33 @@
 /**
- * Tek-sefer admin kullanıcı oluşturma scripti
- * Muzaffer Ören — MOREN Mali Müşavirlik
+ * One-time admin user bootstrap.
  *
- * Çalıştırma:
- *   Railway:  railway run --service mali-musavir-api "npx tsx create-admin.ts"
- *   Lokal:    DATABASE_URL="postgresql://..." npx tsx create-admin.ts
+ * Required env:
+ *   ADMIN_EMAIL
+ *   ADMIN_PASSWORD
+ *
+ * Optional env:
+ *   ADMIN_FIRST_NAME
+ *   ADMIN_LAST_NAME
+ *   ADMIN_TENANT_NAME
  */
 import { PrismaClient } from '@prisma/client';
 import * as argon2 from 'argon2';
 
 const prisma = new PrismaClient();
 
-async function main() {
-  const email = 'muzaffer@morenmusavirlik.com';
-  const password = 'Mo.001127';
-  const firstName = 'Muzaffer';
-  const lastName = 'Ören';
-  const tenantName = 'MOREN Mali Müşavirlik';
+function required(name: string) {
+  const value = process.env[name]?.trim();
+  if (!value) throw new Error(`${name} env is required`);
+  return value;
+}
 
-  // 1) Tenant bul veya oluştur
+async function main() {
+  const email = required('ADMIN_EMAIL').toLowerCase();
+  const password = required('ADMIN_PASSWORD');
+  const firstName = process.env.ADMIN_FIRST_NAME?.trim() || 'Admin';
+  const lastName = process.env.ADMIN_LAST_NAME?.trim() || 'User';
+  const tenantName = process.env.ADMIN_TENANT_NAME?.trim() || 'Moren Mali Musavirlik';
+
   let tenant = await prisma.tenant.findFirst({
     where: { OR: [{ name: tenantName }, { email }] },
   });
@@ -30,15 +39,14 @@ async function main() {
     tenant = await prisma.tenant.create({
       data: { name: tenantName, slug, email },
     });
-    console.log('✔ Tenant oluşturuldu:', tenant.id);
+    console.log('Tenant created:', tenant.id);
   } else {
-    console.log('✔ Mevcut tenant bulundu:', tenant.id);
+    console.log('Tenant found:', tenant.id);
   }
 
-  // 2) ADMIN + STAFF + READONLY rolleri upsert
   const adminRole = await prisma.role.upsert({
     where: { name: 'ADMIN' },
-    create: { name: 'ADMIN', description: 'Tam yetkili yönetici' },
+    create: { name: 'ADMIN', description: 'Tam yetkili yonetici' },
     update: {},
   });
   await prisma.role.upsert({
@@ -48,11 +56,10 @@ async function main() {
   });
   await prisma.role.upsert({
     where: { name: 'READONLY' },
-    create: { name: 'READONLY', description: 'Sadece görüntüleme' },
+    create: { name: 'READONLY', description: 'Sadece goruntuleme' },
     update: {},
   });
 
-  // 3) Kullanıcı var mı kontrol et
   const existing = await prisma.user.findFirst({
     where: { tenantId: tenant.id, email },
   });
@@ -64,7 +71,6 @@ async function main() {
   });
 
   if (existing) {
-    console.log('⚠ Kullanıcı zaten var, şifre + rol güncelleniyor...');
     await prisma.user.update({
       where: { id: existing.id },
       data: { passwordHash, isActive: true, firstName, lastName },
@@ -74,7 +80,11 @@ async function main() {
       create: { userId: existing.id, roleId: adminRole.id },
       update: {},
     });
-    console.log('✔ Kullanıcı güncellendi ve ADMIN rolü atandı:', existing.id);
+    await prisma.refreshToken.updateMany({
+      where: { userId: existing.id, isRevoked: false },
+      data: { isRevoked: true },
+    });
+    console.log('Admin user updated and active sessions revoked:', existing.id);
   } else {
     const user = await prisma.user.create({
       data: {
@@ -87,21 +97,16 @@ async function main() {
         userRoles: { create: { roleId: adminRole.id } },
       },
     });
-    console.log('✔ Yeni admin oluşturuldu:', user.id);
+    console.log('Admin user created:', user.id);
   }
 
-  console.log('\n════════ GİRİŞ BİLGİLERİ ════════');
-  console.log('URL      : https://portal.morenmusavirlik.com');
-  console.log('Email    :', email);
-  console.log('Password :', password);
-  console.log('Role     : ADMIN');
-  console.log('Tenant   :', tenant.name, '(' + tenant.id + ')');
-  console.log('═══════════════════════════════════');
+  console.log('Admin email:', email);
+  console.log('Tenant:', tenant.name, `(${tenant.id})`);
 }
 
 main()
   .catch((e) => {
-    console.error('✗ Hata:', e);
+    console.error('Bootstrap failed:', e);
     process.exit(1);
   })
   .finally(async () => await prisma.$disconnect());

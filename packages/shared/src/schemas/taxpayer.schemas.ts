@@ -47,6 +47,46 @@ export const CreateTaxpayerSchema = z.object({
 
 export type CreateTaxpayerDto = z.infer<typeof CreateTaxpayerSchema>;
 
+export const UpdateTaxpayerSchema = z.object({
+  type: z.nativeEnum(TaxpayerType).optional(),
+  firstName: z.string().min(2, 'En az 2 karakter').max(100).optional().or(z.literal('')),
+  lastName: z.string().min(2, 'En az 2 karakter').max(100).optional().or(z.literal('')),
+  companyName: z.string().min(2, 'En az 2 karakter').max(200).optional().or(z.literal('')),
+  taxNumber: z.string()
+    .min(10, 'VKN 10, TCKN 11 haneli olmali')
+    .max(11, 'VKN 10, TCKN 11 haneli olmali')
+    .regex(/^\d+$/, 'Sadece rakam giriniz')
+    .optional(),
+  taxOffice: z.string().min(2, 'Vergi dairesi zorunludur').max(100).optional(),
+  email: z.string().email('Gecerli e-posta giriniz').optional().or(z.literal('')),
+  emails: z.array(z.string().email().or(z.literal(''))).optional(),
+  phone: z.string().optional().or(z.literal('')),
+  phones: z.array(z.string()).optional(),
+  address: z.string().optional().or(z.literal('')),
+  notes: z.string().optional().or(z.literal('')),
+  startDate: z.string().nullable().optional(),
+  endDate: z.string().nullable().optional(),
+  evrakTeslimGunu: z.number().int().min(1).max(30).nullable().optional(),
+  whatsappEvrakTalep: z.boolean().optional(),
+  whatsappEvrakGeldi: z.boolean().optional(),
+  isEFaturaMukellefi: z.boolean().optional(),
+  lucaSlug: z.string().optional().nullable(),
+  mihsapId: z.string().optional().nullable(),
+  mihsapDefterTuru: z.string().optional().nullable(),
+  defterTuru: z.enum(['BILANCO', 'ISLETME']).optional().nullable(),
+  logoUrl: z.string().url().optional().nullable().or(z.literal('')),
+  naceKodu: z.string().max(20).optional().nullable().or(z.literal('')),
+  ticaretSicilNo: z.string().max(50).optional().nullable().or(z.literal('')),
+  mersisNo: z.string().max(20).optional().nullable().or(z.literal('')),
+  odaSicilNo: z.string().max(50).optional().nullable().or(z.literal('')),
+  bagkurSicilNo: z.string().max(50).optional().nullable().or(z.literal('')),
+  kepAdresi: z.string().email('Gecerli KEP adresi giriniz').optional().nullable().or(z.literal('')),
+  webSitesi: z.string().optional().nullable().or(z.literal('')),
+  eFaturaEntegrator: z.string().max(50).optional().nullable().or(z.literal('')),
+}).strict();
+
+export type UpdateTaxpayerDto = z.infer<typeof UpdateTaxpayerSchema>;
+
 // ============================================================
 // v1.37.0: TaxpayerYetkili (firma yetkilileri) şemaları
 // ============================================================

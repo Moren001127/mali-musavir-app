@@ -1,10 +1,11 @@
-import { BadRequestException, Injectable, Logger, NotFoundException, UnauthorizedException } from '@nestjs/common';
+import { BadRequestException, Injectable, Logger, NotFoundException } from '@nestjs/common';
 import { Cron } from '@nestjs/schedule';
 import { randomUUID } from 'crypto';
 import { PDFParse } from 'pdf-parse';
 import { PrismaService } from '../prisma/prisma.service';
 import { StorageService } from '../storage/storage.service';
 import { encrypt, tryDecrypt } from '../common/crypto';
+import { resolveTenantFromAgentToken as resolveAgentTenant } from '../common/agent-token';
 import { BeyanKayitlariService } from '../beyan-kayitlari/beyan-kayitlari.service';
 import { NotificationsService } from '../notifications/notifications.service';
 import { NOTIFICATION_TYPES } from '../notifications/notification-types';
@@ -1642,24 +1643,7 @@ export class PortalAutomationService {
   }
 
   private async resolveTenantFromToken(token?: string): Promise<string> {
-    if (!token) throw new UnauthorizedException('Missing X-Agent-Token');
-    const raw = process.env.AGENT_INGEST_TOKENS || '';
-    if (raw) {
-      const map: Record<string, string> = {};
-      for (const pair of raw.split(',')) {
-        const [tid, tok] = pair.split(':');
-        if (tid && tok) map[tok.trim()] = tid.trim();
-      }
-      const fromEnv = map[token.trim()];
-      if (fromEnv) return fromEnv;
-    }
-    const t = token.trim();
-    const tenant = await (this.prisma as any).tenant.findFirst({
-      where: { OR: [{ slug: t }, { id: t }] },
-      select: { id: true },
-    });
-    if (!tenant) throw new UnauthorizedException('Invalid agent token');
-    return tenant.id;
+    return resolveAgentTenant(token, this.prisma as any);
   }
 
   private envFlag(value?: string | null) {

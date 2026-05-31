@@ -1,7 +1,7 @@
 import { Injectable, NotFoundException, ForbiddenException, BadRequestException, Optional, Logger } from '@nestjs/common';
 import { PrismaService } from '../prisma/prisma.service';
 import { StorageService } from '../storage/storage.service';
-import { InitiateUploadDto, UpdateDocumentDto } from '@mali-musavir/shared';
+import { ConfirmNewVersionDto, InitiateNewVersionDto, InitiateUploadDto, UpdateDocumentDto } from '@mali-musavir/shared';
 import { AutomationEventBus } from '../automations/automation-event-bus.service';
 import { NotificationsService } from '../notifications/notifications.service';
 import { NOTIFICATION_TYPES } from '../notifications/notification-types';
@@ -16,6 +16,28 @@ export class DocumentsService {
     private notifications: NotificationsService,
     @Optional() private readonly eventBus?: AutomationEventBus,
   ) {}
+
+  private uploadMaxBytes() {
+    const raw = Number(process.env.DOCUMENT_UPLOAD_MAX_BYTES || 100 * 1024 * 1024);
+    return Number.isFinite(raw) && raw > 0 ? raw : 100 * 1024 * 1024;
+  }
+
+  private assertUploadKey(tenantId: string, taxpayerId: string, s3Key: string) {
+    const expectedPrefix = `${tenantId}/${taxpayerId}/`;
+    if (!s3Key.startsWith(expectedPrefix) || s3Key.includes('..') || s3Key.includes('\\') || s3Key.startsWith('/')) {
+      throw new ForbiddenException('Upload anahtari bu mukellefe ait degil');
+    }
+  }
+
+  private assertUploadedObject(meta: { sizeBytes: number } | null): asserts meta is { sizeBytes: number } {
+    if (!meta) throw new BadRequestException('Dosya S3\'e henuz yuklenmemis');
+    if (!Number.isFinite(meta.sizeBytes) || meta.sizeBytes <= 0) {
+      throw new BadRequestException('Bos dosya yuklenemez');
+    }
+    if (meta.sizeBytes > this.uploadMaxBytes()) {
+      throw new BadRequestException('Dosya boyutu izin verilen limiti asiyor');
+    }
+  }
 
   /**
    * Adım 1: Upload başlatma — presigned URL döner
@@ -49,9 +71,10 @@ export class DocumentsService {
     userId: string,
     dto: InitiateUploadDto & { s3Key: string },
   ) {
+    this.assertUploadKey(tenantId, dto.taxpayerId, dto.s3Key);
     // S3 nesne boyutunu al (yüklendiğini doğrula)
     const meta = await this.storage.getObjectMeta(dto.s3Key);
-    if (!meta) throw new BadRequestException('Dosya S3\'e henüz yüklenmemiş');
+    this.assertUploadedObject(meta);
 
     const taxpayer = await this.prisma.taxpayer.findFirst({
       where: { id: dto.taxpayerId, tenantId },
@@ -233,7 +256,7 @@ export class DocumentsService {
   async initiateNewVersion(
     id: string,
     tenantId: string,
-    dto: { mimeType: string; originalName: string },
+    dto: InitiateNewVersionDto,
   ) {
     const doc = await this.findOne(id, tenantId);
     const { uploadUrl, s3Key } = await this.storage.getPresignedUploadUrl(
@@ -252,11 +275,12 @@ export class DocumentsService {
     id: string,
     tenantId: string,
     userId: string,
-    dto: { s3Key: string; mimeType: string; notes?: string },
+    dto: ConfirmNewVersionDto,
   ) {
     const doc = await this.findOne(id, tenantId);
+    this.assertUploadKey(tenantId, doc.taxpayerId, dto.s3Key);
     const meta = await this.storage.getObjectMeta(dto.s3Key);
-    if (!meta) throw new BadRequestException('Dosya S3\'e henüz yüklenmemiş');
+    this.assertUploadedObject(meta);
 
     const lastVersion = doc.versions[0];
     const newVersionNo = (lastVersion?.versionNo ?? 0) + 1;

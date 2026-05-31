@@ -5,6 +5,7 @@
  */
 import { redirect } from 'next/navigation';
 
-export default function KdvSessionRedirect({ params }: { params: { id: string } }) {
-  redirect(`/panel/kdv-kontrol?s=${params.id}`);
+export default async function KdvSessionRedirect({ params }: { params: Promise<{ id: string }> }) {
+  const { id } = await params;
+  redirect(`/panel/kdv-kontrol?s=${id}`);
 }

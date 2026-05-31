@@ -1,6 +1,9 @@
+const path = require('path');
+
 /** @type {import('next').NextConfig} */
 const nextConfig = {
   transpilePackages: ['@mali-musavir/shared'],
+  outputFileTracingRoot: path.join(__dirname, '../..'),
   // Bookmarklet'in çektiği moren-agent.js'in tarayıcıda cache'lenmesini engelle.
   // Vercel default static cache header'i agresif (1 yil), bu da yeni sürümlerin
   // kullanicinin tarayicisina ulasmasini geciktiriyor. no-cache + must-revalidate

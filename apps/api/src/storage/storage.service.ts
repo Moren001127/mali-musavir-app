@@ -42,7 +42,9 @@ export class StorageService {
     originalName: string,
     mimeType: string,
   ): Promise<{ uploadUrl: string; s3Key: string }> {
-    const ext = originalName.split('.').pop() || 'bin';
+    const ext = (originalName.split('.').pop() || 'bin')
+      .replace(/[^a-zA-Z0-9]/g, '')
+      .slice(0, 16) || 'bin';
     const s3Key = `${tenantId}/${taxpayerId}/${randomUUID()}.${ext}`;
 
     const command = new PutObjectCommand({
@@ -88,11 +90,11 @@ export class StorageService {
   /**
    * Nesne boyutunu ve varlığını kontrol eder
    */
-  async getObjectMeta(s3Key: string): Promise<{ sizeBytes: number } | null> {
+  async getObjectMeta(s3Key: string): Promise<{ sizeBytes: number; contentType?: string } | null> {
     try {
       const cmd = new HeadObjectCommand({ Bucket: this.bucket, Key: s3Key });
       const res = await this.s3.send(cmd);
-      return { sizeBytes: res.ContentLength ?? 0 };
+      return { sizeBytes: res.ContentLength ?? 0, contentType: res.ContentType };
     } catch {
       return null;
     }
@@ -140,6 +142,7 @@ export class StorageService {
         Key: s3Key,
         Body: buffer,
         ContentType: mimeType,
+        ServerSideEncryption: 'AES256',
         Metadata: metadata,
       }),
     );

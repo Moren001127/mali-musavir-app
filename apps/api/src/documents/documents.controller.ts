@@ -20,6 +20,8 @@ import { DocumentsService } from './documents.service';
 import {
   InitiateUploadSchema,
   ConfirmUploadSchema,
+  InitiateNewVersionSchema,
+  ConfirmNewVersionSchema,
   UpdateDocumentSchema,
 } from '@mali-musavir/shared';
 
@@ -121,18 +123,20 @@ export class DocumentsController {
   @Post(':id/versions/initiate')
   @Roles('ADMIN', 'STAFF')
   initiateNewVersion(@Req() req: any, @Param('id') id: string, @Body() body: any) {
-    return this.documentsService.initiateNewVersion(id, req.user.tenantId, body);
+    const dto = InitiateNewVersionSchema.parse(body);
+    return this.documentsService.initiateNewVersion(id, req.user.tenantId, dto);
   }
 
   /** Yeni versiyon — onayla */
   @Post(':id/versions/confirm')
   @Roles('ADMIN', 'STAFF')
   confirmNewVersion(@Req() req: any, @Param('id') id: string, @Body() body: any) {
+    const dto = ConfirmNewVersionSchema.parse(body);
     return this.documentsService.confirmNewVersion(
       id,
       req.user.tenantId,
       req.user.sub,
-      body,
+      dto,
     );
   }
 

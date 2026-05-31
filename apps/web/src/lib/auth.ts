@@ -1,4 +1,4 @@
-import { api } from './api';
+import { api, setAccessToken } from './api';
 
 export const authApi = {
   login: (email: string, password: string) =>
@@ -11,12 +11,10 @@ export const authApi = {
   me: () => api.get('/auth/me').then((r) => r.data),
 };
 
-export function saveTokens(accessToken: string, refreshToken: string) {
-  localStorage.setItem('accessToken', accessToken);
-  localStorage.setItem('refreshToken', refreshToken);
+export function saveTokens(accessToken: string) {
+  setAccessToken(accessToken);
 }
 
 export function clearTokens() {
-  localStorage.removeItem('accessToken');
-  localStorage.removeItem('refreshToken');
+  setAccessToken(null);
 }
