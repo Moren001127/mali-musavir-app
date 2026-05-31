@@ -1962,10 +1962,10 @@ export class PortalAutomationRailwayRunnerService implements OnModuleInit {
           for (const kind of kinds) {
             const picked = this.pickEBeyannameFileCandidate(enumerated.metas, kind);
             if (picked == null) continue;
-            // GIB linki onclick-JS oldugu icin direkt href yok. Onclick kodunu tiklamadan
-            // calistirip window.open URL'ini yakala; indirme asagida PARALEL yapilacak.
+            // GIB linki onclick-JS oldugu icin direkt href yok. Tiklayinca window.open ile uretilen
+            // gercek PDF URL'ini SERI olarak yakala (popup acmadan); indirme asagida PARALEL yapilacak.
             const meta = enumerated.metas.find((m: any) => m.index === picked);
-            const url = (await this.captureEBeyannameUrlViaOnclick(page, enumerated.candidates.nth(picked)).catch(() => null))
+            const url = (await this.captureEBeyannameUrlViaClick(page, enumerated.candidates.nth(picked)).catch(() => null))
               || this.directEBeyannameUrlFromMeta(page, meta || {});
             if (url) urlTasks.push({ row: plan.row, kind, url, seq: plan.seq });
           }
@@ -2161,33 +2161,23 @@ export class PortalAutomationRailwayRunnerService implements OnModuleInit {
     const loc = candidates.nth(picked);
     const fallbackName = `ebeyanname-${sequence}-${kind}`;
     // [EBDBG] Teshis: ilk satirlarda butonlarin gercek yapisini + hangi adayin secildigini logla.
-    if (this.ebeyannameDebugEnabled() && sequence <= 8) {
+    if (sequence <= 8) {
       const summary = metas
         .map((m: any) => `[${m.index}${m.index === picked ? '*' : ''}]${m.tag}|t="${this.compact(m.text).slice(0, 28)}"|h="${this.compact(m.href).slice(0, 70)}"|oc="${this.compact(m.onclick).slice(0, 70)}"`)
         .join('  ||  ');
       this.logger.warn(`[EBDBG] satir ${resultRow.rowIndex + 1} kind=${kind} picked=${picked} vkn=${resultRow.taxNumber} :: ${summary}`);
     }
-    const meta = metas.find((item: any) => item.index === picked);
-
-    // 1) EN GUVENILIR YOL: onclick icindeki beyannameGoruntule/tahakkukGoruntule zincirini
-    //    gercek tiklama yapmadan calistir, window.open URL'ini yakala ve HTTP ile indir.
-    let viaResolvedUrl: EBeyannameFilePayload | null = null;
-    const resolvedUrl = (await this.captureEBeyannameUrlViaOnclick(page, loc).catch(() => null))
-      || this.directEBeyannameUrlFromMeta(page, meta || {});
-    if (resolvedUrl) {
-      viaResolvedUrl = await this.savePdfFromRequestUrl(page, resolvedUrl, downloadsPath, fallbackName).catch(() => null);
-    }
-
-    // 2) Fallback: bazi eski/degisik ekranlarda onclick dogrudan calismayabilir; o zaman
-    //    gercek tiklamadan once window.open'u intercept et.
+    // 1) EN GUVENILIR YOL: ikona tiklayinca beyannameGoruntule/tahakkukGoruntule -> callMenuUrlPopUp ->
+    //    window.open(gercek_pdf_url) cagriliyor. window.open'u araya girip o URL'i yakala, HTTP ile indir
+    //    (popup hic acmadan). directOnly (paralel on-getirme) modunda DOM tiklamasi yapilmaz; bu yol seri fazda calisir.
     let viaClick: EBeyannameFilePayload | null = null;
-    if (!viaResolvedUrl && !opts?.directOnly) {
+    if (!opts?.directOnly) {
       const clickUrl = await this.captureEBeyannameUrlViaClick(page, loc).catch(() => null);
       if (clickUrl) {
         viaClick = await this.savePdfFromRequestUrl(page, clickUrl, downloadsPath, fallbackName).catch(() => null);
       }
     }
-    const direct = viaResolvedUrl || viaClick || await this.tryDownloadEBeyannameDirect(page, meta, downloadsPath, fallbackName).catch((err) => {
+    const direct = viaClick || await this.tryDownloadEBeyannameDirect(page, metas.find((meta: any) => meta.index === picked), downloadsPath, fallbackName).catch((err) => {
       if (!opts?.directOnly) notes.push(`${kind}: satir ${resultRow.rowIndex + 1} dogrudan PDF denemesi basarisiz: ${this.compact(err?.message || err)}`);
       return null;
     });
@@ -2198,7 +2188,7 @@ export class PortalAutomationRailwayRunnerService implements OnModuleInit {
           notes.push(`${kind}: satir ${resultRow.rowIndex + 1} PDF indirme hatasi: ${this.compact(err?.message || err)}`);
           return null;
         }));
-    if (this.ebeyannameDebugEnabled() && sequence <= 8) {
+    if (sequence <= 8) {
       const bytes = clicked?.base64 ? Buffer.from(clicked.base64, 'base64').length : 0;
       this.logger.warn(`[EBDBG] satir ${resultRow.rowIndex + 1} kind=${kind} sonuc: direct=${!!direct} clicked=${!!clicked} bytes=${bytes} file="${clicked?.fileName || '-'}"`);
     }
@@ -2208,69 +2198,6 @@ export class PortalAutomationRailwayRunnerService implements OnModuleInit {
     }
     const ownerOk = await this.validateEBeyannameFileOwner(resultRow, clicked, kind, notes);
     return { file: clicked, ownerMismatch: !ownerOk };
-  }
-
-  /**
-   * Onclick kodunu gercek mouse tiklamasi yapmadan calistirir ve GIB'in uretecegi PDF URL'ini yakalar.
-   * Boylece popup/download event yarisi olmadan URL'ler toplanip HTTP ile paralel indirilebilir.
-   */
-  private async captureEBeyannameUrlViaOnclick(page: any, loc: any): Promise<string | null> {
-    const captured = await loc.evaluate(async (el: any) => {
-      const target = (el.getAttribute?.('onclick') ? el : el.closest?.('[onclick]')) || el;
-      const onclick = String(target.getAttribute?.('onclick') || '').trim();
-      if (!onclick) return null;
-
-      const w = window as any;
-      const originalOpen = w.open;
-      const originalCallMenuUrlPopUp = w.callMenuUrlPopUp;
-      let capturedUrl: string | null = null;
-      const remember = (url: any) => {
-        const text = String(url || '').trim();
-        if (text) capturedUrl = text;
-      };
-      const noop = function () { return stub; };
-      const stub: any = new Proxy({}, {
-        get: (_obj, prop) => (prop === 'closed' ? false : noop),
-        set: () => true,
-      });
-
-      try {
-        w.open = function (url: any) {
-          remember(url);
-          return stub;
-        };
-        if (typeof originalCallMenuUrlPopUp === 'function') {
-          w.callMenuUrlPopUp = function (url: any, ...args: any[]) {
-            remember(url);
-            return originalCallMenuUrlPopUp.apply(this, [url, ...args]);
-          };
-        }
-
-        const event = new MouseEvent('click', { bubbles: true, cancelable: true, view: window });
-        const code = onclick.replace(/^javascript:/i, '');
-        const fn = new Function('event', code);
-        fn.call(target, event);
-        await new Promise((resolve) => setTimeout(resolve, 50));
-        return capturedUrl ? { url: capturedUrl, base: window.location.href } : null;
-      } catch {
-        return capturedUrl ? { url: capturedUrl, base: window.location.href } : null;
-      } finally {
-        w.open = originalOpen;
-        if (typeof originalCallMenuUrlPopUp === 'function') {
-          w.callMenuUrlPopUp = originalCallMenuUrlPopUp;
-        } else {
-          try { delete w.callMenuUrlPopUp; } catch { w.callMenuUrlPopUp = originalCallMenuUrlPopUp; }
-        }
-      }
-    }).catch(() => null);
-    const raw = captured?.url || null;
-    if (!raw) return null;
-    try {
-      const abs = new URL(String(raw), String(captured?.base || page.url?.() || '')).toString();
-      return /^https?:/i.test(abs) ? abs : null;
-    } catch {
-      return null;
-    }
   }
 
   /**
@@ -2499,82 +2426,24 @@ export class PortalAutomationRailwayRunnerService implements OnModuleInit {
       notes.push(`${kind}: satir ${row.rowIndex + 1} PDF VKN uyusmadi; beklenen ${expectedTaxNumber}, PDF ${seenTaxNumbers.slice(0, 3).join(', ')}. Kayda baglanmadi.`);
       return false;
     }
-    notes.push(`${kind}: satir ${row.rowIndex + 1} PDF icinde VKN/TCKN okunamadi; net farkli VKN bulunmadigi icin kayda baglandi (${expectedTaxNumber}).`);
-    return true;
+    notes.push(`${kind}: satir ${row.rowIndex + 1} PDF icinde VKN/TCKN okunamadi; kayda baglanmadi (${expectedTaxNumber}).`);
+    return false;
   }
 
   private async pdfTextFromBase64(base64: string) {
-    const buffer = Buffer.from(base64, 'base64');
-    const parser = new PDFParse({ data: buffer });
-    let text = '';
+    const parser = new PDFParse({ data: Buffer.from(base64, 'base64') });
     try {
       const result = await parser.getText();
-      text = String(result?.text || '').replace(/\s+/g, ' ').trim();
+      return String(result?.text || '').replace(/\s+/g, ' ').trim();
     } finally {
       const destroy = (parser as any).destroy;
       if (typeof destroy === 'function') await destroy.call(parser).catch(() => {});
     }
-    if (text.length >= 20 || !this.ebeyannamePdfOcrFallbackEnabled()) return text;
-    const ocrText = await this.azureReadPdfText(buffer).catch((err) => {
-      this.logger.warn(`e-Beyanname PDF OCR fallback hata: ${err?.message || err}`);
-      return '';
-    });
-    return String(ocrText || '').replace(/\s+/g, ' ').trim() || text;
-  }
-
-  private ebeyannamePdfOcrFallbackEnabled() {
-    const raw = process.env.PORTAL_AUTOMATION_EBEYANNAME_PDF_OCR_FALLBACK;
-    if (raw != null) return this.envFlag(raw);
-    return !!(process.env.AZURE_VISION_KEY && process.env.AZURE_VISION_ENDPOINT);
-  }
-
-  private async azureReadPdfText(buffer: Buffer): Promise<string> {
-    const key = process.env.AZURE_VISION_KEY;
-    const endpoint = String(process.env.AZURE_VISION_ENDPOINT || '').replace(/\/+$/, '');
-    if (!key || !endpoint) return '';
-
-    const analyze = await fetch(`${endpoint}/vision/v3.2/read/analyze`, {
-      method: 'POST',
-      headers: {
-        'Ocp-Apim-Subscription-Key': key,
-        'Content-Type': 'application/pdf',
-      },
-      body: buffer as any,
-    });
-    if (!analyze.ok) throw new Error(`Azure Read ${analyze.status}: ${(await analyze.text()).slice(0, 120)}`);
-    const operationLocation = analyze.headers.get('operation-location');
-    if (!operationLocation) throw new Error('Azure operation-location yok');
-
-    for (let i = 0; i < 30; i++) {
-      await this.wait(500);
-      const poll = await fetch(operationLocation, {
-        headers: { 'Ocp-Apim-Subscription-Key': key },
-      });
-      if (!poll.ok) throw new Error(`Azure poll ${poll.status}`);
-      const json: any = await poll.json();
-      const status = String(json?.status || '').toLowerCase();
-      if (status === 'succeeded') {
-        const lines: string[] = [];
-        for (const pageResult of json?.analyzeResult?.readResults || []) {
-          for (const line of pageResult?.lines || []) {
-            if (line?.text) lines.push(String(line.text));
-          }
-        }
-        return lines.join('\n');
-      }
-      if (status === 'failed') throw new Error('Azure Read failed');
-    }
-    throw new Error('Azure Read timeout');
   }
 
   private shouldValidateEBeyannameOwnerInRunner() {
     const raw = String(process.env.PORTAL_AUTOMATION_EBEYANNAME_RUNNER_VALIDATE_PDF_OWNER || '').trim().toLowerCase();
     return !['0', 'false', 'no', 'off'].includes(raw);
-  }
-
-  private ebeyannameDebugEnabled() {
-    const raw = String(process.env.PORTAL_AUTOMATION_EBEYANNAME_DEBUG || '').trim().toLowerCase();
-    return ['1', 'true', 'yes', 'on', 'evet'].includes(raw);
   }
 
   private pickEBeyannameFileCandidate(
