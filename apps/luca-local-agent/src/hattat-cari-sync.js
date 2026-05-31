@@ -141,7 +141,7 @@ foreach ($target in $targets) {
     $raw = [Text.Encoding]::UTF8.GetString($bytes)
     $json = $null
     try { $json = $raw | ConvertFrom-Json } catch {}
-    $out += [pscustomobject]@{ target = $target; raw = $raw; json = $json }
+    $out += [pscustomobject]@{ target = $target; userName = $cred.UserName; raw = $raw; json = $json }
     [CredReadNative.Native]::CredFree($ptr)
   }
 }
@@ -156,9 +156,12 @@ $out | ConvertTo-Json -Depth 8 -Compress
   const parsed = JSON.parse(res.stdout || '[]');
   const records = Array.isArray(parsed) ? parsed : [parsed];
   const login = records.find((r) => String(r.target || '').includes('username-password-token'));
-  const payload = login?.json || (login?.raw ? JSON.parse(login.raw) : null);
-  const email = payload?.username || payload?.email || process.env.HATTAT_EMAIL;
-  const password = payload?.password || process.env.HATTAT_PASSWORD;
+  let payload = login?.json || null;
+  if (!payload && login?.raw) {
+    try { payload = JSON.parse(login.raw); } catch {}
+  }
+  const email = payload?.username || payload?.email || login?.userName || process.env.HATTAT_EMAIL;
+  const password = payload?.password || (!payload ? login?.raw : null) || process.env.HATTAT_PASSWORD;
   if (!email || !password) throw new Error('Hattat e-posta/sifre bilgisi bulunamadi');
   return { email, password };
 }
