@@ -1987,6 +1987,7 @@ export class PortalAutomationRailwayRunnerService implements OnModuleInit {
       //         kararsizliga/donmaya yol actigi icin enumerate/locator islemleri seri yapilir.
       //    (2b) PARALEL: sadece HTTP indirme (page.context().request.get) — sayfadan bagimsiz, guvenle paralel.
       const directCache = new Map<string, EBeyannameFileDownloadResult>();
+      const prefetchAttempted = new Set<string>();
       if (this.ebeyannameParallelEnabled() && rowPlans.length) {
         await this.jobProgress(tenantId, job, 'approved_resolve', 'Belge linkleri taraniyor.');
         const urlTasks: Array<{ row: any; kind: 'beyanname' | 'tahakkuk'; url: string; seq: number }> = [];
@@ -1998,6 +1999,7 @@ export class PortalAutomationRailwayRunnerService implements OnModuleInit {
           const enumerated = await this.enumerateRowFileMetas(page, plan.row, plan.rowLocator);
           if (!enumerated) continue;
           for (const kind of kinds) {
+            prefetchAttempted.add(`${plan.row.rowIndex}:${kind}`);
             const picked = this.pickEBeyannameFileCandidate(enumerated.metas, kind);
             if (picked == null) continue;
             // GIB linki onclick-JS oldugu icin direkt href yok. Onclick kodunu tiklamadan
@@ -2038,6 +2040,11 @@ export class PortalAutomationRailwayRunnerService implements OnModuleInit {
       // 3) BIRLESTIRME: on-getirilen dosyayi kullan, eksikse DOM fallback (seri).
       for (const plan of rowPlans) {
         const { row, identity, skipBeyanname, skipTahakkuk, rowLocator, seq } = plan;
+        const fastDirectOnly = this.ebeyannameParallelEnabled() && this.ebeyannameFastDirectFetch();
+        const beyannameKey = `${row.rowIndex}:beyanname`;
+        const tahakkukKey = `${row.rowIndex}:tahakkuk`;
+        const prefetchedBeyanname = directCache.get(beyannameKey) || null;
+        const prefetchedTahakkuk = directCache.get(tahakkukKey) || null;
         if (seq === 1 || seq % 10 === 0) {
           await this.jobProgress(tenantId, job, 'approved_assemble', `Belgeler isleniyor/kaydediliyor: ${seq}. satir.`, {
             current: Math.min(seq, totalRows),
@@ -2047,14 +2054,24 @@ export class PortalAutomationRailwayRunnerService implements OnModuleInit {
         }
         const beyannameResult = skipBeyanname
           ? { file: null, ownerMismatch: false }
-          : await this.downloadEBeyannameRowFile(page, row, 'beyanname', downloadsPath, seq, notes, rowLocator, { prefetched: directCache.get(`${row.rowIndex}:beyanname`) })
+          : fastDirectOnly && prefetchAttempted.has(beyannameKey) && !prefetchedBeyanname
+            ? { file: null, ownerMismatch: false }
+            : await this.downloadEBeyannameRowFile(page, row, 'beyanname', downloadsPath, seq, notes, rowLocator, {
+                prefetched: prefetchedBeyanname,
+                directOnly: fastDirectOnly && prefetchAttempted.has(beyannameKey),
+              })
             .catch((err) => {
               notes.push(`beyanname: ${seq}. satir hata nedeniyle atlandi: ${this.compact(err?.message || err)}`);
               return { file: null, ownerMismatch: false };
             });
         const tahakkukResult = skipTahakkuk
           ? { file: null, ownerMismatch: false }
-          : await this.downloadEBeyannameRowFile(page, row, 'tahakkuk', downloadsPath, seq, notes, rowLocator, { prefetched: directCache.get(`${row.rowIndex}:tahakkuk`) })
+          : fastDirectOnly && prefetchAttempted.has(tahakkukKey) && !prefetchedTahakkuk
+            ? { file: null, ownerMismatch: false }
+            : await this.downloadEBeyannameRowFile(page, row, 'tahakkuk', downloadsPath, seq, notes, rowLocator, {
+                prefetched: prefetchedTahakkuk,
+                directOnly: fastDirectOnly && prefetchAttempted.has(tahakkukKey),
+              })
             .catch((err) => {
               notes.push(`tahakkuk: ${seq}. satir hata nedeniyle atlandi: ${this.compact(err?.message || err)}`);
               return { file: null, ownerMismatch: false };
@@ -2073,11 +2090,13 @@ export class PortalAutomationRailwayRunnerService implements OnModuleInit {
         let tahakkuk = tahakkukResult.ownerMismatch ? null : tahakkukResult.file;
         // SWAP DUZELTME: GIB'de beyanname/tahakkuk PDF pencereleri capture sirasinda karisabiliyor.
         // Indirilen PDF'in icerigine bakip NET ters yerlesim varsa beyanname<->tahakkuk yer degistir.
-        try {
-          const fixed = await this.fixEBeyannameTahakkukSwap(beyanname, tahakkuk, notes, seq);
-          beyanname = fixed.beyanname;
-          tahakkuk = fixed.tahakkuk;
-        } catch { /* icerik okunamazsa oldugu gibi birak */ }
+        if (this.ebeyannameSwapDetectEnabled()) {
+          try {
+            const fixed = await this.fixEBeyannameTahakkukSwap(beyanname, tahakkuk, notes, seq);
+            beyanname = fixed.beyanname;
+            tahakkuk = fixed.tahakkuk;
+          } catch { /* icerik okunamazsa oldugu gibi birak */ }
+        }
         const declaration = this.declarationFromEBeyannameRow(row, 'onaylandi', taxpayers, job, { beyanname, tahakkuk });
 
         const unmatchedFiles = [
@@ -2592,6 +2611,12 @@ export class PortalAutomationRailwayRunnerService implements OnModuleInit {
     const raw = process.env.PORTAL_AUTOMATION_EBEYANNAME_PDF_OCR_FALLBACK;
     if (raw != null) return this.envFlag(raw);
     return !!(process.env.AZURE_VISION_KEY && process.env.AZURE_VISION_ENDPOINT);
+  }
+
+  private ebeyannameSwapDetectEnabled() {
+    const raw = process.env.PORTAL_AUTOMATION_EBEYANNAME_SWAP_DETECT;
+    if (raw != null) return this.envFlag(raw);
+    return !this.ebeyannameFastDirectFetch();
   }
 
   private async azureReadPdfText(buffer: Buffer): Promise<string> {

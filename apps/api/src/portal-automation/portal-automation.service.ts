@@ -552,6 +552,7 @@ export class PortalAutomationService {
       data: {
         status: 'running',
         startedAt: new Date(),
+        errorMessage: null,
         attempts: { increment: 1 },
         ...(deviceId ? { targetDeviceId: deviceId } : {}),
         payload: this.withJobProgress(job.payload, {
