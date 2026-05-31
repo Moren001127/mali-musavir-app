@@ -2795,29 +2795,34 @@ export class PortalAutomationRailwayRunnerService implements OnModuleInit {
     downloadsPath: string,
     fallbackName: string,
   ): Promise<EBeyannameFilePayload | null> {
-    const viaNavigation = await this.savePdfFromBrowserNavigationUrl(page, url, downloadsPath, fallbackName).catch(() => null);
-    if (viaNavigation) return viaNavigation;
-
-    const viaBrowserFetch = await this.savePdfFromBrowserFetch(page, url, downloadsPath, fallbackName).catch(() => null);
-    if (viaBrowserFetch) return viaBrowserFetch;
-
     const response = await page.context().request.get(url, {
       timeout: this.ebeyannameDirectFetchTimeoutMs(),
       headers: { referer: String(page.url?.() || '') },
     }).catch(() => null);
-    if (!response?.ok()) {
-      return null;
+    if (response?.ok()) {
+      const headers = response.headers();
+      const mimeType = headers['content-type'] || 'application/pdf';
+      const buffer = Buffer.from(await response.body());
+      const pdfish = /^%PDF/.test(buffer.subarray(0, 5).toString('latin1'))
+        || /pdf|octet-stream/i.test(mimeType)
+        || /\.pdf(?:$|[?#])/i.test(url);
+      if (this.ebeyannameDebugEnabled()) {
+        this.logger.warn(`[EBDBG] request ${fallbackName} status=${response.status()} mime=${mimeType} bytes=${buffer.length} pdfish=${pdfish}`);
+      }
+      if (pdfish && buffer.length >= 200) {
+        return this.persistPdfBuffer(url, headers, buffer, downloadsPath, fallbackName, mimeType);
+      }
+    } else if (this.ebeyannameDebugEnabled()) {
+      this.logger.warn(`[EBDBG] request ${fallbackName} status=${response?.status?.() || 'null'} url=${this.safeUrl(url)}`);
     }
-    const headers = response.headers();
-    const mimeType = headers['content-type'] || 'application/pdf';
-    const buffer = Buffer.from(await response.body());
-    const pdfish = /^%PDF/.test(buffer.subarray(0, 5).toString('latin1'))
-      || /pdf|octet-stream/i.test(mimeType)
-      || /\.pdf(?:$|[?#])/i.test(url);
-    if (!pdfish || buffer.length < 200) {
-      return null;
-    }
-    return this.persistPdfBuffer(url, headers, buffer, downloadsPath, fallbackName, mimeType);
+
+    const viaBrowserFetch = await this.savePdfFromBrowserFetch(page, url, downloadsPath, fallbackName).catch(() => null);
+    if (viaBrowserFetch) return viaBrowserFetch;
+
+    const viaNavigation = await this.savePdfFromBrowserNavigationUrl(page, url, downloadsPath, fallbackName).catch(() => null);
+    if (viaNavigation) return viaNavigation;
+
+    return null;
   }
 
   private async savePdfFromBrowserNavigationUrl(
