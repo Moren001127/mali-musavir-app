@@ -43,6 +43,13 @@ COPY apps/api ./apps/api
 # Bağımlılıkları yükle
 RUN pnpm install --no-frozen-lockfile
 
+# Railway Linux build'lerinde pnpm optional native paketleri bazen sharp'in libvips
+# binary'sini eksik birakabiliyor. Runtime'a gecmeden linux-x64 sharp kurulumunu
+# npm ile garanti et ve build asamasinda require ederek dogrula.
+RUN cd /app/apps/api \
+ && npm install --include=optional --os=linux --cpu=x64 --no-save sharp@0.34.5 \
+ && node -e "const sharp=require('sharp'); console.log('>> sharp ok, libvips=' + sharp.versions.vips)"
+
 # Fallback: playwright-core kesin olarak yüklensin (lockfile/cache sorunlarına karşı)
 # Hem root hem apps/api altında node_modules/playwright-core kontrolü
 RUN cd /app/apps/api \
