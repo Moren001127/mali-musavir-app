@@ -9,6 +9,7 @@ const { PrismaClient } = require('@prisma/client');
 
 const MIGRATION_NAME = '20260428_earsiv_fatura';
 const LUCA_CAPTCHA_MIGRATION_NAME = '20260511210000_luca_captcha_challenges';
+const HATTAT_CARI_MIGRATION_NAME = '20260531153000_add_cari_hareket_source_fields';
 
 const SCHEMA_SQL = `
 DO $$ BEGIN
@@ -135,6 +136,19 @@ CREATE INDEX IF NOT EXISTS "luca_fetch_jobs_tenantId_targetDeviceId_status_idx"
   ON "luca_fetch_jobs"("tenantId", "targetDeviceId", "status");
 `;
 
+const HATTAT_CARI_SQL = `
+ALTER TABLE "cari_hareketler" ADD COLUMN IF NOT EXISTS "source" TEXT;
+ALTER TABLE "cari_hareketler" ADD COLUMN IF NOT EXISTS "sourceRef" TEXT;
+ALTER TABLE "cari_hareketler" ADD COLUMN IF NOT EXISTS "importBatchId" TEXT;
+
+CREATE INDEX IF NOT EXISTS "cari_hareketler_tenant_source_idx"
+  ON "cari_hareketler"("tenantId", "source");
+
+CREATE UNIQUE INDEX IF NOT EXISTS "cari_hareketler_tenant_source_ref_uidx"
+  ON "cari_hareketler"("tenantId", "source", "sourceRef")
+  WHERE "sourceRef" IS NOT NULL;
+`;
+
 (async () => {
   if (!process.env.DATABASE_URL) {
     console.log('[startup] DATABASE_URL yok, atlanıyor');
@@ -164,6 +178,13 @@ CREATE INDEX IF NOT EXISTS "luca_fetch_jobs_tenantId_targetDeviceId_status_idx"
     );
     if (lucaCaptchaFailed > 0) {
       console.log(`[startup] ${LUCA_CAPTCHA_MIGRATION_NAME} basarisiz kaydi silindi (${lucaCaptchaFailed})`);
+    }
+
+    const hattatCariFailed = await prisma.$executeRawUnsafe(
+      `DELETE FROM _prisma_migrations WHERE migration_name = '${HATTAT_CARI_MIGRATION_NAME}' AND finished_at IS NULL`,
+    );
+    if (hattatCariFailed > 0) {
+      console.log(`[startup] ${HATTAT_CARI_MIGRATION_NAME} basarisiz kaydi silindi (${hattatCariFailed})`);
     }
 
     // 3) Eski yarım kayıtlar
@@ -337,6 +358,21 @@ CREATE INDEX IF NOT EXISTS "luca_fetch_jobs_tenantId_targetDeviceId_status_idx"
       }
     }
     console.log(`[startup] earsiv patch: ${patchOk} ok, ${patchFail} fail (${patches.length} total)`);
+
+    try {
+      await prisma.$executeRawUnsafe(HATTAT_CARI_SQL);
+      const checksum = require('crypto').createHash('sha256').update(HATTAT_CARI_SQL).digest('hex');
+      await prisma.$executeRawUnsafe(`
+        INSERT INTO _prisma_migrations (id, checksum, finished_at, migration_name, logs, rolled_back_at, started_at, applied_steps_count)
+        SELECT gen_random_uuid()::text, '${checksum}', NOW(), '${HATTAT_CARI_MIGRATION_NAME}', NULL, NULL, NOW(), 1
+        WHERE NOT EXISTS (
+          SELECT 1 FROM _prisma_migrations WHERE migration_name = '${HATTAT_CARI_MIGRATION_NAME}'
+        )
+      `);
+      console.log(`[startup] ${HATTAT_CARI_MIGRATION_NAME} schema garanti edildi`);
+    } catch (e) {
+      console.error(`[startup] ${HATTAT_CARI_MIGRATION_NAME} patch failed: ${e.message}`);
+    }
 
     try {
       await prisma.$executeRawUnsafe(LUCA_CAPTCHA_SQL);
