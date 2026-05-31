@@ -40,8 +40,7 @@ function fmtIstanbulDate(date) {
 }
 
 function defaultFromDate() {
-  const today = fmtIstanbulDate(new Date());
-  return `${today.slice(0, 4)}-01-01`;
+  return process.env.HATTAT_CARI_DEFAULT_FROM || '2000-01-01';
 }
 
 function normalizeText(value) {
