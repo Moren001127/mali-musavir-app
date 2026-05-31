@@ -2311,9 +2311,13 @@ export class PortalAutomationRailwayRunnerService implements OnModuleInit {
           return stub;
         };
         if (typeof originalCallMenuUrlPopUp === 'function') {
-          w.callMenuUrlPopUp = function (url: any, ...args: any[]) {
-            remember(url);
-            return stub;
+          w.callMenuUrlPopUp = function (...args: any[]) {
+            try {
+              return originalCallMenuUrlPopUp.apply(this, args);
+            } catch {
+              remember(args[0]);
+              return stub;
+            }
           };
         }
 
