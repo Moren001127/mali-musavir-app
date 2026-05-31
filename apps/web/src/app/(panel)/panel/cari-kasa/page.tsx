@@ -45,12 +45,15 @@ type Hareket = {
   id: string;
   tarih: string;
   tip: 'TAHAKKUK' | 'TAHSILAT' | 'IADE' | 'DUZELTME';
-  tutar: number;
+  tutar: number | string;
   aciklama?: string | null;
   odemeYontemi?: string | null;
   belgeNo?: string | null;
   donem?: string | null;
   otoOlusturuldu: boolean;
+  source?: string | null;
+  sourceRef?: string | null;
+  importBatchId?: string | null;
   hizmet?: { hizmetAdi: string } | null;
   account?: { id: string; name: string; type: string; color: string } | null;
   runningBakiye?: number;
@@ -81,8 +84,19 @@ type TahsilatAjandasi = {
   rows: TahsilatAjandaRow[];
 };
 
-const fmt = (n: number | null | undefined) => {
-  const v = typeof n === 'number' && isFinite(n) ? n : 0;
+const moneyValue = (n: number | string | null | undefined) => {
+  if (typeof n === 'number') return isFinite(n) ? n : 0;
+  const raw = String(n ?? '').trim();
+  if (!raw) return 0;
+  const normalized = raw.includes(',')
+    ? raw.replace(/\./g, '').replace(',', '.')
+    : raw;
+  const parsed = Number(normalized);
+  return Number.isFinite(parsed) ? parsed : 0;
+};
+
+const fmt = (n: number | string | null | undefined) => {
+  const v = moneyValue(n);
   return v.toLocaleString('tr-TR', { minimumFractionDigits: 2, maximumFractionDigits: 2 });
 };
 
@@ -374,6 +388,14 @@ function HareketlerView({ hareketler, onDelete }: {
   hareketler: Hareket[];
   onDelete: (id: string) => void;
 }) {
+  const sourceBadge = (h: Hareket) => {
+    if (h.source === 'HATTAT_CARI_KASA') return { label: 'Hattat', color: '#38bdf8' };
+    if (h.source === 'CARI_TAHSILAT') return { label: 'Cari', color: '#4ade80' };
+    if (h.source === 'TRANSFER') return { label: 'Transfer', color: GOLD };
+    if (h.otoOlusturuldu) return { label: 'OTO', color: GOLD };
+    return { label: 'Manuel', color: SOFT };
+  };
+
   return (
     <div className="rounded-[10px] border overflow-hidden" style={{ background: 'rgba(255,255,255,0.045)', borderColor: 'rgba(255,255,255,0.14)' }}>
       <div className="px-5 py-3" style={{ borderBottom: '1px solid rgba(255,255,255,0.12)' }}>
@@ -399,8 +421,10 @@ function HareketlerView({ hareketler, onDelete }: {
             </thead>
             <tbody style={{ color: TEXT }}>
               {hareketler.map((h: Hareket) => {
-                const borc = h.tip === 'TAHAKKUK' ? h.tutar : h.tip === 'IADE' ? -h.tutar : 0;
-                const alacak = h.tip === 'TAHSILAT' ? h.tutar : h.tip === 'DUZELTME' ? -h.tutar : 0;
+                const tutar = moneyValue(h.tutar);
+                const borc = h.tip === 'TAHAKKUK' ? tutar : h.tip === 'IADE' ? -tutar : 0;
+                const alacak = h.tip === 'TAHSILAT' ? tutar : h.tip === 'DUZELTME' ? -tutar : 0;
+                const kaynak = sourceBadge(h);
                 return (
                   <tr key={h.id} style={{ borderTop: '1px solid rgba(255,255,255,0.08)' }}>
                     <td className="px-4 py-2 tabular-nums">{new Date(h.tarih).toLocaleDateString('tr-TR')}</td>
@@ -426,7 +450,7 @@ function HareketlerView({ hareketler, onDelete }: {
                       {h.account ? h.account.name : 'Atanmamış'}
                     </td>
                     <td className="px-4 py-2 text-center text-[11.5px] font-semibold">
-                      {h.otoOlusturuldu ? <span style={{ color: GOLD }}>OTO</span> : <span style={{ color: SOFT }}>Manuel</span>}
+                      <span style={{ color: kaynak.color }}>{kaynak.label}</span>
                     </td>
                     <td className="px-2 py-2">
                       <button onClick={() => onDelete(h.id)} className="p-1.5 rounded" style={{ color: '#fca5a5' }}><Trash2 size={12} /></button>
@@ -535,8 +559,9 @@ function EkstreView({ taxpayerId, taxpayers }: { taxpayerId: string; taxpayers: 
                     <td className="px-4 py-2 text-right tabular-nums font-bold" style={{ fontFamily: MONEY }}>₺{fmt(ekstre.acilisBakiye)}</td>
                   </tr>
                   {ekstre.satirlar.map((s: any) => {
-                    const borc = s.tip === 'TAHAKKUK' ? s.tutar : s.tip === 'IADE' ? -s.tutar : 0;
-                    const alacak = s.tip === 'TAHSILAT' ? s.tutar : s.tip === 'DUZELTME' ? -s.tutar : 0;
+                    const tutar = moneyValue(s.tutar);
+                    const borc = s.tip === 'TAHAKKUK' ? tutar : s.tip === 'IADE' ? -tutar : 0;
+                    const alacak = s.tip === 'TAHSILAT' ? tutar : s.tip === 'DUZELTME' ? -tutar : 0;
                     return (
                       <tr key={s.id} style={{ borderTop: '1px solid rgba(255,255,255,0.03)' }}>
                         <td className="px-4 py-2 tabular-nums">{new Date(s.tarih).toLocaleDateString('tr-TR')}</td>
