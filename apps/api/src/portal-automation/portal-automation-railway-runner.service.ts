@@ -109,6 +109,9 @@ export class PortalAutomationRailwayRunnerService implements OnModuleInit {
     this.cancelInterruptedEBeyannameJobsOnBoot().catch((err) => {
       this.logger.warn(`boot e-Beyanname iptal temizligi hata: ${err?.message || err}`);
     });
+    this.requeueInterruptedEBeyannameJobsOnBoot().catch((err) => {
+      this.logger.warn(`boot e-Beyanname requeue temizligi hata: ${err?.message || err}`);
+    });
     setTimeout(() => this.tick().catch((err) => this.logger.warn(`ilk tick hata: ${err?.message || err}`)), 10_000).unref();
   }
 
@@ -212,6 +215,35 @@ export class PortalAutomationRailwayRunnerService implements OnModuleInit {
     });
     if (result?.count) {
       this.logger.warn(`[PortalRailwayRunner] ${result.count} aktif e-Beyanname isi yerel ajana gecis icin iptal edildi.`);
+    }
+  }
+
+  private async requeueInterruptedEBeyannameJobsOnBoot() {
+    if (this.localFirstEBeyannameEnabled()) return;
+    if (this.isLocalRunner()) return;
+    const raw = process.env.PORTAL_AUTOMATION_EBEYANNAME_REQUEUE_INTERRUPTED_ON_BOOT;
+    if (raw != null && !this.envFlag(raw)) return;
+    const cutoffMs = Math.max(60_000, Math.min(15 * 60_000, Number(process.env.PORTAL_AUTOMATION_EBEYANNAME_REQUEUE_BOOT_AFTER_MS || 120_000)));
+    const cutoff = new Date(Date.now() - cutoffMs);
+    const result = await (this.prisma as any).portalAutomationJob.updateMany({
+      where: {
+        jobType: 'EBEYANNAME_DAILY_DOWNLOAD',
+        status: 'running',
+        updatedAt: { lt: cutoff },
+        OR: [
+          { targetDeviceId: this.deviceId },
+          { targetDeviceId: { startsWith: 'railway' } },
+          { targetDeviceId: null },
+        ],
+      },
+      data: {
+        status: 'pending',
+        targetDeviceId: null,
+        errorMessage: 'Sunucu yeniden basladi; e-Beyanname isi tekrar kuyruga alindi',
+      },
+    });
+    if (result?.count) {
+      this.logger.warn(`[PortalRailwayRunner] ${result.count} kesilmis e-Beyanname isi tekrar kuyruga alindi.`);
     }
   }
 
@@ -1930,18 +1962,24 @@ export class PortalAutomationRailwayRunnerService implements OnModuleInit {
           });
         }
 
-        const identity = this.ebeyannameIdentityFromRow(row, taxpayers, job);
-        const existing = await this.existingBeyanKaydiFiles(tenantId, identity);
-        const skipExisting = !!existing && !identity?.isCorrection && !this.shouldRefreshExistingEBeyanname(job);
-        const skipBeyanname = skipExisting && !!existing.beyannameUrl;
-        const skipTahakkuk = skipExisting && !!existing.pdfUrl;
-        if (skipBeyanname && skipTahakkuk) {
-          notes.push(`onaylandi: ${identity?.beyanTipi || '-'} ${identity?.donem || '-'} ${row.taxNumber || row.taxpayerName || ''} zaten var, tekrar indirilmedi`);
-          continue;
-        }
+        const planned = await this.withTimeout((async () => {
+          const identity = this.ebeyannameIdentityFromRow(row, taxpayers, job);
+          const existing = await this.existingBeyanKaydiFiles(tenantId, identity);
+          const skipExisting = !!existing && !identity?.isCorrection && !this.shouldRefreshExistingEBeyanname(job);
+          const skipBeyanname = skipExisting && !!existing.beyannameUrl;
+          const skipTahakkuk = skipExisting && !!existing.pdfUrl;
+          if (skipBeyanname && skipTahakkuk) {
+            notes.push(`onaylandi: ${identity?.beyanTipi || '-'} ${identity?.donem || '-'} ${row.taxNumber || row.taxpayerName || ''} zaten var, tekrar indirilmedi`);
+            return null;
+          }
 
-        const rowLocator = await this.findEBeyannameResultRowLocator(await this.findEBeyannameResultTarget(page) || page, row);
-        rowPlans.push({ row, identity, skipBeyanname, skipTahakkuk, rowLocator, seq: processedRows });
+          const rowLocator = await this.findEBeyannameResultRowLocator(await this.findEBeyannameResultTarget(page) || page, row);
+          return { row, identity, skipBeyanname, skipTahakkuk, rowLocator, seq: processedRows };
+        })(), this.ebeyannameRowPlanTimeoutMs(), () => null).catch((err) => {
+          notes.push(`onaylandi: ${processedRows}. satir planlanamadi: ${this.compact(err?.message || err)}`);
+          return null;
+        });
+        if (planned) rowPlans.push(planned);
       }
 
       // 2) PARALEL ON-GETIRME — IKI ASAMA:
@@ -1965,7 +2003,11 @@ export class PortalAutomationRailwayRunnerService implements OnModuleInit {
             // GIB linki onclick-JS oldugu icin direkt href yok. Onclick kodunu tiklamadan
             // calistirip window.open URL'ini yakala; indirme asagida PARALEL yapilacak.
             const meta = enumerated.metas.find((m: any) => m.index === picked);
-            const url = (await this.captureEBeyannameUrlViaOnclick(page, enumerated.candidates.nth(picked)).catch(() => null))
+            const url = (await this.withTimeout(
+              this.captureEBeyannameUrlViaOnclick(page, enumerated.candidates.nth(picked)).catch(() => null),
+              this.ebeyannameUrlResolveTimeoutMs(),
+              () => null,
+            ))
               || this.directEBeyannameUrlFromMeta(page, meta || {});
             if (url) urlTasks.push({ row: plan.row, kind, url, seq: plan.seq });
           }
@@ -2172,7 +2214,11 @@ export class PortalAutomationRailwayRunnerService implements OnModuleInit {
     // 1) EN GUVENILIR YOL: onclick icindeki beyannameGoruntule/tahakkukGoruntule zincirini
     //    gercek tiklama yapmadan calistir, window.open URL'ini yakala ve HTTP ile indir.
     let viaResolvedUrl: EBeyannameFilePayload | null = null;
-    const resolvedUrl = (await this.captureEBeyannameUrlViaOnclick(page, loc).catch(() => null))
+    const resolvedUrl = (await this.withTimeout(
+      this.captureEBeyannameUrlViaOnclick(page, loc).catch(() => null),
+      this.ebeyannameUrlResolveTimeoutMs(),
+      () => null,
+    ))
       || this.directEBeyannameUrlFromMeta(page, meta || {});
     if (resolvedUrl) {
       viaResolvedUrl = await this.savePdfFromRequestUrl(page, resolvedUrl, downloadsPath, fallbackName).catch(() => null);
@@ -2182,7 +2228,11 @@ export class PortalAutomationRailwayRunnerService implements OnModuleInit {
     //    gercek tiklamadan once window.open'u intercept et.
     let viaClick: EBeyannameFilePayload | null = null;
     if (!viaResolvedUrl && !opts?.directOnly) {
-      const clickUrl = await this.captureEBeyannameUrlViaClick(page, loc).catch(() => null);
+      const clickUrl = await this.withTimeout(
+        this.captureEBeyannameUrlViaClick(page, loc).catch(() => null),
+        this.ebeyannameUrlResolveTimeoutMs(),
+        () => null,
+      );
       if (clickUrl) {
         viaClick = await this.savePdfFromRequestUrl(page, clickUrl, downloadsPath, fallbackName).catch(() => null);
       }
@@ -2242,7 +2292,7 @@ export class PortalAutomationRailwayRunnerService implements OnModuleInit {
         if (typeof originalCallMenuUrlPopUp === 'function') {
           w.callMenuUrlPopUp = function (url: any, ...args: any[]) {
             remember(url);
-            return originalCallMenuUrlPopUp.apply(this, [url, ...args]);
+            return stub;
           };
         }
 
@@ -2384,6 +2434,18 @@ export class PortalAutomationRailwayRunnerService implements OnModuleInit {
     return Math.max(1, Math.min(10, Number(process.env.PORTAL_AUTOMATION_EBEYANNAME_CONCURRENCY || 4)));
   }
 
+  private ebeyannameRowPlanTimeoutMs() {
+    return Math.max(2_000, Math.min(30_000, Number(process.env.PORTAL_AUTOMATION_EBEYANNAME_ROW_PLAN_TIMEOUT_MS || 6_000)));
+  }
+
+  private ebeyannameUrlResolveTimeoutMs() {
+    return Math.max(500, Math.min(10_000, Number(process.env.PORTAL_AUTOMATION_EBEYANNAME_URL_RESOLVE_TIMEOUT_MS || 2_500)));
+  }
+
+  private ebeyannameLocatorTimeoutMs() {
+    return Math.max(500, Math.min(10_000, Number(process.env.PORTAL_AUTOMATION_EBEYANNAME_LOCATOR_TIMEOUT_MS || 1_500)));
+  }
+
   /** Sinirli eseszamanlilikla items uzerinde worker calistirir (havuz modeli). */
   private async mapWithConcurrency<T>(
     items: T[],
@@ -2462,7 +2524,11 @@ export class PortalAutomationRailwayRunnerService implements OnModuleInit {
   }
 
   private async locatorText(locator: any) {
-    return locator.evaluate((el: any) => String(el?.innerText || el?.textContent || '').replace(/\s+/g, ' ').trim()).catch(() => '');
+    return locator.evaluate(
+      (el: any) => String(el?.innerText || el?.textContent || '').replace(/\s+/g, ' ').trim(),
+      undefined,
+      { timeout: this.ebeyannameLocatorTimeoutMs() },
+    ).catch(() => '');
   }
 
   private ebeyannameRowMatchScore(text: string, row: EBeyannameResultRow) {
