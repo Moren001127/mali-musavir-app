@@ -2813,7 +2813,8 @@ export class PortalAutomationRailwayRunnerService implements OnModuleInit {
         return this.persistPdfBuffer(url, headers, buffer, downloadsPath, fallbackName, mimeType);
       }
     } else if (this.ebeyannameDebugEnabled()) {
-      this.logger.warn(`[EBDBG] request ${fallbackName} status=${response?.status?.() || 'null'} url=${this.safeUrl(url)}`);
+      const body = response ? await response.text().catch(() => '') : '';
+      this.logger.warn(`[EBDBG] request ${fallbackName} status=${response?.status?.() || 'null'} body="${this.compact(body).slice(0, 220)}" url=${this.safeUrl(url)}`);
     }
 
     const viaBrowserFetch = await this.savePdfFromBrowserFetch(page, url, downloadsPath, fallbackName).catch(() => null);
