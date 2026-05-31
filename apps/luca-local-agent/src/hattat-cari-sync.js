@@ -301,17 +301,24 @@ async function downloadFullExcel(jar, cariHtml, from, to) {
 
 async function loginAndOpenCariManual() {
   const { chromium } = require('playwright');
-  const browser = await chromium.launch({
+  const userDataDir = process.env.HATTAT_CHROME_USER_DATA_DIR || path.join(os.homedir(), 'AppData', 'Local', 'MorenHattatChrome');
+  const launchOptions = {
     headless: false,
-    channel: process.env.HATTAT_BROWSER_CHANNEL || undefined,
-  });
-  const context = await browser.newContext({
+    channel: process.env.HATTAT_BROWSER_CHANNEL || 'chrome',
     acceptDownloads: true,
-    viewport: { width: 1365, height: 900 },
+    viewport: null,
     userAgent: BROWSER_UA,
-  });
+    args: ['--start-maximized', '--disable-blink-features=AutomationControlled'],
+  };
+  let context;
+  try {
+    context = await chromium.launchPersistentContext(userDataDir, launchOptions);
+  } catch (err) {
+    console.log(`Chrome profili acilamadi, Playwright Chromium ile deneniyor: ${err.message || err}`);
+    context = await chromium.launchPersistentContext(userDataDir, { ...launchOptions, channel: undefined });
+  }
   const page = await context.newPage();
-  console.log('Hattat manuel giris penceresi acildi. Lutfen webde giris yapin; Cari Kasa acilinca devam edecegim.');
+  console.log(`Hattat manuel giris penceresi acildi (${userDataDir}). Lutfen webde giris yapin; Cari Kasa acilinca devam edecegim.`);
   await page.goto(CARI_URL, { waitUntil: 'domcontentloaded', timeout: 120000 }).catch(async () => {
     await page.goto(LOGIN_URL, { waitUntil: 'domcontentloaded', timeout: 120000 });
   });
@@ -320,13 +327,14 @@ async function loginAndOpenCariManual() {
   while (Date.now() < deadline) {
     await page.waitForTimeout(2500);
     try {
+      if (page.isClosed()) throw new Error('Hattat manuel giris penceresi kapatildi');
       if (/Account\/Login/i.test(page.url())) continue;
       await page.goto(CARI_URL, { waitUntil: 'domcontentloaded', timeout: 60000 }).catch(() => null);
       const html = await page.content();
-      if (/CariKasa|FullExcelIndir|Mukellefler/i.test(html)) return { browser, page, html };
+      if (/CariKasa|FullExcelIndir|Mukellefler/i.test(html)) return { context, page, html };
     } catch {}
   }
-  await browser.close().catch(() => null);
+  await context.close().catch(() => null);
   throw new Error('Hattat manuel giris zaman asimi');
 }
 
@@ -456,7 +464,7 @@ async function main() {
       customerMap = parseCustomerOptions(manual.html);
       excel = await downloadFullExcelWithPage(manual.page, manual.html, from, to);
     } finally {
-      await manual.browser.close().catch(() => null);
+      await manual.context.close().catch(() => null);
     }
   } else {
     const { jar, html } = await loginAndOpenCari();
