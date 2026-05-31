@@ -2150,6 +2150,13 @@ export class PortalAutomationRailwayRunnerService implements OnModuleInit {
 
     const loc = candidates.nth(picked);
     const fallbackName = `ebeyanname-${sequence}-${kind}`;
+    // [EBDBG] Teshis: ilk satirlarda butonlarin gercek yapisini + hangi adayin secildigini logla.
+    if (sequence <= 8) {
+      const summary = metas
+        .map((m: any) => `[${m.index}${m.index === picked ? '*' : ''}]${m.tag}|t="${this.compact(m.text).slice(0, 28)}"|h="${this.compact(m.href).slice(0, 70)}"|oc="${this.compact(m.onclick).slice(0, 70)}"`)
+        .join('  ||  ');
+      this.logger.warn(`[EBDBG] satir ${resultRow.rowIndex + 1} kind=${kind} picked=${picked} vkn=${resultRow.taxNumber} :: ${summary}`);
+    }
     const direct = await this.tryDownloadEBeyannameDirect(page, metas.find((meta: any) => meta.index === picked), downloadsPath, fallbackName).catch((err) => {
       if (!opts?.directOnly) notes.push(`${kind}: satir ${resultRow.rowIndex + 1} dogrudan PDF denemesi basarisiz: ${this.compact(err?.message || err)}`);
       return null;
@@ -2161,6 +2168,10 @@ export class PortalAutomationRailwayRunnerService implements OnModuleInit {
           notes.push(`${kind}: satir ${resultRow.rowIndex + 1} PDF indirme hatasi: ${this.compact(err?.message || err)}`);
           return null;
         }));
+    if (sequence <= 8) {
+      const bytes = clicked?.base64 ? Buffer.from(clicked.base64, 'base64').length : 0;
+      this.logger.warn(`[EBDBG] satir ${resultRow.rowIndex + 1} kind=${kind} sonuc: direct=${!!direct} clicked=${!!clicked} bytes=${bytes} file="${clicked?.fileName || '-'}"`);
+    }
     if (!clicked) {
       if (!opts?.directOnly) notes.push(`${kind}: satir ${resultRow.rowIndex + 1} tiklandi ama PDF alinamadi`);
       return { file: null, ownerMismatch: false };
