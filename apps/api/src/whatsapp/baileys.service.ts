@@ -243,6 +243,24 @@ export class BaileysService {
     return `${digits}@s.whatsapp.net`;
   }
 
+  /**
+   * İnsan gibi tempo: "yazıyor…" göstergesi + mesaj uzunluğuyla orantılı kısa
+   * gecikme. Cevabın anında/robotik düşmesini önler. MOREN_BOT_TYPING=0 ile kapatılır.
+   */
+  private async humanPace(sock: any, jid: string, text: string) {
+    if (process.env.MOREN_BOT_TYPING === '0') return;
+    try {
+      await sock.sendPresenceUpdate('composing', jid);
+      const len = (text || '').length;
+      const ms = Math.min(
+        Number(process.env.MOREN_BOT_TYPING_MAX_MS || 4500),
+        800 + len * 35,
+      );
+      await new Promise((r) => setTimeout(r, ms));
+      await sock.sendPresenceUpdate('paused', jid);
+    } catch { /* presence başarısızsa sorun değil */ }
+  }
+
   /** Düz metin gönder. */
   async sendText(tenantId: string, phone: string, text: string): Promise<boolean> {
     const s = this.sessions.get(tenantId);
@@ -251,7 +269,9 @@ export class BaileysService {
       return false;
     }
     try {
-      await s.sock.sendMessage(this.toJid(phone), { text });
+      const jid = this.toJid(phone);
+      await this.humanPace(s.sock, jid, text);
+      await s.sock.sendMessage(jid, { text });
       return true;
     } catch (e: any) {
       this.logger.error(`[Baileys] gönderim hatası ${phone}: ${e?.message || e}`);

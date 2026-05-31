@@ -5,7 +5,7 @@ import { computeCostUsd, logAiUsage } from '../common/ai-usage-logger';
 const ANTHROPIC_URL = 'https://api.anthropic.com/v1/messages';
 const DEFAULT_MODEL = process.env.BOT_EVAL_MODEL || 'claude-haiku-4-5-20251001';
 const SAFE_FALLBACK =
-  'Mesaj\u0131n\u0131z ofise iletildi, en k\u0131sa s\u00fcrede size d\u00f6n\u00fc\u015f yapaca\u011f\u0131z.';
+  'Hemen bir bak\u0131p size d\u00f6neyim.';
 
 export type BotEvalContext = {
   tenantId?: string;
@@ -64,7 +64,8 @@ export class BotEvalService {
     return [
       'Onceki WhatsApp cevabin kalite kontrolunden gecemedi.',
       'Sadece mukellefe gidecek nihai cevabi yeniden yaz.',
-      '1-2 kisa cumle kullan, markdown/emoji kullanma, kesin taahhut verme.',
+      'GERCEK BIR INSAN gibi, dogal ve sicak yaz; musterinin tonuna uy. Robotik/kurumsal kalip ("ilgili kisiye aktarildi", "kayda alindi") KULLANMA.',
+      'En fazla 2-3 kisa cumle, markdown yok, kesin tarih/garanti taahhudu verme. Bot/yapay zeka oldugunu ima etme.',
       'Son cevaplari tekrar etme; ayni kaliplari kullanma.',
       `Intent: ${context.intent || 'GENEL'}`,
       `Sorunlar: ${reasons.join(', ') || 'belirsiz'}`,
@@ -93,15 +94,16 @@ export class BotEvalService {
       score -= 4;
     }
 
-    const forbidden = text.match(/\b(hemen|kesin|garanti|yar\u0131na kadar|yarina kadar|bug\u00fcn kesin|bugun kesin)\b/i);
+    // Sadece somut taahh\u00fct s\u00f6zleri yasak \u2014 "hemen bak\u0131yorum" gibi do\u011fal ifadeler serbest.
+    const forbidden = text.match(/\b(kesin biter|kesinlikle biter|garanti|yar\u0131na kadar|yarina kadar|bug\u00fcn kesin|bugun kesin)\b/i);
     if (forbidden) {
       reasons.push(`FORBIDDEN_WORD:${forbidden[1]}`);
       score -= 3;
     }
 
     const sentenceCount = this.sentenceCount(text);
-    if (sentenceCount > 2 || text.length > 250) {
-      reasons.push(sentenceCount > 2 ? `TOO_MANY_SENTENCES:${sentenceCount}` : `TOO_LONG:${text.length}`);
+    if (sentenceCount > 3 || text.length > 340) {
+      reasons.push(sentenceCount > 3 ? `TOO_MANY_SENTENCES:${sentenceCount}` : `TOO_LONG:${text.length}`);
       score -= 2;
     }
 
@@ -128,11 +130,12 @@ export class BotEvalService {
   private async judgeWithHaiku(reply: string, context: BotEvalContext, lastOutgoing: string[], apiKey: string) {
     const model = DEFAULT_MODEL;
     const prompt = [
-      'You are a strict Turkish WhatsApp bot QA judge for an accounting office.',
+      'You are a Turkish WhatsApp QA judge for an accounting office assistant that MUST sound like a real human, not an AI.',
       'Return ONLY JSON: {"score":0-10,"reasons":["..."]}.',
-      'Check duplicate wording, intent fit, forbidden promises, length, tone, privacy.',
-      'Forbidden promises include hemen, kesin, garanti, yarina kadar.',
-      'The answer should be mostly one sentence, max two short sentences.',
+      'REWARD (high score): natural, warm, fluent human Turkish that mirrors the customer tone; concise; directly answers what was asked.',
+      'PENALIZE (low score): robotic/corporate template phrases ("ilgili kisiye aktarildi", "kayda alindi", "talebiniz isleme alinmistir", "donus yapilacaktir"); revealing or implying it is a bot/AI/yapay zeka; contradicting earlier messages; fabricated numbers/dates; volunteering status nobody asked about; duplicate wording vs last replies; privacy leaks.',
+      'Forbidden = concrete deadline/guarantee promises (kesin biter, garanti, yarina kadar hazir). Ordinary natural phrases like "hemen bakiyorum" / "bir bakayim" are FINE, do not penalize them.',
+      'Length: at most 2-3 short sentences. Plain text, no markdown.',
       `Intent: ${context.intent || 'GENEL'}`,
       `Customer message: ${context.message || ''}`,
       `Last outgoing replies: ${JSON.stringify(lastOutgoing.slice(0, 3))}`,

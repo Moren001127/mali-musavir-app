@@ -1,5 +1,8 @@
 import { Injectable } from '@nestjs/common';
 
+// "Moren AI" / "yapay zeka" gibi ifadeleri gizlemek için doğal karşılık.
+const OFFICE_FALLBACK = 'ofisimiz';
+
 @Injectable()
 export class WhatsAppBotPostFilterService {
   filterTaxpayerReply(raw: string, options?: { recentReplies?: string[]; mode?: 'taxpayer' | 'owner' | 'unknown' }): string {
@@ -31,18 +34,18 @@ export class WhatsAppBotPostFilterService {
     // 4. Çift tırnaklı blokları açığa çıkar ("..." içeriğini bırak)
     text = text.replace(/^"([^"]+)"$/g, '$1');
 
-    // 5. Klasik düzeltmeler
+    // 5. Yapay zeka kimliğini gizle (doğal dili BOZMADAN). Önceki sürüm "hemen"
+    // gibi sıradan kelimeleri "kontrol sonrasi" ile değiştirip cümleyi robotik
+    // yapıyordu — kaldırıldı. Aşırı taahhüt kontrolü artık prompt'ta.
     text = text
-      .replace(/\bMoren AI\b/gi, 'ofisimiz')
-      .replace(/\byapay zeka\b/gi, 'ofisimiz')
-      .replace(/\bhemen\b/gi, 'kontrol sonrasi')
-      .replace(/\bbugun kesin\b/gi, 'kontrol sonrasi')
-      .replace(/\byarin kesin\b/gi, 'kontrol sonrasi')
+      .replace(/\bMoren AI\b/gi, OFFICE_FALLBACK)
+      .replace(/\byapay zeka\b/gi, OFFICE_FALLBACK)
+      .replace(/\bdil modeli\b/gi, OFFICE_FALLBACK)
       .replace(/\s+/g, ' ')
       .trim();
 
     if (this.looksRisky(text)) {
-      return 'Notunuzu aldik. Kayitlariniz ofis tarafindan kontrol edilip size net bilgi verilecek.';
+      return 'Bunu bir kontrol edeyim, size net bilgiyle döneyim.';
     }
 
     text = this.avoidRepeatedPhrases(text, options?.recentReplies || []);
@@ -57,7 +60,7 @@ export class WhatsAppBotPostFilterService {
     const defaultMax = options?.mode === 'owner' ? 1300 : 480;
     const maxChars = Number(process.env.WHATSAPP_BOT_REPLY_MAX_CHARS || defaultMax);
     if (text.length > maxChars) text = text.slice(0, maxChars).replace(/\s+\S*$/, '').trim();
-    return text || 'Mesajinizi aldik; ilgili kayda ekledik.';
+    return text || 'Bir bakıp size döneyim.';
   }
 
   private looksRisky(text: string): boolean {
@@ -97,8 +100,8 @@ export class WhatsAppBotPostFilterService {
 
   private limitSentences(text: string): string {
     const sentences = text.match(/[^.!?]+[.!?]?/g)?.map((part) => part.trim()).filter(Boolean) || [];
-    if (sentences.length <= 2) return text;
-    return sentences.slice(0, 2).join(' ').trim();
+    if (sentences.length <= 3) return text;
+    return sentences.slice(0, 3).join(' ').trim();
   }
 
   private pick(options: string[]): string {

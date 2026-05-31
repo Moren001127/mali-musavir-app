@@ -213,6 +213,23 @@ function openNormalChromeForHattat() {
   return true;
 }
 
+function openCdpChromeForHattat(port) {
+  const chrome = locateChromeExe();
+  const userDataDir = process.env.HATTAT_CDP_USER_DATA_DIR || path.join(os.homedir(), 'AppData', 'Local', 'MorenHattatCdpChrome');
+  const args = [
+    `--remote-debugging-port=${port}`,
+    `--user-data-dir=${userDataDir}`,
+    '--start-maximized',
+    CARI_URL,
+  ];
+  if (chrome) {
+    spawn(chrome, args, { detached: true, stdio: 'ignore' }).unref();
+    return true;
+  }
+  spawn('cmd.exe', ['/c', 'start', '', 'chrome', ...args], { detached: true, stdio: 'ignore' }).unref();
+  return true;
+}
+
 function chromeUserDataRoot() {
   return process.env.HATTAT_CHROME_USER_DATA_ROOT || path.join(process.env.LOCALAPPDATA || '', 'Google', 'Chrome', 'User Data');
 }
@@ -342,6 +359,91 @@ async function loginAndOpenCariChromeCookies() {
     }
   }
   throw new Error(`Normal Chrome Hattat oturumu alinamadi${lastError ? `: ${lastError.message || lastError}` : ''}`);
+}
+
+async function cdpTargets(port) {
+  const res = await fetch(`http://127.0.0.1:${port}/json`);
+  if (!res.ok) throw new Error(`CDP hedefleri okunamadi: HTTP ${res.status}`);
+  return res.json();
+}
+
+function cdpConnect(wsUrl) {
+  return new Promise((resolve, reject) => {
+    const ws = new WebSocket(wsUrl);
+    const pending = new Map();
+    let seq = 0;
+    const timer = setTimeout(() => reject(new Error('CDP baglanti zaman asimi')), 15000);
+    ws.addEventListener('open', () => {
+      clearTimeout(timer);
+      resolve({
+        call(method, params = {}) {
+          const id = ++seq;
+          ws.send(JSON.stringify({ id, method, params }));
+          return new Promise((res, rej) => pending.set(id, { res, rej }));
+        },
+        close() {
+          try { ws.close(); } catch {}
+        },
+      });
+    });
+    ws.addEventListener('message', (event) => {
+      const msg = JSON.parse(event.data);
+      if (!msg.id || !pending.has(msg.id)) return;
+      const entry = pending.get(msg.id);
+      pending.delete(msg.id);
+      if (msg.error) entry.rej(new Error(msg.error.message || JSON.stringify(msg.error)));
+      else entry.res(msg.result);
+    });
+    ws.addEventListener('error', () => reject(new Error('CDP websocket hatasi')));
+  });
+}
+
+async function loginAndOpenCariCdp() {
+  const port = Number(arg('cdp-port', process.env.HATTAT_CDP_PORT || 9333));
+  openCdpChromeForHattat(port);
+  console.log(`Normal Chrome acildi (CDP port ${port}). Hattat'a normal sekmede giris yapin; Cari Kasa gorulunce otomatik devam edecegim.`);
+  const deadline = Date.now() + 10 * 60 * 1000;
+  let lastError = null;
+  while (Date.now() < deadline) {
+    await new Promise((resolve) => setTimeout(resolve, 2500));
+    let client = null;
+    try {
+      const targets = await cdpTargets(port);
+      const pageTarget =
+        targets.find((t) => t.type === 'page' && /hattatmusavir\.com\/MaliMusavir\/CariKasa/i.test(t.url || '')) ||
+        targets.find((t) => t.type === 'page' && /hattatmusavir\.com/i.test(t.url || '')) ||
+        targets.find((t) => t.type === 'page');
+      if (!pageTarget?.webSocketDebuggerUrl) continue;
+      client = await cdpConnect(pageTarget.webSocketDebuggerUrl);
+      await client.call('Runtime.enable').catch(() => null);
+      await client.call('Page.enable').catch(() => null);
+      const state = await client.call('Runtime.evaluate', {
+        returnByValue: true,
+        expression: `(() => ({ url: location.href, html: document.documentElement.outerHTML.slice(0, 200000) }))()`,
+      });
+      const value = state?.result?.value || {};
+      if (!/hattatmusavir\.com/i.test(value.url || '')) {
+        await client.call('Page.navigate', { url: CARI_URL }).catch(() => null);
+        client.close();
+        continue;
+      }
+      if (!/CariKasa/i.test(value.url || '')) {
+        if (!/Account\/Login/i.test(value.url || '')) {
+          await client.call('Page.navigate', { url: CARI_URL }).catch(() => null);
+        }
+        client.close();
+        continue;
+      }
+      if (/CariKasa|FullExcelIndir|Mukellefler/i.test(value.html || '')) {
+        return { client, html: value.html };
+      }
+      client.close();
+    } catch (err) {
+      lastError = err;
+      if (client) client.close();
+    }
+  }
+  throw new Error(`Hattat normal Chrome girisi alinamadi${lastError ? `: ${lastError.message || lastError}` : ''}`);
 }
 
 async function solveTurnstile(apiKey) {
@@ -506,6 +608,7 @@ async function downloadFullExcelWithPage(page, cariHtml, from, to) {
       headers: {
         'Content-Type': 'application/x-www-form-urlencoded; charset=UTF-8',
         __RequestVerificationToken: antiForgery,
+        'X-Requested-With': 'XMLHttpRequest',
       },
       body: form.toString(),
     });
@@ -519,6 +622,52 @@ async function downloadFullExcelWithPage(page, cariHtml, from, to) {
   }, { url: EXCEL_URL, fromDate: from, toDate: to, antiForgery: token });
   if (!result.ok) throw new Error(`Hattat Excel indirilemedi: HTTP ${result.status}`);
   const buffer = Buffer.from(result.bytes);
+  assertExcelBuffer(buffer, 'Hattat');
+  return buffer;
+}
+
+async function downloadFullExcelWithCdp(client, cariHtml, from, to) {
+  const token = extractAntiForgery(cariHtml);
+  if (!token) throw new Error('Cari Kasa Excel tokeni bulunamadi');
+  const expression = `(${async ({ url, fromDate, toDate, antiForgery }) => {
+    const form = new URLSearchParams({
+      __RequestVerificationToken: antiForgery,
+      excelCusID: '0',
+      excelBeginDate: fromDate,
+      excelEndDate: toDate,
+      excelBakiyeSifir: 'false',
+    });
+    const response = await fetch(url, {
+      method: 'POST',
+      credentials: 'include',
+      headers: {
+        'Content-Type': 'application/x-www-form-urlencoded; charset=UTF-8',
+        __RequestVerificationToken: antiForgery,
+        'X-Requested-With': 'XMLHttpRequest',
+      },
+      body: form.toString(),
+    });
+    const bytes = new Uint8Array(await response.arrayBuffer());
+    let binary = '';
+    const chunk = 0x8000;
+    for (let i = 0; i < bytes.length; i += chunk) {
+      binary += String.fromCharCode(...bytes.slice(i, i + chunk));
+    }
+    return {
+      ok: response.ok,
+      status: response.status,
+      contentType: response.headers.get('content-type') || '',
+      base64: btoa(binary),
+    };
+  }})(${JSON.stringify({ url: EXCEL_URL, fromDate: from, toDate: to, antiForgery: token })})`;
+  const result = await client.call('Runtime.evaluate', {
+    awaitPromise: true,
+    returnByValue: true,
+    expression,
+  });
+  const value = result?.result?.value || {};
+  if (!value.ok) throw new Error(`Hattat Excel indirilemedi: HTTP ${value.status || 'bilinmiyor'}`);
+  const buffer = Buffer.from(value.base64 || '', 'base64');
   assertExcelBuffer(buffer, 'Hattat');
   return buffer;
 }
@@ -600,6 +749,7 @@ async function main() {
   const fileArg = arg('file', '');
   const manualLogin = Boolean(arg('manual-login', false));
   const chromeLogin = Boolean(arg('chrome-login', false));
+  const cdpLogin = Boolean(arg('cdp-login', false));
   let customerMap = new Map();
   let excel;
   let outFile;
@@ -622,6 +772,14 @@ async function main() {
     const { jar, html } = await loginAndOpenCariChromeCookies();
     customerMap = parseCustomerOptions(html);
     excel = await downloadFullExcel(jar, html, from, to);
+  } else if (cdpLogin) {
+    const cdp = await loginAndOpenCariCdp();
+    try {
+      customerMap = parseCustomerOptions(cdp.html);
+      excel = await downloadFullExcelWithCdp(cdp.client, cdp.html, from, to);
+    } finally {
+      cdp.client.close();
+    }
   } else {
     const { jar, html } = await loginAndOpenCari();
     customerMap = parseCustomerOptions(html);

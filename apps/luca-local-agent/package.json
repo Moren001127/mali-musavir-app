@@ -10,6 +10,7 @@
     "hattat:cari-full-sync": "node src/hattat-cari-sync.js --from=1900-01-01",
     "hattat:cari-manual-sync": "node src/hattat-cari-sync.js --from=1900-01-01 --manual-login",
     "hattat:cari-chrome-sync": "node src/hattat-cari-sync.js --from=1900-01-01 --chrome-login",
+    "hattat:cari-cdp-sync": "node src/hattat-cari-sync.js --from=1900-01-01 --cdp-login",
     "hattat:credentials": "node src/hattat-save-credentials.js",
     "install:browsers": "playwright install chromium"
   },
