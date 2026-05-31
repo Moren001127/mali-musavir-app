@@ -360,7 +360,7 @@ export default function BeyannamelerPage() {
       jobTypes: ['EBEYANNAME_DAILY_DOWNLOAD'],
       dateFrom: pullFrom,
       dateTo: pullTo,
-      force: true,
+      force: false,
     }),
     onSuccess: (res) => {
       qc.invalidateQueries({ queryKey: ['portal-automation-summary'] });
@@ -476,11 +476,11 @@ export default function BeyannamelerPage() {
   const tableRows = useMemo<BeyanTableRow[]>(() => {
     return filtered.flatMap((row) => {
       const rows: BeyanTableRow[] = [];
-      if (docFilter !== 'tahakkuk' && row.beyannameUrl) {
-        rows.push({ key: `${row.id}:beyanname`, row, kind: 'beyanname', tur: 'EBeyanname', hasFile: true });
+      if (docFilter !== 'tahakkuk') {
+        rows.push({ key: `${row.id}:beyanname`, row, kind: 'beyanname', tur: 'EBeyanname', hasFile: !!row.beyannameUrl });
       }
-      if (docFilter !== 'beyanname' && row.pdfUrl) {
-        rows.push({ key: `${row.id}:tahakkuk`, row, kind: 'tahakkuk', tur: 'Tahakkuk', hasFile: true });
+      if (docFilter !== 'beyanname') {
+        rows.push({ key: `${row.id}:tahakkuk`, row, kind: 'tahakkuk', tur: 'Tahakkuk', hasFile: !!row.pdfUrl });
       }
       return rows;
     });
@@ -968,7 +968,7 @@ export default function BeyannamelerPage() {
               </tbody>
             </table>
             <div className="px-4 py-3 text-[12.5px]" style={{ color: 'rgba(250,250,249,0.55)', borderTop: '1px solid rgba(255,255,255,0.055)' }}>
-              Toplam {tableRows.length.toLocaleString('tr-TR')} acilabilir belge satiri gosteriliyor.
+              Toplam {tableRows.length.toLocaleString('tr-TR')} belge satiri gosteriliyor.
               {(missingFileStats.beyanname > 0 || missingFileStats.tahakkuk > 0) && (
                 <span style={{ color: '#fcd34d' }}>
                   {' '}PDF eksik: {missingFileStats.beyanname.toLocaleString('tr-TR')} beyanname, {missingFileStats.tahakkuk.toLocaleString('tr-TR')} tahakkuk{missingFileStats.both ? `, ${missingFileStats.both.toLocaleString('tr-TR')} tamamen bos kayit` : ''}.

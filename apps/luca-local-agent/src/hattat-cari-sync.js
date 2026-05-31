@@ -2,7 +2,7 @@ const fs = require('fs');
 const path = require('path');
 const os = require('os');
 const crypto = require('crypto');
-const { spawnSync } = require('child_process');
+const { spawn, spawnSync } = require('child_process');
 const axios = require('axios');
 const XLSX = require('xlsx');
 const dotenv = require('dotenv');
@@ -176,8 +176,8 @@ $out | ConvertTo-Json -Depth 8 -Compress
   return { email, password };
 }
 
-function createCookieJar() {
-  const jar = new Map();
+function createCookieJar(initialCookies = []) {
+  const jar = new Map(initialCookies);
   return {
     header() {
       return Array.from(jar.entries()).map(([k, v]) => `${k}=${v}`).join('; ');
@@ -191,6 +191,157 @@ function createCookieJar() {
       }
     },
   };
+}
+
+function locateChromeExe() {
+  const candidates = [
+    process.env.HATTAT_CHROME_EXE,
+    path.join(process.env.PROGRAMFILES || 'C:\\Program Files', 'Google', 'Chrome', 'Application', 'chrome.exe'),
+    path.join(process.env['PROGRAMFILES(X86)'] || 'C:\\Program Files (x86)', 'Google', 'Chrome', 'Application', 'chrome.exe'),
+    path.join(process.env.LOCALAPPDATA || '', 'Google', 'Chrome', 'Application', 'chrome.exe'),
+  ].filter(Boolean);
+  return candidates.find((candidate) => fs.existsSync(candidate)) || null;
+}
+
+function openNormalChromeForHattat() {
+  const chrome = locateChromeExe();
+  if (chrome) {
+    spawn(chrome, [CARI_URL], { detached: true, stdio: 'ignore' }).unref();
+    return true;
+  }
+  spawn('cmd.exe', ['/c', 'start', '', CARI_URL], { detached: true, stdio: 'ignore' }).unref();
+  return true;
+}
+
+function chromeUserDataRoot() {
+  return process.env.HATTAT_CHROME_USER_DATA_ROOT || path.join(process.env.LOCALAPPDATA || '', 'Google', 'Chrome', 'User Data');
+}
+
+function chromeProfileDirs(root) {
+  const requested = process.env.HATTAT_CHROME_PROFILE;
+  if (requested) return [path.join(root, requested)];
+  if (!fs.existsSync(root)) return [];
+  const dirs = fs.readdirSync(root, { withFileTypes: true })
+    .filter((entry) => entry.isDirectory())
+    .map((entry) => path.join(root, entry.name))
+    .filter((dir) => fs.existsSync(path.join(dir, 'Network', 'Cookies')) || fs.existsSync(path.join(dir, 'Cookies')));
+  const preferred = ['Default', 'Profile 1', 'Profile 2']
+    .map((name) => path.join(root, name))
+    .filter((dir) => dirs.includes(dir));
+  return Array.from(new Set([...preferred, ...dirs]));
+}
+
+function decryptDpapiBuffer(buffer) {
+  const ps = `
+$bytes = [Convert]::FromBase64String($env:DPAPI_B64)
+Add-Type -AssemblyName System.Security
+$plain = [System.Security.Cryptography.ProtectedData]::Unprotect($bytes, $null, [System.Security.Cryptography.DataProtectionScope]::CurrentUser)
+[Convert]::ToBase64String($plain)
+`;
+  const res = spawnSync('powershell.exe', ['-NoProfile', '-ExecutionPolicy', 'Bypass', '-Command', ps], {
+    encoding: 'utf8',
+    windowsHide: true,
+    env: { ...process.env, DPAPI_B64: buffer.toString('base64') },
+    maxBuffer: 1024 * 1024,
+  });
+  if (res.status !== 0) throw new Error(`Chrome DPAPI cozulemedi: ${res.stderr || res.stdout}`);
+  return Buffer.from(String(res.stdout || '').trim(), 'base64');
+}
+
+function chromeMasterKey(root) {
+  const localState = path.join(root, 'Local State');
+  if (!fs.existsSync(localState)) return null;
+  const state = readJson(localState);
+  const encryptedKey = state?.os_crypt?.encrypted_key;
+  if (!encryptedKey) return null;
+  const raw = Buffer.from(encryptedKey, 'base64');
+  const payload = raw.subarray(0, 5).toString() === 'DPAPI' ? raw.subarray(5) : raw;
+  return decryptDpapiBuffer(payload);
+}
+
+function decryptChromeCookie(record, masterKey) {
+  if (record.value) return record.value;
+  const encrypted = Buffer.from(record.encryptedValue || '', 'base64');
+  if (!encrypted.length) return '';
+  const version = encrypted.subarray(0, 3).toString('utf8');
+  if ((version === 'v10' || version === 'v11') && masterKey) {
+    const nonce = encrypted.subarray(3, 15);
+    const ciphertext = encrypted.subarray(15, encrypted.length - 16);
+    const tag = encrypted.subarray(encrypted.length - 16);
+    const decipher = crypto.createDecipheriv('aes-256-gcm', masterKey, nonce);
+    decipher.setAuthTag(tag);
+    return Buffer.concat([decipher.update(ciphertext), decipher.final()]).toString('utf8');
+  }
+  return decryptDpapiBuffer(encrypted).toString('utf8');
+}
+
+function readChromeCookiesFromDb(cookieDb) {
+  const copy = path.join(os.tmpdir(), `chrome-cookies-${process.pid}-${Date.now()}.sqlite`);
+  fs.copyFileSync(cookieDb, copy);
+  const py = `
+import base64, json, sqlite3, sys
+db = sys.argv[1]
+conn = sqlite3.connect(db)
+cur = conn.execute("select host_key, name, value, encrypted_value from cookies where host_key like ?", ("%hattatmusavir.com%",))
+rows = []
+for host, name, value, encrypted in cur.fetchall():
+    rows.append({"host": host, "name": name, "value": value or "", "encryptedValue": base64.b64encode(encrypted or b"").decode("ascii")})
+print(json.dumps(rows))
+`;
+  try {
+    const res = spawnSync('python', ['-c', py, copy], { encoding: 'utf8', windowsHide: true, maxBuffer: 1024 * 1024 });
+    if (res.status !== 0) throw new Error(res.stderr || res.stdout || 'python sqlite sorgusu basarisiz');
+    return JSON.parse(res.stdout || '[]');
+  } finally {
+    fs.rmSync(copy, { force: true });
+  }
+}
+
+function readChromeHattatCookies() {
+  const root = chromeUserDataRoot();
+  const masterKey = chromeMasterKey(root);
+  const entries = new Map();
+  for (const profile of chromeProfileDirs(root)) {
+    const cookieDb = fs.existsSync(path.join(profile, 'Network', 'Cookies'))
+      ? path.join(profile, 'Network', 'Cookies')
+      : path.join(profile, 'Cookies');
+    if (!fs.existsSync(cookieDb)) continue;
+    let records = [];
+    try {
+      records = readChromeCookiesFromDb(cookieDb);
+    } catch {
+      continue;
+    }
+    for (const record of records) {
+      try {
+        const value = decryptChromeCookie(record, masterKey);
+        if (record.name && value) entries.set(record.name, value);
+      } catch {}
+    }
+  }
+  return Array.from(entries.entries());
+}
+
+async function loginAndOpenCariChromeCookies() {
+  openNormalChromeForHattat();
+  console.log('Normal Chrome acildi. Hattat girisini/dogrulamayi normal Chrome uzerinden tamamlayin; oturum gorulunce Excel otomatik alinacak.');
+  const deadline = Date.now() + 10 * 60 * 1000;
+  let lastError = null;
+  while (Date.now() < deadline) {
+    await new Promise((resolve) => setTimeout(resolve, 3000));
+    try {
+      const cookies = readChromeHattatCookies();
+      if (!cookies.length) continue;
+      const jar = createCookieJar(cookies);
+      const cari = await requestWithCookies(jar, 'GET', CARI_URL, { timeout: 60000 });
+      const html = String(cari.data || '');
+      if (cari.status >= 300 || /Account\/Login/i.test(String(cari.headers.location || '')) || /Account\/Login/i.test(html)) continue;
+      if (/CariKasa|FullExcelIndir|Mukellefler/i.test(html)) return { jar, html };
+    } catch (err) {
+      lastError = err;
+    }
+  }
+  throw new Error(`Normal Chrome Hattat oturumu alinamadi${lastError ? `: ${lastError.message || lastError}` : ''}`);
 }
 
 async function solveTurnstile(apiKey) {
@@ -448,6 +599,7 @@ async function main() {
   const dryRun = Boolean(arg('dry-run', false));
   const fileArg = arg('file', '');
   const manualLogin = Boolean(arg('manual-login', false));
+  const chromeLogin = Boolean(arg('chrome-login', false));
   let customerMap = new Map();
   let excel;
   let outFile;
@@ -466,6 +618,10 @@ async function main() {
     } finally {
       await manual.context.close().catch(() => null);
     }
+  } else if (chromeLogin) {
+    const { jar, html } = await loginAndOpenCariChromeCookies();
+    customerMap = parseCustomerOptions(html);
+    excel = await downloadFullExcel(jar, html, from, to);
   } else {
     const { jar, html } = await loginAndOpenCari();
     customerMap = parseCustomerOptions(html);

@@ -1,0 +1,213 @@
+import { Injectable, Logger } from '@nestjs/common';
+import { Cron } from '@nestjs/schedule';
+import { PrismaService } from '../prisma/prisma.service';
+import { NotificationsService } from '../notifications/notifications.service';
+import { NOTIFICATION_TYPES } from '../notifications/notification-types';
+
+/**
+ * Beyanname son tarih hatirlatma cron'u — TAX_DEADLINE bildirimi.
+ *
+ * Her sabah 06:30 Europe/Istanbul calisir.
+ * Her tenant icin onceki donemin (gecen ay) 'beklemede' BeyanDurumu kayitlarini tarar.
+ * Beyan tipinin standart son tarihine kalan gun <= 7 ise tenant'a bildirim atar.
+ * Dedupe ile ayni gun ayni beyanname icin tekrar etmez.
+ *
+ * Son tarih kurallari kabaca (TC standart):
+ *   - KDV1, KDV2, KDV4, KDV9015     -> Bir sonraki ayin 28'i
+ *   - MUHSGK, MUHSGK2               -> Bir sonraki ayin 26'si
+ *   - DAMGA                         -> Bir sonraki ayin 25'i
+ *   - POSET                         -> 3 ayligi takip eden ayin 24'u (kabaca 24)
+ *   - BILDIRGE                      -> Bir sonraki ayin 23'u
+ *   - EDEFTER                       -> 3 ay sonrasinin son gunu (default 30)
+ *   - GGECICI, KGECICI              -> Donem sonu ayinin 17'si
+ *   - KURUMLAR                      -> 30 Nisan
+ *   - GELIR                         -> 31 Mart
+ *
+ * Bu cron'u kapatmak icin BEYAN_DEADLINE_CRON_ENABLED=false env'i ile dur.
+ */
+@Injectable()
+export class BeyannameDeadlineCron {
+  private readonly logger = new Logger(BeyannameDeadlineCron.name);
+
+  constructor(
+    private readonly prisma: PrismaService,
+    private readonly notifications: NotificationsService,
+  ) {}
+
+  @Cron('0 30 6 * * *', { timeZone: 'Europe/Istanbul' })
+  async run() {
+    if (!this.isEnabled()) {
+      this.logger.log('[BeyannameDeadlineCron] env ile kapali, atlandi');
+      return;
+    }
+    this.logger.log('[BeyannameDeadlineCron] Tarama basliyor');
+    try {
+      const tenants = await (this.prisma as any).tenant.findMany({ select: { id: true, name: true } });
+      const today = this.todayIstanbul();
+      const previousDonem = this.previousMonth(today);
+
+      let totalNotified = 0;
+      for (const tenant of tenants) {
+        try {
+          const sent = await this.runForTenant(tenant.id, previousDonem, today);
+          totalNotified += sent;
+        } catch (err: any) {
+          this.logger.warn(`[BeyannameDeadlineCron] tenant=${tenant.id} hata: ${err?.message || err}`);
+        }
+      }
+      this.logger.log(`[BeyannameDeadlineCron] Tamam: ${totalNotified} bildirim`);
+    } catch (err: any) {
+      this.logger.error(`[BeyannameDeadlineCron] Genel hata: ${err?.message || err}`);
+    }
+  }
+
+  private async runForTenant(tenantId: string, donem: string, today: Date): Promise<number> {
+    // donem (gecen ay) icin 'beklemede' kayitlari cek
+    const records = await (this.prisma as any).beyanDurumu.findMany({
+      where: {
+        tenantId,
+        donem,
+        durum: 'beklemede',
+      },
+      include: {
+        taxpayer: { select: { companyName: true, firstName: true, lastName: true } },
+      },
+    });
+    if (!records.length) return 0;
+
+    // Beyan tipi -> son tarih dictionary
+    let notified = 0;
+    for (const rec of records) {
+      const deadline = this.calculateDeadline(rec.beyanTipi, rec.donem);
+      if (!deadline) continue;
+
+      const daysRemaining = Math.ceil((deadline.getTime() - today.getTime()) / (24 * 3600 * 1000));
+      if (daysRemaining < 0 || daysRemaining > 7) continue;
+
+      const urgency = daysRemaining <= 1 ? '🚨 ACİL' : daysRemaining <= 3 ? '⚠️' : '⏰';
+      const mukellefName = rec.taxpayer?.companyName ||
+        [rec.taxpayer?.firstName, rec.taxpayer?.lastName].filter(Boolean).join(' ') ||
+        'Mükellef';
+
+      await this.notifications.createForTenant({
+        tenantId,
+        type: NOTIFICATION_TYPES.TAX_DEADLINE,
+        title: `${urgency} ${rec.beyanTipi} son ${daysRemaining} gün: ${mukellefName}`,
+        body: `${donem} dönemi ${rec.beyanTipi} beyannamesinin son verme tarihi ${this.formatTr(deadline)}. Beyanname henüz onaylanmadı.`,
+        metadata: {
+          beyanTipi: rec.beyanTipi,
+          donem: rec.donem,
+          taxpayerId: rec.taxpayerId,
+          deadline: deadline.toISOString(),
+          daysRemaining,
+          link: `/panel/beyannameler?donem=${encodeURIComponent(donem)}`,
+        },
+        dedupeKey: `tax-deadline:${rec.id}:${this.todayKey(today)}`,
+        dedupeWindowMin: 60 * 20,
+      }).catch((e) => {
+        this.logger.warn(`TAX_DEADLINE notif failed: ${(e as Error).message}`);
+      });
+      notified++;
+    }
+    return notified;
+  }
+
+  /** Beyan tipi + donem (YYYY-MM) -> son verme tarihi (Istanbul lokal saatle gun sonu) */
+  private calculateDeadline(beyanTipi: string, donem: string): Date | null {
+    const [yearStr, monthStr] = donem.split('-');
+    const year = Number(yearStr);
+    const month = Number(monthStr); // 1-12
+    if (!year || !month) return null;
+
+    // Bir sonraki ay (donem'in vade'si genelde sonraki ay)
+    const nextMonth = month === 12 ? 1 : month + 1;
+    const nextYear = month === 12 ? year + 1 : year;
+
+    const mkDate = (y: number, m: number, d: number) =>
+      new Date(`${y}-${String(m).padStart(2, '0')}-${String(d).padStart(2, '0')}T23:59:59+03:00`);
+
+    switch (beyanTipi) {
+      case 'KDV1':
+      case 'KDV2':
+      case 'KDV4':
+      case 'KDV9015':
+        return mkDate(nextYear, nextMonth, 28);
+      case 'MUHSGK':
+      case 'MUHSGK2':
+        return mkDate(nextYear, nextMonth, 26);
+      case 'DAMGA':
+        return mkDate(nextYear, nextMonth, 25);
+      case 'BILDIRGE':
+        return mkDate(nextYear, nextMonth, 23);
+      case 'POSET':
+        return mkDate(nextYear, nextMonth, 24);
+      case 'EDEFTER': {
+        // 3 ay sonrasinin son gunu (yaklasik). Ay sonu hesabi:
+        const targetMonth = month + 3 > 12 ? month + 3 - 12 : month + 3;
+        const targetYear = month + 3 > 12 ? year + 1 : year;
+        // Son gun
+        const lastDay = new Date(targetYear, targetMonth, 0).getDate();
+        return mkDate(targetYear, targetMonth, lastDay);
+      }
+      case 'GGECICI':
+      case 'KGECICI':
+        // Geçici vergi: donem son ayinin 17'si (kabaca)
+        return mkDate(nextYear, nextMonth, 17);
+      case 'KURUMLAR':
+        return mkDate(year, 4, 30); // 30 Nisan
+      case 'GELIR':
+        return mkDate(year, 3, 31); // 31 Mart
+      case 'OTV1':
+      case 'OTV3A':
+      case 'OTV3B':
+      case 'OTV4':
+        return mkDate(nextYear, nextMonth, 15);
+      case 'KONAKLAMA':
+      case 'OIV':
+      case 'GMSI':
+      case 'TURIZM':
+        return mkDate(nextYear, nextMonth, 26);
+      default:
+        return null;
+    }
+  }
+
+  private isEnabled(): boolean {
+    const raw = process.env.BEYAN_DEADLINE_CRON_ENABLED;
+    if (raw == null) return true;
+    return ['1', 'true', 'yes', 'on', 'evet'].includes(String(raw).trim().toLowerCase());
+  }
+
+  private todayIstanbul(): Date {
+    // Su anki yerel Istanbul tarihinin baslangici (00:00)
+    const fmt = new Intl.DateTimeFormat('en-CA', {
+      timeZone: 'Europe/Istanbul',
+      year: 'numeric',
+      month: '2-digit',
+      day: '2-digit',
+    });
+    const key = fmt.format(new Date());
+    return new Date(`${key}T00:00:00+03:00`);
+  }
+
+  private todayKey(today: Date): string {
+    return new Intl.DateTimeFormat('en-CA', {
+      timeZone: 'Europe/Istanbul',
+      year: 'numeric', month: '2-digit', day: '2-digit',
+    }).format(today);
+  }
+
+  private previousMonth(today: Date): string {
+    const d = new Date(today);
+    d.setUTCDate(1);
+    d.setUTCMonth(d.getUTCMonth() - 1);
+    return `${d.getUTCFullYear()}-${String(d.getUTCMonth() + 1).padStart(2, '0')}`;
+  }
+
+  private formatTr(d: Date): string {
+    return new Intl.DateTimeFormat('tr-TR', {
+      timeZone: 'Europe/Istanbul',
+      day: '2-digit', month: '2-digit', year: 'numeric',
+    }).format(d);
+  }
+}

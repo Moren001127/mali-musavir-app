@@ -2024,8 +2024,15 @@ export class PortalAutomationRailwayRunnerService implements OnModuleInit {
             notes.push(`tahakkuk: eski hatali bag temizlenemedi: ${this.compact(err?.message || err)}`);
           });
         }
-        const beyanname = beyannameResult.ownerMismatch ? null : beyannameResult.file;
-        const tahakkuk = tahakkukResult.ownerMismatch ? null : tahakkukResult.file;
+        let beyanname = beyannameResult.ownerMismatch ? null : beyannameResult.file;
+        let tahakkuk = tahakkukResult.ownerMismatch ? null : tahakkukResult.file;
+        // SWAP DUZELTME: GIB'de beyanname/tahakkuk PDF pencereleri capture sirasinda karisabiliyor.
+        // Indirilen PDF'in icerigine bakip NET ters yerlesim varsa beyanname<->tahakkuk yer degistir.
+        try {
+          const fixed = await this.fixEBeyannameTahakkukSwap(beyanname, tahakkuk, notes, seq);
+          beyanname = fixed.beyanname;
+          tahakkuk = fixed.tahakkuk;
+        } catch { /* icerik okunamazsa oldugu gibi birak */ }
         const declaration = this.declarationFromEBeyannameRow(row, 'onaylandi', taxpayers, job, { beyanname, tahakkuk });
 
         const unmatchedFiles = [
@@ -2178,6 +2185,37 @@ export class PortalAutomationRailwayRunnerService implements OnModuleInit {
     }
     const ownerOk = await this.validateEBeyannameFileOwner(resultRow, clicked, kind, notes);
     return { file: clicked, ownerMismatch: !ownerOk };
+  }
+
+  /** PDF metnine bakarak dosyanin tahakkuk mi beyanname mi oldugunu tahmin eder. */
+  private async detectEBeyannameDocType(file: EBeyannameFilePayload | null): Promise<'tahakkuk' | 'beyanname' | 'bilinmiyor'> {
+    if (!file?.base64 || !/pdf/i.test(file.mimeType || file.fileName || '')) return 'bilinmiyor';
+    const text = await this.pdfTextFromBase64(file.base64).catch(() => '');
+    const key = this.normalizeTextKey(text);
+    if (!key) return 'bilinmiyor';
+    if (/TAHAKKUKFISI|TAHAKKUKFIS|VERGININTAHAKKUK|TAHAKKUKNO|ODENECEKTUTAR|TAHAKKUKEDENVERGI/.test(key)) return 'tahakkuk';
+    if (/BEYANNAME|MATRAH|BEYANEDILEN|VERGIBILDIRIMI/.test(key)) return 'beyanname';
+    return 'bilinmiyor';
+  }
+
+  /** Beyanname/tahakkuk PDF'leri ters yerlesmisse (NET tespit edilirse) yerlerini degistirir. */
+  private async fixEBeyannameTahakkukSwap(
+    beyanname: EBeyannameFilePayload | null,
+    tahakkuk: EBeyannameFilePayload | null,
+    notes: string[],
+    seq: number,
+  ): Promise<{ beyanname: EBeyannameFilePayload | null; tahakkuk: EBeyannameFilePayload | null }> {
+    if (!beyanname && !tahakkuk) return { beyanname, tahakkuk };
+    const [bType, tType] = await Promise.all([
+      this.detectEBeyannameDocType(beyanname),
+      this.detectEBeyannameDocType(tahakkuk),
+    ]);
+    // Sadece NET ters yerlesim varsa swap et; belirsizse dokunma (yanlis duzeltme yapma).
+    if (bType === 'tahakkuk' && tType === 'beyanname') {
+      notes.push(`swap duzeltildi: ${seq}. satir beyanname<->tahakkuk yer degistirildi`);
+      return { beyanname: tahakkuk, tahakkuk: beyanname };
+    }
+    return { beyanname, tahakkuk };
   }
 
   /**

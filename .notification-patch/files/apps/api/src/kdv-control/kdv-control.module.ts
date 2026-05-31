@@ -1,0 +1,23 @@
+import { Module, forwardRef } from '@nestjs/common';
+import { MulterModule } from '@nestjs/platform-express';
+import { KdvControlService } from './kdv-control.service';
+import { KdvControlController } from './kdv-control.controller';
+import { ExcelParserService } from './excel-parser.service';
+import { OcrService } from './ocr';
+import { ReconciliationEngine } from './reconciliation';
+import { LucaModule } from '../luca/luca.module';
+import { AgentEventsModule } from '../agent-events/agent-events.module';
+import { NotificationsModule } from '../notifications/notifications.module';
+
+@Module({
+  imports: [
+    MulterModule.register({ limits: { fileSize: 50 * 1024 * 1024 } }),
+    forwardRef(() => LucaModule),
+    AgentEventsModule,
+    NotificationsModule,
+  ],
+  providers: [KdvControlService, ExcelParserService, OcrService, ReconciliationEngine],
+  controllers: [KdvControlController],
+  exports: [KdvControlService, OcrService, ExcelParserService],
+})
+export class KdvControlModule {}
