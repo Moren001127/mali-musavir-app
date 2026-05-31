@@ -1168,33 +1168,8 @@ export class PortalAutomationService {
     }
 
     if (!ownerTaxNo) {
-      this.logger.warn(`${kind} PDF icinde VKN/TCKN okunamadi; kayda baglanmayacak. Beklenen: ${expectedTaxNo}.`);
-      await this.storePortalDocumentFromAgent(tenantId, jobId, {
-        taxpayerId: null,
-        belgeTuru: kind === 'tahakkuk' ? 'GIB_TAHAKKUK' : 'GIB_BEYANNAME',
-        title: kind === 'tahakkuk'
-          ? input.tahakkukFileName || 'tahakkuk.pdf'
-          : input.beyannameFileName || 'beyanname.pdf',
-        period: input.donem,
-        issuedAt: input.beyanTarihi || null,
-        receivedAt: new Date().toISOString(),
-        mimeType: 'application/pdf',
-        originalName: kind === 'tahakkuk'
-          ? input.tahakkukFileName || 'tahakkuk.pdf'
-          : input.beyannameFileName || 'beyanname.pdf',
-        base64,
-        raw: {
-          runner: 'portal-automation',
-          source: 'declaration-owner-unknown',
-          ownerUnknown: true,
-          expectedTaxNo,
-          originalTaxpayerId: taxpayer.id,
-          originalRaw: input.raw || null,
-        },
-      }, 'EBEYANNAME_DAILY_DOWNLOAD').catch((err) => {
-        this.logger.warn(`${kind} PDF eslesmeyen belge olarak saklanamadi: ${err?.message || err}`);
-      });
-      return { base64: null, clearCurrent: true, text };
+      this.logger.warn(`${kind} PDF icinde VKN/TCKN okunamadi; net farkli VKN bulunmadigi icin kayda baglanacak. Beklenen: ${expectedTaxNo}.`);
+      return { base64, clearCurrent: false, text };
     }
 
     await this.storePortalDocumentFromAgent(tenantId, jobId, {
@@ -1452,14 +1427,22 @@ export class PortalAutomationService {
   }
 
   private async pdfTextFromBase64(base64: string) {
-    const parser = new PDFParse({ data: Buffer.from(base64, 'base64') });
+    const buffer = Buffer.from(base64, 'base64');
+    const parser = new PDFParse({ data: buffer });
+    let text = '';
     try {
       const result = await parser.getText();
-      return String(result?.text || '').replace(/\s+/g, ' ').trim();
+      text = String(result?.text || '').replace(/\s+/g, ' ').trim();
     } finally {
       const destroy = (parser as any).destroy;
       if (typeof destroy === 'function') await destroy.call(parser).catch(() => {});
     }
+    if (text.length >= 20 || !this.portalPdfOcrFallbackEnabled()) return text;
+    const ocrText = await this.azureReadPdfText(buffer).catch((err) => {
+      this.logger.warn(`Portal PDF OCR fallback hata: ${err?.message || err}`);
+      return '';
+    });
+    return String(ocrText || '').replace(/\s+/g, ' ').trim() || text;
   }
 
   private async storeBase64IfPresent(s3Key: string, base64Input: string | null | undefined, mimeType: string, originalName: string) {
@@ -1479,18 +1462,11 @@ export class PortalAutomationService {
     const buffer = Buffer.from(base64, 'base64');
     if (buffer.length < 200) return {};
 
-    const parser = new PDFParse({ data: buffer });
-    try {
-      const result = await parser.getText();
-      const text = String(result?.text || '').replace(/\s+/g, ' ').trim();
-      return {
-        tahakkukTutari: this.extractTahakkukAmount(text),
-        onayNo: this.extractTahakkukOnayNo(text),
-      };
-    } finally {
-      const destroy = (parser as any).destroy;
-      if (typeof destroy === 'function') await destroy.call(parser).catch(() => {});
-    }
+    const text = await this.pdfTextFromBase64(base64);
+    return {
+      tahakkukTutari: this.extractTahakkukAmount(text),
+      onayNo: this.extractTahakkukOnayNo(text),
+    };
   }
 
   private extractTahakkukAmount(text: string): number | null {
@@ -1498,8 +1474,12 @@ export class PortalAutomationService {
     const preferredLabels = [
       /terkin\s+sonrasi\s+kalan\s+vergi\s+tutari/i,
       /tahakkuk\s+eden\s+(?:vergi\s+)?tutar/i,
+      /tahakkuk\s+tutar[ıi]/i,
+      /tahakkuk\s+fi[şs]i\s+tutar[ıi]/i,
       /odenecek\s+(?:vergi\s+)?tutar/i,
+      /ödenecek\s+(?:vergi\s+)?tutar/i,
       /odenmesi\s+gereken\s+(?:vergi\s+)?tutar/i,
+      /ödenmesi\s+gereken\s+(?:vergi\s+)?tutar/i,
       /toplam\s+tahakkuk/i,
       /toplam\s+vergi/i,
     ];
@@ -1516,6 +1496,51 @@ export class PortalAutomationService {
       if (amount != null) return amount;
     }
     return null;
+  }
+
+  private portalPdfOcrFallbackEnabled() {
+    const raw = process.env.PORTAL_AUTOMATION_EBEYANNAME_PDF_OCR_FALLBACK;
+    if (raw != null) return this.envFlag(raw);
+    return !!(process.env.AZURE_VISION_KEY && process.env.AZURE_VISION_ENDPOINT);
+  }
+
+  private async azureReadPdfText(buffer: Buffer): Promise<string> {
+    const key = process.env.AZURE_VISION_KEY;
+    const endpoint = String(process.env.AZURE_VISION_ENDPOINT || '').replace(/\/+$/, '');
+    if (!key || !endpoint) return '';
+
+    const analyze = await fetch(`${endpoint}/vision/v3.2/read/analyze`, {
+      method: 'POST',
+      headers: {
+        'Ocp-Apim-Subscription-Key': key,
+        'Content-Type': 'application/pdf',
+      },
+      body: buffer as any,
+    });
+    if (!analyze.ok) throw new Error(`Azure Read ${analyze.status}: ${(await analyze.text()).slice(0, 120)}`);
+    const operationLocation = analyze.headers.get('operation-location');
+    if (!operationLocation) throw new Error('Azure operation-location yok');
+
+    for (let i = 0; i < 30; i++) {
+      await new Promise((resolve) => setTimeout(resolve, 500));
+      const poll = await fetch(operationLocation, {
+        headers: { 'Ocp-Apim-Subscription-Key': key },
+      });
+      if (!poll.ok) throw new Error(`Azure poll ${poll.status}`);
+      const json: any = await poll.json();
+      const status = String(json?.status || '').toLowerCase();
+      if (status === 'succeeded') {
+        const lines: string[] = [];
+        for (const pageResult of json?.analyzeResult?.readResults || []) {
+          for (const line of pageResult?.lines || []) {
+            if (line?.text) lines.push(String(line.text));
+          }
+        }
+        return lines.join('\n');
+      }
+      if (status === 'failed') throw new Error('Azure Read failed');
+    }
+    throw new Error('Azure Read timeout');
   }
 
   private extractTahakkukOnayNo(text: string): string | null {
