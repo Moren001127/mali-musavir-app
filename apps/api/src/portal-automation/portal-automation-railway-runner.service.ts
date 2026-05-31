@@ -2984,7 +2984,8 @@ export class PortalAutomationRailwayRunnerService implements OnModuleInit {
       await popup.waitForLoadState('domcontentloaded', { timeout: 10_000 }).catch(() => {});
       const popupDownload = await popup.waitForEvent('download', { timeout: 3_000 }).catch(() => null);
       if (popupDownload) return await this.savePlaywrightDownload(popupDownload, downloadsPath, fallbackName);
-      return await this.savePdfFromPageUrl(popup, downloadsPath, fallbackName);
+      return await this.savePdfFromLoadedPage(popup, downloadsPath, fallbackName).catch(() => null)
+        || await this.savePdfFromPageUrl(popup, downloadsPath, fallbackName);
     } finally {
       await popup.close?.().catch(() => {});
     }
