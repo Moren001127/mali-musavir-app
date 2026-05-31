@@ -40,7 +40,7 @@ function fmtIstanbulDate(date) {
 }
 
 function defaultFromDate() {
-  return process.env.HATTAT_CARI_DEFAULT_FROM || '2000-01-01';
+  return process.env.HATTAT_CARI_DEFAULT_FROM || '1900-01-01';
 }
 
 function normalizeText(value) {
