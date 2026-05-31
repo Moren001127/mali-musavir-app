@@ -1987,7 +1987,6 @@ export class PortalAutomationRailwayRunnerService implements OnModuleInit {
       //         kararsizliga/donmaya yol actigi icin enumerate/locator islemleri seri yapilir.
       //    (2b) PARALEL: sadece HTTP indirme (page.context().request.get) — sayfadan bagimsiz, guvenle paralel.
       const directCache = new Map<string, EBeyannameFileDownloadResult>();
-      const prefetchAttempted = new Set<string>();
       if (this.ebeyannameParallelEnabled() && rowPlans.length) {
         await this.jobProgress(tenantId, job, 'approved_resolve', 'Belge linkleri taraniyor.');
         const urlTasks: Array<{ row: any; kind: 'beyanname' | 'tahakkuk'; url: string; seq: number }> = [];
@@ -1999,7 +1998,6 @@ export class PortalAutomationRailwayRunnerService implements OnModuleInit {
           const enumerated = await this.enumerateRowFileMetas(page, plan.row, plan.rowLocator);
           if (!enumerated) continue;
           for (const kind of kinds) {
-            prefetchAttempted.add(`${plan.row.rowIndex}:${kind}`);
             const picked = this.pickEBeyannameFileCandidate(enumerated.metas, kind);
             if (picked == null) continue;
             // GIB linki onclick-JS oldugu icin direkt href yok. Onclick kodunu tiklamadan
@@ -2010,8 +2008,10 @@ export class PortalAutomationRailwayRunnerService implements OnModuleInit {
               this.ebeyannameUrlResolveTimeoutMs(),
               () => null,
             ))
-              || this.directEBeyannameUrlFromMeta(page, meta || {});
-            if (url) urlTasks.push({ row: plan.row, kind, url, seq: plan.seq });
+              || (meta?.href ? this.directEBeyannameUrlFromMeta(page, { href: meta.href }) : null);
+            if (url) {
+              urlTasks.push({ row: plan.row, kind, url, seq: plan.seq });
+            }
           }
         }
         if (urlTasks.length) {
@@ -2042,7 +2042,6 @@ export class PortalAutomationRailwayRunnerService implements OnModuleInit {
       // 3) BIRLESTIRME: on-getirilen dosyayi kullan, eksikse DOM fallback (seri).
       for (const plan of rowPlans) {
         const { row, identity, skipBeyanname, skipTahakkuk, rowLocator, seq } = plan;
-        const fastDirectOnly = this.ebeyannameParallelEnabled() && this.ebeyannameFastDirectFetch();
         const beyannameKey = `${row.rowIndex}:beyanname`;
         const tahakkukKey = `${row.rowIndex}:tahakkuk`;
         const prefetchedBeyanname = directCache.get(beyannameKey) || null;
@@ -2056,24 +2055,20 @@ export class PortalAutomationRailwayRunnerService implements OnModuleInit {
         }
         const beyannameResult = skipBeyanname
           ? { file: null, ownerMismatch: false }
-          : fastDirectOnly && prefetchAttempted.has(beyannameKey) && !prefetchedBeyanname
-            ? { file: null, ownerMismatch: false }
-            : await this.downloadEBeyannameRowFile(page, row, 'beyanname', downloadsPath, seq, notes, rowLocator, {
-                prefetched: prefetchedBeyanname,
-                directOnly: fastDirectOnly && prefetchAttempted.has(beyannameKey),
-              })
+          : await this.downloadEBeyannameRowFile(page, row, 'beyanname', downloadsPath, seq, notes, rowLocator, {
+              prefetched: prefetchedBeyanname,
+              directOnly: false,
+            })
             .catch((err) => {
               notes.push(`beyanname: ${seq}. satir hata nedeniyle atlandi: ${this.compact(err?.message || err)}`);
               return { file: null, ownerMismatch: false };
             });
         const tahakkukResult = skipTahakkuk
           ? { file: null, ownerMismatch: false }
-          : fastDirectOnly && prefetchAttempted.has(tahakkukKey) && !prefetchedTahakkuk
-            ? { file: null, ownerMismatch: false }
-            : await this.downloadEBeyannameRowFile(page, row, 'tahakkuk', downloadsPath, seq, notes, rowLocator, {
-                prefetched: prefetchedTahakkuk,
-                directOnly: fastDirectOnly && prefetchAttempted.has(tahakkukKey),
-              })
+          : await this.downloadEBeyannameRowFile(page, row, 'tahakkuk', downloadsPath, seq, notes, rowLocator, {
+              prefetched: prefetchedTahakkuk,
+              directOnly: false,
+            })
             .catch((err) => {
               notes.push(`tahakkuk: ${seq}. satir hata nedeniyle atlandi: ${this.compact(err?.message || err)}`);
               return { file: null, ownerMismatch: false };
@@ -2240,7 +2235,7 @@ export class PortalAutomationRailwayRunnerService implements OnModuleInit {
       this.ebeyannameUrlResolveTimeoutMs(),
       () => null,
     ))
-      || this.directEBeyannameUrlFromMeta(page, meta || {});
+      || (meta?.href ? this.directEBeyannameUrlFromMeta(page, { href: meta.href }) : null);
     if (resolvedUrl) {
       viaResolvedUrl = await this.savePdfFromRequestUrl(page, resolvedUrl, downloadsPath, fallbackName).catch(() => null);
     }
