@@ -1910,11 +1910,20 @@ export class PortalAutomationRailwayRunnerService implements OnModuleInit {
         records: processedRows,
       });
 
+      // 1) PLAN: kimlik + DB kontrolu + satir locator (seri — DOM/DB okumalari)
+      const rowPlans: Array<{
+        row: any;
+        identity: any;
+        skipBeyanname: boolean;
+        skipTahakkuk: boolean;
+        rowLocator: any;
+        seq: number;
+      }> = [];
       for (const row of rows) {
         if (processedRows >= maxRows) break;
         processedRows++;
         if (processedRows === 1 || processedRows % 10 === 0) {
-          await this.jobProgress(tenantId, job, 'approved_download', `Onaylandi belgeler indiriliyor: ${processedRows}. satir.`, {
+          await this.jobProgress(tenantId, job, 'approved_scan', `Onaylandi liste taraniyor: ${processedRows}. satir.`, {
             current: Math.min(processedRows, totalRows),
             total: totalRows,
             records: processedRows,
@@ -1931,21 +1940,45 @@ export class PortalAutomationRailwayRunnerService implements OnModuleInit {
           continue;
         }
 
-        const rowLocator = (!skipBeyanname || !skipTahakkuk)
-          ? await this.findEBeyannameResultRowLocator(await this.findEBeyannameResultTarget(page) || page, row)
-          : null;
+        const rowLocator = await this.findEBeyannameResultRowLocator(await this.findEBeyannameResultTarget(page) || page, row);
+        rowPlans.push({ row, identity, skipBeyanname, skipTahakkuk, rowLocator, seq: processedRows });
+      }
+
+      // 2) PARALEL ON-GETIRME: direkt-URL ile (oturum cerezi paylasimli, DOM tiklamasiz) — eseszamanli.
+      //    request.get cagrilari birbirinden bagimsiz oldugu icin guvenle paralel calisir; asil hiz kazanci burada.
+      const directCache = new Map<string, EBeyannameFileDownloadResult>();
+      if (this.ebeyannameParallelEnabled() && rowPlans.length) {
+        const fetchTasks: Array<{ plan: (typeof rowPlans)[number]; kind: 'beyanname' | 'tahakkuk' }> = [];
+        for (const plan of rowPlans) {
+          if (!plan.skipBeyanname) fetchTasks.push({ plan, kind: 'beyanname' });
+          if (!plan.skipTahakkuk) fetchTasks.push({ plan, kind: 'tahakkuk' });
+        }
+        await this.jobProgress(tenantId, job, 'approved_prefetch', `Belgeler paralel indiriliyor (${fetchTasks.length} dosya, es zaman=${this.ebeyannameConcurrency()}).`, {
+          total: fetchTasks.length,
+        });
+        await this.mapWithConcurrency(fetchTasks, this.ebeyannameConcurrency(), async (task) => {
+          const res = await this.downloadEBeyannameRowFile(
+            page, task.plan.row, task.kind, downloadsPath, task.plan.seq, notes, task.plan.rowLocator, { directOnly: true },
+          ).catch(() => ({ file: null, ownerMismatch: false } as EBeyannameFileDownloadResult));
+          if (res.file) directCache.set(`${task.plan.row.rowIndex}:${task.kind}`, res);
+        });
+      }
+
+      // 3) BIRLESTIRME: on-getirilen dosyayi kullan, eksikse DOM fallback (seri).
+      for (const plan of rowPlans) {
+        const { row, identity, skipBeyanname, skipTahakkuk, rowLocator, seq } = plan;
         const beyannameResult = skipBeyanname
           ? { file: null, ownerMismatch: false }
-          : await this.downloadEBeyannameRowFile(page, row, 'beyanname', downloadsPath, processedRows, notes, rowLocator)
+          : await this.downloadEBeyannameRowFile(page, row, 'beyanname', downloadsPath, seq, notes, rowLocator, { prefetched: directCache.get(`${row.rowIndex}:beyanname`) })
             .catch((err) => {
-              notes.push(`beyanname: ${processedRows}. satir hata nedeniyle atlandi: ${this.compact(err?.message || err)}`);
+              notes.push(`beyanname: ${seq}. satir hata nedeniyle atlandi: ${this.compact(err?.message || err)}`);
               return { file: null, ownerMismatch: false };
             });
         const tahakkukResult = skipTahakkuk
           ? { file: null, ownerMismatch: false }
-          : await this.downloadEBeyannameRowFile(page, row, 'tahakkuk', downloadsPath, processedRows, notes, rowLocator)
+          : await this.downloadEBeyannameRowFile(page, row, 'tahakkuk', downloadsPath, seq, notes, rowLocator, { prefetched: directCache.get(`${row.rowIndex}:tahakkuk`) })
             .catch((err) => {
-              notes.push(`tahakkuk: ${processedRows}. satir hata nedeniyle atlandi: ${this.compact(err?.message || err)}`);
+              notes.push(`tahakkuk: ${seq}. satir hata nedeniyle atlandi: ${this.compact(err?.message || err)}`);
               return { file: null, ownerMismatch: false };
             });
         if (identity && beyannameResult.ownerMismatch) {
@@ -2064,18 +2097,62 @@ export class PortalAutomationRailwayRunnerService implements OnModuleInit {
     sequence: number,
     notes: string[],
     rowLocator?: any,
+    opts?: { directOnly?: boolean; prefetched?: EBeyannameFileDownloadResult | null },
   ): Promise<EBeyannameFileDownloadResult> {
-    const row = rowLocator || await this.findEBeyannameResultRowLocator(await this.findEBeyannameResultTarget(page) || page, resultRow);
-    if (!(await row.isVisible().catch(() => false))) {
-      notes.push(`${kind}: satir ${resultRow.rowIndex + 1} gorunur degil`);
+    // Paralel on-getirme fazinda bu satir+tur zaten indirildiyse tekrar indirme.
+    if (opts?.prefetched && opts.prefetched.file) return opts.prefetched;
+
+    const enumerated = await this.enumerateRowFileMetas(page, resultRow, rowLocator);
+    if (!enumerated) {
+      if (!opts?.directOnly) notes.push(`${kind}: satir ${resultRow.rowIndex + 1} gorunur degil`);
+      return { file: null, ownerMismatch: false };
+    }
+    const { candidates, metas } = enumerated;
+
+    const picked = this.pickEBeyannameFileCandidate(metas, kind);
+    if (picked == null) {
+      if (!opts?.directOnly) notes.push(`${kind}: satir ${resultRow.rowIndex + 1} icin PDF ikonu bulunamadi`);
       return { file: null, ownerMismatch: false };
     }
 
+    const loc = candidates.nth(picked);
+    const fallbackName = `ebeyanname-${sequence}-${kind}`;
+    const direct = await this.tryDownloadEBeyannameDirect(page, metas.find((meta: any) => meta.index === picked), downloadsPath, fallbackName).catch((err) => {
+      if (!opts?.directOnly) notes.push(`${kind}: satir ${resultRow.rowIndex + 1} dogrudan PDF denemesi basarisiz: ${this.compact(err?.message || err)}`);
+      return null;
+    });
+    // directOnly modunda (paralel on-getirme) tarayici tiklamasi yapilmaz; DOM fallback seri birlestirme fazinda calisir.
+    const clicked = direct || (opts?.directOnly
+      ? null
+      : await this.captureEBeyannameDownload(page, loc, downloadsPath, fallbackName).catch((err) => {
+          notes.push(`${kind}: satir ${resultRow.rowIndex + 1} PDF indirme hatasi: ${this.compact(err?.message || err)}`);
+          return null;
+        }));
+    if (!clicked) {
+      if (!opts?.directOnly) notes.push(`${kind}: satir ${resultRow.rowIndex + 1} tiklandi ama PDF alinamadi`);
+      return { file: null, ownerMismatch: false };
+    }
+    const ownerOk = await this.validateEBeyannameFileOwner(resultRow, clicked, kind, notes);
+    return { file: clicked, ownerMismatch: !ownerOk };
+  }
+
+  /**
+   * Bir sonuc satirindaki indirilebilir ogelerin meta verilerini TEK evaluate cagrisiyla toplar.
+   * Onceki kod her oge icin ayri evaluate yapip satir basina 6-8 round-trip uretiyordu; bu tek atista yapar.
+   */
+  private async enumerateRowFileMetas(
+    page: any,
+    resultRow: EBeyannameResultRow,
+    rowLocator?: any,
+  ): Promise<{
+    candidates: any;
+    metas: Array<{ index: number; tag: string; text: string; href: string; src: string; onclick: string; haystack: string }>;
+  } | null> {
+    const row = rowLocator || await this.findEBeyannameResultRowLocator(await this.findEBeyannameResultTarget(page) || page, resultRow);
+    if (!(await row.isVisible().catch(() => false))) return null;
     const candidates = row.locator('a, button, input[type="button"], input[type="image"], img');
-    const count = await candidates.count().catch(() => 0);
-    const metas: Array<{ index: number; tag: string; text: string; href: string; src: string; onclick: string; haystack: string }> = [];
-    for (let i = 0; i < count; i++) {
-      const meta = await candidates.nth(i).evaluate((el: any) => {
+    const metas = await candidates.evaluateAll((els: any[]) =>
+      els.map((el: any, index: number) => {
         const tag = String(el.tagName || '').toUpperCase();
         const text = `${el.innerText || el.value || el.alt || el.title || el.getAttribute?.('aria-label') || ''}`.trim();
         const href = el.getAttribute?.('href') || '';
@@ -2090,33 +2167,38 @@ export class PortalAutomationRailwayRunnerService implements OnModuleInit {
           el.getAttribute?.('alt') || '',
           el.outerHTML || '',
         ].join(' ');
-        return { tag, text, href, src, onclick, haystack: haystack.slice(0, 1200) };
-      }).catch(() => null);
-      if (meta) metas.push({ index: i, ...meta });
-    }
+        return { index, tag, text, href, src, onclick, haystack: haystack.slice(0, 1200) };
+      }),
+    ).catch(() => [] as any[]);
+    return { candidates, metas };
+  }
 
-    const picked = this.pickEBeyannameFileCandidate(metas, kind);
-    if (picked == null) {
-      notes.push(`${kind}: satir ${resultRow.rowIndex + 1} icin PDF ikonu bulunamadi`);
-      return { file: null, ownerMismatch: false };
-    }
+  private ebeyannameParallelEnabled() {
+    const raw = String(process.env.PORTAL_AUTOMATION_EBEYANNAME_PARALLEL ?? '1').trim().toLowerCase();
+    return raw !== '0' && raw !== 'false' && raw !== 'no' && raw !== 'off';
+  }
 
-    const loc = candidates.nth(picked);
-    const fallbackName = `ebeyanname-${sequence}-${kind}`;
-    const direct = await this.tryDownloadEBeyannameDirect(page, metas.find((meta) => meta.index === picked), downloadsPath, fallbackName).catch((err) => {
-      notes.push(`${kind}: satir ${resultRow.rowIndex + 1} dogrudan PDF denemesi basarisiz: ${this.compact(err?.message || err)}`);
-      return null;
+  private ebeyannameConcurrency() {
+    return Math.max(1, Math.min(10, Number(process.env.PORTAL_AUTOMATION_EBEYANNAME_CONCURRENCY || 4)));
+  }
+
+  /** Sinirli eseszamanlilikla items uzerinde worker calistirir (havuz modeli). */
+  private async mapWithConcurrency<T>(
+    items: T[],
+    limit: number,
+    worker: (item: T, index: number) => Promise<void>,
+  ): Promise<void> {
+    if (!items.length) return;
+    const max = Math.max(1, Math.min(limit, items.length));
+    let cursor = 0;
+    const runners = Array.from({ length: max }, async () => {
+      while (true) {
+        const current = cursor++;
+        if (current >= items.length) return;
+        await worker(items[current], current).catch(() => {});
+      }
     });
-    const clicked = direct || await this.captureEBeyannameDownload(page, loc, downloadsPath, fallbackName).catch((err) => {
-      notes.push(`${kind}: satir ${resultRow.rowIndex + 1} PDF indirme hatasi: ${this.compact(err?.message || err)}`);
-      return null;
-    });
-    if (!clicked) {
-      notes.push(`${kind}: satir ${resultRow.rowIndex + 1} tiklandi ama PDF alinamadi`);
-      return { file: null, ownerMismatch: false };
-    }
-    const ownerOk = await this.validateEBeyannameFileOwner(resultRow, clicked, kind, notes);
-    return { file: clicked, ownerMismatch: !ownerOk };
+    await Promise.all(runners);
   }
 
   private ebeyannameFileTimeoutMs() {
