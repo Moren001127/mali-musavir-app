@@ -7,6 +7,39 @@ import { CariKasaService } from './cari-kasa.service';
 import * as ExcelJS from 'exceljs';
 import { PrismaService } from '../prisma/prisma.service';
 import { createHash, timingSafeEqual } from 'crypto';
+import { readFileSync, existsSync } from 'fs';
+import { join } from 'path';
+
+/**
+ * Ekstre PDF başlığındaki Moren logosu (apps/web/public/brand/moren-logo-gold.png).
+ * PDF kullanıcının tarayıcısında window.print() ile basıldığı için logoyu
+ * data URI olarak gömüyoruz — böylece portal erişilebilir olsun olmasın her
+ * zaman görünür. Disk okumayı bir kez yapıp önbelleğe alıyoruz.
+ */
+let _logoDataUriCache: string | null | undefined;
+function getMorenLogoDataUri(): string | null {
+  if (_logoDataUriCache !== undefined) return _logoDataUriCache;
+  const candidates = [
+    join(process.cwd(), 'apps/web/public/brand/moren-logo-gold.png'),
+    join(process.cwd(), '../web/public/brand/moren-logo-gold.png'),
+    join(__dirname, '../../../../web/public/brand/moren-logo-gold.png'),
+    join(process.cwd(), 'public/brand/moren-logo-gold.png'),
+    process.env.MOREN_LOGO_PATH || '',
+  ].filter(Boolean);
+  for (const p of candidates) {
+    try {
+      if (existsSync(p)) {
+        const b64 = readFileSync(p).toString('base64');
+        _logoDataUriCache = `data:image/png;base64,${b64}`;
+        return _logoDataUriCache;
+      }
+    } catch {
+      /* sıradaki adaya geç */
+    }
+  }
+  _logoDataUriCache = null;
+  return null;
+}
 
 function safeEqual(a: string, b: string) {
   const ah = createHash('sha256').update(a).digest();
@@ -258,8 +291,8 @@ export class CariKasaController {
     const wb = new ExcelJS.Workbook();
     wb.creator = 'Moren Mali Müşavirlik';
     wb.created = new Date();
-    const sh = wb.addWorksheet('Cari Kasa Özet', { properties: { tabColor: { argb: 'FF9C4656' } } });
-    sh.addRow(['CARİ KASA ÖZET']).font = { bold: true, size: 14, color: { argb: 'FF9C4656' } };
+    const sh = wb.addWorksheet('Cari Kasa Özet', { properties: { tabColor: { argb: 'FF0A1628' } } });
+    sh.addRow(['CARİ KASA ÖZET']).font = { bold: true, size: 14, color: { argb: 'FF0A1628' } };
     sh.addRow(['Dönem:', baslangic && bitis ? `${baslangic} - ${bitis}` : 'Tüm zamanlar']);
     sh.addRow(['Rapor Tarihi:', new Date().toLocaleString('tr-TR')]);
     sh.addRow([]);
@@ -282,7 +315,7 @@ export class CariKasaController {
       return acc;
     }, { ucret: 0, tahakkuk: 0, tahsilat: 0, bakiye: 0 });
     const totalRow = sh.addRow(['TOPLAM', '', '', '', total.ucret, total.tahakkuk, total.tahsilat, total.bakiye]);
-    totalRow.font = { bold: true, color: { argb: 'FF9C4656' } };
+    totalRow.font = { bold: true, color: { argb: 'FF0A1628' } };
     const buf = await wb.xlsx.writeBuffer();
     res.setHeader('Content-Type', 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet');
     res.setHeader('Content-Disposition', `attachment; filename="Cari_Kasa_Ozet_${new Date().toISOString().slice(0, 10)}.xlsx"`);
@@ -315,10 +348,10 @@ export class CariKasaController {
     const wb = new ExcelJS.Workbook();
     wb.creator = 'Moren Mali Müşavirlik';
     wb.created = new Date();
-    const sh = wb.addWorksheet('Cari Ekstre', { properties: { tabColor: { argb: 'FF9C4656' } } });
+    const sh = wb.addWorksheet('Cari Ekstre', { properties: { tabColor: { argb: 'FF0A1628' } } });
 
     // Başlık
-    sh.addRow(['CARİ HESAP EKSTRESİ']).font = { bold: true, size: 14, color: { argb: 'FF9C4656' } };
+    sh.addRow(['CARİ HESAP EKSTRESİ']).font = { bold: true, size: 14, color: { argb: 'FF0A1628' } };
     sh.addRow(['Mükellef:', e.taxpayer.ad]);
     sh.addRow(['VKN/TCKN:', e.taxpayer.taxNumber]);
     sh.addRow(['Vergi Dairesi:', e.taxpayer.taxOffice]);
@@ -328,7 +361,7 @@ export class CariKasaController {
     sh.addRow(['Toplam Tahakkuk', e.toplamTahakkuk]);
     sh.addRow(['Toplam Tahsilat', e.toplamTahsilat]);
     const kapanis = sh.addRow(['Kapanış Bakiyesi', e.kapanisBakiye]);
-    kapanis.font = { bold: true, color: { argb: 'FF9C4656' } };
+    kapanis.font = { bold: true, color: { argb: 'FF0A1628' } };
     sh.addRow([]);
     // Hareket tablosu
     const header = sh.addRow(['Tarih', 'Tip', 'Hizmet', 'Açıklama', 'Borç', 'Alacak', 'Bakiye', 'Belge No', 'Ödeme']);
@@ -382,18 +415,29 @@ export class CariKasaController {
     const fmt = (n: number) =>
       n.toLocaleString('tr-TR', { minimumFractionDigits: 2, maximumFractionDigits: 2 });
     const trDate = (d: any) => new Date(d).toLocaleDateString('tr-TR');
+    // Portalda kullanılan logo. Önce diske gömülü base64'ü dene; bulunamazsa URL'e düş.
+    const logoUrl =
+      getMorenLogoDataUri() ||
+      (process.env.PORTAL_PUBLIC_URL || 'https://portal.morenmusavirlik.com') + '/brand/moren-logo-gold.png';
+
+    // Bakiye + borç/alacak yön eki (Hattat formatı: "11.750,00 TL (B)")
+    const tl = (n: number) => `${fmt(Math.abs(n))} TL`;
+    const bakiyeEk = (n: number) => `${fmt(Math.abs(n))} TL${n > 0 ? ' (B)' : n < 0 ? ' (A)' : ''}`;
+    const kategoriAdi = (s: any) =>
+      (s.hizmet?.kategori || s.hizmet?.hizmetAdi || s.kategori || '').toString().replace(/[<>&]/g, '');
 
     const satirlarHtml = e.satirlar.map((s: any) => {
       const borc = s.tip === 'TAHAKKUK' ? s.tutar : s.tip === 'IADE' ? -s.tutar : 0;
       const alacak = s.tip === 'TAHSILAT' ? s.tutar : s.tip === 'DUZELTME' ? -s.tutar : 0;
+      const tahsilatTuru = s.tip === 'TAHSILAT' ? 'Tahsilat' : '';
       return `<tr>
         <td>${trDate(s.tarih)}</td>
-        <td>${s.hizmet?.hizmetAdi || ''}</td>
-        <td>${s.tip}</td>
+        <td>${kategoriAdi(s)}</td>
+        <td>${tahsilatTuru}</td>
         <td>${(s.aciklama || '').replace(/[<>&]/g, '')}</td>
-        <td class="num">${borc ? fmt(borc) : '—'}</td>
-        <td class="num">${alacak ? fmt(alacak) : '—'}</td>
-        <td class="num bold">${fmt(s.runningBakiye || 0)}</td>
+        <td class="num">${borc ? tl(borc) : '—'}</td>
+        <td class="num">${alacak ? tl(alacak) : '—'}</td>
+        <td class="num bold">${bakiyeEk(s.runningBakiye || 0)}</td>
       </tr>`;
     }).join('');
 
@@ -402,40 +446,49 @@ export class CariKasaController {
 <title>Ekstre · ${e.taxpayer.ad} · ${baslangic} - ${bitis}</title>
 <style>
   *{box-sizing:border-box}
-  body{margin:0;padding:20mm;font-family:system-ui,-apple-system,Segoe UI,sans-serif;color:#1a1a1a}
-  .hdr{display:flex;justify-content:space-between;align-items:flex-start;border-bottom:3px solid #9c4656;padding-bottom:10mm;margin-bottom:8mm}
-  .brand h1{margin:0;color:#9c4656;font-size:22pt;font-family:Fraunces,serif;letter-spacing:-.02em}
-  .brand p{margin:2mm 0 0;color:#888;font-size:9.5pt}
+  body{margin:0;padding:20mm;font-family:'DM Sans',system-ui,-apple-system,Segoe UI,sans-serif;color:#0A1628}
+  .hdr{display:flex;justify-content:space-between;align-items:flex-start;border-bottom:2px solid #0A1628;padding-bottom:8mm;margin-bottom:2mm;position:relative}
+  .hdr::after{content:'';position:absolute;left:0;bottom:-2px;width:42mm;height:2px;background:#C9982A}
+  .brand h1{margin:0;color:#0A1628;font-size:22pt;font-family:'Plus Jakarta Sans',system-ui,sans-serif;letter-spacing:-.02em}
+  .brand p{margin:3mm 0 0;color:#5272A8;font-size:9.5pt;letter-spacing:.02em}
   .info{text-align:right;font-size:9.5pt}
-  .info .label{color:#888}
-  .info b{color:#111}
-  h2{font-size:14pt;color:#111;margin:5mm 0 3mm}
-  .muk{background:#fbf7f2;border-left:4px solid #c9a77c;padding:4mm 5mm;margin-bottom:5mm;border-radius:3px}
-  .muk .ad{font-size:14pt;font-weight:700;color:#111}
-  .muk .sub{font-size:9.5pt;color:#666;margin-top:1mm}
+  .info .label{color:#5272A8}
+  .info b{color:#0A1628}
+  h2{font-size:13pt;color:#0A1628;margin:6mm 0 3mm;padding-left:3mm;border-left:3px solid #C9982A}
+  .muk{background:#FBF0D6;border-left:4px solid #C9982A;padding:4mm 5mm;margin:6mm 0 5mm;border-radius:4px}
+  .muk .ad{font-size:14pt;font-weight:700;color:#0A1628}
+  .muk .sub{font-size:9.5pt;color:#A77819;margin-top:1mm}
   .summary{display:grid;grid-template-columns:repeat(4,1fr);gap:3mm;margin-bottom:6mm}
-  .summary .card{background:#fff;border:1px solid #ddd;padding:3mm 4mm;border-radius:3px}
-  .summary .card .k{font-size:8pt;color:#888;text-transform:uppercase;letter-spacing:.08em}
-  .summary .card .v{font-size:13pt;font-weight:700;margin-top:1mm;font-variant-numeric:tabular-nums}
-  .summary .card.hi{background:#fbf7f2;border-color:#9c4656}
-  .summary .card.hi .v{color:#9c4656}
-  table{width:100%;border-collapse:collapse;font-size:10pt}
-  th,td{padding:3mm 4mm;text-align:left;border-bottom:1px solid #e8e8e8}
-  th{background:#9c4656;color:#fff;font-weight:600;font-size:9pt;letter-spacing:.04em}
-  .num{text-align:right;font-variant-numeric:tabular-nums;font-family:ui-monospace,Menlo,monospace}
+  .summary .card{background:#fff;border:1px solid #DDE3ED;padding:3mm 4mm;border-radius:6px}
+  .summary .card .k{font-size:8pt;color:#5272A8;text-transform:uppercase;letter-spacing:.08em}
+  .summary .card .v{font-size:13pt;font-weight:700;margin-top:1mm;font-variant-numeric:tabular-nums;color:#0A1628}
+  .summary .card.hi{background:#FBF0D6;border-color:#C9982A}
+  .summary .card.hi .v{color:#A77819}
+  table{width:100%;border-collapse:collapse;font-size:9.5pt;table-layout:fixed}
+  col.c-date{width:9%}col.c-kat{width:14%}col.c-tah{width:10%}col.c-acik{width:20%}col.c-borc{width:14%}col.c-alacak{width:15%}col.c-bak{width:18%}
+  th,td{padding:2.6mm 3mm;border-bottom:1px solid #E8ECF2;vertical-align:middle;text-align:left;word-wrap:break-word}
+  th{background:#0A1628;color:#fff;font-weight:600;font-size:8.5pt;letter-spacing:.02em}
+  td:first-child{white-space:nowrap}
+  th.num,td.num{text-align:right;font-variant-numeric:tabular-nums;white-space:nowrap}
   .bold{font-weight:700}
-  tr.acilis{background:#eef5ff;font-weight:600}
-  tr.kapanis{background:#fbe8ec;font-weight:700;border-top:2px solid #9c4656}
-  tr.kapanis td{color:#9c4656;padding:4mm 4mm}
-  .footer{margin-top:8mm;padding-top:4mm;border-top:1px solid #eee;font-size:8.5pt;color:#888;text-align:center}
+  tbody tr:nth-child(even){background:#FAFBFC}
+  tr.acilis{background:#EEF2F7!important;font-weight:600}
+  tr.acilis td{color:#253660}
+  tr.kapanis{background:#FBF0D6!important;font-weight:700;border-top:2px solid #C9982A}
+  tr.kapanis td{color:#A77819}
+  tr.toplam{background:#0A1628!important;font-weight:700;border-top:2px solid #C9982A}
+  tr.toplam td{color:#fff;padding:3.5mm 3mm}
+  tr.toplam td .bb{color:#E8B84B;display:block;font-size:9.5pt;margin-top:1mm;font-variant-numeric:tabular-nums}
+  .footer{margin-top:8mm;padding-top:4mm;border-top:1px solid #DDE3ED;font-size:8.5pt;color:#5272A8;text-align:center}
+  .footer b{color:#0A1628}
   @page{size:A4;margin:0}
   @media print{body{padding:10mm}.no-print{display:none}}
 </style></head>
 <body>
   <div class="hdr">
     <div class="brand">
-      <h1>MOREN Mali Müşavirlik</h1>
-      <p>Serbest Muhasebeci Mali Müşavir</p>
+      <img src="${logoUrl}" alt="Moren Mali Müşavirlik" style="height:22mm;width:auto;display:block" />
+      <p style="margin-top:3mm">Serbest Muhasebeci Mali Müşavir</p>
     </div>
     <div class="info">
       <div><span class="label">Ekstre Tarihi:</span> <b>${trDate(new Date())}</b></div>
@@ -443,83 +496,25 @@ export class CariKasaController {
     </div>
   </div>
   <div class="muk">
-    <div class="ad">${(e.taxpayer.ad || '').replace(/[<>&]/g, '')}</div>
-    <div class="sub">VKN/TCKN: <b>${e.taxpayer.taxNumber || ''}</b> · ${(e.taxpayer.taxOffice || '').replace(/[<>&]/g, '')}</div>
-  </div>
-  <div class="summary">
-    <div class="card"><div class="k">Açılış Bakiye</div><div class="v">${fmt(e.acilisBakiye)} ₺</div></div>
-    <div class="card"><div class="k">Dönem Borç</div><div class="v">${fmt(e.toplamTahakkuk)} ₺</div></div>
-    <div class="card"><div class="k">Dönem Alacak</div><div class="v">${fmt(e.toplamTahsilat)} ₺</div></div>
-    <div class="card hi"><div class="k">Kapanış Bakiye</div><div class="v">${fmt(e.kapanisBakiye)} ₺</div></div>
+    <p style="margin:0;font-size:11pt;color:#253660;line-height:1.7">Sayın <b>${(e.taxpayer.ad || '').replace(/[<>&]/g, '')}</b>, aşağıda ${trDate(e.donem.baslangic)} – ${trDate(e.donem.bitis)} dönemine ait cari hesap ekstreniz yer almaktadır. İlgili dönem sonu itibarıyla ${e.kapanisBakiye >= 0 ? 'borç' : 'alacak'} bakiyeniz <b style="font-size:12.5pt;color:#0A1628">${bakiyeEk(e.kapanisBakiye)}</b> olarak görünmektedir.</p>
   </div>
   <h2>Hareket Detayı</h2>
   <table>
+    <colgroup>
+      <col class="c-date"><col class="c-kat"><col class="c-tah"><col class="c-acik"><col class="c-borc"><col class="c-alacak"><col class="c-bak">
+    </colgroup>
     <thead>
-      <tr><th>Tarih</th><th>Hizmet</th><th>Tip</th><th>Açıklama</th><th class="num">Borç</th><th class="num">Alacak</th><th class="num">Bakiye</th></tr>
+      <tr><th>Tarih</th><th>Kategori</th><th>Tahsilat Türü</th><th>Açıklama</th><th class="num">Borç (Hizmet)</th><th class="num">Alacak (Tahsilat)</th><th class="num">Bakiye</th></tr>
     </thead>
     <tbody>
-      <tr class="acilis"><td colspan="6">Açılış Bakiyesi</td><td class="num">${fmt(e.acilisBakiye)} ₺</td></tr>
+      <tr class="acilis"><td colspan="6">Açılış Bakiyesi</td><td class="num">${bakiyeEk(e.acilisBakiye)}</td></tr>
       ${satirlarHtml || `<tr><td colspan="7" style="text-align:center;padding:8mm;color:#888">Bu dönemde hareket yok</td></tr>`}
-      <tr class="kapanis"><td colspan="6">Kapanış Bakiyesi</td><td class="num">${fmt(e.kapanisBakiye)} ₺</td></tr>
+      <tr class="toplam">
+        <td colspan="4">Toplam :</td>
+        <td class="num">${tl(e.toplamTahakkuk)}</td>
+        <td class="num">${tl(e.toplamTahsilat)}</td>
+        <td class="num">${e.kapanisBakiye >= 0 ? 'Borç Bakiyesi:' : 'Alacak Bakiyesi:'}<span class="bb">${tl(e.kapanisBakiye)}</span></td>
+      </tr>
     </tbody>
   </table>
-  <div class="footer">Moren Mali Müşavirlik · ${new Date().toLocaleString('tr-TR')}</div>
-  <script>window.addEventListener('load',()=>setTimeout(()=>window.print(),400));</script>
-</body></html>`;
-
-    res.setHeader('Content-Type', 'text/html; charset=utf-8');
-    res.setHeader('Cache-Control', 'no-store');
-    res.send(html);
-  }
-
-  // ==================== MANUEL CRON TETİKLEME (debug) ====================
-  @Post('cron/otomatik-tahakkuk')
-  @HttpCode(HttpStatus.OK)
-  async manuelCronTetikle(@Body() body: { donem?: string }) {
-    const donem = body?.donem ||
-      `${new Date().getFullYear()}-${String(new Date().getMonth() + 1).padStart(2, '0')}`;
-    return this.service.otoTahakkukUret(donem);
-  }
-}
-
-@Controller('agent/cari-kasa')
-export class CariKasaAgentController {
-  constructor(
-    private readonly service: CariKasaService,
-    private readonly prisma: PrismaService,
-  ) {}
-
-  @Post('hattat/import')
-  @HttpCode(HttpStatus.OK)
-  async importHattatCariKasa(
-    @Headers('x-agent-token') agentToken: string,
-    @Body() body: any,
-  ) {
-    const tenantId = await this.resolveTenantFromAgentToken(agentToken);
-    return this.service.importHattatCariKasa(tenantId, body || {}, 'hattat-local-agent');
-  }
-
-  private async resolveTenantFromAgentToken(token?: string): Promise<string> {
-    const presented = String(token || '').trim();
-    if (!presented) throw new UnauthorizedException('Missing X-Agent-Token');
-
-    const pairs = parseAgentTokenMap(process.env.AGENT_INGEST_TOKENS || '');
-    for (const pair of pairs) {
-      if (safeEqual(presented, pair.token)) return pair.tenantId;
-    }
-    const allowLegacyLookup =
-      envFlag(process.env.AGENT_TOKEN_ALLOW_TENANT_ID) || process.env.NODE_ENV !== 'production';
-    // Backward compatibility: existing desktop/local-agent installs use tenant slug as
-    // the agent token. Keep accepting that while AGENT_INGEST_TOKENS is rolled out.
-    const tenant = await (this.prisma as any).tenant.findFirst({
-      where: { OR: [{ slug: presented }, { id: presented }] },
-      select: { id: true },
-    });
-    if (!tenant) {
-      if (pairs.length > 0) throw new UnauthorizedException('Invalid agent token');
-      if (!allowLegacyLookup) throw new UnauthorizedException('Agent token map is not configured');
-      throw new UnauthorizedException('Invalid agent token');
-    }
-    return tenant.id;
-  }
-}
+  <div class="footer"><b>Moren Mali Müşavirlik</b> · Bu ekstre ${new Date().toLocaleString('tr-TR')} tarihinde oluşturulmuştur
