@@ -1962,8 +1962,11 @@ export class PortalAutomationRailwayRunnerService implements OnModuleInit {
           for (const kind of kinds) {
             const picked = this.pickEBeyannameFileCandidate(enumerated.metas, kind);
             if (picked == null) continue;
+            // GIB linki onclick-JS oldugu icin direkt href yok. Tiklayinca window.open ile uretilen
+            // gercek PDF URL'ini SERI olarak yakala (popup acmadan); indirme asagida PARALEL yapilacak.
             const meta = enumerated.metas.find((m: any) => m.index === picked);
-            const url = this.directEBeyannameUrlFromMeta(page, meta || {});
+            const url = (await this.captureEBeyannameUrlViaClick(page, enumerated.candidates.nth(picked)).catch(() => null))
+              || this.directEBeyannameUrlFromMeta(page, meta || {});
             if (url) urlTasks.push({ row: plan.row, kind, url, seq: plan.seq });
           }
         }
