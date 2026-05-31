@@ -2835,29 +2835,42 @@ export class PortalAutomationRailwayRunnerService implements OnModuleInit {
     downloadsPath: string,
     fallbackName: string,
   ): Promise<EBeyannameFilePayload | null> {
-    const fetched = await page.evaluate(async (targetUrl: string) => {
-      const response = await fetch(targetUrl, {
-        credentials: 'include',
-        cache: 'no-store',
-        headers: { accept: 'application/pdf,*/*' },
-      });
-      const contentType = response.headers.get('content-type') || 'application/pdf';
-      const disposition = response.headers.get('content-disposition') || '';
-      const buffer = await response.arrayBuffer();
-      const bytes = new Uint8Array(buffer);
-      let binary = '';
-      const chunkSize = 0x8000;
-      for (let i = 0; i < bytes.length; i += chunkSize) {
-        binary += String.fromCharCode(...bytes.subarray(i, i + chunkSize));
-      }
-      return {
-        ok: response.ok,
-        status: response.status,
-        mimeType: contentType,
-        disposition,
-        base64: btoa(binary),
-      };
-    }, url).catch(() => null);
+    const timeoutMs = this.ebeyannameDirectFetchTimeoutMs();
+    type BrowserFetchResult = { ok: boolean; status: number; mimeType: string; disposition: string; base64: string } | null;
+    const fetched: BrowserFetchResult = await this.withTimeout<BrowserFetchResult>(
+      page.evaluate(async ({ targetUrl, timeoutMs }: { targetUrl: string; timeoutMs: number }) => {
+        const controller = new AbortController();
+        const timer = setTimeout(() => controller.abort(), timeoutMs);
+        try {
+          const response = await fetch(targetUrl, {
+            credentials: 'include',
+            cache: 'no-store',
+            headers: { accept: 'application/pdf,*/*' },
+            signal: controller.signal,
+          });
+          const contentType = response.headers.get('content-type') || 'application/pdf';
+          const disposition = response.headers.get('content-disposition') || '';
+          const buffer = await response.arrayBuffer();
+          const bytes = new Uint8Array(buffer);
+          let binary = '';
+          const chunkSize = 0x8000;
+          for (let i = 0; i < bytes.length; i += chunkSize) {
+            binary += String.fromCharCode(...bytes.subarray(i, i + chunkSize));
+          }
+          return {
+            ok: response.ok,
+            status: response.status,
+            mimeType: contentType,
+            disposition,
+            base64: btoa(binary),
+          };
+        } finally {
+          clearTimeout(timer);
+        }
+      }, { targetUrl: url, timeoutMs }) as Promise<BrowserFetchResult>,
+      timeoutMs + 1_000,
+      () => null,
+    ).catch(() => null);
     if (!fetched?.ok || !fetched.base64) return null;
     const buffer = Buffer.from(fetched.base64, 'base64');
     const pdfish = /^%PDF/.test(buffer.subarray(0, 5).toString('latin1'))
@@ -3022,21 +3035,37 @@ export class PortalAutomationRailwayRunnerService implements OnModuleInit {
   }
 
   private async savePdfFromLoadedPage(page: any, downloadsPath: string, fallbackName: string): Promise<EBeyannameFilePayload | null> {
-    const base64 = await page.evaluate(async () => {
-      const response = await fetch(window.location.href, { credentials: 'include', cache: 'no-store' });
-      const arrayBuffer = await response.arrayBuffer();
-      const bytes = new Uint8Array(arrayBuffer);
-      let binary = '';
-      const chunkSize = 0x8000;
-      for (let i = 0; i < bytes.length; i += chunkSize) {
-        binary += String.fromCharCode(...bytes.subarray(i, i + chunkSize));
-      }
-      return {
-        ok: response.ok,
-        mimeType: response.headers.get('content-type') || 'application/pdf',
-        base64: btoa(binary),
-      };
-    }).catch(() => null);
+    const timeoutMs = this.ebeyannameDirectFetchTimeoutMs();
+    type LoadedPageResult = { ok: boolean; mimeType: string; base64: string } | null;
+    const base64: LoadedPageResult = await this.withTimeout<LoadedPageResult>(
+      page.evaluate(async (timeoutMs: number) => {
+        const controller = new AbortController();
+        const timer = setTimeout(() => controller.abort(), timeoutMs);
+        try {
+          const response = await fetch(window.location.href, {
+            credentials: 'include',
+            cache: 'no-store',
+            signal: controller.signal,
+          });
+          const arrayBuffer = await response.arrayBuffer();
+          const bytes = new Uint8Array(arrayBuffer);
+          let binary = '';
+          const chunkSize = 0x8000;
+          for (let i = 0; i < bytes.length; i += chunkSize) {
+            binary += String.fromCharCode(...bytes.subarray(i, i + chunkSize));
+          }
+          return {
+            ok: response.ok,
+            mimeType: response.headers.get('content-type') || 'application/pdf',
+            base64: btoa(binary),
+          };
+        } finally {
+          clearTimeout(timer);
+        }
+      }, timeoutMs) as Promise<LoadedPageResult>,
+      timeoutMs + 1_000,
+      () => null,
+    ).catch(() => null);
     if (!base64?.ok || !base64.base64) return null;
     const buffer = Buffer.from(base64.base64, 'base64');
     const mimeType = base64.mimeType || 'application/pdf';
