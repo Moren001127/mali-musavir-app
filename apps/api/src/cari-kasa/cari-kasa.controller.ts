@@ -507,16 +507,19 @@ export class CariKasaAgentController {
     for (const pair of pairs) {
       if (safeEqual(presented, pair.token)) return pair.tenantId;
     }
-    if (pairs.length > 0) throw new UnauthorizedException('Invalid agent token');
-
     const allowLegacyLookup =
       envFlag(process.env.AGENT_TOKEN_ALLOW_TENANT_ID) || process.env.NODE_ENV !== 'production';
-    if (!allowLegacyLookup) throw new UnauthorizedException('Agent token map is not configured');
+    // Backward compatibility: existing desktop/local-agent installs use tenant slug as
+    // the agent token. Keep accepting that while AGENT_INGEST_TOKENS is rolled out.
     const tenant = await (this.prisma as any).tenant.findFirst({
       where: { OR: [{ slug: presented }, { id: presented }] },
       select: { id: true },
     });
-    if (!tenant) throw new UnauthorizedException('Invalid agent token');
+    if (!tenant) {
+      if (pairs.length > 0) throw new UnauthorizedException('Invalid agent token');
+      if (!allowLegacyLookup) throw new UnauthorizedException('Agent token map is not configured');
+      throw new UnauthorizedException('Invalid agent token');
+    }
     return tenant.id;
   }
 }
