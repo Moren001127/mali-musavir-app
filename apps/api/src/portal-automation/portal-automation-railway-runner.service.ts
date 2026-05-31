@@ -2164,7 +2164,17 @@ export class PortalAutomationRailwayRunnerService implements OnModuleInit {
         .join('  ||  ');
       this.logger.warn(`[EBDBG] satir ${resultRow.rowIndex + 1} kind=${kind} picked=${picked} vkn=${resultRow.taxNumber} :: ${summary}`);
     }
-    const direct = await this.tryDownloadEBeyannameDirect(page, metas.find((meta: any) => meta.index === picked), downloadsPath, fallbackName).catch((err) => {
+    // 1) EN GUVENILIR YOL: ikona tiklayinca beyannameGoruntule/tahakkukGoruntule -> callMenuUrlPopUp ->
+    //    window.open(gercek_pdf_url) cagriliyor. window.open'u araya girip o URL'i yakala, HTTP ile indir
+    //    (popup hic acmadan). directOnly (paralel on-getirme) modunda DOM tiklamasi yapilmaz; bu yol seri fazda calisir.
+    let viaClick: EBeyannameFilePayload | null = null;
+    if (!opts?.directOnly) {
+      const clickUrl = await this.captureEBeyannameUrlViaClick(page, loc).catch(() => null);
+      if (clickUrl) {
+        viaClick = await this.savePdfFromRequestUrl(page, clickUrl, downloadsPath, fallbackName).catch(() => null);
+      }
+    }
+    const direct = viaClick || await this.tryDownloadEBeyannameDirect(page, metas.find((meta: any) => meta.index === picked), downloadsPath, fallbackName).catch((err) => {
       if (!opts?.directOnly) notes.push(`${kind}: satir ${resultRow.rowIndex + 1} dogrudan PDF denemesi basarisiz: ${this.compact(err?.message || err)}`);
       return null;
     });
@@ -2185,6 +2195,40 @@ export class PortalAutomationRailwayRunnerService implements OnModuleInit {
     }
     const ownerOk = await this.validateEBeyannameFileOwner(resultRow, clicked, kind, notes);
     return { file: clicked, ownerMismatch: !ownerOk };
+  }
+
+  /**
+   * Ikona tiklayinca uygulamanin window.open ile uretecegi gercek PDF URL'ini yakalar (popup acmadan).
+   * GIB e-Beyanname'de PDF linkleri href degil, onclick -> callMenuUrlPopUp -> window.open(url) seklinde.
+   */
+  private async captureEBeyannameUrlViaClick(page: any, loc: any): Promise<string | null> {
+    await page.evaluate(() => {
+      const w = window as any;
+      if (!w.__morenOrigOpen) w.__morenOrigOpen = w.open;
+      w.__morenCapturedUrl = null;
+      w.open = function (url: any) {
+        try { if (url) w.__morenCapturedUrl = String(url); } catch (e) { /* yoksay */ }
+        const noop = function () { return stub; };
+        const stub: any = new Proxy({}, { get: () => noop, set: () => true });
+        return stub;
+      };
+    }).catch(() => {});
+    await loc.click({ timeout: 8_000 }).catch(() => {});
+    await page.waitForTimeout(200).catch(() => {});
+    const raw = await page.evaluate(() => {
+      const w = window as any;
+      const u = w.__morenCapturedUrl || null;
+      if (w.__morenOrigOpen) w.open = w.__morenOrigOpen;
+      w.__morenCapturedUrl = null;
+      return u;
+    }).catch(() => null);
+    if (!raw) return null;
+    try {
+      const abs = new URL(String(raw), String(page.url?.() || '')).toString();
+      return /^https?:/i.test(abs) ? abs : null;
+    } catch {
+      return null;
+    }
   }
 
   /** PDF metnine bakarak dosyanin tahakkuk mi beyanname mi oldugunu tahmin eder. */
