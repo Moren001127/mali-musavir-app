@@ -2069,7 +2069,7 @@ export class PortalAutomationRailwayRunnerService implements OnModuleInit {
           : await this.downloadEBeyannameRowFile(page, row, 'beyanname', downloadsPath, seq, notes, rowLocator, {
               prefetched: prefetchedBeyanname,
               directOnly: false,
-              skipDirect: true,
+              skipDirect: false,
             })
             .catch((err) => {
               notes.push(`beyanname: ${seq}. satir hata nedeniyle atlandi: ${this.compact(err?.message || err)}`);
@@ -2080,7 +2080,7 @@ export class PortalAutomationRailwayRunnerService implements OnModuleInit {
           : await this.downloadEBeyannameRowFile(page, row, 'tahakkuk', downloadsPath, seq, notes, rowLocator, {
               prefetched: prefetchedTahakkuk,
               directOnly: false,
-              skipDirect: true,
+              skipDirect: false,
             })
             .catch((err) => {
               notes.push(`tahakkuk: ${seq}. satir hata nedeniyle atlandi: ${this.compact(err?.message || err)}`);
@@ -2251,6 +2251,9 @@ export class PortalAutomationRailwayRunnerService implements OnModuleInit {
       ))
         || (meta?.href ? this.directEBeyannameUrlFromMeta(page, { href: meta.href }) : null);
       if (resolvedUrl) {
+        if (this.ebeyannameDebugEnabled() && sequence <= 8) {
+          this.logger.warn(`[EBDBG] ${fallbackName} resolved=${this.safeUrl(resolvedUrl)}`);
+        }
         viaResolvedUrl = await this.savePdfFromRequestUrl(page, resolvedUrl, downloadsPath, fallbackName).catch(() => null);
       }
     }
@@ -2265,6 +2268,9 @@ export class PortalAutomationRailwayRunnerService implements OnModuleInit {
         () => null,
       );
       if (clickUrl) {
+        if (this.ebeyannameDebugEnabled() && sequence <= 8) {
+          this.logger.warn(`[EBDBG] ${fallbackName} clickUrl=${this.safeUrl(clickUrl)}`);
+        }
         viaClick = await this.savePdfFromRequestUrl(page, clickUrl, downloadsPath, fallbackName).catch(() => null);
       }
     }
