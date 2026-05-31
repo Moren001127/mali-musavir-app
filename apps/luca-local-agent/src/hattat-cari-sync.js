@@ -72,6 +72,16 @@ function extractAntiForgery(html) {
   return b ? htmlDecode(b[1]) : null;
 }
 
+function assertExcelBuffer(buffer, label) {
+  if (buffer.length < 1000) throw new Error(`${label} cevabi bos veya gecersiz`);
+  const xlsx = buffer[0] === 0x50 && buffer[1] === 0x4b;
+  const xls = buffer[0] === 0xd0 && buffer[1] === 0xcf && buffer[2] === 0x11 && buffer[3] === 0xe0;
+  if (!xlsx && !xls) {
+    const preview = buffer.toString('utf8', 0, Math.min(buffer.length, 500)).replace(/\s+/g, ' ').trim();
+    throw new Error(`${label} Excel yerine farkli cevap verdi: ${preview.slice(0, 240) || 'icerik okunamadi'}`);
+  }
+}
+
 function extractInputFields(html) {
   const fields = {};
   const inputRegex = /<input\b[^>]*>/gi;
@@ -268,6 +278,7 @@ async function downloadFullExcel(jar, cariHtml, from, to) {
   const token = extractAntiForgery(cariHtml);
   if (!token) throw new Error('Cari Kasa Excel tokeni bulunamadi');
   const body = new URLSearchParams({
+    __RequestVerificationToken: token,
     excelCusID: '0',
     excelBeginDate: from,
     excelEndDate: to,
@@ -284,7 +295,72 @@ async function downloadFullExcel(jar, cariHtml, from, to) {
     timeout: 180000,
   });
   const buffer = Buffer.from(res.data);
-  if (buffer.length < 1000) throw new Error('Hattat Excel cevabi bos veya gecersiz');
+  assertExcelBuffer(buffer, 'Hattat');
+  return buffer;
+}
+
+async function loginAndOpenCariManual() {
+  const { chromium } = require('playwright');
+  const browser = await chromium.launch({
+    headless: false,
+    channel: process.env.HATTAT_BROWSER_CHANNEL || undefined,
+  });
+  const context = await browser.newContext({
+    acceptDownloads: true,
+    viewport: { width: 1365, height: 900 },
+    userAgent: BROWSER_UA,
+  });
+  const page = await context.newPage();
+  console.log('Hattat manuel giris penceresi acildi. Lutfen webde giris yapin; Cari Kasa acilinca devam edecegim.');
+  await page.goto(CARI_URL, { waitUntil: 'domcontentloaded', timeout: 120000 }).catch(async () => {
+    await page.goto(LOGIN_URL, { waitUntil: 'domcontentloaded', timeout: 120000 });
+  });
+
+  const deadline = Date.now() + 10 * 60 * 1000;
+  while (Date.now() < deadline) {
+    await page.waitForTimeout(2500);
+    try {
+      if (/Account\/Login/i.test(page.url())) continue;
+      await page.goto(CARI_URL, { waitUntil: 'domcontentloaded', timeout: 60000 }).catch(() => null);
+      const html = await page.content();
+      if (/CariKasa|FullExcelIndir|Mukellefler/i.test(html)) return { browser, page, html };
+    } catch {}
+  }
+  await browser.close().catch(() => null);
+  throw new Error('Hattat manuel giris zaman asimi');
+}
+
+async function downloadFullExcelWithPage(page, cariHtml, from, to) {
+  const token = extractAntiForgery(cariHtml) || await page.locator('input[name="__RequestVerificationToken"]').inputValue().catch(() => null);
+  if (!token) throw new Error('Cari Kasa Excel tokeni bulunamadi');
+  const result = await page.evaluate(async ({ url, fromDate, toDate, antiForgery }) => {
+    const form = new URLSearchParams({
+      __RequestVerificationToken: antiForgery,
+      excelCusID: '0',
+      excelBeginDate: fromDate,
+      excelEndDate: toDate,
+      excelBakiyeSifir: 'false',
+    });
+    const response = await fetch(url, {
+      method: 'POST',
+      credentials: 'include',
+      headers: {
+        'Content-Type': 'application/x-www-form-urlencoded; charset=UTF-8',
+        __RequestVerificationToken: antiForgery,
+      },
+      body: form.toString(),
+    });
+    const bytes = Array.from(new Uint8Array(await response.arrayBuffer()));
+    return {
+      ok: response.ok,
+      status: response.status,
+      contentType: response.headers.get('content-type') || '',
+      bytes,
+    };
+  }, { url: EXCEL_URL, fromDate: from, toDate: to, antiForgery: token });
+  if (!result.ok) throw new Error(`Hattat Excel indirilemedi: HTTP ${result.status}`);
+  const buffer = Buffer.from(result.bytes);
+  assertExcelBuffer(buffer, 'Hattat');
   return buffer;
 }
 
@@ -363,6 +439,7 @@ async function main() {
   const to = String(arg('to', fmtIstanbulDate(new Date())));
   const dryRun = Boolean(arg('dry-run', false));
   const fileArg = arg('file', '');
+  const manualLogin = Boolean(arg('manual-login', false));
   let customerMap = new Map();
   let excel;
   let outFile;
@@ -372,6 +449,14 @@ async function main() {
     const htmlArg = arg('html', path.join(os.tmpdir(), 'hattat-cari-kasa.html'));
     if (htmlArg && fs.existsSync(String(htmlArg))) {
       customerMap = parseCustomerOptions(fs.readFileSync(String(htmlArg), 'utf8'));
+    }
+  } else if (manualLogin) {
+    const manual = await loginAndOpenCariManual();
+    try {
+      customerMap = parseCustomerOptions(manual.html);
+      excel = await downloadFullExcelWithPage(manual.page, manual.html, from, to);
+    } finally {
+      await manual.browser.close().catch(() => null);
     }
   } else {
     const { jar, html } = await loginAndOpenCari();

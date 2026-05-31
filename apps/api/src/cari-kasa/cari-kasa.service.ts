@@ -192,6 +192,22 @@ export class CariKasaService {
     return createHash('sha1').update(`${base}|${occurrence}`).digest('hex');
   }
 
+  private hattatMovementIdentity(
+    taxpayerId: string,
+    dateKey: string,
+    tip: 'TAHAKKUK' | 'TAHSILAT',
+    amount: number,
+    aciklama: string | null,
+  ) {
+    return [
+      taxpayerId,
+      dateKey,
+      tip,
+      amount.toFixed(2),
+      this.normalizeImportKey(aciklama || ''),
+    ].join('|');
+  }
+
   // ==================== HİZMET CRUD ====================
 
   async listHizmetler(tenantId: string, taxpayerId?: string) {
@@ -476,8 +492,9 @@ export class CariKasaService {
       const serviceKey = this.normalizeImportKey(row.serviceType || '');
       const collectionKey = this.normalizeImportKey(row.collectionType || '');
       const descKey = this.normalizeImportKey(row.description || '');
+      const aciklama = this.hattatAciklama(row, tip);
       const sourceBase = [
-        String(row.hattatCustomerId || taxpayer.hattatId || ''),
+        '',
         nameKey,
         dateKey,
         tip,
@@ -497,7 +514,7 @@ export class CariKasaService {
         tarih: date,
         tip,
         tutar: amount,
-        aciklama: this.hattatAciklama(row, tip),
+        aciklama,
         odemeYontemi: tip === 'TAHSILAT' ? String(row.collectionType || 'HATTAT').trim().slice(0, 60) || 'HATTAT' : null,
         belgeNo: row.sourceRowNo ? `HATTAT:${row.sourceRowNo}` : null,
         donem: this.importPeriod(date),
@@ -506,6 +523,7 @@ export class CariKasaService {
         sourceRef,
         importBatchId,
         createdBy,
+        _sourceIdentityKey: this.hattatMovementIdentity(taxpayer.id, dateKey, tip, amount, aciklama),
       });
       if (tip === 'TAHAKKUK') debitTotal = this.roundMoney(debitTotal + amount);
       else creditTotal = this.roundMoney(creditTotal + amount);
@@ -564,7 +582,38 @@ export class CariKasaService {
       for (const row of existing) if (row.sourceRef) existingRefs.add(row.sourceRef);
     }
 
-    const createData = movements.filter((m) => !existingRefs.has(m.sourceRef));
+    const existingIdentityCounts = new Map<string, number>();
+    if (movements.length) {
+      const dates = movements.map((m) => m.tarih.getTime()).filter((v) => Number.isFinite(v));
+      const minDate = new Date(Math.min(...dates));
+      const maxDate = new Date(Math.max(...dates));
+      const existingMovements = await (this.prisma as any).cariHareket.findMany({
+        where: { tenantId, source, tarih: { gte: minDate, lte: maxDate } },
+        select: { taxpayerId: true, tarih: true, tip: true, tutar: true, aciklama: true },
+      });
+      for (const existing of existingMovements) {
+        if (existing.tip !== 'TAHAKKUK' && existing.tip !== 'TAHSILAT') continue;
+        const key = this.hattatMovementIdentity(
+          existing.taxpayerId,
+          this.importDateKey(existing.tarih),
+          existing.tip,
+          this.roundMoney(Number(existing.tutar)),
+          existing.aciklama || null,
+        );
+        existingIdentityCounts.set(key, (existingIdentityCounts.get(key) || 0) + 1);
+      }
+    }
+
+    const seenIdentityCounts = new Map<string, number>();
+    const createData = movements.flatMap((m) => {
+      const identityKey = m._sourceIdentityKey;
+      const identityOccurrence = (seenIdentityCounts.get(identityKey) || 0) + 1;
+      seenIdentityCounts.set(identityKey, identityOccurrence);
+      if (existingRefs.has(m.sourceRef)) return [];
+      if (identityOccurrence <= (existingIdentityCounts.get(identityKey) || 0)) return [];
+      const { _sourceIdentityKey, ...data } = m;
+      return [data];
+    });
     let createdMovements = 0;
     let updatedHattatIds = 0;
     if (!input.dryRun) {
