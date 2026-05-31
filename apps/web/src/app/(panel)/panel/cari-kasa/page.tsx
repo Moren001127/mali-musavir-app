@@ -6,7 +6,7 @@ import { useQuery, useQueryClient } from '@tanstack/react-query';
 import { api } from '@/lib/api';
 import { toast } from 'sonner';
 import { ButcePlanView, GelirGiderTablosuView, KasaBankaView } from './ButceTakipView';
-import { CariTahsilatWorkspace } from './CariTahsilatWorkspace';
+import { CariTahsilatWorkspace } from './CariTahsilatWorkbench';
 import {
   Wallet, Calendar, Plus, Download, Trash2, Loader2,
   TrendingUp, TrendingDown, X, Edit3, Search, ArrowLeft, FileText, Receipt,

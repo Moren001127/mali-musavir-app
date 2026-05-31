@@ -8,6 +8,12 @@ export class WhatsAppBotPostFilterService {
   filterTaxpayerReply(raw: string, options?: { recentReplies?: string[]; mode?: 'taxpayer' | 'owner' | 'unknown' }): string {
     let text = String(raw || '').trim();
 
+    // Owner (mali müşavir) raporları yapı ister: satır sonları, başlıklar, numaralar
+    // KORUNMALI. Sohbet için tasarlanan agresif temizlik bunları eziyordu → ayrı yol.
+    if (options?.mode === 'owner') {
+      return this.formatOwnerReport(text);
+    }
+
     // 1. Code block + markdown formatting sil
     text = text
       .replace(/```[\s\S]*?```/g, '')
@@ -61,6 +67,34 @@ export class WhatsAppBotPostFilterService {
     const maxChars = Number(process.env.WHATSAPP_BOT_REPLY_MAX_CHARS || defaultMax);
     if (text.length > maxChars) text = text.slice(0, maxChars).replace(/\s+\S*$/, '').trim();
     return text || 'Bir bakıp size döneyim.';
+  }
+
+  /**
+   * Owner mali durum/denetim raporları için biçimlendirme: satır sonlarını,
+   * numaralı maddeleri KORUR; sadece WhatsApp'a uygun hale getirir.
+   * (**kalın** → *kalın*, başlık/alıntı işaretlerini sade, AI kimliğini gizle.)
+   */
+  private formatOwnerReport(raw: string): string {
+    let t = String(raw || '')
+      .replace(/```[\s\S]*?```/g, '')        // kod blokları
+      .replace(/\*\*([^*]+)\*\*/g, '*$1*')    // **kalın** → WhatsApp *kalın*
+      .replace(/__([^_]+)__/g, '*$1*')
+      .replace(/^#{1,6}\s*/gm, '')             // # başlık işaretleri
+      .replace(/^\s*>\s?/gm, '')               // > alıntı işaretleri
+      .replace(/\bMoren AI\b/gi, OFFICE_FALLBACK)
+      .replace(/\byapay zeka\b/gi, OFFICE_FALLBACK)
+      .replace(/\bdil modeli\b/gi, OFFICE_FALLBACK)
+      .replace(/[^\S\n]+/g, ' ')               // yatay boşlukları sıkıştır (\n KORUNUR)
+      .replace(/[ \t]+\n/g, '\n')              // satır sonu öncesi boşluk
+      .replace(/\n{3,}/g, '\n\n')              // ardışık boş satırları 1'e indir
+      .trim();
+
+    if (this.looksRisky(t)) {
+      return 'Bunu bir kontrol edeyim, size net bilgiyle döneyim.';
+    }
+    const maxChars = Number(process.env.WHATSAPP_BOT_OWNER_MAX_CHARS || 3500);
+    if (t.length > maxChars) t = t.slice(0, maxChars).replace(/\s+\S*$/, '').trim();
+    return t || '—';
   }
 
   private looksRisky(text: string): boolean {

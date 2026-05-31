@@ -46,6 +46,7 @@ import {
   UserRoundSearch,
   WandSparkles,
   Workflow,
+  Coins,
 } from 'lucide-react';
 import { useQuery } from '@tanstack/react-query';
 import { pendingDecisionsApi } from '@/lib/pending-decisions';
@@ -140,6 +141,7 @@ const navGroups = [
     items: [
       { href: '/panel/hatirlatmalar', label: 'WhatsApp Otomasyonu', icon: MessageSquareText },
       { href: '/panel/ajanlar', label: 'Tüm Ajanlar', icon: Cpu },
+      { href: '/panel/maliyet', label: 'AI Maliyet', icon: Coins },
       { href: '/panel/ajanlar/luca', label: 'Luca Oturumu', icon: ShieldCheck },
       { href: '/panel/ajan-saglik', label: 'Sağlık Panosu', icon: Stethoscope },
       { href: '/panel/ajanlar/loglar', label: 'Yapılan İşlemler', icon: History },

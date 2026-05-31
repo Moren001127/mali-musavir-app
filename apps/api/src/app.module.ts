@@ -38,6 +38,7 @@ import { PortalAutomationModule } from './portal-automation/portal-automation.mo
 import { AutomationsModule } from './automations/automations.module';
 import { OfficeChatModule } from './office-chat/office-chat.module';
 import { EmailModule } from './email/email.module';
+import { AiCostModule } from './ai-cost/ai-cost.module';
 import { ReminderCron } from './schedule/reminder.cron';
 import { HgsCron } from './schedule/hgs.cron';
 import { TaskReminderCron } from './schedule/task-reminder.cron';
@@ -84,6 +85,7 @@ import { InvoiceOverdueCron } from './schedule/invoice-overdue.cron';
     AutomationsModule,
     OfficeChatModule,
     EmailModule,
+    AiCostModule,
   ],
   providers: [
     { provide: APP_GUARD, useClass: ThrottlerGuard },
