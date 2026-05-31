@@ -2058,7 +2058,7 @@ export class PortalAutomationRailwayRunnerService implements OnModuleInit {
           : await this.downloadEBeyannameRowFile(page, row, 'beyanname', downloadsPath, seq, notes, rowLocator, {
               prefetched: prefetchedBeyanname,
               directOnly: false,
-              skipDirect: this.ebeyannameParallelEnabled(),
+              skipDirect: true,
             })
             .catch((err) => {
               notes.push(`beyanname: ${seq}. satir hata nedeniyle atlandi: ${this.compact(err?.message || err)}`);
@@ -2069,7 +2069,7 @@ export class PortalAutomationRailwayRunnerService implements OnModuleInit {
           : await this.downloadEBeyannameRowFile(page, row, 'tahakkuk', downloadsPath, seq, notes, rowLocator, {
               prefetched: prefetchedTahakkuk,
               directOnly: false,
-              skipDirect: this.ebeyannameParallelEnabled(),
+              skipDirect: true,
             })
             .catch((err) => {
               notes.push(`tahakkuk: ${seq}. satir hata nedeniyle atlandi: ${this.compact(err?.message || err)}`);
