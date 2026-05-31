@@ -10,12 +10,6 @@ import { createHash, timingSafeEqual } from 'crypto';
 import { readFileSync, existsSync } from 'fs';
 import { join } from 'path';
 
-/**
- * Ekstre PDF başlığındaki Moren logosu (apps/web/public/brand/moren-logo-gold.png).
- * PDF kullanıcının tarayıcısında window.print() ile basıldığı için logoyu
- * data URI olarak gömüyoruz — böylece portal erişilebilir olsun olmasın her
- * zaman görünür. Disk okumayı bir kez yapıp önbelleğe alıyoruz.
- */
 let _logoDataUriCache: string | null | undefined;
 function getMorenLogoDataUri(): string | null {
   if (_logoDataUriCache !== undefined) return _logoDataUriCache;
@@ -29,12 +23,12 @@ function getMorenLogoDataUri(): string | null {
   for (const p of candidates) {
     try {
       if (existsSync(p)) {
-        const b64 = readFileSync(p).toString('base64');
-        _logoDataUriCache = `data:image/png;base64,${b64}`;
+        const data = readFileSync(p).toString('base64');
+        _logoDataUriCache = `data:image/png;base64,${data}`;
         return _logoDataUriCache;
       }
     } catch {
-      /* sıradaki adaya geç */
+      /* siradaki adaya gec */
     }
   }
   _logoDataUriCache = null;
@@ -415,12 +409,10 @@ export class CariKasaController {
     const fmt = (n: number) =>
       n.toLocaleString('tr-TR', { minimumFractionDigits: 2, maximumFractionDigits: 2 });
     const trDate = (d: any) => new Date(d).toLocaleDateString('tr-TR');
-    // Portalda kullanılan logo. Önce diske gömülü base64'ü dene; bulunamazsa URL'e düş.
     const logoUrl =
       getMorenLogoDataUri() ||
       (process.env.PORTAL_PUBLIC_URL || 'https://portal.morenmusavirlik.com') + '/brand/moren-logo-gold.png';
 
-    // Bakiye + borç/alacak yön eki (Hattat formatı: "11.750,00 TL (B)")
     const tl = (n: number) => `${fmt(Math.abs(n))} TL`;
     const bakiyeEk = (n: number) => `${fmt(Math.abs(n))} TL${n > 0 ? ' (B)' : n < 0 ? ' (A)' : ''}`;
     const kategoriAdi = (s: any) =>
@@ -449,21 +441,12 @@ export class CariKasaController {
   body{margin:0;padding:20mm;font-family:'DM Sans',system-ui,-apple-system,Segoe UI,sans-serif;color:#0A1628}
   .hdr{display:flex;justify-content:space-between;align-items:flex-start;border-bottom:2px solid #0A1628;padding-bottom:8mm;margin-bottom:2mm;position:relative}
   .hdr::after{content:'';position:absolute;left:0;bottom:-2px;width:42mm;height:2px;background:#C9982A}
-  .brand h1{margin:0;color:#0A1628;font-size:22pt;font-family:'Plus Jakarta Sans',system-ui,sans-serif;letter-spacing:-.02em}
   .brand p{margin:3mm 0 0;color:#5272A8;font-size:9.5pt;letter-spacing:.02em}
   .info{text-align:right;font-size:9.5pt}
   .info .label{color:#5272A8}
   .info b{color:#0A1628}
   h2{font-size:13pt;color:#0A1628;margin:6mm 0 3mm;padding-left:3mm;border-left:3px solid #C9982A}
   .muk{background:#FBF0D6;border-left:4px solid #C9982A;padding:4mm 5mm;margin:6mm 0 5mm;border-radius:4px}
-  .muk .ad{font-size:14pt;font-weight:700;color:#0A1628}
-  .muk .sub{font-size:9.5pt;color:#A77819;margin-top:1mm}
-  .summary{display:grid;grid-template-columns:repeat(4,1fr);gap:3mm;margin-bottom:6mm}
-  .summary .card{background:#fff;border:1px solid #DDE3ED;padding:3mm 4mm;border-radius:6px}
-  .summary .card .k{font-size:8pt;color:#5272A8;text-transform:uppercase;letter-spacing:.08em}
-  .summary .card .v{font-size:13pt;font-weight:700;margin-top:1mm;font-variant-numeric:tabular-nums;color:#0A1628}
-  .summary .card.hi{background:#FBF0D6;border-color:#C9982A}
-  .summary .card.hi .v{color:#A77819}
   table{width:100%;border-collapse:collapse;font-size:9.5pt;table-layout:fixed}
   col.c-date{width:9%}col.c-kat{width:14%}col.c-tah{width:10%}col.c-acik{width:20%}col.c-borc{width:14%}col.c-alacak{width:15%}col.c-bak{width:18%}
   th,td{padding:2.6mm 3mm;border-bottom:1px solid #E8ECF2;vertical-align:middle;text-align:left;word-wrap:break-word}
@@ -472,11 +455,9 @@ export class CariKasaController {
   th.num,td.num{text-align:right;font-variant-numeric:tabular-nums;white-space:nowrap}
   .bold{font-weight:700}
   tbody tr:nth-child(even){background:#FAFBFC}
-  tr.acilis{background:#EEF2F7!important;font-weight:600}
+  tr.acilis{background:#EEF2F7;font-weight:600}
   tr.acilis td{color:#253660}
-  tr.kapanis{background:#FBF0D6!important;font-weight:700;border-top:2px solid #C9982A}
-  tr.kapanis td{color:#A77819}
-  tr.toplam{background:#0A1628!important;font-weight:700;border-top:2px solid #C9982A}
+  tr.toplam{background:#0A1628;font-weight:700;border-top:2px solid #C9982A}
   tr.toplam td{color:#fff;padding:3.5mm 3mm}
   tr.toplam td .bb{color:#E8B84B;display:block;font-size:9.5pt;margin-top:1mm;font-variant-numeric:tabular-nums}
   .footer{margin-top:8mm;padding-top:4mm;border-top:1px solid #DDE3ED;font-size:8.5pt;color:#5272A8;text-align:center}
@@ -487,7 +468,7 @@ export class CariKasaController {
 <body>
   <div class="hdr">
     <div class="brand">
-      <img src="${logoUrl}" alt="Moren Mali Müşavirlik" style="height:22mm;width:auto;display:block" />
+      <img src="${logoUrl}" alt="Moren Mali Musavirlik" style="height:22mm;width:auto;display:block" />
       <p style="margin-top:3mm">Serbest Muhasebeci Mali Müşavir</p>
     </div>
     <div class="info">
@@ -517,4 +498,63 @@ export class CariKasaController {
       </tr>
     </tbody>
   </table>
-  <div class="footer"><b>Moren Mali Müşavirlik</b> · Bu ekstre ${new Date().toLocaleString('tr-TR')} tarihinde oluşturulmuştur
+  <div class="footer"><b>Moren Mali Müşavirlik</b> · Bu ekstre ${new Date().toLocaleString('tr-TR')} tarihinde oluşturulmuştur.</div>
+  <script>window.addEventListener('load',()=>setTimeout(()=>window.print(),400));</script>
+</body></html>`;
+
+    res.setHeader('Content-Type', 'text/html; charset=utf-8');
+    res.setHeader('Cache-Control', 'no-store');
+    res.send(html);
+  }
+
+  // ==================== MANUEL CRON TETİKLEME (debug) ====================
+  @Post('cron/otomatik-tahakkuk')
+  @HttpCode(HttpStatus.OK)
+  async manuelCronTetikle(@Body() body: { donem?: string }) {
+    const donem = body?.donem ||
+      `${new Date().getFullYear()}-${String(new Date().getMonth() + 1).padStart(2, '0')}`;
+    return this.service.otoTahakkukUret(donem);
+  }
+}
+
+@Controller('agent/cari-kasa')
+export class CariKasaAgentController {
+  constructor(
+    private readonly service: CariKasaService,
+    private readonly prisma: PrismaService,
+  ) {}
+
+  @Post('hattat/import')
+  @HttpCode(HttpStatus.OK)
+  async importHattatCariKasa(
+    @Headers('x-agent-token') agentToken: string,
+    @Body() body: any,
+  ) {
+    const tenantId = await this.resolveTenantFromAgentToken(agentToken);
+    return this.service.importHattatCariKasa(tenantId, body || {}, 'hattat-local-agent');
+  }
+
+  private async resolveTenantFromAgentToken(token?: string): Promise<string> {
+    const presented = String(token || '').trim();
+    if (!presented) throw new UnauthorizedException('Missing X-Agent-Token');
+
+    const pairs = parseAgentTokenMap(process.env.AGENT_INGEST_TOKENS || '');
+    for (const pair of pairs) {
+      if (safeEqual(presented, pair.token)) return pair.tenantId;
+    }
+    const allowLegacyLookup =
+      envFlag(process.env.AGENT_TOKEN_ALLOW_TENANT_ID) || process.env.NODE_ENV !== 'production';
+    // Backward compatibility: existing desktop/local-agent installs use tenant slug as
+    // the agent token. Keep accepting that while AGENT_INGEST_TOKENS is rolled out.
+    const tenant = await (this.prisma as any).tenant.findFirst({
+      where: { OR: [{ slug: presented }, { id: presented }] },
+      select: { id: true },
+    });
+    if (!tenant) {
+      if (pairs.length > 0) throw new UnauthorizedException('Invalid agent token');
+      if (!allowLegacyLookup) throw new UnauthorizedException('Agent token map is not configured');
+      throw new UnauthorizedException('Invalid agent token');
+    }
+    return tenant.id;
+  }
+}
