@@ -2058,6 +2058,7 @@ export class PortalAutomationRailwayRunnerService implements OnModuleInit {
           : await this.downloadEBeyannameRowFile(page, row, 'beyanname', downloadsPath, seq, notes, rowLocator, {
               prefetched: prefetchedBeyanname,
               directOnly: false,
+              skipDirect: this.ebeyannameParallelEnabled(),
             })
             .catch((err) => {
               notes.push(`beyanname: ${seq}. satir hata nedeniyle atlandi: ${this.compact(err?.message || err)}`);
@@ -2068,6 +2069,7 @@ export class PortalAutomationRailwayRunnerService implements OnModuleInit {
           : await this.downloadEBeyannameRowFile(page, row, 'tahakkuk', downloadsPath, seq, notes, rowLocator, {
               prefetched: prefetchedTahakkuk,
               directOnly: false,
+              skipDirect: this.ebeyannameParallelEnabled(),
             })
             .catch((err) => {
               notes.push(`tahakkuk: ${seq}. satir hata nedeniyle atlandi: ${this.compact(err?.message || err)}`);
@@ -2198,7 +2200,7 @@ export class PortalAutomationRailwayRunnerService implements OnModuleInit {
     sequence: number,
     notes: string[],
     rowLocator?: any,
-    opts?: { directOnly?: boolean; prefetched?: EBeyannameFileDownloadResult | null },
+    opts?: { directOnly?: boolean; prefetched?: EBeyannameFileDownloadResult | null; skipDirect?: boolean },
   ): Promise<EBeyannameFileDownloadResult> {
     // Paralel on-getirme fazinda bu satir+tur zaten indirildiyse tekrar indirme.
     if (opts?.prefetched && opts.prefetched.file) return opts.prefetched;
@@ -2230,20 +2232,22 @@ export class PortalAutomationRailwayRunnerService implements OnModuleInit {
     // 1) EN GUVENILIR YOL: onclick icindeki beyannameGoruntule/tahakkukGoruntule zincirini
     //    gercek tiklama yapmadan calistir, window.open URL'ini yakala ve HTTP ile indir.
     let viaResolvedUrl: EBeyannameFilePayload | null = null;
-    const resolvedUrl = (await this.withTimeout(
-      this.captureEBeyannameUrlViaOnclick(page, loc).catch(() => null),
-      this.ebeyannameUrlResolveTimeoutMs(),
-      () => null,
-    ))
-      || (meta?.href ? this.directEBeyannameUrlFromMeta(page, { href: meta.href }) : null);
-    if (resolvedUrl) {
-      viaResolvedUrl = await this.savePdfFromRequestUrl(page, resolvedUrl, downloadsPath, fallbackName).catch(() => null);
+    if (!opts?.skipDirect) {
+      const resolvedUrl = (await this.withTimeout(
+        this.captureEBeyannameUrlViaOnclick(page, loc).catch(() => null),
+        this.ebeyannameUrlResolveTimeoutMs(),
+        () => null,
+      ))
+        || (meta?.href ? this.directEBeyannameUrlFromMeta(page, { href: meta.href }) : null);
+      if (resolvedUrl) {
+        viaResolvedUrl = await this.savePdfFromRequestUrl(page, resolvedUrl, downloadsPath, fallbackName).catch(() => null);
+      }
     }
 
     // 2) Fallback: bazi eski/degisik ekranlarda onclick dogrudan calismayabilir; o zaman
     //    gercek tiklamadan once window.open'u intercept et.
     let viaClick: EBeyannameFilePayload | null = null;
-    if (!viaResolvedUrl && !opts?.directOnly) {
+    if (!viaResolvedUrl && !opts?.directOnly && !opts?.skipDirect) {
       const clickUrl = await this.withTimeout(
         this.captureEBeyannameUrlViaClick(page, loc).catch(() => null),
         this.ebeyannameUrlResolveTimeoutMs(),
@@ -2253,10 +2257,12 @@ export class PortalAutomationRailwayRunnerService implements OnModuleInit {
         viaClick = await this.savePdfFromRequestUrl(page, clickUrl, downloadsPath, fallbackName).catch(() => null);
       }
     }
-    const direct = viaResolvedUrl || viaClick || await this.tryDownloadEBeyannameDirect(page, meta, downloadsPath, fallbackName).catch((err) => {
-      if (!opts?.directOnly) notes.push(`${kind}: satir ${resultRow.rowIndex + 1} dogrudan PDF denemesi basarisiz: ${this.compact(err?.message || err)}`);
-      return null;
-    });
+    const direct = viaResolvedUrl || viaClick || (opts?.skipDirect
+      ? null
+      : await this.tryDownloadEBeyannameDirect(page, meta, downloadsPath, fallbackName).catch((err) => {
+          if (!opts?.directOnly) notes.push(`${kind}: satir ${resultRow.rowIndex + 1} dogrudan PDF denemesi basarisiz: ${this.compact(err?.message || err)}`);
+          return null;
+        }));
     // directOnly modunda (paralel on-getirme) tarayici tiklamasi yapilmaz; DOM fallback seri birlestirme fazinda calisir.
     const clicked = direct || (opts?.directOnly
       ? null
