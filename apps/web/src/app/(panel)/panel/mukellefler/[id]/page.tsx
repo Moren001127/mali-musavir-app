@@ -43,6 +43,7 @@ import { MukellefiyetlerCard } from '@/components/mukellef/MukellefiyetlerCard';
 import { TaxpayerPortalCredentialsCard } from '@/components/portal-automation/PortalCredentialCards';
 
 const GOLD = '#d4b876';
+const GOLD_BRIGHT = '#e7cd92';
 const GOLD_DEEP = '#8b7649';
 const LINE = 'rgba(255,255,255,0.12)';
 const LINE_GOLD = 'rgba(212,184,118,0.32)';
@@ -52,9 +53,9 @@ const SOFT = 'rgba(255,255,255,0.05)';
 // Tema arka plan tonları — sıcak kahve-gri, ferah his
 const PANEL = '#2a241c';
 // Premium alan stilleri — altın odak halkası + kenar
-const FIELD_CLS = 'h-11 w-full rounded-lg border border-white/10 bg-white/[0.04] px-3.5 text-[13.5px] text-[#fafaf9] outline-none transition placeholder:text-white/25 focus:border-[#d4b876]/55 focus:bg-white/[0.06] focus:shadow-[0_0_0_3px_rgba(212,184,118,0.13)]';
+const FIELD_CLS = 'h-11 w-full rounded-xl border border-white/10 bg-white/[0.035] px-3.5 text-[13.5px] text-[#fafaf9] outline-none transition placeholder:text-white/25 focus:border-[#d4b876]/55 focus:bg-white/[0.055] focus:shadow-[0_0_0_3px_rgba(212,184,118,0.14)]';
 const SELECT_CLS = `${FIELD_CLS} cursor-pointer`;
-const TEXTAREA_CLS = 'w-full resize-none rounded-lg border border-white/10 bg-white/[0.04] px-3.5 py-3 text-[13.5px] text-[#fafaf9] outline-none transition placeholder:text-white/25 focus:border-[#d4b876]/55 focus:bg-white/[0.06] focus:shadow-[0_0_0_3px_rgba(212,184,118,0.13)]';
+const TEXTAREA_CLS = 'w-full resize-none rounded-xl border border-white/10 bg-white/[0.035] px-3.5 py-3 text-[13.5px] text-[#fafaf9] outline-none transition placeholder:text-white/25 focus:border-[#d4b876]/55 focus:bg-white/[0.055] focus:shadow-[0_0_0_3px_rgba(212,184,118,0.14)]';
 
 const TAXPAYER_TYPES = [
   { value: 'TUZEL_KISI', label: 'Tüzel Kişi', detail: 'Şirket veya kurum kaydı' },
@@ -720,13 +721,15 @@ function BilgilerTab({
               key={s.id}
               type="button"
               onClick={() => setActive(s.id)}
-              className="relative flex shrink-0 items-center gap-3 rounded-lg py-2.5 pl-3.5 pr-3 text-left transition hover:bg-white/[0.04] md:w-full"
-              style={on ? { background: 'rgba(212,184,118,0.10)' } : undefined}
+              className="relative flex shrink-0 items-center gap-3 rounded-xl border py-2.5 pl-3.5 pr-3 text-left transition hover:bg-white/[0.035] md:w-full"
+              style={on
+                ? { background: 'linear-gradient(90deg, rgba(212,184,118,0.16), rgba(212,184,118,0.03))', borderColor: 'rgba(212,184,118,0.22)' }
+                : { borderColor: 'transparent' }}
             >
-              {on && <span className="absolute bottom-1.5 left-0 top-1.5 w-[3px] rounded-full" style={{ background: GOLD }} />}
+              {on && <span className="absolute bottom-2 left-0 top-2 w-[3px] rounded-r-full" style={{ background: GOLD }} />}
               <span
                 className="flex h-8 w-8 shrink-0 items-center justify-center rounded-lg"
-                style={{ background: on ? 'rgba(212,184,118,0.16)' : 'rgba(255,255,255,0.04)', color: on ? GOLD : MUTED }}
+                style={{ background: on ? 'rgba(212,184,118,0.18)' : 'rgba(255,255,255,0.04)', color: on ? GOLD : MUTED, boxShadow: on ? 'inset 0 1px 0 rgba(255,255,255,0.10)' : undefined }}
               >
                 <Icon size={15} />
               </span>
@@ -746,7 +749,7 @@ function BilgilerTab({
       <div className="md:border-l md:pl-6" style={{ borderColor: LINE }}>
         {/* MÜŞTERİ / ŞİRKET */}
         {active === 'musteri' && (
-          <div className="space-y-6">
+          <div className="space-y-7">
             <div>
               <span className="mb-2 block text-[11.5px] font-medium tracking-wide" style={{ color: MUTED }}>Mükellef türü</span>
               <Segmented
@@ -758,54 +761,70 @@ function BilgilerTab({
                 {TAXPAYER_TYPES.find((t) => t.value === form.type)?.detail}
               </p>
             </div>
-            <div className="grid grid-cols-1 gap-4 sm:grid-cols-2">
-              {form.type === 'TUZEL_KISI' ? (
-                <Field label="Şirket adı" required className="sm:col-span-2">
-                  <InputBase value={form.companyName} onChange={(e) => setForm((p) => ({ ...p, companyName: e.target.value }))} required />
+
+            <div>
+              <GroupHeader label="Kimlik" />
+              <div className="grid grid-cols-1 gap-x-5 gap-y-4 sm:grid-cols-2">
+                {form.type === 'TUZEL_KISI' ? (
+                  <Field label="Şirket adı" required className="sm:col-span-2">
+                    <InputBase value={form.companyName} onChange={(e) => setForm((p) => ({ ...p, companyName: e.target.value }))} required />
+                  </Field>
+                ) : (
+                  <>
+                    <Field label="Ad" required>
+                      <InputBase value={form.firstName} onChange={(e) => setForm((p) => ({ ...p, firstName: e.target.value }))} required />
+                    </Field>
+                    <Field label="Soyad" required>
+                      <InputBase value={form.lastName} onChange={(e) => setForm((p) => ({ ...p, lastName: e.target.value }))} required />
+                    </Field>
+                  </>
+                )}
+                <Field label={form.type === 'TUZEL_KISI' ? 'VKN' : 'TCKN'} required>
+                  <InputBase
+                    value={form.taxNumber}
+                    onChange={(e) => setForm((p) => ({ ...p, taxNumber: e.target.value.replace(/\D/g, '') }))}
+                    maxLength={11}
+                    required
+                    className="font-mono"
+                  />
                 </Field>
-              ) : (
-                <>
-                  <Field label="Ad" required>
-                    <InputBase value={form.firstName} onChange={(e) => setForm((p) => ({ ...p, firstName: e.target.value }))} required />
-                  </Field>
-                  <Field label="Soyad" required>
-                    <InputBase value={form.lastName} onChange={(e) => setForm((p) => ({ ...p, lastName: e.target.value }))} required />
-                  </Field>
-                </>
-              )}
-              <Field label={form.type === 'TUZEL_KISI' ? 'VKN' : 'TCKN'} required>
-                <InputBase
-                  value={form.taxNumber}
-                  onChange={(e) => setForm((p) => ({ ...p, taxNumber: e.target.value.replace(/\D/g, '') }))}
-                  maxLength={11}
-                  required
-                  className="font-mono"
-                />
-              </Field>
-              <Field label="Vergi dairesi" required>
-                <InputBase value={form.taxOffice} onChange={(e) => setForm((p) => ({ ...p, taxOffice: e.target.value }))} required />
-              </Field>
-              <Field label="İşe başlama tarihi">
-                <InputBase type="date" value={form.startDate} onChange={(e) => setForm((p) => ({ ...p, startDate: e.target.value }))} />
-              </Field>
-              <Field label="İşi bırakma tarihi">
-                <InputBase type="date" value={form.endDate} onChange={(e) => setForm((p) => ({ ...p, endDate: e.target.value }))} />
-              </Field>
-              <Field label="Adres" className="sm:col-span-2">
-                <InputBase value={form.address} onChange={(e) => setForm((p) => ({ ...p, address: e.target.value }))} />
-              </Field>
-              <Field label="NACE Kodu">
-                <InputBase placeholder="Örn: 56.10.06" value={form.naceKodu} onChange={(e) => setForm((p) => ({ ...p, naceKodu: e.target.value }))} />
-              </Field>
-              <Field label="Ticaret Sicil No">
-                <InputBase placeholder="Örn: 123456-5" value={form.ticaretSicilNo} onChange={(e) => setForm((p) => ({ ...p, ticaretSicilNo: e.target.value }))} />
-              </Field>
-              <Field label="MERSİS No">
-                <InputBase placeholder="16 haneli" value={form.mersisNo} onChange={(e) => setForm((p) => ({ ...p, mersisNo: e.target.value }))} className="font-mono" />
-              </Field>
-              <Field label="Oda Sicil No">
-                <InputBase placeholder="Örn: İTO 678901" value={form.odaSicilNo} onChange={(e) => setForm((p) => ({ ...p, odaSicilNo: e.target.value }))} />
-              </Field>
+                <Field label="Vergi dairesi" required>
+                  <InputBase value={form.taxOffice} onChange={(e) => setForm((p) => ({ ...p, taxOffice: e.target.value }))} required />
+                </Field>
+              </div>
+            </div>
+
+            <div>
+              <GroupHeader label="Sicil & Kodlar" />
+              <div className="grid grid-cols-1 gap-x-5 gap-y-4 sm:grid-cols-2">
+                <Field label="NACE Kodu">
+                  <InputBase placeholder="Örn: 56.10.06" value={form.naceKodu} onChange={(e) => setForm((p) => ({ ...p, naceKodu: e.target.value }))} />
+                </Field>
+                <Field label="Ticaret Sicil No">
+                  <InputBase placeholder="Örn: 123456-5" value={form.ticaretSicilNo} onChange={(e) => setForm((p) => ({ ...p, ticaretSicilNo: e.target.value }))} />
+                </Field>
+                <Field label="MERSİS No">
+                  <InputBase placeholder="16 haneli" value={form.mersisNo} onChange={(e) => setForm((p) => ({ ...p, mersisNo: e.target.value }))} className="font-mono" />
+                </Field>
+                <Field label="Oda Sicil No">
+                  <InputBase placeholder="Örn: İTO 678901" value={form.odaSicilNo} onChange={(e) => setForm((p) => ({ ...p, odaSicilNo: e.target.value }))} />
+                </Field>
+              </div>
+            </div>
+
+            <div>
+              <GroupHeader label="Tarihler & Adres" />
+              <div className="grid grid-cols-1 gap-x-5 gap-y-4 sm:grid-cols-2">
+                <Field label="İşe başlama tarihi">
+                  <InputBase type="date" value={form.startDate} onChange={(e) => setForm((p) => ({ ...p, startDate: e.target.value }))} />
+                </Field>
+                <Field label="İşi bırakma tarihi">
+                  <InputBase type="date" value={form.endDate} onChange={(e) => setForm((p) => ({ ...p, endDate: e.target.value }))} />
+                </Field>
+                <Field label="Adres" className="sm:col-span-2">
+                  <InputBase value={form.address} onChange={(e) => setForm((p) => ({ ...p, address: e.target.value }))} />
+                </Field>
+              </div>
             </div>
           </div>
         )}
@@ -1221,7 +1240,7 @@ function Segmented({
             type="button"
             onClick={() => onChange(o.value)}
             className="flex-1 rounded-lg px-4 py-2 text-[13px] font-semibold transition"
-            style={on ? { background: `linear-gradient(135deg, ${GOLD}, ${GOLD_DEEP})`, color: '#0f0d0b' } : { color: MUTED, background: 'transparent' }}
+            style={on ? { background: `linear-gradient(135deg, ${GOLD_BRIGHT}, ${GOLD_DEEP})`, color: '#1a1408', boxShadow: '0 4px 14px -4px rgba(212,184,118,0.5)' } : { color: MUTED, background: 'transparent' }}
           >
             {o.label}
           </button>
@@ -1283,6 +1302,15 @@ function PlaceholderTab({
           {linkLabel} <ChevronRight size={13} />
         </Link>
       )}
+    </div>
+  );
+}
+
+function GroupHeader({ label }: { label: string }) {
+  return (
+    <div className="mb-3.5 flex items-center gap-2.5">
+      <span className="whitespace-nowrap text-[10.5px] font-bold uppercase tracking-[0.13em]" style={{ color: GOLD }}>{label}</span>
+      <span className="h-px flex-1" style={{ background: 'linear-gradient(90deg, rgba(212,184,118,0.30), transparent)' }} />
     </div>
   );
 }
