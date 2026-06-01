@@ -2199,6 +2199,7 @@ export class PortalAutomationRailwayRunnerService implements OnModuleInit {
         const declaration = this.declarationFromEBeyannameRow(row, 'onaylandi', taxpayers, job, { beyanname, tahakkuk });
         if (!declaration && (beyanname || tahakkuk)) {
           this.logger.warn(`[EBSTAT] ESLESMEDI: satir ${seq} vkn=${row.taxNumber || '-'} ad="${this.compact(row.taxpayerName || '').slice(0, 40)}" tip="${this.compact(row.beyanTipiRaw || '').slice(0, 24)}" -> eslesmeyen belgeye dustu`);
+          await this.diagnoseEBeyannameUnmatch(tenantId, row);
         }
 
         const unmatchedFiles = [
@@ -3952,6 +3953,49 @@ export class PortalAutomationRailwayRunnerService implements OnModuleInit {
       if (textKey.includes(item.key)) return item.taxpayer.id;
     }
     return null;
+  }
+
+  /**
+   * Eslesmeyen bir satir icin: ayni VKN'li veya benzer isimli mukellefi DB'den (aktif/pasif farketmeksizin)
+   * arar ve neden eslesmedigini loglar. Sebep: VKN bos/farkli mi, sifreli/uzun mu, mukellef pasif mi, isim mi.
+   */
+  private async diagnoseEBeyannameUnmatch(tenantId: string, row: EBeyannameResultRow) {
+    const rowVkn = String(row.taxNumber || '').replace(/\D/g, '');
+    if (!rowVkn) return;
+    try {
+      const byVkn = await (this.prisma as any).taxpayer.findMany({
+        where: { tenantId, taxNumber: { contains: rowVkn } },
+        select: { id: true, taxNumber: true, isActive: true, companyName: true, firstName: true, lastName: true },
+        take: 3,
+      });
+      const nameQ = this.compact(row.taxpayerName || '').split(' ').filter((w) => w.length >= 3)[0] || '';
+      const byName = nameQ
+        ? await (this.prisma as any).taxpayer.findMany({
+            where: {
+              tenantId,
+              OR: [
+                { companyName: { contains: nameQ, mode: 'insensitive' } },
+                { firstName: { contains: nameQ, mode: 'insensitive' } },
+                { lastName: { contains: nameQ, mode: 'insensitive' } },
+              ],
+            },
+            select: { id: true, taxNumber: true, isActive: true, companyName: true, firstName: true, lastName: true },
+            take: 3,
+          })
+        : [];
+      const fmt = (t: any) => {
+        const tax = String(t.taxNumber || '');
+        const ad = this.compact(t.companyName || [t.firstName, t.lastName].filter(Boolean).join(' ')).slice(0, 30);
+        return `{aktif=${t.isActive} vknUzunluk=${tax.length} vkn="${tax.slice(0, 4)}..${tax.slice(-2)}" ad="${ad}"}`;
+      };
+      this.logger.warn(
+        `[EBMATCH] rowVkn=${rowVkn} rowAd="${this.compact(row.taxpayerName || '')}" :: `
+        + `vknIle=${byVkn.length ? byVkn.map(fmt).join(' ') : 'YOK'} | `
+        + `isimIle=${byName.length ? byName.map(fmt).join(' ') : 'YOK'}`,
+      );
+    } catch (e: any) {
+      this.logger.warn(`[EBMATCH] teshis hata: ${this.compact(e?.message || e)}`);
+    }
   }
 
   private guessDownloadKind(text: string) {
