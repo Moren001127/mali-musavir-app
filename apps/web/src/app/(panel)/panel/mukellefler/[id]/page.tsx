@@ -9,14 +9,12 @@ import {
   BookOpen,
   Building2,
   CheckCircle2,
-  ChevronDown,
   ChevronLeft,
   ChevronRight,
   ExternalLink,
   FileCheck,
   FileText,
   Hash,
-  Image as ImageIcon,
   Landmark,
   Loader2,
   Lock,
@@ -54,6 +52,8 @@ const SOFT = 'rgba(255,255,255,0.05)';
 // Tema arka plan tonları — sıcak kahve-gri, ferah his
 const PANEL = '#2a241c';
 const PANEL_LIGHT = '#352e23';
+// Alanlar için altın odak halkası
+const FOCUS_RING = 'focus:shadow-[0_0_0_2px_rgba(212,184,118,0.32)]';
 
 const TAXPAYER_TYPES = [
   { value: 'TUZEL_KISI', label: 'Tüzel Kişi', detail: 'Şirket veya kurum kaydı' },
@@ -146,7 +146,7 @@ function initialsFor(name: string) {
 }
 
 // ============================================================
-// KISAYOLLAR — Devlet portalları + sık sorgular (açılır panelde)
+// KISAYOL GİRİŞLERİ — devlet portalları + sık sorgular (açılır panelde)
 // ============================================================
 type Kisayol = { id: string; label: string; url: string; renk: string; kisaltma: string };
 
@@ -437,9 +437,9 @@ export default function MukellefDetayPage() {
                 onClick={() => setPortalOpen(true)}
                 className="inline-flex h-9 items-center gap-1.5 rounded-lg border px-3 text-[12.5px] font-semibold transition hover:bg-white/[0.06]"
                 style={{ borderColor: LINE_GOLD, background: 'rgba(212,184,118,0.09)', color: GOLD }}
-                title="Devlet portalları ve sık sorgular"
+                title="Kısayol girişleri ve sık sorgular"
               >
-                <Zap size={15} /> Devlet Portalları
+                <Zap size={15} /> Kısayol Girişleri
               </button>
             )}
             <CardNavButtons compact />
@@ -541,7 +541,7 @@ export default function MukellefDetayPage() {
             </div>
 
             {/* SEKME İÇERİĞİ */}
-            <div className={activeTab === 'mukellefiyetler' ? 'p-4 sm:p-5' : 'p-5 sm:p-6'}>
+            <div className={activeTab === 'mukellefiyetler' ? 'p-4 sm:p-5' : 'p-4 sm:p-5'}>
               {activeTab === 'bilgiler' && (
                 <BilgilerTab form={form} setForm={setForm} taxpayerId={isNew ? null : id} />
               )}
@@ -594,7 +594,7 @@ export default function MukellefDetayPage() {
       </div>
 
       {/* ============================================================
-          DEVLET PORTALLARI — açılır panel
+          KISAYOL GİRİŞLERİ — açılır panel
       ============================================================ */}
       {portalOpen && !isNew && (
         <PortalDrawer vkn={form.taxNumber} onClose={() => setPortalOpen(false)} onKisayol={handleKisayolClick} />
@@ -604,7 +604,7 @@ export default function MukellefDetayPage() {
 }
 
 // ============================================================
-// DEVLET PORTALLARI — sağdan açılan panel
+// KISAYOL GİRİŞLERİ — sağdan açılan panel
 // ============================================================
 function PortalDrawer({
   vkn,
@@ -631,8 +631,8 @@ function PortalDrawer({
             <Zap size={17} />
           </div>
           <div className="min-w-0 flex-1">
-            <h2 className="text-[15px] font-semibold" style={{ color: TEXT }}>Devlet Portalları</h2>
-            <p className="truncate text-[11.5px]" style={{ color: MUTED }}>{vkn ? `VKN: ${vkn}` : 'Mükellef portallarına hızlı erişim'}</p>
+            <h2 className="text-[15px] font-semibold" style={{ color: TEXT }}>Kısayol Girişleri</h2>
+            <p className="truncate text-[11.5px]" style={{ color: MUTED }}>{vkn ? `VKN: ${vkn}` : 'Devlet portallarına hızlı erişim'}</p>
           </div>
           <button
             type="button"
@@ -646,6 +646,7 @@ function PortalDrawer({
         </div>
 
         {/* Portallar */}
+        <div className="mb-2.5 text-[11px] font-semibold uppercase tracking-wider" style={{ color: MUTED }}>Devlet portalları</div>
         <div className="grid grid-cols-1 gap-2 sm:grid-cols-2">
           {PORTAL_KISAYOLLAR.map((k) => (
             <KisayolButton key={k.id} k={k} onClick={() => onKisayol(k)} />
@@ -665,7 +666,7 @@ function PortalDrawer({
         </div>
 
         <p className="mt-4 text-[11px] leading-relaxed" style={{ color: 'rgba(250,250,249,0.4)' }}>
-          Portal şifreleri Bilgiler sekmesindeki “Vergi Dairesi & SGK Şifreleri” bölümünden yönetilir.
+          Portal şifreleri Bilgiler sekmesindeki “Şifreler” bölümünden yönetilir.
         </p>
       </div>
     </div>
@@ -673,8 +674,10 @@ function PortalDrawer({
 }
 
 // ============================================================
-// BİLGİLER TAB — Accordion bölümler
+// BİLGİLER TAB — sol bölüm menüsü + içerik (ayarlar paneli tarzı)
 // ============================================================
+type BilgiSectionId = 'musteri' | 'yetkili' | 'iletisim' | 'sifreler' | 'bagkur' | 'entegrator' | 'otomasyon' | 'sistem';
+
 function BilgilerTab({
   form,
   setForm,
@@ -684,327 +687,332 @@ function BilgilerTab({
   setForm: React.Dispatch<React.SetStateAction<FormState>>;
   taxpayerId: string | null;
 }) {
-  const [openSection, setOpenSection] = useState<string>('musteri');
+  const sections: {
+    id: BilgiSectionId;
+    title: string;
+    subtitle: string;
+    icon: React.ElementType;
+    show: boolean;
+    filled: boolean;
+  }[] = [
+    { id: 'musteri',    title: 'Müşteri / Şirket',     subtitle: 'Kimlik, vergi, sicil',     icon: Building2,  show: true,            filled: !!(form.companyName || form.firstName || form.taxNumber) },
+    { id: 'yetkili',    title: 'Firma Yetkilileri',    subtitle: 'Müdür, ortak, imza',       icon: UserCog,    show: !!taxpayerId,    filled: false },
+    { id: 'iletisim',   title: 'İletişim',             subtitle: 'Telefon, e-posta, KEP',    icon: Phone,      show: true,            filled: form.phones.some(Boolean) || form.emails.some(Boolean) || !!form.kepAdresi },
+    { id: 'sifreler',   title: 'Şifreler',             subtitle: 'Vergi dairesi & SGK',      icon: Lock,       show: !!taxpayerId,    filled: false },
+    { id: 'bagkur',     title: 'Bağ-Kur',              subtitle: 'Sicil bilgisi',            icon: Shield,     show: true,            filled: !!form.bagkurSicilNo },
+    { id: 'entegrator', title: 'E-Fatura Entegratör',  subtitle: 'Sağlayıcı & mükellefiyet', icon: Sparkles,   show: true,            filled: !!form.eFaturaEntegrator || form.isEFaturaMukellefi },
+    { id: 'otomasyon',  title: 'Evrak & Otomasyon',    subtitle: 'Teslim günü, WhatsApp',    icon: Workflow,   show: true,            filled: !!form.evrakTeslimGunu || form.whatsappEvrakTalep || form.whatsappEvrakGeldi },
+    { id: 'sistem',     title: 'Defter & Sistem',      subtitle: 'Luca / Mihsap eşleşme',    icon: Settings2,  show: true,            filled: !!form.lucaSlug || !!form.mihsapId },
+  ];
+  const visible = sections.filter((s) => s.show);
+  const [active, setActive] = useState<BilgiSectionId>('musteri');
+  const current = visible.find((s) => s.id === active) ?? visible[0];
+  const CurrentIcon = current.icon;
 
   return (
-    <div className="space-y-4">
-      <AccordionPanel
-        id="musteri"
-        title="Müşteri / Şirket Bilgileri"
-        icon={Building2}
-        open={openSection === 'musteri'}
-        onToggle={(id) => setOpenSection((s) => (s === id ? '' : id))}
-      >
-        <div className="grid gap-3 sm:grid-cols-2">
-          {TAXPAYER_TYPES.map((item) => (
-            <RadioCard
-              key={item.value}
-              checked={form.type === item.value}
-              title={item.label}
-              detail={item.detail}
-              onClick={() => setForm((prev) => ({ ...prev, type: item.value }))}
-            />
-          ))}
+    <div className="grid gap-4 md:grid-cols-[232px_minmax(0,1fr)]">
+      {/* Sol bölüm menüsü */}
+      <nav className="flex gap-1.5 overflow-x-auto pb-1 md:flex-col md:gap-1 md:overflow-visible md:pb-0">
+        {visible.map((s) => {
+          const Icon = s.icon;
+          const on = active === s.id;
+          return (
+            <button
+              key={s.id}
+              type="button"
+              onClick={() => setActive(s.id)}
+              className="group flex shrink-0 items-center gap-3 rounded-xl border px-3 py-2.5 text-left transition md:w-full"
+              style={{
+                borderColor: on ? LINE_GOLD : 'rgba(255,255,255,0.07)',
+                background: on ? 'rgba(212,184,118,0.10)' : 'rgba(255,255,255,0.02)',
+              }}
+            >
+              <span
+                className="flex h-8 w-8 shrink-0 items-center justify-center rounded-lg border"
+                style={{
+                  borderColor: on ? LINE_GOLD : LINE,
+                  background: on ? 'rgba(212,184,118,0.16)' : 'rgba(255,255,255,0.03)',
+                  color: on ? GOLD : MUTED,
+                }}
+              >
+                <Icon size={15} />
+              </span>
+              <span className="min-w-0 flex-1">
+                <span className="flex items-center gap-1.5">
+                  <span className="block truncate text-[13px] font-semibold" style={{ color: on ? TEXT : 'rgba(250,250,249,0.82)' }}>{s.title}</span>
+                  {s.filled && <span className="h-1.5 w-1.5 shrink-0 rounded-full" style={{ background: '#68d391' }} title="Dolu" />}
+                </span>
+                <span className="mt-0.5 hidden truncate text-[11px] md:block" style={{ color: MUTED }}>{s.subtitle}</span>
+              </span>
+            </button>
+          );
+        })}
+      </nav>
+
+      {/* İçerik paneli */}
+      <div className="overflow-hidden rounded-xl border" style={{ borderColor: LINE, background: 'rgba(255,255,255,0.015)' }}>
+        <div className="flex items-center gap-3 border-b px-5 py-3.5" style={{ borderColor: LINE }}>
+          <span className="flex h-9 w-9 items-center justify-center rounded-lg border" style={{ borderColor: LINE_GOLD, background: 'rgba(212,184,118,0.12)', color: GOLD }}>
+            <CurrentIcon size={16} />
+          </span>
+          <div className="min-w-0">
+            <div className="text-[14.5px] font-semibold" style={{ color: TEXT }}>{current.title}</div>
+            <div className="truncate text-[11.5px]" style={{ color: MUTED }}>{current.subtitle}</div>
+          </div>
         </div>
-        <div className="mt-5 grid grid-cols-1 gap-4 md:grid-cols-2">
-          {form.type === 'TUZEL_KISI' ? (
-            <Field label="Şirket adı" required className="md:col-span-2">
-              <InputBase
-                value={form.companyName}
-                onChange={(e) => setForm((p) => ({ ...p, companyName: e.target.value }))}
-                required
-              />
-            </Field>
-          ) : (
+
+        <div className="p-5">
+          {/* MÜŞTERİ / ŞİRKET */}
+          {active === 'musteri' && (
             <>
-              <Field label="Ad" required>
-                <InputBase value={form.firstName} onChange={(e) => setForm((p) => ({ ...p, firstName: e.target.value }))} required />
-              </Field>
-              <Field label="Soyad" required>
-                <InputBase value={form.lastName} onChange={(e) => setForm((p) => ({ ...p, lastName: e.target.value }))} required />
-              </Field>
+              <div className="grid gap-3 sm:grid-cols-2">
+                {TAXPAYER_TYPES.map((item) => (
+                  <RadioCard
+                    key={item.value}
+                    checked={form.type === item.value}
+                    title={item.label}
+                    detail={item.detail}
+                    onClick={() => setForm((prev) => ({ ...prev, type: item.value }))}
+                  />
+                ))}
+              </div>
+              <div className="mt-5 grid grid-cols-1 gap-4 md:grid-cols-2">
+                {form.type === 'TUZEL_KISI' ? (
+                  <Field label="Şirket adı" required className="md:col-span-2">
+                    <InputBase value={form.companyName} onChange={(e) => setForm((p) => ({ ...p, companyName: e.target.value }))} required />
+                  </Field>
+                ) : (
+                  <>
+                    <Field label="Ad" required>
+                      <InputBase value={form.firstName} onChange={(e) => setForm((p) => ({ ...p, firstName: e.target.value }))} required />
+                    </Field>
+                    <Field label="Soyad" required>
+                      <InputBase value={form.lastName} onChange={(e) => setForm((p) => ({ ...p, lastName: e.target.value }))} required />
+                    </Field>
+                  </>
+                )}
+                <Field label={form.type === 'TUZEL_KISI' ? 'VKN' : 'TCKN'} required>
+                  <InputBase
+                    value={form.taxNumber}
+                    onChange={(e) => setForm((p) => ({ ...p, taxNumber: e.target.value.replace(/\D/g, '') }))}
+                    maxLength={11}
+                    required
+                    className="font-mono"
+                  />
+                </Field>
+                <Field label="Vergi dairesi" required>
+                  <InputBase value={form.taxOffice} onChange={(e) => setForm((p) => ({ ...p, taxOffice: e.target.value }))} required />
+                </Field>
+                <Field label="İşe başlama tarihi">
+                  <InputBase type="date" value={form.startDate} onChange={(e) => setForm((p) => ({ ...p, startDate: e.target.value }))} />
+                </Field>
+                <Field label="İşi bırakma tarihi">
+                  <InputBase type="date" value={form.endDate} onChange={(e) => setForm((p) => ({ ...p, endDate: e.target.value }))} />
+                </Field>
+                <Field label="Adres" className="md:col-span-2">
+                  <InputBase value={form.address} onChange={(e) => setForm((p) => ({ ...p, address: e.target.value }))} />
+                </Field>
+                <Field label="NACE Kodu">
+                  <InputBase placeholder="Örn: 56.10.06" value={form.naceKodu} onChange={(e) => setForm((p) => ({ ...p, naceKodu: e.target.value }))} />
+                </Field>
+                <Field label="Ticaret Sicil No">
+                  <InputBase placeholder="Örn: 123456-5" value={form.ticaretSicilNo} onChange={(e) => setForm((p) => ({ ...p, ticaretSicilNo: e.target.value }))} />
+                </Field>
+                <Field label="MERSİS No">
+                  <InputBase placeholder="16 haneli" value={form.mersisNo} onChange={(e) => setForm((p) => ({ ...p, mersisNo: e.target.value }))} className="font-mono" />
+                </Field>
+                <Field label="Oda Sicil No">
+                  <InputBase placeholder="Örn: İTO 678901" value={form.odaSicilNo} onChange={(e) => setForm((p) => ({ ...p, odaSicilNo: e.target.value }))} />
+                </Field>
+              </div>
             </>
           )}
-          <Field label={form.type === 'TUZEL_KISI' ? 'VKN' : 'TCKN'} required>
-            <InputBase
-              value={form.taxNumber}
-              onChange={(e) => setForm((p) => ({ ...p, taxNumber: e.target.value.replace(/\D/g, '') }))}
-              maxLength={11}
-              required
-              className="font-mono"
-            />
-          </Field>
-          <Field label="Vergi dairesi" required>
-            <InputBase value={form.taxOffice} onChange={(e) => setForm((p) => ({ ...p, taxOffice: e.target.value }))} required />
-          </Field>
-          <Field label="İşe başlama tarihi">
-            <InputBase type="date" value={form.startDate} onChange={(e) => setForm((p) => ({ ...p, startDate: e.target.value }))} />
-          </Field>
-          <Field label="İşi bırakma tarihi">
-            <InputBase type="date" value={form.endDate} onChange={(e) => setForm((p) => ({ ...p, endDate: e.target.value }))} />
-          </Field>
-          <Field label="Adres" className="md:col-span-2">
-            <InputBase value={form.address} onChange={(e) => setForm((p) => ({ ...p, address: e.target.value }))} />
-          </Field>
-          <Field label="NACE Kodu">
-            <InputBase placeholder="Örn: 56.10.06" value={form.naceKodu} onChange={(e) => setForm((p) => ({ ...p, naceKodu: e.target.value }))} />
-          </Field>
-          <Field label="Ticaret Sicil No">
-            <InputBase placeholder="Örn: 123456-5" value={form.ticaretSicilNo} onChange={(e) => setForm((p) => ({ ...p, ticaretSicilNo: e.target.value }))} />
-          </Field>
-          <Field label="MERSİS No">
-            <InputBase placeholder="16 haneli" value={form.mersisNo} onChange={(e) => setForm((p) => ({ ...p, mersisNo: e.target.value }))} className="font-mono" />
-          </Field>
-          <Field label="Oda Sicil No">
-            <InputBase placeholder="Örn: İTO 678901" value={form.odaSicilNo} onChange={(e) => setForm((p) => ({ ...p, odaSicilNo: e.target.value }))} />
-          </Field>
-        </div>
-      </AccordionPanel>
 
-      {/* Firma Yetkili Bilgileri */}
-      {taxpayerId && (
-        <AccordionPanel
-          id="yetkili"
-          title="Firma Yetkili Bilgileri"
-          subtitle="Müdür, ortak, imza yetkilisi vb."
-          icon={UserCog}
-          open={openSection === 'yetkili'}
-          onToggle={(id) => setOpenSection((s) => (s === id ? '' : id))}
-        >
-          <YetkililerSection taxpayerId={taxpayerId} />
-        </AccordionPanel>
-      )}
+          {/* FİRMA YETKİLİLERİ */}
+          {active === 'yetkili' && taxpayerId && <YetkililerSection taxpayerId={taxpayerId} />}
 
-      {/* İletişim */}
-      <AccordionPanel
-        id="iletisim"
-        title="İletişim Bilgileri"
-        icon={Phone}
-        open={openSection === 'iletisim'}
-        onToggle={(id) => setOpenSection((s) => (s === id ? '' : id))}
-      >
-        <div className="grid grid-cols-1 gap-5 md:grid-cols-2">
-          <div className="space-y-3">
-            <Subhead icon={Phone} label="Telefonlar" />
-            {form.phones.map((phone, index) => (
-              <InputBase
-                key={index}
-                type="tel"
-                value={phone}
-                onChange={(e) =>
-                  setForm((prev) => {
-                    const phones = [...prev.phones];
-                    phones[index] = e.target.value;
-                    return { ...prev, phones };
-                  })
-                }
-                placeholder={index === 0 ? 'Ana telefon' : `Telefon ${index + 1}`}
-              />
-            ))}
-          </div>
-          <div className="space-y-3">
-            <Subhead icon={Mail} label="E-postalar" />
-            {form.emails.map((email, index) => (
-              <InputBase
-                key={index}
-                type="email"
-                value={email}
-                onChange={(e) =>
-                  setForm((prev) => {
-                    const emails = [...prev.emails];
-                    emails[index] = e.target.value;
-                    return { ...prev, emails };
-                  })
-                }
-                placeholder={index === 0 ? 'Ana e-posta' : `E-posta ${index + 1}`}
-              />
-            ))}
-          </div>
-        </div>
-        <div className="mt-4 grid grid-cols-1 gap-4 md:grid-cols-2">
-          <Field label="KEP Adresi">
-            <InputBase
-              type="email"
-              placeholder="ornek@hs01.kep.tr"
-              value={form.kepAdresi}
-              onChange={(e) => setForm((p) => ({ ...p, kepAdresi: e.target.value }))}
-            />
-          </Field>
-          <Field label="Web Sitesi">
-            <InputBase
-              placeholder="https://"
-              value={form.webSitesi}
-              onChange={(e) => setForm((p) => ({ ...p, webSitesi: e.target.value }))}
-            />
-          </Field>
-        </div>
-      </AccordionPanel>
+          {/* İLETİŞİM */}
+          {active === 'iletisim' && (
+            <>
+              <div className="grid grid-cols-1 gap-5 md:grid-cols-2">
+                <div className="space-y-3">
+                  <Subhead icon={Phone} label="Telefonlar" />
+                  {form.phones.map((phone, index) => (
+                    <InputBase
+                      key={index}
+                      type="tel"
+                      value={phone}
+                      onChange={(e) =>
+                        setForm((prev) => {
+                          const phones = [...prev.phones];
+                          phones[index] = e.target.value;
+                          return { ...prev, phones };
+                        })
+                      }
+                      placeholder={index === 0 ? 'Ana telefon' : `Telefon ${index + 1}`}
+                    />
+                  ))}
+                </div>
+                <div className="space-y-3">
+                  <Subhead icon={Mail} label="E-postalar" />
+                  {form.emails.map((email, index) => (
+                    <InputBase
+                      key={index}
+                      type="email"
+                      value={email}
+                      onChange={(e) =>
+                        setForm((prev) => {
+                          const emails = [...prev.emails];
+                          emails[index] = e.target.value;
+                          return { ...prev, emails };
+                        })
+                      }
+                      placeholder={index === 0 ? 'Ana e-posta' : `E-posta ${index + 1}`}
+                    />
+                  ))}
+                </div>
+              </div>
+              <div className="mt-4 grid grid-cols-1 gap-4 md:grid-cols-2">
+                <Field label="KEP Adresi">
+                  <InputBase type="email" placeholder="ornek@hs01.kep.tr" value={form.kepAdresi} onChange={(e) => setForm((p) => ({ ...p, kepAdresi: e.target.value }))} />
+                </Field>
+                <Field label="Web Sitesi">
+                  <InputBase placeholder="https://" value={form.webSitesi} onChange={(e) => setForm((p) => ({ ...p, webSitesi: e.target.value }))} />
+                </Field>
+              </div>
+            </>
+          )}
 
-      {/* Vergi Dairesi & SGK Şifreleri */}
-      {taxpayerId && (
-        <AccordionPanel
-          id="sifreler"
-          title="Vergi Dairesi & SGK Şifreleri"
-          subtitle="Portal giriş bilgileri (GİB, SGK, e-Bildirge, e-Devlet)"
-          icon={Lock}
-          open={openSection === 'sifreler'}
-          onToggle={(id) => setOpenSection((s) => (s === id ? '' : id))}
-        >
-          <TaxpayerPortalCredentialsCard taxpayerId={taxpayerId} />
-        </AccordionPanel>
-      )}
+          {/* ŞİFRELER */}
+          {active === 'sifreler' && taxpayerId && <TaxpayerPortalCredentialsCard taxpayerId={taxpayerId} />}
 
-      {/* Bağ-Kur */}
-      <AccordionPanel
-        id="bagkur"
-        title="Bağ-Kur Bilgileri"
-        subtitle="Gerçek kişi / şirket ortağı için"
-        icon={Shield}
-        open={openSection === 'bagkur'}
-        onToggle={(id) => setOpenSection((s) => (s === id ? '' : id))}
-      >
-        <div className="grid grid-cols-1 gap-4 md:grid-cols-2">
-          <Field label="Bağ-Kur Sicil No">
-            <InputBase
-              value={form.bagkurSicilNo}
-              onChange={(e) => setForm((p) => ({ ...p, bagkurSicilNo: e.target.value }))}
-              className="font-mono"
-            />
-          </Field>
-          <div className="rounded-lg border p-3 text-[12px]" style={{ borderColor: LINE, background: SOFT, color: MUTED }}>
-            <div className="flex items-center gap-2 font-semibold" style={{ color: GOLD }}>
-              <Lock size={13} /> Şifre yönetimi
+          {/* BAĞ-KUR */}
+          {active === 'bagkur' && (
+            <div className="grid grid-cols-1 gap-4 md:grid-cols-2">
+              <Field label="Bağ-Kur Sicil No">
+                <InputBase value={form.bagkurSicilNo} onChange={(e) => setForm((p) => ({ ...p, bagkurSicilNo: e.target.value }))} className="font-mono" />
+              </Field>
+              <div className="rounded-lg border p-3 text-[12px]" style={{ borderColor: LINE, background: SOFT, color: MUTED }}>
+                <div className="flex items-center gap-2 font-semibold" style={{ color: GOLD }}>
+                  <Lock size={13} /> Şifre yönetimi
+                </div>
+                <p className="mt-1.5">Bağ-Kur / e-Devlet şifreleri <strong style={{ color: TEXT }}>Şifreler</strong> bölümünden yönetilir.</p>
+              </div>
             </div>
-            <p className="mt-1.5">Bağ-Kur / e-Devlet şifreleri yukarıdaki <strong style={{ color: TEXT }}>Vergi Dairesi & SGK Şifreleri</strong> bölümünden yönetilir.</p>
-          </div>
-        </div>
-      </AccordionPanel>
+          )}
 
-      {/* E-Fatura/E-Arşiv Entegratör */}
-      <AccordionPanel
-        id="entegrator"
-        title="E-Fatura / E-Arşiv Entegratör"
-        subtitle="Uyumsoft, BilgeNet, Foriba veya GİB Portal"
-        icon={Sparkles}
-        open={openSection === 'entegrator'}
-        onToggle={(id) => setOpenSection((s) => (s === id ? '' : id))}
-      >
-        <div className="grid grid-cols-1 gap-4 md:grid-cols-2">
-          <Field label="Entegratör">
-            <select
-              value={form.eFaturaEntegrator}
-              onChange={(e) => setForm((p) => ({ ...p, eFaturaEntegrator: e.target.value }))}
-              className="h-10 w-full rounded-lg border px-3 text-sm outline-none"
-              style={{ background: SOFT, borderColor: LINE, color: TEXT }}
-            >
-              <option value="">Seçiniz</option>
-              <option value="GIB_PORTAL">GİB Portal</option>
-              <option value="UYUMSOFT">Uyumsoft</option>
-              <option value="BILGENET">BilgeNet</option>
-              <option value="FORIBA">Foriba</option>
-              <option value="IZIBIZ">İzibiz</option>
-              <option value="DIGER">Diğer</option>
-            </select>
-          </Field>
-          <div>
-            <span className="mb-1.5 block text-[12px] font-semibold" style={{ color: MUTED }}>E-Fatura Mükellefiyeti</span>
-            <ToggleRow
-              checked={form.isEFaturaMukellefi}
-              onChange={(checked) => setForm((p) => ({ ...p, isEFaturaMukellefi: checked }))}
-              title="E-Fatura mükellefi"
-              detail="Fatura sorgulama modüllerindeki varsayılan kanal."
-            />
-          </div>
-        </div>
-        <p className="mt-3 text-[12px]" style={{ color: MUTED }}>
-          Entegratör kullanıcı/şifresi yukarıdaki <strong style={{ color: TEXT }}>Vergi Dairesi & SGK Şifreleri</strong> bölümünden yönetilir (provider: <code>EFATURA_ENTEGRATOR</code>).
-        </p>
-      </AccordionPanel>
+          {/* E-FATURA ENTEGRATÖR */}
+          {active === 'entegrator' && (
+            <>
+              <div className="grid grid-cols-1 gap-4 md:grid-cols-2">
+                <Field label="Entegratör">
+                  <select
+                    value={form.eFaturaEntegrator}
+                    onChange={(e) => setForm((p) => ({ ...p, eFaturaEntegrator: e.target.value }))}
+                    className={`h-10 w-full rounded-lg border px-3 text-sm outline-none transition ${FOCUS_RING}`}
+                    style={{ background: SOFT, borderColor: LINE, color: TEXT }}
+                  >
+                    <option value="">Seçiniz</option>
+                    <option value="GIB_PORTAL">GİB Portal</option>
+                    <option value="UYUMSOFT">Uyumsoft</option>
+                    <option value="BILGENET">BilgeNet</option>
+                    <option value="FORIBA">Foriba</option>
+                    <option value="IZIBIZ">İzibiz</option>
+                    <option value="DIGER">Diğer</option>
+                  </select>
+                </Field>
+                <div>
+                  <span className="mb-1.5 block text-[12px] font-semibold" style={{ color: MUTED }}>E-Fatura Mükellefiyeti</span>
+                  <ToggleRow
+                    checked={form.isEFaturaMukellefi}
+                    onChange={(checked) => setForm((p) => ({ ...p, isEFaturaMukellefi: checked }))}
+                    title="E-Fatura mükellefi"
+                    detail="Fatura sorgulama modüllerindeki varsayılan kanal."
+                  />
+                </div>
+              </div>
+              <p className="mt-3 text-[12px]" style={{ color: MUTED }}>
+                Entegratör kullanıcı/şifresi <strong style={{ color: TEXT }}>Şifreler</strong> bölümünden yönetilir (provider: <code>EFATURA_ENTEGRATOR</code>).
+              </p>
+            </>
+          )}
 
-      {/* Evrak & Otomasyon */}
-      <AccordionPanel
-        id="otomasyon"
-        title="Evrak Akışı & Otomasyon"
-        icon={Workflow}
-        open={openSection === 'otomasyon'}
-        onToggle={(id) => setOpenSection((s) => (s === id ? '' : id))}
-      >
-        <div className="grid grid-cols-1 gap-4 md:grid-cols-[minmax(0,260px)_1fr]">
-          <Field label="Evrak teslim son günü">
-            <InputBase
-              type="number"
-              min={1}
-              max={30}
-              value={form.evrakTeslimGunu}
-              onChange={(e) => setForm((p) => ({ ...p, evrakTeslimGunu: e.target.value }))}
-              placeholder="Örn: 15"
-            />
-          </Field>
-          <div className="grid gap-3">
-            <ToggleRow
-              checked={form.whatsappEvrakTalep}
-              onChange={(checked) => setForm((p) => ({ ...p, whatsappEvrakTalep: checked }))}
-              title="Evrak talep mesajı"
-              detail="Aylık evrak akışı için WhatsApp hatırlatması."
-            />
-            <ToggleRow
-              checked={form.whatsappEvrakGeldi}
-              onChange={(checked) => setForm((p) => ({ ...p, whatsappEvrakGeldi: checked }))}
-              title="Evrak geldi onayı"
-              detail="Evrak geldi işaretlendiğinde bilgilendirme mesajı."
-            />
-          </div>
-        </div>
-      </AccordionPanel>
+          {/* EVRAK & OTOMASYON */}
+          {active === 'otomasyon' && (
+            <div className="grid grid-cols-1 gap-4 md:grid-cols-[minmax(0,260px)_1fr]">
+              <Field label="Evrak teslim son günü">
+                <InputBase
+                  type="number"
+                  min={1}
+                  max={30}
+                  value={form.evrakTeslimGunu}
+                  onChange={(e) => setForm((p) => ({ ...p, evrakTeslimGunu: e.target.value }))}
+                  placeholder="Örn: 15"
+                />
+              </Field>
+              <div className="grid gap-3">
+                <ToggleRow
+                  checked={form.whatsappEvrakTalep}
+                  onChange={(checked) => setForm((p) => ({ ...p, whatsappEvrakTalep: checked }))}
+                  title="Evrak talep mesajı"
+                  detail="Aylık evrak akışı için WhatsApp hatırlatması."
+                />
+                <ToggleRow
+                  checked={form.whatsappEvrakGeldi}
+                  onChange={(checked) => setForm((p) => ({ ...p, whatsappEvrakGeldi: checked }))}
+                  title="Evrak geldi onayı"
+                  detail="Evrak geldi işaretlendiğinde bilgilendirme mesajı."
+                />
+              </div>
+            </div>
+          )}
 
-      {/* Defter & Sistem Eşleşmeleri */}
-      <AccordionPanel
-        id="sistem"
-        title="Defter Türü & Sistem Eşleşmeleri (Luca / Mihsap)"
-        icon={Settings2}
-        open={openSection === 'sistem'}
-        onToggle={(id) => setOpenSection((s) => (s === id ? '' : id))}
-      >
-        <div className="grid gap-3 sm:grid-cols-2">
-          <RadioCard
-            checked={form.defterTuru === 'BILANCO'}
-            title="Bilanço"
-            detail="Banka takip ve bilanço modülleri aktif."
-            onClick={() => setForm((p) => ({ ...p, defterTuru: 'BILANCO', mihsapDefterTuru: 'BILANCO' }))}
-          />
-          <RadioCard
-            checked={form.defterTuru === 'ISLETME'}
-            title="İşletme defteri"
-            detail="Defter beyan akışı için sade profil."
-            onClick={() => setForm((p) => ({ ...p, defterTuru: 'ISLETME', mihsapDefterTuru: 'DEFTER_BEYAN' }))}
-          />
+          {/* DEFTER & SİSTEM */}
+          {active === 'sistem' && (
+            <>
+              <div className="grid gap-3 sm:grid-cols-2">
+                <RadioCard
+                  checked={form.defterTuru === 'BILANCO'}
+                  title="Bilanço"
+                  detail="Banka takip ve bilanço modülleri aktif."
+                  onClick={() => setForm((p) => ({ ...p, defterTuru: 'BILANCO', mihsapDefterTuru: 'BILANCO' }))}
+                />
+                <RadioCard
+                  checked={form.defterTuru === 'ISLETME'}
+                  title="İşletme defteri"
+                  detail="Defter beyan akışı için sade profil."
+                  onClick={() => setForm((p) => ({ ...p, defterTuru: 'ISLETME', mihsapDefterTuru: 'DEFTER_BEYAN' }))}
+                />
+              </div>
+              <div className="mt-5 grid grid-cols-1 gap-4 md:grid-cols-3">
+                <Field label="Luca slug">
+                  <InputBase value={form.lucaSlug} onChange={(e) => setForm((p) => ({ ...p, lucaSlug: e.target.value }))} placeholder="selim_motors" />
+                </Field>
+                <Field label="Mihsap ID">
+                  <InputBase value={form.mihsapId} onChange={(e) => setForm((p) => ({ ...p, mihsapId: e.target.value }))} placeholder="110564" />
+                </Field>
+                <Field label="Mihsap defter türü">
+                  <select
+                    value={form.mihsapDefterTuru}
+                    onChange={(e) =>
+                      setForm((p) => ({
+                        ...p,
+                        mihsapDefterTuru: e.target.value,
+                        defterTuru: e.target.value === 'DEFTER_BEYAN' ? 'ISLETME' : 'BILANCO',
+                      }))
+                    }
+                    className={`h-10 w-full rounded-lg border px-3 text-sm outline-none transition ${FOCUS_RING}`}
+                    style={{ background: SOFT, borderColor: LINE, color: TEXT }}
+                  >
+                    <option value="BILANCO">Bilanço</option>
+                    <option value="DEFTER_BEYAN">Defter Beyan</option>
+                  </select>
+                </Field>
+              </div>
+            </>
+          )}
         </div>
-        <div className="mt-5 grid grid-cols-1 gap-4 md:grid-cols-3">
-          <Field label="Luca slug">
-            <InputBase value={form.lucaSlug} onChange={(e) => setForm((p) => ({ ...p, lucaSlug: e.target.value }))} placeholder="selim_motors" />
-          </Field>
-          <Field label="Mihsap ID">
-            <InputBase value={form.mihsapId} onChange={(e) => setForm((p) => ({ ...p, mihsapId: e.target.value }))} placeholder="110564" />
-          </Field>
-          <Field label="Mihsap defter türü">
-            <select
-              value={form.mihsapDefterTuru}
-              onChange={(e) =>
-                setForm((p) => ({
-                  ...p,
-                  mihsapDefterTuru: e.target.value,
-                  defterTuru: e.target.value === 'DEFTER_BEYAN' ? 'ISLETME' : 'BILANCO',
-                }))
-              }
-              className="h-10 rounded-lg border px-3 text-sm"
-              style={{ background: SOFT, borderColor: LINE, color: TEXT }}
-            >
-              <option value="BILANCO">Bilanço</option>
-              <option value="DEFTER_BEYAN">Defter Beyan</option>
-            </select>
-          </Field>
-        </div>
-      </AccordionPanel>
+      </div>
     </div>
   );
 }
@@ -1108,7 +1116,7 @@ function YetkililerSection({ taxpayerId }: { taxpayerId: string }) {
                   <select
                     value={newY.gorev}
                     onChange={(e) => setNewY((p) => ({ ...p, gorev: e.target.value }))}
-                    className="h-10 w-full rounded-lg border px-3 text-sm outline-none"
+                    className={`h-10 w-full rounded-lg border px-3 text-sm outline-none transition ${FOCUS_RING}`}
                     style={{ background: SOFT, borderColor: LINE, color: TEXT }}
                   >
                     <option value="">Seçiniz</option>
@@ -1180,7 +1188,7 @@ function NotlarTab({ form, setForm }: { form: FormState; setForm: React.Dispatch
         onChange={(e) => setForm((p) => ({ ...p, notes: e.target.value }))}
         rows={10}
         placeholder="Bu mükellefe özel notlar..."
-        className="w-full resize-none rounded-lg border px-3 py-2.5 text-sm outline-none"
+        className={`w-full resize-none rounded-lg border px-3 py-2.5 text-sm outline-none transition ${FOCUS_RING}`}
         style={{ background: SOFT, borderColor: LINE, color: TEXT }}
       />
     </div>
@@ -1239,47 +1247,6 @@ function KisayolButton({ k, onClick, small = false }: { k: Kisayol; onClick: () 
   );
 }
 
-function AccordionPanel({
-  id,
-  title,
-  subtitle,
-  icon: Icon,
-  open,
-  onToggle,
-  children,
-}: {
-  id: string;
-  title: string;
-  subtitle?: string;
-  icon: React.ElementType;
-  open: boolean;
-  onToggle: (id: string) => void;
-  children: React.ReactNode;
-}) {
-  return (
-    <div className="overflow-hidden rounded-xl border transition" style={{ borderColor: open ? 'rgba(212,184,118,0.35)' : LINE, background: open ? 'rgba(53,46,35,0.55)' : 'rgba(42,36,28,0.55)' }}>
-      <button
-        type="button"
-        onClick={() => onToggle(id)}
-        className="flex w-full items-center justify-between px-5 py-4 text-left transition hover:bg-white/[0.04]"
-        style={{ borderBottom: open ? `1px solid ${LINE}` : 'none' }}
-      >
-        <div className="flex items-center gap-3.5">
-          <div className="flex h-10 w-10 items-center justify-center rounded-lg border" style={{ borderColor: LINE_GOLD, background: 'rgba(212,184,118,0.14)', color: GOLD }}>
-            <Icon size={17} />
-          </div>
-          <div>
-            <div className="text-[14.5px] font-semibold" style={{ color: TEXT }}>{title}</div>
-            {subtitle && <div className="mt-0.5 text-[12px]" style={{ color: MUTED }}>{subtitle}</div>}
-          </div>
-        </div>
-        <ChevronDown size={18} style={{ color: MUTED, transform: open ? 'rotate(180deg)' : 'rotate(0)', transition: 'transform 0.2s' }} />
-      </button>
-      {open && <div className="p-5">{children}</div>}
-    </div>
-  );
-}
-
 function PlaceholderTab({
   icon: Icon,
   title,
@@ -1329,7 +1296,7 @@ function InputBase({ className = '', ...props }: React.InputHTMLAttributes<HTMLI
   return (
     <input
       {...props}
-      className={`h-10 w-full rounded-lg border px-3 text-sm outline-none transition ${className}`}
+      className={`h-10 w-full rounded-lg border px-3 text-sm outline-none transition ${FOCUS_RING} ${className}`}
       style={{ background: SOFT, borderColor: LINE, color: TEXT, ...(props.style || {}) }}
     />
   );
