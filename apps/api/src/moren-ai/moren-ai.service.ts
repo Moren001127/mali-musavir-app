@@ -489,7 +489,8 @@ export class MorenAiService {
         // Sesli modda 200 kelime (~300 token) zaten limitli. Cok uzun cevap kullanici
         // icin de zor okunur. Tool cevabi gerekiyorsa model daha cok yazar degilse kisa.
         max_tokens: responseMaxTokens,
-        temperature: body.voiceMode ? 0.15 : 0.2,
+        // temperature GÖNDERİLMİYOR — yeni modeller (Opus 4.8 vb.) "temperature is deprecated
+        // for this model" diye 400 dönüyor; modelin varsayılan sıcaklığı kullanılıyor.
         system: [
           { type: 'text', text: systemPrompt, cache_control: { type: 'ephemeral' } },
           ...(dynamicSystemContext ? [{ type: 'text', text: dynamicSystemContext }] : []),
