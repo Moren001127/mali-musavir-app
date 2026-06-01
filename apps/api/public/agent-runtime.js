@@ -14747,6 +14747,43 @@
     if (panel) panel.remove();
     delete window.__morenAgent;
   }
+  // === GECICI TESHIS PROBU — Luca oturum canlilik zamanlamasi ===
+  // SADECE LOG; hicbir Luca istegi/yonlendirmesi yapmaz, davranisi degistirmez.
+  // Amac: oturum bosta kac dk'da dusuyor / toplam ne kadar yasiyor olcmek. Veri sonrasi kaldirilacak.
+  (function lucaSessionProbe() {
+    try {
+      if (!isLucaOrigin() || window.top !== window) return;
+      if (window.__morenLucaProbe) return;
+      window.__morenLucaProbe = true;
+      let aliveSinceAt = 0, lastJobAt = 0, wasAlive = null, lastHeartbeatAt = 0;
+      const send = (status, message, extra) => {
+        try {
+          enqueueAgentEvent({ agent: 'luca', action: 'oturum-teshis', status, message,
+            meta: { probe: true, deviceId: DEVICE_ID, agentVersion: AGENT_VERSION, ...(extra || {}) } });
+        } catch (_) {}
+      };
+      setInterval(() => {
+        try {
+          const combo = getLucaFirmaCombo();
+          const alive = !!(combo && combo.options && combo.options.length > 0);
+          const now = Date.now();
+          if (window.__lucaJobRunning) lastJobAt = now;
+          if (alive && wasAlive !== true) aliveSinceAt = now;
+          if (wasAlive === true && alive === false) {
+            const lifeMin = aliveSinceAt ? Math.round((now - aliveSinceAt) / 60000) : -1;
+            const idleMin = lastJobAt ? Math.round((now - lastJobAt) / 60000) : -1;
+            send('warn', '[TESHIS] Luca oturumu dustu — canli ' + lifeMin + 'dk, son isten beri bos ' + idleMin + 'dk', { lifeMin, idleMin });
+          }
+          if (alive && !window.__lucaJobRunning && now - lastHeartbeatAt > 300000) {
+            lastHeartbeatAt = now;
+            const idleMin = lastJobAt ? Math.round((now - lastJobAt) / 60000) : -1;
+            send('info', '[TESHIS] Luca oturumu canli, bosta ~' + idleMin + 'dk', { idleMin });
+          }
+          wasAlive = alive;
+        } catch (_) {}
+      }, 30000);
+    } catch (_) {}
+  })();
   pollLoop();
   console.log('[Moren Agent] yuklendi · v' + AGENT_VERSION + ' (' + (isLucaOrigin() ? 'luca' : 'mihsap') + ')');
 })();
