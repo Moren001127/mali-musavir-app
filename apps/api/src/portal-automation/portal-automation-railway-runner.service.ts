@@ -2059,7 +2059,10 @@ export class PortalAutomationRailwayRunnerService implements OnModuleInit {
       const directCache = new Map<string, EBeyannameFileDownloadResult>();
       if (this.ebeyannameParallelEnabled() && this.ebeyannameFastDirectFetch() && rowPlans.length) {
         await this.jobProgress(tenantId, job, 'approved_resolve', 'Belge linkleri taraniyor.');
-        const urlTasks: Array<{ row: any; kind: 'beyanname' | 'tahakkuk'; url: string; seq: number }> = [];
+        // TOKEN oturum boyunca sabittir; bir kez cikar, tum satirlarda kullan.
+        const resultTarget = await this.findEBeyannameResultTarget(page) || page;
+        const sessionToken = await this.ebeyannameSessionToken(resultTarget).catch(() => null);
+        const urlTasks: Array<{ row: any; kind: 'beyanname' | 'tahakkuk'; url: string; seq: number; via: string }> = [];
         for (const plan of rowPlans) {
           const kinds: Array<'beyanname' | 'tahakkuk'> = [];
           if (!plan.skipBeyanname) kinds.push('beyanname');
@@ -2067,45 +2070,67 @@ export class PortalAutomationRailwayRunnerService implements OnModuleInit {
           if (!kinds.length) continue;
           const enumerated = await this.enumerateRowFileMetas(page, plan.row, plan.rowLocator);
           if (!enumerated) continue;
+          const oids = this.extractEBeyannameOids(enumerated.metas);
           for (const kind of kinds) {
-            const picked = this.pickEBeyannameFileCandidate(enumerated.metas, kind);
-            if (picked == null) continue;
-            // GIB linki onclick-JS oldugu icin direkt href yok. Onclick kodunu tiklamadan
-            // calistirip window.open URL'ini yakala; indirme asagida PARALEL yapilacak.
-            const meta = enumerated.metas.find((m: any) => m.index === picked);
-            const url = (await this.withTimeout(
-              this.captureEBeyannameUrlViaOnclick(page, enumerated.candidates.nth(picked)).catch(() => null),
-              this.ebeyannameUrlResolveTimeoutMs(),
-              () => null,
-            ))
-              || (meta?.href ? this.directEBeyannameUrlFromMeta(page, { href: meta.href }) : null);
-            if (url) {
-              urlTasks.push({ row: plan.row, kind, url, seq: plan.seq });
+            // 1) HATTAT YONTEMI: satirdaki Oid + oturum TOKEN ile dogrudan /dispatch adresini kur
+            //    (tiklamasiz, en guvenilir; beyanname/tahakkuk ayri subcmd oldugu icin SWAP olmaz).
+            let url = this.buildEBeyannameDispatchUrl(resultTarget, kind, oids, sessionToken);
+            let via = 'dispatch';
+            // 2) Yedek: Oid/TOKEN cikmazsa onclick kodunu tiklamadan calistirip window.open URL'ini yakala.
+            if (!url) {
+              const picked = this.pickEBeyannameFileCandidate(enumerated.metas, kind);
+              if (picked != null) {
+                const meta = enumerated.metas.find((m: any) => m.index === picked);
+                url = (await this.withTimeout(
+                  this.captureEBeyannameUrlViaOnclick(page, enumerated.candidates.nth(picked)).catch(() => null),
+                  this.ebeyannameUrlResolveTimeoutMs(),
+                  () => null,
+                ))
+                  || (meta?.href ? this.directEBeyannameUrlFromMeta(page, { href: meta.href }) : null);
+                via = url ? 'onclick' : via;
+              }
             }
+            if (url) urlTasks.push({ row: plan.row, kind, url, seq: plan.seq, via });
           }
         }
         if (urlTasks.length) {
-          await this.jobProgress(tenantId, job, 'approved_prefetch', `Belgeler paralel indiriliyor (${urlTasks.length} dosya, es zaman=${this.ebeyannameConcurrency()}).`, {
+          await this.jobProgress(tenantId, job, 'approved_prefetch', `Belgeler sirayla indiriliyor (${urlTasks.length} dosya).`, {
             total: urlTasks.length,
           });
+          // GIB iki goruntuleme arasinda en az ~1 sn ister: PARALEL DEGIL, sirali + araliklı indir.
+          // Hizli/paralel gidersen GIB PDF yerine "1 sn bekleyin" uyarisi dondurur ve belge inmez.
+          const gap = this.ebeyannameMinFetchGapMs();
+          let lastFetchAt = 0;
           let done = 0;
           let saved = 0;
-          await this.mapWithConcurrency(urlTasks, this.ebeyannameConcurrency(), async (task) => {
+          let dispatchHit = 0;
+          for (const task of urlTasks) {
             const fallbackName = `ebeyanname-${task.seq}-${task.kind}`;
-            const file = await this.savePdfFromRequestUrl(page, task.url, downloadsPath, fallbackName).catch(() => null);
+            const gate = gap - (Date.now() - lastFetchAt);
+            if (gate > 0) await this.wait(gate);
+            let file = await this.savePdfFromRequestUrl(page, task.url, downloadsPath, fallbackName).catch(() => null);
+            lastFetchAt = Date.now();
+            // PDF yerine hiz-limiti uyarisi gelmis olabilir: bir kez daha (araliga uyarak) dene.
+            if (!file) {
+              await this.wait(gap);
+              file = await this.savePdfFromRequestUrl(page, task.url, downloadsPath, fallbackName).catch(() => null);
+              lastFetchAt = Date.now();
+            }
             if (file) {
               saved++;
+              if (task.via === 'dispatch') dispatchHit++;
               const ownerOk = await this.validateEBeyannameFileOwner(task.row, file, task.kind, notes);
               directCache.set(`${task.row.rowIndex}:${task.kind}`, { file, ownerMismatch: !ownerOk });
             }
             done++;
             if (done % 5 === 0 || done === urlTasks.length) {
-              await this.jobProgress(tenantId, job, 'approved_prefetch', `Paralel indirme: ${saved}/${urlTasks.length} PDF kaydedildi (${done} deneme bitti).`, {
+              await this.jobProgress(tenantId, job, 'approved_prefetch', `Sirali indirme: ${saved}/${urlTasks.length} PDF kaydedildi.`, {
                 current: done,
                 total: urlTasks.length,
               });
             }
-          });
+          }
+          notes.push(`onaylandi sayfa ${pageNo}: ${saved}/${urlTasks.length} PDF dogrudan indirildi (dispatch=${dispatchHit}).`);
         }
       }
 
@@ -2935,6 +2960,86 @@ export class PortalAutomationRailwayRunnerService implements OnModuleInit {
       ...Array.from(text.matchAll(/['"]([^'"]+)['"]/g)).map((m) => m[1]),
     ];
     return matches.filter((item) => /^https?:\/\//i.test(item) || item.startsWith('/'));
+  }
+
+  /** GIB iki goruntuleme arasinda ~1 sn ister. Iki indirme arasi minimum bekleme. */
+  private ebeyannameMinFetchGapMs() {
+    return Math.max(0, Math.min(5_000, Number(process.env.PORTAL_AUTOMATION_EBEYANNAME_MIN_FETCH_GAP_MS || 1_200)));
+  }
+
+  /** Hattat yontemi acik mi? Oid+TOKEN ile dogrudan /dispatch adresi kur (varsayilan acik). */
+  private ebeyannameDispatchDirectEnabled() {
+    const raw = String(process.env.PORTAL_AUTOMATION_EBEYANNAME_DISPATCH_DIRECT ?? '1').trim().toLowerCase();
+    return raw !== '0' && raw !== 'false' && raw !== 'no' && raw !== 'off';
+  }
+
+  private matchEBeyannameToken(text: string): string | null {
+    const m = String(text || '').match(/TOKEN=([A-Za-z0-9]+)/);
+    return m ? m[1] : null;
+  }
+
+  /** Oturum TOKEN'ini (tum /dispatch cagrilarinda ayni, oturum boyunca sabit) sayfadan cikarir. */
+  private async ebeyannameSessionToken(target: any): Promise<string | null> {
+    const fromUrl = this.matchEBeyannameToken(String(target?.url?.() || ''));
+    if (fromUrl) return fromUrl;
+    const tok = await target.evaluate(() => {
+      try {
+        const w = window as any;
+        if (typeof w.getTOKEN === 'function') {
+          const t = String(w.getTOKEN() || '').trim();
+          if (/^[A-Za-z0-9]+$/.test(t)) return t;
+        }
+      } catch { /* yoksay */ }
+      const hay = String(document.documentElement?.outerHTML || '');
+      const m = hay.match(/TOKEN=([A-Za-z0-9]+)/);
+      return m ? m[1] : null;
+    }).catch(() => null);
+    return tok || null;
+  }
+
+  /** Satirdaki ikon onclick/href/outerHTML icinden beyanname/tahakkuk Oid'lerini cikarir. */
+  private extractEBeyannameOids(
+    metas: Array<{ haystack?: string; onclick?: string; href?: string }>,
+  ): { beyannameOid: string | null; tahakkukOid: string | null } {
+    let beyannameOid: string | null = null;
+    let tahakkukOid: string | null = null;
+    for (const meta of metas || []) {
+      const hay = `${meta.onclick || ''} ${meta.href || ''} ${meta.haystack || ''}`;
+      if (!beyannameOid) {
+        const b = hay.match(/beyannameOid=([A-Za-z0-9]+)/i);
+        if (b) beyannameOid = b[1];
+      }
+      if (!tahakkukOid) {
+        const t = hay.match(/tahakkukOid=([A-Za-z0-9]+)/i);
+        if (t) tahakkukOid = t[1];
+      }
+    }
+    return { beyannameOid, tahakkukOid };
+  }
+
+  /** Hattat yontemi: tiklamadan, dogrudan /dispatch IMAJ adresi kurar (beyanname/tahakkuk ayrik). */
+  private buildEBeyannameDispatchUrl(
+    target: any,
+    kind: 'beyanname' | 'tahakkuk',
+    oids: { beyannameOid: string | null; tahakkukOid: string | null },
+    token: string | null,
+  ): string | null {
+    if (!token || !this.ebeyannameDispatchDirectEnabled()) return null;
+    let origin = '';
+    try {
+      origin = new URL(String(target?.url?.() || '')).origin;
+    } catch {
+      return null;
+    }
+    if (!/gib\.gov\.tr/i.test(origin)) return null;
+    if (kind === 'beyanname') {
+      if (!oids.beyannameOid) return null;
+      return `${origin}/dispatch?cmd=IMAJ&subcmd=BEYANNAMEGORUNTULE&TOKEN=${encodeURIComponent(token)}`
+        + `&beyannameOid=${encodeURIComponent(oids.beyannameOid)}&inline=true`;
+    }
+    if (!oids.beyannameOid || !oids.tahakkukOid) return null;
+    return `${origin}/dispatch?cmd=IMAJ&subcmd=TAHAKKUKGORUNTULE&TOKEN=${encodeURIComponent(token)}`
+      + `&beyannameOid=${encodeURIComponent(oids.beyannameOid)}&tahakkukOid=${encodeURIComponent(oids.tahakkukOid)}&inline=true`;
   }
 
   private async savePdfFromRequestUrl(
