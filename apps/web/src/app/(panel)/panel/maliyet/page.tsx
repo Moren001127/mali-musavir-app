@@ -10,9 +10,26 @@ const GOLD = '#d4b876';
 const LINE = 'rgba(255,255,255,0.08)';
 const TEXT = '#fafaf9';
 const MUTED = 'rgba(250,250,249,0.58)';
-const SOFT = 'rgba(255,255,255,0.035)';
 const GREEN = '#4ade80';
 const RED = '#f87171';
+const BLUE = '#60a5fa';
+const CYAN = '#22d3ee';
+
+// Modül başına canlı renk paleti — "tek renk" görünümü kırmak için her modül kendi rengini alır.
+const PALETTE = [
+  '#d4b876', // altın
+  '#60a5fa', // mavi
+  '#a855f7', // mor
+  '#4ade80', // yeşil
+  '#fb923c', // turuncu
+  '#f472b6', // pembe
+  '#22d3ee', // camgöbeği
+  '#facc15', // sarı
+  '#f87171', // kırmızı
+  '#818cf8', // indigo
+  '#2dd4bf', // turkuaz
+  '#c084fc', // açık mor
+];
 
 type ModuleCost = {
   module: string;
@@ -65,18 +82,36 @@ export default function MaliyetPage() {
 
   return (
     <div className="mx-auto max-w-4xl space-y-5 pb-12">
-      <header className="rounded-lg border bg-[#0f0d0b]/80 p-5" style={{ borderColor: LINE }}>
+      <header
+        className="relative overflow-hidden rounded-2xl border p-5"
+        style={{
+          borderColor: LINE,
+          background:
+            'radial-gradient(120% 140% at 0% 0%, rgba(212,184,118,0.16), transparent 45%), radial-gradient(120% 140% at 100% 0%, rgba(168,85,247,0.14), transparent 45%), #0f0d0b',
+        }}
+      >
+        {/* üst renk şeridi */}
+        <div
+          className="absolute inset-x-0 top-0 h-1"
+          style={{ background: 'linear-gradient(90deg, #d4b876, #fb923c, #f472b6, #a855f7, #60a5fa, #22d3ee, #4ade80)' }}
+        />
         <Link href="/panel" className="inline-flex items-center gap-1.5 text-[12px] font-medium" style={{ color: MUTED }}>
           <ArrowLeft size={14} /> Panel
         </Link>
         <div className="mt-2 flex items-center justify-between gap-3">
-          <h1 className="text-[28px] font-semibold leading-tight flex items-center gap-2" style={{ color: TEXT }}>
-            <Coins size={26} style={{ color: GOLD }} /> AI Maliyet
+          <h1 className="flex items-center gap-2.5 text-[28px] font-semibold leading-tight" style={{ color: TEXT }}>
+            <span
+              className="grid h-10 w-10 place-items-center rounded-xl"
+              style={{ background: 'linear-gradient(135deg, #d4b876, #fb923c)', boxShadow: '0 6px 18px rgba(212,184,118,0.35)' }}
+            >
+              <Coins size={22} style={{ color: '#1a1410' }} />
+            </span>
+            AI Maliyet
           </h1>
           <button
             onClick={() => refetch()}
-            className="inline-flex items-center gap-1.5 rounded-md border px-3 py-2 text-[12px] font-semibold"
-            style={{ borderColor: LINE, color: TEXT }}
+            className="inline-flex items-center gap-1.5 rounded-lg px-3 py-2 text-[12px] font-semibold transition-colors"
+            style={{ background: 'rgba(96,165,250,0.16)', color: BLUE, border: `1px solid rgba(96,165,250,0.35)` }}
           >
             <RefreshCw size={14} className={isFetching ? 'animate-spin' : ''} /> Yenile
           </button>
@@ -89,7 +124,7 @@ export default function MaliyetPage() {
           <select
             value={month}
             onChange={(e) => setMonth(e.target.value)}
-            className="rounded-md border bg-transparent px-3 py-2 text-[13px]"
+            className="rounded-lg border bg-transparent px-3 py-2 text-[13px]"
             style={{ borderColor: LINE, color: TEXT }}
           >
             {months.map((m) => (
@@ -102,7 +137,7 @@ export default function MaliyetPage() {
               type="number"
               value={kur}
               onChange={(e) => setKur(Number(e.target.value) || 0)}
-              className="w-20 rounded-md border bg-transparent px-2 py-1.5 text-[13px]"
+              className="w-20 rounded-lg border bg-transparent px-2 py-1.5 text-[13px]"
               style={{ borderColor: LINE, color: TEXT }}
             />
           </div>
@@ -111,30 +146,48 @@ export default function MaliyetPage() {
 
       {/* Toplam kartı */}
       <section className="grid gap-4 sm:grid-cols-3">
-        <div className="rounded-lg border bg-[#0f0d0b]/80 p-5 sm:col-span-2" style={{ borderColor: LINE }}>
-          <div className="text-[12px] font-medium uppercase tracking-wider" style={{ color: MUTED }}>
+        <div
+          className="relative overflow-hidden rounded-2xl border p-5 sm:col-span-2"
+          style={{
+            borderColor: 'rgba(212,184,118,0.30)',
+            background: 'linear-gradient(135deg, rgba(212,184,118,0.20), rgba(251,146,60,0.10) 55%, rgba(168,85,247,0.12))',
+          }}
+        >
+          <div className="text-[12px] font-medium uppercase tracking-wider" style={{ color: 'rgba(212,184,118,0.85)' }}>
             Bu ay toplam ({data?.month || '—'})
           </div>
-          <div className="mt-1 text-[40px] font-semibold leading-none" style={{ color: TEXT }}>{usd(total)}</div>
-          <div className="mt-1 text-[15px]" style={{ color: GOLD }}>≈ {tl(total, kur)}</div>
-          <div className="mt-3 flex items-center gap-2 text-[12px]" style={{ color: diff > 0 ? RED : GREEN }}>
+          <div className="mt-1 text-[40px] font-semibold leading-none" style={{ color: GOLD }}>{usd(total)}</div>
+          <div className="mt-1 text-[15px]" style={{ color: '#fbbf24' }}>≈ {tl(total, kur)}</div>
+          <div
+            className="mt-3 inline-flex items-center gap-1.5 rounded-full px-2.5 py-1 text-[12px] font-medium"
+            style={{
+              color: diff > 0 ? RED : GREEN,
+              background: diff > 0 ? 'rgba(248,113,113,0.14)' : 'rgba(74,222,128,0.14)',
+            }}
+          >
             {diff > 0 ? <TrendingUp size={14} /> : <TrendingDown size={14} />}
             <span>
               Önceki ay ({data?.previousMonth || '—'}): {usd(prev)} · {diff >= 0 ? '+' : ''}{diffPct}%
             </span>
           </div>
         </div>
-        <div className="rounded-lg border bg-[#0f0d0b]/80 p-5" style={{ borderColor: LINE }}>
-          <div className="text-[12px] font-medium uppercase tracking-wider" style={{ color: MUTED }}>Toplam çağrı</div>
-          <div className="mt-1 text-[40px] font-semibold leading-none" style={{ color: TEXT }}>
+        <div
+          className="rounded-2xl border p-5"
+          style={{
+            borderColor: 'rgba(96,165,250,0.30)',
+            background: 'linear-gradient(135deg, rgba(96,165,250,0.18), rgba(34,211,238,0.10))',
+          }}
+        >
+          <div className="text-[12px] font-medium uppercase tracking-wider" style={{ color: 'rgba(96,165,250,0.9)' }}>Toplam çağrı</div>
+          <div className="mt-1 text-[40px] font-semibold leading-none" style={{ color: BLUE }}>
             {(data?.totalCalls || 0).toLocaleString('tr-TR')}
           </div>
-          <div className="mt-1 text-[12px]" style={{ color: MUTED }}>AI/OCR çağrısı</div>
+          <div className="mt-1 text-[12px]" style={{ color: CYAN }}>AI/OCR çağrısı</div>
         </div>
       </section>
 
       {/* Modül dökümü */}
-      <section className="rounded-lg border bg-[#0f0d0b]/80 p-5" style={{ borderColor: LINE }}>
+      <section className="rounded-2xl border bg-[#0f0d0b]/80 p-5" style={{ borderColor: LINE }}>
         <h2 className="text-[15px] font-semibold" style={{ color: TEXT }}>Modül bazında döküm</h2>
 
         {isLoading ? (
@@ -143,23 +196,37 @@ export default function MaliyetPage() {
           <div className="mt-4 text-[13px]" style={{ color: MUTED }}>Bu ay için kayıtlı AI harcaması yok.</div>
         ) : (
           <div className="mt-4 space-y-3">
-            {data.modules.map((m) => {
+            {data.modules.map((m, i) => {
+              const color = PALETTE[i % PALETTE.length];
               const pct = total > 0 ? Math.round((m.costUsd / total) * 100) : 0;
               const barW = Math.round((m.costUsd / maxModule) * 100);
               return (
-                <div key={m.module} className="rounded-md border p-3" style={{ borderColor: LINE, background: SOFT }}>
+                <div
+                  key={m.module}
+                  className="rounded-xl border p-3"
+                  style={{ borderColor: `${color}40`, borderLeft: `3px solid ${color}`, background: `${color}14` }}
+                >
                   <div className="flex items-center justify-between gap-3">
-                    <div className="text-[13.5px] font-medium" style={{ color: TEXT }}>{m.module}</div>
+                    <div className="flex items-center gap-2 text-[13.5px] font-medium" style={{ color: TEXT }}>
+                      <span className="h-2.5 w-2.5 rounded-full" style={{ background: color, boxShadow: `0 0 8px ${color}80` }} />
+                      {m.module}
+                    </div>
                     <div className="text-right">
                       <div className="text-[14px] font-semibold" style={{ color: TEXT }}>{usd(m.costUsd)}</div>
-                      <div className="text-[11px]" style={{ color: GOLD }}>≈ {tl(m.costUsd, kur)}</div>
+                      <div className="text-[11px]" style={{ color }}>≈ {tl(m.costUsd, kur)}</div>
                     </div>
                   </div>
-                  <div className="mt-2 h-1.5 w-full rounded-full" style={{ background: 'rgba(255,255,255,0.06)' }}>
-                    <div className="h-1.5 rounded-full" style={{ width: `${barW}%`, background: GOLD }} />
+                  <div className="mt-2 h-2 w-full overflow-hidden rounded-full" style={{ background: 'rgba(255,255,255,0.07)' }}>
+                    <div
+                      className="h-2 rounded-full"
+                      style={{ width: `${barW}%`, background: `linear-gradient(90deg, ${color}, ${color}aa)`, boxShadow: `0 0 10px ${color}66` }}
+                    />
                   </div>
                   <div className="mt-1.5 flex items-center justify-between text-[11px]" style={{ color: MUTED }}>
-                    <span>{m.calls.toLocaleString('tr-TR')} çağrı · toplam %{pct}</span>
+                    <span className="inline-flex items-center gap-1.5">
+                      <span className="rounded-full px-1.5 py-0.5 font-semibold" style={{ background: `${color}26`, color }}>%{pct}</span>
+                      {m.calls.toLocaleString('tr-TR')} çağrı
+                    </span>
                     <span>{(m.inputTokens + m.outputTokens).toLocaleString('tr-TR')} token</span>
                   </div>
                 </div>
