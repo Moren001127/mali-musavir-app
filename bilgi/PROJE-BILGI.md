@@ -101,3 +101,4 @@ Kaynak: kökteki `MOREN_PORTAL_OPERASYON_ANALIZ_2026-05-26.md` + `PLAN/` klasör
 ## 7. OTURUM GÜNLÜĞÜ
 
 - **2026-06-01** — `bilgi/` klasörü + `CLAUDE.md` oluşturuldu (önce-oku / sonra-güncelle akışı). Yerel↔sunucu senkron doğrulandı (`origin/main` birebir). ~3.7 GB temizlik: 7 eski deploy git-worktree'si (`git worktree remove`, branch'ler korundu), dev logları, kök `tmp/`, repoya yanlış girmiş `tmp-*` debug/mockup dosyaları (commit `fb039c9`, `7a9b67c`). "Docker terk, sunucu=doğru, yerel=yedek" netleşti.
+- **2026-06-01 (2. oturum)** — Çalışan ajanı Max kalıcılığı tamam: Railway `CLAUDE_CODE_OAUTH_TOKEN`, 8 saatlik OAuth token yerine **uzun ömürlü** `claude setup-token` token'ıyla (`sk-ant-oat01-…`, ~1 yıl) değiştirildi (redeploy onaylı). **Canlı test geçti** — Railway env'iyle SDK `query` çağrısı Max'tan cevap verdi (API key kapalı), endpoint `/calisan/info`→401 sağlıklı. Kod değişmedi (token Railway env'de). Detay: `apps/api/calisan/son_durum.md`.
