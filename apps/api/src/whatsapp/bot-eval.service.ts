@@ -1,6 +1,6 @@
 import { Injectable, Logger } from '@nestjs/common';
 import { PrismaService } from '../prisma/prisma.service';
-import { computeCostUsd, logAiUsage } from '../common/ai-usage-logger';
+import { computeCostUsd, logAiUsage, canSpendOnApi } from '../common/ai-usage-logger';
 
 const ANTHROPIC_URL = 'https://api.anthropic.com/v1/messages';
 const DEFAULT_MODEL = process.env.BOT_EVAL_MODEL || 'claude-haiku-4-5-20251001';
@@ -43,9 +43,14 @@ export class BotEvalService {
     const local = this.localEval(reply, context, lastOutgoing);
     const allowLlm = options?.allowLlm ?? process.env.BOT_EVAL_DISABLE_LLM !== '1';
     const apiKey = process.env.ANTHROPIC_API_KEY;
+    // Aylık ücretli API tavanı dolduysa LLM eval atla, lokal heuristik eval yeter.
+    const budgetOk = await canSpendOnApi(this.prisma, context.tenantId || 'default', context.source || 'whatsapp-bot-eval');
 
-    if (!allowLlm || !apiKey) {
-      return this.toResult(local.score, local.reasons, null, 0, 0, 0, apiKey ? null : 'ANTHROPIC_API_KEY yok; lokal eval kullanildi');
+    if (!allowLlm || !apiKey || !budgetOk) {
+      const note = !budgetOk
+        ? 'AI maliyet tavani doldu; lokal eval kullanildi'
+        : (apiKey ? null : 'ANTHROPIC_API_KEY yok; lokal eval kullanildi');
+      return this.toResult(local.score, local.reasons, null, 0, 0, 0, note);
     }
 
     try {

@@ -1,5 +1,6 @@
 import { Injectable } from '@nestjs/common';
 import { PrismaService } from '../prisma/prisma.service';
+import { getAiBudgetStatus } from '../common/ai-usage-logger';
 
 /**
  * AI Maliyet özeti — TEK yerde, GERÇEK veriyle.
@@ -118,9 +119,10 @@ export class AiCostService {
     prevRef.setUTCMonth(prevRef.getUTCMonth() - 1);
     const prev = this.monthRange(`${prevRef.getUTCFullYear()}-${String(prevRef.getUTCMonth() + 1).padStart(2, '0')}`);
 
-    const [current, previous] = await Promise.all([
+    const [current, previous, budget] = await Promise.all([
       this.sumByModule(tenantId, cur.start, cur.end),
       this.sumByModule(tenantId, prev.start, prev.end),
+      getAiBudgetStatus(this.prisma, tenantId),
     ]);
 
     return {
@@ -130,6 +132,15 @@ export class AiCostService {
       previousMonth: prev.label,
       previousTotalUsd: previous.total,
       modules: current.modules,
+      // Aylık ücretli API maliyet tavanı (Max abonelik kaynakları hariç).
+      budget: {
+        enabled: budget.enabled,
+        capUsd: budget.capUsd,
+        spentUsd: budget.spentUsd,
+        remainingUsd: budget.remainingUsd,
+        ratio: Number(budget.ratio.toFixed(3)),
+        overCap: budget.overCap,
+      },
     };
   }
 }

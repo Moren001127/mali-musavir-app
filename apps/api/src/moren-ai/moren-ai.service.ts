@@ -3,7 +3,7 @@ import { PrismaService } from '../prisma/prisma.service';
 import { ToolExecutorService } from './tool-executor.service';
 import { MOREN_AI_TOOLS } from './tools';
 import { buildSystemPrompt } from './system-prompt';
-import { computeCostUsd, computeRealtimeCostUsd } from '../common/ai-usage-logger';
+import { computeCostUsd, computeRealtimeCostUsd, canSpendOnApi } from '../common/ai-usage-logger';
 
 const ANTHROPIC_URL = 'https://api.anthropic.com/v1/messages';
 // Hibrit model secimi — maliyet/kalite dengesi:
@@ -342,6 +342,19 @@ export class MorenAiService {
     const model = body.model || pickDefaultModel(body.toolMode);
     const userMessage = (body.message || '').trim();
     if (!userMessage) throw new BadRequestException('Mesaj boş olamaz');
+
+    // AYLIK ÜCRETLİ API MALİYET TAVANI — tavan dolduysa API'ye gitme, güvenli cevap dön.
+    if (!(await canSpendOnApi(this.prisma, tenantId, body.source))) {
+      const fallback = /whatsapp|calisan|owner|bot/i.test(String(body.source || ''))
+        ? 'Mesajınızı aldık, en kısa sürede ofisimiz size dönüş yapacak.'
+        : 'AI aylık maliyet tavanı doldu. Railway env AI_MONTHLY_COST_CAP_USD ile tavanı yükseltebilirsin.';
+      return {
+        conversationId: body.conversationId || '',
+        assistantMessage: fallback,
+        toolUses: [],
+        usage: { inputTokens: 0, outputTokens: 0, cacheReadTokens: 0, cacheWriteTokens: 0, costUsd: 0, durationMs: 0, model },
+      };
+    }
     const currentPath = String(body.currentPath || '').trim().slice(0, 180);
 
     // Konuşmayı getir ya da oluştur

@@ -16,6 +16,7 @@ import { BotEvalService } from './bot-eval.service';
 import { QualityLogService } from './quality-log.service';
 import { BuseGunaydinCron } from '../schedule/buse-gunaydin.cron';
 import { CalisanService } from '../calisan/calisan.service';
+import { claudeTextViaMax, MAX_MODEL_CHEAP } from '../common/max-inference';
 
 type IncomingWhatsAppMessage = {
   from: string;
@@ -670,14 +671,22 @@ export class WhatsAppBotController implements OnModuleInit {
 
     let rawReply = '';
     try {
-      const answer = await this.morenAi.chat(tenant.id, null, {
-        message: prompt,
-        voiceMode: false,
-        toolMode: 'none',
-        source: 'whatsapp-bot',
-        // model belirtmiyoruz → DEFAULT_MODEL (Haiku) ucuz ve yeterli
-      } as any);
-      rawReply = (answer.assistantMessage || '').slice(0, 800);
+      // ÖNCE MAX (ücretsiz). Araçsız saf metin sohbet — Max yeterli.
+      const max = await claudeTextViaMax({ prompt, model: MAX_MODEL_CHEAP });
+      if (max.ok) {
+        rawReply = (max.text || '').slice(0, 800);
+      } else if (process.env.AI_ALLOW_API_FALLBACK === '1') {
+        const answer = await this.morenAi.chat(tenant.id, null, {
+          message: prompt,
+          voiceMode: false,
+          toolMode: 'none',
+          source: 'whatsapp-bot',
+        } as any);
+        rawReply = (answer.assistantMessage || '').slice(0, 800);
+      } else {
+        this.logger.warn(`Personal contact bot — Max cevabi uretilemedi (${contact.name}): ${max.error}`);
+        return;
+      }
     } catch (err: any) {
       this.logger.warn(`Personal contact bot cevabi uretilemedi (${contact.name}): ${err?.message || err}`);
       return;

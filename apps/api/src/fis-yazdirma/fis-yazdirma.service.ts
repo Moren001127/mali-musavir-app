@@ -1,7 +1,7 @@
 import { Injectable, Logger, BadRequestException } from '@nestjs/common';
 import { PrismaService } from '../prisma/prisma.service';
 import { MihsapService } from '../mihsap/mihsap.service';
-import { logAiUsage } from '../common/ai-usage-logger';
+import { logAiUsage, canSpendOnApi } from '../common/ai-usage-logger';
 import { createWorker } from 'tesseract.js';
 import * as sharp from 'sharp';
 import * as XLSX from 'xlsx';
@@ -495,6 +495,10 @@ export class FisYazdirmaService {
   ): Promise<{ date: string | null; fields: any; rawDate: string | null }> {
     const apiKey = process.env.ANTHROPIC_API_KEY;
     if (!apiKey) return { date: null, fields: {}, rawDate: null };
+    // Aylık ücretli API tavanı dolduysa görsel OCR yapma (tarih okunamamış gibi geç).
+    if (!(await canSpendOnApi(this.prisma, tenantId || 'default', 'fis-yazdirma'))) {
+      return { date: null, fields: {}, rawDate: null };
+    }
     const startMs = Date.now();
     const logUsage = (karar: string, sebep: string, usage?: any) =>
       logAiUsage(this.prisma, {
