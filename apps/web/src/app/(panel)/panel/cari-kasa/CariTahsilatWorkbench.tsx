@@ -242,21 +242,6 @@ export function CariTahsilatWorkspace({ onSelect }: { onSelect: (id: string) => 
     qc.invalidateQueries({ queryKey: ['cari-budget-summary'] });
   };
 
-  const fixEncoding = async () => {
-    try {
-      const rapor = await api.get('/cari-kasa/encoding-rapor').then((r) => r.data);
-      if (!rapor?.toplam) { toast.info('Bozuk karakterli kayıt bulunamadı'); return; }
-      const ozet = (rapor.kaliplar || []).map((k: any) => `• "${k.value}"  (${k.count})`).join('\n');
-      if (!confirm(`${rapor.toplam} bozuk karakterli hizmet kaydı bulundu:\n\n${ozet}\n\nGüvenli kalıplar düzeltilsin mi?`)) return;
-      const sonuc = await api.post('/cari-kasa/encoding-duzelt').then((r) => r.data);
-      toast.success(`${sonuc.guncellenen || 0} kayıt düzeltildi`);
-      if (sonuc.kalan?.length) toast.warning(`${sonuc.kalan.length} kayıt elle düzeltilmeli: ${sonuc.kalan.join(', ')}`);
-      refreshAll();
-    } catch (e: any) {
-      toast.error(e?.response?.data?.message || 'Karakter düzeltme başarısız');
-    }
-  };
-
   // ===== WhatsApp önizle (KORUNDU) =====
   const previewReminder = async () => {
     if (!targetIds.length) {
@@ -364,14 +349,6 @@ export function CariTahsilatWorkspace({ onSelect }: { onSelect: (id: string) => 
               style={{ border: `1px solid rgba(255,255,255,0.10)`, background: 'rgba(255,255,255,0.02)', color: TEXT }}
             >
               <Download size={16} strokeWidth={1.7} /> Excel
-            </button>
-            <button
-              onClick={fixEncoding}
-              className="hidden md:inline-flex items-center gap-2 rounded-xl px-3 py-2.5 text-[12.5px] font-medium transition"
-              style={{ border: `1px solid rgba(230,200,120,0.25)`, background: 'rgba(230,200,120,0.06)', color: GOLD }}
-              title="Bozuk Türkçe karakterleri düzelt (geçici bakım)"
-            >
-              Karakter düzelt
             </button>
             <button
               onClick={refreshAll}

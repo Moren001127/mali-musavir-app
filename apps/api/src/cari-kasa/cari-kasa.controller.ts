@@ -63,18 +63,6 @@ function envFlag(value?: string | null) {
 export class CariKasaController {
   constructor(private readonly service: CariKasaService) {}
 
-  // ==================== GEÇİCİ BAKIM: encoding onarımı ====================
-  @Get('encoding-rapor')
-  encodingRapor(@Req() req: any) {
-    return this.service.encodingRapor(req.user.tenantId);
-  }
-
-  @Post('encoding-duzelt')
-  @HttpCode(HttpStatus.OK)
-  encodingDuzelt(@Req() req: any) {
-    return this.service.encodingDuzelt(req.user.tenantId);
-  }
-
   // ==================== HİZMET ====================
   @Get('hizmet')
   listHizmetler(@Req() req: any, @Query('taxpayerId') taxpayerId?: string) {
