@@ -8,8 +8,8 @@ import { Search, Upload, Plus, AlertCircle, PhoneOff, Check as CheckIcon } from 
 
 const GOLD = '#d4b876';
 const GOLD_SOFT = '#b8a06f';
-const CYAN = '#7dd3fc';
-const TAXPAYER_TABLE_GRID = '34px minmax(230px, 1.35fr) repeat(6, minmax(54px, 0.34fr)) minmax(190px, 0.95fr)';
+// Satır: avatar | ad | durum etiketi | 6 onay kutusu | not
+const TAXPAYER_TABLE_GRID = '34px minmax(200px, 1.25fr) 128px repeat(6, minmax(46px, 0.32fr)) minmax(150px, 0.82fr)';
 
 type MonthlyStatus = {
   id?: string;
@@ -59,13 +59,23 @@ type StatusKey =
   | 'beyannameVerildi';
 type MonthlyStatusPatch = Partial<Pick<MonthlyStatus, StatusKey | 'notes'>>;
 
-type FilterKey = 'all' | 'evrak-gelmedi' | 'beyanname-bekliyor' | 'beyanname-verilmedi' | 'verildi';
+// 'islenmedi' yeni eklendi; 'beyanname-verilmedi' geriye dönük (dış bağlantı) korunuyor
+type FilterKey = 'all' | 'evrak-gelmedi' | 'islenmedi' | 'beyanname-bekliyor' | 'beyanname-verilmedi' | 'verildi';
 type ProfileFilterKey = 'all' | 'profil-eksik' | 'telefon-yok';
 type CompletenessItem = { id: string; score: number; durum: string; eksikSayisi: number; kritikEksikSayisi: number };
 
 const AYLAR_TR = ['Ocak','Şubat','Mart','Nisan','Mayıs','Haziran','Temmuz','Ağustos','Eylül','Ekim','Kasım','Aralık'];
-const FILTER_KEYS: FilterKey[] = ['all', 'evrak-gelmedi', 'beyanname-bekliyor', 'beyanname-verilmedi', 'verildi'];
+const FILTER_KEYS: FilterKey[] = ['all', 'evrak-gelmedi', 'islenmedi', 'beyanname-bekliyor', 'beyanname-verilmedi', 'verildi'];
 const PROFILE_FILTER_KEYS: ProfileFilterKey[] = ['all', 'profil-eksik', 'telefon-yok'];
+
+// İş akışı aşamaları — tek bakışta durum
+type Stage = 'evrak-bekliyor' | 'isleniyor' | 'beyan-hazir' | 'verildi';
+const STAGES: Record<Stage, { label: string; color: string }> = {
+  'evrak-bekliyor': { label: 'Evrak bekleniyor', color: '#e0a83e' },
+  'isleniyor':      { label: 'İşleniyor',         color: '#6fa8d6' },
+  'beyan-hazir':    { label: 'Beyanname hazır',   color: GOLD },
+  'verildi':        { label: 'Verildi',           color: '#4ade80' },
+};
 
 function getQueryParam(key: string): string | null {
   if (typeof window === 'undefined') return null;
@@ -124,17 +134,25 @@ function isProfileIncomplete(t: Taxpayer, completeness?: CompletenessItem): bool
   return fallbackCompletenessScore(t) < 80;
 }
 
-/** Beyanname durumu türetimi */
-function deriveBeyannameStatus(s: MonthlyStatus | null): 'verildi' | 'bekliyor' | 'verilmedi' {
-  if (!s) return 'verilmedi';
+/** İş akışı aşaması — evrak → işlem → kontrol → beyanname */
+function deriveStage(s: MonthlyStatus | null): Stage {
+  if (!s) return 'evrak-bekliyor';
   if (s.beyannameVerildi) return 'verildi';
-  const tumuTamam =
-    s.evraklarGeldi &&
+  if (!s.evraklarGeldi) return 'evrak-bekliyor';
+  const kontrolBitti =
     s.evraklarIslendi &&
     s.indirilecekKdvKontrol &&
     s.hesaplananKdvKontrol &&
     s.eArsivKontrol;
-  return tumuTamam ? 'bekliyor' : 'verilmedi';
+  return kontrolBitti ? 'beyan-hazir' : 'isleniyor';
+}
+
+/** Beyanname durumu — CSV ve geriye dönük filtre için */
+function deriveBeyannameStatus(s: MonthlyStatus | null): 'verildi' | 'bekliyor' | 'verilmedi' {
+  const stage = deriveStage(s);
+  if (stage === 'verildi') return 'verildi';
+  if (stage === 'beyan-hazir') return 'bekliyor';
+  return 'verilmedi';
 }
 
 export default function MukelleflerPage() {
@@ -219,45 +237,51 @@ export default function MukelleflerPage() {
     },
   });
 
+  // Aşama bazlı sayımlar — her mükellef tam olarak bir aşamada
   const counts = useMemo(() => {
-    let evrakGeldi = 0, evrakGelmedi = 0, islenmedi = 0;
-    let beyannameVerildi = 0, beyannameBekliyor = 0, beyannameVerilmedi = 0;
+    let evrakBekliyor = 0, isleniyor = 0, beyanHazir = 0, verildi = 0;
     for (const t of raw) {
-      const s = t.monthlyStatus;
-      if (s?.evraklarGeldi) evrakGeldi++; else evrakGelmedi++;
-      if (!s?.evraklarIslendi) islenmedi++;
-      const b = deriveBeyannameStatus(s);
-      if (b === 'verildi') beyannameVerildi++;
-      else if (b === 'bekliyor') beyannameBekliyor++;
-      else beyannameVerilmedi++;
+      switch (deriveStage(t.monthlyStatus)) {
+        case 'evrak-bekliyor': evrakBekliyor++; break;
+        case 'isleniyor': isleniyor++; break;
+        case 'beyan-hazir': beyanHazir++; break;
+        case 'verildi': verildi++; break;
+      }
     }
-    return {
-      total: raw.length, evrakGeldi, evrakGelmedi, islenmedi,
-      beyannameVerildi, beyannameBekliyor, beyannameVerilmedi,
-    };
+    return { total: raw.length, evrakBekliyor, isleniyor, beyanHazir, verildi };
   }, [raw]);
 
+  const matchesFilter = (t: Taxpayer): boolean => {
+    const stage = deriveStage(t.monthlyStatus);
+    switch (filter) {
+      case 'evrak-gelmedi': return stage === 'evrak-bekliyor';
+      case 'islenmedi': return stage === 'isleniyor';
+      case 'beyanname-bekliyor': return stage === 'beyan-hazir';
+      case 'beyanname-verilmedi': return stage !== 'verildi';
+      case 'verildi': return stage === 'verildi';
+      default: return true;
+    }
+  };
+
   const filtered = useMemo(() => {
-    let list = raw.slice();
-    if (filter === 'evrak-gelmedi') list = list.filter(t => !t.monthlyStatus?.evraklarGeldi);
-    else if (filter === 'beyanname-bekliyor') list = list.filter(t => deriveBeyannameStatus(t.monthlyStatus) === 'bekliyor');
-    else if (filter === 'beyanname-verilmedi') list = list.filter(t => deriveBeyannameStatus(t.monthlyStatus) === 'verilmedi');
-    else if (filter === 'verildi') list = list.filter(t => t.monthlyStatus?.beyannameVerildi);
+    let list = raw.filter(matchesFilter);
     if (profileFilter === 'profil-eksik') list = list.filter(t => isProfileIncomplete(t, completenessMap.get(t.id)));
     else if (profileFilter === 'telefon-yok') list = list.filter(t => !hasUsablePhone(t));
     return list.sort((a, b) => getName(a).localeCompare(getName(b), 'tr', { sensitivity: 'base' }));
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [raw, filter, profileFilter, completenessMap]);
 
   const totalPages = Math.max(1, Math.ceil(filtered.length / PAGE_SIZE));
   const pageSafe = Math.min(page, totalPages);
   const pageItems = filtered.slice((pageSafe - 1) * PAGE_SIZE, pageSafe * PAGE_SIZE);
 
-  const filterBtns: { key: FilterKey; label: string; count: number }[] = [
-    { key: 'all', label: 'Tümü', count: counts.total },
-    { key: 'evrak-gelmedi', label: 'Evrak Gelmedi', count: counts.evrakGelmedi },
-    { key: 'beyanname-bekliyor', label: 'Beyanname Bekliyor', count: counts.beyannameBekliyor },
-    { key: 'beyanname-verilmedi', label: 'Beyanname Verilmedi', count: counts.beyannameVerilmedi },
-    { key: 'verildi', label: 'Verildi', count: counts.beyannameVerildi },
+  // KPI = filtre kartları (sayı + tıklayınca o aşamayı süzer)
+  const stageCards: { key: FilterKey; label: string; count: number; color: string }[] = [
+    { key: 'all',                label: 'Tüm mükellef',     count: counts.total,        color: GOLD },
+    { key: 'evrak-gelmedi',      label: 'Evrak bekleniyor', count: counts.evrakBekliyor, color: STAGES['evrak-bekliyor'].color },
+    { key: 'islenmedi',          label: 'İşleniyor',        count: counts.isleniyor,     color: STAGES['isleniyor'].color },
+    { key: 'beyanname-bekliyor', label: 'Beyanname hazır',  count: counts.beyanHazir,    color: STAGES['beyan-hazir'].color },
+    { key: 'verildi',            label: 'Verildi',          count: counts.verildi,       color: STAGES['verildi'].color },
   ];
 
   const profileCounts = useMemo(() => ({
@@ -273,21 +297,21 @@ export default function MukelleflerPage() {
 
   return (
     <div className="space-y-3 max-w-none">
-      {/* HEADER */}
+      {/* HEADER — sade, nötr yüzey + ince altın çizgi */}
       <div
-        className="flex items-end justify-between rounded-2xl px-4 py-3"
+        className="flex flex-wrap items-end justify-between gap-3 rounded-2xl px-4 py-3.5"
         style={{
-          background: 'linear-gradient(135deg, rgba(212,184,118,0.055), rgba(10,17,16,0.70))',
-          border: '1px solid rgba(212,184,118,0.12)',
-          boxShadow: '0 14px 34px rgba(0,0,0,0.14)',
+          background: 'rgba(255,255,255,0.022)',
+          border: '1px solid rgba(255,255,255,0.07)',
+          boxShadow: '0 12px 30px rgba(0,0,0,0.18)',
         }}
       >
         <div>
           <div className="mb-1.5 flex items-center gap-2.5">
             <span className="h-px w-[26px]" style={{ background: GOLD }} />
-            <span className="text-[9.5px] uppercase font-bold tracking-[.18em]" style={{ color: '#b8a06f' }}>Ana Modül</span>
+            <span className="text-[9.5px] uppercase font-bold tracking-[.18em]" style={{ color: GOLD_SOFT }}>Ana Modül</span>
           </div>
-          <h1 style={{ fontFamily: 'Manrope, Inter, system-ui, sans-serif', fontSize: 28, fontWeight: 800, color: '#fafaf9', letterSpacing: 0 }}>Mükellef Listesi</h1>
+          <h1 style={{ fontFamily: 'Manrope, Inter, system-ui, sans-serif', fontSize: 27, fontWeight: 800, color: '#fafaf9', letterSpacing: 0 }}>Mükellef Listesi</h1>
           <p className="mt-1 text-[12.5px] font-medium" style={{ color: 'rgba(250,250,249,0.52)' }}>
             {donemStr} döneminde aktif {counts.total} mükellef
           </p>
@@ -316,7 +340,7 @@ export default function MukelleflerPage() {
                 }),
               ];
               const csv = rows.map(r => r.map(c => `"${String(c).replace(/"/g,'""')}"`).join(',')).join('\n');
-              const blob = new Blob(['\uFEFF' + csv], { type: 'text/csv;charset=utf-8;' });
+              const blob = new Blob(['﻿' + csv], { type: 'text/csv;charset=utf-8;' });
               const url = URL.createObjectURL(blob);
               const a = document.createElement('a');
               a.href = url;
@@ -339,9 +363,8 @@ export default function MukelleflerPage() {
         </div>
       </div>
 
-      {/* TOOLBAR: Search + Period + Filters */}
-      <div className="rounded-xl px-3 py-2.5" style={{ background: 'linear-gradient(180deg, rgba(8,24,29,0.34), rgba(255,255,255,0.015))', border: '1px solid rgba(125,211,252,0.12)' }}>
-      <div className="flex flex-wrap items-center gap-2">
+      {/* TOOLBAR: arama + dönem + profil çipleri */}
+      <div className="flex flex-wrap items-center gap-2 rounded-xl px-3 py-2.5" style={{ background: 'rgba(255,255,255,0.018)', border: '1px solid rgba(255,255,255,0.07)' }}>
         <div className="flex-1 min-w-[240px] relative">
           <Search size={14} className="absolute left-3.5 top-1/2 -translate-y-1/2" style={{ color: 'rgba(250,250,249,0.4)' }} />
           <input
@@ -354,7 +377,7 @@ export default function MukelleflerPage() {
           />
         </div>
 
-        {/* Period picker */}
+        {/* Dönem seçici */}
         <div className="flex items-center gap-1 p-1 rounded-[10px]" style={{ background: 'rgba(255,255,255,0.03)', border: '1px solid rgba(255,255,255,0.08)' }}>
           <select
             value={month}
@@ -377,24 +400,7 @@ export default function MukelleflerPage() {
           </select>
         </div>
 
-        {filterBtns.map((b) => {
-          const active = filter === b.key;
-          return (
-            <button
-              key={b.key}
-              type="button"
-              onClick={() => { setFilter(b.key); if (b.key === 'all') setProfileFilter('all'); setPage(1); }}
-              className="rounded-[9px] px-3 py-1.5 text-[11.5px] font-semibold transition-all"
-              style={{
-                background: active ? 'rgba(184,160,111,0.1)' : 'rgba(255,255,255,0.03)',
-                border: `1px solid ${active ? 'rgba(184,160,111,0.3)' : 'rgba(255,255,255,0.08)'}`,
-                color: active ? GOLD : 'rgba(250,250,249,0.55)',
-              }}
-            >
-              {b.label} ({b.count})
-            </button>
-          );
-        })}
+        {/* İkincil profil filtreleri */}
         {profileFilterBtns.map((b) => {
           const Icon = b.icon;
           const active = profileFilter === b.key;
@@ -403,11 +409,11 @@ export default function MukelleflerPage() {
               key={b.key}
               type="button"
               onClick={() => { setProfileFilter(active ? 'all' : (b.key as ProfileFilterKey)); setPage(1); }}
-              className="inline-flex items-center gap-1.5 rounded-[9px] px-3 py-1.5 text-[11.5px] font-semibold transition-all"
+              className="inline-flex items-center gap-1.5 rounded-[9px] px-3 py-2 text-[11.5px] font-semibold transition-all"
               style={{
-                background: active ? 'rgba(239,68,68,0.12)' : 'rgba(255,255,255,0.03)',
-                border: `1px solid ${active ? 'rgba(239,68,68,0.32)' : 'rgba(255,255,255,0.08)'}`,
-                color: active ? '#fca5a5' : 'rgba(250,250,249,0.55)',
+                background: active ? 'rgba(224,168,62,0.12)' : 'rgba(255,255,255,0.03)',
+                border: `1px solid ${active ? 'rgba(224,168,62,0.32)' : 'rgba(255,255,255,0.08)'}`,
+                color: active ? '#e9b75a' : 'rgba(250,250,249,0.55)',
               }}
             >
               <Icon size={12} /> {b.label} ({b.count})
@@ -416,38 +422,62 @@ export default function MukelleflerPage() {
         })}
       </div>
 
-      {/* STAT CARDS */}
-      <div className="mt-2 grid grid-cols-2 gap-1.5 md:grid-cols-3 xl:grid-cols-6">
-        <StatCard variant="gold" label="Dönemde Aktif" value={String(counts.total)} />
-        <StatCard variant="ok" label="Evrak Geldi" value={String(counts.evrakGeldi)} sub={counts.total ? `%${((counts.evrakGeldi / counts.total) * 100).toFixed(0)}` : ''} />
-        <StatCard variant="danger" label="Evrak Gelmedi" value={String(counts.evrakGelmedi)} sub={counts.evrakGelmedi > 0 ? 'hatırlat' : ''} />
-        <StatCard variant="warn" label="İşlenmedi" value={String(counts.islenmedi)} sub={counts.islenmedi > 0 ? 'işle' : ''} />
-        <StatCard variant="warn" label="Beyanname Bekliyor" value={String(counts.beyannameBekliyor)} sub={counts.beyannameBekliyor > 0 ? 'gönder' : ''} />
-        <StatCard variant="gold" label="Beyanname Verildi" value={`${counts.beyannameVerildi} / ${counts.total}`} sub={counts.total ? `%${((counts.beyannameVerildi / counts.total) * 100).toFixed(0)}` : ''} />
-      </div>
+      {/* AŞAMA KARTLARI — hem KPI hem filtre */}
+      <div className="grid grid-cols-2 gap-2 sm:grid-cols-3 lg:grid-cols-5">
+        {stageCards.map((c) => {
+          const active = filter === c.key;
+          return (
+            <button
+              key={c.key}
+              type="button"
+              onClick={() => {
+                const next: FilterKey = active && c.key !== 'all' ? 'all' : c.key;
+                setFilter(next);
+                if (next === 'all') setProfileFilter('all');
+                setPage(1);
+              }}
+              className="relative overflow-hidden rounded-[11px] px-3.5 py-3 text-left transition-all"
+              style={{
+                background: active ? `${c.color}14` : 'rgba(255,255,255,0.02)',
+                border: `1px solid ${active ? `${c.color}66` : 'rgba(255,255,255,0.07)'}`,
+              }}
+            >
+              <span className="absolute bottom-2.5 left-0 top-2.5 w-[3px] rounded" style={{ background: c.color, opacity: active ? 1 : 0.5 }} />
+              <div className="pl-2">
+                <div className="text-[24px] leading-none font-black tabular-nums" style={{ fontFamily: 'Manrope, Inter, system-ui, sans-serif', color: active ? c.color : '#fafaf9' }}>
+                  {c.count}
+                </div>
+                <div className="mt-1.5 text-[11px] font-semibold tracking-[0.01em]" style={{ color: active ? c.color : 'rgba(250,250,249,0.6)' }}>
+                  {c.label}
+                </div>
+              </div>
+            </button>
+          );
+        })}
       </div>
 
-      {/* TABLE */}
+      {/* TABLO */}
       <div className="rounded-xl overflow-x-auto overflow-y-hidden" style={{ background: 'rgba(255,255,255,0.018)', border: '1px solid rgba(255,255,255,0.07)' }}>
         <div
-          className="grid min-w-[1120px] w-full items-center px-3 py-2.5 text-[9.5px] font-semibold uppercase"
+          className="grid min-w-[1160px] w-full items-center px-3 py-2.5 text-[9.5px] font-semibold uppercase"
           style={{
             gridTemplateColumns: TAXPAYER_TABLE_GRID,
             gap: 8,
-            background: 'rgba(212,184,118,0.045)',
-            borderBottom: '1px solid rgba(212,184,118,0.13)',
+            background: 'rgba(212,184,118,0.04)',
+            borderBottom: '1px solid rgba(212,184,118,0.12)',
             color: 'rgba(250,250,249,0.48)',
             letterSpacing: '0.09em',
           }}
         >
           <span></span>
           <span>Mükellef</span>
-          <span className="text-center">Evrak</span>
-          <span className="text-center">İşl.</span>
-          <span className="text-center">İnd.</span>
-          <span className="text-center">Hes.</span>
-          <span className="text-center">Arşiv</span>
-          <span className="text-center">Beyan</span>
+          <span>Durum</span>
+          <span className="text-center" title="Evrak geldi">Evrak</span>
+          <span className="text-center" title="Evraklar işlendi">İşlem</span>
+          <span className="text-center" title="İndirilecek KDV kontrol" style={{ borderLeft: '1px solid rgba(255,255,255,0.07)', paddingLeft: 6 }}>İnd</span>
+          <span className="text-center" title="Hesaplanan KDV kontrol">Hes</span>
+          <span className="text-center" title="E-Arşiv fatura kontrol">Arşiv</span>
+          <span className="text-center" title="Beyanname verildi" style={{ borderLeft: '1px solid rgba(255,255,255,0.07)', paddingLeft: 6 }}>Beyan</span>
           <span>Not / Açıklama</span>
         </div>
 
@@ -475,7 +505,7 @@ export default function MukelleflerPage() {
           ))
         )}
 
-        {/* Pagination */}
+        {/* Sayfalama */}
         {!isLoading && filtered.length > 0 && (
           <div
             className="px-5 py-3.5 flex items-center justify-between"
@@ -518,27 +548,17 @@ export default function MukelleflerPage() {
 // Bileşenler
 // ─────────────────────────────────────────────────────────────
 
-function StatCard({
-  variant, label, value, sub,
-}: {
-  variant: 'gold' | 'ok' | 'warn' | 'danger';
-  label: string; value: string; sub?: string;
-}) {
-  const palette = {
-    gold:   { line: GOLD,       val: GOLD,       lbl: 'rgba(212,184,118,0.7)', bg: 'linear-gradient(135deg, rgba(212,184,118,0.06), rgba(212,184,118,0.015))', border: 'rgba(212,184,118,0.18)' },
-    ok:     { line: '#22c55e',  val: '#22c55e',  lbl: 'rgba(34,197,94,0.65)',  bg: 'linear-gradient(135deg, rgba(34,197,94,0.06), rgba(34,197,94,0.015))',    border: 'rgba(34,197,94,0.16)' },
-    warn:   { line: CYAN,       val: CYAN,       lbl: 'rgba(125,211,252,0.72)', bg: 'linear-gradient(135deg, rgba(125,211,252,0.055), rgba(125,211,252,0.014))', border: 'rgba(125,211,252,0.16)' },
-    danger: { line: '#ef4444',  val: '#ef4444',  lbl: 'rgba(239,68,68,0.7)',   bg: 'linear-gradient(135deg, rgba(239,68,68,0.06), rgba(239,68,68,0.015))',    border: 'rgba(239,68,68,0.16)' },
-  }[variant];
+function StatusPill({ stage }: { stage: Stage }) {
+  const { label, color } = STAGES[stage];
   return (
-    <div className="relative overflow-hidden rounded-[9px] px-3 py-2" style={{ background: palette.bg, border: `1px solid ${palette.border}` }}>
-      <span className="absolute bottom-2 left-0 top-2 w-[2px] rounded" style={{ background: palette.line }} />
-      <div className="pl-1.5">
-        <div className="mb-1 text-[9.5px] uppercase font-bold tracking-[0.11em]" style={{ color: palette.lbl }}>{label}</div>
-        <div className="text-[18px] leading-none font-black tabular-nums" style={{ fontFamily: 'Manrope, Inter, system-ui, sans-serif', letterSpacing: 0, color: palette.val }}>{value}</div>
-        {sub && <div className="mt-0.5 text-[10px] font-semibold" style={{ color: 'rgba(250,250,249,0.42)', fontFamily: 'Manrope, Inter, system-ui, sans-serif' }}>{sub}</div>}
-      </div>
-    </div>
+    <span
+      className="inline-flex items-center gap-1.5 rounded-full px-2.5 py-1 text-[10.5px] font-bold whitespace-nowrap"
+      style={{ background: `${color}1a`, border: `1px solid ${color}40`, color }}
+      title={label}
+    >
+      <span className="h-1.5 w-1.5 rounded-full shrink-0" style={{ background: color }} />
+      {label}
+    </span>
   );
 }
 
@@ -555,7 +575,7 @@ function TaxpayerRow({
 }) {
   const s = taxpayer.monthlyStatus;
   const isCompany = taxpayer.type === 'TUZEL_KISI';
-  const beyanname = deriveBeyannameStatus(s);
+  const stage = deriveStage(s);
   const [notesDraft, setNotesDraft] = useState(s?.notes || '');
 
   useEffect(() => {
@@ -574,7 +594,7 @@ function TaxpayerRow({
 
   return (
     <div
-      className="grid min-w-[1120px] w-full items-center px-3 py-2 transition-all group"
+      className="grid min-w-[1160px] w-full items-center px-3 py-2 transition-all group"
       style={{
         gridTemplateColumns: TAXPAYER_TABLE_GRID,
         gap: 8,
@@ -631,6 +651,11 @@ function TaxpayerRow({
         </p>
       </Link>
 
+      {/* Durum etiketi */}
+      <div className="min-w-0">
+        <StatusPill stage={stage} />
+      </div>
+
       {/* Evrak */}
       <div className="flex justify-center">
         <Check checked={!!s?.evraklarGeldi} onClick={() => onToggle('evraklarGeldi', !s?.evraklarGeldi)} title="Evrak geldi" />
@@ -641,8 +666,8 @@ function TaxpayerRow({
         <Check checked={!!s?.evraklarIslendi} onClick={() => onToggle('evraklarIslendi', !s?.evraklarIslendi)} title="Evraklar işlendi" />
       </div>
 
-      {/* İnd. KDV */}
-      <div className="flex justify-center">
+      {/* İnd. KDV — KDV grubu başlangıcı */}
+      <div className="flex justify-center" style={{ borderLeft: '1px solid rgba(255,255,255,0.05)' }}>
         <Check checked={!!s?.indirilecekKdvKontrol} onClick={() => onToggle('indirilecekKdvKontrol', !s?.indirilecekKdvKontrol)} title="İndirilecek KDV kontrol" />
       </div>
 
@@ -656,12 +681,12 @@ function TaxpayerRow({
         <Check checked={!!s?.eArsivKontrol} onClick={() => onToggle('eArsivKontrol', !s?.eArsivKontrol)} title="E-Arşiv Fatura kontrol" />
       </div>
 
-      {/* Beyanname */}
-      <div className="flex justify-center">
+      {/* Beyanname — beyan grubu başlangıcı */}
+      <div className="flex justify-center" style={{ borderLeft: '1px solid rgba(255,255,255,0.05)' }}>
         <Check
           checked={!!s?.beyannameVerildi}
           onClick={() => onToggle('beyannameVerildi', !s?.beyannameVerildi)}
-          title={beyanname === 'verildi' ? 'Beyanname verildi' : beyanname === 'bekliyor' ? 'Beyanname bekliyor' : 'Beyanname verilmedi'}
+          title={stage === 'verildi' ? 'Beyanname verildi' : stage === 'beyan-hazir' ? 'Beyanname hazır' : 'Beyanname verilmedi'}
         />
       </div>
 

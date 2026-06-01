@@ -13,6 +13,7 @@ import {
   ChevronLeft,
   ChevronRight,
   ExternalLink,
+  FileCheck,
   FileText,
   Hash,
   Image as ImageIcon,
@@ -32,6 +33,7 @@ import {
   UserCog,
   UserRound,
   Workflow,
+  X,
   Zap,
 } from 'lucide-react';
 import { api } from '@/lib/api';
@@ -144,7 +146,7 @@ function initialsFor(name: string) {
 }
 
 // ============================================================
-// KISAYOLLAR — Devlet portalları + sık sorgular
+// KISAYOLLAR — Devlet portalları + sık sorgular (açılır panelde)
 // ============================================================
 type Kisayol = { id: string; label: string; url: string; renk: string; kisaltma: string };
 
@@ -175,19 +177,23 @@ const HIZLI_SORGULAR: Kisayol[] = [
 ];
 
 // ============================================================
-// SEKMELER
+// SEKMELER — gerçek sekmeler + ayrı sayfaya götüren link modülleri
 // ============================================================
-type TabKey = 'bilgiler' | 'beyannameler' | 'sgk' | 'tebligat' | 'evraklar' | 'cari' | 'kdv' | 'notlar';
+type TabKey = 'bilgiler' | 'mukellefiyetler' | 'sgk' | 'tebligat' | 'notlar';
 
-const TABS: Array<{ key: TabKey; label: string; icon: React.ElementType; href?: string }> = [
-  { key: 'bilgiler',     label: 'Bilgiler',     icon: UserRound },
-  { key: 'beyannameler', label: 'Beyannameler', icon: FileText,    href: '/panel/beyannameler' },
-  { key: 'sgk',          label: 'SGK',          icon: Shield },
-  { key: 'tebligat',     label: 'E-Tebligat',   icon: Mail },
-  { key: 'evraklar',     label: 'Evraklar',     icon: BookOpen,    href: '/panel/evraklar' },
-  { key: 'cari',         label: 'Cari Hesap',   icon: Landmark,    href: '/panel/cari-kasa' },
-  { key: 'kdv',          label: 'KDV Kontrol',  icon: ShieldCheck, href: '/panel/kdv-kontrol' },
-  { key: 'notlar',       label: 'Notlar',       icon: MessageSquareText },
+const REAL_TABS: Array<{ key: TabKey; label: string; icon: React.ElementType }> = [
+  { key: 'bilgiler',        label: 'Bilgiler',        icon: UserRound },
+  { key: 'mukellefiyetler', label: 'Mükellefiyetler', icon: FileCheck },
+  { key: 'sgk',             label: 'SGK',             icon: Shield },
+  { key: 'tebligat',        label: 'E-Tebligat',      icon: Mail },
+  { key: 'notlar',          label: 'Notlar',          icon: MessageSquareText },
+];
+
+const LINK_MODULES: Array<{ label: string; icon: React.ElementType; href: string }> = [
+  { label: 'Beyannameler', icon: FileText,    href: '/panel/beyannameler' },
+  { label: 'Evraklar',     icon: BookOpen,    href: '/panel/evraklar' },
+  { label: 'Cari Hesap',   icon: Landmark,    href: '/panel/cari-kasa' },
+  { label: 'KDV Kontrol',  icon: ShieldCheck, href: '/panel/kdv-kontrol' },
 ];
 
 export default function MukellefDetayPage() {
@@ -197,6 +203,7 @@ export default function MukellefDetayPage() {
   const isNew = id === 'yeni';
 
   const [activeTab, setActiveTab] = useState<TabKey>('bilgiler');
+  const [portalOpen, setPortalOpen] = useState(false);
 
   const { data: taxpayer, isLoading } = useQuery({
     queryKey: ['taxpayer', id],
@@ -318,28 +325,32 @@ export default function MukellefDetayPage() {
       { key: 'kep',      label: 'KEP',       active: !!form.kepAdresi },
     ];
   }, [form, taxpayer]);
+  const activeChannels = statuses.filter((s) => s.active);
 
   const handleKisayolClick = (k: Kisayol) => {
     // Şimdilik basit pencere açma; ileride PortalCredential ile otomatik giriş
     window.open(k.url, '_blank', 'noopener,noreferrer');
   };
 
+  const visibleTabs = isNew ? REAL_TABS.filter((t) => t.key === 'bilgiler' || t.key === 'notlar') : REAL_TABS;
+  const defterLabel = form.defterTuru === 'BILANCO' ? 'Bilanço' : 'İşletme defteri';
+
   const CardNavButtons = ({ compact = false }: { compact?: boolean }) => {
     if (isNew || cardNav.total <= 1) return null;
     return (
-      <div className={`flex ${compact ? 'flex-wrap justify-end' : 'flex-col sm:flex-row'} items-center gap-2`}>
+      <div className={`flex items-center gap-1.5 ${compact ? 'flex-wrap' : ''}`}>
         <button
           type="button"
           onClick={() => cardNav.prev && router.push(`/panel/mukellefler/${cardNav.prev.id}`)}
           disabled={!cardNav.prev}
           title={cardNav.prev ? displayName(cardNav.prev) : 'İlk mükellef'}
-          className="inline-flex h-9 items-center gap-1.5 rounded-lg border px-3 text-[12.5px] font-semibold transition hover:bg-white/[0.06] disabled:cursor-not-allowed disabled:opacity-35"
+          className="inline-flex h-9 items-center gap-1 rounded-lg border px-2.5 text-[12.5px] font-semibold transition hover:bg-white/[0.06] disabled:cursor-not-allowed disabled:opacity-35"
           style={{ borderColor: LINE, color: TEXT, background: SOFT }}
         >
           <ChevronLeft size={15} />
-          Önceki
+          <span className="hidden sm:inline">Önceki</span>
         </button>
-        <div className="inline-flex h-9 min-w-[78px] items-center justify-center rounded-lg border px-3 text-[12px] font-semibold tabular-nums" style={{ borderColor: LINE_GOLD, background: 'rgba(212,184,118,0.09)', color: GOLD }}>
+        <div className="inline-flex h-9 min-w-[64px] items-center justify-center rounded-lg border px-2.5 text-[12px] font-semibold tabular-nums" style={{ borderColor: LINE_GOLD, background: 'rgba(212,184,118,0.09)', color: GOLD }}>
           {cardNav.index >= 0 ? cardNav.index + 1 : '-'} / {cardNav.total}
         </div>
         <button
@@ -347,10 +358,10 @@ export default function MukellefDetayPage() {
           onClick={() => cardNav.next && router.push(`/panel/mukellefler/${cardNav.next.id}`)}
           disabled={!cardNav.next}
           title={cardNav.next ? displayName(cardNav.next) : 'Son mükellef'}
-          className="inline-flex h-9 items-center gap-1.5 rounded-lg border px-3 text-[12.5px] font-semibold transition hover:bg-white/[0.06] disabled:cursor-not-allowed disabled:opacity-35"
+          className="inline-flex h-9 items-center gap-1 rounded-lg border px-2.5 text-[12.5px] font-semibold transition hover:bg-white/[0.06] disabled:cursor-not-allowed disabled:opacity-35"
           style={{ borderColor: LINE, color: TEXT, background: SOFT }}
         >
-          Sonraki
+          <span className="hidden sm:inline">Sonraki</span>
           <ChevronRight size={15} />
         </button>
       </div>
@@ -369,65 +380,68 @@ export default function MukellefDetayPage() {
   }
 
   return (
-    <form onSubmit={handleSubmit} className="mx-auto max-w-[1400px] space-y-5 px-1">
+    <form onSubmit={handleSubmit} className="mx-auto max-w-[1400px] space-y-4 px-1">
       {/* ============================================================
-          HEADER — Logo + Kimlik + Durum İkonları + Navigasyon
+          HEADER — kompakt kimlik + aksiyonlar (tek şerit)
       ============================================================ */}
-      <header className="rounded-xl border p-5" style={{ borderColor: LINE, background: PANEL }}>
-        <div className="flex flex-col gap-4 xl:flex-row xl:items-start">
-          <div className="flex min-w-0 flex-1 items-start gap-4">
+      <header className="rounded-xl border p-4 sm:p-5" style={{ borderColor: LINE, background: PANEL }}>
+        <div className="flex flex-col gap-4 lg:flex-row lg:items-center lg:justify-between">
+          {/* Kimlik */}
+          <div className="flex min-w-0 items-center gap-3.5">
             <Link
               href="/panel/mukellefler"
-              className="flex h-10 w-10 shrink-0 items-center justify-center rounded-lg border transition hover:bg-white/[0.06]"
+              className="flex h-9 w-9 shrink-0 items-center justify-center rounded-lg border transition hover:bg-white/[0.06]"
               style={{ borderColor: LINE, color: MUTED }}
               title="Listeye dön"
             >
-              <ArrowLeft size={18} />
+              <ArrowLeft size={17} />
             </Link>
 
-            {/* Logo alanı veya avatar (YENİ) */}
+            {/* Logo veya avatar */}
             {form.logoUrl ? (
               <div
-                className="h-20 w-20 shrink-0 rounded-xl border bg-cover bg-center"
+                className="h-14 w-14 shrink-0 rounded-xl border bg-cover bg-center"
                 style={{ borderColor: LINE_GOLD, backgroundImage: `url(${form.logoUrl})` }}
                 title="Mükellef logosu"
               />
             ) : (
               <div
-                className="flex h-20 w-20 shrink-0 flex-col items-center justify-center rounded-xl border-2 border-dashed text-center"
-                style={{ borderColor: LINE_GOLD }}
-                title="Logo henüz yüklenmedi"
+                className="flex h-14 w-14 shrink-0 items-center justify-center rounded-xl border text-[16px] font-bold"
+                style={{ borderColor: LINE_GOLD, background: 'rgba(212,184,118,0.10)', color: GOLD }}
+                title={currentName}
               >
-                <ImageIcon size={20} style={{ color: GOLD }} />
-                <span className="mt-1 text-[10px] font-semibold" style={{ color: GOLD }}>LOGO</span>
+                {avatarText}
               </div>
             )}
 
-            {/* Kimlik */}
-            <div className="min-w-0 flex-1">
-              <p className="text-[11px] font-semibold uppercase tracking-[0.14em]" style={{ color: GOLD }}>
+            {/* Ad + meta */}
+            <div className="min-w-0">
+              <p className="text-[10.5px] font-semibold uppercase tracking-[0.14em]" style={{ color: GOLD }}>
                 {isNew ? 'Yeni kayıt' : form.type === 'TUZEL_KISI' ? 'Şirket kartı' : 'Gerçek kişi kartı'}
               </p>
-              <h1 className="truncate text-[24px] font-semibold leading-tight" style={{ color: TEXT }}>{currentName}</h1>
-              <div className="mt-2 flex flex-wrap gap-2 text-[11.5px]">
+              <h1 className="truncate text-[21px] font-semibold leading-tight" style={{ color: TEXT }}>{currentName}</h1>
+              <div className="mt-1.5 flex flex-wrap items-center gap-1.5 text-[11.5px]">
                 <InfoPill icon={Landmark} label={form.taxNumber || 'VKN/TCKN yok'} />
                 <InfoPill icon={ShieldCheck} label={form.taxOffice || 'Vergi dairesi yok'} />
-                <InfoPill icon={BookOpen} label={form.defterTuru === 'BILANCO' ? 'Bilanço' : 'İşletme defteri'} />
+                <InfoPill icon={BookOpen} label={defterLabel} />
                 {form.naceKodu && <InfoPill icon={Hash} label={`NACE: ${form.naceKodu}`} />}
-              </div>
-
-              {/* Durum ikonları (YENİ) */}
-              <div className="mt-3 flex flex-wrap items-center gap-2">
-                <span className="text-[11px]" style={{ color: MUTED }}>Aktif kanallar:</span>
-                {statuses.map((s) => (
-                  <StatusBadge key={s.key} label={s.label} active={s.active} />
-                ))}
               </div>
             </div>
           </div>
 
-          {/* Sağ butonlar */}
-          <div className="flex flex-wrap items-center justify-end gap-2">
+          {/* Aksiyonlar */}
+          <div className="flex flex-wrap items-center gap-2 lg:justify-end">
+            {!isNew && (
+              <button
+                type="button"
+                onClick={() => setPortalOpen(true)}
+                className="inline-flex h-9 items-center gap-1.5 rounded-lg border px-3 text-[12.5px] font-semibold transition hover:bg-white/[0.06]"
+                style={{ borderColor: LINE_GOLD, background: 'rgba(212,184,118,0.09)', color: GOLD }}
+                title="Devlet portalları ve sık sorgular"
+              >
+                <Zap size={15} /> Devlet Portalları
+              </button>
+            )}
             <CardNavButtons compact />
             {!isNew && (
               <button
@@ -436,11 +450,11 @@ export default function MukellefDetayPage() {
                   if (confirm('Mükellef silinsin mi?')) deleteMukellef();
                 }}
                 disabled={isDeleting}
-                className="inline-flex h-9 items-center gap-1.5 rounded-lg border px-3 text-[12.5px] font-semibold transition hover:bg-red-500/10 disabled:opacity-40"
+                className="inline-flex h-9 w-9 items-center justify-center rounded-lg border transition hover:bg-red-500/10 disabled:opacity-40"
                 style={{ borderColor: 'rgba(248,113,113,0.32)', color: '#fca5a5' }}
+                title="Mükellefi sil"
               >
                 {isDeleting ? <Loader2 size={15} className="animate-spin" /> : <Trash2 size={15} />}
-                Sil
               </button>
             )}
             <button
@@ -454,69 +468,65 @@ export default function MukellefDetayPage() {
             </button>
           </div>
         </div>
+
+        {/* Aktif kanallar */}
+        {!isNew && (
+          <div className="mt-3.5 flex flex-wrap items-center gap-2 border-t pt-3.5" style={{ borderColor: LINE }}>
+            <span className="text-[11px] font-medium" style={{ color: MUTED }}>Aktif kanallar:</span>
+            {activeChannels.length > 0 ? (
+              activeChannels.map((s) => <ChannelChip key={s.key} label={s.label} />)
+            ) : (
+              <span className="text-[11.5px]" style={{ color: 'rgba(250,250,249,0.35)' }}>Tanımlı aktif kanal yok</span>
+            )}
+          </div>
+        )}
       </header>
 
       {/* ============================================================
-          KISAYOLLAR (YENİ — Hattat tarzı)
-      ============================================================ */}
-      {!isNew && (
-        <section className="rounded-xl border p-5" style={{ borderColor: LINE, background: PANEL }}>
-          <div className="mb-4 flex items-center gap-3">
-            <div className="flex h-9 w-9 items-center justify-center rounded-lg border" style={{ borderColor: LINE_GOLD, background: 'rgba(212,184,118,0.09)', color: GOLD }}>
-              <Zap size={17} />
-            </div>
-            <h2 className="text-[15px] font-semibold" style={{ color: TEXT }}>Devlet Portalı Kısayolları</h2>
-            <span className="ml-auto text-[11.5px]" style={{ color: MUTED }}>
-              {form.taxNumber ? `VKN: ${form.taxNumber}` : 'Şifreler için portal-automation kartını kullanın'}
-            </span>
-          </div>
-
-          <div className="grid grid-cols-2 gap-2.5 md:grid-cols-3 lg:grid-cols-4">
-            {PORTAL_KISAYOLLAR.map((k) => (
-              <KisayolButton key={k.id} k={k} onClick={() => handleKisayolClick(k)} />
-            ))}
-          </div>
-
-          <div className="mt-5 border-t pt-5" style={{ borderColor: LINE }}>
-            <div className="mb-3 text-[11.5px] font-semibold uppercase tracking-wider" style={{ color: MUTED }}>
-              En çok kullanılan sorgular
-            </div>
-            <div className="grid grid-cols-2 gap-2 md:grid-cols-3 lg:grid-cols-4">
-              {HIZLI_SORGULAR.map((k) => (
-                <KisayolButton key={k.id} k={k} small onClick={() => handleKisayolClick(k)} />
-              ))}
-            </div>
-          </div>
-        </section>
-      )}
-
-      {/* ============================================================
-          PROFIL TAMAMLIK BANNER
+          DURUM ŞERİDİ — profil tamamlık (tamsa görünmez)
       ============================================================ */}
       {!isNew && id && <ProfilTamamlikBanner taxpayerId={id} />}
 
       {/* ============================================================
-          ANA İÇERİK — TAB + ASIDE
+          İLGİLİ MODÜLLER — ayrı sayfaya götüren bağlantılar
       ============================================================ */}
-      <div className="grid gap-5 xl:grid-cols-[minmax(0,1fr)_400px]">
+      {!isNew && (
+        <div className="flex flex-wrap items-center gap-2 rounded-xl border px-3.5 py-3" style={{ borderColor: LINE, background: PANEL }}>
+          <span className="mr-1 text-[11px] font-semibold uppercase tracking-wider" style={{ color: MUTED }}>İlgili modüller</span>
+          {LINK_MODULES.map((m) => {
+            const Icon = m.icon;
+            return (
+              <Link
+                key={m.href}
+                href={`${m.href}?taxpayerId=${id}`}
+                className="inline-flex items-center gap-1.5 rounded-lg border px-3 py-1.5 text-[12px] font-semibold transition hover:bg-white/[0.05]"
+                style={{ borderColor: LINE, background: SOFT, color: TEXT }}
+              >
+                <Icon size={13} style={{ color: GOLD }} />
+                {m.label}
+                <ExternalLink size={10} style={{ opacity: 0.45 }} />
+              </Link>
+            );
+          })}
+        </div>
+      )}
+
+      {/* ============================================================
+          ANA İÇERİK — SEKMELER + ASIDE
+      ============================================================ */}
+      <div className="grid gap-5 xl:grid-cols-[minmax(0,1fr)_380px]">
         <main className="space-y-5">
-          {/* TAB NAVIGATION */}
           <div className="overflow-hidden rounded-xl border" style={{ borderColor: LINE, background: PANEL }}>
+            {/* SEKME NAVİGASYONU */}
             <div className="flex overflow-x-auto border-b" style={{ borderColor: LINE }}>
-              {TABS.map((t) => {
+              {visibleTabs.map((t) => {
                 const Icon = t.icon;
                 const active = activeTab === t.key;
                 return (
                   <button
                     key={t.key}
                     type="button"
-                    onClick={() => {
-                      if (t.href && !isNew) {
-                        router.push(`${t.href}?taxpayerId=${id}`);
-                      } else {
-                        setActiveTab(t.key);
-                      }
-                    }}
+                    onClick={() => setActiveTab(t.key)}
                     className="flex shrink-0 items-center gap-2 whitespace-nowrap px-5 py-3.5 text-[13.5px] font-semibold transition"
                     style={{
                       color: active ? GOLD : MUTED,
@@ -525,16 +535,18 @@ export default function MukellefDetayPage() {
                   >
                     <Icon size={15} />
                     {t.label}
-                    {t.href && !isNew && <ExternalLink size={11} style={{ opacity: 0.5 }} />}
                   </button>
                 );
               })}
             </div>
 
-            {/* TAB CONTENT */}
-            <div className="p-6">
+            {/* SEKME İÇERİĞİ */}
+            <div className={activeTab === 'mukellefiyetler' ? 'p-4 sm:p-5' : 'p-5 sm:p-6'}>
               {activeTab === 'bilgiler' && (
                 <BilgilerTab form={form} setForm={setForm} taxpayerId={isNew ? null : id} />
+              )}
+              {activeTab === 'mukellefiyetler' && !isNew && id && (
+                <MukellefiyetlerCard taxpayerId={id} />
               )}
               {activeTab === 'sgk' && (
                 <PlaceholderTab
@@ -566,7 +578,6 @@ export default function MukellefDetayPage() {
             <>
               <TaxpayerStatsCard taxpayerId={id} />
               <DocumentExpiryWidget taxpayerId={id} compact={false} daysAhead={90} />
-              <MukellefiyetlerCard taxpayerId={id} />
             </>
           ) : (
             <div className="rounded-xl border p-5" style={{ borderColor: LINE, background: PANEL }}>
@@ -575,36 +586,89 @@ export default function MukellefDetayPage() {
               </div>
               <h2 className="text-[16px] font-semibold" style={{ color: TEXT }}>Kayıt sonrası açılır</h2>
               <p className="mt-2 text-[13px] leading-relaxed" style={{ color: MUTED }}>
-                Mükellef oluşturulduktan sonra beyanname, evrak yenileme ve portal şifreleri burada görünür.
+                Mükellef oluşturulduktan sonra beyanname, evrak yenileme, mükellefiyetler ve portal şifreleri burada görünür.
               </p>
             </div>
           )}
         </aside>
       </div>
 
-      {/* ALT SABIT KAYDETME BARİ */}
-      <div className="sticky bottom-0 z-10 -mx-1 border-t px-1 py-4 backdrop-blur" style={{ borderColor: LINE, background: 'rgba(28,24,20,0.95)' }}>
-        <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
-          <CardNavButtons />
-          <div className="flex justify-end gap-2">
-            <Link href="/panel/mukellefler">
-              <button type="button" className="inline-flex h-10 items-center gap-2 rounded-lg border px-4 text-[13px] font-semibold transition hover:bg-white/[0.06]" style={{ borderColor: LINE, color: TEXT }}>
-                İptal
-              </button>
-            </Link>
-            <button
-              type="submit"
-              disabled={isPending}
-              className="inline-flex h-10 items-center gap-2 rounded-lg px-5 text-[13px] font-bold transition disabled:opacity-50"
-              style={{ background: `linear-gradient(135deg, ${GOLD}, ${GOLD_DEEP})`, color: '#0f0d0b' }}
-            >
-              {isPending ? <Loader2 size={16} className="animate-spin" /> : <Save size={16} />}
-              {isNew ? 'Mükellef Ekle' : 'Değişiklikleri Kaydet'}
-            </button>
+      {/* ============================================================
+          DEVLET PORTALLARI — açılır panel
+      ============================================================ */}
+      {portalOpen && !isNew && (
+        <PortalDrawer vkn={form.taxNumber} onClose={() => setPortalOpen(false)} onKisayol={handleKisayolClick} />
+      )}
+    </form>
+  );
+}
+
+// ============================================================
+// DEVLET PORTALLARI — sağdan açılan panel
+// ============================================================
+function PortalDrawer({
+  vkn,
+  onClose,
+  onKisayol,
+}: {
+  vkn: string;
+  onClose: () => void;
+  onKisayol: (k: Kisayol) => void;
+}) {
+  useEffect(() => {
+    const onKey = (e: KeyboardEvent) => { if (e.key === 'Escape') onClose(); };
+    window.addEventListener('keydown', onKey);
+    return () => window.removeEventListener('keydown', onKey);
+  }, [onClose]);
+
+  return (
+    <div className="fixed inset-0 z-50 flex justify-end">
+      <div className="absolute inset-0" style={{ background: 'rgba(0,0,0,0.55)', backdropFilter: 'blur(2px)' }} onClick={onClose} />
+      <div className="relative h-full w-full max-w-[440px] overflow-y-auto border-l p-5 shadow-2xl" style={{ background: PANEL, borderColor: LINE }}>
+        {/* Başlık */}
+        <div className="mb-4 flex items-center gap-3">
+          <div className="flex h-9 w-9 items-center justify-center rounded-lg border" style={{ borderColor: LINE_GOLD, background: 'rgba(212,184,118,0.10)', color: GOLD }}>
+            <Zap size={17} />
+          </div>
+          <div className="min-w-0 flex-1">
+            <h2 className="text-[15px] font-semibold" style={{ color: TEXT }}>Devlet Portalları</h2>
+            <p className="truncate text-[11.5px]" style={{ color: MUTED }}>{vkn ? `VKN: ${vkn}` : 'Mükellef portallarına hızlı erişim'}</p>
+          </div>
+          <button
+            type="button"
+            onClick={onClose}
+            className="flex h-8 w-8 items-center justify-center rounded-lg border transition hover:bg-white/[0.06]"
+            style={{ borderColor: LINE, color: MUTED }}
+            title="Kapat"
+          >
+            <X size={16} />
+          </button>
+        </div>
+
+        {/* Portallar */}
+        <div className="grid grid-cols-1 gap-2 sm:grid-cols-2">
+          {PORTAL_KISAYOLLAR.map((k) => (
+            <KisayolButton key={k.id} k={k} onClick={() => onKisayol(k)} />
+          ))}
+        </div>
+
+        {/* Sorgular */}
+        <div className="mt-5 border-t pt-4" style={{ borderColor: LINE }}>
+          <div className="mb-2.5 text-[11px] font-semibold uppercase tracking-wider" style={{ color: MUTED }}>
+            En çok kullanılan sorgular
+          </div>
+          <div className="grid grid-cols-1 gap-2 sm:grid-cols-2">
+            {HIZLI_SORGULAR.map((k) => (
+              <KisayolButton key={k.id} k={k} small onClick={() => onKisayol(k)} />
+            ))}
           </div>
         </div>
+
+        <p className="mt-4 text-[11px] leading-relaxed" style={{ color: 'rgba(250,250,249,0.4)' }}>
+          Portal şifreleri Bilgiler sekmesindeki “Vergi Dairesi & SGK Şifreleri” bölümünden yönetilir.
+        </p>
       </div>
-    </form>
+    </div>
   );
 }
 
@@ -697,7 +761,7 @@ function BilgilerTab({
         </div>
       </AccordionPanel>
 
-      {/* Firma Yetkili Bilgileri (YENİ) */}
+      {/* Firma Yetkili Bilgileri */}
       {taxpayerId && (
         <AccordionPanel
           id="yetkili"
@@ -776,7 +840,7 @@ function BilgilerTab({
         </div>
       </AccordionPanel>
 
-      {/* Vergi Dairesi & SGK Şifreleri (YENİ - Hattat tarzı, sağdan taşındı) */}
+      {/* Vergi Dairesi & SGK Şifreleri */}
       {taxpayerId && (
         <AccordionPanel
           id="sifreler"
@@ -790,7 +854,7 @@ function BilgilerTab({
         </AccordionPanel>
       )}
 
-      {/* Bağ-Kur (YENİ) */}
+      {/* Bağ-Kur */}
       <AccordionPanel
         id="bagkur"
         title="Bağ-Kur Bilgileri"
@@ -816,7 +880,7 @@ function BilgilerTab({
         </div>
       </AccordionPanel>
 
-      {/* E-Fatura/E-Arşiv Entegratör (YENİ) */}
+      {/* E-Fatura/E-Arşiv Entegratör */}
       <AccordionPanel
         id="entegrator"
         title="E-Fatura / E-Arşiv Entegratör"
@@ -857,7 +921,7 @@ function BilgilerTab({
         </p>
       </AccordionPanel>
 
-      {/* Evrak & Otomasyon (MEVCUT) */}
+      {/* Evrak & Otomasyon */}
       <AccordionPanel
         id="otomasyon"
         title="Evrak Akışı & Otomasyon"
@@ -893,7 +957,7 @@ function BilgilerTab({
         </div>
       </AccordionPanel>
 
-      {/* Defter & Sistem Eşleşmeleri (MEVCUT) */}
+      {/* Defter & Sistem Eşleşmeleri */}
       <AccordionPanel
         id="sistem"
         title="Defter Türü & Sistem Eşleşmeleri (Luca / Mihsap)"
@@ -1135,19 +1199,20 @@ function InfoPill({ icon: Icon, label }: { icon: React.ElementType; label: strin
   );
 }
 
-function StatusBadge({ label, active }: { label: string; active: boolean }) {
+function ChannelChip({ label }: { label: string }) {
   return (
     <span
-      className="inline-flex items-center gap-1 rounded-md border px-2 py-1 text-[10.5px] font-bold uppercase"
+      className="inline-flex items-center gap-1.5 rounded-md border px-2 py-1 text-[10.5px] font-bold uppercase"
       style={{
-        borderColor: active ? 'rgba(72,187,120,0.40)' : LINE,
-        background: active ? 'rgba(72,187,120,0.10)' : SOFT,
-        color: active ? '#68d391' : 'rgba(250,250,249,0.30)',
+        borderColor: 'rgba(72,187,120,0.40)',
+        background: 'rgba(72,187,120,0.10)',
+        color: '#68d391',
         letterSpacing: '0.04em',
       }}
-      title={`${label} ${active ? 'aktif' : 'pasif'}`}
+      title={`${label} aktif`}
     >
-      {active ? '●' : '○'} {label}
+      <span className="h-1.5 w-1.5 rounded-full" style={{ background: '#68d391' }} />
+      {label}
     </span>
   );
 }
