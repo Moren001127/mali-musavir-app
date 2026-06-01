@@ -4,43 +4,34 @@ import React, { useEffect, useMemo, useState } from 'react';
 import { useQuery, useQueryClient } from '@tanstack/react-query';
 import { toast } from 'sonner';
 import {
-  AlertTriangle,
-  ArrowUpDown,
-  Banknote,
-  CalendarDays,
-  CheckSquare,
-  CircleDollarSign,
+  Coins,
+  Copy,
+  Download,
   Eye,
-  FileSpreadsheet,
-  FilterX,
+  HandCoins,
   Loader2,
   MessageCircle,
-  Phone,
+  MoreHorizontal,
   Plus,
-  Receipt,
-  RefreshCw,
   Search,
   Send,
-  TrendingDown,
-  TrendingUp,
-  Wallet,
   X,
 } from 'lucide-react';
 import { api } from '@/lib/api';
-import { ButcePlanView, GelirGiderTablosuView, KasaBankaView } from './ButceTakipView';
+import { ButcePlanView, GelirGiderTablosuView, IstatistikView, KasaBankaView } from './ButceTakipView';
 
-const GOLD = '#d4b876';
-const TEXT = '#f8fafc';
-const MUTED = '#cbd5e1';
-const SOFT = '#94a3b8';
-const DANGER = '#c35a72';
-const SUCCESS = '#4ade80';
-const BLUE = '#60a5fa';
-const PANEL = 'rgba(12, 14, 17, 0.94)';
-const PANEL_2 = 'rgba(18, 21, 25, 0.92)';
-const LINE = 'rgba(255,255,255,0.11)';
-const SANS = 'Manrope, Inter, system-ui, -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif';
-const MONEY = SANS;
+// ===== SADE KOYU PALET (referans HTML'lere göre) =====
+const GOLD = '#e6c878';
+const DEBT = '#e0697a';
+const OK = '#5ad18a';
+const BG = '#08080a';
+const PANEL = '#0c0c0e';
+const CARD_BORDER = 'rgba(255,255,255,0.06)';
+const CARD_BG = 'rgba(255,255,255,0.018)';
+const ROW_LINE = 'rgba(255,255,255,0.05)';
+const TEXT = '#e7e7ea';
+const SOFT = '#71717a';
+const SANS = 'Inter, system-ui, -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif';
 
 type OzetSatir = {
   id: string;
@@ -84,8 +75,8 @@ type WorkspaceRow = OzetSatir & {
 };
 
 type FinancialAccount = { id: string; name: string; type: string; color: string; isActive: boolean };
-type FilterKey = 'debt' | 'over90' | 'over30' | 'whatsapp' | 'noPhone' | 'clean' | 'all';
-type SortKey = 'risk' | 'balance' | 'name' | 'lastPayment';
+type FilterKey = 'all' | 'debt' | 'over90';
+type ViewKey = 'tahsilat' | 'kasa' | 'gelirGider' | 'butcePlan' | 'istatistik';
 
 const emptyAging = { current: 0, d1_30: 0, d31_60: 0, d61_90: 0, d90plus: 0 };
 
@@ -100,11 +91,17 @@ const thisMonth = () => {
   return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}`;
 };
 
+const AYLAR = ['Ocak', 'Şubat', 'Mart', 'Nisan', 'Mayıs', 'Haziran', 'Temmuz', 'Ağustos', 'Eylül', 'Ekim', 'Kasım', 'Aralık'];
+const ayBaslik = () => {
+  const d = new Date();
+  return `${AYLAR[d.getMonth()]} ${d.getFullYear()}`;
+};
+
 const normalize = (value: string) =>
   value
     .toLocaleLowerCase('tr-TR')
     .normalize('NFD')
-    .replace(/[\u0300-\u036f]/g, '');
+    .replace(/[̀-ͯ]/g, '');
 
 function bucketRank(bucket: string) {
   if (bucket === '90+') return 5;
@@ -115,13 +112,28 @@ function bucketRank(bucket: string) {
   return 0;
 }
 
+// Vade rozeti — yumuşak renkler (referans tabloya göre)
 function bucketStyle(bucket: string) {
-  if (bucket === '90+') return { color: '#fecdd3', bg: 'rgba(239,68,68,0.16)', border: 'rgba(239,68,68,0.34)' };
-  if (bucket === '61-90') return { color: '#fda4af', bg: 'rgba(244,63,94,0.13)', border: 'rgba(244,63,94,0.28)' };
-  if (bucket === '31-60') return { color: '#fde68a', bg: 'rgba(245,158,11,0.13)', border: 'rgba(245,158,11,0.30)' };
-  if (bucket === '1-30') return { color: '#bfdbfe', bg: 'rgba(59,130,246,0.12)', border: 'rgba(59,130,246,0.27)' };
-  if (bucket === 'Güncel' || bucket === 'Guncel') return { color: '#bbf7d0', bg: 'rgba(34,197,94,0.11)', border: 'rgba(34,197,94,0.24)' };
-  return { color: SOFT, bg: 'rgba(255,255,255,0.05)', border: 'rgba(255,255,255,0.12)' };
+  if (bucket === '90+')
+    return { color: '#eaa3ad', bg: 'rgba(224,105,122,0.13)', border: 'rgba(224,105,122,0.22)' };
+  if (bucket === '61-90')
+    return { color: '#eaa3ad', bg: 'rgba(224,105,122,0.12)', border: 'rgba(224,105,122,0.20)' };
+  if (bucket === '31-60')
+    return { color: GOLD, bg: 'rgba(230,200,120,0.12)', border: 'rgba(230,200,120,0.20)' };
+  if (bucket === '1-30')
+    return { color: '#b6b6bd', bg: 'rgba(255,255,255,0.05)', border: 'rgba(255,255,255,0.10)' };
+  if (bucket === 'Güncel' || bucket === 'Guncel')
+    return { color: '#6ee29c', bg: 'rgba(90,209,138,0.12)', border: 'rgba(90,209,138,0.22)' };
+  return { color: SOFT, bg: 'rgba(255,255,255,0.04)', border: 'rgba(255,255,255,0.08)' };
+}
+
+function bucketLabel(bucket: string) {
+  if (bucket === '90+') return '90+ gün';
+  if (bucket === '61-90') return '61-90 gün';
+  if (bucket === '31-60') return '31-60 gün';
+  if (bucket === '1-30') return '1-30 gün';
+  if (bucket === 'Güncel' || bucket === 'Guncel') return 'Güncel';
+  return bucket;
 }
 
 function formatDate(value?: string | null) {
@@ -133,19 +145,18 @@ function formatDate(value?: string | null) {
 
 export function CariTahsilatWorkspace({ onSelect }: { onSelect: (id: string) => void }) {
   const qc = useQueryClient();
-  const [view, setView] = useState<'tahsilat' | 'kasa' | 'gelirGider' | 'butcePlan'>('tahsilat');
+  const [view, setView] = useState<ViewKey>('tahsilat');
   const [search, setSearch] = useState('');
-  const [filter, setFilter] = useState<FilterKey>('debt');
-  const [sortKey, setSortKey] = useState<SortKey>('risk');
-  const [selectedIds, setSelectedIds] = useState<string[]>([]);
+  const [filter, setFilter] = useState<FilterKey>('all');
   const [preview, setPreview] = useState<any | null>(null);
   const [sending, setSending] = useState(false);
   const [quickTahsilat, setQuickTahsilat] = useState<WorkspaceRow | null>(null);
   const yil = new Date().getFullYear();
-  const [baslangic, setBaslangic] = useState(`${yil}-01-01`);
-  const [bitis, setBitis] = useState(today());
-  const [dateMode, setDateMode] = useState<'all' | 'period'>('all');
+  const [baslangic] = useState(`${yil}-01-01`);
+  const [bitis] = useState(today());
+  const [dateMode] = useState<'all' | 'period'>('all');
 
+  // ===== API: cari özet (KORUNDU — aynı queryKey, aynı params, 30sn) =====
   const { data: ozet = [], isLoading, isFetching } = useQuery<OzetSatir[]>({
     queryKey: ['cari-ozet', dateMode === 'period' ? baslangic : '', dateMode === 'period' ? bitis : ''],
     queryFn: () => {
@@ -159,6 +170,7 @@ export function CariTahsilatWorkspace({ onSelect }: { onSelect: (id: string) => 
     refetchInterval: 30000,
   });
 
+  // ===== API: tahsilat ajandası (KORUNDU) =====
   const { data: ajanda, isLoading: ajandaLoading } = useQuery<TahsilatAjandasi>({
     queryKey: ['cari-tahsilat-ajandasi'],
     queryFn: () => api.get('/cari-kasa/tahsilat-ajandasi').then((r) => r.data),
@@ -197,10 +209,9 @@ export function CariTahsilatWorkspace({ onSelect }: { onSelect: (id: string) => 
         if (row.whatsappUygun && positive > 0.004) acc.whatsapp += 1;
         if (positive > 0.004 && !row.telefonVar) acc.noPhone += 1;
         if (row.maxBucket === '90+' && positive > 0.004) acc.over90 += 1;
-        if (bucketRank(row.maxBucket) >= 3 && positive > 0.004) acc.over30 += 1;
         return acc;
       },
-      { tahakkuk: 0, tahsilat: 0, bakiye: 0, monthlyTarget: 0, borclu: 0, whatsapp: 0, noPhone: 0, over90: 0, over30: 0 },
+      { tahakkuk: 0, tahsilat: 0, bakiye: 0, monthlyTarget: 0, borclu: 0, whatsapp: 0, noPhone: 0, over90: 0 },
     );
     return {
       ...result,
@@ -208,39 +219,27 @@ export function CariTahsilatWorkspace({ onSelect }: { onSelect: (id: string) => 
     };
   }, [rows]);
 
+  // 90+ gün risk tutarı (ajanda totals'tan)
+  const risk90Tutar = Number(ajanda?.totals?.d90plus || 0);
+
   const filteredRows = useMemo(() => {
     const needle = normalize(search.trim());
     const filtered = rows.filter((row) => {
       const debt = row.bakiye > 0.004;
       if (filter === 'debt' && !debt) return false;
-      if (filter === 'over30' && !(debt && bucketRank(row.maxBucket) >= 3)) return false;
       if (filter === 'over90' && !(debt && row.maxBucket === '90+')) return false;
-      if (filter === 'whatsapp' && !(debt && row.whatsappUygun)) return false;
-      if (filter === 'noPhone' && !(debt && !row.telefonVar)) return false;
-      if (filter === 'clean' && Math.abs(row.bakiye) > 0.004) return false;
       if (!needle) return true;
       return normalize([row.ad, row.taxNumber || '', row.phone || '', row.email || ''].join(' ')).includes(needle);
     });
+    // Sıralama: risk önce (sade — tek sabit sıralama)
     return filtered.sort((a, b) => {
-      if (sortKey === 'name') return a.ad.localeCompare(b.ad, 'tr');
-      if (sortKey === 'balance') return b.bakiye - a.bakiye;
-      if (sortKey === 'lastPayment') {
-        const av = a.sonTahsilatTarihi ? new Date(a.sonTahsilatTarihi).getTime() : 0;
-        const bv = b.sonTahsilatTarihi ? new Date(b.sonTahsilatTarihi).getTime() : 0;
-        return av - bv;
-      }
       const rankDiff = bucketRank(b.maxBucket) - bucketRank(a.maxBucket);
       return rankDiff || b.bakiye - a.bakiye || a.ad.localeCompare(b.ad, 'tr');
     });
-  }, [filter, rows, search, sortKey]);
+  }, [filter, rows, search]);
 
-  const targetIds = selectedIds.length
-    ? selectedIds
-    : filteredRows.filter((row) => row.whatsappUygun && row.bakiye > 0).map((row) => row.id);
-
-  const targetTotal = rows
-    .filter((row) => targetIds.includes(row.id))
-    .reduce((sum, row) => sum + Math.max(row.bakiye, 0), 0);
+  // WhatsApp hedefi: görünen, uygun ve bakiyesi olan kayıtlar (KORUNDU)
+  const targetIds = filteredRows.filter((row) => row.whatsappUygun && row.bakiye > 0).map((row) => row.id);
 
   const refreshAll = () => {
     qc.invalidateQueries({ queryKey: ['cari-ozet'] });
@@ -249,24 +248,7 @@ export function CariTahsilatWorkspace({ onSelect }: { onSelect: (id: string) => 
     qc.invalidateQueries({ queryKey: ['cari-budget-summary'] });
   };
 
-  const toggleSelected = (id: string) => {
-    setPreview(null);
-    setSelectedIds((old) => (old.includes(id) ? old.filter((x) => x !== id) : [...old, id]));
-  };
-
-  const selectVisible = () => {
-    setPreview(null);
-    setSelectedIds(filteredRows.filter((row) => row.whatsappUygun && row.bakiye > 0).map((row) => row.id));
-  };
-
-  const clearFilters = () => {
-    setSearch('');
-    setFilter('debt');
-    setSortKey('risk');
-    setSelectedIds([]);
-    setPreview(null);
-  };
-
+  // ===== WhatsApp önizle (KORUNDU) =====
   const previewReminder = async () => {
     if (!targetIds.length) {
       toast.warning('WhatsApp gönderilecek uygun kayıt yok');
@@ -280,6 +262,7 @@ export function CariTahsilatWorkspace({ onSelect }: { onSelect: (id: string) => 
     }
   };
 
+  // ===== WhatsApp gönder (KORUNDU) =====
   const sendReminder = async () => {
     if (!targetIds.length) {
       toast.warning('WhatsApp gönderilecek uygun kayıt yok');
@@ -299,6 +282,7 @@ export function CariTahsilatWorkspace({ onSelect }: { onSelect: (id: string) => 
     }
   };
 
+  // ===== Excel indir (KORUNDU) =====
   const indirExcelToplu = async () => {
     try {
       const params: Record<string, string> = {};
@@ -320,163 +304,147 @@ export function CariTahsilatWorkspace({ onSelect }: { onSelect: (id: string) => 
     }
   };
 
-  const tabs = [
-    { key: 'tahsilat', label: 'Tahsilat', icon: Wallet },
-    { key: 'kasa', label: 'Kasa/Banka', icon: Banknote },
-    { key: 'gelirGider', label: 'Gelir-Gider', icon: TrendingUp },
-    { key: 'butcePlan', label: 'Bütçe', icon: CircleDollarSign },
-  ] as const;
+  const tabs: { key: ViewKey; label: string }[] = [
+    { key: 'tahsilat', label: 'Tahsilat' },
+    { key: 'kasa', label: 'Kasa & Banka' },
+    { key: 'gelirGider', label: 'Gelir-Gider' },
+    { key: 'butcePlan', label: 'Bütçe' },
+    { key: 'istatistik', label: 'İstatistik' },
+  ];
 
   return (
-    <div className="p-4 lg:p-5 max-w-none space-y-3" style={{ fontFamily: SANS }}>
-      <div className="flex flex-col gap-3 xl:flex-row xl:items-center xl:justify-between">
-        <div className="min-w-0">
-          <div className="text-[11px] font-bold uppercase tracking-[.16em]" style={{ color: GOLD }}>
-            Cari Kasa
+    <div className="min-h-screen px-4 sm:px-6 py-6" style={{ background: BG, fontFamily: SANS, color: TEXT }}>
+      <div className="mx-auto max-w-[1180px] rounded-[20px] p-5 sm:p-7" style={{ background: PANEL, border: `1px solid rgba(255,255,255,0.07)` }}>
+        {/* ===== HEADER ===== */}
+        <div className="flex items-start justify-between gap-4">
+          <div className="flex items-center gap-3.5 min-w-0">
+            <span className="grid h-11 w-11 shrink-0 place-items-center rounded-2xl" style={{ background: 'linear-gradient(135deg,#ecd589,#d4b876)', color: '#000' }}>
+              <Coins size={20} strokeWidth={1.7} />
+            </span>
+            <div className="min-w-0">
+              <h1 className="text-[26px] font-bold tracking-tight leading-none" style={{ color: '#fff' }}>
+                Tahsilat Merkezi
+              </h1>
+              <p className="mt-1.5 text-[13.5px]" style={{ color: SOFT }}>
+                {ayBaslik()} · {rows.length} mükellef
+                {isFetching && <Loader2 size={12} className="inline ml-2 animate-spin" style={{ color: GOLD }} />}
+              </p>
+            </div>
           </div>
-          <h1 className="mt-1 text-[24px] lg:text-[28px] font-semibold leading-tight" style={{ color: TEXT, letterSpacing: 0 }}>
-            Tahsilat Merkezi
-          </h1>
+          <div className="flex items-center gap-2 shrink-0">
+            <button
+              onClick={previewReminder}
+              className="hidden sm:inline-flex items-center gap-2 rounded-xl px-4 py-2.5 text-[13.5px] font-medium transition"
+              style={{ border: `1px solid rgba(255,255,255,0.10)`, background: 'rgba(255,255,255,0.02)', color: TEXT }}
+              title="WhatsApp önizle"
+            >
+              <Eye size={16} strokeWidth={1.7} /> Önizle
+            </button>
+            <button
+              onClick={sendReminder}
+              disabled={sending}
+              className="inline-flex items-center gap-2 rounded-xl px-4 py-2.5 text-[13.5px] font-semibold transition disabled:opacity-50"
+              style={{ border: `1px solid rgba(90,209,138,0.28)`, background: 'rgba(90,209,138,0.10)', color: OK }}
+              title="WhatsApp gönder"
+            >
+              {sending ? <Loader2 size={16} className="animate-spin" /> : <Send size={16} strokeWidth={1.7} />} Gönder
+            </button>
+            <button
+              onClick={indirExcelToplu}
+              className="inline-flex items-center gap-2 rounded-xl px-4 py-2.5 text-[13.5px] font-medium transition"
+              style={{ border: `1px solid rgba(255,255,255,0.10)`, background: 'rgba(255,255,255,0.02)', color: TEXT }}
+            >
+              <Download size={16} strokeWidth={1.7} /> Excel
+            </button>
+            <button
+              onClick={refreshAll}
+              className="grid h-10 w-10 place-items-center rounded-xl transition"
+              style={{ border: `1px solid rgba(255,255,255,0.10)`, background: 'rgba(255,255,255,0.02)', color: SOFT }}
+              title="Yenile"
+            >
+              <MoreHorizontal size={16} strokeWidth={1.7} />
+            </button>
+          </div>
         </div>
-        <div className="flex flex-wrap gap-2">
-          {tabs.map(({ key, label, icon: Icon }) => {
+
+        {/* ===== TABS ===== */}
+        <nav className="mt-7 flex items-center gap-7 text-[14.5px]" style={{ borderBottom: `1px solid rgba(255,255,255,0.07)` }}>
+          {tabs.map(({ key, label }) => {
             const active = view === key;
             return (
               <button
                 key={key}
                 onClick={() => setView(key)}
-                className="h-9 px-3 rounded-[8px] text-[12.5px] font-bold inline-flex items-center gap-2"
+                className="relative -mb-px pb-3 transition"
                 style={{
-                  background: active ? 'rgba(212,184,118,0.16)' : 'rgba(255,255,255,0.045)',
-                  color: active ? '#f5d992' : MUTED,
-                  border: `1px solid ${active ? 'rgba(212,184,118,0.42)' : LINE}`,
+                  borderBottom: `2px solid ${active ? GOLD : 'transparent'}`,
+                  fontWeight: active ? 600 : 500,
+                  color: active ? '#fff' : SOFT,
                 }}
               >
-                <Icon size={15} />
                 {label}
               </button>
             );
           })}
-        </div>
+        </nav>
+
+        {view === 'kasa' && <div className="mt-6"><KasaBankaView /></div>}
+        {view === 'gelirGider' && <div className="mt-6"><GelirGiderTablosuView /></div>}
+        {view === 'butcePlan' && <div className="mt-6"><ButcePlanView /></div>}
+        {view === 'istatistik' && <div className="mt-6"><IstatistikView /></div>}
+
+        {view === 'tahsilat' && (
+          <>
+            {/* ===== METRİKLER (4) ===== */}
+            <div className="mt-6 grid grid-cols-2 lg:grid-cols-4 gap-3">
+              <MetricCard label="Toplam Alacak" value={`${fmt(stats.bakiye)} ₺`} color={DEBT} active={filter === 'debt'} onClick={() => setFilter(filter === 'debt' ? 'all' : 'debt')} />
+              <MetricCard label="Aylık Ücret (Top.)" value={`${fmt(stats.monthlyTarget)} ₺`} color={GOLD} />
+              <MetricCard label="Tahsilat Oranı" value={`%${stats.tahsilatOrani.toFixed(0)}`} color={OK} />
+              <MetricCard label="90+ Gün Risk" value={`${fmt(risk90Tutar)} ₺`} color={DEBT} active={filter === 'over90'} onClick={() => setFilter(filter === 'over90' ? 'all' : 'over90')} />
+            </div>
+
+            {/* ===== ARAMA + FİLTRE ÇİPLERİ ===== */}
+            <div className="mt-6 flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
+              <div className="relative w-full sm:max-w-md">
+                <Search size={16} strokeWidth={1.7} className="pointer-events-none absolute left-3.5 top-1/2 -translate-y-1/2" style={{ color: SOFT }} />
+                <input
+                  value={search}
+                  onChange={(e) => setSearch(e.target.value)}
+                  placeholder="Mükellef ara…"
+                  aria-label="Mükellef ara"
+                  className="w-full rounded-xl py-2.5 pl-10 pr-3 text-[14px] outline-none"
+                  style={{ border: `1px solid ${CARD_BORDER}`, background: 'rgba(255,255,255,0.02)', color: TEXT }}
+                />
+              </div>
+              <div className="flex items-center gap-2">
+                <Chip label="Tümü" active={filter === 'all'} onClick={() => setFilter('all')} />
+                <Chip label="Borçlu" active={filter === 'debt'} onClick={() => setFilter('debt')} />
+                <Chip label="90+ gün" active={filter === 'over90'} onClick={() => setFilter('over90')} />
+              </div>
+            </div>
+
+            {/* ===== WhatsApp önizleme bandı (varsa) ===== */}
+            {preview && (
+              <div className="mt-4 rounded-xl px-4 py-2.5 text-[13px] font-medium" style={{ background: 'rgba(230,200,120,0.06)', border: `1px solid rgba(230,200,120,0.15)`, color: '#d9d9de' }}>
+                WhatsApp önizleme: {preview.gonderilecek || 0} gönderilecek, {preview.atlanacak || 0} atlanacak.
+                {!preview.whatsapp?.ready && <span style={{ color: GOLD }}> WhatsApp ayarı: {preview.whatsapp?.error}</span>}
+              </div>
+            )}
+
+            {/* ===== TABLO ===== */}
+            <TahsilatTable
+              rows={filteredRows}
+              isLoading={isLoading || ajandaLoading}
+              onOpen={onSelect}
+              onQuickTahsilat={setQuickTahsilat}
+            />
+
+            <p className="mt-4 text-center text-[12px]" style={{ color: '#52525b' }}>
+              Aylık ücret = aktif aylık hizmetlerin toplamı · Bakiye = <span style={{ color: DEBT }}>borç (bordo)</span> / <span style={{ color: OK }}>güncel</span>
+            </p>
+          </>
+        )}
       </div>
-
-      {view === 'kasa' && <KasaBankaView />}
-      {view === 'gelirGider' && <GelirGiderTablosuView />}
-      {view === 'butcePlan' && <ButcePlanView />}
-
-      {view === 'tahsilat' && (
-        <>
-          <div className="grid grid-cols-2 md:grid-cols-3 2xl:grid-cols-6 gap-2">
-            <MetricButton label="Toplam Bakiye" value={`${fmt(stats.bakiye)} TL`} icon={Wallet} color={DANGER} active={filter === 'debt'} onClick={() => setFilter('debt')} />
-            <MetricButton label="Tahsilat Oranı" value={`%${stats.tahsilatOrani.toFixed(1)}`} icon={TrendingDown} color={stats.tahsilatOrani >= 80 ? SUCCESS : '#fbbf24'} />
-            <MetricButton label="Aylık Hedef" value={`${fmt(stats.monthlyTarget)} TL`} icon={Receipt} color={GOLD} />
-            <MetricButton label="90+ Risk" value={String(stats.over90)} icon={AlertTriangle} color="#f87171" active={filter === 'over90'} onClick={() => setFilter('over90')} />
-            <MetricButton label="WhatsApp" value={String(stats.whatsapp)} icon={MessageCircle} color={SUCCESS} active={filter === 'whatsapp'} onClick={() => setFilter('whatsapp')} />
-            <MetricButton label="Telefonsuz" value={String(stats.noPhone)} icon={Phone} color={BLUE} active={filter === 'noPhone'} onClick={() => setFilter('noPhone')} />
-          </div>
-
-          <div className="grid grid-cols-1 xl:grid-cols-[minmax(0,1fr)_320px] gap-3">
-            <section className="rounded-[8px] border overflow-hidden" style={{ background: PANEL, borderColor: LINE }}>
-              <div className="px-3 py-3 flex flex-col gap-3 2xl:flex-row 2xl:items-center 2xl:justify-between" style={{ borderBottom: `1px solid ${LINE}` }}>
-                <div className="min-w-0">
-                  <div className="flex items-center gap-2 text-[12px] font-bold uppercase tracking-[.12em]" style={{ color: SOFT }}>
-                    <ArrowUpDown size={14} />
-                    Çalışma Kuyruğu
-                    {isFetching && <Loader2 size={13} className="animate-spin" style={{ color: GOLD }} />}
-                  </div>
-                  <div className="mt-1 flex flex-wrap gap-2 text-[12.5px] font-semibold" style={{ color: MUTED }}>
-                    <span>{filteredRows.length} kayıt</span>
-                    <span style={{ color: 'rgba(255,255,255,0.28)' }}>•</span>
-                    <span>hedef {targetIds.length}</span>
-                    <span style={{ color: 'rgba(255,255,255,0.28)' }}>•</span>
-                    <span style={{ color: targetTotal > 0 ? '#f5d992' : MUTED }}>{fmt(targetTotal)} TL</span>
-                  </div>
-                </div>
-                <div className="flex flex-wrap items-center gap-2">
-                  <IconButton title="Yenile" onClick={refreshAll} icon={RefreshCw} />
-                  <ActionButton label="Excel" icon={FileSpreadsheet} onClick={indirExcelToplu} tone="blue" />
-                  <ActionButton label="Önizle" icon={Eye} onClick={previewReminder} tone="amber" />
-                  <ActionButton label="Gönder" icon={sending ? Loader2 : Send} onClick={sendReminder} tone="green" disabled={sending} spin={sending} />
-                </div>
-              </div>
-
-              <div className="px-3 py-2.5 grid grid-cols-1 2xl:grid-cols-[minmax(280px,1fr)_auto_auto] gap-2.5" style={{ borderBottom: `1px solid ${LINE}` }}>
-                <div className="relative">
-                  <Search size={16} style={{ position: 'absolute', left: 12, top: '50%', transform: 'translateY(-50%)', color: SOFT }} />
-                  <input
-                    value={search}
-                    onChange={(e) => setSearch(e.target.value)}
-                    placeholder="Mükellef, VKN, telefon veya e-posta ara"
-                    aria-label="Cari kayıt ara"
-                    className="w-full h-10 pl-10 pr-3 rounded-[8px] text-[13px] font-semibold outline-none"
-                    style={inputStyle}
-                  />
-                </div>
-
-                <div className="flex flex-wrap gap-1.5">
-                  <FilterButton label="Borçlu" count={stats.borclu} active={filter === 'debt'} onClick={() => setFilter('debt')} />
-                  <FilterButton label="30+" count={stats.over30} active={filter === 'over30'} onClick={() => setFilter('over30')} />
-                  <FilterButton label="90+" count={stats.over90} active={filter === 'over90'} onClick={() => setFilter('over90')} />
-                  <FilterButton label="WhatsApp" count={stats.whatsapp} active={filter === 'whatsapp'} onClick={() => setFilter('whatsapp')} />
-                  <FilterButton label="Telefonsuz" count={stats.noPhone} active={filter === 'noPhone'} onClick={() => setFilter('noPhone')} />
-                  <FilterButton label="Sıfır" count={rows.length - stats.borclu} active={filter === 'clean'} onClick={() => setFilter('clean')} />
-                  <FilterButton label="Tümü" count={rows.length} active={filter === 'all'} onClick={() => setFilter('all')} />
-                </div>
-
-                <div className="flex gap-2">
-                  <select value={sortKey} onChange={(e) => setSortKey(e.target.value as SortKey)} aria-label="Sıralama" className="h-10 rounded-[8px] px-3 text-[12.5px] font-bold outline-none" style={inputStyle}>
-                    <option value="risk">Risk sırası</option>
-                    <option value="balance">Bakiye yüksek</option>
-                    <option value="name">Ada göre</option>
-                    <option value="lastPayment">Son tahsilat eski</option>
-                  </select>
-                  <IconButton title="Filtreleri temizle" onClick={clearFilters} icon={FilterX} />
-                </div>
-              </div>
-
-              <div className="px-3 py-2.5 flex flex-wrap items-center gap-2" style={{ borderBottom: `1px solid ${LINE}` }}>
-                <ActionButton label="Görünen uygunları seç" icon={CheckSquare} onClick={selectVisible} />
-                <button onClick={() => { setSelectedIds([]); setPreview(null); }} className="h-9 px-3 rounded-[8px] text-[12.5px] font-bold" style={ghostButtonStyle}>
-                  Seçimi temizle
-                </button>
-                <div className="ml-auto flex flex-wrap items-center gap-2">
-                  <button onClick={() => setDateMode(dateMode === 'all' ? 'period' : 'all')} className="h-9 px-3 rounded-[8px] text-[12.5px] font-bold inline-flex items-center gap-2" style={dateMode === 'period' ? amberButtonStyle : ghostButtonStyle}>
-                    <CalendarDays size={15} />
-                    {dateMode === 'period' ? 'Tarih filtresi açık' : 'Tüm zamanlar'}
-                  </button>
-                  {dateMode === 'period' && (
-                    <>
-                      <input type="date" value={baslangic} onChange={(e) => setBaslangic(e.target.value)} aria-label="Başlangıç tarihi" className="h-9 px-3 rounded-[8px] text-[12.5px] font-bold outline-none" style={inputStyle} />
-                      <input type="date" value={bitis} onChange={(e) => setBitis(e.target.value)} aria-label="Bitiş tarihi" className="h-9 px-3 rounded-[8px] text-[12.5px] font-bold outline-none" style={inputStyle} />
-                    </>
-                  )}
-                </div>
-              </div>
-
-              {preview && (
-                <div className="mx-3 mt-3 rounded-[8px] px-3 py-2.5 text-[12.5px] font-semibold" style={{ background: 'rgba(56,189,248,0.09)', border: '1px solid rgba(56,189,248,0.24)', color: '#bae6fd' }}>
-                  WhatsApp önizleme: {preview.gonderilecek || 0} gönderilecek, {preview.atlanacak || 0} atlanacak.
-                  {!preview.whatsapp?.ready && <span style={{ color: '#fde68a' }}> WhatsApp ayarı: {preview.whatsapp?.error}</span>}
-                </div>
-              )}
-
-              <TahsilatTable
-                rows={filteredRows}
-                selectedIds={selectedIds}
-                isLoading={isLoading || ajandaLoading}
-                onToggle={toggleSelected}
-                onOpen={onSelect}
-                onQuickTahsilat={setQuickTahsilat}
-              />
-            </section>
-
-            <aside className="space-y-3">
-              <NextActionPanel rows={filteredRows} onOpen={onSelect} onQuickTahsilat={setQuickTahsilat} />
-              <AgingPanel totals={ajanda?.totals} />
-            </aside>
-          </div>
-        </>
-      )}
 
       {quickTahsilat && (
         <QuickTahsilatModal
@@ -484,7 +452,6 @@ export function CariTahsilatWorkspace({ onSelect }: { onSelect: (id: string) => 
           onClose={() => setQuickTahsilat(null)}
           onSaved={() => {
             setQuickTahsilat(null);
-            setSelectedIds((ids) => ids.filter((id) => id !== quickTahsilat.id));
             refreshAll();
           }}
         />
@@ -493,17 +460,15 @@ export function CariTahsilatWorkspace({ onSelect }: { onSelect: (id: string) => 
   );
 }
 
-function MetricButton({
+function MetricCard({
   label,
   value,
-  icon: Icon,
   color,
   active,
   onClick,
 }: {
   label: string;
   value: string;
-  icon: any;
   color: string;
   active?: boolean;
   onClick?: () => void;
@@ -512,90 +477,50 @@ function MetricButton({
   return (
     <Component
       onClick={onClick as any}
-      className="rounded-[8px] border p-3 min-h-[88px] text-left"
+      className="rounded-2xl px-5 py-4 text-left transition"
       style={{
-        background: active ? 'rgba(212,184,118,0.10)' : PANEL_2,
-        borderColor: active ? 'rgba(212,184,118,0.40)' : LINE,
+        border: `1px solid ${active ? 'rgba(230,200,120,0.30)' : CARD_BORDER}`,
+        background: active ? 'rgba(230,200,120,0.05)' : CARD_BG,
       }}
     >
-      <div className="flex items-center justify-between gap-2">
-        <div className="text-[10.5px] font-bold uppercase tracking-[.12em] truncate" style={{ color: SOFT }}>{label}</div>
-        <Icon size={16} style={{ color }} />
-      </div>
-      <div className="mt-3 text-[18px] lg:text-[20px] font-bold tabular-nums leading-tight" style={{ color, fontFamily: MONEY }}>
+      <div className="text-[11px] font-medium uppercase tracking-wider" style={{ color: SOFT }}>{label}</div>
+      <div className="mt-2.5 text-[27px] font-bold" style={{ color, fontVariantNumeric: 'tabular-nums' }}>
         {value}
       </div>
     </Component>
   );
 }
 
-function FilterButton({ label, count, active, onClick }: { label: string; count: number; active: boolean; onClick: () => void }) {
+function Chip({ label, active, onClick }: { label: string; active: boolean; onClick: () => void }) {
   return (
     <button
       onClick={onClick}
-      className="h-10 px-3 rounded-[8px] text-[12.5px] font-bold inline-flex items-center gap-2"
-      style={{
-        background: active ? 'rgba(212,184,118,0.18)' : 'rgba(255,255,255,0.04)',
-        color: active ? '#f5d992' : MUTED,
-        border: `1px solid ${active ? 'rgba(212,184,118,0.42)' : LINE}`,
-      }}
+      className="rounded-full px-4 py-2 text-[13px] transition"
+      style={
+        active
+          ? { background: 'linear-gradient(135deg,#ecd589,#d4b876)', color: '#000', fontWeight: 600 }
+          : { border: `1px solid rgba(255,255,255,0.10)`, background: 'rgba(255,255,255,0.02)', color: TEXT, fontWeight: 500 }
+      }
     >
-      <span>{label}</span>
-      <span className="tabular-nums text-[11px]" style={{ color: active ? '#fff0bd' : SOFT }}>{count}</span>
-    </button>
-  );
-}
-
-function ActionButton({
-  label,
-  icon: Icon,
-  onClick,
-  tone,
-  disabled,
-  spin,
-}: {
-  label: string;
-  icon: any;
-  onClick: () => void;
-  tone?: 'green' | 'amber' | 'blue';
-  disabled?: boolean;
-  spin?: boolean;
-}) {
-  const style = tone === 'green' ? greenButtonStyle : tone === 'amber' ? amberButtonStyle : tone === 'blue' ? blueButtonStyle : ghostButtonStyle;
-  return (
-    <button onClick={onClick} disabled={disabled} className="h-9 px-3 rounded-[8px] text-[12.5px] font-bold inline-flex items-center gap-2 disabled:opacity-50" style={style}>
-      <Icon size={15} className={spin ? 'animate-spin' : ''} />
       {label}
-    </button>
-  );
-}
-
-function IconButton({ title, icon: Icon, onClick }: { title: string; icon: any; onClick: () => void }) {
-  return (
-    <button onClick={onClick} className="h-10 w-10 rounded-[8px] inline-flex items-center justify-center" style={ghostButtonStyle} title={title} aria-label={title}>
-      <Icon size={16} />
     </button>
   );
 }
 
 function TahsilatTable({
   rows,
-  selectedIds,
   isLoading,
-  onToggle,
   onOpen,
   onQuickTahsilat,
 }: {
   rows: WorkspaceRow[];
-  selectedIds: string[];
   isLoading: boolean;
-  onToggle: (id: string) => void;
   onOpen: (id: string) => void;
   onQuickTahsilat: (row: WorkspaceRow) => void;
 }) {
   if (isLoading) {
     return (
-      <div className="py-12 text-center text-[14px] font-semibold" style={{ color: MUTED }}>
+      <div className="mt-5 py-12 text-center text-[14px]" style={{ color: SOFT }}>
         <Loader2 className="animate-spin inline mr-2" size={17} /> Cari kayıtlar yükleniyor
       </div>
     );
@@ -603,215 +528,88 @@ function TahsilatTable({
 
   if (!rows.length) {
     return (
-      <div className="py-14 text-center text-[14px] font-semibold" style={{ color: MUTED }}>
+      <div className="mt-5 py-14 text-center text-[14px]" style={{ color: SOFT }}>
         Filtreye uygun cari kayıt bulunamadı.
       </div>
     );
   }
 
   return (
-    <div className="overflow-x-auto">
-      <table className="w-full table-fixed text-[12.5px]">
-        <colgroup>
-          <col style={{ width: 44 }} />
-          <col style={{ width: '34%' }} />
-          <col style={{ width: '14%' }} />
-          <col style={{ width: '14%' }} />
-          <col style={{ width: '14%' }} />
-          <col style={{ width: '18%' }} />
-          <col style={{ width: 96 }} />
-        </colgroup>
-        <thead>
-          <tr style={{ color: SOFT, background: 'rgba(255,255,255,0.035)', borderBottom: `1px solid ${LINE}` }}>
-            <th className="px-2 py-2.5 text-left"></th>
-            <th className="px-2 py-2.5 text-left font-bold">Mükellef</th>
-            <th className="px-2 py-2.5 text-right font-bold">Toplam Bakiye</th>
-            <th className="px-2 py-2.5 text-right font-bold">Aylık Ücret</th>
-            <th className="px-2 py-2.5 text-left font-bold">Vade</th>
-            <th className="px-2 py-2.5 text-left font-bold">Son durum</th>
-            <th className="px-2 py-2.5 text-center font-bold"></th>
-          </tr>
-        </thead>
-        <tbody style={{ color: TEXT }}>
-          {rows.map((row) => {
-            const style = bucketStyle(row.maxBucket);
-            const lastPayment = formatDate(row.sonTahsilatTarihi);
-            const lastReminder = formatDate(row.sonHatirlatmaTarihi);
-            return (
-              <tr key={row.id} className="group" style={{ borderTop: '1px solid rgba(255,255,255,0.065)' }}>
-                <td className="px-2 py-2.5">
-                  <input
-                    type="checkbox"
-                    checked={selectedIds.includes(row.id)}
-                    disabled={!row.whatsappUygun}
-                    onChange={() => onToggle(row.id)}
-                    aria-label={`${row.ad} WhatsApp hedefi`}
-                    title={row.whatsappUygun ? 'WhatsApp hedefi' : 'Telefon yok'}
-                  />
-                </td>
-                <td className="px-2 py-2.5 min-w-0">
-                  <button onClick={() => onOpen(row.id)} className="block w-full text-left min-w-0">
-                    <div className="font-bold truncate" style={{ color: TEXT }}>{row.ad}</div>
-                    <div className="mt-1 flex items-center gap-2 text-[11.5px] font-semibold min-w-0" style={{ color: SOFT }}>
-                      <span className="tabular-nums shrink-0">{row.taxNumber || '-'}</span>
-                      <span className="shrink-0" style={{ color: 'rgba(255,255,255,0.18)' }}>|</span>
-                      <span className="inline-flex items-center gap-1 truncate min-w-0">
-                        <Phone size={12} /> {row.phone || 'telefon yok'}
-                      </span>
-                    </div>
-                  </button>
-                </td>
-                <td className="px-2 py-2.5 text-right">
-                  <div className="text-[14px] font-bold tabular-nums whitespace-nowrap" style={{ color: row.bakiye > 0 ? DANGER : row.bakiye < 0 ? SUCCESS : SOFT, fontFamily: MONEY }}>
-                    {fmt(row.bakiye)} TL
-                  </div>
-                </td>
-                <td className="px-2 py-2.5 text-right">
-                  <div className="text-[14px] font-bold tabular-nums whitespace-nowrap" style={{ color: row.aylikMuhasebeUcreti > 0 ? GOLD : SOFT, fontFamily: MONEY }}>
-                    {row.aylikMuhasebeUcreti > 0 ? `${fmt(row.aylikMuhasebeUcreti)} TL` : '-'}
-                  </div>
-                </td>
-                <td className="px-2 py-2.5">
-                  <div className="inline-flex items-center rounded-[7px] px-2 py-1 text-[11px] font-bold whitespace-nowrap" style={{ color: style.color, background: style.bg, border: `1px solid ${style.border}` }}>
-                    {row.maxBucket}
-                  </div>
-                  {row.bakiye > 0 && <AgingStack aging={row.aging} />}
-                </td>
-                <td className="px-2 py-2.5">
-                  <div className="flex flex-col gap-1 text-[11.5px] font-bold leading-none">
-                    <span className="inline-flex w-fit max-w-full rounded-[6px] px-2 py-1 truncate" style={{ color: MUTED, background: 'rgba(255,255,255,0.045)', border: `1px solid ${LINE}` }}>
-                      {lastPayment ? `Tahsilat ${lastPayment}` : 'Tahsilat yok'}
-                    </span>
-                    <span className="inline-flex w-fit max-w-full rounded-[6px] px-2 py-1 truncate" style={{ color: row.whatsappUygun ? '#86efac' : SOFT, background: row.whatsappUygun ? 'rgba(34,197,94,0.08)' : 'rgba(255,255,255,0.035)', border: `1px solid ${row.whatsappUygun ? 'rgba(34,197,94,0.20)' : LINE}` }}>
-                      {lastReminder ? `Hatırlatma ${lastReminder}` : row.whatsappUygun ? 'Hatırlatma hazır' : 'WhatsApp yok'}
-                    </span>
-                  </div>
-                </td>
-                <td className="px-2 py-2.5">
-                  <div className="flex items-center justify-end gap-1.5">
-                    <button
-                      onClick={() => onQuickTahsilat(row)}
-                      disabled={row.bakiye <= 0}
-                      aria-label={`${row.ad} tahsilat gir`}
-                      title="Tahsilat gir"
-                      className="h-9 w-9 rounded-[8px] inline-flex items-center justify-center disabled:opacity-35"
-                      style={greenButtonStyle}
-                    >
-                      <Plus size={15} />
+    <div className="mt-5 overflow-hidden rounded-2xl" style={{ border: `1px solid ${CARD_BORDER}` }}>
+      <div className="overflow-x-auto">
+        <table className="w-full text-[14px]">
+          <thead>
+            <tr className="text-[11px] uppercase tracking-wider" style={{ color: SOFT }}>
+              <th className="px-5 py-3.5 text-left font-medium">Mükellef</th>
+              <th className="px-3 py-3.5 text-right font-medium">Aylık Ücret</th>
+              <th className="px-3 py-3.5 text-right font-medium">Bakiye</th>
+              <th className="px-4 py-3.5 text-left font-medium">En Eski</th>
+              <th className="px-5 py-3.5 text-right font-medium"></th>
+            </tr>
+          </thead>
+          <tbody style={{ color: TEXT }}>
+            {rows.map((row) => {
+              const style = bucketStyle(row.maxBucket);
+              const lastPayment = formatDate(row.sonTahsilatTarihi);
+              const borclu = row.bakiye > 0.004;
+              return (
+                <tr key={row.id} className="group" style={{ borderTop: `1px solid ${ROW_LINE}` }}>
+                  <td className="px-5 py-4">
+                    <button onClick={() => onOpen(row.id)} className="block w-full text-left">
+                      <div className="font-semibold" style={{ color: '#fff' }}>{row.ad}</div>
+                      <div className="mt-0.5 text-[12.5px]" style={{ color: SOFT }}>
+                        {lastPayment ? `son tahsilat ${lastPayment}` : 'son tahsilat yok'}
+                      </div>
                     </button>
-                    <button onClick={() => onOpen(row.id)} aria-label={`${row.ad} detay`} className="h-9 w-9 rounded-[8px] inline-flex items-center justify-center" style={ghostButtonStyle} title="Detay">
-                      <Receipt size={15} />
-                    </button>
-                  </div>
-                </td>
-              </tr>
-            );
-          })}
-        </tbody>
-      </table>
-    </div>
-  );
-}
-
-function AgingStack({ aging }: { aging: TahsilatAjandaRow['aging'] }) {
-  const parts = [
-    { key: 'current', value: aging.current, color: '#22c55e' },
-    { key: 'd1_30', value: aging.d1_30, color: '#3b82f6' },
-    { key: 'd31_60', value: aging.d31_60, color: '#f59e0b' },
-    { key: 'd61_90', value: aging.d61_90, color: '#f43f5e' },
-    { key: 'd90plus', value: aging.d90plus, color: '#ef4444' },
-  ];
-  const total = parts.reduce((sum, item) => sum + Number(item.value || 0), 0);
-  return (
-    <div className="mt-2 h-2 rounded-full overflow-hidden flex" style={{ background: 'rgba(255,255,255,0.08)' }}>
-      {total <= 0 ? (
-        <div style={{ width: '100%', background: 'rgba(255,255,255,0.10)' }} />
-      ) : (
-        parts.map((part) => (
-          <div key={part.key} style={{ width: `${Math.max(2, (part.value / total) * 100)}%`, background: part.color }} />
-        ))
-      )}
-    </div>
-  );
-}
-
-function NextActionPanel({ rows, onOpen, onQuickTahsilat }: { rows: WorkspaceRow[]; onOpen: (id: string) => void; onQuickTahsilat: (row: WorkspaceRow) => void }) {
-  const riskRows = rows.filter((row) => row.bakiye > 0).slice(0, 7);
-  return (
-    <section className="rounded-[8px] border overflow-hidden" style={{ background: PANEL, borderColor: LINE }}>
-      <div className="px-3 py-3" style={{ borderBottom: `1px solid ${LINE}` }}>
-        <div className="flex items-center gap-2 text-[12px] font-bold uppercase tracking-[.12em]" style={{ color: SOFT }}>
-          <AlertTriangle size={14} /> Bugünün Sırası
-        </div>
-      </div>
-      <div className="p-2.5 space-y-2">
-        {riskRows.length === 0 ? (
-          <div className="py-8 text-center text-[13px] font-semibold" style={{ color: MUTED }}>
-            Açık takip kaydı yok.
-          </div>
-        ) : (
-          riskRows.map((row) => {
-            const style = bucketStyle(row.maxBucket);
-            return (
-              <div key={row.id} className="rounded-[8px] p-3" style={{ background: 'rgba(255,255,255,0.045)', border: `1px solid ${LINE}` }}>
-                <button onClick={() => onOpen(row.id)} className="block w-full text-left">
-                  <div className="flex items-start justify-between gap-3">
-                    <div className="min-w-0">
-                      <div className="truncate text-[13px] font-bold" style={{ color: TEXT }}>{row.ad}</div>
-                      <div className="mt-1 text-[11.5px] font-semibold" style={{ color: row.phone ? SOFT : '#fda4af' }}>{row.phone || 'telefon yok'}</div>
-                    </div>
-                    <span className="shrink-0 rounded-[7px] px-2 py-1 text-[11px] font-bold" style={{ color: style.color, background: style.bg, border: `1px solid ${style.border}` }}>
-                      {row.maxBucket}
+                  </td>
+                  <td className="px-3 py-4 text-right font-semibold" style={{ color: row.aylikMuhasebeUcreti > 0 ? GOLD : SOFT, fontVariantNumeric: 'tabular-nums' }}>
+                    {row.aylikMuhasebeUcreti > 0 ? `${fmt(row.aylikMuhasebeUcreti)} ₺` : '—'}
+                  </td>
+                  <td className="px-3 py-4 text-right font-bold" style={{ color: borclu ? DEBT : TEXT, fontVariantNumeric: 'tabular-nums' }}>
+                    {fmt(row.bakiye)} ₺
+                  </td>
+                  <td className="px-4 py-4">
+                    <span className="inline-flex rounded-lg px-2.5 py-1 text-[12px] font-semibold whitespace-nowrap" style={{ color: style.color, background: style.bg, border: `1px solid ${style.border}` }}>
+                      {bucketLabel(row.maxBucket)}
                     </span>
-                  </div>
-                  <div className="mt-3 text-[15px] font-bold tabular-nums" style={{ color: DANGER, fontFamily: MONEY }}>
-                    {fmt(row.bakiye)} TL
-                  </div>
-                </button>
-                <button onClick={() => onQuickTahsilat(row)} className="mt-3 h-9 w-full rounded-[8px] text-[12px] font-bold inline-flex items-center justify-center gap-2" style={greenButtonStyle}>
-                  <Plus size={14} /> Tahsilat gir
-                </button>
-              </div>
-            );
-          })
-        )}
+                  </td>
+                  <td className="px-5 py-4">
+                    <div className="flex items-center justify-end gap-3" style={{ opacity: 0.55 }}>
+                      <button
+                        onClick={() => onOpen(row.id)}
+                        title="Ekstre / detay"
+                        className="transition hover:opacity-100"
+                        style={{ color: SOFT, opacity: 1 }}
+                      >
+                        <Copy size={18} strokeWidth={1.7} />
+                      </button>
+                      <button
+                        onClick={() => onQuickTahsilat(row)}
+                        disabled={!borclu}
+                        title="WhatsApp hatırlat / tahsilat gir"
+                        className="transition hover:opacity-80 disabled:opacity-30"
+                        style={{ color: '#3fce6f', opacity: 1 }}
+                      >
+                        <MessageCircle size={18} strokeWidth={1.7} />
+                      </button>
+                      <button
+                        onClick={() => onQuickTahsilat(row)}
+                        disabled={!borclu}
+                        title="Tahsilat gir"
+                        className="transition hover:opacity-80 disabled:opacity-30"
+                        style={{ color: GOLD, opacity: 1 }}
+                      >
+                        <Plus size={18} strokeWidth={1.7} />
+                      </button>
+                    </div>
+                  </td>
+                </tr>
+              );
+            })}
+          </tbody>
+        </table>
       </div>
-    </section>
-  );
-}
-
-function AgingPanel({ totals }: { totals?: TahsilatAjandasi['totals'] }) {
-  const items = [
-    ['Güncel', totals?.current || 0, '#22c55e'],
-    ['1-30', totals?.d1_30 || 0, '#3b82f6'],
-    ['31-60', totals?.d31_60 || 0, '#f59e0b'],
-    ['61-90', totals?.d61_90 || 0, '#f43f5e'],
-    ['90+', totals?.d90plus || 0, '#ef4444'],
-  ] as const;
-  const total = items.reduce((sum, [, value]) => sum + value, 0);
-
-  return (
-    <section className="rounded-[8px] border p-3" style={{ background: PANEL, borderColor: LINE }}>
-      <div className="flex items-center gap-2 text-[12px] font-bold uppercase tracking-[.12em]" style={{ color: SOFT }}>
-        <ArrowUpDown size={14} /> Yaşlandırma
-      </div>
-      <div className="mt-4 space-y-3">
-        {items.map(([label, value, color]) => {
-          const pct = total > 0 ? (value / total) * 100 : 0;
-          return (
-            <div key={label}>
-              <div className="flex items-center justify-between text-[12px] font-bold">
-                <span style={{ color: MUTED }}>{label}</span>
-                <span className="tabular-nums" style={{ color, fontFamily: MONEY }}>{fmt(value)} TL</span>
-              </div>
-              <div className="mt-1.5 h-2 rounded-full overflow-hidden" style={{ background: 'rgba(255,255,255,0.08)' }}>
-                <div style={{ width: `${pct}%`, height: '100%', background: color }} />
-              </div>
-            </div>
-          );
-        })}
-      </div>
-    </section>
+    </div>
   );
 }
 
@@ -827,6 +625,7 @@ function QuickTahsilatModal({ row, onClose, onSaved }: { row: WorkspaceRow; onCl
   });
   const [saving, setSaving] = useState(false);
 
+  // ===== API: hesaplar (KORUNDU — aynı queryKey) =====
   const { data: accounts = [] } = useQuery<FinancialAccount[]>({
     queryKey: ['cari-accounts'],
     queryFn: () => api.get('/cari-kasa/accounts').then((r) => r.data),
@@ -838,6 +637,10 @@ function QuickTahsilatModal({ row, onClose, onSaved }: { row: WorkspaceRow; onCl
     setForm((old) => ({ ...old, accountId: preferred.id }));
   }, [accounts, form.accountId]);
 
+  // Bu tahsilat sonrası kalan bakiye göstergesi
+  const kalanBakiye = Math.max(row.bakiye - (Number.isFinite(form.tutar) ? form.tutar : 0), 0);
+
+  // ===== API: tahsilat kaydet (KORUNDU — aynı endpoint, aynı payload) =====
   const save = async () => {
     if (form.tutar <= 0) {
       toast.error('Tutar pozitif olmalı');
@@ -866,62 +669,88 @@ function QuickTahsilatModal({ row, onClose, onSaved }: { row: WorkspaceRow; onCl
   };
 
   return (
-    <div className="fixed inset-0 z-50 flex items-center justify-center p-4" style={{ background: 'rgba(0,0,0,0.72)' }} onClick={onClose}>
-      <div className="w-full max-w-[520px] rounded-[8px] border p-5" style={{ background: '#101214', borderColor: 'rgba(74,222,128,0.28)' }} onClick={(e) => e.stopPropagation()}>
-        <div className="flex items-start justify-between gap-4">
+    <div className="fixed inset-0 z-50 grid place-items-center px-4 py-8" style={{ background: 'rgba(0,0,0,0.6)' }} onClick={onClose}>
+      <div
+        className="w-full max-w-[520px] rounded-[20px]"
+        style={{ background: PANEL, border: `1px solid rgba(230,200,120,0.18)`, boxShadow: '0 24px 60px -12px rgba(0,0,0,0.7)' }}
+        onClick={(e) => e.stopPropagation()}
+      >
+        {/* Başlık */}
+        <div className="flex items-start justify-between gap-4 px-7 pt-6 pb-5">
           <div className="min-w-0">
-            <div className="text-[11px] font-bold uppercase tracking-[.14em]" style={{ color: '#86efac' }}>Tahsilat Kaydı</div>
-            <h3 className="mt-1 text-[20px] font-bold truncate" style={{ color: TEXT }}>{row.ad}</h3>
-            <div className="mt-1 text-[12.5px] font-semibold" style={{ color: SOFT }}>Açık bakiye {fmt(row.bakiye)} TL</div>
+            <div className="text-[11px] font-semibold uppercase tracking-wider" style={{ color: GOLD }}>Tahsilat</div>
+            <h1 className="mt-1 text-[24px] font-bold tracking-tight leading-none" style={{ color: '#fff' }}>Tahsilat Al</h1>
           </div>
-          <button onClick={onClose} className="h-9 w-9 rounded-[8px] inline-flex items-center justify-center shrink-0" style={ghostButtonStyle}>
-            <X size={17} />
+          <button onClick={onClose} className="grid h-9 w-9 shrink-0 place-items-center rounded-xl transition" style={{ border: `1px solid rgba(255,255,255,0.10)`, background: 'rgba(255,255,255,0.02)', color: SOFT }}>
+            <X size={18} strokeWidth={1.7} />
           </button>
         </div>
 
-        <div className="mt-5 grid grid-cols-1 md:grid-cols-2 gap-3">
-          <Field label="Tarih">
-            <input type="date" value={form.tarih} onChange={(e) => setForm({ ...form, tarih: e.target.value })} className="w-full h-11 px-3 rounded-[8px] outline-none" style={inputStyle} />
-          </Field>
-          <Field label="Tutar">
-            <input type="number" step="0.01" value={form.tutar} onChange={(e) => setForm({ ...form, tutar: Number(e.target.value) })} autoFocus className="w-full h-11 px-3 rounded-[8px] outline-none tabular-nums" style={inputStyle} />
-          </Field>
-          <Field label="Ödeme yöntemi">
-            <select value={form.odemeYontemi} onChange={(e) => setForm({ ...form, odemeYontemi: e.target.value })} className="w-full h-11 px-3 rounded-[8px] outline-none" style={inputStyle}>
-              <option value="HAVALE">Havale/EFT</option>
-              <option value="NAKIT">Nakit</option>
-              <option value="POS">POS/Kart</option>
-              <option value="CEK">Çek</option>
-              <option value="SENET">Senet</option>
-            </select>
-          </Field>
-          <Field label="Hesap">
-            <select value={form.accountId} onChange={(e) => setForm({ ...form, accountId: e.target.value })} className="w-full h-11 px-3 rounded-[8px] outline-none" style={inputStyle}>
-              <option value="">Hesap seçin</option>
-              {accounts.map((account) => (
-                <option key={account.id} value={account.id}>{account.name}</option>
-              ))}
-            </select>
-          </Field>
-          <Field label="Belge no">
-            <input value={form.belgeNo} onChange={(e) => setForm({ ...form, belgeNo: e.target.value })} placeholder="Dekont veya makbuz no" className="w-full h-11 px-3 rounded-[8px] outline-none" style={inputStyle} />
-          </Field>
-          <Field label="Dönem">
-            <input value={form.donem} onChange={(e) => setForm({ ...form, donem: e.target.value })} placeholder="2026-05" className="w-full h-11 px-3 rounded-[8px] outline-none" style={inputStyle} />
-          </Field>
-          <div className="md:col-span-2">
-            <Field label="Açıklama">
-              <input value={form.aciklama} onChange={(e) => setForm({ ...form, aciklama: e.target.value })} className="w-full h-11 px-3 rounded-[8px] outline-none" style={inputStyle} />
+        {/* Mükellef satırı */}
+        <div className="mx-7 rounded-xl px-4 py-3" style={{ border: `1px solid ${CARD_BORDER}`, background: CARD_BG }}>
+          <div className="flex items-center gap-2 flex-wrap text-[13px]">
+            <span className="font-semibold" style={{ color: '#fff' }}>{row.ad}</span>
+            <span style={{ color: '#52525b' }}>·</span>
+            <span style={{ color: SOFT, fontVariantNumeric: 'tabular-nums' }}>VKN {row.taxNumber || '—'}</span>
+            <span style={{ color: '#52525b' }}>·</span>
+            <span style={{ color: SOFT }}>açık bakiye</span>
+            <span className="font-semibold" style={{ color: DEBT, fontVariantNumeric: 'tabular-nums' }}>{fmt(row.bakiye)} ₺</span>
+          </div>
+        </div>
+
+        {/* Form */}
+        <div className="px-7 pt-5 pb-2">
+          <div className="grid grid-cols-2 gap-x-4 gap-y-4">
+            <Field label="Tarih">
+              <input type="date" value={form.tarih} onChange={(e) => setForm({ ...form, tarih: e.target.value })} style={inpStyle} />
             </Field>
+            <Field label="Tutar">
+              <input type="number" step="0.01" value={form.tutar} onChange={(e) => setForm({ ...form, tutar: Number(e.target.value) })} autoFocus style={{ ...inpStyle, fontSize: 18, fontWeight: 700, color: GOLD }} />
+            </Field>
+            <Field label="Ödeme Yöntemi">
+              <select value={form.odemeYontemi} onChange={(e) => setForm({ ...form, odemeYontemi: e.target.value })} style={selStyle}>
+                <option value="HAVALE">Havale / EFT</option>
+                <option value="NAKIT">Nakit</option>
+                <option value="POS">Kredi Kartı</option>
+                <option value="CEK">Çek</option>
+                <option value="SENET">Senet</option>
+              </select>
+            </Field>
+            <Field label="Hesap">
+              <select value={form.accountId} onChange={(e) => setForm({ ...form, accountId: e.target.value })} style={selStyle}>
+                <option value="">Hesap seçin</option>
+                {accounts.map((account) => (
+                  <option key={account.id} value={account.id}>{account.name}</option>
+                ))}
+              </select>
+            </Field>
+            <Field label="Belge No">
+              <input value={form.belgeNo} onChange={(e) => setForm({ ...form, belgeNo: e.target.value })} placeholder="Dekont veya makbuz no" style={inpStyle} />
+            </Field>
+            <Field label="Dönem">
+              <input value={form.donem} onChange={(e) => setForm({ ...form, donem: e.target.value })} placeholder="2026-05" style={inpStyle} />
+            </Field>
+            <div className="col-span-2">
+              <Field label="Açıklama">
+                <input value={form.aciklama} onChange={(e) => setForm({ ...form, aciklama: e.target.value })} style={inpStyle} />
+              </Field>
+            </div>
+          </div>
+
+          {/* Bilgi şeridi: kalan bakiye */}
+          <div className="mt-5 flex items-center justify-between rounded-xl px-4 py-3" style={{ background: 'rgba(230,200,120,0.06)', border: `1px solid rgba(230,200,120,0.15)` }}>
+            <span className="text-[13px]" style={{ color: '#a1a1aa' }}>Bu tahsilat sonrası kalan bakiye</span>
+            <span className="text-[16px] font-bold" style={{ color: GOLD, fontVariantNumeric: 'tabular-nums' }}>{fmt(kalanBakiye)} ₺</span>
           </div>
         </div>
 
-        <div className="mt-5 flex gap-2">
-          <button onClick={onClose} className="h-11 flex-1 rounded-[8px] text-[13px] font-bold" style={ghostButtonStyle}>
-            İptal
+        {/* Alt butonlar */}
+        <div className="flex items-center justify-end gap-3 px-7 pt-4 pb-6">
+          <button onClick={onClose} className="rounded-xl px-5 py-2.5 text-[13.5px] font-medium transition" style={{ border: `1px solid rgba(255,255,255,0.10)`, background: 'rgba(255,255,255,0.02)', color: TEXT }}>
+            Vazgeç
           </button>
-          <button onClick={save} disabled={saving} className="h-11 flex-1 rounded-[8px] text-[13px] font-bold inline-flex items-center justify-center gap-2 disabled:opacity-50" style={greenButtonStyle}>
-            {saving ? <Loader2 size={16} className="animate-spin" /> : <Receipt size={16} />} Kaydet
+          <button onClick={save} disabled={saving} className="inline-flex items-center gap-2 rounded-xl px-5 py-2.5 text-[13.5px] font-semibold transition disabled:opacity-50" style={{ background: 'linear-gradient(135deg,#ecd589,#d4b876)', color: '#000' }}>
+            {saving ? <Loader2 size={16} className="animate-spin" /> : <HandCoins size={16} strokeWidth={1.7} />} Kaydet
           </button>
         </div>
       </div>
@@ -931,40 +760,31 @@ function QuickTahsilatModal({ row, onClose, onSaved }: { row: WorkspaceRow; onCl
 
 function Field({ label, children }: { label: string; children: React.ReactNode }) {
   return (
-    <label className="block">
-      <span className="block mb-1.5 text-[12px] font-bold" style={{ color: MUTED }}>{label}</span>
-      {children}
-    </label>
+    <div>
+      <label className="block text-[11px] font-medium uppercase" style={{ letterSpacing: '.04em', color: '#7c7c84' }}>{label}</label>
+      <div className="mt-1.5">{children}</div>
+    </div>
   );
 }
 
-const inputStyle: React.CSSProperties = {
-  background: 'rgba(255,255,255,0.065)',
-  border: `1px solid ${LINE}`,
+const inpStyle: React.CSSProperties = {
+  width: '100%',
+  borderRadius: 12,
+  border: `1px solid rgba(255,255,255,0.07)`,
+  background: 'rgba(255,255,255,0.02)',
   color: TEXT,
-  fontWeight: 650,
+  outline: 'none',
+  padding: '11px 13px',
+  fontSize: 14,
+  fontVariantNumeric: 'tabular-nums',
 };
 
-const ghostButtonStyle: React.CSSProperties = {
-  background: 'rgba(255,255,255,0.055)',
-  border: `1px solid ${LINE}`,
-  color: MUTED,
-};
-
-const greenButtonStyle: React.CSSProperties = {
-  background: 'rgba(34,197,94,0.14)',
-  border: '1px solid rgba(34,197,94,0.32)',
-  color: '#86efac',
-};
-
-const amberButtonStyle: React.CSSProperties = {
-  background: 'rgba(212,184,118,0.14)',
-  border: '1px solid rgba(212,184,118,0.34)',
-  color: '#f5d992',
-};
-
-const blueButtonStyle: React.CSSProperties = {
-  background: 'rgba(56,189,248,0.12)',
-  border: '1px solid rgba(56,189,248,0.30)',
-  color: '#bae6fd',
+const selStyle: React.CSSProperties = {
+  ...inpStyle,
+  appearance: 'none',
+  backgroundImage:
+    "url(\"data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='14' height='14' viewBox='0 0 24 24' fill='none' stroke='%237c7c84' stroke-width='2' stroke-linecap='round' stroke-linejoin='round'%3E%3Cpolyline points='6 9 12 15 18 9'/%3E%3C/svg%3E\")",
+  backgroundRepeat: 'no-repeat',
+  backgroundPosition: 'right 13px center',
+  paddingRight: 34,
 };

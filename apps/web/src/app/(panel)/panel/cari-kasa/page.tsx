@@ -5,21 +5,24 @@ import { useRouter, useSearchParams } from 'next/navigation';
 import { useQuery, useQueryClient } from '@tanstack/react-query';
 import { api } from '@/lib/api';
 import { toast } from 'sonner';
-import { ButcePlanView, GelirGiderTablosuView, KasaBankaView } from './ButceTakipView';
 import { CariTahsilatWorkspace } from './CariTahsilatWorkbench';
 import {
-  Wallet, Calendar, Plus, Download, Trash2, Loader2,
-  TrendingUp, TrendingDown, X, Edit3, Search, ArrowLeft, FileText, Receipt,
-  MessageCircle, Send, AlertTriangle, CheckSquare,
+  Plus, Download, Trash2, Loader2, X, Edit3, ArrowLeft, FileText, MoreHorizontal, HandCoins,
 } from 'lucide-react';
 
-const GOLD = '#d4b876';
-const BORDO = '#9c4656';
-const TEXT = '#f8fafc';
-const MUTED = '#cbd5e1';
-const SOFT = '#a8b0bc';
-const SANS = 'Manrope, Inter, system-ui, -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif';
-const MONEY = SANS;
+// ===== Palet (cari-06 / cari-07 referansı) =====
+const GOLD = '#e6c878';
+const GOLD_SOFT = '#d4b876';
+const DEBT = '#e0697a';
+const OK = '#5ad18a';
+const BG = '#08080a';
+const PANEL = '#0c0c0e';
+const CARD_BORDER = 'rgba(255,255,255,0.06)';
+const CARD_BG = 'rgba(255,255,255,0.018)';
+const ROW_SEP = 'rgba(255,255,255,0.05)';
+const TEXT = '#e7e7ea';
+const MUTED = '#71717a';
+const SANS = 'Inter, system-ui, -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif';
 
 type Taxpayer = {
   id: string;
@@ -64,26 +67,6 @@ type Bakiye = {
   borc: number; alacak: number; bakiye: number;
 };
 
-type TahsilatAjandaRow = {
-  id: string;
-  ad: string;
-  taxNumber?: string | null;
-  phone?: string | null;
-  bakiye: number;
-  maxBucket: string;
-  aging: { current: number; d1_30: number; d31_60: number; d61_90: number; d90plus: number };
-  sonTahsilatTarihi?: string | null;
-  sonHatirlatmaTarihi?: string | null;
-  telefonVar: boolean;
-  whatsappUygun: boolean;
-};
-
-type TahsilatAjandasi = {
-  toplamBakiye: number;
-  totals: { current: number; d1_30: number; d31_60: number; d61_90: number; d90plus: number };
-  rows: TahsilatAjandaRow[];
-};
-
 const moneyValue = (n: number | string | null | undefined) => {
   if (typeof n === 'number') return isFinite(n) ? n : 0;
   const raw = String(n ?? '').trim();
@@ -100,6 +83,9 @@ const fmt = (n: number | string | null | undefined) => {
   return v.toLocaleString('tr-TR', { minimumFractionDigits: 2, maximumFractionDigits: 2 });
 };
 
+const fmtDate = (d: string | null | undefined) =>
+  d ? new Date(d).toLocaleDateString('tr-TR', { day: '2-digit', month: 'short' }) : '—';
+
 const thisMonth = () => {
   const d = new Date();
   return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}`;
@@ -115,7 +101,7 @@ export default function CariKasaPage() {
     if (id) router.push(`/panel/cari-kasa?mukellef=${id}`);
     else router.push('/panel/cari-kasa');
   };
-  const [tab, setTab] = useState<'hizmetler' | 'hareketler' | 'ekstre'>('hizmetler');
+  const [tab, setTab] = useState<'hareketler' | 'hizmetler' | 'ekstre'>('hareketler');
   const [hizmetModal, setHizmetModal] = useState<Hizmet | 'yeni' | null>(null);
   const [tahsilatModal, setTahsilatModal] = useState(false);
 
@@ -152,101 +138,112 @@ export default function CariKasaPage() {
     ? (selectedTaxpayer.companyName || `${selectedTaxpayer.firstName || ''} ${selectedTaxpayer.lastName || ''}`.trim())
     : 'Mükellef';
 
-  const bekleyenTahsilat = Math.max(Number(bakiye?.bakiye || 0), 0);
+  const sonHareketTarihi = hareketler.length
+    ? hareketler.reduce((en, h) => (new Date(h.tarih) > new Date(en) ? h.tarih : en), hareketler[0].tarih)
+    : null;
+
+  const tabs: Array<['hareketler' | 'hizmetler' | 'ekstre', string]> = [
+    ['hareketler', 'Hareketler'],
+    ['hizmetler', 'Hizmetler'],
+    ['ekstre', 'Ekstre'],
+  ];
 
   return (
-    <div className="p-6 space-y-4 max-w-none" style={{ fontFamily: SANS }}>
-      <div className="flex items-center justify-between">
-        <div className="flex items-start gap-3">
-          <button
-            onClick={() => setTaxpayerId('')}
-            className="mt-1 p-2 rounded-md"
-            style={{ background: 'rgba(255,255,255,0.05)', color: 'rgba(250,250,249,0.7)' }}
-            title="Listeye dön"
-          >
-            <ArrowLeft size={16} />
-          </button>
-          <div>
-            <div className="text-[12px] font-bold uppercase tracking-[.08em] mb-1" style={{ color: GOLD }}>
-              Cari Kasa · Detay
+    <div className="min-h-screen px-4 sm:px-6 py-6" style={{ fontFamily: SANS, background: BG }}>
+      <div className="mx-auto max-w-[1180px] rounded-[20px] p-5 sm:p-7" style={{ background: PANEL, border: '1px solid rgba(255,255,255,0.07)' }}>
+
+        {/* ===== HEADER ===== */}
+        <div className="flex items-start justify-between gap-4">
+          <div className="flex items-center gap-3.5 min-w-0">
+            <button
+              onClick={() => setTaxpayerId('')}
+              title="Listeye dön"
+              className="grid h-11 w-11 shrink-0 place-items-center rounded-2xl transition"
+              style={{ border: '1px solid rgba(255,255,255,0.10)', background: 'rgba(255,255,255,0.02)', color: '#a1a1aa' }}
+            >
+              <ArrowLeft className="h-5 w-5" />
+            </button>
+            <div className="min-w-0">
+              <span
+                className="inline-flex items-center rounded-md px-2 py-0.5 text-[11px] font-semibold tracking-wide"
+                style={{ background: 'rgba(230,200,120,0.12)', color: GOLD, border: '1px solid rgba(230,200,120,0.20)' }}
+              >
+                Cari · Detay
+              </span>
+              <h1 className="mt-1.5 text-[26px] font-bold tracking-tight leading-none" style={{ color: '#fff' }}>{selectedAd}</h1>
+              {selectedTaxpayer?.taxNumber && (
+                <p className="mt-1.5 text-[13.5px] tabular-nums" style={{ color: MUTED }}>VKN {selectedTaxpayer.taxNumber}</p>
+              )}
             </div>
-            <h1 className="font-semibold" style={{ fontSize: 30, color: TEXT, fontFamily: SANS, letterSpacing: 0 }}>
-              {selectedAd}
-            </h1>
-            {selectedTaxpayer?.taxNumber && (
-              <p className="text-[13px] mt-1" style={{ color: SOFT, fontFamily: MONEY }}>
-                {selectedTaxpayer.taxNumber}
-              </p>
-            )}
+          </div>
+          <div className="flex items-center gap-2 shrink-0">
+            <button
+              onClick={() => setTahsilatModal(true)}
+              className="inline-flex items-center gap-2 rounded-xl px-4 py-2.5 text-[13.5px] font-semibold"
+              style={{ background: 'linear-gradient(135deg,#ecd589,#d4b876)', color: '#000' }}
+            >
+              <Plus className="h-4 w-4" /> Tahsilat al
+            </button>
+            <button
+              onClick={() => setTab('ekstre')}
+              className="inline-flex items-center gap-2 rounded-xl px-4 py-2.5 text-[13.5px] font-medium transition"
+              style={{ border: '1px solid rgba(255,255,255,0.10)', background: 'rgba(255,255,255,0.02)', color: '#d4d4d8' }}
+            >
+              <Download className="h-4 w-4" /> Ekstre indir
+            </button>
+            <button
+              className="grid h-10 w-10 place-items-center rounded-xl transition"
+              style={{ border: '1px solid rgba(255,255,255,0.10)', background: 'rgba(255,255,255,0.02)', color: '#a1a1aa' }}
+            >
+              <MoreHorizontal className="h-4 w-4" />
+            </button>
           </div>
         </div>
-        <button
-          onClick={() => setTahsilatModal(true)}
-          className="px-4 py-2 rounded-[9px] text-[12.5px] font-bold inline-flex items-center gap-2"
-          style={{ background: `linear-gradient(135deg, ${GOLD}, #b8a06f)`, color: '#0f0d0b', boxShadow: '0 2px 10px rgba(212,184,118,0.35)' }}
-        >
-          <Plus size={14} /> Tahsilat Ekle
-        </button>
-      </div>
 
-      {taxpayerId && (
-        <>
-          {/* Bakiye kartları */}
-          <div className="grid grid-cols-1 md:grid-cols-4 gap-3">
-            <SummaryCard label="Toplam Tahakkuk" value={bakiye?.tahakkuk ?? 0} color="#60a5fa" icon={TrendingUp} />
-            <SummaryCard label="Toplam Tahsilat" value={bakiye?.tahsilat ?? 0} color="#4ade80" icon={TrendingDown} />
-            <SummaryCard label="Bakiye" value={bakiye?.bakiye ?? 0} color={BORDO} highlight big icon={Wallet} />
-            <SummaryCard label="Son Güncelleme" text={new Date().toLocaleString('tr-TR')} icon={Calendar} />
-          </div>
+        {/* ===== METRİKLER (4) ===== */}
+        <div className="mt-6 grid grid-cols-2 lg:grid-cols-4 gap-3">
+          <MetricCard label="Toplam Tahakkuk" value={bakiye?.tahakkuk} />
+          <MetricCard label="Toplam Tahsilat" value={bakiye?.tahsilat} valueColor={OK} />
+          <MetricCard label="Açık Bakiye" value={bakiye?.bakiye} valueColor={DEBT} debt />
+          <MetricCard label="Son Hareket" text={fmtDate(sonHareketTarihi)} />
+        </div>
 
-          <div
-            className="rounded-2xl px-4 py-3 flex flex-wrap items-center gap-3"
-            style={{
-              background: bekleyenTahsilat > 0 ? 'rgba(156,70,86,0.075)' : 'rgba(34,197,94,0.06)',
-              border: `1px solid ${bekleyenTahsilat > 0 ? 'rgba(156,70,86,0.26)' : 'rgba(34,197,94,0.20)'}`,
-            }}
-          >
-            <div className="flex items-center gap-2">
-              <Receipt size={15} style={{ color: bekleyenTahsilat > 0 ? BORDO : '#4ade80' }} />
-              <span className="text-[12px] font-bold uppercase tracking-[.12em]" style={{ color: 'rgba(250,250,249,0.55)' }}>
-                Tahsilat Ajandası
-              </span>
-            </div>
-            <div className="text-[13px] font-semibold" style={{ color: '#fafaf9' }}>
-              {bekleyenTahsilat > 0 ? `Bekleyen tahsilat: ₺${fmt(bekleyenTahsilat)}` : 'Bu mükellefte açık tahsilat bakiyesi yok.'}
-            </div>
-            {bekleyenTahsilat > 0 && (
+        {/* ===== SEKMELER ===== */}
+        <nav className="mt-7 flex items-center gap-7 text-[14.5px]" style={{ borderBottom: '1px solid rgba(255,255,255,0.07)' }}>
+          {tabs.map(([t, label]) => {
+            const active = tab === t;
+            return (
               <button
-                onClick={() => setTahsilatModal(true)}
-                className="ml-auto px-3 py-1.5 rounded-lg text-[12px] font-bold inline-flex items-center gap-1.5"
-                style={{ background: 'rgba(212,184,118,0.14)', color: GOLD, border: '1px solid rgba(212,184,118,0.32)' }}
+                key={t}
+                onClick={() => setTab(t)}
+                className="relative -mb-px pb-3 transition"
+                style={{
+                  borderBottom: `2px solid ${active ? GOLD : 'transparent'}`,
+                  color: active ? '#fff' : MUTED,
+                  fontWeight: active ? 600 : 500,
+                }}
               >
-                <Plus size={12} /> Tahsilat Gir
+                {label}
               </button>
-            )}
-          </div>
+            );
+          })}
+        </nav>
 
-          {/* Tab'lar */}
-          <div className="flex gap-1.5">
-            {(['hizmetler', 'hareketler', 'ekstre'] as const).map((t) => {
-              const active = tab === t;
-              const label = t === 'hizmetler' ? 'Hizmet Tanımları' : t === 'hareketler' ? 'Hareket Listesi' : 'Ekstre';
-              return (
-                <button
-                  key={t}
-                  onClick={() => setTab(t)}
-                  className="px-4 py-2 rounded-[10px] text-[12.5px] font-semibold transition-all"
-                  style={{
-                    background: active ? 'rgba(184,160,111,0.15)' : 'rgba(255,255,255,0.03)',
-                    color: active ? GOLD : 'rgba(250,250,249,0.6)',
-                    border: `1px solid ${active ? 'rgba(184,160,111,0.35)' : 'rgba(255,255,255,0.08)'}`,
-                  }}
-                >
-                  {label}
-                </button>
-              );
-            })}
-          </div>
+        <div className="mt-5">
+          {tab === 'hareketler' && (
+            <HareketlerView
+              hareketler={hareketler}
+              onDelete={async (id) => {
+                if (!confirm('Bu hareketi silmek istediğinizden emin misiniz?')) return;
+                try {
+                  await api.delete(`/cari-kasa/hareket/${id}`);
+                  toast.success('Hareket silindi');
+                  qc.invalidateQueries({ queryKey: ['cari-hareketler'] });
+                  qc.invalidateQueries({ queryKey: ['cari-bakiye'] });
+                } catch (e: any) { toast.error(e?.response?.data?.message || 'Silinemedi'); }
+              }}
+            />
+          )}
 
           {tab === 'hizmetler' && (
             <HizmetlerView
@@ -264,24 +261,9 @@ export default function CariKasaPage() {
             />
           )}
 
-          {tab === 'hareketler' && (
-            <HareketlerView
-              hareketler={hareketler}
-              onDelete={async (id) => {
-                if (!confirm('Bu hareketi silmek istediğinizden emin misiniz?')) return;
-                try {
-                  await api.delete(`/cari-kasa/hareket/${id}`);
-                  toast.success('Hareket silindi');
-                  qc.invalidateQueries({ queryKey: ['cari-hareketler'] });
-                  qc.invalidateQueries({ queryKey: ['cari-bakiye'] });
-                } catch (e: any) { toast.error(e?.response?.data?.message || 'Silinemedi'); }
-              }}
-            />
-          )}
-
           {tab === 'ekstre' && <EkstreView taxpayerId={taxpayerId} taxpayers={taxpayers} />}
-        </>
-      )}
+        </div>
+      </div>
 
       {hizmetModal && (
         <HizmetModal
@@ -295,6 +277,9 @@ export default function CariKasaPage() {
       {tahsilatModal && (
         <TahsilatModal
           taxpayerId={taxpayerId}
+          mukellefAd={selectedAd}
+          taxNumber={selectedTaxpayer?.taxNumber}
+          acikBakiye={bakiye?.bakiye}
           onClose={() => setTahsilatModal(false)}
           onSaved={() => {
             setTahsilatModal(false);
@@ -309,30 +294,118 @@ export default function CariKasaPage() {
   );
 }
 
-// ==================== COMPONENT'LER ====================
+// ==================== BİLEŞENLER ====================
 
-function SummaryCard({ label, value, text, color, icon: Icon, highlight, big }: {
+function MetricCard({ label, value, text, valueColor, debt }: {
   label: string;
   value?: number;
   text?: string;
-  color?: string;
-  icon?: any;
-  highlight?: boolean;
-  big?: boolean;
+  valueColor?: string;
+  debt?: boolean;
 }) {
   return (
-    <div className="rounded-[10px] p-4 border" style={{ background: highlight ? 'rgba(156,70,86,0.10)' : 'rgba(255,255,255,0.045)', borderColor: highlight ? 'rgba(156,70,86,0.34)' : 'rgba(255,255,255,0.14)' }}>
-      <div className="flex items-center gap-2 mb-2">
-        {Icon && <Icon size={16} style={{ color: color || MUTED }} />}
-        <div className="text-[12.5px] font-semibold" style={{ color: MUTED }}>{label}</div>
+    <div
+      className="rounded-2xl px-5 py-4"
+      style={debt
+        ? { background: 'rgba(224,105,122,0.07)', border: '1px solid rgba(224,105,122,0.22)' }
+        : { background: CARD_BG, border: `1px solid ${CARD_BORDER}` }}
+    >
+      <div
+        className="text-[11px] font-medium uppercase tracking-wider"
+        style={{ color: debt ? 'rgba(234,163,173,0.85)' : MUTED }}
+      >
+        {label}
       </div>
-      {text ? (
-        <div className="text-[14px] font-medium" style={{ color: MUTED }}>{text}</div>
+      {text !== undefined ? (
+        <div className="mt-2.5 text-[27px] font-bold tabular-nums" style={{ color: MUTED }}>{text}</div>
       ) : (
-        <div className={big ? 'text-[28px] font-bold' : 'text-[23px] font-bold'} style={{ fontFamily: MONEY, color }}>
-          ₺{fmt(value)}
+        <div className="mt-2.5 text-[27px] font-bold tabular-nums" style={{ color: valueColor || TEXT }}>
+          {fmt(value)} <span className="text-[16px] font-semibold" style={{ color: debt ? 'rgba(234,163,173,0.6)' : MUTED }}>₺</span>
         </div>
       )}
+    </div>
+  );
+}
+
+function HareketlerView({ hareketler, onDelete }: {
+  hareketler: Hareket[];
+  onDelete: (id: string) => void;
+}) {
+  if (hareketler.length === 0) {
+    return (
+      <div className="rounded-2xl py-10 text-center text-[14px]" style={{ border: `1px solid ${CARD_BORDER}`, color: MUTED }}>
+        Henüz hareket yok.
+      </div>
+    );
+  }
+  return (
+    <div>
+      <div className="overflow-hidden rounded-2xl" style={{ border: `1px solid ${CARD_BORDER}` }}>
+        <div className="overflow-x-auto">
+          <table className="w-full text-[14px]">
+            <thead>
+              <tr className="text-[11px] uppercase tracking-wider" style={{ color: MUTED }}>
+                <th className="px-5 py-3.5 text-left font-medium">Tarih</th>
+                <th className="px-3 py-3.5 text-left font-medium">Tip</th>
+                <th className="px-3 py-3.5 text-left font-medium">Açıklama</th>
+                <th className="px-3 py-3.5 text-right font-medium">Borç</th>
+                <th className="px-3 py-3.5 text-right font-medium">Alacak</th>
+                <th className="px-5 py-3.5 text-left font-medium">Yöntem</th>
+                <th className="px-3 py-3.5"></th>
+              </tr>
+            </thead>
+            <tbody>
+              {hareketler.map((h) => {
+                const tutar = moneyValue(h.tutar);
+                const borc = h.tip === 'TAHAKKUK' ? tutar : h.tip === 'IADE' ? -tutar : 0;
+                const alacak = h.tip === 'TAHSILAT' ? tutar : h.tip === 'DUZELTME' ? -tutar : 0;
+                const isTahsilat = h.tip === 'TAHSILAT';
+                const badgeLabel = h.tip === 'TAHAKKUK' ? 'Tahakkuk' : isTahsilat ? 'Tahsilat' : h.tip === 'IADE' ? 'İade' : 'Düzeltme';
+                const badgeStyle = isTahsilat
+                  ? { background: 'rgba(90,209,138,0.12)', color: '#6ee29c', border: '1px solid rgba(90,209,138,0.22)' }
+                  : { background: 'rgba(230,200,120,0.12)', color: GOLD, border: '1px solid rgba(230,200,120,0.20)' };
+                return (
+                  <tr key={h.id} className="group" style={{ borderTop: `1px solid ${ROW_SEP}` }}>
+                    <td className="px-5 py-4 tabular-nums whitespace-nowrap" style={{ color: '#d4d4d8' }}>
+                      {new Date(h.tarih).toLocaleDateString('tr-TR')}
+                    </td>
+                    <td className="px-3 py-4">
+                      <span className="inline-flex rounded-lg px-2.5 py-1 text-[12px] font-semibold" style={badgeStyle}>{badgeLabel}</span>
+                    </td>
+                    <td className="px-3 py-4" style={{ color: '#d4d4d8' }}>
+                      {h.hizmet?.hizmetAdi && <span style={{ color: GOLD }}>{h.hizmet.hizmetAdi}</span>}
+                      {h.hizmet?.hizmetAdi && h.aciklama && ' · '}
+                      {h.aciklama || (!h.hizmet?.hizmetAdi ? '—' : '')}
+                    </td>
+                    <td className="px-3 py-4 text-right tabular-nums font-semibold" style={{ color: borc ? DEBT : '#3f3f46' }}>
+                      {borc ? `${fmt(borc)} ₺` : '—'}
+                    </td>
+                    <td className="px-3 py-4 text-right tabular-nums font-semibold" style={{ color: alacak ? OK : '#3f3f46' }}>
+                      {alacak ? `${fmt(alacak)} ₺` : '—'}
+                    </td>
+                    <td className="px-5 py-4 text-[13px]" style={{ color: h.odemeYontemi ? '#a1a1aa' : '#52525b' }}>
+                      {h.odemeYontemi || '—'}
+                    </td>
+                    <td className="px-3 py-4 text-right">
+                      <button
+                        onClick={() => onDelete(h.id)}
+                        title="Sil"
+                        className="opacity-55 transition group-hover:opacity-100 p-1.5 rounded-lg"
+                        style={{ color: DEBT }}
+                      >
+                        <Trash2 className="h-4 w-4" />
+                      </button>
+                    </td>
+                  </tr>
+                );
+              })}
+            </tbody>
+          </table>
+        </div>
+      </div>
+      <p className="mt-4 text-center text-[12px]" style={{ color: '#52525b' }}>
+        Bakiye = tahakkuk − tahsilat · <span style={{ color: DEBT }}>borç bordo</span>, <span style={{ color: OK }}>alacak yeşil</span>
+      </p>
     </div>
   );
 }
@@ -344,123 +417,51 @@ function HizmetlerView({ hizmetler, onYeni, onEdit, onDelete }: {
   onDelete: (id: string) => void;
 }) {
   return (
-    <div className="rounded-[10px] border overflow-hidden" style={{ background: 'rgba(255,255,255,0.045)', borderColor: 'rgba(255,255,255,0.14)' }}>
-      <div className="px-5 py-3 flex items-center justify-between" style={{ borderBottom: '1px solid rgba(255,255,255,0.12)' }}>
-        <h3 className="text-[16px] font-semibold" style={{ color: TEXT }}>Tanımlı Hizmetler ({hizmetler.length})</h3>
-        <button onClick={onYeni} className="px-3 py-2 rounded-md text-[13px] font-semibold inline-flex items-center gap-1.5" style={{ background: 'rgba(212,184,118,0.14)', color: GOLD, border: '1px solid rgba(212,184,118,0.36)' }}>
-          <Plus size={14} /> Yeni Hizmet
+    <div className="overflow-hidden rounded-2xl" style={{ border: `1px solid ${CARD_BORDER}` }}>
+      <div className="px-5 py-3.5 flex items-center justify-between" style={{ borderBottom: `1px solid ${ROW_SEP}` }}>
+        <h3 className="text-[14.5px] font-semibold" style={{ color: '#fff' }}>Tanımlı Hizmetler ({hizmetler.length})</h3>
+        <button
+          onClick={onYeni}
+          className="inline-flex items-center gap-2 rounded-xl px-3.5 py-2 text-[13px] font-semibold"
+          style={{ background: 'linear-gradient(135deg,#ecd589,#d4b876)', color: '#000' }}
+        >
+          <Plus className="h-4 w-4" /> Yeni hizmet
         </button>
       </div>
       {hizmetler.length === 0 ? (
-        <div className="py-8 text-center text-[14px] font-medium" style={{ color: MUTED }}>
-          Henüz hizmet tanımı yok. "Yeni Hizmet" ile başlayın.
+        <div className="py-10 text-center text-[14px]" style={{ color: MUTED }}>
+          Henüz hizmet tanımı yok. "Yeni hizmet" ile başlayın.
         </div>
       ) : (
-        <div className="divide-y" style={{ borderColor: 'rgba(255,255,255,0.12)' }}>
-          {hizmetler.map((h: Hizmet) => (
-            <div key={h.id} className="px-5 py-3 flex items-center gap-3">
-              <div className={`w-2 h-2 rounded-full ${h.aktif ? '' : 'opacity-30'}`} style={{ background: h.aktif ? '#4ade80' : 'rgba(250,250,249,0.3)' }} />
-              <div className="flex-1 min-w-0">
-                <div className="text-[14.5px] font-semibold" style={{ color: TEXT }}>{h.hizmetAdi}</div>
-                <div className="text-[12.5px] mt-0.5 font-medium" style={{ color: SOFT }}>
-                  {h.periyot} · Başlangıç {h.baslangicAy}{h.bitisAy && ` · Bitiş ${h.bitisAy}`}
-                  {h.sonTahakkukAy && ` · Son tahakkuk ${h.sonTahakkukAy}`}
-                </div>
+        hizmetler.map((h) => (
+          <div key={h.id} className="group flex items-center gap-3 px-5 py-3.5" style={{ borderTop: `1px solid ${ROW_SEP}` }}>
+            <span className="h-2 w-2 shrink-0 rounded-full" style={{ background: h.aktif ? OK : '#3f3f46' }} />
+            <div className="flex-1 min-w-0">
+              <div className="text-[14px] font-semibold" style={{ color: TEXT }}>{h.hizmetAdi}</div>
+              <div className="mt-0.5 text-[12.5px]" style={{ color: MUTED }}>
+                {h.periyot} · Başlangıç {h.baslangicAy}{h.bitisAy && ` · Bitiş ${h.bitisAy}`}
+                {h.sonTahakkukAy && ` · Son tahakkuk ${h.sonTahakkukAy}`}
               </div>
-              <div className="text-[17px] font-bold tabular-nums" style={{ fontFamily: MONEY, color: GOLD }}>
-                ₺{fmt(h.tutar)}
-              </div>
-              <button onClick={() => onEdit(h)} className="p-2 rounded-md" style={{ background: 'rgba(255,255,255,0.03)', color: 'rgba(250,250,249,0.6)' }} title="Düzenle">
-                <Edit3 size={13} />
-              </button>
-              <button onClick={() => onDelete(h.id)} className="p-2 rounded-md" style={{ background: 'rgba(239,68,68,0.1)', color: '#fca5a5' }} title="Sil">
-                <Trash2 size={13} />
-              </button>
             </div>
-          ))}
-        </div>
-      )}
-    </div>
-  );
-}
-
-function HareketlerView({ hareketler, onDelete }: {
-  hareketler: Hareket[];
-  onDelete: (id: string) => void;
-}) {
-  const sourceBadge = (h: Hareket) => {
-    if (h.source === 'HATTAT_CARI_KASA') return { label: 'Hattat', color: '#38bdf8' };
-    if (h.source === 'CARI_TAHSILAT') return { label: 'Cari', color: '#4ade80' };
-    if (h.source === 'TRANSFER') return { label: 'Transfer', color: GOLD };
-    if (h.otoOlusturuldu) return { label: 'OTO', color: GOLD };
-    return { label: 'Manuel', color: SOFT };
-  };
-
-  return (
-    <div className="rounded-[10px] border overflow-hidden" style={{ background: 'rgba(255,255,255,0.045)', borderColor: 'rgba(255,255,255,0.14)' }}>
-      <div className="px-5 py-3" style={{ borderBottom: '1px solid rgba(255,255,255,0.12)' }}>
-        <h3 className="text-[16px] font-semibold" style={{ color: TEXT }}>Hareket Listesi ({hareketler.length})</h3>
-      </div>
-      {hareketler.length === 0 ? (
-        <div className="py-8 text-center text-[14px] font-medium" style={{ color: MUTED }}>Henüz hareket yok.</div>
-      ) : (
-        <div className="overflow-x-auto">
-          <table className="w-full text-[13.5px]">
-            <thead>
-              <tr style={{ color: MUTED, borderBottom: '1px solid rgba(255,255,255,0.12)', background: 'rgba(255,255,255,0.035)' }}>
-                <th className="text-left px-4 py-2">Tarih</th>
-                <th className="text-left px-4 py-2">Tip</th>
-                <th className="text-left px-4 py-2">Açıklama</th>
-                <th className="text-right px-4 py-2">Borç</th>
-                <th className="text-right px-4 py-2">Alacak</th>
-                <th className="text-left px-4 py-2">Ödeme</th>
-                <th className="text-left px-4 py-2">Hesap</th>
-                <th className="text-center px-4 py-2">Kaynak</th>
-                <th></th>
-              </tr>
-            </thead>
-            <tbody style={{ color: TEXT }}>
-              {hareketler.map((h: Hareket) => {
-                const tutar = moneyValue(h.tutar);
-                const borc = h.tip === 'TAHAKKUK' ? tutar : h.tip === 'IADE' ? -tutar : 0;
-                const alacak = h.tip === 'TAHSILAT' ? tutar : h.tip === 'DUZELTME' ? -tutar : 0;
-                const kaynak = sourceBadge(h);
-                return (
-                  <tr key={h.id} style={{ borderTop: '1px solid rgba(255,255,255,0.08)' }}>
-                    <td className="px-4 py-2 tabular-nums">{new Date(h.tarih).toLocaleDateString('tr-TR')}</td>
-                    <td className="px-4 py-2">
-                      <span className="inline-block px-2.5 py-1 rounded text-[11.5px] font-bold" style={{
-                        background: h.tip === 'TAHAKKUK' ? 'rgba(96,165,250,0.12)' : h.tip === 'TAHSILAT' ? 'rgba(74,222,128,0.12)' : 'rgba(250,204,21,0.12)',
-                        color: h.tip === 'TAHAKKUK' ? '#60a5fa' : h.tip === 'TAHSILAT' ? '#4ade80' : '#fde047',
-                      }}>{h.tip}</span>
-                    </td>
-                    <td className="px-4 py-2 truncate max-w-[300px]" style={{ color: TEXT }}>
-                      {h.hizmet?.hizmetAdi && <span style={{ color: GOLD }}>{h.hizmet.hizmetAdi}</span>}
-                      {h.hizmet?.hizmetAdi && h.aciklama && ' · '}
-                      {h.aciklama}
-                    </td>
-                    <td className="px-4 py-2 text-right tabular-nums" style={{ color: borc ? '#60a5fa' : 'rgba(250,250,249,0.3)', fontFamily: MONEY }}>
-                      {borc ? fmt(borc) : '—'}
-                    </td>
-                    <td className="px-4 py-2 text-right tabular-nums" style={{ color: alacak ? '#4ade80' : 'rgba(250,250,249,0.3)', fontFamily: MONEY }}>
-                      {alacak ? fmt(alacak) : '—'}
-                    </td>
-                    <td className="px-4 py-2 text-[12.5px] font-medium" style={{ color: SOFT }}>{h.odemeYontemi || '—'}</td>
-                    <td className="px-4 py-2 text-[12.5px] font-medium" style={{ color: h.account ? MUTED : '#fbbf24' }}>
-                      {h.account ? h.account.name : 'Atanmamış'}
-                    </td>
-                    <td className="px-4 py-2 text-center text-[11.5px] font-semibold">
-                      <span style={{ color: kaynak.color }}>{kaynak.label}</span>
-                    </td>
-                    <td className="px-2 py-2">
-                      <button onClick={() => onDelete(h.id)} className="p-1.5 rounded" style={{ color: '#fca5a5' }}><Trash2 size={12} /></button>
-                    </td>
-                  </tr>
-                );
-              })}
-            </tbody>
-          </table>
-        </div>
+            <div className="text-[16px] font-bold tabular-nums" style={{ color: GOLD }}>{fmt(h.tutar)} ₺</div>
+            <button
+              onClick={() => onEdit(h)}
+              title="Düzenle"
+              className="opacity-55 transition group-hover:opacity-100 p-2 rounded-lg"
+              style={{ background: 'rgba(255,255,255,0.02)', color: '#a1a1aa' }}
+            >
+              <Edit3 className="h-3.5 w-3.5" />
+            </button>
+            <button
+              onClick={() => onDelete(h.id)}
+              title="Sil"
+              className="opacity-55 transition group-hover:opacity-100 p-2 rounded-lg"
+              style={{ color: DEBT }}
+            >
+              <Trash2 className="h-3.5 w-3.5" />
+            </button>
+          </div>
+        ))
       )}
     </div>
   );
@@ -498,95 +499,109 @@ function EkstreView({ taxpayerId, taxpayers }: { taxpayerId: string; taxpayers: 
     } catch (e: any) { toast.error(e?.response?.data?.message || 'Excel indirilemedi'); }
   };
 
+  const acPdf = () => {
+    // JWT gerekli — fetch+blob, yeni sekmede aç
+    api.get(`/cari-kasa/ekstre/${taxpayerId}/pdf`, { params: { baslangic, bitis }, responseType: 'text', transformResponse: (d) => d })
+      .then((r) => {
+        const blob = new Blob([r.data], { type: 'text/html; charset=utf-8' });
+        const u = URL.createObjectURL(blob);
+        window.open(u, '_blank');
+        setTimeout(() => URL.revokeObjectURL(u), 5 * 60 * 1000);
+      })
+      .catch((e: any) => toast.error(e?.response?.data?.message || 'PDF açılamadı'));
+  };
+
+  const dateInput: React.CSSProperties = {
+    background: 'rgba(255,255,255,0.02)', border: '1px solid rgba(255,255,255,0.07)',
+    color: TEXT, outline: 'none', borderRadius: 12, padding: '10px 12px', fontSize: 13,
+  };
+
   return (
-    <div className="space-y-3">
-      <div className="rounded-2xl p-4 border flex items-end gap-3 flex-wrap" style={{ background: 'rgba(255,255,255,0.02)', borderColor: 'rgba(255,255,255,0.05)' }}>
+    <div className="space-y-4">
+      <div className="rounded-2xl px-5 py-4 flex items-end gap-3 flex-wrap" style={{ background: CARD_BG, border: `1px solid ${CARD_BORDER}` }}>
         <div>
-          <label className="text-[10.5px] font-bold uppercase tracking-[.12em] block mb-1" style={{ color: 'rgba(250,250,249,0.5)' }}>Başlangıç</label>
-          <input type="date" value={baslangic} onChange={(e) => setBaslangic(e.target.value)} className="px-3 py-2 rounded-md text-[13px] outline-none" style={{ background: 'rgba(255,255,255,0.03)', border: '1px solid rgba(255,255,255,0.08)', color: '#fafaf9' }} />
+          <label className="text-[11px] font-medium uppercase tracking-wider block mb-1.5" style={{ color: MUTED }}>Başlangıç</label>
+          <input type="date" value={baslangic} onChange={(e) => setBaslangic(e.target.value)} style={dateInput} />
         </div>
         <div>
-          <label className="text-[10.5px] font-bold uppercase tracking-[.12em] block mb-1" style={{ color: 'rgba(250,250,249,0.5)' }}>Bitiş</label>
-          <input type="date" value={bitis} onChange={(e) => setBitis(e.target.value)} className="px-3 py-2 rounded-md text-[13px] outline-none" style={{ background: 'rgba(255,255,255,0.03)', border: '1px solid rgba(255,255,255,0.08)', color: '#fafaf9' }} />
+          <label className="text-[11px] font-medium uppercase tracking-wider block mb-1.5" style={{ color: MUTED }}>Bitiş</label>
+          <input type="date" value={bitis} onChange={(e) => setBitis(e.target.value)} style={dateInput} />
         </div>
         <button
-          onClick={() => {
-            const url = `${process.env.NEXT_PUBLIC_API_URL || 'http://localhost:3001/api/v1'}/cari-kasa/ekstre/${taxpayerId}/pdf?baslangic=${baslangic}&bitis=${bitis}`;
-            // JWT gerekli — fetch+blob, yeni sekmede aç
-            api.get(`/cari-kasa/ekstre/${taxpayerId}/pdf`, { params: { baslangic, bitis }, responseType: 'text', transformResponse: (d) => d })
-              .then((r) => {
-                const blob = new Blob([r.data], { type: 'text/html; charset=utf-8' });
-                const u = URL.createObjectURL(blob);
-                window.open(u, '_blank');
-                setTimeout(() => URL.revokeObjectURL(u), 5 * 60 * 1000);
-              })
-              .catch((e: any) => toast.error(e?.response?.data?.message || 'PDF açılamadı'));
-          }}
-          className="px-4 py-2 rounded-md text-[12.5px] font-bold inline-flex items-center gap-2 ml-auto"
-          style={{ background: 'linear-gradient(135deg, #ef4444, #dc2626)', color: '#fff' }}
+          onClick={acPdf}
+          className="ml-auto inline-flex items-center gap-2 rounded-xl px-4 py-2.5 text-[13px] font-medium transition"
+          style={{ border: '1px solid rgba(255,255,255,0.10)', background: 'rgba(255,255,255,0.02)', color: '#d4d4d8' }}
         >
-          <FileText size={13} /> PDF Yazdır
+          <FileText className="h-4 w-4" /> PDF yazdır
         </button>
-        <button onClick={indirXlsx} className="px-4 py-2 rounded-md text-[12.5px] font-bold inline-flex items-center gap-2" style={{ background: `linear-gradient(135deg, ${GOLD}, #b8a06f)`, color: '#0f0d0b' }}>
-          <Download size={13} /> Excel İndir
+        <button
+          onClick={indirXlsx}
+          className="inline-flex items-center gap-2 rounded-xl px-4 py-2.5 text-[13px] font-semibold"
+          style={{ background: 'linear-gradient(135deg,#ecd589,#d4b876)', color: '#000' }}
+        >
+          <Download className="h-4 w-4" /> Excel indir
         </button>
       </div>
 
-      {isLoading && <div className="py-8 text-center" style={{ color: 'rgba(250,250,249,0.5)' }}><Loader2 className="animate-spin inline mr-2" size={16} />Hesaplanıyor…</div>}
+      {isLoading && (
+        <div className="py-8 text-center text-[13px]" style={{ color: MUTED }}>
+          <Loader2 className="animate-spin inline mr-2 h-4 w-4" />Hesaplanıyor…
+        </div>
+      )}
+
       {ekstre && (
         <>
-          <div className="grid grid-cols-1 md:grid-cols-4 gap-3">
-            <SummaryCard label="Açılış Bakiye" value={ekstre.acilisBakiye} color="#60a5fa" />
-            <SummaryCard label="Dönem Tahakkuk" value={ekstre.toplamTahakkuk} color="#60a5fa" />
-            <SummaryCard label="Dönem Tahsilat" value={ekstre.toplamTahsilat} color="#4ade80" />
-            <SummaryCard label="Kapanış Bakiye" value={ekstre.kapanisBakiye} color={BORDO} highlight big />
+          <div className="grid grid-cols-2 lg:grid-cols-4 gap-3">
+            <MetricCard label="Açılış Bakiye" value={ekstre.acilisBakiye} />
+            <MetricCard label="Dönem Tahakkuk" value={ekstre.toplamTahakkuk} />
+            <MetricCard label="Dönem Tahsilat" value={ekstre.toplamTahsilat} valueColor={OK} />
+            <MetricCard label="Kapanış Bakiye" value={ekstre.kapanisBakiye} valueColor={DEBT} debt />
           </div>
-          <div className="rounded-2xl border overflow-hidden" style={{ background: 'rgba(255,255,255,0.02)', borderColor: 'rgba(255,255,255,0.05)' }}>
+
+          <div className="overflow-hidden rounded-2xl" style={{ border: `1px solid ${CARD_BORDER}` }}>
             <div className="overflow-x-auto">
-              <table className="w-full text-[12px]">
+              <table className="w-full text-[13.5px]">
                 <thead>
-                  <tr style={{ color: 'rgba(250,250,249,0.5)', borderBottom: '1px solid rgba(255,255,255,0.05)' }}>
-                    <th className="text-left px-4 py-2">Tarih</th>
-                    <th className="text-left px-4 py-2">Açıklama</th>
-                    <th className="text-right px-4 py-2">Borç</th>
-                    <th className="text-right px-4 py-2">Alacak</th>
-                    <th className="text-right px-4 py-2">Bakiye</th>
+                  <tr className="text-[11px] uppercase tracking-wider" style={{ color: MUTED }}>
+                    <th className="px-5 py-3.5 text-left font-medium">Tarih</th>
+                    <th className="px-3 py-3.5 text-left font-medium">Açıklama</th>
+                    <th className="px-3 py-3.5 text-right font-medium">Borç</th>
+                    <th className="px-3 py-3.5 text-right font-medium">Alacak</th>
+                    <th className="px-5 py-3.5 text-right font-medium">Bakiye</th>
                   </tr>
                 </thead>
-                <tbody style={{ color: '#fafaf9' }}>
-                  <tr style={{ background: 'rgba(96,165,250,0.05)' }}>
-                    <td className="px-4 py-2" colSpan={4}><b>Açılış Bakiyesi</b></td>
-                    <td className="px-4 py-2 text-right tabular-nums font-bold" style={{ fontFamily: MONEY }}>₺{fmt(ekstre.acilisBakiye)}</td>
+                <tbody>
+                  <tr style={{ background: 'rgba(255,255,255,0.022)' }}>
+                    <td className="px-5 py-3.5 font-semibold" colSpan={4} style={{ color: TEXT }}>Açılış Bakiyesi</td>
+                    <td className="px-5 py-3.5 text-right tabular-nums font-bold" style={{ color: TEXT }}>{fmt(ekstre.acilisBakiye)} ₺</td>
                   </tr>
                   {ekstre.satirlar.map((s: any) => {
                     const tutar = moneyValue(s.tutar);
                     const borc = s.tip === 'TAHAKKUK' ? tutar : s.tip === 'IADE' ? -tutar : 0;
                     const alacak = s.tip === 'TAHSILAT' ? tutar : s.tip === 'DUZELTME' ? -tutar : 0;
                     return (
-                      <tr key={s.id} style={{ borderTop: '1px solid rgba(255,255,255,0.03)' }}>
-                        <td className="px-4 py-2 tabular-nums">{new Date(s.tarih).toLocaleDateString('tr-TR')}</td>
-                        <td className="px-4 py-2 truncate max-w-[400px]">
+                      <tr key={s.id} style={{ borderTop: `1px solid ${ROW_SEP}` }}>
+                        <td className="px-5 py-3.5 tabular-nums whitespace-nowrap" style={{ color: '#d4d4d8' }}>
+                          {new Date(s.tarih).toLocaleDateString('tr-TR')}
+                        </td>
+                        <td className="px-3 py-3.5" style={{ color: '#d4d4d8' }}>
                           {s.hizmet?.hizmetAdi && <span style={{ color: GOLD }}>{s.hizmet.hizmetAdi}</span>}
                           {s.hizmet?.hizmetAdi && s.aciklama && ' · '}
                           {s.aciklama}
                         </td>
-                        <td className="px-4 py-2 text-right tabular-nums" style={{ color: borc ? '#60a5fa' : 'rgba(250,250,249,0.3)', fontFamily: MONEY }}>
-                          {borc ? fmt(borc) : '—'}
+                        <td className="px-3 py-3.5 text-right tabular-nums font-semibold" style={{ color: borc ? DEBT : '#3f3f46' }}>
+                          {borc ? `${fmt(borc)} ₺` : '—'}
                         </td>
-                        <td className="px-4 py-2 text-right tabular-nums" style={{ color: alacak ? '#4ade80' : 'rgba(250,250,249,0.3)', fontFamily: MONEY }}>
-                          {alacak ? fmt(alacak) : '—'}
+                        <td className="px-3 py-3.5 text-right tabular-nums font-semibold" style={{ color: alacak ? OK : '#3f3f46' }}>
+                          {alacak ? `${fmt(alacak)} ₺` : '—'}
                         </td>
-                        <td className="px-4 py-2 text-right tabular-nums" style={{ fontFamily: MONEY, color: '#fafaf9' }}>
-                          ₺{fmt(s.runningBakiye)}
-                        </td>
+                        <td className="px-5 py-3.5 text-right tabular-nums" style={{ color: TEXT }}>{fmt(s.runningBakiye)} ₺</td>
                       </tr>
                     );
                   })}
-                  <tr style={{ background: 'rgba(156,70,86,0.08)', borderTop: '2px solid rgba(156,70,86,0.3)' }}>
-                    <td className="px-4 py-3" colSpan={4}><b style={{ color: BORDO }}>Kapanış Bakiyesi</b></td>
-                    <td className="px-4 py-3 text-right tabular-nums font-bold text-[15px]" style={{ fontFamily: MONEY, color: BORDO }}>
-                      ₺{fmt(ekstre.kapanisBakiye)}
-                    </td>
+                  <tr style={{ background: 'rgba(224,105,122,0.06)', borderTop: '1px solid rgba(224,105,122,0.22)' }}>
+                    <td className="px-5 py-4 font-bold" colSpan={4} style={{ color: DEBT }}>Kapanış Bakiyesi</td>
+                    <td className="px-5 py-4 text-right tabular-nums font-bold text-[15px]" style={{ color: DEBT }}>{fmt(ekstre.kapanisBakiye)} ₺</td>
                   </tr>
                 </tbody>
               </table>
@@ -594,6 +609,61 @@ function EkstreView({ taxpayerId, taxpayers }: { taxpayerId: string; taxpayers: 
           </div>
         </>
       )}
+    </div>
+  );
+}
+
+// ==================== MODAL'LAR ====================
+
+const lblStyle: React.CSSProperties = {
+  fontSize: 11, fontWeight: 500, letterSpacing: '.04em', textTransform: 'uppercase', color: '#7c7c84',
+};
+const inpStyle: React.CSSProperties = {
+  width: '100%', borderRadius: 12, border: '1px solid rgba(255,255,255,0.07)',
+  background: 'rgba(255,255,255,0.02)', color: TEXT, outline: 'none',
+  padding: '11px 13px', fontSize: 14, fontVariantNumeric: 'tabular-nums',
+};
+
+function ModalShell({ etiket, baslik, etiketRengi, onClose, children, footer }: {
+  etiket: string;
+  baslik: string;
+  etiketRengi: string;
+  onClose: () => void;
+  children: React.ReactNode;
+  footer: React.ReactNode;
+}) {
+  return (
+    <div className="fixed inset-0 z-50 grid place-items-center px-4 py-8" style={{ background: 'rgba(0,0,0,0.6)' }} onClick={onClose}>
+      <div
+        className="w-full max-w-[520px] rounded-[20px]"
+        style={{ background: PANEL, border: '1px solid rgba(230,200,120,0.18)', boxShadow: '0 24px 60px -12px rgba(0,0,0,0.7)' }}
+        onClick={(e) => e.stopPropagation()}
+      >
+        <div className="flex items-start justify-between gap-4 px-7 pt-6 pb-5">
+          <div className="min-w-0">
+            <div className="text-[11px] font-semibold uppercase tracking-wider" style={{ color: etiketRengi }}>{etiket}</div>
+            <h1 className="mt-1 text-[24px] font-bold tracking-tight leading-none" style={{ color: '#fff' }}>{baslik}</h1>
+          </div>
+          <button
+            onClick={onClose}
+            className="grid h-9 w-9 shrink-0 place-items-center rounded-xl transition"
+            style={{ border: '1px solid rgba(255,255,255,0.10)', background: 'rgba(255,255,255,0.02)', color: '#a1a1aa' }}
+          >
+            <X className="h-[18px] w-[18px]" />
+          </button>
+        </div>
+        {children}
+        <div className="flex items-center justify-end gap-3 px-7 pt-4 pb-6">{footer}</div>
+      </div>
+    </div>
+  );
+}
+
+function Field({ label, children, full }: { label: string; children: React.ReactNode; full?: boolean }) {
+  return (
+    <div className={full ? 'col-span-2' : ''}>
+      <label style={lblStyle}>{label}</label>
+      <div className="mt-1.5">{children}</div>
     </div>
   );
 }
@@ -636,45 +706,53 @@ function HizmetModal({ taxpayerId, hizmet, onClose, onSaved }: { taxpayerId: str
   };
 
   return (
-    <div className="fixed inset-0 z-50 flex items-center justify-center" style={{ background: 'rgba(0,0,0,0.7)' }} onClick={onClose}>
-      <div className="rounded-2xl p-6 max-w-md w-full mx-4" style={{ background: '#13110f', border: '1px solid rgba(212,184,118,0.3)' }} onClick={(e) => e.stopPropagation()}>
-        <div className="flex items-center justify-between mb-4">
-          <h3 className="text-[16px] font-bold" style={{ color: '#fafaf9', fontFamily: SANS }}>{hizmet ? 'Hizmet Düzenle' : 'Yeni Hizmet'}</h3>
-          <button onClick={onClose}><X size={18} style={{ color: 'rgba(250,250,249,0.5)' }} /></button>
-        </div>
-        <div className="space-y-3">
-          <Field label="Hizmet Adı"><input value={form.hizmetAdi} onChange={(e) => setForm({ ...form, hizmetAdi: e.target.value })} className="w-full px-3 py-2 rounded-md" style={inpStyle} /></Field>
-          <Field label="Tutar (₺)"><input type="number" step="0.01" value={form.tutar} onChange={(e) => setForm({ ...form, tutar: Number(e.target.value) })} className="w-full px-3 py-2 rounded-md tabular-nums" style={inpStyle} /></Field>
+    <ModalShell
+      etiket="Hizmet"
+      baslik={hizmet ? 'Hizmet Düzenle' : 'Yeni Hizmet'}
+      etiketRengi={GOLD}
+      onClose={onClose}
+      footer={
+        <>
+          <button onClick={onClose} className="rounded-xl px-5 py-2.5 text-[13.5px] font-medium transition" style={{ border: '1px solid rgba(255,255,255,0.10)', background: 'rgba(255,255,255,0.02)', color: '#d4d4d8' }}>Vazgeç</button>
+          <button onClick={save} disabled={saving} className="inline-flex items-center gap-2 rounded-xl px-5 py-2.5 text-[13.5px] font-semibold disabled:opacity-50" style={{ background: 'linear-gradient(135deg,#ecd589,#d4b876)', color: '#000' }}>
+            {saving ? <Loader2 className="h-4 w-4 animate-spin" /> : <HandCoins className="h-4 w-4" />} {hizmet ? 'Güncelle' : 'Kaydet'}
+          </button>
+        </>
+      }
+    >
+      <div className="px-7 pb-2">
+        <div className="grid grid-cols-2 gap-x-4 gap-y-4">
+          <Field label="Hizmet Adı" full><input value={form.hizmetAdi} onChange={(e) => setForm({ ...form, hizmetAdi: e.target.value })} style={inpStyle} /></Field>
+          <Field label="Tutar (₺)"><input type="number" step="0.01" value={form.tutar} onChange={(e) => setForm({ ...form, tutar: Number(e.target.value) })} style={inpStyle} /></Field>
           <Field label="Periyot">
-            <select value={form.periyot} onChange={(e) => setForm({ ...form, periyot: e.target.value })} className="w-full px-3 py-2 rounded-md" style={inpStyle}>
+            <select value={form.periyot} onChange={(e) => setForm({ ...form, periyot: e.target.value })} style={inpStyle}>
               <option value="AYLIK">Aylık</option>
               <option value="UCAYLIK">3 Aylık</option>
               <option value="ALTIAYLIK">6 Aylık</option>
               <option value="YILLIK">Yıllık</option>
             </select>
           </Field>
-          <div className="grid grid-cols-2 gap-2">
-            <Field label="Başlangıç Ay (YYYY-MM)"><input value={form.baslangicAy} onChange={(e) => setForm({ ...form, baslangicAy: e.target.value })} placeholder="2026-01" className="w-full px-3 py-2 rounded-md" style={inpStyle} /></Field>
-            <Field label="Bitiş Ay (opsiyonel)"><input value={form.bitisAy} onChange={(e) => setForm({ ...form, bitisAy: e.target.value })} placeholder="2026-12" className="w-full px-3 py-2 rounded-md" style={inpStyle} /></Field>
-          </div>
-          <label className="flex items-center gap-2 cursor-pointer">
+          <Field label="Başlangıç Ay (YYYY-MM)"><input value={form.baslangicAy} onChange={(e) => setForm({ ...form, baslangicAy: e.target.value })} placeholder="2026-01" style={inpStyle} /></Field>
+          <Field label="Bitiş Ay (opsiyonel)"><input value={form.bitisAy} onChange={(e) => setForm({ ...form, bitisAy: e.target.value })} placeholder="2026-12" style={inpStyle} /></Field>
+          <Field label="Notlar" full><textarea value={form.notlar} onChange={(e) => setForm({ ...form, notlar: e.target.value })} rows={2} style={inpStyle} /></Field>
+          <label className="col-span-2 flex items-center gap-2 cursor-pointer">
             <input type="checkbox" checked={form.aktif} onChange={(e) => setForm({ ...form, aktif: e.target.checked })} />
-            <span className="text-[12px]" style={{ color: '#fafaf9' }}>Aktif (tahakkuk geçer)</span>
+            <span className="text-[13px]" style={{ color: '#d4d4d8' }}>Aktif (tahakkuk geçer)</span>
           </label>
-          <Field label="Notlar"><textarea value={form.notlar} onChange={(e) => setForm({ ...form, notlar: e.target.value })} rows={2} className="w-full px-3 py-2 rounded-md" style={inpStyle} /></Field>
-        </div>
-        <div className="flex gap-2 mt-5">
-          <button onClick={onClose} className="flex-1 px-3 py-2 rounded-md text-[12.5px]" style={{ background: 'rgba(255,255,255,0.05)', color: 'rgba(250,250,249,0.7)' }}>İptal</button>
-          <button onClick={save} disabled={saving} className="flex-1 px-3 py-2 rounded-md text-[12.5px] font-bold disabled:opacity-50" style={{ background: `linear-gradient(135deg, ${GOLD}, #b8a06f)`, color: '#0f0d0b' }}>
-            {saving ? <Loader2 size={14} className="animate-spin inline" /> : (hizmet ? 'Güncelle' : 'Kaydet')}
-          </button>
         </div>
       </div>
-    </div>
+    </ModalShell>
   );
 }
 
-function TahsilatModal({ taxpayerId, onClose, onSaved }: { taxpayerId: string; onClose: () => void; onSaved: () => void }) {
+function TahsilatModal({ taxpayerId, mukellefAd, taxNumber, acikBakiye, onClose, onSaved }: {
+  taxpayerId: string;
+  mukellefAd?: string;
+  taxNumber?: string | null;
+  acikBakiye?: number;
+  onClose: () => void;
+  onSaved: () => void;
+}) {
   const qc = useQueryClient();
   const [form, setForm] = useState({
     tarih: today(),
@@ -696,10 +774,12 @@ function TahsilatModal({ taxpayerId, onClose, onSaved }: { taxpayerId: string; o
     setForm((old) => ({ ...old, accountId: accounts[0].id }));
   }, [accounts, form.accountId]);
 
+  const kalanBakiye = Math.max(Number(acikBakiye || 0) - moneyValue(form.tutar), 0);
+
   const save = async () => {
     if (form.tutar <= 0) { toast.error('Tutar pozitif olmalı'); return; }
     setSaving(true);
-    if (!form.accountId) { toast.error('Tahsilat hesabÄ± seÃ§in'); return; }
+    if (!form.accountId) { toast.error('Tahsilat hesabı seçin'); setSaving(false); return; }
     try {
       await api.post('/cari-kasa/tahsilat', { ...form, taxpayerId });
       toast.success('Tahsilat eklendi');
@@ -712,17 +792,37 @@ function TahsilatModal({ taxpayerId, onClose, onSaved }: { taxpayerId: string; o
   };
 
   return (
-    <div className="fixed inset-0 z-50 flex items-center justify-center" style={{ background: 'rgba(0,0,0,0.7)' }} onClick={onClose}>
-      <div className="rounded-2xl p-6 max-w-md w-full mx-4" style={{ background: '#13110f', border: '1px solid rgba(74,222,128,0.3)' }} onClick={(e) => e.stopPropagation()}>
-        <div className="flex items-center justify-between mb-4">
-          <h3 className="text-[16px] font-bold" style={{ color: '#4ade80', fontFamily: SANS }}>Tahsilat Ekle</h3>
-          <button onClick={onClose}><X size={18} style={{ color: 'rgba(250,250,249,0.5)' }} /></button>
+    <ModalShell
+      etiket="Tahsilat"
+      baslik="Tahsilat Al"
+      etiketRengi={GOLD}
+      onClose={onClose}
+      footer={
+        <>
+          <button onClick={onClose} className="rounded-xl px-5 py-2.5 text-[13.5px] font-medium transition" style={{ border: '1px solid rgba(255,255,255,0.10)', background: 'rgba(255,255,255,0.02)', color: '#d4d4d8' }}>Vazgeç</button>
+          <button onClick={save} disabled={saving} className="inline-flex items-center gap-2 rounded-xl px-5 py-2.5 text-[13.5px] font-semibold disabled:opacity-50" style={{ background: 'linear-gradient(135deg,#ecd589,#d4b876)', color: '#000' }}>
+            {saving ? <Loader2 className="h-4 w-4 animate-spin" /> : <HandCoins className="h-4 w-4" />} Kaydet
+          </button>
+        </>
+      }
+    >
+      {/* Mükellef satırı */}
+      <div className="mx-7 rounded-xl px-4 py-3" style={{ background: CARD_BG, border: `1px solid ${CARD_BORDER}` }}>
+        <div className="flex items-center gap-2 flex-wrap text-[13px]">
+          <span className="font-semibold" style={{ color: '#fff' }}>{mukellefAd || 'Mükellef'}</span>
+          {taxNumber && (<><span style={{ color: '#52525b' }}>·</span><span className="tabular-nums" style={{ color: MUTED }}>VKN {taxNumber}</span></>)}
+          <span style={{ color: '#52525b' }}>·</span>
+          <span style={{ color: MUTED }}>açık bakiye</span>
+          <span className="font-semibold tabular-nums" style={{ color: DEBT }}>{fmt(acikBakiye)} ₺</span>
         </div>
-        <div className="space-y-3">
-          <Field label="Tarih"><input type="date" value={form.tarih} onChange={(e) => setForm({ ...form, tarih: e.target.value })} className="w-full px-3 py-2 rounded-md" style={inpStyle} /></Field>
-          <Field label="Tutar (₺)"><input type="number" step="0.01" value={form.tutar} onChange={(e) => setForm({ ...form, tutar: Number(e.target.value) })} autoFocus className="w-full px-3 py-2 rounded-md tabular-nums" style={inpStyle} /></Field>
+      </div>
+
+      <div className="px-7 pt-5 pb-2">
+        <div className="grid grid-cols-2 gap-x-4 gap-y-4">
+          <Field label="Tarih"><input type="date" value={form.tarih} onChange={(e) => setForm({ ...form, tarih: e.target.value })} style={inpStyle} /></Field>
+          <Field label="Tutar (₺)"><input type="number" step="0.01" value={form.tutar} onChange={(e) => setForm({ ...form, tutar: Number(e.target.value) })} autoFocus style={{ ...inpStyle, fontSize: 18, fontWeight: 700, color: GOLD }} /></Field>
           <Field label="Ödeme Yöntemi">
-            <select value={form.odemeYontemi} onChange={(e) => setForm({ ...form, odemeYontemi: e.target.value })} className="w-full px-3 py-2 rounded-md" style={inpStyle}>
+            <select value={form.odemeYontemi} onChange={(e) => setForm({ ...form, odemeYontemi: e.target.value })} style={inpStyle}>
               <option value="NAKIT">Nakit</option>
               <option value="HAVALE">Havale/EFT</option>
               <option value="POS">POS/Kart</option>
@@ -731,773 +831,24 @@ function TahsilatModal({ taxpayerId, onClose, onSaved }: { taxpayerId: string; o
             </select>
           </Field>
           <Field label="Hesap">
-            <select value={form.accountId} onChange={(e) => setForm({ ...form, accountId: e.target.value })} className="w-full px-3 py-2 rounded-md" style={inpStyle}>
-              <option value="">Hesap seÃ§in</option>
+            <select value={form.accountId} onChange={(e) => setForm({ ...form, accountId: e.target.value })} style={inpStyle}>
+              <option value="">Hesap seçin</option>
               {accounts.map((account) => (
                 <option key={account.id} value={account.id}>{account.name}</option>
               ))}
             </select>
           </Field>
-          <Field label="Belge No (opsiyonel)"><input value={form.belgeNo} onChange={(e) => setForm({ ...form, belgeNo: e.target.value })} placeholder="Dekont/makbuz no" className="w-full px-3 py-2 rounded-md" style={inpStyle} /></Field>
-          <Field label="Hangi Ay İçin (opsiyonel)"><input value={form.donem} onChange={(e) => setForm({ ...form, donem: e.target.value })} placeholder="2026-04" className="w-full px-3 py-2 rounded-md" style={inpStyle} /></Field>
-          <Field label="Açıklama"><input value={form.aciklama} onChange={(e) => setForm({ ...form, aciklama: e.target.value })} className="w-full px-3 py-2 rounded-md" style={inpStyle} /></Field>
+          <Field label="Belge No (opsiyonel)"><input value={form.belgeNo} onChange={(e) => setForm({ ...form, belgeNo: e.target.value })} placeholder="Dekont/makbuz no" style={inpStyle} /></Field>
+          <Field label="Hangi Ay İçin (opsiyonel)"><input value={form.donem} onChange={(e) => setForm({ ...form, donem: e.target.value })} placeholder="2026-04" style={inpStyle} /></Field>
+          <Field label="Açıklama" full><input value={form.aciklama} onChange={(e) => setForm({ ...form, aciklama: e.target.value })} style={inpStyle} /></Field>
         </div>
-        <div className="flex gap-2 mt-5">
-          <button onClick={onClose} className="flex-1 px-3 py-2 rounded-md text-[12.5px]" style={{ background: 'rgba(255,255,255,0.05)', color: 'rgba(250,250,249,0.7)' }}>İptal</button>
-          <button onClick={save} disabled={saving} className="flex-1 px-3 py-2 rounded-md text-[12.5px] font-bold disabled:opacity-50" style={{ background: 'linear-gradient(135deg, #4ade80, #22c55e)', color: '#0a2e0a' }}>
-            {saving ? <Loader2 size={14} className="animate-spin inline" /> : 'Kaydet'}
-          </button>
-        </div>
-      </div>
-    </div>
-  );
-}
 
-const inpStyle: React.CSSProperties = { background: 'rgba(255,255,255,0.065)', border: '1px solid rgba(255,255,255,0.14)', color: TEXT, outline: 'none', fontSize: 14, fontWeight: 600 };
-function Field({ label, children }: { label: string; children: React.ReactNode }) {
-  return (
-    <div>
-      <label className="text-[12.5px] font-semibold block mb-1.5" style={{ color: MUTED }}>{label}</label>
-      {children}
-    </div>
-  );
-}
-
-// ==================== GENEL LİSTE (Hattat-tarzı toplu tablo) ====================
-
-type OzetSatir = {
-  id: string;
-  ad: string;
-  taxNumber?: string | null;
-  phone?: string | null;
-  email?: string | null;
-  aylikMuhasebeUcreti: number;
-  tahakkuk: number;
-  tahsilat: number;
-  bakiye: number;
-};
-
-function GenelListeView({ onSelect }: { onSelect: (id: string) => void }) {
-  const qc = useQueryClient();
-  const [search, setSearch] = useState('');
-  const [sadecaBakiyeli, setSadecaBakiyeli] = useState(false);
-  const [view, setView] = useState<'tablo' | 'kasa' | 'gelirGider' | 'butcePlan'>('kasa');
-  const [selectedIds] = useState<string[]>([]);
-  const [quickTahsilatId, setQuickTahsilatId] = useState<string | null>(null);
-  const [preview, setPreview] = useState<any | null>(null);
-  const [sending, setSending] = useState(false);
-  const yil = new Date().getFullYear();
-  const [baslangic, setBaslangic] = useState(`${yil}-01-01`);
-  const [bitis, setBitis] = useState(() => new Date().toISOString().slice(0, 10));
-  const [tarihAktif, setTarihAktif] = useState(false); // filtreye göre sorgula
-
-  const { data: ozet = [], isLoading } = useQuery<OzetSatir[]>({
-    queryKey: ['cari-ozet', tarihAktif ? baslangic : '', tarihAktif ? bitis : ''],
-    queryFn: () => {
-      const params: any = {};
-      if (tarihAktif) { params.baslangic = baslangic; params.bitis = bitis; }
-      return api.get('/cari-kasa/ozet', { params }).then((r) => r.data);
-    },
-    refetchInterval: 30000,
-  });
-
-  const { data: ajanda, isLoading: ajandaLoading } = useQuery<TahsilatAjandasi>({
-    queryKey: ['cari-tahsilat-ajandasi'],
-    queryFn: () => api.get('/cari-kasa/tahsilat-ajandasi').then((r) => r.data),
-    refetchInterval: 30000,
-  });
-
-  const filtered = useMemo(() => {
-    const s = search.toLocaleLowerCase('tr');
-    return ozet.filter((o) => {
-      if (sadecaBakiyeli && o.bakiye <= 0.004) return false;
-      if (s) {
-        const name = (o.ad || '').toLocaleLowerCase('tr');
-        const vkn = (o.taxNumber || '').toLowerCase();
-        if (!name.includes(s) && !vkn.includes(s)) return false;
-      }
-      return true;
-    });
-  }, [ozet, search, sadecaBakiyeli]);
-
-  const ajandaRows = useMemo(() => {
-    const s = search.toLocaleLowerCase('tr');
-    return (ajanda?.rows || []).filter((r) => {
-      if (sadecaBakiyeli && r.bakiye <= 0) return false;
-      if (!s) return true;
-      return (r.ad || '').toLocaleLowerCase('tr').includes(s)
-        || (r.taxNumber || '').toLocaleLowerCase('tr').includes(s)
-        || (r.phone || '').toLocaleLowerCase('tr').includes(s);
-    });
-  }, [ajanda, search, sadecaBakiyeli]);
-
-  const toplamlar = useMemo(() => {
-    let ucret = 0, tahakkuk = 0, tahsilat = 0, bakiye = 0;
-    for (const o of filtered) {
-      ucret += o.aylikMuhasebeUcreti;
-      tahakkuk += o.tahakkuk;
-      tahsilat += o.tahsilat;
-      bakiye += o.bakiye;
-    }
-    return { ucret, tahakkuk, tahsilat, bakiye };
-  }, [filtered]);
-
-  const indirExcelToplu = async () => {
-    try {
-      const params: any = {};
-      if (tarihAktif) { params.baslangic = baslangic; params.bitis = bitis; }
-      const resp = await api.get('/cari-kasa/ozet/xlsx', { params, responseType: 'blob' });
-      const url = URL.createObjectURL(new Blob([resp.data]));
-      const a = document.createElement('a');
-      a.href = url;
-      a.download = `Cari_Kasa_Ozet_${today()}.xlsx`;
-      document.body.appendChild(a);
-      a.click();
-      document.body.removeChild(a);
-      setTimeout(() => URL.revokeObjectURL(url), 5000);
-    } catch (e: any) {
-      toast.error(e?.response?.data?.message || 'Excel indirilemedi');
-    }
-  };
-
-  const selectedForReminder = selectedIds.length ? selectedIds : ajandaRows.filter((r) => r.whatsappUygun).map((r) => r.id);
-  const previewReminder = async () => {
-    const resp = await api.post('/cari-kasa/tahsilat-hatirlatma/preview', { taxpayerIds: selectedForReminder });
-    setPreview(resp.data);
-  };
-  const sendReminder = async () => {
-    setSending(true);
-    try {
-      const resp = await api.post('/cari-kasa/tahsilat-hatirlatma/send', { taxpayerIds: selectedForReminder });
-      setPreview(resp.data);
-      toast.success(`${resp.data.basarili || 0} WhatsApp gonderildi`);
-      qc.invalidateQueries({ queryKey: ['cari-tahsilat-ajandasi'] });
-    } catch (e: any) {
-      toast.error(e?.response?.data?.message || 'WhatsApp gonderilemedi');
-    } finally {
-      setSending(false);
-    }
-  };
-
-  const indirExcel = () => {
-    // Basit tarayıcı Excel oluşturma: HTML table → Excel indirme yerine
-    // server-side ozet-xlsx ileride eklenebilir. Şimdilik kullanıcı
-    // mükellef seçip ekstre alır.
-    toast.info('Toplu Excel için her mükellefe girip Ekstre İndir kullanın (ileride toplu eklenir)');
-  };
-
-  return (
-    <div className="p-6 space-y-4" style={{ fontFamily: SANS }}>
-      <div className="flex items-center justify-between">
-        <div>
-          <div className="text-[12px] font-bold uppercase tracking-[.08em] mb-1" style={{ color: GOLD }}>
-            Finansal Takip · Cari
-          </div>
-          <h1 className="font-semibold" style={{ fontSize: 30, color: TEXT, fontFamily: SANS, letterSpacing: 0 }}>
-            Cari Kasa
-          </h1>
-          <p className="text-[14px] mt-1 font-medium" style={{ color: SOFT }}>
-            Tüm mükellefler · muhasebe ücreti + tahakkuk + tahsilat + bakiye. Mükellefe tıkla, detaya gir.
-          </p>
+        {/* Bilgi şeridi: kalan bakiye */}
+        <div className="mt-5 flex items-center justify-between rounded-xl px-4 py-3" style={{ background: 'rgba(230,200,120,0.06)', border: '1px solid rgba(230,200,120,0.15)' }}>
+          <span className="text-[13px]" style={{ color: '#a1a1aa' }}>Bu tahsilat sonrası kalan bakiye</span>
+          <span className="text-[16px] font-bold tabular-nums" style={{ color: GOLD }}>{fmt(kalanBakiye)} ₺</span>
         </div>
       </div>
-
-      {/* Tablo / İstatistik tab */}
-      <div className="flex gap-1.5">
-        {([
-          ['tablo', 'Cari Liste'],
-          ['kasa', 'Kasa/Banka'],
-          ['gelirGider', 'Gelir-Gider Tablosu'],
-          ['butcePlan', 'Bütçe Planı'],
-        ] as const).map(([t, label]) => {
-          const active = view === t;
-          return (
-            <button
-              key={t}
-              onClick={() => setView(t)}
-              className="px-4 py-2.5 rounded-[10px] text-[14px] font-semibold"
-              style={{
-                background: active ? 'rgba(184,160,111,0.20)' : 'rgba(255,255,255,0.055)',
-                color: active ? '#f0d99f' : MUTED,
-                border: `1px solid ${active ? 'rgba(184,160,111,0.45)' : 'rgba(255,255,255,0.12)'}`,
-              }}
-            >
-              {label}
-            </button>
-          );
-        })}
-      </div>
-
-      {view === 'kasa' && <KasaBankaView />}
-
-      {view === 'gelirGider' && <GelirGiderTablosuView />}
-
-      {view === 'butcePlan' && <ButcePlanView />}
-
-      {view === 'tablo' && (
-      <>
-      <TahsilatAjandasiSummary
-        rows={ajandaRows}
-        data={ajanda}
-        isLoading={ajandaLoading}
-        onPreview={previewReminder}
-        onSend={sendReminder}
-        sending={sending}
-        preview={preview}
-        onQuickTahsilat={setQuickTahsilatId}
-        onOpen={onSelect}
-      />
-
-      {/* Tarih filtresi */}
-      <div className="rounded-[10px] p-4 border flex items-end gap-3 flex-wrap" style={{ background: 'rgba(255,255,255,0.045)', borderColor: 'rgba(255,255,255,0.14)' }}>
-        <div>
-          <label className="text-[12.5px] font-semibold block mb-1.5" style={{ color: MUTED }}>Dönem-1</label>
-          <input type="date" value={baslangic} onChange={(e) => setBaslangic(e.target.value)} className="px-3 py-2.5 rounded-md text-[14px] outline-none" style={inpStyle} />
-        </div>
-        <div>
-          <label className="text-[12.5px] font-semibold block mb-1.5" style={{ color: MUTED }}>Dönem-2</label>
-          <input type="date" value={bitis} onChange={(e) => setBitis(e.target.value)} className="px-3 py-2.5 rounded-md text-[14px] outline-none" style={inpStyle} />
-        </div>
-        <button
-          onClick={() => setTarihAktif((v) => !v)}
-          className="px-4 py-2.5 rounded-md text-[13px] font-bold"
-          style={{
-            background: tarihAktif ? 'linear-gradient(135deg, #f59e0b, #d97706)' : 'rgba(245,158,11,0.12)',
-            color: tarihAktif ? '#fff' : '#f59e0b',
-            border: '1px solid rgba(245,158,11,0.3)',
-          }}
-        >
-          {tarihAktif ? '✓ Tarih Filtresi Aktif' : '☐ Tarihe Göre Filtrele'}
-        </button>
-        <div className="text-[13px] font-medium ml-auto self-center" style={{ color: SOFT }}>
-          {tarihAktif ? `Borç/Alacak sadece ${baslangic} – ${bitis} arasında` : 'Tüm zamanlar'}
-        </div>
-      </div>
-
-      {/* Arama ve diğer filtreler */}
-      <div className="rounded-[10px] p-4 border flex items-center gap-3 flex-wrap" style={{ background: 'rgba(255,255,255,0.045)', borderColor: 'rgba(255,255,255,0.14)' }}>
-        <div className="relative flex-1 min-w-[250px]">
-          <Search size={15} style={{ position: 'absolute', left: 10, top: '50%', transform: 'translateY(-50%)', color: SOFT }} />
-          <input
-            value={search}
-            onChange={(e) => setSearch(e.target.value)}
-            placeholder="Mükellef ara… ad veya VKN"
-            className="w-full pl-9 pr-3 py-2.5 rounded-md text-[14px] font-medium outline-none"
-            style={inpStyle}
-          />
-        </div>
-        <label className="flex items-center gap-2 cursor-pointer text-[14px] font-medium" style={{ color: MUTED }}>
-          <input
-            type="checkbox"
-            checked={sadecaBakiyeli}
-            onChange={(e) => setSadecaBakiyeli(e.target.checked)}
-          />
-          <span>Sadece açık borcu olanlar</span>
-        </label>
-        <button
-          onClick={indirExcelToplu}
-          className="px-3 py-2 rounded-md text-[13px] font-semibold inline-flex items-center gap-1.5"
-          style={{ background: 'rgba(74,222,128,0.14)', color: '#4ade80', border: '1px solid rgba(74,222,128,0.34)' }}
-        >
-          <Download size={13} /> Excel
-        </button>
-      </div>
-      </>
-      )}
-
-      {/* Tablo — sadece tablo view'da */}
-      {view === 'tablo' && (
-      <div className="rounded-[10px] border overflow-hidden" style={{ background: 'rgba(255,255,255,0.045)', borderColor: 'rgba(255,255,255,0.14)' }}>
-        {isLoading && (
-          <div className="py-8 text-center text-[14px] font-medium" style={{ color: MUTED }}>
-            <Loader2 className="animate-spin inline mr-2" size={16} />Yükleniyor…
-          </div>
-        )}
-        {!isLoading && filtered.length === 0 && (
-          <div className="py-10 text-center text-[14px] font-medium" style={{ color: MUTED }}>
-            {ozet.length === 0 ? 'Henüz cari hareket yok — mükellefe tıklayıp hizmet tanımlayın.' : 'Filtreye uyan kayıt yok'}
-          </div>
-        )}
-        {!isLoading && filtered.length > 0 && (
-          <div className="overflow-x-auto">
-            <table className="w-full text-[13.5px]">
-              <thead>
-                <tr style={{ background: 'rgba(255,255,255,0.035)', color: MUTED }}>
-                  <th className="text-left px-4 py-2.5 font-semibold">Mükellef</th>
-                  <th className="text-right px-4 py-2.5 font-semibold">Muhasebe Ücreti</th>
-                  <th className="text-right px-4 py-2.5 font-semibold">Borç (Hizmet)</th>
-                  <th className="text-right px-4 py-2.5 font-semibold">Alacak (Tahsilat)</th>
-                  <th className="text-right px-4 py-2.5 font-semibold">Bakiye</th>
-                  <th className="text-center px-4 py-2.5 font-semibold">İşlemler</th>
-                </tr>
-              </thead>
-              <tbody style={{ color: '#fafaf9' }}>
-                {filtered.map((o) => (
-                  <tr
-                    key={o.id}
-                    onClick={() => onSelect(o.id)}
-                    className="cursor-pointer transition-colors"
-                    style={{ borderTop: '1px solid rgba(255,255,255,0.08)' }}
-                    onMouseEnter={(e) => (e.currentTarget.style.background = 'rgba(184,160,111,0.04)')}
-                    onMouseLeave={(e) => (e.currentTarget.style.background = 'transparent')}
-                  >
-                    <td className="px-4 py-2.5">
-                      <div className="font-semibold truncate max-w-[320px]" style={{ color: TEXT }}>{o.ad}</div>
-                      {o.taxNumber && (
-                        <div className="text-[12px] font-medium tabular-nums" style={{ fontFamily: MONEY, color: SOFT }}>
-                          {o.taxNumber}
-                        </div>
-                      )}
-                    </td>
-                    <td className="px-4 py-2.5 text-right tabular-nums" style={{ fontFamily: MONEY, color: o.aylikMuhasebeUcreti ? '#d4b876' : 'rgba(250,250,249,0.3)' }}>
-                      {o.aylikMuhasebeUcreti ? `${fmt(o.aylikMuhasebeUcreti)} ₺` : '—'}
-                    </td>
-                    <td className="px-4 py-2.5 text-right tabular-nums" style={{ fontFamily: MONEY, color: o.tahakkuk ? '#60a5fa' : 'rgba(250,250,249,0.3)' }}>
-                      {o.tahakkuk ? `${fmt(o.tahakkuk)} ₺` : '—'}
-                    </td>
-                    <td className="px-4 py-2.5 text-right tabular-nums" style={{ fontFamily: MONEY, color: o.tahsilat ? '#4ade80' : 'rgba(250,250,249,0.3)' }}>
-                      {o.tahsilat ? `${fmt(o.tahsilat)} ₺` : '—'}
-                    </td>
-                    <td
-                      className="px-4 py-2.5 text-right tabular-nums font-bold"
-                      style={{
-                        fontFamily: MONEY,
-                        color: o.bakiye > 0 ? '#fca5a5' : o.bakiye < 0 ? '#86efac' : 'rgba(250,250,249,0.4)',
-                      }}
-                    >
-                      {o.bakiye !== 0 ? `${fmt(o.bakiye)} ₺` : '0,00 ₺'}
-                    </td>
-                    <td className="px-4 py-2.5">
-                      <div className="flex items-center justify-center gap-1" onClick={(e) => e.stopPropagation()}>
-                        <IconBtn color="#4ade80" title="Düzenle" onClick={() => onSelect(o.id)}><Edit3 size={13} /></IconBtn>
-                        <IconBtn color={BORDO} title="Tahsilat" onClick={() => onSelect(o.id)}><Plus size={13} /></IconBtn>
-                        <IconBtn color="#a78bfa" title="Hareketler" onClick={() => onSelect(o.id)}><Receipt size={13} /></IconBtn>
-                        <IconBtn color="#fbbf24" title="Ekstre" onClick={() => onSelect(o.id)}><FileText size={13} /></IconBtn>
-                      </div>
-                    </td>
-                  </tr>
-                ))}
-              </tbody>
-              <tfoot>
-                <tr style={{ background: 'rgba(156,70,86,0.08)', borderTop: '2px solid rgba(156,70,86,0.3)', fontWeight: 700 }}>
-                  <td className="px-4 py-3" style={{ color: BORDO }}>TOPLAM ({filtered.length})</td>
-                  <td className="px-4 py-3 text-right tabular-nums" style={{ fontFamily: MONEY, color: GOLD }}>
-                    {fmt(toplamlar.ucret)} ₺
-                  </td>
-                  <td className="px-4 py-3 text-right tabular-nums" style={{ fontFamily: MONEY, color: '#60a5fa' }}>
-                    {fmt(toplamlar.tahakkuk)} ₺
-                  </td>
-                  <td className="px-4 py-3 text-right tabular-nums" style={{ fontFamily: MONEY, color: '#4ade80' }}>
-                    {fmt(toplamlar.tahsilat)} ₺
-                  </td>
-                  <td className="px-4 py-3 text-right tabular-nums" style={{ fontFamily: MONEY, color: BORDO, fontSize: 14 }}>
-                    {fmt(toplamlar.bakiye)} ₺
-                  </td>
-                  <td></td>
-                </tr>
-              </tfoot>
-            </table>
-          </div>
-        )}
-      </div>
-      )}
-
-      {quickTahsilatId && (
-        <TahsilatModal
-          taxpayerId={quickTahsilatId}
-          onClose={() => setQuickTahsilatId(null)}
-          onSaved={() => {
-            setQuickTahsilatId(null);
-            qc.invalidateQueries({ queryKey: ['cari-tahsilat-ajandasi'] });
-            qc.invalidateQueries({ queryKey: ['cari-ozet'] });
-            qc.invalidateQueries({ queryKey: ['cari-cashflow-summary'] });
-            qc.invalidateQueries({ queryKey: ['cari-budget-summary'] });
-          }}
-        />
-      )}
-    </div>
-  );
-}
-
-function IconBtn({ children, color, title, onClick }: { children: React.ReactNode; color: string; title: string; onClick: () => void }) {
-  return (
-    <button
-      onClick={onClick}
-      title={title}
-      className="p-1.5 rounded-md transition"
-      style={{ background: `${color}22`, color, border: `1px solid ${color}40` }}
-    >
-      {children}
-    </button>
-  );
-}
-
-// ==================== İSTATİSTİKLER TAB ====================
-
-function TahsilatAjandasiSummary({
-  rows, isLoading, onPreview, onSend, sending, preview, onQuickTahsilat, onOpen,
-}: {
-  rows: TahsilatAjandaRow[];
-  data?: TahsilatAjandasi;
-  isLoading: boolean;
-  onPreview: () => void;
-  onSend: () => void;
-  sending: boolean;
-  preview: any | null;
-  onQuickTahsilat: (id: string) => void;
-  onOpen: (id: string) => void;
-}) {
-  const riskyRows = rows
-    .filter((r) => r.bakiye > 0)
-    .sort((a, b) => b.bakiye - a.bakiye)
-    .slice(0, 5);
-  const toplamBakiye = rows.reduce((sum, r) => sum + Math.max(r.bakiye, 0), 0);
-  const whatsappCount = rows.filter((r) => r.whatsappUygun).length;
-
-  return (
-    <div className="rounded-[10px] border overflow-hidden" style={{ background: 'rgba(255,255,255,0.045)', borderColor: 'rgba(255,255,255,0.14)' }}>
-      <div className="px-4 py-3 flex flex-wrap items-center justify-between gap-3" style={{ borderBottom: '1px solid rgba(255,255,255,0.08)' }}>
-        <div>
-          <h3 className="text-[16px] font-semibold" style={{ color: TEXT }}>Tahsilat Özeti</h3>
-          <p className="mt-0.5 text-[12.5px] font-medium" style={{ color: SOFT }}>
-            Cari liste içinde açık bakiye ve hızlı tahsilat takibi.
-          </p>
-        </div>
-        <div className="flex flex-wrap items-center gap-2">
-          <button onClick={onPreview} className="px-3 py-2 rounded-md text-[13px] font-semibold" style={{ background: 'rgba(212,184,118,0.14)', color: GOLD, border: '1px solid rgba(212,184,118,0.34)' }}>
-            WhatsApp Önizle
-          </button>
-          <button onClick={onSend} disabled={sending} className="px-3 py-2 rounded-md text-[13px] font-bold disabled:opacity-50" style={{ background: `linear-gradient(135deg, ${GOLD}, #b8a06f)`, color: '#0f0d0b' }}>
-            {sending ? <Loader2 size={13} className="animate-spin inline mr-1" /> : <Send size={13} className="inline mr-1" />} Gönder
-          </button>
-        </div>
-      </div>
-
-      <div className="grid grid-cols-1 lg:grid-cols-[360px_minmax(0,1fr)]">
-        <div className="grid grid-cols-2 gap-2 p-4" style={{ borderRight: '1px solid rgba(255,255,255,0.07)' }}>
-          <SmallSummary label="Açık Bakiye" value={`${fmt(toplamBakiye)} TL`} color={BORDO} />
-          <SmallSummary label="Borçlu" value={rows.filter((r) => r.bakiye > 0).length.toString()} color={GOLD} />
-          <SmallSummary label="WhatsApp" value={whatsappCount.toString()} color="#4ade80" />
-          <SmallSummary label="90+ Risk" value={rows.filter((r) => r.maxBucket === '90+').length.toString()} color="#fca5a5" />
-        </div>
-
-        <div className="min-w-0 p-4">
-          {isLoading ? (
-            <div className="py-5 text-center text-[13px] font-medium" style={{ color: MUTED }}>
-              <Loader2 className="animate-spin inline mr-2" size={15} /> Tahsilat özeti yükleniyor...
-            </div>
-          ) : riskyRows.length === 0 ? (
-            <div className="py-5 text-center text-[13px] font-medium" style={{ color: MUTED }}>
-              Açık tahsilat bakiyesi yok.
-            </div>
-          ) : (
-            <div className="space-y-2">
-              {riskyRows.map((row) => (
-                <div key={row.id} className="grid grid-cols-[minmax(0,1fr)_120px_88px] items-center gap-3 rounded-[8px] px-3 py-2" style={{ background: 'rgba(255,255,255,0.035)', border: '1px solid rgba(255,255,255,0.07)' }}>
-                  <button onClick={() => onOpen(row.id)} className="min-w-0 text-left">
-                    <div className="truncate text-[13.5px] font-semibold" style={{ color: TEXT }}>{row.ad}</div>
-                    <div className="truncate text-[12px] font-medium" style={{ color: SOFT }}>{row.phone || 'telefon yok'} · {row.maxBucket}</div>
-                  </button>
-                  <div className="text-right text-[13px] font-bold tabular-nums" style={{ color: BORDO, fontFamily: MONEY }}>{fmt(row.bakiye)} TL</div>
-                  <button onClick={() => onQuickTahsilat(row.id)} className="rounded-[7px] px-2 py-1.5 text-[12px] font-bold" style={{ background: 'rgba(74,222,128,0.12)', color: '#4ade80', border: '1px solid rgba(74,222,128,0.26)' }}>
-                    Tahsilat
-                  </button>
-                </div>
-              ))}
-            </div>
-          )}
-        </div>
-      </div>
-
-      {preview && (
-        <div className="px-4 py-3 text-[13px] font-medium" style={{ borderTop: '1px solid rgba(255,255,255,0.08)', color: MUTED }}>
-          WhatsApp önizleme: <b style={{ color: '#4ade80' }}>{preview.gonderilecek}</b> gönderilecek, <b style={{ color: '#fca5a5' }}>{preview.atlanacak}</b> atlanacak.
-        </div>
-      )}
-    </div>
-  );
-}
-
-function SmallSummary({ label, value, color }: { label: string; value: string; color: string }) {
-  return (
-    <div className="rounded-[8px] px-3 py-2" style={{ background: 'rgba(0,0,0,0.14)', border: '1px solid rgba(255,255,255,0.07)' }}>
-      <div className="text-[11.5px] font-semibold" style={{ color: SOFT }}>{label}</div>
-      <div className="mt-1 text-[16px] font-bold tabular-nums" style={{ color, fontFamily: MONEY }}>{value}</div>
-    </div>
-  );
-}
-
-function TahsilatAjandasiView({
-  rows, data, isLoading, selectedIds, onToggle, onSelectAll, onClear, onPreview, onSend, sending, preview, onQuickTahsilat, onOpen,
-}: {
-  rows: TahsilatAjandaRow[];
-  data?: TahsilatAjandasi;
-  isLoading: boolean;
-  selectedIds: string[];
-  onToggle: (id: string) => void;
-  onSelectAll: () => void;
-  onClear: () => void;
-  onPreview: () => void;
-  onSend: () => void;
-  sending: boolean;
-  preview: any | null;
-  onQuickTahsilat: (id: string) => void;
-  onOpen: (id: string) => void;
-}) {
-  const selectedCount = selectedIds.length;
-  const borcluCount = rows.filter((r) => r.bakiye > 0).length;
-  const whatsappCount = rows.filter((r) => r.whatsappUygun).length;
-  const toplamBakiye = rows.reduce((sum, r) => sum + r.bakiye, 0);
-  const bucketCards = [
-    ['Guncel', data?.totals.current || 0, '#94a3b8'],
-    ['1-30', data?.totals.d1_30 || 0, '#60a5fa'],
-    ['31-60', data?.totals.d31_60 || 0, '#fbbf24'],
-    ['61-90', data?.totals.d61_90 || 0, '#fb7185'],
-    ['90+', data?.totals.d90plus || 0, '#ef4444'],
-  ] as const;
-
-  return (
-    <div className="space-y-3">
-      <div className="grid grid-cols-2 lg:grid-cols-4 gap-3">
-        <div className="rounded-[10px] p-4 border" style={{ background: 'rgba(156,70,86,0.10)', borderColor: 'rgba(156,70,86,0.32)' }}>
-          <div className="text-[12.5px] font-semibold" style={{ color: MUTED }}>Açık Bakiye</div>
-          <div className="text-[24px] font-bold mt-1 tabular-nums" style={{ color: BORDO, fontFamily: MONEY }}>{fmt(toplamBakiye)} TL</div>
-        </div>
-        <div className="rounded-[10px] p-4 border" style={{ background: 'rgba(212,184,118,0.09)', borderColor: 'rgba(212,184,118,0.30)' }}>
-          <div className="text-[12.5px] font-semibold" style={{ color: MUTED }}>Borçlu Mükellef</div>
-          <div className="text-[24px] font-bold mt-1 tabular-nums" style={{ color: GOLD, fontFamily: MONEY }}>{borcluCount}</div>
-        </div>
-        <div className="rounded-[10px] p-4 border" style={{ background: 'rgba(34,197,94,0.09)', borderColor: 'rgba(34,197,94,0.30)' }}>
-          <div className="text-[12.5px] font-semibold" style={{ color: MUTED }}>WhatsApp Uygun</div>
-          <div className="text-[24px] font-bold mt-1 tabular-nums" style={{ color: '#4ade80', fontFamily: MONEY }}>{whatsappCount}</div>
-        </div>
-        <div className="rounded-[10px] p-4 border" style={{ background: 'rgba(239,68,68,0.09)', borderColor: 'rgba(239,68,68,0.30)' }}>
-          <div className="text-[12.5px] font-semibold" style={{ color: MUTED }}>90+ Gün Risk</div>
-          <div className="text-[24px] font-bold mt-1 tabular-nums" style={{ color: '#fca5a5', fontFamily: MONEY }}>{rows.filter((r) => r.maxBucket === '90+').length}</div>
-        </div>
-      </div>
-      <div className="grid grid-cols-2 md:grid-cols-5 gap-3">
-        {bucketCards.map(([label, value, color]) => (
-          <div key={label} className="rounded-[10px] p-4 border" style={{ background: 'rgba(255,255,255,0.045)', borderColor: 'rgba(255,255,255,0.14)' }}>
-            <div className="text-[12.5px] font-semibold" style={{ color: MUTED }}>{label}</div>
-            <div className="text-[20px] font-bold mt-1 tabular-nums" style={{ color, fontFamily: MONEY }}>{fmt(value)} TL</div>
-          </div>
-        ))}
-      </div>
-      <div className="rounded-[10px] p-4 border flex flex-wrap items-center gap-2" style={{ background: 'rgba(156,70,86,0.08)', borderColor: 'rgba(156,70,86,0.30)' }}>
-        <MessageCircle size={16} style={{ color: BORDO }} />
-        <div className="text-[14px] font-semibold mr-auto" style={{ color: TEXT }}>
-          {selectedCount ? `${selectedCount} mukellef secildi` : 'Secim yoksa WhatsApp uygun tum borclular hedeflenir'}
-        </div>
-        <button onClick={onSelectAll} className="px-3 py-2 rounded-md text-[13px] font-semibold" style={{ background: 'rgba(255,255,255,0.06)', color: TEXT, border: '1px solid rgba(255,255,255,0.14)' }}>
-          <CheckSquare size={13} className="inline mr-1" /> Uygunlari Sec
-        </button>
-        <button onClick={onClear} className="px-3 py-2 rounded-md text-[13px] font-semibold" style={{ background: 'rgba(255,255,255,0.05)', color: MUTED }}>Temizle</button>
-        <button onClick={onPreview} className="px-3 py-2 rounded-md text-[13px] font-semibold" style={{ background: 'rgba(212,184,118,0.14)', color: GOLD, border: '1px solid rgba(212,184,118,0.34)' }}>Önizle</button>
-        <button onClick={onSend} disabled={sending} className="px-3 py-2 rounded-md text-[13px] font-bold disabled:opacity-50" style={{ background: `linear-gradient(135deg, ${GOLD}, #b8a06f)`, color: '#0f0d0b' }}>
-          {sending ? <Loader2 size={13} className="animate-spin inline mr-1" /> : <Send size={13} className="inline mr-1" />} Gönder
-        </button>
-      </div>
-      {preview && (
-        <div className="rounded-[10px] p-4 border text-[14px] font-medium" style={{ background: 'rgba(255,255,255,0.045)', borderColor: 'rgba(255,255,255,0.14)', color: MUTED }}>
-          WhatsApp onizleme: <b style={{ color: '#4ade80' }}>{preview.gonderilecek}</b> gonderilecek, <b style={{ color: '#fca5a5' }}>{preview.atlanacak}</b> atlanacak.
-          {!preview.whatsapp?.ready && <span style={{ color: '#fbbf24' }}> WhatsApp ayari eksik: {preview.whatsapp?.error}</span>}
-        </div>
-      )}
-      <div className="rounded-[10px] border overflow-hidden" style={{ background: 'rgba(255,255,255,0.045)', borderColor: 'rgba(255,255,255,0.14)' }}>
-        {isLoading ? (
-          <div className="py-8 text-center text-[14px] font-medium" style={{ color: MUTED }}><Loader2 className="animate-spin inline mr-2" size={16} />Yükleniyor...</div>
-        ) : rows.length === 0 ? (
-          <div className="py-10 text-center text-[14px] font-medium" style={{ color: MUTED }}>Açık tahsilat bakiyesi yok.</div>
-        ) : (
-          <div className="overflow-x-auto">
-            <table className="w-full text-[13.5px]">
-              <thead>
-                <tr style={{ color: MUTED, background: 'rgba(255,255,255,0.035)' }}>
-                  <th className="px-3 py-2 text-left">Sec</th>
-                  <th className="px-3 py-2 text-left">Mukellef</th>
-                  <th className="px-3 py-2 text-right">Bakiye</th>
-                  <th className="px-3 py-2 text-center">Yas</th>
-                  <th className="px-3 py-2 text-left">Son Durum</th>
-                  <th className="px-3 py-2 text-center">Islem</th>
-                </tr>
-              </thead>
-              <tbody>
-                {rows.map((r) => (
-                  <tr key={r.id} style={{ borderTop: '1px solid rgba(255,255,255,0.04)', color: '#fafaf9' }}>
-                    <td className="px-3 py-2"><input type="checkbox" checked={selectedIds.includes(r.id)} onChange={() => onToggle(r.id)} disabled={!r.whatsappUygun} /></td>
-                    <td className="px-3 py-2">
-                      <button onClick={() => onOpen(r.id)} className="font-semibold text-left hover:underline">{r.ad}</button>
-                      <div className="text-[12px] font-medium" style={{ color: SOFT, fontFamily: MONEY }}>{r.taxNumber || '-'} - {r.phone || 'telefon yok'}</div>
-                    </td>
-                    <td className="px-3 py-2 text-right font-bold tabular-nums" style={{ color: BORDO, fontFamily: MONEY }}>{fmt(r.bakiye)} TL</td>
-                    <td className="px-3 py-2 text-center"><span className="px-2.5 py-1 rounded-md text-[11.5px] font-bold" style={{ background: r.maxBucket === '90+' ? 'rgba(239,68,68,0.16)' : 'rgba(212,184,118,0.12)', color: r.maxBucket === '90+' ? '#fca5a5' : GOLD }}>{r.maxBucket}</span></td>
-                    <td className="px-3 py-2 text-[12.5px] font-medium" style={{ color: MUTED }}>
-                      {r.sonTahsilatTarihi ? `Son tahsilat: ${new Date(r.sonTahsilatTarihi).toLocaleDateString('tr-TR')}` : 'Tahsilat yok'}<br />
-                      {r.sonHatirlatmaTarihi ? `Son hatirlatma: ${new Date(r.sonHatirlatmaTarihi).toLocaleDateString('tr-TR')}` : 'Hatirlatma yok'}
-                    </td>
-                    <td className="px-3 py-2">
-                      <div className="flex justify-center gap-1">
-                        {!r.whatsappUygun && <AlertTriangle size={14} style={{ color: '#fbbf24' }} />}
-                        <IconBtn color="#4ade80" title="Hizli tahsilat" onClick={() => onQuickTahsilat(r.id)}><Plus size={13} /></IconBtn>
-                        <IconBtn color="#a78bfa" title="Detay" onClick={() => onOpen(r.id)}><Receipt size={13} /></IconBtn>
-                      </div>
-                    </td>
-                  </tr>
-                ))}
-              </tbody>
-            </table>
-          </div>
-        )}
-      </div>
-    </div>
-  );
-}
-
-type IstatData = {
-  kpi: {
-    aylikHedef: number;
-    buAyTahakkuk: number;
-    buAyTahsilat: number;
-    gecenAyTahsilat: number;
-    toplamTahakkuk12Ay: number;
-    toplamTahsilat12Ay: number;
-    tahsilatOrani: number;
-    toplamAktifBorc: number;
-    borcluMukellefAdet: number;
-  };
-  trend: Array<{ ay: string; tahakkuk: number; tahsilat: number }>;
-  odemeYontemi: Array<{ yontem: string; tutar: number }>;
-  enBorclular: Array<{ id: string; ad: string; taxNumber?: string | null; bakiye: number }>;
-};
-
-function IstatistiklerView() {
-  const router = useRouter();
-  const { data, isLoading } = useQuery<IstatData>({
-    queryKey: ['cari-istatistik'],
-    queryFn: () => api.get('/cari-kasa/istatistikler').then((r) => r.data),
-    refetchInterval: 60000,
-  });
-
-  if (isLoading || !data) {
-    return <div className="py-10 text-center" style={{ color: 'rgba(250,250,249,0.5)' }}><Loader2 className="animate-spin inline mr-2" size={16} />Hesaplanıyor…</div>;
-  }
-
-  const { kpi, trend, odemeYontemi, enBorclular } = data;
-  const maxTrend = Math.max(...trend.map((t) => Math.max(t.tahakkuk, t.tahsilat)), 1);
-  const yontemToplam = odemeYontemi.reduce((s, o) => s + o.tutar, 0);
-
-  return (
-    <div className="space-y-4">
-      {/* KPI kartları */}
-      <div className="grid grid-cols-2 md:grid-cols-4 gap-3">
-        <StatCard label="Aylık Hedef" value={kpi.aylikHedef} color={GOLD} sub="aktif hizmet toplamı" />
-        <StatCard label="Bu Ay Tahakkuk" value={kpi.buAyTahakkuk} color="#60a5fa" />
-        <StatCard label="Bu Ay Tahsilat" value={kpi.buAyTahsilat} color="#4ade80" sub={`Geçen ay: ${fmt(kpi.gecenAyTahsilat)} ₺`} />
-        <StatCard label="Aktif Borç" value={kpi.toplamAktifBorc} color={BORDO} highlight sub={`${kpi.borcluMukellefAdet} mükellef`} />
-      </div>
-      <div className="grid grid-cols-2 md:grid-cols-3 gap-3">
-        <StatCard label="12 Ay Tahakkuk" value={kpi.toplamTahakkuk12Ay} color="#60a5fa" />
-        <StatCard label="12 Ay Tahsilat" value={kpi.toplamTahsilat12Ay} color="#4ade80" />
-        <StatCard
-          label="Tahsilat Oranı"
-          text={`%${kpi.tahsilatOrani.toFixed(1)}`}
-          color={kpi.tahsilatOrani > 80 ? '#4ade80' : kpi.tahsilatOrani > 50 ? '#fbbf24' : '#fca5a5'}
-          sub="son 12 ay"
-        />
-      </div>
-
-      {/* Aylık trend bar chart */}
-      <div className="rounded-2xl p-5 border" style={{ background: 'rgba(255,255,255,0.02)', borderColor: 'rgba(255,255,255,0.05)' }}>
-        <h3 className="text-[13px] font-semibold mb-4" style={{ color: '#fafaf9' }}>Aylık Tahakkuk vs Tahsilat (Son 12 Ay)</h3>
-        <div className="flex items-end gap-1.5 h-[200px] mb-2">
-          {trend.map((t) => (
-            <div key={t.ay} className="flex-1 flex flex-col items-center gap-0.5 justify-end" title={`${t.ay}: Tahakkuk ${fmt(t.tahakkuk)} · Tahsilat ${fmt(t.tahsilat)}`}>
-              <div className="w-full flex gap-0.5 items-end" style={{ height: 180 }}>
-                <div style={{ flex: 1, height: `${(t.tahakkuk / maxTrend) * 180}px`, background: '#60a5fa', borderRadius: '2px 2px 0 0', minHeight: 2 }} />
-                <div style={{ flex: 1, height: `${(t.tahsilat / maxTrend) * 180}px`, background: '#4ade80', borderRadius: '2px 2px 0 0', minHeight: 2 }} />
-              </div>
-              <div className="text-[9.5px] mt-1" style={{ color: 'rgba(250,250,249,0.5)' }}>{t.ay.split('-')[1]}/{t.ay.split('-')[0].slice(2)}</div>
-            </div>
-          ))}
-        </div>
-        <div className="flex justify-center gap-4 text-[11px]" style={{ color: 'rgba(250,250,249,0.6)' }}>
-          <span><span style={{ display: 'inline-block', width: 10, height: 10, background: '#60a5fa', borderRadius: 2, marginRight: 4 }} />Tahakkuk</span>
-          <span><span style={{ display: 'inline-block', width: 10, height: 10, background: '#4ade80', borderRadius: 2, marginRight: 4 }} />Tahsilat</span>
-        </div>
-      </div>
-
-      <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
-        {/* Ödeme yöntemi dağılımı */}
-        <div className="rounded-2xl p-5 border" style={{ background: 'rgba(255,255,255,0.02)', borderColor: 'rgba(255,255,255,0.05)' }}>
-          <h3 className="text-[13px] font-semibold mb-3" style={{ color: '#fafaf9' }}>Ödeme Yöntemi Dağılımı (12 ay)</h3>
-          {odemeYontemi.length === 0 ? (
-            <p className="text-[12px]" style={{ color: 'rgba(250,250,249,0.4)' }}>Tahsilat yok</p>
-          ) : (
-            <div className="space-y-2">
-              {odemeYontemi.map((y) => {
-                const pct = yontemToplam > 0 ? (y.tutar / yontemToplam) * 100 : 0;
-                return (
-                  <div key={y.yontem}>
-                    <div className="flex justify-between text-[12px] mb-1" style={{ color: '#fafaf9' }}>
-                      <span>{y.yontem}</span>
-                      <span className="tabular-nums" style={{ fontFamily: MONEY }}>{fmt(y.tutar)} ₺ · %{pct.toFixed(1)}</span>
-                    </div>
-                    <div style={{ background: 'rgba(255,255,255,0.05)', height: 8, borderRadius: 4, overflow: 'hidden' }}>
-                      <div style={{ width: `${pct}%`, height: '100%', background: 'linear-gradient(90deg, #4ade80, #22c55e)' }} />
-                    </div>
-                  </div>
-                );
-              })}
-            </div>
-          )}
-        </div>
-
-        {/* En borçlu 10 */}
-        <div className="rounded-2xl p-5 border" style={{ background: 'rgba(156,70,86,0.05)', borderColor: 'rgba(156,70,86,0.2)' }}>
-          <h3 className="text-[13px] font-semibold mb-3" style={{ color: BORDO }}>En Yüksek 10 Borç</h3>
-          {enBorclular.length === 0 ? (
-            <p className="text-[12px]" style={{ color: 'rgba(250,250,249,0.4)' }}>Borçlu mükellef yok 🎉</p>
-          ) : (
-            <div className="space-y-1.5">
-              {enBorclular.map((b, i) => (
-                <div
-                  key={b.id}
-                  onClick={() => router.push(`/panel/cari-kasa?mukellef=${b.id}`)}
-                  className="flex items-center gap-2 p-2 rounded-md cursor-pointer transition"
-                  style={{ background: 'rgba(255,255,255,0.02)' }}
-                  onMouseEnter={(e) => (e.currentTarget.style.background = 'rgba(156,70,86,0.1)')}
-                  onMouseLeave={(e) => (e.currentTarget.style.background = 'rgba(255,255,255,0.02)')}
-                >
-                  <span className="text-[11px] font-bold w-6" style={{ color: 'rgba(250,250,249,0.4)' }}>#{i + 1}</span>
-                  <div className="flex-1 min-w-0">
-                    <div className="text-[12.5px] font-semibold truncate" style={{ color: '#fafaf9' }}>{b.ad}</div>
-                    {b.taxNumber && <div className="text-[10px]" style={{ color: 'rgba(250,250,249,0.4)', fontFamily: MONEY }}>{b.taxNumber}</div>}
-                  </div>
-                  <div className="text-[13px] font-bold tabular-nums" style={{ fontFamily: MONEY, color: BORDO }}>
-                    {fmt(b.bakiye)} ₺
-                  </div>
-                </div>
-              ))}
-            </div>
-          )}
-        </div>
-      </div>
-    </div>
-  );
-}
-
-function StatCard({ label, value, text, color, sub, highlight }: { label: string; value?: number; text?: string; color: string; sub?: string; highlight?: boolean }) {
-  return (
-    <div className="rounded-[10px] p-4 border" style={{
-      background: highlight ? 'rgba(156,70,86,0.10)' : 'rgba(255,255,255,0.045)',
-      borderColor: highlight ? 'rgba(156,70,86,0.34)' : 'rgba(255,255,255,0.14)',
-    }}>
-      <div className="text-[12.5px] font-semibold mb-2" style={{ color: MUTED }}>{label}</div>
-      <div className="text-[24px] font-bold tabular-nums" style={{ fontFamily: MONEY, color }}>
-        {text ?? `${fmt(value)} ₺`}
-      </div>
-      {sub && <div className="text-[12.5px] font-medium mt-1" style={{ color: SOFT }}>{sub}</div>}
-    </div>
+    </ModalShell>
   );
 }
