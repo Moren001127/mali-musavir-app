@@ -937,6 +937,50 @@ export class CariKasaService {
       .sort((a: any, b: any) => collator.compare(a.ad, b.ad));
   }
 
+  // ===== GEÇİCİ BAKIM: bozuk Türkçe karakter (encoding) onarımı — Hattat import kalıntısı =====
+  // hizmetAdi alanında "?" içeren kayıtları raporlar.
+  async encodingRapor(tenantId: string) {
+    const hizmetler = await (this.prisma as any).cariHizmet.findMany({
+      where: { tenantId, hizmetAdi: { contains: '?' } },
+      select: { hizmetAdi: true },
+    });
+    const map = new Map<string, number>();
+    for (const h of hizmetler) map.set(h.hizmetAdi, (map.get(h.hizmetAdi) || 0) + 1);
+    return {
+      toplam: hizmetler.length,
+      kaliplar: Array.from(map.entries())
+        .map(([value, count]) => ({ value, count }))
+        .sort((a, b) => b.count - a.count),
+    };
+  }
+
+  // Bilinen güvenli Türkçe kelime kalıplarını onarır; çözülemeyen kayıtları "kalan" olarak döner.
+  async encodingDuzelt(tenantId: string) {
+    const REPLACEMENTS: Array<[string, string]> = [
+      ['Muhasebe ?creti', 'Muhasebe Ücreti'],
+      ['?creti', 'Ücreti'],
+      ['?cret', 'Ücret'],
+      ['?denek', 'Ödenek'],
+      ['?demesi', 'Ödemesi'],
+    ];
+    const hizmetler = await (this.prisma as any).cariHizmet.findMany({
+      where: { tenantId, hizmetAdi: { contains: '?' } },
+      select: { id: true, hizmetAdi: true },
+    });
+    let guncellenen = 0;
+    const kalan = new Set<string>();
+    for (const h of hizmetler) {
+      let yeni = h.hizmetAdi as string;
+      for (const [from, to] of REPLACEMENTS) yeni = yeni.split(from).join(to);
+      if (yeni !== h.hizmetAdi) {
+        await (this.prisma as any).cariHizmet.update({ where: { id: h.id }, data: { hizmetAdi: yeni } });
+        guncellenen++;
+      }
+      if (yeni.includes('?')) kalan.add(yeni);
+    }
+    return { guncellenen, kalan: Array.from(kalan) };
+  }
+
   private roundMoney(n: number) {
     return Math.round(n * 100) / 100;
   }
