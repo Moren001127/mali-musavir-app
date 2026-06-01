@@ -22,6 +22,7 @@ function buildAllowedOrigins() {
     'https://morenmusavirlik.com',
     'https://www.morenmusavirlik.com',
     'https://ofis.mihsap.com.tr',
+    'https://app.mihsap.com', // Mihsap agent (tarayıcı uzantısı) bu origin'den komut çeker
   ].filter(Boolean) as string[];
 
   if (process.env.NODE_ENV !== 'production') {
@@ -36,7 +37,14 @@ async function bootstrap() {
     bodyParser: false,
   });
   const allowedOrigins = buildAllowedOrigins();
-  const allowedSuffixes = csv(process.env.CORS_ALLOWED_SUFFIXES);
+  // Agent origin'leri (Luca/Mihsap alt alan adları) her zaman izinli — Railway env
+  // değişkeni silinse bile tarayıcı tabanlı agent komut çekebilsin diye sabit eklendi.
+  const allowedSuffixes = [
+    ...csv(process.env.CORS_ALLOWED_SUFFIXES),
+    '.luca.com.tr',
+    '.luca.net.tr',
+    '.mihsap.com',
+  ];
 
   // Multipart upload'larda body-parser calismaz; buyuk ZIP/PDF'ler zaten multer ile alinir.
   // JSON'u sinirsiza yakin tutmak Railway'de ajanlar reconnect oldugunda buyuk meta/base64
