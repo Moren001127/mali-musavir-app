@@ -5,7 +5,7 @@ import { WhatsAppController } from './whatsapp.controller';
 import { WhatsAppBotController } from './whatsapp-bot.controller';
 import { WhatsAppIntegrationController } from './whatsapp-integration.controller';
 import { WhatsAppQualityController } from './whatsapp-quality.controller';
-import { BotDataController } from './bot-data.controller';
+import { CalisanModule } from '../calisan/calisan.module';
 import { IntentClassifierService } from './intent-classifier.service';
 import { WhatsAppBotContextService } from './bot-context.service';
 import { WhatsAppBotPostFilterService } from './bot-post-filter.service';
@@ -24,7 +24,7 @@ import { EmailModule } from '../email/email.module';
 import { NotificationsModule } from '../notifications/notifications.module';
 
 @Module({
-  imports: [PrismaModule, MorenAiModule, StorageModule, EmailModule, NotificationsModule],
+  imports: [PrismaModule, MorenAiModule, StorageModule, EmailModule, NotificationsModule, CalisanModule],
   providers: [
     WhatsAppService,
     BaileysService,
@@ -40,7 +40,7 @@ import { NotificationsModule } from '../notifications/notifications.module';
     BuseGunaydinCron,
     OwnerNotifierService,
   ],
-  controllers: [WhatsAppController, WhatsAppBotController, WhatsAppIntegrationController, WhatsAppQualityController, BotDataController],
+  controllers: [WhatsAppController, WhatsAppBotController, WhatsAppIntegrationController, WhatsAppQualityController],
   exports: [WhatsAppService, QualityLogService, BotTestRunnerService],
 })
 export class WhatsAppModule {}

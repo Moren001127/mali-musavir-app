@@ -15,6 +15,7 @@ import { WhatsAppBotCacheService } from './bot-cache.service';
 import { BotEvalService } from './bot-eval.service';
 import { QualityLogService } from './quality-log.service';
 import { BuseGunaydinCron } from '../schedule/buse-gunaydin.cron';
+import { CalisanService } from '../calisan/calisan.service';
 
 type IncomingWhatsAppMessage = {
   from: string;
@@ -51,6 +52,7 @@ export class WhatsAppBotController implements OnModuleInit {
     private readonly qualityLog: QualityLogService,
     private readonly buseGunaydin: BuseGunaydinCron,
     private readonly baileys: BaileysService,
+    private readonly calisan: CalisanService,
     @Optional() private readonly eventBus?: AutomationEventBus,
     @Optional() private readonly storage?: StorageService,
   ) {}
@@ -902,14 +904,14 @@ export class WhatsAppBotController implements OnModuleInit {
       // try/catch + fallback. Eskiden hata sessizce yakalanıyor, kullanıcı bekliyordu.
       let answer: any;
       try {
-        answer = await this.morenAi.chat(ownerTenant.id, null, {
+        // Owner WhatsApp → ÇALIŞAN AJAN köprüsü.
+        // Ajan model yönlendirme (kritik→Opus 4.8, diğer→Sonnet) + öğrenme uygular,
+        // cevabı mevcut TOOL'LU MorenAI beyninden üretir (mizan/KDV/beyan sorgu korunur).
+        answer = await this.calisan.runViaMorenAi({
+          tenantId: ownerTenant.id,
           conversationId,
           message: prompt,
-          // voiceMode KAPALI — owner WhatsApp text yaziyor, sesli degil.
-          // Sesli olunca max token 260'a duser ve cevaplar yarida kesilir.
-          voiceMode: false,
-          toolMode: 'owner',
-          source: 'whatsapp-owner',
+          source: 'calisan-whatsapp',
         });
       } catch (err: any) {
         this.logger.warn(`Owner AI cevabi uretilemedi (fetch hatasi?): ${err?.message || err}`);
@@ -944,6 +946,15 @@ export class WhatsAppBotController implements OnModuleInit {
         });
         this.refreshTaxpayerMemory(ownerTenant.id, ownerContact.id);
       }
+      return;
+    }
+
+    // ─── MÜŞTERİ AUTO-REPLY BOTU KALDIRILDI (Kapso + "Elif") ──────────────
+    // Bu Baileys hattı artık yalnızca AJAN ↔ OWNER köprüsüdür. Owner olmayan
+    // (müşteri/kayıtsız) mesajlara otomatik AI cevabı verilmez.
+    // Geçici geri açmak için: MOREN_CLIENT_BOT_ENABLED=1
+    if (process.env.MOREN_CLIENT_BOT_ENABLED !== '1') {
+      this.logger.log(`[Musteri botu kapali] owner olmayan mesaj atlandi: ${this.normalize(msg.from)}`);
       return;
     }
 

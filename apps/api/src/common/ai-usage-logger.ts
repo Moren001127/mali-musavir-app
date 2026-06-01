@@ -16,6 +16,7 @@
 const PRICES: Record<string, { in: number; out: number; cacheR: number; cacheW: number }> = {
   'claude-haiku-4-5-20251001': { in: 1.0, out: 5.0, cacheR: 0.1, cacheW: 1.25 },
   'claude-opus-4-6':           { in: 15.0, out: 75.0, cacheR: 1.5, cacheW: 18.75 },
+  'claude-opus-4-8':           { in: 15.0, out: 75.0, cacheR: 1.5, cacheW: 18.75 },
   'claude-sonnet-4-6':         { in: 3.0, out: 15.0, cacheR: 0.3, cacheW: 3.75 },
   'gpt-realtime-mini':         { in: 0.6, out: 2.4, cacheR: 0.06, cacheW: 0 },
   'gemini-2.5-flash-lite':     { in: 0.1, out: 0.4, cacheR: 0, cacheW: 0 },
