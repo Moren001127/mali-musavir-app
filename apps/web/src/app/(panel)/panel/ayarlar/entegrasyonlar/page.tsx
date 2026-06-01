@@ -86,7 +86,7 @@ export default function EntegrasyonlarPage() {
           Entegrasyonlar
         </h1>
         <p className="mt-2 max-w-3xl text-[13px]" style={{ color: MUTED }}>
-          E-posta (SMTP) ve WhatsApp Business (Meta Cloud API) bağlantı ayarları. Şifre/token bilgileri AES-256-GCM ile şifreli olarak veritabanında saklanır.
+          E-posta (SMTP) ve WhatsApp (QR ile) bağlantı ayarları. Şifre/token bilgileri AES-256-GCM ile şifreli olarak veritabanında saklanır.
         </p>
       </header>
 
@@ -340,87 +340,9 @@ function EmailCard() {
 
 function WhatsAppCard() {
   const qc = useQueryClient();
-  const [accessToken, setAccessToken] = useState('');
-  const [phoneNumberId, setPhoneNumberId] = useState('');
-  const [businessAccountId, setBusinessAccountId] = useState('');
-  const [templateName, setTemplateName] = useState('');
-  const [templateLang, setTemplateLang] = useState('tr');
-  const [apiVersion, setApiVersion] = useState('v20.0');
-  const [documentTemplateName, setDocumentTemplateName] = useState('');
-  const [portalTemplateName, setPortalTemplateName] = useState('');
-  const [ownerAlertTemplateName, setOwnerAlertTemplateName] = useState('');
-  const [ownerPhones, setOwnerPhones] = useState('');
-  const [webhookVerifyToken, setWebhookVerifyToken] = useState('');
-  const [showToken, setShowToken] = useState(false);
-  const [testTo, setTestTo] = useState('');
-  const [testTemplate, setTestTemplate] = useState('');
-
   const { data } = useQuery({
     queryKey: ['integration-whatsapp'],
     queryFn: () => api.get('/integrations/whatsapp').then((r) => r.data as WhatsAppConfigShape),
-  });
-
-  useEffect(() => {
-    if (data) {
-      setPhoneNumberId(data.phoneNumberId);
-      setBusinessAccountId(data.businessAccountId);
-      setTemplateName(data.templateName);
-      setTemplateLang(data.templateLang);
-      setApiVersion(data.apiVersion);
-      setDocumentTemplateName(data.documentTemplateName);
-      setPortalTemplateName(data.portalTemplateName);
-      setOwnerAlertTemplateName(data.ownerAlertTemplateName);
-      setOwnerPhones(data.ownerPhones || '');
-    }
-  }, [data]);
-
-  const saveMut = useMutation({
-    mutationFn: () =>
-      api
-        .put('/integrations/whatsapp', {
-          accessToken,
-          phoneNumberId,
-          businessAccountId,
-          templateName,
-          templateLang,
-          apiVersion,
-          documentTemplateName,
-          portalTemplateName,
-          ownerAlertTemplateName,
-          ownerPhones,
-          webhookVerifyToken,
-        })
-        .then((r) => r.data),
-    onSuccess: () => {
-      toast.success('WhatsApp ayarları kaydedildi.');
-      setAccessToken('');
-      setWebhookVerifyToken('');
-      qc.invalidateQueries({ queryKey: ['integration-whatsapp'] });
-    },
-    onError: (e: any) => toast.error(e?.response?.data?.message || 'Kaydetme hatası'),
-  });
-
-  const verifyMut = useMutation({
-    mutationFn: () => api.post('/integrations/whatsapp/test/verify').then((r) => r.data as { ok: boolean; error?: string; phoneInfo?: any }),
-    onSuccess: (res) => {
-      if (res.ok) {
-        const display = res.phoneInfo?.display_phone_number || res.phoneInfo?.verified_name || 'OK';
-        toast.success(`Meta API'ye bağlantı başarılı: ${display}`);
-      } else toast.error('Bağlantı hatası: ' + (res.error || ''));
-    },
-    onError: (e: any) => toast.error('Hata: ' + (e?.message || '')),
-  });
-
-  const sendTestMut = useMutation({
-    mutationFn: () =>
-      api
-        .post('/integrations/whatsapp/test/send', { to: testTo, templateName: testTemplate || undefined })
-        .then((r) => r.data as { sent: boolean; error?: string }),
-    onSuccess: (res) => {
-      if (res.sent) toast.success('Test mesajı gönderildi.');
-      else toast.error(res.error || 'Gönderim başarısız (24s pencere veya şablon kontrolü yapın).');
-    },
-    onError: (e: any) => toast.error('Hata: ' + (e?.message || '')),
   });
 
   const toggleMut = useMutation({
@@ -444,13 +366,12 @@ function WhatsAppCard() {
         </div>
         <div className="flex-1">
           <h2 className="text-[17px] font-semibold" style={{ color: TEXT }}>
-            WhatsApp (Meta Cloud API)
+            WhatsApp Bot
           </h2>
           <p className="mt-1 text-[12px]" style={{ color: MUTED }}>
-            Resmi WhatsApp Business — şablon onayları Meta Business Manager'dan alınmalıdır.
+            Bağlantı aşağıdaki QR kartıyla yapılır. Bu anahtar tüm WhatsApp gönderimlerini açar/kapatır.
           </p>
         </div>
-        <StatusBadge ok={!!data?.configured} source={data?.source || 'none'} />
       </div>
 
       <div className="mt-4 space-y-3">
@@ -481,119 +402,6 @@ function WhatsAppCard() {
             {toggleMut.isPending ? <Loader2 size={13} className="animate-spin" /> : data?.automationActive ? <CheckCircle2 size={13} /> : <XCircle size={13} />}
             {data?.automationActive ? 'Aktif' : 'Pasif'}
           </button>
-        </div>
-        <div>
-          <label className="mb-1.5 block text-[11px] font-medium uppercase tracking-wider" style={{ color: MUTED }}>
-            Access Token {data?.hasAccessToken && <span className="ml-1 normal-case" style={{ color: GREEN }}>(kayıtlı)</span>}
-          </label>
-          <div className="relative">
-            <input
-              type={showToken ? 'text' : 'password'}
-              value={accessToken}
-              onChange={(e) => setAccessToken(e.target.value)}
-              placeholder={data?.hasAccessToken ? '••••••••• EAA…' : 'EAA... ile başlayan uzun token'}
-              className="w-full rounded-md border bg-transparent px-3 py-2 pr-10 text-[13px] font-mono"
-              style={{ borderColor: LINE, color: TEXT }}
-            />
-            <button
-              type="button"
-              onClick={() => setShowToken((v) => !v)}
-              className="absolute right-2 top-1/2 -translate-y-1/2"
-              style={{ color: MUTED }}
-            >
-              {showToken ? <EyeOff size={15} /> : <Eye size={15} />}
-            </button>
-          </div>
-          <a
-            href="https://developers.facebook.com/apps"
-            target="_blank"
-            rel="noreferrer"
-            className="mt-1 inline-block text-[11px] underline"
-            style={{ color: BLUE }}
-          >
-            Meta Developer Console →
-          </a>
-        </div>
-
-        <div className="grid grid-cols-2 gap-3">
-          <FieldText label="Phone Number ID" value={phoneNumberId} onChange={setPhoneNumberId} placeholder="106xxxxxxxxxxxx" />
-          <FieldText label="Business Account ID" value={businessAccountId} onChange={setBusinessAccountId} placeholder="opsiyonel" />
-        </div>
-
-        <div className="grid grid-cols-2 gap-3">
-          <FieldText label="Varsayılan Şablon Adı" value={templateName} onChange={setTemplateName} placeholder="evrak_hatirlatma" />
-          <FieldText label="Şablon Dili" value={templateLang} onChange={setTemplateLang} placeholder="tr" />
-        </div>
-
-        <details className="rounded-md border p-3" style={{ borderColor: LINE, background: SOFT }}>
-          <summary className="cursor-pointer text-[12px] font-medium" style={{ color: MUTED }}>
-            Gelişmiş — özel şablon eşleştirmeleri
-          </summary>
-          <div className="mt-3 grid grid-cols-1 gap-2">
-            <FieldText label="Evrak Hatırlatma Şablonu" value={documentTemplateName} onChange={setDocumentTemplateName} placeholder="evrak_hatirlatma" />
-            <FieldText label="Portal Mesajı Şablonu" value={portalTemplateName} onChange={setPortalTemplateName} placeholder="portal_mesaji" />
-            <FieldText label="Patron Uyarı Şablonu" value={ownerAlertTemplateName} onChange={setOwnerAlertTemplateName} placeholder="ofis_uyari" />
-            <FieldText label="Ofis / Owner WhatsApp Numaralari" value={ownerPhones} onChange={setOwnerPhones} placeholder="905xxxxxxxxx,905yyyyyyyyy" />
-            <FieldText label="API Versiyonu" value={apiVersion} onChange={setApiVersion} placeholder="v20.0" />
-            <FieldText
-              label={`Webhook Doğrulama Token'ı ${data?.hasWebhookToken ? '(kayıtlı)' : ''}`}
-              value={webhookVerifyToken}
-              onChange={setWebhookVerifyToken}
-              placeholder={data?.hasWebhookToken ? '••••••••' : 'Meta webhook için doğrulama dizisi'}
-            />
-          </div>
-        </details>
-
-        <div className="flex flex-wrap gap-2 pt-1">
-          <button
-            onClick={() => saveMut.mutate()}
-            disabled={saveMut.isPending}
-            className="inline-flex h-9 items-center gap-1.5 rounded-md px-4 text-[12px] font-bold"
-            style={{ background: `linear-gradient(135deg, ${GOLD}, ${GOLD_DEEP})`, color: '#0f0d0b' }}
-          >
-            {saveMut.isPending ? <Loader2 size={14} className="animate-spin" /> : <Save size={14} />} Kaydet
-          </button>
-          <button
-            onClick={() => verifyMut.mutate()}
-            disabled={verifyMut.isPending || !data?.configured}
-            className="inline-flex h-9 items-center gap-1.5 rounded-md border px-4 text-[12px] font-medium"
-            style={{ borderColor: LINE, color: TEXT, background: SOFT }}
-          >
-            {verifyMut.isPending ? <Loader2 size={14} className="animate-spin" /> : <TestTube2 size={14} />} Meta API'yi Doğrula
-          </button>
-        </div>
-
-        <div className="rounded-md border p-3" style={{ borderColor: LINE, background: SOFT }}>
-          <label className="mb-1.5 block text-[11px] font-medium uppercase tracking-wider" style={{ color: MUTED }}>
-            Test Mesajı
-          </label>
-          <div className="grid grid-cols-1 gap-2 md:grid-cols-[1fr_1fr_auto]">
-            <input
-              value={testTo}
-              onChange={(e) => setTestTo(e.target.value)}
-              placeholder="905XXxxxxxxx"
-              className="rounded-md border bg-transparent px-3 py-2 text-[13px]"
-              style={{ borderColor: LINE, color: TEXT }}
-            />
-            <input
-              value={testTemplate}
-              onChange={(e) => setTestTemplate(e.target.value)}
-              placeholder={`Şablon (boş = varsayılan) "${templateName || 'serbest metin'}"`}
-              className="rounded-md border bg-transparent px-3 py-2 text-[13px]"
-              style={{ borderColor: LINE, color: TEXT }}
-            />
-            <button
-              onClick={() => sendTestMut.mutate()}
-              disabled={sendTestMut.isPending || !testTo || !data?.configured}
-              className="inline-flex items-center gap-1.5 rounded-md border px-3 py-2 text-[12px] font-medium"
-              style={{ borderColor: LINE, color: TEXT, background: SOFT }}
-            >
-              {sendTestMut.isPending ? <Loader2 size={14} className="animate-spin" /> : <Send size={14} />} Gönder
-            </button>
-          </div>
-          <p className="mt-1.5 text-[11px]" style={{ color: MUTED }}>
-            Şablon adı yoksa serbest metin gönderilir — sadece son 24 saatte sana yazan numaralara çalışır.
-          </p>
         </div>
 
       </div>
