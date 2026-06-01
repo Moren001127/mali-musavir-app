@@ -355,12 +355,12 @@ export default function BeyannamelerPage() {
   });
 
   const pullMut = useMutation({
-    mutationFn: () => portalAutomationApi.manualRun({
+    mutationFn: (force?: boolean) => portalAutomationApi.manualRun({
       scope: 'beyanname',
       jobTypes: ['EBEYANNAME_DAILY_DOWNLOAD'],
       dateFrom: pullFrom,
       dateTo: pullTo,
-      force: false,
+      force: force === true,
     }),
     onSuccess: (res) => {
       qc.invalidateQueries({ queryKey: ['portal-automation-summary'] });
@@ -745,16 +745,33 @@ export default function BeyannamelerPage() {
             <div className="grid gap-3 lg:grid-cols-[1fr,1fr,minmax(180px,220px)]">
               <DateField label="Başlangıç Tarihi" value={pullFrom} onChange={setPullFrom} />
               <DateField label="Bitiş Tarihi" value={pullTo} onChange={setPullTo} />
-              <button
-                type="button"
-                onClick={() => pullMut.mutate()}
-                disabled={pullMut.isPending}
-                className="h-12 self-end rounded-[10px] px-5 text-[13px] font-bold inline-flex items-center justify-center gap-2"
-                style={{ background: `linear-gradient(135deg, ${GOLD}, #b8a06f)`, color: '#0f0d0b', opacity: pullMut.isPending ? 0.65 : 1 }}
-              >
-                {pullMut.isPending ? <Loader2 size={15} className="animate-spin" /> : <Download size={15} />}
-                Beyannameleri Çek
-              </button>
+              <div className="flex flex-col gap-2 self-end">
+                <button
+                  type="button"
+                  onClick={() => pullMut.mutate(false)}
+                  disabled={pullMut.isPending}
+                  className="h-11 rounded-[10px] px-5 text-[13px] font-bold inline-flex items-center justify-center gap-2"
+                  style={{ background: `linear-gradient(135deg, ${GOLD}, #b8a06f)`, color: '#0f0d0b', opacity: pullMut.isPending ? 0.65 : 1 }}
+                >
+                  {pullMut.isPending ? <Loader2 size={15} className="animate-spin" /> : <Download size={15} />}
+                  Beyannameleri Çek
+                </button>
+                <button
+                  type="button"
+                  onClick={() => {
+                    if (window.confirm('Bu tarih aralığındaki TÜM beyannameler (zaten inmiş olanlar dahil) yeniden indirilecek; PDF ve tahakkuk tutarı yenilenir. "Tutar okunamadı" / eksik PDF kayıtlarını düzeltir. Tarih aralığını dar tutman önerilir. Devam edilsin mi?')) {
+                      pullMut.mutate(true);
+                    }
+                  }}
+                  disabled={pullMut.isPending}
+                  className="h-9 rounded-[10px] px-3 text-[12px] font-semibold inline-flex items-center justify-center gap-2 border"
+                  style={{ borderColor: GOLD, color: GOLD, background: 'transparent', opacity: pullMut.isPending ? 0.65 : 1 }}
+                  title="Var olanları da yeniden indir — Tutar okunamadı / eksik PDF kayıtlarını düzeltir"
+                >
+                  {pullMut.isPending ? <Loader2 size={14} className="animate-spin" /> : <Download size={14} />}
+                  Yenile (force)
+                </button>
+              </div>
             </div>
 
             <div className="mt-3 flex flex-wrap items-center gap-2">
