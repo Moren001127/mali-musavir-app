@@ -4,13 +4,17 @@ import React, { useEffect, useMemo, useState } from 'react';
 import { useQuery, useQueryClient } from '@tanstack/react-query';
 import { toast } from 'sonner';
 import {
+  Check,
+  CheckCircle2,
+  Circle,
   Coins,
-  Copy,
   Download,
   Eye,
+  FileText,
   HandCoins,
   Loader2,
   MessageCircle,
+  Minus,
   MoreHorizontal,
   Plus,
   Search,
@@ -24,7 +28,7 @@ import { ButcePlanView, GelirGiderTablosuView, IstatistikView, KasaBankaView } f
 const GOLD = '#e6c878';
 const DEBT = '#e0697a';
 const OK = '#5ad18a';
-const BG = '#08080a';
+const BG = '#0a0a0c';
 const PANEL = '#0c0c0e';
 const CARD_BORDER = 'rgba(255,255,255,0.06)';
 const CARD_BG = 'rgba(255,255,255,0.018)';
@@ -43,6 +47,7 @@ type OzetSatir = {
   tahakkuk: number;
   tahsilat: number;
   bakiye: number;
+  buAyTahsilat?: number;
 };
 
 type TahsilatAjandaRow = {
@@ -102,15 +107,6 @@ const normalize = (value: string) =>
     .toLocaleLowerCase('tr-TR')
     .normalize('NFD')
     .replace(/[̀-ͯ]/g, '');
-
-function bucketRank(bucket: string) {
-  if (bucket === '90+') return 5;
-  if (bucket === '61-90') return 4;
-  if (bucket === '31-60') return 3;
-  if (bucket === '1-30') return 2;
-  if (bucket === 'Güncel' || bucket === 'Guncel') return 1;
-  return 0;
-}
 
 // Vade rozeti — yumuşak renkler (referans tabloya göre)
 function bucketStyle(bucket: string) {
@@ -187,6 +183,7 @@ export function CariTahsilatWorkspace({ onSelect }: { onSelect: (id: string) => 
         ...row,
         phone: agenda?.phone || row.phone || null,
         bakiye,
+        buAyTahsilat: Number(row.buAyTahsilat || 0),
         aging: agenda?.aging || emptyAging,
         maxBucket: agenda?.maxBucket || (bakiye > 0 ? 'Güncel' : 'Yok'),
         sonTahsilatTarihi: agenda?.sonTahsilatTarihi || null,
@@ -231,11 +228,8 @@ export function CariTahsilatWorkspace({ onSelect }: { onSelect: (id: string) => 
       if (!needle) return true;
       return normalize([row.ad, row.taxNumber || '', row.phone || '', row.email || ''].join(' ')).includes(needle);
     });
-    // Sıralama: risk önce (sade — tek sabit sıralama)
-    return filtered.sort((a, b) => {
-      const rankDiff = bucketRank(b.maxBucket) - bucketRank(a.maxBucket);
-      return rankDiff || b.bakiye - a.bakiye || a.ad.localeCompare(b.ad, 'tr');
-    });
+    // Sıralama: ada göre Türkçe alfabetik (sade — tek sabit sıralama)
+    return filtered.sort((a, b) => a.ad.localeCompare(b.ad, 'tr'));
   }, [filter, rows, search]);
 
   // WhatsApp hedefi: görünen, uygun ve bakiyesi olan kayıtlar (KORUNDU)
@@ -313,8 +307,8 @@ export function CariTahsilatWorkspace({ onSelect }: { onSelect: (id: string) => 
   ];
 
   return (
-    <div className="min-h-screen px-4 sm:px-6 py-6" style={{ background: BG, fontFamily: SANS, color: TEXT }}>
-      <div className="mx-auto max-w-[1180px] rounded-[20px] p-5 sm:p-7" style={{ background: PANEL, border: `1px solid rgba(255,255,255,0.07)` }}>
+    <div className="min-h-screen" style={{ background: BG, fontFamily: SANS, color: TEXT }}>
+      <div className="mx-auto max-w-[1240px] px-6 sm:px-10 py-8">
         {/* ===== HEADER ===== */}
         <div className="flex items-start justify-between gap-4">
           <div className="flex items-center gap-3.5 min-w-0">
@@ -368,7 +362,7 @@ export function CariTahsilatWorkspace({ onSelect }: { onSelect: (id: string) => 
         </div>
 
         {/* ===== TABS ===== */}
-        <nav className="mt-7 flex items-center gap-7 text-[14.5px]" style={{ borderBottom: `1px solid rgba(255,255,255,0.07)` }}>
+        <nav className="mt-8 flex items-center gap-8 text-[14.5px]" style={{ borderBottom: `1px solid rgba(255,255,255,0.06)` }}>
           {tabs.map(({ key, label }) => {
             const active = view === key;
             return (
@@ -395,16 +389,16 @@ export function CariTahsilatWorkspace({ onSelect }: { onSelect: (id: string) => 
 
         {view === 'tahsilat' && (
           <>
-            {/* ===== METRİKLER (4) ===== */}
-            <div className="mt-6 grid grid-cols-2 lg:grid-cols-4 gap-3">
-              <MetricCard label="Toplam Alacak" value={`${fmt(stats.bakiye)} ₺`} color={DEBT} active={filter === 'debt'} onClick={() => setFilter(filter === 'debt' ? 'all' : 'debt')} />
-              <MetricCard label="Aylık Ücret (Top.)" value={`${fmt(stats.monthlyTarget)} ₺`} color={GOLD} />
-              <MetricCard label="Tahsilat Oranı" value={`%${stats.tahsilatOrani.toFixed(0)}`} color={OK} />
-              <MetricCard label="90+ Gün Risk" value={`${fmt(risk90Tutar)} ₺`} color={DEBT} active={filter === 'over90'} onClick={() => setFilter(filter === 'over90' ? 'all' : 'over90')} />
+            {/* ===== METRİKLER (4) — KUTUSUZ, ince dikey ayraçlı ===== */}
+            <div className="mt-8 grid grid-cols-2 lg:grid-cols-4">
+              <MetricCard index={0} label="Toplam Alacak" value={`${fmt(stats.bakiye)} ₺`} color={DEBT} active={filter === 'debt'} onClick={() => setFilter(filter === 'debt' ? 'all' : 'debt')} />
+              <MetricCard index={1} label="Aylık Ücret (Top.)" value={`${fmt(stats.monthlyTarget)} ₺`} color={GOLD} />
+              <MetricCard index={2} label="Tahsilat Oranı" value={`%${stats.tahsilatOrani.toFixed(0)}`} color={OK} />
+              <MetricCard index={3} label="90+ Gün Risk" value={`${fmt(risk90Tutar)} ₺`} color={DEBT} active={filter === 'over90'} onClick={() => setFilter(filter === 'over90' ? 'all' : 'over90')} />
             </div>
 
             {/* ===== ARAMA + FİLTRE ÇİPLERİ ===== */}
-            <div className="mt-6 flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
+            <div className="mt-8 flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
               <div className="relative w-full sm:max-w-md">
                 <Search size={16} strokeWidth={1.7} className="pointer-events-none absolute left-3.5 top-1/2 -translate-y-1/2" style={{ color: SOFT }} />
                 <input
@@ -439,8 +433,8 @@ export function CariTahsilatWorkspace({ onSelect }: { onSelect: (id: string) => 
               onQuickTahsilat={setQuickTahsilat}
             />
 
-            <p className="mt-4 text-center text-[12px]" style={{ color: '#52525b' }}>
-              Aylık ücret = aktif aylık hizmetlerin toplamı · Bakiye = <span style={{ color: DEBT }}>borç (bordo)</span> / <span style={{ color: OK }}>güncel</span>
+            <p className="mt-5 text-center text-[12px]" style={{ color: '#52525b' }}>
+              Aylık ücret = aktif aylık hizmetlerin toplamı · <span style={{ color: OK }}>Bu Ay = ödendi</span> / <span style={{ color: DEBT }}>ödenmedi</span> · Borç yaşı çubuğu = bakiyenin vade dağılımı
             </p>
           </>
         )}
@@ -461,12 +455,14 @@ export function CariTahsilatWorkspace({ onSelect }: { onSelect: (id: string) => 
 }
 
 function MetricCard({
+  index,
   label,
   value,
   color,
   active,
   onClick,
 }: {
+  index: number;
   label: string;
   value: string;
   color: string;
@@ -474,17 +470,16 @@ function MetricCard({
   onClick?: () => void;
 }) {
   const Component = onClick ? 'button' : 'div';
+  // İlk metrik hariç sol kenarda ince dikey ayraç (lg ekran); kutu yok
+  const dividerClass = index % 4 === 0 ? '' : 'lg:border-l lg:border-white/[0.05]';
   return (
     <Component
       onClick={onClick as any}
-      className="rounded-2xl px-5 py-4 text-left transition"
-      style={{
-        border: `1px solid ${active ? 'rgba(230,200,120,0.30)' : CARD_BORDER}`,
-        background: active ? 'rgba(230,200,120,0.05)' : CARD_BG,
-      }}
+      className={`px-1 lg:px-6 ${index === 0 ? 'lg:pl-0' : ''} ${dividerClass} py-1 text-left transition`}
+      style={{ opacity: active ? 1 : undefined }}
     >
-      <div className="text-[11px] font-medium uppercase tracking-wider" style={{ color: SOFT }}>{label}</div>
-      <div className="mt-2.5 text-[27px] font-bold" style={{ color, fontVariantNumeric: 'tabular-nums' }}>
+      <div className="text-[11px] font-medium uppercase tracking-wider" style={{ color: active ? GOLD : SOFT }}>{label}</div>
+      <div className="mt-2 text-[28px] font-bold" style={{ color, fontVariantNumeric: 'tabular-nums' }}>
         {value}
       </div>
     </Component>
@@ -535,16 +530,17 @@ function TahsilatTable({
   }
 
   return (
-    <div className="mt-5 overflow-hidden rounded-2xl" style={{ border: `1px solid ${CARD_BORDER}` }}>
+    <div className="mt-6">
       <div className="overflow-x-auto">
         <table className="w-full text-[14px]">
           <thead>
             <tr className="text-[11px] uppercase tracking-wider" style={{ color: SOFT }}>
-              <th className="px-5 py-3.5 text-left font-medium">Mükellef</th>
-              <th className="px-3 py-3.5 text-right font-medium">Aylık Ücret</th>
-              <th className="px-3 py-3.5 text-right font-medium">Bakiye</th>
-              <th className="px-4 py-3.5 text-left font-medium">En Eski</th>
-              <th className="px-5 py-3.5 text-right font-medium"></th>
+              <th className="px-2 pb-3 text-left font-medium">Mükellef</th>
+              <th className="px-3 pb-3 text-right font-medium">Aylık Ücret</th>
+              <th className="px-3 pb-3 text-center font-medium">Bu Ay</th>
+              <th className="px-3 pb-3 text-right font-medium">Bakiye</th>
+              <th className="px-4 pb-3 text-left font-medium">Borç Yaşı</th>
+              <th className="px-2 pb-3 text-right font-medium"></th>
             </tr>
           </thead>
           <tbody style={{ color: TEXT }}>
@@ -552,54 +548,88 @@ function TahsilatTable({
               const style = bucketStyle(row.maxBucket);
               const lastPayment = formatDate(row.sonTahsilatTarihi);
               const borclu = row.bakiye > 0.004;
+              const odendi = Number(row.buAyTahsilat || 0) > 0.004;
               return (
-                <tr key={row.id} className="group" style={{ borderTop: `1px solid ${ROW_LINE}` }}>
-                  <td className="px-5 py-4">
+                <tr
+                  key={row.id}
+                  className="group transition-colors"
+                  style={{ borderTop: `1px solid ${ROW_LINE}` }}
+                  onMouseEnter={(e) => (e.currentTarget.style.background = 'rgba(255,255,255,0.015)')}
+                  onMouseLeave={(e) => (e.currentTarget.style.background = 'transparent')}
+                >
+                  {/* Mükellef + bu ay durumu */}
+                  <td className="px-2 py-4">
                     <button onClick={() => onOpen(row.id)} className="block w-full text-left">
                       <div className="font-semibold" style={{ color: '#fff' }}>{row.ad}</div>
-                      <div className="mt-0.5 text-[12.5px]" style={{ color: SOFT }}>
-                        {lastPayment ? `son tahsilat ${lastPayment}` : 'son tahsilat yok'}
+                      <div className="mt-1 flex items-center gap-2 text-[12px]" style={{ color: SOFT }}>
+                        <span>{lastPayment ? `son tahsilat ${lastPayment}` : 'son tahsilat yok'}</span>
+                        {odendi ? (
+                          <span className="inline-flex items-center gap-1 text-[11.5px] font-semibold" style={{ color: OK }}>
+                            <CheckCircle2 size={13} strokeWidth={1.9} /> Bu ay ödendi
+                          </span>
+                        ) : (
+                          <span className="inline-flex items-center gap-1 text-[11.5px] font-medium" style={{ color: '#9a6b73' }}>
+                            <Circle size={13} strokeWidth={1.9} /> Bu ay ödenmedi
+                          </span>
+                        )}
                       </div>
                     </button>
                   </td>
+                  {/* Aylık ücret */}
                   <td className="px-3 py-4 text-right font-semibold" style={{ color: row.aylikMuhasebeUcreti > 0 ? GOLD : SOFT, fontVariantNumeric: 'tabular-nums' }}>
                     {row.aylikMuhasebeUcreti > 0 ? `${fmt(row.aylikMuhasebeUcreti)} ₺` : '—'}
                   </td>
+                  {/* Bu Ay rozeti */}
+                  <td className="px-3 py-4 text-center">
+                    {odendi ? (
+                      <span className="inline-grid h-7 w-7 place-items-center rounded-full" style={{ background: 'rgba(90,209,138,0.14)', color: OK }} title="Bu ay tahsilat alındı">
+                        <Check size={16} strokeWidth={2} />
+                      </span>
+                    ) : (
+                      <span className="inline-grid h-7 w-7 place-items-center rounded-full" style={{ background: 'rgba(224,105,122,0.10)', color: '#9a6b73' }} title="Bu ay tahsilat yok">
+                        <Minus size={16} strokeWidth={2} />
+                      </span>
+                    )}
+                  </td>
+                  {/* Bakiye */}
                   <td className="px-3 py-4 text-right font-bold" style={{ color: borclu ? DEBT : TEXT, fontVariantNumeric: 'tabular-nums' }}>
                     {fmt(row.bakiye)} ₺
                   </td>
+                  {/* Borç yaşı: rozet + segment çubuk */}
                   <td className="px-4 py-4">
                     <span className="inline-flex rounded-lg px-2.5 py-1 text-[12px] font-semibold whitespace-nowrap" style={{ color: style.color, background: style.bg, border: `1px solid ${style.border}` }}>
                       {bucketLabel(row.maxBucket)}
                     </span>
+                    {borclu && <AgingBar aging={row.aging} />}
                   </td>
-                  <td className="px-5 py-4">
-                    <div className="flex items-center justify-end gap-3" style={{ opacity: 0.55 }}>
+                  {/* Aksiyonlar: modern yuvarlak butonlar */}
+                  <td className="px-2 py-4">
+                    <div className="flex items-center justify-end gap-2">
                       <button
                         onClick={() => onOpen(row.id)}
                         title="Ekstre / detay"
-                        className="transition hover:opacity-100"
-                        style={{ color: SOFT, opacity: 1 }}
+                        className="grid h-[34px] w-[34px] place-items-center rounded-[10px] transition hover:-translate-y-px"
+                        style={{ background: 'rgba(255,255,255,0.04)', color: SOFT }}
                       >
-                        <Copy size={18} strokeWidth={1.7} />
+                        <FileText size={17} strokeWidth={1.7} />
                       </button>
                       <button
                         onClick={() => onQuickTahsilat(row)}
                         disabled={!borclu}
-                        title="WhatsApp hatırlat / tahsilat gir"
-                        className="transition hover:opacity-80 disabled:opacity-30"
-                        style={{ color: '#3fce6f', opacity: 1 }}
+                        title="WhatsApp hatırlat"
+                        className="grid h-[34px] w-[34px] place-items-center rounded-[10px] transition hover:-translate-y-px disabled:opacity-30 disabled:hover:translate-y-0"
+                        style={{ background: 'rgba(63,206,111,0.12)', color: '#3fce6f' }}
                       >
-                        <MessageCircle size={18} strokeWidth={1.7} />
+                        <MessageCircle size={17} strokeWidth={1.7} />
                       </button>
                       <button
                         onClick={() => onQuickTahsilat(row)}
                         disabled={!borclu}
                         title="Tahsilat gir"
-                        className="transition hover:opacity-80 disabled:opacity-30"
-                        style={{ color: GOLD, opacity: 1 }}
+                        className="grid h-[34px] w-[34px] place-items-center rounded-[10px] transition hover:-translate-y-px disabled:opacity-30 disabled:hover:translate-y-0"
+                        style={{ background: 'rgba(230,200,120,0.14)', color: GOLD }}
                       >
-                        <Plus size={18} strokeWidth={1.7} />
+                        <Plus size={17} strokeWidth={1.7} />
                       </button>
                     </div>
                   </td>
@@ -609,6 +639,26 @@ function TahsilatTable({
           </tbody>
         </table>
       </div>
+    </div>
+  );
+}
+
+// Borç yaşı segment çubuğu: bakiyenin vade dağılımı (current, 1-30, 31-60, 61-90, 90+)
+function AgingBar({ aging }: { aging: TahsilatAjandaRow['aging'] }) {
+  const segments = [
+    { value: aging.current, color: OK },        // güncel
+    { value: aging.d1_30, color: '#8a8a93' },   // 1-30
+    { value: aging.d31_60, color: GOLD },       // 31-60
+    { value: aging.d61_90, color: DEBT },       // 61-90
+    { value: aging.d90plus, color: DEBT },      // 90+
+  ];
+  const total = segments.reduce((sum, s) => sum + Math.max(s.value, 0), 0);
+  if (total <= 0) return null;
+  return (
+    <div className="mt-1.5 flex h-1.5 w-[120px] overflow-hidden rounded-full" style={{ background: 'rgba(255,255,255,0.06)' }}>
+      {segments.map((s, i) =>
+        s.value > 0 ? <div key={i} style={{ width: `${(s.value / total) * 100}%`, background: s.color }} /> : null,
+      )}
     </div>
   );
 }

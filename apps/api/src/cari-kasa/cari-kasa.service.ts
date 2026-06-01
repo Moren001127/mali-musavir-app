@@ -889,6 +889,19 @@ export class CariKasaService {
       harMap.set(h.taxpayerId, r);
     }
 
+    // 2b. Bu ay tahsilatı — "bu ay ödendi mi" göstergesi için (içinde bulunulan ay)
+    const ayBasi = new Date();
+    ayBasi.setDate(1);
+    ayBasi.setHours(0, 0, 0, 0);
+    const buAyHareketler = await (this.prisma as any).cariHareket.findMany({
+      where: { tenantId, tip: 'TAHSILAT', tarih: { gte: ayBasi } },
+      select: { taxpayerId: true, tutar: true },
+    });
+    const buAyMap = new Map<string, number>();
+    for (const h of buAyHareketler) {
+      buAyMap.set(h.taxpayerId, (buAyMap.get(h.taxpayerId) || 0) + Number(h.tutar));
+    }
+
     // 3. Aylık muhasebe ücreti — aktif AYLIK hizmetler (mukellef başına toplam)
     const hizmetler = await (this.prisma as any).cariHizmet.findMany({
       where: { tenantId, aktif: true, periyot: 'AYLIK' },
@@ -918,6 +931,7 @@ export class CariKasaService {
           tahakkuk: Math.round(h.tahakkuk * 100) / 100,
           tahsilat: Math.round(h.tahsilat * 100) / 100,
           bakiye,
+          buAyTahsilat: Math.round((buAyMap.get(t.id) || 0) * 100) / 100,
         };
       })
       .sort((a: any, b: any) => collator.compare(a.ad, b.ad));
