@@ -3952,6 +3952,26 @@ export class PortalAutomationRailwayRunnerService implements OnModuleInit {
     for (const item of names) {
       if (textKey.includes(item.key)) return item.taxpayer.id;
     }
+
+    // GIB sonuc listesinde ad/unvani KISALTABILIYOR ("KEREM MEVLUT DA..."), bu yuzden
+    // tam ad metinde gecmeyebilir. Ayrica gercek kisilerde GIB 11-hane TCKN gosterirken
+    // portalda 10-hane VKN tutulabildigi icin VKN eslesmesi de tutmaz. Mukellef adinin
+    // yeterince uzun bir ON-EKI metinde geciyorsa VE bu on-ek BASKA mukellefle karismiyorsa
+    // (benzersizse) guvenle esle. Benzersizlik sarti yanlis firmaya baglamayi onler.
+    const MIN_PREFIX = 11;
+    const candidates = names.filter(
+      (item) => item.key.length >= MIN_PREFIX && textKey.includes(item.key.slice(0, MIN_PREFIX)),
+    );
+    for (const item of candidates) {
+      let len = item.key.length;
+      while (len > MIN_PREFIX && !textKey.includes(item.key.slice(0, len))) len--;
+      const prefix = item.key.slice(0, len);
+      if (!textKey.includes(prefix)) continue;
+      const clash = names.some(
+        (other) => other.taxpayer.id !== item.taxpayer.id && other.key.startsWith(prefix),
+      );
+      if (!clash) return item.taxpayer.id;
+    }
     return null;
   }
 
