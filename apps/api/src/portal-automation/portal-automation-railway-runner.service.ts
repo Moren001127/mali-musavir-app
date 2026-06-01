@@ -2131,6 +2131,7 @@ export class PortalAutomationRailwayRunnerService implements OnModuleInit {
             }
           }
           notes.push(`onaylandi sayfa ${pageNo}: ${saved}/${urlTasks.length} PDF dogrudan indirildi (dispatch=${dispatchHit}).`);
+          this.logger.warn(`[EBSTAT] sayfa ${pageNo}: indirilen ${saved}/${urlTasks.length} PDF (dispatch=${dispatchHit}, onclick=${saved - dispatchHit}).`);
         }
       }
 
@@ -2196,6 +2197,9 @@ export class PortalAutomationRailwayRunnerService implements OnModuleInit {
           continue;
         }
         const declaration = this.declarationFromEBeyannameRow(row, 'onaylandi', taxpayers, job, { beyanname, tahakkuk });
+        if (!declaration && (beyanname || tahakkuk)) {
+          this.logger.warn(`[EBSTAT] ESLESMEDI: satir ${seq} vkn=${row.taxNumber || '-'} ad="${this.compact(row.taxpayerName || '').slice(0, 40)}" tip="${this.compact(row.beyanTipiRaw || '').slice(0, 24)}" -> eslesmeyen belgeye dustu`);
+        }
 
         const unmatchedFiles = [
           { file: beyannameResult.file, kind: 'beyanname', ownerMismatch: beyannameResult.ownerMismatch },
@@ -2240,6 +2244,7 @@ export class PortalAutomationRailwayRunnerService implements OnModuleInit {
     }
 
     notes.push(`onaylandi: ${processedRows} satir islendi, ${persistedCount + declarations.length} takip kaydi eslendi, ${documents.length} eslesmeyen belge`);
+    this.logger.warn(`[EBSTAT] onaylandi ozet: ${processedRows} satir islendi, ${persistedCount + declarations.length} firmaya eslendi, ${documents.length} eslesmeyen belge.`);
     return { declarations, documents, persistedCount };
   }
 
@@ -3092,6 +3097,10 @@ export class PortalAutomationRailwayRunnerService implements OnModuleInit {
       const trimmed = String(value || '').trim();
       if (trimmed && !variants.includes(trimmed)) variants.push(trimmed);
     };
+    // Orijinal adresi (GIB'in kendi urettigi, /dispatch icin inline=true) ONCE dene.
+    // Aksi halde inline'i kaldiran varyantlar tahakkukta HTML uyarisi dondurup
+    // hem zaman kaybi hem hiz-limiti tetikliyordu.
+    add(url);
     try {
       const parsed = new URL(url);
       if (parsed.searchParams.has('inline')) {
