@@ -1,4 +1,5 @@
 import { Injectable, Logger } from '@nestjs/common';
+import { claudeTextViaMax, isMaxAvailable } from '../../common/max-inference';
 
 /**
  * OpenRouter adapter — Claude / GPT-5 / Gemini / DeepSeek hepsine tek API'dan.
@@ -43,6 +44,35 @@ export class OpenRouterAdapter {
   private readonly baseUrl = 'https://openrouter.ai/api/v1';
 
   async chat(req: ChatRequest): Promise<ChatResponse> {
+    // CLAUDE modelleri → Max aboneliği (ücretsiz). GPT/Gemini gibi Claude-dışı modeller OpenRouter'da kalır.
+    const isClaude = /claude/i.test(req.model);
+    if (isClaude && isMaxAvailable()) {
+      const maxModel = req.model.replace(/^anthropic\//, '');
+      const system = req.messages.filter((m) => m.role === 'system').map((m) => m.content).join('\n\n') || undefined;
+      const convo = req.messages
+        .filter((m) => m.role !== 'system')
+        .map((m) => `${m.role === 'assistant' ? 'Asistan' : 'Kullanıcı'}: ${m.content}`)
+        .join('\n\n');
+      const max = await claudeTextViaMax({ prompt: convo || ' ', system, model: maxModel });
+      if (max.ok) {
+        return {
+          content: max.text,
+          model: max.model,
+          usage: { promptTokens: 0, completionTokens: 0, totalTokens: 0, costUsd: 0 },
+        };
+      }
+      this.logger.warn(`Max çağrısı başarısız (${req.model}): ${max.error}`);
+      // API fallback yalnızca açıkça izin verilmişse; değilse yumuşak hata (orkestrasyon çökmesin).
+      if (process.env.AI_ALLOW_API_FALLBACK !== '1') {
+        return {
+          content: `[Max servisi şu an cevap veremedi: ${max.error}]`,
+          model: req.model,
+          usage: { promptTokens: 0, completionTokens: 0, totalTokens: 0, costUsd: 0 },
+        };
+      }
+      // izin verildiyse aşağıdaki OpenRouter akışına düş
+    }
+
     if (!this.apiKey) {
       throw new Error('OPENROUTER_API_KEY env değişkeni tanımlı değil');
     }

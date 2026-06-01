@@ -7,6 +7,7 @@ import { FisYazdirmaService } from '../fis-yazdirma/fis-yazdirma.service';
 import { MihsapService } from '../mihsap/mihsap.service';
 import { EmailService } from '../email/email.service';
 import { ACTION_BY_NAME } from './action-catalog';
+import { claudeTextViaMax } from '../common/max-inference';
 
 /**
  * Runner'ın çağırdığı tek nokta — bir aksiyon adını gerçek servis çağrısına yönlendirir.
@@ -211,6 +212,15 @@ export class ActionDispatcherService {
     model = 'claude-haiku-4-5-20251001',
     maxTokens = 800,
   ): Promise<{ text: string; cost: number; inputTokens: number; outputTokens: number }> {
+    // ÖNCE MAX (ücretsiz, abonelik). Saf metin işi olduğu için Max yeterli.
+    const max = await claudeTextViaMax({ prompt: userPrompt, model });
+    if (max.ok) {
+      return { text: max.text, cost: 0, inputTokens: 0, outputTokens: 0 };
+    }
+    // Max başarısız: API fallback yalnızca açıkça izin verilmişse (varsayılan: API'ye düşme).
+    if (process.env.AI_ALLOW_API_FALLBACK !== '1') {
+      throw new Error(`Max çağrısı başarısız, API fallback kapalı: ${max.error}`);
+    }
     const apiKey = process.env.ANTHROPIC_API_KEY;
     if (!apiKey) throw new Error('ANTHROPIC_API_KEY ayarlanmamış.');
     const res = await fetch('https://api.anthropic.com/v1/messages', {

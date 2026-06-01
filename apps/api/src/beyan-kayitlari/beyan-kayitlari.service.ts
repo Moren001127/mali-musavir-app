@@ -6,6 +6,7 @@ import { PDFParse } from 'pdf-parse';
 import { PrismaService } from '../prisma/prisma.service';
 import { StorageService } from '../storage/storage.service';
 import { tryDecrypt } from '../common/crypto';
+import { canSpendOnApi } from '../common/ai-usage-logger';
 import {
   parseMukellefKlasoru, parseBeyanTipiKlasoru, mapBeyanTipi,
   parsePdfAd, formatDonem, adBenzerlik, normalizeAd,
@@ -282,9 +283,13 @@ export class BeyanKayitlariService {
   }
 
   /** Tek PDF için Claude'a metadata parse isteği gönder */
-  async parseBeyannamePdf(pdfBase64: string): Promise<ParsedBeyan> {
+  async parseBeyannamePdf(pdfBase64: string, tenantId?: string): Promise<ParsedBeyan> {
     const apiKey = process.env.ANTHROPIC_API_KEY;
     if (!apiKey) throw new BadRequestException('ANTHROPIC_API_KEY tanımlı değil');
+    // Aylık ücretli API tavanı dolduysa beyanname PDF okuma geçici durur (çağıran catch ile devam eder).
+    if (!(await canSpendOnApi(this.prisma, tenantId || 'default', 'beyan-kayitlari'))) {
+      throw new BadRequestException('AI aylık maliyet tavanı doldu — beyanname PDF okuma geçici durduruldu.');
+    }
 
     const prompt = `Bu bir Türk vergi beyannamesi tahakkuk fişi PDF'i. Aşağıdaki bilgileri JSON olarak döndür, başka hiçbir şey yazma (sadece saf JSON):
 
@@ -554,7 +559,7 @@ export class BeyanKayitlariService {
     let role = this.inferPdfRole(file.originalName, text, fastAmount);
 
     if (!taxpayer || !beyanTipi || !donem || (role === 'tahakkuk' && fastAmount == null)) {
-      aiParsed = await this.parseBeyannamePdf(file.buffer.toString('base64')).catch((err) => {
+      aiParsed = await this.parseBeyannamePdf(file.buffer.toString('base64'), tenantId).catch((err) => {
         this.logger.warn(`AI fallback atlandi [${file.originalName}]: ${err?.message || err}`);
         return null;
       });

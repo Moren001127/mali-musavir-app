@@ -2,6 +2,8 @@ import { Injectable, Logger } from '@nestjs/common';
 import { ComputerVisionClient } from '@azure/cognitiveservices-computervision';
 import { ApiKeyCredentials } from '@azure/ms-rest-js';
 import * as crypto from 'crypto';
+import { PrismaService } from '../prisma/prisma.service';
+import { canSpendOnApiGlobal } from '../common/ai-usage-logger';
 import {
   extractDate as extractDatePure,
   normalizeOcrYear as normalizeOcrYearPure,
@@ -156,7 +158,7 @@ export class OcrService {
   private readonly logger = new Logger(OcrService.name);
   private azureClient: ComputerVisionClient | null = null;
 
-  constructor() {
+  constructor(private readonly prisma: PrismaService) {
     this.initAzureVision();
   }
 
@@ -364,7 +366,15 @@ export class OcrService {
       );
     }
 
-    if (hasClaudeKey && (forceClaude || allowAutoClaude)) {
+    // AYLIK ÜCRETLİ API TAVANI — tavan dolduysa Claude vision atla; Azure/dosya-adı fallback'i devreye girer.
+    const ocrBudgetOk = hasClaudeKey && (forceClaude || allowAutoClaude)
+      ? await canSpendOnApiGlobal(this.prisma, 'kdv-ocr')
+      : true;
+    if (!ocrBudgetOk) {
+      this.logger.warn(`AI maliyet tavani doldu — Claude vision atlandi: ${originalName || '—'}`);
+    }
+
+    if (hasClaudeKey && ocrBudgetOk && (forceClaude || allowAutoClaude)) {
       try {
         const claudeResult = await this.runClaudeVisionOcr(imageBuffer);
         if (!azureRawText && this.azureClient) {
