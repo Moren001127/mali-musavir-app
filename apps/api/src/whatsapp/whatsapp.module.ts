@@ -5,6 +5,7 @@ import { WhatsAppController } from './whatsapp.controller';
 import { WhatsAppBotController } from './whatsapp-bot.controller';
 import { WhatsAppIntegrationController } from './whatsapp-integration.controller';
 import { WhatsAppQualityController } from './whatsapp-quality.controller';
+import { BotDataController } from './bot-data.controller';
 import { IntentClassifierService } from './intent-classifier.service';
 import { WhatsAppBotContextService } from './bot-context.service';
 import { WhatsAppBotPostFilterService } from './bot-post-filter.service';
@@ -39,7 +40,7 @@ import { NotificationsModule } from '../notifications/notifications.module';
     BuseGunaydinCron,
     OwnerNotifierService,
   ],
-  controllers: [WhatsAppController, WhatsAppBotController, WhatsAppIntegrationController, WhatsAppQualityController],
+  controllers: [WhatsAppController, WhatsAppBotController, WhatsAppIntegrationController, WhatsAppQualityController, BotDataController],
   exports: [WhatsAppService, QualityLogService, BotTestRunnerService],
 })
 export class WhatsAppModule {}

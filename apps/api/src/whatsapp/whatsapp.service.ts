@@ -60,6 +60,36 @@ export class WhatsAppService {
     };
   }
 
+  /**
+   * Gönderim sağlayıcısı (outbound) base URL'i.
+   *  - Varsayılan: doğrudan Meta Graph API (geriye dönük uyumlu, davranış değişmez).
+   *  - Kapso üzerinden göndermek için env:
+   *      WHATSAPP_PROVIDER_BASE_URL=https://api.kapso.ai/meta/whatsapp
+   *    Bu durumda auth otomatik olarak X-API-Key'e döner ve sürüm v24.0 olur.
+   * Numara Kapso'da barındırıldığı için cevaplar Kapso API'siyle gönderilir;
+   * portalın geri kalan bot mantığı (Moren AI, intent, kalite filtresi) aynen çalışır.
+   */
+  private get providerBaseUrl(): string {
+    return (process.env.WHATSAPP_PROVIDER_BASE_URL || 'https://graph.facebook.com').replace(/\/+$/, '');
+  }
+
+  /** Kapso (veya X-API-Key tabanlı) bir sağlayıcı mı? */
+  private get providerUsesApiKey(): boolean {
+    return /kapso/i.test(this.providerBaseUrl);
+  }
+
+  /** Graph sürümü: Kapso modunda v24.0, Meta modunda config/env. */
+  private graphVersion(cfg: WhatsAppConfig): string {
+    if (this.providerUsesApiKey) return process.env.WHATSAPP_PROVIDER_API_VERSION || 'v24.0';
+    return cfg.apiVersion || 'v20.0';
+  }
+
+  /** Auth header: Kapso → X-API-Key, Meta → Bearer. */
+  private authHeader(cfg: WhatsAppConfig): Record<string, string> {
+    const token = String(cfg.accessToken || '').trim();
+    return this.providerUsesApiKey ? { 'X-API-Key': token } : { Authorization: `Bearer ${token}` };
+  }
+
   private async getEffectiveConfig(tenantId?: string): Promise<WhatsAppConfig> {
     if (tenantId) {
       const fromDb = await this.loadConfigFromDb(tenantId);
@@ -107,15 +137,15 @@ export class WhatsAppService {
       };
     }
 
-    const version = cfg.apiVersion || 'v20.0';
-    let url = `https://graph.facebook.com/${version}/${cfg.businessAccountId}/message_templates?fields=name,language,status,category,components&limit=100`;
+    const version = this.graphVersion(cfg);
+    let url = `${this.providerBaseUrl}/${version}/${cfg.businessAccountId}/message_templates?fields=name,language,status,category,components&limit=100`;
     const templates: any[] = [];
 
     try {
       for (let page = 0; page < 5 && url; page++) {
         const res = await fetch(url, {
           headers: {
-            'Authorization': `Bearer ${String(cfg.accessToken || '').trim()}`,
+            ...this.authHeader(cfg),
             'Accept': 'application/json',
           },
         });
@@ -369,7 +399,7 @@ export class WhatsAppService {
   }
 
   private async callGraphApiDetailed(cfg: WhatsAppConfig, payload: any, to: string): Promise<WhatsAppSendResult> {
-    const url = `https://graph.facebook.com/${cfg.apiVersion || 'v20.0'}/${cfg.phoneNumberId}/messages`;
+    const url = `${this.providerBaseUrl}/${this.graphVersion(cfg)}/${cfg.phoneNumberId}/messages`;
     try {
       const res = await this.postGraphMessages(url, cfg, payload);
       const bodyText = await res.text();
@@ -392,7 +422,7 @@ export class WhatsAppService {
   }
 
   private async callGraphApi(cfg: WhatsAppConfig, payload: any, to: string): Promise<boolean> {
-    const url = `https://graph.facebook.com/${cfg.apiVersion || 'v20.0'}/${cfg.phoneNumberId}/messages`;
+    const url = `${this.providerBaseUrl}/${this.graphVersion(cfg)}/${cfg.phoneNumberId}/messages`;
     try {
       const res = await this.postGraphMessages(url, cfg, payload);
       const bodyText = await res.text();
@@ -419,7 +449,7 @@ export class WhatsAppService {
         return await fetch(url, {
           method: 'POST',
           headers: {
-            'Authorization': `Bearer ${String(cfg.accessToken || '').trim()}`,
+            ...this.authHeader(cfg),
             'Content-Type': 'application/json',
             'Accept': 'application/json',
             'User-Agent': 'moren-portal-whatsapp/1.0',
@@ -456,10 +486,10 @@ export class WhatsAppService {
     const cfg = await this.getEffectiveConfig(tenantId);
     if (!this.isConfigured(cfg) || !mediaId) return null;
 
-    const metaUrl = `https://graph.facebook.com/${cfg.apiVersion || 'v20.0'}/${mediaId}`;
+    const metaUrl = `${this.providerBaseUrl}/${this.graphVersion(cfg)}/${mediaId}`;
     try {
       const metaRes = await fetch(metaUrl, {
-        headers: { Authorization: `Bearer ${cfg.accessToken}` },
+        headers: { ...this.authHeader(cfg) },
       });
       const metaText = await metaRes.text();
       if (!metaRes.ok) {
@@ -471,7 +501,7 @@ export class WhatsAppService {
       if (!url) return null;
 
       const fileRes = await fetch(url, {
-        headers: { Authorization: `Bearer ${cfg.accessToken}` },
+        headers: { ...this.authHeader(cfg) },
       });
       if (!fileRes.ok) {
         this.logger.warn(`[WhatsApp] Medya indirilemedi ${mediaId}: HTTP ${fileRes.status}`);
@@ -570,10 +600,10 @@ export class WhatsAppService {
     if (!this.isConfigured(cfg)) {
       return { ok: false, error: 'Yapilandirma eksik. Once ayarlari kaydedin.' };
     }
-    const url = `https://graph.facebook.com/${cfg.apiVersion || 'v20.0'}/${cfg.phoneNumberId}`;
+    const url = `${this.providerBaseUrl}/${this.graphVersion(cfg)}/${cfg.phoneNumberId}`;
     try {
       const res = await fetch(url, {
-        headers: { 'Authorization': `Bearer ${cfg.accessToken}` },
+        headers: { ...this.authHeader(cfg) },
       });
       const bodyText = await res.text();
       if (!res.ok) {
@@ -722,6 +752,45 @@ export class WhatsAppService {
         notes: 'Mesaj Merkezi icin otomatik olusturulan ofis sahibi WhatsApp kaydi.',
         isActive: false,
         whatsappEvrakTalep: false,
+        whatsappEvrakGeldi: false,
+      },
+      select: { id: true, phone: true, phones: true },
+    });
+
+    const mergedPhones = Array.from(new Set([
+      ...(Array.isArray(primary.phones) ? primary.phones : []),
+      primary.phone || '',
+      ...ownerPhones,
+    ].map((phone) => this.normalizePhone(phone) || String(phone || '').trim()).filter(Boolean)));
+
+    await this.prisma.taxpayer.update({
+      where: { id: primary.id },
+      data: {
+        companyName: ownerName,
+        taxNumber: ownerTaxNumber,
+        taxOffice: 'WHATSAPP',
+        phone: mergedPhones[0] || primary.phone,
+        phones: mergedPhones,
+        notes: 'Mesaj Merkezi icin ofis sahibi WhatsApp kaydi.',
+        isActive: false,
+      },
+    });
+
+    for (const duplicate of virtualMatches.filter((item) => item.id !== primary.id)) {
+      await this.prisma.communicationLog.updateMany({
+        where: { taxpayerId: duplicate.id, channel: 'WHATSAPP' },
+        data: { taxpayerId: primary.id },
+      });
+      await this.prisma.taxpayer.update({
+        where: { id: duplicate.id },
+        data: {
+          isActive: false,
+          notes: `Bu kayitsiz WhatsApp kaydi owner kaydina tasindi: ${primary.id}`,
+        },
+      });
+    }
+  }
+}
         whatsappEvrakGeldi: false,
       },
       select: { id: true, phone: true, phones: true },
