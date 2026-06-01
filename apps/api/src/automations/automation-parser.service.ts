@@ -5,7 +5,6 @@ import {
   VALID_EVENT_NAMES,
   buildCatalogMarkdown,
 } from './action-catalog';
-import { claudeTextViaMax, isMaxAvailable, MAX_MODEL_DEFAULT } from '../common/max-inference';
 
 const ANTHROPIC_URL = 'https://api.anthropic.com/v1/messages';
 
@@ -90,124 +89,71 @@ export class AutomationParserService {
       throw new BadRequestException('Otomasyon cümlesi en fazla 2000 karakter olabilir.');
     }
 
+    const apiKey = process.env.ANTHROPIC_API_KEY;
+    if (!apiKey) {
+      throw new ServiceUnavailableException(
+        'ANTHROPIC_API_KEY environment değişkeni ayarlanmamış. ' +
+          'Railway / yerel .env\'e eklenmelidir.',
+      );
+    }
+
     const systemPrompt = this.buildSystemPrompt();
+    const proposeTool = this.buildProposeAutomationTool();
 
-    // Maliyet sırası: ÖNCE Max aboneliği (ücretsiz). Max'ta araç (tool_choice) yok,
-    // bu yüzden "sadece JSON döndür" talimatı veririz. Max yoksa/başarısızsa ücretli
-    // Anthropic API + propose_automation tool_choice yoluna düşülür.
-    let proposed: any = null;
-    let model = DEFAULT_PARSER_MODEL;
-    let inputTokens = 0;
-    let outputTokens = 0;
-    let parseCostUsd = 0;
+    const payload = {
+      model: DEFAULT_PARSER_MODEL,
+      max_tokens: 4096,
+      system: systemPrompt,
+      tools: [proposeTool],
+      tool_choice: { type: 'tool', name: 'propose_automation' }, // mecbur bu tool'u çağır
+      messages: [{ role: 'user', content: prompt }],
+    };
 
-    // 1) Max — JSON-prompt
-    if (isMaxAvailable()) {
-      try {
-        const jsonInstruction =
-          `${prompt}\n\n# ÇIKTI (ZORUNLU)\n` +
-          `Yalnızca TEK bir geçerli JSON nesnesi döndür — markdown, kod bloğu veya ek açıklama YOK. ` +
-          `Alanlar: {"title": string, "description": string, "humanReadablePreview": string, ` +
-          `"triggerType": "CRON"|"EVENT"|"WEBHOOK"|"MANUAL", "triggerConfig": object, ` +
-          `"steps": {"schemaVersion": 1, "steps": [{"id": string, "tool": string, "args": object, "outputAs"?: string}]}, ` +
-          `"confidence": number}. Yapamadığın iş için confidence: 0 ve steps: [] ver.`;
-        const max = await claudeTextViaMax({
-          prompt: jsonInstruction,
-          system: systemPrompt,
-          model: MAX_MODEL_DEFAULT,
-          maxTurns: 1,
-        });
-        if (max.ok && max.text) {
-          const parsedJson = this.extractJsonObject(max.text);
-          if (parsedJson) {
-            proposed = parsedJson;
-            model = max.model;
-            // Max maliyeti kotadan düşer — token başına fatura değil.
-            parseCostUsd = 0;
-          } else {
-            this.logger.warn('Parser Max JSON parse edilemedi, API\'ye düşülüyor.');
-          }
-        } else if (max.error) {
-          this.logger.warn(`Parser Max başarısız: ${max.error}`);
-        }
-      } catch (err: any) {
-        this.logger.warn(`Parser Max hatası: ${err?.message}`);
-      }
+    let response: Response;
+    try {
+      response = await fetch(ANTHROPIC_URL, {
+        method: 'POST',
+        headers: {
+          'x-api-key': apiKey,
+          'anthropic-version': '2023-06-01',
+          'content-type': 'application/json',
+        },
+        body: JSON.stringify(payload),
+      });
+    } catch (err: any) {
+      this.logger.error('Anthropic API\'ye bağlanılamadı', err.stack);
+      throw new ServiceUnavailableException('AI servisine ulaşılamadı: ' + err.message);
     }
 
-    // 2) Ücretli API (tool_choice) — Max yoksa/başarısızsa
-    if (!proposed) {
-      const apiKey = process.env.ANTHROPIC_API_KEY;
-      if (!apiKey) {
-        throw new ServiceUnavailableException(
-          'Otomasyon ayrıştırıcı için ne Max aboneliği (CLAUDE_CODE_OAUTH_TOKEN) ne de ' +
-            'ANTHROPIC_API_KEY ayarlı. Railway env\'e en az birini ekleyin.',
-        );
+    if (!response.ok) {
+      const errText = await response.text();
+      this.logger.error(`Parser API hata ${response.status}: ${errText.slice(0, 500)}`);
+      if (response.status === 401) {
+        throw new ServiceUnavailableException('Anthropic API anahtarı geçersiz.');
       }
-
-      const proposeTool = this.buildProposeAutomationTool();
-      const payload = {
-        model: DEFAULT_PARSER_MODEL,
-        max_tokens: 4096,
-        system: systemPrompt,
-        tools: [proposeTool],
-        tool_choice: { type: 'tool', name: 'propose_automation' }, // mecbur bu tool'u çağır
-        messages: [{ role: 'user', content: prompt }],
-      };
-
-      let response: Response;
-      try {
-        response = await fetch(ANTHROPIC_URL, {
-          method: 'POST',
-          headers: {
-            'x-api-key': apiKey,
-            'anthropic-version': '2023-06-01',
-            'content-type': 'application/json',
-          },
-          body: JSON.stringify(payload),
-        });
-      } catch (err: any) {
-        this.logger.error('Anthropic API\'ye bağlanılamadı', err.stack);
-        throw new ServiceUnavailableException('AI servisine ulaşılamadı: ' + err.message);
+      if (response.status === 429) {
+        throw new ServiceUnavailableException('AI servisi şu an meşgul. Birazdan tekrar deneyin.');
       }
-
-      if (!response.ok) {
-        const errText = await response.text();
-        this.logger.error(`Parser API hata ${response.status}: ${errText.slice(0, 500)}`);
-        if (response.status === 401) {
-          throw new ServiceUnavailableException('Anthropic API anahtarı geçersiz.');
-        }
-        if (response.status === 429) {
-          throw new ServiceUnavailableException('AI servisi şu an meşgul. Birazdan tekrar deneyin.');
-        }
-        throw new ServiceUnavailableException(`AI servisi hatası (${response.status}).`);
-      }
-
-      const data: any = await response.json();
-      inputTokens = data?.usage?.input_tokens ?? 0;
-      outputTokens = data?.usage?.output_tokens ?? 0;
-      parseCostUsd = this.computeCost(inputTokens, outputTokens);
-
-      const toolUseBlock = (data?.content ?? []).find((b: any) => b.type === 'tool_use');
-      if (!toolUseBlock || toolUseBlock.name !== 'propose_automation') {
-        this.logger.warn(
-          `Parser propose_automation çağırmadı. stop_reason=${data?.stop_reason}`,
-        );
-        throw new BadRequestException(
-          'Cümleyi anlayamadım. Lütfen daha açık bir cümleyle deneyin. ' +
-            'Örnek: "Her ayın 22\'sinde KDV gecikenlere WhatsApp at."',
-        );
-      }
-
-      proposed = toolUseBlock.input;
+      throw new ServiceUnavailableException(`AI servisi hatası (${response.status}).`);
     }
 
-    if (!proposed) {
+    const data: any = await response.json();
+    const inputTokens = data?.usage?.input_tokens ?? 0;
+    const outputTokens = data?.usage?.output_tokens ?? 0;
+    const parseCostUsd = this.computeCost(inputTokens, outputTokens);
+
+    const toolUseBlock = (data?.content ?? []).find((b: any) => b.type === 'tool_use');
+    if (!toolUseBlock || toolUseBlock.name !== 'propose_automation') {
+      this.logger.warn(
+        `Parser propose_automation çağırmadı. stop_reason=${data?.stop_reason}`,
+      );
       throw new BadRequestException(
         'Cümleyi anlayamadım. Lütfen daha açık bir cümleyle deneyin. ' +
           'Örnek: "Her ayın 22\'sinde KDV gecikenlere WhatsApp at."',
       );
     }
+
+    const proposed = toolUseBlock.input;
     // Defensive normalization — Claude bazen steps'i tek başına dizi olarak verir,
     // bazen schemaVersion'ı atlar. Geçerli şemaya çekiyoruz.
     if (!proposed.steps || typeof proposed.steps !== 'object' || Array.isArray(proposed.steps)) {
@@ -245,34 +191,12 @@ export class AutomationParserService {
       privacyNotice,
       confidence: proposed.confidence ?? 0.8,
       meta: {
-        model,
+        model: DEFAULT_PARSER_MODEL,
         inputTokens,
         outputTokens,
         parseCostUsd,
       },
     };
-  }
-
-  /** Serbest metinden ilk geçerli JSON nesnesini çıkar (Max'ın saf-metin çıktısı için). */
-  private extractJsonObject(raw: string): any | null {
-    if (!raw) return null;
-    const cleaned = String(raw)
-      .replace(/^```(?:json)?\s*/i, '')
-      .replace(/```\s*$/i, '')
-      .trim();
-    // Doğrudan dene
-    try {
-      return JSON.parse(cleaned);
-    } catch {}
-    // İlk { ... son } aralığını dene
-    const start = cleaned.indexOf('{');
-    const end = cleaned.lastIndexOf('}');
-    if (start >= 0 && end > start) {
-      try {
-        return JSON.parse(cleaned.slice(start, end + 1));
-      } catch {}
-    }
-    return null;
   }
 
   // ---------------------------------------------------------------

@@ -131,8 +131,7 @@ Sadece JSON döndür, başka açıklama ekleme:
 }`;
 
       const res = await this.openrouter.chat({
-        // Claude → Max aboneliği (ücretsiz). Adapter Max varsa otomatik oraya yönlendirir.
-        model: 'anthropic/claude-haiku-4-5', // ucuz, hızlı, summarization iyi — Max'ta ücretsiz
+        model: 'google/gemini-2.5-flash', // Ucuz, hızlı, summarization iyi
         messages: [
           { role: 'system', content: 'Sen disiplinli bir mali müşavirsin. Sadece JSON yanıt verirsin, doğru formatta.' },
           { role: 'user', content: prompt },

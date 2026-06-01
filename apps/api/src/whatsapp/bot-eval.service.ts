@@ -1,7 +1,6 @@
 import { Injectable, Logger } from '@nestjs/common';
 import { PrismaService } from '../prisma/prisma.service';
 import { computeCostUsd, logAiUsage, canSpendOnApi } from '../common/ai-usage-logger';
-import { claudeTextViaMax, isMaxAvailable, MAX_MODEL_CHEAP } from '../common/max-inference';
 
 const ANTHROPIC_URL = 'https://api.anthropic.com/v1/messages';
 const DEFAULT_MODEL = process.env.BOT_EVAL_MODEL || 'claude-haiku-4-5-20251001';
@@ -43,26 +42,19 @@ export class BotEvalService {
   ): Promise<BotEvalResult> {
     const local = this.localEval(reply, context, lastOutgoing);
     const allowLlm = options?.allowLlm ?? process.env.BOT_EVAL_DISABLE_LLM !== '1';
-    // Max aboneliği (ücretsiz) varsa LLM eval'i onunla yap; yoksa ücretli API.
-    const maxOk = isMaxAvailable();
     const apiKey = process.env.ANTHROPIC_API_KEY;
-    // Aylık ücretli API tavanı dolduysa ücretli LLM eval atlanır (Max tavandan hariç).
+    // Aylık ücretli API tavanı dolduysa LLM eval atla, lokal heuristik eval yeter.
     const budgetOk = await canSpendOnApi(this.prisma, context.tenantId || 'default', context.source || 'whatsapp-bot-eval');
 
-    // LLM eval ancak: izinli VE (Max var YA DA ücretli API anahtarı + tavan müsait).
-    if (!allowLlm || (!maxOk && (!apiKey || !budgetOk))) {
-      const note = !allowLlm
-        ? null
-        : !budgetOk
-          ? 'AI maliyet tavani doldu; lokal eval kullanildi'
-          : (apiKey ? null : 'ANTHROPIC_API_KEY yok; lokal eval kullanildi');
+    if (!allowLlm || !apiKey || !budgetOk) {
+      const note = !budgetOk
+        ? 'AI maliyet tavani doldu; lokal eval kullanildi'
+        : (apiKey ? null : 'ANTHROPIC_API_KEY yok; lokal eval kullanildi');
       return this.toResult(local.score, local.reasons, null, 0, 0, 0, note);
     }
 
     try {
-      const judged = maxOk
-        ? await this.judgeViaMax(reply, context, lastOutgoing)
-        : await this.judgeWithHaiku(reply, context, lastOutgoing, apiKey as string);
+      const judged = await this.judgeWithHaiku(reply, context, lastOutgoing, apiKey);
       const reasons = Array.from(new Set([...local.reasons, ...judged.reasons]));
       const score = Math.max(0, Math.min(10, Math.min(local.score, judged.score)));
       return this.toResult(score, reasons, judged.model, judged.inputTokens, judged.outputTokens, judged.costUsd, null);
@@ -140,8 +132,9 @@ export class BotEvalService {
     return { score: Math.max(0, Math.min(10, score)), reasons };
   }
 
-  private buildJudgePrompt(reply: string, context: BotEvalContext, lastOutgoing: string[]): string {
-    return [
+  private async judgeWithHaiku(reply: string, context: BotEvalContext, lastOutgoing: string[], apiKey: string) {
+    const model = DEFAULT_MODEL;
+    const prompt = [
       'You are a Turkish WhatsApp QA judge for an accounting office assistant that MUST sound like a real human, not an AI.',
       'Return ONLY JSON: {"score":0-10,"reasons":["..."]}.',
       'REWARD (high score): natural, warm, fluent human Turkish that mirrors the customer tone; concise; directly answers what was asked.',
@@ -154,36 +147,6 @@ export class BotEvalService {
       `Context: ${String(context.contextBlock || '').slice(0, 1800)}`,
       `Reply: ${reply}`,
     ].join('\n');
-  }
-
-  /** LLM jüri — Max aboneliği üzerinden (ücretsiz, saf metin JSON). */
-  private async judgeViaMax(reply: string, context: BotEvalContext, lastOutgoing: string[]) {
-    const model = MAX_MODEL_CHEAP;
-    const prompt = this.buildJudgePrompt(reply, context, lastOutgoing);
-    const started = Date.now();
-    const max = await claudeTextViaMax({ prompt, model, maxTurns: 1 });
-    if (!max.ok || !max.text) throw new Error(max.error || 'Max eval boş cevap');
-    const parsed = this.parseJudgeJson(max.text);
-
-    if (context.tenantId) {
-      await logAiUsage(this.prisma, {
-        tenantId: context.tenantId,
-        taxpayerId: context.taxpayerId || null,
-        source: 'whatsapp-bot-eval-max',
-        model,
-        fixedCostUsd: max.costUsd,
-        karar: parsed.score >= 6 ? 'ok' : 'low_score',
-        sebep: (parsed.reasons || []).join(', ').slice(0, 200),
-        durationMs: Date.now() - started,
-      });
-    }
-
-    return { score: parsed.score, reasons: parsed.reasons, model, inputTokens: 0, outputTokens: 0, costUsd: 0 };
-  }
-
-  private async judgeWithHaiku(reply: string, context: BotEvalContext, lastOutgoing: string[], apiKey: string) {
-    const model = DEFAULT_MODEL;
-    const prompt = this.buildJudgePrompt(reply, context, lastOutgoing);
 
     const started = Date.now();
     const res = await fetch(ANTHROPIC_URL, {

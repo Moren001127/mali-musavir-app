@@ -4,7 +4,6 @@ import { Prisma } from '@prisma/client';
 import * as ExcelJS from 'exceljs';
 import { PrismaService } from '../prisma/prisma.service';
 import { logAiUsage } from '../common/ai-usage-logger';
-import { claudeTextViaMax, isMaxAvailable, MAX_MODEL_CHEAP } from '../common/max-inference';
 import { profileToPromptText } from '../common/profile-prompt';
 import { SISTEM_KURALLARI } from '../common/sistem-kurallari';
 import { VendorMemoryService } from '../vendor-memory/vendor-memory.service';
@@ -557,47 +556,6 @@ ${ocr.text.slice(0, 14000)}`;
 
     const tryGemini = provider === 'auto' || provider === 'gemini';
     const tryOpenAi = provider === 'auto' || provider === 'openai';
-
-    // ÖNCE Max aboneliği (ücretsiz, kotadan düşer). Ucuz karar saf metin/JSON olduğu için
-    // Max'a birebir uyar. Başarısız/JSON gelmezse aşağıdaki Gemini/OpenAI'ye düşülür.
-    if (isMaxAvailable()) {
-      try {
-        const started = Date.now();
-        const model = MAX_MODEL_CHEAP;
-        const max = await claudeTextViaMax({ prompt, system, model, maxTurns: 1 });
-        if (max.ok && max.text) {
-          const parsed = this.parseFirstJsonObject(max.text);
-          if (parsed) {
-            await logAiUsage(this.prisma, {
-              tenantId: input.tenantId || 'unknown',
-              taxpayerId: input.mukellefId || null,
-              source: kind === 'fatura' ? 'mihsap-fatura-cheap-max' : 'mihsap-isletme-cheap-max',
-              model,
-              fixedCostUsd: max.costUsd,
-              mukellef: input.mukellef,
-              belgeNo: input.belgeNo,
-              karar: parsed?.karar || (parsed?.emin === true ? 'onay' : 'emin_degil'),
-              sebep: `[ocr=${ocr.provider}] ${parsed?.sebep || 'max cheap decision'}`.slice(0, 200),
-              durationMs: Date.now() - started,
-            });
-            return {
-              provider: 'max',
-              model,
-              ocrProvider: ocr.provider,
-              confidence: this.extractCheapConfidence(parsed),
-              parsed,
-              rawText: max.text,
-              fallbackReason: ocr.fallbackReason,
-            };
-          }
-          failures.push('max:json_parse_fail');
-        } else {
-          failures.push(`max:${max.error || 'bos_cevap'}`);
-        }
-      } catch (e: any) {
-        failures.push(`max:${e?.message || 'error'}`);
-      }
-    }
 
     if (tryGemini && process.env.GEMINI_API_KEY) {
       try {
