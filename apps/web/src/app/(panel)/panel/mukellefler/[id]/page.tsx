@@ -51,9 +51,10 @@ const MUTED = 'rgba(250,250,249,0.68)';
 const SOFT = 'rgba(255,255,255,0.05)';
 // Tema arka plan tonları — sıcak kahve-gri, ferah his
 const PANEL = '#2a241c';
-const PANEL_LIGHT = '#352e23';
-// Alanlar için altın odak halkası
-const FOCUS_RING = 'focus:shadow-[0_0_0_2px_rgba(212,184,118,0.32)]';
+// Premium alan stilleri — altın odak halkası + kenar
+const FIELD_CLS = 'h-11 w-full rounded-lg border border-white/10 bg-white/[0.04] px-3.5 text-[13.5px] text-[#fafaf9] outline-none transition placeholder:text-white/25 focus:border-[#d4b876]/55 focus:bg-white/[0.06] focus:shadow-[0_0_0_3px_rgba(212,184,118,0.13)]';
+const SELECT_CLS = `${FIELD_CLS} cursor-pointer`;
+const TEXTAREA_CLS = 'w-full resize-none rounded-lg border border-white/10 bg-white/[0.04] px-3.5 py-3 text-[13.5px] text-[#fafaf9] outline-none transition placeholder:text-white/25 focus:border-[#d4b876]/55 focus:bg-white/[0.06] focus:shadow-[0_0_0_3px_rgba(212,184,118,0.13)]';
 
 const TAXPAYER_TYPES = [
   { value: 'TUZEL_KISI', label: 'Tüzel Kişi', detail: 'Şirket veya kurum kaydı' },
@@ -541,7 +542,7 @@ export default function MukellefDetayPage() {
             </div>
 
             {/* SEKME İÇERİĞİ */}
-            <div className={activeTab === 'mukellefiyetler' ? 'p-4 sm:p-5' : 'p-4 sm:p-5'}>
+            <div className="p-4 sm:p-5">
               {activeTab === 'bilgiler' && (
                 <BilgilerTab form={form} setForm={setForm} taxpayerId={isNew ? null : id} />
               )}
@@ -674,7 +675,7 @@ function PortalDrawer({
 }
 
 // ============================================================
-// BİLGİLER TAB — sol bölüm menüsü + içerik (ayarlar paneli tarzı)
+// BİLGİLER TAB — sol bölüm menüsü + içerik (düz, çerçevesiz)
 // ============================================================
 type BilgiSectionId = 'musteri' | 'yetkili' | 'iletisim' | 'sifreler' | 'bagkur' | 'entegrator' | 'otomasyon' | 'sistem';
 
@@ -706,13 +707,11 @@ function BilgilerTab({
   ];
   const visible = sections.filter((s) => s.show);
   const [active, setActive] = useState<BilgiSectionId>('musteri');
-  const current = visible.find((s) => s.id === active) ?? visible[0];
-  const CurrentIcon = current.icon;
 
   return (
-    <div className="grid gap-4 md:grid-cols-[232px_minmax(0,1fr)]">
-      {/* Sol bölüm menüsü */}
-      <nav className="flex gap-1.5 overflow-x-auto pb-1 md:flex-col md:gap-1 md:overflow-visible md:pb-0">
+    <div className="grid gap-4 md:grid-cols-[210px_minmax(0,1fr)] md:gap-0">
+      {/* Sol bölüm menüsü — çerçevesiz, aktif altın çubuk */}
+      <nav className="flex gap-1.5 overflow-x-auto pb-1 md:flex-col md:gap-0.5 md:overflow-visible md:pb-0 md:pr-4">
         {visible.map((s) => {
           const Icon = s.icon;
           const on = active === s.id;
@@ -721,297 +720,276 @@ function BilgilerTab({
               key={s.id}
               type="button"
               onClick={() => setActive(s.id)}
-              className="group flex shrink-0 items-center gap-3 rounded-xl border px-3 py-2.5 text-left transition md:w-full"
-              style={{
-                borderColor: on ? LINE_GOLD : 'rgba(255,255,255,0.07)',
-                background: on ? 'rgba(212,184,118,0.10)' : 'rgba(255,255,255,0.02)',
-              }}
+              className="relative flex shrink-0 items-center gap-3 rounded-lg py-2.5 pl-3.5 pr-3 text-left transition hover:bg-white/[0.04] md:w-full"
+              style={on ? { background: 'rgba(212,184,118,0.10)' } : undefined}
             >
+              {on && <span className="absolute bottom-1.5 left-0 top-1.5 w-[3px] rounded-full" style={{ background: GOLD }} />}
               <span
-                className="flex h-8 w-8 shrink-0 items-center justify-center rounded-lg border"
-                style={{
-                  borderColor: on ? LINE_GOLD : LINE,
-                  background: on ? 'rgba(212,184,118,0.16)' : 'rgba(255,255,255,0.03)',
-                  color: on ? GOLD : MUTED,
-                }}
+                className="flex h-8 w-8 shrink-0 items-center justify-center rounded-lg"
+                style={{ background: on ? 'rgba(212,184,118,0.16)' : 'rgba(255,255,255,0.04)', color: on ? GOLD : MUTED }}
               >
                 <Icon size={15} />
               </span>
               <span className="min-w-0 flex-1">
                 <span className="flex items-center gap-1.5">
-                  <span className="block truncate text-[13px] font-semibold" style={{ color: on ? TEXT : 'rgba(250,250,249,0.82)' }}>{s.title}</span>
+                  <span className="block truncate text-[13px] font-semibold" style={{ color: on ? TEXT : 'rgba(250,250,249,0.78)' }}>{s.title}</span>
                   {s.filled && <span className="h-1.5 w-1.5 shrink-0 rounded-full" style={{ background: '#68d391' }} title="Dolu" />}
                 </span>
-                <span className="mt-0.5 hidden truncate text-[11px] md:block" style={{ color: MUTED }}>{s.subtitle}</span>
+                <span className="mt-0.5 hidden truncate text-[11px] md:block" style={{ color: 'rgba(250,250,249,0.45)' }}>{s.subtitle}</span>
               </span>
             </button>
           );
         })}
       </nav>
 
-      {/* İçerik paneli */}
-      <div className="overflow-hidden rounded-xl border" style={{ borderColor: LINE, background: 'rgba(255,255,255,0.015)' }}>
-        <div className="flex items-center gap-3 border-b px-5 py-3.5" style={{ borderColor: LINE }}>
-          <span className="flex h-9 w-9 items-center justify-center rounded-lg border" style={{ borderColor: LINE_GOLD, background: 'rgba(212,184,118,0.12)', color: GOLD }}>
-            <CurrentIcon size={16} />
-          </span>
-          <div className="min-w-0">
-            <div className="text-[14.5px] font-semibold" style={{ color: TEXT }}>{current.title}</div>
-            <div className="truncate text-[11.5px]" style={{ color: MUTED }}>{current.subtitle}</div>
+      {/* İçerik — çerçevesiz, yalnızca dikey ayraç */}
+      <div className="md:border-l md:pl-6" style={{ borderColor: LINE }}>
+        {/* MÜŞTERİ / ŞİRKET */}
+        {active === 'musteri' && (
+          <div className="space-y-6">
+            <div>
+              <span className="mb-2 block text-[11.5px] font-medium tracking-wide" style={{ color: MUTED }}>Mükellef türü</span>
+              <Segmented
+                value={form.type}
+                onChange={(v) => setForm((p) => ({ ...p, type: v as TaxpayerType }))}
+                options={TAXPAYER_TYPES.map((t) => ({ value: t.value, label: t.label }))}
+              />
+              <p className="mt-2 text-[12px]" style={{ color: 'rgba(250,250,249,0.5)' }}>
+                {TAXPAYER_TYPES.find((t) => t.value === form.type)?.detail}
+              </p>
+            </div>
+            <div className="grid grid-cols-1 gap-4 sm:grid-cols-2">
+              {form.type === 'TUZEL_KISI' ? (
+                <Field label="Şirket adı" required className="sm:col-span-2">
+                  <InputBase value={form.companyName} onChange={(e) => setForm((p) => ({ ...p, companyName: e.target.value }))} required />
+                </Field>
+              ) : (
+                <>
+                  <Field label="Ad" required>
+                    <InputBase value={form.firstName} onChange={(e) => setForm((p) => ({ ...p, firstName: e.target.value }))} required />
+                  </Field>
+                  <Field label="Soyad" required>
+                    <InputBase value={form.lastName} onChange={(e) => setForm((p) => ({ ...p, lastName: e.target.value }))} required />
+                  </Field>
+                </>
+              )}
+              <Field label={form.type === 'TUZEL_KISI' ? 'VKN' : 'TCKN'} required>
+                <InputBase
+                  value={form.taxNumber}
+                  onChange={(e) => setForm((p) => ({ ...p, taxNumber: e.target.value.replace(/\D/g, '') }))}
+                  maxLength={11}
+                  required
+                  className="font-mono"
+                />
+              </Field>
+              <Field label="Vergi dairesi" required>
+                <InputBase value={form.taxOffice} onChange={(e) => setForm((p) => ({ ...p, taxOffice: e.target.value }))} required />
+              </Field>
+              <Field label="İşe başlama tarihi">
+                <InputBase type="date" value={form.startDate} onChange={(e) => setForm((p) => ({ ...p, startDate: e.target.value }))} />
+              </Field>
+              <Field label="İşi bırakma tarihi">
+                <InputBase type="date" value={form.endDate} onChange={(e) => setForm((p) => ({ ...p, endDate: e.target.value }))} />
+              </Field>
+              <Field label="Adres" className="sm:col-span-2">
+                <InputBase value={form.address} onChange={(e) => setForm((p) => ({ ...p, address: e.target.value }))} />
+              </Field>
+              <Field label="NACE Kodu">
+                <InputBase placeholder="Örn: 56.10.06" value={form.naceKodu} onChange={(e) => setForm((p) => ({ ...p, naceKodu: e.target.value }))} />
+              </Field>
+              <Field label="Ticaret Sicil No">
+                <InputBase placeholder="Örn: 123456-5" value={form.ticaretSicilNo} onChange={(e) => setForm((p) => ({ ...p, ticaretSicilNo: e.target.value }))} />
+              </Field>
+              <Field label="MERSİS No">
+                <InputBase placeholder="16 haneli" value={form.mersisNo} onChange={(e) => setForm((p) => ({ ...p, mersisNo: e.target.value }))} className="font-mono" />
+              </Field>
+              <Field label="Oda Sicil No">
+                <InputBase placeholder="Örn: İTO 678901" value={form.odaSicilNo} onChange={(e) => setForm((p) => ({ ...p, odaSicilNo: e.target.value }))} />
+              </Field>
+            </div>
           </div>
-        </div>
+        )}
 
-        <div className="p-5">
-          {/* MÜŞTERİ / ŞİRKET */}
-          {active === 'musteri' && (
-            <>
-              <div className="grid gap-3 sm:grid-cols-2">
-                {TAXPAYER_TYPES.map((item) => (
-                  <RadioCard
-                    key={item.value}
-                    checked={form.type === item.value}
-                    title={item.label}
-                    detail={item.detail}
-                    onClick={() => setForm((prev) => ({ ...prev, type: item.value }))}
+        {/* FİRMA YETKİLİLERİ */}
+        {active === 'yetkili' && taxpayerId && <YetkililerSection taxpayerId={taxpayerId} />}
+
+        {/* İLETİŞİM */}
+        {active === 'iletisim' && (
+          <div className="space-y-5">
+            <div className="grid grid-cols-1 gap-5 md:grid-cols-2">
+              <div className="space-y-3">
+                <Subhead icon={Phone} label="Telefonlar" />
+                {form.phones.map((phone, index) => (
+                  <InputBase
+                    key={index}
+                    type="tel"
+                    value={phone}
+                    onChange={(e) =>
+                      setForm((prev) => {
+                        const phones = [...prev.phones];
+                        phones[index] = e.target.value;
+                        return { ...prev, phones };
+                      })
+                    }
+                    placeholder={index === 0 ? 'Ana telefon' : `Telefon ${index + 1}`}
                   />
                 ))}
               </div>
-              <div className="mt-5 grid grid-cols-1 gap-4 md:grid-cols-2">
-                {form.type === 'TUZEL_KISI' ? (
-                  <Field label="Şirket adı" required className="md:col-span-2">
-                    <InputBase value={form.companyName} onChange={(e) => setForm((p) => ({ ...p, companyName: e.target.value }))} required />
-                  </Field>
-                ) : (
-                  <>
-                    <Field label="Ad" required>
-                      <InputBase value={form.firstName} onChange={(e) => setForm((p) => ({ ...p, firstName: e.target.value }))} required />
-                    </Field>
-                    <Field label="Soyad" required>
-                      <InputBase value={form.lastName} onChange={(e) => setForm((p) => ({ ...p, lastName: e.target.value }))} required />
-                    </Field>
-                  </>
-                )}
-                <Field label={form.type === 'TUZEL_KISI' ? 'VKN' : 'TCKN'} required>
+              <div className="space-y-3">
+                <Subhead icon={Mail} label="E-postalar" />
+                {form.emails.map((email, index) => (
                   <InputBase
-                    value={form.taxNumber}
-                    onChange={(e) => setForm((p) => ({ ...p, taxNumber: e.target.value.replace(/\D/g, '') }))}
-                    maxLength={11}
-                    required
-                    className="font-mono"
-                  />
-                </Field>
-                <Field label="Vergi dairesi" required>
-                  <InputBase value={form.taxOffice} onChange={(e) => setForm((p) => ({ ...p, taxOffice: e.target.value }))} required />
-                </Field>
-                <Field label="İşe başlama tarihi">
-                  <InputBase type="date" value={form.startDate} onChange={(e) => setForm((p) => ({ ...p, startDate: e.target.value }))} />
-                </Field>
-                <Field label="İşi bırakma tarihi">
-                  <InputBase type="date" value={form.endDate} onChange={(e) => setForm((p) => ({ ...p, endDate: e.target.value }))} />
-                </Field>
-                <Field label="Adres" className="md:col-span-2">
-                  <InputBase value={form.address} onChange={(e) => setForm((p) => ({ ...p, address: e.target.value }))} />
-                </Field>
-                <Field label="NACE Kodu">
-                  <InputBase placeholder="Örn: 56.10.06" value={form.naceKodu} onChange={(e) => setForm((p) => ({ ...p, naceKodu: e.target.value }))} />
-                </Field>
-                <Field label="Ticaret Sicil No">
-                  <InputBase placeholder="Örn: 123456-5" value={form.ticaretSicilNo} onChange={(e) => setForm((p) => ({ ...p, ticaretSicilNo: e.target.value }))} />
-                </Field>
-                <Field label="MERSİS No">
-                  <InputBase placeholder="16 haneli" value={form.mersisNo} onChange={(e) => setForm((p) => ({ ...p, mersisNo: e.target.value }))} className="font-mono" />
-                </Field>
-                <Field label="Oda Sicil No">
-                  <InputBase placeholder="Örn: İTO 678901" value={form.odaSicilNo} onChange={(e) => setForm((p) => ({ ...p, odaSicilNo: e.target.value }))} />
-                </Field>
-              </div>
-            </>
-          )}
-
-          {/* FİRMA YETKİLİLERİ */}
-          {active === 'yetkili' && taxpayerId && <YetkililerSection taxpayerId={taxpayerId} />}
-
-          {/* İLETİŞİM */}
-          {active === 'iletisim' && (
-            <>
-              <div className="grid grid-cols-1 gap-5 md:grid-cols-2">
-                <div className="space-y-3">
-                  <Subhead icon={Phone} label="Telefonlar" />
-                  {form.phones.map((phone, index) => (
-                    <InputBase
-                      key={index}
-                      type="tel"
-                      value={phone}
-                      onChange={(e) =>
-                        setForm((prev) => {
-                          const phones = [...prev.phones];
-                          phones[index] = e.target.value;
-                          return { ...prev, phones };
-                        })
-                      }
-                      placeholder={index === 0 ? 'Ana telefon' : `Telefon ${index + 1}`}
-                    />
-                  ))}
-                </div>
-                <div className="space-y-3">
-                  <Subhead icon={Mail} label="E-postalar" />
-                  {form.emails.map((email, index) => (
-                    <InputBase
-                      key={index}
-                      type="email"
-                      value={email}
-                      onChange={(e) =>
-                        setForm((prev) => {
-                          const emails = [...prev.emails];
-                          emails[index] = e.target.value;
-                          return { ...prev, emails };
-                        })
-                      }
-                      placeholder={index === 0 ? 'Ana e-posta' : `E-posta ${index + 1}`}
-                    />
-                  ))}
-                </div>
-              </div>
-              <div className="mt-4 grid grid-cols-1 gap-4 md:grid-cols-2">
-                <Field label="KEP Adresi">
-                  <InputBase type="email" placeholder="ornek@hs01.kep.tr" value={form.kepAdresi} onChange={(e) => setForm((p) => ({ ...p, kepAdresi: e.target.value }))} />
-                </Field>
-                <Field label="Web Sitesi">
-                  <InputBase placeholder="https://" value={form.webSitesi} onChange={(e) => setForm((p) => ({ ...p, webSitesi: e.target.value }))} />
-                </Field>
-              </div>
-            </>
-          )}
-
-          {/* ŞİFRELER */}
-          {active === 'sifreler' && taxpayerId && <TaxpayerPortalCredentialsCard taxpayerId={taxpayerId} />}
-
-          {/* BAĞ-KUR */}
-          {active === 'bagkur' && (
-            <div className="grid grid-cols-1 gap-4 md:grid-cols-2">
-              <Field label="Bağ-Kur Sicil No">
-                <InputBase value={form.bagkurSicilNo} onChange={(e) => setForm((p) => ({ ...p, bagkurSicilNo: e.target.value }))} className="font-mono" />
-              </Field>
-              <div className="rounded-lg border p-3 text-[12px]" style={{ borderColor: LINE, background: SOFT, color: MUTED }}>
-                <div className="flex items-center gap-2 font-semibold" style={{ color: GOLD }}>
-                  <Lock size={13} /> Şifre yönetimi
-                </div>
-                <p className="mt-1.5">Bağ-Kur / e-Devlet şifreleri <strong style={{ color: TEXT }}>Şifreler</strong> bölümünden yönetilir.</p>
-              </div>
-            </div>
-          )}
-
-          {/* E-FATURA ENTEGRATÖR */}
-          {active === 'entegrator' && (
-            <>
-              <div className="grid grid-cols-1 gap-4 md:grid-cols-2">
-                <Field label="Entegratör">
-                  <select
-                    value={form.eFaturaEntegrator}
-                    onChange={(e) => setForm((p) => ({ ...p, eFaturaEntegrator: e.target.value }))}
-                    className={`h-10 w-full rounded-lg border px-3 text-sm outline-none transition ${FOCUS_RING}`}
-                    style={{ background: SOFT, borderColor: LINE, color: TEXT }}
-                  >
-                    <option value="">Seçiniz</option>
-                    <option value="GIB_PORTAL">GİB Portal</option>
-                    <option value="UYUMSOFT">Uyumsoft</option>
-                    <option value="BILGENET">BilgeNet</option>
-                    <option value="FORIBA">Foriba</option>
-                    <option value="IZIBIZ">İzibiz</option>
-                    <option value="DIGER">Diğer</option>
-                  </select>
-                </Field>
-                <div>
-                  <span className="mb-1.5 block text-[12px] font-semibold" style={{ color: MUTED }}>E-Fatura Mükellefiyeti</span>
-                  <ToggleRow
-                    checked={form.isEFaturaMukellefi}
-                    onChange={(checked) => setForm((p) => ({ ...p, isEFaturaMukellefi: checked }))}
-                    title="E-Fatura mükellefi"
-                    detail="Fatura sorgulama modüllerindeki varsayılan kanal."
-                  />
-                </div>
-              </div>
-              <p className="mt-3 text-[12px]" style={{ color: MUTED }}>
-                Entegratör kullanıcı/şifresi <strong style={{ color: TEXT }}>Şifreler</strong> bölümünden yönetilir (provider: <code>EFATURA_ENTEGRATOR</code>).
-              </p>
-            </>
-          )}
-
-          {/* EVRAK & OTOMASYON */}
-          {active === 'otomasyon' && (
-            <div className="grid grid-cols-1 gap-4 md:grid-cols-[minmax(0,260px)_1fr]">
-              <Field label="Evrak teslim son günü">
-                <InputBase
-                  type="number"
-                  min={1}
-                  max={30}
-                  value={form.evrakTeslimGunu}
-                  onChange={(e) => setForm((p) => ({ ...p, evrakTeslimGunu: e.target.value }))}
-                  placeholder="Örn: 15"
-                />
-              </Field>
-              <div className="grid gap-3">
-                <ToggleRow
-                  checked={form.whatsappEvrakTalep}
-                  onChange={(checked) => setForm((p) => ({ ...p, whatsappEvrakTalep: checked }))}
-                  title="Evrak talep mesajı"
-                  detail="Aylık evrak akışı için WhatsApp hatırlatması."
-                />
-                <ToggleRow
-                  checked={form.whatsappEvrakGeldi}
-                  onChange={(checked) => setForm((p) => ({ ...p, whatsappEvrakGeldi: checked }))}
-                  title="Evrak geldi onayı"
-                  detail="Evrak geldi işaretlendiğinde bilgilendirme mesajı."
-                />
-              </div>
-            </div>
-          )}
-
-          {/* DEFTER & SİSTEM */}
-          {active === 'sistem' && (
-            <>
-              <div className="grid gap-3 sm:grid-cols-2">
-                <RadioCard
-                  checked={form.defterTuru === 'BILANCO'}
-                  title="Bilanço"
-                  detail="Banka takip ve bilanço modülleri aktif."
-                  onClick={() => setForm((p) => ({ ...p, defterTuru: 'BILANCO', mihsapDefterTuru: 'BILANCO' }))}
-                />
-                <RadioCard
-                  checked={form.defterTuru === 'ISLETME'}
-                  title="İşletme defteri"
-                  detail="Defter beyan akışı için sade profil."
-                  onClick={() => setForm((p) => ({ ...p, defterTuru: 'ISLETME', mihsapDefterTuru: 'DEFTER_BEYAN' }))}
-                />
-              </div>
-              <div className="mt-5 grid grid-cols-1 gap-4 md:grid-cols-3">
-                <Field label="Luca slug">
-                  <InputBase value={form.lucaSlug} onChange={(e) => setForm((p) => ({ ...p, lucaSlug: e.target.value }))} placeholder="selim_motors" />
-                </Field>
-                <Field label="Mihsap ID">
-                  <InputBase value={form.mihsapId} onChange={(e) => setForm((p) => ({ ...p, mihsapId: e.target.value }))} placeholder="110564" />
-                </Field>
-                <Field label="Mihsap defter türü">
-                  <select
-                    value={form.mihsapDefterTuru}
+                    key={index}
+                    type="email"
+                    value={email}
                     onChange={(e) =>
-                      setForm((p) => ({
-                        ...p,
-                        mihsapDefterTuru: e.target.value,
-                        defterTuru: e.target.value === 'DEFTER_BEYAN' ? 'ISLETME' : 'BILANCO',
-                      }))
+                      setForm((prev) => {
+                        const emails = [...prev.emails];
+                        emails[index] = e.target.value;
+                        return { ...prev, emails };
+                      })
                     }
-                    className={`h-10 w-full rounded-lg border px-3 text-sm outline-none transition ${FOCUS_RING}`}
-                    style={{ background: SOFT, borderColor: LINE, color: TEXT }}
-                  >
-                    <option value="BILANCO">Bilanço</option>
-                    <option value="DEFTER_BEYAN">Defter Beyan</option>
-                  </select>
-                </Field>
+                    placeholder={index === 0 ? 'Ana e-posta' : `E-posta ${index + 1}`}
+                  />
+                ))}
               </div>
-            </>
-          )}
-        </div>
+            </div>
+            <div className="grid grid-cols-1 gap-4 md:grid-cols-2">
+              <Field label="KEP Adresi">
+                <InputBase type="email" placeholder="ornek@hs01.kep.tr" value={form.kepAdresi} onChange={(e) => setForm((p) => ({ ...p, kepAdresi: e.target.value }))} />
+              </Field>
+              <Field label="Web Sitesi">
+                <InputBase placeholder="https://" value={form.webSitesi} onChange={(e) => setForm((p) => ({ ...p, webSitesi: e.target.value }))} />
+              </Field>
+            </div>
+          </div>
+        )}
+
+        {/* ŞİFRELER */}
+        {active === 'sifreler' && taxpayerId && <TaxpayerPortalCredentialsCard taxpayerId={taxpayerId} />}
+
+        {/* BAĞ-KUR */}
+        {active === 'bagkur' && (
+          <div className="grid grid-cols-1 gap-4 md:grid-cols-2">
+            <Field label="Bağ-Kur Sicil No">
+              <InputBase value={form.bagkurSicilNo} onChange={(e) => setForm((p) => ({ ...p, bagkurSicilNo: e.target.value }))} className="font-mono" />
+            </Field>
+            <div className="rounded-lg border p-3 text-[12px]" style={{ borderColor: LINE, background: SOFT, color: MUTED }}>
+              <div className="flex items-center gap-2 font-semibold" style={{ color: GOLD }}>
+                <Lock size={13} /> Şifre yönetimi
+              </div>
+              <p className="mt-1.5">Bağ-Kur / e-Devlet şifreleri <strong style={{ color: TEXT }}>Şifreler</strong> bölümünden yönetilir.</p>
+            </div>
+          </div>
+        )}
+
+        {/* E-FATURA ENTEGRATÖR */}
+        {active === 'entegrator' && (
+          <div className="space-y-3">
+            <div className="grid grid-cols-1 gap-4 md:grid-cols-2">
+              <Field label="Entegratör">
+                <select
+                  value={form.eFaturaEntegrator}
+                  onChange={(e) => setForm((p) => ({ ...p, eFaturaEntegrator: e.target.value }))}
+                  className={SELECT_CLS}
+                  style={{ colorScheme: 'dark' }}
+                >
+                  <option value="">Seçiniz</option>
+                  <option value="GIB_PORTAL">GİB Portal</option>
+                  <option value="UYUMSOFT">Uyumsoft</option>
+                  <option value="BILGENET">BilgeNet</option>
+                  <option value="FORIBA">Foriba</option>
+                  <option value="IZIBIZ">İzibiz</option>
+                  <option value="DIGER">Diğer</option>
+                </select>
+              </Field>
+              <div>
+                <span className="mb-1.5 block text-[11.5px] font-medium tracking-wide" style={{ color: MUTED }}>E-Fatura Mükellefiyeti</span>
+                <ToggleRow
+                  checked={form.isEFaturaMukellefi}
+                  onChange={(checked) => setForm((p) => ({ ...p, isEFaturaMukellefi: checked }))}
+                  title="E-Fatura mükellefi"
+                  detail="Fatura sorgulama modüllerindeki varsayılan kanal."
+                />
+              </div>
+            </div>
+            <p className="text-[12px]" style={{ color: MUTED }}>
+              Entegratör kullanıcı/şifresi <strong style={{ color: TEXT }}>Şifreler</strong> bölümünden yönetilir (provider: <code>EFATURA_ENTEGRATOR</code>).
+            </p>
+          </div>
+        )}
+
+        {/* EVRAK & OTOMASYON */}
+        {active === 'otomasyon' && (
+          <div className="grid grid-cols-1 gap-4 md:grid-cols-[minmax(0,260px)_1fr]">
+            <Field label="Evrak teslim son günü">
+              <InputBase
+                type="number"
+                min={1}
+                max={30}
+                value={form.evrakTeslimGunu}
+                onChange={(e) => setForm((p) => ({ ...p, evrakTeslimGunu: e.target.value }))}
+                placeholder="Örn: 15"
+              />
+            </Field>
+            <div className="grid gap-3">
+              <ToggleRow
+                checked={form.whatsappEvrakTalep}
+                onChange={(checked) => setForm((p) => ({ ...p, whatsappEvrakTalep: checked }))}
+                title="Evrak talep mesajı"
+                detail="Aylık evrak akışı için WhatsApp hatırlatması."
+              />
+              <ToggleRow
+                checked={form.whatsappEvrakGeldi}
+                onChange={(checked) => setForm((p) => ({ ...p, whatsappEvrakGeldi: checked }))}
+                title="Evrak geldi onayı"
+                detail="Evrak geldi işaretlendiğinde bilgilendirme mesajı."
+              />
+            </div>
+          </div>
+        )}
+
+        {/* DEFTER & SİSTEM */}
+        {active === 'sistem' && (
+          <div className="space-y-6">
+            <div>
+              <span className="mb-2 block text-[11.5px] font-medium tracking-wide" style={{ color: MUTED }}>Defter türü</span>
+              <Segmented
+                value={form.defterTuru}
+                onChange={(v) => setForm((p) => ({ ...p, defterTuru: v as DefterTuru, mihsapDefterTuru: v === 'ISLETME' ? 'DEFTER_BEYAN' : 'BILANCO' }))}
+                options={[{ value: 'BILANCO', label: 'Bilanço' }, { value: 'ISLETME', label: 'İşletme defteri' }]}
+              />
+              <p className="mt-2 text-[12px]" style={{ color: 'rgba(250,250,249,0.5)' }}>
+                {form.defterTuru === 'BILANCO' ? 'Banka takip ve bilanço modülleri aktif.' : 'Defter beyan akışı için sade profil.'}
+              </p>
+            </div>
+            <div className="grid grid-cols-1 gap-4 md:grid-cols-3">
+              <Field label="Luca slug">
+                <InputBase value={form.lucaSlug} onChange={(e) => setForm((p) => ({ ...p, lucaSlug: e.target.value }))} placeholder="selim_motors" />
+              </Field>
+              <Field label="Mihsap ID">
+                <InputBase value={form.mihsapId} onChange={(e) => setForm((p) => ({ ...p, mihsapId: e.target.value }))} placeholder="110564" />
+              </Field>
+              <Field label="Mihsap defter türü">
+                <select
+                  value={form.mihsapDefterTuru}
+                  onChange={(e) =>
+                    setForm((p) => ({
+                      ...p,
+                      mihsapDefterTuru: e.target.value,
+                      defterTuru: e.target.value === 'DEFTER_BEYAN' ? 'ISLETME' : 'BILANCO',
+                    }))
+                  }
+                  className={SELECT_CLS}
+                  style={{ colorScheme: 'dark' }}
+                >
+                  <option value="BILANCO">Bilanço</option>
+                  <option value="DEFTER_BEYAN">Defter Beyan</option>
+                </select>
+              </Field>
+            </div>
+          </div>
+        )}
       </div>
     </div>
   );
@@ -1116,8 +1094,8 @@ function YetkililerSection({ taxpayerId }: { taxpayerId: string }) {
                   <select
                     value={newY.gorev}
                     onChange={(e) => setNewY((p) => ({ ...p, gorev: e.target.value }))}
-                    className={`h-10 w-full rounded-lg border px-3 text-sm outline-none transition ${FOCUS_RING}`}
-                    style={{ background: SOFT, borderColor: LINE, color: TEXT }}
+                    className={SELECT_CLS}
+                    style={{ colorScheme: 'dark' }}
                   >
                     <option value="">Seçiniz</option>
                     <option value="MUDUR">Müdür</option>
@@ -1188,8 +1166,7 @@ function NotlarTab({ form, setForm }: { form: FormState; setForm: React.Dispatch
         onChange={(e) => setForm((p) => ({ ...p, notes: e.target.value }))}
         rows={10}
         placeholder="Bu mükellefe özel notlar..."
-        className={`w-full resize-none rounded-lg border px-3 py-2.5 text-sm outline-none transition ${FOCUS_RING}`}
-        style={{ background: SOFT, borderColor: LINE, color: TEXT }}
+        className={TEXTAREA_CLS}
       />
     </div>
   );
@@ -1222,6 +1199,35 @@ function ChannelChip({ label }: { label: string }) {
       <span className="h-1.5 w-1.5 rounded-full" style={{ background: '#68d391' }} />
       {label}
     </span>
+  );
+}
+
+function Segmented({
+  value,
+  options,
+  onChange,
+}: {
+  value: string;
+  options: { value: string; label: string }[];
+  onChange: (v: string) => void;
+}) {
+  return (
+    <div className="inline-flex w-full rounded-xl border p-1" style={{ borderColor: LINE, background: 'rgba(255,255,255,0.03)' }}>
+      {options.map((o) => {
+        const on = value === o.value;
+        return (
+          <button
+            key={o.value}
+            type="button"
+            onClick={() => onChange(o.value)}
+            className="flex-1 rounded-lg px-4 py-2 text-[13px] font-semibold transition"
+            style={on ? { background: `linear-gradient(135deg, ${GOLD}, ${GOLD_DEEP})`, color: '#0f0d0b' } : { color: MUTED, background: 'transparent' }}
+          >
+            {o.label}
+          </button>
+        );
+      })}
+    </div>
   );
 }
 
@@ -1284,7 +1290,7 @@ function PlaceholderTab({
 function Field({ label, required, className = '', children }: { label: string; required?: boolean; className?: string; children: React.ReactNode }) {
   return (
     <label className={`block ${className}`}>
-      <span className="mb-1.5 block text-[12px] font-semibold" style={{ color: MUTED }}>
+      <span className="mb-1.5 block text-[11.5px] font-medium tracking-wide" style={{ color: MUTED }}>
         {label}{required ? ' *' : ''}
       </span>
       {children}
@@ -1292,12 +1298,12 @@ function Field({ label, required, className = '', children }: { label: string; r
   );
 }
 
-function InputBase({ className = '', ...props }: React.InputHTMLAttributes<HTMLInputElement>) {
+function InputBase({ className = '', style, ...props }: React.InputHTMLAttributes<HTMLInputElement>) {
   return (
     <input
       {...props}
-      className={`h-10 w-full rounded-lg border px-3 text-sm outline-none transition ${FOCUS_RING} ${className}`}
-      style={{ background: SOFT, borderColor: LINE, color: TEXT, ...(props.style || {}) }}
+      className={`${FIELD_CLS} ${className}`}
+      style={{ colorScheme: 'dark', ...(style || {}) }}
     />
   );
 }
@@ -1308,30 +1314,6 @@ function Subhead({ icon: Icon, label }: { icon: React.ElementType; label: string
       <Icon size={14} style={{ color: GOLD }} />
       {label}
     </div>
-  );
-}
-
-function RadioCard({ checked, title, detail, onClick }: { checked: boolean; title: string; detail: string; onClick: () => void }) {
-  return (
-    <button
-      type="button"
-      onClick={onClick}
-      className="rounded-lg border p-4 text-left transition hover:bg-white/[0.05]"
-      style={{
-        borderColor: checked ? LINE_GOLD : LINE,
-        background: checked ? 'rgba(212,184,118,0.10)' : SOFT,
-      }}
-    >
-      <span className="flex items-start gap-3">
-        <span className="mt-0.5 flex h-5 w-5 items-center justify-center rounded-full border" style={{ borderColor: checked ? GOLD : LINE, color: checked ? GOLD : 'transparent' }}>
-          <CheckCircle2 size={14} />
-        </span>
-        <span>
-          <span className="block text-sm font-semibold" style={{ color: TEXT }}>{title}</span>
-          <span className="mt-1 block text-[12px]" style={{ color: MUTED }}>{detail}</span>
-        </span>
-      </span>
-    </button>
   );
 }
 

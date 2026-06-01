@@ -9,7 +9,7 @@ import { Search, Upload, Plus, AlertCircle, PhoneOff, Check as CheckIcon } from 
 const GOLD = '#d4b876';
 const GOLD_SOFT = '#b8a06f';
 // Satır: avatar | ad | durum etiketi | 6 onay kutusu | not
-const TAXPAYER_TABLE_GRID = '34px minmax(200px, 1.25fr) 128px repeat(6, minmax(46px, 0.32fr)) minmax(150px, 0.82fr)';
+const TAXPAYER_TABLE_GRID = '34px minmax(190px, 1.2fr) 142px repeat(6, minmax(46px, 0.32fr)) minmax(150px, 0.8fr)';
 
 type MonthlyStatus = {
   id?: string;
@@ -59,22 +59,23 @@ type StatusKey =
   | 'beyannameVerildi';
 type MonthlyStatusPatch = Partial<Pick<MonthlyStatus, StatusKey | 'notes'>>;
 
-// 'islenmedi' yeni eklendi; 'beyanname-verilmedi' geriye dönük (dış bağlantı) korunuyor
-type FilterKey = 'all' | 'evrak-gelmedi' | 'islenmedi' | 'beyanname-bekliyor' | 'beyanname-verilmedi' | 'verildi';
+// 'islenmedi' geriye dönük (dış bağlantı) korunuyor; 'beyanname-verilmedi' de
+type FilterKey = 'all' | 'evrak-gelmedi' | 'islem-bekliyor' | 'kontrol-bekliyor' | 'islenmedi' | 'beyanname-bekliyor' | 'beyanname-verilmedi' | 'verildi';
 type ProfileFilterKey = 'all' | 'profil-eksik' | 'telefon-yok';
 type CompletenessItem = { id: string; score: number; durum: string; eksikSayisi: number; kritikEksikSayisi: number };
 
 const AYLAR_TR = ['Ocak','Şubat','Mart','Nisan','Mayıs','Haziran','Temmuz','Ağustos','Eylül','Ekim','Kasım','Aralık'];
-const FILTER_KEYS: FilterKey[] = ['all', 'evrak-gelmedi', 'islenmedi', 'beyanname-bekliyor', 'beyanname-verilmedi', 'verildi'];
+const FILTER_KEYS: FilterKey[] = ['all', 'evrak-gelmedi', 'islem-bekliyor', 'kontrol-bekliyor', 'islenmedi', 'beyanname-bekliyor', 'beyanname-verilmedi', 'verildi'];
 const PROFILE_FILTER_KEYS: ProfileFilterKey[] = ['all', 'profil-eksik', 'telefon-yok'];
 
-// İş akışı aşamaları — tek bakışta durum
-type Stage = 'evrak-bekliyor' | 'isleniyor' | 'beyan-hazir' | 'verildi';
+// İş akışı aşamaları — sıradaki bekleyen adımı gösterir, her biri farklı renk
+type Stage = 'evrak-bekliyor' | 'islem-bekliyor' | 'kontrol-bekliyor' | 'beyan-hazir' | 'verildi';
 const STAGES: Record<Stage, { label: string; color: string }> = {
-  'evrak-bekliyor': { label: 'Evrak bekleniyor', color: '#e0a83e' },
-  'isleniyor':      { label: 'İşleniyor',         color: '#6fa8d6' },
-  'beyan-hazir':    { label: 'Beyanname hazır',   color: GOLD },
-  'verildi':        { label: 'Verildi',           color: '#4ade80' },
+  'evrak-bekliyor':   { label: 'Evrak bekleniyor', color: '#e0843e' },
+  'islem-bekliyor':   { label: 'İşlem bekliyor',   color: '#5b9bd5' },
+  'kontrol-bekliyor': { label: 'Kontrol bekliyor', color: '#a78bdb' },
+  'beyan-hazir':      { label: 'Beyanname hazır',  color: GOLD },
+  'verildi':          { label: 'Verildi',          color: '#4ade80' },
 };
 
 function getQueryParam(key: string): string | null {
@@ -139,12 +140,9 @@ function deriveStage(s: MonthlyStatus | null): Stage {
   if (!s) return 'evrak-bekliyor';
   if (s.beyannameVerildi) return 'verildi';
   if (!s.evraklarGeldi) return 'evrak-bekliyor';
-  const kontrolBitti =
-    s.evraklarIslendi &&
-    s.indirilecekKdvKontrol &&
-    s.hesaplananKdvKontrol &&
-    s.eArsivKontrol;
-  return kontrolBitti ? 'beyan-hazir' : 'isleniyor';
+  if (!s.evraklarIslendi) return 'islem-bekliyor';
+  const kontrolBitti = s.indirilecekKdvKontrol && s.hesaplananKdvKontrol && s.eArsivKontrol;
+  return kontrolBitti ? 'beyan-hazir' : 'kontrol-bekliyor';
 }
 
 /** Beyanname durumu — CSV ve geriye dönük filtre için */
@@ -239,23 +237,26 @@ export default function MukelleflerPage() {
 
   // Aşama bazlı sayımlar — her mükellef tam olarak bir aşamada
   const counts = useMemo(() => {
-    let evrakBekliyor = 0, isleniyor = 0, beyanHazir = 0, verildi = 0;
+    let evrakBekliyor = 0, islemBekliyor = 0, kontrolBekliyor = 0, beyanHazir = 0, verildi = 0;
     for (const t of raw) {
       switch (deriveStage(t.monthlyStatus)) {
         case 'evrak-bekliyor': evrakBekliyor++; break;
-        case 'isleniyor': isleniyor++; break;
+        case 'islem-bekliyor': islemBekliyor++; break;
+        case 'kontrol-bekliyor': kontrolBekliyor++; break;
         case 'beyan-hazir': beyanHazir++; break;
         case 'verildi': verildi++; break;
       }
     }
-    return { total: raw.length, evrakBekliyor, isleniyor, beyanHazir, verildi };
+    return { total: raw.length, evrakBekliyor, islemBekliyor, kontrolBekliyor, beyanHazir, verildi };
   }, [raw]);
 
   const matchesFilter = (t: Taxpayer): boolean => {
     const stage = deriveStage(t.monthlyStatus);
     switch (filter) {
       case 'evrak-gelmedi': return stage === 'evrak-bekliyor';
-      case 'islenmedi': return stage === 'isleniyor';
+      case 'islem-bekliyor': return stage === 'islem-bekliyor';
+      case 'kontrol-bekliyor': return stage === 'kontrol-bekliyor';
+      case 'islenmedi': return stage === 'islem-bekliyor' || stage === 'kontrol-bekliyor';
       case 'beyanname-bekliyor': return stage === 'beyan-hazir';
       case 'beyanname-verilmedi': return stage !== 'verildi';
       case 'verildi': return stage === 'verildi';
@@ -277,11 +278,12 @@ export default function MukelleflerPage() {
 
   // KPI = filtre kartları (sayı + tıklayınca o aşamayı süzer)
   const stageCards: { key: FilterKey; label: string; count: number; color: string }[] = [
-    { key: 'all',                label: 'Tüm mükellef',     count: counts.total,        color: GOLD },
-    { key: 'evrak-gelmedi',      label: 'Evrak bekleniyor', count: counts.evrakBekliyor, color: STAGES['evrak-bekliyor'].color },
-    { key: 'islenmedi',          label: 'İşleniyor',        count: counts.isleniyor,     color: STAGES['isleniyor'].color },
-    { key: 'beyanname-bekliyor', label: 'Beyanname hazır',  count: counts.beyanHazir,    color: STAGES['beyan-hazir'].color },
-    { key: 'verildi',            label: 'Verildi',          count: counts.verildi,       color: STAGES['verildi'].color },
+    { key: 'all',                label: 'Tüm mükellef',     count: counts.total,            color: GOLD },
+    { key: 'evrak-gelmedi',      label: 'Evrak bekleniyor', count: counts.evrakBekliyor,    color: STAGES['evrak-bekliyor'].color },
+    { key: 'islem-bekliyor',     label: 'İşlem bekliyor',   count: counts.islemBekliyor,    color: STAGES['islem-bekliyor'].color },
+    { key: 'kontrol-bekliyor',   label: 'Kontrol bekliyor', count: counts.kontrolBekliyor,  color: STAGES['kontrol-bekliyor'].color },
+    { key: 'beyanname-bekliyor', label: 'Beyanname hazır',  count: counts.beyanHazir,       color: STAGES['beyan-hazir'].color },
+    { key: 'verildi',            label: 'Verildi',          count: counts.verildi,          color: STAGES['verildi'].color },
   ];
 
   const profileCounts = useMemo(() => ({
@@ -423,7 +425,7 @@ export default function MukelleflerPage() {
       </div>
 
       {/* AŞAMA KARTLARI — hem KPI hem filtre */}
-      <div className="grid grid-cols-2 gap-2 sm:grid-cols-3 lg:grid-cols-5">
+      <div className="grid grid-cols-2 gap-2 sm:grid-cols-3 lg:grid-cols-6">
         {stageCards.map((c) => {
           const active = filter === c.key;
           return (
@@ -459,7 +461,7 @@ export default function MukelleflerPage() {
       {/* TABLO */}
       <div className="rounded-xl overflow-x-auto overflow-y-hidden" style={{ background: 'rgba(255,255,255,0.018)', border: '1px solid rgba(255,255,255,0.07)' }}>
         <div
-          className="grid min-w-[1160px] w-full items-center px-3 py-2.5 text-[9.5px] font-semibold uppercase"
+          className="grid min-w-[1180px] w-full items-center px-3 py-2.5 text-[9.5px] font-semibold uppercase"
           style={{
             gridTemplateColumns: TAXPAYER_TABLE_GRID,
             gap: 8,
@@ -594,7 +596,7 @@ function TaxpayerRow({
 
   return (
     <div
-      className="grid min-w-[1160px] w-full items-center px-3 py-2 transition-all group"
+      className="grid min-w-[1180px] w-full items-center px-3 py-2 transition-all group"
       style={{
         gridTemplateColumns: TAXPAYER_TABLE_GRID,
         gap: 8,

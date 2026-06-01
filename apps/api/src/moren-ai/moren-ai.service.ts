@@ -3,7 +3,8 @@ import { PrismaService } from '../prisma/prisma.service';
 import { ToolExecutorService } from './tool-executor.service';
 import { MOREN_AI_TOOLS } from './tools';
 import { buildSystemPrompt } from './system-prompt';
-import { computeCostUsd, computeRealtimeCostUsd, canSpendOnApi } from '../common/ai-usage-logger';
+import { computeCostUsd, computeRealtimeCostUsd, canSpendOnApi, logAiUsage } from '../common/ai-usage-logger';
+import { claudeTextViaMax, isMaxAvailable, MAX_MODEL_CHEAP } from '../common/max-inference';
 
 const ANTHROPIC_URL = 'https://api.anthropic.com/v1/messages';
 // Hibrit model secimi — maliyet/kalite dengesi:
@@ -1119,92 +1120,128 @@ export class MorenAiService {
       return { ...cached.payload, generatedAt: cached.generatedAt.toISOString(), fromCache: true };
     }
 
-    const apiKey = process.env.ANTHROPIC_API_KEY;
     const ctx = await this.buildBrifingContext(tenantId, userId);
+    const prompt = this.buildBrifingPrompt(ctx);
 
-    if (!apiKey) {
+    // Brifing = saf metin (JSON) üretimi; araç/görsel yok. Maliyet sırası:
+    //   1) Max aboneliği (ücretsiz, kotadan düşer) — varsa önce bu
+    //   2) Ücretli Anthropic API (aylık tavan kontrollü) — Max yoksa/başarısızsa
+    //   3) Deterministik fallback — ikisi de yoksa sayılardan brifing üret
+    let rawText = '';
+    let usedSource: 'brifing-max' | 'brifing' = 'brifing-max';
+    let viaMaxCostUsd = 0;
+    let apiInputTokens = 0;
+    let apiOutputTokens = 0;
+
+    // 1) Max
+    if (isMaxAvailable()) {
+      try {
+        const max = await claudeTextViaMax({ prompt, model: MAX_MODEL_CHEAP, maxTurns: 1 });
+        if (max.ok && max.text) {
+          rawText = max.text.trim();
+          usedSource = 'brifing-max';
+          viaMaxCostUsd = max.costUsd;
+        } else if (max.error) {
+          this.logger.warn(`Brifing Max başarısız: ${max.error}`);
+        }
+      } catch (e: any) {
+        this.logger.warn(`Brifing Max hatası: ${e?.message}`);
+      }
+    }
+
+    // 2) Ücretli API (Max yoksa/başarısızsa, tavan müsaitse)
+    if (!rawText) {
+      const apiKey = process.env.ANTHROPIC_API_KEY;
+      if (apiKey && (await canSpendOnApi(this.prisma, tenantId, 'brifing'))) {
+        try {
+          const res = await fetch(ANTHROPIC_URL, {
+            method: 'POST',
+            headers: {
+              'x-api-key': apiKey,
+              'anthropic-version': '2023-06-01',
+              'content-type': 'application/json',
+            },
+            body: JSON.stringify({
+              model: DEFAULT_MODEL,
+              max_tokens: 700,
+              messages: [{ role: 'user', content: prompt }],
+            }),
+          });
+          if (res.ok) {
+            const data: any = await res.json();
+            rawText = (data?.content?.[0]?.text || '').trim();
+            usedSource = 'brifing';
+            apiInputTokens = data?.usage?.input_tokens || 0;
+            apiOutputTokens = data?.usage?.output_tokens || 0;
+          } else {
+            this.logger.warn(`Brifing AI failed ${res.status}`);
+          }
+        } catch (e: any) {
+          this.logger.warn(`Brifing exception: ${e?.message}`);
+        }
+      }
+    }
+
+    // 3) Hiçbir AI kaynağı cevap vermediyse deterministik fallback
+    if (!rawText) {
       const fallback = this.buildFallbackPayload(ctx);
       return { ...fallback, generatedAt: new Date().toISOString(), fromCache: false };
     }
 
-    const prompt = this.buildBrifingPrompt(ctx);
-
+    // JSON parse — model bazen markdown code fence ile sarar
+    const cleaned = rawText
+      .replace(/^```(?:json)?\s*/i, '')
+      .replace(/```\s*$/i, '')
+      .trim();
+    let parsed: BrifingPayload;
     try {
-      const res = await fetch(ANTHROPIC_URL, {
-        method: 'POST',
-        headers: {
-          'x-api-key': apiKey,
-          'anthropic-version': '2023-06-01',
-          'content-type': 'application/json',
-        },
-        body: JSON.stringify({
-          model: DEFAULT_MODEL,
-          max_tokens: 700,
-          messages: [{ role: 'user', content: prompt }],
-        }),
-      });
-      if (!res.ok) {
-        this.logger.warn(`Brifing AI failed ${res.status}`);
-        const fallback = this.buildFallbackPayload(ctx);
-        return { ...fallback, generatedAt: new Date().toISOString(), fromCache: false };
-      }
-      const data: any = await res.json();
-      const rawText = (data?.content?.[0]?.text || '').trim();
-
-      // JSON parse — model bazen markdown code fence ile sarar
-      const cleaned = rawText
-        .replace(/^```(?:json)?\s*/i, '')
-        .replace(/```\s*$/i, '')
-        .trim();
-      let parsed: BrifingPayload;
-      try {
-        const obj = JSON.parse(cleaned);
-        parsed = this.validatePayload(obj);
-      } catch {
-        // JSON parse fail — düz metni summary olarak kullan
-        parsed = {
-          summary: rawText.slice(0, 500),
-          motivation: '',
-          alerts: [],
-          suggestions: [],
-          focus: 'busy',
-          sourceTags: [],
-          sections: [],
-          metrics: ctx.metrics,
-        };
-      }
-      parsed = this.applyRuleDecisions(parsed, this.buildFallbackPayload(ctx));
-      parsed.metrics = {
-        ...ctx.metrics,
-        day: ctx.day,
-        periodTone: ctx.day <= 12 ? 'early' : ctx.day <= 16 ? 'prepare' : 'firm',
-        bekliyorEvrak: ctx.workflow.bekliyorEvrak,
-        nextDeadline: ctx.deadlines[0] || null,
-        ...(parsed.metrics || {}),
+      const obj = JSON.parse(cleaned);
+      parsed = this.validatePayload(obj);
+    } catch {
+      // JSON parse fail — düz metni summary olarak kullan
+      parsed = {
+        summary: rawText.slice(0, 500),
+        motivation: '',
+        alerts: [],
+        suggestions: [],
+        focus: 'busy',
+        sourceTags: [],
+        sections: [],
+        metrics: ctx.metrics,
       };
+    }
+    parsed = this.applyRuleDecisions(parsed, this.buildFallbackPayload(ctx));
+    parsed.metrics = {
+      ...ctx.metrics,
+      day: ctx.day,
+      periodTone: ctx.day <= 12 ? 'early' : ctx.day <= 16 ? 'prepare' : 'firm',
+      bekliyorEvrak: ctx.workflow.bekliyorEvrak,
+      nextDeadline: ctx.deadlines[0] || null,
+      ...(parsed.metrics || {}),
+    };
 
-      // Maliyet logu
-      try {
-        const inT = data?.usage?.input_tokens || 0;
-        const outT = data?.usage?.output_tokens || 0;
+    // Maliyet logu — Max ise 'brifing-max' (ücretli tavandan HARİÇ), değilse ücretli 'brifing'
+    try {
+      if (usedSource === 'brifing-max') {
+        await logAiUsage(this.prisma, {
+          tenantId, source: 'brifing-max', model: MAX_MODEL_CHEAP,
+          fixedCostUsd: viaMaxCostUsd, karar: 'ok', durationMs: 0,
+        });
+      } else {
         await this.prisma.aiUsageLog.create({
           data: {
             tenantId, source: 'brifing', model: DEFAULT_MODEL,
-            inputTokens: inT, outputTokens: outT, cacheReadTokens: 0, cacheWriteTokens: 0,
-            costUsd: computeCostUsd(DEFAULT_MODEL, { input: inT, output: outT, cacheRead: 0, cacheWrite: 0 }),
+            inputTokens: apiInputTokens, outputTokens: apiOutputTokens, cacheReadTokens: 0, cacheWriteTokens: 0,
+            costUsd: computeCostUsd(DEFAULT_MODEL, { input: apiInputTokens, output: apiOutputTokens, cacheRead: 0, cacheWrite: 0 }),
             karar: 'ok', durationMs: 0,
           },
         });
-      } catch {}
+      }
+    } catch {}
 
-      const generatedAt = new Date();
-      this.brifingCache.set(cacheKey, { payload: parsed, generatedAt });
-      return { ...parsed, generatedAt: generatedAt.toISOString(), fromCache: false };
-    } catch (e: any) {
-      this.logger.warn(`Brifing exception: ${e?.message}`);
-      const fallback = this.buildFallbackPayload(ctx);
-      return { ...fallback, generatedAt: new Date().toISOString(), fromCache: false };
-    }
+    const generatedAt = new Date();
+    this.brifingCache.set(cacheKey, { payload: parsed, generatedAt });
+    return { ...parsed, generatedAt: generatedAt.toISOString(), fromCache: false };
   }
 
   /** Genişletilmiş bağlam — workflow + deadlines + agents + 7-day trend + last hour activity */
