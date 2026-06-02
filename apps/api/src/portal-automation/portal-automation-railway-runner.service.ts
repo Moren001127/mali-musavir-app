@@ -1141,15 +1141,28 @@ export class PortalAutomationRailwayRunnerService implements OnModuleInit {
     let persistedCount = 0;
     const taxpayers = await this.loadTaxpayers(tenantId);
 
-    // GIB sayfasinin yaptigi (calisan) ARSIVBEYANNAMELISTESI istegini yakala — liste-API sayfalamasi
-    // bunu temel alir (skill'deki sabit parametreler GIB tarafindan reddediliyor: "VKN ve TC birlikte").
+    // GIB sayfasinin yaptigi (calisan) liste istegini yakala — liste-API sayfalamasi bunu temel alir.
+    // GIB ekrani listeyi POST ile yukleyebildigi icin URL'i VE postData'yi tara; ayrica hangi /dispatch
+    // komutlarinin cagrildigini [EBLISTREQ] ile logla (gercek liste komutunu kesin ogrenmek icin).
     this.ebeyannameCapturedListReq = null;
     const ctx = page.context?.();
+    const seenDispatchCmds = new Set<string>();
     const listReqHandler = (req: any) => {
       try {
         const u = String(req.url?.() || '');
-        if (/\/dispatch\b/i.test(u) && /(ARSIVBEYANNAMELISTESI|BEYANNAMELISTESI)/i.test(u)) {
-          this.ebeyannameCapturedListReq = { url: u, method: String(req.method?.() || 'GET'), postData: req.postData?.() ?? null };
+        if (!/\/dispatch\b/i.test(u)) return;
+        const method = String(req.method?.() || 'GET');
+        const post = method !== 'GET' ? String(req.postData?.() || '') : '';
+        const hay = `${u} ${post}`;
+        const cmd = (hay.match(/[?&\b]cmd=([A-Za-z0-9_]+)/i)?.[1] || '?');
+        const key = `${method}:${cmd}`;
+        if (!seenDispatchCmds.has(key)) {
+          seenDispatchCmds.add(key);
+          this.logger.warn(`[EBLISTREQ] ${method} cmd=${cmd} url=${this.safeUrl(u)}${post ? ` post=${this.safeDebugText(post).slice(0, 220)}` : ''}`);
+        }
+        // Sonuc tablosunu ureten liste/sorgu istegini yakala (URL veya POST govdesinde).
+        if (/(ARSIVBEYANNAMELISTESI|BEYANNAMELISTESI|BEYANNAMEARA|BEYANNAME_ARA|TAXRETURNSEARCH|SORGULA|LISTELE)/i.test(hay)) {
+          this.ebeyannameCapturedListReq = { url: u, method, postData: req.postData?.() ?? null };
         }
       } catch { /* yoksay */ }
     };
@@ -3165,6 +3178,54 @@ export class PortalAutomationRailwayRunnerService implements OnModuleInit {
     return viaFetch ? String(viaFetch) : null;
   }
 
+  /** POST liste istegini (yakalanan, grupSayi degistirilmis) cek. urlencoded govde varsayilir. */
+  private async fetchEBeyannameListPost(page: any, url: string, body: string): Promise<string | null> {
+    const response = await page.context().request.post(url, {
+      timeout: this.ebeyannameDirectFetchTimeoutMs(),
+      headers: {
+        referer: String(page.url?.() || ''),
+        accept: 'text/html,application/json,*/*',
+        'content-type': 'application/x-www-form-urlencoded',
+      },
+      data: body || '',
+    }).catch(() => null);
+    if (response?.ok()) {
+      const raw = await response.text().catch(() => '');
+      if (raw) return raw;
+    }
+    const viaFetch = await this.withTimeout<string>(
+      page.evaluate(async ({ targetUrl, postBody }: { targetUrl: string; postBody: string }) => {
+        try {
+          const r = await fetch(targetUrl, {
+            method: 'POST',
+            credentials: 'include',
+            cache: 'no-store',
+            headers: { accept: 'text/html,application/json,*/*', 'content-type': 'application/x-www-form-urlencoded' },
+            body: postBody,
+          });
+          return await r.text();
+        } catch {
+          return '';
+        }
+      }, { targetUrl: url, postBody: body || '' }) as Promise<string>,
+      this.ebeyannameDirectFetchTimeoutMs() + 1_000,
+      () => '',
+    ).catch(() => '');
+    return viaFetch ? String(viaFetch) : null;
+  }
+
+  /** Yakalanan POST govdesinde grupSayi (+ TOKEN) gunceller. */
+  private setGrupSayiInPost(postData: string | null, grupSayi: number, token: string): string {
+    try {
+      const p = new URLSearchParams(postData || '');
+      p.set('grupSayi', String(grupSayi));
+      if (token && p.has('TOKEN')) p.set('TOKEN', token);
+      return p.toString();
+    } catch {
+      return postData || '';
+    }
+  }
+
   private stripHtml(html: string): string {
     return String(html || '')
       .replace(/<[^>]+>/g, ' ')
@@ -3344,8 +3405,10 @@ export class PortalAutomationRailwayRunnerService implements OnModuleInit {
     let recognized = false;
 
     // GIB'in kendi istegi yakalandiysa onun PARAMETRELERINI kullan (skill'deki sabit parametreler reddediliyor).
+    // GET de POST de desteklenir (GIB ekrani listeyi POST ile yukleyebiliyor).
     const captured = this.ebeyannameCapturedListReq;
-    const useCapture = !!captured && /GET/i.test(captured.method);
+    const useCapture = !!captured;
+    const capturePost = !!captured && /POST/i.test(captured.method);
     if (captured) {
       this.logger.warn(`[EBLIST] yakalanan liste istegi method=${captured.method} url=${this.safeUrl(captured.url)}`);
       notes.push(`liste-API: GIB'in kendi liste istegi yakalandi (method=${captured.method})`);
@@ -3359,10 +3422,17 @@ export class PortalAutomationRailwayRunnerService implements OnModuleInit {
       let firstErrorLogged = false;
       for (let grupSayi = 0; grupSayi < 10000; grupSayi += 25) {
         if (byOid.size >= maxRows) break;
-        const url = useCapture
-          ? this.eBeyannameListUrlFromCapture(captured!.url, token, grupSayi)
-          : this.buildEBeyannameListApiUrl(origin, token, { grupSayi, beyannameTanim: tanim, baslangic, bitis });
-        const raw = await this.fetchEBeyannameListPage(page, url);
+        let raw: string | null;
+        if (capturePost) {
+          const body = this.setGrupSayiInPost(captured!.postData, grupSayi, token);
+          const postUrl = this.eBeyannameListUrlFromCapture(captured!.url, token, grupSayi);
+          raw = await this.fetchEBeyannameListPost(page, postUrl, body);
+        } else {
+          const url = useCapture
+            ? this.eBeyannameListUrlFromCapture(captured!.url, token, grupSayi)
+            : this.buildEBeyannameListApiUrl(origin, token, { grupSayi, beyannameTanim: tanim, baslangic, bitis });
+          raw = await this.fetchEBeyannameListPage(page, url);
+        }
         if (raw == null) {
           notes.push(`liste-API ${tanim || 'TUM'} grup ${grupSayi}: yanit alinamadi`);
           break;
@@ -3426,16 +3496,14 @@ export class PortalAutomationRailwayRunnerService implements OnModuleInit {
     }
 
     const listResult = await this.collectEBeyannameListRows(page, origin, token, job, notes);
-    if (!listResult.recognized) {
-      notes.push('liste-API: yanit bicimi taninmadi, eski yola dusuluyor');
-      return null;
-    }
     const entries = listResult.rows;
+    // GUVENLIK: liste-API hic indirilebilir satir uretemezse (parametre reddi / capture yok / gercekten bos)
+    // HER ZAMAN eski yola dus. Asla "0 indirdim" deyip cikma. Eski yol da 0 bulursa hizlica biter;
+    // satir bulursa indirir. Boylece liste-API yolu eski yoldan ASLA daha kotu olamaz.
     if (!entries.length) {
-      // API dogru cevap verdi ama indirilebilir satir yok => gercekten bos. Eski yola DUSME.
-      notes.push('liste-API: bu kriterlerde indirilecek (onayli) beyanname bulunmadi');
-      this.logger.warn('[EBSTAT] liste-API: 0 satir (gercekten bos kabul edildi).');
-      return { declarations: [], documents: [], persistedCount: 0 };
+      notes.push('liste-API: indirilebilir satir uretilemedi, eski yola dusuluyor');
+      this.logger.warn('[EBSTAT] liste-API: 0 satir -> eski yola dusuluyor.');
+      return null;
     }
 
     const declarations: any[] = [];
