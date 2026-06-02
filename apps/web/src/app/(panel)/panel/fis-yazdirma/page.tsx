@@ -21,6 +21,7 @@ import {
   Trash2,
   Search,
   ChevronDown,
+  Printer,
 } from 'lucide-react';
 
 /* ─── Tipler ────────────────────────────────────────────────── */
@@ -654,17 +655,47 @@ export default function FisYazdirmaPage() {
   /* ── RENDER ── */
   return (
     <div className="max-w-7xl space-y-3">
-      {/* HEADER */}
-      <div className="flex items-end justify-between pb-3" style={{ borderBottom: '1px solid rgba(255,255,255,0.05)' }}>
-        <div>
-          <div className="flex items-center gap-2.5 mb-2">
-            <span className="w-[26px] h-px" style={{ background: '#d4b876' }} />
-            <span className="text-[10px] uppercase font-bold tracking-[.18em]" style={{ color: '#b8a06f' }}>Kontrol</span>
+      {/* HEADER — AI Maliyet imzası: üst renk şeridi + radial parıltı + degrade ikon kutusu */}
+      <div
+        className="relative overflow-hidden rounded-2xl border p-5"
+        style={{
+          borderColor: 'rgba(255,255,255,0.06)',
+          background:
+            'radial-gradient(120% 140% at 0% 0%, rgba(212,184,118,0.16), transparent 46%), radial-gradient(120% 140% at 100% 0%, rgba(139,118,73,0.12), transparent 48%), #0f0d0b',
+        }}
+      >
+        <div
+          className="absolute inset-x-0 top-0 h-1"
+          style={{ background: 'linear-gradient(90deg, #8b7649, #b8a06f, #d4b876, #e7cf95, #d4b876, #b8a06f)' }}
+        />
+        <div className="flex items-center gap-2.5 mb-3">
+          <span className="w-[26px] h-px" style={{ background: '#d4b876' }} />
+          <span className="text-[10px] uppercase font-bold tracking-[.18em]" style={{ color: '#b8a06f' }}>Kontrol</span>
+        </div>
+        <div className="flex items-center justify-between gap-4">
+          <div className="flex items-center gap-3.5">
+            <span
+              className="grid place-items-center rounded-xl flex-shrink-0"
+              style={{ width: 46, height: 46, background: 'linear-gradient(135deg, #d4b876, #b8a06f)', boxShadow: '0 8px 22px rgba(212,184,118,0.32)' }}
+            >
+              <Printer size={24} style={{ color: '#1a1410' }} />
+            </span>
+            <div>
+              <h1 style={{ fontFamily: 'Fraunces, serif', fontSize: 30, fontWeight: 600, color: '#fafaf9', letterSpacing: '-.03em', lineHeight: 1.05 }}>Fiş Yazdırma</h1>
+              <p className="text-[13px] mt-1.5" style={{ color: 'rgba(250,250,249,0.45)' }}>
+                ÖKC fişi görsellerini yükleyin — OCR ile tarih okunur, Word belgesi oluşturulur
+              </p>
+            </div>
           </div>
-          <h1 style={{ fontFamily: 'Fraunces, serif', fontSize: 30, fontWeight: 600, color: '#fafaf9', letterSpacing: '-.03em' }}>Fiş Yazdırma</h1>
-          <p className="text-[13px] mt-1.5" style={{ color: 'rgba(250,250,249,0.42)' }}>
-            ÖKC fişi görsellerini yükleyin — OCR ile tarih okunur, Word belgesi oluşturulur
-          </p>
+          {outputs.length > 0 && (
+            <span
+              className="hidden sm:inline-flex items-center gap-2 rounded-xl px-3.5 py-2 text-xs font-semibold flex-shrink-0"
+              style={{ background: 'rgba(212,184,118,0.10)', border: '1px solid rgba(212,184,118,0.28)', color: '#d4b876' }}
+            >
+              <Clock size={15} />
+              {outputs.length} arşiv çıktısı
+            </span>
+          )}
         </div>
       </div>
 
@@ -675,13 +706,19 @@ export default function FisYazdirmaPage() {
           <div
             className="rounded-xl border p-4 flex flex-col sm:flex-row sm:items-center gap-3"
             style={{
-              background: 'linear-gradient(135deg, rgba(184,160,111,.08) 0%, rgba(184,160,111,.03) 100%)',
-              borderColor: 'rgba(184,160,111,.3)',
+              background: 'linear-gradient(135deg, rgba(212,184,118,.085) 0%, rgba(212,184,118,.02) 100%)',
+              borderColor: 'rgba(212,184,118,.22)',
             }}
           >
+            <span
+              className="grid place-items-center rounded-xl flex-shrink-0"
+              style={{ width: 40, height: 40, background: 'rgba(212,184,118,0.13)' }}
+            >
+              <Download size={19} style={{ color: '#d4b876' }} />
+            </span>
             <div className="flex-1">
               <p className="text-sm font-semibold" style={{ color: '#fafaf9' }}>
-                📥 Faturalardan Otomatik Çek
+                Faturalardan Otomatik Çek
               </p>
               <p className="text-xs mt-0.5" style={{ color: 'rgba(250,250,249,0.45)' }}>
                 Mükellef ve dönem seçip daha önce MIHSAP'tan indirilmiş fişleri otomatik yükleyin.
@@ -690,8 +727,8 @@ export default function FisYazdirmaPage() {
             <button
               type="button"
               onClick={() => setShowFetchModal(true)}
-              className="px-4 py-2 rounded-lg text-sm font-semibold flex items-center gap-2 flex-shrink-0"
-              style={{ background: '#b8a06f', color: 'white' }}
+              className="px-4 py-2 rounded-lg text-sm font-bold flex items-center gap-2 flex-shrink-0"
+              style={{ background: 'linear-gradient(135deg, #d4b876, #b8a06f)', color: '#1a1410', boxShadow: '0 6px 18px rgba(212,184,118,0.28)' }}
             >
               <Download size={15} />
               Faturalardan Çek
@@ -703,8 +740,11 @@ export default function FisYazdirmaPage() {
             className="rounded-xl border p-4"
             style={{ background: 'rgba(255,255,255,0.02)', borderColor: 'rgba(255,255,255,0.05)' }}
           >
-            <h3 className="text-sm font-semibold mb-3" style={{ color: '#fafaf9' }}>
-              📋 Kapak Sayfası Bilgileri (opsiyonel)
+            <h3 className="text-sm font-semibold mb-3 flex items-center gap-2.5" style={{ color: '#fafaf9' }}>
+              <span className="grid place-items-center rounded-lg flex-shrink-0" style={{ width: 30, height: 30, background: 'rgba(212,184,118,0.12)' }}>
+                <FileText size={16} style={{ color: '#d4b876' }} />
+              </span>
+              Kapak Sayfası Bilgileri <span className="font-medium" style={{ color: 'rgba(250,250,249,0.45)' }}>(opsiyonel)</span>
             </h3>
             <div className="grid grid-cols-1 md:grid-cols-3 gap-3">
               <div>
@@ -776,15 +816,20 @@ export default function FisYazdirmaPage() {
             onClick={() => inputRef.current?.click()}
             className="rounded-xl border-2 border-dashed p-12 text-center cursor-pointer transition-all duration-200"
             style={{
-              borderColor: dragging ? '#d4b876' : 'rgba(255,255,255,0.05)',
-              background: dragging ? 'rgba(184,160,111,0.15)' : 'rgba(255,255,255,0.03)',
+              borderColor: dragging ? '#d4b876' : 'rgba(212,184,118,0.28)',
+              background: dragging
+                ? 'rgba(212,184,118,0.12)'
+                : 'radial-gradient(60% 80% at 50% 0%, rgba(212,184,118,0.05), transparent 60%), rgba(255,255,255,0.015)',
             }}
           >
             <div
-              className="w-16 h-16 rounded-2xl flex items-center justify-center mx-auto mb-4"
-              style={{ background: dragging ? '#d4b876' : 'rgba(255,255,255,0.03)' }}
+              className="w-16 h-16 rounded-2xl flex items-center justify-center mx-auto mb-4 border"
+              style={{
+                background: dragging ? '#d4b876' : 'linear-gradient(135deg, rgba(212,184,118,0.18), rgba(212,184,118,0.06))',
+                borderColor: dragging ? 'transparent' : 'rgba(212,184,118,0.2)',
+              }}
             >
-              <Upload size={28} style={{ color: dragging ? 'white' : 'rgba(250,250,249,0.45)' }} />
+              <Upload size={28} style={{ color: dragging ? '#1a1410' : '#d4b876' }} />
             </div>
             <p className="font-bold text-sm" style={{ color: '#fafaf9', fontFamily: 'Plus Jakarta Sans, sans-serif' }}>
               Fiş görsellerini buraya sürükleyin
@@ -825,7 +870,7 @@ export default function FisYazdirmaPage() {
 
           {error && (
             <div className="rounded-xl px-4 py-3 text-sm flex items-start gap-2"
-              style={{ background: '#FEF2F2', border: '1px solid #FECACA', color: '#DC2626' }}>
+              style={{ background: 'rgba(244,63,94,0.1)', border: '1px solid rgba(244,63,94,0.28)', color: '#fb7185' }}>
               <AlertCircle size={16} className="flex-shrink-0 mt-0.5" />
               {error}
             </div>
@@ -835,6 +880,13 @@ export default function FisYazdirmaPage() {
             disabled={files.length === 0}
             onClick={handleScan}
             className="btn-primary w-full py-3 text-sm"
+            style={{
+              background: 'linear-gradient(135deg, #e7cf95, #d4b876 55%, #b8a06f)',
+              borderColor: 'transparent',
+              color: '#1a1410',
+              fontWeight: 700,
+              boxShadow: files.length === 0 ? 'none' : '0 8px 24px rgba(212,184,118,0.3)',
+            }}
           >
             <ScanLine size={16} />
             OCR ile Tara ({files.length} görsel)
@@ -978,7 +1030,7 @@ export default function FisYazdirmaPage() {
                             </button>
                             <button
                               onClick={() => downloadOutput(o.id, o.filename)}
-                              className="h-8 w-8 rounded-lg inline-flex items-center justify-center hover:bg-black/5 transition-colors"
+                              className="h-8 w-8 rounded-lg inline-flex items-center justify-center hover:bg-white/5 transition-colors"
                               title="İndir"
                               style={{ color: '#b8a06f' }}
                             >
@@ -986,7 +1038,7 @@ export default function FisYazdirmaPage() {
                             </button>
                             <button
                               onClick={() => removeOutput(o.id)}
-                              className="h-8 w-8 rounded-lg inline-flex items-center justify-center hover:bg-black/5 transition-colors"
+                              className="h-8 w-8 rounded-lg inline-flex items-center justify-center hover:bg-white/5 transition-colors"
                               title="Sil"
                               style={{ color: '#f43f5e' }}
                             >
@@ -1004,12 +1056,20 @@ export default function FisYazdirmaPage() {
         </div>
       )}
 
-      {/* ── SCANNING — Animasyonlu Ekran ── */}
+      {/* ── SCANNING — Animasyonlu Ekran (koyu imza kartı) ── */}
       {stage === 'scanning' && (
         <div
-          className="rounded-2xl p-8 flex flex-col items-center gap-6"
-          style={{ background: '#d4b876', boxShadow: '0 10px 30px rgba(0,0,0,0.3)' }}
+          className="relative overflow-hidden rounded-2xl border p-8 flex flex-col items-center gap-6"
+          style={{
+            borderColor: 'rgba(212,184,118,0.2)',
+            background: 'radial-gradient(90% 120% at 50% 0%, rgba(212,184,118,0.1), transparent 60%), #0f0d0b',
+            boxShadow: '0 10px 30px rgba(0,0,0,0.3)',
+          }}
         >
+          <div
+            className="absolute inset-x-0 top-0 h-1"
+            style={{ background: 'linear-gradient(90deg, #8b7649, #b8a06f, #d4b876, #e7cf95, #d4b876, #b8a06f)' }}
+          />
           {/* Pulsing halka animasyonu */}
           <div className="relative w-28 h-28 flex items-center justify-center">
             <div
@@ -1022,17 +1082,17 @@ export default function FisYazdirmaPage() {
             />
             <div
               className="w-20 h-20 rounded-full border-4 border-transparent animate-spin"
-              style={{ borderTopColor: '#d4b876', borderRightColor: 'rgba(255,255,255,.15)' }}
+              style={{ borderTopColor: '#d4b876', borderRightColor: 'rgba(212,184,118,.2)' }}
             />
             <ScanLine size={28} className="absolute" style={{ color: '#d4b876' }} />
           </div>
 
           {/* Başlık */}
           <div className="text-center space-y-1">
-            <p className="text-lg font-bold" style={{ color: 'white', fontFamily: 'Plus Jakarta Sans, sans-serif' }}>
+            <p className="text-lg font-bold" style={{ color: '#fafaf9', fontFamily: 'Plus Jakarta Sans, sans-serif' }}>
               OCR Tarama Devam Ediyor
             </p>
-            <p className="text-sm" style={{ color: 'rgba(255,255,255,.5)' }}>
+            <p className="text-sm" style={{ color: 'rgba(250,250,249,.5)' }}>
               {files.length} fiş için yaklaşık {Math.ceil(files.length * 4 / 60)} dakika sürebilir
             </p>
             {scanStartTime > 0 && <ElapsedTimer startTime={scanStartTime} />}
@@ -1040,16 +1100,16 @@ export default function FisYazdirmaPage() {
 
           {/* Progress Bar */}
           <div className="w-full max-w-md">
-            <div className="flex justify-between text-xs mb-1.5" style={{ color: 'rgba(255,255,255,.4)' }}>
+            <div className="flex justify-between text-xs mb-1.5" style={{ color: 'rgba(250,250,249,.45)' }}>
               <span>İlerleme</span>
               <span>%{Math.round((simScanned / Math.max(files.length, 1)) * 100)}</span>
             </div>
-            <div className="h-2 rounded-full overflow-hidden" style={{ background: 'rgba(255,255,255,.1)' }}>
+            <div className="h-2 rounded-full overflow-hidden" style={{ background: 'rgba(255,255,255,.08)' }}>
               <div
                 className="h-full rounded-full transition-all duration-500"
                 style={{
                   width: `${(simScanned / Math.max(files.length, 1)) * 100}%`,
-                  background: 'linear-gradient(90deg, #d4b876 0%, #FDE68A 100%)',
+                  background: 'linear-gradient(90deg, #b8a06f 0%, #d4b876 60%, #e7cf95 100%)',
                 }}
               />
             </div>
@@ -1058,19 +1118,19 @@ export default function FisYazdirmaPage() {
           {/* 3 Canlı Sayaç */}
           <div className="grid grid-cols-3 gap-4 w-full max-w-md">
             {[
-              { label: 'Toplam Fiş',  value: files.length,                             color: 'white'         },
-              { label: 'Taranan',     value: simScanned,                                color: '#6EE7B7'       },
+              { label: 'Toplam Fiş',  value: files.length,                             color: '#fafaf9'   },
+              { label: 'Taranan',     value: simScanned,                                color: '#34d399'   },
               { label: 'Kalan',       value: Math.max(0, files.length - simScanned),   color: '#d4b876'   },
             ].map(({ label, value, color }) => (
               <div
                 key={label}
-                className="rounded-xl py-3 text-center"
-                style={{ background: 'rgba(255,255,255,.06)' }}
+                className="rounded-xl py-3 text-center border"
+                style={{ background: 'rgba(255,255,255,.025)', borderColor: 'rgba(255,255,255,.06)' }}
               >
                 <p className="text-2xl font-extrabold" style={{ color, fontFamily: 'Plus Jakarta Sans, sans-serif' }}>
                   {value}
                 </p>
-                <p className="text-[10px] mt-0.5" style={{ color: 'rgba(255,255,255,.4)' }}>{label}</p>
+                <p className="text-[10px] mt-0.5" style={{ color: 'rgba(250,250,249,.45)' }}>{label}</p>
               </div>
             ))}
           </div>
@@ -1080,21 +1140,23 @@ export default function FisYazdirmaPage() {
       {/* ── CONFIRM ── */}
       {stage === 'confirm' && scanResult && (
         <div className="space-y-4">
-          {/* Özet Bandı */}
-          <div
-            className="grid grid-cols-3 gap-4 rounded-xl p-5"
-            style={{ background: '#d4b876', boxShadow: '0 4px 14px rgba(0,0,0,0.2)' }}
-          >
+          {/* Özet Bandı — sakin kartlar + ince vurgu çizgisi (imza kuralı) */}
+          <div className="grid grid-cols-3 gap-3">
             {[
-              { label: 'Toplam Fiş',     value: scanResult.total,           color: 'white'             },
-              { label: 'Tarih Okundu',   value: scanResult.detected.length, color: '#6EE7B7'           },
-              { label: 'Teyit Bekliyor', value: scanResult.unread.length,   color: '#d4b876' },
-            ].map(({ label, value, color }) => (
-              <div key={label} className="text-center">
+              { label: 'Toplam Fiş',     value: scanResult.total,           color: '#d4b876', bg: 'linear-gradient(135deg, rgba(212,184,118,0.12), rgba(212,184,118,0.02))', border: 'rgba(212,184,118,0.25)' },
+              { label: 'Tarih Okundu',   value: scanResult.detected.length, color: '#34d399', bg: 'linear-gradient(135deg, rgba(52,211,153,0.1), transparent)',          border: 'rgba(52,211,153,0.22)' },
+              { label: 'Teyit Bekliyor', value: scanResult.unread.length,   color: '#fafaf9', bg: 'rgba(255,255,255,0.022)',                                            border: 'rgba(255,255,255,0.06)' },
+            ].map(({ label, value, color, bg, border }) => (
+              <div
+                key={label}
+                className="relative overflow-hidden rounded-2xl border p-5"
+                style={{ background: bg, borderColor: border }}
+              >
+                <span className="absolute left-0 top-0 bottom-0" style={{ width: 3, background: color }} />
                 <p className="text-3xl font-extrabold" style={{ color, fontFamily: 'Plus Jakarta Sans, sans-serif' }}>
                   {value}
                 </p>
-                <p className="text-xs mt-1" style={{ color: 'rgba(255,255,255,.5)' }}>{label}</p>
+                <p className="text-xs mt-1" style={{ color: 'rgba(250,250,249,0.45)' }}>{label}</p>
               </div>
             ))}
           </div>
@@ -1116,7 +1178,7 @@ export default function FisYazdirmaPage() {
                         className="flex items-start gap-3 px-4 py-2.5"
                         style={{ borderBottom: '1px solid rgba(255,255,255,0.05)' }}
                       >
-                        <CheckCircle2 size={14} style={{ color: '#059669', flexShrink: 0, marginTop: 2 }} />
+                        <CheckCircle2 size={14} style={{ color: '#34d399', flexShrink: 0, marginTop: 2 }} />
                         <div className="flex-1 min-w-0">
                           <p className="text-xs truncate" style={{ color: 'rgba(250,250,249,0.7)' }}>{d.filename}</p>
                           {editingFile === d.filename ? (
@@ -1129,21 +1191,21 @@ export default function FisYazdirmaPage() {
                                 style={{ maxWidth: 130 }}
                               />
                               <button onClick={() => setEditingFile(null)} className="p-1">
-                                <Check size={12} style={{ color: '#059669' }} />
+                                <Check size={12} style={{ color: '#34d399' }} />
                               </button>
                             </div>
                           ) : (
                             <div className="flex items-center gap-1 mt-0.5 flex-wrap">
                               <span
                                 className="text-xs font-semibold px-1.5 py-0.5 rounded"
-                                style={{ background: '#ECFDF5', color: '#059669' }}
+                                style={{ background: 'rgba(52,211,153,0.12)', color: '#34d399' }}
                               >
                                 {isoToDisplay(allDates[d.filename] ?? d.date)}
                               </span>
                               {knownDates[d.filename] && (
                                 <span
                                   className="text-[10px] font-semibold px-1.5 py-0.5 rounded"
-                                  style={{ background: '#EFF6FF', color: '#1D4ED8' }}
+                                  style={{ background: 'rgba(96,165,250,0.14)', color: '#60a5fa' }}
                                   title="MIHSAP'ta işlendiği kabul tarihi (muhasebe açısından doğru olan)"
                                 >
                                   DB
@@ -1173,7 +1235,7 @@ export default function FisYazdirmaPage() {
             <div className={scanResult.detected.length > 0 ? 'lg:col-span-3' : 'lg:col-span-5'}>
               {scanResult.unread.length === 0 ? (
                 <div className="card flex flex-col items-center py-12 text-center">
-                  <CheckCircle2 size={40} style={{ color: '#059669' }} />
+                  <CheckCircle2 size={40} style={{ color: '#34d399' }} />
                   <p className="font-bold mt-3" style={{ color: '#fafaf9', fontFamily: 'Plus Jakarta Sans, sans-serif' }}>
                     Tüm fişlerden tarih okundu!
                   </p>
@@ -1241,7 +1303,7 @@ export default function FisYazdirmaPage() {
                           key={u.filename}
                           className="rounded-xl overflow-hidden"
                           style={{
-                            border: allDates[u.filename] ? '2px solid #059669' : '2px solid rgba(255,255,255,0.05)',
+                            border: allDates[u.filename] ? '2px solid #34d399' : '2px solid rgba(255,255,255,0.05)',
                             background: 'rgba(255,255,255,0.03)',
                             boxShadow: '0 2px 6px rgba(0,0,0,0.15)',
                           }}
@@ -1262,7 +1324,7 @@ export default function FisYazdirmaPage() {
                               value={allDates[u.filename] ?? ''}
                               onChange={(e) => setAllDates((prev) => ({ ...prev, [u.filename]: e.target.value }))}
                               className="input-base w-full text-xs py-1.5"
-                              style={{ borderColor: allDates[u.filename] ? '#059669' : 'rgba(255,255,255,0.05)' }}
+                              style={{ borderColor: allDates[u.filename] ? '#34d399' : 'rgba(255,255,255,0.05)' }}
                             />
                             {prevDate && !allDates[u.filename] && (
                               <button
@@ -1289,7 +1351,17 @@ export default function FisYazdirmaPage() {
             <button onClick={reset} className="btn-secondary flex-shrink-0 px-6">
               Geri
             </button>
-            <button onClick={handleGenerate} className="btn-primary flex-1 py-3">
+            <button
+              onClick={handleGenerate}
+              className="btn-primary flex-1 py-3"
+              style={{
+                background: 'linear-gradient(135deg, #e7cf95, #d4b876 55%, #b8a06f)',
+                borderColor: 'transparent',
+                color: '#1a1410',
+                fontWeight: 700,
+                boxShadow: '0 8px 24px rgba(212,184,118,0.3)',
+              }}
+            >
               {scanResult.unread.filter((u) => !allDates[u.filename]).length > 0 ? (
                 <><AlertCircle size={15} />Word Oluştur ({scanResult.unread.filter((u) => !allDates[u.filename]).length} teyit bekliyor)</>
               ) : (
@@ -1321,8 +1393,8 @@ export default function FisYazdirmaPage() {
       {/* ── DONE ── */}
       {stage === 'done' && (
         <div className="card flex flex-col items-center py-16 gap-4 text-center">
-          <div className="w-16 h-16 rounded-full flex items-center justify-center" style={{ background: '#ECFDF5' }}>
-            <CheckCircle2 size={36} style={{ color: '#059669' }} />
+          <div className="w-16 h-16 rounded-full flex items-center justify-center" style={{ background: 'rgba(52,211,153,0.12)' }}>
+            <CheckCircle2 size={36} style={{ color: '#34d399' }} />
           </div>
           <div>
             <h2 className="text-xl font-bold" style={{ color: '#fafaf9', fontFamily: 'Plus Jakarta Sans, sans-serif' }}>
@@ -1333,7 +1405,17 @@ export default function FisYazdirmaPage() {
             </p>
           </div>
           <div className="flex gap-3 mt-2">
-            <button onClick={reset} className="btn-primary px-8">
+            <button
+              onClick={reset}
+              className="btn-primary px-8"
+              style={{
+                background: 'linear-gradient(135deg, #e7cf95, #d4b876 55%, #b8a06f)',
+                borderColor: 'transparent',
+                color: '#1a1410',
+                fontWeight: 700,
+                boxShadow: '0 8px 24px rgba(212,184,118,0.3)',
+              }}
+            >
               Yeni İşlem Başlat
             </button>
           </div>
@@ -1376,7 +1458,7 @@ export default function FisYazdirmaPage() {
               <button
                 onClick={() => !fetchLoading && setShowFetchModal(false)}
                 disabled={fetchLoading}
-                className="p-1 rounded hover:bg-black/5"
+                className="p-1 rounded hover:bg-white/5"
                 style={{ color: 'rgba(250,250,249,0.45)' }}
               >
                 <X size={18} />
@@ -1420,8 +1502,8 @@ export default function FisYazdirmaPage() {
               <div
                 className="rounded-lg px-3 py-2 text-xs flex items-center gap-2"
                 style={{
-                  background: fetchStatus.startsWith('Hata') ? '#FEF2F2' : 'rgba(184,160,111,.08)',
-                  color: fetchStatus.startsWith('Hata') ? '#DC2626' : '#fafaf9',
+                  background: fetchStatus.startsWith('Hata') ? 'rgba(244,63,94,0.1)' : 'rgba(212,184,118,.08)',
+                  color: fetchStatus.startsWith('Hata') ? '#fb7185' : '#fafaf9',
                 }}
               >
                 {fetchLoading && <Loader2 size={14} className="animate-spin flex-shrink-0" />}
@@ -1461,8 +1543,8 @@ export default function FisYazdirmaPage() {
               <button
                 onClick={handleFetchFromInvoices}
                 disabled={fetchLoading || !fetchMukellefId || !fetchDonem}
-                className="flex-1 px-4 py-2 rounded-lg text-sm font-semibold flex items-center justify-center gap-2 disabled:opacity-50"
-                style={{ background: '#b8a06f', color: 'white' }}
+                className="flex-1 px-4 py-2 rounded-lg text-sm font-bold flex items-center justify-center gap-2 disabled:opacity-50"
+                style={{ background: 'linear-gradient(135deg, #d4b876, #b8a06f)', color: '#1a1410' }}
               >
                 {fetchLoading ? (
                   <>
