@@ -122,6 +122,78 @@ export class LucaOperatorService {
     return { ok: false, error: 'İşlem zaman aşımı. Chrome\'da Luca açık ve operatör hesabı girişli mi?' };
   }
 
+  // ─── FAZ 4: ÖĞRENME / BECERİ KÜTÜPHANESİ (AiMemory üzerinde; migration yok) ───
+
+  /** Bir Luca işini "beceri" olarak kaydet (adımlar = action/etiket/hedef/deger sırası). */
+  private async saveSkill(
+    ctx: { tenantId: string; userId?: string | null },
+    ad: string,
+    adimlar: any[],
+    aciklama?: string,
+  ): Promise<any> {
+    if (!ad || !Array.isArray(adimlar) || !adimlar.length) {
+      return { ok: false, error: 'ad ve en az bir adım gerekli' };
+    }
+    try {
+      // Aynı isimli eski beceriyi pasifle (güncelleme etkisi)
+      await this.prisma.aiMemory.updateMany({
+        where: { tenantId: ctx.tenantId, scope: 'luca-skill', title: ad, isActive: true },
+        data: { isActive: false },
+      }).catch(() => undefined);
+      await this.prisma.aiMemory.create({
+        data: {
+          tenantId: ctx.tenantId,
+          scope: 'luca-skill',
+          source: 'luca-operator',
+          title: ad.slice(0, 120),
+          content: JSON.stringify({ aciklama: aciklama || '', adimlar }).slice(0, 12000),
+          importance: 4,
+          tags: ['luca-skill'],
+        },
+      });
+      return { ok: true, message: `Beceri kaydedildi: "${ad}" (${adimlar.length} adım). Bir dahaki sefere "${ad}" deyince çalıştırabilirim.` };
+    } catch (e: any) {
+      return { ok: false, error: e?.message || 'beceri kaydedilemedi' };
+    }
+  }
+
+  /** Kayıtlı becerileri listele. */
+  private async listSkills(ctx: { tenantId: string }): Promise<any> {
+    try {
+      const rows = await this.prisma.aiMemory.findMany({
+        where: { tenantId: ctx.tenantId, scope: 'luca-skill', isActive: true },
+        orderBy: { updatedAt: 'desc' },
+        take: 50,
+      });
+      const beceriler = rows.map((r) => {
+        let c: any = {};
+        try { c = JSON.parse(r.content); } catch {}
+        return { ad: r.title, aciklama: c.aciklama || '', adimSayisi: (c.adimlar || []).length };
+      });
+      return { ok: true, beceriler };
+    } catch (e: any) {
+      return { ok: false, error: e?.message };
+    }
+  }
+
+  /** Bir becerinin adımlarını getir (beyin bunları luca_yaz/sec/tikla ile uygular). */
+  private async getSkill(ctx: { tenantId: string }, ad: string): Promise<any> {
+    if (!ad) return { ok: false, error: 'ad gerekli' };
+    try {
+      const rows = await this.prisma.aiMemory.findMany({
+        where: { tenantId: ctx.tenantId, scope: 'luca-skill', isActive: true, title: ad },
+        orderBy: { updatedAt: 'desc' },
+        take: 1,
+      });
+      if (!rows.length) return { ok: false, error: `Beceri bulunamadı: "${ad}". luca_beceri_listele ile mevcutları görebilirsin.` };
+      let c: any = {};
+      try { c = JSON.parse(rows[0].content); } catch {}
+      return { ok: true, ad: rows[0].title, aciklama: c.aciklama || '', adimlar: c.adimlar || [] };
+    } catch (e: any) {
+      return { ok: false, error: e?.message };
+    }
+  }
+
   private pickModel(text: string): string {
     const t = text || '';
     if (CRITICAL_PATTERNS.some((p) => p.test(t))) return MODEL_CRITICAL;
@@ -157,6 +229,8 @@ export class LucaOperatorService {
       'Luca\'da İŞLEM yapabilirsin: alan doldur → portal({name:"luca_yaz", args:{etiket:"<alan>", deger:"<değer>"}}); açılır liste → portal({name:"luca_sec", args:{etiket:"<alan>", deger:"<seçenek>"}}); buton/menü → portal({name:"luca_tikla", args:{hedef:"<metin>"}}). Her işlemden sonra dönen "screen" ile sonucu doğrula; gerekirse luca_ekran_oku ile bak.',
       'GÜVENLİK — geri dönülmez adımlar: "Kaydet/Gönder/Onayla/İmzala/Sil/Tahakkuk/Tamamla" gibi butonlara ASLA kendiliğinden tıklama. Önce ne yapacağını ve hangi mükellef/dönem/tutar olduğunu KISACA özetle, kullanıcıdan AÇIK onay iste. Kullanıcı net onay verirse luca_tikla\'yı args.confirmed=true ile çağır. Onay olmadan confirmed=true GÖNDERME — agent zaten onaysız bu butonları bloke eder.',
       'Bir işi adım adım yap (gör → doldur/seç → kontrol et → onayla → gönder). Emin değilsen dur ve sor.',
+      'ÖĞRENME (beceri kütüphanesi): Bir Luca işini başarıyla bitirince ve kullanıcı "bunu kaydet/öğren" derse, yaptığın adımları sırasıyla luca_beceri_kaydet({ad:"<kısa ad>", aciklama:"...", adimlar:[{action:"git|fill|select|click", etiket, hedef, deger}, ...]}) ile kaydet. Mükellefe/döneme göre değişen değerleri sabit yazma; "<mükellef>", "<dönem>" gibi yer tutucu kullan.',
+      'Kullanıcı kayıtlı bir işi isterse ÖNCE luca_beceri_listele ile bak; uygun beceri varsa luca_beceri_getir({ad}) ile adımları al ve her adımı sırayla luca_yaz/luca_sec/luca_tikla ile uygula (her adımdan sonra "screen" ile doğrula; ekran sapmışsa uyum sağla; bulamadığın yerde kullanıcıya sor). Gönder/Kaydet adımına gelince DUR ve kullanıcının onayını al. Beceri yoksa işi adım adım yap ve sonunda "bunu kaydedeyim mi?" diye öner.',
       'Cevabını GEREKSİZ uzatma; net ve kısa tut. Emin değilsen veya bilgi eksikse ASLA varsayma — kullanıcıya kısa bir soru sor.',
       'Kritik mali/hukuki konularda (beyanname, KDV, mizan, tahakkuk) en yüksek doğrulukla çalış; görmediğini görmüş gibi söyleme.',
       'Mükellef PII (şifre, token, TC, IBAN) sızdırma, loglama.',
@@ -254,6 +328,27 @@ export class LucaOperatorService {
               deger: args.deger ?? args.value,
               confirmed: args.confirmed === true,
             });
+            return { content: [{ type: 'text', text: JSON.stringify(r) }] };
+          }
+          // Öğrenme: beceri kaydet / listele / getir
+          if (toolName === 'luca_beceri_kaydet') {
+            const args = a?.args || {};
+            toolUses.push({ name: toolName, args });
+            emit({ type: 'tool', name: toolName });
+            const r = await this.saveSkill(ctx, String(args.ad || ''), Array.isArray(args.adimlar) ? args.adimlar : [], args.aciklama);
+            return { content: [{ type: 'text', text: JSON.stringify(r) }] };
+          }
+          if (toolName === 'luca_beceri_listele') {
+            toolUses.push({ name: toolName, args: {} });
+            emit({ type: 'tool', name: toolName });
+            const r = await this.listSkills(ctx);
+            return { content: [{ type: 'text', text: JSON.stringify(r) }] };
+          }
+          if (toolName === 'luca_beceri_getir') {
+            const args = a?.args || {};
+            toolUses.push({ name: toolName, args });
+            emit({ type: 'tool', name: toolName });
+            const r = await this.getSkill(ctx, String(args.ad || ''));
             return { content: [{ type: 'text', text: JSON.stringify(r) }] };
           }
           if (!ALLOWED_TOOLS.has(toolName)) {
