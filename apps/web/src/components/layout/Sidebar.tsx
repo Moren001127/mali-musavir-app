@@ -69,6 +69,7 @@ const navGroups = [
     icon: BrainCircuit,
     items: [
       { href: '/panel/moren-ai', label: 'MOREN AI', icon: BrainCircuit },
+      { href: '/panel/luca-operator', label: 'Luca Operatörü', icon: BotMessageSquare },
       { href: '/panel/otomasyonlar', label: 'Otomasyonlar', icon: WandSparkles },
     ],
   },
