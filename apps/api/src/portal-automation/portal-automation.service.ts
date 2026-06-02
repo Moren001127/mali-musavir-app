@@ -1312,8 +1312,11 @@ export class PortalAutomationService {
     const rawMeta: any = (input.raw && typeof input.raw === 'object') ? input.raw : {};
     const fallbackVkn = String(rawMeta.taxNumber || rawMeta.vkn || '').replace(/\D/g, '');
     const vkn = (String(parsed?.vkn || '').replace(/\D/g, '') || fallbackVkn) || null;
-    const beyanTipi = parsed?.beyanTipi || rawMeta.beyanTipi || null;
-    const donem = parsed?.donem || input.period || rawMeta.donem || null;
+    // ONEMLI: runner'in tip/donem'ini ONCELE. Gecici beyannamede PDF parse AYLIK donem (2026-01)
+    // verirken runner DOGRU CEYREKLIK (2026-Q1) hesapliyor; mevcut kayit ceyreklik tutuldugundan
+    // PDF parse'i onceleyince anahtar TUTMUYOR ve PDF gorunen kayda baglanmiyordu.
+    const beyanTipi = rawMeta.beyanTipi || parsed?.beyanTipi || null;
+    const donem = input.period || parsed?.donem || rawMeta.donem || null;
     const taxpayer = vkn ? await this.findTaxpayerByTaxNo(tenantId, vkn) : null;
 
     if (!taxpayer?.id || !beyanTipi || !donem) {
