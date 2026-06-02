@@ -114,6 +114,9 @@ export class PortalAutomationRailwayRunnerService implements OnModuleInit {
   private ebeyannameListApiProbeLogged = false;
   // GIB sayfasinin kendi yaptigi (calisan) ARSIVBEYANNAMELISTESI istegi — sayfalama icin temel alinir.
   private ebeyannameCapturedListReq: { url: string; method: string; postData: string | null } | null = null;
+  // GIB iki PDF goruntuleme arasinda EN AZ ~1 sn ister. Tum IMAJ/PDF cekimleri arasinda global gecit;
+  // cok hizli gidersen GIB 354 "1 sn bekleyin" HTML'i ya da 500 doner ve belge inmez.
+  private ebeyannameLastImajAt = 0;
 
   constructor(
     private prisma: PrismaService,
@@ -3658,6 +3661,15 @@ export class PortalAutomationRailwayRunnerService implements OnModuleInit {
     }
   }
 
+  /** GIB hiz-limiti: iki IMAJ/PDF cekimi arasinda EN AZ ebeyannameMinFetchGapMs (~1.2sn) bekle. */
+  private async ebeyannameImajGate() {
+    const gap = this.ebeyannameMinFetchGapMs();
+    if (gap <= 0) return;
+    const wait = gap - (Date.now() - this.ebeyannameLastImajAt);
+    if (wait > 0) await this.wait(wait);
+    this.ebeyannameLastImajAt = Date.now();
+  }
+
   private async savePdfFromRequestUrl(
     page: any,
     url: string,
@@ -3666,6 +3678,7 @@ export class PortalAutomationRailwayRunnerService implements OnModuleInit {
   ): Promise<EBeyannameFilePayload | null> {
     const variants = this.ebeyannamePdfRequestUrlVariants(url);
     for (const requestUrl of variants) {
+      await this.ebeyannameImajGate();
       const response = await page.context().request.get(requestUrl, {
         timeout: this.ebeyannameDirectFetchTimeoutMs(),
         headers: { referer: String(page.url?.() || '') },
@@ -3690,11 +3703,13 @@ export class PortalAutomationRailwayRunnerService implements OnModuleInit {
     }
 
     for (const requestUrl of variants) {
+      await this.ebeyannameImajGate();
       const viaBrowserFetch = await this.savePdfFromBrowserFetch(page, requestUrl, downloadsPath, fallbackName).catch(() => null);
       if (viaBrowserFetch) return viaBrowserFetch;
     }
 
     for (const requestUrl of variants) {
+      await this.ebeyannameImajGate();
       const viaNavigation = await this.savePdfFromBrowserNavigationUrl(page, requestUrl, downloadsPath, fallbackName).catch(() => null);
       if (viaNavigation) return viaNavigation;
     }
