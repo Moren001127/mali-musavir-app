@@ -1310,11 +1310,13 @@ export class PortalAutomationService {
     // KAZIDIGI VKN + tur + donem'e DUS (input.raw/period) -> beyan kaydi yine de olusur, gorunur olur.
     const parsed: any = await this.beyanKayitlari.parseBeyannamePdf(base64).catch(() => ({}));
     const rawMeta: any = (input.raw && typeof input.raw === 'object') ? input.raw : {};
-    const fallbackVkn = String(rawMeta.taxNumber || rawMeta.vkn || '').replace(/\D/g, '');
-    const vkn = (String(parsed?.vkn || '').replace(/\D/g, '') || fallbackVkn) || null;
-    // ONEMLI: runner'in tip/donem'ini ONCELE. Gecici beyannamede PDF parse AYLIK donem (2026-01)
-    // verirken runner DOGRU CEYREKLIK (2026-Q1) hesapliyor; mevcut kayit ceyreklik tutuldugundan
-    // PDF parse'i onceleyince anahtar TUTMUYOR ve PDF gorunen kayda baglanmiyordu.
+    // ONEMLI: VKN/tip/donem'de HER ZAMAN GIB listesinden gelen SATIR verisini (rawMeta/period) oncele,
+    // PDF parse'i DEGIL. Cunku beyanname PDF'i metin-okunabilir olunca parseBeyannamePdf cogu zaman
+    // YANLIS bir numara (mali musavir VKN'si / fis no vb.) okuyup beyannameyi BASKA kayda yaziyordu;
+    // tahakkuk PDF'i okunamayinca dogru satir-VKN'sine dusup gorunen kayda baglaniyordu. Bu yuzden
+    // ayni mukellefte "tahakkuk var, beyanname yok" oluyordu. Satir verisi = kaydin eslestigi veri.
+    const rowVkn = String(rawMeta.taxNumber || rawMeta.vkn || '').replace(/\D/g, '');
+    const vkn = (rowVkn || String(parsed?.vkn || '').replace(/\D/g, '')) || null;
     const beyanTipi = rawMeta.beyanTipi || parsed?.beyanTipi || null;
     const donem = input.period || parsed?.donem || rawMeta.donem || null;
     const taxpayer = vkn ? await this.findTaxpayerByTaxNo(tenantId, vkn) : null;
