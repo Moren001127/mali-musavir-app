@@ -89,6 +89,7 @@ export class LucaController {
   }
 
   private requiredAgentVersionForJobTip(tip?: string | null) {
+    if (tip === 'EKRAN_OKU') return '1.38.1'; // operatör ekran okuma; sadece güncel ajan
     const lucaBrowserJobTips = new Set([
       'EARSIV_SATIS',
       'EARSIV_ALIS',
@@ -639,6 +640,19 @@ export class LucaController {
     // Cache'lenmiş eski Luca tab'larındaki agent v1.17.0 da çalışsın.
     const text = body?.msg || body?.line || body?.message;
     if (text) await this.luca.appendJobLog(id, text);
+    return { ok: true };
+  }
+
+  /** LUCA OPERATÖRÜ — ajan o an açık Luca ekranının snapshot'ını yazar (EKRAN_OKU). */
+  @Post('agent/luca/jobs/:id/screen')
+  @HttpCode(HttpStatus.OK)
+  async storeScreen(
+    @Param('id') id: string,
+    @Body() body: { snapshot?: any },
+    @Headers('x-agent-token') agentToken: string,
+  ) {
+    const tenantId = await this.resolveTenantFromAgentToken(agentToken);
+    await this.luca.storeScreenSnapshot(id, tenantId, body?.snapshot ?? null);
     return { ok: true };
   }
 

@@ -5,6 +5,7 @@ import { ToolExecutorService } from '../moren-ai/tool-executor.service';
 import { MOREN_AI_TOOLS } from '../moren-ai/tools';
 import { logAiUsage } from '../common/ai-usage-logger';
 import { MAX_MODEL_CHEAP } from '../common/max-inference';
+import { LucaService } from '../luca/luca.service';
 
 /**
  * LUCA OPERATÖRÜ — Max aboneliği (ücretsiz) + ARAÇLI beyin, AKIŞLI (streaming) cevap.
@@ -72,7 +73,31 @@ export class LucaOperatorService {
   constructor(
     private readonly prisma: PrismaService,
     private readonly tools: ToolExecutorService,
+    private readonly luca: LucaService,
   ) {}
+
+  /** LUCA OPERATÖRÜ — o an açık Luca ekranını oku (EKRAN_OKU işi + sonucu yokla). */
+  private async readLucaScreen(ctx: { tenantId: string; userId?: string | null }): Promise<any> {
+    let job: any;
+    try {
+      job = await this.luca.createScreenReadJob(ctx.tenantId, { createdBy: ctx.userId || undefined });
+    } catch (e: any) {
+      return { ok: false, error: 'Ekran okuma işi oluşturulamadı: ' + (e?.message || e) };
+    }
+    const jobId = job?.id;
+    if (!jobId) return { ok: false, error: 'Ekran okuma işi oluşturulamadı.' };
+    const deadline = Date.now() + 25000;
+    while (Date.now() < deadline) {
+      await new Promise((r) => setTimeout(r, 1500));
+      const r = await this.luca.getScreenSnapshot(jobId, ctx.tenantId).catch(() => null);
+      if (r && r.status === 'done' && r.snapshot) return { ok: true, ekran: r.snapshot };
+      if (r && r.status === 'failed') return { ok: false, error: r.errorMsg || 'ekran okunamadı' };
+    }
+    return {
+      ok: false,
+      error: 'Ekran okunamadı (zaman aşımı). Chrome\'da Luca açık ve Moren Agent çalışıyor mu? Tekrar dener misin?',
+    };
+  }
 
   private pickModel(text: string): string {
     const t = text || '';
@@ -107,6 +132,7 @@ export class LucaOperatorService {
       'ŞU AN (Faz 1): Luca\'ya doğrudan YAZMA/işlem yapma yeteneğin YOK. Sadece veri okur, durum analizi yapar,',
       've mevcut Luca veri-çekme işlerini önizleyip (preview_agent_command) onayla tetikleyebilirsin.',
       'Portal verisi için "portal" aracını çağır: name=araç adı, args=parametre nesnesi. Sonucu yorumla.',
+      'Luca\'da O AN AÇIK ekranı görmek için: portal({ name: "luca_ekran_oku" }) — mükellef/dönem gerekmez; kullanıcının Chrome\'undaki açık Luca ekranını okur (0-15 sn sürebilir). Dönen "ekran" (frames/fields/buttons/text) verisini yorumla. Kullanıcı "Luca\'da ne görüyorsun / ekrana bak" derse bunu kullan.',
       'Cevabını GEREKSİZ uzatma; net ve kısa tut. Emin değilsen veya bilgi eksikse ASLA varsayma — kullanıcıya kısa bir soru sor.',
       'Kritik mali/hukuki konularda (beyanname, KDV, mizan, tahakkuk) en yüksek doğrulukla çalış; görmediğini görmüş gibi söyleme.',
       'Mükellef PII (şifre, token, TC, IBAN) sızdırma, loglama.',
@@ -184,6 +210,13 @@ export class LucaOperatorService {
         { name: z.string(), args: z.record(z.any()).optional() },
         async (a: { name: string; args?: any }) => {
           const toolName = String(a?.name || '');
+          // Özel: Luca'da o an açık ekranı oku (EKRAN_OKU işi → snapshot)
+          if (toolName === 'luca_ekran_oku') {
+            toolUses.push({ name: toolName, args: {} });
+            emit({ type: 'tool', name: toolName });
+            const r = await this.readLucaScreen(ctx);
+            return { content: [{ type: 'text', text: JSON.stringify(r) }] };
+          }
           if (!ALLOWED_TOOLS.has(toolName)) {
             return { content: [{ type: 'text', text: JSON.stringify({ error: `Bu araç operatöre kapalı (Faz 1): ${toolName}` }) }] };
           }

@@ -233,6 +233,54 @@ export class LucaService {
   }
 
   /**
+   * LUCA OPERATÖRÜ — "ekranı oku" (EKRAN_OKU) işi.
+   * Mükellef/dönem YOK (boş string → seri-kural devreye girmez). Ajan o an açık
+   * Luca ekranını okuyup snapshot'ı /screen ucundan job.payload'a yazar.
+   * SADECE OKUMA — Luca'ya yazma yok.
+   */
+  async createScreenReadJob(
+    tenantId: string,
+    opts: { createdBy?: string; targetDeviceId?: string } = {},
+  ) {
+    return (this.prisma as any).lucaFetchJob.create({
+      data: {
+        tenantId,
+        sessionId: null,
+        mukellefId: '',
+        donem: '',
+        tip: 'EKRAN_OKU',
+        status: 'pending',
+        createdBy: opts.createdBy || null,
+        targetDeviceId: opts.targetDeviceId || null,
+        preferredAgent: null,
+        priority: 5,
+      },
+    });
+  }
+
+  /** Ajan ekran snapshot'ını job.payload'a yazar (migration yok). */
+  async storeScreenSnapshot(jobId: string, tenantId: string, snapshot: any) {
+    const job = await (this.prisma as any).lucaFetchJob.findUnique({ where: { id: jobId } });
+    if (!job || job.tenantId !== tenantId) return { ok: false };
+    const payload = job.payload && typeof job.payload === 'object' ? job.payload : {};
+    await (this.prisma as any).lucaFetchJob.update({
+      where: { id: jobId },
+      data: { payload: { ...payload, screen: snapshot, screenAt: new Date().toISOString() } },
+    });
+    return { ok: true };
+  }
+
+  /** Operatör snapshot'ı yoklar (status + payload.screen). */
+  async getScreenSnapshot(jobId: string, tenantId: string) {
+    const job = await (this.prisma as any).lucaFetchJob.findUnique({ where: { id: jobId } });
+    if (!job || job.tenantId !== tenantId) {
+      return { status: 'notfound', snapshot: null, errorMsg: null };
+    }
+    const payload: any = job.payload || {};
+    return { status: job.status, snapshot: payload.screen || null, errorMsg: job.errorMsg || null };
+  }
+
+  /**
    * Agent tipini deviceId'den çıkar.
    * - moren-* (hostname-based) → 'local-node'
    * - DEV-* (Chrome extension generated) → 'browser-ext'

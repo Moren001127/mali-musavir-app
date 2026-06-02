@@ -4,7 +4,7 @@
 */
 (function () {
   // Agent versiyon — UI'da gösterilir, debug için kritik
-  const AGENT_VERSION = '1.38.0';
+  const AGENT_VERSION = '1.38.1';
   const AGENT_INSTANCE_ID = 'mai_' + Date.now().toString(36) + '_' + Math.random().toString(36).slice(2, 8);
 
   // === VERSION-AWARE RELOAD ===
@@ -336,6 +336,59 @@
     add(window.top || window);
     add(window);
     return docs;
+  }
+
+  // ─── LUCA OPERATÖRÜ: ekranı anlamlı oku (SADECE OKUMA; yazma yok) ───
+  function guessLabel(el) {
+    try {
+      if (el.id) {
+        const lbl = el.ownerDocument.querySelector('label[for="' + el.id + '"]');
+        if (lbl) return (lbl.innerText || lbl.textContent || '').replace(/\s+/g, ' ').trim().slice(0, 60);
+      }
+      const a = el.getAttribute('aria-label') || el.getAttribute('title') || el.placeholder;
+      if (a) return String(a).slice(0, 60);
+      const cell = el.closest && el.closest('td');
+      const prev = cell && cell.previousElementSibling;
+      if (prev) return (prev.innerText || prev.textContent || '').replace(/\s+/g, ' ').trim().slice(0, 60);
+    } catch {}
+    return '';
+  }
+  function readLucaScreenSnapshot() {
+    const snap = { url: location.href, frames: [], text: '', fields: [], buttons: [], links: [] };
+    const texts = [];
+    for (const doc of lucaDocuments()) {
+      try {
+        const fname = (doc.defaultView && doc.defaultView.name) || '';
+        snap.frames.push(fname || '(ana)');
+        const bt = (doc.body && (doc.body.innerText || doc.body.textContent) || '').replace(/\s+/g, ' ').trim();
+        if (bt) texts.push(bt.slice(0, 4000));
+        for (const el of Array.from(doc.querySelectorAll('input, textarea, select'))) {
+          if (!visible(el)) continue;
+          const type = String(el.getAttribute('type') || el.tagName).toLowerCase();
+          if (['hidden', 'submit', 'button'].includes(type)) continue;
+          const f = {
+            frame: fname, tip: type, etiket: guessLabel(el),
+            name: el.name || null, id: el.id || null,
+            deger: el.value != null ? String(el.value).slice(0, 200) : '',
+          };
+          if (el.tagName.toLowerCase() === 'select') {
+            f.secenekler = Array.from(el.options || []).slice(0, 40).map((o) => o.text).filter(Boolean);
+          }
+          if (snap.fields.length < 200) snap.fields.push(f);
+        }
+        for (const el of Array.from(doc.querySelectorAll('button, input[type=button], input[type=submit], a'))) {
+          if (!visible(el)) continue;
+          const t = (el.value || el.innerText || el.textContent || '').replace(/\s+/g, ' ').trim();
+          if (!t) continue;
+          const arr = el.tagName.toLowerCase() === 'a' ? snap.links : snap.buttons;
+          if (arr.length < 100) arr.push(t.slice(0, 80));
+        }
+      } catch {}
+    }
+    snap.text = texts.join('\n---\n').slice(0, 12000);
+    snap.buttons = Array.from(new Set(snap.buttons));
+    snap.links = Array.from(new Set(snap.links)).slice(0, 120);
+    return snap;
   }
 
   function findInputByHints(doc, hints, opts = {}) {
@@ -1434,6 +1487,32 @@
           // İlk satır: agent versiyonu — cache debug için kritik
           await throwIfCancelled();
           await log(`🤖 Moren Agent v${AGENT_VER} | URL=${location.href.slice(0, 80)}`);
+
+          // ─── EKRAN_OKU: Luca operatörü için o an açık ekranı oku (SADECE OKUMA) ───
+          if (job.tip === 'EKRAN_OKU') {
+            try {
+              const snapshot = readLucaScreenSnapshot();
+              await log(`👁 Ekran okundu: ${snapshot.frames.length} frame, ${snapshot.fields.length} alan, ${snapshot.buttons.length} buton`);
+              await fetch(API + `/agent/luca/jobs/${job.id}/screen`, {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json', 'X-Agent-Token': TOKEN },
+                body: JSON.stringify({ snapshot }),
+              }).catch(() => {});
+              await fetch(API + `/agent/luca/jobs/${job.id}/done`, {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json', 'X-Agent-Token': TOKEN },
+                body: JSON.stringify({ recordCount: snapshot.fields.length }),
+              }).catch(() => {});
+              setStatus('Luca: ekran okundu');
+            } catch (e) {
+              await fetch(API + `/agent/luca/jobs/${job.id}/fail`, {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json', 'X-Agent-Token': TOKEN },
+                body: JSON.stringify({ error: (e && e.message) || 'ekran okunamadı' }),
+              }).catch(() => {});
+            }
+            continue; // diğer job tiplerinin Excel akışına girme
+          }
 
           // ─── Job tipine göre rapor sayfası kontrolü ───
           // MIZAN          → Luca'da Mizan ekranı açık olmalı

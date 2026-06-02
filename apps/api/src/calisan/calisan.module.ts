@@ -5,6 +5,7 @@ import { LucaOperatorController } from './luca-operator.controller';
 import { LucaOperatorService } from './luca-operator.service';
 import { PrismaModule } from '../prisma/prisma.module';
 import { MorenAiModule } from '../moren-ai/moren-ai.module';
+import { LucaModule } from '../luca/luca.module';
 
 /**
  * Moren Portal Çalışanı — izole modül (mevcut modüllere dokunmaz).
@@ -12,7 +13,7 @@ import { MorenAiModule } from '../moren-ai/moren-ai.module';
  * Luca Operatörü: Max + araçlı sohbet (MorenAiModule'den ToolExecutorService kullanır).
  */
 @Module({
-  imports: [PrismaModule, MorenAiModule],
+  imports: [PrismaModule, MorenAiModule, LucaModule],
   controllers: [CalisanController, LucaOperatorController],
   providers: [CalisanService, LucaOperatorService],
   exports: [CalisanService, LucaOperatorService],
