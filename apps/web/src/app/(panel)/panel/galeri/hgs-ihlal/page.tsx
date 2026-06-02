@@ -1,17 +1,19 @@
 'use client';
 
 import { useState, useMemo, useEffect, useRef } from 'react';
+import Link from 'next/link';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import { galeriApi, Arac } from '@/lib/galeri';
 import {
   Gavel, Plus, Search, Trash2, ExternalLink, RefreshCw, Car,
   CheckCircle2, AlertCircle, Clock, X as IconX, Edit2, Save,
   Zap, PlayCircle, Bot, FileText, Download, Terminal, Square, ChevronDown, ChevronUp,
+  ArrowLeft,
 } from 'lucide-react';
 import { toast } from 'sonner';
 import { api } from '@/lib/api';
 
-const GOLD = '#d4b876';
+const GOLD = '#f97316'; // modül vurgu rengi: turuncu (HGS ihlal teması)
 const KGM_URL = 'https://webihlaltakip.kgm.gov.tr/WebIhlalSorgulama/Sayfalar/Sorgulama.aspx?lang=tr';
 
 function fmtTarih(iso: string | null): string {
@@ -129,38 +131,57 @@ export default function HgsIhlalPage() {
   });
 
   return (
-    <div className="space-y-3 max-w-7xl">
-      {/* HEADER */}
-      <div className="flex items-end justify-between pb-3 flex-wrap gap-3" style={{ borderBottom: '1px solid rgba(255,255,255,0.05)' }}>
-        <div>
-          <div className="flex items-center gap-2.5 mb-2">
-            <span className="w-[26px] h-px" style={{ background: GOLD }} />
-            <span className="text-[10px] uppercase font-bold tracking-[.18em]" style={{ color: '#b8a06f' }}>Galeri</span>
+    <div className="space-y-4 max-w-7xl pb-10">
+      {/* === BASLIK (AI Maliyet imzasi — turuncu/ihlal temasi) === */}
+      <header
+        className="relative overflow-hidden rounded-2xl border p-5"
+        style={{
+          borderColor: 'rgba(255,255,255,0.08)',
+          background:
+            'radial-gradient(120% 140% at 0% 0%, rgba(249,115,22,0.18), transparent 45%), radial-gradient(120% 140% at 100% 0%, rgba(244,63,94,0.12), transparent 45%), #0f0d0b',
+        }}
+      >
+        {/* ust renk seridi */}
+        <div
+          className="absolute inset-x-0 top-0 h-1"
+          style={{ background: 'linear-gradient(90deg, #f97316, #fb923c, #f59e0b, #f43f5e)' }}
+        />
+        <Link href="/panel" className="inline-flex items-center gap-1.5 text-[12px] font-medium" style={{ color: 'rgba(250,250,249,0.58)' }}>
+          <ArrowLeft size={14} /> Panel
+        </Link>
+        <div className="mt-2 flex items-center justify-between gap-3 flex-wrap">
+          <h1 className="flex items-center gap-2.5 text-[28px] font-semibold leading-tight" style={{ color: '#fafaf9' }}>
+            <span
+              className="grid h-10 w-10 place-items-center rounded-xl"
+              style={{ background: 'linear-gradient(135deg, #f97316, #ea580c)', boxShadow: '0 6px 18px rgba(249,115,22,0.35)' }}
+            >
+              <Gavel size={22} style={{ color: '#1a0f05' }} />
+            </span>
+            HGS İhlal Sorgulama
+          </h1>
+          <div className="flex items-center gap-2 flex-wrap">
+            <a
+              href={KGM_URL}
+              target="_blank"
+              rel="noopener"
+              className="inline-flex items-center gap-1.5 px-[18px] py-2.5 text-[13px] font-medium rounded-[10px] transition-all"
+              style={{ background: 'rgba(255,255,255,0.03)', border: '1px solid rgba(255,255,255,0.08)', color: 'rgba(250,250,249,0.85)' }}
+            >
+              <ExternalLink size={14} /> KGM Sitesini Aç
+            </a>
+            <button
+              onClick={() => setAddOpen(true)}
+              className="inline-flex items-center gap-1.5 px-5 py-2.5 text-[13px] font-bold rounded-[10px] transition-all"
+              style={{ background: `linear-gradient(135deg, ${GOLD}, #ea580c)`, color: '#0f0d0b' }}
+            >
+              <Plus size={14} /> Araç Ekle
+            </button>
           </div>
-          <h1 style={{ fontFamily: 'Fraunces, serif', fontSize: 30, fontWeight: 600, color: '#fafaf9', letterSpacing: '-.03em' }}>HGS İhlal Sorgulama</h1>
-          <p className="text-[13px] mt-1.5" style={{ color: 'rgba(250,250,249,0.42)' }}>
-            Araç plakalarını kaydet, KGM sisteminden ihlalli geçişlerini sorgula ve raporla.
-          </p>
         </div>
-        <div className="flex items-center gap-2">
-          <a
-            href={KGM_URL}
-            target="_blank"
-            rel="noopener"
-            className="inline-flex items-center gap-1.5 px-[18px] py-2.5 text-[13px] font-medium rounded-[10px] transition-all"
-            style={{ background: 'rgba(255,255,255,0.03)', border: '1px solid rgba(255,255,255,0.08)', color: 'rgba(250,250,249,0.85)' }}
-          >
-            <ExternalLink size={14} /> KGM Sitesini Aç
-          </a>
-          <button
-            onClick={() => setAddOpen(true)}
-            className="inline-flex items-center gap-1.5 px-5 py-2.5 text-[13px] font-bold rounded-[10px] transition-all"
-            style={{ background: `linear-gradient(135deg, ${GOLD}, #b8a06f)`, color: '#0f0d0b' }}
-          >
-            <Plus size={14} /> Araç Ekle
-          </button>
-        </div>
-      </div>
+        <p className="mt-2 max-w-2xl text-[13px]" style={{ color: 'rgba(250,250,249,0.6)' }}>
+          Araç plakalarını kaydet, KGM sisteminden ihlalli geçişlerini sorgula ve raporla.
+        </p>
+      </header>
 
       {/* ÖZET */}
       {ozet && (
@@ -174,16 +195,17 @@ export default function HgsIhlalPage() {
 
       {/* OTOMATIK SORGU PANELI */}
       <div
-        className="rounded-xl p-5 flex items-center gap-4 flex-wrap"
+        className="relative overflow-hidden rounded-xl p-5 flex items-center gap-4 flex-wrap"
         style={{
-          background: 'linear-gradient(135deg, rgba(184,160,111,0.05), rgba(184,160,111,0.02))',
-          border: '1px solid rgba(184,160,111,0.15)',
+          background: 'rgba(255,255,255,0.02)',
+          border: '1px solid rgba(255,255,255,0.07)',
         }}
       >
+        <div className="absolute inset-x-0 top-0 h-[3px]" style={{ background: 'linear-gradient(90deg, #f97316, #f59e0b, transparent)' }} />
         <div className="flex items-center gap-3 flex-1 min-w-[280px]">
           <div
             className="w-10 h-10 rounded-full flex items-center justify-center"
-            style={{ background: 'rgba(184,160,111,0.1)', border: '1px solid rgba(184,160,111,0.25)' }}
+            style={{ background: 'rgba(234,88,12,0.1)', border: '1px solid rgba(234,88,12,0.25)' }}
           >
             <Bot size={18} style={{ color: GOLD }} />
           </div>
@@ -221,7 +243,7 @@ export default function HgsIhlalPage() {
           onClick={() => topluSorguMut.mutate()}
           disabled={topluSorguMut.isPending || !!agentInfo?.aktifKomut}
           className="inline-flex items-center gap-1.5 px-5 py-2.5 text-[13px] font-bold rounded-[10px] transition-all disabled:opacity-50 disabled:cursor-not-allowed"
-          style={{ background: `linear-gradient(135deg, ${GOLD}, #b8a06f)`, color: '#0f0d0b' }}
+          style={{ background: `linear-gradient(135deg, ${GOLD}, #ea580c)`, color: '#0f0d0b' }}
         >
           {topluSorguMut.isPending
             ? <><RefreshCw size={14} className="animate-spin" /> Başlatılıyor...</>
@@ -259,7 +281,7 @@ export default function HgsIhlalPage() {
       {!!izlenenKomutId && (
         <div
           className="rounded-xl overflow-hidden"
-          style={{ background: 'rgba(10,10,15,0.6)', border: '1px solid rgba(184,160,111,0.2)' }}
+          style={{ background: 'rgba(10,10,15,0.6)', border: '1px solid rgba(255,255,255,0.08)' }}
         >
           <button
             onClick={() => setLogsOpen(!logsOpen)}
@@ -350,7 +372,7 @@ export default function HgsIhlalPage() {
       {araclar.length > 0 && (
         <div className="rounded-xl overflow-hidden" style={{ background: 'rgba(255,255,255,0.02)', border: '1px solid rgba(255,255,255,0.06)' }}>
           <table className="w-full text-[13px]" style={{ color: 'rgba(250,250,249,0.85)' }}>
-            <thead style={{ background: 'rgba(184,160,111,0.08)' }}>
+            <thead style={{ background: 'rgba(255,255,255,0.03)' }}>
               <tr className="text-left text-[10.5px] uppercase tracking-wider font-semibold" style={{ color: 'rgba(250,250,249,0.55)' }}>
                 <th className="px-4 py-3">Plaka</th>
                 <th className="px-4 py-3">Marka / Model</th>
@@ -384,7 +406,7 @@ export default function HgsIhlalPage() {
       }} />}
 
       {/* Bilgilendirme */}
-      <div className="rounded-xl p-4 text-[12px]" style={{ background: 'rgba(212,184,118,0.04)', border: '1px solid rgba(212,184,118,0.2)', color: 'rgba(250,250,249,0.7)' }}>
+      <div className="rounded-xl p-4 text-[12px]" style={{ background: 'rgba(255,255,255,0.02)', border: '1px solid rgba(255,255,255,0.08)', color: 'rgba(250,250,249,0.7)' }}>
         <strong style={{ color: GOLD }}>ℹ Otomatik sorgu yakında:</strong> Şu an KGM sitesine gidip elle sorgulama yapıp sonucu kaydediyorsunuz.
         İleride her Pazartesi sabah otomatik olarak Chrome eklentisi tüm araçları tek tek sorgulayıp sonuçları buraya kaydedecek.
       </div>
@@ -397,14 +419,17 @@ export default function HgsIhlalPage() {
 // ════════════════════════════════════════════════════════════
 function OzetCard({ label, value, icon: Icon, color }: { label: string; value: number | string; icon: any; color: string }) {
   return (
-    <div className="rounded-xl p-4 flex items-center gap-3" style={{ background: 'rgba(255,255,255,0.02)', border: '1px solid rgba(255,255,255,0.06)' }}>
-      <div className="w-10 h-10 rounded-xl flex items-center justify-center flex-shrink-0" style={{ background: `${color}15`, border: `1px solid ${color}33`, color }}>
-        <Icon size={18} />
+    <div
+      className="relative overflow-hidden rounded-2xl border p-4"
+      style={{ borderColor: `${color}40`, background: `linear-gradient(135deg, ${color}24, ${color}0a 58%, rgba(255,255,255,0.02))` }}
+    >
+      <div className="flex items-center justify-between">
+        <span className="text-[10px] uppercase font-bold tracking-[.16em]" style={{ color: 'rgba(250,250,249,0.55)' }}>{label}</span>
+        <span className="grid h-7 w-7 place-items-center rounded-lg flex-shrink-0" style={{ background: `${color}22`, border: `1px solid ${color}40` }}>
+          <Icon size={14} style={{ color }} />
+        </span>
       </div>
-      <div className="min-w-0 flex-1">
-        <div className="text-[10.5px] uppercase tracking-wider" style={{ color: 'rgba(250,250,249,0.5)' }}>{label}</div>
-        <div className="text-[18px] font-semibold tabular-nums mt-0.5" style={{ color, fontFamily: 'JetBrains Mono, monospace' }}>{value}</div>
-      </div>
+      <div className="mt-3 text-[26px] font-semibold tabular-nums leading-none" style={{ color, fontFamily: 'JetBrains Mono, monospace' }}>{value}</div>
     </div>
   );
 }
@@ -433,7 +458,7 @@ function AracRow({
     <>
       <tr className="group" style={{ borderTop: '1px solid rgba(255,255,255,0.04)' }}>
         <td className="px-4 py-2.5">
-          <div className="inline-flex items-center gap-2 px-2.5 py-1 rounded-md font-bold tabular-nums" style={{ background: 'rgba(212,184,118,0.1)', border: '1px solid rgba(212,184,118,0.25)', color: GOLD, fontFamily: 'JetBrains Mono, monospace' }}>
+          <div className="inline-flex items-center gap-2 px-2.5 py-1 rounded-md font-bold tabular-nums" style={{ background: 'rgba(148,163,184,0.12)', border: '1px solid rgba(148,163,184,0.3)', color: '#e2e8f0', fontFamily: 'JetBrains Mono, monospace' }}>
             {arac.plakaGorunum || arac.plaka}
           </div>
         </td>
@@ -467,7 +492,7 @@ function AracRow({
               onClick={() => onSorgula(arac.id)}
               disabled={sorguPending || sorguDisabled}
               className="text-[11px] font-medium px-2.5 py-1.5 rounded-md transition inline-flex items-center gap-1 disabled:opacity-50 disabled:cursor-not-allowed"
-              style={{ background: `linear-gradient(135deg, ${GOLD}, #b8a06f)`, color: '#0f0d0b' }}
+              style={{ background: `linear-gradient(135deg, ${GOLD}, #ea580c)`, color: '#0f0d0b' }}
               title="Agent ile arka planda sorgula"
             >
               {sorguPending
@@ -479,7 +504,7 @@ function AracRow({
             <button
               onClick={() => setSonucOpen(true)}
               className="text-[11px] font-medium px-2.5 py-1.5 rounded-md transition inline-flex items-center gap-1"
-              style={{ background: 'rgba(212,184,118,0.1)', border: '1px solid rgba(212,184,118,0.25)', color: GOLD }}
+              style={{ background: 'rgba(255,255,255,0.04)', border: '1px solid rgba(255,255,255,0.1)', color: 'rgba(250,250,249,0.8)' }}
               title="Sonuç kaydet"
             >
               <RefreshCw size={11} /> Sonuç
@@ -525,7 +550,7 @@ function AddAracModal({ onClose, onDone }: { onClose: () => void; onDone: () => 
 
   return (
     <div className="fixed inset-0 z-50 flex items-center justify-center p-4" style={{ background: 'rgba(0,0,0,0.75)', backdropFilter: 'blur(4px)' }} onClick={onClose}>
-      <div onClick={(e) => e.stopPropagation()} className="w-full max-w-md rounded-2xl overflow-hidden" style={{ background: '#11100c', border: '1px solid rgba(184,160,111,0.3)' }}>
+      <div onClick={(e) => e.stopPropagation()} className="w-full max-w-md rounded-2xl overflow-hidden" style={{ background: '#11100c', border: '1px solid rgba(255,255,255,0.1)' }}>
         <div className="px-5 py-4 flex items-center justify-between" style={{ borderBottom: '1px solid rgba(255,255,255,0.06)' }}>
           <h3 style={{ fontFamily: 'Fraunces, serif', fontSize: 20, fontWeight: 600, color: '#fafaf9' }}>Araç Ekle</h3>
           <button onClick={onClose} className="text-stone-400 hover:text-stone-200"><IconX size={18} /></button>
@@ -564,7 +589,7 @@ function AddAracModal({ onClose, onDone }: { onClose: () => void; onDone: () => 
             style={{ background: 'rgba(255,255,255,0.04)', border: '1px solid rgba(255,255,255,0.08)', color: 'rgba(250,250,249,0.75)' }}>İptal</button>
           <button onClick={() => createMut.mutate()} disabled={!plaka.trim() || createMut.isPending}
             className="px-5 py-2 text-[12.5px] font-bold rounded-md disabled:opacity-40"
-            style={{ background: `linear-gradient(135deg, ${GOLD}, #b8a06f)`, color: '#0f0d0b' }}>
+            style={{ background: `linear-gradient(135deg, ${GOLD}, #ea580c)`, color: '#0f0d0b' }}>
             {createMut.isPending ? 'Ekleniyor...' : 'Ekle'}
           </button>
         </div>
@@ -607,11 +632,11 @@ function SonucKaydetModal({ arac, onClose }: { arac: Arac; onClose: () => void }
 
   return (
     <div className="fixed inset-0 z-50 flex items-center justify-center p-4" style={{ background: 'rgba(0,0,0,0.75)', backdropFilter: 'blur(4px)' }} onClick={onClose}>
-      <div onClick={(e) => e.stopPropagation()} className="w-full max-w-2xl rounded-2xl overflow-hidden flex flex-col" style={{ background: '#11100c', border: '1px solid rgba(184,160,111,0.3)', maxHeight: '85vh' }}>
+      <div onClick={(e) => e.stopPropagation()} className="w-full max-w-2xl rounded-2xl overflow-hidden flex flex-col" style={{ background: '#11100c', border: '1px solid rgba(255,255,255,0.1)', maxHeight: '85vh' }}>
         <div className="px-5 py-4 flex items-center justify-between" style={{ borderBottom: '1px solid rgba(255,255,255,0.06)' }}>
           <div>
             <h3 style={{ fontFamily: 'Fraunces, serif', fontSize: 20, fontWeight: 600, color: '#fafaf9' }}>HGS Sorgu Sonucu</h3>
-            <div className="inline-flex items-center gap-2 px-2.5 py-1 rounded-md mt-1.5 font-bold tabular-nums" style={{ background: 'rgba(212,184,118,0.1)', border: '1px solid rgba(212,184,118,0.25)', color: GOLD, fontFamily: 'JetBrains Mono, monospace' }}>
+            <div className="inline-flex items-center gap-2 px-2.5 py-1 rounded-md mt-1.5 font-bold tabular-nums" style={{ background: 'rgba(148,163,184,0.12)', border: '1px solid rgba(148,163,184,0.3)', color: '#e2e8f0', fontFamily: 'JetBrains Mono, monospace' }}>
               {arac.plakaGorunum || arac.plaka}
             </div>
           </div>
@@ -625,7 +650,7 @@ function SonucKaydetModal({ arac, onClose }: { arac: Arac; onClose: () => void }
             target="_blank"
             rel="noopener"
             className="block rounded-xl p-4 transition"
-            style={{ background: 'rgba(212,184,118,0.08)', border: '1px solid rgba(212,184,118,0.3)' }}
+            style={{ background: 'rgba(255,255,255,0.03)', border: '1px solid rgba(255,255,255,0.1)' }}
           >
             <div className="flex items-center gap-3">
               <ExternalLink size={16} style={{ color: GOLD }} />
@@ -698,7 +723,7 @@ function SonucKaydetModal({ arac, onClose }: { arac: Arac; onClose: () => void }
             style={{ background: 'rgba(255,255,255,0.04)', border: '1px solid rgba(255,255,255,0.08)', color: 'rgba(250,250,249,0.75)' }}>İptal</button>
           <button onClick={() => kaydetMut.mutate()} disabled={kaydetMut.isPending}
             className="px-5 py-2 text-[12.5px] font-bold rounded-md inline-flex items-center gap-1.5"
-            style={{ background: `linear-gradient(135deg, ${GOLD}, #b8a06f)`, color: '#0f0d0b' }}>
+            style={{ background: `linear-gradient(135deg, ${GOLD}, #ea580c)`, color: '#0f0d0b' }}>
             <Save size={13} /> {kaydetMut.isPending ? 'Kaydediliyor...' : 'Kaydet'}
           </button>
         </div>
