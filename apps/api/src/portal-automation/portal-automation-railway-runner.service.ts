@@ -112,6 +112,8 @@ export class PortalAutomationRailwayRunnerService implements OnModuleInit {
   private busy = false;
   private ebeyannameJsDebugLogged = false;
   private ebeyannameListApiProbeLogged = false;
+  // GIB sayfasinin kendi yaptigi (calisan) ARSIVBEYANNAMELISTESI istegi — sayfalama icin temel alinir.
+  private ebeyannameCapturedListReq: { url: string; method: string; postData: string | null } | null = null;
 
   constructor(
     private prisma: PrismaService,
@@ -1139,6 +1141,21 @@ export class PortalAutomationRailwayRunnerService implements OnModuleInit {
     let persistedCount = 0;
     const taxpayers = await this.loadTaxpayers(tenantId);
 
+    // GIB sayfasinin yaptigi (calisan) ARSIVBEYANNAMELISTESI istegini yakala — liste-API sayfalamasi
+    // bunu temel alir (skill'deki sabit parametreler GIB tarafindan reddediliyor: "VKN ve TC birlikte").
+    this.ebeyannameCapturedListReq = null;
+    const ctx = page.context?.();
+    const listReqHandler = (req: any) => {
+      try {
+        const u = String(req.url?.() || '');
+        if (/\/dispatch\b/i.test(u) && /(ARSIVBEYANNAMELISTESI|BEYANNAMELISTESI)/i.test(u)) {
+          this.ebeyannameCapturedListReq = { url: u, method: String(req.method?.() || 'GET'), postData: req.postData?.() ?? null };
+        }
+      } catch { /* yoksay */ }
+    };
+    ctx?.on?.('request', listReqHandler);
+    try {
+
     await this.jobProgress(tenantId, job, 'search_open', 'Beyanname Ara menusu aciliyor.');
     await this.openEBeyannameSearch(page, notes);
     await this.jobProgress(tenantId, job, 'criteria', 'Tarih araligi ve sorgu kriterleri dolduruluyor.');
@@ -1181,6 +1198,9 @@ export class PortalAutomationRailwayRunnerService implements OnModuleInit {
       documents,
       notes,
     };
+    } finally {
+      ctx?.off?.('request', listReqHandler);
+    }
   }
 
   private async openEBeyannameApplication(context: any, page: any) {
@@ -3066,8 +3086,10 @@ export class PortalAutomationRailwayRunnerService implements OnModuleInit {
         + `&beyannameOid=${encodeURIComponent(oids.beyannameOid)}&inline=true`;
     }
     if (!oids.beyannameOid || !oids.tahakkukOid) return null;
+    // ONEMLI (canli log ile dogrulandi): tahakkuk PDF'i SADECE ARSIV=T ile (inline'siz) iniyor.
+    // inline=true istersek GIB 354 baytlik "Uyari" HTML'i donduruyordu -> kod 5 bos deneme harciyordu.
     return `${origin}/dispatch?cmd=IMAJ&subcmd=TAHAKKUKGORUNTULE&TOKEN=${encodeURIComponent(token)}`
-      + `&beyannameOid=${encodeURIComponent(oids.beyannameOid)}&tahakkukOid=${encodeURIComponent(oids.tahakkukOid)}&inline=true`;
+      + `&beyannameOid=${encodeURIComponent(oids.beyannameOid)}&tahakkukOid=${encodeURIComponent(oids.tahakkukOid)}&ARSIV=T`;
   }
 
   // ===================== HATTAT YONTEMI: liste-API ile toplu indirme =====================
@@ -3166,16 +3188,26 @@ export class PortalAutomationRailwayRunnerService implements OnModuleInit {
     return '';
   }
 
-  /** ARSIVBEYANNAMELISTESI yanitini (JSON veya HTML) ayristirir. */
+  /** ARSIVBEYANNAMELISTESI yanitini (GIB XML zarfi / JSON / HTML) ayristirir. */
   private parseEBeyannameListResponse(raw: string): {
     rows: EBeyannameListEntry[];
     total: number | null;
     recognized: boolean;
+    serverError: string | null;
   } {
     const text = String(raw || '');
     const trimmed = text.trim();
 
-    // 1) JSON dene
+    // 1) GIB XML zarfi: <SERVICERESULT><TOKEN/><SERVERERROR/><HTMLCONTENT>...tablo...</HTMLCONTENT></SERVICERESULT>
+    if (/<SERVICERESULT|<HTMLCONTENT/i.test(text)) {
+      const serverError = this.stripHtml(text.match(/<SERVERERROR>([\s\S]*?)<\/SERVERERROR>/i)?.[1] || '') || null;
+      const htmlContent = text.match(/<HTMLCONTENT>([\s\S]*?)<\/HTMLCONTENT>/i)?.[1] || text;
+      const rows = this.parseEBeyannameListHtmlRows(htmlContent);
+      const total = this.extractEBeyannameListTotal(htmlContent) ?? this.extractEBeyannameListTotal(text);
+      return { rows, total, recognized: true, serverError };
+    }
+
+    // 2) JSON
     if (trimmed.startsWith('{') || trimmed.startsWith('[')) {
       try {
         const json = JSON.parse(trimmed);
@@ -3189,21 +3221,21 @@ export class PortalAutomationRailwayRunnerService implements OnModuleInit {
             if (e) rows.push(e);
           });
           const totalRaw = Number(json.total ?? json.toplam ?? json.recordsTotal ?? json.kayitSayisi ?? arr.length);
-          return { rows, total: Number.isFinite(totalRaw) ? totalRaw : (rows.length || null), recognized: true };
+          return { rows, total: Number.isFinite(totalRaw) ? totalRaw : (rows.length || null), recognized: true, serverError: null };
         }
       } catch {
         // JSON degil; HTML olarak devam.
       }
     }
 
-    // 2) HTML / metin
+    // 3) Duz HTML / metin
     const total = this.extractEBeyannameListTotal(text);
     const rows = this.parseEBeyannameListHtmlRows(text);
     const recognized = rows.length > 0
       || /beyannameOid=/i.test(text)
       || /BEYANNAME\s+L[İI]STES[İI]/i.test(text)
       || /ARSIVBEYANNAME/i.test(text);
-    return { rows, total, recognized };
+    return { rows, total, recognized, serverError: null };
   }
 
   private extractEBeyannameListTotal(text: string): number | null {
@@ -3283,7 +3315,19 @@ export class PortalAutomationRailwayRunnerService implements OnModuleInit {
     return { row, beyannameOid, tahakkukOid };
   }
 
-  /** Tum turler + sayfalar gezilerek indirilebilir (Oid'li) satirlar toplanir. */
+  /** Yakalanan GIB liste istegini temel alarak verilen sayfa (grupSayi) icin URL kurar. */
+  private eBeyannameListUrlFromCapture(capturedUrl: string, token: string, grupSayi: number): string {
+    try {
+      const u = new URL(capturedUrl);
+      u.searchParams.set('grupSayi', String(grupSayi));
+      if (token) u.searchParams.set('TOKEN', token);
+      return u.toString();
+    } catch {
+      return capturedUrl;
+    }
+  }
+
+  /** Tum sayfalar gezilerek indirilebilir (Oid'li) satirlar toplanir. */
   private async collectEBeyannameListRows(
     page: any,
     origin: string,
@@ -3295,16 +3339,29 @@ export class PortalAutomationRailwayRunnerService implements OnModuleInit {
     const end = this.istanbulDateParts(job.periodEnd);
     const baslangic = start ? `${start.year}${start.month}${start.day}` : '';
     const bitis = end ? `${end.year}${end.month}${end.day}` : '';
-    const types = this.ebeyannameListApiTypes();
-    const maxRows = Math.max(1, Math.min(3000, Number(process.env.PORTAL_AUTOMATION_EBEYANNAME_MAX_APPROVED_ROWS || 1000)));
+    const maxRows = Math.max(1, Math.min(5000, Number(process.env.PORTAL_AUTOMATION_EBEYANNAME_MAX_APPROVED_ROWS || 1000)));
     const byOid = new Map<string, EBeyannameListEntry>();
     let recognized = false;
 
+    // GIB'in kendi istegi yakalandiysa onun PARAMETRELERINI kullan (skill'deki sabit parametreler reddediliyor).
+    const captured = this.ebeyannameCapturedListReq;
+    const useCapture = !!captured && /GET/i.test(captured.method);
+    if (captured) {
+      this.logger.warn(`[EBLIST] yakalanan liste istegi method=${captured.method} url=${this.safeUrl(captured.url)}`);
+      notes.push(`liste-API: GIB'in kendi liste istegi yakalandi (method=${captured.method})`);
+    } else {
+      notes.push('liste-API: GIB istegi yakalanamadi, sabit parametrelerle denenecek');
+    }
+    const types = useCapture ? [''] : this.ebeyannameListApiTypes();
+
     for (const tanim of types) {
       let total: number | null = null;
-      for (let grupSayi = 0; grupSayi < 5000; grupSayi += 25) {
+      let firstErrorLogged = false;
+      for (let grupSayi = 0; grupSayi < 10000; grupSayi += 25) {
         if (byOid.size >= maxRows) break;
-        const url = this.buildEBeyannameListApiUrl(origin, token, { grupSayi, beyannameTanim: tanim, baslangic, bitis });
+        const url = useCapture
+          ? this.eBeyannameListUrlFromCapture(captured!.url, token, grupSayi)
+          : this.buildEBeyannameListApiUrl(origin, token, { grupSayi, beyannameTanim: tanim, baslangic, bitis });
         const raw = await this.fetchEBeyannameListPage(page, url);
         if (raw == null) {
           notes.push(`liste-API ${tanim || 'TUM'} grup ${grupSayi}: yanit alinamadi`);
@@ -3312,6 +3369,11 @@ export class PortalAutomationRailwayRunnerService implements OnModuleInit {
         }
         const parsed = this.parseEBeyannameListResponse(raw);
         if (parsed.recognized) recognized = true;
+        if (parsed.serverError && !firstErrorLogged) {
+          firstErrorLogged = true;
+          this.logger.warn(`[EBLIST] ${tanim || 'TUM'} GIB uyari: ${this.compact(parsed.serverError)}`);
+          notes.push(`liste-API ${tanim || 'TUM'}: GIB uyari: ${this.compact(parsed.serverError)}`);
+        }
         if (total == null && parsed.total != null) total = parsed.total;
         let added = 0;
         for (const e of parsed.rows) {
@@ -3324,6 +3386,7 @@ export class PortalAutomationRailwayRunnerService implements OnModuleInit {
       }
     }
 
+    this.logger.warn(`[EBLIST] toplam ${byOid.size} indirilebilir satir bulundu (capture=${useCapture}).`);
     return { rows: Array.from(byOid.values()), recognized };
   }
 
@@ -3500,13 +3563,18 @@ export class PortalAutomationRailwayRunnerService implements OnModuleInit {
       const end = this.istanbulDateParts(job.periodEnd);
       const baslangic = start ? `${start.year}${start.month}${start.day}` : '';
       const bitis = end ? `${end.year}${end.month}${end.day}` : '';
-      const url = this.buildEBeyannameListApiUrl(origin, token, { grupSayi: 0, beyannameTanim: '', baslangic, bitis });
+      const captured = this.ebeyannameCapturedListReq;
+      this.logger.warn(`[EBPROBE] yakalanan GIB liste istegi: ${captured ? `${captured.method} ${this.safeUrl(captured.url)}` : 'YOK'}`);
+      // Once GIB'in kendi (calisan) istegini, yoksa sabit parametreli URL'i dene.
+      const url = (captured && /GET/i.test(captured.method))
+        ? this.eBeyannameListUrlFromCapture(captured.url, token, 0)
+        : this.buildEBeyannameListApiUrl(origin, token, { grupSayi: 0, beyannameTanim: '', baslangic, bitis });
       this.logger.warn(`[EBPROBE] liste-API URL=${this.safeUrl(url)} token=...${String(token).slice(-4)} tarih=${baslangic}-${bitis}`);
       const raw = await this.fetchEBeyannameListPage(page, url);
       if (raw == null) { this.logger.warn('[EBPROBE] liste-API yaniti ALINAMADI'); return; }
       this.logger.warn(`[EBPROBE] yanit uzunluk=${raw.length} ilk2KB="${this.safeDebugText(raw).slice(0, 2000)}"`);
       const parsed = this.parseEBeyannameListResponse(raw);
-      this.logger.warn(`[EBPROBE] recognized=${parsed.recognized} total=${parsed.total} satir=${parsed.rows.length}`);
+      this.logger.warn(`[EBPROBE] recognized=${parsed.recognized} serverError="${this.compact(parsed.serverError || '-')}" total=${parsed.total} satir=${parsed.rows.length}`);
       const first = parsed.rows[0];
       if (first) {
         this.logger.warn(`[EBPROBE] ilk satir bOid=${first.beyannameOid} tOid=${first.tahakkukOid} vkn=${first.row.taxNumber} ad="${this.compact(first.row.taxpayerName || '').slice(0, 40)}" tip="${this.compact(first.row.beyanTipiRaw || '')}" donem="${first.row.taxPeriod || ''}"`);
@@ -3572,9 +3640,20 @@ export class PortalAutomationRailwayRunnerService implements OnModuleInit {
       const trimmed = String(value || '').trim();
       if (trimmed && !variants.includes(trimmed)) variants.push(trimmed);
     };
-    // Orijinal adresi (GIB'in kendi urettigi, /dispatch icin inline=true) ONCE dene.
-    // Aksi halde inline'i kaldiran varyantlar tahakkukta HTML uyarisi dondurup
-    // hem zaman kaybi hem hiz-limiti tetikliyordu.
+    // TAHAKKUK (canli log ile dogrulandi): SADECE ARSIV=T + inline'siz iniyor. Onclick'ten gelen
+    // inline=true adresinde bu varyanti ONCE dene -> 4 bos deneme/HTML-uyarisi ve hiz-limiti riski biter.
+    try {
+      const t = new URL(url);
+      if (/TAHAKKUKGORUNTULE/i.test(t.searchParams.get('subcmd') || t.search)) {
+        const arsivNoInline = new URL(t.toString());
+        arsivNoInline.searchParams.delete('inline');
+        arsivNoInline.searchParams.set('ARSIV', 'T');
+        add(arsivNoInline.toString());
+      }
+    } catch {
+      // Asagidaki sira denenir.
+    }
+    // Orijinal adresi (GIB'in kendi urettigi, /dispatch icin inline=true) sonra dene.
     add(url);
     try {
       const parsed = new URL(url);
