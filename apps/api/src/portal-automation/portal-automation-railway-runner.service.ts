@@ -76,6 +76,14 @@ type EBeyannameRowIdentity = {
   isCorrection: boolean;
 };
 
+// Hattat yontemi (liste-API): ARSIVBEYANNAMELISTESI yanitindan cikarilan, indirilebilir
+// (beyannameOid iceren) tek satir. row = mevcut esleme/kayit altyapisini beslemek icin.
+type EBeyannameListEntry = {
+  row: EBeyannameResultRow;
+  beyannameOid: string;
+  tahakkukOid: string | null;
+};
+
 // GIB 2026'da e-Beyanname'yi Dijital Vergi Dairesi portali altinda topladi.
 // Eski URL (ebeyanname.gib.gov.tr/giris.html) artik ana sayfaya redirect ediyor.
 const DEFAULT_EBEYANNAME_LOGIN_URL = 'https://dijital.gib.gov.tr/portal/login';
@@ -103,6 +111,7 @@ export class PortalAutomationRailwayRunnerService implements OnModuleInit {
   private readonly deviceId = process.env.PORTAL_AUTOMATION_RAILWAY_DEVICE_ID || 'railway-portal-runner';
   private busy = false;
   private ebeyannameJsDebugLogged = false;
+  private ebeyannameListApiProbeLogged = false;
 
   constructor(
     private prisma: PrismaService,
@@ -1744,7 +1753,20 @@ export class PortalAutomationRailwayRunnerService implements OnModuleInit {
     }
 
     if (downloadApproved) {
-      const approved = await this.collectApprovedEBeyannamePages(tenantId, page, downloadsPath, taxpayers, job, notes);
+      // HATTAT YONTEMI (birincil): GIB liste-API'sinden (ARSIVBEYANNAMELISTESI) Oid'leri al,
+      // dogrudan /dispatch IMAJ ile indir (tiklama/popup YOK). Erisilemez/bicim taninamazsa
+      // null doner ve asagidaki eski tablo-kazima yoluna OTOMATIK dusulur.
+      let approved: { declarations: any[]; documents: any[]; persistedCount: number } | null = null;
+      if (this.ebeyannameListApiEnabled()) {
+        approved = await this.collectApprovedEBeyannameViaListApi(tenantId, page, downloadsPath, taxpayers, job, notes)
+          .catch((err) => {
+            notes.push(`liste-API yolu hata verdi, eski yola dusuluyor: ${this.compact(err?.message || err)}`);
+            return null;
+          });
+      }
+      if (!approved) {
+        approved = await this.collectApprovedEBeyannamePages(tenantId, page, downloadsPath, taxpayers, job, notes);
+      }
       declarations.push(...approved.declarations);
       documents.push(...approved.documents);
       return { declarations, documents, persistedCount: approved.persistedCount || 0 };
@@ -3046,6 +3068,458 @@ export class PortalAutomationRailwayRunnerService implements OnModuleInit {
     if (!oids.beyannameOid || !oids.tahakkukOid) return null;
     return `${origin}/dispatch?cmd=IMAJ&subcmd=TAHAKKUKGORUNTULE&TOKEN=${encodeURIComponent(token)}`
       + `&beyannameOid=${encodeURIComponent(oids.beyannameOid)}&tahakkukOid=${encodeURIComponent(oids.tahakkukOid)}&inline=true`;
+  }
+
+  // ===================== HATTAT YONTEMI: liste-API ile toplu indirme =====================
+
+  /** Liste-API yolu acik mi? (varsayilan ACIK; basarisizsa eski yola otomatik dusulur) */
+  private ebeyannameListApiEnabled() {
+    const raw = String(process.env.PORTAL_AUTOMATION_EBEYANNAME_LIST_API ?? '1').trim().toLowerCase();
+    return raw !== '0' && raw !== 'false' && raw !== 'no' && raw !== 'off';
+  }
+
+  /** Tek seferlik canli dogrulama probu acik mi? (ilk run icin acik; teyit sonrasi 0 yap) */
+  private ebeyannameListApiProbeEnabled() {
+    const raw = String(process.env.PORTAL_AUTOMATION_EBEYANNAME_LIST_API_PROBE ?? '1').trim().toLowerCase();
+    return ['1', 'true', 'yes', 'on', 'evet'].includes(raw);
+  }
+
+  /** Hangi beyanname turleri tek tek sorgulanacak? Bos => tek sorgu (tum turler birlikte). */
+  private ebeyannameListApiTypes(): string[] {
+    const raw = String(process.env.PORTAL_AUTOMATION_EBEYANNAME_LIST_API_TYPES ?? '').trim();
+    if (!raw) return [''];
+    return raw.split(',').map((s) => s.trim()).filter(Boolean);
+  }
+
+  /** ARSIVBEYANNAMELISTESI sorgu adresini kurar (skill: gib_beyanname_indir.md). */
+  private buildEBeyannameListApiUrl(
+    origin: string,
+    token: string,
+    p: { grupSayi: number; beyannameTanim: string; baslangic: string; bitis: string },
+  ): string {
+    const durum = String(process.env.PORTAL_AUTOMATION_EBEYANNAME_LIST_API_DURUM ?? '0');
+    const q = new URLSearchParams();
+    q.set('cmd', 'ARSIVBEYANNAMELISTESI');
+    q.set('TOKEN', token);
+    q.set('grupSayi', String(p.grupSayi));
+    q.set('beyannameTanim', p.beyannameTanim || '');
+    q.set('donemBasAy', ''); q.set('donemBasYil', '');
+    q.set('donemBitAy', ''); q.set('donemBitYil', '');
+    q.set('vergiNo', ''); q.set('tcKimlikNo', ''); q.set('vdKodu', '');
+    q.set('sorguTipiN', '1'); q.set('sorguTipiT', '1'); q.set('sorguTipiB', '1');
+    q.set('sorguTipiP', '1'); q.set('sorguTipiV', '1'); q.set('sorguTipiZ', '1');
+    if (p.baslangic) q.set('baslangicTarihi', p.baslangic);
+    if (p.bitis) q.set('bitisTarihi', p.bitis);
+    q.set('durum', durum);
+    return `${origin}/dispatch?${q.toString()}`;
+  }
+
+  /** Liste-API sayfasini cek (once baglam request, olmadi sayfa-ici fetch). Ham metni dondurur. */
+  private async fetchEBeyannameListPage(page: any, url: string): Promise<string | null> {
+    const response = await page.context().request.get(url, {
+      timeout: this.ebeyannameDirectFetchTimeoutMs(),
+      headers: { referer: String(page.url?.() || ''), accept: 'text/html,application/json,*/*' },
+    }).catch(() => null);
+    if (response?.ok()) {
+      const raw = await response.text().catch(() => '');
+      if (raw) return raw;
+    }
+    const viaFetch = await this.withTimeout<string>(
+      page.evaluate(async (targetUrl: string) => {
+        try {
+          const r = await fetch(targetUrl, {
+            credentials: 'include',
+            cache: 'no-store',
+            headers: { accept: 'text/html,application/json,*/*' },
+          });
+          return await r.text();
+        } catch {
+          return '';
+        }
+      }, url) as Promise<string>,
+      this.ebeyannameDirectFetchTimeoutMs() + 1_000,
+      () => '',
+    ).catch(() => '');
+    return viaFetch ? String(viaFetch) : null;
+  }
+
+  private stripHtml(html: string): string {
+    return String(html || '')
+      .replace(/<[^>]+>/g, ' ')
+      .replace(/&nbsp;/gi, ' ')
+      .replace(/&amp;/gi, '&')
+      .replace(/&lt;/gi, '<')
+      .replace(/&gt;/gi, '>')
+      .replace(/&#(\d+);/g, (_, n) => { try { return String.fromCharCode(Number(n)); } catch { return ' '; } })
+      .replace(/\s+/g, ' ')
+      .trim();
+  }
+
+  private firstStr(obj: any, keys: string[]): string {
+    if (!obj || typeof obj !== 'object') return '';
+    const lowered: Record<string, any> = {};
+    for (const k of Object.keys(obj)) lowered[k.toLowerCase()] = obj[k];
+    for (const key of keys) {
+      const v = lowered[key.toLowerCase()];
+      if (v != null && String(v).trim()) return String(v).trim();
+    }
+    return '';
+  }
+
+  /** ARSIVBEYANNAMELISTESI yanitini (JSON veya HTML) ayristirir. */
+  private parseEBeyannameListResponse(raw: string): {
+    rows: EBeyannameListEntry[];
+    total: number | null;
+    recognized: boolean;
+  } {
+    const text = String(raw || '');
+    const trimmed = text.trim();
+
+    // 1) JSON dene
+    if (trimmed.startsWith('{') || trimmed.startsWith('[')) {
+      try {
+        const json = JSON.parse(trimmed);
+        const arr: any[] = Array.isArray(json)
+          ? json
+          : (json.rows || json.data || json.liste || json.beyannameler || json.aaData || json.sonuc || []);
+        if (Array.isArray(arr)) {
+          const rows: EBeyannameListEntry[] = [];
+          arr.forEach((o, i) => {
+            const e = this.jsonRowToEntry(o, i);
+            if (e) rows.push(e);
+          });
+          const totalRaw = Number(json.total ?? json.toplam ?? json.recordsTotal ?? json.kayitSayisi ?? arr.length);
+          return { rows, total: Number.isFinite(totalRaw) ? totalRaw : (rows.length || null), recognized: true };
+        }
+      } catch {
+        // JSON degil; HTML olarak devam.
+      }
+    }
+
+    // 2) HTML / metin
+    const total = this.extractEBeyannameListTotal(text);
+    const rows = this.parseEBeyannameListHtmlRows(text);
+    const recognized = rows.length > 0
+      || /beyannameOid=/i.test(text)
+      || /BEYANNAME\s+L[İI]STES[İI]/i.test(text)
+      || /ARSIVBEYANNAME/i.test(text);
+    return { rows, total, recognized };
+  }
+
+  private extractEBeyannameListTotal(text: string): number | null {
+    const m = String(text || '').match(/(\d+)\s*-\s*(\d+)\s*\/\s*(\d+)/);
+    if (m) return Number(m[3]) || null;
+    return null;
+  }
+
+  private jsonRowToEntry(o: any, idx: number): EBeyannameListEntry | null {
+    const beyannameOid = this.firstStr(o, ['beyannameOid', 'beyanOid', 'oid']);
+    if (!beyannameOid) return null;
+    const tahakkukOid = this.firstStr(o, ['tahakkukOid']) || null;
+    const taxNumber = (this.firstStr(o, ['vergiNo', 'vkn', 'vergiKimlikNo'])
+      || this.firstStr(o, ['tcKimlikNo', 'tckn', 'kimlikNo'])).replace(/\D/g, '') || null;
+    const taxpayerName = this.firstStr(o, ['adSoyad', 'unvan', 'adUnvan', 'ad', 'isim', 'mukellefAdi', 'mukellef']) || null;
+    const beyanTipiRaw = this.firstStr(o, ['beyannameTuru', 'beyannameTanim', 'beyanTuru', 'tur', 'tip']) || null;
+    const taxPeriod = this.firstStr(o, ['donem', 'donemAralik', 'vergilendirmeDonemi']) || null;
+    const uploadTime = this.firstStr(o, ['yuklemeTarihi', 'tarih', 'onayTarihi', 'gonderimTarihi']) || null;
+    const statusText = this.firstStr(o, ['durum', 'durumu', 'onayDurumu']) || null;
+    const cells = [beyanTipiRaw, taxNumber, taxpayerName, taxPeriod, uploadTime, statusText]
+      .map((x) => String(x || '').trim())
+      .filter(Boolean);
+    const row: EBeyannameResultRow = {
+      rowIndex: idx,
+      cells,
+      rowText: cells.join(' '),
+      beyanTipiRaw,
+      mahiyetText: null,
+      isCorrection: this.isEBeyannameCorrectionText(cells.join(' ')),
+      taxNumber,
+      taxpayerName,
+      taxOffice: null,
+      taxPeriod,
+      uploadTime,
+      statusText,
+    };
+    return { row, beyannameOid, tahakkukOid };
+  }
+
+  private parseEBeyannameListHtmlRows(html: string): EBeyannameListEntry[] {
+    const entries: EBeyannameListEntry[] = [];
+    let idx = 0;
+    const trMatches = html.match(/<tr[\s\S]*?<\/tr>/gi) || [];
+    for (const tr of trMatches) {
+      if (!/beyannameOid=/i.test(tr)) continue;
+      const e = this.htmlRowToEntry(tr, idx);
+      if (e) { entries.push(e); idx++; }
+    }
+    if (entries.length) return entries;
+
+    // Tablo yapisi yoksa: her beyannameOid etrafindaki pencereden satir cikar.
+    const re = /beyannameOid=([A-Za-z0-9]+)/gi;
+    let m: RegExpExecArray | null;
+    while ((m = re.exec(html))) {
+      const center = m.index;
+      const window = html.slice(Math.max(0, center - 400), Math.min(html.length, center + 400));
+      const e = this.htmlRowToEntry(window, idx);
+      if (e) { entries.push(e); idx++; }
+    }
+    // Pencere parcalari ayni Oid'i tekrar uretebilir; tekillestir.
+    const seen = new Set<string>();
+    return entries.filter((e) => (seen.has(e.beyannameOid) ? false : (seen.add(e.beyannameOid), true)));
+  }
+
+  private htmlRowToEntry(chunk: string, idx: number): EBeyannameListEntry | null {
+    const beyannameOid = chunk.match(/beyannameOid=([A-Za-z0-9]+)/i)?.[1];
+    if (!beyannameOid) return null;
+    const tahakkukOid = chunk.match(/tahakkukOid=([A-Za-z0-9]+)/i)?.[1] || null;
+    let cells = (chunk.match(/<t[dh][^>]*>[\s\S]*?<\/t[dh]>/gi) || [])
+      .map((td) => this.stripHtml(td))
+      .filter(Boolean);
+    if (!cells.length) {
+      const plain = this.stripHtml(chunk);
+      if (plain) cells = [plain];
+    }
+    const row = this.normalizeEBeyannameResultRow({ cells, rowText: cells.join(' ') }, idx);
+    return { row, beyannameOid, tahakkukOid };
+  }
+
+  /** Tum turler + sayfalar gezilerek indirilebilir (Oid'li) satirlar toplanir. */
+  private async collectEBeyannameListRows(
+    page: any,
+    origin: string,
+    token: string,
+    job: any,
+    notes: string[],
+  ): Promise<{ rows: EBeyannameListEntry[]; recognized: boolean }> {
+    const start = this.istanbulDateParts(job.periodStart);
+    const end = this.istanbulDateParts(job.periodEnd);
+    const baslangic = start ? `${start.year}${start.month}${start.day}` : '';
+    const bitis = end ? `${end.year}${end.month}${end.day}` : '';
+    const types = this.ebeyannameListApiTypes();
+    const maxRows = Math.max(1, Math.min(3000, Number(process.env.PORTAL_AUTOMATION_EBEYANNAME_MAX_APPROVED_ROWS || 1000)));
+    const byOid = new Map<string, EBeyannameListEntry>();
+    let recognized = false;
+
+    for (const tanim of types) {
+      let total: number | null = null;
+      for (let grupSayi = 0; grupSayi < 5000; grupSayi += 25) {
+        if (byOid.size >= maxRows) break;
+        const url = this.buildEBeyannameListApiUrl(origin, token, { grupSayi, beyannameTanim: tanim, baslangic, bitis });
+        const raw = await this.fetchEBeyannameListPage(page, url);
+        if (raw == null) {
+          notes.push(`liste-API ${tanim || 'TUM'} grup ${grupSayi}: yanit alinamadi`);
+          break;
+        }
+        const parsed = this.parseEBeyannameListResponse(raw);
+        if (parsed.recognized) recognized = true;
+        if (total == null && parsed.total != null) total = parsed.total;
+        let added = 0;
+        for (const e of parsed.rows) {
+          if (!byOid.has(e.beyannameOid)) { byOid.set(e.beyannameOid, e); added++; }
+        }
+        notes.push(`liste-API ${tanim || 'TUM'} grup ${grupSayi}: ${parsed.rows.length} satir (+${added}, toplam ${total ?? '?'})`);
+        if (!parsed.rows.length) break;
+        if (total != null && grupSayi + 25 >= total) break;
+        await this.wait(300); // nezaket beklemesi; 1.2 sn kurali SADECE IMAJ/PDF indirmede gecerli
+      }
+    }
+
+    return { rows: Array.from(byOid.values()), recognized };
+  }
+
+  /**
+   * HATTAT yontemi ana akisi: liste-API'den Oid'leri al, /dispatch IMAJ ile dogrudan ve sirali indir.
+   * - SWAP imkansiz (beyanname/tahakkuk ayri subcmd).
+   * - Tiklama/popup/URL-resolve YOK (yavaslik kaynagi).
+   * - Oid otoriter oldugu icin PDF-ici VKN dogrulamasi (ve OCR) bu yolda calismaz.
+   * Erisilemez / bicim taninamaz / hic Oid'li satir yoksa => null (eski yola dusulur).
+   */
+  private async collectApprovedEBeyannameViaListApi(
+    tenantId: string,
+    page: any,
+    downloadsPath: string,
+    taxpayers: TaxpayerMatch[],
+    job: any,
+    notes: string[],
+  ): Promise<{ declarations: any[]; documents: any[]; persistedCount: number } | null> {
+    const resultTarget = await this.findEBeyannameResultTarget(page) || page;
+    let origin = '';
+    try {
+      origin = new URL(String(resultTarget?.url?.() || page.url?.() || '')).origin;
+    } catch {
+      return null;
+    }
+    if (!/gib\.gov\.tr/i.test(origin)) return null;
+
+    const token = await this.ebeyannameSessionToken(resultTarget).catch(() => null);
+    if (!token) {
+      notes.push('liste-API: oturum TOKEN bulunamadi, eski yola dusuluyor');
+      return null;
+    }
+
+    if (this.ebeyannameListApiProbeEnabled() && !this.ebeyannameListApiProbeLogged) {
+      this.ebeyannameListApiProbeLogged = true;
+      await this.logEBeyannameListApiProbe(page, origin, token, job, downloadsPath).catch(() => {});
+    }
+
+    const listResult = await this.collectEBeyannameListRows(page, origin, token, job, notes);
+    if (!listResult.recognized) {
+      notes.push('liste-API: yanit bicimi taninmadi, eski yola dusuluyor');
+      return null;
+    }
+    const entries = listResult.rows;
+    if (!entries.length) {
+      // API dogru cevap verdi ama indirilebilir satir yok => gercekten bos. Eski yola DUSME.
+      notes.push('liste-API: bu kriterlerde indirilecek (onayli) beyanname bulunmadi');
+      this.logger.warn('[EBSTAT] liste-API: 0 satir (gercekten bos kabul edildi).');
+      return { declarations: [], documents: [], persistedCount: 0 };
+    }
+
+    const declarations: any[] = [];
+    const documents: any[] = [];
+    let persistedCount = 0;
+    const gap = this.ebeyannameMinFetchGapMs();
+    let lastFetchAt = 0;
+    let processed = 0;
+    let saved = 0;
+    let attempted = 0;
+
+    await this.jobProgress(tenantId, job, 'approved_listapi_start', `Liste-API: ${entries.length} beyanname satiri indirilecek.`, {
+      total: entries.length,
+    });
+
+    for (const entry of entries) {
+      processed++;
+      const { row, beyannameOid, tahakkukOid } = entry;
+      const identity = this.ebeyannameIdentityFromRow(row, taxpayers, job);
+      const existing = await this.existingBeyanKaydiFiles(tenantId, identity).catch(() => null);
+      const skipExisting = !!existing && !identity?.isCorrection && !this.shouldRefreshExistingEBeyanname(job);
+      const skipBeyanname = skipExisting && !!existing!.beyannameUrl;
+      const skipTahakkuk = skipExisting && !!existing!.pdfUrl;
+      if (skipBeyanname && skipTahakkuk) {
+        notes.push(`liste-API: ${identity?.beyanTipi || '-'} ${identity?.donem || '-'} ${row.taxNumber || row.taxpayerName || ''} zaten var, atlandi`);
+        continue;
+      }
+
+      const tasks: Array<{ kind: 'beyanname' | 'tahakkuk'; url: string }> = [];
+      if (!skipBeyanname) {
+        const u = this.buildEBeyannameDispatchUrl(resultTarget, 'beyanname', { beyannameOid, tahakkukOid }, token);
+        if (u) tasks.push({ kind: 'beyanname', url: u });
+      }
+      if (!skipTahakkuk && tahakkukOid) {
+        const u = this.buildEBeyannameDispatchUrl(resultTarget, 'tahakkuk', { beyannameOid, tahakkukOid }, token);
+        if (u) tasks.push({ kind: 'tahakkuk', url: u });
+      }
+
+      let beyanname: EBeyannameFilePayload | null = null;
+      let tahakkuk: EBeyannameFilePayload | null = null;
+      for (const task of tasks) {
+        const fallbackName = `ebeyanname-${processed}-${task.kind}`;
+        const gate = gap - (Date.now() - lastFetchAt);
+        if (gate > 0) await this.wait(gate);
+        let file = await this.savePdfFromRequestUrl(page, task.url, downloadsPath, fallbackName).catch(() => null);
+        lastFetchAt = Date.now();
+        if (!file) {
+          // PDF yerine hiz-limiti uyarisi gelmis olabilir: araliga uyup bir kez daha dene.
+          await this.wait(gap);
+          file = await this.savePdfFromRequestUrl(page, task.url, downloadsPath, fallbackName).catch(() => null);
+          lastFetchAt = Date.now();
+        }
+        attempted++;
+        if (file) {
+          saved++;
+          if (task.kind === 'beyanname') beyanname = file; else tahakkuk = file;
+        }
+      }
+
+      if (!beyanname && !tahakkuk) {
+        notes.push(`liste-API: ${processed}. satir PDF alinamadi (oid=${beyannameOid})`);
+      } else {
+        const declaration = this.declarationFromEBeyannameRow(row, 'onaylandi', taxpayers, job, { beyanname, tahakkuk });
+        if (declaration) {
+          declarations.push(declaration);
+        } else {
+          // Mukellefe eslenemedi: eslesmeyen belge olarak sakla + teshis.
+          for (const item of [{ file: beyanname, kind: 'beyanname' as const }, { file: tahakkuk, kind: 'tahakkuk' as const }]) {
+            if (!item.file) continue;
+            documents.push(this.unmatchedEBeyannameDocument(row, item.file, item.kind, job));
+          }
+          this.logger.warn(`[EBSTAT] ESLESMEDI (liste-API): satir ${processed} vkn=${row.taxNumber || '-'} ad="${this.compact(row.taxpayerName || '').slice(0, 40)}" tip="${this.compact(row.beyanTipiRaw || '').slice(0, 24)}"`);
+          await this.diagnoseEBeyannameUnmatch(tenantId, row).catch(() => {});
+        }
+      }
+
+      if (declarations.length + documents.length >= this.ebeyannamePartialFlushSize()) {
+        persistedCount += await this.flushPartialEBeyannameResults(tenantId, job, declarations, documents, notes);
+      }
+      if (processed === 1 || processed % 10 === 0 || processed === entries.length) {
+        await this.jobProgress(tenantId, job, 'approved_listapi', `Liste-API indirme: ${saved} PDF / ${processed} satir.`, {
+          current: processed,
+          total: entries.length,
+          records: persistedCount + declarations.length + documents.length,
+        });
+      }
+    }
+
+    notes.push(`liste-API: ${processed} satir, ${saved}/${attempted} PDF indirildi, ${persistedCount + declarations.length} firmaya eslendi, ${documents.length} eslesmeyen belge.`);
+    this.logger.warn(`[EBSTAT] liste-API ozet: ${processed} satir, ${saved}/${attempted} PDF, ${persistedCount + declarations.length} firmaya eslendi, ${documents.length} eslesmeyen.`);
+    return { declarations, documents, persistedCount };
+  }
+
+  private unmatchedEBeyannameDocument(
+    row: EBeyannameResultRow,
+    file: EBeyannameFilePayload,
+    kind: 'beyanname' | 'tahakkuk',
+    job: any,
+  ) {
+    return {
+      taxpayerId: null,
+      belgeTuru: kind === 'tahakkuk' ? 'GIB_TAHAKKUK' : 'GIB_BEYANNAME',
+      title: file.fileName,
+      period: this.ebeyannameDonemFromRow(row, this.guessBeyanTipi(row.beyanTipiRaw || row.rowText), job),
+      issuedAt: this.parseEBeyannameUploadTime(row.uploadTime) || job.periodEnd || null,
+      receivedAt: new Date().toISOString(),
+      mimeType: file.mimeType,
+      originalName: file.fileName,
+      base64: file.base64,
+      raw: {
+        runner: 'railway',
+        source: 'ebeyanname-liste-api',
+        matchedTaxpayer: false,
+        rowText: this.compact(row.rowText),
+        taxNumber: row.taxNumber,
+        taxpayerName: row.taxpayerName,
+      },
+    };
+  }
+
+  /** Tek seferlik (process basina) canli dogrulama probu — sadece log, davranis degistirmez. */
+  private async logEBeyannameListApiProbe(page: any, origin: string, token: string, job: any, downloadsPath: string) {
+    try {
+      const start = this.istanbulDateParts(job.periodStart);
+      const end = this.istanbulDateParts(job.periodEnd);
+      const baslangic = start ? `${start.year}${start.month}${start.day}` : '';
+      const bitis = end ? `${end.year}${end.month}${end.day}` : '';
+      const url = this.buildEBeyannameListApiUrl(origin, token, { grupSayi: 0, beyannameTanim: '', baslangic, bitis });
+      this.logger.warn(`[EBPROBE] liste-API URL=${this.safeUrl(url)} token=...${String(token).slice(-4)} tarih=${baslangic}-${bitis}`);
+      const raw = await this.fetchEBeyannameListPage(page, url);
+      if (raw == null) { this.logger.warn('[EBPROBE] liste-API yaniti ALINAMADI'); return; }
+      this.logger.warn(`[EBPROBE] yanit uzunluk=${raw.length} ilk2KB="${this.safeDebugText(raw).slice(0, 2000)}"`);
+      const parsed = this.parseEBeyannameListResponse(raw);
+      this.logger.warn(`[EBPROBE] recognized=${parsed.recognized} total=${parsed.total} satir=${parsed.rows.length}`);
+      const first = parsed.rows[0];
+      if (first) {
+        this.logger.warn(`[EBPROBE] ilk satir bOid=${first.beyannameOid} tOid=${first.tahakkukOid} vkn=${first.row.taxNumber} ad="${this.compact(first.row.taxpayerName || '').slice(0, 40)}" tip="${this.compact(first.row.beyanTipiRaw || '')}" donem="${first.row.taxPeriod || ''}"`);
+        const bUrl = this.buildEBeyannameDispatchUrl({ url: () => `${origin}/` }, 'beyanname', { beyannameOid: first.beyannameOid, tahakkukOid: first.tahakkukOid }, token);
+        if (bUrl) {
+          const f = await this.savePdfFromRequestUrl(page, bUrl, downloadsPath, 'ebprobe-beyanname').catch(() => null);
+          const bytes = f?.base64 ? Buffer.from(f.base64, 'base64').length : 0;
+          this.logger.warn(`[EBPROBE] ornek beyanname indirme: ${f ? `OK bytes=${bytes} file=${f.fileName}` : 'BASARISIZ'}`);
+        }
+      }
+    } catch (e: any) {
+      this.logger.warn(`[EBPROBE] hata: ${this.compact(e?.message || e)}`);
+    }
   }
 
   private async savePdfFromRequestUrl(
