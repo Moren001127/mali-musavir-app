@@ -1306,10 +1306,20 @@ export class PortalAutomationService {
     const base64 = cleanBase64(input.base64);
     if (!base64) return null;
 
-    const parsed = await this.beyanKayitlari.parseBeyannamePdf(base64);
-    const taxpayer = parsed.vkn ? await this.findTaxpayerByTaxNo(tenantId, parsed.vkn) : null;
+    // PDF metni cogu GIB beyannamesinde okunamiyor (OCR kapali). O zaman runner'in GIB listesinden
+    // KAZIDIGI VKN + tur + donem'e DUS (input.raw/period) -> beyan kaydi yine de olusur, gorunur olur.
+    const parsed: any = await this.beyanKayitlari.parseBeyannamePdf(base64).catch(() => ({}));
+    const rawMeta: any = (input.raw && typeof input.raw === 'object') ? input.raw : {};
+    const fallbackVkn = String(rawMeta.taxNumber || rawMeta.vkn || '').replace(/\D/g, '');
+    const vkn = (String(parsed?.vkn || '').replace(/\D/g, '') || fallbackVkn) || null;
+    const beyanTipi = parsed?.beyanTipi || rawMeta.beyanTipi || null;
+    const donem = parsed?.donem || input.period || rawMeta.donem || null;
+    const taxpayer = vkn ? await this.findTaxpayerByTaxNo(tenantId, vkn) : null;
 
-    if (!taxpayer?.id || !parsed.beyanTipi || !parsed.donem) return null;
+    if (!taxpayer?.id || !beyanTipi || !donem) {
+      this.logger.warn(`[EBLINK] beyan kaydi olusmadi: vkn=${vkn ? '...' + vkn.slice(-3) : 'YOK'} tip=${beyanTipi || '-'} donem=${donem || '-'} mukellef=${taxpayer?.id ? 'bulundu' : 'YOK'} (pdf=${parsed?.vkn ? 'okundu' : 'okunamadi'})`);
+      return null;
+    }
 
     const isTahakkuk = input.belgeTuru === 'GIB_TAHAKKUK' || /tahakkuk|fis|fiş/i.test(name);
     const tahakkukMeta: { tahakkukTutari?: number | null; onayNo?: string | null } = isTahakkuk
@@ -1345,15 +1355,15 @@ export class PortalAutomationService {
         tenantId_taxpayerId_beyanTipi_donem: {
           tenantId,
           taxpayerId: taxpayer.id,
-          beyanTipi: parsed.beyanTipi,
-          donem: parsed.donem,
+          beyanTipi,
+          donem,
         },
       },
       create: {
         tenantId,
         taxpayerId: taxpayer.id,
-        beyanTipi: parsed.beyanTipi,
-        donem: parsed.donem,
+        beyanTipi,
+        donem,
         beyanTarihi: parsedDate,
         tahakkukTutari,
         onayNo,
@@ -1376,15 +1386,15 @@ export class PortalAutomationService {
         tenantId_taxpayerId_beyanTipi_donem: {
           tenantId,
           taxpayerId: taxpayer.id,
-          beyanTipi: parsed.beyanTipi,
-          donem: parsed.donem,
+          beyanTipi,
+          donem,
         },
       },
       create: {
         tenantId,
         taxpayerId: taxpayer.id,
-        beyanTipi: parsed.beyanTipi,
-        donem: parsed.donem,
+        beyanTipi,
+        donem,
         durum: 'onaylandi',
         onayTarihi: parsedDate || new Date(),
         tahakkukTutari,

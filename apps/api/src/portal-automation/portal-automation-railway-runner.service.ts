@@ -2283,6 +2283,7 @@ export class PortalAutomationRailwayRunnerService implements OnModuleInit {
               rowText: this.compact(row.rowText),
               taxNumber: row.taxNumber,
               taxpayerName: row.taxpayerName,
+              beyanTipi: this.guessBeyanTipi(row.beyanTipiRaw || row.rowText),
             },
           });
         }
@@ -3623,6 +3624,7 @@ export class PortalAutomationRailwayRunnerService implements OnModuleInit {
         rowText: this.compact(row.rowText),
         taxNumber: row.taxNumber,
         taxpayerName: row.taxpayerName,
+        beyanTipi: this.guessBeyanTipi(row.beyanTipiRaw || row.rowText),
       },
     };
   }
