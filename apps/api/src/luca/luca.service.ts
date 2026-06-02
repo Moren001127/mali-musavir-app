@@ -252,7 +252,9 @@ export class LucaService {
         status: 'pending',
         createdBy: opts.createdBy || null,
         targetDeviceId: opts.targetDeviceId || null,
-        preferredAgent: null,
+        // Ekran okuma GÖRÜNÜR ekranı okur → sadece Chrome eklentisi (browser-ext)
+        // alsın; yerel headless worker almasın (onun ekranı kullanıcının ekranı değil).
+        preferredAgent: 'browser-ext',
         priority: 5,
       },
     });
@@ -329,7 +331,9 @@ export class LucaService {
     }
 
     const deviceId = opts.deviceId?.trim();
-    const canClaimUnassigned = this.canClaimUnassignedLucaJob(deviceId);
+    let canClaimUnassigned = this.canClaimUnassignedLucaJob(deviceId);
+    // EKRAN_OKU görünür ekranı okur → browser-ext de atamasız bu işi alabilsin.
+    if (job.tip === 'EKRAN_OKU') canClaimUnassigned = true;
     const where: any = {
       id: jobId,
       status: 'pending',
@@ -782,6 +786,9 @@ export class LucaService {
             OR: [
               ...(canClaimUnassigned ? [{ targetDeviceId: null }] : []),
               ...(deviceId ? [{ targetDeviceId: deviceId }] : []),
+              // EKRAN_OKU görünür ekranı okur → atamasız olsa da browser-ext görür
+              // (affinity 'browser-ext' filtresi yerel worker'ı zaten dışlar).
+              { tip: 'EKRAN_OKU', targetDeviceId: null },
             ],
           },
           affinityFilter,
