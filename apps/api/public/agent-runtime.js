@@ -4,7 +4,7 @@
 */
 (function () {
   // Agent versiyon — UI'da gösterilir, debug için kritik
-  const AGENT_VERSION = '1.37.98';
+  const AGENT_VERSION = '1.38.0';
   const AGENT_INSTANCE_ID = 'mai_' + Date.now().toString(36) + '_' + Math.random().toString(36).slice(2, 8);
 
   // === VERSION-AWARE RELOAD ===
@@ -1683,6 +1683,12 @@
         }
       }
       window.__lucaJobRunning = false;
+      // v1.38: Bu turda iş işlediysek kalan kuyruğu 15sn beklemeden boşalt —
+      // arka arkaya gelen işler (toplu/zamanlı çekim) hemen sıradan devam etsin.
+      // Kuyruk boşalınca bir sonraki yoklama [] döner ve döngü kendiliğinden durur.
+      if (Array.isArray(jobs) && jobs.length > 0) {
+        setTimeout(() => { try { processLucaJobs(); } catch {} }, 600);
+      }
     } catch (e) {
       window.__lucaJobRunning = false;
       console.warn('[Moren] processLucaJobs:', e?.message);
@@ -3202,17 +3208,12 @@
           if (hoverTimer) clearInterval(hoverTimer);
         }
       }
-      await log('⏳ Sayfa yüklenmesi bekleniyor (6sn)…');
-      await sleep(6000);
-      // E-belge ekranı Luca sürümüne/firmaya göre farklı frame'de açılabiliyor.
-      // Sadece frm3'e bakmak yanlış "ekran açılamadı" hatası üretiyordu.
-      let ebelgeContext = findEbelgePageContext();
-      // Sayfa açıldığını doğrula
-      if (!ebelgeContext) {
-        await log('⚠ Sayfa hala açılmadı — 4sn ek bekleme');
-        await sleep(4000);
-        ebelgeContext = findEbelgePageContext();
-      }
+      await log('⏳ E-belge ekranı bekleniyor…');
+      // v1.38: Kör 6sn+4sn bekleme yerine akıllı polling — ekran hazır olur
+      // olmaz devam et, en geç 10sn'de pes et (eski toplam tavanla aynı).
+      // E-belge ekranı Luca sürümüne/firmaya göre farklı frame'de açılabiliyor;
+      // findEbelgePageContext tüm uygun frame'leri tarar.
+      let ebelgeContext = await waitUntil(() => findEbelgePageContext(), 10000, 200);
       if (!ebelgeContext) {
         const frameHint = describeEbelgeFrames();
         throw new Error(`${menuLabel} ekranı açılamadı; Luca oturumu, firma yetkisi veya menü yapısı kontrol edilmeli${frameHint ? `; frame ipucu: ${frameHint}` : ''}`);
