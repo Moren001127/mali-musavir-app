@@ -3,7 +3,7 @@
 import { useState, useRef, useEffect } from 'react';
 import { Send, Loader2, Mic, MicOff, Volume2, VolumeX, Wrench } from 'lucide-react';
 import { toast } from 'sonner';
-import { lucaOperatorChat } from '@/lib/moren-ai';
+import { lucaOperatorChatStream } from '@/lib/moren-ai';
 import { speak, stopSpeech, startListening, isSpeechSupported, isSynthesisSupported } from './voice';
 
 const ACCENT = '#d4b876'; // altın — Luca Operatörü modül rengi
@@ -27,56 +27,42 @@ export function LucaOperatorChat() {
   const [sending, setSending] = useState(false);
   const [listening, setListening] = useState(false);
   const [speakEnabled, setSpeakEnabled] = useState(false);
+  const [voiceMode, setVoiceMode] = useState(false);
+  const [currentTool, setCurrentTool] = useState<string | null>(null);
   const scrollRef = useRef<HTMLDivElement>(null);
   const listenerRef = useRef<{ stop: () => void } | null>(null);
+  const voiceModeRef = useRef(false);
+  const speakEnabledRef = useRef(false);
+  const sendingRef = useRef(false);
+  voiceModeRef.current = voiceMode;
+  speakEnabledRef.current = speakEnabled;
+  sendingRef.current = sending;
 
   useEffect(() => {
     if (scrollRef.current) scrollRef.current.scrollTop = scrollRef.current.scrollHeight;
-  }, [messages.length, sending]);
+  }, [messages, sending, currentTool]);
 
-  const send = async (raw: string) => {
-    const message = raw.trim();
-    if (!message || sending) return;
-    // Geçmişi yeni mesajı eklemeden önce al
-    const history = messages.map((m) => ({ role: m.role, content: m.content }));
-    setMessages((m) => [...m, { role: 'user', content: message, ts: Date.now() }]);
-    setText('');
-    setSending(true);
-    try {
-      const res = await lucaOperatorChat({ message, history });
-      if (!res.ok) {
-        const err = res.error || 'Yanıt alınamadı';
-        toast.error('Operatör cevap veremedi', { description: err });
-        setMessages((m) => [...m, { role: 'assistant', content: `⚠️ ${err}`, ts: Date.now() }]);
-        return;
-      }
-      const reply = res.assistantMessage || '(boş yanıt)';
-      const tools = (res.toolUses || []).map((t) => t.name).filter(Boolean);
-      setMessages((m) => [...m, { role: 'assistant', content: reply, tools, ts: Date.now() }]);
-      if (speakEnabled && isSynthesisSupported()) {
-        speak(reply).catch(() => {});
-      }
-    } catch (e: any) {
-      const msg = e?.response?.data?.message || e?.message || 'Yanıt alınamadı';
-      toast.error('Operatör cevap veremedi', { description: String(msg) });
-      setMessages((m) => [...m, { role: 'assistant', content: `⚠️ Hata: ${msg}`, ts: Date.now() }]);
-    } finally {
-      setSending(false);
-    }
+  const lastAssistantIndex = (arr: Msg[]) => {
+    for (let i = arr.length - 1; i >= 0; i--) if (arr[i].role === 'assistant') return i;
+    return -1;
   };
+  const patchLastAssistant = (fn: (m: Msg) => Msg) =>
+    setMessages((arr) => {
+      const i = lastAssistantIndex(arr);
+      if (i < 0) return arr;
+      const c = [...arr];
+      c[i] = fn(c[i]);
+      return c;
+    });
 
-  const toggleMic = () => {
-    if (listening) {
-      listenerRef.current?.stop();
-      listenerRef.current = null;
-      setListening(false);
-      return;
-    }
+  // Mikrofonu başlat — final transcript gelince otomatik gönderir.
+  const startListeningAuto = (): boolean => {
     if (!isSpeechSupported()) {
-      toast.error('Sesli komut için Chrome veya Edge kullanın', {
-        description: 'Tarayıcı ses tanımayı desteklemiyor.',
+      toast.error('Sesli komut bu tarayıcıda desteklenmiyor', {
+        description: 'Chrome veya Edge ile açıp mikrofon iznini verin.',
       });
-      return;
+      setVoiceMode(false);
+      return false;
     }
     setListening(true);
     const l = startListening({
@@ -91,6 +77,7 @@ export function LucaOperatorChat() {
       onError: (err) => {
         toast.error('Mikrofon başlatılamadı', { description: err });
         setListening(false);
+        setVoiceMode(false);
         listenerRef.current = null;
       },
       onEnd: () => {
@@ -99,7 +86,90 @@ export function LucaOperatorChat() {
       },
     });
     listenerRef.current = l;
-    if (!l) setListening(false);
+    if (!l) {
+      setListening(false);
+      return false;
+    }
+    return true;
+  };
+
+  const send = async (raw: string) => {
+    const message = raw.trim();
+    if (!message || sendingRef.current) return;
+    const history = messages.map((m) => ({ role: m.role, content: m.content }));
+    const now = Date.now();
+    setMessages((m) => [
+      ...m,
+      { role: 'user', content: message, ts: now },
+      { role: 'assistant', content: '', tools: [], ts: now + 1 },
+    ]);
+    setText('');
+    setSending(true);
+    setCurrentTool(null);
+
+    let acc = '';
+    let hadError = false;
+    const toolset = new Set<string>();
+
+    try {
+      await lucaOperatorChatStream({ message, history }, (e) => {
+        if (e.type === 'text') {
+          acc += e.delta;
+          patchLastAssistant((m) => ({ ...m, content: acc }));
+        } else if (e.type === 'tool') {
+          if (e.name) {
+            toolset.add(e.name);
+            setCurrentTool(e.name);
+            patchLastAssistant((m) => ({ ...m, tools: [...toolset] }));
+          }
+        } else if (e.type === 'error') {
+          hadError = true;
+          acc = (acc ? acc + '\n\n' : '') + `⚠️ ${e.error || 'Yanıt alınamadı'}`;
+          patchLastAssistant((m) => ({ ...m, content: acc }));
+        }
+      });
+    } catch (err: any) {
+      hadError = true;
+      acc = (acc ? acc + '\n\n' : '') + `⚠️ Hata: ${err?.message || err}`;
+      patchLastAssistant((m) => ({ ...m, content: acc }));
+    } finally {
+      setCurrentTool(null);
+      patchLastAssistant((m) => ({ ...m, content: acc || '(boş yanıt)', tools: [...toolset] }));
+      setSending(false);
+    }
+
+    // Sesli yanıt açıksa cevabı oku; sohbet modundaysa mikrofonu tekrar aç (eller serbest döngü).
+    if (!hadError && acc && speakEnabledRef.current && isSynthesisSupported()) {
+      await speak(acc).catch(() => {});
+    }
+    if (voiceModeRef.current && !listenerRef.current && !sendingRef.current) {
+      startListeningAuto();
+    }
+  };
+
+  const toggleMic = () => {
+    if (listening) {
+      listenerRef.current?.stop();
+      listenerRef.current = null;
+      setListening(false);
+      return;
+    }
+    startListeningAuto();
+  };
+
+  const toggleVoiceMode = () => {
+    if (voiceMode) {
+      setVoiceMode(false);
+      if (listening) {
+        listenerRef.current?.stop();
+        setListening(false);
+      }
+      stopSpeech();
+    } else {
+      stopSpeech();
+      setSpeakEnabled(true); // sohbet modu açıksa sesli yanıt da açık olmalı
+      if (startListeningAuto()) setVoiceMode(true);
+    }
   };
 
   const toggleSpeak = () => {
@@ -115,11 +185,7 @@ export function LucaOperatorChat() {
   return (
     <div
       className="flex h-full flex-col overflow-hidden rounded-2xl"
-      style={{
-        background: 'rgba(15,13,9,0.85)',
-        border: `1px solid ${ACCENT}26`,
-        backdropFilter: 'blur(10px)',
-      }}
+      style={{ background: 'rgba(15,13,9,0.85)', border: `1px solid ${ACCENT}26`, backdropFilter: 'blur(10px)' }}
     >
       {/* Başlık */}
       <div className="flex-shrink-0 border-b px-4 py-3" style={{ borderColor: 'rgba(255,255,255,0.06)' }}>
@@ -127,7 +193,11 @@ export function LucaOperatorChat() {
           Luca Operatörü ile Konuşma
         </div>
         <div className="text-xs" style={{ color: 'rgba(250,250,249,0.55)' }}>
-          {messages.length === 0 ? 'Bir şey iste — gerekirse sana soru sorar' : `${messages.length} mesaj`}
+          {voiceMode
+            ? 'Sohbet modu açık — konuş, cevap versin, mikrofon tekrar açılır'
+            : messages.length === 0
+              ? 'Bir şey iste — gerekirse sana soru sorar'
+              : `${messages.length} mesaj`}
         </div>
       </div>
 
@@ -165,6 +235,7 @@ export function LucaOperatorChat() {
                 </div>
               );
             }
+            const empty = !m.content;
             return (
               <div key={i} className="flex flex-col gap-1">
                 <span className="text-[11px] font-bold tracking-wider" style={{ color: ACCENT }}>
@@ -173,15 +244,17 @@ export function LucaOperatorChat() {
                 {m.tools && m.tools.length > 0 && (
                   <div className="flex items-center gap-1 text-[10px]" style={{ color: 'rgba(250,250,249,0.4)' }}>
                     <Wrench size={10} />
-                    {m.tools.length} veri sorgusu yapıldı
+                    {m.tools.length} veri sorgusu
                   </div>
                 )}
-                <div
-                  className="whitespace-pre-wrap rounded-lg px-3 py-2 text-sm leading-relaxed"
-                  style={{ background: 'rgba(255,255,255,0.03)', border: '1px solid rgba(255,255,255,0.07)', color: 'rgba(250,250,249,0.92)' }}
-                >
-                  {m.content}
-                </div>
+                {!empty && (
+                  <div
+                    className="whitespace-pre-wrap rounded-lg px-3 py-2 text-sm leading-relaxed"
+                    style={{ background: 'rgba(255,255,255,0.03)', border: '1px solid rgba(255,255,255,0.07)', color: 'rgba(250,250,249,0.92)' }}
+                  >
+                    {m.content}
+                  </div>
+                )}
               </div>
             );
           })
@@ -189,14 +262,14 @@ export function LucaOperatorChat() {
         {sending && (
           <div className="flex items-center gap-2 px-2 py-1 text-xs" style={{ color: ACCENT }}>
             <Loader2 size={12} className="animate-spin" />
-            Çalışıyor...
+            {currentTool ? `${currentTool} çalışıyor...` : 'Düşünüyor...'}
           </div>
         )}
       </div>
 
       {/* Girdi + ses */}
       <div className="flex-shrink-0 space-y-2 border-t px-3 py-3" style={{ borderColor: 'rgba(255,255,255,0.06)' }}>
-        <div className="flex items-center gap-2 text-[10px]" style={{ color: 'rgba(250,250,249,0.55)' }}>
+        <div className="flex flex-wrap items-center gap-2 text-[10px]" style={{ color: 'rgba(250,250,249,0.55)' }}>
           <button
             onClick={toggleSpeak}
             className="flex items-center gap-1 rounded px-2 py-1 transition-colors"
@@ -209,8 +282,20 @@ export function LucaOperatorChat() {
             {speakEnabled ? <Volume2 size={11} /> : <VolumeX size={11} />}
             {speakEnabled ? 'Sesli Yanıt' : 'Sessiz'}
           </button>
+          <button
+            onClick={toggleVoiceMode}
+            className="flex items-center gap-1 rounded px-2 py-1 font-bold transition-colors"
+            style={{
+              background: voiceMode ? `${ACCENT}22` : 'rgba(255,255,255,0.04)',
+              color: voiceMode ? ACCENT : 'rgba(250,250,249,0.5)',
+              border: voiceMode ? `1px solid ${ACCENT}55` : '1px solid transparent',
+            }}
+            title="Karşılıklı sesli sohbet — konuş, cevap versin, mikrofon tekrar açılsın"
+          >
+            {voiceMode ? '🎙 SOHBET AÇIK' : '🎙 Sohbet Modu'}
+          </button>
           <span className="opacity-50">·</span>
-          <span>Enter ile gönder, mikrofonla konuş</span>
+          <span>{voiceMode ? 'Konuşunca otomatik gönderilir' : 'Enter ile gönder, mikrofonla konuş'}</span>
         </div>
         <div className="flex gap-2">
           <button

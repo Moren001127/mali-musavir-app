@@ -4,16 +4,20 @@ import { PrismaService } from '../prisma/prisma.service';
 import { ToolExecutorService } from '../moren-ai/tool-executor.service';
 import { MOREN_AI_TOOLS } from '../moren-ai/tools';
 import { logAiUsage } from '../common/ai-usage-logger';
+import { MAX_MODEL_CHEAP } from '../common/max-inference';
 
 /**
- * LUCA OPERATÖRÜ — Max aboneliği (ücretsiz) + ARAÇLI beyin.
+ * LUCA OPERATÖRÜ — Max aboneliği (ücretsiz) + ARAÇLI beyin, AKIŞLI (streaming) cevap.
  *
  * Agent SDK (CLAUDE_CODE_OAUTH_TOKEN) üzerinde çalışır → token başına fatura YOK.
- * Mevcut `ToolExecutorService` (47 aracın tek beyni) tek bir "portal" yönlendirici
- * aracı üzerinden Max çağrısına bağlanır — araç beyni ÇOĞALTILMAZ.
+ * Mevcut `ToolExecutorService` (47 aracın tek beyni) tek "portal" yönlendirici aracı
+ * üzerinden Max çağrısına bağlanır — araç beyni ÇOĞALTILMAZ.
  *
- * FAZ 1 GÜVENLİK: sadece OKUMA araçları + onaylı komut açık (ALLOWED_TOOLS).
- * Luca'ya doğrudan yazma YOK. Dosya/bash gibi yerleşik SDK araçları canUseTool ile kapalı.
+ * FAZ 1 GÜVENLİK: sadece OKUMA + onaylı komut (ALLOWED_TOOLS). Luca'ya yazma YOK.
+ * Dosya/bash gibi yerleşik SDK araçları canUseTool ile kapalı.
+ *
+ * AKIŞ: includePartialMessages ile token token metin + araç adımları emit edilir
+ * (frontend canlı gösterir; bekleme hissi azalır).
  */
 
 // ESM-only Agent SDK'yı CommonJS NestJS içine güvenli yükle (calisan.service ile aynı desen).
@@ -26,6 +30,7 @@ async function loadSdk(): Promise<any> {
 
 const MODEL_CRITICAL = 'claude-opus-4-8';
 const MODEL_DEFAULT = 'claude-sonnet-4-6';
+const MODEL_CHEAP = MAX_MODEL_CHEAP; // claude-haiku-4-5 — kısa/basit sorular (hız)
 const CRITICAL_PATTERNS: RegExp[] = [
   /beyanname|tahakkuk|muhtasar|muhsgk|geçici vergi|gecici vergi|kurumlar|kdv\s?[12]/i,
   /mizan|bilanço|bilanco|gelir tablosu|e-?defter|yevmiye|denetim/i,
@@ -53,6 +58,13 @@ interface ChatHistoryItem {
   content: string;
 }
 
+/** Akış olayı — frontend'e SSE ile gider. */
+export type StreamEvent =
+  | { type: 'text'; delta: string }
+  | { type: 'tool'; name: string }
+  | { type: 'done'; model: string; toolUses: Array<{ name: string; args: any }>; durationMs: number }
+  | { type: 'error'; error: string };
+
 @Injectable()
 export class LucaOperatorService {
   private readonly logger = new Logger('LucaOperatorService');
@@ -63,7 +75,13 @@ export class LucaOperatorService {
   ) {}
 
   private pickModel(text: string): string {
-    return CRITICAL_PATTERNS.some((p) => p.test(text || '')) ? MODEL_CRITICAL : MODEL_DEFAULT;
+    const t = text || '';
+    if (CRITICAL_PATTERNS.some((p) => p.test(t))) return MODEL_CRITICAL;
+    // Çok kısa / selamlama / sohbet → hızlı model (Haiku)
+    if (t.trim().length <= 40 && !/(mizan|kdv|beyan|fatura|defter|sgk|m[uü]kellef|cari|bilan[cç]o|tahsilat|ajan)/i.test(t)) {
+      return MODEL_CHEAP;
+    }
+    return MODEL_DEFAULT;
   }
 
   /** Açık araçların kısa kataloğu — sistem promptuna gömülür (MOREN_AI_TOOLS'tan üretilir). */
@@ -89,9 +107,9 @@ export class LucaOperatorService {
       'ŞU AN (Faz 1): Luca\'ya doğrudan YAZMA/işlem yapma yeteneğin YOK. Sadece veri okur, durum analizi yapar,',
       've mevcut Luca veri-çekme işlerini önizleyip (preview_agent_command) onayla tetikleyebilirsin.',
       'Portal verisi için "portal" aracını çağır: name=araç adı, args=parametre nesnesi. Sonucu yorumla.',
-      'Emin değilsen veya bilgi eksikse ASLA varsayma — kullanıcıya kısa, net bir soru sor.',
+      'Cevabını GEREKSİZ uzatma; net ve kısa tut. Emin değilsen veya bilgi eksikse ASLA varsayma — kullanıcıya kısa bir soru sor.',
       'Kritik mali/hukuki konularda (beyanname, KDV, mizan, tahakkuk) en yüksek doğrulukla çalış; görmediğini görmüş gibi söyleme.',
-      'Mükellef PII (şifre, token, TC, IBAN) sızdırma, loglama. Cevapların kısa ve net olsun.',
+      'Mükellef PII (şifre, token, TC, IBAN) sızdırma, loglama.',
       '',
       '## Kullanabileceğin portal araçları',
       this.buildToolCatalog(),
@@ -99,43 +117,27 @@ export class LucaOperatorService {
   }
 
   /**
-   * Max + araçlı sohbet. Konuşma geçmişi istekte taşınır (Railway'de kalıcı oturum yok).
-   * Başarısızsa ok:false döner; frontend kullanıcıya bildirir (API'ye DÜŞMEZ — ücret çıkmasın).
+   * Max + araçlı AKIŞLI sohbet. Her metin parçası/araç adımı `emit` ile gönderilir.
+   * Konuşma geçmişi istekte taşınır (Railway'de kalıcı oturum yok).
    */
-  async chat(params: {
-    tenantId: string;
-    userId?: string | null;
-    message: string;
-    history?: ChatHistoryItem[];
-  }): Promise<{
-    ok: boolean;
-    assistantMessage: string;
-    toolUses: Array<{ name: string; args: any }>;
-    model: string;
-    durationMs?: number;
-    error?: string;
-  }> {
+  async chatStream(
+    params: { tenantId: string; userId?: string | null; message: string; history?: ChatHistoryItem[] },
+    emit: (e: StreamEvent) => void,
+  ): Promise<void> {
     const tenantId = params.tenantId || 'default';
     const message = (params.message || '').trim();
     const model = this.pickModel(message);
     const token = process.env.CLAUDE_CODE_OAUTH_TOKEN;
 
     if (!token) {
-      return {
-        ok: false,
-        assistantMessage: '',
-        toolUses: [],
-        model,
-        error:
-          'Max aboneliği bağlı değil (CLAUDE_CODE_OAUTH_TOKEN yok). Operatör beyni Max ile çalışır; ' +
-          'Railway env\'inde token tanımlı olmalı.',
-      };
+      emit({ type: 'error', error: 'Max aboneliği bağlı değil (CLAUDE_CODE_OAUTH_TOKEN yok).' });
+      return;
     }
     if (!message) {
-      return { ok: false, assistantMessage: '', toolUses: [], model, error: 'Mesaj boş olamaz.' };
+      emit({ type: 'error', error: 'Mesaj boş olamaz.' });
+      return;
     }
 
-    // Konuşma geçmişi → prompt (son 12 tur)
     const hist = (params.history || [])
       .filter((h) => h && h.content)
       .slice(-12)
@@ -165,7 +167,6 @@ export class LucaOperatorService {
     try {
       const sdk = await loadSdk();
 
-      // Tek "portal" yönlendirici aracı — mevcut ToolExecutorService'e delege eder.
       const portalTool = sdk.tool(
         'portal',
         'Moren portal veri/durum aracı. name=araç adı, args=parametre nesnesi. ' +
@@ -175,11 +176,10 @@ export class LucaOperatorService {
         async (a: { name: string; args?: any }) => {
           const toolName = String(a?.name || '');
           if (!ALLOWED_TOOLS.has(toolName)) {
-            return {
-              content: [{ type: 'text', text: JSON.stringify({ error: `Bu araç operatöre kapalı (Faz 1): ${toolName}` }) }],
-            };
+            return { content: [{ type: 'text', text: JSON.stringify({ error: `Bu araç operatöre kapalı (Faz 1): ${toolName}` }) }] };
           }
           toolUses.push({ name: toolName, args: a?.args || {} });
+          emit({ type: 'tool', name: toolName });
           const result = await this.tools.execute(toolName, a?.args || {}, ctx);
           return { content: [{ type: 'text', text: JSON.stringify(result) }] };
         },
@@ -202,13 +202,19 @@ export class LucaOperatorService {
           mcpServers: { portal: server },
           allowedTools: [PORTAL_TOOL],
           canUseTool,
-          maxTurns: 14,
+          maxTurns: 12,
+          includePartialMessages: true,
           env: childEnv,
         },
       })) {
-        if (m?.type === 'assistant') {
-          for (const block of m.message?.content || []) {
-            if (block?.type === 'text') answer += block.text;
+        if (m?.type === 'stream_event') {
+          const ev = m.event;
+          if (ev?.type === 'content_block_delta' && ev?.delta?.type === 'text_delta') {
+            const t = ev.delta.text || '';
+            if (t) {
+              answer += t;
+              emit({ type: 'text', delta: t });
+            }
           }
         } else if (m?.type === 'result') {
           isError = Boolean(m.is_error);
@@ -216,12 +222,12 @@ export class LucaOperatorService {
         }
       }
     } catch (e: any) {
-      this.logger.error(`Luca operatör (Max) çağrısı başarısız: ${e?.message || e}`);
-      return { ok: false, assistantMessage: '', toolUses, model, error: e?.message || 'Agent SDK (Max) çağrısı başarısız.' };
+      this.logger.error(`Luca operatör (Max) akış hatası: ${e?.message || e}`);
+      emit({ type: 'error', error: e?.message || 'Agent SDK (Max) çağrısı başarısız.' });
+      return;
     }
 
     const durationMs = Date.now() - started;
-    // Maliyet Max kotasından düşer (token başına fatura DEĞİL); görünürlük için logla.
     await logAiUsage(this.prisma, {
       tenantId,
       source: 'luca-operator-max',
@@ -231,10 +237,10 @@ export class LucaOperatorService {
       durationMs,
     }).catch(() => undefined);
 
-    answer = answer.trim();
-    if (isError && !answer) {
-      return { ok: false, assistantMessage: '', toolUses, model, durationMs, error: 'Agent SDK (Max) sonucu hata döndü.' };
+    if (isError && !answer.trim()) {
+      emit({ type: 'error', error: 'Agent SDK (Max) sonucu hata döndü.' });
+      return;
     }
-    return { ok: true, assistantMessage: answer || '(boş yanıt)', toolUses, model, durationMs };
+    emit({ type: 'done', model, toolUses, durationMs });
   }
 }

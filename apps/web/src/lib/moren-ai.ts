@@ -1,4 +1,4 @@
-import { api } from './api';
+import { api, authorizedFetch, API_BASE } from './api';
 
 export interface ConversationSummary {
   id: string;
@@ -69,19 +69,51 @@ export async function chat(body: {
   return data;
 }
 
-/** Luca Operatörü — Max + araçlı sohbet (ücretsiz). history: önceki turlar. */
-export async function lucaOperatorChat(body: {
-  message: string;
-  history?: Array<{ role: 'user' | 'assistant'; content: string }>;
-}): Promise<{
-  ok: boolean;
-  assistantMessage: string;
-  toolUses?: Array<{ name: string; args: any }>;
-  model?: string;
-  error?: string;
-}> {
-  const { data } = await api.post('/luca-operator/chat', body);
-  return data;
+/** Luca Operatörü akış olayı (SSE). */
+export type LucaStreamEvent =
+  | { type: 'text'; delta: string }
+  | { type: 'tool'; name: string }
+  | { type: 'done'; model?: string; toolUses?: Array<{ name: string; args: any }>; durationMs?: number }
+  | { type: 'error'; error: string };
+
+/**
+ * Luca Operatörü — Max + araçlı AKIŞLI sohbet (ücretsiz).
+ * Cevap token token gelir; her olay onEvent ile bildirilir. Promise akış bitince çözülür.
+ */
+export async function lucaOperatorChatStream(
+  body: { message: string; history?: Array<{ role: 'user' | 'assistant'; content: string }> },
+  onEvent: (e: LucaStreamEvent) => void,
+): Promise<void> {
+  const res = await authorizedFetch(`${API_BASE}/luca-operator/chat`, {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify(body),
+  });
+  if (!res.ok || !res.body) {
+    onEvent({ type: 'error', error: `Sunucu hatası (${res.status})` });
+    return;
+  }
+  const reader = res.body.getReader();
+  const decoder = new TextDecoder();
+  let buf = '';
+  while (true) {
+    const { done, value } = await reader.read();
+    if (done) break;
+    buf += decoder.decode(value, { stream: true });
+    const parts = buf.split('\n\n');
+    buf = parts.pop() || '';
+    for (const part of parts) {
+      const line = part.trim();
+      if (!line.startsWith('data:')) continue;
+      const payload = line.slice(5).trim();
+      if (!payload) continue;
+      try {
+        onEvent(JSON.parse(payload) as LucaStreamEvent);
+      } catch {
+        /* yoksay */
+      }
+    }
+  }
 }
 
 export async function getOfficeBrain(period?: string) {
