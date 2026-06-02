@@ -283,7 +283,7 @@ export class LucaOperatorService {
           mcpServers: { portal: server },
           allowedTools: [PORTAL_TOOL],
           canUseTool,
-          maxTurns: 12,
+          maxTurns: 40, // çok adımlı Luca işleri tek mesajda bitebilsin (her oku/yaz/tıkla bir tur)
           includePartialMessages: true,
           env: childEnv,
         },
