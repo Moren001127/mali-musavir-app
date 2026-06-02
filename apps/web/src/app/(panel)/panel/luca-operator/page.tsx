@@ -1,7 +1,7 @@
 import { BotMessageSquare, Info } from 'lucide-react';
 import { LucaOperatorChat } from './_components/LucaOperatorChat';
 
-const ACCENT = '#a78bfa'; // mor — Luca Operatörü modül kimliği
+const ACCENT = '#d4b876'; // altın — Luca Operatörü modül kimliği
 
 export const metadata = {
   title: 'Luca Operatörü',
@@ -9,40 +9,40 @@ export const metadata = {
 
 export default function LucaOperatorPage() {
   return (
-    <div className="mx-auto max-w-3xl px-4 py-6 space-y-5">
+    <div className="flex h-full flex-col gap-3">
       {/* Üst renk şeridi */}
       <div
-        className="h-1 w-full rounded-full"
+        className="h-1 w-full flex-shrink-0 rounded-full"
         style={{ background: `linear-gradient(90deg, ${ACCENT}, ${ACCENT}33 40%, transparent)` }}
       />
 
-      {/* Radial başlık kartı (AI Maliyet imzası) */}
+      {/* Başlık (kompakt, AI Maliyet imzası) */}
       <header
-        className="relative overflow-hidden rounded-2xl p-5"
+        className="relative flex-shrink-0 overflow-hidden rounded-2xl px-5 py-4"
         style={{
-          background: 'linear-gradient(135deg, rgba(20,16,28,0.92), rgba(8,7,11,0.92))',
-          border: `1px solid ${ACCENT}26`,
-          boxShadow: 'inset 0 1px 0 rgba(255,255,255,0.03), 0 18px 40px rgba(0,0,0,0.28)',
+          background: 'linear-gradient(135deg, rgba(24,20,12,0.92), rgba(8,7,5,0.92))',
+          border: `1px solid ${ACCENT}29`,
+          boxShadow: 'inset 0 1px 0 rgba(255,255,255,0.04), 0 18px 40px rgba(0,0,0,0.28)',
         }}
       >
         <div
-          className="pointer-events-none absolute inset-0 opacity-60"
+          className="pointer-events-none absolute inset-0 opacity-70"
           style={{
-            background: `radial-gradient(circle at 12% 0%, ${ACCENT}1f, transparent 38%), radial-gradient(circle at 100% 120%, ${ACCENT}12, transparent 42%)`,
+            background: `radial-gradient(circle at 12% 0%, ${ACCENT}24, transparent 36%), radial-gradient(circle at 100% 120%, ${ACCENT}12, transparent 42%)`,
           }}
         />
         <div className="relative flex items-center gap-4">
           <div
             className="flex h-12 w-12 flex-shrink-0 items-center justify-center rounded-xl"
             style={{
-              background: `linear-gradient(135deg, ${ACCENT}, #6d5bd0)`,
-              color: '#0f0d0b',
-              boxShadow: `0 0 22px ${ACCENT}3a, inset 0 1px 0 rgba(255,255,255,0.25)`,
+              background: `linear-gradient(135deg, ${ACCENT}, #8b7649)`,
+              color: '#15110b',
+              boxShadow: `0 0 22px ${ACCENT}33, inset 0 1px 0 rgba(255,255,255,0.25)`,
             }}
           >
             <BotMessageSquare size={24} strokeWidth={2} />
           </div>
-          <div className="min-w-0">
+          <div className="min-w-0 flex-1">
             <h1 className="text-xl font-bold" style={{ color: '#fafaf9' }}>
               Luca Operatörü
             </h1>
@@ -50,12 +50,19 @@ export default function LucaOperatorPage() {
               Luca işlerini yapan, konuşulan ve öğrenen çalışan. Yazılı veya sesli komut ver.
             </p>
           </div>
+          <span
+            className="hidden flex-shrink-0 items-center gap-1 rounded-full px-2.5 py-1 text-[10px] font-bold sm:inline-flex"
+            style={{ background: 'rgba(52,211,153,0.12)', border: '1px solid rgba(52,211,153,0.3)', color: '#86efac' }}
+            title="Max aboneliğiyle çalışır — ek API maliyeti yok"
+          >
+            ● Max · ücretsiz
+          </span>
         </div>
       </header>
 
-      {/* Kapsam notu — Faz 1 */}
+      {/* Kapsam notu — Faz 1 (slim) */}
       <div
-        className="flex items-start gap-2 rounded-xl px-4 py-3 text-xs"
+        className="flex flex-shrink-0 items-start gap-2 rounded-xl px-4 py-2.5 text-xs"
         style={{
           background: 'rgba(255,255,255,0.03)',
           border: '1px solid rgba(255,255,255,0.08)',
@@ -64,13 +71,16 @@ export default function LucaOperatorPage() {
       >
         <Info size={14} className="mt-0.5 flex-shrink-0" style={{ color: ACCENT }} />
         <span>
-          <b style={{ color: '#fafaf9' }}>Şu an (Faz 1):</b> konuşur, mükellef/mali veriyi okur ve mevcut
-          Luca veri çekme işlerini onayla tetikler. <b style={{ color: '#fafaf9' }}>Luca&apos;ya yazma/işlem</b> (beyanname,
+          <b style={{ color: '#fafaf9' }}>Şu an (Faz 1):</b> konuşur, mükellef/mali veriyi okur ve mevcut Luca
+          veri çekme işlerini onayla tetikler. <b style={{ color: '#fafaf9' }}>Luca&apos;ya yazma/işlem</b> (beyanname,
           işe giriş-çıkış, işletme defteri gönderimi) bir sonraki aşamada eklenecek.
         </span>
       </div>
 
-      <LucaOperatorChat />
+      {/* Sohbet — kalan alanı doldurur */}
+      <div className="min-h-0 flex-1">
+        <LucaOperatorChat />
+      </div>
     </div>
   );
 }

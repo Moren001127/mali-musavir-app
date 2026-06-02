@@ -1,16 +1,17 @@
 'use client';
 
 import { useState, useRef, useEffect } from 'react';
-import { Send, Loader2, Mic, MicOff, Volume2, VolumeX } from 'lucide-react';
+import { Send, Loader2, Mic, MicOff, Volume2, VolumeX, Wrench } from 'lucide-react';
 import { toast } from 'sonner';
-import { chat } from '@/lib/moren-ai';
+import { lucaOperatorChat } from '@/lib/moren-ai';
 import { speak, stopSpeech, startListening, isSpeechSupported, isSynthesisSupported } from './voice';
 
-const ACCENT = '#a78bfa'; // mor — Luca Operatörü modül rengi
+const ACCENT = '#d4b876'; // altın — Luca Operatörü modül rengi
 
 interface Msg {
   role: 'user' | 'assistant';
   content: string;
+  tools?: string[];
   ts: number;
 }
 
@@ -24,7 +25,6 @@ export function LucaOperatorChat() {
   const [messages, setMessages] = useState<Msg[]>([]);
   const [text, setText] = useState('');
   const [sending, setSending] = useState(false);
-  const [conversationId, setConversationId] = useState<string | undefined>(undefined);
   const [listening, setListening] = useState(false);
   const [speakEnabled, setSpeakEnabled] = useState(false);
   const scrollRef = useRef<HTMLDivElement>(null);
@@ -37,20 +37,28 @@ export function LucaOperatorChat() {
   const send = async (raw: string) => {
     const message = raw.trim();
     if (!message || sending) return;
+    // Geçmişi yeni mesajı eklemeden önce al
+    const history = messages.map((m) => ({ role: m.role, content: m.content }));
     setMessages((m) => [...m, { role: 'user', content: message, ts: Date.now() }]);
     setText('');
     setSending(true);
     try {
-      const res = await chat({ conversationId, message, currentPath: '/panel/luca-operator' });
-      setConversationId(res.conversationId);
+      const res = await lucaOperatorChat({ message, history });
+      if (!res.ok) {
+        const err = res.error || 'Yanıt alınamadı';
+        toast.error('Operatör cevap veremedi', { description: err });
+        setMessages((m) => [...m, { role: 'assistant', content: `⚠️ ${err}`, ts: Date.now() }]);
+        return;
+      }
       const reply = res.assistantMessage || '(boş yanıt)';
-      setMessages((m) => [...m, { role: 'assistant', content: reply, ts: Date.now() }]);
+      const tools = (res.toolUses || []).map((t) => t.name).filter(Boolean);
+      setMessages((m) => [...m, { role: 'assistant', content: reply, tools, ts: Date.now() }]);
       if (speakEnabled && isSynthesisSupported()) {
         speak(reply).catch(() => {});
       }
     } catch (e: any) {
       const msg = e?.response?.data?.message || e?.message || 'Yanıt alınamadı';
-      toast.error('Çalışan cevap veremedi', { description: String(msg) });
+      toast.error('Operatör cevap veremedi', { description: String(msg) });
       setMessages((m) => [...m, { role: 'assistant', content: `⚠️ Hata: ${msg}`, ts: Date.now() }]);
     } finally {
       setSending(false);
@@ -106,17 +114,16 @@ export function LucaOperatorChat() {
 
   return (
     <div
-      className="flex flex-col rounded-2xl overflow-hidden"
+      className="flex h-full flex-col overflow-hidden rounded-2xl"
       style={{
-        background: 'rgba(15,12,21,0.85)',
+        background: 'rgba(15,13,9,0.85)',
         border: `1px solid ${ACCENT}26`,
         backdropFilter: 'blur(10px)',
-        height: 620,
       }}
     >
       {/* Başlık */}
-      <div className="px-4 py-3 border-b" style={{ borderColor: 'rgba(255,255,255,0.06)' }}>
-        <div className="text-[10px] uppercase tracking-[.16em] font-bold" style={{ color: ACCENT }}>
+      <div className="flex-shrink-0 border-b px-4 py-3" style={{ borderColor: 'rgba(255,255,255,0.06)' }}>
+        <div className="text-[10px] font-bold uppercase tracking-[.16em]" style={{ color: ACCENT }}>
           Luca Operatörü ile Konuşma
         </div>
         <div className="text-xs" style={{ color: 'rgba(250,250,249,0.55)' }}>
@@ -125,9 +132,9 @@ export function LucaOperatorChat() {
       </div>
 
       {/* Mesajlar */}
-      <div ref={scrollRef} className="flex-1 overflow-y-auto px-4 py-3 space-y-3">
+      <div ref={scrollRef} className="min-h-0 flex-1 space-y-3 overflow-y-auto px-4 py-3">
         {messages.length === 0 ? (
-          <div className="py-10 space-y-4">
+          <div className="space-y-4 py-10">
             <div className="text-center text-sm" style={{ color: 'rgba(250,250,249,0.45)' }}>
               Henüz konuşma yok
             </div>
@@ -136,12 +143,8 @@ export function LucaOperatorChat() {
                 <button
                   key={o}
                   onClick={() => send(o)}
-                  className="px-3 py-1.5 rounded-lg text-xs transition-colors"
-                  style={{
-                    background: `${ACCENT}12`,
-                    border: `1px solid ${ACCENT}2e`,
-                    color: 'rgba(250,250,249,0.8)',
-                  }}
+                  className="rounded-lg px-3 py-1.5 text-xs transition-colors"
+                  style={{ background: `${ACCENT}12`, border: `1px solid ${ACCENT}2e`, color: 'rgba(250,250,249,0.8)' }}
                 >
                   {o}
                 </button>
@@ -154,12 +157,8 @@ export function LucaOperatorChat() {
               return (
                 <div key={i} className="flex justify-end">
                   <div
-                    className="px-3 py-2 rounded-lg max-w-[80%] text-sm"
-                    style={{
-                      background: `${ACCENT}1f`,
-                      border: `1px solid ${ACCENT}3a`,
-                      color: '#fafaf9',
-                    }}
+                    className="max-w-[80%] rounded-lg px-3 py-2 text-sm"
+                    style={{ background: `${ACCENT}1f`, border: `1px solid ${ACCENT}3a`, color: '#fafaf9' }}
                   >
                     {m.content}
                   </div>
@@ -171,13 +170,15 @@ export function LucaOperatorChat() {
                 <span className="text-[11px] font-bold tracking-wider" style={{ color: ACCENT }}>
                   LUCA OPERATÖRÜ
                 </span>
+                {m.tools && m.tools.length > 0 && (
+                  <div className="flex items-center gap-1 text-[10px]" style={{ color: 'rgba(250,250,249,0.4)' }}>
+                    <Wrench size={10} />
+                    {m.tools.length} veri sorgusu yapıldı
+                  </div>
+                )}
                 <div
-                  className="px-3 py-2 rounded-lg text-sm leading-relaxed whitespace-pre-wrap"
-                  style={{
-                    background: 'rgba(255,255,255,0.03)',
-                    border: '1px solid rgba(255,255,255,0.07)',
-                    color: 'rgba(250,250,249,0.92)',
-                  }}
+                  className="whitespace-pre-wrap rounded-lg px-3 py-2 text-sm leading-relaxed"
+                  style={{ background: 'rgba(255,255,255,0.03)', border: '1px solid rgba(255,255,255,0.07)', color: 'rgba(250,250,249,0.92)' }}
                 >
                   {m.content}
                 </div>
@@ -194,11 +195,11 @@ export function LucaOperatorChat() {
       </div>
 
       {/* Girdi + ses */}
-      <div className="px-3 py-3 border-t space-y-2" style={{ borderColor: 'rgba(255,255,255,0.06)' }}>
+      <div className="flex-shrink-0 space-y-2 border-t px-3 py-3" style={{ borderColor: 'rgba(255,255,255,0.06)' }}>
         <div className="flex items-center gap-2 text-[10px]" style={{ color: 'rgba(250,250,249,0.55)' }}>
           <button
             onClick={toggleSpeak}
-            className="flex items-center gap-1 px-2 py-1 rounded transition-colors"
+            className="flex items-center gap-1 rounded px-2 py-1 transition-colors"
             style={{
               background: speakEnabled ? `${ACCENT}1a` : 'rgba(255,255,255,0.04)',
               color: speakEnabled ? ACCENT : 'rgba(250,250,249,0.5)',
@@ -215,7 +216,7 @@ export function LucaOperatorChat() {
           <button
             onClick={toggleMic}
             disabled={sending}
-            className="px-3 rounded-lg disabled:opacity-50 transition-colors"
+            className="rounded-lg px-3 transition-colors disabled:opacity-50"
             style={{
               background: listening ? 'rgba(239,68,68,0.20)' : 'rgba(255,255,255,0.05)',
               border: `1px solid ${listening ? 'rgba(239,68,68,0.45)' : 'rgba(255,255,255,0.08)'}`,
@@ -236,7 +237,7 @@ export function LucaOperatorChat() {
             }}
             placeholder={listening ? 'Dinliyorum...' : 'Luca operatörüne talimat ver...'}
             disabled={sending}
-            className="flex-1 px-3 py-2 rounded-lg text-sm outline-none"
+            className="flex-1 rounded-lg px-3 py-2 text-sm outline-none"
             style={{
               background: 'rgba(0,0,0,0.3)',
               border: `1px solid ${listening ? 'rgba(239,68,68,0.35)' : `${ACCENT}3a`}`,
@@ -246,7 +247,7 @@ export function LucaOperatorChat() {
           <button
             onClick={submit}
             disabled={!text.trim() || sending}
-            className="px-3 rounded-lg disabled:opacity-50"
+            className="rounded-lg px-3 disabled:opacity-50"
             style={{ background: ACCENT, color: '#15110b' }}
           >
             <Send size={16} />

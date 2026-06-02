@@ -69,6 +69,21 @@ export async function chat(body: {
   return data;
 }
 
+/** Luca Operatörü — Max + araçlı sohbet (ücretsiz). history: önceki turlar. */
+export async function lucaOperatorChat(body: {
+  message: string;
+  history?: Array<{ role: 'user' | 'assistant'; content: string }>;
+}): Promise<{
+  ok: boolean;
+  assistantMessage: string;
+  toolUses?: Array<{ name: string; args: any }>;
+  model?: string;
+  error?: string;
+}> {
+  const { data } = await api.post('/luca-operator/chat', body);
+  return data;
+}
+
 export async function getOfficeBrain(period?: string) {
   const { data } = await api.get('/moren-ai/office-brain', { params: { period } });
   return data;
