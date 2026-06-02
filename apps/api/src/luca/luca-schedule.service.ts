@@ -61,6 +61,22 @@ export class LucaScheduleService {
     }
   }
 
+  /**
+   * Bağımsız temizleyici (reaper) — dakikada bir. Yeni iş yaratılmasa bile:
+   *  - iş-tipi penceresini aşan takılı running'leri kapatır,
+   *  - 30+ dk hiç alınmamış pending iş için tek görünür uyarı bildirir.
+   * Böylece "boşta takılan iş sonsuza kadar bekler" + "canlı uzun iş öldürülür"
+   * sorunları tek merkezden çözülür.
+   */
+  @Cron(CronExpression.EVERY_MINUTE, { timeZone: 'Europe/Istanbul' })
+  async reapTick() {
+    try {
+      await this.luca.reapStaleJobs();
+    } catch (err: any) {
+      this.logger.warn(`Reaper hata: ${err?.message || err}`);
+    }
+  }
+
   private async runScheduled(sched: any) {
     const now = new Date();
     // Mükellef listesi

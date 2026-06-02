@@ -45,6 +45,29 @@ export class LucaService {
     private readonly notifications: NotificationsService,
   ) {}
 
+  /**
+   * İş tipine göre "takıldı say" üst süresi (ms). Tüm stuck / seri-kural /
+   * meşgul-mükellef kararları buradan okur — TEK KAYNAK. Canlı uzun işi
+   * (örn. e-arşiv GİB sorgusu tek başına 5dk olabiliyor) yanlışlıkla
+   * öldürmemek için iş tipine göre cömert pencere.
+   */
+  private lucaJobMaxRunMs(tip?: string | null): number {
+    const t = String(tip || '').toUpperCase();
+    if (/^(EARSIV|EFATURA)/.test(t)) return 15 * 60 * 1000;
+    if (
+      /^(MIZAN|KDV_MIZAN|KDV_191|KDV_391|ISLETME_GELIR|ISLETME_GIDER|ACCOUNT_PLAN|EDEFTER_FIS_LISTESI|IHO_FETCH|MUAVIN|ISLETME|GELIR_TABLOSU|BILANCO)/.test(t)
+    ) {
+      return 10 * 60 * 1000;
+    }
+    if (t === 'INVOICE_POST') return 5 * 60 * 1000;
+    return 8 * 60 * 1000;
+  }
+
+  // createFetchJob içindeki inline temizliği kiracı başına en fazla 30sn'de
+  // bir çalıştırmak için (toplu zamanlama bir dakikada DB'yi boğmasın;
+  // sürekli temizliği bağımsız reaper yapar).
+  private lastCleanupAtByTenant = new Map<string, number>();
+
   private canClaimUnassignedLucaJob(deviceId?: string) {
     const id = deviceId?.trim();
     if (!id) return false;
@@ -156,7 +179,13 @@ export class LucaService {
     // Yeni job oluşturmadan önce stuck running'leri temizle — agent kill
     // edilmiş olabilir, DB'de zombie running kayıtları kalmış olabilir.
     // Bu kayıtlar yeni job'ları "seri kural" üzerinden bloke ediyor.
-    await this.cleanupStuckRunning(params.tenantId).catch(() => {});
+    // Toplu zamanlama (1000 mükellef/dakika) DB'yi boğmasın diye kiracı
+    // başına en fazla 30sn'de bir; sürekli temizliği bağımsız reaper yapar.
+    const lastClean = this.lastCleanupAtByTenant.get(params.tenantId) || 0;
+    if (Date.now() - lastClean > 30_000) {
+      this.lastCleanupAtByTenant.set(params.tenantId, Date.now());
+      await this.cleanupStuckRunning(params.tenantId).catch(() => {});
+    }
 
     const activeDuplicate = await (this.prisma as any).lucaFetchJob.findFirst({
       where: {
@@ -225,17 +254,23 @@ export class LucaService {
     if (opts.tenantId && job.tenantId !== opts.tenantId) return null;
 
     if (job.mukellefId) {
-      const fiveMinAgo = new Date(Date.now() - 5 * 60 * 1000);
-      const runningSameMukellef = await (this.prisma as any).lucaFetchJob.findFirst({
+      const now = Date.now();
+      const others = await (this.prisma as any).lucaFetchJob.findMany({
         where: {
           tenantId: job.tenantId,
           mukellefId: job.mukellefId,
           status: 'running',
-          startedAt: { gte: fiveMinAgo },
           id: { not: jobId },
         },
-        select: { id: true, tip: true },
+        select: { id: true, tip: true, startedAt: true },
       });
+      // Aynı mükellefte kendi iş-tipi penceresi içinde GERÇEKTEN çalışan başka
+      // bir iş varsa beklet; pencereyi aşan (muhtemelen ölü) işi sayma.
+      const runningSameMukellef = others.find(
+        (o: any) =>
+          o.startedAt &&
+          now - new Date(o.startedAt).getTime() < this.lucaJobMaxRunMs(o.tip),
+      );
       if (runningSameMukellef) {
         await this.appendJobLog(
           job.id,
@@ -312,27 +347,86 @@ export class LucaService {
    *
    * Job creation öncesi çağrılır → temiz başlangıç.
    */
-  async cleanupStuckRunning(tenantId: string) {
-    const fiveMinAgo = new Date(Date.now() - 5 * 60 * 1000);
-    const result = await (this.prisma as any).lucaFetchJob.updateMany({
+  async cleanupStuckRunning(tenantId?: string) {
+    const now = Date.now();
+    // Aday: en kısa pencereyi (5dk) geçmiş running'ler + startedAt null.
+    // Gerçek "takıldı" kararı iş-tipine göre verilir (lucaJobMaxRunMs) →
+    // adayları çekip JS'te tipe göre ele. Böylece canlı uzun e-arşiv işi
+    // 5dk'da yanlışlıkla öldürülmez; yalnızca kendi penceresini aşan kapanır.
+    const shortestMs = 5 * 60 * 1000;
+    const candidates = await (this.prisma as any).lucaFetchJob.findMany({
       where: {
-        tenantId,
+        ...(tenantId ? { tenantId } : {}),
         status: 'running',
         OR: [
-          { startedAt: { lt: fiveMinAgo } },
+          { startedAt: { lt: new Date(now - shortestMs) } },
           { startedAt: null }, // hiç başlamamış ama running işaretli
         ],
       },
+      select: { id: true, tip: true, startedAt: true },
+    });
+    const staleIds = candidates
+      .filter(
+        (j: any) =>
+          !j.startedAt ||
+          now - new Date(j.startedAt).getTime() >= this.lucaJobMaxRunMs(j.tip),
+      )
+      .map((j: any) => j.id);
+    if (staleIds.length === 0) return 0;
+    const result = await (this.prisma as any).lucaFetchJob.updateMany({
+      where: { id: { in: staleIds }, status: 'running' },
       data: {
         status: 'failed',
-        errorMsg: 'Cleanup: 5dk+ stuck running, agent crash veya kill olmuş olabilir',
+        errorMsg: 'Cleanup: is-tipine gore ust sure asildi (agent crash/kill olmus olabilir)',
         finishedAt: new Date(),
       },
     });
     if (result.count > 0) {
-      this.logger.log(`Cleanup: ${result.count} stuck running job → failed (tenant=${tenantId})`);
+      this.logger.log(
+        `Cleanup: ${result.count} stuck running job → failed${tenantId ? ` (tenant=${tenantId})` : ' (tum kiracilar)'}`,
+      );
     }
     return result.count;
+  }
+
+  /**
+   * Bağımsız temizleyici (reaper) — luca-schedule tarafından dakikada bir
+   * çağrılır. Yeni iş yaratılmasa bile sistemi temiz tutar:
+   *  (1) Tüm kiracılarda iş-tipi penceresini aşan takılı running'leri kapat.
+   *  (2) 30+ dk hiç alınmamış pending iş için TEK görünür uyarı bildirimi —
+   *      kullanıcı körlemesine beklemesin (ajan + klasik Luca ekranı açık mı?).
+   *      Pending iş otomatik SİLİNMEZ (ajan o an kapalıysa kaybolmasın).
+   */
+  async reapStaleJobs() {
+    await this.cleanupStuckRunning().catch(() => {});
+
+    const cutoff = new Date(Date.now() - 30 * 60 * 1000);
+    const stalePending = await (this.prisma as any).lucaFetchJob.findMany({
+      where: { status: 'pending', createdAt: { lt: cutoff } },
+      select: { id: true, tenantId: true },
+      take: 500,
+    });
+    if (!stalePending.length) return;
+    const countByTenant = new Map<string, number>();
+    for (const j of stalePending) {
+      if (!j.tenantId) continue;
+      countByTenant.set(j.tenantId, (countByTenant.get(j.tenantId) || 0) + 1);
+    }
+    for (const [tenantId, count] of Array.from(countByTenant.entries())) {
+      await this.notifications
+        .createForTenant({
+          tenantId,
+          type: NOTIFICATION_TYPES.LUCA_SYNC_ERROR,
+          title: `Luca işi bekliyor (${count} adet, 30+ dk)`,
+          body: 'Luca veri çekme işleri 30 dakikadır sırada bekliyor. Ajanın çalıştığından ve klasik Luca ekranının açık olduğundan emin olun.',
+          metadata: { kind: 'stale-pending', count, link: '/panel/luca' },
+          dedupeKey: `luca-stale-pending:${tenantId}`,
+          dedupeWindowMin: 60,
+        })
+        .catch((e) => {
+          this.logger.warn(`Luca stale-pending notif failed: ${(e as Error).message}`);
+        });
+    }
   }
 
   async markJobFailed(jobId: string, errorMsg: string) {
@@ -365,98 +459,6 @@ export class LucaService {
       data: { status: 'failed', finishedAt: new Date() },
     });
 
-    // === IN-APP BILDIRIM: LUCA_SYNC_ERROR ===
-    if (job?.tenantId) {
-      let mukellefLabel = '';
-      if (job.mukellefId) {
-        const tp = await (this.prisma as any).taxpayer.findFirst({
-          where: { id: job.mukellefId, tenantId: job.tenantId },
-          select: { companyName: true, firstName: true, lastName: true },
-        }).catch(() => null);
-        if (tp) mukellefLabel = tp.companyName || [tp.firstName, tp.lastName].filter(Boolean).join(' ') || '';
-      }
-      const titleSuffix = mukellefLabel ? ` (${mukellefLabel})` : '';
-      await this.notifications.createForTenant({
-        tenantId: job.tenantId,
-        type: NOTIFICATION_TYPES.LUCA_SYNC_ERROR,
-        title: `Luca aktarim hatasi: ${job.tip || 'job'}${titleSuffix}`,
-        body: errorMsg.slice(0, 400),
-        metadata: {
-          jobId, jobTip: job.tip,
-          mukellefId: job.mukellefId || null,
-          mukellefLabel: mukellefLabel || null,
-          sessionId: job.sessionId || null,
-          donem: job.donem || null,
-          link: '/panel/luca',
-        },
-        dedupeKey: `luca-fail:${job.tip}:${job.mukellefId || 'all'}:${job.donem || 'na'}`,
-        dedupeWindowMin: 60 * 4,
-      }).catch((e) => {
-        this.logger.warn(`LUCA_SYNC_ERROR notif failed: ${(e as Error).message}`);
-      });
-    }
-
-    // === IN-APP BILDIRIM: LUCA_SYNC_ERROR ===
-    if (job?.tenantId) {
-      let mukellefLabel = '';
-      if (job.mukellefId) {
-        const tp = await (this.prisma as any).taxpayer.findFirst({
-          where: { id: job.mukellefId, tenantId: job.tenantId },
-          select: { companyName: true, firstName: true, lastName: true },
-        }).catch(() => null);
-        if (tp) mukellefLabel = tp.companyName || [tp.firstName, tp.lastName].filter(Boolean).join(' ') || '';
-      }
-      const titleSuffix = mukellefLabel ? ` (${mukellefLabel})` : '';
-      await this.notifications.createForTenant({
-        tenantId: job.tenantId,
-        type: NOTIFICATION_TYPES.LUCA_SYNC_ERROR,
-        title: `Luca aktarim hatasi: ${job.tip || 'job'}${titleSuffix}`,
-        body: errorMsg.slice(0, 400),
-        metadata: {
-          jobId, jobTip: job.tip,
-          mukellefId: job.mukellefId || null,
-          mukellefLabel: mukellefLabel || null,
-          sessionId: job.sessionId || null,
-          donem: job.donem || null,
-          link: '/panel/luca',
-        },
-        dedupeKey: `luca-fail:${job.tip}:${job.mukellefId || 'all'}:${job.donem || 'na'}`,
-        dedupeWindowMin: 60 * 4,
-      }).catch((e) => {
-        this.logger.warn(`LUCA_SYNC_ERROR notif failed: ${(e as Error).message}`);
-      });
-    }
-
-    // === IN-APP BILDIRIM: LUCA_SYNC_ERROR ===
-    if (job?.tenantId) {
-      let mukellefLabel = '';
-      if (job.mukellefId) {
-        const tp = await (this.prisma as any).taxpayer.findFirst({
-          where: { id: job.mukellefId, tenantId: job.tenantId },
-          select: { companyName: true, firstName: true, lastName: true },
-        }).catch(() => null);
-        if (tp) mukellefLabel = tp.companyName || [tp.firstName, tp.lastName].filter(Boolean).join(' ') || '';
-      }
-      const titleSuffix = mukellefLabel ? ` (${mukellefLabel})` : '';
-      await this.notifications.createForTenant({
-        tenantId: job.tenantId,
-        type: NOTIFICATION_TYPES.LUCA_SYNC_ERROR,
-        title: `Luca aktarim hatasi: ${job.tip || 'job'}${titleSuffix}`,
-        body: errorMsg.slice(0, 400),
-        metadata: {
-          jobId, jobTip: job.tip,
-          mukellefId: job.mukellefId || null,
-          mukellefLabel: mukellefLabel || null,
-          sessionId: job.sessionId || null,
-          donem: job.donem || null,
-          link: '/panel/luca',
-        },
-        dedupeKey: `luca-fail:${job.tip}:${job.mukellefId || 'all'}:${job.donem || 'na'}`,
-        dedupeWindowMin: 60 * 4,
-      }).catch((e) => {
-        this.logger.warn(`LUCA_SYNC_ERROR notif failed: ${(e as Error).message}`);
-      });
-    }
     if (job?.sessionId && ['KDV_191', 'KDV_391', 'ISLETME_GELIR', 'ISLETME_GIDER'].includes(job.tip)) {
       await this.prisma.kdvControlSession.updateMany({
         where: { id: job.sessionId, tenantId: job.tenantId, status: 'PROCESSING' },
@@ -558,20 +560,9 @@ export class LucaService {
       .split(',')
       .map((s) => s.trim().toUpperCase())
       .filter(Boolean);
-    // Stale job'ları temizle: 10 dk'dan eski "running" varsa fail yap
-    const staleCutoff = new Date(Date.now() - 20 * 60 * 1000);
-    await (this.prisma as any).lucaFetchJob.updateMany({
-      where: {
-        tenantId,
-        status: 'running',
-        startedAt: { lt: staleCutoff },
-      },
-      data: {
-        status: 'failed',
-        errorMsg: 'Zaman aşımı: 20dk+ running kalan iş otomatik kapatıldı',
-        finishedAt: new Date(),
-      },
-    });
+    // Stale job temizliği: iş-tipine göre üst süreyi aşan running'leri kapat
+    // (eşikler tek kaynak — lucaJobMaxRunMs; eski sabit 20dk kaldırıldı).
+    await this.cleanupStuckRunning(tenantId).catch(() => {});
 
     const where: any = { tenantId };
     if (requestedStatus) {
@@ -596,19 +587,7 @@ export class LucaService {
     const deviceId = opts.deviceId?.trim();
     const limit = Math.min(Math.max(Number(opts.limit || 20), 1), 50);
     const requestedStatus = String(opts.status || '').trim().toLowerCase();
-    const staleCutoff = new Date(Date.now() - 20 * 60 * 1000);
-    await (this.prisma as any).lucaFetchJob.updateMany({
-      where: {
-        tenantId,
-        status: 'running',
-        startedAt: { lt: staleCutoff },
-      },
-      data: {
-        status: 'failed',
-        errorMsg: 'Zaman asimi: 20dk+ running kalan is otomatik kapatildi',
-        finishedAt: new Date(),
-      },
-    });
+    await this.cleanupStuckRunning(tenantId).catch(() => {});
     const where: any = {
       tenantId,
       status:
@@ -716,19 +695,28 @@ export class LucaService {
     //  birbirini kırıyor.)
     //
     // KRİTİK: "stuck running" job'ları sayma — agent kill edildiyse DB'de
-    // running kalır, sonsuza kadar o mükellefi bloke eder. Sadece son
-    // 5 dakikada başlamış olanı gerçekten running say.
-    const fiveMinAgo = new Date(Date.now() - 5 * 60 * 1000);
-    const runningMukellefs = await (this.prisma as any).lucaFetchJob.findMany({
+    // running kalır, sonsuza kadar o mükellefi bloke eder. Bir running iş
+    // SADECE kendi iş-tipi penceresi (lucaJobMaxRunMs) içinde "meşgul" sayılır;
+    // pencereyi aşan iş zaten reaper ile kapatılacak, mükellefi bloke etmesin.
+    const nowMs = Date.now();
+    const runningJobs = await (this.prisma as any).lucaFetchJob.findMany({
       where: {
         tenantId,
         status: 'running',
-        startedAt: { gte: fiveMinAgo }, // son 5dk içinde başlamış olanlar
       },
-      select: { mukellefId: true },
+      select: { mukellefId: true, tip: true, startedAt: true },
     });
     const busyMukellefIds = Array.from(
-      new Set(runningMukellefs.map((j: any) => j.mukellefId).filter(Boolean)),
+      new Set(
+        runningJobs
+          .filter(
+            (j: any) =>
+              j.startedAt &&
+              nowMs - new Date(j.startedAt).getTime() < this.lucaJobMaxRunMs(j.tip),
+          )
+          .map((j: any) => j.mukellefId)
+          .filter(Boolean),
+      ),
     );
 
     const jobs = await (this.prisma as any).lucaFetchJob.findMany({
