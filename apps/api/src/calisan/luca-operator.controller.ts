@@ -1,4 +1,4 @@
-import { Body, Controller, Post, Req, Res, UseGuards } from '@nestjs/common';
+import { Body, Controller, Delete, Get, Param, Post, Req, Res, UseGuards } from '@nestjs/common';
 import { AuthGuard } from '@nestjs/passport';
 import { LucaOperatorService } from './luca-operator.service';
 
@@ -47,5 +47,17 @@ export class LucaOperatorController {
     } finally {
       res.end();
     }
+  }
+
+  /** Öğrenilen beceriler (portal paneli). */
+  @Get('skills')
+  skills(@Req() req: any) {
+    return this.operator.getSkillsForUi(req.user?.tenantId);
+  }
+
+  /** Beceriyi sil. */
+  @Delete('skills/:id')
+  deleteSkill(@Req() req: any, @Param('id') id: string) {
+    return this.operator.deleteSkill(req.user?.tenantId, id);
   }
 }

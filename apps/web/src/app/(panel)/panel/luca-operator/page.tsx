@@ -1,5 +1,6 @@
 import { BotMessageSquare, Info } from 'lucide-react';
 import { LucaOperatorChat } from './_components/LucaOperatorChat';
+import { LucaSkillsPanel } from './_components/LucaSkillsPanel';
 
 const ACCENT = '#d4b876'; // altın — Luca Operatörü modül kimliği
 
@@ -76,6 +77,9 @@ export default function LucaOperatorPage() {
           <b style={{ color: '#fafaf9' }}> Gönder/Kaydet/Onayla</b> gibi geri dönülmez adımlarda önce senin onayını alır.
         </span>
       </div>
+
+      {/* Öğrenilen beceriler */}
+      <LucaSkillsPanel />
 
       {/* Sohbet — kalan alanı doldurur */}
       <div className="min-h-0 flex-1">

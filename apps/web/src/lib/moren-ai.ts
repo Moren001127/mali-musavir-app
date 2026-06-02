@@ -69,6 +69,24 @@ export async function chat(body: {
   return data;
 }
 
+export interface LucaSkill {
+  id: string;
+  ad: string;
+  aciklama: string;
+  adimSayisi: number;
+  updatedAt: string;
+}
+
+/** Luca Operatörü — öğrenilen beceriler. */
+export async function getLucaSkills(): Promise<LucaSkill[]> {
+  const { data } = await api.get('/luca-operator/skills');
+  return data;
+}
+
+export async function deleteLucaSkill(id: string): Promise<void> {
+  await api.delete(`/luca-operator/skills/${id}`);
+}
+
 /** Luca Operatörü akış olayı (SSE). */
 export type LucaStreamEvent =
   | { type: 'text'; delta: string }

@@ -194,6 +194,29 @@ export class LucaOperatorService {
     }
   }
 
+  /** UI: kayıtlı becerileri id ile listele (portal paneli için). */
+  async getSkillsForUi(tenantId: string) {
+    const rows = await this.prisma.aiMemory.findMany({
+      where: { tenantId: tenantId || 'default', scope: 'luca-skill', isActive: true },
+      orderBy: { updatedAt: 'desc' },
+      take: 100,
+    });
+    return rows.map((r) => {
+      let c: any = {};
+      try { c = JSON.parse(r.content); } catch {}
+      return { id: r.id, ad: r.title, aciklama: c.aciklama || '', adimSayisi: (c.adimlar || []).length, updatedAt: r.updatedAt };
+    });
+  }
+
+  /** UI: beceriyi sil (pasifle). */
+  async deleteSkill(tenantId: string, id: string) {
+    await this.prisma.aiMemory.updateMany({
+      where: { id, tenantId: tenantId || 'default', scope: 'luca-skill' },
+      data: { isActive: false },
+    });
+    return { ok: true };
+  }
+
   private pickModel(text: string): string {
     const t = text || '';
     if (CRITICAL_PATTERNS.some((p) => p.test(t))) return MODEL_CRITICAL;
