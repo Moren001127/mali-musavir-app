@@ -5,6 +5,7 @@ import { useState } from 'react';
 import { api } from '@/lib/api';
 import { toast } from 'sonner';
 import {
+  ArrowLeft,
   ArrowRight,
   Bot,
   Check,
@@ -81,16 +82,33 @@ export default function AyarlarPage() {
 function PageHeader() {
   return (
     <header
-      className="rounded-xl border p-5"
-      style={{ borderColor: LINE, background: CARD }}
+      className="relative overflow-hidden rounded-2xl border p-5"
+      style={{
+        borderColor: 'rgba(255,255,255,0.08)',
+        background:
+          'radial-gradient(120% 140% at 0% 0%, rgba(212,184,118,0.18), transparent 45%), radial-gradient(120% 140% at 100% 0%, rgba(217,160,108,0.12), transparent 45%), #0f0d0b',
+      }}
     >
-      <p className="text-[11px] font-semibold uppercase tracking-[0.14em]" style={{ color: GOLD }}>
-        Sistem
-      </p>
-      <h1 className="mt-1 text-[28px] font-semibold leading-tight" style={{ color: TEXT }}>
-        Ayarlar
-      </h1>
-      <p className="mt-1.5 max-w-2xl text-[13px]" style={{ color: MUTED }}>
+      {/* üst renk şeridi */}
+      <div
+        className="absolute inset-x-0 top-0 h-1"
+        style={{ background: 'linear-gradient(90deg, #d4b876, #e0b878, #d9a06c, #b8863a)' }}
+      />
+      <Link href="/panel" className="inline-flex items-center gap-1.5 text-[12px] font-medium" style={{ color: MUTED }}>
+        <ArrowLeft size={14} /> Panel
+      </Link>
+      <div className="mt-2 flex items-center gap-2.5">
+        <h1 className="flex items-center gap-2.5 text-[28px] font-semibold leading-tight" style={{ color: TEXT }}>
+          <span
+            className="grid h-10 w-10 place-items-center rounded-xl"
+            style={{ background: 'linear-gradient(135deg, #d4b876, #8b7649)', boxShadow: '0 6px 18px rgba(212,184,118,0.35)' }}
+          >
+            <Settings2 size={22} style={{ color: '#1a1410' }} />
+          </span>
+          Ayarlar
+        </h1>
+      </div>
+      <p className="mt-2 max-w-2xl text-[13px]" style={{ color: MUTED }}>
         Erişim, entegrasyonlar, portal şifreleri ve mesaj metinleri.
       </p>
     </header>
@@ -142,19 +160,26 @@ function StatusStrip() {
   return (
     <div className="grid gap-2.5 sm:grid-cols-3">
       {items.map((it) => {
+        const fg = it.ok ? GREEN : RED;
         const Inner = (
           <div
-            className="flex items-center gap-3 rounded-xl border px-4 py-3 transition"
-            style={{ borderColor: LINE, background: CARD }}
-            onMouseEnter={(e) => (e.currentTarget.style.background = CARD_HOVER)}
-            onMouseLeave={(e) => (e.currentTarget.style.background = CARD)}
+            className="relative flex items-center gap-3 overflow-hidden rounded-xl border px-4 py-3 transition"
+            style={{
+              borderColor: it.ok ? 'rgba(74,222,128,0.28)' : 'rgba(248,113,113,0.28)',
+              background: `linear-gradient(135deg, ${fg}1f, rgba(255,255,255,0.02)), ${CARD}`,
+            }}
+            onMouseEnter={(e) => (e.currentTarget.style.background = `linear-gradient(135deg, ${fg}2e, rgba(255,255,255,0.03)), ${CARD_HOVER}`)}
+            onMouseLeave={(e) => (e.currentTarget.style.background = `linear-gradient(135deg, ${fg}1f, rgba(255,255,255,0.02)), ${CARD}`)}
           >
             <div
               className="flex h-9 w-9 shrink-0 items-center justify-center rounded-lg border"
               style={{
                 borderColor: it.ok ? 'rgba(74,222,128,0.35)' : 'rgba(248,113,113,0.35)',
-                color: it.ok ? GREEN : RED,
-                background: it.ok ? 'rgba(74,222,128,0.07)' : 'rgba(248,113,113,0.07)',
+                color: it.ok ? '#0f0d0b' : '#1a0f0f',
+                background: it.ok
+                  ? 'linear-gradient(135deg, #4ade80, #16a34a)'
+                  : 'linear-gradient(135deg, #f87171, #dc2626)',
+                boxShadow: `0 4px 12px ${fg}33`,
               }}
             >
               <it.icon size={16} />
@@ -260,18 +285,24 @@ function SettingsTile({
     violet: { fg: '#a78bfa', bg: 'rgba(167,139,250,0.10)', bd: 'rgba(167,139,250,0.32)' },
   };
   const t = TONES[tone] || TONES.gold;
+  const idle = `linear-gradient(135deg, ${t.fg}1f, rgba(255,255,255,0.02)), ${CARD}`;
+  const hover = `linear-gradient(135deg, ${t.fg}2e, rgba(255,255,255,0.03)), ${CARD_HOVER}`;
   return (
     <Link
       href={href}
-      className="group rounded-xl border p-4 transition"
-      style={{ borderColor: LINE, background: CARD }}
-      onMouseEnter={(e) => (e.currentTarget.style.background = CARD_HOVER)}
-      onMouseLeave={(e) => (e.currentTarget.style.background = CARD)}
+      className="group relative overflow-hidden rounded-xl border p-4 transition"
+      style={{ borderColor: t.bd, background: idle }}
+      onMouseEnter={(e) => (e.currentTarget.style.background = hover)}
+      onMouseLeave={(e) => (e.currentTarget.style.background = idle)}
     >
+      <div
+        className="absolute inset-x-0 top-0 h-[3px]"
+        style={{ background: `linear-gradient(90deg, ${t.fg}, ${t.fg}33)` }}
+      />
       <div className="flex items-center gap-3">
         <div
-          className="flex h-10 w-10 shrink-0 items-center justify-center rounded-lg border"
-          style={{ borderColor: t.bd, color: t.fg, background: t.bg }}
+          className="flex h-10 w-10 shrink-0 items-center justify-center rounded-lg"
+          style={{ color: '#0f0d0b', background: `linear-gradient(135deg, ${t.fg}, ${t.fg}aa)`, boxShadow: `0 4px 12px ${t.fg}33` }}
         >
           <Icon size={18} />
         </div>
@@ -325,9 +356,13 @@ function CollapsibleSection({
   return (
     <section
       id={id}
-      className="rounded-xl border overflow-hidden"
-      style={{ borderColor: LINE, background: CARD }}
+      className="relative rounded-xl border overflow-hidden"
+      style={{ borderColor: t.bd, background: `linear-gradient(135deg, ${t.fg}14, rgba(255,255,255,0.015)), ${CARD}` }}
     >
+      <div
+        className="absolute inset-x-0 top-0 h-[3px]"
+        style={{ background: `linear-gradient(90deg, ${t.fg}, ${t.fg}33)` }}
+      />
       <button
         type="button"
         onClick={() => setOpen((v) => !v)}
@@ -336,8 +371,8 @@ function CollapsibleSection({
         onMouseLeave={(e) => (e.currentTarget.style.background = 'transparent')}
       >
         <div
-          className="flex h-10 w-10 shrink-0 items-center justify-center rounded-lg border"
-          style={{ borderColor: t.bd, background: t.bg, color: t.fg }}
+          className="flex h-10 w-10 shrink-0 items-center justify-center rounded-lg"
+          style={{ background: `linear-gradient(135deg, ${t.fg}, ${t.fg}aa)`, color: '#0f0d0b', boxShadow: `0 4px 12px ${t.fg}33` }}
         >
           <Icon size={18} />
         </div>
@@ -405,7 +440,14 @@ function MessageTemplatesSection() {
   };
 
   return (
-    <section className="rounded-xl border p-5" style={{ borderColor: LINE, background: CARD }}>
+    <section
+      className="relative overflow-hidden rounded-xl border p-5"
+      style={{ borderColor: 'rgba(244,114,182,0.28)', background: 'linear-gradient(135deg, rgba(244,114,182,0.14), rgba(255,255,255,0.015)), ' + CARD }}
+    >
+      <div
+        className="absolute inset-x-0 top-0 h-[3px]"
+        style={{ background: 'linear-gradient(90deg, #f472b6, rgba(244,114,182,0.20))' }}
+      />
       <SectionHeader
         icon={MessageSquareText}
         title="Mesaj Şablonları"
@@ -589,8 +631,8 @@ function SectionHeader({
   return (
     <div className="mb-4 flex items-start gap-3">
       <div
-        className="flex h-9 w-9 shrink-0 items-center justify-center rounded-lg border"
-        style={{ borderColor: t.bd, background: t.bg, color: t.fg }}
+        className="flex h-9 w-9 shrink-0 items-center justify-center rounded-lg"
+        style={{ background: `linear-gradient(135deg, ${t.fg}, ${t.fg}aa)`, color: '#0f0d0b', boxShadow: `0 4px 12px ${t.fg}33` }}
       >
         <Icon size={16} />
       </div>

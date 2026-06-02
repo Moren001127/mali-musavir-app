@@ -1,17 +1,19 @@
 'use client';
 
 import React, { useMemo, useState } from 'react';
+import Link from 'next/link';
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import { toast } from 'sonner';
 import {
   AlertTriangle,
-  Bell,
+  ArrowLeft,
   Calendar,
   CheckCircle2,
   FileInput,
   Inbox,
   Loader2,
   MessageSquare,
+  MessageSquareText,
   RefreshCw,
   Send,
   Settings,
@@ -20,7 +22,6 @@ import {
 import { api } from '@/lib/api';
 
 const GOLD = '#d4b876';
-const GOLD_SOFT = '#b8a06f';
 const AYLAR = ['Ocak', 'Subat', 'Mart', 'Nisan', 'Mayis', 'Haziran', 'Temmuz', 'Agustos', 'Eylul', 'Ekim', 'Kasim', 'Aralik'];
 
 type ReminderRow = {
@@ -134,43 +135,58 @@ export default function HatirlatmalarPage() {
   }, [evrakQuery.data, tahsilatQuery.data, tahsilatRows]);
 
   return (
-    <div className="space-y-6 max-w-7xl">
-      <div className="pb-5 flex items-end justify-between flex-wrap gap-3" style={{ borderBottom: '1px solid rgba(255,255,255,0.05)' }}>
-        <div>
-          <div className="flex items-center gap-2.5 mb-2">
-            <span className="w-[26px] h-px" style={{ background: GOLD }} />
-            <span className="text-[10px] uppercase font-bold tracking-[.18em]" style={{ color: GOLD_SOFT }}>
-              <Bell size={10} className="inline mr-1" /> WHATSAPP OTOMASYON MERKEZI
+    <div className="space-y-5 max-w-7xl pb-12">
+      {/* === BASLIK (AI Maliyet imzasi — zumrut/teal temasi) === */}
+      <header
+        className="relative overflow-hidden rounded-2xl border p-5"
+        style={{
+          borderColor: 'rgba(255,255,255,0.08)',
+          background:
+            'radial-gradient(120% 140% at 0% 0%, rgba(16,185,129,0.18), transparent 45%), radial-gradient(120% 140% at 100% 0%, rgba(45,212,191,0.14), transparent 45%), #0f0d0b',
+        }}
+      >
+        {/* ust renk seridi */}
+        <div
+          className="absolute inset-x-0 top-0 h-1"
+          style={{ background: 'linear-gradient(90deg, #10b981, #2dd4bf, #34d399, #a3e635, #d4b876)' }}
+        />
+        <Link href="/panel" className="inline-flex items-center gap-1.5 text-[12px] font-medium" style={{ color: 'rgba(250,250,249,0.58)' }}>
+          <ArrowLeft size={14} /> Panel
+        </Link>
+        <div className="mt-2 flex items-center justify-between gap-3 flex-wrap">
+          <h1 className="flex items-center gap-2.5 text-[28px] font-semibold leading-tight" style={{ color: '#fafaf9' }}>
+            <span
+              className="grid h-10 w-10 place-items-center rounded-xl"
+              style={{ background: 'linear-gradient(135deg, #10b981, #2dd4bf)', boxShadow: '0 6px 18px rgba(16,185,129,0.35)' }}
+            >
+              <MessageSquareText size={22} style={{ color: '#08130f' }} />
             </span>
-          </div>
-          <h1 style={{ fontFamily: 'Fraunces, serif', fontSize: 38, fontWeight: 600, color: '#fafaf9', letterSpacing: '-.03em', lineHeight: 1 }}>
             WhatsApp Otomasyonu
           </h1>
-          <p className="text-[13px] mt-2" style={{ color: 'rgba(250,250,249,0.48)' }}>
-            Evrak, tahsilat ve portal mesajlarını göndermeden önce alıcıları, atlama sebeplerini ve mesaj içeriğini kontrol et.
-          </p>
+          <div className="flex items-center gap-2 flex-wrap">
+            <select value={month} onChange={(e) => setMonth(Number(e.target.value))} className="px-3 py-2 rounded-lg text-sm border outline-none cursor-pointer" style={selectStyle}>
+              {AYLAR.map((a, i) => <option key={a} value={i + 1} style={{ background: '#0f0d0b' }}>{a}</option>)}
+            </select>
+            <select value={year} onChange={(e) => setYear(Number(e.target.value))} className="px-3 py-2 rounded-lg text-sm border outline-none cursor-pointer" style={selectStyle}>
+              {[year - 1, year, year + 1].map((y) => <option key={y} value={y} style={{ background: '#0f0d0b' }}>{y}</option>)}
+            </select>
+            <button
+              onClick={() => {
+                evrakQuery.refetch();
+                tahsilatQuery.refetch();
+              }}
+              className="inline-flex items-center gap-1.5 rounded-lg px-3 py-2 text-[12px] font-semibold transition-colors"
+              title="Yenile"
+              style={{ background: 'rgba(16,185,129,0.16)', color: '#34d399', border: '1px solid rgba(16,185,129,0.35)' }}
+            >
+              <RefreshCw size={14} /> Yenile
+            </button>
+          </div>
         </div>
-
-        <div className="flex items-center gap-2 flex-wrap">
-          <select value={month} onChange={(e) => setMonth(Number(e.target.value))} className="px-3 py-2 rounded-lg text-sm border outline-none cursor-pointer" style={selectStyle}>
-            {AYLAR.map((a, i) => <option key={a} value={i + 1} style={{ background: '#0f0d0b' }}>{a}</option>)}
-          </select>
-          <select value={year} onChange={(e) => setYear(Number(e.target.value))} className="px-3 py-2 rounded-lg text-sm border outline-none cursor-pointer" style={selectStyle}>
-            {[year - 1, year, year + 1].map((y) => <option key={y} value={y} style={{ background: '#0f0d0b' }}>{y}</option>)}
-          </select>
-          <button
-            onClick={() => {
-              evrakQuery.refetch();
-              tahsilatQuery.refetch();
-            }}
-            className="h-9 w-9 rounded-lg inline-flex items-center justify-center"
-            title="Yenile"
-            style={{ background: 'rgba(255,255,255,0.04)', border: '1px solid rgba(255,255,255,0.08)', color: '#fafaf9' }}
-          >
-            <RefreshCw size={14} />
-          </button>
-        </div>
-      </div>
+        <p className="mt-2 max-w-2xl text-[13px]" style={{ color: 'rgba(250,250,249,0.6)' }}>
+          Evrak, tahsilat ve portal mesajlarını göndermeden önce alıcıları, atlama sebeplerini ve mesaj içeriğini kontrol et.
+        </p>
+      </header>
 
       <div className="grid grid-cols-1 md:grid-cols-4 gap-3">
         <SummaryCard icon={MessageSquare} label="Meta Cloud" value={whatsappReady ? 'Hazır' : 'Eksik'} tone={whatsappReady ? 'green' : 'amber'} sub={evrakQuery.data?.whatsapp?.provider || 'WhatsApp'} />
@@ -194,8 +210,8 @@ export default function HatirlatmalarPage() {
       <div className="grid grid-cols-1 xl:grid-cols-[0.85fr_1.15fr] gap-4">
         <section className="rounded-2xl overflow-hidden" style={{ background: 'rgba(255,255,255,0.025)', border: '1px solid rgba(255,255,255,0.07)' }}>
           <div className="px-5 py-4 flex items-start gap-3" style={{ borderBottom: '1px solid rgba(255,255,255,0.06)' }}>
-            <span className="w-10 h-10 rounded-xl inline-flex items-center justify-center" style={{ background: 'rgba(212,184,118,0.12)', border: '1px solid rgba(212,184,118,0.28)' }}>
-              <Settings size={17} style={{ color: GOLD }} />
+            <span className="w-10 h-10 rounded-xl inline-flex items-center justify-center" style={{ background: 'linear-gradient(135deg, #d4b876, #b8863a)', boxShadow: '0 6px 16px rgba(212,184,118,0.30)' }}>
+              <Settings size={17} style={{ color: '#1a1410' }} />
             </span>
             <div>
               <h2 className="text-[16px] font-semibold" style={{ color: '#fafaf9', fontFamily: 'Fraunces, serif' }}>Bağlantı Ayarları</h2>
@@ -214,8 +230,8 @@ export default function HatirlatmalarPage() {
         <section className="rounded-2xl overflow-hidden" style={{ background: 'rgba(255,255,255,0.025)', border: '1px solid rgba(255,255,255,0.07)' }}>
           <div className="px-5 py-4 flex items-start justify-between gap-3" style={{ borderBottom: '1px solid rgba(255,255,255,0.06)' }}>
             <div className="flex items-start gap-3">
-              <span className="w-10 h-10 rounded-xl inline-flex items-center justify-center" style={{ background: 'rgba(16,185,129,0.12)', border: '1px solid rgba(16,185,129,0.28)' }}>
-                <Inbox size={17} style={{ color: '#10b981' }} />
+              <span className="w-10 h-10 rounded-xl inline-flex items-center justify-center" style={{ background: 'linear-gradient(135deg, #10b981, #2dd4bf)', boxShadow: '0 6px 16px rgba(16,185,129,0.30)' }}>
+                <Inbox size={17} style={{ color: '#08130f' }} />
               </span>
               <div>
                 <h2 className="text-[16px] font-semibold" style={{ color: '#fafaf9', fontFamily: 'Fraunces, serif' }}>Gelen Mesajlar</h2>
@@ -250,6 +266,7 @@ export default function HatirlatmalarPage() {
           title="Evrak Hatırlatma"
           desc="Evrak teslim günü gelen, evrakı henüz işaretlenmemiş mükellefler."
           icon={FileInput}
+          accent={GOLD}
           loading={evrakQuery.isLoading}
           preview={evrakQuery.data}
           rows={evrakRows}
@@ -277,6 +294,7 @@ export default function HatirlatmalarPage() {
           title="Tahsilat Hatırlatma"
           desc="Cari hesabında açık bakiye olan mükellefler."
           icon={Wallet}
+          accent="#60a5fa"
           loading={tahsilatQuery.isLoading}
           preview={tahsilatQuery.data}
           rows={tahsilatRows}
@@ -302,15 +320,20 @@ function SummaryCard({ icon: Icon, label, value, sub, tone }: { icon: any; label
   };
   const color = colors[tone];
   return (
-    <div className="rounded-2xl p-4" style={{ background: `linear-gradient(135deg, ${color}12, rgba(255,255,255,0.02))`, border: `1px solid ${color}30` }}>
+    <div
+      className="relative overflow-hidden rounded-2xl border p-4"
+      style={{ borderColor: `${color}40`, background: `linear-gradient(135deg, ${color}26, ${color}0a 58%, rgba(255,255,255,0.02))` }}
+    >
       <div className="flex items-center justify-between">
-        <span className="text-[10px] uppercase font-bold tracking-[.16em]" style={{ color: 'rgba(250,250,249,0.46)' }}>{label}</span>
-        <Icon size={15} style={{ color }} />
+        <span className="text-[10px] uppercase font-bold tracking-[.16em]" style={{ color }}>{label}</span>
+        <span className="grid h-7 w-7 place-items-center rounded-lg" style={{ background: `${color}22`, border: `1px solid ${color}40` }}>
+          <Icon size={14} style={{ color }} />
+        </span>
       </div>
-      <div className="mt-3" style={{ fontFamily: 'Fraunces, serif', fontSize: 30, fontWeight: 700, color: '#fafaf9', lineHeight: 1 }}>
+      <div className="mt-3 text-[30px] font-semibold leading-none" style={{ color: '#fafaf9' }}>
         {value}
       </div>
-      <div className="text-[11.5px] mt-1 truncate" style={{ color: 'rgba(250,250,249,0.48)' }}>{sub}</div>
+      <div className="text-[11.5px] mt-1 truncate" style={{ color: 'rgba(250,250,249,0.55)' }}>{sub}</div>
     </div>
   );
 }
@@ -363,6 +386,7 @@ function ReminderPanel({
   title,
   desc,
   icon: Icon,
+  accent = GOLD,
   loading,
   preview,
   rows,
@@ -374,6 +398,7 @@ function ReminderPanel({
   title: string;
   desc: string;
   icon: any;
+  accent?: string;
   loading: boolean;
   preview?: PreviewData;
   rows: ReminderRow[];
@@ -383,11 +408,12 @@ function ReminderPanel({
   controls?: React.ReactNode;
 }) {
   return (
-    <section className="rounded-2xl overflow-hidden" style={{ background: 'rgba(255,255,255,0.025)', border: '1px solid rgba(255,255,255,0.07)' }}>
+    <section className="relative rounded-2xl overflow-hidden" style={{ background: 'rgba(255,255,255,0.025)', border: `1px solid ${accent}26` }}>
+      <div className="absolute inset-x-0 top-0 h-[3px]" style={{ background: `linear-gradient(90deg, ${accent}, ${accent}33)` }} />
       <div className="px-5 py-4 flex items-start justify-between gap-4" style={{ borderBottom: '1px solid rgba(255,255,255,0.06)' }}>
         <div className="flex items-start gap-3">
-          <span className="w-10 h-10 rounded-xl inline-flex items-center justify-center" style={{ background: 'rgba(212,184,118,0.12)', border: '1px solid rgba(212,184,118,0.28)' }}>
-            <Icon size={17} style={{ color: GOLD }} />
+          <span className="w-10 h-10 rounded-xl inline-flex items-center justify-center" style={{ background: `linear-gradient(135deg, ${accent}, ${accent}aa)`, boxShadow: `0 6px 16px ${accent}30` }}>
+            <Icon size={17} style={{ color: '#0f0d0b' }} />
           </span>
           <div>
             <h2 className="text-[16px] font-semibold" style={{ color: '#fafaf9', fontFamily: 'Fraunces, serif' }}>{title}</h2>
@@ -399,7 +425,7 @@ function ReminderPanel({
           onClick={onSend}
           disabled={sending || loading || !preview?.gonderilecek}
           className="inline-flex items-center gap-2 px-3 py-2 rounded-lg text-[12.5px] font-bold disabled:opacity-45"
-          style={{ background: `linear-gradient(135deg, ${GOLD}, ${GOLD_SOFT})`, color: '#0f0d0b' }}
+          style={{ background: `linear-gradient(135deg, ${accent}, ${accent}aa)`, color: '#0f0d0b' }}
         >
           {sending ? <Loader2 size={14} className="animate-spin" /> : <Send size={14} />}
           {sendLabel}

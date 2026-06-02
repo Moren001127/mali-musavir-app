@@ -1,8 +1,9 @@
 'use client';
 import { useState, useMemo, useEffect, useRef } from 'react';
+import Link from 'next/link';
 import { useQuery } from '@tanstack/react-query';
 import { agentsApi, AGENTS, AgentEvent } from '@/lib/agents';
-import { Search, Pause, Play, Download } from 'lucide-react';
+import { ArrowLeft, History, Search, Pause, Play, Download, CheckCircle2, SkipForward, AlertTriangle } from 'lucide-react';
 import { LogCard } from '../_components/LogCard';
 
 export default function LoglarPage() {
@@ -60,25 +61,45 @@ export default function LoglarPage() {
 
   return (
     <div className="space-y-5 h-full flex flex-col max-w-7xl">
-      {/* HEADER */}
-      <div className="flex items-end justify-between pb-5" style={{ borderBottom: '1px solid rgba(255,255,255,0.05)' }}>
-        <div>
-          <div className="flex items-center gap-2.5 mb-2">
-            <span className="w-[26px] h-px" style={{ background: '#d4b876' }} />
-            <span className="text-[10px] uppercase font-bold tracking-[.18em]" style={{ color: '#b8a06f' }}>Ajan</span>
-          </div>
-          <h1 style={{ fontFamily: 'Fraunces, serif', fontSize: 36, fontWeight: 600, color: '#fafaf9', letterSpacing: '-.03em' }}>
+      {/* === BAŞLIK (AI Maliyet imzası — çelik mavi teması) === */}
+      <header
+        className="relative overflow-hidden rounded-2xl border p-5 flex-shrink-0"
+        style={{
+          borderColor: 'rgba(255,255,255,0.08)',
+          background:
+            'radial-gradient(120% 140% at 0% 0%, rgba(56,189,248,0.16), transparent 45%), radial-gradient(120% 140% at 100% 0%, rgba(99,102,241,0.12), transparent 45%), #0f0d0b',
+        }}
+      >
+        {/* üst renk şeridi */}
+        <div
+          className="absolute inset-x-0 top-0 h-1"
+          style={{ background: 'linear-gradient(90deg, #38bdf8, #60a5fa, #818cf8, #22d3ee)' }}
+        />
+        <Link href="/panel" className="inline-flex items-center gap-1.5 text-[12px] font-medium" style={{ color: 'rgba(250,250,249,0.58)' }}>
+          <ArrowLeft size={14} /> Panel
+        </Link>
+        <div className="mt-2">
+          <h1 className="flex items-center gap-2.5 text-[28px] font-semibold leading-tight" style={{ color: '#fafaf9' }}>
+            <span
+              className="grid h-10 w-10 place-items-center rounded-xl"
+              style={{ background: 'linear-gradient(135deg, #38bdf8, #3b82f6)', boxShadow: '0 6px 18px rgba(56,189,248,0.35)' }}
+            >
+              <History size={22} style={{ color: '#08131f' }} />
+            </span>
             Yapılan İşlemler
           </h1>
-          <p className="text-[13px] mt-1.5" style={{ color: 'rgba(250,250,249,0.42)' }}>
-            Canlı terminal akışı — ajan her işlem yaptığında anında görünür
-          </p>
         </div>
-      </div>
+        <p className="mt-2 max-w-2xl text-[13px]" style={{ color: 'rgba(250,250,249,0.6)' }}>
+          Canlı terminal akışı — ajan her işlem yaptığında anında görünür
+        </p>
+      </header>
 
       <div
-        className="rounded-xl p-3 border flex-shrink-0"
-        style={{ background: 'rgba(255,255,255,0.02)', borderColor: 'rgba(255,255,255,0.05)' }}
+        className="rounded-2xl p-3 border flex-shrink-0"
+        style={{
+          borderColor: 'rgba(56,189,248,0.18)',
+          background: 'linear-gradient(135deg, rgba(56,189,248,0.08), rgba(99,102,241,0.05) 60%, rgba(255,255,255,0.02))',
+        }}
       >
         <div className="flex flex-wrap gap-2 items-center">
           <select
@@ -141,21 +162,26 @@ export default function LoglarPage() {
           </label>
           <button
             onClick={exportLog}
-            className="inline-flex items-center gap-1 px-3 py-1.5 rounded-lg text-sm"
-            style={{ background: 'rgba(255,255,255,0.05)', color: '#fafaf9' }}
+            className="inline-flex items-center gap-1 px-3 py-1.5 rounded-lg text-sm font-medium transition-colors"
+            style={{ background: 'rgba(56,189,248,0.16)', color: '#60a5fa', border: '1px solid rgba(56,189,248,0.35)' }}
           >
             <Download size={13} /> Dışa aktar
           </button>
         </div>
-        <div className="flex gap-4 mt-2 text-xs" style={{ color: 'rgba(250,250,249,0.45)' }}>
-          <span>Toplam: <strong style={{ color: '#fafaf9' }}>{total}</strong></span>
-          <span>Onaylandı: <strong style={{ color: '#059669' }}>{onaylandi}</strong></span>
-          <span>Atlandı: <strong style={{ color: '#d97706' }}>{atlandi}</strong></span>
-          <span>Hata: <strong style={{ color: '#dc2626' }}>{hata}</strong></span>
-          {!paused && <span className="ml-auto inline-flex items-center gap-1">
-            <span className="w-2 h-2 rounded-full animate-pulse" style={{ background: '#10b981' }} />
-            CANLI · 2 saniye yenileme
-          </span>}
+        <div className="flex flex-wrap items-center gap-2 mt-3">
+          <CountBadge icon={History} label="Toplam" value={total} color="#60a5fa" />
+          <CountBadge icon={CheckCircle2} label="Onaylandı" value={onaylandi} color="#4ade80" />
+          <CountBadge icon={SkipForward} label="Atlandı" value={atlandi} color="#fbbf24" />
+          <CountBadge icon={AlertTriangle} label="Hata" value={hata} color="#f87171" />
+          {!paused && (
+            <span
+              className="ml-auto inline-flex items-center gap-1.5 rounded-full px-2.5 py-1 text-[11px] font-medium"
+              style={{ color: '#4ade80', background: 'rgba(74,222,128,0.12)', border: '1px solid rgba(74,222,128,0.28)' }}
+            >
+              <span className="w-2 h-2 rounded-full animate-pulse" style={{ background: '#10b981' }} />
+              CANLI · 2 saniye yenileme
+            </span>
+          )}
         </div>
       </div>
 
@@ -164,7 +190,7 @@ export default function LoglarPage() {
         className="rounded-xl border flex-1 overflow-y-auto font-mono text-xs"
         style={{
           background: '#0a0e1a',
-          borderColor: 'rgba(255,255,255,0.05)',
+          borderColor: 'rgba(56,189,248,0.18)',
           color: '#cbd5e1',
           minHeight: '400px',
         }}
@@ -181,6 +207,21 @@ export default function LoglarPage() {
           </div>
         )}
       </div>
+    </div>
+  );
+}
+
+function CountBadge({ icon: Icon, label, value, color }: { icon: any; label: string; value: number; color: string }) {
+  return (
+    <div
+      className="inline-flex items-center gap-2 rounded-xl px-3 py-1.5"
+      style={{ background: `linear-gradient(135deg, ${color}22, ${color}0a)`, border: `1px solid ${color}33` }}
+    >
+      <span className="grid h-6 w-6 place-items-center rounded-lg" style={{ background: `${color}22`, border: `1px solid ${color}40` }}>
+        <Icon size={13} style={{ color }} />
+      </span>
+      <span className="text-[11px] font-medium" style={{ color: 'rgba(250,250,249,0.62)' }}>{label}</span>
+      <span className="text-[14px] font-semibold tabular-nums" style={{ color }}>{value}</span>
     </div>
   );
 }

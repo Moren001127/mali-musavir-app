@@ -6,7 +6,7 @@ import { AgentDefinition, agentsApi } from '@/lib/agents';
 import { api } from '@/lib/api';
 import {
   Bot, Receipt, FileInput, Mailbox, Calculator, BookOpen, ShieldCheck,
-  Activity, CheckCircle2, Clock, ArrowRight, TrendingUp, AlertCircle, Zap,
+  Activity, CheckCircle2, Clock, ArrowRight, ArrowLeft, TrendingUp, AlertCircle, Zap,
   Cpu, DollarSign, XCircle, HelpCircle, Plus, Wallet,
 } from 'lucide-react';
 import AgentControlCard from './_components/AgentControlCard';
@@ -115,23 +115,45 @@ export default function AjanlarDashboard() {
 
   return (
     <div className="space-y-5 max-w-7xl">
-      {/* HEADER */}
-      <div className="flex items-end justify-between pb-5" style={{ borderBottom: '1px solid rgba(255,255,255,0.05)' }}>
-        <div>
-          <h1 style={{ fontFamily: 'Fraunces, serif', fontSize: 36, fontWeight: 600, color: '#fafaf9', letterSpacing: '-.03em' }}>
+      {/* === BAŞLIK (AI Maliyet imzası — indigo/mavi teması) === */}
+      <header
+        className="relative overflow-hidden rounded-2xl border p-5"
+        style={{
+          borderColor: 'rgba(255,255,255,0.08)',
+          background:
+            'radial-gradient(120% 140% at 0% 0%, rgba(99,102,241,0.18), transparent 45%), radial-gradient(120% 140% at 100% 0%, rgba(56,189,248,0.14), transparent 45%), #0f0d0b',
+        }}
+      >
+        {/* üst renk şeridi */}
+        <div
+          className="absolute inset-x-0 top-0 h-1"
+          style={{ background: 'linear-gradient(90deg, #6366f1, #818cf8, #60a5fa, #38bdf8, #22d3ee)' }}
+        />
+        <Link href="/panel" className="inline-flex items-center gap-1.5 text-[12px] font-medium" style={{ color: 'rgba(250,250,249,0.58)' }}>
+          <ArrowLeft size={14} /> Panel
+        </Link>
+        <div className="mt-2 flex items-center justify-between gap-3 flex-wrap">
+          <h1 className="flex items-center gap-2.5 text-[28px] font-semibold leading-tight" style={{ color: '#fafaf9' }}>
+            <span
+              className="grid h-10 w-10 place-items-center rounded-xl"
+              style={{ background: 'linear-gradient(135deg, #6366f1, #3b82f6)', boxShadow: '0 6px 18px rgba(99,102,241,0.35)' }}
+            >
+              <Cpu size={22} style={{ color: '#ffffff' }} />
+            </span>
             Otomasyon Ajanları
           </h1>
-          <p className="text-[13px] mt-1.5" style={{ color: 'rgba(250,250,249,0.42)' }}>
-            Mali müşavirlik işleyişinin tekrarlayan kısımlarını otomasyon ajanlarına bırakın
-          </p>
+          <Link
+            href="/panel/ajanlar/loglar"
+            className="inline-flex items-center gap-1.5 rounded-lg px-3 py-2 text-[12px] font-semibold transition-colors"
+            style={{ background: 'rgba(99,102,241,0.16)', color: '#818cf8', border: '1px solid rgba(99,102,241,0.35)' }}
+          >
+            <Activity size={14} /> Yapılan İşlemler <ArrowRight size={12} />
+          </Link>
         </div>
-        <Link href="/panel/ajanlar/loglar" className="inline-flex items-center gap-1.5 px-[18px] py-2.5 text-[13px] font-medium rounded-[10px] transition-all"
-          style={{ background: 'rgba(255,255,255,0.03)', border: '1px solid rgba(255,255,255,0.08)', color: 'rgba(250,250,249,0.75)' }}
-          onMouseEnter={(e) => { e.currentTarget.style.background = 'rgba(184,160,111,0.08)'; e.currentTarget.style.borderColor = 'rgba(184,160,111,0.2)'; e.currentTarget.style.color = '#fafaf9'; }}
-          onMouseLeave={(e) => { e.currentTarget.style.background = 'rgba(255,255,255,0.03)'; e.currentTarget.style.borderColor = 'rgba(255,255,255,0.08)'; e.currentTarget.style.color = 'rgba(250,250,249,0.75)'; }}>
-          <Activity size={14} /> Yapılan İşlemler <ArrowRight size={12} />
-        </Link>
-      </div>
+        <p className="mt-2 max-w-2xl text-[13px]" style={{ color: 'rgba(250,250,249,0.6)' }}>
+          Mali müşavirlik işleyişinin tekrarlayan kısımlarını otomasyon ajanlarına bırakın
+        </p>
+      </header>
 
       {/* Stats */}
       <div className="grid grid-cols-2 md:grid-cols-4 gap-3">
@@ -234,14 +256,17 @@ function AiUsageWidget({ data }: { data: any }) {
 
   const Kart = ({ title, d, accent }: { title: string; d: any; accent: string }) => (
     <div
-      className="rounded-xl p-4 border"
-      style={{ background: 'rgba(255,255,255,0.02)', borderColor: 'rgba(255,255,255,0.05)' }}
+      className="relative overflow-hidden rounded-2xl p-4 border"
+      style={{ borderColor: `${accent}40`, background: `linear-gradient(135deg, ${accent}26, ${accent}0a 58%, rgba(255,255,255,0.02))` }}
     >
+      <div className="absolute inset-x-0 top-0 h-[3px]" style={{ background: `linear-gradient(90deg, ${accent}, ${accent}33)` }} />
       <div className="flex items-center justify-between mb-3">
-        <div className="text-xs uppercase font-bold tracking-wider" style={{ color: accent }}>
+        <div className="text-[10px] uppercase font-bold tracking-[.16em]" style={{ color: accent }}>
           {title}
         </div>
-        <Cpu size={14} style={{ color: accent }} />
+        <span className="grid h-7 w-7 place-items-center rounded-lg" style={{ background: `${accent}22`, border: `1px solid ${accent}40` }}>
+          <Cpu size={14} style={{ color: accent }} />
+        </span>
       </div>
 
       {/* Sorgu sayısı büyük */}
@@ -326,12 +351,13 @@ function AiUsageWidget({ data }: { data: any }) {
 
       {/* Bakiye Kartı */}
       <div
-        className="rounded-xl p-4 border mb-3 relative overflow-hidden"
+        className="rounded-2xl p-4 border mb-3 relative overflow-hidden"
         style={{
-          background: 'linear-gradient(135deg, rgba(16,185,129,.08), rgba(59,130,246,.05))',
-          borderColor: 'rgba(255,255,255,0.05)',
+          background: 'linear-gradient(135deg, rgba(16,185,129,.16), rgba(16,185,129,.05) 58%, rgba(255,255,255,0.02))',
+          borderColor: 'rgba(16,185,129,0.40)',
         }}
       >
+        <div className="absolute inset-x-0 top-0 h-[3px]" style={{ background: 'linear-gradient(90deg, #10b981, rgba(16,185,129,0.2))' }} />
         <div className="flex items-center justify-between flex-wrap gap-3">
           <div className="flex items-center gap-3">
             <div
@@ -474,20 +500,17 @@ function AiUsageWidget({ data }: { data: any }) {
 function StatBox({ label, value, color, icon: Icon }: any) {
   return (
     <div
-      className="rounded-xl p-4 border flex items-center gap-3"
-      style={{ background: 'rgba(255,255,255,0.02)', borderColor: 'rgba(255,255,255,0.05)' }}
+      className="relative overflow-hidden rounded-2xl border p-4"
+      style={{ borderColor: `${color}40`, background: `linear-gradient(135deg, ${color}26, ${color}0a 58%, rgba(255,255,255,0.02))` }}
     >
-      <div
-        className="w-10 h-10 rounded-lg flex items-center justify-center flex-shrink-0"
-        style={{ background: `${color}15`, color }}
-      >
-        <Icon size={18} />
+      <div className="flex items-center justify-between">
+        <span className="text-[10px] uppercase font-bold tracking-[.16em]" style={{ color }}>{label}</span>
+        <span className="grid h-7 w-7 place-items-center rounded-lg" style={{ background: `${color}22`, border: `1px solid ${color}40` }}>
+          <Icon size={14} style={{ color }} />
+        </span>
       </div>
-      <div>
-        <div className="text-xs" style={{ color: 'rgba(250,250,249,0.45)' }}>{label}</div>
-        <div className="text-xl font-bold tabular-nums" style={{ color }}>
-          {typeof value === 'number' ? value.toLocaleString('tr-TR') : value}
-        </div>
+      <div className="mt-3 text-[30px] font-semibold leading-none tabular-nums" style={{ color: '#fafaf9' }}>
+        {typeof value === 'number' ? value.toLocaleString('tr-TR') : value}
       </div>
     </div>
   );

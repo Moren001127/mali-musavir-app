@@ -108,20 +108,43 @@ export default function LucaSessionPage() {
 
   return (
     <div className="space-y-5 max-w-6xl">
-      <div className="pb-5" style={{ borderBottom: '1px solid rgba(255,255,255,0.05)' }}>
-        <div className="flex items-center gap-2.5 mb-2">
-          <span className="w-[26px] h-px" style={{ background: GOLD }} />
-          <span className="text-[10px] uppercase font-bold tracking-[.18em]" style={{ color: '#b8a06f' }}>
-            <ShieldCheck size={10} className="inline mr-1" /> Luca
-          </span>
+      {/* === BASLIK (AI Maliyet imzasi — camgobegi/teal + altin temasi) === */}
+      <header
+        className="relative overflow-hidden rounded-2xl border p-5"
+        style={{
+          borderColor: 'rgba(255,255,255,0.08)',
+          background:
+            'radial-gradient(120% 140% at 0% 0%, rgba(45,212,191,0.18), transparent 45%), radial-gradient(120% 140% at 100% 0%, rgba(212,184,118,0.14), transparent 45%), #0f0d0b',
+        }}
+      >
+        {/* ust renk seridi */}
+        <div
+          className="absolute inset-x-0 top-0 h-1"
+          style={{ background: 'linear-gradient(90deg, #2dd4bf, #22d3ee, #5eead4, #d4b876)' }}
+        />
+        <div className="flex items-center justify-between gap-3 flex-wrap">
+          <h1 className="flex items-center gap-2.5 text-[28px] font-semibold leading-tight" style={{ color: '#fafaf9' }}>
+            <span
+              className="grid h-10 w-10 place-items-center rounded-xl"
+              style={{ background: 'linear-gradient(135deg, #2dd4bf, #0d9488)', boxShadow: '0 6px 18px rgba(45,212,191,0.35)' }}
+            >
+              <ShieldCheck size={22} style={{ color: '#07201c' }} />
+            </span>
+            Luca Oturum Yöneticisi
+          </h1>
+          <button
+            onClick={() => refetch()}
+            className="inline-flex items-center gap-1.5 rounded-lg px-3 py-2 text-[12px] font-semibold transition-colors"
+            title="Yenile"
+            style={{ background: 'rgba(45,212,191,0.16)', color: '#5eead4', border: '1px solid rgba(45,212,191,0.35)' }}
+          >
+            <RefreshCw size={14} className={isLoading ? 'animate-spin' : ''} /> Yenile
+          </button>
         </div>
-        <h1 style={{ fontFamily: 'Fraunces, serif', fontSize: 34, fontWeight: 600, color: '#fafaf9', letterSpacing: '-.03em' }}>
-          Luca Oturum Yöneticisi
-        </h1>
-        <p className="text-[13px] mt-1.5" style={{ color: 'rgba(250,250,249,0.48)' }}>
+        <p className="mt-2 max-w-2xl text-[13px]" style={{ color: 'rgba(250,250,249,0.6)' }}>
           Luca kullanan modüller için ortak oturum, cihaz ve güvenlik kodu paneli.
         </p>
-      </div>
+      </header>
 
       <div className="grid grid-cols-1 lg:grid-cols-3 gap-3">
         <StatusCard
@@ -173,7 +196,7 @@ export default function LucaSessionPage() {
           <button
             onClick={() => refetch()}
             className="px-3 py-2 rounded-md text-xs font-semibold flex items-center gap-2"
-            style={{ background: 'rgba(212,184,118,0.12)', color: GOLD, border: '1px solid rgba(212,184,118,0.28)' }}
+            style={{ background: 'rgba(45,212,191,0.16)', color: '#5eead4', border: '1px solid rgba(45,212,191,0.35)' }}
           >
             {isLoading ? <Loader2 size={13} className="animate-spin" /> : <RefreshCw size={13} />}
             Yenile
@@ -182,9 +205,13 @@ export default function LucaSessionPage() {
       )}
 
       <div className="grid grid-cols-1 lg:grid-cols-2 gap-4">
-        <section className="rounded-lg border p-4" style={{ background: 'rgba(255,255,255,0.02)', borderColor: 'rgba(255,255,255,0.06)' }}>
+        <section className="relative overflow-hidden rounded-2xl border p-4" style={{ background: 'rgba(255,255,255,0.02)', borderColor: 'rgba(255,255,255,0.06)' }}>
+          <div className="absolute inset-x-0 top-0 h-[3px]" style={{ background: 'linear-gradient(90deg, #2dd4bf, rgba(45,212,191,0.2))' }} />
           <h2 className="text-sm font-bold mb-3 flex items-center gap-2" style={{ color: '#fafaf9' }}>
-            <Monitor size={15} style={{ color: GOLD }} /> Bağlı Cihazlar
+            <span className="grid h-7 w-7 place-items-center rounded-lg" style={{ background: 'linear-gradient(135deg, #2dd4bf, #0d9488)', boxShadow: '0 4px 12px rgba(45,212,191,0.30)' }}>
+              <Monitor size={14} style={{ color: '#07201c' }} />
+            </span>
+            Bağlı Cihazlar
           </h2>
           <div className="space-y-2">
             {devices.length === 0 ? (
@@ -207,9 +234,13 @@ export default function LucaSessionPage() {
           </div>
         </section>
 
-        <section className="rounded-lg border p-4" style={{ background: 'rgba(255,255,255,0.02)', borderColor: 'rgba(255,255,255,0.06)' }}>
+        <section className="relative overflow-hidden rounded-2xl border p-4" style={{ background: 'rgba(255,255,255,0.02)', borderColor: 'rgba(255,255,255,0.06)' }}>
+          <div className="absolute inset-x-0 top-0 h-[3px]" style={{ background: 'linear-gradient(90deg, #d4b876, rgba(212,184,118,0.2))' }} />
           <h2 className="text-sm font-bold mb-3 flex items-center gap-2" style={{ color: '#fafaf9' }}>
-            <CheckCircle2 size={15} style={{ color: GOLD }} /> Son Güvenlik Kodları
+            <span className="grid h-7 w-7 place-items-center rounded-lg" style={{ background: 'linear-gradient(135deg, #d4b876, #b8863a)', boxShadow: '0 4px 12px rgba(212,184,118,0.30)' }}>
+              <CheckCircle2 size={14} style={{ color: '#1a1410' }} />
+            </span>
+            Son Güvenlik Kodları
           </h2>
           <p className="mb-3 text-[11px] leading-relaxed" style={{ color: 'rgba(250,250,249,0.50)' }}>
             Bunlar girilecek kod degil; Luca'nin actigi guvenlik kodu istek kayitlaridir.
@@ -261,13 +292,17 @@ function LucaWorkerAccountsPanel() {
 
   return (
     <section
-      className="rounded-lg border p-4"
+      className="relative overflow-hidden rounded-2xl border p-4"
       style={{ background: 'rgba(255,255,255,0.02)', borderColor: 'rgba(255,255,255,0.06)' }}
     >
+      <div className="absolute inset-x-0 top-0 h-[3px]" style={{ background: 'linear-gradient(90deg, #2dd4bf, #d4b876)' }} />
       <div className="flex flex-col gap-2 sm:flex-row sm:items-center sm:justify-between mb-3">
         <div>
           <h2 className="text-sm font-bold flex items-center gap-2" style={{ color: '#fafaf9' }}>
-            <Users size={15} style={{ color: GOLD }} /> Luca Kullanici Havuzu
+            <span className="grid h-7 w-7 place-items-center rounded-lg" style={{ background: 'linear-gradient(135deg, #2dd4bf, #0d9488)', boxShadow: '0 4px 12px rgba(45,212,191,0.30)' }}>
+              <Users size={14} style={{ color: '#07201c' }} />
+            </span>
+            Luca Kullanici Havuzu
           </h2>
           <div className="text-[11px] mt-1" style={{ color: 'rgba(250,250,249,0.48)' }}>
             5 Luca kullanicisini buradan tanimla; sifreler kaydedilirken sifreli tutulur.
@@ -564,12 +599,18 @@ function StatusCard({
 }) {
   const color = tone === 'ok' ? '#4ade80' : '#fbbf24';
   return (
-    <div className="rounded-lg border p-4" style={{ background: 'rgba(255,255,255,0.02)', borderColor: 'rgba(255,255,255,0.06)' }}>
-      <div className="flex items-center gap-2 text-[11px] uppercase font-bold tracking-[.12em]" style={{ color: 'rgba(250,250,249,0.46)' }}>
-        <Icon size={13} style={{ color }} /> {title}
+    <div
+      className="relative overflow-hidden rounded-2xl border p-4"
+      style={{ borderColor: `${color}40`, background: `linear-gradient(135deg, ${color}26, ${color}0a 58%, rgba(255,255,255,0.02))` }}
+    >
+      <div className="flex items-center justify-between">
+        <span className="text-[11px] uppercase font-bold tracking-[.12em]" style={{ color }}>{title}</span>
+        <span className="grid h-7 w-7 place-items-center rounded-lg" style={{ background: `${color}22`, border: `1px solid ${color}40` }}>
+          <Icon size={14} style={{ color }} />
+        </span>
       </div>
-      <div className="mt-2 text-sm font-semibold truncate" style={{ color: '#fafaf9' }}>{value}</div>
-      <div className="mt-1 text-xs truncate" style={{ color: 'rgba(250,250,249,0.48)' }}>{detail}</div>
+      <div className="mt-3 text-sm font-semibold truncate" style={{ color: '#fafaf9' }}>{value}</div>
+      <div className="mt-1 text-xs truncate" style={{ color: 'rgba(250,250,249,0.5)' }}>{detail}</div>
     </div>
   );
 }

@@ -1,5 +1,6 @@
 'use client';
 import { useState } from 'react';
+import Link from 'next/link';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import { api } from '@/lib/api';
 import { toast } from 'sonner';
@@ -12,12 +13,12 @@ import {
   Trash2,
   Plus,
   X,
-  AlertTriangle,
+  ArrowLeft,
   CheckCircle2,
   FileQuestion,
 } from 'lucide-react';
 
-const GOLD = '#d4b876';
+const ROSE = '#f43f5e';
 
 type LockedModule = {
   id: string;
@@ -94,29 +95,46 @@ export default function KilitliModullerPage() {
 
   return (
     <div className="space-y-6">
-      {/* Header */}
-      <div className="flex items-start justify-between">
-        <div>
-          <h1 className="text-2xl font-semibold flex items-center gap-2" style={{ color: '#fafaf9' }}>
-            <Lock size={22} style={{ color: GOLD }} />
+      {/* === BAŞLIK (AI Maliyet imzası — gül-kırmızı kilit teması) === */}
+      <header
+        className="relative overflow-hidden rounded-2xl border p-5"
+        style={{
+          borderColor: 'rgba(255,255,255,0.08)',
+          background:
+            'radial-gradient(120% 140% at 0% 0%, rgba(244,63,94,0.16), transparent 45%), radial-gradient(120% 140% at 100% 0%, rgba(251,191,36,0.12), transparent 45%), #0f0d0b',
+        }}
+      >
+        {/* üst renk şeridi */}
+        <div
+          className="absolute inset-x-0 top-0 h-1"
+          style={{ background: 'linear-gradient(90deg, #f43f5e, #fb7185, #fbbf24, #d4b876)' }}
+        />
+        <Link href="/panel" className="inline-flex items-center gap-1.5 text-[12px] font-medium" style={{ color: 'rgba(250,250,249,0.58)' }}>
+          <ArrowLeft size={14} /> Panel
+        </Link>
+        <div className="mt-2 flex items-center justify-between gap-3 flex-wrap">
+          <h1 className="flex items-center gap-2.5 text-[28px] font-semibold leading-tight" style={{ color: '#fafaf9' }}>
+            <span
+              className="grid h-10 w-10 place-items-center rounded-xl"
+              style={{ background: 'linear-gradient(135deg, #f43f5e, #be123c)', boxShadow: '0 6px 18px rgba(244,63,94,0.35)' }}
+            >
+              <Lock size={22} style={{ color: '#ffffff' }} />
+            </span>
             Kilitli Modüller
           </h1>
-          <p className="text-sm mt-1" style={{ color: 'rgba(250,250,249,0.5)' }}>
-            Hash baseline takibi yapılan kritik dosyalar. SystemHealth her 5 dakikada bir kontrol eder, drift varsa kritik uyarı atar.
-          </p>
+          <button
+            onClick={() => setAddOpen(true)}
+            className="inline-flex items-center gap-2 rounded-lg px-4 py-2 text-[13px] font-semibold transition-colors hover:opacity-90"
+            style={{ background: 'linear-gradient(135deg, #f43f5e, #be123c)', color: '#fff' }}
+          >
+            <Plus size={16} />
+            Yeni Modül Kilitle
+          </button>
         </div>
-        <button
-          onClick={() => setAddOpen(true)}
-          className="h-10 px-4 rounded-lg flex items-center gap-2 text-sm font-medium hover:opacity-80"
-          style={{
-            background: GOLD,
-            color: '#0f0d0b',
-          }}
-        >
-          <Plus size={16} />
-          Yeni Modül Kilitle
-        </button>
-      </div>
+        <p className="mt-2 max-w-2xl text-[13px]" style={{ color: 'rgba(250,250,249,0.6)' }}>
+          Hash baseline takibi yapılan kritik dosyalar. SystemHealth her 5 dakikada bir kontrol eder, drift varsa kritik uyarı atar.
+        </p>
+      </header>
 
       {/* Sayaclar */}
       <div className="grid grid-cols-1 sm:grid-cols-3 gap-3">
@@ -171,7 +189,7 @@ export default function KilitliModullerPage() {
 
         {!isLoading && list.length === 0 && (
           <div className="px-5 py-12 text-center">
-            <ShieldCheck size={48} style={{ color: GOLD, margin: '0 auto 12px' }} />
+            <ShieldCheck size={48} style={{ color: ROSE, margin: '0 auto 12px' }} />
             <h3 className="text-[14px] font-semibold" style={{ color: '#fafaf9' }}>
               Henüz kilitli modül yok
             </h3>
@@ -205,12 +223,12 @@ export default function KilitliModullerPage() {
       <div
         className="rounded-xl p-4 text-sm"
         style={{
-          background: 'rgba(212,184,118,0.06)',
-          border: '1px solid rgba(212,184,118,0.2)',
+          background: 'rgba(244,63,94,0.06)',
+          border: '1px solid rgba(244,63,94,0.2)',
           color: 'rgba(250,250,249,0.7)',
         }}
       >
-        <p className="font-semibold mb-2" style={{ color: GOLD }}>Nasıl çalışır?</p>
+        <p className="font-semibold mb-2" style={{ color: ROSE }}>Nasıl çalışır?</p>
         <ul className="space-y-1.5 text-xs leading-relaxed">
           <li>
             • <strong>Lock</strong>: Kritik bir dosyayı baseline'a ekler. SHA256 hash'i hesaplar, DB'ye yazar.
@@ -257,26 +275,26 @@ function StatCard({
 }) {
   return (
     <div
-      className="rounded-xl p-4"
+      className="relative overflow-hidden rounded-2xl border p-4"
       style={{
-        background: 'rgba(255,255,255,0.02)',
-        border: `1px solid ${value > 0 ? color + '40' : 'rgba(255,255,255,0.05)'}`,
+        borderColor: `${color}40`,
+        background: `linear-gradient(135deg, ${color}22, ${color}0a 58%, rgba(255,255,255,0.02))`,
       }}
     >
       <div className="flex items-start justify-between">
-        <div>
-          <p className="text-xs uppercase tracking-wider" style={{ color: 'rgba(250,250,249,0.5)' }}>
-            {label}
-          </p>
-          <p className="text-3xl font-bold mt-1" style={{ color: value > 0 ? color : '#fafaf9' }}>
-            {value}
-          </p>
-          <p className="text-[11px] mt-1" style={{ color: 'rgba(250,250,249,0.4)' }}>
-            {description}
-          </p>
-        </div>
-        <Icon size={20} style={{ color, opacity: 0.7 }} />
+        <span className="text-[10px] uppercase font-bold tracking-[.16em]" style={{ color }}>
+          {label}
+        </span>
+        <span className="grid h-7 w-7 place-items-center rounded-lg" style={{ background: `${color}22`, border: `1px solid ${color}40` }}>
+          <Icon size={14} style={{ color }} />
+        </span>
       </div>
+      <p className="mt-3 text-[34px] font-bold leading-none" style={{ color: value > 0 ? color : '#fafaf9' }}>
+        {value}
+      </p>
+      <p className="text-[11px] mt-1.5" style={{ color: 'rgba(250,250,249,0.5)' }}>
+        {description}
+      </p>
     </div>
   );
 }
@@ -431,7 +449,12 @@ function AddModal({
           style={{ borderBottom: '1px solid rgba(255,255,255,0.05)' }}
         >
           <h3 className="text-[15px] font-semibold flex items-center gap-2" style={{ color: '#fafaf9' }}>
-            <Lock size={16} style={{ color: GOLD }} />
+            <span
+              className="grid h-7 w-7 place-items-center rounded-lg"
+              style={{ background: 'linear-gradient(135deg, #f43f5e, #be123c)', boxShadow: '0 4px 12px rgba(244,63,94,0.35)' }}
+            >
+              <Lock size={14} style={{ color: '#ffffff' }} />
+            </span>
             Yeni Modül Kilitle
           </h3>
           <button
@@ -520,10 +543,10 @@ function AddModal({
           <button
             onClick={submit}
             disabled={submitting}
-            className="h-10 px-5 rounded-lg text-sm font-medium hover:opacity-80 flex items-center gap-2"
+            className="h-10 px-5 rounded-lg text-sm font-medium hover:opacity-90 flex items-center gap-2"
             style={{
-              background: GOLD,
-              color: '#0f0d0b',
+              background: 'linear-gradient(135deg, #f43f5e, #be123c)',
+              color: '#fff',
             }}
           >
             {submitting ? (

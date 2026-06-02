@@ -1,9 +1,11 @@
 'use client';
 
 import React, { useMemo, useState } from 'react';
+import Link from 'next/link';
 import { useQuery } from '@tanstack/react-query';
 import {
   Activity,
+  ArrowLeft,
   Calendar,
   Filter,
   Loader2,
@@ -22,7 +24,7 @@ import {
   type AuditFacets,
 } from '@/lib/audit';
 
-const GOLD = '#d4b876';
+const AMBER = '#fbbf24';
 
 export default function DenetimPage() {
   const [filters, setFilters] = useState<AuditFilters>({ limit: 100, offset: 0 });
@@ -73,47 +75,57 @@ export default function DenetimPage() {
 
   return (
     <div className="space-y-5 max-w-7xl">
-      {/* Header */}
-      <div
-        className="pb-5"
-        style={{ borderBottom: '1px solid rgba(255,255,255,0.05)' }}
+      {/* === BAŞLIK (AI Maliyet imzası — kehribar-amber teması) === */}
+      <header
+        className="relative overflow-hidden rounded-2xl border p-5"
+        style={{
+          borderColor: 'rgba(255,255,255,0.08)',
+          background:
+            'radial-gradient(120% 140% at 0% 0%, rgba(251,191,36,0.18), transparent 45%), radial-gradient(120% 140% at 100% 0%, rgba(217,119,6,0.12), transparent 45%), #0f0d0b',
+        }}
       >
-        <div className="flex items-center gap-2.5 mb-2">
-          <span className="w-[26px] h-px" style={{ background: GOLD }} />
-          <span
-            className="text-[10px] uppercase font-bold tracking-[.18em]"
-            style={{ color: '#b8a06f' }}
-          >
-            <ShieldCheck size={10} className="inline mr-1" /> Denetim
-          </span>
-        </div>
-        <h1
-          style={{
-            fontFamily: 'Fraunces, serif',
-            fontSize: 34,
-            fontWeight: 600,
-            color: '#fafaf9',
-            letterSpacing: '-.03em',
-          }}
+        {/* üst renk şeridi */}
+        <div
+          className="absolute inset-x-0 top-0 h-1"
+          style={{ background: 'linear-gradient(90deg, #fbbf24, #f59e0b, #fb923c, #d4b876)' }}
+        />
+        <Link
+          href="/panel/ayarlar"
+          className="inline-flex items-center gap-1.5 text-[12px] font-medium"
+          style={{ color: 'rgba(250,250,249,0.58)' }}
         >
-          Denetim Günlüğü
-        </h1>
-        <p className="text-[13px] mt-1.5" style={{ color: 'rgba(250,250,249,0.42)' }}>
+          <ArrowLeft size={14} /> Ayarlar
+        </Link>
+        <div className="mt-2 flex items-center justify-between gap-3 flex-wrap">
+          <h1
+            className="flex items-center gap-2.5 text-[28px] font-semibold leading-tight"
+            style={{ color: '#fafaf9' }}
+          >
+            <span
+              className="grid h-10 w-10 place-items-center rounded-xl"
+              style={{ background: 'linear-gradient(135deg, #fbbf24, #d97706)', boxShadow: '0 6px 18px rgba(251,191,36,0.35)' }}
+            >
+              <ShieldCheck size={22} style={{ color: '#1a1205' }} />
+            </span>
+            Denetim Günlüğü
+          </h1>
+        </div>
+        <p className="mt-2 max-w-2xl text-[13px]" style={{ color: 'rgba(250,250,249,0.6)' }}>
           Sistemde yapılan tüm yazma işlemleri (oluşturma, güncelleme, silme, giriş)
           buradan izlenir. Sadece ADMIN kullanıcılar görebilir.
         </p>
-      </div>
+      </header>
 
       {/* Mini bar chart — son 30 gün */}
       <div
-        className="rounded-xl border p-5"
+        className="rounded-2xl border p-5"
         style={{
-          background: 'rgba(255,255,255,0.02)',
-          borderColor: 'rgba(255,255,255,0.05)',
+          background: 'linear-gradient(135deg, rgba(251,191,36,0.07), rgba(245,158,11,0.03) 60%, rgba(255,255,255,0.02))',
+          borderColor: 'rgba(251,191,36,0.18)',
         }}
       >
         <div className="flex items-center gap-2 mb-3">
-          <Activity size={14} style={{ color: GOLD }} />
+          <Activity size={14} style={{ color: AMBER }} />
           <span
             className="text-[11px] uppercase font-bold tracking-[.12em]"
             style={{ color: 'rgba(250,250,249,0.6)' }}
@@ -137,13 +149,13 @@ export default function DenetimPage() {
                 style={{
                   height: `${(s.count / maxStat) * 100}%`,
                   minHeight: 2,
-                  background: `linear-gradient(180deg, ${GOLD}, rgba(184,160,111,0.4))`,
+                  background: `linear-gradient(180deg, ${AMBER}, rgba(245,158,11,0.4))`,
                 }}
                 title={`${s.day}: ${s.count}`}
               >
                 <span
                   className="absolute -top-5 left-1/2 -translate-x-1/2 text-[10px] opacity-0 group-hover:opacity-100 transition"
-                  style={{ color: GOLD, whiteSpace: 'nowrap' }}
+                  style={{ color: AMBER, whiteSpace: 'nowrap' }}
                 >
                   {s.count}
                 </span>
@@ -155,10 +167,10 @@ export default function DenetimPage() {
 
       {/* Filtre barı */}
       <div
-        className="rounded-xl border p-4"
+        className="rounded-2xl border p-4"
         style={{
-          background: 'rgba(255,255,255,0.02)',
-          borderColor: 'rgba(255,255,255,0.05)',
+          background: 'linear-gradient(135deg, rgba(251,191,36,0.05), rgba(255,255,255,0.02) 55%)',
+          borderColor: 'rgba(251,191,36,0.14)',
         }}
       >
         <div className="flex flex-wrap gap-3 items-end">
@@ -187,9 +199,9 @@ export default function DenetimPage() {
                 onClick={applySearch}
                 className="px-3 py-2.5 rounded-lg text-sm font-semibold flex items-center gap-1.5"
                 style={{
-                  background: 'rgba(184,160,111,0.12)',
-                  color: GOLD,
-                  border: '1px solid rgba(184,160,111,0.3)',
+                  background: 'rgba(251,191,36,0.14)',
+                  color: AMBER,
+                  border: '1px solid rgba(251,191,36,0.30)',
                 }}
               >
                 <Filter size={13} /> Uygula
@@ -371,10 +383,10 @@ export default function DenetimPage() {
 
       {/* Liste */}
       <div
-        className="rounded-xl border overflow-hidden"
+        className="rounded-2xl border overflow-hidden"
         style={{
           background: 'rgba(255,255,255,0.02)',
-          borderColor: 'rgba(255,255,255,0.05)',
+          borderColor: 'rgba(251,191,36,0.16)',
         }}
       >
         {isLoading ? (
@@ -389,7 +401,7 @@ export default function DenetimPage() {
         ) : (
           <table className="w-full text-sm">
             <thead>
-              <tr style={{ background: 'rgba(255,255,255,0.03)' }}>
+              <tr style={{ background: 'rgba(251,191,36,0.06)' }}>
                 <th className="px-3 py-2.5 text-left text-[11px] uppercase tracking-wider" style={{ color: 'rgba(250,250,249,0.5)' }}>
                   Tarih
                 </th>
@@ -484,9 +496,9 @@ export default function DenetimPage() {
               disabled={page >= totalPages || isFetching}
               className="px-3 py-1.5 rounded-md text-xs disabled:opacity-30"
               style={{
-                background: 'rgba(184,160,111,0.12)',
-                color: GOLD,
-                border: '1px solid rgba(184,160,111,0.3)',
+                background: 'rgba(251,191,36,0.14)',
+                color: AMBER,
+                border: '1px solid rgba(251,191,36,0.30)',
               }}
             >
               Sonraki
