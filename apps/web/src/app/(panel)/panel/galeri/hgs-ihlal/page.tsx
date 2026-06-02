@@ -190,10 +190,10 @@ export default function HgsIhlalPage() {
       {/* ═══ ÖZET KARTLARI ═══ */}
       {ozet && (
         <div className="grid grid-cols-2 sm:grid-cols-4 gap-3">
-          <OzetCard label="Toplam Araç" value={ozet.toplamArac} icon={Car} color={ACCENT} />
-          <OzetCard label="İhlalli Araç" value={ozet.ihlalliArac} icon={AlertCircle} color={ozet.ihlalliArac > 0 ? ROSE : GREEN} />
-          <OzetCard label="Toplam İhlal" value={ozet.toplamIhlal} icon={Gavel} color={AMBER} />
-          <OzetCard label="Toplam Tutar" value={fmtTL(ozet.toplamTutar)} icon={Wallet} color="#818cf8" />
+          <OzetCard label="Toplam Araç" value={ozet.toplamArac} icon={Car} valueColor={ACCENT} />
+          <OzetCard label="İhlalli Araç" value={ozet.ihlalliArac} icon={AlertCircle} valueColor={ozet.ihlalliArac > 0 ? ROSE : '#fafaf9'} />
+          <OzetCard label="Toplam İhlal" value={ozet.toplamIhlal} icon={Gavel} valueColor="#fafaf9" />
+          <OzetCard label="Toplam Tutar" value={fmtTL(ozet.toplamTutar)} icon={Wallet} valueColor="#fafaf9" />
         </div>
       )}
 
@@ -428,19 +428,19 @@ function PlateBadge({ text, size = 'md' }: { text: string; size?: 'sm' | 'md' })
 // ════════════════════════════════════════════════════════════
 // OZET CARD
 // ════════════════════════════════════════════════════════════
-function OzetCard({ label, value, icon: Icon, color }: { label: string; value: number | string; icon: any; color: string }) {
+function OzetCard({ label, value, icon: Icon, valueColor = '#fafaf9' }: { label: string; value: number | string; icon: any; valueColor?: string }) {
   return (
     <div
-      className="relative overflow-hidden rounded-2xl border p-4"
-      style={{ borderColor: `${color}40`, background: `linear-gradient(135deg, ${color}22, ${color}0a 58%, rgba(255,255,255,0.02))` }}
+      className="rounded-2xl border p-4"
+      style={{ background: 'rgba(255,255,255,0.02)', borderColor: 'rgba(255,255,255,0.07)' }}
     >
       <div className="flex items-center justify-between">
-        <span className="text-[10px] uppercase font-bold tracking-[.16em]" style={{ color: 'rgba(250,250,249,0.55)' }}>{label}</span>
-        <span className="grid h-7 w-7 place-items-center rounded-lg flex-shrink-0" style={{ background: `${color}22`, border: `1px solid ${color}40` }}>
-          <Icon size={14} style={{ color }} />
+        <span className="text-[10px] uppercase font-bold tracking-[.16em]" style={{ color: 'rgba(250,250,249,0.5)' }}>{label}</span>
+        <span className="grid h-7 w-7 place-items-center rounded-lg flex-shrink-0" style={{ background: 'rgba(34,211,238,0.1)', border: '1px solid rgba(34,211,238,0.22)' }}>
+          <Icon size={14} style={{ color: ACCENT }} />
         </span>
       </div>
-      <div className="mt-3 text-[26px] font-semibold tabular-nums leading-none" style={{ color, fontFamily: 'JetBrains Mono, monospace' }}>{value}</div>
+      <div className="mt-3 text-[26px] font-semibold tabular-nums leading-none" style={{ color: valueColor, fontFamily: 'JetBrains Mono, monospace' }}>{value}</div>
     </div>
   );
 }
@@ -489,10 +489,10 @@ function AracRow({
             </div>
           ) : <span style={{ color: 'rgba(250,250,249,0.35)' }}>henüz yok</span>}
         </td>
-        <td className="px-4 py-2.5 text-right tabular-nums font-semibold" style={{ fontFamily: 'JetBrains Mono, monospace', color: ihlalliMi ? ROSE : GREEN }}>
+        <td className="px-4 py-2.5 text-right tabular-nums font-semibold" style={{ fontFamily: 'JetBrains Mono, monospace', color: ihlalliMi ? ROSE : 'rgba(250,250,249,0.55)' }}>
           {s ? s.ihlalSayisi : '—'}
         </td>
-        <td className="px-4 py-2.5 text-right tabular-nums" style={{ fontFamily: 'JetBrains Mono, monospace', color: ihlalliMi ? AMBER : 'rgba(250,250,249,0.6)' }}>
+        <td className="px-4 py-2.5 text-right tabular-nums" style={{ fontFamily: 'JetBrains Mono, monospace', color: ihlalliMi ? '#fafaf9' : 'rgba(250,250,249,0.6)' }}>
           {s ? fmtTL(s.toplamTutar) : '—'}
         </td>
         <td className="px-4 py-2.5 text-right">
