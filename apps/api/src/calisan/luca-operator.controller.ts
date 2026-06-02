@@ -14,7 +14,7 @@ export class LucaOperatorController {
   @Post('chat')
   async chat(
     @Req() req: any,
-    @Body() body: { message: string; history?: Array<{ role: 'user' | 'assistant'; content: string }> },
+    @Body() body: { message: string; history?: Array<{ role: 'user' | 'assistant'; content: string }>; voiceMode?: boolean },
     @Res() res: any,
   ) {
     res.setHeader('Content-Type', 'text/event-stream; charset=utf-8');
@@ -38,6 +38,7 @@ export class LucaOperatorController {
           userId: req.user?.sub,
           message: body?.message || '',
           history: body?.history,
+          voiceMode: body?.voiceMode,
         },
         send,
       );

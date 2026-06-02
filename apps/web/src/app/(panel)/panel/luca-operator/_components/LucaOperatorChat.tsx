@@ -7,6 +7,7 @@ import { lucaOperatorChatStream } from '@/lib/moren-ai';
 import { speak, stopSpeech, startListening, isSpeechSupported, isSynthesisSupported } from './voice';
 
 const ACCENT = '#d4b876'; // altın — Luca Operatörü modül rengi
+const STORAGE_KEY = 'luca-operator-chat-v1'; // sohbet tarayıcıda saklanır (ekran değişince kaybolmasın)
 
 interface Msg {
   role: 'user' | 'assistant';
@@ -41,6 +42,31 @@ export function LucaOperatorChat() {
   useEffect(() => {
     if (scrollRef.current) scrollRef.current.scrollTop = scrollRef.current.scrollHeight;
   }, [messages, sending, currentTool]);
+
+  // Sohbeti tarayıcıdan geri yükle (ekran değişse de kaybolmasın)
+  useEffect(() => {
+    try {
+      const raw = localStorage.getItem(STORAGE_KEY);
+      if (raw) {
+        const arr = JSON.parse(raw);
+        if (Array.isArray(arr)) setMessages(arr);
+      }
+    } catch {}
+  }, []);
+
+  // Her değişiklikte sakla (son 50 mesaj)
+  useEffect(() => {
+    try {
+      localStorage.setItem(STORAGE_KEY, JSON.stringify(messages.slice(-50)));
+    } catch {}
+  }, [messages]);
+
+  const clearChat = () => {
+    setMessages([]);
+    try {
+      localStorage.removeItem(STORAGE_KEY);
+    } catch {}
+  };
 
   const lastAssistantIndex = (arr: Msg[]) => {
     for (let i = arr.length - 1; i >= 0; i--) if (arr[i].role === 'assistant') return i;
@@ -112,7 +138,7 @@ export function LucaOperatorChat() {
     const toolset = new Set<string>();
 
     try {
-      await lucaOperatorChatStream({ message, history }, (e) => {
+      await lucaOperatorChatStream({ message, history, voiceMode: voiceModeRef.current }, (e) => {
         if (e.type === 'text') {
           acc += e.delta;
           patchLastAssistant((m) => ({ ...m, content: acc }));
@@ -188,17 +214,29 @@ export function LucaOperatorChat() {
       style={{ background: 'rgba(15,13,9,0.85)', border: `1px solid ${ACCENT}26`, backdropFilter: 'blur(10px)' }}
     >
       {/* Başlık */}
-      <div className="flex-shrink-0 border-b px-4 py-3" style={{ borderColor: 'rgba(255,255,255,0.06)' }}>
-        <div className="text-[10px] font-bold uppercase tracking-[.16em]" style={{ color: ACCENT }}>
-          Luca Operatörü ile Konuşma
+      <div className="flex flex-shrink-0 items-center justify-between gap-2 border-b px-4 py-3" style={{ borderColor: 'rgba(255,255,255,0.06)' }}>
+        <div className="min-w-0">
+          <div className="text-[10px] font-bold uppercase tracking-[.16em]" style={{ color: ACCENT }}>
+            Luca Operatörü ile Konuşma
+          </div>
+          <div className="text-xs" style={{ color: 'rgba(250,250,249,0.55)' }}>
+            {voiceMode
+              ? 'Sohbet modu açık — konuş, cevap versin, mikrofon tekrar açılır'
+              : messages.length === 0
+                ? 'Bir şey iste — gerekirse sana soru sorar'
+                : `${messages.length} mesaj · kaydedildi`}
+          </div>
         </div>
-        <div className="text-xs" style={{ color: 'rgba(250,250,249,0.55)' }}>
-          {voiceMode
-            ? 'Sohbet modu açık — konuş, cevap versin, mikrofon tekrar açılır'
-            : messages.length === 0
-              ? 'Bir şey iste — gerekirse sana soru sorar'
-              : `${messages.length} mesaj`}
-        </div>
+        {messages.length > 0 && (
+          <button
+            onClick={clearChat}
+            className="flex-shrink-0 rounded-lg px-2 py-1 text-[11px] transition-colors hover:bg-white/5"
+            style={{ color: 'rgba(250,250,249,0.5)', border: '1px solid rgba(255,255,255,0.08)' }}
+            title="Sohbeti temizle"
+          >
+            Temizle
+          </button>
+        )}
       </div>
 
       {/* Mesajlar */}

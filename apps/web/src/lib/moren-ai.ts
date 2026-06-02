@@ -81,7 +81,7 @@ export type LucaStreamEvent =
  * Cevap token token gelir; her olay onEvent ile bildirilir. Promise akış bitince çözülür.
  */
 export async function lucaOperatorChatStream(
-  body: { message: string; history?: Array<{ role: 'user' | 'assistant'; content: string }> },
+  body: { message: string; history?: Array<{ role: 'user' | 'assistant'; content: string }>; voiceMode?: boolean },
   onEvent: (e: LucaStreamEvent) => void,
 ): Promise<void> {
   const res = await authorizedFetch(`${API_BASE}/luca-operator/chat`, {

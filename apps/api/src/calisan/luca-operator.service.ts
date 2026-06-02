@@ -100,8 +100,8 @@ export class LucaOperatorService {
       .join('\n');
   }
 
-  private buildSystemPrompt(): string {
-    return [
+  private buildSystemPrompt(voiceMode?: boolean): string {
+    const base = [
       'Sen Moren Mali Müşavirlik portalının "Luca Operatörü" adlı AI çalışanısın. Sahip: Muzaffer Ören.',
       'Kullanıcı (mali müşavir veya personel) ile Türkçe konuşur, portal verisini okur ve istenen işleri hazırlarsın.',
       'ŞU AN (Faz 1): Luca\'ya doğrudan YAZMA/işlem yapma yeteneğin YOK. Sadece veri okur, durum analizi yapar,',
@@ -114,6 +114,15 @@ export class LucaOperatorService {
       '## Kullanabileceğin portal araçları',
       this.buildToolCatalog(),
     ].join('\n');
+    if (!voiceMode) return base;
+    // Sesli sohbet: kısa, doğal konuşma; ekranda okunup seslendirilecek.
+    return (
+      base +
+      '\n\n## SESLİ MOD (karşılıklı konuşma)\n' +
+      'Cevabın ÇOK KISA olsun (en fazla 1-3 cümle), doğal konuşma dilinde. ' +
+      'Madde işareti, başlık, markdown ve EMOJİ KULLANMA — düz cümle yaz (sesli okunacak). ' +
+      'Uzun liste/açıklama verme; gerekirse "detayını ekranda göstereyim mi?" diye kısaca sor.'
+    );
   }
 
   /**
@@ -121,7 +130,7 @@ export class LucaOperatorService {
    * Konuşma geçmişi istekte taşınır (Railway'de kalıcı oturum yok).
    */
   async chatStream(
-    params: { tenantId: string; userId?: string | null; message: string; history?: ChatHistoryItem[] },
+    params: { tenantId: string; userId?: string | null; message: string; history?: ChatHistoryItem[]; voiceMode?: boolean },
     emit: (e: StreamEvent) => void,
   ): Promise<void> {
     const tenantId = params.tenantId || 'default';
@@ -198,7 +207,7 @@ export class LucaOperatorService {
         prompt,
         options: {
           model,
-          systemPrompt: this.buildSystemPrompt(),
+          systemPrompt: this.buildSystemPrompt(params.voiceMode),
           mcpServers: { portal: server },
           allowedTools: [PORTAL_TOOL],
           canUseTool,

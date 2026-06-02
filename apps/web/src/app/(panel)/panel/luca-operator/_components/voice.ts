@@ -73,14 +73,21 @@ export function speak(text: string): Promise<void> {
       resolve();
       return;
     }
-    // Markdown işaretlerini sadeleştir, çok uzun metni kırp
+    // Seslendirmeden önce: markdown işaretlerini ve EMOJİLERİ temizle
+    // (yoksa TTS "gülen yüz" gibi emoji adını okur), fazla boşlukları topla, kırp.
     const clean = text
-      .replace(/\[(.*?)\]\(.*?\)/g, '$1')
-      .replace(/[*_`#>]/g, '')
+      .replace(/\[(.*?)\]\(.*?\)/g, '$1') // markdown link → metin
+      .replace(/[*_`#>~|]/g, '') // markdown işaretleri
+      .replace(/^\s*[-•]\s*/gm, '') // satır başı madde imleri
+      .replace(/\p{Extended_Pictographic}/gu, '') // emoji/piktograf
+      .replace(/[\u{1F1E6}-\u{1F1FF}\u{FE0F}\u{200D}\u{20E3}]/gu, '') // bayrak/varyasyon/ZWJ/keycap
+      .replace(/[ \t]{2,}/g, ' ') // fazla boşluk
+      .replace(/\n{3,}/g, '\n\n')
+      .trim()
       .slice(0, 1000);
     const u = new SpeechSynthesisUtterance(clean);
     u.lang = 'tr-TR';
-    u.rate = 1.0;
+    u.rate = 1.08; // sohbet temposu (biraz canlı)
     u.pitch = 1.0;
     const voices = window.speechSynthesis.getVoices();
     const tr = voices.find((v) => v.lang?.toLowerCase().startsWith('tr'));
