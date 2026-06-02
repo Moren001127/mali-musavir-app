@@ -4,7 +4,7 @@
 */
 (function () {
   // Agent versiyon — UI'da gösterilir, debug için kritik
-  const AGENT_VERSION = '1.38.1';
+  const AGENT_VERSION = '1.38.2';
   const AGENT_INSTANCE_ID = 'mai_' + Date.now().toString(36) + '_' + Math.random().toString(36).slice(2, 8);
 
   // === VERSION-AWARE RELOAD ===
@@ -389,6 +389,52 @@
     snap.buttons = Array.from(new Set(snap.buttons));
     snap.links = Array.from(new Set(snap.links)).slice(0, 120);
     return snap;
+  }
+
+  // LUCA OPERATÖRÜ — metne göre tıkla (self-contained; tüm frame'lerde arar)
+  function lucaClickByText(text) {
+    const norm = (s) => String(s || '').replace(/\s+/g, ' ').trim().toLocaleLowerCase('tr-TR');
+    const t = norm(text);
+    if (!t) return false;
+    for (const doc of lucaDocuments()) {
+      try {
+        const nodes = Array.from(doc.querySelectorAll('a, button, input[type=button], input[type=submit], [onclick], [role="button"], td, span, div, li'));
+        let target = nodes.find((el) => visible(el) && norm(el.value || el.innerText || el.textContent) === t);
+        if (!target) target = nodes.find((el) => visible(el) && norm(el.value || el.innerText || el.textContent).includes(t));
+        if (target) {
+          try { target.scrollIntoView({ block: 'center' }); } catch {}
+          try { target.click(); } catch {}
+          try { target.dispatchEvent(new MouseEvent('click', { bubbles: true, cancelable: true, view: doc.defaultView })); } catch {}
+          return true;
+        }
+      } catch {}
+    }
+    return false;
+  }
+
+  // LUCA OPERATÖRÜ — etikete göre açılır liste (select) seç
+  function lucaSelectByHint(hint, optionText) {
+    const norm = (s) => String(s || '').replace(/\s+/g, ' ').trim().toLocaleLowerCase('tr-TR');
+    const h = norm(hint);
+    const o = norm(optionText);
+    if (!o) return false;
+    for (const doc of lucaDocuments()) {
+      try {
+        const selects = Array.from(doc.querySelectorAll('select')).filter(visible);
+        for (const sel of selects) {
+          const hay = norm(`${sel.name || ''} ${sel.id || ''} ${sel.getAttribute('aria-label') || ''}`);
+          if (h && !hay.includes(h)) continue;
+          const opt = Array.from(sel.options).find((op) => norm(op.text) === o)
+            || Array.from(sel.options).find((op) => norm(op.text).includes(o));
+          if (opt) {
+            sel.value = opt.value;
+            sel.dispatchEvent(new Event('change', { bubbles: true }));
+            return true;
+          }
+        }
+      } catch {}
+    }
+    return false;
   }
 
   function findInputByHints(doc, hints, opts = {}) {
@@ -1512,6 +1558,56 @@
               }).catch(() => {});
             }
             continue; // diğer job tiplerinin Excel akışına girme
+          }
+
+          // ─── LUCA_ACTION: Luca'da yaz / seç / tıkla (geri dönülmez tıklama onaysız ÇALIŞMAZ) ───
+          if (job.tip === 'LUCA_ACTION') {
+            try {
+              const p = job.payload || {};
+              const action = String(p.action || '').toLowerCase();
+              const hedef = String(p.hedef || p.etiket || p.metin || '');
+              const deger = p.deger != null ? String(p.deger) : '';
+              // Geri dönülmez butonlar — onaysız tıklanmaz
+              const SUBMIT_RE = /kaydet|g[oö]nder|onayla|imzala|sil|aktar|tahakkuk|kesinle|tamamla|g[oö]nderim/i;
+              let res;
+              if (action === 'click' && SUBMIT_RE.test(hedef) && p.confirmed !== true) {
+                res = { ok: false, blocked: true, message: `Geri dönülmez buton "${hedef}" — onay olmadan tıklanmadı.` };
+              } else if (action === 'fill' || action === 'yaz') {
+                let done = false;
+                const hint = String(p.etiket || hedef).toLocaleLowerCase('tr-TR');
+                for (const doc of lucaDocuments()) {
+                  const el = findInputByHints(doc, [hint], {});
+                  if (el) { setNativeValue(el, deger); done = true; break; }
+                }
+                res = done ? { ok: true, message: `'${p.etiket || hedef}' alanı dolduruldu` } : { ok: false, message: `Alan bulunamadı: ${p.etiket || hedef}` };
+              } else if (action === 'select' || action === 'sec') {
+                const ok = lucaSelectByHint(String(p.etiket || hedef), deger);
+                res = ok ? { ok: true, message: `'${p.etiket || hedef}' = '${deger}' seçildi` } : { ok: false, message: `Seçim yapılamadı: ${p.etiket || hedef}` };
+              } else if (action === 'click' || action === 'tikla') {
+                const ok = lucaClickByText(hedef);
+                res = ok ? { ok: true, message: `Tıklandı: ${hedef}` } : { ok: false, message: `Bulunamadı: ${hedef}` };
+              } else {
+                res = { ok: false, message: `Bilinmeyen işlem: ${action}` };
+              }
+              await log(`🛠 LUCA_ACTION ${action} → ${res.ok ? 'OK' : 'BAŞARISIZ'}: ${res.message}`);
+              await sleep(800);
+              try { res.screen = readLucaScreenSnapshot(); } catch {}
+              await fetch(API + `/agent/luca/jobs/${job.id}/screen`, {
+                method: 'POST', headers: { 'Content-Type': 'application/json', 'X-Agent-Token': TOKEN },
+                body: JSON.stringify({ snapshot: res }),
+              }).catch(() => {});
+              await fetch(API + `/agent/luca/jobs/${job.id}/done`, {
+                method: 'POST', headers: { 'Content-Type': 'application/json', 'X-Agent-Token': TOKEN },
+                body: JSON.stringify({ recordCount: res.ok ? 1 : 0 }),
+              }).catch(() => {});
+              setStatus(`Luca: işlem ${res.ok ? 'tamam' : 'başarısız'}`);
+            } catch (e) {
+              await fetch(API + `/agent/luca/jobs/${job.id}/fail`, {
+                method: 'POST', headers: { 'Content-Type': 'application/json', 'X-Agent-Token': TOKEN },
+                body: JSON.stringify({ error: (e && e.message) || 'işlem hatası' }),
+              }).catch(() => {});
+            }
+            continue;
           }
 
           // ─── Job tipine göre rapor sayfası kontrolü ───

@@ -99,6 +99,29 @@ export class LucaOperatorService {
     };
   }
 
+  /** LUCA OPERATÖRÜ — Luca'da işlem yap (yaz/seç/tıkla); sonucu + işlem sonrası ekranı döndürür. */
+  private async runLucaAction(
+    ctx: { tenantId: string; userId?: string | null },
+    payload: { action: string; etiket?: string; hedef?: string; deger?: string; confirmed?: boolean },
+  ): Promise<any> {
+    let job: any;
+    try {
+      job = await this.luca.createActionJob(ctx.tenantId, payload, { createdBy: ctx.userId || undefined });
+    } catch (e: any) {
+      return { ok: false, error: 'İşlem oluşturulamadı: ' + (e?.message || e) };
+    }
+    const jobId = job?.id;
+    if (!jobId) return { ok: false, error: 'İşlem oluşturulamadı.' };
+    const deadline = Date.now() + 25000;
+    while (Date.now() < deadline) {
+      await new Promise((r) => setTimeout(r, 1500));
+      const r = await this.luca.getScreenSnapshot(jobId, ctx.tenantId).catch(() => null);
+      if (r && r.status === 'done' && r.snapshot) return r.snapshot; // { ok, message, screen, blocked? }
+      if (r && r.status === 'failed') return { ok: false, error: r.errorMsg || 'işlem başarısız' };
+    }
+    return { ok: false, error: 'İşlem zaman aşımı. Chrome\'da Luca açık ve operatör hesabı girişli mi?' };
+  }
+
   private pickModel(text: string): string {
     const t = text || '';
     if (CRITICAL_PATTERNS.some((p) => p.test(t))) return MODEL_CRITICAL;
@@ -129,10 +152,11 @@ export class LucaOperatorService {
     const base = [
       'Sen Moren Mali Müşavirlik portalının "Luca Operatörü" adlı AI çalışanısın. Sahip: Muzaffer Ören.',
       'Kullanıcı (mali müşavir veya personel) ile Türkçe konuşur, portal verisini okur ve istenen işleri hazırlarsın.',
-      'ŞU AN (Faz 1): Luca\'ya doğrudan YAZMA/işlem yapma yeteneğin YOK. Sadece veri okur, durum analizi yapar,',
-      've mevcut Luca veri-çekme işlerini önizleyip (preview_agent_command) onayla tetikleyebilirsin.',
       'Portal verisi için "portal" aracını çağır: name=araç adı, args=parametre nesnesi. Sonucu yorumla.',
-      'Luca\'da O AN AÇIK ekranı görmek için: portal({ name: "luca_ekran_oku" }) — mükellef/dönem gerekmez; kullanıcının Chrome\'undaki açık Luca ekranını okur (0-15 sn sürebilir). Dönen "ekran" (frames/fields/buttons/text) verisini yorumla. Kullanıcı "Luca\'da ne görüyorsun / ekrana bak" derse bunu kullan.',
+      'Luca\'da O AN AÇIK ekranı görmek için: portal({ name: "luca_ekran_oku" }) — mükellef/dönem gerekmez; kullanıcının Chrome\'undaki açık Luca ekranını okur (0-15 sn). Dönen "ekran" (frames/fields/buttons/text) verisini yorumla. Kullanıcı "ekrana bak / ne görüyorsun" derse bunu kullan.',
+      'Luca\'da İŞLEM yapabilirsin: alan doldur → portal({name:"luca_yaz", args:{etiket:"<alan>", deger:"<değer>"}}); açılır liste → portal({name:"luca_sec", args:{etiket:"<alan>", deger:"<seçenek>"}}); buton/menü → portal({name:"luca_tikla", args:{hedef:"<metin>"}}). Her işlemden sonra dönen "screen" ile sonucu doğrula; gerekirse luca_ekran_oku ile bak.',
+      'GÜVENLİK — geri dönülmez adımlar: "Kaydet/Gönder/Onayla/İmzala/Sil/Tahakkuk/Tamamla" gibi butonlara ASLA kendiliğinden tıklama. Önce ne yapacağını ve hangi mükellef/dönem/tutar olduğunu KISACA özetle, kullanıcıdan AÇIK onay iste. Kullanıcı net onay verirse luca_tikla\'yı args.confirmed=true ile çağır. Onay olmadan confirmed=true GÖNDERME — agent zaten onaysız bu butonları bloke eder.',
+      'Bir işi adım adım yap (gör → doldur/seç → kontrol et → onayla → gönder). Emin değilsen dur ve sor.',
       'Cevabını GEREKSİZ uzatma; net ve kısa tut. Emin değilsen veya bilgi eksikse ASLA varsayma — kullanıcıya kısa bir soru sor.',
       'Kritik mali/hukuki konularda (beyanname, KDV, mizan, tahakkuk) en yüksek doğrulukla çalış; görmediğini görmüş gibi söyleme.',
       'Mükellef PII (şifre, token, TC, IBAN) sızdırma, loglama.',
@@ -215,6 +239,21 @@ export class LucaOperatorService {
             toolUses.push({ name: toolName, args: {} });
             emit({ type: 'tool', name: toolName });
             const r = await this.readLucaScreen(ctx);
+            return { content: [{ type: 'text', text: JSON.stringify(r) }] };
+          }
+          // Luca'da işlem: yaz / seç / tıkla (geri dönülmez tıklama agent tarafında onaysız bloke)
+          if (toolName === 'luca_yaz' || toolName === 'luca_sec' || toolName === 'luca_tikla') {
+            const args = a?.args || {};
+            toolUses.push({ name: toolName, args });
+            emit({ type: 'tool', name: toolName });
+            const action = toolName === 'luca_yaz' ? 'fill' : toolName === 'luca_sec' ? 'select' : 'click';
+            const r = await this.runLucaAction(ctx, {
+              action,
+              etiket: args.etiket || args.alan || args.hint,
+              hedef: args.hedef || args.metin || args.buton || args.etiket,
+              deger: args.deger ?? args.value,
+              confirmed: args.confirmed === true,
+            });
             return { content: [{ type: 'text', text: JSON.stringify(r) }] };
           }
           if (!ALLOWED_TOOLS.has(toolName)) {

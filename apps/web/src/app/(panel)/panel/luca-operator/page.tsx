@@ -71,9 +71,9 @@ export default function LucaOperatorPage() {
       >
         <Info size={14} className="mt-0.5 flex-shrink-0" style={{ color: ACCENT }} />
         <span>
-          <b style={{ color: '#fafaf9' }}>Şu an (Faz 1):</b> konuşur, mükellef/mali veriyi okur ve mevcut Luca
-          veri çekme işlerini onayla tetikler. <b style={{ color: '#fafaf9' }}>Luca&apos;ya yazma/işlem</b> (beyanname,
-          işe giriş-çıkış, işletme defteri gönderimi) bir sonraki aşamada eklenecek.
+          <b style={{ color: '#fafaf9' }}>Yapabildikleri:</b> konuşur, mükellef/mali veriyi okur, Luca ekranını
+          görür ve Luca&apos;da <b style={{ color: '#fafaf9' }}>işlem yapar</b> (alan doldur, seç, tıkla).
+          <b style={{ color: '#fafaf9' }}> Gönder/Kaydet/Onayla</b> gibi geri dönülmez adımlarda önce senin onayını alır.
         </span>
       </div>
 
