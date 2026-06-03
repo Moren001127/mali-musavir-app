@@ -33,7 +33,7 @@ const ICON_GRAD = 'linear-gradient(135deg, #3b82f6, #1d4ed8)';
 const LEAD_GRAD = 'linear-gradient(135deg, rgba(91,141,239,0.20), rgba(37,99,235,0.07))';
 const ARROW = (c: string) => `url("data:image/svg+xml;utf8,<svg xmlns='http://www.w3.org/2000/svg' width='12' height='12' viewBox='0 0 24 24' fill='none' stroke='%23${c}' stroke-width='2'><polyline points='6 9 12 15 18 9'/></svg>")`;
 
-type Taxpayer = { id: string; firstName?: string | null; lastName?: string | null; companyName?: string | null; taxNumber?: string | null; defterTuru?: string | null };
+type Taxpayer = { id: string; firstName?: string | null; lastName?: string | null; companyName?: string | null; taxNumber?: string | null; defterTuru?: string | null; mihsapDefterTuru?: string | null };
 type PeriodMode = 'GECICI' | 'AYLIK' | 'YILLIK';
 type SeverityFilter = 'ALL' | 'ERROR' | 'WARN' | 'INFO';
 type StatusFilter = 'OPEN' | 'ALL' | 'RESOLVED' | 'IGNORED';
@@ -47,6 +47,15 @@ function sevLabel(s: string) { return s === 'ERROR' ? 'HATA' : s === 'WARN' ? 'U
 function taxpayerName(t?: Taxpayer | null) {
   if (!t) return '-';
   return t.companyName || [t.firstName, t.lastName].filter(Boolean).join(' ') || t.taxNumber || '-';
+}
+// Defter türü tespiti: defterTuru + mihsapDefterTuru BİRLİKTE, Türkçe varyantlar dahil.
+// Uygulamanın geneliyle aynı mantık (luca.service.normalizeDefterTuru): Mihsap'tan
+// senkron mükelleflerde defter türü çoğu zaman mihsapDefterTuru'da, defterTuru boş olur.
+// İşletme şüphesi varsa hariç tut; aksi halde bilanço işaretlerini ara.
+function isBilancoTaxpayer(t?: Taxpayer | null) {
+  const raw = `${t?.defterTuru || ''} ${t?.mihsapDefterTuru || ''}`.toLocaleUpperCase('tr-TR');
+  if (/İŞLETME|ISLETME|DEFTER[_\s-]*BEYAN/.test(raw)) return false;
+  return /BİLANÇO|BILANÇO|BILANCO/.test(raw);
 }
 function apiArray<T>(value: any): T[] {
   if (Array.isArray(value)) return value;
@@ -207,8 +216,9 @@ export default function EDefterAgentPage() {
     queryKey: ['taxpayers'],
     queryFn: () => api.get('/taxpayers').then((r) => apiArray<Taxpayer>(r.data)),
   });
-  // Sadece bilanço usulüne tabi mükellefler (e-Defter mükellefi olabilir)
-  const taxpayers = useMemo(() => allTaxpayers.filter((t) => String(t?.defterTuru || '').toUpperCase() === 'BILANCO'), [allTaxpayers]);
+  // Sadece bilanço usulüne tabi mükellefler (e-Defter mükellefi olabilir).
+  // Hem defterTuru hem mihsapDefterTuru'ya bakılır — Mihsap senkronunda tür mihsapDefterTuru'da olabilir.
+  const taxpayers = useMemo(() => allTaxpayers.filter(isBilancoTaxpayer), [allTaxpayers]);
   useEffect(() => { if (!taxpayerId && taxpayers[0]?.id) setTaxpayerId(taxpayers[0].id); }, [taxpayers, taxpayerId]);
   const selectedTp = taxpayers.find((t) => t.id === taxpayerId);
 
