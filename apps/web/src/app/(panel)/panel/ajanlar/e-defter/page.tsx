@@ -4,7 +4,7 @@ import { useEffect, useMemo, useRef, useState, type CSSProperties } from 'react'
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import {
   BookOpen, CheckCircle2, ChevronDown, ChevronRight, Clock, Download, EyeOff,
-  FileSpreadsheet, History, LayoutGrid, ListChecks, Loader2, Play, RotateCcw,
+  FileSpreadsheet, FileText, History, LayoutGrid, ListChecks, Loader2, Play, RotateCcw,
   Search, Sparkles, UploadCloud, XCircle,
 } from 'lucide-react';
 import { toast } from 'sonner';
@@ -160,6 +160,10 @@ function categoryLabel(code: string) {
     KKEG_689_KONTROL: '689 KKEG kontrolü',
     YILSONU_AMORTISMAN_EKSIK: 'Yıl sonu amortisman eksik',
     VERGI_KARSILIGI_370_YOK: '370 Vergi karşılığı yok',
+    BENFORD_SAPMA: 'Benford yasası sapması',
+    YUVARLAK_TUTAR_YIGILMASI: 'Yuvarlak tutar yığılması',
+    HAFTA_SONU_KAYDI: 'Hafta sonu kaydı',
+    SUPHELI_ACIKLAMA: 'Şüpheli açıklama',
   };
   return dict[code] || code.replace(/_/g, ' ').toLocaleLowerCase('tr-TR');
 }
@@ -185,8 +189,26 @@ function categoryGroup(code: string): { id: string; label: string; order: number
   if (code.startsWith('CEK_SENET_BAKIYE')) return { id: 'cek-senet', label: 'Çek / Senet', order: 9, icon: '📜' };
   if (code === 'BANKA_EKSI_BAKIYE_102' || code === 'POS_VALOR_108_BAKIYE') return { id: 'banka', label: 'Banka / POS', order: 10, icon: '🏦' };
   if (code === 'KKEG_689_KONTROL') return { id: 'kkeg', label: 'KKEG / KVK', order: 11, icon: '⚖️' };
+  if (code === 'BENFORD_SAPMA' || code === 'YUVARLAK_TUTAR_YIGILMASI' || code === 'HAFTA_SONU_KAYDI' || code === 'SUPHELI_ACIKLAMA') return { id: 'forensic', label: 'Forensic / Anomali', order: 12, icon: '🔬' };
   return { id: 'diger', label: 'Diğer', order: 99, icon: '•' };
 }
+
+// Bulgu kategorisi → mevzuat dayanağı (müşteri raporu güveni; salt görsel, kod ↔ referans haritası)
+const MEVZUAT_REF: Record<string, string> = {
+  KASA_GUNLUK_30000_TEVSIK_RISKI: 'VUK 459', KASA_TEVSIK_PARCALAMA: 'VUK 459',
+  FIS_DENGESIZ: 'VUK 219', DEFTER_GENELI_DENGESIZ: 'VUK 219', DONEM_DISI_TARIH: 'VUK 219',
+  YEVMIYE_NO_MUKERRER: 'VUK 219', YEVMIYE_NO_ATLAMA: 'VUK 219', YEVMIYE_TARIH_SIRASI: 'VUK 219',
+  BELGE_TARIHI_FIS_TARIHINDEN_SONRA: 'VUK 219', BELGE_TARIHI_DONEM_DISI: 'VUK 219',
+  HAVADA_KDV_KAYDI: 'KDVK 29', KDV_TAHAKKUK_EKSIK: 'KDVK 41', KDV_ODENECEK_360_UYUMSUZ: 'KDVK 41',
+  KDV_DEVREDEN_190_UYUMSUZ: 'KDVK 29', DONEM_SONU_191_BAKIYE: 'KDVK 29', DONEM_SONU_391_BAKIYE: 'KDVK 41',
+  KIRA_STOPAJI_EKSIK: 'GVK 94', KIRA_STOPAJI_ORAN: 'GVK 94', SMM_STOPAJI_KONTROL: 'GVK 94', DAMGA_VERGISI_KONTROL: 'Damga V.K.',
+  VKN_FORMAT_HATALI: 'VUK 230', VKN_ALGORITMA_HATALI: 'VUK 230',
+  GERCEK_MUKERRER_FATURA: 'KDVK 29', AYNI_GUN_AYNI_TUTAR_AYNI_TARAF: 'BDS 240',
+  ORTAK_ALACAK_FAIZ_RISKI: 'KVK 13', KKEG_689_KONTROL: 'KVK 11',
+  BANKA_EKSI_BAKIYE_102: 'TDHP', YILSONU_AMORTISMAN_EKSIK: 'VUK 313/333',
+  ACILIS_FISINDE_GELIR_GIDER: 'TDHP', YILLIK_KAPANIS_690_EKSIK: 'TDHP', VERGI_KARSILIGI_370_YOK: 'KVK 32',
+  BENFORD_SAPMA: 'Benford · VEDAS', YUVARLAK_TUTAR_YIGILMASI: 'Forensic', HAFTA_SONU_KAYDI: 'BDS 240', SUPHELI_ACIKLAMA: 'BDS 240',
+};
 
 export default function EDefterAgentPage() {
   const qc = useQueryClient();
@@ -455,6 +477,63 @@ export default function EDefterAgentPage() {
   const toggleSeverity = (s: SeverityFilter) => { setSeverityFilter(severityFilter === s ? 'ALL' : s); setActiveTab('BULGULAR'); };
   const pickStatus = (s: StatusFilter) => { setStatusFilter(s); setActiveTab('BULGULAR'); };
 
+  // PDF müşteri raporu — bağımlılıksız: yazdırma penceresi açar, kullanıcı "PDF olarak kaydet" der.
+  const printReport = () => {
+    if (!session) { toast.error('Önce bir dönem verisi yükleyin'); return; }
+    const w = window.open('', '_blank');
+    if (!w) { toast.error('Açılır pencere engellendi; tarayıcı pop-up iznini açın'); return; }
+    const esc = (s: any) => String(s ?? '').replace(/[&<>"]/g, (c) => (({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;' } as Record<string, string>)[c]));
+    const sevTxt = (s: string) => s === 'ERROR' ? 'HATA' : s === 'WARN' ? 'UYARI' : 'BİLGİ';
+    const sevC = (s: string) => s === 'ERROR' ? '#c0392b' : s === 'WARN' ? '#b8860b' : '#2e6da4';
+    const scoreC = scoreColor === OK ? '#2e7d52' : scoreColor === WARN ? '#b8860b' : '#c0392b';
+    const gmap = new Map<string, { label: string; order: number; items: any[] }>();
+    for (const f of allFindings) {
+      const g = categoryGroup(f.category);
+      if (!gmap.has(g.id)) gmap.set(g.id, { label: g.label, order: g.order, items: [] });
+      gmap.get(g.id)!.items.push(f);
+    }
+    const groups = [...gmap.values()].sort((a, b) => a.order - b.order);
+    const body = groups.map((g) => `
+      <h2>${esc(g.label)} <span class="cnt">${g.items.length}</span></h2>
+      <table><thead><tr><th>Seviye</th><th>Bulgu</th><th>Yer</th><th>Dayanak</th><th>Durum</th></tr></thead><tbody>
+      ${g.items.map((f: any) => `<tr>
+        <td><span class="sev" style="color:${sevC(f.severity)};border-color:${sevC(f.severity)}">${sevTxt(f.severity)}</span></td>
+        <td>${esc(f.message)}</td>
+        <td class="nw">${f.rowIndex ? 'Satır ' + esc(f.rowIndex) : ''}${f.hesapKodu ? ' · ' + esc(f.hesapKodu) : ''}</td>
+        <td class="nw">${MEVZUAT_REF[f.category] ? esc(MEVZUAT_REF[f.category]) : '-'}</td>
+        <td class="nw">${(f.status || 'OPEN') === 'OPEN' ? 'Açık' : f.status === 'RESOLVED' ? 'Çözüldü' : 'Görmezden'}</td>
+      </tr>`).join('')}
+      </tbody></table>`).join('');
+    const html = `<!doctype html><html lang="tr"><head><meta charset="utf-8"><title>e-Defter Ön Kontrol Raporu</title><style>
+      *{box-sizing:border-box} body{font-family:Arial,Helvetica,sans-serif;color:#1a1a1a;margin:32px;font-size:12px;line-height:1.5}
+      .top{border-bottom:3px solid #1d4ed8;padding-bottom:14px;margin-bottom:14px;display:flex;justify-content:space-between;align-items:flex-start;gap:20px}
+      .eyebrow{font-size:10px;letter-spacing:.18em;text-transform:uppercase;color:#1d4ed8;font-weight:700}
+      h1{font-size:19px;margin:4px 0 2px} .meta{color:#555;font-size:11px}
+      .score{text-align:center;border:2px solid ${scoreC};border-radius:10px;padding:8px 14px;min-width:92px}
+      .score .n{font-size:30px;font-weight:800;line-height:1;color:${scoreC}} .score .l{font-size:10px;text-transform:uppercase;letter-spacing:.06em;color:#666;margin-top:3px}
+      .sum{display:flex;gap:22px;margin:8px 0 18px;flex-wrap:wrap} .sum div{font-size:11px;color:#555} .sum b{font-size:17px;display:block;color:#1a1a1a}
+      h2{font-size:13px;margin:18px 0 6px;border-left:4px solid #1d4ed8;padding-left:8px} .cnt{font-size:10px;color:#999;font-weight:400}
+      table{width:100%;border-collapse:collapse;margin-bottom:6px} th{text-align:left;font-size:10px;text-transform:uppercase;letter-spacing:.04em;color:#777;border-bottom:1px solid #ccc;padding:5px 6px}
+      td{border-bottom:1px solid #eee;padding:5px 6px;vertical-align:top} td.nw{white-space:nowrap;color:#555}
+      .sev{font-size:9px;font-weight:700;border:1px solid;border-radius:4px;padding:1px 5px;white-space:nowrap}
+      footer{margin-top:24px;border-top:1px solid #ddd;padding-top:10px;font-size:10px;color:#999;display:flex;justify-content:space-between;gap:16px}
+      @media print{body{margin:14mm}}
+      </style></head><body>
+      <div class="top"><div>
+        <div class="eyebrow">e-Defter Ön Kontrol Raporu</div>
+        <h1>${esc(taxpayerName(selectedTp))}</h1>
+        <div class="meta">${esc(periodDescriptor(periodMode, year, quarter, month))} · ${session.totalVouchers ?? 0} fiş · ${session.totalLines ?? 0} satır · Rapor: ${esc(new Date().toLocaleString('tr-TR'))}</div>
+      </div><div class="score"><div class="n">${score ?? '—'}</div><div class="l">${esc(scoreLabel)}</div></div></div>
+      <div class="sum"><div>Toplam<b>${stats.total}</b></div><div>Açık<b>${stats.open}</b></div><div style="color:#c0392b">Hata<b>${stats.error}</b></div><div style="color:#b8860b">Uyarı<b>${stats.warn}</b></div><div style="color:#2e6da4">Bilgi<b>${stats.info}</b></div><div style="color:#2e7d52">Çözüldü<b>${stats.resolved}</b></div></div>
+      ${allFindings.length === 0 ? '<p>Bu dönem için bulgu üretilmedi — defter ön kontrolden temiz geçti.</p>' : body}
+      <footer><span>Moren Mali Müşavirlik · e-Defter Ön Kontrol</span><span>Yapay zekâ destekli ön kontroldür; nihai değerlendirme mali müşavire aittir.</span></footer>
+      <script>window.onload=function(){setTimeout(function(){window.print();},250);};<\/script>
+      </body></html>`;
+    w.document.write(html);
+    w.document.close();
+    toast.success('PDF raporu hazırlandı; yazdır penceresinden "PDF olarak kaydet" seçin');
+  };
+
   const selectStyle = (accent = false): CSSProperties => ({
     background: PANEL, border: `1px solid ${accent ? BORDER_STRONG : BORDER}`, color: accent ? NAVY : TEXT,
     backgroundImage: ARROW('5b8def'), backgroundRepeat: 'no-repeat', backgroundPosition: 'right 8px center', paddingRight: '24px',
@@ -504,6 +583,9 @@ export default function EDefterAgentPage() {
           </button>
           <button disabled={!activeSessionId || exportMut.isPending} onClick={() => exportMut.mutate()} className="h-9 px-3.5 rounded-lg text-xs font-semibold inline-flex items-center gap-1.5 disabled:opacity-40" style={{ background: PANEL, color: 'rgba(250,250,249,.85)', border: `1px solid ${BORDER_STRONG}` }}>
             {exportMut.isPending ? <Loader2 size={13} className="animate-spin" /> : <Download size={13} />} Excel
+          </button>
+          <button disabled={!activeSessionId} onClick={printReport} className="h-9 px-3.5 rounded-lg text-xs font-semibold inline-flex items-center gap-1.5 disabled:opacity-40" style={{ background: PANEL, color: 'rgba(250,250,249,.85)', border: `1px solid ${BORDER_STRONG}` }}>
+            <FileText size={13} /> PDF Rapor
           </button>
           <button disabled={!activeSessionId || reanalyzeMut.isPending} onClick={() => reanalyzeMut.mutate()} className="h-9 px-3.5 rounded-lg text-xs font-semibold inline-flex items-center gap-1.5 disabled:opacity-40" style={{ background: PANEL, color: 'rgba(250,250,249,.85)', border: `1px solid ${BORDER_STRONG}` }}>
             {reanalyzeMut.isPending ? <Loader2 size={13} className="animate-spin" /> : <RotateCcw size={13} />} Yeniden Analiz
@@ -667,6 +749,7 @@ export default function EDefterAgentPage() {
                               <div className="flex items-center gap-2 flex-wrap mt-2">
                                 {f.rowIndex && (<span className="text-[10px] tabular-nums px-2 py-0.5 rounded" style={{ background: 'rgba(255,255,255,.06)', color: 'rgba(250,250,249,.78)' }}>Satır {f.rowIndex}</span>)}
                                 {f.hesapKodu && (<span className="text-[10px] tabular-nums px-2 py-0.5 rounded" style={{ background: 'rgba(255,255,255,.06)', color: 'rgba(250,250,249,.82)' }}>{f.hesapKodu}</span>)}
+                                {MEVZUAT_REF[f.category] && (<span className="text-[10px] px-2 py-0.5 rounded" style={{ background: 'rgba(91,141,239,.10)', color: '#9bc0ff', border: '1px solid rgba(91,141,239,.22)' }}>{MEVZUAT_REF[f.category]}</span>)}
                                 <span className="text-[9px] uppercase tracking-wider font-bold" style={{ color: statusColor(fStatus) }}>
                                   {fStatus === 'OPEN' ? '● Açık' : fStatus === 'RESOLVED' ? '✓ Çözüldü' : '∅ Görmezden'}
                                 </span>
@@ -1022,6 +1105,10 @@ const STANDART_KURALLAR: KuralDef[] = [
   { kod: 'BANKA_EKSI_BAKIYE_102', ad: '102 Banka eksi bakiye', aciklama: 'Banka hesabı alacak bakiye veriyor — bu tutar 300 Kısa Vadeli Banka Kredileri hesabında olmalı.', severity: 'ERROR', grup: 'Banka', aktif: true },
   { kod: 'POS_VALOR_108_BAKIYE', ad: '108 POS valör bakiyesi', aciklama: '108 POS hesabında bakiye — valör tarihi geçip 102 banka hesabına geçmesi gereken kayıtlar olabilir.', severity: 'INFO', grup: 'Banka', aktif: true },
   { kod: 'KKEG_689_KONTROL', ad: '689 KKEG kontrolü', aciklama: '689 Diğer Olağandışı Gider hesabında hareket var — KKEG ise Kurumlar Vergisi matrahına eklenmeli.', severity: 'INFO', grup: 'KKEG', aktif: true },
+  { kod: 'BENFORD_SAPMA', ad: 'Benford yasası sapması', aciklama: 'Tutarların ilk basamak dağılımı Benford yasasından sapıyor (MAD eşiği). Doğal olmayan/uydurulmuş tutar göstergesi olabilir — VEDAS resmî olarak kullanır.', severity: 'WARN', grup: 'Forensic / Anomali', aktif: true },
+  { kod: 'YUVARLAK_TUTAR_YIGILMASI', ad: 'Yuvarlak tutar yığılması', aciklama: '1.000 TL ve üzeri tutarların aşırı yüksek oranı tam yuvarlak (1.000/10.000 katı). Tahmini/uydurma kayıt işareti.', severity: 'WARN', grup: 'Forensic / Anomali', aktif: true },
+  { kod: 'HAFTA_SONU_KAYDI', ad: 'Hafta sonu kaydı', aciklama: 'Cumartesi/Pazar tarihli fişler. Mesai dışı kayıtlar BDS 240 kapsamında denetimde gözden geçirilir.', severity: 'INFO', grup: 'Forensic / Anomali', aktif: true },
+  { kod: 'SUPHELI_ACIKLAMA', ad: 'Şüpheli açıklama', aciklama: 'Açıklamada "düzeltme, iptal, hata, sehven, geri alma" gibi riskli ifadeler. Düzeltme/iptal kayıtları denetimde önceliklidir.', severity: 'INFO', grup: 'Forensic / Anomali', aktif: true },
 ];
 
 function KurallarTab() {

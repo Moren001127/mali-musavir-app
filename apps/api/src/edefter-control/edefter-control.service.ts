@@ -646,6 +646,11 @@ export class EDefterControlService {
     findings.push(...this.analyzeKKEG689(rows));
     findings.push(...this.analyzeAmortismanYilSonu(rows, range));
     findings.push(...this.analyzeVergiKarsiligi370(rows, range));
+    // Forensic / anomali katmani (istatistiksel; ozet bulgu uretir)
+    findings.push(...this.analyzeBenford(rows));
+    findings.push(...this.analyzeRoundNumbers(rows));
+    findings.push(...this.analyzeWeekendEntries(rows));
+    findings.push(...this.analyzeSuspiciousDescriptions(rows));
 
     // FIS_TARIHI_EKSIK ozeti: tek bilgi olarak topla
     const tarihEksik = rows.filter((r) => !r.fisTarihi && !voucherMeta.get(r.voucherKey)?.date);
@@ -2323,6 +2328,116 @@ export class EDefterControlService {
     if (!normalized) return null;
     const n = Number(normalized);
     return Number.isSafeInteger(n) && n > 0 ? n : null;
+  }
+
+  // ════════ FORENSIC / ANOMALI KATMANI ════════
+  // Tumu istatistikseldir; tek tek degil ozet bulgu uretir (gurultuyu dusuk tutmak icin).
+
+  private analyzeBenford(rows: ParsedEDefterFisLine[]): FindingDraft[] {
+    const digits = new Array(10).fill(0);
+    let n = 0;
+    for (const r of rows) {
+      const amt = Math.max(Math.abs(r.borc || 0), Math.abs(r.alacak || 0));
+      if (amt < 1) continue;
+      const d = Number(Math.floor(amt).toString()[0]);
+      if (d >= 1 && d <= 9) { digits[d] += 1; n += 1; }
+    }
+    if (n < 300) return []; // guvenilir analiz icin yeterli ornek yok
+    let mad = 0;
+    const worst = { d: 1, diff: 0, obs: 0, exp: 0 };
+    for (let d = 1; d <= 9; d++) {
+      const obs = digits[d] / n;
+      const exp = Math.log10(1 + 1 / d);
+      const diff = Math.abs(obs - exp);
+      mad += diff;
+      if (diff > worst.diff) { worst.d = d; worst.diff = diff; worst.obs = obs; worst.exp = exp; }
+    }
+    mad = mad / 9;
+    if (mad <= 0.012) return []; // Nigrini: kabul edilebilir uyum
+    const severity: FindingDraft['severity'] = mad > 0.015 ? 'WARN' : 'INFO';
+    return [{
+      severity,
+      category: 'BENFORD_SAPMA',
+      message: `Benford yasasi 1. basamak sapmasi yuksek (MAD ${mad.toFixed(4)}). En sapan rakam ${worst.d}: beklenen %${(worst.exp * 100).toFixed(1)}, gercek %${(worst.obs * 100).toFixed(1)}. ${n} tutar incelendi - dogal olmayan tutar dagilimi (uydurma/yuvarlanmis kayit) isareti olabilir.`,
+      detail: { mad, n, worstDigit: worst.d, observed: worst.obs, expected: worst.exp },
+    }];
+  }
+
+  private analyzeRoundNumbers(rows: ParsedEDefterFisLine[]): FindingDraft[] {
+    let pool = 0;
+    let round = 0;
+    let big = 0;
+    for (const r of rows) {
+      const amt = Math.max(Math.abs(r.borc || 0), Math.abs(r.alacak || 0));
+      if (amt < 1000) continue;
+      pool += 1;
+      if (Math.abs(amt - Math.round(amt / 1000) * 1000) < 0.005) round += 1;
+      if (amt >= 10000 && Math.abs(amt - Math.round(amt / 10000) * 10000) < 0.005) big += 1;
+    }
+    if (pool < 20) return [];
+    const ratio = round / pool;
+    if (ratio < 0.30) return [];
+    const severity: FindingDraft['severity'] = ratio > 0.45 ? 'WARN' : 'INFO';
+    return [{
+      severity,
+      category: 'YUVARLAK_TUTAR_YIGILMASI',
+      message: `1.000 TL ve uzeri ${pool} tutarin %${(ratio * 100).toFixed(0)} kadari (${round} adet) tam yuvarlak (1.000 kati), ${big} adedi 10.000 kati. Yuksek yuvarlak tutar orani tahmini/uydurma kayit gostergesi olabilir; belgeyle teyit edilmeli.`,
+      detail: { pool, round, big, ratio },
+    }];
+  }
+
+  private analyzeWeekendEntries(rows: ParsedEDefterFisLine[]): FindingDraft[] {
+    const seen = new Set<string>();
+    const weekend: { voucherKey: string; rowIndex: number; date: Date }[] = [];
+    for (const r of rows) {
+      if (!r.fisTarihi) continue;
+      const day = r.fisTarihi.getUTCDay(); // 0 Pazar, 6 Cumartesi
+      if (day !== 0 && day !== 6) continue;
+      if (seen.has(r.voucherKey)) continue;
+      seen.add(r.voucherKey);
+      weekend.push({ voucherKey: r.voucherKey, rowIndex: r.rowIndex, date: r.fisTarihi });
+    }
+    if (weekend.length === 0) return [];
+    const ornek = weekend.slice(0, 5).map((w) => this.fmtDate(w.date)).join(', ');
+    return [{
+      severity: 'INFO',
+      category: 'HAFTA_SONU_KAYDI',
+      message: `${weekend.length} fis hafta sonu (Cumartesi/Pazar) tarihli. Ornek: ${ornek}${weekend.length > 5 ? ' ...' : ''}. Mesai disi kayitlar denetimde gozden gecirilir (BDS 240).`,
+      voucherKey: weekend[0].voucherKey,
+      rowIndex: weekend[0].rowIndex,
+      detail: { count: weekend.length },
+    }];
+  }
+
+  private analyzeSuspiciousDescriptions(rows: ParsedEDefterFisLine[]): FindingDraft[] {
+    const findings: FindingDraft[] = [];
+    const pattern = /(duzelt|iptal|hatal|yanlis|geri al|ters kayit|mahsup hatasi|fazladan|eksik kayit|tekrar kayit|sehven)/;
+    const cap = 100;
+    let total = 0;
+    for (const r of rows) {
+      const desc = this.normalizeLoose(r.aciklama);
+      if (!desc || !pattern.test(desc)) continue;
+      total += 1;
+      if (findings.length < cap) {
+        findings.push({
+          severity: 'INFO',
+          category: 'SUPHELI_ACIKLAMA',
+          message: `Satir ${r.rowIndex}: aciklamada riskli ifade ("${String(r.aciklama || '').slice(0, 60)}") - duzeltme/iptal kayitlari denetimde onceliklidir.`,
+          voucherKey: r.voucherKey,
+          rowIndex: r.rowIndex,
+          hesapKodu: r.hesapKodu,
+        });
+      }
+    }
+    if (total > cap) {
+      findings.push({
+        severity: 'INFO',
+        category: 'SUPHELI_ACIKLAMA',
+        message: `Toplam ${total} satirda riskli aciklama bulundu (ilk ${cap} tanesi listelendi).`,
+        detail: { total },
+      });
+    }
+    return findings;
   }
 
   private amountOf(row: ParsedEDefterFisLine) {
