@@ -11,8 +11,9 @@ import { toast } from 'sonner';
 import { api } from '@/lib/api';
 import { EDefterDonemTipi, edefterControlApi } from '@/lib/edefter-control';
 
-const GOLD = '#d4b876';
-const GOLD_SOFT = 'rgba(212,184,118,.14)';
+// e-Defter modül kimlik rengi: kurumsal lacivert/mavi (her modüle ayrı renk imzası)
+const NAVY = '#5b8def';
+const NAVY_SOFT = 'rgba(91,141,239,.14)';
 const PANEL = 'rgba(255,255,255,0.025)';
 const PANEL_HOVER = 'rgba(255,255,255,0.045)';
 const BORDER = 'rgba(255,255,255,0.07)';
@@ -403,7 +404,7 @@ export default function EDefterAgentPage() {
     setSeverityFilter('ALL'); setStatusFilter('OPEN'); setActiveTab('BULGULAR');
   }, [activeSessionId]);
 
-  const statusColor = (s: string) => s === 'RESOLVED' ? '#22c55e' : s === 'IGNORED' ? '#94a3b8' : GOLD;
+  const statusColor = (s: string) => s === 'RESOLVED' ? '#22c55e' : s === 'IGNORED' ? '#94a3b8' : NAVY;
   const handleStatusChange = (f: any, status: 'OPEN' | 'RESOLVED' | 'IGNORED') => {
     if ((f.status || 'OPEN') === status) return;
     statusMut.mutate({ findingId: f.id, status });
@@ -417,14 +418,15 @@ export default function EDefterAgentPage() {
   return (
     <div className="space-y-4">
       {/* HERO: tek satırda mukellef + donem + skor + butonlar */}
-      <div className="rounded-2xl overflow-hidden border" style={{ borderColor: BORDER_STRONG, background: 'linear-gradient(135deg, rgba(212,184,118,.08), rgba(212,184,118,.02))' }}>
-        <div className="px-5 py-4 flex flex-wrap items-center gap-4">
+      <div className="relative rounded-2xl overflow-hidden border" style={{ borderColor: BORDER_STRONG, background: 'radial-gradient(120% 140% at 0% 0%, rgba(59,130,246,0.18), transparent 46%), radial-gradient(120% 140% at 100% 0%, rgba(99,102,241,0.14), transparent 46%), #0f0d0b' }}>
+        <div className="absolute inset-x-0 top-0 h-1" style={{ background: 'linear-gradient(90deg, #d4b876, #fb923c, #f472b6, #a855f7, #60a5fa, #22d3ee, #4ade80)' }} />
+        <div className="px-5 pt-5 pb-4 flex flex-wrap items-center gap-4">
           <div className="flex items-center gap-3 flex-1 min-w-[280px]">
-            <div className="h-11 w-11 rounded-xl flex items-center justify-center" style={{ background: GOLD_SOFT, color: GOLD }}>
-              <BookOpen size={20} />
-            </div>
+            <span className="grid h-11 w-11 place-items-center rounded-xl shrink-0" style={{ background: 'linear-gradient(135deg, #3b82f6, #1d4ed8)', boxShadow: '0 6px 18px rgba(59,130,246,0.35)' }}>
+              <BookOpen size={21} style={{ color: '#0b1220' }} />
+            </span>
             <div>
-              <div className="text-[10px] uppercase font-bold tracking-[.2em] mb-0.5" style={{ color: GOLD }}>e-Defter Ön Kontrol</div>
+              <div className="text-[10px] uppercase font-bold tracking-[.2em] mb-0.5" style={{ color: NAVY }}>e-Defter Ön Kontrol</div>
               <h1 style={{ fontFamily: 'Fraunces, serif', fontSize: 22, fontWeight: 600, color: '#fafaf9', lineHeight: 1.15 }}>
                 {taxpayerName(selectedTp)}
               </h1>
@@ -447,7 +449,7 @@ export default function EDefterAgentPage() {
             <button disabled={!activeSessionId || reanalyzeMut.isPending} onClick={() => reanalyzeMut.mutate()} className="h-9 px-3 rounded-lg text-xs font-semibold inline-flex items-center gap-1.5 disabled:opacity-40" style={{ background: PANEL, color: 'rgba(250,250,249,.85)', border: `1px solid ${BORDER_STRONG}` }}>
               {reanalyzeMut.isPending ? <Loader2 size={13} className="animate-spin" /> : <RotateCcw size={13} />} Yeniden Analiz
             </button>
-            <button disabled={!taxpayerId || fetchMut.isPending || !!lucaJobId} onClick={() => fetchMut.mutate()} className="h-9 px-3 rounded-lg text-xs font-semibold inline-flex items-center gap-1.5 disabled:opacity-50" style={{ background: 'rgba(212,184,118,.18)', color: GOLD, border: '1px solid rgba(212,184,118,.32)' }}>
+            <button disabled={!taxpayerId || fetchMut.isPending || !!lucaJobId} onClick={() => fetchMut.mutate()} className="h-9 px-3 rounded-lg text-xs font-semibold inline-flex items-center gap-1.5 disabled:opacity-50" style={{ background: 'rgba(91,141,239,.18)', color: NAVY, border: '1px solid rgba(91,141,239,.32)' }}>
               {fetchMut.isPending || lucaJobId ? <Loader2 size={13} className="animate-spin" /> : <Play size={13} />} Luca'dan Çek
             </button>
             <label className="h-9 px-3 rounded-lg text-xs font-semibold inline-flex items-center gap-1.5 cursor-pointer" style={{ background: PANEL, color: 'rgba(250,250,249,.75)', border: `1px solid ${BORDER}` }}>
@@ -459,14 +461,14 @@ export default function EDefterAgentPage() {
 
         {/* Selector bandı — hero altında compact tek satır */}
         <div className="px-5 py-2.5 flex flex-wrap items-center gap-2" style={{ background: 'rgba(0,0,0,.18)', borderTop: `1px solid ${BORDER}` }}>
-          <select value={taxpayerId} onChange={(e) => { setTaxpayerId(e.target.value); setSelectedSessionId(null); }} className="h-8 rounded-md px-2 text-xs min-w-[260px] appearance-none cursor-pointer" style={{ background: PANEL, border: `1px solid ${BORDER}`, color: '#fafaf9', backgroundImage: 'url("data:image/svg+xml;utf8,<svg xmlns=\'http://www.w3.org/2000/svg\' width=\'12\' height=\'12\' viewBox=\'0 0 24 24\' fill=\'none\' stroke=\'%23d4b876\' stroke-width=\'2\'><polyline points=\'6 9 12 15 18 9\'/></svg>")', backgroundRepeat: 'no-repeat', backgroundPosition: 'right 8px center', paddingRight: '24px' }}>
+          <select value={taxpayerId} onChange={(e) => { setTaxpayerId(e.target.value); setSelectedSessionId(null); }} className="h-8 rounded-md px-2 text-xs min-w-[260px] appearance-none cursor-pointer" style={{ background: PANEL, border: `1px solid ${BORDER}`, color: '#fafaf9', backgroundImage: 'url("data:image/svg+xml;utf8,<svg xmlns=\'http://www.w3.org/2000/svg\' width=\'12\' height=\'12\' viewBox=\'0 0 24 24\' fill=\'none\' stroke=\'%235b8def\' stroke-width=\'2\'><polyline points=\'6 9 12 15 18 9\'/></svg>")', backgroundRepeat: 'no-repeat', backgroundPosition: 'right 8px center', paddingRight: '24px' }}>
             {taxpayers.length === 0 && (<option value="" style={{ background: '#1a1a17', color: '#fafaf9' }}>Bilanço mükellefi yok</option>)}
             {taxpayers.map((t) => (<option key={t.id} value={t.id} style={{ background: '#1a1a17', color: '#fafaf9' }}>{taxpayerName(t)}</option>))}
           </select>
           <input type="number" value={year} onChange={(e) => { setYear(Number(e.target.value) || now.getFullYear()); setSelectedSessionId(null); }} className="h-8 rounded-md px-2 text-xs w-20 tabular-nums" style={{ background: PANEL, border: `1px solid ${BORDER}`, color: '#fafaf9' }} />
           <div className="flex h-8 rounded-md overflow-hidden" style={{ border: `1px solid ${BORDER}` }}>
             {(['GECICI', 'AYLIK', 'YILLIK'] as PeriodMode[]).map((mode) => (
-              <button key={mode} onClick={() => { setPeriodMode(mode); setSelectedSessionId(null); }} className="px-2.5 text-[11px] font-semibold" style={{ background: periodMode === mode ? 'rgba(212,184,118,.18)' : PANEL, color: periodMode === mode ? GOLD : 'rgba(250,250,249,.6)', borderRight: mode !== 'YILLIK' ? `1px solid ${BORDER}` : undefined }}>
+              <button key={mode} onClick={() => { setPeriodMode(mode); setSelectedSessionId(null); }} className="px-2.5 text-[11px] font-semibold" style={{ background: periodMode === mode ? 'rgba(91,141,239,.18)' : PANEL, color: periodMode === mode ? NAVY : 'rgba(250,250,249,.6)', borderRight: mode !== 'YILLIK' ? `1px solid ${BORDER}` : undefined }}>
                 {mode === 'GECICI' ? 'Geçici' : mode === 'AYLIK' ? 'Aylık' : 'Yıllık'}
               </button>
             ))}
@@ -474,19 +476,19 @@ export default function EDefterAgentPage() {
           {periodMode === 'GECICI' && (
             <div className="flex h-8 rounded-md overflow-hidden" style={{ border: `1px solid ${BORDER}` }}>
               {[1, 2, 3, 4].map((q) => (
-                <button key={q} onClick={() => { setQuarter(q); setSelectedSessionId(null); }} className="px-2.5 text-[11px] font-semibold" style={{ background: quarter === q ? 'rgba(212,184,118,.18)' : PANEL, color: quarter === q ? GOLD : 'rgba(250,250,249,.65)', borderRight: q < 4 ? `1px solid ${BORDER}` : undefined }}>
+                <button key={q} onClick={() => { setQuarter(q); setSelectedSessionId(null); }} className="px-2.5 text-[11px] font-semibold" style={{ background: quarter === q ? 'rgba(91,141,239,.18)' : PANEL, color: quarter === q ? NAVY : 'rgba(250,250,249,.65)', borderRight: q < 4 ? `1px solid ${BORDER}` : undefined }}>
                   {q}
                 </button>
               ))}
             </div>
           )}
           {periodMode === 'AYLIK' && (
-            <select value={month} onChange={(e) => { setMonth(Number(e.target.value)); setSelectedSessionId(null); }} className="h-8 rounded-md px-2 text-xs appearance-none cursor-pointer" style={{ background: PANEL, border: `1px solid ${BORDER}`, color: '#fafaf9', backgroundImage: 'url("data:image/svg+xml;utf8,<svg xmlns=\'http://www.w3.org/2000/svg\' width=\'12\' height=\'12\' viewBox=\'0 0 24 24\' fill=\'none\' stroke=\'%23d4b876\' stroke-width=\'2\'><polyline points=\'6 9 12 15 18 9\'/></svg>")', backgroundRepeat: 'no-repeat', backgroundPosition: 'right 8px center', paddingRight: '24px' }}>
+            <select value={month} onChange={(e) => { setMonth(Number(e.target.value)); setSelectedSessionId(null); }} className="h-8 rounded-md px-2 text-xs appearance-none cursor-pointer" style={{ background: PANEL, border: `1px solid ${BORDER}`, color: '#fafaf9', backgroundImage: 'url("data:image/svg+xml;utf8,<svg xmlns=\'http://www.w3.org/2000/svg\' width=\'12\' height=\'12\' viewBox=\'0 0 24 24\' fill=\'none\' stroke=\'%235b8def\' stroke-width=\'2\'><polyline points=\'6 9 12 15 18 9\'/></svg>")', backgroundRepeat: 'no-repeat', backgroundPosition: 'right 8px center', paddingRight: '24px' }}>
               {MONTH_LABELS.map((label, i) => (<option key={i + 1} value={i + 1} style={{ background: '#1a1a17', color: '#fafaf9' }}>{label}</option>))}
             </select>
           )}
           {periodSessions.length > 1 && (
-            <select value={activeSessionId || ''} onChange={(e) => setSelectedSessionId(e.target.value)} className="h-8 rounded-md px-2 text-xs ml-auto appearance-none cursor-pointer" style={{ background: PANEL, border: `1px solid ${BORDER_STRONG}`, color: GOLD, backgroundImage: 'url("data:image/svg+xml;utf8,<svg xmlns=\'http://www.w3.org/2000/svg\' width=\'12\' height=\'12\' viewBox=\'0 0 24 24\' fill=\'none\' stroke=\'%23d4b876\' stroke-width=\'2\'><polyline points=\'6 9 12 15 18 9\'/></svg>")', backgroundRepeat: 'no-repeat', backgroundPosition: 'right 8px center', paddingRight: '24px' }}>
+            <select value={activeSessionId || ''} onChange={(e) => setSelectedSessionId(e.target.value)} className="h-8 rounded-md px-2 text-xs ml-auto appearance-none cursor-pointer" style={{ background: PANEL, border: `1px solid ${BORDER_STRONG}`, color: NAVY, backgroundImage: 'url("data:image/svg+xml;utf8,<svg xmlns=\'http://www.w3.org/2000/svg\' width=\'12\' height=\'12\' viewBox=\'0 0 24 24\' fill=\'none\' stroke=\'%235b8def\' stroke-width=\'2\'><polyline points=\'6 9 12 15 18 9\'/></svg>")', backgroundRepeat: 'no-repeat', backgroundPosition: 'right 8px center', paddingRight: '24px' }}>
               {periodSessions.map((s: any, i: number) => (
                 <option key={s.id} value={s.id} style={{ background: '#1a1a17', color: '#fafaf9' }}>{i === 0 ? '★ ' : ''}v{periodSessions.length - i} · {fmtDateTime(s.createdAt)} · {s.findingCount} bulgu</option>
               ))}
@@ -504,7 +506,10 @@ export default function EDefterAgentPage() {
       {/* KPI ŞERİDİ — yatay tek satır, kompakt */}
       <div className="grid grid-cols-3 lg:grid-cols-6 gap-2.5">
         <BigStat label="Toplam" value={stats.total} color="#fafaf9" />
-        <BigStat label="Açık" value={stats.open} color={GOLD} />
+        <div className="rounded-xl p-3 border" style={{ borderColor: 'rgba(91,141,239,0.32)', background: 'linear-gradient(135deg, rgba(91,141,239,0.20), rgba(37,99,235,0.08))' }}>
+          <div className="text-[9px] uppercase tracking-[.18em] mb-1" style={{ color: 'rgba(91,141,239,0.9)' }}>Açık</div>
+          <div className="text-2xl font-bold tabular-nums leading-none" style={{ color: NAVY }}>{stats.open}</div>
+        </div>
         <BigStat label="Çözüldü" value={stats.resolved} color="#22c55e" />
         <KpiFilter label="Hata" value={stats.error} active={severityFilter === 'ERROR'} color="#ef4444" icon={XCircle} onClick={() => setSeverityFilter(severityFilter === 'ERROR' ? 'ALL' : 'ERROR')} />
         <KpiFilter label="Uyarı" value={stats.warn} active={severityFilter === 'WARN'} color="#f59e0b" icon={AlertTriangle} onClick={() => setSeverityFilter(severityFilter === 'WARN' ? 'ALL' : 'WARN')} />
@@ -527,7 +532,7 @@ export default function EDefterAgentPage() {
                 { id: 'IGNORED', label: `Görmezden (${stats.ignored})` },
                 { id: 'ALL', label: `Tümü (${stats.total})` },
               ].map((opt) => (
-                <button key={opt.id} onClick={() => setStatusFilter(opt.id as StatusFilter)} className="px-2.5" style={{ background: statusFilter === opt.id ? 'rgba(212,184,118,.18)' : PANEL, color: statusFilter === opt.id ? GOLD : 'rgba(250,250,249,.6)' }}>
+                <button key={opt.id} onClick={() => setStatusFilter(opt.id as StatusFilter)} className="px-2.5" style={{ background: statusFilter === opt.id ? 'rgba(91,141,239,.18)' : PANEL, color: statusFilter === opt.id ? NAVY : 'rgba(250,250,249,.6)' }}>
                   {opt.label}
                 </button>
               ))}
@@ -554,7 +559,7 @@ export default function EDefterAgentPage() {
 
           {groupedFindings.length === 0 && (
             <div className="rounded-2xl p-12 text-center" style={{ background: PANEL, border: `1px dashed ${BORDER_STRONG}` }}>
-              <div className="inline-flex h-14 w-14 rounded-full items-center justify-center mb-3" style={{ background: stats.total === 0 ? 'rgba(34,197,94,.15)' : GOLD_SOFT, color: stats.total === 0 ? '#22c55e' : GOLD }}>
+              <div className="inline-flex h-14 w-14 rounded-full items-center justify-center mb-3" style={{ background: stats.total === 0 ? 'rgba(34,197,94,.15)' : NAVY_SOFT, color: stats.total === 0 ? '#22c55e' : NAVY }}>
                 {stats.total === 0 ? <CheckCircle2 size={26} /> : <Sparkles size={26} />}
               </div>
               <div className="text-base font-semibold mb-1" style={{ color: '#fafaf9' }}>
@@ -578,7 +583,7 @@ export default function EDefterAgentPage() {
                   <button onClick={() => setExpandedGroups((p) => ({ ...p, [group.id]: !expanded }))} className="w-full flex items-center justify-between px-4 py-3 text-left" style={{ background: PANEL_HOVER }}>
                     <span className="inline-flex items-center gap-3">
                       <span className="text-lg">{group.icon}</span>
-                      {expanded ? <ChevronDown size={15} style={{ color: GOLD }} /> : <ChevronRight size={15} style={{ color: GOLD }} />}
+                      {expanded ? <ChevronDown size={15} style={{ color: NAVY }} /> : <ChevronRight size={15} style={{ color: NAVY }} />}
                       <span className="text-sm font-bold uppercase tracking-wide" style={{ color: '#fafaf9' }}>{group.label}</span>
                       <span className="text-xs tabular-nums px-2 py-0.5 rounded-full" style={{ background: 'rgba(255,255,255,.05)', color: 'rgba(250,250,249,.7)' }}>{group.items.length}</span>
                     </span>
@@ -601,7 +606,7 @@ export default function EDefterAgentPage() {
                               <div className="flex items-center gap-1.5 flex-wrap">
                                 <Severity value={sev} />
                                 {f.rowIndex && (<span className="text-[10px] tabular-nums px-1.5 py-0.5 rounded" style={{ background: 'rgba(255,255,255,.05)', color: 'rgba(250,250,249,.6)' }}>Satır {f.rowIndex}</span>)}
-                                {f.hesapKodu && (<span className="text-[10px] tabular-nums px-1.5 py-0.5 rounded" style={{ background: GOLD_SOFT, color: GOLD }}>{f.hesapKodu}</span>)}
+                                {f.hesapKodu && (<span className="text-[10px] tabular-nums px-1.5 py-0.5 rounded" style={{ background: 'rgba(255,255,255,.06)', color: 'rgba(250,250,249,.82)' }}>{f.hesapKodu}</span>)}
                               </div>
                               <span className="text-[9px] uppercase tracking-wider font-bold" style={{ color: statusColor(fStatus) }}>
                                 {fStatus === 'OPEN' ? '● Açık' : fStatus === 'RESOLVED' ? '✓ Çözüldü' : '∅ Görmezden'}
@@ -622,7 +627,7 @@ export default function EDefterAgentPage() {
                                   </button>
                                 )}
                                 {fStatus !== 'OPEN' && (
-                                  <button onClick={() => handleStatusChange(f, 'OPEN')} title="Yeniden aç" className="h-6 px-2 rounded text-[10px] font-semibold inline-flex items-center gap-1" style={{ background: GOLD_SOFT, color: GOLD, border: `1px solid ${BORDER_STRONG}` }}>
+                                  <button onClick={() => handleStatusChange(f, 'OPEN')} title="Yeniden aç" className="h-6 px-2 rounded text-[10px] font-semibold inline-flex items-center gap-1" style={{ background: NAVY_SOFT, color: NAVY, border: `1px solid ${BORDER_STRONG}` }}>
                                     <RotateCcw size={11} /> Aç
                                   </button>
                                 )}
@@ -646,7 +651,7 @@ export default function EDefterAgentPage() {
         <div className="space-y-3">
           {!mizan ? (
             <div className="rounded-2xl p-12 text-center" style={{ background: PANEL, border: `1px dashed ${BORDER_STRONG}` }}>
-              <div className="inline-flex h-14 w-14 rounded-full items-center justify-center mb-3" style={{ background: GOLD_SOFT, color: GOLD }}>
+              <div className="inline-flex h-14 w-14 rounded-full items-center justify-center mb-3" style={{ background: NAVY_SOFT, color: NAVY }}>
                 <FileSpreadsheet size={26} />
               </div>
               <div className="text-base font-semibold mb-1" style={{ color: '#fafaf9' }}>Mizan henüz çekilmedi</div>
@@ -659,7 +664,7 @@ export default function EDefterAgentPage() {
                 <BigStat label="Mizan Bulgusu" value={mizan.anomalyCount || 0} color={mizan.anomalyCount ? '#f59e0b' : '#22c55e'} />
                 <div className="rounded-xl p-3" style={{ background: PANEL, border: `1px solid ${BORDER}` }}>
                   <div className="text-[9px] uppercase tracking-[.18em] mb-1" style={{ color: 'rgba(250,250,249,.45)' }}>Durum</div>
-                  <div className="text-sm font-semibold" style={{ color: mizan.status === 'READY' ? '#22c55e' : GOLD }}>{mizan.status || '-'}</div>
+                  <div className="text-sm font-semibold" style={{ color: mizan.status === 'READY' ? '#22c55e' : NAVY }}>{mizan.status || '-'}</div>
                 </div>
                 <div className="rounded-xl p-3" style={{ background: PANEL, border: `1px solid ${BORDER}` }}>
                   <div className="text-[9px] uppercase tracking-[.18em] mb-1" style={{ color: 'rgba(250,250,249,.45)' }}>Güncelleme</div>
@@ -690,7 +695,7 @@ export default function EDefterAgentPage() {
                       {mizanAnomalies.map((a: any) => (
                         <tr key={a.id} style={{ borderBottom: `1px solid ${BORDER}`, color: '#fafaf9' }}>
                           <td className="py-2.5 px-4"><Severity value={a.seviye || 'WARN'} /></td>
-                          <td className="py-2.5 px-4 text-xs font-semibold" style={{ color: GOLD }}>{a.tip || '-'}</td>
+                          <td className="py-2.5 px-4 text-xs font-semibold" style={{ color: 'rgba(250,250,249,.82)' }}>{a.tip || '-'}</td>
                           <td className="py-2.5 px-4 font-semibold tabular-nums" style={{ color: '#fafaf9' }}>{a.hesapKodu || '-'}</td>
                           <td className="py-2.5 px-4 text-xs" style={{ color: 'rgba(250,250,249,.85)' }}>{a.mesaj || '-'}</td>
                         </tr>
@@ -714,7 +719,7 @@ export default function EDefterAgentPage() {
             </div>
             <span className="text-xs tabular-nums" style={{ color: 'rgba(250,250,249,.5)' }}>{visibleLines.length}/{lines.length}</span>
             {focusedFinding && (
-              <button onClick={() => setFocusedFinding(null)} className="h-10 px-3 rounded-lg text-xs font-semibold inline-flex items-center gap-1" style={{ background: GOLD_SOFT, color: GOLD, border: `1px solid ${BORDER_STRONG}` }}>
+              <button onClick={() => setFocusedFinding(null)} className="h-10 px-3 rounded-lg text-xs font-semibold inline-flex items-center gap-1" style={{ background: NAVY_SOFT, color: NAVY, border: `1px solid ${BORDER_STRONG}` }}>
                 <XCircle size={12} /> Bulgu filtresini temizle
               </button>
             )}
@@ -745,12 +750,12 @@ export default function EDefterAgentPage() {
                 const dengesiz = fark > 0.01 && g.lines.length >= 2;
                 const focusedHere = focusedFinding?.rowIndex && g.lines.some((l: any) => Number(l.rowIndex) === Number(focusedFinding.rowIndex));
                 return (
-                  <div key={g.key} className="rounded-xl border overflow-hidden" style={{ background: PANEL, borderColor: focusedHere ? 'rgba(212,184,118,.45)' : (dengesiz ? 'rgba(239,68,68,.35)' : BORDER), borderLeftWidth: '3px', borderLeftColor: focusedHere ? GOLD : (dengesiz ? '#ef4444' : 'rgba(34,197,94,.5)') }}>
+                  <div key={g.key} className="rounded-xl border overflow-hidden" style={{ background: PANEL, borderColor: focusedHere ? 'rgba(91,141,239,.45)' : (dengesiz ? 'rgba(239,68,68,.35)' : BORDER), borderLeftWidth: '3px', borderLeftColor: focusedHere ? NAVY : (dengesiz ? '#ef4444' : 'rgba(34,197,94,.5)') }}>
                     {/* Fis baslik bandi */}
-                    <div className="flex flex-wrap items-center gap-3 px-3 py-2" style={{ background: focusedHere ? 'rgba(212,184,118,.10)' : 'rgba(0,0,0,.18)', borderBottom: `1px solid ${BORDER}` }}>
+                    <div className="flex flex-wrap items-center gap-3 px-3 py-2" style={{ background: focusedHere ? 'rgba(91,141,239,.10)' : 'rgba(0,0,0,.18)', borderBottom: `1px solid ${BORDER}` }}>
                       <div className="flex items-center gap-2">
                         <span className="text-[10px] uppercase tracking-wider" style={{ color: 'rgba(250,250,249,.45)' }}>Yevmiye</span>
-                        <span className="text-base font-bold" style={{ color: GOLD, fontFamily: 'monospace' }}>{g.first.yevmiyeNo || g.first.fisNo || '-'}</span>
+                        <span className="text-base font-bold" style={{ color: '#fafaf9', fontFamily: 'monospace' }}>{g.first.yevmiyeNo || g.first.fisNo || '-'}</span>
                       </div>
                       <span className="text-xs" style={{ color: 'rgba(250,250,249,.55)' }}>{fmtDate(g.first.fisTarihi)}</span>
                       {g.first.evrakNo && (<span className="text-xs px-2 py-0.5 rounded" style={{ background: 'rgba(255,255,255,.05)', color: 'rgba(250,250,249,.65)' }}>Evrak: {g.first.evrakNo}</span>)}
@@ -764,7 +769,7 @@ export default function EDefterAgentPage() {
                     <table className="w-full text-xs">
                       <tbody>
                         {g.lines.map((line: any, idx: number) => (
-                          <tr key={line.id} ref={focusedFinding?.rowIndex && Number(focusedFinding.rowIndex) === Number(line.rowIndex) ? focusedLineRef : undefined} style={{ borderBottom: idx < g.lines.length - 1 ? `1px solid ${BORDER}` : undefined, color: 'rgba(250,250,249,.82)', background: focusedFinding?.rowIndex && Number(focusedFinding.rowIndex) === Number(line.rowIndex) ? GOLD_SOFT : 'transparent' }}>
+                          <tr key={line.id} ref={focusedFinding?.rowIndex && Number(focusedFinding.rowIndex) === Number(line.rowIndex) ? focusedLineRef : undefined} style={{ borderBottom: idx < g.lines.length - 1 ? `1px solid ${BORDER}` : undefined, color: 'rgba(250,250,249,.82)', background: focusedFinding?.rowIndex && Number(focusedFinding.rowIndex) === Number(line.rowIndex) ? NAVY_SOFT : 'transparent' }}>
                             <td className="py-2 px-3 tabular-nums w-12" style={{ color: 'rgba(250,250,249,.4)' }}>{line.rowIndex || '-'}</td>
                             <td className="py-2 px-3 whitespace-nowrap w-44">
                               <span className="font-semibold" style={{ color: '#fafaf9' }}>{line.hesapKodu || '-'}</span>
@@ -793,7 +798,7 @@ export default function EDefterAgentPage() {
         <div className="space-y-3">
           {periodSessions.length === 0 ? (
             <div className="rounded-2xl p-12 text-center" style={{ background: PANEL, border: `1px dashed ${BORDER_STRONG}` }}>
-              <div className="inline-flex h-14 w-14 rounded-full items-center justify-center mb-3" style={{ background: GOLD_SOFT, color: GOLD }}>
+              <div className="inline-flex h-14 w-14 rounded-full items-center justify-center mb-3" style={{ background: NAVY_SOFT, color: NAVY }}>
                 <Clock size={26} />
               </div>
               <div className="text-base font-semibold mb-1" style={{ color: '#fafaf9' }}>Henüz Detay Fiş Listesi çekilmedi</div>
@@ -816,8 +821,8 @@ export default function EDefterAgentPage() {
                   {periodSessions.map((s: any, i: number) => {
                     const isActive = activeSessionId === s.id;
                     return (
-                      <tr key={s.id} onClick={() => { setSelectedSessionId(s.id); setActiveTab('BULGULAR'); }} className="cursor-pointer" style={{ borderBottom: `1px solid ${BORDER}`, background: isActive ? GOLD_SOFT : 'transparent', color: '#fafaf9' }}>
-                        <td className="py-3 px-4 font-bold" style={{ color: isActive ? GOLD : '#fafaf9' }}>
+                      <tr key={s.id} onClick={() => { setSelectedSessionId(s.id); setActiveTab('BULGULAR'); }} className="cursor-pointer" style={{ borderBottom: `1px solid ${BORDER}`, background: isActive ? NAVY_SOFT : 'transparent', color: '#fafaf9' }}>
+                        <td className="py-3 px-4 font-bold" style={{ color: isActive ? NAVY : '#fafaf9' }}>
                           {i === 0 ? '★ ' : ''}v{periodSessions.length - i}
                         </td>
                         <td className="py-3 px-4" style={{ color: 'rgba(250,250,249,.7)' }}>{fmtDateTime(s.createdAt)}</td>
@@ -867,11 +872,11 @@ function KpiFilter({ label, value, active, color, icon: Icon, onClick }: { label
 
 function TabButton({ active, onClick, icon: Icon, label, badge }: { active: boolean; onClick: () => void; icon: any; label: string; badge?: number }) {
   return (
-    <button onClick={onClick} className="h-10 px-4 inline-flex items-center gap-2 text-sm font-semibold border-b-2 transition-colors" style={{ borderColor: active ? GOLD : 'transparent', color: active ? GOLD : 'rgba(250,250,249,.55)' }}>
+    <button onClick={onClick} className="h-10 px-4 inline-flex items-center gap-2 text-sm font-semibold border-b-2 transition-colors" style={{ borderColor: active ? NAVY : 'transparent', color: active ? NAVY : 'rgba(250,250,249,.55)' }}>
       <Icon size={15} />
       {label}
       {badge != null && badge > 0 && (
-        <span className="text-[10px] tabular-nums px-1.5 py-0.5 rounded-full" style={{ background: active ? GOLD_SOFT : 'rgba(255,255,255,.05)', color: active ? GOLD : 'rgba(250,250,249,.55)' }}>{badge}</span>
+        <span className="text-[10px] tabular-nums px-1.5 py-0.5 rounded-full" style={{ background: active ? NAVY_SOFT : 'rgba(255,255,255,.05)', color: active ? NAVY : 'rgba(250,250,249,.55)' }}>{badge}</span>
       )}
     </button>
   );
@@ -992,24 +997,24 @@ function KurallarTab() {
           <input value={search} onChange={(e) => setSearch(e.target.value)} placeholder="Kural ara..." className="bg-transparent outline-none text-sm w-full" style={{ color: '#fafaf9' }} />
         </div>
         <span className="text-xs tabular-nums" style={{ color: 'rgba(250,250,249,.5)' }}>{STANDART_KURALLAR.length} standart · {manuel.length} manuel</span>
-        <button onClick={() => setShowForm(!showForm)} className="h-10 px-4 rounded-lg text-xs font-semibold inline-flex items-center gap-1.5" style={{ background: GOLD_SOFT, color: GOLD, border: '1px solid rgba(212,184,118,.3)' }}>
+        <button onClick={() => setShowForm(!showForm)} className="h-10 px-4 rounded-lg text-xs font-semibold inline-flex items-center gap-1.5" style={{ background: NAVY_SOFT, color: NAVY, border: '1px solid rgba(91,141,239,.3)' }}>
           {showForm ? <XCircle size={13} /> : <Sparkles size={13} />} {showForm ? 'Vazgeç' : 'Manuel Kural Ekle'}
         </button>
       </div>
 
       {/* Manuel kural ekleme formu */}
       {showForm && (
-        <div className="rounded-xl p-4 space-y-3" style={{ background: GOLD_SOFT, border: '1px solid rgba(212,184,118,.3)' }}>
-          <div className="text-xs font-bold uppercase tracking-wider" style={{ color: GOLD }}>Yeni Manuel Kural</div>
+        <div className="rounded-xl p-4 space-y-3" style={{ background: NAVY_SOFT, border: '1px solid rgba(91,141,239,.3)' }}>
+          <div className="text-xs font-bold uppercase tracking-wider" style={{ color: NAVY }}>Yeni Manuel Kural</div>
           <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
             <Field label="Kural Adı *"><input value={form.ad} onChange={(e) => setForm({ ...form, ad: e.target.value })} placeholder="Örn: Kira ödemesi 5.000 TL üstü kontrol" className="w-full h-9 rounded-md px-3 text-sm" style={{ background: PANEL, border: `1px solid ${BORDER}`, color: '#fafaf9' }} /></Field>
-            <Field label="Seviye"><select value={form.severity} onChange={(e) => setForm({ ...form, severity: e.target.value as any })} className="w-full h-9 rounded-md px-3 text-sm appearance-none cursor-pointer" style={{ background: PANEL, border: `1px solid ${BORDER}`, color: '#fafaf9', backgroundImage: 'url("data:image/svg+xml;utf8,<svg xmlns=\'http://www.w3.org/2000/svg\' width=\'12\' height=\'12\' viewBox=\'0 0 24 24\' fill=\'none\' stroke=\'%23d4b876\' stroke-width=\'2\'><polyline points=\'6 9 12 15 18 9\'/></svg>")', backgroundRepeat: 'no-repeat', backgroundPosition: 'right 10px center', paddingRight: '30px' }}><option value="ERROR" style={{ background: '#1a1a17', color: '#fafaf9' }}>Hata</option><option value="WARN" style={{ background: '#1a1a17', color: '#fafaf9' }}>Uyarı</option><option value="INFO" style={{ background: '#1a1a17', color: '#fafaf9' }}>Bilgi</option></select></Field>
+            <Field label="Seviye"><select value={form.severity} onChange={(e) => setForm({ ...form, severity: e.target.value as any })} className="w-full h-9 rounded-md px-3 text-sm appearance-none cursor-pointer" style={{ background: PANEL, border: `1px solid ${BORDER}`, color: '#fafaf9', backgroundImage: 'url("data:image/svg+xml;utf8,<svg xmlns=\'http://www.w3.org/2000/svg\' width=\'12\' height=\'12\' viewBox=\'0 0 24 24\' fill=\'none\' stroke=\'%235b8def\' stroke-width=\'2\'><polyline points=\'6 9 12 15 18 9\'/></svg>")', backgroundRepeat: 'no-repeat', backgroundPosition: 'right 10px center', paddingRight: '30px' }}><option value="ERROR" style={{ background: '#1a1a17', color: '#fafaf9' }}>Hata</option><option value="WARN" style={{ background: '#1a1a17', color: '#fafaf9' }}>Uyarı</option><option value="INFO" style={{ background: '#1a1a17', color: '#fafaf9' }}>Bilgi</option></select></Field>
             <Field label="Hesap Kodu Başlangıcı (opsiyonel)"><input value={form.hesapKoduPrefix} onChange={(e) => setForm({ ...form, hesapKoduPrefix: e.target.value })} placeholder="Örn: 770 veya 360.01" className="w-full h-9 rounded-md px-3 text-sm tabular-nums" style={{ background: PANEL, border: `1px solid ${BORDER}`, color: '#fafaf9' }} /></Field>
             <Field label="Tutar Eşiği TL (opsiyonel)"><input type="number" value={form.tutarEsigi} onChange={(e) => setForm({ ...form, tutarEsigi: e.target.value })} placeholder="Örn: 5000" className="w-full h-9 rounded-md px-3 text-sm tabular-nums" style={{ background: PANEL, border: `1px solid ${BORDER}`, color: '#fafaf9' }} /></Field>
           </div>
           <Field label="Açıklama"><textarea value={form.aciklama} onChange={(e) => setForm({ ...form, aciklama: e.target.value })} placeholder="Bu kural ne yakalar, neden eklendi?" rows={2} className="w-full rounded-md px-3 py-2 text-sm" style={{ background: PANEL, border: `1px solid ${BORDER}`, color: '#fafaf9' }} /></Field>
           <div className="flex justify-end">
-            <button onClick={ekle} className="h-9 px-4 rounded-md text-xs font-bold inline-flex items-center gap-1.5" style={{ background: GOLD, color: '#1a1a17' }}>
+            <button onClick={ekle} className="h-9 px-4 rounded-md text-xs font-bold inline-flex items-center gap-1.5" style={{ background: NAVY, color: '#1a1a17' }}>
               <CheckCircle2 size={13} /> Kaydet
             </button>
           </div>
@@ -1021,8 +1026,8 @@ function KurallarTab() {
       {manuel.length > 0 && (
         <div className="rounded-xl overflow-hidden" style={{ background: PANEL, border: `1px solid ${BORDER}` }}>
           <div className="px-4 py-2.5 flex items-center gap-2" style={{ background: PANEL_HOVER, borderBottom: `1px solid ${BORDER}` }}>
-            <Sparkles size={14} style={{ color: GOLD }} />
-            <span className="text-xs font-bold uppercase tracking-wider" style={{ color: GOLD }}>Senin Manuel Kuralların</span>
+            <Sparkles size={14} style={{ color: NAVY }} />
+            <span className="text-xs font-bold uppercase tracking-wider" style={{ color: NAVY }}>Senin Manuel Kuralların</span>
             <span className="text-xs tabular-nums ml-auto" style={{ color: 'rgba(250,250,249,.5)' }}>{manuel.length}</span>
           </div>
           <div className="divide-y" style={{ borderColor: BORDER }}>
@@ -1033,7 +1038,7 @@ function KurallarTab() {
                   <div className="text-sm font-semibold mb-0.5" style={{ color: '#fafaf9' }}>{k.ad}</div>
                   {k.aciklama && (<div className="text-xs mb-1" style={{ color: 'rgba(250,250,249,.65)' }}>{k.aciklama}</div>)}
                   <div className="flex flex-wrap gap-2 text-[10px]">
-                    {k.hesapKoduPrefix && (<span className="px-1.5 py-0.5 rounded tabular-nums" style={{ background: GOLD_SOFT, color: GOLD }}>Hesap: {k.hesapKoduPrefix}*</span>)}
+                    {k.hesapKoduPrefix && (<span className="px-1.5 py-0.5 rounded tabular-nums" style={{ background: 'rgba(255,255,255,.06)', color: 'rgba(250,250,249,.82)' }}>Hesap: {k.hesapKoduPrefix}*</span>)}
                     {k.tutarEsigi != null && (<span className="px-1.5 py-0.5 rounded tabular-nums" style={{ background: 'rgba(255,255,255,.05)', color: 'rgba(250,250,249,.6)' }}>Eşik: {fmtTRY(k.tutarEsigi)} TL</span>)}
                     <span className="px-1.5 py-0.5 rounded" style={{ background: 'rgba(255,255,255,.04)', color: 'rgba(250,250,249,.45)' }}>{fmtDate(k.createdAt)}</span>
                   </div>
@@ -1050,7 +1055,7 @@ function KurallarTab() {
         {[...byGroup.entries()].map(([grupAd, kurallar]) => (
           <div key={grupAd} className="rounded-xl overflow-hidden" style={{ background: PANEL, border: `1px solid ${BORDER}` }}>
             <div className="px-4 py-2.5" style={{ background: PANEL_HOVER, borderBottom: `1px solid ${BORDER}` }}>
-              <span className="text-xs font-bold uppercase tracking-wider" style={{ color: GOLD }}>{grupAd}</span>
+              <span className="text-xs font-bold uppercase tracking-wider" style={{ color: 'rgba(250,250,249,.85)' }}>{grupAd}</span>
               <span className="text-xs tabular-nums ml-2" style={{ color: 'rgba(250,250,249,.5)' }}>{kurallar.length}</span>
             </div>
             <div className="divide-y" style={{ borderColor: BORDER }}>
