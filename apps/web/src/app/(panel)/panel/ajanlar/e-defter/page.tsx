@@ -596,40 +596,60 @@ export default function EDefterAgentPage() {
           </label>
         </div>
 
-        {/* Seçici bandı */}
-        <div className="px-5 py-2.5 flex flex-wrap items-center gap-2" style={{ background: 'rgba(0,0,0,.24)', borderTop: `1px solid ${BORDER}` }}>
-          <select value={taxpayerId} onChange={(e) => { setTaxpayerId(e.target.value); setSelectedSessionId(null); }} className="h-8 rounded-md px-2 text-xs min-w-[260px] appearance-none cursor-pointer" style={selectStyle()}>
-            {taxpayers.length === 0 && (<option value="" style={{ background: '#1a1a17', color: TEXT }}>Bilanço mükellefi yok</option>)}
-            {taxpayers.map((t) => (<option key={t.id} value={t.id} style={{ background: '#1a1a17', color: TEXT }}>{taxpayerName(t)}</option>))}
-          </select>
-          <input type="number" value={year} onChange={(e) => { setYear(Number(e.target.value) || now.getFullYear()); setSelectedSessionId(null); }} className="h-8 rounded-md px-2 text-xs w-20 tabular-nums" style={{ background: PANEL, border: `1px solid ${BORDER}`, color: TEXT }} />
-          <div className="flex h-8 rounded-md overflow-hidden" style={{ border: `1px solid ${BORDER}` }}>
-            {(['GECICI', 'AYLIK', 'YILLIK'] as PeriodMode[]).map((mode) => (
-              <button key={mode} onClick={() => { setPeriodMode(mode); setSelectedSessionId(null); }} className="px-2.5 text-[11px] font-semibold" style={{ background: periodMode === mode ? 'rgba(91,141,239,.18)' : PANEL, color: periodMode === mode ? NAVY : 'rgba(250,250,249,.6)', borderRight: mode !== 'YILLIK' ? `1px solid ${BORDER}` : undefined }}>
-                {mode === 'GECICI' ? 'Geçici' : mode === 'AYLIK' ? 'Aylık' : 'Yıllık'}
-              </button>
-            ))}
-          </div>
-          {periodMode === 'GECICI' && (
-            <div className="flex h-8 rounded-md overflow-hidden" style={{ border: `1px solid ${BORDER}` }}>
-              {[1, 2, 3, 4].map((q) => (
-                <button key={q} onClick={() => { setQuarter(q); setSelectedSessionId(null); }} className="px-2.5 text-[11px] font-semibold" style={{ background: quarter === q ? 'rgba(91,141,239,.18)' : PANEL, color: quarter === q ? NAVY : 'rgba(250,250,249,.65)', borderRight: q < 4 ? `1px solid ${BORDER}` : undefined }}>
-                  {q}
+        {/* Seçici bandı — etiketli, hizalı kontroller */}
+        <div className="px-5 py-3.5 flex flex-wrap items-end gap-x-4 gap-y-3" style={{ background: 'rgba(0,0,0,.24)', borderTop: `1px solid ${BORDER}` }}>
+          <label className="flex flex-col gap-1.5 flex-1 min-w-[260px]">
+            <span className="text-[9px] uppercase tracking-[.16em] font-bold" style={{ color: MUTED2 }}>Mükellef <span style={{ color: NAVY }}>· {taxpayers.length} bilanço</span></span>
+            <select value={taxpayerId} onChange={(e) => { setTaxpayerId(e.target.value); setSelectedSessionId(null); }} className="h-10 rounded-lg px-3 text-[13px] w-full appearance-none cursor-pointer" style={selectStyle()}>
+              {taxpayers.length === 0 && (<option value="" style={{ background: '#1a1a17', color: TEXT }}>Bilanço mükellefi yok</option>)}
+              {taxpayers.map((t) => (<option key={t.id} value={t.id} style={{ background: '#1a1a17', color: TEXT }}>{taxpayerName(t)}</option>))}
+            </select>
+          </label>
+          <label className="flex flex-col gap-1.5">
+            <span className="text-[9px] uppercase tracking-[.16em] font-bold" style={{ color: MUTED2 }}>Yıl</span>
+            <select value={year} onChange={(e) => { setYear(Number(e.target.value)); setSelectedSessionId(null); }} className="h-10 rounded-lg px-3 text-[13px] tabular-nums appearance-none cursor-pointer" style={selectStyle()}>
+              {Array.from({ length: 7 }, (_, i) => now.getFullYear() + 1 - i).map((y) => (<option key={y} value={y} style={{ background: '#1a1a17', color: TEXT }}>{y}</option>))}
+            </select>
+          </label>
+          <div className="flex flex-col gap-1.5">
+            <span className="text-[9px] uppercase tracking-[.16em] font-bold" style={{ color: MUTED2 }}>Dönem Türü</span>
+            <div className="flex h-10 rounded-lg overflow-hidden" style={{ border: `1px solid ${BORDER}` }}>
+              {(['GECICI', 'AYLIK', 'YILLIK'] as PeriodMode[]).map((mode) => (
+                <button key={mode} onClick={() => { setPeriodMode(mode); setSelectedSessionId(null); }} className="px-3.5 text-xs font-semibold transition-colors" style={{ background: periodMode === mode ? 'rgba(91,141,239,.20)' : PANEL, color: periodMode === mode ? NAVY : 'rgba(250,250,249,.6)', borderRight: mode !== 'YILLIK' ? `1px solid ${BORDER}` : undefined }}>
+                  {mode === 'GECICI' ? 'Geçici' : mode === 'AYLIK' ? 'Aylık' : 'Yıllık'}
                 </button>
               ))}
             </div>
+          </div>
+          {periodMode === 'GECICI' && (
+            <div className="flex flex-col gap-1.5">
+              <span className="text-[9px] uppercase tracking-[.16em] font-bold" style={{ color: MUTED2 }}>Çeyrek</span>
+              <div className="flex h-10 rounded-lg overflow-hidden" style={{ border: `1px solid ${BORDER}` }}>
+                {[1, 2, 3, 4].map((q) => (
+                  <button key={q} onClick={() => { setQuarter(q); setSelectedSessionId(null); }} className="w-10 text-xs font-semibold transition-colors" style={{ background: quarter === q ? 'rgba(91,141,239,.20)' : PANEL, color: quarter === q ? NAVY : 'rgba(250,250,249,.65)', borderRight: q < 4 ? `1px solid ${BORDER}` : undefined }}>
+                    {q}
+                  </button>
+                ))}
+              </div>
+            </div>
           )}
           {periodMode === 'AYLIK' && (
-            <select value={month} onChange={(e) => { setMonth(Number(e.target.value)); setSelectedSessionId(null); }} className="h-8 rounded-md px-2 text-xs appearance-none cursor-pointer" style={selectStyle()}>
-              {MONTH_LABELS.map((label, i) => (<option key={i + 1} value={i + 1} style={{ background: '#1a1a17', color: TEXT }}>{label}</option>))}
-            </select>
+            <label className="flex flex-col gap-1.5">
+              <span className="text-[9px] uppercase tracking-[.16em] font-bold" style={{ color: MUTED2 }}>Ay</span>
+              <select value={month} onChange={(e) => { setMonth(Number(e.target.value)); setSelectedSessionId(null); }} className="h-10 rounded-lg px-3 text-[13px] appearance-none cursor-pointer" style={selectStyle()}>
+                {MONTH_LABELS.map((label, i) => (<option key={i + 1} value={i + 1} style={{ background: '#1a1a17', color: TEXT }}>{label}</option>))}
+              </select>
+            </label>
           )}
           {periodSessions.length > 1 && (
-            <select value={activeSessionId || ''} onChange={(e) => setSelectedSessionId(e.target.value)} className="h-8 rounded-md px-2 text-xs ml-auto appearance-none cursor-pointer" style={selectStyle(true)}>
-              {periodSessions.map((s: any, i: number) => (
-                <option key={s.id} value={s.id} style={{ background: '#1a1a17', color: TEXT }}>{i === 0 ? '★ ' : ''}v{periodSessions.length - i} · {fmtDateTime(s.createdAt)} · {s.findingCount} bulgu</option>
-              ))}
-            </select>
+            <label className="flex flex-col gap-1.5 ml-auto">
+              <span className="text-[9px] uppercase tracking-[.16em] font-bold" style={{ color: MUTED2 }}>Versiyon</span>
+              <select value={activeSessionId || ''} onChange={(e) => setSelectedSessionId(e.target.value)} className="h-10 rounded-lg px-3 text-[13px] appearance-none cursor-pointer" style={selectStyle(true)}>
+                {periodSessions.map((s: any, i: number) => (
+                  <option key={s.id} value={s.id} style={{ background: '#1a1a17', color: TEXT }}>{i === 0 ? '★ ' : ''}v{periodSessions.length - i} · {fmtDateTime(s.createdAt)} · {s.findingCount} bulgu</option>
+                ))}
+              </select>
+            </label>
           )}
         </div>
       </div>
