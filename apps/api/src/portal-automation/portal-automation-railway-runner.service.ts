@@ -3157,7 +3157,9 @@ export class PortalAutomationRailwayRunnerService implements OnModuleInit {
     q.set('beyannameTanim', p.beyannameTanim || '');
     q.set('donemBasAy', ''); q.set('donemBasYil', '');
     q.set('donemBitAy', ''); q.set('donemBitYil', '');
-    q.set('vergiNo', ''); q.set('tcKimlikNo', ''); q.set('vdKodu', '');
+    // GIB: "Vergi Kimlik Numarasi ve TC Kimlik Numarasini BIRLIKTE girerek sorgulamayiniz" -> toplu
+    // sorguda ikisini de GONDERME (bos bile olsa birlikte gonderince reddediyor). Sadece vdKodu kalsin.
+    q.set('vdKodu', '');
     q.set('sorguTipiN', '1'); q.set('sorguTipiT', '1'); q.set('sorguTipiB', '1');
     q.set('sorguTipiP', '1'); q.set('sorguTipiV', '1'); q.set('sorguTipiZ', '1');
     if (p.baslangic) q.set('baslangicTarihi', p.baslangic);
