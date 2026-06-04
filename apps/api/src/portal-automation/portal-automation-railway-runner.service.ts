@@ -3456,8 +3456,10 @@ export class PortalAutomationRailwayRunnerService implements OnModuleInit {
           const trIdx = s.indexOf('<tr id="row');
           const gIdx = s.search(/Goruntule|dispatch|IMAJ|getParameter|tahakkuk/i);
           notes.push(`[RAWDUMP] len=${s.length} rows=${parsed.rows.length} total=${parsed.total} trIdx=${trIdx} gIdx=${gIdx}`);
-          notes.push(`[RAWDUMP-ROW] ${trIdx >= 0 ? s.slice(trIdx, trIdx + 3000) : s.slice(3200, 6200)}`);
-          if (gIdx >= 0) notes.push(`[RAWDUMP-FN] ${s.slice(Math.max(0, gIdx - 150), gIdx + 1000)}`);
+          notes.push(`[RAWDUMP-REQ] method=${captured?.method || '-'} url=${this.safeUrl(captured?.url || '')} || post=${String(captured?.postData || '').slice(0, 1800)}`);
+          // Onaylanmis bir satir ornegi: durumTD icinde "Onayland" gecen ilk satiri bul.
+          const onayIdx = s.search(/Onayland/i);
+          notes.push(`[RAWDUMP-ONAY] onayIdx=${onayIdx} ${onayIdx >= 0 ? s.slice(Math.max(0, s.lastIndexOf('<tr id="row', onayIdx)), onayIdx + 1500) : '(onayli satir yok)'}`);
         }
         if (parsed.recognized) recognized = true;
         if (parsed.serverError && !firstErrorLogged) {
