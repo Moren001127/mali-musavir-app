@@ -20,7 +20,7 @@ import {
   CheckCircle2, AlertCircle, FileQuestion, Loader2, X as IconX,
   FolderUp, FileX2, Archive, Sparkles, Eye, Mail, MessageCircle,
   MessageSquareText, Filter, CalendarDays, UserRound, RotateCcw,
-  Clock, ServerCog, KeyRound, Play,
+  KeyRound, Play,
 } from 'lucide-react';
 import { toast } from 'sonner';
 
@@ -493,6 +493,10 @@ export default function BeyannamelerPage() {
     return { beyanname, tahakkuk, both };
   }, [filtered]);
 
+  // Komut konsolu özet şeridi sayıları
+  const indirilenSayisi = useMemo(() => filtered.filter((row) => row.beyannameUrl || row.pdfUrl).length, [filtered]);
+  const mukellefSayisi = useMemo(() => new Set(filtered.map((row) => row.taxpayerId).filter(Boolean)).size, [filtered]);
+
   const selectedTableRows = useMemo(
     () => tableRows.filter((item) => selectedDocKeys.has(item.key)),
     [tableRows, selectedDocKeys],
@@ -685,137 +689,158 @@ export default function BeyannamelerPage() {
 
   return (
     <div className="max-w-[1500px] space-y-4">
+      {/* ===================== KOMUT KONSOLU ===================== */}
       <section
-        className="rounded-2xl px-5 py-4"
+        className="relative overflow-hidden rounded-2xl"
         style={{
-          background: 'linear-gradient(135deg, rgba(14,23,22,0.92), rgba(16,14,11,0.96))',
-          border: '1px solid rgba(125,211,252,0.13)',
-          boxShadow: 'inset 0 1px 0 rgba(255,255,255,0.04)',
+          background: 'linear-gradient(135deg, rgba(17,22,28,0.96), rgba(10,12,16,0.99))',
+          border: '1px solid rgba(76,198,245,0.16)',
+          boxShadow: '0 24px 60px -32px rgba(0,0,0,0.8), inset 0 1px 0 rgba(255,255,255,0.04)',
         }}
       >
-        <div className="flex items-start justify-between gap-4 flex-wrap lg:flex-nowrap">
-          <div className="min-w-0 flex-1">
-            <div className="flex items-center gap-2 mb-2">
-              <span className="w-7 h-px" style={{ background: GOLD }} />
-              <span className="text-[10.5px] uppercase font-bold tracking-[.18em]" style={{ color: '#b8a06f' }}>e-Beyanname</span>
-            </div>
-            <h1 className="text-[30px] font-semibold tracking-[-.03em]" style={{ color: '#fafaf9' }}>Beyanname Indirme</h1>
-            <p className="text-[13px] mt-1" style={{ color: 'rgba(250,250,249,0.52)' }}>
-              Mali musavir e-Beyanname sifresiyle isi ajan kuyruğuna verir, beyannameleri ve tahakkuklari portala kaydeder.
-            </p>
-          </div>
-          <HeroLastJob
-            job={latestBeyanJob}
-            visibleRows={tableRows.length}
-            onCancel={isBeyanJobActive && latestBeyanJob ? () => cancelJobMut.mutate(latestBeyanJob.id) : undefined}
-            cancelPending={cancelJobMut.isPending}
-          />
-        </div>
-      </section>
+        <div className="absolute inset-x-0 top-0 h-[2px]" style={{ background: 'linear-gradient(90deg, transparent, #4cc6f5, #f4c451, transparent)', opacity: 0.8 }} />
+        <div className="pointer-events-none absolute" style={{ width: 420, height: 420, left: -60, top: -220, borderRadius: '50%', background: 'radial-gradient(circle, rgba(76,198,245,0.16), transparent 62%)' }} />
+        <div className="pointer-events-none absolute" style={{ width: 420, height: 420, right: -80, top: -260, borderRadius: '50%', background: 'radial-gradient(circle, rgba(244,196,81,0.10), transparent 62%)' }} />
 
-      <section
-        className="rounded-2xl overflow-hidden"
-        style={{
-          background: 'linear-gradient(135deg, rgba(17,24,22,0.94), rgba(12,11,10,0.98))',
-          border: '1px solid rgba(125,211,252,0.16)',
-          boxShadow: 'inset 0 1px 0 rgba(255,255,255,0.04)',
-        }}
-      >
-        <div className="p-4 sm:p-5">
-            <div className="mb-4 flex flex-wrap items-start justify-between gap-3">
-              <div>
-                <div className="mb-2 flex items-center gap-2">
-                  <ServerCog size={16} style={{ color: '#7dd3fc' }} />
-                  <h2 className="text-[15px] font-semibold" style={{ color: '#fafaf9' }}>Ajan Indirme Akisi</h2>
-                </div>
-                <div className="flex flex-wrap gap-2">
-                  <AutomationPill label="Runner" value={portalSummary?.runner?.enabled ? 'Aktif' : 'Pasif'} tone={portalSummary?.runner?.enabled ? 'blue' : 'rose'} />
-                  <AutomationPill label="Şifre" value={portalSummary?.credentials.eBeyannameReady ? 'Hazır' : 'Eksik'} tone={portalSummary?.credentials.eBeyannameReady ? 'green' : 'rose'} />
-                </div>
+        <div className="relative px-4 pt-4 sm:px-5">
+          <div className="flex flex-wrap items-center gap-4">
+            <div className="flex min-w-0 items-center gap-3">
+              <div className="grid flex-none place-items-center" style={{ width: 46, height: 46, borderRadius: 13, background: 'linear-gradient(150deg, rgba(76,198,245,0.22), rgba(76,198,245,0.05))', border: '1px solid rgba(76,198,245,0.3)' }}>
+                <FileText size={22} style={{ color: '#bfe9ff' }} />
               </div>
-              <Link
-                href="/panel/ayarlar"
-                className="inline-flex h-9 items-center gap-1.5 rounded-[9px] px-3 text-[12.5px] font-semibold"
-                style={{ background: 'rgba(255,255,255,0.04)', border: '1px solid rgba(255,255,255,0.08)', color: 'rgba(250,250,249,0.78)' }}
-              >
-                <KeyRound size={14} /> Şifre Ayarları
-              </Link>
-            </div>
-
-            <div className="grid gap-3 lg:grid-cols-[1fr,1fr,minmax(180px,220px)]">
-              <DateField label="Başlangıç Tarihi" value={pullFrom} onChange={setPullFrom} />
-              <DateField label="Bitiş Tarihi" value={pullTo} onChange={setPullTo} />
-              <div className="flex flex-col gap-2 self-end">
-                <button
-                  type="button"
-                  onClick={() => pullMut.mutate(false)}
-                  disabled={pullMut.isPending}
-                  className="h-11 rounded-[10px] px-5 text-[13px] font-bold inline-flex items-center justify-center gap-2"
-                  style={{ background: `linear-gradient(135deg, ${GOLD}, #b8a06f)`, color: '#0f0d0b', opacity: pullMut.isPending ? 0.65 : 1 }}
-                >
-                  {pullMut.isPending ? <Loader2 size={15} className="animate-spin" /> : <Download size={15} />}
-                  Beyannameleri Çek
-                </button>
-                <button
-                  type="button"
-                  onClick={() => {
-                    if (window.confirm('Bu tarih aralığındaki TÜM beyannameler (zaten inmiş olanlar dahil) yeniden indirilecek; PDF ve tahakkuk tutarı yenilenir. "Tutar okunamadı" / eksik PDF kayıtlarını düzeltir. Tarih aralığını dar tutman önerilir. Devam edilsin mi?')) {
-                      pullMut.mutate(true);
-                    }
-                  }}
-                  disabled={pullMut.isPending}
-                  className="h-9 rounded-[10px] px-3 text-[12px] font-semibold inline-flex items-center justify-center gap-2 border"
-                  style={{ borderColor: GOLD, color: GOLD, background: 'transparent', opacity: pullMut.isPending ? 0.65 : 1 }}
-                  title="Var olanları da yeniden indir — Tutar okunamadı / eksik PDF kayıtlarını düzeltir"
-                >
-                  {pullMut.isPending ? <Loader2 size={14} className="animate-spin" /> : <Download size={14} />}
-                  Yenile (force)
-                </button>
+              <div className="min-w-0">
+                <div className="text-[10px] font-extrabold uppercase tracking-[0.2em]" style={{ color: '#7fcdee' }}>e-Beyanname · GİB</div>
+                <h1 className="text-[20px] font-bold tracking-[-0.02em]" style={{ color: '#f3f5f7' }}>Beyanname İndirme</h1>
+                <p className="text-[11.5px]" style={{ color: 'rgba(243,245,247,0.4)' }}>Ajan, mali müşavir şifresiyle GİB&apos;den beyanname + tahakkukları indirir.</p>
               </div>
             </div>
 
-            <div className="mt-3 flex flex-wrap items-center gap-2">
+            <div className="flex-1" />
+
+            <div className="flex flex-wrap items-stretch gap-2">
+              <div className="flex items-center overflow-hidden rounded-[11px]" style={{ border: '1px solid rgba(255,255,255,0.07)', background: 'rgba(255,255,255,0.03)' }}>
+                <label className="flex flex-col gap-px px-3 py-1.5">
+                  <span className="text-[9px] font-bold uppercase tracking-[0.14em]" style={{ color: 'rgba(243,245,247,0.4)' }}>Başlangıç</span>
+                  <input type="date" value={pullFrom} onChange={(e) => setPullFrom(e.target.value)} className="bg-transparent text-[13px] font-semibold outline-none" style={{ color: '#f3f5f7', colorScheme: 'dark' }} />
+                </label>
+                <div className="self-stretch" style={{ width: 1, background: 'rgba(255,255,255,0.07)' }} />
+                <label className="flex flex-col gap-px px-3 py-1.5">
+                  <span className="text-[9px] font-bold uppercase tracking-[0.14em]" style={{ color: 'rgba(243,245,247,0.4)' }}>Bitiş</span>
+                  <input type="date" value={pullTo} onChange={(e) => setPullTo(e.target.value)} className="bg-transparent text-[13px] font-semibold outline-none" style={{ color: '#f3f5f7', colorScheme: 'dark' }} />
+                </label>
+              </div>
               <button
                 type="button"
-                onClick={() => nightlyMut.mutate()}
-                disabled={nightlyMut.isPending}
-                className="inline-flex h-9 items-center gap-1.5 rounded-[9px] px-3 text-[12.5px] font-semibold disabled:opacity-50"
-                style={{ background: 'rgba(125,211,252,0.08)', border: '1px solid rgba(125,211,252,0.18)', color: '#bae6fd' }}
+                onClick={() => pullMut.mutate(false)}
+                disabled={pullMut.isPending}
+                className="inline-flex h-[46px] items-center justify-center gap-2 rounded-[11px] px-[18px] text-[13.5px] font-bold"
+                style={{ background: 'linear-gradient(135deg, #f4c451, #e0a93c)', color: '#1a1407', boxShadow: '0 12px 26px -12px rgba(244,196,81,0.6)', opacity: pullMut.isPending ? 0.65 : 1 }}
               >
-                {nightlyMut.isPending ? <Loader2 size={14} className="animate-spin" /> : <Play size={14} />}
-                Gece Akışını Çalıştır
+                {pullMut.isPending ? <Loader2 size={16} className="animate-spin" /> : <Download size={16} />}
+                Beyannameleri Çek
               </button>
-              <span className="inline-flex h-9 items-center gap-1.5 rounded-[9px] px-3 text-[12px]" style={{ background: 'rgba(255,255,255,0.025)', border: '1px solid rgba(255,255,255,0.06)', color: 'rgba(250,250,249,0.52)' }}>
-                <Clock size={13} /> {portalSummary?.nightly?.time || '02:15'} Europe/Istanbul
-              </span>
+              <button
+                type="button"
+                onClick={() => {
+                  if (window.confirm('Bu tarih aralığındaki TÜM beyannameler (zaten inmiş olanlar dahil) yeniden indirilecek; PDF ve tahakkuk tutarı yenilenir. "Tutar okunamadı" / eksik PDF kayıtlarını düzeltir. Tarih aralığını dar tutman önerilir. Devam edilsin mi?')) {
+                    pullMut.mutate(true);
+                  }
+                }}
+                disabled={pullMut.isPending}
+                title="Yenile (force) — var olanları da yeniden indir, Tutar okunamadı / eksik PDF kayıtlarını düzeltir"
+                className="inline-flex h-[46px] w-[46px] items-center justify-center rounded-[11px]"
+                style={{ background: 'rgba(255,255,255,0.04)', border: '1px solid rgba(255,255,255,0.07)', color: 'rgba(243,245,247,0.62)' }}
+              >
+                {pullMut.isPending ? <Loader2 size={17} className="animate-spin" /> : <RotateCcw size={17} />}
+              </button>
             </div>
+          </div>
+
+          {/* özet şeridi + canlı durum */}
+          <div className="mt-3.5 flex flex-wrap items-center" style={{ borderTop: '1px solid rgba(255,255,255,0.07)' }}>
+            <div className="flex items-center gap-3 py-3 pr-5">
+              <span className="grid h-[34px] w-[34px] place-items-center rounded-[10px]" style={{ background: 'rgba(74,222,128,0.13)', color: '#4ade80' }}><CheckCircle2 size={17} /></span>
+              <div>
+                <div className="text-[19px] font-extrabold leading-none tracking-[-0.02em]" style={{ color: '#86efac' }}>{indirilenSayisi.toLocaleString('tr-TR')}</div>
+                <div className="mt-[3px] text-[10.5px] font-bold uppercase tracking-[0.1em]" style={{ color: 'rgba(243,245,247,0.4)' }}>İndirildi</div>
+              </div>
+            </div>
+            <div className="flex items-center gap-3 py-3 px-5" style={{ borderLeft: '1px solid rgba(255,255,255,0.07)' }}>
+              <span className="grid h-[34px] w-[34px] place-items-center rounded-[10px]" style={{ background: 'rgba(251,113,133,0.13)', color: '#fb7185' }}><AlertCircle size={17} /></span>
+              <div>
+                <div className="text-[19px] font-extrabold leading-none tracking-[-0.02em]" style={{ color: missingFileStats.both > 0 ? '#fda4af' : 'rgba(243,245,247,0.62)' }}>{missingFileStats.both.toLocaleString('tr-TR')}</div>
+                <div className="mt-[3px] text-[10.5px] font-bold uppercase tracking-[0.1em]" style={{ color: 'rgba(243,245,247,0.4)' }}>Eksik PDF</div>
+              </div>
+            </div>
+            <div className="flex items-center gap-3 py-3 px-5" style={{ borderLeft: '1px solid rgba(255,255,255,0.07)' }}>
+              <span className="grid h-[34px] w-[34px] place-items-center rounded-[10px]" style={{ background: 'rgba(76,198,245,0.14)', color: '#4cc6f5' }}><UserRound size={17} /></span>
+              <div>
+                <div className="text-[19px] font-extrabold leading-none tracking-[-0.02em]" style={{ color: '#f3f5f7' }}>{mukellefSayisi.toLocaleString('tr-TR')}</div>
+                <div className="mt-[3px] text-[10.5px] font-bold uppercase tracking-[0.1em]" style={{ color: 'rgba(243,245,247,0.4)' }}>Mükellef</div>
+              </div>
+            </div>
+
+            <div className="px-3">
+              <ConsoleJob
+                job={latestBeyanJob}
+                onCancel={isBeyanJobActive && latestBeyanJob ? () => cancelJobMut.mutate(latestBeyanJob.id) : undefined}
+                cancelPending={cancelJobMut.isPending}
+              />
+            </div>
+
+            <div className="ml-auto flex flex-wrap items-center gap-2 py-2 pl-2">
+              <span className="inline-flex items-center gap-2 text-[12px] font-semibold" style={{ color: 'rgba(243,245,247,0.62)' }}>
+                <span className="inline-block h-2 w-2 rounded-full" style={{ background: portalSummary?.runner?.enabled ? '#4ade80' : '#fb7185', boxShadow: `0 0 0 3px ${portalSummary?.runner?.enabled ? 'rgba(74,222,128,0.16)' : 'rgba(251,113,133,0.16)'}` }} /> Runner
+              </span>
+              <span className="inline-flex items-center gap-2 text-[12px] font-semibold" style={{ color: 'rgba(243,245,247,0.62)' }}>
+                <span className="inline-block h-2 w-2 rounded-full" style={{ background: portalSummary?.credentials.eBeyannameReady ? '#4ade80' : '#fb7185', boxShadow: `0 0 0 3px ${portalSummary?.credentials.eBeyannameReady ? 'rgba(74,222,128,0.16)' : 'rgba(251,113,133,0.16)'}` }} /> Şifre
+              </span>
+              <button type="button" onClick={() => nightlyMut.mutate()} disabled={nightlyMut.isPending} className="inline-flex h-[34px] items-center gap-1.5 rounded-[9px] px-3 text-[12px] font-semibold disabled:opacity-50" style={{ background: 'rgba(76,198,245,0.08)', border: '1px solid rgba(76,198,245,0.2)', color: '#bfe9ff' }} title="Gece akışını şimdi çalıştır">
+                {nightlyMut.isPending ? <Loader2 size={13} className="animate-spin" /> : <Play size={13} />} Gece akışı · {portalSummary?.nightly?.time || '02:15'}
+              </button>
+              <Link href="/panel/ayarlar" className="inline-flex h-[34px] items-center gap-1.5 rounded-[9px] px-3 text-[12px] font-semibold" style={{ background: 'rgba(255,255,255,0.035)', border: '1px solid rgba(255,255,255,0.07)', color: 'rgba(243,245,247,0.62)' }}>
+                <KeyRound size={13} /> Şifre
+              </Link>
+            </div>
+          </div>
         </div>
+
+        {isBeyanJobActive && (
+          <div className="relative mt-1 h-[3px] overflow-hidden" style={{ background: 'rgba(255,255,255,0.05)' }}>
+            <div className="absolute inset-y-0 left-0 transition-all" style={{ width: `${Math.max(6, Math.min(100, portalJobProgress(latestBeyanJob).pct ?? (isBeyanJobRunning ? 45 : 12)))}%`, background: 'linear-gradient(90deg, #4cc6f5, #f4c451)' }} />
+          </div>
+        )}
       </section>
 
-      <section
-        className="rounded-2xl"
-        style={{ background: 'rgba(255,255,255,0.025)', border: '1px solid rgba(255,255,255,0.07)', overflow: 'visible' }}
-      >
-        <div className="px-4 py-3 text-[12.5px] font-semibold flex items-center gap-2" style={{ background: 'rgba(255,255,255,0.035)', color: 'rgba(250,250,249,0.78)', borderBottom: '1px solid rgba(255,255,255,0.06)', borderRadius: '16px 16px 0 0' }}>
-          <Search size={13} style={{ color: 'rgba(250,250,249,0.5)' }} /> Filtrele
-        </div>
-        <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-[minmax(220px,1.3fr),repeat(5,minmax(160px,1fr)),52px] gap-2 p-4">
+      {/* ===================== FİLTRE ŞERİDİ ===================== */}
+      <section className="flex flex-wrap items-center gap-2 rounded-2xl px-3 py-2.5" style={{ background: 'rgba(255,255,255,0.025)', border: '1px solid rgba(255,255,255,0.07)', overflow: 'visible' }}>
+        <label className="flex min-w-[180px] flex-1 items-center gap-2 rounded-[10px] px-3" style={{ height: 44, background: 'rgba(255,255,255,0.03)', border: '1px solid rgba(255,255,255,0.07)' }}>
+          <Search size={15} style={{ color: 'rgba(243,245,247,0.4)' }} />
+          <input value={search} onChange={(e) => setSearch(e.target.value)} placeholder="Mükellef, VKN, onay no ara…" className="w-full bg-transparent text-[13px] outline-none" style={{ color: '#f3f5f7' }} />
+        </label>
+        <div className="min-w-[170px] flex-1">
           <SelectBox icon={UserRound} value={selectedTaxpayer} onChange={setSelectedTaxpayer}>
             <option value="all">Tüm mükellefler</option>
             {taxpayerOptions.map((t) => (
               <option key={t.id} value={t.id}>{t.name}</option>
             ))}
           </SelectBox>
+        </div>
+        <div className="min-w-[140px]">
           <SelectBox icon={Filter} value={typeFilter} onChange={(v) => setTypeFilter(v as FilterKey)}>
             {FILTER_KEYS.map((f) => (
               <option key={f.key} value={f.key}>{f.label}</option>
             ))}
           </SelectBox>
+        </div>
+        <div className="min-w-[140px]">
           <SelectBox icon={FileText} value={docFilter} onChange={(v) => setDocFilter(v as BelgeFilter)}>
             <option value="all">Tür Seçiniz</option>
             <option value="beyanname">Beyanname</option>
             <option value="tahakkuk">Tahakkuk</option>
           </SelectBox>
+        </div>
+        <div className="min-w-[150px]">
           <SelectBox icon={CheckCircle2} value={durumFilter} onChange={(v) => setDurumFilter(v as DurumFilter)}>
             <option value="all">Durum Seçiniz</option>
             <option value="gonderilen">GÖNDERİLENLER</option>
@@ -825,24 +850,28 @@ export default function BeyannamelerPage() {
             <option value="sms_gonderilen">SMS GÖNDERİLENLER</option>
             <option value="sms_gonderilmeyen">SMS GÖNDERİLMEYENLER</option>
           </SelectBox>
-          <SelectBox icon={CalendarDays} value={periodStart} onChange={setPeriodStart}>
-            <option value="">Tüm dönemler (başlangıç)</option>
-            {periodOptions.map((p) => <option key={p} value={p}>{fmtDonem(p)}</option>)}
-          </SelectBox>
-          <SelectBox icon={CalendarDays} value={periodEnd} onChange={setPeriodEnd}>
-            <option value="">Tüm dönemler (bitiş)</option>
-            {periodOptions.map((p) => <option key={p} value={p}>{fmtDonem(p)}</option>)}
-          </SelectBox>
-          <button
-            type="button"
-            onClick={clearFilters}
-            className="h-11 px-3 rounded-[10px] inline-flex items-center justify-center"
-            style={{ background: 'rgba(255,255,255,0.035)', border: '1px solid rgba(255,255,255,0.08)', color: 'rgba(250,250,249,0.68)' }}
-            title="Filtreleri temizle"
-          >
-            <RotateCcw size={16} />
-          </button>
         </div>
+        <div className="min-w-[130px]">
+          <SelectBox icon={CalendarDays} value={periodStart} onChange={setPeriodStart}>
+            <option value="">Dönem (başl.)</option>
+            {periodOptions.map((p) => <option key={p} value={p}>{fmtDonem(p)}</option>)}
+          </SelectBox>
+        </div>
+        <div className="min-w-[130px]">
+          <SelectBox icon={CalendarDays} value={periodEnd} onChange={setPeriodEnd}>
+            <option value="">Dönem (bitiş)</option>
+            {periodOptions.map((p) => <option key={p} value={p}>{fmtDonem(p)}</option>)}
+          </SelectBox>
+        </div>
+        <button
+          type="button"
+          onClick={clearFilters}
+          className="inline-flex items-center justify-center rounded-[10px] px-3"
+          style={{ height: 44, background: 'rgba(255,255,255,0.035)', border: '1px solid rgba(255,255,255,0.08)', color: 'rgba(243,245,247,0.68)' }}
+          title="Filtreleri temizle"
+        >
+          <RotateCcw size={16} />
+        </button>
       </section>
 
       <section className="rounded-2xl overflow-hidden" style={{ background: 'rgba(255,255,255,0.02)', border: '1px solid rgba(255,255,255,0.07)' }}>
@@ -1096,151 +1125,43 @@ export default function BeyannamelerPage() {
   );
 }
 
-function AutomationPill({ label, value, tone }: { label: string; value: string | number; tone: 'green' | 'blue' | 'rose' | 'muted' }) {
-  const colors = {
-    green: { color: '#86efac', bg: 'rgba(34,197,94,0.10)', border: 'rgba(34,197,94,0.20)' },
-    blue: { color: '#7dd3fc', bg: 'rgba(56,189,248,0.10)', border: 'rgba(56,189,248,0.20)' },
-    rose: { color: '#fda4af', bg: 'rgba(244,63,94,0.10)', border: 'rgba(244,63,94,0.22)' },
-    muted: { color: 'rgba(250,250,249,0.62)', bg: 'rgba(255,255,255,0.035)', border: 'rgba(255,255,255,0.07)' },
-  } as const;
-  const c = colors[tone];
-  return (
-    <span className="inline-flex h-8 items-center gap-2 rounded-[9px] px-3 text-[11.5px] font-semibold" style={{ background: c.bg, border: `1px solid ${c.border}`, color: c.color }}>
-      <span style={{ color: 'rgba(250,250,249,0.46)' }}>{label}</span>
-      <span className="tabular-nums">{value}</span>
-    </span>
-  );
-}
-
-function HeroLastJob({
-  job,
-  visibleRows,
-  onCancel,
-  cancelPending,
-}: {
-  job?: PortalJob;
-  visibleRows?: number;
-  onCancel?: () => void;
-  cancelPending?: boolean;
-}) {
-  if (!job) {
-    return (
-      <div className="w-full shrink-0 rounded-xl p-3 lg:w-[420px]" style={{ background: 'rgba(255,255,255,0.025)', border: '1px solid rgba(255,255,255,0.06)' }}>
-        <div className="text-[10.5px] font-bold uppercase tracking-[0.14em]" style={{ color: 'rgba(250,250,249,0.42)' }}>Son iş</div>
-        <div className="mt-1 text-[13px] font-semibold" style={{ color: 'rgba(250,250,249,0.58)' }}>Henüz indirme işi yok</div>
-      </div>
-    );
-  }
-
+// Komut konsolu içinde kompakt "Son iş" göstergesi (ilerleme halkası + durum + iptal)
+function ConsoleJob({ job, onCancel, cancelPending }: { job?: PortalJob; onCancel?: () => void; cancelPending?: boolean }) {
+  if (!job) return null;
   const noRecords = job.status === 'done' && Number(job.recordCount || 0) === 0;
   const status = noRecords
-    ? { label: 'Kayit yok', color: '#fbbf24', bg: 'rgba(251,191,36,0.12)', border: 'rgba(251,191,36,0.24)' }
+    ? { label: 'Kayit yok', color: '#fbbf24', bg: 'rgba(251,191,36,0.16)' }
     : portalJobStatus(job.status);
   const progress = portalJobProgress(job);
-  const savedCount = Number(job.recordCount || 0);
-  const recordText = job.status === 'done'
-    ? `${Number(job.recordCount || 0).toLocaleString('tr-TR')} islem${visibleRows != null ? ` · tabloda ${visibleRows.toLocaleString('tr-TR')} satir` : ''}`
-    : job.status === 'running'
-      ? progress.records != null
-        ? `${progress.records.toLocaleString('tr-TR')} satir tarandi`
-        : 'isleniyor'
-      : '';
+  const active = job.status === 'running' || job.status === 'pending';
+  const pct = Math.max(0, Math.min(100, progress.pct ?? (job.status === 'running' ? 45 : job.status === 'pending' ? 12 : 100)));
+  const sub = active
+    ? (progress.message || (job.status === 'pending' ? 'Kuyrukta bekliyor' : 'Islem suruyor'))
+    : job.errorMessage ? job.errorMessage.slice(0, 90)
+    : noRecords ? 'Bu aralikta indirilecek kayit yok'
+    : `${Number(job.recordCount || 0).toLocaleString('tr-TR')} islem · ${fmtDateTime(job.createdAt)}`;
   return (
-    <div className="w-full shrink-0 rounded-xl p-3 lg:w-[460px]" style={{ background: 'rgba(255,255,255,0.025)', border: `1px solid ${status.border}` }}>
-      <div className="mb-1.5 flex items-center justify-between gap-3">
-        <span className="text-[10.5px] font-bold uppercase tracking-[0.14em]" style={{ color: 'rgba(250,250,249,0.42)' }}>Son iş</span>
-        <div className="flex shrink-0 items-center gap-2">
+    <div className="my-1 flex items-center gap-3 rounded-[13px] px-3 py-2" style={{ background: 'rgba(76,198,245,0.06)', border: '1px solid rgba(76,198,245,0.18)', minWidth: 230 }}>
+      <div className="grid flex-none place-items-center" style={{ width: 34, height: 34, borderRadius: '50%', background: `conic-gradient(${active ? '#4cc6f5' : '#4ade80'} 0 ${pct}%, rgba(255,255,255,0.08) ${pct}% 100%)` }}>
+        <span className="grid place-items-center" style={{ width: 26, height: 26, borderRadius: '50%', background: '#0c1117', fontSize: 9.5, fontWeight: 800, color: active ? '#bfe9ff' : '#86efac' }}>
+          {active ? `%${Math.round(pct)}` : (noRecords ? '0' : '✓')}
+        </span>
+      </div>
+      <div className="min-w-0">
+        <div className="flex items-center gap-2">
+          <b className="text-[12.5px]" style={{ color: '#f3f5f7' }}>Son is</b>
+          <span className="rounded-[6px] px-[7px] py-[2px] text-[9.5px] font-extrabold tracking-[0.06em]" style={{ background: status.bg, color: status.color }}>{status.label}</span>
           {onCancel && (
-            <button
-              type="button"
-              onClick={onCancel}
-              disabled={cancelPending}
-              className="inline-flex h-7 items-center gap-1 rounded-md px-2 text-[10.5px] font-bold disabled:opacity-50"
-              style={{ background: 'rgba(248,113,113,0.12)', border: '1px solid rgba(248,113,113,0.28)', color: '#fca5a5' }}
-            >
-              {cancelPending ? <Loader2 size={12} className="animate-spin" /> : <IconX size={12} />}
-              Iptal Et
+            <button type="button" onClick={onCancel} disabled={cancelPending} className="inline-flex h-6 items-center gap-1 rounded-[6px] px-1.5 text-[10px] font-bold disabled:opacity-50" style={{ background: 'rgba(248,113,113,0.12)', border: '1px solid rgba(248,113,113,0.28)', color: '#fca5a5' }}>
+              {cancelPending ? <Loader2 size={10} className="animate-spin" /> : <IconX size={10} />} Iptal
             </button>
           )}
-          <span className="rounded-md px-2 py-1 text-[10.5px] font-bold" style={{ background: status.bg, color: status.color }}>
-            {status.label}
-          </span>
+        </div>
+        <div className="truncate text-[11px]" style={{ color: 'rgba(243,245,247,0.42)', maxWidth: 300 }}>
+          {sub}{active && progress.current != null && progress.total != null ? ` · ${progress.current}/${progress.total}` : ''}
         </div>
       </div>
-      <div className="truncate text-[13px] font-semibold" style={{ color: '#fafaf9' }}>
-        {PORTAL_JOB_LABEL[job.jobType] || job.jobType}
-      </div>
-      <div className="mt-1 truncate text-[11.5px]" style={{ color: 'rgba(250,250,249,0.44)' }}>
-        {portalTaxpayerName(job)} · {job.source === 'nightly' ? 'gece' : 'manuel'} · {fmtDateTime(job.createdAt)}
-      </div>
-      {recordText && (
-        <div className="mt-1 text-[11.5px]" style={{ color: noRecords ? '#fcd34d' : 'rgba(250,250,249,0.52)' }}>
-          {recordText}
-        </div>
-      )}
-      {job.status === 'running' && (
-        <div className="mt-1 text-[11px]" style={{ color: savedCount > 0 ? '#86efac' : 'rgba(250,250,249,0.42)' }}>
-          Portala yazilan kayit: {savedCount.toLocaleString('tr-TR')}
-        </div>
-      )}
-      {(job.status === 'running' || job.status === 'pending') && (
-        <div className="mt-2">
-          <div className="flex items-center justify-between gap-3 text-[11.5px]" style={{ color: 'rgba(250,250,249,0.58)' }}>
-            <span className="truncate">{progress.message || (job.status === 'pending' ? 'Kuyrukta bekliyor.' : 'Islem suruyor.')}</span>
-            {progress.current != null && progress.total != null && (
-              <span className="shrink-0 tabular-nums">{progress.current}/{progress.total}</span>
-            )}
-          </div>
-          <div className="mt-2 h-1.5 overflow-hidden rounded-full" style={{ background: 'rgba(255,255,255,0.08)' }}>
-            <div
-              className="h-full rounded-full transition-all"
-              style={{
-                width: `${progress.pct ?? (job.status === 'running' ? 45 : 12)}%`,
-                background: job.status === 'running' ? '#38bdf8' : '#f59e0b',
-              }}
-            />
-          </div>
-          {progress.detail && (
-            <div className="mt-1 truncate text-[10.5px]" style={{ color: 'rgba(250,250,249,0.38)' }}>
-              {progress.detail}
-            </div>
-          )}
-        </div>
-      )}
-      {noRecords && (
-        <div className="mt-2 text-[11.5px] leading-5" style={{ color: '#fcd34d' }}>
-          Bu tarih araliginda GIB tarafindan indirilecek beyanname/tahakkuk bulunamadi.
-        </div>
-      )}
-      {job.errorMessage && (
-        <div className="mt-2 flex items-start gap-1.5 text-[11.5px] leading-5" style={{ color: '#fca5a5' }}>
-          <AlertCircle size={13} className="mt-[3px] shrink-0" />
-          <span style={{ display: '-webkit-box', WebkitLineClamp: 2, WebkitBoxOrient: 'vertical', overflow: 'hidden' }}>
-            {job.errorMessage.slice(0, 180)}
-          </span>
-        </div>
-      )}
     </div>
-  );
-}
-
-function DateField({ label, value, onChange }: { label: string; value: string; onChange: (value: string) => void }) {
-  return (
-    <label className="block">
-      <span className="mb-1.5 block text-[10.5px] font-black uppercase tracking-[0.13em]" style={{ color: 'rgba(250,250,249,0.46)' }}>
-        {label}
-      </span>
-      <span className="relative block">
-        <CalendarDays size={15} className="absolute left-3 top-1/2 -translate-y-1/2 pointer-events-none" style={{ color: 'rgba(250,250,249,0.38)' }} />
-        <input
-          type="date"
-          value={value}
-          onChange={(e) => onChange(e.target.value)}
-          className="h-12 w-full rounded-[10px] pl-9 pr-3 text-[13px] font-semibold outline-none"
-          style={{ background: 'rgba(0,0,0,0.18)', border: '1px solid rgba(255,255,255,0.08)', color: '#fafaf9' }}
-        />
-      </span>
-    </label>
   );
 }
 
