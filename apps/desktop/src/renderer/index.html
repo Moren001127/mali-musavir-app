@@ -1,0 +1,130 @@
+<!DOCTYPE html>
+<html lang="tr">
+<head>
+<meta charset="UTF-8" />
+<meta http-equiv="Content-Security-Policy" content="default-src 'self'; img-src 'self' data:; style-src 'self' 'unsafe-inline'; script-src 'self'" />
+<title>Moren Masaüstü</title>
+<link rel="stylesheet" href="styles.css" />
+</head>
+<body>
+
+  <!-- AÇILIŞ -->
+  <div id="boot">
+    <img src="../../assets/portal-logolari/moren-logo-gold.png" alt="Moren" />
+    <div class="spinner"></div>
+  </div>
+
+  <!-- GİRİŞ -->
+  <div id="login-view" class="view hidden">
+    <div class="brand">
+      <div class="toplogo"><img src="../../assets/portal-logolari/moren-logo-gold.png" alt="Moren Mali Müşavirlik" /></div>
+      <div class="hero">
+        <h1>Ofisinizin <b>tek kapısı.</b><br>Tüm portallar bir tıkla.</h1>
+        <p>Mükelleflerinizin devlet portallarına şifre uğraşı olmadan, tek tıkla girin. WhatsApp gönderimleri ve kısayollar tek uygulamada.</p>
+      </div>
+      <div class="feats">
+        <div class="chip"><span class="dot"></span>Otomatik Giriş</div>
+        <div class="chip"><span class="dot"></span>Şifreli &amp; Güvenli</div>
+        <div class="chip"><span class="dot"></span>WhatsApp Entegre</div>
+      </div>
+    </div>
+    <div class="form-wrap">
+      <div class="ft">Hoş geldiniz</div>
+      <h2>Hesabınıza giriş yapın</h2>
+      <form id="login-form">
+        <div class="field"><label>E-posta</label>
+          <div class="inp"><span class="ic">&#9993;</span><input id="login-email" type="email" autocomplete="username" placeholder="ornek@morenmusavirlik.com" required></div></div>
+        <div class="field"><label>Şifre</label>
+          <div class="inp"><span class="ic">&#128274;</span><input id="login-password" type="password" autocomplete="current-password" required><span class="eye" id="eye">&#128065;</span></div></div>
+        <div class="row-between">
+          <div class="remember on" id="remember"><span class="box"><span class="tick">&#10003;</span></span>Beni hatırla</div>
+        </div>
+        <button class="btn-gold" id="login-btn" type="submit">Giriş Yap &nbsp;&#8594;</button>
+        <div class="login-error" id="login-error"></div>
+      </form>
+      <div class="bottom">Moren Mali Müşavirlik · Güvenli bağlantı (TLS) ile korunur</div>
+    </div>
+  </div>
+
+  <!-- UYGULAMA -->
+  <div id="app-view" class="view hidden">
+    <aside class="side">
+      <div class="brandbar"><img src="../../assets/portal-logolari/moren-sidebar-horizontal.png" alt="Moren" /></div>
+      <div class="me"><div class="av" id="user-av">MÖ</div><div class="who"><b id="user-name">—</b><span id="user-role">Mali Müşavir</span></div></div>
+      <nav class="nav">
+        <button class="nv on" data-page="kisayollar"><span class="i">&#9783;</span>Kısayollar</button>
+        <button class="nv" data-page="whatsapp"><span class="i">&#128241;</span>WhatsApp</button>
+        <button class="nv" data-page="ayarlar"><span class="i">&#9881;</span>Ayarlar</button>
+      </nav>
+      <div class="foot"><nav class="nav"><button class="nv" id="logout-btn"><span class="i">&#9211;</span>Çıkış Yap</button></nav></div>
+    </aside>
+
+    <section class="main">
+      <div class="topbar">
+        <div class="htxt"><h2 id="page-title">Kısayollar</h2><p id="page-sub">Bir firma seçin, ardından portala tek tıkla otomatik girin</p></div>
+        <div class="firma-pick" id="firma-pick">
+          <span class="lbl">Firma</span>
+          <div class="firma-sel" id="firma-sel">
+            <div class="fav" id="firma-av">—</div>
+            <div class="fn"><b id="firma-name">Firma seçin</b><span id="firma-meta">—</span></div>
+            <span class="car">&#9662;</span>
+          </div>
+          <div class="firma-dd" id="firma-dd">
+            <div class="search"><input id="firma-search" type="text" placeholder="Firma ara…"></div>
+            <div id="firma-list"></div>
+          </div>
+        </div>
+      </div>
+
+      <!-- KISAYOLLAR -->
+      <div class="content" id="page-kisayollar">
+        <div class="grid" id="portal-grid"></div>
+      </div>
+
+      <!-- WHATSAPP -->
+      <div class="content hidden" id="page-whatsapp">
+        <div class="wa-wrap">
+          <div class="wa-card">
+            <div class="wa-top">
+              <div class="wi">&#128241;</div>
+              <div><h3>WhatsApp Bağlantısı</h3><p>Telefonunuzu okutarak gönderimleri uygulama üzerinden yapın</p></div>
+              <div class="state s-wait" id="wa-state"><span class="d"></span>Bağlantı yok</div>
+            </div>
+            <div class="wa-body">
+              <div class="qr-box">
+                <div class="qr" id="wa-qr"><div class="ph">Bağlanmak için "QR Oluştur"a tıklayın</div></div>
+              </div>
+              <div class="wa-steps">
+                <h4>Nasıl bağlanır?</h4>
+                <div class="step"><div class="sn">1</div><div class="stx">Telefonunuzda <b>WhatsApp</b>'ı açın</div></div>
+                <div class="step"><div class="sn">2</div><div class="stx"><b>Ayarlar &#8594; Bağlı Cihazlar</b>'a girin</div></div>
+                <div class="step"><div class="sn">3</div><div class="stx"><b>Cihaz Bağla</b>'ya dokunun</div></div>
+                <div class="step"><div class="sn">4</div><div class="stx">Bu ekrandaki <b>QR kodu</b> okutun</div></div>
+              </div>
+            </div>
+            <div class="wa-actions">
+              <button class="btn btn-primary" id="wa-connect">QR Oluştur</button>
+              <button class="btn btn-ghost" id="wa-logout">Bağlantıyı Kes</button>
+            </div>
+          </div>
+        </div>
+      </div>
+
+      <!-- AYARLAR -->
+      <div class="content hidden" id="page-ayarlar">
+        <div class="card-light">
+          <h3>Uygulama Bilgisi</h3>
+          <p style="margin-bottom:16px">Moren Masaüstü — mali müşavirlik portal kısayolları ve otomatik giriş.</p>
+          <div class="kv"><span>Sürüm</span><b id="set-version">—</b></div>
+          <div class="kv"><span>Sunucu</span><b id="set-server">Railway (canlı)</b></div>
+          <div class="kv"><span>Oturum</span><b id="set-user">—</b></div>
+          <div class="kv"><span>Güvenlik</span><b>Şifreler sunucuda saklanır, anahtar cihaza inmez</b></div>
+        </div>
+      </div>
+    </section>
+  </div>
+
+  <div id="toast"></div>
+  <script src="renderer.js"></script>
+</body>
+</html>

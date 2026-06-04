@@ -36,6 +36,7 @@ import { TasksModule } from './tasks/tasks.module';
 import { FaturaMuhasebelestirmeModule } from './fatura-muhasebelestirme/fatura-muhasebelestirme.module';
 import { EDefterControlModule } from './edefter-control/edefter-control.module';
 import { PortalAutomationModule } from './portal-automation/portal-automation.module';
+import { DesktopModule } from './desktop/desktop.module';
 import { AutomationsModule } from './automations/automations.module';
 import { OfficeChatModule } from './office-chat/office-chat.module';
 import { EmailModule } from './email/email.module';
@@ -84,6 +85,7 @@ import { InvoiceOverdueCron } from './schedule/invoice-overdue.cron';
     FaturaMuhasebelestirmeModule,
     EDefterControlModule,
     PortalAutomationModule,
+    DesktopModule,
     AutomationsModule,
     OfficeChatModule,
     EmailModule,

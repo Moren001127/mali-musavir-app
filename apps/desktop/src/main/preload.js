@@ -1,0 +1,28 @@
+'use strict';
+
+// Renderer (arayüz) ↔ ana process arasında SINIRLI, güvenli köprü.
+// Arayüz yalnızca bu fonksiyonları görür; Node'a veya tokena erişemez.
+
+const { contextBridge, ipcRenderer } = require('electron');
+
+contextBridge.exposeInMainWorld('moren', {
+  // Oturum
+  rememberedEmail: () => ipcRenderer.invoke('auth:remembered'),
+  autoLogin: () => ipcRenderer.invoke('auth:autologin'),
+  login: (email, password, remember) => ipcRenderer.invoke('auth:login', { email, password, remember }),
+  logout: () => ipcRenderer.invoke('auth:logout'),
+
+  // Veri
+  getShortcuts: () => ipcRenderer.invoke('shortcuts:get'),
+
+  // Portal otomatik giriş — şifre arayüze GELMEZ, sadece taxpayer + portal gönderilir
+  openPortal: (portal, taxpayer) => ipcRenderer.invoke('portal:open', { portal, taxpayer }),
+
+  // WhatsApp QR
+  waStatus: () => ipcRenderer.invoke('wa:status'),
+  waConnect: () => ipcRenderer.invoke('wa:connect'),
+  waLogout: () => ipcRenderer.invoke('wa:logout'),
+
+  // Uygulama
+  appVersion: () => ipcRenderer.invoke('app:version'),
+});

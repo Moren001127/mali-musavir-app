@@ -1,0 +1,14 @@
+<svg xmlns="http://www.w3.org/2000/svg" xmlns:xlink="http://www.w3.org/1999/xlink" width="60" height="60" viewBox="0 0 60 60">
+    <defs>
+        <clipPath id="clip-defter_beyan_sistemi">
+            <rect width="60" height="60"/>
+        </clipPath>
+    </defs>
+    <g id="defter_beyan_sistemi" clip-path="url(#clip-defter_beyan_sistemi)">
+        <g id="Group_2284" >
+            <text id="DEFTER" transform="translate(0 22)" fill="#0c8390" font-size="17" font-family="SegoeUI-Bold, Segoe UI" font-weight="700" letter-spacing="-0.02em"><tspan x="0" y="0">DEFTER</tspan></text>
+            <text id="BEYAN" transform="translate(0 37)" fill="#0c8390" font-size="17" font-family="SegoeUI-Bold, Segoe UI" font-weight="700" letter-spacing="0.07em"><tspan x="0" y="0">BEYAN</tspan></text>
+            <text id="SİSTEMİ" transform="translate(0 52)" fill="#6a466a" font-size="16" font-family="SegoeUI-Bold, Segoe UI" font-weight="700" letter-spacing="-0.018em"><tspan x="0" y="0">SİSTEMİ</tspan></text>
+        </g>
+    </g>
+</svg>

@@ -1,0 +1,52 @@
+{
+  "name": "moren-masaustu",
+  "version": "1.0.0",
+  "description": "Moren Masaüstü — Mali Müşavir Portal Kısayolları, otomatik giriş ve WhatsApp",
+  "author": "Moren Mali Müşavirlik",
+  "private": true,
+  "main": "src/main/main.js",
+  "scripts": {
+    "start": "electron .",
+    "dev": "cross-env MOREN_DEV=1 electron .",
+    "dist": "electron-builder --win nsis",
+    "pack": "electron-builder --win --dir"
+  },
+  "build": {
+    "appId": "com.moren.masaustu",
+    "productName": "Moren Masaüstü",
+    "copyright": "Moren Mali Müşavirlik",
+    "directories": {
+      "output": "dist",
+      "buildResources": "build"
+    },
+    "files": [
+      "src/**/*",
+      "assets/**/*"
+    ],
+    "win": {
+      "target": [
+        { "target": "nsis", "arch": ["x64"] }
+      ],
+      "icon": "build/icon.ico",
+      "artifactName": "Moren-Masaustu-Kurulum-${version}.${ext}"
+    },
+    "nsis": {
+      "oneClick": false,
+      "perMachine": false,
+      "allowToChangeInstallationDirectory": true,
+      "createDesktopShortcut": true,
+      "createStartMenuShortcut": true,
+      "shortcutName": "Moren Masaüstü",
+      "installerLanguages": ["tr_TR"],
+      "language": "1055"
+    }
+  },
+  "devDependencies": {
+    "cross-env": "^7.0.3",
+    "electron": "^33.2.0",
+    "electron-builder": "^25.1.8"
+  },
+  "dependencies": {
+    "electron-updater": "^6.3.9"
+  }
+}
