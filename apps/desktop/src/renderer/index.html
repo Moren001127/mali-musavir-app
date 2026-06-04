@@ -49,8 +49,7 @@
   <!-- UYGULAMA -->
   <div id="app-view" class="view hidden">
     <aside class="side">
-      <div class="brandbar"><img src="../../assets/portal-logolari/moren-sidebar-horizontal.png" alt="Moren" /></div>
-      <div class="me"><div class="av" id="user-av">MÖ</div><div class="who"><b id="user-name">—</b><span id="user-role">Mali Müşavir</span></div></div>
+      <div class="brandbar"><img src="../../assets/portal-logolari/moren-logo-gold.png" alt="Moren" /></div>
       <nav class="nav">
         <button class="nv on" data-page="kisayollar"><span class="i">&#9783;</span>Kısayollar</button>
         <button class="nv" data-page="whatsapp"><span class="i">&#128241;</span>WhatsApp</button>
@@ -62,11 +61,14 @@
     <section class="main">
       <div class="topbar">
         <div class="htxt"><h2 id="page-title">Kısayollar</h2><p id="page-sub">Bir firma seçin, ardından portala tek tıkla otomatik girin</p></div>
-        <div class="firma-pick" id="firma-pick">
-          <span class="lbl">Firma</span>
+      </div>
+
+      <!-- KISAYOLLAR -->
+      <div class="content" id="page-kisayollar">
+        <div class="firma-bar">
           <div class="firma-sel" id="firma-sel">
-            <div class="fav" id="firma-av">—</div>
-            <div class="fn"><b id="firma-name">Firma seçin</b><span id="firma-meta">—</span></div>
+            <div class="fav" id="firma-av">MÖ</div>
+            <div class="fn"><b id="firma-name">Firma seçin</b><span id="firma-meta">Devlet portallarına girmek için önce firma seçin</span></div>
             <span class="car">&#9662;</span>
           </div>
           <div class="firma-dd" id="firma-dd">
@@ -74,10 +76,6 @@
             <div id="firma-list"></div>
           </div>
         </div>
-      </div>
-
-      <!-- KISAYOLLAR -->
-      <div class="content" id="page-kisayollar">
         <div class="grid" id="portal-grid"></div>
       </div>
 

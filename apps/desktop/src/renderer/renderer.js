@@ -91,11 +91,8 @@ async function enterApp(user) {
   hide($('login-view'));
   show($('app-view'));
 
-  const adSoyad = [user && user.firstName, user && user.lastName].filter(Boolean).join(' ')
-    || (user && (user.name || user.email)) || 'Kullanıcı';
-  $('user-name').textContent = adSoyad;
-  $('user-av').textContent = initials(adSoyad);
-  if (user && user.email) $('set-user').textContent = user.email;
+  const setUser = $('set-user');
+  if (setUser && user && user.email) setUser.textContent = user.email;
 
   try { $('set-version').textContent = 'v' + (await api.appVersion()); } catch { /* yoksay */ }
 
@@ -164,7 +161,7 @@ async function openPortal(portal) {
   }
   toast(portal.label + ' açılıyor, giriş yapılıyor…', 'ok');
   try {
-    const res = await api.openPortal(portal, state.selected);
+    const res = await api.openPortal(portal.key, state.selected);
     if (!res.ok) {
       toast(res.needCredential ? (portal.label + ' için şifre kayıtlı değil.') : (res.error || 'Açılamadı'), 'err');
     }
@@ -234,7 +231,6 @@ function goPage(page) {
   const meta = PAGES[page];
   $('page-title').textContent = meta.title;
   $('page-sub').textContent = meta.sub;
-  $('firma-pick').style.display = meta.firma ? 'flex' : 'none';
 
   if (page === 'whatsapp') startWaPoll();
   else stopWaPoll();

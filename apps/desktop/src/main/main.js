@@ -5,16 +5,20 @@ const path = require('path');
 const api = require('./api');
 const store = require('./store');
 const { buildLoginScript } = require('./portal-login');
+const { publicCatalog, findPortal } = require('./portal-catalog');
 const { appName, isDev } = require('./config');
 
 let mainWindow = null;
 
 function createMainWindow() {
   mainWindow = new BrowserWindow({
-    width: 1280,
-    height: 840,
-    minWidth: 1040,
-    minHeight: 700,
+    width: 1100,
+    height: 760,
+    minWidth: 980,
+    minHeight: 660,
+    center: true,
+    maximizable: false,
+    fullscreenable: false,
     title: appName,
     backgroundColor: '#0a0906',
     autoHideMenuBar: true,
@@ -70,11 +74,19 @@ ipcMain.handle('auth:logout', () => {
 });
 
 // ─────────────────────────── KISAYOLLAR ───────────────────────────
-ipcMain.handle('shortcuts:get', async () => api.getShortcuts());
+ipcMain.handle('shortcuts:get', async () => {
+  const data = await api.getShortcuts();
+  return {
+    taxpayers: data.taxpayers || [],
+    credentials: data.credentials || { tenant: {}, byTaxpayer: {} },
+    portals: publicCatalog(),
+  };
+});
 
 // ─────────────────── PORTAL OTOMATİK GİRİŞ ───────────────────
-ipcMain.handle('portal:open', async (_e, { portal, taxpayer }) => {
-  if (!portal || !portal.url) return { ok: false, error: 'Portal bilgisi eksik.' };
+ipcMain.handle('portal:open', async (_e, { portalKey, taxpayer }) => {
+  const portal = findPortal(portalKey);
+  if (!portal) return { ok: false, error: 'Portal bulunamadı.' };
   const isTenant = portal.provider === 'GIB_EBEYANNAME';
   if (!isTenant && !(taxpayer && taxpayer.id)) {
     return { ok: false, error: 'Önce bir firma seçin.' };
@@ -85,14 +97,24 @@ ipcMain.handle('portal:open', async (_e, { portal, taxpayer }) => {
   } catch (err) {
     return { ok: false, error: err.message, needCredential: err.status === 404 };
   }
+  console.log(
+    '[MOREN-PORTAL] ' + portal.key + ' (' + portal.provider + ') alanlar →' +
+    ' userCode:' + (creds.userCode ? 'VAR(' + creds.userCode.length + ')' : 'YOK') +
+    ' username:' + (creds.username ? 'VAR(' + creds.username.length + ')' : 'YOK') +
+    ' password:' + (creds.password ? 'VAR(' + creds.password.length + ')' : 'YOK') +
+    ' secondary:' + (creds.secondaryPassword ? 'VAR(' + creds.secondaryPassword.length + ')' : 'YOK'),
+  );
   openPortalWindow(portal, taxpayer, creds);
   return { ok: true };
 });
 
 function openPortalWindow(portal, taxpayer, creds) {
   const win = new BrowserWindow({
-    width: 1200,
-    height: 840,
+    width: 1080,
+    height: 760,
+    center: true,
+    maximizable: false,
+    fullscreenable: false,
     backgroundColor: '#ffffff',
     title: `${portal.label}${taxpayer ? ' — ' + taxpayer.ad : ''}`,
     autoHideMenuBar: true,
@@ -104,7 +126,7 @@ function openPortalWindow(portal, taxpayer, creds) {
   });
   win.removeMenu();
 
-  const script = buildLoginScript(portal.key, creds, true);
+  const script = buildLoginScript(portal.recipe, creds);
   let injected = false;
   win.webContents.on('did-finish-load', async () => {
     if (injected) return;

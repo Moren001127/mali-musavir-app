@@ -16,7 +16,7 @@ contextBridge.exposeInMainWorld('moren', {
   getShortcuts: () => ipcRenderer.invoke('shortcuts:get'),
 
   // Portal otomatik giriş — şifre arayüze GELMEZ, sadece taxpayer + portal gönderilir
-  openPortal: (portal, taxpayer) => ipcRenderer.invoke('portal:open', { portal, taxpayer }),
+  openPortal: (portalKey, taxpayer) => ipcRenderer.invoke('portal:open', { portalKey, taxpayer }),
 
   // WhatsApp QR
   waStatus: () => ipcRenderer.invoke('wa:status'),
