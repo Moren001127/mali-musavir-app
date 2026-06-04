@@ -372,8 +372,8 @@ export default function ProfillerPage() {
   const selectedScore = profileScore(profile);
 
   return (
-    <div className="max-w-[1680px] space-y-5">
-      <section className="relative overflow-hidden rounded-2xl border border-white/[0.06] bg-[#0f0d0b]">
+    <div className="flex max-w-[1680px] flex-col gap-5 xl:h-full xl:min-h-0">
+      <section className="relative shrink-0 overflow-hidden rounded-2xl border border-white/[0.06] bg-[#0f0d0b]">
         <div className="h-[3px] w-full" style={{ background: 'linear-gradient(90deg,#8b7cf0,#a78bfa 35%,#6d5fd1 60%,#8b7cf0)' }} />
         <div className="pointer-events-none absolute inset-0" style={{ background: 'radial-gradient(520px 220px at 24% -40%, rgba(139,124,240,.20), transparent 70%)' }} />
         <div className="relative flex flex-col gap-6 p-6 lg:flex-row lg:items-end lg:justify-between">
@@ -408,9 +408,9 @@ export default function ProfillerPage() {
         </div>
       </section>
 
-      <div className="grid gap-4 xl:grid-cols-[386px_minmax(0,1fr)]">
-        <aside className="min-h-[720px] rounded-xl border border-white/[0.06] bg-white/[0.025]">
-          <div className="p-4 pb-2">
+      <div className="grid gap-4 xl:min-h-0 xl:flex-1 xl:grid-cols-[386px_minmax(0,1fr)] xl:grid-rows-[minmax(0,1fr)]">
+        <aside className="flex flex-col overflow-hidden rounded-xl border border-white/[0.06] bg-white/[0.025] xl:min-h-0">
+          <div className="shrink-0 p-4 pb-2">
             <label className="flex items-center gap-2 rounded-lg border border-white/[0.07] bg-black/20 px-3 py-2">
               <Search size={16} className="text-white/35" />
               <input
@@ -421,7 +421,7 @@ export default function ProfillerPage() {
               />
             </label>
           </div>
-          <div className="flex gap-1.5 px-4 pb-3">
+          <div className="flex shrink-0 gap-1.5 px-4 pb-3">
             {([
               { key: 'all', label: `Tümü (${taxpayers.length})` },
               { key: 'configured', label: `Tanımlı (${configuredCount})` },
@@ -441,7 +441,7 @@ export default function ProfillerPage() {
               </button>
             ))}
           </div>
-          <div className="max-h-[calc(100vh-285px)] overflow-y-auto px-2 pb-3">
+          <div className="max-h-[55vh] overflow-y-auto px-2 pb-3 xl:max-h-none xl:min-h-0 xl:flex-1">
             {filtered.map((t) => {
               const name = taxpayerName(t);
               const rule = ruleMap.get(name);
@@ -497,7 +497,7 @@ export default function ProfillerPage() {
           </div>
         </aside>
 
-        <main className="rounded-xl border border-white/[0.06] bg-white/[0.025]">
+        <main className="flex flex-col overflow-hidden rounded-xl border border-white/[0.06] bg-white/[0.025] xl:min-h-0">
           {!selected ? (
             <EmptyState missingCount={missingCount} missing={missingTaxpayers} onPick={selectTaxpayer} />
           ) : (
@@ -568,40 +568,52 @@ function ProfileForm({
   const ruleCount = profileRuleCount(profile);
 
   return (
-    <div className="min-h-[720px]">
-      <div className="rounded-t-xl border-b border-white/[0.06] px-5 py-4" style={{ background: 'rgba(255,255,255,0.015)' }}>
-        <div className="flex flex-col gap-4 2xl:flex-row 2xl:items-center 2xl:justify-between">
-          <div className="flex min-w-0 items-center gap-4">
+    <div className="flex w-full flex-1 flex-col min-h-0">
+      <div className="shrink-0 rounded-t-xl border-b border-white/[0.06] px-5 py-4" style={{ background: 'rgba(255,255,255,0.015)' }}>
+        <div className="flex items-start justify-between gap-4">
+          <div className="flex min-w-0 items-center gap-3.5">
             <ScoreRing value={score} />
             <div className="min-w-0">
-              <div className="mb-1 text-[11px] font-semibold uppercase tracking-[.16em] text-white/35">Mükellef</div>
-              <div className="truncate text-xl font-semibold text-[#d9cffb]">{selected}</div>
+              <div className="text-[10.5px] font-semibold uppercase tracking-[.16em] text-white/35">Mükellef</div>
+              <div className="truncate text-[19px] font-semibold leading-tight text-[#d9cffb]">{selected}</div>
+              <div className="mt-1.5 flex flex-wrap items-center gap-x-2.5 gap-y-1 text-[12px]">
+                <span className="inline-flex items-center gap-1.5 text-white/50">
+                  <FileText size={13} className="text-white/30" /> {profile.sektor || 'Sektör yok'}
+                </span>
+                <span className="text-white/15">·</span>
+                <span className="inline-flex items-center gap-1.5" style={{ color: kdvCodeCount ? 'rgba(159,227,191,.85)' : 'rgba(236,201,135,.85)' }}>
+                  <ReceiptText size={13} /> {kdvCodeCount} hesap kodu
+                </span>
+                <span className="text-white/15">·</span>
+                <span className="inline-flex items-center gap-1.5" style={{ color: ruleCount ? 'rgba(159,227,191,.85)' : 'rgba(236,201,135,.85)' }}>
+                  <ListChecks size={13} /> {ruleCount} kural
+                </span>
+              </div>
             </div>
           </div>
-          <div className="flex flex-wrap items-center gap-2">
-            <StatusPill icon={<FileText size={14} />} label={profile.sektor || 'Sektör yok'} />
-            <StatusPill icon={<ReceiptText size={14} />} label={`${kdvCodeCount} hesap kodu`} tone={kdvCodeCount ? 'green' : 'amber'} />
-            <StatusPill icon={<ListChecks size={14} />} label={`${ruleCount} kural`} tone={ruleCount ? 'green' : 'amber'} />
+          <div className="flex flex-none items-center gap-2">
             <button
               onClick={onCopy}
-              className="inline-flex h-10 items-center gap-2 rounded-lg border px-3 text-sm font-semibold"
-              style={{ color: '#c4b5fd', background: 'rgba(139,124,240,.12)', borderColor: 'rgba(139,124,240,.35)' }}
+              title="Profili başka mükellefe kopyala"
+              className="inline-flex h-9 items-center gap-2 rounded-lg border px-3 text-[13px] font-semibold"
+              style={{ color: '#c4b5fd', background: 'rgba(139,124,240,.1)', borderColor: 'rgba(139,124,240,.3)' }}
             >
-              <Copy size={15} /> Profili Kopyala
+              <Copy size={15} /> <span className="hidden sm:inline">Kopyala</span>
             </button>
             {has && (
               <button
                 onClick={onDelete}
-                className="inline-flex h-10 items-center gap-2 rounded-lg border border-red-400/20 bg-red-500/10 px-3 text-sm font-semibold text-red-300"
+                title="Profili sil"
+                className="inline-flex h-9 items-center gap-2 rounded-lg border border-red-400/20 bg-red-500/10 px-3 text-[13px] font-semibold text-red-300"
               >
-                <Trash2 size={15} /> Sil
+                <Trash2 size={15} /> <span className="hidden sm:inline">Sil</span>
               </button>
             )}
             <button
               onClick={onSave}
               disabled={saving}
-              className="inline-flex h-10 items-center gap-2 rounded-lg border px-4 text-sm font-semibold text-[#0b0a14] disabled:opacity-50"
-              style={{ background: 'linear-gradient(145deg,#8b7cf0,#6d5fd1)', borderColor: 'rgba(139,124,240,.5)' }}
+              className="inline-flex h-9 items-center gap-2 rounded-lg px-4 text-[13px] font-bold text-[#0b0a14] disabled:opacity-50"
+              style={{ background: 'linear-gradient(145deg,#8b7cf0,#6d5fd1)' }}
             >
               <Save size={15} /> {saving ? 'Kaydediliyor...' : 'Kaydet'}
             </button>
@@ -627,7 +639,7 @@ function ProfileForm({
         </div>
       </div>
 
-      <div className="space-y-5 p-5">
+      <div className="min-h-0 flex-1 space-y-5 overflow-y-auto p-5">
         {tab === 'genel' && (
           <>
             <Panel title="Genel Profil" icon={<Settings2 size={18} />} columns={2}>
@@ -873,7 +885,7 @@ function ScoreRing({ value }: { value: number }) {
 function EmptyState({ missingCount, missing, onPick }: { missingCount: number; missing: string[]; onPick: (name: string) => void }) {
   const top = missing.slice(0, 5);
   return (
-    <div className="flex min-h-[720px] items-center justify-center p-10">
+    <div className="flex min-h-[60vh] w-full flex-1 items-center justify-center p-10">
       <div className="w-full max-w-[520px] text-center">
         <div
           className="mx-auto mb-5 flex h-[70px] w-[70px] items-center justify-center rounded-[20px] border border-[#8b7cf0]/25"
@@ -1033,21 +1045,6 @@ function CopyModal({
       </div>
     </div>,
     document.body,
-  );
-}
-
-function StatusPill({ icon, label, tone = 'default' }: { icon: ReactNode; label: string; tone?: 'default' | 'green' | 'amber' }) {
-  const toneClass =
-    tone === 'green'
-      ? 'border-emerald-400/20 bg-emerald-500/10 text-emerald-200'
-      : tone === 'amber'
-        ? 'border-amber-400/20 bg-amber-500/10 text-amber-200'
-        : 'border-white/[0.07] bg-white/[0.035] text-white/60';
-  return (
-    <span className={`inline-flex h-10 items-center gap-2 rounded-lg border px-3 text-sm ${toneClass}`}>
-      {icon}
-      <span className="max-w-[220px] truncate">{label}</span>
-    </span>
   );
 }
 
