@@ -78,3 +78,14 @@ Her iki yolda da: URL'ler toplandıktan sonra **`page.context().request.get(url)
 - Yerelde gerçek GİB oturumuyla (veya kaydedilmiş bir result sayfasıyla) çalış; **kör production deploy yapma**.
 - Önce `getParameterForArsiv`/`getTOKEN` ile URL üretmeyi doğrula (tek satır), sonra paralel indirmeyi ölçekle.
 - Doğruluk kontrolü: indirilen PDF'in başlığı/VKN'si satırla eşleşiyor mu, beyanname/tahakkuk doğru mu.
+
+## 9. ÇÖZÜM (2026-06-04) — "gri göz / Tutar okunamadı" gerçek kök sebebi
+
+Yukarıdaki notlar yazıldığından beri akış **liste-API (ARSIVBEYANNAMELISTESI + /dispatch IMAJ, Oid bazlı)** yoluna geçti; tıklama/popup büyük ölçüde aşıldı. Kalan şikâyet ("çoğunun PDF'i yok / Tutar okunamadı") incelendi:
+
+- **Parser sağlam.** Kullanıcının verdiği 2 GİB PDF'i production `pdf-parse` (PDFParse v2) ile birebir test edildi: metin tam çıktı, tahakkuk tutarı (939,70) doğru okundu. "Resim tabanlı PDF" teorisi yanlış.
+- **Gri göz = `pdfUrl`/`beyannameUrl` DB'de boş** (frontend `hasFile = !!pdfUrl`). S3 dosya kaybı değil, alanın kendisi null.
+- **Kök sebep (b) — fazla agresif sahip-doğrulayıcı:** `portal-automation.service.ts > prepareIncomingDeclarationPdf`, tahakkuk/beyanname PDF metninde mükellef VKN'sini net bulamayınca PDF'teki **başka bir 10-11 haneli numarayı** (çoğu zaman e-beyannameyi gönderen **meslek mensubu/mali müşavir VKN'si** ya da bir **telefon numarası**) "asıl sahip" sanıp belgeyi başka kayda taşıyor ve asıl kaydın URL'sini `clearCurrent:true` ile **siliyordu**. Tahakkuk tutarı silinmediği için "tutar dolu ama göz gri" oluşuyordu. → **Düzeltildi:** liste-API'de PDF kendi Oid'iyle indiği + eşleşme satır verisinden yapıldığı için belge otoriter kabul edilir; PDF-içi metne bakarak eldeki dosya artık taşınmaz/silinmez (yalnızca teşhis logu).
+- **Kök sebep (a) — aralıklı indirme hatası:** GİB 500/hız-limiti yüzünden bazı satırların PDF'i inmiyordu (tek deneme + 1 retry yetersiz). → **Düzeltildi:** `...-railway-runner.service.ts` liste-API indirmesi artık **artan beklemeli 4 deneme** (env `PORTAL_AUTOMATION_EBEYANNAME_FETCH_ATTEMPTS`).
+
+Commit `d01665d`. Kendi kendini onarır: sonraki gece taraması / "Var olanları da yeniden indir" düğmesi gri kayıtları yeniden indirip linki korur. **Kalan opsiyonel iş:** gerçekten hiç inmeyen satırlar için iş-sonu süpürme turu.
