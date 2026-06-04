@@ -782,11 +782,11 @@ export default function BeyannamelerPage() {
 
       {/* ===================== FİLTRE ŞERİDİ ===================== */}
       <section className="flex flex-wrap items-center gap-2 rounded-2xl px-3 py-2.5" style={{ background: 'rgba(255,255,255,0.025)', border: '1px solid rgba(255,255,255,0.07)', overflow: 'visible' }}>
-        <label className="flex min-w-[180px] flex-1 items-center gap-2 rounded-[10px] px-3" style={{ height: 44, background: 'rgba(255,255,255,0.03)', border: '1px solid rgba(255,255,255,0.07)' }}>
-          <Search size={15} style={{ color: 'rgba(243,245,247,0.4)' }} />
+        <label className="flex min-w-[140px] flex-1 items-center gap-2 rounded-[10px] px-3" style={{ height: 44, background: 'rgba(255,255,255,0.03)', border: '1px solid rgba(255,255,255,0.07)' }}>
+          <Search size={15} style={{ color: 'rgba(243,245,247,0.4)' }} className="shrink-0" />
           <input value={search} onChange={(e) => setSearch(e.target.value)} placeholder="Mükellef, VKN, onay no ara…" className="w-full bg-transparent text-[13px] outline-none" style={{ color: '#f3f5f7' }} />
         </label>
-        <div className="min-w-[170px] flex-1">
+        <div className="w-[160px] shrink-0">
           <SelectBox icon={UserRound} value={selectedTaxpayer} onChange={setSelectedTaxpayer}>
             <option value="all">Tüm mükellefler</option>
             {taxpayerOptions.map((t) => (
@@ -794,21 +794,21 @@ export default function BeyannamelerPage() {
             ))}
           </SelectBox>
         </div>
-        <div className="min-w-[140px]">
+        <div className="w-[118px] shrink-0">
           <SelectBox icon={Filter} value={typeFilter} onChange={(v) => setTypeFilter(v as FilterKey)}>
             {FILTER_KEYS.map((f) => (
               <option key={f.key} value={f.key}>{f.label}</option>
             ))}
           </SelectBox>
         </div>
-        <div className="min-w-[140px]">
+        <div className="w-[118px] shrink-0">
           <SelectBox icon={FileText} value={docFilter} onChange={(v) => setDocFilter(v as BelgeFilter)}>
             <option value="all">Tür Seçiniz</option>
             <option value="beyanname">Beyanname</option>
             <option value="tahakkuk">Tahakkuk</option>
           </SelectBox>
         </div>
-        <div className="min-w-[150px]">
+        <div className="w-[142px] shrink-0">
           <SelectBox icon={CheckCircle2} value={durumFilter} onChange={(v) => setDurumFilter(v as DurumFilter)}>
             <option value="all">Durum Seçiniz</option>
             <option value="gonderilen">GÖNDERİLENLER</option>
@@ -819,16 +819,16 @@ export default function BeyannamelerPage() {
             <option value="sms_gonderilmeyen">SMS GÖNDERİLMEYENLER</option>
           </SelectBox>
         </div>
-        <div className="flex items-center gap-1 overflow-hidden rounded-[10px] px-2.5" style={{ height: 44, border: '1px solid rgba(255,255,255,0.07)', background: 'rgba(255,255,255,0.03)' }} title="Beyanname dönem aralığı">
+        <div className="flex shrink-0 items-center gap-1 rounded-[10px] px-2.5" style={{ height: 44, border: '1px solid rgba(255,255,255,0.07)', background: 'rgba(255,255,255,0.03)' }} title="Beyanname dönem aralığı (gün seçilir, dönem=ay alınır)">
           <CalendarDays size={15} style={{ color: 'rgba(243,245,247,0.4)' }} className="shrink-0" />
-          <input type="month" value={periodStart} onChange={(e) => setPeriodStart(e.target.value)} aria-label="Dönem başlangıç" className="bg-transparent text-[12.5px] font-semibold outline-none" style={{ color: '#f3f5f7', colorScheme: 'dark', width: 118 }} />
+          <input type="date" value={periodStart ? `${periodStart}-01` : ''} onChange={(e) => setPeriodStart(e.target.value ? e.target.value.slice(0, 7) : '')} aria-label="Dönem başlangıç" className="bg-transparent text-[12px] font-semibold outline-none" style={{ color: '#f3f5f7', colorScheme: 'dark', width: 106 }} />
           <span className="shrink-0" style={{ color: 'rgba(243,245,247,0.3)' }}>–</span>
-          <input type="month" value={periodEnd} onChange={(e) => setPeriodEnd(e.target.value)} aria-label="Dönem bitiş" className="bg-transparent text-[12.5px] font-semibold outline-none" style={{ color: '#f3f5f7', colorScheme: 'dark', width: 118 }} />
+          <input type="date" value={periodEnd ? `${periodEnd}-01` : ''} onChange={(e) => setPeriodEnd(e.target.value ? e.target.value.slice(0, 7) : '')} aria-label="Dönem bitiş" className="bg-transparent text-[12px] font-semibold outline-none" style={{ color: '#f3f5f7', colorScheme: 'dark', width: 106 }} />
         </div>
         <button
           type="button"
           onClick={clearFilters}
-          className="inline-flex items-center justify-center rounded-[10px] px-3"
+          className="inline-flex shrink-0 items-center justify-center rounded-[10px] px-3"
           style={{ height: 44, background: 'rgba(255,255,255,0.035)', border: '1px solid rgba(255,255,255,0.08)', color: 'rgba(243,245,247,0.68)' }}
           title="Filtreleri temizle"
         >
