@@ -717,12 +717,12 @@ export default function BeyannamelerPage() {
               <div className="flex items-center overflow-hidden rounded-[11px]" style={{ border: '1px solid rgba(255,255,255,0.07)', background: 'rgba(255,255,255,0.03)' }}>
                 <label className="flex flex-col gap-px px-3 py-1.5">
                   <span className="text-[9px] font-bold uppercase tracking-[0.14em]" style={{ color: 'rgba(243,245,247,0.4)' }}>Başlangıç</span>
-                  <input type="date" value={pullFrom} onChange={(e) => setPullFrom(e.target.value)} className="bg-transparent text-[13px] font-semibold outline-none" style={{ color: '#f3f5f7', colorScheme: 'dark' }} />
+                  <input type="date" value={pullFrom} onChange={(e) => setPullFrom(e.target.value)} onClick={(e) => { try { (e.currentTarget as any).showPicker?.(); } catch {} }} className="bg-transparent text-[13px] font-semibold outline-none cursor-pointer" style={{ color: '#f3f5f7', colorScheme: 'dark' }} />
                 </label>
                 <div className="self-stretch" style={{ width: 1, background: 'rgba(255,255,255,0.07)' }} />
                 <label className="flex flex-col gap-px px-3 py-1.5">
                   <span className="text-[9px] font-bold uppercase tracking-[0.14em]" style={{ color: 'rgba(243,245,247,0.4)' }}>Bitiş</span>
-                  <input type="date" value={pullTo} onChange={(e) => setPullTo(e.target.value)} className="bg-transparent text-[13px] font-semibold outline-none" style={{ color: '#f3f5f7', colorScheme: 'dark' }} />
+                  <input type="date" value={pullTo} onChange={(e) => setPullTo(e.target.value)} onClick={(e) => { try { (e.currentTarget as any).showPicker?.(); } catch {} }} className="bg-transparent text-[13px] font-semibold outline-none cursor-pointer" style={{ color: '#f3f5f7', colorScheme: 'dark' }} />
                 </label>
               </div>
               <button
@@ -821,9 +821,9 @@ export default function BeyannamelerPage() {
         </div>
         <div className="flex shrink-0 items-center gap-1 rounded-[10px] px-2.5" style={{ height: 44, border: '1px solid rgba(255,255,255,0.07)', background: 'rgba(255,255,255,0.03)' }} title="Beyanname dönem aralığı (gün seçilir, dönem=ay alınır)">
           <CalendarDays size={15} style={{ color: 'rgba(243,245,247,0.4)' }} className="shrink-0" />
-          <input type="date" value={periodStart ? `${periodStart}-01` : ''} onChange={(e) => setPeriodStart(e.target.value ? e.target.value.slice(0, 7) : '')} aria-label="Dönem başlangıç" className="bg-transparent text-[12px] font-semibold outline-none" style={{ color: '#f3f5f7', colorScheme: 'dark', width: 106 }} />
+          <input type="date" value={periodStart ? `${periodStart}-01` : ''} onChange={(e) => setPeriodStart(e.target.value ? e.target.value.slice(0, 7) : '')} onClick={(e) => { try { (e.currentTarget as any).showPicker?.(); } catch {} }} aria-label="Dönem başlangıç" className="bg-transparent text-[12px] font-semibold outline-none cursor-pointer" style={{ color: '#f3f5f7', colorScheme: 'dark', width: 106 }} />
           <span className="shrink-0" style={{ color: 'rgba(243,245,247,0.3)' }}>–</span>
-          <input type="date" value={periodEnd ? `${periodEnd}-01` : ''} onChange={(e) => setPeriodEnd(e.target.value ? e.target.value.slice(0, 7) : '')} aria-label="Dönem bitiş" className="bg-transparent text-[12px] font-semibold outline-none" style={{ color: '#f3f5f7', colorScheme: 'dark', width: 106 }} />
+          <input type="date" value={periodEnd ? `${periodEnd}-01` : ''} onChange={(e) => setPeriodEnd(e.target.value ? e.target.value.slice(0, 7) : '')} onClick={(e) => { try { (e.currentTarget as any).showPicker?.(); } catch {} }} aria-label="Dönem bitiş" className="bg-transparent text-[12px] font-semibold outline-none cursor-pointer" style={{ color: '#f3f5f7', colorScheme: 'dark', width: 106 }} />
         </div>
         <button
           type="button"
