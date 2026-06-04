@@ -3453,10 +3453,11 @@ export class PortalAutomationRailwayRunnerService implements OnModuleInit {
         if (!rawDumped) {
           rawDumped = true;
           const s = String(raw);
-          const iconIdx = s.search(/Goruntule|GORUNTULE|onclick|javascript:|pdf_b|pdf_t/i);
-          notes.push(`[RAWDUMP] len=${s.length} rows=${parsed.rows.length} total=${parsed.total} iconIdx=${iconIdx}`);
-          notes.push(`[RAWDUMP-A] ${s.slice(3200, 8200)}`);
-          if (iconIdx >= 0) notes.push(`[RAWDUMP-ICON] ${s.slice(Math.max(0, iconIdx - 200), iconIdx + 1200)}`);
+          const trIdx = s.indexOf('<tr id="row');
+          const gIdx = s.search(/Goruntule|dispatch|IMAJ|getParameter|tahakkuk/i);
+          notes.push(`[RAWDUMP] len=${s.length} rows=${parsed.rows.length} total=${parsed.total} trIdx=${trIdx} gIdx=${gIdx}`);
+          notes.push(`[RAWDUMP-ROW] ${trIdx >= 0 ? s.slice(trIdx, trIdx + 3000) : s.slice(3200, 6200)}`);
+          if (gIdx >= 0) notes.push(`[RAWDUMP-FN] ${s.slice(Math.max(0, gIdx - 150), gIdx + 1000)}`);
         }
         if (parsed.recognized) recognized = true;
         if (parsed.serverError && !firstErrorLogged) {
