@@ -1,6 +1,7 @@
 'use client';
 
 import { useMemo, useState, type ReactNode } from 'react';
+import { createPortal } from 'react-dom';
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import {
   AlertTriangle,
@@ -9,7 +10,9 @@ import {
   BookOpen,
   Bot,
   Building2,
+  Check,
   CheckCircle2,
+  Copy,
   FileText,
   Gauge,
   ListChecks,
@@ -189,11 +192,61 @@ function joinFirmRules(rules: Array<{ firm: string; instruction: string }>) {
     .join('\n');
 }
 
+const DEFTER_TURU_LABEL: Record<string, string> = {
+  bilanco: 'Bilanço',
+  isletme: 'İşletme',
+};
+
+function defterTuruLabel(value?: string | null): string {
+  const key = String(value || '').trim();
+  return DEFTER_TURU_LABEL[key] || key;
+}
+
+function profileKodCount(p?: any): number {
+  if (!p) return 0;
+  return (
+    countFilledKdv(p.faturaSatisMatrah || p.malSatisMatrah) +
+    countFilledKdv(p.perakendeSatisMatrah || p.hizmetSatisMatrah) +
+    countFilledKdv(p.malAlisMatrah) +
+    countFilledKdv(p.hesaplananKdv) +
+    countFilledKdv(p.indirilecekKdv)
+  );
+}
+
+function profileRuleCount(p?: any): number {
+  if (!p) return 0;
+  return (
+    countManagedRules(p.ozelKararKurallari) +
+    countManagedRules(p.firmaOzelTalimatlar) +
+    countManagedRules(p.talimat) +
+    countManagedRules(p.demirbasTalimat)
+  );
+}
+
+// Profil doluluk skoru (0-100): karar motoru için anlamlı alanların ağırlıklı toplamı.
+function profileScore(p?: any): number {
+  if (!p) return 0;
+  let s = 0;
+  if (String(p.sektor || '').trim()) s += 15;
+  if (String(p.defterTuru || '').trim()) s += 10;
+  s += (Math.min(profileKodCount(p), 10) / 10) * 35;
+  if (String(p.cariFormat || '').trim()) s += 10;
+  if (String(p.tahsilatHesabi || '').trim() || String(p.odemeHesabi || '').trim()) s += 10;
+  s += (Math.min(profileRuleCount(p), 4) / 4) * 20;
+  return Math.round(Math.max(0, Math.min(100, s)));
+}
+
+type ListFilter = 'all' | 'configured' | 'missing';
+
 export default function ProfillerPage() {
   const qc = useQueryClient();
   const [selected, setSelected] = useState<string | null>(null);
   const [profile, setProfile] = useState<MukellefProfile>(EMPTY_PROFILE);
   const [search, setSearch] = useState('');
+  const [listFilter, setListFilter] = useState<ListFilter>('all');
+  const [copyOpen, setCopyOpen] = useState(false);
+  const [copyTargets, setCopyTargets] = useState<Set<string>>(() => new Set());
+  const [copySearch, setCopySearch] = useState('');
 
   const { data: taxpayers = [] } = useQuery({
     queryKey: ['taxpayers'],
@@ -225,14 +278,55 @@ export default function ProfillerPage() {
     },
   });
 
+  const copyMut = useMutation({
+    mutationFn: async (vars: { targets: string[]; profile: MukellefProfile }) => {
+      for (const name of vars.targets) {
+        await api.put(`/agent/rules/${encodeURIComponent(name)}`, { profile: vars.profile });
+      }
+    },
+    onSuccess: (_data, variables) => {
+      qc.invalidateQueries({ queryKey: ['agent-rules'] });
+      toast.success(`${variables.targets.length} mükellefe kopyalandı`);
+      setCopyOpen(false);
+      setCopyTargets(new Set());
+      setCopySearch('');
+    },
+    onError: () => toast.error('Kopyalama başarısız'),
+  });
+
   const ruleMap = useMemo(() => new Map(rules.map((r) => [r.mukellef, r])), [rules]);
   const configuredCount = rules.length;
+  const missingCount = Math.max(0, taxpayers.length - configuredCount);
+
   const filtered = useMemo(() => {
     const q = search.trim().toLocaleLowerCase('tr-TR');
+    const hasRule = (t: Taxpayer) => ruleMap.has(taxpayerName(t));
     return taxpayers
-      .filter((t) => !q || taxpayerName(t).toLocaleLowerCase('tr-TR').includes(q))
+      .filter((t) => {
+        if (listFilter === 'configured' && !hasRule(t)) return false;
+        if (listFilter === 'missing' && hasRule(t)) return false;
+        return !q || taxpayerName(t).toLocaleLowerCase('tr-TR').includes(q);
+      })
       .sort((a, b) => taxpayerName(a).localeCompare(taxpayerName(b), 'tr'));
-  }, [search, taxpayers]);
+  }, [search, taxpayers, ruleMap, listFilter]);
+
+  const missingTaxpayers = useMemo(
+    () =>
+      taxpayers
+        .filter((t) => !ruleMap.has(taxpayerName(t)))
+        .map((t) => taxpayerName(t))
+        .sort((a, b) => a.localeCompare(b, 'tr')),
+    [taxpayers, ruleMap],
+  );
+
+  const copyCandidates = useMemo(() => {
+    const q = copySearch.trim().toLocaleLowerCase('tr-TR');
+    return taxpayers
+      .map((t) => taxpayerName(t))
+      .filter((name) => name !== selected)
+      .filter((name) => !q || name.toLocaleLowerCase('tr-TR').includes(q))
+      .sort((a, b) => a.localeCompare(b, 'tr'));
+  }, [taxpayers, selected, copySearch]);
 
   const selectTaxpayer = (name: string) => {
     setSelected(name);
@@ -245,44 +339,78 @@ export default function ProfillerPage() {
   const updKdv = (key: KdvGroup, oran: keyof KdvOranBazli, value: string) =>
     setProfile((p) => ({ ...p, [key]: { ...(p[key] || {}), [oran]: value } }));
 
+  const normalizeForSave = (p: MukellefProfile): MukellefProfile => ({
+    ...p,
+    malSatisMatrah: p.faturaSatisMatrah || p.malSatisMatrah,
+    hizmetSatisMatrah: p.perakendeSatisMatrah || p.hizmetSatisMatrah,
+  });
+
   const saveProfile = () => {
     if (!selected) return;
-    const profileToSave: MukellefProfile = {
-      ...profile,
-      malSatisMatrah: profile.faturaSatisMatrah || profile.malSatisMatrah,
-      hizmetSatisMatrah: profile.perakendeSatisMatrah || profile.hizmetSatisMatrah,
-    };
-    upsert.mutate({ mukellef: selected, profile: profileToSave });
+    upsert.mutate({ mukellef: selected, profile: normalizeForSave(profile) });
   };
+
+  const toggleCopyTarget = (name: string) =>
+    setCopyTargets((prev) => {
+      const next = new Set(prev);
+      if (next.has(name)) next.delete(name);
+      else next.add(name);
+      return next;
+    });
+
+  const openCopy = () => {
+    setCopyTargets(new Set());
+    setCopySearch('');
+    setCopyOpen(true);
+  };
+
+  const doCopy = () => {
+    if (!selected || copyTargets.size === 0) return;
+    copyMut.mutate({ targets: Array.from(copyTargets), profile: normalizeForSave(profile) });
+  };
+
+  const selectedScore = profileScore(profile);
 
   return (
     <div className="max-w-[1680px] space-y-5">
-      <div className="flex flex-col gap-4 border-b border-white/[0.06] pb-5 lg:flex-row lg:items-end lg:justify-between">
-        <div>
-          <div className="mb-2 flex items-center gap-2.5">
-            <span className="h-px w-8 bg-[#d4b876]" />
-            <span className="text-[10px] font-bold uppercase tracking-[.18em] text-[#b8a06f]">Ajan</span>
+      <section className="relative overflow-hidden rounded-2xl border border-white/[0.06] bg-[#0f0d0b]">
+        <div className="h-[3px] w-full" style={{ background: 'linear-gradient(90deg,#8b7cf0,#a78bfa 35%,#6d5fd1 60%,#8b7cf0)' }} />
+        <div className="pointer-events-none absolute inset-0" style={{ background: 'radial-gradient(520px 220px at 24% -40%, rgba(139,124,240,.20), transparent 70%)' }} />
+        <div className="relative flex flex-col gap-6 p-6 lg:flex-row lg:items-end lg:justify-between">
+          <div className="flex items-start gap-4">
+            <div
+              className="flex h-14 w-14 flex-none items-center justify-center rounded-2xl"
+              style={{ background: 'linear-gradient(145deg,#8b7cf0,#6d5fd1)', boxShadow: '0 10px 30px -8px rgba(139,124,240,.5)' }}
+            >
+              <ShieldCheck size={28} className="text-[#0b0a14]" />
+            </div>
+            <div>
+              <div className="mb-2 flex items-center gap-2.5">
+                <span className="h-px w-8 bg-[#8b7cf0]" />
+                <span className="text-[10px] font-bold uppercase tracking-[.18em] text-[#b3a4ef]">Ajan</span>
+              </div>
+              <h1
+                className="text-[33px] font-semibold leading-none text-[#fafaf9]"
+                style={{ fontFamily: 'Fraunces, serif', letterSpacing: '-0.02em' }}
+              >
+                Mükellef Profilleri
+              </h1>
+              <p className="mt-2 max-w-xl text-[13px] text-white/45">
+                Fatura karar motorunun mükellef bazlı hesap kodu, risk ve özel talimat merkezi.
+              </p>
+            </div>
           </div>
-          <h1
-            className="text-[34px] font-semibold leading-none text-[#fafaf9]"
-            style={{ fontFamily: 'Fraunces, serif', letterSpacing: '-0.02em' }}
-          >
-            Mükellef Profilleri
-          </h1>
-          <p className="mt-2 max-w-3xl text-[13px] text-white/45">
-            Fatura karar motorunun mükellef bazlı hesap kodu, risk ve özel talimat merkezi.
-          </p>
+          <div className="flex gap-2.5">
+            <FilterStat label="Mükellef" value={taxpayers.length} tone="violet" active={listFilter === 'all'} onClick={() => setListFilter('all')} />
+            <FilterStat label="Tanımlı" value={configuredCount} tone="green" active={listFilter === 'configured'} onClick={() => setListFilter('configured')} />
+            <FilterStat label="Eksik" value={missingCount} tone="amber" active={listFilter === 'missing'} onClick={() => setListFilter('missing')} />
+          </div>
         </div>
-        <div className="grid grid-cols-3 gap-2 text-sm">
-          <Metric label="Mükellef" value={taxpayers.length} />
-          <Metric label="Tanımlı" value={configuredCount} tone="green" />
-          <Metric label="Eksik" value={Math.max(0, taxpayers.length - configuredCount)} tone="amber" />
-        </div>
-      </div>
+      </section>
 
-      <div className="grid gap-4 xl:grid-cols-[380px_minmax(0,1fr)]">
+      <div className="grid gap-4 xl:grid-cols-[386px_minmax(0,1fr)]">
         <aside className="min-h-[720px] rounded-xl border border-white/[0.06] bg-white/[0.025]">
-          <div className="border-b border-white/[0.06] p-4">
+          <div className="p-4 pb-2">
             <label className="flex items-center gap-2 rounded-lg border border-white/[0.07] bg-black/20 px-3 py-2">
               <Search size={16} className="text-white/35" />
               <input
@@ -293,28 +421,73 @@ export default function ProfillerPage() {
               />
             </label>
           </div>
-          <div className="max-h-[calc(100vh-255px)] overflow-y-auto p-2">
+          <div className="flex gap-1.5 px-4 pb-3">
+            {([
+              { key: 'all', label: `Tümü (${taxpayers.length})` },
+              { key: 'configured', label: `Tanımlı (${configuredCount})` },
+              { key: 'missing', label: `Eksik (${missingCount})` },
+            ] as { key: ListFilter; label: string }[]).map((f) => (
+              <button
+                key={f.key}
+                onClick={() => setListFilter(f.key)}
+                className="flex-1 rounded-lg border px-2 py-1.5 text-[11.5px] font-semibold transition"
+                style={{
+                  borderColor: listFilter === f.key ? 'rgba(139,124,240,.4)' : 'rgba(255,255,255,.07)',
+                  background: listFilter === f.key ? 'rgba(139,124,240,.14)' : 'rgba(255,255,255,.03)',
+                  color: listFilter === f.key ? '#c4b5fd' : 'rgba(250,250,249,.5)',
+                }}
+              >
+                {f.label}
+              </button>
+            ))}
+          </div>
+          <div className="max-h-[calc(100vh-285px)] overflow-y-auto px-2 pb-3">
             {filtered.map((t) => {
               const name = taxpayerName(t);
-              const has = ruleMap.has(name);
+              const rule = ruleMap.get(name);
+              const has = !!rule;
+              const p = rule?.profile;
+              const score = has ? profileScore(p) : 0;
+              const kod = profileKodCount(p);
+              const kural = profileRuleCount(p);
+              const sektor = String(p?.sektor || '').trim();
+              const defter = defterTuruLabel(p?.defterTuru);
+              const meta = has ? [sektor || 'Sektör —', defter || 'Defter —'].join(' · ') : 'Profil tanımlı değil';
               const active = selected === name;
+              const dotClass = !has ? 'border border-white/25' : score >= 70 ? 'bg-[#5cbf8a]' : 'bg-[#d4a85f]';
               return (
                 <button
                   key={t.id}
                   onClick={() => selectTaxpayer(name)}
-                  className="group mb-1 grid w-full grid-cols-[22px_minmax(0,1fr)_auto] items-center gap-2 rounded-lg px-3 py-2.5 text-left text-sm transition"
+                  className="group relative mb-1 grid w-full grid-cols-[14px_minmax(0,1fr)_auto] items-center gap-2.5 rounded-xl px-3 py-2.5 text-left transition"
                   style={{
-                    background: active ? 'rgba(184,160,111,.13)' : 'transparent',
-                    color: active ? '#d9c78f' : '#cbd5e1',
+                    background: active ? 'linear-gradient(90deg, rgba(139,124,240,.16), rgba(139,124,240,.04))' : 'transparent',
+                    border: active ? '1px solid rgba(139,124,240,.28)' : '1px solid transparent',
                   }}
                 >
-                  {has ? (
-                    <Bot size={14} className={active ? 'text-[#8ecf96]' : 'text-[#6a9a6c]'} />
-                  ) : (
-                    <span className="h-1.5 w-1.5 rounded-full bg-white/20" />
-                  )}
-                  <span className="truncate font-medium">{name}</span>
-                  {has && <span className="rounded-full bg-emerald-500/10 px-2 py-0.5 text-[10px] text-emerald-300">kural</span>}
+                  {active && <span className="absolute left-0 top-2.5 bottom-2.5 w-[3px] rounded-full bg-[#8b7cf0]" />}
+                  <span className={`h-2.5 w-2.5 justify-self-center rounded-full ${dotClass}`} />
+                  <span className="min-w-0">
+                    <span className="block truncate text-[13.5px] font-semibold" style={{ color: active ? '#d9cffb' : '#e5e7eb' }}>{name}</span>
+                    <span className="mt-0.5 block truncate text-[11px] text-white/35">{meta}</span>
+                  </span>
+                  <span className="flex flex-col items-end gap-1">
+                    {has ? (
+                      <>
+                        <span className="flex items-center gap-1.5">
+                          <span className="h-1 w-[46px] overflow-hidden rounded-full bg-white/10">
+                            <span className="block h-full rounded-full" style={{ width: `${score}%`, background: 'linear-gradient(90deg,#6d5fd1,#a78bfa)' }} />
+                          </span>
+                          <span className="w-8 text-right text-[10.5px] tabular-nums text-white/45">%{score}</span>
+                        </span>
+                        <span className="rounded-full px-2 py-0.5 text-[10px] font-semibold" style={{ color: '#bcaef4', background: 'rgba(139,124,240,.13)', border: '1px solid rgba(139,124,240,.22)' }}>
+                          {kod} kod · {kural} kural
+                        </span>
+                      </>
+                    ) : (
+                      <span className="rounded-full border border-white/[0.07] bg-white/[0.04] px-2 py-0.5 text-[10px] font-semibold text-white/40">tanımsız</span>
+                    )}
+                  </span>
                 </button>
               );
             })}
@@ -326,17 +499,17 @@ export default function ProfillerPage() {
 
         <main className="rounded-xl border border-white/[0.06] bg-white/[0.025]">
           {!selected ? (
-            <div className="flex min-h-[720px] items-center justify-center text-sm text-white/40">
-              Sol listeden mükellef seç
-            </div>
+            <EmptyState missingCount={missingCount} missing={missingTaxpayers} onPick={selectTaxpayer} />
           ) : (
             <ProfileForm
               selected={selected}
               profile={profile}
+              score={selectedScore}
               has={ruleMap.has(selected)}
               onUpdate={updP}
               onUpdateKdv={updKdv}
               onSave={saveProfile}
+              onCopy={openCopy}
               onDelete={() => {
                 if (confirm(`${selected} için profil silinsin mi?`)) del.mutate(selected);
               }}
@@ -345,6 +518,24 @@ export default function ProfillerPage() {
           )}
         </main>
       </div>
+
+      {copyOpen && selected && (
+        <CopyModal
+          source={selected}
+          score={selectedScore}
+          kod={profileKodCount(profile)}
+          kural={profileRuleCount(profile)}
+          candidates={copyCandidates}
+          configured={(name) => ruleMap.has(name)}
+          targets={copyTargets}
+          search={copySearch}
+          onSearch={setCopySearch}
+          onToggle={toggleCopyTarget}
+          onClose={() => setCopyOpen(false)}
+          onConfirm={doCopy}
+          busy={copyMut.isPending}
+        />
+      )}
     </div>
   );
 }
@@ -352,49 +543,52 @@ export default function ProfillerPage() {
 function ProfileForm({
   selected,
   profile,
+  score,
   has,
   onUpdate,
   onUpdateKdv,
   onSave,
+  onCopy,
   onDelete,
   saving,
 }: {
   selected: string;
   profile: MukellefProfile;
+  score: number;
   has: boolean;
   onUpdate: <K extends keyof MukellefProfile>(k: K, v: MukellefProfile[K]) => void;
   onUpdateKdv: (key: KdvGroup, oran: keyof KdvOranBazli, value: string) => void;
   onSave: () => void;
+  onCopy: () => void;
   onDelete: () => void;
   saving: boolean;
 }) {
   const [tab, setTab] = useState<ProfileTab>('genel');
-  const kdvCodeCount =
-    countFilledKdv(profile.faturaSatisMatrah) +
-    countFilledKdv(profile.perakendeSatisMatrah) +
-    countFilledKdv(profile.malAlisMatrah) +
-    countFilledKdv(profile.hesaplananKdv) +
-    countFilledKdv(profile.indirilecekKdv);
-  const ruleCount = [
-    profile.demirbasKontrolAktif !== false,
-    !!profile.tevkifataTabi,
-    ...Array(countManagedRules(profile.ozelKararKurallari)).fill(true),
-    ...Array(countManagedRules(profile.firmaOzelTalimatlar)).fill(true),
-    ...Array(countManagedRules(profile.talimat)).fill(true),
-  ].filter(Boolean).length;
+  const kdvCodeCount = profileKodCount(profile);
+  const ruleCount = profileRuleCount(profile);
 
   return (
     <div className="min-h-[720px]">
       <div className="sticky top-0 z-10 border-b border-white/[0.06] bg-[#10100f]/95 px-5 py-4 backdrop-blur">
         <div className="flex flex-col gap-4 2xl:flex-row 2xl:items-center 2xl:justify-between">
-          <div className="min-w-0">
-            <div className="mb-1 text-[11px] font-semibold uppercase tracking-[.16em] text-white/35">Mükellef</div>
-            <div className="truncate text-xl font-semibold text-[#d9c78f]">{selected}</div>
+          <div className="flex min-w-0 items-center gap-4">
+            <ScoreRing value={score} />
+            <div className="min-w-0">
+              <div className="mb-1 text-[11px] font-semibold uppercase tracking-[.16em] text-white/35">Mükellef</div>
+              <div className="truncate text-xl font-semibold text-[#d9cffb]">{selected}</div>
+            </div>
           </div>
           <div className="flex flex-wrap items-center gap-2">
             <StatusPill icon={<FileText size={14} />} label={profile.sektor || 'Sektör yok'} />
             <StatusPill icon={<ReceiptText size={14} />} label={`${kdvCodeCount} hesap kodu`} tone={kdvCodeCount ? 'green' : 'amber'} />
             <StatusPill icon={<ListChecks size={14} />} label={`${ruleCount} kural`} tone={ruleCount ? 'green' : 'amber'} />
+            <button
+              onClick={onCopy}
+              className="inline-flex h-10 items-center gap-2 rounded-lg border px-3 text-sm font-semibold"
+              style={{ color: '#c4b5fd', background: 'rgba(139,124,240,.12)', borderColor: 'rgba(139,124,240,.35)' }}
+            >
+              <Copy size={15} /> Profili Kopyala
+            </button>
             {has && (
               <button
                 onClick={onDelete}
@@ -406,7 +600,8 @@ function ProfileForm({
             <button
               onClick={onSave}
               disabled={saving}
-              className="inline-flex h-10 items-center gap-2 rounded-lg border border-emerald-400/30 bg-emerald-500/20 px-4 text-sm font-semibold text-emerald-200 disabled:opacity-50"
+              className="inline-flex h-10 items-center gap-2 rounded-lg border px-4 text-sm font-semibold text-[#0b0a14] disabled:opacity-50"
+              style={{ background: 'linear-gradient(145deg,#8b7cf0,#6d5fd1)', borderColor: 'rgba(139,124,240,.5)' }}
             >
               <Save size={15} /> {saving ? 'Kaydediliyor...' : 'Kaydet'}
             </button>
@@ -420,9 +615,9 @@ function ProfileForm({
               onClick={() => setTab(key)}
               className="inline-flex h-9 items-center gap-2 rounded-lg border px-3 text-sm font-semibold transition"
               style={{
-                borderColor: tab === key ? 'rgba(212,184,118,.45)' : 'rgba(255,255,255,.07)',
-                background: tab === key ? 'rgba(212,184,118,.14)' : 'rgba(255,255,255,.03)',
-                color: tab === key ? '#d9c78f' : 'rgba(250,250,249,.62)',
+                borderColor: tab === key ? 'rgba(139,124,240,.45)' : 'rgba(255,255,255,.07)',
+                background: tab === key ? 'rgba(139,124,240,.14)' : 'rgba(255,255,255,.03)',
+                color: tab === key ? '#c4b5fd' : 'rgba(250,250,249,.62)',
               }}
             >
               {tabIcons[key]}
@@ -561,7 +756,7 @@ function RuleShelf() {
     <div className="grid gap-3 lg:grid-cols-4">
       {rules.map((rule) => (
         <div key={rule.title} className="rounded-xl border border-white/[0.06] bg-black/15 p-4">
-          <div className="mb-2 flex items-center gap-2 text-sm font-semibold text-[#d9c78f]">
+          <div className="mb-2 flex items-center gap-2 text-sm font-semibold text-[#c4b5fd]">
             {rule.icon}
             {rule.title}
           </div>
@@ -627,13 +822,217 @@ const FIRM_RULE_TEMPLATES = [
   },
 ];
 
-function Metric({ label, value, tone = 'default' }: { label: string; value: number; tone?: 'default' | 'green' | 'amber' }) {
-  const color = tone === 'green' ? '#86efac' : tone === 'amber' ? '#facc15' : '#d9c78f';
+function FilterStat({
+  label,
+  value,
+  tone,
+  active,
+  onClick,
+}: {
+  label: string;
+  value: number;
+  tone: 'violet' | 'green' | 'amber';
+  active: boolean;
+  onClick: () => void;
+}) {
+  const color = tone === 'green' ? '#9fe3bf' : tone === 'amber' ? '#ecc987' : '#c4b5fd';
   return (
-    <div className="rounded-lg border border-white/[0.06] bg-white/[0.03] px-4 py-3">
-      <div className="text-[10px] font-semibold uppercase tracking-[.12em] text-white/35">{label}</div>
-      <div className="mt-1 text-xl font-semibold" style={{ color }}>{value}</div>
+    <button
+      type="button"
+      onClick={onClick}
+      className="relative min-w-[112px] rounded-2xl border px-4 py-3 text-left transition"
+      style={{
+        borderColor: active ? 'rgba(139,124,240,.55)' : 'rgba(255,255,255,.07)',
+        background: active
+          ? 'linear-gradient(160deg, rgba(139,124,240,.18), rgba(139,124,240,.05))'
+          : 'rgba(255,255,255,.025)',
+      }}
+    >
+      <div className="text-[10px] font-bold uppercase tracking-[.12em] text-white/35">{label}</div>
+      <div className="mt-1 text-[22px] font-bold" style={{ color }}>{value}</div>
+      {active && <span className="absolute inset-x-3.5 -bottom-px h-0.5 rounded bg-[#8b7cf0]" />}
+    </button>
+  );
+}
+
+function ScoreRing({ value }: { value: number }) {
+  const ring = value >= 70 ? '#8b7cf0' : value >= 35 ? '#d4a85f' : 'rgba(255,255,255,.28)';
+  return (
+    <div
+      className="relative flex h-[54px] w-[54px] flex-none items-center justify-center rounded-full"
+      style={{ background: `conic-gradient(${ring} ${value * 3.6}deg, rgba(255,255,255,.08) 0)` }}
+    >
+      <div className="absolute inset-[5px] rounded-full bg-[#10100f]" />
+      <span className="relative text-[13px] font-bold" style={{ color: value >= 35 ? '#c4b5fd' : 'rgba(250,250,249,.5)' }}>
+        %{value}
+      </span>
     </div>
+  );
+}
+
+function EmptyState({ missingCount, missing, onPick }: { missingCount: number; missing: string[]; onPick: (name: string) => void }) {
+  const top = missing.slice(0, 5);
+  return (
+    <div className="flex min-h-[720px] items-center justify-center p-10">
+      <div className="w-full max-w-[520px] text-center">
+        <div
+          className="mx-auto mb-5 flex h-[70px] w-[70px] items-center justify-center rounded-[20px] border border-[#8b7cf0]/25"
+          style={{ background: 'linear-gradient(145deg, rgba(139,124,240,.2), rgba(139,124,240,.05))' }}
+        >
+          <ShieldCheck size={34} className="text-[#a78bfa]" />
+        </div>
+        <h3 className="text-[18px] font-bold text-[#fafaf9]">Soldan bir mükellef seç</h3>
+        <p className="mx-auto mt-2 max-w-[440px] text-[13px] leading-6 text-white/45">
+          Profili tanımlanan her mükellef için karar motoru hesap kodlarını, risk kurallarını ve firma talimatlarını otomatik uygular.{' '}
+          {missingCount > 0 ? (
+            <>
+              <b className="text-[#c4b5fd]">{missingCount} mükellefin</b> henüz profili yok.
+            </>
+          ) : (
+            'Tüm mükelleflerin profili tanımlı.'
+          )}
+        </p>
+        {top.length > 0 && (
+          <div className="mt-5 flex flex-col gap-1.5 rounded-2xl border border-white/[0.06] bg-black/20 p-3 text-left">
+            <div className="mb-1 px-1 text-[11px] font-bold uppercase tracking-[.1em] text-[#d4a85f]">En çok eksikler — hızlı başla</div>
+            {top.map((name) => (
+              <button
+                key={name}
+                onClick={() => onPick(name)}
+                className="flex items-center justify-between gap-3 rounded-xl border border-white/[0.06] bg-white/[0.025] px-3 py-2.5 text-left transition hover:border-[#8b7cf0]/35"
+              >
+                <span className="truncate text-[13px] text-[#dcdce0]">{name}</span>
+                <span className="flex-none text-[11px] text-white/35">profil yok →</span>
+              </button>
+            ))}
+          </div>
+        )}
+      </div>
+    </div>
+  );
+}
+
+function CopyModal({
+  source,
+  score,
+  kod,
+  kural,
+  candidates,
+  configured,
+  targets,
+  search,
+  onSearch,
+  onToggle,
+  onClose,
+  onConfirm,
+  busy,
+}: {
+  source: string;
+  score: number;
+  kod: number;
+  kural: number;
+  candidates: string[];
+  configured: (name: string) => boolean;
+  targets: Set<string>;
+  search: string;
+  onSearch: (v: string) => void;
+  onToggle: (name: string) => void;
+  onClose: () => void;
+  onConfirm: () => void;
+  busy: boolean;
+}) {
+  if (typeof document === 'undefined') return null;
+  return createPortal(
+    <div
+      className="fixed inset-0 z-50 flex items-center justify-center p-4"
+      style={{ background: 'rgba(5,5,8,.66)', backdropFilter: 'blur(2px)' }}
+      onClick={onClose}
+    >
+      <div
+        className="w-full max-w-[560px] overflow-hidden rounded-2xl border border-[#8b7cf0]/25 bg-[#0f0d0b]"
+        onClick={(e) => e.stopPropagation()}
+      >
+        <div className="h-[3px] w-full" style={{ background: 'linear-gradient(90deg,#8b7cf0,#a78bfa,#6d5fd1)' }} />
+        <div className="flex items-center justify-between gap-3 border-b border-white/[0.06] px-5 py-4">
+          <div className="flex items-center gap-3">
+            <div className="flex h-9 w-9 items-center justify-center rounded-xl" style={{ background: 'linear-gradient(145deg,#8b7cf0,#6d5fd1)' }}>
+              <Copy size={18} className="text-[#0b0a14]" />
+            </div>
+            <div>
+              <div className="text-[15px] font-bold text-[#fafaf9]">Profili Kopyala</div>
+              <div className="text-[12px] text-white/45">Bu profilin tüm ayarlarını seçtiğin mükellef(ler)e uygula.</div>
+            </div>
+          </div>
+          <button onClick={onClose} className="flex h-8 w-8 items-center justify-center rounded-lg text-white/45 hover:bg-white/[0.06]">
+            <X size={17} />
+          </button>
+        </div>
+        <div className="flex flex-col gap-3 px-5 py-4">
+          <div className="flex flex-wrap items-center gap-2 rounded-xl border border-[#8b7cf0]/20 px-3 py-2.5 text-[13px]" style={{ background: 'rgba(139,124,240,.08)' }}>
+            <span className="text-[11px] font-bold uppercase tracking-[.08em] text-[#c4b5fd]">Kaynak</span>
+            <b className="text-[#fafaf9]">{source}</b>
+            <span className="text-white/35">· %{score} dolu · {kod} kod · {kural} kural</span>
+          </div>
+          <div className="flex items-center gap-2 rounded-lg border border-white/[0.07] bg-black/20 px-3 py-2">
+            <Search size={15} className="text-white/35" />
+            <input
+              value={search}
+              onChange={(e) => onSearch(e.target.value)}
+              placeholder="Hedef mükellef ara..."
+              className="min-w-0 flex-1 bg-transparent text-[13px] text-[#fafaf9] outline-none placeholder:text-white/30"
+            />
+          </div>
+          <div className="flex max-h-[240px] flex-col gap-1.5 overflow-y-auto">
+            {candidates.map((name) => {
+              const sel = targets.has(name);
+              const has = configured(name);
+              return (
+                <button
+                  key={name}
+                  onClick={() => onToggle(name)}
+                  className="flex items-center gap-3 rounded-xl border px-3 py-2.5 text-left text-[13px] transition"
+                  style={{
+                    borderColor: sel ? 'rgba(139,124,240,.45)' : 'rgba(255,255,255,.07)',
+                    background: sel ? 'rgba(139,124,240,.1)' : 'rgba(255,255,255,.02)',
+                  }}
+                >
+                  <span
+                    className="flex h-[18px] w-[18px] flex-none items-center justify-center rounded-md border"
+                    style={{ background: sel ? '#8b7cf0' : 'transparent', borderColor: sel ? '#8b7cf0' : 'rgba(255,255,255,.25)' }}
+                  >
+                    {sel && <Check size={12} className="text-[#0b0a14]" strokeWidth={3} />}
+                  </span>
+                  <span className="flex-1 truncate text-[#e5e7eb]">{name}</span>
+                  <span className="flex-none text-[11px]" style={{ color: has ? '#d4a85f' : 'rgba(250,250,249,.32)' }}>
+                    {has ? 'profil var' : 'profil yok'}
+                  </span>
+                </button>
+              );
+            })}
+            {candidates.length === 0 && <div className="px-3 py-8 text-center text-[13px] text-white/35">Sonuç yok</div>}
+          </div>
+        </div>
+        <div className="flex items-center justify-between gap-3 border-t border-white/[0.06] px-5 py-4">
+          <span className="text-[12px] text-white/45">
+            <b className="text-[#c4b5fd]">{targets.size}</b> mükellef seçili
+          </span>
+          <div className="flex items-center gap-2">
+            <button onClick={onClose} className="inline-flex h-10 items-center rounded-lg border border-white/[0.08] bg-white/[0.03] px-4 text-[13px] font-semibold text-white/65">
+              Vazgeç
+            </button>
+            <button
+              onClick={onConfirm}
+              disabled={busy || targets.size === 0}
+              className="inline-flex h-10 items-center gap-2 rounded-lg border px-4 text-[13px] font-bold text-[#0b0a14] disabled:opacity-40"
+              style={{ background: 'linear-gradient(145deg,#8b7cf0,#6d5fd1)', borderColor: 'rgba(139,124,240,.5)' }}
+            >
+              <Copy size={15} /> {busy ? 'Kopyalanıyor...' : `${targets.size ? `${targets.size} ` : ''}Mükellefe Kopyala`}
+            </button>
+          </div>
+        </div>
+      </div>
+    </div>,
+    document.body,
   );
 }
 
@@ -666,7 +1065,7 @@ function Panel({
   const gridClass = columns === 1 ? 'grid-cols-1' : columns === 2 ? 'grid-cols-1 lg:grid-cols-2' : 'grid-cols-1 lg:grid-cols-3';
   return (
     <section className="rounded-xl border border-white/[0.06] bg-black/10">
-      <div className="flex items-center gap-2 border-b border-white/[0.06] px-4 py-3 text-sm font-semibold uppercase tracking-[.12em] text-[#b8a06f]">
+      <div className="flex items-center gap-2 border-b border-white/[0.06] px-4 py-3 text-sm font-semibold uppercase tracking-[.12em] text-[#b3a4ef]">
         {icon}
         {title}
       </div>
@@ -742,7 +1141,7 @@ function KeywordEditor({
             }
           }}
           placeholder="Yeni anahtar kelime"
-          className="h-10 min-w-0 flex-1 rounded-lg border border-white/[0.07] bg-white/[0.035] px-3 text-sm text-[#e5e7eb] outline-none placeholder:text-white/24 focus:border-[#d4b876]/45"
+          className="h-10 min-w-0 flex-1 rounded-lg border border-white/[0.07] bg-white/[0.035] px-3 text-sm text-[#e5e7eb] outline-none placeholder:text-white/24 focus:border-[#8b7cf0]/45"
         />
         <button
           type="button"
@@ -760,7 +1159,7 @@ function KeywordEditor({
               type="button"
               key={suggestion}
               onClick={() => addKeyword(suggestion)}
-              className="inline-flex h-8 items-center gap-1.5 rounded-full border border-white/[0.07] bg-white/[0.03] px-3 text-xs font-semibold text-white/55 hover:text-[#d9c78f]"
+              className="inline-flex h-8 items-center gap-1.5 rounded-full border border-white/[0.07] bg-white/[0.03] px-3 text-xs font-semibold text-white/55 hover:text-[#c4b5fd]"
             >
               <Plus size={12} /> {suggestion}
             </button>
@@ -819,7 +1218,7 @@ function RuleListEditor({
     <div className={`rounded-xl border border-white/[0.06] bg-white/[0.02] p-4 ${className}`}>
       <div className="mb-3 flex flex-col gap-2 lg:flex-row lg:items-start lg:justify-between">
         <div>
-          <div className="flex items-center gap-2 text-sm font-semibold text-[#d9c78f]">
+          <div className="flex items-center gap-2 text-sm font-semibold text-[#c4b5fd]">
             <ListChecks size={16} />
             {title}
           </div>
@@ -837,7 +1236,7 @@ function RuleListEditor({
               type="button"
               key={template}
               onClick={() => addLine(template)}
-              className="inline-flex min-h-8 max-w-full items-center gap-1.5 rounded-full border border-[#d4b876]/20 bg-[#d4b876]/10 px-3 text-xs font-semibold text-[#ead79b] hover:bg-[#d4b876]/15"
+              className="inline-flex min-h-8 max-w-full items-center gap-1.5 rounded-full border border-[#8b7cf0]/20 bg-[#8b7cf0]/10 px-3 text-xs font-semibold text-[#c4b5fd] hover:bg-[#8b7cf0]/15"
             >
               <Sparkles size={12} className="shrink-0" />
               <span className="max-w-[520px] truncate">{template}</span>
@@ -869,7 +1268,7 @@ function RuleListEditor({
               value={line}
               onChange={(e) => updateLine(index, e.target.value)}
               rows={2}
-              className="w-full resize-y rounded-lg border border-white/[0.07] bg-white/[0.035] px-3 py-2 text-sm leading-6 text-[#e5e7eb] outline-none placeholder:text-white/24 focus:border-[#d4b876]/45"
+              className="w-full resize-y rounded-lg border border-white/[0.07] bg-white/[0.035] px-3 py-2 text-sm leading-6 text-[#e5e7eb] outline-none placeholder:text-white/24 focus:border-[#8b7cf0]/45"
             />
           </div>
         ))}
@@ -888,7 +1287,7 @@ function RuleListEditor({
           onChange={(e) => setDraft(e.target.value)}
           rows={3}
           placeholder={placeholder}
-          className="w-full rounded-lg border border-white/[0.07] bg-white/[0.035] px-3 py-2 text-sm leading-6 text-[#e5e7eb] outline-none placeholder:text-white/24 focus:border-[#d4b876]/45"
+          className="w-full rounded-lg border border-white/[0.07] bg-white/[0.035] px-3 py-2 text-sm leading-6 text-[#e5e7eb] outline-none placeholder:text-white/24 focus:border-[#8b7cf0]/45"
         />
         <div className="mt-2 flex justify-end">
           <button
@@ -940,7 +1339,7 @@ function FirmRuleEditor({
     <div className="rounded-xl border border-white/[0.06] bg-white/[0.02] p-4">
       <div className="mb-3 flex flex-col gap-2 lg:flex-row lg:items-start lg:justify-between">
         <div>
-          <div className="flex items-center gap-2 text-sm font-semibold text-[#d9c78f]">
+          <div className="flex items-center gap-2 text-sm font-semibold text-[#c4b5fd]">
             <Building2 size={16} />
             Karşı firma bazlı manuel kurallar
           </div>
@@ -959,7 +1358,7 @@ function FirmRuleEditor({
             type="button"
             key={`${template.firm}-${template.instruction}`}
             onClick={() => commit(template)}
-            className="inline-flex min-h-8 items-center gap-1.5 rounded-full border border-[#d4b876]/20 bg-[#d4b876]/10 px-3 text-xs font-semibold text-[#ead79b] hover:bg-[#d4b876]/15"
+            className="inline-flex min-h-8 items-center gap-1.5 rounded-full border border-[#8b7cf0]/20 bg-[#8b7cf0]/10 px-3 text-xs font-semibold text-[#c4b5fd] hover:bg-[#8b7cf0]/15"
           >
             <Sparkles size={12} /> {template.firm}
           </button>
@@ -1076,7 +1475,7 @@ function KdvBlock({
   return (
     <div className="rounded-lg border border-white/[0.06] bg-white/[0.02] p-3">
       <div className="mb-3 flex items-center justify-between gap-3">
-        <h3 className="text-sm font-semibold text-[#d9c78f]">{title}</h3>
+        <h3 className="text-sm font-semibold text-[#c4b5fd]">{title}</h3>
         <span className="rounded-full bg-white/[0.04] px-2 py-0.5 text-[11px] text-white/40">
           {countFilledKdv(values)} / 5 dolu
         </span>
@@ -1132,7 +1531,7 @@ function Input({
         value={value}
         onChange={(e) => onChange(e.target.value)}
         placeholder={placeholder}
-        className="h-10 w-full rounded-lg border border-white/[0.07] bg-white/[0.035] px-3 text-sm text-[#e5e7eb] outline-none placeholder:text-white/24 focus:border-[#d4b876]/45"
+        className="h-10 w-full rounded-lg border border-white/[0.07] bg-white/[0.035] px-3 text-sm text-[#e5e7eb] outline-none placeholder:text-white/24 focus:border-[#8b7cf0]/45"
       />
     </label>
   );
@@ -1161,7 +1560,7 @@ function Textarea({
         onChange={(e) => onChange(e.target.value)}
         rows={rows}
         placeholder={placeholder}
-        className="w-full rounded-lg border border-white/[0.07] bg-white/[0.035] px-3 py-2 text-sm leading-6 text-[#e5e7eb] outline-none placeholder:text-white/24 focus:border-[#d4b876]/45"
+        className="w-full rounded-lg border border-white/[0.07] bg-white/[0.035] px-3 py-2 text-sm leading-6 text-[#e5e7eb] outline-none placeholder:text-white/24 focus:border-[#8b7cf0]/45"
       />
     </label>
   );
@@ -1184,7 +1583,7 @@ function Select({
       <select
         value={value}
         onChange={(e) => onChange(e.target.value)}
-        className="h-10 w-full rounded-lg border border-white/[0.07] bg-white/[0.035] px-3 text-sm text-[#e5e7eb] outline-none focus:border-[#d4b876]/45"
+        className="h-10 w-full rounded-lg border border-white/[0.07] bg-white/[0.035] px-3 text-sm text-[#e5e7eb] outline-none focus:border-[#8b7cf0]/45"
       >
         {options.map((o) => (
           <option key={o.value} value={o.value} className="bg-[#151513] text-[#e5e7eb]">
