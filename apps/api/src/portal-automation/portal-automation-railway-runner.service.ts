@@ -3118,6 +3118,12 @@ export class PortalAutomationRailwayRunnerService implements OnModuleInit {
 
   // ===================== HATTAT YONTEMI: liste-API ile toplu indirme =====================
 
+  /** ARSIV listesini once dene? (varsayilan ACIK; 0 satir verirse yakalanan canli istege dusulur) */
+  private ebeyannameArsivFirstEnabled() {
+    const raw = String(process.env.PORTAL_AUTOMATION_EBEYANNAME_ARSIV_FIRST ?? '1').trim().toLowerCase();
+    return raw !== '0' && raw !== 'false' && raw !== 'no' && raw !== 'off';
+  }
+
   /** Liste-API yolu acik mi? (varsayilan ACIK; basarisizsa eski yola otomatik dusulur) */
   private ebeyannameListApiEnabled() {
     const raw = String(process.env.PORTAL_AUTOMATION_EBEYANNAME_LIST_API ?? '1').trim().toLowerCase();
@@ -3427,6 +3433,38 @@ export class PortalAutomationRailwayRunnerService implements OnModuleInit {
     const byOid = new Map<string, EBeyannameListEntry>();
     let recognized = false;
 
+    // 1) ONCE ARSIV (cmd=ARSIVBEYANNAMELISTESI): grupSayi ile DOGRU sayfaliyor ve TUM tur/donemleri
+    //    (KDV/MUHSGK/gecici...) doner. Yakalanan canli BEYANNAMELISTESI ise ilk 25 satirda takiliyor
+    //    (grupSayi'yi yok sayiyor) -> sadece ilk sayfadaki turler (cogu zaman gecici vergi) iniyordu.
+    if (this.ebeyannameArsivFirstEnabled()) {
+      let total: number | null = null;
+      let firstErr = false;
+      for (let grupSayi = 0; grupSayi < 10000; grupSayi += 25) {
+        if (byOid.size >= maxRows) break;
+        const url = this.buildEBeyannameListApiUrl(origin, token, { grupSayi, beyannameTanim: '', baslangic, bitis });
+        const raw = await this.fetchEBeyannameListPage(page, url);
+        if (raw == null) { notes.push(`liste-API ARSIV grup ${grupSayi}: yanit yok`); break; }
+        const parsed = this.parseEBeyannameListResponse(raw);
+        if (parsed.recognized) recognized = true;
+        if (parsed.serverError && !firstErr) { firstErr = true; notes.push(`liste-API ARSIV: GIB uyari: ${this.compact(parsed.serverError)}`); }
+        if (total == null && parsed.total != null) total = parsed.total;
+        let added = 0;
+        for (const e of parsed.rows) if (!byOid.has(e.beyannameOid)) { byOid.set(e.beyannameOid, e); added++; }
+        notes.push(`liste-API ARSIV grup ${grupSayi}: ${parsed.rows.length} satir (+${added}, toplam ${total ?? '?'})`);
+        if (!parsed.rows.length) break;
+        if (added === 0 && grupSayi > 0) break;
+        if (total != null && grupSayi + 25 >= total) break;
+        await this.wait(1200);
+      }
+      if (byOid.size > 0) {
+        this.logger.warn(`[EBLIST] ARSIV ${byOid.size} indirilebilir satir.`);
+        notes.push(`liste-API: ARSIV yolu ${byOid.size} satir verdi, kullaniliyor.`);
+        return { rows: Array.from(byOid.values()), recognized };
+      }
+      notes.push('liste-API: ARSIV 0 satir verdi, yakalanan canli istege dusuluyor.');
+    }
+
+    // 2) ARSIV bos donerse: GIB'in kendi (yakalanan) istegini kullan.
     // GIB'in kendi istegi yakalandiysa onun PARAMETRELERINI kullan (skill'deki sabit parametreler reddediliyor).
     // GET de POST de desteklenir (GIB ekrani listeyi POST ile yukleyebiliyor).
     const captured = this.ebeyannameCapturedListReq;
