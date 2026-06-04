@@ -573,8 +573,8 @@ export default function EDefterAgentPage() {
   };
 
   const selectStyle = (accent = false): CSSProperties => ({
-    background: PANEL, border: `1px solid ${accent ? BORDER_STRONG : BORDER}`, color: accent ? NAVY : TEXT,
-    backgroundImage: ARROW('5b8def'), backgroundRepeat: 'no-repeat', backgroundPosition: 'right 8px center', paddingRight: '24px',
+    background: 'rgba(255,255,255,.05)', border: `1px solid ${BORDER_STRONG}`, color: accent ? NAVY : TEXT,
+    backgroundImage: ARROW('5b8def'), backgroundRepeat: 'no-repeat', backgroundPosition: 'right 12px center', paddingRight: '34px',
   });
 
   return (
@@ -614,22 +614,22 @@ export default function EDefterAgentPage() {
           </div>
         </div>
 
-        {/* Aksiyonlar */}
-        <div className="px-5 pb-4 flex flex-wrap items-center gap-2">
-          <button disabled={!taxpayerId || fetchMut.isPending || !!lucaJobId} onClick={() => fetchMut.mutate()} className="h-9 px-3.5 rounded-lg text-xs font-semibold inline-flex items-center gap-1.5 disabled:opacity-50" style={{ background: 'rgba(91,141,239,.18)', color: NAVY, border: '1px solid rgba(91,141,239,.34)' }}>
-            {fetchMut.isPending || lucaJobId ? <Loader2 size={13} className="animate-spin" /> : <Play size={13} />} Luca'dan Çek
+        {/* Aksiyonlar — dolu/ikon kutulu butonlar */}
+        <div className="px-5 pb-4 flex flex-wrap items-center gap-2.5">
+          <button disabled={!taxpayerId || fetchMut.isPending || !!lucaJobId} onClick={() => fetchMut.mutate()} className="h-10 pl-2 pr-4 rounded-xl text-[13px] font-semibold inline-flex items-center gap-2.5 disabled:opacity-50" style={{ background: 'linear-gradient(135deg,#3b82f6,#2563eb)', color: '#fff', boxShadow: '0 6px 18px rgba(59,130,246,.38)' }}>
+            <span className="grid place-items-center w-[26px] h-[26px] rounded-lg" style={{ background: 'rgba(255,255,255,.18)' }}>{fetchMut.isPending || lucaJobId ? <Loader2 size={14} className="animate-spin" /> : <Play size={14} />}</span> Luca'dan Çek
           </button>
-          <button disabled={!activeSessionId || exportMut.isPending} onClick={() => exportMut.mutate()} className="h-9 px-3.5 rounded-lg text-xs font-semibold inline-flex items-center gap-1.5 disabled:opacity-40" style={{ background: PANEL, color: 'rgba(250,250,249,.85)', border: `1px solid ${BORDER_STRONG}` }}>
-            {exportMut.isPending ? <Loader2 size={13} className="animate-spin" /> : <Download size={13} />} Excel
+          <button disabled={!activeSessionId || exportMut.isPending} onClick={() => exportMut.mutate()} className="h-10 pl-2 pr-4 rounded-xl text-[13px] font-semibold inline-flex items-center gap-2.5 disabled:opacity-40" style={{ background: 'rgba(255,255,255,.05)', color: 'rgba(250,250,249,.9)', border: `1px solid ${BORDER_STRONG}` }}>
+            <span className="grid place-items-center w-[26px] h-[26px] rounded-lg" style={{ background: 'rgba(255,255,255,.06)', color: NAVY }}>{exportMut.isPending ? <Loader2 size={14} className="animate-spin" /> : <Download size={14} />}</span> Excel
           </button>
-          <button disabled={!activeSessionId} onClick={printReport} className="h-9 px-3.5 rounded-lg text-xs font-semibold inline-flex items-center gap-1.5 disabled:opacity-40" style={{ background: PANEL, color: 'rgba(250,250,249,.85)', border: `1px solid ${BORDER_STRONG}` }}>
-            <FileText size={13} /> PDF Rapor
+          <button disabled={!activeSessionId} onClick={printReport} className="h-10 pl-2 pr-4 rounded-xl text-[13px] font-semibold inline-flex items-center gap-2.5 disabled:opacity-40" style={{ background: 'rgba(255,255,255,.05)', color: 'rgba(250,250,249,.9)', border: `1px solid ${BORDER_STRONG}` }}>
+            <span className="grid place-items-center w-[26px] h-[26px] rounded-lg" style={{ background: 'rgba(255,255,255,.06)', color: NAVY }}><FileText size={14} /></span> PDF Rapor
           </button>
-          <button disabled={!activeSessionId || reanalyzeMut.isPending} onClick={() => reanalyzeMut.mutate()} className="h-9 px-3.5 rounded-lg text-xs font-semibold inline-flex items-center gap-1.5 disabled:opacity-40" style={{ background: PANEL, color: 'rgba(250,250,249,.85)', border: `1px solid ${BORDER_STRONG}` }}>
-            {reanalyzeMut.isPending ? <Loader2 size={13} className="animate-spin" /> : <RotateCcw size={13} />} Yeniden Analiz
+          <button disabled={!activeSessionId || reanalyzeMut.isPending} onClick={() => reanalyzeMut.mutate()} className="h-10 pl-2 pr-4 rounded-xl text-[13px] font-semibold inline-flex items-center gap-2.5 disabled:opacity-40" style={{ background: 'rgba(255,255,255,.05)', color: 'rgba(250,250,249,.9)', border: `1px solid ${BORDER_STRONG}` }}>
+            <span className="grid place-items-center w-[26px] h-[26px] rounded-lg" style={{ background: 'rgba(255,255,255,.06)', color: NAVY }}>{reanalyzeMut.isPending ? <Loader2 size={14} className="animate-spin" /> : <RotateCcw size={14} />}</span> Yeniden Analiz
           </button>
-          <label className="h-9 px-3.5 rounded-lg text-xs font-semibold inline-flex items-center gap-1.5 cursor-pointer" style={{ background: PANEL, color: 'rgba(250,250,249,.75)', border: `1px solid ${BORDER}` }}>
-            <UploadCloud size={13} /> Yükle
+          <label className="h-10 pl-2 pr-4 rounded-xl text-[13px] font-semibold inline-flex items-center gap-2.5 cursor-pointer" style={{ background: 'rgba(255,255,255,.05)', color: 'rgba(250,250,249,.9)', border: `1px solid ${BORDER_STRONG}` }}>
+            <span className="grid place-items-center w-[26px] h-[26px] rounded-lg" style={{ background: 'rgba(255,255,255,.06)', color: NAVY }}><UploadCloud size={14} /></span> Yükle
             <input type="file" accept=".xlsx,.xls" className="hidden" onChange={(e) => { const file = e.target.files?.[0]; if (file) uploadMut.mutate(file); e.currentTarget.value = ''; }} />
           </label>
         </div>
@@ -638,43 +638,49 @@ export default function EDefterAgentPage() {
         <div className="px-5 py-3.5 flex flex-wrap items-end gap-x-4 gap-y-3" style={{ background: 'rgba(0,0,0,.24)', borderTop: `1px solid ${BORDER}` }}>
           <label className="flex flex-col gap-1.5 flex-1 min-w-[260px]">
             <span className="text-[9px] uppercase tracking-[.16em] font-bold" style={{ color: MUTED2 }}>Mükellef <span style={{ color: NAVY }}>· {taxpayers.length} bilanço</span></span>
-            <select value={taxpayerId} onChange={(e) => { setTaxpayerId(e.target.value); setSelectedSessionId(null); }} className="h-10 rounded-lg px-3 text-[13px] w-full appearance-none cursor-pointer" style={selectStyle()}>
+            <select value={taxpayerId} onChange={(e) => { setTaxpayerId(e.target.value); setSelectedSessionId(null); }} className="h-11 rounded-xl px-3 text-[13px] w-full appearance-none cursor-pointer" style={selectStyle()}>
               {taxpayers.length === 0 && (<option value="" style={{ background: '#1a1a17', color: TEXT }}>Bilanço mükellefi yok</option>)}
               {taxpayers.map((t) => (<option key={t.id} value={t.id} style={{ background: '#1a1a17', color: TEXT }}>{taxpayerName(t)}</option>))}
             </select>
           </label>
           <label className="flex flex-col gap-1.5">
             <span className="text-[9px] uppercase tracking-[.16em] font-bold" style={{ color: MUTED2 }}>Yıl</span>
-            <select value={year} onChange={(e) => { setYear(Number(e.target.value)); setSelectedSessionId(null); }} className="h-10 rounded-lg px-3 text-[13px] tabular-nums appearance-none cursor-pointer" style={selectStyle()}>
+            <select value={year} onChange={(e) => { setYear(Number(e.target.value)); setSelectedSessionId(null); }} className="h-11 rounded-xl px-3 text-[13px] tabular-nums appearance-none cursor-pointer" style={selectStyle()}>
               {Array.from({ length: 7 }, (_, i) => now.getFullYear() + 1 - i).map((y) => (<option key={y} value={y} style={{ background: '#1a1a17', color: TEXT }}>{y}</option>))}
             </select>
           </label>
           <div className="flex flex-col gap-1.5">
             <span className="text-[9px] uppercase tracking-[.16em] font-bold" style={{ color: MUTED2 }}>Dönem Türü</span>
-            <div className="flex h-10 rounded-lg overflow-hidden" style={{ border: `1px solid ${BORDER}` }}>
-              {(['GECICI', 'AYLIK', 'YILLIK'] as PeriodMode[]).map((mode) => (
-                <button key={mode} onClick={() => { setPeriodMode(mode); setSelectedSessionId(null); }} className="px-3.5 text-xs font-semibold transition-colors" style={{ background: periodMode === mode ? 'rgba(91,141,239,.20)' : PANEL, color: periodMode === mode ? NAVY : 'rgba(250,250,249,.6)', borderRight: mode !== 'YILLIK' ? `1px solid ${BORDER}` : undefined }}>
-                  {mode === 'GECICI' ? 'Geçici' : mode === 'AYLIK' ? 'Aylık' : 'Yıllık'}
-                </button>
-              ))}
+            <div className="inline-flex h-11 p-1 rounded-xl" style={{ background: 'rgba(255,255,255,.04)', border: `1px solid ${BORDER}` }}>
+              {(['GECICI', 'AYLIK', 'YILLIK'] as PeriodMode[]).map((mode) => {
+                const on = periodMode === mode;
+                return (
+                  <button key={mode} onClick={() => { setPeriodMode(mode); setSelectedSessionId(null); }} className="px-4 rounded-lg text-[13px] font-semibold transition-all" style={{ background: on ? 'linear-gradient(135deg,#3b82f6,#2563eb)' : 'transparent', color: on ? '#fff' : 'rgba(250,250,249,.6)', boxShadow: on ? '0 4px 12px rgba(59,130,246,.4)' : 'none' }}>
+                    {mode === 'GECICI' ? 'Geçici' : mode === 'AYLIK' ? 'Aylık' : 'Yıllık'}
+                  </button>
+                );
+              })}
             </div>
           </div>
           {periodMode === 'GECICI' && (
             <div className="flex flex-col gap-1.5">
               <span className="text-[9px] uppercase tracking-[.16em] font-bold" style={{ color: MUTED2 }}>Çeyrek</span>
-              <div className="flex h-10 rounded-lg overflow-hidden" style={{ border: `1px solid ${BORDER}` }}>
-                {[1, 2, 3, 4].map((q) => (
-                  <button key={q} onClick={() => { setQuarter(q); setSelectedSessionId(null); }} className="w-10 text-xs font-semibold transition-colors" style={{ background: quarter === q ? 'rgba(91,141,239,.20)' : PANEL, color: quarter === q ? NAVY : 'rgba(250,250,249,.65)', borderRight: q < 4 ? `1px solid ${BORDER}` : undefined }}>
-                    {q}
-                  </button>
-                ))}
+              <div className="inline-flex h-11 p-1 rounded-xl" style={{ background: 'rgba(255,255,255,.04)', border: `1px solid ${BORDER}` }}>
+                {[1, 2, 3, 4].map((q) => {
+                  const on = quarter === q;
+                  return (
+                    <button key={q} onClick={() => { setQuarter(q); setSelectedSessionId(null); }} className="w-11 rounded-lg text-[13px] font-semibold transition-all" style={{ background: on ? 'linear-gradient(135deg,#3b82f6,#2563eb)' : 'transparent', color: on ? '#fff' : 'rgba(250,250,249,.65)', boxShadow: on ? '0 4px 12px rgba(59,130,246,.4)' : 'none' }}>
+                      {q}
+                    </button>
+                  );
+                })}
               </div>
             </div>
           )}
           {periodMode === 'AYLIK' && (
             <label className="flex flex-col gap-1.5">
               <span className="text-[9px] uppercase tracking-[.16em] font-bold" style={{ color: MUTED2 }}>Ay</span>
-              <select value={month} onChange={(e) => { setMonth(Number(e.target.value)); setSelectedSessionId(null); }} className="h-10 rounded-lg px-3 text-[13px] appearance-none cursor-pointer" style={selectStyle()}>
+              <select value={month} onChange={(e) => { setMonth(Number(e.target.value)); setSelectedSessionId(null); }} className="h-11 rounded-xl px-3 text-[13px] appearance-none cursor-pointer" style={selectStyle()}>
                 {MONTH_LABELS.map((label, i) => (<option key={i + 1} value={i + 1} style={{ background: '#1a1a17', color: TEXT }}>{label}</option>))}
               </select>
             </label>
@@ -682,7 +688,7 @@ export default function EDefterAgentPage() {
           {periodSessions.length > 1 && (
             <label className="flex flex-col gap-1.5 ml-auto">
               <span className="text-[9px] uppercase tracking-[.16em] font-bold" style={{ color: MUTED2 }}>Versiyon</span>
-              <select value={activeSessionId || ''} onChange={(e) => setSelectedSessionId(e.target.value)} className="h-10 rounded-lg px-3 text-[13px] appearance-none cursor-pointer" style={selectStyle(true)}>
+              <select value={activeSessionId || ''} onChange={(e) => setSelectedSessionId(e.target.value)} className="h-11 rounded-xl px-3 text-[13px] appearance-none cursor-pointer" style={selectStyle(true)}>
                 {periodSessions.map((s: any, i: number) => (
                   <option key={s.id} value={s.id} style={{ background: '#1a1a17', color: TEXT }}>{i === 0 ? '★ ' : ''}v{periodSessions.length - i} · {fmtDateTime(s.createdAt)} · {s.findingCount} bulgu</option>
                 ))}
@@ -799,35 +805,37 @@ export default function EDefterAgentPage() {
                         const fStatus = f.status || 'OPEN';
                         const c = sevColor(f.severity);
                         return (
-                          <div key={f.id} className="relative flex items-start gap-3.5 rounded-xl border px-3.5 py-3" style={{ background: 'rgba(255,255,255,.014)', borderColor: BORDER, opacity: fStatus !== 'OPEN' ? 0.55 : 1 }}>
-                            <span className="absolute left-0 top-2.5 bottom-2.5 w-[3px] rounded-full" style={{ background: c }} />
-                            <span className="text-[9px] font-bold px-1.5 py-1 rounded mt-0.5 shrink-0" style={{ background: `${c}26`, color: c }}>{sevLabel(f.severity)}</span>
+                          <div key={f.id} className="flex items-start gap-3.5 rounded-[13px] border px-4 py-3.5 transition-colors hover:bg-white/5" style={{ background: 'rgba(255,255,255,.012)', borderColor: BORDER, opacity: fStatus !== 'OPEN' ? 0.5 : 1 }}>
+                            <span className="inline-flex items-center gap-1.5 text-[10px] font-extrabold tracking-wide px-2.5 py-1.5 rounded-lg shrink-0 mt-0.5" style={{ background: `${c}1f`, color: c }}>
+                              <span className="w-[7px] h-[7px] rounded-full" style={{ background: c }} />{sevLabel(f.severity)}
+                            </span>
                             <div className="flex-1 min-w-0">
-                              <div className="text-[13.5px] leading-snug" style={{ color: TEXT }}>{f.message}</div>
-                              <div className="flex items-center gap-2 flex-wrap mt-2">
-                                {f.rowIndex && (<span className="text-[10px] tabular-nums px-2 py-0.5 rounded" style={{ background: 'rgba(255,255,255,.06)', color: 'rgba(250,250,249,.78)' }}>Satır {f.rowIndex}</span>)}
-                                {f.hesapKodu && (<span className="text-[10px] tabular-nums px-2 py-0.5 rounded" style={{ background: 'rgba(255,255,255,.06)', color: 'rgba(250,250,249,.82)' }}>{f.hesapKodu}</span>)}
-                                {MEVZUAT_REF[f.category] && (<span className="text-[10px] px-2 py-0.5 rounded" style={{ background: 'rgba(91,141,239,.10)', color: '#9bc0ff', border: '1px solid rgba(91,141,239,.22)' }}>{MEVZUAT_REF[f.category]}</span>)}
-                                <span className="text-[9px] uppercase tracking-wider font-bold" style={{ color: statusColor(fStatus) }}>
-                                  {fStatus === 'OPEN' ? '● Açık' : fStatus === 'RESOLVED' ? '✓ Çözüldü' : '∅ Görmezden'}
+                              <div className="text-[13.5px] leading-relaxed" style={{ color: TEXT }}>{f.message}</div>
+                              <div className="flex items-center gap-2 flex-wrap mt-2.5">
+                                {f.rowIndex && (<span className="text-[10.5px] tabular-nums px-2 py-1 rounded-md" style={{ background: 'rgba(255,255,255,.05)', color: 'rgba(250,250,249,.72)' }}>Satır {f.rowIndex}</span>)}
+                                {f.hesapKodu && (<span className="text-[10.5px] tabular-nums px-2 py-1 rounded-md" style={{ background: 'rgba(255,255,255,.05)', color: 'rgba(250,250,249,.8)' }}>{f.hesapKodu}</span>)}
+                                {MEVZUAT_REF[f.category] && (<span className="text-[10.5px] px-2 py-1 rounded-md" style={{ background: 'rgba(91,141,239,.10)', color: '#9bc0ff' }}>{MEVZUAT_REF[f.category]}</span>)}
+                                <span className="inline-flex items-center gap-1.5 text-[11px] font-bold" style={{ color: statusColor(fStatus) }}>
+                                  <span className="w-1.5 h-1.5 rounded-full" style={{ background: statusColor(fStatus) }} />
+                                  {fStatus === 'OPEN' ? 'Açık' : fStatus === 'RESOLVED' ? 'Çözüldü' : 'Görmezden'}
                                 </span>
                               </div>
                             </div>
-                            <div className="flex items-center gap-1.5 shrink-0 self-center">
-                              {(f.rowIndex || f.voucherKey) && (<button onClick={() => focusFinding(f)} className="text-[10.5px] underline whitespace-nowrap mr-1" style={{ color: MUTED }}>Satırı incele →</button>)}
+                            <div className="flex items-center gap-2 shrink-0 self-center">
+                              {(f.rowIndex || f.voucherKey) && (<button onClick={() => focusFinding(f)} className="text-[11px] whitespace-nowrap pb-px" style={{ color: MUTED, borderBottom: '1px dashed rgba(250,250,249,.28)' }}>Satırı incele</button>)}
                               {fStatus !== 'RESOLVED' && (
-                                <button onClick={() => handleStatusChange(f, 'RESOLVED')} title="Çözüldü" className="h-7 px-2.5 rounded-md text-[10.5px] font-semibold inline-flex items-center gap-1" style={{ background: 'rgba(92,191,138,.12)', color: OK, border: '1px solid rgba(92,191,138,.24)' }}>
-                                  <CheckCircle2 size={11} /> Çöz
+                                <button onClick={() => handleStatusChange(f, 'RESOLVED')} title="Çözüldü" className="h-8 px-3 rounded-lg text-[12px] font-bold inline-flex items-center gap-1.5" style={{ background: 'rgba(92,191,138,.12)', color: OK, border: '1px solid rgba(92,191,138,.22)' }}>
+                                  <CheckCircle2 size={13} /> Çöz
                                 </button>
                               )}
                               {fStatus !== 'IGNORED' && (
-                                <button onClick={() => handleStatusChange(f, 'IGNORED')} title="Görmezden gel" className="h-7 px-2.5 rounded-md text-[10.5px] font-semibold inline-flex items-center gap-1" style={{ background: 'rgba(148,163,184,.10)', color: '#94a3b8', border: '1px solid rgba(148,163,184,.22)' }}>
-                                  <EyeOff size={11} /> Geç
+                                <button onClick={() => handleStatusChange(f, 'IGNORED')} title="Görmezden gel" className="h-8 px-3 rounded-lg text-[12px] font-bold inline-flex items-center gap-1.5" style={{ background: 'rgba(148,163,184,.10)', color: '#94a3b8', border: '1px solid rgba(148,163,184,.2)' }}>
+                                  <EyeOff size={13} /> Geç
                                 </button>
                               )}
                               {fStatus !== 'OPEN' && (
-                                <button onClick={() => handleStatusChange(f, 'OPEN')} title="Yeniden aç" className="h-7 px-2.5 rounded-md text-[10.5px] font-semibold inline-flex items-center gap-1" style={{ background: NAVY_SOFT, color: NAVY, border: `1px solid ${BORDER_STRONG}` }}>
-                                  <RotateCcw size={11} /> Aç
+                                <button onClick={() => handleStatusChange(f, 'OPEN')} title="Yeniden aç" className="h-8 px-3 rounded-lg text-[12px] font-bold inline-flex items-center gap-1.5" style={{ background: NAVY_SOFT, color: NAVY, border: `1px solid ${BORDER_STRONG}` }}>
+                                  <RotateCcw size={13} /> Aç
                                 </button>
                               )}
                             </div>
@@ -884,15 +892,16 @@ export default function EDefterAgentPage() {
                   {mizanLeafAnomalies.map((a: any) => {
                     const c = sevColor(a.seviye || 'WARN');
                     return (
-                      <div key={a.id} className="relative flex items-start gap-3.5 rounded-xl border px-3.5 py-3" style={{ background: 'rgba(255,255,255,.014)', borderColor: BORDER }}>
-                        <span className="absolute left-0 top-2.5 bottom-2.5 w-[3px] rounded-full" style={{ background: c }} />
-                        <span className="text-[9px] font-bold px-1.5 py-1 rounded mt-0.5 shrink-0" style={{ background: `${c}26`, color: c }}>{sevLabel(a.seviye || 'WARN')}</span>
+                      <div key={a.id} className="flex items-start gap-3.5 rounded-[13px] border px-4 py-3.5 transition-colors hover:bg-white/5" style={{ background: 'rgba(255,255,255,.012)', borderColor: BORDER }}>
+                        <span className="inline-flex items-center gap-1.5 text-[10px] font-extrabold tracking-wide px-2.5 py-1.5 rounded-lg shrink-0 mt-0.5" style={{ background: `${c}1f`, color: c }}>
+                          <span className="w-[7px] h-[7px] rounded-full" style={{ background: c }} />{sevLabel(a.seviye || 'WARN')}
+                        </span>
                         <div className="flex-1 min-w-0">
-                          <div className="flex items-center gap-2 flex-wrap mb-1">
-                            <span className="text-[12.5px] font-bold" style={{ color: NAVY }}>{mizanTipLabel(a.tip)}</span>
-                            {a.hesapKodu && (<span className="text-[10px] tabular-nums px-2 py-0.5 rounded" style={{ background: 'rgba(255,255,255,.06)', color: 'rgba(250,250,249,.82)' }}>{a.hesapKodu}</span>)}
+                          <div className="flex items-center gap-2 flex-wrap mb-1.5">
+                            <span className="text-[13px] font-bold" style={{ color: NAVY }}>{mizanTipLabel(a.tip)}</span>
+                            {a.hesapKodu && (<span className="text-[10.5px] tabular-nums px-2 py-1 rounded-md" style={{ background: 'rgba(255,255,255,.05)', color: 'rgba(250,250,249,.8)' }}>{a.hesapKodu}</span>)}
                           </div>
-                          <div className="text-[13px] leading-snug" style={{ color: TEXT }}>{a.mesaj || '-'}</div>
+                          <div className="text-[13px] leading-relaxed" style={{ color: TEXT }}>{a.mesaj || '-'}</div>
                         </div>
                       </div>
                     );
