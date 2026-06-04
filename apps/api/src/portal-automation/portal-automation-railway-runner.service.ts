@@ -3452,7 +3452,11 @@ export class PortalAutomationRailwayRunnerService implements OnModuleInit {
         const parsed = this.parseEBeyannameListResponse(raw);
         if (!rawDumped) {
           rawDumped = true;
-          notes.push(`[RAWDUMP] grup0 method=${captured?.method || '-'} len=${raw.length} rows=${parsed.rows.length} total=${parsed.total} :: ${String(raw).slice(0, 3500)}`);
+          const s = String(raw);
+          const iconIdx = s.search(/Goruntule|GORUNTULE|onclick|javascript:|pdf_b|pdf_t/i);
+          notes.push(`[RAWDUMP] len=${s.length} rows=${parsed.rows.length} total=${parsed.total} iconIdx=${iconIdx}`);
+          notes.push(`[RAWDUMP-A] ${s.slice(3200, 8200)}`);
+          if (iconIdx >= 0) notes.push(`[RAWDUMP-ICON] ${s.slice(Math.max(0, iconIdx - 200), iconIdx + 1200)}`);
         }
         if (parsed.recognized) recognized = true;
         if (parsed.serverError && !firstErrorLogged) {
