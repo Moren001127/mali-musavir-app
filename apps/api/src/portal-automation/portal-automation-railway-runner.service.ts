@@ -3078,11 +3078,11 @@ export class PortalAutomationRailwayRunnerService implements OnModuleInit {
     for (const meta of metas || []) {
       const hay = `${meta.onclick || ''} ${meta.href || ''} ${meta.haystack || ''}`;
       if (!beyannameOid) {
-        const b = hay.match(/beyannameOid=([A-Za-z0-9]+)/i);
+        const b = hay.match(/beyannameGoruntule\(\s*'([^']+)'/i) || hay.match(/beyannameOid=([A-Za-z0-9]+)/i);
         if (b) beyannameOid = b[1];
       }
       if (!tahakkukOid) {
-        const t = hay.match(/tahakkukOid=([A-Za-z0-9]+)/i);
+        const t = hay.match(/tahakkukGoruntule\(\s*'[^']*'\s*,\s*'([^']+)'/i) || hay.match(/tahakkukOid=([A-Za-z0-9]+)/i);
         if (t) tahakkukOid = t[1];
       }
     }
@@ -3352,18 +3352,18 @@ export class PortalAutomationRailwayRunnerService implements OnModuleInit {
     let idx = 0;
     const trMatches = html.match(/<tr[\s\S]*?<\/tr>/gi) || [];
     for (const tr of trMatches) {
-      if (!/beyannameOid=/i.test(tr)) continue;
+      if (!/beyannameGoruntule\(|beyannameOid=/i.test(tr)) continue;
       const e = this.htmlRowToEntry(tr, idx);
       if (e) { entries.push(e); idx++; }
     }
     if (entries.length) return entries;
 
-    // Tablo yapisi yoksa: her beyannameOid etrafindaki pencereden satir cikar.
-    const re = /beyannameOid=([A-Za-z0-9]+)/gi;
+    // Tablo yapisi yoksa: her beyanname PDF ikonu (onclick) etrafindaki pencereden satir cikar.
+    const re = /beyannameGoruntule\(\s*'[^']+'|beyannameOid=[A-Za-z0-9]+/gi;
     let m: RegExpExecArray | null;
     while ((m = re.exec(html))) {
       const center = m.index;
-      const window = html.slice(Math.max(0, center - 400), Math.min(html.length, center + 400));
+      const window = html.slice(Math.max(0, center - 900), Math.min(html.length, center + 400));
       const e = this.htmlRowToEntry(window, idx);
       if (e) { entries.push(e); idx++; }
     }
@@ -3373,9 +3373,16 @@ export class PortalAutomationRailwayRunnerService implements OnModuleInit {
   }
 
   private htmlRowToEntry(chunk: string, idx: number): EBeyannameListEntry | null {
-    const beyannameOid = chunk.match(/beyannameOid=([A-Za-z0-9]+)/i)?.[1];
+    // GIB onayli satirlarinda PDF oid'leri query-param degil onclick FONKSIYON argumanidir:
+    //   onclick="beyannameGoruntule('<beyannameOid>',false,false)"
+    //   onclick="tahakkukGoruntule('<beyannameOid>','<tahakkukOid>',false,false)"
+    // Hatali/red satirlarda bu ikon (ve fonksiyon) hic yok -> beyannameOid bulunamaz -> satir atlanir
+    // (yani dogal olarak SADECE indirilebilir onayli satirlar secilir).
+    const beyannameOid = chunk.match(/beyannameGoruntule\(\s*'([^']+)'/i)?.[1]
+      || chunk.match(/beyannameOid=([A-Za-z0-9]+)/i)?.[1];
     if (!beyannameOid) return null;
-    const tahakkukOid = chunk.match(/tahakkukOid=([A-Za-z0-9]+)/i)?.[1] || null;
+    const tahakkukOid = chunk.match(/tahakkukGoruntule\(\s*'[^']*'\s*,\s*'([^']+)'/i)?.[1]
+      || chunk.match(/tahakkukOid=([A-Za-z0-9]+)/i)?.[1] || null;
     let cells = (chunk.match(/<t[dh][^>]*>[\s\S]*?<\/t[dh]>/gi) || [])
       .map((td) => this.stripHtml(td))
       .filter(Boolean);
@@ -3414,7 +3421,6 @@ export class PortalAutomationRailwayRunnerService implements OnModuleInit {
     const maxRows = Math.max(1, Math.min(5000, Number(process.env.PORTAL_AUTOMATION_EBEYANNAME_MAX_APPROVED_ROWS || 1000)));
     const byOid = new Map<string, EBeyannameListEntry>();
     let recognized = false;
-    let rawDumped = false; // GECICI TESHIS: ilk sayfa ham yanitini bir kez notes'a yaz.
 
     // GIB'in kendi istegi yakalandiysa onun PARAMETRELERINI kullan (skill'deki sabit parametreler reddediliyor).
     // GET de POST de desteklenir (GIB ekrani listeyi POST ile yukleyebiliyor).
@@ -3450,17 +3456,6 @@ export class PortalAutomationRailwayRunnerService implements OnModuleInit {
           break;
         }
         const parsed = this.parseEBeyannameListResponse(raw);
-        if (!rawDumped) {
-          rawDumped = true;
-          const s = String(raw);
-          const trIdx = s.indexOf('<tr id="row');
-          const gIdx = s.search(/Goruntule|dispatch|IMAJ|getParameter|tahakkuk/i);
-          notes.push(`[RAWDUMP] len=${s.length} rows=${parsed.rows.length} total=${parsed.total} trIdx=${trIdx} gIdx=${gIdx}`);
-          notes.push(`[RAWDUMP-REQ] method=${captured?.method || '-'} url=${this.safeUrl(captured?.url || '')} || post=${String(captured?.postData || '').slice(0, 1800)}`);
-          // Onaylanmis bir satir ornegi: durumTD icinde "Onayland" gecen ilk satiri bul.
-          const onayIdx = s.search(/Onayland/i);
-          notes.push(`[RAWDUMP-ONAY] onayIdx=${onayIdx} ${onayIdx >= 0 ? s.slice(Math.max(0, s.lastIndexOf('<tr id="row', onayIdx)), onayIdx + 1500) : '(onayli satir yok)'}`);
-        }
         if (parsed.recognized) recognized = true;
         if (parsed.serverError && !firstErrorLogged) {
           firstErrorLogged = true;
