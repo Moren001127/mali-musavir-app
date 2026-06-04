@@ -3225,12 +3225,17 @@ export class PortalAutomationRailwayRunnerService implements OnModuleInit {
     return viaFetch ? String(viaFetch) : null;
   }
 
-  /** Yakalanan POST govdesinde grupSayi (+ TOKEN) gunceller. */
+  /** Yakalanan POST govdesinde grupSayi (+ TOKEN) gunceller + TUM beyanname gruplarini acar. */
   private setGrupSayiInPost(postData: string | null, grupSayi: number, token: string): string {
     try {
       const p = new URLSearchParams(postData || '');
       p.set('grupSayi', String(grupSayi));
       if (token && p.has('TOKEN')) p.set('TOKEN', token);
+      // GIB'in yakaladigimiz istegi bazen TEK grupla geliyor (orn. sadece sorguTipiZ=1) ve
+      // KDV/MUHSGK gibi diger gruplar listeye HIC girmiyordu. Tum sorguTipi gruplarini ac.
+      for (const f of ['sorguTipiN', 'sorguTipiT', 'sorguTipiB', 'sorguTipiP', 'sorguTipiV', 'sorguTipiZ']) {
+        p.set(f, '1');
+      }
       return p.toString();
     } catch {
       return postData || '';
@@ -3469,8 +3474,11 @@ export class PortalAutomationRailwayRunnerService implements OnModuleInit {
         }
         notes.push(`liste-API ${tanim || 'TUM'} grup ${grupSayi}: ${parsed.rows.length} satir (+${added}, toplam ${total ?? '?'})`);
         if (!parsed.rows.length) break;
+        // BEYANNAMELISTESI tum satirlari TEK yanitta donduruyor; grupSayi'yi artirinca ayni yanit
+        // tekrar geliyor (+0). Yeni satir gelmiyorsa durdur — gereksiz re-fetch + hiz-limiti uyarisi.
+        if (added === 0 && grupSayi > 0) break;
         if (total != null && grupSayi + 25 >= total) break;
-        await this.wait(300); // nezaket beklemesi; 1.2 sn kurali SADECE IMAJ/PDF indirmede gecerli
+        await this.wait(1200); // GIB liste istekleri arasi da ~1 sn ister
       }
     }
 
