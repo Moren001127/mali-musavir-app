@@ -493,10 +493,6 @@ export default function BeyannamelerPage() {
     return { beyanname, tahakkuk, both };
   }, [filtered]);
 
-  // Komut konsolu özet şeridi sayıları
-  const indirilenSayisi = useMemo(() => filtered.filter((row) => row.beyannameUrl || row.pdfUrl).length, [filtered]);
-  const mukellefSayisi = useMemo(() => new Set(filtered.map((row) => row.taxpayerId).filter(Boolean)).size, [filtered]);
-
   const selectedTableRows = useMemo(
     () => tableRows.filter((item) => selectedDocKeys.has(item.key)),
     [tableRows, selectedDocKeys],
@@ -756,50 +752,22 @@ export default function BeyannamelerPage() {
             </div>
           </div>
 
-          {/* özet şeridi + canlı durum */}
-          <div className="mt-3.5 flex flex-wrap items-center" style={{ borderTop: '1px solid rgba(255,255,255,0.07)' }}>
-            <div className="flex items-center gap-3 py-3 pr-5">
-              <span className="grid h-[34px] w-[34px] place-items-center rounded-[10px]" style={{ background: 'rgba(74,222,128,0.13)', color: '#4ade80' }}><CheckCircle2 size={17} /></span>
-              <div>
-                <div className="text-[19px] font-extrabold leading-none tracking-[-0.02em]" style={{ color: '#86efac' }}>{indirilenSayisi.toLocaleString('tr-TR')}</div>
-                <div className="mt-[3px] text-[10.5px] font-bold uppercase tracking-[0.1em]" style={{ color: 'rgba(243,245,247,0.4)' }}>İndirildi</div>
-              </div>
-            </div>
-            <div className="flex items-center gap-3 py-3 px-5" style={{ borderLeft: '1px solid rgba(255,255,255,0.07)' }}>
-              <span className="grid h-[34px] w-[34px] place-items-center rounded-[10px]" style={{ background: 'rgba(251,113,133,0.13)', color: '#fb7185' }}><AlertCircle size={17} /></span>
-              <div>
-                <div className="text-[19px] font-extrabold leading-none tracking-[-0.02em]" style={{ color: missingFileStats.both > 0 ? '#fda4af' : 'rgba(243,245,247,0.62)' }}>{missingFileStats.both.toLocaleString('tr-TR')}</div>
-                <div className="mt-[3px] text-[10.5px] font-bold uppercase tracking-[0.1em]" style={{ color: 'rgba(243,245,247,0.4)' }}>Eksik PDF</div>
-              </div>
-            </div>
-            <div className="flex items-center gap-3 py-3 px-5" style={{ borderLeft: '1px solid rgba(255,255,255,0.07)' }}>
-              <span className="grid h-[34px] w-[34px] place-items-center rounded-[10px]" style={{ background: 'rgba(76,198,245,0.14)', color: '#4cc6f5' }}><UserRound size={17} /></span>
-              <div>
-                <div className="text-[19px] font-extrabold leading-none tracking-[-0.02em]" style={{ color: '#f3f5f7' }}>{mukellefSayisi.toLocaleString('tr-TR')}</div>
-                <div className="mt-[3px] text-[10.5px] font-bold uppercase tracking-[0.1em]" style={{ color: 'rgba(243,245,247,0.4)' }}>Mükellef</div>
-              </div>
-            </div>
-
-            <div className="px-3">
-              <ConsoleJob
-                job={latestBeyanJob}
-                onCancel={isBeyanJobActive && latestBeyanJob ? () => cancelJobMut.mutate(latestBeyanJob.id) : undefined}
-                cancelPending={cancelJobMut.isPending}
-              />
-            </div>
-
-            <div className="ml-auto flex flex-wrap items-center gap-2 py-2 pl-2">
+          {/* canlı durum: son iş + runner/şifre */}
+          <div className="mt-3.5 flex flex-wrap items-center gap-3 py-2.5" style={{ borderTop: '1px solid rgba(255,255,255,0.07)' }}>
+            <ConsoleJob
+              job={latestBeyanJob}
+              onCancel={isBeyanJobActive && latestBeyanJob ? () => cancelJobMut.mutate(latestBeyanJob.id) : undefined}
+              cancelPending={cancelJobMut.isPending}
+            />
+            <div className="ml-auto flex flex-wrap items-center gap-2">
               <span className="inline-flex items-center gap-2 text-[12px] font-semibold" style={{ color: 'rgba(243,245,247,0.62)' }}>
                 <span className="inline-block h-2 w-2 rounded-full" style={{ background: portalSummary?.runner?.enabled ? '#4ade80' : '#fb7185', boxShadow: `0 0 0 3px ${portalSummary?.runner?.enabled ? 'rgba(74,222,128,0.16)' : 'rgba(251,113,133,0.16)'}` }} /> Runner
               </span>
               <span className="inline-flex items-center gap-2 text-[12px] font-semibold" style={{ color: 'rgba(243,245,247,0.62)' }}>
                 <span className="inline-block h-2 w-2 rounded-full" style={{ background: portalSummary?.credentials.eBeyannameReady ? '#4ade80' : '#fb7185', boxShadow: `0 0 0 3px ${portalSummary?.credentials.eBeyannameReady ? 'rgba(74,222,128,0.16)' : 'rgba(251,113,133,0.16)'}` }} /> Şifre
               </span>
-              <button type="button" onClick={() => nightlyMut.mutate()} disabled={nightlyMut.isPending} className="inline-flex h-[34px] items-center gap-1.5 rounded-[9px] px-3 text-[12px] font-semibold disabled:opacity-50" style={{ background: 'rgba(76,198,245,0.08)', border: '1px solid rgba(76,198,245,0.2)', color: '#bfe9ff' }} title="Gece akışını şimdi çalıştır">
-                {nightlyMut.isPending ? <Loader2 size={13} className="animate-spin" /> : <Play size={13} />} Gece akışı · {portalSummary?.nightly?.time || '02:15'}
-              </button>
               <Link href="/panel/ayarlar" className="inline-flex h-[34px] items-center gap-1.5 rounded-[9px] px-3 text-[12px] font-semibold" style={{ background: 'rgba(255,255,255,0.035)', border: '1px solid rgba(255,255,255,0.07)', color: 'rgba(243,245,247,0.62)' }}>
-                <KeyRound size={13} /> Şifre
+                <KeyRound size={13} /> Şifre Ayarları
               </Link>
             </div>
           </div>
@@ -851,17 +819,11 @@ export default function BeyannamelerPage() {
             <option value="sms_gonderilmeyen">SMS GÖNDERİLMEYENLER</option>
           </SelectBox>
         </div>
-        <div className="min-w-[130px]">
-          <SelectBox icon={CalendarDays} value={periodStart} onChange={setPeriodStart}>
-            <option value="">Dönem (başl.)</option>
-            {periodOptions.map((p) => <option key={p} value={p}>{fmtDonem(p)}</option>)}
-          </SelectBox>
-        </div>
-        <div className="min-w-[130px]">
-          <SelectBox icon={CalendarDays} value={periodEnd} onChange={setPeriodEnd}>
-            <option value="">Dönem (bitiş)</option>
-            {periodOptions.map((p) => <option key={p} value={p}>{fmtDonem(p)}</option>)}
-          </SelectBox>
+        <div className="flex items-center gap-1 overflow-hidden rounded-[10px] px-2.5" style={{ height: 44, border: '1px solid rgba(255,255,255,0.07)', background: 'rgba(255,255,255,0.03)' }} title="Beyanname dönem aralığı">
+          <CalendarDays size={15} style={{ color: 'rgba(243,245,247,0.4)' }} className="shrink-0" />
+          <input type="month" value={periodStart} onChange={(e) => setPeriodStart(e.target.value)} aria-label="Dönem başlangıç" className="bg-transparent text-[12.5px] font-semibold outline-none" style={{ color: '#f3f5f7', colorScheme: 'dark', width: 118 }} />
+          <span className="shrink-0" style={{ color: 'rgba(243,245,247,0.3)' }}>–</span>
+          <input type="month" value={periodEnd} onChange={(e) => setPeriodEnd(e.target.value)} aria-label="Dönem bitiş" className="bg-transparent text-[12.5px] font-semibold outline-none" style={{ color: '#f3f5f7', colorScheme: 'dark', width: 118 }} />
         </div>
         <button
           type="button"
