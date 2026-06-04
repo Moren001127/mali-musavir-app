@@ -3427,102 +3427,39 @@ export class PortalAutomationRailwayRunnerService implements OnModuleInit {
     job: any,
     notes: string[],
   ): Promise<{ rows: EBeyannameListEntry[]; recognized: boolean }> {
-    const start = this.istanbulDateParts(job.periodStart);
-    const end = this.istanbulDateParts(job.periodEnd);
-    const baslangic = start ? `${start.year}${start.month}${start.day}` : '';
-    const bitis = end ? `${end.year}${end.month}${end.day}` : '';
     const maxRows = Math.max(1, Math.min(5000, Number(process.env.PORTAL_AUTOMATION_EBEYANNAME_MAX_APPROVED_ROWS || 1000)));
     const byOid = new Map<string, EBeyannameListEntry>();
     let recognized = false;
 
-    // 1) ONCE ARSIV (cmd=ARSIVBEYANNAMELISTESI): grupSayi ile DOGRU sayfaliyor ve TUM tur/donemleri
-    //    (KDV/MUHSGK/gecici...) doner. Yakalanan canli BEYANNAMELISTESI ise ilk 25 satirda takiliyor
-    //    (grupSayi'yi yok sayiyor) -> sadece ilk sayfadaki turler (cogu zaman gecici vergi) iniyordu.
-    if (this.ebeyannameArsivFirstEnabled()) {
-      let total: number | null = null;
-      let firstErr = false;
-      for (let grupSayi = 0; grupSayi < 10000; grupSayi += 25) {
+    // Kullanicinin elle yaptigi gibi: acik olan ONAYLANDI listesini DOM'da sayfa sayfa gez (>> Sonraki
+    // Sayfa). Her satirin B/T ikonu onclick'inde oid var (beyannameGoruntule('oid') / tahakkukGoruntule(
+    // 'beyOid','tahOid')). Hatali/iptal satirlarda ikon olmadigi icin dogal olarak atlanir.
+    // (Eskiden tek sayfa / yanlis durum / arsiv denenip cogu sayfa kaciriliyordu.)
+    const target = (await this.findEBeyannameResultTarget(page)) || page;
+    let pageNo = 0;
+    let lastEnd = 0;
+    while (byOid.size < maxRows && pageNo < 200) {
+      pageNo++;
+      const html = String(await target.evaluate(() => document.documentElement.outerHTML).catch(() => ''));
+      const entries = html ? this.parseEBeyannameListHtmlRows(html) : [];
+      if (entries.length) recognized = true;
+      let added = 0;
+      for (const e of entries) {
         if (byOid.size >= maxRows) break;
-        const url = this.buildEBeyannameListApiUrl(origin, token, { grupSayi, beyannameTanim: '', baslangic, bitis });
-        const raw = await this.fetchEBeyannameListPage(page, url);
-        if (raw == null) { notes.push(`liste-API ARSIV grup ${grupSayi}: yanit yok`); break; }
-        const parsed = this.parseEBeyannameListResponse(raw);
-        if (parsed.recognized) recognized = true;
-        if (parsed.serverError && !firstErr) { firstErr = true; notes.push(`liste-API ARSIV: GIB uyari: ${this.compact(parsed.serverError)}`); }
-        if (total == null && parsed.total != null) total = parsed.total;
-        let added = 0;
-        for (const e of parsed.rows) if (!byOid.has(e.beyannameOid)) { byOid.set(e.beyannameOid, e); added++; }
-        notes.push(`liste-API ARSIV grup ${grupSayi}: ${parsed.rows.length} satir (+${added}, toplam ${total ?? '?'})`);
-        if (!parsed.rows.length) break;
-        if (added === 0 && grupSayi > 0) break;
-        if (total != null && grupSayi + 25 >= total) break;
-        await this.wait(1200);
+        if (!byOid.has(e.beyannameOid)) { byOid.set(e.beyannameOid, e); added++; }
       }
-      if (byOid.size > 0) {
-        this.logger.warn(`[EBLIST] ARSIV ${byOid.size} indirilebilir satir.`);
-        notes.push(`liste-API: ARSIV yolu ${byOid.size} satir verdi, kullaniliyor.`);
-        return { rows: Array.from(byOid.values()), recognized };
-      }
-      notes.push('liste-API: ARSIV 0 satir verdi, yakalanan canli istege dusuluyor.');
+      const pag = await this.readEBeyannamePagination(page);
+      notes.push(`liste DOM sayfa ${pageNo}: ${entries.length} onayli satir (+${added}, toplam ${pag?.total ?? '?'})`);
+      if (!pag || pag.end >= pag.total) break;
+      if (pag.end <= lastEnd) { notes.push(`liste: sayfa ilerlemedi (${pag.start}-${pag.end}), durduruldu`); break; }
+      lastEnd = pag.end;
+      const moved = await this.clickEBeyannameNextPage(page, pag);
+      if (!moved) { notes.push(`liste: Sonraki Sayfa tiklanamadi (${pag.start}-${pag.end}/${pag.total})`); break; }
+      // Sayfanin AJAX ile yuklenmesini bekle (pagination ilerleyene kadar, ~max 5 sn).
+      for (let w = 0; w < 12; w++) { await this.wait(420); const np = await this.readEBeyannamePagination(page); if (np && np.start > pag.start) break; }
     }
 
-    // 2) ARSIV bos donerse: GIB'in kendi (yakalanan) istegini kullan.
-    // GIB'in kendi istegi yakalandiysa onun PARAMETRELERINI kullan (skill'deki sabit parametreler reddediliyor).
-    // GET de POST de desteklenir (GIB ekrani listeyi POST ile yukleyebiliyor).
-    const captured = this.ebeyannameCapturedListReq;
-    const useCapture = !!captured;
-    const capturePost = !!captured && /POST/i.test(captured.method);
-    if (captured) {
-      this.logger.warn(`[EBLIST] yakalanan liste istegi method=${captured.method} url=${this.safeUrl(captured.url)}`);
-      notes.push(`liste-API: GIB'in kendi liste istegi yakalandi (method=${captured.method})`);
-    } else {
-      notes.push('liste-API: GIB istegi yakalanamadi, sabit parametrelerle denenecek');
-    }
-    const types = useCapture ? [''] : this.ebeyannameListApiTypes();
-
-    for (const tanim of types) {
-      let total: number | null = null;
-      let firstErrorLogged = false;
-      for (let grupSayi = 0; grupSayi < 10000; grupSayi += 25) {
-        if (byOid.size >= maxRows) break;
-        let raw: string | null;
-        if (capturePost) {
-          const body = this.setGrupSayiInPost(captured!.postData, grupSayi, token);
-          const postUrl = this.eBeyannameListUrlFromCapture(captured!.url, token, grupSayi);
-          raw = await this.fetchEBeyannameListPost(page, postUrl, body);
-        } else {
-          const url = useCapture
-            ? this.eBeyannameListUrlFromCapture(captured!.url, token, grupSayi)
-            : this.buildEBeyannameListApiUrl(origin, token, { grupSayi, beyannameTanim: tanim, baslangic, bitis });
-          raw = await this.fetchEBeyannameListPage(page, url);
-        }
-        if (raw == null) {
-          notes.push(`liste-API ${tanim || 'TUM'} grup ${grupSayi}: yanit alinamadi`);
-          break;
-        }
-        const parsed = this.parseEBeyannameListResponse(raw);
-        if (parsed.recognized) recognized = true;
-        if (parsed.serverError && !firstErrorLogged) {
-          firstErrorLogged = true;
-          this.logger.warn(`[EBLIST] ${tanim || 'TUM'} GIB uyari: ${this.compact(parsed.serverError)}`);
-          notes.push(`liste-API ${tanim || 'TUM'}: GIB uyari: ${this.compact(parsed.serverError)}`);
-        }
-        if (total == null && parsed.total != null) total = parsed.total;
-        let added = 0;
-        for (const e of parsed.rows) {
-          if (!byOid.has(e.beyannameOid)) { byOid.set(e.beyannameOid, e); added++; }
-        }
-        notes.push(`liste-API ${tanim || 'TUM'} grup ${grupSayi}: ${parsed.rows.length} satir (+${added}, toplam ${total ?? '?'})`);
-        if (!parsed.rows.length) break;
-        // BEYANNAMELISTESI tum satirlari TEK yanitta donduruyor; grupSayi'yi artirinca ayni yanit
-        // tekrar geliyor (+0). Yeni satir gelmiyorsa durdur — gereksiz re-fetch + hiz-limiti uyarisi.
-        if (added === 0 && grupSayi > 0) break;
-        if (total != null && grupSayi + 25 >= total) break;
-        await this.wait(1200); // GIB liste istekleri arasi da ~1 sn ister
-      }
-    }
-
-    this.logger.warn(`[EBLIST] toplam ${byOid.size} indirilebilir satir bulundu (capture=${useCapture}).`);
+    this.logger.warn(`[EBLIST] DOM gezildi: ${byOid.size} indirilebilir onayli satir (${pageNo} sayfa).`);
     return { rows: Array.from(byOid.values()), recognized };
   }
 
