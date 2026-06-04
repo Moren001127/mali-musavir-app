@@ -756,7 +756,7 @@ export default function EDefterAgentPage() {
                               </div>
                             </div>
                             <div className="flex items-center gap-1.5 shrink-0 self-center">
-                              <button onClick={() => focusFinding(f)} className="text-[10.5px] underline whitespace-nowrap mr-1" style={{ color: MUTED }}>Satırı incele →</button>
+                              {(f.rowIndex || f.voucherKey) && (<button onClick={() => focusFinding(f)} className="text-[10.5px] underline whitespace-nowrap mr-1" style={{ color: MUTED }}>Satırı incele →</button>)}
                               {fStatus !== 'RESOLVED' && (
                                 <button onClick={() => handleStatusChange(f, 'RESOLVED')} title="Çözüldü" className="h-7 px-2.5 rounded-md text-[10.5px] font-semibold inline-flex items-center gap-1" style={{ background: 'rgba(92,191,138,.12)', color: OK, border: '1px solid rgba(92,191,138,.24)' }}>
                                   <CheckCircle2 size={11} /> Çöz
@@ -1074,7 +1074,7 @@ const STANDART_KURALLAR: KuralDef[] = [
   { kod: 'KASA_TEVSIK_PARCALAMA', ad: 'Tevsik parçalama riski', aciklama: 'Aynı VKN için bir günde birden fazla kasa hareketi toplamı 30.000 TL üstü — parçalama (smurfing).', severity: 'WARN', grup: 'Tevsik', aktif: true },
   { kod: 'FIS_DENGESIZ', ad: 'Fiş dengesiz', aciklama: 'Tek fişin borç ve alacak toplamları eşit değil.', severity: 'ERROR', grup: 'Yevmiye', aktif: true },
   { kod: 'YEVMIYE_NO_MUKERRER', ad: 'Yevmiye no mükerrer', aciklama: 'Aynı yevmiye numarası farklı tarihlerde / farklı fişlerde kullanılmış.', severity: 'ERROR', grup: 'Yevmiye', aktif: true },
-  { kod: 'YEVMIYE_NO_ATLAMA', ad: 'Yevmiye no atlama', aciklama: 'Yevmiye numarası sırasında atlanmış aralık var.', severity: 'WARN', grup: 'Yevmiye', aktif: true },
+  { kod: 'YEVMIYE_NO_ATLAMA', ad: 'Yevmiye no atlama', aciklama: 'Yevmiye numarası sırasında atlanmış aralık var (tek özet). Genelde iptal edilen fişlerden kaynaklanır.', severity: 'INFO', grup: 'Yevmiye', aktif: true },
   { kod: 'YEVMIYE_TARIH_SIRASI', ad: 'Yevmiye tarih sırası', aciklama: 'Yevmiye numarası ile fiş tarihleri sıralı değil.', severity: 'WARN', grup: 'Yevmiye', aktif: true },
   { kod: 'BOS_FIS', ad: 'Boş fiş', aciklama: 'Fişte hiçbir hareket satırı yok.', severity: 'WARN', grup: 'Yevmiye', aktif: true },
   { kod: 'TEK_SATIRLI_FIS', ad: 'Tek satırlı fiş', aciklama: 'Fişte sadece 1 hareket satırı var — çift taraflı kayıt prensibi ihlali.', severity: 'WARN', grup: 'Yevmiye', aktif: true },
@@ -1083,11 +1083,11 @@ const STANDART_KURALLAR: KuralDef[] = [
   { kod: 'YUKSEK_TUTAR_ACIKLAMA_EKSIK', ad: 'Yüksek tutar açıklama eksik', aciklama: '50.000+ TL fişte açıklama 5 karakterden az — denetimde riskli.', severity: 'INFO', grup: 'Kalite', aktif: true },
   { kod: 'DONEM_SONU_191_BAKIYE', ad: '191 dönem sonu bakiye', aciklama: 'Dönem sonu 191 İndirilecek KDV bakiyesi sıfırlanmamış — tahakkuk fişi eksik.', severity: 'WARN', grup: 'KDV', aktif: true },
   { kod: 'DONEM_SONU_391_BAKIYE', ad: '391 dönem sonu bakiye', aciklama: 'Dönem sonu 391 Hesaplanan KDV bakiyesi sıfırlanmamış — tahakkuk fişi eksik.', severity: 'WARN', grup: 'KDV', aktif: true },
-  { kod: 'KDV_TAHAKKUK_EKSIK', ad: 'KDV tahakkuk fişi eksik', aciklama: 'Ay içinde 191/391 hareketi var ama tahakkuk fişi bulunamadı.', severity: 'ERROR', grup: 'KDV', aktif: true },
-  { kod: 'KDV_ODENECEK_360_UYUMSUZ', ad: 'Ödenecek KDV 360 uyumsuz', aciklama: 'Ödenecek KDV tutarı 360 hesabına doğru aktarılmamış.', severity: 'WARN', grup: 'KDV', aktif: true },
-  { kod: 'KDV_DEVREDEN_190_UYUMSUZ', ad: 'Devreden KDV 190 uyumsuz', aciklama: 'Devreden KDV tutarı 190 hesabına doğru aktarılmamış.', severity: 'WARN', grup: 'KDV', aktif: true },
+  { kod: 'KDV_TAHAKKUK_EKSIK', ad: 'KDV tahakkuk fişi eksik', aciklama: 'Ay içinde 191/391 hareketi var ama tahakkuk fişi bulunamadı. Çeyrek dönemde son ayın tahakkuku bir sonrakine kaymış olabilir.', severity: 'WARN', grup: 'KDV', aktif: true },
+  { kod: 'KDV_ODENECEK_360_UYUMSUZ', ad: 'Ödenecek KDV 360 uyumsuz', aciklama: 'Ödenecek KDV tutarı 360 hesabıyla uyuşmuyor (önceki dönem devreden/tevkifat hariç). Beyanla teyit edilmeli.', severity: 'INFO', grup: 'KDV', aktif: true },
+  { kod: 'KDV_DEVREDEN_190_UYUMSUZ', ad: 'Devreden KDV 190 uyumsuz', aciklama: 'Devreden KDV tutarı 190 hesabıyla uyuşmuyor (önceki dönem devreden hariç). Beyanla teyit edilmeli.', severity: 'INFO', grup: 'KDV', aktif: true },
   { kod: 'BORDRO_TAHAKKUK_EKSIK', ad: 'Aylık bordro tahakkuku eksik', aciklama: 'Her ay 770/772 personel gideri + 335 net ücret + 361 SGK kayıtları olmalı.', severity: 'WARN', grup: 'Bordro / SGK', aktif: true },
-  { kod: 'KIRA_STOPAJI_EKSIK', ad: 'Kira stopajı eksik', aciklama: 'Kira gideri var ama 360.01.006 kira stopajı kayıtsız. %20 stopaj zorunlu (GVK 94).', severity: 'ERROR', grup: 'Stopaj', aktif: true },
+  { kod: 'KIRA_STOPAJI_EKSIK', ad: 'Kira stopajı eksik', aciklama: 'Kira gideri var ama 360 altında kira stopajı kaydı yok. %20 stopaj (GVK 94) ayrı fişte/dönemde olabilir; kontrol edilmeli.', severity: 'WARN', grup: 'Stopaj', aktif: true },
   { kod: 'KIRA_STOPAJI_ORAN', ad: 'Kira stopaj oranı sapma', aciklama: 'Kira/stopaj oranı %20 dışında — brüt/net hesaplama hatalı olabilir.', severity: 'WARN', grup: 'Stopaj', aktif: true },
   { kod: 'SMM_STOPAJI_KONTROL', ad: 'Serbest meslek stopajı eksik', aciklama: 'SMM/avukat/noter/tercüme ödemesi var ama 360.01.007 boş. %20 tevkifat zorunlu.', severity: 'WARN', grup: 'Stopaj', aktif: true },
   { kod: 'DAMGA_VERGISI_KONTROL', ad: 'Damga vergisi eksik', aciklama: 'Personel ücret ödemesi var ama 360.01.002 damga vergisi boş.', severity: 'INFO', grup: 'Stopaj', aktif: true },
@@ -1102,7 +1102,7 @@ const STANDART_KURALLAR: KuralDef[] = [
   { kod: 'CEK_SENET_BAKIYE_122', ad: '122 Alınan senet bakiyesi', aciklama: 'Dönem sonu 122 bakiyesi var — vadesi geçmiş senet olabilir.', severity: 'INFO', grup: 'Çek / Senet', aktif: true },
   { kod: 'CEK_SENET_BAKIYE_322', ad: '322 Verilen çek bakiyesi', aciklama: 'Dönem sonu 322 bakiyesi var — vadesi geçmiş çek olabilir.', severity: 'INFO', grup: 'Çek / Senet', aktif: true },
   { kod: 'CEK_SENET_BAKIYE_323', ad: '323 Verilen senet bakiyesi', aciklama: 'Dönem sonu 323 bakiyesi var.', severity: 'INFO', grup: 'Çek / Senet', aktif: true },
-  { kod: 'BANKA_EKSI_BAKIYE_102', ad: '102 Banka eksi bakiye', aciklama: 'Banka hesabı alacak bakiye veriyor — bu tutar 300 Kısa Vadeli Banka Kredileri hesabında olmalı.', severity: 'ERROR', grup: 'Banka', aktif: true },
+  { kod: 'BANKA_EKSI_BAKIYE_102', ad: '102 Banka eksi bakiye', aciklama: 'Banka hesabı dönem hareketinde alacak (eksi) bakiye veriyor (açılış/devir hariç). Gerçekten eksiyse 300 Banka Kredileri hesabında izlenmeli.', severity: 'WARN', grup: 'Banka', aktif: true },
   { kod: 'POS_VALOR_108_BAKIYE', ad: '108 POS valör bakiyesi', aciklama: '108 POS hesabında bakiye — valör tarihi geçip 102 banka hesabına geçmesi gereken kayıtlar olabilir.', severity: 'INFO', grup: 'Banka', aktif: true },
   { kod: 'KKEG_689_KONTROL', ad: '689 KKEG kontrolü', aciklama: '689 Diğer Olağandışı Gider hesabında hareket var — KKEG ise Kurumlar Vergisi matrahına eklenmeli.', severity: 'INFO', grup: 'KKEG', aktif: true },
   { kod: 'BENFORD_SAPMA', ad: 'Benford yasası sapması', aciklama: 'Tutarların ilk basamak dağılımı Benford yasasından sapıyor (MAD eşiği). Doğal olmayan/uydurulmuş tutar göstergesi olabilir — VEDAS resmî olarak kullanır.', severity: 'WARN', grup: 'Forensic / Anomali', aktif: true },
