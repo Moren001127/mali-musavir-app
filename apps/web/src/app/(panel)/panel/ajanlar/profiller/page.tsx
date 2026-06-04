@@ -373,34 +373,34 @@ export default function ProfillerPage() {
 
   return (
     <div className="flex max-w-[1680px] flex-col gap-5 xl:h-full xl:min-h-0">
-      <section className="relative shrink-0 overflow-hidden rounded-2xl border border-white/[0.06] bg-[#0f0d0b]">
+      <section className="relative shrink-0 overflow-hidden rounded-xl border border-white/[0.06] bg-[#0f0d0b]">
         <div className="h-[3px] w-full" style={{ background: 'linear-gradient(90deg,#8b7cf0,#a78bfa 35%,#6d5fd1 60%,#8b7cf0)' }} />
-        <div className="pointer-events-none absolute inset-0" style={{ background: 'radial-gradient(520px 220px at 24% -40%, rgba(139,124,240,.20), transparent 70%)' }} />
-        <div className="relative flex flex-col gap-6 p-6 lg:flex-row lg:items-end lg:justify-between">
-          <div className="flex items-start gap-4">
+        <div className="pointer-events-none absolute inset-0" style={{ background: 'radial-gradient(420px 130px at 20% -70%, rgba(139,124,240,.16), transparent 70%)' }} />
+        <div className="relative flex flex-wrap items-center justify-between gap-3 px-5 py-3">
+          <div className="flex min-w-0 items-center gap-3">
             <div
-              className="flex h-14 w-14 flex-none items-center justify-center rounded-2xl"
-              style={{ background: 'linear-gradient(145deg,#8b7cf0,#6d5fd1)', boxShadow: '0 10px 30px -8px rgba(139,124,240,.5)' }}
+              className="flex h-10 w-10 flex-none items-center justify-center rounded-xl"
+              style={{ background: 'linear-gradient(145deg,#8b7cf0,#6d5fd1)', boxShadow: '0 8px 22px -10px rgba(139,124,240,.55)' }}
             >
-              <ShieldCheck size={28} className="text-[#0b0a14]" />
+              <ShieldCheck size={20} className="text-[#0b0a14]" />
             </div>
-            <div>
-              <div className="mb-2 flex items-center gap-2.5">
-                <span className="h-px w-8 bg-[#8b7cf0]" />
-                <span className="text-[10px] font-bold uppercase tracking-[.18em] text-[#b3a4ef]">Ajan</span>
+            <div className="min-w-0">
+              <div className="flex items-center gap-2">
+                <span className="text-[9.5px] font-bold uppercase tracking-[.2em] text-[#b3a4ef]">Ajan</span>
+                <span className="h-3 w-px bg-white/15" />
+                <h1
+                  className="truncate text-[21px] font-semibold leading-none text-[#fafaf9]"
+                  style={{ fontFamily: 'Fraunces, serif', letterSpacing: '-0.02em' }}
+                >
+                  Mükellef Profilleri
+                </h1>
               </div>
-              <h1
-                className="text-[33px] font-semibold leading-none text-[#fafaf9]"
-                style={{ fontFamily: 'Fraunces, serif', letterSpacing: '-0.02em' }}
-              >
-                Mükellef Profilleri
-              </h1>
-              <p className="mt-2 max-w-xl text-[13px] text-white/45">
+              <p className="mt-1 truncate text-[12px] text-white/40">
                 Fatura karar motorunun mükellef bazlı hesap kodu, risk ve özel talimat merkezi.
               </p>
             </div>
           </div>
-          <div className="flex gap-2.5">
+          <div className="flex flex-none gap-2">
             <FilterStat label="Mükellef" value={taxpayers.length} tone="violet" active={listFilter === 'all'} onClick={() => setListFilter('all')} />
             <FilterStat label="Tanımlı" value={configuredCount} tone="green" active={listFilter === 'configured'} onClick={() => setListFilter('configured')} />
             <FilterStat label="Eksik" value={missingCount} tone="amber" active={listFilter === 'missing'} onClick={() => setListFilter('missing')} />
@@ -852,7 +852,7 @@ function FilterStat({
     <button
       type="button"
       onClick={onClick}
-      className="relative min-w-[112px] rounded-2xl border px-4 py-3 text-left transition"
+      className="relative min-w-[84px] rounded-xl border px-3.5 py-2 text-left transition"
       style={{
         borderColor: active ? 'rgba(139,124,240,.55)' : 'rgba(255,255,255,.07)',
         background: active
@@ -860,9 +860,9 @@ function FilterStat({
           : 'rgba(255,255,255,.025)',
       }}
     >
-      <div className="text-[10px] font-bold uppercase tracking-[.12em] text-white/35">{label}</div>
-      <div className="mt-1 text-[22px] font-bold" style={{ color }}>{value}</div>
-      {active && <span className="absolute inset-x-3.5 -bottom-px h-0.5 rounded bg-[#8b7cf0]" />}
+      <div className="text-[9px] font-bold uppercase tracking-[.12em] text-white/35">{label}</div>
+      <div className="mt-0.5 text-[18px] font-bold leading-tight" style={{ color }}>{value}</div>
+      {active && <span className="absolute inset-x-3 -bottom-px h-0.5 rounded bg-[#8b7cf0]" />}
     </button>
   );
 }
