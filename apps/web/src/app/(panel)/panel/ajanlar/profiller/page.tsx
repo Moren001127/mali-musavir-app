@@ -569,7 +569,10 @@ function ProfileForm({
 
   return (
     <div className="min-h-[720px]">
-      <div className="sticky top-0 z-10 border-b border-white/[0.06] bg-[#10100f]/95 px-5 py-4 backdrop-blur">
+      <div
+        className="sticky top-0 z-20 border-b border-white/[0.06] px-5 py-4"
+        style={{ background: '#0d0b09', boxShadow: '0 10px 24px -14px rgba(0,0,0,0.85)' }}
+      >
         <div className="flex flex-col gap-4 2xl:flex-row 2xl:items-center 2xl:justify-between">
           <div className="flex min-w-0 items-center gap-4">
             <ScoreRing value={score} />
