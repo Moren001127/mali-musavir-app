@@ -3032,6 +3032,13 @@ export class PortalAutomationRailwayRunnerService implements OnModuleInit {
     return Math.max(0, Math.min(5_000, Number(process.env.PORTAL_AUTOMATION_EBEYANNAME_MIN_FETCH_GAP_MS || 1_200)));
   }
 
+  /** Tek bir PDF icin kac kez denenecek (GIB 500/hiz-limiti gecici; artan bekleme ile tekrar dene). */
+  private ebeyannameFetchAttempts() {
+    const raw = Number(process.env.PORTAL_AUTOMATION_EBEYANNAME_FETCH_ATTEMPTS);
+    if (Number.isFinite(raw) && raw >= 1) return Math.min(8, Math.floor(raw));
+    return 4;
+  }
+
   /** Hattat yontemi acik mi? Oid+TOKEN ile dogrudan /dispatch adresi kur (varsayilan acik). */
   private ebeyannameDispatchDirectEnabled() {
     const raw = String(process.env.PORTAL_AUTOMATION_EBEYANNAME_DISPATCH_DIRECT ?? '1').trim().toLowerCase();
@@ -3548,15 +3555,15 @@ export class PortalAutomationRailwayRunnerService implements OnModuleInit {
 
       let beyanname: EBeyannameFilePayload | null = null;
       let tahakkuk: EBeyannameFilePayload | null = null;
+      const maxAttempts = this.ebeyannameFetchAttempts();
       for (const task of tasks) {
         const fallbackName = `ebeyanname-${processed}-${task.kind}`;
-        const gate = gap - (Date.now() - lastFetchAt);
-        if (gate > 0) await this.wait(gate);
-        let file = await this.savePdfFromRequestUrl(page, task.url, downloadsPath, fallbackName).catch(() => null);
-        lastFetchAt = Date.now();
-        if (!file) {
-          // PDF yerine hiz-limiti uyarisi gelmis olabilir: araliga uyup bir kez daha dene.
-          await this.wait(gap);
+        let file: EBeyannameFilePayload | null = null;
+        for (let attempt = 1; attempt <= maxAttempts && !file; attempt++) {
+          const gate = gap - (Date.now() - lastFetchAt);
+          if (gate > 0) await this.wait(gate);
+          // Onceki deneme basarisizsa artan bekleme: GIB 500/hiz-limiti uyarisi gecsin.
+          if (attempt > 1) await this.wait(gap * (attempt - 1));
           file = await this.savePdfFromRequestUrl(page, task.url, downloadsPath, fallbackName).catch(() => null);
           lastFetchAt = Date.now();
         }
@@ -3564,6 +3571,8 @@ export class PortalAutomationRailwayRunnerService implements OnModuleInit {
         if (file) {
           saved++;
           if (task.kind === 'beyanname') beyanname = file; else tahakkuk = file;
+        } else {
+          notes.push(`liste-API: ${processed}. satir ${task.kind} ${maxAttempts} denemede inmedi (oid=${beyannameOid})`);
         }
       }
 
