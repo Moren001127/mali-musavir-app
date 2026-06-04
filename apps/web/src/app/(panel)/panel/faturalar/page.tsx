@@ -346,7 +346,7 @@ ${isPdf
             <span className="w-[26px] h-px" style={{ background: '#d4b876' }} />
             <span className="text-[10px] uppercase font-bold tracking-[.18em]" style={{ color: '#b8a06f' }}>Belge Yönetimi</span>
           </div>
-          <h1 style={{ fontFamily: 'Fraunces, serif', fontSize: 30, fontWeight: 600, color: '#fafaf9', letterSpacing: '-.03em' }}>
+          <h1 style={{ fontFamily: 'Fraunces, serif', fontSize: 24, fontWeight: 600, color: '#fafaf9', letterSpacing: '-.03em' }}>
             Faturalar
           </h1>
           <p className="text-[13px] mt-1.5" style={{ color: 'rgba(250,250,249,0.42)' }}>
@@ -358,154 +358,143 @@ ${isPdf
         <MihsapConnectionBadge session={mihsapSession} />
       </div>
 
-      {/* KPI Özet — mükellef seçili değilse tüm mükelleflerin toplamı */}
-      <div className="grid grid-cols-2 md:grid-cols-4 gap-3.5">
-        {[
-          { label: 'Toplam Fatura', value: invoices.length, sub: selectedMukellef ? `${MONTH_NAMES[Number(month)-1]} ${year}` : `Tüm mükellefler · ${MONTH_NAMES[Number(month)-1]} ${year}`, icon: Receipt },
-          { label: 'Alış Faturası', value: alisInvoices.length, sub: `₺${totalAlis.toLocaleString('tr-TR', { maximumFractionDigits: 0 })}`, icon: FileText },
-          { label: 'Satış Faturası', value: satisInvoices.length, sub: `₺${totalSatis.toLocaleString('tr-TR', { maximumFractionDigits: 0 })}`, icon: FileText },
-          { label: 'İndirilmiş Dosya', value: invoices.filter(i=>i.storageKey).length, sub: invoices.length ? `/ ${invoices.length} fatura` : '—', icon: Download },
-        ].map(({ label, value, sub, icon: Icon }) => (
-          <div key={label} className="rounded-2xl p-5" style={{ background: 'rgba(255,255,255,0.02)', border: '1px solid rgba(255,255,255,0.05)' }}>
-            <div className="flex items-center justify-between mb-4">
-              <div className="w-10 h-10 rounded-xl flex items-center justify-center" style={{ background: 'rgba(184,160,111,0.08)', border: '1px solid rgba(184,160,111,0.15)', color: '#d4b876' }}>
-                <Icon size={17} />
-              </div>
-            </div>
-            <p className="text-[11px] uppercase font-semibold tracking-[.12em]" style={{ color: 'rgba(250,250,249,0.38)' }}>{label}</p>
-            <p className="mt-1.5 leading-none tabular-nums" style={{ fontFamily: 'Fraunces, serif', fontSize: 30, fontWeight: 700, letterSpacing: '-0.03em', color: '#d4b876' }}>{typeof value === 'number' ? value.toLocaleString('tr-TR') : value}</p>
-            <p className="text-[11px] mt-1" style={{ color: 'rgba(250,250,249,0.32)' }}>{sub}</p>
-          </div>
-        ))}
+      {/* Tek satır araç çubuğu — Mükellef · Dönem · Çekme (eski büyük seçim kartı yerine) */}
+      <div className="flex items-center gap-2 flex-wrap rounded-[14px] p-2.5" style={{ background: 'rgba(255,255,255,0.02)', border: '1px solid rgba(255,255,255,0.06)' }}>
+        {/* Mükellef picker */}
+        <button
+          type="button"
+          onClick={() => setMukellefPickerOpen(true)}
+          className="flex-1 min-w-[220px] flex items-center gap-2 px-3 h-[38px] rounded-[10px] text-[13px] text-left hover:brightness-110 transition"
+          style={{ background: 'rgba(255,255,255,0.03)', border: '1px solid rgba(255,255,255,0.08)', color: '#fafaf9' }}
+        >
+          <Users size={13} style={{ color: 'rgba(250,250,249,0.5)' }} />
+          <span className="flex-1 truncate" style={{ color: selectedMukellef ? '#fafaf9' : 'rgba(250,250,249,0.45)' }}>
+            {selectedMukellef === ALL_SENTINEL
+              ? `Tümü (${taxpayers.filter((t) => t.mihsapId).length} mükellef)`
+              : selectedMukellef
+              ? taxpayerName(taxpayers.find((t) => t.id === selectedMukellef)!) || 'Mükellef'
+              : 'Mükellef seç…'}
+          </span>
+          {selectedMukellef && (
+            <span
+              onClick={(e) => { e.stopPropagation(); setSelectedMukellef(''); }}
+              className="p-0.5 rounded hover:bg-white/10"
+              style={{ color: 'rgba(250,250,249,0.5)' }}
+            >
+              <X size={13} />
+            </span>
+          )}
+          <ChevronDown size={14} style={{ color: 'rgba(250,250,249,0.45)' }} />
+        </button>
+
+        {/* Yıl */}
+        <div className="flex items-center gap-1.5 px-2.5 h-[38px] rounded-[10px]" style={{ background: 'rgba(255,255,255,0.03)', border: '1px solid rgba(255,255,255,0.08)' }}>
+          <Calendar size={13} style={{ color: 'rgba(250,250,249,0.45)' }} />
+          <select
+            value={year}
+            onChange={(e) => setYear(Number(e.target.value))}
+            className="bg-transparent text-[13px] outline-none cursor-pointer"
+            style={{ color: '#fafaf9' }}
+          >
+            {[2024, 2025, 2026, 2027].map((y) => (
+              <option key={y} value={y} style={{ background: '#0f0d0b' }}>{y}</option>
+            ))}
+          </select>
+        </div>
+
+        {/* Ay */}
+        <div className="flex items-center px-2.5 h-[38px] rounded-[10px]" style={{ background: 'rgba(255,255,255,0.03)', border: '1px solid rgba(255,255,255,0.08)' }}>
+          <select
+            value={month}
+            onChange={(e) => setMonth(e.target.value)}
+            className="bg-transparent text-[13px] outline-none cursor-pointer"
+            style={{ color: '#fafaf9' }}
+          >
+            {MONTHS.map((m, i) => (
+              <option key={m} value={m} style={{ background: '#0f0d0b' }}>{MONTH_NAMES[i]}</option>
+            ))}
+          </select>
+        </div>
+
+        <span className="w-px h-6 mx-0.5 hidden md:block" style={{ background: 'rgba(255,255,255,0.08)' }} />
+
+        {/* Çekme butonları */}
+        <button
+          disabled={!selectedMukellef || fetchMut.isPending || !!activeJob || bulkProgress?.running}
+          onClick={() => handleFetch('ALIS', false)}
+          className="inline-flex items-center gap-1.5 h-[38px] px-3 rounded-[10px] text-[12.5px] font-bold disabled:opacity-60 disabled:cursor-not-allowed transition-all"
+          style={{ background: 'rgba(59,130,246,0.18)', color: '#93c5fd', border: '1px solid rgba(96,165,250,0.5)' }}
+          onMouseEnter={(e) => { if (!e.currentTarget.disabled) { e.currentTarget.style.background = 'rgba(59,130,246,0.32)'; e.currentTarget.style.color = '#dbeafe'; } }}
+          onMouseLeave={(e) => { e.currentTarget.style.background = 'rgba(59,130,246,0.18)'; e.currentTarget.style.color = '#93c5fd'; }}
+          title="Alış faturalarını çek"
+        >
+          <Download size={13} /> Alış Çek
+        </button>
+        <button
+          disabled={!selectedMukellef || fetchMut.isPending || !!activeJob || bulkProgress?.running}
+          onClick={() => handleFetch('SATIS', false)}
+          className="inline-flex items-center gap-1.5 h-[38px] px-3 rounded-[10px] text-[12.5px] font-bold disabled:opacity-60 disabled:cursor-not-allowed transition-all"
+          style={{ background: 'rgba(34,197,94,0.18)', color: '#86efac', border: '1px solid rgba(74,222,128,0.5)' }}
+          onMouseEnter={(e) => { if (!e.currentTarget.disabled) { e.currentTarget.style.background = 'rgba(34,197,94,0.32)'; e.currentTarget.style.color = '#dcfce7'; } }}
+          onMouseLeave={(e) => { e.currentTarget.style.background = 'rgba(34,197,94,0.18)'; e.currentTarget.style.color = '#86efac'; }}
+          title="Satış faturalarını çek"
+        >
+          <Download size={13} /> Satış Çek
+        </button>
+        <button
+          disabled={!selectedMukellef || fetchMut.isPending || !!activeJob || bulkProgress?.running}
+          onClick={() => handleFetch(undefined, false)}
+          className="inline-flex items-center gap-1.5 h-[38px] px-3.5 rounded-[10px] text-[12.5px] font-bold disabled:opacity-60 disabled:cursor-not-allowed transition-all"
+          style={{ background: 'linear-gradient(135deg, #d4b876, #b8a06f)', color: '#0f0d0b', boxShadow: '0 2px 10px rgba(212,184,118,0.32)' }}
+          onMouseEnter={(e) => { if (!e.currentTarget.disabled) { e.currentTarget.style.boxShadow = '0 4px 16px rgba(212,184,118,0.5)'; } }}
+          onMouseLeave={(e) => { e.currentTarget.style.boxShadow = '0 2px 10px rgba(212,184,118,0.32)'; }}
+          title="Alış + Satış hepsini çek"
+        >
+          <Download size={13} />
+          {bulkProgress?.running
+            ? `${bulkProgress.current}/${bulkProgress.total}…`
+            : fetchMut.isPending
+            ? 'Çekiliyor…'
+            : 'Hepsini Çek'}
+        </button>
+        <button
+          disabled={!selectedMukellef || fetchMut.isPending || !!activeJob || bulkProgress?.running}
+          onClick={() => handleFetch(tab === 'all' ? undefined : tab, true)}
+          className="inline-flex items-center justify-center w-[38px] h-[38px] rounded-[10px] disabled:opacity-60 disabled:cursor-not-allowed transition-all"
+          style={{ background: 'rgba(255,255,255,0.05)', border: '1px solid rgba(255,255,255,0.15)', color: 'rgba(250,250,249,0.85)' }}
+          title={tab === 'all' ? 'Seçili dönemi yeniden indir' : `${tab === 'ALIS' ? 'Alış' : 'Satış'} yeniden indir`}
+        >
+          <RefreshCw size={13} />
+        </button>
       </div>
 
-      {/* Mükellef & Dönem seçici */}
-      <div className="rounded-2xl overflow-hidden" style={{ background: 'rgba(255,255,255,0.02)', border: '1px solid rgba(255,255,255,0.05)' }}>
-        <div className="flex items-center justify-between px-5 py-4" style={{ borderBottom: '1px solid rgba(255,255,255,0.04)' }}>
-          <div className="flex items-center gap-2.5">
-            <span className="w-[3px] h-4 rounded-sm" style={{ background: '#d4b876' }} />
-            <h3 className="text-[13.5px] font-semibold" style={{ color: '#fafaf9' }}>Mükellef & Dönem Seçimi</h3>
-          </div>
-        </div>
-        <div className="p-5 grid grid-cols-1 md:grid-cols-12 gap-3">
-          {/* Mükellef picker butonu (KDV Kontrol / Mihsap deseni) */}
-          <div className="md:col-span-6">
-            <label className="text-[11px] font-bold uppercase tracking-[.12em] block mb-1.5" style={{ color: 'rgba(250,250,249,0.5)' }}>
-              <Users size={11} className="inline mr-1" /> Mükellef
-            </label>
-            <button
-              type="button"
-              onClick={() => setMukellefPickerOpen(true)}
-              className="w-full px-3 py-2.5 rounded-[10px] text-[13px] outline-none flex items-center gap-2 text-left hover:brightness-110 transition"
-              style={{ background: 'rgba(255,255,255,0.03)', border: '1px solid rgba(255,255,255,0.08)', color: '#fafaf9' }}
-            >
-              <span className="flex-1 truncate" style={{ color: selectedMukellef ? '#fafaf9' : 'rgba(250,250,249,0.45)' }}>
-                {selectedMukellef === ALL_SENTINEL
-                  ? `✓ Tümü (${taxpayers.filter((t) => t.mihsapId).length} mükellef)`
-                  : selectedMukellef
-                  ? taxpayerName(taxpayers.find((t) => t.id === selectedMukellef)!) || 'Mükellef'
-                  : 'Mükellef seç…'}
-              </span>
-              {selectedMukellef && (
-                <span
-                  onClick={(e) => { e.stopPropagation(); setSelectedMukellef(''); }}
-                  className="p-0.5 rounded hover:bg-white/10"
-                  style={{ color: 'rgba(250,250,249,0.5)' }}
-                >
-                  <X size={13} />
-                </span>
-              )}
-              <ChevronDown size={14} style={{ color: 'rgba(250,250,249,0.45)' }} />
-            </button>
-          </div>
-
-          {/* Yıl */}
-          <div className="md:col-span-2">
-            <label className="text-[11px] font-bold uppercase tracking-[.12em] block mb-1.5" style={{ color: 'rgba(250,250,249,0.5)' }}>
-              <Calendar size={11} className="inline mr-1" /> Yıl
-            </label>
-            <select
-              value={year}
-              onChange={(e) => setYear(Number(e.target.value))}
-              className="w-full px-3 py-2.5 rounded-[10px] text-[13px] outline-none cursor-pointer"
-              style={{ background: 'rgba(255,255,255,0.03)', border: '1px solid rgba(255,255,255,0.08)', color: '#fafaf9' }}
-            >
-              {[2024, 2025, 2026, 2027].map((y) => (
-                <option key={y} value={y} style={{ background: '#0f0d0b' }}>{y}</option>
-              ))}
-            </select>
-          </div>
-
-          {/* Ay */}
-          <div className="md:col-span-2">
-            <label className="text-[11px] font-bold uppercase tracking-[.12em] block mb-1.5" style={{ color: 'rgba(250,250,249,0.5)' }}>Ay</label>
-            <select
-              value={month}
-              onChange={(e) => setMonth(e.target.value)}
-              className="w-full px-3 py-2.5 rounded-[10px] text-[13px] outline-none cursor-pointer"
-              style={{ background: 'rgba(255,255,255,0.03)', border: '1px solid rgba(255,255,255,0.08)', color: '#fafaf9' }}
-            >
-              {MONTHS.map((m, i) => (
-                <option key={m} value={m} style={{ background: '#0f0d0b' }}>{MONTH_NAMES[i]}</option>
-              ))}
-            </select>
-          </div>
-
-          {/* Butonlar */}
-          <div className="md:col-span-2 flex flex-col gap-1.5 justify-end">
-            <div className="flex gap-1.5">
-              <button
-                disabled={!selectedMukellef || fetchMut.isPending || !!activeJob || bulkProgress?.running}
-                onClick={() => handleFetch('ALIS', false)}
-                className="flex-1 px-2 py-2 rounded-[9px] text-[11.5px] font-bold flex items-center justify-center gap-1 disabled:opacity-60 disabled:cursor-not-allowed transition-all"
-                style={{ background: 'rgba(59,130,246,0.22)', color: '#93c5fd', border: '1px solid rgba(96,165,250,0.55)', textShadow: '0 0 8px rgba(59,130,246,0.3)' }}
-                onMouseEnter={(e) => { if (!e.currentTarget.disabled) { e.currentTarget.style.background = 'rgba(59,130,246,0.35)'; e.currentTarget.style.color = '#dbeafe'; } }}
-                onMouseLeave={(e) => { e.currentTarget.style.background = 'rgba(59,130,246,0.22)'; e.currentTarget.style.color = '#93c5fd'; }}
-                title="Alış faturalarını çek"
-              >
-                <Download size={12} /> Alış Çek
-              </button>
-              <button
-                disabled={!selectedMukellef || fetchMut.isPending || !!activeJob || bulkProgress?.running}
-                onClick={() => handleFetch('SATIS', false)}
-                className="flex-1 px-2 py-2 rounded-[9px] text-[11.5px] font-bold flex items-center justify-center gap-1 disabled:opacity-60 disabled:cursor-not-allowed transition-all"
-                style={{ background: 'rgba(34,197,94,0.22)', color: '#86efac', border: '1px solid rgba(74,222,128,0.55)', textShadow: '0 0 8px rgba(34,197,94,0.3)' }}
-                onMouseEnter={(e) => { if (!e.currentTarget.disabled) { e.currentTarget.style.background = 'rgba(34,197,94,0.35)'; e.currentTarget.style.color = '#dcfce7'; } }}
-                onMouseLeave={(e) => { e.currentTarget.style.background = 'rgba(34,197,94,0.22)'; e.currentTarget.style.color = '#86efac'; }}
-                title="Satış faturalarını çek"
-              >
-                <Download size={12} /> Satış Çek
-              </button>
+      {/* İnce özet şeridi — eski 4 dev sayaç kutusu yerine */}
+      <div className="flex items-stretch flex-wrap rounded-[12px] overflow-hidden" style={{ background: 'rgba(255,255,255,0.02)', border: '1px solid rgba(255,255,255,0.06)' }}>
+        {[
+          { label: 'Toplam Fatura', value: invoices.length, sub: '', icon: Receipt },
+          { label: 'Alış Faturası', value: alisInvoices.length, sub: `₺${totalAlis.toLocaleString('tr-TR', { maximumFractionDigits: 0 })}`, icon: FileText },
+          { label: 'Satış Faturası', value: satisInvoices.length, sub: `₺${totalSatis.toLocaleString('tr-TR', { maximumFractionDigits: 0 })}`, icon: FileText },
+          { label: 'İndirilmiş Dosya', value: invoices.filter((i) => i.storageKey).length, sub: invoices.length ? `/ ${invoices.length}` : '', icon: Download },
+        ].map(({ label, value, sub, icon: Icon }, idx) => (
+          <div
+            key={label}
+            className="flex-1 min-w-[160px] flex items-center gap-2.5 px-4 py-2.5"
+            style={idx > 0 ? { borderLeft: '1px solid rgba(255,255,255,0.04)' } : undefined}
+          >
+            <div className="w-8 h-8 rounded-[9px] flex items-center justify-center flex-shrink-0" style={{ background: 'rgba(184,160,111,0.08)', border: '1px solid rgba(184,160,111,0.15)', color: '#d4b876' }}>
+              <Icon size={15} />
             </div>
-            <div className="flex gap-1.5">
-              <button
-                disabled={!selectedMukellef || fetchMut.isPending || !!activeJob || bulkProgress?.running}
-                onClick={() => handleFetch(undefined, false)}
-                className="flex-1 px-2 py-2 rounded-[9px] text-[11.5px] font-bold flex items-center justify-center gap-1 disabled:opacity-60 disabled:cursor-not-allowed transition-all"
-                style={{ background: 'linear-gradient(135deg, #d4b876, #b8a06f)', color: '#0f0d0b', boxShadow: '0 2px 10px rgba(212,184,118,0.35)' }}
-                onMouseEnter={(e) => { if (!e.currentTarget.disabled) { e.currentTarget.style.boxShadow = '0 4px 16px rgba(212,184,118,0.55)'; } }}
-                onMouseLeave={(e) => { e.currentTarget.style.boxShadow = '0 2px 10px rgba(212,184,118,0.35)'; }}
-                title="Alış + Satış hepsini çek"
-              >
-                <Download size={12} />
-                {bulkProgress?.running
-                  ? `${bulkProgress.current}/${bulkProgress.total}…`
-                  : fetchMut.isPending
-                  ? 'Çekiliyor…'
-                  : 'Hepsini Çek'}
-              </button>
-              <button
-                disabled={!selectedMukellef || fetchMut.isPending || !!activeJob || bulkProgress?.running}
-                onClick={() => handleFetch(tab === 'all' ? undefined : tab, true)}
-                className="px-2.5 py-2 rounded-[9px] text-[11.5px] disabled:opacity-60 disabled:cursor-not-allowed transition-all"
-                style={{ background: 'rgba(255,255,255,0.05)', border: '1px solid rgba(255,255,255,0.15)', color: 'rgba(250,250,249,0.85)' }}
-                title={tab === 'all' ? 'Dönemi sıfırla (tümü)' : `${tab === 'ALIS' ? 'Alış' : 'Satış'} yeniden indir`}
-              >
-                <RefreshCw size={12} />
-              </button>
+            <div className="min-w-0">
+              <p className="text-[10px] uppercase font-bold tracking-[.1em] truncate" style={{ color: 'rgba(250,250,249,0.3)' }}>{label}</p>
+              <p className="leading-tight tabular-nums" style={{ fontFamily: 'Fraunces, serif', fontWeight: 700, fontSize: 20, letterSpacing: '-0.02em', color: '#d4b876' }}>
+                {value.toLocaleString('tr-TR')}
+                {sub && (
+                  <span className="ml-1.5 tabular-nums" style={{ fontFamily: 'JetBrains Mono, monospace', fontSize: 11, fontWeight: 600, color: 'rgba(250,250,249,0.4)' }}>{sub}</span>
+                )}
+              </p>
             </div>
           </div>
-        </div>
+        ))}
       </div>
 
       {/* Toplu (tüm mükellefler) çekim progress */}
