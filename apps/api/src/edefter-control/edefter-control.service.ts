@@ -674,10 +674,12 @@ export class EDefterControlService {
       'SATIRDA_BORC_ALACAK_BIRLIKTE',
       '191_TERS_CALISMA',
       '391_TERS_CALISMA',
-      // Asagidakiler aktif (e-defter onceki kontrol icin onemli):
-      // - KDV_TAHAKKUK_EKSIK: ay sonu tahakkuk olmamasi kritik
-      // - KDV_ODENECEK_360_UYUMSUZ: odenecek KDV 360'a aktarilmali
-      // - KDV_DEVREDEN_190_UYUMSUZ: devreden KDV 190'a aktarilmali
+      // KDV_TAHAKKUK_EKSIK aktif (ay sonu tahakkuk yoksa onemli).
+      // KDV_ODENECEK_360 / DEVREDEN_190 KAPATILDI: basit "hesaplanan - indirilecek" formulu
+      // tevkifati (sorumlu sifatiyla 191.02, tevkifatli 391.01.007/008, odenecek KDV 2 = 360.02)
+      // ve onceki donem devredenini modellemedigi icin yanlis tutar uretiyordu (yanlis alarm).
+      'KDV_ODENECEK_360_UYUMSUZ',
+      'KDV_DEVREDEN_190_UYUMSUZ',
       // Asagidakiler hala kapali (gurultu):
       'KDV_TAHAKKUK_MUKERRER',
       'KDV_TAHAKKUK_AY_SONU_DEGIL',
@@ -1801,7 +1803,7 @@ export class EDefterControlService {
         findings.push({
           severity: 'WARN',
           category: 'CARI_TERS_BAKIYE_120',
-          message: `${code} hesabi donem hareketinde alacak bakiye veriyor (${this.fmt(Math.abs(net))} TL; acilis bakiyesi haric). Musteri avansi/fazla odeme degilse kayit kontrol edilmeli.`,
+          message: `${code} Alicilar hesabi donem hareketinde ters (alacak) bakiye veriyor (${this.fmt(Math.abs(net))} TL; acilis bakiyesi haric). Musteri avansi/fazla odeme olabilir; ya da bu cariden yapilan bir alis/gider satici hesabi (320) yerine bu alici hesabina islenmis olabilir.`,
           voucherKey: agg.first.voucherKey,
           rowIndex: agg.first.rowIndex,
           hesapKodu: code,
@@ -1811,7 +1813,7 @@ export class EDefterControlService {
         findings.push({
           severity: 'WARN',
           category: 'CARI_TERS_BAKIYE_320',
-          message: `${code} hesabi donem hareketinde borc bakiye veriyor (${this.fmt(net)} TL; acilis bakiyesi haric). Saticiya verilen avans/fazla odeme degilse kontrol edilmeli.`,
+          message: `${code} Saticilar hesabi donem hareketinde ters (borc) bakiye veriyor (${this.fmt(net)} TL; acilis bakiyesi haric). Saticiya verilen avans olabilir; ya da bu cariye yapilan bir satis musteri hesabi (120) yerine bu satici hesabina islenmis olabilir.`,
           voucherKey: agg.first.voucherKey,
           rowIndex: agg.first.rowIndex,
           hesapKodu: code,
