@@ -1155,20 +1155,57 @@ export class PortalAutomationService {
     const compactDigits = text.replace(/\D/g, '');
     if (compactDigits.includes(expectedTaxNo)) return { base64, clearCurrent: false, text };
 
-    // Beklenen VKN metinde net gorunmedi. ESKIDEN burada PDF icindeki BASKA bir 10-11 haneli
-    // numara (cogu zaman e-beyannameyi gonderen MESLEK MENSUBU / mali musavir VKN'si ya da bir
-    // TELEFON numarasi) "gercek sahip" sanilip belge baska kayda tasiniyor ve asil kaydin
-    // pdfUrl/beyannameUrl'u SILINIYORDU (clearCurrent:true). Bu yanlis-pozitif, dogru inmis
-    // PDF'leri "kayip" gosteriyordu: gri goz + (tahakkuk tutari kaydda kaldigi icin) "Tutar okunamadi".
-    //
-    // Liste-API yolunda PDF kendi Oid'iyle indirilir; mukellef eslestirmesi de GIB liste satir
-    // verisinden (matchTaxpayerId) yapilir — ikisi de OTORITER. Bu yuzden artik PDF-ici metne
-    // bakarak ELDEKI dosyayi tasimiyor / silmiyoruz; en fazla teshis icin loglariz.
-    const otherTaxNos = this.extractTaxNumbers(text).filter((taxNo) => taxNo !== expectedTaxNo);
-    if (otherTaxNos.length) {
-      this.logger.warn(`${kind} PDF metninde beklenen VKN (${expectedTaxNo}) gorunmedi; metindeki diger numaralar: ${otherTaxNos.join(', ')}. Satir/Oid eslesmesi otoriter kabul edildi, dosya dogru kayda baglandi.`);
+    // Beklenen VKN metinde gorunmedi. Eski tiklama/popup yolu zaman zaman BASKA mukellefin PDF'ini
+    // yakaliyor (cross-taxpayer swap). Bu yuzden PDF icinde NET ve FARKLI bir VKN bulunursa belgeyi
+    // yanlis kayda baglamak yerine, dogru sahibe tasi + bu kaydin URL'sini temizle (clearCurrent).
+    // (Liste-API/Oid yolu duzeldiginde PDF'ler dogru iner, beklenen VKN metinde olur ve bu blok hic
+    // tetiklenmez; bu nedenle koruma zararsiz ama swap'a karsi gerekli.)
+    const seenTaxNos = this.extractTaxNumbers(text);
+    let ownerTaxNo = seenTaxNos.find((taxNo) => taxNo !== expectedTaxNo) || null;
+    let parsed: any = null;
+    if (!ownerTaxNo) {
+      parsed = await this.beyanKayitlari.parseBeyannamePdf(base64).catch((err) => {
+        this.logger.warn(`${kind} PDF AI VKN kontrolu yapilamadi: ${err?.message || err}`);
+        return null;
+      });
+      const parsedTaxNo = this.normalizeTaxNoValue(parsed?.vkn);
+      if (parsedTaxNo === expectedTaxNo) return { base64, clearCurrent: false, text };
+      ownerTaxNo = parsedTaxNo || null;
     }
-    return { base64, clearCurrent: false, text };
+
+    if (!ownerTaxNo) {
+      this.logger.warn(`${kind} PDF icinde VKN/TCKN okunamadi; net farkli VKN bulunmadigi icin kayda baglanacak. Beklenen: ${expectedTaxNo}.`);
+      return { base64, clearCurrent: false, text };
+    }
+
+    await this.storePortalDocumentFromAgent(tenantId, jobId, {
+      taxpayerId: null,
+      belgeTuru: kind === 'tahakkuk' ? 'GIB_TAHAKKUK' : 'GIB_BEYANNAME',
+      title: kind === 'tahakkuk'
+        ? input.tahakkukFileName || 'tahakkuk.pdf'
+        : input.beyannameFileName || 'beyanname.pdf',
+      period: input.donem,
+      issuedAt: input.beyanTarihi || null,
+      receivedAt: new Date().toISOString(),
+      mimeType: 'application/pdf',
+      originalName: kind === 'tahakkuk'
+        ? input.tahakkukFileName || 'tahakkuk.pdf'
+        : input.beyannameFileName || 'beyanname.pdf',
+      base64,
+      raw: {
+        runner: 'portal-automation',
+        source: 'declaration-owner-repair',
+        ownerMismatch: true,
+        expectedTaxNo,
+        ownerTaxNo,
+        originalTaxpayerId: taxpayer.id,
+        originalRaw: input.raw || null,
+      },
+    }, 'EBEYANNAME_DAILY_DOWNLOAD').catch((err) => {
+      this.logger.warn(`${kind} PDF dogru mukellefe tasinamadi: ${err?.message || err}`);
+    });
+
+    return { base64: null, clearCurrent: true, text };
   }
 
   private async storePortalDocumentFromAgent(

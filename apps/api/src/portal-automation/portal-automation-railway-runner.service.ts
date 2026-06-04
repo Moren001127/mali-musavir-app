@@ -3414,6 +3414,7 @@ export class PortalAutomationRailwayRunnerService implements OnModuleInit {
     const maxRows = Math.max(1, Math.min(5000, Number(process.env.PORTAL_AUTOMATION_EBEYANNAME_MAX_APPROVED_ROWS || 1000)));
     const byOid = new Map<string, EBeyannameListEntry>();
     let recognized = false;
+    let rawDumped = false; // GECICI TESHIS: ilk sayfa ham yanitini bir kez notes'a yaz.
 
     // GIB'in kendi istegi yakalandiysa onun PARAMETRELERINI kullan (skill'deki sabit parametreler reddediliyor).
     // GET de POST de desteklenir (GIB ekrani listeyi POST ile yukleyebiliyor).
@@ -3449,6 +3450,10 @@ export class PortalAutomationRailwayRunnerService implements OnModuleInit {
           break;
         }
         const parsed = this.parseEBeyannameListResponse(raw);
+        if (!rawDumped) {
+          rawDumped = true;
+          notes.push(`[RAWDUMP] grup0 method=${captured?.method || '-'} len=${raw.length} rows=${parsed.rows.length} total=${parsed.total} :: ${String(raw).slice(0, 3500)}`);
+        }
         if (parsed.recognized) recognized = true;
         if (parsed.serverError && !firstErrorLogged) {
           firstErrorLogged = true;
