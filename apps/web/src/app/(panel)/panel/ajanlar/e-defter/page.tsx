@@ -210,6 +210,35 @@ const MEVZUAT_REF: Record<string, string> = {
   BENFORD_SAPMA: 'Benford · VEDAS', YUVARLAK_TUTAR_YIGILMASI: 'Forensic', HAFTA_SONU_KAYDI: 'BDS 240', SUPHELI_ACIKLAMA: 'BDS 240',
 };
 
+// Mizan denetimi tip kodu → okunur Türkçe etiket (ham kod göstermemek için)
+const MIZAN_TIP_LABEL: Record<string, string> = {
+  KASA_NEGATIF: 'Kasa negatif', BANKA_NEGATIF: 'Banka negatif', STOK_NEGATIF: 'Stok negatif',
+  ZIT_BAKIYE: 'Ters bakiye', KDV_INDIRIM_YAPILMAMIS: 'KDV indirimi yapılmamış',
+  KURUMLAR_VERGISI_TAHAKKUKU: 'Kurumlar vergisi tahakkuku', DONEM_KARI_DEVREDILMEMIS: 'Dönem kârı devredilmemiş',
+};
+function mizanTipLabel(tip?: string | null) {
+  const t = String(tip || '').trim();
+  if (!t) return 'Bulgu';
+  if (MIZAN_TIP_LABEL[t]) return MIZAN_TIP_LABEL[t];
+  const s = t.replace(/_/g, ' ').toLocaleLowerCase('tr-TR');
+  return s.charAt(0).toLocaleUpperCase('tr-TR') + s.slice(1);
+}
+function mizanDurumLabel(status?: string | null) {
+  const s = String(status || '').toUpperCase();
+  if (s === 'READY' || s === 'DONE' || s === 'OK') return 'Hazır';
+  if (s === 'PENDING' || s === 'QUEUED') return 'Bekliyor';
+  if (s === 'RUNNING' || s === 'PROCESSING') return 'İşleniyor';
+  if (s === 'FAILED' || s === 'ERROR') return 'Hata';
+  return status || '-';
+}
+// Mizan: alt kırılımı (muavin) olan ANA hesabı gizle — aynı bulgunun rollup tekrarını eler.
+// Örn. 10 ve 100 gizlenir, 100.01.001 gösterilir; 370/590 gibi alt kırılımı olmayanlar kalır.
+function mizanIsAncestorCode(parent: string, child: string) {
+  if (!parent || parent === child || !child.startsWith(parent)) return false;
+  const next = child.charAt(parent.length);
+  return next === '.' || !parent.includes('.');
+}
+
 export default function EDefterAgentPage() {
   const qc = useQueryClient();
   const now = new Date();
@@ -361,6 +390,15 @@ export default function EDefterAgentPage() {
   const mizanAnomalies = useMemo(() => {
     return (mizan?.anomaliler || []) as any[];
   }, [mizan]);
+  // Sadece en uç (muavin) hesapları göster; alt kırılımı olan ana hesapları gizle.
+  const mizanLeafAnomalies = useMemo(() => {
+    const codes = mizanAnomalies.map((a) => String(a.hesapKodu || '').trim()).filter(Boolean);
+    return mizanAnomalies.filter((a) => {
+      const code = String(a.hesapKodu || '').trim();
+      if (!code) return true;
+      return !codes.some((c) => mizanIsAncestorCode(code, c));
+    });
+  }, [mizanAnomalies]);
 
   const visibleFindings = useMemo(() => {
     const query = findingSearch.trim().toLocaleLowerCase('tr-TR');
@@ -698,7 +736,7 @@ export default function EDefterAgentPage() {
       <div className="flex items-center gap-1 border-b" style={{ borderColor: BORDER_STRONG }}>
         <TabButton active={activeTab === 'BULGULAR'} onClick={() => setActiveTab('BULGULAR')} icon={LayoutGrid} label="Bulgular" badge={stats.open} />
         <TabButton active={activeTab === 'SATIRLAR'} onClick={() => setActiveTab('SATIRLAR')} icon={ListChecks} label="Fiş Satırları" badge={lines.length} />
-        <TabButton active={activeTab === 'MIZAN'} onClick={() => setActiveTab('MIZAN')} icon={FileSpreadsheet} label="Mizan Denetimi" badge={mizan?.anomalyCount} />
+        <TabButton active={activeTab === 'MIZAN'} onClick={() => setActiveTab('MIZAN')} icon={FileSpreadsheet} label="Mizan Denetimi" badge={mizanLeafAnomalies.length} />
         <TabButton active={activeTab === 'KURALLAR'} onClick={() => setActiveTab('KURALLAR')} icon={Sparkles} label="Kontrol Kuralları" />
         <TabButton active={activeTab === 'GECMIS'} onClick={() => setActiveTab('GECMIS')} icon={History} label="Geçmiş Kontroller" badge={periodSessions.length} />
       </div>
@@ -820,10 +858,10 @@ export default function EDefterAgentPage() {
             <>
               <div className="grid grid-cols-2 md:grid-cols-4 gap-2.5">
                 <BigStat label="Toplam Hesap" value={mizan.hesapCount || 0} color={TEXT} />
-                <BigStat label="Mizan Bulgusu" value={mizan.anomalyCount || 0} color={mizan.anomalyCount ? WARN : OK} />
+                <BigStat label="Mizan Bulgusu" value={mizanLeafAnomalies.length} color={mizanLeafAnomalies.length ? WARN : OK} />
                 <div className="rounded-xl p-3" style={{ background: PANEL, border: `1px solid ${BORDER}` }}>
                   <div className="text-[9px] uppercase tracking-[.18em] mb-1" style={{ color: MUTED2 }}>Durum</div>
-                  <div className="text-sm font-semibold" style={{ color: mizan.status === 'READY' ? OK : NAVY }}>{mizan.status || '-'}</div>
+                  <div className="text-sm font-semibold" style={{ color: String(mizan.status || '').toUpperCase() === 'READY' ? OK : NAVY }}>{mizanDurumLabel(mizan.status)}</div>
                 </div>
                 <div className="rounded-xl p-3" style={{ background: PANEL, border: `1px solid ${BORDER}` }}>
                   <div className="text-[9px] uppercase tracking-[.18em] mb-1" style={{ color: MUTED2 }}>Güncelleme</div>
@@ -831,7 +869,9 @@ export default function EDefterAgentPage() {
                 </div>
               </div>
 
-              {mizanAnomalies.length === 0 ? (
+              <div className="text-[11px]" style={{ color: MUTED2 }}>Yalnızca en alt (muavin) hesaplar gösterilir; ana hesap toplamları (örn. 10, 100) gizlenir.</div>
+
+              {mizanLeafAnomalies.length === 0 ? (
                 <div className="rounded-2xl p-10 text-center" style={{ background: 'rgba(92,191,138,.05)', border: '1px dashed rgba(92,191,138,.2)' }}>
                   <div className="inline-flex h-12 w-12 rounded-full items-center justify-center mb-3" style={{ background: 'rgba(92,191,138,.15)', color: OK }}>
                     <CheckCircle2 size={24} />
@@ -840,27 +880,23 @@ export default function EDefterAgentPage() {
                   <div className="text-xs" style={{ color: MUTED }}>{mizan.hesapCount || 0} hesap kontrol edildi, mizan disiplini açısından temiz.</div>
                 </div>
               ) : (
-                <div className="rounded-xl border overflow-hidden" style={{ background: PANEL, borderColor: BORDER }}>
-                  <table className="w-full text-sm">
-                    <thead style={{ background: 'rgba(0,0,0,.18)' }}>
-                      <tr style={{ color: MUTED, borderBottom: `1px solid ${BORDER}` }}>
-                        <th className="text-left py-2.5 px-4 font-semibold text-xs uppercase tracking-wider">Seviye</th>
-                        <th className="text-left py-2.5 px-4 font-semibold text-xs uppercase tracking-wider">Tip</th>
-                        <th className="text-left py-2.5 px-4 font-semibold text-xs uppercase tracking-wider">Hesap</th>
-                        <th className="text-left py-2.5 px-4 font-semibold text-xs uppercase tracking-wider">Açıklama</th>
-                      </tr>
-                    </thead>
-                    <tbody>
-                      {mizanAnomalies.map((a: any) => (
-                        <tr key={a.id} style={{ borderBottom: `1px solid ${BORDER}`, color: TEXT }}>
-                          <td className="py-2.5 px-4"><Severity value={a.seviye || 'WARN'} /></td>
-                          <td className="py-2.5 px-4 text-xs font-semibold" style={{ color: 'rgba(250,250,249,.82)' }}>{a.tip || '-'}</td>
-                          <td className="py-2.5 px-4 font-semibold tabular-nums" style={{ color: TEXT }}>{a.hesapKodu || '-'}</td>
-                          <td className="py-2.5 px-4 text-xs" style={{ color: 'rgba(250,250,249,.85)' }}>{a.mesaj || '-'}</td>
-                        </tr>
-                      ))}
-                    </tbody>
-                  </table>
+                <div className="space-y-2">
+                  {mizanLeafAnomalies.map((a: any) => {
+                    const c = sevColor(a.seviye || 'WARN');
+                    return (
+                      <div key={a.id} className="relative flex items-start gap-3.5 rounded-xl border px-3.5 py-3" style={{ background: 'rgba(255,255,255,.014)', borderColor: BORDER }}>
+                        <span className="absolute left-0 top-2.5 bottom-2.5 w-[3px] rounded-full" style={{ background: c }} />
+                        <span className="text-[9px] font-bold px-1.5 py-1 rounded mt-0.5 shrink-0" style={{ background: `${c}26`, color: c }}>{sevLabel(a.seviye || 'WARN')}</span>
+                        <div className="flex-1 min-w-0">
+                          <div className="flex items-center gap-2 flex-wrap mb-1">
+                            <span className="text-[12.5px] font-bold" style={{ color: NAVY }}>{mizanTipLabel(a.tip)}</span>
+                            {a.hesapKodu && (<span className="text-[10px] tabular-nums px-2 py-0.5 rounded" style={{ background: 'rgba(255,255,255,.06)', color: 'rgba(250,250,249,.82)' }}>{a.hesapKodu}</span>)}
+                          </div>
+                          <div className="text-[13px] leading-snug" style={{ color: TEXT }}>{a.mesaj || '-'}</div>
+                        </div>
+                      </div>
+                    );
+                  })}
                 </div>
               )}
             </>
