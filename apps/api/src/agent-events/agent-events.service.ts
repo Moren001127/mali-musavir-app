@@ -2957,7 +2957,7 @@ ${ocr.text.slice(0, 14000)}`;
     });
 
     if (ALIS_ACTIONS.includes(input.action || '') && hasBosAlanSecenekleri) {
-      const sebep = 'rule_fast_path: Alista bos muhasebe alani var; manuel islenecek, secim/Claude atlandi';
+      const sebep = 'Alış faturasında boş muhasebe alanı var — elle işlenmeli';
       await logZeroUsage('mihsap-fatura-rule', 'atla', sebep);
       return {
         karar: 'atla',
@@ -2974,7 +2974,7 @@ ${ocr.text.slice(0, 14000)}`;
       codesArr.some((code) => this.extractAccountCode(code).startsWith(`${SISTEM_KURALLARI.kasaLimit.hesapPrefix}.`))
     );
     if (hasKasaAccount && Number.isFinite(tutarNum) && tutarNum > SISTEM_KURALLARI.kasaLimit.maxTutar) {
-      const sebep = `rule_fast_path: Kasa hesabi ${SISTEM_KURALLARI.kasaLimit.maxTutar.toLocaleString('tr-TR')} TL limitini asiyor; manuel kontrol`;
+      const sebep = `Kasa hesabı ${SISTEM_KURALLARI.kasaLimit.maxTutar.toLocaleString('tr-TR')} TL sınırını aşıyor — elle kontrol gerekli`;
       await logZeroUsage('mihsap-fatura-rule', 'atla', sebep);
       return {
         karar: 'atla',
@@ -3073,7 +3073,7 @@ ${ocr.text.slice(0, 14000)}`;
       const memoryCategory = primaryFaturaAccount || codesArr.find((c) => /^(600|601|602|150|153|157|740|770)\./.test(c)) || codesArr[0];
       const deterministicDecision = {
         karar: 'onay',
-        sebep: 'rule_fast_path: Z raporu, kod/tarih/tutar ekran verisi yeterli; Claude cagrilmadi',
+        sebep: 'Z raporu — ekran bilgileri yeterli, otomatik onaylandı (yapay zeka gerekmedi)',
         icerikSinifi: 'Mal',
         ocrOzet: 'Z raporu perakende satis',
         faturaDecisionCandidate: input.firmaKimlikNo
@@ -3138,7 +3138,7 @@ ${ocr.text.slice(0, 14000)}`;
       Number.isFinite(Number(input.tutar))
     ) {
       const memoryCategory = vendorMemoryMatch.kategori || primaryFaturaAccount;
-      const sebep = `rule_fast_path: Firma hafizasi ${vendorMemoryMatch.onayAdedi} onay, ayni hesap (${primaryAccountCode}) ve ucretsiz icerik kontrolu temiz; Claude cagrilmadi`;
+      const sebep = `Firma geçmişi: ${vendorMemoryMatch.onayAdedi} kez aynı hesaba (${primaryAccountCode}) işlenmiş, içerik temiz — otomatik onaylandı (yapay zeka gerekmedi)`;
       const deterministicDecision = {
         karar: 'onay',
         sebep,

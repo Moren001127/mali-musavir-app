@@ -4,7 +4,7 @@
 */
 (function () {
   // Agent versiyon — UI'da gösterilir, debug için kritik
-  const AGENT_VERSION = '1.39.0';
+  const AGENT_VERSION = '1.39.1';
   const AGENT_INSTANCE_ID = 'mai_' + Date.now().toString(36) + '_' + Math.random().toString(36).slice(2, 8);
 
   // === VERSION-AWARE RELOAD ===
@@ -13632,15 +13632,15 @@
     const aiBelgeTuru = getDecisionBelgeValue(decision, 'belgeTuru');
     const aiTarih = parseDateToIso(aiTarihRaw);
     const mihsapTarih = parseDateToIso(meta?.tarih);
-    if (meta?.tarih && !aiTarih) sorunlar.push('belge tarihi OCR okunamadi');
+    if (meta?.tarih && !aiTarih) sorunlar.push('tarih okunamadı');
     if (aiTarih && mihsapTarih && aiTarih !== mihsapTarih) {
       sorunlar.push(`tarih belge:${aiTarih} mihsap:${mihsapTarih}`);
     }
-    if (meta?.belgeNo && !normDocNo(aiBelgeNo)) sorunlar.push('belge no OCR okunamadi');
+    if (meta?.belgeNo && !normDocNo(aiBelgeNo)) sorunlar.push('belge no okunamadı');
     if (aiBelgeNo && meta?.belgeNo && !docNoMatches(aiBelgeNo, meta.belgeNo)) {
       sorunlar.push(`belgeNo belge:${aiBelgeNo} mihsap:${meta.belgeNo}`);
     }
-    if (meta?.belgeTuru && !aiBelgeTuru) sorunlar.push('belge turu OCR okunamadi');
+    if (meta?.belgeTuru && !aiBelgeTuru) sorunlar.push('belge türü okunamadı');
     if (aiBelgeTuru && meta?.belgeTuru && !belgeTuruMatches(aiBelgeTuru, meta.belgeTuru)) {
       sorunlar.push(`belgeTuru belge:${aiBelgeTuru} mihsap:${meta.belgeTuru}`);
     }
@@ -13648,7 +13648,7 @@
     const belgeMatrah = parseAmountLoose(getDecisionBelgeValue(decision, 'ocrMatrah'));
     const belgeKdvTutari = parseAmountLoose(getDecisionBelgeValue(decision, 'ocrKdvTutari'));
     const mihsapToplam = parseAmountLoose(meta?.tutar);
-    if (mihsapToplam != null && belgeToplam == null) sorunlar.push('belge toplam OCR okunamadi');
+    if (mihsapToplam != null && belgeToplam == null) sorunlar.push('tutar okunamadı');
     if (belgeToplam != null && mihsapToplam != null && Math.abs(belgeToplam - mihsapToplam) > 1) {
       sorunlar.push(`toplam belge:${belgeToplam.toFixed(2)} mihsap:${mihsapToplam.toFixed(2)}`);
     }
@@ -13678,7 +13678,7 @@
       const koduPct = String(parseInt(pctMatch[1], 10));
       const fatPct = String(parseInt(fatKdvStr, 10));
       if (koduPct !== fatPct) {
-        tutarsizSatirlar.push(`satir ${i + 1}: hesap %${koduPct} != KDV %${fatPct}`);
+        tutarsizSatirlar.push(`${i + 1}. satır: hesap %${koduPct} ama fatura %${fatPct}`);
       }
     }
     return {
@@ -13779,7 +13779,7 @@
     if (!safety || safety.ok) return false;
     if (faturaProviderErrorMessage(decision)) return false;
     const reason = String(safety.sebep || '');
-    return !!decision?.cacheHit || decision?.aiCallReason === 'cache_hit' || /OCR okunamadi/i.test(reason);
+    return !!decision?.cacheHit || decision?.aiCallReason === 'cache_hit' || /okunamad[ıi]/i.test(reason);
   }
 
   async function freshFaturaDecisionRetry({ safety, decision, decideArgs, meta, codes, kdvOranlari }) {
@@ -13804,7 +13804,11 @@
     const providerError = faturaProviderErrorMessage(decision);
     const sorunlar = providerError ? [providerError] : [...cmp.sorunlar];
     if (karar !== 'onay' && !providerError) {
-      sorunlar.unshift(`AI karar onay degil: ${karar}`);
+      const kararTr = karar === 'emin_degil' ? 'emin değil'
+        : karar === 'atla' ? 'atlanması önerildi'
+        : karar === 'onay_bekliyor' ? 'onay bekliyor'
+        : karar;
+      sorunlar.unshift(`yapay zeka onay vermedi (${kararTr})`);
     }
     const vehicleRisk = detectVehiclePurchaseRisk({
       firma: meta?.firma,
@@ -13815,7 +13819,7 @@
     });
     if (vehicleRisk) sorunlar.push(vehicleRisk);
     const kdvCheck = checkFaturaKdvCodeMatch(codes || [], kdvOranlari || []);
-    if (!kdvCheck.ok) sorunlar.push(`KDV oran tutarsiz: ${kdvCheck.sebep}`);
+    if (!kdvCheck.ok) sorunlar.push(`KDV oranı uyuşmuyor: ${kdvCheck.sebep}`);
     return {
       ok: sorunlar.length === 0,
       sebep: sorunlar.join(' | '),
@@ -14437,7 +14441,7 @@
             mukellef.id,
             mukellef.ad,
             'skip',
-            `Alışta boş muhasebe alanı var: ${bosAlanlar.join(', ') || 'Hesap Kodu'} — manuel işlenecek, yerel hızlı atlandı`,
+            `Alış faturasında boş alan var (${bosAlanlar.join(', ') || 'Hesap Kodu'}) — elle işlenmeli`,
             logMeta({
               hesapKodlari: codes,
               kdv: readKdvOrani(),
@@ -14567,7 +14571,7 @@
                   satirlar.push('Not: OCR eksik/cache sonucu nedeniyle taze kontrol tekrarlandi.');
                 }
                 if (!finalSafety.ok) {
-                  satirlar.push(`Sonuç: F2 güvenlik iptal — ${finalSafety.sebep}`);
+                  satirlar.push(`Sonuç: otomatik onay durduruldu — ${finalSafety.sebep}`);
                   logMesaji = satirlar.join('\n');
                   counters.atla++; counters.toplam++; setCount();
                   await logEvent(mukellef.id, mukellef.ad, 'skip', logMesaji,
@@ -14673,9 +14677,9 @@
       const localKdvCheck = checkFaturaKdvCodeMatch(codes, localKdvOranlari);
       if (localVehicleRisk || !localKdvCheck.ok) {
         counters.atla++; counters.toplam++; setCount();
-        const localReason = localVehicleRisk || `KDV oran tutarsiz: ${localKdvCheck.sebep}`;
+        const localReason = localVehicleRisk || `KDV oranı uyuşmuyor: ${localKdvCheck.sebep}`;
         await logEvent(mukellef.id, mukellef.ad, 'skip',
-          `Yerel guvenlik iptal: ${localReason}`,
+          `Otomatik onay durduruldu — ${localReason}`,
           logMeta({
             hesapKodu: codes[0],
             hesapKodlari: codes,
@@ -14691,7 +14695,7 @@
       let decision = await aiDecideTimed(
         { ...decisionArgs, ruleOnly: true },
         2500,
-        'kural/firma hafizasi zaman asimi - manuel kontrol',
+        'Firma geçmişi kontrolü zaman aşımına uğradı — elle kontrol',
       );
       perf.mark('ruleDecision');
       if (decision?.karar === 'needs_ai') {
@@ -14699,7 +14703,7 @@
         if (isAlisFreeManual) {
           counters.atla++; counters.toplam++; setCount();
           await logEvent(mukellef.id, mukellef.ad, 'skip',
-            'Kural/firma hafizasi eslesmedi - ucretsiz hizli modda manuel islenecek, Claude cagrilmadi',
+            'Firma geçmişinde eşleşme yok — elle işlenecek (yapay zeka çağrılmadı)',
             logMeta({
               hesapKodu: codes[0],
               hesapKodlari: codes,
@@ -14747,7 +14751,7 @@
           ? (decision?.sapmaSebep || sebep || safety.sebep).slice(0, 180)
           : safety.sebep;
         await logEvent(mukellef.id, mukellef.ad, 'skip',
-          `F2 güvenlik iptal: ${sapma}`,
+          `Otomatik onay durduruldu — ${sapma}`,
           logMeta({
             hesapKodu: codes[0],
             hesapKodlari: codes,
@@ -14850,7 +14854,7 @@
 
         if (saved) {
           counters.onay++; counters.toplam++; setCount();
-          await logEvent(mukellef.id, mukellef.ad, 'ok', `F2 · ${sebep}`, { firma: meta.firma, firmaKimlikNo: meta.firmaKimlikNo, tarih: meta.tarih, belgeTuru: meta.belgeTuru, faturaTuru: meta.faturaTuru, belgeNo: meta.belgeNo, tutar: meta.tutar, hesapKodu: codes[0], hesapKodlari: codes, kdv: readKdvOrani(), kdvOranlari: readAllKdvOranlari(), satirSayisi: codes.length, decisionTrace, faturaDecisionCandidate, aiCallReason: decision?.aiCallReason || null, ...safety.compareMeta });
+          await logEvent(mukellef.id, mukellef.ad, 'ok', `${sebep}`, { firma: meta.firma, firmaKimlikNo: meta.firmaKimlikNo, tarih: meta.tarih, belgeTuru: meta.belgeTuru, faturaTuru: meta.faturaTuru, belgeNo: meta.belgeNo, tutar: meta.tutar, hesapKodu: codes[0], hesapKodlari: codes, kdv: readKdvOrani(), kdvOranlari: readAllKdvOranlari(), satirSayisi: codes.length, decisionTrace, faturaDecisionCandidate, aiCallReason: decision?.aiCallReason || null, ...safety.compareMeta });
         } else {
           counters.atla++; counters.toplam++; setCount();
           const atlamaSebebi = validationFailed
