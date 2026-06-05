@@ -72,6 +72,7 @@ export interface ConfigRow {
 
 export interface OzetRow {
   beyanTipi: BeyanTipi;
+  vergiDonem: string;
   toplam: number;
   onaylanan: number;
   bekleyen: number;
@@ -93,6 +94,7 @@ export interface DetayRow {
   beyanlar: Array<{
     beyanTipi: BeyanTipi;
     durum: BeyanDurum;
+    vergiDonem: string;
     tahakkukTutari: number | null;
     onayTarihi: string | null;
   }>;

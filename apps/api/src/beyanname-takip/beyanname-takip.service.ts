@@ -193,6 +193,7 @@ export class BeyannameTakipService {
 
     const rows = Object.values(agg).map((r) => ({
       ...r,
+      vergiDonem: vergiDonemForTip(r.beyanTipi as BeyanTipi, yil, ay, donem, donemTuru),
       yuzde: r.toplam > 0 ? Math.round(((r.onaylanan) / r.toplam) * 100) : 0,
     }));
 
@@ -264,6 +265,7 @@ export class BeyannameTakipService {
           return {
             beyanTipi: tip,
             durum: resolved.durum,
+            vergiDonem: vergiDonemForTip(tip, yil, ay, donem, donemTuru),
             tahakkukTutari: resolved.durumKaydi?.tahakkukTutari || resolved.beyanKaydi?.tahakkukTutari || null,
             onayTarihi: resolved.durumKaydi?.onayTarihi || resolved.beyanKaydi?.beyanTarihi || null,
           };
@@ -341,6 +343,53 @@ function posetDue(ay: number, donemTuru: DonemTuru): boolean {
   return (donemTuru === 'VERGI' ? [3, 6, 9, 12] : [1, 4, 7, 10]).includes(ay);
 }
 
+/**
+ * Geçici vergi (gelir/kurum) 3 aylık takvimi — poşet/KDV'den FARKLI.
+ *   Verilme ayları: Q1→Mayıs(5), Q2→Ağustos(8), Q3→Kasım(11), Q4→Şubat(2, sonraki yıl)
+ *   Vergi (çeyrek sonu) ayları: 3, 6, 9, 12
+ * (4. dönem kullanıcı tercihiyle takip ediliyor; güncel mevzuatta Q4 yıllık beyana dahildir.)
+ */
+function geciciDue(ay: number, donemTuru: DonemTuru): boolean {
+  return (donemTuru === 'VERGI' ? [3, 6, 9, 12] : [2, 5, 8, 11]).includes(ay);
+}
+
+/** Geçici vergi için ilgili çeyrek dönem anahtarı (örn. "2026-Q1"). */
+function geciciVergiQuarter(yil: number, ay: number, donemTuru: DonemTuru): string {
+  if (donemTuru === 'VERGI') {
+    return `${yil}-Q${Math.ceil(ay / 3)}`; // 3→Q1, 6→Q2, 9→Q3, 12→Q4
+  }
+  // VERILME: hangi ayda hangi çeyreğin beyannamesi verilir
+  if (ay === 2) return `${yil - 1}-Q4`; // Şubat → bir önceki yılın Q4'ü
+  if (ay === 5) return `${yil}-Q1`;
+  if (ay === 8) return `${yil}-Q2`;
+  if (ay === 11) return `${yil}-Q3`;
+  return `${yil}-Q${Math.ceil(ay / 3)}`; // güvenli yedek
+}
+
+/**
+ * Bir beyanname tipinin, seçilen döneme karşılık gelen VERGİ DÖNEMİ anahtarını döner.
+ * (lookupKeysForExpected ile aynı kuralı yansıtır — gösterimde "verilme + vergi dönemi" için.)
+ *   Aylık → bir önceki ay (verilme) / seçili ay (vergi)
+ *   Geçici → ilgili çeyrek (Mayıs→Q1 vb.)
+ *   Kurumlar/Gelir/GMSI → yıllık
+ */
+function vergiDonemForTip(
+  tip: BeyanTipi,
+  yil: number,
+  ay: number,
+  donem: string,
+  donemTuru: DonemTuru,
+): string {
+  const prev = previousMonth(yil, ay);
+  if (tip === 'KURUMLAR' || tip === 'GELIR' || tip === 'GMSI') {
+    return donemTuru === 'VERGI' ? `${yil}-YIL` : `${yil - 1}-YIL`;
+  }
+  if (tip === 'GGECICI' || tip === 'KGECICI') {
+    return geciciVergiQuarter(yil, ay, donemTuru);
+  }
+  return donemTuru === 'VERGI' ? donem : monthDonem(prev.yil, prev.ay);
+}
+
 function previousMonth(yil: number, ay: number) {
   if (ay === 1) return { yil: yil - 1, ay: 12 };
   return { yil, ay: ay - 1 };
@@ -363,6 +412,9 @@ function donemCandidatesForLookup(yil: number, ay: number, donem: string) {
     `${yil - 1}-YIL`,
     quarterDonem(yil, ay),
     quarterDonem(prev.yil, prev.ay),
+    // Geçici vergi çeyreği (verilme: Mayıs→Q1, Ağustos→Q2, Kasım→Q3, Şubat→önceki yıl Q4)
+    geciciVergiQuarter(yil, ay, 'VERGI'),
+    geciciVergiQuarter(yil, ay, 'VERILME'),
   ]));
 }
 
@@ -409,7 +461,7 @@ function lookupKeysForExpected(tip: BeyanTipi, yil: number, ay: number, donem: s
   if (tip === 'KURUMLAR' || tip === 'GELIR' || tip === 'GMSI') {
     donemler.add(donemTuru === 'VERGI' ? `${yil}-YIL` : `${yil - 1}-YIL`);
   } else if (tip === 'GGECICI' || tip === 'KGECICI') {
-    donemler.add(donemTuru === 'VERGI' ? quarterDonem(yil, ay) : quarterDonem(prev.yil, prev.ay));
+    donemler.add(geciciVergiQuarter(yil, ay, donemTuru));
   } else {
     donemler.add(donemTuru === 'VERGI' ? donem : monthDonem(prev.yil, prev.ay));
   }
@@ -447,8 +499,8 @@ function beklenenBeyanlar(cfg: any, yil: number, ay: number, donemTuru: DonemTur
   if (cfg.muhtasarPeriod === 'AYLIK') tipler.push('MUHSGK');
   else if (periodDue(cfg.muhtasarPeriod, ay, donemTuru)) tipler.push('MUHSGK');
   if (periodDue(cfg.muhtasar2Period, ay, donemTuru)) tipler.push('MUHSGK2');
-  if (periodDue(cfg.gelirGeciciPeriod, ay, donemTuru)) tipler.push('GGECICI');
-  if (periodDue(cfg.kurumGeciciPeriod, ay, donemTuru)) tipler.push('KGECICI');
+  if (cfg.gelirGeciciPeriod && geciciDue(ay, donemTuru)) tipler.push('GGECICI');
+  if (cfg.kurumGeciciPeriod && geciciDue(ay, donemTuru)) tipler.push('KGECICI');
 
   // Damga (sürekli mükellef → aylık)
   if (cfg.damgaEnabled) tipler.push('DAMGA');

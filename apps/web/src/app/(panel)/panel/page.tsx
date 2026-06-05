@@ -306,6 +306,21 @@ function AgentMini({ href, icon: Icon, name, stat, running }: { href: string; ic
 type BeyanFilter = 'toplam' | 'onaylanan' | 'bekleyen' | 'hatali' | 'kalan';
 type ModalState = { beyanTipi: BeyanTipi; filter: BeyanFilter; donem: string; donemTuru: DonemTuru } | null;
 
+// Dönem anahtarını Türkçe etikete çevirir (iç anahtar korunur, yalnız gösterim):
+//   "2026-05" → "Mayıs 2026" · "2026-Q1" → "2026 1. Dönem (Oca-Mar)" · "2026-YIL" → "2026 Yıllık"
+const BEYAN_AYLAR_TR = ['Ocak', 'Şubat', 'Mart', 'Nisan', 'Mayıs', 'Haziran', 'Temmuz', 'Ağustos', 'Eylül', 'Ekim', 'Kasım', 'Aralık'];
+const BEYAN_CEYREK_AYLAR = ['Oca-Mar', 'Nis-Haz', 'Tem-Eyl', 'Eki-Ara'];
+function donemEtiket(key?: string | null): string {
+  if (!key) return '-';
+  const ay = key.match(/^(\d{4})-(\d{2})$/);
+  if (ay) return `${BEYAN_AYLAR_TR[parseInt(ay[2], 10) - 1] || ay[2]} ${ay[1]}`;
+  const q = key.match(/^(\d{4})-Q([1-4])$/);
+  if (q) return `${q[1]} ${q[2]}. Dönem (${BEYAN_CEYREK_AYLAR[parseInt(q[2], 10) - 1]})`;
+  const yil = key.match(/^(\d{4})-YIL$/i);
+  if (yil) return `${yil[1]} Yıllık`;
+  return key;
+}
+
 function ToplubeyannameTable() {
   return <ToplubeyannamePanel />;
 }
@@ -381,7 +396,7 @@ function ToplubeyannamePanel() {
             </span>
             <div className="min-w-0">
               <h3 className="truncate text-[16px] font-semibold leading-tight" style={{ color: BEYAN_TONE.title }}>Beyanname Durum Takibi</h3>
-              <p className="mt-0.5 truncate text-[11.5px]" style={{ color: BEYAN_TONE.muted }}>{modeLabel} - {selectedDonem} - {modeNote}</p>
+              <p className="mt-0.5 truncate text-[11.5px]" style={{ color: BEYAN_TONE.muted }}>{modeLabel} - {donemEtiket(selectedDonem)} - {modeNote}</p>
             </div>
           </div>
           <div className="flex flex-wrap items-center justify-start gap-2 xl:justify-end">
@@ -493,7 +508,7 @@ function BeyanCompactTable({
           {title}
         </div>
         <div className="text-[11px] font-semibold tabular-nums" style={{ color: BEYAN_TONE.muted, fontFamily: 'Inter, ui-sans-serif, system-ui, sans-serif' }}>
-          {donem}
+          {donemEtiket(donem)}
         </div>
       </div>
       <div className="overflow-x-auto rounded-xl" style={{ border: `1px solid ${BEYAN_TONE.borderSoft}`, background: BEYAN_TONE.tableBg }}>
@@ -536,7 +551,7 @@ function YardimciBeyanGrid({
           Bildirge ve E-Defter
         </div>
         <div className="text-[11px] font-semibold tabular-nums" style={{ color: BEYAN_TONE.muted, fontFamily: 'Inter, ui-sans-serif, system-ui, sans-serif' }}>
-          {donem}
+          {donemEtiket(donem)}
         </div>
       </div>
       <div className="grid grid-cols-1 gap-3 lg:grid-cols-2">
@@ -574,7 +589,7 @@ function YardimciBeyanCard({
           style={{ color: BEYAN_TONE.title }}
           title="Mükellef listesini göster"
         >
-          {label} <span className="font-semibold opacity-55">({donem})</span>
+          {label} <span className="font-semibold opacity-55">({donemEtiket(row.vergiDonem)})</span>
         </button>
         <YardimciBeyanNumber label="Toplam" value={row.toplam} color="#fafaf9" onClick={() => onNumberClick(row.beyanTipi, 'toplam')} />
         <YardimciBeyanNumber label={onayText} value={row.onaylanan} color={BEYAN_TONE.approved} onClick={() => onNumberClick(row.beyanTipi, 'onaylanan')} />
@@ -655,6 +670,9 @@ function BeyanCompactRow({
         >
           {label}
         </button>
+        <div className="mt-0.5 text-[10px]" style={{ color: BEYAN_TONE.muted }}>
+          {donemEtiket(row.vergiDonem)}
+        </div>
         <div className="hidden">
           {row.toplam} mükellef takipte
         </div>
@@ -1114,12 +1132,13 @@ function BeyanDetayModal({ state, onClose }: { state: { beyanTipi: BeyanTipi; fi
   };
   const csvCell = (value: unknown) => `"${String(value ?? '').replace(/"/g, '""')}"`;
   const downloadList = () => {
-    const header = ['Sıra', 'Mükellef', 'Beyanname', 'Dönem', 'Durum', 'Onay/Tarih', 'Tahakkuk'];
+    const header = ['Sıra', 'Mükellef', 'Beyanname', 'Verilme Dönemi', 'Vergi Dönemi', 'Durum', 'Onay/Tarih', 'Tahakkuk'];
     const body = filteredItems.map(({ taxpayer, beyan }, index) => [
       index + 1,
       taxpayer.ad,
       BEYAN_ETIKETLER[state.beyanTipi],
-      state.donem,
+      donemEtiket(state.donem),
+      donemEtiket(beyan.vergiDonem),
       durumEtiket[beyan.durum] || beyan.durum,
       formatDate(beyan.onayTarihi),
       formatMoney(beyan.tahakkukTutari),
@@ -1134,6 +1153,7 @@ function BeyanDetayModal({ state, onClose }: { state: { beyanTipi: BeyanTipi; fi
     URL.revokeObjectURL(url);
   };
   const periodModeText = state.donemTuru === 'VERILME' ? 'Verilme dönemi' : 'Vergi dönemi';
+  const vergiDonemKey = filteredItems[0]?.beyan?.vergiDonem || '';
   const emptyText = state.filter === 'onaylanan'
     ? 'Bu grupta verilmiş beyanname yok.'
     : state.filter === 'kalan'
@@ -1154,7 +1174,7 @@ function BeyanDetayModal({ state, onClose }: { state: { beyanTipi: BeyanTipi; fi
         <div className="flex items-start justify-between gap-4 px-4 py-3" style={{ borderBottom: '1px solid rgba(255,255,255,0.07)', background: 'linear-gradient(180deg, rgba(255,255,255,0.035), rgba(255,255,255,0.01))' }}>
           <div>
             <div className="text-[11px] font-black uppercase tracking-[0.16em]" style={{ color: filterColor[state.filter] }}>
-              {BEYAN_ETIKETLER[state.beyanTipi]} · {state.donem} · {periodModeText}
+              {BEYAN_ETIKETLER[state.beyanTipi]} · {periodModeText}: {donemEtiket(state.donem)}{vergiDonemKey ? ` · Vergi dönemi: ${donemEtiket(vergiDonemKey)}` : ''}
             </div>
             <h3 className="mt-1 text-[24px] font-black leading-tight" style={{ color: '#fafaf9' }}>
               {filterLabels[state.filter]}
@@ -1212,7 +1232,7 @@ function BeyanDetayModal({ state, onClose }: { state: { beyanTipi: BeyanTipi; fi
                       <div className="min-w-0 pr-4">
                         <div className="truncate text-[14px] font-black" style={{ color: '#fafaf9' }}>{taxpayer.ad}</div>
                         <div className="mt-0.5 text-[11px]" style={{ color: 'rgba(250,250,249,0.42)' }}>
-                          {BEYAN_ETIKETLER[state.beyanTipi]} · {state.donem}
+                          {BEYAN_ETIKETLER[state.beyanTipi]} · {donemEtiket(beyan.vergiDonem)}
                         </div>
                       </div>
                       <div>
