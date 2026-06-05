@@ -15,6 +15,7 @@ import {
 } from '@prisma/client';
 import { CronJob } from 'cron';
 import { PrismaService } from '../prisma/prisma.service';
+import { NotificationsService } from '../notifications/notifications.service';
 import { ACTION_BY_NAME } from './action-catalog';
 import { ActionDispatcherService } from './action-dispatcher.service';
 import { AutomationEventBus } from './automation-event-bus.service';
@@ -24,6 +25,11 @@ const MAX_FOR_EACH_ITEMS = 1000;
 const MAX_NESTED_DEPTH = 10;
 const MAX_WAIT_MS = 60 * 60 * 1000; // 1 saat (daha uzun bekleme için Bull delayed job — Faz 5)
 const STEP_LOG_LIMIT_BYTES = 8 * 1024; // step çıktısı log'a kaydedilirken bu kadar kırpılır
+const PARALLEL_DEFAULT_CONCURRENCY = 5; // parallel branch'lerinde aynı anda en fazla kaç dal
+const RETRY_MAX_ATTEMPTS = 2; // READ/AI adımlarında geçici hatada toplam deneme (1 ilk + 1 retry)
+const RETRY_BACKOFF_MS = 1200; // retry öncesi bekleme
+// Boot'ta bundan eski 'running' run'lar "sunucu yeniden başladı" diye kapatılır.
+const STALE_RUNNING_MS = 2 * 60 * 1000;
 
 interface StepLog {
   stepId: string;
@@ -66,12 +72,26 @@ export class AutomationRunnerService implements OnModuleInit {
   private readonly cronPrefix = 'auto.';
   /** EVENT otomasyonları için unsubscribe fonksiyonları (id → unsubscribe) */
   private readonly eventUnsubscribers = new Map<string, () => void>();
+  /**
+   * Şu an çalışan otomasyon id'leri — aynı otomasyonun cron/event tetiğiyle
+   * kendisiyle üst üste binmesini (overlap) önlemek için. Manuel "Şimdi Çalıştır"
+   * ve dry-run bu kilide takılmaz (kullanıcı bilerek tetikler).
+   *
+   * NOT: Bu kilit TEK süreç içindir. Birden fazla sunucu kopyası (Railway replica > 1)
+   * çalışırsa her kopya kendi cron'unu kurar ve bu Set paylaşılmaz → otomasyon çift
+   * çalışabilir. Bu sürüm tek-kopya varsayar; yatay ölçek için Redis tabanlı dağıtık
+   * kilit (veya AUTOMATIONS_SCHEDULER_ENABLED ile tek worker) gerekir.
+   */
+  private readonly running = new Set<string>();
+  /** Zamanlayıcı bu kopyada açık mı? Çok kopyalı kurulumda yalnız birinde 'true' bırakılır. */
+  private readonly schedulerEnabled = process.env.AUTOMATIONS_SCHEDULER_ENABLED !== 'false';
 
   constructor(
     private readonly prisma: PrismaService,
     private readonly dispatcher: ActionDispatcherService,
     private readonly scheduler: SchedulerRegistry,
     private readonly eventBus: AutomationEventBus,
+    private readonly notifications: NotificationsService,
   ) {}
 
   // ---------------------------------------------------------------
@@ -80,6 +100,18 @@ export class AutomationRunnerService implements OnModuleInit {
 
   async onModuleInit() {
     try {
+      // 0) Yeniden başlatma temizliği: bir önceki süreçte yarıda kalmış (deploy/crash)
+      // 'running' run'lar sonsuza dek asılı kalmasın — "kesildi" olarak kapat.
+      await this.closeStaleRunningRuns();
+
+      if (!this.schedulerEnabled) {
+        this.logger.warn(
+          'AUTOMATIONS_SCHEDULER_ENABLED=false — bu kopyada cron/event tetikleyiciler KURULMAYACAK ' +
+            '(çok kopyalı kurulumda çift çalışmayı önlemek için yalnız bir kopyada açık olmalı).',
+        );
+        return;
+      }
+
       // CRON otomasyonları
       const activeCron = await this.prisma.automation.findMany({
         where: { status: AutomationStatus.ACTIVE, triggerType: AutomationTriggerType.CRON },
@@ -111,6 +143,54 @@ export class AutomationRunnerService implements OnModuleInit {
   }
 
   /**
+   * Önceki süreçten kalan asılı 'running' run'ları kapatır. Sunucu deploy/crash ile
+   * yeniden başladığında bellekteki çalışmalar ölür ama DB'deki run kaydı 'running'
+   * kalır — bu, listede sonsuza dek "çalışıyor" görünmesine yol açar. Boot'ta bunları
+   * 'failure' olarak işaretleyip ilgili otomasyonun son durumunu da güncelliyoruz.
+   */
+  private async closeStaleRunningRuns(): Promise<void> {
+    const cutoff = new Date(Date.now() - STALE_RUNNING_MS);
+    try {
+      const stale = await this.prisma.automationRun.findMany({
+        where: { status: 'running', startedAt: { lt: cutoff } },
+        select: { id: true, automationId: true, triggerPayload: true },
+      });
+      if (stale.length === 0) return;
+
+      await this.prisma.automationRun.updateMany({
+        where: { id: { in: stale.map((r) => r.id) } },
+        data: {
+          status: 'failure',
+          finishedAt: new Date(),
+          errorMessage: 'Sunucu yeniden başlatıldı — çalışma yarıda kaldı.',
+          summary: 'Çalışma sunucu yeniden başlatılınca kesildi.',
+        },
+      });
+
+      // Gerçek (dry-run olmayan) kesik run'lar için otomasyon sayaçlarını da düzelt.
+      const realStale = stale.filter(
+        (r) => (r.triggerPayload as any)?._mode !== 'dry-run',
+      );
+      for (const r of realStale) {
+        await this.prisma.automation
+          .update({
+            where: { id: r.automationId },
+            data: {
+              lastRunAt: new Date(),
+              lastRunStatus: 'failure',
+              totalRuns: { increment: 1 },
+              failureRuns: { increment: 1 },
+            },
+          })
+          .catch(() => undefined);
+      }
+      this.logger.warn(`Boot temizliği: ${stale.length} asılı 'running' run kapatıldı.`);
+    } catch (err: any) {
+      this.logger.error(`Asılı run temizliği hatası: ${err.message}`);
+    }
+  }
+
+  /**
    * Bir otomasyonu cron registry'sine ekler.
    * AutomationsService bir otomasyonu ACTIVE'e geçirdiğinde çağrılır.
    */
@@ -130,10 +210,17 @@ export class AutomationRunnerService implements OnModuleInit {
     const job = new CronJob(
       cronExpr,
       () => {
+        // Üst üste binme koruması: önceki tetik hâlâ çalışıyorsa bu turu atla.
+        if (this.running.has(automation.id)) {
+          this.logger.warn(`Cron atlandı (önceki çalışma sürüyor): id=${automation.id}`);
+          this.updateNextRunAt(automation.id);
+          return;
+        }
         this.executeAutomation(automation.id, { source: 'cron', firedAt: new Date().toISOString() })
           .catch((err) => {
             this.logger.error(`Cron run hata id=${automation.id}: ${err.message}`);
-          });
+          })
+          .finally(() => this.updateNextRunAt(automation.id));
       },
       null, // onComplete
       false, // start
@@ -141,7 +228,34 @@ export class AutomationRunnerService implements OnModuleInit {
     );
     this.scheduler.addCronJob(jobId, job as unknown as any);
     job.start();
+    this.updateNextRunAt(automation.id, job as unknown as CronJob);
     this.logger.log(`Cron register: id=${automation.id} expr="${cronExpr}" tz=${timezone}`);
+  }
+
+  /**
+   * Cron job'un bir sonraki çalışma zamanını otomasyon kaydına yazar.
+   * Liste/detay sayfasında "Sonraki çalışma" göstergesi bunu kullanır.
+   */
+  private updateNextRunAt(automationId: string, job?: CronJob): void {
+    try {
+      const j: any =
+        job ?? (this.scheduler.getCronJob(this.cronPrefix + automationId) as unknown);
+      const next = j?.nextDate?.();
+      const date: Date | null = next?.toJSDate
+        ? next.toJSDate()
+        : next instanceof Date
+          ? next
+          : typeof next?.toMillis === 'function'
+            ? new Date(next.toMillis())
+            : null;
+      if (date && !Number.isNaN(date.getTime())) {
+        this.prisma.automation
+          .update({ where: { id: automationId }, data: { nextRunAt: date } })
+          .catch(() => undefined);
+      }
+    } catch {
+      // Sessiz — nextRunAt göstergesi kritik değil.
+    }
   }
 
   /**
@@ -159,6 +273,10 @@ export class AutomationRunnerService implements OnModuleInit {
     } catch {
       // Yoksa sessiz geç
     }
+    // Duraklatılan/arşivlenen otomasyonda "sonraki çalışma" gösterilmesin.
+    this.prisma.automation
+      .update({ where: { id: automationId }, data: { nextRunAt: null } })
+      .catch(() => undefined);
   }
 
   /**
@@ -184,6 +302,13 @@ export class AutomationRunnerService implements OnModuleInit {
         if ((payload as any)[key] !== expected) {
           return; // filter geçemedi
         }
+      }
+
+      // Olay fırtınası koruması: aynı otomasyon hâlâ çalışıyorsa bu olayı atla
+      // (örn. toplu içe aktarımda yüzlerce Taxpayer.Created peş peşe gelebilir).
+      if (this.running.has(automation.id)) {
+        this.logger.warn(`Event atlandı (önceki çalışma sürüyor): id=${automation.id} event=${eventName}`);
+        return;
       }
 
       // Async fire-and-forget
@@ -272,6 +397,11 @@ export class AutomationRunnerService implements OnModuleInit {
 
     this.assertRunnable(automation, options);
 
+    // Gerçek çalışmalardan önce tenant aylık AI bütçesini kontrol et (dry-run muaf).
+    if (options?.dryRun !== true) {
+      await this.assertWithinBudget(automation);
+    }
+
     const storedPayload = {
       ...(triggerPayload ?? {}),
       ...(options?.dryRun ? { _mode: 'dry-run' } : {}),
@@ -312,6 +442,10 @@ export class AutomationRunnerService implements OnModuleInit {
     triggerPayload?: Record<string, unknown>,
     options?: ExecuteOptions,
   ): Promise<{ runId: string; status: string; summary?: string }> {
+    // Üst üste binme kilidi — sadece gerçek çalışmalar için (dry-run kullanıcı testi).
+    const useLock = options?.dryRun !== true;
+    if (useLock) this.running.add(automation.id);
+    try {
     const stepLogs: StepLog[] = [];
     const ctx: ResolveContext = {
       outputs: {},
@@ -376,10 +510,13 @@ export class AutomationRunnerService implements OnModuleInit {
 
     // Otomasyon sayaçlarını ve son çalışma bilgisini güncelle
     if (options?.updateMetrics !== false && options?.dryRun !== true) {
-      await this.updateCountersAfterRun(automation, status);
+      await this.updateCountersAfterRun(automation, status, errorMessage ?? summary);
     }
 
     return { runId: run.id, status, summary };
+    } finally {
+      if (useLock) this.running.delete(automation.id);
+    }
   }
 
   private async markRunFailure(runId: string, err: unknown): Promise<void> {
@@ -469,10 +606,11 @@ export class AutomationRunnerService implements OnModuleInit {
     // LEAF aksiyon — dispatcher'a yolla
     const startMs = Date.now();
     try {
-      const output = await this.dispatcher.dispatch(
+      const output = await this.dispatchWithRetry(
         tool,
         args as Record<string, unknown>,
         dispatchCtx,
+        action.category,
       );
       const ms = Date.now() - startMs;
       // Output'u outputs'a yaz (varsa outputAs)
@@ -545,6 +683,9 @@ export class AutomationRunnerService implements OnModuleInit {
           let cost = 0;
           const asName = String(args.as ?? 'item');
           const innerSteps = step.steps ?? [];
+          // Toplu gönderimlerde sağlayıcı oran sınırına takılmamak için iterasyonlar
+          // arasına opsiyonel gecikme. 0..10sn arası; dry-run'da beklenmez.
+          const throttleMs = Math.min(Math.max(Number(args.throttleMs ?? 0), 0), 10_000);
           for (let i = 0; i < list.length; i++) {
             // Geçici olarak ctx.outputs'a item'ı koy (varsa eski değeri yedekle)
             const prev = ctx.outputs[asName];
@@ -559,11 +700,14 @@ export class AutomationRunnerService implements OnModuleInit {
               if (prev === undefined) delete ctx.outputs[asName];
               else ctx.outputs[asName] = prev;
             }
+            if (throttleMs > 0 && !opts.dryRun && i < list.length - 1) {
+              await new Promise((r) => setTimeout(r, throttleMs));
+            }
           }
           log.push({
             stepId,
             tool: 'for_each',
-            input: { count: list.length, as: asName },
+            input: { count: list.length, as: asName, throttleMs },
             ms: Date.now() - startMs,
             ts: new Date().toISOString(),
           });
@@ -590,19 +734,25 @@ export class AutomationRunnerService implements OnModuleInit {
 
         case 'parallel': {
           const branches = step.branches ?? [];
-          const results = await Promise.all(
-            branches.map((branchSteps: any[]) =>
+          // Aynı anda en fazla `concurrency` dal — varsayılan 5, args ile ayarlanabilir.
+          const concurrency = Math.max(
+            1,
+            Math.min(Number(args.concurrency ?? PARALLEL_DEFAULT_CONCURRENCY), branches.length || 1),
+          );
+          const results = await this.runWithConcurrency(
+            branches as any[][],
+            concurrency,
+            (branchSteps) =>
               this.executeStepList(branchSteps, ctx, dispatchCtx, log, {
                 ...opts,
                 depth: opts.depth + 1,
               }),
-            ),
           );
           const cost = results.reduce((a, b) => a + b.cost, 0);
           log.push({
             stepId,
             tool: 'parallel',
-            input: { branchCount: branches.length },
+            input: { branchCount: branches.length, concurrency },
             ms: Date.now() - startMs,
             ts: new Date().toISOString(),
           });
@@ -654,6 +804,60 @@ export class AutomationRunnerService implements OnModuleInit {
     }
   }
 
+  /**
+   * Bir LEAF aksiyonu çalıştırır; geçici hatada yeniden dener.
+   *
+   * ÖNEMLİ: Retry yalnızca READ ve AI aksiyonları içindir — bunlar idempotenttir
+   * (tekrar okumak/özetlemek güvenli). WRITE/EXTERNAL aksiyonlara (WhatsApp, e-posta,
+   * fiş üretimi vb.) ASLA otomatik retry yapılmaz; aksi halde aynı mesaj iki kez gider.
+   */
+  private async dispatchWithRetry(
+    tool: string,
+    args: Record<string, unknown>,
+    ctx: { tenantId: string; userId: string; automationId: string },
+    category: string,
+  ): Promise<unknown> {
+    const retriable = category === 'READ' || category === 'AI';
+    const maxAttempts = retriable ? RETRY_MAX_ATTEMPTS : 1;
+    let lastErr: unknown;
+    for (let attempt = 1; attempt <= maxAttempts; attempt++) {
+      try {
+        return await this.dispatcher.dispatch(tool, args, ctx);
+      } catch (err: any) {
+        lastErr = err;
+        if (attempt >= maxAttempts) break;
+        this.logger.warn(
+          `Aksiyon "${tool}" ${attempt}. denemede başarısız, yeniden denenecek: ${err?.message}`,
+        );
+        await new Promise((r) => setTimeout(r, RETRY_BACKOFF_MS));
+      }
+    }
+    throw lastErr;
+  }
+
+  /**
+   * Bir dizi işi en fazla `limit` tanesi aynı anda olacak şekilde çalıştırır.
+   * parallel akış aksiyonunda branch sayısı çok olduğunda hepsini birden başlatıp
+   * sağlayıcı limitlerini zorlamamak için kullanılır.
+   */
+  private async runWithConcurrency<T, R>(
+    items: T[],
+    limit: number,
+    worker: (item: T, index: number) => Promise<R>,
+  ): Promise<R[]> {
+    const results: R[] = new Array(items.length);
+    let idx = 0;
+    const runnerCount = Math.max(1, Math.min(limit, items.length));
+    const runners = Array.from({ length: runnerCount }, async () => {
+      while (idx < items.length) {
+        const cur = idx++;
+        results[cur] = await worker(items[cur], cur);
+      }
+    });
+    await Promise.all(runners);
+    return results;
+  }
+
   // ---------------------------------------------------------------
   // SAYIM + HATA POLİTİKASI
   // ---------------------------------------------------------------
@@ -661,6 +865,7 @@ export class AutomationRunnerService implements OnModuleInit {
   private async updateCountersAfterRun(
     automation: Automation,
     status: 'success' | 'failure' | 'partial',
+    failureContext?: string,
   ): Promise<void> {
     const lastRunStatus = status;
     const incSuccess = status === 'success' ? 1 : 0;
@@ -677,11 +882,16 @@ export class AutomationRunnerService implements OnModuleInit {
       },
     });
 
-    // Hata politikası: pause_after_3 — 3 ardışık başarısızsa duraklat
-    if (
-      status !== 'success' &&
-      automation.failurePolicy === 'pause_after_3'
-    ) {
+    if (status === 'success') return;
+
+    // Hata politikası: "ignore" → hiçbir şey yapma.
+    if (automation.failurePolicy === 'ignore') return;
+
+    // "notify" ve "pause_after_3" → sahibe in-app bildirim gönder (dedupe ile spam önle).
+    await this.notifyOwnerOfFailure(automation, status, failureContext);
+
+    // "pause_after_3" → son 3 gerçek run sorunluysa otomasyonu duraklat.
+    if (automation.failurePolicy === 'pause_after_3') {
       const recent = await this.prisma.automationRun.findMany({
         where: {
           automationId: automation.id,
@@ -704,7 +914,98 @@ export class AutomationRunnerService implements OnModuleInit {
         this.logger.warn(
           `Otomasyon ${automation.id} 3 ardışık sorunlu run sonrası PAUSED'a alındı.`,
         );
+        await this.notifyOwnerOfFailure(
+          automation,
+          status,
+          '3 ardışık başarısız çalışma sonrası otomatik DURAKLATILDI. Düzelttikten sonra yeniden başlat.',
+          true,
+        );
       }
+    }
+  }
+
+  /**
+   * Otomasyon sahibine (yoksa tenant geneline) hata bildirimi oluşturur.
+   * dedupeKey ile 3 saatte aynı otomasyon için en fazla bir hata bildirimi düşer —
+   * her dakika çalışan bir otomasyon bozulduğunda bildirim yağmuru olmaz.
+   */
+  private async notifyOwnerOfFailure(
+    automation: Automation,
+    status: 'failure' | 'partial',
+    context?: string,
+    paused = false,
+  ): Promise<void> {
+    try {
+      const durum = paused
+        ? 'arka arkaya başarısız olduğu için DURAKLATILDI'
+        : status === 'partial'
+          ? 'kısmen başarısız oldu (bazı adımlar hata verdi)'
+          : 'başarısız oldu';
+      const sebep = context ? ` Sebep: ${String(context).slice(0, 280)}` : '';
+      await this.notifications.create({
+        tenantId: automation.tenantId,
+        userId: automation.createdById ?? undefined,
+        title: `Otomasyon: ${automation.title}`,
+        body: `"${automation.title}" otomasyonu ${durum}.${sebep} Ayrıntı için Otomasyonlar → çalışma geçmişine bak.`,
+        type: 'AUTOMATION',
+        metadata: { automationId: automation.id, kind: paused ? 'auto-paused' : 'failure' },
+        dedupeKey: paused ? `auto-paused:${automation.id}` : `auto-fail:${automation.id}`,
+        dedupeWindowMin: paused ? 60 : 180,
+      });
+    } catch (err: any) {
+      this.logger.error(`Hata bildirimi oluşturulamadı id=${automation.id}: ${err.message}`);
+    }
+  }
+
+  /**
+   * Tenant'ın bu ayki toplam otomasyon AI harcaması limiti aştıysa çalışmayı reddeder.
+   * Limit env `AUTOMATIONS_MONTHLY_BUDGET_USD` ile verilir; 0/boş = limitsiz (varsayılan).
+   * Beklenmedik kesinti olmasın diye varsayılan kapalıdır — ofis isterse env ile açar.
+   */
+  private async assertWithinBudget(automation: Automation): Promise<void> {
+    const limit = Number(process.env.AUTOMATIONS_MONTHLY_BUDGET_USD ?? 0);
+    if (!Number.isFinite(limit) || limit <= 0) return;
+
+    const now = new Date();
+    const monthStart = new Date(Date.UTC(now.getUTCFullYear(), now.getUTCMonth(), 1));
+    const agg = await this.prisma.automationRun.aggregate({
+      where: {
+        automation: { tenantId: automation.tenantId },
+        startedAt: { gte: monthStart },
+        NOT: [{ triggerPayload: { path: ['_mode'], equals: 'dry-run' } } as any],
+      },
+      _sum: { costUsd: true },
+    });
+    const spent = agg._sum.costUsd ?? 0;
+    if (spent >= limit) {
+      await this.notifyBudgetExceeded(automation, spent, limit);
+      throw new BadRequestException(
+        `Bu ayki otomasyon AI bütçesi doldu ($${spent.toFixed(2)} / $${limit.toFixed(2)}). ` +
+          `Otomasyon çalıştırılmadı.`,
+      );
+    }
+  }
+
+  private async notifyBudgetExceeded(
+    automation: Automation,
+    spent: number,
+    limit: number,
+  ): Promise<void> {
+    try {
+      await this.notifications.create({
+        tenantId: automation.tenantId,
+        userId: automation.createdById ?? undefined,
+        title: 'Otomasyon bütçesi doldu',
+        body:
+          `Bu ayki otomasyon yapay zekâ harcaması $${spent.toFixed(2)} oldu ve limiti ($${limit.toFixed(2)}) aştı. ` +
+          `Yeni otomasyon çalışmaları, ay yenilenene veya limit artırılana kadar duracak.`,
+        type: 'AUTOMATION',
+        metadata: { kind: 'budget-exceeded' },
+        dedupeKey: `auto-budget:${automation.tenantId}`,
+        dedupeWindowMin: 720,
+      });
+    } catch {
+      // bildirim opsiyonel
     }
   }
 

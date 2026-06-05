@@ -117,18 +117,36 @@ function descend(value: unknown, parts: string[]): unknown {
   return current;
 }
 
+/**
+ * Bir tarihi Türkiye saatine (Europe/Istanbul, UTC+3) göre "YYYY-MM-DD" verir.
+ * Sunucu UTC çalıştığı için gece yarısına yakın saatlerde gün/ay kaymasını önler.
+ */
+function istanbulYmd(date: Date): string {
+  try {
+    // en-CA locale ISO benzeri "2026-06-05" üretir.
+    return new Intl.DateTimeFormat('en-CA', {
+      timeZone: 'Europe/Istanbul',
+      year: 'numeric',
+      month: '2-digit',
+      day: '2-digit',
+    }).format(date);
+  } catch {
+    return date.toISOString().slice(0, 10);
+  }
+}
+
 function resolveBuiltIn(key: string, ctx: ResolveContext): unknown {
   const now = ctx.now ?? new Date();
+  const ymd = istanbulYmd(now); // Türkiye saatine göre YYYY-MM-DD
   switch (key) {
     case 'today':
-      // YYYY-MM-DD (Europe/Istanbul'a normalize edilmeden, kabaca UTC tarih).
-      return now.toISOString().slice(0, 10);
+      return ymd;
     case 'now':
       return now.toISOString();
     case 'currentMonth':
-      return now.toISOString().slice(0, 7); // YYYY-MM
+      return ymd.slice(0, 7); // YYYY-MM (Türkiye ayı)
     case 'currentYear':
-      return String(now.getUTCFullYear());
+      return ymd.slice(0, 4);
     case 'currentUser':
       return ctx.currentUser;
     case 'tenant':

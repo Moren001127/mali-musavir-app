@@ -1,6 +1,6 @@
 'use client';
 
-import React, { useState, useMemo } from 'react';
+import React, { useState } from 'react';
 import Link from 'next/link';
 import { useRouter } from 'next/navigation';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
@@ -23,26 +23,32 @@ import {
   Search,
   Activity,
   XCircle,
-  DollarSign,
+  Wallet,
+  ArrowLeft,
+  CalendarClock,
 } from 'lucide-react';
 import {
   automationsApi,
+  describeCron,
   type Automation,
   type AutomationStatus,
   type AutomationTriggerType,
 } from '@/lib/automations';
 
+// ── Otomasyon modülü imza paleti (AI Maliyet stili — koyu zemin, mor imza) ──
+const VIOLET = '#a855f7';
+const VIOLET_SOFT = '#c084fc';
 const GOLD = '#d4b876';
+const BG = '#0f0d0b';
+const CARD = '#15110d';
+const LINE = 'rgba(255,255,255,0.08)';
+const TEXT = '#fafaf9';
+const MUTED = 'rgba(250,250,249,0.58)';
+const GREEN = '#4ade80';
+const RED = '#f87171';
+const AMBER = '#fbbf24';
+const BLUE = '#60a5fa';
 
-/**
- * Otomasyonlarım — minimal liste sayfası (Faz 2 sonu için yeterli).
- *
- * Faz 4'te genişletilecek:
- *  - Sayfalama UI
- *  - Filtre/arama kutusu
- *  - Detay paneli
- *  - Çalışma geçmişi sekmesi
- */
 export default function OtomasyonlarPage() {
   const qc = useQueryClient();
   const router = useRouter();
@@ -78,6 +84,7 @@ export default function OtomasyonlarPage() {
       automationsApi.setStatus(id, status),
     onSuccess: () => {
       qc.invalidateQueries({ queryKey: ['automations'] });
+      qc.invalidateQueries({ queryKey: ['automations-summary'] });
       toast.success('Durum güncellendi');
     },
     onError: (err: any) => {
@@ -102,8 +109,7 @@ export default function OtomasyonlarPage() {
         toast.info(result.summary || 'Çalışma kuyruğa alındı');
         return;
       }
-      const icon =
-        result.status === 'success' ? '✓' : result.status === 'failure' ? '✗' : '⚠';
+      const icon = result.status === 'success' ? '✓' : result.status === 'failure' ? '✗' : '⚠';
       toast.success(`${icon} ${result.summary || 'Çalışma tamamlandı'}`);
     },
     onError: (err: any) => {
@@ -137,205 +143,203 @@ export default function OtomasyonlarPage() {
   });
 
   const weeklyCostUsd = Number(summary?.weeklyCostUsd ?? 0);
+  const monthlyCostUsd = Number(summary?.monthlyCostUsd ?? 0);
+  const monthlyBudgetUsd = summary?.monthlyBudgetUsd ?? null;
 
   return (
-    <div className="mx-auto max-w-6xl px-4 py-8">
-      {/* Başlık */}
-      <div className="mb-6 flex flex-wrap items-center justify-between gap-3">
-        <div className="flex items-center gap-2">
-          <Wand2 className="h-6 w-6" style={{ color: GOLD }} />
-          <h1 className="text-2xl font-serif text-stone-800 dark:text-stone-100">Otomasyonlarım</h1>
-        </div>
+    <div className="mx-auto max-w-5xl space-y-5 px-4 pb-16" style={{ color: TEXT }}>
+      {/* ── Başlık (radial + üst renk şeridi, yapışkan değil) ── */}
+      <header
+        className="relative overflow-hidden rounded-2xl border p-5"
+        style={{
+          borderColor: LINE,
+          background:
+            'radial-gradient(120% 140% at 0% 0%, rgba(168,85,247,0.18), transparent 46%), radial-gradient(120% 140% at 100% 0%, rgba(212,184,118,0.14), transparent 46%), #0f0d0b',
+        }}
+      >
+        <div
+          className="absolute inset-x-0 top-0 h-1"
+          style={{ background: 'linear-gradient(90deg, #a855f7, #c084fc, #60a5fa, #4ade80, #d4b876)' }}
+        />
         <Link
-          href="/panel/otomasyonlar/yeni"
-          className="inline-flex items-center gap-2 rounded-lg px-4 py-2 text-sm font-medium text-white shadow-sm"
-          style={{ backgroundColor: GOLD }}
+          href="/panel"
+          className="inline-flex items-center gap-1.5 text-[12px] font-medium"
+          style={{ color: MUTED }}
         >
-          <Plus className="h-4 w-4" />
-          Yeni Otomasyon
+          <ArrowLeft size={14} /> Panel
         </Link>
-      </div>
+        <div className="mt-2 flex flex-wrap items-center justify-between gap-3">
+          <h1 className="flex items-center gap-2.5 text-[28px] font-semibold leading-tight">
+            <span
+              className="grid h-10 w-10 place-items-center rounded-xl"
+              style={{
+                background: 'linear-gradient(135deg, #a855f7, #c084fc)',
+                boxShadow: '0 6px 18px rgba(168,85,247,0.40)',
+              }}
+            >
+              <Wand2 size={20} style={{ color: '#1a1410' }} />
+            </span>
+            Otomasyonlarım
+          </h1>
+          <Link
+            href="/panel/otomasyonlar/yeni"
+            className="inline-flex items-center gap-2 rounded-lg px-4 py-2 text-[13px] font-semibold"
+            style={{ background: 'linear-gradient(135deg, #a855f7, #c084fc)', color: '#1a1410' }}
+          >
+            <Plus size={16} /> Yeni Otomasyon
+          </Link>
+        </div>
+        <p className="mt-2 max-w-2xl text-[13px]" style={{ color: MUTED }}>
+          Türkçe bir cümleyle kurduğun işler arka planda kendiliğinden çalışır. Durumlarını,
+          bir sonraki çalışma zamanını ve geçmişlerini buradan takip edersin.
+        </p>
+      </header>
 
-      <p className="mb-6 text-sm text-stone-600 dark:text-stone-300">
-        Türkçe cümleyle kurduğun otomasyonların listesi. Arka planda otomatik çalışır,
-        durumlarını ve geçmişlerini buradan takip edersin.
-      </p>
-
-      {/* Özet bandı */}
+      {/* ── Özet bandı ── */}
       {summary && (
-        <div className="mb-6 grid grid-cols-2 gap-3 sm:grid-cols-4">
-          <SummaryStat
-            icon={<Activity className="h-4 w-4 text-emerald-500" />}
+        <section className="grid grid-cols-2 gap-3 sm:grid-cols-4">
+          <Stat
+            color={GREEN}
+            icon={<Activity size={15} />}
             label="Aktif"
             value={summary.active}
-            subtitle={`${summary.paused} duraklatıldı`}
+            sub={`${summary.paused} duraklatıldı`}
           />
-          <SummaryStat
-            icon={<CheckCircle2 className="h-4 w-4 text-emerald-500" />}
-            label="Bu Hafta Başarılı"
+          <Stat
+            color={GREEN}
+            icon={<CheckCircle2 size={15} />}
+            label="Bu hafta başarılı"
             value={summary.weeklySuccess}
-            subtitle={`${summary.weeklyTotal} toplam çalışma`}
+            sub={`${summary.weeklyTotal} toplam çalışma`}
           />
-          <SummaryStat
-            icon={<XCircle className="h-4 w-4 text-rose-500" />}
-            label="Bu Hafta Hata"
+          <Stat
+            color={summary.weeklyFailure > 0 ? RED : MUTED}
+            icon={<XCircle size={15} />}
+            label="Bu hafta hata"
             value={summary.weeklyFailure}
-            subtitle={
-              summary.error > 0 ? `${summary.error} otomasyon ERROR durumda` : 'Sistem sağlıklı'
-            }
+            sub={summary.error > 0 ? `${summary.error} otomasyon HATA'da` : 'Sistem sağlıklı'}
           />
-          <SummaryStat
-            icon={<DollarSign className="h-4 w-4" style={{ color: GOLD }} />}
-            label="Bu Hafta Maliyet"
-            value={`$${weeklyCostUsd.toFixed(2)}`}
-            subtitle="Anthropic API kullanımı"
-          />
-        </div>
+          <BudgetStat monthly={monthlyCostUsd} weekly={weeklyCostUsd} budget={monthlyBudgetUsd} />
+        </section>
       )}
 
-      {/* Arama ve filtreler */}
-      <div className="mb-4 flex flex-wrap items-center gap-2">
-        <div className="relative flex-1 min-w-[200px]">
-          <Search className="absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-stone-400 dark:text-stone-500" />
+      {/* ── Arama + filtre ── */}
+      <section className="flex flex-wrap items-center gap-2">
+        <div className="relative min-w-[200px] flex-1">
+          <Search size={15} className="absolute left-3 top-1/2 -translate-y-1/2" style={{ color: MUTED }} />
           <input
             type="text"
             placeholder="Otomasyonlarda ara…"
             value={search}
             onChange={(e) => setSearch(e.target.value)}
-            className="w-full rounded-lg border border-stone-300 dark:border-stone-600 bg-white dark:bg-stone-900 py-2 pl-9 pr-3 text-sm text-stone-800 dark:text-stone-100 outline-none focus:border-amber-400"
+            className="w-full rounded-lg border bg-transparent py-2 pl-9 pr-3 text-[13px] outline-none"
+            style={{ borderColor: LINE, color: TEXT }}
           />
         </div>
-        <select
-          value={statusFilter}
-          onChange={(e) => setStatusFilter(e.target.value as any)}
-          className="rounded-lg border border-stone-300 dark:border-stone-600 bg-white dark:bg-stone-900 px-3 py-2 text-sm text-stone-800 dark:text-stone-100 outline-none focus:border-amber-400"
-        >
-          <option value="all">Tüm Durumlar</option>
-          <option value="ACTIVE">Aktif</option>
-          <option value="PAUSED">Duraklatıldı</option>
-          <option value="DRAFT">Taslak</option>
-          <option value="ERROR">Hata</option>
-          <option value="ARCHIVED">Arşiv</option>
-        </select>
-        <select
-          value={triggerFilter}
-          onChange={(e) => setTriggerFilter(e.target.value as any)}
-          className="rounded-lg border border-stone-300 dark:border-stone-600 bg-white dark:bg-stone-900 px-3 py-2 text-sm text-stone-800 dark:text-stone-100 outline-none focus:border-amber-400"
-        >
-          <option value="all">Tüm Tetikleyiciler</option>
-          <option value="CRON">Zamanlı</option>
-          <option value="EVENT">Olay</option>
-          <option value="MANUAL">Manuel</option>
-        </select>
-      </div>
+        <FilterSelect value={statusFilter} onChange={(v) => setStatusFilter(v as any)}>
+          <option value="all" style={{ background: BG }}>Tüm durumlar</option>
+          <option value="ACTIVE" style={{ background: BG }}>Aktif</option>
+          <option value="PAUSED" style={{ background: BG }}>Duraklatıldı</option>
+          <option value="DRAFT" style={{ background: BG }}>Taslak</option>
+          <option value="ERROR" style={{ background: BG }}>Hata</option>
+          <option value="ARCHIVED" style={{ background: BG }}>Arşiv</option>
+        </FilterSelect>
+        <FilterSelect value={triggerFilter} onChange={(v) => setTriggerFilter(v as any)}>
+          <option value="all" style={{ background: BG }}>Tüm tetikleyiciler</option>
+          <option value="CRON" style={{ background: BG }}>Zamanlı</option>
+          <option value="EVENT" style={{ background: BG }}>Olay</option>
+          <option value="MANUAL" style={{ background: BG }}>Manuel</option>
+        </FilterSelect>
+      </section>
 
+      {/* ── Son çalışmalar şeridi ── */}
+      {recentRuns && recentRuns.length > 0 && (
+        <section>
+          <h2 className="mb-2 text-[11px] font-semibold uppercase tracking-wider" style={{ color: MUTED }}>
+            Son çalışmalar
+          </h2>
+          <div className="flex flex-wrap gap-2">
+            {recentRuns.slice(0, 8).map((run) => {
+              const c = run.status === 'success' ? GREEN : run.status === 'failure' ? RED : BLUE;
+              return (
+                <button
+                  key={run.id}
+                  onClick={() => router.push(`/panel/otomasyonlar/${run.automation.id}`)}
+                  className="inline-flex items-center gap-1.5 rounded-lg border px-2.5 py-1.5 text-[11px] transition-colors"
+                  style={{ borderColor: `${c}55`, background: `${c}14`, color: c }}
+                >
+                  {run.status === 'success' ? (
+                    <CheckCircle2 size={13} />
+                  ) : run.status === 'failure' ? (
+                    <XCircle size={13} />
+                  ) : (
+                    <Activity size={13} />
+                  )}
+                  <span className="font-medium" style={{ color: TEXT }}>{run.automation.title}</span>
+                  <span style={{ color: MUTED }}>{timeAgo(run.startedAt)}</span>
+                </button>
+              );
+            })}
+          </div>
+        </section>
+      )}
+
+      {/* ── Durumlar ── */}
       {isLoading && (
-        <div className="rounded-2xl border border-stone-200 dark:border-stone-700 bg-white dark:bg-stone-900 p-12 text-center text-sm text-stone-500 dark:text-stone-400 dark:text-stone-500">
+        <div className="rounded-2xl border p-12 text-center text-[13px]" style={{ borderColor: LINE, color: MUTED, background: CARD }}>
           Yükleniyor…
         </div>
       )}
-
       {error && (
-        <div className="rounded-2xl border border-rose-200 bg-rose-50 p-4 text-sm text-rose-800">
+        <div className="rounded-2xl border p-4 text-[13px]" style={{ borderColor: `${RED}55`, background: `${RED}14`, color: RED }}>
           Liste yüklenemedi: {(error as any)?.message}
         </div>
       )}
-
       {data && data.items.length === 0 && (
-        <div className="rounded-2xl border-2 border-dashed border-stone-300 dark:border-stone-600 bg-white dark:bg-stone-900 p-12 text-center">
-          <Inbox className="mx-auto mb-3 h-10 w-10 text-stone-400 dark:text-stone-500" />
-          <h3 className="text-lg font-medium text-stone-700 dark:text-stone-200">Henüz otomasyonun yok</h3>
-          <p className="mt-1 text-sm text-stone-500 dark:text-stone-400 dark:text-stone-500">
+        <div className="rounded-2xl border-2 border-dashed p-12 text-center" style={{ borderColor: LINE, background: CARD }}>
+          <Inbox size={40} className="mx-auto mb-3" style={{ color: MUTED }} />
+          <h3 className="text-[16px] font-medium">Henüz otomasyonun yok</h3>
+          <p className="mt-1 text-[13px]" style={{ color: MUTED }}>
             "Yeni Otomasyon" diyerek bir cümleyle ilk otomasyonunu kurabilirsin.
           </p>
           <Link
             href="/panel/otomasyonlar/yeni"
-            className="mt-4 inline-flex items-center gap-2 rounded-lg px-4 py-2 text-sm font-medium text-white shadow-sm"
-            style={{ backgroundColor: GOLD }}
+            className="mt-4 inline-flex items-center gap-2 rounded-lg px-4 py-2 text-[13px] font-semibold"
+            style={{ background: 'linear-gradient(135deg, #a855f7, #c084fc)', color: '#1a1410' }}
           >
-            <Plus className="h-4 w-4" />
-            İlkini Oluştur
+            <Plus size={16} /> İlkini Oluştur
           </Link>
         </div>
       )}
 
-      {/* Son çalışmalar widget'i */}
-      {recentRuns && recentRuns.length > 0 && (
-        <div className="mb-6">
-          <h2 className="mb-2 text-sm font-medium uppercase tracking-wide text-stone-500 dark:text-stone-400">
-            Son Çalışmalar
-          </h2>
-          <div className="flex flex-wrap gap-2">
-            {recentRuns.slice(0, 8).map((run) => (
-              <button
-                key={run.id}
-                onClick={() => router.push(`/panel/otomasyonlar/${run.automation.id}`)}
-                className={`group flex items-center gap-2 rounded-lg border px-3 py-1.5 text-xs transition ${
-                  run.status === 'success'
-                    ? 'border-emerald-200 dark:border-emerald-900/40 bg-emerald-50 dark:bg-emerald-950/20 text-emerald-800 dark:text-emerald-300 hover:bg-emerald-100 dark:hover:bg-emerald-900/30'
-                    : run.status === 'failure'
-                      ? 'border-rose-200 dark:border-rose-900/40 bg-rose-50 dark:bg-rose-950/20 text-rose-800 dark:text-rose-300 hover:bg-rose-100 dark:hover:bg-rose-900/30'
-                      : 'border-stone-200 dark:border-stone-700 bg-stone-50 dark:bg-stone-800 text-stone-700 dark:text-stone-200 hover:bg-stone-100 dark:hover:bg-stone-700'
-                }`}
-              >
-                {run.status === 'success' ? (
-                  <CheckCircle2 className="h-3.5 w-3.5" />
-                ) : run.status === 'failure' ? (
-                  <XCircle className="h-3.5 w-3.5" />
-                ) : (
-                  <Activity className="h-3.5 w-3.5" />
-                )}
-                <span className="font-medium">{run.automation.title}</span>
-                <span className="opacity-70">
-                  {timeAgo(run.startedAt)}
-                </span>
-              </button>
-            ))}
-          </div>
-        </div>
-      )}
-
+      {/* ── Otomasyon kart-listesi ── */}
       {data && data.items.length > 0 && (
-        <div className="overflow-hidden rounded-2xl border border-stone-200 dark:border-stone-700 bg-white dark:bg-stone-900 shadow-sm">
-          <table className="w-full text-sm">
-            <thead className="bg-stone-50 dark:bg-stone-800 text-left text-xs uppercase tracking-wide text-stone-500 dark:text-stone-400 dark:text-stone-500">
-              <tr>
-                <th className="px-4 py-3 font-medium">Ad</th>
-                <th className="px-4 py-3 font-medium">Tetik</th>
-                <th className="px-4 py-3 font-medium">Son Çalışma</th>
-                <th className="px-4 py-3 font-medium">Durum</th>
-                <th className="px-4 py-3 font-medium text-right">Run</th>
-                <th className="px-4 py-3 font-medium text-right">Eylem</th>
-              </tr>
-            </thead>
-            <tbody className="divide-y divide-stone-100 dark:divide-stone-800">
-              {data.items.map((auto) => (
-                <Row
-                  key={auto.id}
-                  auto={auto}
-                  onOpen={(id) => router.push(`/panel/otomasyonlar/${id}`)}
-                  onToggleActive={(id, current) =>
-                    statusMutation.mutate({
-                      id,
-                      status: current === 'ACTIVE' ? 'PAUSED' : 'ACTIVE',
-                    })
-                  }
-                  onArchive={(id) => archiveMutation.mutate(id)}
-                  onHardDelete={(id) => hardDeleteMutation.mutate(id)}
-                  onRunNow={(id) => runNowMutation.mutate(id)}
-                  onDryRun={(id) => dryRunMutation.mutate(id)}
-                  runNowPending={runNowMutation.isPending}
-                />
-              ))}
-            </tbody>
-          </table>
-        </div>
+        <section className="space-y-2.5">
+          {data.items.map((auto) => (
+            <AutomationRow
+              key={auto.id}
+              auto={auto}
+              onOpen={(id) => router.push(`/panel/otomasyonlar/${id}`)}
+              onToggleActive={(id, current) =>
+                statusMutation.mutate({ id, status: current === 'ACTIVE' ? 'PAUSED' : 'ACTIVE' })
+              }
+              onArchive={(id) => archiveMutation.mutate(id)}
+              onHardDelete={(id) => hardDeleteMutation.mutate(id)}
+              onRunNow={(id) => runNowMutation.mutate(id)}
+              onDryRun={(id) => dryRunMutation.mutate(id)}
+              runNowPending={runNowMutation.isPending}
+            />
+          ))}
+        </section>
       )}
     </div>
   );
 }
 
-function Row({
+// ─────────────────────────────────────────────────────────────
+// Otomasyon satır-kartı
+// ─────────────────────────────────────────────────────────────
+function AutomationRow({
   auto,
   onOpen,
   onToggleActive,
@@ -354,147 +358,201 @@ function Row({
   onDryRun: (id: string) => void;
   runNowPending: boolean;
 }) {
-  // Hiç çalışmamış DRAFT otomasyonlar tamamen silinebilir (denetim izi yok)
   const canHardDelete = auto.status === 'DRAFT' && auto.totalRuns === 0;
-  // Buton içinde tıklananlar satırın açılmasını engellemeli
   const stop = (e: React.MouseEvent) => e.stopPropagation();
-  const lastRunStatus = auto.lastRunStatus;
+  const lastOk = auto.lastRunStatus === 'success';
+  const lastFail = auto.lastRunStatus === 'failure' || auto.lastRunStatus === 'partial';
+
   return (
-    <tr
-      className="cursor-pointer text-stone-800 dark:text-stone-100 hover:bg-stone-50 dark:hover:bg-stone-800"
+    <div
       onClick={() => onOpen(auto.id)}
+      className="group cursor-pointer rounded-xl border p-3.5 transition-colors"
+      style={{ borderColor: LINE, background: CARD }}
     >
-      <td className="px-4 py-3">
-        <div className="font-medium">{auto.title}</div>
-        <div className="line-clamp-1 max-w-md text-xs text-stone-500 dark:text-stone-400 dark:text-stone-500">{auto.prompt}</div>
-      </td>
-      <td className="px-4 py-3 text-xs text-stone-600 dark:text-stone-300">
-        <span className="inline-flex items-center gap-1">
-          <TriggerIcon t={auto.triggerType} />
-          {triggerShort(auto.triggerType, auto.triggerConfig)}
-        </span>
-      </td>
-      <td className="px-4 py-3 text-xs text-stone-600 dark:text-stone-300">
-        {auto.lastRunAt ? (
-          <span className="inline-flex items-center gap-1">
-            {lastRunStatus === 'success' ? (
-              <CheckCircle2 className="h-3.5 w-3.5 text-emerald-600" />
-            ) : lastRunStatus === 'failure' ? (
-              <AlertTriangle className="h-3.5 w-3.5 text-rose-600" />
-            ) : null}
-            {new Date(auto.lastRunAt).toLocaleString('tr-TR')}
-          </span>
-        ) : (
-          <span className="text-stone-400 dark:text-stone-500">—</span>
-        )}
-      </td>
-      <td className="px-4 py-3">
-        <StatusBadge status={auto.status} />
-      </td>
-      <td className="px-4 py-3 text-right text-xs text-stone-600 dark:text-stone-300">
-        {auto.totalRuns} <span className="text-stone-400 dark:text-stone-500">/ {auto.successRuns} başarı</span>
-      </td>
-      <td className="px-4 py-3 text-right">
-        <div className="inline-flex items-center gap-1">
+      <div className="flex flex-wrap items-start justify-between gap-3">
+        {/* Sol: başlık + cümle + meta */}
+        <div className="min-w-0 flex-1">
+          <div className="flex items-center gap-2">
+            <span className="truncate text-[15px] font-semibold" style={{ color: TEXT }}>
+              {auto.title}
+            </span>
+            <StatusBadge status={auto.status} />
+          </div>
+          <p className="mt-0.5 line-clamp-1 text-[12px]" style={{ color: MUTED }}>
+            {auto.prompt}
+          </p>
+          <div className="mt-2 flex flex-wrap items-center gap-x-4 gap-y-1 text-[11.5px]" style={{ color: MUTED }}>
+            <span className="inline-flex items-center gap-1.5">
+              <TriggerIcon t={auto.triggerType} />
+              {triggerShort(auto.triggerType, auto.triggerConfig)}
+            </span>
+            {auto.status === 'ACTIVE' && auto.nextRunAt && (
+              <span className="inline-flex items-center gap-1.5" style={{ color: VIOLET_SOFT }}>
+                <CalendarClock size={13} /> Sıradaki: {new Date(auto.nextRunAt).toLocaleString('tr-TR')}
+              </span>
+            )}
+            <span className="inline-flex items-center gap-1.5">
+              {lastOk && <CheckCircle2 size={13} style={{ color: GREEN }} />}
+              {lastFail && <AlertTriangle size={13} style={{ color: RED }} />}
+              {auto.lastRunAt
+                ? `Son: ${new Date(auto.lastRunAt).toLocaleString('tr-TR')}`
+                : 'Hiç çalışmadı'}
+            </span>
+            <span>
+              {auto.totalRuns} çalışma · <span style={{ color: GREEN }}>{auto.successRuns} başarı</span>
+            </span>
+          </div>
+        </div>
+
+        {/* Sağ: aksiyonlar */}
+        <div className="flex shrink-0 items-center gap-1" onClick={stop}>
           {auto.status === 'ACTIVE' && (
-            <>
-              <button
-                onClick={(e) => { stop(e); onRunNow(auto.id); }}
-                disabled={runNowPending}
-                className="rounded-md border border-amber-300 bg-amber-50 p-1.5 text-amber-800 hover:bg-amber-100 disabled:opacity-50"
-                title="Şimdi Çalıştır (gerçek aksiyon)"
-              >
-                <Zap className="h-4 w-4" />
-              </button>
-              <button
-                onClick={(e) => { stop(e); onDryRun(auto.id); }}
-                className="rounded-md border border-stone-300 dark:border-stone-600 bg-white dark:bg-stone-900 p-1.5 text-stone-600 dark:text-stone-300 hover:bg-stone-50 dark:hover:bg-stone-800 dark:bg-stone-800"
-                title="Dry-Run (aksiyon yapmadan simüle et)"
-              >
-                <FlaskConical className="h-4 w-4" />
-              </button>
-            </>
-          )}
-          {auto.status !== 'ACTIVE' && auto.status !== 'ARCHIVED' && (
-            <button
-              onClick={(e) => { stop(e); onDryRun(auto.id); }}
-              className="rounded-md border border-stone-300 dark:border-stone-600 bg-white dark:bg-stone-900 p-1.5 text-stone-600 dark:text-stone-300 hover:bg-stone-50 dark:hover:bg-stone-800 dark:bg-stone-800"
-              title="Dry-Run (aksiyon yapmadan simüle et)"
-            >
-              <FlaskConical className="h-4 w-4" />
-            </button>
-          )}
-          {(auto.status === 'ACTIVE' || auto.status === 'PAUSED' || auto.status === 'DRAFT' || auto.status === 'ERROR') && (
-            <button
-              onClick={(e) => { stop(e); onToggleActive(auto.id, auto.status); }}
-              className="rounded-md border border-stone-300 dark:border-stone-600 bg-white dark:bg-stone-900 p-1.5 text-stone-600 dark:text-stone-300 hover:bg-stone-50 dark:hover:bg-stone-800 dark:bg-stone-800"
-              title={auto.status === 'ACTIVE' ? 'Duraklat' : 'Aktive et'}
-            >
-              {auto.status === 'ACTIVE' ? (
-                <Pause className="h-4 w-4" />
-              ) : (
-                <Play className="h-4 w-4" />
-              )}
-            </button>
+            <IconBtn title="Şimdi Çalıştır (gerçek)" color={AMBER} disabled={runNowPending} onClick={() => onRunNow(auto.id)}>
+              <Zap size={15} />
+            </IconBtn>
           )}
           {auto.status !== 'ARCHIVED' && (
-            <button
-              onClick={(e) => {
-                stop(e);
+            <IconBtn title="Dry-Run (aksiyon yapmadan dene)" color={BLUE} onClick={() => onDryRun(auto.id)}>
+              <FlaskConical size={15} />
+            </IconBtn>
+          )}
+          {(auto.status === 'ACTIVE' || auto.status === 'PAUSED' || auto.status === 'DRAFT' || auto.status === 'ERROR') && (
+            <IconBtn
+              title={auto.status === 'ACTIVE' ? 'Duraklat' : 'Aktive et'}
+              color={auto.status === 'ACTIVE' ? AMBER : GREEN}
+              onClick={() => onToggleActive(auto.id, auto.status)}
+            >
+              {auto.status === 'ACTIVE' ? <Pause size={15} /> : <Play size={15} />}
+            </IconBtn>
+          )}
+          {auto.status !== 'ARCHIVED' && (
+            <IconBtn
+              title="Arşivle (geçmiş korunur)"
+              color={MUTED}
+              onClick={() => {
                 if (confirm(`"${auto.title}" arşivlensin mi?`)) onArchive(auto.id);
               }}
-              className="rounded-md border border-stone-300 dark:border-stone-600 bg-white dark:bg-stone-900 p-1.5 text-stone-600 dark:text-stone-300 hover:bg-stone-50 dark:hover:bg-stone-800 dark:bg-stone-800"
-              title="Arşivle (çalışma geçmişi korunur)"
             >
-              <Archive className="h-4 w-4" />
-            </button>
+              <Archive size={15} />
+            </IconBtn>
           )}
           {canHardDelete && (
-            <button
-              onClick={(e) => {
-                stop(e);
-                if (
-                  confirm(
-                    `"${auto.title}" KALICI olarak silinsin mi?\n\nBu işlem geri alınamaz.`,
-                  )
-                ) {
+            <IconBtn
+              title="Kalıcı sil (hiç çalışmamış taslak)"
+              color={RED}
+              onClick={() => {
+                if (confirm(`"${auto.title}" KALICI olarak silinsin mi?\n\nBu işlem geri alınamaz.`))
                   onHardDelete(auto.id);
-                }
               }}
-              className="rounded-md border border-rose-300 dark:border-rose-700 bg-white dark:bg-stone-900 p-1.5 text-rose-600 dark:text-rose-400 hover:bg-rose-50 dark:hover:bg-rose-950"
-              title="Kalıcı sil (sadece hiç çalışmamış taslaklar için)"
             >
-              <Trash2 className="h-4 w-4" />
-            </button>
+              <Trash2 size={15} />
+            </IconBtn>
           )}
         </div>
-      </td>
-    </tr>
+      </div>
+    </div>
   );
 }
 
-function SummaryStat({
+// ─────────────────────────────────────────────────────────────
+// Yardımcı bileşenler
+// ─────────────────────────────────────────────────────────────
+function Stat({
+  color,
   icon,
   label,
   value,
-  subtitle,
+  sub,
 }: {
+  color: string;
   icon: React.ReactNode;
   label: string;
   value: string | number;
-  subtitle?: string;
+  sub?: string;
 }) {
   return (
-    <div className="rounded-lg border border-stone-200 dark:border-stone-700 bg-white dark:bg-stone-900 p-3">
-      <div className="flex items-center gap-1.5 text-xs uppercase tracking-wide text-stone-500 dark:text-stone-400">
-        {icon}
+    <div className="rounded-xl border p-3" style={{ borderColor: LINE, background: CARD }}>
+      <div className="flex items-center gap-1.5 text-[11px] uppercase tracking-wider" style={{ color: MUTED }}>
+        <span style={{ color }}>{icon}</span>
         {label}
       </div>
-      <div className="mt-1 text-xl font-medium text-stone-800 dark:text-stone-100">{value}</div>
-      {subtitle && (
-        <div className="text-[11px] text-stone-500 dark:text-stone-400">{subtitle}</div>
+      <div className="mt-1 text-[20px] font-semibold" style={{ color: TEXT }}>{value}</div>
+      {sub && <div className="text-[11px]" style={{ color: MUTED }}>{sub}</div>}
+    </div>
+  );
+}
+
+function BudgetStat({ monthly, weekly, budget }: { monthly: number; weekly: number; budget: number | null }) {
+  const usd = (n: number) => `$${(n || 0).toFixed(2)}`;
+  const pct = budget && budget > 0 ? Math.min(100, Math.round((monthly / budget) * 100)) : null;
+  const barColor = pct === null ? VIOLET : pct >= 90 ? RED : pct >= 70 ? AMBER : VIOLET;
+  return (
+    <div className="rounded-xl border p-3" style={{ borderColor: LINE, background: CARD }}>
+      <div className="flex items-center gap-1.5 text-[11px] uppercase tracking-wider" style={{ color: MUTED }}>
+        <span style={{ color: VIOLET_SOFT }}><Wallet size={15} /></span>
+        Bu ay maliyet
+      </div>
+      <div className="mt-1 text-[20px] font-semibold" style={{ color: VIOLET_SOFT }}>{usd(monthly)}</div>
+      {budget && budget > 0 ? (
+        <>
+          <div className="mt-1.5 h-1.5 w-full overflow-hidden rounded-full" style={{ background: 'rgba(255,255,255,0.08)' }}>
+            <div className="h-full rounded-full" style={{ width: `${pct}%`, background: barColor }} />
+          </div>
+          <div className="mt-1 text-[11px]" style={{ color: MUTED }}>
+            {usd(monthly)} / {usd(budget)} bütçe (%{pct})
+          </div>
+        </>
+      ) : (
+        <div className="text-[11px]" style={{ color: MUTED }}>Bu hafta {usd(weekly)} · limitsiz</div>
       )}
     </div>
+  );
+}
+
+function IconBtn({
+  title,
+  color,
+  onClick,
+  disabled,
+  children,
+}: {
+  title: string;
+  color: string;
+  onClick: () => void;
+  disabled?: boolean;
+  children: React.ReactNode;
+}) {
+  return (
+    <button
+      title={title}
+      disabled={disabled}
+      onClick={onClick}
+      className="grid h-8 w-8 place-items-center rounded-lg border transition-colors disabled:opacity-40"
+      style={{ borderColor: `${color}44`, background: `${color}12`, color }}
+    >
+      {children}
+    </button>
+  );
+}
+
+function FilterSelect({
+  value,
+  onChange,
+  children,
+}: {
+  value: string;
+  onChange: (v: string) => void;
+  children: React.ReactNode;
+}) {
+  return (
+    <select
+      value={value}
+      onChange={(e) => onChange(e.target.value)}
+      className="rounded-lg border bg-transparent px-3 py-2 text-[13px] outline-none"
+      style={{ borderColor: LINE, color: TEXT }}
+    >
+      {children}
+    </select>
   );
 }
 
@@ -512,36 +570,33 @@ function timeAgo(iso: string): string {
 }
 
 function StatusBadge({ status }: { status: AutomationStatus }) {
-  const styles: Record<AutomationStatus, string> = {
-    DRAFT: 'bg-stone-100 text-stone-700 dark:text-stone-200',
-    ACTIVE: 'bg-emerald-100 text-emerald-800',
-    PAUSED: 'bg-amber-100 text-amber-800',
-    ERROR: 'bg-rose-100 text-rose-800',
-    ARCHIVED: 'bg-stone-200 text-stone-500 dark:text-stone-400 dark:text-stone-500',
+  const map: Record<AutomationStatus, { c: string; label: string }> = {
+    DRAFT: { c: MUTED, label: 'Taslak' },
+    ACTIVE: { c: GREEN, label: 'Aktif' },
+    PAUSED: { c: AMBER, label: 'Duraklatıldı' },
+    ERROR: { c: RED, label: 'Hata' },
+    ARCHIVED: { c: MUTED, label: 'Arşiv' },
   };
-  const labels: Record<AutomationStatus, string> = {
-    DRAFT: 'Taslak',
-    ACTIVE: 'Aktif',
-    PAUSED: 'Duraklatıldı',
-    ERROR: 'Hata',
-    ARCHIVED: 'Arşivlendi',
-  };
+  const s = map[status];
   return (
-    <span className={`inline-flex rounded-full px-2 py-0.5 text-xs font-medium ${styles[status]}`}>
-      {labels[status]}
+    <span
+      className="inline-flex shrink-0 rounded-full px-2 py-0.5 text-[10.5px] font-semibold"
+      style={{ background: `${s.c}1f`, color: s.c }}
+    >
+      {s.label}
     </span>
   );
 }
 
-function TriggerIcon({ t }: { t: 'CRON' | 'EVENT' | 'WEBHOOK' | 'MANUAL' }) {
-  if (t === 'CRON') return <Clock className="h-3.5 w-3.5" />;
-  if (t === 'WEBHOOK') return <Webhook className="h-3.5 w-3.5" />;
-  return <Sparkles className="h-3.5 w-3.5" />;
+function TriggerIcon({ t }: { t: AutomationTriggerType }) {
+  if (t === 'CRON') return <Clock size={13} style={{ color: VIOLET_SOFT }} />;
+  if (t === 'WEBHOOK') return <Webhook size={13} style={{ color: VIOLET_SOFT }} />;
+  return <Sparkles size={13} style={{ color: VIOLET_SOFT }} />;
 }
 
-function triggerShort(t: 'CRON' | 'EVENT' | 'WEBHOOK' | 'MANUAL', cfg: any): string {
-  if (t === 'CRON') return cfg?.cron || 'Zamanlı';
-  if (t === 'EVENT') return cfg?.eventName || 'Olay';
+function triggerShort(t: AutomationTriggerType, cfg: any): string {
+  if (t === 'CRON') return describeCron(cfg?.cron);
+  if (t === 'EVENT') return `Olay: ${cfg?.eventName || '—'}`;
   if (t === 'WEBHOOK') return 'Webhook';
   return 'Manuel';
 }

@@ -279,10 +279,18 @@ export class AutomationsService {
   async summary(tenantId: string) {
     const oneWeekAgo = new Date();
     oneWeekAgo.setDate(oneWeekAgo.getDate() - 7);
+    const now = new Date();
+    const monthStart = new Date(Date.UTC(now.getUTCFullYear(), now.getUTCMonth(), 1));
 
     const runScope = {
       automation: { tenantId },
       startedAt: { gte: oneWeekAgo },
+      NOT: [{ triggerPayload: { path: ['_mode'], equals: 'dry-run' } } as any],
+    } as Prisma.AutomationRunWhereInput;
+
+    const monthScope = {
+      automation: { tenantId },
+      startedAt: { gte: monthStart },
       NOT: [{ triggerPayload: { path: ['_mode'], equals: 'dry-run' } } as any],
     } as Prisma.AutomationRunWhereInput;
 
@@ -297,6 +305,7 @@ export class AutomationsService {
       weeklyPartial,
       weeklyRunning,
       totalCost,
+      monthlyCost,
     ] = await this.prisma.$transaction([
       this.prisma.automation.count({ where: { tenantId, status: AutomationStatus.ACTIVE } }),
       this.prisma.automation.count({ where: { tenantId, status: AutomationStatus.PAUSED } }),
@@ -310,7 +319,13 @@ export class AutomationsService {
         where: runScope,
         _sum: { costUsd: true },
       }),
+      this.prisma.automationRun.aggregate({
+        where: monthScope,
+        _sum: { costUsd: true },
+      }),
     ]);
+
+    const monthlyBudgetUsd = Number(process.env.AUTOMATIONS_MONTHLY_BUDGET_USD ?? 0) || null;
 
     return {
       active,
@@ -322,6 +337,8 @@ export class AutomationsService {
       weeklyFailure,
       weeklyPartial,
       weeklyCostUsd: totalCost._sum.costUsd || 0,
+      monthlyCostUsd: monthlyCost._sum.costUsd || 0,
+      monthlyBudgetUsd,
     };
   }
 

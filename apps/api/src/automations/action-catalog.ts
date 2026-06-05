@@ -476,6 +476,12 @@ const FLOW_ACTIONS: AutomationAction[] = [
           items: { type: 'object' },
           description: 'Her eleman için sırayla çalıştırılacak adımlar.',
         },
+        throttleMs: {
+          type: 'number',
+          description:
+            'Her eleman arasına eklenecek bekleme (milisaniye, 0-10000). Toplu WhatsApp/e-posta ' +
+            'gönderiminde sağlayıcı oran sınırına takılmamak için kullan (örn. 500). Varsayılan 0.',
+        },
       },
       required: ['list', 'as', 'steps'],
     },
@@ -534,6 +540,10 @@ const FLOW_ACTIONS: AutomationAction[] = [
           type: 'array',
           items: { type: 'array', items: { type: 'object' } },
           description: 'Her bir branch, sırayla çalışacak adımlar dizisidir.',
+        },
+        concurrency: {
+          type: 'number',
+          description: 'Aynı anda çalışacak en fazla dal sayısı. Varsayılan 5.',
         },
       },
       required: ['branches'],
@@ -600,10 +610,12 @@ export const TRIGGER_SPECS: TriggerSpec[] = [
           'Taxpayer.Created',                   // Yeni müvekkil eklendi
           // İletişim
           'WhatsApp.MessageReceived',           // Müvekkelden WhatsApp mesajı geldi
-          'WhatsApp.DocumentReceived',          // WhatsApp'tan belge geldi
-          // Belge / fatura
+          // Belge
           'Document.Uploaded',                  // Portala belge yüklendi
-          'Invoice.Created',                    // Fatura kaydı oluştu
+          // NOT: WhatsApp.DocumentReceived ve Invoice.Created kataloğdan çıkarıldı —
+          // bu olaylar sistemde HENÜZ yayınlanmıyor. "Çalışmayan tetikleyici" sunmak
+          // yerine listede yalnız gerçekten ateşlenen olaylar tutulur. Yayınlama
+          // noktaları (fatura kaydı / WhatsApp belge) eklenince buraya geri konur.
         ],
       },
       filters: {

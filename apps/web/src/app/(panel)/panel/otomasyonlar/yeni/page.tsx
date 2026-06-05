@@ -15,21 +15,25 @@ import {
   Zap,
   ChevronLeft,
   ShieldAlert,
+  FileText,
 } from 'lucide-react';
-import { automationsApi, type ParsedAutomation } from '@/lib/automations';
+import { automationsApi, describeCron, type ParsedAutomation } from '@/lib/automations';
 
+// ── Otomasyon modülü imza paleti (koyu zemin, mor imza) ──
+const VIOLET = '#a855f7';
+const VIOLET_SOFT = '#c084fc';
 const GOLD = '#d4b876';
+const BG = '#0f0d0b';
+const CARD = '#15110d';
+const CARD2 = '#1c1712';
+const LINE = 'rgba(255,255,255,0.08)';
+const TEXT = '#fafaf9';
+const MUTED = 'rgba(250,250,249,0.58)';
+const GREEN = '#4ade80';
+const RED = '#f87171';
+const AMBER = '#fbbf24';
+const BLUE = '#60a5fa';
 
-/**
- * Yeni Otomasyon Oluşturma — Faz 2 UI.
- *
- * Akış:
- *  1. Kullanıcı textarea'ya Türkçe cümle yazar.
- *  2. "Önizle" → backend parser çalışır, ParsedAutomation döner.
- *  3. Önizleme paneli açılır: insan-okur açıklama + adımlar + uyarılar.
- *  4. "Kur ve Aktif Et" → POST /automations + PATCH /:id/status (ACTIVE).
- *  5. Liste sayfasına yönlen.
- */
 export default function YeniOtomasyonPage() {
   const router = useRouter();
   const [prompt, setPrompt] = useState('');
@@ -54,8 +58,9 @@ export default function YeniOtomasyonPage() {
     },
   });
 
+  // activate=false ise DRAFT olarak bırakılır (düşük güvende önerilir).
   const createMutation = useMutation({
-    mutationFn: async () => {
+    mutationFn: async (activate: boolean) => {
       if (!parsed) throw new Error('Önizleme yok');
       const created = await automationsApi.create({
         prompt,
@@ -66,22 +71,25 @@ export default function YeniOtomasyonPage() {
         steps: parsed.steps,
         estimatedCostPerRun: parsed.estimatedCostPerRun,
       });
-      // Hemen ACTIVE'e geçir
-      await automationsApi.setStatus(created.id, 'ACTIVE');
-      return created;
+      if (activate) {
+        await automationsApi.setStatus(created.id, 'ACTIVE');
+      }
+      return { created, activate };
     },
-    onSuccess: (created) => {
-      toast.success(`"${created.title}" oluşturuldu ve aktif edildi`);
-      router.push('/panel/otomasyonlar');
+    onSuccess: ({ created, activate }) => {
+      toast.success(
+        activate
+          ? `"${created.title}" oluşturuldu ve aktif edildi`
+          : `"${created.title}" taslak olarak kaydedildi`,
+      );
+      router.push(activate ? '/panel/otomasyonlar' : `/panel/otomasyonlar/${created.id}`);
     },
     onError: (err: any) => {
-      const msg = err?.response?.data?.message || err?.message || 'Kaydetme başarısız';
-      toast.error(msg);
+      toast.error(err?.response?.data?.message || err?.message || 'Kaydetme başarısız');
     },
   });
 
   const EXAMPLES: Array<{ category: string; cumle: string; note?: string }> = [
-    // Zamanlı
     {
       category: 'Zamanlı',
       cumle:
@@ -96,9 +104,8 @@ export default function YeniOtomasyonPage() {
       category: 'Zamanlı',
       cumle:
         "Her saat tahsilat riski yüksek müvekkellerin sayısını kontrol et, 5'i geçtiyse bana acil bildirim at.",
-      note: 'Eşik takibi: cron + branch_if pattern',
+      note: 'Eşik takibi: cron + branch_if',
     },
-    // Olay-tetikli
     {
       category: 'Olay-tetikli',
       cumle:
@@ -106,135 +113,129 @@ export default function YeniOtomasyonPage() {
     },
     {
       category: 'Olay-tetikli',
-      cumle:
-        "Yeni bir müvekkil eklendiğinde bana hoşgeldin bildirimi at ve müvekkele WhatsApp şablonu gönder.",
+      cumle: "Yeni bir müvekkil eklendiğinde bana hoşgeldin bildirimi at ve müvekkele WhatsApp şablonu gönder.",
     },
     {
       category: 'Olay-tetikli',
-      cumle:
-        "Müvekkil portala belge yüklediğinde belgenin başlığıyla beraber bana bildirim at.",
+      cumle: "Müvekkil portala belge yüklediğinde belgenin başlığıyla beraber bana bildirim at.",
     },
-    {
-      category: 'Olay-tetikli',
-      cumle:
-        "Müvekkil WhatsApp'tan bana mesaj attığında mesaj içeriği ve müvekkel adıyla beraber bildirim oluştur.",
-    },
-    // Karmaşık
     {
       category: 'Karmaşık',
       cumle:
         "Her ayın 5'inde tüm aktif müvekkeller için: KDV durumunu kontrol et, eksikse müvekkele şablon mesaj gönder, eksik olanların listesini bana e-postala.",
       note: 'for_each + branch_if',
     },
-    {
-      category: 'Karmaşık',
-      cumle:
-        "Her gün sabah 8'de geciken müvekkelleri listele, 5'ten fazlaysa bana acil bildirim, az ise sadece e-posta at.",
-      note: 'branch_if then/else',
-    },
   ];
 
-  const groupedExamples = EXAMPLES.reduce<Record<string, typeof EXAMPLES>>(
-    (acc, ex) => {
-      (acc[ex.category] = acc[ex.category] || []).push(ex);
-      return acc;
-    },
-    {},
-  );
+  const grouped = EXAMPLES.reduce<Record<string, typeof EXAMPLES>>((acc, ex) => {
+    (acc[ex.category] = acc[ex.category] || []).push(ex);
+    return acc;
+  }, {});
 
   return (
-    <div className="mx-auto max-w-5xl px-4 py-8">
-      {/* Üst başlık */}
-      <div className="mb-6 flex items-center gap-3">
+    <div className="mx-auto max-w-3xl space-y-5 px-4 pb-16" style={{ color: TEXT }}>
+      {/* ── Başlık ── */}
+      <header
+        className="relative overflow-hidden rounded-2xl border p-5"
+        style={{
+          borderColor: LINE,
+          background:
+            'radial-gradient(120% 140% at 0% 0%, rgba(168,85,247,0.18), transparent 46%), radial-gradient(120% 140% at 100% 0%, rgba(212,184,118,0.14), transparent 46%), #0f0d0b',
+        }}
+      >
+        <div
+          className="absolute inset-x-0 top-0 h-1"
+          style={{ background: 'linear-gradient(90deg, #a855f7, #c084fc, #60a5fa, #4ade80, #d4b876)' }}
+        />
         <button
-          onClick={() => router.back()}
-          className="rounded-lg p-2 text-stone-500 dark:text-stone-400 dark:text-stone-500 hover:bg-stone-100 dark:hover:bg-stone-800 hover:text-stone-700 dark:hover:text-stone-200 dark:text-stone-200"
+          onClick={() => router.push('/panel/otomasyonlar')}
+          className="inline-flex items-center gap-1.5 text-[12px] font-medium"
+          style={{ color: MUTED }}
         >
-          <ChevronLeft className="h-5 w-5" />
+          <ChevronLeft size={14} /> Otomasyonlarım
         </button>
-        <div className="flex items-center gap-2">
-          <Wand2 className="h-6 w-6" style={{ color: GOLD }} />
-          <h1 className="text-2xl font-serif text-stone-800 dark:text-stone-100">Yeni Otomasyon</h1>
-        </div>
-      </div>
+        <h1 className="mt-2 flex items-center gap-2.5 text-[26px] font-semibold leading-tight">
+          <span
+            className="grid h-10 w-10 place-items-center rounded-xl"
+            style={{ background: 'linear-gradient(135deg, #a855f7, #c084fc)', boxShadow: '0 6px 18px rgba(168,85,247,0.40)' }}
+          >
+            <Wand2 size={20} style={{ color: '#1a1410' }} />
+          </span>
+          Yeni Otomasyon
+        </h1>
+        <p className="mt-2 max-w-2xl text-[13px]" style={{ color: MUTED }}>
+          Otomatik yapılmasını istediğin işi Türkçe yaz. Moren AI cümleyi okuyup uygun otomasyonu
+          kurar. Önizlemeyi inceleyip onayladığında çalışmaya başlar.
+        </p>
+      </header>
 
-      <p className="mb-4 text-sm text-stone-600 dark:text-stone-300">
-        Otomatik yapılmasını istediğin işi Türkçe yaz. Moren AI cümleyi okuyup uygun
-        otomasyonu kuracak. Sen önizlemeyi inceleyip onayladığında çalışmaya başlar.
-      </p>
-
-      {/* Yetenek kartı */}
-      <details className="mb-6 rounded-lg border border-stone-200 dark:border-stone-700 bg-stone-50 dark:bg-stone-800 p-3 text-xs">
-        <summary className="cursor-pointer font-medium text-stone-700 dark:text-stone-200">
+      {/* ── Yetenek kartı ── */}
+      <details className="rounded-xl border p-3 text-[12px]" style={{ borderColor: LINE, background: CARD }}>
+        <summary className="cursor-pointer font-medium" style={{ color: TEXT }}>
           Moren AI Otomasyon ne yapabilir, ne yapamaz?
         </summary>
         <div className="mt-3 grid gap-3 sm:grid-cols-2">
           <div>
-            <div className="mb-1 font-semibold text-emerald-700 dark:text-emerald-400">
-              YAPABİLİR
-            </div>
-            <ul className="space-y-1 text-stone-600 dark:text-stone-300">
-              <li>• Mükellef/mizan/fatura/beyan verisi sorgula</li>
-              <li>• In-app bildirim, e-posta, WhatsApp şablon mesajı gönder</li>
-              <li>• Belgeden Claude ile fatura alanı çıkar (extract_invoice_fields)</li>
-              <li>• Resmi Gazete'yi anahtar kelimelerle tarar, özetler</li>
-              <li>• Tetikleyici: cron (her dakika/saat/gün/ay), olay, manuel</li>
-              <li>• Olaylar: evrak değişimi, müvekkel kaydı, WA mesajı, belge yükleme</li>
+            <div className="mb-1 font-semibold" style={{ color: GREEN }}>YAPABİLİR</div>
+            <ul className="space-y-1" style={{ color: MUTED }}>
+              <li>• Mükellef / mizan / fatura / beyan verisi sorgular</li>
+              <li>• In-app bildirim, e-posta, WhatsApp şablon mesajı gönderir</li>
+              <li>• Fişi MIHSAP'tan çekip Word üretir, yazıcıya gönderir</li>
+              <li>• Resmî Gazete'yi anahtar kelimeyle tarar, özetler</li>
+              <li>• Zamanlı (her gün/hafta/ay) çalışır — Türkiye saatiyle</li>
+              <li>• Olaylar: evrak değişimi, müvekkel kaydı, WA mesajı, belge yükleme, KDV kilidi</li>
               <li>• for_each / branch_if / parallel / wait / format_list akış kontrolü</li>
             </ul>
           </div>
           <div>
-            <div className="mb-1 font-semibold text-rose-700 dark:text-rose-400">
-              YAPAMAZ (henüz)
-            </div>
-            <ul className="space-y-1 text-stone-600 dark:text-stone-300">
-              <li>• Luca'ya direkt fiş atma (entegrasyon yok)</li>
-              <li>• GİB IVD'den tebligat çekme (agent aktif değil)</li>
-              <li>• Portal arayüzündeki butonları tıklatma</li>
-              <li>• PDF/Resim OCR (StorageService bağlantısı yok)</li>
-              <li>• SMS gönderme (sağlayıcı yapılandırılmamış)</li>
-              <li>• Webhook ile dış sistemden tetiklenme (bu sürümde kapalı)</li>
-              <li>• Dış sistemlerden veri çekme (allowlist dışı domain)</li>
-              <li>• Dakikadan kısa sürede (saniye/realtime)</li>
+            <div className="mb-1 font-semibold" style={{ color: RED }}>YAPAMAZ (henüz)</div>
+            <ul className="space-y-1" style={{ color: MUTED }}>
+              <li>• Luca'ya doğrudan fiş atma</li>
+              <li>• PDF/Resim OCR (belge metne çevirme)</li>
+              <li>• SMS gönderme (sağlayıcı bağlı değil)</li>
+              <li>• "Fatura oluşunca" / "WhatsApp'tan belge gelince" tetiklenme</li>
+              <li>• Webhook ile dış sistemden tetiklenme (kapalı)</li>
+              <li>• Allowlist dışı sitelerden veri çekme</li>
+              <li>• Dakikadan kısa (saniye/gerçek zamanlı) çalışma</li>
             </ul>
           </div>
         </div>
-        <div className="mt-3 rounded bg-amber-50 dark:bg-amber-950/30 p-2 text-stone-700 dark:text-stone-200 border border-amber-200 dark:border-amber-900/50">
-          <strong>İpucu:</strong> Yapamayacağı bir şey istersen güven puanı 0 ile "yapamıyorum"
-          mesajı görürsün. Sistem sessizce yanlış otomasyon kurmaz.
+        <div
+          className="mt-3 rounded-lg border p-2"
+          style={{ borderColor: `${AMBER}40`, background: `${AMBER}12`, color: TEXT }}
+        >
+          <strong style={{ color: AMBER }}>İpucu:</strong> Yapamayacağı bir şey istersen güven puanı 0
+          ile "yapamıyorum" mesajı görürsün. Sistem sessizce yanlış otomasyon kurmaz.
         </div>
       </details>
 
-      {/* Cümle textarea */}
-      <div className="rounded-2xl border border-stone-200 dark:border-stone-700 bg-white dark:bg-stone-900 p-6 shadow-sm">
-        <label className="mb-2 block text-sm font-medium text-stone-700 dark:text-stone-200">
+      {/* ── Cümle girişi ── */}
+      <section className="rounded-2xl border p-5" style={{ borderColor: LINE, background: CARD }}>
+        <label className="mb-2 block text-[13px] font-medium" style={{ color: TEXT }}>
           Ne yapmasını istiyorsun?
         </label>
         <textarea
           value={prompt}
           onChange={(e) => setPrompt(e.target.value)}
-          placeholder="Örn: Her ayın 22'sinde KDV beyannamesi gecikenlere WhatsApp at..."
-          className="min-h-[120px] w-full resize-y rounded-lg border border-stone-300 dark:border-stone-600 bg-stone-50 dark:bg-stone-800 p-3 font-mono text-sm text-stone-800 dark:text-stone-100 outline-none focus:border-amber-400 focus:bg-white dark:focus:bg-stone-900 dark:bg-stone-900"
+          placeholder="Örn: Her ayın 22'sinde KDV beyannamesi gecikenlere WhatsApp at…"
+          className="min-h-[120px] w-full resize-y rounded-lg border p-3 font-mono text-[13px] outline-none"
+          style={{ borderColor: LINE, background: CARD2, color: TEXT }}
           maxLength={2000}
           disabled={parseMutation.isPending}
         />
-        <div className="mt-1 flex justify-between text-xs text-stone-500 dark:text-stone-400 dark:text-stone-500">
+        <div className="mt-1 flex justify-between text-[11px]" style={{ color: MUTED }}>
           <span>{prompt.length} / 2000</span>
-          <span>Daha açık yazarsan, daha doğru kurar.</span>
+          <span>Daha açık yazarsan daha doğru kurar.</span>
         </div>
 
         <div className="mt-4 flex flex-wrap items-center gap-2">
           <button
             onClick={() => parseMutation.mutate(prompt)}
             disabled={prompt.trim().length < 5 || parseMutation.isPending}
-            className="inline-flex items-center gap-2 rounded-lg px-4 py-2 text-sm font-medium text-white shadow-sm transition disabled:opacity-50"
-            style={{ backgroundColor: GOLD }}
+            className="inline-flex items-center gap-2 rounded-lg px-4 py-2 text-[13px] font-semibold disabled:opacity-50"
+            style={{ background: 'linear-gradient(135deg, #a855f7, #c084fc)', color: '#1a1410' }}
           >
-            {parseMutation.isPending ? (
-              <Loader2 className="h-4 w-4 animate-spin" />
-            ) : (
-              <Sparkles className="h-4 w-4" />
-            )}
+            {parseMutation.isPending ? <Loader2 size={16} className="animate-spin" /> : <Sparkles size={16} />}
             {parseMutation.isPending ? 'Cümle çevriliyor…' : 'Önizle'}
           </button>
           {parsed && (
@@ -244,36 +245,36 @@ export default function YeniOtomasyonPage() {
                 parseMutation.mutate(prompt);
               }}
               disabled={parseMutation.isPending}
-              className="inline-flex items-center gap-2 rounded-lg border border-stone-300 dark:border-stone-600 bg-white dark:bg-stone-900 px-4 py-2 text-sm font-medium text-stone-700 dark:text-stone-200 hover:bg-stone-50 dark:hover:bg-stone-800 dark:bg-stone-800"
+              className="inline-flex items-center gap-2 rounded-lg border px-4 py-2 text-[13px] font-medium"
+              style={{ borderColor: LINE, color: TEXT }}
             >
               Yeniden Üret
             </button>
           )}
         </div>
 
-        {/* Örnek cümleler — kategorize */}
-        <details className="mt-5 group" open>
-          <summary className="cursor-pointer text-sm font-medium text-stone-600 dark:text-stone-300 hover:text-stone-800 dark:hover:text-stone-100">
+        {/* Örnekler */}
+        <details className="mt-5" open>
+          <summary className="cursor-pointer text-[13px] font-medium" style={{ color: MUTED }}>
             Örnek cümleler (tıklayınca kullanılır)
           </summary>
           <div className="mt-3 space-y-4">
-            {Object.entries(groupedExamples).map(([category, items]) => (
-              <div key={category}>
-                <h4 className="mb-1.5 text-[11px] font-semibold uppercase tracking-wide text-amber-700 dark:text-amber-400">
-                  {category}
+            {Object.entries(grouped).map(([cat, items]) => (
+              <div key={cat}>
+                <h4 className="mb-1.5 text-[10.5px] font-semibold uppercase tracking-wider" style={{ color: VIOLET_SOFT }}>
+                  {cat}
                 </h4>
                 <ul className="space-y-1.5">
                   {items.map((ex, i) => (
                     <li key={i}>
                       <button
                         onClick={() => setPrompt(ex.cumle)}
-                        className="block w-full rounded-lg border border-stone-200 dark:border-stone-700 bg-stone-50 dark:bg-stone-800 p-3 text-left text-xs text-stone-700 dark:text-stone-200 hover:border-amber-300 hover:bg-amber-50 dark:hover:bg-amber-950/30"
+                        className="block w-full rounded-lg border p-3 text-left text-[12px] transition-colors"
+                        style={{ borderColor: LINE, background: CARD2, color: TEXT }}
                       >
                         <div>{ex.cumle}</div>
                         {ex.note && (
-                          <div className="mt-1 text-[10px] text-stone-500 dark:text-stone-400 italic">
-                            {ex.note}
-                          </div>
+                          <div className="mt-1 text-[10px] italic" style={{ color: MUTED }}>{ex.note}</div>
                         )}
                       </button>
                     </li>
@@ -283,10 +284,16 @@ export default function YeniOtomasyonPage() {
             ))}
           </div>
         </details>
-      </div>
+      </section>
 
-      {/* Önizleme paneli */}
-      {parsed && <PreviewPanel parsed={parsed} onConfirm={() => createMutation.mutate()} confirming={createMutation.isPending} />}
+      {/* ── Önizleme ── */}
+      {parsed && (
+        <PreviewPanel
+          parsed={parsed}
+          confirming={createMutation.isPending}
+          onConfirm={(activate) => createMutation.mutate(activate)}
+        />
+      )}
     </div>
   );
 }
@@ -297,45 +304,45 @@ function PreviewPanel({
   confirming,
 }: {
   parsed: ParsedAutomation;
-  onConfirm: () => void;
+  onConfirm: (activate: boolean) => void;
   confirming: boolean;
 }) {
   const hasSteps = parsed.steps.steps.length > 0;
   const lowConfidence = parsed.confidence < 0.6;
 
   return (
-    <div className="mt-6 rounded-2xl border-2 bg-white dark:bg-stone-900 shadow-md" style={{ borderColor: GOLD }}>
-      <div className="border-b border-stone-200 dark:border-stone-700 px-6 py-4">
-        <div className="flex items-center gap-2 text-sm font-medium text-stone-500 dark:text-stone-400 dark:text-stone-500">
-          <CheckCircle2 className="h-4 w-4" style={{ color: GOLD }} />
-          Önizleme
+    <section className="overflow-hidden rounded-2xl border-2" style={{ borderColor: `${VIOLET}66`, background: CARD }}>
+      <div className="border-b px-5 py-4" style={{ borderColor: LINE }}>
+        <div className="flex items-center gap-2 text-[12px] font-medium uppercase tracking-wider" style={{ color: VIOLET_SOFT }}>
+          <CheckCircle2 size={15} /> Önizleme
         </div>
-        <h2 className="mt-1 text-xl font-serif text-stone-800 dark:text-stone-100">{parsed.title}</h2>
-        {parsed.description && (
-          <p className="mt-1 text-sm text-stone-600 dark:text-stone-300">{parsed.description}</p>
-        )}
+        <h2 className="mt-1 text-[19px] font-semibold" style={{ color: TEXT }}>{parsed.title}</h2>
+        {parsed.description && <p className="mt-1 text-[13px]" style={{ color: MUTED }}>{parsed.description}</p>}
       </div>
 
-      <div className="space-y-5 px-6 py-5">
+      <div className="space-y-4 px-5 py-5">
         {/* İnsan-okur açıklama */}
-        <div className="rounded-lg bg-amber-50 dark:bg-stone-800 p-4 text-sm leading-relaxed text-stone-800 dark:text-stone-100 border border-amber-200 dark:border-amber-900/40">
+        <div
+          className="rounded-lg border p-4 text-[13px] leading-relaxed"
+          style={{ borderColor: `${VIOLET}33`, background: `${VIOLET}10`, color: TEXT }}
+        >
           {parsed.humanReadablePreview}
         </div>
 
-        {/* Tetikleyici + maliyet */}
-        <div className="grid grid-cols-2 gap-3 text-sm">
-          <InfoCard
+        {/* Tetik + maliyet */}
+        <div className="grid grid-cols-2 gap-3">
+          <Info
             icon={<TriggerIcon t={parsed.triggerType} />}
             label="Tetikleyici"
             value={triggerLabel(parsed.triggerType, parsed.triggerConfig)}
           />
-          <InfoCard
-            icon={<Zap className="h-4 w-4" style={{ color: GOLD }} />}
+          <Info
+            icon={<Zap size={15} style={{ color: VIOLET_SOFT }} />}
             label="Tahmini maliyet"
             value={
               parsed.estimatedCostPerRun > 0
                 ? `~$${parsed.estimatedCostPerRun.toFixed(3)} / çalışma`
-                : 'Çalışma başına 0 USD (Claude çağrısı yok)'
+                : 'Çalışma başına $0 (AI çağrısı yok)'
             }
           />
         </div>
@@ -343,8 +350,8 @@ function PreviewPanel({
         {/* Adımlar */}
         {hasSteps && (
           <div>
-            <h3 className="mb-2 text-sm font-medium text-stone-700 dark:text-stone-200">Adımlar</h3>
-            <ol className="space-y-2 text-xs">
+            <h3 className="mb-2 text-[13px] font-medium" style={{ color: TEXT }}>Adımlar</h3>
+            <ol className="space-y-2 text-[12px]">
               {parsed.steps.steps.map((step: any, i: number) => (
                 <StepItem key={step.id ?? i} step={step} depth={0} index={i + 1} />
               ))}
@@ -352,102 +359,123 @@ function PreviewPanel({
           </div>
         )}
 
-        {/* Uyarılar */}
+        {/* Yapamıyorum */}
         {!hasSteps && (
-          <div className="flex gap-2 rounded-lg border border-rose-200 dark:border-rose-900/50 bg-rose-50 dark:bg-rose-950/30 p-3 text-sm text-rose-800 dark:text-rose-200">
-            <AlertTriangle className="h-5 w-5 shrink-0" />
+          <div className="flex gap-2 rounded-lg border p-3 text-[13px]" style={{ borderColor: `${RED}55`, background: `${RED}14`, color: '#fecaca' }}>
+            <AlertTriangle size={18} className="shrink-0" />
             <div>
-              Bu cümleyi mevcut araçlarımla bir otomasyon olarak kuramadım. Önizleme paneline
-              yazılan açıklamaya bak; cümleyi daha açık ifade ederek tekrar dene.
+              Bu cümleyi mevcut araçlarımla bir otomasyon olarak kuramadım. Açıklamaya bak; cümleyi daha
+              açık ifade ederek tekrar dene.
             </div>
           </div>
         )}
 
+        {/* Düşük güven */}
         {lowConfidence && hasSteps && (
-          <div className="flex gap-2 rounded-lg border border-amber-200 dark:border-amber-900/50 bg-amber-50 dark:bg-amber-950/30 p-3 text-sm text-amber-900 dark:text-amber-200">
-            <AlertTriangle className="h-5 w-5 shrink-0" />
+          <div className="flex gap-2 rounded-lg border p-3 text-[13px]" style={{ borderColor: `${AMBER}55`, background: `${AMBER}14`, color: '#fde68a' }}>
+            <AlertTriangle size={18} className="shrink-0" />
             <div>
-              <b>Güven puanı düşük ({Math.round(parsed.confidence * 100)}%).</b> Cümlende bazı
-              belirsizlikler var. Önizlemeyi dikkatli oku — beklediğin gibi olmayan bir varsayım
-              yapmış olabilirim.
+              <b>Güven puanı düşük (%{Math.round(parsed.confidence * 100)}).</b> Cümlende bazı belirsizlikler
+              var. Aşağıda <b>"Taslak Kaydet"</b> önerilir — önce Dry-Run ile dene, doğruysa aktif et.
             </div>
           </div>
         )}
 
+        {/* Gizlilik */}
         {parsed.privacyNotice && (
-          <div className="flex gap-2 rounded-lg border border-blue-200 dark:border-blue-900/50 bg-blue-50 dark:bg-blue-950/30 p-3 text-sm text-blue-900 dark:text-blue-200">
-            <ShieldAlert className="h-5 w-5 shrink-0" />
+          <div className="flex gap-2 rounded-lg border p-3 text-[13px]" style={{ borderColor: `${BLUE}55`, background: `${BLUE}14`, color: '#bfdbfe' }}>
+            <ShieldAlert size={18} className="shrink-0" />
             <div>{parsed.privacyNotice}</div>
           </div>
         )}
 
-        {/* Aksiyon butonları */}
+        {/* Aksiyonlar */}
         {hasSteps && (
-          <div className="flex flex-wrap items-center gap-2 border-t border-stone-100 dark:border-stone-800 pt-4">
-            <button
-              onClick={onConfirm}
-              disabled={confirming}
-              className="inline-flex items-center gap-2 rounded-lg px-4 py-2 text-sm font-medium text-white shadow-sm disabled:opacity-50"
-              style={{ backgroundColor: GOLD }}
-            >
-              {confirming && <Loader2 className="h-4 w-4 animate-spin" />}
-              Kur ve Aktif Et
-            </button>
-            <button
-              disabled
-              title="Faz 4 — gelecek sürüm"
-              className="rounded-lg border border-stone-300 dark:border-stone-600 bg-white dark:bg-stone-900 px-4 py-2 text-sm text-stone-400 dark:text-stone-500"
-            >
-              Adımları Manuel Düzenle
-            </button>
+          <div className="flex flex-wrap items-center gap-2 border-t pt-4" style={{ borderColor: LINE }}>
+            {lowConfidence ? (
+              <>
+                <button
+                  onClick={() => onConfirm(false)}
+                  disabled={confirming}
+                  className="inline-flex items-center gap-2 rounded-lg px-4 py-2 text-[13px] font-semibold disabled:opacity-50"
+                  style={{ background: 'linear-gradient(135deg, #a855f7, #c084fc)', color: '#1a1410' }}
+                >
+                  {confirming && <Loader2 size={16} className="animate-spin" />}
+                  <FileText size={15} /> Taslak Kaydet
+                </button>
+                <button
+                  onClick={() => onConfirm(true)}
+                  disabled={confirming}
+                  className="inline-flex items-center gap-2 rounded-lg border px-4 py-2 text-[13px] font-medium disabled:opacity-50"
+                  style={{ borderColor: LINE, color: TEXT }}
+                >
+                  Yine de Aktif Et
+                </button>
+              </>
+            ) : (
+              <>
+                <button
+                  onClick={() => onConfirm(true)}
+                  disabled={confirming}
+                  className="inline-flex items-center gap-2 rounded-lg px-4 py-2 text-[13px] font-semibold disabled:opacity-50"
+                  style={{ background: 'linear-gradient(135deg, #a855f7, #c084fc)', color: '#1a1410' }}
+                >
+                  {confirming && <Loader2 size={16} className="animate-spin" />} Kur ve Aktif Et
+                </button>
+                <button
+                  onClick={() => onConfirm(false)}
+                  disabled={confirming}
+                  className="inline-flex items-center gap-2 rounded-lg border px-4 py-2 text-[13px] font-medium disabled:opacity-50"
+                  style={{ borderColor: LINE, color: TEXT }}
+                >
+                  <FileText size={15} /> Taslak Kaydet
+                </button>
+              </>
+            )}
           </div>
         )}
       </div>
-    </div>
+    </section>
   );
 }
 
-function InfoCard({ icon, label, value }: { icon: React.ReactNode; label: string; value: string }) {
+function Info({ icon, label, value }: { icon: React.ReactNode; label: string; value: string }) {
   return (
-    <div className="rounded-lg border border-stone-200 dark:border-stone-700 bg-stone-50 dark:bg-stone-800 p-3">
-      <div className="flex items-center gap-2 text-xs uppercase tracking-wide text-stone-500 dark:text-stone-400 dark:text-stone-500">
+    <div className="rounded-lg border p-3" style={{ borderColor: LINE, background: CARD2 }}>
+      <div className="flex items-center gap-2 text-[11px] uppercase tracking-wider" style={{ color: MUTED }}>
         {icon}
         {label}
       </div>
-      <div className="mt-1 text-sm text-stone-800 dark:text-stone-100">{value}</div>
+      <div className="mt-1 text-[13px]" style={{ color: TEXT }}>{value}</div>
     </div>
   );
 }
 
 function StepItem({ step, depth, index }: { step: any; depth: number; index: number }) {
-  const isFlow = ['for_each', 'branch_if', 'parallel', 'wait'].includes(step.tool);
+  const isFlow = ['for_each', 'branch_if', 'parallel', 'wait', 'format_list'].includes(step.tool);
   return (
-    <li
-      className="rounded-lg border border-stone-200 dark:border-stone-700 bg-stone-50 dark:bg-stone-800 p-3"
-      style={{ marginLeft: depth * 16 }}
-    >
+    <li className="rounded-lg border p-3" style={{ borderColor: LINE, background: CARD2, marginLeft: depth * 14 }}>
       <div className="flex items-start gap-2">
         <span
-          className="mt-0.5 inline-flex h-5 w-5 shrink-0 items-center justify-center rounded-full text-[10px] font-semibold text-white"
-          style={{ backgroundColor: isFlow ? '#94a3b8' : GOLD }}
+          className="mt-0.5 grid h-5 w-5 shrink-0 place-items-center rounded-full text-[10px] font-semibold"
+          style={{ background: isFlow ? '#64748b' : VIOLET, color: '#1a1410' }}
         >
           {index}
         </span>
         <div className="flex-1">
-          <code className="rounded bg-white dark:bg-stone-900 px-1.5 py-0.5 text-[11px] font-medium text-stone-700 dark:text-stone-200">
+          <code className="rounded px-1.5 py-0.5 text-[11px] font-medium" style={{ background: '#0b0907', color: VIOLET_SOFT }}>
             {step.tool}
           </code>
           {step.outputAs && (
-            <span className="ml-2 text-[11px] text-stone-500 dark:text-stone-400 dark:text-stone-500">
-              → <code className="text-stone-700 dark:text-stone-200">{step.outputAs}</code>
+            <span className="ml-2 text-[11px]" style={{ color: MUTED }}>
+              → <code style={{ color: TEXT }}>{step.outputAs}</code>
             </span>
           )}
-          <pre className="mt-1 max-h-32 overflow-auto whitespace-pre-wrap break-words text-[11px] text-stone-600 dark:text-stone-300">
+          <pre className="mt-1 max-h-32 overflow-auto whitespace-pre-wrap break-words text-[11px]" style={{ color: MUTED }}>
             {JSON.stringify(step.args, null, 2)}
           </pre>
         </div>
       </div>
-
       {Array.isArray(step.steps) && step.steps.length > 0 && (
         <ol className="mt-2 space-y-1">
           {step.steps.map((s: any, i: number) => (
@@ -457,7 +485,7 @@ function StepItem({ step, depth, index }: { step: any; depth: number; index: num
       )}
       {Array.isArray(step.then) && step.then.length > 0 && (
         <div className="mt-2">
-          <div className="text-[10px] uppercase text-stone-500 dark:text-stone-400 dark:text-stone-500">then:</div>
+          <div className="text-[10px] uppercase" style={{ color: MUTED }}>then:</div>
           <ol className="space-y-1">
             {step.then.map((s: any, i: number) => (
               <StepItem key={s.id ?? i} step={s} depth={depth + 1} index={i + 1} />
@@ -467,7 +495,7 @@ function StepItem({ step, depth, index }: { step: any; depth: number; index: num
       )}
       {Array.isArray(step.else) && step.else.length > 0 && (
         <div className="mt-2">
-          <div className="text-[10px] uppercase text-stone-500 dark:text-stone-400 dark:text-stone-500">else:</div>
+          <div className="text-[10px] uppercase" style={{ color: MUTED }}>else:</div>
           <ol className="space-y-1">
             {step.else.map((s: any, i: number) => (
               <StepItem key={s.id ?? i} step={s} depth={depth + 1} index={i + 1} />
@@ -480,16 +508,13 @@ function StepItem({ step, depth, index }: { step: any; depth: number; index: num
 }
 
 function TriggerIcon({ t }: { t: 'CRON' | 'EVENT' | 'WEBHOOK' | 'MANUAL' }) {
-  if (t === 'CRON') return <Clock className="h-4 w-4" style={{ color: GOLD }} />;
-  if (t === 'WEBHOOK') return <Webhook className="h-4 w-4" style={{ color: GOLD }} />;
-  return <Sparkles className="h-4 w-4" style={{ color: GOLD }} />;
+  if (t === 'CRON') return <Clock size={15} style={{ color: VIOLET_SOFT }} />;
+  if (t === 'WEBHOOK') return <Webhook size={15} style={{ color: VIOLET_SOFT }} />;
+  return <Sparkles size={15} style={{ color: VIOLET_SOFT }} />;
 }
 
-function triggerLabel(
-  type: 'CRON' | 'EVENT' | 'WEBHOOK' | 'MANUAL',
-  cfg: Record<string, unknown>,
-): string {
-  if (type === 'CRON' && typeof cfg.cron === 'string') return `Zamanlı (${cfg.cron})`;
+function triggerLabel(type: 'CRON' | 'EVENT' | 'WEBHOOK' | 'MANUAL', cfg: Record<string, unknown>): string {
+  if (type === 'CRON' && typeof cfg.cron === 'string') return `${describeCron(cfg.cron)} (${cfg.cron})`;
   if (type === 'EVENT' && typeof cfg.eventName === 'string') return `Olay: ${cfg.eventName}`;
   if (type === 'WEBHOOK') return 'Webhook (dış HTTP isteği)';
   return 'Manuel (sadece tıkla)';

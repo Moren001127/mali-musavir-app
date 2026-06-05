@@ -25,14 +25,43 @@ import {
   Activity,
   FileText,
   Settings as SettingsIcon,
-  ShieldAlert,
+  CalendarClock,
+  Bell,
   Copy,
+  Pencil,
+  Save,
+  X,
 } from 'lucide-react';
-import { automationsApi, type Automation, type AutomationRun, type AutomationStatus } from '@/lib/automations';
+import {
+  automationsApi,
+  describeCron,
+  type Automation,
+  type AutomationRun,
+  type AutomationStatus,
+} from '@/lib/automations';
 
+// ── Otomasyon modülü imza paleti (koyu zemin, mor imza) ──
+const VIOLET = '#a855f7';
+const VIOLET_SOFT = '#c084fc';
 const GOLD = '#d4b876';
+const BG = '#0f0d0b';
+const CARD = '#15110d';
+const CARD2 = '#1c1712';
+const LINE = 'rgba(255,255,255,0.08)';
+const TEXT = '#fafaf9';
+const MUTED = 'rgba(250,250,249,0.58)';
+const GREEN = '#4ade80';
+const RED = '#f87171';
+const AMBER = '#fbbf24';
+const BLUE = '#60a5fa';
 
 type Tab = 'definition' | 'history' | 'logs';
+
+const POLICY_LABEL: Record<string, string> = {
+  notify: 'Hata olursa bana bildir',
+  pause_after_3: '3 hatadan sonra duraklat',
+  ignore: 'Hataları yok say',
+};
 
 export default function OtomasyonDetayPage() {
   const router = useRouter();
@@ -45,7 +74,7 @@ export default function OtomasyonDetayPage() {
   const { data: auto, isLoading, error } = useQuery({
     queryKey: ['automation', id],
     queryFn: () => automationsApi.getOne(id),
-    refetchInterval: 5000, // çalışan otomasyonlar için sürekli güncelle
+    refetchInterval: 5000,
   });
 
   const { data: runs } = useQuery({
@@ -81,12 +110,11 @@ export default function OtomasyonDetayPage() {
       toast.success('Kalıcı olarak silindi');
       router.push('/panel/otomasyonlar');
     },
-    onError: (err: any) => {
+    onError: (err: any) =>
       toast.error(
         err?.response?.data?.message ||
           'Kalıcı silme başarısız. Sadece hiç çalışmamış DRAFT otomasyonlar tamamen silinebilir.',
-      );
-    },
+      ),
   });
 
   const runNow = useMutation({
@@ -125,23 +153,24 @@ export default function OtomasyonDetayPage() {
 
   if (isLoading) {
     return (
-      <div className="mx-auto max-w-5xl px-4 py-12 text-center text-stone-500 dark:text-stone-400">
+      <div className="mx-auto max-w-4xl px-4 py-12 text-center" style={{ color: MUTED }}>
         <Loader2 className="mx-auto h-6 w-6 animate-spin" />
-        <div className="mt-2 text-sm">Yükleniyor…</div>
+        <div className="mt-2 text-[13px]">Yükleniyor…</div>
       </div>
     );
   }
 
   if (error || !auto) {
     return (
-      <div className="mx-auto max-w-5xl px-4 py-8">
+      <div className="mx-auto max-w-4xl px-4 py-8" style={{ color: TEXT }}>
         <button
           onClick={() => router.push('/panel/otomasyonlar')}
-          className="mb-4 inline-flex items-center gap-1 text-sm text-stone-600 dark:text-stone-300 hover:underline"
+          className="mb-4 inline-flex items-center gap-1 text-[13px]"
+          style={{ color: MUTED }}
         >
-          <ChevronLeft className="h-4 w-4" /> Geri
+          <ChevronLeft size={16} /> Geri
         </button>
-        <div className="rounded-lg border border-rose-200 dark:border-rose-900/50 bg-rose-50 dark:bg-rose-950/30 p-4 text-sm text-rose-800 dark:text-rose-200">
+        <div className="rounded-lg border p-4 text-[13px]" style={{ borderColor: `${RED}55`, background: `${RED}14`, color: '#fecaca' }}>
           Otomasyon yüklenemedi: {(error as any)?.message || 'Bulunamadı'}
         </div>
       </div>
@@ -150,265 +179,346 @@ export default function OtomasyonDetayPage() {
 
   const stepsBlob: any = auto.steps;
   const stepList: any[] = Array.isArray(stepsBlob?.steps) ? stepsBlob.steps : [];
-
   const canHardDelete = auto.status === 'DRAFT' && auto.totalRuns === 0;
 
   return (
-    <div className="mx-auto max-w-6xl px-4 py-8">
-      {/* Üst başlık */}
-      <div className="mb-2">
+    <div className="mx-auto max-w-4xl space-y-5 px-4 pb-16" style={{ color: TEXT }}>
+      {/* ── Başlık ── */}
+      <header
+        className="relative overflow-hidden rounded-2xl border p-5"
+        style={{
+          borderColor: LINE,
+          background:
+            'radial-gradient(120% 140% at 0% 0%, rgba(168,85,247,0.18), transparent 46%), radial-gradient(120% 140% at 100% 0%, rgba(212,184,118,0.14), transparent 46%), #0f0d0b',
+        }}
+      >
+        <div
+          className="absolute inset-x-0 top-0 h-1"
+          style={{ background: 'linear-gradient(90deg, #a855f7, #c084fc, #60a5fa, #4ade80, #d4b876)' }}
+        />
         <button
           onClick={() => router.push('/panel/otomasyonlar')}
-          className="inline-flex items-center gap-1 text-sm text-stone-600 dark:text-stone-300 hover:underline"
+          className="inline-flex items-center gap-1.5 text-[12px] font-medium"
+          style={{ color: MUTED }}
         >
-          <ChevronLeft className="h-4 w-4" /> Otomasyonlarım
+          <ChevronLeft size={14} /> Otomasyonlarım
         </button>
-      </div>
 
-      <div className="mb-6 flex flex-wrap items-start justify-between gap-3">
-        <div className="flex-1">
-          <div className="flex items-center gap-2">
-            <Wand2 className="h-6 w-6" style={{ color: GOLD }} />
-            <h1 className="text-2xl font-serif text-stone-800 dark:text-stone-100">{auto.title}</h1>
-            <StatusBadge status={auto.status} />
+        <div className="mt-2 flex flex-wrap items-start justify-between gap-3">
+          <div className="min-w-0 flex-1">
+            <div className="flex flex-wrap items-center gap-2">
+              <span
+                className="grid h-9 w-9 place-items-center rounded-xl"
+                style={{ background: 'linear-gradient(135deg, #a855f7, #c084fc)', boxShadow: '0 6px 18px rgba(168,85,247,0.40)' }}
+              >
+                <Wand2 size={18} style={{ color: '#1a1410' }} />
+              </span>
+              <h1 className="text-[22px] font-semibold leading-tight">{auto.title}</h1>
+              <StatusBadge status={auto.status} />
+            </div>
+            {auto.description && <p className="mt-1.5 text-[13px]" style={{ color: MUTED }}>{auto.description}</p>}
+            <p className="mt-1.5 text-[12px]" style={{ color: MUTED }}>
+              <span className="font-medium">Cümle:</span> "{auto.prompt}"
+            </p>
           </div>
-          {auto.description && (
-            <p className="mt-1 text-sm text-stone-600 dark:text-stone-300">{auto.description}</p>
-          )}
-          <p className="mt-2 text-xs text-stone-500 dark:text-stone-400">
-            <span className="font-medium">Orijinal cümle:</span> "{auto.prompt}"
-          </p>
-        </div>
 
-        {/* Aksiyon butonları */}
-        <div className="flex flex-wrap items-center gap-2">
-          {auto.status === 'ACTIVE' && (
-            <>
-              <button
-                onClick={() => runNow.mutate()}
-                disabled={runNow.isPending}
-                className="inline-flex items-center gap-1 rounded-md border border-amber-300 dark:border-amber-700 bg-amber-50 dark:bg-amber-950/30 px-3 py-1.5 text-sm font-medium text-amber-800 dark:text-amber-200 hover:bg-amber-100 dark:hover:bg-amber-900/40 disabled:opacity-50"
+          {/* Aksiyon butonları */}
+          <div className="flex flex-wrap items-center gap-1.5">
+            {auto.status === 'ACTIVE' && (
+              <ActionBtn color={AMBER} onClick={() => runNow.mutate()} disabled={runNow.isPending}>
+                {runNow.isPending ? <Loader2 size={14} className="animate-spin" /> : <Zap size={14} />} Şimdi Çalıştır
+              </ActionBtn>
+            )}
+            {auto.status !== 'ARCHIVED' && (
+              <ActionBtn color={BLUE} onClick={() => dryRun.mutate()} disabled={dryRun.isPending}>
+                {dryRun.isPending ? <Loader2 size={14} className="animate-spin" /> : <FlaskConical size={14} />} Dry-Run
+              </ActionBtn>
+            )}
+            {(auto.status === 'ACTIVE' || auto.status === 'PAUSED' || auto.status === 'DRAFT' || auto.status === 'ERROR') && (
+              <ActionBtn
+                color={auto.status === 'ACTIVE' ? AMBER : GREEN}
+                onClick={() => setStatus.mutate(auto.status === 'ACTIVE' ? 'PAUSED' : 'ACTIVE')}
               >
-                {runNow.isPending ? <Loader2 className="h-4 w-4 animate-spin" /> : <Zap className="h-4 w-4" />}
-                Şimdi Çalıştır
-              </button>
-              <button
-                onClick={() => dryRun.mutate()}
-                disabled={dryRun.isPending}
-                className="inline-flex items-center gap-1 rounded-md border border-stone-300 dark:border-stone-600 bg-white dark:bg-stone-900 px-3 py-1.5 text-sm font-medium text-stone-700 dark:text-stone-200 hover:bg-stone-50 dark:hover:bg-stone-800"
-              >
-                {dryRun.isPending ? <Loader2 className="h-4 w-4 animate-spin" /> : <FlaskConical className="h-4 w-4" />}
-                Dry-Run
-              </button>
-            </>
-          )}
-          {auto.status !== 'ACTIVE' && auto.status !== 'ARCHIVED' && (
-            <button
-              onClick={() => dryRun.mutate()}
-              disabled={dryRun.isPending}
-              className="inline-flex items-center gap-1 rounded-md border border-stone-300 dark:border-stone-600 bg-white dark:bg-stone-900 px-3 py-1.5 text-sm font-medium text-stone-700 dark:text-stone-200 hover:bg-stone-50 dark:hover:bg-stone-800"
-            >
-              {dryRun.isPending ? <Loader2 className="h-4 w-4 animate-spin" /> : <FlaskConical className="h-4 w-4" />}
-              Dry-Run
-            </button>
-          )}
-          {(auto.status === 'ACTIVE' || auto.status === 'PAUSED' || auto.status === 'DRAFT' || auto.status === 'ERROR') && (
-            <button
-              onClick={() =>
-                setStatus.mutate(auto.status === 'ACTIVE' ? 'PAUSED' : 'ACTIVE')
-              }
-              className="inline-flex items-center gap-1 rounded-md border border-stone-300 dark:border-stone-600 bg-white dark:bg-stone-900 px-3 py-1.5 text-sm font-medium text-stone-700 dark:text-stone-200 hover:bg-stone-50 dark:hover:bg-stone-800"
-            >
-              {auto.status === 'ACTIVE' ? (
-                <>
-                  <Pause className="h-4 w-4" /> Duraklat
-                </>
-              ) : (
-                <>
-                  <Play className="h-4 w-4" /> Aktive Et
-                </>
-              )}
-            </button>
-          )}
-          <button
-            onClick={() => duplicate.mutate()}
-            disabled={duplicate.isPending}
-            className="inline-flex items-center gap-1 rounded-md border border-stone-300 dark:border-stone-600 bg-white dark:bg-stone-900 px-3 py-1.5 text-sm text-stone-700 dark:text-stone-200 hover:bg-stone-50 dark:hover:bg-stone-800 disabled:opacity-50"
-            title="Bu otomasyonu kopyalayıp yeni bir DRAFT oluştur"
-          >
-            {duplicate.isPending ? <Loader2 className="h-4 w-4 animate-spin" /> : <Copy className="h-4 w-4" />}
-            Çoğalt
-          </button>
-          {auto.status !== 'ARCHIVED' && (
-            <button
-              onClick={() => {
-                if (confirm(`"${auto.title}" arşivlensin mi?`)) archive.mutate();
-              }}
-              className="inline-flex items-center gap-1 rounded-md border border-stone-300 dark:border-stone-600 bg-white dark:bg-stone-900 px-3 py-1.5 text-sm text-stone-700 dark:text-stone-200 hover:bg-stone-50 dark:hover:bg-stone-800"
-            >
-              <Archive className="h-4 w-4" /> Arşivle
-            </button>
-          )}
-          {canHardDelete && (
-            <button
-              onClick={() => {
-                if (confirm(`"${auto.title}" KALICI olarak silinsin mi?`)) hardDelete.mutate();
-              }}
-              className="inline-flex items-center gap-1 rounded-md border border-rose-300 dark:border-rose-700 bg-white dark:bg-stone-900 px-3 py-1.5 text-sm text-rose-600 dark:text-rose-400 hover:bg-rose-50 dark:hover:bg-rose-950"
-            >
-              <Trash2 className="h-4 w-4" /> Sil
-            </button>
-          )}
+                {auto.status === 'ACTIVE' ? <><Pause size={14} /> Duraklat</> : <><Play size={14} /> Aktive Et</>}
+              </ActionBtn>
+            )}
+            <ActionBtn color={MUTED} onClick={() => duplicate.mutate()} disabled={duplicate.isPending}>
+              {duplicate.isPending ? <Loader2 size={14} className="animate-spin" /> : <Copy size={14} />} Çoğalt
+            </ActionBtn>
+            {auto.status !== 'ARCHIVED' && (
+              <ActionBtn color={MUTED} onClick={() => { if (confirm(`"${auto.title}" arşivlensin mi?`)) archive.mutate(); }}>
+                <Archive size={14} /> Arşivle
+              </ActionBtn>
+            )}
+            {canHardDelete && (
+              <ActionBtn color={RED} onClick={() => { if (confirm(`"${auto.title}" KALICI olarak silinsin mi?`)) hardDelete.mutate(); }}>
+                <Trash2 size={14} /> Sil
+              </ActionBtn>
+            )}
+          </div>
         </div>
-      </div>
+      </header>
 
-      {/* Özet istatistik */}
-      <div className="mb-6 grid grid-cols-2 gap-3 sm:grid-cols-4">
-        <Stat icon={<Activity className="h-4 w-4" />} label="Toplam Çalışma" value={String(auto.totalRuns)} />
+      {/* ── Özet istatistik ── */}
+      <section className="grid grid-cols-2 gap-3 sm:grid-cols-4">
+        <Stat color={VIOLET_SOFT} icon={<Activity size={15} />} label="Toplam Çalışma" value={String(auto.totalRuns)} />
+        <Stat color={GREEN} icon={<CheckCircle2 size={15} />} label="Başarılı" value={String(auto.successRuns)} />
+        <Stat color={RED} icon={<XCircle size={15} />} label="Başarısız" value={String(auto.failureRuns)} />
         <Stat
-          icon={<CheckCircle2 className="h-4 w-4 text-emerald-500" />}
-          label="Başarılı"
-          value={String(auto.successRuns)}
+          color={VIOLET_SOFT}
+          icon={<Zap size={15} />}
+          label="~ Çalışma Maliyeti"
+          value={auto.estimatedCostPerRun ? `$${auto.estimatedCostPerRun.toFixed(4)}` : '$0'}
         />
-        <Stat
-          icon={<XCircle className="h-4 w-4 text-rose-500" />}
-          label="Başarısız"
-          value={String(auto.failureRuns)}
-        />
-        <Stat
-          icon={<Zap className="h-4 w-4" style={{ color: GOLD }} />}
-          label="~ Run Maliyet"
-          value={
-            auto.estimatedCostPerRun ? `$${auto.estimatedCostPerRun.toFixed(4)}` : '$0'
-          }
-        />
-      </div>
+      </section>
 
-      {/* Sekme başlıkları */}
-      <div className="mb-4 flex gap-1 border-b border-stone-200 dark:border-stone-700">
-        <TabButton active={tab === 'definition'} onClick={() => setTab('definition')} icon={<FileText className="h-4 w-4" />}>
-          Tanım
-        </TabButton>
-        <TabButton active={tab === 'history'} onClick={() => setTab('history')} icon={<Activity className="h-4 w-4" />}>
+      {/* ── Sekmeler ── */}
+      <div className="flex gap-1 border-b" style={{ borderColor: LINE }}>
+        <TabBtn active={tab === 'definition'} onClick={() => setTab('definition')} icon={<FileText size={15} />}>Tanım</TabBtn>
+        <TabBtn active={tab === 'history'} onClick={() => setTab('history')} icon={<Activity size={15} />}>
           Çalışma Geçmişi ({runs?.length ?? 0})
-        </TabButton>
-        <TabButton active={tab === 'logs'} onClick={() => setTab('logs')} icon={<SettingsIcon className="h-4 w-4" />}>
-          Detay Log
-        </TabButton>
+        </TabBtn>
+        <TabBtn active={tab === 'logs'} onClick={() => setTab('logs')} icon={<SettingsIcon size={15} />}>Detay Log</TabBtn>
       </div>
 
-      {/* Sekme içerikleri */}
-      {tab === 'definition' && (
-        <DefinitionTab auto={auto} stepList={stepList} />
-      )}
+      {tab === 'definition' && <DefinitionTab auto={auto} stepList={stepList} />}
       {tab === 'history' && (
         <HistoryTab runs={runs ?? []} onSelect={(rid) => { setSelectedRunId(rid); setTab('logs'); }} />
       )}
-      {tab === 'logs' && (
-        <LogsTab
-          runs={runs ?? []}
-          selectedRunId={selectedRunId}
-          onSelect={setSelectedRunId}
-        />
-      )}
+      {tab === 'logs' && <LogsTab runs={runs ?? []} selectedRunId={selectedRunId} onSelect={setSelectedRunId} />}
     </div>
   );
 }
 
-// ─── Tanım sekmesi ───────────────────────────────────────────
-
+// ─── Tanım sekmesi + DÜZENLEME ───────────────────────────────
 function DefinitionTab({ auto, stepList }: { auto: Automation; stepList: any[] }) {
+  const qc = useQueryClient();
+  const [editing, setEditing] = useState(false);
+  const [title, setTitle] = useState(auto.title);
+  const [description, setDescription] = useState(auto.description ?? '');
+  const [failurePolicy, setFailurePolicy] = useState(auto.failurePolicy || 'notify');
+  const [cron, setCron] = useState((auto.triggerConfig as any)?.cron ?? '');
+  const [stepsText, setStepsText] = useState(() => JSON.stringify(auto.steps, null, 2));
+  const [stepsError, setStepsError] = useState<string | null>(null);
+
+  const update = useMutation({
+    mutationFn: () => {
+      let stepsParsed: any;
+      try {
+        stepsParsed = JSON.parse(stepsText);
+      } catch {
+        throw new Error('Adımlar JSON olarak geçersiz — kontrol et.');
+      }
+      const payload: any = { title, description, failurePolicy, steps: stepsParsed };
+      if (auto.triggerType === 'CRON') {
+        payload.triggerConfig = { ...(auto.triggerConfig as any), cron };
+      }
+      return automationsApi.update(auto.id, payload);
+    },
+    onSuccess: () => {
+      qc.invalidateQueries({ queryKey: ['automation', auto.id] });
+      qc.invalidateQueries({ queryKey: ['automations'] });
+      toast.success('Otomasyon güncellendi');
+      setEditing(false);
+      setStepsError(null);
+    },
+    onError: (err: any) => {
+      const msg = err?.response?.data?.message || err?.message || 'Güncelleme başarısız';
+      setStepsError(msg);
+      toast.error(msg);
+    },
+  });
+
   return (
     <div className="space-y-4">
+      {/* Tetik + sonraki/son çalışma + politika */}
       <div className="grid grid-cols-1 gap-3 sm:grid-cols-2">
-        <InfoCard
+        <Info
           icon={<TriggerIcon t={auto.triggerType} />}
           label="Tetikleyici"
           value={triggerLabel(auto.triggerType, auto.triggerConfig)}
         />
-        <InfoCard
-          icon={<Clock className="h-4 w-4" style={{ color: GOLD }} />}
-          label="Son Çalışma"
+        <Info
+          icon={<CalendarClock size={15} style={{ color: VIOLET_SOFT }} />}
+          label="Sonraki çalışma"
+          value={
+            auto.status === 'ACTIVE' && auto.nextRunAt
+              ? new Date(auto.nextRunAt).toLocaleString('tr-TR')
+              : auto.status === 'ACTIVE'
+                ? 'Hesaplanıyor…'
+                : 'Aktif değil'
+          }
+        />
+        <Info
+          icon={<Clock size={15} style={{ color: VIOLET_SOFT }} />}
+          label="Son çalışma"
           value={
             auto.lastRunAt
-              ? new Date(auto.lastRunAt).toLocaleString('tr-TR') +
-                (auto.lastRunStatus ? ` (${auto.lastRunStatus})` : '')
+              ? new Date(auto.lastRunAt).toLocaleString('tr-TR') + (auto.lastRunStatus ? ` (${auto.lastRunStatus})` : '')
               : 'Hiç çalıştırılmadı'
           }
         />
+        <Info
+          icon={<Bell size={15} style={{ color: VIOLET_SOFT }} />}
+          label="Hata politikası"
+          value={POLICY_LABEL[auto.failurePolicy] || auto.failurePolicy}
+        />
       </div>
 
-      <div>
-        <h3 className="mb-2 text-sm font-medium text-stone-700 dark:text-stone-200">Adımlar</h3>
-        <ol className="space-y-2 text-xs">
-          {stepList.length === 0 && (
-            <li className="rounded-lg border border-stone-200 dark:border-stone-700 bg-stone-50 dark:bg-stone-800 p-3 text-stone-500 dark:text-stone-400">
-              Bu otomasyonda hiç adım yok.
-            </li>
+      {/* Düzenleme bloğu */}
+      <div className="rounded-xl border p-4" style={{ borderColor: LINE, background: CARD }}>
+        <div className="mb-3 flex items-center justify-between">
+          <h3 className="text-[13px] font-medium" style={{ color: TEXT }}>Tanım</h3>
+          {!editing ? (
+            <button
+              onClick={() => setEditing(true)}
+              className="inline-flex items-center gap-1.5 rounded-lg border px-3 py-1.5 text-[12px] font-medium"
+              style={{ borderColor: `${VIOLET}55`, background: `${VIOLET}14`, color: VIOLET_SOFT }}
+            >
+              <Pencil size={13} /> Düzenle
+            </button>
+          ) : (
+            <div className="flex items-center gap-1.5">
+              <button
+                onClick={() => update.mutate()}
+                disabled={update.isPending}
+                className="inline-flex items-center gap-1.5 rounded-lg px-3 py-1.5 text-[12px] font-semibold disabled:opacity-50"
+                style={{ background: 'linear-gradient(135deg, #a855f7, #c084fc)', color: '#1a1410' }}
+              >
+                {update.isPending ? <Loader2 size={13} className="animate-spin" /> : <Save size={13} />} Kaydet
+              </button>
+              <button
+                onClick={() => {
+                  setEditing(false);
+                  setTitle(auto.title);
+                  setDescription(auto.description ?? '');
+                  setFailurePolicy(auto.failurePolicy || 'notify');
+                  setCron((auto.triggerConfig as any)?.cron ?? '');
+                  setStepsText(JSON.stringify(auto.steps, null, 2));
+                  setStepsError(null);
+                }}
+                className="inline-flex items-center gap-1.5 rounded-lg border px-3 py-1.5 text-[12px]"
+                style={{ borderColor: LINE, color: MUTED }}
+              >
+                <X size={13} /> Vazgeç
+              </button>
+            </div>
           )}
-          {stepList.map((step, i) => (
-            <StepItem key={step.id ?? i} step={step} depth={0} index={i + 1} />
-          ))}
-        </ol>
+        </div>
+
+        {editing ? (
+          <div className="space-y-3">
+            <Field label="Başlık">
+              <input
+                value={title}
+                onChange={(e) => setTitle(e.target.value)}
+                className="w-full rounded-lg border bg-transparent px-3 py-2 text-[13px] outline-none"
+                style={{ borderColor: LINE, color: TEXT }}
+              />
+            </Field>
+            <Field label="Açıklama">
+              <input
+                value={description}
+                onChange={(e) => setDescription(e.target.value)}
+                className="w-full rounded-lg border bg-transparent px-3 py-2 text-[13px] outline-none"
+                style={{ borderColor: LINE, color: TEXT }}
+              />
+            </Field>
+            {auto.triggerType === 'CRON' && (
+              <Field label={`Zamanlama (cron) — ${describeCron(cron)}`}>
+                <input
+                  value={cron}
+                  onChange={(e) => setCron(e.target.value)}
+                  placeholder="0 10 22 * *"
+                  className="w-full rounded-lg border bg-transparent px-3 py-2 font-mono text-[13px] outline-none"
+                  style={{ borderColor: LINE, color: TEXT }}
+                />
+              </Field>
+            )}
+            <Field label="Hata politikası">
+              <select
+                value={failurePolicy}
+                onChange={(e) => setFailurePolicy(e.target.value)}
+                className="w-full rounded-lg border bg-transparent px-3 py-2 text-[13px] outline-none"
+                style={{ borderColor: LINE, color: TEXT }}
+              >
+                <option value="notify" style={{ background: BG }}>Hata olursa bana bildir</option>
+                <option value="pause_after_3" style={{ background: BG }}>3 hatadan sonra duraklat</option>
+                <option value="ignore" style={{ background: BG }}>Hataları yok say</option>
+              </select>
+            </Field>
+            <Field label="Adımlar (JSON — ileri kullanım)">
+              <textarea
+                value={stepsText}
+                onChange={(e) => setStepsText(e.target.value)}
+                spellCheck={false}
+                className="min-h-[220px] w-full resize-y rounded-lg border p-3 font-mono text-[11.5px] outline-none"
+                style={{ borderColor: LINE, background: CARD2, color: TEXT }}
+              />
+            </Field>
+            {stepsError && (
+              <div className="rounded-lg border p-2 text-[12px]" style={{ borderColor: `${RED}55`, background: `${RED}14`, color: '#fecaca' }}>
+                {stepsError}
+              </div>
+            )}
+          </div>
+        ) : (
+          <ol className="space-y-2 text-[12px]">
+            {stepList.length === 0 && (
+              <li className="rounded-lg border p-3" style={{ borderColor: LINE, background: CARD2, color: MUTED }}>
+                Bu otomasyonda hiç adım yok.
+              </li>
+            )}
+            {stepList.map((step, i) => (
+              <StepItem key={step.id ?? i} step={step} depth={0} index={i + 1} />
+            ))}
+          </ol>
+        )}
       </div>
     </div>
   );
 }
 
-// ─── Çalışma Geçmişi sekmesi ──────────────────────────────────
-
+// ─── Çalışma Geçmişi ─────────────────────────────────────────
 function HistoryTab({ runs, onSelect }: { runs: AutomationRun[]; onSelect: (id: string) => void }) {
   if (runs.length === 0) {
     return (
-      <div className="rounded-lg border border-dashed border-stone-300 dark:border-stone-700 bg-white dark:bg-stone-900 p-8 text-center text-sm text-stone-500 dark:text-stone-400">
-        Henüz çalışma geçmişi yok. "Şimdi Çalıştır" veya tetikleyici ateşlemesi olunca burada listelenir.
+      <div className="rounded-xl border border-dashed p-8 text-center text-[13px]" style={{ borderColor: LINE, background: CARD, color: MUTED }}>
+        Henüz çalışma geçmişi yok. "Şimdi Çalıştır" veya tetikleyici ateşlenince burada listelenir.
       </div>
     );
   }
-
   return (
-    <div className="overflow-hidden rounded-lg border border-stone-200 dark:border-stone-700 bg-white dark:bg-stone-900">
-      <table className="w-full text-sm">
-        <thead className="bg-stone-50 dark:bg-stone-800 text-left text-xs uppercase tracking-wide text-stone-500 dark:text-stone-400">
-          <tr>
-            <th className="px-4 py-2 font-medium">Başlangıç</th>
-            <th className="px-4 py-2 font-medium">Durum</th>
-            <th className="px-4 py-2 font-medium">Süre</th>
-            <th className="px-4 py-2 font-medium">Özet</th>
-            <th className="px-4 py-2 font-medium text-right">Maliyet</th>
-            <th className="px-4 py-2 font-medium" />
+    <div className="overflow-hidden rounded-xl border" style={{ borderColor: LINE, background: CARD }}>
+      <table className="w-full text-[13px]">
+        <thead style={{ background: CARD2 }}>
+          <tr style={{ color: MUTED }} className="text-left text-[11px] uppercase tracking-wider">
+            <th className="px-4 py-2.5 font-medium">Başlangıç</th>
+            <th className="px-4 py-2.5 font-medium">Durum</th>
+            <th className="px-4 py-2.5 font-medium">Süre</th>
+            <th className="px-4 py-2.5 font-medium">Özet</th>
+            <th className="px-4 py-2.5 text-right font-medium">Maliyet</th>
+            <th className="px-4 py-2.5" />
           </tr>
         </thead>
-        <tbody className="divide-y divide-stone-100 dark:divide-stone-800">
+        <tbody>
           {runs.map((run) => {
-            const ms =
-              run.finishedAt && run.startedAt
-                ? new Date(run.finishedAt).getTime() - new Date(run.startedAt).getTime()
-                : null;
+            const ms = run.finishedAt && run.startedAt
+              ? new Date(run.finishedAt).getTime() - new Date(run.startedAt).getTime()
+              : null;
             return (
               <tr
                 key={run.id}
-                className="cursor-pointer hover:bg-stone-50 dark:hover:bg-stone-800"
                 onClick={() => onSelect(run.id)}
+                className="cursor-pointer border-t"
+                style={{ borderColor: LINE }}
               >
-                <td className="px-4 py-2 text-stone-700 dark:text-stone-200">
-                  {new Date(run.startedAt).toLocaleString('tr-TR')}
-                </td>
-                <td className="px-4 py-2">
-                  <RunStatusBadge status={run.status} />
-                </td>
-                <td className="px-4 py-2 text-stone-600 dark:text-stone-300">
-                  {ms !== null ? `${(ms / 1000).toFixed(1)}s` : 'devam ediyor'}
-                </td>
-                <td className="px-4 py-2 text-stone-700 dark:text-stone-200 max-w-md truncate">
-                  {run.summary || run.errorMessage || '—'}
-                </td>
-                <td className="px-4 py-2 text-right text-stone-600 dark:text-stone-300">
-                  {run.costUsd ? `$${run.costUsd.toFixed(4)}` : '$0'}
-                </td>
-                <td className="px-4 py-2 text-right">
-                  <ChevronRight className="h-4 w-4 text-stone-400 dark:text-stone-500" />
-                </td>
+                <td className="px-4 py-2.5" style={{ color: TEXT }}>{new Date(run.startedAt).toLocaleString('tr-TR')}</td>
+                <td className="px-4 py-2.5"><RunStatusBadge status={run.status} /></td>
+                <td className="px-4 py-2.5" style={{ color: MUTED }}>{ms !== null ? `${(ms / 1000).toFixed(1)}s` : 'devam ediyor'}</td>
+                <td className="max-w-md truncate px-4 py-2.5" style={{ color: TEXT }}>{run.summary || run.errorMessage || '—'}</td>
+                <td className="px-4 py-2.5 text-right" style={{ color: MUTED }}>{run.costUsd ? `$${run.costUsd.toFixed(4)}` : '$0'}</td>
+                <td className="px-4 py-2.5 text-right"><ChevronRight size={15} style={{ color: MUTED }} /></td>
               </tr>
             );
           })}
@@ -418,8 +528,7 @@ function HistoryTab({ runs, onSelect }: { runs: AutomationRun[]; onSelect: (id: 
   );
 }
 
-// ─── Log sekmesi (run detay) ──────────────────────────────────
-
+// ─── Log sekmesi ─────────────────────────────────────────────
 function LogsTab({
   runs,
   selectedRunId,
@@ -429,94 +538,65 @@ function LogsTab({
   selectedRunId: string | null;
   onSelect: (id: string) => void;
 }) {
-  const run = selectedRunId
-    ? runs.find((r) => r.id === selectedRunId) ?? runs[0]
-    : runs[0];
-
+  const run = selectedRunId ? runs.find((r) => r.id === selectedRunId) ?? runs[0] : runs[0];
   if (!run) {
     return (
-      <div className="rounded-lg border border-dashed border-stone-300 dark:border-stone-700 bg-white dark:bg-stone-900 p-8 text-center text-sm text-stone-500 dark:text-stone-400">
+      <div className="rounded-xl border border-dashed p-8 text-center text-[13px]" style={{ borderColor: LINE, background: CARD, color: MUTED }}>
         Henüz çalışma kaydı yok.
       </div>
     );
   }
-
   const stepLogs: any[] = Array.isArray(run.stepLogs) ? run.stepLogs : [];
 
   return (
-    <div className="grid grid-cols-1 gap-4 md:grid-cols-[280px_1fr]">
-      {/* Sol: run listesi (özet) */}
-      <div className="space-y-1 max-h-[600px] overflow-auto">
+    <div className="grid grid-cols-1 gap-4 md:grid-cols-[260px_1fr]">
+      <div className="max-h-[600px] space-y-1.5 overflow-auto">
         {runs.map((r) => (
           <button
             key={r.id}
             onClick={() => onSelect(r.id)}
-            className={`w-full rounded-lg border p-2 text-left text-xs transition ${
-              r.id === run.id
-                ? 'border-amber-400 bg-amber-50 dark:bg-amber-950/30 dark:border-amber-700'
-                : 'border-stone-200 dark:border-stone-700 bg-white dark:bg-stone-900 hover:bg-stone-50 dark:hover:bg-stone-800'
-            }`}
+            className="w-full rounded-lg border p-2 text-left text-[11.5px] transition-colors"
+            style={{
+              borderColor: r.id === run.id ? `${VIOLET}66` : LINE,
+              background: r.id === run.id ? `${VIOLET}14` : CARD,
+            }}
           >
             <div className="flex items-center justify-between">
               <RunStatusBadge status={r.status} />
-              <span className="text-[10px] text-stone-500 dark:text-stone-400">
-                {new Date(r.startedAt).toLocaleString('tr-TR')}
-              </span>
+              <span style={{ color: MUTED }}>{new Date(r.startedAt).toLocaleString('tr-TR')}</span>
             </div>
-            <div className="mt-1 truncate text-stone-700 dark:text-stone-200">
-              {r.summary || r.errorMessage || '—'}
-            </div>
+            <div className="mt-1 truncate" style={{ color: TEXT }}>{r.summary || r.errorMessage || '—'}</div>
           </button>
         ))}
       </div>
 
-      {/* Sağ: seçili run'ın detayı */}
       <div className="space-y-3">
-        <div className="rounded-lg border border-stone-200 dark:border-stone-700 bg-white dark:bg-stone-900 p-4">
+        <div className="rounded-xl border p-4" style={{ borderColor: LINE, background: CARD }}>
           <div className="mb-2 flex items-center justify-between">
             <div>
-              <div className="text-xs uppercase tracking-wide text-stone-500 dark:text-stone-400">Run</div>
-              <code className="text-xs text-stone-700 dark:text-stone-200">{run.id}</code>
+              <div className="text-[11px] uppercase tracking-wider" style={{ color: MUTED }}>Çalışma</div>
+              <code className="text-[12px]" style={{ color: TEXT }}>{run.id}</code>
             </div>
             <RunStatusBadge status={run.status} />
           </div>
-          <div className="grid grid-cols-2 gap-2 text-xs sm:grid-cols-4">
-            <div>
-              <div className="text-stone-500 dark:text-stone-400">Başlangıç</div>
-              <div className="text-stone-700 dark:text-stone-200">
-                {new Date(run.startedAt).toLocaleString('tr-TR')}
-              </div>
-            </div>
-            <div>
-              <div className="text-stone-500 dark:text-stone-400">Bitiş</div>
-              <div className="text-stone-700 dark:text-stone-200">
-                {run.finishedAt ? new Date(run.finishedAt).toLocaleString('tr-TR') : 'Devam'}
-              </div>
-            </div>
-            <div>
-              <div className="text-stone-500 dark:text-stone-400">Maliyet</div>
-              <div className="text-stone-700 dark:text-stone-200">
-                {run.costUsd ? `$${run.costUsd.toFixed(4)}` : '$0'}
-              </div>
-            </div>
-            <div>
-              <div className="text-stone-500 dark:text-stone-400">Adım</div>
-              <div className="text-stone-700 dark:text-stone-200">{stepLogs.length}</div>
-            </div>
+          <div className="grid grid-cols-2 gap-2 text-[12px] sm:grid-cols-4">
+            <Mini label="Başlangıç" value={new Date(run.startedAt).toLocaleString('tr-TR')} />
+            <Mini label="Bitiş" value={run.finishedAt ? new Date(run.finishedAt).toLocaleString('tr-TR') : 'Devam'} />
+            <Mini label="Maliyet" value={run.costUsd ? `$${run.costUsd.toFixed(4)}` : '$0'} />
+            <Mini label="Adım" value={String(stepLogs.length)} />
           </div>
           {run.summary && (
-            <div className="mt-3 rounded-md bg-stone-50 dark:bg-stone-800 p-2 text-xs text-stone-700 dark:text-stone-200">
+            <div className="mt-3 rounded-lg p-2 text-[12px]" style={{ background: CARD2, color: TEXT }}>
               <span className="font-medium">Özet:</span> {run.summary}
             </div>
           )}
           {run.errorMessage && (
-            <div className="mt-3 rounded-md border border-rose-200 dark:border-rose-900/50 bg-rose-50 dark:bg-rose-950/30 p-2 text-xs text-rose-800 dark:text-rose-200">
+            <div className="mt-3 rounded-lg border p-2 text-[12px]" style={{ borderColor: `${RED}55`, background: `${RED}14`, color: '#fecaca' }}>
               <span className="font-medium">Hata:</span> {run.errorMessage}
             </div>
           )}
         </div>
 
-        {/* Adım adım log */}
         <div className="space-y-2">
           {stepLogs.map((sl, i) => (
             <StepLogEntry key={i} log={sl} index={i + 1} />
@@ -531,56 +611,35 @@ function StepLogEntry({ log, index }: { log: any; index: number }) {
   const [open, setOpen] = useState(!!log.error);
   const hasError = !!log.error;
   return (
-    <div
-      className={`rounded-lg border ${
-        hasError
-          ? 'border-rose-300 dark:border-rose-800 bg-rose-50/40 dark:bg-rose-950/20'
-          : 'border-stone-200 dark:border-stone-700 bg-white dark:bg-stone-900'
-      }`}
-    >
-      <button
-        onClick={() => setOpen(!open)}
-        className="flex w-full items-center gap-2 px-3 py-2 text-left text-xs hover:bg-stone-50 dark:hover:bg-stone-800"
-      >
-        {open ? <ChevronDown className="h-3 w-3" /> : <ChevronRight className="h-3 w-3" />}
+    <div className="rounded-lg border" style={{ borderColor: hasError ? `${RED}55` : LINE, background: hasError ? `${RED}0f` : CARD }}>
+      <button onClick={() => setOpen(!open)} className="flex w-full items-center gap-2 px-3 py-2 text-left text-[12px]">
+        {open ? <ChevronDown size={13} /> : <ChevronRight size={13} />}
         <span
-          className="inline-flex h-5 w-5 shrink-0 items-center justify-center rounded-full text-[10px] font-semibold text-white"
-          style={{ backgroundColor: hasError ? '#dc2626' : GOLD }}
+          className="grid h-5 w-5 shrink-0 place-items-center rounded-full text-[10px] font-semibold"
+          style={{ background: hasError ? RED : VIOLET, color: '#1a1410' }}
         >
           {index}
         </span>
-        <code className="font-medium text-stone-700 dark:text-stone-200">{log.tool}</code>
-        <span className="ml-auto text-[10px] text-stone-500 dark:text-stone-400">
-          {log.ms}ms
-        </span>
-        {hasError && (
-          <AlertTriangle className="h-3.5 w-3.5 text-rose-600 dark:text-rose-400" />
-        )}
+        <code className="font-medium" style={{ color: TEXT }}>{log.tool}</code>
+        <span className="ml-auto text-[10px]" style={{ color: MUTED }}>{log.ms}ms</span>
+        {hasError && <AlertTriangle size={14} style={{ color: RED }} />}
       </button>
       {open && (
-        <div className="border-t border-stone-200 dark:border-stone-700 p-3 text-[11px] space-y-2">
+        <div className="space-y-2 border-t p-3 text-[11px]" style={{ borderColor: LINE }}>
           {log.input !== undefined && (
             <details>
-              <summary className="cursor-pointer text-stone-500 dark:text-stone-400">
-                input
-              </summary>
-              <pre className="mt-1 max-h-48 overflow-auto rounded bg-stone-50 dark:bg-stone-800 p-2 text-stone-700 dark:text-stone-200">
-                {JSON.stringify(log.input, null, 2)}
-              </pre>
+              <summary className="cursor-pointer" style={{ color: MUTED }}>input</summary>
+              <pre className="mt-1 max-h-48 overflow-auto rounded p-2" style={{ background: CARD2, color: TEXT }}>{JSON.stringify(log.input, null, 2)}</pre>
             </details>
           )}
           {log.output !== undefined && (
             <details>
-              <summary className="cursor-pointer text-stone-500 dark:text-stone-400">
-                output
-              </summary>
-              <pre className="mt-1 max-h-48 overflow-auto rounded bg-stone-50 dark:bg-stone-800 p-2 text-stone-700 dark:text-stone-200">
-                {JSON.stringify(log.output, null, 2)}
-              </pre>
+              <summary className="cursor-pointer" style={{ color: MUTED }}>output</summary>
+              <pre className="mt-1 max-h-48 overflow-auto rounded p-2" style={{ background: CARD2, color: TEXT }}>{JSON.stringify(log.output, null, 2)}</pre>
             </details>
           )}
           {log.error && (
-            <div className="rounded bg-rose-50 dark:bg-rose-950/30 p-2 text-rose-800 dark:text-rose-200">
+            <div className="rounded p-2" style={{ background: `${RED}14`, color: '#fecaca' }}>
               <span className="font-medium">Hata:</span> {log.error}
             </div>
           )}
@@ -590,41 +649,73 @@ function StepLogEntry({ log, index }: { log: any; index: number }) {
   );
 }
 
-// ─── Yardımcı bileşenler ──────────────────────────────────────
-
-function Stat({
-  icon,
-  label,
-  value,
+// ─── Yardımcı bileşenler ─────────────────────────────────────
+function ActionBtn({
+  color,
+  onClick,
+  disabled,
+  children,
 }: {
-  icon: React.ReactNode;
-  label: string;
-  value: string;
+  color: string;
+  onClick: () => void;
+  disabled?: boolean;
+  children: React.ReactNode;
 }) {
   return (
-    <div className="rounded-lg border border-stone-200 dark:border-stone-700 bg-white dark:bg-stone-900 p-3">
-      <div className="flex items-center gap-1.5 text-xs uppercase tracking-wide text-stone-500 dark:text-stone-400">
-        {icon}
-        {label}
-      </div>
-      <div className="mt-1 text-lg font-medium text-stone-800 dark:text-stone-100">{value}</div>
-    </div>
+    <button
+      onClick={onClick}
+      disabled={disabled}
+      className="inline-flex items-center gap-1.5 rounded-lg border px-3 py-1.5 text-[12px] font-medium transition-colors disabled:opacity-50"
+      style={{ borderColor: `${color}44`, background: `${color}12`, color }}
+    >
+      {children}
+    </button>
   );
 }
 
-function InfoCard({ icon, label, value }: { icon: React.ReactNode; label: string; value: string }) {
+function Stat({ color, icon, label, value }: { color: string; icon: React.ReactNode; label: string; value: string }) {
   return (
-    <div className="rounded-lg border border-stone-200 dark:border-stone-700 bg-stone-50 dark:bg-stone-800 p-3">
-      <div className="flex items-center gap-2 text-xs uppercase tracking-wide text-stone-500 dark:text-stone-400">
-        {icon}
+    <div className="rounded-xl border p-3" style={{ borderColor: LINE, background: CARD }}>
+      <div className="flex items-center gap-1.5 text-[11px] uppercase tracking-wider" style={{ color: MUTED }}>
+        <span style={{ color }}>{icon}</span>
         {label}
       </div>
-      <div className="mt-1 text-sm text-stone-800 dark:text-stone-100">{value}</div>
+      <div className="mt-1 text-[18px] font-semibold" style={{ color: TEXT }}>{value}</div>
     </div>
   );
 }
 
-function TabButton({
+function Info({ icon, label, value }: { icon: React.ReactNode; label: string; value: string }) {
+  return (
+    <div className="rounded-xl border p-3" style={{ borderColor: LINE, background: CARD }}>
+      <div className="flex items-center gap-2 text-[11px] uppercase tracking-wider" style={{ color: MUTED }}>
+        {icon}
+        {label}
+      </div>
+      <div className="mt-1 text-[13px]" style={{ color: TEXT }}>{value}</div>
+    </div>
+  );
+}
+
+function Mini({ label, value }: { label: string; value: string }) {
+  return (
+    <div>
+      <div style={{ color: MUTED }}>{label}</div>
+      <div style={{ color: TEXT }}>{value}</div>
+    </div>
+  );
+}
+
+function Field({ label, children }: { label: string; children: React.ReactNode }) {
+  return (
+    <label className="block">
+      <span className="mb-1 block text-[11.5px] font-medium" style={{ color: MUTED }}>{label}</span>
+      {children}
+    </label>
+  );
+}
+
+function TabBtn({
   active,
   onClick,
   children,
@@ -638,11 +729,11 @@ function TabButton({
   return (
     <button
       onClick={onClick}
-      className={`-mb-px inline-flex items-center gap-1.5 border-b-2 px-3 py-2 text-sm font-medium transition ${
-        active
-          ? 'border-amber-400 text-stone-800 dark:text-stone-100'
-          : 'border-transparent text-stone-500 dark:text-stone-400 hover:text-stone-800 dark:hover:text-stone-200'
-      }`}
+      className="-mb-px inline-flex items-center gap-1.5 border-b-2 px-3 py-2 text-[13px] font-medium transition-colors"
+      style={{
+        borderColor: active ? VIOLET : 'transparent',
+        color: active ? TEXT : MUTED,
+      }}
     >
       {icon}
       {children}
@@ -653,27 +744,24 @@ function TabButton({
 function StepItem({ step, depth, index }: { step: any; depth: number; index: number }) {
   const isFlow = ['for_each', 'branch_if', 'parallel', 'wait', 'format_list'].includes(step.tool);
   return (
-    <li
-      className="rounded-lg border border-stone-200 dark:border-stone-700 bg-stone-50 dark:bg-stone-800 p-3"
-      style={{ marginLeft: depth * 16 }}
-    >
+    <li className="rounded-lg border p-3" style={{ borderColor: LINE, background: CARD2, marginLeft: depth * 14 }}>
       <div className="flex items-start gap-2">
         <span
-          className="mt-0.5 inline-flex h-5 w-5 shrink-0 items-center justify-center rounded-full text-[10px] font-semibold text-white"
-          style={{ backgroundColor: isFlow ? '#94a3b8' : GOLD }}
+          className="mt-0.5 grid h-5 w-5 shrink-0 place-items-center rounded-full text-[10px] font-semibold"
+          style={{ background: isFlow ? '#64748b' : VIOLET, color: '#1a1410' }}
         >
           {index}
         </span>
         <div className="flex-1">
-          <code className="rounded bg-white dark:bg-stone-900 px-1.5 py-0.5 text-[11px] font-medium text-stone-700 dark:text-stone-200">
+          <code className="rounded px-1.5 py-0.5 text-[11px] font-medium" style={{ background: '#0b0907', color: VIOLET_SOFT }}>
             {step.tool}
           </code>
           {step.outputAs && (
-            <span className="ml-2 text-[11px] text-stone-500 dark:text-stone-400">
-              → <code className="text-stone-700 dark:text-stone-200">{step.outputAs}</code>
+            <span className="ml-2 text-[11px]" style={{ color: MUTED }}>
+              → <code style={{ color: TEXT }}>{step.outputAs}</code>
             </span>
           )}
-          <pre className="mt-1 max-h-32 overflow-auto whitespace-pre-wrap break-words text-[11px] text-stone-600 dark:text-stone-300">
+          <pre className="mt-1 max-h-32 overflow-auto whitespace-pre-wrap break-words text-[11px]" style={{ color: MUTED }}>
             {JSON.stringify(step.args, null, 2)}
           </pre>
         </div>
@@ -687,9 +775,19 @@ function StepItem({ step, depth, index }: { step: any; depth: number; index: num
       )}
       {Array.isArray(step.then) && step.then.length > 0 && (
         <div className="mt-2">
-          <div className="text-[10px] uppercase text-stone-500 dark:text-stone-400">then:</div>
+          <div className="text-[10px] uppercase" style={{ color: MUTED }}>then:</div>
           <ol className="space-y-1">
             {step.then.map((s: any, i: number) => (
+              <StepItem key={s.id ?? i} step={s} depth={depth + 1} index={i + 1} />
+            ))}
+          </ol>
+        </div>
+      )}
+      {Array.isArray(step.else) && step.else.length > 0 && (
+        <div className="mt-2">
+          <div className="text-[10px] uppercase" style={{ color: MUTED }}>else:</div>
+          <ol className="space-y-1">
+            {step.else.map((s: any, i: number) => (
               <StepItem key={s.id ?? i} step={s} depth={depth + 1} index={i + 1} />
             ))}
           </ol>
@@ -700,55 +798,46 @@ function StepItem({ step, depth, index }: { step: any; depth: number; index: num
 }
 
 function StatusBadge({ status }: { status: AutomationStatus }) {
-  const styles: Record<AutomationStatus, string> = {
-    DRAFT: 'bg-stone-100 text-stone-700 dark:bg-stone-700 dark:text-stone-200',
-    ACTIVE: 'bg-emerald-100 text-emerald-800 dark:bg-emerald-900/40 dark:text-emerald-300',
-    PAUSED: 'bg-amber-100 text-amber-800 dark:bg-amber-900/40 dark:text-amber-300',
-    ERROR: 'bg-rose-100 text-rose-800 dark:bg-rose-900/40 dark:text-rose-300',
-    ARCHIVED: 'bg-stone-200 text-stone-500 dark:bg-stone-800 dark:text-stone-400',
+  const map: Record<AutomationStatus, { c: string; label: string }> = {
+    DRAFT: { c: MUTED, label: 'Taslak' },
+    ACTIVE: { c: GREEN, label: 'Aktif' },
+    PAUSED: { c: AMBER, label: 'Duraklatıldı' },
+    ERROR: { c: RED, label: 'Hata' },
+    ARCHIVED: { c: MUTED, label: 'Arşiv' },
   };
-  const labels: Record<AutomationStatus, string> = {
-    DRAFT: 'Taslak',
-    ACTIVE: 'Aktif',
-    PAUSED: 'Duraklatıldı',
-    ERROR: 'Hata',
-    ARCHIVED: 'Arşivlendi',
-  };
+  const s = map[status];
   return (
-    <span className={`inline-flex rounded-full px-2 py-0.5 text-xs font-medium ${styles[status]}`}>
-      {labels[status]}
+    <span className="inline-flex rounded-full px-2 py-0.5 text-[10.5px] font-semibold" style={{ background: `${s.c}1f`, color: s.c }}>
+      {s.label}
     </span>
   );
 }
 
 function RunStatusBadge({ status }: { status: string }) {
-  const map: Record<string, { color: string; label: string }> = {
-    running: { color: 'bg-blue-100 text-blue-800 dark:bg-blue-900/40 dark:text-blue-300', label: 'Çalışıyor' },
-    success: { color: 'bg-emerald-100 text-emerald-800 dark:bg-emerald-900/40 dark:text-emerald-300', label: 'Başarılı' },
-    failure: { color: 'bg-rose-100 text-rose-800 dark:bg-rose-900/40 dark:text-rose-300', label: 'Başarısız' },
-    partial: { color: 'bg-amber-100 text-amber-800 dark:bg-amber-900/40 dark:text-amber-300', label: 'Kısmi' },
+  const map: Record<string, { c: string; label: string }> = {
+    running: { c: BLUE, label: 'Çalışıyor' },
+    success: { c: GREEN, label: 'Başarılı' },
+    failure: { c: RED, label: 'Başarısız' },
+    partial: { c: AMBER, label: 'Kısmi' },
   };
-  const s = map[status] || { color: 'bg-stone-100 text-stone-700', label: status };
+  const s = map[status] || { c: MUTED, label: status };
   return (
-    <span className={`inline-flex rounded-full px-2 py-0.5 text-xs font-medium ${s.color}`}>
+    <span className="inline-flex rounded-full px-2 py-0.5 text-[10.5px] font-semibold" style={{ background: `${s.c}1f`, color: s.c }}>
       {s.label}
     </span>
   );
 }
 
 function TriggerIcon({ t }: { t: 'CRON' | 'EVENT' | 'WEBHOOK' | 'MANUAL' }) {
-  if (t === 'CRON') return <Clock className="h-4 w-4" style={{ color: GOLD }} />;
-  if (t === 'WEBHOOK') return <Webhook className="h-4 w-4" style={{ color: GOLD }} />;
-  return <Sparkles className="h-4 w-4" style={{ color: GOLD }} />;
+  if (t === 'CRON') return <Clock size={15} style={{ color: VIOLET_SOFT }} />;
+  if (t === 'WEBHOOK') return <Webhook size={15} style={{ color: VIOLET_SOFT }} />;
+  return <Sparkles size={15} style={{ color: VIOLET_SOFT }} />;
 }
 
-function triggerLabel(
-  type: 'CRON' | 'EVENT' | 'WEBHOOK' | 'MANUAL',
-  cfg: any,
-): string {
+function triggerLabel(type: 'CRON' | 'EVENT' | 'WEBHOOK' | 'MANUAL', cfg: any): string {
   if (type === 'CRON' && typeof cfg?.cron === 'string') {
-    const tz = cfg?.timezone ? ` (${cfg.timezone})` : '';
-    return `Zamanlı: ${cfg.cron}${tz}`;
+    const tz = cfg?.timezone ? ` · ${cfg.timezone}` : '';
+    return `${describeCron(cfg.cron)} (${cfg.cron})${tz}`;
   }
   if (type === 'EVENT' && typeof cfg?.eventName === 'string') return `Olay: ${cfg.eventName}`;
   if (type === 'WEBHOOK') return 'Webhook';

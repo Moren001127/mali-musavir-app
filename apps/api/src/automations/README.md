@@ -1,8 +1,11 @@
 # Automations Module
 
-Moren AI Otomasyon Motoru — Faz 1 + Faz 2 + Faz 3 tamamlandı. **Artık otomasyonlar gerçekten çalışır.**
+Moren AI Otomasyon Motoru — Faz 1–3 + olay tetikleyiciler + dayanıklılık katmanı
+(notify, üst üste binme kilidi, retry, boot temizliği, aylık bütçe, TR-saatli tarihler)
+tamamlandı. **Otomasyonlar zamanlı ve olay-tetikli olarak gerçekten çalışır.**
 
-Tam plan için projenin köküne bak: `MOREN_AI_OTOMASYON_MOTORU_PLAN.md`.
+Güncel çalışan/kısıtlı listesi için aşağıdaki **"Güncel durum ve bilinen kısıtlar"**
+bölümüne bak. Tam plan: `MOREN_AI_OTOMASYON_MOTORU_PLAN.md`.
 
 ## Tamamlanan fazlar
 
@@ -110,25 +113,49 @@ Beklenen:
 
 Daha sonra liste sayfasındaki ⚡ "Şimdi Çalıştır" ile cron'u beklemeden tetikleyebilir, 🧪 "Dry-Run" ile gerçek aksiyon yapmadan deneyebilirsin.
 
-## Bilinen kısıtlar (Faz 3 sonu itibariyle)
+## Güncel durum ve bilinen kısıtlar
 
-1. **OCR, Luca, Resmi Gazete tool'ları stub.** `ocr_pdf`, `extract_invoice_fields`,
-   `post_to_luca`, `check_official_gazette` çağrılırsa `{ stub: true, ... }` döner.
-   Çalışma "success" olarak işaretlenir ama gerçek iş yapılmaz. Faz 6/7'de gerçek olacak.
-2. **EVENT tetikleyici çalışmaz.** Cron + manuel + dry-run çalışır, ama event tipi
-   otomasyonlar (`Document.Uploaded` vs.) henüz dinleyiciye bağlı değil. Faz 5.
-3. **WEBHOOK tetikleyici çalışmaz.** Endpoint var ama secret üretimi ve dış HTTP'den
-   tetikleme akışı Faz 5'te.
-4. **Wait > 1 saat çalışmaz.** Şu an `setTimeout` ile çalışıyor; uzun bekleme için
-   Bull delayed job desteği Faz 5'te eklenecek.
-5. **SMS sağlayıcı yok.** `send_sms` aksiyonu stub döner — gerçek sağlayıcı (NetGSM/
-   Twilio) entegrasyonu Faz 8.
-6. **Maliyet izleme dashboard'u yok.** Her run'ın `costUsd`'si DB'ye yazılıyor ama
-   ekranda toplam gösterilmiyor. Faz 4/8.
-7. **Cron timezone.** `triggerConfig.timezone` parametresi şu an okunmuyor — tüm
-   cron'lar sunucunun TZ'sinde çalışır. Production Railway TZ'si UTC, bu yüzden
-   "10:00 Türkiye saati" için cron expression'ı 07:00 UTC olarak yazılmalı. Faz 8'de
-   timezone'lı cron desteği eklenecek.
+### Artık ÇALIŞAN (güncellendi)
+- **EVENT tetikleyiciler.** Şu olaylar gerçekten yayınlanır ve otomasyonları tetikler:
+  `Taxpayer.EvrakDurumuChanged`, `Taxpayer.EvrakIslendiChanged`, `Taxpayer.KontrolEdildiChanged`,
+  `Taxpayer.BeyannameDurumuChanged`, `Taxpayer.EvraklarHazir`, `Taxpayer.KdvKontrolKilitlendi`,
+  `Taxpayer.Created`, `WhatsApp.MessageReceived`, `Document.Uploaded`.
+- **Cron timezone.** `triggerConfig.timezone` okunuyor (varsayılan `Europe/Istanbul`).
+  Cron expression'ını Türkiye saatiyle yaz — UTC dönüşümü gerekmez.
+- **Tarih kısayolları TR saatinde.** `{{today}}`, `{{currentMonth}}`, `{{currentYear}}`
+  Europe/Istanbul'a göre hesaplanır (gece yarısı gün/ay kayması yok).
+- **`notify` hata politikası.** Bir çalışma başarısız/kısmi olursa otomasyon sahibine
+  in-app bildirim düşer (3 saatlik dedupe ile spam önlenir). `pause_after_3` ek olarak
+  3 ardışık sorunlu çalışmadan sonra duraklatır; `ignore` sessizdir.
+- **Üst üste binme kilidi.** Aynı otomasyon bir önceki tetiği hâlâ çalışırken yeni
+  cron/event tetiği atlanır (olay fırtınası ve uzun süren çalışma koruması).
+- **Yeniden başlatma temizliği.** Boot'ta yarıda kalmış `running` çalışmalar "kesildi"
+  diye kapatılır (deploy sonrası sonsuz "çalışıyor" görünmez).
+- **Geçici hatada retry.** READ ve AI aksiyonları başarısız olursa bir kez yeniden denenir.
+  WRITE aksiyonlarına (mesaj/e-posta) retry YAPILMAZ — çift gönderim olmaması için.
+- **Oran sınırı araçları.** `for_each.throttleMs` ile iterasyon arası gecikme,
+  `parallel.concurrency` ile eşzamanlı dal sınırı.
+- **`nextRunAt`.** Cron otomasyonlarının bir sonraki çalışma zamanı kaydedilir (UI gösterir).
+- **Aylık bütçe tavanı.** `AUTOMATIONS_MONTHLY_BUDGET_USD` env'i ayarlanırsa, tenant'ın
+  bu ayki AI harcaması limiti aşınca yeni çalışmalar reddedilir + bildirim düşer.
+  Varsayılan kapalıdır (limitsiz) — beklenmedik kesinti olmasın diye.
+- **Resmi Gazete (`check_official_gazette`).** Gerçek HTTP + Claude analizi yapar
+  (RG sitesi bot koruması döndürürse `fetchErrors` ile kısmi sonuç verir).
+
+### Hâlâ kısıtlı
+1. **Stub aksiyonlar.** `ocr_pdf`, `post_to_luca`, `send_sms` gerçek iş yapmaz —
+   bunlar zaten parser tarafından önerilmez (pasif) ve `DISABLED_ACTIONS` ile kayıt
+   sırasında reddedilir.
+2. **WEBHOOK tetikleyici.** `AUTOMATIONS_ENABLE_WEBHOOKS=true` olmadan kapalıdır;
+   secret üretimi ve dış HTTP tetikleme akışı henüz tam değil.
+3. **Wait > 1 saat.** `setTimeout` tabanlı; 1 saati aşan beklemeler atlanır
+   (kalıcı kuyruk / Bull-Redis gelene kadar).
+4. **Tek kopya varsayımı.** Cron ve event bus süreç-içidir. Birden fazla sunucu kopyası
+   (Railway replica > 1) çalışırsa çift tetikleme olur. Çok kopyalı kurulumda yalnız bir
+   kopyada `AUTOMATIONS_SCHEDULER_ENABLED=true` bırakılmalı; gerçek yatay ölçek için
+   Redis tabanlı dağıtık kilit gerekir.
+5. **Çalışma kuyruğu kalıcı değil.** Çalışmalar süreç belleğinde yürür; uzun işler için
+   Bull/Redis tabanlı kalıcı kuyruk ileride eklenecek.
 
 ## Migration
 
@@ -176,10 +203,14 @@ curl -X PATCH -H "Authorization: Bearer $TOKEN" -H "Content-Type: application/js
 
 ## Önemli notlar
 
-**Bu faz henüz hiçbir otomasyonu ÇALIŞTIRMAZ.** Sadece tanımları kaydedip yönetir.
-ACTIVE durumuna geçirilen bir otomasyon, runner motoru (Faz 3) gelene kadar
-arka planda bir şey yapmaz. Bu kasıtlı — veri katmanını sağlam kurup, sonra
-çalıştırıcıyı üstüne ekliyoruz.
+**Otomasyonlar artık ACTIVE'e alınınca gerçekten çalışır** — cron zamanına geldiğinde
+veya ilgili olay yayınlandığında runner motoru adımları yürütür, çalışma geçmişi yazar.
+Test için önce **Dry-Run** (gerçek aksiyon yapmaz) önerilir.
+
+İlgili env değişkenleri:
+- `AUTOMATIONS_MONTHLY_BUDGET_USD` — tenant aylık AI bütçe tavanı (0/boş = limitsiz).
+- `AUTOMATIONS_SCHEDULER_ENABLED` — çok kopyalı kurulumda yalnız bir kopyada `true` bırak.
+- `AUTOMATIONS_ENABLE_WEBHOOKS` — webhook tetikleyiciyi açar (varsayılan kapalı).
 
 **Step JSON şeması** `{ schemaVersion: 1, steps: [...] }` formatında. İçerideki
 adım objelerinin yapısı Faz 2'de parser ile birlikte detaylı doğrulanacak.

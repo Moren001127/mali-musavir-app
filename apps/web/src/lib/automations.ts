@@ -76,6 +76,22 @@ export const automationsApi = {
     return data;
   },
 
+  /** Mevcut otomasyonu düzenle (başlık, açıklama, tetikleyici, adımlar, hata politikası) */
+  async update(
+    id: string,
+    payload: Partial<{
+      title: string;
+      description: string;
+      triggerType: AutomationTriggerType;
+      triggerConfig: Record<string, unknown>;
+      steps: any;
+      failurePolicy: string;
+    }>,
+  ): Promise<Automation> {
+    const { data } = await api.patch(`/automations/${id}`, payload);
+    return data;
+  },
+
   async list(filters?: {
     status?: AutomationStatus;
     triggerType?: AutomationTriggerType;
@@ -162,6 +178,46 @@ export interface AutomationsSummary {
   weeklyFailure: number;
   weeklyPartial: number;
   weeklyCostUsd: number;
+  monthlyCostUsd: number;
+  /** Aylık AI bütçe tavanı (USD). null = limitsiz. */
+  monthlyBudgetUsd: number | null;
+}
+
+const TR_GUNLER = ['Pazar', 'Pazartesi', 'Salı', 'Çarşamba', 'Perşembe', 'Cuma', 'Cumartesi'];
+
+/**
+ * Yaygın cron ifadelerini Türkçe, insan-okur metne çevirir.
+ * Tanımadığı kalıpta ham ifadeyi döndürür.
+ */
+export function describeCron(expr?: string): string {
+  if (!expr || typeof expr !== 'string') return 'Zamanlı';
+  const parts = expr.trim().split(/\s+/);
+  if (parts.length < 5) return expr;
+  const [min, hour, dom, mon, dow] = parts;
+  const hhmm = (h: string, m: string) => {
+    const hi = h === '*' ? null : Number(h);
+    const mi = m === '*' ? 0 : Number(m);
+    if (hi === null || Number.isNaN(hi) || Number.isNaN(mi)) return null;
+    return `${String(hi).padStart(2, '0')}:${String(mi).padStart(2, '0')}`;
+  };
+
+  // Her dakika
+  if (min === '*' && hour === '*' && dom === '*' && mon === '*' && dow === '*') return 'Her dakika';
+  // Her saat
+  if (hour === '*' && dom === '*' && mon === '*' && dow === '*') {
+    return min === '0' ? 'Her saat başı' : `Her saat :${String(Number(min)).padStart(2, '0')}`;
+  }
+  const t = hhmm(hour, min);
+  // Her gün
+  if (dom === '*' && mon === '*' && dow === '*' && t) return `Her gün ${t}`;
+  // Haftanın belli günü
+  if (dom === '*' && mon === '*' && dow !== '*' && t) {
+    const g = TR_GUNLER[Number(dow) % 7] ?? `gün ${dow}`;
+    return `Her ${g} ${t}`;
+  }
+  // Ayın belli günü
+  if (dom !== '*' && mon === '*' && dow === '*' && t) return `Her ayın ${dom}'inde ${t}`;
+  return expr;
 }
 
 export interface RecentRun extends AutomationRun {
