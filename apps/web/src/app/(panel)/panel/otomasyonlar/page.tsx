@@ -151,7 +151,7 @@ export default function OtomasyonlarPage() {
   const monthlyBudgetUsd = summary?.monthlyBudgetUsd ?? null;
 
   return (
-    <div className="mx-auto max-w-5xl space-y-5 px-4 pb-16" style={{ color: TEXT }}>
+    <div className="mx-auto max-w-7xl space-y-5 pb-16" style={{ color: TEXT }}>
       {/* ── Başlık (radial + üst renk şeridi, yapışkan değil) ── */}
       <header
         className="relative overflow-hidden rounded-2xl border p-5"

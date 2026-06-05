@@ -183,7 +183,7 @@ export default function OtomasyonDetayPage() {
   const canHardDelete = auto.status === 'DRAFT' && auto.totalRuns === 0;
 
   return (
-    <div className="mx-auto max-w-4xl space-y-5 px-4 pb-16" style={{ color: TEXT }}>
+    <div className="mx-auto max-w-6xl space-y-5 pb-16" style={{ color: TEXT }}>
       {/* ── Başlık ── */}
       <header
         className="relative overflow-hidden rounded-2xl border p-5"

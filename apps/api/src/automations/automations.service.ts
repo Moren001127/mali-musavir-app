@@ -69,7 +69,13 @@ export class AutomationsService {
     const pageSize = query.pageSize ?? DEFAULT_PAGE_SIZE;
 
     const where: Prisma.AutomationWhereInput = { tenantId };
-    if (query.status) where.status = query.status as unknown as AutomationStatus;
+    if (query.status) {
+      where.status = query.status as unknown as AutomationStatus;
+    } else {
+      // Durum filtresi seçilmemişse arşivlenenleri gizle — listeyi şişirmesinler.
+      // Kullanıcı "Arşiv" filtresini seçince yalnızca arşivlenenler görünür.
+      where.status = { not: AutomationStatus.ARCHIVED };
+    }
     if (query.triggerType) where.triggerType = query.triggerType as unknown as AutomationTriggerType;
     if (query.search) {
       where.OR = [
