@@ -17,7 +17,7 @@ import {
   ShieldAlert,
   FileText,
 } from 'lucide-react';
-import { automationsApi, describeCron, type ParsedAutomation } from '@/lib/automations';
+import { automationsApi, describeCron, describeEvent, type ParsedAutomation } from '@/lib/automations';
 
 // ── Otomasyon modülü imza paleti (koyu zemin, mor imza) ──
 const VIOLET = '#a855f7';
@@ -515,7 +515,7 @@ function TriggerIcon({ t }: { t: 'CRON' | 'EVENT' | 'WEBHOOK' | 'MANUAL' }) {
 
 function triggerLabel(type: 'CRON' | 'EVENT' | 'WEBHOOK' | 'MANUAL', cfg: Record<string, unknown>): string {
   if (type === 'CRON' && typeof cfg.cron === 'string') return `${describeCron(cfg.cron)} (${cfg.cron})`;
-  if (type === 'EVENT' && typeof cfg.eventName === 'string') return `Olay: ${cfg.eventName}`;
+  if (type === 'EVENT' && typeof cfg.eventName === 'string') return describeEvent(cfg.eventName);
   if (type === 'WEBHOOK') return 'Webhook (dış HTTP isteği)';
   return 'Manuel (sadece tıkla)';
 }

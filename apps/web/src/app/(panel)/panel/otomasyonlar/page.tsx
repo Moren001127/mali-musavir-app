@@ -26,10 +26,13 @@ import {
   Wallet,
   ArrowLeft,
   CalendarClock,
+  ChevronDown,
+  History,
 } from 'lucide-react';
 import {
   automationsApi,
   describeCron,
+  describeEvent,
   type Automation,
   type AutomationStatus,
   type AutomationTriggerType,
@@ -55,6 +58,7 @@ export default function OtomasyonlarPage() {
   const [search, setSearch] = useState('');
   const [statusFilter, setStatusFilter] = useState<AutomationStatus | 'all'>('all');
   const [triggerFilter, setTriggerFilter] = useState<AutomationTriggerType | 'all'>('all');
+  const [showRecent, setShowRecent] = useState(false);
 
   const { data, isLoading, error } = useQuery({
     queryKey: ['automations', { search, status: statusFilter, trigger: triggerFilter }],
@@ -223,9 +227,9 @@ export default function OtomasyonlarPage() {
         </section>
       )}
 
-      {/* ── Arama + filtre ── */}
-      <section className="flex flex-wrap items-center gap-2">
-        <div className="relative min-w-[200px] flex-1">
+      {/* ── Arama + filtre (kompakt tek satır) ── */}
+      <section className="flex flex-col gap-2 sm:flex-row sm:items-center">
+        <div className="relative flex-1">
           <Search size={15} className="absolute left-3 top-1/2 -translate-y-1/2" style={{ color: MUTED }} />
           <input
             type="text"
@@ -236,51 +240,64 @@ export default function OtomasyonlarPage() {
             style={{ borderColor: LINE, color: TEXT }}
           />
         </div>
-        <FilterSelect value={statusFilter} onChange={(v) => setStatusFilter(v as any)}>
-          <option value="all" style={{ background: BG }}>Tüm durumlar</option>
-          <option value="ACTIVE" style={{ background: BG }}>Aktif</option>
-          <option value="PAUSED" style={{ background: BG }}>Duraklatıldı</option>
-          <option value="DRAFT" style={{ background: BG }}>Taslak</option>
-          <option value="ERROR" style={{ background: BG }}>Hata</option>
-          <option value="ARCHIVED" style={{ background: BG }}>Arşiv</option>
-        </FilterSelect>
-        <FilterSelect value={triggerFilter} onChange={(v) => setTriggerFilter(v as any)}>
-          <option value="all" style={{ background: BG }}>Tüm tetikleyiciler</option>
-          <option value="CRON" style={{ background: BG }}>Zamanlı</option>
-          <option value="EVENT" style={{ background: BG }}>Olay</option>
-          <option value="MANUAL" style={{ background: BG }}>Manuel</option>
-        </FilterSelect>
+        <div className="flex gap-2">
+          <FilterSelect value={statusFilter} onChange={(v) => setStatusFilter(v as any)}>
+            <option value="all" style={{ background: BG }}>Tüm durumlar</option>
+            <option value="ACTIVE" style={{ background: BG }}>Aktif</option>
+            <option value="PAUSED" style={{ background: BG }}>Duraklatıldı</option>
+            <option value="DRAFT" style={{ background: BG }}>Taslak</option>
+            <option value="ERROR" style={{ background: BG }}>Hata</option>
+            <option value="ARCHIVED" style={{ background: BG }}>Arşiv</option>
+          </FilterSelect>
+          <FilterSelect value={triggerFilter} onChange={(v) => setTriggerFilter(v as any)}>
+            <option value="all" style={{ background: BG }}>Tüm tetikleyiciler</option>
+            <option value="CRON" style={{ background: BG }}>Zamanlı</option>
+            <option value="EVENT" style={{ background: BG }}>Olay</option>
+            <option value="MANUAL" style={{ background: BG }}>Manuel</option>
+          </FilterSelect>
+        </div>
       </section>
 
-      {/* ── Son çalışmalar şeridi ── */}
+      {/* ── Son çalışmalar (varsayılan gizli — tıkla aç) ── */}
       {recentRuns && recentRuns.length > 0 && (
         <section>
-          <h2 className="mb-2 text-[11px] font-semibold uppercase tracking-wider" style={{ color: MUTED }}>
-            Son çalışmalar
-          </h2>
-          <div className="flex flex-wrap gap-2">
-            {recentRuns.slice(0, 8).map((run) => {
-              const c = run.status === 'success' ? GREEN : run.status === 'failure' ? RED : BLUE;
-              return (
-                <button
-                  key={run.id}
-                  onClick={() => router.push(`/panel/otomasyonlar/${run.automation.id}`)}
-                  className="inline-flex items-center gap-1.5 rounded-lg border px-2.5 py-1.5 text-[11px] transition-colors"
-                  style={{ borderColor: `${c}55`, background: `${c}14`, color: c }}
-                >
-                  {run.status === 'success' ? (
-                    <CheckCircle2 size={13} />
-                  ) : run.status === 'failure' ? (
-                    <XCircle size={13} />
-                  ) : (
-                    <Activity size={13} />
-                  )}
-                  <span className="font-medium" style={{ color: TEXT }}>{run.automation.title}</span>
-                  <span style={{ color: MUTED }}>{timeAgo(run.startedAt)}</span>
-                </button>
-              );
-            })}
-          </div>
+          <button
+            onClick={() => setShowRecent((v) => !v)}
+            className="inline-flex items-center gap-1.5 text-[11px] font-semibold uppercase tracking-wider transition-colors"
+            style={{ color: MUTED }}
+          >
+            <History size={13} />
+            Son çalışmalar ({recentRuns.length})
+            <ChevronDown
+              size={14}
+              style={{ transform: showRecent ? 'rotate(180deg)' : 'none', transition: 'transform .15s' }}
+            />
+          </button>
+          {showRecent && (
+            <div className="mt-2 flex flex-wrap gap-2">
+              {recentRuns.slice(0, 12).map((run) => {
+                const c = run.status === 'success' ? GREEN : run.status === 'failure' ? RED : BLUE;
+                return (
+                  <button
+                    key={run.id}
+                    onClick={() => router.push(`/panel/otomasyonlar/${run.automation.id}`)}
+                    className="inline-flex items-center gap-1.5 rounded-lg border px-2.5 py-1.5 text-[11px] transition-colors"
+                    style={{ borderColor: LINE, background: CARD }}
+                  >
+                    {run.status === 'success' ? (
+                      <CheckCircle2 size={13} style={{ color: c }} />
+                    ) : run.status === 'failure' ? (
+                      <XCircle size={13} style={{ color: c }} />
+                    ) : (
+                      <Activity size={13} style={{ color: c }} />
+                    )}
+                    <span className="font-medium" style={{ color: TEXT }}>{run.automation.title}</span>
+                    <span style={{ color: MUTED }}>{timeAgo(run.startedAt)}</span>
+                  </button>
+                );
+              })}
+            </div>
+          )}
         </section>
       )}
 
@@ -412,7 +429,7 @@ function AutomationRow({
             </IconBtn>
           )}
           {auto.status !== 'ARCHIVED' && (
-            <IconBtn title="Dry-Run (aksiyon yapmadan dene)" color={BLUE} onClick={() => onDryRun(auto.id)}>
+            <IconBtn title="Dry-Run (aksiyon yapmadan dene)" color={MUTED} onClick={() => onDryRun(auto.id)}>
               <FlaskConical size={15} />
             </IconBtn>
           )}
@@ -527,8 +544,8 @@ function IconBtn({
       title={title}
       disabled={disabled}
       onClick={onClick}
-      className="grid h-8 w-8 place-items-center rounded-lg border transition-colors disabled:opacity-40"
-      style={{ borderColor: `${color}44`, background: `${color}12`, color }}
+      className="grid h-8 w-8 place-items-center rounded-lg border transition-colors hover:bg-white/5 disabled:opacity-40"
+      style={{ borderColor: LINE, color }}
     >
       {children}
     </button>
@@ -596,7 +613,7 @@ function TriggerIcon({ t }: { t: AutomationTriggerType }) {
 
 function triggerShort(t: AutomationTriggerType, cfg: any): string {
   if (t === 'CRON') return describeCron(cfg?.cron);
-  if (t === 'EVENT') return `Olay: ${cfg?.eventName || '—'}`;
+  if (t === 'EVENT') return describeEvent(cfg?.eventName);
   if (t === 'WEBHOOK') return 'Webhook';
   return 'Manuel';
 }

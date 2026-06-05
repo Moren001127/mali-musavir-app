@@ -35,6 +35,7 @@ import {
 import {
   automationsApi,
   describeCron,
+  describeEvent,
   type Automation,
   type AutomationRun,
   type AutomationStatus,
@@ -839,7 +840,7 @@ function triggerLabel(type: 'CRON' | 'EVENT' | 'WEBHOOK' | 'MANUAL', cfg: any): 
     const tz = cfg?.timezone ? ` · ${cfg.timezone}` : '';
     return `${describeCron(cfg.cron)} (${cfg.cron})${tz}`;
   }
-  if (type === 'EVENT' && typeof cfg?.eventName === 'string') return `Olay: ${cfg.eventName}`;
+  if (type === 'EVENT' && typeof cfg?.eventName === 'string') return describeEvent(cfg.eventName);
   if (type === 'WEBHOOK') return 'Webhook';
   return 'Manuel';
 }

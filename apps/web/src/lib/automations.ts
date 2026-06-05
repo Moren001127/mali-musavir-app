@@ -185,6 +185,24 @@ export interface AutomationsSummary {
 
 const TR_GUNLER = ['Pazar', 'Pazartesi', 'Salı', 'Çarşamba', 'Perşembe', 'Cuma', 'Cumartesi'];
 
+/** Teknik olay adlarını ("Taxpayer.EvrakDurumuChanged") sade Türkçeye çevirir. */
+const EVENT_TR: Record<string, string> = {
+  'Taxpayer.EvrakDurumuChanged': 'Evrak durumu değişince',
+  'Taxpayer.EvrakIslendiChanged': 'Evrak işlenince',
+  'Taxpayer.KontrolEdildiChanged': 'Kontrol edilince',
+  'Taxpayer.BeyannameDurumuChanged': 'Beyanname durumu değişince',
+  'Taxpayer.EvraklarHazir': 'Evraklar hazır olunca',
+  'Taxpayer.KdvKontrolKilitlendi': 'KDV kontrolü kilitlenince',
+  'Taxpayer.Created': 'Yeni müvekkil eklenince',
+  'WhatsApp.MessageReceived': 'WhatsApp mesajı gelince',
+  'Document.Uploaded': 'Belge yüklenince',
+};
+
+export function describeEvent(eventName?: string): string {
+  if (!eventName) return 'Olay';
+  return EVENT_TR[eventName] || eventName;
+}
+
 /**
  * Yaygın cron ifadelerini Türkçe, insan-okur metne çevirir.
  * Tanımadığı kalıpta ham ifadeyi döndürür.
