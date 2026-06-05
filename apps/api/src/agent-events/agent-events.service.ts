@@ -15,7 +15,7 @@ import {
   getAgentRegistry,
 } from './agent-registry';
 
-type MihsapDecisionMode = 'shadow' | 'balanced' | 'claude_only';
+type MihsapDecisionMode = 'shadow' | 'balanced' | 'claude_only' | 'max_only';
 type MihsapOcrProvider = 'auto' | 'azure' | 'mistral' | 'none';
 type MihsapCheapModelProvider = 'auto' | 'gemini' | 'openai';
 
@@ -65,9 +65,17 @@ export class AgentEventsService {
   ) {}
 
   private getMihsapDecisionMode(): MihsapDecisionMode {
-    const value = String(process.env.MIHSAP_DECISION_MODE || 'balanced').toLowerCase();
-    if (value === 'balanced' || value === 'claude_only' || value === 'shadow') return value;
-    return 'balanced';
+    // VARSAYILAN = max_only: kararlar tamamen Max aboneliğinden (ücretsiz) verilir,
+    // pahalı görsel Claude API'si çağrılmaz. Geri dönmek için: MIHSAP_DECISION_MODE=balanced.
+    const value = String(process.env.MIHSAP_DECISION_MODE || 'max_only').toLowerCase();
+    if (
+      value === 'balanced' ||
+      value === 'claude_only' ||
+      value === 'shadow' ||
+      value === 'max_only'
+    )
+      return value;
+    return 'max_only';
   }
 
   private getMihsapOcrProvider(): MihsapOcrProvider {
@@ -172,6 +180,118 @@ export class AgentEventsService {
     const parsed = Number(process.env.MIHSAP_VENDOR_RULE_MIN_ONAY || 5);
     if (!Number.isFinite(parsed)) return 5;
     return Math.min(50, Math.max(3, Math.floor(parsed)));
+  }
+
+  /**
+   * Görsel Claude API çağrısının yerini tutan tek geçit.
+   * - max_only modunda (VARSAYILAN): pahalı `api.anthropic.com` ÇAĞRILMAZ. Fatura görseli OCR ile
+   *   metne çevrilir (ucuz okuma servisi) ve aynı sistem promptu + OCR metniyle Max aboneliği
+   *   (ücretsiz) üzerinden JSON karar aldırılır. Dönen nesne, görsel API yanıtını taklit eder
+   *   (ok/status/text()/json()), böylece çağıran taraftaki TÜM mevcut işleme kodu değişmeden çalışır.
+   * - Diğer modlarda (balanced/claude_only/shadow): normal görsel API fetch'i yapılır.
+   */
+  private async anthropicMessagesOrMax(
+    apiKey: string | undefined,
+    options: { method: string; headers: any; body: string },
+    ocrInput: {
+      faturaImageBase64: string;
+      faturaImageMediaType?: string;
+      tenantId?: string;
+      mukellefId?: string;
+      mukellef?: string;
+      belgeNo?: string;
+    },
+    ocrSource: string,
+  ): Promise<{ ok: boolean; status: number; json: () => Promise<any>; text: () => Promise<string> }> {
+    if (this.getMihsapDecisionMode() !== 'max_only') {
+      return fetch('https://api.anthropic.com/v1/messages', options as any) as any;
+    }
+    if (!isMaxAvailable()) {
+      return {
+        ok: false,
+        status: 503,
+        text: async () => 'max_unavailable: CLAUDE_CODE_OAUTH_TOKEN yok',
+        json: async () => ({}),
+      };
+    }
+    // Sistem + kullanıcı metnini istek gövdesinden çıkar (görsel bloğu atılır — Max görüntü almaz).
+    let systemText = '';
+    let userText = '';
+    try {
+      const body = JSON.parse(options.body || '{}');
+      systemText = Array.isArray(body.system)
+        ? body.system.map((b: any) => b?.text || '').join('\n')
+        : String(body.system || '');
+      const content = body?.messages?.[0]?.content;
+      if (Array.isArray(content)) {
+        userText = content
+          .filter((c: any) => c?.type === 'text')
+          .map((c: any) => c?.text || '')
+          .join('\n');
+      }
+    } catch {}
+
+    const ocr = await this.runMihsapImageOcr(ocrInput, ocrSource);
+    const ocrText = (ocr?.text || '').trim();
+    const prompt =
+      ocrText.length >= 30
+        ? `${userText}\n\nGÖRÜNTÜ YERİNE aşağıdaki fatura OCR metnini kullan. Metinde olmayan bilgiyi UYDURMA; emin değilsen "emin_degil" (işletme için "emin":false) dön.\n\n=== FATURA OCR METNİ ===\n${ocrText.slice(0, 14000)}`
+        : `${userText}\n\n(Not: Fatura OCR metni alınamadı. Eldeki üst bilgiyle güvenle karar veremiyorsan "emin_degil"/"emin":false dön — tahmin etme.)`;
+
+    // Varsayılan Haiku (hız parite); daha yüksek isabet için MIHSAP_MAX_MODEL=claude-sonnet-4-6.
+    const model = process.env.MIHSAP_MAX_MODEL || MAX_MODEL_CHEAP;
+    const max = await claudeTextViaMax({ prompt, system: systemText, model, maxTurns: 1 });
+    if (!max.ok || !max.text) {
+      return {
+        ok: false,
+        status: 502,
+        text: async () => `max_error: ${max.error || 'bos_cevap'}`,
+        json: async () => ({}),
+      };
+    }
+    const fakeJson = {
+      content: [{ type: 'text', text: max.text }],
+      usage: { input_tokens: 0, output_tokens: 0 },
+    };
+    return { ok: true, status: 200, text: async () => max.text, json: async () => fakeJson };
+  }
+
+  /**
+   * KDV oran güvenlik kontrolü: ekranda seçili hesap kodundaki "%X", faturanın OCR'dan okunan
+   * KDV oranıyla çelişiyorsa otomatik onaylama engellenir (yanlış matrah/KDV koduna yazmayı önler).
+   * Yalnızca TEK net oran içeren ekran kodu + okunabilen fatura oranı varsa flag verir (çok-oranlı
+   * faturada yanlış-alarm üretmez). Çelişki varsa açıklama döner, yoksa null.
+   */
+  private detectKdvRateConflict(hesapKodlari: string[] | undefined, kdvOrani: any): string | null {
+    const faturaRate = this.normalizeKdvRate(kdvOrani);
+    if (faturaRate === null) return null; // fatura oranı okunamadı → kontrol etme
+    const codes = Array.isArray(hesapKodlari) ? hesapKodlari : [];
+    const codeRates = [
+      ...new Set(
+        codes
+          .map((c) => this.extractKdvRateFromText(c))
+          .filter((r): r is number => r !== null),
+      ),
+    ];
+    if (codeRates.length !== 1) return null; // 0 veya çok-oranlı kod → güvenli tarafta kal
+    if (codeRates[0] !== faturaRate) {
+      return `ekran kodu %${codeRates[0]}, fatura %${faturaRate}`;
+    }
+    return null;
+  }
+
+  private normalizeKdvRate(v: any): number | null {
+    const digits = String(v ?? '').replace(/[^0-9]/g, '');
+    if (!digits) return null;
+    const n = Number(digits);
+    if (![0, 1, 8, 10, 18, 20].includes(n)) return null;
+    return n;
+  }
+
+  private extractKdvRateFromText(t: any): number | null {
+    const m = String(t || '').match(/%\s*(\d{1,2})/);
+    if (!m) return null;
+    return this.normalizeKdvRate(m[1]);
   }
 
   private extractAccountCode(value: any): string {
@@ -312,6 +432,9 @@ export class AgentEventsService {
       /mobilya|masa|sandalye|koltuk|dolap/,
       /klima|kombi|televizyon|buzdolabi/,
       /makine|tezgah|kompresor|jenerator|ekipman|cihaz/,
+      // Net sabit kıymet/demirbaş sinyalleri (yanlış-alarm riski düşük):
+      /demirbas|sabit\s+kiymet|amortisman/,
+      /guvenlik\s+kamera|kamera\s+sistemi|guvenlik\s+sistemi|fotokopi\s+makin|projeksiyon\s+cihaz|projektor|sunucu\s+(cihaz|bilgisayar)|server\b/,
     ].some((re) => re.test(normalized));
 
     if (riskyAsset && !allowedVehicleExpense) {
@@ -555,8 +678,10 @@ JSON'a mutlaka "confidence": 0-1 ekle.
 OCR METNI:
 ${ocr.text.slice(0, 14000)}`;
 
-    const tryGemini = provider === 'auto' || provider === 'gemini';
-    const tryOpenAi = provider === 'auto' || provider === 'openai';
+    // max_only: ucuz katmanda da ücretli Gemini/OpenAI'ye düşme — sadece Max.
+    const maxOnly = this.getMihsapDecisionMode() === 'max_only';
+    const tryGemini = !maxOnly && (provider === 'auto' || provider === 'gemini');
+    const tryOpenAi = !maxOnly && (provider === 'auto' || provider === 'openai');
 
     // ÖNCE Max aboneliği (ücretsiz, kotadan düşer). Ucuz karar saf metin/JSON olduğu için
     // Max'a birebir uyar. Başarısız/JSON gelmezse aşağıdaki Gemini/OpenAI'ye düşülür.
@@ -780,7 +905,7 @@ ${ocr.text.slice(0, 14000)}`;
     allowClaudeOnlyFallback = false,
   ): Promise<MihsapCheapDecisionResult | null> {
     if (!allowClaudeOnlyFallback && this.getMihsapDecisionMode() === 'claude_only') return null;
-    if (!this.hasMihsapCheapModelKey()) return null;
+    if (!isMaxAvailable() && !this.hasMihsapCheapModelKey()) return null;
     const ocr = await this.runMihsapImageOcr(input, 'mihsap-fatura-ocr');
     if (!ocr) return null;
     const cheap = await this.callMihsapCheapModel('fatura', input, system, userText, ocr, input.bosAlanSecenekleri ? 900 : 650);
@@ -896,7 +1021,7 @@ ${ocr.text.slice(0, 14000)}`;
     allowClaudeOnlyFallback = false,
   ): Promise<MihsapCheapDecisionResult | null> {
     if (!allowClaudeOnlyFallback && this.getMihsapDecisionMode() === 'claude_only') return null;
-    if (!this.hasMihsapCheapModelKey()) return null;
+    if (!isMaxAvailable() && !this.hasMihsapCheapModelKey()) return null;
     const ocr = await this.runMihsapImageOcr(input, 'mihsap-isletme-ocr');
     if (!ocr) return null;
     return this.callMihsapCheapModel('isletme', input, system, userText, ocr, 700);
@@ -3324,7 +3449,7 @@ Fatura görüntüsünü incele ve yukarıdaki sistem talimatlarına göre JSON d
     };
 
     let cheapDecision =
-      decisionMode === 'claude_only'
+      decisionMode === 'claude_only' || decisionMode === 'max_only'
         ? null
         : await this.tryMihsapCheapFaturaDecision(input, system, userText, rule);
 
@@ -3337,10 +3462,10 @@ Fatura görüntüsünü incele ve yukarıdaki sistem talimatlarına göre JSON d
       );
     }
 
-    if (!apiKey && !cheapDecision) {
+    if (decisionMode !== 'max_only' && !apiKey && !cheapDecision) {
       cheapDecision = await this.tryMihsapCheapFaturaDecision(input, system, userText, rule, true);
     }
-    if (!apiKey && this.isCheapFaturaAcceptable(cheapDecision, input, vendorHint)) {
+    if (decisionMode !== 'max_only' && !apiKey && this.isCheapFaturaAcceptable(cheapDecision, input, vendorHint)) {
       return this.finalizeCheapFaturaDecision(
         cheapDecision!,
         input,
@@ -3349,7 +3474,7 @@ Fatura görüntüsünü incele ve yukarıdaki sistem talimatlarına göre JSON d
       );
     }
 
-    if (!apiKey) {
+    if (decisionMode !== 'max_only' && !apiKey) {
       return {
         karar: 'emin_degil',
         sebep: `ANTHROPIC_API_KEY yok; ucuz karar yeterli degil (${cheapDecision?.fallbackReason || 'fallback gerekli'})`,
@@ -3361,7 +3486,10 @@ Fatura görüntüsünü incele ve yukarıdaki sistem talimatlarına göre JSON d
     }
 
     try {
-      const res = await fetch('https://api.anthropic.com/v1/messages', {
+      // max_only'da pahalı görsel API ÇAĞRILMAZ: geçit OCR metnini Max'a verir, yanıtı taklit eder.
+      const res = await this.anthropicMessagesOrMax(
+        apiKey,
+        {
         method: 'POST',
         headers: {
           'Content-Type': 'application/json',
@@ -3399,7 +3527,10 @@ Fatura görüntüsünü incele ve yukarıdaki sistem talimatlarına göre JSON d
             },
           ],
         }),
-      });
+        },
+        input,
+        'mihsap-fatura-ocr',
+      );
       if (!res.ok) {
         const errText = await res.text();
         const claudeError = this.classifyClaudeApiError(res.status, errText);
@@ -3503,6 +3634,17 @@ Fatura görüntüsünü incele ve yukarıdaki sistem talimatlarına göre JSON d
                 parsed.sebep = `ÖKC/Yazarkasa fişi tespit edildi; kısa fiş no nedeniyle eski belge türü bilgisi yok sayıldı`;
                 parsed._overrideReason = 'okc-fis-api-belge-turu-stale';
                 parsed._originalSebep = orijSebep;
+              }
+            }
+
+            // KDV oran güvenlik kontrolü (Bölüm 2): ekran kodundaki %X faturanın KDV oranıyla
+            // çelişiyorsa otomatik onaylama — yanlış matrah/KDV koduna yazmayı önler.
+            if (parsed.karar === 'onay' && !input.bosAlanSecenekleri) {
+              const kdvConflict = this.detectKdvRateConflict(input.hesapKodlari, parsed.kdvOrani);
+              if (kdvConflict) {
+                parsed.karar = 'atla';
+                parsed.sebep = `KDV oranı uyuşmuyor (${kdvConflict}) — oto-onay engellendi, manuel kontrol`;
+                parsed._overrideReason = 'kdv-oran-uyusmazligi';
               }
             }
 
@@ -4017,7 +4159,7 @@ Fatura görüntüsünü incele. Yukarıdaki MEVCUT SEÇENEKLER'den Kayıt Türü
       });
 
     let cheapDecision =
-      decisionMode === 'claude_only'
+      decisionMode === 'claude_only' || decisionMode === 'max_only'
         ? null
         : await this.tryMihsapCheapIsletmeDecision(input, system, userText);
 
@@ -4032,10 +4174,10 @@ Fatura görüntüsünü incele. Yukarıdaki MEVCUT SEÇENEKLER'den Kayıt Türü
       return parsed;
     }
 
-    if (!apiKey && !cheapDecision) {
+    if (decisionMode !== 'max_only' && !apiKey && !cheapDecision) {
       cheapDecision = await this.tryMihsapCheapIsletmeDecision(input, system, userText, true);
     }
-    if (!apiKey && this.isCheapIsletmeAcceptable(cheapDecision, input, vendorHintIsletme)) {
+    if (decisionMode !== 'max_only' && !apiKey && this.isCheapIsletmeAcceptable(cheapDecision, input, vendorHintIsletme)) {
       return {
         ...(cheapDecision!.parsed || {}),
         decisionProvider: cheapDecision!.provider,
@@ -4045,7 +4187,7 @@ Fatura görüntüsünü incele. Yukarıdaki MEVCUT SEÇENEKLER'den Kayıt Türü
       };
     }
 
-    if (!apiKey) {
+    if (decisionMode !== 'max_only' && !apiKey) {
       return {
         emin: false,
         sebep: `ANTHROPIC_API_KEY yok; ucuz karar yeterli degil (${cheapDecision?.fallbackReason || 'fallback gerekli'})`,
@@ -4057,7 +4199,10 @@ Fatura görüntüsünü incele. Yukarıdaki MEVCUT SEÇENEKLER'den Kayıt Türü
     }
 
     try {
-      const res = await fetch('https://api.anthropic.com/v1/messages', {
+      // max_only'da pahalı görsel API ÇAĞRILMAZ: geçit OCR metnini Max'a verir, yanıtı taklit eder.
+      const res = await this.anthropicMessagesOrMax(
+        apiKey,
+        {
         method: 'POST',
         headers: {
           'Content-Type': 'application/json',
@@ -4089,7 +4234,10 @@ Fatura görüntüsünü incele. Yukarıdaki MEVCUT SEÇENEKLER'den Kayıt Türü
             },
           ],
         }),
-      });
+        },
+        input,
+        'mihsap-isletme-ocr',
+      );
       if (!res.ok) {
         const errText = await res.text();
         const claudeError = this.classifyClaudeApiError(res.status, errText);
@@ -4178,6 +4326,11 @@ Fatura görüntüsünü incele. Yukarıdaki MEVCUT SEÇENEKLER'den Kayıt Türü
                   });
                   if (sapma.isSapma) {
                     try {
+                      // Çok kalemli işletme faturasında sapmanın hangi kalemde olduğunu göster.
+                      const sapmaSebepFull =
+                        input.blokToplam && input.blokToplam > 1
+                          ? `[Kalem ${input.blokIndex || 1}/${input.blokToplam}] ${sapma.sebep}`
+                          : sapma.sebep;
                       const pending = await this.pendingDecisions.create({
                         tenantId: input.tenantId,
                         mukellef: input.mukellef,
@@ -4194,16 +4347,16 @@ Fatura görüntüsünü incele. Yukarıdaki MEVCUT SEÇENEKLER'den Kayıt Türü
                           enCok: sapma.enCokGecmisKategori,
                           enCokSayisi: sapma.enCokGecmisOnaySayisi,
                         },
-                        sapmaSebep: sapma.sebep,
+                        sapmaSebep: sapmaSebepFull,
                         imageBase64: input.faturaImageBase64,
                       });
-                      await logUsage('onay_bekliyor', sapma.sebep, usage);
+                      await logUsage('onay_bekliyor', sapmaSebepFull, usage);
                       return {
                         emin: false,
                         karar: 'onay_bekliyor',
-                        sebep: sapma.sebep,
+                        sebep: sapmaSebepFull,
                         pendingId: pending.id,
-                        sapmaSebep: sapma.sebep,
+                        sapmaSebep: sapmaSebepFull,
                       };
                     } catch (e: any) {
                       // Fallback: pending olusmazsa normal AI kararini don

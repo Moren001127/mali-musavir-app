@@ -4,7 +4,7 @@
 */
 (function () {
   // Agent versiyon — UI'da gösterilir, debug için kritik
-  const AGENT_VERSION = '1.38.2';
+  const AGENT_VERSION = '1.39.0';
   const AGENT_INSTANCE_ID = 'mai_' + Date.now().toString(36) + '_' + Math.random().toString(36).slice(2, 8);
 
   // === VERSION-AWARE RELOAD ===
@@ -13958,7 +13958,8 @@
           setStatus(`→ ${mukellef.ad} sayfasına geçiliyor (otomatik ${autoNavDenemesi}/3)…`);
           history.pushState({}, '', targetPath);
           window.dispatchEvent(new PopStateEvent('popstate', { state: {} }));
-          await sleep(1800); // React Router'ın render etmesini bekle
+          // Akıllı bekleme: liste tablosu render olunca hemen devam (tavan 1800ms, eskisiyle aynı).
+          await waitUntil(() => !!document.querySelector('tbody tr button .anticon-edit'), 1800, 150);
           if (location.pathname.startsWith(targetPath)) {
             console.log(`[Moren] auto-nav başarılı: ${targetPath}`);
             break;
@@ -13976,7 +13977,8 @@
       const firstPen = await waitFor('tbody tr button .anticon-edit', 8000);
       if (!firstPen) { setStatus('Fatura yok'); return; }
       await click(firstPen.closest('button'));
-      await sleep(1200);
+      // Akıllı bekleme: fatura URL'i (fid) oluşunca hemen devam (tavan 1200ms).
+      await waitUntil(() => /\/\d+\?count=/.test(location.href), 1200, 120);
     }
 
     const seenFids = new Set();
@@ -13998,7 +14000,8 @@
           const pen = await waitFor('tbody tr button .anticon-edit', 5000);
           if (!pen) { setStatus('Fatura kalmadı'); return; }
           await click(pen.closest('button'));
-          await sleep(1500);
+          // Akıllı bekleme: fatura URL'i (fid) oluşunca hemen devam (tavan 1500ms).
+          await waitUntil(() => /\/\d+\?count=/.test(location.href), 1500, 120);
           continue;
         }
         setStatus('fid yok, beklenmedik sayfa');
