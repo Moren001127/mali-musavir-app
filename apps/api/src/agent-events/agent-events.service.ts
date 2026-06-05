@@ -16,7 +16,7 @@ import {
 } from './agent-registry';
 
 type MihsapDecisionMode = 'shadow' | 'balanced' | 'claude_only' | 'max_only';
-type MihsapOcrProvider = 'auto' | 'azure' | 'mistral' | 'none';
+type MihsapOcrProvider = 'auto' | 'azure' | 'mistral' | 'tesseract' | 'none';
 type MihsapCheapModelProvider = 'auto' | 'gemini' | 'openai';
 
 interface MihsapOcrTextResult {
@@ -53,6 +53,9 @@ export interface AgentEventInput {
 @Injectable()
 export class AgentEventsService {
   private readonly faturaDecisionCache = new Map<string, { expiresAt: number; value: any }>();
+  // Ücretsiz yerel OCR (tesseract.js) — tek worker yeniden kullanılır, çağrılar sıralanır.
+  private tesseractInit: Promise<any> | null = null;
+  private tesseractChain: Promise<any> = Promise.resolve();
   private readonly largeMetaKeyRe =
     /base64|image|gorsel|screenshot|html|pdf|buffer|raw|content|icerik|ocr|runtime/i;
 
@@ -80,7 +83,14 @@ export class AgentEventsService {
 
   private getMihsapOcrProvider(): MihsapOcrProvider {
     const value = String(process.env.MIHSAP_OCR_PROVIDER || 'auto').toLowerCase();
-    if (value === 'azure' || value === 'mistral' || value === 'none' || value === 'auto') return value;
+    if (
+      value === 'azure' ||
+      value === 'mistral' ||
+      value === 'tesseract' ||
+      value === 'none' ||
+      value === 'auto'
+    )
+      return value;
     return 'auto';
   }
 
@@ -582,7 +592,79 @@ export class AgentEventsService {
       }
     }
 
+    // ÜCRETSİZ son çare: yerel Tesseract (Mistral/Azure yoksa veya boşsa). Maliyet 0.
+    const tryTesseract = provider === 'tesseract' || provider === 'auto';
+    if (tryTesseract) {
+      try {
+        const started = Date.now();
+        const text = await this.runTesseractOcr(input.faturaImageBase64, input.faturaImageMediaType);
+        if (text.trim().length >= 30) {
+          await logAiUsage(this.prisma, {
+            tenantId: input.tenantId || 'unknown',
+            taxpayerId: input.mukellefId || null,
+            source,
+            model: 'tesseract-local',
+            mukellef: input.mukellef,
+            belgeNo: input.belgeNo,
+            karar: 'ocr_ok',
+            sebep: 'mihsap OCR text extracted (tesseract, ucretsiz)',
+            durationMs: Date.now() - started,
+            fixedCostUsd: 0,
+            usage: { input_tokens: 0, output_tokens: 0 },
+          });
+          return { provider: 'tesseract', text, fallbackReason: failures.join('; ') || undefined };
+        }
+        failures.push('tesseract_empty');
+      } catch (e: any) {
+        failures.push(`tesseract:${e?.message || 'error'}`);
+      }
+    }
+
     return failures.length ? { provider: 'none', text: '', fallbackReason: failures.join('; ') } : null;
+  }
+
+  /** Ücretsiz yerel OCR worker'ı (tesseract.js) — bir kez kurulur, yeniden kullanılır. */
+  private async getTesseractWorker(): Promise<any> {
+    if (!this.tesseractInit) {
+      this.tesseractInit = (async () => {
+        // eslint-disable-next-line @typescript-eslint/no-var-requires
+        const Tesseract = require('tesseract.js');
+        // eslint-disable-next-line @typescript-eslint/no-var-requires
+        const os = require('os');
+        // eslint-disable-next-line @typescript-eslint/no-var-requires
+        const path = require('path');
+        return await Tesseract.createWorker('tur+eng', 1, {
+          cachePath: path.join(os.tmpdir(), 'moren-tess'),
+          logger: () => {},
+          errorHandler: () => {},
+        });
+      })().catch((e) => {
+        this.tesseractInit = null;
+        throw e;
+      });
+    }
+    return this.tesseractInit;
+  }
+
+  /** Fatura görselini ücretsiz/yerel olarak metne çevirir (tek worker, çağrılar sıralı). */
+  private async runTesseractOcr(base64: string, _mediaType = 'image/jpeg'): Promise<string> {
+    const clean = this.stripDataUrlBase64(base64);
+    let img: Buffer = Buffer.from(clean, 'base64');
+    // Okunabilirliği artır: gri tonlama + kontrast normalize.
+    try {
+      // eslint-disable-next-line @typescript-eslint/no-var-requires
+      const sharp = require('sharp');
+      img = await sharp(img).grayscale().normalize().toBuffer();
+    } catch {}
+    const worker = await this.getTesseractWorker();
+    // Tek worker aynı anda tek iş işler — çağrıları zincirle sırala (çakışmayı önle).
+    const run = this.tesseractChain.then(() => worker.recognize(img));
+    this.tesseractChain = run.then(
+      () => undefined,
+      () => undefined,
+    );
+    const result: any = await run;
+    return String(result?.data?.text || '');
   }
 
   private async runMistralOcr(base64: string, mediaType = 'image/jpeg'): Promise<string> {
