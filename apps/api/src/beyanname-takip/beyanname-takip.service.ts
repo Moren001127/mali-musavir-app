@@ -174,11 +174,14 @@ export class BeyannameTakipService {
     const agg = Object.fromEntries(ALL_BEYAN_TIPLERI.map((tip) => [tip, blank(tip)])) as Record<BeyanTipi, Agg>;
 
     for (const tp of taxpayers) {
-      if (!isTaxpayerActiveInPeriod(tp, yil, ay)) continue;
+      if (tp.isActive === false) continue;
       const cfg = tp.beyanConfig || defaultConfig();
       const beklenen = beklenenBeyanlar(cfg, yil, ay, donemTuru);
 
       for (const tip of beklenen) {
+        // Mükellef bu beyannamenin kapsadığı VERGİ DÖNEMİNDE aktif miydi?
+        // (işe başlama / işi bırakma tarihine göre — verilme ayına göre DEĞİL)
+        if (!aktifMiBeyanDoneminde(tp, tip, yil, ay, donem, donemTuru)) continue;
         agg[tip].toplam++;
         const resolved = resolveBeyanState(durumMap, kayitMap, tp.id, tip, yil, ay, donem, donemTuru);
         switch (resolved.durum) {
@@ -256,10 +259,12 @@ export class BeyannameTakipService {
     }
 
     return taxpayers
-      .filter((tp: any) => isTaxpayerActiveInPeriod(tp, yil, ay))
+      .filter((tp: any) => tp.isActive !== false)
       .map((tp: any) => {
         const cfg = tp.beyanConfig || defaultConfig();
-        const beklenen = beklenenBeyanlar(cfg, yil, ay, donemTuru);
+        // Sadece mükellefin VERGİ DÖNEMİNDE aktif olduğu beyannameler kalsın
+        const beklenen = beklenenBeyanlar(cfg, yil, ay, donemTuru)
+          .filter((tip) => aktifMiBeyanDoneminde(tp, tip, yil, ay, donem, donemTuru));
         const beyanlar = beklenen.map((tip) => {
           const resolved = resolveBeyanState(durumMap, kayitMap, tp.id, tip, yil, ay, donem, donemTuru);
           return {
@@ -275,7 +280,9 @@ export class BeyannameTakipService {
           ad: adFormat(tp),
           beyanlar,
         };
-      });
+      })
+      // Vergi döneminde hiç aktif beyannamesi olmayan mükellefi listeden çıkar
+      .filter((row: any) => row.beyanlar.length > 0);
   }
 }
 
@@ -319,18 +326,67 @@ function adFormat(tp: { firstName?: string | null; lastName?: string | null; com
   return [tp.firstName, tp.lastName].filter(Boolean).join(' ').trim() || '(isimsiz)';
 }
 
-function isTaxpayerActiveInPeriod(tp: any, yil: number, ay: number): boolean {
-  const donemBaslangic = new Date(yil, ay - 1, 1);
-  const donemBitis = new Date(yil, ay, 0); // ayın son günü
+/**
+ * Mükellef, verilen takvim aralığında (bir vergi döneminin aralığı) aktif miydi?
+ * İşe başlama (startDate) ve işi bırakma (endDate) tarihlerini, dönemin GERÇEK
+ * takvim aralığıyla karşılaştırır (kesişim mantığı, sınır günleri dahil).
+ */
+function aktifMiAralikta(tp: any, baslangic: Date, bitis: Date): boolean {
+  if (tp.isActive === false) return false;
   if (tp.startDate) {
     const s = new Date(tp.startDate);
-    if (s > donemBitis) return false; // henüz başlamamış
+    if (s > bitis) return false; // dönem bittikten sonra işe başlamış → o dönemde mükellef değil
   }
   if (tp.endDate) {
     const e = new Date(tp.endDate);
-    if (e < donemBaslangic) return false; // işi bırakmış, dönem öncesi
+    if (e < baslangic) return false; // dönem başlamadan işi bırakmış → o dönemde mükellef değil
   }
-  return tp.isActive !== false;
+  return true;
+}
+
+/**
+ * Dönem anahtarını gerçek takvim aralığına çevirir:
+ *   "2026-04" → aylık (1–30 Nisan)
+ *   "2026-Q2" → geçici vergi çeyreği (1 Nis–30 Haz)
+ *   "2026-YIL" → yıllık (1 Oca–31 Ara)
+ * Tanınmayan anahtarda çok geniş aralık döner (yanlışlıkla gizlememek için).
+ */
+function vergiDonemAraligi(anahtar: string): { baslangic: Date; bitis: Date } {
+  let m = /^(\d{4})-(\d{2})$/.exec(anahtar);
+  if (m) {
+    const y = +m[1], ay = +m[2];
+    return { baslangic: new Date(y, ay - 1, 1), bitis: new Date(y, ay, 0, 23, 59, 59, 999) };
+  }
+  m = /^(\d{4})-Q(\d)$/.exec(anahtar);
+  if (m) {
+    const y = +m[1], q = +m[2];
+    const ilkAy = (q - 1) * 3; // Q1→0(Oca), Q2→3(Nis), Q3→6(Tem), Q4→9(Eki)
+    return { baslangic: new Date(y, ilkAy, 1), bitis: new Date(y, ilkAy + 3, 0, 23, 59, 59, 999) };
+  }
+  m = /^(\d{4})-YIL$/.exec(anahtar);
+  if (m) {
+    const y = +m[1];
+    return { baslangic: new Date(y, 0, 1), bitis: new Date(y, 11, 31, 23, 59, 59, 999) };
+  }
+  return { baslangic: new Date(-8640000000000000), bitis: new Date(8640000000000000) };
+}
+
+/**
+ * Mükellef, bir beyanname tipinin kapsadığı vergi döneminde aktif miydi?
+ * Süzme artık verilme ayına göre değil, beyannamenin GERÇEK vergi dönemine göre.
+ */
+function aktifMiBeyanDoneminde(
+  tp: any,
+  tip: BeyanTipi,
+  yil: number,
+  ay: number,
+  donem: string,
+  donemTuru: DonemTuru,
+): boolean {
+  const { baslangic, bitis } = vergiDonemAraligi(
+    vergiDonemForTip(tip, yil, ay, donem, donemTuru),
+  );
+  return aktifMiAralikta(tp, baslangic, bitis);
 }
 
 function periodDue(period: Period | undefined, ay: number, donemTuru: DonemTuru): boolean {
