@@ -1411,28 +1411,50 @@ function Kdv1View({ data, isBilanco }: { data: Kdv1; isBilanco: boolean }) {
         tahakkukTutari={displaySonuc.odenecekKdv}
       />
 
-      {/* Satış & Alış oran tabloları — yan yana */}
-      <div className="grid grid-cols-1 gap-4 xl:grid-cols-2">
-        <OranTablosu
-          baslik="Satış · Hesaplanan KDV"
-          renk="#5fcf8e"
-          oranlar={displaySatis.oranlar}
-          toplamMatrah={displaySatis.toplamMatrah}
-          toplamKdv={displaySatis.toplamHesaplananKdv}
-          adet={cleanSatisTotal.adet}
-        />
-        <OranTablosu
-          baslik="Alış · İndirilecek KDV"
-          renk="#7fc8ff"
-          oranlar={displayAlis.oranlar}
-          toplamMatrah={displayAlis.toplamMatrah}
-          toplamKdv={displayAlis.toplamIndirilecekKdv}
-          adet={cleanAlisTotal.adet}
-          altSatir={[
-            { ad: 'Tevkifatsız', v: displayAlis.tevkifatsiz },
-            { ad: 'Tevkifatlı (KDV2\'ye)', v: displayAlis.tevkifatli },
-          ]}
-        />
+      {/* BELGE OCR SONUÇLARI — Satış & Alış tek panel, yan yana */}
+      <div className="rounded-2xl overflow-hidden" style={{ background: '#13100d', border: '1px solid rgba(255,255,255,0.12)' }}>
+        {/* Panel üst başlık */}
+        <div className="flex items-center justify-between gap-3 px-5 py-3.5" style={{ background: 'linear-gradient(90deg, rgba(20,184,166,0.16), rgba(20,184,166,0.02))', borderBottom: '1px solid rgba(255,255,255,0.10)' }}>
+          <div className="flex items-center gap-2.5">
+            <Layers size={16} style={{ color: A_TEAL3 }} />
+            <div>
+              <div className="text-[10.5px] font-bold uppercase tracking-[.16em]" style={{ color: A_TEAL3 }}>Belge OCR Sonuçları</div>
+              <div className="text-[15px] font-bold" style={{ color: '#fff' }}>Fatura KDV Dökümü</div>
+            </div>
+          </div>
+          <span className="rounded-full px-3 py-1 text-[11.5px] font-bold tabular-nums" style={{ background: 'rgba(255,255,255,0.06)', color: 'rgba(255,255,255,0.7)', border: '1px solid rgba(255,255,255,0.12)' }}>
+            {cleanSatisTotal.adet + cleanAlisTotal.adet} fatura
+          </span>
+        </div>
+        {/* İçerik: iki tablo yan yana, ortada dikey ayraç */}
+        <div className="grid grid-cols-1 xl:grid-cols-2">
+          <div className="xl:border-r" style={{ borderColor: 'rgba(255,255,255,0.10)' }}>
+            <OranTablosu
+              embedded
+              baslik="Satış · Hesaplanan KDV"
+              renk="#5fcf8e"
+              oranlar={displaySatis.oranlar}
+              toplamMatrah={displaySatis.toplamMatrah}
+              toplamKdv={displaySatis.toplamHesaplananKdv}
+              adet={cleanSatisTotal.adet}
+            />
+          </div>
+          <div style={{ borderColor: 'rgba(255,255,255,0.10)' }}>
+            <OranTablosu
+              embedded
+              baslik="Alış · İndirilecek KDV"
+              renk="#7fc8ff"
+              oranlar={displayAlis.oranlar}
+              toplamMatrah={displayAlis.toplamMatrah}
+              toplamKdv={displayAlis.toplamIndirilecekKdv}
+              adet={cleanAlisTotal.adet}
+              altSatir={[
+                { ad: 'Tevkifatsız', v: displayAlis.tevkifatsiz },
+                { ad: 'Tevkifatlı (KDV2\'ye)', v: displayAlis.tevkifatli },
+              ]}
+            />
+          </div>
+        </div>
       </div>
 
       {/* Luca — defter türü duyarlı: bilanço→mizan çapraz kontrol; işletme→uygulanmaz */}
@@ -1935,23 +1957,26 @@ function LucaCrossCard({ hesap, mihsap, luca, fark }: { hesap: string; mihsap: n
 }
 
 function OranTablosu({
-  baslik, renk, oranlar, toplamMatrah, toplamKdv, adet, altSatir,
+  baslik, renk, oranlar, toplamMatrah, toplamKdv, adet, altSatir, embedded,
 }: {
   baslik: string; renk: string; oranlar: OranRow[] | null | undefined;
   toplamMatrah: number; toplamKdv: number; adet: number;
   altSatir?: Array<{ ad: string; v: { matrah: number; kdv: number; adet: number } }>;
+  embedded?: boolean;   // tek panel içinde — dış kart çerçevesi yok
 }) {
   const safeOranlar = cleanOranRows(oranlar || []);
   const grid = '1px solid rgba(255,255,255,0.10)';      // dikey+yatay grid çizgileri (belirgin)
   return (
     <div
-      className="rounded-2xl overflow-hidden"
-      style={{ background: '#13100d', border: '1px solid rgba(255,255,255,0.12)', borderLeft: `4px solid ${renk}`, boxShadow: '0 16px 40px -28px rgba(0,0,0,.8)' }}
+      className={embedded ? 'h-full overflow-hidden' : 'rounded-2xl overflow-hidden'}
+      style={embedded
+        ? { background: 'transparent' }
+        : { background: '#13100d', border: '1px solid rgba(255,255,255,0.12)', borderLeft: `4px solid ${renk}`, boxShadow: '0 16px 40px -28px rgba(0,0,0,.8)' }}
     >
-      {/* Dolgulu renkli başlık şeridi */}
+      {/* Dolgulu renkli başlık şeridi (panel içinde alt-başlık) */}
       <div
         className="flex items-center justify-between gap-3 px-4 py-3"
-        style={{ background: `linear-gradient(90deg, ${renk}33, ${renk}0a)`, borderBottom: `1px solid ${renk}40` }}
+        style={{ background: `linear-gradient(90deg, ${renk}33, ${renk}0a)`, borderBottom: `1px solid ${renk}40`, borderLeft: embedded ? `4px solid ${renk}` : undefined }}
       >
         <div className="flex items-center gap-2.5">
           <span className="h-3 w-3 rounded-full" style={{ background: renk, boxShadow: `0 0 12px ${renk}` }} />
