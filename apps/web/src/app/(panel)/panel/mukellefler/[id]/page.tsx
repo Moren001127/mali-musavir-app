@@ -14,6 +14,8 @@ import {
   ChevronLeft,
   ChevronRight,
   Contact,
+  ExternalLink,
+  Eye,
   FileCheck,
   FileText,
   Hash,
@@ -44,6 +46,7 @@ import TaxpayerStatsCard from '@/components/TaxpayerStatsCard';
 import DocumentExpiryWidget from '@/components/DocumentExpiryWidget';
 import { MukellefiyetlerCard } from '@/components/mukellef/MukellefiyetlerCard';
 import { TaxpayerPortalCredentialsCard } from '@/components/portal-automation/PortalCredentialCards';
+import { beyanKayitlariApi, BEYAN_TIPI_LABEL, type BeyanKaydi } from '@/lib/beyan-kayitlari';
 
 // ── Kurumsal duo palet (altın marka + çelik mavisi yapı), siyah zemin ──
 const GOLD = '#d4b876';
@@ -208,11 +211,12 @@ const HIZLI_SORGULAR: Kisayol[] = [
 // ============================================================
 // SEKMELER + ayrı sayfaya götüren link modülleri (hızlı erişim)
 // ============================================================
-type TabKey = 'bilgiler' | 'mukellefiyetler' | 'sgk' | 'tebligat' | 'notlar';
+type TabKey = 'bilgiler' | 'mukellefiyetler' | 'beyanname' | 'sgk' | 'tebligat' | 'notlar';
 
 const REAL_TABS: Array<{ key: TabKey; label: string; icon: React.ElementType }> = [
   { key: 'bilgiler',        label: 'Bilgiler',        icon: UserRound },
   { key: 'mukellefiyetler', label: 'Mükellefiyetler', icon: FileCheck },
+  { key: 'beyanname',       label: 'Beyanname',       icon: FileText },
   { key: 'sgk',             label: 'SGK',             icon: Shield },
   { key: 'tebligat',        label: 'E-Tebligat',      icon: Mail },
   { key: 'notlar',          label: 'Notlar',          icon: MessageSquareText },
@@ -557,6 +561,9 @@ export default function MukellefDetayPage() {
               )}
               {activeTab === 'mukellefiyetler' && !isNew && id && (
                 <MukellefiyetlerCard taxpayerId={id} />
+              )}
+              {activeTab === 'beyanname' && !isNew && id && (
+                <BeyannamelerTab taxpayerId={id} />
               )}
               {activeTab === 'sgk' && (
                 <PlaceholderTab
@@ -1246,6 +1253,142 @@ function NotlarTab({ form, setForm }: { form: FormState; setForm: React.Dispatch
       />
     </div>
   );
+}
+
+// ============================================================
+// BEYANNAME TAB — Beyannameler modülünden bu mükellefe ait kayıtlar
+// ============================================================
+function BeyannamelerTab({ taxpayerId }: { taxpayerId: string }) {
+  const { data: kayitlar = [], isLoading } = useQuery({
+    queryKey: ['beyan-kayitlari', 'mukellef', taxpayerId],
+    queryFn: () => beyanKayitlariApi.list({ taxpayerId, limit: 300 }),
+  });
+  const [busyKey, setBusyKey] = useState<string | null>(null);
+
+  const openDoc = async (row: BeyanKaydi, kind: 'beyanname' | 'tahakkuk') => {
+    const hasFile = kind === 'beyanname' ? !!row.beyannameUrl : !!row.pdfUrl;
+    if (!hasFile) {
+      toast.warning('Bu kayıt için görüntülenecek PDF yok');
+      return;
+    }
+    const key = `${row.id}:${kind}`;
+    setBusyKey(key);
+    try {
+      const endpoint = kind === 'beyanname'
+        ? `/beyan-kayitlari/${row.id}/beyanname`
+        : `/beyan-kayitlari/${row.id}/pdf`;
+      const res = await api.get(endpoint, { responseType: 'blob' });
+      const blob = res.data instanceof Blob ? res.data : new Blob([res.data], { type: 'application/pdf' });
+      const url = URL.createObjectURL(blob);
+      window.open(url, '_blank', 'noopener,noreferrer');
+      setTimeout(() => URL.revokeObjectURL(url), 60_000);
+    } catch (e: any) {
+      toast.error(e?.response?.data?.message || e?.message || 'PDF açılamadı');
+    } finally {
+      setBusyKey(null);
+    }
+  };
+
+  const sorted = useMemo(
+    () => [...(Array.isArray(kayitlar) ? kayitlar : [])].sort((a, b) => (b.donem || '').localeCompare(a.donem || '')),
+    [kayitlar],
+  );
+
+  if (isLoading) {
+    return (
+      <div className="flex items-center gap-2 py-10 text-[13px]" style={{ color: MUTED }}>
+        <Loader2 size={15} className="animate-spin" /> Beyannameler yükleniyor…
+      </div>
+    );
+  }
+
+  if (sorted.length === 0) {
+    return (
+      <div className="flex flex-col items-center justify-center py-12 text-center">
+        <div className="mb-4 flex h-14 w-14 items-center justify-center rounded-2xl border" style={{ borderColor: STEEL_LN, background: STEEL_SF, color: STEEL_BR }}>
+          <FileText size={26} />
+        </div>
+        <h3 className="text-[16px] font-semibold" style={{ color: TEXT }}>Beyanname kaydı yok</h3>
+        <p className="mt-2 max-w-md text-[12.5px]" style={{ color: MUTED }}>
+          Bu mükellef için Beyannameler modülünden indirilmiş beyanname bulunamadı.
+        </p>
+        <Link href={`/panel/beyannameler?taxpayerId=${taxpayerId}`} className="mt-4 inline-flex items-center gap-1.5 rounded-lg px-4 py-2 text-[12.5px] font-bold" style={{ background: `linear-gradient(135deg, ${STEEL_BR}, ${STEEL_DP})`, color: '#fff' }}>
+          Beyannameler modülünü aç <ExternalLink size={13} />
+        </Link>
+      </div>
+    );
+  }
+
+  return (
+    <div className="space-y-2.5">
+      <div className="mb-1 flex items-center justify-between">
+        <span className="text-[12px]" style={{ color: MUTED }}>{sorted.length} beyanname kaydı</span>
+        <Link href={`/panel/beyannameler?taxpayerId=${taxpayerId}`} className="inline-flex items-center gap-1.5 text-[12px] font-semibold" style={{ color: STEEL_BR }}>
+          Beyannameler modülünde aç <ExternalLink size={12} />
+        </Link>
+      </div>
+      {sorted.map((row) => {
+        const beyanBusy = busyKey === `${row.id}:beyanname`;
+        const tahBusy = busyKey === `${row.id}:tahakkuk`;
+        return (
+          <div key={row.id} className="flex flex-wrap items-center gap-3 rounded-xl border p-3" style={{ borderColor: HAIR, background: CARD2 }}>
+            <span className="inline-flex items-center rounded-md border px-2 py-1 text-[10.5px] font-bold" style={{ borderColor: STEEL_LN, background: STEEL_SF, color: STEEL_BR }}>
+              {BEYAN_TIPI_LABEL[row.beyanTipi] || row.beyanTipi}
+            </span>
+            <div className="min-w-0 flex-1">
+              <div className="text-[13px] font-semibold" style={{ color: TEXT }}>{fmtBeyanDonem(row.donem)}</div>
+              <div className="mt-0.5 text-[11px]" style={{ color: FAINT }}>
+                {row.beyanTarihi ? `Beyan: ${fmtDateTR(row.beyanTarihi.substring(0, 10))}` : 'Beyan tarihi yok'}
+                {row.onayNo ? ` · Onay: ${row.onayNo}` : ''}
+              </div>
+            </div>
+            {row.tahakkukTutari != null && (
+              <div className="text-right">
+                <div className="text-[9.5px] uppercase tracking-wide" style={{ color: FAINT }}>Tahakkuk</div>
+                <div className="text-[13px] font-bold tabular-nums" style={{ color: TEXT }}>{fmtTutar(row.tahakkukTutari)} ₺</div>
+              </div>
+            )}
+            <div className="flex items-center gap-2">
+              <DocBtn label="Beyanname" disabled={!row.beyannameUrl} busy={beyanBusy} onClick={() => openDoc(row, 'beyanname')} />
+              <DocBtn label="Tahakkuk" disabled={!row.pdfUrl} busy={tahBusy} onClick={() => openDoc(row, 'tahakkuk')} muted />
+            </div>
+          </div>
+        );
+      })}
+    </div>
+  );
+}
+
+function DocBtn({ label, disabled, busy, onClick, muted }: { label: string; disabled?: boolean; busy?: boolean; onClick: () => void; muted?: boolean }) {
+  return (
+    <button
+      type="button"
+      onClick={onClick}
+      disabled={disabled || busy}
+      title={disabled ? `${label} PDF yok` : `${label} görüntüle`}
+      className="inline-flex items-center gap-1.5 rounded-lg border px-2.5 py-1.5 text-[11.5px] font-semibold transition hover:brightness-110 disabled:cursor-not-allowed disabled:opacity-35"
+      style={muted
+        ? { borderColor: LINE, background: 'rgba(255,255,255,0.03)', color: MUTED }
+        : { borderColor: STEEL_LN, background: STEEL_SF, color: STEEL_BR }}
+    >
+      {busy ? <Loader2 size={13} className="animate-spin" /> : <Eye size={13} />}
+      {label}
+    </button>
+  );
+}
+
+function fmtBeyanDonem(donem: string): string {
+  if (!donem) return '—';
+  const aylar = ['Ocak', 'Şubat', 'Mart', 'Nisan', 'Mayıs', 'Haziran', 'Temmuz', 'Ağustos', 'Eylül', 'Ekim', 'Kasım', 'Aralık'];
+  let m = /^(\d{4})-(\d{2})$/.exec(donem);
+  if (m) { const ay = +m[2]; return ay >= 1 && ay <= 12 ? `${aylar[ay - 1]} ${m[1]}` : donem; }
+  m = /^(\d{4})-Q(\d)$/.exec(donem); if (m) return `${m[1]} ${m[2]}. Dönem`;
+  m = /^(\d{4})-YIL$/.exec(donem); if (m) return `${m[1]} Yıllık`;
+  return donem;
+}
+
+function fmtTutar(n: number): string {
+  return n.toLocaleString('tr-TR', { minimumFractionDigits: 2, maximumFractionDigits: 2 });
 }
 
 // ============================================================
