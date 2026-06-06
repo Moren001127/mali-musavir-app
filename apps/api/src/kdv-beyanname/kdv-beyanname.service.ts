@@ -1415,23 +1415,32 @@ export class KdvBeyannameService {
     return this.extractKdvBreakdownFromRaw(record?.rawData, record);
   }
 
-  /** Mizan/kebir hesap adından KDV oranını çıkar: "... KDV %10" → 10. */
+  /** Luca kebir kaydından KDV oranını çıkar. record.hesapAdi BAZEN gerçek ad
+   * ("İNDİRİLECEK KDV %1"), BAZEN hesap KODU ("191.01.001") olarak gelir →
+   * tüm aday alanları sırayla deneyip "%N" yakalanan ilkini al.
+   */
   private oranFromHesapAdi(record: any): number {
     const raw = record?.rawData || {};
-    const ad = String(
-      record?.hesapAdi
-      ?? record?.aciklama
-      ?? raw['HESAP ADI']
-      ?? raw['HESAP ADI '] // bazı export'larda sonda boşluk
-      ?? raw.hesapAdi
-      ?? raw['Hesap Adı']
-      ?? '',
-    );
-    const m = ad.match(/%\s*(\d{1,2})(?:[.,]\d+)?/);
-    if (!m) return 0;
-    const o = Number(m[1]);
-    if (!Number.isFinite(o) || o <= 0) return 0;
-    return GECERLI_KDV_ORANLARI.includes(o) ? o : this.nearestKdvRate(o);
+    const adaylar = [
+      raw['HESAP ADI'],
+      raw['HESAP ADI '],    // bazı export'larda sonda boşluk
+      raw['Hesap Adı'],
+      raw.hesapAdi,
+      raw.HESAPADI,
+      record?.hesapAdi,
+      record?.aciklama,
+      raw['AÇIKLAMA'],
+    ];
+    for (const aday of adaylar) {
+      if (!aday) continue;
+      const ad = String(aday);
+      const m = ad.match(/%\s*(\d{1,2})(?:[.,]\d+)?/);
+      if (!m) continue;
+      const o = Number(m[1]);
+      if (!Number.isFinite(o) || o <= 0) continue;
+      return GECERLI_KDV_ORANLARI.includes(o) ? o : this.nearestKdvRate(o);
+    }
+    return 0;
   }
 
   private completeControlRows(
