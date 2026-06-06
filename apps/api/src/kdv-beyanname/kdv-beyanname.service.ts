@@ -2281,8 +2281,9 @@ export class KdvBeyannameService {
         'Bu mükellef bilanço usulünde. Gelir-gider listesi işletme defteri içindir; bilanço için Luca mizan çekilir.',
       );
     }
-    // Tekrar önleme
-    const mevcut = await (this.prisma as any).lucaFetchJob.findFirst({
+    // Tekrar önleme: bu mükellef+dönem için bekleyen/çalışan KDV_ISLETME_GG varsa
+    // yeniden açma (gelir+gider iki iş birlikte değerlendirilir).
+    const mevcutlar = await (this.prisma as any).lucaFetchJob.findMany({
       where: {
         tenantId: params.tenantId,
         mukellefId: params.mukellefId,
@@ -2292,23 +2293,34 @@ export class KdvBeyannameService {
       },
       orderBy: { createdAt: 'desc' },
     });
-    if (mevcut) return { jobId: mevcut.id, status: mevcut.status, reused: true };
-    const job = await (this.prisma as any).lucaFetchJob.create({
-      data: {
-        tenantId: params.tenantId,
-        sessionId: null,
-        mukellefId: params.mukellefId,
-        donem: params.donem,
-        tip: 'KDV_ISLETME_GG',
-        status: 'pending',
-        createdBy: params.createdBy || null,
-        targetDeviceId: params.targetDeviceId || null,
-        preferredAgent: 'local-node',
-        priority: 2,
-        errorMsg: `[META] mukellefAdi=${this.formatMukellefAd(mukellef)}\nKDV işletme gelir-gider: ${params.donem}`,
-      },
-    });
-    return { jobId: job.id, status: job.status };
+    if (mevcutlar.length > 0) {
+      return { jobId: mevcutlar[0].id, jobIds: mevcutlar.map((j: any) => j.id), status: mevcutlar[0].status, reused: true };
+    }
+    // ÇALIŞAN yöntem: KDV Kontrol gibi GELİR ve GİDER ayrı ayrı çekilir (tek-bölüm
+    // rapor → parser temiz okur). 'both' birleşik A4 raporu kullanılmaz.
+    const mukAd = this.formatMukellefAd(mukellef);
+    const modes: Array<'gelir' | 'gider'> = ['gelir', 'gider'];
+    const jobs: any[] = [];
+    for (const ggMode of modes) {
+      const job = await (this.prisma as any).lucaFetchJob.create({
+        data: {
+          tenantId: params.tenantId,
+          sessionId: null,
+          mukellefId: params.mukellefId,
+          donem: params.donem,
+          tip: 'KDV_ISLETME_GG',
+          status: 'pending',
+          createdBy: params.createdBy || null,
+          targetDeviceId: params.targetDeviceId || null,
+          preferredAgent: 'local-node',
+          priority: 2,
+          payload: { ggMode },
+          errorMsg: `[META] mukellefAdi=${mukAd}\nKDV işletme ${ggMode === 'gelir' ? 'gelir (satış)' : 'gider (alış)'}: ${params.donem}`,
+        },
+      });
+      jobs.push(job);
+    }
+    return { jobId: jobs[0].id, jobIds: jobs.map((j) => j.id), status: 'pending' };
   }
 
   /** Agent'ın yüklediği gelir-gider Excel'ini parse edip KDV toplamlarını snapshot'a yazar. */
@@ -2318,16 +2330,46 @@ export class KdvBeyannameService {
     donem: string;
     fetchJobId?: string;
     buffer: Buffer;
+    ggMode?: 'gelir' | 'gider' | 'both';
   }) {
     const sums = this.parseIsletmeGgKdvSums(params.buffer, params.donem);
+    const mode = params.ggMode === 'gelir' ? 'gelir' : params.ggMode === 'gider' ? 'gider' : 'both';
+
+    // Mevcut snapshot'i oku — gelir/gider AYRI iş geldiği için diğer bölümü KORU
+    // (gelir yüklemesi gider'i, gider yüklemesi gelir'i silmesin).
+    const existingSnap = await (this.prisma as any).kdvLucaSnapshot
+      .findUnique({
+        where: {
+          tenantId_taxpayerId_donem: {
+            tenantId: params.tenantId,
+            taxpayerId: params.mukellefId,
+            donem: params.donem,
+          },
+        },
+        select: { hamMizan: true },
+      })
+      .catch(() => null);
+    const prevRaw: any = existingSnap?.hamMizan;
+    const prev: any =
+      prevRaw && !Array.isArray(prevRaw) && prevRaw.__isletmeGg ? prevRaw : {};
+
+    const gelirKdvToplam = mode === 'gider' ? Number(prev.gelirKdvToplam || 0) : sums.gelirKdvToplam;
+    const giderKdvToplam = mode === 'gelir' ? Number(prev.giderKdvToplam || 0) : sums.giderKdvToplam;
+    const gelirSatirAdet = mode === 'gider' ? Number(prev.gelirSatirAdet || 0) : sums.gelirSatirAdet;
+    const giderSatirAdet = mode === 'gelir' ? Number(prev.giderSatirAdet || 0) : sums.giderSatirAdet;
+
     const data = {
       __isletmeGg: true,
-      gelirKdvToplam: sums.gelirKdvToplam,
-      giderKdvToplam: sums.giderKdvToplam,
-      gelirSatirAdet: sums.gelirSatirAdet,
-      giderSatirAdet: sums.giderSatirAdet,
-      netKdv: Math.round((sums.gelirKdvToplam - sums.giderKdvToplam) * 100) / 100,
+      gelirKdvToplam,
+      giderKdvToplam,
+      gelirSatirAdet,
+      giderSatirAdet,
+      netKdv: Math.round((gelirKdvToplam - giderKdvToplam) * 100) / 100,
+      // Hangi bölümler çekildi (UI "tamamlandı mı" için)
+      gelirAlindi: mode === 'gelir' ? true : mode === 'both' ? true : !!prev.gelirAlindi,
+      giderAlindi: mode === 'gider' ? true : mode === 'both' ? true : !!prev.giderAlindi,
     };
+    const toplamHesapAdet = gelirSatirAdet + giderSatirAdet;
     const snap = await (this.prisma as any).kdvLucaSnapshot.upsert({
       where: {
         tenantId_taxpayerId_donem: {
@@ -2342,16 +2384,16 @@ export class KdvBeyannameService {
         donem: params.donem,
         fetchJobId: params.fetchJobId || null,
         hamMizan: data,
-        toplamHesapAdet: sums.gelirSatirAdet + sums.giderSatirAdet,
+        toplamHesapAdet,
       },
       update: {
         cekildiAt: new Date(),
         fetchJobId: params.fetchJobId || null,
         hamMizan: data,
-        toplamHesapAdet: sums.gelirSatirAdet + sums.giderSatirAdet,
+        toplamHesapAdet,
       },
     });
-    return { id: snap.id, ...sums };
+    return { id: snap.id, gelirKdvToplam, giderKdvToplam, ggMode: mode };
   }
 
   /** İşletme gelir-gider snapshot'ını oku (varsa). */

@@ -817,6 +817,7 @@ export class LucaController {
     @Query('mukellefId') mukellefId: string,
     @Query('donem') donem: string,
     @Query('jobId') jobId?: string,
+    @Query('ggMode') ggMode?: string,
   ) {
     if (!file) throw new BadRequestException('Excel dosyası gerekli (field: file)');
     if (!mukellefId || !donem) {
@@ -832,12 +833,14 @@ export class LucaController {
       label: 'KDV işletme gelir-gider',
     });
     try {
+      const mode = ggMode === 'gelir' ? 'gelir' : ggMode === 'gider' ? 'gider' : 'both';
       const snap = await this.kdvBeyanname.importIsletmeGGSnapshot({
         tenantId,
         mukellefId,
         donem,
         fetchJobId: jobId,
         buffer: file.buffer,
+        ggMode: mode,
       });
       const adet = ((snap as any)?.gelirSatirAdet || 0) + ((snap as any)?.giderSatirAdet || 0);
       if (jobId) await this.luca.markJobDone(jobId, adet).catch(() => {});

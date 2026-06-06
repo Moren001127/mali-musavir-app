@@ -1453,49 +1453,61 @@ function Kdv1View({ data, isBilanco }: { data: Kdv1; isBilanco: boolean }) {
  */
 function IsletmeGgFetchPanel({ data, hesaplanan, indirilecek }: { data: Kdv1; hesaplanan: number; indirilecek: number }) {
   const qc = useQueryClient();
-  const [jobId, setJobId] = useState<string | null>(null);
+  // İşletme: GELİR + GİDER ayrı iki iş — ikisini birlikte bekle.
+  const [jobIds, setJobIds] = useState<string[]>([]);
   const gg = data.isletmeGelirGider;
 
   const fetchMut = useMutation({
     mutationFn: () =>
       api.post('/kdv-beyanname/isletme-gg/fetch', { mukellefId: data.mukellefId, donem: data.donem })
-        .then((r) => r.data as { jobId: string; status: string }),
+        .then((r) => r.data as { jobId: string; jobIds?: string[]; status: string }),
     onSuccess: (d) => {
-      setJobId(d.jobId);
-      toast.info('Luca gelir-gider çekme başlatıldı — güvenlik kodu gerekirse portalda görünecek');
+      setJobIds(d.jobIds && d.jobIds.length ? d.jobIds : (d.jobId ? [d.jobId] : []));
+      toast.info('Luca gelir-gider çekme başlatıldı (gelir + gider) — güvenlik kodu gerekirse portalda görünecek');
     },
     onError: (e: any) => toast.error(e?.response?.data?.message || 'Çekme başlatılamadı'),
   });
 
   const cancelJobMut = useMutation({
-    mutationFn: () => api.post(`/luca/jobs/${jobId}/cancel`).then((r) => r.data),
-    onSuccess: () => { toast.info('Çekim iptal edildi'); setJobId(null); },
+    mutationFn: () => Promise.all(jobIds.map((id) => api.post(`/luca/jobs/${id}/cancel`).then((r) => r.data).catch(() => null))),
+    onSuccess: () => { toast.info('Çekim iptal edildi'); setJobIds([]); },
     onError: (e: any) => toast.error(e?.response?.data?.message || 'İptal edilemedi'),
   });
 
   const jobQuery = useQuery({
-    queryKey: ['kdv-luca-job', jobId],
-    queryFn: () => api.get(`/kdv-beyanname/luca-job/${jobId}`).then((r) => r.data),
-    enabled: !!jobId,
+    queryKey: ['kdv-luca-jobs', jobIds],
+    queryFn: async () => {
+      const jobs = await Promise.all(
+        jobIds.map((id) => api.get(`/kdv-beyanname/luca-job/${id}`).then((r) => (r.data as any)?.job).catch(() => null)),
+      );
+      return jobs.filter(Boolean) as any[];
+    },
+    enabled: jobIds.length > 0,
     refetchInterval: 3000,
   });
 
   React.useEffect(() => {
-    const j = (jobQuery.data as any)?.job;
-    if (!j) return;
-    if (j.status === 'done') {
+    const jobs = jobQuery.data as any[] | undefined;
+    if (!jobs || jobs.length === 0) return;
+    const terminal = (s: string) => s === 'done' || s === 'failed' || s === 'cancelled';
+    if (!jobs.every((j) => terminal(j.status))) return; // ikisi de bitsin
+    if (jobs.some((j) => j.status === 'done')) {
       toast.success('Gelir-gider çekildi');
       qc.invalidateQueries({ queryKey: ['kdv-beyanname-kdv1', data.mukellefId, data.donem] });
-      setTimeout(() => setJobId(null), 1500);
-    } else if (j.status === 'failed') {
-      toast.error(`Hata: ${j.errorMsg || 'bilinmeyen'}`);
     }
+    if (jobs.some((j) => j.status === 'failed')) {
+      const f = jobs.find((j) => j.status === 'failed');
+      toast.error(`Hata: ${f?.errorMsg ? String(f.errorMsg).split('\n').filter((l: string) => l.trim()).pop() : 'bilinmeyen'}`);
+    }
+    setTimeout(() => setJobIds([]), 1500);
   }, [jobQuery.data, qc]);
 
+  const fetching = jobIds.length > 0;
   const lastLogLine = (() => {
-    const j = (jobQuery.data as any)?.job;
-    if (!j?.errorMsg) return null;
-    const lines = String(j.errorMsg).split('\n').filter((l: string) => l.trim());
+    const jobs = jobQuery.data as any[] | undefined;
+    const running = jobs?.find((j) => j.status === 'running') || jobs?.[jobs.length - 1];
+    if (!running?.errorMsg) return null;
+    const lines = String(running.errorMsg).split('\n').filter((l: string) => l.trim());
     return lines[lines.length - 1] || null;
   })();
 
@@ -1515,21 +1527,21 @@ function IsletmeGgFetchPanel({ data, hesaplanan, indirilecek }: { data: Kdv1; he
         </div>
         <button
           onClick={() => fetchMut.mutate()}
-          disabled={fetchMut.isPending || !!jobId}
+          disabled={fetchMut.isPending || fetching}
           className="px-4 py-2 rounded-md text-sm font-semibold flex items-center gap-2 disabled:opacity-50 whitespace-nowrap"
           style={{ background: '#14b8a6', color: '#0a0906' }}
         >
-          {fetchMut.isPending || jobId ? <Loader2 size={14} className="animate-spin" /> : <Download size={14} />}
-          {jobId ? 'Çekiliyor…' : "Luca'dan Çek"}
+          {fetchMut.isPending || fetching ? <Loader2 size={14} className="animate-spin" /> : <Download size={14} />}
+          {fetching ? 'Çekiliyor…' : "Luca'dan Çek"}
         </button>
       </div>
 
-      {jobId && (
+      {fetching && (
         <>
           <LucaInlineCaptchaPanel
-            jobIds={[jobId]}
+            jobIds={jobIds}
             color="#14b8a6"
-            onAnswered={() => qc.invalidateQueries({ queryKey: ['kdv-luca-job', jobId] })}
+            onAnswered={() => qc.invalidateQueries({ queryKey: ['kdv-luca-jobs', jobIds] })}
             onCancel={() => cancelJobMut.mutate()}
           />
           {lastLogLine && (

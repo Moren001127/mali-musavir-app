@@ -1711,10 +1711,12 @@
             });
             uploadUrl = `${API}/agent/luca/runner/upload-kdv-mizan?${params.toString()}`;
           } else if (job.tip === 'KDV_ISLETME_GG') {
-            // KDV beyanname işletme gelir-gider — bağımsız snapshot endpoint'i
+            // KDV beyanname işletme gelir-gider — bağımsız snapshot endpoint'i.
+            // ggMode (gelir/gider) → backend hangi bölümü (Hesaplanan/İndirilecek) yazacağını bilir.
             const params = new URLSearchParams({
               mukellefId: String(job.mukellefId || ''),
               donem: String(job.donem || ''),
+              ggMode: String(job.payload?.ggMode || 'both'),
               jobId: job.id,
             });
             uploadUrl = `${API}/agent/luca/runner/upload-kdv-isletme-gg?${params.toString()}`;
@@ -1916,9 +1918,14 @@
       return await fetchLucaIsletmeGelirGiderExcel(job, log, mode);
     }
     if (job.tip === 'KDV_ISLETME_GG') {
-      // KDV beyanname işletme gelir-gider snapshot — tek Excel'de GELİR+GİDER (both).
-      // KDV Kontrol'den bağımsız; upload yolu farklı (upload-kdv-isletme-gg).
-      return await fetchLucaIsletmeGelirGiderExcel(job, log, 'both');
+      // KDV beyanname işletme gelir-gider snapshot — KDV Kontrol'den BAGIMSIZ.
+      // payload.ggMode = 'gelir' | 'gider' → CALISAN tek-bolum modu (ISLETME_GELIR/
+      // ISLETME_GIDER ile birebir ayni rapor; backend parser bunu okur). Eski davranis
+      // (payload yok) → 'both' (geriye uyumluluk; birlesik A4 raporu).
+      const ggMode = job.payload?.ggMode === 'gelir' ? 'gelir'
+        : job.payload?.ggMode === 'gider' ? 'gider'
+        : 'both';
+      return await fetchLucaIsletmeGelirGiderExcel(job, log, ggMode);
     }
     if (job.tip === 'IHO_FETCH') {
       // İşletme Hesap Özeti — yeni menü-bazlı tam otomasyon (v1.36.7+)
