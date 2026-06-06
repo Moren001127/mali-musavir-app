@@ -457,6 +457,26 @@ export class KdvBeyannameService {
     }
     const isVerildi = (s?: string) => s === 'onaylandi';
 
+    // VERİLME KAYNAĞI: elle işaret (BeyanDurumu) VEYA Beyannameler modülünde
+    // o dönem için gerçek beyanname kaydı (BeyanKaydi, belge/onay içeren) varsa → verildi.
+    const beyanlar = await (this.prisma as any).beyanKaydi.findMany({
+      where: {
+        tenantId,
+        donem,
+        beyanTipi: { in: ['KDV1', 'KDV2'] },
+        OR: [{ beyannameUrl: { not: null } }, { pdfUrl: { not: null } }, { onayNo: { not: null } }],
+      },
+      select: { taxpayerId: true, beyanTipi: true },
+    });
+    const kdv1BeyanSet = new Set<string>();
+    const kdv2BeyanSet = new Set<string>();
+    for (const b of beyanlar) {
+      if (b.beyanTipi === 'KDV1') kdv1BeyanSet.add(b.taxpayerId);
+      else kdv2BeyanSet.add(b.taxpayerId);
+    }
+    const kdv1VerildiMi = (id: string, s?: string) => isVerildi(s) || kdv1BeyanSet.has(id);
+    const kdv2VerildiMi = (id: string, s?: string) => isVerildi(s) || kdv2BeyanSet.has(id);
+
     const satirlar: GenelBakisRow[] = [];
     const batchSize = 8;
     for (let i = 0; i < kdvMukellef.length; i += batchSize) {
@@ -499,11 +519,11 @@ export class KdvBeyannameService {
               veriGuveniSeviye: k1?.veriGuveni.seviye ?? 'eksik',
               durum,
               kdv1Var: !!cfg.kdv1Period,
-              kdv1Verildi: isVerildi(d.kdv1),
+              kdv1Verildi: kdv1VerildiMi(m.id, d.kdv1),
               kdv2Var: tevkifatliAdet > 0,
               kdv2TevkifatTutari: tevkifatliKdv,
               kdv2FaturaAdet: tevkifatliAdet,
-              kdv2Verildi: isVerildi(d.kdv2),
+              kdv2Verildi: kdv2VerildiMi(m.id, d.kdv2),
             };
           } catch (e: any) {
             this.logger.warn(`genelBakis mükellef ${m.id}: ${e?.message}`);
@@ -520,11 +540,11 @@ export class KdvBeyannameService {
               veriGuveniSeviye: 'eksik',
               durum: 'bos',
               kdv1Var: !!cfg.kdv1Period,
-              kdv1Verildi: isVerildi(d.kdv1),
+              kdv1Verildi: kdv1VerildiMi(m.id, d.kdv1),
               kdv2Var: false,
               kdv2TevkifatTutari: 0,
               kdv2FaturaAdet: 0,
-              kdv2Verildi: isVerildi(d.kdv2),
+              kdv2Verildi: kdv2VerildiMi(m.id, d.kdv2),
             };
           }
         }),
