@@ -212,6 +212,7 @@ export class AgentEventsService {
     ocrInput: {
       faturaImageBase64: string;
       faturaImageMediaType?: string;
+      faturaText?: string;
       tenantId?: string;
       mukellefId?: string;
       mukellef?: string;
@@ -247,12 +248,25 @@ export class AgentEventsService {
       }
     } catch {}
 
-    const ocr = await this.runMihsapImageOcr(ocrInput, ocrSource);
+    const viewerText = String(ocrInput.faturaText || '').replace(/\s+/g, ' ').trim();
+    const hasImage = String(ocrInput.faturaImageBase64 || '').trim().length > 200;
+    const shouldRunImageOcr =
+      viewerText.length < 80 || String(process.env.MIHSAP_ALWAYS_IMAGE_OCR || '').trim() === '1';
+    const ocr = shouldRunImageOcr && hasImage ? await this.runMihsapImageOcr(ocrInput, ocrSource) : null;
     const ocrText = (ocr?.text || '').trim();
+    const belgeKaynaklari: string[] = [];
+    if (viewerText.length >= 80) {
+      belgeKaynaklari.push(
+        `=== FATURA GORUNTULEYICI / PDF TEXT-LAYER METNI ===\n${viewerText.slice(0, 12000)}`,
+      );
+    }
+    if (ocrText.length >= 30) {
+      belgeKaynaklari.push(`=== FATURA OCR METNI ===\n${ocrText.slice(0, 14000)}`);
+    }
     const prompt =
-      ocrText.length >= 30
-        ? `${userText}\n\nGÖRÜNTÜ YERİNE aşağıdaki fatura OCR metnini kullan. Ekran/Mihsap üst bilgilerini sadece karşılaştırma hedefi olarak gör; JSON'daki tarih, belgeNo, belgeTuru, cari, kdvOrani, ocrToplam, ocrMatrah ve ocrKdvTutari alanlarını yalnızca FATURA OCR METNİ'nden doldur. OCR metninde olmayan bilgiyi UYDURMA, ekran bilgisinden kopyalama. Net çelişki görürsen atla; okuyamadığın alanı null bırak.\n\n=== FATURA OCR METNİ ===\n${ocrText.slice(0, 14000)}`
-        : `${userText}\n\n(Not: Fatura OCR metni alınamadı. Ekran/Mihsap üst bilgisini fatura verisi gibi kabul etme. Belgeyi okuyamadığın için güvenli karar veremiyorsan "emin_degil"/"emin":false dön; tahmin etme.)`;
+      belgeKaynaklari.length > 0
+        ? `${userText}\n\nAşağıdaki BELGE KAYNAKLARI fatura görselinden/PDF görüntüleyiciden alınmıştır. Ekran/Mihsap üst bilgilerini belge verisi gibi kabul etme; onları sadece karşılaştırma hedefi olarak gör. JSON'daki tarih, belgeNo, belgeTuru, cari, kdvOrani, ocrToplam, ocrMatrah ve ocrKdvTutari alanlarını yalnızca BELGE KAYNAKLARI'ndan doldur. Belge kaynaklarında olmayan bilgiyi UYDURMA, ekran bilgisinden kopyalama. Belge kaynakları kendi arasında veya Mihsap ekranıyla net çelişiyorsa onay verme/atla; okuyamadığın alanı null bırak.\n\n${belgeKaynaklari.join('\n\n')}`
+        : `${userText}\n\n(Not: Fatura belge metni/OCR metni alınamadı. Ekran/Mihsap üst bilgisini fatura verisi gibi kabul etme. Belgeyi okuyamadığın için güvenli karar veremiyorsan "emin_degil"/"emin":false dön; tahmin etme.)`;
 
     // Varsayılan Haiku (hız parite); daha yüksek isabet için MIHSAP_MAX_MODEL=claude-sonnet-4-6.
     const model = process.env.MIHSAP_MAX_MODEL || MAX_MODEL_CHEAP;
@@ -819,13 +833,31 @@ export class AgentEventsService {
 
   private async callMihsapCheapModel(
     kind: 'fatura' | 'isletme',
-    input: { tenantId?: string; mukellefId?: string; mukellef?: string; belgeNo?: string },
+    input: {
+      tenantId?: string;
+      mukellefId?: string;
+      mukellef?: string;
+      belgeNo?: string;
+      faturaText?: string;
+    },
     system: string,
     userText: string,
     ocr: MihsapOcrTextResult,
     maxTokens: number,
   ): Promise<MihsapCheapDecisionResult | null> {
-    if (!ocr.text || ocr.text.trim().length < 80) {
+    const viewerText = String(input.faturaText || '').replace(/\s+/g, ' ').trim();
+    const ocrText = String(ocr.text || '').trim();
+    const belgeKaynaklari: string[] = [];
+    if (viewerText.length >= 80) {
+      belgeKaynaklari.push(
+        `=== FATURA GORUNTULEYICI / PDF TEXT-LAYER METNI ===\n${viewerText.slice(0, 12000)}`,
+      );
+    }
+    if (ocrText.length >= 30) {
+      belgeKaynaklari.push(`=== FATURA OCR METNI ===\n${ocrText.slice(0, 14000)}`);
+    }
+    const belgeMetni = belgeKaynaklari.join('\n\n');
+    if (belgeMetni.length < 80) {
       return {
         provider: 'none',
         model: 'none',
@@ -840,11 +872,11 @@ export class AgentEventsService {
     const failures: string[] = [];
     const prompt = `${userText}
 
-Ucuz karar modu: goruntu yerine asagidaki OCR metnini kullan. Emin degilsen guveni dusuk ver ve tahmin etme.
+Ucuz karar modu: goruntu yerine asagidaki BELGE KAYNAKLARI metnini kullan. Ekran/Mihsap ust bilgisini belge verisi gibi kabul etme; sadece karsilastirma hedefi olarak gor. Emin degilsen guveni dusuk ver ve tahmin etme.
 JSON'a mutlaka "confidence": 0-1 ekle.
 
-OCR METNI:
-${ocr.text.slice(0, 14000)}`;
+BELGE KAYNAKLARI:
+${belgeMetni}`;
 
     // max_only: ucuz katmanda da ücretli Gemini/OpenAI'ye düşme — sadece Max.
     const maxOnly = this.getMihsapDecisionMode() === 'max_only';
@@ -1066,6 +1098,7 @@ ${ocr.text.slice(0, 14000)}`;
       bosAlanSecenekleri?: { matrahKodlari?: string[]; kdvKodlari?: string[]; cariKodlari?: string[] };
       firma?: string;
       action?: string;
+      faturaText?: string;
     },
     system: string,
     userText: string,
@@ -1074,9 +1107,19 @@ ${ocr.text.slice(0, 14000)}`;
   ): Promise<MihsapCheapDecisionResult | null> {
     if (!allowClaudeOnlyFallback && this.getMihsapDecisionMode() === 'claude_only') return null;
     if (!isMaxAvailable() && !this.hasMihsapCheapModelKey()) return null;
-    const ocr = await this.runMihsapImageOcr(input, 'mihsap-fatura-ocr');
-    if (!ocr) return null;
-    const cheap = await this.callMihsapCheapModel('fatura', input, system, userText, ocr, input.bosAlanSecenekleri ? 900 : 650);
+    const viewerText = String(input.faturaText || '').replace(/\s+/g, ' ').trim();
+    const shouldRunImageOcr =
+      viewerText.length < 80 || String(process.env.MIHSAP_ALWAYS_IMAGE_OCR || '').trim() === '1';
+    const ocr = shouldRunImageOcr ? await this.runMihsapImageOcr(input, 'mihsap-fatura-ocr') : null;
+    if (!ocr && !String(input.faturaText || '').trim()) return null;
+    const cheap = await this.callMihsapCheapModel(
+      'fatura',
+      input,
+      system,
+      userText,
+      ocr || { provider: 'none', text: '', fallbackReason: 'image_ocr_unavailable' },
+      input.bosAlanSecenekleri ? 900 : 650,
+    );
     if (cheap?.parsed?.onerilenler && input.bosAlanSecenekleri) {
       cheap.parsed.onerilenler = this.applyCariPolicyToOneriler(cheap.parsed.onerilenler, input, rule?.profile);
       cheap.parsed.onerilenler = this.sanitizeHesapKoduOnerileri(cheap.parsed.onerilenler, input.bosAlanSecenekleri);
@@ -4152,6 +4195,7 @@ Fatura görüntüsünü incele ve yukarıdaki sistem talimatlarına göre JSON d
   async decideIsletme(input: {
     faturaImageBase64: string;
     faturaImageMediaType?: string;
+    faturaText?: string;
     kayitTuruOptions: string[];
     altTuruOptions: string[];
     faturaTarihi?: string;

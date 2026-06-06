@@ -4,7 +4,7 @@
 */
 (function () {
   // Agent versiyon — UI'da gösterilir, debug için kritik
-  const AGENT_VERSION = '1.40.1';
+  const AGENT_VERSION = '1.40.2';
   const AGENT_INSTANCE_ID = 'mai_' + Date.now().toString(36) + '_' + Math.random().toString(36).slice(2, 8);
 
   // === VERSION-AWARE RELOAD ===
@@ -11970,21 +11970,78 @@
     };
     visit(window);
     const chunks = [];
-    const wanted = /fatura|belge|mal\s*hizmet|kdv|toplam|tutar|vergi|tevkifat|araç|arac|otomobil|bilgisayar|makine|demirbaş|demirbas|taşıt|tasit/i;
+    const added = new Set();
+    const norm = (s) => String(s || '').normalize('NFD').replace(/[\u0300-\u036f]/g, '').toLowerCase();
+    const visible = (node) => {
+      try {
+        if (!node || node.nodeType !== 1) return true;
+        const st = node.ownerDocument?.defaultView?.getComputedStyle?.(node);
+        if (st && (st.display === 'none' || st.visibility === 'hidden' || st.opacity === '0')) return false;
+        const r = node.getBoundingClientRect?.();
+        return !r || (r.width > 20 && r.height > 20);
+      } catch {
+        return true;
+      }
+    };
+    const sourceScore = (doc, node) => {
+      try {
+        const hay = norm(`${node.id || ''} ${node.className || ''} ${node.getAttribute?.('role') || ''} ${node.getAttribute?.('aria-label') || ''}`);
+        const hasDocLayer = /textlayer|react-pdf|pdf|viewer|preview|document|invoice/.test(hay) ||
+          !!node.querySelector?.('.textLayer, [class*="textLayer"], [data-page-number], embed, object');
+        if (doc === document && /fatura/.test(hay) && !hasDocLayer) return 0;
+        let score = 0;
+        if (doc !== document && node === doc.body) score += 4;
+        if (/textlayer|react-pdf|pdf|viewer|preview|document|invoice|fatura|goruntu|belge/.test(hay)) score += 2;
+        if (/dialog|ant-modal|ant-drawer/.test(hay)) score += 1;
+        if (node.querySelector?.('canvas, img, svg, text, .textLayer, [class*="textLayer"], [data-page-number], embed, object')) score += 2;
+        return score;
+      } catch {
+        return 0;
+      }
+    };
+    const invoiceTextScore = (text) => {
+      const t = norm(text);
+      if (/canli islem akisi|son komut|runner calisiyor|otomatik onay durduruldu|yapay zeka onay vermedi/.test(t)) return 0;
+      const patterns = [
+        /\bkdv\b/,
+        /genel\s+toplam|odenecek|toplam\s+tutar|ara\s+toplam/,
+        /mal\s*hizmet|hizmet\s+toplam|urun|stok|miktar|birim/,
+        /vergi\s+kimlik|vkn|tckn|ettn|mersis/,
+        /fatura\s+(no|numara|tarihi|tipi)|invoice\s+(no|date)/,
+        /\b[A-Z]{2,4}\d{8,}\b/i,
+        /\d{1,3}(?:\.\d{3})*,\d{2}\s*(?:tl|try)?/i,
+      ];
+      return patterns.reduce((n, re) => n + (re.test(text) || re.test(t) ? 1 : 0), 0);
+    };
     for (const doc of docs) {
-      const nodes = [
-        ...Array.from(doc.querySelectorAll('[class*="invoice"], [class*="fatura"], [class*="pdf"], [class*="viewer"], [role="dialog"], .ant-modal, .ant-drawer')),
-        doc.body,
-      ].filter(Boolean);
+      const nodes = Array.from(doc.querySelectorAll([
+        '[class*="textLayer"]',
+        '.react-pdf__Page',
+        '[data-page-number]',
+        '[class*="pdf"]',
+        '[class*="viewer"]',
+        '[class*="preview"]',
+        '[class*="document"]',
+        '[class*="invoice"]',
+        '[class*="fatura"]',
+        '[role="dialog"]',
+        '.ant-modal',
+        '.ant-drawer',
+      ].join(', '))).filter(Boolean);
+      if (doc !== document && doc.body) nodes.push(doc.body);
       for (const node of nodes) {
+        if (!visible(node) || sourceScore(doc, node) < 2) continue;
         const text = String(node.innerText || node.textContent || '').replace(/\s+/g, ' ').trim();
-        if (text.length < 40 || !wanted.test(text)) continue;
-        chunks.push(text.slice(0, 4000));
+        if (text.length < 40 || invoiceTextScore(text) < 2) continue;
+        const key = text.slice(0, 500);
+        if (added.has(key)) continue;
+        added.add(key);
+        chunks.push(text.slice(0, 5000));
         if (chunks.join(' ').length >= maxChars) break;
       }
       if (chunks.join(' ').length >= maxChars) break;
     }
-    return [...new Set(chunks)].join('\n').slice(0, maxChars);
+    return chunks.join('\n').slice(0, maxChars);
   }
 
   async function aiDecide({ codes, tarih, hedefAy, belgeNo, belgeTuru, faturaTuru, mukellef, mukellefId, firma, firmaKimlikNo, tutar, action, bosAlanSecenekleri, forceFresh, ruleOnly }) {
@@ -13602,10 +13659,12 @@
       if (img) window.__morenFaturaImageCache = { fid, img, ts: Date.now() };
     }
     if (!img) return { emin: false, sebep: 'fatura görüntüsü alınamadı' };
+    const faturaText = getFaturaTextSnapshotCached(12000);
     return await api('/agent/ai/decide-isletme', {
       method: 'POST',
       body: JSON.stringify({
         faturaImageBase64: img,
+        ...(faturaText ? { faturaText } : {}),
         kayitTuruOptions: kayitOptions,
         altTuruOptions: altOptions,
         faturaTarihi: tarih,
