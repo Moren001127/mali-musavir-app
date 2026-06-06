@@ -1,6 +1,7 @@
 'use client';
 
-import React, { useEffect, useMemo, useState } from 'react';
+import React, { useEffect, useMemo, useRef, useState } from 'react';
+import { createPortal } from 'react-dom';
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import { useParams, useRouter } from 'next/navigation';
 import Link from 'next/link';
@@ -14,6 +15,7 @@ import {
   ChevronLeft,
   ChevronRight,
   Contact,
+  Download,
   ExternalLink,
   Eye,
   FileCheck,
@@ -27,6 +29,7 @@ import {
   MessageSquareText,
   Phone,
   Plus,
+  Printer,
   Save,
   Settings2,
   Shield,
@@ -1264,6 +1267,26 @@ function BeyannamelerTab({ taxpayerId }: { taxpayerId: string }) {
     queryFn: () => beyanKayitlariApi.list({ taxpayerId, limit: 300 }),
   });
   const [busyKey, setBusyKey] = useState<string | null>(null);
+  const [preview, setPreview] = useState<{ url: string; title: string; subtitle: string; docKey: string } | null>(null);
+  const previewUrlRef = useRef<string | null>(null);
+  const [mounted, setMounted] = useState(false);
+
+  useEffect(() => {
+    setMounted(true);
+    return () => { if (previewUrlRef.current) URL.revokeObjectURL(previewUrlRef.current); };
+  }, []);
+
+  const closePreview = () => {
+    if (previewUrlRef.current) { URL.revokeObjectURL(previewUrlRef.current); previewUrlRef.current = null; }
+    setPreview(null);
+  };
+
+  useEffect(() => {
+    if (!preview) return;
+    const onKey = (e: KeyboardEvent) => { if (e.key === 'Escape') closePreview(); };
+    window.addEventListener('keydown', onKey);
+    return () => window.removeEventListener('keydown', onKey);
+  }, [preview]);
 
   const openDoc = async (row: BeyanKaydi, kind: 'beyanname' | 'tahakkuk') => {
     const hasFile = kind === 'beyanname' ? !!row.beyannameUrl : !!row.pdfUrl;
@@ -1279,9 +1302,15 @@ function BeyannamelerTab({ taxpayerId }: { taxpayerId: string }) {
         : `/beyan-kayitlari/${row.id}/pdf`;
       const res = await api.get(endpoint, { responseType: 'blob' });
       const blob = res.data instanceof Blob ? res.data : new Blob([res.data], { type: 'application/pdf' });
+      if (previewUrlRef.current) URL.revokeObjectURL(previewUrlRef.current);
       const url = URL.createObjectURL(blob);
-      window.open(url, '_blank', 'noopener,noreferrer');
-      setTimeout(() => URL.revokeObjectURL(url), 60_000);
+      previewUrlRef.current = url;
+      setPreview({
+        url,
+        docKey: key,
+        title: `${BEYAN_TIPI_LABEL[row.beyanTipi] || row.beyanTipi} · ${fmtBeyanDonem(row.donem)}`,
+        subtitle: `${kind === 'beyanname' ? 'Beyanname' : 'Tahakkuk'}${row.beyanTarihi ? ' · ' + fmtDateTR(row.beyanTarihi.substring(0, 10)) : ''}${row.tahakkukTutari != null ? ' · ' + fmtTutar(row.tahakkukTutari) + ' ₺' : ''}`,
+      });
     } catch (e: any) {
       toast.error(e?.response?.data?.message || e?.message || 'PDF açılamadı');
     } finally {
@@ -1355,6 +1384,57 @@ function BeyannamelerTab({ taxpayerId }: { taxpayerId: string }) {
           </div>
         );
       })}
+
+      {mounted && preview && createPortal((
+        <div
+          className="fixed inset-0 z-[9999] flex items-center justify-center p-3 sm:p-4"
+          style={{ background: 'rgba(0,0,0,0.72)' }}
+          onClick={closePreview}
+        >
+          <div
+            className="flex h-[min(92vh,900px)] w-full max-w-[1180px] flex-col overflow-hidden rounded-[14px]"
+            style={{ background: CARD2, border: `1px solid ${LINE}` }}
+            onClick={(e) => e.stopPropagation()}
+          >
+            <div className="flex items-center justify-between gap-3 px-4 py-3" style={{ borderBottom: `1px solid ${HAIR}` }}>
+              <div className="min-w-0">
+                <div className="truncate text-[14px] font-semibold" style={{ color: TEXT }}>{preview.title}</div>
+                <div className="mt-0.5 truncate text-[11.5px]" style={{ color: FAINT }}>{preview.subtitle}</div>
+              </div>
+              <div className="flex shrink-0 items-center gap-2">
+                <a
+                  href={preview.url}
+                  download={`${preview.title}.pdf`.replace(/[\\/:*?"<>|]/g, '_')}
+                  className="inline-flex h-9 w-9 items-center justify-center rounded-[9px]"
+                  title="PDF indir"
+                  style={{ background: STEEL_SF, border: `1px solid ${STEEL_LN}`, color: STEEL_BR }}
+                >
+                  <Download size={15} />
+                </a>
+                <button
+                  type="button"
+                  onClick={() => { const f = document.getElementById('mukellef-beyan-pdf') as HTMLIFrameElement | null; f?.contentWindow?.print(); }}
+                  className="inline-flex h-9 w-9 items-center justify-center rounded-[9px]"
+                  title="Yazdır"
+                  style={{ background: 'rgba(255,255,255,0.045)', border: `1px solid ${LINE}`, color: MUTED }}
+                >
+                  <Printer size={15} />
+                </button>
+                <button
+                  type="button"
+                  onClick={closePreview}
+                  className="inline-flex h-9 w-9 items-center justify-center rounded-[9px]"
+                  title="Kapat"
+                  style={{ background: 'rgba(244,63,94,0.10)', border: '1px solid rgba(244,63,94,0.24)', color: '#fda4af' }}
+                >
+                  <X size={16} />
+                </button>
+              </div>
+            </div>
+            <iframe key={preview.docKey} id="mukellef-beyan-pdf" title={preview.title} src={preview.url} className="min-h-0 flex-1 bg-white" />
+          </div>
+        </div>
+      ), document.body)}
     </div>
   );
 }
