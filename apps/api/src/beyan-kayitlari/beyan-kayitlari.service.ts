@@ -1315,7 +1315,7 @@ export class BeyanKayitlariService {
       const buf = await this.storage.getBuffer(key);
       const text = await this.pdfText(buf);
       tutar = this.extractSonrakiDonemeDevreden(text);
-      this.logger.log(`[KDVDEVR] ${taxpayerId} ${donem}: PDF okundu (${kayit.id}), "Sonraki Doneme Devreden" extract = ${tutar == null ? 'BULUNAMADI (etiket/tutar yakalanamadi)' : tutar}`);
+      this.logger.log(`[KDVDEVR] ${taxpayerId} ${donem}: PDF okundu (${kayit.id}), "Sonraki Doneme Devreden" extract = ${tutar == null ? 'BULUNAMADI' : tutar}`);
     } catch (e: any) {
       this.logger.warn(`[KDVDEVR] ${taxpayerId} ${donem}: PDF okunamadi [${kayit.id}]: ${e?.message || e}`);
     }
@@ -1325,18 +1325,21 @@ export class BeyanKayitlariService {
 
   private extractSonrakiDonemeDevreden(text: string): number | null {
     const compact = String(text || '').replace(/\s+/g, ' ');
-    const labels = [
-      /sonraki\s+d[öo]neme\s+devreden\s+katma\s+de[ğg]er\s+vergisi/i,
-      /sonraki\s+d[öo]neme\s+devreden\s+kdv/i,
-    ];
-    for (const label of labels) {
-      const m = compact.match(new RegExp(`${label.source}.{0,40}`, 'i'));
-      if (m) {
-        const amount = this.lastTurkishMoney(m[0]);
-        if (amount != null) return amount;
-      }
-    }
-    return null;
+    // "Sonraki Döneme Devreden Katma Değer Vergisi" sonuç tablosunun SON satırıdır.
+    // GİB beyanname PDF'inde pdf-parse etiketleri ve değer sütununu AYRI bloklara
+    // koyabildiği için tutar etiketin hemen yanında olmayabilir. Bu alan en son
+    // satır olduğundan, ETİKETTEN SONRAKİ SON Türk-para tutarı onun değeridir
+    // (örn. "Sonraki Döneme Devreden ... 59.084,85"). Tarih/onay no/barkod gibi
+    // değerler "1.234,56" para biçimine uymadığı için yanlış yakalanmaz.
+    const labelRe = /sonraki\s+d[öo]neme\s+devreden\s+(?:katma\s+de[ğg]er\s+vergisi|kdv)/i;
+    const m = labelRe.exec(compact);
+    if (!m) return null;
+    const after = compact.slice(m.index + m[0].length);
+    const amount = this.lastTurkishMoney(after);
+    if (amount != null) return amount;
+    // Yedek: değer sütunu etiketlerden ÖNCE geldiyse (ters sıralama), etiketten
+    // önceki son tutarı dene.
+    return this.lastTurkishMoney(compact.slice(0, m.index));
   }
 
   private async pdfText(buffer: Buffer): Promise<string> {
