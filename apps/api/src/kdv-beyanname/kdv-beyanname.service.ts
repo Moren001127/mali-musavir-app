@@ -651,6 +651,13 @@ export class KdvBeyannameService {
     );
   }
 
+  /** İşletme defteri (defter-beyan) usulü mü? Bilinmiyorsa bilanço varsayar. */
+  private isIsletmeDefteri(m: any): boolean {
+    const d = String(m?.defterTuru || m?.mihsapDefterTuru || '').toUpperCase().replace(/İ/g, 'I');
+    if (!d) return false;
+    return d.includes('ISLETME') || d.includes('DEFTER_BEYAN') || d.includes('DEFTER BEYAN');
+  }
+
   /**
    * Dönem + faturaTuru için oran bazlı matrah+KDV derle.
    * - OCR geçmiş (KdvRecord var) → kesin oran+matrah+KDV kullanılır
@@ -1944,6 +1951,14 @@ export class KdvBeyannameService {
       throw new BadRequestException('KDV mizan çekimi aylık dönem ister (yyyy-mm).');
     }
     const mukellef = await this.getMukellef(params.tenantId, params.mukellefId);
+    // Defter türü duyarlı: KDV mizan çapraz kontrolü (191/391/190) YALNIZ bilanço
+    // usulü mükelleflerde anlamlıdır. İşletme defteri mükellefinde mizan yoktur;
+    // KDV faturalardan hesaplanır. Yanlış mizan job'u oluşturup hata vermeyelim.
+    if (this.isIsletmeDefteri(mukellef)) {
+      throw new BadRequestException(
+        'Bu mükellef işletme defteri usulünde. KDV mizan çapraz kontrolü uygulanmaz; KDV doğrudan faturalardan hesaplanır. (Gelir-gider için İşletme Hesap Özeti modülü kullanılır.)',
+      );
+    }
     const job = await (this.prisma as any).lucaFetchJob.create({
       data: {
         tenantId: params.tenantId,

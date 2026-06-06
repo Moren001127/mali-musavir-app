@@ -262,6 +262,12 @@ export default function KdvBeyannamePage() {
   const taxpayerName = (t: Taxpayer) =>
     t.companyName || `${t.firstName || ''} ${t.lastName || ''}`.trim() || t.taxNumber;
 
+  const isBilancoTaxpayer = (t: Taxpayer | null) => {
+    const d = String((t as any)?.defterTuru || (t as any)?.mihsapDefterTuru || '').toUpperCase().replace(/İ/g, 'I');
+    if (!d) return true; // bilinmiyorsa bilanço varsay (mizan denemesini engellemeyelim)
+    return !(d.includes('ISLETME') || d.includes('DEFTER_BEYAN') || d.includes('DEFTER BEYAN'));
+  };
+
   const selectedTaxpayer = React.useMemo(
     () => taxpayers.find((t) => t.id === selectedMukellef) || null,
     [taxpayers, selectedMukellef],
@@ -482,7 +488,7 @@ export default function KdvBeyannamePage() {
             <EmptyStateCard donem={donem} />
           )}
           {!kdv1Loading && !kdv1Error && kdv1 && (kdv1.satis.faturaAdet > 0 || kdv1.alis.faturaAdet > 0) && (
-            <Kdv1View data={kdv1} />
+            <Kdv1View data={kdv1} isBilanco={isBilancoTaxpayer(selectedTaxpayer)} />
           )}
         </div>
       )}
@@ -1108,7 +1114,7 @@ function DevredenKdvEditor({ data }: { data: Kdv1 }) {
   );
 }
 
-function Kdv1View({ data }: { data: Kdv1 }) {
+function Kdv1View({ data, isBilanco }: { data: Kdv1; isBilanco: boolean }) {
   // Backend'ten gelen veride eksik alanlar olabileceğini varsay; defansif ol
   const sonuc = data.sonuc || { hesaplananKdv: 0, indirilecekKdv: 0, devredenKdv: 0, odenecekKdv: 0, sonrakiAyaDevreden: 0 };
   const satis = data.satis || { oranlar: [], toplamMatrah: 0, toplamHesaplananKdv: 0, faturaAdet: 0 };
@@ -1217,21 +1223,33 @@ function Kdv1View({ data }: { data: Kdv1 }) {
         />
       </div>
 
-      {/* Luca çapraz kontrol — karşılaştırma kartları */}
-      {lucaKontrol.mizanVar && (
-        <div className="rounded-2xl border p-5" style={{ background: 'rgba(255,255,255,0.02)', borderColor: 'rgba(255,255,255,0.06)' }}>
-          <div className="mb-3 flex items-center gap-2">
-            <Sparkles size={14} style={{ color: '#14b8a6' }} />
-            <h3 className="text-[13px] font-semibold" style={{ color: '#fafaf9' }}>Luca Çapraz Kontrol</h3>
-          </div>
-          <div className="grid grid-cols-1 gap-2.5 sm:grid-cols-3">
-            <LucaCrossCard hesap="391 · Hesaplanan" mihsap={displaySatis.toplamHesaplananKdv} luca={lucaKontrol.luca391Bakiye} fark={lucaKontrol.fark391} />
-            <LucaCrossCard hesap="191 · İndirilecek" mihsap={displayAlis.toplamIndirilecekKdv} luca={lucaKontrol.luca191Bakiye} fark={lucaKontrol.fark191} />
-            <LucaCrossCard hesap="190 · Devreden" mihsap={null} luca={lucaKontrol.luca190Bakiye} fark={null} />
+      {/* Luca — defter türü duyarlı: bilanço→mizan çapraz kontrol; işletme→uygulanmaz */}
+      {isBilanco ? (
+        <>
+          {lucaKontrol.mizanVar && (
+            <div className="rounded-2xl border p-5" style={{ background: 'rgba(255,255,255,0.02)', borderColor: 'rgba(255,255,255,0.06)' }}>
+              <div className="mb-3 flex items-center gap-2">
+                <Sparkles size={14} style={{ color: '#14b8a6' }} />
+                <h3 className="text-[13px] font-semibold" style={{ color: '#fafaf9' }}>Luca Çapraz Kontrol</h3>
+              </div>
+              <div className="grid grid-cols-1 gap-2.5 sm:grid-cols-3">
+                <LucaCrossCard hesap="391 · Hesaplanan" mihsap={displaySatis.toplamHesaplananKdv} luca={lucaKontrol.luca391Bakiye} fark={lucaKontrol.fark391} />
+                <LucaCrossCard hesap="191 · İndirilecek" mihsap={displayAlis.toplamIndirilecekKdv} luca={lucaKontrol.luca191Bakiye} fark={lucaKontrol.fark191} />
+                <LucaCrossCard hesap="190 · Devreden" mihsap={null} luca={lucaKontrol.luca190Bakiye} fark={null} />
+              </div>
+            </div>
+          )}
+          <LucaSnapshotFetchPanel mukellefId={data.mukellefId} donem={data.donem} autoStart={false} />
+        </>
+      ) : (
+        <div className="rounded-2xl border p-4 flex items-start gap-2.5" style={{ background: 'rgba(20,184,166,0.05)', borderColor: 'rgba(20,184,166,0.2)' }}>
+          <Sparkles size={15} style={{ color: '#14b8a6', flexShrink: 0, marginTop: 1 }} />
+          <div className="text-[12.5px]" style={{ color: 'rgba(250,250,249,0.7)' }}>
+            <span className="font-semibold" style={{ color: '#5eead4' }}>İşletme defteri usulü</span> — KDV doğrudan faturalardan hesaplanır;
+            mizan (191/391/190) çapraz kontrolü uygulanmaz. Gelir-gider için <b style={{ color: '#fafaf9' }}>İşletme Hesap Özeti</b> modülü kullanılır.
           </div>
         </div>
       )}
-      <LucaSnapshotFetchPanel mukellefId={data.mukellefId} donem={data.donem} autoStart={false} />
     </>
   );
 }
