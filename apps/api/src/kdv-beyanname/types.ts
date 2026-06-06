@@ -61,7 +61,7 @@ export interface Kdv1OnHazirlik {
   // === GEÇEN DÖNEMDEN DEVREDEN KDV ===
   devreden: {
     tutar: number;
-    kaynak: 'manuel' | 'beyan_durumu' | 'beyan_kaydi' | 'luca_mizan' | 'yok';
+    kaynak: 'manuel' | 'beyan_durumu' | 'beyanname_pdf' | 'beyan_kaydi' | 'luca_mizan' | 'yok';
     sonKayitDonem: string | null;
   };
 

@@ -1277,6 +1277,59 @@ export class BeyanKayitlariService {
     ));
   }
 
+  private devredenPdfCache = new Map<string, number | null>();
+
+  /**
+   * Önceki dönem KDV1 beyannamesinden "Sonraki Döneme Devreden KDV" tutarını okur.
+   * Beyanname PDF'i pdf-parse ile metne çevrilir, ilgili satır regex'le bulunur.
+   * 0,00 da geçerli sonuçtur (devir yok). Bulunamazsa null. beyanKaydi.id bazlı cache.
+   */
+  async getSonrakiDonemeDevreden(
+    tenantId: string,
+    taxpayerId: string,
+    donem: string,
+  ): Promise<{ tutar: number; beyanKaydiId: string } | null> {
+    const kayit = await (this.prisma as any).beyanKaydi.findFirst({
+      where: { tenantId, taxpayerId, beyanTipi: 'KDV1', donem },
+      select: { id: true, beyannameUrl: true, pdfUrl: true },
+    });
+    if (!kayit) return null;
+    const key = kayit.beyannameUrl || kayit.pdfUrl;
+    if (!key) return null;
+
+    if (this.devredenPdfCache.has(kayit.id)) {
+      const v = this.devredenPdfCache.get(kayit.id) ?? null;
+      return v == null ? null : { tutar: v, beyanKaydiId: kayit.id };
+    }
+
+    let tutar: number | null = null;
+    try {
+      const buf = await this.storage.getBuffer(key);
+      const text = await this.pdfText(buf);
+      tutar = this.extractSonrakiDonemeDevreden(text);
+    } catch (e: any) {
+      this.logger.warn(`devreden PDF okunamadi [${kayit.id}]: ${e?.message || e}`);
+    }
+    this.devredenPdfCache.set(kayit.id, tutar);
+    return tutar == null ? null : { tutar, beyanKaydiId: kayit.id };
+  }
+
+  private extractSonrakiDonemeDevreden(text: string): number | null {
+    const compact = String(text || '').replace(/\s+/g, ' ');
+    const labels = [
+      /sonraki\s+d[öo]neme\s+devreden\s+katma\s+de[ğg]er\s+vergisi/i,
+      /sonraki\s+d[öo]neme\s+devreden\s+kdv/i,
+    ];
+    for (const label of labels) {
+      const m = compact.match(new RegExp(`${label.source}.{0,40}`, 'i'));
+      if (m) {
+        const amount = this.lastTurkishMoney(m[0]);
+        if (amount != null) return amount;
+      }
+    }
+    return null;
+  }
+
   private async pdfText(buffer: Buffer): Promise<string> {
     const parser = new PDFParse({ data: buffer });
     try {

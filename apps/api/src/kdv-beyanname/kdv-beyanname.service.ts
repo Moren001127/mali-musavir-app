@@ -13,6 +13,7 @@ import {
   GenelBakisRow,
 } from './types';
 import { NotificationsService } from '../notifications/notifications.service';
+import { BeyanKayitlariService } from '../beyan-kayitlari/beyan-kayitlari.service';
 
 /**
  * KDV Beyanname Ön Hazırlık Servisi.
@@ -50,6 +51,7 @@ export class KdvBeyannameService {
     private readonly prisma: PrismaService,
     private readonly mizanParser: MizanParserService,
     private readonly notifications: NotificationsService,
+    private readonly beyanKayitlari: BeyanKayitlariService,
   ) {}
 
   /**
@@ -1729,6 +1731,19 @@ export class KdvBeyannameService {
       return {
         tutar: oncekidenAktarilan,
         kaynak: 'beyan_durumu' as const,
+        sonKayitDonem: onceki,
+      };
+    }
+
+    // OTOMATIK: önceki dönem KDV1 beyannamesindeki "Sonraki Döneme Devreden KDV"
+    // (Beyannameler modülündeki PDF pdf-parse ile okunur). 0 da geçerli sonuç.
+    const pdfDevreden = await this.beyanKayitlari
+      .getSonrakiDonemeDevreden(tenantId, mukellefId, onceki)
+      .catch(() => null);
+    if (pdfDevreden) {
+      return {
+        tutar: pdfDevreden.tutar,
+        kaynak: 'beyanname_pdf' as const,
         sonKayitDonem: onceki,
       };
     }

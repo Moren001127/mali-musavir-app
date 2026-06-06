@@ -994,88 +994,65 @@ function KdvTotalsTable({
   const odenecek = sonuc.odenecekKdv > 0;
   const resultLabel = odenecek ? 'Ödenecek KDV' : 'Sonraki Aya Devreden';
   const resultValue = odenecek ? sonuc.odenecekKdv : sonuc.sonrakiAyaDevreden;
-  const devredenDetail =
-    devreden?.kaynak === 'manuel'
-      ? 'Elle girildi'
-      : devreden?.kaynak === 'beyan_durumu'
-        ? `Onceki ay aktarimi - ${devreden?.sonKayitDonem || '-'}`
-        : devreden?.kaynak === 'beyan_kaydi'
-          ? `Beyan kaydi - ${devreden?.sonKayitDonem || '-'}`
-          : 'Kayit yok';
-  const rows = [
-    {
-      label: 'Hesaplanan KDV',
-      detail: `${satis.faturaAdet} satış faturası`,
-      amount: sonuc.hesaplananKdv,
-      color: '#86efac',
-    },
-    {
-      label: 'İndirilecek KDV',
-      detail: `${alis.faturaAdet} alış faturası`,
-      amount: sonuc.indirilecekKdv,
-      color: '#93c5fd',
-    },
-    {
-      label: 'Devreden KDV',
-      detail: devredenDetail,
-      amount: sonuc.devredenKdv,
-      color: '#d8c17f',
-    },
-    {
-      label: resultLabel,
-      detail: 'Beyan sonucu',
-      amount: resultValue,
-      color: odenecek ? '#fca5a5' : '#86efac',
-      result: true,
-    },
-  ];
+  const resultColor = odenecek ? '#fca5a5' : '#86efac';
+  const devredenDetail = devredenKaynakLabel(devreden);
 
   return (
     <div
       className="rounded-2xl border overflow-hidden"
-      style={{ background: 'rgba(255,255,255,0.025)', borderColor: 'rgba(255,255,255,0.07)' }}
+      style={{ background: 'rgba(20,184,166,0.05)', borderColor: 'rgba(20,184,166,0.22)' }}
     >
-      <div className="px-5 py-3 border-b flex items-center justify-between gap-3" style={{ borderColor: 'rgba(255,255,255,0.06)' }}>
-        <div className="text-[12px] font-bold uppercase tracking-[.14em]" style={{ color: '#d8c17f' }}>
-          KDV Toplam Özeti
+      {/* Sonuç hero */}
+      <div className="flex items-end justify-between gap-3 px-5 pt-4 pb-3.5 border-b" style={{ borderColor: 'rgba(255,255,255,0.06)' }}>
+        <div>
+          <div className="text-[11px] font-bold uppercase tracking-[.16em]" style={{ color: '#5eead4' }}>
+            Beyan Sonucu
+          </div>
+          <div className="mt-1.5 flex items-baseline gap-2">
+            <span className="text-[27px] font-extrabold tabular-nums" style={{ color: resultColor, fontFamily: REPORT_FONT }}>
+              {TRY}{fmt(resultValue)}
+            </span>
+            <span className="text-[12.5px] font-semibold" style={{ color: 'rgba(250,250,249,0.6)' }}>{resultLabel}</span>
+          </div>
         </div>
-        <div className="flex items-center gap-2" style={{ color: rows[3].color }}>
-          {odenecek ? <TrendingUp size={15} /> : <TrendingDown size={15} />}
-          <MoneyText value={resultValue} color={rows[3].color} strong />
+        <div className="flex h-11 w-11 items-center justify-center rounded-xl" style={{ background: odenecek ? 'rgba(239,68,68,0.12)' : 'rgba(34,197,94,0.12)', color: resultColor }}>
+          {odenecek ? <TrendingUp size={19} /> : <TrendingDown size={19} />}
         </div>
       </div>
-      <table className="w-full text-left" style={{ fontFamily: REPORT_FONT, fontVariantNumeric: 'tabular-nums', tableLayout: 'fixed' }}>
-        <thead style={{ background: 'rgba(0,0,0,0.18)' }}>
-          <tr style={{ color: 'rgba(250,250,249,0.52)' }}>
-            <th className="px-5 py-2.5 text-[11.5px] font-semibold">Kalem</th>
-            <th className="px-4 py-2.5 text-[11.5px] font-semibold">Açıklama</th>
-            <th className="px-5 py-2.5 text-[11.5px] font-semibold text-right">Tutar</th>
-          </tr>
-        </thead>
-        <tbody>
-          {rows.map((row) => (
-            <tr
-              key={row.label}
-              style={{
-                background: row.result ? 'rgba(20,184,166,0.07)' : 'transparent',
-                borderTop: '1px solid rgba(255,255,255,0.055)',
-              }}
-            >
-              <td className="px-5 py-3 text-[13px] font-semibold" style={{ color: row.result ? FINANCIAL_TOTAL_COLOR : '#fafaf9' }}>
-                {row.label}
-              </td>
-              <td className="px-4 py-3 text-[12.5px]" style={{ color: 'rgba(250,250,249,0.58)' }}>
-                {row.detail}
-              </td>
-              <td className="px-5 py-3 text-right">
-                <MoneyText value={row.amount} color={row.color} strong={row.result} />
-              </td>
-            </tr>
-          ))}
-        </tbody>
-      </table>
+      {/* Bileşenler */}
+      <div className="grid grid-cols-3 gap-px" style={{ background: 'rgba(255,255,255,0.06)' }}>
+        <EqTile label="Hesaplanan KDV" detail={`${satis.faturaAdet} satış faturası`} amount={sonuc.hesaplananKdv} color="#86efac" />
+        <EqTile label="İndirilecek KDV" detail={`${alis.faturaAdet} alış faturası`} amount={sonuc.indirilecekKdv} color="#7fc8ff" op="−" />
+        <EqTile label="Devreden KDV" detail={devredenDetail} amount={sonuc.devredenKdv} color="#5eead4" op="−" />
+      </div>
     </div>
   );
+}
+
+function EqTile({ label, detail, amount, color, op }: { label: string; detail: string; amount: number; color: string; op?: string }) {
+  return (
+    <div className="relative px-4 py-3.5" style={{ background: '#0d1312' }}>
+      {op && (
+        <span className="absolute left-0 top-1/2 -translate-x-1/2 -translate-y-1/2 text-[15px] font-bold" style={{ color: 'rgba(250,250,249,0.4)' }}>
+          {op}
+        </span>
+      )}
+      <div className="text-[10px] font-semibold uppercase tracking-wider" style={{ color: 'rgba(250,250,249,0.45)' }}>{label}</div>
+      <div className="mt-1 text-[15px] font-bold tabular-nums" style={{ color, fontFamily: REPORT_FONT }}>{TRY}{fmt(amount)}</div>
+      <div className="mt-0.5 truncate text-[10.5px]" style={{ color: 'rgba(250,250,249,0.4)' }}>{detail}</div>
+    </div>
+  );
+}
+
+function devredenKaynakLabel(devreden: Kdv1['devreden']): string {
+  switch (devreden?.kaynak) {
+    case 'manuel': return 'Elle girildi';
+    case 'beyan_durumu': return `Önceki ay aktarımı · ${devreden?.sonKayitDonem || '—'}`;
+    case 'beyanname_pdf': return `Önceki beyannameden (otomatik) · ${devreden?.sonKayitDonem || '—'}`;
+    case 'beyan_kaydi': return `Beyan kaydı · ${devreden?.sonKayitDonem || '—'}`;
+    case 'luca_mizan': return 'Luca mizandan';
+    default: return 'Kayıt yok';
+  }
 }
 
 function DevredenKdvEditor({ data }: { data: Kdv1 }) {
@@ -1083,14 +1060,7 @@ function DevredenKdvEditor({ data }: { data: Kdv1 }) {
   const [value, setValue] = useState(fmt(data.sonuc?.devredenKdv || 0));
   const devreden = data.devreden || { tutar: 0, kaynak: 'yok', sonKayitDonem: null };
   const sonraki = data.sonuc?.sonrakiAyaDevreden || 0;
-  const kaynakLabel =
-    devreden.kaynak === 'manuel'
-      ? 'Elle girildi'
-      : devreden.kaynak === 'beyan_durumu'
-        ? `Önceki ay aktarımı · ${devreden.sonKayitDonem || '—'}`
-        : devreden.kaynak === 'beyan_kaydi'
-          ? `Beyan kaydı · ${devreden.sonKayitDonem || '—'}`
-          : 'Kayıt yok';
+  const kaynakLabel = devredenKaynakLabel(devreden as Kdv1['devreden']);
 
   React.useEffect(() => {
     setValue(fmt(data.sonuc?.devredenKdv || 0));
