@@ -13,6 +13,7 @@ import {
   GenelBakisRow,
 } from './types';
 import { NotificationsService } from '../notifications/notifications.service';
+import { BeyanKayitlariService } from '../beyan-kayitlari/beyan-kayitlari.service';
 
 /**
  * KDV Beyanname Ön Hazırlık Servisi.
@@ -50,6 +51,7 @@ export class KdvBeyannameService {
     private readonly prisma: PrismaService,
     private readonly mizanParser: MizanParserService,
     private readonly notifications: NotificationsService,
+    private readonly beyanKayitlari: BeyanKayitlariService,
   ) {}
 
   /**
@@ -1740,6 +1742,30 @@ export class KdvBeyannameService {
         kaynak: 'manuel' as const,
         sonKayitDonem: donem,
       };
+    }
+
+    // RESMİ KAYNAK: önceki dönemin GERÇEK KDV1 beyannamesindeki "Sonraki Döneme
+    // Devreden KDV" (Beyannameler modülü). Fatura tahmininden ÖNCE gelir; elle
+    // bu-dönem girişi dışında en güvenilir kaynaktır. 0,00 da geçerli sonuçtur.
+    if (computePrev) {
+      try {
+        const beyandan = await this.beyanKayitlari.getSonrakiDonemeDevreden(
+          tenantId,
+          mukellefId,
+          onceki,
+        );
+        if (beyandan) {
+          return {
+            tutar: beyandan.tutar,
+            kaynak: 'beyanname_pdf' as const,
+            sonKayitDonem: onceki,
+          };
+        }
+      } catch (e: any) {
+        this.logger.warn(
+          `önceki dönem beyannameden devreden okunamadı [${mukellefId} ${onceki}]: ${e?.message}`,
+        );
+      }
     }
 
     const oncekiDurum = await (this.prisma as any).beyanDurumu.findUnique({

@@ -7,7 +7,7 @@ import { api } from '@/lib/api';
 import { LucaInlineCaptchaPanel } from '@/components/luca/LucaInlineCaptchaPanel';
 import {
   FileCheck, Calendar, Users, Download, AlertCircle, CheckCircle2,
-  Loader2, Receipt, TrendingUp, TrendingDown, Sparkles,
+  Loader2, Receipt, Sparkles,
   Bell, RefreshCw, ChevronRight, Wallet, AlertTriangle, ArrowLeft, Layers,
 } from 'lucide-react';
 import TaxpayerSelect from '@/components/ui/TaxpayerSelect';
@@ -20,6 +20,18 @@ const TEAL_LN = 'rgba(20,184,166,0.32)';
 const STAT_GREEN = '#5fcf8e';
 const STAT_AMBER = '#f0b755';
 const STAT_RED = '#ef6b6b';
+
+// Akış (Concept A) paleti — KDV1 detay ekranı
+const A_INK = '#fffaf0';
+const A_MUTED = '#b8aea0';
+const A_FAINT = '#857c70';
+const A_PANEL = '#1a1613';
+const A_BG2 = '#15120f';
+const A_LINE = 'rgba(255,250,240,0.08)';
+const A_LINE2 = 'rgba(255,250,240,0.14)';
+const A_TEAL3 = '#5eead4';
+const A_CARD = 'linear-gradient(160deg,#1a1613 0%,#15120f 100%)';
+const SERIF = 'Fraunces, Georgia, serif';
 
 type GenelBakisRow = {
   mukellefId: string;
@@ -171,7 +183,6 @@ const parseMoneyInput = (value: string) => {
 const TRY = '\u20ba';
 const REPORT_FONT = "Inter, ui-sans-serif, system-ui, -apple-system, 'Segoe UI', sans-serif";
 const FINANCIAL_AMOUNT_COLOR = '#fffaf0';
-const FINANCIAL_TOTAL_COLOR = '#5eead4';
 const VALID_KDV_RATES = [1, 8, 10, 18, 20];
 
 const normalizeKdvRateForDisplay = (rate: number) => {
@@ -943,89 +954,236 @@ function BeyannameAksiyonlari({
   });
 
   return (
-    <div className="flex flex-wrap gap-2">
-      <button
-        onClick={() => hazirMut.mutate()}
-        disabled={hazirMut.isPending}
-        className="px-3 py-2 rounded-[9px] text-[12px] font-semibold inline-flex items-center gap-2 disabled:opacity-50"
-        style={{ background: 'rgba(20,184,166,0.12)', border: '1px solid rgba(20,184,166,0.28)', color: '#14b8a6' }}
-      >
-        {hazirMut.isPending ? <Loader2 size={14} className="animate-spin" /> : <CheckCircle2 size={14} />}
-        Hazır notu düş
-      </button>
-      <button
-        onClick={() => verildiMut.mutate()}
-        disabled={verildiMut.isPending}
-        className="px-3 py-2 rounded-[9px] text-[12px] font-semibold inline-flex items-center gap-2 disabled:opacity-50"
-        style={{ background: 'rgba(34,197,94,0.12)', border: '1px solid rgba(34,197,94,0.28)', color: '#86efac' }}
-      >
-        {verildiMut.isPending ? <Loader2 size={14} className="animate-spin" /> : <CheckCircle2 size={14} />}
-        Verildi işaretle
-      </button>
+    <div className="flex items-center justify-between gap-4 flex-wrap rounded-2xl border px-5 py-4" style={{ background: 'linear-gradient(135deg,#211c18,#15120f)', borderColor: A_LINE }}>
+      <div className="text-[13.5px]" style={{ color: A_MUTED }}>Beyan hazır olduğunda işaretle</div>
+      <div className="flex gap-2.5 flex-wrap">
+        <button
+          onClick={() => hazirMut.mutate()}
+          disabled={hazirMut.isPending}
+          className="inline-flex items-center gap-2 text-[13px] font-semibold rounded-[10px] px-4 py-2.5 disabled:opacity-50"
+          style={{ background: 'linear-gradient(135deg,#f0b755,#d9952f)', color: '#2a1c05' }}
+        >
+          {hazirMut.isPending ? <Loader2 size={14} className="animate-spin" /> : <CheckCircle2 size={14} />}
+          Hazır notu düş
+        </button>
+        <button
+          onClick={() => verildiMut.mutate()}
+          disabled={verildiMut.isPending}
+          className="inline-flex items-center gap-2 text-[13px] font-semibold rounded-[10px] px-4 py-2.5 disabled:opacity-50"
+          style={{ background: 'linear-gradient(135deg,#5fcf8e,#3da968)', color: '#062414' }}
+        >
+          {verildiMut.isPending ? <Loader2 size={14} className="animate-spin" /> : <CheckCircle2 size={14} />}
+          Verildi işaretle
+        </button>
+      </div>
     </div>
   );
 }
 
-function KdvTotalsTable({
-  sonuc,
-  satis,
-  alis,
-  devreden,
-}: {
-  sonuc: Kdv1['sonuc'];
-  satis: Kdv1['satis'];
-  alis: Kdv1['alis'];
-  devreden: Kdv1['devreden'];
-}) {
+// ============================================================
+// KDV AKIŞ ŞELALESİ — Concept A yıldız bölümü
+// ============================================================
+function barBg(kind: 'pos' | 'neg' | 'result', val: number): React.CSSProperties {
+  if (val <= 0)
+    return {
+      borderRadius: 11,
+      background: 'linear-gradient(90deg,rgba(255,250,240,.18),rgba(255,250,240,.07))',
+      border: `1px solid ${A_LINE2}`,
+    };
+  if (kind === 'result')
+    return {
+      borderRadius: '11px 11px 4px 4px',
+      background: 'linear-gradient(180deg,#2dd4bf,#14b8a6 60%,#0b8174)',
+      border: '1px solid rgba(94,234,212,.4)',
+      boxShadow: '0 18px 40px -14px rgba(20,184,166,.6), inset 0 1px 0 rgba(255,255,255,.22)',
+    };
+  if (kind === 'neg')
+    return {
+      borderRadius: '11px 11px 4px 4px',
+      background: 'linear-gradient(180deg,rgba(239,107,107,.5),rgba(239,107,107,.22))',
+      border: '1px dashed rgba(239,107,107,.5)',
+    };
+  return {
+    borderRadius: '11px 11px 4px 4px',
+    background: 'linear-gradient(180deg,#2dd4bf,#0d9488)',
+    border: '1px solid rgba(255,255,255,.06)',
+    boxShadow: '0 14px 30px -16px rgba(0,0,0,.7), inset 0 1px 0 rgba(255,255,255,.12)',
+  };
+}
+
+function FootItem({ sw, label, neg, val }: { sw: 'pos' | 'neg' | 'res'; label: string; neg?: boolean; val: number }) {
+  const bg =
+    sw === 'pos'
+      ? 'linear-gradient(180deg,#2dd4bf,#0d9488)'
+      : sw === 'res'
+        ? 'linear-gradient(180deg,#2dd4bf,#14b8a6)'
+        : 'rgba(239,107,107,.4)';
+  return (
+    <div className="flex items-center gap-2 text-[12.5px]" style={{ color: A_MUTED }}>
+      <span className="rounded-[3px]" style={{ width: 11, height: 11, background: bg, border: sw === 'neg' ? '1px dashed rgba(239,107,107,.6)' : 'none' }} />
+      {label}{' '}
+      <b className="tabular-nums" style={{ color: A_INK }}>{neg ? '−' : ''}{TRY}{fmt(val)}</b>
+    </div>
+  );
+}
+
+function KdvWaterfall({ sonuc }: { sonuc: Kdv1['sonuc'] }) {
   const odenecek = sonuc.odenecekKdv > 0;
-  const resultLabel = odenecek ? 'Ödenecek KDV' : 'Sonraki Aya Devreden';
-  const resultValue = odenecek ? sonuc.odenecekKdv : sonuc.sonrakiAyaDevreden;
-  const resultColor = odenecek ? '#fca5a5' : '#86efac';
-  const devredenDetail = devredenKaynakLabel(devreden);
+  const resultVal = odenecek ? sonuc.odenecekKdv : sonuc.sonrakiAyaDevreden;
+  const resultLabel = odenecek ? 'Ödenecek' : 'Sonraki Aya Devreden';
+
+  const steps: Array<{ nm: string; sub: string; val: number; pre: string; op: string; kind: 'pos' | 'neg' | 'result'; ico: string }> = [
+    { nm: 'Satış KDV', sub: 'Hesaplanan', val: sonuc.hesaplananKdv, pre: '+', op: '', kind: 'pos', ico: '📈' },
+    { nm: 'İndirilecek', sub: 'Alış KDV', val: sonuc.indirilecekKdv, pre: '−', op: '−', kind: 'neg', ico: '📥' },
+    { nm: 'Önceki Devreden', sub: 'Geçmiş dönem', val: sonuc.devredenKdv, pre: '−', op: '−', kind: 'neg', ico: '↪' },
+    { nm: resultLabel, sub: 'Bu dönem', val: resultVal, pre: '', op: '=', kind: 'result', ico: '✓' },
+  ];
+  const maxVal = Math.max(1, ...steps.map((s) => s.val));
+  const barH = (v: number) => (v <= 0 ? 6 : Math.max(14, Math.round((v / maxVal) * 188)));
 
   return (
     <div
-      className="rounded-2xl border overflow-hidden"
-      style={{ background: 'rgba(20,184,166,0.05)', borderColor: 'rgba(20,184,166,0.22)' }}
+      className="rounded-[18px] border p-6 sm:p-7 relative overflow-hidden"
+      style={{
+        background:
+          'radial-gradient(520px 220px at 12% -30%, rgba(20,184,166,.16), transparent 60%), radial-gradient(420px 200px at 95% 120%, rgba(240,183,85,.06), transparent 60%), linear-gradient(165deg,#15211e 0%, #141210 70%)',
+        borderColor: 'rgba(20,184,166,0.22)',
+        boxShadow: '0 30px 70px -36px rgba(0,0,0,.85), inset 0 1px 0 rgba(255,255,255,.04)',
+      }}
     >
-      {/* Sonuç hero */}
-      <div className="flex items-end justify-between gap-3 px-5 pt-4 pb-3.5 border-b" style={{ borderColor: 'rgba(255,255,255,0.06)' }}>
+      <div className="flex items-end justify-between gap-4 flex-wrap mb-2">
         <div>
-          <div className="text-[11px] font-bold uppercase tracking-[.16em]" style={{ color: '#5eead4' }}>
-            Beyan Sonucu
+          <div className="flex items-center gap-2 text-[12px] font-bold uppercase tracking-[.16em]" style={{ color: A_TEAL3 }}>
+            <span className="h-1.5 w-1.5 rounded-full" style={{ background: TEAL_BR, boxShadow: `0 0 10px ${TEAL_BR}` }} />
+            KDV Akış Şelalesi
           </div>
-          <div className="mt-1.5 flex items-baseline gap-2">
-            <span className="text-[27px] font-extrabold tabular-nums" style={{ color: resultColor, fontFamily: REPORT_FONT }}>
-              {TRY}{fmt(resultValue)}
-            </span>
-            <span className="text-[12.5px] font-semibold" style={{ color: 'rgba(250,250,249,0.6)' }}>{resultLabel}</span>
-          </div>
+          <h2 className="mt-1.5 font-semibold" style={{ fontFamily: SERIF, fontSize: 23, color: A_INK }}>Vergi nasıl oluştu?</h2>
+          <p className="mt-1 text-[13px] max-w-[440px]" style={{ color: A_MUTED }}>
+            Satıştan toplanan KDV'den indirim ve devreden düşülür; kalan tutar bu dönem {odenecek ? 'ödenir' : 'sonraki aya devreder'}.
+          </p>
         </div>
-        <div className="flex h-11 w-11 items-center justify-center rounded-xl" style={{ background: odenecek ? 'rgba(239,68,68,0.12)' : 'rgba(34,197,94,0.12)', color: resultColor }}>
-          {odenecek ? <TrendingUp size={19} /> : <TrendingDown size={19} />}
+        <div className="text-right">
+          <div className="text-[11px] font-bold uppercase tracking-[.14em]" style={{ color: A_FAINT }}>Bu Dönem Sonucu · {resultLabel}</div>
+          <div className="mt-0.5 tabular-nums font-bold" style={{ fontFamily: SERIF, fontSize: 34, color: odenecek ? TEAL_BR : STAT_GREEN, textShadow: '0 0 26px rgba(45,212,191,.45)' }}>
+            {TRY}{fmt(resultVal)}
+          </div>
         </div>
       </div>
-      {/* Bileşenler */}
-      <div className="grid grid-cols-3 gap-px" style={{ background: 'rgba(255,255,255,0.06)' }}>
-        <EqTile label="Hesaplanan KDV" detail={`${satis.faturaAdet} satış faturası`} amount={sonuc.hesaplananKdv} color="#86efac" />
-        <EqTile label="İndirilecek KDV" detail={`${alis.faturaAdet} alış faturası`} amount={sonuc.indirilecekKdv} color="#7fc8ff" op="−" />
-        <EqTile label="Devreden KDV" detail={devredenDetail} amount={sonuc.devredenKdv} color="#5eead4" op="−" />
+
+      <div className="relative mt-7 px-1">
+        <div className="absolute left-0 right-0" style={{ bottom: 74, height: 1, background: 'linear-gradient(90deg,transparent,rgba(255,250,240,.14) 8%,rgba(255,250,240,.14) 92%,transparent)' }} />
+        <div className="flex items-end" style={{ height: 300 }}>
+          {steps.map((s, i) => (
+            <React.Fragment key={s.nm}>
+              {i > 0 && (
+                <div className="relative flex-none" style={{ width: 24 }}>
+                  <span className="absolute font-semibold" style={{ bottom: 108, left: 0, right: 0, textAlign: 'center', fontFamily: SERIF, fontSize: 22, color: A_FAINT }}>{s.op}</span>
+                </div>
+              )}
+              <div className="relative flex-1 min-w-0 flex flex-col justify-end items-center" style={{ height: '100%', paddingBottom: 74 }}>
+                <div className="relative" style={{ width: '78%', maxWidth: 128, height: barH(s.val), ...barBg(s.kind, s.val) }}>
+                  <span
+                    className="absolute left-0 right-0 tabular-nums font-bold"
+                    style={{ top: -28, textAlign: 'center', fontFamily: SERIF, fontSize: s.kind === 'result' ? 17 : 15, color: s.kind === 'result' ? '#fff' : s.val <= 0 ? A_FAINT : s.kind === 'neg' ? STAT_RED : A_TEAL3 }}
+                  >
+                    {s.pre}{TRY}{fmt(s.val)}
+                  </span>
+                </div>
+                <div className="absolute bottom-0 left-2 right-2 text-center">
+                  <div className="mx-auto mb-2 grid place-items-center rounded-[9px]" style={{ width: 30, height: 30, border: `1px solid ${A_LINE2}`, background: s.kind === 'result' ? 'linear-gradient(135deg,#14b8a6,#0d9488)' : A_BG2, fontSize: 15 }}>{s.ico}</div>
+                  <div className="text-[12.5px] font-bold leading-tight" style={{ color: A_INK }}>{s.nm}</div>
+                  <div className="text-[11px]" style={{ color: A_FAINT }}>{s.sub}</div>
+                </div>
+              </div>
+            </React.Fragment>
+          ))}
+        </div>
+      </div>
+
+      <div className="flex gap-4 flex-wrap mt-6 pt-4 border-t" style={{ borderColor: A_LINE }}>
+        <FootItem sw="pos" label="Toplanan KDV" val={sonuc.hesaplananKdv} />
+        <FootItem sw="neg" neg label="Düşülen" val={Math.round((sonuc.indirilecekKdv + sonuc.devredenKdv) * 100) / 100} />
+        <FootItem sw="res" label={odenecek ? 'Net ödenecek' : 'Sonraki aya'} val={resultVal} />
       </div>
     </div>
   );
 }
 
-function EqTile({ label, detail, amount, color, op }: { label: string; detail: string; amount: number; color: string; op?: string }) {
+// ============================================================
+// KONTROL & VERİ GÜVENİ — Concept A birleşik kart (KDV1)
+// ============================================================
+function KontrolKarti({ guven, eksikVeriler, uyarilar }: { guven?: VeriGuveni; eksikVeriler: KdvEksikVeri[]; uyarilar: string[] }) {
+  const seviye = guven?.seviye || 'eksik';
+  const puan = Math.min(100, Math.max(0, guven?.puan ?? 0));
+  const color = seviye === 'kesin' ? STAT_GREEN : seviye === 'kontrol_gerekli' ? STAT_AMBER : STAT_RED;
+  const stateLabel = seviye === 'kesin' ? 'Kesin' : seviye === 'kontrol_gerekli' ? 'Kontrol gerekli' : 'Eksik';
+
+  const alerts: Array<{ lvl: 'kritik' | 'uyari'; belge?: string | null; msg: string; aksiyon?: string }> = [];
+  for (const e of eksikVeriler) {
+    if (e.seviye === 'kritik' || e.seviye === 'uyari') alerts.push({ lvl: e.seviye, belge: e.belgeNo, msg: e.mesaj, aksiyon: e.aksiyon });
+  }
+  for (const u of uyarilar) alerts.push({ lvl: 'uyari', msg: u });
+  const notlar = eksikVeriler.filter((e) => e.seviye === 'bilgi');
+
   return (
-    <div className="relative px-4 py-3.5" style={{ background: '#0d1312' }}>
-      {op && (
-        <span className="absolute left-0 top-1/2 -translate-x-1/2 -translate-y-1/2 text-[15px] font-bold" style={{ color: 'rgba(250,250,249,0.4)' }}>
-          {op}
-        </span>
+    <div className="rounded-[18px] border p-6" style={{ background: A_CARD, borderColor: A_LINE }}>
+      <div className="mb-3 flex items-center gap-2.5">
+        <span className="text-[11px] font-bold uppercase tracking-[.12em]" style={{ color: A_FAINT }}>Kontrol</span>
+        <span className="font-semibold" style={{ fontFamily: SERIF, fontSize: 18, color: A_INK }}>Veri Güveni</span>
+      </div>
+
+      <div className="flex items-center gap-4 flex-wrap">
+        <div className="grid place-items-center rounded-full relative flex-none" style={{ width: 84, height: 84, background: `conic-gradient(${color} 0% ${puan}%, rgba(255,250,240,.07) ${puan}% 100%)` }}>
+          <span className="absolute rounded-full" style={{ inset: 8, background: A_PANEL }} />
+          <span className="relative tabular-nums font-bold" style={{ fontFamily: SERIF, fontSize: 21, color }}>%{puan}</span>
+        </div>
+        <div>
+          <div className="font-semibold" style={{ fontFamily: SERIF, fontSize: 17, color: A_INK }}>{guven?.kesinFaturaAdet ?? 0} / {guven?.toplamFaturaAdet ?? 0} fatura kesin</div>
+          <div className="text-[13px] mt-0.5" style={{ color: A_MUTED }}>{guven?.kontrolGerekliAdet ?? 0} belge kontrol bekliyor</div>
+          <span className="inline-flex items-center gap-1.5 mt-2 text-[12px] font-bold rounded-full px-2.5 py-1" style={{ color, background: `${color}1a`, border: `1px solid ${color}47` }}>
+            {seviye === 'kesin' ? <CheckCircle2 size={12} /> : <AlertTriangle size={12} />} {stateLabel}
+          </span>
+        </div>
+      </div>
+
+      {alerts.length === 0 && notlar.length === 0 && (
+        <div className="mt-4 flex items-center gap-2 rounded-xl p-3.5 text-[13px] font-semibold" style={{ background: 'rgba(94,207,142,.08)', border: '1px solid rgba(94,207,142,.28)', color: STAT_GREEN }}>
+          <CheckCircle2 size={15} /> Tüm kontroller temiz — beyana hazır
+        </div>
       )}
-      <div className="text-[10px] font-semibold uppercase tracking-wider" style={{ color: 'rgba(250,250,249,0.45)' }}>{label}</div>
-      <div className="mt-1 text-[15px] font-bold tabular-nums" style={{ color, fontFamily: REPORT_FONT }}>{TRY}{fmt(amount)}</div>
-      <div className="mt-0.5 truncate text-[10.5px]" style={{ color: 'rgba(250,250,249,0.4)' }}>{detail}</div>
+
+      {alerts.slice(0, 4).map((a, i) => {
+        const c = a.lvl === 'kritik' ? STAT_RED : STAT_AMBER;
+        return (
+          <div key={i} className="mt-3 flex gap-2.5 rounded-xl p-3.5 items-start" style={{ background: `${c}12`, border: `1px solid ${c}47` }}>
+            <AlertTriangle size={16} style={{ color: c, flexShrink: 0, marginTop: 1 }} />
+            <div>
+              <div className="text-[13px] font-bold" style={{ color: A_INK }}>{a.aksiyon || (a.lvl === 'kritik' ? 'Kritik kontrol gerekli' : 'Kontrol bekliyor')}</div>
+              <div className="text-[12.5px] mt-0.5" style={{ color: A_MUTED }}>
+                {a.belge && (
+                  <span className="rounded px-1.5 py-0.5 mr-1" style={{ color: STAT_AMBER, background: 'rgba(240,183,85,.08)' }}>{a.belge}</span>
+                )}
+                {a.msg}
+              </div>
+            </div>
+          </div>
+        );
+      })}
+
+      {notlar.length > 0 && (
+        <details className="mt-3 rounded-xl border overflow-hidden [&_summary::-webkit-details-marker]:hidden" style={{ borderColor: A_LINE, background: A_BG2 }}>
+          <summary className="cursor-pointer px-4 py-3 text-[13px] font-semibold flex items-center gap-2.5 list-none" style={{ color: A_MUTED }}>
+            Bilgi notları
+            <span className="text-[11px] font-bold rounded-full px-2 py-0.5" style={{ color: A_TEAL3, background: 'rgba(20,184,166,.1)', border: '1px solid rgba(20,184,166,.25)' }}>{notlar.length}</span>
+            <ChevronRight size={14} className="ml-auto" style={{ color: A_FAINT }} />
+          </summary>
+          {notlar.map((n, i) => (
+            <div key={i} className="px-4 py-3 text-[12.5px] border-t" style={{ borderColor: A_LINE, color: A_MUTED }}>
+              {n.belgeNo ? `${n.belgeNo} · ` : ''}{n.mesaj}
+            </div>
+          ))}
+        </details>
+      )}
     </div>
   );
 }
@@ -1067,47 +1225,54 @@ function DevredenKdvEditor({ data }: { data: Kdv1 }) {
     onError: (e: any) => toast.error(e?.response?.data?.message || 'Devreden KDV kaydedilemedi'),
   });
 
+  const fromBeyanname = devreden?.kaynak === 'beyanname_pdf';
   return (
-    <div
-      className="rounded-2xl border p-4 space-y-3"
-      style={{ background: 'rgba(255,255,255,0.025)', borderColor: 'rgba(20,184,166,0.18)' }}
-    >
-      <div>
-        <div className="text-[11px] font-bold uppercase tracking-[.13em]" style={{ color: '#d8c17f' }}>
-          Önceki Dönemden Devreden
-        </div>
-        <div className="text-[11.5px] mt-1" style={{ color: 'rgba(250,250,249,0.5)' }}>
-          {kaynakLabel}
+    <div className="rounded-[18px] border p-6" style={{ background: A_CARD, borderColor: 'rgba(20,184,166,0.18)' }}>
+      <div className="mb-1 flex items-center gap-2.5">
+        <span className="text-[11px] font-bold uppercase tracking-[.12em]" style={{ color: A_FAINT }}>İndirim</span>
+        <span className="font-semibold" style={{ fontFamily: SERIF, fontSize: 18, color: A_INK }}>Önceki Dönemden Devreden</span>
+      </div>
+      <div className="tabular-nums font-bold mt-1" style={{ fontFamily: SERIF, fontSize: 30, color: A_INK }}>{TRY}{fmt(data.sonuc?.devredenKdv || 0)}</div>
+
+      <div
+        className="mt-3 flex gap-2.5 items-start rounded-[9px] px-3 py-2.5 text-[11.5px] leading-relaxed"
+        style={{ background: fromBeyanname ? 'rgba(20,184,166,.08)' : 'rgba(255,250,240,.03)', border: `1px solid ${fromBeyanname ? 'rgba(20,184,166,.22)' : A_LINE}` }}
+      >
+        <FileCheck size={14} style={{ flexShrink: 0, marginTop: 1, color: fromBeyanname ? A_TEAL3 : A_FAINT }} />
+        <span style={{ color: A_MUTED }}>
+          {fromBeyanname && <b style={{ color: A_INK }}>Beyannameler modülünden</b>}{fromBeyanname ? ' · ' : ''}{kaynakLabel}
+        </span>
+      </div>
+
+      <div className="mt-4">
+        <label className="block text-[11px] font-bold uppercase tracking-[.1em] mb-1.5" style={{ color: A_FAINT }}>Bu dönem devreden tutarı</label>
+        <div className="flex items-center gap-2 rounded-[11px] px-3.5 max-w-[260px]" style={{ background: A_BG2, border: `1px solid ${A_LINE2}` }}>
+          <span className="font-bold" style={{ color: A_FAINT }}>{TRY}</span>
+          <input
+            value={value}
+            onChange={(e) => setValue(e.target.value)}
+            className="bg-transparent border-none outline-none w-full py-3 tabular-nums"
+            style={{ color: A_INK, fontSize: 17, fontWeight: 600 }}
+          />
         </div>
       </div>
-      <input
-        value={value}
-        onChange={(e) => setValue(e.target.value)}
-        className="w-full px-3 py-2.5 rounded-[10px] text-right outline-none tabular-nums"
-        style={{
-          background: 'rgba(0,0,0,0.22)',
-          border: '1px solid rgba(255,255,255,0.08)',
-          color: FINANCIAL_TOTAL_COLOR,
-          fontFamily: REPORT_FONT,
-          fontWeight: 750,
-        }}
-      />
-      <div className="grid grid-cols-1 gap-2">
+
+      <div className="mt-4 flex gap-2.5 flex-wrap">
         <button
           onClick={() => saveMut.mutate({ tutar: parseMoneyInput(value), mode: 'onceki' })}
           disabled={saveMut.isPending}
-          className="px-3 py-2 rounded-[9px] text-[12px] font-semibold disabled:opacity-50"
-          style={{ background: 'rgba(20,184,166,0.14)', border: '1px solid rgba(20,184,166,0.3)', color: '#d8c17f' }}
+          className="inline-flex items-center gap-2 text-[13px] font-semibold rounded-[10px] px-3.5 py-2.5 disabled:opacity-50"
+          style={{ background: 'linear-gradient(135deg,#14b8a6,#0d9488)', color: '#04201c' }}
         >
-          Bu dönem devredenini kaydet
+          <CheckCircle2 size={14} /> Bu dönem devredenini kaydet
         </button>
         <button
           onClick={() => saveMut.mutate({ tutar: sonraki, mode: 'sonraki' })}
           disabled={saveMut.isPending || sonraki <= 0}
-          className="px-3 py-2 rounded-[9px] text-[12px] font-semibold disabled:opacity-40"
-          style={{ background: 'rgba(34,197,94,0.1)', border: '1px solid rgba(34,197,94,0.24)', color: '#86efac' }}
+          className="inline-flex items-center gap-1.5 text-[13px] font-semibold rounded-[10px] px-3.5 py-2.5 border disabled:opacity-40"
+          style={{ background: 'transparent', borderColor: A_LINE2, color: A_MUTED }}
         >
-          Sonraki aya aktar: {TRY}{fmt(sonraki)}
+          Sonraki aya aktar: <b className="tabular-nums" style={{ color: A_INK }}>{TRY}{fmt(sonraki)}</b>
         </button>
       </div>
     </div>
@@ -1168,29 +1333,16 @@ function Kdv1View({ data, isBilanco }: { data: Kdv1; isBilanco: boolean }) {
 
   return (
     <>
-      <div className="grid grid-cols-1 xl:grid-cols-[minmax(0,1fr)_340px] gap-3">
-        <KdvTotalsTable sonuc={displaySonuc} satis={displaySatis} alis={displayAlis} devreden={data.devreden} />
-        <DevredenKdvEditor data={data} />
-      </div>
-      {/* Uyarılar */}
-      {(kaliteRapor.uyarilar.length > 0 || lucaKontrol.uyarilar.length > 0) && (
-        <div
-          className="rounded-2xl p-4 border"
-          style={{ background: 'rgba(239,68,68,0.06)', borderColor: 'rgba(239,68,68,0.25)' }}
-        >
-          <div className="flex items-start gap-2">
-            <AlertCircle size={16} style={{ color: '#fca5a5', flexShrink: 0, marginTop: 2 }} />
-            <div className="space-y-1">
-              {[...lucaKontrol.uyarilar, ...kaliteRapor.uyarilar].map((u, i) => (
-                <p key={i} className="text-[12.5px]" style={{ color: '#fca5a5' }}>{u}</p>
-              ))}
-            </div>
-          </div>
-        </div>
-      )}
+      <KdvWaterfall sonuc={displaySonuc} />
 
-      <VeriGuveniPanel guven={data.veriGuveni} />
-      <EksikVeriListesi items={data.eksikVeriler || []} />
+      <div className="grid grid-cols-1 xl:grid-cols-[1.5fr_1fr] gap-4">
+        <DevredenKdvEditor data={data} />
+        <KontrolKarti
+          guven={data.veriGuveni}
+          eksikVeriler={data.eksikVeriler || []}
+          uyarilar={[...lucaKontrol.uyarilar, ...kaliteRapor.uyarilar]}
+        />
+      </div>
 
       <BeyannameAksiyonlari
         mukellefId={data.mukellefId}
@@ -1200,7 +1352,7 @@ function Kdv1View({ data, isBilanco }: { data: Kdv1; isBilanco: boolean }) {
       />
 
       {/* Satış & Alış oran tabloları — yan yana */}
-      <div className="grid grid-cols-1 gap-3 xl:grid-cols-2">
+      <div className="grid grid-cols-1 gap-4 xl:grid-cols-2">
         <OranTablosu
           baslik="Satış · Hesaplanan KDV"
           renk="#5fcf8e"
