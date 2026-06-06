@@ -3,6 +3,7 @@ import { PrismaModule } from '../prisma/prisma.module';
 import { KdvBeyannameController } from './kdv-beyanname.controller';
 import { KdvBeyannameService } from './kdv-beyanname.service';
 import { KdvBeyannameCron } from './kdv-beyanname.cron';
+import { KdvAutoFetchService } from './kdv-auto-fetch.service';
 import { MizanParserService } from '../mizan/mizan-parser.service';
 import { NotificationsModule } from '../notifications/notifications.module';
 import { BeyanKayitlariModule } from '../beyan-kayitlari/beyan-kayitlari.module';
@@ -11,7 +12,7 @@ import { BeyanKayitlariModule } from '../beyan-kayitlari/beyan-kayitlari.module'
   imports: [PrismaModule, NotificationsModule, BeyanKayitlariModule],
   controllers: [KdvBeyannameController],
   // MizanParserService — Luca XLS'i parse etmek için reuse, Mizan tablosuna YAZMAYIZ.
-  providers: [KdvBeyannameService, MizanParserService, KdvBeyannameCron],
+  providers: [KdvBeyannameService, MizanParserService, KdvBeyannameCron, KdvAutoFetchService],
   exports: [KdvBeyannameService],
 })
 export class KdvBeyannameModule {}

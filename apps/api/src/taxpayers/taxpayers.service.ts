@@ -795,6 +795,36 @@ export class TaxpayersService {
           taxpayerType: t.type,
         });
       }
+
+      // KDV kontrolü tamam mı? (evrak geldi+işlendi + indirilecek+hesaplanan+e-arşiv
+      // kontrol hepsi true) → KDV beyanname otomasyonu için event yayınla.
+      // Dinleyen: KdvAutoFetchService (bilanço→Luca mizan, işletme→gelir-gider).
+      const kdvKontrolFields = [
+        'evraklarGeldi',
+        'evraklarIslendi',
+        'indirilecekKdvKontrol',
+        'hesaplananKdvKontrol',
+        'eArsivKontrol',
+      ] as const;
+      const kdvKontrolTamam = (src: any) =>
+        !!src && kdvKontrolFields.every((f) => src[f] === true);
+      if (!kdvKontrolTamam(existing) && kdvKontrolTamam(result)) {
+        const t = taxpayer as any;
+        const unvan =
+          t.type === 'TUZEL_KISI'
+            ? t.companyName || ''
+            : `${t.firstName ?? ''} ${t.lastName ?? ''}`.trim();
+        this.eventBus.emit('Taxpayer.KdvKontrolTamam', {
+          tenantId,
+          taxpayerId,
+          year,
+          month,
+          donem: `${year}-${String(month).padStart(2, '0')}`,
+          taxpayerUnvan: unvan || '(isim yok)',
+          taxpayerVkn: t.taxNumber ?? '',
+          taxpayerType: t.type,
+        });
+      }
     }
 
     return result;

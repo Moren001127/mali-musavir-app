@@ -1998,6 +1998,21 @@ export class KdvBeyannameService {
         'Bu mükellef işletme defteri usulünde. KDV mizan çapraz kontrolü uygulanmaz; KDV doğrudan faturalardan hesaplanır. (Gelir-gider için İşletme Hesap Özeti modülü kullanılır.)',
       );
     }
+    // Tekrar önleme: aynı mükellef + dönem için zaten bekleyen/çalışan KDV_MIZAN
+    // job'u varsa yenisini açma (otomatik tetikleme + manuel buton çift job üretmesin).
+    const mevcutJob = await (this.prisma as any).lucaFetchJob.findFirst({
+      where: {
+        tenantId: params.tenantId,
+        mukellefId: params.mukellefId,
+        donem: params.donem,
+        tip: 'KDV_MIZAN',
+        status: { in: ['pending', 'running'] },
+      },
+      orderBy: { createdAt: 'desc' },
+    });
+    if (mevcutJob) {
+      return { jobId: mevcutJob.id, status: mevcutJob.status, reused: true };
+    }
     const job = await (this.prisma as any).lucaFetchJob.create({
       data: {
         tenantId: params.tenantId,
