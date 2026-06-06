@@ -249,6 +249,12 @@ h3, h4 {
 ::-webkit-scrollbar-thumb  { background: var(--border); border-radius: 99px; }
 ::-webkit-scrollbar-thumb:hover { background: var(--border-hover); }
 
+/* Mükellef kartı — yatay bölüm çubuğu kaydırma çizgisi (çelik mavisi) */
+.section-pillbar::-webkit-scrollbar { height: 6px; }
+.section-pillbar::-webkit-scrollbar-track { background: rgba(255,255,255,0.03); border-radius: 99px; }
+.section-pillbar::-webkit-scrollbar-thumb { background: linear-gradient(90deg,#2b5489,#4f86c9); border-radius: 99px; }
+.section-pillbar::-webkit-scrollbar-thumb:hover { background: #74a6e6; }
+
 /* ── Kart ─────────────────────────────────────────────── */
 .card {
   background: var(--card-bg);

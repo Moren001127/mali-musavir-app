@@ -548,10 +548,10 @@ export default function MukellefDetayPage() {
       {/* ============================================================
           ANA İÇERİK — sekme içeriği + içgörü rayı
       ============================================================ */}
-      <div className="grid gap-4 xl:grid-cols-[minmax(0,1fr)_396px]">
-        <main>
-          <div className="overflow-hidden rounded-[18px] border" style={{ borderColor: LINE, background: CARD }}>
-            <div className="p-5 sm:p-6">
+      <div className="grid items-stretch gap-4 xl:grid-cols-[minmax(0,1fr)_396px]">
+        <main className="flex min-w-0">
+          <div className="flex w-full flex-col overflow-hidden rounded-[18px] border" style={{ borderColor: LINE, background: CARD }}>
+            <div className="flex-1 p-5 sm:p-6">
               {activeTab === 'bilgiler' && (
                 <BilgilerTab form={form} setForm={setForm} taxpayerId={isNew ? null : id} />
               )}
@@ -583,9 +583,9 @@ export default function MukellefDetayPage() {
         </main>
 
         {/* İÇGÖRÜ RAYI */}
-        <aside>
+        <aside className="flex min-w-0">
           {!isNew && id ? (
-            <div className="overflow-hidden rounded-[18px] border" style={{ borderColor: LINE, background: CARD }}>
+            <div className="flex w-full flex-col overflow-hidden rounded-[18px] border" style={{ borderColor: LINE, background: CARD }}>
               <TaxpayerStatsCard taxpayerId={id} />
               <DocumentExpiryWidget taxpayerId={id} compact={false} daysAhead={90} />
               <div className="p-4">
@@ -778,10 +778,9 @@ function BilgilerTab({
   const [active, setActive] = useState<BilgiSectionId>('musteri');
 
   return (
-    <div className="grid gap-4 md:grid-cols-[236px_minmax(0,1fr)] md:gap-0">
-      {/* Sol bölüm menüsü */}
-      <nav className="flex gap-1.5 overflow-x-auto pb-1 md:flex-col md:gap-1 md:overflow-visible md:border-r md:pb-0 md:pr-4" style={{ borderColor: HAIR }}>
-        <div className="hidden px-1.5 pb-1.5 text-[9.5px] font-bold uppercase tracking-[0.12em] md:block" style={{ color: FAINT }}>Bölümler</div>
+    <div>
+      {/* Yatay bölüm çubuğu */}
+      <nav className="section-pillbar -mt-1 mb-5 flex gap-2 overflow-x-auto border-b pb-3" style={{ borderColor: HAIR }}>
         {visible.map((s) => {
           const Icon = s.icon;
           const on = active === s.id;
@@ -790,44 +789,38 @@ function BilgilerTab({
               key={s.id}
               type="button"
               onClick={() => setActive(s.id)}
-              className="relative flex shrink-0 items-center gap-3 rounded-xl border py-2.5 pl-3 pr-3 text-left transition hover:bg-white/[0.03] md:w-full"
+              className="flex shrink-0 items-center gap-2 whitespace-nowrap rounded-xl border px-3 py-2 text-[12.5px] font-semibold transition hover:bg-white/[0.03]"
               style={on
-                ? { background: `linear-gradient(90deg, ${STEEL_SF}, transparent)`, borderColor: STEEL_LN }
-                : { borderColor: 'transparent' }}
+                ? { background: STEEL_SF, borderColor: STEEL_LN, color: STEEL_BR }
+                : { borderColor: 'transparent', color: MUTED }}
+              title={s.subtitle}
             >
-              {on && <span className="absolute bottom-2 left-0 top-2 w-[3px] rounded-r-full" style={{ background: STEEL }} />}
-              <span
-                className="flex h-[30px] w-[30px] shrink-0 items-center justify-center rounded-lg"
-                style={{ background: on ? 'rgba(79,134,201,0.2)' : 'rgba(255,255,255,0.04)', color: on ? STEEL_BR : MUTED }}
-              >
-                <Icon size={15} />
-              </span>
-              <span className="min-w-0 flex-1">
-                <span className="flex items-center gap-1.5">
-                  <span className="block truncate text-[12.5px] font-semibold" style={{ color: on ? TEXT : 'rgba(245,245,244,0.82)' }}>{s.title}</span>
-                  {s.filled && <span className="h-1.5 w-1.5 shrink-0 rounded-full" style={{ background: GREEN }} title="Dolu" />}
-                </span>
-                <span className="mt-0.5 hidden truncate text-[10.5px] md:block" style={{ color: FAINT }}>{s.subtitle}</span>
-              </span>
+              <Icon size={15} style={{ color: on ? STEEL_BR : MUTED }} />
+              {s.title}
+              {s.filled && <span className="h-1.5 w-1.5 rounded-full" style={{ background: GREEN }} title="Dolu" />}
             </button>
           );
         })}
       </nav>
 
       {/* İçerik */}
-      <div className="md:pl-6">
+      <div>
         {/* MÜŞTERİ / ŞİRKET */}
         {active === 'musteri' && (
-          <div>
-            <GroupCard icon={Contact} title="Mükellef Türü">
-              <Segmented
-                value={form.type}
-                onChange={(v) => setForm((p) => ({ ...p, type: v as TaxpayerType }))}
-                options={TAXPAYER_TYPES.map((t) => ({ value: t.value, label: t.label }))}
-              />
-              <p className="mt-2.5 text-[11.5px]" style={{ color: FAINT }}>
-                {TAXPAYER_TYPES.find((t) => t.value === form.type)?.detail}
-              </p>
+          <div className="grid grid-cols-1 gap-3.5 lg:grid-cols-2">
+            <GroupCard icon={Contact} title="Mükellef Türü" span>
+              <div className="flex flex-col gap-3 sm:flex-row sm:items-center">
+                <div className="w-full sm:max-w-[380px]">
+                  <Segmented
+                    value={form.type}
+                    onChange={(v) => setForm((p) => ({ ...p, type: v as TaxpayerType }))}
+                    options={TAXPAYER_TYPES.map((t) => ({ value: t.value, label: t.label }))}
+                  />
+                </div>
+                <p className="text-[11.5px]" style={{ color: FAINT }}>
+                  {TAXPAYER_TYPES.find((t) => t.value === form.type)?.detail}
+                </p>
+              </div>
             </GroupCard>
 
             <GroupCard icon={UserRound} title="Kimlik">
@@ -878,15 +871,15 @@ function BilgilerTab({
               </div>
             </GroupCard>
 
-            <GroupCard icon={MapPin} title="Tarihler & Adres" last>
-              <div className="grid grid-cols-1 gap-x-4 gap-y-3.5 sm:grid-cols-2">
+            <GroupCard icon={MapPin} title="Tarihler & Adres" span>
+              <div className="grid grid-cols-1 gap-x-4 gap-y-3.5 sm:grid-cols-2 lg:grid-cols-[1fr_1fr_2fr]">
                 <Field label="İşe başlama tarihi">
                   <InputBase type="date" value={form.startDate} onChange={(e) => setForm((p) => ({ ...p, startDate: e.target.value }))} />
                 </Field>
                 <Field label="İşi bırakma tarihi">
                   <InputBase type="date" value={form.endDate} onChange={(e) => setForm((p) => ({ ...p, endDate: e.target.value }))} />
                 </Field>
-                <Field label="Adres" className="sm:col-span-2">
+                <Field label="Adres" className="sm:col-span-2 lg:col-span-1">
                   <InputBase value={form.address} onChange={(e) => setForm((p) => ({ ...p, address: e.target.value }))} />
                 </Field>
               </div>
@@ -1258,9 +1251,9 @@ function NotlarTab({ form, setForm }: { form: FormState; setForm: React.Dispatch
 // ============================================================
 // YARDIMCI KOMPONENTLER
 // ============================================================
-function GroupCard({ icon: Icon, title, count, countColor, last, children }: { icon: React.ElementType; title: string; count?: string; countColor?: string; last?: boolean; children: React.ReactNode }) {
+function GroupCard({ icon: Icon, title, count, countColor, span, children }: { icon: React.ElementType; title: string; count?: string; countColor?: string; span?: boolean; children: React.ReactNode }) {
   return (
-    <div className={`rounded-2xl border p-4 sm:p-[17px] ${last ? '' : 'mb-3.5'}`} style={{ borderColor: HAIR, background: CARD2 }}>
+    <div className={`rounded-2xl border p-4 sm:p-[17px] ${span ? 'lg:col-span-2' : ''}`} style={{ borderColor: HAIR, background: CARD2 }}>
       <div className="mb-3.5 flex items-center gap-2.5">
         <span className="flex h-[27px] w-[27px] items-center justify-center rounded-lg border" style={{ borderColor: STEEL_LN, background: STEEL_SF, color: STEEL_BR }}>
           <Icon size={15} />
