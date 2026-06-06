@@ -1028,6 +1028,7 @@ function devredenKaynakLabel(devreden: Kdv1['devreden']): string {
   switch (devreden?.kaynak) {
     case 'manuel': return 'Elle girildi';
     case 'beyan_durumu': return `Önceki ay aktarımı · ${devreden?.sonKayitDonem || '—'}`;
+    case 'hesaplanan': return `Önceki dönemden hesaplandı · ${devreden?.sonKayitDonem || '—'}`;
     case 'beyanname_pdf': return `Önceki beyannameden (otomatik) · ${devreden?.sonKayitDonem || '—'}`;
     case 'beyan_kaydi': return `Beyan kaydı · ${devreden?.sonKayitDonem || '—'}`;
     case 'luca_mizan': return 'Luca mizandan';

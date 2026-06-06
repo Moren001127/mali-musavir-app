@@ -101,6 +101,7 @@ export class KdvBeyannameController {
       tenantId: req.user.tenantId,
       mukellefId,
       donem,
+      computePrevDevreden: true,
     });
   }
 
@@ -178,7 +179,7 @@ export class KdvBeyannameController {
     let kdv1: any;
     let kdv2: any;
     try {
-      kdv1 = await this.service.kdv1OnHazirlik({ tenantId, mukellefId, donem });
+      kdv1 = await this.service.kdv1OnHazirlik({ tenantId, mukellefId, donem, computePrevDevreden: true });
       kdv2 = await this.service.kdv2OnHazirlik({ tenantId, mukellefId, donem });
     } catch (e: any) {
       throw new BadRequestException(

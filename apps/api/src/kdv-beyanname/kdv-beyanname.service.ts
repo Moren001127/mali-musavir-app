@@ -13,7 +13,6 @@ import {
   GenelBakisRow,
 } from './types';
 import { NotificationsService } from '../notifications/notifications.service';
-import { BeyanKayitlariService } from '../beyan-kayitlari/beyan-kayitlari.service';
 
 /**
  * KDV Beyanname Ön Hazırlık Servisi.
@@ -51,7 +50,6 @@ export class KdvBeyannameService {
     private readonly prisma: PrismaService,
     private readonly mizanParser: MizanParserService,
     private readonly notifications: NotificationsService,
-    private readonly beyanKayitlari: BeyanKayitlariService,
   ) {}
 
   /**
@@ -92,8 +90,9 @@ export class KdvBeyannameService {
     tenantId: string;
     mukellefId: string;
     donem: string;
+    computePrevDevreden?: boolean;
   }): Promise<Kdv1OnHazirlik> {
-    const { tenantId, mukellefId, donem } = params;
+    const { tenantId, mukellefId, donem, computePrevDevreden } = params;
     const mukellef = await this.getMukellef(tenantId, mukellefId);
 
     // 1) SATIŞ faturaları (Mihsap + KdvRecord override)
@@ -121,7 +120,7 @@ export class KdvBeyannameService {
     };
 
     // 3) Geçen dönemden devreden
-    const devreden = await this.getDevredenKdv(tenantId, mukellefId, donem);
+    const devreden = await this.getDevredenKdv(tenantId, mukellefId, donem, !!computePrevDevreden);
 
     // 4) Luca çapraz kontrol
     const lucaKontrol = await this.lucaCrosscheck(
@@ -1712,6 +1711,7 @@ export class KdvBeyannameService {
     tenantId: string,
     mukellefId: string,
     donem: string,
+    computePrev = false,
   ) {
     const onceki = this.oncekiDonem(donem);
 
@@ -1755,17 +1755,31 @@ export class KdvBeyannameService {
       };
     }
 
-    // OTOMATIK: önceki dönem KDV1 beyannamesindeki "Sonraki Döneme Devreden KDV"
-    // (Beyannameler modülündeki PDF pdf-parse ile okunur). 0 da geçerli sonuç.
-    const pdfDevreden = await this.beyanKayitlari
-      .getSonrakiDonemeDevreden(tenantId, mukellefId, onceki)
-      .catch(() => null);
-    if (pdfDevreden) {
-      return {
-        tutar: pdfDevreden.tutar,
-        kaynak: 'beyanname_pdf' as const,
-        sonKayitDonem: onceki,
-      };
+    // OTOMATIK: önceki dönemin "sonraki aya devreden"ini KENDİ verimizden hesapla.
+    // (Beyanname PDF'inde etiket ve tutarlar ayrı bloklarda geldiği için pozisyonel
+    //  okuma güvenilmez ve yanlış değer verebilir. Normal durumda bu hesap,
+    //  beyannamedeki "Sonraki Döneme Devreden" ile birebir aynıdır.)
+    if (computePrev) {
+      try {
+        const [pSatis, pAlis, pTev] = await Promise.all([
+          this.derleOranBazliMatrahKdv(tenantId, mukellefId, onceki, 'SATIS'),
+          this.derleOranBazliMatrahKdv(tenantId, mukellefId, onceki, 'ALIS'),
+          this.ayirTevkifatliAlis(tenantId, mukellefId, onceki),
+        ]);
+        const pHes = Number(pSatis.toplamKdv || 0);
+        const pInd = Number(pAlis.toplamKdv || 0) - Number(pTev.tevkifatKdvToplam || 0);
+        if (pHes > 0 || pInd > 0) {
+          const pOwn = await this.getDevredenKdvShallow(tenantId, mukellefId, onceki);
+          const pCarry = Math.round((pInd + pOwn - pHes) * 100) / 100;
+          return {
+            tutar: pCarry > 0 ? pCarry : 0,
+            kaynak: 'hesaplanan' as const,
+            sonKayitDonem: onceki,
+          };
+        }
+      } catch (e: any) {
+        this.logger.warn(`önceki dönem devreden hesaplanamadı [${mukellefId} ${onceki}]: ${e?.message}`);
+      }
     }
 
     const beyan = await (this.prisma as any).beyanKaydi.findFirst({
@@ -1794,6 +1808,22 @@ export class KdvBeyannameService {
       kaynak: 'yok' as const,
       sonKayitDonem: null,
     };
+  }
+
+  /** Bir dönemin devredenini SIĞ okur (yalnız manuel / önceki-aktarım) — özyineleme yok. */
+  private async getDevredenKdvShallow(tenantId: string, mukellefId: string, donem: string): Promise<number> {
+    const cur = await (this.prisma as any).beyanDurumu.findUnique({
+      where: { tenantId_taxpayerId_beyanTipi_donem: { tenantId, taxpayerId: mukellefId, beyanTipi: 'KDV1', donem } },
+      select: { notlar: true },
+    });
+    const manuel = this.readTaggedAmount(cur?.notlar, DEVREDEN_MANUEL_TAG);
+    if (manuel !== null) return manuel;
+    const onceki = this.oncekiDonem(donem);
+    const prev = await (this.prisma as any).beyanDurumu.findUnique({
+      where: { tenantId_taxpayerId_beyanTipi_donem: { tenantId, taxpayerId: mukellefId, beyanTipi: 'KDV1', donem: onceki } },
+      select: { notlar: true },
+    });
+    return this.readTaggedAmount(prev?.notlar, SONRAKI_DEVREDEN_TAG) ?? 0;
   }
 
   /**
