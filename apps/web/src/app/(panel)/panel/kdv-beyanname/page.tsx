@@ -993,20 +993,29 @@ function BeyannameAksiyonlari({
 // ============================================================
 // KDV AKIŞ ŞELALESİ — Concept A yıldız bölümü
 // ============================================================
-function barBg(kind: 'pos' | 'neg' | 'result', val: number): React.CSSProperties {
+function barBg(kind: 'pos' | 'neg' | 'result', val: number, isOdenecek = false): React.CSSProperties {
   if (val <= 0)
     return {
       borderRadius: 11,
       background: 'linear-gradient(90deg,rgba(255,250,240,.18),rgba(255,250,240,.07))',
       border: `1px solid ${A_LINE2}`,
     };
-  if (kind === 'result')
+  if (kind === 'result') {
+    // Ödenecek → kırmızı (vergi çıkıyor); Sonraki aya devreden → yeşil (alacak kalıyor)
+    if (isOdenecek)
+      return {
+        borderRadius: '11px 11px 4px 4px',
+        background: 'linear-gradient(180deg,#ef6b6b,#c64545 60%,#8a2929)',
+        border: '1px solid rgba(239,107,107,.45)',
+        boxShadow: '0 18px 40px -14px rgba(239,107,107,.55), inset 0 1px 0 rgba(255,255,255,.18)',
+      };
     return {
       borderRadius: '11px 11px 4px 4px',
-      background: 'linear-gradient(180deg,#2dd4bf,#14b8a6 60%,#0b8174)',
-      border: '1px solid rgba(94,234,212,.4)',
-      boxShadow: '0 18px 40px -14px rgba(20,184,166,.6), inset 0 1px 0 rgba(255,255,255,.22)',
+      background: 'linear-gradient(180deg,#5fcf8e,#3fae6e 60%,#1f7d49)',
+      border: '1px solid rgba(95,207,142,.45)',
+      boxShadow: '0 18px 40px -14px rgba(95,207,142,.55), inset 0 1px 0 rgba(255,255,255,.18)',
     };
+  }
   if (kind === 'neg')
     return {
       borderRadius: '11px 11px 4px 4px',
@@ -1021,12 +1030,14 @@ function barBg(kind: 'pos' | 'neg' | 'result', val: number): React.CSSProperties
   };
 }
 
-function FootItem({ sw, label, neg, val }: { sw: 'pos' | 'neg' | 'res'; label: string; neg?: boolean; val: number }) {
+function FootItem({ sw, label, neg, val, isOdenecek }: { sw: 'pos' | 'neg' | 'res'; label: string; neg?: boolean; val: number; isOdenecek?: boolean }) {
   const bg =
     sw === 'pos'
       ? 'linear-gradient(180deg,#2dd4bf,#0d9488)'
       : sw === 'res'
-        ? 'linear-gradient(180deg,#2dd4bf,#14b8a6)'
+        ? isOdenecek
+          ? 'linear-gradient(180deg,#ef6b6b,#c64545)'
+          : 'linear-gradient(180deg,#5fcf8e,#3fae6e)'
         : 'rgba(239,107,107,.4)';
   return (
     <div className="flex items-center gap-2 text-[12.5px]" style={{ color: A_MUTED }}>
@@ -1051,20 +1062,24 @@ function KdvWaterfall({ sonuc }: { sonuc: Kdv1['sonuc'] }) {
   const maxVal = Math.max(1, ...steps.map((s) => s.val));
   const barH = (v: number) => (v <= 0 ? 6 : Math.max(14, Math.round((v / maxVal) * 188)));
 
+  const resultColor = odenecek ? STAT_RED : STAT_GREEN;
+  const resultShadow = odenecek ? 'rgba(239,107,107,.45)' : 'rgba(95,207,142,.45)';
+  const accentRgb = odenecek ? '239,107,107' : '95,207,142';
+
   return (
     <div
       className="rounded-[18px] border p-6 sm:p-7 relative overflow-hidden"
       style={{
         background:
-          'radial-gradient(520px 220px at 12% -30%, rgba(20,184,166,.16), transparent 60%), radial-gradient(420px 200px at 95% 120%, rgba(240,183,85,.06), transparent 60%), linear-gradient(165deg,#15211e 0%, #141210 70%)',
-        borderColor: 'rgba(20,184,166,0.22)',
+          `radial-gradient(520px 220px at 12% -30%, rgba(${accentRgb},.14), transparent 60%), radial-gradient(420px 200px at 95% 120%, rgba(240,183,85,.06), transparent 60%), linear-gradient(165deg,#15211e 0%, #141210 70%)`,
+        borderColor: odenecek ? 'rgba(239,107,107,0.28)' : 'rgba(95,207,142,0.28)',
         boxShadow: '0 30px 70px -36px rgba(0,0,0,.85), inset 0 1px 0 rgba(255,255,255,.04)',
       }}
     >
       <div className="flex items-end justify-between gap-4 flex-wrap mb-2">
         <div>
-          <div className="flex items-center gap-2 text-[12px] font-bold uppercase tracking-[.16em]" style={{ color: A_TEAL3 }}>
-            <span className="h-1.5 w-1.5 rounded-full" style={{ background: TEAL_BR, boxShadow: `0 0 10px ${TEAL_BR}` }} />
+          <div className="flex items-center gap-2 text-[12px] font-bold uppercase tracking-[.16em]" style={{ color: resultColor }}>
+            <span className="h-1.5 w-1.5 rounded-full" style={{ background: resultColor, boxShadow: `0 0 10px ${resultColor}` }} />
             KDV Akış Şelalesi
           </div>
           <h2 className="mt-1.5 font-semibold" style={{ fontFamily: SERIF, fontSize: 23, color: A_INK }}>Vergi nasıl oluştu?</h2>
@@ -1074,7 +1089,7 @@ function KdvWaterfall({ sonuc }: { sonuc: Kdv1['sonuc'] }) {
         </div>
         <div className="text-right">
           <div className="text-[11px] font-bold uppercase tracking-[.14em]" style={{ color: A_FAINT }}>Bu Dönem Sonucu · {resultLabel}</div>
-          <div className="mt-0.5 tabular-nums font-bold" style={{ fontFamily: SERIF, fontSize: 34, color: odenecek ? TEAL_BR : STAT_GREEN, textShadow: '0 0 26px rgba(45,212,191,.45)' }}>
+          <div className="mt-0.5 tabular-nums font-bold" style={{ fontFamily: SERIF, fontSize: 34, color: resultColor, textShadow: `0 0 26px ${resultShadow}` }}>
             {TRY}{fmt(resultVal)}
           </div>
         </div>
@@ -1091,7 +1106,7 @@ function KdvWaterfall({ sonuc }: { sonuc: Kdv1['sonuc'] }) {
                 </div>
               )}
               <div className="relative flex-1 min-w-0 flex flex-col justify-end items-center" style={{ height: '100%', paddingBottom: 74 }}>
-                <div className="relative" style={{ width: '78%', maxWidth: 128, height: barH(s.val), ...barBg(s.kind, s.val) }}>
+                <div className="relative" style={{ width: '78%', maxWidth: 128, height: barH(s.val), ...barBg(s.kind, s.val, odenecek) }}>
                   <span
                     className="absolute left-0 right-0 tabular-nums font-bold"
                     style={{ top: -28, textAlign: 'center', fontFamily: SERIF, fontSize: s.kind === 'result' ? 17 : 15, color: s.kind === 'result' ? '#fff' : s.val <= 0 ? A_FAINT : s.kind === 'neg' ? STAT_RED : A_TEAL3 }}
@@ -1100,7 +1115,23 @@ function KdvWaterfall({ sonuc }: { sonuc: Kdv1['sonuc'] }) {
                   </span>
                 </div>
                 <div className="absolute bottom-0 left-2 right-2 text-center">
-                  <div className="mx-auto mb-2 grid place-items-center rounded-[9px]" style={{ width: 30, height: 30, border: `1px solid ${A_LINE2}`, background: s.kind === 'result' ? 'linear-gradient(135deg,#14b8a6,#0d9488)' : A_BG2, fontSize: 15 }}>{s.ico}</div>
+                  <div
+                    className="mx-auto mb-2 grid place-items-center rounded-[9px]"
+                    style={{
+                      width: 30,
+                      height: 30,
+                      border: `1px solid ${A_LINE2}`,
+                      background:
+                        s.kind === 'result'
+                          ? odenecek
+                            ? 'linear-gradient(135deg,#ef6b6b,#c64545)'
+                            : 'linear-gradient(135deg,#5fcf8e,#3fae6e)'
+                          : A_BG2,
+                      fontSize: 15,
+                    }}
+                  >
+                    {s.ico}
+                  </div>
                   <div className="text-[12.5px] font-bold leading-tight" style={{ color: A_INK }}>{s.nm}</div>
                   <div className="text-[11px]" style={{ color: A_FAINT }}>{s.sub}</div>
                 </div>
@@ -1113,7 +1144,7 @@ function KdvWaterfall({ sonuc }: { sonuc: Kdv1['sonuc'] }) {
       <div className="flex gap-4 flex-wrap mt-6 pt-4 border-t" style={{ borderColor: A_LINE }}>
         <FootItem sw="pos" label="Toplanan KDV" val={sonuc.hesaplananKdv} />
         <FootItem sw="neg" neg label="Düşülen" val={Math.round((sonuc.indirilecekKdv + sonuc.devredenKdv) * 100) / 100} />
-        <FootItem sw="res" label={odenecek ? 'Net ödenecek' : 'Sonraki aya'} val={resultVal} />
+        <FootItem sw="res" label={odenecek ? 'Net ödenecek' : 'Sonraki aya'} val={resultVal} isOdenecek={odenecek} />
       </div>
     </div>
   );
@@ -1382,14 +1413,12 @@ function Kdv1View({ data, isBilanco }: { data: Kdv1; isBilanco: boolean }) {
     <>
       <KdvWaterfall sonuc={displaySonuc} />
 
-      <div className="grid grid-cols-1 xl:grid-cols-[1.5fr_1fr] gap-4 items-start">
-        <DevredenKdvEditor data={data} />
-        <KontrolKarti
-          guven={data.veriGuveni}
-          eksikVeriler={data.eksikVeriler || []}
-          uyarilar={[...lucaKontrol.uyarilar, ...kaliteRapor.uyarilar]}
-        />
-      </div>
+      <DevredenKdvEditor data={data} />
+      <KontrolKarti
+        guven={data.veriGuveni}
+        eksikVeriler={data.eksikVeriler || []}
+        uyarilar={[...lucaKontrol.uyarilar, ...kaliteRapor.uyarilar]}
+      />
 
       <BeyannameAksiyonlari
         mukellefId={data.mukellefId}
@@ -1437,15 +1466,7 @@ function Kdv1View({ data, isBilanco }: { data: Kdv1; isBilanco: boolean }) {
               </div>
             </div>
           )}
-          <LucaSnapshotFetchPanel
-            mukellefId={data.mukellefId}
-            donem={data.donem}
-            autoStart={false}
-            mihsapSatisOranlar={cleanSatisRows}
-            mihsapAlisOranlar={cleanAlisRows}
-            mihsapSatisToplam={displaySatis.toplamHesaplananKdv}
-            mihsapAlisToplam={displayAlis.toplamIndirilecekKdv}
-          />
+          <LucaSnapshotFetchPanel mukellefId={data.mukellefId} donem={data.donem} autoStart={false} />
         </>
       ) : (
         <IsletmeGgFetchPanel
@@ -1733,28 +1754,6 @@ function LucaSnapshotFetchPanel({
             </div>
           )}
         </>
-      )}
-
-      {/* Oran-bazlı çapraz detay — 391 (Hesaplanan) ve 191 (İndirilecek) */}
-      {snap?.exists && snap.kdvSatirlari && snap.kdvSatirlari.length > 0 && (
-        <div className="grid grid-cols-1 gap-3 xl:grid-cols-2">
-          <LucaCrossDetayli
-            baslik="391 · Hesaplanan KDV"
-            mihsapOranlar={mihsapSatisOranlar || []}
-            mihsapToplam={mihsapSatisToplam || 0}
-            lucaSatirlar={snap.kdvSatirlari}
-            prefix="391"
-            lucaField="alacakBakiye"
-          />
-          <LucaCrossDetayli
-            baslik="191 · İndirilecek KDV"
-            mihsapOranlar={mihsapAlisOranlar || []}
-            mihsapToplam={mihsapAlisToplam || 0}
-            lucaSatirlar={snap.kdvSatirlari}
-            prefix="191"
-            lucaField="borcBakiye"
-          />
-        </div>
       )}
 
       {/* KDV-ilgili hesap satırları tablosu — sütun/satır çizgili */}
