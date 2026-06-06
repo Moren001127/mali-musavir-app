@@ -231,7 +231,6 @@ function MoneyText({
 }
 
 export default function KdvBeyannamePage() {
-  const queryClient = useQueryClient();
   const now = new Date();
   const [selectedMukellef, setSelectedMukellef] = useState<string>('');
   const [year, setYear] = useState(now.getFullYear());
@@ -268,15 +267,6 @@ export default function KdvBeyannamePage() {
     [taxpayers, selectedMukellef],
   );
 
-  const { data: monthlyStatus } = useQuery<MonthlyStatus>({
-    queryKey: ['taxpayer-monthly-status-for-kdv-beyanname', selectedMukellef, year, month],
-    queryFn: () =>
-      api
-        .get(`/taxpayers/${selectedMukellef}/monthly-status`, { params: { year, month: Number(month) } })
-        .then((r) => r.data),
-    enabled: !!selectedMukellef,
-  });
-
   const { data: kdv1, isLoading: kdv1Loading, error: kdv1Error } = useQuery<Kdv1>({
     queryKey: ['kdv-beyanname-kdv1', selectedMukellef, donem],
     queryFn: () =>
@@ -301,39 +291,8 @@ export default function KdvBeyannamePage() {
     retry: 0,
   });
 
-  const autoPrepReady = Boolean(
-    tab === 'KDV1' &&
-      selectedMukellef &&
-      monthlyStatus?.evraklarGeldi &&
-      monthlyStatus?.evraklarIslendi &&
-      (monthlyStatus?.kontrolEdildi ||
-        (monthlyStatus?.indirilecekKdvKontrol && monthlyStatus?.hesaplananKdvKontrol)),
-  );
-  const [autoInvoiceAttemptKey, setAutoInvoiceAttemptKey] = useState<string | null>(null);
-
-  const autoInvoiceFetchMut = useMutation({
-    mutationFn: () =>
-      api.post('/agent/mihsap/fetch', {
-        mukellefId: selectedMukellef,
-        mukellefMihsapId: selectedTaxpayer?.mihsapId,
-        donem,
-        forceRefresh: false,
-      }),
-    onSuccess: () => {
-      toast.success('Mihsap faturaları KDV hazırlığı için çekildi');
-      queryClient.invalidateQueries({ queryKey: ['kdv-beyanname-kdv1', selectedMukellef, donem] });
-    },
-    onError: (e: any) => toast.error(e?.response?.data?.message || 'Mihsap faturaları otomatik çekilemedi'),
-  });
-
-  React.useEffect(() => {
-    const key = `${selectedMukellef}:${donem}`;
-    const faturaAdet = (kdv1?.satis?.faturaAdet || 0) + (kdv1?.alis?.faturaAdet || 0);
-    if (!autoPrepReady || !selectedTaxpayer?.mihsapId || !kdv1 || faturaAdet > 0) return;
-    if (autoInvoiceAttemptKey === key || autoInvoiceFetchMut.isPending) return;
-    setAutoInvoiceAttemptKey(key);
-    autoInvoiceFetchMut.mutate();
-  }, [autoPrepReady, selectedTaxpayer?.mihsapId, selectedMukellef, donem, kdv1, autoInvoiceAttemptKey, autoInvoiceFetchMut.isPending]);
+  // NOT: Açılışta otomatik Mihsap/Luca çekme KALDIRILDI (kullanıcı isteği).
+  // Veri zaten depodaysa gösterilir; çekme yalnızca manuel butonlarla yapılır.
 
   const handleDownload = async () => {
     if (!selectedMukellef) return;
@@ -394,58 +353,93 @@ export default function KdvBeyannamePage() {
         </button>
       </div>
 
-      {/* Seçim kartı */}
-      <div
-        className="rounded-2xl p-4 border"
-        style={{ background: 'rgba(255,255,255,0.02)', borderColor: 'rgba(255,255,255,0.05)' }}
-      >
-        <div className="flex items-center gap-2 mb-3">
-          <span className="w-[3px] h-4 rounded-sm" style={{ background: '#14b8a6' }} />
-          <h3 className="text-[13.5px] font-semibold" style={{ color: '#fafaf9' }}>
-            Mükellef & Dönem
-          </h3>
-        </div>
-
-        <div className="grid grid-cols-12 gap-3">
-          <div className="col-span-12 md:col-span-6">
-            <label className="text-[11px] font-bold uppercase tracking-[.12em] block mb-1.5" style={{ color: 'rgba(250,250,249,0.5)' }}>
-              <Users size={11} className="inline mr-1" /> Mükellef
-            </label>
-            <TaxpayerSelect
-              taxpayers={kdvTaxpayers}
-              value={selectedMukellef}
-              onChange={setSelectedMukellef}
-              placeholder="— Mükellef Seçin —"
-            />
-            {beyanConfigs.length > 0 && (
-              <p className="text-[11px] mt-1.5" style={{ color: 'rgba(250,250,249,0.42)' }}>
-                {tab} kapsamında {kdvTaxpayers.length} mükellef gösteriliyor; KDV mükellefiyeti olmayanlar gizlendi.
-              </p>
-            )}
+      {/* Seçim kartı — yalnız pano modunda (mükellef seçili değilken) */}
+      {!selectedMukellef && (
+        <div
+          className="rounded-2xl p-4 border"
+          style={{ background: 'rgba(255,255,255,0.02)', borderColor: 'rgba(255,255,255,0.05)' }}
+        >
+          <div className="flex items-center gap-2 mb-3">
+            <span className="w-[3px] h-4 rounded-sm" style={{ background: '#14b8a6' }} />
+            <h3 className="text-[13.5px] font-semibold" style={{ color: '#fafaf9' }}>Dönem & Mükellef</h3>
           </div>
+          <div className="grid grid-cols-12 gap-3">
+            <div className="col-span-6 md:col-span-3">
+              <label className="text-[11px] font-bold uppercase tracking-[.12em] block mb-1.5" style={{ color: 'rgba(250,250,249,0.5)' }}>
+                <Calendar size={11} className="inline mr-1" /> Yıl
+              </label>
+              <select
+                value={year}
+                onChange={(e) => setYear(Number(e.target.value))}
+                className="w-full px-3 py-2.5 rounded-[10px] text-[13px] outline-none cursor-pointer"
+                style={{ background: 'rgba(255,255,255,0.03)', border: '1px solid rgba(255,255,255,0.08)', color: '#fafaf9' }}
+              >
+                {[2024, 2025, 2026, 2027].map((y) => (
+                  <option key={y} value={y} style={{ background: '#0f0d0b' }}>{y}</option>
+                ))}
+              </select>
+            </div>
+            <div className="col-span-6 md:col-span-3">
+              <label className="text-[11px] font-bold uppercase tracking-[.12em] block mb-1.5" style={{ color: 'rgba(250,250,249,0.5)' }}>Ay</label>
+              <select
+                value={month}
+                onChange={(e) => setMonth(e.target.value)}
+                className="w-full px-3 py-2.5 rounded-[10px] text-[13px] outline-none cursor-pointer"
+                style={{ background: 'rgba(255,255,255,0.03)', border: '1px solid rgba(255,255,255,0.08)', color: '#fafaf9' }}
+              >
+                {MONTHS.map((m, i) => (
+                  <option key={m} value={m} style={{ background: '#0f0d0b' }}>{MONTH_NAMES[i]}</option>
+                ))}
+              </select>
+            </div>
+            <div className="col-span-12 md:col-span-6">
+              <label className="text-[11px] font-bold uppercase tracking-[.12em] block mb-1.5" style={{ color: 'rgba(250,250,249,0.5)' }}>
+                <Users size={11} className="inline mr-1" /> Mükellefe git (opsiyonel)
+              </label>
+              <TaxpayerSelect
+                taxpayers={kdvTaxpayers}
+                value={selectedMukellef}
+                onChange={setSelectedMukellef}
+                placeholder="— Mükellef Seçin —"
+              />
+            </div>
+          </div>
+        </div>
+      )}
 
-          <div className="col-span-6 md:col-span-3">
-            <label className="text-[11px] font-bold uppercase tracking-[.12em] block mb-1.5" style={{ color: 'rgba(250,250,249,0.5)' }}>
-              <Calendar size={11} className="inline mr-1" /> Yıl
-            </label>
+      {/* Detay üst bar — kompakt (mükellef seçiliyken) */}
+      {selectedMukellef && (
+        <div
+          className="flex flex-wrap items-center gap-2.5 rounded-xl border px-3 py-2.5"
+          style={{ borderColor: 'rgba(255,255,255,0.06)', background: 'rgba(255,255,255,0.02)' }}
+        >
+          <button
+            type="button"
+            onClick={() => setSelectedMukellef('')}
+            className="inline-flex items-center gap-1.5 rounded-lg border px-2.5 py-1.5 text-[12px] font-semibold transition hover:bg-white/[0.05]"
+            style={{ borderColor: 'rgba(255,255,255,0.1)', color: 'rgba(250,250,249,0.72)' }}
+          >
+            <ArrowLeft size={14} /> Pano
+          </button>
+          <Users size={14} style={{ color: '#14b8a6' }} />
+          <span className="text-[14px] font-semibold" style={{ color: '#fafaf9' }}>
+            {selectedTaxpayer ? taxpayerName(selectedTaxpayer) : ''}
+          </span>
+          <div className="ml-auto flex items-center gap-2">
             <select
               value={year}
               onChange={(e) => setYear(Number(e.target.value))}
-              className="w-full px-3 py-2.5 rounded-[10px] text-[13px] outline-none cursor-pointer"
+              className="rounded-[9px] px-2.5 py-1.5 text-[12.5px] outline-none cursor-pointer"
               style={{ background: 'rgba(255,255,255,0.03)', border: '1px solid rgba(255,255,255,0.08)', color: '#fafaf9' }}
             >
               {[2024, 2025, 2026, 2027].map((y) => (
                 <option key={y} value={y} style={{ background: '#0f0d0b' }}>{y}</option>
               ))}
             </select>
-          </div>
-
-          <div className="col-span-6 md:col-span-3">
-            <label className="text-[11px] font-bold uppercase tracking-[.12em] block mb-1.5" style={{ color: 'rgba(250,250,249,0.5)' }}>Ay</label>
             <select
               value={month}
               onChange={(e) => setMonth(e.target.value)}
-              className="w-full px-3 py-2.5 rounded-[10px] text-[13px] outline-none cursor-pointer"
+              className="rounded-[9px] px-2.5 py-1.5 text-[12.5px] outline-none cursor-pointer"
               style={{ background: 'rgba(255,255,255,0.03)', border: '1px solid rgba(255,255,255,0.08)', color: '#fafaf9' }}
             >
               {MONTHS.map((m, i) => (
@@ -454,18 +448,6 @@ export default function KdvBeyannamePage() {
             </select>
           </div>
         </div>
-      </div>
-
-      {/* Panoya dön */}
-      {selectedMukellef && (
-        <button
-          type="button"
-          onClick={() => setSelectedMukellef('')}
-          className="inline-flex items-center gap-1.5 rounded-[10px] border px-3 py-2 text-[12.5px] font-semibold transition hover:bg-white/[0.05]"
-          style={{ borderColor: 'rgba(255,255,255,0.10)', color: 'rgba(250,250,249,0.7)', background: 'rgba(255,255,255,0.03)' }}
-        >
-          <ArrowLeft size={14} /> Panoya dön
-        </button>
       )}
 
       {/* Tab seçici */}
@@ -500,7 +482,7 @@ export default function KdvBeyannamePage() {
             <EmptyStateCard donem={donem} />
           )}
           {!kdv1Loading && !kdv1Error && kdv1 && (kdv1.satis.faturaAdet > 0 || kdv1.alis.faturaAdet > 0) && (
-            <Kdv1View data={kdv1} autoHazirlikAktif={autoPrepReady} />
+            <Kdv1View data={kdv1} />
           )}
         </div>
       )}
@@ -1125,7 +1107,7 @@ function DevredenKdvEditor({ data }: { data: Kdv1 }) {
   );
 }
 
-function Kdv1View({ data, autoHazirlikAktif }: { data: Kdv1; autoHazirlikAktif?: boolean }) {
+function Kdv1View({ data }: { data: Kdv1 }) {
   // Backend'ten gelen veride eksik alanlar olabileceğini varsay; defansif ol
   const sonuc = data.sonuc || { hesaplananKdv: 0, indirilecekKdv: 0, devredenKdv: 0, odenecekKdv: 0, sonrakiAyaDevreden: 0 };
   const satis = data.satis || { oranlar: [], toplamMatrah: 0, toplamHesaplananKdv: 0, faturaAdet: 0 };
@@ -1172,20 +1154,13 @@ function Kdv1View({ data, autoHazirlikAktif }: { data: Kdv1; autoHazirlikAktif?:
           ),
         }
       : sonuc;
+
+  // Hero'daki "X fatura" gerçek oran kaleminden gelsin (hayalet allDocKeys değil)
+  (displaySatis as any).faturaAdet = cleanSatisTotal.adet;
+  (displayAlis as any).faturaAdet = cleanAlisTotal.adet;
+
   return (
     <>
-      {autoHazirlikAktif && (
-        <div
-          className="rounded-2xl px-4 py-3 border flex items-center gap-2"
-          style={{ background: 'rgba(34,197,94,0.06)', borderColor: 'rgba(34,197,94,0.2)', color: '#86efac' }}
-        >
-          <CheckCircle2 size={15} />
-          <span className="text-[12.5px] font-semibold">
-            Mükellef listesinde evrak/işlem/kontrol tamam: KDV hazırlığı otomatik çalışıyor.
-          </span>
-        </div>
-      )}
-
       <div className="grid grid-cols-1 xl:grid-cols-[minmax(0,1fr)_340px] gap-3">
         <KdvTotalsTable sonuc={displaySonuc} satis={displaySatis} alis={displayAlis} devreden={data.devreden} />
         <DevredenKdvEditor data={data} />
@@ -1255,7 +1230,7 @@ function Kdv1View({ data, autoHazirlikAktif }: { data: Kdv1; autoHazirlikAktif?:
           </div>
         </div>
       )}
-      <LucaSnapshotFetchPanel mukellefId={data.mukellefId} donem={data.donem} autoStart={autoHazirlikAktif} />
+      <LucaSnapshotFetchPanel mukellefId={data.mukellefId} donem={data.donem} autoStart={false} />
     </>
   );
 }
