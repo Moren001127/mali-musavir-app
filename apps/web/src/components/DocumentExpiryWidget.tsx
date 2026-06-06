@@ -11,11 +11,16 @@ import {
   type ExpiringDocument,
 } from '@/lib/documents';
 
-const GOLD = '#d4b876';
+const MUTED = 'rgba(245,245,244,0.60)';
+const FAINT = 'rgba(245,245,244,0.36)';
+const HAIR = 'rgba(255,255,255,0.07)';
+const FIELD = '#0c0d11';
+const RED = '#ef6b6b';
+const STEEL_BR = '#74a6e6';
 
 /**
- * Süresi yaklaşan / geçmiş belgeleri özet olarak gösterir.
- * Dashboard veya mükellef detay sayfasına eklenebilir.
+ * Süresi yaklaşan / geçmiş belgeleri içgörü rayında özet gösterir.
+ * Mükellef detay sayfasının sağ rayında "Evrak Yenileme" bölümü olarak render edilir.
  *
  * Props:
  *   taxpayerId — sadece bu mükellefe ait belgeler (opsiyonel)
@@ -59,35 +64,23 @@ export default function DocumentExpiryWidget({
   }
 
   return (
-    <div
-      className="rounded-xl border p-5"
-      style={{
-        background: 'rgba(239,68,68,0.04)',
-        borderColor: 'rgba(239,68,68,0.18)',
-      }}
-    >
-      <div className="flex items-center justify-between mb-3">
-        <div className="flex items-center gap-2">
-          <AlertTriangle size={14} style={{ color: '#ef4444' }} />
-          <span
-            className="text-[11px] uppercase font-bold tracking-[.12em]"
-            style={{ color: 'rgba(250,250,249,0.7)' }}
-          >
-            Evrak Yenileme
-          </span>
-          <span className="text-[11px]" style={{ color: 'rgba(250,250,249,0.5)' }}>
+    <div className="border-b p-4" style={{ borderColor: HAIR }}>
+      <div className="mb-2 flex items-center justify-between">
+        <span className="flex items-center gap-2 text-[10.5px] font-extrabold uppercase tracking-[0.1em]" style={{ color: MUTED }}>
+          <AlertTriangle size={13} style={{ color: RED }} /> Evrak Yenileme
+          <span className="font-medium normal-case tracking-normal" style={{ color: FAINT }}>
             · {expired.length > 0 && `${expired.length} dolmuş`}
             {expired.length > 0 && soon.length > 0 && ' · '}
             {soon.length > 0 && `${soon.length} yaklaşıyor`}
           </span>
-        </div>
+        </span>
         {!taxpayerId && (
           <Link
             href="/panel/evraklar/yenileme"
-            className="text-[11px] flex items-center gap-1 hover:underline"
-            style={{ color: GOLD }}
+            className="flex items-center gap-1 text-[11px] font-bold"
+            style={{ color: STEEL_BR }}
           >
-            Tümünü gör <ArrowRight size={10} />
+            Tümü <ArrowRight size={11} />
           </Link>
         )}
       </div>
@@ -99,28 +92,23 @@ export default function DocumentExpiryWidget({
             <Link
               key={d.id}
               href={`/panel/evraklar/${d.id}`}
-              className="flex items-center justify-between gap-3 py-1.5 px-2 rounded hover:bg-white/[0.03]"
+              className="flex items-center justify-between gap-3 rounded-lg border px-2.5 py-2 transition hover:bg-white/[0.03]"
+              style={{ borderColor: HAIR, background: FIELD }}
             >
-              <div className="flex items-center gap-2 min-w-0 flex-1">
-                <FileText size={12} style={{ color: 'rgba(250,250,249,0.4)', flexShrink: 0 }} />
-                <span
-                  className="text-[12.5px] truncate"
-                  style={{ color: 'rgba(250,250,249,0.85)' }}
-                >
+              <div className="flex min-w-0 flex-1 items-center gap-2">
+                <FileText size={13} style={{ color: FAINT, flexShrink: 0 }} />
+                <span className="truncate text-[12px]" style={{ color: 'rgba(245,245,244,0.86)' }}>
                   {d.title}
                 </span>
                 {!taxpayerId && (
-                  <span
-                    className="text-[11px] truncate"
-                    style={{ color: 'rgba(250,250,249,0.45)' }}
-                  >
+                  <span className="truncate text-[11px]" style={{ color: FAINT }}>
                     · {taxpayerName(d.taxpayer)}
                   </span>
                 )}
               </div>
               <span
-                className="text-[11px] font-semibold whitespace-nowrap"
-                style={{ color }}
+                className="whitespace-nowrap rounded-md px-2 py-[2px] text-[10.5px] font-bold"
+                style={{ color, background: `${color}22` }}
               >
                 {expiringStatusLabel(d.status, d.daysLeft)}
               </span>
@@ -134,7 +122,7 @@ export default function DocumentExpiryWidget({
           <Link
             href="/panel/evraklar/yenileme"
             className="text-[11px]"
-            style={{ color: GOLD }}
+            style={{ color: STEEL_BR }}
           >
             +{safeDocs.length - visible.length} daha…
           </Link>

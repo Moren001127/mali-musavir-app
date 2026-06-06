@@ -6,12 +6,14 @@ import { useParams, useRouter } from 'next/navigation';
 import Link from 'next/link';
 import {
   ArrowLeft,
+  ArrowRight,
   BookOpen,
   Building2,
+  Calendar,
   CheckCircle2,
   ChevronLeft,
   ChevronRight,
-  ExternalLink,
+  Contact,
   FileCheck,
   FileText,
   Hash,
@@ -19,6 +21,7 @@ import {
   Loader2,
   Lock,
   Mail,
+  MapPin,
   MessageSquareText,
   Phone,
   Plus,
@@ -27,6 +30,7 @@ import {
   Shield,
   ShieldCheck,
   Sparkles,
+  Tag,
   Trash2,
   UserCog,
   UserRound,
@@ -38,24 +42,33 @@ import { api } from '@/lib/api';
 import { toast } from 'sonner';
 import TaxpayerStatsCard from '@/components/TaxpayerStatsCard';
 import DocumentExpiryWidget from '@/components/DocumentExpiryWidget';
-import { ProfilTamamlikBanner } from '@/components/mukellef/ProfilTamamlikBanner';
 import { MukellefiyetlerCard } from '@/components/mukellef/MukellefiyetlerCard';
 import { TaxpayerPortalCredentialsCard } from '@/components/portal-automation/PortalCredentialCards';
 
+// ── Kurumsal duo palet (altın marka + çelik mavisi yapı), siyah zemin ──
 const GOLD = '#d4b876';
-const GOLD_BRIGHT = '#e7cd92';
-const GOLD_DEEP = '#8b7649';
-const LINE = 'rgba(255,255,255,0.12)';
-const LINE_GOLD = 'rgba(212,184,118,0.32)';
-const TEXT = '#fafaf9';
-const MUTED = 'rgba(250,250,249,0.68)';
-const SOFT = 'rgba(255,255,255,0.05)';
-// Tema arka plan tonları — sıcak kahve-gri, ferah his
-const PANEL = '#2a241c';
-// Premium alan stilleri — altın odak halkası + kenar
-const FIELD_CLS = 'h-11 w-full rounded-xl border border-white/10 bg-white/[0.035] px-3.5 text-[13.5px] text-[#fafaf9] outline-none transition placeholder:text-white/25 focus:border-[#d4b876]/55 focus:bg-white/[0.055] focus:shadow-[0_0_0_3px_rgba(212,184,118,0.14)]';
+const GOLD_BR = '#ecd6a4';
+const GOLD_DP = '#8b7649';
+const STEEL = '#4f86c9';
+const STEEL_BR = '#74a6e6';
+const STEEL_DP = '#2b5489';
+const STEEL_SF = 'rgba(79,134,201,0.13)';
+const STEEL_LN = 'rgba(79,134,201,0.32)';
+const TEXT = '#f5f5f4';
+const MUTED = 'rgba(245,245,244,0.60)';
+const FAINT = 'rgba(245,245,244,0.36)';
+const CARD = '#131419';
+const CARD2 = '#0e0f13';
+const RAISE = '#181a20';
+const HAIR = 'rgba(255,255,255,0.07)';
+const LINE = 'rgba(255,255,255,0.11)';
+const GREEN = '#5fcf8e';
+const AMBER = '#f0b755';
+const RED = '#ef6b6b';
+
+const FIELD_CLS = 'h-[42px] w-full rounded-xl border border-white/10 bg-[#0c0d11] px-3.5 text-[13px] text-[#f5f5f4] outline-none transition placeholder:text-white/30 focus:border-[#4f86c9]/60 focus:bg-[#0e1014] focus:shadow-[0_0_0_3px_rgba(79,134,201,0.15)]';
 const SELECT_CLS = `${FIELD_CLS} cursor-pointer`;
-const TEXTAREA_CLS = 'w-full resize-none rounded-xl border border-white/10 bg-white/[0.035] px-3.5 py-3 text-[13.5px] text-[#fafaf9] outline-none transition placeholder:text-white/25 focus:border-[#d4b876]/55 focus:bg-white/[0.055] focus:shadow-[0_0_0_3px_rgba(212,184,118,0.14)]';
+const TEXTAREA_CLS = 'w-full resize-none rounded-xl border border-white/10 bg-[#0c0d11] px-3.5 py-3 text-[13px] text-[#f5f5f4] outline-none transition placeholder:text-white/30 focus:border-[#4f86c9]/60 focus:bg-[#0e1014] focus:shadow-[0_0_0_3px_rgba(79,134,201,0.15)]';
 
 const TAXPAYER_TYPES = [
   { value: 'TUZEL_KISI', label: 'Tüzel Kişi', detail: 'Şirket veya kurum kaydı' },
@@ -147,6 +160,20 @@ function initialsFor(name: string) {
   return name.slice(0, 2).toUpperCase();
 }
 
+function fmtDateTR(iso: string): string {
+  if (!iso) return '—';
+  const m = /^(\d{4})-(\d{2})-(\d{2})/.exec(iso);
+  if (!m) return iso;
+  return `${m[3]}.${m[2]}.${m[1]}`;
+}
+
+const COMPLETENESS_COLOR: Record<string, string> = {
+  TAM: GREEN,
+  IYI: '#9bd445',
+  EKSIK: AMBER,
+  KRITIK_EKSIK: RED,
+};
+
 // ============================================================
 // KISAYOL GİRİŞLERİ — devlet portalları + sık sorgular (açılır panelde)
 // ============================================================
@@ -179,7 +206,7 @@ const HIZLI_SORGULAR: Kisayol[] = [
 ];
 
 // ============================================================
-// SEKMELER — gerçek sekmeler + ayrı sayfaya götüren link modülleri
+// SEKMELER + ayrı sayfaya götüren link modülleri (hızlı erişim)
 // ============================================================
 type TabKey = 'bilgiler' | 'mukellefiyetler' | 'sgk' | 'tebligat' | 'notlar';
 
@@ -217,6 +244,13 @@ export default function MukellefDetayPage() {
     queryKey: ['taxpayers', 'card-nav'],
     queryFn: () => api.get('/taxpayers').then((res) => res.data),
     enabled: !isNew,
+  });
+
+  const { data: completeness } = useQuery<any>({
+    queryKey: ['taxpayer-completeness', id],
+    queryFn: () => api.get(`/taxpayers/${id}/completeness`).then((r) => r.data),
+    enabled: !isNew && !!id,
+    refetchInterval: 60_000,
   });
 
   const [form, setForm] = useState<FormState>(() => emptyForm());
@@ -330,45 +364,16 @@ export default function MukellefDetayPage() {
   const activeChannels = statuses.filter((s) => s.active);
 
   const handleKisayolClick = (k: Kisayol) => {
-    // Şimdilik basit pencere açma; ileride PortalCredential ile otomatik giriş
     window.open(k.url, '_blank', 'noopener,noreferrer');
   };
 
   const visibleTabs = isNew ? REAL_TABS.filter((t) => t.key === 'bilgiler' || t.key === 'notlar') : REAL_TABS;
   const defterLabel = form.defterTuru === 'BILANCO' ? 'Bilanço' : 'İşletme defteri';
+  const taxLabel = form.type === 'TUZEL_KISI' ? 'VKN' : 'TCKN';
 
-  const CardNavButtons = ({ compact = false }: { compact?: boolean }) => {
-    if (isNew || cardNav.total <= 1) return null;
-    return (
-      <div className={`flex items-center gap-1.5 ${compact ? 'flex-wrap' : ''}`}>
-        <button
-          type="button"
-          onClick={() => cardNav.prev && router.push(`/panel/mukellefler/${cardNav.prev.id}`)}
-          disabled={!cardNav.prev}
-          title={cardNav.prev ? displayName(cardNav.prev) : 'İlk mükellef'}
-          className="inline-flex h-9 items-center gap-1 rounded-lg border px-2.5 text-[12.5px] font-semibold transition hover:bg-white/[0.06] disabled:cursor-not-allowed disabled:opacity-35"
-          style={{ borderColor: LINE, color: TEXT, background: SOFT }}
-        >
-          <ChevronLeft size={15} />
-          <span className="hidden sm:inline">Önceki</span>
-        </button>
-        <div className="inline-flex h-9 min-w-[64px] items-center justify-center rounded-lg border px-2.5 text-[12px] font-semibold tabular-nums" style={{ borderColor: LINE_GOLD, background: 'rgba(212,184,118,0.09)', color: GOLD }}>
-          {cardNav.index >= 0 ? cardNav.index + 1 : '-'} / {cardNav.total}
-        </div>
-        <button
-          type="button"
-          onClick={() => cardNav.next && router.push(`/panel/mukellefler/${cardNav.next.id}`)}
-          disabled={!cardNav.next}
-          title={cardNav.next ? displayName(cardNav.next) : 'Son mükellef'}
-          className="inline-flex h-9 items-center gap-1 rounded-lg border px-2.5 text-[12.5px] font-semibold transition hover:bg-white/[0.06] disabled:cursor-not-allowed disabled:opacity-35"
-          style={{ borderColor: LINE, color: TEXT, background: SOFT }}
-        >
-          <span className="hidden sm:inline">Sonraki</span>
-          <ChevronRight size={15} />
-        </button>
-      </div>
-    );
-  };
+  const compScore: number | null = completeness?.score ?? null;
+  const compColor = completeness?.durum ? (COMPLETENESS_COLOR[completeness.durum] || STEEL) : STEEL;
+  const eksikler: any[] = Array.isArray(completeness?.eksikler) ? completeness.eksikler : [];
 
   if (!isNew && isLoading) {
     return (
@@ -382,168 +387,171 @@ export default function MukellefDetayPage() {
   }
 
   return (
-    <form onSubmit={handleSubmit} className="mx-auto max-w-[1400px] space-y-4 px-1">
+    <form onSubmit={handleSubmit} className="mx-auto max-w-[1440px] space-y-4 px-1">
       {/* ============================================================
-          HEADER — kompakt kimlik + aksiyonlar (tek şerit)
+          HERO — kimlik komut paneli (künye + tamamlanma halkası + sekmeler)
       ============================================================ */}
-      <header className="rounded-xl border p-4 sm:p-5" style={{ borderColor: LINE, background: PANEL }}>
-        <div className="flex flex-col gap-4 lg:flex-row lg:items-center lg:justify-between">
-          {/* Kimlik */}
-          <div className="flex min-w-0 items-center gap-3.5">
+      <header className="relative overflow-hidden rounded-[20px] border" style={{ borderColor: LINE, background: `linear-gradient(180deg, ${RAISE}, ${CARD})` }}>
+        <div className="absolute inset-x-0 top-0 h-[2px]" style={{ background: `linear-gradient(90deg, ${GOLD_BR}, ${GOLD} 26%, ${STEEL_BR} 60%, ${STEEL} 82%, #7c5cf0)` }} />
+        <div className="pointer-events-none absolute -left-14 -top-36 h-[340px] w-[480px] rounded-full" style={{ background: 'radial-gradient(closest-side, rgba(212,184,118,0.14), transparent 70%)' }} />
+        <div className="pointer-events-none absolute -right-8 -top-32 h-[320px] w-[440px] rounded-full" style={{ background: 'radial-gradient(closest-side, rgba(79,134,201,0.13), transparent 70%)' }} />
+
+        <div className="relative flex flex-col gap-5 p-5 sm:p-6 lg:flex-row lg:items-start">
+          {/* Kimlik + künye */}
+          <div className="flex min-w-0 flex-1 items-start gap-4">
             <Link
               href="/panel/mukellefler"
-              className="flex h-9 w-9 shrink-0 items-center justify-center rounded-lg border transition hover:bg-white/[0.06]"
+              className="mt-1 flex h-9 w-9 shrink-0 items-center justify-center rounded-xl border transition hover:bg-white/[0.06]"
               style={{ borderColor: LINE, color: MUTED }}
               title="Listeye dön"
             >
               <ArrowLeft size={17} />
             </Link>
 
-            {/* Logo veya avatar */}
-            {form.logoUrl ? (
-              <div
-                className="h-14 w-14 shrink-0 rounded-xl border bg-cover bg-center"
-                style={{ borderColor: LINE_GOLD, backgroundImage: `url(${form.logoUrl})` }}
-                title="Mükellef logosu"
-              />
-            ) : (
-              <div
-                className="flex h-14 w-14 shrink-0 items-center justify-center rounded-xl border text-[16px] font-bold"
-                style={{ borderColor: LINE_GOLD, background: 'rgba(212,184,118,0.10)', color: GOLD }}
-                title={currentName}
-              >
-                {avatarText}
+            {/* Avatar + tamamlanma halkası */}
+            <div className="relative shrink-0" style={{ width: 88, height: 88 }}>
+              <div className="h-[88px] w-[88px] rounded-full p-[5px]" style={{ background: compScore != null ? `conic-gradient(${compColor} 0 ${compScore}%, rgba(255,255,255,0.09) ${compScore}% 100%)` : 'rgba(255,255,255,0.09)' }}>
+                <div className="flex h-full w-full items-center justify-center rounded-full p-1" style={{ background: CARD }}>
+                  {form.logoUrl ? (
+                    <div className="h-full w-full rounded-full bg-cover bg-center" style={{ backgroundImage: `url(${form.logoUrl})` }} />
+                  ) : (
+                    <div className="flex h-full w-full items-center justify-center rounded-full text-[22px] font-extrabold" style={{ background: `linear-gradient(140deg, ${GOLD_BR}, ${GOLD_DP})`, color: '#1a1408' }}>
+                      {avatarText}
+                    </div>
+                  )}
+                </div>
               </div>
-            )}
+              {compScore != null && (
+                <span className="absolute -bottom-1 left-1/2 -translate-x-1/2 rounded-full border px-2 py-[1px] text-[10.5px] font-extrabold" style={{ background: CARD2, borderColor: LINE, color: compColor }}>
+                  %{compScore}
+                </span>
+              )}
+            </div>
 
-            {/* Ad + meta */}
-            <div className="min-w-0">
-              <p className="text-[10.5px] font-semibold uppercase tracking-[0.14em]" style={{ color: GOLD }}>
+            <div className="min-w-0 flex-1">
+              <div className="flex items-center gap-2 text-[10.5px] font-bold uppercase tracking-[0.13em]" style={{ color: GOLD }}>
                 {isNew ? 'Yeni kayıt' : form.type === 'TUZEL_KISI' ? 'Şirket kartı' : 'Gerçek kişi kartı'}
-              </p>
-              <h1 className="truncate text-[21px] font-semibold leading-tight" style={{ color: TEXT }}>{currentName}</h1>
-              <div className="mt-1.5 flex flex-wrap items-center gap-1.5 text-[11.5px]">
-                <InfoPill icon={Landmark} label={form.taxNumber || 'VKN/TCKN yok'} />
-                <InfoPill icon={ShieldCheck} label={form.taxOffice || 'Vergi dairesi yok'} />
-                <InfoPill icon={BookOpen} label={defterLabel} />
-                {form.naceKodu && <InfoPill icon={Hash} label={`NACE: ${form.naceKodu}`} />}
+                {!isNew && cardNav.total > 0 && (
+                  <>
+                    <span style={{ color: FAINT }}>·</span>
+                    <span className="font-mono" style={{ color: STEEL_BR }}>{cardNav.index >= 0 ? cardNav.index + 1 : '-'} / {cardNav.total}</span>
+                  </>
+                )}
               </div>
+              <div className="mt-1 flex flex-wrap items-center gap-2.5">
+                <h1 className="truncate text-[24px] font-bold leading-tight" style={{ color: TEXT }}>{currentName}</h1>
+                {!isNew && (
+                  <span className="inline-flex items-center gap-1.5 rounded-full border px-2.5 py-[3px] text-[11px] font-bold" style={{ borderColor: 'rgba(95,207,142,0.32)', background: 'rgba(95,207,142,0.12)', color: GREEN }}>
+                    <span className="h-1.5 w-1.5 rounded-full" style={{ background: GREEN, boxShadow: `0 0 7px ${GREEN}` }} /> Aktif
+                  </span>
+                )}
+              </div>
+
+              {/* Künye ızgarası */}
+              {!isNew && (
+                <div className="mt-4 grid grid-cols-2 gap-px overflow-hidden rounded-[13px] border sm:grid-cols-3 lg:grid-cols-5" style={{ borderColor: HAIR, background: HAIR }}>
+                  <DefCell icon={Landmark} label={taxLabel} value={form.taxNumber || '—'} mono />
+                  <DefCell icon={ShieldCheck} label="Vergi Dairesi" value={form.taxOffice || '—'} />
+                  <DefCell icon={BookOpen} label="Defter Türü" value={defterLabel} />
+                  <DefCell icon={Hash} label="NACE" value={form.naceKodu || '—'} mono />
+                  <DefCell icon={Calendar} label="İşe Başlama" value={fmtDateTR(form.startDate)} />
+                </div>
+              )}
             </div>
           </div>
 
           {/* Aksiyonlar */}
-          <div className="flex flex-wrap items-center gap-2 lg:justify-end">
-            {!isNew && (
+          <div className="flex shrink-0 flex-col items-stretch gap-3 lg:items-end">
+            <div className="flex flex-wrap items-center gap-2 lg:justify-end">
+              {!isNew && (
+                <button
+                  type="button"
+                  onClick={() => setPortalOpen(true)}
+                  className="inline-flex h-10 items-center gap-2 rounded-xl border px-4 text-[12.5px] font-bold transition hover:brightness-110"
+                  style={{ borderColor: STEEL_LN, background: STEEL_SF, color: STEEL_BR }}
+                  title="Kısayol girişleri ve sık sorgular"
+                >
+                  <Zap size={15} /> Kısayollar
+                </button>
+              )}
               <button
-                type="button"
-                onClick={() => setPortalOpen(true)}
-                className="inline-flex h-9 items-center gap-1.5 rounded-lg border px-3 text-[12.5px] font-semibold transition hover:bg-white/[0.06]"
-                style={{ borderColor: LINE_GOLD, background: 'rgba(212,184,118,0.09)', color: GOLD }}
-                title="Kısayol girişleri ve sık sorgular"
+                type="submit"
+                disabled={isPending}
+                className="inline-flex h-10 items-center gap-2 rounded-xl px-5 text-[12.5px] font-bold transition disabled:opacity-50"
+                style={{ background: `linear-gradient(135deg, ${GOLD}, ${GOLD_DP})`, color: '#0f0d0b', boxShadow: '0 8px 20px -8px rgba(212,184,118,0.55)' }}
               >
-                <Zap size={15} /> Kısayol Girişleri
+                {isPending ? <Loader2 size={15} className="animate-spin" /> : <Save size={15} />}
+                {isNew ? 'Kaydı Oluştur' : 'Kaydet'}
               </button>
-            )}
-            <CardNavButtons compact />
+            </div>
             {!isNew && (
-              <button
-                type="button"
-                onClick={() => {
-                  if (confirm('Mükellef silinsin mi?')) deleteMukellef();
-                }}
-                disabled={isDeleting}
-                className="inline-flex h-9 w-9 items-center justify-center rounded-lg border transition hover:bg-red-500/10 disabled:opacity-40"
-                style={{ borderColor: 'rgba(248,113,113,0.32)', color: '#fca5a5' }}
-                title="Mükellefi sil"
-              >
-                {isDeleting ? <Loader2 size={15} className="animate-spin" /> : <Trash2 size={15} />}
-              </button>
+              <div className="flex flex-wrap items-center gap-2 lg:justify-end">
+                <CardNavButtons cardNav={cardNav} isNew={isNew} router={router} />
+                <button
+                  type="button"
+                  onClick={() => {
+                    if (confirm('Mükellef silinsin mi?')) deleteMukellef();
+                  }}
+                  disabled={isDeleting}
+                  className="inline-flex h-10 w-10 items-center justify-center rounded-xl border transition hover:bg-red-500/10 disabled:opacity-40"
+                  style={{ borderColor: 'rgba(248,113,113,0.32)', color: '#fca5a5' }}
+                  title="Mükellefi sil"
+                >
+                  {isDeleting ? <Loader2 size={15} className="animate-spin" /> : <Trash2 size={15} />}
+                </button>
+              </div>
             )}
-            <button
-              type="submit"
-              disabled={isPending}
-              className="inline-flex h-9 items-center gap-1.5 rounded-lg px-4 text-[12.5px] font-bold transition disabled:opacity-50"
-              style={{ background: `linear-gradient(135deg, ${GOLD}, ${GOLD_DEEP})`, color: '#0f0d0b' }}
-            >
-              {isPending ? <Loader2 size={15} className="animate-spin" /> : <Save size={15} />}
-              {isNew ? 'Kaydı Oluştur' : 'Kaydet'}
-            </button>
           </div>
         </div>
 
-        {/* Aktif kanallar */}
-        {!isNew && (
-          <div className="mt-3.5 flex flex-wrap items-center gap-2 border-t pt-3.5" style={{ borderColor: LINE }}>
-            <span className="text-[11px] font-medium" style={{ color: MUTED }}>Aktif kanallar:</span>
-            {activeChannels.length > 0 ? (
-              activeChannels.map((s) => <ChannelChip key={s.key} label={s.label} />)
-            ) : (
-              <span className="text-[11.5px]" style={{ color: 'rgba(250,250,249,0.35)' }}>Tanımlı aktif kanal yok</span>
+        {/* Eksik alanlar — kimlik panelinde satır içi */}
+        {!isNew && eksikler.length > 0 && (
+          <div className="relative flex flex-wrap items-center gap-2 px-5 pb-4 sm:px-6">
+            <span className="text-[11.5px]" style={{ color: MUTED }}>Tamamlanmamış:</span>
+            {eksikler.slice(0, 6).map((f) => (
+              <span key={f.key} className="inline-flex items-center gap-1.5 rounded-lg border px-2.5 py-1 text-[11px] font-semibold" style={{ borderColor: 'rgba(240,183,85,0.28)', background: 'rgba(240,183,85,0.10)', color: AMBER }}>
+                {f.label}
+              </span>
+            ))}
+            {eksikler.length > 6 && (
+              <span className="text-[11px]" style={{ color: FAINT }}>+{eksikler.length - 6} daha</span>
             )}
           </div>
         )}
+
+        {/* Sekmeler — kimlik panelinin içinde */}
+        <div className="relative flex items-center gap-0.5 overflow-x-auto border-t px-3" style={{ borderColor: HAIR, background: 'rgba(0,0,0,0.18)' }}>
+          {visibleTabs.map((t) => {
+            const Icon = t.icon;
+            const active = activeTab === t.key;
+            return (
+              <button
+                key={t.key}
+                type="button"
+                onClick={() => setActiveTab(t.key)}
+                className="flex shrink-0 items-center gap-2 whitespace-nowrap px-4 py-3.5 text-[13px] font-semibold transition"
+                style={{ color: active ? STEEL_BR : MUTED, borderBottom: `2px solid ${active ? STEEL : 'transparent'}` }}
+              >
+                <Icon size={16} />
+                {t.label}
+              </button>
+            );
+          })}
+          {!isNew && activeChannels.length > 0 && (
+            <div className="ml-auto flex items-center gap-1.5 pr-1.5">
+              {activeChannels.map((s) => <ChannelChip key={s.key} label={s.label} />)}
+            </div>
+          )}
+        </div>
       </header>
 
       {/* ============================================================
-          DURUM ŞERİDİ — profil tamamlık (tamsa görünmez)
+          ANA İÇERİK — sekme içeriği + içgörü rayı
       ============================================================ */}
-      {!isNew && id && <ProfilTamamlikBanner taxpayerId={id} />}
-
-      {/* ============================================================
-          İLGİLİ MODÜLLER — ayrı sayfaya götüren bağlantılar
-      ============================================================ */}
-      {!isNew && (
-        <div className="flex flex-wrap items-center gap-2 rounded-xl border px-3.5 py-3" style={{ borderColor: LINE, background: PANEL }}>
-          <span className="mr-1 text-[11px] font-semibold uppercase tracking-wider" style={{ color: MUTED }}>İlgili modüller</span>
-          {LINK_MODULES.map((m) => {
-            const Icon = m.icon;
-            return (
-              <Link
-                key={m.href}
-                href={`${m.href}?taxpayerId=${id}`}
-                className="inline-flex items-center gap-1.5 rounded-lg border px-3 py-1.5 text-[12px] font-semibold transition hover:bg-white/[0.05]"
-                style={{ borderColor: LINE, background: SOFT, color: TEXT }}
-              >
-                <Icon size={13} style={{ color: GOLD }} />
-                {m.label}
-                <ExternalLink size={10} style={{ opacity: 0.45 }} />
-              </Link>
-            );
-          })}
-        </div>
-      )}
-
-      {/* ============================================================
-          ANA İÇERİK — SEKMELER + ASIDE
-      ============================================================ */}
-      <div className="grid gap-5 xl:grid-cols-[minmax(0,1fr)_380px]">
-        <main className="space-y-5">
-          <div className="overflow-hidden rounded-xl border" style={{ borderColor: LINE, background: PANEL }}>
-            {/* SEKME NAVİGASYONU */}
-            <div className="flex overflow-x-auto border-b" style={{ borderColor: LINE }}>
-              {visibleTabs.map((t) => {
-                const Icon = t.icon;
-                const active = activeTab === t.key;
-                return (
-                  <button
-                    key={t.key}
-                    type="button"
-                    onClick={() => setActiveTab(t.key)}
-                    className="flex shrink-0 items-center gap-2 whitespace-nowrap px-5 py-3.5 text-[13.5px] font-semibold transition"
-                    style={{
-                      color: active ? GOLD : MUTED,
-                      borderBottom: `2px solid ${active ? GOLD : 'transparent'}`,
-                    }}
-                  >
-                    <Icon size={15} />
-                    {t.label}
-                  </button>
-                );
-              })}
-            </div>
-
-            {/* SEKME İÇERİĞİ */}
-            <div className="p-4 sm:p-5">
+      <div className="grid gap-4 xl:grid-cols-[minmax(0,1fr)_396px]">
+        <main>
+          <div className="overflow-hidden rounded-[18px] border" style={{ borderColor: LINE, background: CARD }}>
+            <div className="p-5 sm:p-6">
               {activeTab === 'bilgiler' && (
                 <BilgilerTab form={form} setForm={setForm} taxpayerId={isNew ? null : id} />
               )}
@@ -574,34 +582,97 @@ export default function MukellefDetayPage() {
           </div>
         </main>
 
-        {/* SAĞ ASIDE */}
-        <aside className="space-y-5">
+        {/* İÇGÖRÜ RAYI */}
+        <aside>
           {!isNew && id ? (
-            <>
+            <div className="overflow-hidden rounded-[18px] border" style={{ borderColor: LINE, background: CARD }}>
               <TaxpayerStatsCard taxpayerId={id} />
               <DocumentExpiryWidget taxpayerId={id} compact={false} daysAhead={90} />
-            </>
+              <div className="p-4">
+                <SectionTitle icon={Zap} label="Hızlı Erişim" />
+                <div className="grid grid-cols-2 gap-2">
+                  {LINK_MODULES.map((m) => {
+                    const Icon = m.icon;
+                    return (
+                      <Link
+                        key={m.href}
+                        href={`${m.href}?taxpayerId=${id}`}
+                        className="flex items-center gap-2.5 rounded-xl border px-3 py-2.5 text-[12px] font-semibold transition hover:brightness-110"
+                        style={{ borderColor: STEEL_LN, background: STEEL_SF, color: TEXT }}
+                      >
+                        <Icon size={15} style={{ color: STEEL_BR }} />
+                        {m.label}
+                        <ArrowRight size={11} style={{ color: FAINT, marginLeft: 'auto' }} />
+                      </Link>
+                    );
+                  })}
+                </div>
+              </div>
+            </div>
           ) : (
-            <div className="rounded-xl border p-5" style={{ borderColor: LINE, background: PANEL }}>
-              <div className="mb-3 flex h-10 w-10 items-center justify-center rounded-lg border" style={{ borderColor: LINE_GOLD, color: GOLD, background: 'rgba(212,184,118,0.10)' }}>
+            <div className="rounded-[18px] border p-5" style={{ borderColor: LINE, background: CARD }}>
+              <div className="mb-3 flex h-10 w-10 items-center justify-center rounded-xl border" style={{ borderColor: STEEL_LN, color: STEEL_BR, background: STEEL_SF }}>
                 <CheckCircle2 size={19} />
               </div>
               <h2 className="text-[16px] font-semibold" style={{ color: TEXT }}>Kayıt sonrası açılır</h2>
               <p className="mt-2 text-[13px] leading-relaxed" style={{ color: MUTED }}>
-                Mükellef oluşturulduktan sonra beyanname, evrak yenileme, mükellefiyetler ve portal şifreleri burada görünür.
+                Mükellef oluşturulduktan sonra cari bakiye, iş yükü, evrak yenileme ve hızlı erişim burada görünür.
               </p>
             </div>
           )}
         </aside>
       </div>
 
-      {/* ============================================================
-          KISAYOL GİRİŞLERİ — açılır panel
-      ============================================================ */}
+      {/* KISAYOL GİRİŞLERİ — açılır panel */}
       {portalOpen && !isNew && (
         <PortalDrawer vkn={form.taxNumber} onClose={() => setPortalOpen(false)} onKisayol={handleKisayolClick} />
       )}
     </form>
+  );
+}
+
+// ============================================================
+// KÜNYE HÜCRESİ + KART NAVİGASYON
+// ============================================================
+function DefCell({ icon: Icon, label, value, mono }: { icon: React.ElementType; label: string; value: string; mono?: boolean }) {
+  return (
+    <div className="px-3 py-2.5" style={{ background: CARD2 }}>
+      <div className="flex items-center gap-1.5 text-[9.5px] font-bold uppercase tracking-[0.07em]" style={{ color: FAINT }}>
+        <Icon size={11} style={{ color: STEEL_BR }} /> {label}
+      </div>
+      <div className={`mt-1 truncate text-[13.5px] font-semibold ${mono ? 'font-mono text-[12.5px]' : ''}`} style={{ color: TEXT }} title={value}>{value}</div>
+    </div>
+  );
+}
+
+function CardNavButtons({ cardNav, isNew, router }: { cardNav: any; isNew: boolean; router: any }) {
+  if (isNew || cardNav.total <= 1) return null;
+  return (
+    <div className="inline-flex overflow-hidden rounded-xl border" style={{ borderColor: LINE }}>
+      <button
+        type="button"
+        onClick={() => cardNav.prev && router.push(`/panel/mukellefler/${cardNav.prev.id}`)}
+        disabled={!cardNav.prev}
+        title={cardNav.prev ? displayName(cardNav.prev) : 'İlk mükellef'}
+        className="inline-flex h-10 items-center gap-1 px-3 text-[12.5px] font-semibold transition hover:bg-white/[0.06] disabled:cursor-not-allowed disabled:opacity-35"
+        style={{ color: MUTED }}
+      >
+        <ChevronLeft size={15} /> <span className="hidden sm:inline">Önceki</span>
+      </button>
+      <span className="inline-flex h-10 items-center border-x px-3 text-[12px] font-bold tabular-nums" style={{ borderColor: LINE, background: STEEL_SF, color: STEEL_BR }}>
+        {cardNav.index >= 0 ? cardNav.index + 1 : '-'} / {cardNav.total}
+      </span>
+      <button
+        type="button"
+        onClick={() => cardNav.next && router.push(`/panel/mukellefler/${cardNav.next.id}`)}
+        disabled={!cardNav.next}
+        title={cardNav.next ? displayName(cardNav.next) : 'Son mükellef'}
+        className="inline-flex h-10 items-center gap-1 px-3 text-[12.5px] font-semibold transition hover:bg-white/[0.06] disabled:cursor-not-allowed disabled:opacity-35"
+        style={{ color: MUTED }}
+      >
+        <span className="hidden sm:inline">Sonraki</span> <ChevronRight size={15} />
+      </button>
+    </div>
   );
 }
 
@@ -625,11 +696,10 @@ function PortalDrawer({
 
   return (
     <div className="fixed inset-0 z-50 flex justify-end">
-      <div className="absolute inset-0" style={{ background: 'rgba(0,0,0,0.55)', backdropFilter: 'blur(2px)' }} onClick={onClose} />
-      <div className="relative h-full w-full max-w-[440px] overflow-y-auto border-l p-5 shadow-2xl" style={{ background: PANEL, borderColor: LINE }}>
-        {/* Başlık */}
+      <div className="absolute inset-0" style={{ background: 'rgba(0,0,0,0.6)', backdropFilter: 'blur(2px)' }} onClick={onClose} />
+      <div className="relative h-full w-full max-w-[440px] overflow-y-auto border-l p-5 shadow-2xl" style={{ background: CARD, borderColor: LINE }}>
         <div className="mb-4 flex items-center gap-3">
-          <div className="flex h-9 w-9 items-center justify-center rounded-lg border" style={{ borderColor: LINE_GOLD, background: 'rgba(212,184,118,0.10)', color: GOLD }}>
+          <div className="flex h-9 w-9 items-center justify-center rounded-xl border" style={{ borderColor: STEEL_LN, background: STEEL_SF, color: STEEL_BR }}>
             <Zap size={17} />
           </div>
           <div className="min-w-0 flex-1">
@@ -647,7 +717,6 @@ function PortalDrawer({
           </button>
         </div>
 
-        {/* Portallar */}
         <div className="mb-2.5 text-[11px] font-semibold uppercase tracking-wider" style={{ color: MUTED }}>Devlet portalları</div>
         <div className="grid grid-cols-1 gap-2 sm:grid-cols-2">
           {PORTAL_KISAYOLLAR.map((k) => (
@@ -655,8 +724,7 @@ function PortalDrawer({
           ))}
         </div>
 
-        {/* Sorgular */}
-        <div className="mt-5 border-t pt-4" style={{ borderColor: LINE }}>
+        <div className="mt-5 border-t pt-4" style={{ borderColor: HAIR }}>
           <div className="mb-2.5 text-[11px] font-semibold uppercase tracking-wider" style={{ color: MUTED }}>
             En çok kullanılan sorgular
           </div>
@@ -667,7 +735,7 @@ function PortalDrawer({
           </div>
         </div>
 
-        <p className="mt-4 text-[11px] leading-relaxed" style={{ color: 'rgba(250,250,249,0.4)' }}>
+        <p className="mt-4 text-[11px] leading-relaxed" style={{ color: FAINT }}>
           Portal şifreleri Bilgiler sekmesindeki “Şifreler” bölümünden yönetilir.
         </p>
       </div>
@@ -676,7 +744,7 @@ function PortalDrawer({
 }
 
 // ============================================================
-// BİLGİLER TAB — sol bölüm menüsü + içerik (düz, çerçevesiz)
+// BİLGİLER TAB — sol bölüm menüsü + gruplu kartlar
 // ============================================================
 type BilgiSectionId = 'musteri' | 'yetkili' | 'iletisim' | 'sifreler' | 'bagkur' | 'entegrator' | 'otomasyon' | 'sistem';
 
@@ -710,9 +778,10 @@ function BilgilerTab({
   const [active, setActive] = useState<BilgiSectionId>('musteri');
 
   return (
-    <div className="grid gap-4 md:grid-cols-[210px_minmax(0,1fr)] md:gap-0">
-      {/* Sol bölüm menüsü — çerçevesiz, aktif altın çubuk */}
-      <nav className="flex gap-1.5 overflow-x-auto pb-1 md:flex-col md:gap-0.5 md:overflow-visible md:pb-0 md:pr-4">
+    <div className="grid gap-4 md:grid-cols-[236px_minmax(0,1fr)] md:gap-0">
+      {/* Sol bölüm menüsü */}
+      <nav className="flex gap-1.5 overflow-x-auto pb-1 md:flex-col md:gap-1 md:overflow-visible md:border-r md:pb-0 md:pr-4" style={{ borderColor: HAIR }}>
+        <div className="hidden px-1.5 pb-1.5 text-[9.5px] font-bold uppercase tracking-[0.12em] md:block" style={{ color: FAINT }}>Bölümler</div>
         {visible.map((s) => {
           const Icon = s.icon;
           const on = active === s.id;
@@ -721,50 +790,48 @@ function BilgilerTab({
               key={s.id}
               type="button"
               onClick={() => setActive(s.id)}
-              className="relative flex shrink-0 items-center gap-3 rounded-xl border py-2.5 pl-3.5 pr-3 text-left transition hover:bg-white/[0.035] md:w-full"
+              className="relative flex shrink-0 items-center gap-3 rounded-xl border py-2.5 pl-3 pr-3 text-left transition hover:bg-white/[0.03] md:w-full"
               style={on
-                ? { background: 'linear-gradient(90deg, rgba(212,184,118,0.16), rgba(212,184,118,0.03))', borderColor: 'rgba(212,184,118,0.22)' }
+                ? { background: `linear-gradient(90deg, ${STEEL_SF}, transparent)`, borderColor: STEEL_LN }
                 : { borderColor: 'transparent' }}
             >
-              {on && <span className="absolute bottom-2 left-0 top-2 w-[3px] rounded-r-full" style={{ background: GOLD }} />}
+              {on && <span className="absolute bottom-2 left-0 top-2 w-[3px] rounded-r-full" style={{ background: STEEL }} />}
               <span
-                className="flex h-8 w-8 shrink-0 items-center justify-center rounded-lg"
-                style={{ background: on ? 'rgba(212,184,118,0.18)' : 'rgba(255,255,255,0.04)', color: on ? GOLD : MUTED, boxShadow: on ? 'inset 0 1px 0 rgba(255,255,255,0.10)' : undefined }}
+                className="flex h-[30px] w-[30px] shrink-0 items-center justify-center rounded-lg"
+                style={{ background: on ? 'rgba(79,134,201,0.2)' : 'rgba(255,255,255,0.04)', color: on ? STEEL_BR : MUTED }}
               >
                 <Icon size={15} />
               </span>
               <span className="min-w-0 flex-1">
                 <span className="flex items-center gap-1.5">
-                  <span className="block truncate text-[13px] font-semibold" style={{ color: on ? TEXT : 'rgba(250,250,249,0.78)' }}>{s.title}</span>
-                  {s.filled && <span className="h-1.5 w-1.5 shrink-0 rounded-full" style={{ background: '#68d391' }} title="Dolu" />}
+                  <span className="block truncate text-[12.5px] font-semibold" style={{ color: on ? TEXT : 'rgba(245,245,244,0.82)' }}>{s.title}</span>
+                  {s.filled && <span className="h-1.5 w-1.5 shrink-0 rounded-full" style={{ background: GREEN }} title="Dolu" />}
                 </span>
-                <span className="mt-0.5 hidden truncate text-[11px] md:block" style={{ color: 'rgba(250,250,249,0.45)' }}>{s.subtitle}</span>
+                <span className="mt-0.5 hidden truncate text-[10.5px] md:block" style={{ color: FAINT }}>{s.subtitle}</span>
               </span>
             </button>
           );
         })}
       </nav>
 
-      {/* İçerik — çerçevesiz, yalnızca dikey ayraç */}
-      <div className="md:border-l md:pl-6" style={{ borderColor: LINE }}>
+      {/* İçerik */}
+      <div className="md:pl-6">
         {/* MÜŞTERİ / ŞİRKET */}
         {active === 'musteri' && (
-          <div className="space-y-7">
-            <div>
-              <span className="mb-2 block text-[11.5px] font-medium tracking-wide" style={{ color: MUTED }}>Mükellef türü</span>
+          <div>
+            <GroupCard icon={Contact} title="Mükellef Türü">
               <Segmented
                 value={form.type}
                 onChange={(v) => setForm((p) => ({ ...p, type: v as TaxpayerType }))}
                 options={TAXPAYER_TYPES.map((t) => ({ value: t.value, label: t.label }))}
               />
-              <p className="mt-2 text-[12px]" style={{ color: 'rgba(250,250,249,0.5)' }}>
+              <p className="mt-2.5 text-[11.5px]" style={{ color: FAINT }}>
                 {TAXPAYER_TYPES.find((t) => t.value === form.type)?.detail}
               </p>
-            </div>
+            </GroupCard>
 
-            <div>
-              <GroupHeader label="Kimlik" />
-              <div className="grid grid-cols-1 gap-x-5 gap-y-4 sm:grid-cols-2">
+            <GroupCard icon={UserRound} title="Kimlik">
+              <div className="grid grid-cols-1 gap-x-4 gap-y-3.5 sm:grid-cols-2">
                 {form.type === 'TUZEL_KISI' ? (
                   <Field label="Şirket adı" required className="sm:col-span-2">
                     <InputBase value={form.companyName} onChange={(e) => setForm((p) => ({ ...p, companyName: e.target.value }))} required />
@@ -792,11 +859,10 @@ function BilgilerTab({
                   <InputBase value={form.taxOffice} onChange={(e) => setForm((p) => ({ ...p, taxOffice: e.target.value }))} required />
                 </Field>
               </div>
-            </div>
+            </GroupCard>
 
-            <div>
-              <GroupHeader label="Sicil & Kodlar" />
-              <div className="grid grid-cols-1 gap-x-5 gap-y-4 sm:grid-cols-2">
+            <GroupCard icon={Tag} title="Sicil & Kodlar">
+              <div className="grid grid-cols-1 gap-x-4 gap-y-3.5 sm:grid-cols-2">
                 <Field label="NACE Kodu">
                   <InputBase placeholder="Örn: 56.10.06" value={form.naceKodu} onChange={(e) => setForm((p) => ({ ...p, naceKodu: e.target.value }))} />
                 </Field>
@@ -810,11 +876,10 @@ function BilgilerTab({
                   <InputBase placeholder="Örn: İTO 678901" value={form.odaSicilNo} onChange={(e) => setForm((p) => ({ ...p, odaSicilNo: e.target.value }))} />
                 </Field>
               </div>
-            </div>
+            </GroupCard>
 
-            <div>
-              <GroupHeader label="Tarihler & Adres" />
-              <div className="grid grid-cols-1 gap-x-5 gap-y-4 sm:grid-cols-2">
+            <GroupCard icon={MapPin} title="Tarihler & Adres" last>
+              <div className="grid grid-cols-1 gap-x-4 gap-y-3.5 sm:grid-cols-2">
                 <Field label="İşe başlama tarihi">
                   <InputBase type="date" value={form.startDate} onChange={(e) => setForm((p) => ({ ...p, startDate: e.target.value }))} />
                 </Field>
@@ -825,7 +890,7 @@ function BilgilerTab({
                   <InputBase value={form.address} onChange={(e) => setForm((p) => ({ ...p, address: e.target.value }))} />
                 </Field>
               </div>
-            </div>
+            </GroupCard>
           </div>
         )}
 
@@ -893,8 +958,8 @@ function BilgilerTab({
             <Field label="Bağ-Kur Sicil No">
               <InputBase value={form.bagkurSicilNo} onChange={(e) => setForm((p) => ({ ...p, bagkurSicilNo: e.target.value }))} className="font-mono" />
             </Field>
-            <div className="rounded-lg border p-3 text-[12px]" style={{ borderColor: LINE, background: SOFT, color: MUTED }}>
-              <div className="flex items-center gap-2 font-semibold" style={{ color: GOLD }}>
+            <div className="rounded-xl border p-3 text-[12px]" style={{ borderColor: HAIR, background: CARD2, color: MUTED }}>
+              <div className="flex items-center gap-2 font-semibold" style={{ color: STEEL_BR }}>
                 <Lock size={13} /> Şifre yönetimi
               </div>
               <p className="mt-1.5">Bağ-Kur / e-Devlet şifreleri <strong style={{ color: TEXT }}>Şifreler</strong> bölümünden yönetilir.</p>
@@ -923,7 +988,7 @@ function BilgilerTab({
                 </select>
               </Field>
               <div>
-                <span className="mb-1.5 block text-[11.5px] font-medium tracking-wide" style={{ color: MUTED }}>E-Fatura Mükellefiyeti</span>
+                <span className="mb-1.5 block text-[11px] font-medium tracking-wide" style={{ color: MUTED }}>E-Fatura Mükellefiyeti</span>
                 <ToggleRow
                   checked={form.isEFaturaMukellefi}
                   onChange={(checked) => setForm((p) => ({ ...p, isEFaturaMukellefi: checked }))}
@@ -972,13 +1037,13 @@ function BilgilerTab({
         {active === 'sistem' && (
           <div className="space-y-6">
             <div>
-              <span className="mb-2 block text-[11.5px] font-medium tracking-wide" style={{ color: MUTED }}>Defter türü</span>
+              <span className="mb-2 block text-[11px] font-medium tracking-wide" style={{ color: MUTED }}>Defter türü</span>
               <Segmented
                 value={form.defterTuru}
                 onChange={(v) => setForm((p) => ({ ...p, defterTuru: v as DefterTuru, mihsapDefterTuru: v === 'ISLETME' ? 'DEFTER_BEYAN' : 'BILANCO' }))}
                 options={[{ value: 'BILANCO', label: 'Bilanço' }, { value: 'ISLETME', label: 'İşletme defteri' }]}
               />
-              <p className="mt-2 text-[12px]" style={{ color: 'rgba(250,250,249,0.5)' }}>
+              <p className="mt-2 text-[12px]" style={{ color: FAINT }}>
                 {form.defterTuru === 'BILANCO' ? 'Banka takip ve bilanço modülleri aktif.' : 'Defter beyan akışı için sade profil.'}
               </p>
             </div>
@@ -1056,21 +1121,21 @@ function YetkililerSection({ taxpayerId }: { taxpayerId: string }) {
       ) : (
         <>
           {(yetkililer as any[]).length === 0 && !adding ? (
-            <div className="rounded-lg border p-4 text-center text-[12.5px]" style={{ borderColor: LINE, color: MUTED, background: SOFT }}>
+            <div className="rounded-xl border p-4 text-center text-[12.5px]" style={{ borderColor: HAIR, color: MUTED, background: CARD2 }}>
               Henüz yetkili eklenmemiş.
             </div>
           ) : (
             <div className="space-y-2">
               {(yetkililer as any[]).map((y) => (
-                <div key={y.id} className="flex items-start gap-3 rounded-lg border p-3" style={{ borderColor: y.isPrimary ? LINE_GOLD : LINE, background: y.isPrimary ? 'rgba(212,184,118,0.06)' : SOFT }}>
-                  <div className="flex h-9 w-9 shrink-0 items-center justify-center rounded-lg border" style={{ borderColor: LINE_GOLD, background: 'rgba(212,184,118,0.10)', color: GOLD, fontSize: 12, fontWeight: 700 }}>
+                <div key={y.id} className="flex items-start gap-3 rounded-xl border p-3" style={{ borderColor: y.isPrimary ? STEEL_LN : HAIR, background: y.isPrimary ? STEEL_SF : CARD2 }}>
+                  <div className="flex h-9 w-9 shrink-0 items-center justify-center rounded-lg border" style={{ borderColor: STEEL_LN, background: 'rgba(79,134,201,0.14)', color: STEEL_BR, fontSize: 12, fontWeight: 700 }}>
                     {(y.firstName?.[0] || '') + (y.lastName?.[0] || '')}
                   </div>
                   <div className="min-w-0 flex-1">
                     <div className="flex flex-wrap items-center gap-2">
                       <strong className="text-[13.5px]" style={{ color: TEXT }}>{y.firstName} {y.lastName}</strong>
                       {y.isPrimary && (
-                        <span className="rounded px-1.5 py-0.5 text-[9.5px] font-bold uppercase" style={{ background: 'rgba(212,184,118,0.18)', color: GOLD }}>Birincil</span>
+                        <span className="rounded px-1.5 py-0.5 text-[9.5px] font-bold uppercase" style={{ background: 'rgba(79,134,201,0.18)', color: STEEL_BR }}>Birincil</span>
                       )}
                       {y.gorev && <span className="text-[11.5px]" style={{ color: MUTED }}>· {y.gorev}</span>}
                     </div>
@@ -1097,8 +1162,8 @@ function YetkililerSection({ taxpayerId }: { taxpayerId: string }) {
           )}
 
           {adding ? (
-            <div className="rounded-lg border p-4" style={{ borderColor: LINE_GOLD, background: 'rgba(212,184,118,0.06)' }}>
-              <div className="mb-3 text-[12px] font-semibold" style={{ color: GOLD }}>Yeni yetkili</div>
+            <div className="rounded-xl border p-4" style={{ borderColor: STEEL_LN, background: STEEL_SF }}>
+              <div className="mb-3 text-[12px] font-semibold" style={{ color: STEEL_BR }}>Yeni yetkili</div>
               <div className="grid grid-cols-1 gap-3 md:grid-cols-2">
                 <Field label="Ad" required>
                   <InputBase value={newY.firstName} onChange={(e) => setNewY((p) => ({ ...p, firstName: e.target.value }))} />
@@ -1148,7 +1213,7 @@ function YetkililerSection({ taxpayerId }: { taxpayerId: string }) {
                   onClick={() => createY(newY)}
                   disabled={creating || !newY.firstName || !newY.lastName}
                   className="inline-flex items-center gap-1.5 rounded-lg px-4 py-2 text-[12px] font-bold disabled:opacity-50"
-                  style={{ background: `linear-gradient(135deg, ${GOLD}, ${GOLD_DEEP})`, color: '#0f0d0b' }}
+                  style={{ background: `linear-gradient(135deg, ${STEEL_BR}, ${STEEL_DP})`, color: '#fff' }}
                 >
                   {creating ? <Loader2 size={13} className="animate-spin" /> : <Plus size={13} />}
                   Yetkili Ekle
@@ -1159,8 +1224,8 @@ function YetkililerSection({ taxpayerId }: { taxpayerId: string }) {
             <button
               type="button"
               onClick={() => setAdding(true)}
-              className="inline-flex items-center gap-2 rounded-lg border-2 border-dashed px-4 py-2.5 text-[12.5px] font-semibold transition hover:bg-white/[0.04]"
-              style={{ borderColor: LINE_GOLD, color: GOLD }}
+              className="inline-flex items-center gap-2 rounded-xl border-2 border-dashed px-4 py-2.5 text-[12.5px] font-semibold transition hover:bg-white/[0.04]"
+              style={{ borderColor: STEEL_LN, color: STEEL_BR }}
             >
               <Plus size={14} /> Yetkili Ekle
             </button>
@@ -1194,28 +1259,37 @@ function NotlarTab({ form, setForm }: { form: FormState; setForm: React.Dispatch
 // ============================================================
 // YARDIMCI KOMPONENTLER
 // ============================================================
-function InfoPill({ icon: Icon, label }: { icon: React.ElementType; label: string }) {
+function GroupCard({ icon: Icon, title, count, countColor, last, children }: { icon: React.ElementType; title: string; count?: string; countColor?: string; last?: boolean; children: React.ReactNode }) {
   return (
-    <span className="inline-flex items-center gap-1.5 rounded-md border px-2 py-1" style={{ borderColor: LINE, color: MUTED, background: SOFT }}>
-      <Icon size={12} style={{ color: GOLD }} />
-      {label}
-    </span>
+    <div className={`rounded-2xl border p-4 sm:p-[17px] ${last ? '' : 'mb-3.5'}`} style={{ borderColor: HAIR, background: CARD2 }}>
+      <div className="mb-3.5 flex items-center gap-2.5">
+        <span className="flex h-[27px] w-[27px] items-center justify-center rounded-lg border" style={{ borderColor: STEEL_LN, background: STEEL_SF, color: STEEL_BR }}>
+          <Icon size={15} />
+        </span>
+        <span className="text-[12.5px] font-bold" style={{ color: TEXT }}>{title}</span>
+        {count && <span className="ml-auto text-[10px] font-bold" style={{ color: countColor || FAINT }}>{count}</span>}
+      </div>
+      {children}
+    </div>
+  );
+}
+
+function SectionTitle({ icon: Icon, label }: { icon: React.ElementType; label: string }) {
+  return (
+    <div className="mb-3 flex items-center gap-2 text-[10.5px] font-extrabold uppercase tracking-[0.1em]" style={{ color: MUTED }}>
+      <Icon size={13} style={{ color: STEEL_BR }} /> {label}
+    </div>
   );
 }
 
 function ChannelChip({ label }: { label: string }) {
   return (
     <span
-      className="inline-flex items-center gap-1.5 rounded-md border px-2 py-1 text-[10.5px] font-bold uppercase"
-      style={{
-        borderColor: 'rgba(72,187,120,0.40)',
-        background: 'rgba(72,187,120,0.10)',
-        color: '#68d391',
-        letterSpacing: '0.04em',
-      }}
+      className="inline-flex items-center gap-1.5 rounded-md border px-2 py-1 text-[10px] font-bold uppercase"
+      style={{ borderColor: STEEL_LN, background: STEEL_SF, color: STEEL_BR, letterSpacing: '0.03em' }}
       title={`${label} aktif`}
     >
-      <span className="h-1.5 w-1.5 rounded-full" style={{ background: '#68d391' }} />
+      <span className="h-[5px] w-[5px] rounded-full" style={{ background: GREEN }} />
       {label}
     </span>
   );
@@ -1231,7 +1305,7 @@ function Segmented({
   onChange: (v: string) => void;
 }) {
   return (
-    <div className="inline-flex w-full rounded-xl border p-1" style={{ borderColor: LINE, background: 'rgba(255,255,255,0.03)' }}>
+    <div className="inline-flex w-full rounded-xl border p-1" style={{ borderColor: LINE, background: '#0c0d11' }}>
       {options.map((o) => {
         const on = value === o.value;
         return (
@@ -1239,8 +1313,8 @@ function Segmented({
             key={o.value}
             type="button"
             onClick={() => onChange(o.value)}
-            className="flex-1 rounded-lg px-4 py-2 text-[13px] font-semibold transition"
-            style={on ? { background: `linear-gradient(135deg, ${GOLD_BRIGHT}, ${GOLD_DEEP})`, color: '#1a1408', boxShadow: '0 4px 14px -4px rgba(212,184,118,0.5)' } : { color: MUTED, background: 'transparent' }}
+            className="flex-1 rounded-lg px-4 py-2 text-[12.5px] font-semibold transition"
+            style={on ? { background: `linear-gradient(135deg, ${STEEL_BR}, ${STEEL_DP})`, color: '#fff', boxShadow: '0 4px 12px -4px rgba(79,134,201,0.5)' } : { color: MUTED, background: 'transparent' }}
           >
             {o.label}
           </button>
@@ -1256,7 +1330,7 @@ function KisayolButton({ k, onClick, small = false }: { k: Kisayol; onClick: () 
       type="button"
       onClick={onClick}
       className="flex items-center gap-2.5 rounded-lg border px-3 py-2.5 text-left transition hover:bg-white/[0.04]"
-      style={{ borderColor: LINE, background: SOFT }}
+      style={{ borderColor: HAIR, background: CARD2 }}
     >
       <span
         className="flex h-7 w-7 shrink-0 items-center justify-center rounded-md text-[10.5px] font-bold"
@@ -1267,7 +1341,7 @@ function KisayolButton({ k, onClick, small = false }: { k: Kisayol; onClick: () 
       <span className={`min-w-0 flex-1 truncate font-semibold ${small ? 'text-[11.5px]' : 'text-[12.5px]'}`} style={{ color: TEXT }}>
         {k.label}
       </span>
-      <ExternalLink size={11} style={{ color: MUTED, flexShrink: 0 }} />
+      <ArrowRight size={11} style={{ color: MUTED, flexShrink: 0 }} />
     </button>
   );
 }
@@ -1289,16 +1363,16 @@ function PlaceholderTab({
 }) {
   return (
     <div className="flex flex-col items-center justify-center py-12 text-center">
-      <div className="mb-4 flex h-14 w-14 items-center justify-center rounded-xl border" style={{ borderColor: LINE_GOLD, background: 'rgba(212,184,118,0.08)', color: GOLD }}>
+      <div className="mb-4 flex h-14 w-14 items-center justify-center rounded-2xl border" style={{ borderColor: STEEL_LN, background: STEEL_SF, color: STEEL_BR }}>
         <Icon size={26} />
       </div>
       <h3 className="text-[16px] font-semibold" style={{ color: TEXT }}>{title}</h3>
       <p className="mt-2 max-w-md text-[12.5px]" style={{ color: MUTED }}>{description}</p>
       {comingSoon && (
-        <span className="mt-3 rounded px-2 py-0.5 text-[10px] font-bold uppercase" style={{ background: 'rgba(212,184,118,0.18)', color: GOLD }}>Yakında</span>
+        <span className="mt-3 rounded px-2 py-0.5 text-[10px] font-bold uppercase" style={{ background: STEEL_SF, color: STEEL_BR }}>Yakında</span>
       )}
       {linkLabel && linkHref && (
-        <Link href={linkHref} className="mt-4 inline-flex items-center gap-1.5 rounded-lg px-4 py-2 text-[12.5px] font-bold" style={{ background: `linear-gradient(135deg, ${GOLD}, ${GOLD_DEEP})`, color: '#0f0d0b' }}>
+        <Link href={linkHref} className="mt-4 inline-flex items-center gap-1.5 rounded-lg px-4 py-2 text-[12.5px] font-bold" style={{ background: `linear-gradient(135deg, ${STEEL_BR}, ${STEEL_DP})`, color: '#fff' }}>
           {linkLabel} <ChevronRight size={13} />
         </Link>
       )}
@@ -1306,20 +1380,11 @@ function PlaceholderTab({
   );
 }
 
-function GroupHeader({ label }: { label: string }) {
-  return (
-    <div className="mb-3.5 flex items-center gap-2.5">
-      <span className="whitespace-nowrap text-[10.5px] font-bold uppercase tracking-[0.13em]" style={{ color: GOLD }}>{label}</span>
-      <span className="h-px flex-1" style={{ background: 'linear-gradient(90deg, rgba(212,184,118,0.30), transparent)' }} />
-    </div>
-  );
-}
-
 function Field({ label, required, className = '', children }: { label: string; required?: boolean; className?: string; children: React.ReactNode }) {
   return (
     <label className={`block ${className}`}>
-      <span className="mb-1.5 block text-[11.5px] font-medium tracking-wide" style={{ color: MUTED }}>
-        {label}{required ? ' *' : ''}
+      <span className="mb-1.5 block text-[11px] font-medium tracking-wide" style={{ color: MUTED }}>
+        {label}{required ? <span style={{ color: AMBER }}> *</span> : ''}
       </span>
       {children}
     </label>
@@ -1339,7 +1404,7 @@ function InputBase({ className = '', style, ...props }: React.InputHTMLAttribute
 function Subhead({ icon: Icon, label }: { icon: React.ElementType; label: string }) {
   return (
     <div className="flex items-center gap-2 text-[12px] font-semibold" style={{ color: MUTED }}>
-      <Icon size={14} style={{ color: GOLD }} />
+      <Icon size={14} style={{ color: STEEL_BR }} />
       {label}
     </div>
   );
@@ -1357,14 +1422,14 @@ function ToggleRow({
   detail: string;
 }) {
   return (
-    <label className="flex cursor-pointer items-center gap-3 rounded-lg border p-3 transition hover:bg-white/[0.04]" style={{ borderColor: checked ? LINE_GOLD : LINE, background: checked ? 'rgba(212,184,118,0.08)' : SOFT }}>
+    <label className="flex cursor-pointer items-center gap-3 rounded-xl border p-3 transition hover:bg-white/[0.04]" style={{ borderColor: checked ? STEEL_LN : HAIR, background: checked ? STEEL_SF : CARD2 }}>
       <input
         type="checkbox"
         checked={checked}
         onChange={(e) => onChange(e.target.checked)}
         className="sr-only"
       />
-      <span className="flex h-9 w-9 shrink-0 items-center justify-center rounded-lg border" style={{ borderColor: checked ? LINE_GOLD : LINE, color: checked ? GOLD : 'rgba(250,250,249,0.30)' }}>
+      <span className="flex h-9 w-9 shrink-0 items-center justify-center rounded-lg border" style={{ borderColor: checked ? STEEL_LN : LINE, color: checked ? STEEL_BR : 'rgba(245,245,244,0.30)' }}>
         <CheckCircle2 size={17} />
       </span>
       <span className="min-w-0">

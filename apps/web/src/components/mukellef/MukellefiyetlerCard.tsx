@@ -6,14 +6,18 @@ import { api } from '@/lib/api';
 import { toast } from 'sonner';
 import { FileCheck, Save, Loader2 } from 'lucide-react';
 
+// Kurumsal duo palet (altın yalnızca Kaydet CTA'sında; yapı/aktif = çelik mavisi)
 const GOLD = '#d4b876';
 const GOLD_DEEP = '#8b7649';
-const PANEL = '#2a241c';
-const PANEL_LIGHT = '#352e23';
-const TEXT = '#fafaf9';
-const MUTED = 'rgba(250,250,249,0.65)';
-const LINE = 'rgba(255,255,255,0.10)';
-const LINE_GOLD = 'rgba(212,184,118,0.30)';
+const STEEL = '#4f86c9';
+const STEEL_BR = '#74a6e6';
+const STEEL_SF = 'rgba(79,134,201,0.13)';
+const STEEL_LN = 'rgba(79,134,201,0.32)';
+const CARD2 = '#0e0f13';
+const FIELD = '#0c0d11';
+const TEXT = '#f5f5f4';
+const MUTED = 'rgba(245,245,244,0.60)';
+const LINE = 'rgba(255,255,255,0.08)';
 
 type Period = 'AYLIK' | 'UCAYLIK' | 'ON_BES_GUNLUK' | null;
 type IncomeTaxType = 'KURUMLAR' | 'GELIR' | 'BASIT_USUL' | null;
@@ -200,25 +204,25 @@ export function MukellefiyetlerCard({ taxpayerId }: { taxpayerId: string }) {
   if (isLoading) return null;
 
   return (
-    <div className="rounded-xl border p-5" style={{ background: PANEL, borderColor: LINE_GOLD }}>
+    <div>
       <div className="mb-5 flex items-start justify-between gap-3">
         <div className="flex items-center gap-3">
-          <div className="flex h-10 w-10 items-center justify-center rounded-lg border" style={{ borderColor: LINE_GOLD, background: 'rgba(212,184,118,0.14)', color: GOLD }}>
+          <div className="flex h-10 w-10 items-center justify-center rounded-xl border" style={{ borderColor: STEEL_LN, background: STEEL_SF, color: STEEL_BR }}>
             <FileCheck size={18} />
           </div>
           <div>
-            <h2 className="text-[15px] font-semibold" style={{ color: GOLD }}>Mükellefiyetler & Dönemler</h2>
+            <h2 className="text-[15px] font-semibold" style={{ color: TEXT }}>Mükellefiyetler & Dönemler</h2>
             <p className="mt-0.5 text-[11.5px]" style={{ color: MUTED }}>Hangi beyannameler, hangi dönemde?</p>
           </div>
         </div>
-        <span className="rounded-md border px-2 py-1 text-[11px] font-bold tabular-nums" style={{ background: 'rgba(212,184,118,0.10)', color: GOLD, borderColor: LINE_GOLD }}>
+        <span className="rounded-md border px-2 py-1 text-[11px] font-bold tabular-nums" style={{ background: STEEL_SF, color: STEEL_BR, borderColor: STEEL_LN }}>
           {aktifSayisi} aktif
         </span>
       </div>
 
       {/* Yıllık Beyanname Tipi */}
-      <div className="mb-5 rounded-lg border p-3" style={{ background: PANEL_LIGHT, borderColor: LINE }}>
-        <div className="text-[11.5px] font-semibold uppercase tracking-wider" style={{ color: GOLD }}>Yıllık Beyanname Tipi</div>
+      <div className="mb-5 rounded-xl border p-3" style={{ background: CARD2, borderColor: LINE }}>
+        <div className="text-[11.5px] font-semibold uppercase tracking-wider" style={{ color: STEEL_BR }}>Yıllık Beyanname Tipi</div>
         <div className="mt-2 grid grid-cols-2 gap-1.5">
           <PeriodChip selected={form.incomeTaxType === null} label="Yok" onClick={() => setForm({ ...form, incomeTaxType: null })} />
           <PeriodChip selected={form.incomeTaxType === 'KURUMLAR'} label="Kurumlar V." onClick={() => setForm({ ...form, incomeTaxType: 'KURUMLAR' })} />
@@ -248,7 +252,7 @@ export function MukellefiyetlerCard({ taxpayerId }: { taxpayerId: string }) {
           type="button"
           onClick={() => saveMut.mutate()}
           disabled={saveMut.isPending}
-          className="inline-flex items-center gap-2 rounded-lg px-4 py-2 text-[13px] font-bold disabled:opacity-50"
+          className="inline-flex items-center gap-2 rounded-xl px-4 py-2 text-[13px] font-bold disabled:opacity-50"
           style={{ background: `linear-gradient(135deg, ${GOLD}, ${GOLD_DEEP})`, color: '#0f0d0b' }}
         >
           {saveMut.isPending ? <Loader2 size={14} className="animate-spin" /> : <Save size={14} />}
@@ -275,7 +279,7 @@ function BeyanGroup({
 }) {
   return (
     <div className="mb-5">
-      <div className="mb-2 text-[10.5px] font-bold uppercase tracking-[0.10em]" style={{ color: GOLD }}>
+      <div className="mb-2 text-[10.5px] font-bold uppercase tracking-[0.10em]" style={{ color: STEEL_BR }}>
         {title}
       </div>
       <div className="space-y-2">
@@ -301,16 +305,16 @@ function BeyanRow({
 
   return (
     <div
-      className="rounded-lg border p-3 transition"
+      className="rounded-xl border p-3 transition"
       style={{
-        background: isActive ? 'rgba(212,184,118,0.08)' : PANEL_LIGHT,
-        borderColor: isActive ? LINE_GOLD : LINE,
+        background: isActive ? STEEL_SF : FIELD,
+        borderColor: isActive ? STEEL_LN : LINE,
       }}
     >
       <div className="flex items-start justify-between gap-3">
         <div className="min-w-0 flex-1">
           <div className="flex items-center gap-2">
-            <span className="rounded px-1.5 py-0.5 text-[9.5px] font-bold tabular-nums" style={{ background: isActive ? GOLD : 'rgba(255,255,255,0.08)', color: isActive ? '#0f0d0b' : MUTED }}>
+            <span className="rounded px-1.5 py-0.5 text-[9.5px] font-bold tabular-nums" style={{ background: isActive ? STEEL : 'rgba(255,255,255,0.08)', color: isActive ? '#fff' : MUTED }}>
               {item.kod}
             </span>
             <div className="text-[12.5px] font-semibold" style={{ color: TEXT }}>{item.ad}</div>
@@ -324,7 +328,7 @@ function BeyanRow({
               checked={!!value}
               onChange={(e) => setForm({ ...form, [item.key]: e.target.checked } as BeyanConfig)}
               className="h-5 w-5 cursor-pointer"
-              style={{ accentColor: GOLD }}
+              style={{ accentColor: STEEL }}
             />
           ) : null}
         </div>
@@ -351,9 +355,9 @@ function PeriodChip({ label, selected, onClick }: { label: string; selected: boo
       onClick={onClick}
       className="rounded-md px-2.5 py-1 text-[11px] font-semibold transition"
       style={{
-        background: selected ? GOLD : 'rgba(255,255,255,0.04)',
-        color: selected ? '#0f0d0b' : MUTED,
-        border: `1px solid ${selected ? GOLD : LINE}`,
+        background: selected ? STEEL : 'rgba(255,255,255,0.04)',
+        color: selected ? '#fff' : MUTED,
+        border: `1px solid ${selected ? STEEL : LINE}`,
       }}
     >
       {label}
