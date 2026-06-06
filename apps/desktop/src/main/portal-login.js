@@ -20,10 +20,12 @@ function pageRunner(creds, recipe) {
     if (!value || !selectors) return false;
     for (var i = 0; i < selectors.length; i++) {
       var el = document.querySelector(selectors[i]);
-      if (el && el.offsetParent !== null) {
-        el.focus();
+      if (el) {
+        if (el.value === value) return true; // zaten dolu — dokunma, kullanıcının odağını çalma
+        try { el.focus(); } catch (e) {}
         // React/Angular kontrollü input'larda düz el.value ataması geri alınır;
-        // framework'ün dinlediği native value setter'ı kullan.
+        // framework'ün dinlediği native value setter'ı kullan. (Görünürlük kontrolü yok:
+        // bazı formlar şifre alanını önce gizli oluşturup sonra gösteriyor.)
         try {
           var proto = el.tagName === 'TEXTAREA' ? window.HTMLTextAreaElement.prototype : window.HTMLInputElement.prototype;
           var nativeSetter = Object.getOwnPropertyDescriptor(proto, 'value').set;
@@ -43,18 +45,15 @@ function pageRunner(creds, recipe) {
 
   function attempt() {
     tries++;
-    var idOk = fill(recipe.user, creds.username) || fill(recipe.code, creds.userCode);
-    var passOk = fill(recipe.pass, creds.password || creds.secondary);
+    // Her turda tüm alanları doldurmayı dene (zaten doluysa fill dokunmaz). Şifre
+    // alanı geç render edilebildiği veya framework tarafından sıfırlanabildiği için
+    // doldurmayı birkaç saniye boyunca tekrar ederiz; dolu alanlar atlanır.
+    fill(recipe.code, creds.userCode);
+    fill(recipe.user, creds.username);
+    fill(recipe.pass, creds.password || creds.secondary);
     if (recipe.pass2) fill(recipe.pass2, creds.secondary);
     if (recipe.office) fill(recipe.office, creds.office);
-
-    // Doğrulama kodu (captcha) alanına odaklan ki kullanıcı doğrudan yazsın.
-    if (idOk && passOk) {
-      var dk = document.querySelector('#dk') || document.querySelector('input[name="dk"]');
-      if (dk) { try { dk.focus(); } catch (e) {} }
-      return;
-    }
-    if (tries < MAX) setTimeout(attempt, 350);
+    if (tries < MAX) setTimeout(attempt, 400);
   }
 
   attempt();

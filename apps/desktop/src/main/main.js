@@ -4,7 +4,7 @@ const { app, BrowserWindow, ipcMain } = require('electron');
 const path = require('path');
 const api = require('./api');
 const store = require('./store');
-const { buildLoginScript } = require('./portal-login');
+const { chromium } = require('playwright-core');
 const { publicCatalog, findPortal } = require('./portal-catalog');
 const { appName, isDev } = require('./config');
 
@@ -108,37 +108,69 @@ ipcMain.handle('portal:open', async (_e, { portalKey, taxpayer }) => {
   return { ok: true };
 });
 
-function openPortalWindow(portal, taxpayer, creds) {
-  const win = new BrowserWindow({
-    width: 1080,
-    height: 760,
-    center: true,
-    maximizable: false,
-    fullscreenable: false,
-    backgroundColor: '#ffffff',
-    title: `${portal.label}${taxpayer ? ' — ' + taxpayer.ad : ''}`,
-    autoHideMenuBar: true,
-    webPreferences: {
-      contextIsolation: true,
-      nodeIntegration: false,
-      partition: `persist:portal-${portal.key}-${taxpayer ? taxpayer.id : 'tenant'}`,
-    },
-  });
-  win.removeMenu();
-
-  const script = buildLoginScript(portal.recipe, creds);
-  let injected = false;
-  win.webContents.on('did-finish-load', async () => {
-    if (injected) return;
-    injected = true;
+// Gömülü Electron penceresi GİB'in React şifre alanına yazamadığı için (kanıtlandı),
+// Hattat gibi GERÇEK Chrome/Edge'i playwright-core ile açıp dolduruyoruz. Sistemdeki
+// tarayıcı kullanılır (ek indirme yok); kullanıcı adı + şifre otomatik dolar, captcha
+// kullanıcıya bırakılır. Her firma+portal için kalıcı profil → oturum hatırlanır.
+async function openPortalWindow(portal, taxpayer, creds) {
+  const profileDir = path.join(
+    app.getPath('userData'),
+    'tarayici-profilleri',
+    `${portal.key}-${taxpayer ? taxpayer.id : 'tenant'}`,
+  );
+  const launchArgs = ['--no-first-run', '--no-default-browser-check', '--start-maximized'];
+  let context = null;
+  for (const channel of ['chrome', 'msedge']) {
     try {
-      await win.webContents.executeJavaScript(script, true);
-    } catch {
-      /* sayfa içi enjeksiyon hatası yoksayılır */
+      context = await chromium.launchPersistentContext(profileDir, {
+        channel,
+        headless: false,
+        viewport: null,
+        args: launchArgs,
+      });
+      console.log('[PORTAL] tarayici acildi: ' + channel);
+      break;
+    } catch (e) {
+      console.log('[PORTAL] ' + channel + ' acilamadi: ' + e.message);
     }
-  });
+  }
+  if (!context) {
+    if (mainWindow && !mainWindow.isDestroyed()) {
+      mainWindow.webContents.send('portal-error', 'Bilgisayarda Chrome veya Edge bulunamadı. Lütfen birini kurun.');
+    }
+    return;
+  }
+  try {
+    const page = context.pages()[0] || (await context.newPage());
+    await page.goto(portal.url, { waitUntil: 'domcontentloaded', timeout: 30000 });
+    await autoFillPortal(page, portal.recipe, creds);
+  } catch (e) {
+    /* sayfa/doldurma hatası — tarayıcı kullanıcıda açık kalır, elle devam edebilir */
+  }
+}
 
-  win.loadURL(portal.url);
+// Gerçek Chrome'da giriş formunu doldurur. Playwright fill = gerçek (isTrusted) giriş;
+// React/GİB reddetmez (gerçek tarayıcıda doğrulandı). Kullanıcı adı + şifre dolar;
+// doğrulama kodu (captcha) kullanıcıya bırakılır.
+async function autoFillPortal(page, recipe, creds) {
+  async function fill(selectors, value) {
+    if (!value || !selectors) return;
+    for (const sel of selectors) {
+      try {
+        const loc = page.locator(sel).first();
+        await loc.waitFor({ state: 'visible', timeout: 8000 });
+        await loc.click({ timeout: 3000 }).catch(() => {});
+        await loc.fill(String(value));
+        return;
+      } catch (e) {
+        /* sonraki seçiciyi dene */
+      }
+    }
+  }
+  await fill(recipe.code, creds.userCode);
+  await fill(recipe.user, creds.username);
+  await fill(recipe.pass, creds.password || creds.secondaryPassword);
+  if (recipe.pass2) await fill(recipe.pass2, creds.secondaryPassword);
 }
 
 // ─────────────────────────── WHATSAPP QR ───────────────────────────

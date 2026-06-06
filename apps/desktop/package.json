@@ -23,11 +23,18 @@
       "src/**/*",
       "assets/**/*"
     ],
+    "afterPack": "./afterPack.js",
     "win": {
       "target": [
-        { "target": "nsis", "arch": ["x64"] }
+        {
+          "target": "nsis",
+          "arch": [
+            "x64"
+          ]
+        }
       ],
       "icon": "build/icon.ico",
+      "signAndEditExecutable": false,
       "artifactName": "Moren-Masaustu-Kurulum-${version}.${ext}"
     },
     "nsis": {
@@ -37,16 +44,20 @@
       "createDesktopShortcut": true,
       "createStartMenuShortcut": true,
       "shortcutName": "Moren Masaüstü",
-      "installerLanguages": ["tr_TR"],
+      "installerLanguages": [
+        "tr_TR"
+      ],
       "language": "1055"
     }
   },
   "devDependencies": {
     "cross-env": "^7.0.3",
     "electron": "^33.2.0",
-    "electron-builder": "^25.1.8"
+    "electron-builder": "^25.1.8",
+    "rcedit": "^5.0.2"
   },
   "dependencies": {
-    "electron-updater": "^6.3.9"
+    "electron-updater": "^6.3.9",
+    "playwright-core": "^1.60.0"
   }
 }

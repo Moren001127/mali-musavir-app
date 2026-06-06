@@ -65,9 +65,31 @@ export type LucaWorkerAccountInput = {
   sortOrder?: number;
 };
 
+// Captcha otomatik cozum penceresi: backend OCR + 2captcha ile cozmeye calisirken
+// challenge kisa sure 'pending' gorunur. Bu pencerede kullaniciya GOSTERME — sadece
+// otomatik cozum BASARISIZ oldugunda panel acilsin. Ayrim: otomatik cozum bitince
+// backend context.autoOcr isaretini yazar; o gelene kadar (veya 30sn guvenlik
+// suresine kadar) captcha gizli tutulur. Boylece jobId'siz/takilma durumlarinda da
+// kullanici asla kilitlenmez (30sn sonra her halukarda gosterilir).
+const CAPTCHA_AUTOSOLVE_GRACE_MS = 30000;
+
+function suppressAutoSolvingChallenge(data: LucaSessionManagerStatus): LucaSessionManagerStatus {
+  const ch = data?.activeChallenge;
+  if (ch && ch.status === 'pending') {
+    const autoMarked = !!(ch.context && (ch.context as any).autoOcr);
+    const ageMs = ch.createdAt ? Date.now() - new Date(ch.createdAt).getTime() : Infinity;
+    if (!autoMarked && ageMs < CAPTCHA_AUTOSOLVE_GRACE_MS) {
+      data.activeChallenge = null; // hala otomatik cozuluyor — kullaniciyi mesgul etme
+    }
+  }
+  return data;
+}
+
 export const lucaSessionApi = {
   status: () =>
-    api.get('/luca/session-manager/status').then((r) => r.data as LucaSessionManagerStatus),
+    api
+      .get('/luca/session-manager/status')
+      .then((r) => suppressAutoSolvingChallenge(r.data as LucaSessionManagerStatus)),
   challenges: () =>
     api.get('/luca/session-manager/captcha').then((r) => r.data as LucaCaptchaChallenge[]),
   answerCaptcha: (id: string, answer: string) =>

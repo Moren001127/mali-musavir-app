@@ -180,6 +180,11 @@ const JOB_TIMEOUT = (cfg.worker?.jobTimeoutSeconds || 15 * 60) * 1000;
 // her tıklamada login için 10-20sn kayıp anlamsız. 2 saat hareketsizlik
 // sonrası Luca cookie zaten düşmüş olur, kapatma doğru.
 const BROWSER_IDLE_TTL = (cfg.worker?.browserIdleTtlSeconds || 2 * 60 * 60) * 1000;
+// GUVENLIK AGI (bayat klasik-Luca oturumu): oturum bu yastan eskiyse bir
+// sonraki iste tarayici (cerez/profil korunarak) taze acilir. Klasik Luca
+// frameset'i saatler icinde bayatlayip bos/dummy frame verebiliyor; sik
+// recycle bunu onler. Isi BOLMEZ (isler arasinda, idle aninda devreye girer).
+const BROWSER_MAX_AGE = (cfg.worker?.browserMaxAgeSeconds || 3 * 60 * 60) * 1000;
 // Keep-alive ping aralığı: idle TTL'in 1/4'ü. Browser session açıkken
 // arka planda hafif bir sayfa içi navigasyon yaparak Luca cookie'sinin
 // sunucu tarafında sıfırlanmasını engelleriz.
@@ -477,6 +482,7 @@ async function waitForJobFinalStatus(jobId, timeoutMs = JOB_TIMEOUT) {
   let lastJobLog = null;
   let lastPollError = '';
   let pollErrorCount = 0;
+  let stuckSeen = 0; // bu is icin "firma/frame hazir gelmedi" log adedi
   while (Date.now() - started < timeoutMs) {
     let data = null;
     try {
@@ -511,6 +517,15 @@ async function waitForJobFinalStatus(jobId, timeoutMs = JOB_TIMEOUT) {
     if (/TRANSIENT_LUCA_(CLASSIC_(FRAME_STUCK_RESET|GIRIS_DO_BLANK)|FIRMA_OR_FRAME_STUCK_RESET|FIRMA_CHANGE_STUCK_RESET)/i.test(newJobLog)) {
       throw new Error('TRANSIENT_LUCA_RELOAD_STUCK: Klasik Luca firma/frame akisi takildi; browser oturumu resetlenecek');
     }
+    // SELF-HEAL (bayat oturum): sayfa-ici 5-kontrol RESET esigine ulasamadan
+    // tekrar tekrar "firma/frame hazir gelmedi" diyen isler bayat tarayici
+    // oturumu demektir. 3 boyle log gorulunce yumusak reset sinyali firlat —
+    // catch tarafinda tarayici (cerez korunarak) kapatilip taze acilir.
+    const stuckMatches = (newJobLog.match(/frm4\/SirketCombo henuz yuklenmedi|firma frame'?i acilmadi|firma frame'?i beklenenden gec/gi) || []).length;
+    if (stuckMatches > 0) stuckSeen += stuckMatches;
+    if (stuckSeen >= 3) {
+      throw new Error('TRANSIENT_LUCA_FRAME_STUCK_SOFT: Klasik Luca firma/frame tekrar tekrar hazir gelmedi (bayat oturum); tarayici oturumu yenilenecek');
+    }
     if (['done', 'failed', 'cancelled'].includes(status)) return data;
     await new Promise((r) => setTimeout(r, 3000));
   }
@@ -543,6 +558,10 @@ const LUCA_CLASSIC_ENTRY = process.env.LUCA_CLASSIC_URL || 'https://auygs.luca.c
 let browserSession = null;
 let activeJobCount = 0;
 let preWarmPromise = null;
+// Bayat klasik-Luca oturumu sayaci: art arda "firma/frame hazir gelmedi" ile
+// takilan isleri sayar; closeBrowserSession (cerez korunur) yetmezse 3'te
+// profili yeniler. Basarili her iste 0'lanir.
+let classicFrameStuckStreak = 0;
 
 function getCurrentRuntimeVersionForApi() {
   return browserSession?.runtimeVersion || BUNDLED_RUNTIME_VERSION || LOCAL_AGENT_VERSION;
@@ -631,12 +650,14 @@ async function getBrowserSession() {
   const now = Date.now();
   if (browserSession) {
     const idleFor = now - (browserSession.lastUsedAt || browserSession.createdAt || now);
+    const sessionAge = now - (browserSession.createdAt || now);
+    const tooOld = sessionAge >= BROWSER_MAX_AGE; // guvenlik agi: bayat oturumu onle
     const pageClosed = browserSession.page?.isClosed?.() === true;
-    if (!pageClosed && idleFor < BROWSER_IDLE_TTL) {
+    if (!pageClosed && !tooOld && idleFor < BROWSER_IDLE_TTL) {
       browserSession.lastUsedAt = now;
       return browserSession;
     }
-    await closeBrowserSession(pageClosed ? 'page-closed' : 'idle-timeout');
+    await closeBrowserSession(pageClosed ? 'page-closed' : (tooOld ? 'max-age-recycle' : 'idle-timeout'));
   }
 
   // PERSISTENT CONTEXT: user data dir disk'e kayıtlı kalır → Luca cookie'leri
@@ -1298,6 +1319,7 @@ async function processJob(job) {
     }
 
     await runJobWithMorenRuntime(job);
+    classicFrameStuckStreak = 0; // saglikli is geldi → bayat-oturum sayacini sifirla
     // Aynı mükellef hızlı yol cache güncelle — bir sonraki aynı mükellef
     // job'unda fastPath ipucu verilir.
     if (browserSession && mukellefId) {
@@ -1319,6 +1341,22 @@ async function processJob(job) {
         activeJobType: tip,
       }).catch(() => {});
       await closeBrowserSession('runtime-stop-requested').catch(() => {});
+      return;
+    }
+    if (/TRANSIENT_LUCA_FRAME_STUCK_SOFT/i.test(err.message || '')) {
+      // Bayat klasik-Luca oturumu: once tarayiciyi CEREZ KORUNARAK kapat (taze
+      // oturum acilir, yeniden login/captcha gerekmez — manuel restart'in yaptigi).
+      // 3 kez ust uste ise cerezler de bozulmus olabilir → profili yenile (re-login).
+      classicFrameStuckStreak++;
+      const hard = classicFrameStuckStreak >= 3;
+      const reason = `Klasik Luca bayat oturum; tarayici ${hard ? 'profili yenilenerek' : 'cerez korunarak'} sifirlanip is tekrar siraya alindi [${classicFrameStuckStreak}]: ${err.message}`;
+      await logJob(jobId, reason).catch(() => {});
+      await closeBrowserSession('frame-stuck-soft').catch(() => {});
+      if (hard) {
+        rotateBrowserProfile('frame-stuck-persistent');
+        classicFrameStuckStreak = 0;
+      }
+      await requeueJob(jobId, reason);
       return;
     }
     if (/TRANSIENT_(AGENT_RUNTIME_MISSING|LUCA_RELOAD_STUCK)/i.test(err.message || '')) {
