@@ -1313,25 +1313,14 @@ export class BeyanKayitlariService {
     let tutar: number | null = null;
     try {
       const buf = await this.storage.getBuffer(key);
-      // Tablo (koordinat/ızgara) tabanlı çıkarım: GİB beyanname PDF'inde etiket ve
-      // değer DÜZ METİN akışında kopuk geliyor (regex güvenilmez), bu yüzden
-      // getTable hücre ızgarasıyla "Sonraki Döneme Devreden" SATIRINDAKİ tutarı alırız.
-      tutar = await this.extractSonrakiViaTable(buf, { taxpayerId, donem });
-      if (tutar == null) {
-        // [KDVDEVR-RAW] GEÇİCİ — ham metni (satır sonları KORUNMUŞ) etiket + değer çevresinde gör
-        const rawParser: any = new PDFParse({ data: buf });
-        let raw = '';
-        try { const rr = await rawParser.getText(); raw = String(rr?.text || ''); } catch { /* yut */ }
-        finally { try { const d = rawParser?.destroy; if (typeof d === 'function') await d.call(rawParser).catch(() => {}); } catch { /* yut */ } }
-        const low = raw.toLowerCase();
-        const li = low.indexOf('sonraki d');
-        const reg = li >= 0 ? raw.slice(Math.max(0, li - 60), li + 340) : '(SONRAKI-D YOK)';
-        const vi = raw.search(/59[.\s]?084/);
-        const vreg = vi >= 0 ? raw.slice(Math.max(0, vi - 240), vi + 70) : '(59084 YOK)';
-        this.logger.log(`[KDVDEVR-RAW] ${taxpayerId} ${donem} rawLen=${raw.length} LABELREG=${JSON.stringify(reg)}`);
-        this.logger.log(`[KDVDEVR-RAW] ${taxpayerId} ${donem} VALREG=${JSON.stringify(vreg)}`);
-      }
-      this.logger.log(`[KDVDEVR] ${taxpayerId} ${donem}: tablo extract = ${tutar == null ? 'BULUNAMADI' : tutar}`);
+      // GİB beyanname PDF'inde pdf-parse, "Sonuç Hesapları" etiketlerini bir grup,
+      // değerlerini ayrı bir "sadece-tutar" bloğu olarak AMA AYNI SIRADA veriyor.
+      // Ham metni satırlara bölüp, "Sonraki Döneme Devreden"in değersiz-etiket
+      // grubundaki sırasını bulup değer bloğundan aynı sıradaki tutarı alıyoruz.
+      const raw = await this.pdfRawText(buf);
+      tutar = this.extractSonrakiFromLines(raw);
+      if (tutar == null) tutar = await this.extractSonrakiViaTable(buf, { taxpayerId, donem });
+      this.logger.log(`[KDVDEVR] ${taxpayerId} ${donem}: extract = ${tutar == null ? 'BULUNAMADI' : tutar}`);
     } catch (e: any) {
       this.logger.warn(`[KDVDEVR] ${taxpayerId} ${donem}: PDF/tablo okunamadi [${kayit.id}]: ${e?.message || e}`);
     }
@@ -1414,6 +1403,63 @@ export class BeyanKayitlariService {
         /* yut */
       }
     }
+  }
+
+  /**
+   * Ham PDF metni — satır sonları KORUNUR (pdfText collapse ettiği için ayrı).
+   */
+  private async pdfRawText(buffer: Buffer): Promise<string> {
+    const parser = new PDFParse({ data: buffer });
+    try {
+      const result = await parser.getText();
+      return String(result?.text || '');
+    } finally {
+      const destroy = (parser as any).destroy;
+      if (typeof destroy === 'function') await destroy.call(parser).catch(() => {});
+    }
+  }
+
+  /**
+   * "Sonraki Döneme Devreden KDV"yi GİB beyanname ham metninden satır yapısıyla çıkarır.
+   * pdf-parse, sonuç alanı etiketlerini değersiz bir grup + ayrı bir "sadece-tutar"
+   * bloğu olarak AMA AYNI SIRADA veriyor. Hedef etiketin gruptaki sırasını bulup
+   * değer bloğundan aynı sıradaki tutarı alıyoruz. (Düz metin/40-karakter güvenilmez;
+   * etiket ile değer metin akışında bitişik değil.) Emin değilse null → güvenli fallback.
+   */
+  private extractSonrakiFromLines(rawText: string): number | null {
+    const lines = String(rawText || '').split(/\r?\n/).map((l) => l.replace(/\s+/g, ' ').trim());
+    const moneyOnly = (s: string) => /^-?\d{1,3}(?:\.\d{3})*,\d{2}$/.test(s) || /^-?\d+,\d{2}$/.test(s);
+    const hasMoney = (s: string) => /\d{1,3}(?:\.\d{3})*,\d{2}|\d+,\d{2}/.test(s);
+    const isValueFieldLabel = (s: string) => /(katma\s+de[ğg]er\s+vergisi|\bkdv\b)/i.test(s) && !hasMoney(s);
+    const targetRe = /sonraki\s+d[öo]neme\s+devreden\s+(?:katma\s+de[ğg]er\s+vergisi|kdv)/i;
+
+    // hedef satırı bul
+    let ti = -1;
+    for (let i = 0; i < lines.length; i++) {
+      if (!targetRe.test(lines[i])) continue;
+      if (hasMoney(lines[i])) return this.lastTurkishMoney(lines[i]); // satır-içi değer (nadir)
+      ti = i;
+      break;
+    }
+    if (ti < 0) return null;
+
+    // hedefin değersiz-etiket grubundaki sırası (geriye + ileriye ardışık değersiz etiketler)
+    let gStart = ti;
+    while (gStart - 1 >= 0 && isValueFieldLabel(lines[gStart - 1])) gStart--;
+    let gEnd = ti;
+    while (gEnd + 1 < lines.length && isValueFieldLabel(lines[gEnd + 1])) gEnd++;
+    const targetIdx = ti - gStart;
+
+    // gruptan sonra ilk "sadece-tutar" bloğunu bul (araya giren satır-içi etiketleri atla)
+    let j = gEnd + 1;
+    while (j < lines.length && !moneyOnly(lines[j]) && j - gEnd <= 8) j++;
+    const vals: string[] = [];
+    while (j < lines.length && moneyOnly(lines[j])) {
+      vals.push(lines[j]);
+      j++;
+    }
+    if (targetIdx >= 0 && targetIdx < vals.length) return this.lastTurkishMoney(vals[targetIdx]);
+    return null;
   }
 
   private async pdfText(buffer: Buffer): Promise<string> {
