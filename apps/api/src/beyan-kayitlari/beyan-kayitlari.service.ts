@@ -1293,12 +1293,20 @@ export class BeyanKayitlariService {
       where: { tenantId, taxpayerId, beyanTipi: 'KDV1', donem },
       select: { id: true, beyannameUrl: true, pdfUrl: true },
     });
-    if (!kayit) return null;
+    if (!kayit) {
+      // [KDVDEVR-PROBE] geçici teşhis — sebep netleşince kaldır
+      this.logger.log(`[KDVDEVR] ${taxpayerId} ${donem}: KDV1 beyanKaydi YOK (Beyannameler modülünde indirilmemiş)`);
+      return null;
+    }
     const key = kayit.beyannameUrl || kayit.pdfUrl;
-    if (!key) return null;
+    if (!key) {
+      this.logger.log(`[KDVDEVR] ${taxpayerId} ${donem}: kayit var (${kayit.id}) ama PDF yok (beyannameUrl/pdfUrl bos)`);
+      return null;
+    }
 
     if (this.devredenPdfCache.has(kayit.id)) {
       const v = this.devredenPdfCache.get(kayit.id) ?? null;
+      this.logger.log(`[KDVDEVR] ${taxpayerId} ${donem}: cache (${kayit.id}) = ${v == null ? 'NULL' : v}`);
       return v == null ? null : { tutar: v, beyanKaydiId: kayit.id };
     }
 
@@ -1307,8 +1315,9 @@ export class BeyanKayitlariService {
       const buf = await this.storage.getBuffer(key);
       const text = await this.pdfText(buf);
       tutar = this.extractSonrakiDonemeDevreden(text);
+      this.logger.log(`[KDVDEVR] ${taxpayerId} ${donem}: PDF okundu (${kayit.id}), "Sonraki Doneme Devreden" extract = ${tutar == null ? 'BULUNAMADI (etiket/tutar yakalanamadi)' : tutar}`);
     } catch (e: any) {
-      this.logger.warn(`devreden PDF okunamadi [${kayit.id}]: ${e?.message || e}`);
+      this.logger.warn(`[KDVDEVR] ${taxpayerId} ${donem}: PDF okunamadi [${kayit.id}]: ${e?.message || e}`);
     }
     this.devredenPdfCache.set(kayit.id, tutar);
     return tutar == null ? null : { tutar, beyanKaydiId: kayit.id };

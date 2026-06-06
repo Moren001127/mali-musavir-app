@@ -1118,12 +1118,28 @@ function KontrolKarti({ guven, eksikVeriler, uyarilar }: { guven?: VeriGuveni; e
   const color = seviye === 'kesin' ? STAT_GREEN : seviye === 'kontrol_gerekli' ? STAT_AMBER : STAT_RED;
   const stateLabel = seviye === 'kesin' ? 'Kesin' : seviye === 'kontrol_gerekli' ? 'Kontrol gerekli' : 'Eksik';
 
-  const alerts: Array<{ lvl: 'kritik' | 'uyari'; belge?: string | null; msg: string; aksiyon?: string }> = [];
+  // Aynı uyarı (örn. KDV Kontrol verisi yok — satış+alış için ayrı ayrı gelir) tek satırda birleşir (×N).
+  type Alert = { lvl: 'kritik' | 'uyari'; belge?: string | null; msg: string; aksiyon?: string; count: number };
+  const alertMap = new Map<string, Alert>();
+  const pushAlert = (a: Omit<Alert, 'count'>) => {
+    const key = `${a.lvl}|${a.belge || ''}|${a.msg}|${a.aksiyon || ''}`;
+    const ex = alertMap.get(key);
+    if (ex) ex.count += 1;
+    else alertMap.set(key, { ...a, count: 1 });
+  };
   for (const e of eksikVeriler) {
-    if (e.seviye === 'kritik' || e.seviye === 'uyari') alerts.push({ lvl: e.seviye, belge: e.belgeNo, msg: e.mesaj, aksiyon: e.aksiyon });
+    if (e.seviye === 'kritik' || e.seviye === 'uyari') pushAlert({ lvl: e.seviye, belge: e.belgeNo, msg: e.mesaj, aksiyon: e.aksiyon });
   }
-  for (const u of uyarilar) alerts.push({ lvl: 'uyari', msg: u });
-  const notlar = eksikVeriler.filter((e) => e.seviye === 'bilgi');
+  for (const u of uyarilar) pushAlert({ lvl: 'uyari', msg: u });
+  const alerts = Array.from(alertMap.values());
+  const notSeen = new Set<string>();
+  const notlar = eksikVeriler.filter((e) => {
+    if (e.seviye !== 'bilgi') return false;
+    const k = `${e.belgeNo || ''}|${e.mesaj}`;
+    if (notSeen.has(k)) return false;
+    notSeen.add(k);
+    return true;
+  });
 
   return (
     <div className="rounded-[18px] border p-6" style={{ background: A_CARD, borderColor: A_LINE }}>
@@ -1158,7 +1174,12 @@ function KontrolKarti({ guven, eksikVeriler, uyarilar }: { guven?: VeriGuveni; e
           <div key={i} className="mt-3 flex gap-2.5 rounded-xl p-3.5 items-start" style={{ background: `${c}12`, border: `1px solid ${c}47` }}>
             <AlertTriangle size={16} style={{ color: c, flexShrink: 0, marginTop: 1 }} />
             <div>
-              <div className="text-[13px] font-bold" style={{ color: A_INK }}>{a.aksiyon || (a.lvl === 'kritik' ? 'Kritik kontrol gerekli' : 'Kontrol bekliyor')}</div>
+              <div className="text-[13px] font-bold flex items-center gap-2" style={{ color: A_INK }}>
+                {a.aksiyon || (a.lvl === 'kritik' ? 'Kritik kontrol gerekli' : 'Kontrol bekliyor')}
+                {a.count > 1 && (
+                  <span className="text-[11px] font-bold rounded-full px-1.5 py-0.5" style={{ color: c, background: `${c}1f` }}>×{a.count}</span>
+                )}
+              </div>
               <div className="text-[12.5px] mt-0.5" style={{ color: A_MUTED }}>
                 {a.belge && (
                   <span className="rounded px-1.5 py-0.5 mr-1" style={{ color: STAT_AMBER, background: 'rgba(240,183,85,.08)' }}>{a.belge}</span>
@@ -1226,6 +1247,10 @@ function DevredenKdvEditor({ data }: { data: Kdv1 }) {
   });
 
   const fromBeyanname = devreden?.kaynak === 'beyanname_pdf';
+  const [dyy, dmm] = String(data.donem || '').split('-').map((v) => Number(v));
+  const oncekiDonem = dmm === 1 ? `${dyy - 1}-12` : `${dyy}-${String(dmm - 1).padStart(2, '0')}`;
+  // Beyannameden gelmediyse (hesaplandı / kayıt yok), kullanıcıya nedenini açıkça söyle.
+  const beyannameYok = !fromBeyanname && (devreden?.kaynak === 'hesaplanan' || devreden?.kaynak === 'yok' || devreden?.kaynak === 'beyan_kaydi');
   return (
     <div className="rounded-[18px] border p-6" style={{ background: A_CARD, borderColor: 'rgba(20,184,166,0.18)' }}>
       <div className="mb-1 flex items-center gap-2.5">
@@ -1243,6 +1268,14 @@ function DevredenKdvEditor({ data }: { data: Kdv1 }) {
           {fromBeyanname && <b style={{ color: A_INK }}>Beyannameler modülünden</b>}{fromBeyanname ? ' · ' : ''}{kaynakLabel}
         </span>
       </div>
+      {beyannameYok && (
+        <div className="-mt-1 flex gap-2 items-start text-[11px] leading-relaxed" style={{ color: A_FAINT }}>
+          <AlertTriangle size={12} style={{ flexShrink: 0, marginTop: 2, color: STAT_AMBER }} />
+          <span>
+            <b style={{ color: A_MUTED }}>{oncekiDonem}</b> KDV beyannamesi Beyannameler modülünde bulunamadı; tutar önceki ay verisinden hesaplandı. Beyanname indirilince otomatik oradan gelir.
+          </span>
+        </div>
+      )}
 
       <div className="mt-4">
         <label className="block text-[11px] font-bold uppercase tracking-[.1em] mb-1.5" style={{ color: A_FAINT }}>Bu dönem devreden tutarı</label>
