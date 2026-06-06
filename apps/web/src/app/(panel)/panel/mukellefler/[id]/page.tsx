@@ -1457,14 +1457,14 @@ function DocBtn({ label, disabled, busy, onClick, muted }: { label: string; disa
       type="button"
       onClick={onClick}
       disabled={disabled || busy}
-      title={disabled ? `${label} PDF yok` : `${label} görüntüle`}
-      className="inline-flex items-center gap-1.5 rounded-lg border px-2.5 py-1.5 text-[11.5px] font-semibold transition hover:brightness-110 disabled:cursor-not-allowed disabled:opacity-35"
+      title={label}
+      aria-label={label}
+      className="inline-flex h-9 w-9 items-center justify-center rounded-lg border transition hover:brightness-110 disabled:cursor-not-allowed disabled:opacity-30"
       style={muted
         ? { borderColor: LINE, background: 'rgba(255,255,255,0.03)', color: MUTED }
         : { borderColor: STEEL_LN, background: STEEL_SF, color: STEEL_BR }}
     >
-      {busy ? <Loader2 size={13} className="animate-spin" /> : <Eye size={13} />}
-      {label}
+      {busy ? <Loader2 size={14} className="animate-spin" /> : <Eye size={15} />}
     </button>
   );
 }
@@ -1479,8 +1479,10 @@ function fmtBeyanDonem(donem: string): string {
   return donem;
 }
 
-function fmtTutar(n: number): string {
-  return n.toLocaleString('tr-TR', { minimumFractionDigits: 2, maximumFractionDigits: 2 });
+function fmtTutar(n: number | string | null | undefined): string {
+  const v = typeof n === 'number' ? n : Number(n);
+  if (!Number.isFinite(v)) return '0,00';
+  return v.toLocaleString('tr-TR', { minimumFractionDigits: 2, maximumFractionDigits: 2 });
 }
 
 // Beyanname tablosu sütun şablonu: Tür · Dönem · Tür(belge) · Tutar · İşlem
