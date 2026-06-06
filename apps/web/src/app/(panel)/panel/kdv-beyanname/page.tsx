@@ -8,7 +8,7 @@ import { LucaInlineCaptchaPanel } from '@/components/luca/LucaInlineCaptchaPanel
 import {
   FileCheck, Calendar, Users, Download, AlertCircle, CheckCircle2,
   Loader2, Receipt, Sparkles,
-  Bell, RefreshCw, ChevronRight, Wallet, AlertTriangle, ArrowLeft, Layers,
+  Bell, RefreshCw, ChevronRight, ChevronDown, Wallet, AlertTriangle, ArrowLeft, Layers,
 } from 'lucide-react';
 import TaxpayerSelect from '@/components/ui/TaxpayerSelect';
 
@@ -390,36 +390,44 @@ export default function KdvBeyannamePage() {
           </div>
           <div className="grid grid-cols-12 gap-3">
             <div className="col-span-6 md:col-span-3">
-              <label className="text-[11px] font-bold uppercase tracking-[.12em] block mb-1.5" style={{ color: 'rgba(250,250,249,0.5)' }}>
-                <Calendar size={11} className="inline mr-1" /> Yıl
+              <label className="text-[11px] font-bold uppercase tracking-[.12em] flex items-center gap-1.5 mb-1.5" style={{ color: A_TEAL3 }}>
+                <Calendar size={12} /> Yıl
               </label>
-              <select
-                value={year}
-                onChange={(e) => setYear(Number(e.target.value))}
-                className="w-full px-3 py-2.5 rounded-[10px] text-[13px] outline-none cursor-pointer"
-                style={{ background: 'rgba(255,255,255,0.03)', border: '1px solid rgba(255,255,255,0.08)', color: '#fafaf9' }}
-              >
-                {[2024, 2025, 2026, 2027].map((y) => (
-                  <option key={y} value={y} style={{ background: '#0f0d0b' }}>{y}</option>
-                ))}
-              </select>
+              <div className="relative">
+                <select
+                  value={year}
+                  onChange={(e) => setYear(Number(e.target.value))}
+                  className="w-full appearance-none pl-3.5 pr-9 py-3 rounded-[11px] text-[14px] font-semibold outline-none cursor-pointer transition focus:border-teal-500/60"
+                  style={{ background: 'rgba(20,184,166,0.06)', border: '1px solid rgba(20,184,166,0.28)', color: '#fff' }}
+                >
+                  {[2024, 2025, 2026, 2027].map((y) => (
+                    <option key={y} value={y} style={{ background: '#0f0d0b' }}>{y}</option>
+                  ))}
+                </select>
+                <ChevronDown size={16} className="pointer-events-none absolute right-3 top-1/2 -translate-y-1/2" style={{ color: A_TEAL3 }} />
+              </div>
             </div>
             <div className="col-span-6 md:col-span-3">
-              <label className="text-[11px] font-bold uppercase tracking-[.12em] block mb-1.5" style={{ color: 'rgba(250,250,249,0.5)' }}>Ay</label>
-              <select
-                value={month}
-                onChange={(e) => setMonth(e.target.value)}
-                className="w-full px-3 py-2.5 rounded-[10px] text-[13px] outline-none cursor-pointer"
-                style={{ background: 'rgba(255,255,255,0.03)', border: '1px solid rgba(255,255,255,0.08)', color: '#fafaf9' }}
-              >
-                {MONTHS.map((m, i) => (
-                  <option key={m} value={m} style={{ background: '#0f0d0b' }}>{MONTH_NAMES[i]}</option>
-                ))}
-              </select>
+              <label className="text-[11px] font-bold uppercase tracking-[.12em] flex items-center gap-1.5 mb-1.5" style={{ color: A_TEAL3 }}>
+                <Calendar size={12} /> Ay
+              </label>
+              <div className="relative">
+                <select
+                  value={month}
+                  onChange={(e) => setMonth(e.target.value)}
+                  className="w-full appearance-none pl-3.5 pr-9 py-3 rounded-[11px] text-[14px] font-semibold outline-none cursor-pointer transition"
+                  style={{ background: 'rgba(20,184,166,0.06)', border: '1px solid rgba(20,184,166,0.28)', color: '#fff' }}
+                >
+                  {MONTHS.map((m, i) => (
+                    <option key={m} value={m} style={{ background: '#0f0d0b' }}>{MONTH_NAMES[i]}</option>
+                  ))}
+                </select>
+                <ChevronDown size={16} className="pointer-events-none absolute right-3 top-1/2 -translate-y-1/2" style={{ color: A_TEAL3 }} />
+              </div>
             </div>
             <div className="col-span-12 md:col-span-6">
-              <label className="text-[11px] font-bold uppercase tracking-[.12em] block mb-1.5" style={{ color: 'rgba(250,250,249,0.5)' }}>
-                <Users size={11} className="inline mr-1" /> Mükellefe git (opsiyonel)
+              <label className="text-[11px] font-bold uppercase tracking-[.12em] flex items-center gap-1.5 mb-1.5" style={{ color: A_TEAL3 }}>
+                <Users size={12} /> Mükellefe git (opsiyonel)
               </label>
               <TaxpayerSelect
                 taxpayers={kdvTaxpayers}
@@ -451,26 +459,32 @@ export default function KdvBeyannamePage() {
             {selectedTaxpayer ? taxpayerName(selectedTaxpayer) : ''}
           </span>
           <div className="ml-auto flex items-center gap-2">
-            <select
-              value={year}
-              onChange={(e) => setYear(Number(e.target.value))}
-              className="rounded-[9px] px-2.5 py-1.5 text-[12.5px] outline-none cursor-pointer"
-              style={{ background: 'rgba(255,255,255,0.03)', border: '1px solid rgba(255,255,255,0.08)', color: '#fafaf9' }}
-            >
-              {[2024, 2025, 2026, 2027].map((y) => (
-                <option key={y} value={y} style={{ background: '#0f0d0b' }}>{y}</option>
-              ))}
-            </select>
-            <select
-              value={month}
-              onChange={(e) => setMonth(e.target.value)}
-              className="rounded-[9px] px-2.5 py-1.5 text-[12.5px] outline-none cursor-pointer"
-              style={{ background: 'rgba(255,255,255,0.03)', border: '1px solid rgba(255,255,255,0.08)', color: '#fafaf9' }}
-            >
-              {MONTHS.map((m, i) => (
-                <option key={m} value={m} style={{ background: '#0f0d0b' }}>{MONTH_NAMES[i]}</option>
-              ))}
-            </select>
+            <div className="relative">
+              <select
+                value={year}
+                onChange={(e) => setYear(Number(e.target.value))}
+                className="appearance-none rounded-[9px] pl-3 pr-8 py-2 text-[13px] font-semibold outline-none cursor-pointer"
+                style={{ background: 'rgba(20,184,166,0.06)', border: '1px solid rgba(20,184,166,0.28)', color: '#fff' }}
+              >
+                {[2024, 2025, 2026, 2027].map((y) => (
+                  <option key={y} value={y} style={{ background: '#0f0d0b' }}>{y}</option>
+                ))}
+              </select>
+              <ChevronDown size={14} className="pointer-events-none absolute right-2.5 top-1/2 -translate-y-1/2" style={{ color: A_TEAL3 }} />
+            </div>
+            <div className="relative">
+              <select
+                value={month}
+                onChange={(e) => setMonth(e.target.value)}
+                className="appearance-none rounded-[9px] pl-3 pr-8 py-2 text-[13px] font-semibold outline-none cursor-pointer"
+                style={{ background: 'rgba(20,184,166,0.06)', border: '1px solid rgba(20,184,166,0.28)', color: '#fff' }}
+              >
+                {MONTHS.map((m, i) => (
+                  <option key={m} value={m} style={{ background: '#0f0d0b' }}>{MONTH_NAMES[i]}</option>
+                ))}
+              </select>
+              <ChevronDown size={14} className="pointer-events-none absolute right-2.5 top-1/2 -translate-y-1/2" style={{ color: A_TEAL3 }} />
+            </div>
           </div>
         </div>
       )}
@@ -1726,39 +1740,39 @@ function LucaSnapshotFetchPanel({
         </>
       )}
 
-      {/* KDV-ilgili hesap satırları tablosu — sütun/satır çizgili */}
+      {/* KDV hesap satırları — belirgin grid tablo */}
       {snap?.exists && snap.kdvSatirlari && snap.kdvSatirlari.length > 0 && (
-        <div className="rounded-md overflow-x-auto" style={{ border: '1px solid rgba(255,255,255,0.08)' }}>
+        <div className="rounded-2xl overflow-x-auto" style={{ border: '1px solid rgba(255,255,255,0.12)', borderLeft: '4px solid #14b8a6' }}>
           <table
-            className="w-full min-w-[980px] text-[12px]"
+            className="w-full min-w-[980px] text-[13px]"
             style={{ borderCollapse: 'collapse' }}
           >
-            <thead style={{ background: 'rgba(255,255,255,0.04)' }}>
-              <tr style={{ color: 'rgba(250,250,249,0.6)' }}>
-                <th className="text-left px-3 py-2 font-semibold" style={{ border: '1px solid rgba(255,255,255,0.08)' }}>Kod</th>
-                <th className="text-left px-3 py-2 font-semibold" style={{ border: '1px solid rgba(255,255,255,0.08)' }}>Hesap</th>
-                <th className="text-right px-3 py-2 font-semibold" style={{ border: '1px solid rgba(255,255,255,0.08)' }}>Borç Hareket</th>
-                <th className="text-right px-3 py-2 font-semibold" style={{ border: '1px solid rgba(255,255,255,0.08)' }}>Alacak Hareket</th>
-                <th className="text-right px-3 py-2 font-semibold" style={{ border: '1px solid rgba(255,255,255,0.08)' }}>Borç Bakiye</th>
-                <th className="text-right px-3 py-2 font-semibold" style={{ border: '1px solid rgba(255,255,255,0.08)' }}>Alacak Bakiye</th>
+            <thead>
+              <tr style={{ color: 'rgba(255,255,255,0.55)', background: 'linear-gradient(90deg, rgba(20,184,166,0.22), rgba(20,184,166,0.04))' }}>
+                <th className="text-left px-3 py-2.5 font-bold uppercase tracking-[.08em] text-[10.5px]" style={{ border: '1px solid rgba(255,255,255,0.10)' }}>Kod</th>
+                <th className="text-left px-3 py-2.5 font-bold uppercase tracking-[.08em] text-[10.5px]" style={{ border: '1px solid rgba(255,255,255,0.10)' }}>Hesap</th>
+                <th className="text-right px-3 py-2.5 font-bold uppercase tracking-[.08em] text-[10.5px]" style={{ border: '1px solid rgba(255,255,255,0.10)' }}>Borç Hareket</th>
+                <th className="text-right px-3 py-2.5 font-bold uppercase tracking-[.08em] text-[10.5px]" style={{ border: '1px solid rgba(255,255,255,0.10)' }}>Alacak Hareket</th>
+                <th className="text-right px-3 py-2.5 font-bold uppercase tracking-[.08em] text-[10.5px]" style={{ border: '1px solid rgba(255,255,255,0.10)' }}>Borç Bakiye</th>
+                <th className="text-right px-3 py-2.5 font-bold uppercase tracking-[.08em] text-[10.5px]" style={{ border: '1px solid rgba(255,255,255,0.10)' }}>Alacak Bakiye</th>
               </tr>
             </thead>
-            <tbody style={{ color: 'rgba(250,250,249,0.88)' }}>
+            <tbody style={{ color: '#fff' }}>
               {snap.kdvSatirlari.map((r, i) => (
-                <tr key={i}>
-                  <td className="px-3 py-1.5 font-mono" style={{ color: '#14b8a6', border: '1px solid rgba(255,255,255,0.06)' }}>{r.kod}</td>
-                  <td className="px-3 py-1.5" style={{ border: '1px solid rgba(255,255,255,0.06)' }}>{r.ad || '—'}</td>
-                  <td className="text-right px-3 py-1.5" style={{ border: '1px solid rgba(255,255,255,0.06)' }}>
-                    {r.borcToplami ? <MoneyText value={r.borcToplami} /> : ''}
+                <tr key={i} style={{ background: i % 2 ? 'rgba(255,255,255,0.022)' : 'transparent' }}>
+                  <td className="px-3 py-2.5 font-mono font-bold" style={{ color: '#2dd4bf', border: '1px solid rgba(255,255,255,0.09)' }}>{r.kod}</td>
+                  <td className="px-3 py-2.5 font-semibold" style={{ border: '1px solid rgba(255,255,255,0.09)' }}>{r.ad || '—'}</td>
+                  <td className="text-right px-3 py-2.5" style={{ border: '1px solid rgba(255,255,255,0.09)' }}>
+                    {r.borcToplami ? <MoneyText value={r.borcToplami} size={13} /> : ''}
                   </td>
-                  <td className="text-right px-3 py-1.5" style={{ border: '1px solid rgba(255,255,255,0.06)' }}>
-                    {r.alacakToplami ? <MoneyText value={r.alacakToplami} /> : ''}
+                  <td className="text-right px-3 py-2.5" style={{ border: '1px solid rgba(255,255,255,0.09)' }}>
+                    {r.alacakToplami ? <MoneyText value={r.alacakToplami} size={13} /> : ''}
                   </td>
-                  <td className="text-right px-3 py-1.5" style={{ border: '1px solid rgba(255,255,255,0.06)' }}>
-                    {r.borcBakiye ? <MoneyText value={r.borcBakiye} /> : ''}
+                  <td className="text-right px-3 py-2.5" style={{ border: '1px solid rgba(255,255,255,0.09)' }}>
+                    {r.borcBakiye ? <MoneyText value={r.borcBakiye} size={13} /> : ''}
                   </td>
-                  <td className="text-right px-3 py-1.5" style={{ border: '1px solid rgba(255,255,255,0.06)' }}>
-                    {r.alacakBakiye ? <MoneyText value={r.alacakBakiye} /> : ''}
+                  <td className="text-right px-3 py-2.5" style={{ border: '1px solid rgba(255,255,255,0.09)' }}>
+                    {r.alacakBakiye ? <MoneyText value={r.alacakBakiye} size={13} /> : ''}
                   </td>
                 </tr>
               ))}
@@ -1877,37 +1891,41 @@ function LucaCrossDetayli({
 
 function LucaCrossCard({ hesap, mihsap, luca, fark }: { hesap: string; mihsap: number | null; luca: number | null; fark: number | null }) {
   const farkliMi = fark !== null && Math.abs(fark) > 0.01;
-  const farkColor = fark == null ? 'rgba(250,250,249,0.4)' : farkliMi ? '#fca5a5' : '#5fcf8e';
-  const cellB = '1px solid rgba(255,255,255,0.08)';
-  const borderClr = farkliMi ? 'rgba(239,107,107,0.32)' : 'rgba(255,255,255,0.08)';
-  const farkBg = fark == null ? 'rgba(255,255,255,0.02)' : farkliMi ? 'rgba(239,107,107,0.07)' : 'rgba(95,207,142,0.05)';
+  // Renk: fark yoksa teal (nötr), eşit yeşil, farklıysa kırmızı (gerçek sorun → kırmızı haklı)
+  const accent = fark == null ? '#14b8a6' : farkliMi ? '#ef6b6b' : '#5fcf8e';
+  const accentRgb = fark == null ? '20,184,166' : farkliMi ? '239,107,107' : '95,207,142';
+  const grid = '1px solid rgba(255,255,255,0.10)';
+  const farkColor = fark == null ? 'rgba(255,255,255,0.4)' : farkliMi ? '#fca5a5' : '#5fcf8e';
   return (
-    <div className="rounded-xl border overflow-hidden" style={{ background: 'rgba(0,0,0,0.22)', borderColor: borderClr }}>
+    <div
+      className="rounded-2xl overflow-hidden"
+      style={{ background: '#13100d', border: '1px solid rgba(255,255,255,0.12)', borderLeft: `4px solid ${accent}` }}
+    >
       <div
-        className="px-3 py-2 flex items-center justify-between"
-        style={{ borderBottom: '1px solid rgba(255,255,255,0.08)', background: 'rgba(255,255,255,0.025)' }}
+        className="px-4 py-3 flex items-center justify-between"
+        style={{ background: `linear-gradient(90deg, rgba(${accentRgb},0.22), rgba(${accentRgb},0.04))`, borderBottom: `1px solid rgba(${accentRgb},0.38)` }}
       >
-        <span className="text-[12px] font-bold" style={{ color: '#fafaf9' }}>{hesap}</span>
-        {fark == null ? null : farkliMi ? <AlertCircle size={13} style={{ color: '#fca5a5' }} /> : <CheckCircle2 size={13} style={{ color: '#5fcf8e' }} />}
+        <span className="text-[14px] font-bold tracking-wide" style={{ color: '#fff' }}>{hesap}</span>
+        {fark == null ? null : farkliMi ? <AlertCircle size={15} style={{ color: '#fca5a5' }} /> : <CheckCircle2 size={15} style={{ color: '#5fcf8e' }} />}
       </div>
-      <table className="w-full text-[12px]" style={{ borderCollapse: 'collapse' }}>
-        <tbody>
+      <table className="w-full text-[13.5px]" style={{ borderCollapse: 'collapse' }}>
+        <tbody style={{ color: '#fff' }}>
           <tr>
-            <td className="px-3 py-2 font-semibold" style={{ border: cellB, color: 'rgba(250,250,249,0.55)', width: '40%' }}>Mihsap</td>
-            <td className="px-3 py-2 text-right tabular-nums" style={{ border: cellB, color: '#fafaf9' }}>
-              {mihsap == null ? <span style={{ color: 'rgba(250,250,249,0.35)' }}>—</span> : <MoneyText value={mihsap} size={12} />}
+            <td className="px-4 py-3 font-semibold" style={{ border: grid, color: 'rgba(255,255,255,0.55)', width: '42%' }}>Mihsap</td>
+            <td className="px-4 py-3 text-right tabular-nums" style={{ border: grid }}>
+              {mihsap == null ? <span style={{ color: 'rgba(255,255,255,0.35)' }}>—</span> : <MoneyText value={mihsap} size={14} />}
             </td>
           </tr>
-          <tr>
-            <td className="px-3 py-2 font-semibold" style={{ border: cellB, color: 'rgba(250,250,249,0.55)' }}>Luca</td>
-            <td className="px-3 py-2 text-right tabular-nums" style={{ border: cellB, color: '#fafaf9' }}>
-              {luca == null ? <span style={{ color: 'rgba(250,250,249,0.35)' }}>—</span> : <MoneyText value={luca} size={12} />}
+          <tr style={{ background: 'rgba(255,255,255,0.022)' }}>
+            <td className="px-4 py-3 font-semibold" style={{ border: grid, color: 'rgba(255,255,255,0.55)' }}>Luca</td>
+            <td className="px-4 py-3 text-right tabular-nums" style={{ border: grid }}>
+              {luca == null ? <span style={{ color: 'rgba(255,255,255,0.35)' }}>—</span> : <MoneyText value={luca} size={14} />}
             </td>
           </tr>
-          <tr style={{ background: farkBg }}>
-            <td className="px-3 py-2 font-bold" style={{ border: cellB, color: '#fafaf9', borderTop: '2px solid rgba(255,255,255,0.12)' }}>Fark</td>
-            <td className="px-3 py-2 text-right tabular-nums" style={{ border: cellB, borderTop: '2px solid rgba(255,255,255,0.12)' }}>
-              {fark == null ? <span style={{ color: farkColor }}>—</span> : <MoneyText value={fark} color={farkColor} strong size={13} />}
+          <tr style={{ background: `rgba(${accentRgb},0.12)` }}>
+            <td className="px-4 py-3.5 font-extrabold tracking-[.06em]" style={{ border: grid, borderTop: `2px solid ${accent}`, color: accent }}>FARK</td>
+            <td className="px-4 py-3.5 text-right tabular-nums" style={{ border: grid, borderTop: `2px solid ${accent}` }}>
+              {fark == null ? <span style={{ color: farkColor }}>—</span> : <MoneyText value={fark} color={farkColor} strong size={15} />}
             </td>
           </tr>
         </tbody>
