@@ -1357,44 +1357,52 @@ function BeyannamelerTab({ taxpayerId }: { taxpayerId: string }) {
         </Link>
       </div>
 
-      <div className="space-y-2">
-          {/* Sütun başlıkları */}
-          <div className="grid items-center gap-3 px-3 pb-1 text-[10px] font-bold uppercase tracking-wider" style={{ color: FAINT, gridTemplateColumns: BEYAN_COLS }}>
-            <span>Beyanname Türü</span>
-            <span>Beyanname Dönemi</span>
-            <span>Tür</span>
-            <span className="text-right">Tutar</span>
-            <span className="text-right">İşlem</span>
-          </div>
-
-          {sorted.flatMap((row) => ([
-            { row, kind: 'beyanname' as const, tur: 'E-Beyanname', hasFile: !!row.beyannameUrl },
-            { row, kind: 'tahakkuk' as const, tur: 'Tahakkuk', hasFile: !!row.pdfUrl },
-          ])).map(({ row, kind, tur, hasFile }) => {
-            const busy = busyKey === `${row.id}:${kind}`;
-            const isBeyan = kind === 'beyanname';
-            return (
-              <div key={`${row.id}:${kind}`} className="grid items-center gap-3 rounded-xl border px-3 py-3" style={{ borderColor: HAIR, background: CARD2, gridTemplateColumns: BEYAN_COLS }}>
-                <span className="inline-flex w-fit items-center rounded-md border px-2 py-1 text-[10.5px] font-bold" style={{ borderColor: STEEL_LN, background: STEEL_SF, color: STEEL_BR }}>
-                  {BEYAN_TIPI_LABEL[row.beyanTipi] || row.beyanTipi}
-                </span>
-                <div className="min-w-0">
-                  <div className="truncate text-[13px] font-semibold" style={{ color: TEXT }}>{fmtBeyanDonem(row.donem)}</div>
-                  <div className="mt-0.5 truncate text-[11px]" style={{ color: FAINT }}>
-                    {row.beyanTarihi ? `Beyan: ${fmtDateTR(row.beyanTarihi.substring(0, 10))}` : 'Beyan tarihi yok'}
-                    {row.onayNo ? ` · Onay: ${row.onayNo}` : ''}
-                  </div>
-                </div>
-                <span className="inline-flex w-fit items-center rounded px-1.5 py-0.5 text-[9.5px] font-bold uppercase tracking-wide" style={isBeyan ? { background: STEEL_SF, color: STEEL_BR } : { background: 'rgba(212,184,118,0.12)', color: GOLD }}>{tur}</span>
-                <div className="text-right text-[13px] font-bold tabular-nums" style={{ color: isBeyan ? FAINT : TEXT }}>
-                  {isBeyan ? '—' : (row.tahakkukTutari != null ? `${fmtTutar(row.tahakkukTutari)} ₺` : '—')}
-                </div>
-                <div className="flex justify-end">
-                  <DocBtn label={hasFile ? 'Görüntüle' : 'PDF yok'} disabled={!hasFile} busy={busy} onClick={() => openDoc(row, kind)} muted={!isBeyan} />
-                </div>
-              </div>
-            );
-          })}
+      <div className="overflow-hidden rounded-xl border" style={{ borderColor: HAIR }}>
+        <table className="w-full border-collapse text-left">
+          <thead>
+            <tr className="text-[10px] font-bold uppercase tracking-wider" style={{ color: FAINT, background: 'rgba(255,255,255,0.02)' }}>
+              <th className="w-[1%] whitespace-nowrap px-3 py-2.5 font-bold">Beyanname Türü</th>
+              <th className="px-3 py-2.5 font-bold">Beyanname Dönemi</th>
+              <th className="w-[1%] whitespace-nowrap px-3 py-2.5 font-bold">Tür</th>
+              <th className="w-[1%] whitespace-nowrap px-3 py-2.5 text-right font-bold">Tutar</th>
+              <th className="w-[1%] whitespace-nowrap px-3 py-2.5 text-right font-bold">İşlem</th>
+            </tr>
+          </thead>
+          <tbody>
+            {sorted.flatMap((row) => ([
+              { row, kind: 'beyanname' as const, tur: 'E-Beyanname', hasFile: !!row.beyannameUrl },
+              { row, kind: 'tahakkuk' as const, tur: 'Tahakkuk', hasFile: !!row.pdfUrl },
+            ])).map(({ row, kind, tur, hasFile }) => {
+              const busy = busyKey === `${row.id}:${kind}`;
+              const isBeyan = kind === 'beyanname';
+              return (
+                <tr key={`${row.id}:${kind}`} className="border-t transition hover:bg-white/[0.02]" style={{ borderColor: HAIR }}>
+                  <td className="w-[1%] whitespace-nowrap px-3 py-2.5 align-middle">
+                    <span className="inline-flex items-center rounded-md border px-2 py-1 text-[10.5px] font-bold" style={{ borderColor: STEEL_LN, background: STEEL_SF, color: STEEL_BR }}>
+                      {BEYAN_TIPI_LABEL[row.beyanTipi] || row.beyanTipi}
+                    </span>
+                  </td>
+                  <td className="px-3 py-2.5 align-middle">
+                    <div className="text-[13px] font-semibold" style={{ color: TEXT }}>{fmtBeyanDonem(row.donem)}</div>
+                    <div className="mt-0.5 text-[11px]" style={{ color: FAINT }}>
+                      {row.beyanTarihi ? `Beyan: ${fmtDateTR(row.beyanTarihi.substring(0, 10))}` : 'Beyan tarihi yok'}
+                      {row.onayNo ? ` · Onay: ${row.onayNo}` : ''}
+                    </div>
+                  </td>
+                  <td className="w-[1%] whitespace-nowrap px-3 py-2.5 align-middle">
+                    <span className="inline-flex items-center rounded px-1.5 py-0.5 text-[9.5px] font-bold uppercase tracking-wide" style={isBeyan ? { background: STEEL_SF, color: STEEL_BR } : { background: 'rgba(212,184,118,0.12)', color: GOLD }}>{tur}</span>
+                  </td>
+                  <td className="w-[1%] whitespace-nowrap px-3 py-2.5 text-right align-middle text-[13px] font-bold tabular-nums" style={{ color: isBeyan ? FAINT : TEXT }}>
+                    {isBeyan ? '—' : (row.tahakkukTutari != null ? `${fmtTutar(row.tahakkukTutari)} ₺` : '—')}
+                  </td>
+                  <td className="w-[1%] whitespace-nowrap px-3 py-2.5 text-right align-middle">
+                    <DocBtn label={hasFile ? 'Görüntüle' : 'PDF yok'} disabled={!hasFile} busy={busy} onClick={() => openDoc(row, kind)} muted={!isBeyan} />
+                  </td>
+                </tr>
+              );
+            })}
+          </tbody>
+        </table>
       </div>
 
       {mounted && preview && createPortal((
@@ -1484,10 +1492,6 @@ function fmtTutar(n: number | string | null | undefined): string {
   if (!Number.isFinite(v)) return '0,00';
   return v.toLocaleString('tr-TR', { minimumFractionDigits: 2, maximumFractionDigits: 2 });
 }
-
-// Beyanname tablosu sütun şablonu: Tür · Dönem · Tür(belge) · Tutar · İşlem
-// İşlem = max-content (buton hiç kırpılmaz); diğerleri daralabilir → taşma yok.
-const BEYAN_COLS = 'minmax(110px,150px) minmax(0,1fr) minmax(90px,110px) minmax(90px,120px) max-content';
 
 // ============================================================
 // YARDIMCI KOMPONENTLER
