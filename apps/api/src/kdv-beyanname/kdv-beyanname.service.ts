@@ -440,8 +440,18 @@ export class KdvBeyannameService {
       include: { beyanConfig: true },
       orderBy: [{ companyName: 'asc' }, { firstName: 'asc' }],
     });
+    // Seçili dönemde AKTİF miydi? İşe başlama (startDate) dönem bittikten SONRA ise
+    // veya işi bırakma (endDate) dönem başlamadan ÖNCE ise → o dönemde mükellef değil.
+    const [dYil, dAy] = donem.split('-').map((v) => Number(v));
+    const donemBas = new Date(dYil, dAy - 1, 1);
+    const donemBit = new Date(dYil, dAy, 0, 23, 59, 59, 999);
+    const aktifMiDonemde = (m: any): boolean => {
+      if (m.startDate && new Date(m.startDate) > donemBit) return false;
+      if (m.endDate && new Date(m.endDate) < donemBas) return false;
+      return true;
+    };
     const kdvMukellef = mukellefler.filter(
-      (m: any) => m.beyanConfig?.kdv1Period || m.beyanConfig?.kdv2Enabled,
+      (m: any) => (m.beyanConfig?.kdv1Period || m.beyanConfig?.kdv2Enabled) && aktifMiDonemde(m),
     );
 
     // Verilme durumları — BeyanDurumu (durum=onaylandi → verildi)
@@ -552,6 +562,9 @@ export class KdvBeyannameService {
       );
       satirlar.push(...results);
     }
+
+    // Alfabetik sırala (görünen ada göre, Türkçe locale)
+    satirlar.sort((a, b) => String(a.ad || '').localeCompare(String(b.ad || ''), 'tr'));
 
     const round2 = (n: number) => Math.round(n * 100) / 100;
     const kdv2Satir = satirlar.filter((r) => r.kdv2Var);
