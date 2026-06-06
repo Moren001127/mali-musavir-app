@@ -46,6 +46,26 @@ export class KdvBeyannameController {
     });
   }
 
+  /** İşletme defteri gelir-gider KDV — manuel Luca çekme (bilanço mizanının işletme karşılığı) */
+  @Post('isletme-gg/fetch')
+  @UseGuards(AuthGuard('jwt'))
+  @HttpCode(HttpStatus.OK)
+  async fetchIsletmeGg(
+    @Req() req: any,
+    @Body() body: { mukellefId: string; donem: string; targetDeviceId?: string },
+  ) {
+    if (!body?.mukellefId || !body?.donem) {
+      throw new BadRequestException('mukellefId ve donem gerekli');
+    }
+    return this.service.fetchIsletmeGGSnapshot({
+      tenantId: req.user.tenantId,
+      mukellefId: body.mukellefId,
+      donem: body.donem,
+      createdBy: req.user.sub,
+      targetDeviceId: body.targetDeviceId,
+    });
+  }
+
   /** Snapshot job durum sorgusu (frontend polling) */
   @Get('luca-job/:id')
   @UseGuards(AuthGuard('jwt'))

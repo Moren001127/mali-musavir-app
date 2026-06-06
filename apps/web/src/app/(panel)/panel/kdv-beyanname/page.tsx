@@ -698,8 +698,8 @@ function GenelBakisPano({ donem, onSelect }: { donem: string; onSelect: (id: str
                 <td className="px-3 py-2.5"><DurumBadge durum={r.durum} /></td>
                 <td className="px-3 py-2.5 text-right tabular-nums text-[12.5px]" style={{ color: '#fffaf0' }}>{TRY}{fmt(r.hesaplananKdv)}</td>
                 <td className="px-3 py-2.5 text-right tabular-nums text-[12.5px]" style={{ color: '#fffaf0' }}>{TRY}{fmt(r.indirilecekKdv)}</td>
-                <td className="px-3 py-2.5 text-right tabular-nums text-[12.5px]" style={{ color: r.devredenKdv > 0 ? '#5eead4' : 'rgba(250,250,249,0.45)' }}>{TRY}{fmt(r.devredenKdv)}</td>
-                <td className="px-3 py-2.5 text-right tabular-nums text-[12.5px]" style={{ color: r.sonrakiAyaDevreden > 0 ? '#5eead4' : 'rgba(250,250,249,0.45)' }}>{TRY}{fmt(r.sonrakiAyaDevreden)}</td>
+                <td className="px-3 py-2.5 text-right tabular-nums text-[12.5px]" style={{ color: '#fffaf0' }}>{TRY}{fmt(r.devredenKdv)}</td>
+                <td className="px-3 py-2.5 text-right tabular-nums text-[12.5px]" style={{ color: '#fffaf0' }}>{TRY}{fmt(r.sonrakiAyaDevreden)}</td>
                 <td className="px-3 py-2.5 text-right tabular-nums text-[13px] font-bold" style={{ color: r.odenecekKdv > 0 ? STAT_RED : STAT_GREEN }}>{TRY}{fmt(r.odenecekKdv)}</td>
                 <td className="px-3 py-2.5 text-center"><GuvenDot seviye={r.veriGuveniSeviye} puan={r.veriGuveniPuan} /></td>
                 <td className="px-3 py-2.5 text-center">
@@ -1436,47 +1436,122 @@ function Kdv1View({ data, isBilanco }: { data: Kdv1; isBilanco: boolean }) {
           )}
           <LucaSnapshotFetchPanel mukellefId={data.mukellefId} donem={data.donem} autoStart={false} />
         </>
-      ) : data.isletmeGelirGider ? (
-        <div className="rounded-2xl border p-5" style={{ background: 'rgba(255,255,255,0.02)', borderColor: 'rgba(255,255,255,0.06)' }}>
-          <div className="mb-3 flex items-center justify-between gap-2">
-            <div className="flex items-center gap-2">
-              <Sparkles size={14} style={{ color: '#14b8a6' }} />
-              <h3 className="text-[13px] font-semibold" style={{ color: '#fafaf9' }}>Luca Gelir-Gider Çapraz Kontrol</h3>
-            </div>
-            {data.isletmeGelirGider.cekildiAt && (
-              <span className="text-[11px]" style={{ color: 'rgba(250,250,249,0.4)' }}>
-                Çekildi: {new Date(data.isletmeGelirGider.cekildiAt).toLocaleString('tr-TR')}
-              </span>
-            )}
-          </div>
-          <div className="grid grid-cols-1 gap-2.5 sm:grid-cols-2">
-            <LucaCrossCard
-              hesap="Gelir KDV · Hesaplanan"
-              mihsap={displaySatis.toplamHesaplananKdv}
-              luca={data.isletmeGelirGider.gelirKdvToplam}
-              fark={Math.round((displaySatis.toplamHesaplananKdv - data.isletmeGelirGider.gelirKdvToplam) * 100) / 100}
-            />
-            <LucaCrossCard
-              hesap="Gider KDV · İndirilecek"
-              mihsap={displayAlis.toplamIndirilecekKdv}
-              luca={data.isletmeGelirGider.giderKdvToplam}
-              fark={Math.round((displayAlis.toplamIndirilecekKdv - data.isletmeGelirGider.giderKdvToplam) * 100) / 100}
-            />
-          </div>
-          <div className="mt-2.5 text-[11.5px]" style={{ color: 'rgba(250,250,249,0.5)' }}>
-            Luca işletme defteri gelir-gider listesindeki "Hesaplanan / İndirilecek K.D.V." toplamları. Kontrol tamamlanınca otomatik çekilir.
-          </div>
-        </div>
       ) : (
-        <div className="rounded-2xl border p-4 flex items-start gap-2.5" style={{ background: 'rgba(20,184,166,0.05)', borderColor: 'rgba(20,184,166,0.2)' }}>
-          <Sparkles size={15} style={{ color: '#14b8a6', flexShrink: 0, marginTop: 1 }} />
-          <div className="text-[12.5px]" style={{ color: 'rgba(250,250,249,0.7)' }}>
-            <span className="font-semibold" style={{ color: '#5eead4' }}>İşletme defteri usulü</span> — KDV doğrudan faturalardan hesaplanır;
-            mizan (191/391/190) yerine <b style={{ color: '#fafaf9' }}>Luca gelir-gider listesi</b> KDV toplamı çapraz kontrol için çekilir (kontrol tamamlanınca otomatik).
-          </div>
-        </div>
+        <IsletmeGgFetchPanel
+          data={data}
+          hesaplanan={displaySatis.toplamHesaplananKdv}
+          indirilecek={displayAlis.toplamIndirilecekKdv}
+        />
       )}
     </>
+  );
+}
+
+/**
+ * İŞLETME DEFTERİ — Luca gelir-gider çekme paneli (bilanço mizanının işletme karşılığı).
+ * Manuel "Luca'dan Çek" + job polling + captcha + gelir/gider KDV çapraz kontrol.
+ */
+function IsletmeGgFetchPanel({ data, hesaplanan, indirilecek }: { data: Kdv1; hesaplanan: number; indirilecek: number }) {
+  const qc = useQueryClient();
+  const [jobId, setJobId] = useState<string | null>(null);
+  const gg = data.isletmeGelirGider;
+
+  const fetchMut = useMutation({
+    mutationFn: () =>
+      api.post('/kdv-beyanname/isletme-gg/fetch', { mukellefId: data.mukellefId, donem: data.donem })
+        .then((r) => r.data as { jobId: string; status: string }),
+    onSuccess: (d) => {
+      setJobId(d.jobId);
+      toast.info('Luca gelir-gider çekme başlatıldı — güvenlik kodu gerekirse portalda görünecek');
+    },
+    onError: (e: any) => toast.error(e?.response?.data?.message || 'Çekme başlatılamadı'),
+  });
+
+  const cancelJobMut = useMutation({
+    mutationFn: () => api.post(`/luca/jobs/${jobId}/cancel`).then((r) => r.data),
+    onSuccess: () => { toast.info('Çekim iptal edildi'); setJobId(null); },
+    onError: (e: any) => toast.error(e?.response?.data?.message || 'İptal edilemedi'),
+  });
+
+  const jobQuery = useQuery({
+    queryKey: ['kdv-luca-job', jobId],
+    queryFn: () => api.get(`/kdv-beyanname/luca-job/${jobId}`).then((r) => r.data),
+    enabled: !!jobId,
+    refetchInterval: 3000,
+  });
+
+  React.useEffect(() => {
+    const j = (jobQuery.data as any)?.job;
+    if (!j) return;
+    if (j.status === 'done') {
+      toast.success('Gelir-gider çekildi');
+      qc.invalidateQueries({ queryKey: ['kdv-beyanname-kdv1', data.mukellefId, data.donem] });
+      setTimeout(() => setJobId(null), 1500);
+    } else if (j.status === 'failed') {
+      toast.error(`Hata: ${j.errorMsg || 'bilinmeyen'}`);
+    }
+  }, [jobQuery.data, qc]);
+
+  const lastLogLine = (() => {
+    const j = (jobQuery.data as any)?.job;
+    if (!j?.errorMsg) return null;
+    const lines = String(j.errorMsg).split('\n').filter((l: string) => l.trim());
+    return lines[lines.length - 1] || null;
+  })();
+
+  return (
+    <div className="rounded-2xl border p-5 space-y-3" style={{ background: 'rgba(255,255,255,0.02)', borderColor: 'rgba(255,255,255,0.06)' }}>
+      <div className="flex items-start justify-between gap-3">
+        <div>
+          <div className="flex items-center gap-2">
+            <Sparkles size={14} style={{ color: '#14b8a6' }} />
+            <h3 className="text-[13px] font-semibold" style={{ color: '#fafaf9' }}>Luca Gelir-Gider Çapraz Kontrol</h3>
+          </div>
+          <p className="text-[11.5px] mt-1.5" style={{ color: 'rgba(250,250,249,0.55)' }}>
+            {gg?.cekildiAt
+              ? `Son çekim: ${new Date(gg.cekildiAt).toLocaleString('tr-TR')}`
+              : 'İşletme defteri usulü — mizan yerine Luca gelir-gider listesi KDV toplamı çekilir. Kontrol tamamlanınca otomatik gelir; elle de çekebilirsin.'}
+          </p>
+        </div>
+        <button
+          onClick={() => fetchMut.mutate()}
+          disabled={fetchMut.isPending || !!jobId}
+          className="px-4 py-2 rounded-md text-sm font-semibold flex items-center gap-2 disabled:opacity-50 whitespace-nowrap"
+          style={{ background: '#14b8a6', color: '#0a0906' }}
+        >
+          {fetchMut.isPending || jobId ? <Loader2 size={14} className="animate-spin" /> : <Download size={14} />}
+          {jobId ? 'Çekiliyor…' : "Luca'dan Çek"}
+        </button>
+      </div>
+
+      {jobId && (
+        <>
+          <LucaInlineCaptchaPanel
+            jobIds={[jobId]}
+            color="#14b8a6"
+            onAnswered={() => qc.invalidateQueries({ queryKey: ['kdv-luca-job', jobId] })}
+            onCancel={() => cancelJobMut.mutate()}
+          />
+          {lastLogLine && (
+            <div className="rounded-md px-3 py-2 text-[11.5px] font-mono" style={{ background: 'rgba(0,0,0,0.35)', border: '1px solid rgba(13,148,136,0.2)', color: 'rgba(250,250,249,0.75)' }}>
+              {lastLogLine}
+            </div>
+          )}
+        </>
+      )}
+
+      {gg && (
+        <>
+          <div className="grid grid-cols-1 gap-2.5 sm:grid-cols-2">
+            <LucaCrossCard hesap="Gelir KDV · Hesaplanan" mihsap={hesaplanan} luca={gg.gelirKdvToplam} fark={Math.round((hesaplanan - gg.gelirKdvToplam) * 100) / 100} />
+            <LucaCrossCard hesap="Gider KDV · İndirilecek" mihsap={indirilecek} luca={gg.giderKdvToplam} fark={Math.round((indirilecek - gg.giderKdvToplam) * 100) / 100} />
+          </div>
+          <div className="text-[11.5px]" style={{ color: 'rgba(250,250,249,0.5)' }}>
+            Luca gelir-gider listesindeki "Hesaplanan / İndirilecek K.D.V." toplamları.
+          </div>
+        </>
+      )}
+    </div>
   );
 }
 
@@ -1723,16 +1798,16 @@ function OranTablosu({
             <div key={o.oran} className="rounded-xl border p-3" style={{ borderColor: 'rgba(255,255,255,0.06)', background: 'rgba(0,0,0,0.2)' }}>
               <div className="flex items-center justify-between gap-3">
                 <span className="inline-flex items-center rounded-md px-2 py-0.5 text-[11.5px] font-bold" style={{ background: `${renk}22`, color: renk }}>%{o.oran}</span>
-                <div className="flex items-center gap-5">
-                  <div className="text-right">
+                <div className="flex items-end gap-4">
+                  <div className="w-[124px] text-right">
                     <div className="text-[9px] uppercase tracking-wider" style={{ color: 'rgba(250,250,249,0.4)' }}>Matrah</div>
                     <MoneyText value={o.matrah} />
                   </div>
-                  <div className="text-right">
+                  <div className="w-[112px] text-right">
                     <div className="text-[9px] uppercase tracking-wider" style={{ color: 'rgba(250,250,249,0.4)' }}>KDV</div>
                     <MoneyText value={o.kdv} color={renk} strong />
                   </div>
-                  <span className="w-8 text-right tabular-nums text-[11px]" style={{ color: 'rgba(250,250,249,0.5)' }}>{o.adet}×</span>
+                  <span className="w-9 text-right tabular-nums text-[11px]" style={{ color: 'rgba(250,250,249,0.5)' }}>{o.adet}×</span>
                 </div>
               </div>
               <div className="mt-2 h-1.5 overflow-hidden rounded-full" style={{ background: 'rgba(255,255,255,0.05)' }}>
@@ -1745,9 +1820,10 @@ function OranTablosu({
 
       <div className="mt-3 flex items-center justify-between rounded-xl px-3.5 py-2.5" style={{ background: 'rgba(20,184,166,0.08)', border: '1px solid rgba(20,184,166,0.22)' }}>
         <span className="text-[12px] font-extrabold tracking-wide" style={{ color: '#5eead4' }}>TOPLAM</span>
-        <div className="flex items-center gap-5">
-          <MoneyText value={toplamMatrah} color="#5eead4" strong />
-          <MoneyText value={toplamKdv} color={renk} strong />
+        <div className="flex items-center gap-4">
+          <div className="w-[124px] text-right"><MoneyText value={toplamMatrah} color="#5eead4" strong /></div>
+          <div className="w-[112px] text-right"><MoneyText value={toplamKdv} color={renk} strong /></div>
+          <span className="w-9" />
         </div>
       </div>
 
