@@ -2465,26 +2465,35 @@ export class KdvBeyannameService {
       };
       const kdvIdx = colIdx(isGelir ? [(c) => c.includes('hesaplanan')] : [(c) => c.includes('indirilecek')]);
       const tarihIdx = colIdx([(c) => c === 'tarih', (c) => c.includes('tarih')]);
-      const matrahIdx = isGelir
-        ? colIdx([(c) => c === 'gelir', (c) => c.startsWith('gelir')])
-        : colIdx([(c) => c === 'gider', (c) => c.startsWith('gider')]);
-      let toplam = 0;
+
+      // KURAL (kullanıcı): o ayın KDV'si = raporun KDV sütunu TOPLAM'ı − "Nakli Yekün"
+      // (önceki aylardan devreden) satırı. Luca'nın kendi toplamını kullanırız →
+      // satır-satır tarih/sütun ayrıştırma hatalarından etkilenmez. Tarihsiz satırlar
+      // özet/devir (Nakli Yekün, TOPLAM); tarihli satırlar o ayın hareketleri.
+      let toplamKdv: number | null = null;
+      let nakliKdv = 0;
+      let rowSum = 0; // fallback: TOPLAM satırı yoksa tarihli satırların toplamı
       let adet = 0;
       for (let i = target.idx + 1; i < sectionEnd; i++) {
         const row = matrix[i] || [];
         if (!row.length) continue;
-        const firstCells = row.slice(0, 6).map(norm).join(' ');
-        if (firstCells.includes('toplam') || firstCells.includes('devir')) continue;
+        const firstCells = row.slice(0, 7).map(norm).join(' ');
+        const kdv = this.parseTrNumber(kdvIdx >= 0 ? row[kdvIdx] : null) || 0;
         const tarih = this.parseTrDate(tarihIdx >= 0 ? row[tarihIdx] : null);
-        if (!tarih) continue;
+        if (!tarih) {
+          if (firstCells.includes('nakli yekun')) nakliKdv = kdv;
+          else if (firstCells.includes('toplam')) toplamKdv = kdv; // rapor grand total
+          continue;
+        }
         if (tarih < start || tarih > end) continue;
-        const kdv = this.parseTrNumber(kdvIdx >= 0 ? row[kdvIdx] : null);
-        const matrah = this.parseTrNumber(matrahIdx >= 0 ? row[matrahIdx] : null);
-        if ((kdv == null || kdv === 0) && (matrah == null || matrah === 0)) continue;
-        toplam += kdv || 0;
+        rowSum += kdv;
         adet++;
       }
-      return { toplam: Math.round(toplam * 100) / 100, adet };
+      const toplam =
+        toplamKdv != null
+          ? Math.round((toplamKdv - nakliKdv) * 100) / 100 // TOPLAM − Nakli Yekün
+          : Math.round(rowSum * 100) / 100; // fallback
+      return { toplam, adet };
     };
 
     const gelir = sumSection('gelir');
