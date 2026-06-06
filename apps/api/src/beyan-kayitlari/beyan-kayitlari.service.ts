@@ -1314,8 +1314,20 @@ export class BeyanKayitlariService {
     try {
       const buf = await this.storage.getBuffer(key);
       const text = await this.pdfText(buf);
-      tutar = this.extractSonrakiDonemeDevreden(text);
-      this.logger.log(`[KDVDEVR] ${taxpayerId} ${donem}: PDF okundu (${kayit.id}), "Sonraki Doneme Devreden" extract = ${tutar == null ? 'BULUNAMADI' : tutar}`);
+      const guess = this.extractSonrakiDonemeDevreden(text);
+      // [KDVDEVR-DUMP] GEÇİCİ — pdf-parse metnindeki para tokenlarının sırası + bağlamı.
+      // 59.084,85'in PDF metninde nerede durduğunu görüp doğru çıkarımı yazmak için.
+      const re = /\d{1,3}(?:\.\d{3})*,\d{2}|\d+,\d{2}/g;
+      const seq: string[] = [];
+      let mm: RegExpExecArray | null;
+      let n = 0;
+      while ((mm = re.exec(text)) && n < 60) {
+        seq.push(`${mm[0]}<=[${text.slice(Math.max(0, mm.index - 36), mm.index)}]`);
+        n++;
+      }
+      this.logger.log(`[KDVDEVR-DUMP] ${taxpayerId} ${donem} guess=${guess} SEQ: ${seq.join(' ## ')}`);
+      // GEÇİCİ: doğru regex yazılana kadar yanlış tutar gösterme → güvenli fallback
+      tutar = null;
     } catch (e: any) {
       this.logger.warn(`[KDVDEVR] ${taxpayerId} ${donem}: PDF okunamadi [${kayit.id}]: ${e?.message || e}`);
     }
