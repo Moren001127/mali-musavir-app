@@ -2511,10 +2511,21 @@ export class KdvBeyannameService {
     if (typeof v === 'number') return Number.isFinite(v) ? v : null;
     let s = String(v).trim().replace(/[^\d.,-]/g, '');
     if (!s || s === '-') return null;
-    if (s.includes(',')) {
-      s = s.replace(/\./g, '').replace(',', '.');
-    } else if (/^-?\d{1,3}(\.\d{3})+$/.test(s)) {
-      s = s.replace(/\./g, '');
+    const hasDot = s.includes('.');
+    const hasComma = s.includes(',');
+    // ÖNEMLİ: Luca/SheetJS Excel'i bazen TR (1.234,56) bazen US (1,234.56) formatında
+    // verir. Hangi ayırıcının SONRA geldiğine bakıp ondalık/binliği belirleriz —
+    // yoksa "116,000.00" yanlışlıkla 116 okunur (tüm tutarlar 1000'e bölünür).
+    if (hasDot && hasComma) {
+      if (s.lastIndexOf(',') > s.lastIndexOf('.')) {
+        s = s.replace(/\./g, '').replace(',', '.'); // TR: binlik '.', ondalık ','
+      } else {
+        s = s.replace(/,/g, ''); // US: binlik ',', ondalık '.'
+      }
+    } else if (hasComma) {
+      s = s.replace(',', '.'); // sadece virgül → ondalık (TR)
+    } else if (hasDot && /^-?\d{1,3}(\.\d{3})+$/.test(s)) {
+      s = s.replace(/\./g, ''); // sadece nokta + 3'lü gruplar → binlik (1.234, 1.234.567)
     }
     const n = Number(s);
     return Number.isFinite(n) ? n : null;

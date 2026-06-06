@@ -1830,10 +1830,10 @@ function OranTablosu({
         </div>
       )}
 
-      <div className="mt-3 flex items-center justify-between rounded-xl px-3.5 py-2.5" style={{ background: 'rgba(20,184,166,0.08)', border: '1px solid rgba(20,184,166,0.22)' }}>
-        <span className="text-[12px] font-extrabold tracking-wide" style={{ color: '#5eead4' }}>TOPLAM</span>
+      <div className="mt-3 flex items-center justify-between rounded-xl px-3.5 py-2.5" style={{ background: `${renk}14`, border: `1px solid ${renk}3a` }}>
+        <span className="text-[12px] font-extrabold tracking-wide" style={{ color: renk }}>TOPLAM</span>
         <div className="flex items-center gap-4">
-          <div className="w-[124px] text-right"><MoneyText value={toplamMatrah} color="#5eead4" strong /></div>
+          <div className="w-[124px] text-right"><MoneyText value={toplamMatrah} strong /></div>
           <div className="w-[112px] text-right"><MoneyText value={toplamKdv} color={renk} strong /></div>
           <span className="w-9" />
         </div>
