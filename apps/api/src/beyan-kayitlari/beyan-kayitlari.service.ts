@@ -1293,20 +1293,12 @@ export class BeyanKayitlariService {
       where: { tenantId, taxpayerId, beyanTipi: 'KDV1', donem },
       select: { id: true, beyannameUrl: true, pdfUrl: true },
     });
-    if (!kayit) {
-      // [KDVDEVR-PROBE] geçici teşhis — sebep netleşince kaldır
-      this.logger.log(`[KDVDEVR] ${taxpayerId} ${donem}: KDV1 beyanKaydi YOK (Beyannameler modülünde indirilmemiş)`);
-      return null;
-    }
+    if (!kayit) return null;
     const key = kayit.beyannameUrl || kayit.pdfUrl;
-    if (!key) {
-      this.logger.log(`[KDVDEVR] ${taxpayerId} ${donem}: kayit var (${kayit.id}) ama PDF yok (beyannameUrl/pdfUrl bos)`);
-      return null;
-    }
+    if (!key) return null;
 
     if (this.devredenPdfCache.has(kayit.id)) {
       const v = this.devredenPdfCache.get(kayit.id) ?? null;
-      this.logger.log(`[KDVDEVR] ${taxpayerId} ${donem}: cache (${kayit.id}) = ${v == null ? 'NULL' : v}`);
       return v == null ? null : { tutar: v, beyanKaydiId: kayit.id };
     }
 
@@ -1319,10 +1311,9 @@ export class BeyanKayitlariService {
       // grubundaki sırasını bulup değer bloğundan aynı sıradaki tutarı alıyoruz.
       const raw = await this.pdfRawText(buf);
       tutar = this.extractSonrakiFromLines(raw);
-      if (tutar == null) tutar = await this.extractSonrakiViaTable(buf, { taxpayerId, donem });
-      this.logger.log(`[KDVDEVR] ${taxpayerId} ${donem}: extract = ${tutar == null ? 'BULUNAMADI' : tutar}`);
+      if (tutar == null) tutar = await this.extractSonrakiViaTable(buf);
     } catch (e: any) {
-      this.logger.warn(`[KDVDEVR] ${taxpayerId} ${donem}: PDF/tablo okunamadi [${kayit.id}]: ${e?.message || e}`);
+      this.logger.warn(`devreden PDF okunamadi [${kayit.id}]: ${e?.message || e}`);
     }
     this.devredenPdfCache.set(kayit.id, tutar);
     return tutar == null ? null : { tutar, beyanKaydiId: kayit.id };

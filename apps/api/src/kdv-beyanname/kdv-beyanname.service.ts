@@ -488,7 +488,7 @@ export class KdvBeyannameService {
           const d = durumMap.get(m.id) || {};
           try {
             const k1 = cfg.kdv1Period
-              ? await this.kdv1OnHazirlik({ tenantId, mukellefId: m.id, donem })
+              ? await this.kdv1OnHazirlik({ tenantId, mukellefId: m.id, donem, computePrevDevreden: true })
               : null;
             // GERÇEK fatura/kalem sayısı: yalnız beyana katkı veren oran kalemleri.
             // (allDocKeys atanmamış/ sorunlu KDV-Kontrol kayıtlarını da sayıp herkese

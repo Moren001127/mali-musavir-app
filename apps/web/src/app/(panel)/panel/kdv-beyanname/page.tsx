@@ -662,14 +662,15 @@ function GenelBakisPano({ donem, onSelect }: { donem: string; onSelect: (id: str
       </div>
 
       <div className="overflow-x-auto rounded-2xl border" style={{ borderColor: 'rgba(255,255,255,0.06)' }}>
-        <table className="w-full border-collapse text-left" style={{ minWidth: 920 }}>
+        <table className="w-full border-collapse text-left" style={{ minWidth: 1060 }}>
           <thead>
             <tr className="text-[10px] font-bold uppercase tracking-wider" style={{ color: 'rgba(250,250,249,0.4)', background: 'rgba(255,255,255,0.02)' }}>
               <th className="px-3 py-2.5">Mükellef</th>
               <th className="px-3 py-2.5">Durum</th>
               <th className="px-3 py-2.5 text-right">Hesaplanan</th>
               <th className="px-3 py-2.5 text-right">İndirilecek</th>
-              <th className="px-3 py-2.5 text-right">Devreden</th>
+              <th className="px-3 py-2.5 text-right whitespace-nowrap" title="Önceki dönemden devreden KDV">ÖN.DÖN.DEVREDEN</th>
+              <th className="px-3 py-2.5 text-right whitespace-nowrap" title="Sonraki döneme devreden KDV">SON.DÖN.DEVREDEN</th>
               <th className="px-3 py-2.5 text-right">Ödenecek</th>
               <th className="px-3 py-2.5 text-center">Güven</th>
               <th className="px-3 py-2.5 text-center">KDV1</th>
@@ -689,7 +690,8 @@ function GenelBakisPano({ donem, onSelect }: { donem: string; onSelect: (id: str
                 <td className="px-3 py-2.5"><DurumBadge durum={r.durum} /></td>
                 <td className="px-3 py-2.5 text-right tabular-nums text-[12.5px]" style={{ color: '#fffaf0' }}>{TRY}{fmt(r.hesaplananKdv)}</td>
                 <td className="px-3 py-2.5 text-right tabular-nums text-[12.5px]" style={{ color: '#fffaf0' }}>{TRY}{fmt(r.indirilecekKdv)}</td>
-                <td className="px-3 py-2.5 text-right tabular-nums text-[12.5px]" style={{ color: 'rgba(250,250,249,0.6)' }}>{TRY}{fmt(r.devredenKdv)}</td>
+                <td className="px-3 py-2.5 text-right tabular-nums text-[12.5px]" style={{ color: r.devredenKdv > 0 ? '#5eead4' : 'rgba(250,250,249,0.45)' }}>{TRY}{fmt(r.devredenKdv)}</td>
+                <td className="px-3 py-2.5 text-right tabular-nums text-[12.5px]" style={{ color: r.sonrakiAyaDevreden > 0 ? '#5eead4' : 'rgba(250,250,249,0.45)' }}>{TRY}{fmt(r.sonrakiAyaDevreden)}</td>
                 <td className="px-3 py-2.5 text-right tabular-nums text-[13px] font-bold" style={{ color: r.odenecekKdv > 0 ? STAT_RED : STAT_GREEN }}>{TRY}{fmt(r.odenecekKdv)}</td>
                 <td className="px-3 py-2.5 text-center"><GuvenDot seviye={r.veriGuveniSeviye} puan={r.veriGuveniPuan} /></td>
                 <td className="px-3 py-2.5 text-center">
@@ -713,7 +715,7 @@ function GenelBakisPano({ donem, onSelect }: { donem: string; onSelect: (id: str
             ))}
             {satirlar.length === 0 && (
               <tr>
-                <td colSpan={9} className="px-3 py-10 text-center text-[13px]" style={{ color: 'rgba(250,250,249,0.4)' }}>
+                <td colSpan={10} className="px-3 py-10 text-center text-[13px]" style={{ color: 'rgba(250,250,249,0.4)' }}>
                   Bu filtrede mükellef yok.
                 </td>
               </tr>
