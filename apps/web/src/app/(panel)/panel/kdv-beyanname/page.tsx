@@ -1294,63 +1294,75 @@ function DevredenKdvEditor({ data }: { data: Kdv1 }) {
   const fromBeyanname = devreden?.kaynak === 'beyanname_pdf';
   const [dyy, dmm] = String(data.donem || '').split('-').map((v) => Number(v));
   const oncekiDonem = dmm === 1 ? `${dyy - 1}-12` : `${dyy}-${String(dmm - 1).padStart(2, '0')}`;
-  // Beyannameden gelmediyse (hesaplandı / kayıt yok), kullanıcıya nedenini açıkça söyle.
   const beyannameYok = !fromBeyanname && (devreden?.kaynak === 'hesaplanan' || devreden?.kaynak === 'yok' || devreden?.kaynak === 'beyan_kaydi');
+
   return (
-    <div className="rounded-[18px] border p-6" style={{ background: A_CARD, borderColor: 'rgba(20,184,166,0.18)' }}>
-      <div className="mb-1 flex items-center gap-2.5">
-        <span className="text-[11px] font-bold uppercase tracking-[.12em]" style={{ color: A_FAINT }}>İndirim</span>
-        <span className="font-semibold" style={{ fontFamily: SERIF, fontSize: 18, color: A_INK }}>Önceki Dönemden Devreden</span>
-      </div>
-      <div className="tabular-nums font-bold mt-1" style={{ fontFamily: SERIF, fontSize: 30, color: A_INK }}>{TRY}{fmt(data.sonuc?.devredenKdv || 0)}</div>
-
-      <div
-        className="mt-3 flex gap-2.5 items-start rounded-[9px] px-3 py-2.5 text-[11.5px] leading-relaxed"
-        style={{ background: fromBeyanname ? 'rgba(20,184,166,.08)' : 'rgba(255,250,240,.03)', border: `1px solid ${fromBeyanname ? 'rgba(20,184,166,.22)' : A_LINE}` }}
-      >
-        <FileCheck size={14} style={{ flexShrink: 0, marginTop: 1, color: fromBeyanname ? A_TEAL3 : A_FAINT }} />
-        <span style={{ color: A_MUTED }}>
-          {fromBeyanname && <b style={{ color: A_INK }}>Beyannameler modülünden</b>}{fromBeyanname ? ' · ' : ''}{kaynakLabel}
-        </span>
-      </div>
-      {beyannameYok && (
-        <div className="-mt-1 flex gap-2 items-start text-[11px] leading-relaxed" style={{ color: A_FAINT }}>
-          <AlertTriangle size={12} style={{ flexShrink: 0, marginTop: 2, color: STAT_AMBER }} />
-          <span>
-            <b style={{ color: A_MUTED }}>{oncekiDonem}</b> KDV beyannamesi Beyannameler modülünde bulunamadı; tutar önceki ay verisinden hesaplandı. Beyanname indirilince otomatik oradan gelir.
-          </span>
+    <div
+      className="rounded-[14px] border px-4 py-3 flex items-center gap-4 flex-wrap"
+      style={{ background: A_CARD, borderColor: 'rgba(20,184,166,0.18)' }}
+    >
+      {/* Sol: etiket + büyük tutar */}
+      <div className="flex items-center gap-3 flex-none">
+        <div
+          className="rounded-md px-2 py-1 text-[10px] font-bold uppercase tracking-[.14em]"
+          style={{ background: 'rgba(20,184,166,0.12)', color: A_TEAL3, border: '1px solid rgba(20,184,166,0.25)' }}
+        >
+          İndirim
         </div>
-      )}
+        <div>
+          <div className="text-[11.5px] font-semibold" style={{ color: A_MUTED }}>Önceki Dönemden Devreden</div>
+          <div className="tabular-nums font-bold leading-none mt-1" style={{ fontFamily: SERIF, fontSize: 24, color: A_INK }}>
+            {TRY}{fmt(data.sonuc?.devredenKdv || 0)}
+          </div>
+        </div>
+      </div>
 
-      <div className="mt-4">
-        <label className="block text-[11px] font-bold uppercase tracking-[.1em] mb-1.5" style={{ color: A_FAINT }}>Bu dönem devreden tutarı</label>
-        <div className="flex items-center gap-2 rounded-[11px] px-3.5 max-w-[260px]" style={{ background: A_BG2, border: `1px solid ${A_LINE2}` }}>
+      {/* Orta: kaynak/uyarı (esnek alan) */}
+      <div className="flex-1 min-w-[200px] flex items-center gap-2 text-[11.5px] leading-snug">
+        {beyannameYok ? (
+          <>
+            <AlertTriangle size={13} style={{ flexShrink: 0, color: STAT_AMBER }} />
+            <span style={{ color: A_MUTED }}>
+              <b style={{ color: A_INK }}>{oncekiDonem}</b> beyannamesi bulunamadı; önceki ay verisinden hesaplandı. İnerse otomatik gelir.
+            </span>
+          </>
+        ) : (
+          <>
+            <FileCheck size={13} style={{ flexShrink: 0, color: fromBeyanname ? A_TEAL3 : A_FAINT }} />
+            <span style={{ color: A_MUTED }}>
+              {fromBeyanname && <b style={{ color: A_INK }}>Beyannameler modülünden · </b>}{kaynakLabel}
+            </span>
+          </>
+        )}
+      </div>
+
+      {/* Sağ: input + kaydet + sonraki aya */}
+      <div className="flex items-center gap-2 flex-wrap">
+        <div className="flex items-center gap-1.5 rounded-[8px] px-3 py-2" style={{ background: A_BG2, border: `1px solid ${A_LINE2}` }}>
+          <span className="text-[10px] font-bold uppercase tracking-[.1em]" style={{ color: A_FAINT }}>Bu dönem</span>
           <span className="font-bold" style={{ color: A_FAINT }}>{TRY}</span>
           <input
             value={value}
             onChange={(e) => setValue(e.target.value)}
-            className="bg-transparent border-none outline-none w-full py-3 tabular-nums"
-            style={{ color: A_INK, fontSize: 17, fontWeight: 600 }}
+            className="bg-transparent border-none outline-none tabular-nums"
+            style={{ color: A_INK, fontSize: 14, fontWeight: 600, width: 100 }}
           />
         </div>
-      </div>
-
-      <div className="mt-4 flex gap-2.5 flex-wrap">
         <button
           onClick={() => saveMut.mutate({ tutar: parseMoneyInput(value), mode: 'onceki' })}
           disabled={saveMut.isPending}
-          className="inline-flex items-center gap-2 text-[13px] font-semibold rounded-[10px] px-3.5 py-2.5 disabled:opacity-50"
+          className="inline-flex items-center gap-1.5 text-[12px] font-semibold rounded-[8px] px-3 py-2 disabled:opacity-50"
           style={{ background: 'linear-gradient(135deg,#14b8a6,#0d9488)', color: '#04201c' }}
         >
-          <CheckCircle2 size={14} /> Bu dönem devredenini kaydet
+          <CheckCircle2 size={13} /> Kaydet
         </button>
         <button
           onClick={() => saveMut.mutate({ tutar: sonraki, mode: 'sonraki' })}
           disabled={saveMut.isPending || sonraki <= 0}
-          className="inline-flex items-center gap-1.5 text-[13px] font-semibold rounded-[10px] px-3.5 py-2.5 border disabled:opacity-40"
+          className="inline-flex items-center gap-1.5 text-[12px] font-semibold rounded-[8px] px-3 py-2 border disabled:opacity-40"
           style={{ background: 'transparent', borderColor: A_LINE2, color: A_MUTED }}
         >
-          Sonraki aya aktar: <b className="tabular-nums" style={{ color: A_INK }}>{TRY}{fmt(sonraki)}</b>
+          Sonraki aya: <b className="tabular-nums" style={{ color: A_INK }}>{TRY}{fmt(sonraki)}</b>
         </button>
       </div>
     </div>
@@ -1908,24 +1920,40 @@ function LucaCrossDetayli({
 function LucaCrossCard({ hesap, mihsap, luca, fark }: { hesap: string; mihsap: number | null; luca: number | null; fark: number | null }) {
   const farkliMi = fark !== null && Math.abs(fark) > 0.01;
   const farkColor = fark == null ? 'rgba(250,250,249,0.4)' : farkliMi ? '#fca5a5' : '#5fcf8e';
+  const cellB = '1px solid rgba(255,255,255,0.08)';
+  const borderClr = farkliMi ? 'rgba(239,107,107,0.32)' : 'rgba(255,255,255,0.08)';
+  const farkBg = fark == null ? 'rgba(255,255,255,0.02)' : farkliMi ? 'rgba(239,107,107,0.07)' : 'rgba(95,207,142,0.05)';
   return (
-    <div className="rounded-xl border p-3" style={{ background: 'rgba(0,0,0,0.2)', borderColor: farkliMi ? 'rgba(239,107,107,0.3)' : 'rgba(255,255,255,0.06)' }}>
-      <div className="flex items-center justify-between">
-        <span className="text-[11.5px] font-bold" style={{ color: '#fafaf9' }}>{hesap}</span>
+    <div className="rounded-xl border overflow-hidden" style={{ background: 'rgba(0,0,0,0.22)', borderColor: borderClr }}>
+      <div
+        className="px-3 py-2 flex items-center justify-between"
+        style={{ borderBottom: '1px solid rgba(255,255,255,0.08)', background: 'rgba(255,255,255,0.025)' }}
+      >
+        <span className="text-[12px] font-bold" style={{ color: '#fafaf9' }}>{hesap}</span>
         {fark == null ? null : farkliMi ? <AlertCircle size={13} style={{ color: '#fca5a5' }} /> : <CheckCircle2 size={13} style={{ color: '#5fcf8e' }} />}
       </div>
-      <div className="mt-2 flex items-center justify-between text-[11px]">
-        <span style={{ color: 'rgba(250,250,249,0.45)' }}>Mihsap</span>
-        {mihsap == null ? <span style={{ color: 'rgba(250,250,249,0.38)' }}>—</span> : <MoneyText value={mihsap} size={12} />}
-      </div>
-      <div className="mt-1 flex items-center justify-between text-[11px]">
-        <span style={{ color: 'rgba(250,250,249,0.45)' }}>Luca</span>
-        {luca == null ? <span style={{ color: 'rgba(250,250,249,0.38)' }}>—</span> : <MoneyText value={luca} size={12} />}
-      </div>
-      <div className="mt-2 flex items-center justify-between border-t pt-2 text-[11px]" style={{ borderColor: 'rgba(255,255,255,0.06)' }}>
-        <span style={{ color: 'rgba(250,250,249,0.55)' }}>Fark</span>
-        {fark == null ? <span style={{ color: farkColor }}>—</span> : <MoneyText value={fark} color={farkColor} strong size={12} />}
-      </div>
+      <table className="w-full text-[12px]" style={{ borderCollapse: 'collapse' }}>
+        <tbody>
+          <tr>
+            <td className="px-3 py-2 font-semibold" style={{ border: cellB, color: 'rgba(250,250,249,0.55)', width: '40%' }}>Mihsap</td>
+            <td className="px-3 py-2 text-right tabular-nums" style={{ border: cellB, color: '#fafaf9' }}>
+              {mihsap == null ? <span style={{ color: 'rgba(250,250,249,0.35)' }}>—</span> : <MoneyText value={mihsap} size={12} />}
+            </td>
+          </tr>
+          <tr>
+            <td className="px-3 py-2 font-semibold" style={{ border: cellB, color: 'rgba(250,250,249,0.55)' }}>Luca</td>
+            <td className="px-3 py-2 text-right tabular-nums" style={{ border: cellB, color: '#fafaf9' }}>
+              {luca == null ? <span style={{ color: 'rgba(250,250,249,0.35)' }}>—</span> : <MoneyText value={luca} size={12} />}
+            </td>
+          </tr>
+          <tr style={{ background: farkBg }}>
+            <td className="px-3 py-2 font-bold" style={{ border: cellB, color: '#fafaf9', borderTop: '2px solid rgba(255,255,255,0.12)' }}>Fark</td>
+            <td className="px-3 py-2 text-right tabular-nums" style={{ border: cellB, borderTop: '2px solid rgba(255,255,255,0.12)' }}>
+              {fark == null ? <span style={{ color: farkColor }}>—</span> : <MoneyText value={fark} color={farkColor} strong size={13} />}
+            </td>
+          </tr>
+        </tbody>
+      </table>
     </div>
   );
 }
