@@ -1357,8 +1357,7 @@ function BeyannamelerTab({ taxpayerId }: { taxpayerId: string }) {
         </Link>
       </div>
 
-      <div className="overflow-x-auto">
-        <div className="min-w-[720px] space-y-2">
+      <div className="space-y-2">
           {/* Sütun başlıkları */}
           <div className="grid items-center gap-3 px-3 pb-1 text-[10px] font-bold uppercase tracking-wider" style={{ color: FAINT, gridTemplateColumns: BEYAN_COLS }}>
             <span>Beyanname Türü</span>
@@ -1396,7 +1395,6 @@ function BeyannamelerTab({ taxpayerId }: { taxpayerId: string }) {
               </div>
             );
           })}
-        </div>
       </div>
 
       {mounted && preview && createPortal((
@@ -1486,7 +1484,8 @@ function fmtTutar(n: number): string {
 }
 
 // Beyanname tablosu sütun şablonu: Tür · Dönem · Tür(belge) · Tutar · İşlem
-const BEYAN_COLS = '150px minmax(0,1fr) 120px 130px 128px';
+// İşlem = max-content (buton hiç kırpılmaz); diğerleri daralabilir → taşma yok.
+const BEYAN_COLS = 'minmax(110px,150px) minmax(0,1fr) minmax(90px,110px) minmax(90px,120px) max-content';
 
 // ============================================================
 // YARDIMCI KOMPONENTLER
