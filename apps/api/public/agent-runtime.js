@@ -4,7 +4,7 @@
 */
 (function () {
   // Agent versiyon — UI'da gösterilir, debug için kritik
-  const AGENT_VERSION = '1.40.0';
+  const AGENT_VERSION = '1.40.1';
   const AGENT_INSTANCE_ID = 'mai_' + Date.now().toString(36) + '_' + Math.random().toString(36).slice(2, 8);
 
   // === VERSION-AWARE RELOAD ===
@@ -11855,22 +11855,49 @@
     } catch { return {}; }
   }
 
-  async function getFaturaImageBase64(maxWaitMs = 4500) {
+  function canvasHasReadableInk(canvas) {
+    try {
+      const w = Math.min(80, canvas.width || 0);
+      const h = Math.min(80, canvas.height || 0);
+      if (w < 10 || h < 10) return false;
+      const probe = document.createElement('canvas');
+      probe.width = w;
+      probe.height = h;
+      const ctx = probe.getContext('2d', { willReadFrequently: true });
+      ctx.drawImage(canvas, 0, 0, w, h);
+      const data = ctx.getImageData(0, 0, w, h).data;
+      let ink = 0;
+      let seen = 0;
+      for (let i = 0; i < data.length; i += 16) {
+        const a = data[i + 3];
+        if (a < 16) continue;
+        seen++;
+        const avg = (data[i] + data[i + 1] + data[i + 2]) / 3;
+        if (avg < 245) ink++;
+      }
+      if (seen < 20) return false;
+      return ink / seen > 0.015;
+    } catch {
+      return true;
+    }
+  }
+
+  async function getFaturaImageBase64(maxWaitMs = 7000) {
     // Mihsap fatura editöründe görsel CANVAS elementlerinde render ediliyor.
     // Birden fazla sayfa varsa hepsini dikey birleştir.
     const t0 = Date.now();
     while (Date.now() - t0 < maxWaitMs) {
       const canvases = [...document.querySelectorAll('canvas')].filter(
-        (c) => c.width > 200 && c.height > 200,
+        (c) => c.width > 200 && c.height > 200 && canvasHasReadableInk(c),
       );
       if (canvases.length > 0) {
         try {
-          // Multi-page invoices can carry totals or notes after page 1; cap pages to keep vision cost bounded.
+          // Multi-page invoices can carry totals or notes after page 1.
           const maxPages = Math.max(1, Math.min(Number(window.__morenAgent?.maxOcrPages || 3), 3));
           const pages = canvases.slice(0, maxPages);
-          // v1.36.64: Claude Vision maliyetini dusurmek icin gereksiz buyuk gorsel gonderme.
-          // 900px fatura satirlari icin yeterli, 1100px'e gore daha az image token uretir.
-          const targetW = Math.min(pages[0].width, 900);
+          // Max akisi gorseli dogrudan gormez; backend OCR yapar. OCR icin 900px fazla kucuk
+          // kalabiliyor, bu yuzden fatura metnini koruyacak daha yuksek genislik kullan.
+          const targetW = Math.min(Math.max(pages[0].width, 1200), 1800);
           const totalH = pages.reduce(
             (s, c) => s + Math.round(targetW * (c.height / c.width)),
             0,
@@ -11885,9 +11912,42 @@
             ctx.drawImage(p, 0, y, targetW, h);
             y += h;
           }
-          return out.toDataURL('image/jpeg', 0.58).split(',')[1];
+          return out.toDataURL('image/jpeg', 0.9).split(',')[1];
         } catch (e) {
           console.warn('[Moren] canvas merge fail', e);
+        }
+      }
+      const imgs = [...document.querySelectorAll('img')].filter((img) => {
+        const w = img.naturalWidth || img.width || 0;
+        const h = img.naturalHeight || img.height || 0;
+        const src = String(img.currentSrc || img.src || '');
+        return w > 300 && h > 300 && !/logo|avatar|icon|spinner/i.test(src);
+      });
+      if (imgs.length > 0) {
+        try {
+          const maxPages = Math.max(1, Math.min(Number(window.__morenAgent?.maxOcrPages || 3), 3));
+          const pages = imgs.slice(0, maxPages);
+          const targetW = Math.min(Math.max(pages[0].naturalWidth || pages[0].width, 1200), 1800);
+          const totalH = pages.reduce((s, img) => {
+            const w = img.naturalWidth || img.width;
+            const h = img.naturalHeight || img.height;
+            return s + Math.round(targetW * (h / w));
+          }, 0);
+          const out = document.createElement('canvas');
+          out.width = targetW;
+          out.height = totalH;
+          const ctx = out.getContext('2d');
+          let y = 0;
+          for (const img of pages) {
+            const w = img.naturalWidth || img.width;
+            const h0 = img.naturalHeight || img.height;
+            const h = Math.round(targetW * (h0 / w));
+            ctx.drawImage(img, 0, y, targetW, h);
+            y += h;
+          }
+          return out.toDataURL('image/jpeg', 0.9).split(',')[1];
+        } catch (e) {
+          console.warn('[Moren] image merge fail', e);
         }
       }
       await sleep(200); // v1.36.20 hızlandırma: 500 → 200

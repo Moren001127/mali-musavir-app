@@ -251,8 +251,8 @@ export class AgentEventsService {
     const ocrText = (ocr?.text || '').trim();
     const prompt =
       ocrText.length >= 30
-        ? `${userText}\n\nGÖRÜNTÜ YERİNE aşağıdaki fatura OCR metnini kullan. Metinde olmayan bilgiyi UYDURMA; emin değilsen "emin_degil" (işletme için "emin":false) dön.\n\n=== FATURA OCR METNİ ===\n${ocrText.slice(0, 14000)}`
-        : `${userText}\n\n(Not: Fatura OCR metni alınamadı. Eldeki üst bilgiyle güvenle karar veremiyorsan "emin_degil"/"emin":false dön — tahmin etme.)`;
+        ? `${userText}\n\nGÖRÜNTÜ YERİNE aşağıdaki fatura OCR metnini kullan. Ekran/Mihsap üst bilgilerini sadece karşılaştırma hedefi olarak gör; JSON'daki tarih, belgeNo, belgeTuru, cari, kdvOrani, ocrToplam, ocrMatrah ve ocrKdvTutari alanlarını yalnızca FATURA OCR METNİ'nden doldur. OCR metninde olmayan bilgiyi UYDURMA, ekran bilgisinden kopyalama. Net çelişki görürsen atla; okuyamadığın alanı null bırak.\n\n=== FATURA OCR METNİ ===\n${ocrText.slice(0, 14000)}`
+        : `${userText}\n\n(Not: Fatura OCR metni alınamadı. Ekran/Mihsap üst bilgisini fatura verisi gibi kabul etme. Belgeyi okuyamadığın için güvenli karar veremiyorsan "emin_degil"/"emin":false dön; tahmin etme.)`;
 
     // Varsayılan Haiku (hız parite); daha yüksek isabet için MIHSAP_MAX_MODEL=claude-sonnet-4-6.
     const model = process.env.MIHSAP_MAX_MODEL || MAX_MODEL_CHEAP;
