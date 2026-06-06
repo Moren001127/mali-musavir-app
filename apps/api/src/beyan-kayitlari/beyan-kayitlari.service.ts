@@ -1313,23 +1313,13 @@ export class BeyanKayitlariService {
     let tutar: number | null = null;
     try {
       const buf = await this.storage.getBuffer(key);
-      const text = await this.pdfText(buf);
-      const guess = this.extractSonrakiDonemeDevreden(text);
-      // [KDVDEVR-DUMP] GEÇİCİ — pdf-parse metnindeki para tokenlarının sırası + bağlamı.
-      // 59.084,85'in PDF metninde nerede durduğunu görüp doğru çıkarımı yazmak için.
-      const re = /\d{1,3}(?:\.\d{3})*,\d{2}|\d+,\d{2}/g;
-      const seq: string[] = [];
-      let mm: RegExpExecArray | null;
-      let n = 0;
-      while ((mm = re.exec(text)) && n < 60) {
-        seq.push(`${mm[0]}<=[${text.slice(Math.max(0, mm.index - 36), mm.index)}]`);
-        n++;
-      }
-      this.logger.log(`[KDVDEVR-DUMP] ${taxpayerId} ${donem} guess=${guess} SEQ: ${seq.join(' ## ')}`);
-      // GEÇİCİ: doğru regex yazılana kadar yanlış tutar gösterme → güvenli fallback
-      tutar = null;
+      // Tablo (koordinat/ızgara) tabanlı çıkarım: GİB beyanname PDF'inde etiket ve
+      // değer DÜZ METİN akışında kopuk geliyor (regex güvenilmez), bu yüzden
+      // getTable hücre ızgarasıyla "Sonraki Döneme Devreden" SATIRINDAKİ tutarı alırız.
+      tutar = await this.extractSonrakiViaTable(buf, { taxpayerId, donem });
+      this.logger.log(`[KDVDEVR] ${taxpayerId} ${donem}: tablo extract = ${tutar == null ? 'BULUNAMADI' : tutar}`);
     } catch (e: any) {
-      this.logger.warn(`[KDVDEVR] ${taxpayerId} ${donem}: PDF okunamadi [${kayit.id}]: ${e?.message || e}`);
+      this.logger.warn(`[KDVDEVR] ${taxpayerId} ${donem}: PDF/tablo okunamadi [${kayit.id}]: ${e?.message || e}`);
     }
     this.devredenPdfCache.set(kayit.id, tutar);
     return tutar == null ? null : { tutar, beyanKaydiId: kayit.id };
@@ -1352,6 +1342,64 @@ export class BeyanKayitlariService {
     // Yedek: değer sütunu etiketlerden ÖNCE geldiyse (ters sıralama), etiketten
     // önceki son tutarı dene.
     return this.lastTurkishMoney(compact.slice(0, m.index));
+  }
+
+  /**
+   * "Sonraki Döneme Devreden KDV" tutarını PDF TABLO ızgarasından okur (koordinat
+   * tabanlı). Düz metinde etiket↔değer hizası bozuk geldiği için en güvenilir yol.
+   * Tablo bulunamazsa null → çağıran güvenli fallback'e düşer (yanlış değer GÖSTERMEZ).
+   */
+  private async extractSonrakiViaTable(
+    buffer: Buffer,
+    dbg?: { taxpayerId: string; donem: string },
+  ): Promise<number | null> {
+    let parser: any;
+    try {
+      parser = new PDFParse({ data: buffer });
+      const res: any = await parser.getTable();
+      const rows: string[][] = [];
+      const pushTables = (tables: any) => {
+        for (const t of tables || []) {
+          for (const row of t || []) {
+            if (Array.isArray(row)) rows.push(row.map((c: any) => String(c ?? '').replace(/\s+/g, ' ').trim()));
+          }
+        }
+      };
+      for (const p of res?.pages || []) pushTables(p?.tables);
+      pushTables(res?.mergedTables);
+
+      let found: number | null = null;
+      const hits: string[] = [];
+      for (const row of rows) {
+        const joined = row.join(' | ');
+        const low = joined.toLocaleLowerCase('tr-TR');
+        if (low.includes('devreden') || low.includes('eger vergisi') || low.includes('ğer vergisi')) {
+          hits.push(joined);
+        }
+        if (/sonraki\s+d[öo]neme\s+devreden/i.test(joined)) {
+          for (let i = row.length - 1; i >= 0; i--) {
+            const amt = this.lastTurkishMoney(row[i]);
+            if (amt != null) { found = amt; break; }
+          }
+        }
+      }
+      if (dbg) {
+        this.logger.log(
+          `[KDVDEVR-TBL] ${dbg.taxpayerId} ${dbg.donem} rows=${rows.length} found=${found} HITS: ${hits.slice(0, 14).join('  ##  ')}`,
+        );
+      }
+      return found;
+    } catch (e: any) {
+      if (dbg) this.logger.warn(`[KDVDEVR-TBL] ${dbg.taxpayerId} ${dbg.donem} getTable hata: ${e?.message || e}`);
+      return null;
+    } finally {
+      try {
+        const d = parser?.destroy;
+        if (typeof d === 'function') await d.call(parser).catch(() => {});
+      } catch {
+        /* yut */
+      }
+    }
   }
 
   private async pdfText(buffer: Buffer): Promise<string> {
