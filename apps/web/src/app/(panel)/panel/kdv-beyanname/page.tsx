@@ -997,8 +997,12 @@ function KdvWaterfall({ sonuc }: { sonuc: Kdv1['sonuc'] }) {
   const odenecek = sonuc.odenecekKdv > 0;
   const resultVal = odenecek ? sonuc.odenecekKdv : sonuc.sonrakiAyaDevreden;
   const resultLabel = odenecek ? 'Ödenecek KDV' : 'Sonraki Aya Devreden';
-  const resultColor = odenecek ? STAT_RED : STAT_GREEN;
-  const resultRgb = odenecek ? '239,107,107' : '95,207,142';
+  // Renk mantığı (kullanıcı onayı): akış adımları NÖTR (iyi/kötü değil — sadece +/− yön);
+  // renk SADECE sonuçta anlamlı. Ödenecek = ALTIN (normal sonuç, alarm değil),
+  // Devreden = yeşil (alacak kalır). Kırmızı yalnız gerçek sorunlarda (Veri Güveni).
+  const GOLD = '#f0b755';
+  const resultColor = odenecek ? GOLD : STAT_GREEN;
+  const resultRgb = odenecek ? '240,183,85' : '95,207,142';
 
   // Akış adımları — başlangıç (satış) → çıkarımlar → sonuç.
   const steps: Array<{
@@ -1008,20 +1012,19 @@ function KdvWaterfall({ sonuc }: { sonuc: Kdv1['sonuc'] }) {
     { nm: 'Satış KDV', sub: 'Hesaplanan', val: sonuc.hesaplananKdv, sign: '+', op: '', kind: 'pos', Ico: Receipt },
     { nm: 'İndirilecek', sub: 'Alış KDV', val: sonuc.indirilecekKdv, sign: '−', op: '−', kind: 'neg', Ico: Download },
     { nm: 'Önceki Devreden', sub: 'Geçmiş dönem', val: sonuc.devredenKdv, sign: '−', op: '−', kind: 'neg', Ico: ArrowLeft },
-    { nm: resultLabel, sub: 'Bu dönem', val: resultVal, sign: '', op: '=', kind: 'result', Ico: odenecek ? AlertTriangle : CheckCircle2 },
+    { nm: resultLabel, sub: 'Bu dönem', val: resultVal, sign: '', op: '=', kind: 'result', Ico: odenecek ? Wallet : CheckCircle2 },
   ];
 
   const tileTheme = (kind: 'pos' | 'neg' | 'result') => {
-    if (kind === 'pos')
-      return { val: A_TEAL3, bd: 'rgba(45,212,191,0.30)', bg: 'rgba(45,212,191,0.06)', icoBg: 'linear-gradient(135deg,#2dd4bf,#0d9488)', icoClr: '#04201c' };
-    if (kind === 'neg')
-      return { val: '#fca5a5', bd: 'rgba(239,107,107,0.22)', bg: 'rgba(239,107,107,0.045)', icoBg: A_BG2, icoClr: '#fca5a5' };
+    // pos & neg → NÖTR (renk yok). Yalnız sonuç renkli.
+    if (kind !== 'result')
+      return { val: A_INK, bd: A_LINE2, bg: 'rgba(255,255,255,0.025)', icoBg: A_BG2, icoClr: A_MUTED };
     return {
       val: resultColor,
       bd: `rgba(${resultRgb},0.5)`,
-      bg: `rgba(${resultRgb},0.10)`,
-      icoBg: `linear-gradient(135deg, ${resultColor}, ${odenecek ? '#c64545' : '#3fae6e'})`,
-      icoClr: '#fff',
+      bg: `rgba(${resultRgb},0.12)`,
+      icoBg: `linear-gradient(135deg, ${resultColor}, ${odenecek ? '#c9962f' : '#3fae6e'})`,
+      icoClr: odenecek ? '#1a1205' : '#04201c',
     };
   };
 
@@ -1097,7 +1100,7 @@ function KdvWaterfall({ sonuc }: { sonuc: Kdv1['sonuc'] }) {
       <div className="flex gap-5 flex-wrap mt-5 pt-4 border-t text-[12.5px]" style={{ borderColor: A_LINE, color: A_MUTED }}>
         <span>Toplanan KDV <b className="tabular-nums ml-1" style={{ color: A_INK }}>{TRY}{fmt(sonuc.hesaplananKdv)}</b></span>
         <span style={{ color: A_FAINT }}>·</span>
-        <span>Düşülen <b className="tabular-nums ml-1" style={{ color: '#fca5a5' }}>−{TRY}{fmt(Math.round((sonuc.indirilecekKdv + sonuc.devredenKdv) * 100) / 100)}</b></span>
+        <span>Düşülen <b className="tabular-nums ml-1" style={{ color: A_INK }}>−{TRY}{fmt(Math.round((sonuc.indirilecekKdv + sonuc.devredenKdv) * 100) / 100)}</b></span>
         <span style={{ color: A_FAINT }}>·</span>
         <span>{odenecek ? 'Net ödenecek' : 'Sonraki aya'} <b className="tabular-nums ml-1" style={{ color: resultColor }}>{TRY}{fmt(resultVal)}</b></span>
       </div>
@@ -1921,64 +1924,71 @@ function OranTablosu({
   altSatir?: Array<{ ad: string; v: { matrah: number; kdv: number; adet: number } }>;
 }) {
   const safeOranlar = cleanOranRows(oranlar || []);
-  const cellB = '1px solid rgba(255,255,255,0.07)';
-  const totalBorder = `2px solid ${renk}55`;
+  const grid = '1px solid rgba(255,255,255,0.10)';      // dikey+yatay grid çizgileri (belirgin)
   return (
-    <div className="rounded-2xl border overflow-hidden" style={{ background: 'rgba(255,255,255,0.02)', borderColor: 'rgba(255,255,255,0.08)' }}>
-      {/* Başlık şeridi */}
-      <div className="flex items-center justify-between gap-3 px-4 py-3" style={{ borderBottom: cellB, background: `${renk}0d` }}>
+    <div
+      className="rounded-2xl overflow-hidden"
+      style={{ background: '#13100d', border: '1px solid rgba(255,255,255,0.12)', borderLeft: `4px solid ${renk}`, boxShadow: '0 16px 40px -28px rgba(0,0,0,.8)' }}
+    >
+      {/* Dolgulu renkli başlık şeridi */}
+      <div
+        className="flex items-center justify-between gap-3 px-4 py-3"
+        style={{ background: `linear-gradient(90deg, ${renk}33, ${renk}0a)`, borderBottom: `1px solid ${renk}40` }}
+      >
         <div className="flex items-center gap-2.5">
-          <span className="h-2.5 w-2.5 rounded-full" style={{ background: renk, boxShadow: `0 0 8px ${renk}` }} />
-          <h3 className="text-[13.5px] font-semibold" style={{ color: '#fafaf9' }}>{baslik}</h3>
+          <span className="h-3 w-3 rounded-full" style={{ background: renk, boxShadow: `0 0 12px ${renk}` }} />
+          <h3 className="text-[14.5px] font-bold tracking-wide" style={{ color: '#fff' }}>{baslik}</h3>
         </div>
-        <span className="rounded-md border px-2 py-0.5 text-[11px] font-bold tabular-nums" style={{ borderColor: 'rgba(255,255,255,0.12)', color: 'rgba(250,250,249,0.65)' }}>{adet} fatura</span>
+        <span className="rounded-full px-3 py-1 text-[11.5px] font-bold tabular-nums" style={{ background: `${renk}29`, color: renk, border: `1px solid ${renk}66` }}>{adet} fatura</span>
       </div>
 
       {safeOranlar.length === 0 ? (
-        <div className="py-10 text-center text-[12.5px]" style={{ color: 'rgba(250,250,249,0.4)' }}>
+        <div className="py-12 text-center text-[13px]" style={{ color: 'rgba(255,255,255,0.4)' }}>
           Bu dönem için kayıt yok
         </div>
       ) : (
-        <table className="w-full text-[12.5px]" style={{ borderCollapse: 'collapse' }}>
+        <table className="w-full text-[13.5px]" style={{ borderCollapse: 'collapse' }}>
           <thead>
-            <tr style={{ color: 'rgba(250,250,249,0.5)', background: 'rgba(255,255,255,0.025)' }}>
-              <th className="text-left px-4 py-2 font-semibold uppercase tracking-wider text-[10.5px]" style={{ border: cellB }}>Oran</th>
-              <th className="text-right px-4 py-2 font-semibold uppercase tracking-wider text-[10.5px]" style={{ border: cellB }}>Matrah</th>
-              <th className="text-right px-4 py-2 font-semibold uppercase tracking-wider text-[10.5px]" style={{ border: cellB }}>KDV</th>
-              <th className="text-right px-3 py-2 font-semibold uppercase tracking-wider text-[10.5px]" style={{ border: cellB, width: 56 }}>Adet</th>
+            <tr style={{ color: 'rgba(255,255,255,0.5)', background: 'rgba(0,0,0,0.4)' }}>
+              <th className="text-left px-4 py-2.5 font-bold uppercase tracking-[.12em] text-[10.5px]" style={{ border: grid }}>Oran</th>
+              <th className="text-right px-4 py-2.5 font-bold uppercase tracking-[.12em] text-[10.5px]" style={{ border: grid }}>Matrah</th>
+              <th className="text-right px-4 py-2.5 font-bold uppercase tracking-[.12em] text-[10.5px]" style={{ border: grid }}>KDV</th>
+              <th className="text-right px-3 py-2.5 font-bold uppercase tracking-[.12em] text-[10.5px]" style={{ border: grid, width: 58 }}>Adet</th>
             </tr>
           </thead>
-          <tbody style={{ color: '#fafaf9' }}>
-            {safeOranlar.map((o) => (
-              <tr key={o.oran}>
-                <td className="px-4 py-2.5" style={{ border: cellB }}>
-                  <span className="inline-flex items-center rounded-md px-2 py-0.5 text-[12px] font-bold" style={{ background: `${renk}22`, color: renk }}>%{o.oran}</span>
+          <tbody style={{ color: '#fff' }}>
+            {safeOranlar.map((o, idx) => (
+              <tr key={o.oran} style={{ background: idx % 2 ? 'rgba(255,255,255,0.022)' : 'transparent' }}>
+                <td className="px-4 py-3" style={{ border: grid }}>
+                  <span className="inline-flex items-center rounded-lg px-2.5 py-1 text-[13px] font-extrabold" style={{ background: renk, color: '#08130f' }}>%{o.oran}</span>
                 </td>
-                <td className="text-right px-4 py-2.5 tabular-nums" style={{ border: cellB }}><MoneyText value={o.matrah} size={12.5} /></td>
-                <td className="text-right px-4 py-2.5 tabular-nums" style={{ border: cellB }}><MoneyText value={o.kdv} color={renk} strong size={12.5} /></td>
-                <td className="text-right px-3 py-2.5 tabular-nums" style={{ border: cellB, color: 'rgba(250,250,249,0.5)' }}>{o.adet}</td>
+                <td className="text-right px-4 py-3 tabular-nums" style={{ border: grid }}><MoneyText value={o.matrah} size={14} /></td>
+                <td className="text-right px-4 py-3 tabular-nums" style={{ border: grid }}><MoneyText value={o.kdv} color={renk} strong size={14.5} /></td>
+                <td className="text-right px-3 py-3 tabular-nums text-[13px]" style={{ border: grid, color: 'rgba(255,255,255,0.5)' }}>{o.adet}</td>
               </tr>
             ))}
-            <tr style={{ background: `${renk}14` }}>
-              <td className="px-4 py-2.5 font-extrabold tracking-wide" style={{ border: cellB, borderTop: totalBorder, color: renk }}>TOPLAM</td>
-              <td className="text-right px-4 py-2.5 tabular-nums" style={{ border: cellB, borderTop: totalBorder }}><MoneyText value={toplamMatrah} strong size={13} /></td>
-              <td className="text-right px-4 py-2.5 tabular-nums" style={{ border: cellB, borderTop: totalBorder }}><MoneyText value={toplamKdv} color={renk} strong size={13} /></td>
-              <td className="px-3 py-2.5" style={{ border: cellB, borderTop: totalBorder }} />
-            </tr>
           </tbody>
+          <tfoot>
+            <tr style={{ background: `linear-gradient(90deg, ${renk}3d, ${renk}1a)` }}>
+              <td className="px-4 py-3.5 text-[13px] font-extrabold tracking-[.08em]" style={{ border: grid, borderTop: `2px solid ${renk}`, color: renk }}>TOPLAM</td>
+              <td className="text-right px-4 py-3.5 tabular-nums" style={{ border: grid, borderTop: `2px solid ${renk}` }}><MoneyText value={toplamMatrah} strong size={15} /></td>
+              <td className="text-right px-4 py-3.5 tabular-nums" style={{ border: grid, borderTop: `2px solid ${renk}` }}><MoneyText value={toplamKdv} color={renk} strong size={16} /></td>
+              <td className="px-3 py-3.5" style={{ border: grid, borderTop: `2px solid ${renk}` }} />
+            </tr>
+          </tfoot>
         </table>
       )}
 
       {/* Tevkifat alt kırılım (yalnız alış) */}
       {altSatir && (
-        <div className="grid grid-cols-2" style={{ borderTop: cellB }}>
+        <div className="grid grid-cols-2" style={{ borderTop: grid }}>
           {altSatir.map((a, i) => (
-            <div key={a.ad} className="px-4 py-2.5" style={{ borderRight: i === 0 ? cellB : undefined }}>
+            <div key={a.ad} className="px-4 py-3" style={{ borderRight: i === 0 ? grid : undefined, background: 'rgba(0,0,0,0.28)' }}>
               <div className="flex items-center justify-between">
-                <span className="text-[11px]" style={{ color: 'rgba(250,250,249,0.5)' }}>{a.ad}</span>
-                <span className="text-[10.5px] tabular-nums" style={{ color: 'rgba(250,250,249,0.4)' }}>{a.v.adet}×</span>
+                <span className="text-[11.5px] font-semibold" style={{ color: 'rgba(255,255,255,0.55)' }}>{a.ad}</span>
+                <span className="text-[10.5px] tabular-nums" style={{ color: 'rgba(255,255,255,0.4)' }}>{a.v.adet}×</span>
               </div>
-              <div className="mt-1"><MoneyText value={a.v.kdv} color="rgba(250,250,249,0.82)" size={13} /></div>
+              <div className="mt-1"><MoneyText value={a.v.kdv} color="#fff" size={14} /></div>
             </div>
           ))}
         </div>
