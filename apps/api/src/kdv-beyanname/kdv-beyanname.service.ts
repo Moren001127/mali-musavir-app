@@ -467,21 +467,29 @@ export class KdvBeyannameService {
             const k1 = cfg.kdv1Period
               ? await this.kdv1OnHazirlik({ tenantId, mukellefId: m.id, donem })
               : null;
-            const faturaAdet = k1 ? k1.satis.faturaAdet + k1.alis.faturaAdet : 0;
+            // GERÇEK fatura/kalem sayısı: yalnız beyana katkı veren oran kalemleri.
+            // (allDocKeys atanmamış/ sorunlu KDV-Kontrol kayıtlarını da sayıp herkese
+            //  hayalet "fatura" sızdırıyordu — onu kullanmıyoruz.)
+            const realAdet = k1
+              ? [...k1.satis.oranlar, ...k1.alis.oranlar].reduce((s, o) => s + (o.adet || 0), 0)
+              : 0;
+            const hesaplanan = k1?.sonuc.hesaplananKdv ?? 0;
+            const indirilecek = k1?.sonuc.indirilecekKdv ?? 0;
+            // KDV2 tespiti: SADECE OCR'dan okunan tevkifatlı alış faturası varsa.
             const tevkifatliAdet = k1 ? k1.alis.tevkifatli.adet : 0;
             const tevkifatliKdv = k1 ? k1.alis.tevkifatli.kdv : 0;
-            const durum: 'hazir' | 'eksik' | 'bos' =
-              !k1 || faturaAdet === 0
-                ? 'bos'
-                : k1.kaliteRapor.tahminFaturaOrani > 0.5
-                  ? 'eksik'
-                  : 'hazir';
+            const bosMu = !k1 || (realAdet === 0 && hesaplanan === 0 && indirilecek === 0);
+            const durum: 'hazir' | 'eksik' | 'bos' = bosMu
+              ? 'bos'
+              : k1!.kaliteRapor.tahminFaturaOrani > 0.5
+                ? 'eksik'
+                : 'hazir';
             return {
               mukellefId: m.id,
               ad: k1 ? k1.mukellefAd : this.formatMukellefAd(m),
-              faturaAdet,
-              hesaplananKdv: k1?.sonuc.hesaplananKdv ?? 0,
-              indirilecekKdv: k1?.sonuc.indirilecekKdv ?? 0,
+              faturaAdet: realAdet,
+              hesaplananKdv: hesaplanan,
+              indirilecekKdv: indirilecek,
               devredenKdv: k1?.sonuc.devredenKdv ?? 0,
               odenecekKdv: k1?.sonuc.odenecekKdv ?? 0,
               sonrakiAyaDevreden: k1?.sonuc.sonrakiAyaDevreden ?? 0,
@@ -490,7 +498,7 @@ export class KdvBeyannameService {
               durum,
               kdv1Var: !!cfg.kdv1Period,
               kdv1Verildi: isVerildi(d.kdv1),
-              kdv2Var: !!cfg.kdv2Enabled || tevkifatliAdet > 0,
+              kdv2Var: tevkifatliAdet > 0,
               kdv2TevkifatTutari: tevkifatliKdv,
               kdv2FaturaAdet: tevkifatliAdet,
               kdv2Verildi: isVerildi(d.kdv2),
@@ -511,7 +519,7 @@ export class KdvBeyannameService {
               durum: 'bos',
               kdv1Var: !!cfg.kdv1Period,
               kdv1Verildi: isVerildi(d.kdv1),
-              kdv2Var: !!cfg.kdv2Enabled,
+              kdv2Var: false,
               kdv2TevkifatTutari: 0,
               kdv2FaturaAdet: 0,
               kdv2Verildi: isVerildi(d.kdv2),
