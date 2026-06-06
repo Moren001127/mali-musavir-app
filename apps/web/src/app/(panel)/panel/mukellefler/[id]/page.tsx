@@ -864,16 +864,16 @@ function BilgilerTab({
             <GroupCard icon={Tag} title="Sicil & Kodlar">
               <div className="grid grid-cols-1 gap-x-4 gap-y-3.5 sm:grid-cols-2">
                 <Field label="NACE Kodu">
-                  <InputBase placeholder="Örn: 56.10.06" value={form.naceKodu} onChange={(e) => setForm((p) => ({ ...p, naceKodu: e.target.value }))} />
+                  <InputBase value={form.naceKodu} onChange={(e) => setForm((p) => ({ ...p, naceKodu: e.target.value }))} />
                 </Field>
                 <Field label="Ticaret Sicil No">
-                  <InputBase placeholder="Örn: 123456-5" value={form.ticaretSicilNo} onChange={(e) => setForm((p) => ({ ...p, ticaretSicilNo: e.target.value }))} />
+                  <InputBase value={form.ticaretSicilNo} onChange={(e) => setForm((p) => ({ ...p, ticaretSicilNo: e.target.value }))} />
                 </Field>
                 <Field label="MERSİS No">
-                  <InputBase placeholder="16 haneli" value={form.mersisNo} onChange={(e) => setForm((p) => ({ ...p, mersisNo: e.target.value }))} className="font-mono" />
+                  <InputBase value={form.mersisNo} onChange={(e) => setForm((p) => ({ ...p, mersisNo: e.target.value }))} className="font-mono" />
                 </Field>
                 <Field label="Oda Sicil No">
-                  <InputBase placeholder="Örn: İTO 678901" value={form.odaSicilNo} onChange={(e) => setForm((p) => ({ ...p, odaSicilNo: e.target.value }))} />
+                  <InputBase value={form.odaSicilNo} onChange={(e) => setForm((p) => ({ ...p, odaSicilNo: e.target.value }))} />
                 </Field>
               </div>
             </GroupCard>
@@ -940,10 +940,10 @@ function BilgilerTab({
             </div>
             <div className="grid grid-cols-1 gap-4 md:grid-cols-2">
               <Field label="KEP Adresi">
-                <InputBase type="email" placeholder="ornek@hs01.kep.tr" value={form.kepAdresi} onChange={(e) => setForm((p) => ({ ...p, kepAdresi: e.target.value }))} />
+                <InputBase type="email" value={form.kepAdresi} onChange={(e) => setForm((p) => ({ ...p, kepAdresi: e.target.value }))} />
               </Field>
               <Field label="Web Sitesi">
-                <InputBase placeholder="https://" value={form.webSitesi} onChange={(e) => setForm((p) => ({ ...p, webSitesi: e.target.value }))} />
+                <InputBase value={form.webSitesi} onChange={(e) => setForm((p) => ({ ...p, webSitesi: e.target.value }))} />
               </Field>
             </div>
           </div>
@@ -1013,7 +1013,6 @@ function BilgilerTab({
                 max={30}
                 value={form.evrakTeslimGunu}
                 onChange={(e) => setForm((p) => ({ ...p, evrakTeslimGunu: e.target.value }))}
-                placeholder="Örn: 15"
               />
             </Field>
             <div className="grid gap-3">
@@ -1049,10 +1048,10 @@ function BilgilerTab({
             </div>
             <div className="grid grid-cols-1 gap-4 md:grid-cols-3">
               <Field label="Luca slug">
-                <InputBase value={form.lucaSlug} onChange={(e) => setForm((p) => ({ ...p, lucaSlug: e.target.value }))} placeholder="selim_motors" />
+                <InputBase value={form.lucaSlug} onChange={(e) => setForm((p) => ({ ...p, lucaSlug: e.target.value }))} />
               </Field>
               <Field label="Mihsap ID">
-                <InputBase value={form.mihsapId} onChange={(e) => setForm((p) => ({ ...p, mihsapId: e.target.value }))} placeholder="110564" />
+                <InputBase value={form.mihsapId} onChange={(e) => setForm((p) => ({ ...p, mihsapId: e.target.value }))} />
               </Field>
               <Field label="Mihsap defter türü">
                 <select

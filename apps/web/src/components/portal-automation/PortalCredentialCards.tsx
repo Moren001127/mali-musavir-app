@@ -12,6 +12,9 @@ import {
 
 const GOLD = '#d4b876';
 const GOLD_DEEP = '#8b7649';
+const STEEL_BR = '#74a6e6';
+const STEEL_SF = 'rgba(79,134,201,0.13)';
+const STEEL_LN = 'rgba(79,134,201,0.32)';
 const LINE = 'rgba(255,255,255,0.08)';
 const LINE_GOLD = 'rgba(212,184,118,0.24)';
 const TEXT = '#fafaf9';
@@ -94,9 +97,10 @@ export function TaxpayerPortalCredentialsCard({ taxpayerId }: { taxpayerId: stri
   );
 
   return (
-    <section className="rounded-lg border bg-[#0f0d0b]/80 p-5" style={{ borderColor: LINE }}>
+    <section>
       <CardHeader
         icon={ShieldCheck}
+        accent="steel"
         title="Vergi ve SGK Şifreleri"
         subtitle="Bu mükellefin portal giriş bilgileri"
       />
@@ -174,7 +178,7 @@ function CredentialEditor({
     ));
 
   return (
-    <div className="rounded-lg border p-4" style={{ background: compact ? 'rgba(255,255,255,0.025)' : SOFT, borderColor: LINE }}>
+    <div className="rounded-xl border p-4" style={{ background: compact ? 'rgba(255,255,255,0.025)' : SOFT, borderColor: LINE }}>
       <div className="mb-4 flex items-center justify-between gap-3">
         <div>
           <h3 className="text-sm font-semibold" style={{ color: TEXT }}>{PROVIDER_TITLES[provider]}</h3>
@@ -235,10 +239,13 @@ function CredentialEditor({
   );
 }
 
-function CardHeader({ icon: Icon, title, subtitle }: { icon: React.ElementType; title: string; subtitle: string }) {
+function CardHeader({ icon: Icon, title, subtitle, accent = 'gold' }: { icon: React.ElementType; title: string; subtitle: string; accent?: 'gold' | 'steel' }) {
+  const aColor = accent === 'steel' ? STEEL_BR : GOLD;
+  const aBg = accent === 'steel' ? STEEL_SF : 'rgba(212,184,118,0.09)';
+  const aLine = accent === 'steel' ? STEEL_LN : LINE_GOLD;
   return (
     <div className="mb-5 flex items-center gap-3">
-      <div className="flex h-10 w-10 shrink-0 items-center justify-center rounded-lg border" style={{ borderColor: LINE_GOLD, background: 'rgba(212,184,118,0.09)', color: GOLD }}>
+      <div className="flex h-10 w-10 shrink-0 items-center justify-center rounded-xl border" style={{ borderColor: aLine, background: aBg, color: aColor }}>
         <Icon size={18} />
       </div>
       <div className="min-w-0">
