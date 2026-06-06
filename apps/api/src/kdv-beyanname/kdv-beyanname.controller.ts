@@ -137,6 +137,31 @@ export class KdvBeyannameController {
     return this.service.donemOzet(req.user.tenantId, donem, tip);
   }
 
+  /** KDV Durum Panosu — tüm KDV mükelleflerinin dönem durumu (otomatik) */
+  @Get('genel-bakis')
+  @UseGuards(AuthGuard('jwt'))
+  async genelBakis(
+    @Req() req: any,
+    @Query('donem') donem: string,
+    @Query('force') force?: string,
+  ) {
+    if (!donem) throw new BadRequestException('donem gerekli');
+    return this.service.genelBakis(
+      req.user.tenantId,
+      donem,
+      force === '1' || force === 'true',
+    );
+  }
+
+  /** Dönemi tara + KDV2 (tevkifat) olan mükellefler için bildirim üret */
+  @Post('bildir')
+  @UseGuards(AuthGuard('jwt'))
+  @HttpCode(HttpStatus.OK)
+  async bildir(@Req() req: any, @Body() body: { donem: string }) {
+    if (!body?.donem) throw new BadRequestException('donem gerekli');
+    return this.service.taraVeBildir(req.user.tenantId, body.donem);
+  }
+
   /** Excel export — KDV1 + KDV2 sheet'leri tek dosyada */
   @Get('xlsx')
   @UseGuards(AuthGuard('jwt'))

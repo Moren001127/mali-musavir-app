@@ -158,3 +158,44 @@ export interface DonemOzet {
     durum: 'hazir' | 'eksik' | 'bos'; // hazir = veri tam, eksik = OCR gerekli, bos = fatura yok
   }>;
 }
+
+/**
+ * KDV Durum Panosu — tüm KDV mükelleflerinin bir dönemdeki anlık durumu.
+ * Otomatik: KDV Kontrol'ü biten mükellefte veri zaten DB'de olduğundan,
+ * canlı agent çağrısı OLMADAN hesaplanır. KDV2 tespiti + verilme takibi içerir.
+ */
+export interface GenelBakisRow {
+  mukellefId: string;
+  ad: string;
+  faturaAdet: number;
+  hesaplananKdv: number;
+  indirilecekKdv: number;
+  devredenKdv: number;
+  odenecekKdv: number;
+  sonrakiAyaDevreden: number;
+  veriGuveniPuan: number;
+  veriGuveniSeviye: 'kesin' | 'kontrol_gerekli' | 'eksik';
+  durum: 'hazir' | 'eksik' | 'bos';
+  kdv1Var: boolean;
+  kdv1Verildi: boolean;
+  kdv2Var: boolean;            // KDV2 mükellefiyeti açık VEYA tevkifatlı alış var
+  kdv2TevkifatTutari: number;  // tevkifatlı alış KDV'si (genel bakış göstergesi)
+  kdv2FaturaAdet: number;
+  kdv2Verildi: boolean;
+}
+
+export interface GenelBakis {
+  donem: string;
+  hesaplandiAt: string;
+  toplam: {
+    mukellefAdet: number;
+    hazirAdet: number;
+    dikkatAdet: number;
+    toplamOdenecek: number;
+    toplamDevreden: number;
+    kdv2Adet: number;
+    kdv1VerilmeyenAdet: number;
+    kdv2VerilmeyenAdet: number;
+  };
+  satirlar: GenelBakisRow[];
+}

@@ -9,7 +9,10 @@ import {
   KdvTip,
   KdvEksikVeri,
   VeriGuveni,
+  GenelBakis,
+  GenelBakisRow,
 } from './types';
+import { NotificationsService } from '../notifications/notifications.service';
 
 /**
  * KDV Beyanname Ön Hazırlık Servisi.
@@ -41,9 +44,12 @@ const SONRAKI_DEVREDEN_TAG = 'KDV_SONRAKI_DEVREDEN';
 export class KdvBeyannameService {
   private readonly logger = new Logger(KdvBeyannameService.name);
 
+  private genelBakisCache = new Map<string, { at: number; data: GenelBakis }>();
+
   constructor(
     private readonly prisma: PrismaService,
     private readonly mizanParser: MizanParserService,
+    private readonly notifications: NotificationsService,
   ) {}
 
   /**
@@ -406,6 +412,194 @@ export class KdvBeyannameService {
       },
       mukellefler: satirlar,
     };
+  }
+
+  // =========================================================
+  // === KDV DURUM PANOSU (otomatik genel bakış + KDV2 bildirim) ===
+  // =========================================================
+
+  /**
+   * Bir dönemde TÜM KDV mükelleflerinin anlık durumu.
+   * KDV Kontrol'ü biten mükellefte veri zaten DB'de olduğundan canlı agent
+   * çağrısı YAPILMAZ — yalnız depodaki veriden hesaplanır. KDV2 tespiti
+   * (mükellefiyet açık VEYA tevkifatlı alış var) + verilme takibi içerir.
+   * 3 dk in-memory cache ile tekrar açılışlar anında gelir.
+   */
+  async genelBakis(tenantId: string, donem: string, force = false): Promise<GenelBakis> {
+    const cacheKey = `${tenantId}:${donem}`;
+    const cached = this.genelBakisCache.get(cacheKey);
+    if (!force && cached && Date.now() - cached.at < 3 * 60 * 1000) {
+      return cached.data;
+    }
+
+    const mukellefler = await (this.prisma as any).taxpayer.findMany({
+      where: { tenantId, isActive: true },
+      include: { beyanConfig: true },
+      orderBy: [{ companyName: 'asc' }, { firstName: 'asc' }],
+    });
+    const kdvMukellef = mukellefler.filter(
+      (m: any) => m.beyanConfig?.kdv1Period || m.beyanConfig?.kdv2Enabled,
+    );
+
+    // Verilme durumları — BeyanDurumu (durum=onaylandi → verildi)
+    const durumlar = await (this.prisma as any).beyanDurumu.findMany({
+      where: { tenantId, donem, beyanTipi: { in: ['KDV1', 'KDV2'] } },
+      select: { taxpayerId: true, beyanTipi: true, durum: true },
+    });
+    const durumMap = new Map<string, { kdv1?: string; kdv2?: string }>();
+    for (const d of durumlar) {
+      const cur = durumMap.get(d.taxpayerId) || {};
+      if (d.beyanTipi === 'KDV1') cur.kdv1 = d.durum;
+      else cur.kdv2 = d.durum;
+      durumMap.set(d.taxpayerId, cur);
+    }
+    const isVerildi = (s?: string) => s === 'onaylandi';
+
+    const satirlar: GenelBakisRow[] = [];
+    const batchSize = 8;
+    for (let i = 0; i < kdvMukellef.length; i += batchSize) {
+      const batch = kdvMukellef.slice(i, i + batchSize);
+      const results = await Promise.all(
+        batch.map(async (m: any): Promise<GenelBakisRow> => {
+          const cfg = m.beyanConfig || {};
+          const d = durumMap.get(m.id) || {};
+          try {
+            const k1 = cfg.kdv1Period
+              ? await this.kdv1OnHazirlik({ tenantId, mukellefId: m.id, donem })
+              : null;
+            const faturaAdet = k1 ? k1.satis.faturaAdet + k1.alis.faturaAdet : 0;
+            const tevkifatliAdet = k1 ? k1.alis.tevkifatli.adet : 0;
+            const tevkifatliKdv = k1 ? k1.alis.tevkifatli.kdv : 0;
+            const durum: 'hazir' | 'eksik' | 'bos' =
+              !k1 || faturaAdet === 0
+                ? 'bos'
+                : k1.kaliteRapor.tahminFaturaOrani > 0.5
+                  ? 'eksik'
+                  : 'hazir';
+            return {
+              mukellefId: m.id,
+              ad: k1 ? k1.mukellefAd : this.formatMukellefAd(m),
+              faturaAdet,
+              hesaplananKdv: k1?.sonuc.hesaplananKdv ?? 0,
+              indirilecekKdv: k1?.sonuc.indirilecekKdv ?? 0,
+              devredenKdv: k1?.sonuc.devredenKdv ?? 0,
+              odenecekKdv: k1?.sonuc.odenecekKdv ?? 0,
+              sonrakiAyaDevreden: k1?.sonuc.sonrakiAyaDevreden ?? 0,
+              veriGuveniPuan: k1?.veriGuveni.puan ?? 0,
+              veriGuveniSeviye: k1?.veriGuveni.seviye ?? 'eksik',
+              durum,
+              kdv1Var: !!cfg.kdv1Period,
+              kdv1Verildi: isVerildi(d.kdv1),
+              kdv2Var: !!cfg.kdv2Enabled || tevkifatliAdet > 0,
+              kdv2TevkifatTutari: tevkifatliKdv,
+              kdv2FaturaAdet: tevkifatliAdet,
+              kdv2Verildi: isVerildi(d.kdv2),
+            };
+          } catch (e: any) {
+            this.logger.warn(`genelBakis mükellef ${m.id}: ${e?.message}`);
+            return {
+              mukellefId: m.id,
+              ad: this.formatMukellefAd(m),
+              faturaAdet: 0,
+              hesaplananKdv: 0,
+              indirilecekKdv: 0,
+              devredenKdv: 0,
+              odenecekKdv: 0,
+              sonrakiAyaDevreden: 0,
+              veriGuveniPuan: 0,
+              veriGuveniSeviye: 'eksik',
+              durum: 'bos',
+              kdv1Var: !!cfg.kdv1Period,
+              kdv1Verildi: isVerildi(d.kdv1),
+              kdv2Var: !!cfg.kdv2Enabled,
+              kdv2TevkifatTutari: 0,
+              kdv2FaturaAdet: 0,
+              kdv2Verildi: isVerildi(d.kdv2),
+            };
+          }
+        }),
+      );
+      satirlar.push(...results);
+    }
+
+    const round2 = (n: number) => Math.round(n * 100) / 100;
+    const kdv2Satir = satirlar.filter((r) => r.kdv2Var);
+    const data: GenelBakis = {
+      donem,
+      hesaplandiAt: new Date().toISOString(),
+      toplam: {
+        mukellefAdet: satirlar.length,
+        hazirAdet: satirlar.filter((r) => r.durum === 'hazir').length,
+        dikkatAdet: satirlar.filter((r) => r.durum !== 'hazir').length,
+        toplamOdenecek: round2(satirlar.reduce((s, r) => s + r.odenecekKdv, 0)),
+        toplamDevreden: round2(satirlar.reduce((s, r) => s + r.sonrakiAyaDevreden, 0)),
+        kdv2Adet: kdv2Satir.length,
+        kdv1VerilmeyenAdet: satirlar.filter((r) => r.kdv1Var && !r.kdv1Verildi).length,
+        kdv2VerilmeyenAdet: kdv2Satir.filter((r) => !r.kdv2Verildi).length,
+      },
+      satirlar,
+    };
+    this.genelBakisCache.set(cacheKey, { at: Date.now(), data });
+    return data;
+  }
+
+  /**
+   * Dönemi tarar, KDV2 (tevkifat) olan mükellefleri tespit edip bildirim üretir:
+   * her mükellef için tek tek + bir aylık özet. dedupeKey ile tekrar üretmez.
+   */
+  async taraVeBildir(
+    tenantId: string,
+    donem: string,
+  ): Promise<{ kdv2Adet: number; bildirimAdet: number; verilmeyenAdet: number }> {
+    const gb = await this.genelBakis(tenantId, donem, true);
+    const kdv2 = gb.satirlar.filter((r) => r.kdv2Var);
+    const ay = this.donemLabelTr(donem);
+    let bildirimAdet = 0;
+
+    for (const r of kdv2) {
+      const res = await this.notifications
+        .create({
+          tenantId,
+          userId: null,
+          type: 'KDV_RESULT',
+          title: `KDV2 (Tevkifat) — ${r.ad}`,
+          body: `${ay}: ${r.ad} için KDV2 tevkifat sorumluluğu var (${r.kdv2FaturaAdet} fatura, tevkifatlı KDV ${this.fmtTry(r.kdv2TevkifatTutari)}).${r.kdv2Verildi ? ' Verildi.' : ' Henüz verilmedi.'}`,
+          dedupeKey: `kdv2:${donem}:${r.mukellefId}`,
+          dedupeWindowMin: 60 * 24 * 30,
+          metadata: { donem, mukellefId: r.mukellefId, kdv2: true },
+        })
+        .catch(() => null);
+      if (res && !(res as any).skipped) bildirimAdet++;
+    }
+
+    if (kdv2.length > 0) {
+      await this.notifications
+        .create({
+          tenantId,
+          userId: null,
+          type: 'KDV_RESULT',
+          title: `KDV2 listesi — ${ay}`,
+          body: `${ay} döneminde ${kdv2.length} mükellefte KDV2 (tevkifat) var; ${gb.toplam.kdv2VerilmeyenAdet} tanesi henüz verilmedi.`,
+          dedupeKey: `kdv2-ozet:${donem}`,
+          dedupeWindowMin: 60 * 24 * 7,
+          metadata: { donem, kdv2Ozet: true },
+        })
+        .catch(() => null);
+    }
+
+    return { kdv2Adet: kdv2.length, bildirimAdet, verilmeyenAdet: gb.toplam.kdv2VerilmeyenAdet };
+  }
+
+  private donemLabelTr(donem: string): string {
+    const m = /^(\d{4})-(\d{2})$/.exec(donem);
+    if (!m) return donem;
+    const names = ['Ocak', 'Şubat', 'Mart', 'Nisan', 'Mayıs', 'Haziran', 'Temmuz', 'Ağustos', 'Eylül', 'Ekim', 'Kasım', 'Aralık'];
+    const ay = parseInt(m[2], 10);
+    return `${names[ay - 1] || m[2]} ${m[1]}`;
+  }
+
+  private fmtTry(n: number): string {
+    return (Number(n) || 0).toLocaleString('tr-TR', { minimumFractionDigits: 2, maximumFractionDigits: 2 }) + ' ₺';
   }
 
   // =========================================================

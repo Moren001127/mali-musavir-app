@@ -8,8 +8,48 @@ import { LucaInlineCaptchaPanel } from '@/components/luca/LucaInlineCaptchaPanel
 import {
   FileCheck, Calendar, Users, Download, AlertCircle, CheckCircle2,
   Loader2, Receipt, TrendingUp, TrendingDown, Sparkles,
+  Bell, RefreshCw, ChevronRight, Wallet, AlertTriangle, ArrowLeft, Layers,
 } from 'lucide-react';
 import TaxpayerSelect from '@/components/ui/TaxpayerSelect';
+
+// Teal kimlik
+const TEAL = '#14b8a6';
+const TEAL_BR = '#2dd4bf';
+const TEAL_SF = 'rgba(20,184,166,0.13)';
+const TEAL_LN = 'rgba(20,184,166,0.32)';
+const STAT_GREEN = '#5fcf8e';
+const STAT_AMBER = '#f0b755';
+const STAT_RED = '#ef6b6b';
+
+type GenelBakisRow = {
+  mukellefId: string;
+  ad: string;
+  faturaAdet: number;
+  hesaplananKdv: number;
+  indirilecekKdv: number;
+  devredenKdv: number;
+  odenecekKdv: number;
+  sonrakiAyaDevreden: number;
+  veriGuveniPuan: number;
+  veriGuveniSeviye: 'kesin' | 'kontrol_gerekli' | 'eksik';
+  durum: 'hazir' | 'eksik' | 'bos';
+  kdv1Var: boolean;
+  kdv1Verildi: boolean;
+  kdv2Var: boolean;
+  kdv2TevkifatTutari: number;
+  kdv2FaturaAdet: number;
+  kdv2Verildi: boolean;
+};
+type GenelBakis = {
+  donem: string;
+  hesaplandiAt: string;
+  toplam: {
+    mukellefAdet: number; hazirAdet: number; dikkatAdet: number;
+    toplamOdenecek: number; toplamDevreden: number; kdv2Adet: number;
+    kdv1VerilmeyenAdet: number; kdv2VerilmeyenAdet: number;
+  };
+  satirlar: GenelBakisRow[];
+};
 
 type Taxpayer = {
   id: string;
@@ -131,7 +171,7 @@ const parseMoneyInput = (value: string) => {
 const TRY = '\u20ba';
 const REPORT_FONT = "Inter, ui-sans-serif, system-ui, -apple-system, 'Segoe UI', sans-serif";
 const FINANCIAL_AMOUNT_COLOR = '#fffaf0';
-const FINANCIAL_TOTAL_COLOR = '#fff0b8';
+const FINANCIAL_TOTAL_COLOR = '#5eead4';
 const VALID_KDV_RATES = [1, 8, 10, 18, 20];
 
 const normalizeKdvRateForDisplay = (rate: number) => {
@@ -326,18 +366,18 @@ export default function KdvBeyannamePage() {
         <div>
           <div
             className="text-[10.5px] font-bold uppercase tracking-[.14em] mb-1"
-            style={{ color: 'rgba(212,184,118,0.7)' }}
+            style={{ color: 'rgba(20,184,166,0.7)' }}
           >
-            Vergi Uyum · Ön Hazırlık
+            Vergi Uyum · KDV Durum Panosu
           </div>
           <h1
             className="font-semibold"
             style={{ fontFamily: 'Fraunces, serif', fontSize: 28, color: '#fafaf9', letterSpacing: '-.03em' }}
           >
-            KDV Beyanname Ön Hazırlığı
+            KDV Durum Panosu
           </h1>
           <p className="text-[12.5px] mt-1" style={{ color: 'rgba(250,250,249,0.45)' }}>
-            Mihsap fatura + Luca mizan hibriti. KDV1 genel beyan + KDV2 tevkifat sorumlusu.
+            Kontrolü biten mükellefin KDV durumu otomatik hazır. KDV2 (tevkifat) tespiti + verilme takibi.
           </p>
         </div>
         <button
@@ -345,9 +385,9 @@ export default function KdvBeyannamePage() {
           disabled={!selectedMukellef}
           className="px-4 py-2 rounded-[9px] text-[12.5px] font-bold inline-flex items-center gap-2 disabled:opacity-50 disabled:cursor-not-allowed transition-all"
           style={{
-            background: 'linear-gradient(135deg, #d4b876, #b8a06f)',
+            background: 'linear-gradient(135deg, #14b8a6, #0d9488)',
             color: '#0f0d0b',
-            boxShadow: '0 2px 10px rgba(212,184,118,0.35)',
+            boxShadow: '0 2px 10px rgba(20,184,166,0.35)',
           }}
         >
           <Download size={14} /> Excel İndir
@@ -360,7 +400,7 @@ export default function KdvBeyannamePage() {
         style={{ background: 'rgba(255,255,255,0.02)', borderColor: 'rgba(255,255,255,0.05)' }}
       >
         <div className="flex items-center gap-2 mb-3">
-          <span className="w-[3px] h-4 rounded-sm" style={{ background: '#d4b876' }} />
+          <span className="w-[3px] h-4 rounded-sm" style={{ background: '#14b8a6' }} />
           <h3 className="text-[13.5px] font-semibold" style={{ color: '#fafaf9' }}>
             Mükellef & Dönem
           </h3>
@@ -416,6 +456,18 @@ export default function KdvBeyannamePage() {
         </div>
       </div>
 
+      {/* Panoya dön */}
+      {selectedMukellef && (
+        <button
+          type="button"
+          onClick={() => setSelectedMukellef('')}
+          className="inline-flex items-center gap-1.5 rounded-[10px] border px-3 py-2 text-[12.5px] font-semibold transition hover:bg-white/[0.05]"
+          style={{ borderColor: 'rgba(255,255,255,0.10)', color: 'rgba(250,250,249,0.7)', background: 'rgba(255,255,255,0.03)' }}
+        >
+          <ArrowLeft size={14} /> Panoya dön
+        </button>
+      )}
+
       {/* Tab seçici */}
       {selectedMukellef && (
         <div className="flex gap-2">
@@ -427,9 +479,9 @@ export default function KdvBeyannamePage() {
                 onClick={() => setTab(t)}
                 className="px-4 py-2 rounded-[10px] text-[12.5px] font-semibold transition-all"
                 style={{
-                  background: active ? 'rgba(184,160,111,0.15)' : 'rgba(255,255,255,0.03)',
-                  color: active ? '#d4b876' : 'rgba(250,250,249,0.6)',
-                  border: `1px solid ${active ? 'rgba(184,160,111,0.35)' : 'rgba(255,255,255,0.08)'}`,
+                  background: active ? 'rgba(13,148,136,0.15)' : 'rgba(255,255,255,0.03)',
+                  color: active ? '#14b8a6' : 'rgba(250,250,249,0.6)',
+                  border: `1px solid ${active ? 'rgba(13,148,136,0.35)' : 'rgba(255,255,255,0.08)'}`,
                 }}
               >
                 {t === 'KDV1' ? 'KDV1 · Genel Beyan' : 'KDV2 · Tevkifat Sorumlusu'}
@@ -476,27 +528,252 @@ export default function KdvBeyannamePage() {
       )}
 
       {!selectedMukellef && (
-        <div
-          className="rounded-2xl p-12 text-center border"
-          style={{ background: 'rgba(255,255,255,0.02)', borderColor: 'rgba(255,255,255,0.05)' }}
-        >
-          <div className="w-14 h-14 mx-auto mb-3 rounded-2xl flex items-center justify-center" style={{ background: 'rgba(212,184,118,0.1)' }}>
-            <FileCheck size={24} style={{ color: '#d4b876' }} />
-          </div>
-          <p className="text-[14px] font-semibold" style={{ color: '#fafaf9' }}>Başlamak için mükellef seçin</p>
-          <p className="text-[12px] mt-1" style={{ color: 'rgba(250,250,249,0.5)' }}>
-            Sistem Mihsap faturaları + Luca mizan + geçmiş beyanlardan ön hazırlık üretir
-          </p>
-        </div>
+        <GenelBakisPano donem={donem} onSelect={(id) => setSelectedMukellef(id)} />
       )}
     </div>
+  );
+}
+
+// ============================================================
+// KDV DURUM PANOSU — otomatik genel bakış (teal)
+// ============================================================
+function GenelBakisPano({ donem, onSelect }: { donem: string; onSelect: (id: string) => void }) {
+  const qc = useQueryClient();
+  const [filter, setFilter] = useState<'hepsi' | 'kdv2' | 'dikkat' | 'verilmeyen'>('hepsi');
+  const [forcing, setForcing] = useState(false);
+
+  const { data, isLoading, error } = useQuery<GenelBakis>({
+    queryKey: ['kdv-genel-bakis', donem],
+    queryFn: () => api.get('/kdv-beyanname/genel-bakis', { params: { donem } }).then((r) => r.data),
+  });
+
+  const yenile = async () => {
+    setForcing(true);
+    try {
+      const d = await api.get('/kdv-beyanname/genel-bakis', { params: { donem, force: 1 } }).then((r) => r.data);
+      qc.setQueryData(['kdv-genel-bakis', donem], d);
+    } catch {
+      toast.error('Yenilenemedi');
+    } finally {
+      setForcing(false);
+    }
+  };
+
+  const bildirMut = useMutation({
+    mutationFn: () => api.post('/kdv-beyanname/bildir', { donem }).then((r) => r.data),
+    onSuccess: (res: any) => {
+      toast.success(`${res.kdv2Adet} mükellefte KDV2 · ${res.bildirimAdet} yeni bildirim · ${res.verilmeyenAdet} verilmemiş`);
+      yenile();
+    },
+    onError: (e: any) => toast.error(e?.response?.data?.message || 'Bildirim üretilemedi'),
+  });
+
+  const durumMut = useMutation({
+    mutationFn: (v: { mukellefId: string; tip: 'KDV1' | 'KDV2'; verildi: boolean }) =>
+      api.put(`/beyanname-takip/durum/${v.mukellefId}/${v.tip}/${donem}`, {
+        durum: v.verildi ? 'onaylandi' : 'beklemede',
+      }),
+    onMutate: (v) => {
+      qc.setQueryData<GenelBakis>(['kdv-genel-bakis', donem], (old) =>
+        !old
+          ? old
+          : {
+              ...old,
+              satirlar: old.satirlar.map((r) =>
+                r.mukellefId === v.mukellefId
+                  ? { ...r, [v.tip === 'KDV1' ? 'kdv1Verildi' : 'kdv2Verildi']: v.verildi }
+                  : r,
+              ),
+            },
+      );
+    },
+    onError: () => {
+      toast.error('Durum güncellenemedi');
+      yenile();
+    },
+  });
+
+  const satirlar = React.useMemo(() => {
+    const all = data?.satirlar || [];
+    if (filter === 'kdv2') return all.filter((r) => r.kdv2Var);
+    if (filter === 'dikkat') return all.filter((r) => r.durum !== 'hazir');
+    if (filter === 'verilmeyen')
+      return all.filter((r) => (r.kdv1Var && !r.kdv1Verildi) || (r.kdv2Var && !r.kdv2Verildi));
+    return all;
+  }, [data, filter]);
+
+  if (isLoading) return <LoadingCard />;
+  if (error) return <ErrorCard error={error} label="Genel bakış" />;
+  if (!data) return null;
+  const t = data.toplam;
+
+  return (
+    <div className="space-y-3">
+      <div className="grid grid-cols-2 gap-2.5 md:grid-cols-3 xl:grid-cols-6">
+        <StatCard icon={Wallet} label="Toplam Ödenecek" value={`${TRY}${fmt(t.toplamOdenecek)}`} accent={TEAL_BR} />
+        <StatCard icon={CheckCircle2} label="Hazır" value={`${t.hazirAdet}/${t.mukellefAdet}`} accent={STAT_GREEN} />
+        <StatCard icon={AlertTriangle} label="Dikkat" value={String(t.dikkatAdet)} accent={STAT_AMBER} />
+        <StatCard icon={Layers} label="KDV2 mükellef" value={String(t.kdv2Adet)} accent={TEAL_BR} />
+        <StatCard icon={FileCheck} label="KDV1 verilmeyen" value={String(t.kdv1VerilmeyenAdet)} accent={STAT_RED} />
+        <StatCard icon={Receipt} label="KDV2 verilmeyen" value={String(t.kdv2VerilmeyenAdet)} accent={STAT_RED} />
+      </div>
+
+      <div className="flex flex-wrap items-center gap-2">
+        {([
+          ['hepsi', 'Hepsi'],
+          ['kdv2', 'KDV2 olanlar'],
+          ['dikkat', 'Dikkat'],
+          ['verilmeyen', 'Verilmeyen'],
+        ] as const).map(([k, l]) => {
+          const on = filter === k;
+          return (
+            <button
+              key={k}
+              onClick={() => setFilter(k)}
+              className="rounded-[9px] border px-3 py-1.5 text-[12px] font-semibold transition"
+              style={on
+                ? { background: TEAL_SF, borderColor: TEAL_LN, color: TEAL_BR }
+                : { background: 'rgba(255,255,255,0.03)', borderColor: 'rgba(255,255,255,0.08)', color: 'rgba(250,250,249,0.6)' }}
+            >
+              {l}
+            </button>
+          );
+        })}
+        <div className="ml-auto flex items-center gap-2">
+          <span className="text-[11px]" style={{ color: 'rgba(250,250,249,0.4)' }}>
+            Son güncelleme: {new Date(data.hesaplandiAt).toLocaleTimeString('tr-TR', { hour: '2-digit', minute: '2-digit' })}
+          </span>
+          <button
+            onClick={yenile}
+            disabled={forcing}
+            className="inline-flex items-center gap-1.5 rounded-[9px] border px-3 py-1.5 text-[12px] font-semibold disabled:opacity-50"
+            style={{ background: 'rgba(255,255,255,0.03)', borderColor: 'rgba(255,255,255,0.08)', color: 'rgba(250,250,249,0.7)' }}
+          >
+            <RefreshCw size={13} className={forcing ? 'animate-spin' : ''} /> Yenile
+          </button>
+          <button
+            onClick={() => bildirMut.mutate()}
+            disabled={bildirMut.isPending}
+            className="inline-flex items-center gap-1.5 rounded-[9px] px-3 py-1.5 text-[12px] font-bold disabled:opacity-50"
+            style={{ background: `linear-gradient(135deg, ${TEAL}, #0d9488)`, color: '#04201c' }}
+          >
+            {bildirMut.isPending ? <Loader2 size={13} className="animate-spin" /> : <Bell size={13} />} KDV2 Tara & Bildir
+          </button>
+        </div>
+      </div>
+
+      <div className="overflow-x-auto rounded-2xl border" style={{ borderColor: 'rgba(255,255,255,0.06)' }}>
+        <table className="w-full border-collapse text-left" style={{ minWidth: 920 }}>
+          <thead>
+            <tr className="text-[10px] font-bold uppercase tracking-wider" style={{ color: 'rgba(250,250,249,0.4)', background: 'rgba(255,255,255,0.02)' }}>
+              <th className="px-3 py-2.5">Mükellef</th>
+              <th className="px-3 py-2.5">Durum</th>
+              <th className="px-3 py-2.5 text-right">Hesaplanan</th>
+              <th className="px-3 py-2.5 text-right">İndirilecek</th>
+              <th className="px-3 py-2.5 text-right">Devreden</th>
+              <th className="px-3 py-2.5 text-right">Ödenecek</th>
+              <th className="px-3 py-2.5 text-center">Güven</th>
+              <th className="px-3 py-2.5 text-center">KDV1</th>
+              <th className="px-3 py-2.5 text-center">KDV2</th>
+            </tr>
+          </thead>
+          <tbody>
+            {satirlar.map((r) => (
+              <tr key={r.mukellefId} className="border-t transition hover:bg-white/[0.025]" style={{ borderColor: 'rgba(255,255,255,0.05)' }}>
+                <td className="px-3 py-2.5">
+                  <button onClick={() => onSelect(r.mukellefId)} className="inline-flex items-center gap-1.5 text-left">
+                    <span className="text-[13px] font-semibold" style={{ color: '#fafaf9' }}>{r.ad}</span>
+                    <ChevronRight size={13} style={{ color: TEAL_BR, opacity: 0.6 }} />
+                  </button>
+                  <div className="text-[10.5px]" style={{ color: 'rgba(250,250,249,0.35)' }}>{r.faturaAdet} fatura</div>
+                </td>
+                <td className="px-3 py-2.5"><DurumBadge durum={r.durum} /></td>
+                <td className="px-3 py-2.5 text-right tabular-nums text-[12.5px]" style={{ color: '#fffaf0' }}>{TRY}{fmt(r.hesaplananKdv)}</td>
+                <td className="px-3 py-2.5 text-right tabular-nums text-[12.5px]" style={{ color: '#fffaf0' }}>{TRY}{fmt(r.indirilecekKdv)}</td>
+                <td className="px-3 py-2.5 text-right tabular-nums text-[12.5px]" style={{ color: 'rgba(250,250,249,0.6)' }}>{TRY}{fmt(r.devredenKdv)}</td>
+                <td className="px-3 py-2.5 text-right tabular-nums text-[13px] font-bold" style={{ color: r.odenecekKdv > 0 ? STAT_RED : STAT_GREEN }}>{TRY}{fmt(r.odenecekKdv)}</td>
+                <td className="px-3 py-2.5 text-center"><GuvenDot seviye={r.veriGuveniSeviye} puan={r.veriGuveniPuan} /></td>
+                <td className="px-3 py-2.5 text-center">
+                  {r.kdv1Var ? (
+                    <VerToggle verildi={r.kdv1Verildi} onClick={() => durumMut.mutate({ mukellefId: r.mukellefId, tip: 'KDV1', verildi: !r.kdv1Verildi })} />
+                  ) : (
+                    <span style={{ color: 'rgba(250,250,249,0.25)' }}>—</span>
+                  )}
+                </td>
+                <td className="px-3 py-2.5 text-center">
+                  {r.kdv2Var ? (
+                    <div className="inline-flex flex-col items-center gap-1">
+                      <span className="text-[10.5px] tabular-nums" style={{ color: TEAL_BR }}>{TRY}{fmt(r.kdv2TevkifatTutari)}</span>
+                      <VerToggle verildi={r.kdv2Verildi} onClick={() => durumMut.mutate({ mukellefId: r.mukellefId, tip: 'KDV2', verildi: !r.kdv2Verildi })} />
+                    </div>
+                  ) : (
+                    <span style={{ color: 'rgba(250,250,249,0.25)' }}>—</span>
+                  )}
+                </td>
+              </tr>
+            ))}
+            {satirlar.length === 0 && (
+              <tr>
+                <td colSpan={9} className="px-3 py-10 text-center text-[13px]" style={{ color: 'rgba(250,250,249,0.4)' }}>
+                  Bu filtrede mükellef yok.
+                </td>
+              </tr>
+            )}
+          </tbody>
+        </table>
+      </div>
+    </div>
+  );
+}
+
+function StatCard({ icon: Icon, label, value, accent }: { icon: any; label: string; value: string; accent: string }) {
+  return (
+    <div className="rounded-xl border p-3" style={{ background: 'rgba(255,255,255,0.02)', borderColor: 'rgba(255,255,255,0.06)' }}>
+      <div className="flex items-center gap-1.5 text-[10px] uppercase tracking-wider" style={{ color: 'rgba(250,250,249,0.45)' }}>
+        <Icon size={12} style={{ color: accent }} /> {label}
+      </div>
+      <div className="mt-1.5 text-[18px] font-extrabold tabular-nums" style={{ color: '#fafaf9' }}>{value}</div>
+    </div>
+  );
+}
+
+function DurumBadge({ durum }: { durum: 'hazir' | 'eksik' | 'bos' }) {
+  const map = {
+    hazir: { l: 'Hazır', c: STAT_GREEN, b: 'rgba(95,207,142,0.13)' },
+    eksik: { l: 'Kontrol gerekli', c: STAT_AMBER, b: 'rgba(240,183,85,0.13)' },
+    bos: { l: 'Veri yok', c: 'rgba(250,250,249,0.4)', b: 'rgba(255,255,255,0.04)' },
+  }[durum];
+  return <span className="inline-flex items-center rounded-md px-2 py-1 text-[10.5px] font-bold" style={{ background: map.b, color: map.c }}>{map.l}</span>;
+}
+
+function GuvenDot({ seviye, puan }: { seviye: string; puan: number }) {
+  const c = seviye === 'kesin' ? STAT_GREEN : seviye === 'kontrol_gerekli' ? STAT_AMBER : STAT_RED;
+  return (
+    <span title={`Veri güveni: %${puan}`} className="inline-flex items-center gap-1 text-[11px] tabular-nums" style={{ color: c }}>
+      <span className="h-1.5 w-1.5 rounded-full" style={{ background: c }} />%{puan}
+    </span>
+  );
+}
+
+function VerToggle({ verildi, onClick }: { verildi: boolean; onClick: () => void }) {
+  return (
+    <button
+      onClick={onClick}
+      className="inline-flex items-center gap-1 rounded-md border px-2 py-1 text-[10.5px] font-bold transition"
+      style={verildi
+        ? { background: 'rgba(95,207,142,0.13)', borderColor: 'rgba(95,207,142,0.35)', color: STAT_GREEN }
+        : { background: 'rgba(240,183,85,0.10)', borderColor: 'rgba(240,183,85,0.30)', color: STAT_AMBER }}
+    >
+      {verildi ? <CheckCircle2 size={11} /> : null}
+      {verildi ? 'Verildi' : 'Bekliyor'}
+    </button>
   );
 }
 
 function LoadingCard() {
   return (
     <div className="rounded-2xl py-16 flex flex-col items-center gap-3 border" style={{ background: 'rgba(255,255,255,0.02)', borderColor: 'rgba(255,255,255,0.05)' }}>
-      <Loader2 size={28} className="animate-spin" style={{ color: '#d4b876' }} />
+      <Loader2 size={28} className="animate-spin" style={{ color: '#14b8a6' }} />
       <span className="text-[12.5px]" style={{ color: 'rgba(250,250,249,0.5)' }}>Hesaplanıyor...</span>
     </div>
   );
@@ -553,12 +830,12 @@ function EmptyStateCard({ donem }: { donem: string }) {
     >
       <div
         className="w-14 h-14 mx-auto mb-3 rounded-2xl flex items-center justify-center"
-        style={{ background: 'rgba(212,184,118,0.1)' }}
+        style={{ background: 'rgba(20,184,166,0.1)' }}
       >
-        <Receipt size={24} style={{ color: '#d4b876' }} />
+        <Receipt size={24} style={{ color: '#14b8a6' }} />
       </div>
       <p className="text-[14px] font-semibold" style={{ color: '#fafaf9' }}>
-        Dönem <span style={{ color: '#d4b876' }}>{donem}</span> için kayıtlı fatura bulunamadı
+        Dönem <span style={{ color: '#14b8a6' }}>{donem}</span> için kayıtlı fatura bulunamadı
       </p>
       <p className="text-[12px] mt-2 max-w-md mx-auto" style={{ color: 'rgba(250,250,249,0.55)' }}>
         Önce <b>Faturalar</b> modülünden Mihsap fatura çekilmiş olmalı. Oradan "Alış Çek" ve "Satış Çek"
@@ -685,7 +962,7 @@ function BeyannameAksiyonlari({
         onClick={() => hazirMut.mutate()}
         disabled={hazirMut.isPending}
         className="px-3 py-2 rounded-[9px] text-[12px] font-semibold inline-flex items-center gap-2 disabled:opacity-50"
-        style={{ background: 'rgba(212,184,118,0.12)', border: '1px solid rgba(212,184,118,0.28)', color: '#d4b876' }}
+        style={{ background: 'rgba(20,184,166,0.12)', border: '1px solid rgba(20,184,166,0.28)', color: '#14b8a6' }}
       >
         {hazirMut.isPending ? <Loader2 size={14} className="animate-spin" /> : <CheckCircle2 size={14} />}
         Hazır notu düş
@@ -780,7 +1057,7 @@ function KdvTotalsTable({
             <tr
               key={row.label}
               style={{
-                background: row.result ? 'rgba(212,184,118,0.07)' : 'transparent',
+                background: row.result ? 'rgba(20,184,166,0.07)' : 'transparent',
                 borderTop: '1px solid rgba(255,255,255,0.055)',
               }}
             >
@@ -836,7 +1113,7 @@ function DevredenKdvEditor({ data }: { data: Kdv1 }) {
   return (
     <div
       className="rounded-2xl border p-4 space-y-3"
-      style={{ background: 'rgba(255,255,255,0.025)', borderColor: 'rgba(212,184,118,0.18)' }}
+      style={{ background: 'rgba(255,255,255,0.025)', borderColor: 'rgba(20,184,166,0.18)' }}
     >
       <div>
         <div className="text-[11px] font-bold uppercase tracking-[.13em]" style={{ color: '#d8c17f' }}>
@@ -863,7 +1140,7 @@ function DevredenKdvEditor({ data }: { data: Kdv1 }) {
           onClick={() => saveMut.mutate({ tutar: parseMoneyInput(value), mode: 'onceki' })}
           disabled={saveMut.isPending}
           className="px-3 py-2 rounded-[9px] text-[12px] font-semibold disabled:opacity-50"
-          style={{ background: 'rgba(212,184,118,0.14)', border: '1px solid rgba(212,184,118,0.3)', color: '#d8c17f' }}
+          style={{ background: 'rgba(20,184,166,0.14)', border: '1px solid rgba(20,184,166,0.3)', color: '#d8c17f' }}
         >
           Bu dönem devredenini kaydet
         </button>
@@ -1003,7 +1280,7 @@ function Kdv1View({ data, autoHazirlikAktif }: { data: Kdv1; autoHazirlikAktif?:
           style={{ background: 'rgba(255,255,255,0.02)', borderColor: 'rgba(255,255,255,0.05)' }}
         >
           <div className="flex items-center gap-2 mb-3">
-            <CheckCircle2 size={14} style={{ color: '#d4b876' }} />
+            <CheckCircle2 size={14} style={{ color: '#14b8a6' }} />
             <h3 className="text-[13px] font-semibold" style={{ color: '#fafaf9' }}>
               Luca Çapraz Kontrol
             </h3>
@@ -1121,7 +1398,7 @@ function LucaSnapshotFetchPanel({ mukellefId, donem, autoStart }: { mukellefId: 
       <div className="flex items-start justify-between gap-3">
         <div>
           <div className="flex items-center gap-2">
-            <Sparkles size={14} style={{ color: 'rgba(212,184,118,0.8)' }} />
+            <Sparkles size={14} style={{ color: 'rgba(20,184,166,0.8)' }} />
             <h3 className="text-[13px] font-semibold" style={{ color: '#fafaf9' }}>
               Luca Mizan Çapraz Kontrol
             </h3>
@@ -1141,7 +1418,7 @@ function LucaSnapshotFetchPanel({ mukellefId, donem, autoStart }: { mukellefId: 
           onClick={() => fetchMut.mutate()}
           disabled={fetchMut.isPending || !!jobId}
           className="px-4 py-2 rounded-md text-sm font-semibold flex items-center gap-2 disabled:opacity-50 whitespace-nowrap"
-          style={{ background: '#d4b876', color: '#0a0906' }}
+          style={{ background: '#14b8a6', color: '#0a0906' }}
         >
           {fetchMut.isPending || jobId ? (
             <Loader2 size={14} className="animate-spin" />
@@ -1156,7 +1433,7 @@ function LucaSnapshotFetchPanel({ mukellefId, donem, autoStart }: { mukellefId: 
         <>
           <LucaInlineCaptchaPanel
             jobIds={[jobId]}
-            color="#d4b876"
+            color="#14b8a6"
             onAnswered={() => qc.invalidateQueries({ queryKey: ['kdv-luca-job', jobId] })}
             onCancel={() => cancelJobMut.mutate()}
           />
@@ -1165,7 +1442,7 @@ function LucaSnapshotFetchPanel({ mukellefId, donem, autoStart }: { mukellefId: 
               className="rounded-md px-3 py-2 text-[11.5px] font-mono"
               style={{
                 background: 'rgba(0,0,0,0.35)',
-                border: '1px solid rgba(184,160,111,0.2)',
+                border: '1px solid rgba(13,148,136,0.2)',
                 color: 'rgba(250,250,249,0.75)',
               }}
             >
@@ -1192,7 +1469,7 @@ function LucaSnapshotFetchPanel({ mukellefId, donem, autoStart }: { mukellefId: 
             <tbody style={{ color: 'rgba(250,250,249,0.85)' }}>
               {snap.kdvSatirlari.map((r, i) => (
                 <tr key={i} style={{ borderTop: '1px solid rgba(255,255,255,0.04)' }}>
-                  <td className="px-3 py-1.5 font-mono" style={{ color: '#d4b876' }}>{r.kod}</td>
+                  <td className="px-3 py-1.5 font-mono" style={{ color: '#14b8a6' }}>{r.kod}</td>
                   <td className="px-3 py-1.5">{r.ad || '—'}</td>
                   <td className="text-right px-3 py-1.5">
                     {r.borcToplami ? <MoneyText value={r.borcToplami} /> : ''}
@@ -1273,7 +1550,7 @@ function OranTablosu({
               <td className="text-right px-2 tabular-nums" style={{ color: 'rgba(250,250,249,0.62)', fontWeight: 650 }}>{o.adet}</td>
             </tr>
           ))}
-          <tr style={{ borderTop: '2px solid rgba(212,184,118,0.28)', background: 'rgba(212,184,118,0.055)' }}>
+          <tr style={{ borderTop: '2px solid rgba(20,184,166,0.28)', background: 'rgba(20,184,166,0.055)' }}>
             <td className="py-2.5 px-2 font-bold" style={{ color: FINANCIAL_TOTAL_COLOR }}>TOPLAM</td>
             <td className="text-right px-2"><MoneyText value={toplamMatrah} color={FINANCIAL_TOTAL_COLOR} strong /></td>
             <td className="text-right px-2"><MoneyText value={toplamKdv} color={renk} strong /></td>
@@ -1380,7 +1657,7 @@ function Kdv2View({ data }: { data: Kdv2 }) {
               <tbody style={{ color: '#fafaf9' }}>
                 {tevkifatli.map((t, i) => (
                   <tr key={i} style={{ borderTop: '1px solid rgba(255,255,255,0.03)' }}>
-                    <td className="px-4 py-2 tabular-nums" style={{ color: '#d4b876', fontFamily: 'JetBrains Mono, monospace' }}>{t.belgeNo}</td>
+                    <td className="px-4 py-2 tabular-nums" style={{ color: '#14b8a6', fontFamily: 'JetBrains Mono, monospace' }}>{t.belgeNo}</td>
                     <td className="px-4 py-2 truncate max-w-[220px]">{t.satici}</td>
                     <td className="px-4 py-2 tabular-nums" style={{ color: 'rgba(250,250,249,0.55)' }}>{t.tarih}</td>
                     <td className="px-4 py-2 text-right"><MoneyText value={t.matrah} /></td>
