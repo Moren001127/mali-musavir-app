@@ -192,6 +192,12 @@ export class AgentEventsService {
     return Math.min(50, Math.max(3, Math.floor(parsed)));
   }
 
+  private getMihsapVendorRuleMaxTutar(): number {
+    const parsed = Number(process.env.MIHSAP_VENDOR_RULE_MAX_TUTAR || 250000);
+    if (!Number.isFinite(parsed) || parsed <= 0) return Infinity;
+    return Math.max(50000, parsed);
+  }
+
   /**
    * Görsel Claude API çağrısının yerini tutan tek geçit.
    * - max_only modunda (VARSAYILAN): pahalı `api.anthropic.com` ÇAĞRILMAZ. Fatura görseli OCR ile
@@ -455,6 +461,86 @@ export class AgentEventsService {
       };
     }
     return { available: true, risk: false };
+  }
+
+  private extractKdvRatesFromFreeText(text: any): number[] {
+    const normalized = this.normalizeRuleText(text);
+    if (normalized.length < 20) return [];
+    const rates = new Set<number>();
+    const patterns = [
+      /(?:kdv|katma\s+deger\s+vergisi)[^0-9%]{0,24}%?\s*(0|1|8|10|18|20)\b/g,
+      /%\s*(0|1|8|10|18|20)\s*(?:kdv)?\b/g,
+    ];
+    for (const re of patterns) {
+      let m: RegExpExecArray | null;
+      while ((m = re.exec(normalized))) {
+        const rate = this.normalizeKdvRate(m[1]);
+        if (rate !== null) rates.add(rate);
+      }
+    }
+    return [...rates];
+  }
+
+  private detectVendorFastPathAccountRisk(input: {
+    action?: string;
+    faturaText?: any;
+    firma?: any;
+    tutar?: any;
+    primaryAccount?: any;
+    hesapKodlari?: string[];
+  }): string | null {
+    const text = this.normalizeRuleText(`${input.firma || ''} ${input.faturaText || ''}`);
+    if (text.length < 80) return 'Fatura icerigi yeterince okunamadi; firma hafizasi tek basina onay veremez';
+
+    const account = this.extractAccountCode(input.primaryAccount);
+    const prefix = account.slice(0, 3);
+    const amount = this.parseRuleMoney(input.tutar);
+    const maxAmount = this.getMihsapVendorRuleMaxTutar();
+    if (Number.isFinite(maxAmount) && Number.isFinite(amount) && amount > maxAmount) {
+      return `Yuksek tutar (${Math.round(amount).toLocaleString('tr-TR')} TL); hizli hafiza onayi yerine Claude Max kontrolu gerekli`;
+    }
+
+    const kdvRates = this.extractKdvRatesFromFreeText(input.faturaText);
+    if (kdvRates.length === 1) {
+      const kdvConflict = this.detectKdvRateConflict(input.hesapKodlari, kdvRates[0]);
+      if (kdvConflict) return `KDV orani uyumsuz (${kdvConflict}); hizli hafiza onayi durduruldu`;
+    }
+
+    const serviceOrExpenseSignals = [
+      /hizmet\s+bedeli|danismanlik|musavirlik|reklam|pazarlama\s+hizmeti/,
+      /kira|sigorta|abonelik|aidat|komisyon|lisans|egitim|konaklama/,
+      /internet|telefon\s+faturasi|elektrik|dogalgaz|su\s+bedeli/,
+      /bakim\s+onarim|tamir|servis\s+hizmeti|temizlik|akaryakit|motorin|benzin/,
+    ].some((re) => re.test(text));
+    if (['150', '153', '157'].includes(prefix) && serviceOrExpenseSignals) {
+      return `${account || 'stok hesabi'} secili ama faturada hizmet/gider sinyali var; Claude Max kontrolu gerekli`;
+    }
+
+    const goodsSignals = /ticari\s+mal|emtia|stok|hammadde|malzeme\s+alimi|mal\s+alimi/.test(text);
+    if (['740', '760', '770'].includes(prefix) && goodsSignals) {
+      return `${account} gider hesabi secili ama faturada stok/ticari mal sinyali var; Claude Max kontrolu gerekli`;
+    }
+
+    return null;
+  }
+
+  private evaluateVendorFastPathSafety(input: {
+    action?: string;
+    faturaText?: any;
+    firma?: any;
+    tutar?: any;
+    primaryAccount?: any;
+    hesapKodlari?: string[];
+  }, freeContent: { available: boolean; risk: boolean; sebep?: string }): { ok: boolean; sebep?: string } {
+    if (!freeContent.available) {
+      return { ok: false, sebep: 'Fatura icerigi okunamadi; firma hafizasi hizli onayi kapatildi' };
+    }
+    if (freeContent.risk) {
+      return { ok: false, sebep: freeContent.sebep || 'Fatura icerigi riskli; firma hafizasi hizli onayi kapatildi' };
+    }
+    const accountRisk = this.detectVendorFastPathAccountRisk(input);
+    if (accountRisk) return { ok: false, sebep: accountRisk };
+    return { ok: true };
   }
 
   private classifyClaudeApiError(status: number, body: string) {
@@ -3127,18 +3213,30 @@ ${ocr.text.slice(0, 14000)}`;
             (row.onayAdedi || 0) >= this.getMihsapVendorRuleMinOnay(),
         )
       : null;
+    const vendorFastPathSafety = vendorMemoryMatch
+      ? this.evaluateVendorFastPathSafety(
+          {
+            action: input.action,
+            faturaText: input.faturaText,
+            firma: input.firma,
+            tutar: input.tutar,
+            primaryAccount: primaryFaturaAccount,
+            hesapKodlari: input.hesapKodlari,
+          },
+          freeContent,
+        )
+      : { ok: false as const };
     if (
       !input.forceFresh &&
       !hasBosAlanSecenekleri &&
       vendorMemoryMatch &&
-      freeContent.available &&
-      !freeContent.risk &&
+      vendorFastPathSafety.ok &&
       primaryFaturaAccount &&
       codeType !== 'KARIŞIK' &&
       Number.isFinite(Number(input.tutar))
     ) {
       const memoryCategory = vendorMemoryMatch.kategori || primaryFaturaAccount;
-      const sebep = `Firma geçmişi: ${vendorMemoryMatch.onayAdedi} kez aynı hesaba (${primaryAccountCode}) işlenmiş, içerik temiz — otomatik onaylandı (yapay zeka gerekmedi)`;
+      const sebep = `Firma geçmişi: ${vendorMemoryMatch.onayAdedi} kez aynı hesaba (${primaryAccountCode}) işlenmiş; içerik/KDV/tutar kapısı temiz — otomatik onaylandı (yapay zeka gerekmedi)`;
       const deterministicDecision = {
         karar: 'onay',
         sebep,
