@@ -993,158 +993,113 @@ function BeyannameAksiyonlari({
 // ============================================================
 // KDV AKIŞ ŞELALESİ — Concept A yıldız bölümü
 // ============================================================
-function barBg(kind: 'pos' | 'neg' | 'result', val: number, isOdenecek = false): React.CSSProperties {
-  if (val <= 0)
-    return {
-      borderRadius: 11,
-      background: 'linear-gradient(90deg,rgba(255,250,240,.18),rgba(255,250,240,.07))',
-      border: `1px solid ${A_LINE2}`,
-    };
-  if (kind === 'result') {
-    // Ödenecek → kırmızı (vergi çıkıyor); Sonraki aya devreden → yeşil (alacak kalıyor)
-    if (isOdenecek)
-      return {
-        borderRadius: '11px 11px 4px 4px',
-        background: 'linear-gradient(180deg,#ef6b6b,#c64545 60%,#8a2929)',
-        border: '1px solid rgba(239,107,107,.45)',
-        boxShadow: '0 18px 40px -14px rgba(239,107,107,.55), inset 0 1px 0 rgba(255,255,255,.18)',
-      };
-    return {
-      borderRadius: '11px 11px 4px 4px',
-      background: 'linear-gradient(180deg,#5fcf8e,#3fae6e 60%,#1f7d49)',
-      border: '1px solid rgba(95,207,142,.45)',
-      boxShadow: '0 18px 40px -14px rgba(95,207,142,.55), inset 0 1px 0 rgba(255,255,255,.18)',
-    };
-  }
-  if (kind === 'neg')
-    return {
-      borderRadius: '11px 11px 4px 4px',
-      background: 'linear-gradient(180deg,rgba(239,107,107,.5),rgba(239,107,107,.22))',
-      border: '1px dashed rgba(239,107,107,.5)',
-    };
-  return {
-    borderRadius: '11px 11px 4px 4px',
-    background: 'linear-gradient(180deg,#2dd4bf,#0d9488)',
-    border: '1px solid rgba(255,255,255,.06)',
-    boxShadow: '0 14px 30px -16px rgba(0,0,0,.7), inset 0 1px 0 rgba(255,255,255,.12)',
-  };
-}
-
-function FootItem({ sw, label, neg, val, isOdenecek }: { sw: 'pos' | 'neg' | 'res'; label: string; neg?: boolean; val: number; isOdenecek?: boolean }) {
-  const bg =
-    sw === 'pos'
-      ? 'linear-gradient(180deg,#2dd4bf,#0d9488)'
-      : sw === 'res'
-        ? isOdenecek
-          ? 'linear-gradient(180deg,#ef6b6b,#c64545)'
-          : 'linear-gradient(180deg,#5fcf8e,#3fae6e)'
-        : 'rgba(239,107,107,.4)';
-  return (
-    <div className="flex items-center gap-2 text-[12.5px]" style={{ color: A_MUTED }}>
-      <span className="rounded-[3px]" style={{ width: 11, height: 11, background: bg, border: sw === 'neg' ? '1px dashed rgba(239,107,107,.6)' : 'none' }} />
-      {label}{' '}
-      <b className="tabular-nums" style={{ color: A_INK }}>{neg ? '−' : ''}{TRY}{fmt(val)}</b>
-    </div>
-  );
-}
-
 function KdvWaterfall({ sonuc }: { sonuc: Kdv1['sonuc'] }) {
   const odenecek = sonuc.odenecekKdv > 0;
   const resultVal = odenecek ? sonuc.odenecekKdv : sonuc.sonrakiAyaDevreden;
-  const resultLabel = odenecek ? 'Ödenecek' : 'Sonraki Aya Devreden';
-
-  const steps: Array<{ nm: string; sub: string; val: number; pre: string; op: string; kind: 'pos' | 'neg' | 'result'; ico: string }> = [
-    { nm: 'Satış KDV', sub: 'Hesaplanan', val: sonuc.hesaplananKdv, pre: '+', op: '', kind: 'pos', ico: '📈' },
-    { nm: 'İndirilecek', sub: 'Alış KDV', val: sonuc.indirilecekKdv, pre: '−', op: '−', kind: 'neg', ico: '📥' },
-    { nm: 'Önceki Devreden', sub: 'Geçmiş dönem', val: sonuc.devredenKdv, pre: '−', op: '−', kind: 'neg', ico: '↪' },
-    { nm: resultLabel, sub: 'Bu dönem', val: resultVal, pre: '', op: '=', kind: 'result', ico: '✓' },
-  ];
-  const maxVal = Math.max(1, ...steps.map((s) => s.val));
-  const barH = (v: number) => (v <= 0 ? 6 : Math.max(14, Math.round((v / maxVal) * 188)));
-
+  const resultLabel = odenecek ? 'Ödenecek KDV' : 'Sonraki Aya Devreden';
   const resultColor = odenecek ? STAT_RED : STAT_GREEN;
-  const resultShadow = odenecek ? 'rgba(239,107,107,.45)' : 'rgba(95,207,142,.45)';
-  const accentRgb = odenecek ? '239,107,107' : '95,207,142';
+  const resultRgb = odenecek ? '239,107,107' : '95,207,142';
+
+  // Akış adımları — başlangıç (satış) → çıkarımlar → sonuç.
+  const steps: Array<{
+    nm: string; sub: string; val: number; sign: '+' | '−' | ''; op: '' | '−' | '=';
+    kind: 'pos' | 'neg' | 'result'; Ico: typeof Receipt;
+  }> = [
+    { nm: 'Satış KDV', sub: 'Hesaplanan', val: sonuc.hesaplananKdv, sign: '+', op: '', kind: 'pos', Ico: Receipt },
+    { nm: 'İndirilecek', sub: 'Alış KDV', val: sonuc.indirilecekKdv, sign: '−', op: '−', kind: 'neg', Ico: Download },
+    { nm: 'Önceki Devreden', sub: 'Geçmiş dönem', val: sonuc.devredenKdv, sign: '−', op: '−', kind: 'neg', Ico: ArrowLeft },
+    { nm: resultLabel, sub: 'Bu dönem', val: resultVal, sign: '', op: '=', kind: 'result', Ico: odenecek ? AlertTriangle : CheckCircle2 },
+  ];
+
+  const tileTheme = (kind: 'pos' | 'neg' | 'result') => {
+    if (kind === 'pos')
+      return { val: A_TEAL3, bd: 'rgba(45,212,191,0.30)', bg: 'rgba(45,212,191,0.06)', icoBg: 'linear-gradient(135deg,#2dd4bf,#0d9488)', icoClr: '#04201c' };
+    if (kind === 'neg')
+      return { val: '#fca5a5', bd: 'rgba(239,107,107,0.22)', bg: 'rgba(239,107,107,0.045)', icoBg: A_BG2, icoClr: '#fca5a5' };
+    return {
+      val: resultColor,
+      bd: `rgba(${resultRgb},0.5)`,
+      bg: `rgba(${resultRgb},0.10)`,
+      icoBg: `linear-gradient(135deg, ${resultColor}, ${odenecek ? '#c64545' : '#3fae6e'})`,
+      icoClr: '#fff',
+    };
+  };
 
   return (
     <div
       className="rounded-[18px] border p-6 sm:p-7 relative overflow-hidden"
       style={{
         background:
-          `radial-gradient(520px 220px at 12% -30%, rgba(${accentRgb},.14), transparent 60%), radial-gradient(420px 200px at 95% 120%, rgba(240,183,85,.06), transparent 60%), linear-gradient(165deg,#15211e 0%, #141210 70%)`,
-        borderColor: odenecek ? 'rgba(239,107,107,0.28)' : 'rgba(95,207,142,0.28)',
+          `radial-gradient(560px 220px at 10% -30%, rgba(${resultRgb},.12), transparent 60%), linear-gradient(165deg,#15211e 0%, #141210 70%)`,
+        borderColor: `rgba(${resultRgb},0.26)`,
         boxShadow: '0 30px 70px -36px rgba(0,0,0,.85), inset 0 1px 0 rgba(255,255,255,.04)',
       }}
     >
-      <div className="flex items-end justify-between gap-4 flex-wrap mb-2">
+      {/* Başlık + sonuç */}
+      <div className="flex items-end justify-between gap-4 flex-wrap mb-6">
         <div>
           <div className="flex items-center gap-2 text-[12px] font-bold uppercase tracking-[.16em]" style={{ color: resultColor }}>
             <span className="h-1.5 w-1.5 rounded-full" style={{ background: resultColor, boxShadow: `0 0 10px ${resultColor}` }} />
-            KDV Akış Şelalesi
+            KDV Akışı
           </div>
           <h2 className="mt-1.5 font-semibold" style={{ fontFamily: SERIF, fontSize: 23, color: A_INK }}>Vergi nasıl oluştu?</h2>
-          <p className="mt-1 text-[13px] max-w-[440px]" style={{ color: A_MUTED }}>
-            Satıştan toplanan KDV'den indirim ve devreden düşülür; kalan tutar bu dönem {odenecek ? 'ödenir' : 'sonraki aya devreder'}.
+          <p className="mt-1 text-[13px] max-w-[470px]" style={{ color: A_MUTED }}>
+            Satıştan toplanan KDV'den indirilecek KDV ve önceki dönem devreden düşülür; kalan tutar bu dönem {odenecek ? 'ödenir' : 'sonraki aya devreder'}.
           </p>
         </div>
         <div className="text-right">
-          <div className="text-[11px] font-bold uppercase tracking-[.14em]" style={{ color: A_FAINT }}>Bu Dönem Sonucu · {resultLabel}</div>
-          <div className="mt-0.5 tabular-nums font-bold" style={{ fontFamily: SERIF, fontSize: 34, color: resultColor, textShadow: `0 0 26px ${resultShadow}` }}>
+          <div className="text-[11px] font-bold uppercase tracking-[.14em]" style={{ color: A_FAINT }}>Bu Dönem Sonucu</div>
+          <div className="mt-0.5 tabular-nums font-bold" style={{ fontFamily: SERIF, fontSize: 34, color: resultColor, textShadow: `0 0 26px rgba(${resultRgb},.45)` }}>
             {TRY}{fmt(resultVal)}
           </div>
+          <div className="text-[12px] font-semibold" style={{ color: resultColor }}>{resultLabel}</div>
         </div>
       </div>
 
-      <div className="relative mt-7 px-1">
-        <div className="absolute left-0 right-0" style={{ bottom: 74, height: 1, background: 'linear-gradient(90deg,transparent,rgba(255,250,240,.14) 8%,rgba(255,250,240,.14) 92%,transparent)' }} />
-        <div className="flex items-end" style={{ height: 300 }}>
-          {steps.map((s, i) => (
+      {/* Akış kartları (operatörlü) */}
+      <div className="flex items-stretch flex-wrap lg:flex-nowrap gap-2.5 lg:gap-0">
+        {steps.map((s, i) => {
+          const t = tileTheme(s.kind);
+          const sifir = s.val <= 0 && s.kind !== 'result';
+          return (
             <React.Fragment key={s.nm}>
               {i > 0 && (
-                <div className="relative flex-none" style={{ width: 24 }}>
-                  <span className="absolute font-semibold" style={{ bottom: 108, left: 0, right: 0, textAlign: 'center', fontFamily: SERIF, fontSize: 22, color: A_FAINT }}>{s.op}</span>
+                <div className="hidden lg:flex items-center justify-center flex-none" style={{ width: 38 }}>
+                  <span className="font-semibold" style={{ fontFamily: SERIF, fontSize: 24, color: A_FAINT }}>{s.op}</span>
                 </div>
               )}
-              <div className="relative flex-1 min-w-0 flex flex-col justify-end items-center" style={{ height: '100%', paddingBottom: 74 }}>
-                <div className="relative" style={{ width: '78%', maxWidth: 128, height: barH(s.val), ...barBg(s.kind, s.val, odenecek) }}>
-                  <span
-                    className="absolute left-0 right-0 tabular-nums font-bold"
-                    style={{ top: -28, textAlign: 'center', fontFamily: SERIF, fontSize: s.kind === 'result' ? 17 : 15, color: s.kind === 'result' ? '#fff' : s.val <= 0 ? A_FAINT : s.kind === 'neg' ? STAT_RED : A_TEAL3 }}
-                  >
-                    {s.pre}{TRY}{fmt(s.val)}
-                  </span>
-                </div>
-                <div className="absolute bottom-0 left-2 right-2 text-center">
+              <div
+                className="flex-1 min-w-[150px] rounded-2xl border p-4 flex flex-col"
+                style={{ borderColor: t.bd, background: t.bg }}
+              >
+                <div className="flex items-center gap-2.5 mb-3">
                   <div
-                    className="mx-auto mb-2 grid place-items-center rounded-[9px]"
-                    style={{
-                      width: 30,
-                      height: 30,
-                      border: `1px solid ${A_LINE2}`,
-                      background:
-                        s.kind === 'result'
-                          ? odenecek
-                            ? 'linear-gradient(135deg,#ef6b6b,#c64545)'
-                            : 'linear-gradient(135deg,#5fcf8e,#3fae6e)'
-                          : A_BG2,
-                      fontSize: 15,
-                    }}
+                    className="grid place-items-center rounded-[9px] flex-none"
+                    style={{ width: 32, height: 32, background: t.icoBg, border: s.kind === 'neg' ? `1px solid ${A_LINE2}` : 'none' }}
                   >
-                    {s.ico}
+                    <s.Ico size={16} style={{ color: t.icoClr }} />
                   </div>
-                  <div className="text-[12.5px] font-bold leading-tight" style={{ color: A_INK }}>{s.nm}</div>
-                  <div className="text-[11px]" style={{ color: A_FAINT }}>{s.sub}</div>
+                  <div className="min-w-0">
+                    <div className="text-[12.5px] font-bold leading-tight truncate" style={{ color: A_INK }}>{s.nm}</div>
+                    <div className="text-[10.5px]" style={{ color: A_FAINT }}>{s.sub}</div>
+                  </div>
+                </div>
+                <div className="tabular-nums font-bold mt-auto" style={{ fontFamily: SERIF, fontSize: 23, color: sifir ? A_FAINT : t.val }}>
+                  {s.sign}{TRY}{fmt(s.val)}
                 </div>
               </div>
             </React.Fragment>
-          ))}
-        </div>
+          );
+        })}
       </div>
 
-      <div className="flex gap-4 flex-wrap mt-6 pt-4 border-t" style={{ borderColor: A_LINE }}>
-        <FootItem sw="pos" label="Toplanan KDV" val={sonuc.hesaplananKdv} />
-        <FootItem sw="neg" neg label="Düşülen" val={Math.round((sonuc.indirilecekKdv + sonuc.devredenKdv) * 100) / 100} />
-        <FootItem sw="res" label={odenecek ? 'Net ödenecek' : 'Sonraki aya'} val={resultVal} isOdenecek={odenecek} />
+      {/* Alt özet şeridi */}
+      <div className="flex gap-5 flex-wrap mt-5 pt-4 border-t text-[12.5px]" style={{ borderColor: A_LINE, color: A_MUTED }}>
+        <span>Toplanan KDV <b className="tabular-nums ml-1" style={{ color: A_INK }}>{TRY}{fmt(sonuc.hesaplananKdv)}</b></span>
+        <span style={{ color: A_FAINT }}>·</span>
+        <span>Düşülen <b className="tabular-nums ml-1" style={{ color: '#fca5a5' }}>−{TRY}{fmt(Math.round((sonuc.indirilecekKdv + sonuc.devredenKdv) * 100) / 100)}</b></span>
+        <span style={{ color: A_FAINT }}>·</span>
+        <span>{odenecek ? 'Net ödenecek' : 'Sonraki aya'} <b className="tabular-nums ml-1" style={{ color: resultColor }}>{TRY}{fmt(resultVal)}</b></span>
       </div>
     </div>
   );
@@ -1966,68 +1921,64 @@ function OranTablosu({
   altSatir?: Array<{ ad: string; v: { matrah: number; kdv: number; adet: number } }>;
 }) {
   const safeOranlar = cleanOranRows(oranlar || []);
-  const maxKdv = Math.max(1, ...safeOranlar.map((o) => o.kdv));
+  const cellB = '1px solid rgba(255,255,255,0.07)';
+  const totalBorder = `2px solid ${renk}55`;
   return (
-    <div
-      className="rounded-2xl p-5 border"
-      style={{ background: 'rgba(255,255,255,0.02)', borderColor: 'rgba(255,255,255,0.06)' }}
-    >
-      <div className="mb-4 flex items-center justify-between gap-3">
+    <div className="rounded-2xl border overflow-hidden" style={{ background: 'rgba(255,255,255,0.02)', borderColor: 'rgba(255,255,255,0.08)' }}>
+      {/* Başlık şeridi */}
+      <div className="flex items-center justify-between gap-3 px-4 py-3" style={{ borderBottom: cellB, background: `${renk}0d` }}>
         <div className="flex items-center gap-2.5">
           <span className="h-2.5 w-2.5 rounded-full" style={{ background: renk, boxShadow: `0 0 8px ${renk}` }} />
           <h3 className="text-[13.5px] font-semibold" style={{ color: '#fafaf9' }}>{baslik}</h3>
         </div>
-        <span className="rounded-md border px-2 py-1 text-[10.5px] font-bold tabular-nums" style={{ borderColor: 'rgba(255,255,255,0.1)', color: 'rgba(250,250,249,0.6)' }}>{adet} fatura</span>
+        <span className="rounded-md border px-2 py-0.5 text-[11px] font-bold tabular-nums" style={{ borderColor: 'rgba(255,255,255,0.12)', color: 'rgba(250,250,249,0.65)' }}>{adet} fatura</span>
       </div>
 
       {safeOranlar.length === 0 ? (
-        <div className="rounded-xl border border-dashed py-8 text-center text-[12.5px]" style={{ borderColor: 'rgba(255,255,255,0.08)', color: 'rgba(250,250,249,0.4)' }}>
+        <div className="py-10 text-center text-[12.5px]" style={{ color: 'rgba(250,250,249,0.4)' }}>
           Bu dönem için kayıt yok
         </div>
       ) : (
-        <div className="space-y-2">
-          {safeOranlar.map((o) => (
-            <div key={o.oran} className="rounded-xl border p-3" style={{ borderColor: 'rgba(255,255,255,0.06)', background: 'rgba(0,0,0,0.2)' }}>
-              <div className="flex items-center justify-between gap-3">
-                <span className="inline-flex items-center rounded-md px-2 py-0.5 text-[11.5px] font-bold" style={{ background: `${renk}22`, color: renk }}>%{o.oran}</span>
-                <div className="flex items-end gap-4">
-                  <div className="w-[124px] text-right">
-                    <div className="text-[9px] uppercase tracking-wider" style={{ color: 'rgba(250,250,249,0.4)' }}>Matrah</div>
-                    <MoneyText value={o.matrah} />
-                  </div>
-                  <div className="w-[112px] text-right">
-                    <div className="text-[9px] uppercase tracking-wider" style={{ color: 'rgba(250,250,249,0.4)' }}>KDV</div>
-                    <MoneyText value={o.kdv} color={renk} strong />
-                  </div>
-                  <span className="w-9 text-right tabular-nums text-[11px]" style={{ color: 'rgba(250,250,249,0.5)' }}>{o.adet}×</span>
-                </div>
-              </div>
-              <div className="mt-2 h-1.5 overflow-hidden rounded-full" style={{ background: 'rgba(255,255,255,0.05)' }}>
-                <span className="block h-full rounded-full" style={{ width: `${Math.round((o.kdv / maxKdv) * 100)}%`, background: renk }} />
-              </div>
-            </div>
-          ))}
-        </div>
+        <table className="w-full text-[12.5px]" style={{ borderCollapse: 'collapse' }}>
+          <thead>
+            <tr style={{ color: 'rgba(250,250,249,0.5)', background: 'rgba(255,255,255,0.025)' }}>
+              <th className="text-left px-4 py-2 font-semibold uppercase tracking-wider text-[10.5px]" style={{ border: cellB }}>Oran</th>
+              <th className="text-right px-4 py-2 font-semibold uppercase tracking-wider text-[10.5px]" style={{ border: cellB }}>Matrah</th>
+              <th className="text-right px-4 py-2 font-semibold uppercase tracking-wider text-[10.5px]" style={{ border: cellB }}>KDV</th>
+              <th className="text-right px-3 py-2 font-semibold uppercase tracking-wider text-[10.5px]" style={{ border: cellB, width: 56 }}>Adet</th>
+            </tr>
+          </thead>
+          <tbody style={{ color: '#fafaf9' }}>
+            {safeOranlar.map((o) => (
+              <tr key={o.oran}>
+                <td className="px-4 py-2.5" style={{ border: cellB }}>
+                  <span className="inline-flex items-center rounded-md px-2 py-0.5 text-[12px] font-bold" style={{ background: `${renk}22`, color: renk }}>%{o.oran}</span>
+                </td>
+                <td className="text-right px-4 py-2.5 tabular-nums" style={{ border: cellB }}><MoneyText value={o.matrah} size={12.5} /></td>
+                <td className="text-right px-4 py-2.5 tabular-nums" style={{ border: cellB }}><MoneyText value={o.kdv} color={renk} strong size={12.5} /></td>
+                <td className="text-right px-3 py-2.5 tabular-nums" style={{ border: cellB, color: 'rgba(250,250,249,0.5)' }}>{o.adet}</td>
+              </tr>
+            ))}
+            <tr style={{ background: `${renk}14` }}>
+              <td className="px-4 py-2.5 font-extrabold tracking-wide" style={{ border: cellB, borderTop: totalBorder, color: renk }}>TOPLAM</td>
+              <td className="text-right px-4 py-2.5 tabular-nums" style={{ border: cellB, borderTop: totalBorder }}><MoneyText value={toplamMatrah} strong size={13} /></td>
+              <td className="text-right px-4 py-2.5 tabular-nums" style={{ border: cellB, borderTop: totalBorder }}><MoneyText value={toplamKdv} color={renk} strong size={13} /></td>
+              <td className="px-3 py-2.5" style={{ border: cellB, borderTop: totalBorder }} />
+            </tr>
+          </tbody>
+        </table>
       )}
 
-      <div className="mt-3 flex items-center justify-between rounded-xl px-3.5 py-2.5" style={{ background: `${renk}14`, border: `1px solid ${renk}3a` }}>
-        <span className="text-[12px] font-extrabold tracking-wide" style={{ color: renk }}>TOPLAM</span>
-        <div className="flex items-center gap-4">
-          <div className="w-[124px] text-right"><MoneyText value={toplamMatrah} strong /></div>
-          <div className="w-[112px] text-right"><MoneyText value={toplamKdv} color={renk} strong /></div>
-          <span className="w-9" />
-        </div>
-      </div>
-
+      {/* Tevkifat alt kırılım (yalnız alış) */}
       {altSatir && (
-        <div className="mt-2 grid grid-cols-2 gap-2">
-          {altSatir.map((a) => (
-            <div key={a.ad} className="rounded-lg px-3 py-2" style={{ background: 'rgba(0,0,0,0.2)', border: '1px solid rgba(255,255,255,0.05)' }}>
-              <div className="text-[10.5px]" style={{ color: 'rgba(250,250,249,0.5)' }}>{a.ad}</div>
-              <div className="mt-0.5 flex items-center justify-between">
-                <MoneyText value={a.v.kdv} color="rgba(250,250,249,0.78)" />
+        <div className="grid grid-cols-2" style={{ borderTop: cellB }}>
+          {altSatir.map((a, i) => (
+            <div key={a.ad} className="px-4 py-2.5" style={{ borderRight: i === 0 ? cellB : undefined }}>
+              <div className="flex items-center justify-between">
+                <span className="text-[11px]" style={{ color: 'rgba(250,250,249,0.5)' }}>{a.ad}</span>
                 <span className="text-[10.5px] tabular-nums" style={{ color: 'rgba(250,250,249,0.4)' }}>{a.v.adet}×</span>
               </div>
+              <div className="mt-1"><MoneyText value={a.v.kdv} color="rgba(250,250,249,0.82)" size={13} /></div>
             </div>
           ))}
         </div>
