@@ -969,14 +969,23 @@ export class KdvBeyannameService {
       const status = String(res.status || '');
 
       if (!acceptedStatuses.has(status)) {
-        addIssue(
-          docKey,
-          belgeNo,
-          'kdv_kontrol',
-          status === 'REJECTED' ? 'kritik' : 'uyari',
-          `KDV Kontrol kaydi ${status || 'belirsiz'} durumunda; beyan toplamina dahil edilmedi.`,
-        );
-        continue;
+        // UNMATCHED ama Luca KAYDI olan (record-only, eşleşecek görsel yok) → resmi
+        // defter satırıdır; hiçbir şeyle eşleşmediği için çift-sayma riski YOK →
+        // beyana DAHİL EDİLİR ama "kontrol gerekir" diye flag'lenir (aşağıda addRows
+        // isFinal=false). Image-only UNMATCHED (Luca'sız OCR) Luca defterinde
+        // karşılığı olmadığından dışlanmaya devam eder (fazla-sayma riski).
+        const lucaKaydiVarEslesmedi =
+          status === 'UNMATCHED' && !!res.kdvRecord && !res.image;
+        if (!lucaKaydiVarEslesmedi) {
+          addIssue(
+            docKey,
+            belgeNo,
+            'kdv_kontrol',
+            status === 'REJECTED' ? 'kritik' : 'uyari',
+            `KDV Kontrol kaydi ${status || 'belirsiz'} durumunda; beyan toplamina dahil edilmedi.`,
+          );
+          continue;
+        }
       }
 
       let rows: Array<{ oran: number; matrah: number; kdv: number }> = [];
