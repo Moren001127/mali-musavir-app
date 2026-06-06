@@ -114,6 +114,14 @@ type Kdv1 = {
   mukellefId: string;
   mukellefAd: string;
   donem: string;
+  isletmeGelirGider?: {
+    gelirKdvToplam: number;
+    giderKdvToplam: number;
+    gelirSatirAdet: number;
+    giderSatirAdet: number;
+    netKdv: number;
+    cekildiAt: string | null;
+  } | null;
   satis: { oranlar: OranRow[]; toplamMatrah: number; toplamHesaplananKdv: number; faturaAdet: number };
   alis: {
     oranlar: OranRow[];
@@ -1428,12 +1436,43 @@ function Kdv1View({ data, isBilanco }: { data: Kdv1; isBilanco: boolean }) {
           )}
           <LucaSnapshotFetchPanel mukellefId={data.mukellefId} donem={data.donem} autoStart={false} />
         </>
+      ) : data.isletmeGelirGider ? (
+        <div className="rounded-2xl border p-5" style={{ background: 'rgba(255,255,255,0.02)', borderColor: 'rgba(255,255,255,0.06)' }}>
+          <div className="mb-3 flex items-center justify-between gap-2">
+            <div className="flex items-center gap-2">
+              <Sparkles size={14} style={{ color: '#14b8a6' }} />
+              <h3 className="text-[13px] font-semibold" style={{ color: '#fafaf9' }}>Luca Gelir-Gider Çapraz Kontrol</h3>
+            </div>
+            {data.isletmeGelirGider.cekildiAt && (
+              <span className="text-[11px]" style={{ color: 'rgba(250,250,249,0.4)' }}>
+                Çekildi: {new Date(data.isletmeGelirGider.cekildiAt).toLocaleString('tr-TR')}
+              </span>
+            )}
+          </div>
+          <div className="grid grid-cols-1 gap-2.5 sm:grid-cols-2">
+            <LucaCrossCard
+              hesap="Gelir KDV · Hesaplanan"
+              mihsap={displaySatis.toplamHesaplananKdv}
+              luca={data.isletmeGelirGider.gelirKdvToplam}
+              fark={Math.round((displaySatis.toplamHesaplananKdv - data.isletmeGelirGider.gelirKdvToplam) * 100) / 100}
+            />
+            <LucaCrossCard
+              hesap="Gider KDV · İndirilecek"
+              mihsap={displayAlis.toplamIndirilecekKdv}
+              luca={data.isletmeGelirGider.giderKdvToplam}
+              fark={Math.round((displayAlis.toplamIndirilecekKdv - data.isletmeGelirGider.giderKdvToplam) * 100) / 100}
+            />
+          </div>
+          <div className="mt-2.5 text-[11.5px]" style={{ color: 'rgba(250,250,249,0.5)' }}>
+            Luca işletme defteri gelir-gider listesindeki "Hesaplanan / İndirilecek K.D.V." toplamları. Kontrol tamamlanınca otomatik çekilir.
+          </div>
+        </div>
       ) : (
         <div className="rounded-2xl border p-4 flex items-start gap-2.5" style={{ background: 'rgba(20,184,166,0.05)', borderColor: 'rgba(20,184,166,0.2)' }}>
           <Sparkles size={15} style={{ color: '#14b8a6', flexShrink: 0, marginTop: 1 }} />
           <div className="text-[12.5px]" style={{ color: 'rgba(250,250,249,0.7)' }}>
             <span className="font-semibold" style={{ color: '#5eead4' }}>İşletme defteri usulü</span> — KDV doğrudan faturalardan hesaplanır;
-            mizan (191/391/190) çapraz kontrolü uygulanmaz. Gelir-gider için <b style={{ color: '#fafaf9' }}>İşletme Hesap Özeti</b> modülü kullanılır.
+            mizan (191/391/190) yerine <b style={{ color: '#fafaf9' }}>Luca gelir-gider listesi</b> KDV toplamı çapraz kontrol için çekilir (kontrol tamamlanınca otomatik).
           </div>
         </div>
       )}

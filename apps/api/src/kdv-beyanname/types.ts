@@ -40,6 +40,16 @@ export interface Kdv1OnHazirlik {
   mukellefAd: string;
   donem: string;
 
+  // === İŞLETME DEFTERİ — Luca gelir-gider listesi KDV toplamı (bağımsız snapshot) ===
+  isletmeGelirGider?: {
+    gelirKdvToplam: number;   // "Hesaplanan K.D.V." toplamı (satış)
+    giderKdvToplam: number;   // "İndirilecek K.D.V." toplamı (alış)
+    gelirSatirAdet: number;
+    giderSatirAdet: number;
+    netKdv: number;           // gelir - gider
+    cekildiAt: string | null;
+  } | null;
+
   // === MATRAHLAR (SATIŞ tarafı) ===
   satis: {
     oranlar: OranRow[]; // %1, %10, %20 kırılımı

@@ -51,20 +51,17 @@ export class KdvAutoFetchService implements OnModuleInit, OnModuleDestroy {
     const donem = payload?.donem;
     if (!tenantId || !taxpayerId || !donem) return;
     try {
-      // Bilanço → Luca KDV mizan. İşletme defteri mükellefte fetchLucaSnapshot
-      // "mizan uygulanmaz" diye reddeder → yakalanır (FAZ 2: işletme gelir-gider).
-      const res = await this.kdvBeyanname.fetchLucaSnapshot({
+      // Defter türüne göre: bilanço → Luca mizan, işletme → gelir-gider listesi.
+      const res = await this.kdvBeyanname.autoFetchForKontrolTamam({
         tenantId,
         mukellefId: taxpayerId,
         donem,
       });
       this.logger.log(
-        `[OTO-KDV] ${taxpayerId} ${donem}: Luca mizan job ${res.jobId} (${res.status}${(res as any).reused ? ', mevcut' : ''}).`,
+        `[OTO-KDV] ${taxpayerId} ${donem}: ${res.tip} job ${res.jobId} (${res.status}${(res as any).reused ? ', mevcut' : ''}).`,
       );
     } catch (e: any) {
-      this.logger.log(
-        `[OTO-KDV] ${taxpayerId} ${donem}: mizan çekilmedi (${e?.message || e}).`,
-      );
+      this.logger.log(`[OTO-KDV] ${taxpayerId} ${donem}: çekim atlandı (${e?.message || e}).`);
     }
   }
 }

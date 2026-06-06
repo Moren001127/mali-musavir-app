@@ -4,7 +4,7 @@
 */
 (function () {
   // Agent versiyon — UI'da gösterilir, debug için kritik
-  const AGENT_VERSION = '1.39.1';
+  const AGENT_VERSION = '1.40.0';
   const AGENT_INSTANCE_ID = 'mai_' + Date.now().toString(36) + '_' + Math.random().toString(36).slice(2, 8);
 
   // === VERSION-AWARE RELOAD ===
@@ -1710,6 +1710,14 @@
               jobId: job.id,
             });
             uploadUrl = `${API}/agent/luca/runner/upload-kdv-mizan?${params.toString()}`;
+          } else if (job.tip === 'KDV_ISLETME_GG') {
+            // KDV beyanname işletme gelir-gider — bağımsız snapshot endpoint'i
+            const params = new URLSearchParams({
+              mukellefId: String(job.mukellefId || ''),
+              donem: String(job.donem || ''),
+              jobId: job.id,
+            });
+            uploadUrl = `${API}/agent/luca/runner/upload-kdv-isletme-gg?${params.toString()}`;
           } else if (job.tip === 'IHO_FETCH') {
             // İşletme Hesap Özeti — sessionId = İHÖ kayıt id'si
             const params = new URLSearchParams({
@@ -1906,6 +1914,11 @@
     if (job.tip === 'ISLETME_GELIR' || job.tip === 'ISLETME_GIDER') {
       const mode = job.tip === 'ISLETME_GELIR' ? 'gelir' : 'gider';
       return await fetchLucaIsletmeGelirGiderExcel(job, log, mode);
+    }
+    if (job.tip === 'KDV_ISLETME_GG') {
+      // KDV beyanname işletme gelir-gider snapshot — tek Excel'de GELİR+GİDER (both).
+      // KDV Kontrol'den bağımsız; upload yolu farklı (upload-kdv-isletme-gg).
+      return await fetchLucaIsletmeGelirGiderExcel(job, log, 'both');
     }
     if (job.tip === 'IHO_FETCH') {
       // İşletme Hesap Özeti — yeni menü-bazlı tam otomasyon (v1.36.7+)
@@ -14418,10 +14431,10 @@
         await logEvent(mukellef.id, mukellef.ad, 'skip', 'kod boş (hiç kod yok)', logMeta());
         await clickIleri(fid); continue;
       }
-      // Ekrandaki select'lerden herhangi biri boşsa (matrah/KDV/cari)
+      // Ekrandaki select'lerden herhangi biri bossa (matrah/KDV/cari) direkt gec.
       if (hasBosSelect) {
-        const isAlisBosKodAtla = action === 'isle_alis' || action === 'isle_alis_isletme';
-        if (isAlisBosKodAtla) {
+        const isBlankCodeDirectSkip = true;
+        if (isBlankCodeDirectSkip) {
           const fastBlankSections = Array.isArray(fastCodeState.blankSections) ? fastCodeState.blankSections : [];
           const durumlar = normalizeBosAlanDurumlari({
             matrahDolu: bolumHesapKoduDolu(/^Matrah\s*\(/i) ?? bolumHesapKoduDolu(/^Matrah$/i),
@@ -14441,11 +14454,11 @@
             mukellef.id,
             mukellef.ad,
             'skip',
-            `Alış faturasında boş alan var (${bosAlanlar.join(', ') || 'Hesap Kodu'}) — elle işlenmeli`,
+            `Boş muhasebe kodu var (${bosAlanlar.join(', ') || 'Hesap Kodu'}) — direkt geçildi`,
             logMeta({
               hesapKodlari: codes,
               kdv: readKdvOrani(),
-              aiCallReason: 'local_alis_blank_skip',
+              aiCallReason: 'local_blank_account_skip',
             }),
           );
           await clickIleri(fid);
@@ -14699,7 +14712,7 @@
       );
       perf.mark('ruleDecision');
       if (decision?.karar === 'needs_ai') {
-        const isAlisFreeManual = action === 'isle_alis' || action === 'isle_alis_isletme';
+        const isAlisFreeManual = false;
         if (isAlisFreeManual) {
           counters.atla++; counters.toplam++; setCount();
           await logEvent(mukellef.id, mukellef.ad, 'skip',

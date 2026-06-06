@@ -804,6 +804,58 @@ export class LucaController {
   }
 
   /**
+   * KDV Beyanname İŞLETME DEFTERİ gelir-gider KDV snapshot yükleme (BAĞIMSIZ).
+   * KDV Kontrol'den ayrı: KdvLucaSnapshot.hamMizan'a {__isletmeGg:...} olarak yazar.
+   * Tek Excel'de gelir (Hesaplanan KDV) + gider (İndirilecek KDV) toplamı çıkarılır.
+   */
+  @Post('agent/luca/runner/upload-kdv-isletme-gg')
+  @HttpCode(HttpStatus.OK)
+  @UseInterceptors(FileInterceptor('file', { storage: memoryStorage() }))
+  async uploadKdvIsletmeGgFromRunner(
+    @Headers('x-agent-token') agentToken: string,
+    @UploadedFile() file: Express.Multer.File,
+    @Query('mukellefId') mukellefId: string,
+    @Query('donem') donem: string,
+    @Query('jobId') jobId?: string,
+  ) {
+    if (!file) throw new BadRequestException('Excel dosyası gerekli (field: file)');
+    if (!mukellefId || !donem) {
+      throw new BadRequestException('mukellefId ve donem query parametreleri gerekli');
+    }
+    const tenantId = await this.resolveTenantFromAgentToken(agentToken);
+    await this.assertRunnerUploadJob({
+      tenantId,
+      jobId,
+      allowedTips: ['KDV_ISLETME_GG'],
+      mukellefId,
+      donem,
+      label: 'KDV işletme gelir-gider',
+    });
+    try {
+      const snap = await this.kdvBeyanname.importIsletmeGGSnapshot({
+        tenantId,
+        mukellefId,
+        donem,
+        fetchJobId: jobId,
+        buffer: file.buffer,
+      });
+      const adet = ((snap as any)?.gelirSatirAdet || 0) + ((snap as any)?.giderSatirAdet || 0);
+      if (jobId) await this.luca.markJobDone(jobId, adet).catch(() => {});
+      return {
+        ok: true,
+        snapshotId: (snap as any)?.id,
+        gelirKdvToplam: (snap as any)?.gelirKdvToplam,
+        giderKdvToplam: (snap as any)?.giderKdvToplam,
+      };
+    } catch (e: any) {
+      if (jobId) await this.luca.markJobFailed(jobId, e?.message || 'bilinmeyen').catch(() => {});
+      throw new BadRequestException(
+        `KDV işletme gelir-gider snapshot hatası: ${e?.message || 'bilinmeyen'}`,
+      );
+    }
+  }
+
+  /**
    * İşletme Hesap Özeti için Luca'dan İşletme Defteri Excel'i — agent token ile çalışır.
    * Tek excel'den hem GELİRLER hem GİDERLER bölümü parse edilir, İHÖ kaydı doldurulur.
    */

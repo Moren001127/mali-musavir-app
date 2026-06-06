@@ -14,6 +14,7 @@ import {
 } from './types';
 import { NotificationsService } from '../notifications/notifications.service';
 import { BeyanKayitlariService } from '../beyan-kayitlari/beyan-kayitlari.service';
+import * as XLSX from 'xlsx';
 
 /**
  * KDV Beyanname Ön Hazırlık Servisi.
@@ -183,10 +184,16 @@ export class KdvBeyannameService {
       kritikEksikAdet: eksikVeriler.filter((e) => e.seviye === 'kritik').length,
     });
 
+    // İşletme defteri mükellefte Luca gelir-gider KDV toplamı (bağımsız snapshot).
+    const isletmeGelirGider = this.isIsletmeDefteri(mukellef)
+      ? await this.readIsletmeGgSnapshot(tenantId, mukellefId, donem)
+      : null;
+
     return {
       mukellefId,
       mukellefAd: this.formatMukellefAd(mukellef),
       donem,
+      isletmeGelirGider,
       satis: {
         oranlar: satis.oranlar,
         toplamMatrah: Math.round(satis.toplamMatrah * 100) / 100,
@@ -1895,7 +1902,9 @@ export class KdvBeyannameService {
       where: { tenantId_taxpayerId_donem: { tenantId, taxpayerId: mukellefId, donem } },
     });
 
-    if (!snapshot) {
+    // İşletme gelir-gider snapshot'ı (hamMizan = {__isletmeGg:...} obje) bu mizan
+    // çapraz kontrolüne girmez — ayrı isletmeGelirGider alanında sunulur.
+    if (!snapshot || (snapshot.hamMizan && !Array.isArray(snapshot.hamMizan))) {
       return {
         mizanVar: false,
         luca391Bakiye: null,
@@ -2029,6 +2038,26 @@ export class KdvBeyannameService {
       },
     });
     return { jobId: job.id, status: job.status };
+  }
+
+  /**
+   * Kontrol tamamlanınca otomatik Luca çekimi — defter türüne göre yönlendirir:
+   *   - BİLANÇO → KDV mizan (191/391/190)
+   *   - İŞLETME → gelir-gider listesi KDV toplamı
+   */
+  async autoFetchForKontrolTamam(params: {
+    tenantId: string;
+    mukellefId: string;
+    donem: string;
+    createdBy?: string;
+  }) {
+    const mukellef = await this.getMukellef(params.tenantId, params.mukellefId);
+    if (this.isIsletmeDefteri(mukellef)) {
+      const r = await this.fetchIsletmeGGSnapshot(params);
+      return { tip: 'isletme-gg' as const, ...r };
+    }
+    const r = await this.fetchLucaSnapshot(params);
+    return { tip: 'mizan' as const, ...r };
   }
 
   /** Snapshot job durumu (frontend polling) */
@@ -2218,6 +2247,230 @@ export class KdvBeyannameService {
         toplamHesapAdet: ham.length,
       },
     });
+  }
+
+  // ════════════════════════════════════════════════════════════
+  // İŞLETME DEFTERİ — Luca Gelir/Gider Listesi KDV toplamı (BAĞIMSIZ)
+  // KDV Kontrol'den ayrı: kendi job tipi (KDV_ISLETME_GG) + kendi endpoint;
+  // veriyi KdvLucaSnapshot.hamMizan'a {__isletmeGg:true,...} olarak yazar (migration yok).
+  // ════════════════════════════════════════════════════════════
+
+  /** İşletme defteri mükellef için Luca gelir-gider KDV job'u yarat (KDV_ISLETME_GG). */
+  async fetchIsletmeGGSnapshot(params: {
+    tenantId: string;
+    mukellefId: string;
+    donem: string;
+    createdBy?: string;
+    targetDeviceId?: string;
+  }) {
+    if (!/^\d{4}-\d{2}$/.test(params.donem)) {
+      throw new BadRequestException('Gelir-gider çekimi aylık dönem ister (yyyy-mm).');
+    }
+    const mukellef = await this.getMukellef(params.tenantId, params.mukellefId);
+    if (!this.isIsletmeDefteri(mukellef)) {
+      throw new BadRequestException(
+        'Bu mükellef bilanço usulünde. Gelir-gider listesi işletme defteri içindir; bilanço için Luca mizan çekilir.',
+      );
+    }
+    // Tekrar önleme
+    const mevcut = await (this.prisma as any).lucaFetchJob.findFirst({
+      where: {
+        tenantId: params.tenantId,
+        mukellefId: params.mukellefId,
+        donem: params.donem,
+        tip: 'KDV_ISLETME_GG',
+        status: { in: ['pending', 'running'] },
+      },
+      orderBy: { createdAt: 'desc' },
+    });
+    if (mevcut) return { jobId: mevcut.id, status: mevcut.status, reused: true };
+    const job = await (this.prisma as any).lucaFetchJob.create({
+      data: {
+        tenantId: params.tenantId,
+        sessionId: null,
+        mukellefId: params.mukellefId,
+        donem: params.donem,
+        tip: 'KDV_ISLETME_GG',
+        status: 'pending',
+        createdBy: params.createdBy || null,
+        targetDeviceId: params.targetDeviceId || null,
+        preferredAgent: 'local-node',
+        priority: 2,
+        errorMsg: `[META] mukellefAdi=${this.formatMukellefAd(mukellef)}\nKDV işletme gelir-gider: ${params.donem}`,
+      },
+    });
+    return { jobId: job.id, status: job.status };
+  }
+
+  /** Agent'ın yüklediği gelir-gider Excel'ini parse edip KDV toplamlarını snapshot'a yazar. */
+  async importIsletmeGGSnapshot(params: {
+    tenantId: string;
+    mukellefId: string;
+    donem: string;
+    fetchJobId?: string;
+    buffer: Buffer;
+  }) {
+    const sums = this.parseIsletmeGgKdvSums(params.buffer, params.donem);
+    const data = {
+      __isletmeGg: true,
+      gelirKdvToplam: sums.gelirKdvToplam,
+      giderKdvToplam: sums.giderKdvToplam,
+      gelirSatirAdet: sums.gelirSatirAdet,
+      giderSatirAdet: sums.giderSatirAdet,
+      netKdv: Math.round((sums.gelirKdvToplam - sums.giderKdvToplam) * 100) / 100,
+    };
+    const snap = await (this.prisma as any).kdvLucaSnapshot.upsert({
+      where: {
+        tenantId_taxpayerId_donem: {
+          tenantId: params.tenantId,
+          taxpayerId: params.mukellefId,
+          donem: params.donem,
+        },
+      },
+      create: {
+        tenantId: params.tenantId,
+        taxpayerId: params.mukellefId,
+        donem: params.donem,
+        fetchJobId: params.fetchJobId || null,
+        hamMizan: data,
+        toplamHesapAdet: sums.gelirSatirAdet + sums.giderSatirAdet,
+      },
+      update: {
+        cekildiAt: new Date(),
+        fetchJobId: params.fetchJobId || null,
+        hamMizan: data,
+        toplamHesapAdet: sums.gelirSatirAdet + sums.giderSatirAdet,
+      },
+    });
+    return { id: snap.id, ...sums };
+  }
+
+  /** İşletme gelir-gider snapshot'ını oku (varsa). */
+  private async readIsletmeGgSnapshot(tenantId: string, mukellefId: string, donem: string) {
+    const snap = await (this.prisma as any).kdvLucaSnapshot.findUnique({
+      where: { tenantId_taxpayerId_donem: { tenantId, taxpayerId: mukellefId, donem } },
+      select: { hamMizan: true, cekildiAt: true },
+    });
+    const h: any = snap?.hamMizan;
+    if (!h || Array.isArray(h) || !h.__isletmeGg) return null;
+    return {
+      gelirKdvToplam: Number(h.gelirKdvToplam || 0),
+      giderKdvToplam: Number(h.giderKdvToplam || 0),
+      gelirSatirAdet: Number(h.gelirSatirAdet || 0),
+      giderSatirAdet: Number(h.giderSatirAdet || 0),
+      netKdv: Number(h.netKdv || 0),
+      cekildiAt: snap.cekildiAt ? new Date(snap.cekildiAt).toISOString() : null,
+    };
+  }
+
+  /** Luca gelir-gider Excel'inden gelir KDV ("Hesaplanan") + gider KDV ("İndirilecek") toplamı. */
+  private parseIsletmeGgKdvSums(
+    buffer: Buffer,
+    donem: string,
+  ): { gelirKdvToplam: number; giderKdvToplam: number; gelirSatirAdet: number; giderSatirAdet: number } {
+    const wb = XLSX.read(buffer, { type: 'buffer', cellDates: true });
+    const sheet = wb.Sheets[wb.SheetNames[0]];
+    const matrix: any[][] = XLSX.utils.sheet_to_json(sheet, {
+      header: 1,
+      raw: false,
+      defval: null,
+      blankrows: false,
+    });
+    const norm = (v: any): string =>
+      String(v ?? '')
+        .replace(/\s+/g, ' ')
+        .trim()
+        .toLocaleLowerCase('tr-TR')
+        .replace(/[ıİ]/g, 'i')
+        .replace(/[ğĞ]/g, 'g')
+        .replace(/[üÜ]/g, 'u')
+        .replace(/[şŞ]/g, 's')
+        .replace(/[öÖ]/g, 'o')
+        .replace(/[çÇ]/g, 'c');
+    const [yy, mm] = donem.split('-').map((v) => Number(v));
+    const start = new Date(yy, mm - 1, 1);
+    const end = new Date(yy, mm, 0, 23, 59, 59, 999);
+
+    const headers: Array<{ idx: number; hasInd: boolean; hasHes: boolean; cells: string[] }> = [];
+    for (let i = 0; i < matrix.length; i++) {
+      const cells = (matrix[i] || []).map(norm);
+      const hasInd = cells.some((c) => c.includes('indirilecek'));
+      const hasHes = cells.some((c) => c.includes('hesaplanan'));
+      if (hasInd || hasHes) headers.push({ idx: i, hasInd, hasHes, cells });
+    }
+
+    const sumSection = (kind: 'gelir' | 'gider'): { toplam: number; adet: number } => {
+      const isGelir = kind === 'gelir';
+      const target = headers.find((h) => (isGelir ? h.hasHes : h.hasInd));
+      if (!target) return { toplam: 0, adet: 0 };
+      const nextHeader = headers.find((h) => h.idx > target.idx);
+      const sectionEnd = nextHeader ? nextHeader.idx : matrix.length;
+      const colIdx = (preds: ((c: string) => boolean)[]): number => {
+        for (const p of preds) {
+          const i = target.cells.findIndex(p);
+          if (i !== -1) return i;
+        }
+        return -1;
+      };
+      const kdvIdx = colIdx(isGelir ? [(c) => c.includes('hesaplanan')] : [(c) => c.includes('indirilecek')]);
+      const tarihIdx = colIdx([(c) => c === 'tarih', (c) => c.includes('tarih')]);
+      const matrahIdx = isGelir
+        ? colIdx([(c) => c === 'gelir', (c) => c.startsWith('gelir')])
+        : colIdx([(c) => c === 'gider', (c) => c.startsWith('gider')]);
+      let toplam = 0;
+      let adet = 0;
+      for (let i = target.idx + 1; i < sectionEnd; i++) {
+        const row = matrix[i] || [];
+        if (!row.length) continue;
+        const firstCells = row.slice(0, 6).map(norm).join(' ');
+        if (firstCells.includes('toplam') || firstCells.includes('devir')) continue;
+        const tarih = this.parseTrDate(tarihIdx >= 0 ? row[tarihIdx] : null);
+        if (!tarih) continue;
+        if (tarih < start || tarih > end) continue;
+        const kdv = this.parseTrNumber(kdvIdx >= 0 ? row[kdvIdx] : null);
+        const matrah = this.parseTrNumber(matrahIdx >= 0 ? row[matrahIdx] : null);
+        if ((kdv == null || kdv === 0) && (matrah == null || matrah === 0)) continue;
+        toplam += kdv || 0;
+        adet++;
+      }
+      return { toplam: Math.round(toplam * 100) / 100, adet };
+    };
+
+    const gelir = sumSection('gelir');
+    const gider = sumSection('gider');
+    return {
+      gelirKdvToplam: gelir.toplam,
+      giderKdvToplam: gider.toplam,
+      gelirSatirAdet: gelir.adet,
+      giderSatirAdet: gider.adet,
+    };
+  }
+
+  private parseTrNumber(v: any): number | null {
+    if (v == null || v === '') return null;
+    if (typeof v === 'number') return Number.isFinite(v) ? v : null;
+    let s = String(v).trim().replace(/[^\d.,-]/g, '');
+    if (!s || s === '-') return null;
+    if (s.includes(',')) {
+      s = s.replace(/\./g, '').replace(',', '.');
+    } else if (/^-?\d{1,3}(\.\d{3})+$/.test(s)) {
+      s = s.replace(/\./g, '');
+    }
+    const n = Number(s);
+    return Number.isFinite(n) ? n : null;
+  }
+
+  private parseTrDate(v: any): Date | null {
+    if (!v) return null;
+    if (v instanceof Date) return isNaN(v.getTime()) ? null : v;
+    const s = String(v).trim();
+    const m = /^(\d{1,2})[.\/-](\d{1,2})[.\/-](\d{4})/.exec(s);
+    if (m) {
+      const d = new Date(+m[3], +m[2] - 1, +m[1]);
+      return isNaN(d.getTime()) ? null : d;
+    }
+    const d = new Date(s);
+    return isNaN(d.getTime()) ? null : d;
   }
 
   private raporKalite(
