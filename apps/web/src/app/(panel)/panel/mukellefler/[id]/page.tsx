@@ -1362,8 +1362,9 @@ function BeyannamelerTab({ taxpayerId }: { taxpayerId: string }) {
           <thead>
             <tr className="text-[10px] font-bold uppercase tracking-wider" style={{ color: FAINT, background: 'rgba(255,255,255,0.02)' }}>
               <th className="w-[1%] whitespace-nowrap px-3 py-2.5 font-bold">Beyanname Türü</th>
-              <th className="px-3 py-2.5 font-bold">Beyanname Dönemi</th>
+              <th className="w-[1%] whitespace-nowrap px-3 py-2.5 font-bold">Beyanname Dönemi</th>
               <th className="w-[1%] whitespace-nowrap px-3 py-2.5 font-bold">Tür</th>
+              <th aria-hidden="true" />
               <th className="w-[1%] whitespace-nowrap px-3 py-2.5 text-right font-bold">Tutar</th>
               <th className="w-[1%] whitespace-nowrap px-3 py-2.5 text-right font-bold">İşlem</th>
             </tr>
@@ -1382,7 +1383,7 @@ function BeyannamelerTab({ taxpayerId }: { taxpayerId: string }) {
                       {BEYAN_TIPI_LABEL[row.beyanTipi] || row.beyanTipi}
                     </span>
                   </td>
-                  <td className="px-3 py-2.5 align-middle">
+                  <td className="w-[1%] whitespace-nowrap px-3 py-2.5 align-middle">
                     <div className="text-[13px] font-semibold" style={{ color: TEXT }}>{fmtBeyanDonem(row.donem)}</div>
                     <div className="mt-0.5 text-[11px]" style={{ color: FAINT }}>
                       {row.beyanTarihi ? `Beyan: ${fmtDateTR(row.beyanTarihi.substring(0, 10))}` : 'Beyan tarihi yok'}
@@ -1392,6 +1393,7 @@ function BeyannamelerTab({ taxpayerId }: { taxpayerId: string }) {
                   <td className="w-[1%] whitespace-nowrap px-3 py-2.5 align-middle">
                     <span className="inline-flex items-center rounded px-1.5 py-0.5 text-[9.5px] font-bold uppercase tracking-wide" style={isBeyan ? { background: STEEL_SF, color: STEEL_BR } : { background: 'rgba(212,184,118,0.12)', color: GOLD }}>{tur}</span>
                   </td>
+                  <td aria-hidden="true" />
                   <td className="w-[1%] whitespace-nowrap px-3 py-2.5 text-right align-middle text-[13px] font-bold tabular-nums" style={{ color: isBeyan ? FAINT : TEXT }}>
                     {isBeyan ? '—' : (row.tahakkukTutari != null ? `${fmtTutar(row.tahakkukTutari)} ₺` : '—')}
                   </td>
