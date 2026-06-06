@@ -1007,45 +1007,6 @@ export class KdvBeyannameService {
       (this.prisma as any).receiptImage.findMany({ where: { session: sessionWhere } }),
     ]);
 
-    // [KDVALIS] geçici teşhis — ALIŞ tablosu boş gelirken kayıt yapısı görülmek için.
-    // Sebep netleştikten sonra KALDIR.
-    if (faturaTuru === 'ALIS') {
-      const summRec = (rec: any) => {
-        if (!rec) return null;
-        const raw = rec.rawData || {};
-        const rawEntries = Object.entries(raw).slice(0, 16);
-        return {
-          id: rec.id,
-          kdvOrani: rec.kdvOrani,
-          kdvMatrahi: rec.kdvMatrahi,
-          kdvTutari: rec.kdvTutari,
-          hesapAdi: rec.hesapAdi ?? rec.aciklama,
-          rawKeys: Object.keys(raw).slice(0, 24),
-          rawSample: Object.fromEntries(rawEntries),
-        };
-      };
-      try {
-        // eslint-disable-next-line no-console
-        console.log(
-          '[KDVALIS]',
-          JSON.stringify({
-            tenantId,
-            mukellefId,
-            donem,
-            kdvResultsLen: kdvResults.length,
-            orphanRecordsLen: orphanRecords.length,
-            orphanImagesLen: orphanImages.length,
-            sampleKdvResults: kdvResults.slice(0, 3).map((r: any) => ({
-              status: r.status,
-              hasImage: !!r.image,
-              record: summRec(r.kdvRecord),
-            })),
-            sampleOrphans: orphanRecords.slice(0, 3).map(summRec),
-          }),
-        );
-      } catch {}
-    }
-
     for (const r of orphanRecords) {
       if (resultRecordIds.has(r.id)) continue;
       const belgeNo = this.controlBelgeNo(r, null);
