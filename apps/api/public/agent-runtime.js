@@ -4,7 +4,7 @@
 */
 (function () {
   // Agent versiyon — UI'da gösterilir, debug için kritik
-  const AGENT_VERSION = '1.40.2';
+  const AGENT_VERSION = '1.40.3';
   const AGENT_INSTANCE_ID = 'mai_' + Date.now().toString(36) + '_' + Math.random().toString(36).slice(2, 8);
 
   // === VERSION-AWARE RELOAD ===
@@ -14799,11 +14799,12 @@
         action,
       };
       const localKdvOranlari = readAllKdvOranlari();
+      const localFaturaText = getFaturaTextSnapshotCached(7000);
       const localVehicleRisk = detectVehiclePurchaseRisk({
         firma: meta.firma,
         tutar: meta.tutar,
         codes,
-        text: '',
+        text: localFaturaText,
         decision: null,
       });
       const localKdvCheck = checkFaturaKdvCodeMatch(codes, localKdvOranlari);
@@ -14822,6 +14823,75 @@
             kdvTutarsizSatirlar: localKdvCheck.tutarsizSatirlar,
           }));
         await clickIleri(fid); continue;
+      }
+      if (tumKodlarDolu(codes) && !hasBosSelect) {
+        const fastSebep = 'Muhasebe kodlari dolu; bos alan yok ve yerel KDV/risk kontrolu temiz - AI OCR beklenmedi';
+        const decisionTrace = {
+          belge: {
+            tarih: meta.tarih || null,
+            belgeNo: meta.belgeNo || null,
+            cari: meta.firma || null,
+            belgeTuru: meta.belgeTuru || null,
+            kdvOrani: readKdvOrani(),
+            ocrToplam: meta.tutar ?? null,
+          },
+          ekran: {
+            tarih: meta.tarih || null,
+            belgeNo: meta.belgeNo || null,
+            belgeTuru: meta.belgeTuru || null,
+            faturaTuru: meta.faturaTuru || null,
+            tutar: meta.tutar ?? null,
+            hesapKodlari: codes,
+          },
+          karar: {
+            sonuc: 'onay',
+            sebep: fastSebep,
+            icerikSinifi: null,
+            memoryCategory: codes[0] || null,
+            vendorHintUsed: false,
+          },
+        };
+        setStatus(`${mukellef.ad} · #${fid} kodlar dolu, F2 kaydediyor...`);
+        const kayitSonucu = await kaydetOnaylaVeBekle(fid, {
+          timeoutMs: 6500,
+          retryTimeoutMs: 2500,
+        });
+        if (kayitSonucu.saved) {
+          counters.onay++; counters.toplam++; setCount();
+          await logEvent(mukellef.id, mukellef.ad, 'ok', fastSebep,
+            logMeta({
+              hesapKodu: codes[0],
+              hesapKodlari: codes,
+              kdv: readKdvOrani(),
+              kdvOranlari: localKdvOranlari,
+              satirSayisi: codes.length,
+              decisionTrace,
+              aiCallReason: 'filled_codes_local_fast_path',
+              belgeToplam: parseAmountLoose(meta.tutar),
+              mihsapToplam: parseAmountLoose(meta.tutar),
+              belgeTarih: meta.tarih || null,
+              mihsapTarih: meta.tarih || null,
+              belgeNo: meta.belgeNo || null,
+              belgeTuru: meta.belgeTuru || null,
+            }));
+        } else {
+          counters.atla++; counters.toplam++; setCount();
+          const atlamaSebebi = kayitSonucu.validationFailed
+            ? `eksik alan (MIHSAP): ${kayitSonucu.validationFailed.slice(0, 80)}`
+            : 'F2 sonuclanmadi - kodlar dolu olmasina ragmen Mihsap kaydi onaylamadi';
+          await logEvent(mukellef.id, mukellef.ad, 'skip', atlamaSebebi,
+            logMeta({
+              hesapKodu: codes[0],
+              hesapKodlari: codes,
+              kdv: readKdvOrani(),
+              kdvOranlari: localKdvOranlari,
+              satirSayisi: codes.length,
+              decisionTrace,
+              aiCallReason: 'filled_codes_local_fast_path_f2_failed',
+            }));
+          await clickIleri(fid);
+        }
+        continue;
       }
       perf.mark('preDecision');
       let decision = await aiDecideTimed(
