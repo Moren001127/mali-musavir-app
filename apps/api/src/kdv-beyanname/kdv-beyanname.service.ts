@@ -990,12 +990,12 @@ export class KdvBeyannameService {
 
       let rows: Array<{ oran: number; matrah: number; kdv: number }> = [];
       if (res.image && imageId && !seenImageIds.has(imageId)) {
-        rows = this.completeControlRows(this.kdvRowsFromImage(res.image), res.image);
+        rows = this.completeControlRows(this.kdvRowsFromImage(res.image), res.image, faturaTuru === 'ALIS');
         if (rows.length > 0) seenImageIds.add(imageId);
       }
 
       if (rows.length === 0 && res.kdvRecord && !(imageId && seenImageIds.has(imageId))) {
-        rows = this.completeControlRows(this.kdvRowsFromRecord(res.kdvRecord), res.kdvRecord);
+        rows = this.completeControlRows(this.kdvRowsFromRecord(res.kdvRecord), res.kdvRecord, faturaTuru === 'ALIS');
       }
 
       if (imageId && seenImageIds.has(imageId) && rows.length === 0) continue;
@@ -1011,7 +1011,7 @@ export class KdvBeyannameService {
       if (resultRecordIds.has(r.id)) continue;
       const belgeNo = this.controlBelgeNo(r, null);
       const docKey = this.controlDocKey(`record:${r.id}`, belgeNo, null, r.id);
-      const rows = this.completeControlRows(this.kdvRowsFromRecord(r), r);
+      const rows = this.completeControlRows(this.kdvRowsFromRecord(r), r, faturaTuru === 'ALIS');
       addRows(rows, docKey, belgeNo, false);
     }
 
@@ -1019,7 +1019,7 @@ export class KdvBeyannameService {
       if (resultImageIds.has(image.id)) continue;
       const belgeNo = this.controlBelgeNo(null, image);
       const docKey = this.controlDocKey(`image:${image.id}`, belgeNo, image.id, null);
-      const rows = this.completeControlRows(this.kdvRowsFromImage(image), image);
+      const rows = this.completeControlRows(this.kdvRowsFromImage(image), image, faturaTuru === 'ALIS');
       addRows(rows, docKey, belgeNo, false);
     }
 
@@ -1376,19 +1376,39 @@ export class KdvBeyannameService {
   private completeControlRows(
     rows: Array<{ oran: number; matrah: number; kdv: number }>,
     invoice: any,
+    skipMatrah = false,
   ): Array<{ oran: number; matrah: number; kdv: number }> {
     return rows
-      .map((row) => this.completeControlRow(row, invoice))
-      .filter((row) => row.kdv > 0 && row.matrah > 0 && row.oran > 0);
+      .map((row) => this.completeControlRow(row, invoice, skipMatrah))
+      .filter((row) =>
+        skipMatrah
+          ? row.kdv > 0 && row.oran > 0 // ALIŞ: sadece oran + KDV
+          : row.kdv > 0 && row.matrah > 0 && row.oran > 0,
+      );
   }
 
   private completeControlRow(
     row: { oran: number; matrah: number; kdv: number },
     invoice: any,
+    skipMatrah = false,
   ): { oran: number; matrah: number; kdv: number } {
     let oran = Number(row.oran || 0);
     let matrah = Number(row.matrah || 0);
     let kdv = Number(row.kdv || 0);
+
+    // ALIŞ (kullanıcı kuralı): MATRAH KONTROLÜ YOK — sadece orana göre KDV tutarı.
+    // Oranı belirle (kayıttaki oran, yoksa matrah/KDV'den), matrahı orandan TÜRET,
+    // KDV↔matrah tutarlılık kontrolü YAPMA (matrah okuma hatası satırı elemesin).
+    if (skipMatrah) {
+      if (oran > 0) oran = this.nearestKdvRate(oran);
+      if (!oran && matrah > 0 && kdv > 0) oran = this.nearestKdvRate((kdv / matrah) * 100);
+      if (!oran || kdv <= 0) return { oran: 0, matrah: 0, kdv: 0 };
+      return {
+        oran,
+        matrah: Math.round((kdv / (oran / 100)) * 100) / 100,
+        kdv: Math.round(kdv * 100) / 100,
+      };
+    }
     const invoiceGross = this.parseTrAmount(
       invoice?.toplamTutar
       ?? invoice?.totalAmount
