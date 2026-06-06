@@ -1413,12 +1413,12 @@ function Kdv1View({ data, isBilanco }: { data: Kdv1; isBilanco: boolean }) {
 
       {/* BELGE OCR SONUÇLARI — Satış & Alış tek panel, yan yana */}
       <div className="rounded-2xl overflow-hidden" style={{ background: '#13100d', border: '1px solid rgba(255,255,255,0.12)' }}>
-        {/* Panel üst başlık */}
-        <div className="flex items-center justify-between gap-3 px-5 py-3.5" style={{ background: 'linear-gradient(90deg, rgba(20,184,166,0.16), rgba(20,184,166,0.02))', borderBottom: '1px solid rgba(255,255,255,0.10)' }}>
+        {/* Panel üst başlık — NÖTR (renk yalnız içteki Satış/Alış tablolarında) */}
+        <div className="flex items-center justify-between gap-3 px-5 py-3.5" style={{ background: 'rgba(255,255,255,0.025)', borderBottom: '1px solid rgba(255,255,255,0.10)' }}>
           <div className="flex items-center gap-2.5">
-            <Layers size={16} style={{ color: A_TEAL3 }} />
+            <Layers size={16} style={{ color: 'rgba(255,255,255,0.55)' }} />
             <div>
-              <div className="text-[10.5px] font-bold uppercase tracking-[.16em]" style={{ color: A_TEAL3 }}>Belge OCR Sonuçları</div>
+              <div className="text-[10.5px] font-bold uppercase tracking-[.16em]" style={{ color: 'rgba(255,255,255,0.45)' }}>Belge OCR Sonuçları</div>
               <div className="text-[15px] font-bold" style={{ color: '#fff' }}>Fatura KDV Dökümü</div>
             </div>
           </div>
@@ -1764,13 +1764,13 @@ function LucaSnapshotFetchPanel({
 
       {/* KDV hesap satırları — belirgin grid tablo */}
       {snap?.exists && snap.kdvSatirlari && snap.kdvSatirlari.length > 0 && (
-        <div className="rounded-2xl overflow-x-auto" style={{ border: '1px solid rgba(255,255,255,0.12)', borderLeft: '4px solid #14b8a6' }}>
+        <div className="rounded-2xl overflow-x-auto" style={{ border: '1px solid rgba(255,255,255,0.12)', borderLeft: '3px solid #14b8a6' }}>
           <table
             className="w-full min-w-[980px] text-[13px]"
             style={{ borderCollapse: 'collapse' }}
           >
             <thead>
-              <tr style={{ color: 'rgba(255,255,255,0.55)', background: 'linear-gradient(90deg, rgba(20,184,166,0.22), rgba(20,184,166,0.04))' }}>
+              <tr style={{ color: 'rgba(255,255,255,0.55)', background: 'rgba(255,255,255,0.04)' }}>
                 <th className="text-left px-3 py-2.5 font-bold uppercase tracking-[.08em] text-[10.5px]" style={{ border: '1px solid rgba(255,255,255,0.10)' }}>Kod</th>
                 <th className="text-left px-3 py-2.5 font-bold uppercase tracking-[.08em] text-[10.5px]" style={{ border: '1px solid rgba(255,255,255,0.10)' }}>Hesap</th>
                 <th className="text-right px-3 py-2.5 font-bold uppercase tracking-[.08em] text-[10.5px]" style={{ border: '1px solid rgba(255,255,255,0.10)' }}>Borç Hareket</th>
@@ -1921,11 +1921,12 @@ function LucaCrossCard({ hesap, mihsap, luca, fark }: { hesap: string; mihsap: n
   return (
     <div
       className="rounded-2xl overflow-hidden"
-      style={{ background: '#13100d', border: '1px solid rgba(255,255,255,0.12)', borderLeft: `4px solid ${accent}` }}
+      style={{ background: '#13100d', border: '1px solid rgba(255,255,255,0.12)', borderLeft: `3px solid ${accent}` }}
     >
+      {/* Başlık NÖTR — renk yalnız FARK satırında + ince sol şerit */}
       <div
         className="px-4 py-3 flex items-center justify-between"
-        style={{ background: `linear-gradient(90deg, rgba(${accentRgb},0.22), rgba(${accentRgb},0.04))`, borderBottom: `1px solid rgba(${accentRgb},0.38)` }}
+        style={{ background: 'rgba(255,255,255,0.025)', borderBottom: '1px solid rgba(255,255,255,0.10)' }}
       >
         <span className="text-[14px] font-bold tracking-wide" style={{ color: '#fff' }}>{hesap}</span>
         {fark == null ? null : farkliMi ? <AlertCircle size={15} style={{ color: '#fca5a5' }} /> : <CheckCircle2 size={15} style={{ color: '#5fcf8e' }} />}
