@@ -1178,28 +1178,32 @@ function KontrolKarti({ guven, eksikVeriler, uyarilar }: { guven?: VeriGuveni; e
         </div>
       )}
 
-      {alerts.slice(0, 4).map((a, i) => {
-        const c = a.lvl === 'kritik' ? STAT_RED : STAT_AMBER;
-        return (
-          <div key={i} className="mt-3 flex gap-2.5 rounded-xl p-3.5 items-start" style={{ background: `${c}12`, border: `1px solid ${c}47` }}>
-            <AlertTriangle size={16} style={{ color: c, flexShrink: 0, marginTop: 1 }} />
-            <div>
-              <div className="text-[13px] font-bold flex items-center gap-2" style={{ color: A_INK }}>
-                {a.aksiyon || (a.lvl === 'kritik' ? 'Kritik kontrol gerekli' : 'Kontrol bekliyor')}
-                {a.count > 1 && (
-                  <span className="text-[11px] font-bold rounded-full px-1.5 py-0.5" style={{ color: c, background: `${c}1f` }}>×{a.count}</span>
-                )}
+      {alerts.length > 0 && (
+        <div className="mt-3 grid grid-cols-1 md:grid-cols-2 gap-2">
+          {alerts.slice(0, 6).map((a, i) => {
+            const c = a.lvl === 'kritik' ? STAT_RED : STAT_AMBER;
+            return (
+              <div key={i} className="flex gap-2 rounded-lg p-2.5 items-start" style={{ background: `${c}10`, border: `1px solid ${c}38` }}>
+                <AlertTriangle size={13} style={{ color: c, flexShrink: 0, marginTop: 2 }} />
+                <div className="min-w-0">
+                  <div className="text-[12px] font-bold flex items-center gap-1.5" style={{ color: A_INK }}>
+                    {a.aksiyon || (a.lvl === 'kritik' ? 'Kritik kontrol gerekli' : 'Kontrol bekliyor')}
+                    {a.count > 1 && (
+                      <span className="text-[10.5px] font-bold rounded-full px-1.5 py-0.5" style={{ color: c, background: `${c}1f` }}>×{a.count}</span>
+                    )}
+                  </div>
+                  <div className="text-[11.5px] mt-0.5 leading-snug" style={{ color: A_MUTED }}>
+                    {a.belge && (
+                      <span className="rounded px-1.5 py-0.5 mr-1" style={{ color: STAT_AMBER, background: 'rgba(240,183,85,.08)' }}>{a.belge}</span>
+                    )}
+                    {a.msg}
+                  </div>
+                </div>
               </div>
-              <div className="text-[12.5px] mt-0.5" style={{ color: A_MUTED }}>
-                {a.belge && (
-                  <span className="rounded px-1.5 py-0.5 mr-1" style={{ color: STAT_AMBER, background: 'rgba(240,183,85,.08)' }}>{a.belge}</span>
-                )}
-                {a.msg}
-              </div>
-            </div>
-          </div>
-        );
-      })}
+            );
+          })}
+        </div>
+      )}
 
       {notlar.length > 0 && (
         <details className="mt-3 rounded-xl border overflow-hidden [&_summary::-webkit-details-marker]:hidden" style={{ borderColor: A_LINE, background: A_BG2 }}>
@@ -1378,7 +1382,7 @@ function Kdv1View({ data, isBilanco }: { data: Kdv1; isBilanco: boolean }) {
     <>
       <KdvWaterfall sonuc={displaySonuc} />
 
-      <div className="grid grid-cols-1 xl:grid-cols-[1.5fr_1fr] gap-4">
+      <div className="grid grid-cols-1 xl:grid-cols-[1.5fr_1fr] gap-4 items-start">
         <DevredenKdvEditor data={data} />
         <KontrolKarti
           guven={data.veriGuveni}
@@ -1427,14 +1431,21 @@ function Kdv1View({ data, isBilanco }: { data: Kdv1; isBilanco: boolean }) {
                 <Sparkles size={14} style={{ color: '#14b8a6' }} />
                 <h3 className="text-[13px] font-semibold" style={{ color: '#fafaf9' }}>Luca Çapraz Kontrol</h3>
               </div>
-              <div className="grid grid-cols-1 gap-2.5 sm:grid-cols-3">
+              <div className="grid grid-cols-1 gap-2.5 sm:grid-cols-2">
                 <LucaCrossCard hesap="391 · Hesaplanan" mihsap={displaySatis.toplamHesaplananKdv} luca={lucaKontrol.luca391Bakiye} fark={lucaKontrol.fark391} />
                 <LucaCrossCard hesap="191 · İndirilecek" mihsap={displayAlis.toplamIndirilecekKdv} luca={lucaKontrol.luca191Bakiye} fark={lucaKontrol.fark191} />
-                <LucaCrossCard hesap="190 · Devreden" mihsap={null} luca={lucaKontrol.luca190Bakiye} fark={null} />
               </div>
             </div>
           )}
-          <LucaSnapshotFetchPanel mukellefId={data.mukellefId} donem={data.donem} autoStart={false} />
+          <LucaSnapshotFetchPanel
+            mukellefId={data.mukellefId}
+            donem={data.donem}
+            autoStart={false}
+            mihsapSatisOranlar={cleanSatisRows}
+            mihsapAlisOranlar={cleanAlisRows}
+            mihsapSatisToplam={displaySatis.toplamHesaplananKdv}
+            mihsapAlisToplam={displayAlis.toplamIndirilecekKdv}
+          />
         </>
       ) : (
         <IsletmeGgFetchPanel
@@ -1571,7 +1582,19 @@ function IsletmeGgFetchPanel({ data, hesaplanan, indirilecek }: { data: Kdv1; he
  * Luca'dan KDV mizan çekme paneli — kdv-beyanname için bağımsız.
  * Mevcut Mizan modülünden BAĞIMSIZ; KdvLucaSnapshot tablosuna yazar.
  */
-function LucaSnapshotFetchPanel({ mukellefId, donem, autoStart }: { mukellefId: string; donem: string; autoStart?: boolean }) {
+function LucaSnapshotFetchPanel({
+  mukellefId, donem, autoStart,
+  mihsapSatisOranlar, mihsapAlisOranlar,
+  mihsapSatisToplam, mihsapAlisToplam,
+}: {
+  mukellefId: string;
+  donem: string;
+  autoStart?: boolean;
+  mihsapSatisOranlar?: OranRow[];
+  mihsapAlisOranlar?: OranRow[];
+  mihsapSatisToplam?: number;
+  mihsapAlisToplam?: number;
+}) {
   const qc = useQueryClient();
   const [jobId, setJobId] = useState<string | null>(null);
   const [autoStartedKey, setAutoStartedKey] = useState<string | null>(null);
@@ -1712,35 +1735,60 @@ function LucaSnapshotFetchPanel({ mukellefId, donem, autoStart }: { mukellefId: 
         </>
       )}
 
-      {/* KDV-ilgili hesap satırları tablosu */}
+      {/* Oran-bazlı çapraz detay — 391 (Hesaplanan) ve 191 (İndirilecek) */}
       {snap?.exists && snap.kdvSatirlari && snap.kdvSatirlari.length > 0 && (
-        <div className="rounded-md overflow-x-auto" style={{ border: '1px solid rgba(255,255,255,0.06)' }}>
-          <table className="w-full min-w-[980px] text-[12px]">
-            <thead style={{ background: 'rgba(255,255,255,0.03)' }}>
-              <tr style={{ color: 'rgba(250,250,249,0.55)' }}>
-                <th className="text-left px-3 py-2 font-semibold">Kod</th>
-                <th className="text-left px-3 py-2 font-semibold">Hesap</th>
-                <th className="text-right px-3 py-2 font-semibold">Borç Hareket</th>
-                <th className="text-right px-3 py-2 font-semibold">Alacak Hareket</th>
-                <th className="text-right px-3 py-2 font-semibold">Borç Bakiye</th>
-                <th className="text-right px-3 py-2 font-semibold">Alacak Bakiye</th>
+        <div className="grid grid-cols-1 gap-3 xl:grid-cols-2">
+          <LucaCrossDetayli
+            baslik="391 · Hesaplanan KDV"
+            mihsapOranlar={mihsapSatisOranlar || []}
+            mihsapToplam={mihsapSatisToplam || 0}
+            lucaSatirlar={snap.kdvSatirlari}
+            prefix="391"
+            lucaField="alacakBakiye"
+          />
+          <LucaCrossDetayli
+            baslik="191 · İndirilecek KDV"
+            mihsapOranlar={mihsapAlisOranlar || []}
+            mihsapToplam={mihsapAlisToplam || 0}
+            lucaSatirlar={snap.kdvSatirlari}
+            prefix="191"
+            lucaField="borcBakiye"
+          />
+        </div>
+      )}
+
+      {/* KDV-ilgili hesap satırları tablosu — sütun/satır çizgili */}
+      {snap?.exists && snap.kdvSatirlari && snap.kdvSatirlari.length > 0 && (
+        <div className="rounded-md overflow-x-auto" style={{ border: '1px solid rgba(255,255,255,0.08)' }}>
+          <table
+            className="w-full min-w-[980px] text-[12px]"
+            style={{ borderCollapse: 'collapse' }}
+          >
+            <thead style={{ background: 'rgba(255,255,255,0.04)' }}>
+              <tr style={{ color: 'rgba(250,250,249,0.6)' }}>
+                <th className="text-left px-3 py-2 font-semibold" style={{ border: '1px solid rgba(255,255,255,0.08)' }}>Kod</th>
+                <th className="text-left px-3 py-2 font-semibold" style={{ border: '1px solid rgba(255,255,255,0.08)' }}>Hesap</th>
+                <th className="text-right px-3 py-2 font-semibold" style={{ border: '1px solid rgba(255,255,255,0.08)' }}>Borç Hareket</th>
+                <th className="text-right px-3 py-2 font-semibold" style={{ border: '1px solid rgba(255,255,255,0.08)' }}>Alacak Hareket</th>
+                <th className="text-right px-3 py-2 font-semibold" style={{ border: '1px solid rgba(255,255,255,0.08)' }}>Borç Bakiye</th>
+                <th className="text-right px-3 py-2 font-semibold" style={{ border: '1px solid rgba(255,255,255,0.08)' }}>Alacak Bakiye</th>
               </tr>
             </thead>
-            <tbody style={{ color: 'rgba(250,250,249,0.85)' }}>
+            <tbody style={{ color: 'rgba(250,250,249,0.88)' }}>
               {snap.kdvSatirlari.map((r, i) => (
-                <tr key={i} style={{ borderTop: '1px solid rgba(255,255,255,0.04)' }}>
-                  <td className="px-3 py-1.5 font-mono" style={{ color: '#14b8a6' }}>{r.kod}</td>
-                  <td className="px-3 py-1.5">{r.ad || '—'}</td>
-                  <td className="text-right px-3 py-1.5">
+                <tr key={i}>
+                  <td className="px-3 py-1.5 font-mono" style={{ color: '#14b8a6', border: '1px solid rgba(255,255,255,0.06)' }}>{r.kod}</td>
+                  <td className="px-3 py-1.5" style={{ border: '1px solid rgba(255,255,255,0.06)' }}>{r.ad || '—'}</td>
+                  <td className="text-right px-3 py-1.5" style={{ border: '1px solid rgba(255,255,255,0.06)' }}>
                     {r.borcToplami ? <MoneyText value={r.borcToplami} /> : ''}
                   </td>
-                  <td className="text-right px-3 py-1.5">
+                  <td className="text-right px-3 py-1.5" style={{ border: '1px solid rgba(255,255,255,0.06)' }}>
                     {r.alacakToplami ? <MoneyText value={r.alacakToplami} /> : ''}
                   </td>
-                  <td className="text-right px-3 py-1.5">
+                  <td className="text-right px-3 py-1.5" style={{ border: '1px solid rgba(255,255,255,0.06)' }}>
                     {r.borcBakiye ? <MoneyText value={r.borcBakiye} /> : ''}
                   </td>
-                  <td className="text-right px-3 py-1.5">
+                  <td className="text-right px-3 py-1.5" style={{ border: '1px solid rgba(255,255,255,0.06)' }}>
                     {r.alacakBakiye ? <MoneyText value={r.alacakBakiye} /> : ''}
                   </td>
                 </tr>
@@ -1749,6 +1797,111 @@ function LucaSnapshotFetchPanel({ mukellefId, donem, autoStart }: { mukellefId: 
           </table>
         </div>
       )}
+    </div>
+  );
+}
+
+/**
+ * Luca mizanı oran-bazlı çapraz kontrol kartı.
+ * Mihsap'tan gelen %X oran kalemlerini Luca mizanındaki "...KDV %X" satırlarıyla
+ * eşleştirip her oran için Mihsap/Luca/Fark sütununu gösterir.
+ */
+function LucaCrossDetayli({
+  baslik, mihsapOranlar, mihsapToplam, lucaSatirlar, prefix, lucaField,
+}: {
+  baslik: string;
+  mihsapOranlar: OranRow[];
+  mihsapToplam: number;
+  lucaSatirlar: Array<{ kod: string; ad: string; borcToplami: number; alacakToplami: number; borcBakiye: number; alacakBakiye: number }>;
+  prefix: '391' | '191';
+  lucaField: 'alacakBakiye' | 'borcBakiye';
+}) {
+  const buHesap = (lucaSatirlar || []).filter((s) => String(s.kod || '').startsWith(prefix));
+  const lucaOranToplam = new Map<number, number>();
+  for (const s of buHesap) {
+    const m = String(s.ad || '').match(/%\s*(\d{1,2})/);
+    if (!m) continue;
+    const oran = Number(m[1]);
+    if (!isFinite(oran)) continue;
+    const val = Number((s as any)[lucaField] || 0);
+    lucaOranToplam.set(oran, (lucaOranToplam.get(oran) || 0) + val);
+  }
+  const allOranlar = new Set<number>();
+  for (const o of mihsapOranlar) allOranlar.add(o.oran);
+  for (const k of lucaOranToplam.keys()) allOranlar.add(k);
+  const sortedOranlar = Array.from(allOranlar).sort((a, b) => a - b);
+
+  const lucaToplam = Array.from(lucaOranToplam.values()).reduce((a, b) => a + b, 0);
+  const toplamFark = Math.round((mihsapToplam - lucaToplam) * 100) / 100;
+  const farkliMi = Math.abs(toplamFark) > 0.01;
+  const borderClr = farkliMi ? 'rgba(239,107,107,0.3)' : 'rgba(255,255,255,0.08)';
+  const cellBorder = '1px solid rgba(255,255,255,0.06)';
+
+  return (
+    <div className="rounded-xl border overflow-hidden" style={{ background: 'rgba(0,0,0,0.2)', borderColor: borderClr }}>
+      <div className="px-3 py-2 flex items-center justify-between" style={{ borderBottom: '1px solid rgba(255,255,255,0.06)' }}>
+        <span className="text-[12px] font-bold" style={{ color: '#fafaf9' }}>{baslik}</span>
+        {farkliMi ? <AlertCircle size={13} style={{ color: '#fca5a5' }} /> : <CheckCircle2 size={13} style={{ color: '#5fcf8e' }} />}
+      </div>
+      <table className="w-full text-[11.5px]" style={{ borderCollapse: 'collapse' }}>
+        <thead style={{ background: 'rgba(255,255,255,0.03)' }}>
+          <tr style={{ color: 'rgba(250,250,249,0.55)' }}>
+            <th className="text-left px-3 py-1.5 font-semibold" style={{ border: cellBorder }}>Oran</th>
+            <th className="text-right px-3 py-1.5 font-semibold" style={{ border: cellBorder }}>Mihsap</th>
+            <th className="text-right px-3 py-1.5 font-semibold" style={{ border: cellBorder }}>Luca</th>
+            <th className="text-right px-3 py-1.5 font-semibold" style={{ border: cellBorder }}>Fark</th>
+          </tr>
+        </thead>
+        <tbody style={{ color: 'rgba(250,250,249,0.88)' }}>
+          {sortedOranlar.length === 0 && (
+            <tr>
+              <td className="px-3 py-2 text-center" colSpan={4} style={{ border: cellBorder, color: 'rgba(250,250,249,0.45)' }}>
+                Bu hesapta oran satırı yok
+              </td>
+            </tr>
+          )}
+          {sortedOranlar.map((oran) => {
+            const mihsap = mihsapOranlar.find((o) => o.oran === oran)?.kdv || 0;
+            const luca = lucaOranToplam.get(oran) || 0;
+            const fark = Math.round((mihsap - luca) * 100) / 100;
+            const rowFark = Math.abs(fark) > 0.01;
+            return (
+              <tr key={oran}>
+                <td className="px-3 py-1.5 font-semibold" style={{ border: cellBorder, color: '#14b8a6' }}>%{oran}</td>
+                <td className="text-right px-3 py-1.5 tabular-nums" style={{ border: cellBorder }}>
+                  {mihsap ? <MoneyText value={mihsap} size={11.5} /> : <span style={{ color: 'rgba(250,250,249,0.35)' }}>—</span>}
+                </td>
+                <td className="text-right px-3 py-1.5 tabular-nums" style={{ border: cellBorder }}>
+                  {luca ? <MoneyText value={luca} size={11.5} /> : <span style={{ color: 'rgba(250,250,249,0.35)' }}>—</span>}
+                </td>
+                <td className="text-right px-3 py-1.5 tabular-nums" style={{ border: cellBorder }}>
+                  {fark === 0 ? (
+                    <span style={{ color: 'rgba(250,250,249,0.35)' }}>—</span>
+                  ) : (
+                    <MoneyText value={fark} size={11.5} color={rowFark ? '#fca5a5' : '#5fcf8e'} strong />
+                  )}
+                </td>
+              </tr>
+            );
+          })}
+          <tr style={{ background: 'rgba(255,255,255,0.03)' }}>
+            <td className="px-3 py-2 font-bold" style={{ border: cellBorder, color: '#fafaf9' }}>TOPLAM</td>
+            <td className="text-right px-3 py-2 tabular-nums" style={{ border: cellBorder }}>
+              <MoneyText value={mihsapToplam} size={12} strong />
+            </td>
+            <td className="text-right px-3 py-2 tabular-nums" style={{ border: cellBorder }}>
+              <MoneyText value={lucaToplam} size={12} strong />
+            </td>
+            <td className="text-right px-3 py-2 tabular-nums" style={{ border: cellBorder }}>
+              {toplamFark === 0 ? (
+                <span style={{ color: '#5fcf8e' }}>—</span>
+              ) : (
+                <MoneyText value={toplamFark} size={12} color={farkliMi ? '#fca5a5' : '#5fcf8e'} strong />
+              )}
+            </td>
+          </tr>
+        </tbody>
+      </table>
     </div>
   );
 }
