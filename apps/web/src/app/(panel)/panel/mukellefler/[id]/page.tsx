@@ -1356,31 +1356,34 @@ function BeyannamelerTab({ taxpayerId }: { taxpayerId: string }) {
           Beyannameler modülünde aç <ExternalLink size={12} />
         </Link>
       </div>
-      {sorted.map((row) => {
-        const beyanBusy = busyKey === `${row.id}:beyanname`;
-        const tahBusy = busyKey === `${row.id}:tahakkuk`;
+      {sorted.flatMap((row) => ([
+        { row, kind: 'beyanname' as const, tur: 'E-Beyanname', hasFile: !!row.beyannameUrl },
+        { row, kind: 'tahakkuk' as const, tur: 'Tahakkuk', hasFile: !!row.pdfUrl },
+      ])).map(({ row, kind, tur, hasFile }) => {
+        const busy = busyKey === `${row.id}:${kind}`;
+        const isBeyan = kind === 'beyanname';
         return (
-          <div key={row.id} className="flex flex-wrap items-center gap-3 rounded-xl border p-3" style={{ borderColor: HAIR, background: CARD2 }}>
+          <div key={`${row.id}:${kind}`} className="flex flex-wrap items-center gap-3 rounded-xl border p-3" style={{ borderColor: HAIR, background: CARD2 }}>
             <span className="inline-flex items-center rounded-md border px-2 py-1 text-[10.5px] font-bold" style={{ borderColor: STEEL_LN, background: STEEL_SF, color: STEEL_BR }}>
               {BEYAN_TIPI_LABEL[row.beyanTipi] || row.beyanTipi}
             </span>
             <div className="min-w-0 flex-1">
-              <div className="text-[13px] font-semibold" style={{ color: TEXT }}>{fmtBeyanDonem(row.donem)}</div>
+              <div className="flex items-center gap-2">
+                <span className="text-[13px] font-semibold" style={{ color: TEXT }}>{fmtBeyanDonem(row.donem)}</span>
+                <span className="rounded px-1.5 py-0.5 text-[9.5px] font-bold uppercase tracking-wide" style={isBeyan ? { background: STEEL_SF, color: STEEL_BR } : { background: 'rgba(212,184,118,0.12)', color: GOLD }}>{tur}</span>
+              </div>
               <div className="mt-0.5 text-[11px]" style={{ color: FAINT }}>
                 {row.beyanTarihi ? `Beyan: ${fmtDateTR(row.beyanTarihi.substring(0, 10))}` : 'Beyan tarihi yok'}
                 {row.onayNo ? ` · Onay: ${row.onayNo}` : ''}
               </div>
             </div>
-            {row.tahakkukTutari != null && (
+            {!isBeyan && row.tahakkukTutari != null && (
               <div className="text-right">
                 <div className="text-[9.5px] uppercase tracking-wide" style={{ color: FAINT }}>Tahakkuk</div>
                 <div className="text-[13px] font-bold tabular-nums" style={{ color: TEXT }}>{fmtTutar(row.tahakkukTutari)} ₺</div>
               </div>
             )}
-            <div className="flex items-center gap-2">
-              <DocBtn label="Beyanname" disabled={!row.beyannameUrl} busy={beyanBusy} onClick={() => openDoc(row, 'beyanname')} />
-              <DocBtn label="Tahakkuk" disabled={!row.pdfUrl} busy={tahBusy} onClick={() => openDoc(row, 'tahakkuk')} muted />
-            </div>
+            <DocBtn label={hasFile ? 'Görüntüle' : 'PDF yok'} disabled={!hasFile} busy={busy} onClick={() => openDoc(row, kind)} muted={!isBeyan} />
           </div>
         );
       })}
