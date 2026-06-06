@@ -1317,6 +1317,20 @@ export class BeyanKayitlariService {
       // değer DÜZ METİN akışında kopuk geliyor (regex güvenilmez), bu yüzden
       // getTable hücre ızgarasıyla "Sonraki Döneme Devreden" SATIRINDAKİ tutarı alırız.
       tutar = await this.extractSonrakiViaTable(buf, { taxpayerId, donem });
+      if (tutar == null) {
+        // [KDVDEVR-RAW] GEÇİCİ — ham metni (satır sonları KORUNMUŞ) etiket + değer çevresinde gör
+        const rawParser: any = new PDFParse({ data: buf });
+        let raw = '';
+        try { const rr = await rawParser.getText(); raw = String(rr?.text || ''); } catch { /* yut */ }
+        finally { try { const d = rawParser?.destroy; if (typeof d === 'function') await d.call(rawParser).catch(() => {}); } catch { /* yut */ } }
+        const low = raw.toLowerCase();
+        const li = low.indexOf('sonraki d');
+        const reg = li >= 0 ? raw.slice(Math.max(0, li - 60), li + 340) : '(SONRAKI-D YOK)';
+        const vi = raw.search(/59[.\s]?084/);
+        const vreg = vi >= 0 ? raw.slice(Math.max(0, vi - 240), vi + 70) : '(59084 YOK)';
+        this.logger.log(`[KDVDEVR-RAW] ${taxpayerId} ${donem} rawLen=${raw.length} LABELREG=${JSON.stringify(reg)}`);
+        this.logger.log(`[KDVDEVR-RAW] ${taxpayerId} ${donem} VALREG=${JSON.stringify(vreg)}`);
+      }
       this.logger.log(`[KDVDEVR] ${taxpayerId} ${donem}: tablo extract = ${tutar == null ? 'BULUNAMADI' : tutar}`);
     } catch (e: any) {
       this.logger.warn(`[KDVDEVR] ${taxpayerId} ${donem}: PDF/tablo okunamadi [${kayit.id}]: ${e?.message || e}`);
