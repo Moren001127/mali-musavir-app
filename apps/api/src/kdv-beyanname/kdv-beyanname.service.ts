@@ -1359,9 +1359,12 @@ export class KdvBeyannameService {
   }
 
   private kdvRowsFromRecord(record: any): Array<{ oran: number; matrah: number; kdv: number }> {
-    const oran = this.parseTrAmount(record?.kdvOrani);
+    let oran = this.parseTrAmount(record?.kdvOrani);
     const matrah = this.parseTrAmount(record?.kdvMatrahi);
     const kdv = this.parseTrAmount(record?.kdvTutari);
+    // Luca defter-i kebir kayıtlarında kdvOrani BOŞ olur; oran HESAP ADI'nda durur
+    // ("İNDİRİLECEK KDV %10" → 10, "HESAPLANAN KDV %1" → 1). Oranı oradan çıkar.
+    if (!oran) oran = this.oranFromHesapAdi(record);
     if (oran > 0 && (matrah > 0 || kdv > 0)) {
       return [{
         oran,
@@ -1371,6 +1374,25 @@ export class KdvBeyannameService {
     }
 
     return this.extractKdvBreakdownFromRaw(record?.rawData, record);
+  }
+
+  /** Mizan/kebir hesap adından KDV oranını çıkar: "... KDV %10" → 10. */
+  private oranFromHesapAdi(record: any): number {
+    const raw = record?.rawData || {};
+    const ad = String(
+      record?.hesapAdi
+      ?? record?.aciklama
+      ?? raw['HESAP ADI']
+      ?? raw['HESAP ADI '] // bazı export'larda sonda boşluk
+      ?? raw.hesapAdi
+      ?? raw['Hesap Adı']
+      ?? '',
+    );
+    const m = ad.match(/%\s*(\d{1,2})(?:[.,]\d+)?/);
+    if (!m) return 0;
+    const o = Number(m[1]);
+    if (!Number.isFinite(o) || o <= 0) return 0;
+    return GECERLI_KDV_ORANLARI.includes(o) ? o : this.nearestKdvRate(o);
   }
 
   private completeControlRows(
