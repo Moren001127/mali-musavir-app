@@ -1411,62 +1411,40 @@ function Kdv1View({ data, isBilanco }: { data: Kdv1; isBilanco: boolean }) {
         tahakkukTutari={displaySonuc.odenecekKdv}
       />
 
-      {/* BELGE OCR SONUÇLARI — Satış & Alış tek panel, yan yana */}
-      <div className="rounded-2xl overflow-hidden" style={{ background: '#13100d', border: '1px solid rgba(255,255,255,0.12)' }}>
-        {/* Panel üst başlık — NÖTR (renk yalnız içteki Satış/Alış tablolarında) */}
-        <div className="flex items-center justify-between gap-3 px-5 py-3.5" style={{ background: 'rgba(255,255,255,0.025)', borderBottom: '1px solid rgba(255,255,255,0.10)' }}>
-          <div className="flex items-center gap-2.5">
-            <Layers size={16} style={{ color: 'rgba(255,255,255,0.55)' }} />
-            <div>
-              <div className="text-[10.5px] font-bold uppercase tracking-[.16em]" style={{ color: 'rgba(255,255,255,0.45)' }}>Belge OCR Sonuçları</div>
-              <div className="text-[15px] font-bold" style={{ color: '#fff' }}>Fatura KDV Dökümü</div>
-            </div>
-          </div>
-          <span className="rounded-full px-3 py-1 text-[11.5px] font-bold tabular-nums" style={{ background: 'rgba(255,255,255,0.06)', color: 'rgba(255,255,255,0.7)', border: '1px solid rgba(255,255,255,0.12)' }}>
-            {cleanSatisTotal.adet + cleanAlisTotal.adet} fatura
-          </span>
-        </div>
-        {/* İçerik: iki tablo yan yana, ortada dikey ayraç */}
-        <div className="grid grid-cols-1 xl:grid-cols-2">
-          <div className="xl:border-r" style={{ borderColor: 'rgba(255,255,255,0.10)' }}>
-            <OranTablosu
-              embedded
-              baslik="Satış · Hesaplanan KDV"
-              renk="#5fcf8e"
-              oranlar={displaySatis.oranlar}
-              toplamMatrah={displaySatis.toplamMatrah}
-              toplamKdv={displaySatis.toplamHesaplananKdv}
-              adet={cleanSatisTotal.adet}
-            />
-          </div>
-          <div style={{ borderColor: 'rgba(255,255,255,0.10)' }}>
-            <OranTablosu
-              embedded
-              baslik="Alış · İndirilecek KDV"
-              renk="#7fc8ff"
-              oranlar={displayAlis.oranlar}
-              toplamMatrah={displayAlis.toplamMatrah}
-              toplamKdv={displayAlis.toplamIndirilecekKdv}
-              adet={cleanAlisTotal.adet}
-              altSatir={[
-                { ad: 'Tevkifatsız', v: displayAlis.tevkifatsiz },
-                { ad: 'Tevkifatlı (KDV2\'ye)', v: displayAlis.tevkifatli },
-              ]}
-            />
-          </div>
-        </div>
+      {/* BELGE OCR — Satış & Alış: oran payı barlı iki kart yan yana (Konsept B) */}
+      <div className="grid grid-cols-1 gap-3.5 xl:grid-cols-2">
+        <OranTablosu
+          baslik="Satış · Hesaplanan KDV"
+          renk="#5fcf8e"
+          oranlar={displaySatis.oranlar}
+          toplamMatrah={displaySatis.toplamMatrah}
+          toplamKdv={displaySatis.toplamHesaplananKdv}
+          adet={cleanSatisTotal.adet}
+        />
+        <OranTablosu
+          baslik="Alış · İndirilecek KDV"
+          renk="#7fc8ff"
+          oranlar={displayAlis.oranlar}
+          toplamMatrah={displayAlis.toplamMatrah}
+          toplamKdv={displayAlis.toplamIndirilecekKdv}
+          adet={cleanAlisTotal.adet}
+          altSatir={[
+            { ad: 'Tevkifatsız', v: displayAlis.tevkifatsiz },
+            { ad: 'Tevkifatlı (KDV2\'ye)', v: displayAlis.tevkifatli },
+          ]}
+        />
       </div>
 
       {/* Luca — defter türü duyarlı: bilanço→mizan çapraz kontrol; işletme→uygulanmaz */}
       {isBilanco ? (
         <>
           {lucaKontrol.mizanVar && (
-            <div className="rounded-2xl border p-5" style={{ background: 'rgba(255,255,255,0.02)', borderColor: 'rgba(255,255,255,0.06)' }}>
-              <div className="mb-3 flex items-center gap-2">
+            <div>
+              <div className="mb-2.5 flex items-center gap-2">
                 <Sparkles size={14} style={{ color: '#14b8a6' }} />
                 <h3 className="text-[13px] font-semibold" style={{ color: '#fafaf9' }}>Luca Çapraz Kontrol</h3>
               </div>
-              <div className="grid grid-cols-1 gap-2.5 sm:grid-cols-2">
+              <div className="grid grid-cols-1 gap-3.5 sm:grid-cols-2">
                 <LucaCrossCard hesap="391 · Hesaplanan" mihsap={displaySatis.toplamHesaplananKdv} luca={lucaKontrol.luca391Bakiye} fark={lucaKontrol.fark391} />
                 <LucaCrossCard hesap="191 · İndirilecek" mihsap={displayAlis.toplamIndirilecekKdv} luca={lucaKontrol.luca191Bakiye} fark={lucaKontrol.fark191} />
               </div>
@@ -1912,131 +1890,136 @@ function LucaCrossDetayli({
 }
 
 function LucaCrossCard({ hesap, mihsap, luca, fark }: { hesap: string; mihsap: number | null; luca: number | null; fark: number | null }) {
+  // Terazi kartı (Konsept B): Mihsap ↔ Luca yan yana, ortada eşitlik/fark rozeti.
+  const bekliyor = luca == null;
   const farkliMi = fark !== null && Math.abs(fark) > 0.01;
-  // Renk: fark yoksa teal (nötr), eşit yeşil, farklıysa kırmızı (gerçek sorun → kırmızı haklı)
-  const accent = fark == null ? '#14b8a6' : farkliMi ? '#ef6b6b' : '#5fcf8e';
-  const accentRgb = fark == null ? '20,184,166' : farkliMi ? '239,107,107' : '95,207,142';
-  const grid = '1px solid rgba(255,255,255,0.10)';
-  const farkColor = fark == null ? 'rgba(255,255,255,0.4)' : farkliMi ? '#fca5a5' : '#5fcf8e';
+  const accent = bekliyor ? '#5eead4' : farkliMi ? '#ef6b6b' : '#5fcf8e';
+  const accentRgb = bekliyor ? '94,234,212' : farkliMi ? '239,107,107' : '95,207,142';
+  const [acctRaw, ...rest] = hesap.split('·');
+  const acctNum = (acctRaw || hesap).trim();
+  const acctLabel = rest.join('·').trim();
+  const midIcon = farkliMi ? (
+    <svg width={16} height={16} viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth={2.6} strokeLinecap="round"><path d="M18 6 6 18M6 6l12 12" /></svg>
+  ) : (
+    <svg width={16} height={16} viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth={2.6} strokeLinecap="round"><path d="M5 9h14M5 15h14" /></svg>
+  );
   return (
-    <div
-      className="rounded-2xl overflow-hidden"
-      style={{ background: '#13100d', border: '1px solid rgba(255,255,255,0.12)', borderLeft: `3px solid ${accent}` }}
-    >
-      {/* Başlık NÖTR — renk yalnız FARK satırında + ince sol şerit */}
-      <div
-        className="px-4 py-3 flex items-center justify-between"
-        style={{ background: 'rgba(255,255,255,0.025)', borderBottom: '1px solid rgba(255,255,255,0.10)' }}
-      >
-        <span className="text-[14px] font-bold tracking-wide" style={{ color: '#fff' }}>{hesap}</span>
-        {fark == null ? null : farkliMi ? <AlertCircle size={15} style={{ color: '#fca5a5' }} /> : <CheckCircle2 size={15} style={{ color: '#5fcf8e' }} />}
+    <div className="relative overflow-hidden rounded-2xl p-5" style={{ background: '#13100d', border: '1px solid rgba(255,255,255,0.12)' }}>
+      <span className="absolute left-0 top-0 bottom-0" style={{ width: 3, background: accent }} />
+      {/* Başlık + karar rozeti */}
+      <div className="mb-4 flex items-center justify-between">
+        <span className="text-[14.5px] font-bold" style={{ color: '#fff' }}>
+          {acctNum}
+          {acctLabel && (
+            <span className="ml-1.5 text-[10.5px] font-semibold uppercase tracking-[.08em]" style={{ color: 'rgba(255,255,255,0.45)' }}>{acctLabel}</span>
+          )}
+        </span>
+        <span
+          className="inline-flex items-center gap-1.5 rounded-[11px] px-3 py-1.5 text-[12px] font-extrabold"
+          style={{ background: `rgba(${accentRgb},0.12)`, border: `1px solid rgba(${accentRgb},0.4)`, color: accent }}
+        >
+          {bekliyor ? <RefreshCw size={13} /> : farkliMi ? <AlertCircle size={14} /> : <CheckCircle2 size={14} />}
+          {bekliyor ? 'Bekliyor' : farkliMi ? 'Fark var' : 'Eşit'}
+        </span>
       </div>
-      <table className="w-full text-[13.5px]" style={{ borderCollapse: 'collapse' }}>
-        <tbody style={{ color: '#fff' }}>
-          <tr>
-            <td className="px-4 py-3 font-semibold" style={{ border: grid, color: 'rgba(255,255,255,0.55)', width: '42%' }}>Mihsap</td>
-            <td className="px-4 py-3 text-right tabular-nums" style={{ border: grid }}>
-              {mihsap == null ? <span style={{ color: 'rgba(255,255,255,0.35)' }}>—</span> : <MoneyText value={mihsap} size={14} />}
-            </td>
-          </tr>
-          <tr style={{ background: 'rgba(255,255,255,0.022)' }}>
-            <td className="px-4 py-3 font-semibold" style={{ border: grid, color: 'rgba(255,255,255,0.55)' }}>Luca</td>
-            <td className="px-4 py-3 text-right tabular-nums" style={{ border: grid }}>
-              {luca == null ? <span style={{ color: 'rgba(255,255,255,0.35)' }}>—</span> : <MoneyText value={luca} size={14} />}
-            </td>
-          </tr>
-          <tr style={{ background: `rgba(${accentRgb},0.12)` }}>
-            <td className="px-4 py-3.5 font-extrabold tracking-[.06em]" style={{ border: grid, borderTop: `2px solid ${accent}`, color: accent }}>FARK</td>
-            <td className="px-4 py-3.5 text-right tabular-nums" style={{ border: grid, borderTop: `2px solid ${accent}` }}>
-              {fark == null ? <span style={{ color: farkColor }}>—</span> : <MoneyText value={fark} color={farkColor} strong size={15} />}
-            </td>
-          </tr>
-        </tbody>
-      </table>
+      {/* Terazi: Mihsap = Luca */}
+      <div className="flex items-stretch gap-3">
+        <div className="flex-1 rounded-xl px-4 py-3.5" style={{ background: 'rgba(255,255,255,0.03)', border: '1px solid rgba(255,250,240,0.08)' }}>
+          <div className="text-[10px] font-extrabold uppercase tracking-[.12em]" style={{ color: 'rgba(255,255,255,0.45)' }}>Mihsap</div>
+          <div className="mt-1.5">{mihsap == null ? <span style={{ color: 'rgba(255,255,255,0.35)' }}>—</span> : <MoneyText value={mihsap} size={17} strong />}</div>
+        </div>
+        <div className="flex items-center justify-center" style={{ width: 38 }}>
+          <span className="flex items-center justify-center rounded-full" style={{ width: 32, height: 32, background: `rgba(${accentRgb},0.13)`, color: accent }}>{midIcon}</span>
+        </div>
+        <div className="flex-1 rounded-xl px-4 py-3.5" style={{ background: 'rgba(255,255,255,0.03)', border: '1px solid rgba(255,250,240,0.08)' }}>
+          <div className="text-[10px] font-extrabold uppercase tracking-[.12em]" style={{ color: 'rgba(255,255,255,0.45)' }}>Luca</div>
+          <div className="mt-1.5">{luca == null ? <span style={{ color: 'rgba(255,255,255,0.35)' }}>—</span> : <MoneyText value={luca} size={17} strong />}</div>
+        </div>
+      </div>
+      {/* Fark */}
+      <div className="mt-4 flex items-center justify-between pt-3.5" style={{ borderTop: '1px solid rgba(255,250,240,0.08)' }}>
+        <span className="text-[11px] font-extrabold uppercase tracking-[.08em]" style={{ color: 'rgba(255,255,255,0.45)' }}>Fark</span>
+        {fark == null ? <span style={{ color: 'rgba(255,255,255,0.4)' }}>—</span> : <MoneyText value={fark} color={accent} strong size={16} />}
+      </div>
     </div>
   );
 }
 
 function OranTablosu({
-  baslik, renk, oranlar, toplamMatrah, toplamKdv, adet, altSatir, embedded,
+  baslik, renk, oranlar, toplamKdv, adet, altSatir,
 }: {
   baslik: string; renk: string; oranlar: OranRow[] | null | undefined;
-  toplamMatrah: number; toplamKdv: number; adet: number;
+  toplamMatrah?: number; toplamKdv: number; adet: number;
   altSatir?: Array<{ ad: string; v: { matrah: number; kdv: number; adet: number } }>;
-  embedded?: boolean;   // tek panel içinde — dış kart çerçevesi yok
 }) {
+  // Konsept B — oran payı barlı kart: her oranın KDV'si toplam içindeki payı kadar dolu bar.
   const safeOranlar = cleanOranRows(oranlar || []);
-  const grid = '1px solid rgba(255,255,255,0.10)';      // dikey+yatay grid çizgileri (belirgin)
+  const taraf = (baslik.split('·')[0] || baslik).trim();   // "Satış" / "Alış"
+  const kdvBaslik = (baslik.split('·')[1] || '').trim();   // "Hesaplanan KDV" / "İndirilecek KDV"
+  const toplamPay = Math.max(toplamKdv, 0.0001);
+  const PILL_INK = '#08130f';
   return (
-    <div
-      className={embedded ? 'h-full overflow-hidden' : 'rounded-2xl overflow-hidden'}
-      style={embedded
-        ? { background: 'transparent' }
-        : { background: '#13100d', border: '1px solid rgba(255,255,255,0.12)', borderLeft: `4px solid ${renk}`, boxShadow: '0 16px 40px -28px rgba(0,0,0,.8)' }}
-    >
-      {/* Dolgulu renkli başlık şeridi (panel içinde alt-başlık) */}
-      <div
-        className="flex items-center justify-between gap-3 px-4 py-3"
-        style={{ background: `linear-gradient(90deg, ${renk}33, ${renk}0a)`, borderBottom: `1px solid ${renk}40`, borderLeft: embedded ? `4px solid ${renk}` : undefined }}
-      >
+    <div className="flex flex-col overflow-hidden rounded-2xl" style={{ background: '#13100d', border: '1px solid rgba(255,255,255,0.12)' }}>
+      {/* Renk şeridi */}
+      <div style={{ height: 3, background: `linear-gradient(90deg, ${renk}, transparent)` }} />
+      {/* Başlık */}
+      <div className="flex items-center justify-between gap-3 px-5 pt-4 pb-3">
         <div className="flex items-center gap-2.5">
-          <span className="h-3 w-3 rounded-full" style={{ background: renk, boxShadow: `0 0 12px ${renk}` }} />
-          <h3 className="text-[14.5px] font-bold tracking-wide" style={{ color: '#fff' }}>{baslik}</h3>
+          <span className="h-2.5 w-2.5 rounded-full" style={{ background: renk, boxShadow: `0 0 10px ${renk}` }} />
+          <div>
+            <div className="text-[10px] font-bold uppercase tracking-[.14em]" style={{ color: 'rgba(255,255,255,0.45)' }}>{taraf} · OCR</div>
+            <div className="text-[15px] font-bold" style={{ color: '#fff' }}>{kdvBaslik}</div>
+          </div>
         </div>
-        <span className="rounded-full px-3 py-1 text-[11.5px] font-bold tabular-nums" style={{ background: `${renk}29`, color: renk, border: `1px solid ${renk}66` }}>{adet} fatura</span>
+        <span className="rounded-full px-3 py-1 text-[11.5px] font-bold tabular-nums" style={{ background: `${renk}24`, color: renk, border: `1px solid ${renk}66` }}>{adet} fatura</span>
       </div>
 
       {safeOranlar.length === 0 ? (
-        <div className="py-12 text-center text-[13px]" style={{ color: 'rgba(255,255,255,0.4)' }}>
+        <div className="py-10 text-center text-[13px]" style={{ color: 'rgba(255,255,255,0.4)' }}>
           Bu dönem için kayıt yok
         </div>
       ) : (
-        <table className="w-full text-[13.5px]" style={{ borderCollapse: 'collapse' }}>
-          <thead>
-            <tr style={{ color: 'rgba(255,255,255,0.5)', background: 'rgba(0,0,0,0.4)' }}>
-              <th className="text-left px-4 py-2.5 font-bold uppercase tracking-[.12em] text-[10.5px]" style={{ border: grid }}>Oran</th>
-              <th className="text-right px-4 py-2.5 font-bold uppercase tracking-[.12em] text-[10.5px]" style={{ border: grid }}>Matrah</th>
-              <th className="text-right px-4 py-2.5 font-bold uppercase tracking-[.12em] text-[10.5px]" style={{ border: grid }}>KDV</th>
-              <th className="text-right px-3 py-2.5 font-bold uppercase tracking-[.12em] text-[10.5px]" style={{ border: grid, width: 58 }}>Adet</th>
-            </tr>
-          </thead>
-          <tbody style={{ color: '#fff' }}>
-            {safeOranlar.map((o, idx) => (
-              <tr key={o.oran} style={{ background: idx % 2 ? 'rgba(255,255,255,0.022)' : 'transparent' }}>
-                <td className="px-4 py-3" style={{ border: grid }}>
-                  <span className="inline-flex items-center rounded-lg px-2.5 py-1 text-[13px] font-extrabold" style={{ background: renk, color: '#08130f' }}>%{o.oran}</span>
-                </td>
-                <td className="text-right px-4 py-3 tabular-nums" style={{ border: grid }}><MoneyText value={o.matrah} size={14} /></td>
-                <td className="text-right px-4 py-3 tabular-nums" style={{ border: grid }}><MoneyText value={o.kdv} color={renk} strong size={14.5} /></td>
-                <td className="text-right px-3 py-3 tabular-nums text-[13px]" style={{ border: grid, color: 'rgba(255,255,255,0.5)' }}>{o.adet}</td>
-              </tr>
-            ))}
-          </tbody>
-          <tfoot>
-            <tr style={{ background: `linear-gradient(90deg, ${renk}3d, ${renk}1a)` }}>
-              <td className="px-4 py-3.5 text-[13px] font-extrabold tracking-[.08em]" style={{ border: grid, borderTop: `2px solid ${renk}`, color: renk }}>TOPLAM</td>
-              <td className="text-right px-4 py-3.5 tabular-nums" style={{ border: grid, borderTop: `2px solid ${renk}` }}><MoneyText value={toplamMatrah} strong size={15} /></td>
-              <td className="text-right px-4 py-3.5 tabular-nums" style={{ border: grid, borderTop: `2px solid ${renk}` }}><MoneyText value={toplamKdv} color={renk} strong size={16} /></td>
-              <td className="px-3 py-3.5" style={{ border: grid, borderTop: `2px solid ${renk}` }} />
-            </tr>
-          </tfoot>
-        </table>
+        <div className="px-5 pb-3">
+          {safeOranlar.map((o, idx) => {
+            const pay = Math.min(100, Math.max(3, Math.round((o.kdv / toplamPay) * 100)));
+            return (
+              <div key={o.oran} className="py-3" style={{ borderTop: idx === 0 ? 'none' : '1px solid rgba(255,250,240,0.08)' }}>
+                <div className="mb-2 flex items-center justify-between gap-3">
+                  <span className="inline-flex items-center gap-2.5">
+                    <span className="inline-flex items-center justify-center rounded-lg px-2.5 py-1 text-[13px] font-extrabold" style={{ background: renk, color: PILL_INK, minWidth: 46 }}>%{o.oran}</span>
+                    <span className="text-[12px] font-semibold tabular-nums" style={{ color: 'rgba(255,255,255,0.5)' }}>{o.adet} belge · {TRY}{fmt(o.matrah)} matrah</span>
+                  </span>
+                  <MoneyText value={o.kdv} color={renk} strong size={15} />
+                </div>
+                <div className="h-2 overflow-hidden rounded-full" style={{ background: 'rgba(255,255,255,0.06)' }}>
+                  <span className="block h-full rounded-full transition-all" style={{ width: `${pay}%`, background: renk }} />
+                </div>
+              </div>
+            );
+          })}
+        </div>
       )}
 
       {/* Tevkifat alt kırılım (yalnız alış) */}
       {altSatir && (
-        <div className="grid grid-cols-2" style={{ borderTop: grid }}>
+        <div className="grid grid-cols-2 text-[11.5px]" style={{ borderTop: '1px solid rgba(255,250,240,0.08)' }}>
           {altSatir.map((a, i) => (
-            <div key={a.ad} className="px-4 py-3" style={{ borderRight: i === 0 ? grid : undefined, background: 'rgba(0,0,0,0.28)' }}>
-              <div className="flex items-center justify-between">
-                <span className="text-[11.5px] font-semibold" style={{ color: 'rgba(255,255,255,0.55)' }}>{a.ad}</span>
-                <span className="text-[10.5px] tabular-nums" style={{ color: 'rgba(255,255,255,0.4)' }}>{a.v.adet}×</span>
+            <div key={a.ad} className="px-5 py-2.5" style={{ borderRight: i === 0 ? '1px solid rgba(255,250,240,0.08)' : undefined }}>
+              <div className="flex items-center justify-between" style={{ color: 'rgba(255,255,255,0.5)' }}>
+                <span className="font-semibold">{a.ad}</span>
+                <span className="tabular-nums">{a.v.adet}×</span>
               </div>
-              <div className="mt-1"><MoneyText value={a.v.kdv} color="#fff" size={14} /></div>
+              <div className="mt-0.5"><MoneyText value={a.v.kdv} color={a.v.kdv > 0 ? '#fff' : 'rgba(255,255,255,0.4)'} size={13.5} /></div>
             </div>
           ))}
         </div>
       )}
+
+      {/* Toplam KDV bandı */}
+      <div className="mt-auto flex items-center justify-between px-5 py-3.5" style={{ borderTop: '1px solid rgba(255,255,255,0.12)', background: 'rgba(255,255,255,0.022)' }}>
+        <span className="text-[10.5px] font-extrabold uppercase tracking-[.1em]" style={{ color: renk }}>Toplam KDV</span>
+        <span className="tabular-nums" style={{ fontFamily: SERIF, fontWeight: 700, fontSize: 20, color: renk }}>{TRY}{fmt(toplamKdv)}</span>
+      </div>
     </div>
   );
 }
