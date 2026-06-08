@@ -15,6 +15,11 @@ export const documentsApi = {
       .get(`/documents/${id}/download`, { params: version ? { version } : {} })
       .then((r) => r.data),
 
+  getPreviewUrl: (id: string, version?: number) =>
+    api
+      .get(`/documents/${id}/preview`, { params: version ? { version } : {} })
+      .then((r) => r.data),
+
   upload: async (payload: {
     taxpayerId: string;
     title: string;

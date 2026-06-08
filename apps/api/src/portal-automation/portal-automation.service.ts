@@ -875,6 +875,23 @@ export class PortalAutomationService {
         ownerType: 'TAXPAYER',
         isActive: true,
         taxpayer: { isActive: true },
+        ...(provider === 'SGK_EBILDIRGE'
+          ? {
+              AND: [
+                { OR: [{ username: { not: null } }, { userCode: { not: null } }] },
+                { workplaceCode: { not: null } },
+                { encryptedPassword: { not: null } },
+                { encryptedSecondaryPassword: { not: null } },
+              ],
+            }
+          : {}),
+        ...(provider === 'GIB_IVD'
+          ? {
+              userCode: { not: null },
+              encryptedPassword: { not: null },
+              encryptedSecondaryPassword: { not: null },
+            }
+          : {}),
       },
       select: { ownerId: true },
       take: 2000,
@@ -919,6 +936,19 @@ export class PortalAutomationService {
   }
 
   private summarizeCredentials(rows: any[]) {
+    const readyCredential = (row: any) => {
+      if (row?.isActive === false) return false;
+      if (row.provider === 'GIB_EBEYANNAME') {
+        return Boolean(row.userCode && (row.encryptedPassword || row.encryptedSecondaryPassword));
+      }
+      if (row.provider === 'GIB_IVD') {
+        return Boolean(row.userCode && row.encryptedPassword && row.encryptedSecondaryPassword);
+      }
+      if (row.provider === 'SGK_EBILDIRGE') {
+        return Boolean((row.username || row.userCode) && row.workplaceCode && row.encryptedPassword && row.encryptedSecondaryPassword);
+      }
+      return false;
+    };
     const byProvider = {
       GIB_EBEYANNAME: { total: 0, active: 0 },
       GIB_IVD: { total: 0, active: 0 },
@@ -928,7 +958,7 @@ export class PortalAutomationService {
       const provider = String(row.provider);
       if (!isPortalProvider(provider)) continue;
       byProvider[provider].total++;
-      if (row.isActive !== false) byProvider[provider].active++;
+      if (readyCredential(row)) byProvider[provider].active++;
     }
     return {
       eBeyannameReady: byProvider.GIB_EBEYANNAME.active > 0,

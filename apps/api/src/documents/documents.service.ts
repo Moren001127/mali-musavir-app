@@ -267,6 +267,16 @@ export class DocumentsService {
     return doc;
   }
 
+  private documentFilename(doc: { title: string; mimeType?: string | null; s3Key?: string | null }) {
+    const cleanTitle = String(doc.title || 'evrak').replace(/[\\/:*?"<>|]/g, '_').trim() || 'evrak';
+    const existingExt = cleanTitle.match(/\.([a-z0-9]{1,8})$/i)?.[1];
+    if (existingExt) return cleanTitle;
+    const keyExt = String(doc.s3Key || '').split('?')[0].match(/\.([a-z0-9]{1,8})$/i)?.[1];
+    const mime = String(doc.mimeType || '').toLowerCase();
+    const ext = keyExt || (mime.includes('/') ? mime.split('/')[1] : '') || 'bin';
+    return `${cleanTitle}.${ext.replace(/[^a-z0-9.+-]/gi, '') || 'bin'}`;
+  }
+
   /**
    * İndirme presigned URL'i
    */
@@ -280,9 +290,28 @@ export class DocumentsService {
       s3Key = version.s3Key;
     }
 
-    const filename = `${doc.title}.${doc.mimeType.split('/')[1] || 'bin'}`;
+    const filename = this.documentFilename({ ...doc, s3Key });
     const url = await this.storage.getPresignedDownloadUrl(s3Key, filename);
-    return { url, filename, expiresInSeconds: 3600 };
+    return { url, filename, mimeType: doc.mimeType || 'application/octet-stream', expiresInSeconds: 3600 };
+  }
+
+  /**
+   * Aynı dosya için tarayıcı içinde gösterilecek inline URL.
+   */
+  async getPreviewUrl(id: string, tenantId: string, versionNo?: number) {
+    const doc = await this.findOne(id, tenantId);
+
+    let s3Key = doc.s3Key;
+    if (versionNo) {
+      const version = doc.versions.find((v) => v.versionNo === versionNo);
+      if (!version) throw new NotFoundException('Versiyon bulunamadı');
+      s3Key = version.s3Key;
+    }
+
+    const filename = this.documentFilename({ ...doc, s3Key });
+    const mimeType = doc.mimeType || 'application/octet-stream';
+    const url = await this.storage.getPresignedInlineUrl(s3Key, filename, mimeType);
+    return { url, filename, mimeType, expiresInSeconds: 3600 };
   }
 
   /**

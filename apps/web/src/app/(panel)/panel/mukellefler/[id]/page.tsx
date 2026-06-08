@@ -762,8 +762,15 @@ function BilgilerTab({
     const rows = credentialData?.rows || [];
     return rows.some((credential) => {
       if (credential.provider !== provider || credential.taxpayerId !== taxpayerId || credential.isActive === false) return false;
-      const identity = provider === 'SGK_EBILDIRGE' ? credential.username : credential.userCode;
-      return !!String(identity || '').trim() && (!!credential.hasPassword || !!credential.hasSecondaryPassword);
+      if (provider === 'SGK_EBILDIRGE') {
+        return (
+          !!String(credential.username || credential.userCode || '').trim() &&
+          !!String(credential.workplaceCode || '').trim() &&
+          !!credential.hasPassword &&
+          !!credential.hasSecondaryPassword
+        );
+      }
+      return !!String(credential.userCode || '').trim() && !!credential.hasPassword && !!credential.hasSecondaryPassword;
     });
   };
 
@@ -1566,7 +1573,7 @@ function DosyalarTab({ taxpayerId }: { taxpayerId: string }) {
   const [progress, setProgress] = useState(0);
   const [busyDocId, setBusyDocId] = useState<string | null>(null);
   const [viewBusyDocId, setViewBusyDocId] = useState<string | null>(null);
-  const [previewDoc, setPreviewDoc] = useState<{ url: string; title: string; subtitle: string; mimeType?: string | null; docKey: string } | null>(null);
+  const [previewDoc, setPreviewDoc] = useState<{ url: string; downloadUrl: string; title: string; subtitle: string; mimeType?: string | null; docKey: string } | null>(null);
   const [mounted, setMounted] = useState(false);
 
   const { data: documents = [], isLoading } = useQuery<MukellefDocument[]>({
@@ -1649,14 +1656,20 @@ function DosyalarTab({ taxpayerId }: { taxpayerId: string }) {
   const previewDocument = async (doc: MukellefDocument) => {
     setViewBusyDocId(doc.id);
     try {
-      const res = await documentsApi.getDownloadUrl(doc.id);
-      const url = res?.url || res?.downloadUrl;
+      const [previewRes, downloadRes] = await Promise.all([
+        documentsApi.getPreviewUrl(doc.id),
+        documentsApi.getDownloadUrl(doc.id),
+      ]);
+      const url = previewRes?.url || previewRes?.previewUrl;
+      const downloadUrl = downloadRes?.url || downloadRes?.downloadUrl;
+      if (!downloadUrl) throw new Error('Indirme adresi alinamadi');
       if (!url) throw new Error('Görüntüleme adresi alınamadı');
       setPreviewDoc({
         url,
+        downloadUrl,
         title: doc.title,
         subtitle: `${documentCategoryLabel(doc.category)} · ${formatBytes(doc.sizeBytes)} · ${fmtDateTR((doc.updatedAt || doc.createdAt || '').substring(0, 10))}`,
-        mimeType: doc.mimeType,
+        mimeType: previewRes?.mimeType || doc.mimeType,
         docKey: doc.id,
       });
     } catch (e: any) {
@@ -1802,7 +1815,7 @@ function DosyalarTab({ taxpayerId }: { taxpayerId: string }) {
               </div>
               <div className="flex shrink-0 items-center gap-2">
                 <a
-                  href={previewDoc.url}
+                  href={previewDoc.downloadUrl}
                   download={previewDoc.title.replace(/[\\/:*?"<>|]/g, '_')}
                   className="inline-flex h-9 w-9 items-center justify-center rounded-[9px]"
                   title="Evrakı indir"
@@ -1825,8 +1838,12 @@ function DosyalarTab({ taxpayerId }: { taxpayerId: string }) {
               <div className="min-h-0 flex-1 overflow-auto bg-white p-4">
                 <img src={previewDoc.url} alt={previewDoc.title} className="mx-auto max-h-full max-w-full object-contain" />
               </div>
-            ) : (
+            ) : previewDoc.mimeType?.includes('pdf') || /\.pdf$/i.test(previewDoc.title) ? (
               <iframe key={previewDoc.docKey} title={previewDoc.title} src={previewDoc.url} className="min-h-0 flex-1 bg-white" />
+            ) : (
+              <div className="flex min-h-0 flex-1 items-center justify-center p-6 text-center" style={{ color: MUTED }}>
+                Bu dosya tipi tarayici icinde onizlenemiyor. Indirmek icin indir butonunu kullanin.
+              </div>
             )}
           </div>
         </div>

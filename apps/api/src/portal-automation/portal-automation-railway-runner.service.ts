@@ -87,8 +87,8 @@ type EBeyannameListEntry = {
 // GIB 2026'da e-Beyanname'yi Dijital Vergi Dairesi portali altinda topladi.
 // Eski URL (ebeyanname.gib.gov.tr/giris.html) artik ana sayfaya redirect ediyor.
 const DEFAULT_EBEYANNAME_LOGIN_URL = 'https://dijital.gib.gov.tr/portal/login';
-const DEFAULT_GIB_IVD_LOGIN_URL = 'https://dijital.gib.gov.tr/';
-const DEFAULT_SGK_LOGIN_URL = 'https://uyg.sgk.gov.tr/';
+const DEFAULT_GIB_IVD_LOGIN_URL = 'https://dijital.gib.gov.tr/portal/login';
+const DEFAULT_SGK_LOGIN_URL = 'https://uyg.sgk.gov.tr/IsverenSistemi';
 
 const JOB_TYPES_DEFAULT: PortalJobType[] = [
   'EBEYANNAME_DAILY_DOWNLOAD',
@@ -516,8 +516,8 @@ export class PortalAutomationRailwayRunnerService implements OnModuleInit {
     const isSgk = jobType.startsWith('SGK_');
 
     if (isSgk) {
-      if (!(credential.username || credential.userCode) || !credential.password || !credential.secondaryPassword) {
-        throw new Error('SGK kullanici/e-kod, sistem sifresi ve isyeri sifresi eksik');
+      if (!(credential.username || credential.userCode) || !credential.workplaceCode || !credential.password || !credential.secondaryPassword) {
+        throw new Error('SGK kullanici adi, e-kod, sistem sifresi ve isyeri sifresi eksik');
       }
     } else if (!credential.userCode || !credential.password || !credential.secondaryPassword) {
       throw new Error('Vergi dairesi kullanici kodu, parola ve sifre eksik');
@@ -617,9 +617,9 @@ export class PortalAutomationRailwayRunnerService implements OnModuleInit {
     if (jobType.startsWith('SGK_')) {
       return [
         credential.username || credential.userCode || '',
+        credential.workplaceCode || '',
         credential.password || '',
         credential.secondaryPassword || '',
-        credential.workplaceCode || '',
         credential.officeCode || '',
       ].filter(Boolean);
     }

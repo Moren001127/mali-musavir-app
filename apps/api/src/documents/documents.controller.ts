@@ -98,6 +98,20 @@ export class DocumentsController {
     return this.documentsService.findOne(id, req.user.tenantId);
   }
 
+  /** Tarayici icinde onizleme URL'i al */
+  @Get(':id/preview')
+  getPreviewUrl(
+    @Req() req: any,
+    @Param('id') id: string,
+    @Query('version') version?: string,
+  ) {
+    return this.documentsService.getPreviewUrl(
+      id,
+      req.user.tenantId,
+      version ? parseInt(version, 10) : undefined,
+    );
+  }
+
   /** İndirme URL'i al */
   @Get(':id/download')
   getDownloadUrl(

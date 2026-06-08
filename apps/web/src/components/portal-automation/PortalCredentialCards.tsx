@@ -2,7 +2,7 @@
 
 import { useEffect, useMemo, useState } from 'react';
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
-import { CheckCircle2, KeyRound, Loader2, ShieldCheck } from 'lucide-react';
+import { CheckCircle2, Eye, EyeOff, KeyRound, Loader2, ShieldCheck } from 'lucide-react';
 import { toast } from 'sonner';
 import {
   PortalCredentialPublic,
@@ -22,7 +22,7 @@ const MUTED = 'rgba(250,250,249,0.58)';
 const SOFT = 'rgba(255,255,255,0.035)';
 
 type FieldSpec = {
-  key: 'username' | 'userCode';
+  key: 'username' | 'userCode' | 'workplaceCode';
   label: string;
   placeholder?: string;
 };
@@ -135,18 +135,25 @@ function CredentialEditor({
   const qc = useQueryClient();
   const [username, setUsername] = useState('');
   const [userCode, setUserCode] = useState('');
+  const [workplaceCode, setWorkplaceCode] = useState('');
   const [password, setPassword] = useState('');
   const [secondaryPassword, setSecondaryPassword] = useState('');
 
   useEffect(() => {
     setUsername(credential?.username || '');
     setUserCode(credential?.userCode || '');
+    setWorkplaceCode(credential?.workplaceCode || '');
     setPassword('');
     setSecondaryPassword('');
-  }, [credential?.id, credential?.username, credential?.userCode]);
+  }, [credential?.id, credential?.username, credential?.userCode, credential?.workplaceCode]);
 
   const passwordSpec = PASSWORD_SPECS[provider];
-  const fields = FIELD_SPECS[provider];
+  const fields: FieldSpec[] = provider === 'SGK_EBILDIRGE'
+    ? [
+        { key: 'username', label: 'Kullanici adi' },
+        { key: 'workplaceCode', label: 'E-Kod', placeholder: 'Orn. 2' },
+      ]
+    : FIELD_SPECS[provider];
 
   const saveMut = useMutation({
     mutationFn: () =>
@@ -156,7 +163,7 @@ function CredentialEditor({
         username: fields.some((field) => field.key === 'username') ? username : '',
         userCode: fields.some((field) => field.key === 'userCode') ? userCode : '',
         officeCode: '',
-        workplaceCode: '',
+        workplaceCode: fields.some((field) => field.key === 'workplaceCode') ? workplaceCode : '',
         password,
         secondaryPassword,
         isActive: true,
@@ -171,7 +178,7 @@ function CredentialEditor({
     onError: (error: any) => toast.error(error?.response?.data?.message || error?.message || 'Şifre kaydedilemedi'),
   });
 
-  const hasIdentity = provider === 'SGK_EBILDIRGE' ? username.trim() : userCode.trim();
+  const hasIdentity = provider === 'SGK_EBILDIRGE' ? username.trim() && workplaceCode.trim() : userCode.trim();
   const disabled =
     saveMut.isPending ||
     (provider !== 'GIB_EBEYANNAME' && !taxpayerId) ||
@@ -203,8 +210,8 @@ function CredentialEditor({
           <TextInput
             key={field.key}
             label={field.label}
-            value={field.key === 'username' ? username : userCode}
-            onChange={field.key === 'username' ? setUsername : setUserCode}
+            value={field.key === 'username' ? username : field.key === 'workplaceCode' ? workplaceCode : userCode}
+            onChange={field.key === 'username' ? setUsername : field.key === 'workplaceCode' ? setWorkplaceCode : setUserCode}
             placeholder={field.placeholder}
           />
         ))}
@@ -292,17 +299,34 @@ function PasswordInput({
   onChange: (value: string) => void;
   hasSaved: boolean;
 }) {
+  const [visible, setVisible] = useState(false);
   return (
     <label className="block">
       <span className="mb-1.5 block text-[11.5px] font-semibold" style={{ color: MUTED }}>{label}</span>
-      <input
-        type="password"
-        value={value}
-        onChange={(event) => onChange(event.target.value)}
-        placeholder={hasSaved ? 'Kayıtlı - değiştirmek için yaz' : ''}
-        className="h-10 w-full rounded-lg border px-3 text-sm outline-none"
-        style={{ background: SOFT, borderColor: LINE, color: TEXT }}
-      />
+      <div className="relative">
+        <input
+          type={visible ? 'text' : 'password'}
+          value={value}
+          onChange={(event) => onChange(event.target.value)}
+          placeholder={hasSaved ? 'Kayitli - degistirmek icin yaz' : ''}
+          className="h-10 w-full rounded-lg border px-3 pr-10 text-sm outline-none placeholder:text-transparent"
+          style={{ background: SOFT, borderColor: LINE, color: TEXT }}
+        />
+        {hasSaved && !value && (
+          <span className="pointer-events-none absolute left-3 top-1/2 -translate-y-1/2 text-sm tracking-[0.18em]" style={{ color: MUTED }}>
+            &bull;&bull;&bull;&bull;&bull;&bull;
+          </span>
+        )}
+        <button
+          type="button"
+          onClick={() => setVisible((current) => !current)}
+          className="absolute right-2 top-1/2 inline-flex h-7 w-7 -translate-y-1/2 items-center justify-center rounded-md transition hover:bg-white/[0.06]"
+          style={{ color: MUTED }}
+          title={visible ? 'Sifreyi gizle' : 'Sifreyi goster'}
+        >
+          {visible ? <EyeOff size={16} /> : <Eye size={16} />}
+        </button>
+      </div>
     </label>
   );
 }

@@ -136,6 +136,7 @@ export class TaxpayersService {
             isActive: true,
             username: true,
             userCode: true,
+            workplaceCode: true,
             encryptedPassword: true,
             encryptedSecondaryPassword: true,
           },
@@ -153,10 +154,24 @@ export class TaxpayersService {
         `${t.firstName || ''} ${t.lastName || ''}`.trim() ||
         t.taxNumber ||
         '').trim();
-    const credentialIsReady = (credential: any) =>
-      credential?.isActive !== false &&
-      Boolean(credential?.username || credential?.userCode) &&
-      Boolean(credential?.encryptedPassword || credential?.encryptedSecondaryPassword);
+    const credentialIsReady = (credential: any) => {
+      if (credential?.isActive === false) return false;
+      if (credential?.provider === 'GIB_IVD') {
+        return Boolean(credential?.userCode && credential?.encryptedPassword && credential?.encryptedSecondaryPassword);
+      }
+      if (credential?.provider === 'SGK_EBILDIRGE') {
+        return Boolean(
+          (credential?.username || credential?.userCode) &&
+          credential?.workplaceCode &&
+          credential?.encryptedPassword &&
+          credential?.encryptedSecondaryPassword,
+        );
+      }
+      return Boolean(
+        (credential?.username || credential?.userCode) &&
+        (credential?.encryptedPassword || credential?.encryptedSecondaryPassword),
+      );
+    };
 
     const taxpayers = [...taxpayersRaw].map(({ cariHizmetler, portalCredentials, ...taxpayer }: any) => {
       const hizmetler = Array.isArray(cariHizmetler) ? cariHizmetler : [];

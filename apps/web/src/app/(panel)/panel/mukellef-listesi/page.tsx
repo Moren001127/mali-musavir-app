@@ -473,13 +473,16 @@ function HattatPresenceIcon({ active, kind, title }: { active: boolean; kind: Ha
 
 function GibMark({ color }: { color: string }) {
   return (
-    <svg viewBox="0 0 32 32" width="21" height="21" aria-hidden="true">
+    <svg viewBox="0 0 100 100" width="22" height="22" aria-hidden="true">
       <path
-        d="M19.8 3.5c-6.8 2.3-11.2 8.2-11.2 14.9 0 4.1 1.6 7.7 4.2 10.2h5.2c-2.9-2.4-4.6-6-4.6-10.1 0-4.4 2.1-8.4 5.4-10.9l1 4.2h4.1L22 3.5h-2.2Z"
+        d="M53.8 8.8C32.7 23.6 21.7 45.2 23.5 72.7c.5 7.1 2.1 13.4 4.4 18.5H48C38 64.6 40.8 35.2 64.8 8.8h-11Z"
         fill={color}
       />
-      <path d="M21.2 12.2h5.1v16.4h-5.1V12.2Z" fill={color} opacity="0.96" />
-      <path d="M16.2 14.7h3.4v13.9h-3.4V14.7Z" fill={color} opacity="0.82" />
+      <path
+        d="M56.3 47.8h32.4L79.6 91.2H48.4l8.8-36.5H50l1.6-6.9h4.7Z"
+        fill={color}
+      />
+      <ellipse cx="76.2" cy="29.4" rx="12.8" ry="17.5" transform="rotate(9 76.2 29.4)" fill={color} />
     </svg>
   );
 }
