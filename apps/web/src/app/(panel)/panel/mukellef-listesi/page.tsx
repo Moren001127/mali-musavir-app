@@ -14,6 +14,7 @@ import {
   Search,
   Smartphone,
   User,
+  Users,
   X,
   type LucideIcon,
 } from 'lucide-react';
@@ -190,26 +191,45 @@ export default function MukellefListesiPage() {
   return (
     <div className="max-w-none space-y-4">
       <header
-        className="flex flex-wrap items-end justify-between gap-3 rounded-[8px] px-4 py-3.5"
-        style={{ background: CARD, border: `1px solid ${LINE}`, boxShadow: '0 12px 30px rgba(0,0,0,0.18)' }}
+        className="relative overflow-hidden rounded-[18px] border px-5 py-4"
+        style={{
+          background:
+            'radial-gradient(120% 140% at 0% 0%, rgba(212,184,118,0.16), transparent 46%), radial-gradient(120% 140% at 100% 0%, rgba(139,118,73,0.12), transparent 48%), #0f0d0b',
+          borderColor: 'rgba(255,255,255,0.06)',
+          boxShadow: '0 16px 42px rgba(0,0,0,0.28)',
+        }}
       >
-        <div>
-          <div className="mb-1.5 flex items-center gap-2.5">
-            <span className="h-px w-[26px]" style={{ background: GOLD }} />
-            <span className="text-[9.5px] font-bold uppercase tracking-[.18em]" style={{ color: GOLD_SOFT }}>Mükellef CRM</span>
-          </div>
-          <h1 style={{ fontFamily: 'Manrope, Inter, system-ui, sans-serif', fontSize: 27, fontWeight: 800, color: TEXT, letterSpacing: 0 }}>Mükellef Listesi</h1>
-          <p className="mt-1 text-[12.5px] font-medium" style={{ color: MUTED }}>
-            {counts.active} aktif, {counts.inactive} pasif, toplam {counts.total} kayıt
-          </p>
+        <div
+          className="absolute inset-x-0 top-0 h-1"
+          style={{ background: 'linear-gradient(90deg, #8b7649, #b8a06f, #d4b876, #e7cf95, #d4b876, #b8a06f)' }}
+        />
+        <div className="mb-3 flex items-center gap-2.5">
+          <span className="h-px w-[26px]" style={{ background: GOLD }} />
+          <span className="text-[10px] font-bold uppercase tracking-[.18em]" style={{ color: GOLD_SOFT }}>Mükellef CRM</span>
         </div>
-        <Link
-          href="/panel/mukellefler/yeni"
-          className="inline-flex items-center gap-1.5 rounded-[8px] px-4 py-2 text-[12.5px] font-bold transition-all"
-          style={{ background: `linear-gradient(135deg, ${GOLD}, ${GOLD_SOFT})`, color: '#0f0d0b' }}
-        >
-          <Plus size={14} /> Yeni Mükellef
-        </Link>
+        <div className="flex flex-wrap items-center justify-between gap-4">
+          <div className="flex min-w-0 items-center gap-3.5">
+            <span
+              className="grid shrink-0 place-items-center rounded-xl"
+              style={{ width: 46, height: 46, background: `linear-gradient(135deg, ${GOLD}, ${GOLD_SOFT})`, boxShadow: '0 8px 22px rgba(212,184,118,0.30)' }}
+            >
+              <Users size={24} style={{ color: '#1a1410' }} />
+            </span>
+            <div className="min-w-0">
+              <h1 style={{ fontFamily: 'Fraunces, Georgia, serif', fontSize: 30, fontWeight: 600, color: TEXT, letterSpacing: '-.03em', lineHeight: 1.05 }}>Mükellef Listesi</h1>
+              <p className="mt-1.5 text-[13px] font-semibold" style={{ color: 'rgba(250,250,249,0.48)' }}>
+                {counts.active} aktif, {counts.inactive} pasif, toplam {counts.total} kayıt
+              </p>
+            </div>
+          </div>
+          <Link
+            href="/panel/mukellefler/yeni"
+            className="inline-flex h-10 shrink-0 items-center gap-1.5 rounded-[10px] px-4 text-[12.5px] font-bold transition-all"
+            style={{ background: `linear-gradient(135deg, ${GOLD}, ${GOLD_SOFT})`, color: '#0f0d0b', boxShadow: '0 10px 24px rgba(212,184,118,0.16)' }}
+          >
+            <Plus size={14} /> Yeni Mükellef
+          </Link>
+        </div>
       </header>
 
       <CredentialInsightStrip
@@ -339,13 +359,13 @@ function CredentialInsightStrip({
   const firstRow = cards.slice(0, 2);
   const secondRow = cards.slice(2);
   return (
-    <section className="grid gap-2">
-      <div className="grid gap-2 lg:grid-cols-2">
+    <section className="grid gap-1.5">
+      <div className="grid gap-1.5 lg:grid-cols-2">
         {firstRow.map((card) => (
           <InsightButton key={card.key} card={card} onClick={() => onOpen(card)} />
         ))}
       </div>
-      <div className="grid gap-2 md:grid-cols-3">
+      <div className="grid gap-1.5 md:grid-cols-3">
         {secondRow.map((card) => (
           <InsightButton key={card.key} card={card} onClick={() => onOpen(card)} />
         ))}
@@ -360,16 +380,16 @@ function InsightButton({ card, onClick }: { card: PortalCredentialInsightCard; o
     <button
       type="button"
       onClick={onClick}
-      className="flex h-11 items-center justify-center gap-2 rounded-[6px] px-4 text-[13px] font-bold transition hover:brightness-110"
+      className="flex h-8 min-w-0 items-center justify-center gap-1.5 rounded-[5px] px-3 text-[11.5px] font-bold transition hover:brightness-110"
       style={{
-        background: blue ? 'linear-gradient(135deg, #3f8fc0, #2f79a7)' : 'linear-gradient(135deg, #eda02d, #c78019)',
+        background: blue ? 'linear-gradient(135deg, #3a88b8, #2f789f)' : 'linear-gradient(135deg, #e79a25, #c67f19)',
         border: `1px solid ${blue ? 'rgba(125,211,252,0.24)' : 'rgba(251,191,36,0.28)'}`,
         color: '#fff',
-        boxShadow: 'inset 0 1px 0 rgba(255,255,255,0.16), 0 9px 18px rgba(0,0,0,0.18)',
+        boxShadow: 'inset 0 1px 0 rgba(255,255,255,0.14), 0 5px 12px rgba(0,0,0,0.14)',
       }}
     >
-      <span>{card.label}</span>
-      <span className="inline-flex h-5 min-w-5 items-center justify-center rounded-full bg-white px-1.5 text-[11px] font-black" style={{ color: blue ? '#2f79a7' : '#c78019' }}>
+      <span className="truncate">{card.label}</span>
+      <span className="inline-flex h-4 min-w-4 items-center justify-center rounded-full bg-white px-1 text-[10px] font-black leading-none" style={{ color: blue ? '#2f79a7' : '#c78019' }}>
         {card.count}
       </span>
     </button>
