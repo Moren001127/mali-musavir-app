@@ -9,6 +9,7 @@ import { agentsApi } from '@/lib/agents';
 import {
   Download, RefreshCw, FileText, Calendar, Users, CheckCircle2, XCircle,
   Loader2, AlertCircle, Receipt, Search, ChevronDown, X, Printer,
+  Cloud, UploadCloud,
 } from 'lucide-react';
 
 type Taxpayer = {
@@ -108,6 +109,71 @@ export default function FaturalarPage() {
     queryFn: () => agentsApi.mihsapJobs(5),
     refetchInterval: 3000,
   });
+
+  // === GOOGLE DRIVE YEDEKLEME ===
+  const driveMukellef =
+    selectedMukellef && selectedMukellef !== ALL_SENTINEL ? selectedMukellef : undefined;
+
+  const { data: driveStatus } = useQuery({
+    queryKey: ['drive-status'],
+    queryFn: () => agentsApi.driveStatus(),
+    refetchInterval: 15000,
+  });
+
+  const { data: driveJobs = [] } = useQuery<any[]>({
+    queryKey: ['drive-jobs'],
+    queryFn: () => agentsApi.driveJobs(5),
+    refetchInterval: 3000,
+  });
+
+  const { data: driveBacked } = useQuery<{ ids: string[] }>({
+    queryKey: ['drive-backed-up', driveMukellef, donem],
+    queryFn: () => agentsApi.driveBackedUp({ mukellefId: driveMukellef, donem }),
+    enabled: !!donem && !!driveStatus?.connected,
+    refetchInterval: 5000,
+  });
+  const backedUpIds = new Set<string>(driveBacked?.ids || []);
+  const activeDriveJob = driveJobs.find(
+    (j) => j.status === 'running' || j.status === 'pending',
+  );
+
+  const driveBackupMut = useMutation({
+    mutationFn: () => agentsApi.driveBackup({ mukellefId: driveMukellef, donem }),
+    onSuccess: (res: any) => {
+      qc.invalidateQueries({ queryKey: ['drive-jobs'] });
+      qc.invalidateQueries({ queryKey: ['drive-backed-up'] });
+      toast.success(res?.already ? 'Yedekleme zaten sürüyor' : 'Drive yedeklemesi başladı');
+    },
+    onError: (e: any) =>
+      toast.error(e?.response?.data?.message || 'Drive yedeklemesi başlatılamadı'),
+  });
+
+  const handleConnectDrive = async () => {
+    try {
+      const { url } = await agentsApi.driveOauthStart();
+      window.location.href = url;
+    } catch (e: any) {
+      toast.error(e?.response?.data?.message || 'Drive bağlantısı başlatılamadı');
+    }
+  };
+
+  // OAuth dönüşünü yakala (?drive=connected | ?drive=error&msg=...)
+  useEffect(() => {
+    if (typeof window === 'undefined') return;
+    const sp = new URLSearchParams(window.location.search);
+    const drive = sp.get('drive');
+    if (!drive) return;
+    if (drive === 'connected') {
+      toast.success('Google Drive bağlandı');
+      qc.invalidateQueries({ queryKey: ['drive-status'] });
+    } else if (drive === 'error') {
+      toast.error(`Drive bağlanamadı: ${sp.get('msg') || 'bilinmeyen hata'}`);
+    }
+    sp.delete('drive');
+    sp.delete('msg');
+    const qs = sp.toString();
+    window.history.replaceState(null, '', window.location.pathname + (qs ? `?${qs}` : ''));
+  }, [qc]);
 
   // MIHSAP'tan çek mutation
   const fetchMut = useMutation({
@@ -355,7 +421,17 @@ ${isPdf
               : 'MIHSAP\'tan fatura çekme ve arşiv yönetimi'}
           </p>
         </div>
-        <MihsapConnectionBadge session={mihsapSession} />
+        <div className="flex items-center gap-2 flex-wrap justify-end">
+          <DriveControls
+            status={driveStatus}
+            activeJob={activeDriveJob}
+            onConnect={handleConnectDrive}
+            onBackup={() => driveBackupMut.mutate()}
+            backingUp={driveBackupMut.isPending}
+            donem={donem}
+          />
+          <MihsapConnectionBadge session={mihsapSession} />
+        </div>
       </div>
 
       {/* Tek satır araç çubuğu — Mükellef · Dönem · Çekme (eski büyük seçim kartı yerine) */}
@@ -685,6 +761,7 @@ ${isPdf
                     <InvoiceRow
                       key={inv.id}
                       invoice={inv}
+                      backedUp={backedUpIds.has(inv.id)}
                       onPreview={setPreviewInvoice}
                       onPrint={handleSinglePrint}
                     />
@@ -823,6 +900,68 @@ ${isPdf
   );
 }
 
+function DriveControls({
+  status,
+  activeJob,
+  onConnect,
+  onBackup,
+  backingUp,
+  donem,
+}: {
+  status: any;
+  activeJob: any;
+  onConnect: () => void;
+  onBackup: () => void;
+  backingUp: boolean;
+  donem: string;
+}) {
+  const connected = status?.connected;
+  if (!connected) {
+    return (
+      <button
+        onClick={onConnect}
+        className="px-3 py-2 rounded-lg text-xs font-semibold inline-flex items-center gap-1.5 transition hover:brightness-110"
+        style={{ background: 'rgba(66,133,244,0.12)', color: '#8ab4f8', border: '1px solid rgba(66,133,244,0.4)' }}
+        title="Faturaları Google Drive'a yedekle"
+      >
+        <Cloud size={14} /> Drive'a Bağla
+      </button>
+    );
+  }
+  const running = activeJob && (activeJob.status === 'running' || activeJob.status === 'pending');
+  const done = (activeJob?.backedUpCount || 0) + (activeJob?.skippedCount || 0);
+  const total = activeJob?.totalCount || 0;
+  return (
+    <div className="flex items-center gap-2">
+      <div
+        className="px-3 py-2 rounded-lg text-xs font-semibold flex items-center gap-2"
+        style={{ background: 'rgba(34,197,94,.12)', color: '#22c55e' }}
+        title={status?.email ? `Bağlı hesap: ${status.email}` : 'Google Drive bağlı'}
+      >
+        <Cloud size={14} /> Drive bağlı
+        {status?.email && <span className="opacity-75 font-normal hidden lg:inline">· {status.email}</span>}
+      </div>
+      <button
+        onClick={onBackup}
+        disabled={running || backingUp || !donem}
+        className="px-3 py-2 rounded-lg text-xs font-bold inline-flex items-center gap-1.5 disabled:opacity-60 disabled:cursor-not-allowed transition hover:brightness-110"
+        style={{ background: 'rgba(184,160,111,0.14)', color: '#d4b876', border: '1px solid rgba(184,160,111,0.35)' }}
+        title="Bu dönemin faturalarını Drive'a yedekle (eksikleri ekler)"
+      >
+        {running ? (
+          <>
+            <Loader2 size={13} className="animate-spin" /> {done}/{total}…
+          </>
+        ) : (
+          <>
+            <UploadCloud size={13} /> Drive'a Yedekle
+          </>
+        )}
+      </button>
+    </div>
+  );
+}
+
 function MihsapConnectionBadge({ session }: { session: any }) {
   const connected = session?.connected;
   return (
@@ -873,10 +1012,12 @@ function StatBox({ label, value, sub, color, icon: Icon }: any) {
 
 function InvoiceRow({
   invoice,
+  backedUp,
   onPreview,
   onPrint,
 }: {
   invoice: MihsapInvoice;
+  backedUp?: boolean;
   onPreview: (inv: MihsapInvoice) => void;
   onPrint: (id: string, faturaNo: string) => void;
 }) {
@@ -903,8 +1044,11 @@ function InvoiceRow({
         >
           {isAlis ? 'ALIŞ' : 'SATIŞ'}
         </span>
-        <div className="text-[10px] mt-0.5" style={{ color: 'rgba(250,250,249,0.4)' }}>
+        <div className="text-[10px] mt-0.5 flex items-center gap-1" style={{ color: 'rgba(250,250,249,0.4)' }}>
           {invoice.belgeTuru}
+          {backedUp && (
+            <Cloud size={10} style={{ color: '#22c55e' }} aria-label="Drive'da yedekli" />
+          )}
         </div>
       </td>
       <td className="px-5 py-3 text-[12px] font-semibold" style={{ fontFamily: 'JetBrains Mono, monospace', color: '#d4b876' }}>{invoice.faturaNo}</td>

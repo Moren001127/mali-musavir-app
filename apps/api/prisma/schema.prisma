@@ -1472,6 +1472,89 @@ model MihsapFetchJob {
 }
 
 // ============================================================
+// GOOGLE DRIVE YEDEKLEME
+// Faturalar modülünden çekilen belgeler Drive'a yedeklenir.
+// Klasör: FATURALAR / {mükellef} / {yıl} / {ay} / {Alış|Satış} / dosya
+// ============================================================
+
+// Tenant başına Google Drive OAuth bağlantısı.
+// refreshToken AES-256-GCM ile şifrelenmiş saklanır (ENCRYPTION_KEY).
+model GoogleDriveAccount {
+  id                    String    @id @default(cuid())
+  tenantId              String    @unique
+  email                 String?   // Bağlanan Google hesabı
+  encryptedRefreshToken String    @db.Text  // AES-GCM şifreli refresh token
+  accessToken           String?   @db.Text  // Son erişim token'ı (cache)
+  accessTokenExpiresAt  DateTime?
+  scope                 String?
+  rootFolderId          String?   // "FATURALAR" kök klasör id (cache)
+  rootFolderName        String    @default("FATURALAR")
+  connectedAt           DateTime?
+  lastError             String?
+  isActive              Boolean   @default(true)
+  createdBy             String?
+  createdAt             DateTime  @default(now())
+  updatedAt             DateTime  @updatedAt
+
+  @@map("google_drive_accounts")
+}
+
+// Drive'a yüklenen faturaların kalıcı kütüğü — mükerrer engeli.
+// forceRefresh/clearPeriod MihsapInvoice'u silse de bu KALIR → tekrar yüklenmez.
+model DriveBackup {
+  id            String   @id @default(cuid())
+  tenantId      String
+  mihsapId      String   // MihsapInvoice.mihsapId (kaynak fatura kimliği)
+  mukellefId    String?
+  donem         String?
+  faturaTuru    String?  // ALIS | SATIS
+  driveFileId   String   // Drive dosya id
+  driveFolderId String?  // Bulunduğu klasör id
+  filePath      String?  // FATURALAR/.../Alış/dosya.jpg (okunabilirlik)
+  fileName      String?
+  sizeBytes     Int?
+  backedUpAt    DateTime @default(now())
+
+  @@unique([tenantId, mihsapId])
+  @@index([tenantId, mukellefId, donem])
+  @@map("drive_backups")
+}
+
+// Klasör id önbelleği — aynı yolu tekrar tekrar Drive'da aramamak için.
+model DriveFolder {
+  id            String   @id @default(cuid())
+  tenantId      String
+  path          String   // "FATURALAR/{mükellef}/2026/04 Nisan/Alış"
+  driveFolderId String
+  createdAt     DateTime @default(now())
+
+  @@unique([tenantId, path])
+  @@map("drive_folders")
+}
+
+// Yedekleme işi — ilerleme takibi (MihsapFetchJob deseni).
+model DriveBackupJob {
+  id            String    @id @default(cuid())
+  tenantId      String
+  mukellefId    String?
+  donem         String?
+  status        String    @default("pending") // pending|running|done|failed
+  totalCount    Int       @default(0)
+  backedUpCount Int       @default(0)
+  skippedCount  Int       @default(0)
+  failedCount   Int       @default(0)
+  errorMsg      String?
+  createdBy     String?
+  createdAt     DateTime  @default(now())
+  startedAt     DateTime?
+  finishedAt    DateTime?
+
+  @@index([tenantId, createdAt])
+  @@index([tenantId, status])
+  @@map("drive_backup_jobs")
+}
+
+// ============================================================
 // LUCA ENTEGRASYONU
 // ============================================================
 

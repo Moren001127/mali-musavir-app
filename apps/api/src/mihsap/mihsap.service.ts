@@ -3,6 +3,7 @@ import { PrismaService } from '../prisma/prisma.service';
 import { StorageService } from '../storage/storage.service';
 import { NotificationsService } from '../notifications/notifications.service';
 import { NOTIFICATION_TYPES } from '../notifications/notification-types';
+import { AutomationEventBus } from '../automations/automation-event-bus.service';
 
 const MIHSAP_BASE = 'https://app.mihsap.com';
 // MIHSAP all-faturas body'sinde kullanılan alan id'leri (keşif yoluyla bulundu)
@@ -42,6 +43,7 @@ export class MihsapService {
     private readonly prisma: PrismaService,
     private readonly storage: StorageService,
     @Optional() private readonly notifications?: NotificationsService,
+    @Optional() private readonly eventBus?: AutomationEventBus,
   ) {}
 
   // ==================== TOKEN YÖNETİMİ ====================
@@ -646,6 +648,20 @@ export class MihsapService {
         });
       } catch (e) {
         this.logger.warn(`MIHSAP_RESULT notif failed: ${(e as Error).message}`);
+      }
+    }
+
+    // === Drive otomatik yedek tetikle (Drive bağlıysa DriveService dinler) ===
+    // Hata olsa bile şimdiye dek kaydedilenler yedeklenebilsin diye throw'dan önce yayınla.
+    if (this.eventBus) {
+      try {
+        this.eventBus.emit('Mihsap.InvoicesFetched', {
+          tenantId: params.tenantId,
+          mukellefId: params.mukellefId,
+          donem: params.donem,
+        });
+      } catch {
+        /* yedek tetikleme zorunlu değil — yut */
       }
     }
 

@@ -204,6 +204,22 @@ export const agentsApi = {
     api.get(`/agent/mihsap/invoices/${id}/download`).then((r) => r.data),
   mihsapJobs: (limit?: number) =>
     api.get('/agent/mihsap/jobs', { params: { limit } }).then((r) => r.data),
+
+  // Google Drive yedekleme
+  driveStatus: () => api.get('/agent/drive/status').then((r) => r.data),
+  driveOauthStart: () =>
+    api
+      .get<{ url: string }>('/agent/drive/oauth/start', {
+        params: { origin: typeof window !== 'undefined' ? window.location.origin : undefined },
+      })
+      .then((r) => r.data),
+  driveDisconnect: () => api.post('/agent/drive/disconnect').then((r) => r.data),
+  driveBackup: (body: { mukellefId?: string; donem?: string }) =>
+    api.post('/agent/drive/backup', body).then((r) => r.data),
+  driveJobs: (limit?: number) =>
+    api.get('/agent/drive/jobs', { params: { limit } }).then((r) => r.data),
+  driveBackedUp: (params?: { mukellefId?: string; donem?: string }) =>
+    api.get<{ ids: string[] }>('/agent/drive/backed-up', { params }).then((r) => r.data),
 };
 
 // Ajanlar sabit listesi (local script eşlemesi)
