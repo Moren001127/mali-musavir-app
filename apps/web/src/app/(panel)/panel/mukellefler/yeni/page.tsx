@@ -40,6 +40,7 @@ const FAINT = 'rgba(250,250,249,0.38)';
 
 type TaxpayerType = 'TUZEL_KISI' | 'GERCEK_KISI';
 type DefterTuru = 'BILANCO' | 'ISLETME';
+type BookKind = 'BILANCO' | 'ISLETME' | 'BASIT';
 
 type FormState = {
   type: TaxpayerType;
@@ -62,9 +63,10 @@ type FormState = {
   mihsapId: string;
   mihsapDefterTuru: string;
   defterTuru: DefterTuru;
+  bookKind: BookKind;
 };
 
-type Payload = Omit<FormState, 'evrakTeslimGunu' | 'startDate' | 'endDate'> & {
+type Payload = Omit<FormState, 'evrakTeslimGunu' | 'startDate' | 'endDate' | 'bookKind'> & {
   evrakTeslimGunu: number | null;
   startDate: string | null;
   endDate: string | null;
@@ -91,6 +93,7 @@ const initialForm: FormState = {
   mihsapId: '',
   mihsapDefterTuru: 'BILANCO',
   defterTuru: 'BILANCO',
+  bookKind: 'BILANCO',
 };
 
 const inputClass = 'h-11 w-full rounded-[8px] px-3 text-[13px] font-semibold outline-none transition placeholder:text-white/24';
@@ -109,7 +112,8 @@ function initials(name: string): string {
 }
 
 function taxpayerKind(form: FormState): string {
-  if (form.defterTuru === 'ISLETME' || form.mihsapDefterTuru === 'DEFTER_BEYAN') return 'BASİT';
+  const marker = `${form.bookKind || ''} ${form.mihsapDefterTuru || ''}`.toLocaleUpperCase('tr-TR');
+  if (/BASIT|BASİT|BASIT_USUL/.test(marker)) return 'BASİT';
   return form.type === 'TUZEL_KISI' ? 'FİRMA' : 'ŞAHIS';
 }
 
@@ -140,6 +144,9 @@ export default function YeniMukellefPage() {
       ...current,
       type,
       taxNumber: current.taxNumber.slice(0, type === 'TUZEL_KISI' ? 10 : 11),
+      ...(type === 'TUZEL_KISI' && current.bookKind === 'BASIT'
+        ? { bookKind: 'BILANCO' as BookKind, defterTuru: 'BILANCO' as DefterTuru, mihsapDefterTuru: 'BILANCO' }
+        : {}),
     }));
   };
 
@@ -159,18 +166,21 @@ export default function YeniMukellefPage() {
     });
   };
 
-  const updateBook = (defterTuru: DefterTuru) => {
+  const updateBook = (bookKind: BookKind) => {
     setForm((current) => ({
       ...current,
-      defterTuru,
-      mihsapDefterTuru: defterTuru === 'ISLETME' ? 'DEFTER_BEYAN' : 'BILANCO',
+      type: bookKind === 'BASIT' ? 'GERCEK_KISI' : current.type,
+      bookKind,
+      defterTuru: bookKind === 'BILANCO' ? 'BILANCO' : 'ISLETME',
+      mihsapDefterTuru: bookKind === 'BILANCO' ? 'BILANCO' : bookKind === 'BASIT' ? 'BASIT' : 'DEFTER_BEYAN',
     }));
   };
 
   const handleSubmit = (e: FormEvent<HTMLFormElement>) => {
     e.preventDefault();
+    const { bookKind: _bookKind, ...payload } = form;
     save({
-      ...form,
+      ...payload,
       phones: form.phones.map((phone) => phone.trim()).filter(Boolean),
       emails: form.emails.map((email) => email.trim()).filter(Boolean),
       evrakTeslimGunu: form.evrakTeslimGunu ? parseInt(form.evrakTeslimGunu, 10) : null,
@@ -255,9 +265,10 @@ export default function YeniMukellefPage() {
 
               <div className="md:col-span-2">
                 <FieldLabel>Defter</FieldLabel>
-                <div className="grid gap-2 sm:grid-cols-2">
-                  <SegmentButton active={form.defterTuru === 'BILANCO'} icon={BookOpen} label="Bilanço" onClick={() => updateBook('BILANCO')} color={GOLD} />
-                  <SegmentButton active={form.defterTuru === 'ISLETME'} icon={FileText} label="İşletme / Basit" onClick={() => updateBook('ISLETME')} color={AMBER} />
+                <div className="grid gap-2 sm:grid-cols-3">
+                  <SegmentButton active={form.bookKind === 'BILANCO'} icon={BookOpen} label="Bilanço" onClick={() => updateBook('BILANCO')} color={GOLD} />
+                  <SegmentButton active={form.bookKind === 'ISLETME'} icon={FileText} label="İşletme" onClick={() => updateBook('ISLETME')} color={SKY} />
+                  <SegmentButton active={form.bookKind === 'BASIT'} icon={FileText} label="Basit" onClick={() => updateBook('BASIT')} color={AMBER} />
                 </div>
               </div>
             </div>
@@ -334,14 +345,17 @@ export default function YeniMukellefPage() {
                     setForm((current) => ({
                       ...current,
                       mihsapDefterTuru: value,
-                      defterTuru: value === 'DEFTER_BEYAN' ? 'ISLETME' : 'BILANCO',
+                      bookKind: value === 'BASIT' ? 'BASIT' : value === 'DEFTER_BEYAN' ? 'ISLETME' : 'BILANCO',
+                      type: value === 'BASIT' ? 'GERCEK_KISI' : current.type,
+                      defterTuru: value === 'BILANCO' ? 'BILANCO' : 'ISLETME',
                     }));
                   }}
                   className={inputClass}
                   style={inputStyle}
                 >
                   <option value="BILANCO">Bilanço</option>
-                  <option value="DEFTER_BEYAN">Defter Beyan</option>
+                  <option value="DEFTER_BEYAN">İşletme</option>
+                  <option value="BASIT">Basit</option>
                 </select>
               </div>
             </div>

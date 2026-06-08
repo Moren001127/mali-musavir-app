@@ -20,7 +20,10 @@ export class TaxpayersService {
     const defter = String(data.defterTuru || '').trim().toUpperCase();
     const mihsap = String(data.mihsapDefterTuru || '').trim().toUpperCase();
 
-    if (/ISLETME|İŞLETME|DEFTER[_\s-]*BEYAN/.test(defter)) {
+    if (/BASIT|BASİT|BASIT[_\s-]*USUL/.test(`${defter} ${mihsap}`)) {
+      data.defterTuru = 'ISLETME';
+      data.mihsapDefterTuru = 'BASIT';
+    } else if (/ISLETME|İŞLETME|DEFTER[_\s-]*BEYAN/.test(defter)) {
       data.defterTuru = 'ISLETME';
       data.mihsapDefterTuru = 'DEFTER_BEYAN';
     } else if (/BILANCO|BİLANÇO|BILANÇO/.test(defter)) {

@@ -24,6 +24,7 @@ import {
   Loader2,
   Lock,
   Mail,
+  MessageCircle,
   MessageSquareText,
   Phone,
   Plus,
@@ -156,8 +157,8 @@ function emptyForm(): FormState {
 }
 
 function taxpayerKindFromForm(form: FormState): TaxpayerKind {
-  const defter = `${form.defterTuru || ''} ${form.mihsapDefterTuru || ''}`.toLocaleUpperCase('tr-TR');
-  if (/ISLETME|İŞLETME|DEFTER[_\s-]*BEYAN/.test(defter)) return 'BASIT';
+  const marker = `${form.mihsapDefterTuru || ''}`.toLocaleUpperCase('tr-TR');
+  if (/BASIT|BASİT|BASIT[_\s-]*USUL/.test(marker)) return 'BASIT';
   return form.type === 'TUZEL_KISI' ? 'FIRMA' : 'SAHIS';
 }
 
@@ -170,12 +171,12 @@ function taxpayerKindLabel(kind: TaxpayerKind): string {
 function applyTaxpayerKind(kind: TaxpayerKind, setForm: React.Dispatch<React.SetStateAction<FormState>>) {
   setForm((prev) => {
     if (kind === 'FIRMA') {
-      return { ...prev, type: 'TUZEL_KISI', defterTuru: 'BILANCO', mihsapDefterTuru: prev.mihsapDefterTuru === 'DEFTER_BEYAN' ? 'BILANCO' : prev.mihsapDefterTuru || 'BILANCO' };
+      return { ...prev, type: 'TUZEL_KISI', defterTuru: 'BILANCO', mihsapDefterTuru: /BASIT|BASİT|DEFTER[_\s-]*BEYAN/i.test(prev.mihsapDefterTuru || '') ? 'BILANCO' : prev.mihsapDefterTuru || 'BILANCO' };
     }
     if (kind === 'SAHIS') {
-      return { ...prev, type: 'GERCEK_KISI', defterTuru: 'BILANCO', mihsapDefterTuru: prev.mihsapDefterTuru === 'DEFTER_BEYAN' ? 'BILANCO' : prev.mihsapDefterTuru || 'BILANCO' };
+      return { ...prev, type: 'GERCEK_KISI', defterTuru: 'BILANCO', mihsapDefterTuru: /BASIT|BASİT|DEFTER[_\s-]*BEYAN/i.test(prev.mihsapDefterTuru || '') ? 'BILANCO' : prev.mihsapDefterTuru || 'BILANCO' };
     }
-    return { ...prev, type: 'GERCEK_KISI', defterTuru: 'ISLETME', mihsapDefterTuru: 'DEFTER_BEYAN' };
+    return { ...prev, type: 'GERCEK_KISI', defterTuru: 'ISLETME', mihsapDefterTuru: 'BASIT' };
   });
 }
 
@@ -491,7 +492,7 @@ export default function MukellefDetayPage() {
                   </div>
                 )}
                 <span className="rounded-[6px] border px-2.5 py-1 text-[11px] font-black" style={{ borderColor: STEEL_LN, background: STEEL_SF, color: STEEL_BR }}>
-                  {form.defterTuru === 'ISLETME' ? 'BASİT' : form.type === 'TUZEL_KISI' ? 'FİRMA' : 'ŞAHIS'}
+                  {taxpayerKindLabel(taxpayerKindFromForm(form))}
                 </span>
               </div>
               <div className="mt-1 flex flex-wrap items-center gap-2 text-[11.5px]" style={{ color: MUTED }}>
@@ -1873,6 +1874,54 @@ function toMoneyNumber(n: number | string | null | undefined): number {
   return Number.isFinite(parsed) ? parsed : 0;
 }
 
+type MukellefBeyanDocKind = 'beyanname' | 'tahakkuk';
+type MukellefBeyanTableRow = {
+  key: string;
+  row: BeyanKaydi;
+  kind: MukellefBeyanDocKind;
+  tur: string;
+  hasFile: boolean;
+};
+
+function mukellefBeyanAdi(row: BeyanKaydi): string {
+  const t = row.taxpayer;
+  return (t?.companyName || [t?.firstName, t?.lastName].filter(Boolean).join(' ') || 'Mükellef').trim();
+}
+
+function mukellefBeyanEmail(row: BeyanKaydi): string {
+  const emails = [row.taxpayer?.email, ...(row.taxpayer?.emails || [])]
+    .map((v) => String(v || '').trim())
+    .filter(Boolean);
+  return emails[0] || '';
+}
+
+function mukellefBeyanPhone(row: BeyanKaydi): string {
+  const phones = [row.taxpayer?.phone, ...(row.taxpayer?.phones || [])]
+    .map((v) => String(v || '').trim())
+    .filter(Boolean);
+  return phones[0] || '';
+}
+
+function mukellefWhatsappPhone(raw: string): string {
+  const digits = raw.replace(/\D/g, '');
+  if (digits.length === 10) return `90${digits}`;
+  if (digits.length === 11 && digits.startsWith('0')) return `9${digits}`;
+  return digits;
+}
+
+function mukellefBeyanTipLabel(row: BeyanKaydi): string {
+  return BEYAN_TIPI_LABEL[row.beyanTipi] || row.beyanTipi;
+}
+
+function mukellefBeyanSubject(row: BeyanKaydi): string {
+  return `${mukellefBeyanAdi(row)} - ${mukellefBeyanTipLabel(row)} - ${fmtBeyanDonem(row.donem)}`;
+}
+
+function mukellefBeyanMessage(row: BeyanKaydi): string {
+  const tutar = row.tahakkukTutari != null ? ` Tahakkuk: ${fmtTutar(row.tahakkukTutari)} TL.` : '';
+  return `${fmtBeyanDonem(row.donem)} dönemi ${mukellefBeyanTipLabel(row)} kaydınız hazır.${tutar}`;
+}
+
 // ============================================================
 // BEYANNAME TAB — Beyannameler modülünden bu mükellefe ait kayıtlar
 // ============================================================
@@ -1882,6 +1931,7 @@ function BeyannamelerTab({ taxpayerId }: { taxpayerId: string }) {
     queryFn: () => beyanKayitlariApi.list({ taxpayerId, limit: 300 }),
   });
   const [busyKey, setBusyKey] = useState<string | null>(null);
+  const [selectedDocKeys, setSelectedDocKeys] = useState<Set<string>>(() => new Set());
   const [preview, setPreview] = useState<{ url: string; title: string; subtitle: string; docKey: string } | null>(null);
   const previewUrlRef = useRef<string | null>(null);
   const [mounted, setMounted] = useState(false);
@@ -1902,6 +1952,16 @@ function BeyannamelerTab({ taxpayerId }: { taxpayerId: string }) {
     window.addEventListener('keydown', onKey);
     return () => window.removeEventListener('keydown', onKey);
   }, [preview]);
+
+  const fetchDocumentBlob = async (row: BeyanKaydi, kind: MukellefBeyanDocKind) => {
+    const hasFile = kind === 'beyanname' ? !!row.beyannameUrl : !!row.pdfUrl;
+    if (!hasFile) return null;
+    const endpoint = kind === 'beyanname'
+      ? `/beyan-kayitlari/${row.id}/beyanname`
+      : `/beyan-kayitlari/${row.id}/pdf`;
+    const res = await api.get(endpoint, { responseType: 'blob' });
+    return res.data instanceof Blob ? res.data : new Blob([res.data], { type: 'application/pdf' });
+  };
 
   const openDoc = async (row: BeyanKaydi, kind: 'beyanname' | 'tahakkuk') => {
     const hasFile = kind === 'beyanname' ? !!row.beyannameUrl : !!row.pdfUrl;
@@ -1937,6 +1997,89 @@ function BeyannamelerTab({ taxpayerId }: { taxpayerId: string }) {
     () => [...(Array.isArray(kayitlar) ? kayitlar : [])].sort((a, b) => (b.donem || '').localeCompare(a.donem || '')),
     [kayitlar],
   );
+
+  const tableRows = useMemo<MukellefBeyanTableRow[]>(
+    () => sorted.flatMap((row) => ([
+      { key: `${row.id}:beyanname`, row, kind: 'beyanname' as const, tur: 'E-Beyanname', hasFile: !!row.beyannameUrl },
+      { key: `${row.id}:tahakkuk`, row, kind: 'tahakkuk' as const, tur: 'Tahakkuk', hasFile: !!row.pdfUrl },
+    ])),
+    [sorted],
+  );
+
+  const selectedTableRows = useMemo(
+    () => tableRows.filter((item) => selectedDocKeys.has(item.key)),
+    [tableRows, selectedDocKeys],
+  );
+
+  const selectedUniqueRows = useMemo(() => {
+    const seen = new Set<string>();
+    return selectedTableRows
+      .map((item) => item.row)
+      .filter((row) => {
+        if (seen.has(row.id)) return false;
+        seen.add(row.id);
+        return true;
+      });
+  }, [selectedTableRows]);
+
+  useEffect(() => {
+    const visible = new Set(tableRows.map((item) => item.key));
+    setSelectedDocKeys((prev) => {
+      const next = new Set(Array.from(prev).filter((key) => visible.has(key)));
+      return next.size === prev.size ? prev : next;
+    });
+  }, [tableRows]);
+
+  const toggleDocSelection = (key: string, checked?: boolean) => {
+    setSelectedDocKeys((prev) => {
+      const next = new Set(prev);
+      const shouldSelect = checked ?? !next.has(key);
+      if (shouldSelect) next.add(key);
+      else next.delete(key);
+      return next;
+    });
+  };
+
+  const sendEmail = (row: BeyanKaydi) => {
+    const email = mukellefBeyanEmail(row);
+    if (!email) {
+      toast.warning('Mükellef kartında e-posta yok');
+      return;
+    }
+    window.location.href = `mailto:${email}?subject=${encodeURIComponent(mukellefBeyanSubject(row))}&body=${encodeURIComponent(mukellefBeyanMessage(row))}`;
+  };
+
+  const sendWhatsapp = (row: BeyanKaydi) => {
+    const phone = mukellefWhatsappPhone(mukellefBeyanPhone(row));
+    if (!phone) {
+      toast.warning('Mükellef kartında telefon yok');
+      return;
+    }
+    window.open(`https://wa.me/${phone}?text=${encodeURIComponent(mukellefBeyanMessage(row))}`, '_blank', 'noopener,noreferrer');
+  };
+
+  const sendSms = (row: BeyanKaydi) => {
+    const phone = mukellefBeyanPhone(row).replace(/\s+/g, '');
+    if (!phone) {
+      toast.warning('Mükellef kartında telefon yok');
+      return;
+    }
+    window.location.href = `sms:${phone}?body=${encodeURIComponent(mukellefBeyanMessage(row))}`;
+  };
+
+  const downloadDocument = async (item: MukellefBeyanTableRow) => {
+    const blob = await fetchDocumentBlob(item.row, item.kind).catch(() => null);
+    if (!blob) {
+      toast.warning(`${item.tur} PDF yok`);
+      return;
+    }
+    const url = URL.createObjectURL(blob);
+    const a = document.createElement('a');
+    a.href = url;
+    a.download = `${mukellefBeyanAdi(item.row)}-${mukellefBeyanTipLabel(item.row)}-${fmtBeyanDonem(item.row.donem)}-${item.tur}.pdf`.replace(/[\\/:*?"<>|]/g, '_');
+    a.click();
+    URL.revokeObjectURL(url);
+  };
 
   if (isLoading) {
     return (
@@ -2042,7 +2185,13 @@ function BeyannamelerTab({ taxpayerId }: { taxpayerId: string }) {
           <thead>
             <tr className="text-[10.5px] font-black uppercase tracking-[0.12em]" style={{ color: FAINT, background: 'rgba(255,255,255,0.032)' }}>
               <th className="px-3 py-3 font-black">
-                <span className="block h-3.5 w-3.5 rounded-[3px] border" style={{ borderColor: LINE }} />
+                <input
+                  type="checkbox"
+                  checked={tableRows.length > 0 && selectedDocKeys.size === tableRows.length}
+                  onChange={(e) => setSelectedDocKeys(e.target.checked ? new Set(tableRows.map((item) => item.key)) : new Set())}
+                  className="h-3.5 w-3.5 cursor-pointer accent-[#d4b876]"
+                  aria-label="Tüm beyannameleri seç"
+                />
               </th>
               <th className="px-3 py-3 font-black">Beyanname Dönemi</th>
               <th className="px-3 py-3 font-black">Beyanname Türü</th>
@@ -2053,16 +2202,19 @@ function BeyannamelerTab({ taxpayerId }: { taxpayerId: string }) {
             </tr>
           </thead>
           <tbody>
-            {sorted.flatMap((row) => ([
-              { row, kind: 'beyanname' as const, tur: 'E-Beyanname', hasFile: !!row.beyannameUrl },
-              { row, kind: 'tahakkuk' as const, tur: 'Tahakkuk', hasFile: !!row.pdfUrl },
-            ])).map(({ row, kind, tur, hasFile }) => {
-              const busy = busyKey === `${row.id}:${kind}`;
+            {tableRows.map(({ key, row, kind, tur, hasFile }) => {
+              const busy = busyKey === key;
               const isBeyan = kind === 'beyanname';
               return (
-                <tr key={`${row.id}:${kind}`} className="border-t transition hover:bg-white/[0.02]" style={{ borderColor: HAIR }}>
+                <tr key={key} className="border-t transition hover:bg-white/[0.02]" style={{ borderColor: HAIR }}>
                   <td className="px-3 py-3 align-middle">
-                    <span className="block h-3.5 w-3.5 rounded-[3px] border" style={{ borderColor: LINE, background: 'rgba(255,255,255,0.02)' }} />
+                    <input
+                      type="checkbox"
+                      checked={selectedDocKeys.has(key)}
+                      onChange={(e) => toggleDocSelection(key, e.target.checked)}
+                      className="h-3.5 w-3.5 cursor-pointer accent-[#d4b876]"
+                      aria-label={`${BEYAN_TIPI_LABEL[row.beyanTipi] || row.beyanTipi} ${tur} seç`}
+                    />
                   </td>
                   <td className="px-3 py-3 align-middle">
                     <div className="truncate text-[13.5px] font-black" style={{ color: TEXT }}>{fmtBeyanDonem(row.donem)}</div>
@@ -2095,6 +2247,66 @@ function BeyannamelerTab({ taxpayerId }: { taxpayerId: string }) {
             })}
           </tbody>
         </table>
+        </div>
+      </div>
+
+      <div className="overflow-x-auto rounded-[6px] border px-3 py-3" style={{ borderColor: HAIR, background: 'rgba(255,255,255,0.018)' }}>
+        <div className="flex min-w-max items-center gap-2">
+          <span className="shrink-0 pr-1 text-[12px] font-black" style={{ color: MUTED }}>
+            {selectedTableRows.length} seçili
+          </span>
+          <BeyanBulkActionButton
+            icon={Mail}
+            label="Seçili Beyann. / Tahakk. E-Posta Gönder"
+            tone="green"
+            disabled={selectedTableRows.length === 0}
+            onClick={() => selectedTableRows[0] ? sendEmail(selectedTableRows[0].row) : toast.warning('Seçili kayıt yok')}
+          />
+          <BeyanBulkActionButton
+            icon={Mail}
+            label="Seçilenlere Gönder"
+            tone="steel"
+            disabled={selectedUniqueRows.length === 0}
+            onClick={() => selectedUniqueRows[0] ? sendEmail(selectedUniqueRows[0]) : toast.warning('Seçili kayıt yok')}
+          />
+          <BeyanBulkActionButton
+            icon={MessageSquareText}
+            label="Seçili Tahakk. SMS Gönder"
+            tone="gold"
+            disabled={selectedTableRows.length === 0}
+            onClick={() => {
+              const target = selectedTableRows.find((item) => item.kind === 'tahakkuk')?.row || selectedUniqueRows[0];
+              target ? sendSms(target) : toast.warning('Seçili kayıt yok');
+            }}
+          />
+          <BeyanBulkActionButton
+            icon={MessageCircle}
+            label="WhatsApp Gönder"
+            tone="green"
+            disabled={selectedUniqueRows.length === 0}
+            onClick={() => selectedUniqueRows[0] ? sendWhatsapp(selectedUniqueRows[0]) : toast.warning('Seçili kayıt yok')}
+          />
+          <BeyanBulkActionButton
+            icon={Printer}
+            label="Seçilenleri Yazdır"
+            tone="muted"
+            disabled={selectedTableRows.length === 0}
+            onClick={() => selectedTableRows[0] ? openDoc(selectedTableRows[0].row, selectedTableRows[0].kind) : toast.warning('Seçili kayıt yok')}
+          />
+          <BeyanBulkActionButton
+            icon={Download}
+            label={`Seçilenleri İndir (${selectedTableRows.length})`}
+            tone="steel"
+            disabled={selectedTableRows.length === 0}
+            onClick={() => selectedTableRows.forEach((item) => void downloadDocument(item))}
+          />
+          <BeyanBulkActionButton
+            icon={X}
+            label="Seçimi Temizle"
+            tone="muted"
+            disabled={selectedDocKeys.size === 0}
+            onClick={() => setSelectedDocKeys(new Set())}
+          />
         </div>
       </div>
 
@@ -2166,6 +2378,40 @@ function DocBtn({ label, disabled, busy, onClick, muted }: { label: string; disa
         : { borderColor: STEEL_LN, background: STEEL_SF, color: STEEL_BR }}
     >
       {busy ? <Loader2 size={14} className="animate-spin" /> : <Eye size={15} />}
+    </button>
+  );
+}
+
+function BeyanBulkActionButton({
+  icon: Icon,
+  label,
+  onClick,
+  disabled,
+  tone = 'steel',
+}: {
+  icon: React.ElementType;
+  label: string;
+  onClick: () => void;
+  disabled?: boolean;
+  tone?: 'green' | 'steel' | 'gold' | 'muted';
+}) {
+  const palette = {
+    green: { bg: 'rgba(34,197,94,0.12)', border: 'rgba(34,197,94,0.28)', color: '#86efac' },
+    steel: { bg: 'rgba(56,189,248,0.11)', border: 'rgba(56,189,248,0.26)', color: '#bae6fd' },
+    gold: { bg: 'rgba(212,184,118,0.13)', border: 'rgba(212,184,118,0.28)', color: GOLD_BR },
+    muted: { bg: 'rgba(255,255,255,0.035)', border: 'rgba(255,255,255,0.09)', color: MUTED },
+  }[tone];
+
+  return (
+    <button
+      type="button"
+      onClick={onClick}
+      disabled={disabled}
+      className="inline-flex h-9 shrink-0 items-center gap-2 rounded-[7px] px-3 text-[12px] font-black transition hover:brightness-110 disabled:cursor-not-allowed disabled:opacity-35"
+      style={{ background: palette.bg, border: `1px solid ${palette.border}`, color: palette.color }}
+    >
+      <Icon size={14} />
+      {label}
     </button>
   );
 }

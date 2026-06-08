@@ -101,8 +101,8 @@ function primaryEmail(t: Taxpayer): string {
 }
 
 function isBasit(t: Taxpayer): boolean {
-  const value = `${t.defterTuru || ''} ${t.mihsapDefterTuru || ''}`.toLocaleUpperCase('tr-TR');
-  return /ISLETME|İŞLETME|DEFTER[_\s-]*BEYAN/.test(value);
+  const value = `${t.mihsapDefterTuru || ''}`.toLocaleUpperCase('tr-TR');
+  return /BASIT|BASİT|BASIT[_\s-]*USUL/.test(value);
 }
 
 function typeLabel(t: Taxpayer): string {
@@ -332,26 +332,30 @@ function TaxpayerCard({
 
   return (
     <article
-      className="group grid gap-4 rounded-[4px] px-4 py-4 transition md:grid-cols-[112px_minmax(0,1fr)_84px]"
-      style={{ background: 'linear-gradient(180deg, #0e0f0f, #090909)', border: `1px solid rgba(255,255,255,0.095)`, boxShadow: '0 6px 16px rgba(0,0,0,0.14)' }}
+      className="group grid gap-3 rounded-[8px] p-3 transition md:grid-cols-[74px_minmax(0,1fr)_96px]"
+      style={{
+        background: 'linear-gradient(180deg, rgba(18,18,17,0.98), rgba(10,10,10,0.98))',
+        border: '1px solid rgba(212,184,118,0.16)',
+        boxShadow: '0 10px 24px rgba(0,0,0,0.22), inset 0 1px 0 rgba(255,255,255,0.035)',
+      }}
     >
-      <div className="flex h-[112px] items-center justify-center overflow-hidden rounded-[3px]" style={{ background: '#607987', border: '1px solid rgba(255,255,255,0.10)' }}>
+      <div className="flex h-[74px] items-center justify-center overflow-hidden rounded-[7px]" style={{ background: 'linear-gradient(135deg, #21313b, #516979)', border: '1px solid rgba(255,255,255,0.12)' }}>
         {taxpayer.logoUrl ? (
           <div className="h-full w-full bg-cover bg-center" style={{ backgroundImage: `url(${taxpayer.logoUrl})` }} />
         ) : (
-          <div className="flex h-[62px] w-[62px] items-center justify-center rounded-full text-[20px] font-black" style={{ background: 'rgba(25,34,45,0.36)', color: '#fff' }}>
+          <div className="flex h-[46px] w-[46px] items-center justify-center rounded-full text-[16px] font-black" style={{ background: 'rgba(11,16,22,0.38)', color: '#fff', boxShadow: 'inset 0 1px 0 rgba(255,255,255,0.08)' }}>
             {initials(taxpayer)}
           </div>
         )}
       </div>
 
-      <div className="min-w-0">
-        <div className="flex flex-wrap items-start gap-2.5">
+      <div className="min-w-0 py-0.5">
+        <div className="flex min-w-0 items-start gap-2">
           <Link href={`/panel/mukellefler/${taxpayer.id}`} className="min-w-0 flex-1">
-            <h2 className="truncate text-[17px] font-black leading-tight transition group-hover:text-[#d4b876]" style={{ color: TEXT, fontFamily: 'Inter, Manrope, system-ui, sans-serif', letterSpacing: 0 }}>{name}</h2>
+            <h2 className="truncate text-[18px] font-black leading-tight transition group-hover:text-[#d4b876]" style={{ color: TEXT, fontFamily: 'Inter, Manrope, system-ui, sans-serif', letterSpacing: 0 }}>{name}</h2>
           </Link>
           <span
-            className="rounded-[5px] px-2 py-1 text-[11px] font-black"
+            className="shrink-0 rounded-[5px] px-2 py-1 text-[10.5px] font-black"
             style={{
               background: type === 'BASİT' ? 'rgba(245,158,11,0.16)' : type === 'FİRMA' ? 'rgba(79,134,201,0.18)' : 'rgba(24,174,226,0.18)',
               color: type === 'BASİT' ? AMBER : '#7fc2f0',
@@ -361,7 +365,7 @@ function TaxpayerCard({
           </span>
         </div>
 
-        <div className="mt-3 flex flex-wrap gap-2">
+        <div className="mt-2.5 flex flex-wrap gap-1.5">
           <HattatPresenceIcon active={!!taxpayer.hasVergiDairesiCredential} kind="gib" title="Vergi dairesi şifresi" />
           <HattatPresenceIcon active={!!taxpayer.hasSgkCredential} kind="sgk" title="SGK e-Bildirge şifresi" />
           <HattatPresenceIcon active={!!email} kind="mail" title="E-posta" />
@@ -375,8 +379,13 @@ function TaxpayerCard({
             type="button"
             onClick={() => setStatusMenuOpen((v) => !v)}
             disabled={busy}
-            className="inline-flex w-full items-center justify-center gap-1.5 rounded-[4px] px-2 py-2 text-[12px] font-black transition disabled:opacity-40 md:w-[84px]"
-            style={{ background: taxpayer.isActive ? '#00a65a' : '#607987', border: '1px solid rgba(255,255,255,0.12)', color: '#fff' }}
+            className="inline-flex w-full items-center justify-center gap-1.5 rounded-[6px] px-2.5 py-2 text-[12px] font-black transition hover:brightness-110 disabled:opacity-40 md:w-[90px]"
+            style={{
+              background: taxpayer.isActive ? 'rgba(0,166,90,0.14)' : 'rgba(96,121,135,0.14)',
+              border: `1px solid ${taxpayer.isActive ? 'rgba(0,166,90,0.36)' : 'rgba(96,121,135,0.32)'}`,
+              color: taxpayer.isActive ? '#39d17e' : '#9fb1bb',
+              boxShadow: 'inset 0 1px 0 rgba(255,255,255,0.035)',
+            }}
           >
             <BadgeCheck size={14} /> {taxpayer.isActive ? 'Aktif' : 'Pasif'} <ChevronDown size={13} />
           </button>
@@ -404,8 +413,13 @@ function TaxpayerCard({
           type="button"
           onClick={onDelete}
           disabled={deleteBusy}
-          className="inline-flex h-8 items-center justify-center rounded-[4px] px-3 text-[12px] font-semibold transition hover:brightness-105 disabled:opacity-40 md:w-[54px]"
-          style={{ background: '#d4145a', border: '1px solid rgba(255,255,255,0.10)', color: '#fff' }}
+          className="inline-flex h-8 items-center justify-center rounded-[6px] px-3 text-[12px] font-black transition hover:brightness-110 disabled:opacity-40 md:w-[64px]"
+          style={{
+            background: 'rgba(216,27,96,0.13)',
+            border: '1px solid rgba(216,27,96,0.36)',
+            color: '#ff8fb0',
+            boxShadow: 'inset 0 1px 0 rgba(255,255,255,0.035)',
+          }}
           title="Mükellefi sil"
         >
           Sil
@@ -441,18 +455,18 @@ function HattatPresenceIcon({ active, kind, title }: { active: boolean; kind: Ha
     <span
       title={`${title}: ${active ? 'tanımlı' : 'eksik'}`}
       aria-label={`${title}: ${active ? 'tanımlı' : 'eksik'}`}
-      className="inline-flex h-[40px] w-[42px] items-center justify-center rounded-[3px]"
+      className="inline-flex h-[34px] min-w-[38px] items-center justify-center rounded-[6px] px-2"
       style={{
-        background: active ? '#fbfbfb' : '#fff7f8',
-        border: `1px solid ${active ? 'rgba(0,0,0,0.16)' : 'rgba(231,76,60,0.26)'}`,
+        background: active ? 'rgba(0,166,90,0.12)' : 'rgba(231,76,60,0.10)',
+        border: `1px solid ${active ? 'rgba(0,166,90,0.34)' : 'rgba(231,76,60,0.30)'}`,
         color,
-        boxShadow: 'inset 0 1px 0 rgba(255,255,255,0.96), 0 1px 0 rgba(0,0,0,0.12)',
+        boxShadow: 'inset 0 1px 0 rgba(255,255,255,0.035), 0 1px 0 rgba(0,0,0,0.18)',
       }}
     >
       {kind === 'gib' && <GibMark color={color} />}
-      {kind === 'sgk' && <span className="font-serif text-[11px] font-black leading-none">SGK</span>}
+      {kind === 'sgk' && <span className="font-serif text-[10.5px] font-black leading-none">SGK</span>}
       {kind === 'mail' && <EnvelopeMark color={color} />}
-      {kind === 'phone' && <Smartphone size={18} strokeWidth={2.55} />}
+      {kind === 'phone' && <Smartphone size={16} strokeWidth={2.55} />}
     </span>
   );
 }
