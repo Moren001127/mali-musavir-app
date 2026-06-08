@@ -430,7 +430,7 @@ export default function MukellefDetayPage() {
   return (
     <form onSubmit={handleSubmit} className="mx-auto max-w-[1500px] space-y-3 px-1">
       <header className="rounded-[8px] border px-4 py-3" style={{ borderColor: LINE, background: CARD }}>
-        <div className="flex flex-wrap items-center justify-between gap-3">
+        <div className="grid gap-3 lg:grid-cols-[minmax(0,1fr)_auto] lg:items-start">
           <div className="flex min-w-0 items-center gap-3">
             <Link
               href="/panel/mukellef-listesi"
@@ -456,7 +456,7 @@ export default function MukellefDetayPage() {
 
             <div className="min-w-0">
               <div className="flex flex-wrap items-center gap-2">
-                <h1 className="truncate text-[24px] font-black leading-tight" style={{ color: TEXT }}>{currentName}</h1>
+                <h1 className="min-w-0 truncate text-[24px] font-black leading-tight" style={{ color: TEXT }}>{currentName}</h1>
                 {!isNew && (
                   <div className="relative">
                     <button
@@ -509,7 +509,7 @@ export default function MukellefDetayPage() {
             </div>
           </div>
 
-          <div className="flex flex-wrap items-center gap-2">
+          <div className="flex shrink-0 flex-wrap items-center justify-end gap-2">
             {!isNew && <CardNavButtons cardNav={cardNav} isNew={isNew} router={router} />}
             {!isNew && (
               <button

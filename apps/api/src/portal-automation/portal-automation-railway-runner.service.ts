@@ -279,8 +279,8 @@ export class PortalAutomationRailwayRunnerService implements OnModuleInit {
       if (!(credential.username || credential.userCode) || !credential.workplaceCode || !credential.password || !credential.secondaryPassword) {
         throw new Error('SGK kullanici adi, e-kod, sistem sifresi ve isyeri sifresi eksik');
       }
-    } else if (!credential.userCode || !credential.password || !credential.secondaryPassword) {
-      throw new Error('Vergi dairesi kullanici kodu, parola ve sifre eksik');
+    } else if (!credential.userCode || !(credential.secondaryPassword || credential.password)) {
+      throw new Error('Vergi dairesi kullanici kodu ve sifre eksik');
     }
 
     const browser = await pwChromium.launch({
@@ -303,7 +303,7 @@ export class PortalAutomationRailwayRunnerService implements OnModuleInit {
       page.setDefaultTimeout(12_000);
 
       await page.goto(this.loginUrlForJob(jobType), { waitUntil: 'domcontentloaded', timeout: 45_000 });
-      await this.fillGenericPortalLogin(page, this.loginValuesForJob(jobType, credential));
+      await this.fillPortalLoginForProvider(page, provider, jobType, credential);
       const solvedCaptcha = await this.tryAutoSolveCaptcha(page).catch(() => false);
       if (!solvedCaptcha) {
         await this.submitLogin(page);
@@ -715,7 +715,45 @@ export class PortalAutomationRailwayRunnerService implements OnModuleInit {
     ].filter(Boolean);
   }
 
+  private async fillPortalLoginForProvider(
+    page: any,
+    provider: 'GIB_IVD' | 'SGK_EBILDIRGE',
+    jobType: PortalJobType,
+    credential: RunnerCredential,
+  ) {
+    if (provider === 'GIB_IVD') {
+      await this.fillVisibleField(page, [
+        '#userid',
+        'input[name="userid"]',
+        'input[placeholder*="Kullanıcı Kodu"]',
+        'input[placeholder*="Kimlik"]',
+      ], credential.userCode || credential.username || '', 'Vergi dairesi kullanici kodu');
+      await this.fillVisibleField(page, [
+        '#sifre',
+        'input[name="sifre"]',
+        'input[type="password"]',
+        'input[placeholder*="Şifre"]',
+        'input[placeholder*="sifre"]',
+      ], credential.secondaryPassword || credential.password || '', 'Vergi dairesi sifresi');
+      return;
+    }
+    await this.fillGenericPortalLogin(page, this.loginValuesForJob(jobType, credential));
+  }
+
+  private async fillVisibleField(page: any, selectors: string[], value: string, label: string) {
+    if (!value) throw new Error(`${label} eksik`);
+    await page.waitForSelector('input, textarea', { state: 'visible', timeout: 30_000 }).catch(() => null);
+    for (const selector of selectors) {
+      const loc = page.locator(selector).first();
+      if (!(await loc.isVisible().catch(() => false))) continue;
+      await loc.fill(value);
+      return;
+    }
+    throw new Error(`${label} alani bulunamadi`);
+  }
+
   private async fillGenericPortalLogin(page: any, values: string[]) {
+    await page.waitForSelector('input, textarea', { state: 'visible', timeout: 30_000 }).catch(() => null);
     const inputs = page.locator('input:not([type="hidden"]):not([type="submit"]):not([type="button"]):not([type="image"]), textarea');
     const fields: any[] = [];
     const count = await inputs.count().catch(() => 0);

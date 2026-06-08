@@ -370,6 +370,18 @@ export class PortalAutomationService {
       reason: reason || row.lastError || null,
     });
     const sortItems = (items: any[]) => items.sort((a, b) => collator.compare(a.name || '', b.name || ''));
+    const credentialKey = (...parts: Array<string | null | undefined>) => {
+      const exactParts = parts.map((part) => String(part || '').trim());
+      return exactParts.every(Boolean) ? exactParts.join('\u0001') : '';
+    };
+    const isWrongCredentialError = (error?: string | null) => {
+      const normalized = normalizeTextKey(String(error || ''));
+      if (!normalized) return false;
+      if (normalized.includes('PORTAL GIRIS ALANLARI BULUNAMADI')) return false;
+      if (normalized.includes('PORTAL LOGIN FORMU YUKLENMEDI')) return false;
+      if (normalized.includes('ALANI BULUNAMADI')) return false;
+      return true;
+    };
     const groupByCredential = (provider: PortalProvider, keyOf: (row: any) => string) => {
       const groups = new Map<string, any[]>();
       for (const row of rows) {
@@ -382,27 +394,28 @@ export class PortalAutomationService {
       }
       const affected = Array.from(groups.values())
         .filter((group) => group.length > 1)
-        .flatMap((group) => group.map((row) => itemFor(row, 'Aynı şifre bilgisi kullanılıyor')));
+        .flatMap((group) => group.map((row) => itemFor(row, 'Aynı portal giriş bilgisi kullanılıyor')));
       return sortItems(affected);
     };
 
     const gibSame = groupByCredential('GIB_IVD', (row) => {
-      const parts = [
-        this.plainCredentialPart(tryDecrypt(row.encryptedPassword)),
-        this.plainCredentialPart(tryDecrypt(row.encryptedSecondaryPassword)),
-      ];
-      return parts.every(Boolean) ? parts.join('|') : '';
+      return credentialKey(
+        row.userCode || row.username,
+        tryDecrypt(row.encryptedPassword),
+        tryDecrypt(row.encryptedSecondaryPassword),
+      );
     });
     const sgkSame = groupByCredential('SGK_EBILDIRGE', (row) => {
-      const parts = [
-        this.plainCredentialPart(tryDecrypt(row.encryptedPassword)),
-        this.plainCredentialPart(tryDecrypt(row.encryptedSecondaryPassword)),
-      ];
-      return parts.every(Boolean) ? parts.join('|') : '';
+      return credentialKey(
+        row.username || row.userCode,
+        row.workplaceCode,
+        tryDecrypt(row.encryptedPassword),
+        tryDecrypt(row.encryptedSecondaryPassword),
+      );
     });
 
     const wrongFor = (provider: PortalProvider) => sortItems(rows
-      .filter((row) => row.provider === provider && row.taxpayer?.isActive !== false && row.lastError)
+      .filter((row) => row.provider === provider && row.taxpayer?.isActive !== false && isWrongCredentialError(row.lastError))
       .map((row) => itemFor(row)));
 
     const workplaceIz = sortItems(rows
