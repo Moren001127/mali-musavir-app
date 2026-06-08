@@ -257,6 +257,11 @@ export default function EarsivPage() {
       gcTime: 0,
       refetchOnMount: 'always' as const,
       refetchOnWindowFocus: true,
+      // DUZELTME (2026-06-08): Luca'dan cekme isi calisirken/biter bitmez listeyi
+      // KENDILIGINDEN yenile. Onceden sorgu bitince liste guncellenmiyordu, kullanici
+      // ELLE "yenile" yapinca geliyordu. Aktif Luca isi varken her 4sn refetch ->
+      // faturalar otomatik ekrana duser. Is bitince (lucaJobIds bosalinca) durur.
+      refetchInterval: lucaJobIds.length > 0 ? 4000 : false,
     })),
   });
 
@@ -535,7 +540,8 @@ export default function EarsivPage() {
       if (failed) parts.push(`${failed} hata`);
       toast.success(`Fatura Merkezi'ne aktarildi: ${parts.join(' . ') || 'islem bos'}`);
       setSelected(new Set());
-      qc.invalidateQueries({ queryKey: ['earsiv', 'list'] });
+      // DUZELTME: dogru anahtar 'earsiv-list' (onceden ['earsiv','list'] idi -> liste yenilenmiyordu)
+      qc.refetchQueries({ queryKey: ['earsiv-list'], type: 'active' });
     },
     onError: (e: any) => {
       toast.error(e?.response?.data?.message || e?.message || 'Aktarim basarisiz');
