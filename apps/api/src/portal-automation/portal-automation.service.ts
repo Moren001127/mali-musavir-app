@@ -380,6 +380,10 @@ export class PortalAutomationService {
       if (normalized.includes('PORTAL GIRIS ALANLARI BULUNAMADI')) return false;
       if (normalized.includes('PORTAL LOGIN FORMU YUKLENMEDI')) return false;
       if (normalized.includes('ALANI BULUNAMADI')) return false;
+      if (normalized.includes('CAPTCHA')) return false;
+      if (normalized.includes('DOGRULAMA KODU')) return false;
+      if (normalized.includes('CAPTCHA OTOMATIK COZULEMEDI')) return false;
+      if (normalized.includes('SIFRE DOGRULAMASI YAPILAMADI')) return false;
       return true;
     };
     const groupByCredential = (provider: PortalProvider, keyOf: (row: any) => string) => {
@@ -401,8 +405,7 @@ export class PortalAutomationService {
     const gibSame = groupByCredential('GIB_IVD', (row) => {
       return credentialKey(
         row.userCode || row.username,
-        tryDecrypt(row.encryptedPassword),
-        tryDecrypt(row.encryptedSecondaryPassword),
+        tryDecrypt(row.encryptedSecondaryPassword) || tryDecrypt(row.encryptedPassword),
       );
     });
     const sgkSame = groupByCredential('SGK_EBILDIRGE', (row) => {
@@ -456,10 +459,11 @@ export class PortalAutomationService {
       where: { tenantId_provider_ownerType_ownerId: { tenantId, provider, ownerType, ownerId } },
     });
 
-    if (!existing && !input?.password) {
+    if (!existing && !input?.password && !input?.secondaryPassword) {
       throw new BadRequestException('Yeni sifre kaydi icin sifre zorunlu');
     }
 
+    const credentialPasswordChanged = Boolean(input?.password || input?.secondaryPassword);
     const data: any = {
       username: input?.username ? String(input.username).trim() : null,
       userCode: input?.userCode ? String(input.userCode).trim() : null,
@@ -468,8 +472,11 @@ export class PortalAutomationService {
       isActive: input?.isActive !== false,
       notes: input?.notes ? String(input.notes).slice(0, 1000) : null,
       updatedBy: userId,
-      lastError: input?.password ? null : existing?.lastError || null,
+      lastError: credentialPasswordChanged ? null : existing?.lastError || null,
     };
+    if (['GIB_EBEYANNAME', 'GIB_IVD'].includes(provider) && input?.secondaryPassword) {
+      data.encryptedPassword = null;
+    }
     if (input?.password) data.encryptedPassword = encrypt(String(input.password));
     if (input?.secondaryPassword) data.encryptedSecondaryPassword = encrypt(String(input.secondaryPassword));
 
@@ -990,9 +997,10 @@ export class PortalAutomationService {
           : {}),
         ...(provider === 'GIB_IVD'
           ? {
-              userCode: { not: null },
-              encryptedPassword: { not: null },
-              encryptedSecondaryPassword: { not: null },
+              AND: [
+                { userCode: { not: null } },
+                { OR: [{ encryptedSecondaryPassword: { not: null } }, { encryptedPassword: { not: null } }] },
+              ],
             }
           : {}),
       },
@@ -1045,7 +1053,7 @@ export class PortalAutomationService {
         return Boolean(row.userCode && (row.encryptedPassword || row.encryptedSecondaryPassword));
       }
       if (row.provider === 'GIB_IVD') {
-        return Boolean(row.userCode && row.encryptedPassword && row.encryptedSecondaryPassword);
+        return Boolean(row.userCode && (row.encryptedSecondaryPassword || row.encryptedPassword));
       }
       if (row.provider === 'SGK_EBILDIRGE') {
         return Boolean((row.username || row.userCode) && row.workplaceCode && row.encryptedPassword && row.encryptedSecondaryPassword);
@@ -1768,9 +1776,9 @@ export class PortalAutomationService {
   private instructionForJob(jobType: PortalJobType) {
     switch (jobType) {
       case 'EBEYANNAME_DAILY_DOWNLOAD':
-        return 'Mali musavir e-Beyanname kullanici kodu, parola ve sifresi ile onceki gun verilen beyannameleri, tahakkuklari ve varsa XML dosyalarini indir; BeyanKaydi olarak teslim et.';
+        return 'Mali musavir e-Beyanname kullanici kodu ve sifresi ile onceki gun verilen beyannameleri, tahakkuklari ve varsa XML dosyalarini indir; BeyanKaydi olarak teslim et.';
       case 'E_TEBLIGAT_CHECK':
-        return 'Mukellefin vergi dairesi kullanici kodu, parola ve sifresi ile e-Tebligat kutusunu kontrol et; yeni tebligat varsa PDF ve metadata olarak teslim et.';
+        return 'Mukellefin vergi dairesi kullanici kodu ve sifresi ile e-Tebligat kutusunu kontrol et; yeni tebligat varsa PDF ve metadata olarak teslim et.';
       case 'SGK_HIZMET_LISTESI':
         return 'Mukellefin SGK kullanici adi/e-kod, sistem sifresi ve isyeri sifresi ile hizmet listesini indir ve portal belgesi olarak teslim et.';
       case 'SGK_TAHAKKUK':

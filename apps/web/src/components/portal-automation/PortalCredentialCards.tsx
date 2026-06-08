@@ -47,7 +47,7 @@ const FIELD_SPECS: Record<PortalProvider, FieldSpec[]> = {
 
 const PASSWORD_SPECS: Record<PortalProvider, PasswordSpec> = {
   GIB_EBEYANNAME: { passwordLabel: null, secondaryPasswordLabel: 'Şifre' }, // YENI GIB UI'sinde Parola alani yok
-  GIB_IVD: { passwordLabel: 'Parola', secondaryPasswordLabel: 'Şifre' },
+  GIB_IVD: { passwordLabel: null, secondaryPasswordLabel: 'Şifre' },
   SGK_EBILDIRGE: { passwordLabel: 'Sistem şifresi', secondaryPasswordLabel: 'İşyeri şifresi' },
 };
 
@@ -171,7 +171,7 @@ function CredentialEditor({
         userCode: fields.some((field) => field.key === 'userCode') ? userCode : '',
         officeCode: '',
         workplaceCode: fields.some((field) => field.key === 'workplaceCode') ? workplaceCode : '',
-        password,
+        password: passwordSpec.passwordLabel ? password : '',
         secondaryPassword,
         isActive: true,
       }),

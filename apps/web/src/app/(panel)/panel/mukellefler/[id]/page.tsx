@@ -796,7 +796,7 @@ function BilgilerTab({
     { id: 'sistem', title: 'Defter & Sistem Bilgileri', subtitle: 'Luca / Mihsap eşleşme', icon: Settings2, show: true, filled: !!form.lucaSlug || !!form.mihsapId },
   ];
   let credentialSections: typeof sections = [
-    { id: 'vergiSifre', title: 'Vergi Dairesi Şifre Bilgileri', subtitle: 'Kullanıcı kodu, parola ve şifre', icon: Lock, show: !!taxpayerId, filled: false },
+    { id: 'vergiSifre', title: 'Vergi Dairesi Şifre Bilgileri', subtitle: 'Kullanıcı kodu ve şifre', icon: Lock, show: !!taxpayerId, filled: false },
     { id: 'sgkSifre', title: 'E-Bildirge Giriş Bilgileri', subtitle: 'SGK kullanıcı adı, sistem şifresi ve işyeri şifresi', icon: Shield, show: !!taxpayerId, filled: false },
   ];
   credentialSections = credentialSections.map((section) => {

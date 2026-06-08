@@ -304,14 +304,7 @@ export class PortalAutomationRailwayRunnerService implements OnModuleInit {
 
       await page.goto(this.loginUrlForJob(jobType), { waitUntil: 'domcontentloaded', timeout: 45_000 });
       await this.fillPortalLoginForProvider(page, provider, jobType, credential);
-      const solvedCaptcha = await this.tryAutoSolveCaptcha(page).catch(() => false);
-      if (!solvedCaptcha) {
-        await this.submitLogin(page);
-      }
-      await page.waitForLoadState('domcontentloaded', { timeout: 20_000 }).catch(() => {});
-      await page.waitForTimeout(1500);
-      await this.assertLoggedIn(page);
-      await this.assertGenericPortalLoginResult(page);
+      await this.finishLoginAfterFill(page);
       await context.close().catch(() => {});
     } finally {
       await browser.close().catch(() => {});
@@ -604,8 +597,8 @@ export class PortalAutomationRailwayRunnerService implements OnModuleInit {
       if (!(credential.username || credential.userCode) || !credential.workplaceCode || !credential.password || !credential.secondaryPassword) {
         throw new Error('SGK kullanici adi, e-kod, sistem sifresi ve isyeri sifresi eksik');
       }
-    } else if (!credential.userCode || !credential.password || !credential.secondaryPassword) {
-      throw new Error('Vergi dairesi kullanici kodu, parola ve sifre eksik');
+    } else if (!credential.userCode || !(credential.secondaryPassword || credential.password)) {
+      throw new Error('Vergi dairesi kullanici kodu ve sifre eksik');
     }
 
     const loginUrl = this.loginUrlForJob(jobType);
@@ -633,11 +626,12 @@ export class PortalAutomationRailwayRunnerService implements OnModuleInit {
       page.setDefaultTimeout(15_000);
 
       await page.goto(loginUrl, { waitUntil: 'domcontentloaded', timeout: 60_000 });
-      await this.fillGenericPortalLogin(page, this.loginValuesForJob(jobType, credential));
-      await this.submitLogin(page);
-      await page.waitForLoadState('domcontentloaded', { timeout: 20_000 }).catch(() => {});
-      await page.waitForTimeout(1500);
-      await this.assertLoggedIn(page);
+      if (jobType === 'E_TEBLIGAT_CHECK') {
+        await this.fillPortalLoginForProvider(page, 'GIB_IVD', jobType, credential);
+      } else {
+        await this.fillGenericPortalLogin(page, this.loginValuesForJob(jobType, credential));
+      }
+      await this.finishLoginAfterFill(page);
 
       const notes: string[] = [`${jobType} girisi basarili`];
       const targetUrl = this.targetUrlForJob(jobType);
@@ -710,8 +704,7 @@ export class PortalAutomationRailwayRunnerService implements OnModuleInit {
     }
     return [
       credential.userCode || credential.username || '',
-      credential.password || '',
-      credential.secondaryPassword || '',
+      credential.secondaryPassword || credential.password || '',
     ].filter(Boolean);
   }
 
@@ -1118,6 +1111,107 @@ export class PortalAutomationRailwayRunnerService implements OnModuleInit {
     await page.keyboard.press('Enter');
   }
 
+  private async finishLoginAfterFill(page: any) {
+    const captchaVisible = await this.hasVisibleCaptcha(page);
+    const solvedCaptcha = captchaVisible ? await this.tryAutoSolveCaptcha(page).catch(() => false) : false;
+    if (captchaVisible && !solvedCaptcha) {
+      throw new Error('CAPTCHA otomatik cozulemedi; sifre dogrulamasi yapilamadi');
+    }
+    if (!solvedCaptcha) {
+      await this.submitLogin(page);
+    }
+    await page.waitForLoadState('domcontentloaded', { timeout: 20_000 }).catch(() => {});
+    await page.waitForTimeout(1500);
+    await this.assertLoggedIn(page);
+    await this.assertGenericPortalLoginResult(page);
+  }
+
+  private async hasVisibleCaptcha(page: any): Promise<boolean> {
+    const selectors = [
+      'img[src*="captcha" i]',
+      'img[id*="captcha" i]',
+      'img[alt*="captcha" i]',
+      'canvas[id*="captcha" i]',
+      'input[name="dk"]',
+      'input[id="dk"]',
+      'input[name*="captcha" i]',
+      'input[id*="captcha" i]',
+      'input[placeholder*="captcha" i]',
+      'input[placeholder*="Doğrulama" i]',
+      'input[placeholder*="Dogrulama" i]',
+      'input[placeholder*="Güvenlik" i]',
+      'input[placeholder*="Guvenlik" i]',
+      '.captcha',
+      '#captcha',
+    ];
+    for (const selector of selectors) {
+      const loc = page.locator(selector).first();
+      if (await loc.isVisible().catch(() => false)) return true;
+    }
+    const body = await this.bodyText(page);
+    return TEXT.captcha.test(body) && await this.isEBeyannameLoginFormVisible(page);
+  }
+
+  private async findCaptchaVisual(page: any) {
+    const selectors = [
+      'img[src*="captcha" i]',
+      'img[src*="Captcha"]',
+      'img[id*="captcha" i]',
+      'img[alt*="captcha" i]',
+      'img[alt*="güvenlik" i]',
+      'img[alt*="guvenlik" i]',
+      'img[alt*="dogrulama" i]',
+      'canvas[id*="captcha" i]',
+      '.captcha img',
+      '#captcha img',
+      '.captcha canvas',
+      '#captcha canvas',
+    ];
+    for (const sel of selectors) {
+      const loc = page.locator(sel).first();
+      if (await loc.isVisible().catch(() => false)) {
+        const handle = await loc.elementHandle().catch(() => null);
+        if (handle) return handle;
+      }
+    }
+
+    const handle = await page.evaluateHandle(() => {
+      const isVisible = (el: Element) => {
+        const anyEl = el as HTMLElement;
+        const rect = anyEl.getBoundingClientRect();
+        return !!(rect.width && rect.height && (anyEl.offsetWidth || anyEl.offsetHeight || anyEl.getClientRects().length));
+      };
+      const captchaInput = Array.from(document.querySelectorAll<HTMLInputElement>('input'))
+        .filter(isVisible)
+        .find((el) => {
+          const text = [
+            el.name,
+            el.id,
+            el.placeholder,
+            el.getAttribute('aria-label'),
+            el.closest('label')?.textContent,
+            el.parentElement?.textContent,
+          ].join(' ').toLocaleLowerCase('tr-TR');
+          return /captcha|dogrulama|doğrulama|guvenlik|güvenlik|güvenlik anahtari|guvenlik anahtari/.test(text);
+        });
+      const anchorRect = captchaInput?.getBoundingClientRect() || null;
+      const candidates = Array.from(document.querySelectorAll<HTMLElement>('img, canvas'))
+        .filter(isVisible)
+        .map((el) => {
+          const rect = el.getBoundingClientRect();
+          const distance = anchorRect
+            ? Math.abs(rect.left - anchorRect.left) + Math.abs(rect.top - anchorRect.top)
+            : rect.top;
+          return { el, rect, distance };
+        })
+        .filter(({ rect }) => rect.width >= 40 && rect.height >= 20 && rect.width <= 500 && rect.height <= 220)
+        .sort((a, b) => a.distance - b.distance);
+      return candidates[0]?.el || null;
+    }).catch(() => null);
+    const element = handle?.asElement?.();
+    return element || null;
+  }
+
   /**
    * GIB e-Beyanname submit sonrasi sayfada CAPTCHA varsa, 2captcha API'sine gonderip
    * cozumu input'a yazip submit eder. Basariliysa true, basarisizsa false.
@@ -1130,22 +1224,7 @@ export class PortalAutomationRailwayRunnerService implements OnModuleInit {
       return false;
     }
 
-    // CAPTCHA gorseli yakala (cesitli selector denenir)
-    const captchaSelectors = [
-      'img[src*="captcha" i]',
-      'img[src*="Captcha"]',
-      'img[id*="captcha" i]',
-      'img[alt*="captcha" i]',
-      'img[alt*="güvenlik" i]',
-      'img[alt*="dogrulama" i]',
-      '.captcha img',
-      '#captcha img',
-    ];
-    let captchaImg: any = null;
-    for (const sel of captchaSelectors) {
-      captchaImg = await page.$(sel).catch(() => null);
-      if (captchaImg) break;
-    }
+    const captchaImg = await this.findCaptchaVisual(page);
     if (!captchaImg) {
       this.logger.warn('[eBeyanname] CAPTCHA gorsel selector\'leri eslesmiyor');
       return false;
@@ -1170,10 +1249,15 @@ export class PortalAutomationRailwayRunnerService implements OnModuleInit {
 
     // Cozum sonucunu input'a yaz
     const inputSelectors = [
+      'input[name="dk"]',
+      'input[id="dk"]',
       'input[name*="captcha" i]',
       'input[id*="captcha" i]',
       'input[placeholder*="captcha" i]',
       'input[placeholder*="güvenlik" i]',
+      'input[placeholder*="guvenlik" i]',
+      'input[placeholder*="Doğrulama" i]',
+      'input[placeholder*="Dogrulama" i]',
       'input[placeholder*="dogrulama" i]',
       'input[placeholder*="kod" i]',
     ];
@@ -1211,9 +1295,8 @@ export class PortalAutomationRailwayRunnerService implements OnModuleInit {
     await page.waitForLoadState('domcontentloaded', { timeout: 20_000 }).catch(() => {});
     await page.waitForTimeout(1500);
 
-    // Hala CAPTCHA varsa basarisiz say
-    const body = await this.bodyText(page);
-    if (TEXT.captcha.test(body)) {
+    // Hala CAPTCHA input/gorsel gorunuyorsa basarisiz say.
+    if (await this.hasVisibleCaptcha(page)) {
       this.logger.warn('[eBeyanname] CAPTCHA gozuktugu icin 2captcha cozumu yetersiz kaldi');
       return false;
     }
