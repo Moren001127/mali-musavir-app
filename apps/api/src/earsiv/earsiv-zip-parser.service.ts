@@ -475,6 +475,11 @@ export class EarsivZipParserService {
       ignoreAttributes: false,
       attributeNamePrefix: '@',
       removeNSPrefix: true, // ← namespace prefix'leri (cbc:, cac:, n0:, ubl:) at — UBL parse için kritik
+      // DUZELTME (2026-06-08): Deger sayisallastirmayi KAPAT. Onceden fast-xml-parser
+      // "E16..."/uzun rakamli belge-no'lari sayiya cevirip "NaN" yapiyordu (TTNET vb.)
+      // -> ayni fatura bir kez dogru no, bir kez "NaN" kaydedilip MUKERRER olusuyordu.
+      // Artik tum degerler metin; tutar/tarih zaten num()/Date ile metinden parse ediliyor.
+      parseTagValue: false,
     });
     const j = parser.parse(xml);
 
