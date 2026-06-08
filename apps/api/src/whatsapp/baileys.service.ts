@@ -304,7 +304,10 @@ export class BaileysService {
   }
 
   private toJid(phone: string): string {
-    const digits = String(phone || '').replace(/[^\d]/g, '');
+    const raw = String(phone || '').trim();
+    if (raw.includes('@')) return raw;
+    const digits = raw.replace(/[^\d]/g, '');
+    if (digits.startsWith('111') && digits.length >= 14) return `${digits}@lid`;
     return `${digits}@s.whatsapp.net`;
   }
 

@@ -454,6 +454,46 @@ export class WhatsAppBotController implements OnModuleInit {
     const replaceLidMarker = (content?: string | null) =>
       String(content || '').replace(new RegExp(`\\[\\[wa_phone:${lid}\\]\\]`, 'g'), `[[wa_phone:${phone}]]`);
 
+    const ownerTenant = await this.findOwnerTenantByPhone(phone);
+    if (ownerTenant?.id === tenantId) {
+      const ownerContact = await this.ensureWhatsAppConversationContact(
+        tenantId,
+        phone,
+        'owner',
+        `${ownerTenant.name || 'Ofis'} sahibi`,
+      );
+      const ownerPhones = Array.from(new Set([
+        phone,
+        ownerContact.phone || '',
+        ...(Array.isArray(ownerContact.phones) ? ownerContact.phones : []),
+      ].filter(Boolean)));
+
+      const updates = [
+        ...logs.map((log) => this.prisma.communicationLog.update({
+          where: { id: log.id },
+          data: { taxpayerId: ownerContact.id, content: replaceLidMarker(log.content) },
+        })),
+        this.prisma.taxpayer.update({
+          where: { id: ownerContact.id },
+          data: { phone, phones: ownerPhones, isActive: true },
+        }),
+      ];
+
+      if (source.id !== ownerContact.id) {
+        updates.push(this.prisma.taxpayer.update({
+          where: { id: source.id },
+          data: {
+            notes: `Bu LID/kayitsiz WhatsApp konusmasi owner sohbetine tasindi: ${ownerContact.id} (${phone})`,
+            isActive: false,
+          },
+        }));
+      }
+
+      await this.prisma.$transaction(updates);
+      this.logger.log(`[WhatsApp] LID konusmasi owner sohbetine tasindi: tenant=${tenantId} lid=${lid} phone=${phone} owner=${ownerContact.id}`);
+      return;
+    }
+
     if (target) {
       await this.prisma.$transaction([
         ...logs.map((log) => this.prisma.communicationLog.update({
@@ -502,6 +542,43 @@ export class WhatsAppBotController implements OnModuleInit {
     const suffix = normalized || 'unknown';
     const taxNumber = kind === 'owner' ? `WHATSAPP-OWNER-${tenantId}` : `WHATSAPP-${suffix}`;
     const phoneWhere = normalized ? [{ phone: normalized }, { phones: { has: normalized } }] : [];
+    const select = {
+      id: true,
+      tenantId: true,
+      companyName: true,
+      firstName: true,
+      lastName: true,
+      type: true,
+      taxNumber: true,
+      phone: true,
+      phones: true,
+    };
+
+    if (kind === 'owner') {
+      const owner = await this.prisma.taxpayer.findFirst({
+        where: { tenantId, taxNumber },
+        select,
+      });
+      if (owner) {
+        const mergedPhones = Array.from(new Set([
+          normalized || owner.phone || '',
+          owner.phone || '',
+          ...(Array.isArray(owner.phones) ? owner.phones : []),
+        ].filter(Boolean)));
+        return this.prisma.taxpayer.update({
+          where: { id: owner.id },
+          data: {
+            companyName: displayName || owner.companyName || 'OFIS SAHIBI',
+            taxOffice: 'WHATSAPP',
+            phone: normalized || owner.phone,
+            phones: mergedPhones,
+            notes: 'Mesaj Merkezi icin ofis sahibi WhatsApp kaydi.',
+            isActive: true,
+          },
+          select,
+        });
+      }
+    }
 
     const existing = await this.prisma.taxpayer.findFirst({
       where: {
@@ -537,6 +614,12 @@ export class WhatsAppBotController implements OnModuleInit {
             companyName: displayName || 'OFİS SAHİBİ',
             taxNumber,
             taxOffice: 'WHATSAPP',
+            phone: normalized || existing.phone,
+            phones: Array.from(new Set([
+              normalized || existing.phone || '',
+              existing.phone || '',
+              ...(Array.isArray(existing.phones) ? existing.phones : []),
+            ].filter(Boolean))),
             notes: 'Mesaj Merkezi icin ofis sahibi WhatsApp kaydina donusturuldu.',
             isActive: true,  // ✅ Owner aktif olmalı (mesaj merkezinde görünmesi için)
           },
@@ -954,6 +1037,10 @@ export class WhatsAppBotController implements OnModuleInit {
     return process.env.MOREN_CLIENT_BOT_ENABLED === '1';
   }
 
+  private ownerAutoReplyEnabled(): boolean {
+    return process.env.MOREN_OWNER_BOT_REPLY_ENABLED === '1';
+  }
+
   private async handleMessage(msg: IncomingWhatsAppMessage) {
     // ─── Kişisel kişi (örn. partner) branch'i ──────────────────────
     // Owner / taxpayer / unknown akışlarından ÖNCE çalışır.
@@ -987,6 +1074,11 @@ export class WhatsAppBotController implements OnModuleInit {
         },
       });
       this.refreshTaxpayerMemory(ownerTenant.id, ownerContact.id);
+
+      if (!this.ownerAutoReplyEnabled()) {
+        this.logger.log(`[Owner botu kapali] owner mesaji kaydedildi, otomatik cevap atlanadi: ${this.normalize(msg.from)}`);
+        return;
+      }
 
       const recentContext = await this.botContext.buildRecentWhatsAppContext(ownerContact.id);
       const prompt = [
