@@ -4,6 +4,7 @@ import { FileInterceptor } from '@nestjs/platform-express';
 import { randomBytes, randomUUID } from 'crypto';
 import { memoryStorage } from 'multer';
 import { WhatsAppService } from './whatsapp.service';
+import { BaileysService } from './baileys.service';
 import { PrismaService } from '../prisma/prisma.service';
 import { StorageService } from '../storage/storage.service';
 
@@ -19,6 +20,7 @@ type StartConversationBody = {
   taxpayerId?: string;
   phone?: string;
   displayName?: string;
+  initialMessage?: string;
   templateName?: string;
   templateParams?: string[];
 };
@@ -57,6 +59,7 @@ export class WhatsAppController {
     private whatsappService: WhatsAppService,
     private prisma: PrismaService,
     private storage: StorageService,
+    private baileys: BaileysService,
   ) {}
 
   @Get('status')
@@ -182,10 +185,13 @@ export class WhatsAppController {
           windowOpen: false, // 24h pencere açık mı
           lastInboundAt: null as Date | null,
           totalMessages: 0,
+          whatsAppJid: this.extractWhatsAppJid(log.content),
+          avatarUrl: null as string | null,
         });
       }
       const conv = conversations.get(conversationId);
       conv.totalMessages++;
+      if (!conv.whatsAppJid) conv.whatsAppJid = this.extractWhatsAppJid(log.content);
       // İlk işlenen log en yeni (orderBy desc) — son mesaj olarak işaretle
       if (incoming) {
         if (!conv.lastInboundAt || log.occurredAt > conv.lastInboundAt) {
@@ -205,6 +211,10 @@ export class WhatsAppController {
 
     // Son mesaj zamanına göre sırala (en yeni üstte)
     result.sort((a, b) => new Date(b.lastMessageAt).getTime() - new Date(a.lastMessageAt).getTime());
+    await Promise.all(result.slice(0, 60).map(async (c) => {
+      c.avatarUrl = await this.baileys.profilePictureUrl(tenantId, c.whatsAppJid || c.phone).catch(() => null);
+      delete c.whatsAppJid;
+    }));
     return result;
   }
 
@@ -347,15 +357,19 @@ export class WhatsAppController {
     const windowExpiresAt = lastInboundAt
       ? new Date(new Date(lastInboundAt).getTime() + 24 * 60 * 60 * 1000)
       : null;
+    const phone = ref.phone || this.defaultWhatsAppPhone(taxpayer);
+    const avatarJid = logs.map((log) => this.extractWhatsAppJid(log.content)).reverse().find(Boolean) || null;
+    const avatarUrl = await this.baileys.profilePictureUrl(tenantId, avatarJid || phone).catch(() => null);
 
     return {
-      conversationId: this.conversationId(taxpayer.id, ref.phone || this.defaultWhatsAppPhone(taxpayer)),
+      conversationId: this.conversationId(taxpayer.id, phone),
       taxpayer: {
         id: taxpayer.id,
         name: taxpayer.companyName || `${taxpayer.firstName || ''} ${taxpayer.lastName || ''}`.trim() || 'Mükellef',
-        phone: ref.phone || this.defaultWhatsAppPhone(taxpayer),
+        phone,
         taxNumber: this.publicTaxNumber(taxpayer.taxNumber),
         unknownContact: this.isWhatsAppVirtualTaxNumber(taxpayer.taxNumber),
+        avatarUrl,
       },
       messages,
       windowOpen,
@@ -463,7 +477,7 @@ export class WhatsAppController {
     if (!doc) return { ok: false, error: 'Belge bulunamadi' };
 
     const targetPhone = ref.phone || this.defaultWhatsAppPhone(taxpayer);
-    const sendTarget = this.whatsAppSendTarget(taxpayer, targetPhone);
+    const sendTarget = await this.whatsAppSendTarget(taxpayer, targetPhone);
     const phones = sendTarget ? [sendTarget] : [];
     if (!phones.length) return { ok: false, error: 'Telefon numarasi yok' };
 
@@ -528,7 +542,7 @@ export class WhatsAppController {
     if (!taxpayer) return { ok: false, error: 'Mukellef bulunamadi' };
 
     const targetPhone = ref.phone || this.defaultWhatsAppPhone(taxpayer);
-    const sendTarget = this.whatsAppSendTarget(taxpayer, targetPhone);
+    const sendTarget = await this.whatsAppSendTarget(taxpayer, targetPhone);
     const phones = sendTarget ? [sendTarget] : [];
     if (!phones.length) return { ok: false, error: 'Telefon numarasi yok' };
 
@@ -620,7 +634,7 @@ export class WhatsAppController {
     if (!taxpayer) return { ok: false, error: 'Mükellef bulunamadı' };
 
     const targetPhone = ref.phone || this.defaultWhatsAppPhone(taxpayer);
-    const sendTarget = this.whatsAppSendTarget(taxpayer, targetPhone);
+    const sendTarget = await this.whatsAppSendTarget(taxpayer, targetPhone);
     const phones = sendTarget ? [sendTarget] : [];
     if (phones.length === 0) return { ok: false, error: 'Mükellefin telefon numarası yok' };
 
@@ -717,6 +731,32 @@ export class WhatsAppController {
     if (!taxpayerId && manualPhone) {
       const contact = await this.ensureManualWhatsAppContact(tenantId, manualPhone, body?.displayName);
       const status = await this.whatsappService.getStatus(tenantId);
+      const initialMessage = String(body?.initialMessage || '').trim();
+      if (this.baileys.isConnected(tenantId) && initialMessage) {
+        const manualResult = await this.whatsappService.sendMessageDetailed(manualPhone, initialMessage, tenantId);
+        await this.prisma.communicationLog.create({
+          data: {
+            taxpayerId: contact.id,
+            channel: 'WHATSAPP',
+            subject: manualResult.ok ? 'WhatsApp sohbet baslatma' : 'WhatsApp sohbet baslatma (gonderilemedi)',
+            content: this.withWhatsAppPhone(
+              manualResult.ok
+                ? initialMessage
+                : `${initialMessage}\n\nHata: ${manualResult.error || 'WhatsApp gonderimi basarisiz.'}`,
+              manualPhone,
+            ),
+            occurredAt: new Date(),
+          },
+        });
+        return {
+          ok: manualResult.ok,
+          method: 'free-form',
+          taxpayerId: contact.id,
+          phone: manualPhone,
+          conversationId: this.conversationId(contact.id, manualPhone),
+          error: manualResult.error,
+        };
+      }
       const manualTemplateName = String(body?.templateName || status.portalTemplateName || status.templateName || '').trim();
       if (!manualTemplateName) return { ok: false, error: 'Ilk mesaj icin Meta onayli sablon adi zorunlu' };
       const manualName = this.taxpayerDisplayName(contact);
@@ -765,6 +805,29 @@ export class WhatsAppController {
     if (!taxpayer) return { ok: false, error: 'Mükellef bulunamadı' };
 
     const status = await this.whatsappService.getStatus(tenantId);
+    const fallbackPhone = this.taxpayerPhones(taxpayer)[0] || null;
+    const phone = String(body?.phone || fallbackPhone || '').trim();
+    if (!phone) return { ok: false, error: 'Mukellefin telefon numarasi yok' };
+    const initialMessage = String(body?.initialMessage || '').trim();
+    if (this.baileys.isConnected(tenantId) && initialMessage) {
+      const sendTarget = await this.whatsAppSendTarget(taxpayer, phone);
+      const startResult = await this.whatsappService.sendMessageDetailed(sendTarget || phone, initialMessage, tenantId);
+      await this.prisma.communicationLog.create({
+        data: {
+          taxpayerId,
+          channel: 'WHATSAPP',
+          subject: startResult.ok ? 'WhatsApp sohbet baslatma' : 'WhatsApp sohbet baslatma (gonderilemedi)',
+          content: this.withWhatsAppPhone(
+            startResult.ok
+              ? initialMessage
+              : `${initialMessage}\n\nHata: ${startResult.error || 'WhatsApp gonderimi basarisiz.'}`,
+            phone,
+          ),
+          occurredAt: new Date(),
+        },
+      });
+      return { ok: startResult.ok, method: 'free-form', taxpayerId, phone, conversationId: this.conversationId(taxpayerId, phone), error: startResult.error };
+    }
     const templateName = String(
       body?.templateName ||
       status.portalTemplateName ||
@@ -772,10 +835,6 @@ export class WhatsAppController {
       '',
     ).trim();
     if (!templateName) return { ok: false, error: 'İlk mesaj için Meta onaylı şablon adı zorunlu' };
-
-    const fallbackPhone = this.taxpayerPhones(taxpayer)[0] || null;
-    const phone = String(body?.phone || fallbackPhone || '').trim();
-    if (!phone) return { ok: false, error: 'Mükellefin telefon numarası yok' };
 
     const displayName = this.taxpayerDisplayName(taxpayer);
     const params = Array.isArray(body?.templateParams) && body.templateParams.length
@@ -917,9 +976,14 @@ export class WhatsAppController {
         const errors: string[] = [];
         let delivered = false;
         for (const phone of row.phones) {
+          const sendTarget = await this.whatsAppSendTarget({
+            id: row.id,
+            phone,
+            phones: row.phones,
+          }, phone);
           const result = preview.template
-            ? await this.whatsappService.sendTemplateDetailed(phone, row.templateParams || [], preview.template, tenantId)
-            : await this.whatsappService.sendMessageDetailed(phone, row.mesaj, tenantId);
+            ? await this.whatsappService.sendTemplateDetailed(sendTarget || phone, row.templateParams || [], preview.template, tenantId)
+            : await this.whatsappService.sendMessageDetailed(sendTarget || phone, row.mesaj, tenantId);
           phoneResults.push({ phone, ok: result.ok, error: result.error });
           if (result.ok) delivered = true;
           else errors.push(`${phone}: ${result.error || 'WhatsApp gonderimi basarisiz.'}`);
@@ -1529,9 +1593,11 @@ export class WhatsAppController {
     return digits.startsWith('111') && digits.length >= 14;
   }
 
-  private whatsAppSendTarget(taxpayer: any, displayPhone?: string | null): string | null {
+  private async whatsAppSendTarget(taxpayer: any, displayPhone?: string | null): Promise<string | null> {
     const display = this.normalizePhoneForWhatsApp(displayPhone) || this.defaultWhatsAppPhone(taxpayer);
     if (!display) return null;
+    const latestJid = taxpayer?.id ? await this.latestWhatsAppJid(taxpayer.id, display) : null;
+    if (latestJid) return latestJid;
     if (this.isWhatsAppLid(display)) return this.phoneDigits(display);
 
     const taxpayerPhones = [
@@ -1544,9 +1610,33 @@ export class WhatsAppController {
     return hasDisplayPhone && lid ? this.phoneDigits(lid) : display;
   }
 
+  private async latestWhatsAppJid(taxpayerId: string, phone?: string | null): Promise<string | null> {
+    const requestedPhone = this.normalizePhoneForWhatsApp(phone);
+    const logs = await this.prisma.communicationLog.findMany({
+      where: { taxpayerId, channel: 'WHATSAPP' },
+      orderBy: { occurredAt: 'desc' },
+      take: 80,
+      select: { content: true },
+    });
+
+    for (const log of logs) {
+      const logPhone = this.extractWhatsAppPhone(log.content);
+      if (requestedPhone && logPhone && logPhone !== requestedPhone) continue;
+      const jid = this.extractWhatsAppJid(log.content);
+      if (jid) return jid;
+    }
+    return null;
+  }
+
   private extractWhatsAppPhone(content?: string | null): string | null {
     const match = String(content || '').match(/\[\[wa_phone:([0-9+ ]+)\]\]/);
     return match ? (this.normalizePhoneForWhatsApp(match[1]) || null) : null;
+  }
+
+  private extractWhatsAppJid(content?: string | null): string | null {
+    const match = String(content || '').match(/\[\[wa_jid:([^\]]+)\]\]/);
+    const jid = String(match?.[1] || '').trim();
+    return jid.includes('@') ? jid : null;
   }
 
   private withWhatsAppPhone(content: string, phone?: string | null): string {
@@ -1583,6 +1673,7 @@ export class WhatsAppController {
     const documents: Array<{ id: string; title: string }> = [];
     const rawText = String(content || '')
       .replace(/\[\[wa_phone:[^\]]+\]\]\s*/g, '')
+      .replace(/\[\[wa_jid:[^\]]+\]\]\s*/g, '')
       .replace(/\[\[document:([^|\]]+)\|([^\]]+)\]\]/g, (_all, id, title) => {
         documents.push({ id, title });
         return '';

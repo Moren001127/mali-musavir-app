@@ -718,7 +718,9 @@ export class WhatsAppService {
     if (!ownerPhones.length) return;
 
     const ownerTaxNumber = `WHATSAPP-OWNER-${tenantId}`;
-    const ownerName = 'Ofis Sahibi WhatsApp';
+    const ownerName =
+      String(process.env.MOREN_OWNER_PORTAL_NAME || process.env.MOREN_OFFICE_NAME || 'Moren Mali Müşavirlik').trim()
+      || 'Moren Mali Müşavirlik';
     const existingOwner = await this.prisma.taxpayer.findFirst({
       where: { tenantId, taxNumber: ownerTaxNumber },
       select: { id: true, phone: true, phones: true },

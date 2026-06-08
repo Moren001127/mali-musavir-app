@@ -6,11 +6,43 @@ import { api } from '@/lib/api';
 import {
   MessageCircle, Send, Search, Clock, AlertCircle, CheckCircle2,
   Loader2, Phone, User, Sparkles, X, FileText, AlertTriangle, Plus, Users,
-  Paperclip, Image as ImageIcon, Link2,
+  Paperclip, Image as ImageIcon, Link2, Smile,
 } from 'lucide-react';
 import { toast } from 'sonner';
 
 const GOLD = '#d4b876';
+const QUICK_EMOJIS = [
+  '😀', '😁', '😂', '😊', '😍', '🥰', '😉', '👍', '🙏', '👏', '✅', '📌',
+  '📎', '📄', '💰', '📊', '⏰', '⚠️', '❤️', '🤝', '🙋‍♂️', '🙋‍♀️', '☕', '🎉',
+];
+
+function WhatsAppAvatar({
+  name,
+  url,
+  active,
+  size = 36,
+}: {
+  name?: string | null;
+  url?: string | null;
+  active?: boolean;
+  size?: number;
+}) {
+  const initial = (name || '?').trim().charAt(0).toUpperCase() || '?';
+  return (
+    <div
+      className="rounded-full flex items-center justify-center flex-shrink-0 overflow-hidden text-[12px] font-semibold"
+      style={{
+        width: size,
+        height: size,
+        background: active ? 'rgba(34,197,94,0.15)' : 'rgba(255,255,255,0.04)',
+        color: active ? '#86efac' : 'rgba(250,250,249,0.55)',
+        border: `1px solid ${active ? 'rgba(34,197,94,0.3)' : 'rgba(255,255,255,0.08)'}`,
+      }}
+    >
+      {url ? <img src={url} alt={name || 'WhatsApp profil'} className="h-full w-full object-cover" /> : initial}
+    </div>
+  );
+}
 
 interface Conversation {
   conversationId?: string;
@@ -24,6 +56,7 @@ interface Conversation {
   lastInboundAt: string | null;
   totalMessages: number;
   unknownContact?: boolean;
+  avatarUrl?: string | null;
 }
 
 interface ChatMessage {
@@ -38,7 +71,7 @@ interface ChatMessage {
 
 interface ChatData {
   conversationId?: string;
-  taxpayer: { id: string; name: string; phone: string | null; taxNumber: string; unknownContact?: boolean };
+  taxpayer: { id: string; name: string; phone: string | null; taxNumber: string; unknownContact?: boolean; avatarUrl?: string | null };
   messages: ChatMessage[];
   windowOpen: boolean;
   windowExpiresAt: string | null;
@@ -169,6 +202,7 @@ export default function MesajlarPage() {
   const [composeText, setComposeText] = useState('');
   const [showTemplatePicker, setShowTemplatePicker] = useState(false);
   const [showStartModal, setShowStartModal] = useState(false);
+  const [showEmojiPicker, setShowEmojiPicker] = useState(false);
   const [contactSearch, setContactSearch] = useState('');
   const [selectedContactId, setSelectedContactId] = useState<string | null>(null);
   const [selectedPhone, setSelectedPhone] = useState('');
@@ -177,10 +211,12 @@ export default function MesajlarPage() {
   const [startMode, setStartMode] = useState<'contacts' | 'manual'>('contacts');
   const [manualPhone, setManualPhone] = useState('');
   const [manualName, setManualName] = useState('');
+  const [startMessage, setStartMessage] = useState('Merhaba');
   const [showLinkModal, setShowLinkModal] = useState(false);
   const [selectedLinkContactId, setSelectedLinkContactId] = useState<string | null>(null);
   const scrollRef = useRef<HTMLDivElement>(null);
   const mediaInputRef = useRef<HTMLInputElement>(null);
+  const composeRef = useRef<HTMLTextAreaElement>(null);
 
   useEffect(() => {
     const params = new URLSearchParams(window.location.search);
@@ -312,8 +348,9 @@ export default function MesajlarPage() {
         return api.post('/whatsapp/conversations/start', {
           phone: manualPhone.trim(),
           displayName: manualName.trim() || undefined,
+          initialMessage: qrStartAvailable ? startMessage.trim() : undefined,
           templateName,
-          templateParams: buildStartTemplateParams(templateName, displayName, startExtraParam),
+          templateParams: qrStartAvailable ? undefined : buildStartTemplateParams(templateName, displayName, startExtraParam),
         }).then((r) => r.data);
       }
       if (!selectedContact) throw new Error('Mükellef seçimi zorunlu');
@@ -324,23 +361,25 @@ export default function MesajlarPage() {
       return api.post('/whatsapp/conversations/start', {
         taxpayerId: selectedContact.taxpayerId,
         phone,
+        initialMessage: qrStartAvailable ? startMessage.trim() : undefined,
         templateName,
-        templateParams: buildStartTemplateParams(templateName, selectedContact.taxpayerName, startExtraParam),
+        templateParams: qrStartAvailable ? undefined : buildStartTemplateParams(templateName, selectedContact.taxpayerName, startExtraParam),
       }).then((r) => r.data);
     },
     onSuccess: (res) => {
       if (res.ok) {
-        toast.success('Şablon gönderildi');
+        toast.success(res.method === 'free-form' ? 'Mesaj gönderildi' : 'Şablon gönderildi');
         setShowStartModal(false);
         setSelectedId(res.conversationId || res.taxpayerId);
         setStartExtraParam('');
+        setStartMessage('Merhaba');
         setManualPhone('');
         setManualName('');
         qc.invalidateQueries({ queryKey: ['whatsapp-chat', res.conversationId || res.taxpayerId] });
         qc.invalidateQueries({ queryKey: ['whatsapp-conversations'] });
         qc.invalidateQueries({ queryKey: ['whatsapp-contacts'] });
       } else {
-        toast.error(res.error || 'Şablon gönderilemedi');
+        toast.error(res.error || 'Gönderilemedi');
         if (res.taxpayerId) {
           setSelectedId(res.conversationId || res.taxpayerId);
           qc.invalidateQueries({ queryKey: ['whatsapp-chat', res.conversationId || res.taxpayerId] });
@@ -405,6 +444,7 @@ export default function MesajlarPage() {
   }, [conversations, search]);
 
   const freeFormAvailable = Boolean(chatData?.windowOpen || qrStatus?.connected);
+  const qrStartAvailable = Boolean(qrStatus?.connected);
 
   // Mesaj geldikçe en alta scroll
   useEffect(() => {
@@ -421,6 +461,7 @@ export default function MesajlarPage() {
     }
     const text = composeText.trim();
     if (!text) return;
+    setShowEmojiPicker(false);
     sendMut.mutate({ message: text });
   };
 
@@ -430,6 +471,27 @@ export default function MesajlarPage() {
     setShowTemplatePicker(false);
   };
 
+  const insertEmoji = (emoji: string) => {
+    const input = composeRef.current;
+    const start = input?.selectionStart ?? composeText.length;
+    const end = input?.selectionEnd ?? composeText.length;
+    const next = `${composeText.slice(0, start)}${emoji}${composeText.slice(end)}`;
+    setComposeText(next);
+    setShowEmojiPicker(false);
+    requestAnimationFrame(() => {
+      input?.focus();
+      input?.setSelectionRange(start + emoji.length, start + emoji.length);
+    });
+  };
+
+  const openWhatsAppFromHeader = () => {
+    const phone = chatData?.taxpayer?.phone?.replace(/[^\d]/g, '');
+    if (!phone) return toast.error('Telefon numarası yok');
+    window.location.href = `whatsapp://send?phone=${phone}`;
+    window.setTimeout(() => window.open(`https://wa.me/${phone}`, '_blank', 'noopener,noreferrer'), 700);
+    toast.message('WhatsApp açılırsa aramayı uygulama içinden başlatabilirsin');
+  };
+
   const handleMediaPicked = (file?: File | null) => {
     if (!file) return;
     mediaMut.mutate(file);
@@ -437,6 +499,7 @@ export default function MesajlarPage() {
 
   const openStartModal = () => {
     setShowStartModal(true);
+    if (!startMessage.trim()) setStartMessage('Merhaba');
     if (!startTemplateName && templateOptions.length > 0) {
       setStartTemplateName(templateOptions[0]);
     }
@@ -522,16 +585,7 @@ export default function MesajlarPage() {
                   }}
                 >
                   {/* Avatar */}
-                  <div
-                    className="w-9 h-9 rounded-full flex items-center justify-center flex-shrink-0 text-[12px] font-semibold"
-                    style={{
-                      background: c.windowOpen ? 'rgba(34,197,94,0.15)' : 'rgba(255,255,255,0.04)',
-                      color: c.windowOpen ? '#86efac' : 'rgba(250,250,249,0.55)',
-                      border: `1px solid ${c.windowOpen ? 'rgba(34,197,94,0.3)' : 'rgba(255,255,255,0.08)'}`,
-                    }}
-                  >
-                    {c.taxpayerName.charAt(0).toUpperCase()}
-                  </div>
+                  <WhatsAppAvatar name={c.taxpayerName} url={c.avatarUrl} active={c.windowOpen} />
 
                   <div className="flex-1 min-w-0">
                     <div className="flex items-center justify-between gap-2">
@@ -597,16 +651,7 @@ export default function MesajlarPage() {
           <>
             {/* Sohbet başlık */}
             <div className="px-5 py-3 flex items-center gap-3" style={{ borderBottom: '1px solid rgba(255,255,255,0.06)', background: 'rgba(255,255,255,0.02)' }}>
-              <div
-                className="w-9 h-9 rounded-full flex items-center justify-center text-[12px] font-semibold"
-                style={{
-                  background: chatData?.windowOpen ? 'rgba(34,197,94,0.15)' : 'rgba(255,255,255,0.04)',
-                  color: chatData?.windowOpen ? '#86efac' : 'rgba(250,250,249,0.55)',
-                  border: `1px solid ${chatData?.windowOpen ? 'rgba(34,197,94,0.3)' : 'rgba(255,255,255,0.08)'}`,
-                }}
-              >
-                {chatData?.taxpayer?.name?.charAt(0).toUpperCase() || '?'}
-              </div>
+              <WhatsAppAvatar name={chatData?.taxpayer?.name} url={chatData?.taxpayer?.avatarUrl} active={chatData?.windowOpen} />
               <div className="flex-1 min-w-0">
                 <div className="text-[14px] font-semibold" style={{ color: '#fafaf9' }}>
                   {chatData?.taxpayer?.name || 'Yükleniyor...'}
@@ -622,6 +667,17 @@ export default function MesajlarPage() {
                   )}
                 </div>
               </div>
+              {chatData?.taxpayer?.phone && (
+                <button
+                  type="button"
+                  onClick={openWhatsAppFromHeader}
+                  title="WhatsApp'ta aç ve ara"
+                  className="h-8 w-8 rounded-md flex items-center justify-center"
+                  style={{ background: 'rgba(255,255,255,0.04)', border: '1px solid rgba(255,255,255,0.08)', color: 'rgba(250,250,249,0.82)' }}
+                >
+                  <Phone size={14} />
+                </button>
+              )}
               {chatData?.taxpayer?.unknownContact && (
                 <button
                   type="button"
@@ -652,7 +708,7 @@ export default function MesajlarPage() {
                 </div>
               ) : chatData.messages.length === 0 ? (
                 <div className="text-center py-10 text-[12.5px]" style={{ color: 'rgba(250,250,249,0.45)' }}>
-                  Henüz mesaj yok. Şablon ile konuşmayı başlatabilirsin.
+                  {qrStatus?.connected ? 'Henüz mesaj yok. Aşağıdan normal WhatsApp mesajı yazabilirsin.' : 'Henüz mesaj yok. Şablon ile konuşmayı başlatabilirsin.'}
                 </div>
               ) : (
                 chatData.messages.map((m) => {
@@ -741,7 +797,39 @@ export default function MesajlarPage() {
                   >
                     {mediaMut.isPending ? <Loader2 size={14} className="animate-spin" /> : <Paperclip size={15} />}
                   </button>
+                  <div className="relative flex-1">
+                    {showEmojiPicker && (
+                      <div
+                        className="absolute bottom-[52px] left-0 z-20 w-[320px] max-w-[calc(100vw-48px)] rounded-[12px] border p-3 shadow-2xl"
+                        style={{ background: '#1f1f1f', borderColor: 'rgba(255,255,255,0.12)' }}
+                      >
+                        <div className="mb-2 text-[11px] font-semibold" style={{ color: 'rgba(250,250,249,0.55)' }}>Sık kullanılanlar</div>
+                        <div className="grid grid-cols-8 gap-1">
+                          {QUICK_EMOJIS.map((emoji) => (
+                            <button
+                              key={emoji}
+                              type="button"
+                              onClick={() => insertEmoji(emoji)}
+                              className="h-8 rounded-md text-[20px] leading-none hover:bg-white/10"
+                              aria-label={`Emoji ${emoji}`}
+                            >
+                              {emoji}
+                            </button>
+                          ))}
+                        </div>
+                      </div>
+                    )}
+                    <button
+                      type="button"
+                      onClick={() => setShowEmojiPicker((value) => !value)}
+                      title="Emoji"
+                      className="absolute left-2 top-2 h-7 w-7 rounded-md flex items-center justify-center"
+                      style={{ color: 'rgba(250,250,249,0.55)' }}
+                    >
+                      <Smile size={17} />
+                    </button>
                   <textarea
+                    ref={composeRef}
                     value={composeText}
                     onChange={(e) => setComposeText(e.target.value)}
                     onKeyDown={(e) => {
@@ -752,9 +840,10 @@ export default function MesajlarPage() {
                     }}
                     placeholder="Mesaj yaz... (Enter = gönder, Shift+Enter = yeni satır)"
                     rows={2}
-                    className="flex-1 px-3 py-2 rounded-[10px] text-[13px] outline-none resize-none"
+                    className="w-full pl-11 pr-3 py-2 rounded-[10px] text-[13px] outline-none resize-none"
                     style={{ background: 'rgba(0,0,0,0.2)', border: '1px solid rgba(255,255,255,0.08)', color: '#fafaf9' }}
                   />
+                  </div>
                   <button
                     type="button"
                     onClick={handleSend}
@@ -984,42 +1073,63 @@ export default function MesajlarPage() {
                   </>
                 )}
 
-                <label className="mt-3 block text-[11px] font-medium uppercase tracking-wider" style={{ color: 'rgba(250,250,249,0.45)' }}>
-                  Şablon adı
-                </label>
-                <input
-                  value={startTemplateName}
-                  onChange={(e) => setStartTemplateName(e.target.value)}
-                  list="whatsapp-template-options"
-                  placeholder={templateOptions[0] || 'Meta onayli sablon adi'}
-                  className="mt-1.5 w-full rounded-[10px] border bg-transparent px-3 py-2 text-[13px] outline-none"
-                  style={{ borderColor: 'rgba(255,255,255,0.08)', color: '#fafaf9' }}
-                />
-                <datalist id="whatsapp-template-options">
-                  {templateOptions.map((name) => <option key={name} value={name} />)}
-                </datalist>
+                {qrStartAvailable ? (
+                  <>
+                    <label className="mt-3 block text-[11px] font-medium uppercase tracking-wider" style={{ color: 'rgba(250,250,249,0.45)' }}>
+                      İlk mesaj
+                    </label>
+                    <textarea
+                      value={startMessage}
+                      onChange={(e) => setStartMessage(e.target.value)}
+                      rows={5}
+                      placeholder="Merhaba"
+                      className="mt-1.5 w-full resize-none rounded-[10px] border bg-transparent px-3 py-2 text-[13px] outline-none"
+                      style={{ borderColor: 'rgba(255,255,255,0.08)', color: '#fafaf9' }}
+                    />
+                    <div className="mt-2 text-[11px]" style={{ color: 'rgba(134,239,172,0.82)' }}>
+                      QR bağlı olduğu için normal WhatsApp mesajı olarak gönderilecek.
+                    </div>
+                  </>
+                ) : (
+                  <>
+                    <label className="mt-3 block text-[11px] font-medium uppercase tracking-wider" style={{ color: 'rgba(250,250,249,0.45)' }}>
+                      Meta şablonu
+                    </label>
+                    <input
+                      value={startTemplateName}
+                      onChange={(e) => setStartTemplateName(e.target.value)}
+                      list="whatsapp-template-options"
+                      placeholder={templateOptions[0] || 'Meta onayli sablon adi'}
+                      className="mt-1.5 w-full rounded-[10px] border bg-transparent px-3 py-2 text-[13px] outline-none"
+                      style={{ borderColor: 'rgba(255,255,255,0.08)', color: '#fafaf9' }}
+                    />
+                    <datalist id="whatsapp-template-options">
+                      {templateOptions.map((name) => <option key={name} value={name} />)}
+                    </datalist>
 
-                <label className="mt-3 block text-[11px] font-medium uppercase tracking-wider" style={{ color: 'rgba(250,250,249,0.45)' }}>
-                  Ek parametre
-                </label>
-                <textarea
-                  value={startExtraParam}
-                  onChange={(e) => setStartExtraParam(e.target.value)}
-                  rows={4}
-                  placeholder="Şablonda ikinci değişken varsa buraya yaz"
-                  className="mt-1.5 w-full resize-none rounded-[10px] border bg-transparent px-3 py-2 text-[13px] outline-none"
-                  style={{ borderColor: 'rgba(255,255,255,0.08)', color: '#fafaf9' }}
-                />
+                    <label className="mt-3 block text-[11px] font-medium uppercase tracking-wider" style={{ color: 'rgba(250,250,249,0.45)' }}>
+                      Ek parametre
+                    </label>
+                    <textarea
+                      value={startExtraParam}
+                      onChange={(e) => setStartExtraParam(e.target.value)}
+                      rows={4}
+                      placeholder="Şablonda ikinci değişken varsa buraya yaz"
+                      className="mt-1.5 w-full resize-none rounded-[10px] border bg-transparent px-3 py-2 text-[13px] outline-none"
+                      style={{ borderColor: 'rgba(255,255,255,0.08)', color: '#fafaf9' }}
+                    />
+                  </>
+                )}
 
                 <button
                   type="button"
                   onClick={() => startMut.mutate()}
-                  disabled={(startMode === 'contacts' ? (!selectedContact || !selectedPhone) : !manualPhone.trim()) || !startTemplateName.trim() || startMut.isPending}
+                  disabled={(startMode === 'contacts' ? (!selectedContact || !selectedPhone) : !manualPhone.trim()) || (qrStartAvailable ? !startMessage.trim() : !startTemplateName.trim()) || startMut.isPending}
                   className="mt-4 h-11 w-full rounded-[10px] flex items-center justify-center gap-1.5 text-[13px] font-semibold disabled:opacity-50"
                   style={{ background: `linear-gradient(135deg, ${GOLD}, #b8a06f)`, color: '#0f0d0b' }}
                 >
                   {startMut.isPending ? <Loader2 size={14} className="animate-spin" /> : <Send size={14} />}
-                  Şablonla Başlat
+                  {qrStartAvailable ? 'Mesajla Başlat' : 'Şablonla Başlat'}
                 </button>
               </div>
             </div>

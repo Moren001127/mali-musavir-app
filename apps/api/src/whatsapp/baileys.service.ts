@@ -47,6 +47,11 @@ export class BaileysService {
   private readonly logger = new Logger(BaileysService.name);
   private mod: any = null;
   private readonly sessions = new Map<string, Session>();
+  private readonly reconnectAttempts = new Map<string, number>();
+  private readonly reconnectTimers = new Map<string, ReturnType<typeof setTimeout>>();
+  private readonly intentionalLogoutTenants = new Set<string>();
+  private readonly lastErrors = new Map<string, string>();
+  private watchdogTimer: ReturnType<typeof setInterval> | null = null;
   private inboundHandler: ((msg: BaileysInbound) => Promise<void>) | null = null;
   private lidMappingHandler: ((tenantId: string, lid: string, phone: string) => Promise<void>) | null = null;
 
@@ -84,6 +89,9 @@ export class BaileysService {
 
   /** Bağlantıyı başlat (kayıtlı oturum varsa QR'sız bağlanır, yoksa QR üretir). */
   async connect(tenantId: string): Promise<{ started: boolean; alreadyConnected?: boolean }> {
+    this.startWatchdog();
+    this.intentionalLogoutTenants.delete(tenantId);
+    this.clearReconnectTimer(tenantId);
     const existing = this.sessions.get(tenantId);
     if (existing?.connected) return { started: false, alreadyConnected: true };
     if (existing?.connecting) return { started: true };
@@ -160,21 +168,27 @@ export class BaileysService {
         session.connecting = false;
         session.qr = null;
         session.lastError = undefined;
+        this.lastErrors.delete(tenantId);
+        this.reconnectAttempts.delete(tenantId);
+        this.clearReconnectTimer(tenantId);
         this.logger.log(`[Baileys] tenant=${tenantId} BAĞLANDI`);
       }
       if (connection === 'close') {
         session.connected = false;
+        session.connecting = false;
         const statusCode = lastDisconnect?.error?.output?.statusCode;
         const loggedOut = statusCode === DisconnectReason?.loggedOut;
-        session.lastError = lastDisconnect?.error?.message || `kapandı (${statusCode})`;
+        const closeError = lastDisconnect?.error?.message || `kapandı (${statusCode})`;
+        session.lastError = closeError;
+        this.lastErrors.set(tenantId, closeError);
         this.logger.warn(`[Baileys] tenant=${tenantId} bağlantı kapandı: ${session.lastError} loggedOut=${loggedOut}`);
         this.sessions.delete(tenantId);
-        if (loggedOut) {
+        if (loggedOut || this.intentionalLogoutTenants.has(tenantId)) {
           // Telefondan çıkış yapılmış → oturumu temizle, yeniden QR gerekir.
           auth.clear().catch(() => {});
         } else {
           // Geçici kopma → kayıtlı oturumla otomatik yeniden bağlan (QR gerekmez).
-          setTimeout(() => this.connect(tenantId).catch(() => {}), 3000);
+          this.scheduleReconnect(tenantId, closeError);
         }
       }
     });
@@ -275,7 +289,7 @@ export class BaileysService {
       connecting: Boolean(s?.connecting),
       hasQr: Boolean(s?.qr),
       qrDataUrl,
-      error: s?.lastError,
+      error: s?.lastError || this.lastErrors.get(tenantId),
     };
   }
 
@@ -292,6 +306,8 @@ export class BaileysService {
   }
 
   async logout(tenantId: string): Promise<void> {
+    this.intentionalLogoutTenants.add(tenantId);
+    this.clearReconnectTimer(tenantId);
     const s = this.sessions.get(tenantId);
     try { await s?.sock?.logout?.(); } catch { /* ignore */ }
     try { s?.sock?.end?.(undefined); } catch { /* ignore */ }
@@ -302,6 +318,72 @@ export class BaileysService {
       await auth?.clear().catch(() => {});
     }
     this.logger.log(`[Baileys] tenant=${tenantId} çıkış yapıldı, oturum temizlendi`);
+  }
+
+  private clearReconnectTimer(tenantId: string) {
+    const timer = this.reconnectTimers.get(tenantId);
+    if (timer) clearTimeout(timer);
+    this.reconnectTimers.delete(tenantId);
+  }
+
+  private scheduleReconnect(tenantId: string, reason?: string) {
+    if (this.intentionalLogoutTenants.has(tenantId)) return;
+    if (this.reconnectTimers.has(tenantId)) return;
+    const attempt = (this.reconnectAttempts.get(tenantId) || 0) + 1;
+    this.reconnectAttempts.set(tenantId, attempt);
+    const delay = Math.min(300_000, 3_000 * Math.pow(2, Math.min(attempt - 1, 6)));
+    this.logger.warn(`[Baileys] tenant=${tenantId} ${Math.round(delay / 1000)} sn sonra yeniden baglanacak (deneme ${attempt})${reason ? `: ${reason}` : ''}`);
+    const timer = setTimeout(() => {
+      this.reconnectTimers.delete(tenantId);
+      this.connect(tenantId).catch((e: any) => {
+        const message = e?.message || String(e);
+        this.lastErrors.set(tenantId, message);
+        this.logger.warn(`[Baileys] tenant=${tenantId} otomatik yeniden baglanma basarisiz: ${message}`);
+        this.scheduleReconnect(tenantId, message);
+      });
+    }, delay);
+    (timer as any).unref?.();
+    this.reconnectTimers.set(tenantId, timer);
+  }
+
+  private startWatchdog() {
+    if (this.watchdogTimer) return;
+    const timer = setInterval(() => {
+      this.ensureStoredSessionsConnected().catch((e: any) =>
+        this.logger.warn(`[Baileys] watchdog hata: ${e?.message || e}`));
+    }, 60_000);
+    (timer as any).unref?.();
+    this.watchdogTimer = timer;
+  }
+
+  private async ensureStoredSessionsConnected() {
+    const rows = await (this.prisma as any).integrationConnection.findMany({
+      where: { provider: BAILEYS_PROVIDER },
+      select: { tenantId: true, config: true },
+    }).catch(() => []);
+    for (const row of rows || []) {
+      if (this.intentionalLogoutTenants.has(row.tenantId)) continue;
+      if (!(row?.config as any)?.credsJson) continue;
+      const session = this.sessions.get(row.tenantId);
+      if (session?.connected) continue;
+      if (session?.connecting && Date.now() - session.startedAt < 90_000) continue;
+      if (session?.connecting) {
+        this.logger.warn(`[Baileys] tenant=${row.tenantId} baglanti 90 sn icinde acilmadi, oturum yeniden kuruluyor`);
+        try { session.sock?.end?.(undefined); } catch { /* ignore */ }
+        this.sessions.delete(row.tenantId);
+      }
+      if (!this.reconnectTimers.has(row.tenantId)) this.scheduleReconnect(row.tenantId, 'watchdog');
+    }
+  }
+
+  async profilePictureUrl(tenantId: string, phoneOrJid?: string | null): Promise<string | null> {
+    const session = this.sessions.get(tenantId);
+    if (!session?.connected || !session.sock || !phoneOrJid) return null;
+    try {
+      return await session.sock.profilePictureUrl(this.toJid(phoneOrJid), 'image');
+    } catch {
+      return null;
+    }
   }
 
   private toJid(phone: string): string {

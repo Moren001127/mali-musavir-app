@@ -36,6 +36,7 @@ type IncomingWhatsAppMessage = {
 // Asistanın müşteriye görünen insan ismi. Değiştirmek için MOREN_BOT_NAME env'i.
 const BOT_NAME = process.env.MOREN_BOT_NAME || 'Elif';
 const OFFICE_NAME = process.env.MOREN_OFFICE_NAME || 'Moren Mali Müşavirlik';
+const OWNER_PORTAL_NAME = process.env.MOREN_OWNER_PORTAL_NAME || OFFICE_NAME;
 
 @Controller('whatsapp/webhook')
 export class WhatsAppBotController implements OnModuleInit {
@@ -176,6 +177,16 @@ export class WhatsAppBotController implements OnModuleInit {
   private withWhatsAppPhone(content: string, phone?: string | null): string {
     const normalized = this.normalize(phone);
     return normalized ? `[[wa_phone:${normalized}]]\n${content}` : content;
+  }
+
+  private withWhatsAppMeta(content: string, msg: IncomingWhatsAppMessage): string {
+    const parts: string[] = [];
+    const normalized = this.normalize(msg.from);
+    const jid = String(msg.replyTo || '').trim();
+    if (normalized) parts.push(`[[wa_phone:${normalized}]]`);
+    if (jid && jid.includes('@')) parts.push(`[[wa_jid:${jid}]]`);
+    parts.push(content);
+    return parts.join('\n');
   }
 
   private replyTarget(msg: IncomingWhatsAppMessage): string {
@@ -465,7 +476,7 @@ export class WhatsAppBotController implements OnModuleInit {
         tenantId,
         phone,
         'owner',
-        `${ownerTenant.name || 'Ofis'} sahibi`,
+        OWNER_PORTAL_NAME,
       );
       const ownerPhones = Array.from(new Set([
         phone,
@@ -574,7 +585,7 @@ export class WhatsAppBotController implements OnModuleInit {
         return this.prisma.taxpayer.update({
           where: { id: owner.id },
           data: {
-            companyName: displayName || owner.companyName || 'OFIS SAHIBI',
+            companyName: displayName || OWNER_PORTAL_NAME,
             taxOffice: 'WHATSAPP',
             phone: normalized || owner.phone,
             phones: mergedPhones,
@@ -617,7 +628,7 @@ export class WhatsAppBotController implements OnModuleInit {
         return this.prisma.taxpayer.update({
           where: { id: existing.id },
           data: {
-            companyName: displayName || 'OFİS SAHİBİ',
+            companyName: displayName || OWNER_PORTAL_NAME,
             taxNumber,
             taxOffice: 'WHATSAPP',
             phone: normalized || existing.phone,
@@ -647,7 +658,7 @@ export class WhatsAppBotController implements OnModuleInit {
 
     const companyName =
       kind === 'owner'
-        ? (displayName || 'OFİS SAHİBİ')
+        ? (displayName || OWNER_PORTAL_NAME)
         : `Kayitsiz WhatsApp ${normalized || phone}`;
 
     return this.prisma.taxpayer.create({
@@ -780,7 +791,7 @@ export class WhatsAppBotController implements OnModuleInit {
         taxpayerId: personalRecord.id,
         channel: 'WHATSAPP',
         subject: `WhatsApp ${contact.name} (kisisel) gelen mesaj`,
-        content: this.withWhatsAppPhone(incomingContent, msg.from),
+        content: this.withWhatsAppMeta(incomingContent, msg),
         occurredAt: new Date(),
       },
     });
@@ -1112,7 +1123,7 @@ export class WhatsAppBotController implements OnModuleInit {
         ownerTenant.id,
         msg.from,
         'owner',
-        `${ownerTenant.name || 'Ofis'} sahibi`,
+        OWNER_PORTAL_NAME,
       );
       const incomingContent = await this.contentWithSavedMedia(ownerTenant.id, ownerContact.id, msg);
       await this.prisma.communicationLog.create({
@@ -1120,7 +1131,7 @@ export class WhatsAppBotController implements OnModuleInit {
           taxpayerId: ownerContact.id,
           channel: 'WHATSAPP',
           subject: 'WhatsApp owner gelen mesaj',
-          content: this.withWhatsAppPhone(incomingContent, msg.from),
+          content: this.withWhatsAppMeta(incomingContent, msg),
           occurredAt: new Date(),
         },
       });
@@ -1256,7 +1267,7 @@ export class WhatsAppBotController implements OnModuleInit {
           taxpayerId: contact.id,
           channel: 'WHATSAPP',
           subject: 'WhatsApp gelen kayitsiz numara mesaji',
-          content: this.withWhatsAppPhone(incomingContent, msg.from),
+          content: this.withWhatsAppMeta(incomingContent, msg),
           occurredAt: new Date(),
         },
       });
@@ -1400,7 +1411,7 @@ export class WhatsAppBotController implements OnModuleInit {
         taxpayerId: taxpayer.id,
         channel: 'WHATSAPP',
         subject: 'WhatsApp gelen mükellef sorusu',
-        content: this.withWhatsAppPhone(await this.contentWithSavedMedia(taxpayer.tenantId, taxpayer.id, msg), msg.from),
+        content: this.withWhatsAppMeta(await this.contentWithSavedMedia(taxpayer.tenantId, taxpayer.id, msg), msg),
         occurredAt: new Date(),
       },
     });
