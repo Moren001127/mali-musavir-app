@@ -394,22 +394,19 @@ export class EarsivService {
 
     for (const f of parsed) {
       try {
+        // PER-FATURA VKN/TC EŞLEŞME REDDİ KALDIRILDI (kullanıcı kararı, domain bilgisi):
+        // Luca e-arşiv indirmesi FİRMA-BAZLI — agent o firmaya giriş yaptıysa
+        // başka mükellefin faturası gelmez; gelen her şey bu firmaya aittir.
+        // Eski per-fatura VKN reddi ŞAHIS FİRMALARINDA GERÇEK KAYBA yol açıyordu:
+        // GİB faturayı bazen mükellefin VKN'sine bazen TC kimlik no'suna kesiyor;
+        // portalda yalnızca biri (ör. TC) kayıtlı olduğundan diğerine kesilenler
+        // "vergi no uyuşmadı" diye atılıyordu (ör. 16 faturanın 12'si). Artık
+        // gelen her fatura bu mükellefe kaydedilir; farklı VKN sadece iz için loglanır.
         if (!this.invoiceTaxpayerMatches(f, taxpayerTaxNo, tip)) {
-          const expectedSide = tip === 'SATIS' ? 'satıcı' : 'alıcı';
           const actualTaxNo = this.invoiceTaxNoForTip(f, tip) || 'boş';
-          const oppositeTaxNo = tip === 'SATIS'
-            ? this.normalizeTaxNo(f.aliciVergiNo)
-            : this.normalizeTaxNo(f.saticiVergiNo);
-          const oppositeHint = oppositeTaxNo === taxpayerTaxNo
-            ? ' Mükellef karşı tarafta görünüyor; sorgu yönü veya Luca firma seçimi hatalı olabilir.'
-            : '';
-          const msg =
-            `Mükellef vergi no uyuşmadı (${taxpayerLabel}). ` +
-            `Beklenen ${taxpayerTaxNo || 'tanımsız'}, XML ${expectedSide} ${actualTaxNo}.${oppositeHint}`;
-          this.logger.warn(`Fatura atlandı (${f.faturaNo}): ${msg}`);
-          skipped++;
-          if (errors.length < 5) errors.push(`${f.faturaNo}: ${msg}`);
-          continue;
+          this.logger.log(
+            `Fatura VKN farklı, yine de kabul edildi (şahıs TC/VKN olabilir): ${f.faturaNo} beklenen=${taxpayerTaxNo} XML=${actualTaxNo}`,
+          );
         }
         const fDonem = donemFromTarih(f.faturaTarihi);
         // Önce mevcut mu kontrol et — varsa SKIP (yeniden indirip üzerine yazma)
