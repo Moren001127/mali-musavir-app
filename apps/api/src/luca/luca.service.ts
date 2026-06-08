@@ -1210,7 +1210,12 @@ export class LucaService {
         createdAt: { gt: new Date(Date.now() - 10 * 60 * 1000) },
       },
     }).catch(() => 0);
-    if (priorAutoAttempts >= Number(process.env.LUCA_CAPTCHA_OCR_MAX_ATTEMPTS || 3)) {
+    // Otomatik (2captcha) çözme limiti iş başına. Soğuk giriş / bayat oturum
+    // toparlanırken Luca üst üste birkaç güvenlik kodu isteyebiliyor; eski 3
+    // limiti dolunca kalanları KULLANICIYA manuel soruluyordu ("niye doldurmadı").
+    // 2captcha bunları çözebiliyor; limit 3→8'e çıkarıldı (maliyet sınırlı kalır,
+    // gerçekten sürekli başarısız olursa yine manuel'e düşer). Env ile ayarlanabilir.
+    if (priorAutoAttempts >= Number(process.env.LUCA_CAPTCHA_OCR_MAX_ATTEMPTS || 8)) {
       return (this.prisma as any).lucaCaptchaChallenge.update({
         where: { id: challenge.id },
         data: {
