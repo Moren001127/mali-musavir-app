@@ -27,6 +27,28 @@ function Write-Wrapper {
     try { Add-Content -Path $wrapperLog -Value $line -Encoding utf8 -ErrorAction SilentlyContinue } catch {}
 }
 
+# OTO-GUNCELLEME (2026-06-08): wrapper basinda son kodu cek. Boylece agent.js
+# duzeltmeleri her makineye otomatik yayilir (runtime zaten sunucudan cekiliyor).
+# Sadece ileri-sarim (--ff-only); yerel sapma/cevrimdisi olursa MEVCUT kodla
+# devam eder, agent'i ASLA bloklamaz. Gunluk 04:00 restart bunu her gun tekrarlar.
+$RepoRoot = $null
+try { $RepoRoot = (Resolve-Path (Join-Path $BaseDir '..\..')).Path } catch {}
+function Update-Code {
+    if (-not $RepoRoot) { return }
+    if (-not (Test-Path (Join-Path $RepoRoot '.git'))) { return }
+    $git = Get-Command git.exe -ErrorAction SilentlyContinue
+    if (-not $git) { Write-Wrapper 'git bulunamadi, oto-guncelleme atlandi'; return }
+    try {
+        Push-Location $RepoRoot
+        $out = & $git.Source pull --ff-only 2>&1
+        Write-Wrapper "git pull: $($out -join ' | ')"
+    } catch {
+        Write-Wrapper "git pull atlandi (mevcut kodla devam): $($_.Exception.Message)"
+    } finally {
+        Pop-Location
+    }
+}
+
 # Eski log dosyalarini ROTATE et (silmeden) - debug icin son crash kayitlari saklanir
 foreach ($f in @($stdout, $stderr)) {
     if (Test-Path $f) {
@@ -42,6 +64,20 @@ foreach ($f in @($stdout, $stderr)) {
 }
 
 Write-Wrapper "start-agent.ps1 baslatildi (PID=$PID)"
+
+# TEK-WRAPPER GUVENCESI (2026-06-08): Onceden wrapper'in tek-ornek korumasi YOKTU.
+# Cakisan gorevler + tekrar tetikleyiciler yuzunden ayni anda ONLARCA wrapper
+# birikip surekli node baslatmaya calisiyordu (node tek-ornek kilidine takilip
+# hemen cikiyor, wrapper backoff'la tekrar deniyor) = buyuk kaynak israfi + kaos.
+# Named mutex ile makinede sadece TEK wrapper calisir; fazlalar hemen kapanir.
+$wrapperMutexCreated = $false
+$script:wrapperMutex = New-Object System.Threading.Mutex($true, 'Global\MorenLucaAgentWrapper', [ref]$wrapperMutexCreated)
+if (-not $wrapperMutexCreated) {
+    Write-Wrapper 'Baska wrapper zaten calisiyor; bu instance kapaniyor (tek-wrapper guvencesi).'
+    exit 0
+}
+
+Update-Code
 
 while ($true) {
     $lastStartTime = Get-Date

@@ -5,6 +5,23 @@ $BaseDir = Resolve-Path (Join-Path $PSScriptRoot '..')
 $StartScript = Join-Path $BaseDir 'scripts\start-agent.ps1'
 $currentUser = [System.Security.Principal.WindowsIdentity]::GetCurrent().Name
 
+# KONSOLIDASYON (2026-06-08): Tek resmi kurulum bu. Eskiden farkli adlarla
+# (install-service.ps1 -> 'Luca Local Agent', baslat-ve-otomatik-restart.ps1 ->
+# 1dk repetition) cakisan gorevler ayni anda kurulabiliyordu = cift agent / her
+# PC farkli davranis. Burada once TUM eski/cakisan gorev adlarini siliyoruz ki
+# bu script tek dogru kurulumu birakir (idempotent).
+$LegacyTaskNames = @('Luca Local Agent', 'MorenLucaAgent', 'Moren-Luca-Agent', 'Luca Agent')
+foreach ($legacy in $LegacyTaskNames) {
+  $old = Get-ScheduledTask -TaskName $legacy -ErrorAction SilentlyContinue
+  if ($old) {
+    try { Stop-ScheduledTask -TaskName $legacy -ErrorAction SilentlyContinue } catch {}
+    try {
+      Unregister-ScheduledTask -TaskName $legacy -Confirm:$false -ErrorAction Stop
+      Write-Host "Eski cakisan gorev silindi: $legacy"
+    } catch {}
+  }
+}
+
 $action = New-ScheduledTaskAction `
   -Execute 'powershell.exe' `
   -Argument "-NoProfile -ExecutionPolicy Bypass -WindowStyle Hidden -File `"$StartScript`"" `

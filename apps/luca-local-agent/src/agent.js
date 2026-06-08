@@ -96,7 +96,16 @@ const DEVICE_ID = PORTAL_WORKER
 const WORKER_NAME = PORTAL_WORKER?.displayName || cfg.worker?.workerName || os.hostname();
 const WORKER_POOL_INDEX = Math.max(0, Number(PORTAL_WORKER?.slotIndex || 0));
 const WORKER_POOL_SIZE = Math.max(1, Number(PORTAL_WORKER?.poolSize || 1));
-const SINGLE_INSTANCE_LOCK_PATH = path.join(__dirname, '..', '.agent.lock');
+// DUZELTME (2026-06-08): Kilit artik slot-bazli. Portal havuz iscileri (her biri
+// ayri Luca hesabi/slot) ayni anda calisabilmeli, AMA ayni slot iki kez calismamali.
+// Once PORTAL_WORKER modunda kilit tamamen atlaniyordu -> ayni slot/hesap cift
+// calisip yaris/cift firma-degisimi yaratabiliyordu. Ana agent .agent.lock,
+// her portal iscisi .agent.lock-<slot> kullanir.
+const SINGLE_INSTANCE_LOCK_PATH = path.join(
+  __dirname,
+  '..',
+  PORTAL_WORKER ? `.agent.lock-${WORKER_SLOT_ID || 'worker'}` : '.agent.lock',
+);
 let singleInstanceLockAcquired = false;
 
 if (!cfg.api?.baseUrl || !cfg.api?.agentToken) {
@@ -216,8 +225,8 @@ function isProcessAlive(pid) {
 }
 
 function acquireSingleInstanceLock() {
-  if (PORTAL_WORKER) return;
-
+  // Not: PORTAL_WORKER modunda da kilit alinir; ama slot-bazli dosya kullanildigi
+  // icin (SINGLE_INSTANCE_LOCK_PATH) farkli slotlar yan yana calisabilir.
   const payload = JSON.stringify({
     pid: process.pid,
     deviceId: DEVICE_ID,
@@ -709,16 +718,49 @@ async function withBrowser(handler) {
   }
 }
 
+function looksLikeValidRuntime(code) {
+  // Gecerli runtime: yeterince buyuk + AGENT_VERSION imzasi var.
+  return typeof code === 'string' && code.length > 100_000 && /AGENT_VERSION\s*=/.test(code);
+}
+
 async function loadMorenRuntimeCode() {
   const localRuntimePath = path.resolve(__dirname, '..', '..', 'api', 'public', 'agent-runtime.js');
-  if (cfg.worker?.preferLocalRuntime !== false && fs.existsSync(localRuntimePath)) {
-    log.info(`Local agent-runtime.js kullaniliyor: ${localRuntimePath}`);
+  const localExists = fs.existsSync(localRuntimePath);
+
+  // DUZELTME (2026-06-08): Varsayilan artik SUNUCU-ONCELIKLI (oto-guncelleme).
+  // Boylece deploy edilen agent-runtime.js tum makinelere otomatik yayilir; her
+  // makinede ayri "git pull" gerekmez. Sadece config'te preferLocalRuntime:true
+  // diyen (runtime'i yerelde gelistiren) kurulumlar yerel-oncelikli kalir.
+  // Sunucu erisilemez / gelen icerik gecersizse YERELE duser (cevrimdisi guvenlik agi).
+  const wantLocalFirst = cfg.worker?.preferLocalRuntime === true;
+
+  if (wantLocalFirst && localExists) {
+    log.info(`Yerel agent-runtime.js kullaniliyor (preferLocalRuntime): ${localRuntimePath}`);
     return fs.readFileSync(localRuntimePath, 'utf8');
   }
-  const runtimeBaseUrl = cfg.api.runtimeUrl || `${cfg.api.baseUrl}/agent/runtime.js`;
-  const runtimeUrl = `${runtimeBaseUrl}${runtimeBaseUrl.includes('?') ? '&' : '?'}v=${Date.now()}`;
-  const runtimeResponse = await axios.get(runtimeUrl, { timeout: 30_000 });
-  return String(runtimeResponse.data || '');
+
+  // 1) Sunucudan cek (oto-guncelleme)
+  try {
+    const runtimeBaseUrl = cfg.api.runtimeUrl || `${cfg.api.baseUrl}/agent/runtime.js`;
+    const runtimeUrl = `${runtimeBaseUrl}${runtimeBaseUrl.includes('?') ? '&' : '?'}v=${Date.now()}`;
+    const runtimeResponse = await axios.get(runtimeUrl, { timeout: 30_000 });
+    const code = String(runtimeResponse.data || '');
+    if (looksLikeValidRuntime(code)) {
+      const v = extractMorenRuntimeVersion(code);
+      log.info(`Sunucudan agent-runtime.js cekildi (${Math.round(code.length / 1024)}KB, v${v || '?'}).`);
+      return code;
+    }
+    log.warn('Sunucudan gelen agent-runtime.js gecersiz gorunuyor; yerele dusuluyor.');
+  } catch (err) {
+    log.warn(`Sunucudan agent-runtime.js cekilemedi (${err.message}); yerele dusuluyor.`);
+  }
+
+  // 2) Yerel yedek
+  if (localExists) {
+    log.info(`Yerel agent-runtime.js kullaniliyor (yedek): ${localRuntimePath}`);
+    return fs.readFileSync(localRuntimePath, 'utf8');
+  }
+  throw new Error('agent-runtime.js ne sunucudan ne de yerelden yuklenemedi');
 }
 
 function extractMorenRuntimeVersion(runtimeCode) {
@@ -1750,21 +1792,35 @@ async function printQueueLoop() {
 // SELF-HEAL: Memory watcher — RAM 600MB asarsa restart
 // ====================================================================
 function startMemoryWatcher() {
-  const LIMIT_MB = 600;
+  // DUZELTME (2026-06-08): 600MB cok dusuktu ve Node prosesinin RSS'ini olcuyor
+  // (asil bellegi ayri Chromium prosesi yiyor). Dusuk limit calisan isi yarida
+  // kesip "sacma hata" + gereksiz restart uretiyordu. Limit yukseltildi +
+  // config'ten ayarlanabilir; asil temizlik gecelik restart + idle recycle ile.
+  // Ayrica AKTIF IS varken kesmiyoruz; sadece bos anda restart -> is yarida kalmaz.
+  const LIMIT_MB = Number(cfg.worker?.memoryLimitMb) > 0 ? Number(cfg.worker.memoryLimitMb) : 1500;
   setInterval(() => {
     const mb = Math.round(process.memoryUsage().rss / 1024 / 1024);
     if (mb > LIMIT_MB) {
-      log.error(`Self-heal: RAM ${mb}MB > ${LIMIT_MB}MB limit. Proses sonlandiriliyor (watchdog restart edecek).`);
+      if (activeJobsStartTime.size > 0) {
+        log.warn(`Self-heal: RAM ${mb}MB > ${LIMIT_MB}MB ama aktif is var; is bitince restart icin bekleniyor.`);
+        return;
+      }
+      log.error(`Self-heal: RAM ${mb}MB > ${LIMIT_MB}MB limit (bos). Proses sonlandiriliyor (watchdog restart edecek).`);
       process.exit(3);
     }
   }, 60_000); // 60sn'de bir
 }
 
 // ====================================================================
-// SELF-HEAL: Job timeout watcher — 10dk asan jobi abort + restart
+// SELF-HEAL: Job timeout watcher — is timeout + pay suresini asan jobi abort + restart
 // ====================================================================
 const activeJobsStartTime = new Map(); // jobId -> startedAt
-const JOB_TIMEOUT_MS = 10 * 60 * 1000; // 10 dakika
+// DUZELTME (2026-06-08): Watchdog timeout'u her zaman JOB_TIMEOUT'tan (varsayilan
+// 15dk) BUYUK olmali. Onceden 10dk SABITti; uzun mesru isler (buyuk e-arsiv/mizan,
+// backend ust suresi 15dk) 15dk'lik is timeout'u dolmadan 10dk'da process-kill
+// yiyordu = "surekli sacma hata" + gereksiz soguk restart. Artik is timeout + 10dk
+// pay; gercekten asili kalan prosesi yine yakalar ama mesru uzun isi kesmez.
+const JOB_TIMEOUT_MS = JOB_TIMEOUT + 10 * 60 * 1000;
 
 function startJobTimeoutWatcher() {
   // GERI ALINDI: Onceki "backend status pending/cancelled/failed -> process.exit(6)"
@@ -1779,7 +1835,7 @@ function startJobTimeoutWatcher() {
     const now = Date.now();
     for (const [jid, startedAt] of activeJobsStartTime) {
       if (now - startedAt > JOB_TIMEOUT_MS) {
-        log.error(`Self-heal: Job ${jid} 10dk+ takildi. Proses sonlandiriliyor (watchdog restart edecek).`);
+        log.error(`Self-heal: Job ${jid} ${Math.round(JOB_TIMEOUT_MS / 60000)}dk+ takildi. Proses sonlandiriliyor (watchdog restart edecek).`);
         api.post(`/agent/luca/jobs/${jid}/requeue`, {
           reason: 'AGENT_SELF_HEAL_TIMEOUT_10MIN',
         }).catch(() => {});
