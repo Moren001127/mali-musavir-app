@@ -111,7 +111,13 @@ const DIGER_GRUBU: BeyannameDef[] = [
  * v1.37.1: Mükellefiyetler kartı — Hattat tarzı tüm beyanname türleri.
  * Backend: PUT /beyanname-takip/configs/:taxpayerId
  */
-export function MukellefiyetlerCard({ taxpayerId }: { taxpayerId: string }) {
+export function MukellefiyetlerCard({
+  taxpayerId,
+  sgkCredentialReady = false,
+}: {
+  taxpayerId: string;
+  sgkCredentialReady?: boolean;
+}) {
   const qc = useQueryClient();
 
   const { data: configData = [], isLoading } = useQuery<any[]>({
@@ -149,6 +155,13 @@ export function MukellefiyetlerCard({ taxpayerId }: { taxpayerId: string }) {
       });
     }
   }, [existingConfig]);
+
+  useEffect(() => {
+    if (!sgkCredentialReady) return;
+    setForm((prev) => (
+      prev.sgkBildirgeEnabled ? prev : { ...prev, sgkBildirgeEnabled: true }
+    ));
+  }, [sgkCredentialReady]);
 
   const saveMut = useMutation({
     mutationFn: () => api.put(`/beyanname-takip/configs/${taxpayerId}`, form),
@@ -199,16 +212,11 @@ export function MukellefiyetlerCard({ taxpayerId }: { taxpayerId: string }) {
       </div>
 
       {/* KDV Grubu */}
-      <BeyanGroup title="KDV Beyannameleri" items={KDV_GRUBU} form={form} setForm={setForm} />
-
-      {/* Geçici Vergi */}
-      <BeyanGroup title="Geçici Vergi" items={GECICI_GRUBU} form={form} setForm={setForm} />
-
-      {/* Muhtasar */}
-      <BeyanGroup title="Muhtasar" items={MUHTASAR_GRUBU} form={form} setForm={setForm} />
-
-      {/* Diğer */}
-      <BeyanGroup title="Diğer Beyannameler" items={DIGER_GRUBU} form={form} setForm={setForm} />
+      <div className="grid gap-2 md:grid-cols-2 xl:grid-cols-3">
+        {visibleDefs.map((item) => (
+          <BeyanRow key={item.key as string} item={item} form={form} setForm={setForm} />
+        ))}
+      </div>
 
       {/* Kaydet */}
       <div className="flex justify-end">
@@ -222,34 +230,6 @@ export function MukellefiyetlerCard({ taxpayerId }: { taxpayerId: string }) {
           {saveMut.isPending ? <Loader2 size={14} className="animate-spin" /> : <Save size={14} />}
           Mükellefiyetleri Kaydet
         </button>
-      </div>
-    </div>
-  );
-}
-
-// ============================================================
-// Beyanname grubu — kategori başlığı + alt liste
-// ============================================================
-function BeyanGroup({
-  title,
-  items,
-  form,
-  setForm,
-}: {
-  title: string;
-  items: BeyannameDef[];
-  form: BeyanConfig;
-  setForm: React.Dispatch<React.SetStateAction<BeyanConfig>>;
-}) {
-  return (
-    <div>
-      <div className="mb-2 text-[10.5px] font-black uppercase tracking-[0.10em]" style={{ color: GOLD }}>
-        {title}
-      </div>
-      <div className="grid gap-2 lg:grid-cols-2">
-        {items.map((item) => (
-          <BeyanRow key={item.key as string} item={item} form={form} setForm={setForm} />
-        ))}
       </div>
     </div>
   );

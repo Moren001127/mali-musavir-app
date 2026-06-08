@@ -162,6 +162,41 @@ export class DocumentsService {
     return document;
   }
 
+  async uploadDirect(
+    tenantId: string,
+    userId: string,
+    dto: InitiateUploadDto,
+    file: { buffer: Buffer; mimetype?: string; originalname?: string },
+  ) {
+    const taxpayer = await this.prisma.taxpayer.findFirst({
+      where: { id: dto.taxpayerId, tenantId },
+    });
+    if (!taxpayer) throw new NotFoundException('Mükellef bulunamadı');
+
+    const sizeBytes = file.buffer?.length || 0;
+    this.assertUploadedObject({ sizeBytes });
+
+    const { s3Key } = await this.storage.getPresignedUploadUrl(
+      tenantId,
+      dto.taxpayerId,
+      dto.originalName || file.originalname || dto.title,
+      dto.mimeType || file.mimetype || 'application/octet-stream',
+    );
+
+    await this.storage.putBuffer(
+      s3Key,
+      file.buffer,
+      dto.mimeType || file.mimetype || 'application/octet-stream',
+      {
+        'original-name': encodeURIComponent(dto.originalName || file.originalname || dto.title),
+        'tenant-id': tenantId,
+        'taxpayer-id': dto.taxpayerId,
+      },
+    );
+
+    return this.confirmUpload(tenantId, userId, { ...dto, s3Key });
+  }
+
   /**
    * Mükellef bazında belgeleri listele
    */

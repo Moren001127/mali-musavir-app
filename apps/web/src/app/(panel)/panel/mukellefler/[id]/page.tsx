@@ -45,6 +45,7 @@ import { MukellefiyetlerCard } from '@/components/mukellef/MukellefiyetlerCard';
 import { TaxpayerPortalCredentialsCard } from '@/components/portal-automation/PortalCredentialCards';
 import { beyanKayitlariApi, BEYAN_TIPI_LABEL, type BeyanKaydi } from '@/lib/beyan-kayitlari';
 import { documentsApi } from '@/lib/documents';
+import { portalAutomationApi, type PortalProvider } from '@/lib/portal-automation';
 import { DocumentCategory } from '@mali-musavir/shared';
 
 // ── Kurumsal duo palet (altın marka + çelik mavisi yapı), siyah zemin ──
@@ -68,9 +69,9 @@ const GREEN = '#5fcf8e';
 const AMBER = '#f0b755';
 const RED = '#ef6b6b';
 
-const FIELD_CLS = 'h-[42px] w-full rounded-xl border border-white/10 bg-[#0c0d11] px-3.5 text-[13px] text-[#f5f5f4] outline-none transition placeholder:text-white/30 focus:border-[#d4b876]/60 focus:bg-[#0e1014] focus:shadow-[0_0_0_3px_rgba(212,184,118,0.14)]';
+const FIELD_CLS = 'h-10 w-full rounded-[10px] border border-white/10 bg-[#0c0d11] px-3 text-[12.5px] font-semibold text-[#f5f5f4] outline-none transition placeholder:text-white/28 focus:border-[#d4b876]/60 focus:bg-[#0e1014] focus:shadow-[0_0_0_3px_rgba(212,184,118,0.14)]';
 const SELECT_CLS = `${FIELD_CLS} cursor-pointer`;
-const TEXTAREA_CLS = 'w-full resize-none rounded-xl border border-white/10 bg-[#0c0d11] px-3.5 py-3 text-[13px] text-[#f5f5f4] outline-none transition placeholder:text-white/30 focus:border-[#4f86c9]/60 focus:bg-[#0e1014] focus:shadow-[0_0_0_3px_rgba(79,134,201,0.15)]';
+const TEXTAREA_CLS = 'w-full resize-none rounded-[10px] border border-white/10 bg-[#0c0d11] px-3 py-2.5 text-[12.5px] font-semibold text-[#f5f5f4] outline-none transition placeholder:text-white/28 focus:border-[#4f86c9]/60 focus:bg-[#0e1014] focus:shadow-[0_0_0_3px_rgba(79,134,201,0.15)]';
 
 const TAXPAYER_TYPES = [
   { value: 'TUZEL_KISI', label: 'Tüzel Kişi', detail: 'Şirket veya kurum kaydı' },
@@ -370,17 +371,22 @@ export default function MukellefDetayPage() {
     onError: () => toast.error('Mükellef durumu güncellenemedi'),
   });
 
-  const handleSubmit = (event: React.FormEvent) => {
-    event.preventDefault();
-    const payload = {
+  const buildPayload = () => ({
       ...form,
       phones: form.phones.filter(Boolean),
       emails: form.emails.filter(Boolean),
       evrakTeslimGunu: form.evrakTeslimGunu ? parseInt(String(form.evrakTeslimGunu), 10) : null,
       startDate: form.startDate || null,
       endDate: form.endDate || null,
-    };
-    saveData(payload);
+  });
+
+  const saveForm = () => {
+    saveData(buildPayload());
+  };
+
+  const handleSubmit = (event: React.FormEvent) => {
+    event.preventDefault();
+    saveForm();
   };
 
   const cardNav = useMemo(() => {
@@ -580,7 +586,7 @@ export default function MukellefDetayPage() {
         </nav>
 
         <div className="p-4 sm:p-5">
-          {activeTab === 'bilgiler' && <BilgilerTab form={form} setForm={setForm} taxpayerId={isNew ? null : id} />}
+          {activeTab === 'bilgiler' && <BilgilerTab form={form} setForm={setForm} taxpayerId={isNew ? null : id} onSave={saveForm} saving={isPending} />}
           {activeTab === 'beyannameler' && !isNew && id && <BeyannamelerTab taxpayerId={id} />}
           {activeTab === 'sgk' && (
             <PlaceholderTab
@@ -602,7 +608,7 @@ export default function MukellefDetayPage() {
           {activeTab === 'iseGiris' && (
             <PlaceholderTab icon={UserCog} title="İşe Giriş Bildirgesi" description="İşe giriş ve işten çıkış bildirimleri için ayrılmış alan." comingSoon />
           )}
-          {activeTab === 'notlar' && <NotlarTab form={form} setForm={setForm} />}
+          {activeTab === 'notlar' && <NotlarTab form={form} setForm={setForm} onSave={saveForm} saving={isPending} hasRecord={!isNew} />}
         </div>
       </section>
 
@@ -735,11 +741,34 @@ function BilgilerTab({
   form,
   setForm,
   taxpayerId,
+  onSave,
+  saving,
 }: {
   form: FormState;
   setForm: React.Dispatch<React.SetStateAction<FormState>>;
   taxpayerId: string | null;
+  onSave: () => void;
+  saving: boolean;
 }) {
+  const { data: credentialData } = useQuery({
+    queryKey: ['portal-automation-credentials'],
+    queryFn: () => portalAutomationApi.credentials(),
+    enabled: !!taxpayerId,
+    staleTime: 30_000,
+  });
+
+  const credentialReady = (provider: Extract<PortalProvider, 'GIB_IVD' | 'SGK_EBILDIRGE'>) => {
+    const rows = credentialData?.rows || [];
+    return rows.some((credential) => {
+      if (credential.provider !== provider || credential.taxpayerId !== taxpayerId || credential.isActive === false) return false;
+      const identity = provider === 'SGK_EBILDIRGE' ? credential.username : credential.userCode;
+      return !!String(identity || '').trim() && (!!credential.hasPassword || !!credential.hasSecondaryPassword);
+    });
+  };
+
+  const hasGibCredential = credentialReady('GIB_IVD');
+  const hasSgkCredential = credentialReady('SGK_EBILDIRGE');
+
   const sections: {
     id: BilgiSectionId;
     title: string;
@@ -758,10 +787,15 @@ function BilgilerTab({
     { id: 'otomasyon', title: 'Evrak & Otomasyon Bilgileri', subtitle: 'Teslim günü ve mesajlar', icon: Workflow, show: true, filled: !!form.evrakTeslimGunu || form.whatsappEvrakTalep || form.whatsappEvrakGeldi },
     { id: 'sistem', title: 'Defter & Sistem Bilgileri', subtitle: 'Luca / Mihsap eşleşme', icon: Settings2, show: true, filled: !!form.lucaSlug || !!form.mihsapId },
   ];
-  const credentialSections: typeof sections = [
+  let credentialSections: typeof sections = [
     { id: 'vergiSifre', title: 'Vergi Dairesi Şifre Bilgileri', subtitle: 'Kullanıcı kodu, parola ve şifre', icon: Lock, show: !!taxpayerId, filled: false },
     { id: 'sgkSifre', title: 'E-Bildirge Giriş Bilgileri', subtitle: 'SGK kullanıcı adı, sistem şifresi ve işyeri şifresi', icon: Shield, show: !!taxpayerId, filled: false },
   ];
+  credentialSections = credentialSections.map((section) => {
+    if (section.id === 'vergiSifre') return { ...section, filled: hasGibCredential };
+    if (section.id === 'sgkSifre') return { ...section, filled: hasSgkCredential };
+    return section;
+  });
   const hiddenSectionIds = new Set<BilgiSectionId>(['yetkili', 'giris', 'bagkur']);
   const visible = sections
     .filter((s) => s.show && !hiddenSectionIds.has(s.id))
@@ -841,12 +875,13 @@ function BilgilerTab({
               </Field>
             </div>
           </FormCluster>
+          <SectionSaveButton onSave={onSave} saving={saving} hasRecord={!!taxpayerId} />
         </div>
       );
     }
 
     if (section === 'mukellefiyet') {
-      return taxpayerId ? <MukellefiyetlerCard taxpayerId={taxpayerId} /> : null;
+      return taxpayerId ? <MukellefiyetlerCard taxpayerId={taxpayerId} sgkCredentialReady={hasSgkCredential} /> : null;
     }
 
     if (section === 'yetkili') {
@@ -904,6 +939,7 @@ function BilgilerTab({
               <InputBase value={form.webSitesi} onChange={(e) => setForm((p) => ({ ...p, webSitesi: e.target.value }))} />
             </Field>
           </div>
+          <SectionSaveButton onSave={onSave} saving={saving} hasRecord={!!taxpayerId} />
         </div>
       );
     }
@@ -932,6 +968,7 @@ function BilgilerTab({
             </div>
             <p className="mt-1.5">Bağ-Kur ve e-Devlet şifreleri giriş bilgileri bölümünden yönetilir.</p>
           </div>
+          <SectionSaveButton onSave={onSave} saving={saving} hasRecord={!!taxpayerId} />
         </div>
       );
     }
@@ -966,36 +1003,40 @@ function BilgilerTab({
               />
             </div>
           </div>
+          <SectionSaveButton onSave={onSave} saving={saving} hasRecord={!!taxpayerId} />
         </div>
       );
     }
 
     if (section === 'otomasyon') {
       return (
-        <div className="grid grid-cols-1 gap-4 md:grid-cols-[minmax(0,260px)_1fr]">
-          <Field label="Evrak teslim son günü">
-            <InputBase
-              type="number"
-              min={1}
-              max={30}
-              value={form.evrakTeslimGunu}
-              onChange={(e) => setForm((p) => ({ ...p, evrakTeslimGunu: e.target.value }))}
-            />
-          </Field>
-          <div className="grid gap-3">
-            <ToggleRow
-              checked={form.whatsappEvrakTalep}
-              onChange={(checked) => setForm((p) => ({ ...p, whatsappEvrakTalep: checked }))}
-              title="Evrak talep mesajı"
-              detail="Aylık evrak akışı için WhatsApp hatırlatması."
-            />
-            <ToggleRow
-              checked={form.whatsappEvrakGeldi}
-              onChange={(checked) => setForm((p) => ({ ...p, whatsappEvrakGeldi: checked }))}
-              title="Evrak geldi onayı"
-              detail="Evrak geldi işaretlendiğinde bilgilendirme mesajı."
-            />
+        <div className="space-y-4">
+          <div className="grid grid-cols-1 gap-4 md:grid-cols-[minmax(0,260px)_1fr]">
+            <Field label="Evrak teslim son günü">
+              <InputBase
+                type="number"
+                min={1}
+                max={30}
+                value={form.evrakTeslimGunu}
+                onChange={(e) => setForm((p) => ({ ...p, evrakTeslimGunu: e.target.value }))}
+              />
+            </Field>
+            <div className="grid gap-3">
+              <ToggleRow
+                checked={form.whatsappEvrakTalep}
+                onChange={(checked) => setForm((p) => ({ ...p, whatsappEvrakTalep: checked }))}
+                title="Evrak talep mesajı"
+                detail="Aylık evrak akışı için WhatsApp hatırlatması."
+              />
+              <ToggleRow
+                checked={form.whatsappEvrakGeldi}
+                onChange={(checked) => setForm((p) => ({ ...p, whatsappEvrakGeldi: checked }))}
+                title="Evrak geldi onayı"
+                detail="Evrak geldi işaretlendiğinde bilgilendirme mesajı."
+              />
+            </div>
           </div>
+          <SectionSaveButton onSave={onSave} saving={saving} hasRecord={!!taxpayerId} />
         </div>
       );
     }
@@ -1035,6 +1076,7 @@ function BilgilerTab({
             </select>
           </Field>
         </div>
+        <SectionSaveButton onSave={onSave} saving={saving} hasRecord={!!taxpayerId} />
       </div>
     );
   };
@@ -1054,6 +1096,31 @@ function BilgilerTab({
           {renderSection(s.id)}
         </AccordionRow>
       ))}
+    </div>
+  );
+}
+
+function SectionSaveButton({
+  onSave,
+  saving,
+  hasRecord,
+}: {
+  onSave: () => void;
+  saving: boolean;
+  hasRecord: boolean;
+}) {
+  return (
+    <div className="flex justify-start border-t pt-3" style={{ borderColor: HAIR }}>
+      <button
+        type="button"
+        onClick={onSave}
+        disabled={saving}
+        className="inline-flex h-10 items-center gap-2 rounded-[6px] px-4 text-[12.5px] font-black shadow-sm transition hover:brightness-105 disabled:opacity-50"
+        style={{ background: '#16803d', border: '1px solid rgba(95,207,142,0.42)', color: '#fff' }}
+      >
+        {saving ? <Loader2 size={15} className="animate-spin" /> : <Save size={15} />}
+        {hasRecord ? 'Güncelle' : 'Kaydet'}
+      </button>
     </div>
   );
 }
@@ -1116,10 +1183,10 @@ function AccordionRow({
 
 function FormCluster({ title, children }: { title: string; children: React.ReactNode }) {
   return (
-    <div className="border-l-2 py-1 pl-3" style={{ borderColor: 'rgba(212,184,118,0.34)' }}>
-      <div className="mb-3 flex items-center gap-2">
+    <div className="rounded-[8px] border p-3.5" style={{ borderColor: 'rgba(212,184,118,0.20)', background: 'rgba(255,255,255,0.022)' }}>
+      <div className="mb-3 flex items-center gap-2 border-b pb-2" style={{ borderColor: HAIR }}>
         <span className="h-1.5 w-1.5 rounded-full" style={{ background: GOLD }} />
-        <span className="text-[11px] font-black uppercase tracking-[0.10em]" style={{ color: GOLD_BR }}>{title}</span>
+        <span className="text-[10.5px] font-black uppercase tracking-[0.10em]" style={{ color: GOLD_BR }}>{title}</span>
       </div>
       {children}
     </div>
@@ -1286,9 +1353,21 @@ function YetkililerSection({ taxpayerId }: { taxpayerId: string }) {
 // ============================================================
 // NOTLAR TAB
 // ============================================================
-function NotlarTab({ form, setForm }: { form: FormState; setForm: React.Dispatch<React.SetStateAction<FormState>> }) {
+function NotlarTab({
+  form,
+  setForm,
+  onSave,
+  saving,
+  hasRecord,
+}: {
+  form: FormState;
+  setForm: React.Dispatch<React.SetStateAction<FormState>>;
+  onSave: () => void;
+  saving: boolean;
+  hasRecord: boolean;
+}) {
   return (
-    <div>
+    <div className="space-y-3">
       <label className="mb-2 block text-[12.5px] font-semibold" style={{ color: MUTED }}>
         Mükellef hakkında notlar
       </label>
@@ -1299,6 +1378,7 @@ function NotlarTab({ form, setForm }: { form: FormState; setForm: React.Dispatch
         placeholder="Bu mükellefe özel notlar..."
         className={TEXTAREA_CLS}
       />
+      <SectionSaveButton onSave={onSave} saving={saving} hasRecord={hasRecord} />
     </div>
   );
 }
@@ -1348,20 +1428,16 @@ function CariHesapTab({ taxpayerId }: { taxpayerId: string }) {
       const now = new Date();
       const baslangic = `${now.getFullYear()}-01-01`;
       const bitis = now.toISOString().slice(0, 10);
-      const resp = await api.get(`/cari-kasa/ekstre/${taxpayerId}/xlsx`, {
+      const resp = await api.get(`/cari-kasa/ekstre/${taxpayerId}/pdf`, {
         params: { baslangic, bitis },
-        responseType: 'blob',
+        responseType: 'text',
+        transformResponse: (data) => data,
       });
-      const blob = resp.data instanceof Blob ? resp.data : new Blob([resp.data]);
+      const blob = new Blob([resp.data], { type: 'text/html; charset=utf-8' });
       const url = URL.createObjectURL(blob);
-      const a = document.createElement('a');
-      a.href = url;
-      a.download = `Ekstre_${taxpayerId}_${baslangic}_${bitis}.xlsx`;
-      document.body.appendChild(a);
-      a.click();
-      a.remove();
-      URL.revokeObjectURL(url);
-      toast.success('Ekstre indirildi');
+      window.open(url, '_blank', 'noopener,noreferrer');
+      setTimeout(() => URL.revokeObjectURL(url), 5 * 60 * 1000);
+      toast.success('Logolu ekstre açıldı');
     } catch (e: any) {
       toast.error(e?.response?.data?.message || 'Ekstre indirilemedi');
     } finally {
@@ -1779,7 +1855,51 @@ function BeyannamelerTab({ taxpayerId }: { taxpayerId: string }) {
         </Link>
       </div>
 
-      <div className="overflow-hidden rounded-xl border" style={{ borderColor: HAIR }}>
+      <div className="rounded-[8px] border" style={{ borderColor: HAIR, background: CARD2 }}>
+        <div className="grid grid-cols-[minmax(150px,1fr)_minmax(150px,1.1fr)_110px_120px_48px] gap-3 border-b px-3 py-2 text-[10px] font-black uppercase tracking-[0.10em]" style={{ borderColor: HAIR, color: FAINT }}>
+          <span>Beyanname</span>
+          <span>Donem</span>
+          <span>Belge</span>
+          <span className="text-right">Tutar</span>
+          <span className="text-right">Ac</span>
+        </div>
+        <div>
+          {sorted.flatMap((row) => ([
+            { row, kind: 'beyanname' as const, tur: 'E-Beyanname', hasFile: !!row.beyannameUrl },
+            { row, kind: 'tahakkuk' as const, tur: 'Tahakkuk', hasFile: !!row.pdfUrl },
+          ])).map(({ row, kind, tur, hasFile }) => {
+            const busy = busyKey === `${row.id}:${kind}`;
+            const isBeyan = kind === 'beyanname';
+            return (
+              <div key={`${row.id}:${kind}:card`} className="grid grid-cols-[minmax(150px,1fr)_minmax(150px,1.1fr)_110px_120px_48px] gap-3 border-b px-3 py-2.5 text-[12.5px] last:border-b-0" style={{ borderColor: 'rgba(255,255,255,0.055)' }}>
+                <div className="min-w-0">
+                  <span className="inline-flex max-w-full items-center rounded-[6px] border px-2 py-1 text-[10.5px] font-black" style={{ borderColor: STEEL_LN, background: STEEL_SF, color: STEEL_BR }}>
+                    <span className="truncate">{BEYAN_TIPI_LABEL[row.beyanTipi] || row.beyanTipi}</span>
+                  </span>
+                </div>
+                <div className="min-w-0">
+                  <div className="truncate font-black" style={{ color: TEXT }}>{fmtBeyanDonem(row.donem)}</div>
+                  <div className="mt-0.5 truncate text-[11px] font-semibold" style={{ color: FAINT }}>
+                    {row.beyanTarihi ? `Beyan: ${fmtDateTR(row.beyanTarihi.substring(0, 10))}` : 'Beyan tarihi yok'}
+                    {row.onayNo ? ` - Onay: ${row.onayNo}` : ''}
+                  </div>
+                </div>
+                <span className="self-center rounded-[6px] px-2 py-1 text-center text-[10px] font-black uppercase tracking-wide" style={isBeyan ? { background: STEEL_SF, color: STEEL_BR } : { background: 'rgba(212,184,118,0.12)', color: GOLD }}>
+                  {tur}
+                </span>
+                <span className="self-center text-right font-black tabular-nums" style={{ color: isBeyan ? FAINT : TEXT }}>
+                  {isBeyan ? '-' : (row.tahakkukTutari != null ? `${fmtTutar(row.tahakkukTutari)} TL` : '-')}
+                </span>
+                <span className="self-center text-right">
+                  <DocBtn label={hasFile ? 'Goruntule' : 'PDF yok'} disabled={!hasFile} busy={busy} onClick={() => openDoc(row, kind)} muted={!isBeyan} />
+                </span>
+              </div>
+            );
+          })}
+        </div>
+      </div>
+
+      <div className="hidden overflow-hidden rounded-xl border" style={{ borderColor: HAIR }}>
         <table className="w-full table-fixed border-collapse text-left">
           <colgroup>
             <col style={{ width: '18%' }} />
@@ -2013,7 +2133,7 @@ function PlaceholderTab({
 function Field({ label, required, className = '', children }: { label: string; required?: boolean; className?: string; children: React.ReactNode }) {
   return (
     <label className={`block ${className}`}>
-      <span className="mb-1.5 block text-[11px] font-medium tracking-wide" style={{ color: MUTED }}>
+      <span className="mb-1.5 block text-[11.5px] font-black tracking-wide" style={{ color: 'rgba(245,245,244,0.66)' }}>
         {label}{required ? <span style={{ color: AMBER }}> *</span> : ''}
       </span>
       {children}

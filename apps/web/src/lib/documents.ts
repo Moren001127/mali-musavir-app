@@ -1,28 +1,20 @@
-import { api } from './api';
 import { DocumentCategory } from '@mali-musavir/shared';
+import { api } from './api';
 
 export const documentsApi = {
-  /** Tüm evraklar (tenant geneli) */
   findAll: (params?: { category?: string; search?: string }) =>
     api.get('/documents', { params }).then((r) => r.data),
 
-  /** Mükellef bazlı evraklar */
   findByTaxpayer: (taxpayerId: string, params?: { category?: string; search?: string }) =>
     api.get(`/documents/taxpayer/${taxpayerId}`, { params }).then((r) => r.data),
 
-  /** Belge detayı */
   findOne: (id: string) => api.get(`/documents/${id}`).then((r) => r.data),
 
-  /** İndirme URL'i */
   getDownloadUrl: (id: string, version?: number) =>
     api
       .get(`/documents/${id}/download`, { params: version ? { version } : {} })
       .then((r) => r.data),
 
-  /**
-   * Dosya yükleme (2 adım):
-   * 1. presigned URL al  2. S3'e yükle  3. confirm
-   */
   upload: async (payload: {
     taxpayerId: string;
     title: string;
@@ -31,37 +23,25 @@ export const documentsApi = {
     tags?: string[];
     onProgress?: (pct: number) => void;
   }) => {
-    // Adım 1 — presigned URL al
-    const { uploadUrl, s3Key } = await api
-      .post('/documents/upload/initiate', {
-        taxpayerId: payload.taxpayerId,
-        title: payload.title,
-        category: payload.category,
-        mimeType: payload.file.type || 'application/octet-stream',
-        originalName: payload.file.name,
-        tags: payload.tags,
-      })
-      .then((r) => r.data);
+    const formData = new FormData();
+    formData.append('taxpayerId', payload.taxpayerId);
+    formData.append('title', payload.title);
+    formData.append('category', payload.category);
+    formData.append('mimeType', payload.file.type || 'application/octet-stream');
+    formData.append('originalName', payload.file.name);
+    formData.append('tags', JSON.stringify(payload.tags || []));
+    formData.append('file', payload.file);
 
-    // Adım 2 — doğrudan S3/MinIO'ya yükle (CORS gerekli)
-    await fetch(uploadUrl, {
-      method: 'PUT',
-      body: payload.file,
-      headers: { 'Content-Type': payload.file.type || 'application/octet-stream' },
-    });
-
-    payload.onProgress?.(80);
-
-    // Adım 3 — confirm
     const doc = await api
-      .post('/documents/upload/confirm', {
-        taxpayerId: payload.taxpayerId,
-        title: payload.title,
-        category: payload.category,
-        mimeType: payload.file.type || 'application/octet-stream',
-        originalName: payload.file.name,
-        tags: payload.tags,
-        s3Key,
+      .post('/documents/upload/direct', formData, {
+        onUploadProgress: (event) => {
+          if (!event.total) {
+            payload.onProgress?.(50);
+            return;
+          }
+          const pct = Math.max(1, Math.min(99, Math.round((event.loaded / event.total) * 100)));
+          payload.onProgress?.(pct);
+        },
       })
       .then((r) => r.data);
 
@@ -69,7 +49,6 @@ export const documentsApi = {
     return doc;
   },
 
-  /** Yeni versiyon yükle */
   uploadVersion: async (documentId: string, file: File, notes?: string) => {
     const { uploadUrl, s3Key } = await api
       .post(`/documents/${documentId}/versions/initiate`, {
@@ -93,7 +72,6 @@ export const documentsApi = {
       .then((r) => r.data);
   },
 
-  /** Meta güncelle (geçerlilik tarihi de buradan yenilenir) */
   update: (
     id: string,
     dto: {
@@ -106,7 +84,6 @@ export const documentsApi = {
     },
   ) => api.patch(`/documents/${id}`, dto).then((r) => r.data),
 
-  /** Geçerliliği biten / yakında bitecek belgeler */
   getExpiring: (params: {
     daysAhead?: number;
     includeExpired?: boolean;
@@ -122,7 +99,6 @@ export const documentsApi = {
       })
       .then((r) => r.data as Array<ExpiringDocument>),
 
-  /** Soft delete */
   remove: (id: string) => api.delete(`/documents/${id}`).then((r) => r.data),
 };
 

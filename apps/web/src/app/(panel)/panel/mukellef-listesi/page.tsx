@@ -7,13 +7,13 @@ import {
   BadgeCheck,
   Building2,
   ChevronDown,
-  Eye,
   FileText,
   List,
   Mail,
   Plus,
   Search,
   Smartphone,
+  Trash2,
   User,
   type LucideIcon,
 } from 'lucide-react';
@@ -151,15 +151,13 @@ export default function MukellefListesiPage() {
     onError: () => toast.error('Durum güncellenemedi'),
   });
 
-  const toggleCariTakip = useMutation({
-    mutationFn: ({ id, cariTakipAktif }: { id: string; cariTakipAktif: boolean }) =>
-      api.put(`/taxpayers/${id}/cari-takip`, { cariTakipAktif }),
-    onSuccess: (_res, vars) => {
-      toast.success(vars.cariTakipAktif ? 'Cari takip aktife alındı' : 'Cari takip pasife alındı');
+  const deleteTaxpayer = useMutation({
+    mutationFn: (id: string) => api.delete(`/taxpayers/${id}`),
+    onSuccess: () => {
+      toast.success('Mükellef silindi');
       qc.invalidateQueries({ queryKey: ['taxpayers'] });
-      qc.invalidateQueries({ queryKey: ['cari-hizmetler'] });
     },
-    onError: (e: any) => toast.error(e?.response?.data?.message || 'Cari takip güncellenemedi'),
+    onError: (e: any) => toast.error(e?.response?.data?.message || 'Mükellef silinemedi'),
   });
 
   const counts = useMemo(() => {
@@ -303,10 +301,10 @@ export default function MukellefListesiPage() {
               taxpayer={taxpayer}
               onToggle={() => toggleActive.mutate({ id: taxpayer.id, isActive: !taxpayer.isActive })}
               busy={toggleActive.isPending}
-              onCariToggle={() =>
-                toggleCariTakip.mutate({ id: taxpayer.id, cariTakipAktif: !taxpayer.cariTakipAktif })
-              }
-              cariBusy={toggleCariTakip.isPending}
+              onDelete={() => {
+                if (confirm(`${taxpayerName(taxpayer)} silinsin mi?`)) deleteTaxpayer.mutate(taxpayer.id);
+              }}
+              deleteBusy={deleteTaxpayer.isPending}
             />
           ))}
         </div>
@@ -319,14 +317,14 @@ function TaxpayerCard({
   taxpayer,
   onToggle,
   busy,
-  onCariToggle,
-  cariBusy,
+  onDelete,
+  deleteBusy,
 }: {
   taxpayer: Taxpayer;
   onToggle: () => void;
   busy: boolean;
-  onCariToggle: () => void;
-  cariBusy: boolean;
+  onDelete: () => void;
+  deleteBusy: boolean;
 }) {
   const name = taxpayerName(taxpayer);
   const phone = primaryPhone(taxpayer);
@@ -334,28 +332,26 @@ function TaxpayerCard({
   const type = typeLabel(taxpayer);
   const statusColor = taxpayer.isActive ? GREEN : ROSE;
   const [statusMenuOpen, setStatusMenuOpen] = useState(false);
-  const hasCariService = Number(taxpayer.cariHizmetCount || 0) > 0;
-  const cariActive = !!taxpayer.cariTakipAktif;
 
   return (
     <article
-      className="grid gap-4 rounded-[8px] p-4 md:grid-cols-[156px_minmax(0,1fr)_136px]"
-      style={{ background: CARD, border: `1px solid ${LINE}`, boxShadow: '0 12px 30px rgba(0,0,0,0.16)' }}
+      className="group grid gap-4 rounded-[7px] px-3 py-3 transition md:grid-cols-[112px_minmax(0,1fr)_116px]"
+      style={{ background: '#080808', border: `1px solid ${LINE}`, boxShadow: '0 8px 20px rgba(0,0,0,0.12)' }}
     >
-      <div className="flex h-[156px] items-center justify-center overflow-hidden rounded-[6px]" style={{ background: 'rgba(79,134,201,0.24)', border: '1px solid rgba(79,134,201,0.22)' }}>
+      <div className="flex h-[112px] items-center justify-center overflow-hidden rounded-[5px]" style={{ background: 'linear-gradient(145deg, rgba(79,134,201,0.24), rgba(79,134,201,0.11))', border: '1px solid rgba(79,134,201,0.24)' }}>
         {taxpayer.logoUrl ? (
           <div className="h-full w-full bg-cover bg-center" style={{ backgroundImage: `url(${taxpayer.logoUrl})` }} />
         ) : (
-          <div className="flex h-20 w-20 items-center justify-center rounded-full text-[24px] font-black" style={{ background: 'rgba(255,255,255,0.16)', color: TEXT }}>
+          <div className="flex h-[66px] w-[66px] items-center justify-center rounded-full text-[21px] font-black" style={{ background: 'rgba(255,255,255,0.16)', color: TEXT }}>
             {initials(taxpayer)}
           </div>
         )}
       </div>
 
       <div className="min-w-0">
-        <div className="flex flex-wrap items-start gap-2">
+        <div className="flex flex-wrap items-start gap-2.5">
           <Link href={`/panel/mukellefler/${taxpayer.id}`} className="min-w-0 flex-1">
-            <h2 className="truncate text-[20px] font-black leading-tight transition hover:text-[#d4b876]" style={{ color: TEXT }}>{name}</h2>
+            <h2 className="truncate text-[18px] font-black leading-tight transition group-hover:text-[#d4b876]" style={{ color: TEXT, fontFamily: 'Manrope, Inter, system-ui, sans-serif', letterSpacing: 0 }}>{name}</h2>
           </Link>
           <span
             className="rounded-[5px] px-2 py-1 text-[11px] font-black"
@@ -407,49 +403,15 @@ function TaxpayerCard({
             </div>
           )}
         </div>
-        {hasCariService ? (
-          <button
-            type="button"
-            onClick={onCariToggle}
-            disabled={cariBusy}
-            className="inline-flex w-full items-center justify-center rounded-[6px] px-3 py-2 text-[12px] font-black transition disabled:opacity-40 md:w-[118px]"
-            style={{
-              background: cariActive ? 'rgba(34,197,94,0.16)' : 'rgba(251,113,133,0.12)',
-              border: `1px solid ${cariActive ? 'rgba(34,197,94,0.30)' : 'rgba(251,113,133,0.30)'}`,
-              color: cariActive ? '#70e69e' : '#ff9aae',
-            }}
-            title="Cari Kasa & Tahsilat modülünde cari takibi aç/kapat"
-          >
-            {cariActive ? 'Cari Aktif' : 'Cari Pasif'}
-          </button>
-        ) : (
-          <Link
-            href={`/panel/cari-kasa?mukellef=${taxpayer.id}`}
-            className="inline-flex w-full items-center justify-center rounded-[6px] px-3 py-2 text-[12px] font-black md:w-[118px]"
-            style={{ background: 'rgba(212,184,118,0.12)', border: '1px solid rgba(212,184,118,0.28)', color: GOLD }}
-          >
-            Cari Tanımsız
-          </Link>
-        )}
-        <Link
-          href={`/panel/mukellefler/${taxpayer.id}`}
-          className="hidden"
-          style={{ background: 'rgba(79,134,201,0.13)', border: '1px solid rgba(79,134,201,0.28)', color: '#a9cdf5' }}
-        >
-          <Eye size={14} /> Kartı Aç
-        </Link>
         <button
           type="button"
-          onClick={onToggle}
-          disabled={busy}
-          className="hidden"
-          style={{
-            background: taxpayer.isActive ? 'rgba(251,113,133,0.12)' : 'rgba(34,197,94,0.13)',
-            border: `1px solid ${taxpayer.isActive ? 'rgba(251,113,133,0.30)' : 'rgba(34,197,94,0.30)'}`,
-            color: taxpayer.isActive ? '#ff9aae' : '#7eeaa5',
-          }}
+          onClick={onDelete}
+          disabled={deleteBusy}
+          className="inline-flex w-full items-center justify-center gap-1.5 rounded-[6px] px-3 py-2 text-[12px] font-black transition hover:brightness-105 disabled:opacity-40 md:w-[118px]"
+          style={{ background: '#d81b60', border: '1px solid rgba(255,255,255,0.14)', color: '#fff' }}
+          title="Mükellefi sil"
         >
-          {taxpayer.isActive ? 'Pasife Al' : 'Aktife Al'}
+          <Trash2 size={14} /> Sil
         </button>
       </div>
     </article>

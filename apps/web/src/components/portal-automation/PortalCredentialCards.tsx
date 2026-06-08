@@ -224,12 +224,6 @@ function CredentialEditor({
         />
       </div>
 
-      {credential?.lastError && (
-        <div className="mt-3 rounded-lg border px-3 py-2 text-[11.5px]" style={{ borderColor: 'rgba(248,113,113,0.24)', background: 'rgba(239,68,68,0.10)', color: '#fecaca' }}>
-          {credential.lastError}
-        </div>
-      )}
-
       <button
         type="button"
         disabled={disabled}

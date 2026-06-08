@@ -9,11 +9,16 @@ import {
   Body,
   Query,
   UseGuards,
+  UseInterceptors,
+  UploadedFile,
   Req,
   HttpCode,
   HttpStatus,
+  BadRequestException,
 } from '@nestjs/common';
 import { AuthGuard } from '@nestjs/passport';
+import { FileInterceptor } from '@nestjs/platform-express';
+import { memoryStorage } from 'multer';
 import { RolesGuard } from '../auth/guards/roles.guard';
 import { Roles } from '../auth/decorators/roles.decorator';
 import { DocumentsService } from './documents.service';
@@ -24,6 +29,18 @@ import {
   ConfirmNewVersionSchema,
   UpdateDocumentSchema,
 } from '@mali-musavir/shared';
+
+function parseUploadTags(value: unknown): string[] | undefined {
+  if (Array.isArray(value)) return value.map((tag) => String(tag).trim()).filter(Boolean);
+  if (typeof value !== 'string' || !value.trim()) return undefined;
+  try {
+    const parsed = JSON.parse(value);
+    if (Array.isArray(parsed)) return parsed.map((tag) => String(tag).trim()).filter(Boolean);
+  } catch {
+    return value.split(',').map((tag) => tag.trim()).filter(Boolean);
+  }
+  return undefined;
+}
 
 @Controller('documents')
 @UseGuards(AuthGuard('jwt'), RolesGuard)
@@ -117,6 +134,39 @@ export class DocumentsController {
       ...uploadDto,
       s3Key: confirmDto.s3Key,
     });
+  }
+
+  /** Canli ortam uyumlu direkt upload — browser S3/MinIO'ya gitmez, API yukler */
+  @Post('upload/direct')
+  @Roles('ADMIN', 'STAFF')
+  @UseInterceptors(FileInterceptor('file', {
+    storage: memoryStorage(),
+    limits: { fileSize: 100 * 1024 * 1024 },
+    fileFilter: (_req, _file, cb) => cb(null, true),
+  }))
+  directUpload(
+    @Req() req: any,
+    @Body() body: any,
+    @UploadedFile() file?: Express.Multer.File,
+  ) {
+    if (!file?.buffer) {
+      throw new BadRequestException('Dosya secilmedi');
+    }
+    const dto = InitiateUploadSchema.parse({
+      taxpayerId: body.taxpayerId,
+      title: body.title || file.originalname,
+      category: body.category,
+      mimeType: file.mimetype || body.mimeType || 'application/octet-stream',
+      originalName: file.originalname || body.originalName || body.title || 'document.bin',
+      tags: parseUploadTags(body.tags),
+    });
+
+    return this.documentsService.uploadDirect(
+      req.user.tenantId,
+      req.user.sub,
+      dto,
+      file,
+    );
   }
 
   /** Yeni versiyon — başlat */
