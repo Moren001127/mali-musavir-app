@@ -67,6 +67,17 @@ export class AgentEventsService {
     private pendingDecisions: PendingDecisionsService,
   ) {}
 
+  /**
+   * "Her faturayı oku + doğrula" politikası (VARSAYILAN AÇIK).
+   * Açıkken: faturayı OKUMADAN otomatik onaylayan kısayollar (Z raporu deterministik onay,
+   * firma hafızası fast-path onay) DEVRE DIŞI kalır — her fatura görüntüden okunup doğrulanır.
+   * Max aboneliği ücretsiz olduğu için okumamanın maliyet gerekçesi yok.
+   * Kapatmak (eski hızlı kısayollara dönmek) için: MIHSAP_ALWAYS_VERIFY=0.
+   */
+  private mihsapAlwaysVerify(): boolean {
+    return String(process.env.MIHSAP_ALWAYS_VERIFY ?? '1').trim() !== '0';
+  }
+
   private getMihsapDecisionMode(): MihsapDecisionMode {
     // VARSAYILAN = max_only: kararlar tamamen Max aboneliğinden (ücretsiz) verilir,
     // pahalı görsel Claude API'si çağrılmaz. Geri dönmek için: MIHSAP_DECISION_MODE=balanced.
@@ -250,6 +261,50 @@ export class AgentEventsService {
 
     const viewerText = String(ocrInput.faturaText || '').replace(/\s+/g, ' ').trim();
     const hasImage = String(ocrInput.faturaImageBase64 || '').trim().length > 200;
+    // Varsayılan Haiku (hız parite); daha yüksek isabet için MIHSAP_MAX_MODEL=claude-sonnet-4-6.
+    const model = process.env.MIHSAP_MAX_MODEL || MAX_MODEL_CHEAP;
+
+    // Max metin yanıtını, çağıran tarafın beklediği görsel-API yanıtına sar.
+    const wrapMaxText = (t: string) => ({
+      ok: true as const,
+      status: 200,
+      text: async () => t,
+      json: async () => ({
+        content: [{ type: 'text', text: t }],
+        usage: { input_tokens: 0, output_tokens: 0 },
+      }),
+    });
+
+    // ── BİRİNCİL YOL: Fatura GÖRÜNTÜSÜNÜ doğrudan Max aboneliğine ver (vision).
+    // OCR yok, ücretli API yok. Mihsap faturayı canvas/görsel olarak bastığı için
+    // en hızlı + en doğru okuma budur. Görüntü yoksa veya vision başarısızsa aşağıdaki
+    // OCR/metin yedeğine düşer (eski davranış korunur — regresyon riski yok).
+    // Kapatmak için: MIHSAP_MAX_VISION=0.
+    const visionEnabled = String(process.env.MIHSAP_MAX_VISION ?? '1').trim() !== '0';
+    if (visionEnabled && hasImage) {
+      const viewerEk =
+        viewerText.length >= 80
+          ? `\n\n=== FATURA GORUNTULEYICI / PDF TEXT-LAYER METNI (yalnizca capraz dogrulama icin) ===\n${viewerText.slice(0, 12000)}`
+          : '';
+      const visionPrompt = `${userText}\n\nSANA FATURA GÖRÜNTÜSÜ EKLENDİ. JSON'daki tarih, belgeNo, belgeTuru, cari, kdvOrani, ocrToplam, ocrMatrah ve ocrKdvTutari alanlarını YALNIZCA bu görüntüden oku. Mihsap/ekran üst bilgilerini belge verisi gibi kabul etme; onları sadece karşılaştırma hedefi olarak gör. Görüntüde net okuyamadığın alanı null bırak; ASLA tahmin/uydurma yapma.${viewerEk}`;
+      const visionMax = await claudeTextViaMax({
+        prompt: visionPrompt,
+        system: systemText,
+        model,
+        maxTurns: 1,
+        images: [
+          {
+            base64: ocrInput.faturaImageBase64,
+            mediaType: ocrInput.faturaImageMediaType || 'image/jpeg',
+          },
+        ],
+      });
+      if (visionMax.ok && visionMax.text) {
+        return wrapMaxText(visionMax.text);
+      }
+      // vision başarısız (boş/hata) → OCR/metin yedeğine düş.
+    }
+
     const shouldRunImageOcr =
       viewerText.length < 80 || String(process.env.MIHSAP_ALWAYS_IMAGE_OCR || '').trim() === '1';
     const ocr = shouldRunImageOcr && hasImage ? await this.runMihsapImageOcr(ocrInput, ocrSource) : null;
@@ -268,8 +323,6 @@ export class AgentEventsService {
         ? `${userText}\n\nAşağıdaki BELGE KAYNAKLARI fatura görselinden/PDF görüntüleyiciden alınmıştır. Ekran/Mihsap üst bilgilerini belge verisi gibi kabul etme; onları sadece karşılaştırma hedefi olarak gör. JSON'daki tarih, belgeNo, belgeTuru, cari, kdvOrani, ocrToplam, ocrMatrah ve ocrKdvTutari alanlarını yalnızca BELGE KAYNAKLARI'ndan doldur. Belge kaynaklarında olmayan bilgiyi UYDURMA, ekran bilgisinden kopyalama. Belge kaynakları kendi arasında veya Mihsap ekranıyla net çelişiyorsa onay verme/atla; okuyamadığın alanı null bırak.\n\n${belgeKaynaklari.join('\n\n')}`
         : `${userText}\n\n(Not: Fatura belge metni/OCR metni alınamadı. Ekran/Mihsap üst bilgisini fatura verisi gibi kabul etme. Belgeyi okuyamadığın için güvenli karar veremiyorsan "emin_degil"/"emin":false dön; tahmin etme.)`;
 
-    // Varsayılan Haiku (hız parite); daha yüksek isabet için MIHSAP_MAX_MODEL=claude-sonnet-4-6.
-    const model = process.env.MIHSAP_MAX_MODEL || MAX_MODEL_CHEAP;
     const max = await claudeTextViaMax({ prompt, system: systemText, model, maxTurns: 1 });
     if (!max.ok || !max.text) {
       return {
@@ -279,11 +332,7 @@ export class AgentEventsService {
         json: async () => ({}),
       };
     }
-    const fakeJson = {
-      content: [{ type: 'text', text: max.text }],
-      usage: { input_tokens: 0, output_tokens: 0 },
-    };
-    return { ok: true, status: 200, text: async () => max.text, json: async () => fakeJson };
+    return wrapMaxText(max.text);
   }
 
   /**
@@ -3156,7 +3205,9 @@ ${belgeMetni}`;
       return { ...memCached.value, cacheHit: true, aiCallReason: 'cache_hit' };
     }
 
-    if (!input.forceFresh && input.tenantId && input.belgeNo && input.mukellef) {
+    // "Her faturayı oku" açıkken DB önbelleği KULLANILMAZ: eski "atlandi" kayıtları
+    // faturayı yeniden okumadan tekrar atlatır; oysa amaç her faturayı vision ile okumak.
+    if (!this.mihsapAlwaysVerify() && !input.forceFresh && input.tenantId && input.belgeNo && input.mukellef) {
       try {
         const previous = await this.prisma.agentEvent.findFirst({
           where: {
@@ -3194,6 +3245,7 @@ ${belgeMetni}`;
     const isZRaporu = /z[\s_-]*rapor/i.test(`${input.belgeTuru || ''} ${input.firma || ''}`);
     const canUseDeterministicZRaporu =
       isZRaporu &&
+      !this.mihsapAlwaysVerify() && // "her faturayı oku" açıkken Z raporu da görüntüden okunur
       !hasBosAlanSecenekleri &&
       codesArr.length > 0 &&
       Number.isFinite(Number(input.tutar)) &&
@@ -3270,6 +3322,7 @@ ${belgeMetni}`;
         )
       : { ok: false as const };
     if (
+      !this.mihsapAlwaysVerify() && // "her faturayı oku" açıkken firma hafızası tek başına onaylamaz; vision yine çalışır (hint olarak kullanılır)
       !input.forceFresh &&
       !hasBosAlanSecenekleri &&
       vendorMemoryMatch &&

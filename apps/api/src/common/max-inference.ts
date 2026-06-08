@@ -43,6 +43,13 @@ export async function claudeTextViaMax(params: {
   system?: string;
   model?: string;
   maxTurns?: number;
+  /**
+   * Görsel (fatura) okumak için base64 görüntü listesi. Verilirse çağrı, Agent SDK'nın
+   * akış-girdi (AsyncIterable<SDKUserMessage>) biçimiyle yapılır ve görüntü doğrudan Max
+   * aboneliğine (görsel/vision) iletilir — OCR'a gerek kalmaz, ücretli API çağrılmaz.
+   * Görüntü yoksa eski davranış (saf metin) aynen korunur.
+   */
+  images?: Array<{ base64: string; mediaType?: string }>;
 }): Promise<MaxTextResult> {
   const model = params.model || MAX_MODEL_DEFAULT;
   const token = process.env.CLAUDE_CODE_OAUTH_TOKEN;
@@ -52,6 +59,14 @@ export async function claudeTextViaMax(params: {
   if (!params.prompt || !params.prompt.trim()) {
     return { ok: false, text: '', model, costUsd: 0, error: 'prompt boş.' };
   }
+
+  // Görüntüleri temizle (data-url önekini at, çok küçük/boş olanları ele).
+  const cleanImages = (params.images || [])
+    .map((im) => ({
+      data: String(im?.base64 || '').replace(/^data:[^;]+;base64,/, '').trim(),
+      media_type: im?.mediaType || 'image/jpeg',
+    }))
+    .filter((im) => im.data.length > 100);
 
   // İZOLE AUTH: subprocess Max OAuth token'ı kullansın; daha yüksek öncelikli
   // ANTHROPIC_* değişkenlerini düşür ki kesinlikle abonelikten çalışsın (API key'e düşmesin).
@@ -64,13 +79,36 @@ export async function claudeTextViaMax(params: {
   }
   childEnv.CLAUDE_CODE_OAUTH_TOKEN = token;
 
+  // Görüntü varsa: akış-girdi biçiminde tek bir kullanıcı mesajı (metin + görsel blokları).
+  // Görüntü yoksa: eski davranış — düz metin prompt.
+  const promptText = params.prompt;
+  const queryPrompt =
+    cleanImages.length > 0
+      ? (async function* () {
+          yield {
+            type: 'user',
+            message: {
+              role: 'user',
+              content: [
+                { type: 'text', text: promptText },
+                ...cleanImages.map((im) => ({
+                  type: 'image',
+                  source: { type: 'base64', media_type: im.media_type, data: im.data },
+                })),
+              ],
+            },
+            parent_tool_use_id: null,
+          };
+        })()
+      : promptText;
+
   let text = '';
   let costUsd = 0;
   let isError = false;
   try {
     const query = await loadQuery();
     for await (const m of query({
-      prompt: params.prompt,
+      prompt: queryPrompt as any,
       options: {
         model,
         systemPrompt: params.system,

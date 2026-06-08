@@ -4,7 +4,7 @@
 */
 (function () {
   // Agent versiyon — UI'da gösterilir, debug için kritik
-  const AGENT_VERSION = '1.40.6';
+  const AGENT_VERSION = '1.41.0';
   const AGENT_INSTANCE_ID = 'mai_' + Date.now().toString(36) + '_' + Math.random().toString(36).slice(2, 8);
 
   // === VERSION-AWARE RELOAD ===
@@ -13970,7 +13970,7 @@
     if (!needsFreshFaturaRetry(safety, decision)) return null;
     const retryDecision = await aiDecideTimed(
       { ...decideArgs, forceFresh: true },
-      6500,
+      20000, // Max görsel (vision) çağrısı subprocess+çıkarım nedeniyle uzun sürebilir
       'taze karar zaman asimi - manuel kontrol',
     );
     const retrySafety = finalSafetyCheckFatura({
@@ -14876,7 +14876,11 @@
           }));
         await clickIleri(fid); continue;
       }
-      if (tumKodlarDolu(codes) && !hasBosSelect) {
+      // HER FATURAYI OKU+DOĞRULA: kodlar dolu olsa bile AI'sız F2 YAPMA — fatura
+      // görüntüsü Max ile okunup doğrulansın, sonra kaydedilsin. Aşağıdaki "dolu kod →
+      // direkt F2" kısayolu kullanıcı talebiyle kapatıldı. Geri açmak için: true yap.
+      const AI_SIZ_DOLU_KOD_F2 = false;
+      if (AI_SIZ_DOLU_KOD_F2 && tumKodlarDolu(codes) && !hasBosSelect) {
         const fastSebep = 'Muhasebe kodlari dolu; bos alan yok ve yerel KDV/risk kontrolu temiz - AI OCR beklenmedi';
         const decisionTrace = {
           belge: {
@@ -14969,7 +14973,9 @@
           await clickIleri(fid); continue;
         }
         setStatus(`${mukellef.ad} · #${fid} AI inceliyor…`);
-        decision = await aiDecideTimed(decisionArgs, 7500, 'AI karar zaman asimi - manuel kontrol');
+        // Max görsel (vision) çağrısı subprocess başlatma + görüntü çıkarımı nedeniyle
+        // 7.5 sn'ye sığmıyordu; her fatura okunduğu için süre yükseltildi (watchdog yok).
+        decision = await aiDecideTimed(decisionArgs, 25000, 'AI karar zaman asimi - manuel kontrol');
         perf.mark('aiDecision');
       }
       let karar = decision?.karar || 'emin_degil';
