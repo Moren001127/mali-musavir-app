@@ -190,6 +190,7 @@ export const portalAutomationApi = {
     dateTo?: string;
     donem?: string;
     force?: boolean;
+    validationOnly?: boolean;
   }) => api.post<{ created: PortalJob[]; skipped: Array<{ jobType: string; taxpayerId?: string; reason: string }>; message: string; runnerWake?: boolean }>(
     '/portal-automation/manual-run',
     data,

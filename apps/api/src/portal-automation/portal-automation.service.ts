@@ -71,6 +71,7 @@ type ManualRunInput = {
   dateTo?: string;
   donem?: string;
   force?: boolean;
+  validationOnly?: boolean;
 };
 
 type JobProgressUpdate = {
@@ -532,6 +533,7 @@ export class PortalAutomationService {
       period,
       donem: input.donem,
       force: input.force === true,
+      validationOnly: input.validationOnly === true,
     });
     return {
       ...res,
@@ -625,6 +627,7 @@ export class PortalAutomationService {
       job: {
         id: job.id,
         jobType: job.jobType,
+        source: job.source,
         periodStart: job.periodStart,
         periodEnd: job.periodEnd,
         donem: job.donem,
@@ -726,6 +729,11 @@ export class PortalAutomationService {
 
     const finalCount = Number.isFinite(Number(input?.recordCount)) ? Number(input.recordCount) : recordCount;
     await this.markCredentialSuccess(job).catch(() => {});
+    const doneMessage = input?.result?.validationOnly
+      ? 'Portal girisi dogrulandi.'
+      : finalCount > 0
+      ? `${finalCount} kayit portala yazildi.`
+      : 'GIB sorgusu tamamlandi, indirilecek kayit bulunamadi.';
     const updated = await (this.prisma as any).portalAutomationJob.update({
       where: { id: jobId },
       data: {
@@ -735,7 +743,7 @@ export class PortalAutomationService {
         finishedAt: new Date(),
         payload: this.withJobProgress(job.payload, {
           step: 'done',
-          message: finalCount > 0 ? `${finalCount} kayit portala yazildi.` : 'GIB sorgusu tamamlandi, indirilecek kayit bulunamadi.',
+          message: doneMessage,
           records: finalCount,
         }),
       },
@@ -811,6 +819,7 @@ export class PortalAutomationService {
       period: { start: Date; end: Date };
       donem?: string;
       force?: boolean;
+      validationOnly?: boolean;
       dedupeAfter?: Date;
     },
   ) {
@@ -868,11 +877,15 @@ export class PortalAutomationService {
       period: { start: Date; end: Date };
       donem?: string;
       force?: boolean;
+      validationOnly?: boolean;
     },
   ) {
     const meta = JOB_META[jobType];
+    const validationOnly = opts.validationOnly === true;
     const runnerMode = this.runnerModeForJob(jobType, opts.source);
-    const pendingMessage = runnerMode === 'local_first' || runnerMode === 'local_first_with_server_fallback'
+    const pendingMessage = validationOnly
+      ? 'Kuyrukta, sadece portal girisi dogrulanacak.'
+      : runnerMode === 'local_first' || runnerMode === 'local_first_with_server_fallback'
       ? 'Kuyrukta, yerel Moren ajan bekleniyor.'
       : 'Kuyrukta, runner bekleniyor.';
     return (this.prisma as any).portalAutomationJob.create({
@@ -889,14 +902,17 @@ export class PortalAutomationService {
         createdBy: opts.userId,
         priority: opts.source === 'manual' ? 50 : 0,
         payload: {
-          label: meta.label,
+          label: validationOnly ? `${meta.provider} sifre dogrulama` : meta.label,
           provider: meta.provider,
           ownerType: meta.ownerType,
           runnerMode,
           force: opts.force === true,
+          validationOnly,
           dateFrom: opts.period.start.toISOString(),
           dateTo: opts.period.end.toISOString(),
-          instruction: this.instructionForJob(jobType),
+          instruction: validationOnly
+            ? 'Kayitli portal bilgileriyle sadece giris sayfasinda login dene; belge, tebligat veya liste taramasi yapma.'
+            : this.instructionForJob(jobType),
           progress: {
             at: new Date().toISOString(),
             step: 'pending',

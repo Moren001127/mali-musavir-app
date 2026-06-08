@@ -74,6 +74,7 @@ type ValidationJobStats = {
   cancelled: number;
   active: number;
   latestAt: string | null;
+  failedJobs: PortalJob[];
 };
 
 const LETTERS = ['A', 'B', 'C', 'Ç', 'D', 'E', 'F', 'G', 'Ğ', 'H', 'I', 'İ', 'J', 'K', 'L', 'M', 'N', 'O', 'Ö', 'P', 'R', 'S', 'Ş', 'T', 'U', 'Ü', 'V', 'Y', 'Z', 'W', 'X', 'Q'];
@@ -136,6 +137,17 @@ function matchesLetter(t: Taxpayer, letter: string): boolean {
   return taxpayerName(t).toLocaleUpperCase('tr-TR').startsWith(letter);
 }
 
+function portalJobTaxpayerName(job: PortalJob): string {
+  const taxpayer = job.taxpayer;
+  if (!taxpayer) return job.taxpayerId || 'Mükellef';
+  return (
+    taxpayer.companyName ||
+    [taxpayer.firstName, taxpayer.lastName].filter(Boolean).join(' ') ||
+    taxpayer.taxNumber ||
+    taxpayer.id
+  ).trim();
+}
+
 export default function MukellefListesiPage() {
   const qc = useQueryClient();
   const [search, setSearch] = useState('');
@@ -157,7 +169,8 @@ export default function MukellefListesiPage() {
   const { data: credentialInsights } = useQuery({
     queryKey: ['portal-automation-credential-insights'],
     queryFn: () => portalAutomationApi.credentialInsights(),
-    staleTime: 30_000,
+    refetchInterval: 5000,
+    staleTime: 0,
   });
   const { data: validationJobs = [] } = useQuery({
     queryKey: ['portal-automation-jobs', 'credential-validation'],
@@ -175,6 +188,7 @@ export default function MukellefListesiPage() {
       portalAutomationApi.manualRun({
         jobTypes: ['E_TEBLIGAT_CHECK', 'SGK_HIZMET_LISTESI'],
         force: true,
+        validationOnly: true,
       }),
     onSuccess: (result) => {
       const total = result.created?.length || 0;
@@ -261,6 +275,7 @@ export default function MukellefListesiPage() {
       cancelled,
       active: pending + running,
       latestAt,
+      failedJobs: currentBatch.filter((job) => job.status === 'failed'),
     };
   }, [validationJobs]);
 
@@ -421,6 +436,7 @@ function CredentialInsightStrip({
   validating: boolean;
   validationStats: ValidationJobStats | null;
 }) {
+  const [showFailedJobs, setShowFailedJobs] = useState(false);
   if (!cards.length && !validationStats) return null;
   const firstRow = cards.slice(0, 2);
   const secondRow = cards.slice(2);
@@ -432,6 +448,13 @@ function CredentialInsightStrip({
       ? 'Kontrol devam ediyor; sayaçlar 5 saniyede yenilenir.'
       : 'Son toplu kontrol tamamlandı. Hatalıları alttaki uyarı kutularından açabilirsin.'
     : 'Henüz toplu kontrol başlatılmadı.';
+  const statCards = [
+    { label: 'Toplam', value: validationStats?.total || 0, color: GOLD },
+    { label: 'Bekliyor', value: validationStats?.pending || 0, color: AMBER },
+    { label: 'Çalışıyor', value: validationStats?.running || 0, color: SKY },
+    { label: 'Doğrulandı', value: validationStats?.done || 0, color: GREEN },
+    { label: 'Hatalı', value: validationStats?.failed || 0, color: ROSE, clickable: (validationStats?.failed || 0) > 0 },
+  ];
   return (
     <section className="rounded-[8px] p-3" style={{ background: 'rgba(255,255,255,0.018)', border: `1px solid ${LINE}` }}>
       <div className="mb-3 flex flex-wrap items-center justify-between gap-2">
@@ -465,24 +488,64 @@ function CredentialInsightStrip({
           </div>
         </div>
         <div className="flex flex-wrap gap-2">
-          {[
-            { label: 'Toplam', value: validationStats?.total || 0, color: GOLD },
-            { label: 'Bekliyor', value: validationStats?.pending || 0, color: AMBER },
-            { label: 'Çalışıyor', value: validationStats?.running || 0, color: SKY },
-            { label: 'Doğrulandı', value: validationStats?.done || 0, color: GREEN },
-            { label: 'Hatalı', value: validationStats?.failed || 0, color: ROSE },
-          ].map(({ label, value, color }) => (
-            <div
-              key={label}
-              className="min-w-[86px] rounded-[6px] px-3 py-2 text-center"
-              style={{ background: `${color}18`, border: `1px solid ${color}42` }}
-            >
-              <div className="text-[10px] font-black uppercase tracking-[0.08em]" style={{ color: MUTED }}>{label}</div>
-              <div className="mt-0.5 text-[15px] font-black" style={{ color }}>{value}</div>
-            </div>
-          ))}
+          {statCards.map(({ label, value, color, clickable }) => {
+            const content = (
+              <>
+                <div className="text-[10px] font-black uppercase tracking-[0.08em]" style={{ color: MUTED }}>{label}</div>
+                <div className="mt-0.5 text-[15px] font-black" style={{ color }}>{value}</div>
+              </>
+            );
+            if (clickable) {
+              return (
+                <button
+                  key={label}
+                  type="button"
+                  onClick={() => setShowFailedJobs((current) => !current)}
+                  className="min-w-[86px] rounded-[6px] px-3 py-2 text-center transition hover:brightness-110"
+                  style={{ background: `${color}18`, border: `1px solid ${color}42` }}
+                  title="Anlık hatalı işleri göster"
+                >
+                  {content}
+                </button>
+              );
+            }
+            return (
+              <div
+                key={label}
+                className="min-w-[86px] rounded-[6px] px-3 py-2 text-center"
+                style={{ background: `${color}18`, border: `1px solid ${color}42` }}
+              >
+                {content}
+              </div>
+            );
+          })}
         </div>
       </div>
+      {showFailedJobs && validationStats?.failedJobs.length ? (
+        <div
+          className="mb-3 rounded-[7px] px-3 py-2.5"
+          style={{ background: 'rgba(231,76,60,0.08)', border: '1px solid rgba(231,76,60,0.28)' }}
+        >
+          <div className="mb-2 text-[11px] font-black uppercase tracking-[0.12em]" style={{ color: ROSE }}>
+            Anlık Hatalı İşler
+          </div>
+          <div className="grid gap-2 md:grid-cols-2">
+            {validationStats.failedJobs.slice(0, 8).map((job) => (
+              <div key={job.id} className="rounded-[6px] px-3 py-2" style={{ background: 'rgba(0,0,0,0.22)', border: `1px solid ${LINE}` }}>
+                <div className="text-[12px] font-black" style={{ color: TEXT }}>{portalJobTaxpayerName(job)}</div>
+                <div className="mt-0.5 text-[11px] font-semibold" style={{ color: MUTED }}>
+                  {job.jobType === 'SGK_HIZMET_LISTESI' ? 'SGK e-Bildirge' : 'Vergi Dairesi'} · {job.errorMessage || 'Hata detayı yok'}
+                </div>
+              </div>
+            ))}
+          </div>
+          {validationStats.failedJobs.length > 8 ? (
+            <div className="mt-2 text-[11px] font-semibold" style={{ color: MUTED }}>
+              +{validationStats.failedJobs.length - 8} kayıt daha var.
+            </div>
+          ) : null}
+        </div>
+      ) : null}
       <div className="grid gap-2 lg:grid-cols-2">
         {firstRow.map((card) => (
           <InsightButton key={card.key} card={card} onClick={() => onOpen(card)} />

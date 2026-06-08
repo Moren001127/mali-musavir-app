@@ -145,7 +145,13 @@ export class PortalAutomationRailwayRunnerService implements OnModuleInit {
     try {
       await this.failStaleRunnerJobs();
       const jobs = await this.pickPendingJobs();
-      for (const job of jobs) {
+      const parallelJobs = jobs.filter((job: any) => this.canRunParallel(job));
+      const sequentialJobs = jobs.filter((job: any) => !this.canRunParallel(job));
+      if (parallelJobs.length > 1) {
+        this.logger.log(`[PortalRailwayRunner] paralel dogrulama havuzu: ${parallelJobs.length} is, limit=${this.parallelJobConcurrency()}`);
+      }
+      await this.runParallelJobs(parallelJobs);
+      for (const job of sequentialJobs) {
         await this.runOne(job).catch((err) => {
           this.logger.warn(`[PortalRailwayRunner] job ${job.id} beklenmeyen hata: ${err?.message || err}`);
         });
@@ -222,7 +228,33 @@ export class PortalAutomationRailwayRunnerService implements OnModuleInit {
   }
 
   private maxJobsPerTick() {
-    return Math.max(1, Math.min(5, Number(process.env.PORTAL_AUTOMATION_RAILWAY_RUNNER_BATCH || 1)));
+    const concurrency = this.parallelJobConcurrency();
+    const batch = this.numberInRange(process.env.PORTAL_AUTOMATION_RAILWAY_RUNNER_BATCH, concurrency, 1, 10);
+    return Math.max(concurrency, batch);
+  }
+
+  private parallelJobConcurrency() {
+    const raw = process.env.PORTAL_AUTOMATION_RAILWAY_RUNNER_CONCURRENCY
+      || process.env.PORTAL_AUTOMATION_RAILWAY_RUNNER_PARALLEL;
+    return this.numberInRange(raw, 5, 1, 8);
+  }
+
+  private numberInRange(raw: string | number | undefined, fallback: number, min: number, max: number) {
+    const parsed = Number(raw);
+    const value = Number.isFinite(parsed) ? parsed : fallback;
+    return Math.max(min, Math.min(max, value));
+  }
+
+  private canRunParallel(job: any) {
+    return job?.jobType === 'E_TEBLIGAT_CHECK' || job?.jobType === 'SGK_HIZMET_LISTESI';
+  }
+
+  private async runParallelJobs(jobs: any[]) {
+    await this.mapWithConcurrency(jobs, this.parallelJobConcurrency(), async (job: any) => {
+      await this.runOne(job).catch((err) => {
+        this.logger.warn(`[PortalRailwayRunner] job ${job.id} beklenmeyen hata: ${err?.message || err}`);
+      });
+    });
   }
 
   wake(reason = 'manual') {
@@ -644,6 +676,25 @@ export class PortalAutomationRailwayRunnerService implements OnModuleInit {
         await this.finishLoginAfterFill(page);
       }
 
+      if (this.isCredentialValidationOnlyJob(bundle.job, jobType)) {
+        const providerLabel = isSgk ? 'SGK' : 'Vergi dairesi';
+        const url = this.safeUrl(page.url());
+        await this.jobProgress(tenantId, bundle.job, 'validated', `${providerLabel} girisi dogrulandi.`);
+        await context.close().catch(() => {});
+        return {
+          documents: [],
+          recordCount: 0,
+          result: {
+            runner: 'railway',
+            phase: 'credential_validation',
+            validationOnly: true,
+            jobType,
+            url,
+            notes: [`${providerLabel} girisi basarili; belge taramasi yapilmadi`],
+          },
+        };
+      }
+
       const notes: string[] = [`${jobType} girisi basarili`];
       const targetUrl = this.targetUrlForJob(jobType);
       if (targetUrl) {
@@ -680,6 +731,13 @@ export class PortalAutomationRailwayRunnerService implements OnModuleInit {
       await browser.close().catch(() => {});
       await rm(downloadsPath, { recursive: true, force: true }).catch(() => {});
     }
+  }
+
+  private isCredentialValidationOnlyJob(job: any, jobType: PortalJobType) {
+    if (job?.payload?.validationOnly === true) return true;
+    return job?.source === 'manual'
+      && (jobType === 'E_TEBLIGAT_CHECK' || jobType === 'SGK_HIZMET_LISTESI')
+      && job?.payload?.force === true;
   }
 
   private loginUrlForJob(jobType: PortalJobType) {
