@@ -4,7 +4,7 @@
 */
 (function () {
   // Agent versiyon — UI'da gösterilir, debug için kritik
-  const AGENT_VERSION = '1.41.1';
+  const AGENT_VERSION = '1.41.2';
   const AGENT_INSTANCE_ID = 'mai_' + Date.now().toString(36) + '_' + Math.random().toString(36).slice(2, 8);
 
   // === VERSION-AWARE RELOAD ===
@@ -13972,7 +13972,7 @@
     if (!needsFreshFaturaRetry(safety, decision)) return null;
     const retryDecision = await aiDecideTimed(
       { ...decideArgs, forceFresh: true },
-      14000, // nadir cache-hit tazeleme; ana vision timeout'u ile aynı üst sınır
+      20000, // nadir cache-hit tazeleme; ana vision timeout'u ile aynı üst sınır (backend 11sn abort)
       'taze karar zaman asimi - manuel kontrol',
     );
     const retrySafety = finalSafetyCheckFatura({
@@ -14975,10 +14975,10 @@
           await clickIleri(fid); continue;
         }
         setStatus(`${mukellef.ad} · #${fid} AI inceliyor…`);
-        // Max görsel (vision) çağrısı subprocess + görüntü çıkarımı; tipik 5-10sn.
-        // 14sn üst sınır: bu sürede dönmezse takılmıştır → hızlıca manuele düşsün
-        // (sonsuz bekleme yerine kuyruğu akıcı tut).
-        decision = await aiDecideTimed(decisionArgs, 14000, 'AI karar zaman asimi - manuel kontrol');
+        // Backend Max görselini 11sn'de abort ediyor + net hata dönüyor; görüntü yakalama
+        // (≤4.5sn) + 11sn'nin runtime sınırını aşıp hatayı gizlememesi için sınır 20sn.
+        // (Vision stabilleşince tekrar düşürülecek.)
+        decision = await aiDecideTimed(decisionArgs, 20000, 'AI karar zaman asimi - manuel kontrol');
         perf.mark('aiDecision');
       }
       let karar = decision?.karar || 'emin_degil';

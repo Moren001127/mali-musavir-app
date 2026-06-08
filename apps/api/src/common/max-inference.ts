@@ -102,6 +102,15 @@ export async function claudeTextViaMax(params: {
         })()
       : promptText;
 
+  // HANG KORUMASI: streaming-input (görsel) modunda SDK oturumu sonuç sonrası açık kalıp
+  // for-await'i sonsuz bekletebiliyordu → backend kilitleniyor, runner timeout'a düşüp her
+  // faturayı "okunamadı" atıyordu. (1) sonuç gelince break, (2) AbortController + sıkı süre
+  // sınırı ile ASLA kilitlenme, (3) başarısızsa NET hata (ekrana yansısın, kör kalmayalım).
+  const abort = new AbortController();
+  const HARD_MS = Math.max(3000, Number(process.env.MIHSAP_MAX_HARD_MS) || 11000);
+  let hardTimedOut = false;
+  const hardTimer = setTimeout(() => { hardTimedOut = true; try { abort.abort(); } catch {} }, HARD_MS);
+
   let text = '';
   let costUsd = 0;
   let isError = false;
@@ -115,6 +124,7 @@ export async function claudeTextViaMax(params: {
         allowedTools: [], // saf çıkarım — dosya/bash/araç yok
         maxTurns: params.maxTurns ?? 1,
         env: childEnv,
+        abortController: abort,
       },
     })) {
       if (m?.type === 'assistant') {
@@ -124,10 +134,19 @@ export async function claudeTextViaMax(params: {
       } else if (m?.type === 'result') {
         isError = Boolean(m.is_error);
         if (typeof m.total_cost_usd === 'number') costUsd = m.total_cost_usd;
+        break; // sonuç geldi → streaming oturumu açık kalsa bile bekleme
       }
     }
   } catch (e: any) {
+    clearTimeout(hardTimer);
+    if (hardTimedOut) {
+      return { ok: false, text: '', model, costUsd: 0, error: `Max ${HARD_MS}ms icinde yanit vermedi (gorsel/oturum takildi)` };
+    }
     return { ok: false, text: '', model, costUsd: 0, error: e?.message || 'Agent SDK (Max) çağrısı başarısız.' };
+  }
+  clearTimeout(hardTimer);
+  if (hardTimedOut && !text.trim()) {
+    return { ok: false, text: '', model, costUsd: 0, error: `Max ${HARD_MS}ms icinde yanit vermedi (gorsel/oturum takildi)` };
   }
 
   text = text.trim();

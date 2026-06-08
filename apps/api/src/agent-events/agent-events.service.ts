@@ -302,7 +302,16 @@ export class AgentEventsService {
       if (visionMax.ok && visionMax.text) {
         return wrapMaxText(visionMax.text);
       }
-      // vision başarısız (boş/hata) → OCR/metin yedeğine düş.
+      // Vision başarısız → NEDENİ EKRANA YANSIT (kör kalmayalım). Tesseract yedeğine sessizce
+      // düşmüyoruz: yavaş olduğu için runner timeout'a düşüp gerçek sebebi gizliyordu. Hata
+      // mesajı ekranda "AI servis hatası: ...max_vision_error: ..." olarak görünsün → tek testte teşhis.
+      this.logger.warn(`[MIHSAP-VISION] basarisiz: ${visionMax.error || 'bos cevap'}`);
+      return {
+        ok: false,
+        status: 502,
+        text: async () => `max_vision_error: ${visionMax.error || 'bos cevap'}`,
+        json: async () => ({}),
+      };
     }
 
     const shouldRunImageOcr =
