@@ -1767,10 +1767,30 @@ const activeJobsStartTime = new Map(); // jobId -> startedAt
 const JOB_TIMEOUT_MS = 10 * 60 * 1000; // 10 dakika
 
 function startJobTimeoutWatcher() {
-  setInterval(() => {
+  // Hizli kurtarma: backend no-progress watchdog (150sn) donmus isi 'pending'e
+  // alir. Node hala o is uzerinde "calisiyor" gorunuyorsa (runJobWithMorenRuntime
+  // hung page.evaluate'te asili) bayat demektir -> bu makineyi hizlica yeniden
+  // baslatip taze pending isi aldiririz. Riskli "toplam sure" tahmini YOK;
+  // sadece backend kararina uyariz. Saglikli uzun is (log akiyor) backend'de
+  // 'running' kalir -> dokunulmaz; yanlis restart olmaz.
+  const FAST_CHECK_MIN_AGE_MS = 90 * 1000;
+  setInterval(async () => {
     const now = Date.now();
     for (const [jid, startedAt] of activeJobsStartTime) {
-      if (now - startedAt > JOB_TIMEOUT_MS) {
+      const age = now - startedAt;
+      if (age > FAST_CHECK_MIN_AGE_MS) {
+        const backendStatus = await api
+          .get(`/agent/luca/jobs/${jid}/status`)
+          .then((r) => r?.data?.status)
+          .catch(() => null);
+        if (backendStatus === 'pending' || backendStatus === 'cancelled' || backendStatus === 'failed') {
+          log.error(`Self-heal: Job ${jid.slice(0, 8)} backend tarafindan '${backendStatus}' yapildi (no-progress kurtarma); bayat is birakilip proses yeniden baslatiliyor.`);
+          activeJobsStartTime.delete(jid);
+          setTimeout(() => process.exit(6), 1500);
+          return;
+        }
+      }
+      if (age > JOB_TIMEOUT_MS) {
         log.error(`Self-heal: Job ${jid} 10dk+ takildi. Proses sonlandiriliyor (watchdog restart edecek).`);
         // Job'u backend'e abort olarak isaretle
         api.post(`/agent/luca/jobs/${jid}/requeue`, {
