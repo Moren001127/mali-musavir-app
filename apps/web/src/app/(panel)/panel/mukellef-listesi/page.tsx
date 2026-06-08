@@ -11,6 +11,7 @@ import {
   FileText,
   List,
   Plus,
+  RefreshCw,
   Search,
   Smartphone,
   User,
@@ -149,6 +150,22 @@ export default function MukellefListesiPage() {
     staleTime: 30_000,
   });
 
+  const bulkValidateCredentials = useMutation({
+    mutationFn: () =>
+      portalAutomationApi.manualRun({
+        jobTypes: ['E_TEBLIGAT_CHECK', 'SGK_HIZMET_LISTESI'],
+        force: true,
+      }),
+    onSuccess: (result) => {
+      const total = result.created?.length || 0;
+      toast.success(total > 0 ? `${total} VD/SGK dogrulama isi baslatildi` : 'Dogrulanacak yeni VD/SGK sifresi bulunamadi');
+      qc.invalidateQueries({ queryKey: ['portal-automation-credential-insights'] });
+      qc.invalidateQueries({ queryKey: ['portal-automation-summary'] });
+      qc.invalidateQueries({ queryKey: ['portal-automation-jobs'] });
+    },
+    onError: (error: any) => toast.error(error?.response?.data?.message || 'Toplu dogrulama baslatilamadi'),
+  });
+
   const toggleActive = useMutation({
     mutationFn: ({ id, isActive }: { id: string; isActive: boolean }) => api.put(`/taxpayers/${id}`, { isActive }),
     onSuccess: (_res, vars) => {
@@ -215,6 +232,8 @@ export default function MukellefListesiPage() {
       <CredentialInsightStrip
         cards={credentialInsights?.cards || []}
         onOpen={setSelectedInsight}
+        onValidate={() => bulkValidateCredentials.mutate()}
+        validating={bulkValidateCredentials.isPending}
       />
 
       <section
@@ -331,15 +350,39 @@ export default function MukellefListesiPage() {
 function CredentialInsightStrip({
   cards,
   onOpen,
+  onValidate,
+  validating,
 }: {
   cards: PortalCredentialInsightCard[];
   onOpen: (card: PortalCredentialInsightCard) => void;
+  onValidate: () => void;
+  validating: boolean;
 }) {
   if (!cards.length) return null;
   const firstRow = cards.slice(0, 2);
   const secondRow = cards.slice(2);
   return (
     <section className="rounded-[8px] p-3" style={{ background: 'rgba(255,255,255,0.018)', border: `1px solid ${LINE}` }}>
+      <div className="mb-3 flex flex-wrap items-center justify-between gap-2">
+        <div>
+          <div className="text-[10px] font-black uppercase tracking-[0.16em]" style={{ color: GOLD }}>Sifre Kontrolu</div>
+          <div className="mt-0.5 text-[11.5px] font-semibold" style={{ color: MUTED }}>Kayitli VD ve SGK sifrelerini toplu olarak dogrula</div>
+        </div>
+        <button
+          type="button"
+          onClick={onValidate}
+          disabled={validating}
+          className="inline-flex h-9 items-center gap-2 rounded-[7px] px-3.5 text-[12px] font-black transition disabled:opacity-50"
+          style={{
+            background: 'rgba(212,184,118,0.16)',
+            border: '1px solid rgba(212,184,118,0.34)',
+            color: GOLD,
+          }}
+        >
+          <RefreshCw size={14} className={validating ? 'animate-spin' : ''} />
+          VD + SGK Dogrula
+        </button>
+      </div>
       <div className="grid gap-2 lg:grid-cols-2">
         {firstRow.map((card) => (
           <InsightButton key={card.key} card={card} onClick={() => onOpen(card)} />

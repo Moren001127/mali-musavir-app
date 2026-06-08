@@ -157,7 +157,7 @@ export class TaxpayersService {
     const credentialIsReady = (credential: any) => {
       if (credential?.isActive === false) return false;
       if (credential?.provider === 'GIB_IVD') {
-        return Boolean(credential?.userCode && credential?.encryptedPassword && credential?.encryptedSecondaryPassword);
+        return Boolean(credential?.userCode && (credential?.encryptedSecondaryPassword || credential?.encryptedPassword));
       }
       if (credential?.provider === 'SGK_EBILDIRGE') {
         return Boolean(

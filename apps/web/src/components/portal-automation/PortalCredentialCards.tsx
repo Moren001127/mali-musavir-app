@@ -146,6 +146,8 @@ function CredentialEditor({
     setPassword(credential?.password || '');
     setSecondaryPassword(credential?.secondaryPassword || '');
   }, [
+    provider,
+    taxpayerId,
     credential?.id,
     credential?.username,
     credential?.userCode,
@@ -186,6 +188,8 @@ function CredentialEditor({
       qc.invalidateQueries({ queryKey: ['portal-automation-credentials'] });
       qc.invalidateQueries({ queryKey: ['portal-automation-credential-insights'] });
       qc.invalidateQueries({ queryKey: ['portal-automation-summary'] });
+      qc.invalidateQueries({ queryKey: ['taxpayers'] });
+      qc.invalidateQueries({ queryKey: ['taxpayer', taxpayerId] });
       qc.invalidateQueries({ queryKey: ['beyan-config-list'] });
       qc.invalidateQueries({ queryKey: ['beyanname-ozet'] });
       qc.invalidateQueries({ queryKey: ['beyanname-takip'] });

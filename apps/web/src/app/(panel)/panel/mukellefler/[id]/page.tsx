@@ -770,7 +770,7 @@ function BilgilerTab({
           !!credential.hasSecondaryPassword
         );
       }
-      return !!String(credential.userCode || '').trim() && !!credential.hasPassword && !!credential.hasSecondaryPassword;
+      return !!String(credential.userCode || '').trim() && (!!credential.hasSecondaryPassword || !!credential.hasPassword);
     });
   };
 
