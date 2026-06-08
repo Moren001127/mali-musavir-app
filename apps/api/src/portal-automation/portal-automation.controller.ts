@@ -55,7 +55,7 @@ export class PortalAutomationController {
         ...credential,
         lastCheckedAt: validation.checkedAt || credential.lastCheckedAt,
         lastSuccessAt: validation.ok ? validation.checkedAt || credential.lastSuccessAt : credential.lastSuccessAt,
-        lastError: validation.ok ? null : validation.checked === false ? null : validation.error || credential.lastError,
+        lastError: validation.ok ? null : validation.error || credential.lastError,
         validation,
       };
     }

@@ -380,10 +380,6 @@ export class PortalAutomationService {
       if (normalized.includes('PORTAL GIRIS ALANLARI BULUNAMADI')) return false;
       if (normalized.includes('PORTAL LOGIN FORMU YUKLENMEDI')) return false;
       if (normalized.includes('ALANI BULUNAMADI')) return false;
-      if (normalized.includes('CAPTCHA')) return false;
-      if (normalized.includes('DOGRULAMA KODU')) return false;
-      if (normalized.includes('CAPTCHA OTOMATIK COZULEMEDI')) return false;
-      if (normalized.includes('SIFRE DOGRULAMASI YAPILAMADI')) return false;
       return true;
     };
     const groupByCredential = (provider: PortalProvider, keyOf: (row: any) => string) => {
