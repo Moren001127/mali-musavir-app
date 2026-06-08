@@ -4264,20 +4264,25 @@
     // İki sorgu yap — her birinde modal aç → tarih yaz → Belgeleri Getir → bekle
     async function birSorgu(bas, bit, etiket) {
       await throwIfCancelled();
+      // ⏱ GECICI OLCUM (hiz teshisi): her adimin ms'i. Sink bulununca kaldirilacak.
+      const __t0 = Date.now();
       await log(`🔍 ${etiket}: ${bas} → ${bit}`);
       // Modal aç
+      const __tModalBas = Date.now();
       if (!await callEbelgeGonderEverywhere('indir-window', `${etiket} tarih modalı`)) {
         throw new Error('indir-window aksiyonu bulunamadı — Luca sayfası beklenen yapıda değil');
       }
+      await log(`⏱ ${etiket} · modal aksiyonu: ${Date.now() - __tModalBas}ms`);
       await sleep(800); // modal animasyonu
 
       // Tarih input'ları Luca sürümüne göre farklı frame/modal içinde açılabiliyor.
+      const __tDateBas = Date.now();
       const datePair = await waitForDatePair(12000);
       if (!datePair) {
         const inputHints = describeDateInputs();
         throw new Error(`tarih inputlari bulunamadi; modal acilmadi veya selector degisti${inputHints ? `; input ipucu: ${inputHints}` : ''}`);
       }
-      await log(`✓ Tarih alanları bulundu (${datePair.source})`);
+      await log(`✓ Tarih alanları bulundu (${datePair.source}) · ⏱ tarih-bekleme ${Date.now() - __tDateBas}ms · modal+tarih TOPLAM ${Date.now() - __t0}ms`);
       setDateInputValue(datePair.t1, bas);
       setDateInputValue(datePair.t2, bit);
       await sleep(200);
@@ -4380,9 +4385,12 @@
       // KRİTİK: done mesajı gelse bile son fatura_kaydet'ler arka planda devam edebilir.
       // Sonraki sorguya/indirmeye geçmeden ÖNCE XHR sessizliği bekle. (Hız: sessizlik
       // tabanı 5s→2.5s, üst sınır 90s→45s — kayıt bitince hemen devam, boşa bekleme yok.)
+      const __tSil = Date.now();
       await waitForActivitySilence(`${etiket} fatura_kaydet sessizlik`, 2500, 45000);
       // Sonuç tablosuna geçilmesi için kısa bir sleep
       await sleep(300);
+      const __tPopupBas = Date.now();
+      await log(`⏱ ${etiket} · sessizlik+settle ${__tPopupBas - __tSil}ms`);
 
       // Tüm frame'lerde "Kapat" butonunu bul ve tıkla (İşlem Takip popup)
       const findAndClick = (label) => {
@@ -4428,7 +4436,7 @@
       }
       // Popup kapandığı yukarıdaki döngüde DOĞRULANDI; eski sabit 1500ms israftı.
       await sleep(300);
-      await log(`📋 ${etiket} tamamlandı`);
+      await log(`📋 ${etiket} tamamlandı · ⏱ popup-kapat ${Date.now() - __tPopupBas}ms · SORGU TOPLAM ${Math.round((Date.now() - __t0) / 1000)}sn`);
 
       // Toplam fatura sayısını tespit et — "352 adet fatura bulundu. (Sayfa No: 1)"
       try {
