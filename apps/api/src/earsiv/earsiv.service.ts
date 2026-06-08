@@ -570,8 +570,20 @@ export class EarsivService {
       errors,
     };
     if (inserted + duplicate === 0) {
+      // Tüm faturalar "vergi no uyuşmadı" sebebiyle skipped olduysa, bu Luca'da
+      // FIRMA SEÇİMİ YARIM KALDI demek — geçici durum, agent retry edebilir.
+      // Hata mesajına agent'ın TRANSIENT pattern'inin yakaladığı ipucunu
+      // ekliyoruz: agent-runtime.js içindeki regex
+      //   /Firma DEĞİŞMEDİ|firma degisimi|frm4\/SirketCombo|.../i
+      // yakaladığında job otomatik requeue edilir ve agent SSO'dan firma
+      // yeniden seçip iş tekrar denenir. Aksi halde job failed olur ve
+      // kullanıcı manuel tekrar başlatır.
+      const allWrongVkn = skipped > 0 && skipped === parsed.length && errors.every((e) => /vergi no uyu/i.test(e));
+      const transientHint = allWrongVkn
+        ? 'TRANSIENT_LUCA: frm4/SirketCombo firma değişimi yarım kalmış; ZIP\'teki XML\'ler başka mükellefe ait. Firma seçimi sıfırlanıp tekrar denenecek. '
+        : '';
       throw new BadRequestException(
-        `ZIP okundu ama portala kaydedilen fatura olmadı (toplam=${parsed.length}, hata=${skipped}). ` +
+        `${transientHint}ZIP okundu ama portala kaydedilen fatura olmadı (toplam=${parsed.length}, hata=${skipped}). ` +
         `${errors.length ? `İlk hatalar: ${errors.join(' || ')}` : 'Kayıt sebebi tespit edilemedi.'}`,
       );
     }
