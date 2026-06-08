@@ -762,7 +762,8 @@ export class MihsapService {
     }
 
     const tryFetch = async (headers: Record<string, string>): Promise<Response> => {
-      return fetch(url!, { headers });
+      // Zaman aşımı: takılan bir indirme toplu yedeklemeyi sonsuza dek dondurmasın
+      return fetch(url!, { headers, signal: AbortSignal.timeout(45000) });
     };
 
     const baseHeaders: Record<string, string> = {

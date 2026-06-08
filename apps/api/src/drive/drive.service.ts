@@ -49,6 +49,11 @@ export class DriveService implements OnModuleInit, OnModuleDestroy {
   ) {}
 
   onModuleInit() {
+    // Boot'ta: onceki surecte yarim kalmis (orphan) yedek islerini kapat —
+    // surecleri olu, dedup'i bloklamasinlar, kullanici yeniden baslatabilsin.
+    this.reapOrphanJobs().catch((e) =>
+      this.logger.warn(`Orphan yedek isleri temizlenemedi: ${e?.message || e}`),
+    );
     if (!this.eventBus) {
       this.logger.warn('AutomationEventBus yok — fatura cekiminde otomatik Drive yedegi devre disi.');
       return;
@@ -58,6 +63,23 @@ export class DriveService implements OnModuleInit, OnModuleDestroy {
       this.onMihsapFetched(payload as any),
     );
     this.logger.log('Mihsap.InvoicesFetched dinleniyor — otomatik Drive yedegi aktif.');
+  }
+
+  /** Boot'ta yarim kalmis 'running'/'pending' yedek islerini 'failed' isaretle.
+   *  Sunucu yeni basladiysa DB'deki 'running' isler kesinlikle orphan'dir (surec oldu). */
+  private async reapOrphanJobs() {
+    const { count } = await (this.prisma as any).driveBackupJob.updateMany({
+      where: { status: { in: ['running', 'pending'] } },
+      data: {
+        status: 'failed',
+        errorMsg:
+          'Sunucu yeniden basladi — is yarim kaldi (yeniden baslatinca kaldigi yerden devam eder)',
+        finishedAt: new Date(),
+      },
+    });
+    if (count > 0) {
+      this.logger.log(`${count} orphan Drive yedek isi 'failed' isaretlendi (boot reaper).`);
+    }
   }
 
   onModuleDestroy() {
@@ -185,6 +207,7 @@ export class DriveService implements OnModuleInit, OnModuleDestroy {
       method: 'POST',
       headers: { 'Content-Type': 'application/x-www-form-urlencoded' },
       body,
+      signal: AbortSignal.timeout(30000),
     });
     if (!res.ok) {
       const t = await res.text().catch(() => '');
@@ -231,6 +254,7 @@ export class DriveService implements OnModuleInit, OnModuleDestroy {
       method: 'POST',
       headers: { 'Content-Type': 'application/x-www-form-urlencoded' },
       body,
+      signal: AbortSignal.timeout(30000),
     });
     if (!res.ok) {
       const t = await res.text().catch(() => '');
@@ -417,7 +441,7 @@ export class DriveService implements OnModuleInit, OnModuleDestroy {
         const token = await this.getValidAccessToken(tenantId);
         const res = await fetch(
           `https://www.googleapis.com/drive/v3/files/${backup.driveFileId}?alt=media&supportsAllDrives=true`,
-          { headers: { Authorization: `Bearer ${token}` } },
+          { headers: { Authorization: `Bearer ${token}` }, signal: AbortSignal.timeout(60000) },
         );
         if (res.ok) {
           const buffer = Buffer.from(await res.arrayBuffer());
@@ -725,7 +749,10 @@ export class DriveService implements OnModuleInit, OnModuleDestroy {
 
   private async driveFindFirst(token: string, q: string): Promise<string | null> {
     const url = `${DRIVE_FILES_URL}?q=${encodeURIComponent(q)}&fields=files(id,name)&pageSize=1&spaces=drive&supportsAllDrives=true&includeItemsFromAllDrives=true`;
-    const res = await fetch(url, { headers: { Authorization: `Bearer ${token}` } });
+    const res = await fetch(url, {
+      headers: { Authorization: `Bearer ${token}` },
+      signal: AbortSignal.timeout(30000),
+    });
     if (!res.ok) {
       const t = await res.text().catch(() => '');
       throw new Error(`Drive arama hatasi ${res.status}: ${t.slice(0, 120)}`);
@@ -743,6 +770,7 @@ export class DriveService implements OnModuleInit, OnModuleDestroy {
       method: 'POST',
       headers: { Authorization: `Bearer ${token}`, 'Content-Type': 'application/json' },
       body: JSON.stringify({ name, mimeType: FOLDER_MIME, parents: [parentId] }),
+      signal: AbortSignal.timeout(30000),
     });
     if (!res.ok) {
       const t = await res.text().catch(() => '');
@@ -774,6 +802,7 @@ export class DriveService implements OnModuleInit, OnModuleDestroy {
         'Content-Type': `multipart/related; boundary=${boundary}`,
       },
       body,
+      signal: AbortSignal.timeout(90000),
     });
     if (!res.ok) {
       const t = await res.text().catch(() => '');
