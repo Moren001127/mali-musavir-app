@@ -443,17 +443,22 @@ function CredentialInsightStrip({
   const latestTime = validationStats?.latestAt
     ? new Date(validationStats.latestAt).toLocaleTimeString('tr-TR', { hour: '2-digit', minute: '2-digit' })
     : null;
+  const credentialWrongCount = cards
+    .filter((card) => card.key === 'gib_wrong' || card.key === 'sgk_wrong')
+    .reduce((total, card) => total + Number(card.count || 0), 0);
+  const otherFailedCount = Math.max(0, (validationStats?.failed || 0) - credentialWrongCount);
   const statusText = validationStats
     ? validationStats.active > 0
       ? 'Kontrol devam ediyor; sayaçlar 5 saniyede yenilenir.'
-      : 'Son toplu kontrol tamamlandı. Hatalıları alttaki uyarı kutularından açabilirsin.'
+      : 'Son toplu kontrol tamamlandı. Şifre hataları ve diğer deneme hataları ayrı gösterilir.'
     : 'Henüz toplu kontrol başlatılmadı.';
   const statCards = [
     { label: 'Toplam', value: validationStats?.total || 0, color: GOLD },
     { label: 'Bekliyor', value: validationStats?.pending || 0, color: AMBER },
     { label: 'Çalışıyor', value: validationStats?.running || 0, color: SKY },
     { label: 'Doğrulandı', value: validationStats?.done || 0, color: GREEN },
-    { label: 'Hatalı', value: validationStats?.failed || 0, color: ROSE, clickable: (validationStats?.failed || 0) > 0 },
+    { label: 'Şifre Hatalı', value: credentialWrongCount, color: ROSE, clickable: (validationStats?.failed || 0) > 0 },
+    { label: 'Diğer Hata', value: otherFailedCount, color: '#ff8a65', clickable: otherFailedCount > 0 },
   ];
   return (
     <section className="rounded-[8px] p-3" style={{ background: 'rgba(255,255,255,0.018)', border: `1px solid ${LINE}` }}>
