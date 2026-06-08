@@ -672,6 +672,47 @@ export class EarsivService {
   }
 
   /**
+   * GÜVENLİ MÜKERRER TEMİZLİK (2026-06-08) — belge-no'su "NaN"/"BILINMIYOR" olan
+   * BOZUK kopyaları siler; AMA yalnızca AYNI ETTN'de DOĞRU belge-no'lu bir ikizi
+   * varsa. Yani gerçekten mükerrer (parser'ın bir seferinde no'yu okuyamadığı)
+   * satırlar gider; tekil/benzersiz hiçbir fatura silinmez. dryRun=true sadece
+   * listeler, silmez. (Parser düzeltmesi parseTagValue:false ile yenilerini engeller.)
+   */
+  async dedupBozukKopya(tenantId: string, opts: { dryRun?: boolean } = {}) {
+    const dryRun = opts.dryRun !== false; // varsayılan: kuru çalışma
+    const BAD = ['NaN', 'nan', 'NAN', 'BILINMIYOR', 'BILINMEYEN'];
+    const badRows = await (this.prisma as any).earsivFatura.findMany({
+      where: { tenantId, faturaNo: { in: BAD }, ettn: { not: null } },
+      select: {
+        id: true, taxpayerId: true, tip: true, belgeKaynak: true, ettn: true,
+        faturaNo: true, donem: true, faturaTarihi: true, toplamTutar: true,
+        satici: true, alici: true,
+      },
+    });
+    const toDelete: any[] = [];
+    for (const r of badRows) {
+      if (!r.ettn || !String(r.ettn).trim()) continue; // ETTN yoksa mükerrer olduğunu KANITLAYAMAYIZ → dokunma
+      const twin = await (this.prisma as any).earsivFatura.findFirst({
+        where: {
+          tenantId, taxpayerId: r.taxpayerId, tip: r.tip, belgeKaynak: r.belgeKaynak,
+          ettn: r.ettn, id: { not: r.id }, faturaNo: { notIn: BAD },
+        },
+        select: { id: true, faturaNo: true },
+      });
+      if (twin) toDelete.push({
+        id: r.id, bozukNo: r.faturaNo, ettn: r.ettn, donem: r.donem,
+        tarih: r.faturaTarihi, tutar: r.toplamTutar, karsiFirma: r.satici || r.alici,
+        dogruIkizNo: twin.faturaNo,
+      });
+    }
+    if (!dryRun && toDelete.length) {
+      await (this.prisma as any).earsivFatura.deleteMany({ where: { id: { in: toDelete.map((x) => x.id) } } });
+      this.logger.warn(`[DEDUP] ${toDelete.length} bozuk mükerrer e-arşiv kaydı silindi (tenant=${tenantId}).`);
+    }
+    return { dryRun, silinecek: toDelete.length, kayitlar: toDelete };
+  }
+
+  /**
    * Filtreli liste — taxpayerId, donem, tip, arama, tarih aralığı
    */
   async list(opts: {

@@ -972,6 +972,21 @@ export class LucaController {
   }
 
   /**
+   * GEÇİCİ MÜKERRER TEMİZLİK (2026-06-08) — belge-no'su "NaN"/"BILINMIYOR" olan ve
+   * aynı ETTN'de doğru no'lu ikizi bulunan BOZUK kopyaları güvenle siler. `apply=true`
+   * verilmezse SADECE listeler (kuru çalışma). Temizlik bitince bu endpoint kaldırılacak.
+   */
+  @Post('agent/earsiv/dedup-bozuk-kopya')
+  @HttpCode(HttpStatus.OK)
+  async earsivDedupBozukKopya(
+    @Headers('x-agent-token') agentToken: string,
+    @Query('apply') apply?: string,
+  ) {
+    const tenantId = await this.resolveTenantFromAgentToken(agentToken);
+    return this.earsiv.dedupBozukKopya(tenantId, { dryRun: apply !== 'true' });
+  }
+
+  /**
    * KDV / İşletme defteri Excel upload endpoint'i — agent token ile çalışır.
    * `kdv-control/sessions/:id/excel-from-runner/:jobId` JWT guard'lı (panel kullanıcısı için);
    * agent JWT'ye sahip olmadığından bu yan endpoint'i mizan pattern'inde sağlıyoruz.
