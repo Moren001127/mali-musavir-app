@@ -1983,25 +1983,43 @@ export class KdvBeyannameService {
     // Luca mizan hiyerarsik gelir: 391, 391.01 ve 391.01.001 ayni bakiyeyi
     // tasiyabilir. Capraz kontrolde sadece en detay (leaf) satirlari toplayarak
     // ana/ara hesap tekrarlarini saymiyoruz.
+    //
+    // Bakiye fallback: Ay sonu KDV tahakkuk fisi 391/191/190 hesaplarini
+    // 360 KDV'ye mahsup edip kapatabilir -> bakiye 0. Bu durumda gercek KDV
+    // tutari donem hareketinde (391 alacak hareket, 191/190 borc hareket)
+    // durur. Bakiye doluysa eskisi gibi bakiyeyi kullaniriz; bakiye 0 ise
+    // ayni taraftaki harekete duseriz. Geriye uyumlu.
     const sumBakiye = (kodPrefix: string, tip: 'borc' | 'alacak'): number | null => {
       const matches = rows.filter((r: any) => this.isKodOrChild(this.mizanKod(r), kodPrefix));
       if (matches.length === 0) return null;
 
       const matchKodlar = new Set(matches.map((r: any) => this.mizanKod(r)).filter(Boolean));
       const leafMatches = matches.filter((r: any) => this.isLeafMizanKod(this.mizanKod(r), matchKodlar));
-      const sideValue = (r: any) => this.mizanAmount(tip === 'borc' ? r.borcBakiye : r.alacakBakiye);
-      const sumRows = (items: any[]) =>
-        Math.round(items.reduce((acc, r) => acc + sideValue(r), 0) * 100) / 100;
 
-      const leafTotal = sumRows(leafMatches);
-      if (Math.abs(leafTotal) > 0.005) return leafTotal;
+      const bakiyeField = tip === 'borc' ? 'borcBakiye' : 'alacakBakiye';
+      const hareketField = tip === 'borc' ? 'borcToplami' : 'alacakToplami';
+      const sumField = (items: any[], field: string) =>
+        Math.round(items.reduce((acc, r) => acc + this.mizanAmount(r?.[field]), 0) * 100) / 100;
 
+      // 1) Leaf bakiye toplami (tahakkuk yapilmamissa dolu)
+      const leafBakiye = sumField(leafMatches, bakiyeField);
+      if (Math.abs(leafBakiye) > 0.005) return leafBakiye;
+
+      // 2) Bakiye sifir kapanmissa -> donem hareketine dus
+      const leafHareket = sumField(leafMatches, hareketField);
+      if (Math.abs(leafHareket) > 0.005) return leafHareket;
+
+      // 3) Tek prefix kodunda eslesme (mizan hiyerarsik degilse) bakiye/hareket
       const exact = matches.find((r: any) => this.mizanKod(r) === kodPrefix);
-      if (exact && Math.abs(sideValue(exact)) > 0.005) {
-        return Math.round(sideValue(exact) * 100) / 100;
+      if (exact) {
+        const exactBakiye = this.mizanAmount((exact as any)[bakiyeField]);
+        if (Math.abs(exactBakiye) > 0.005) return Math.round(exactBakiye * 100) / 100;
+        const exactHareket = this.mizanAmount((exact as any)[hareketField]);
+        if (Math.abs(exactHareket) > 0.005) return Math.round(exactHareket * 100) / 100;
       }
 
-      return sumRows(matches);
+      // 4) Son care: tum match satirlarin bakiye toplami
+      return sumField(matches, bakiyeField);
     };
 
     const luca391 = sumBakiye('391', 'alacak');
