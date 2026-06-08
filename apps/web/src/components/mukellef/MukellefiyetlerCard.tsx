@@ -6,13 +6,13 @@ import { api } from '@/lib/api';
 import { toast } from 'sonner';
 import { FileCheck, Save, Loader2 } from 'lucide-react';
 
-// Kurumsal duo palet (altın yalnızca Kaydet CTA'sında; yapı/aktif = çelik mavisi)
+// Kurumsal palet: aktif = yeşil, dönem seçimi = altın, kapalı = nötr.
 const GOLD = '#d4b876';
 const GOLD_DEEP = '#8b7649';
-const STEEL = '#4f86c9';
-const STEEL_BR = '#74a6e6';
-const STEEL_SF = 'rgba(79,134,201,0.13)';
-const STEEL_LN = 'rgba(79,134,201,0.32)';
+const GOOD = '#5fcf8e';
+const GOOD_BR = '#89e7b1';
+const GOOD_SF = 'rgba(95,207,142,0.10)';
+const GOOD_LN = 'rgba(95,207,142,0.30)';
 const CARD2 = '#0e0f13';
 const FIELD = '#0c0d11';
 const TEXT = '#f5f5f4';
@@ -35,7 +35,7 @@ interface BeyanConfig {
   // Muhtasar
   muhtasarPeriod: Period;
   muhtasar2Period: Period;
-  // ÖTV
+  // Eski yapıdan gelen, ekranda gösterilmeyen alanlar
   otv1Period: Period;
   otv3aPeriod: Period;
   otv3bPeriod: Period;
@@ -87,8 +87,6 @@ type BeyannameDef = {
 const KDV_GRUBU: BeyannameDef[] = [
   { key: 'kdv1Period',    kod: 'KDV1',    ad: 'KDV1',                          desc: 'Katma Değer Vergisi (genel)',           tip: 'period' },
   { key: 'kdv2Enabled',   kod: 'KDV2',    ad: 'KDV2 — Tevkifat',               desc: 'Sorumlu sıfatıyla — aylık zorunlu',     tip: 'toggle' },
-  { key: 'kdv4Period',    kod: 'KDV4',    ad: 'KDV4',                          desc: 'E-ticaret / hizmet ihracatı',           tip: 'period' },
-  { key: 'kdv9015Period', kod: 'KDV9015', ad: 'KDV9015 — Tevkifat Beyanı',     desc: 'Kıymetli maden, kira tevkifatı',        tip: 'period' },
 ];
 
 const GECICI_GRUBU: BeyannameDef[] = [
@@ -98,14 +96,6 @@ const GECICI_GRUBU: BeyannameDef[] = [
 
 const MUHTASAR_GRUBU: BeyannameDef[] = [
   { key: 'muhtasarPeriod',  kod: 'MUHSGK',  ad: 'Muhtasar (MUHSGK)',           desc: 'Aylık veya 3 aylık (mükellef tipine göre)', tip: 'period' },
-  { key: 'muhtasar2Period', kod: 'MUHSGK2', ad: 'Muhtasar (MUHSGK2)',          desc: '3 aylık muhtasar varyantı',                  tip: 'period' },
-];
-
-const OTV_GRUBU: BeyannameDef[] = [
-  { key: 'otv1Period',  kod: 'ÖTV1',  ad: 'ÖTV1',  desc: 'Akaryakıt, doğalgaz vb. (aylık)',                tip: 'period' },
-  { key: 'otv3aPeriod', kod: 'ÖTV3A', ad: 'ÖTV3A', desc: 'Motorlu taşıt (aylık)',                          tip: 'period' },
-  { key: 'otv3bPeriod', kod: 'ÖTV3B', ad: 'ÖTV3B', desc: 'Özel akaryakıt — aylık veya 15 günlük',         tip: 'period_15gun' },
-  { key: 'otv4Period',  kod: 'ÖTV4',  ad: 'ÖTV4',  desc: 'Alkollü içecek, tütün (aylık)',                  tip: 'period' },
 ];
 
 const DIGER_GRUBU: BeyannameDef[] = [
@@ -113,8 +103,6 @@ const DIGER_GRUBU: BeyannameDef[] = [
   { key: 'sgkBildirgeEnabled',kod: 'BILDIRGE',  ad: 'SGK Aylık Prim Bildirge',desc: 'Çalışanı olan mükellefler için',      tip: 'toggle' },
   { key: 'posetEnabled',      kod: 'POSET',     ad: 'Poşet Beyannamesi',      desc: '3 aylık — plastik poşet kullananlar', tip: 'toggle' },
   { key: 'konaklamaEnabled',  kod: 'KONAKLAMA', ad: 'Konaklama Vergisi',      desc: 'Otel, pansiyon vb. (aylık)',          tip: 'toggle' },
-  { key: 'oivEnabled',        kod: 'ÖİV',       ad: 'ÖİV (Özel İletişim V.)', desc: 'GSM / iletişim hizmetleri',           tip: 'toggle' },
-  { key: 'gmsiEnabled',       kod: 'GMSI',      ad: 'GMSİ',                   desc: 'Gayrimenkul sermaye iradı (yıllık)',  tip: 'toggle' },
   { key: 'turizmPeriod',      kod: 'TURIZM',    ad: 'Turizm Payı',            desc: 'Aylık veya 3 aylık',                  tip: 'period' },
   { key: 'eDefterPeriod',     kod: 'EDEFTER',   ad: 'E-Defter / E-Berat',     desc: 'Bilanço usulü için zorunlu',          tip: 'period' },
 ];
@@ -174,32 +162,11 @@ export function MukellefiyetlerCard({ taxpayerId }: { taxpayerId: string }) {
     },
   });
 
-  // Aktif beyanname sayısı (özet için)
-  const aktifSayisi = (() => {
-    let n = 0;
-    if (form.kdv1Period) n++;
-    if (form.kdv2Enabled) n++;
-    if (form.kdv4Period) n++;
-    if (form.kdv9015Period) n++;
-    if (form.gelirGeciciPeriod) n++;
-    if (form.kurumGeciciPeriod) n++;
-    if (form.muhtasarPeriod) n++;
-    if (form.muhtasar2Period) n++;
-    if (form.otv1Period) n++;
-    if (form.otv3aPeriod) n++;
-    if (form.otv3bPeriod) n++;
-    if (form.otv4Period) n++;
-    if (form.damgaEnabled) n++;
-    if (form.posetEnabled) n++;
-    if (form.sgkBildirgeEnabled) n++;
-    if (form.konaklamaEnabled) n++;
-    if (form.oivEnabled) n++;
-    if (form.gmsiEnabled) n++;
-    if (form.turizmPeriod) n++;
-    if (form.eDefterPeriod) n++;
-    if (form.incomeTaxType) n++;
-    return n;
-  })();
+  const visibleDefs = [...KDV_GRUBU, ...GECICI_GRUBU, ...MUHTASAR_GRUBU, ...DIGER_GRUBU];
+  const aktifSayisi = visibleDefs.reduce((n, item) => {
+    const value = (form as any)[item.key];
+    return n + (item.tip === 'toggle' ? Number(!!value) : Number(value !== null));
+  }, form.incomeTaxType ? 1 : 0);
 
   if (isLoading) return null;
 
@@ -207,7 +174,7 @@ export function MukellefiyetlerCard({ taxpayerId }: { taxpayerId: string }) {
     <div>
       <div className="mb-5 flex items-start justify-between gap-3">
         <div className="flex items-center gap-3">
-          <div className="flex h-10 w-10 items-center justify-center rounded-xl border" style={{ borderColor: STEEL_LN, background: STEEL_SF, color: STEEL_BR }}>
+          <div className="flex h-10 w-10 items-center justify-center rounded-xl border" style={{ borderColor: GOOD_LN, background: GOOD_SF, color: GOOD_BR }}>
             <FileCheck size={18} />
           </div>
           <div>
@@ -215,14 +182,14 @@ export function MukellefiyetlerCard({ taxpayerId }: { taxpayerId: string }) {
             <p className="mt-0.5 text-[11.5px]" style={{ color: MUTED }}>Hangi beyannameler, hangi dönemde?</p>
           </div>
         </div>
-        <span className="rounded-md border px-2 py-1 text-[11px] font-bold tabular-nums" style={{ background: STEEL_SF, color: STEEL_BR, borderColor: STEEL_LN }}>
+        <span className="rounded-md border px-2 py-1 text-[11px] font-bold tabular-nums" style={{ background: GOOD_SF, color: GOOD_BR, borderColor: GOOD_LN }}>
           {aktifSayisi} aktif
         </span>
       </div>
 
       {/* Yıllık Beyanname Tipi */}
       <div className="mb-5 rounded-xl border p-3" style={{ background: CARD2, borderColor: LINE }}>
-        <div className="text-[11.5px] font-semibold uppercase tracking-wider" style={{ color: STEEL_BR }}>Yıllık Beyanname Tipi</div>
+        <div className="text-[11.5px] font-black uppercase tracking-wider" style={{ color: GOLD }}>Yıllık Beyanname Tipi</div>
         <div className="mt-2 grid grid-cols-2 gap-1.5">
           <PeriodChip selected={form.incomeTaxType === null} label="Yok" onClick={() => setForm({ ...form, incomeTaxType: null })} />
           <PeriodChip selected={form.incomeTaxType === 'KURUMLAR'} label="Kurumlar V." onClick={() => setForm({ ...form, incomeTaxType: 'KURUMLAR' })} />
@@ -239,9 +206,6 @@ export function MukellefiyetlerCard({ taxpayerId }: { taxpayerId: string }) {
 
       {/* Muhtasar */}
       <BeyanGroup title="Muhtasar" items={MUHTASAR_GRUBU} form={form} setForm={setForm} />
-
-      {/* ÖTV */}
-      <BeyanGroup title="Özel Tüketim Vergisi (ÖTV)" items={OTV_GRUBU} form={form} setForm={setForm} />
 
       {/* Diğer */}
       <BeyanGroup title="Diğer Beyannameler" items={DIGER_GRUBU} form={form} setForm={setForm} />
@@ -279,7 +243,7 @@ function BeyanGroup({
 }) {
   return (
     <div className="mb-5">
-      <div className="mb-2 text-[10.5px] font-bold uppercase tracking-[0.10em]" style={{ color: STEEL_BR }}>
+      <div className="mb-2 text-[10.5px] font-black uppercase tracking-[0.10em]" style={{ color: GOLD }}>
         {title}
       </div>
       <div className="space-y-2">
@@ -307,14 +271,14 @@ function BeyanRow({
     <div
       className="rounded-xl border p-3 transition"
       style={{
-        background: isActive ? STEEL_SF : FIELD,
-        borderColor: isActive ? STEEL_LN : LINE,
+        background: isActive ? GOOD_SF : FIELD,
+        borderColor: isActive ? GOOD_LN : LINE,
       }}
     >
       <div className="flex items-start justify-between gap-3">
         <div className="min-w-0 flex-1">
           <div className="flex items-center gap-2">
-            <span className="rounded px-1.5 py-0.5 text-[9.5px] font-bold tabular-nums" style={{ background: isActive ? STEEL : 'rgba(255,255,255,0.08)', color: isActive ? '#fff' : MUTED }}>
+            <span className="rounded px-1.5 py-0.5 text-[9.5px] font-bold tabular-nums" style={{ background: isActive ? GOOD : 'rgba(255,255,255,0.08)', color: isActive ? '#08100c' : MUTED }}>
               {item.kod}
             </span>
             <div className="text-[12.5px] font-semibold" style={{ color: TEXT }}>{item.ad}</div>
@@ -323,13 +287,16 @@ function BeyanRow({
         </div>
         <div className="shrink-0">
           {item.tip === 'toggle' ? (
-            <input
-              type="checkbox"
-              checked={!!value}
-              onChange={(e) => setForm({ ...form, [item.key]: e.target.checked } as BeyanConfig)}
-              className="h-5 w-5 cursor-pointer"
-              style={{ accentColor: STEEL }}
-            />
+            <button
+              type="button"
+              onClick={() => setForm({ ...form, [item.key]: !value } as BeyanConfig)}
+              className="rounded-lg border px-3 py-1.5 text-[11px] font-black transition hover:brightness-110"
+              style={isActive
+                ? { borderColor: GOOD_LN, background: GOOD_SF, color: GOOD_BR }
+                : { borderColor: LINE, background: 'rgba(255,255,255,0.035)', color: MUTED }}
+            >
+              {isActive ? 'Aktif' : 'Kapalı'}
+            </button>
           ) : null}
         </div>
       </div>
@@ -349,15 +316,16 @@ function BeyanRow({
 }
 
 function PeriodChip({ label, selected, onClick }: { label: string; selected: boolean; onClick: () => void }) {
+  const emptySelected = selected && label === 'Yok';
   return (
     <button
       type="button"
       onClick={onClick}
       className="rounded-md px-2.5 py-1 text-[11px] font-semibold transition"
       style={{
-        background: selected ? STEEL : 'rgba(255,255,255,0.04)',
-        color: selected ? '#fff' : MUTED,
-        border: `1px solid ${selected ? STEEL : LINE}`,
+        background: selected ? (emptySelected ? 'rgba(255,255,255,0.07)' : 'rgba(212,184,118,0.16)') : 'rgba(255,255,255,0.04)',
+        color: selected ? (emptySelected ? MUTED : GOLD) : MUTED,
+        border: `1px solid ${selected ? (emptySelected ? LINE : 'rgba(212,184,118,0.34)') : LINE}`,
       }}
     >
       {label}

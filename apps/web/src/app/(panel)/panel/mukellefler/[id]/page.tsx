@@ -30,7 +30,6 @@ import {
   Save,
   Settings2,
   Shield,
-  ShieldCheck,
   Sparkles,
   Trash2,
   UserCog,
@@ -65,7 +64,7 @@ const GREEN = '#5fcf8e';
 const AMBER = '#f0b755';
 const RED = '#ef6b6b';
 
-const FIELD_CLS = 'h-[42px] w-full rounded-xl border border-white/10 bg-[#0c0d11] px-3.5 text-[13px] text-[#f5f5f4] outline-none transition placeholder:text-white/30 focus:border-[#4f86c9]/60 focus:bg-[#0e1014] focus:shadow-[0_0_0_3px_rgba(79,134,201,0.15)]';
+const FIELD_CLS = 'h-[42px] w-full rounded-xl border border-white/10 bg-[#0c0d11] px-3.5 text-[13px] text-[#f5f5f4] outline-none transition placeholder:text-white/30 focus:border-[#d4b876]/60 focus:bg-[#0e1014] focus:shadow-[0_0_0_3px_rgba(212,184,118,0.14)]';
 const SELECT_CLS = `${FIELD_CLS} cursor-pointer`;
 const TEXTAREA_CLS = 'w-full resize-none rounded-xl border border-white/10 bg-[#0c0d11] px-3.5 py-3 text-[13px] text-[#f5f5f4] outline-none transition placeholder:text-white/30 focus:border-[#4f86c9]/60 focus:bg-[#0e1014] focus:shadow-[0_0_0_3px_rgba(79,134,201,0.15)]';
 
@@ -211,30 +210,20 @@ type TabKey =
   | 'bilgiler'
   | 'beyannameler'
   | 'sgk'
-  | 'sgkTebligat'
   | 'tebligat'
-  | 'uetsTebligat'
   | 'dosyalar'
   | 'cariHesap'
-  | 'beyannameKontrol'
-  | 'sgkKontrol'
   | 'iseGiris'
-  | 'bankaEvraklar'
   | 'notlar';
 
 const REAL_TABS: Array<{ key: TabKey; label: string; icon: React.ElementType }> = [
   { key: 'bilgiler', label: 'Bilgiler', icon: Contact },
   { key: 'beyannameler', label: 'Beyannameler', icon: FileText },
   { key: 'sgk', label: 'SGK', icon: Shield },
-  { key: 'sgkTebligat', label: 'SGK E-Tebligat', icon: ShieldCheck },
   { key: 'tebligat', label: 'E-Tebligat', icon: Mail },
-  { key: 'uetsTebligat', label: 'UETS E-Tebligat', icon: Mail },
   { key: 'dosyalar', label: 'Dosyalar', icon: BookOpen },
   { key: 'cariHesap', label: 'Cari Hesap', icon: Landmark },
-  { key: 'beyannameKontrol', label: 'Beyanname Kontrol', icon: FileCheck },
-  { key: 'sgkKontrol', label: 'SGK Kontrol', icon: ShieldCheck },
   { key: 'iseGiris', label: 'İşe Giriş Bildirgesi', icon: UserCog },
-  { key: 'bankaEvraklar', label: 'Banka Evrakları', icon: Landmark },
   { key: 'notlar', label: 'Mükellef Not', icon: MessageSquareText },
 ];
 
@@ -524,32 +513,15 @@ export default function MukellefDetayPage() {
               linkHref={`/panel/bordro?taxpayerId=${id}`}
             />
           )}
-          {activeTab === 'sgkTebligat' && (
-            <PlaceholderTab icon={ShieldCheck} title="SGK E-Tebligat" description="SGK tebligat takip alanı için ayrılmış modül." comingSoon />
-          )}
           {activeTab === 'tebligat' && (
             <PlaceholderTab icon={Mail} title="E-Tebligat" description="GİB e-tebligat takibi ve okundu durumları burada izlenecek." comingSoon />
-          )}
-          {activeTab === 'uetsTebligat' && (
-            <PlaceholderTab icon={Mail} title="UETS E-Tebligat" description="UETS bildirimleri için ayrı takip alanı." comingSoon />
           )}
           {activeTab === 'dosyalar' && (
             <PlaceholderTab icon={BookOpen} title="Dosyalar" description="Mükellefe bağlı evraklar ve dosya arşivi." linkLabel="Evraklar modülüne git" linkHref={`/panel/evraklar?taxpayerId=${id}`} />
           )}
-          {activeTab === 'cariHesap' && (
-            <PlaceholderTab icon={Landmark} title="Cari Hesap" description="Tahakkuk, tahsilat ve cari bakiye hareketleri." linkLabel="Cari hesap modülüne git" linkHref={`/panel/cari-kasa?taxpayerId=${id}`} />
-          )}
-          {activeTab === 'beyannameKontrol' && (
-            <PlaceholderTab icon={FileCheck} title="Beyanname Kontrol" description="Beyanname kontrol ve karşılaştırma akışları." linkLabel="KDV Kontrol'e git" linkHref={`/panel/kdv-kontrol?taxpayerId=${id}`} />
-          )}
-          {activeTab === 'sgkKontrol' && (
-            <PlaceholderTab icon={ShieldCheck} title="SGK Kontrol" description="SGK kontrol sonuçları ve eksik işlemler burada izlenecek." comingSoon />
-          )}
+          {activeTab === 'cariHesap' && !isNew && id && <CariHesapTab taxpayerId={id} />}
           {activeTab === 'iseGiris' && (
             <PlaceholderTab icon={UserCog} title="İşe Giriş Bildirgesi" description="İşe giriş ve işten çıkış bildirimleri için ayrılmış alan." comingSoon />
-          )}
-          {activeTab === 'bankaEvraklar' && (
-            <PlaceholderTab icon={Landmark} title="Banka Evrakları" description="Banka evrakları ve hesap hareketleri için dosya alanı." linkLabel="Banka Takip'e git" linkHref={`/panel/banka-takip?taxpayerId=${id}`} />
           )}
           {activeTab === 'notlar' && <NotlarTab form={form} setForm={setForm} />}
         </div>
@@ -669,7 +641,6 @@ function PortalDrawer({
 // ============================================================
 type BilgiSectionId =
   | 'musteri'
-  | 'vergi'
   | 'mukellefiyet'
   | 'yetkili'
   | 'iletisim'
@@ -696,8 +667,7 @@ function BilgilerTab({
     show: boolean;
     filled: boolean;
   }[] = [
-    { id: 'musteri', title: 'Müşteri Bilgileri', subtitle: 'Ad, tip, VKN/TCKN', icon: Building2, show: true, filled: !!(form.companyName || form.firstName || form.taxNumber) },
-    { id: 'vergi', title: 'Vergi Dairesi Bilgileri', subtitle: 'Vergi dairesi, sicil, adres', icon: Landmark, show: true, filled: !!(form.taxOffice || form.naceKodu || form.startDate) },
+    { id: 'musteri', title: 'Müşteri & Vergi Dairesi Bilgileri', subtitle: 'Ad, tip, VKN/TCKN, vergi dairesi, sicil ve adres', icon: Building2, show: true, filled: !!(form.companyName || form.firstName || form.taxNumber || form.taxOffice) },
     { id: 'mukellefiyet', title: 'Mükellefiyet Bilgileri', subtitle: 'Vergi türleri ve dönemler', icon: FileCheck, show: !!taxpayerId, filled: !!taxpayerId },
     { id: 'yetkili', title: 'Firma Yetkili Bilgileri', subtitle: 'Müdür, ortak, imza', icon: UserCog, show: !!taxpayerId, filled: false },
     { id: 'iletisim', title: 'İletişim Bilgileri', subtitle: 'Telefon, e-posta, KEP', icon: Phone, show: true, filled: form.phones.some(Boolean) || form.emails.some(Boolean) || !!form.kepAdresi },
@@ -708,79 +678,81 @@ function BilgilerTab({
     { id: 'sistem', title: 'Defter & Sistem Bilgileri', subtitle: 'Luca / Mihsap eşleşme', icon: Settings2, show: true, filled: !!form.lucaSlug || !!form.mihsapId },
   ];
   const visible = sections.filter((s) => s.show);
-  const [open, setOpen] = useState<BilgiSectionId>('musteri');
+  const [open, setOpen] = useState<BilgiSectionId | null>('musteri');
 
   const renderSection = (section: BilgiSectionId) => {
     if (section === 'musteri') {
       return (
-        <div className="grid grid-cols-1 gap-x-4 gap-y-3.5 md:grid-cols-2">
-          <div className="md:col-span-2">
-            <span className="mb-1.5 block text-[11px] font-medium tracking-wide" style={{ color: MUTED }}>Mükellef Tipi</span>
-            <Segmented
-              value={form.type}
-              onChange={(v) => setForm((p) => ({ ...p, type: v as TaxpayerType }))}
-              options={TAXPAYER_TYPES.map((t) => ({ value: t.value, label: t.label }))}
-            />
-          </div>
+        <div className="space-y-5">
+          <FormCluster title="Temel bilgiler">
+            <div className="grid grid-cols-1 gap-x-4 gap-y-3.5 md:grid-cols-2">
+              <div className="md:col-span-2">
+                <span className="mb-1.5 block text-[11px] font-medium tracking-wide" style={{ color: MUTED }}>Mükellef Tipi</span>
+                <Segmented
+                  value={form.type}
+                  onChange={(v) => setForm((p) => ({ ...p, type: v as TaxpayerType }))}
+                  options={TAXPAYER_TYPES.map((t) => ({ value: t.value, label: t.label }))}
+                />
+              </div>
 
-          {form.type === 'TUZEL_KISI' ? (
-            <Field label="Şirket adı" required className="md:col-span-2">
-              <InputBase value={form.companyName} onChange={(e) => setForm((p) => ({ ...p, companyName: e.target.value }))} required />
-            </Field>
-          ) : (
-            <>
-              <Field label="Ad" required>
-                <InputBase value={form.firstName} onChange={(e) => setForm((p) => ({ ...p, firstName: e.target.value }))} required />
+              {form.type === 'TUZEL_KISI' ? (
+                <Field label="Şirket adı" required className="md:col-span-2">
+                  <InputBase value={form.companyName} onChange={(e) => setForm((p) => ({ ...p, companyName: e.target.value }))} required />
+                </Field>
+              ) : (
+                <>
+                  <Field label="Ad" required>
+                    <InputBase value={form.firstName} onChange={(e) => setForm((p) => ({ ...p, firstName: e.target.value }))} required />
+                  </Field>
+                  <Field label="Soyad" required>
+                    <InputBase value={form.lastName} onChange={(e) => setForm((p) => ({ ...p, lastName: e.target.value }))} required />
+                  </Field>
+                </>
+              )}
+
+              <Field label={form.type === 'TUZEL_KISI' ? 'VKN' : 'TCKN'} required>
+                <InputBase
+                  value={form.taxNumber}
+                  onChange={(e) => setForm((p) => ({ ...p, taxNumber: e.target.value.replace(/\D/g, '').slice(0, form.type === 'TUZEL_KISI' ? 10 : 11) }))}
+                  maxLength={form.type === 'TUZEL_KISI' ? 10 : 11}
+                  required
+                  className="font-mono"
+                />
               </Field>
-              <Field label="Soyad" required>
-                <InputBase value={form.lastName} onChange={(e) => setForm((p) => ({ ...p, lastName: e.target.value }))} required />
+              <Field label="Logo URL">
+                <InputBase value={form.logoUrl} onChange={(e) => setForm((p) => ({ ...p, logoUrl: e.target.value }))} />
               </Field>
-            </>
-          )}
+            </div>
+          </FormCluster>
 
-          <Field label={form.type === 'TUZEL_KISI' ? 'VKN' : 'TCKN'} required>
-            <InputBase
-              value={form.taxNumber}
-              onChange={(e) => setForm((p) => ({ ...p, taxNumber: e.target.value.replace(/\D/g, '').slice(0, form.type === 'TUZEL_KISI' ? 10 : 11) }))}
-              maxLength={form.type === 'TUZEL_KISI' ? 10 : 11}
-              required
-              className="font-mono"
-            />
-          </Field>
-          <Field label="Logo URL">
-            <InputBase value={form.logoUrl} onChange={(e) => setForm((p) => ({ ...p, logoUrl: e.target.value }))} />
-          </Field>
-        </div>
-      );
-    }
-
-    if (section === 'vergi') {
-      return (
-        <div className="grid grid-cols-1 gap-x-4 gap-y-3.5 md:grid-cols-2 lg:grid-cols-3">
-          <Field label="Vergi dairesi" required>
-            <InputBase value={form.taxOffice} onChange={(e) => setForm((p) => ({ ...p, taxOffice: e.target.value }))} required />
-          </Field>
-          <Field label="İşe başlama tarihi">
-            <InputBase type="date" value={form.startDate} onChange={(e) => setForm((p) => ({ ...p, startDate: e.target.value }))} />
-          </Field>
-          <Field label="İşi bırakma tarihi">
-            <InputBase type="date" value={form.endDate} onChange={(e) => setForm((p) => ({ ...p, endDate: e.target.value }))} />
-          </Field>
-          <Field label="NACE Kodu">
-            <InputBase value={form.naceKodu} onChange={(e) => setForm((p) => ({ ...p, naceKodu: e.target.value }))} />
-          </Field>
-          <Field label="Ticaret Sicil No">
-            <InputBase value={form.ticaretSicilNo} onChange={(e) => setForm((p) => ({ ...p, ticaretSicilNo: e.target.value }))} />
-          </Field>
-          <Field label="MERSİS No">
-            <InputBase value={form.mersisNo} onChange={(e) => setForm((p) => ({ ...p, mersisNo: e.target.value }))} className="font-mono" />
-          </Field>
-          <Field label="Oda Sicil No">
-            <InputBase value={form.odaSicilNo} onChange={(e) => setForm((p) => ({ ...p, odaSicilNo: e.target.value }))} />
-          </Field>
-          <Field label="Adres" className="md:col-span-2">
-            <InputBase value={form.address} onChange={(e) => setForm((p) => ({ ...p, address: e.target.value }))} />
-          </Field>
+          <FormCluster title="Vergi dairesi ve sicil">
+            <div className="grid grid-cols-1 gap-x-4 gap-y-3.5 md:grid-cols-2 lg:grid-cols-3">
+              <Field label="Vergi dairesi" required>
+                <InputBase value={form.taxOffice} onChange={(e) => setForm((p) => ({ ...p, taxOffice: e.target.value }))} required />
+              </Field>
+              <Field label="İşe başlama tarihi">
+                <InputBase type="date" value={form.startDate} onChange={(e) => setForm((p) => ({ ...p, startDate: e.target.value }))} />
+              </Field>
+              <Field label="İşi bırakma tarihi">
+                <InputBase type="date" value={form.endDate} onChange={(e) => setForm((p) => ({ ...p, endDate: e.target.value }))} />
+              </Field>
+              <Field label="NACE Kodu">
+                <InputBase value={form.naceKodu} onChange={(e) => setForm((p) => ({ ...p, naceKodu: e.target.value }))} />
+              </Field>
+              <Field label="Ticaret Sicil No">
+                <InputBase value={form.ticaretSicilNo} onChange={(e) => setForm((p) => ({ ...p, ticaretSicilNo: e.target.value }))} />
+              </Field>
+              <Field label="MERSİS No">
+                <InputBase value={form.mersisNo} onChange={(e) => setForm((p) => ({ ...p, mersisNo: e.target.value }))} className="font-mono" />
+              </Field>
+              <Field label="Oda Sicil No">
+                <InputBase value={form.odaSicilNo} onChange={(e) => setForm((p) => ({ ...p, odaSicilNo: e.target.value }))} />
+              </Field>
+              <Field label="Adres" className="md:col-span-2">
+                <InputBase value={form.address} onChange={(e) => setForm((p) => ({ ...p, address: e.target.value }))} />
+              </Field>
+            </div>
+          </FormCluster>
         </div>
       );
     }
@@ -797,42 +769,44 @@ function BilgilerTab({
       return (
         <div className="space-y-4">
           <div className="grid grid-cols-1 gap-5 md:grid-cols-2">
-            <div className="space-y-3">
-              <Subhead icon={Phone} label="Telefonlar" />
-              {form.phones.map((phone, index) => (
-                <InputBase
-                  key={index}
-                  type="tel"
-                  value={phone}
-                  onChange={(e) =>
-                    setForm((prev) => {
-                      const phones = [...prev.phones];
-                      phones[index] = e.target.value;
-                      return { ...prev, phones };
-                    })
-                  }
-                  placeholder={index === 0 ? 'Ana telefon' : `Telefon ${index + 1}`}
-                />
-              ))}
-            </div>
-            <div className="space-y-3">
-              <Subhead icon={Mail} label="E-postalar" />
-              {form.emails.map((email, index) => (
-                <InputBase
-                  key={index}
-                  type="email"
-                  value={email}
-                  onChange={(e) =>
-                    setForm((prev) => {
-                      const emails = [...prev.emails];
-                      emails[index] = e.target.value;
-                      return { ...prev, emails };
-                    })
-                  }
-                  placeholder={index === 0 ? 'Ana e-posta' : `E-posta ${index + 1}`}
-                />
-              ))}
-            </div>
+            <FormCluster title="Telefonlar">
+              <div className="space-y-3">
+                {form.phones.map((phone, index) => (
+                  <InputBase
+                    key={index}
+                    type="tel"
+                    value={phone}
+                    onChange={(e) =>
+                      setForm((prev) => {
+                        const phones = [...prev.phones];
+                        phones[index] = e.target.value;
+                        return { ...prev, phones };
+                      })
+                    }
+                    placeholder={index === 0 ? 'Ana telefon' : `Telefon ${index + 1}`}
+                  />
+                ))}
+              </div>
+            </FormCluster>
+            <FormCluster title="E-postalar">
+              <div className="space-y-3">
+                {form.emails.map((email, index) => (
+                  <InputBase
+                    key={index}
+                    type="email"
+                    value={email}
+                    onChange={(e) =>
+                      setForm((prev) => {
+                        const emails = [...prev.emails];
+                        emails[index] = e.target.value;
+                        return { ...prev, emails };
+                      })
+                    }
+                    placeholder={index === 0 ? 'Ana e-posta' : `E-posta ${index + 1}`}
+                  />
+                ))}
+              </div>
+            </FormCluster>
           </div>
           <div className="grid grid-cols-1 gap-4 md:grid-cols-2">
             <Field label="KEP Adresi">
@@ -979,7 +953,7 @@ function BilgilerTab({
           subtitle={s.subtitle}
           filled={s.filled}
           open={open === s.id}
-          onToggle={() => setOpen(s.id)}
+          onToggle={() => setOpen((current) => (current === s.id ? null : s.id))}
         >
           {renderSection(s.id)}
         </AccordionRow>
@@ -1006,15 +980,15 @@ function AccordionRow({
   children: React.ReactNode;
 }) {
   return (
-    <section className="overflow-hidden rounded-[8px] border" style={{ borderColor: open ? STEEL_LN : HAIR, background: CARD2 }}>
+    <section className="overflow-hidden rounded-[8px] border" style={{ borderColor: open ? 'rgba(212,184,118,0.36)' : HAIR, background: CARD2 }}>
       <button
         type="button"
         aria-expanded={open}
         onClick={onToggle}
         className="flex w-full items-center gap-3 px-4 py-3 text-left transition hover:brightness-110"
-        style={{ background: open ? 'rgba(79,134,201,0.20)' : 'rgba(79,134,201,0.13)' }}
+        style={{ background: open ? 'rgba(212,184,118,0.10)' : 'rgba(255,255,255,0.026)' }}
       >
-        <span className="flex h-9 w-9 shrink-0 items-center justify-center rounded-[6px] border" style={{ borderColor: STEEL_LN, color: STEEL_BR, background: STEEL_SF }}>
+        <span className="flex h-9 w-9 shrink-0 items-center justify-center rounded-[6px] border" style={{ borderColor: open ? 'rgba(212,184,118,0.34)' : LINE, color: open ? GOLD_BR : MUTED, background: open ? 'rgba(212,184,118,0.10)' : 'rgba(255,255,255,0.035)' }}>
           <Icon size={17} />
         </span>
         <span className="min-w-0 flex-1">
@@ -1029,11 +1003,23 @@ function AccordionRow({
         <ChevronRight size={18} className="transition-transform" style={{ color: MUTED, transform: open ? 'rotate(90deg)' : 'rotate(0deg)' }} />
       </button>
       {open && (
-        <div className="border-t p-4 sm:p-5" style={{ borderColor: HAIR, background: CARD }}>
+        <div className="border-t p-4 sm:p-5" style={{ borderColor: HAIR, background: '#111217' }}>
           {children}
         </div>
       )}
     </section>
+  );
+}
+
+function FormCluster({ title, children }: { title: string; children: React.ReactNode }) {
+  return (
+    <div className="border-l-2 py-1 pl-3" style={{ borderColor: 'rgba(212,184,118,0.34)' }}>
+      <div className="mb-3 flex items-center gap-2">
+        <span className="h-1.5 w-1.5 rounded-full" style={{ background: GOLD }} />
+        <span className="text-[11px] font-black uppercase tracking-[0.10em]" style={{ color: GOLD_BR }}>{title}</span>
+      </div>
+      {children}
+    </div>
   );
 }
 
@@ -1212,6 +1198,141 @@ function NotlarTab({ form, setForm }: { form: FormState; setForm: React.Dispatch
       />
     </div>
   );
+}
+
+type CariBakiye = {
+  tahakkuk?: number;
+  tahsilat?: number;
+  iade?: number;
+  duzeltme?: number;
+  borc?: number;
+  alacak?: number;
+  bakiye?: number;
+};
+
+type CariHareket = {
+  id: string;
+  tarih: string;
+  tip: 'TAHAKKUK' | 'TAHSILAT' | 'IADE' | 'DUZELTME' | string;
+  tutar: number | string;
+  aciklama?: string | null;
+  odemeYontemi?: string | null;
+  donem?: string | null;
+  runningBakiye?: number;
+  hizmet?: { hizmetAdi?: string | null } | null;
+};
+
+function CariHesapTab({ taxpayerId }: { taxpayerId: string }) {
+  const { data: bakiye, isLoading: bakiyeLoading } = useQuery<CariBakiye>({
+    queryKey: ['cari-bakiye', taxpayerId],
+    queryFn: () => api.get(`/cari-kasa/bakiye/${taxpayerId}`).then((r) => r.data),
+    enabled: !!taxpayerId,
+  });
+
+  const { data: hareketler = [], isLoading: hareketLoading } = useQuery<CariHareket[]>({
+    queryKey: ['cari-hareketler', taxpayerId, 'kart'],
+    queryFn: () => api.get('/cari-kasa/hareket', { params: { taxpayerId, limit: 12 } }).then((r) => r.data),
+    enabled: !!taxpayerId,
+  });
+
+  const loading = bakiyeLoading || hareketLoading;
+  const netBakiye = Number(bakiye?.bakiye || 0);
+  const borclu = netBakiye > 0;
+
+  return (
+    <div className="space-y-4">
+      <div className="flex flex-wrap items-start justify-between gap-3">
+        <div>
+          <h3 className="text-[17px] font-black" style={{ color: TEXT }}>Cari Hesap</h3>
+          <p className="mt-1 text-[12.5px]" style={{ color: MUTED }}>Cari Kasa & Tahsilat modülündeki bakiye ve son hareketler.</p>
+        </div>
+        <Link
+          href={`/panel/cari-kasa?mukellef=${taxpayerId}`}
+          className="inline-flex items-center gap-1.5 rounded-[8px] px-3.5 py-2 text-[12.5px] font-bold"
+          style={{ background: `linear-gradient(135deg, ${STEEL_BR}, ${STEEL_DP})`, color: '#fff' }}
+        >
+          Cari modülünde aç <ExternalLink size={13} />
+        </Link>
+      </div>
+
+      <div className="grid grid-cols-1 gap-3 sm:grid-cols-2 lg:grid-cols-4">
+        <CariMetric label="Toplam tahakkuk" value={bakiye?.tahakkuk} />
+        <CariMetric label="Toplam tahsilat" value={bakiye?.tahsilat} tone="good" />
+        <CariMetric label="Açık bakiye" value={Math.abs(netBakiye)} tone={borclu ? 'bad' : 'good'} suffix={borclu ? 'Borç' : 'Alacak/Yok'} />
+        <CariMetric label="Hareket" text={loading ? 'Yükleniyor' : `${hareketler.length} son kayıt`} />
+      </div>
+
+      <div className="overflow-x-auto rounded-[8px] border" style={{ borderColor: HAIR, background: CARD2 }}>
+        <div className="min-w-[820px]">
+          <div className="grid grid-cols-[110px_112px_minmax(220px,1fr)_120px_120px_120px] gap-2 border-b px-4 py-2.5 text-[10px] font-black uppercase tracking-[0.10em]" style={{ borderColor: HAIR, color: FAINT }}>
+            <span>Tarih</span>
+            <span>Tip</span>
+            <span>Açıklama</span>
+            <span className="text-right">Borç</span>
+            <span className="text-right">Alacak</span>
+            <span className="text-right">Bakiye</span>
+          </div>
+
+          {loading ? (
+            <div className="flex items-center gap-2 px-4 py-8 text-[13px]" style={{ color: MUTED }}>
+              <Loader2 size={15} className="animate-spin" /> Cari hareketler yükleniyor...
+            </div>
+          ) : hareketler.length === 0 ? (
+            <div className="px-4 py-8 text-center text-[13px]" style={{ color: MUTED }}>
+              Bu mükellef için cari hareket bulunamadı.
+            </div>
+          ) : (
+            hareketler.map((h) => {
+              const tutar = toMoneyNumber(h.tutar);
+              const borc = h.tip === 'TAHAKKUK' ? tutar : h.tip === 'IADE' ? -tutar : 0;
+              const alacak = h.tip === 'TAHSILAT' ? tutar : h.tip === 'DUZELTME' ? -tutar : 0;
+              const tipLabel = h.tip === 'TAHAKKUK' ? 'Tahakkuk' : h.tip === 'TAHSILAT' ? 'Tahsilat' : h.tip === 'IADE' ? 'İade' : 'Düzeltme';
+              const isTahsilat = h.tip === 'TAHSILAT';
+              return (
+                <div key={h.id} className="grid grid-cols-[110px_112px_minmax(220px,1fr)_120px_120px_120px] gap-2 border-b px-4 py-3 text-[12.5px] last:border-b-0" style={{ borderColor: 'rgba(255,255,255,0.045)' }}>
+                  <span className="tabular-nums" style={{ color: MUTED }}>{fmtDateTR(h.tarih?.substring(0, 10))}</span>
+                  <span>
+                    <span className="rounded-[6px] border px-2 py-1 text-[10.5px] font-bold" style={isTahsilat ? { borderColor: 'rgba(95,207,142,0.28)', background: 'rgba(95,207,142,0.10)', color: GREEN } : { borderColor: 'rgba(212,184,118,0.28)', background: 'rgba(212,184,118,0.10)', color: GOLD }}>
+                      {tipLabel}
+                    </span>
+                  </span>
+                  <span className="min-w-0 truncate" style={{ color: TEXT }}>
+                    {h.hizmet?.hizmetAdi ? `${h.hizmet.hizmetAdi}${h.aciklama ? ' · ' : ''}` : ''}
+                    {h.aciklama || h.donem || '—'}
+                  </span>
+                  <span className="text-right font-bold tabular-nums" style={{ color: borc ? RED : FAINT }}>{borc ? `${fmtTutar(borc)} ₺` : '—'}</span>
+                  <span className="text-right font-bold tabular-nums" style={{ color: alacak ? GREEN : FAINT }}>{alacak ? `${fmtTutar(alacak)} ₺` : '—'}</span>
+                  <span className="text-right font-bold tabular-nums" style={{ color: TEXT }}>{h.runningBakiye != null ? `${fmtTutar(h.runningBakiye)} ₺` : '—'}</span>
+                </div>
+              );
+            })
+          )}
+        </div>
+      </div>
+    </div>
+  );
+}
+
+function CariMetric({ label, value, text, tone = 'neutral', suffix }: { label: string; value?: number; text?: string; tone?: 'neutral' | 'good' | 'bad'; suffix?: string }) {
+  const color = tone === 'good' ? GREEN : tone === 'bad' ? RED : TEXT;
+  return (
+    <div className="rounded-[8px] border p-4" style={{ borderColor: tone === 'bad' ? 'rgba(239,107,107,0.22)' : HAIR, background: tone === 'bad' ? 'rgba(239,107,107,0.06)' : 'rgba(255,255,255,0.025)' }}>
+      <div className="text-[10.5px] font-black uppercase tracking-[0.10em]" style={{ color: FAINT }}>{label}</div>
+      <div className="mt-2 text-[24px] font-black tabular-nums" style={{ color }}>
+        {text ?? `${fmtTutar(value || 0)} ₺`}
+      </div>
+      {suffix && <div className="mt-1 text-[11px] font-bold" style={{ color }}>{suffix}</div>}
+    </div>
+  );
+}
+
+function toMoneyNumber(n: number | string | null | undefined): number {
+  if (typeof n === 'number') return Number.isFinite(n) ? n : 0;
+  const raw = String(n ?? '').trim();
+  if (!raw) return 0;
+  const normalized = raw.includes(',') ? raw.replace(/\./g, '').replace(',', '.') : raw;
+  const parsed = Number(normalized);
+  return Number.isFinite(parsed) ? parsed : 0;
 }
 
 // ============================================================
@@ -1478,7 +1599,7 @@ function Segmented({
             type="button"
             onClick={() => onChange(o.value)}
             className="flex-1 rounded-lg px-4 py-2 text-[12.5px] font-semibold transition"
-            style={on ? { background: `linear-gradient(135deg, ${STEEL_BR}, ${STEEL_DP})`, color: '#fff', boxShadow: '0 4px 12px -4px rgba(79,134,201,0.5)' } : { color: MUTED, background: 'transparent' }}
+            style={on ? { background: `linear-gradient(135deg, ${GOLD_BR}, ${GOLD_DP})`, color: '#0f0d0b', boxShadow: '0 4px 12px -4px rgba(212,184,118,0.45)' } : { color: MUTED, background: 'transparent' }}
           >
             {o.label}
           </button>
@@ -1565,15 +1686,6 @@ function InputBase({ className = '', style, ...props }: React.InputHTMLAttribute
   );
 }
 
-function Subhead({ icon: Icon, label }: { icon: React.ElementType; label: string }) {
-  return (
-    <div className="flex items-center gap-2 text-[12px] font-semibold" style={{ color: MUTED }}>
-      <Icon size={14} style={{ color: STEEL_BR }} />
-      {label}
-    </div>
-  );
-}
-
 function ToggleRow({
   checked,
   onChange,
@@ -1586,14 +1698,14 @@ function ToggleRow({
   detail: string;
 }) {
   return (
-    <label className="flex cursor-pointer items-center gap-3 rounded-xl border p-3 transition hover:bg-white/[0.04]" style={{ borderColor: checked ? STEEL_LN : HAIR, background: checked ? STEEL_SF : CARD2 }}>
+    <label className="flex cursor-pointer items-center gap-3 rounded-xl border p-3 transition hover:bg-white/[0.04]" style={{ borderColor: checked ? 'rgba(95,207,142,0.30)' : HAIR, background: checked ? 'rgba(95,207,142,0.10)' : CARD2 }}>
       <input
         type="checkbox"
         checked={checked}
         onChange={(e) => onChange(e.target.checked)}
         className="sr-only"
       />
-      <span className="flex h-9 w-9 shrink-0 items-center justify-center rounded-lg border" style={{ borderColor: checked ? STEEL_LN : LINE, color: checked ? STEEL_BR : 'rgba(245,245,244,0.30)' }}>
+      <span className="flex h-9 w-9 shrink-0 items-center justify-center rounded-lg border" style={{ borderColor: checked ? 'rgba(95,207,142,0.30)' : LINE, color: checked ? GREEN : 'rgba(245,245,244,0.30)' }}>
         <CheckCircle2 size={17} />
       </span>
       <span className="min-w-0">
