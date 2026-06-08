@@ -838,6 +838,15 @@ export class WhatsAppBotController implements OnModuleInit {
     return null;
   }
 
+  private clientAutoReplyEnabled(): boolean {
+    return process.env.MOREN_CLIENT_BOT_ENABLED === '1';
+  }
+
+  private acceptUnknownContacts(): boolean {
+    return process.env.WHATSAPP_ACCEPT_UNKNOWN_CONTACTS === '1' ||
+      process.env.WHATSAPP_ALLOW_UNKNOWN_CONTACTS === '1';
+  }
+
   private async handleMessage(msg: IncomingWhatsAppMessage) {
     // ─── Kişisel kişi (örn. partner) branch'i ──────────────────────
     // Owner / taxpayer / unknown akışlarından ÖNCE çalışır.
@@ -958,20 +967,17 @@ export class WhatsAppBotController implements OnModuleInit {
       return;
     }
 
-    // ─── MÜŞTERİ AUTO-REPLY BOTU KALDIRILDI (Kapso + "Elif") ──────────────
-    // Bu Baileys hattı artık yalnızca AJAN ↔ OWNER köprüsüdür. Owner olmayan
-    // (müşteri/kayıtsız) mesajlara otomatik AI cevabı verilmez.
-    // Geçici geri açmak için: MOREN_CLIENT_BOT_ENABLED=1
-    if (process.env.MOREN_CLIENT_BOT_ENABLED !== '1') {
-      this.logger.log(`[Musteri botu kapali] owner olmayan mesaj atlandi: ${this.normalize(msg.from)}`);
-      return;
-    }
-
+    // Gelen mesaj kaydi, musteri auto-reply ayarindan bagimsizdir.
+    // MOREN_CLIENT_BOT_ENABLED yalniz otomatik cevap uretimini acar/kapatir.
     const taxpayer: any = await this.findTaxpayerByPhone(msg.from);
     if (!taxpayer) {
       const tenant = await this.findTenantForInbound(msg);
       if (!tenant) {
         this.logger.warn(`WhatsApp bot: telefon eslesmedi ve tenant bulunamadi ${msg.from}`);
+        return;
+      }
+      if (!this.acceptUnknownContacts()) {
+        this.logger.log(`[WhatsApp] Kayitli olmayan numara mesaj merkezine alinmadi: tenant=${tenant.id} phone=${this.normalize(msg.from)} messageId=${msg.id || 'n/a'}`);
         return;
       }
       const contact = await this.ensureWhatsAppConversationContact(tenant.id, msg.from, 'unknown');
@@ -1033,6 +1039,11 @@ export class WhatsAppBotController implements OnModuleInit {
           unknownContact: true,
           source: 'meta',
         });
+      }
+
+      if (!this.clientAutoReplyEnabled()) {
+        this.logger.log(`[Musteri botu kapali] kayitsiz mesaj kaydedildi, otomatik cevap atlanadi: ${this.normalize(msg.from)}`);
+        return;
       }
 
       if (!automationActive) {
@@ -1131,26 +1142,29 @@ export class WhatsAppBotController implements OnModuleInit {
       `${taxpayer.firstName || ''} ${taxpayer.lastName || ''}`.trim() ||
       'Mukellef';
     const automationActive = await this.whatsapp.isAutomationActive(taxpayer.tenantId);
-    const passiveActionText = 'Bot pasif modda, otomatik cevap at\u0131lmad\u0131. Manuel cevap i\u00e7in Mesajlar ekran\u0131na git.';
+    const clientAutoReplyEnabled = this.clientAutoReplyEnabled();
+    const botCanReply = automationActive && clientAutoReplyEnabled;
+    const passiveActionText = clientAutoReplyEnabled
+      ? 'Bot pasif modda, otomatik cevap at\u0131lmad\u0131. Manuel cevap i\u00e7in Mesajlar ekran\u0131na git.'
+      : 'Musteri botu kapali; mesaj Mesajlar ekranina kaydedildi, otomatik cevap atilmadi.';
     await this.prisma.notification.create({
       data: {
         tenantId: taxpayer.tenantId,
         type: 'WHATSAPP',
-        title: automationActive
+        title: botCanReply
           ? `\uD83D\uDCE9 ${taxpayerName} firmas\u0131ndan yeni mesaj`
           : `\uD83D\uDD34 [PAS\u0130F] Yeni mesaj: ${taxpayerName}`,
         body: this.notificationBody(
           msg,
-          automationActive ? undefined : passiveActionText,
+          botCanReply ? undefined : passiveActionText,
         ).slice(0, 500),
         metadata: {
           taxpayerId: taxpayer.id,
           phone: msg.from,
           messageId: msg.id || null,
           automationActive,
-          actionText: automationActive
-            ? undefined
-            : passiveActionText,
+          clientAutoReplyEnabled,
+          actionText: botCanReply ? undefined : passiveActionText,
         },
       },
     }).catch(() => null);
@@ -1169,7 +1183,11 @@ export class WhatsAppBotController implements OnModuleInit {
 
     const classified = this.intentClassifier.classify(msg.text);
     await this.maybeCreateDocumentRequestTask(taxpayer, msg.text);
-    const recentReplies = await this.botContext.getRecentOutgoingReplies(taxpayer.id);
+
+    if (!clientAutoReplyEnabled) {
+      this.logger.log(`[Musteri botu kapali] kayitli mesaj kaydedildi, otomatik cevap atlanadi: taxpayer=${taxpayer.id} phone=${this.normalize(msg.from)}`);
+      return;
+    }
 
     if (!automationActive) {
       await this.prisma.communicationLog.create({
@@ -1185,6 +1203,7 @@ export class WhatsAppBotController implements OnModuleInit {
       return;
     }
 
+    const recentReplies = await this.botContext.getRecentOutgoingReplies(taxpayer.id);
     const rate = this.rateLimiter.registerIncoming(taxpayer.tenantId, taxpayer.id);
     if (rate.limited) {
       if (rate.shouldNotify) {
