@@ -31,7 +31,7 @@ const STEEL = '#9da8b7';
 const firstModules = [
   { href: '/panel/moren-ai', label: 'MOREN AI', group: 'Moren AI', icon: BrainCircuit, color: ROSE },
   { href: '/panel', label: 'Gösterge Paneli', group: 'Genel', icon: Gauge, color: GOLD },
-  { href: '/panel/mukellefler', label: 'Mükellef Listesi', group: 'Genel', icon: UserRoundSearch, color: GOLD },
+  { href: '/panel/mukellef-listesi', label: 'Mükellef Listesi', group: 'Genel', icon: UserRoundSearch, color: GOLD },
   { href: '/panel/is-yuku', label: 'İş Akışı', group: 'Genel', icon: Workflow, color: GOLD },
   { href: '/panel/gorevler', label: 'Görevler & Notlar', group: 'Genel', icon: ClipboardCheck, color: GOLD },
   { href: '/panel/bildirimler', label: 'Bildirimler', group: 'Genel', icon: BellRing, color: GOLD },
@@ -47,7 +47,7 @@ const firstModules = [
 
 const groups = [
   { label: 'Moren AI', count: '2 aktif', icon: BrainCircuit, color: ROSE },
-  { label: 'Genel', count: '5 aktif', icon: Gauge, color: GOLD },
+  { label: 'Genel', count: '6 aktif', icon: Gauge, color: GOLD },
   { label: 'Fatura & Muhasebe', count: '7 aktif', icon: ReceiptText, color: SAGE },
   { label: 'Vergi & Beyanname', count: '3 aktif, 2 planlı', icon: FileCheck2, color: AMBER },
   { label: 'Mali Veriler', count: '5 aktif', icon: DatabaseZap, color: SKY },
@@ -57,7 +57,7 @@ const groups = [
 
 const quick = [
   { href: '/panel', label: 'Panel', desc: 'Günlük özet', icon: Gauge, color: GOLD },
-  { href: '/panel/mukellefler', label: 'Mükellefler', desc: 'Liste ve profiller', icon: UserRoundSearch, color: GOLD },
+  { href: '/panel/mukellef-listesi', label: 'Mükellefler', desc: 'Liste ve profiller', icon: UserRoundSearch, color: GOLD },
   { href: '/panel/ajanlar/mihsap', label: 'Fatura', desc: 'İşleme merkezi', icon: ReceiptText, color: SAGE },
   { href: '/panel/kdv-kontrol', label: 'KDV', desc: 'Kontrol akışı', icon: FileCheck2, color: AMBER },
 ];

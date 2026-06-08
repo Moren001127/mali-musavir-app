@@ -310,7 +310,7 @@ export default function MukellefDetayPage() {
       toast.success(isNew ? 'Mükellef eklendi' : 'Mükellef güncellendi');
       qc.invalidateQueries({ queryKey: ['taxpayers'] });
       qc.invalidateQueries({ queryKey: ['taxpayer', id] });
-      if (isNew) router.push('/panel/mukellefler');
+      if (isNew) router.push('/panel/mukellef-listesi');
     },
     onError: (err: any) => {
       const msg = err.response?.data?.message;
@@ -321,9 +321,9 @@ export default function MukellefDetayPage() {
   const { mutate: deleteMukellef, isPending: isDeleting } = useMutation({
     mutationFn: () => api.delete(`/taxpayers/${id}`),
     onSuccess: () => {
-      toast.success('Mükellef silindi');
+      toast.success('Mükellef pasife alındı');
       qc.invalidateQueries({ queryKey: ['taxpayers'] });
-      router.push('/panel/mukellefler');
+      router.push('/panel/mukellef-listesi');
     },
     onError: () => toast.error('Silme işlemi başarısız'),
   });
@@ -407,10 +407,10 @@ export default function MukellefDetayPage() {
           {/* Kimlik + künye */}
           <div className="flex min-w-0 flex-1 items-start gap-4">
             <Link
-              href="/panel/mukellefler"
+              href="/panel/mukellef-listesi"
               className="mt-1 flex h-9 w-9 shrink-0 items-center justify-center rounded-xl border transition hover:bg-white/[0.06]"
               style={{ borderColor: LINE, color: MUTED }}
-              title="Listeye dön"
+              title="Mükellef listesine dön"
             >
               <ArrowLeft size={17} />
             </Link>
@@ -497,12 +497,12 @@ export default function MukellefDetayPage() {
                 <button
                   type="button"
                   onClick={() => {
-                    if (confirm('Mükellef silinsin mi?')) deleteMukellef();
+                    if (confirm('Mükellef pasife alınsın mı?')) deleteMukellef();
                   }}
                   disabled={isDeleting}
                   className="inline-flex h-10 w-10 items-center justify-center rounded-xl border transition hover:bg-red-500/10 disabled:opacity-40"
                   style={{ borderColor: 'rgba(248,113,113,0.32)', color: '#fca5a5' }}
-                  title="Mükellefi sil"
+                  title="Mükellefi pasife al"
                 >
                   {isDeleting ? <Loader2 size={15} className="animate-spin" /> : <Trash2 size={15} />}
                 </button>

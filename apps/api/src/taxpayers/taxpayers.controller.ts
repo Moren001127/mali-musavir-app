@@ -49,12 +49,18 @@ export class TaxpayersController {
     @Query('search') search?: string,
     @Query('year') year?: string,
     @Query('month') month?: string,
+    @Query('scope') scope?: string,
+    @Query('status') status?: string,
   ) {
     return this.taxpayersService.findAll(
       req.user.tenantId,
       search,
       year ? parseInt(year) : undefined,
       month ? parseInt(month) : undefined,
+      {
+        scope: scope === 'directory' ? 'directory' : 'monthly',
+        status: status === 'inactive' || status === 'all' ? status : 'active',
+      },
     );
   }
 

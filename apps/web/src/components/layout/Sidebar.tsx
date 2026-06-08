@@ -79,7 +79,8 @@ const navGroups = [
     icon: PanelTop,
     items: [
       { href: '/panel', label: 'Gösterge Paneli', icon: Gauge },
-      { href: '/panel/mukellefler', label: 'Mükellef Listesi', icon: UserRoundSearch },
+      { href: '/panel/mukellef-listesi', label: 'Mükellef Listesi', icon: UserRoundSearch },
+      { href: '/panel/mukellefler', label: 'Aylık Takip Listesi', icon: ClipboardCheck },
       { href: '/panel/mesajlar', label: 'Mesajlar', icon: MessageCircle },
       { href: '/panel/bot-kalite', label: 'Bot Kalite', icon: ShieldCheck },
       { href: '/panel/is-yuku', label: 'İş Akışı', icon: Workflow },
@@ -201,9 +202,13 @@ export default function Sidebar() {
 
   const hideCollapsedTooltip = () => setCollapsedTooltip(null);
 
-  const exactActiveHrefs = new Set(['/panel', '/panel/ajanlar', '/panel/ayarlar']);
-  const isActive = (href: string) =>
-    exactActiveHrefs.has(href) ? pathname === href : pathname.startsWith(href);
+  const exactActiveHrefs = new Set(['/panel', '/panel/ajanlar', '/panel/ayarlar', '/panel/mukellefler']);
+  const isActive = (href: string) => {
+    if (href === '/panel/mukellef-listesi') {
+      return pathname === href || pathname.startsWith('/panel/mukellefler/');
+    }
+    return exactActiveHrefs.has(href) ? pathname === href : pathname.startsWith(href);
+  };
 
   const initials = user
     ? `${user.firstName?.[0] ?? ''}${user.lastName?.[0] ?? ''}`.toUpperCase() || user.email[0].toUpperCase()

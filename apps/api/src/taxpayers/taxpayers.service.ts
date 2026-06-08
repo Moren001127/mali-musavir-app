@@ -3,6 +3,11 @@ import { PrismaService } from '../prisma/prisma.service';
 import { CreateTaxpayerDto } from '@mali-musavir/shared';
 import { AutomationEventBus } from '../automations/automation-event-bus.service';
 
+type TaxpayerListOptions = {
+  scope?: 'monthly' | 'directory';
+  status?: 'active' | 'inactive' | 'all';
+};
+
 @Injectable()
 export class TaxpayersService {
   constructor(
@@ -32,12 +37,24 @@ export class TaxpayersService {
     return data as T;
   }
 
-  async findAll(tenantId: string, search?: string, year?: number, month?: number) {
+  async findAll(
+    tenantId: string,
+    search?: string,
+    year?: number,
+    month?: number,
+    options: TaxpayerListOptions = {},
+  ) {
     // WHERE koşulları düzgün AND ile birleştiriliyor
-    const andConditions: any[] = [{ tenantId }, { isActive: true }];
+    const andConditions: any[] = [{ tenantId }];
+    const status = options.status ?? 'active';
+    if (status === 'inactive') {
+      andConditions.push({ isActive: false });
+    } else if (status !== 'all') {
+      andConditions.push({ isActive: true });
+    }
 
     // İşe başlama / işi bırakma tarihi filtreleri
-    if (year && month) {
+    if (options.scope !== 'directory' && year && month) {
       const firstDay = new Date(year, month - 1, 1);   // Ayın 1'i
       const lastDay = new Date(year, month, 0, 23, 59, 59); // Ayın son günü
       andConditions.push({
@@ -91,6 +108,17 @@ export class TaxpayersService {
         whatsappEvrakGeldi: true,
         isActive: true,
         isEFaturaMukellefi: true,
+        notes: true,
+        logoUrl: true,
+        hattatId: true,
+        naceKodu: true,
+        ticaretSicilNo: true,
+        mersisNo: true,
+        odaSicilNo: true,
+        bagkurSicilNo: true,
+        kepAdresi: true,
+        webSitesi: true,
+        eFaturaEntegrator: true,
         startDate: true,
         endDate: true,
         createdAt: true,

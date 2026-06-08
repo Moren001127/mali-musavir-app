@@ -4,7 +4,7 @@ import { useState, useMemo, useEffect } from 'react';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import Link from 'next/link';
 import { api } from '@/lib/api';
-import { Search, Upload, Plus, AlertCircle, PhoneOff, Check as CheckIcon } from 'lucide-react';
+import { Search, Upload, AlertCircle, PhoneOff, Check as CheckIcon } from 'lucide-react';
 
 const GOLD = '#d4b876';
 const GOLD_SOFT = '#b8a06f';
@@ -278,7 +278,7 @@ export default function MukelleflerPage() {
 
   // KPI = filtre kartları (sayı + tıklayınca o aşamayı süzer)
   const stageCards: { key: FilterKey; label: string; count: number; color: string }[] = [
-    { key: 'all',                label: 'Tüm mükellef',     count: counts.total,            color: GOLD },
+    { key: 'all',                label: 'Takipteki mükellef', count: counts.total,          color: GOLD },
     { key: 'evrak-gelmedi',      label: 'Evrak bekleniyor', count: counts.evrakBekliyor,    color: STAGES['evrak-bekliyor'].color },
     { key: 'islem-bekliyor',     label: 'İşlem bekliyor',   count: counts.islemBekliyor,    color: STAGES['islem-bekliyor'].color },
     { key: 'kontrol-bekliyor',   label: 'Kontrol bekliyor', count: counts.kontrolBekliyor,  color: STAGES['kontrol-bekliyor'].color },
@@ -313,9 +313,9 @@ export default function MukelleflerPage() {
             <span className="h-px w-[26px]" style={{ background: GOLD }} />
             <span className="text-[9.5px] uppercase font-bold tracking-[.18em]" style={{ color: GOLD_SOFT }}>Ana Modül</span>
           </div>
-          <h1 style={{ fontFamily: 'Manrope, Inter, system-ui, sans-serif', fontSize: 27, fontWeight: 800, color: '#fafaf9', letterSpacing: 0 }}>Mükellef Listesi</h1>
+          <h1 style={{ fontFamily: 'Manrope, Inter, system-ui, sans-serif', fontSize: 27, fontWeight: 800, color: '#fafaf9', letterSpacing: 0 }}>Aylık Takip Listesi</h1>
           <p className="mt-1 text-[12.5px] font-medium" style={{ color: 'rgba(250,250,249,0.52)' }}>
-            {donemStr} döneminde aktif {counts.total} mükellef
+            {donemStr} döneminde işe başlama/bitiş tarihine göre takipte {counts.total} mükellef
           </p>
         </div>
         <div className="flex items-center gap-2">
@@ -346,7 +346,7 @@ export default function MukelleflerPage() {
               const url = URL.createObjectURL(blob);
               const a = document.createElement('a');
               a.href = url;
-              a.download = `mukellefler-${year}-${String(month).padStart(2,'0')}.csv`;
+              a.download = `aylik-takip-${year}-${String(month).padStart(2,'0')}.csv`;
               a.click();
               URL.revokeObjectURL(url);
             }}
@@ -355,13 +355,6 @@ export default function MukelleflerPage() {
           >
             <Upload size={14} /> Dışa Aktar
           </button>
-          <Link
-            href="/panel/mukellefler/yeni"
-            className="inline-flex items-center gap-1.5 rounded-[10px] px-4 py-2 text-[12.5px] font-bold transition-all"
-            style={{ background: `linear-gradient(135deg, ${GOLD}, ${GOLD_SOFT})`, color: '#0f0d0b' }}
-          >
-            <Plus size={14} /> Yeni Mükellef
-          </Link>
         </div>
       </div>
 
@@ -373,7 +366,7 @@ export default function MukelleflerPage() {
             type="text"
             value={search}
             onChange={(e) => { setSearch(e.target.value); setPage(1); }}
-            placeholder="İsim, VKN/TC veya VD ara..."
+            placeholder="Takipteki mükellef, VKN/TC veya VD ara..."
             className="w-full rounded-[10px] py-2 pl-10 pr-3 text-[12.5px] outline-none"
             style={{ background: 'rgba(255,255,255,0.03)', border: '1px solid rgba(255,255,255,0.08)', color: '#fafaf9' }}
           />
@@ -492,7 +485,7 @@ export default function MukelleflerPage() {
           <div className="py-16 text-center">
             <p className="text-[14px] font-semibold" style={{ color: '#fafaf9' }}>Kayıt bulunamadı</p>
             <p className="text-[12px] mt-1" style={{ color: 'rgba(250,250,249,0.45)' }}>
-              {donemStr} döneminde kayıt yok veya filtre eşleşmedi
+              {donemStr} döneminde takip kaydı yok veya filtre eşleşmedi
             </p>
           </div>
         ) : (

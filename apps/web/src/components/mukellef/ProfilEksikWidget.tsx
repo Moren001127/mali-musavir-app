@@ -111,7 +111,7 @@ export function ProfilEksikWidget() {
 
       {toplamEksik > 5 && (
         <Link
-          href="/panel/mukellefler"
+          href="/panel/mukellef-listesi"
           className="flex items-center justify-center gap-2 px-5 py-3 text-[12px] font-semibold transition hover:bg-white/[0.03]"
           style={{ borderTop: '1px solid rgba(255,255,255,0.04)', color: GOLD }}
         >

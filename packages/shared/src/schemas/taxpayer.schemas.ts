@@ -70,6 +70,7 @@ export const UpdateTaxpayerSchema = z.object({
   whatsappEvrakTalep: z.boolean().optional(),
   whatsappEvrakGeldi: z.boolean().optional(),
   isEFaturaMukellefi: z.boolean().optional(),
+  isActive: z.boolean().optional(),
   lucaSlug: z.string().optional().nullable(),
   mihsapId: z.string().optional().nullable(),
   mihsapDefterTuru: z.string().optional().nullable(),

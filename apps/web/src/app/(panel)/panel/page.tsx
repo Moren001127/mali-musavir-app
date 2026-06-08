@@ -1407,7 +1407,8 @@ const MOBILE_COLORS = {
 const MOBILE_PRIORITY_MODULES = [
   { label: 'MOREN AI', sub: 'Moren AI', href: '/panel/moren-ai', icon: BrainCircuit, color: MOBILE_COLORS.ai },
   { label: 'Gösterge Paneli', sub: 'Genel', href: '/panel', icon: Gauge, color: MOBILE_COLORS.general },
-  { label: 'Mükellef Listesi', sub: 'Genel', href: '/panel/mukellefler', icon: UserRoundSearch, color: MOBILE_COLORS.general },
+  { label: 'Mükellef Listesi', sub: 'Genel', href: '/panel/mukellef-listesi', icon: UserRoundSearch, color: MOBILE_COLORS.general },
+  { label: 'Aylık Takip Listesi', sub: 'Genel', href: '/panel/mukellefler', icon: ClipboardCheck, color: MOBILE_COLORS.general },
   { label: 'İş Akışı', sub: 'Genel', href: '/panel/is-yuku', icon: Workflow, color: MOBILE_COLORS.general },
   { label: 'Görevler & Notlar', sub: 'Genel', href: '/panel/gorevler', icon: ClipboardCheck, color: MOBILE_COLORS.general },
   { label: 'Bildirimler', sub: 'Genel', href: '/panel/bildirimler', icon: BellRing, color: MOBILE_COLORS.general },
@@ -1452,7 +1453,7 @@ function MobilePortalHome({
   nextDueStr: string | null;
 }) {
   const quickActions = [
-    { label: 'Mükellefler', sub: `${activeCount || totalTx || 0} aktif`, href: '/panel/mukellefler', icon: UserRoundSearch, color: MOBILE_COLORS.general },
+    { label: 'Mükellefler', sub: `${activeCount || totalTx || 0} aktif`, href: '/panel/mukellef-listesi', icon: UserRoundSearch, color: MOBILE_COLORS.general },
     { label: 'İş Akışı', sub: `${activeWorkload} aktif iş`, href: '/panel/is-yuku', icon: Workflow, color: MOBILE_COLORS.office },
     { label: 'Fatura', sub: 'İşleme merkezi', href: '/panel/ajanlar/mihsap', icon: ReceiptText, color: MOBILE_COLORS.invoice },
     { label: 'KDV', sub: `${workflowCounts.kontrol || 0} kontrol`, href: '/panel/kdv-kontrol', icon: FileCheck2, color: MOBILE_COLORS.tax },
@@ -1921,7 +1922,7 @@ export default function DashboardPage() {
           title="Aktif Mükellef"
           value={activeCount || totalTx}
           icon={Users}
-          href="/panel/mukellefler"
+          href="/panel/mukellef-listesi"
           sub={workflowTotal > 0 ? `${workflowTotal} bu ay iş akışında` : (passiveCount > 0 ? `${passiveCount} pasif` : 'Liste güncel')}
           accent="sage"
         />

@@ -88,7 +88,8 @@ const moduleGroups: ModuleGroup[] = [
     icon: PanelTop,
     items: [
       { href: '/panel', label: 'Gösterge Paneli', icon: Gauge },
-      { href: '/panel/mukellefler', label: 'Mükellef Listesi', icon: UserRoundSearch },
+      { href: '/panel/mukellef-listesi', label: 'Mükellef Listesi', icon: UserRoundSearch },
+      { href: '/panel/mukellefler', label: 'Aylık Takip Listesi', icon: ClipboardCheck },
       { href: '/panel/is-yuku', label: 'İş Akışı', icon: Workflow },
       { href: '/panel/gorevler', label: 'Görevler & Notlar', icon: ClipboardCheck },
       { href: '/panel/bildirimler', label: 'Bildirimler', icon: BellRing },
@@ -161,15 +162,18 @@ const moduleGroups: ModuleGroup[] = [
 
 const bottomItems: ModuleItem[] = [
   { href: '/panel', label: 'Panel', icon: Gauge },
-  { href: '/panel/mukellefler', label: 'Mükellef', icon: UserRoundSearch },
+  { href: '/panel/mukellef-listesi', label: 'Mükellef', icon: UserRoundSearch },
   { href: '/panel/ajanlar/mihsap', label: 'Fatura', icon: ReceiptText },
   { href: '/panel/kdv-kontrol', label: 'KDV', icon: FileCheck2 },
   { href: '/panel/moren-ai', label: 'AI', icon: BrainCircuit },
 ];
 
-const exactActiveHrefs = new Set(['/panel', '/panel/ajanlar', '/panel/ayarlar']);
+const exactActiveHrefs = new Set(['/panel', '/panel/ajanlar', '/panel/ayarlar', '/panel/mukellefler']);
 
 function isRouteActive(pathname: string, href: string) {
+  if (href === '/panel/mukellef-listesi') {
+    return pathname === href || pathname.startsWith('/panel/mukellefler/');
+  }
   return exactActiveHrefs.has(href) ? pathname === href : pathname.startsWith(href);
 }
 

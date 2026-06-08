@@ -44,7 +44,7 @@ export default function YeniMukellefPage() {
     onSuccess: () => {
       toast.success('Mükellef eklendi');
       qc.invalidateQueries({ queryKey: ['taxpayers'] });
-      router.push('/panel/mukellefler');
+      router.push('/panel/mukellef-listesi');
     },
     onError: (err: any) => {
       const msg = err.response?.data?.message;
@@ -67,7 +67,7 @@ export default function YeniMukellefPage() {
   return (
     <div className="p-6 max-w-3xl mx-auto">
       <div className="flex items-center gap-4 mb-6">
-        <Link href="/panel/mukellefler">
+        <Link href="/panel/mukellef-listesi">
           <button className="text-gray-500 hover:text-gray-700 text-sm">← Listeye Dön</button>
         </Link>
         <h1 className="text-2xl font-bold" style={{ color: '#d4b876' }}>Yeni Mükellef</h1>
@@ -326,7 +326,7 @@ export default function YeniMukellefPage() {
         </div>
 
         <div className="flex gap-3 justify-end">
-          <Link href="/panel/mukellefler">
+          <Link href="/panel/mukellef-listesi">
             <button type="button" className="btn-secondary">İptal</button>
           </Link>
           <button type="submit" className="btn-primary" disabled={isPending}>

@@ -134,6 +134,7 @@ const SAFE_PANEL_ROUTES = [
   '/panel/gorevler',
   '/panel/beyannameler',
   '/panel/kdv-kontrol',
+  '/panel/mukellef-listesi',
   '/panel/mukellefler',
   '/panel/ajanlar',
   '/panel/faturalar',

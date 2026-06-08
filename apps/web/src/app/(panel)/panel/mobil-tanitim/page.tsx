@@ -89,7 +89,7 @@ const portalGroups: PortalGroup[] = [
     icon: PanelTop,
     modules: [
       { href: '/panel', label: 'Gösterge Paneli', desc: 'Günlük özet, kritik uyarılar ve iş akışı', icon: Gauge, priority: 'first' },
-      { href: '/panel/mukellefler', label: 'Mükellef Listesi', desc: 'Arama, liste, profil ve hızlı işlemler', icon: UserRoundSearch, priority: 'first' },
+      { href: '/panel/mukellef-listesi', label: 'Mükellef Listesi', desc: 'Arama, liste, profil ve hızlı işlemler', icon: UserRoundSearch, priority: 'first' },
       { href: '/panel/is-yuku', label: 'İş Akışı', desc: 'Evrak, fatura, kontrol ve beyanname akışı', icon: Workflow, priority: 'first' },
       { href: '/panel/gorevler', label: 'Görevler & Notlar', desc: 'Ofis görevleri, notlar ve hatırlatmalar', icon: ClipboardCheck, priority: 'first' },
       { href: '/panel/bildirimler', label: 'Bildirimler', desc: 'Okunmamış uyarılar ve sistem mesajları', icon: BellRing, priority: 'first' },
@@ -277,7 +277,7 @@ export default function MobilTanitimPage() {
 function MobileLivePreview() {
   const quickModules = [
     { href: '/panel', label: 'Panel', desc: 'Günlük özet', icon: Gauge, color: GOLD },
-    { href: '/panel/mukellefler', label: 'Mükellefler', desc: 'Liste ve profiller', icon: UserRoundSearch, color: GOLD },
+    { href: '/panel/mukellef-listesi', label: 'Mükellefler', desc: 'Liste ve profiller', icon: UserRoundSearch, color: GOLD },
     { href: '/panel/ajanlar/mihsap', label: 'Fatura', desc: 'İşleme merkezi', icon: ReceiptText, color: SAGE },
     { href: '/panel/kdv-kontrol', label: 'KDV', desc: 'Kontrol akışı', icon: FileCheck2, color: AMBER },
   ];
@@ -462,7 +462,7 @@ function PhoneHeader({ title, color = GOLD }: { title: string; color?: string })
 
 function HomePhone() {
   const quickModules = [
-    { href: '/panel/mukellefler', label: 'Mükellef', value: '42', icon: UserRoundSearch, color: GOLD },
+    { href: '/panel/mukellef-listesi', label: 'Mükellef', value: '42', icon: UserRoundSearch, color: GOLD },
     { href: '/panel/ajanlar/mihsap', label: 'Fatura', value: '18', icon: ReceiptText, color: SAGE },
     { href: '/panel/kdv-kontrol', label: 'KDV', value: '6', icon: FileCheck2, color: AMBER },
     { href: '/panel/moren-ai', label: 'AI', value: 'Canlı', icon: BrainCircuit, color: ROSE },
