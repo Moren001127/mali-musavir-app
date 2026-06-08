@@ -468,15 +468,115 @@ export class LucaService {
     return result.count;
   }
 
+  // === No-progress (ilerleme yok) watchdog yardımcıları ===
+  // LucaFetchJob'da updatedAt kolonu YOK (migration riski). Bunun yerine
+  // errorMsg log'undaki son [HH:MM:SS] (Istanbul) damgasını okuyup "kaç
+  // saniyedir yeni adım yok" hesaplarız. Gün-içi saniye karşılaştırması →
+  // timezone Date kurmadan, gece yarısı dönüşü de tolere edilir.
+  private secondsOfDayIstanbul(d: Date): number {
+    const s = d.toLocaleTimeString('en-GB', { timeZone: 'Europe/Istanbul', hour12: false });
+    const m = s.match(/(\d{2}):(\d{2}):(\d{2})/);
+    return m ? Number(m[1]) * 3600 + Number(m[2]) * 60 + Number(m[3]) : -1;
+  }
+
+  private lastLogSecondsOfDay(errorMsg?: string | null): number | null {
+    const all = String(errorMsg || '').match(/\[(\d{2}):(\d{2}):(\d{2})\]/g);
+    if (!all || !all.length) return null;
+    const last = all[all.length - 1].match(/(\d{2}):(\d{2}):(\d{2})/);
+    return last ? Number(last[1]) * 3600 + Number(last[2]) * 60 + Number(last[3]) : null;
+  }
+
+  /**
+   * İLERLEME İZLEYİCİ (no-progress watchdog) — donmuş Luca işlerini kendi
+   * kendine kurtarır. Agent menü/II1a/oturumda takılır, frame ölür veya
+   * runtime sessizce kapanırsa job "running"da kalıp 15dk hard-timeout'a
+   * kadar donuk durur. Bu watchdog log damgasından "X sn yeni adım yok"
+   * tespit edip:
+   *   - retry hakkı varsa → PENDING'e geri alır (requeue). Tüm makinelerde
+   *     inject-luca.js zaten ~2dk'da bir runtime'ı yeniden enjekte ettiğinden
+   *     pending'e dönen iş otomatik yeniden alınır → elle müdahale gerekmez.
+   *   - retry hakkı bittiyse → failed + tek bildirim.
+   * Migration GEREKTİRMEZ. Eşik 150sn: agent'ın en uzun tek adımı (upload
+   * 120sn) tamamlanmadan tetiklenmesin diye onun üstünde.
+   */
+  async requeueNoProgressJobs(tenantId?: string): Promise<number> {
+    const NO_PROGRESS_SEC = 150;
+    const MIN_RUN_SEC = 60;
+    const MAX_REQUEUE = 3;
+    const now = Date.now();
+    const running = await (this.prisma as any).lucaFetchJob.findMany({
+      where: {
+        ...(tenantId ? { tenantId } : {}),
+        status: 'running',
+        startedAt: { lt: new Date(now - MIN_RUN_SEC * 1000) },
+      },
+      select: { id: true, tenantId: true, tip: true, errorMsg: true, retryCount: true },
+    });
+    if (!running.length) return 0;
+    const nowSec = this.secondsOfDayIstanbul(new Date());
+    let acted = 0;
+    for (const j of running) {
+      const lastSec = this.lastLogSecondsOfDay(j.errorMsg);
+      if (lastSec == null) continue; // log damgası yoksa hard-timeout halletsin
+      let diff = nowSec - lastSec;
+      if (diff < 0) diff += 86400; // gece yarısı dönüşü
+      if (diff < NO_PROGRESS_SEC) continue;
+      acted++;
+      const retryCount = Number(j.retryCount || 0);
+      if (retryCount < MAX_REQUEUE) {
+        await this.appendJobLog(
+          j.id,
+          `⏱ İlerleme izleyici: ${diff}sn yeni adım yok — iş otomatik yeniden sıraya alındı (deneme ${retryCount + 1}/${MAX_REQUEUE})`,
+        ).catch(() => {});
+        await (this.prisma as any).lucaFetchJob
+          .updateMany({
+            where: { id: j.id, status: 'running' },
+            data: { status: 'pending', startedAt: null, finishedAt: null, retryCount: retryCount + 1, nextRetryAt: null },
+          })
+          .catch(() => {});
+      } else {
+        await this.appendJobLog(
+          j.id,
+          `⏱ İlerleme izleyici: ${MAX_REQUEUE} denemede de ilerleme sağlanamadı — iş başarısız işaretlendi`,
+        ).catch(() => {});
+        await (this.prisma as any).lucaFetchJob
+          .updateMany({
+            where: { id: j.id, status: 'running' },
+            data: { status: 'failed', finishedAt: new Date() },
+          })
+          .catch(() => {});
+        if (j.tenantId) {
+          await this.notifications
+            .createForTenant({
+              tenantId: j.tenantId,
+              type: NOTIFICATION_TYPES.LUCA_SYNC_ERROR,
+              title: 'Luca işi otomatik kurtarılamadı',
+              body: `Bir Luca veri çekme işi ${MAX_REQUEUE} otomatik denemeye rağmen ilerlemedi (agent/oturum takılmış olabilir). Ajanın çalıştığını ve klasik Luca ekranının açık olduğunu kontrol edin.`,
+              metadata: { kind: 'no-progress-failed', tip: j.tip, link: '/panel/luca' },
+              dedupeKey: `luca-noprogress-failed:${j.tenantId}`,
+              dedupeWindowMin: 30,
+            })
+            .catch(() => {});
+        }
+      }
+    }
+    if (acted > 0) {
+      this.logger.log(`No-progress watchdog: ${acted} donmus job islendi${tenantId ? ` (tenant=${tenantId})` : ''}`);
+    }
+    return acted;
+  }
+
   /**
    * Bağımsız temizleyici (reaper) — luca-schedule tarafından dakikada bir
    * çağrılır. Yeni iş yaratılmasa bile sistemi temiz tutar:
+   *  (0) İlerleme izleyici: donmuş running'leri otomatik requeue/fail et.
    *  (1) Tüm kiracılarda iş-tipi penceresini aşan takılı running'leri kapat.
    *  (2) 30+ dk hiç alınmamış pending iş için TEK görünür uyarı bildirimi —
    *      kullanıcı körlemesine beklemesin (ajan + klasik Luca ekranı açık mı?).
    *      Pending iş otomatik SİLİNMEZ (ajan o an kapalıysa kaybolmasın).
    */
   async reapStaleJobs() {
+    await this.requeueNoProgressJobs().catch(() => {});
     await this.cleanupStuckRunning().catch(() => {});
 
     const cutoff = new Date(Date.now() - 30 * 60 * 1000);
