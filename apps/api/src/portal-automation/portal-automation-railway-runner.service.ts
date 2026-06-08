@@ -248,10 +248,39 @@ export class PortalAutomationRailwayRunnerService implements OnModuleInit {
       await this.updateCredentialValidation(tenantId, provider, ownerType, ownerId, true, null, checkedAt);
       return { checked: true, ok: true, checkedAt: checkedAt.toISOString() };
     } catch (err: any) {
-      const error = this.compact(String(err?.message || err || 'Portal girisi dogrulanamadi')).slice(0, 1000);
+      const rawError = this.compact(String(err?.message || err || 'Portal girisi dogrulanamadi')).slice(0, 1000);
+      if (this.isCaptchaValidationBlock(rawError)) {
+        const error = 'CAPTCHA nedeniyle otomatik dogrulama tamamlanamadi';
+        await this.updateCredentialValidationPending(tenantId, provider, ownerType, ownerId, checkedAt).catch(() => {});
+        return { checked: false, ok: false, checkedAt: checkedAt.toISOString(), error };
+      }
+      const error = rawError;
       await this.updateCredentialValidation(tenantId, provider, ownerType, ownerId, false, error, checkedAt).catch(() => {});
       return { checked: true, ok: false, checkedAt: checkedAt.toISOString(), error };
     }
+  }
+
+  private isCaptchaValidationBlock(error: string) {
+    const normalized = this.normalizeTextKey(error);
+    return (
+      normalized.includes('CAPTCHA') ||
+      normalized.includes('DOGRULAMA KODU') ||
+      normalized.includes('GUVENLIK KODU') ||
+      normalized.includes('SIFRE DOGRULAMASI YAPILAMADI')
+    );
+  }
+
+  private async updateCredentialValidationPending(
+    tenantId: string,
+    provider: string,
+    ownerType: string,
+    ownerId: string,
+    checkedAt: Date,
+  ) {
+    await (this.prisma as any).portalCredential.updateMany({
+      where: { tenantId, provider, ownerType, ownerId },
+      data: { lastCheckedAt: checkedAt, lastError: null },
+    });
   }
 
   private async updateCredentialValidation(
@@ -1352,9 +1381,16 @@ export class PortalAutomationRailwayRunnerService implements OnModuleInit {
     if (!loginFormVisible) return;
 
     const alertText = await this.visibleAlertText(page);
-    const reason = alertText || (TEXT.loginError.test(body) ? 'GIB giris hata mesaji algilandi' : 'login formu hala gorunuyor');
-    if (TEXT.captcha.test(body) || TEXT.loginError.test(body) || loginFormVisible) {
-      throw new Error(`CAPTCHA veya sifre reddedildi: ${this.compact(reason)}`);
+    const captchaVisible = await this.hasVisibleCaptcha(page).catch(() => false);
+    if (captchaVisible || TEXT.captcha.test(body)) {
+      throw new Error('CAPTCHA nedeniyle otomatik dogrulama tamamlanamadi');
+    }
+    if (TEXT.loginError.test(body)) {
+      const reason = alertText || 'GIB giris hata mesaji algilandi';
+      throw new Error(`Portal sifresi reddedildi: ${this.compact(reason)}`);
+    }
+    if (loginFormVisible) {
+      throw new Error('CAPTCHA nedeniyle otomatik dogrulama tamamlanamadi');
     }
   }
 
@@ -1370,9 +1406,16 @@ export class PortalAutomationRailwayRunnerService implements OnModuleInit {
 
     const alertText = await this.visibleAlertText(page);
     const loginLikeText = /giri[sş]|kullan[ıi]c[ıi]|sifre|şifre|parola|e-bildirge|güvenlik|guvenlik/i.test(body);
-    if (TEXT.captcha.test(body) || TEXT.loginError.test(body) || loginLikeText) {
-      const reason = alertText || (TEXT.loginError.test(body) ? 'Portal giris hata mesaji algilandi' : 'login formu hala gorunuyor');
-      throw new Error(`Portal girisi dogrulanamadi: ${this.compact(reason)}`);
+    const captchaVisible = await this.hasVisibleCaptcha(page).catch(() => false);
+    if (captchaVisible || TEXT.captcha.test(body)) {
+      throw new Error('CAPTCHA nedeniyle otomatik dogrulama tamamlanamadi');
+    }
+    if (TEXT.loginError.test(body)) {
+      const reason = alertText || 'Portal giris hata mesaji algilandi';
+      throw new Error(`Portal sifresi reddedildi: ${this.compact(reason)}`);
+    }
+    if (loginLikeText) {
+      throw new Error('CAPTCHA nedeniyle otomatik dogrulama tamamlanamadi');
     }
   }
 
