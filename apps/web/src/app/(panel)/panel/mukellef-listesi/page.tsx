@@ -4,29 +4,24 @@ import { useMemo, useState } from 'react';
 import Link from 'next/link';
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import {
-  AlertTriangle,
   BadgeCheck,
   Building2,
   ChevronDown,
   FileText,
   List,
   Plus,
-  RefreshCw,
   Search,
   Smartphone,
   User,
-  X,
   type LucideIcon,
 } from 'lucide-react';
 import { toast } from 'sonner';
 import { api } from '@/lib/api';
-import { PortalCredentialInsightCard, PortalJob, portalAutomationApi } from '@/lib/portal-automation';
 
 const GOLD = '#d4b876';
 const GOLD_SOFT = '#b8a06f';
 const GREEN = '#00a65a';
 const ROSE = '#e74c3c';
-const SKY = '#4f86c9';
 const AMBER = '#f59e0b';
 const CARD = 'rgba(255,255,255,0.022)';
 const LINE = 'rgba(255,255,255,0.075)';
@@ -65,17 +60,6 @@ type Taxpayer = {
 
 type TypeFilter = 'TUMU' | 'FIRMA' | 'SAHIS' | 'BASIT';
 type StatusFilter = 'active' | 'inactive' | 'all';
-type ValidationJobStats = {
-  total: number;
-  pending: number;
-  running: number;
-  done: number;
-  failed: number;
-  cancelled: number;
-  active: number;
-  latestAt: string | null;
-  failedJobs: PortalJob[];
-};
 
 const LETTERS = ['A', 'B', 'C', 'Ç', 'D', 'E', 'F', 'G', 'Ğ', 'H', 'I', 'İ', 'J', 'K', 'L', 'M', 'N', 'O', 'Ö', 'P', 'R', 'S', 'Ş', 'T', 'U', 'Ü', 'V', 'Y', 'Z', 'W', 'X', 'Q'];
 
@@ -137,24 +121,12 @@ function matchesLetter(t: Taxpayer, letter: string): boolean {
   return taxpayerName(t).toLocaleUpperCase('tr-TR').startsWith(letter);
 }
 
-function portalJobTaxpayerName(job: PortalJob): string {
-  const taxpayer = job.taxpayer;
-  if (!taxpayer) return job.taxpayerId || 'Mükellef';
-  return (
-    taxpayer.companyName ||
-    [taxpayer.firstName, taxpayer.lastName].filter(Boolean).join(' ') ||
-    taxpayer.taxNumber ||
-    taxpayer.id
-  ).trim();
-}
-
 export default function MukellefListesiPage() {
   const qc = useQueryClient();
   const [search, setSearch] = useState('');
   const [typeFilter, setTypeFilter] = useState<TypeFilter>('TUMU');
   const [statusFilter, setStatusFilter] = useState<StatusFilter>('active');
   const [letter, setLetter] = useState('TÜMÜ');
-  const [selectedInsight, setSelectedInsight] = useState<PortalCredentialInsightCard | null>(null);
 
   const { data: taxpayers = [], isLoading } = useQuery<Taxpayer[]>({
     queryKey: ['taxpayers', 'directory', search],
@@ -165,40 +137,6 @@ export default function MukellefListesiPage() {
         })
         .then((res) => res.data),
     staleTime: 30_000,
-  });
-  const { data: credentialInsights } = useQuery({
-    queryKey: ['portal-automation-credential-insights'],
-    queryFn: () => portalAutomationApi.credentialInsights(),
-    refetchInterval: 5000,
-    staleTime: 0,
-  });
-  const { data: validationJobs = [] } = useQuery({
-    queryKey: ['portal-automation-jobs', 'credential-validation'],
-    queryFn: () =>
-      portalAutomationApi.jobs({
-        limit: 500,
-        jobType: 'E_TEBLIGAT_CHECK,SGK_HIZMET_LISTESI',
-      }),
-    refetchInterval: 5000,
-    staleTime: 0,
-  });
-
-  const bulkValidateCredentials = useMutation({
-    mutationFn: () =>
-      portalAutomationApi.manualRun({
-        jobTypes: ['E_TEBLIGAT_CHECK', 'SGK_HIZMET_LISTESI'],
-        force: true,
-        validationOnly: true,
-      }),
-    onSuccess: (result) => {
-      const total = result.created?.length || 0;
-      toast.success(total > 0 ? `${total} VD/SGK dogrulama isi baslatildi` : 'Dogrulanacak yeni VD/SGK sifresi bulunamadi');
-      qc.invalidateQueries({ queryKey: ['portal-automation-credential-insights'] });
-      qc.invalidateQueries({ queryKey: ['portal-automation-summary'] });
-      qc.invalidateQueries({ queryKey: ['portal-automation-jobs'] });
-      qc.invalidateQueries({ queryKey: ['portal-automation-jobs', 'credential-validation'] });
-    },
-    onError: (error: any) => toast.error(error?.response?.data?.message || 'Toplu dogrulama baslatilamadi'),
   });
 
   const toggleActive = useMutation({
@@ -239,46 +177,6 @@ export default function MukellefListesiPage() {
       .sort((a, b) => collator.compare(taxpayerName(a), taxpayerName(b)));
   }, [taxpayers, statusFilter, typeFilter, letter]);
 
-  const validationStats = useMemo((): ValidationJobStats | null => {
-    const manualJobs = (validationJobs as PortalJob[])
-      .filter((job) => job.source === 'manual')
-      .filter((job) => job.jobType === 'E_TEBLIGAT_CHECK' || job.jobType === 'SGK_HIZMET_LISTESI');
-    if (!manualJobs.length) return null;
-
-    const latestCreated = Math.max(...manualJobs.map((job) => new Date(job.createdAt).getTime()).filter(Number.isFinite));
-    if (!Number.isFinite(latestCreated)) return null;
-
-    const batchStart = latestCreated - 2 * 60 * 1000;
-    const currentBatch = manualJobs.filter((job) => {
-      const created = new Date(job.createdAt).getTime();
-      return Number.isFinite(created) && created >= batchStart;
-    });
-
-    const count = (status: PortalJob['status']) => currentBatch.filter((job) => job.status === status).length;
-    const timeline = currentBatch
-      .map((job) => job.finishedAt || job.startedAt || job.createdAt)
-      .filter(Boolean)
-      .sort();
-    const latestAt = timeline.length ? timeline[timeline.length - 1] : null;
-    const pending = count('pending');
-    const running = count('running');
-    const done = count('done');
-    const failed = count('failed');
-    const cancelled = count('cancelled');
-
-    return {
-      total: currentBatch.length,
-      pending,
-      running,
-      done,
-      failed,
-      cancelled,
-      active: pending + running,
-      latestAt,
-      failedJobs: currentBatch.filter((job) => job.status === 'failed'),
-    };
-  }, [validationJobs]);
-
   return (
     <div className="max-w-none space-y-4">
       <header
@@ -303,14 +201,6 @@ export default function MukellefListesiPage() {
           <Plus size={14} /> Yeni Mükellef
         </Link>
       </header>
-
-      <CredentialInsightStrip
-        cards={credentialInsights?.cards || []}
-        onOpen={setSelectedInsight}
-        onValidate={() => bulkValidateCredentials.mutate()}
-        validating={bulkValidateCredentials.isPending}
-        validationStats={validationStats}
-      />
 
       <section
         className="rounded-[8px] p-3"
@@ -416,246 +306,6 @@ export default function MukellefListesiPage() {
           ))}
         </div>
       )}
-      {selectedInsight && (
-        <CredentialInsightDialog card={selectedInsight} onClose={() => setSelectedInsight(null)} />
-      )}
-    </div>
-  );
-}
-
-function CredentialInsightStrip({
-  cards,
-  onOpen,
-  onValidate,
-  validating,
-  validationStats,
-}: {
-  cards: PortalCredentialInsightCard[];
-  onOpen: (card: PortalCredentialInsightCard) => void;
-  onValidate: () => void;
-  validating: boolean;
-  validationStats: ValidationJobStats | null;
-}) {
-  const [showFailedJobs, setShowFailedJobs] = useState(false);
-  if (!cards.length && !validationStats) return null;
-  const firstRow = cards.slice(0, 2);
-  const secondRow = cards.slice(2);
-  const latestTime = validationStats?.latestAt
-    ? new Date(validationStats.latestAt).toLocaleTimeString('tr-TR', { hour: '2-digit', minute: '2-digit' })
-    : null;
-  const credentialWrongCount = cards
-    .filter((card) => card.key === 'gib_wrong' || card.key === 'sgk_wrong')
-    .reduce((total, card) => total + Number(card.count || 0), 0);
-  const otherFailedCount = Math.max(0, (validationStats?.failed || 0) - credentialWrongCount);
-  const statusText = validationStats
-    ? validationStats.active > 0
-      ? 'Kontrol devam ediyor; sayaçlar 5 saniyede yenilenir.'
-      : 'Son toplu kontrol tamamlandı. Şifre hataları ve diğer deneme hataları ayrı gösterilir.'
-    : 'Henüz toplu kontrol başlatılmadı.';
-  const statCards = [
-    { label: 'Toplam', value: validationStats?.total || 0, color: GOLD },
-    { label: 'Bekliyor', value: validationStats?.pending || 0, color: AMBER },
-    { label: 'Çalışıyor', value: validationStats?.running || 0, color: SKY },
-    { label: 'Doğrulandı', value: validationStats?.done || 0, color: GREEN },
-    { label: 'Şifre Hatalı', value: credentialWrongCount, color: ROSE, clickable: (validationStats?.failed || 0) > 0 },
-    { label: 'Diğer Hata', value: otherFailedCount, color: '#ff8a65', clickable: otherFailedCount > 0 },
-  ];
-  return (
-    <section className="rounded-[8px] p-3" style={{ background: 'rgba(255,255,255,0.018)', border: `1px solid ${LINE}` }}>
-      <div className="mb-3 flex flex-wrap items-center justify-between gap-2">
-        <div>
-          <div className="text-[10px] font-black uppercase tracking-[0.16em]" style={{ color: GOLD }}>Sifre Kontrolu</div>
-          <div className="mt-0.5 text-[11.5px] font-semibold" style={{ color: MUTED }}>Kayitli VD ve SGK sifrelerini toplu olarak dogrula</div>
-        </div>
-        <button
-          type="button"
-          onClick={onValidate}
-          disabled={validating}
-          className="inline-flex h-9 items-center gap-2 rounded-[7px] px-3.5 text-[12px] font-black transition disabled:opacity-50"
-          style={{
-            background: 'rgba(212,184,118,0.16)',
-            border: '1px solid rgba(212,184,118,0.34)',
-            color: GOLD,
-          }}
-        >
-          <RefreshCw size={14} className={validating ? 'animate-spin' : ''} />
-          VD + SGK Dogrula
-        </button>
-      </div>
-      <div
-        className="mb-3 flex flex-wrap items-center justify-between gap-3 rounded-[7px] px-3 py-2.5"
-        style={{ background: 'rgba(0,0,0,0.22)', border: `1px solid ${LINE}` }}
-      >
-        <div>
-          <div className="text-[12px] font-black" style={{ color: TEXT }}>Toplu doğrulama durumu</div>
-          <div className="mt-0.5 text-[11.5px] font-semibold" style={{ color: MUTED }}>
-            {statusText}{latestTime ? ` Son hareket: ${latestTime}` : ''}
-          </div>
-        </div>
-        <div className="flex flex-wrap gap-2">
-          {statCards.map(({ label, value, color, clickable }) => {
-            const content = (
-              <>
-                <div className="text-[10px] font-black uppercase tracking-[0.08em]" style={{ color: MUTED }}>{label}</div>
-                <div className="mt-0.5 text-[15px] font-black" style={{ color }}>{value}</div>
-              </>
-            );
-            if (clickable) {
-              return (
-                <button
-                  key={label}
-                  type="button"
-                  onClick={() => setShowFailedJobs((current) => !current)}
-                  className="min-w-[86px] rounded-[6px] px-3 py-2 text-center transition hover:brightness-110"
-                  style={{ background: `${color}18`, border: `1px solid ${color}42` }}
-                  title="Anlık hatalı işleri göster"
-                >
-                  {content}
-                </button>
-              );
-            }
-            return (
-              <div
-                key={label}
-                className="min-w-[86px] rounded-[6px] px-3 py-2 text-center"
-                style={{ background: `${color}18`, border: `1px solid ${color}42` }}
-              >
-                {content}
-              </div>
-            );
-          })}
-        </div>
-      </div>
-      {showFailedJobs && validationStats?.failedJobs.length ? (
-        <div
-          className="mb-3 rounded-[7px] px-3 py-2.5"
-          style={{ background: 'rgba(231,76,60,0.08)', border: '1px solid rgba(231,76,60,0.28)' }}
-        >
-          <div className="mb-2 text-[11px] font-black uppercase tracking-[0.12em]" style={{ color: ROSE }}>
-            Anlık Hatalı İşler
-          </div>
-          <div className="grid gap-2 md:grid-cols-2">
-            {validationStats.failedJobs.slice(0, 8).map((job) => (
-              <div key={job.id} className="rounded-[6px] px-3 py-2" style={{ background: 'rgba(0,0,0,0.22)', border: `1px solid ${LINE}` }}>
-                <div className="text-[12px] font-black" style={{ color: TEXT }}>{portalJobTaxpayerName(job)}</div>
-                <div className="mt-0.5 text-[11px] font-semibold" style={{ color: MUTED }}>
-                  {job.jobType === 'SGK_HIZMET_LISTESI' ? 'SGK e-Bildirge' : 'Vergi Dairesi'} · {job.errorMessage || 'Hata detayı yok'}
-                </div>
-              </div>
-            ))}
-          </div>
-          {validationStats.failedJobs.length > 8 ? (
-            <div className="mt-2 text-[11px] font-semibold" style={{ color: MUTED }}>
-              +{validationStats.failedJobs.length - 8} kayıt daha var.
-            </div>
-          ) : null}
-        </div>
-      ) : null}
-      <div className="grid gap-2 lg:grid-cols-2">
-        {firstRow.map((card) => (
-          <InsightButton key={card.key} card={card} onClick={() => onOpen(card)} />
-        ))}
-      </div>
-      <div className="mt-2 grid gap-2 md:grid-cols-3">
-        {secondRow.map((card) => (
-          <InsightButton key={card.key} card={card} onClick={() => onOpen(card)} />
-        ))}
-      </div>
-    </section>
-  );
-}
-
-function InsightButton({ card, onClick }: { card: PortalCredentialInsightCard; onClick: () => void }) {
-  const blue = card.tone === 'blue';
-  return (
-    <button
-      type="button"
-      onClick={onClick}
-      className="flex h-11 items-center justify-center gap-2 rounded-[6px] px-4 text-[13px] font-bold transition hover:brightness-110"
-      style={{
-        background: blue ? 'linear-gradient(135deg, #3f8fc0, #2f79a7)' : 'linear-gradient(135deg, #eda02d, #c78019)',
-        border: `1px solid ${blue ? 'rgba(125,211,252,0.24)' : 'rgba(251,191,36,0.28)'}`,
-        color: '#fff',
-        boxShadow: 'inset 0 1px 0 rgba(255,255,255,0.16), 0 9px 18px rgba(0,0,0,0.18)',
-      }}
-    >
-      <span>{card.label}</span>
-      <span className="inline-flex h-5 min-w-5 items-center justify-center rounded-full bg-white px-1.5 text-[11px] font-black" style={{ color: blue ? '#2f79a7' : '#c78019' }}>
-        {card.count}
-      </span>
-    </button>
-  );
-}
-
-function CredentialInsightDialog({ card, onClose }: { card: PortalCredentialInsightCard; onClose: () => void }) {
-  const taxpayers = card.taxpayers || [];
-  const blue = card.tone === 'blue';
-  return (
-    <div
-      className="fixed inset-0 z-[9999] flex items-center justify-center p-4"
-      style={{ background: 'rgba(0,0,0,0.72)', backdropFilter: 'blur(4px)' }}
-      onClick={onClose}
-    >
-      <div
-        onClick={(event) => event.stopPropagation()}
-        className="w-full max-w-3xl overflow-hidden rounded-[10px]"
-        style={{
-          background: '#111211',
-          border: `1px solid ${blue ? 'rgba(125,211,252,0.35)' : 'rgba(245,158,11,0.42)'}`,
-          boxShadow: '0 28px 90px rgba(0,0,0,0.5)',
-        }}
-      >
-        <div className="flex items-start justify-between gap-4 px-5 py-4" style={{ borderBottom: '1px solid rgba(255,255,255,0.08)' }}>
-          <div className="flex items-start gap-3">
-            <div className="flex h-10 w-10 shrink-0 items-center justify-center rounded-[8px]" style={{ background: blue ? 'rgba(79,134,201,0.16)' : 'rgba(245,158,11,0.16)', color: blue ? '#93c5fd' : '#fbbf24' }}>
-              <AlertTriangle size={18} />
-            </div>
-            <div>
-              <h2 className="text-[18px] font-black" style={{ color: TEXT }}>{card.label}</h2>
-              <p className="mt-1 text-[12.5px]" style={{ color: MUTED }}>
-                {card.count} mükellef listeleniyor
-              </p>
-            </div>
-          </div>
-          <button type="button" onClick={onClose} className="rounded-[7px] p-2 transition hover:bg-white/[0.06]" style={{ color: MUTED }}>
-            <X size={18} />
-          </button>
-        </div>
-        <div className="max-h-[62vh] overflow-y-auto p-4">
-          {taxpayers.length === 0 ? (
-            <div className="rounded-[8px] px-4 py-10 text-center text-[13px]" style={{ border: '1px dashed rgba(255,255,255,0.12)', color: MUTED }}>
-              Bu grupta mükellef yok.
-            </div>
-          ) : (
-            <div className="overflow-hidden rounded-[8px]" style={{ border: '1px solid rgba(255,255,255,0.08)' }}>
-              <div className="grid grid-cols-[56px_minmax(220px,1fr)_170px_minmax(180px,1fr)] px-4 py-3 text-[10.5px] font-black uppercase tracking-[0.12em]" style={{ background: 'rgba(255,255,255,0.04)', color: FAINT }}>
-                <div>No</div>
-                <div>Mükellef</div>
-                <div>VKN/TC</div>
-                <div>Açıklama</div>
-              </div>
-              <div className="divide-y" style={{ borderColor: 'rgba(255,255,255,0.07)' }}>
-                {taxpayers.map((item, index) => (
-                  <Link
-                    key={`${card.key}-${item.id}-${index}`}
-                    href={`/panel/mukellefler/${item.id}`}
-                    className="grid grid-cols-[56px_minmax(220px,1fr)_170px_minmax(180px,1fr)] items-center px-4 py-3 text-[12.5px] transition hover:bg-white/[0.035]"
-                    onClick={onClose}
-                  >
-                    <div className="font-black tabular-nums" style={{ color: FAINT }}>{index + 1}</div>
-                    <div className="min-w-0 pr-3">
-                      <div className="truncate font-black" style={{ color: TEXT }}>{item.name}</div>
-                      <div className="mt-0.5 truncate text-[11px]" style={{ color: FAINT }}>{item.taxOffice || '-'}</div>
-                    </div>
-                    <div className="font-semibold tabular-nums" style={{ color: MUTED }}>{item.taxNumber || '-'}</div>
-                    <div className="truncate" style={{ color: MUTED }}>{item.reason || '-'}</div>
-                  </Link>
-                ))}
-              </div>
-            </div>
-          )}
-        </div>
-      </div>
     </div>
   );
 }

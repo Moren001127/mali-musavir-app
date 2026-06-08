@@ -2,7 +2,7 @@
 
 import { useEffect, useMemo, useState } from 'react';
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
-import { CheckCircle2, Eye, EyeOff, KeyRound, Loader2, ShieldCheck } from 'lucide-react';
+import { AlertTriangle, CheckCircle2, Eye, EyeOff, KeyRound, Loader2, ShieldCheck, X } from 'lucide-react';
 import { toast } from 'sonner';
 import {
   PortalCredentialPublic,
@@ -31,6 +31,11 @@ type PasswordSpec = {
   // GIB_EBEYANNAME yeni UI'de "Parola" alani kaldirildi; null = field gosterme.
   passwordLabel: string | null;
   secondaryPasswordLabel: string;
+};
+
+type CredentialValidationNotice = {
+  provider: PortalProvider;
+  error: string;
 };
 
 const PROVIDER_TITLES: Record<PortalProvider, string> = {
@@ -138,6 +143,7 @@ function CredentialEditor({
   const [workplaceCode, setWorkplaceCode] = useState('');
   const [password, setPassword] = useState('');
   const [secondaryPassword, setSecondaryPassword] = useState('');
+  const [validationNotice, setValidationNotice] = useState<CredentialValidationNotice | null>(null);
 
   useEffect(() => {
     setUsername(credential?.username || '');
@@ -181,7 +187,10 @@ function CredentialEditor({
       if (result.validation?.checked && result.validation.ok) {
         toast.success('Şifre kaydedildi ve doğrulandı');
       } else if (result.validation?.checked && !result.validation.ok) {
-        toast.error(`Şifre kaydedildi fakat giriş hatalı: ${result.validation.error || 'Portal girişi reddedildi'}`);
+        setValidationNotice({
+          provider,
+          error: result.validation.error || 'Portal girişi reddedildi',
+        });
       } else {
         toast.success('Şifre kaydı güncellendi');
       }
@@ -211,7 +220,8 @@ function CredentialEditor({
     ));
 
   return (
-    <div className="rounded-xl border p-4" style={{ background: compact ? 'rgba(255,255,255,0.025)' : SOFT, borderColor: LINE }}>
+    <>
+      <div className="rounded-xl border p-4" style={{ background: compact ? 'rgba(255,255,255,0.025)' : SOFT, borderColor: LINE }}>
       <div className="mb-4 flex items-center justify-between gap-3">
         <div>
           <h3 className="text-sm font-semibold" style={{ color: TEXT }}>{PROVIDER_TITLES[provider]}</h3>
@@ -288,6 +298,104 @@ function CredentialEditor({
         {saveMut.isPending ? <Loader2 size={14} className="animate-spin" /> : <CheckCircle2 size={14} />}
         Şifreyi Kaydet
       </button>
+      </div>
+      {validationNotice ? (
+        <CredentialValidationNoticeDialog
+          notice={validationNotice}
+          onClose={() => setValidationNotice(null)}
+        />
+      ) : null}
+    </>
+  );
+}
+
+function CredentialValidationNoticeDialog({
+  notice,
+  onClose,
+}: {
+  notice: CredentialValidationNotice;
+  onClose: () => void;
+}) {
+  useEffect(() => {
+    const onKeyDown = (event: KeyboardEvent) => {
+      if (event.key === 'Escape') onClose();
+    };
+    window.addEventListener('keydown', onKeyDown);
+    return () => window.removeEventListener('keydown', onKeyDown);
+  }, [onClose]);
+
+  const label = notice.provider === 'SGK_EBILDIRGE' ? 'SGK e-Bildirge' : 'Vergi Dairesi';
+
+  return (
+    <div
+      className="fixed inset-0 z-[10000] flex items-center justify-center p-4"
+      style={{ background: 'rgba(0,0,0,0.66)', backdropFilter: 'blur(5px)' }}
+      role="alertdialog"
+      aria-modal="true"
+      aria-labelledby="credential-validation-title"
+      onClick={onClose}
+    >
+      <div
+        className="w-full max-w-[520px] overflow-hidden rounded-[8px]"
+        style={{
+          background: 'linear-gradient(180deg, rgba(25,24,22,0.98), rgba(10,10,10,0.98))',
+          border: '1px solid rgba(212,184,118,0.34)',
+          boxShadow: '0 28px 90px rgba(0,0,0,0.56), inset 0 1px 0 rgba(255,255,255,0.05)',
+        }}
+        onClick={(event) => event.stopPropagation()}
+      >
+        <div className="flex items-start justify-between gap-3 px-5 py-4" style={{ borderBottom: '1px solid rgba(255,255,255,0.08)' }}>
+          <div className="flex items-start gap-3">
+            <div
+              className="flex h-11 w-11 shrink-0 items-center justify-center rounded-[8px]"
+              style={{ background: 'rgba(239,68,68,0.14)', border: '1px solid rgba(248,113,113,0.28)', color: '#f87171' }}
+            >
+              <AlertTriangle size={20} />
+            </div>
+            <div>
+              <h2 id="credential-validation-title" className="text-[17px] font-black leading-tight" style={{ color: TEXT }}>
+                Şifre kaydedildi, giriş doğrulanamadı
+              </h2>
+              <p className="mt-1 text-[12.5px] font-semibold" style={{ color: MUTED }}>
+                {label} bilgileri kaydedildi. Portal doğrulaması hata verdi.
+              </p>
+            </div>
+          </div>
+          <button
+            type="button"
+            onClick={onClose}
+            className="inline-flex h-8 w-8 shrink-0 items-center justify-center rounded-[7px] transition hover:bg-white/[0.07]"
+            style={{ color: MUTED }}
+            aria-label="Uyarıyı kapat"
+          >
+            <X size={17} />
+          </button>
+        </div>
+
+        <div className="px-5 py-4">
+          <div
+            className="rounded-[8px] px-3.5 py-3 text-[13px] font-semibold leading-relaxed"
+            style={{
+              background: 'rgba(239,68,68,0.09)',
+              border: '1px solid rgba(248,113,113,0.22)',
+              color: '#fecaca',
+            }}
+          >
+            {notice.error}
+          </div>
+          <div className="mt-4 flex justify-end">
+            <button
+              type="button"
+              onClick={onClose}
+              className="inline-flex h-9 items-center gap-1.5 rounded-[8px] px-4 text-[12.5px] font-black transition hover:brightness-110"
+              style={{ background: `linear-gradient(135deg, ${GOLD}, ${GOLD_DEEP})`, color: '#0f0d0b' }}
+            >
+              <CheckCircle2 size={15} />
+              Tamam
+            </button>
+          </div>
+        </div>
+      </div>
     </div>
   );
 }
