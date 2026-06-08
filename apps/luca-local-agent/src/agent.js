@@ -1767,32 +1767,19 @@ const activeJobsStartTime = new Map(); // jobId -> startedAt
 const JOB_TIMEOUT_MS = 10 * 60 * 1000; // 10 dakika
 
 function startJobTimeoutWatcher() {
-  // Hizli kurtarma: backend no-progress watchdog (150sn) donmus isi 'pending'e
-  // alir. Node hala o is uzerinde "calisiyor" gorunuyorsa (runJobWithMorenRuntime
-  // hung page.evaluate'te asili) bayat demektir -> bu makineyi hizlica yeniden
-  // baslatip taze pending isi aldiririz. Riskli "toplam sure" tahmini YOK;
-  // sadece backend kararina uyariz. Saglikli uzun is (log akiyor) backend'de
-  // 'running' kalir -> dokunulmaz; yanlis restart olmaz.
-  const FAST_CHECK_MIN_AGE_MS = 90 * 1000;
-  setInterval(async () => {
+  // GERI ALINDI: Onceki "backend status pending/cancelled/failed -> process.exit(6)"
+  // hizli-kurtarmasi REGRESYON yaratti. Agent bir isi frame-stuck nedeniyle KENDI
+  // requeue edince (recoverTransientLucaLock -> backend 'pending'), bu watchdog
+  // 'pending' gorup process'i olduruyor -> SOGUK restart -> yine frame-stuck ->
+  // yine 'pending' -> yine restart = OLUM SARMALI. Ayrica kullanici IPTAL edince
+  // (cancelled) bile calisan/sicak oturumu olduruyordu. Agent'in kendi yumusak
+  // kurtarmalari (closeBrowserSession, profil rotasyonu) zaten var; process kill
+  // sadece SON CARE olmali. Bu yuzden yalnizca mutlak 10dk timeout korunuyor.
+  setInterval(() => {
     const now = Date.now();
     for (const [jid, startedAt] of activeJobsStartTime) {
-      const age = now - startedAt;
-      if (age > FAST_CHECK_MIN_AGE_MS) {
-        const backendStatus = await api
-          .get(`/agent/luca/jobs/${jid}/status`)
-          .then((r) => r?.data?.status)
-          .catch(() => null);
-        if (backendStatus === 'pending' || backendStatus === 'cancelled' || backendStatus === 'failed') {
-          log.error(`Self-heal: Job ${jid.slice(0, 8)} backend tarafindan '${backendStatus}' yapildi (no-progress kurtarma); bayat is birakilip proses yeniden baslatiliyor.`);
-          activeJobsStartTime.delete(jid);
-          setTimeout(() => process.exit(6), 1500);
-          return;
-        }
-      }
-      if (age > JOB_TIMEOUT_MS) {
+      if (now - startedAt > JOB_TIMEOUT_MS) {
         log.error(`Self-heal: Job ${jid} 10dk+ takildi. Proses sonlandiriliyor (watchdog restart edecek).`);
-        // Job'u backend'e abort olarak isaretle
         api.post(`/agent/luca/jobs/${jid}/requeue`, {
           reason: 'AGENT_SELF_HEAL_TIMEOUT_10MIN',
         }).catch(() => {});
