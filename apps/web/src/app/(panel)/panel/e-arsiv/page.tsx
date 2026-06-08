@@ -1261,7 +1261,7 @@ export default function EarsivPage() {
                     <td className="px-3 py-3">
                       <div className="font-mono text-[11.5px] font-medium">{r.faturaNo}</div>
                       <div className="text-[10px] mt-0.5" style={{ color: 'rgba(250,250,249,0.35)' }}>
-                        {r.aliciVergiNo || r.saticiVergiNo || ''}
+                        {(isAlis ? r.saticiVergiNo : r.aliciVergiNo) || r.saticiVergiNo || r.aliciVergiNo || ''}
                       </div>
                     </td>
                     <td className="px-3 py-3">

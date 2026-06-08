@@ -484,7 +484,7 @@ export class LucaService {
     // artik heartbeat'i yazmiyor; bu filtre eski kirli isler icin de savunma.
     const lines = String(errorMsg || '').split('\n').filter((l) => l.trim());
     for (let i = lines.length - 1; i >= 0; i--) {
-      if (this.isAgentHeartbeatLogLine(lines[i])) continue;
+      if (this.isSelfHeartbeatLine(lines[i])) continue;
       const m = lines[i].match(/\[(\d{2}):(\d{2}):(\d{2})\]/);
       if (m) return Number(m[1]) * 3600 + Number(m[2]) * 60 + Number(m[3]);
     }
@@ -729,22 +729,46 @@ export class LucaService {
   //  (b) donmus is bile poll attigi icin log'u "taze" gosterip no-progress
   //      watchdog'unu kor birakiyordu (yumusak takilma yakalanmıyordu).
   // Bu satirlari hic yazmiyoruz. Gercek Luca XHR'leri (gib530 vb.) korunur.
-  private isAgentHeartbeatLogLine(message: string): boolean {
-    return /(?:FETCH|XHR)\b[^\n]*\/agent\/luca\/jobs\/[A-Za-z0-9_-]+\//i.test(String(message || ''));
+  // Agent'in kendi backend heartbeat cagrilari (.../jobs/<id>/status|log) —
+  // saniyede bir geliyor, kullaniciya tamamen gereksiz, ilerleme de degil.
+  // Loga hic yazilmaz.
+  private isSelfHeartbeatLine(message: string): boolean {
+    return /(?:FETCH|XHR)\b[^\n]*\/agent\/luca\/jobs\/[A-Za-z0-9_-]+\/(?:status|log)\b/i.test(String(message || ''));
+  }
+
+  // Ham network-trace satirlarini ("🔍 XHR POST gib530/...jq → ct=..., size=0KB")
+  // kullanicinin anlayacagi Turkce adima CEVIR (silme degil). Teknik degilse birak.
+  private humanizeLogLine(message: string): string {
+    const m = String(message || '');
+    if (!/→\s*ct=/i.test(m)) return m; // ham trace degil → oldugu gibi birak
+    const url = (m.match(/(?:FETCH|XHR(?:\s+[A-Z]+)?)\s+([^\s?]+)/i)?.[1] || '').toLowerCase();
+    if (/ct=application\/zip/i.test(m)) return '📦 Fatura paketi (ZIP) indiriliyor';
+    if (/gib_ebelge_alis/.test(url)) return '🔎 GİB’den gelen e-arşiv faturaları sorgulanıyor';
+    if (/gib_ebelge_satis/.test(url)) return '🔎 GİB’den giden e-arşiv faturaları sorgulanıyor';
+    if (/fatura_kaydet/.test(url)) return '💾 Faturalar portala kaydediliyor';
+    if (/fatura_list/.test(url)) return '📋 Fatura listesi alınıyor';
+    if (/(?:ebelge|gib530)/.test(url)) return '🔎 GİB ile veri alışverişi yapılıyor';
+    return '⏳ Luca ile işlem yapılıyor';
   }
 
   async appendJobLog(jobId: string, message: string) {
-    if (this.isAgentHeartbeatLogLine(message)) return null;
+    if (this.isSelfHeartbeatLine(message)) return null;
+    const human = this.humanizeLogLine(message);
     const job = await (this.prisma as any).lucaFetchJob.findUnique({ where: { id: jobId } });
     if (!job) return null;
     const ts = new Date().toLocaleTimeString('tr-TR', { hour12: false, timeZone: 'Europe/Istanbul' });
-    const newLine = `[${ts}] ${message}`;
-    const prev = job.errorMsg || '';
-    // Log penceresi: e-arsiv ZIP icerik satirlari tek basina 1500+ karakter
-    // olabiliyor; eski 20 satir / 2000 karakter siniri akisin onceki
-    // adimlarini (firma secimi, menu, captcha) aninda siliyordu -> ekran
-    // "donmus" gorunuyor ve teshis imkansizlasiyordu. Pencere genisletildi.
-    const lines = (prev ? prev.split('\n') : []).concat(newLine).slice(-60);
+    const prevLines = job.errorMsg ? String(job.errorMsg).split('\n') : [];
+    const lastContent = (prevLines[prevLines.length - 1] || '').replace(/^\[\d{2}:\d{2}:\d{2}\]\s*/, '');
+    let lines: string[];
+    if (lastContent && lastContent === human) {
+      // Ayni islem suruyor (orn. faturalar kaydediliyor) → yeni satir EKLEME,
+      // son satirin SAATINI guncelle. Hem ekran temiz kalir hem no-progress
+      // watchdog "is canli" gorur (yanlis requeue olmaz).
+      prevLines[prevLines.length - 1] = `[${ts}] ${human}`;
+      lines = prevLines.slice(-60);
+    } else {
+      lines = prevLines.concat(`[${ts}] ${human}`).slice(-60);
+    }
     const merged = lines.join('\n').slice(-12000);
     return (this.prisma as any).lucaFetchJob.update({
       where: { id: jobId },

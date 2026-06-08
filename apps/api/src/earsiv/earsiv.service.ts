@@ -415,7 +415,10 @@ export class EarsivService {
         // Önce mevcut mu kontrol et — varsa SKIP (yeniden indirip üzerine yazma)
         const existing = await (this.prisma as any).earsivFatura.findFirst({
           where: { tenantId, taxpayerId, tip, belgeKaynak, faturaNo: f.faturaNo },
-          select: { id: true, donem: true, faturaTarihi: true, pdfStorageKey: true, htmlStorageKey: true },
+          select: {
+            id: true, donem: true, faturaTarihi: true, pdfStorageKey: true, htmlStorageKey: true,
+            satici: true, saticiVergiNo: true, alici: true, aliciVergiNo: true,
+          },
         });
         if (existing) {
           const updateData: any = {};
@@ -423,6 +426,13 @@ export class EarsivService {
             updateData.donem = fDonem;
             updateData.faturaTarihi = f.faturaTarihi;
           }
+          // KARŞI FİRMA BACKFILL: eski parser ile çekilmiş faturaların satıcı/alıcı
+          // ünvanı boş kalmış olabilir (listede "Karşı Firma" boş görünür). Re-fetch'te
+          // yeni parser ünvanı çıkardıysa, boş olan alanları doldur. Doluysa dokunma.
+          if (!existing.satici && f.satici) updateData.satici = f.satici;
+          if (!existing.alici && f.alici) updateData.alici = f.alici;
+          if (!existing.saticiVergiNo && f.saticiVergiNo) updateData.saticiVergiNo = this.normalizeTaxNo(f.saticiVergiNo);
+          if (!existing.aliciVergiNo && f.aliciVergiNo) updateData.aliciVergiNo = this.normalizeTaxNo(f.aliciVergiNo);
           if (!existing.pdfStorageKey && f.pdfBuffer?.length) {
             let pdfStorageKey: string | null = null;
             try {

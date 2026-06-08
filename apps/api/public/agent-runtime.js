@@ -4,7 +4,7 @@
 */
 (function () {
   // Agent versiyon — UI'da gösterilir, debug için kritik
-  const AGENT_VERSION = '1.40.3';
+  const AGENT_VERSION = '1.40.4';
   const AGENT_INSTANCE_ID = 'mai_' + Date.now().toString(36) + '_' + Math.random().toString(36).slice(2, 8);
 
   // === VERSION-AWARE RELOAD ===
@@ -4378,10 +4378,11 @@
         await log(`✓ GİB sorgu tamamlandı (${elapsed}sn)${lastProgress ? ` · son: ${lastProgress}` : ''}`);
       }
       // KRİTİK: done mesajı gelse bile son fatura_kaydet'ler arka planda devam edebilir.
-      // Sonraki sorguya/indirmeye geçmeden ÖNCE 5sn XHR sessizliği bekle.
-      await waitForActivitySilence(`${etiket} fatura_kaydet sessizlik`, 5000, 90000);
+      // Sonraki sorguya/indirmeye geçmeden ÖNCE XHR sessizliği bekle. (Hız: sessizlik
+      // tabanı 5s→2.5s, üst sınır 90s→45s — kayıt bitince hemen devam, boşa bekleme yok.)
+      await waitForActivitySilence(`${etiket} fatura_kaydet sessizlik`, 2500, 45000);
       // Sonuç tablosuna geçilmesi için kısa bir sleep
-      await sleep(500);
+      await sleep(300);
 
       // Tüm frame'lerde "Kapat" butonunu bul ve tıkla (İşlem Takip popup)
       const findAndClick = (label) => {
@@ -4425,7 +4426,8 @@
         if (!popupAcik) break;
         await sleep(300);
       }
-      await sleep(1500);
+      // Popup kapandığı yukarıdaki döngüde DOĞRULANDI; eski sabit 1500ms israftı.
+      await sleep(300);
       await log(`📋 ${etiket} tamamlandı`);
 
       // Toplam fatura sayısını tespit et — "352 adet fatura bulundu. (Sayfa No: 1)"
@@ -4674,8 +4676,8 @@
       throw new Error('zip-window aksiyonu bulunamadı');
     }
 
-    // Popup açılma animasyonunu bekle
-    await sleep(1500);
+    // Popup açılma animasyonunu bekle (hız: 1500→700ms; indir butonu zaten retry'lı aranır)
+    await sleep(700);
 
     // location.href / location.assign / location.replace hook (Luca direct nav ile download yapıyorsa)
     try {
