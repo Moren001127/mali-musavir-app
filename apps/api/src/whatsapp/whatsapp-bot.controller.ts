@@ -1047,6 +1047,51 @@ export class WhatsAppBotController implements OnModuleInit {
     return process.env.MOREN_OWNER_BOT_REPLY_ENABLED !== '0';
   }
 
+  private ownerDisplayName(): string {
+    return String(process.env.MOREN_OWNER_DISPLAY_NAME || 'Muzaffer').trim() || 'Muzaffer';
+  }
+
+  private normalizeForIntent(text: string): string {
+    return String(text || '')
+      .toLocaleLowerCase('tr-TR')
+      .replace(/ı/g, 'i')
+      .replace(/ğ/g, 'g')
+      .replace(/ü/g, 'u')
+      .replace(/ş/g, 's')
+      .replace(/ö/g, 'o')
+      .replace(/ç/g, 'c')
+      .replace(/[^\w\s]/g, ' ')
+      .replace(/\s+/g, ' ')
+      .trim();
+  }
+
+  private isOwnerIdentityQuestion(text: string): boolean {
+    const normalized = this.normalizeForIntent(text);
+    return /\bben\s+kim(im|in)?\b/.test(normalized)
+      || /\bbeni\s+tani/.test(normalized)
+      || /\bkimim\b/.test(normalized)
+      || /\bkimin\b/.test(normalized);
+  }
+
+  private ownerIdentityReply(ownerTenant: any): string {
+    const ownerName = this.ownerDisplayName();
+    const officeName = ownerTenant?.name || OFFICE_NAME;
+    return `${ownerName}, sen ${officeName} sahibi olarak tanımlısın. Bu hat owner WhatsApp hattın; seni müşteri gibi değil ofis sahibi olarak görüyorum.`;
+  }
+
+  private repairOwnerReply(reply: string, ownerTenant: any): string {
+    const normalized = this.normalizeForIntent(reply);
+    if (
+      normalized.includes('sistemde henuz tanimli degilsiniz')
+      || normalized.includes('sizi taniyabilmem icin')
+      || normalized.includes('adinizi ya da vergi numaranizi')
+      || normalized.includes('adiniz veya firma unvaniniz')
+    ) {
+      return this.ownerIdentityReply(ownerTenant);
+    }
+    return reply;
+  }
+
   private async handleMessage(msg: IncomingWhatsAppMessage) {
     // ─── Kişisel kişi (örn. partner) branch'i ──────────────────────
     // Owner / taxpayer / unknown akışlarından ÖNCE çalışır.
@@ -1086,8 +1131,28 @@ export class WhatsAppBotController implements OnModuleInit {
         return;
       }
 
+      if (this.isOwnerIdentityQuestion(msg.text)) {
+        const reply = this.ownerIdentityReply(ownerTenant);
+        const sent = await this.whatsapp.sendMessage(this.replyTarget(msg), reply, ownerTenant.id);
+        await this.prisma.communicationLog.create({
+          data: {
+            taxpayerId: ownerContact.id,
+            channel: 'WHATSAPP',
+            subject: sent ? 'WhatsApp owner kimlik cevabi' : 'WhatsApp owner kimlik cevabi (gonderilemedi - master switch veya hata)',
+            content: this.withWhatsAppPhone(reply, msg.from),
+            occurredAt: new Date(),
+          },
+        });
+        this.refreshTaxpayerMemory(ownerTenant.id, ownerContact.id);
+        return;
+      }
+
       const recentContext = await this.botContext.buildRecentWhatsAppContext(ownerContact.id);
+      const ownerName = this.ownerDisplayName();
+      const officeName = ownerTenant.name || OFFICE_NAME;
       const prompt = [
+        `KIMLIK: Karsindaki kisi ${ownerName}. ${officeName} sahibi ve owner WhatsApp hattindan yaziyor.`,
+        'ASLA "sistemde tanimli degilsiniz", "adinizi/vergi numaranizi yazin", "sizi taniyabilmem icin" deme. Bu kisi musteri degil, ofis sahibi.',
         'ÖNEMLİ: Sen Moren Mali Müşavirlik ofisinin WhatsApp asistanısın. Karşındaki kişi ofisin SAHİBİ — bana doğrudan yazıyor.',
         '',
         'KESİN KURALLAR:',
@@ -1155,7 +1220,10 @@ export class WhatsAppBotController implements OnModuleInit {
       }
       const rawReply = (answer?.assistantMessage || '').slice(0, 1400);
       // Owner için de post-filter uygula — iç monolog/markdown temizle
-      const reply = this.postFilter.filterTaxpayerReply(rawReply, { mode: 'owner' });
+      const reply = this.repairOwnerReply(
+        this.postFilter.filterTaxpayerReply(rawReply, { mode: 'owner' }),
+        ownerTenant,
+      );
       if (reply) {
         const sent = await this.whatsapp.sendMessage(this.replyTarget(msg), reply, ownerTenant.id);
         await this.prisma.communicationLog.create({
