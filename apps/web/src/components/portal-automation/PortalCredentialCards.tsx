@@ -181,7 +181,7 @@ function CredentialEditor({
       } else if (result.validation?.checked && !result.validation.ok) {
         toast.warning(`Şifre kaydedildi, doğrulama başarısız: ${result.validation.error || 'Portal girişi reddedildi'}`);
       } else if (result.validation && result.validation.checked === false) {
-        toast.warning(`Şifre kaydedildi; otomatik doğrulama beklemede: ${result.validation.error || 'CAPTCHA doğrulaması gerekiyor'}`);
+        toast.success('Şifre kaydedildi. CAPTCHA nedeniyle doğrulama beklemede.');
       } else {
         toast.success('Şifre kaydı güncellendi');
       }
