@@ -17,7 +17,7 @@
       "lockedBy": "muzaffer"
     },
     "apps/api/public/agent-runtime.js": {
-      "sha256": "9e64f9d8ba75915b2729ce126d71f571181c75b2e928b2f16bbad39a7583bd9d",
+      "sha256": "8f095d3610f7ffc285e53ce27e2db55801bc1288fb1d45c77a75d0e6b8be07df",
       "reason": "Moren Agent v1.36.64 - log denetim uyarilari + Claude Vision maliyet optimizasyonu",
       "lockedBy": "muzaffer"
     },

@@ -4,7 +4,7 @@
 */
 (function () {
   // Agent versiyon — UI'da gösterilir, debug için kritik
-  const AGENT_VERSION = '1.41.0';
+  const AGENT_VERSION = '1.41.1';
   const AGENT_INSTANCE_ID = 'mai_' + Date.now().toString(36) + '_' + Math.random().toString(36).slice(2, 8);
 
   // === VERSION-AWARE RELOAD ===
@@ -11947,9 +11947,9 @@
           // Multi-page invoices can carry totals or notes after page 1.
           const maxPages = Math.max(1, Math.min(Number(window.__morenAgent?.maxOcrPages || 3), 3));
           const pages = canvases.slice(0, maxPages);
-          // Max akisi gorseli dogrudan gormez; backend OCR yapar. OCR icin 900px fazla kucuk
-          // kalabiliyor, bu yuzden fatura metnini koruyacak daha yuksek genislik kullan.
-          const targetW = Math.min(Math.max(pages[0].width, 1200), 1800);
+          // Max görseli DOĞRUDAN okuyor (vision). 1200px fatura metni için yeterli;
+          // daha büyüğü okumayı yavaşlatıyordu (Max zaten ~1.15MP'ye küçültüyor). HIZ için cap düşürüldü.
+          const targetW = Math.min(Math.max(pages[0].width, 1000), 1200);
           const totalH = pages.reduce(
             (s, c) => s + Math.round(targetW * (c.height / c.width)),
             0,
@@ -11979,7 +11979,7 @@
         try {
           const maxPages = Math.max(1, Math.min(Number(window.__morenAgent?.maxOcrPages || 3), 3));
           const pages = imgs.slice(0, maxPages);
-          const targetW = Math.min(Math.max(pages[0].naturalWidth || pages[0].width, 1200), 1800);
+          const targetW = Math.min(Math.max(pages[0].naturalWidth || pages[0].width, 1000), 1200);
           const totalH = pages.reduce((s, img) => {
             const w = img.naturalWidth || img.width;
             const h = img.naturalHeight || img.height;
@@ -13962,15 +13962,17 @@
   function needsFreshFaturaRetry(safety, decision) {
     if (!safety || safety.ok) return false;
     if (faturaProviderErrorMessage(decision)) return false;
-    const reason = String(safety.sebep || '');
-    return !!decision?.cacheHit || decision?.aiCallReason === 'cache_hit' || /okunamad[ıi]/i.test(reason);
+    // HIZ: Vision görseli doğrudan okuyor. "okunamadı"da 2. kez okumak genelde yine
+    // başarısız oluyor + faturayı ~15-20sn daha bekletiyordu. Artık sadece GERÇEK
+    // cache-hit'te taze oku (nadir); okuma başarısızsa hızlıca manuele düşsün.
+    return !!decision?.cacheHit || decision?.aiCallReason === 'cache_hit';
   }
 
   async function freshFaturaDecisionRetry({ safety, decision, decideArgs, meta, codes, kdvOranlari }) {
     if (!needsFreshFaturaRetry(safety, decision)) return null;
     const retryDecision = await aiDecideTimed(
       { ...decideArgs, forceFresh: true },
-      20000, // Max görsel (vision) çağrısı subprocess+çıkarım nedeniyle uzun sürebilir
+      14000, // nadir cache-hit tazeleme; ana vision timeout'u ile aynı üst sınır
       'taze karar zaman asimi - manuel kontrol',
     );
     const retrySafety = finalSafetyCheckFatura({
@@ -14973,9 +14975,10 @@
           await clickIleri(fid); continue;
         }
         setStatus(`${mukellef.ad} · #${fid} AI inceliyor…`);
-        // Max görsel (vision) çağrısı subprocess başlatma + görüntü çıkarımı nedeniyle
-        // 7.5 sn'ye sığmıyordu; her fatura okunduğu için süre yükseltildi (watchdog yok).
-        decision = await aiDecideTimed(decisionArgs, 25000, 'AI karar zaman asimi - manuel kontrol');
+        // Max görsel (vision) çağrısı subprocess + görüntü çıkarımı; tipik 5-10sn.
+        // 14sn üst sınır: bu sürede dönmezse takılmıştır → hızlıca manuele düşsün
+        // (sonsuz bekleme yerine kuyruğu akıcı tut).
+        decision = await aiDecideTimed(decisionArgs, 14000, 'AI karar zaman asimi - manuel kontrol');
         perf.mark('aiDecision');
       }
       let karar = decision?.karar || 'emin_degil';
