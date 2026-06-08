@@ -26,6 +26,7 @@ export type BaileysInbound = {
 };
 
 type Session = {
+  tenantId: string;
   sock: any;
   auth: DBAuthState;
   qr: string | null;
@@ -33,6 +34,7 @@ type Session = {
   connecting: boolean;
   lastError?: string;
   startedAt: number;
+  lidToPhone: Map<string, string>;
 };
 
 // ESM-only Baileys'i CommonJS/webpack build'inde import etmek için: TS ve
@@ -45,12 +47,17 @@ export class BaileysService {
   private mod: any = null;
   private readonly sessions = new Map<string, Session>();
   private inboundHandler: ((msg: BaileysInbound) => Promise<void>) | null = null;
+  private lidMappingHandler: ((tenantId: string, lid: string, phone: string) => Promise<void>) | null = null;
 
   constructor(private readonly prisma: PrismaService) {}
 
   /** Bot controller, gelen mesajı handleMessage hattına vermek için bunu kaydeder. */
   setInboundHandler(fn: (msg: BaileysInbound) => Promise<void>) {
     this.inboundHandler = fn;
+  }
+
+  setLidMappingHandler(fn: (tenantId: string, lid: string, phone: string) => Promise<void>) {
+    this.lidMappingHandler = fn;
   }
 
   private async baileys(): Promise<any> {
@@ -109,11 +116,37 @@ export class BaileysService {
     });
 
     const session: Session = {
-      sock, auth, qr: null, connected: false, connecting: true, startedAt: Date.now(),
+      tenantId, sock, auth, qr: null, connected: false, connecting: true, startedAt: Date.now(), lidToPhone: new Map(),
     };
     this.sessions.set(tenantId, session);
 
     sock.ev.on('creds.update', () => { auth.saveCreds().catch(() => {}); });
+
+    const rememberLidMapping = async (lidJid?: string | null, phoneJid?: string | null) => {
+      const lid = this.jidDigits(lidJid || '');
+      const phone = this.jidDigits(phoneJid || '');
+      if (!lid || !phone || lid === phone) return;
+      session.lidToPhone.set(lid, phone);
+      this.logger.log(`[Baileys] LID telefon eslesmesi alindi: tenant=${tenantId} lid=${lid} phone=${phone}`);
+      await this.lidMappingHandler?.(tenantId, lid, phone).catch((e: any) =>
+        this.logger.warn(`[Baileys] LID eslesmesi islenemedi tenant=${tenantId}: ${e?.message || e}`));
+    };
+
+    sock.ev.on('chats.phoneNumberShare', (evt: any) => {
+      rememberLidMapping(evt?.lid, evt?.jid).catch(() => {});
+    });
+
+    sock.ev.on('contacts.upsert', (items: any[]) => {
+      for (const item of items || []) {
+        rememberLidMapping(item?.lid, item?.jid || item?.id).catch(() => {});
+      }
+    });
+
+    sock.ev.on('contacts.update', (items: any[]) => {
+      for (const item of items || []) {
+        rememberLidMapping(item?.lid, item?.jid || item?.id).catch(() => {});
+      }
+    });
 
     sock.ev.on('connection.update', (u: any) => {
       const { connection, lastDisconnect, qr } = u;
@@ -148,7 +181,7 @@ export class BaileysService {
     sock.ev.on('messages.upsert', async (evt: any) => {
       if (evt?.type !== 'notify') return;
       for (const m of evt.messages || []) {
-        try { await this.handleIncoming(m); } catch (e: any) {
+        try { await this.handleIncoming(m, session); } catch (e: any) {
           this.logger.warn(`[Baileys] gelen mesaj işlenemedi: ${e?.message || e}`);
         }
       }
@@ -157,12 +190,18 @@ export class BaileysService {
     return { started: true };
   }
 
-  private async handleIncoming(m: any): Promise<void> {
+  private async handleIncoming(m: any, session: Session): Promise<void> {
     if (!m?.message || m.key?.fromMe) return;
     const jid: string = m.key?.remoteJid || '';
     if (!jid || jid.endsWith('@g.us') || jid === 'status@broadcast') return; // grup/durum atla
-    const from = jid.split('@')[0];
+    const from = this.senderPhoneForMessage(m, jid, session);
     if (!from) return;
+    const remoteLid = String(jid || '').includes('@lid') ? this.jidDigits(jid) : '';
+    if (remoteLid && remoteLid !== from) {
+      session.lidToPhone.set(remoteLid, from);
+      this.lidMappingHandler?.(session.tenantId, remoteLid, from).catch((e: any) =>
+        this.logger.warn(`[Baileys] LID eslesmesi mesajdan islenemedi tenant=${session.tenantId}: ${e?.message || e}`));
+    }
 
     const msg = m.message;
     const text =
@@ -192,6 +231,32 @@ export class BaileysService {
       return;
     }
     await this.inboundHandler({ from, text: finalText, id: m.key?.id, media });
+  }
+
+  private jidDigits(jid: string): string {
+    return String(jid || '').split('@')[0].split(':')[0].replace(/[^\d]/g, '');
+  }
+
+  private senderPhoneForMessage(m: any, remoteJid: string, session: Session): string {
+    const key = m?.key || {};
+    const candidates = [
+      key.senderPn,
+      key.participantPn,
+      remoteJid,
+      key.senderLid,
+      key.participantLid,
+    ];
+    for (const candidate of candidates) {
+      const digits = this.jidDigits(candidate || '');
+      if (!digits) continue;
+      if (String(candidate || '').includes('@lid')) {
+        const mapped = session.lidToPhone.get(digits);
+        if (mapped) return mapped;
+        continue;
+      }
+      return digits;
+    }
+    return this.jidDigits(remoteJid);
   }
 
   /** Portal için durum + QR (data URL). */

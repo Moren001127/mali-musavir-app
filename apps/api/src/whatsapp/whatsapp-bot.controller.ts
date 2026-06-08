@@ -65,6 +65,7 @@ export class WhatsAppBotController implements OnModuleInit {
    */
   async onModuleInit() {
     this.baileys.setInboundHandler((msg) => this.handleMessage(msg as IncomingWhatsAppMessage));
+    this.baileys.setLidMappingHandler((tenantId, lid, phone) => this.handleLidPhoneMapping(tenantId, lid, phone));
     try {
       const rows = await (this.prisma as any).integrationConnection.findMany({
         where: { provider: BAILEYS_PROVIDER },
@@ -401,6 +402,96 @@ export class WhatsAppBotController implements OnModuleInit {
     return tenants.length === 1 ? tenants[0] : null;
   }
 
+  private async handleLidPhoneMapping(tenantId: string, lidRaw: string, phoneRaw: string) {
+    const lid = this.normalize(lidRaw);
+    const phone = this.normalize(phoneRaw);
+    if (!lid || !phone || lid === phone) return;
+
+    const source = await this.prisma.taxpayer.findFirst({
+      where: {
+        tenantId,
+        OR: [
+          { taxNumber: `WHATSAPP-${lid}` },
+          { phone: lid },
+          { phones: { has: lid } },
+        ],
+      },
+      select: {
+        id: true,
+        tenantId: true,
+        companyName: true,
+        taxNumber: true,
+        phone: true,
+        phones: true,
+      },
+    });
+    if (!source) return;
+    if (!this.isWhatsAppVirtualTaxNumber(source.taxNumber)) return;
+
+    const candidates = await this.prisma.taxpayer.findMany({
+      where: { tenantId, isActive: true },
+      select: {
+        id: true,
+        companyName: true,
+        firstName: true,
+        lastName: true,
+        taxNumber: true,
+        phone: true,
+        phones: true,
+      },
+      take: 1000,
+    });
+    const target = candidates.find((t: any) => {
+      if (t.id === source.id || this.isWhatsAppVirtualTaxNumber(t.taxNumber)) return false;
+      const phones = [t.phone, ...(Array.isArray(t.phones) ? t.phones : [])].filter(Boolean);
+      return phones.some((p) => this.normalize(p) === phone);
+    });
+
+    const logs = await this.prisma.communicationLog.findMany({
+      where: { taxpayerId: source.id, channel: 'WHATSAPP' },
+      select: { id: true, content: true },
+    });
+    const replaceLidMarker = (content?: string | null) =>
+      String(content || '').replace(new RegExp(`\\[\\[wa_phone:${lid}\\]\\]`, 'g'), `[[wa_phone:${phone}]]`);
+
+    if (target) {
+      await this.prisma.$transaction([
+        ...logs.map((log) => this.prisma.communicationLog.update({
+          where: { id: log.id },
+          data: { taxpayerId: target.id, content: replaceLidMarker(log.content) },
+        })),
+        this.prisma.taxpayer.update({
+          where: { id: source.id },
+          data: {
+            notes: `Bu LID WhatsApp konusmasi telefon eslesmesiyle mukellefe tasindi: ${target.id} (${phone})`,
+            isActive: false,
+          },
+        }),
+      ]);
+      this.logger.log(`[WhatsApp] LID konusmasi mukellefe tasindi: tenant=${tenantId} lid=${lid} phone=${phone} target=${target.id}`);
+      return;
+    }
+
+    const mergedPhones = Array.from(new Set([phone, lid, ...(Array.isArray(source.phones) ? source.phones : [])].filter(Boolean)));
+    await this.prisma.$transaction([
+      ...logs.map((log) => this.prisma.communicationLog.update({
+        where: { id: log.id },
+        data: { content: replaceLidMarker(log.content) },
+      })),
+      this.prisma.taxpayer.update({
+        where: { id: source.id },
+        data: {
+          companyName: `Kayitsiz WhatsApp ${phone}`,
+          taxNumber: `WHATSAPP-${phone}`,
+          phone,
+          phones: mergedPhones,
+          notes: `WhatsApp LID eslesmesi alindi. LID: ${lid}`,
+        },
+      }),
+    ]);
+    this.logger.log(`[WhatsApp] LID konusmasi gercek telefonla guncellendi: tenant=${tenantId} lid=${lid} phone=${phone}`);
+  }
+
   private async ensureWhatsAppConversationContact(
     tenantId: string,
     phone: string,
@@ -504,6 +595,11 @@ export class WhatsAppBotController implements OnModuleInit {
 
   private displayName(t: any): string {
     return t?.companyName || `${t?.firstName || ''} ${t?.lastName || ''}`.trim() || 'Mukellef';
+  }
+
+  private isWhatsAppVirtualTaxNumber(taxNumber?: string | null): boolean {
+    const value = String(taxNumber || '');
+    return value.startsWith('WHATSAPP-') && !value.startsWith('WHATSAPP-OWNER-');
   }
 
   private async contentWithSavedMedia(
