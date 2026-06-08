@@ -463,7 +463,8 @@ export class WhatsAppController {
     if (!doc) return { ok: false, error: 'Belge bulunamadi' };
 
     const targetPhone = ref.phone || this.defaultWhatsAppPhone(taxpayer);
-    const phones = targetPhone ? [targetPhone] : [];
+    const sendTarget = this.whatsAppSendTarget(taxpayer, targetPhone);
+    const phones = sendTarget ? [sendTarget] : [];
     if (!phones.length) return { ok: false, error: 'Telefon numarasi yok' };
 
     const filename = this.documentFilename(doc.title, doc.mimeType);
@@ -480,7 +481,7 @@ export class WhatsAppController {
         caption,
       }, tenantId);
       if (result.ok) delivered = true;
-      else if (result.error) errors.push(`${phone}: ${result.error}`);
+      else if (result.error) errors.push(`${targetPhone || phone}: ${result.error}`);
     }
 
     const content = `${caption || `[Medya: ${doc.title}]`}\n[[document:${doc.id}|${doc.title}]]`;
@@ -527,7 +528,8 @@ export class WhatsAppController {
     if (!taxpayer) return { ok: false, error: 'Mukellef bulunamadi' };
 
     const targetPhone = ref.phone || this.defaultWhatsAppPhone(taxpayer);
-    const phones = targetPhone ? [targetPhone] : [];
+    const sendTarget = this.whatsAppSendTarget(taxpayer, targetPhone);
+    const phones = sendTarget ? [sendTarget] : [];
     if (!phones.length) return { ok: false, error: 'Telefon numarasi yok' };
 
     const originalName = this.safeMediaFilename(file.originalname || 'whatsapp-dosya.bin');
@@ -578,7 +580,7 @@ export class WhatsAppController {
         caption,
       }, tenantId);
       if (result.ok) delivered = true;
-      else if (result.error) errors.push(`${phone}: ${result.error}`);
+      else if (result.error) errors.push(`${targetPhone || phone}: ${result.error}`);
     }
 
     const content = `${caption || `[Medya: ${doc.title}]`}\n[[document:${doc.id}|${doc.title}]]`;
@@ -618,7 +620,8 @@ export class WhatsAppController {
     if (!taxpayer) return { ok: false, error: 'Mükellef bulunamadı' };
 
     const targetPhone = ref.phone || this.defaultWhatsAppPhone(taxpayer);
-    const phones = targetPhone ? [targetPhone] : [];
+    const sendTarget = this.whatsAppSendTarget(taxpayer, targetPhone);
+    const phones = sendTarget ? [sendTarget] : [];
     if (phones.length === 0) return { ok: false, error: 'Mükellefin telefon numarası yok' };
 
     const message = String(body?.message || '').trim();
@@ -644,7 +647,7 @@ export class WhatsAppController {
         result = await this.whatsappService.sendMessageDetailed(phone, message, tenantId);
       }
       if (result.ok) detailedDelivered = true;
-      else if (result.error) detailedErrors.push(`${phone}: ${result.error}`);
+      else if (result.error) detailedErrors.push(`${targetPhone || phone}: ${result.error}`);
     }
 
     await this.prisma.communicationLog.create({
@@ -665,7 +668,7 @@ export class WhatsAppController {
     return {
       ok: detailedDelivered,
       method: detailedMethod,
-      phones,
+      phones: targetPhone ? [targetPhone] : phones,
       conversationId: this.conversationId(taxpayerId, targetPhone),
       error: detailedDelivered ? undefined : (detailedErrors.join(' | ') || 'WhatsApp gonderimi basarisiz.'),
     };
@@ -1519,6 +1522,26 @@ export class WhatsAppController {
 
   private defaultWhatsAppPhone(taxpayer: any): string | null {
     return this.normalizePhoneForWhatsApp(taxpayer?.phone || (Array.isArray(taxpayer?.phones) ? taxpayer.phones[0] : null)) || null;
+  }
+
+  private isWhatsAppLid(value?: string | null): boolean {
+    const digits = this.phoneDigits(value);
+    return digits.startsWith('111') && digits.length >= 14;
+  }
+
+  private whatsAppSendTarget(taxpayer: any, displayPhone?: string | null): string | null {
+    const display = this.normalizePhoneForWhatsApp(displayPhone) || this.defaultWhatsAppPhone(taxpayer);
+    if (!display) return null;
+    if (this.isWhatsAppLid(display)) return this.phoneDigits(display);
+
+    const taxpayerPhones = [
+      taxpayer?.phone,
+      ...(Array.isArray(taxpayer?.phones) ? taxpayer.phones : []),
+    ].filter(Boolean);
+    const hasDisplayPhone = taxpayerPhones.some((phone) => this.normalizePhoneForWhatsApp(phone) === display);
+    const lid = taxpayerPhones.find((phone) => this.isWhatsAppLid(phone));
+
+    return hasDisplayPhone && lid ? this.phoneDigits(lid) : display;
   }
 
   private extractWhatsAppPhone(content?: string | null): string | null {
