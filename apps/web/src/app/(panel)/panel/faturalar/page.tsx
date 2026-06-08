@@ -229,9 +229,10 @@ export default function FaturalarPage() {
   };
 
   // Tek fatura yazdır (fiş/Z raporu dahil — manuel istek, filtre yok)
+  // Drive-öncelikli uç: yedekliyse Drive'dan, değilse MIHSAP'tan.
   const handleSinglePrint = async (invoiceId: string, faturaNo: string) => {
     try {
-      const resp = await api.get(`/agent/mihsap/invoices/${invoiceId}/file`, {
+      const resp = await api.get(`/agent/drive/invoices/${invoiceId}/file`, {
         responseType: 'blob',
       });
       const blobUrl = URL.createObjectURL(resp.data);
@@ -550,7 +551,7 @@ ${isPdf
           { label: 'Toplam Fatura', value: invoices.length, sub: '', icon: Receipt },
           { label: 'Alış Faturası', value: alisInvoices.length, sub: `₺${totalAlis.toLocaleString('tr-TR', { maximumFractionDigits: 0 })}`, icon: FileText },
           { label: 'Satış Faturası', value: satisInvoices.length, sub: `₺${totalSatis.toLocaleString('tr-TR', { maximumFractionDigits: 0 })}`, icon: FileText },
-          { label: 'İndirilmiş Dosya', value: invoices.filter((i) => i.storageKey).length, sub: invoices.length ? `/ ${invoices.length}` : '', icon: Download },
+          { label: 'Drive\'a Yedeklenen', value: invoices.filter((i) => backedUpIds.has(i.id)).length, sub: invoices.length ? `/ ${invoices.length}` : '', icon: Cloud },
         ].map(({ label, value, sub, icon: Icon }, idx) => (
           <div
             key={label}
@@ -1115,6 +1116,7 @@ function InvoicePreviewModal({
   const [url, setUrl] = useState<string | null>(null);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
+  const [contentType, setContentType] = useState('');
 
   // ESC ile kapat + body scroll kilitle (listenin altından açıldığında
   // modal viewport'a sabitlensin, scroll konumu nerede olursa olsun)
@@ -1145,26 +1147,39 @@ function InvoicePreviewModal({
   }, [onClose]);
 
   useEffect(() => {
-    // Öncelik 1: MIHSAP CDN URL'i (auth gerektirmez, direkt açılır)
-    // Öncelik 2: Backend presigned URL (S3 arşivlenmiş dosyalar için)
-    if (invoice.mihsapFileLink) {
-      setUrl(invoice.mihsapFileLink);
-      setLoading(false);
-      return;
-    }
-    // Fallback: S3 presigned URL (backend'e sor)
+    // Drive-öncelikli backend ucu: fatura yedekliyse Drive'dan indirilir
+    // (MIHSAP'tan bağımsız), yedek yoksa backend MIHSAP'a düşer.
+    let active = true;
+    let objUrl: string | null = null;
     (async () => {
       try {
         setLoading(true);
-        const r = await agentsApi.mihsapDownloadUrl(invoice.id);
-        if (r?.url) setUrl(r.url);
-        else setError(r?.error || 'Dosya bulunamadı');
+        setError(null);
+        const resp = await api.get(`/agent/drive/invoices/${invoice.id}/file`, {
+          responseType: 'blob',
+        });
+        objUrl = URL.createObjectURL(resp.data);
+        const ct = (resp.data as Blob).type || '';
+        if (active) {
+          setUrl(objUrl);
+          setContentType(ct);
+        }
       } catch (e: any) {
-        setError(e?.message || 'Görüntü alınamadı');
+        // Son çare: doğrudan MIHSAP CDN linki (varsa)
+        if (active && invoice.mihsapFileLink) {
+          setUrl(invoice.mihsapFileLink);
+          setContentType('');
+        } else if (active) {
+          setError(e?.response?.data?.message || e?.message || 'Görüntü alınamadı');
+        }
       } finally {
-        setLoading(false);
+        if (active) setLoading(false);
       }
     })();
+    return () => {
+      active = false;
+      if (objUrl) setTimeout(() => URL.revokeObjectURL(objUrl!), 1000);
+    };
   }, [invoice.id, invoice.mihsapFileLink]);
 
   const isAlis = invoice.faturaTuru.includes('ALIS');
@@ -1278,21 +1293,13 @@ function InvoicePreviewModal({
             </div>
           )}
           {url && !loading && !error && (() => {
-            // Presigned URL query string içerebilir; uzantıyı gerçek path'ten al.
-            // MIHSAP her faturayı (XML e-fatura dahil) JPEG'e render ettiği için
-            // çoğu durumda dosya tipi "jpg" olur.
+            // Tip tespiti: önce backend'in döndürdüğü içerik tipi (blob),
+            // yoksa URL uzantısı (doğrudan MIHSAP linki fallback'i için).
             const cleanPath = url.split('?')[0].toLowerCase();
             const urlExt = cleanPath.split('.').pop() || '';
-            if (urlExt === 'pdf') {
-              return (
-                <iframe
-                  src={url}
-                  className="w-full h-full bg-white"
-                  title={invoice.faturaNo}
-                />
-              );
-            }
-            if (urlExt === 'xml') {
+            const isPdf = contentType.includes('pdf') || urlExt === 'pdf';
+            const isXml = contentType.includes('xml') || urlExt === 'xml';
+            if (isPdf || isXml) {
               return (
                 <iframe
                   src={url}

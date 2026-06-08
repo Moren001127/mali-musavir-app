@@ -369,6 +369,62 @@ export class DriveService implements OnModuleInit, OnModuleDestroy {
     });
   }
 
+  // ==================== GORUNTULEME (Drive-oncelikli) ====================
+
+  /**
+   * Bir faturanin dosyasini getirir. Yedekliyse Drive'dan indirir
+   * (MIHSAP'tan bagimsiz); degilse MIHSAP proxy'sine duser.
+   */
+  async serveInvoiceFile(
+    tenantId: string,
+    invoiceId: string,
+  ): Promise<{ buffer: Buffer; contentType: string; filename: string }> {
+    const inv = await (this.prisma as any).mihsapInvoice.findUnique({
+      where: { id: invoiceId },
+    });
+    if (!inv || inv.tenantId !== tenantId) {
+      throw new BadRequestException(`Fatura kaydi bulunamadi (${invoiceId})`);
+    }
+
+    // Drive yedegi var mi?
+    const backup = inv.mihsapId
+      ? await (this.prisma as any).driveBackup.findUnique({
+          where: { tenantId_mihsapId: { tenantId, mihsapId: inv.mihsapId } },
+        })
+      : null;
+    const acc = backup?.driveFileId ? await this.getAccount(tenantId) : null;
+
+    if (backup?.driveFileId && acc?.isActive) {
+      try {
+        const token = await this.getValidAccessToken(tenantId);
+        const res = await fetch(
+          `https://www.googleapis.com/drive/v3/files/${backup.driveFileId}?alt=media&supportsAllDrives=true`,
+          { headers: { Authorization: `Bearer ${token}` } },
+        );
+        if (res.ok) {
+          const buffer = Buffer.from(await res.arrayBuffer());
+          const contentType =
+            res.headers.get('content-type') || 'application/octet-stream';
+          return {
+            buffer,
+            contentType,
+            filename: backup.fileName || `${inv.faturaNo || invoiceId}`,
+          };
+        }
+        this.logger.warn(
+          `Drive'dan ${invoiceId} okunamadi (${res.status}) — MIHSAP'a dusuluyor`,
+        );
+      } catch (e: any) {
+        this.logger.warn(
+          `Drive serve hatasi ${invoiceId}: ${e?.message || e} — MIHSAP fallback`,
+        );
+      }
+    }
+
+    // Fallback: MIHSAP proxy (mevcut davranis)
+    return this.mihsap.getInvoiceFile(tenantId, invoiceId);
+  }
+
   // ==================== YEDEKLEME ====================
 
   async startBackup(params: {

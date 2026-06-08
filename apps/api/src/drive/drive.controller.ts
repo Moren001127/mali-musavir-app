@@ -4,6 +4,7 @@ import {
   Post,
   Body,
   Query,
+  Param,
   Req,
   Res,
   UseGuards,
@@ -103,5 +104,19 @@ export class DriveController {
     @Query('donem') donem?: string,
   ) {
     return this.service.listBackedUpInvoiceIds(req.user.tenantId, mukellefId, donem);
+  }
+
+  /** Fatura dosyasi — yedekliyse Drive'dan, degilse MIHSAP'tan (proxy/stream) */
+  @Get('invoices/:id/file')
+  @UseGuards(AuthGuard('jwt'))
+  async file(@Req() req: any, @Param('id') id: string, @Res() res: any) {
+    const data = await this.service.serveInvoiceFile(req.user.tenantId, id);
+    res.set({
+      'Content-Type': data.contentType,
+      'Content-Disposition': `inline; filename="${data.filename}"`,
+      'Content-Length': String(data.buffer.length),
+      'Cache-Control': 'private, max-age=3600',
+    });
+    return res.send(data.buffer);
   }
 }
