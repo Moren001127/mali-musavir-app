@@ -302,9 +302,16 @@ export class PortalAutomationRailwayRunnerService implements OnModuleInit {
       const page = await context.newPage();
       page.setDefaultTimeout(12_000);
 
-      await page.goto(this.loginUrlForJob(jobType), { waitUntil: 'domcontentloaded', timeout: 45_000 });
-      await this.fillPortalLoginForProvider(page, provider, jobType, credential);
-      await this.finishLoginAfterFill(page);
+      const loginUrl = this.loginUrlForJob(jobType);
+      await page.goto(loginUrl, { waitUntil: 'domcontentloaded', timeout: 45_000 });
+      if (provider === 'GIB_IVD') {
+        await this.loginGibDigitalWithCaptcha(page, credential, loginUrl, 'credential-validation');
+      } else if (provider === 'SGK_EBILDIRGE') {
+        await this.loginSgkWithCaptcha(page, credential, loginUrl, 'credential-validation');
+      } else {
+        await this.fillPortalLoginForProvider(page, provider, jobType, credential);
+        await this.finishLoginAfterFill(page);
+      }
       await context.close().catch(() => {});
     } finally {
       await browser.close().catch(() => {});
@@ -625,13 +632,17 @@ export class PortalAutomationRailwayRunnerService implements OnModuleInit {
       const page = await context.newPage();
       page.setDefaultTimeout(15_000);
 
-      await page.goto(loginUrl, { waitUntil: 'domcontentloaded', timeout: 60_000 });
       if (jobType === 'E_TEBLIGAT_CHECK') {
-        await this.fillPortalLoginForProvider(page, 'GIB_IVD', jobType, credential);
+        await page.goto(loginUrl, { waitUntil: 'domcontentloaded', timeout: 60_000 });
+        await this.loginGibDigitalWithCaptcha(page, credential, loginUrl, 'e-tebligat');
+      } else if (isSgk) {
+        await page.goto(loginUrl, { waitUntil: 'domcontentloaded', timeout: 60_000 });
+        await this.loginSgkWithCaptcha(page, credential, loginUrl, jobType);
       } else {
+        await page.goto(loginUrl, { waitUntil: 'domcontentloaded', timeout: 60_000 });
         await this.fillGenericPortalLogin(page, this.loginValuesForJob(jobType, credential));
+        await this.finishLoginAfterFill(page);
       }
-      await this.finishLoginAfterFill(page);
 
       const notes: string[] = [`${jobType} girisi basarili`];
       const targetUrl = this.targetUrlForJob(jobType);
@@ -895,6 +906,162 @@ export class PortalAutomationRailwayRunnerService implements OnModuleInit {
     return m ? m[0].slice(0, 80) : null;
   }
 
+  private gibValidationLoginAttempts() {
+    const value = Number(process.env.PORTAL_AUTOMATION_GIB_VALIDATION_LOGIN_ATTEMPTS || 3);
+    return Math.max(1, Math.min(5, Number.isFinite(value) ? value : 3));
+  }
+
+  private async loginGibDigitalWithCaptcha(
+    page: any,
+    credential: RunnerCredential,
+    loginUrl: string,
+    source: string,
+  ) {
+    const userCode = String(credential.userCode || credential.username || '').trim();
+    const password = String(credential.secondaryPassword || credential.password || '');
+    if (!userCode || !password) {
+      throw new Error('Vergi dairesi kullanici kodu ve sifre eksik');
+    }
+
+    const maxAttempts = this.gibValidationLoginAttempts();
+    let lastError = '';
+    for (let attempt = 1; attempt <= maxAttempts; attempt++) {
+      try {
+        if (attempt > 1) {
+          await page.goto(loginUrl, { waitUntil: 'domcontentloaded', timeout: 45_000 });
+        }
+        await this.waitForEBeyannameLoginForm(page);
+        await this.fillEBeyannameLogin(page, userCode, password);
+        await this.fillEBeyannameCaptcha(page);
+        await this.submitLogin(page);
+        await page.waitForLoadState('domcontentloaded', { timeout: 20_000 }).catch(() => {});
+        await page.waitForTimeout(2000);
+        await this.assertLoggedIn(page);
+        await this.assertGenericPortalLoginResult(page);
+        if (attempt > 1) {
+          this.logger.log(`[GIB:${source}] Login denemesi #${attempt}/${maxAttempts} basarili`);
+        }
+        return;
+      } catch (err: any) {
+        lastError = this.compact(err?.message || err);
+        this.logger.warn(`[GIB:${source}] Login denemesi #${attempt}/${maxAttempts} basarisiz: ${lastError}`);
+
+        const retryableCaptchaError = /captcha|dogrulama|doğrulama|login formu|cozulemedi|çözülemedi/i.test(lastError);
+        const missingSolver = /TWOCAPTCHA_API_KEY|2captcha in\.php/i.test(lastError);
+        if (missingSolver || !retryableCaptchaError || attempt === maxAttempts) {
+          throw new Error(`Vergi dairesi girisi dogrulanamadi: ${lastError}`);
+        }
+      }
+    }
+
+    throw new Error(`Vergi dairesi girisi dogrulanamadi: ${lastError || 'bilinmeyen hata'}`);
+  }
+
+  private async loginSgkWithCaptcha(
+    page: any,
+    credential: RunnerCredential,
+    loginUrl: string,
+    source: string,
+  ) {
+    const username = String(credential.username || credential.userCode || '').trim();
+    const eCode = String(credential.workplaceCode || '').trim();
+    const systemPassword = String(credential.password || '');
+    const workplacePassword = String(credential.secondaryPassword || '');
+    if (!username || !eCode || !systemPassword || !workplacePassword) {
+      throw new Error('SGK kullanici adi, e-kod, sistem sifresi ve isyeri sifresi eksik');
+    }
+
+    const maxAttempts = this.gibValidationLoginAttempts();
+    let lastError = '';
+    for (let attempt = 1; attempt <= maxAttempts; attempt++) {
+      try {
+        if (attempt > 1) {
+          await page.goto(loginUrl, { waitUntil: 'domcontentloaded', timeout: 45_000 });
+        }
+        await this.waitForSgkLoginForm(page);
+        await this.fillVisibleField(page, [
+          '#kullaniciIlkKontrollerGiris_username',
+          'input[name="username"]',
+        ], username, 'SGK kullanici adi');
+        await this.fillVisibleField(page, [
+          '#kullaniciIlkKontrollerGiris_isyeri_kod',
+          'input[name="isyeri_kod"]',
+        ], eCode, 'SGK e-kod');
+        await this.fillVisibleField(page, [
+          '#kullaniciIlkKontrollerGiris_password',
+          'input[name="password"]',
+        ], systemPassword, 'SGK sistem sifresi');
+        await this.fillVisibleField(page, [
+          '#kullaniciIlkKontrollerGiris_isyeri_sifre',
+          'input[name="isyeri_sifre"]',
+        ], workplacePassword, 'SGK isyeri sifresi');
+        await this.fillSgkCaptcha(page);
+        await this.submitLogin(page);
+        await page.waitForLoadState('domcontentloaded', { timeout: 20_000 }).catch(() => {});
+        await page.waitForTimeout(1500);
+        await this.assertGenericPortalLoginResult(page);
+        if (attempt > 1) {
+          this.logger.log(`[SGK:${source}] Login denemesi #${attempt}/${maxAttempts} basarili`);
+        }
+        return;
+      } catch (err: any) {
+        lastError = this.compact(err?.message || err);
+        this.logger.warn(`[SGK:${source}] Login denemesi #${attempt}/${maxAttempts} basarisiz: ${lastError}`);
+
+        const retryableCaptchaError = /captcha|guvenlik|güvenlik|dogrulama|doğrulama|login formu|cozulemedi|çözülemedi/i.test(lastError);
+        const missingSolver = /TWOCAPTCHA_API_KEY|2captcha in\.php/i.test(lastError);
+        if (missingSolver || !retryableCaptchaError || attempt === maxAttempts) {
+          throw new Error(`SGK girisi dogrulanamadi: ${lastError}`);
+        }
+      }
+    }
+
+    throw new Error(`SGK girisi dogrulanamadi: ${lastError || 'bilinmeyen hata'}`);
+  }
+
+  private async waitForSgkLoginForm(page: any) {
+    await page.waitForLoadState('domcontentloaded', { timeout: 60_000 }).catch(() => {});
+    await page.waitForTimeout(1000);
+    const ready = await this.firstVisibleLocator(page, [
+      '#kullaniciIlkKontrollerGiris_username',
+      'input[name="username"]',
+    ], 20_000);
+    if (!ready) throw new Error(await this.loginFieldError(page, 'SGK kullanici adi alani bulunamadi'));
+  }
+
+  private async fillSgkCaptcha(page: any) {
+    const apiKey = process.env.TWOCAPTCHA_API_KEY || process.env.TWO_CAPTCHA_API_KEY;
+    if (!apiKey) {
+      throw new Error('TWOCAPTCHA_API_KEY env yok; SGK CAPTCHA cozulemez');
+    }
+
+    const captchaImg = await this.firstVisibleElementHandle(page, [
+      '#guvenlik_kod',
+      'img[src*="/PG"]',
+      'img[id*="guvenlik" i]',
+      'img[src*="captcha" i]',
+      'img[id*="captcha" i]',
+    ], 10_000);
+    if (!captchaImg) {
+      throw new Error('SGK guvenlik anahtari gorseli bulunamadi');
+    }
+
+    const base64 = await this.captchaImageBase64(captchaImg);
+    const captchaText = await this.solveCaptchaWith2Captcha(base64, apiKey);
+    this.logger.log(`[SGK] Guvenlik anahtari cozuldu: "${captchaText}" (${captchaText.length} karakter)`);
+
+    const captchaInput = await this.firstVisibleLocator(page, [
+      '#kullaniciIlkKontrollerGiris_isyeri_guvenlik',
+      'input[name="isyeri_guvenlik"]',
+      'input[id*="guvenlik" i]',
+      'input[name*="guvenlik" i]',
+    ], 5_000);
+    if (!captchaInput) {
+      throw new Error('SGK guvenlik anahtari alani bulunamadi');
+    }
+    await captchaInput.fill(captchaText);
+  }
+
   /**
    * Yeni GIB Dijital Vergi Dairesi (2026) login form'u: userid + sifre.
    * CAPTCHA ayri fonksiyonda doldurulur (fillEBeyannameCaptcha).
@@ -1128,14 +1295,21 @@ export class PortalAutomationRailwayRunnerService implements OnModuleInit {
 
   private async hasVisibleCaptcha(page: any): Promise<boolean> {
     const selectors = [
+      '#guvenlik_kod',
       'img[src*="captcha" i]',
+      'img[src*="/PG"]',
       'img[id*="captcha" i]',
       'img[alt*="captcha" i]',
+      'img[id*="guvenlik" i]',
       'canvas[id*="captcha" i]',
       'input[name="dk"]',
       'input[id="dk"]',
+      '#kullaniciIlkKontrollerGiris_isyeri_guvenlik',
+      'input[name="isyeri_guvenlik"]',
       'input[name*="captcha" i]',
       'input[id*="captcha" i]',
+      'input[name*="guvenlik" i]',
+      'input[id*="guvenlik" i]',
       'input[placeholder*="captcha" i]',
       'input[placeholder*="Doğrulama" i]',
       'input[placeholder*="Dogrulama" i]',
@@ -1154,10 +1328,13 @@ export class PortalAutomationRailwayRunnerService implements OnModuleInit {
 
   private async findCaptchaVisual(page: any) {
     const selectors = [
+      '#guvenlik_kod',
       'img[src*="captcha" i]',
       'img[src*="Captcha"]',
+      'img[src*="/PG"]',
       'img[id*="captcha" i]',
       'img[alt*="captcha" i]',
+      'img[id*="guvenlik" i]',
       'img[alt*="güvenlik" i]',
       'img[alt*="guvenlik" i]',
       'img[alt*="dogrulama" i]',
@@ -1251,8 +1428,12 @@ export class PortalAutomationRailwayRunnerService implements OnModuleInit {
     const inputSelectors = [
       'input[name="dk"]',
       'input[id="dk"]',
+      '#kullaniciIlkKontrollerGiris_isyeri_guvenlik',
+      'input[name="isyeri_guvenlik"]',
       'input[name*="captcha" i]',
       'input[id*="captcha" i]',
+      'input[name*="guvenlik" i]',
+      'input[id*="guvenlik" i]',
       'input[placeholder*="captcha" i]',
       'input[placeholder*="güvenlik" i]',
       'input[placeholder*="guvenlik" i]',
