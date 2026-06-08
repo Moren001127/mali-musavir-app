@@ -490,9 +490,10 @@ function GibMark({ color }: { color: string }) {
 function EnvelopeMark({ color }: { color: string }) {
   return (
     <svg viewBox="0 0 32 24" width="22" height="18" aria-hidden="true">
-      <path d="M3.2 3.2h25.6v17.6H3.2V3.2Z" fill={color} />
-      <path d="M4.7 5.1 16 13.1 27.3 5.1" fill="none" stroke="#fff" strokeWidth="2.1" strokeLinecap="round" strokeLinejoin="round" opacity="0.96" />
-      <path d="M4.8 20 13.1 12.8M27.2 20 18.9 12.8" fill="none" stroke="#fff" strokeWidth="1.7" strokeLinecap="round" opacity="0.78" />
+      <path
+        d="M3.4 4.1h25.2v2.1L16 14.1 3.4 6.2V4.1Zm0 4.6 9.1 5.7-9.1 6.1V8.7Zm25.2 0v11.8l-9.1-6.1 9.1-5.7Zm-15 6.6 2.4 1.5 2.4-1.5 9.2 6.2H4.4l9.2-6.2Z"
+        fill={color}
+      />
     </svg>
   );
 }

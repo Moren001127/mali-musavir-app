@@ -206,29 +206,55 @@ function CredentialEditor({
       </div>
 
       <div className="grid gap-3">
-        {fields.map((field) => (
-          <TextInput
-            key={field.key}
-            label={field.label}
-            value={field.key === 'username' ? username : field.key === 'workplaceCode' ? workplaceCode : userCode}
-            onChange={field.key === 'username' ? setUsername : field.key === 'workplaceCode' ? setWorkplaceCode : setUserCode}
-            placeholder={field.placeholder}
-          />
-        ))}
-        {passwordSpec.passwordLabel && (
-          <PasswordInput
-            label={passwordSpec.passwordLabel}
-            value={password}
-            onChange={setPassword}
-            hasSaved={!!credential?.hasPassword}
-          />
+        {provider === 'SGK_EBILDIRGE' ? (
+          <div className="grid grid-cols-1 gap-3 md:grid-cols-[minmax(0,1fr)_minmax(130px,0.38fr)]">
+            <TextInput label="Kullanici adi" value={username} onChange={setUsername} />
+            <TextInput label="E-Kod" value={workplaceCode} onChange={setWorkplaceCode} placeholder="Orn. 2" />
+          </div>
+        ) : (
+          fields.map((field) => (
+            <TextInput
+              key={field.key}
+              label={field.label}
+              value={field.key === 'username' ? username : field.key === 'workplaceCode' ? workplaceCode : userCode}
+              onChange={field.key === 'username' ? setUsername : field.key === 'workplaceCode' ? setWorkplaceCode : setUserCode}
+              placeholder={field.placeholder}
+            />
+          ))
         )}
-        <PasswordInput
-          label={passwordSpec.secondaryPasswordLabel}
-          value={secondaryPassword}
-          onChange={setSecondaryPassword}
-          hasSaved={!!credential?.hasSecondaryPassword}
-        />
+        {provider === 'SGK_EBILDIRGE' && passwordSpec.passwordLabel ? (
+          <div className="grid grid-cols-1 gap-3 md:grid-cols-2">
+            <PasswordInput
+              label={passwordSpec.passwordLabel}
+              value={password}
+              onChange={setPassword}
+              hasSaved={!!credential?.hasPassword}
+            />
+            <PasswordInput
+              label={passwordSpec.secondaryPasswordLabel}
+              value={secondaryPassword}
+              onChange={setSecondaryPassword}
+              hasSaved={!!credential?.hasSecondaryPassword}
+            />
+          </div>
+        ) : (
+          <>
+            {passwordSpec.passwordLabel && (
+              <PasswordInput
+                label={passwordSpec.passwordLabel}
+                value={password}
+                onChange={setPassword}
+                hasSaved={!!credential?.hasPassword}
+              />
+            )}
+            <PasswordInput
+              label={passwordSpec.secondaryPasswordLabel}
+              value={secondaryPassword}
+              onChange={setSecondaryPassword}
+              hasSaved={!!credential?.hasSecondaryPassword}
+            />
+          </>
+        )}
       </div>
 
       <button
