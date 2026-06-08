@@ -52,6 +52,12 @@ interface WhatsAppConfigShape {
   templateLang?: string;
 }
 
+interface WhatsAppQrStatus {
+  connected: boolean;
+  connecting: boolean;
+  hasQr: boolean;
+}
+
 interface WhatsAppTemplate {
   name: string;
   language?: string;
@@ -192,6 +198,12 @@ export default function MesajlarPage() {
   const { data: whatsappConfig } = useQuery<WhatsAppConfigShape>({
     queryKey: ['integration-whatsapp'],
     queryFn: () => api.get('/integrations/whatsapp').then((r) => r.data),
+  });
+
+  const { data: qrStatus } = useQuery<WhatsAppQrStatus>({
+    queryKey: ['integration-whatsapp-qr-status'],
+    queryFn: () => api.get('/integrations/whatsapp/qr/status').then((r) => r.data),
+    refetchInterval: 8000,
   });
 
   const { data: metaTemplates } = useQuery<{ ok: boolean; templates: WhatsAppTemplate[] }>({
@@ -392,6 +404,8 @@ export default function MesajlarPage() {
     );
   }, [conversations, search]);
 
+  const freeFormAvailable = Boolean(chatData?.windowOpen || qrStatus?.connected);
+
   // Mesaj geldikçe en alta scroll
   useEffect(() => {
     if (scrollRef.current) {
@@ -401,7 +415,7 @@ export default function MesajlarPage() {
 
   const handleSend = () => {
     if (!selectedId) return;
-    if (!chatData?.windowOpen) {
+    if (!freeFormAvailable) {
       setShowTemplatePicker(true);
       return;
     }
@@ -619,9 +633,9 @@ export default function MesajlarPage() {
                 </button>
               )}
               {/* 24h pencere durumu */}
-              {chatData?.windowOpen ? (
+              {freeFormAvailable ? (
                 <div className="text-[11px] flex items-center gap-1.5 px-2.5 py-1 rounded-md" style={{ background: 'rgba(34,197,94,0.1)', color: '#86efac' }}>
-                  <CheckCircle2 size={11} /> 24h pencere açık
+                  <CheckCircle2 size={11} /> {qrStatus?.connected ? 'QR bağlı' : '24h pencere açık'}
                 </div>
               ) : (
                 <div className="text-[11px] flex items-center gap-1.5 px-2.5 py-1 rounded-md" style={{ background: 'rgba(251,191,36,0.1)', color: '#fbbf24' }}>
@@ -705,7 +719,7 @@ export default function MesajlarPage() {
 
             {/* Alt input */}
             <div className="p-3" style={{ borderTop: '1px solid rgba(255,255,255,0.06)', background: 'rgba(255,255,255,0.015)' }}>
-              {chatData?.windowOpen ? (
+              {freeFormAvailable ? (
                 <div className="flex items-end gap-2">
                   <input
                     ref={mediaInputRef}

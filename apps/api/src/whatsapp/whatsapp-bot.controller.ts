@@ -378,11 +378,27 @@ export class WhatsAppBotController implements OnModuleInit {
       }
     }
 
+    const tenantId = process.env.MOREN_OWNER_TENANT_ID;
+    if (tenantId) {
+      const tenant = await this.prisma.tenant.findUnique({
+        where: { id: tenantId },
+        select: { id: true, name: true, slug: true, phone: true },
+      }).catch(() => null);
+      if (tenant) return tenant;
+    }
+
     const tenantSlug = process.env.MOREN_OWNER_TENANT_SLUG || process.env.DEFAULT_TENANT_SLUG || 'moren';
-    return this.prisma.tenant.findFirst({
+    const tenantBySlug = await this.prisma.tenant.findFirst({
       where: { slug: tenantSlug },
       select: { id: true, name: true, slug: true, phone: true },
     });
+    if (tenantBySlug) return tenantBySlug;
+
+    const tenants = await this.prisma.tenant.findMany({
+      select: { id: true, name: true, slug: true, phone: true },
+      take: 2,
+    });
+    return tenants.length === 1 ? tenants[0] : null;
   }
 
   private async ensureWhatsAppConversationContact(
@@ -842,11 +858,6 @@ export class WhatsAppBotController implements OnModuleInit {
     return process.env.MOREN_CLIENT_BOT_ENABLED === '1';
   }
 
-  private acceptUnknownContacts(): boolean {
-    return process.env.WHATSAPP_ACCEPT_UNKNOWN_CONTACTS === '1' ||
-      process.env.WHATSAPP_ALLOW_UNKNOWN_CONTACTS === '1';
-  }
-
   private async handleMessage(msg: IncomingWhatsAppMessage) {
     // ─── Kişisel kişi (örn. partner) branch'i ──────────────────────
     // Owner / taxpayer / unknown akışlarından ÖNCE çalışır.
@@ -974,10 +985,6 @@ export class WhatsAppBotController implements OnModuleInit {
       const tenant = await this.findTenantForInbound(msg);
       if (!tenant) {
         this.logger.warn(`WhatsApp bot: telefon eslesmedi ve tenant bulunamadi ${msg.from}`);
-        return;
-      }
-      if (!this.acceptUnknownContacts()) {
-        this.logger.log(`[WhatsApp] Kayitli olmayan numara mesaj merkezine alinmadi: tenant=${tenant.id} phone=${this.normalize(msg.from)} messageId=${msg.id || 'n/a'}`);
         return;
       }
       const contact = await this.ensureWhatsAppConversationContact(tenant.id, msg.from, 'unknown');
