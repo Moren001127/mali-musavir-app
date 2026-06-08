@@ -382,6 +382,28 @@ export class LucaService {
     return (this.prisma as any).lucaFetchJob.findUnique({ where: { id: jobId } });
   }
 
+  /**
+   * Bu kiracıya bağlı agent CİHAZLARI — hangi bilgisayar hangi tip agent çalıştırıyor.
+   * deviceId öneki tipi belli eder: moren-* = arka plan worker (node), DEV-* = Chrome uzantısı.
+   * Salt okuma; "diğer bilgisayarlarda hangi agent var" tespiti için.
+   */
+  async listDevices(tenantId: string) {
+    const rows = await (this.prisma as any).agentStatus.findMany({
+      where: { tenantId },
+      select: { agent: true, deviceId: true, running: true, lastPing: true },
+      orderBy: { lastPing: 'desc' },
+    });
+    const now = Date.now();
+    return rows.map((r: any) => {
+      const id = r.deviceId || '';
+      const tip = /^DEV-/i.test(id) ? 'chrome-uzanti'
+        : /^moren-/i.test(id) ? 'arka-plan-worker'
+          : (id ? 'bilinmiyor' : 'cihazsiz');
+      const dk = r.lastPing ? Math.round((now - new Date(r.lastPing).getTime()) / 60000) : null;
+      return { agent: r.agent, deviceId: id, tip, running: r.running, sonPingDkOnce: dk };
+    });
+  }
+
   async markJobDone(jobId: string, recordCount: number, extra?: { fisNo?: string }) {
     const current = await (this.prisma as any).lucaFetchJob.findUnique({
       where: { id: jobId },

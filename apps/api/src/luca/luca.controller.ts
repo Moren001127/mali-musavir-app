@@ -972,33 +972,14 @@ export class LucaController {
   }
 
   /**
-   * GEÇİCİ MÜKERRER TEMİZLİK (2026-06-08) — belge-no'su "NaN"/"BILINMIYOR" olan ve
-   * aynı ETTN'de doğru no'lu ikizi bulunan BOZUK kopyaları güvenle siler. `apply=true`
-   * verilmezse SADECE listeler (kuru çalışma). Temizlik bitince bu endpoint kaldırılacak.
+   * Bağlı agent CİHAZLARINI listeler (hangi bilgisayar hangi tip agent çalıştırıyor).
+   * Salt okuma — "diğer bilgisayarlarda arka plan worker var mı" tespiti için.
    */
-  @Post('agent/earsiv/dedup-bozuk-kopya')
+  @Post('agent/luca/devices')
   @HttpCode(HttpStatus.OK)
-  async earsivDedupBozukKopya(
-    @Headers('x-agent-token') agentToken: string,
-    @Query('apply') apply?: string,
-  ) {
+  async lucaDevices(@Headers('x-agent-token') agentToken: string) {
     const tenantId = await this.resolveTenantFromAgentToken(agentToken);
-    return this.earsiv.dedupBozukKopya(tenantId, { dryRun: apply !== 'true' });
-  }
-
-  /**
-   * GEÇİCİ BELGE-NO ONARIMI (2026-06-08) — "NaN" belge-no'lu gerçek faturaların
-   * no'sunu kayıtlı XML'den düzeltir (silmez). `apply=true` değilse SADECE listeler.
-   * Temizlik bitince bu endpoint kaldırılacak.
-   */
-  @Post('agent/earsiv/repair-bozuk-no')
-  @HttpCode(HttpStatus.OK)
-  async earsivRepairBozukNo(
-    @Headers('x-agent-token') agentToken: string,
-    @Query('apply') apply?: string,
-  ) {
-    const tenantId = await this.resolveTenantFromAgentToken(agentToken);
-    return this.earsiv.repairBozukNo(tenantId, { dryRun: apply !== 'true' });
+    return this.luca.listDevices(tenantId);
   }
 
   /**
