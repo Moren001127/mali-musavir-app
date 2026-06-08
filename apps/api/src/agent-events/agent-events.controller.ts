@@ -14,6 +14,7 @@ import {
   BadRequestException,
 } from '@nestjs/common';
 import { AuthGuard } from '@nestjs/passport';
+import { SkipThrottle } from '@nestjs/throttler';
 import { AgentEventsService, AgentEventInput } from './agent-events.service';
 import { PrismaService } from '../prisma/prisma.service';
 import { resolveTenantFromAgentToken } from '../common/agent-token';
@@ -103,6 +104,9 @@ export class AgentEventsController {
   }
 
   /** Yerel ajan çalışma durumunu günceller */
+  // Çoklu makine tek IP arkasında olduğundan agent yoklaması global 100/dk throttle'ı
+  // doldurup 429 fırtınası yaratıyordu; bu uç X-Agent-Token ile zaten korunuyor.
+  @SkipThrottle()
   @Post('status/ping')
   async ping(
     @Headers('x-agent-token') token: string,
@@ -382,6 +386,8 @@ export class AgentEventsController {
 
   /** Yerel runner bekleyen komutları çeker ve claim eder.
    * v1.36.61: deviceId varsa SADECE bu device'a atanmış (veya target-yok) komutlar döner. */
+  // Yüksek frekanslı agent yoklaması; global throttle'dan muaf (X-Agent-Token korumalı).
+  @SkipThrottle()
   @Post('commands/claim')
   async claimCommands(
     @Headers('x-agent-token') token: string,
