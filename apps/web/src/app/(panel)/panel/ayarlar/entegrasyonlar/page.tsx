@@ -385,7 +385,7 @@ function WhatsAppCard() {
           <div>
             <div className="text-[12.5px] font-semibold" style={{ color: TEXT }}>Master Switch</div>
             <div className="text-[11px]" style={{ color: MUTED }}>
-              Meta, QR ve otomasyon WhatsApp gonderimlerini tek yerden acar/kapatir.
+              QR ve otomasyon WhatsApp gonderimlerini tek yerden acar/kapatir.
             </div>
           </div>
           <button
@@ -519,10 +519,10 @@ function WhatsAppQrCard() {
         </div>
         <div className="flex-1">
           <h2 className="text-[17px] font-semibold" style={{ color: TEXT }}>
-            WhatsApp QR Bağlantısı (Meta'sız)
+            WhatsApp QR Bağlantısı
           </h2>
           <p className="mt-1 text-[12px]" style={{ color: MUTED }}>
-            Mevcut numaranızı telefondan QR okutarak bağlayın — Meta onayı, şablon ve 24 saat penceresi gerekmez. Resmi olmayan yöntemdir; düşük hacim önerilir.
+            Mevcut numaranızı telefondan QR okutarak bağlayın. Resmi olmayan yöntemdir; düşük hacim önerilir.
           </p>
         </div>
         <div
@@ -577,10 +577,9 @@ function WhatsAppQrCard() {
         {/* Sağ: adımlar + butonlar */}
         <div className="flex flex-col justify-between">
           <ol className="space-y-2 text-[12.5px]" style={{ color: MUTED }}>
-            <li><span style={{ color: TEXT }}>1.</span> Numaranız Meta Cloud API'ye kayıtlıysa önce oradan kaldırın.</li>
-            <li><span style={{ color: TEXT }}>2.</span> Numarayı bir telefonda WhatsApp / WhatsApp Business'a kurun.</li>
-            <li><span style={{ color: TEXT }}>3.</span> "QR ile Bağlan"a basın, soldaki QR'ı telefondan okutun.</li>
-            <li><span style={{ color: TEXT }}>4.</span> Bağlantı kalıcıdır; deploy sonrası yeniden okutmaya gerek yok.</li>
+            <li><span style={{ color: TEXT }}>1.</span> Numarayı bir telefonda WhatsApp / WhatsApp Business'a kurun.</li>
+            <li><span style={{ color: TEXT }}>2.</span> "QR ile Bağlan"a basın, soldaki QR'ı telefondan okutun.</li>
+            <li><span style={{ color: TEXT }}>3.</span> Bağlantı kalıcıdır; deploy sonrası yeniden okutmaya gerek yok.</li>
           </ol>
 
           <div className="mt-4 flex flex-wrap gap-2">
