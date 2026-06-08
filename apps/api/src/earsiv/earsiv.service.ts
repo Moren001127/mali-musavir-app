@@ -682,34 +682,56 @@ export class EarsivService {
     const dryRun = opts.dryRun !== false; // varsayılan: kuru çalışma
     const BAD = ['NaN', 'nan', 'NAN', 'BILINMIYOR', 'BILINMEYEN'];
     const badRows = await (this.prisma as any).earsivFatura.findMany({
-      where: { tenantId, faturaNo: { in: BAD }, ettn: { not: null } },
+      where: { tenantId, faturaNo: { in: BAD } },
       select: {
         id: true, taxpayerId: true, tip: true, belgeKaynak: true, ettn: true,
         faturaNo: true, donem: true, faturaTarihi: true, toplamTutar: true,
-        satici: true, alici: true,
+        saticiVergiNo: true, aliciVergiNo: true, satici: true, alici: true,
       },
     });
     const toDelete: any[] = [];
     for (const r of badRows) {
-      if (!r.ettn || !String(r.ettn).trim()) continue; // ETTN yoksa mükerrer olduğunu KANITLAYAMAYIZ → dokunma
+      // Doğru no'lu ikizi ARA: (a) aynı ETTN, VEYA (b) aynı tarih+tutar+karşı VKN.
+      // Bozuk çekişte ETTN de bozulabildiği için (b) güvenlik ağı; ikisi de KESİN
+      // aynı faturayı işaret eder. Hiçbiri yoksa mükerrer KANITLANAMAZ → dokunma.
+      const orConds: any[] = [];
+      if (r.ettn && String(r.ettn).trim()) orConds.push({ ettn: r.ettn });
+      if (r.faturaTarihi != null && r.toplamTutar != null) {
+        const c: any = { faturaTarihi: r.faturaTarihi, toplamTutar: r.toplamTutar };
+        if (r.saticiVergiNo) c.saticiVergiNo = r.saticiVergiNo;
+        if (r.aliciVergiNo) c.aliciVergiNo = r.aliciVergiNo;
+        orConds.push(c);
+      }
+      if (!orConds.length) continue;
       const twin = await (this.prisma as any).earsivFatura.findFirst({
         where: {
           tenantId, taxpayerId: r.taxpayerId, tip: r.tip, belgeKaynak: r.belgeKaynak,
-          ettn: r.ettn, id: { not: r.id }, faturaNo: { notIn: BAD },
+          id: { not: r.id }, faturaNo: { notIn: BAD }, OR: orConds,
         },
-        select: { id: true, faturaNo: true },
+        select: { id: true, faturaNo: true, ettn: true },
       });
       if (twin) toDelete.push({
         id: r.id, bozukNo: r.faturaNo, ettn: r.ettn, donem: r.donem,
         tarih: r.faturaTarihi, tutar: r.toplamTutar, karsiFirma: r.satici || r.alici,
         dogruIkizNo: twin.faturaNo,
+        eslesme: (r.ettn && twin.ettn === r.ettn) ? 'ETTN' : 'TARIH+TUTAR+VKN',
       });
     }
     if (!dryRun && toDelete.length) {
       await (this.prisma as any).earsivFatura.deleteMany({ where: { id: { in: toDelete.map((x) => x.id) } } });
       this.logger.warn(`[DEDUP] ${toDelete.length} bozuk mükerrer e-arşiv kaydı silindi (tenant=${tenantId}).`);
     }
-    return { dryRun, silinecek: toDelete.length, kayitlar: toDelete };
+    // Tanı: tüm bozuk-no satırları (ikiz bulunmasa da) — neden eşleşmediğini görmek için
+    return {
+      dryRun,
+      silinecek: toDelete.length,
+      kayitlar: toDelete,
+      toplamBozukNo: badRows.length,
+      bozukNoTumu: badRows.slice(0, 30).map((r: any) => ({
+        id: r.id, no: r.faturaNo, ettn: r.ettn, tarih: r.faturaTarihi, tutar: r.toplamTutar,
+        karsi: r.satici || r.alici, saticiVkn: r.saticiVergiNo, aliciVkn: r.aliciVergiNo,
+      })),
+    };
   }
 
   /**
