@@ -623,8 +623,12 @@ export class LucaService {
     const ts = new Date().toLocaleTimeString('tr-TR', { hour12: false, timeZone: 'Europe/Istanbul' });
     const newLine = `[${ts}] ${message}`;
     const prev = job.errorMsg || '';
-    const lines = (prev ? prev.split('\n') : []).concat(newLine).slice(-20);
-    const merged = lines.join('\n').slice(-2000);
+    // Log penceresi: e-arsiv ZIP icerik satirlari tek basina 1500+ karakter
+    // olabiliyor; eski 20 satir / 2000 karakter siniri akisin onceki
+    // adimlarini (firma secimi, menu, captcha) aninda siliyordu -> ekran
+    // "donmus" gorunuyor ve teshis imkansizlasiyordu. Pencere genisletildi.
+    const lines = (prev ? prev.split('\n') : []).concat(newLine).slice(-60);
+    const merged = lines.join('\n').slice(-12000);
     return (this.prisma as any).lucaFetchJob.update({
       where: { id: jobId },
       data: { errorMsg: merged },
@@ -722,9 +726,9 @@ export class LucaService {
       .split('\n')
       .filter((logLine) => !/TRANSIENT_LUCA/i.test(logLine))
       .filter((logLine) => !/Iptal edildi: kullanici durdurdu/i.test(logLine))
-      .slice(-20)
+      .slice(-60)
       .join('\n')
-      .slice(-2000);
+      .slice(-12000);
     const nextRetryCount = isTechnicalRecovery ? Number(job.retryCount || 0) + 1 : 0;
     const shouldFailTransient = isTechnicalRecovery && nextRetryCount >= 3;
     const retryDelayMs = isTechnicalRecovery
@@ -739,7 +743,7 @@ export class LucaService {
             finishedAt: new Date(),
             retryCount: nextRetryCount,
             nextRetryAt: null,
-            errorMsg: `${sanitizedLog ? `${sanitizedLog}\n` : ''}[AUTO] Luca klasik ekran 3 kez toparlanamadı; diğer işler bloklanmasın diye kapatıldı`.slice(-2000),
+            errorMsg: `${sanitizedLog ? `${sanitizedLog}\n` : ''}[AUTO] Luca klasik ekran 3 kez toparlanamadı; diğer işler bloklanmasın diye kapatıldı`.slice(-12000),
           }
         : {
             status: 'pending',
