@@ -1,0 +1,34 @@
+#!/bin/sh
+# ============================================================================
+#  KORUMA KAPISI (pre-push) — REFERANS KOPYA (versiyonlu)
+#  Aktif kopya: .git/hooks/pre-push  (her makinede bir kez kurulmali)
+#  Kurulum:  cp scripts/git-hooks/pre-push .git/hooks/pre-push && chmod +x .git/hooks/pre-push
+#
+#  Amac: bozuk / yetkisiz Luca degisikligi CANLIYA gitmesin.
+#  Her "git push" oncesi calisir; testler gecmezse push IPTAL.
+#    1) check-locked-modules  -> kilitli modul (mizan/kdv/e-arsiv/agent-runtime) degismis mi
+#    2) test:contracts        -> sozlesme + otomasyon guvenlik regresyonlari
+#  Kilitli modulu KASITLI degistirdiysen: node scripts/check-locked-modules.cjs --update
+# ============================================================================
+ROOT="$(git rev-parse --show-toplevel 2>/dev/null)"
+cd "$ROOT" || exit 1
+
+echo "[KORUMA] Push oncesi koruma testleri calisiyor..."
+
+node scripts/check-locked-modules.cjs
+if [ $? -ne 0 ]; then
+  echo ""
+  echo "[KORUMA] HATA: KILITLI MODUL degismis -> push IPTAL edildi."
+  echo "  Kasitli ve onaylı ise: node scripts/check-locked-modules.cjs --update  (sonra tekrar push)"
+  exit 1
+fi
+
+pnpm test:contracts
+if [ $? -ne 0 ]; then
+  echo ""
+  echo "[KORUMA] HATA: Sozlesme/guvenlik testleri BASARISIZ -> push IPTAL edildi."
+  exit 1
+fi
+
+echo "[KORUMA] Tum korumalar gecti -> push devam ediyor."
+exit 0
