@@ -69,7 +69,7 @@ export class BeyannameTakipService {
           { endDate: { gt: now } },
         ],
       },
-      include: { beyanConfig: true },
+      include: { beyanConfig: true, portalCredentials: sgkCredentialInclude() },
       orderBy: [{ companyName: 'asc' }, { firstName: 'asc' }],
     });
     return taxpayers.map((t: any) => ({
@@ -78,7 +78,7 @@ export class BeyannameTakipService {
       startDate: t.startDate,
       endDate: t.endDate,
       isActive: t.isActive,
-      config: t.beyanConfig || defaultConfig(),
+      config: effectiveBeyanConfig(t),
     }));
   }
 
@@ -145,7 +145,7 @@ export class BeyannameTakipService {
     // Tüm aktif mükellefleri + config'lerini getir
     const taxpayers = await (this.prisma as any).taxpayer.findMany({
       where: { tenantId, isActive: true },
-      include: { beyanConfig: true },
+      include: { beyanConfig: true, portalCredentials: sgkCredentialInclude() },
     });
 
     // İlgili dönem ve olası beyan kayıt dönemlerini çek. Hattat/e-Beyanname
@@ -175,7 +175,7 @@ export class BeyannameTakipService {
 
     for (const tp of taxpayers) {
       if (tp.isActive === false) continue;
-      const cfg = tp.beyanConfig || defaultConfig();
+      const cfg = effectiveBeyanConfig(tp);
       const beklenen = beklenenBeyanlar(cfg, yil, ay, donemTuru);
 
       for (const tip of beklenen) {
@@ -235,7 +235,7 @@ export class BeyannameTakipService {
 
     const taxpayers = await (this.prisma as any).taxpayer.findMany({
       where: { tenantId, isActive: true },
-      include: { beyanConfig: true },
+      include: { beyanConfig: true, portalCredentials: sgkCredentialInclude() },
       orderBy: [{ companyName: 'asc' }, { firstName: 'asc' }],
     });
 
@@ -261,7 +261,7 @@ export class BeyannameTakipService {
     return taxpayers
       .filter((tp: any) => tp.isActive !== false)
       .map((tp: any) => {
-        const cfg = tp.beyanConfig || defaultConfig();
+        const cfg = effectiveBeyanConfig(tp);
         // Sadece mükellefin VERGİ DÖNEMİNDE aktif olduğu beyannameler kalsın
         const beklenen = beklenenBeyanlar(cfg, yil, ay, donemTuru)
           .filter((tip) => aktifMiBeyanDoneminde(tp, tip, yil, ay, donem, donemTuru));
@@ -319,6 +319,39 @@ function defaultConfig() {
     eDefterPeriod: null,
     notes: null,
   };
+}
+
+function sgkCredentialInclude() {
+  return {
+    where: {
+      provider: 'SGK_EBILDIRGE',
+      isActive: true,
+    },
+    select: {
+      provider: true,
+      username: true,
+      userCode: true,
+      workplaceCode: true,
+      encryptedPassword: true,
+      encryptedSecondaryPassword: true,
+      isActive: true,
+    },
+  };
+}
+
+function hasReadySgkCredential(tp: any): boolean {
+  const credentials = Array.isArray(tp?.portalCredentials) ? tp.portalCredentials : [];
+  return credentials.some((credential: any) => (
+    credential?.provider === 'SGK_EBILDIRGE' &&
+    credential?.isActive !== false &&
+    Boolean((credential?.username || credential?.userCode) && credential?.workplaceCode && credential?.encryptedPassword && credential?.encryptedSecondaryPassword)
+  ));
+}
+
+function effectiveBeyanConfig(tp: any) {
+  const cfg = tp?.beyanConfig || defaultConfig();
+  if (!hasReadySgkCredential(tp)) return cfg;
+  return { ...cfg, sgkBildirgeEnabled: true };
 }
 
 function adFormat(tp: { firstName?: string | null; lastName?: string | null; companyName?: string | null }): string {

@@ -386,6 +386,9 @@ export class PortalAutomationService {
       update: data,
       include: { taxpayer: { select: { id: true, companyName: true, firstName: true, lastName: true, taxNumber: true } } },
     });
+    if (provider === 'SGK_EBILDIRGE' && taxpayerId && this.isReadySgkCredential(row)) {
+      await this.ensureSgkBildirgeConfig(taxpayerId);
+    }
     return this.publicCredential(row);
   }
 
@@ -968,6 +971,25 @@ export class PortalAutomationService {
     };
   }
 
+  private isReadySgkCredential(row: any): boolean {
+    return Boolean(
+      row?.provider === 'SGK_EBILDIRGE' &&
+      row?.isActive !== false &&
+      (row?.username || row?.userCode) &&
+      row?.workplaceCode &&
+      row?.encryptedPassword &&
+      row?.encryptedSecondaryPassword,
+    );
+  }
+
+  private async ensureSgkBildirgeConfig(taxpayerId: string) {
+    await (this.prisma as any).taxpayerBeyanConfig.upsert({
+      where: { taxpayerId },
+      create: { taxpayerId, sgkBildirgeEnabled: true },
+      update: { sgkBildirgeEnabled: true },
+    });
+  }
+
   private publicCredential(c: any) {
     return {
       id: c.id,
@@ -982,6 +1004,8 @@ export class PortalAutomationService {
       userCode: c.userCode,
       officeCode: c.officeCode,
       workplaceCode: c.workplaceCode,
+      password: tryDecrypt(c.encryptedPassword),
+      secondaryPassword: tryDecrypt(c.encryptedSecondaryPassword),
       hasPassword: !!c.encryptedPassword,
       hasSecondaryPassword: !!c.encryptedSecondaryPassword,
       isActive: c.isActive,

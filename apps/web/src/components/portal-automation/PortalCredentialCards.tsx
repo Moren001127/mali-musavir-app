@@ -143,9 +143,16 @@ function CredentialEditor({
     setUsername(credential?.username || '');
     setUserCode(credential?.userCode || '');
     setWorkplaceCode(credential?.workplaceCode || '');
-    setPassword('');
-    setSecondaryPassword('');
-  }, [credential?.id, credential?.username, credential?.userCode, credential?.workplaceCode]);
+    setPassword(credential?.password || '');
+    setSecondaryPassword(credential?.secondaryPassword || '');
+  }, [
+    credential?.id,
+    credential?.username,
+    credential?.userCode,
+    credential?.workplaceCode,
+    credential?.password,
+    credential?.secondaryPassword,
+  ]);
 
   const passwordSpec = PASSWORD_SPECS[provider];
   const fields: FieldSpec[] = provider === 'SGK_EBILDIRGE'
@@ -172,8 +179,11 @@ function CredentialEditor({
       toast.success('Şifre kaydı güncellendi');
       qc.invalidateQueries({ queryKey: ['portal-automation-credentials'] });
       qc.invalidateQueries({ queryKey: ['portal-automation-summary'] });
-      setPassword('');
-      setSecondaryPassword('');
+      qc.invalidateQueries({ queryKey: ['beyan-config-list'] });
+      qc.invalidateQueries({ queryKey: ['beyanname-ozet'] });
+      qc.invalidateQueries({ queryKey: ['beyanname-takip'] });
+      qc.invalidateQueries({ queryKey: ['beyanname-takip-configs'] });
+      qc.invalidateQueries({ queryKey: ['taxpayer-completeness', taxpayerId] });
     },
     onError: (error: any) => toast.error(error?.response?.data?.message || error?.message || 'Şifre kaydedilemedi'),
   });
@@ -207,7 +217,7 @@ function CredentialEditor({
 
       <div className="grid gap-3">
         {provider === 'SGK_EBILDIRGE' ? (
-          <div className="grid grid-cols-1 gap-3 md:grid-cols-[minmax(0,1fr)_minmax(130px,0.38fr)]">
+          <div className="grid grid-cols-1 gap-3 md:grid-cols-2">
             <TextInput label="Kullanici adi" value={username} onChange={setUsername} />
             <TextInput label="E-Kod" value={workplaceCode} onChange={setWorkplaceCode} placeholder="Orn. 2" />
           </div>

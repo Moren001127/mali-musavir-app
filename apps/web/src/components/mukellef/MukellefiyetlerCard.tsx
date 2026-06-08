@@ -152,7 +152,7 @@ export function MukellefiyetlerCard({
         otv4Period: existingConfig.otv4Period || null,
         damgaEnabled: !!existingConfig.damgaEnabled,
         posetEnabled: !!existingConfig.posetEnabled,
-        sgkBildirgeEnabled: !!existingConfig.sgkBildirgeEnabled,
+        sgkBildirgeEnabled: !!existingConfig.sgkBildirgeEnabled || sgkCredentialReady,
         konaklamaEnabled: !!existingConfig.konaklamaEnabled,
         oivEnabled: !!existingConfig.oivEnabled,
         gmsiEnabled: !!existingConfig.gmsiEnabled,
@@ -160,7 +160,7 @@ export function MukellefiyetlerCard({
         eDefterPeriod: existingConfig.eDefterPeriod || null,
       });
     }
-  }, [existingConfig]);
+  }, [existingConfig, sgkCredentialReady]);
 
   useEffect(() => {
     if (!sgkCredentialReady) return;

@@ -28,6 +28,8 @@ export interface PortalCredentialPublic {
   userCode: string | null;
   officeCode: string | null;
   workplaceCode: string | null;
+  password?: string | null;
+  secondaryPassword?: string | null;
   hasPassword: boolean;
   hasSecondaryPassword: boolean;
   isActive: boolean;
