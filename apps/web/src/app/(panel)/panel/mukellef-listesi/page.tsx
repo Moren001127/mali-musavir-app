@@ -20,7 +20,7 @@ import {
 } from 'lucide-react';
 import { toast } from 'sonner';
 import { api } from '@/lib/api';
-import { PortalCredentialInsightCard, portalAutomationApi } from '@/lib/portal-automation';
+import { PortalCredentialInsightCard, PortalJob, portalAutomationApi } from '@/lib/portal-automation';
 
 const GOLD = '#d4b876';
 const GOLD_SOFT = '#b8a06f';
@@ -65,6 +65,16 @@ type Taxpayer = {
 
 type TypeFilter = 'TUMU' | 'FIRMA' | 'SAHIS' | 'BASIT';
 type StatusFilter = 'active' | 'inactive' | 'all';
+type ValidationJobStats = {
+  total: number;
+  pending: number;
+  running: number;
+  done: number;
+  failed: number;
+  cancelled: number;
+  active: number;
+  latestAt: string | null;
+};
 
 const LETTERS = ['A', 'B', 'C', 'Ç', 'D', 'E', 'F', 'G', 'Ğ', 'H', 'I', 'İ', 'J', 'K', 'L', 'M', 'N', 'O', 'Ö', 'P', 'R', 'S', 'Ş', 'T', 'U', 'Ü', 'V', 'Y', 'Z', 'W', 'X', 'Q'];
 
@@ -149,6 +159,16 @@ export default function MukellefListesiPage() {
     queryFn: () => portalAutomationApi.credentialInsights(),
     staleTime: 30_000,
   });
+  const { data: validationJobs = [] } = useQuery({
+    queryKey: ['portal-automation-jobs', 'credential-validation'],
+    queryFn: () =>
+      portalAutomationApi.jobs({
+        limit: 500,
+        jobType: 'E_TEBLIGAT_CHECK,SGK_HIZMET_LISTESI',
+      }),
+    refetchInterval: 5000,
+    staleTime: 0,
+  });
 
   const bulkValidateCredentials = useMutation({
     mutationFn: () =>
@@ -162,6 +182,7 @@ export default function MukellefListesiPage() {
       qc.invalidateQueries({ queryKey: ['portal-automation-credential-insights'] });
       qc.invalidateQueries({ queryKey: ['portal-automation-summary'] });
       qc.invalidateQueries({ queryKey: ['portal-automation-jobs'] });
+      qc.invalidateQueries({ queryKey: ['portal-automation-jobs', 'credential-validation'] });
     },
     onError: (error: any) => toast.error(error?.response?.data?.message || 'Toplu dogrulama baslatilamadi'),
   });
@@ -204,6 +225,45 @@ export default function MukellefListesiPage() {
       .sort((a, b) => collator.compare(taxpayerName(a), taxpayerName(b)));
   }, [taxpayers, statusFilter, typeFilter, letter]);
 
+  const validationStats = useMemo((): ValidationJobStats | null => {
+    const manualJobs = (validationJobs as PortalJob[])
+      .filter((job) => job.source === 'manual')
+      .filter((job) => job.jobType === 'E_TEBLIGAT_CHECK' || job.jobType === 'SGK_HIZMET_LISTESI');
+    if (!manualJobs.length) return null;
+
+    const latestCreated = Math.max(...manualJobs.map((job) => new Date(job.createdAt).getTime()).filter(Number.isFinite));
+    if (!Number.isFinite(latestCreated)) return null;
+
+    const batchStart = latestCreated - 2 * 60 * 1000;
+    const currentBatch = manualJobs.filter((job) => {
+      const created = new Date(job.createdAt).getTime();
+      return Number.isFinite(created) && created >= batchStart;
+    });
+
+    const count = (status: PortalJob['status']) => currentBatch.filter((job) => job.status === status).length;
+    const timeline = currentBatch
+      .map((job) => job.finishedAt || job.startedAt || job.createdAt)
+      .filter(Boolean)
+      .sort();
+    const latestAt = timeline.length ? timeline[timeline.length - 1] : null;
+    const pending = count('pending');
+    const running = count('running');
+    const done = count('done');
+    const failed = count('failed');
+    const cancelled = count('cancelled');
+
+    return {
+      total: currentBatch.length,
+      pending,
+      running,
+      done,
+      failed,
+      cancelled,
+      active: pending + running,
+      latestAt,
+    };
+  }, [validationJobs]);
+
   return (
     <div className="max-w-none space-y-4">
       <header
@@ -234,6 +294,7 @@ export default function MukellefListesiPage() {
         onOpen={setSelectedInsight}
         onValidate={() => bulkValidateCredentials.mutate()}
         validating={bulkValidateCredentials.isPending}
+        validationStats={validationStats}
       />
 
       <section
@@ -352,15 +413,25 @@ function CredentialInsightStrip({
   onOpen,
   onValidate,
   validating,
+  validationStats,
 }: {
   cards: PortalCredentialInsightCard[];
   onOpen: (card: PortalCredentialInsightCard) => void;
   onValidate: () => void;
   validating: boolean;
+  validationStats: ValidationJobStats | null;
 }) {
-  if (!cards.length) return null;
+  if (!cards.length && !validationStats) return null;
   const firstRow = cards.slice(0, 2);
   const secondRow = cards.slice(2);
+  const latestTime = validationStats?.latestAt
+    ? new Date(validationStats.latestAt).toLocaleTimeString('tr-TR', { hour: '2-digit', minute: '2-digit' })
+    : null;
+  const statusText = validationStats
+    ? validationStats.active > 0
+      ? 'Kontrol devam ediyor; sayaçlar 5 saniyede yenilenir.'
+      : 'Son toplu kontrol tamamlandı. Hatalıları alttaki uyarı kutularından açabilirsin.'
+    : 'Henüz toplu kontrol başlatılmadı.';
   return (
     <section className="rounded-[8px] p-3" style={{ background: 'rgba(255,255,255,0.018)', border: `1px solid ${LINE}` }}>
       <div className="mb-3 flex flex-wrap items-center justify-between gap-2">
@@ -382,6 +453,35 @@ function CredentialInsightStrip({
           <RefreshCw size={14} className={validating ? 'animate-spin' : ''} />
           VD + SGK Dogrula
         </button>
+      </div>
+      <div
+        className="mb-3 flex flex-wrap items-center justify-between gap-3 rounded-[7px] px-3 py-2.5"
+        style={{ background: 'rgba(0,0,0,0.22)', border: `1px solid ${LINE}` }}
+      >
+        <div>
+          <div className="text-[12px] font-black" style={{ color: TEXT }}>Toplu doğrulama durumu</div>
+          <div className="mt-0.5 text-[11.5px] font-semibold" style={{ color: MUTED }}>
+            {statusText}{latestTime ? ` Son hareket: ${latestTime}` : ''}
+          </div>
+        </div>
+        <div className="flex flex-wrap gap-2">
+          {[
+            { label: 'Toplam', value: validationStats?.total || 0, color: GOLD },
+            { label: 'Bekliyor', value: validationStats?.pending || 0, color: AMBER },
+            { label: 'Çalışıyor', value: validationStats?.running || 0, color: SKY },
+            { label: 'Doğrulandı', value: validationStats?.done || 0, color: GREEN },
+            { label: 'Hatalı', value: validationStats?.failed || 0, color: ROSE },
+          ].map(({ label, value, color }) => (
+            <div
+              key={label}
+              className="min-w-[86px] rounded-[6px] px-3 py-2 text-center"
+              style={{ background: `${color}18`, border: `1px solid ${color}42` }}
+            >
+              <div className="text-[10px] font-black uppercase tracking-[0.08em]" style={{ color: MUTED }}>{label}</div>
+              <div className="mt-0.5 text-[15px] font-black" style={{ color }}>{value}</div>
+            </div>
+          ))}
+        </div>
       </div>
       <div className="grid gap-2 lg:grid-cols-2">
         {firstRow.map((card) => (
