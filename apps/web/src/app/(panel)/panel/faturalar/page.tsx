@@ -148,6 +148,22 @@ export default function FaturalarPage() {
       toast.error(e?.response?.data?.message || 'Drive yedeklemesi başlatılamadı'),
   });
 
+  // Tüm geçmişi yedekle (tüm mükellef + tüm dönem). Tek seferlik göç;
+  // backend mükellef/dönem filtresi olmadan yedeklenmemiş her şeyi tarar.
+  const driveBackupAllMut = useMutation({
+    mutationFn: () => agentsApi.driveBackup({}),
+    onSuccess: (res: any) => {
+      qc.invalidateQueries({ queryKey: ['drive-jobs'] });
+      qc.invalidateQueries({ queryKey: ['drive-backed-up'] });
+      qc.invalidateQueries({ queryKey: ['drive-status'] });
+      toast.success(
+        res?.already ? 'Tüm geçmiş yedeklemesi zaten sürüyor' : 'Tüm geçmiş Drive yedeklemesi başladı',
+      );
+    },
+    onError: (e: any) =>
+      toast.error(e?.response?.data?.message || 'Yedekleme başlatılamadı'),
+  });
+
   const handleConnectDrive = async () => {
     try {
       const { url } = await agentsApi.driveOauthStart();
@@ -429,6 +445,8 @@ ${isPdf
             onConnect={handleConnectDrive}
             onBackup={() => driveBackupMut.mutate()}
             backingUp={driveBackupMut.isPending}
+            onBackupAll={() => driveBackupAllMut.mutate()}
+            backingUpAll={driveBackupAllMut.isPending}
             donem={donem}
           />
           <MihsapConnectionBadge session={mihsapSession} />
@@ -907,6 +925,8 @@ function DriveControls({
   onConnect,
   onBackup,
   backingUp,
+  onBackupAll,
+  backingUpAll,
   donem,
 }: {
   status: any;
@@ -914,6 +934,8 @@ function DriveControls({
   onConnect: () => void;
   onBackup: () => void;
   backingUp: boolean;
+  onBackupAll: () => void;
+  backingUpAll: boolean;
   donem: string;
 }) {
   const connected = status?.connected;
@@ -932,6 +954,7 @@ function DriveControls({
   const running = activeJob && (activeJob.status === 'running' || activeJob.status === 'pending');
   const done = (activeJob?.backedUpCount || 0) + (activeJob?.skippedCount || 0);
   const total = activeJob?.totalCount || 0;
+  const pending = Number(status?.pendingBackupCount || 0);
   return (
     <div className="flex items-center gap-2">
       <div
@@ -959,6 +982,25 @@ function DriveControls({
           </>
         )}
       </button>
+      {pending > 0 && (
+        <button
+          onClick={onBackupAll}
+          disabled={running || backingUpAll}
+          className="px-3 py-2 rounded-lg text-xs font-bold inline-flex items-center gap-1.5 disabled:opacity-60 disabled:cursor-not-allowed transition hover:brightness-110"
+          style={{ background: 'linear-gradient(135deg, #d4b876, #b8a06f)', color: '#0f0d0b', boxShadow: '0 2px 10px rgba(212,184,118,0.32)' }}
+          title="Tüm mükellef + tüm dönemlerdeki yedeklenmemiş faturaları Drive'a yedekle (tek seferlik geçiş). Biter bitmez bu buton kaybolur."
+        >
+          {running ? (
+            <>
+              <Loader2 size={13} className="animate-spin" /> {done}/{total}…
+            </>
+          ) : (
+            <>
+              <UploadCloud size={13} /> Geçmişi Yedekle ({pending.toLocaleString('tr-TR')} kaldı)
+            </>
+          )}
+        </button>
+      )}
     </div>
   );
 }

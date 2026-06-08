@@ -323,6 +323,23 @@ export class DriveService implements OnModuleInit, OnModuleDestroy {
       select: { finishedAt: true, backedUpCount: true },
     });
     const totalBacked = await (this.prisma as any).driveBackup.count({ where: { tenantId } });
+    // Henuz Drive'a yedeklenmemis (dosyasi olan) fatura sayisi — "Gecmisi Yedekle"
+    // butonunun gosterilip gizlenmesi icin. 0 olunca buton kaybolur.
+    let pendingBackupCount = 0;
+    try {
+      const rows: any[] = await (this.prisma as any).$queryRaw`
+        SELECT COUNT(*)::int AS pending
+        FROM mihsap_invoices mi
+        WHERE mi."tenantId" = ${tenantId}
+          AND mi."mihsapFileLink" IS NOT NULL
+          AND NOT EXISTS (
+            SELECT 1 FROM drive_backups db
+            WHERE db."tenantId" = mi."tenantId" AND db."mihsapId" = mi."mihsapId"
+          )`;
+      pendingBackupCount = Number(rows?.[0]?.pending ?? 0);
+    } catch {
+      pendingBackupCount = 0;
+    }
     return {
       connected: true,
       email: acc.email,
@@ -331,6 +348,7 @@ export class DriveService implements OnModuleInit, OnModuleDestroy {
       lastError: acc.lastError || null,
       lastBackupAt: lastBackup?.finishedAt || null,
       totalBacked,
+      pendingBackupCount,
     };
   }
 
