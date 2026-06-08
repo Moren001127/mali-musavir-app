@@ -4,7 +4,7 @@
 */
 (function () {
   // Agent versiyon — UI'da gösterilir, debug için kritik
-  const AGENT_VERSION = '1.40.4';
+  const AGENT_VERSION = '1.40.5';
   const AGENT_INSTANCE_ID = 'mai_' + Date.now().toString(36) + '_' + Math.random().toString(36).slice(2, 8);
 
   // === VERSION-AWARE RELOAD ===
@@ -45,6 +45,11 @@
   let TOKEN = (document.documentElement?.dataset?.morenAgentToken || '').trim()
     || localStorage.getItem('moren_agent_token')
     || '';
+
+  // E-Arşiv mutabakatı: "Tümünü Seç" anında tabloda indirilecek belge adedi.
+  // Upload'a &bulunan=N olarak iletilir; backend kaydedilen sayıyla karşılaştırıp
+  // eksik/çakışma varsa job loguna görünür uyarı düşürür. null = bilinmiyor (gönderme).
+  let __earsivBulunanToplam = null;
 
   function restartAgentRuntime(reason = '', version = AGENT_VERSION) {
     try { console.warn('[Moren] Agent runtime yeniden baslatiliyor' + (reason ? ': ' + reason : '')); } catch {}
@@ -1748,6 +1753,11 @@
               belgeKaynak,
               jobId: job.id,
             });
+            // MUTABAKAT: Luca'da sayılan belge adedini gönder (backend kaydedilenle
+            // karşılaştırıp eksik/çakışma varsa uyarı düşürür). Bilinmiyorsa gönderme.
+            if (typeof __earsivBulunanToplam === 'number' && __earsivBulunanToplam >= 0) {
+              params.set('bulunan', String(__earsivBulunanToplam));
+            }
             uploadUrl = `${API}/agent/luca/runner/upload-earsiv?${params.toString()}`;
           } else {
             // KDV / İşletme defteri — agent-token kabul eden yan endpoint
@@ -4465,6 +4475,7 @@
       }
     }
 
+    __earsivBulunanToplam = null; // bu çekim için mutabakat sayacını sıfırla
     await throwIfCancelled();
     await birSorgu(sorgu1Bas, sorgu1Bit, 'Sorgu 1 (ay)');
     if (sorgu2Gerekli) {
@@ -4482,6 +4493,17 @@
     } else {
       await log('⚠ tum_belgeyi_sec_btn bulunamadı (belki sayfada başka isimle)');
     }
+
+    // MUTABAKAT: indirilecek belge adedini tabloda say (her iki sorgudan sonra,
+    // Tümünü Seç tıklandığında tabloda görünen tüm fatura satırları). Bu sayı upload'a
+    // iletilir; backend portala kaydedilenle karşılaştırıp eksik varsa uyarı verir.
+    try {
+      const secimSayisi = fdoc.querySelectorAll('.sec').length;
+      if (Number.isFinite(secimSayisi) && secimSayisi >= 0) {
+        __earsivBulunanToplam = secimSayisi;
+        await log(`📊 İndirilecek belge sayısı: ${secimSayisi} (mutabakat için kaydedildi)`);
+      }
+    } catch {}
 
     // ─── NO-FATURA TESPİTİ ───
     // Hiç fatura yoksa "Tümünü Seç" 0 checkbox işaretler, indirme akışı 60sn boşa bekler.

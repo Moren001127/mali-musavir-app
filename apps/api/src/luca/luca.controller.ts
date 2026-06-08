@@ -918,6 +918,7 @@ export class LucaController {
     @Query('tip') tip: string,
     @Query('belgeKaynak') belgeKaynak: string,
     @Query('jobId') jobId?: string,
+    @Query('bulunan') bulunan?: string,
   ) {
     if (!file) throw new BadRequestException('ZIP dosyası gerekli (field: file)');
     if (!mukellefId || !donem || !tip || !belgeKaynak) {
@@ -935,6 +936,9 @@ export class LucaController {
     });
 
     try {
+      const bulunanSayi = bulunan != null && bulunan !== '' && Number.isFinite(Number(bulunan))
+        ? Math.max(0, Math.floor(Number(bulunan)))
+        : undefined;
       const result = await this.earsiv.importFromZip({
         tenantId,
         taxpayerId: mukellefId,
@@ -943,8 +947,16 @@ export class LucaController {
         belgeKaynak: belgeKaynak as BelgeKaynak,
         fetchJobId: jobId,
         zipBuffer: file.buffer,
+        bulunan: bulunanSayi,
       });
-      if (jobId) await this.luca.markJobDone(jobId, result.inserted + result.duplicate).catch(() => {});
+      if (jobId) {
+        // Mutabakat uyarıları (eksik/çakışma) varsa job loguna düşür — kullanıcı panelde görsün.
+        const uyarilar = (result as any).uyarilar as string[] | undefined;
+        if (uyarilar && uyarilar.length) {
+          for (const u of uyarilar) await this.luca.appendJobLog(jobId, u).catch(() => {});
+        }
+        await this.luca.markJobDone(jobId, result.inserted + result.duplicate).catch(() => {});
+      }
       return {
         ok: true,
         inserted: result.inserted,

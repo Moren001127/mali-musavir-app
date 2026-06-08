@@ -347,8 +347,12 @@ export class EarsivService {
     belgeKaynak?: BelgeKaynak;
     fetchJobId?: string;
     zipBuffer: Buffer;
-  }): Promise<{ inserted: number; duplicate: number; skipped: number; total: number; meta?: any }> {
+    // Agent'ın Luca ekranında SAYDIĞI belge adedi (indirilmeden önce). Kaydedilen
+    // sayı bundan azsa "sessiz kayıp" var demektir → görünür uyarı üretilir.
+    bulunan?: number;
+  }): Promise<{ inserted: number; duplicate: number; skipped: number; total: number; uyarilar?: string[]; meta?: any }> {
     const { tenantId, taxpayerId, donem: jobDonem, tip, fetchJobId, zipBuffer } = opts;
+    const bulunan = Number.isFinite(opts.bulunan as any) && (opts.bulunan as number) >= 0 ? Math.floor(opts.bulunan as number) : null;
     const belgeKaynak: BelgeKaynak = opts.belgeKaynak ?? 'EARSIV';
     const taxpayer = await (this.prisma as any).taxpayer.findFirst({
       where: { id: taxpayerId, tenantId },
@@ -392,6 +396,15 @@ export class EarsivService {
     let htmlBackfilled = 0;
     const errors: string[] = []; // ilk birkaç hata sebebi (debugging için)
 
+    // KAYIP TESPİTİ: her faturanın BENZERSİZ kimliği (ETTN öncelik, yoksa faturaNo).
+    // ZIP'te kaç ayrı fatura vardı (parsedKeys) ve kaçı portala düştü (savedKeys)?
+    // İkisi tutmazsa = mükerrer-çakışması yüzünden sessiz kayıp → uyarı.
+    const kimlik = (f: any): string =>
+      ((f?.ettn || '').trim() || (f?.faturaNo || '').trim() || '').toLowerCase();
+    const parsedKeys = new Set<string>();
+    const savedKeys = new Set<string>();
+    for (const f of parsed) { const k = kimlik(f); if (k) parsedKeys.add(k); }
+
     for (const f of parsed) {
       try {
         // PER-FATURA VKN/TC EŞLEŞME REDDİ KALDIRILDI (kullanıcı kararı, domain bilgisi):
@@ -409,14 +422,27 @@ export class EarsivService {
           );
         }
         const fDonem = donemFromTarih(f.faturaTarihi);
-        // Önce mevcut mu kontrol et — varsa SKIP (yeniden indirip üzerine yazma)
-        const existing = await (this.prisma as any).earsivFatura.findFirst({
-          where: { tenantId, taxpayerId, tip, belgeKaynak, faturaNo: f.faturaNo },
-          select: {
-            id: true, donem: true, faturaTarihi: true, pdfStorageKey: true, htmlStorageKey: true,
-            satici: true, saticiVergiNo: true, alici: true, aliciVergiNo: true,
-          },
-        });
+        // MÜKERRER KONTROLÜ — ÖNCELİK BENZERSİZ ETTN (UUID).
+        // ESKİ HATA: mükerrer kontrolü yalnızca faturaNo'ya bakıyordu. Parser bazı
+        // faturalara boş / 'BILINMIYOR' / tekrarlı no üretince, FARKLI faturalar aynı
+        // no'da çakışıp "zaten var" sanılıyor ve kaydedilmiyordu (16 fatura → 4 kayıt).
+        // ETTN her gerçek faturada benzersizdir; önce ona, yoksa geçerli faturaNo'ya bak.
+        const ettnKey = (f.ettn || '').trim();
+        const noKey = (f.faturaNo || '').trim();
+        const noKullanilabilir = !!noKey && !/^(BILINMIYOR|NaN)$/i.test(noKey);
+        const orKeys: any[] = [];
+        if (ettnKey) orKeys.push({ ettn: ettnKey });
+        if (noKullanilabilir) orKeys.push({ faturaNo: noKey });
+        // Ne ETTN ne geçerli faturaNo varsa: KAYBETMEKTENSE yeni kabul et (existing=null).
+        const existing = orKeys.length
+          ? await (this.prisma as any).earsivFatura.findFirst({
+              where: { tenantId, taxpayerId, tip, belgeKaynak, OR: orKeys },
+              select: {
+                id: true, donem: true, faturaTarihi: true, pdfStorageKey: true, htmlStorageKey: true,
+                satici: true, saticiVergiNo: true, alici: true, aliciVergiNo: true,
+              },
+            })
+          : null;
         if (existing) {
           const updateData: any = {};
           if (existing.donem !== fDonem) {
@@ -479,6 +505,7 @@ export class EarsivService {
             });
           }
           await this.queueAccountingSafe(tenantId, existing.id, { tip, belgeKaynak });
+          { const k = kimlik(f); if (k) savedKeys.add(k); }
           duplicate++;
           continue;
         }
@@ -548,6 +575,7 @@ export class EarsivService {
           select: { id: true },
         });
         await this.queueAccountingSafe(tenantId, created.id, { tip, belgeKaynak });
+        { const k = kimlik(f); if (k) savedKeys.add(k); }
         inserted++;
       } catch (e: any) {
         this.logger.warn(`Fatura kaydetme hata (${f.faturaNo}): ${e.message}`);
@@ -594,7 +622,40 @@ export class EarsivService {
         `${errors.length ? `İlk hatalar: ${errors.join(' || ')}` : 'Kayıt sebebi tespit edilemedi.'}`,
       );
     }
-    return { inserted, duplicate, skipped, total: parsed.length, meta };
+    // ─── MUTABAKAT / SESSİZ-KAYIP UYARISI ───
+    // Kullanıcı isteği: "15 belge varken sisteme daha az inerse uyarı versin, fark
+    // etmezsek ruhumuz duymaz." Üç kontrol:
+    //  1) Agent Luca'da N belge saymış ama portalda kayıt (yeni+mükerrer) N'den az → eksik.
+    //  2) ZIP'te X ayrı fatura vardı ama X'ten azı portala düştü → mükerrer-çakışması (kayıp).
+    //  3) Hata nedeniyle atlanan (skipped) varsa → ayrıca belirt.
+    const uyarilar: string[] = [];
+    const kaydedilen = inserted + duplicate; // portalda artık bu faturalar mevcut
+    const distinctParsed = parsedKeys.size;
+    const savedDistinct = savedKeys.size;
+    if (bulunan != null && kaydedilen < bulunan) {
+      uyarilar.push(
+        `⚠️ EKSİK: Luca'da ${bulunan} belge görünüyordu ama portala ${kaydedilen} fatura işlendi ` +
+        `(${bulunan - kaydedilen} belge eksik). İndirme yarım kalmış olabilir; tekrar çekmeyi deneyin.`,
+      );
+    }
+    if (distinctParsed > savedDistinct) {
+      uyarilar.push(
+        `⚠️ ÇAKIŞMA: ZIP'te ${distinctParsed} ayrı fatura vardı ama ${savedDistinct} tanesi kaydedilebildi ` +
+        `(${distinctParsed - savedDistinct} fatura mükerrer-çakışmasına takıldı). Belge no/ETTN tekrarı olabilir.`,
+      );
+    }
+    if (skipped > 0) {
+      uyarilar.push(`⚠️ ${skipped} fatura hata nedeniyle atlandı.${errors.length ? ' İlk: ' + errors[0] : ''}`);
+    }
+    meta.bulunan = bulunan;
+    meta.distinctParsed = distinctParsed;
+    meta.savedDistinct = savedDistinct;
+    meta.uyarilar = uyarilar;
+    if (uyarilar.length) {
+      this.logger.warn(`[MUTABAKAT] ${taxpayerLabel} ${jobDonem} ${tip}/${belgeKaynak}: ${uyarilar.join(' | ')}`);
+    }
+
+    return { inserted, duplicate, skipped, total: parsed.length, uyarilar, meta };
   }
 
   /**
