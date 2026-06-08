@@ -1210,6 +1210,7 @@ export class WhatsAppBotController implements OnModuleInit {
           tenantId: ownerTenant.id,
           conversationId,
           message: prompt,
+          originalMessage: msg.text,
           source: 'calisan-whatsapp',
         });
       } catch (err: any) {
@@ -1773,6 +1774,8 @@ export class WhatsAppBotController implements OnModuleInit {
         firstScore: firstEval.score,
         finalScore: finalEval.score,
         evalWarning: firstEval.warning || finalEval.warning || null,
+        customerMessage: input.customerMessage ? String(input.customerMessage).slice(0, 500) : null,
+        recentReplyCount: recentReplies.length,
       },
     }).catch((err) => {
       this.logger.warn(`BotQualityLog yazilamadi: ${err?.message || err}`);

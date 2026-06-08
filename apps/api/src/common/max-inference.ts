@@ -43,6 +43,7 @@ export async function claudeTextViaMax(params: {
   system?: string;
   model?: string;
   maxTurns?: number;
+  timeoutMs?: number;
   /**
    * Görsel (fatura) okumak için base64 görüntü listesi. Verilirse çağrı, Agent SDK'nın
    * akış-girdi (AsyncIterable<SDKUserMessage>) biçimiyle yapılır ve görüntü doğrudan Max
@@ -107,13 +108,17 @@ export async function claudeTextViaMax(params: {
   // faturayı "okunamadı" atıyordu. (1) sonuç gelince break, (2) AbortController + sıkı süre
   // sınırı ile ASLA kilitlenme, (3) başarısızsa NET hata (ekrana yansısın, kör kalmayalım).
   const abort = new AbortController();
-  const HARD_MS = Math.max(3000, Number(process.env.MIHSAP_MAX_HARD_MS) || 11000);
+  const defaultHardMs = cleanImages.length > 0
+    ? (Number(process.env.MIHSAP_MAX_HARD_MS) || 11000)
+    : (Number(process.env.MAX_TEXT_HARD_MS || process.env.CALISAN_MAX_HARD_MS) || 30000);
+  const HARD_MS = Math.max(3000, Number(params.timeoutMs || defaultHardMs) || defaultHardMs);
   let hardTimedOut = false;
   const hardTimer = setTimeout(() => { hardTimedOut = true; try { abort.abort(); } catch {} }, HARD_MS);
 
   let text = '';
   let costUsd = 0;
   let isError = false;
+  let resultError = '';
   try {
     const query = await loadQuery();
     for await (const m of query({
@@ -134,6 +139,14 @@ export async function claudeTextViaMax(params: {
       } else if (m?.type === 'result') {
         isError = Boolean(m.is_error);
         if (typeof m.total_cost_usd === 'number') costUsd = m.total_cost_usd;
+        if (isError) {
+          resultError = [
+            m?.subtype,
+            m?.error,
+            typeof m?.result === 'string' ? m.result : '',
+            typeof m?.message === 'string' ? m.message : '',
+          ].filter(Boolean).join(' | ').slice(0, 500);
+        }
         break; // sonuç geldi → streaming oturumu açık kalsa bile bekleme
       }
     }
@@ -151,7 +164,13 @@ export async function claudeTextViaMax(params: {
 
   text = text.trim();
   if (isError && !text) {
-    return { ok: false, text: '', model, costUsd, error: 'Agent SDK (Max) sonucu hata döndü.' };
+    return {
+      ok: false,
+      text: '',
+      model,
+      costUsd,
+      error: resultError ? `Agent SDK (Max) sonucu hata dondu: ${resultError}` : 'Agent SDK (Max) sonucu hata döndü.',
+    };
   }
   return { ok: true, text, model, costUsd };
 }

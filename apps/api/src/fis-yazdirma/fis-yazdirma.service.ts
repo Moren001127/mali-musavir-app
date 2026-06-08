@@ -493,6 +493,7 @@ export class FisYazdirmaService {
     logSuffix: string,
     opts?: { aggressive?: boolean },
   ): Promise<{ date: string | null; fields: any; rawDate: string | null }> {
+    if (process.env.MOREN_AI_ALLOW_ANTHROPIC_API !== '1') return { date: null, fields: {}, rawDate: null };
     const apiKey = process.env.ANTHROPIC_API_KEY;
     if (!apiKey) return { date: null, fields: {}, rawDate: null };
     // Aylık ücretli API tavanı dolduysa görsel OCR yapma (tarih okunamamış gibi geç).
@@ -622,7 +623,7 @@ export class FisYazdirmaService {
     tenantId?: string,
     _hintDonem?: string,
   ): Promise<{ date: string | null; fields: any }> {
-    const apiKey = process.env.ANTHROPIC_API_KEY;
+    const apiKey = process.env.MOREN_AI_ALLOW_ANTHROPIC_API === '1' ? process.env.ANTHROPIC_API_KEY : '';
     if (!apiKey) return { date: null, fields: {} };
 
     // Pre-processed hi-res görsel (grayscale+kontrast+sharpen) — Sonnet için optimize
@@ -693,7 +694,7 @@ export class FisYazdirmaService {
       throw new BadRequestException('En az bir görsel gerekli');
     }
 
-    const useClaude = !!process.env.ANTHROPIC_API_KEY;
+    const useClaude = process.env.MOREN_AI_ALLOW_ANTHROPIC_API === '1' && !!process.env.ANTHROPIC_API_KEY;
     this.logger.log(
       `OCR tarama başlıyor: ${files.length} görsel (${useClaude ? 'Claude Haiku' : 'Tesseract'})${hintDonem ? ` [dönem ipucu: ${hintDonem}]` : ''}`,
     );

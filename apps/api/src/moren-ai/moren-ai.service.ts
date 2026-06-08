@@ -40,6 +40,8 @@ function needsDeepModel(userMessage: string): boolean {
     /\b(istisna|indirim|matrah|iade(?:de|si|ne|ye)?|tahakkuk\s+(usul|yolu|tarz)|tahsil)\b/,
     // Karmasik kavramlar
     /\b(yillara sari|amortisman|envanter|degerleme|reel|enflasyon|kurumlar gecisi|tasfiye|birlesme|bolunme|nakit akis|finansal kiralama)\b/,
+    /\b(muhasebe|tdhp|mizan|yevmiye|defter|e-defter|e defter|donem sonu|donem kapanis|finans|butce|butceleme|nakit akis|rasyo|karlilik|finansman|isletme sermayesi)\b/,
+    /\b(sirket yonetimi|is plani|strateji|planlama|kpi|performans|operasyon plani|vergi planlama|sgk tesvik|tesvik analizi)\b/,
     /\b(usulsuzluk|sahte fatura|naylon|incelemeye|denetim|tarhiyat|ihtirazi|yargilama|itiraz|temyiz)\b/,
     // "Ne yaparim / nasil olur" tipi sorular
     /\b(yapmali miyim|edebilir miyim|olabilir mi|gerekiyor mu|sart mi|zorunlu mu|uygun mu|dogru mu)\b/,
@@ -104,17 +106,30 @@ const TAXPAYER_READONLY_TOOL_NAMES = [
 
 const TOOL_GROUPS: Array<{ pattern: RegExp; tools: string[] }> = [
   { pattern: /mizan|hesap kod|gelir tablos|bilanço|bilanco|rasyo|oran|likidite|özkaynak|ozkaynak/i, tools: ['list_mizan_periods', 'get_mizan', 'get_gelir_tablosu', 'get_bilanco', 'compare_periods', 'calculate_financial_ratios'] },
+  { pattern: /muhasebe|tdhp|yevmiye|defter|e-defter|e defter|dönem sonu|donem sonu|dönem kapan|donem kapan|amortisman|envanter|mali müşavirlik|mali musavirlik/i, tools: ['list_mizan_periods', 'get_mizan', 'get_gelir_tablosu', 'get_bilanco', 'compare_periods', 'calculate_financial_ratios', 'get_operation_briefing'] },
+  { pattern: /finans|nakit akış|nakit akis|bütçe|butce|kârlılık|karlılık|karlilik|finansman|işletme sermayesi|isletme sermayesi|tahsilat|cari|rasyo|likidite/i, tools: ['get_operation_briefing', 'get_collection_risk_summary', 'list_mizan_periods', 'get_mizan', 'get_gelir_tablosu', 'get_bilanco', 'compare_periods', 'calculate_financial_ratios'] },
+  { pattern: /şirket yönetimi|sirket yonetimi|planlama|iş planı|is plani|strateji|performans|kpi|görev|gorev|iş akışı|is akisi|risk yönetimi|risk yonetimi/i, tools: ['get_operation_briefing', 'get_beyanname_readiness_summary', 'get_collection_risk_summary', 'get_agent_status', 'list_taxpayers_monthly_status'] },
   { pattern: /kdv|beyan|muhtasar|muhsgk|kurumlar|damga|tahakkuk|onay no|hattat/i, tools: ['get_kdv_summary', 'list_beyan_kayitlari', 'get_beyanname_config', 'get_beyan_ozet', 'get_beyanname_readiness_summary', 'get_tax_calendar'] },
   { pattern: /fatura|muhasebeleştir|muhasebelestir|mihsap|tedarikçi|tedarikci|alıcı|alici|firma hafıza|firma hafiza/i, tools: ['list_invoices', 'get_firma_hafizasi', 'get_mihsap_agent_jobs', 'list_pending_decisions'] },
   { pattern: /sgk|bordro|personel|prim|işçi|isci|işveren|isveren/i, tools: ['get_payroll_summary', 'list_sgk_declarations'] },
   { pattern: /evrak|belge|sözleşme|sozlesme|doküman|dokuman/i, tools: ['list_documents', 'get_taxpayer_work_status', 'list_taxpayers_monthly_status'] },
-  { pattern: /tahsilat|borç|borc|cari|ödeme|odeme|whatsapp|hatırlatma|hatirlatma/i, tools: ['get_operation_briefing', 'get_collection_risk_summary', 'get_taxpayer_work_status'] },
+  { pattern: /tahsilat|borç|borc|cari|ödeme|odeme|whatsapp|hatırlatma|hatirlatma/i, tools: ['get_operation_briefing', 'get_collection_risk_summary', 'get_taxpayer_work_status', 'preview_agent_command', 'create_confirmed_agent_command'] },
   { pattern: /bug[üu]n|acil|öncelik|oncelik|yapmam gereken|neye bak|işler|isler|brifing|briefing|operasyon/i, tools: ['get_operation_briefing', 'get_beyanname_readiness_summary', 'get_collection_risk_summary', 'get_agent_status'] },
   { pattern: /ajan|agent|luca|tebligat|otomasyon|komut|çalıştır|calistir|işlem yap|islem yap/i, tools: ['get_agent_status', 'get_luca_agent_jobs', 'get_mihsap_agent_jobs', 'preview_agent_command', 'create_confirmed_agent_command'] },
+  { pattern: /başlat|baslat|durdur|iptal|cancel|sonuç|sonuc|hata|log|durum|komut kuyru|devam et|yeniden dene|retry/i, tools: ['get_agent_status', 'get_luca_agent_jobs', 'get_mihsap_agent_jobs', 'preview_agent_command', 'create_confirmed_agent_command', 'get_portal_capability_map'] },
+  { pattern: /gönder|gonder|yolla|ilet|talep et|iste|evrak iste|evrak talep|belge gönder|belge gonder|pdf gönder|pdf gonder|whatsapp/i, tools: ['list_taxpayers', 'list_documents', 'get_taxpayer_work_status', 'get_operation_briefing', 'preview_agent_command', 'create_confirmed_agent_command', 'get_portal_capability_map'] },
+  { pattern: /portal|modül|modul|her alan|her şey|her sey|neler yap|ne yapabil|vakıf|vakif|entegre|entegrasyon/i, tools: ['get_portal_capability_map', 'get_agent_status', 'get_operation_briefing'] },
   { pattern: /araç|arac|plaka|hgs|otoyol|ihlal/i, tools: ['list_araclar_hgs'] },
   { pattern: /vergi|mevzuat|kanun|ceza|had|süre|sure|oran|vuk|kvk|gvk|sgk|resmi gazete|gib|gelir idaresi|işi bırak|isi birak/i, tools: ['research_official_sources'] },
   { pattern: /herkes|tüm|tum|listele|kimler|kaç tane|kac tane|özet|ozet|durum/i, tools: ['list_taxpayers_monthly_status', 'get_operation_briefing', 'search_all'] },
 ];
+
+const MAX_PREFETCH_SKIP_TOOLS = new Set([
+  'save_ai_memory',
+  'preview_agent_command',
+  'create_confirmed_agent_command',
+  'create_agent_command',
+]);
 
 function cleanFirstName(raw?: string | null): string | undefined {
   const cleaned = String(raw || '')
@@ -332,30 +347,10 @@ export class MorenAiService {
     userId: string | null,
     body: ChatRequest,
   ): Promise<ChatResponse> {
-    const apiKey = process.env.ANTHROPIC_API_KEY;
-    if (!apiKey) {
-      throw new BadRequestException(
-        'ANTHROPIC_API_KEY environment değişkeni ayarlanmamış. Railway\'de eklenmelidir.',
-      );
-    }
-
     const started = Date.now();
-    const model = body.model || pickDefaultModel(body.toolMode);
+    const model = body.model || pickDefaultModel(body.toolMode, body.message);
     const userMessage = (body.message || '').trim();
     if (!userMessage) throw new BadRequestException('Mesaj boş olamaz');
-
-    // AYLIK ÜCRETLİ API MALİYET TAVANI — tavan dolduysa API'ye gitme, güvenli cevap dön.
-    if (!(await canSpendOnApi(this.prisma, tenantId, body.source))) {
-      const fallback = /whatsapp|calisan|owner|bot/i.test(String(body.source || ''))
-        ? 'Mesajınızı aldık, en kısa sürede ofisimiz size dönüş yapacak.'
-        : 'AI aylık maliyet tavanı doldu. Railway env AI_MONTHLY_COST_CAP_USD ile tavanı yükseltebilirsin.';
-      return {
-        conversationId: body.conversationId || '',
-        assistantMessage: fallback,
-        toolUses: [],
-        usage: { inputTokens: 0, outputTokens: 0, cacheReadTokens: 0, cacheWriteTokens: 0, costUsd: 0, durationMs: 0, model },
-      };
-    }
     const currentPath = String(body.currentPath || '').trim().slice(0, 180);
 
     // Konuşmayı getir ya da oluştur
@@ -474,6 +469,62 @@ export class MorenAiService {
       : voiceHint;
     const responseMaxTokens = body.voiceMode ? VOICE_MAX_TOKENS : NORMAL_MAX_TOKENS;
     const selectedTools = this.selectToolsForMessage(userMessage, body.toolMode || 'owner');
+
+    const maxResponse = await this.chatViaClaudeMax({
+      tenantId,
+      userId,
+      body,
+      conversation,
+      user,
+      userMessage,
+      systemPrompt,
+      taxpayerContext,
+      memoryContext,
+      effectiveVoiceHint,
+      currentPath,
+      selectedTools,
+      model,
+      started,
+    });
+    if (maxResponse) return maxResponse;
+
+    if (!this.allowAnthropicApiFallback()) {
+      const fallback = /whatsapp|calisan|owner|bot/i.test(String(body.source || ''))
+        ? 'Mesajınızı aldık, Claude Max bağlantısı geçici yanıt vermediği için ofisimiz size dönüş yapacak.'
+        : 'Claude Max bağlantısı aktif değil veya yanıt vermedi. Ücretli API hattı kapalı olduğu için API çağrısı yapmadım.';
+      return this.saveAssistantAndReturn({
+        tenantId,
+        conversation,
+        body,
+        text: fallback,
+        model: 'claude-max-unavailable',
+        started,
+        toolUsesLog: [],
+      });
+    }
+
+    const apiKey = process.env.ANTHROPIC_API_KEY;
+    if (!apiKey) {
+      throw new BadRequestException(
+        'Claude Max yanıt vermedi ve ANTHROPIC_API_KEY yok. Ücretli API fallback için MOREN_AI_ALLOW_ANTHROPIC_API=1 + ANTHROPIC_API_KEY gerekir.',
+      );
+    }
+
+    // Ücretli API fallback yalnızca açıkça izin verilirse çalışır.
+    if (!(await canSpendOnApi(this.prisma, tenantId, body.source))) {
+      const fallback = /whatsapp|calisan|owner|bot/i.test(String(body.source || ''))
+        ? 'Mesajınızı aldık, en kısa sürede ofisimiz size dönüş yapacak.'
+        : 'AI aylık maliyet tavanı doldu. Ücretli API hattı bu yüzden çalıştırılmadı.';
+      return this.saveAssistantAndReturn({
+        tenantId,
+        conversation,
+        body,
+        text: fallback,
+        model: 'anthropic-api-cost-cap',
+        started,
+        toolUsesLog: [],
+      });
+    }
 
     const toolUsesLog: Array<{ name: string; input: any; result: any }> = [];
     let totalInput = 0, totalOutput = 0, totalCacheR = 0, totalCacheW = 0;
@@ -928,6 +979,367 @@ export class MorenAiService {
     return MOREN_AI_TOOLS.filter((tool: any) => selected.has(tool.name));
   }
 
+  private allowAnthropicApiFallback() {
+    return process.env.MOREN_AI_ALLOW_ANTHROPIC_API === '1' ||
+      process.env.MOREN_AI_LLM_PROVIDER === 'anthropic-api';
+  }
+
+  private async chatViaClaudeMax(params: {
+    tenantId: string;
+    userId: string | null;
+    body: ChatRequest;
+    conversation: any;
+    user: any;
+    userMessage: string;
+    systemPrompt: string;
+    taxpayerContext: string;
+    memoryContext: string;
+    effectiveVoiceHint: string;
+    currentPath?: string;
+    selectedTools: any[];
+    model: string;
+    started: number;
+  }): Promise<ChatResponse | null> {
+    if (!isMaxAvailable()) return null;
+
+    let toolUsesLog: Array<{ name: string; input: any; result: any }> = [];
+    try {
+      toolUsesLog = await this.buildMaxToolContext(params);
+    } catch (err: any) {
+      this.logger.warn(`Claude Max tool context hazirlanamadi: ${err?.message || err}`);
+    }
+
+    const dynamicSystemContext = [
+      this.buildActiveUserContext(params.user, params.tenantId, params.currentPath),
+      params.taxpayerContext,
+      params.memoryContext,
+      params.effectiveVoiceHint,
+    ].filter(Boolean).join('\n\n');
+    const history = this.buildMessages(params.conversation.messages || [], params.userMessage)
+      .slice(-6)
+      .map((message) => `${message.role === 'assistant' ? 'MOREN AI' : 'Kullanici'}: ${this.flattenMessageContent(message.content).slice(0, 1200)}`)
+      .join('\n');
+    const toolContext = toolUsesLog.length
+      ? this.safePromptJson(toolUsesLog.map((t) => ({ tool: t.name, input: t.input, result: t.result })), 16000)
+      : 'Bu turda portal verisi gerektiren veya güvenli şekilde tahmin edilebilen okuma tool sonucu yok.';
+
+    const prompt = [
+      dynamicSystemContext,
+      '## Konusma Gecmisi',
+      history,
+      '## Portal Veri Sonuclari',
+      toolContext,
+      '## Talimat',
+      'Cevabi yalnizca yukaridaki gerçek portal verisi, hafiza ve mesleki bilgiyle uret. Veri yoksa uydurma; hangi kaydin eksik oldugunu soyle. Dış dünyaya mesaj, belge gonderimi, arama veya agent komutu gerekiyorsa onaysiz yapilmis gibi yazma; kisa onay/aksiyon metni hazirla.',
+      `Kullanici mesaji: ${params.userMessage}`,
+    ].filter(Boolean).join('\n\n');
+
+    const max = await claudeTextViaMax({
+      prompt,
+      system: params.systemPrompt,
+      model: params.model,
+      maxTurns: 1,
+      timeoutMs: params.body.voiceMode ? 25000 : 45000,
+    });
+    if (!max.ok || !max.text.trim()) {
+      this.logger.warn(`Claude Max yanit uretmedi: ${max.error || 'bos cevap'}`);
+      return null;
+    }
+
+    const finalText = this.compactFinalAnswer(max.text, !!params.body.voiceMode);
+    return this.saveAssistantAndReturn({
+      tenantId: params.tenantId,
+      conversation: params.conversation,
+      body: params.body,
+      text: finalText,
+      model: `claude-max:${max.model}`,
+      started: params.started,
+      toolUsesLog,
+    });
+  }
+
+  private async buildMaxToolContext(params: {
+    tenantId: string;
+    userId: string | null;
+    body: ChatRequest;
+    conversation: any;
+    userMessage: string;
+    selectedTools: any[];
+  }): Promise<Array<{ name: string; input: any; result: any }>> {
+    const toolNames = Array.from(new Set((params.selectedTools || []).map((tool: any) => String(tool?.name || '')).filter(Boolean)));
+    if (!toolNames.length) return [];
+
+    const logs: Array<{ name: string; input: any; result: any }> = [];
+    const ctx = { tenantId: params.tenantId, userId: params.userId, taxpayerId: params.body.taxpayerId || params.conversation.taxpayerId || undefined };
+    const period = this.inferPeriodFromText(params.userMessage);
+    const previousPeriod = this.previousPeriod(period);
+    const taxpayerSearch = this.extractTaxpayerSearch(params.userMessage);
+    const needsTaxpayer = toolNames.some((name) => [
+      'get_taxpayer',
+      'list_mizan_periods',
+      'get_mizan',
+      'get_gelir_tablosu',
+      'get_bilanco',
+      'get_kdv_summary',
+      'list_invoices',
+      'get_payroll_summary',
+      'list_sgk_declarations',
+      'list_documents',
+      'compare_periods',
+      'calculate_financial_ratios',
+      'list_beyan_kayitlari',
+      'get_beyanname_config',
+      'get_taxpayer_work_status',
+    ].includes(name));
+
+    let taxpayerId = params.body.taxpayerId || params.conversation.taxpayerId || undefined;
+    if (!taxpayerId && needsTaxpayer && taxpayerSearch) {
+      const input = { search: taxpayerSearch, limit: 5, onlyActive: true };
+      const result = await this.toolExecutor.execute('list_taxpayers', input, ctx);
+      logs.push({ name: 'list_taxpayers', input, result });
+      taxpayerId = result?.taxpayers?.[0]?.id;
+    }
+
+    for (const name of toolNames) {
+      if (logs.length >= 8) break;
+      if (MAX_PREFETCH_SKIP_TOOLS.has(name)) continue;
+      if (name === 'list_taxpayers' && logs.some((log) => log.name === 'list_taxpayers')) continue;
+      const input = this.inferMaxToolInput(name, {
+        userMessage: params.userMessage,
+        period,
+        previousPeriod,
+        taxpayerId,
+        taxpayerSearch,
+      });
+      if (!input) continue;
+      const result = await this.toolExecutor.execute(name, input, { ...ctx, taxpayerId });
+      logs.push({ name, input, result });
+    }
+
+    return logs;
+  }
+
+  private inferMaxToolInput(name: string, ctx: {
+    userMessage: string;
+    period: string;
+    previousPeriod: string;
+    taxpayerId?: string;
+    taxpayerSearch?: string;
+  }): any | null {
+    const hasTaxpayer = Boolean(ctx.taxpayerId);
+    const taxpayerInput = hasTaxpayer ? { taxpayerId: ctx.taxpayerId } : (ctx.taxpayerSearch ? { taxpayerName: ctx.taxpayerSearch } : null);
+
+    switch (name) {
+      case 'list_taxpayers':
+        return ctx.taxpayerSearch ? { search: ctx.taxpayerSearch, limit: 10, onlyActive: true } : null;
+      case 'get_taxpayer':
+        return hasTaxpayer ? { taxpayerId: ctx.taxpayerId } : null;
+      case 'search_ai_memory':
+        return { query: ctx.userMessage, limit: 5 };
+      case 'list_mizan_periods':
+        return hasTaxpayer ? { taxpayerId: ctx.taxpayerId } : null;
+      case 'get_mizan':
+      case 'get_gelir_tablosu':
+      case 'get_bilanco':
+      case 'get_kdv_summary':
+      case 'calculate_financial_ratios':
+        return hasTaxpayer ? { taxpayerId: ctx.taxpayerId, donem: ctx.period } : null;
+      case 'compare_periods': {
+        if (!hasTaxpayer) return null;
+        const kaynak = /bilan[cç]o/i.test(ctx.userMessage)
+          ? 'bilanco'
+          : /mizan|hesap/i.test(ctx.userMessage)
+            ? 'mizan'
+            : 'gelir_tablosu';
+        return { taxpayerId: ctx.taxpayerId, kaynak, donem1: ctx.previousPeriod, donem2: ctx.period };
+      }
+      case 'list_invoices':
+        return taxpayerInput ? { ...taxpayerInput, period: ctx.period, limit: 50 } : null;
+      case 'get_payroll_summary':
+      case 'list_sgk_declarations':
+      case 'list_beyan_kayitlari':
+      case 'get_beyanname_config':
+      case 'get_taxpayer_work_status':
+        return hasTaxpayer ? { taxpayerId: ctx.taxpayerId, period: ctx.period, donem: ctx.period } : null;
+      case 'list_documents':
+        return hasTaxpayer ? { taxpayerId: ctx.taxpayerId } : null;
+      case 'get_tax_calendar':
+        return { fromDate: new Date().toISOString().slice(0, 10), toDate: new Date(Date.now() + 30 * 86400_000).toISOString().slice(0, 10) };
+      case 'get_operation_briefing':
+        return { period: ctx.period };
+      case 'get_collection_risk_summary':
+        return { limit: 20 };
+      case 'get_beyanname_readiness_summary':
+      case 'list_taxpayers_monthly_status':
+      case 'get_beyan_ozet':
+        return { period: ctx.period, limit: 30 };
+      case 'get_agent_status':
+      case 'get_portal_capability_map':
+        return {};
+      case 'get_luca_agent_jobs':
+      case 'get_mihsap_agent_jobs':
+        return { limit: 10 };
+      case 'search_all':
+        return { query: ctx.userMessage, limit: 8 };
+      case 'list_araclar_hgs':
+        return { limit: 20 };
+      case 'research_official_sources':
+        return { query: ctx.userMessage, limit: 2, remember: true };
+      default:
+        return null;
+    }
+  }
+
+  private inferPeriodFromText(text: string): string {
+    const raw = String(text || '');
+    const exact = raw.match(/\b(20\d{2})-(0[1-9]|1[0-2])\b/);
+    if (exact) return exact[0];
+
+    const normalized = this.normalizeForIntent(raw);
+    const months: Record<string, number> = {
+      ocak: 1,
+      subat: 2,
+      mart: 3,
+      nisan: 4,
+      mayis: 5,
+      haziran: 6,
+      temmuz: 7,
+      agustos: 8,
+      eylul: 9,
+      ekim: 10,
+      kasim: 11,
+      aralik: 12,
+    };
+    const yearMatch = raw.match(/\b(20\d{2}|19\d{2})\b/);
+    const year = yearMatch ? Number(yearMatch[1]) : new Date().getFullYear();
+    const quarterMatch = normalized.match(/\b([1-4])\s*\.?\s*donem\b/);
+    if (quarterMatch) return `${year}-${String(Number(quarterMatch[1]) * 3).padStart(2, '0')}`;
+    const monthName = Object.keys(months).find((name) => normalized.includes(name));
+    if (monthName) return `${year}-${String(months[monthName]).padStart(2, '0')}`;
+    const now = new Date();
+    return `${now.getFullYear()}-${String(now.getMonth() + 1).padStart(2, '0')}`;
+  }
+
+  private previousPeriod(period: string): string {
+    const match = String(period || '').match(/^(\d{4})-(\d{2})$/);
+    if (!match) return period;
+    const date = new Date(Date.UTC(Number(match[1]), Number(match[2]) - 2, 1));
+    return `${date.getUTCFullYear()}-${String(date.getUTCMonth() + 1).padStart(2, '0')}`;
+  }
+
+  private extractTaxpayerSearch(text: string): string | undefined {
+    const raw = String(text || '').replace(/\s+/g, ' ').trim();
+    if (!raw) return undefined;
+    const hasTaxpayerSignal = /(gelir tablos|bilan[cç]o|mizan|kdv|beyanname|evrak|belge|fatura|bordro|sgk|rasyo|m[üu]kellef|vergi|tahakkuk)/i.test(raw) ||
+      /['’]?\s*(nin|nın|nun|nün|in|ın|un|ün)\b/i.test(raw);
+    if (!hasTaxpayerSignal) return undefined;
+
+    const firstPart = raw.split(/gelir tablos|bilan[cç]o|mizan|kdv|beyanname|evrak|belge|fatura|bordro|sgk|rasyo|yorumla|g[öo]nder|talep|vergi|tahakkuk/i)[0] || '';
+    const candidate = firstPart
+      .replace(/\b(bana|benim|l[üu]tfen|şu|su|bu|için|icin)\b/gi, ' ')
+      .replace(/\b(20\d{2}|19\d{2}|ocak|şubat|subat|mart|nisan|mayıs|mayis|haziran|temmuz|ağustos|agustos|eylül|eylul|ekim|kasım|kasim|aralık|aralik)\b/gi, ' ')
+      .replace(/\b([1-4])\s*\.?\s*(dönem|donem)\b/gi, ' ')
+      .replace(/['’]?\s*(nin|nın|nun|nün|in|ın|un|ün)\b/gi, ' ')
+      .replace(/[^a-zA-Z0-9ğüşıöçĞÜŞİÖÇ\s.&-]/g, ' ')
+      .replace(/\s+/g, ' ')
+      .trim();
+    if (candidate.length < 2 || candidate.length > 80) return undefined;
+    return candidate;
+  }
+
+  private flattenMessageContent(content: any): string {
+    if (typeof content === 'string') return content;
+    if (Array.isArray(content)) {
+      return content.map((part) => {
+        if (typeof part === 'string') return part;
+        if (part?.type === 'text') return part.text || '';
+        if (part?.type === 'tool_result') return '[tool_result]';
+        if (part?.type === 'tool_use') return `[tool_use:${part.name || ''}]`;
+        return '';
+      }).filter(Boolean).join(' ');
+    }
+    return String(content || '');
+  }
+
+  private safePromptJson(value: any, maxChars: number) {
+    const text = JSON.stringify(value, (_key, val) => (typeof val === 'bigint' ? Number(val) : val), 2);
+    return text.length > maxChars ? `${text.slice(0, maxChars)}\n... [kısaltıldı]` : text;
+  }
+
+  private async saveAssistantAndReturn(params: {
+    tenantId: string;
+    conversation: any;
+    body: ChatRequest;
+    text: string;
+    model: string;
+    started: number;
+    toolUsesLog: Array<{ name: string; input: any; result: any }>;
+  }): Promise<ChatResponse> {
+    const durationMs = Date.now() - params.started;
+    const messageData: any = {
+      conversationId: params.conversation.id,
+      role: 'assistant',
+      content: params.text || '(Cevap boş)',
+      inputTokens: 0,
+      outputTokens: 0,
+      cacheReadTokens: 0,
+      cacheWriteTokens: 0,
+      costUsd: 0,
+      model: params.model,
+      durationMs,
+    };
+    if (params.toolUsesLog.length > 0) {
+      messageData.toolCalls = params.toolUsesLog.map((t) => ({ name: t.name, input: t.input }));
+      messageData.toolResults = params.toolUsesLog;
+    }
+    await this.prisma.aiMessage.create({ data: messageData });
+    await this.prisma.aiConversation.update({
+      where: { id: params.conversation.id },
+      data: {
+        taxpayerId: params.conversation.taxpayerId || params.body.taxpayerId || null,
+      },
+    });
+    try {
+      await this.prisma.aiUsageLog.create({
+        data: {
+          tenantId: params.tenantId,
+          taxpayerId: params.body.taxpayerId || params.conversation.taxpayerId || null,
+          source: params.body.source || 'moren-ai',
+          model: params.model,
+          inputTokens: 0,
+          outputTokens: 0,
+          cacheReadTokens: 0,
+          cacheWriteTokens: 0,
+          costUsd: 0,
+          karar: 'ok',
+          sebep: params.model.startsWith('claude-max:') ? 'claude-max-subscription' : 'no-paid-api',
+          durationMs,
+        },
+      });
+    } catch {}
+    await this.autoLearnFromTurn({
+      tenantId: params.tenantId,
+      userId: params.conversation.userId || null,
+      taxpayerId: params.body.taxpayerId || params.conversation.taxpayerId || undefined,
+      userMessage: params.body.message,
+      assistantMessage: params.text || '',
+    });
+    return {
+      conversationId: params.conversation.id,
+      assistantMessage: params.text,
+      toolUses: params.toolUsesLog,
+      usage: {
+        inputTokens: 0,
+        outputTokens: 0,
+        cacheReadTokens: 0,
+        cacheWriteTokens: 0,
+        costUsd: 0,
+        durationMs,
+        model: params.model,
+      },
+    };
+  }
+
   private compactFinalAnswer(text: string, voiceMode: boolean) {
     const cleaned = String(text || '')
       .replace(/\n{3,}/g, '\n\n')
@@ -1123,10 +1535,10 @@ export class MorenAiService {
     const ctx = await this.buildBrifingContext(tenantId, userId);
     const prompt = this.buildBrifingPrompt(ctx);
 
-    // Brifing = saf metin (JSON) üretimi; araç/görsel yok. Maliyet sırası:
-    //   1) Max aboneliği (ücretsiz, kotadan düşer) — varsa önce bu
-    //   2) Ücretli Anthropic API (aylık tavan kontrollü) — Max yoksa/başarısızsa
-    //   3) Deterministik fallback — ikisi de yoksa sayılardan brifing üret
+    // Brifing = saf metin (JSON) üretimi; araç/görsel yok. Varsayılan sıra:
+    //   1) Claude Max aboneliği — varsa önce bu
+    //   2) Deterministik fallback — Max yoksa/başarısızsa sayılardan brifing üret
+    //   3) Ücretli Anthropic API yalnızca MOREN_AI_ALLOW_ANTHROPIC_API=1 ise fallback olabilir
     let rawText = '';
     let usedSource: 'brifing-max' | 'brifing' = 'brifing-max';
     let viaMaxCostUsd = 0;
@@ -1149,8 +1561,8 @@ export class MorenAiService {
       }
     }
 
-    // 2) Ücretli API (Max yoksa/başarısızsa, tavan müsaitse)
-    if (!rawText) {
+    // 2) Ücretli API fallback yalnızca açık izin verilirse çalışır.
+    if (!rawText && this.allowAnthropicApiFallback()) {
       const apiKey = process.env.ANTHROPIC_API_KEY;
       if (apiKey && (await canSpendOnApi(this.prisma, tenantId, 'brifing'))) {
         try {
@@ -1182,7 +1594,7 @@ export class MorenAiService {
       }
     }
 
-    // 3) Hiçbir AI kaynağı cevap vermediyse deterministik fallback
+    // 3) Hiçbir izinli AI kaynağı cevap vermediyse deterministik fallback
     if (!rawText) {
       const fallback = this.buildFallbackPayload(ctx);
       return { ...fallback, generatedAt: new Date().toISOString(), fromCache: false };
@@ -1225,7 +1637,7 @@ export class MorenAiService {
       if (usedSource === 'brifing-max') {
         await logAiUsage(this.prisma, {
           tenantId, source: 'brifing-max', model: MAX_MODEL_CHEAP,
-          fixedCostUsd: viaMaxCostUsd, karar: 'ok', durationMs: 0,
+          fixedCostUsd: 0, karar: 'ok', durationMs: 0,
         });
       } else {
         await this.prisma.aiUsageLog.create({

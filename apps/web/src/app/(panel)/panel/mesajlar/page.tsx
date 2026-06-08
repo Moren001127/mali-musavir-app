@@ -34,6 +34,7 @@ function WhatsAppAvatar({
       style={{
         width: size,
         height: size,
+        fontSize: Math.max(12, Math.round(size * 0.34)),
         background: active ? 'rgba(34,197,94,0.15)' : 'rgba(255,255,255,0.04)',
         color: active ? '#86efac' : 'rgba(250,250,249,0.55)',
         border: `1px solid ${active ? 'rgba(34,197,94,0.3)' : 'rgba(255,255,255,0.08)'}`,
@@ -203,6 +204,8 @@ export default function MesajlarPage() {
   const [showTemplatePicker, setShowTemplatePicker] = useState(false);
   const [showStartModal, setShowStartModal] = useState(false);
   const [showEmojiPicker, setShowEmojiPicker] = useState(false);
+  const [showProfilePanel, setShowProfilePanel] = useState(false);
+  const [showAvatarPreview, setShowAvatarPreview] = useState(false);
   const [contactSearch, setContactSearch] = useState('');
   const [selectedContactId, setSelectedContactId] = useState<string | null>(null);
   const [selectedPhone, setSelectedPhone] = useState('');
@@ -442,9 +445,20 @@ export default function MesajlarPage() {
       (c.phone || '').includes(q),
     );
   }, [conversations, search]);
+  const selectedConversation = useMemo(
+    () => conversations.find((c) => (c.conversationId || c.taxpayerId) === selectedId) || null,
+    [conversations, selectedId],
+  );
 
   const freeFormAvailable = Boolean(chatData?.windowOpen || qrStatus?.connected);
   const qrStartAvailable = Boolean(qrStatus?.connected);
+
+  useEffect(() => {
+    if (!selectedId) {
+      setShowProfilePanel(false);
+      setShowAvatarPreview(false);
+    }
+  }, [selectedId]);
 
   // Mesaj geldikçe en alta scroll
   useEffect(() => {
@@ -651,8 +665,10 @@ export default function MesajlarPage() {
           <>
             {/* Sohbet başlık */}
             <div className="px-5 py-3 flex items-center gap-3" style={{ borderBottom: '1px solid rgba(255,255,255,0.06)', background: 'rgba(255,255,255,0.02)' }}>
-              <WhatsAppAvatar name={chatData?.taxpayer?.name} url={chatData?.taxpayer?.avatarUrl} active={chatData?.windowOpen} />
-              <div className="flex-1 min-w-0">
+              <button type="button" onClick={() => setShowProfilePanel(true)} className="rounded-full" title="Kişi bilgisi">
+                <WhatsAppAvatar name={chatData?.taxpayer?.name} url={chatData?.taxpayer?.avatarUrl} active={chatData?.windowOpen} />
+              </button>
+              <button type="button" onClick={() => setShowProfilePanel(true)} className="flex-1 min-w-0 text-left">
                 <div className="text-[14px] font-semibold" style={{ color: '#fafaf9' }}>
                   {chatData?.taxpayer?.name || 'Yükleniyor...'}
                 </div>
@@ -666,7 +682,7 @@ export default function MesajlarPage() {
                     <span>VKN: {chatData.taxpayer.taxNumber}</span>
                   )}
                 </div>
-              </div>
+              </button>
               {chatData?.taxpayer?.phone && (
                 <button
                   type="button"
@@ -918,6 +934,174 @@ export default function MesajlarPage() {
       </div>
 
       {/* ŞABLON SEÇİCİ MODAL */}
+      {showProfilePanel && chatData && (
+        <aside
+          className="fixed bottom-4 right-4 top-4 z-40 flex w-[min(380px,calc(100vw-32px))] shrink-0 flex-col overflow-hidden rounded-2xl xl:static xl:h-auto xl:w-[360px] xl:min-w-[340px]"
+          style={{
+            background: '#121212',
+            border: '1px solid rgba(255,255,255,0.08)',
+            boxShadow: '0 24px 80px rgba(0,0,0,0.45)',
+          }}
+        >
+          <div className="flex h-14 items-center gap-3 px-4" style={{ borderBottom: '1px solid rgba(255,255,255,0.08)' }}>
+            <button
+              type="button"
+              onClick={() => setShowProfilePanel(false)}
+              className="flex h-8 w-8 items-center justify-center rounded-md"
+              style={{ color: 'rgba(250,250,249,0.72)' }}
+              title="Kapat"
+            >
+              <X size={18} />
+            </button>
+            <div className="text-[15px] font-semibold" style={{ color: '#fafaf9' }}>Kişi bilgisi</div>
+          </div>
+
+          <div className="flex-1 overflow-y-auto">
+            <div className="px-5 pb-6 pt-7 text-center">
+              <button
+                type="button"
+                onClick={() => chatData.taxpayer.avatarUrl && setShowAvatarPreview(true)}
+                className="mx-auto rounded-full"
+                style={{ cursor: chatData.taxpayer.avatarUrl ? 'zoom-in' : 'default' }}
+                title={chatData.taxpayer.avatarUrl ? 'Profil fotoğrafını büyüt' : undefined}
+              >
+                <WhatsAppAvatar
+                  name={chatData.taxpayer.name}
+                  url={chatData.taxpayer.avatarUrl}
+                  active={chatData.windowOpen}
+                  size={172}
+                />
+              </button>
+
+              <div className="mt-5 text-[20px] font-semibold leading-tight" style={{ color: '#fafaf9' }}>
+                {chatData.taxpayer.name}
+              </div>
+              {chatData.taxpayer.phone && (
+                <div className="mt-1 text-[14px]" style={{ color: 'rgba(250,250,249,0.58)' }}>
+                  {chatData.taxpayer.phone}
+                </div>
+              )}
+              <div
+                className="mt-3 inline-flex items-center gap-1.5 rounded-full px-3 py-1 text-[11px]"
+                style={{
+                  background: freeFormAvailable ? 'rgba(34,197,94,0.1)' : 'rgba(251,191,36,0.1)',
+                  color: freeFormAvailable ? '#86efac' : '#fbbf24',
+                }}
+              >
+                {freeFormAvailable ? <CheckCircle2 size={12} /> : <Clock size={12} />}
+                {qrStatus?.connected ? 'QR bağlı' : chatData.windowOpen ? '24h pencere açık' : 'Pencere kapalı'}
+              </div>
+
+              <div className="mt-5 grid grid-cols-2 gap-3">
+                <button
+                  type="button"
+                  onClick={openWhatsAppFromHeader}
+                  disabled={!chatData.taxpayer.phone}
+                  className="flex h-12 items-center justify-center gap-2 rounded-[10px] text-[12px] font-semibold disabled:opacity-45"
+                  style={{ background: 'rgba(255,255,255,0.06)', color: '#fafaf9' }}
+                >
+                  <Phone size={15} /> Ara
+                </button>
+                <button
+                  type="button"
+                  onClick={() => setShowProfilePanel(false)}
+                  className="flex h-12 items-center justify-center gap-2 rounded-[10px] text-[12px] font-semibold"
+                  style={{ background: 'rgba(255,255,255,0.06)', color: '#fafaf9' }}
+                >
+                  <MessageCircle size={15} /> Sohbet
+                </button>
+              </div>
+
+              {chatData.taxpayer.unknownContact && (
+                <button
+                  type="button"
+                  onClick={() => setShowLinkModal(true)}
+                  className="mt-3 flex h-11 w-full items-center justify-center gap-2 rounded-[10px] text-[12px] font-semibold"
+                  style={{ background: 'rgba(212,184,118,0.14)', border: '1px solid rgba(212,184,118,0.25)', color: GOLD }}
+                >
+                  <Link2 size={14} /> Mükellefe bağla
+                </button>
+              )}
+            </div>
+
+            <div className="px-5 py-4" style={{ borderTop: '1px solid rgba(255,255,255,0.08)' }}>
+              <div className="mb-3 text-[11px] font-semibold uppercase tracking-wider" style={{ color: 'rgba(250,250,249,0.42)' }}>
+                Kayıt bilgileri
+              </div>
+              <div className="space-y-3 text-[13px]">
+                <div className="flex items-center justify-between gap-3">
+                  <span style={{ color: 'rgba(250,250,249,0.56)' }}>Telefon</span>
+                  <span className="text-right" style={{ color: '#fafaf9' }}>{chatData.taxpayer.phone || '-'}</span>
+                </div>
+                <div className="flex items-center justify-between gap-3">
+                  <span style={{ color: 'rgba(250,250,249,0.56)' }}>Portal kaydi</span>
+                  <span className="text-right" style={{ color: '#fafaf9' }}>
+                    {chatData.taxpayer.unknownContact ? 'Kayıtsız WhatsApp' : 'Mükellef kaydı'}
+                  </span>
+                </div>
+                {chatData.taxpayer.taxNumber && (
+                  <div className="flex items-center justify-between gap-3">
+                    <span style={{ color: 'rgba(250,250,249,0.56)' }}>VKN/TCKN</span>
+                    <span className="text-right" style={{ color: '#fafaf9' }}>{chatData.taxpayer.taxNumber}</span>
+                  </div>
+                )}
+              </div>
+            </div>
+
+            <div className="px-5 py-4" style={{ borderTop: '1px solid rgba(255,255,255,0.08)' }}>
+              <div className="mb-3 text-[11px] font-semibold uppercase tracking-wider" style={{ color: 'rgba(250,250,249,0.42)' }}>
+                Konuşma
+              </div>
+              <div className="space-y-3 text-[13px]">
+                <div className="flex items-center justify-between gap-3">
+                  <span style={{ color: 'rgba(250,250,249,0.56)' }}>Toplam mesaj</span>
+                  <span style={{ color: '#fafaf9' }}>{selectedConversation?.totalMessages ?? chatData.messages.length}</span>
+                </div>
+                <div className="flex items-center justify-between gap-3">
+                  <span style={{ color: 'rgba(250,250,249,0.56)' }}>Son mesaj</span>
+                  <span className="text-right" style={{ color: '#fafaf9' }}>
+                    {selectedConversation?.lastMessageAt ? fmtFullTime(selectedConversation.lastMessageAt) : '-'}
+                  </span>
+                </div>
+                {selectedConversation?.lastMessage && (
+                  <div
+                    className="rounded-[10px] px-3 py-2 text-left text-[12px]"
+                    style={{ background: 'rgba(255,255,255,0.04)', color: 'rgba(250,250,249,0.74)' }}
+                  >
+                    {renderWhatsAppLogText(selectedConversation.lastMessage)}
+                  </div>
+                )}
+              </div>
+            </div>
+          </div>
+        </aside>
+      )}
+
+      {showAvatarPreview && chatData?.taxpayer?.avatarUrl && (
+        <div
+          className="fixed inset-0 z-[70] flex items-center justify-center p-6"
+          style={{ background: 'rgba(0,0,0,0.82)', backdropFilter: 'blur(6px)' }}
+          onClick={() => setShowAvatarPreview(false)}
+        >
+          <button
+            type="button"
+            onClick={() => setShowAvatarPreview(false)}
+            className="absolute right-5 top-5 flex h-10 w-10 items-center justify-center rounded-full"
+            style={{ background: 'rgba(255,255,255,0.08)', color: '#fafaf9' }}
+            title="Kapat"
+          >
+            <X size={22} />
+          </button>
+          <img
+            src={chatData.taxpayer.avatarUrl}
+            alt={chatData.taxpayer.name || 'WhatsApp profil'}
+            className="max-h-[82vh] max-w-[82vw] rounded-full object-cover"
+            style={{ boxShadow: '0 28px 100px rgba(0,0,0,0.55)' }}
+            onClick={(e) => e.stopPropagation()}
+          />
+        </div>
+      )}
+
       {showStartModal && (
         <div
           className="fixed inset-0 z-50 flex items-center justify-center p-4"

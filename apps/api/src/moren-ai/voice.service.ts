@@ -3,15 +3,16 @@ import { Injectable, BadRequestException, Logger } from '@nestjs/common';
 /**
  * Sesli konuşma için STT (Speech-to-Text) + TTS (Text-to-Speech).
  *
- * Yaklaşım: OpenAI Whisper (STT) + OpenAI TTS. API key: OPENAI_API_KEY.
+ * Yaklaşım: OpenAI Whisper (STT) + OpenAI TTS. Varsayılan kapalıdır.
  *
- * Fallback: OPENAI_API_KEY yoksa frontend browser Web Speech API kullanır.
+ * Fallback: MOREN_AI_ALLOW_OPENAI_API=1 yoksa frontend browser Web Speech API kullanır.
  */
 @Injectable()
 export class VoiceService {
   private readonly logger = new Logger(VoiceService.name);
 
   private getOpenAiKey(): string | null {
+    if (process.env.MOREN_AI_ALLOW_OPENAI_API !== '1') return null;
     return process.env.OPENAI_API_KEY || null;
   }
 
@@ -19,7 +20,7 @@ export class VoiceService {
     const key = this.getOpenAiKey();
     if (!key) {
       throw new BadRequestException(
-        'OPENAI_API_KEY ayarlanmamış — gerçek zamanlı sesli sohbet için Railway environmentına eklenmeli.',
+        'OpenAI ses API hattı kapalı. MOREN_AI_ALLOW_OPENAI_API=1 verilmeden API çağrısı yapılmaz.',
       );
     }
 
@@ -92,7 +93,7 @@ export class VoiceService {
     const key = this.getOpenAiKey();
     if (!key) {
       throw new BadRequestException(
-        'OPENAI_API_KEY ayarlanmamış — sesli giriş için Railway environment\'ına eklenmeli. ' +
+        'OpenAI ses API hattı kapalı. MOREN_AI_ALLOW_OPENAI_API=1 verilmeden API çağrısı yapılmaz. ' +
         'Alternatif: frontend browser Web Speech API kullansın.',
       );
     }
@@ -146,7 +147,7 @@ export class VoiceService {
     const key = this.getOpenAiKey();
     if (!key) {
       throw new BadRequestException(
-        'OPENAI_API_KEY ayarlanmamış — TTS için Railway environment\'ına eklenmeli.',
+        'OpenAI TTS API hattı kapalı. MOREN_AI_ALLOW_OPENAI_API=1 verilmeden API çağrısı yapılmaz.',
       );
     }
 

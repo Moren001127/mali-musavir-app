@@ -199,7 +199,7 @@ export class OcrService {
     options: ExtractOcrOptions = {},
   ): Promise<OcrResult> {
     const belgeNoFromFilename = this.extractBelgeNoFromFilename(originalName);
-    const hasClaudeKey = !!process.env.ANTHROPIC_API_KEY;
+    const hasClaudeKey = process.env.MOREN_AI_ALLOW_ANTHROPIC_API === '1' && !!process.env.ANTHROPIC_API_KEY;
     const forceClaude = options.forceClaude === true;
     const allowAutoClaude =
       process.env.KDV_OCR_AUTO_CLAUDE === 'true' ||

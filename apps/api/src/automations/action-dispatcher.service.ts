@@ -218,7 +218,7 @@ export class ActionDispatcherService {
       return { text: max.text, cost: 0, inputTokens: 0, outputTokens: 0 };
     }
     // Max başarısız: API fallback yalnızca açıkça izin verilmişse (varsayılan: API'ye düşme).
-    if (process.env.AI_ALLOW_API_FALLBACK !== '1') {
+    if (process.env.AI_ALLOW_API_FALLBACK !== '1' && process.env.MOREN_AI_ALLOW_ANTHROPIC_API !== '1') {
       throw new Error(`Max çağrısı başarısız, API fallback kapalı: ${max.error}`);
     }
     const apiKey = process.env.ANTHROPIC_API_KEY;

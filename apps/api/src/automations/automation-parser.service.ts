@@ -125,7 +125,7 @@ export class AutomationParserService {
             // Max maliyeti kotadan düşer — token başına fatura değil.
             parseCostUsd = 0;
           } else {
-            this.logger.warn('Parser Max JSON parse edilemedi, API\'ye düşülüyor.');
+            this.logger.warn('Parser Max JSON parse edilemedi; ücretli API fallback varsayılan kapalı.');
           }
         } else if (max.error) {
           this.logger.warn(`Parser Max başarısız: ${max.error}`);
@@ -135,13 +135,18 @@ export class AutomationParserService {
       }
     }
 
-    // 2) Ücretli API (tool_choice) — Max yoksa/başarısızsa
+    // 2) Ücretli API (tool_choice) — yalnızca açık izin verilirse.
     if (!proposed) {
+      const apiAllowed = process.env.MOREN_AI_ALLOW_ANTHROPIC_API === '1' || process.env.AI_ALLOW_API_FALLBACK === '1';
+      if (!apiAllowed) {
+        throw new ServiceUnavailableException(
+          'Otomasyon ayrıştırıcı Claude Max ile sonuç üretemedi. Ücretli API fallback kapalı olduğu için API çağrısı yapılmadı.',
+        );
+      }
       const apiKey = process.env.ANTHROPIC_API_KEY;
       if (!apiKey) {
         throw new ServiceUnavailableException(
-          'Otomasyon ayrıştırıcı için ne Max aboneliği (CLAUDE_CODE_OAUTH_TOKEN) ne de ' +
-            'ANTHROPIC_API_KEY ayarlı. Railway env\'e en az birini ekleyin.',
+          'Otomasyon ayrıştırıcı için ANTHROPIC_API_KEY ayarlı değil.',
         );
       }
 

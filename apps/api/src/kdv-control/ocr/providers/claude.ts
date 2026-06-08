@@ -65,6 +65,9 @@ export async function runClaudeVisionOcr(
   deps: ClaudeProviderDeps,
 ): Promise<OcrResult> {
   const { parseAmount, formatAmount, formatIsoToTr, clampConfidence, logger } = deps;
+  if (process.env.MOREN_AI_ALLOW_ANTHROPIC_API !== '1') {
+    throw new Error('Claude Vision API kapalı: MOREN_AI_ALLOW_ANTHROPIC_API=1 verilmeden API çağrısı yapılmaz.');
+  }
   const apiKey = process.env.ANTHROPIC_API_KEY!;
   const MODEL = process.env.OCR_MODEL || defaultModel;
 

@@ -2,7 +2,7 @@ import { Injectable, Logger } from '@nestjs/common';
 import { PrismaService } from '../prisma/prisma.service';
 import { logAiUsage } from '../common/ai-usage-logger';
 import { MorenAiService } from '../moren-ai/moren-ai.service';
-import { claudeTextViaMax, isMaxAvailable } from '../common/max-inference';
+import { claudeTextViaMax, isMaxAvailable, MAX_MODEL_CHEAP } from '../common/max-inference';
 
 /**
  * Moren Portal Çalışanı — tek AI operasyon ajanı (Müdür yok, öğrenme açık).
@@ -38,6 +38,9 @@ const SYSTEM_PROMPT = [
   'Sahip: Muzaffer Ören. Üretim CANLI ve çoklu bilgisayarda — onaysız production değişikliği önermezsin.',
   'Kilitli modüllerin (Mizan, KDV Kontrol, agent-runtime, E-Arşiv) KODUNU değiştirmezsin; sadece çıktısını yorumlarsın.',
   'Kritik mali/hukuki belgelerde (beyanname, tahakkuk, mizan, KDV, e-defter) en yüksek doğrulukla çalış ve sonucu doğrula.',
+  'Muhasebe, finans, mali müşavirlik, SGK, vergi kanunları, planlama ve şirket yönetimi konularında kıdemli SMMM/finans danışmanı gibi konuş.',
+  'Güncel oran, süre, ceza, had, teşvik veya mevzuat değişikliği varsa tool destekli Moren AI hattını kullan; resmi kaynağa dayanmayan rakam uydurma.',
+  'Portal verisi istenirse önce gerçek kayıtları ara; mizan, gelir tablosu, bilanço, beyanname, evrak, WhatsApp ve ajan durumunu bağlama göre kullan.',
   'Görmediğini görmüş gibi söyleme; test etmediysen "test edildi" deme.',
   'Mükellef PII (şifre, token, TC, IBAN) sızdırma, loglama, ders olarak saklama.',
   'Cevapların kısa ve öz olsun. Türkçe yaz.',
@@ -68,38 +71,184 @@ export class CalisanService {
     tenantId: string;
     conversationId?: string | null;
     message: string;
+    originalMessage?: string | null;
     source?: string;
   }): Promise<{ assistantMessage: string; model: string }> {
-    const critical = this.isCritical(params.message);
+    const ownerMessage = String(params.originalMessage || params.message || '').trim();
+    const critical = this.isCritical(ownerMessage || params.message);
     const model = critical ? MODEL_CRITICAL : MODEL_DEFAULT;
-    // KURAL (2026-06-08): SADECE Max aboneliği — ücretli API (ANTHROPIC_API_KEY) YASAK.
-    // Önceden morenAi.chat → ücretli API yolundaydı ve aylık maliyet tavanına takılınca
-    // bot gerçek cevap üretemiyordu. Artık Max metin çıkarımı (claudeTextViaMax) kullanılır.
-    // NOT: Max şimdilik tool (mizan/KDV sorgu) çalıştırmaz; tool-on-Max sonraki faz.
+    if (this.shouldTryPortalTools(ownerMessage) && process.env.CALISAN_OWNER_TOOL_FALLBACK !== '0') {
+      try {
+        const toolAnswer = await this.morenAi.chat(params.tenantId, null, {
+          conversationId: params.conversationId || undefined,
+          message: ownerMessage,
+          toolMode: 'owner',
+          source: params.source || 'calisan-whatsapp',
+          currentPath: '/panel/mesajlar',
+        } as any);
+        const assistantMessage = String(toolAnswer?.assistantMessage || '').trim();
+        if (this.isUsableOwnerAnswer(assistantMessage)) {
+          return {
+            assistantMessage,
+            model: toolAnswer?.usage?.model || 'moren-ai-tools',
+          };
+        }
+        this.logger.warn(`runViaMorenAi tool fallback kullanilamadi: ${assistantMessage.slice(0, 160) || 'bos cevap'}`);
+        await this.recordSelfImprovementLesson({
+          tenantId: params.tenantId,
+          title: 'Owner WhatsApp tool fallback kullanilamadi',
+          content: `Owner mesajı: ${this.maskSensitive(ownerMessage).slice(0, 500)}\nMorenAI cevabı yetersiz görüldü: ${this.maskSensitive(assistantMessage).slice(0, 600)}\nBir dahaki sefere: veri isteyen owner mesajlarında portal tool cevabı boş/generic ise Max yedeğine düş ve kullanıcıya teknik hata gösterme.`,
+          tags: ['self-improvement', 'whatsapp', 'owner', 'tool-fallback'],
+          importance: 4,
+        });
+      } catch (err: any) {
+        this.logger.warn(`runViaMorenAi tool fallback hatasi: ${err?.message || err}`);
+        await this.recordSelfImprovementLesson({
+          tenantId: params.tenantId,
+          title: 'Owner WhatsApp tool fallback hatasi',
+          content: `Owner mesajı: ${this.maskSensitive(ownerMessage).slice(0, 500)}\nHata: ${this.maskSensitive(err?.message || String(err)).slice(0, 800)}\nBir dahaki sefere: tool katmanı düşerse Max yedek model döngüsüne geç; kullanıcıya teknik hata basma.`,
+          tags: ['self-improvement', 'whatsapp', 'owner', 'tool-error'],
+          importance: 4,
+        });
+      }
+    }
+    // Realtime owner WhatsApp fallback: Max text inference, with fast model retries.
     if (!isMaxAvailable()) {
+      await this.recordSelfImprovementLesson({
+        tenantId: params.tenantId,
+        title: 'Owner WhatsApp Max token yok',
+        content: `Owner mesajı: ${this.maskSensitive(ownerMessage).slice(0, 500)}\nSorun: CLAUDE_CODE_OAUTH_TOKEN yok.\nBir dahaki sefere: Max bağlı değilse teknik token metni gönderme; düzgün geçici cevap ver ve operatöre env uyarısı üret.`,
+        tags: ['self-improvement', 'whatsapp', 'owner', 'max-token'],
+        importance: 5,
+      });
       this.logger.warn('runViaMorenAi: Max bağlı değil (CLAUDE_CODE_OAUTH_TOKEN yok).');
       return {
-        assistantMessage: 'AI şu an Max aboneliğine bağlı değil. Railway env\'e CLAUDE_CODE_OAUTH_TOKEN eklenmeli (claude setup-token).',
+        assistantMessage: this.ownerTemporaryFallback(ownerMessage),
         model,
       };
     }
-    const r = await claudeTextViaMax({ prompt: params.message, model, maxTurns: 1 });
-    if (!r.ok) {
-      this.logger.warn(`runViaMorenAi Max hatası: ${r.error}`);
-      return { assistantMessage: 'Şu an cevap üretemedim (Max), birazdan tekrar dener misin?', model };
+    const maxModels = Array.from(new Set([
+      String(process.env.CALISAN_OWNER_MAX_MODEL || '').trim(),
+      critical ? MODEL_DEFAULT : MAX_MODEL_CHEAP,
+      critical ? MAX_MODEL_CHEAP : MODEL_DEFAULT,
+    ].filter(Boolean)));
+    const timeoutMs = Math.max(12000, Number(process.env.CALISAN_OWNER_MAX_HARD_MS || process.env.MAX_TEXT_HARD_MS) || 35000);
+    const maxErrors: string[] = [];
+    let assistantMessage = '';
+    let usedModel = model;
+    for (const candidate of maxModels) {
+      const r = await claudeTextViaMax({ prompt: params.message, model: candidate, maxTurns: 1, timeoutMs });
+      if (r.ok && String(r.text || '').trim()) {
+        assistantMessage = String(r.text || '').trim();
+        usedModel = candidate;
+        break;
+      }
+      maxErrors.push(`${candidate}: ${r.error || 'bos cevap'}`);
     }
-    const assistantMessage = String(r.text || '');
+    if (!assistantMessage) {
+      this.logger.warn(`runViaMorenAi Max hatalari: ${maxErrors.join(' || ')}`);
+      await this.recordSelfImprovementLesson({
+        tenantId: params.tenantId,
+        title: 'Owner WhatsApp Max model hatasi',
+        content: `Owner mesajı: ${this.maskSensitive(ownerMessage).slice(0, 500)}\nDenenen modeller: ${maxModels.join(', ')}\nHatalar: ${this.maskSensitive(maxErrors.join(' || ')).slice(0, 1500)}\nBir dahaki sefere: kritik owner WhatsApp akışında Opus'a takılı kalma; Sonnet/Haiku yedekli devam et ve timeout değerini canlı sohbet için makul tut.`,
+        tags: ['self-improvement', 'whatsapp', 'owner', 'max-error'],
+        importance: 5,
+      });
+      assistantMessage = this.ownerTemporaryFallback(ownerMessage);
+    }
     // ÖĞRENME: sadece kritik owner etkileşimini hafif not düş (gürültü olmasın)
     if (critical && assistantMessage) {
       this.recordLesson({
         tenantId: params.tenantId,
         title: 'Owner kritik WhatsApp talebi',
-        content: `Soru: ${params.message.slice(0, 160)} | Model: ${model}`,
+        content: `Soru: ${(ownerMessage || params.message).slice(0, 160)} | Model: ${usedModel}`,
         importance: 2,
         tags: ['whatsapp', 'owner', 'kritik'],
       }).catch(() => undefined);
     }
-    return { assistantMessage, model };
+    return { assistantMessage, model: usedModel };
+  }
+
+  private shouldTryPortalTools(message: string): boolean {
+    const text = this.normalizeForIntent(message);
+    return /\b(kdv|beyan|beyanname|tahakkuk|gelir tablosu|mizan|bilanco|fatura|evrak|belge|pdf|gonder|yorumla|analiz|mukellef)\b/.test(text);
+  }
+
+  private isUsableOwnerAnswer(answer: string): boolean {
+    if (!answer) return false;
+    const text = this.normalizeForIntent(answer);
+    if (/en kisa surede ofisimiz size donus yapacak/.test(text)) return false;
+    if (/ai aylik maliyet tavani doldu/.test(text)) return false;
+    if (/su an net bir cevap uretemedim/.test(text)) return false;
+    return true;
+  }
+
+  private ownerTemporaryFallback(message: string): string {
+    const text = this.normalizeForIntent(message);
+    if (/\b(kdv|beyan|beyanname|tahakkuk|gelir tablosu|mizan|bilanco|fatura|evrak|belge|pdf|gonder|yorumla|analiz)\b/.test(text)) {
+      return 'Mesajını aldım. AI tarafında anlık gecikme var; veri/belge işini boş bırakmadım. Birazdan tekrar denersen portal verisiyle yanıtlayacağım.';
+    }
+    return 'Mesajını aldım. AI tarafında anlık gecikme var; birazdan tekrar yazarsan cevaplamayı yeniden deneyeceğim.';
+  }
+
+  private normalizeForIntent(value: string): string {
+    return String(value || '')
+      .toLocaleLowerCase('tr-TR')
+      .replace(/ı/g, 'i')
+      .normalize('NFD')
+      .replace(/[\u0300-\u036f]/g, '');
+  }
+
+  private async recordSelfImprovementLesson(input: {
+    tenantId: string;
+    title: string;
+    content: string;
+    tags?: string[];
+    importance?: number;
+  }): Promise<void> {
+    try {
+      const aiMemory = (this.prisma as any).aiMemory;
+      if (!aiMemory?.findFirst || !aiMemory?.create || !aiMemory?.update) return;
+      const existing = await aiMemory.findFirst({
+        where: {
+          tenantId: input.tenantId || 'default',
+          scope: 'agent',
+          source: 'bot-self-improvement',
+          title: input.title,
+          isActive: true,
+        },
+      }).catch(() => null);
+      const data = {
+        content: input.content.slice(0, 4000),
+        importance: Math.max(1, Math.min(Number(input.importance || 4), 5)),
+        tags: Array.from(new Set([...(input.tags || []), 'self-improvement'])).slice(0, 12),
+      };
+      if (existing?.id) {
+        await aiMemory.update({ where: { id: existing.id }, data }).catch(() => null);
+        return;
+      }
+      await aiMemory.create({
+        data: {
+          tenantId: input.tenantId || 'default',
+          scope: 'agent',
+          title: input.title.slice(0, 200),
+          content: data.content,
+          source: 'bot-self-improvement',
+          importance: data.importance,
+          tags: data.tags,
+        },
+      }).catch(() => null);
+    } catch {}
+  }
+
+  private maskSensitive(value: string): string {
+    return String(value || '')
+      .replace(/[A-Z0-9._%+-]+@[A-Z0-9.-]+\.[A-Z]{2,}/gi, '[email]')
+      .replace(/\b(?:\+?90)?5\d{9}\b/g, '[telefon]')
+      .replace(/\b\d{10,11}\b/g, '[kimlik-no]')
+      .replace(/\b(token|api\s*key|password|parola|sifre|şifre)\s*[:=]\s*\S+/gi, '$1=[gizli]')
+      .replace(/\s+/g, ' ')
+      .trim();
   }
 
   isCritical(task: string): boolean {

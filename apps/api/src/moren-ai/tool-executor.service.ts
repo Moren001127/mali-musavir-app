@@ -13,11 +13,25 @@ const OFFICIAL_SOURCE_DOMAINS = [
   'calisma.gov.tr',
   'ticaret.gov.tr',
   'kgk.gov.tr',
+  'turmob.org.tr',
+  'hmb.gov.tr',
+  'tuik.gov.tr',
   'kvkk.gov.tr',
   'tcmb.gov.tr',
   'spk.gov.tr',
   'bddk.org.tr',
   'rekabet.gov.tr',
+];
+
+const WHATSAPP_AGENT_ACTIONS = [
+  'owner_alert',
+  'portal_message_preview',
+  'portal_message_send',
+  'document_send',
+  'document_request',
+  'conversation_reply',
+  'conversation_start',
+  'call_request',
 ];
 
 /**
@@ -1993,7 +2007,7 @@ export class ToolExecutorService {
       tahsilat: ['risk_scan', 'whatsapp_preview', 'payment_promise_followup'],
       'banka-ekstre': ['scan_missing', 'create_tasks'],
       edefter: ['scan_berat'],
-      whatsapp: ['owner_alert', 'portal_message_preview', 'portal_message_send'],
+      whatsapp: [...WHATSAPP_AGENT_ACTIONS],
     };
     const errors: string[] = [];
     if (!supported[agent]) errors.push(`Desteklenmeyen agent: ${agent}`);
@@ -2046,6 +2060,11 @@ export class ToolExecutorService {
     if (agent === 'luca' && action === 'prepare_beyanname') return 'LUCA beyanname ekranında taslak hazırlık başlatılır; gönderim ayrıca onay gerektirir.';
     if (agent === 'luca' && action === 'fetch_mizan') return 'LUCA’dan mizan çekimi başlatılır ve portala işlenir.';
     if (isMihsapFaturaCommandAgent(agent)) return `${payload?.mukellefler?.length || 0} mükellef için Mihsap fatura işleme komutu hazırlanır.`;
+    if (agent === 'whatsapp' && action === 'document_send') return 'Seçilen belge WhatsApp ile ilgili alıcıya gönderilmek üzere komut kuyruğuna alınır.';
+    if (agent === 'whatsapp' && action === 'document_request') return 'Mükelleften WhatsApp üzerinden evrak/belge talep etmek üzere komut kuyruğuna alınır.';
+    if (agent === 'whatsapp' && action === 'conversation_reply') return 'Seçili WhatsApp konuşmasına portal adına yanıt gönderme komutu hazırlanır.';
+    if (agent === 'whatsapp' && action === 'conversation_start') return 'Yeni WhatsApp konuşması başlatma komutu hazırlanır; 24 saat penceresi kapalıysa şablon gerekebilir.';
+    if (agent === 'whatsapp' && action === 'call_request') return 'WhatsApp araması için portal içinden çağrı/arama isteği hazırlanır; gerçek çağrı başlatma WhatsApp Web oturum izinlerine bağlıdır.';
     if (agent === 'kdv') return 'KDV kontrol / beyan ön hazırlık komutu hazırlanır.';
     return `${agent} agent için ${action} komutu hazırlanır.`;
   }
@@ -2110,7 +2129,7 @@ export class ToolExecutorService {
       tahsilat: ['risk_scan', 'whatsapp_preview', 'payment_promise_followup'],
       'banka-ekstre': ['scan_missing', 'create_tasks'],
       edefter: ['scan_berat'],
-      whatsapp: ['owner_alert', 'portal_message_preview', 'portal_message_send'],
+      whatsapp: [...WHATSAPP_AGENT_ACTIONS],
     };
     return {
       readAndAnalyze: [
@@ -2125,12 +2144,13 @@ export class ToolExecutorService {
         { module: 'Görevler ve Agentlar', tools: ['get_agent_status', 'get_luca_agent_jobs', 'get_mihsap_agent_jobs', 'list_pending_decisions'], scope: 'agent durumu, hata, onay bekleyen karar, iş yükü' },
         { module: 'Evrak ve Galeri', tools: ['list_documents', 'list_araclar_hgs'], scope: 'belge, sözleşme, araç/HGS ihlal durumu' },
         { module: 'Hafıza', tools: ['search_ai_memory', 'save_ai_memory'], scope: 'ofis tercihi, mükellef notu, araştırma kaydı, tekrar öğrenme' },
-        { module: 'Mevzuat Araştırma', tools: ['research_official_sources'], scope: 'GİB, SGK, Resmi Gazete, mevzuat.gov.tr ve resmi kurum kaynakları' },
+        { module: 'Mevzuat Araştırma', tools: ['research_official_sources'], scope: 'GİB, SGK, Resmi Gazete, mevzuat.gov.tr, TÜRMOB, HMB, KGK, TCMB ve resmi/mesleki kaynaklar' },
       ],
       commandAndAction: actionAgents,
       executionRule: 'Okuma ve analiz dogrudan yapilir. Portalda islem baslatan komutlar once preview_agent_command ile previewId uretir; kullanici ONAYLIYORUM #PRV-XXXX yazarsa create_confirmed_agent_command calisir.',
       currentLimits: [
         'Agent tarafında olmayan yeni bir işlem doğrudan yapılmaz; önce uygun agent/action olarak komut kuyruğuna alınır.',
+        'WhatsApp belge gönderme, evrak talebi, konuşma başlatma ve arama istekleri onaylı komut olarak hazırlanır; gerçek gönderim/arama bağlı WhatsApp oturumunun desteklediği işlemlerle sınırlıdır.',
         'Resmi kaynak araştırması internet erişimi ve resmi sitelerin erişilebilirliğine bağlıdır.',
         'Kalıcı öğrenme yalnızca ofis/mükellef/portal hafızasına yazılan notlarla yapılır; gereksiz kişisel veri saklanmaz.',
       ],

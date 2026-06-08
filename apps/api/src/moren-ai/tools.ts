@@ -534,7 +534,8 @@ export const MOREN_AI_TOOLS: ToolDefinition[] = [
   {
     name: 'preview_agent_command',
     description:
-      'Riskli bir LUCA/Mihsap/KDV agent komutunu çalıştırmadan önce önizler. OwnerApprovalRequest, previewId ve 5 dakika geçerlilik üretir. Kullanıcıya onay metni ve etki özeti göstermek için kullan.',
+      'Riskli bir portal agent komutunu çalıştırmadan önce önizler. LUCA/Mihsap/KDV/SGK/Tebligat/WhatsApp işlemleri için OwnerApprovalRequest, previewId ve 5 dakika geçerlilik üretir. ' +
+      'WhatsApp için action örnekleri: document_send, document_request, conversation_reply, conversation_start, call_request. Kullanıcıya onay metni ve etki özeti göstermek için kullan.',
     input_schema: {
       type: 'object',
       properties: {
@@ -548,7 +549,8 @@ export const MOREN_AI_TOOLS: ToolDefinition[] = [
   {
     name: 'create_confirmed_agent_command',
     description:
-      'Sadece kullanıcı net onay verdikten sonra agent komutu oluşturur. confirmationText kesin olarak ONAYLIYORUM #PRV-XXXX formatında olmalıdır; agent/action/payload preview kaydından okunur.',
+      'Sadece kullanıcı net onay verdikten sonra agent komutu oluşturur. confirmationText kesin olarak ONAYLIYORUM #PRV-XXXX formatında olmalıdır; agent/action/payload preview kaydından okunur. ' +
+      'WhatsApp belge gönderme, evrak talebi, konuşma yanıtı/başlatma ve arama isteği de bu onaylı komut akışından geçirilir.',
     input_schema: {
       type: 'object',
       properties: {
@@ -598,7 +600,8 @@ export const MOREN_AI_TOOLS: ToolDefinition[] = [
     name: 'research_official_sources',
     description:
       'Güncel vergi, SGK, iş hukuku, ticaret hukuku, e-belge, beyanname, ceza, had, süre ve mevzuat soruları için resmi kaynak araştırması yapar. ' +
-      'GİB, SGK, Resmi Gazete, mevzuat.gov.tr ve ilgili kamu kurumları dışındaki sonuçları filtreler. Güncel rakam/süre/ceza sorularında cevap vermeden önce kullan.',
+      'GİB, SGK, Resmi Gazete, mevzuat.gov.tr, TÜRMOB, Hazine ve Maliye, KGK, TCMB ve ilgili kamu/meslek kurumu kaynakları dışındaki sonuçları filtreler. ' +
+      'Güncel rakam/süre/ceza, finansal düzenleme, mesleki duyuru ve vergi planlama sorularında cevap vermeden önce kullan.',
     input_schema: {
       type: 'object',
       properties: {

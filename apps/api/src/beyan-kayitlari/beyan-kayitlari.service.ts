@@ -284,6 +284,9 @@ export class BeyanKayitlariService {
 
   /** Tek PDF için Claude'a metadata parse isteği gönder */
   async parseBeyannamePdf(pdfBase64: string, tenantId?: string): Promise<ParsedBeyan> {
+    if (process.env.MOREN_AI_ALLOW_ANTHROPIC_API !== '1') {
+      throw new BadRequestException('Beyanname PDF için ücretli Claude API kapalı. MOREN_AI_ALLOW_ANTHROPIC_API=1 verilmeden API çağrısı yapılmaz.');
+    }
     const apiKey = process.env.ANTHROPIC_API_KEY;
     if (!apiKey) throw new BadRequestException('ANTHROPIC_API_KEY tanımlı değil');
     // Aylık ücretli API tavanı dolduysa beyanname PDF okuma geçici durur (çağıran catch ile devam eder).
