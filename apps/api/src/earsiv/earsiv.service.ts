@@ -735,6 +735,51 @@ export class EarsivService {
   }
 
   /**
+   * BOZUK BELGE-NO ONARIMI (2026-06-08) — faturaNo'su "NaN"/"BILINMIYOR" olan
+   * GERÇEK faturaların belge-no'sunu kayıtlı XML'den (düzeltilmiş parser ile)
+   * yeniden okuyup düzeltir. SİLMEZ, sadece no'yu onarır. Aynı no'da başka kayıt
+   * varsa (zaten doğru kopya mevcut) dokunmaz. dryRun=true sadece listeler.
+   */
+  async repairBozukNo(tenantId: string, opts: { dryRun?: boolean } = {}) {
+    const dryRun = opts.dryRun !== false;
+    const BAD = ['NaN', 'nan', 'NAN', 'BILINMIYOR', 'BILINMEYEN'];
+    const rows = await (this.prisma as any).earsivFatura.findMany({
+      where: { tenantId, faturaNo: { in: BAD } },
+      select: {
+        id: true, taxpayerId: true, tip: true, belgeKaynak: true, faturaNo: true,
+        xmlContent: true, donem: true, toplamTutar: true, satici: true, alici: true,
+      },
+    });
+    const sonuc: any[] = [];
+    for (const r of rows) {
+      if (!r.xmlContent) { sonuc.push({ id: r.id, eskiNo: r.faturaNo, durum: 'XML-yok-onarilamaz' }); continue; }
+      const yeniNo = this.parser.extractFaturaNo(r.xmlContent);
+      if (!yeniNo) { sonuc.push({ id: r.id, eskiNo: r.faturaNo, durum: 'XMLden-okunamadi' }); continue; }
+      if (yeniNo === r.faturaNo) { sonuc.push({ id: r.id, eskiNo: r.faturaNo, durum: 'ayni' }); continue; }
+      const conflict = await (this.prisma as any).earsivFatura.findFirst({
+        where: { tenantId, taxpayerId: r.taxpayerId, tip: r.tip, belgeKaynak: r.belgeKaynak, faturaNo: yeniNo, id: { not: r.id } },
+        select: { id: true },
+      });
+      if (conflict) { sonuc.push({ id: r.id, eskiNo: r.faturaNo, yeniNo, durum: 'CAKISMA-dogru-kopya-zaten-var' }); continue; }
+      if (!dryRun) {
+        try {
+          await (this.prisma as any).earsivFatura.update({ where: { id: r.id }, data: { faturaNo: yeniNo } });
+          sonuc.push({ id: r.id, eskiNo: r.faturaNo, yeniNo, tutar: r.toplamTutar, karsi: r.satici || r.alici, durum: 'duzeltildi' });
+        } catch (e: any) {
+          sonuc.push({ id: r.id, eskiNo: r.faturaNo, yeniNo, durum: 'hata:' + (e?.code || e?.message || '') });
+        }
+      } else {
+        sonuc.push({ id: r.id, eskiNo: r.faturaNo, yeniNo, tutar: r.toplamTutar, karsi: r.satici || r.alici, durum: 'duzeltilecek' });
+      }
+    }
+    if (!dryRun) {
+      const n = sonuc.filter((s) => s.durum === 'duzeltildi').length;
+      this.logger.warn(`[REPAIR] ${n} bozuk belge-no XML'den düzeltildi (tenant=${tenantId}).`);
+    }
+    return { dryRun, toplam: rows.length, sonuc };
+  }
+
+  /**
    * Filtreli liste — taxpayerId, donem, tip, arama, tarih aralığı
    */
   async list(opts: {

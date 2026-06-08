@@ -468,6 +468,19 @@ export class EarsivZipParserService {
   }
 
   /**
+   * Tek bir UBL XML'inden GEÇERLİ belge-no'yu çıkar (NaN/BILINMIYOR ise null).
+   * Bozuk kayıtların belge-no'sunu kayıtlı XML'den düzeltmek için kullanılır.
+   */
+  public extractFaturaNo(xml: string): string | null {
+    try {
+      const p = this.parseUblInvoice(xml);
+      const no = p?.faturaNo ? String(p.faturaNo).trim() : '';
+      if (no && !/^(NaN|BILINMIYOR|BILINMEYEN)$/i.test(no)) return no;
+    } catch { /* yoksay */ }
+    return null;
+  }
+
+  /**
    * UBL 2.1 Invoice XML'ini parse et.
    */
   private parseUblInvoice(xml: string): ParsedEarsivFatura | null {

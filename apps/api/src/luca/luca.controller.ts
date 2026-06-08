@@ -987,6 +987,21 @@ export class LucaController {
   }
 
   /**
+   * GEÇİCİ BELGE-NO ONARIMI (2026-06-08) — "NaN" belge-no'lu gerçek faturaların
+   * no'sunu kayıtlı XML'den düzeltir (silmez). `apply=true` değilse SADECE listeler.
+   * Temizlik bitince bu endpoint kaldırılacak.
+   */
+  @Post('agent/earsiv/repair-bozuk-no')
+  @HttpCode(HttpStatus.OK)
+  async earsivRepairBozukNo(
+    @Headers('x-agent-token') agentToken: string,
+    @Query('apply') apply?: string,
+  ) {
+    const tenantId = await this.resolveTenantFromAgentToken(agentToken);
+    return this.earsiv.repairBozukNo(tenantId, { dryRun: apply !== 'true' });
+  }
+
+  /**
    * KDV / İşletme defteri Excel upload endpoint'i — agent token ile çalışır.
    * `kdv-control/sessions/:id/excel-from-runner/:jobId` JWT guard'lı (panel kullanıcısı için);
    * agent JWT'ye sahip olmadığından bu yan endpoint'i mizan pattern'inde sağlıyoruz.
