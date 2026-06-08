@@ -1241,13 +1241,20 @@ export class PortalAutomationService {
     });
     if (!taxpayerId && linkedBeyan?.taxpayerId) taxpayerId = linkedBeyan.taxpayerId;
 
+    const belgeTuruKey = String(input.belgeTuru || '').toLocaleUpperCase('tr-TR');
+    const isBeyannameBelgesi =
+      belgeTuruKey.includes('GIB_BEYANNAME') ||
+      belgeTuruKey.includes('GİB_BEYANNAME') ||
+      belgeTuruKey.includes('GIB_TAHAKKUK') ||
+      belgeTuruKey.includes('GİB_TAHAKKUK');
+
     let documentId: string | null = null;
     if (taxpayerId && storageKey && sizeBytes != null) {
       const doc = await (this.prisma as any).document.create({
         data: {
           taxpayerId,
           title: input.title,
-          category: 'EVRAK',
+          category: isBeyannameBelgesi ? 'BEYANNAME' : 'EVRAK',
           mimeType,
           sizeBytes,
           s3Key: storageKey,

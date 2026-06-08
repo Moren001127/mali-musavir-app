@@ -9,11 +9,9 @@ import {
   ChevronDown,
   FileText,
   List,
-  Mail,
   Plus,
   Search,
   Smartphone,
-  Trash2,
   User,
   type LucideIcon,
 } from 'lucide-react';
@@ -22,8 +20,8 @@ import { api } from '@/lib/api';
 
 const GOLD = '#d4b876';
 const GOLD_SOFT = '#b8a06f';
-const GREEN = '#22c55e';
-const ROSE = '#fb7185';
+const GREEN = '#00a65a';
+const ROSE = '#e74c3c';
 const SKY = '#4f86c9';
 const AMBER = '#f59e0b';
 const CARD = 'rgba(255,255,255,0.022)';
@@ -330,19 +328,18 @@ function TaxpayerCard({
   const phone = primaryPhone(taxpayer);
   const email = primaryEmail(taxpayer);
   const type = typeLabel(taxpayer);
-  const statusColor = taxpayer.isActive ? GREEN : ROSE;
   const [statusMenuOpen, setStatusMenuOpen] = useState(false);
 
   return (
     <article
-      className="group grid gap-4 rounded-[7px] px-3 py-3 transition md:grid-cols-[112px_minmax(0,1fr)_116px]"
-      style={{ background: '#080808', border: `1px solid ${LINE}`, boxShadow: '0 8px 20px rgba(0,0,0,0.12)' }}
+      className="group grid gap-4 rounded-[4px] px-4 py-4 transition md:grid-cols-[112px_minmax(0,1fr)_84px]"
+      style={{ background: 'linear-gradient(180deg, #0e0f0f, #090909)', border: `1px solid rgba(255,255,255,0.095)`, boxShadow: '0 6px 16px rgba(0,0,0,0.14)' }}
     >
-      <div className="flex h-[112px] items-center justify-center overflow-hidden rounded-[5px]" style={{ background: 'linear-gradient(145deg, rgba(79,134,201,0.24), rgba(79,134,201,0.11))', border: '1px solid rgba(79,134,201,0.24)' }}>
+      <div className="flex h-[112px] items-center justify-center overflow-hidden rounded-[3px]" style={{ background: '#607987', border: '1px solid rgba(255,255,255,0.10)' }}>
         {taxpayer.logoUrl ? (
           <div className="h-full w-full bg-cover bg-center" style={{ backgroundImage: `url(${taxpayer.logoUrl})` }} />
         ) : (
-          <div className="flex h-[66px] w-[66px] items-center justify-center rounded-full text-[21px] font-black" style={{ background: 'rgba(255,255,255,0.16)', color: TEXT }}>
+          <div className="flex h-[62px] w-[62px] items-center justify-center rounded-full text-[20px] font-black" style={{ background: 'rgba(25,34,45,0.36)', color: '#fff' }}>
             {initials(taxpayer)}
           </div>
         )}
@@ -351,7 +348,7 @@ function TaxpayerCard({
       <div className="min-w-0">
         <div className="flex flex-wrap items-start gap-2.5">
           <Link href={`/panel/mukellefler/${taxpayer.id}`} className="min-w-0 flex-1">
-            <h2 className="truncate text-[18px] font-black leading-tight transition group-hover:text-[#d4b876]" style={{ color: TEXT, fontFamily: 'Manrope, Inter, system-ui, sans-serif', letterSpacing: 0 }}>{name}</h2>
+            <h2 className="truncate text-[17px] font-black leading-tight transition group-hover:text-[#d4b876]" style={{ color: TEXT, fontFamily: 'Inter, Manrope, system-ui, sans-serif', letterSpacing: 0 }}>{name}</h2>
           </Link>
           <span
             className="rounded-[5px] px-2 py-1 text-[11px] font-black"
@@ -378,8 +375,8 @@ function TaxpayerCard({
             type="button"
             onClick={() => setStatusMenuOpen((v) => !v)}
             disabled={busy}
-            className="inline-flex w-full items-center justify-center gap-1.5 rounded-[6px] px-3 py-2 text-[12px] font-black transition disabled:opacity-40 md:w-[118px]"
-            style={{ background: `${statusColor}22`, border: `1px solid ${statusColor}44`, color: statusColor }}
+            className="inline-flex w-full items-center justify-center gap-1.5 rounded-[4px] px-2 py-2 text-[12px] font-black transition disabled:opacity-40 md:w-[84px]"
+            style={{ background: taxpayer.isActive ? '#00a65a' : '#607987', border: '1px solid rgba(255,255,255,0.12)', color: '#fff' }}
           >
             <BadgeCheck size={14} /> {taxpayer.isActive ? 'Aktif' : 'Pasif'} <ChevronDown size={13} />
           </button>
@@ -407,11 +404,11 @@ function TaxpayerCard({
           type="button"
           onClick={onDelete}
           disabled={deleteBusy}
-          className="inline-flex w-full items-center justify-center gap-1.5 rounded-[6px] px-3 py-2 text-[12px] font-black transition hover:brightness-105 disabled:opacity-40 md:w-[118px]"
-          style={{ background: '#d81b60', border: '1px solid rgba(255,255,255,0.14)', color: '#fff' }}
+          className="inline-flex h-8 items-center justify-center rounded-[4px] px-3 text-[12px] font-semibold transition hover:brightness-105 disabled:opacity-40 md:w-[54px]"
+          style={{ background: '#d4145a', border: '1px solid rgba(255,255,255,0.10)', color: '#fff' }}
           title="Mükellefi sil"
         >
-          <Trash2 size={14} /> Sil
+          Sil
         </button>
       </div>
     </article>
@@ -444,30 +441,41 @@ function HattatPresenceIcon({ active, kind, title }: { active: boolean; kind: Ha
     <span
       title={`${title}: ${active ? 'tanımlı' : 'eksik'}`}
       aria-label={`${title}: ${active ? 'tanımlı' : 'eksik'}`}
-      className="inline-flex h-10 w-10 items-center justify-center rounded-[4px]"
+      className="inline-flex h-[40px] w-[42px] items-center justify-center rounded-[3px]"
       style={{
-        background: 'rgba(255,255,255,0.94)',
-        border: `1px solid ${active ? 'rgba(34,197,94,0.62)' : 'rgba(251,113,133,0.62)'}`,
+        background: active ? '#fbfbfb' : '#fff7f8',
+        border: `1px solid ${active ? 'rgba(0,0,0,0.16)' : 'rgba(231,76,60,0.26)'}`,
         color,
+        boxShadow: 'inset 0 1px 0 rgba(255,255,255,0.96), 0 1px 0 rgba(0,0,0,0.12)',
       }}
     >
       {kind === 'gib' && <GibMark color={color} />}
       {kind === 'sgk' && <span className="font-serif text-[11px] font-black leading-none">SGK</span>}
-      {kind === 'mail' && <Mail size={19} strokeWidth={2.8} />}
-      {kind === 'phone' && <Smartphone size={18} strokeWidth={2.8} />}
+      {kind === 'mail' && <EnvelopeMark color={color} />}
+      {kind === 'phone' && <Smartphone size={18} strokeWidth={2.55} />}
     </span>
   );
 }
 
 function GibMark({ color }: { color: string }) {
   return (
-    <svg viewBox="0 0 32 32" width="24" height="24" aria-hidden="true">
+    <svg viewBox="0 0 32 32" width="21" height="21" aria-hidden="true">
       <path
         d="M19.8 3.5c-6.8 2.3-11.2 8.2-11.2 14.9 0 4.1 1.6 7.7 4.2 10.2h5.2c-2.9-2.4-4.6-6-4.6-10.1 0-4.4 2.1-8.4 5.4-10.9l1 4.2h4.1L22 3.5h-2.2Z"
         fill={color}
       />
       <path d="M21.2 12.2h5.1v16.4h-5.1V12.2Z" fill={color} opacity="0.96" />
       <path d="M16.2 14.7h3.4v13.9h-3.4V14.7Z" fill={color} opacity="0.82" />
+    </svg>
+  );
+}
+
+function EnvelopeMark({ color }: { color: string }) {
+  return (
+    <svg viewBox="0 0 32 24" width="22" height="18" aria-hidden="true">
+      <path d="M3.2 3.2h25.6v17.6H3.2V3.2Z" fill={color} />
+      <path d="M4.7 5.1 16 13.1 27.3 5.1" fill="none" stroke="#fff" strokeWidth="2.1" strokeLinecap="round" strokeLinejoin="round" opacity="0.96" />
+      <path d="M4.8 20 13.1 12.8M27.2 20 18.9 12.8" fill="none" stroke="#fff" strokeWidth="1.7" strokeLinecap="round" opacity="0.78" />
     </svg>
   );
 }

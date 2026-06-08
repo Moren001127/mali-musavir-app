@@ -1,8 +1,8 @@
 'use client';
-import { Bell, ChevronDown, Users } from 'lucide-react';
+import { Bell, ChevronDown, Search, Users } from 'lucide-react';
 import Link from 'next/link';
-import { useEffect } from 'react';
-import { useRouter } from 'next/navigation';
+import { useEffect, useMemo, useRef, useState } from 'react';
+import { usePathname, useRouter } from 'next/navigation';
 import { useQuery, useQueryClient } from '@tanstack/react-query';
 import { api } from '@/lib/api';
 import SystemHealthBell from './SystemHealthBell';
@@ -20,9 +20,166 @@ function taxpayerLabel(t: TopbarTaxpayer): string {
   return (t.companyName || [t.firstName, t.lastName].filter(Boolean).join(' ') || t.taxNumber || 'Mükellef').trim();
 }
 
+function taxpayerInitials(t: TopbarTaxpayer): string {
+  const name = taxpayerLabel(t);
+  const parts = name.split(/\s+/).filter(Boolean);
+  if (parts.length >= 2) return `${parts[0][0]}${parts[1][0]}`.toLocaleUpperCase('tr-TR');
+  return name.slice(0, 2).toLocaleUpperCase('tr-TR');
+}
+
+function TopbarTaxpayerPicker({ taxpayers }: { taxpayers: TopbarTaxpayer[] }) {
+  const router = useRouter();
+  const pathname = usePathname();
+  const wrapperRef = useRef<HTMLDivElement | null>(null);
+  const searchRef = useRef<HTMLInputElement | null>(null);
+  const [open, setOpen] = useState(false);
+  const [search, setSearch] = useState('');
+
+  const selectedId = pathname.match(/\/panel\/mukellefler\/([^/]+)/)?.[1];
+  const selected = taxpayers.find((item) => item.id === selectedId);
+  const filtered = useMemo(() => {
+    const term = search.trim().toLocaleUpperCase('tr-TR');
+    const collator = new Intl.Collator('tr', { sensitivity: 'base' });
+    return taxpayers
+      .filter((item) => {
+        if (!term) return true;
+        return `${taxpayerLabel(item)} ${item.taxNumber || ''}`.toLocaleUpperCase('tr-TR').includes(term);
+      })
+      .sort((a, b) => collator.compare(taxpayerLabel(a), taxpayerLabel(b)))
+      .slice(0, 60);
+  }, [search, taxpayers]);
+
+  useEffect(() => {
+    if (!open) return;
+    const onMouseDown = (event: MouseEvent) => {
+      if (wrapperRef.current && !wrapperRef.current.contains(event.target as Node)) setOpen(false);
+    };
+    const onKeyDown = (event: KeyboardEvent) => {
+      if (event.key === 'Escape') setOpen(false);
+    };
+    window.addEventListener('mousedown', onMouseDown);
+    window.addEventListener('keydown', onKeyDown);
+    window.setTimeout(() => searchRef.current?.focus(), 40);
+    return () => {
+      window.removeEventListener('mousedown', onMouseDown);
+      window.removeEventListener('keydown', onKeyDown);
+    };
+  }, [open]);
+
+  const openTaxpayer = (id: string) => {
+    setOpen(false);
+    setSearch('');
+    router.push(`/panel/mukellefler/${id}`);
+  };
+
+  return (
+    <div ref={wrapperRef} className="relative hidden w-[430px] max-w-[46vw] md:block" title="Mükellef kartına git">
+      <button
+        type="button"
+        onClick={() => setOpen((value) => !value)}
+        className="group flex h-9 w-full items-center gap-2 rounded-[10px] border px-3 text-left outline-none transition"
+        style={{
+          background: open
+            ? 'linear-gradient(180deg, rgba(212,184,118,0.12), rgba(255,255,255,0.035))'
+            : 'linear-gradient(180deg, rgba(255,255,255,0.040), rgba(255,255,255,0.018))',
+          borderColor: open ? 'rgba(212,184,118,0.38)' : 'rgba(212,184,118,0.18)',
+          boxShadow: open ? '0 0 0 3px rgba(212,184,118,0.08)' : 'inset 0 1px 0 rgba(255,255,255,0.035)',
+          color: '#fafaf9',
+        }}
+      >
+        <span className="flex h-6 w-6 shrink-0 items-center justify-center rounded-[7px]" style={{ background: 'rgba(212,184,118,0.10)', color: '#d4b876' }}>
+          <Users size={15} />
+        </span>
+        <span className="min-w-0 flex-1">
+          <span className="block truncate text-[12.5px] font-black" style={{ color: '#f5f5f4' }}>
+            {selected ? taxpayerLabel(selected) : 'Mükellef Listesi'}
+          </span>
+        </span>
+        <ChevronDown size={14} className="shrink-0 transition" style={{ color: 'rgba(250,250,249,0.48)', transform: open ? 'rotate(180deg)' : 'rotate(0deg)' }} />
+      </button>
+
+      {open && (
+        <div
+          className="absolute left-0 top-[calc(100%+8px)] z-50 w-full overflow-hidden rounded-[12px] border"
+          style={{
+            background: 'rgba(13,13,12,0.98)',
+            borderColor: 'rgba(212,184,118,0.24)',
+            boxShadow: '0 24px 70px rgba(0,0,0,0.55), inset 0 1px 0 rgba(255,255,255,0.05)',
+          }}
+        >
+          <div className="border-b p-3" style={{ borderColor: 'rgba(255,255,255,0.07)', background: 'linear-gradient(180deg, rgba(212,184,118,0.09), rgba(255,255,255,0.018))' }}>
+            <div className="relative">
+              <Search size={14} className="pointer-events-none absolute left-3 top-1/2 -translate-y-1/2" style={{ color: 'rgba(212,184,118,0.72)' }} />
+              <input
+                ref={searchRef}
+                value={search}
+                onChange={(event) => setSearch(event.target.value)}
+                placeholder="Mükellef ara..."
+                className="h-9 w-full rounded-[9px] border bg-black/30 pl-9 pr-3 text-[12.5px] font-semibold outline-none transition placeholder:text-white/30"
+                style={{ borderColor: 'rgba(255,255,255,0.08)', color: '#f5f5f4' }}
+              />
+            </div>
+          </div>
+
+          <div className="max-h-[360px] overflow-y-auto p-1.5">
+            <button
+              type="button"
+              onClick={() => {
+                setOpen(false);
+                setSearch('');
+                router.push('/panel/mukellef-listesi');
+              }}
+              className="flex w-full items-center gap-2 rounded-[9px] px-3 py-2.5 text-left transition hover:bg-white/[0.055]"
+            >
+              <span className="flex h-8 w-8 items-center justify-center rounded-[8px]" style={{ background: 'rgba(212,184,118,0.12)', color: '#d4b876' }}>
+                <Users size={15} />
+              </span>
+              <span>
+                <span className="block text-[13px] font-black" style={{ color: '#ecd6a4' }}>Mükellef Listesi</span>
+                <span className="block text-[11px] font-semibold" style={{ color: 'rgba(245,245,244,0.42)' }}>Tüm listeye git</span>
+              </span>
+            </button>
+
+            {filtered.map((taxpayer) => {
+              const active = taxpayer.id === selectedId;
+              return (
+                <button
+                  key={taxpayer.id}
+                  type="button"
+                  onClick={() => openTaxpayer(taxpayer.id)}
+                  className="mt-1 flex w-full min-w-0 items-center gap-2 rounded-[9px] px-3 py-2.5 text-left transition hover:bg-white/[0.055]"
+                  style={{ background: active ? 'rgba(79,134,201,0.14)' : 'transparent', color: '#f5f5f4' }}
+                >
+                  <span
+                    className="flex h-8 w-8 shrink-0 items-center justify-center rounded-[8px] text-[11px] font-black"
+                    style={{ background: active ? 'rgba(79,134,201,0.24)' : 'rgba(255,255,255,0.055)', color: active ? '#9cc8ff' : 'rgba(245,245,244,0.74)' }}
+                  >
+                    {taxpayerInitials(taxpayer)}
+                  </span>
+                  <span className="min-w-0 flex-1">
+                    <span className="block truncate text-[13px] font-black">{taxpayerLabel(taxpayer)}</span>
+                    <span className="mt-0.5 block truncate text-[11px] font-semibold" style={{ color: 'rgba(245,245,244,0.42)' }}>
+                      {taxpayer.taxNumber || 'VKN/TCKN yok'}
+                    </span>
+                  </span>
+                </button>
+              );
+            })}
+
+            {filtered.length === 0 && (
+              <div className="px-3 py-8 text-center text-[12px] font-semibold" style={{ color: 'rgba(245,245,244,0.48)' }}>
+                Eşleşen mükellef bulunamadı.
+              </div>
+            )}
+          </div>
+        </div>
+      )}
+    </div>
+  );
+}
+
 export default function TopBar() {
   const qc = useQueryClient();
-  const router = useRouter();
   const { data: unread } = useQuery({
     queryKey: ['notifications', 'unread'],
     queryFn: () => api.get('/notifications/unread-count').then((r) => r.data),
@@ -71,29 +228,7 @@ export default function TopBar() {
         <p className="shrink-0 text-sm capitalize" style={{ color: 'rgba(250,250,249,0.42)' }}>
           {today}
         </p>
-        <label
-          className="relative hidden min-w-[280px] md:block"
-          title="Mükellef kartına git"
-        >
-          <Users size={15} className="pointer-events-none absolute left-3 top-1/2 -translate-y-1/2" style={{ color: 'rgba(212,184,118,0.78)' }} />
-          <select
-            value=""
-            onChange={(e) => {
-              const taxpayerId = e.target.value;
-              if (taxpayerId) router.push(`/panel/mukellefler/${taxpayerId}`);
-            }}
-            className="h-9 w-full appearance-none rounded-[8px] border bg-[#10100f] pl-9 pr-9 text-[12.5px] font-semibold outline-none"
-            style={{ borderColor: 'rgba(212,184,118,0.18)', color: 'rgba(250,250,249,0.74)', colorScheme: 'dark' }}
-          >
-            <option value="">Mükellef Listesi</option>
-            {taxpayers.map((taxpayer) => (
-              <option key={taxpayer.id} value={taxpayer.id}>
-                {taxpayerLabel(taxpayer)}
-              </option>
-            ))}
-          </select>
-          <ChevronDown size={14} className="pointer-events-none absolute right-3 top-1/2 -translate-y-1/2" style={{ color: 'rgba(250,250,249,0.45)' }} />
-        </label>
+        <TopbarTaxpayerPicker taxpayers={taxpayers} />
       </div>
 
       <div className="flex items-center gap-2">

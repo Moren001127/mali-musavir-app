@@ -107,6 +107,12 @@ const DIGER_GRUBU: BeyannameDef[] = [
   { key: 'eDefterPeriod',     kod: 'EDEFTER',   ad: 'E-Defter / E-Berat',     desc: 'Bilanço usulü için zorunlu',          tip: 'period' },
 ];
 
+const YILLIK_GRUBU: Array<{ value: Exclude<IncomeTaxType, null>; kod: string; ad: string; desc: string }> = [
+  { value: 'KURUMLAR', kod: 'KURUMLAR', ad: 'Kurumlar Vergisi', desc: 'Yıllık kurumlar vergisi beyannamesi' },
+  { value: 'GELIR', kod: 'GELIR', ad: 'Gelir Vergisi', desc: 'Yıllık gelir vergisi beyannamesi' },
+  { value: 'BASIT_USUL', kod: 'BASIT', ad: 'Basit Usul', desc: 'Basit usul yıllık beyan' },
+];
+
 /**
  * v1.37.1: Mükellefiyetler kartı — Hattat tarzı tüm beyanname türleri.
  * Backend: PUT /beyanname-takip/configs/:taxpayerId
@@ -168,6 +174,8 @@ export function MukellefiyetlerCard({
     onSuccess: () => {
       toast.success('Mükellefiyetler kaydedildi');
       qc.invalidateQueries({ queryKey: ['beyan-config-list'] });
+      qc.invalidateQueries({ queryKey: ['beyanname-takip'] });
+      qc.invalidateQueries({ queryKey: ['beyanname-takip-configs'] });
       qc.invalidateQueries({ queryKey: ['taxpayer-completeness', taxpayerId] });
     },
     onError: (e: any) => {
@@ -200,19 +208,10 @@ export function MukellefiyetlerCard({
         </span>
       </div>
 
-      {/* Yıllık Beyanname Tipi */}
-      <div className="mb-5 rounded-xl border p-3" style={{ background: CARD2, borderColor: LINE }}>
-        <div className="text-[11.5px] font-black uppercase tracking-wider" style={{ color: GOLD }}>Yıllık Beyanname Tipi</div>
-        <div className="mt-2 grid grid-cols-2 gap-1.5">
-          <PeriodChip selected={form.incomeTaxType === null} label="Yok" onClick={() => setForm({ ...form, incomeTaxType: null })} />
-          <PeriodChip selected={form.incomeTaxType === 'KURUMLAR'} label="Kurumlar V." onClick={() => setForm({ ...form, incomeTaxType: 'KURUMLAR' })} />
-          <PeriodChip selected={form.incomeTaxType === 'GELIR'} label="Gelir V." onClick={() => setForm({ ...form, incomeTaxType: 'GELIR' })} />
-          <PeriodChip selected={form.incomeTaxType === 'BASIT_USUL'} label="Basit Usul" onClick={() => setForm({ ...form, incomeTaxType: 'BASIT_USUL' })} />
-        </div>
-      </div>
-
-      {/* KDV Grubu */}
       <div className="grid gap-2 md:grid-cols-2 xl:grid-cols-3">
+        {YILLIK_GRUBU.map((item) => (
+          <YillikBeyanRow key={item.value} item={item} form={form} setForm={setForm} />
+        ))}
         {visibleDefs.map((item) => (
           <BeyanRow key={item.key as string} item={item} form={form} setForm={setForm} />
         ))}
@@ -229,6 +228,51 @@ export function MukellefiyetlerCard({
         >
           {saveMut.isPending ? <Loader2 size={14} className="animate-spin" /> : <Save size={14} />}
           Mükellefiyetleri Kaydet
+        </button>
+      </div>
+    </div>
+  );
+}
+
+function YillikBeyanRow({
+  item,
+  form,
+  setForm,
+}: {
+  item: { value: Exclude<IncomeTaxType, null>; kod: string; ad: string; desc: string };
+  form: BeyanConfig;
+  setForm: React.Dispatch<React.SetStateAction<BeyanConfig>>;
+}) {
+  const isActive = form.incomeTaxType === item.value;
+
+  return (
+    <div
+      className="rounded-[8px] border p-3 transition"
+      style={{
+        background: isActive ? 'rgba(95,207,142,0.085)' : '#111217',
+        borderColor: isActive ? GOOD_LN : 'rgba(255,255,255,0.095)',
+        boxShadow: isActive ? 'inset 0 1px 0 rgba(255,255,255,0.04)' : 'none',
+      }}
+    >
+      <div className="flex items-start justify-between gap-3">
+        <div className="min-w-0 flex-1">
+          <div className="flex items-center gap-2">
+            <span className="rounded px-1.5 py-0.5 text-[9.5px] font-bold tabular-nums" style={{ background: isActive ? GOOD : 'rgba(255,255,255,0.08)', color: isActive ? '#08100c' : MUTED }}>
+              {item.kod}
+            </span>
+            <div className="text-[12.5px] font-semibold" style={{ color: TEXT }}>{item.ad}</div>
+          </div>
+          <div className="mt-0.5 text-[11px]" style={{ color: MUTED }}>{item.desc}</div>
+        </div>
+        <button
+          type="button"
+          onClick={() => setForm((prev) => ({ ...prev, incomeTaxType: isActive ? null : item.value }))}
+          className="rounded-lg border px-3 py-1.5 text-[11px] font-black transition hover:brightness-110"
+          style={isActive
+            ? { borderColor: GOOD_LN, background: GOOD_SF, color: GOOD_BR }
+            : { borderColor: LINE, background: 'rgba(255,255,255,0.035)', color: MUTED }}
+        >
+          {isActive ? 'Aktif' : 'Kapalı'}
         </button>
       </div>
     </div>

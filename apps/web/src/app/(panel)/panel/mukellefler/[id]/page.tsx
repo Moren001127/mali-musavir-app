@@ -69,9 +69,9 @@ const GREEN = '#5fcf8e';
 const AMBER = '#f0b755';
 const RED = '#ef6b6b';
 
-const FIELD_CLS = 'h-10 w-full rounded-[10px] border border-white/10 bg-[#0c0d11] px-3 text-[12.5px] font-semibold text-[#f5f5f4] outline-none transition placeholder:text-white/28 focus:border-[#d4b876]/60 focus:bg-[#0e1014] focus:shadow-[0_0_0_3px_rgba(212,184,118,0.14)]';
+const FIELD_CLS = 'h-11 w-full rounded-[8px] border border-white/12 bg-[#0b0c10] px-3.5 text-[13px] font-bold text-[#f5f5f4] outline-none transition placeholder:text-white/28 focus:border-[#d4b876]/60 focus:bg-[#0e1014] focus:shadow-[0_0_0_3px_rgba(212,184,118,0.14)]';
 const SELECT_CLS = `${FIELD_CLS} cursor-pointer`;
-const TEXTAREA_CLS = 'w-full resize-none rounded-[10px] border border-white/10 bg-[#0c0d11] px-3 py-2.5 text-[12.5px] font-semibold text-[#f5f5f4] outline-none transition placeholder:text-white/28 focus:border-[#4f86c9]/60 focus:bg-[#0e1014] focus:shadow-[0_0_0_3px_rgba(79,134,201,0.15)]';
+const TEXTAREA_CLS = 'w-full resize-none rounded-[8px] border border-white/12 bg-[#0b0c10] px-3.5 py-3 text-[13px] font-bold text-[#f5f5f4] outline-none transition placeholder:text-white/28 focus:border-[#4f86c9]/60 focus:bg-[#0e1014] focus:shadow-[0_0_0_3px_rgba(79,134,201,0.15)]';
 
 const TAXPAYER_TYPES = [
   { value: 'TUZEL_KISI', label: 'Tüzel Kişi', detail: 'Şirket veya kurum kaydı' },
@@ -561,7 +561,7 @@ export default function MukellefDetayPage() {
       </header>
 
       <section className="overflow-hidden rounded-[8px] border" style={{ borderColor: LINE, background: CARD }}>
-        <nav className="flex flex-wrap border-b" style={{ borderColor: HAIR, background: 'rgba(255,255,255,0.018)' }}>
+        <nav className="grid grid-cols-2 border-b md:grid-cols-4 xl:grid-cols-8" style={{ borderColor: HAIR, background: 'linear-gradient(180deg, rgba(255,255,255,0.035), rgba(255,255,255,0.012))' }}>
           {visibleTabs.map((t) => {
             const Icon = t.icon;
             const active = activeTab === t.key;
@@ -570,16 +570,16 @@ export default function MukellefDetayPage() {
                 key={t.key}
                 type="button"
                 onClick={() => setActiveTab(t.key)}
-                className="inline-flex min-h-12 items-center gap-2 border-r px-4 text-[13px] font-semibold transition hover:bg-white/[0.035]"
+                className="inline-flex min-h-[58px] items-center justify-center gap-2 border-r px-3 text-[13.5px] font-black transition hover:bg-white/[0.045]"
                 style={{
                   borderColor: HAIR,
                   color: active ? TEXT : MUTED,
-                  background: active ? 'rgba(79,134,201,0.14)' : 'transparent',
-                  boxShadow: active ? `inset 0 3px 0 ${STEEL}` : 'none',
+                  background: active ? 'linear-gradient(180deg, rgba(79,134,201,0.19), rgba(79,134,201,0.10))' : 'transparent',
+                  boxShadow: active ? `inset 0 4px 0 ${STEEL}, inset 0 -1px 0 rgba(255,255,255,0.05)` : 'none',
                 }}
               >
-                <Icon size={16} style={{ color: active ? STEEL_BR : MUTED }} />
-                {t.label}
+                <Icon size={18} style={{ color: active ? STEEL_BR : MUTED }} />
+                <span className="truncate">{t.label}</span>
               </button>
             );
           })}
@@ -800,7 +800,7 @@ function BilgilerTab({
   const visible = sections
     .filter((s) => s.show && !hiddenSectionIds.has(s.id))
     .flatMap((s) => (s.id === 'iletisim' ? [s, ...credentialSections.filter((c) => c.show)] : [s]));
-  const [open, setOpen] = useState<BilgiSectionId | null>('musteri');
+  const [open, setOpen] = useState<BilgiSectionId | null>(null);
 
   const renderSection = (section: BilgiSectionId) => {
     if (section === 'musteri') {
@@ -1173,8 +1173,10 @@ function AccordionRow({
         <ChevronRight size={18} className="transition-transform" style={{ color: MUTED, transform: open ? 'rotate(90deg)' : 'rotate(0deg)' }} />
       </button>
       {open && (
-        <div className="border-t p-4 sm:p-5" style={{ borderColor: HAIR, background: '#101116' }}>
-          {children}
+        <div className="border-t p-4 sm:p-5" style={{ borderColor: HAIR, background: 'linear-gradient(180deg, #111217, #0d0e12)' }}>
+          <div className="rounded-[10px] border p-4 sm:p-5" style={{ borderColor: 'rgba(212,184,118,0.18)', background: 'linear-gradient(180deg, rgba(255,255,255,0.032), rgba(255,255,255,0.014))', boxShadow: 'inset 3px 0 0 rgba(212,184,118,0.45), 0 10px 30px rgba(0,0,0,0.24)' }}>
+            {children}
+          </div>
         </div>
       )}
     </section>
@@ -1183,10 +1185,10 @@ function AccordionRow({
 
 function FormCluster({ title, children }: { title: string; children: React.ReactNode }) {
   return (
-    <div className="rounded-[8px] border p-3.5" style={{ borderColor: 'rgba(212,184,118,0.20)', background: 'rgba(255,255,255,0.022)' }}>
-      <div className="mb-3 flex items-center gap-2 border-b pb-2" style={{ borderColor: HAIR }}>
-        <span className="h-1.5 w-1.5 rounded-full" style={{ background: GOLD }} />
-        <span className="text-[10.5px] font-black uppercase tracking-[0.10em]" style={{ color: GOLD_BR }}>{title}</span>
+    <div className="rounded-[10px] border p-4 sm:p-5" style={{ borderColor: 'rgba(212,184,118,0.22)', background: 'linear-gradient(180deg, rgba(255,255,255,0.045), rgba(255,255,255,0.020))', boxShadow: 'inset 0 1px 0 rgba(255,255,255,0.035)' }}>
+      <div className="mb-4 flex items-center gap-2 border-b pb-3" style={{ borderColor: HAIR }}>
+        <span className="h-2 w-2 rounded-full" style={{ background: GOLD, boxShadow: '0 0 0 4px rgba(212,184,118,0.10)' }} />
+        <span className="text-[12px] font-black uppercase tracking-[0.12em]" style={{ color: GOLD_BR }}>{title}</span>
       </div>
       {children}
     </div>
@@ -1551,6 +1553,7 @@ type MukellefDocument = {
   sizeBytes?: number | null;
   updatedAt?: string;
   createdAt?: string;
+  tags?: Array<{ tag?: string | null }>;
 };
 
 function DosyalarTab({ taxpayerId }: { taxpayerId: string }) {
@@ -1561,12 +1564,30 @@ function DosyalarTab({ taxpayerId }: { taxpayerId: string }) {
   const [category, setCategory] = useState<DocumentCategory>(DocumentCategory.EVRAK);
   const [progress, setProgress] = useState(0);
   const [busyDocId, setBusyDocId] = useState<string | null>(null);
+  const [viewBusyDocId, setViewBusyDocId] = useState<string | null>(null);
+  const [previewDoc, setPreviewDoc] = useState<{ url: string; title: string; subtitle: string; mimeType?: string | null; docKey: string } | null>(null);
+  const [mounted, setMounted] = useState(false);
 
   const { data: documents = [], isLoading } = useQuery<MukellefDocument[]>({
     queryKey: ['documents', 'taxpayer', taxpayerId],
     queryFn: () => documentsApi.findByTaxpayer(taxpayerId),
     enabled: !!taxpayerId,
   });
+
+  const manualDocuments = useMemo(() => documents.filter(isManualMukellefDocument), [documents]);
+
+  useEffect(() => {
+    setMounted(true);
+  }, []);
+
+  useEffect(() => {
+    if (!previewDoc) return;
+    const onKey = (event: KeyboardEvent) => {
+      if (event.key === 'Escape') setPreviewDoc(null);
+    };
+    window.addEventListener('keydown', onKey);
+    return () => window.removeEventListener('keydown', onKey);
+  }, [previewDoc]);
 
   const uploadMut = useMutation({
     mutationFn: async () => {
@@ -1577,7 +1598,7 @@ function DosyalarTab({ taxpayerId }: { taxpayerId: string }) {
         title: cleanTitle,
         category,
         file,
-        tags: [],
+        tags: ['MANUEL_EVRAK'],
         onProgress: setProgress,
       });
       if (notes.trim()) {
@@ -1593,7 +1614,12 @@ function DosyalarTab({ taxpayerId }: { taxpayerId: string }) {
       setProgress(0);
       qc.invalidateQueries({ queryKey: ['documents', 'taxpayer', taxpayerId] });
     },
-    onError: (e: any) => toast.error(e?.response?.data?.message || e?.message || 'Evrak yüklenemedi'),
+    onError: (e: any) => {
+      const message = e?.response?.data?.message || e?.message || 'Evrak yüklenemedi';
+      toast.error(message === 'Failed to fetch' || message === 'Network Error'
+        ? 'Evrak yüklenemedi. Sunucuya erişim veya dosya türü kontrol edilmeli.'
+        : message);
+    },
   });
 
   const deleteMut = useMutation({
@@ -1619,6 +1645,26 @@ function DosyalarTab({ taxpayerId }: { taxpayerId: string }) {
     }
   };
 
+  const previewDocument = async (doc: MukellefDocument) => {
+    setViewBusyDocId(doc.id);
+    try {
+      const res = await documentsApi.getDownloadUrl(doc.id);
+      const url = res?.url || res?.downloadUrl;
+      if (!url) throw new Error('Görüntüleme adresi alınamadı');
+      setPreviewDoc({
+        url,
+        title: doc.title,
+        subtitle: `${documentCategoryLabel(doc.category)} · ${formatBytes(doc.sizeBytes)} · ${fmtDateTR((doc.updatedAt || doc.createdAt || '').substring(0, 10))}`,
+        mimeType: doc.mimeType,
+        docKey: doc.id,
+      });
+    } catch (e: any) {
+      toast.error(e?.response?.data?.message || e?.message || 'Evrak açılamadı');
+    } finally {
+      setViewBusyDocId(null);
+    }
+  };
+
   return (
     <div className="space-y-4">
       <div className="rounded-[8px] border p-4" style={{ borderColor: HAIR, background: CARD2 }}>
@@ -1636,7 +1682,6 @@ function DosyalarTab({ taxpayerId }: { taxpayerId: string }) {
           <Field label="Dosya">
             <input
               type="file"
-              accept="application/pdf,image/*,.doc,.docx,.xls,.xlsx,.txt,.csv,.zip"
               onChange={(e) => setFile(e.target.files?.[0] || null)}
               className={FIELD_CLS}
               style={{ colorScheme: 'dark' }}
@@ -1646,7 +1691,6 @@ function DosyalarTab({ taxpayerId }: { taxpayerId: string }) {
             <select value={category} onChange={(e) => setCategory(e.target.value as DocumentCategory)} className={SELECT_CLS} style={{ colorScheme: 'dark' }}>
               <option value={DocumentCategory.EVRAK}>Evrak</option>
               <option value={DocumentCategory.SOZLESME}>Sözleşme</option>
-              <option value={DocumentCategory.BEYANNAME}>Beyanname</option>
               <option value={DocumentCategory.FATURA}>Fatura</option>
               <option value={DocumentCategory.DIGER}>Diğer</option>
             </select>
@@ -1684,12 +1728,12 @@ function DosyalarTab({ taxpayerId }: { taxpayerId: string }) {
           <div className="flex items-center gap-2 px-4 py-8 text-[13px]" style={{ color: MUTED }}>
             <Loader2 size={15} className="animate-spin" /> Evraklar yükleniyor...
           </div>
-        ) : documents.length === 0 ? (
+        ) : manualDocuments.length === 0 ? (
           <div className="px-4 py-8 text-center text-[13px]" style={{ color: MUTED }}>Bu mükellef için evrak yüklenmedi.</div>
         ) : (
           <div className="divide-y" style={{ borderColor: HAIR }}>
-            {documents.map((doc) => (
-              <div key={doc.id} className="grid gap-3 px-4 py-3 md:grid-cols-[minmax(0,1fr)_180px_96px] md:items-center">
+            {manualDocuments.map((doc) => (
+              <div key={doc.id} className="grid gap-3 px-4 py-3 md:grid-cols-[minmax(0,1fr)_180px_138px] md:items-center">
                 <div className="min-w-0">
                   <div className="truncate text-[13px] font-bold" style={{ color: TEXT }}>{doc.title}</div>
                   <div className="mt-1 truncate text-[11.5px]" style={{ color: doc.notes ? MUTED : FAINT }}>
@@ -1701,6 +1745,16 @@ function DosyalarTab({ taxpayerId }: { taxpayerId: string }) {
                   <div className="mt-0.5">{fmtDateTR((doc.updatedAt || doc.createdAt || '').substring(0, 10))}</div>
                 </div>
                 <div className="flex justify-start gap-2 md:justify-end">
+                  <button
+                    type="button"
+                    onClick={() => previewDocument(doc)}
+                    disabled={viewBusyDocId === doc.id}
+                    className="inline-flex h-9 w-9 items-center justify-center rounded-[8px] border"
+                    style={{ borderColor: STEEL_LN, background: STEEL_SF, color: STEEL_BR }}
+                    title="Görüntüle"
+                  >
+                    {viewBusyDocId === doc.id ? <Loader2 size={14} className="animate-spin" /> : <Eye size={14} />}
+                  </button>
                   <button
                     type="button"
                     onClick={() => downloadDocument(doc.id)}
@@ -1728,8 +1782,71 @@ function DosyalarTab({ taxpayerId }: { taxpayerId: string }) {
           </div>
         )}
       </div>
+
+      {mounted && previewDoc && createPortal((
+        <div
+          className="fixed inset-0 z-[9999] flex items-center justify-center p-3 sm:p-4"
+          style={{ background: 'rgba(0,0,0,0.72)' }}
+          onClick={() => setPreviewDoc(null)}
+        >
+          <div
+            className="flex h-[min(92vh,900px)] w-full max-w-[1120px] flex-col overflow-hidden rounded-[14px]"
+            style={{ background: CARD2, border: `1px solid ${LINE}` }}
+            onClick={(e) => e.stopPropagation()}
+          >
+            <div className="flex items-center justify-between gap-3 px-4 py-3" style={{ borderBottom: `1px solid ${HAIR}` }}>
+              <div className="min-w-0">
+                <div className="truncate text-[14px] font-semibold" style={{ color: TEXT }}>{previewDoc.title}</div>
+                <div className="mt-0.5 truncate text-[11.5px]" style={{ color: FAINT }}>{previewDoc.subtitle}</div>
+              </div>
+              <div className="flex shrink-0 items-center gap-2">
+                <a
+                  href={previewDoc.url}
+                  download={previewDoc.title.replace(/[\\/:*?"<>|]/g, '_')}
+                  className="inline-flex h-9 w-9 items-center justify-center rounded-[9px]"
+                  title="Evrakı indir"
+                  style={{ background: STEEL_SF, border: `1px solid ${STEEL_LN}`, color: STEEL_BR }}
+                >
+                  <Download size={15} />
+                </a>
+                <button
+                  type="button"
+                  onClick={() => setPreviewDoc(null)}
+                  className="inline-flex h-9 w-9 items-center justify-center rounded-[9px]"
+                  title="Kapat"
+                  style={{ background: 'rgba(244,63,94,0.10)', border: '1px solid rgba(244,63,94,0.24)', color: '#fda4af' }}
+                >
+                  <X size={16} />
+                </button>
+              </div>
+            </div>
+            {previewDoc.mimeType?.startsWith('image/') ? (
+              <div className="min-h-0 flex-1 overflow-auto bg-white p-4">
+                <img src={previewDoc.url} alt={previewDoc.title} className="mx-auto max-h-full max-w-full object-contain" />
+              </div>
+            ) : (
+              <iframe key={previewDoc.docKey} title={previewDoc.title} src={previewDoc.url} className="min-h-0 flex-1 bg-white" />
+            )}
+          </div>
+        </div>
+      ), document.body)}
     </div>
   );
+}
+
+function isManualMukellefDocument(doc: MukellefDocument): boolean {
+  const title = String(doc.title || '').toLocaleUpperCase('tr-TR');
+  const notes = String(doc.notes || '').toLocaleUpperCase('tr-TR');
+  const category = String(doc.category || '').toLocaleUpperCase('tr-TR');
+  const tags = (doc.tags || []).map((item) => String(item.tag || '').toLocaleUpperCase('tr-TR')).join(' ');
+  const combined = `${title} ${notes} ${category} ${tags}`;
+  if (category === String(DocumentCategory.BEYANNAME).toLocaleUpperCase('tr-TR')) return false;
+  if (title.startsWith('DBS_')) return false;
+  if (combined.includes('GIB_BEYANNAME') || combined.includes('GİB_BEYANNAME')) return false;
+  if (combined.includes('GIB_TAHAKKUK') || combined.includes('GİB_TAHAKKUK')) return false;
+  if (combined.includes('PORTALDAN OTOMATIK') || combined.includes('PORTALDAN OTOMATİK')) return false;
+  if (combined.includes('PORTAL-AUTOMATION') || combined.includes('OTOMATIK') || combined.includes('OTOMATİK')) return false;
+  return true;
 }
 
 function documentCategoryLabel(category?: string | null): string {
@@ -1855,7 +1972,7 @@ function BeyannamelerTab({ taxpayerId }: { taxpayerId: string }) {
         </Link>
       </div>
 
-      <div className="rounded-[8px] border" style={{ borderColor: HAIR, background: CARD2 }}>
+      <div className="hidden rounded-[8px] border" style={{ borderColor: HAIR, background: CARD2 }}>
         <div className="grid grid-cols-[minmax(150px,1fr)_minmax(150px,1.1fr)_110px_120px_48px] gap-3 border-b px-3 py-2 text-[10px] font-black uppercase tracking-[0.10em]" style={{ borderColor: HAIR, color: FAINT }}>
           <span>Beyanname</span>
           <span>Donem</span>
@@ -1899,22 +2016,40 @@ function BeyannamelerTab({ taxpayerId }: { taxpayerId: string }) {
         </div>
       </div>
 
-      <div className="hidden overflow-hidden rounded-xl border" style={{ borderColor: HAIR }}>
-        <table className="w-full table-fixed border-collapse text-left">
+      <div className="overflow-hidden rounded-[6px] border" style={{ borderColor: 'rgba(255,255,255,0.12)', background: '#101114' }}>
+        <div className="border-b px-4 py-3" style={{ borderColor: HAIR, background: 'linear-gradient(180deg, rgba(255,255,255,0.045), rgba(255,255,255,0.018))' }}>
+          <div className="flex flex-wrap items-center justify-between gap-3">
+            <div>
+              <div className="text-[13px] font-black" style={{ color: TEXT }}>E-Beyannameler</div>
+              <div className="mt-0.5 text-[11px] font-semibold" style={{ color: FAINT }}>Beyannameler modülünden gelen kayıtlar</div>
+            </div>
+            <span className="rounded-[5px] border px-2.5 py-1 text-[11px] font-black" style={{ borderColor: STEEL_LN, background: STEEL_SF, color: STEEL_BR }}>
+              {sorted.length} kayıt
+            </span>
+          </div>
+        </div>
+        <div className="overflow-x-auto">
+        <table className="w-full min-w-[1040px] border-collapse text-left">
           <colgroup>
+            <col style={{ width: '42px' }} />
             <col style={{ width: '18%' }} />
-            <col style={{ width: '26%' }} />
             <col style={{ width: '18%' }} />
-            <col style={{ width: '24%' }} />
-            <col style={{ width: '14%' }} />
+            <col style={{ width: '16%' }} />
+            <col style={{ width: '16%' }} />
+            <col style={{ width: '13%' }} />
+            <col style={{ width: '12%' }} />
           </colgroup>
           <thead>
-            <tr className="text-[10px] font-bold uppercase tracking-wider" style={{ color: FAINT, background: 'rgba(255,255,255,0.02)' }}>
-              <th className="px-3 py-2.5 font-bold">Beyanname Türü</th>
-              <th className="px-3 py-2.5 font-bold">Beyanname Dönemi</th>
-              <th className="px-3 py-2.5 font-bold">Tür</th>
-              <th className="px-3 py-2.5 text-right font-bold">Tutar</th>
-              <th className="px-3 py-2.5 text-right font-bold">İşlem</th>
+            <tr className="text-[10.5px] font-black uppercase tracking-[0.12em]" style={{ color: FAINT, background: 'rgba(255,255,255,0.032)' }}>
+              <th className="px-3 py-3 font-black">
+                <span className="block h-3.5 w-3.5 rounded-[3px] border" style={{ borderColor: LINE }} />
+              </th>
+              <th className="px-3 py-3 font-black">Beyanname Dönemi</th>
+              <th className="px-3 py-3 font-black">Beyanname Türü</th>
+              <th className="px-3 py-3 font-black">Belge Mahiyeti</th>
+              <th className="px-3 py-3 font-black">Tür</th>
+              <th className="px-3 py-3 text-right font-black">Tutar</th>
+              <th className="px-3 py-3 text-right font-black">Aç</th>
             </tr>
           </thead>
           <tbody>
@@ -1926,25 +2061,33 @@ function BeyannamelerTab({ taxpayerId }: { taxpayerId: string }) {
               const isBeyan = kind === 'beyanname';
               return (
                 <tr key={`${row.id}:${kind}`} className="border-t transition hover:bg-white/[0.02]" style={{ borderColor: HAIR }}>
-                  <td className="px-3 py-2.5 align-middle">
-                    <span className="inline-flex items-center rounded-md border px-2 py-1 text-[10.5px] font-bold" style={{ borderColor: STEEL_LN, background: STEEL_SF, color: STEEL_BR }}>
-                      {BEYAN_TIPI_LABEL[row.beyanTipi] || row.beyanTipi}
-                    </span>
+                  <td className="px-3 py-3 align-middle">
+                    <span className="block h-3.5 w-3.5 rounded-[3px] border" style={{ borderColor: LINE, background: 'rgba(255,255,255,0.02)' }} />
                   </td>
-                  <td className="px-3 py-2.5 align-middle">
-                    <div className="truncate text-[13px] font-semibold" style={{ color: TEXT }}>{fmtBeyanDonem(row.donem)}</div>
-                    <div className="mt-0.5 truncate text-[11px]" style={{ color: FAINT }}>
+                  <td className="px-3 py-3 align-middle">
+                    <div className="truncate text-[13.5px] font-black" style={{ color: TEXT }}>{fmtBeyanDonem(row.donem)}</div>
+                    <div className="mt-0.5 truncate text-[11px] font-semibold" style={{ color: FAINT }}>
                       {row.beyanTarihi ? `Beyan: ${fmtDateTR(row.beyanTarihi.substring(0, 10))}` : 'Beyan tarihi yok'}
                       {row.onayNo ? ` · Onay: ${row.onayNo}` : ''}
                     </div>
                   </td>
-                  <td className="px-3 py-2.5 align-middle">
-                    <span className="inline-flex items-center rounded px-1.5 py-0.5 text-[9.5px] font-bold uppercase tracking-wide" style={isBeyan ? { background: STEEL_SF, color: STEEL_BR } : { background: 'rgba(212,184,118,0.12)', color: GOLD }}>{tur}</span>
+                  <td className="px-3 py-3 align-middle">
+                    <span className="inline-flex items-center rounded-[5px] border px-2.5 py-1 text-[11.5px] font-black" style={{ borderColor: STEEL_LN, background: STEEL_SF, color: STEEL_BR }}>
+                      {BEYAN_TIPI_LABEL[row.beyanTipi] || row.beyanTipi}
+                    </span>
                   </td>
-                  <td className="px-3 py-2.5 text-right align-middle text-[13px] font-bold tabular-nums" style={{ color: isBeyan ? FAINT : TEXT }}>
-                    {isBeyan ? '—' : (row.tahakkukTutari != null ? `${fmtTutar(row.tahakkukTutari)} ₺` : '—')}
+                  <td className="px-3 py-3 align-middle text-[12px] font-black tracking-wide" style={{ color: MUTED }}>
+                    ASIL
                   </td>
-                  <td className="px-3 py-2.5 text-right align-middle">
+                  <td className="px-3 py-3 align-middle">
+                    <span className="inline-flex min-w-[118px] justify-center rounded-[4px] px-2.5 py-1 text-[10.5px] font-black uppercase tracking-wide" style={isBeyan ? { background: 'rgba(79,134,201,0.16)', color: STEEL_BR } : { background: 'rgba(212,184,118,0.14)', color: GOLD_BR }}>
+                      {tur}
+                    </span>
+                  </td>
+                  <td className="px-3 py-3 text-right align-middle text-[13.5px] font-black tabular-nums" style={{ color: isBeyan ? FAINT : TEXT }}>
+                    {isBeyan ? '—' : (row.tahakkukTutari != null ? `${fmtTutar(row.tahakkukTutari)} TL` : '—')}
+                  </td>
+                  <td className="px-3 py-3 text-right align-middle">
                     <DocBtn label={hasFile ? 'Görüntüle' : 'PDF yok'} disabled={!hasFile} busy={busy} onClick={() => openDoc(row, kind)} muted={!isBeyan} />
                   </td>
                 </tr>
@@ -1952,6 +2095,7 @@ function BeyannamelerTab({ taxpayerId }: { taxpayerId: string }) {
             })}
           </tbody>
         </table>
+        </div>
       </div>
 
       {mounted && preview && createPortal((
