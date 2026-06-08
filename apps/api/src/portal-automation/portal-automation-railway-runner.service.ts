@@ -233,6 +233,91 @@ export class PortalAutomationRailwayRunnerService implements OnModuleInit {
     return true;
   }
 
+  async validateCredentialNow(tenantId: string, credential: RunnerCredential & { ownerType?: string; ownerId?: string; taxpayerId?: string | null }) {
+    const provider = String(credential?.provider || '').toUpperCase();
+    const ownerType = String(credential?.ownerType || 'TAXPAYER');
+    const ownerId = String(credential?.ownerId || credential?.taxpayerId || '');
+    const checkedAt = new Date();
+
+    if (!ownerId || !['GIB_IVD', 'SGK_EBILDIRGE'].includes(provider)) {
+      return { checked: false, ok: false, error: 'Dogrulama kapsami disinda' };
+    }
+
+    try {
+      await this.validatePortalLogin(provider as 'GIB_IVD' | 'SGK_EBILDIRGE', credential);
+      await this.updateCredentialValidation(tenantId, provider, ownerType, ownerId, true, null, checkedAt);
+      return { checked: true, ok: true, checkedAt: checkedAt.toISOString() };
+    } catch (err: any) {
+      const error = this.compact(String(err?.message || err || 'Portal girisi dogrulanamadi')).slice(0, 1000);
+      await this.updateCredentialValidation(tenantId, provider, ownerType, ownerId, false, error, checkedAt).catch(() => {});
+      return { checked: true, ok: false, checkedAt: checkedAt.toISOString(), error };
+    }
+  }
+
+  private async updateCredentialValidation(
+    tenantId: string,
+    provider: string,
+    ownerType: string,
+    ownerId: string,
+    ok: boolean,
+    error: string | null,
+    checkedAt: Date,
+  ) {
+    await (this.prisma as any).portalCredential.updateMany({
+      where: { tenantId, provider, ownerType, ownerId },
+      data: ok
+        ? { lastCheckedAt: checkedAt, lastSuccessAt: checkedAt, lastError: null }
+        : { lastCheckedAt: checkedAt, lastError: error },
+    });
+  }
+
+  private async validatePortalLogin(provider: 'GIB_IVD' | 'SGK_EBILDIRGE', credential: RunnerCredential) {
+    const jobType: PortalJobType = provider === 'SGK_EBILDIRGE' ? 'SGK_HIZMET_LISTESI' : 'E_TEBLIGAT_CHECK';
+    const isSgk = provider === 'SGK_EBILDIRGE';
+
+    if (isSgk) {
+      if (!(credential.username || credential.userCode) || !credential.workplaceCode || !credential.password || !credential.secondaryPassword) {
+        throw new Error('SGK kullanici adi, e-kod, sistem sifresi ve isyeri sifresi eksik');
+      }
+    } else if (!credential.userCode || !credential.password || !credential.secondaryPassword) {
+      throw new Error('Vergi dairesi kullanici kodu, parola ve sifre eksik');
+    }
+
+    const browser = await pwChromium.launch({
+      executablePath: process.env.PLAYWRIGHT_CHROMIUM_EXECUTABLE_PATH || process.env.CHROMIUM_PATH,
+      headless: this.browserHeadless(),
+      args: this.browserLaunchArgs(),
+    });
+
+    try {
+      const context = await browser.newContext({
+        acceptDownloads: false,
+        viewport: { width: 1280, height: 900 },
+        locale: 'tr-TR',
+        timezoneId: 'Europe/Istanbul',
+        userAgent:
+          'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/124.0.0.0 Safari/537.36',
+      });
+      await this.applyBrowserStealth(context);
+      const page = await context.newPage();
+      page.setDefaultTimeout(12_000);
+
+      await page.goto(this.loginUrlForJob(jobType), { waitUntil: 'domcontentloaded', timeout: 45_000 });
+      await this.fillGenericPortalLogin(page, this.loginValuesForJob(jobType, credential));
+      const solvedCaptcha = await this.tryAutoSolveCaptcha(page).catch(() => false);
+      if (!solvedCaptcha) {
+        await this.submitLogin(page);
+      }
+      await page.waitForLoadState('domcontentloaded', { timeout: 20_000 }).catch(() => {});
+      await page.waitForTimeout(1500);
+      await this.assertLoggedIn(page);
+      await this.assertGenericPortalLoginResult(page);
+      await context.close().catch(() => {});
+    } finally {
+      await browser.close().catch(() => {});
+    }
+  }
+
   private async pickPendingJobs() {
     const where: any = {
       status: 'pending',
@@ -1064,6 +1149,21 @@ export class PortalAutomationRailwayRunnerService implements OnModuleInit {
       }
     }
     if (!filled) {
+      const visibleInputs = page.locator('input:not([type="hidden"]):not([type="submit"]):not([type="button"]):not([type="image"])');
+      const count = Math.min(await visibleInputs.count().catch(() => 0), 12);
+      for (let i = 0; i < count; i++) {
+        const inp = visibleInputs.nth(i);
+        if (!(await inp.isVisible().catch(() => false))) continue;
+        const type = String(await inp.getAttribute('type').catch(() => '') || '').toLowerCase();
+        if (type === 'password') continue;
+        const value = await inp.inputValue().catch(() => '');
+        if (String(value || '').trim()) continue;
+        await inp.fill(captchaText).catch(() => null);
+        filled = true;
+        break;
+      }
+    }
+    if (!filled) {
       this.logger.warn('[eBeyanname] CAPTCHA input bulunamadi');
       return false;
     }
@@ -1134,6 +1234,24 @@ export class PortalAutomationRailwayRunnerService implements OnModuleInit {
     const reason = alertText || (TEXT.loginError.test(body) ? 'GIB giris hata mesaji algilandi' : 'login formu hala gorunuyor');
     if (TEXT.captcha.test(body) || TEXT.loginError.test(body) || loginFormVisible) {
       throw new Error(`CAPTCHA veya sifre reddedildi: ${this.compact(reason)}`);
+    }
+  }
+
+  private async assertGenericPortalLoginResult(page: any) {
+    const body = await this.bodyText(page);
+    const passwordInputs = page.locator('input[type="password"]');
+    let visiblePasswordInputs = 0;
+    const count = Math.min(await passwordInputs.count().catch(() => 0), 8);
+    for (let i = 0; i < count; i++) {
+      if (await passwordInputs.nth(i).isVisible().catch(() => false)) visiblePasswordInputs++;
+    }
+    if (visiblePasswordInputs === 0) return;
+
+    const alertText = await this.visibleAlertText(page);
+    const loginLikeText = /giri[sş]|kullan[ıi]c[ıi]|sifre|şifre|parola|e-bildirge|güvenlik|guvenlik/i.test(body);
+    if (TEXT.captcha.test(body) || TEXT.loginError.test(body) || loginLikeText) {
+      const reason = alertText || (TEXT.loginError.test(body) ? 'Portal giris hata mesaji algilandi' : 'login formu hala gorunuyor');
+      throw new Error(`Portal girisi dogrulanamadi: ${this.compact(reason)}`);
     }
   }
 

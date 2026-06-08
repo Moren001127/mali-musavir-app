@@ -38,6 +38,28 @@ export interface PortalCredentialPublic {
   lastError: string | null;
   updatedAt: string;
   notes: string | null;
+  validation?: {
+    checked: boolean;
+    ok: boolean;
+    checkedAt?: string;
+    error?: string;
+  };
+}
+
+export interface PortalCredentialInsightItem {
+  id: string;
+  name: string;
+  taxNumber: string | null;
+  taxOffice: string | null;
+  reason: string | null;
+}
+
+export interface PortalCredentialInsightCard {
+  key: 'sgk_same' | 'gib_same' | 'gib_wrong' | 'sgk_wrong' | 'workplace_iz' | string;
+  label: string;
+  tone: 'blue' | 'amber' | string;
+  count: number;
+  taxpayers: PortalCredentialInsightItem[];
 }
 
 export interface PortalJob {
@@ -138,6 +160,9 @@ export const portalAutomationApi = {
   credentials: () =>
     api.get<{ summary: PortalSummary['credentials']; rows: PortalCredentialPublic[] }>('/portal-automation/credentials')
       .then((r) => r.data),
+  credentialInsights: () =>
+    api.get<{ cards: PortalCredentialInsightCard[] }>('/portal-automation/credential-insights')
+      .then((r) => r.data),
   saveCredential: (data: {
     provider: PortalProvider;
     taxpayerId?: string;
@@ -149,6 +174,7 @@ export const portalAutomationApi = {
     secondaryPassword?: string;
     notes?: string;
     isActive?: boolean;
+    validate?: boolean;
   }) => api.post<PortalCredentialPublic>('/portal-automation/credentials', data).then((r) => r.data),
   jobs: (params?: { limit?: number; status?: string; jobType?: string }) =>
     api.get<PortalJob[]>('/portal-automation/jobs', { params }).then((r) => r.data),

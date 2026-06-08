@@ -175,9 +175,16 @@ function CredentialEditor({
         secondaryPassword,
         isActive: true,
       }),
-    onSuccess: () => {
-      toast.success('Şifre kaydı güncellendi');
+    onSuccess: (result) => {
+      if (result.validation?.checked && result.validation.ok) {
+        toast.success('Şifre kaydedildi ve doğrulandı');
+      } else if (result.validation?.checked && !result.validation.ok) {
+        toast.warning(`Şifre kaydedildi, doğrulama başarısız: ${result.validation.error || 'Portal girişi reddedildi'}`);
+      } else {
+        toast.success('Şifre kaydı güncellendi');
+      }
       qc.invalidateQueries({ queryKey: ['portal-automation-credentials'] });
+      qc.invalidateQueries({ queryKey: ['portal-automation-credential-insights'] });
       qc.invalidateQueries({ queryKey: ['portal-automation-summary'] });
       qc.invalidateQueries({ queryKey: ['beyan-config-list'] });
       qc.invalidateQueries({ queryKey: ['beyanname-ozet'] });

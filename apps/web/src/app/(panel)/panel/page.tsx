@@ -1082,6 +1082,7 @@ function BeyanDetayModal({ state, onClose }: { state: { beyanTipi: BeyanTipi; fi
 
   const filteredItems = useMemo(() => {
     if (!detay) return [];
+    const collator = new Intl.Collator('tr', { sensitivity: 'base' });
     return detay
       .map((row) => {
         const b = row.beyanlar.find((x) => x.beyanTipi === state.beyanTipi);
@@ -1095,7 +1096,8 @@ function BeyanDetayModal({ state, onClose }: { state: { beyanTipi: BeyanTipi; fi
           default: return null;
         }
       })
-      .filter((r): r is NonNullable<typeof r> => r !== null);
+      .filter((r): r is NonNullable<typeof r> => r !== null)
+      .sort((a, b) => collator.compare(a.taxpayer.ad || '', b.taxpayer.ad || ''));
   }, [detay, state.beyanTipi, state.filter]);
 
   const filterColor: Record<BeyanFilter, string> = {

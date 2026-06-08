@@ -4,6 +4,7 @@ import { useMemo, useState } from 'react';
 import Link from 'next/link';
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import {
+  AlertTriangle,
   BadgeCheck,
   Building2,
   ChevronDown,
@@ -13,10 +14,12 @@ import {
   Search,
   Smartphone,
   User,
+  X,
   type LucideIcon,
 } from 'lucide-react';
 import { toast } from 'sonner';
 import { api } from '@/lib/api';
+import { PortalCredentialInsightCard, portalAutomationApi } from '@/lib/portal-automation';
 
 const GOLD = '#d4b876';
 const GOLD_SOFT = '#b8a06f';
@@ -128,6 +131,7 @@ export default function MukellefListesiPage() {
   const [typeFilter, setTypeFilter] = useState<TypeFilter>('TUMU');
   const [statusFilter, setStatusFilter] = useState<StatusFilter>('active');
   const [letter, setLetter] = useState('TÜMÜ');
+  const [selectedInsight, setSelectedInsight] = useState<PortalCredentialInsightCard | null>(null);
 
   const { data: taxpayers = [], isLoading } = useQuery<Taxpayer[]>({
     queryKey: ['taxpayers', 'directory', search],
@@ -137,6 +141,11 @@ export default function MukellefListesiPage() {
           params: { scope: 'directory', status: 'all', search: search || undefined },
         })
         .then((res) => res.data),
+    staleTime: 30_000,
+  });
+  const { data: credentialInsights } = useQuery({
+    queryKey: ['portal-automation-credential-insights'],
+    queryFn: () => portalAutomationApi.credentialInsights(),
     staleTime: 30_000,
   });
 
@@ -202,6 +211,11 @@ export default function MukellefListesiPage() {
           <Plus size={14} /> Yeni Mükellef
         </Link>
       </header>
+
+      <CredentialInsightStrip
+        cards={credentialInsights?.cards || []}
+        onOpen={setSelectedInsight}
+      />
 
       <section
         className="rounded-[8px] p-3"
@@ -307,6 +321,130 @@ export default function MukellefListesiPage() {
           ))}
         </div>
       )}
+      {selectedInsight && (
+        <CredentialInsightDialog card={selectedInsight} onClose={() => setSelectedInsight(null)} />
+      )}
+    </div>
+  );
+}
+
+function CredentialInsightStrip({
+  cards,
+  onOpen,
+}: {
+  cards: PortalCredentialInsightCard[];
+  onOpen: (card: PortalCredentialInsightCard) => void;
+}) {
+  if (!cards.length) return null;
+  const firstRow = cards.slice(0, 2);
+  const secondRow = cards.slice(2);
+  return (
+    <section className="rounded-[8px] p-3" style={{ background: 'rgba(255,255,255,0.018)', border: `1px solid ${LINE}` }}>
+      <div className="grid gap-2 lg:grid-cols-2">
+        {firstRow.map((card) => (
+          <InsightButton key={card.key} card={card} onClick={() => onOpen(card)} />
+        ))}
+      </div>
+      <div className="mt-2 grid gap-2 md:grid-cols-3">
+        {secondRow.map((card) => (
+          <InsightButton key={card.key} card={card} onClick={() => onOpen(card)} />
+        ))}
+      </div>
+    </section>
+  );
+}
+
+function InsightButton({ card, onClick }: { card: PortalCredentialInsightCard; onClick: () => void }) {
+  const blue = card.tone === 'blue';
+  return (
+    <button
+      type="button"
+      onClick={onClick}
+      className="flex h-11 items-center justify-center gap-2 rounded-[6px] px-4 text-[13px] font-bold transition hover:brightness-110"
+      style={{
+        background: blue ? 'linear-gradient(135deg, #3f8fc0, #2f79a7)' : 'linear-gradient(135deg, #eda02d, #c78019)',
+        border: `1px solid ${blue ? 'rgba(125,211,252,0.24)' : 'rgba(251,191,36,0.28)'}`,
+        color: '#fff',
+        boxShadow: 'inset 0 1px 0 rgba(255,255,255,0.16), 0 9px 18px rgba(0,0,0,0.18)',
+      }}
+    >
+      <span>{card.label}</span>
+      <span className="inline-flex h-5 min-w-5 items-center justify-center rounded-full bg-white px-1.5 text-[11px] font-black" style={{ color: blue ? '#2f79a7' : '#c78019' }}>
+        {card.count}
+      </span>
+    </button>
+  );
+}
+
+function CredentialInsightDialog({ card, onClose }: { card: PortalCredentialInsightCard; onClose: () => void }) {
+  const taxpayers = card.taxpayers || [];
+  const blue = card.tone === 'blue';
+  return (
+    <div
+      className="fixed inset-0 z-[9999] flex items-center justify-center p-4"
+      style={{ background: 'rgba(0,0,0,0.72)', backdropFilter: 'blur(4px)' }}
+      onClick={onClose}
+    >
+      <div
+        onClick={(event) => event.stopPropagation()}
+        className="w-full max-w-3xl overflow-hidden rounded-[10px]"
+        style={{
+          background: '#111211',
+          border: `1px solid ${blue ? 'rgba(125,211,252,0.35)' : 'rgba(245,158,11,0.42)'}`,
+          boxShadow: '0 28px 90px rgba(0,0,0,0.5)',
+        }}
+      >
+        <div className="flex items-start justify-between gap-4 px-5 py-4" style={{ borderBottom: '1px solid rgba(255,255,255,0.08)' }}>
+          <div className="flex items-start gap-3">
+            <div className="flex h-10 w-10 shrink-0 items-center justify-center rounded-[8px]" style={{ background: blue ? 'rgba(79,134,201,0.16)' : 'rgba(245,158,11,0.16)', color: blue ? '#93c5fd' : '#fbbf24' }}>
+              <AlertTriangle size={18} />
+            </div>
+            <div>
+              <h2 className="text-[18px] font-black" style={{ color: TEXT }}>{card.label}</h2>
+              <p className="mt-1 text-[12.5px]" style={{ color: MUTED }}>
+                {card.count} mükellef listeleniyor
+              </p>
+            </div>
+          </div>
+          <button type="button" onClick={onClose} className="rounded-[7px] p-2 transition hover:bg-white/[0.06]" style={{ color: MUTED }}>
+            <X size={18} />
+          </button>
+        </div>
+        <div className="max-h-[62vh] overflow-y-auto p-4">
+          {taxpayers.length === 0 ? (
+            <div className="rounded-[8px] px-4 py-10 text-center text-[13px]" style={{ border: '1px dashed rgba(255,255,255,0.12)', color: MUTED }}>
+              Bu grupta mükellef yok.
+            </div>
+          ) : (
+            <div className="overflow-hidden rounded-[8px]" style={{ border: '1px solid rgba(255,255,255,0.08)' }}>
+              <div className="grid grid-cols-[56px_minmax(220px,1fr)_170px_minmax(180px,1fr)] px-4 py-3 text-[10.5px] font-black uppercase tracking-[0.12em]" style={{ background: 'rgba(255,255,255,0.04)', color: FAINT }}>
+                <div>No</div>
+                <div>Mükellef</div>
+                <div>VKN/TC</div>
+                <div>Açıklama</div>
+              </div>
+              <div className="divide-y" style={{ borderColor: 'rgba(255,255,255,0.07)' }}>
+                {taxpayers.map((item, index) => (
+                  <Link
+                    key={`${card.key}-${item.id}-${index}`}
+                    href={`/panel/mukellefler/${item.id}`}
+                    className="grid grid-cols-[56px_minmax(220px,1fr)_170px_minmax(180px,1fr)] items-center px-4 py-3 text-[12.5px] transition hover:bg-white/[0.035]"
+                    onClick={onClose}
+                  >
+                    <div className="font-black tabular-nums" style={{ color: FAINT }}>{index + 1}</div>
+                    <div className="min-w-0 pr-3">
+                      <div className="truncate font-black" style={{ color: TEXT }}>{item.name}</div>
+                      <div className="mt-0.5 truncate text-[11px]" style={{ color: FAINT }}>{item.taxOffice || '-'}</div>
+                    </div>
+                    <div className="font-semibold tabular-nums" style={{ color: MUTED }}>{item.taxNumber || '-'}</div>
+                    <div className="truncate" style={{ color: MUTED }}>{item.reason || '-'}</div>
+                  </Link>
+                ))}
+              </div>
+            </div>
+          )}
+        </div>
+      </div>
     </div>
   );
 }

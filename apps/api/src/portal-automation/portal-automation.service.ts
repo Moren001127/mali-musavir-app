@@ -327,7 +327,7 @@ export class PortalAutomationService {
   }
 
   async credentialStatus(tenantId: string) {
-    const rows = await (this.prisma as any).portalCredential.findMany({
+    const rows: any[] = await (this.prisma as any).portalCredential.findMany({
       where: { tenantId },
       include: { taxpayer: { select: { id: true, companyName: true, firstName: true, lastName: true, taxNumber: true } } },
       orderBy: [{ provider: 'asc' }, { updatedAt: 'desc' }],
@@ -336,6 +336,93 @@ export class PortalAutomationService {
       summary: this.summarizeCredentials(rows),
       rows: rows.map((c: any) => this.publicCredential(c)),
     };
+  }
+
+  async credentialInsights(tenantId: string) {
+    const rows: any[] = await (this.prisma as any).portalCredential.findMany({
+      where: {
+        tenantId,
+        ownerType: 'TAXPAYER',
+        provider: { in: ['GIB_IVD', 'SGK_EBILDIRGE'] },
+        isActive: true,
+      },
+      include: {
+        taxpayer: {
+          select: {
+            id: true,
+            companyName: true,
+            firstName: true,
+            lastName: true,
+            taxNumber: true,
+            taxOffice: true,
+            isActive: true,
+          },
+        },
+      },
+    });
+
+    const collator = new Intl.Collator('tr', { sensitivity: 'base' });
+    const itemFor = (row: any, reason?: string) => ({
+      id: row.taxpayer?.id || row.taxpayerId || row.ownerId,
+      name: adFormat(row.taxpayer),
+      taxNumber: row.taxpayer?.taxNumber || null,
+      taxOffice: row.taxpayer?.taxOffice || null,
+      reason: reason || row.lastError || null,
+    });
+    const sortItems = (items: any[]) => items.sort((a, b) => collator.compare(a.name || '', b.name || ''));
+    const groupByCredential = (provider: PortalProvider, keyOf: (row: any) => string) => {
+      const groups = new Map<string, any[]>();
+      for (const row of rows) {
+        if (row.provider !== provider || row.taxpayer?.isActive === false) continue;
+        const key = keyOf(row);
+        if (!key) continue;
+        const group = groups.get(key) || [];
+        group.push(row);
+        groups.set(key, group);
+      }
+      const affected = Array.from(groups.values())
+        .filter((group) => group.length > 1)
+        .flatMap((group) => group.map((row) => itemFor(row, 'Aynı şifre bilgisi kullanılıyor')));
+      return sortItems(affected);
+    };
+
+    const gibSame = groupByCredential('GIB_IVD', (row) => {
+      const parts = [
+        this.plainCredentialPart(tryDecrypt(row.encryptedPassword)),
+        this.plainCredentialPart(tryDecrypt(row.encryptedSecondaryPassword)),
+      ];
+      return parts.every(Boolean) ? parts.join('|') : '';
+    });
+    const sgkSame = groupByCredential('SGK_EBILDIRGE', (row) => {
+      const parts = [
+        this.plainCredentialPart(tryDecrypt(row.encryptedPassword)),
+        this.plainCredentialPart(tryDecrypt(row.encryptedSecondaryPassword)),
+      ];
+      return parts.every(Boolean) ? parts.join('|') : '';
+    });
+
+    const wrongFor = (provider: PortalProvider) => sortItems(rows
+      .filter((row) => row.provider === provider && row.taxpayer?.isActive !== false && row.lastError)
+      .map((row) => itemFor(row)));
+
+    const workplaceIz = sortItems(rows
+      .filter((row) => row.provider === 'SGK_EBILDIRGE' && row.taxpayer?.isActive !== false)
+      .filter((row) => {
+        const workplace = this.plainCredentialPart(row.workplaceCode);
+        const secondary = this.plainCredentialPart(tryDecrypt(row.encryptedSecondaryPassword));
+        return workplace === 'IZ' || secondary === 'IZ';
+      })
+      .map((row) => itemFor(row, 'İş yeri bilgisi "iz" olarak kayıtlı')));
+
+    const cards = [
+      { key: 'sgk_same', label: 'Bildirge şifresi aynı olanlar', tone: 'blue', count: sgkSame.length, taxpayers: sgkSame },
+      { key: 'gib_same', label: 'VD şifresi aynı olanlar', tone: 'blue', count: gibSame.length, taxpayers: gibSame },
+      { key: 'gib_wrong', label: 'VD şifresi yanlış olanlar', tone: 'amber', count: wrongFor('GIB_IVD').length, taxpayers: wrongFor('GIB_IVD') },
+      { key: 'sgk_wrong', label: 'Bildirge şifresi yanlış olanlar', tone: 'amber', count: wrongFor('SGK_EBILDIRGE').length, taxpayers: wrongFor('SGK_EBILDIRGE') },
+      { key: 'workplace_iz', label: 'İş yeri "iz" olanlar', tone: 'amber', count: workplaceIz.length, taxpayers: workplaceIz },
+    ];
+
+    return { cards };
   }
 
   async saveCredential(tenantId: string, userId: string | null, input: any) {
@@ -980,6 +1067,10 @@ export class PortalAutomationService {
       row?.encryptedPassword &&
       row?.encryptedSecondaryPassword,
     );
+  }
+
+  private plainCredentialPart(value?: string | null) {
+    return normalizeTextKey(String(value || '').trim());
   }
 
   private async ensureSgkBildirgeConfig(taxpayerId: string) {

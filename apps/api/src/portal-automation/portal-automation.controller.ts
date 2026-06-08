@@ -35,15 +35,31 @@ export class PortalAutomationController {
     return this.service.credentialStatus(req.user.tenantId);
   }
 
+  @Get('credential-insights')
+  credentialInsights(@Req() req: any) {
+    return this.service.credentialInsights(req.user.tenantId);
+  }
+
   @Post('credentials')
   @Roles('ADMIN', 'STAFF')
   @HttpCode(HttpStatus.OK)
-  saveCredential(@Req() req: any, @Body() body: any) {
-    return this.service.saveCredential(
+  async saveCredential(@Req() req: any, @Body() body: any) {
+    const credential = await this.service.saveCredential(
       req.user.tenantId,
       req.user.userId || req.user.sub || null,
       body,
     );
+    if (body?.validate !== false && ['GIB_IVD', 'SGK_EBILDIRGE'].includes(String(credential.provider))) {
+      const validation = await this.runner.validateCredentialNow(req.user.tenantId, credential);
+      return {
+        ...credential,
+        lastCheckedAt: validation.checkedAt || credential.lastCheckedAt,
+        lastSuccessAt: validation.ok ? validation.checkedAt || credential.lastSuccessAt : credential.lastSuccessAt,
+        lastError: validation.ok ? null : validation.error || credential.lastError,
+        validation,
+      };
+    }
+    return credential;
   }
 
   @Get('jobs')
