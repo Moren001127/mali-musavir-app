@@ -651,6 +651,26 @@ export class EarsivService {
     meta.distinctParsed = distinctParsed;
     meta.savedDistinct = savedDistinct;
     meta.uyarilar = uyarilar;
+
+    // ─── GEÇİCİ TEŞHİS (kök sebep bulununca kaldırılacak) ───
+    // 16 ETTN farklı ama inserted=0 → faturaNo çakışması şüphesi. Her faturanın
+    // ham ettn:faturaNo değerini ve faturaNo tekrar sayısını job loguna bas.
+    try {
+      const noSayac: Record<string, number> = {};
+      for (const f of parsed as any[]) {
+        const n = (f.faturaNo || '-').toString();
+        noSayac[n] = (noSayac[n] || 0) + 1;
+      }
+      const tekrarliNolar = Object.entries(noSayac).filter(([, c]) => c > 1).map(([n, c]) => `${n}×${c}`);
+      const ornek = (parsed as any[]).slice(0, 16)
+        .map((f) => `${(f.ettn || '-').toString().slice(0, 8)}:${(f.faturaNo || '-')}`)
+        .join(' , ');
+      uyarilar.push(
+        `[TEŞHİS v3] parse=${parsed.length} ins=${inserted} dup=${duplicate} skip=${skipped} | ` +
+        `tekrarliBelgeNo=[${tekrarliNolar.join(', ') || 'yok'}] :: ${ornek}`,
+      );
+    } catch {}
+
     if (uyarilar.length) {
       this.logger.warn(`[MUTABAKAT] ${taxpayerLabel} ${jobDonem} ${tip}/${belgeKaynak}: ${uyarilar.join(' | ')}`);
     }
