@@ -126,6 +126,17 @@ export class TaxpayersService {
         mihsapId: true,
         mihsapDefterTuru: true,
         defterTuru: true,
+        cariHizmetler: { select: { id: true, aktif: true } },
+        portalCredentials: {
+          select: {
+            provider: true,
+            isActive: true,
+            username: true,
+            userCode: true,
+            encryptedPassword: true,
+            encryptedSecondaryPassword: true,
+          },
+        },
         _count: { select: { taxDeclarations: true, documents: true } },
       },
     });
@@ -139,7 +150,24 @@ export class TaxpayersService {
         `${t.firstName || ''} ${t.lastName || ''}`.trim() ||
         t.taxNumber ||
         '').trim();
-    const taxpayers = [...taxpayersRaw].sort((a, b) =>
+    const credentialIsReady = (credential: any) =>
+      credential?.isActive !== false &&
+      Boolean(credential?.username || credential?.userCode) &&
+      Boolean(credential?.encryptedPassword || credential?.encryptedSecondaryPassword);
+
+    const taxpayers = [...taxpayersRaw].map(({ cariHizmetler, portalCredentials, ...taxpayer }: any) => {
+      const hizmetler = Array.isArray(cariHizmetler) ? cariHizmetler : [];
+      const credentials = Array.isArray(portalCredentials) ? portalCredentials : [];
+      const aktifCariHizmetCount = hizmetler.filter((h: any) => h.aktif).length;
+      return {
+        ...taxpayer,
+        cariHizmetCount: hizmetler.length,
+        aktifCariHizmetCount,
+        cariTakipAktif: aktifCariHizmetCount > 0,
+        hasVergiDairesiCredential: credentials.some((c: any) => c.provider === 'GIB_IVD' && credentialIsReady(c)),
+        hasSgkCredential: credentials.some((c: any) => c.provider === 'SGK_EBILDIRGE' && credentialIsReady(c)),
+      };
+    }).sort((a, b) =>
       collator.compare(displayName(a), displayName(b)),
     );
 
@@ -303,6 +331,32 @@ export class TaxpayersService {
     const taxpayer = await this.prisma.taxpayer.findFirst({ where: { id, tenantId } });
     if (!taxpayer) throw new NotFoundException();
     return this.prisma.taxpayer.update({ where: { id }, data: this.normalizeDefterFields(dto as any) });
+  }
+
+  async setCariTakip(id: string, tenantId: string, cariTakipAktif: boolean) {
+    await this.assertOwnership(id, tenantId);
+
+    const hizmetler = await (this.prisma as any).cariHizmet.findMany({
+      where: { tenantId, taxpayerId: id },
+      select: { id: true, aktif: true },
+    });
+
+    if (hizmetler.length === 0) {
+      throw new BadRequestException('Cari takip icin once Cari Tahsilat modulunde hizmet tanimlayin');
+    }
+
+    const result = await (this.prisma as any).cariHizmet.updateMany({
+      where: { tenantId, taxpayerId: id },
+      data: { aktif: cariTakipAktif },
+    });
+
+    return {
+      taxpayerId: id,
+      cariTakipAktif,
+      cariHizmetCount: hizmetler.length,
+      aktifCariHizmetCount: cariTakipAktif ? hizmetler.length : 0,
+      updatedCount: result.count,
+    };
   }
 
   async softDelete(id: string, tenantId: string) {

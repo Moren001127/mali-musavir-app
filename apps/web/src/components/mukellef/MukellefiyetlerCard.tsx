@@ -171,7 +171,7 @@ export function MukellefiyetlerCard({ taxpayerId }: { taxpayerId: string }) {
   if (isLoading) return null;
 
   return (
-    <div>
+    <div className="space-y-5">
       <div className="mb-5 flex items-start justify-between gap-3">
         <div className="flex items-center gap-3">
           <div className="flex h-10 w-10 items-center justify-center rounded-xl border" style={{ borderColor: GOOD_LN, background: GOOD_SF, color: GOOD_BR }}>
@@ -211,7 +211,7 @@ export function MukellefiyetlerCard({ taxpayerId }: { taxpayerId: string }) {
       <BeyanGroup title="Diğer Beyannameler" items={DIGER_GRUBU} form={form} setForm={setForm} />
 
       {/* Kaydet */}
-      <div className="mt-5 flex justify-end">
+      <div className="flex justify-end">
         <button
           type="button"
           onClick={() => saveMut.mutate()}
@@ -242,11 +242,11 @@ function BeyanGroup({
   setForm: React.Dispatch<React.SetStateAction<BeyanConfig>>;
 }) {
   return (
-    <div className="mb-5">
+    <div>
       <div className="mb-2 text-[10.5px] font-black uppercase tracking-[0.10em]" style={{ color: GOLD }}>
         {title}
       </div>
-      <div className="space-y-2">
+      <div className="grid gap-2 lg:grid-cols-2">
         {items.map((item) => (
           <BeyanRow key={item.key as string} item={item} form={form} setForm={setForm} />
         ))}
@@ -269,10 +269,11 @@ function BeyanRow({
 
   return (
     <div
-      className="rounded-xl border p-3 transition"
+      className="rounded-[8px] border p-3 transition"
       style={{
-        background: isActive ? GOOD_SF : FIELD,
-        borderColor: isActive ? GOOD_LN : LINE,
+        background: isActive ? 'rgba(95,207,142,0.085)' : '#111217',
+        borderColor: isActive ? GOOD_LN : 'rgba(255,255,255,0.095)',
+        boxShadow: isActive ? 'inset 0 1px 0 rgba(255,255,255,0.04)' : 'none',
       }}
     >
       <div className="flex items-start justify-between gap-3">

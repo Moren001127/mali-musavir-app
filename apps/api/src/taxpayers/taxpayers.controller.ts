@@ -94,6 +94,15 @@ export class TaxpayersController {
     return this.taxpayersService.update(id, req.user.tenantId, dto);
   }
 
+  @Put(':id/cari-takip')
+  @Roles('ADMIN', 'STAFF')
+  setCariTakip(@Req() req: any, @Param('id') id: string, @Body() body: any) {
+    if (typeof body?.cariTakipAktif !== 'boolean') {
+      throw new BadRequestException('cariTakipAktif boolean olmali');
+    }
+    return this.taxpayersService.setCariTakip(id, req.user.tenantId, body.cariTakipAktif);
+  }
+
   @Delete(':id')
   @Roles('ADMIN')
   remove(@Req() req: any, @Param('id') id: string) {

@@ -4,17 +4,14 @@ import { useMemo, useState } from 'react';
 import Link from 'next/link';
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import {
-  Archive,
   BadgeCheck,
-  BookOpen,
   Building2,
+  ChevronDown,
   Eye,
   FileText,
-  Landmark,
   List,
   Mail,
   Plus,
-  RotateCcw,
   Search,
   Smartphone,
   User,
@@ -57,6 +54,11 @@ type Taxpayer = {
   lucaSlug?: string | null;
   mihsapId?: string | null;
   hattatId?: string | null;
+  cariHizmetCount?: number;
+  aktifCariHizmetCount?: number;
+  cariTakipAktif?: boolean;
+  hasVergiDairesiCredential?: boolean;
+  hasSgkCredential?: boolean;
 };
 
 type TypeFilter = 'TUMU' | 'FIRMA' | 'SAHIS' | 'BASIT';
@@ -98,10 +100,6 @@ function primaryPhone(t: Taxpayer): string {
 
 function primaryEmail(t: Taxpayer): string {
   return cleanList([t.email, ...(t.emails || [])])[0] || '';
-}
-
-function hasBook(t: Taxpayer): boolean {
-  return Boolean(String(t.defterTuru || t.mihsapDefterTuru || '').trim());
 }
 
 function isBasit(t: Taxpayer): boolean {
@@ -151,6 +149,17 @@ export default function MukellefListesiPage() {
       qc.invalidateQueries({ queryKey: ['taxpayers'] });
     },
     onError: () => toast.error('Durum güncellenemedi'),
+  });
+
+  const toggleCariTakip = useMutation({
+    mutationFn: ({ id, cariTakipAktif }: { id: string; cariTakipAktif: boolean }) =>
+      api.put(`/taxpayers/${id}/cari-takip`, { cariTakipAktif }),
+    onSuccess: (_res, vars) => {
+      toast.success(vars.cariTakipAktif ? 'Cari takip aktife alındı' : 'Cari takip pasife alındı');
+      qc.invalidateQueries({ queryKey: ['taxpayers'] });
+      qc.invalidateQueries({ queryKey: ['cari-hizmetler'] });
+    },
+    onError: (e: any) => toast.error(e?.response?.data?.message || 'Cari takip güncellenemedi'),
   });
 
   const counts = useMemo(() => {
@@ -294,6 +303,10 @@ export default function MukellefListesiPage() {
               taxpayer={taxpayer}
               onToggle={() => toggleActive.mutate({ id: taxpayer.id, isActive: !taxpayer.isActive })}
               busy={toggleActive.isPending}
+              onCariToggle={() =>
+                toggleCariTakip.mutate({ id: taxpayer.id, cariTakipAktif: !taxpayer.cariTakipAktif })
+              }
+              cariBusy={toggleCariTakip.isPending}
             />
           ))}
         </div>
@@ -302,16 +315,31 @@ export default function MukellefListesiPage() {
   );
 }
 
-function TaxpayerCard({ taxpayer, onToggle, busy }: { taxpayer: Taxpayer; onToggle: () => void; busy: boolean }) {
+function TaxpayerCard({
+  taxpayer,
+  onToggle,
+  busy,
+  onCariToggle,
+  cariBusy,
+}: {
+  taxpayer: Taxpayer;
+  onToggle: () => void;
+  busy: boolean;
+  onCariToggle: () => void;
+  cariBusy: boolean;
+}) {
   const name = taxpayerName(taxpayer);
   const phone = primaryPhone(taxpayer);
   const email = primaryEmail(taxpayer);
   const type = typeLabel(taxpayer);
   const statusColor = taxpayer.isActive ? GREEN : ROSE;
+  const [statusMenuOpen, setStatusMenuOpen] = useState(false);
+  const hasCariService = Number(taxpayer.cariHizmetCount || 0) > 0;
+  const cariActive = !!taxpayer.cariTakipAktif;
 
   return (
     <article
-      className="grid gap-4 rounded-[8px] p-4 md:grid-cols-[156px_minmax(0,1fr)_150px]"
+      className="grid gap-4 rounded-[8px] p-4 md:grid-cols-[156px_minmax(0,1fr)_136px]"
       style={{ background: CARD, border: `1px solid ${LINE}`, boxShadow: '0 12px 30px rgba(0,0,0,0.16)' }}
     >
       <div className="flex h-[156px] items-center justify-center overflow-hidden rounded-[6px]" style={{ background: 'rgba(79,134,201,0.24)', border: '1px solid rgba(79,134,201,0.22)' }}>
@@ -341,35 +369,71 @@ function TaxpayerCard({ taxpayer, onToggle, busy }: { taxpayer: Taxpayer; onTogg
         </div>
 
         <div className="mt-3 flex flex-wrap gap-2">
-          <PresenceIcon active={!!taxpayer.taxNumber} icon={Landmark} title="VKN/TC" />
-          <PresenceIcon active={hasBook(taxpayer)} icon={BookOpen} title="Defter" />
-          <PresenceIcon active={!!email} icon={Mail} title="E-posta" />
-          <PresenceIcon active={!!phone} icon={Smartphone} title="Telefon" />
-        </div>
-
-        <div className="mt-4 max-w-[360px] rounded-[6px] px-3 py-2" style={{ background: 'rgba(255,255,255,0.025)', border: `1px solid ${LINE}` }}>
-          <div className="truncate text-[12px] font-semibold" style={{ color: MUTED }}>
-            {taxpayer.taxNumber || 'VKN/TC eksik'}
-          </div>
-          <div className="mt-1 truncate text-[11.5px]" style={{ color: FAINT }}>
-            {taxpayer.taxOffice || 'Vergi dairesi eksik'}
-          </div>
+          <HattatPresenceIcon active={!!taxpayer.hasVergiDairesiCredential} kind="gib" title="Vergi dairesi şifresi" />
+          <HattatPresenceIcon active={!!taxpayer.hasSgkCredential} kind="sgk" title="SGK e-Bildirge şifresi" />
+          <HattatPresenceIcon active={!!email} kind="mail" title="E-posta" />
+          <HattatPresenceIcon active={!!phone} kind="phone" title="Telefon" />
         </div>
       </div>
 
       <div className="flex flex-col items-stretch gap-2 md:items-end">
-        <span
-          className="inline-flex items-center justify-center gap-1.5 rounded-[6px] px-3 py-2 text-[12px] font-black"
-          style={{ background: `${statusColor}22`, border: `1px solid ${statusColor}44`, color: statusColor }}
-        >
-          <BadgeCheck size={14} /> {taxpayer.isActive ? 'Aktif' : 'Pasif'}
-        </span>
-        <span className="inline-flex items-center justify-center rounded-[6px] px-3 py-2 text-[12px] font-black" style={{ background: 'rgba(34,197,94,0.16)', color: '#70e69e' }}>
-          Cari Aktif
-        </span>
+        <div className="relative w-full md:w-auto">
+          <button
+            type="button"
+            onClick={() => setStatusMenuOpen((v) => !v)}
+            disabled={busy}
+            className="inline-flex w-full items-center justify-center gap-1.5 rounded-[6px] px-3 py-2 text-[12px] font-black transition disabled:opacity-40 md:w-[118px]"
+            style={{ background: `${statusColor}22`, border: `1px solid ${statusColor}44`, color: statusColor }}
+          >
+            <BadgeCheck size={14} /> {taxpayer.isActive ? 'Aktif' : 'Pasif'} <ChevronDown size={13} />
+          </button>
+          {statusMenuOpen && (
+            <div
+              className="absolute right-0 top-[calc(100%+6px)] z-20 w-[150px] overflow-hidden rounded-[7px] border p-1 shadow-2xl"
+              style={{ background: '#141414', borderColor: LINE }}
+            >
+              <button
+                type="button"
+                onClick={() => {
+                  setStatusMenuOpen(false);
+                  onToggle();
+                }}
+                disabled={busy}
+                className="w-full rounded-[5px] px-3 py-2 text-left text-[12px] font-bold transition hover:bg-white/[0.06] disabled:opacity-40"
+                style={{ color: taxpayer.isActive ? '#ff9aae' : '#7eeaa5' }}
+              >
+                {taxpayer.isActive ? 'Pasife al' : 'Aktife al'}
+              </button>
+            </div>
+          )}
+        </div>
+        {hasCariService ? (
+          <button
+            type="button"
+            onClick={onCariToggle}
+            disabled={cariBusy}
+            className="inline-flex w-full items-center justify-center rounded-[6px] px-3 py-2 text-[12px] font-black transition disabled:opacity-40 md:w-[118px]"
+            style={{
+              background: cariActive ? 'rgba(34,197,94,0.16)' : 'rgba(251,113,133,0.12)',
+              border: `1px solid ${cariActive ? 'rgba(34,197,94,0.30)' : 'rgba(251,113,133,0.30)'}`,
+              color: cariActive ? '#70e69e' : '#ff9aae',
+            }}
+            title="Cari Kasa & Tahsilat modülünde cari takibi aç/kapat"
+          >
+            {cariActive ? 'Cari Aktif' : 'Cari Pasif'}
+          </button>
+        ) : (
+          <Link
+            href={`/panel/cari-kasa?mukellef=${taxpayer.id}`}
+            className="inline-flex w-full items-center justify-center rounded-[6px] px-3 py-2 text-[12px] font-black md:w-[118px]"
+            style={{ background: 'rgba(212,184,118,0.12)', border: '1px solid rgba(212,184,118,0.28)', color: GOLD }}
+          >
+            Cari Tanımsız
+          </Link>
+        )}
         <Link
           href={`/panel/mukellefler/${taxpayer.id}`}
-          className="mt-2 inline-flex items-center justify-center gap-1.5 rounded-[6px] px-3 py-2 text-[12.5px] font-bold"
+          className="hidden"
           style={{ background: 'rgba(79,134,201,0.13)', border: '1px solid rgba(79,134,201,0.28)', color: '#a9cdf5' }}
         >
           <Eye size={14} /> Kartı Aç
@@ -378,14 +442,13 @@ function TaxpayerCard({ taxpayer, onToggle, busy }: { taxpayer: Taxpayer; onTogg
           type="button"
           onClick={onToggle}
           disabled={busy}
-          className="inline-flex items-center justify-center gap-1.5 rounded-[6px] px-3 py-2 text-[12.5px] font-bold transition disabled:opacity-40"
+          className="hidden"
           style={{
             background: taxpayer.isActive ? 'rgba(251,113,133,0.12)' : 'rgba(34,197,94,0.13)',
             border: `1px solid ${taxpayer.isActive ? 'rgba(251,113,133,0.30)' : 'rgba(34,197,94,0.30)'}`,
             color: taxpayer.isActive ? '#ff9aae' : '#7eeaa5',
           }}
         >
-          {taxpayer.isActive ? <Archive size={14} /> : <RotateCcw size={14} />}
           {taxpayer.isActive ? 'Pasife Al' : 'Aktife Al'}
         </button>
       </div>
@@ -408,5 +471,41 @@ function PresenceIcon({ active, icon: Icon, title }: { active: boolean; icon: Lu
     >
       <Icon size={17} />
     </span>
+  );
+}
+
+type HattatIconKind = 'gib' | 'sgk' | 'mail' | 'phone';
+
+function HattatPresenceIcon({ active, kind, title }: { active: boolean; kind: HattatIconKind; title: string }) {
+  const color = active ? GREEN : ROSE;
+  return (
+    <span
+      title={`${title}: ${active ? 'tanımlı' : 'eksik'}`}
+      aria-label={`${title}: ${active ? 'tanımlı' : 'eksik'}`}
+      className="inline-flex h-10 w-10 items-center justify-center rounded-[4px]"
+      style={{
+        background: 'rgba(255,255,255,0.94)',
+        border: `1px solid ${active ? 'rgba(34,197,94,0.62)' : 'rgba(251,113,133,0.62)'}`,
+        color,
+      }}
+    >
+      {kind === 'gib' && <GibMark color={color} />}
+      {kind === 'sgk' && <span className="font-serif text-[11px] font-black leading-none">SGK</span>}
+      {kind === 'mail' && <Mail size={19} strokeWidth={2.8} />}
+      {kind === 'phone' && <Smartphone size={18} strokeWidth={2.8} />}
+    </span>
+  );
+}
+
+function GibMark({ color }: { color: string }) {
+  return (
+    <svg viewBox="0 0 32 32" width="24" height="24" aria-hidden="true">
+      <path
+        d="M19.8 3.5c-6.8 2.3-11.2 8.2-11.2 14.9 0 4.1 1.6 7.7 4.2 10.2h5.2c-2.9-2.4-4.6-6-4.6-10.1 0-4.4 2.1-8.4 5.4-10.9l1 4.2h4.1L22 3.5h-2.2Z"
+        fill={color}
+      />
+      <path d="M21.2 12.2h5.1v16.4h-5.1V12.2Z" fill={color} opacity="0.96" />
+      <path d="M16.2 14.7h3.4v13.9h-3.4V14.7Z" fill={color} opacity="0.82" />
+    </svg>
   );
 }

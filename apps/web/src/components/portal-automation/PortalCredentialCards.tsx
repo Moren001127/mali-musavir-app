@@ -80,7 +80,7 @@ export function AdvisorPortalCredentialCard() {
   );
 }
 
-export function TaxpayerPortalCredentialsCard({ taxpayerId }: { taxpayerId: string }) {
+export function TaxpayerPortalCredentialsCard({ taxpayerId, provider }: { taxpayerId: string; provider?: Extract<PortalProvider, 'GIB_IVD' | 'SGK_EBILDIRGE'> }) {
   const { data, isLoading } = useQuery({
     queryKey: ['portal-automation-credentials'],
     queryFn: () => portalAutomationApi.credentials(),
@@ -95,6 +95,11 @@ export function TaxpayerPortalCredentialsCard({ taxpayerId }: { taxpayerId: stri
     () => getCredential(data?.rows || [], 'SGK_EBILDIRGE', taxpayerId),
     [data?.rows, taxpayerId],
   );
+
+  if (provider) {
+    const credential = provider === 'GIB_IVD' ? gibCredential : sgkCredential;
+    return isLoading ? <LoadingLine /> : <CredentialEditor provider={provider} taxpayerId={taxpayerId} credential={credential} compact />;
+  }
 
   return (
     <section>

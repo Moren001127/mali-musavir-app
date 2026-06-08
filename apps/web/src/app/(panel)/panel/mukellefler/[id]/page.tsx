@@ -11,6 +11,7 @@ import {
   BookOpen,
   Building2,
   CheckCircle2,
+  ChevronDown,
   ChevronLeft,
   ChevronRight,
   Contact,
@@ -32,6 +33,7 @@ import {
   Shield,
   Sparkles,
   Trash2,
+  Upload,
   UserCog,
   Workflow,
   X,
@@ -42,6 +44,8 @@ import { toast } from 'sonner';
 import { MukellefiyetlerCard } from '@/components/mukellef/MukellefiyetlerCard';
 import { TaxpayerPortalCredentialsCard } from '@/components/portal-automation/PortalCredentialCards';
 import { beyanKayitlariApi, BEYAN_TIPI_LABEL, type BeyanKaydi } from '@/lib/beyan-kayitlari';
+import { documentsApi } from '@/lib/documents';
+import { DocumentCategory } from '@mali-musavir/shared';
 
 // ── Kurumsal duo palet (altın marka + çelik mavisi yapı), siyah zemin ──
 const GOLD = '#d4b876';
@@ -75,6 +79,13 @@ const TAXPAYER_TYPES = [
 
 type TaxpayerType = (typeof TAXPAYER_TYPES)[number]['value'];
 type DefterTuru = 'BILANCO' | 'ISLETME';
+type TaxpayerKind = 'FIRMA' | 'SAHIS' | 'BASIT';
+
+const TAXPAYER_KIND_OPTIONS: Array<{ value: TaxpayerKind; label: string }> = [
+  { value: 'FIRMA', label: 'Firma' },
+  { value: 'SAHIS', label: 'Şahıs' },
+  { value: 'BASIT', label: 'Basit' },
+];
 
 type FormState = {
   type: TaxpayerType;
@@ -141,6 +152,30 @@ function emptyForm(): FormState {
     webSitesi: '',
     eFaturaEntegrator: '',
   };
+}
+
+function taxpayerKindFromForm(form: FormState): TaxpayerKind {
+  const defter = `${form.defterTuru || ''} ${form.mihsapDefterTuru || ''}`.toLocaleUpperCase('tr-TR');
+  if (/ISLETME|İŞLETME|DEFTER[_\s-]*BEYAN/.test(defter)) return 'BASIT';
+  return form.type === 'TUZEL_KISI' ? 'FIRMA' : 'SAHIS';
+}
+
+function taxpayerKindLabel(kind: TaxpayerKind): string {
+  if (kind === 'FIRMA') return 'FİRMA';
+  if (kind === 'SAHIS') return 'ŞAHIS';
+  return 'BASİT';
+}
+
+function applyTaxpayerKind(kind: TaxpayerKind, setForm: React.Dispatch<React.SetStateAction<FormState>>) {
+  setForm((prev) => {
+    if (kind === 'FIRMA') {
+      return { ...prev, type: 'TUZEL_KISI', defterTuru: 'BILANCO', mihsapDefterTuru: prev.mihsapDefterTuru === 'DEFTER_BEYAN' ? 'BILANCO' : prev.mihsapDefterTuru || 'BILANCO' };
+    }
+    if (kind === 'SAHIS') {
+      return { ...prev, type: 'GERCEK_KISI', defterTuru: 'BILANCO', mihsapDefterTuru: prev.mihsapDefterTuru === 'DEFTER_BEYAN' ? 'BILANCO' : prev.mihsapDefterTuru || 'BILANCO' };
+    }
+    return { ...prev, type: 'GERCEK_KISI', defterTuru: 'ISLETME', mihsapDefterTuru: 'DEFTER_BEYAN' };
+  });
 }
 
 function displayName(item: any) {
@@ -235,6 +270,7 @@ export default function MukellefDetayPage() {
 
   const [activeTab, setActiveTab] = useState<TabKey>('bilgiler');
   const [portalOpen, setPortalOpen] = useState(false);
+  const [activeActionOpen, setActiveActionOpen] = useState(false);
 
   const { data: taxpayer, isLoading } = useQuery({
     queryKey: ['taxpayer', id],
@@ -323,6 +359,17 @@ export default function MukellefDetayPage() {
     onError: () => toast.error('Silme işlemi başarısız'),
   });
 
+  const { mutate: setActiveStatus, isPending: isActiveChanging } = useMutation({
+    mutationFn: (isActive: boolean) => api.put(`/taxpayers/${id}`, { isActive }),
+    onSuccess: (_res, isActive) => {
+      toast.success(isActive ? 'Mükellef aktife alındı' : 'Mükellef pasife alındı');
+      qc.invalidateQueries({ queryKey: ['taxpayers'] });
+      qc.invalidateQueries({ queryKey: ['taxpayer', id] });
+      qc.invalidateQueries({ queryKey: ['taxpayer-completeness', id] });
+    },
+    onError: () => toast.error('Mükellef durumu güncellenemedi'),
+  });
+
   const handleSubmit = (event: React.FormEvent) => {
     event.preventDefault();
     const payload = {
@@ -349,6 +396,8 @@ export default function MukellefDetayPage() {
 
   const currentName = isNew ? 'Yeni Mükellef' : displayName(taxpayer);
   const avatarText = initialsFor(currentName);
+  const isTaxpayerActive = isNew ? true : taxpayer?.isActive !== false;
+  const currentKind = taxpayerKindFromForm(form);
 
   const handleKisayolClick = (k: Kisayol) => {
     window.open(k.url, '_blank', 'noopener,noreferrer');
@@ -402,9 +451,38 @@ export default function MukellefDetayPage() {
               <div className="flex flex-wrap items-center gap-2">
                 <h1 className="truncate text-[24px] font-black leading-tight" style={{ color: TEXT }}>{currentName}</h1>
                 {!isNew && (
-                  <span className="inline-flex items-center gap-1.5 rounded-[6px] border px-2.5 py-1 text-[11px] font-black" style={{ borderColor: 'rgba(95,207,142,0.32)', background: 'rgba(95,207,142,0.12)', color: GREEN }}>
-                    <span className="h-1.5 w-1.5 rounded-full" style={{ background: GREEN }} /> Aktif
-                  </span>
+                  <div className="relative">
+                    <button
+                      type="button"
+                      onClick={() => setActiveActionOpen((v) => !v)}
+                      disabled={isActiveChanging}
+                      className="inline-flex items-center gap-1.5 rounded-[6px] border px-2.5 py-1 text-[11px] font-black transition disabled:opacity-50"
+                      style={{
+                        borderColor: isTaxpayerActive ? 'rgba(95,207,142,0.32)' : 'rgba(239,107,107,0.32)',
+                        background: isTaxpayerActive ? 'rgba(95,207,142,0.12)' : 'rgba(239,107,107,0.10)',
+                        color: isTaxpayerActive ? GREEN : RED,
+                      }}
+                    >
+                      <span className="h-1.5 w-1.5 rounded-full" style={{ background: isTaxpayerActive ? GREEN : RED }} />
+                      {isTaxpayerActive ? 'Aktif' : 'Pasif'}
+                      <ChevronDown size={12} />
+                    </button>
+                    {activeActionOpen && (
+                      <div className="absolute left-0 top-[calc(100%+6px)] z-30 w-[150px] rounded-[8px] border p-1 shadow-xl" style={{ borderColor: LINE, background: CARD2 }}>
+                        <button
+                          type="button"
+                          className="w-full rounded-[6px] px-3 py-2 text-left text-[12px] font-bold transition hover:bg-white/[0.06]"
+                          style={{ color: isTaxpayerActive ? '#fca5a5' : GREEN }}
+                          onClick={() => {
+                            setActiveActionOpen(false);
+                            setActiveStatus(!isTaxpayerActive);
+                          }}
+                        >
+                          {isTaxpayerActive ? 'Pasife al' : 'Aktife al'}
+                        </button>
+                      </div>
+                    )}
+                  </div>
                 )}
                 <span className="rounded-[6px] border px-2.5 py-1 text-[11px] font-black" style={{ borderColor: STEEL_LN, background: STEEL_SF, color: STEEL_BR }}>
                   {form.defterTuru === 'ISLETME' ? 'BASİT' : form.type === 'TUZEL_KISI' ? 'FİRMA' : 'ŞAHIS'}
@@ -453,7 +531,7 @@ export default function MukellefDetayPage() {
                   if (confirm('Mükellef pasife alınsın mı?')) deleteMukellef();
                 }}
                 disabled={isDeleting}
-                className="inline-flex h-10 w-10 items-center justify-center rounded-[8px] border transition hover:bg-red-500/10 disabled:opacity-40"
+                className="hidden"
                 style={{ borderColor: 'rgba(248,113,113,0.32)', color: '#fca5a5' }}
                 title="Mükellefi pasife al"
               >
@@ -516,7 +594,8 @@ export default function MukellefDetayPage() {
           {activeTab === 'tebligat' && (
             <PlaceholderTab icon={Mail} title="E-Tebligat" description="GİB e-tebligat takibi ve okundu durumları burada izlenecek." comingSoon />
           )}
-          {activeTab === 'dosyalar' && (
+          {activeTab === 'dosyalar' && !isNew && id && <DosyalarTab taxpayerId={id} />}
+          {false && activeTab === 'dosyalar' && (
             <PlaceholderTab icon={BookOpen} title="Dosyalar" description="Mükellefe bağlı evraklar ve dosya arşivi." linkLabel="Evraklar modülüne git" linkHref={`/panel/evraklar?taxpayerId=${id}`} />
           )}
           {activeTab === 'cariHesap' && !isNew && id && <CariHesapTab taxpayerId={id} />}
@@ -645,6 +724,8 @@ type BilgiSectionId =
   | 'yetkili'
   | 'iletisim'
   | 'giris'
+  | 'vergiSifre'
+  | 'sgkSifre'
   | 'bagkur'
   | 'entegrator'
   | 'otomasyon'
@@ -677,7 +758,14 @@ function BilgilerTab({
     { id: 'otomasyon', title: 'Evrak & Otomasyon Bilgileri', subtitle: 'Teslim günü ve mesajlar', icon: Workflow, show: true, filled: !!form.evrakTeslimGunu || form.whatsappEvrakTalep || form.whatsappEvrakGeldi },
     { id: 'sistem', title: 'Defter & Sistem Bilgileri', subtitle: 'Luca / Mihsap eşleşme', icon: Settings2, show: true, filled: !!form.lucaSlug || !!form.mihsapId },
   ];
-  const visible = sections.filter((s) => s.show);
+  const credentialSections: typeof sections = [
+    { id: 'vergiSifre', title: 'Vergi Dairesi Şifre Bilgileri', subtitle: 'Kullanıcı kodu, parola ve şifre', icon: Lock, show: !!taxpayerId, filled: false },
+    { id: 'sgkSifre', title: 'E-Bildirge Giriş Bilgileri', subtitle: 'SGK kullanıcı adı, sistem şifresi ve işyeri şifresi', icon: Shield, show: !!taxpayerId, filled: false },
+  ];
+  const hiddenSectionIds = new Set<BilgiSectionId>(['yetkili', 'giris', 'bagkur']);
+  const visible = sections
+    .filter((s) => s.show && !hiddenSectionIds.has(s.id))
+    .flatMap((s) => (s.id === 'iletisim' ? [s, ...credentialSections.filter((c) => c.show)] : [s]));
   const [open, setOpen] = useState<BilgiSectionId | null>('musteri');
 
   const renderSection = (section: BilgiSectionId) => {
@@ -689,9 +777,9 @@ function BilgilerTab({
               <div className="md:col-span-2">
                 <span className="mb-1.5 block text-[11px] font-medium tracking-wide" style={{ color: MUTED }}>Mükellef Tipi</span>
                 <Segmented
-                  value={form.type}
-                  onChange={(v) => setForm((p) => ({ ...p, type: v as TaxpayerType }))}
-                  options={TAXPAYER_TYPES.map((t) => ({ value: t.value, label: t.label }))}
+                  value={taxpayerKindFromForm(form)}
+                  onChange={(v) => applyTaxpayerKind(v as TaxpayerKind, setForm)}
+                  options={TAXPAYER_KIND_OPTIONS}
                 />
               </div>
 
@@ -818,6 +906,14 @@ function BilgilerTab({
           </div>
         </div>
       );
+    }
+
+    if (section === 'vergiSifre') {
+      return taxpayerId ? <TaxpayerPortalCredentialsCard taxpayerId={taxpayerId} provider="GIB_IVD" /> : null;
+    }
+
+    if (section === 'sgkSifre') {
+      return taxpayerId ? <TaxpayerPortalCredentialsCard taxpayerId={taxpayerId} provider="SGK_EBILDIRGE" /> : null;
     }
 
     if (section === 'giris') {
@@ -980,13 +1076,20 @@ function AccordionRow({
   children: React.ReactNode;
 }) {
   return (
-    <section className="overflow-hidden rounded-[8px] border" style={{ borderColor: open ? 'rgba(212,184,118,0.36)' : HAIR, background: CARD2 }}>
+    <section
+      className="overflow-hidden rounded-[8px] border"
+      style={{
+        borderColor: open ? 'rgba(212,184,118,0.38)' : 'rgba(255,255,255,0.105)',
+        background: open ? '#151318' : '#121318',
+        boxShadow: open ? '0 14px 32px rgba(0,0,0,0.28), inset 0 1px 0 rgba(255,255,255,0.045)' : '0 8px 22px rgba(0,0,0,0.18)',
+      }}
+    >
       <button
         type="button"
         aria-expanded={open}
         onClick={onToggle}
         className="flex w-full items-center gap-3 px-4 py-3 text-left transition hover:brightness-110"
-        style={{ background: open ? 'rgba(212,184,118,0.10)' : 'rgba(255,255,255,0.026)' }}
+        style={{ background: open ? 'rgba(212,184,118,0.10)' : 'rgba(255,255,255,0.035)' }}
       >
         <span className="flex h-9 w-9 shrink-0 items-center justify-center rounded-[6px] border" style={{ borderColor: open ? 'rgba(212,184,118,0.34)' : LINE, color: open ? GOLD_BR : MUTED, background: open ? 'rgba(212,184,118,0.10)' : 'rgba(255,255,255,0.035)' }}>
           <Icon size={17} />
@@ -1003,7 +1106,7 @@ function AccordionRow({
         <ChevronRight size={18} className="transition-transform" style={{ color: MUTED, transform: open ? 'rotate(90deg)' : 'rotate(0deg)' }} />
       </button>
       {open && (
-        <div className="border-t p-4 sm:p-5" style={{ borderColor: HAIR, background: '#111217' }}>
+        <div className="border-t p-4 sm:p-5" style={{ borderColor: HAIR, background: '#101116' }}>
           {children}
         </div>
       )}
@@ -1223,6 +1326,7 @@ type CariHareket = {
 };
 
 function CariHesapTab({ taxpayerId }: { taxpayerId: string }) {
+  const [ekstreBusy, setEkstreBusy] = useState(false);
   const { data: bakiye, isLoading: bakiyeLoading } = useQuery<CariBakiye>({
     queryKey: ['cari-bakiye', taxpayerId],
     queryFn: () => api.get(`/cari-kasa/bakiye/${taxpayerId}`).then((r) => r.data),
@@ -1238,6 +1342,32 @@ function CariHesapTab({ taxpayerId }: { taxpayerId: string }) {
   const loading = bakiyeLoading || hareketLoading;
   const netBakiye = Number(bakiye?.bakiye || 0);
   const borclu = netBakiye > 0;
+  const downloadEkstre = async () => {
+    setEkstreBusy(true);
+    try {
+      const now = new Date();
+      const baslangic = `${now.getFullYear()}-01-01`;
+      const bitis = now.toISOString().slice(0, 10);
+      const resp = await api.get(`/cari-kasa/ekstre/${taxpayerId}/xlsx`, {
+        params: { baslangic, bitis },
+        responseType: 'blob',
+      });
+      const blob = resp.data instanceof Blob ? resp.data : new Blob([resp.data]);
+      const url = URL.createObjectURL(blob);
+      const a = document.createElement('a');
+      a.href = url;
+      a.download = `Ekstre_${taxpayerId}_${baslangic}_${bitis}.xlsx`;
+      document.body.appendChild(a);
+      a.click();
+      a.remove();
+      URL.revokeObjectURL(url);
+      toast.success('Ekstre indirildi');
+    } catch (e: any) {
+      toast.error(e?.response?.data?.message || 'Ekstre indirilemedi');
+    } finally {
+      setEkstreBusy(false);
+    }
+  };
 
   return (
     <div className="space-y-4">
@@ -1246,6 +1376,16 @@ function CariHesapTab({ taxpayerId }: { taxpayerId: string }) {
           <h3 className="text-[17px] font-black" style={{ color: TEXT }}>Cari Hesap</h3>
           <p className="mt-1 text-[12.5px]" style={{ color: MUTED }}>Cari Kasa & Tahsilat modülündeki bakiye ve son hareketler.</p>
         </div>
+        <button
+          type="button"
+          onClick={downloadEkstre}
+          disabled={ekstreBusy}
+          className="inline-flex items-center gap-1.5 rounded-[8px] px-3.5 py-2 text-[12.5px] font-bold transition disabled:opacity-50"
+          style={{ background: 'rgba(212,184,118,0.14)', border: '1px solid rgba(212,184,118,0.30)', color: GOLD_BR }}
+        >
+          {ekstreBusy ? <Loader2 size={13} className="animate-spin" /> : <Download size={13} />}
+          Ekstre indir
+        </button>
         <Link
           href={`/panel/cari-kasa?mukellef=${taxpayerId}`}
           className="inline-flex items-center gap-1.5 rounded-[8px] px-3.5 py-2 text-[12.5px] font-bold"
@@ -1324,6 +1464,211 @@ function CariMetric({ label, value, text, tone = 'neutral', suffix }: { label: s
       {suffix && <div className="mt-1 text-[11px] font-bold" style={{ color }}>{suffix}</div>}
     </div>
   );
+}
+
+type MukellefDocument = {
+  id: string;
+  title: string;
+  category: string;
+  notes?: string | null;
+  mimeType?: string | null;
+  sizeBytes?: number | null;
+  updatedAt?: string;
+  createdAt?: string;
+};
+
+function DosyalarTab({ taxpayerId }: { taxpayerId: string }) {
+  const qc = useQueryClient();
+  const [file, setFile] = useState<File | null>(null);
+  const [title, setTitle] = useState('');
+  const [notes, setNotes] = useState('');
+  const [category, setCategory] = useState<DocumentCategory>(DocumentCategory.EVRAK);
+  const [progress, setProgress] = useState(0);
+  const [busyDocId, setBusyDocId] = useState<string | null>(null);
+
+  const { data: documents = [], isLoading } = useQuery<MukellefDocument[]>({
+    queryKey: ['documents', 'taxpayer', taxpayerId],
+    queryFn: () => documentsApi.findByTaxpayer(taxpayerId),
+    enabled: !!taxpayerId,
+  });
+
+  const uploadMut = useMutation({
+    mutationFn: async () => {
+      if (!file) throw new Error('Dosya seçilmedi');
+      const cleanTitle = title.trim() || file.name;
+      const doc = await documentsApi.upload({
+        taxpayerId,
+        title: cleanTitle,
+        category,
+        file,
+        tags: [],
+        onProgress: setProgress,
+      });
+      if (notes.trim()) {
+        await documentsApi.update(doc.id, { notes: notes.trim() });
+      }
+      return doc;
+    },
+    onSuccess: () => {
+      toast.success('Evrak yüklendi');
+      setFile(null);
+      setTitle('');
+      setNotes('');
+      setProgress(0);
+      qc.invalidateQueries({ queryKey: ['documents', 'taxpayer', taxpayerId] });
+    },
+    onError: (e: any) => toast.error(e?.response?.data?.message || e?.message || 'Evrak yüklenemedi'),
+  });
+
+  const deleteMut = useMutation({
+    mutationFn: (documentId: string) => documentsApi.remove(documentId),
+    onSuccess: () => {
+      toast.success('Evrak silindi');
+      qc.invalidateQueries({ queryKey: ['documents', 'taxpayer', taxpayerId] });
+    },
+    onError: (e: any) => toast.error(e?.response?.data?.message || 'Evrak silinemedi'),
+  });
+
+  const downloadDocument = async (documentId: string) => {
+    setBusyDocId(documentId);
+    try {
+      const res = await documentsApi.getDownloadUrl(documentId);
+      const url = res?.url || res?.downloadUrl;
+      if (!url) throw new Error('İndirme adresi alınamadı');
+      window.open(url, '_blank', 'noopener,noreferrer');
+    } catch (e: any) {
+      toast.error(e?.response?.data?.message || e?.message || 'Evrak indirilemedi');
+    } finally {
+      setBusyDocId(null);
+    }
+  };
+
+  return (
+    <div className="space-y-4">
+      <div className="rounded-[8px] border p-4" style={{ borderColor: HAIR, background: CARD2 }}>
+        <div className="mb-4 flex items-center gap-3">
+          <div className="flex h-10 w-10 items-center justify-center rounded-[8px] border" style={{ borderColor: STEEL_LN, background: STEEL_SF, color: STEEL_BR }}>
+            <Upload size={17} />
+          </div>
+          <div>
+            <h3 className="text-[15px] font-black" style={{ color: TEXT }}>Manuel Evrak Yükleme</h3>
+            <p className="mt-0.5 text-[11.5px]" style={{ color: MUTED }}>Kira kontratı, imza sirküleri, vekaletname ve diğer firma belgeleri.</p>
+          </div>
+        </div>
+
+        <div className="grid grid-cols-1 gap-3 lg:grid-cols-[minmax(0,1fr)_220px]">
+          <Field label="Dosya">
+            <input
+              type="file"
+              accept="application/pdf,image/*,.doc,.docx,.xls,.xlsx,.txt,.csv,.zip"
+              onChange={(e) => setFile(e.target.files?.[0] || null)}
+              className={FIELD_CLS}
+              style={{ colorScheme: 'dark' }}
+            />
+          </Field>
+          <Field label="Kategori">
+            <select value={category} onChange={(e) => setCategory(e.target.value as DocumentCategory)} className={SELECT_CLS} style={{ colorScheme: 'dark' }}>
+              <option value={DocumentCategory.EVRAK}>Evrak</option>
+              <option value={DocumentCategory.SOZLESME}>Sözleşme</option>
+              <option value={DocumentCategory.BEYANNAME}>Beyanname</option>
+              <option value={DocumentCategory.FATURA}>Fatura</option>
+              <option value={DocumentCategory.DIGER}>Diğer</option>
+            </select>
+          </Field>
+          <Field label="Dosya başlığı">
+            <InputBase value={title} onChange={(e) => setTitle(e.target.value)} placeholder={file?.name || 'Belge adı'} />
+          </Field>
+          <Field label="Dosya açıklaması">
+            <InputBase value={notes} onChange={(e) => setNotes(e.target.value)} placeholder="Örn. 2026 kira kontratı, imza sirküleri, vekaletname" />
+          </Field>
+        </div>
+
+        <div className="mt-4 flex flex-wrap items-center justify-between gap-3">
+          <span className="text-[11.5px]" style={{ color: progress ? STEEL_BR : FAINT }}>
+            {progress ? `Yükleme: %${progress}` : file ? `${file.name} seçildi` : 'Dosya seçilmedi'}
+          </span>
+          <button
+            type="button"
+            onClick={() => uploadMut.mutate()}
+            disabled={!file || uploadMut.isPending}
+            className="inline-flex h-10 items-center gap-2 rounded-[8px] px-4 text-[12.5px] font-black transition disabled:opacity-50"
+            style={{ background: `linear-gradient(135deg, ${GOLD}, ${GOLD_DP})`, color: '#0f0d0b' }}
+          >
+            {uploadMut.isPending ? <Loader2 size={15} className="animate-spin" /> : <Upload size={15} />}
+            Evrakı Yükle
+          </button>
+        </div>
+      </div>
+
+      <div className="overflow-hidden rounded-[8px] border" style={{ borderColor: HAIR, background: CARD2 }}>
+        <div className="border-b px-4 py-3 text-[12px] font-black uppercase tracking-[0.10em]" style={{ borderColor: HAIR, color: FAINT }}>
+          Yüklü evraklar
+        </div>
+        {isLoading ? (
+          <div className="flex items-center gap-2 px-4 py-8 text-[13px]" style={{ color: MUTED }}>
+            <Loader2 size={15} className="animate-spin" /> Evraklar yükleniyor...
+          </div>
+        ) : documents.length === 0 ? (
+          <div className="px-4 py-8 text-center text-[13px]" style={{ color: MUTED }}>Bu mükellef için evrak yüklenmedi.</div>
+        ) : (
+          <div className="divide-y" style={{ borderColor: HAIR }}>
+            {documents.map((doc) => (
+              <div key={doc.id} className="grid gap-3 px-4 py-3 md:grid-cols-[minmax(0,1fr)_180px_96px] md:items-center">
+                <div className="min-w-0">
+                  <div className="truncate text-[13px] font-bold" style={{ color: TEXT }}>{doc.title}</div>
+                  <div className="mt-1 truncate text-[11.5px]" style={{ color: doc.notes ? MUTED : FAINT }}>
+                    {doc.notes || 'Açıklama yok'}
+                  </div>
+                </div>
+                <div className="text-[11.5px]" style={{ color: MUTED }}>
+                  <div>{documentCategoryLabel(doc.category)} · {formatBytes(doc.sizeBytes)}</div>
+                  <div className="mt-0.5">{fmtDateTR((doc.updatedAt || doc.createdAt || '').substring(0, 10))}</div>
+                </div>
+                <div className="flex justify-start gap-2 md:justify-end">
+                  <button
+                    type="button"
+                    onClick={() => downloadDocument(doc.id)}
+                    disabled={busyDocId === doc.id}
+                    className="inline-flex h-9 w-9 items-center justify-center rounded-[8px] border"
+                    style={{ borderColor: STEEL_LN, background: STEEL_SF, color: STEEL_BR }}
+                    title="İndir"
+                  >
+                    {busyDocId === doc.id ? <Loader2 size={14} className="animate-spin" /> : <Download size={14} />}
+                  </button>
+                  <button
+                    type="button"
+                    onClick={() => {
+                      if (confirm('Bu evrak silinsin mi?')) deleteMut.mutate(doc.id);
+                    }}
+                    className="inline-flex h-9 w-9 items-center justify-center rounded-[8px] border"
+                    style={{ borderColor: 'rgba(239,107,107,0.30)', background: 'rgba(239,107,107,0.08)', color: '#fca5a5' }}
+                    title="Sil"
+                  >
+                    <Trash2 size={14} />
+                  </button>
+                </div>
+              </div>
+            ))}
+          </div>
+        )}
+      </div>
+    </div>
+  );
+}
+
+function documentCategoryLabel(category?: string | null): string {
+  if (category === DocumentCategory.SOZLESME) return 'Sözleşme';
+  if (category === DocumentCategory.FATURA) return 'Fatura';
+  if (category === DocumentCategory.BEYANNAME) return 'Beyanname';
+  if (category === DocumentCategory.EVRAK) return 'Evrak';
+  return 'Diğer';
+}
+
+function formatBytes(value?: number | null): string {
+  const size = Number(value || 0);
+  if (!size) return '0 KB';
+  if (size < 1024 * 1024) return `${Math.max(1, Math.round(size / 1024))} KB`;
+  return `${(size / (1024 * 1024)).toLocaleString('tr-TR', { maximumFractionDigits: 1 })} MB`;
 }
 
 function toMoneyNumber(n: number | string | null | undefined): number {
