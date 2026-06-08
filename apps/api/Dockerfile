@@ -41,7 +41,16 @@ COPY packages/shared ./packages/shared
 COPY apps/api ./apps/api
 
 # Bağımlılıkları yükle
-RUN pnpm install --no-frozen-lockfile
+# NOT: @whiskeysockets/baileys -> libsignal-node git tarball'ı codeload.github.com'dan
+# çekiliyor; --no-frozen-lockfile her build'de ref'i yeniden çözdüğü için (getRepoRefs)
+# GitHub yavaş/rate-limit olunca install flaky şekilde patlıyordu (deploy yazı-tura).
+# Çözüm: install'ı 5 denemeye kadar 15s backoff'la tekrarla — resolution mantığı değişmez.
+RUN n=0; until pnpm install --no-frozen-lockfile; do \
+      n=$((n+1)); \
+      if [ "$n" -ge 5 ]; then echo ">> pnpm install 5 denemede basarisiz oldu"; exit 1; fi; \
+      echo ">> pnpm install basarisiz (codeload/git flaky olabilir); ${n}. tekrar 15s sonra..."; \
+      sleep 15; \
+    done
 
 # Railway Linux build'lerinde pnpm optional native paketleri bazen sharp'in libvips
 # binary'sini eksik birakabiliyor. Runtime'a gecmeden linux-x64 sharp kurulumunu
