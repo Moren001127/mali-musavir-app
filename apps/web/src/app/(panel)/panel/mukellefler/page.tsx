@@ -153,6 +153,11 @@ function deriveBeyannameStatus(s: MonthlyStatus | null): 'verildi' | 'bekliyor' 
   return 'verilmedi';
 }
 
+function getPreviousMonthPeriodLabel(year: number, month: number): string {
+  const period = new Date(year, month - 2, 1);
+  return `${AYLAR_TR[period.getMonth()]} ${period.getFullYear()}`;
+}
+
 export default function MukelleflerPage() {
   const qc = useQueryClient();
   const now = new Date();
@@ -296,6 +301,7 @@ export default function MukelleflerPage() {
   ];
 
   const donemStr = `${AYLAR_TR[month - 1]} ${year}`;
+  const beyannameDonemiStr = getPreviousMonthPeriodLabel(year, month);
 
   return (
     <div className="space-y-3 max-w-none">
@@ -314,9 +320,23 @@ export default function MukelleflerPage() {
             <span className="text-[9.5px] uppercase font-bold tracking-[.18em]" style={{ color: GOLD_SOFT }}>Ana Modül</span>
           </div>
           <h1 style={{ fontFamily: 'Manrope, Inter, system-ui, sans-serif', fontSize: 27, fontWeight: 800, color: '#fafaf9', letterSpacing: 0 }}>Aylık Takip Listesi</h1>
-          <p className="mt-1 text-[12.5px] font-medium" style={{ color: 'rgba(250,250,249,0.52)' }}>
-            {donemStr} döneminde işe başlama/bitiş tarihine göre takipte {counts.total} mükellef
-          </p>
+          <div className="mt-2 flex flex-wrap items-center gap-2">
+            <span
+              className="inline-flex items-center rounded-full px-2.5 py-1 text-[11.5px] font-semibold"
+              style={{ background: 'rgba(255,255,255,0.035)', border: '1px solid rgba(255,255,255,0.08)', color: 'rgba(250,250,249,0.72)' }}
+            >
+              İşlem ayı: {donemStr}
+            </span>
+            <span
+              className="inline-flex items-center rounded-full px-2.5 py-1 text-[11.5px] font-bold"
+              style={{ background: 'rgba(212,184,118,0.11)', border: '1px solid rgba(212,184,118,0.32)', color: GOLD }}
+            >
+              Beyanname dönemi: {beyannameDonemiStr}
+            </span>
+            <span className="text-[12px] font-medium" style={{ color: 'rgba(250,250,249,0.46)' }}>
+              işe başlama/bitiş tarihine göre takipte {counts.total} mükellef
+            </span>
+          </div>
         </div>
         <div className="flex items-center gap-2">
           <button
@@ -393,6 +413,14 @@ export default function MukelleflerPage() {
               <option key={y} value={y} style={{ background: '#0f0d0b' }}>{y}</option>
             ))}
           </select>
+        </div>
+
+        <div
+          className="inline-flex items-center gap-1.5 rounded-[10px] px-3 py-2 text-[11.5px] font-bold"
+          style={{ background: 'rgba(212,184,118,0.1)', border: '1px solid rgba(212,184,118,0.24)', color: GOLD }}
+          title={`${donemStr} işlem ayında ${beyannameDonemiStr} beyannameleri takip edilir`}
+        >
+          Beyanname: {beyannameDonemiStr}
         </div>
 
         {/* İkincil profil filtreleri */}
