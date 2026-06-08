@@ -119,7 +119,13 @@ if ((!cfg.luca?.uyeNo || !cfg.luca?.username || !cfg.luca?.password) && (PORTAL_
 
 const POLL_INTERVAL = (cfg.worker?.pollIntervalSeconds || 30) * 1000;
 const BROWSER_TIMEOUT = (cfg.worker?.browserTimeoutSeconds || 120) * 1000;
-const HEADLESS = cfg.worker?.headless !== false;
+// DUZELTME (2026-06-08): Varsayilan artik HEADFUL (gorunur). Luca'nin klasik
+// frameset'i (firma/frm4 ekrani) HEADLESS Chromium'da duzgun yuklenmiyordu ->
+// haftalardir suren kronik "frame-stuck" + sonsuz requeue dongusu (e-arsiv vb.
+// isler hic tamamlanamiyordu). Gorunur modda Luca duzgun aciliyor ve isler akiyor
+// (canli dogrulandi: EARSIV_ALIS 2 dk'da done). Gercekten headless gereken (masaustu
+// olmayan) bir kurulum varsa config.json'da "headless": true ile acikca secilebilir.
+const HEADLESS = cfg.worker?.headless === true;
 const SUPPORTED_JOB_TYPES = Object.freeze([
   'ACCOUNT_PLAN',
   'MIZAN',
