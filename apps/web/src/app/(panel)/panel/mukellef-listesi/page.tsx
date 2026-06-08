@@ -8,21 +8,17 @@ import {
   BadgeCheck,
   BookOpen,
   Building2,
-  CalendarDays,
   Eye,
   FileText,
-  Hash,
   Landmark,
-  LayoutGrid,
   List,
   Mail,
-  MapPin,
-  Phone,
   Plus,
   RotateCcw,
   Search,
   Smartphone,
   User,
+  type LucideIcon,
 } from 'lucide-react';
 import { toast } from 'sonner';
 import { api } from '@/lib/api';
@@ -30,7 +26,7 @@ import { api } from '@/lib/api';
 const GOLD = '#d4b876';
 const GOLD_SOFT = '#b8a06f';
 const GREEN = '#22c55e';
-const ROSE = '#ef4e6d';
+const ROSE = '#fb7185';
 const SKY = '#4f86c9';
 const AMBER = '#f59e0b';
 const CARD = 'rgba(255,255,255,0.022)';
@@ -51,8 +47,6 @@ type Taxpayer = {
   emails?: string[];
   phone?: string | null;
   phones?: string[];
-  address?: string | null;
-  notes?: string | null;
   startDate?: string | null;
   endDate?: string | null;
   isActive: boolean;
@@ -63,19 +57,14 @@ type Taxpayer = {
   lucaSlug?: string | null;
   mihsapId?: string | null;
   hattatId?: string | null;
-  naceKodu?: string | null;
-  eFaturaEntegrator?: string | null;
-  createdAt?: string | null;
-  _count?: { taxDeclarations?: number; documents?: number };
 };
 
 type TypeFilter = 'TUMU' | 'FIRMA' | 'SAHIS' | 'BASIT';
 type StatusFilter = 'active' | 'inactive' | 'all';
-type ViewMode = 'cards' | 'table';
 
 const LETTERS = ['A', 'B', 'C', 'Ç', 'D', 'E', 'F', 'G', 'Ğ', 'H', 'I', 'İ', 'J', 'K', 'L', 'M', 'N', 'O', 'Ö', 'P', 'R', 'S', 'Ş', 'T', 'U', 'Ü', 'V', 'Y', 'Z', 'W', 'X', 'Q'];
 
-const TYPE_FILTERS: Array<{ key: TypeFilter; label: string; icon: typeof Building2; color: string }> = [
+const TYPE_FILTERS: Array<{ key: TypeFilter; label: string; icon: LucideIcon; color: string }> = [
   { key: 'FIRMA', label: 'FİRMA', icon: Building2, color: '#e74c3c' },
   { key: 'SAHIS', label: 'ŞAHIS', icon: User, color: '#18aee2' },
   { key: 'BASIT', label: 'BASİT', icon: FileText, color: '#f59e0b' },
@@ -95,8 +84,8 @@ function taxpayerName(t: Taxpayer): string {
 function initials(t: Taxpayer): string {
   const name = taxpayerName(t);
   const parts = name.split(/\s+/).filter(Boolean);
-  if (parts.length >= 2) return `${parts[0][0]}${parts[1][0]}`.toUpperCase();
-  return name.slice(0, 2).toUpperCase();
+  if (parts.length >= 2) return `${parts[0][0]}${parts[1][0]}`.toLocaleUpperCase('tr-TR');
+  return name.slice(0, 2).toLocaleUpperCase('tr-TR');
 }
 
 function cleanList(values: Array<string | null | undefined>): string[] {
@@ -111,15 +100,12 @@ function primaryEmail(t: Taxpayer): string {
   return cleanList([t.email, ...(t.emails || [])])[0] || '';
 }
 
-function formatDate(value?: string | null): string {
-  if (!value) return '-';
-  const match = /^(\d{4})-(\d{2})-(\d{2})/.exec(value);
-  if (!match) return value;
-  return `${match[3]}.${match[2]}.${match[1]}`;
+function hasBook(t: Taxpayer): boolean {
+  return Boolean(String(t.defterTuru || t.mihsapDefterTuru || '').trim());
 }
 
 function isBasit(t: Taxpayer): boolean {
-  const value = `${t.defterTuru || ''} ${t.mihsapDefterTuru || ''}`.toUpperCase();
+  const value = `${t.defterTuru || ''} ${t.mihsapDefterTuru || ''}`.toLocaleUpperCase('tr-TR');
   return /ISLETME|İŞLETME|DEFTER[_\s-]*BEYAN/.test(value);
 }
 
@@ -130,9 +116,9 @@ function typeLabel(t: Taxpayer): string {
 
 function matchesType(t: Taxpayer, filter: TypeFilter): boolean {
   if (filter === 'TUMU') return true;
-  if (filter === 'FIRMA') return t.type === 'TUZEL_KISI';
-  if (filter === 'SAHIS') return t.type === 'GERCEK_KISI';
-  return isBasit(t);
+  if (filter === 'BASIT') return isBasit(t);
+  if (filter === 'FIRMA') return t.type === 'TUZEL_KISI' && !isBasit(t);
+  return t.type === 'GERCEK_KISI' && !isBasit(t);
 }
 
 function matchesLetter(t: Taxpayer, letter: string): boolean {
@@ -146,7 +132,6 @@ export default function MukellefListesiPage() {
   const [typeFilter, setTypeFilter] = useState<TypeFilter>('TUMU');
   const [statusFilter, setStatusFilter] = useState<StatusFilter>('active');
   const [letter, setLetter] = useState('TÜMÜ');
-  const [view, setView] = useState<ViewMode>('cards');
 
   const { data: taxpayers = [], isLoading } = useQuery<Taxpayer[]>({
     queryKey: ['taxpayers', 'directory', search],
@@ -171,9 +156,10 @@ export default function MukellefListesiPage() {
   const counts = useMemo(() => {
     const active = taxpayers.filter((t) => t.isActive).length;
     const inactive = taxpayers.filter((t) => !t.isActive).length;
-    const firm = taxpayers.filter((t) => t.type === 'TUZEL_KISI').length;
-    const person = taxpayers.filter((t) => t.type === 'GERCEK_KISI').length;
-    return { active, inactive, firm, person, total: taxpayers.length };
+    const firm = taxpayers.filter((t) => t.type === 'TUZEL_KISI' && !isBasit(t)).length;
+    const person = taxpayers.filter((t) => t.type === 'GERCEK_KISI' && !isBasit(t)).length;
+    const basit = taxpayers.filter(isBasit).length;
+    return { active, inactive, firm, person, basit, total: taxpayers.length };
   }, [taxpayers]);
 
   const filtered = useMemo(() => {
@@ -188,7 +174,7 @@ export default function MukellefListesiPage() {
   }, [taxpayers, statusFilter, typeFilter, letter]);
 
   return (
-    <div className="space-y-4 max-w-none">
+    <div className="max-w-none space-y-4">
       <header
         className="flex flex-wrap items-end justify-between gap-3 rounded-[8px] px-4 py-3.5"
         style={{ background: CARD, border: `1px solid ${LINE}`, boxShadow: '0 12px 30px rgba(0,0,0,0.18)' }}
@@ -196,31 +182,20 @@ export default function MukellefListesiPage() {
         <div>
           <div className="mb-1.5 flex items-center gap-2.5">
             <span className="h-px w-[26px]" style={{ background: GOLD }} />
-            <span className="text-[9.5px] uppercase font-bold tracking-[.18em]" style={{ color: GOLD_SOFT }}>Mükellef CRM</span>
+            <span className="text-[9.5px] font-bold uppercase tracking-[.18em]" style={{ color: GOLD_SOFT }}>Mükellef CRM</span>
           </div>
           <h1 style={{ fontFamily: 'Manrope, Inter, system-ui, sans-serif', fontSize: 27, fontWeight: 800, color: TEXT, letterSpacing: 0 }}>Mükellef Listesi</h1>
           <p className="mt-1 text-[12.5px] font-medium" style={{ color: MUTED }}>
             {counts.active} aktif, {counts.inactive} pasif, toplam {counts.total} kayıt
           </p>
         </div>
-        <div className="flex items-center gap-2">
-          <button
-            type="button"
-            onClick={() => setView((v) => (v === 'cards' ? 'table' : 'cards'))}
-            className="inline-flex items-center gap-1.5 rounded-[8px] px-3.5 py-2 text-[12.5px] font-semibold transition-all"
-            style={{ background: 'rgba(79,134,201,0.12)', border: '1px solid rgba(79,134,201,0.28)', color: '#9fc6f2' }}
-          >
-            {view === 'cards' ? <List size={14} /> : <LayoutGrid size={14} />}
-            Görünüm
-          </button>
-          <Link
-            href="/panel/mukellefler/yeni"
-            className="inline-flex items-center gap-1.5 rounded-[8px] px-4 py-2 text-[12.5px] font-bold transition-all"
-            style={{ background: `linear-gradient(135deg, ${GOLD}, ${GOLD_SOFT})`, color: '#0f0d0b' }}
-          >
-            <Plus size={14} /> Yeni Mükellef
-          </Link>
-        </div>
+        <Link
+          href="/panel/mukellefler/yeni"
+          className="inline-flex items-center gap-1.5 rounded-[8px] px-4 py-2 text-[12.5px] font-bold transition-all"
+          style={{ background: `linear-gradient(135deg, ${GOLD}, ${GOLD_SOFT})`, color: '#0f0d0b' }}
+        >
+          <Plus size={14} /> Yeni Mükellef
+        </Link>
       </header>
 
       <section
@@ -243,6 +218,7 @@ export default function MukellefListesiPage() {
                     border: `1px solid ${active ? item.color : 'rgba(255,255,255,0.09)'}`,
                     color: active ? '#fff' : 'rgba(250,250,249,0.72)',
                   }}
+                  title={`${item.label} filtresi`}
                 >
                   <Icon size={15} /> {item.label}
                 </button>
@@ -301,13 +277,6 @@ export default function MukellefListesiPage() {
         })}
       </section>
 
-      <section className="grid grid-cols-2 gap-2 lg:grid-cols-4">
-        <StatCard label="Aktif" value={counts.active} color={GREEN} />
-        <StatCard label="Pasif" value={counts.inactive} color={ROSE} />
-        <StatCard label="Firma" value={counts.firm} color={SKY} />
-        <StatCard label="Şahıs" value={counts.person} color={AMBER} />
-      </section>
-
       {isLoading ? (
         <div className="rounded-[8px] py-16 text-center" style={{ background: CARD, border: `1px solid ${LINE}`, color: MUTED }}>
           Yükleniyor...
@@ -317,7 +286,7 @@ export default function MukellefListesiPage() {
           <p className="text-[14px] font-semibold" style={{ color: TEXT }}>Kayıt bulunamadı</p>
           <p className="mt-1 text-[12px]" style={{ color: FAINT }}>Seçili filtrelerde mükellef yok</p>
         </div>
-      ) : view === 'cards' ? (
+      ) : (
         <div className="grid gap-4 xl:grid-cols-2">
           {filtered.map((taxpayer) => (
             <TaxpayerCard
@@ -328,22 +297,7 @@ export default function MukellefListesiPage() {
             />
           ))}
         </div>
-      ) : (
-        <TaxpayerTable
-          taxpayers={filtered}
-          onToggle={(taxpayer) => toggleActive.mutate({ id: taxpayer.id, isActive: !taxpayer.isActive })}
-          busy={toggleActive.isPending}
-        />
       )}
-    </div>
-  );
-}
-
-function StatCard({ label, value, color }: { label: string; value: number; color: string }) {
-  return (
-    <div className="rounded-[8px] px-4 py-3" style={{ background: CARD, border: `1px solid ${LINE}` }}>
-      <div className="text-[23px] font-black tabular-nums" style={{ color }}>{value}</div>
-      <div className="mt-1 text-[11.5px] font-semibold" style={{ color: MUTED }}>{label}</div>
     </div>
   );
 }
@@ -357,10 +311,10 @@ function TaxpayerCard({ taxpayer, onToggle, busy }: { taxpayer: Taxpayer; onTogg
 
   return (
     <article
-      className="grid gap-4 rounded-[8px] p-4 md:grid-cols-[150px_minmax(0,1fr)_190px]"
+      className="grid gap-4 rounded-[8px] p-4 md:grid-cols-[156px_minmax(0,1fr)_150px]"
       style={{ background: CARD, border: `1px solid ${LINE}`, boxShadow: '0 12px 30px rgba(0,0,0,0.16)' }}
     >
-      <div className="flex h-[150px] items-center justify-center overflow-hidden rounded-[6px]" style={{ background: 'rgba(79,134,201,0.24)', border: '1px solid rgba(79,134,201,0.22)' }}>
+      <div className="flex h-[156px] items-center justify-center overflow-hidden rounded-[6px]" style={{ background: 'rgba(79,134,201,0.24)', border: '1px solid rgba(79,134,201,0.22)' }}>
         {taxpayer.logoUrl ? (
           <div className="h-full w-full bg-cover bg-center" style={{ backgroundImage: `url(${taxpayer.logoUrl})` }} />
         ) : (
@@ -373,34 +327,34 @@ function TaxpayerCard({ taxpayer, onToggle, busy }: { taxpayer: Taxpayer; onTogg
       <div className="min-w-0">
         <div className="flex flex-wrap items-start gap-2">
           <Link href={`/panel/mukellefler/${taxpayer.id}`} className="min-w-0 flex-1">
-            <h2 className="truncate text-[19px] font-black leading-tight transition hover:text-[#d4b876]" style={{ color: TEXT }}>{name}</h2>
+            <h2 className="truncate text-[20px] font-black leading-tight transition hover:text-[#d4b876]" style={{ color: TEXT }}>{name}</h2>
           </Link>
-          <span className="rounded-[5px] px-2 py-1 text-[11px] font-black" style={{ background: type === 'FİRMA' ? 'rgba(79,134,201,0.18)' : 'rgba(24,174,226,0.18)', color: type === 'BASİT' ? AMBER : '#7fc2f0' }}>
+          <span
+            className="rounded-[5px] px-2 py-1 text-[11px] font-black"
+            style={{
+              background: type === 'BASİT' ? 'rgba(245,158,11,0.16)' : type === 'FİRMA' ? 'rgba(79,134,201,0.18)' : 'rgba(24,174,226,0.18)',
+              color: type === 'BASİT' ? AMBER : '#7fc2f0',
+            }}
+          >
             {type}
           </span>
         </div>
 
-        <div className="mt-2 flex flex-wrap gap-1.5">
-          <MiniIcon active={!!taxpayer.isEFaturaMukellefi} icon={FileText} title="E-Fatura" />
-          <MiniIcon active={!!taxpayer._count?.documents} icon={BookOpen} title="Evrak" />
-          <MiniIcon active={!!email} icon={Mail} title={email || 'E-posta yok'} />
-          <MiniIcon active={!!phone} icon={Smartphone} title={phone || 'Telefon yok'} />
+        <div className="mt-3 flex flex-wrap gap-2">
+          <PresenceIcon active={!!taxpayer.taxNumber} icon={Landmark} title="VKN/TC" />
+          <PresenceIcon active={hasBook(taxpayer)} icon={BookOpen} title="Defter" />
+          <PresenceIcon active={!!email} icon={Mail} title="E-posta" />
+          <PresenceIcon active={!!phone} icon={Smartphone} title="Telefon" />
         </div>
 
-        <div className="mt-4 grid gap-2 text-[12px] md:grid-cols-2" style={{ color: MUTED }}>
-          <InfoLine icon={Landmark} label={taxpayer.taxNumber || '-'} />
-          <InfoLine icon={MapPin} label={taxpayer.taxOffice || '-'} />
-          <InfoLine icon={CalendarDays} label={`Başlama ${formatDate(taxpayer.startDate)}`} />
-          <InfoLine icon={CalendarDays} label={`Bitiş ${formatDate(taxpayer.endDate)}`} />
-          <InfoLine icon={Hash} label={taxpayer.naceKodu || taxpayer.hattatId || '-'} />
-          <InfoLine icon={Phone} label={phone || '-'} />
+        <div className="mt-4 max-w-[360px] rounded-[6px] px-3 py-2" style={{ background: 'rgba(255,255,255,0.025)', border: `1px solid ${LINE}` }}>
+          <div className="truncate text-[12px] font-semibold" style={{ color: MUTED }}>
+            {taxpayer.taxNumber || 'VKN/TC eksik'}
+          </div>
+          <div className="mt-1 truncate text-[11.5px]" style={{ color: FAINT }}>
+            {taxpayer.taxOffice || 'Vergi dairesi eksik'}
+          </div>
         </div>
-
-        {taxpayer.notes && (
-          <p className="mt-3 line-clamp-2 rounded-[6px] px-3 py-2 text-[12px]" style={{ background: 'rgba(255,255,255,0.028)', color: FAINT }}>
-            {taxpayer.notes}
-          </p>
-        )}
       </div>
 
       <div className="flex flex-col items-stretch gap-2 md:items-end">
@@ -426,8 +380,8 @@ function TaxpayerCard({ taxpayer, onToggle, busy }: { taxpayer: Taxpayer; onTogg
           disabled={busy}
           className="inline-flex items-center justify-center gap-1.5 rounded-[6px] px-3 py-2 text-[12.5px] font-bold transition disabled:opacity-40"
           style={{
-            background: taxpayer.isActive ? 'rgba(239,78,109,0.12)' : 'rgba(34,197,94,0.13)',
-            border: `1px solid ${taxpayer.isActive ? 'rgba(239,78,109,0.30)' : 'rgba(34,197,94,0.30)'}`,
+            background: taxpayer.isActive ? 'rgba(251,113,133,0.12)' : 'rgba(34,197,94,0.13)',
+            border: `1px solid ${taxpayer.isActive ? 'rgba(251,113,133,0.30)' : 'rgba(34,197,94,0.30)'}`,
             color: taxpayer.isActive ? '#ff9aae' : '#7eeaa5',
           }}
         >
@@ -439,67 +393,20 @@ function TaxpayerCard({ taxpayer, onToggle, busy }: { taxpayer: Taxpayer; onTogg
   );
 }
 
-function MiniIcon({ active, icon: Icon, title }: { active: boolean; icon: typeof FileText; title: string }) {
+function PresenceIcon({ active, icon: Icon, title }: { active: boolean; icon: LucideIcon; title: string }) {
+  const color = active ? GREEN : ROSE;
   return (
     <span
-      title={title}
-      className="inline-flex h-9 w-9 items-center justify-center rounded-[5px]"
-      style={{ background: active ? 'rgba(34,197,94,0.12)' : 'rgba(255,255,255,0.026)', border: `1px solid ${active ? 'rgba(34,197,94,0.28)' : 'rgba(255,255,255,0.08)'}`, color: active ? '#6ee7a2' : FAINT }}
+      title={`${title}: ${active ? 'tanımlı' : 'eksik'}`}
+      aria-label={`${title}: ${active ? 'tanımlı' : 'eksik'}`}
+      className="inline-flex h-10 w-10 items-center justify-center rounded-[5px]"
+      style={{
+        background: active ? 'rgba(34,197,94,0.13)' : 'rgba(251,113,133,0.12)',
+        border: `1px solid ${active ? 'rgba(34,197,94,0.32)' : 'rgba(251,113,133,0.32)'}`,
+        color,
+      }}
     >
-      <Icon size={16} />
+      <Icon size={17} />
     </span>
-  );
-}
-
-function InfoLine({ icon: Icon, label }: { icon: typeof Landmark; label: string }) {
-  return (
-    <div className="flex min-w-0 items-center gap-2">
-      <Icon size={13} style={{ color: GOLD }} />
-      <span className="truncate">{label}</span>
-    </div>
-  );
-}
-
-function TaxpayerTable({ taxpayers, onToggle, busy }: { taxpayers: Taxpayer[]; onToggle: (taxpayer: Taxpayer) => void; busy: boolean }) {
-  return (
-    <div className="overflow-x-auto rounded-[8px]" style={{ background: CARD, border: `1px solid ${LINE}` }}>
-      <div className="grid min-w-[1050px] grid-cols-[minmax(260px,1.2fr)_120px_145px_140px_160px_150px_150px] gap-3 px-4 py-3 text-[10px] font-bold uppercase tracking-[0.09em]" style={{ color: FAINT, background: 'rgba(212,184,118,0.045)' }}>
-        <span>Mükellef</span>
-        <span>Tip</span>
-        <span>VKN/TC</span>
-        <span>Vergi Dairesi</span>
-        <span>Başlama / Bitiş</span>
-        <span>Durum</span>
-        <span>Aksiyon</span>
-      </div>
-      {taxpayers.map((taxpayer) => (
-        <div key={taxpayer.id} className="grid min-w-[1050px] grid-cols-[minmax(260px,1.2fr)_120px_145px_140px_160px_150px_150px] items-center gap-3 px-4 py-3 text-[12.5px]" style={{ borderTop: '1px solid rgba(255,255,255,0.04)', color: MUTED }}>
-          <Link href={`/panel/mukellefler/${taxpayer.id}`} className="flex min-w-0 items-center gap-2.5">
-            <span className="flex h-9 w-9 shrink-0 items-center justify-center rounded-[6px] text-[12px] font-black" style={{ background: 'rgba(184,160,111,0.10)', color: GOLD }}>
-              {initials(taxpayer)}
-            </span>
-            <span className="min-w-0">
-              <span className="block truncate font-bold" style={{ color: TEXT }}>{taxpayerName(taxpayer)}</span>
-              <span className="block truncate text-[11px]" style={{ color: FAINT }}>{primaryPhone(taxpayer) || primaryEmail(taxpayer) || '-'}</span>
-            </span>
-          </Link>
-          <span>{typeLabel(taxpayer)}</span>
-          <span className="font-mono">{taxpayer.taxNumber || '-'}</span>
-          <span className="truncate">{taxpayer.taxOffice || '-'}</span>
-          <span>{formatDate(taxpayer.startDate)} / {formatDate(taxpayer.endDate)}</span>
-          <span style={{ color: taxpayer.isActive ? GREEN : ROSE }}>{taxpayer.isActive ? 'Aktif' : 'Pasif'}</span>
-          <button
-            type="button"
-            onClick={() => onToggle(taxpayer)}
-            disabled={busy}
-            className="inline-flex items-center justify-center gap-1.5 rounded-[6px] px-3 py-2 text-[12px] font-bold disabled:opacity-40"
-            style={{ background: taxpayer.isActive ? 'rgba(239,78,109,0.12)' : 'rgba(34,197,94,0.13)', color: taxpayer.isActive ? '#ff9aae' : '#7eeaa5' }}
-          >
-            {taxpayer.isActive ? <Archive size={13} /> : <RotateCcw size={13} />}
-            {taxpayer.isActive ? 'Pasife Al' : 'Aktife Al'}
-          </button>
-        </div>
-      ))}
-    </div>
   );
 }
