@@ -2,6 +2,7 @@ import { Injectable, Logger } from '@nestjs/common';
 import { PrismaService } from '../prisma/prisma.service';
 import { logAiUsage } from '../common/ai-usage-logger';
 import { MorenAiService } from '../moren-ai/moren-ai.service';
+import { claudeTextViaMax, isMaxAvailable } from '../common/max-inference';
 
 /**
  * Moren Portal Çalışanı — tek AI operasyon ajanı (Müdür yok, öğrenme açık).
@@ -71,15 +72,23 @@ export class CalisanService {
   }): Promise<{ assistantMessage: string; model: string }> {
     const critical = this.isCritical(params.message);
     const model = critical ? MODEL_CRITICAL : MODEL_DEFAULT;
-    const answer: any = await this.morenAi.chat(params.tenantId, null, {
-      conversationId: params.conversationId || undefined,
-      message: params.message,
-      voiceMode: false,
-      toolMode: 'owner',
-      source: params.source || 'calisan',
-      model, // MorenAI bu override'ı kullanır (moren-ai.service.ts:342)
-    } as any);
-    const assistantMessage = String(answer?.assistantMessage || '');
+    // KURAL (2026-06-08): SADECE Max aboneliği — ücretli API (ANTHROPIC_API_KEY) YASAK.
+    // Önceden morenAi.chat → ücretli API yolundaydı ve aylık maliyet tavanına takılınca
+    // bot gerçek cevap üretemiyordu. Artık Max metin çıkarımı (claudeTextViaMax) kullanılır.
+    // NOT: Max şimdilik tool (mizan/KDV sorgu) çalıştırmaz; tool-on-Max sonraki faz.
+    if (!isMaxAvailable()) {
+      this.logger.warn('runViaMorenAi: Max bağlı değil (CLAUDE_CODE_OAUTH_TOKEN yok).');
+      return {
+        assistantMessage: 'AI şu an Max aboneliğine bağlı değil. Railway env\'e CLAUDE_CODE_OAUTH_TOKEN eklenmeli (claude setup-token).',
+        model,
+      };
+    }
+    const r = await claudeTextViaMax({ prompt: params.message, model, maxTurns: 1 });
+    if (!r.ok) {
+      this.logger.warn(`runViaMorenAi Max hatası: ${r.error}`);
+      return { assistantMessage: 'Şu an cevap üretemedim (Max), birazdan tekrar dener misin?', model };
+    }
+    const assistantMessage = String(r.text || '');
     // ÖĞRENME: sadece kritik owner etkileşimini hafif not düş (gürültü olmasın)
     if (critical && assistantMessage) {
       this.recordLesson({
