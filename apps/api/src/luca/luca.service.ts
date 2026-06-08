@@ -480,10 +480,15 @@ export class LucaService {
   }
 
   private lastLogSecondsOfDay(errorMsg?: string | null): number | null {
-    const all = String(errorMsg || '').match(/\[(\d{2}):(\d{2}):(\d{2})\]/g);
-    if (!all || !all.length) return null;
-    const last = all[all.length - 1].match(/(\d{2}):(\d{2}):(\d{2})/);
-    return last ? Number(last[1]) * 3600 + Number(last[2]) * 60 + Number(last[3]) : null;
+    // Son ANLAMLI satirin damgasi (heartbeat gurultusu sayilmaz). appendJobLog
+    // artik heartbeat'i yazmiyor; bu filtre eski kirli isler icin de savunma.
+    const lines = String(errorMsg || '').split('\n').filter((l) => l.trim());
+    for (let i = lines.length - 1; i >= 0; i--) {
+      if (this.isAgentHeartbeatLogLine(lines[i])) continue;
+      const m = lines[i].match(/\[(\d{2}):(\d{2}):(\d{2})\]/);
+      if (m) return Number(m[1]) * 3600 + Number(m[2]) * 60 + Number(m[3]);
+    }
+    return null;
   }
 
   /**
@@ -717,7 +722,19 @@ export class LucaService {
    * Job'a ilerleme mesajı ekle — frontend polling ile canlı gösterir.
    * errorMsg field'ını kümülatif log olarak kullan (migration gereksin diye).
    */
+  // Agent'in network logger'i kendi backend cagrilarini da log'luyor:
+  // "🔍 FETCH .../agent/luca/jobs/<id>/status → ..." gibi satirlar saniyede bir
+  // geliyor. Bunlar ILERLEME DEGIL, saf heartbeat gurultusu:
+  //  (a) ekrani doldurup gercek adimlari 60-satir penceresinden kaydiriyor,
+  //  (b) donmus is bile poll attigi icin log'u "taze" gosterip no-progress
+  //      watchdog'unu kor birakiyordu (yumusak takilma yakalanmıyordu).
+  // Bu satirlari hic yazmiyoruz. Gercek Luca XHR'leri (gib530 vb.) korunur.
+  private isAgentHeartbeatLogLine(message: string): boolean {
+    return /(?:FETCH|XHR)\b[^\n]*\/agent\/luca\/jobs\/[A-Za-z0-9_-]+\//i.test(String(message || ''));
+  }
+
   async appendJobLog(jobId: string, message: string) {
+    if (this.isAgentHeartbeatLogLine(message)) return null;
     const job = await (this.prisma as any).lucaFetchJob.findUnique({ where: { id: jobId } });
     if (!job) return null;
     const ts = new Date().toLocaleTimeString('tr-TR', { hour12: false, timeZone: 'Europe/Istanbul' });
@@ -1186,7 +1203,14 @@ export class LucaService {
       });
     }
 
-    const ocr = await this.readCaptchaWithOcr(challenge.captchaImage);
+    // Luca güvenlik kodları OCR için çok zor (güven ~15 = neredeyse rastgele);
+    // OCR pratikte hiç tutmuyor, sadece gecikme + "OCR yetersiz" log gürültüsü
+    // ekliyordu. Zaten 2captcha kullanıyoruz. Varsayılan: OCR ATLA, doğrudan
+    // 2captcha'ya git. Geri açmak için LUCA_CAPTCHA_OCR_ENABLED=true.
+    const ocrEnabled = String(process.env.LUCA_CAPTCHA_OCR_ENABLED || 'false').toLowerCase() === 'true';
+    const ocr = ocrEnabled
+      ? await this.readCaptchaWithOcr(challenge.captchaImage)
+      : { text: '', confidence: 0, rawText: null };
     const minConfidence = Math.max(0, Math.min(100, Number(process.env.LUCA_CAPTCHA_OCR_MIN_CONFIDENCE || 70)));
     const minLength = Math.max(3, Number(process.env.LUCA_CAPTCHA_OCR_MIN_LENGTH || 4));
     const maxLength = Math.max(minLength, Number(process.env.LUCA_CAPTCHA_OCR_MAX_LENGTH || 8));
@@ -1235,7 +1259,9 @@ export class LucaService {
       if (challenge.jobId) {
         await this.appendJobLog(
           challenge.jobId,
-          `Luca guvenlik kodu OCR yetersiz (guven=${Math.round(ocr.confidence)}, okunan="${ocr.text || '-'}"); 2captcha'ya gonderiliyor`,
+          ocrEnabled
+            ? `Luca guvenlik kodu OCR yetersiz (guven=${Math.round(ocr.confidence)}, okunan="${ocr.text || '-'}"); 2captcha'ya gonderiliyor`
+            : `Luca guvenlik kodu 2captcha ile cozuluyor`,
         ).catch(() => {});
       }
       try {
