@@ -652,25 +652,6 @@ export class EarsivService {
     meta.savedDistinct = savedDistinct;
     meta.uyarilar = uyarilar;
 
-    // ─── GEÇİCİ TEŞHİS (kök sebep bulununca kaldırılacak) ───
-    // 16 ETTN farklı ama inserted=0 → faturaNo çakışması şüphesi. Her faturanın
-    // ham ettn:faturaNo değerini ve faturaNo tekrar sayısını job loguna bas.
-    try {
-      const noSayac: Record<string, number> = {};
-      for (const f of parsed as any[]) {
-        const n = (f.faturaNo || '-').toString();
-        noSayac[n] = (noSayac[n] || 0) + 1;
-      }
-      const tekrarliNolar = Object.entries(noSayac).filter(([, c]) => c > 1).map(([n, c]) => `${n}×${c}`);
-      const ornek = (parsed as any[]).slice(0, 16)
-        .map((f) => `${(f.ettn || '-').toString().slice(0, 8)}:${(f.faturaNo || '-')}`)
-        .join(' , ');
-      uyarilar.push(
-        `[TEŞHİS v3] parse=${parsed.length} ins=${inserted} dup=${duplicate} skip=${skipped} | ` +
-        `tekrarliBelgeNo=[${tekrarliNolar.join(', ') || 'yok'}] :: ${ornek}`,
-      );
-    } catch {}
-
     if (uyarilar.length) {
       this.logger.warn(`[MUTABAKAT] ${taxpayerLabel} ${jobDonem} ${tip}/${belgeKaynak}: ${uyarilar.join(' | ')}`);
     }
@@ -734,9 +715,13 @@ export class EarsivService {
       (this.prisma as any).earsivFatura.count({ where }),
     ]);
 
-    const safeRows = rows
-      .filter((row: any) => this.invoiceTaxpayerMatches(row, row.taxpayer?.taxNumber, row.tip))
-      .map(({ taxpayer, ...row }: any) => row);
+    // VKN/TC GÖSTERME FİLTRESİ KALDIRILDI (şahıs firma — kullanıcı kararı, domain bilgisi):
+    // Luca e-arşiv indirmesi FİRMA-BAZLI; agent o firmaya giriş yaptıysa gelen her fatura
+    // bu mükellefe aittir. GİB faturayı bazen mükellefin VKN'sine bazen TC kimlik no'suna
+    // keser; portalda yalnız biri (ör. TC) kayıtlı olunca, diğerine kesilen faturalar DB'de
+    // VAR olmasına rağmen "VKN tutmuyor" diye LİSTEDEN GİZLENİYORDU (ör. 16 faturanın 12'si).
+    // Bu, import'tan kaldırılan per-fatura VKN reddiyle aynı hataydı, ama gösterimde kalmıştı.
+    const safeRows = rows.map(({ taxpayer, ...row }: any) => row);
 
     // v2.3: Her e-arsiv faturasi icin Fatura Merkezi (InvoiceAccountingDocument) durumunu join et
     // - source='earsiv', sourceRefId=earsivFatura.id ile eslestir
