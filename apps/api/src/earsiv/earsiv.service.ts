@@ -438,7 +438,7 @@ export class EarsivService {
           ? await (this.prisma as any).earsivFatura.findFirst({
               where: { tenantId, taxpayerId, tip, belgeKaynak, OR: orKeys },
               select: {
-                id: true, donem: true, faturaTarihi: true, pdfStorageKey: true, htmlStorageKey: true,
+                id: true, faturaNo: true, donem: true, faturaTarihi: true, pdfStorageKey: true, htmlStorageKey: true,
                 satici: true, saticiVergiNo: true, alici: true, aliciVergiNo: true,
               },
             })
@@ -503,6 +503,18 @@ export class EarsivService {
               where: { id: existing.id },
               data: updateData,
             });
+          }
+          // BOZUK BELGE-NO DÜZELTME: eski parser bazı faturalara "NaN"/"BILINMIYOR" yazmıştı
+          // (TTNET vb.). Yeni parser gerçek belge-no çıkardıysa, ETTN ile eşleşen mevcut
+          // satırın bozuk no'sunu düzelt. Ayrı try — başka satırda aynı no varsa (P2002) dokunma.
+          const mevcutNoBozuk = existing.faturaNo && /^(NaN|BILINMIYOR)$/i.test(existing.faturaNo);
+          if (mevcutNoBozuk && noKullanilabilir && noKey !== existing.faturaNo) {
+            try {
+              await (this.prisma as any).earsivFatura.update({
+                where: { id: existing.id },
+                data: { faturaNo: noKey },
+              });
+            } catch { /* aynı belge-no başka satırda var — dokunma */ }
           }
           await this.queueAccountingSafe(tenantId, existing.id, { tip, belgeKaynak });
           { const k = kimlik(f); if (k) savedKeys.add(k); }

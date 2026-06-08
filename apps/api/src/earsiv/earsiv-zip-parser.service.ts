@@ -585,7 +585,16 @@ export class EarsivZipParserService {
       return isFinite(n) ? n : undefined;
     };
 
-    const faturaNo = txt(get(['ID'])) || '';
+    let faturaNo = txt(get(['ID'])) || '';
+    // fast-xml-parser bazı belge-no'ları (ör. "E16..." ile başlayanlar) sayıya çevirmeye
+    // çalışıp NaN/boş döndürebiliyor (TTNET vb.). Bu durumda ham XML'den ilk geçerli
+    // <ID>'yi al — UUID ve "NaN" değerlerini atla (belge-no genelde ilk <ID>'dir).
+    if (!faturaNo || /^nan$/i.test(faturaNo)) {
+      const hamId = [...xml.matchAll(/<(?:[a-z0-9]+:)?ID\b[^>]*>\s*([^<]+?)\s*<\/(?:[a-z0-9]+:)?ID>/gi)]
+        .map((m) => m[1].trim())
+        .find((s) => s && !/^nan$/i.test(s) && !/^[0-9a-f]{8}-[0-9a-f]{4}-/i.test(s));
+      if (hamId) faturaNo = hamId;
+    }
     const ettn = txt(get(['UUID']));
     const issueDateRaw = txt(get(['IssueDate']));
     let faturaTarihi = new Date();
@@ -594,17 +603,30 @@ export class EarsivZipParserService {
       if (!isNaN(d.getTime())) faturaTarihi = d;
     }
 
+    // Şahıs satıcı/alıcı: ünvan PartyName/PartyLegalEntity'de değil <cac:Person>
+    // (FirstName + FamilyName) altında olabilir (ör. Amazon'da satan şahıslar).
+    // Bu fallback olmayınca "Karşı Firma" boş kalıyordu.
+    const personAdi = (party: any): string | undefined => {
+      const p = party?.['Person'];
+      if (!p) return undefined;
+      const parcalar = [txt(p['Title']), txt(p['FirstName']), txt(p['MiddleName']), txt(p['FamilyName'])]
+        .filter((x) => x && x.trim());
+      return parcalar.length ? parcalar.join(' ').replace(/\s+/g, ' ').trim() : undefined;
+    };
+
     // Satıcı
     const supplier = get(['AccountingSupplierParty', 'Party']);
     const satici = txt(supplier?.['PartyName']?.['Name'])
-      || txt(supplier?.['PartyLegalEntity']?.['RegistrationName']);
+      || txt(supplier?.['PartyLegalEntity']?.['RegistrationName'])
+      || personAdi(supplier);
     const saticiVergiNo = taxNoFromParty(supplier)
       || taxNoFromXmlBlock('AccountingSupplierParty');
 
     // Alıcı
     const customer = get(['AccountingCustomerParty', 'Party']);
     const alici = txt(customer?.['PartyName']?.['Name'])
-      || txt(customer?.['PartyLegalEntity']?.['RegistrationName']);
+      || txt(customer?.['PartyLegalEntity']?.['RegistrationName'])
+      || personAdi(customer);
     const aliciVergiNo = taxNoFromParty(customer)
       || taxNoFromXmlBlock('AccountingCustomerParty');
 
