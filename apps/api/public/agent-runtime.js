@@ -4,7 +4,7 @@
 */
 (function () {
   // Agent versiyon — UI'da gösterilir, debug için kritik
-  const AGENT_VERSION = '1.40.5';
+  const AGENT_VERSION = '1.40.6';
   const AGENT_INSTANCE_ID = 'mai_' + Date.now().toString(36) + '_' + Math.random().toString(36).slice(2, 8);
 
   // === VERSION-AWARE RELOAD ===
@@ -3282,15 +3282,28 @@
             if (!await nativeClickLucaText(menuAdi, { timeoutMs: 3500, settleMs: 1000 })) {
               await clickByTextEverywhere(menuAdi, log, { maxMs: 3000 });
             }
-            await log(`🖱 "${menuAdi}" denendi, submenu kontrol ediliyor…`);
-            // Submenu açılma süresi verilir
-            await sleep(1500);
-            if (await akilliVisible()) {
+            await log(`🖱 "${menuAdi}" denendi, Akıllı Entegrasyon bekleniyor…`);
+            // Luca menü çerçevesi geç yüklenebiliyor (intermittent "submenu açılmadı").
+            // Tek 1.5sn yerine ~10sn POLL et; arada menüyü tekrar tıkla (submenu
+            // kapanmış ya da henüz açılmamış olabilir).
+            let gorundu = await akilliVisible();
+            for (let t = 0; t < 20 && !gorundu; t++) {
+              await sleep(500);
+              gorundu = await akilliVisible();
+              if (!gorundu && (t === 5 || t === 12)) {
+                try {
+                  if (!await nativeClickLucaText(menuAdi, { timeoutMs: 1500, settleMs: 300 })) {
+                    await clickByTextEverywhere(menuAdi, log, { maxMs: 1500 });
+                  }
+                } catch {}
+              }
+            }
+            if (gorundu) {
               basariliMenu = menuAdi;
               await log(`✓ "${menuAdi}" doğru menü (Akıllı Entegrasyon submenusu açıldı)`);
               break;
             } else {
-              await log(`✗ "${menuAdi}" yanlış (Akıllı Entegrasyon görünmedi) → diğeri denenecek`);
+              await log(`✗ "${menuAdi}" — Akıllı Entegrasyon ~10sn'de açılmadı`);
             }
           } catch (e) {
             await log(`ℹ "${menuAdi}" bulunamadı: ${e?.message || e}`);
@@ -3298,7 +3311,7 @@
         }
 
         if (!basariliMenu) {
-          throw new Error('Ne "Muhasebe" ne de "İşletme Defteri" menüsü Akıllı Entegrasyon submenu\'su açmadı');
+          throw new Error(`"${denemeler.join('" / "')}" menüsünde Akıllı Entegrasyon submenu'su ~10sn'de açılmadı (Luca menü/çerçeve geç yüklenmiş olabilir; tekrar deneyin)`);
         }
 
         // Akıllı Entegrasyon Noktası: hover-ONLY (click yapma — submenu kapanır).
