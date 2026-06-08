@@ -22,6 +22,7 @@ export type BaileysInbound = {
   from: string;
   text: string;
   id?: string;
+  replyTo?: string;
   media?: { kind: string; id?: string; mimeType?: string; filename?: string; caption?: string };
 };
 
@@ -230,7 +231,7 @@ export class BaileysService {
       this.logger.warn('[Baileys] inboundHandler kayıtlı değil, mesaj düştü');
       return;
     }
-    await this.inboundHandler({ from, text: finalText, id: m.key?.id, media });
+    await this.inboundHandler({ from, text: finalText, id: m.key?.id, replyTo: jid, media });
   }
 
   private jidDigits(jid: string): string {

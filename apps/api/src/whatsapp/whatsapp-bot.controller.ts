@@ -22,6 +22,7 @@ type IncomingWhatsAppMessage = {
   from: string;
   text: string;
   id?: string;
+  replyTo?: string;
   phoneNumberId?: string;
   media?: {
     kind: string;
@@ -175,6 +176,10 @@ export class WhatsAppBotController implements OnModuleInit {
   private withWhatsAppPhone(content: string, phone?: string | null): string {
     const normalized = this.normalize(phone);
     return normalized ? `[[wa_phone:${normalized}]]\n${content}` : content;
+  }
+
+  private replyTarget(msg: IncomingWhatsAppMessage): string {
+    return String(msg.replyTo || msg.from || '').trim();
   }
 
   private buildOwnerNotification(input: {
@@ -464,6 +469,7 @@ export class WhatsAppBotController implements OnModuleInit {
       );
       const ownerPhones = Array.from(new Set([
         phone,
+        lid,
         ownerContact.phone || '',
         ...(Array.isArray(ownerContact.phones) ? ownerContact.phones : []),
       ].filter(Boolean)));
@@ -893,7 +899,7 @@ export class WhatsAppBotController implements OnModuleInit {
     const reply = this.lightCleanupForPersonal(rawReply);
     if (!reply) return;
 
-    const sent = await this.whatsapp.sendMessage(msg.from, reply, tenant.id);
+    const sent = await this.whatsapp.sendMessage(this.replyTarget(msg), reply, tenant.id);
     await this.prisma.communicationLog.create({
       data: {
         taxpayerId: personalRecord.id,
@@ -1038,7 +1044,7 @@ export class WhatsAppBotController implements OnModuleInit {
   }
 
   private ownerAutoReplyEnabled(): boolean {
-    return process.env.MOREN_OWNER_BOT_REPLY_ENABLED === '1';
+    return process.env.MOREN_OWNER_BOT_REPLY_ENABLED !== '0';
   }
 
   private async handleMessage(msg: IncomingWhatsAppMessage) {
@@ -1134,7 +1140,7 @@ export class WhatsAppBotController implements OnModuleInit {
         this.logger.warn(`Owner AI cevabi uretilemedi (fetch hatasi?): ${err?.message || err}`);
         const fallbackText = `Su an cevap uretemedim (gecici servis sorunu olabilir). Lutfen birazdan tekrar dener misin?`;
         try {
-          await this.whatsapp.sendMessage(msg.from, fallbackText, ownerTenant.id);
+          await this.whatsapp.sendMessage(this.replyTarget(msg), fallbackText, ownerTenant.id);
           await this.prisma.communicationLog.create({
             data: {
               taxpayerId: ownerContact.id,
@@ -1151,7 +1157,7 @@ export class WhatsAppBotController implements OnModuleInit {
       // Owner için de post-filter uygula — iç monolog/markdown temizle
       const reply = this.postFilter.filterTaxpayerReply(rawReply, { mode: 'owner' });
       if (reply) {
-        const sent = await this.whatsapp.sendMessage(msg.from, reply, ownerTenant.id);
+        const sent = await this.whatsapp.sendMessage(this.replyTarget(msg), reply, ownerTenant.id);
         await this.prisma.communicationLog.create({
           data: {
             taxpayerId: ownerContact.id,
@@ -1290,7 +1296,7 @@ export class WhatsAppBotController implements OnModuleInit {
           recentReplies: recentUnknownReplies,
         });
         const reply = this.postFilter.filterTaxpayerReply(qualityReply, { recentReplies: recentUnknownReplies });
-        const sent = await this.whatsapp.sendMessage(msg.from, reply, tenant.id);
+        const sent = await this.whatsapp.sendMessage(this.replyTarget(msg), reply, tenant.id);
         await this.prisma.communicationLog.create({
           data: {
             taxpayerId: contact.id,
@@ -1412,7 +1418,7 @@ export class WhatsAppBotController implements OnModuleInit {
           recentReplies,
         });
         const limitedReply = this.postFilter.filterTaxpayerReply(qualityReply, { recentReplies });
-        const sent = await this.whatsapp.sendMessage(msg.from, limitedReply, taxpayer.tenantId);
+        const sent = await this.whatsapp.sendMessage(this.replyTarget(msg), limitedReply, taxpayer.tenantId);
         await this.prisma.communicationLog.create({
           data: {
             taxpayerId: taxpayer.id,
@@ -1442,7 +1448,7 @@ export class WhatsAppBotController implements OnModuleInit {
         recentReplies,
       });
       const filteredReply = this.postFilter.filterTaxpayerReply(qualityReply, { recentReplies });
-      const sent = await this.whatsapp.sendMessage(msg.from, filteredReply, taxpayer.tenantId);
+      const sent = await this.whatsapp.sendMessage(this.replyTarget(msg), filteredReply, taxpayer.tenantId);
       await this.prisma.communicationLog.create({
         data: {
           taxpayerId: taxpayer.id,
@@ -1464,7 +1470,7 @@ export class WhatsAppBotController implements OnModuleInit {
     if (cachedReply) {
       const filteredCached = this.postFilter.filterTaxpayerReply(cachedReply, { recentReplies });
       if (filteredCached) {
-        const sent = await this.whatsapp.sendMessage(msg.from, filteredCached, taxpayer.tenantId);
+        const sent = await this.whatsapp.sendMessage(this.replyTarget(msg), filteredCached, taxpayer.tenantId);
         await this.prisma.communicationLog.create({
           data: {
             taxpayerId: taxpayer.id,
@@ -1574,7 +1580,7 @@ export class WhatsAppBotController implements OnModuleInit {
       // shouldNotCache filtresi (bot-cache.service.ts) generic/hata cevaplarını eler.
       this.botCache.set(taxpayer.tenantId, taxpayer.id, msg.text, reply);
 
-      const sent = await this.whatsapp.sendMessage(msg.from, reply, taxpayer.tenantId);
+      const sent = await this.whatsapp.sendMessage(this.replyTarget(msg), reply, taxpayer.tenantId);
       await this.prisma.communicationLog.create({
         data: {
           taxpayerId: taxpayer.id,
