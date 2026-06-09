@@ -17,6 +17,8 @@ import { MatchReviewPanel } from '@/components/kdv/MatchReviewPanel';
 import { LucaInlineCaptchaPanel } from '@/components/luca/LucaInlineCaptchaPanel';
 
 const GOLD = '#d4b876';
+const GOLD_SOFT = '#b8a06f';
+const KDV_STEEL = '#8db6c6';
 
 function wait(ms: number) {
   return new Promise((resolve) => setTimeout(resolve, ms));
@@ -991,22 +993,75 @@ export default function KdvKontrolPage() {
   return (
     <div className="space-y-3 max-w-7xl">
       {/* HEADER */}
-      <div className="flex items-end justify-between pb-3" style={{ borderBottom: '1px solid rgba(255,255,255,0.05)' }}>
-        <div>
-          <div className="flex items-center gap-2.5 mb-2">
-            <span className="w-[26px] h-px" style={{ background: GOLD }} />
-            <span className="text-[10px] uppercase font-bold tracking-[.18em]" style={{ color: '#b8a06f' }}>
-              <Sparkles size={10} className="inline mr-1" /> Kontrol
+      <header
+        className="relative overflow-hidden rounded-[18px] border px-5 py-4"
+        style={{
+          background: `radial-gradient(circle at 12% 0%, ${GOLD}2e, transparent 34%), radial-gradient(circle at 84% 8%, ${KDV_STEEL}26, transparent 40%), linear-gradient(160deg, rgba(28,23,17,0.96) 0%, #0f0d0b 72%)`,
+          borderColor: 'rgba(255,255,255,0.06)',
+          boxShadow: '0 16px 42px rgba(0,0,0,0.28)',
+        }}
+      >
+        <div
+          className="absolute inset-x-0 top-0 h-1"
+          style={{ background: `linear-gradient(90deg, #8b7649, ${GOLD_SOFT}, ${GOLD}, #e7cf95, ${KDV_STEEL}, ${GOLD})` }}
+        />
+        <div className="mb-3 flex items-center gap-2.5">
+          <span className="h-px w-[26px]" style={{ background: GOLD }} />
+          <span className="text-[10px] font-bold uppercase tracking-[.18em]" style={{ color: GOLD_SOFT }}>
+            Vergi & Beyanname
+          </span>
+        </div>
+        <div className="flex flex-wrap items-center justify-between gap-4">
+          <div className="flex min-w-0 items-center gap-3.5">
+            <span
+              className="grid shrink-0 place-items-center rounded-xl"
+              style={{
+                width: 46,
+                height: 46,
+                background: `linear-gradient(135deg, ${GOLD}, ${KDV_STEEL})`,
+                boxShadow: '0 8px 22px rgba(212,184,118,0.24)',
+              }}
+            >
+              <FileSpreadsheet size={24} style={{ color: '#1a1410' }} />
+            </span>
+            <div className="min-w-0">
+              <h1 className="text-[30px] font-semibold leading-none tracking-normal text-[#fafaf9]" style={{ fontFamily: 'Fraunces, Georgia, serif' }}>
+                KDV Kontrol
+              </h1>
+              <p className="mt-2 text-[13px] font-semibold text-white/45">
+                Mükellef, dönem ve defter tipine göre Luca verisi ile portal faturaları tek ekranda eşleştirilir.
+              </p>
+            </div>
+          </div>
+          <div className="flex min-w-0 flex-wrap items-center justify-end gap-2">
+            <span
+              className="inline-flex h-9 max-w-[280px] items-center gap-1.5 truncate rounded-[10px] border px-3 text-[12px] font-bold"
+              style={{ color: '#fafaf9', background: 'rgba(255,255,255,0.035)', borderColor: 'rgba(255,255,255,0.08)' }}
+              title={selectedTp ? taxpayerName(selectedTp) : 'Mükellef seçilmedi'}
+            >
+              <Users size={14} style={{ color: GOLD }} />
+              <span className="truncate">{selectedTp ? taxpayerName(selectedTp) : 'Mükellef seçilmedi'}</span>
+            </span>
+            <span
+              className="inline-flex h-9 items-center gap-1.5 rounded-[10px] border px-3 text-[12px] font-bold"
+              style={{ color: '#fafaf9', background: 'rgba(255,255,255,0.035)', borderColor: 'rgba(255,255,255,0.08)' }}
+            >
+              <Calendar size={14} style={{ color: KDV_STEEL }} />
+              {periodLabel}
+            </span>
+            <span
+              className="inline-flex h-9 max-w-[260px] items-center gap-1.5 rounded-[10px] border px-3 text-[12px] font-bold"
+              style={{ color: '#fafaf9', background: 'rgba(255,255,255,0.035)', borderColor: 'rgba(255,255,255,0.08)' }}
+              title={selectedActions.length ? selectedActions.map((item) => ACTION_LABEL[item]).join(' + ') : 'İşlem seçilmedi'}
+            >
+              <ShieldCheck size={14} style={{ color: GOLD }} />
+              <span className="truncate">
+                {selectedActions.length ? selectedActions.map((item) => ACTION_LABEL[item]).join(' + ') : 'İşlem seçilmedi'}
+              </span>
             </span>
           </div>
-          <h1 style={{ fontFamily: 'Fraunces, serif', fontSize: 30, fontWeight: 600, color: '#fafaf9', letterSpacing: '-.03em' }}>
-            KDV Kontrol
-          </h1>
-          <p className="text-[13px] mt-1.5" style={{ color: 'rgba(250,250,249,0.42)' }}>
-            Mükellef seç, dönem ver, Luca muavini ile portaldaki faturaları tek tuşla eşleştir
-          </p>
         </div>
-      </div>
+      </header>
 
       {activeLocked && activeSession && (
         <div

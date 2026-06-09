@@ -346,37 +346,84 @@ export default function KdvBeyannamePage() {
   return (
     <div className="px-6 py-4 space-y-3">
       {/* Header */}
-      <div className="flex items-center justify-between">
-        <div>
-          <div
-            className="text-[10.5px] font-bold uppercase tracking-[.14em] mb-1"
-            style={{ color: 'rgba(20,184,166,0.7)' }}
-          >
-            Vergi Uyum · KDV Durum Panosu
-          </div>
-          <h1
-            className="font-semibold"
-            style={{ fontFamily: 'Fraunces, serif', fontSize: 28, color: '#fafaf9', letterSpacing: '-.03em' }}
-          >
-            KDV Durum Panosu
-          </h1>
-          <p className="text-[12.5px] mt-1" style={{ color: 'rgba(250,250,249,0.45)' }}>
-            Kontrolü biten mükellefin KDV durumu otomatik hazır. KDV2 (tevkifat) tespiti + verilme takibi.
-          </p>
+      <header
+        className="relative overflow-hidden rounded-[18px] border px-5 py-4"
+        style={{
+          background: `radial-gradient(circle at 12% 0%, ${TEAL}2e, transparent 34%), radial-gradient(circle at 84% 8%, rgba(240,183,85,0.20), transparent 42%), linear-gradient(160deg, rgba(13,31,29,0.96) 0%, #0f0d0b 74%)`,
+          borderColor: 'rgba(255,255,255,0.06)',
+          boxShadow: '0 16px 42px rgba(0,0,0,0.28)',
+        }}
+      >
+        <div
+          className="absolute inset-x-0 top-0 h-1"
+          style={{ background: `linear-gradient(90deg, ${TEAL}, ${TEAL_BR}, ${STAT_AMBER}, #8db6c6, ${TEAL_BR})` }}
+        />
+        <div className="mb-3 flex items-center gap-2.5">
+          <span className="h-px w-[26px]" style={{ background: TEAL_BR }} />
+          <span className="text-[10px] font-bold uppercase tracking-[.18em]" style={{ color: TEAL_BR }}>
+            Vergi Uyum · KDV
+          </span>
         </div>
-        <button
-          onClick={handleDownload}
-          disabled={!selectedMukellef}
-          className="px-4 py-2 rounded-[9px] text-[12.5px] font-bold inline-flex items-center gap-2 disabled:opacity-50 disabled:cursor-not-allowed transition-all"
-          style={{
-            background: 'linear-gradient(135deg, #14b8a6, #0d9488)',
-            color: '#0f0d0b',
-            boxShadow: '0 2px 10px rgba(20,184,166,0.35)',
-          }}
-        >
-          <Download size={14} /> Excel İndir
-        </button>
-      </div>
+        <div className="flex flex-wrap items-center justify-between gap-4">
+          <div className="flex min-w-0 items-center gap-3.5">
+            <span
+              className="grid shrink-0 place-items-center rounded-xl"
+              style={{
+                width: 46,
+                height: 46,
+                background: `linear-gradient(135deg, ${TEAL_BR}, ${STAT_AMBER})`,
+                boxShadow: '0 8px 22px rgba(20,184,166,0.24)',
+              }}
+            >
+              <FileCheck size={24} style={{ color: '#10201d' }} />
+            </span>
+            <div className="min-w-0">
+              <h1 className="text-[30px] font-semibold leading-none tracking-normal text-[#fafaf9]" style={{ fontFamily: SERIF }}>
+                KDV Durum Panosu
+              </h1>
+              <p className="mt-2 text-[13px] font-semibold text-white/45">
+                Kontrolü biten mükellefin KDV durumu, KDV2 tevkifat tespiti ve verilme takibi aynı panelde izlenir.
+              </p>
+            </div>
+          </div>
+          <div className="flex min-w-0 flex-wrap items-center justify-end gap-2">
+            <span
+              className="inline-flex h-9 max-w-[280px] items-center gap-1.5 rounded-[10px] border px-3 text-[12px] font-bold"
+              style={{ color: '#fafaf9', background: 'rgba(255,255,255,0.035)', borderColor: 'rgba(255,255,255,0.08)' }}
+              title={selectedTaxpayer ? taxpayerName(selectedTaxpayer) : 'Mükellef seçilmedi'}
+            >
+              <Users size={14} style={{ color: TEAL_BR }} />
+              <span className="truncate">{selectedTaxpayer ? taxpayerName(selectedTaxpayer) : 'Mükellef seçilmedi'}</span>
+            </span>
+            <span
+              className="inline-flex h-9 items-center gap-1.5 rounded-[10px] border px-3 text-[12px] font-bold"
+              style={{ color: '#fafaf9', background: 'rgba(255,255,255,0.035)', borderColor: 'rgba(255,255,255,0.08)' }}
+            >
+              <Calendar size={14} style={{ color: STAT_AMBER }} />
+              {donem}
+            </span>
+            <span
+              className="inline-flex h-9 items-center gap-1.5 rounded-[10px] border px-3 text-[12px] font-bold"
+              style={{ color: '#fafaf9', background: 'rgba(255,255,255,0.035)', borderColor: 'rgba(255,255,255,0.08)' }}
+            >
+              <Layers size={14} style={{ color: TEAL_BR }} />
+              {tab}
+            </span>
+            <button
+              onClick={handleDownload}
+              disabled={!selectedMukellef}
+              className="inline-flex h-10 shrink-0 items-center gap-1.5 rounded-[10px] px-4 text-[12.5px] font-bold transition-all disabled:cursor-not-allowed disabled:opacity-50"
+              style={{
+                background: `linear-gradient(135deg, ${STAT_AMBER}, ${TEAL_BR})`,
+                color: '#0f0d0b',
+                boxShadow: '0 10px 24px rgba(20,184,166,0.18)',
+              }}
+            >
+              <Download size={15} /> Excel İndir
+            </button>
+          </div>
+        </div>
+      </header>
 
       {/* Seçim kartı — yalnız pano modunda (mükellef seçili değilken) */}
       {!selectedMukellef && (
