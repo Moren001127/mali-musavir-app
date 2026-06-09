@@ -625,6 +625,26 @@ export class MorenAiService {
 
     finalText = this.compactFinalAnswer(finalText || '', !!body.voiceMode);
 
+    // DETERMİNİSTİK MALİ TABLO ŞABLONU: bir tool sonucunda `whatsappOzet` (hazır
+    // biçimlenmiş blok) varsa, şablonu modele bırakmadan BAŞA koy. Model gelir
+    // tablosu/bilançoyu düz metne çeviriyordu; artık tabloyu kod ekler, modelin
+    // metni kısa YORUM olarak altına gider. (Sesli modda uygulanmaz.)
+    if (!body.voiceMode) {
+      const ozetler = Array.from(new Set(
+        toolUsesLog
+          .map((t) => (t?.result && typeof t.result.whatsappOzet === 'string' ? t.result.whatsappOzet.trim() : ''))
+          .filter(Boolean),
+      ));
+      if (ozetler.length) {
+        const tablo = ozetler.join('\n\n');
+        const zatenSablon = /📈 GELİR TABLOSU|📊 BİLANÇO/.test(finalText);
+        if (!zatenSablon) {
+          const yorum = String(finalText || '').trim();
+          finalText = yorum ? `${tablo}\n\n📊 YORUM\n${yorum}` : tablo;
+        }
+      }
+    }
+
     // Assistant mesajını kaydet
     const aiMessageData: any = {
       conversationId: conversation.id,
