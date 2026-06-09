@@ -1207,6 +1207,28 @@ ${belgeMetni}`;
     ekranKategoriAdayi: string,
   ) {
     const parsed = { ...(cheap.parsed || {}) };
+
+    // SEBEP YÖN DÜZELTME: hızlı model bazen yönü ters yazıyor — SATIŞ faturasına
+    // "mal alışı geçerli" demek gibi. İşlem yönüne göre alış↔satış terimini düzelt.
+    const act = String((input as any).action || '');
+    const ft = String(input.faturaTuru || '').toUpperCase();
+    const isSatis = /isle_satis/.test(act) || (/SAT[İI]S|SATIŞ/.test(ft) && !/AL[İI]S|ALIŞ/.test(ft));
+    const isAlis = /isle_alis/.test(act) || (/AL[İI]S|ALIŞ/.test(ft) && !/SAT[İI]S|SATIŞ/.test(ft));
+    if (parsed.sebep) {
+      if (isSatis) {
+        parsed.sebep = String(parsed.sebep)
+          .replace(/mal\s+al[ıi]ş[ıi]?/gi, 'mal satışı')
+          .replace(/hizmet\s+al[ıi]ş[ıi]?/gi, 'hizmet satışı')
+          .replace(/\bal[ıi]ş[ıi]?\b/gi, 'satış')
+          .replace(/\bal[ıi]m[ıi]?\b/gi, 'satışı');
+      } else if (isAlis) {
+        parsed.sebep = String(parsed.sebep)
+          .replace(/mal\s+sat[ıi]ş[ıi]?/gi, 'mal alışı')
+          .replace(/hizmet\s+sat[ıi]ş[ıi]?/gi, 'hizmet alışı')
+          .replace(/\bsat[ıi]ş[ıi]?\b/gi, 'alış');
+      }
+    }
+
     const memoryCategory = this.resolveFaturaMemoryCategory(parsed, ekranKategoriAdayi);
     parsed.decisionProvider = cheap.provider;
     parsed.ocrProvider = cheap.ocrProvider;

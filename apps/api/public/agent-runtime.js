@@ -4,7 +4,7 @@
 */
 (function () {
   // Agent versiyon — UI'da gösterilir, debug için kritik
-  const AGENT_VERSION = '1.41.3';
+  const AGENT_VERSION = '1.41.4';
   const AGENT_INSTANCE_ID = 'mai_' + Date.now().toString(36) + '_' + Math.random().toString(36).slice(2, 8);
 
   // === VERSION-AWARE RELOAD ===
@@ -11436,6 +11436,22 @@
       if (/sadece\s+onay\s+bekleyen/i.test(text)) {
         const ok = findIn('Tamam') || findIn('Evet') || findInStarts('Tamam') || findInStarts('Evet');
         if (ok) { await click(ok); await sleep(800); return 'not-pending'; }
+      }
+      // Z RAPORU / YAZARKASA — kredi kartlı satış ile nakit toplam farkı uyarısı.
+      // ("Okunan kredi toplam tutarı ... farklı" gibi.) Bu NORMALDİR (POS'ta kredi/nakit
+      // ayrımı), kullanıcı talimatı: ESNEK GEÇ → otomatik ONAYLA ve kaydet. Sadece bu
+      // spesifik kredi-toplam uyarısına uygulanır; normal faturanın tutar farkı dokunulmaz.
+      if (/okunan\s+kredi\s+toplam/i.test(text) ||
+          /kredi\s+toplam\s+tutar/i.test(text) ||
+          (/kredi/i.test(text) && /nakit/i.test(text) && /(fark|toplam)/i.test(text))) {
+        const onayla =
+          findIn('Onayla') || findIn('Evet') || findIn('Devam Et') || findIn('Devam') ||
+          findIn('Kaydet') || findInStarts('Onayla') || findInStarts('Evet') || findInStarts('Devam');
+        if (onayla) { await click(onayla); await sleep(500); return 'resubmit'; }
+        // Onay butonu bulunamazsa aşağıki genel akışa düşmesin diye burada kalsın:
+        // en kötü ihtimalle Tamam ile kapat, döngüye girme.
+        const tamamBtn = findIn('Tamam') || findInStarts('Tamam');
+        if (tamamBtn) { await click(tamamBtn); await sleep(400); return 'resubmit'; }
       }
       // Bu uyarıda kullanıcı talimatı: Onayla, ardından aynı faturada tekrar F2 dene.
       // Vazgeç/Hayır dersen uyarı kapanıyor ama fatura onay beklemeye devam ediyor;
