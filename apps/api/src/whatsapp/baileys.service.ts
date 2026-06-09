@@ -26,6 +26,24 @@ export type BaileysInbound = {
   media?: { kind: string; id?: string; mimeType?: string; filename?: string; caption?: string };
 };
 
+export type BaileysSendResult = {
+  ok: boolean;
+  providerMessageId?: string;
+  error?: string;
+};
+
+export type BaileysPresenceSnapshot = {
+  status: 'online' | 'typing' | 'recording' | 'paused' | 'offline' | 'unknown';
+  label: string;
+  at: string | null;
+  lastSeenAt?: string | null;
+};
+
+export type BaileysDeliverySnapshot = {
+  status: 'pending' | 'sent' | 'delivered' | 'read' | 'played' | 'failed';
+  at: string | null;
+};
+
 type Session = {
   tenantId: string;
   sock: any;
@@ -51,6 +69,8 @@ export class BaileysService {
   private readonly reconnectTimers = new Map<string, ReturnType<typeof setTimeout>>();
   private readonly intentionalLogoutTenants = new Set<string>();
   private readonly lastErrors = new Map<string, string>();
+  private readonly presences = new Map<string, BaileysPresenceSnapshot & { expiresAt: number }>();
+  private readonly deliveries = new Map<string, BaileysDeliverySnapshot & { expiresAt: number }>();
   private watchdogTimer: ReturnType<typeof setInterval> | null = null;
   private inboundHandler: ((msg: BaileysInbound) => Promise<void>) | null = null;
   private lidMappingHandler: ((tenantId: string, lid: string, phone: string) => Promise<void>) | null = null;
@@ -155,6 +175,18 @@ export class BaileysService {
       for (const item of items || []) {
         rememberLidMapping(item?.lid, item?.jid || item?.id).catch(() => {});
       }
+    });
+
+    sock.ev.on('presence.update', (evt: any) => {
+      try { this.handlePresenceUpdate(evt, session); } catch { /* ignore transient presence payloads */ }
+    });
+
+    sock.ev.on('messages.update', (items: any[]) => {
+      try { this.handleMessageUpdates(items, session); } catch { /* ignore transient receipt payloads */ }
+    });
+
+    sock.ev.on('message-receipt.update', (items: any[]) => {
+      try { this.handleMessageReceipts(items, session); } catch { /* ignore transient receipt payloads */ }
     });
 
     sock.ev.on('connection.update', (u: any) => {
@@ -275,6 +307,158 @@ export class BaileysService {
   }
 
   /** Portal için durum + QR (data URL). */
+  private presenceKey(tenantId: string, value?: string | null): string {
+    return `${tenantId}:${String(value || '').trim()}`;
+  }
+
+  private deliveryKey(tenantId: string, messageId?: string | null): string {
+    return `${tenantId}:${String(messageId || '').trim()}`;
+  }
+
+  private storePresence(session: Session, rawTarget: string, snapshot: BaileysPresenceSnapshot) {
+    const raw = String(rawTarget || '').trim();
+    const digits = this.jidDigits(raw);
+    const targets = new Set<string>();
+    if (raw) targets.add(raw);
+    if (digits) {
+      targets.add(digits);
+      targets.add(`${digits}@s.whatsapp.net`);
+    }
+    if (raw.includes('@lid') && digits) {
+      const mapped = session.lidToPhone.get(digits);
+      if (mapped) {
+        targets.add(mapped);
+        targets.add(`${mapped}@s.whatsapp.net`);
+      }
+    }
+    const live = snapshot.status === 'online' || snapshot.status === 'typing' || snapshot.status === 'recording';
+    const expiresAt = Date.now() + (live ? 75_000 : 5 * 60_000);
+    for (const target of targets) {
+      this.presences.set(this.presenceKey(session.tenantId, target), { ...snapshot, expiresAt });
+    }
+  }
+
+  private handlePresenceUpdate(evt: any, session: Session) {
+    const id = String(evt?.id || evt?.from || evt?.jid || '').trim();
+    if (!id || id.endsWith('@g.us') || id === 'status@broadcast') return;
+    const presences = evt?.presences && typeof evt.presences === 'object' ? Object.values(evt.presences) : [];
+    const first: any = presences[0] || evt;
+    const rawState = String(first?.lastKnownPresence || first?.presence || evt?.lastKnownPresence || '').trim();
+    const status = this.normalizePresenceStatus(rawState);
+    const lastSeen = Number(first?.lastSeen || evt?.lastSeen || 0);
+    const snapshot: BaileysPresenceSnapshot = {
+      status,
+      label: this.presenceLabel(status, lastSeen || null),
+      at: new Date().toISOString(),
+      lastSeenAt: lastSeen ? new Date(lastSeen * 1000).toISOString() : null,
+    };
+    this.storePresence(session, id, snapshot);
+  }
+
+  private normalizePresenceStatus(raw: string): BaileysPresenceSnapshot['status'] {
+    const value = raw.toLowerCase();
+    if (value === 'composing') return 'typing';
+    if (value === 'recording') return 'recording';
+    if (value === 'available') return 'online';
+    if (value === 'paused') return 'paused';
+    if (value === 'unavailable') return 'offline';
+    return 'unknown';
+  }
+
+  private presenceLabel(status: BaileysPresenceSnapshot['status'], lastSeen: number | null): string {
+    if (status === 'typing') return 'yaziyor...';
+    if (status === 'recording') return 'ses kaydediyor...';
+    if (status === 'online') return 'cevrimici';
+    if (status === 'paused') return 'az once aktifti';
+    if (status === 'offline' && lastSeen) return 'son gorulme alindi';
+    return 'durum bilinmiyor';
+  }
+
+  async presenceFor(tenantId: string, phoneOrJid?: string | null): Promise<BaileysPresenceSnapshot | null> {
+    const raw = String(phoneOrJid || '').trim();
+    if (!raw) return null;
+    const digits = this.jidDigits(raw);
+    const candidates = [raw, digits, digits ? `${digits}@s.whatsapp.net` : ''].filter(Boolean);
+    for (const candidate of candidates) {
+      const key = this.presenceKey(tenantId, candidate);
+      const value = this.presences.get(key);
+      if (!value) continue;
+      if (value.expiresAt < Date.now()) {
+        this.presences.delete(key);
+        continue;
+      }
+      const { expiresAt: _expiresAt, ...snapshot } = value;
+      return snapshot;
+    }
+    return null;
+  }
+
+  private storeDelivery(tenantId: string, messageId: string | null | undefined, status: BaileysDeliverySnapshot['status']) {
+    const id = String(messageId || '').trim();
+    if (!id) return;
+    const current = this.deliveries.get(this.deliveryKey(tenantId, id));
+    const rank: Record<BaileysDeliverySnapshot['status'], number> = {
+      pending: 0,
+      sent: 1,
+      delivered: 2,
+      read: 3,
+      played: 4,
+      failed: 5,
+    };
+    if (current && rank[current.status] > rank[status] && current.status !== 'failed') return;
+    this.deliveries.set(this.deliveryKey(tenantId, id), {
+      status,
+      at: new Date().toISOString(),
+      expiresAt: Date.now() + 3 * 24 * 60 * 60 * 1000,
+    });
+  }
+
+  private handleMessageUpdates(items: any[], session: Session) {
+    for (const item of items || []) {
+      const id = item?.key?.id || item?.id;
+      if (!id) continue;
+      const status = this.normalizeDeliveryStatus(item?.update?.status ?? item?.status);
+      if (status) this.storeDelivery(session.tenantId, id, status);
+    }
+  }
+
+  private handleMessageReceipts(items: any[], session: Session) {
+    for (const item of items || []) {
+      const id = item?.key?.id || item?.messageId || item?.id;
+      const receipt = item?.receipt || item;
+      let status: BaileysDeliverySnapshot['status'] | null = null;
+      if (receipt?.readTimestamp || receipt?.read) status = 'read';
+      else if (receipt?.deliveryTimestamp || receipt?.delivered || receipt?.receiptTimestamp) status = 'delivered';
+      if (status) this.storeDelivery(session.tenantId, id, status);
+    }
+  }
+
+  private normalizeDeliveryStatus(raw: any): BaileysDeliverySnapshot['status'] | null {
+    if (raw === undefined || raw === null) return null;
+    const value = String(raw).toLowerCase();
+    if (value === '4' || value.includes('read')) return 'read';
+    if (value === '3' || value.includes('delivery')) return 'delivered';
+    if (value === '2' || value.includes('server')) return 'sent';
+    if (value === '1' || value.includes('pending')) return 'pending';
+    if (value === '0' || value.includes('error')) return 'failed';
+    if (value === '5' || value.includes('played')) return 'played';
+    return null;
+  }
+
+  messageDelivery(tenantId: string, messageId?: string | null): BaileysDeliverySnapshot | null {
+    const id = String(messageId || '').trim();
+    if (!id) return null;
+    const key = this.deliveryKey(tenantId, id);
+    const value = this.deliveries.get(key);
+    if (!value) return null;
+    if (value.expiresAt < Date.now()) {
+      this.deliveries.delete(key);
+      return null;
+    }
+    const { expiresAt: _expiresAt, ...snapshot } = value;
+    return snapshot;
+  }
+
   async getStatus(tenantId: string): Promise<{
     provider: 'baileys'; connected: boolean; connecting: boolean; hasQr: boolean; qrDataUrl: string | null; error?: string;
   }> {
@@ -412,7 +596,24 @@ export class BaileysService {
     const raw = String(phone || '').trim();
     if (raw.includes('@')) return raw;
     const digits = raw.replace(/[^\d]/g, '');
-    if (digits.startsWith('111') && digits.length >= 14) return `${digits}@lid`;
+    return `${digits}@s.whatsapp.net`;
+  }
+
+  private isLidTarget(value?: string | null): boolean {
+    const raw = String(value || '');
+    const digits = this.jidDigits(raw);
+    return raw.includes('@lid') || (digits.startsWith('111') && digits.length >= 14);
+  }
+
+  private toSendJid(session: Session, target: string): string | null {
+    const raw = String(target || '').trim();
+    const digits = this.jidDigits(raw);
+    if (!digits) return null;
+    if (this.isLidTarget(raw)) {
+      const mapped = session.lidToPhone.get(digits);
+      return mapped ? `${mapped}@s.whatsapp.net` : null;
+    }
+    if (raw.includes('@')) return raw;
     return `${digits}@s.whatsapp.net`;
   }
 
@@ -435,6 +636,39 @@ export class BaileysService {
   }
 
   /** Düz metin gönder. */
+  private async refreshSignalSession(sock: any, jid: string) {
+    try {
+      await sock.assertSessions?.([jid], true);
+    } catch (e: any) {
+      this.logger.warn(`[Baileys] signal oturumu tazelenemedi jid=${this.maskTarget(jid)}: ${e?.message || e}`);
+    }
+  }
+
+  async sendTextDetailed(tenantId: string, phone: string, text: string): Promise<BaileysSendResult> {
+    const s = this.sessions.get(tenantId);
+    if (!s?.connected || !s.sock) {
+      this.logger.warn(`[Baileys] tenant=${tenantId} bagli degil, mesaj gonderilemedi`);
+      return { ok: false, error: 'QR WhatsApp oturumu bagli degil.' };
+    }
+    try {
+      const jid = this.toSendJid(s, phone);
+      if (!jid) {
+        const error = 'WhatsApp LID adresi gercek telefon numarasina cozumlenemedi; bekleyen mesaj olusmamasi icin gonderim durduruldu.';
+        this.logger.warn(`[Baileys] tenant=${tenantId} LID hedef cozumlenemedi target=${this.maskTarget(phone)}`);
+        return { ok: false, error };
+      }
+      await this.humanPace(s.sock, jid, text);
+      await this.refreshSignalSession(s.sock, jid);
+      const sent = await s.sock.sendMessage(jid, { text });
+      this.storeDelivery(tenantId, sent?.key?.id, 'sent');
+      this.logger.log(`[Baileys] tenant=${tenantId} mesaj gonderildi target=${this.maskTarget(phone)} jid=${this.maskTarget(jid)} id=${sent?.key?.id || 'unknown'}`);
+      return { ok: true, providerMessageId: sent?.key?.id };
+    } catch (e: any) {
+      this.logger.error(`[Baileys] gonderim hatasi ${phone}: ${e?.message || e}`);
+      return { ok: false, error: e?.message || String(e) };
+    }
+  }
+
   async sendText(tenantId: string, phone: string, text: string): Promise<boolean> {
     const s = this.sessions.get(tenantId);
     if (!s?.connected || !s.sock) {
@@ -442,9 +676,15 @@ export class BaileysService {
       return false;
     }
     try {
-      const jid = this.toJid(phone);
+      const jid = this.toSendJid(s, phone);
+      if (!jid) {
+        this.logger.warn(`[Baileys] tenant=${tenantId} LID hedef cozumlenemedi target=${this.maskTarget(phone)}`);
+        return false;
+      }
       await this.humanPace(s.sock, jid, text);
+      await this.refreshSignalSession(s.sock, jid);
       const sent = await s.sock.sendMessage(jid, { text });
+      this.storeDelivery(tenantId, sent?.key?.id, 'sent');
       this.logger.log(`[Baileys] tenant=${tenantId} mesaj gonderildi target=${this.maskTarget(phone)} jid=${this.maskTarget(jid)} id=${sent?.key?.id || 'unknown'}`);
       return true;
     } catch (e: any) {
@@ -454,6 +694,41 @@ export class BaileysService {
   }
 
   /** Medya gönder (URL'den indirip buffer olarak). */
+  async sendMediaDetailed(
+    tenantId: string,
+    phone: string,
+    media: { url: string; mimeType?: string | null; filename?: string | null; caption?: string | null },
+  ): Promise<BaileysSendResult> {
+    const s = this.sessions.get(tenantId);
+    if (!s?.connected || !s.sock) return { ok: false, error: 'QR WhatsApp oturumu bagli degil.' };
+    try {
+      const res = await fetch(media.url);
+      if (!res.ok) return { ok: false, error: `Medya indirilemedi (${res.status}).` };
+      const buffer = Buffer.from(await res.arrayBuffer());
+      const mime = String(media.mimeType || '').toLowerCase();
+      const caption = media.caption ? String(media.caption).slice(0, 1024) : undefined;
+      const jid = this.toSendJid(s, phone);
+      if (!jid) {
+        const error = 'WhatsApp LID adresi gercek telefon numarasina cozumlenemedi; bekleyen medya mesaji olusmamasi icin gonderim durduruldu.';
+        this.logger.warn(`[Baileys] tenant=${tenantId} medya LID hedef cozumlenemedi target=${this.maskTarget(phone)}`);
+        return { ok: false, error };
+      }
+      let payload: any;
+      if (mime.startsWith('image/')) payload = { image: buffer, caption };
+      else if (mime.startsWith('video/')) payload = { video: buffer, caption };
+      else if (mime.startsWith('audio/')) payload = { audio: buffer, mimetype: mime || 'audio/ogg' };
+      else payload = { document: buffer, mimetype: mime || 'application/octet-stream', fileName: media.filename || 'belge', caption };
+      await this.refreshSignalSession(s.sock, jid);
+      const sent = await s.sock.sendMessage(jid, payload);
+      this.storeDelivery(tenantId, sent?.key?.id, 'sent');
+      this.logger.log(`[Baileys] tenant=${tenantId} medya gonderildi target=${this.maskTarget(phone)} jid=${this.maskTarget(jid)} id=${sent?.key?.id || 'unknown'}`);
+      return { ok: true, providerMessageId: sent?.key?.id };
+    } catch (e: any) {
+      this.logger.error(`[Baileys] medya gonderim hatasi ${phone}: ${e?.message || e}`);
+      return { ok: false, error: e?.message || String(e) };
+    }
+  }
+
   async sendMedia(
     tenantId: string,
     phone: string,
@@ -467,13 +742,19 @@ export class BaileysService {
       const buffer = Buffer.from(await res.arrayBuffer());
       const mime = String(media.mimeType || '').toLowerCase();
       const caption = media.caption ? String(media.caption).slice(0, 1024) : undefined;
-      const jid = this.toJid(phone);
+      const jid = this.toSendJid(s, phone);
+      if (!jid) {
+        this.logger.warn(`[Baileys] tenant=${tenantId} medya LID hedef cozumlenemedi target=${this.maskTarget(phone)}`);
+        return false;
+      }
       let payload: any;
       if (mime.startsWith('image/')) payload = { image: buffer, caption };
       else if (mime.startsWith('video/')) payload = { video: buffer, caption };
       else if (mime.startsWith('audio/')) payload = { audio: buffer, mimetype: mime || 'audio/ogg' };
       else payload = { document: buffer, mimetype: mime || 'application/octet-stream', fileName: media.filename || 'belge', caption };
+      await this.refreshSignalSession(s.sock, jid);
       const sent = await s.sock.sendMessage(jid, payload);
+      this.storeDelivery(tenantId, sent?.key?.id, 'sent');
       this.logger.log(`[Baileys] tenant=${tenantId} medya gonderildi target=${this.maskTarget(phone)} jid=${this.maskTarget(jid)} id=${sent?.key?.id || 'unknown'}`);
       return true;
     } catch (e: any) {

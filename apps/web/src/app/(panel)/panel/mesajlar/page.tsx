@@ -6,7 +6,7 @@ import { api } from '@/lib/api';
 import {
   MessageCircle, Send, Search, Clock, AlertCircle, CheckCircle2,
   Loader2, Phone, User, Sparkles, X, FileText, AlertTriangle, Plus, Users,
-  Paperclip, Image as ImageIcon, Link2, Smile,
+  Paperclip, Image as ImageIcon, Link2, Smile, Trash2, Check, CheckCheck,
 } from 'lucide-react';
 import { toast } from 'sonner';
 
@@ -45,6 +45,15 @@ function WhatsAppAvatar({
   );
 }
 
+interface ChatPresence {
+  status: 'online' | 'typing' | 'recording' | 'paused' | 'offline' | 'unknown';
+  label: string;
+  at?: string | null;
+  lastSeenAt?: string | null;
+}
+
+type MessageDeliveryStatus = 'pending' | 'sent' | 'delivered' | 'read' | 'played' | 'failed';
+
 interface Conversation {
   conversationId?: string;
   taxpayerId: string;
@@ -58,6 +67,7 @@ interface Conversation {
   totalMessages: number;
   unknownContact?: boolean;
   avatarUrl?: string | null;
+  presence?: ChatPresence | null;
 }
 
 interface ChatMessage {
@@ -67,6 +77,9 @@ interface ChatMessage {
   content: string;
   occurredAt: string;
   failed?: boolean;
+  providerMessageId?: string | null;
+  deliveryStatus?: MessageDeliveryStatus | null;
+  deliveryAt?: string | null;
   documents?: Array<{ id: string; title: string; mimeType?: string; sizeBytes?: number; url?: string | null }>;
 }
 
@@ -76,6 +89,7 @@ interface ChatData {
   messages: ChatMessage[];
   windowOpen: boolean;
   windowExpiresAt: string | null;
+  presence?: ChatPresence | null;
 }
 
 interface WhatsAppConfigShape {
@@ -194,6 +208,35 @@ function buildStartTemplateParams(templateName: string, primaryName: string, ext
   if (templateName.trim().toLocaleLowerCase('tr-TR') === 'evrak_iletisim') return [primary];
   const extra = extraParam.trim();
   return extra ? [primary, extra] : [primary];
+}
+
+function isLivePresence(p?: ChatPresence | null): boolean {
+  return p?.status === 'online' || p?.status === 'typing' || p?.status === 'recording';
+}
+
+function presenceText(p?: ChatPresence | null): string | null {
+  if (!p || p.status === 'unknown') return null;
+  if (p.status === 'online') return 'çevrimiçi';
+  if (p.status === 'typing') return 'yazıyor...';
+  if (p.status === 'recording') return 'ses kaydediyor...';
+  if (p.status === 'paused') return 'az önce aktifti';
+  return null;
+}
+
+function deliveryMeta(message: ChatMessage): { label: string; color: string; icon: typeof Check | typeof CheckCheck | typeof Clock | typeof AlertTriangle } {
+  if (message.failed || message.deliveryStatus === 'failed') {
+    return { label: 'Gönderilemedi', color: '#fca5a5', icon: AlertTriangle };
+  }
+  if (message.deliveryStatus === 'read' || message.deliveryStatus === 'played') {
+    return { label: 'Okundu', color: '#60a5fa', icon: CheckCheck };
+  }
+  if (message.deliveryStatus === 'delivered') {
+    return { label: 'Teslim edildi', color: 'rgba(250,250,249,0.58)', icon: CheckCheck };
+  }
+  if (message.deliveryStatus === 'pending') {
+    return { label: 'Gönderiliyor', color: 'rgba(250,250,249,0.5)', icon: Clock };
+  }
+  return { label: 'Gönderildi', color: 'rgba(250,250,249,0.55)', icon: Check };
 }
 
 export default function MesajlarPage() {
@@ -437,6 +480,24 @@ export default function MesajlarPage() {
     onError: (e: any) => toast.error(e?.response?.data?.message || e?.message || 'Dosya gonderim hatasi'),
   });
 
+  const deleteConversationMut = useMutation({
+    mutationFn: (conversationId: string) =>
+      api.delete(`/whatsapp/conversations/${conversationId}`).then((r) => r.data),
+    onSuccess: (res, conversationId) => {
+      if (res.ok) {
+        toast.success('Konuşma portaldan silindi');
+        setSelectedId(null);
+        setShowProfilePanel(false);
+        setShowAvatarPreview(false);
+        qc.removeQueries({ queryKey: ['whatsapp-chat', conversationId] });
+        qc.invalidateQueries({ queryKey: ['whatsapp-conversations'] });
+      } else {
+        toast.error(res.error || 'Konuşma silinemedi');
+      }
+    },
+    onError: (e: any) => toast.error(e?.response?.data?.message || e?.message || 'Silme hatası'),
+  });
+
   const filteredConversations = useMemo(() => {
     const q = search.trim().toLocaleLowerCase('tr-TR');
     if (!q) return conversations;
@@ -504,6 +565,13 @@ export default function MesajlarPage() {
     window.location.href = `whatsapp://send?phone=${phone}`;
     window.setTimeout(() => window.open(`https://wa.me/${phone}`, '_blank', 'noopener,noreferrer'), 700);
     toast.message('WhatsApp açılırsa aramayı uygulama içinden başlatabilirsin');
+  };
+
+  const handleDeleteConversation = () => {
+    if (!selectedId || deleteConversationMut.isPending) return;
+    const ok = window.confirm('Bu konuşmayı portaldan silmek istiyor musun? WhatsApp telefonundaki sohbet silinmez.');
+    if (!ok) return;
+    deleteConversationMut.mutate(selectedId);
   };
 
   const handleMediaPicked = (file?: File | null) => {
@@ -598,7 +666,7 @@ export default function MesajlarPage() {
                   }}
                 >
                   {/* Avatar */}
-                  <WhatsAppAvatar name={c.taxpayerName} url={c.avatarUrl} active={c.windowOpen} />
+                  <WhatsAppAvatar name={c.taxpayerName} url={c.avatarUrl} active={isLivePresence(c.presence)} />
 
                   <div className="flex-1 min-w-0">
                     <div className="flex items-center justify-between gap-2">
@@ -649,7 +717,7 @@ export default function MesajlarPage() {
             {/* Sohbet başlık */}
             <div className="px-6 py-4 flex items-center gap-3.5" style={{ borderBottom: '1px solid rgba(255,255,255,0.06)', background: 'rgba(255,255,255,0.02)' }}>
               <button type="button" onClick={() => setShowProfilePanel(true)} className="rounded-full" title="Kişi bilgisi">
-                <WhatsAppAvatar name={chatData?.taxpayer?.name} url={chatData?.taxpayer?.avatarUrl} active={chatData?.windowOpen} />
+                <WhatsAppAvatar name={chatData?.taxpayer?.name} url={chatData?.taxpayer?.avatarUrl} active={isLivePresence(chatData?.presence)} />
               </button>
               <button type="button" onClick={() => setShowProfilePanel(true)} className="flex-1 min-w-0 text-left">
                 <div className="text-[17px] font-semibold" style={{ color: '#fafaf9' }}>
@@ -664,7 +732,20 @@ export default function MesajlarPage() {
                   {chatData?.taxpayer?.taxNumber && (
                     <span>VKN: {chatData.taxpayer.taxNumber}</span>
                   )}
+                  {presenceText(chatData?.presence) && (
+                    <span style={{ color: '#86efac' }}>{presenceText(chatData?.presence)}</span>
+                  )}
                 </div>
+              </button>
+              <button
+                type="button"
+                onClick={handleDeleteConversation}
+                disabled={deleteConversationMut.isPending}
+                title="Konuşmayı sil"
+                className="h-10 w-10 rounded-md flex items-center justify-center disabled:opacity-50"
+                style={{ background: 'rgba(248,113,113,0.08)', border: '1px solid rgba(248,113,113,0.18)', color: '#fca5a5' }}
+              >
+                {deleteConversationMut.isPending ? <Loader2 size={15} className="animate-spin" /> : <Trash2 size={16} />}
               </button>
               {chatData?.taxpayer?.phone && (
                 <button
@@ -714,6 +795,8 @@ export default function MesajlarPage() {
                   const incoming = m.direction === 'incoming';
                   const parsed = parseMessageContent(m.content);
                   const docs = m.documents?.length ? m.documents : parsed.docs;
+                  const delivery = incoming ? null : deliveryMeta(m);
+                  const DeliveryIcon = delivery?.icon;
                   return (
                     <div key={m.id} className={`flex ${incoming ? 'justify-start' : 'justify-end'}`}>
                       <div
@@ -762,8 +845,14 @@ export default function MesajlarPage() {
                             <AlertTriangle size={11} /> WhatsApp'a gonderilemedi
                           </div>
                         )}
-                        <div className="text-[11.5px] mt-1.5 text-right tabular-nums" style={{ color: 'rgba(250,250,249,0.5)' }}>
-                          {fmtFullTime(m.occurredAt)}
+                        <div className="mt-1.5 flex items-center justify-end gap-2 text-[11.5px] tabular-nums" style={{ color: 'rgba(250,250,249,0.5)' }}>
+                          <span>{fmtFullTime(m.occurredAt)}</span>
+                          {delivery && DeliveryIcon && (
+                            <span className="inline-flex items-center gap-1" style={{ color: delivery.color }} title={delivery.label}>
+                              <DeliveryIcon size={12} />
+                              {delivery.label}
+                            </span>
+                          )}
                         </div>
                       </div>
                     </div>
@@ -951,7 +1040,7 @@ export default function MesajlarPage() {
                 <WhatsAppAvatar
                   name={chatData.taxpayer.name}
                   url={chatData.taxpayer.avatarUrl}
-                  active={chatData.windowOpen}
+                  active={isLivePresence(chatData.presence)}
                   size={172}
                 />
               </button>
@@ -975,7 +1064,7 @@ export default function MesajlarPage() {
                 {qrStatus?.connected ? 'QR bağlı' : chatData.windowOpen ? 'Hazır' : 'Pencere kapalı'}
               </div>
 
-              <div className="mt-5 grid grid-cols-2 gap-3">
+              <div className="mt-5 grid grid-cols-3 gap-3">
                 <button
                   type="button"
                   onClick={openWhatsAppFromHeader}
@@ -992,6 +1081,16 @@ export default function MesajlarPage() {
                   style={{ background: 'rgba(255,255,255,0.06)', color: '#fafaf9' }}
                 >
                   <MessageCircle size={15} /> Sohbet
+                </button>
+                <button
+                  type="button"
+                  onClick={handleDeleteConversation}
+                  disabled={deleteConversationMut.isPending}
+                  className="flex h-12 items-center justify-center gap-2 rounded-[10px] text-[12px] font-semibold disabled:opacity-45"
+                  style={{ background: 'rgba(248,113,113,0.08)', color: '#fca5a5' }}
+                >
+                  {deleteConversationMut.isPending ? <Loader2 size={14} className="animate-spin" /> : <Trash2 size={15} />}
+                  Sil
                 </button>
               </div>
 

@@ -1,4 +1,4 @@
-import { Body, Controller, Get, Param, Post, Query, Req, UploadedFile, UseGuards, UseInterceptors } from '@nestjs/common';
+import { Body, Controller, Delete, Get, Param, Post, Query, Req, UploadedFile, UseGuards, UseInterceptors } from '@nestjs/common';
 import { AuthGuard } from '@nestjs/passport';
 import { FileInterceptor } from '@nestjs/platform-express';
 import { randomBytes, randomUUID } from 'crypto';
@@ -213,6 +213,7 @@ export class WhatsAppController {
     result.sort((a, b) => new Date(b.lastMessageAt).getTime() - new Date(a.lastMessageAt).getTime());
     await Promise.all(result.slice(0, 60).map(async (c) => {
       c.avatarUrl = await this.baileys.profilePictureUrl(tenantId, c.whatsAppJid || c.phone).catch(() => null);
+      c.presence = await this.baileys.presenceFor(tenantId, c.whatsAppJid || c.phone).catch(() => null);
       delete c.whatsAppJid;
     }));
     return result;
@@ -333,6 +334,8 @@ export class WhatsAppController {
       const subject = log.subject || '';
       const incoming = /gelen/i.test(subject);
       const contentParts = this.publicMessageParts(log.content);
+      const providerMessageId = this.extractWhatsAppMessageId(log.content);
+      const delivery = this.deliveryStatusForLog(tenantId, subject, providerMessageId);
       if (incoming) lastInboundAt = log.occurredAt;
       return {
         id: log.id,
@@ -342,6 +345,9 @@ export class WhatsAppController {
         documents: contentParts.documents,
         occurredAt: log.occurredAt,
         failed: this.isFailedSubject(subject),
+        providerMessageId,
+        deliveryStatus: incoming ? null : delivery.status,
+        deliveryAt: incoming ? null : delivery.at,
       };
     });
 
@@ -360,6 +366,7 @@ export class WhatsAppController {
     const phone = ref.phone || this.defaultWhatsAppPhone(taxpayer);
     const avatarJid = logs.map((log) => this.extractWhatsAppJid(log.content)).reverse().find(Boolean) || null;
     const avatarUrl = await this.baileys.profilePictureUrl(tenantId, avatarJid || phone).catch(() => null);
+    const presence = await this.baileys.presenceFor(tenantId, avatarJid || phone).catch(() => null);
 
     return {
       conversationId: this.conversationId(taxpayer.id, phone),
@@ -374,6 +381,7 @@ export class WhatsAppController {
       messages,
       windowOpen,
       windowExpiresAt,
+      presence,
     };
   }
 
@@ -382,6 +390,42 @@ export class WhatsAppController {
    * 24h pencere açıksa → serbest metin
    * Kapalıysa → templateName ile şablon gönderir (frontend onaylı şablon seçer)
    */
+  @Delete('conversations/:taxpayerId')
+  async deleteConversation(@Req() req: any, @Param('taxpayerId') taxpayerRef: string) {
+    const tenantId = req.user.tenantId;
+    const ref = this.parseConversationRef(taxpayerRef);
+    const taxpayerId = ref.taxpayerId;
+    const taxpayer = await this.prisma.taxpayer.findFirst({
+      where: { id: taxpayerId, tenantId },
+      select: { id: true, phone: true, phones: true, taxNumber: true },
+    });
+    if (!taxpayer) return { ok: false, error: 'Konusma bulunamadi' };
+
+    const allLogs = await this.prisma.communicationLog.findMany({
+      where: { taxpayerId, channel: 'WHATSAPP' },
+      select: { id: true, content: true },
+    });
+    const logIds = ref.phone
+      ? allLogs.filter((log) => this.logMatchesConversation(log.content, ref.phone, taxpayer)).map((log) => log.id)
+      : allLogs.map((log) => log.id);
+
+    if (logIds.length) {
+      await this.prisma.communicationLog.deleteMany({
+        where: { taxpayerId, channel: 'WHATSAPP', id: { in: logIds } },
+      });
+    }
+
+    const remaining = await this.prisma.communicationLog.count({ where: { taxpayerId, channel: 'WHATSAPP' } });
+    if (remaining === 0 && this.isWhatsAppVirtualTaxNumber(taxpayer.taxNumber)) {
+      await this.prisma.taxpayer.update({
+        where: { id: taxpayerId },
+        data: { isActive: false },
+      }).catch(() => null);
+    }
+
+    return { ok: true, deleted: logIds.length, taxpayerId, conversationId: this.conversationId(taxpayerId, ref.phone) };
+  }
+
   @Post('conversations/:taxpayerId/link')
   async linkConversationToTaxpayer(
     @Req() req: any,
@@ -486,6 +530,7 @@ export class WhatsAppController {
     const caption = String(body?.caption || '').trim();
     const errors: string[] = [];
     let delivered = false;
+    let deliveredMessageId: string | null = null;
 
     for (const phone of phones) {
       const result = await this.whatsappService.sendMediaDetailed(phone, {
@@ -494,7 +539,10 @@ export class WhatsAppController {
         filename,
         caption,
       }, tenantId);
-      if (result.ok) delivered = true;
+      if (result.ok) {
+        delivered = true;
+        deliveredMessageId = result.providerMessageId || deliveredMessageId;
+      }
       else if (result.error) errors.push(`${targetPhone || phone}: ${result.error}`);
     }
 
@@ -504,9 +552,10 @@ export class WhatsAppController {
         taxpayerId,
         channel: 'WHATSAPP',
         subject: delivered ? 'WhatsApp portal medya' : 'WhatsApp portal medya (gonderilemedi)',
-        content: this.withWhatsAppPhone(
+        content: this.withWhatsAppLogMeta(
           delivered ? content : `${content}\n\nHata: ${errors.join(' | ') || 'WhatsApp medya gonderimi basarisiz.'}`,
           targetPhone,
+          delivered ? deliveredMessageId : null,
         ),
         occurredAt: new Date(),
       },
@@ -585,6 +634,7 @@ export class WhatsAppController {
     const caption = String(body?.caption || '').trim();
     const errors: string[] = [];
     let delivered = false;
+    let deliveredMessageId: string | null = null;
 
     for (const phone of phones) {
       const result = await this.whatsappService.sendMediaDetailed(phone, {
@@ -593,7 +643,10 @@ export class WhatsAppController {
         filename,
         caption,
       }, tenantId);
-      if (result.ok) delivered = true;
+      if (result.ok) {
+        delivered = true;
+        deliveredMessageId = result.providerMessageId || deliveredMessageId;
+      }
       else if (result.error) errors.push(`${targetPhone || phone}: ${result.error}`);
     }
 
@@ -603,9 +656,10 @@ export class WhatsAppController {
         taxpayerId,
         channel: 'WHATSAPP',
         subject: delivered ? 'WhatsApp portal medya' : 'WhatsApp portal medya (gonderilemedi)',
-        content: this.withWhatsAppPhone(
+        content: this.withWhatsAppLogMeta(
           delivered ? content : `${content}\n\nHata: ${errors.join(' | ') || 'WhatsApp medya gonderimi basarisiz.'}`,
           targetPhone,
+          delivered ? deliveredMessageId : null,
         ),
         occurredAt: new Date(),
       },
@@ -649,9 +703,10 @@ export class WhatsAppController {
     let detailedDelivered = false;
     let detailedMethod: 'free-form' | 'template' = 'free-form';
     let detailedLogContent = message;
+    let detailedMessageId: string | null = null;
 
     for (const phone of phones) {
-      let result: { ok: boolean; error?: string } = { ok: false };
+      let result: { ok: boolean; error?: string; providerMessageId?: string } = { ok: false };
       if (templateName) {
         detailedMethod = 'template';
         const params = body?.templateParams || [this.taxpayerDisplayName(taxpayer)];
@@ -660,7 +715,10 @@ export class WhatsAppController {
       } else {
         result = await this.whatsappService.sendMessageDetailed(phone, message, tenantId);
       }
-      if (result.ok) detailedDelivered = true;
+      if (result.ok) {
+        detailedDelivered = true;
+        detailedMessageId = result.providerMessageId || detailedMessageId;
+      }
       else if (result.error) detailedErrors.push(`${targetPhone || phone}: ${result.error}`);
     }
 
@@ -671,9 +729,10 @@ export class WhatsAppController {
         subject: detailedDelivered
           ? (detailedMethod === 'template' ? `WhatsApp sablon - ${templateName}` : 'WhatsApp portal cevabi')
           : (detailedMethod === 'template' ? `WhatsApp sablon gonderilemedi - ${templateName}` : 'WhatsApp portal cevabi (gonderilemedi)'),
-        content: this.withWhatsAppPhone(
+        content: this.withWhatsAppLogMeta(
           detailedDelivered ? detailedLogContent : `${detailedLogContent}\n\nHata: ${detailedErrors.join(' | ') || 'WhatsApp gonderimi basarisiz.'}`,
           targetPhone,
+          detailedDelivered ? detailedMessageId : null,
         ),
         occurredAt: new Date(),
       },
@@ -817,11 +876,12 @@ export class WhatsAppController {
           taxpayerId,
           channel: 'WHATSAPP',
           subject: startResult.ok ? 'WhatsApp sohbet baslatma' : 'WhatsApp sohbet baslatma (gonderilemedi)',
-          content: this.withWhatsAppPhone(
+          content: this.withWhatsAppLogMeta(
             startResult.ok
               ? initialMessage
               : `${initialMessage}\n\nHata: ${startResult.error || 'WhatsApp gonderimi basarisiz.'}`,
             phone,
+            startResult.ok ? startResult.providerMessageId : null,
           ),
           occurredAt: new Date(),
         },
@@ -847,11 +907,12 @@ export class WhatsAppController {
         taxpayerId,
         channel: 'WHATSAPP',
         subject: startResult.ok ? `WhatsApp sablon - ${templateName}` : `WhatsApp sablon gonderilemedi - ${templateName}`,
-        content: this.withWhatsAppPhone(
+        content: this.withWhatsAppLogMeta(
           startResult.ok
             ? `[Sablon: ${templateName}] ${params.join(' | ')}`
             : `[Sablon: ${templateName}] ${params.join(' | ')}\n\nHata: ${startResult.error || 'WhatsApp gonderimi basarisiz.'}`,
           phone,
+          startResult.ok ? startResult.providerMessageId : null,
         ),
         occurredAt: new Date(),
       },
@@ -1635,9 +1696,31 @@ export class WhatsAppController {
     return jid.includes('@') ? jid : null;
   }
 
+  private extractWhatsAppMessageId(content?: string | null): string | null {
+    const match = String(content || '').match(/\[\[wa_msg:([^\]]+)\]\]/);
+    const id = String(match?.[1] || '').trim();
+    return id || null;
+  }
+
+  private deliveryStatusForLog(tenantId: string, subject?: string | null, providerMessageId?: string | null) {
+    if (this.isFailedSubject(subject)) return { status: 'failed', at: null };
+    const delivery = this.baileys.messageDelivery(tenantId, providerMessageId);
+    if (delivery) return delivery;
+    return { status: providerMessageId ? 'sent' : 'sent', at: null };
+  }
+
   private withWhatsAppPhone(content: string, phone?: string | null): string {
+    return this.withWhatsAppLogMeta(content, phone, null);
+  }
+
+  private withWhatsAppLogMeta(content: string, phone?: string | null, providerMessageId?: string | null): string {
+    const parts: string[] = [];
     const normalized = this.normalizePhoneForWhatsApp(phone);
-    return normalized ? `[[wa_phone:${normalized}]]\n${content}` : content;
+    if (normalized) parts.push(`[[wa_phone:${normalized}]]`);
+    const messageId = String(providerMessageId || '').trim();
+    if (messageId) parts.push(`[[wa_msg:${messageId}]]`);
+    parts.push(content);
+    return parts.join('\n');
   }
 
   private logMatchesConversation(content: string | null | undefined, requestedPhone: string | null, taxpayer: any): boolean {
@@ -1670,6 +1753,7 @@ export class WhatsAppController {
     const rawText = String(content || '')
       .replace(/\[\[wa_phone:[^\]]+\]\]\s*/g, '')
       .replace(/\[\[wa_jid:[^\]]+\]\]\s*/g, '')
+      .replace(/\[\[wa_msg:[^\]]+\]\]\s*/g, '')
       .replace(/\[\[document:([^|\]]+)\|([^\]]+)\]\]/g, (_all, id, title) => {
         documents.push({ id, title });
         return '';

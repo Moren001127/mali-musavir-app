@@ -239,17 +239,17 @@ export class WhatsAppService {
     const connected = await this.baileys.ensureConnected(tenantId!, this.qrReconnectWaitMs());
     if (!connected) return this.qrDisconnectedResult();
 
-    let ok = await this.baileys.sendText(tenantId!, phone, message);
-    if (!ok) {
+    let result = await this.baileys.sendTextDetailed(tenantId!, phone, message);
+    if (!result.ok) {
       await this.baileys.ensureConnected(tenantId!, 8_000);
-      ok = await this.baileys.sendText(tenantId!, phone, message);
+      result = await this.baileys.sendTextDetailed(tenantId!, phone, message);
     }
-    return ok
-      ? { ok: true }
+    return result.ok
+      ? { ok: true, providerMessageId: result.providerMessageId }
       : {
           ok: false,
           errorCode: 'QR_SEND_FAILED',
-          error: 'QR WhatsApp gonderimi basarisiz oldu. Mesaj Meta/Graph hattina dusurulmedi; ayni sohbete tekrar gondermeden once QR baglantisini kontrol edin.',
+          error: result.error || 'QR WhatsApp gonderimi basarisiz oldu. Mesaj Meta/Graph hattina dusurulmedi; ayni sohbete tekrar gondermeden once QR baglantisini kontrol edin.',
         };
   }
 
@@ -262,17 +262,17 @@ export class WhatsAppService {
     const connected = await this.baileys.ensureConnected(tenantId!, this.qrReconnectWaitMs());
     if (!connected) return this.qrDisconnectedResult();
 
-    let ok = await this.baileys.sendMedia(tenantId!, phone, media);
-    if (!ok) {
+    let result = await this.baileys.sendMediaDetailed(tenantId!, phone, media);
+    if (!result.ok) {
       await this.baileys.ensureConnected(tenantId!, 8_000);
-      ok = await this.baileys.sendMedia(tenantId!, phone, media);
+      result = await this.baileys.sendMediaDetailed(tenantId!, phone, media);
     }
-    return ok
-      ? { ok: true }
+    return result.ok
+      ? { ok: true, providerMessageId: result.providerMessageId }
       : {
           ok: false,
           errorCode: 'QR_SEND_FAILED',
-          error: 'QR WhatsApp medya gonderimi basarisiz oldu. Mesaj Meta/Graph hattina dusurulmedi; QR baglantisini kontrol edin.',
+          error: result.error || 'QR WhatsApp medya gonderimi basarisiz oldu. Mesaj Meta/Graph hattina dusurulmedi; QR baglantisini kontrol edin.',
         };
   }
 
