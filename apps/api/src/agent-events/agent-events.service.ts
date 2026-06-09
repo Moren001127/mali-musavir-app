@@ -275,48 +275,16 @@ export class AgentEventsService {
       }),
     });
 
-    // ── BİRİNCİL YOL: Fatura GÖRÜNTÜSÜNÜ doğrudan Max aboneliğine ver (vision).
-    // OCR yok, ücretli API yok. Mihsap faturayı canvas/görsel olarak bastığı için
-    // en hızlı + en doğru okuma budur. Görüntü yoksa veya vision başarısızsa aşağıdaki
-    // OCR/metin yedeğine düşer (eski davranış korunur — regresyon riski yok).
-    // Kapatmak için: MIHSAP_MAX_VISION=0.
-    const visionEnabled = String(process.env.MIHSAP_MAX_VISION ?? '1').trim() !== '0';
-    if (visionEnabled && hasImage) {
-      const viewerEk =
-        viewerText.length >= 80
-          ? `\n\n=== FATURA GORUNTULEYICI / PDF TEXT-LAYER METNI (yalnizca capraz dogrulama icin) ===\n${viewerText.slice(0, 12000)}`
-          : '';
-      const visionPrompt = `${userText}\n\nSANA FATURA GÖRÜNTÜSÜ EKLENDİ. JSON'daki tarih, belgeNo, belgeTuru, cari, kdvOrani, ocrToplam, ocrMatrah ve ocrKdvTutari alanlarını YALNIZCA bu görüntüden oku. Mihsap/ekran üst bilgilerini belge verisi gibi kabul etme; onları sadece karşılaştırma hedefi olarak gör. Görüntüde net okuyamadığın alanı null bırak; ASLA tahmin/uydurma yapma.${viewerEk}`;
-      const visionMax = await claudeTextViaMax({
-        prompt: visionPrompt,
-        system: systemText,
-        model,
-        maxTurns: 1,
-        images: [
-          {
-            base64: ocrInput.faturaImageBase64,
-            mediaType: ocrInput.faturaImageMediaType || 'image/jpeg',
-          },
-        ],
-      });
-      if (visionMax.ok && visionMax.text) {
-        return wrapMaxText(visionMax.text);
-      }
-      // Vision başarısız → NEDENİ EKRANA YANSIT (kör kalmayalım). Tesseract yedeğine sessizce
-      // düşmüyoruz: yavaş olduğu için runner timeout'a düşüp gerçek sebebi gizliyordu. Hata
-      // mesajı ekranda "AI servis hatası: ...max_vision_error: ..." olarak görünsün → tek testte teşhis.
-      this.logger.warn(`[MIHSAP-VISION] basarisiz: ${visionMax.error || 'bos cevap'}`);
-      return {
-        ok: false,
-        status: 502,
-        text: async () => `max_vision_error: ${visionMax.error || 'bos cevap'}`,
-        json: async () => ({}),
-      };
-    }
-
-    const shouldRunImageOcr =
-      viewerText.length < 80 || String(process.env.MIHSAP_ALWAYS_IMAGE_OCR || '').trim() === '1';
-    const ocr = shouldRunImageOcr && hasImage ? await this.runMihsapImageOcr(ocrInput, ocrSource) : null;
+    // ── İÇERİĞİ OKU (Azure OCR) → Max-metin KARAR ─────────────────────────────
+    // Mihsap faturayı görsel (canvas/jpg) olarak bastığı için KALEMLER (ne alındığı)
+    // yalnızca görüntüde. İçerik↔kod uyum kontrolü ("hizmet ama 153 ticari mal",
+    // "demirbaş ama gider kodu") için görüntüyü OCR ile metne çeviriyoruz —
+    // MIHSAP_OCR_PROVIDER (varsayılan azure; KDV Kontrol'de kanıtlı, hızlı+güvenilir).
+    // Sonra Max-metin (ücretsiz) içerik+kod kararını verir. Ücretli Anthropic API YOK.
+    // (Eski "görseli akışla Max'a verme/vision" yolu kaldırıldı — production balanced
+    //  modda hiç çalışmıyordu + takılıyordu. Kapatmak için: MIHSAP_IMAGE_OCR=0.)
+    const shouldRunImageOcr = hasImage && String(process.env.MIHSAP_IMAGE_OCR ?? '1').trim() !== '0';
+    const ocr = shouldRunImageOcr ? await this.runMihsapImageOcr(ocrInput, ocrSource) : null;
     const ocrText = (ocr?.text || '').trim();
     const belgeKaynaklari: string[] = [];
     if (viewerText.length >= 80) {
