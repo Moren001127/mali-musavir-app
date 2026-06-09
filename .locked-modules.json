@@ -2,7 +2,7 @@
   "_meta": {
     "description": "Kilitli modul SHA256 hash baseline. Backend SystemHealth her 5 dk hash kontrol eder.",
     "how_to_unlock": "Eger kasitli degisiklik yaptiysan: yeni hash hesapla ve buraya yaz. Aksi halde MODULE_HASH alarmi calar.",
-    "baseline_date": "2026-06-08",
+    "baseline_date": "2026-06-09",
     "baseline_version": "v1.36.16"
   },
   "modules": {
@@ -12,17 +12,17 @@
       "lockedBy": "muzaffer"
     },
     "apps/web/src/app/(panel)/panel/kdv-kontrol/page.tsx": {
-      "sha256": "fd92feaceb3efd7fa519fe36f294e353ebcb1059b7e70b868f5c64fcbc79f419",
+      "sha256": "f7f866f6163d03772b18fb778f77b6d1d4483e34000df946a70f211185aea28f",
       "reason": "KDV Kontrol modulu — tam otomasyon, dokunma",
       "lockedBy": "muzaffer"
     },
     "apps/api/public/agent-runtime.js": {
-      "sha256": "37fc9ee88222912cedd4235897345f97802d69e60a2924092f65c5908424fa7e",
+      "sha256": "ac0017143743d67e0adc02492f5144c0920c1667c4217ec6e99fd28366c28d46",
       "reason": "Moren Agent v1.36.64 - log denetim uyarilari + Claude Vision maliyet optimizasyonu",
       "lockedBy": "muzaffer"
     },
     "apps/web/public/moren-agent.js": {
-      "sha256": "5913b159283dbdd4a90b1d67eba3aa815325d3dc981ac927bfb95bf372122088",
+      "sha256": "37fc9ee88222912cedd4235897345f97802d69e60a2924092f65c5908424fa7e",
       "reason": "Moren Agent v1.36.64 (web ayna kopya) - log denetim uyarilari + Claude Vision maliyet optimizasyonu",
       "lockedBy": "muzaffer"
     },
@@ -32,7 +32,7 @@
       "lockedBy": "muzaffer"
     },
     "apps/api/src/kdv-control/kdv-control.service.ts": {
-      "sha256": "c7e7301af7f13260e85d2bac4e537fc090449a58e0985010da1ad3c8ff6a7dac",
+      "sha256": "a75e3001cb554f84e7a01e05236f8594763a6be99a4e29f5c5de92c55291eb54",
       "reason": "KDV Kontrol service — Luca queueing + reconciliation",
       "lockedBy": "muzaffer"
     },

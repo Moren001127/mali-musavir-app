@@ -4,7 +4,7 @@
 */
 (function () {
   // Agent versiyon — UI'da gösterilir, debug için kritik
-  const AGENT_VERSION = '1.41.2';
+  const AGENT_VERSION = '1.41.3';
   const AGENT_INSTANCE_ID = 'mai_' + Date.now().toString(36) + '_' + Math.random().toString(36).slice(2, 8);
 
   // === VERSION-AWARE RELOAD ===
@@ -13772,7 +13772,11 @@
     if (!ai || !m) return true;
     if (ai.includes('E_FATURA')) return /e[_\s-]?fatura/.test(m);
     if (ai.includes('E_ARSIV') || ai.includes('E_ARŞIV')) return /e[_\s-]?ar[sş]iv/.test(m);
-    if (ai.includes('FIS') || ai.includes('FIŞ')) return /fi[sş]|fis/.test(m);
+    // YAZARKASA AİLESİ: Fiş / FIŞ / Z Raporu / ÖKC / yazarkasa / perakende hepsi aynı sınıftır.
+    // OCR Z raporunu "fiş" gibi okur ama Mihsap belge türü "ZRAPORU" der → bu UYUMLUDUR,
+    // mismatch DEĞİL (Z raporu zaten bir yazarkasa fiş belgesidir). Atlama sebebi olmamalı.
+    if (ai.includes('FIS') || ai.includes('FIŞ') || ai.includes('ZRAPOR') || ai.includes('Z_RAPOR') || ai.includes('YAZARKASA') || ai.includes('OKC'))
+      return /fi[sş]|fis|z[\s_-]?rapor|zrapor|okc|yazarkasa|perakende/.test(m);
     return true;
   }
 
