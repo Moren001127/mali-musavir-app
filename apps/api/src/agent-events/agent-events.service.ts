@@ -78,6 +78,16 @@ export class AgentEventsService {
     return String(process.env.MIHSAP_ALWAYS_VERIFY ?? '1').trim() !== '0';
   }
 
+  /**
+   * CHEAP-ONLY: fatura kararı yalnızca hızlı/ucuz model (Gemini) ile verilir; pahalı
+   * Anthropic API'ye veya yavaş Max alt-sürecine ESKALASYON YAPILMAZ. Azure OCR içeriği
+   * okur, Gemini içerik↔kod kontrolünü ~1sn'de yapar. Cheap çalışmazsa güvenli "emin_degil"
+   * döner (elle kontrol), asla pahalı API'ye gitmez. Açmak: MIHSAP_CHEAP_ONLY=1.
+   */
+  private mihsapCheapOnly(): boolean {
+    return String(process.env.MIHSAP_CHEAP_ONLY ?? '0').trim() === '1';
+  }
+
   private getMihsapDecisionMode(): MihsapDecisionMode {
     // VARSAYILAN = max_only: kararlar tamamen Max aboneliğinden (ücretsiz) verilir,
     // pahalı görsel Claude API'si çağrılmaz. Geri dönmek için: MIHSAP_DECISION_MODE=balanced.
@@ -911,7 +921,9 @@ ${belgeMetni}`;
 
     // ÖNCE Max aboneliği (ücretsiz, kotadan düşer). Ucuz karar saf metin/JSON olduğu için
     // Max'a birebir uyar. Başarısız/JSON gelmezse aşağıdaki Gemini/OpenAI'ye düşülür.
-    if (isMaxAvailable()) {
+    // HIZ: provider AÇIKÇA 'gemini'/'openai' seçildiyse Max-önce denemesini ATLA — Max
+    // çağrı başına ~6-7sn (alt-süreç) olduğundan direkt hızlı sağlayıcıya git.
+    if (isMaxAvailable() && provider !== 'gemini' && provider !== 'openai') {
       try {
         const started = Date.now();
         const model = MAX_MODEL_CHEAP;
@@ -3701,10 +3713,33 @@ Fatura görüntüsünü incele ve yukarıdaki sistem talimatlarına göre JSON d
       });
     };
 
+    const cheapOnly = this.mihsapCheapOnly();
     let cheapDecision =
-      decisionMode === 'claude_only' || decisionMode === 'max_only'
+      !cheapOnly && (decisionMode === 'claude_only' || decisionMode === 'max_only')
         ? null
         : await this.tryMihsapCheapFaturaDecision(input, system, userText, rule);
+
+    // ── CHEAP-ONLY: hızlı/ucuz model (Gemini) KESİN karar verir; pahalı Anthropic API'ye
+    // veya yavaş Max alt-sürecine ESKALASYON YOK. Azure OCR içeriği okur, Gemini içerik↔kod
+    // kontrolünü ~1sn'de yapar ("hizmet ama 153" yakalanır). Cheap yanıtsızsa güvenli
+    // emin_degil → elle kontrol (pahalı API kullanılmaz). Kapatmak: MIHSAP_CHEAP_ONLY=0.
+    if (cheapOnly) {
+      if (cheapDecision) {
+        return this.finalizeCheapFaturaDecision(
+          cheapDecision,
+          input,
+          decisionCacheKey,
+          (input.hesapKodlari?.[0] || '').trim(),
+        );
+      }
+      await logUsage('emin_degil', 'cheap-only: icerik/model yanitsiz — pahali API kullanilmadi');
+      return {
+        karar: 'emin_degil',
+        sebep: 'Icerik okunamadi veya hizli model yanit vermedi — elle kontrol',
+        aiCallReason: 'cheap_only_no_result',
+        decisionProvider: 'cheap-only',
+      };
+    }
 
     if (decisionMode === 'balanced' && this.isCheapFaturaAcceptable(cheapDecision, input, vendorHint)) {
       return this.finalizeCheapFaturaDecision(
