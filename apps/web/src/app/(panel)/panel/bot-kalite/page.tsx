@@ -20,6 +20,7 @@ import {
 } from 'lucide-react';
 
 const GOLD = '#d4b876';
+const GOLD_SOFT = '#b8a06f';
 
 type Summary = {
   count: number;
@@ -118,27 +119,55 @@ export default function BotKalitePage() {
 
   return (
     <div className="space-y-5">
-      <header className="flex flex-wrap items-end justify-between gap-3 border-b border-white/5 pb-4">
-        <div>
-          <div className="mb-2 flex items-center gap-2 text-[10px] font-bold uppercase tracking-[.18em]" style={{ color: GOLD }}>
-            <Bot size={13} /> WhatsApp Bot QA
-          </div>
-          <h1 className="text-[30px] font-semibold tracking-[-.03em] text-[#fafaf9]" style={{ fontFamily: 'Fraunces, serif' }}>
-            Bot Kalite
-          </h1>
-          <p className="mt-1.5 text-[13px] text-white/45">
-            Cevaplar müşteriye gitmeden skorlanır; düşük kalite, test ve maliyet burada izlenir.
-          </p>
+      <header
+        className="relative overflow-hidden rounded-[18px] border px-5 py-4"
+        style={{
+          background:
+            'radial-gradient(120% 140% at 0% 0%, rgba(212,184,118,0.16), transparent 46%), radial-gradient(120% 140% at 100% 0%, rgba(139,118,73,0.12), transparent 48%), #0f0d0b',
+          borderColor: 'rgba(255,255,255,0.06)',
+          boxShadow: '0 16px 42px rgba(0,0,0,0.28)',
+        }}
+      >
+        <div
+          className="absolute inset-x-0 top-0 h-1"
+          style={{ background: 'linear-gradient(90deg, #8b7649, #b8a06f, #d4b876, #e7cf95, #d4b876, #b8a06f)' }}
+        />
+        <div className="mb-3 flex items-center gap-2.5">
+          <span className="h-px w-[26px]" style={{ background: GOLD }} />
+          <span className="text-[10px] font-bold uppercase tracking-[.18em]" style={{ color: GOLD_SOFT }}>WhatsApp Bot QA</span>
         </div>
-        <button
-          onClick={() => runTests.mutate()}
-          disabled={runTests.isPending}
-          className="inline-flex h-10 items-center gap-2 rounded-lg border px-4 text-sm font-semibold disabled:opacity-50"
-          style={{ borderColor: 'rgba(212,184,118,0.35)', background: 'rgba(212,184,118,0.12)', color: GOLD }}
-        >
-          {runTests.isPending ? <Loader2 size={15} className="animate-spin" /> : <RefreshCw size={15} />}
-          Testleri Çalıştır
-        </button>
+        <div className="flex flex-wrap items-center justify-between gap-4">
+          <div className="flex min-w-0 items-center gap-3.5">
+            <span
+              className="grid shrink-0 place-items-center rounded-xl"
+              style={{
+                width: 46,
+                height: 46,
+                background: `linear-gradient(135deg, ${GOLD}, ${GOLD_SOFT})`,
+                boxShadow: '0 8px 22px rgba(212,184,118,0.30)',
+              }}
+            >
+              <Bot size={24} style={{ color: '#1a1410' }} />
+            </span>
+            <div className="min-w-0">
+              <h1 className="text-[30px] font-semibold leading-none tracking-[-.03em] text-[#fafaf9]" style={{ fontFamily: 'Fraunces, Georgia, serif' }}>
+                Bot Kalite
+              </h1>
+              <p className="mt-2 text-[13px] font-semibold text-white/45">
+                Cevaplar müşteriye gitmeden skorlanır; düşük kalite, test ve maliyet burada izlenir.
+              </p>
+            </div>
+          </div>
+          <button
+            onClick={() => runTests.mutate()}
+            disabled={runTests.isPending}
+            className="inline-flex h-10 shrink-0 items-center gap-1.5 rounded-[10px] px-4 text-[12.5px] font-bold transition-all disabled:opacity-50"
+            style={{ background: `linear-gradient(135deg, ${GOLD}, ${GOLD_SOFT})`, color: '#0f0d0b', boxShadow: '0 10px 24px rgba(212,184,118,0.16)' }}
+          >
+            {runTests.isPending ? <Loader2 size={15} className="animate-spin" /> : <RefreshCw size={15} />}
+            Testleri Çalıştır
+          </button>
+        </div>
       </header>
 
       <section className="grid gap-3 xl:grid-cols-4">

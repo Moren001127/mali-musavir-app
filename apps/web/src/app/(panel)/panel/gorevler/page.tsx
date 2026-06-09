@@ -19,6 +19,7 @@ import {
 import { api } from '@/lib/api';
 
 const GOLD = '#d4b876';
+const GOLD_SOFT = '#b8a06f';
 const BG_CARD = 'rgba(255,255,255,0.02)';
 const BORDER = 'rgba(255,255,255,0.05)';
 
@@ -177,30 +178,54 @@ export default function GorevlerPage() {
 
   return (
     <div className="space-y-3 max-w-none">
-      {/* Header */}
-      <div className="pb-3 flex items-end justify-between" style={{ borderBottom: '1px solid rgba(255,255,255,0.05)' }}>
-        <div>
-          <div className="flex items-center gap-2.5 mb-2">
-            <span className="w-[26px] h-px" style={{ background: GOLD }} />
-            <span className="text-[10px] uppercase font-bold tracking-[.18em]" style={{ color: '#b8a06f' }}>
-              <CheckSquare size={10} className="inline mr-1" /> Görevler
-            </span>
-          </div>
-          <h1 style={{ fontFamily: 'Fraunces, serif', fontSize: 30, fontWeight: 600, color: '#fafaf9', letterSpacing: '-.03em' }}>
-            Görevler & Notlar
-          </h1>
-          <p className="text-[13px] mt-1.5" style={{ color: 'rgba(250,250,249,0.42)' }}>
-            Tek seferlik veya tekrarlı hatırlatmalar — vade geldiğinde sistem bildirim atar
-          </p>
+      <header
+        className="relative overflow-hidden rounded-[18px] border px-5 py-4"
+        style={{
+          background:
+            'radial-gradient(120% 140% at 0% 0%, rgba(212,184,118,0.16), transparent 46%), radial-gradient(120% 140% at 100% 0%, rgba(139,118,73,0.12), transparent 48%), #0f0d0b',
+          borderColor: 'rgba(255,255,255,0.06)',
+          boxShadow: '0 16px 42px rgba(0,0,0,0.28)',
+        }}
+      >
+        <div
+          className="absolute inset-x-0 top-0 h-1"
+          style={{ background: 'linear-gradient(90deg, #8b7649, #b8a06f, #d4b876, #e7cf95, #d4b876, #b8a06f)' }}
+        />
+        <div className="mb-3 flex items-center gap-2.5">
+          <span className="h-px w-[26px]" style={{ background: GOLD }} />
+          <span className="text-[10px] font-bold uppercase tracking-[.18em]" style={{ color: GOLD_SOFT }}>Ofis Takip</span>
         </div>
-        <button
-          onClick={() => { setEditingTask(null); setShowNewModal(true); }}
-          className="inline-flex items-center gap-2 px-4 py-2.5 rounded-lg font-semibold text-[13px]"
-          style={{ background: GOLD, color: '#0f0d0b' }}
-        >
-          <Plus size={14} /> Yeni Görev
-        </button>
-      </div>
+        <div className="flex flex-wrap items-center justify-between gap-4">
+          <div className="flex min-w-0 items-center gap-3.5">
+            <span
+              className="grid shrink-0 place-items-center rounded-xl"
+              style={{
+                width: 46,
+                height: 46,
+                background: `linear-gradient(135deg, ${GOLD}, ${GOLD_SOFT})`,
+                boxShadow: '0 8px 22px rgba(212,184,118,0.30)',
+              }}
+            >
+              <CheckSquare size={24} style={{ color: '#1a1410' }} />
+            </span>
+            <div className="min-w-0">
+              <h1 style={{ fontFamily: 'Fraunces, Georgia, serif', fontSize: 30, fontWeight: 600, color: '#fafaf9', letterSpacing: '-.03em', lineHeight: 1.05 }}>
+                Görevler & Notlar
+              </h1>
+              <p className="mt-2 text-[13px] font-semibold" style={{ color: 'rgba(250,250,249,0.48)' }}>
+                Tek seferlik veya tekrarlı hatırlatmalar — vade geldiğinde sistem bildirim atar
+              </p>
+            </div>
+          </div>
+          <button
+            onClick={() => { setEditingTask(null); setShowNewModal(true); }}
+            className="inline-flex h-10 shrink-0 items-center gap-1.5 rounded-[10px] px-4 text-[12.5px] font-bold transition-all"
+            style={{ background: `linear-gradient(135deg, ${GOLD}, ${GOLD_SOFT})`, color: '#0f0d0b', boxShadow: '0 10px 24px rgba(212,184,118,0.16)' }}
+          >
+            <Plus size={14} /> Yeni Görev
+          </button>
+        </div>
+      </header>
 
       {/* Sayaçlar */}
       {counts && (

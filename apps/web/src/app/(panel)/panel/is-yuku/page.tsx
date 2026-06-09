@@ -120,58 +120,82 @@ export default function IsYukuPage() {
 
   return (
     <div className="space-y-6 max-w-7xl">
-      {/* HEADER */}
-      <div className="pb-5 flex items-end justify-between flex-wrap gap-3"
-        style={{ borderBottom: '1px solid rgba(255,255,255,0.05)' }}>
-        <div>
-          <div className="flex items-center gap-2.5 mb-2">
-            <span className="w-[26px] h-px" style={{ background: GOLD }} />
-            <span className="text-[10px] uppercase font-bold tracking-[.18em]" style={{ color: GOLD_SOFT }}>
-              <Workflow size={10} className="inline mr-1" /> İŞ AKIŞI
+      <header
+        className="relative overflow-hidden rounded-[18px] border px-5 py-4"
+        style={{
+          background:
+            'radial-gradient(120% 140% at 0% 0%, rgba(212,184,118,0.16), transparent 46%), radial-gradient(120% 140% at 100% 0%, rgba(139,118,73,0.12), transparent 48%), #0f0d0b',
+          borderColor: 'rgba(255,255,255,0.06)',
+          boxShadow: '0 16px 42px rgba(0,0,0,0.28)',
+        }}
+      >
+        <div
+          className="absolute inset-x-0 top-0 h-1"
+          style={{ background: 'linear-gradient(90deg, #8b7649, #b8a06f, #d4b876, #e7cf95, #d4b876, #b8a06f)' }}
+        />
+        <div className="mb-3 flex items-center gap-2.5">
+          <span className="h-px w-[26px]" style={{ background: GOLD }} />
+          <span className="text-[10px] font-bold uppercase tracking-[.18em]" style={{ color: GOLD_SOFT }}>Ofis Akışı</span>
+        </div>
+        <div className="flex flex-wrap items-center justify-between gap-4">
+          <div className="flex min-w-0 items-center gap-3.5">
+            <span
+              className="grid shrink-0 place-items-center rounded-xl"
+              style={{
+                width: 46,
+                height: 46,
+                background: `linear-gradient(135deg, ${GOLD}, ${GOLD_SOFT})`,
+                boxShadow: '0 8px 22px rgba(212,184,118,0.30)',
+              }}
+            >
+              <Workflow size={24} style={{ color: '#1a1410' }} />
             </span>
-          </div>
-          <h1 style={{ fontFamily: 'Fraunces, serif', fontSize: 38, fontWeight: 600, color: '#fafaf9', letterSpacing: '-.03em', lineHeight: 1 }}>
-            İş Akışı
-          </h1>
-          <p className="text-[13px] mt-2" style={{ color: 'rgba(250,250,249,0.42)' }}>
-            Sabah aç, sırasıyla yap — sistem hangi mükellefin işini önce yapacağını söylüyor
-          </p>
-          {(stageFilter || lateOnly) && (
-            <div className="mt-3 flex flex-wrap items-center gap-2">
-              {stageFilter && (
-                <span className="text-[11px] px-2.5 py-1 rounded-full" style={{ background: 'rgba(212,184,118,0.12)', border: '1px solid rgba(212,184,118,0.25)', color: GOLD }}>
-                  {STAGE_CONFIG[stageFilter].label}
-                </span>
+            <div className="min-w-0">
+              <h1 style={{ fontFamily: 'Fraunces, Georgia, serif', fontSize: 30, fontWeight: 600, color: '#fafaf9', letterSpacing: '-.03em', lineHeight: 1.05 }}>
+                İş Akışı
+              </h1>
+              <p className="mt-2 text-[13px] font-semibold" style={{ color: 'rgba(250,250,249,0.48)' }}>
+                Sabah aç, sırasıyla yap — sistem hangi mükellefin işini önce yapacağını söylüyor
+              </p>
+              {(stageFilter || lateOnly) && (
+                <div className="mt-3 flex flex-wrap items-center gap-2">
+                  {stageFilter && (
+                    <span className="rounded-full px-2.5 py-1 text-[11px]" style={{ background: 'rgba(212,184,118,0.12)', border: '1px solid rgba(212,184,118,0.25)', color: GOLD }}>
+                      {STAGE_CONFIG[stageFilter].label}
+                    </span>
+                  )}
+                  {lateOnly && (
+                    <span className="rounded-full px-2.5 py-1 text-[11px]" style={{ background: 'rgba(239,68,68,0.10)', border: '1px solid rgba(239,68,68,0.24)', color: '#fca5a5' }}>
+                      5+ gün bekleyen
+                    </span>
+                  )}
+                  <button
+                    type="button"
+                    onClick={() => { setStageFilter(null); setLateOnly(false); }}
+                    className="rounded-full px-2.5 py-1 text-[11px]"
+                    style={{ background: 'rgba(255,255,255,0.035)', border: '1px solid rgba(255,255,255,0.07)', color: 'rgba(250,250,249,0.55)' }}
+                  >
+                    Filtreyi temizle
+                  </button>
+                </div>
               )}
-              {lateOnly && (
-                <span className="text-[11px] px-2.5 py-1 rounded-full" style={{ background: 'rgba(239,68,68,0.10)', border: '1px solid rgba(239,68,68,0.24)', color: '#fca5a5' }}>
-                  5+ gün bekleyen
-                </span>
-              )}
-              <button
-                type="button"
-                onClick={() => { setStageFilter(null); setLateOnly(false); }}
-                className="text-[11px] px-2.5 py-1 rounded-full"
-                style={{ background: 'rgba(255,255,255,0.035)', border: '1px solid rgba(255,255,255,0.07)', color: 'rgba(250,250,249,0.55)' }}
-              >
-                Filtreyi temizle
-              </button>
             </div>
-          )}
+          </div>
+          <div className="flex shrink-0 items-center gap-2 rounded-[10px] p-1" style={{ background: 'rgba(255,255,255,0.03)', border: '1px solid rgba(255,255,255,0.08)' }}>
+            <select value={month} onChange={(e) => setMonth(Number(e.target.value))}
+              className="cursor-pointer bg-transparent px-2 py-1.5 text-[12.5px] font-medium outline-none"
+              style={{ color: '#fafaf9' }}>
+              {AYLAR.map((a, i) => <option key={i} value={i + 1} style={{ background: '#0f0d0b' }}>{a}</option>)}
+            </select>
+            <span style={{ width: 1, height: 18, background: 'rgba(255,255,255,0.08)' }} />
+            <select value={year} onChange={(e) => setYear(Number(e.target.value))}
+              className="cursor-pointer bg-transparent px-2 py-1.5 text-[12.5px] font-medium outline-none"
+              style={{ color: '#fafaf9' }}>
+              {[year - 1, year, year + 1].map((y) => <option key={y} value={y} style={{ background: '#0f0d0b' }}>{y}</option>)}
+            </select>
+          </div>
         </div>
-        <div className="flex items-center gap-2">
-          <select value={month} onChange={(e) => setMonth(Number(e.target.value))}
-            className="px-3 py-2 rounded-lg text-sm border outline-none cursor-pointer"
-            style={{ background: 'rgba(255,255,255,0.03)', borderColor: 'rgba(255,255,255,0.08)', color: '#fafaf9' }}>
-            {AYLAR.map((a, i) => <option key={i} value={i + 1} style={{ background: '#0f0d0b' }}>{a}</option>)}
-          </select>
-          <select value={year} onChange={(e) => setYear(Number(e.target.value))}
-            className="px-3 py-2 rounded-lg text-sm border outline-none cursor-pointer"
-            style={{ background: 'rgba(255,255,255,0.03)', borderColor: 'rgba(255,255,255,0.08)', color: '#fafaf9' }}>
-            {[year - 1, year, year + 1].map((y) => <option key={y} value={y} style={{ background: '#0f0d0b' }}>{y}</option>)}
-          </select>
-        </div>
-      </div>
+      </header>
 
       {isLoading ? (
         <div className="text-center py-16" style={{ color: 'rgba(250,250,249,0.4)' }}>
