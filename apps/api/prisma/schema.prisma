@@ -2143,6 +2143,28 @@ model SmsTemplate {
   @@map("sms_templates")
 }
 
+// Owner'ın portalda kendi tanımladığı mesaj şablonları (WhatsApp + e-posta).
+// Toplu/otomatik gönderim bunları okur; body içinde {ad} {tutar} {vade} ... placeholder'ları.
+model MessageTemplate {
+  id           String   @id @default(cuid())
+  tenantId     String
+  ad           String
+  kanal        String   @default("BOTH")    // WHATSAPP | EMAIL | BOTH
+  kategori     String   @default("genel")   // evrak | beyanname | sgk | odeme | tebligat | ekstre | genel
+  emailSubject String?
+  body         String
+  attachPdf    Boolean  @default(false)
+  auto         Boolean  @default(false)
+  autoEvent    String?
+  sirano       Int      @default(0)
+  isActive     Boolean  @default(true)
+  createdAt    DateTime @default(now())
+  updatedAt    DateTime @updatedAt
+
+  @@index([tenantId, kategori])
+  @@map("message_templates")
+}
+
 // ============================================================
 // MOREN AI — Mali Müşavir AI Asistanı
 // ============================================================

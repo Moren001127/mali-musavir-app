@@ -14,6 +14,7 @@ import { AuditModule } from './audit/audit.module';
 import { NotificationsModule } from './notifications/notifications.module';
 import { FisYazdirmaModule } from './fis-yazdirma/fis-yazdirma.module';
 import { SmsTemplatesModule } from './sms-templates/sms-templates.module';
+import { MessageTemplatesModule } from './message-templates/message-templates.module';
 import { AgentEventsModule } from './agent-events/agent-events.module';
 import { MihsapModule } from './mihsap/mihsap.module';
 import { LucaModule } from './luca/luca.module';
@@ -64,6 +65,7 @@ import { InvoiceOverdueCron } from './schedule/invoice-overdue.cron';
     NotificationsModule,
     FisYazdirmaModule,
     SmsTemplatesModule,
+    MessageTemplatesModule,
     AgentEventsModule,
     MihsapModule,
     DriveModule,
