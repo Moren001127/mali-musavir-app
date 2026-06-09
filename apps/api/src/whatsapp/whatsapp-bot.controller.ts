@@ -1214,6 +1214,8 @@ export class WhatsAppBotController implements OnModuleInit {
         '6) Veri/komut isteğinde tool çağır, sonucu kısa söyle.',
         '7) Riskli işlemlerde önce preview + ONAYLIYORUM bekle.',
         '',
+        'MALİ TABLO ANALİZİ (gelir tablosu / bilanço / mizan / KDV): düz metin paragraf DEĞİL — kalemleri ALT ALTA yaz, emoji bölüm başlığı (💰 KALEMLER, 📊 YORUM), Türk sayı formatı (1.234.567,89 ₺), sonda 1-2 madde kısa yorum. Tek kalem sorulduysa (örn. net kâr) tek satır cevap ver.',
+        '',
         '★ UZUN BRİFİNG / DURUM RAPORU formatı:',
         '   Başlık (emoji + büyük harfle başlık satırı)',
         '   Boş satır',
