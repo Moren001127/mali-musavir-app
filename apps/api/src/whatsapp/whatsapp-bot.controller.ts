@@ -190,7 +190,10 @@ export class WhatsAppBotController implements OnModuleInit {
   }
 
   private replyTarget(msg: IncomingWhatsAppMessage): string {
-    return String(msg.replyTo || msg.from || '').trim();
+    const from = String(msg.from || '').trim();
+    const replyTo = String(msg.replyTo || '').trim();
+    if (replyTo.includes('@lid') && from) return from;
+    return String(replyTo || from).trim();
   }
 
   private buildOwnerNotification(input: {

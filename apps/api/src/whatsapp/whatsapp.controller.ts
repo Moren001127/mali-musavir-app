@@ -1597,17 +1597,13 @@ export class WhatsAppController {
     const display = this.normalizePhoneForWhatsApp(displayPhone) || this.defaultWhatsAppPhone(taxpayer);
     if (!display) return null;
     const latestJid = taxpayer?.id ? await this.latestWhatsAppJid(taxpayer.id, display) : null;
-    if (latestJid) return latestJid;
-    if (this.isWhatsAppLid(display)) return this.phoneDigits(display);
+    if (latestJid && !this.isWhatsAppLid(latestJid)) return latestJid;
+    if (this.isWhatsAppLid(display)) {
+      const phone = this.defaultWhatsAppPhone(taxpayer);
+      return phone && !this.isWhatsAppLid(phone) ? phone : null;
+    }
 
-    const taxpayerPhones = [
-      taxpayer?.phone,
-      ...(Array.isArray(taxpayer?.phones) ? taxpayer.phones : []),
-    ].filter(Boolean);
-    const hasDisplayPhone = taxpayerPhones.some((phone) => this.normalizePhoneForWhatsApp(phone) === display);
-    const lid = taxpayerPhones.find((phone) => this.isWhatsAppLid(phone));
-
-    return hasDisplayPhone && lid ? this.phoneDigits(lid) : display;
+    return display;
   }
 
   private async latestWhatsAppJid(taxpayerId: string, phone?: string | null): Promise<string | null> {
