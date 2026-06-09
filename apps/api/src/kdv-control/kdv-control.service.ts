@@ -1858,51 +1858,54 @@ export class KdvControlService {
 
   private async buildContentAuditDecision(image: any, session: any, tenantId: string): Promise<ContentAuditDecision> {
     const fallback = await this.buildRuleBasedContentAudit(image, session, tenantId);
-    const apiKey = process.env.ANTHROPIC_API_KEY;
-    const aiEnabled = String(process.env.KDV_CONTENT_AUDIT_AI_ENABLED || '').toLowerCase() === 'true';
+    // AI içerik denetimi SADECE Gemini (ucuz) üzerinden — ücretli Anthropic API kullanılmaz.
+    const geminiKey = process.env.GEMINI_API_KEY;
     const disabled = String(process.env.KDV_CONTENT_AUDIT_AI_DISABLED || '').toLowerCase() === 'true';
-    if (!apiKey || disabled || !aiEnabled) {
+    if (!geminiKey || disabled) {
       const moderatedFallback = this.moderateContentAuditDecision(fallback, image, session);
       return { ...fallback, ...moderatedFallback };
     }
 
-    const model = process.env.KDV_CONTENT_AUDIT_MODEL || 'claude-haiku-4-5-20251001';
+    const model = process.env.KDV_CONTENT_AUDIT_MODEL || process.env.MIHSAP_GEMINI_MODEL || 'gemini-2.5-flash-lite';
     try {
       const prompt = await this.buildContentAuditPrompt(image, session, tenantId);
       const timeoutMs = Math.max(3000, Math.min(45000, Number(process.env.KDV_CONTENT_AUDIT_TIMEOUT_MS) || 15000));
       const controller = new AbortController();
       const timer = setTimeout(() => controller.abort(), timeoutMs);
-      const res = await fetch('https://api.anthropic.com/v1/messages', {
-        method: 'POST',
-        signal: controller.signal,
-        headers: {
-          'Content-Type': 'application/json',
-          'x-api-key': apiKey,
-          'anthropic-version': '2023-06-01',
+      const system =
+        'Türk muhasebe KDV belge içerik uygunluğu için karar destek asistanısın. Nihai hukuki/mali karar vermezsin; gri alanları KONTROL_ET seviyesinde tutar, riskleri kısa, denetlenebilir ve JSON formatında yazarsın.';
+      const res = await fetch(
+        `https://generativelanguage.googleapis.com/v1beta/models/${encodeURIComponent(model)}:generateContent?key=${encodeURIComponent(geminiKey)}`,
+        {
+          method: 'POST',
+          signal: controller.signal,
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({
+            systemInstruction: { parts: [{ text: system }] },
+            contents: [{ role: 'user', parts: [{ text: prompt }] }],
+            generationConfig: {
+              responseMimeType: 'application/json',
+              temperature: 0,
+              maxOutputTokens: 700,
+            },
+          }),
         },
-        body: JSON.stringify({
-          model,
-          max_tokens: 700,
-          temperature: 0,
-          system:
-            'Türk muhasebe KDV belge içerik uygunluğu için karar destek asistanısın. Nihai hukuki/mali karar vermezsin; gri alanları KONTROL_ET seviyesinde tutar, riskleri kısa, denetlenebilir ve JSON formatında yazarsın.',
-          messages: [{ role: 'user', content: prompt }],
-        }),
-      }).finally(() => clearTimeout(timer));
+      ).finally(() => clearTimeout(timer));
 
       if (!res.ok) {
-        throw new Error(`Anthropic API ${res.status}: ${(await res.text().catch(() => '')).slice(0, 120)}`);
+        throw new Error(`Gemini ${res.status}: ${(await res.text().catch(() => '')).slice(0, 120)}`);
       }
       const payload: any = await res.json();
-      const textBlock = payload?.content?.find((c: any) => c?.type === 'text');
-      const raw = String(textBlock?.text || '').trim();
+      const raw = String(
+        payload?.candidates?.[0]?.content?.parts?.map((p: any) => p?.text || '').join('') || '',
+      ).trim();
       const parsed = this.parseContentAuditJson(raw);
       const moderated = this.moderateContentAuditDecision(parsed, image, session);
       const usage = {
-        input_tokens: Number(payload?.usage?.input_tokens || 0),
-        output_tokens: Number(payload?.usage?.output_tokens || 0),
-        cache_read_input_tokens: Number(payload?.usage?.cache_read_input_tokens || 0),
-        cache_creation_input_tokens: Number(payload?.usage?.cache_creation_input_tokens || 0),
+        input_tokens: Number(payload?.usageMetadata?.promptTokenCount || 0),
+        output_tokens: Number(payload?.usageMetadata?.candidatesTokenCount || 0),
+        cache_read_input_tokens: 0,
+        cache_creation_input_tokens: 0,
       };
       const costUsd = computeCostUsd(model, {
         input: usage.input_tokens,
@@ -1923,7 +1926,7 @@ export class KdvControlService {
     } catch (err: any) {
       const moderatedFallback = this.moderateContentAuditDecision(fallback, image, session);
       const providerMessage = err?.name === 'AbortError'
-        ? 'Anthropic API zaman asimina ugradi'
+        ? 'Gemini zaman asimina ugradi'
         : String(err?.message || err);
       const fallbackSummary = moderatedFallback.risk === 'UYGUN'
         ? 'Kural tabanli on denetimde belirgin icerik riski bulunmadi.'
@@ -4331,6 +4334,16 @@ ${JSON.stringify(payload, null, 2)}`;
         mukellef: mukellefAdi,
         meta: { sessionId, processed: queued, cacheHits },
       });
+      // OCR (KDV kontrol okuması) bitince içerik denetimini otomatik başlat.
+      // KDV_CONTENT_AUDIT_AUTO=0/false ile kapatılabilir.
+      const autoAudit = String(process.env.KDV_CONTENT_AUDIT_AUTO ?? '1').trim().toLowerCase();
+      if (autoAudit !== '0' && autoAudit !== 'false') {
+        try {
+          await this.startContentAuditForSession(sessionId, tenantId, undefined, { force: false });
+        } catch (e: any) {
+          this.logger.warn(`Otomatik içerik denetimi başlatılamadı: ${e?.message || e}`);
+        }
+      }
     });
 
     return {
