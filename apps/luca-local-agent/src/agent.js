@@ -126,6 +126,11 @@ const BROWSER_TIMEOUT = (cfg.worker?.browserTimeoutSeconds || 120) * 1000;
 // (canli dogrulandi: EARSIV_ALIS 2 dk'da done). Gercekten headless gereken (masaustu
 // olmayan) bir kurulum varsa config.json'da "headless": true ile acikca secilebilir.
 const HEADLESS = cfg.worker?.headless === true;
+// COKLU BILGISAYAR YONLENDIRME: bu worker yalniz "ownerEmail" panel kullanicisinin
+// verdigi isleri yapar (sunucu createdBy ile eslestirir). Bos ise eski davranis (hepsi).
+// alsoUnowned=true ise sahipsiz/otomatik isleri de bu worker ustlenir.
+const OWNER_EMAIL = String(cfg.worker?.ownerEmail || '').trim();
+const ALSO_UNOWNED = cfg.worker?.alsoUnowned === true;
 const SUPPORTED_JOB_TYPES = Object.freeze([
   'ACCOUNT_PLAN',
   'MIZAN',
@@ -296,6 +301,8 @@ async function pollPendingJobs() {
         deviceId: DEVICE_ID,
         version: getCurrentRuntimeVersionForApi(),
         agentVersion: getCurrentRuntimeVersionForApi(),
+        ...(OWNER_EMAIL ? { ownerEmail: OWNER_EMAIL } : {}),
+        ...(ALSO_UNOWNED ? { alsoUnowned: '1' } : {}),
       },
     });
     return Array.isArray(data) ? data : data?.jobs || [];
@@ -1625,6 +1632,11 @@ async function mainLoop() {
   log.info(`Job tipleri: ${[...JOB_TYPES].join(', ')}`);
   log.info(`Headless: ${HEADLESS}`);
   log.info(`Device: ${DEVICE_ID} (${WORKER_NAME})`);
+  log.info(
+    OWNER_EMAIL
+      ? `Sahip (yonlendirme): ${OWNER_EMAIL}${ALSO_UNOWNED ? ' + sahipsiz/otomatik isler' : ''} — yalniz bu panel kullanicisinin isleri yapilir`
+      : `Sahip (yonlendirme): YOK — tum bekleyen isler yapilir (eski davranis)`,
+  );
   log.info(`Idle TTL: ${Math.round(BROWSER_IDLE_TTL/60000)}dk · Keep-alive: ${Math.round(BROWSER_KEEPALIVE_INTERVAL/60000)}dk`);
 
   // Agent başlangıcında ilk pre-warm gerçek job yoksa çalışır. Aksi halde

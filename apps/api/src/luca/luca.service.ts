@@ -925,9 +925,24 @@ export class LucaService {
    * Mükellef bilgilerini (lucaSlug, taxNumber, ad) job'a embed eder ki
    * agent Luca'da firma değiştirme kontrolünü yapabilsin.
    */
-  async pendingJobsForAgent(tenantId: string, deviceId?: string) {
+  async pendingJobsForAgent(
+    tenantId: string,
+    deviceId?: string,
+    opts: { ownerUserId?: string; alsoUnowned?: boolean } = {},
+  ) {
     const canClaimUnassigned = this.canClaimUnassignedLucaJob(deviceId);
     const agentKind = this.agentKindForDeviceId(deviceId);
+    // ÇOKLU BİLGİSAYAR YÖNLENDİRME: worker "ownerUserId" bildirirse, SADECE o panel
+    // kullanıcısının (createdBy) oluşturduğu işleri görür → her bilgisayar kendi
+    // komutunu yapar, başkasınınkini kapamaz. alsoUnowned=true ise sahipsiz
+    // (createdBy=null) otomatik/zamanlı işleri de o worker üstlenir.
+    // ownerUserId verilmezse eski davranış (hepsi) — geriye tam uyumlu.
+    const ownerUserId = opts.ownerUserId?.trim();
+    const ownerFilter = ownerUserId
+      ? opts.alsoUnowned
+        ? { OR: [{ createdBy: ownerUserId }, { createdBy: null }] }
+        : { createdBy: ownerUserId }
+      : null;
     // Boyut B — affinity filter: job preferredAgent dolu ise sadece eşleşen ajan görür.
     // preferredAgent null = herkes (default).
     const affinityFilter = agentKind
@@ -986,6 +1001,7 @@ export class LucaService {
             ],
           },
           affinityFilter,
+          ...(ownerFilter ? [ownerFilter] : []),
         ],
       },
       // Boyut C — priority önce, sonra eskiden yeni

@@ -63,6 +63,29 @@ export class LucaController {
     private readonly faturaMuhasebelestirme: FaturaMuhasebelestirmeService,
   ) {}
 
+  // ÇOKLU BİLGİSAYAR YÖNLENDİRME: worker yoklarken "ownerEmail" gönderir; biz onu
+  // ilgili panel kullanıcısının id'sine çevirip (createdBy eşleştirmesi) cache'leriz.
+  // E-posta→id sabit olduğu için süresiz cache yeterli.
+  private ownerUserIdCache = new Map<string, string | null>();
+  private async resolveOwnerUserId(tenantId: string, email?: string): Promise<string | undefined> {
+    const e = String(email || '').trim().toLowerCase();
+    if (!e) return undefined;
+    const key = `${tenantId}:${e}`;
+    if (this.ownerUserIdCache.has(key)) return this.ownerUserIdCache.get(key) || undefined;
+    let id: string | null = null;
+    try {
+      const user = await (this.prisma as any).user.findFirst({
+        where: { tenantId, email: { equals: e, mode: 'insensitive' } },
+        select: { id: true },
+      });
+      id = user?.id || null;
+    } catch {
+      id = null;
+    }
+    this.ownerUserIdCache.set(key, id);
+    return id || undefined;
+  }
+
   private normalizeMizanDonemTipi(donem?: string | null, donemTipi?: string | null) {
     const given = String(donemTipi || '').trim().toUpperCase();
     if (/^GECICI_Q[1-4]$/.test(given)) return given;
@@ -413,10 +436,16 @@ export class LucaController {
     @Query('deviceId') deviceId?: string,
     @Query('version') version?: string,
     @Query('agentVersion') agentVersionQuery?: string,
+    @Query('ownerEmail') ownerEmail?: string,
+    @Query('alsoUnowned') alsoUnowned?: string,
   ) {
     const tenantId = await this.resolveTenantFromAgentToken(agentToken);
     const agentVersion = String(version || agentVersionQuery || '').trim();
-    const jobs = await this.luca.pendingJobsForAgent(tenantId, deviceId);
+    const ownerUserId = await this.resolveOwnerUserId(tenantId, ownerEmail);
+    const jobs = await this.luca.pendingJobsForAgent(tenantId, deviceId, {
+      ownerUserId,
+      alsoUnowned: alsoUnowned === '1' || alsoUnowned === 'true',
+    });
     return jobs.filter((job: any) => {
       const requiredVersion = this.requiredAgentVersionForJobTip(job.tip);
       if (!requiredVersion) return true;
