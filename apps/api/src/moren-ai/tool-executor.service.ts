@@ -126,6 +126,18 @@ export class ToolExecutorService {
     return `${t.firstName || ''} ${t.lastName || ''}`.trim() || '(isimsiz)';
   }
 
+  /** Türk para formatı: 1.234.567,89 ₺ (WhatsApp şablon blokları için). */
+  private fmtTL(n: number): string {
+    const v = Number.isFinite(n) ? n : 0;
+    return `${v.toLocaleString('tr-TR', { minimumFractionDigits: 2, maximumFractionDigits: 2 })} ₺`;
+  }
+
+  /** Oran yüzdesi " (%12,3)"; payda 0 ise boş. */
+  private pct(pay: number, payda: number): string {
+    if (!payda) return '';
+    return ` (%${((pay / payda) * 100).toLocaleString('tr-TR', { minimumFractionDigits: 1, maximumFractionDigits: 1 })})`;
+  }
+
   private async scopedTaxpayer(ctx: { tenantId: string; taxpayerId?: string | null }) {
     if (!ctx.taxpayerId) return null;
     return this.prisma.taxpayer.findFirst({
@@ -828,12 +840,27 @@ export class ToolExecutorService {
     });
     if (!gt) return { error: `${input.donem} dönemine ait gelir tablosu bulunamadı` };
 
+    const gtNs = this.toNum(gt.netSatislar);
+    const gtWhatsappOzet = [
+      `📈 GELİR TABLOSU — ${gt.donem}`,
+      '',
+      '💰 KALEMLER',
+      `• Net Satışlar: ${this.fmtTL(gtNs)}`,
+      `• Satış Maliyeti (SMM): ${this.fmtTL(this.toNum(gt.satisMaliyeti))}`,
+      `• Brüt Satış Kârı: ${this.fmtTL(this.toNum(gt.brutSatisKari))}${this.pct(this.toNum(gt.brutSatisKari), gtNs)}`,
+      `• Faaliyet Giderleri: ${this.fmtTL(this.toNum(gt.faaliyetGiderleri))}`,
+      `• Faaliyet Kârı: ${this.fmtTL(this.toNum(gt.faaliyetKari))}${this.pct(this.toNum(gt.faaliyetKari), gtNs)}`,
+      `• Dönem Net Kârı: ${this.fmtTL(this.toNum(gt.donemNetKari))}${this.pct(this.toNum(gt.donemNetKari), gtNs)}`,
+    ].join('\n');
+
     return {
       donem: gt.donem,
       donemTipi: gt.donemTipi,
       donemBaslangic: gt.donemBaslangic?.toISOString().slice(0, 10),
       donemBitis: gt.donemBitis?.toISOString().slice(0, 10),
       kilitli: gt.locked,
+      // Hazır WhatsApp şablonu — bot bunu AYNEN gönderir, altına 1-2 cümle yorum ekler.
+      whatsappOzet: gtWhatsappOzet,
       kalemler: {
         brutSatislar: this.toNum(gt.brutSatislar),
         satisIndirimleri: this.toNum(gt.satisIndirimleri),
@@ -867,11 +894,27 @@ export class ToolExecutorService {
     });
     if (!b) return { error: `${input.donem} dönemine ait bilanço bulunamadı` };
 
+    const bWhatsappOzet = [
+      `📊 BİLANÇO — ${b.donem}`,
+      '',
+      '🏦 AKTİF',
+      `• Dönen Varlıklar: ${this.fmtTL(this.toNum(b.donenVarliklar))}`,
+      `• Duran Varlıklar: ${this.fmtTL(this.toNum(b.duranVarliklar))}`,
+      `• Aktif Toplamı: ${this.fmtTL(this.toNum(b.aktifToplami))}`,
+      '',
+      '📉 PASİF',
+      `• KV Yabancı Kaynak: ${this.fmtTL(this.toNum(b.kvYabanciKaynak))}`,
+      `• UV Yabancı Kaynak: ${this.fmtTL(this.toNum(b.uvYabanciKaynak))}`,
+      `• Özkaynaklar: ${this.fmtTL(this.toNum(b.ozkaynaklar))}`,
+    ].join('\n');
+
     return {
       donem: b.donem,
       donemTipi: b.donemTipi,
       tarih: b.tarih?.toISOString().slice(0, 10),
       kilitli: b.locked,
+      // Hazır WhatsApp şablonu — bot bunu AYNEN gönderir, altına rasyo + 1-2 cümle yorum ekler.
+      whatsappOzet: bWhatsappOzet,
       aktif: {
         donenVarliklar: this.toNum(b.donenVarliklar),
         duranVarliklar: this.toNum(b.duranVarliklar),
