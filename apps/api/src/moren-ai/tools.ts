@@ -483,6 +483,20 @@ export const MOREN_AI_TOOLS: ToolDefinition[] = [
     },
   },
   {
+    name: 'get_system_health',
+    description:
+      'Portalın ve ajanların sistem sağlığını + AÇIK (çözülmemiş) uyarılarını döner: ajan ping, token yaşı, bekleyen kuyruk, ' +
+      'hata oranı, modül hash, agent sürüm, veritabanı. "Sistemde sorun var mı?", "Her şey yolunda mı?", "Bir aksaklık var mı?", ' +
+      '"Sistem durumu ne?", "Ajanlar ayakta mı?" sorularında kullan.',
+    input_schema: {
+      type: 'object',
+      properties: {
+        onlyProblems: { type: 'boolean', description: 'true (varsayılan) sadece WARNING/CRITICAL döner; false hepsini.' },
+        limit: { type: 'number', description: 'En fazla uyarı sayısı. Varsayılan 20.' },
+      },
+    },
+  },
+  {
     name: 'get_operation_briefing',
     description:
       'Ofisin bugünkü operasyon brifingini döner: evrak/beyan hazırlığı, banka ekstre eksikleri, cari tahsilat riski, agent hataları, onay kuyruğu ve önerilen işler. ' +

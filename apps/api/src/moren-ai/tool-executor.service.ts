@@ -84,6 +84,7 @@ export class ToolExecutorService {
         case 'get_beyanname_config':  return this.getBeyannameConfig(input, ctx);
         case 'get_beyan_ozet':        return this.getBeyanOzet(input, ctx);
         case 'get_agent_status':      return this.getAgentStatus(input, ctx);
+        case 'get_system_health':     return this.getSystemHealth(input, ctx);
         case 'get_operation_briefing': return this.getOperationBriefing(input, ctx);
         case 'get_taxpayer_work_status': return this.getTaxpayerWorkStatus(input, ctx);
         case 'get_luca_agent_jobs':   return this.getLucaAgentJobs(input, ctx);
@@ -287,6 +288,68 @@ export class ToolExecutorService {
       });
   }
 
+  /** İki kelime arası düzenleme (Levenshtein) mesafesi — yazım hatası toleransı için. */
+  private levenshtein(a: string, b: string): number {
+    if (a === b) return 0;
+    if (!a.length) return b.length;
+    if (!b.length) return a.length;
+    const prev = new Array(b.length + 1);
+    const curr = new Array(b.length + 1);
+    for (let j = 0; j <= b.length; j++) prev[j] = j;
+    for (let i = 0; i < a.length; i++) {
+      curr[0] = i + 1;
+      for (let j = 0; j < b.length; j++) {
+        const cost = a[i] === b[j] ? 0 : 1;
+        curr[j + 1] = Math.min(prev[j + 1] + 1, curr[j] + 1, prev[j] + cost);
+      }
+      for (let j = 0; j <= b.length; j++) prev[j] = curr[j];
+    }
+    return prev[b.length];
+  }
+
+  /** Aranan kelimelerin adaydaki en iyi token benzerliği (0..1). Tam/kısmi içerme yüksek puan, değilse edit-distance oranı. */
+  private fuzzyScore(candidateText: string, searchTokens: string[]): number {
+    const candTokens = candidateText.split(' ').filter(Boolean);
+    if (!searchTokens.length || !candTokens.length) return 0;
+    let total = 0;
+    for (const st of searchTokens) {
+      let best = 0;
+      for (const ct of candTokens) {
+        let sim: number;
+        if (ct.includes(st) || st.includes(ct)) {
+          sim = Math.max(0.85, Math.min(st.length, ct.length) / Math.max(st.length, ct.length));
+        } else {
+          const d = this.levenshtein(st, ct);
+          sim = 1 - d / Math.max(st.length, ct.length);
+        }
+        if (sim > best) best = sim;
+      }
+      total += best;
+    }
+    return total / searchTokens.length;
+  }
+
+  /**
+   * Substring araması boş dönünce SON çare: yazım-hatası toleranslı (bulanık) eşleştirme.
+   * "Ditekt"→"Direkt" gibi 1-2 harf hatasını yakalar; eşik altı gürültüyü eler.
+   * Sıralı (en yüksek benzerlik önce) liste döner.
+   */
+  private fuzzyTaxpayerCandidates(rows: any[], search: string, threshold = 0.7) {
+    const searchTokens = this.normalizeSearchText(search).split(' ').filter(Boolean);
+    if (!searchTokens.length) return [] as any[];
+    return rows
+      .map((t) => ({
+        t,
+        score: this.fuzzyScore(
+          this.normalizeSearchText(`${this.displayName(t)} ${t.taxNumber || ''}`),
+          searchTokens,
+        ),
+      }))
+      .filter((s) => s.score >= threshold)
+      .sort((a, b) => b.score - a.score)
+      .map((s) => s.t);
+  }
+
   private parseMonthPeriod(input: any): string | undefined {
     const raw = String(input?.period || input?.donem || input?.ay || input?.month || '').trim();
     if (!raw) return undefined;
@@ -313,6 +376,26 @@ export class ToolExecutorService {
     const yearMatch = raw.match(/\b(20\d{2}|19\d{2})\b/);
     const year = yearMatch ? Number(yearMatch[1]) : new Date().getFullYear();
     return `${year}-${String(months[monthName]).padStart(2, '0')}`;
+  }
+
+  private financialPeriodCandidates(donem: any): string[] {
+    const raw = String(donem || '').trim();
+    if (!raw) return [];
+    const out = new Set<string>([raw]);
+
+    const quarter = raw.match(/^(\d{4})-?Q([1-4])$/i);
+    if (quarter) {
+      out.add(`${quarter[1]}-${String(Number(quarter[2]) * 3).padStart(2, '0')}`);
+      out.add(`${quarter[1]}-Q${quarter[2]}`);
+    }
+
+    const monthly = raw.match(/^(\d{4})-(0[1-9]|1[0-2])$/);
+    if (monthly) {
+      const month = Number(monthly[2]);
+      if ([3, 6, 9, 12].includes(month)) out.add(`${monthly[1]}-Q${month / 3}`);
+    }
+
+    return Array.from(out);
   }
 
   private async resolveTaxpayerFromInput(input: any, ctx: { tenantId: string }) {
@@ -360,6 +443,11 @@ export class ToolExecutorService {
         select,
       });
       candidates = this.filterTaxpayerCandidates(fallback, search);
+      if (!candidates.length) {
+        // Substring de bulamadı → yazım-hatası toleranslı bulanık eşleştirme.
+        // (Geri-alınamaz işlemler preview + ONAYLIYORUM ile korunur; sahip yanlışı görür.)
+        candidates = this.fuzzyTaxpayerCandidates(fallback, search);
+      }
     }
 
     return candidates[0] || null;
@@ -487,6 +575,7 @@ export class ToolExecutorService {
       },
     });
 
+    let bulanikEslesme = false;
     if (search && rows.length === 0) {
       const fallback = await this.prisma.taxpayer.findMany({
         where: { tenantId: ctx.tenantId, ...(onlyActive ? { isActive: true } : {}) },
@@ -498,10 +587,18 @@ export class ToolExecutorService {
         },
       });
       rows = this.filterTaxpayerCandidates(fallback, search).slice(0, limit);
+      if (rows.length === 0) {
+        // Substring de bulamadı → yazım-hatası toleranslı bulanık eşleştirme ("Ditekt"→"Direkt").
+        rows = this.fuzzyTaxpayerCandidates(fallback, search).slice(0, limit);
+        bulanikEslesme = rows.length > 0;
+      }
     }
 
     return {
       count: rows.length,
+      ...(bulanikEslesme
+        ? { bulanikEslesme: true, not: 'Tam eşleşme yok; yazılışa en yakın mükellef(ler) listelendi. İşlem yapmadan önce doğru mükellefi teyit et.' }
+        : {}),
       taxpayers: rows.map((t) => ({
         id: t.id,
         isim: this.displayName(t),
@@ -675,12 +772,14 @@ export class ToolExecutorService {
   }
 
   private async getMizan(input: any, ctx: { tenantId: string }) {
+    const donemler = this.financialPeriodCandidates(input.donem);
     const mizan = await this.prisma.mizan.findFirst({
-      where: { tenantId: ctx.tenantId, taxpayerId: input.taxpayerId, donem: input.donem },
+      where: { tenantId: ctx.tenantId, taxpayerId: input.taxpayerId, donem: donemler.length ? { in: donemler } : input.donem },
       include: {
         hesaplar: { orderBy: { hesapKodu: 'asc' } },
         anomaliler: true,
       },
+      orderBy: { createdAt: 'desc' },
     });
     if (!mizan) return { error: `${input.donem} dönemine ait mizan bulunamadı` };
 
@@ -722,8 +821,9 @@ export class ToolExecutorService {
   // GELİR TABLOSU
   // ------------------------------------------------------------
   private async getGelirTablosu(input: any, ctx: { tenantId: string }) {
+    const donemler = this.financialPeriodCandidates(input.donem);
     const gt = await this.prisma.gelirTablosu.findFirst({
-      where: { tenantId: ctx.tenantId, taxpayerId: input.taxpayerId, donem: input.donem },
+      where: { tenantId: ctx.tenantId, taxpayerId: input.taxpayerId, donem: donemler.length ? { in: donemler } : input.donem },
       orderBy: { createdAt: 'desc' },
     });
     if (!gt) return { error: `${input.donem} dönemine ait gelir tablosu bulunamadı` };
@@ -760,8 +860,9 @@ export class ToolExecutorService {
   // BİLANÇO
   // ------------------------------------------------------------
   private async getBilanco(input: any, ctx: { tenantId: string }) {
+    const donemler = this.financialPeriodCandidates(input.donem);
     const b = await this.prisma.bilanco.findFirst({
-      where: { tenantId: ctx.tenantId, taxpayerId: input.taxpayerId, donem: input.donem },
+      where: { tenantId: ctx.tenantId, taxpayerId: input.taxpayerId, donem: donemler.length ? { in: donemler } : input.donem },
       orderBy: { createdAt: 'desc' },
     });
     if (!b) return { error: `${input.donem} dönemine ait bilanço bulunamadı` };
@@ -1650,6 +1751,41 @@ export class ToolExecutorService {
     };
   }
 
+  // ------------------------------------------------------------
+  // SİSTEM SAĞLIĞI — açık (çözülmemiş) uyarılar
+  // ------------------------------------------------------------
+  private async getSystemHealth(input: any, ctx: { tenantId: string }) {
+    const onlyProblems = input?.onlyProblems !== false;
+    const limit = Math.min(Number(input?.limit) || 20, 50);
+    const shc = (this.prisma as any).systemHealthCheck;
+    if (!shc?.findMany) return { error: 'Sistem sağlık modülü kullanılamıyor.' };
+    const where: any = {
+      resolved: false,
+      // tenant'a özel + sistem-genel (tenantId null) uyarıları birlikte.
+      OR: [{ tenantId: ctx.tenantId }, { tenantId: null }],
+    };
+    if (onlyProblems) where.severity = { in: ['WARNING', 'CRITICAL'] };
+    const checks = await shc.findMany({
+      where,
+      orderBy: [{ severity: 'desc' }, { createdAt: 'desc' }],
+      take: limit,
+    });
+    const kritik = checks.filter((c: any) => c.severity === 'CRITICAL').length;
+    const uyari = checks.filter((c: any) => c.severity === 'WARNING').length;
+    return {
+      durum: kritik > 0 ? 'KRITIK' : uyari > 0 ? 'UYARI' : 'IYI',
+      ozet: { toplam: checks.length, kritik, uyari, sonKontrol: checks[0]?.createdAt || null },
+      uyarilar: checks.map((c: any) => ({
+        tip: c.type,
+        onem: c.severity,
+        durum: c.status,
+        mesaj: c.message,
+        tavsiye: c.acilTavsiye || null,
+        zaman: c.createdAt,
+      })),
+    };
+  }
+
   private async getAgentStatus(input: any, ctx: { tenantId: string }) {
     const agent = input?.agent || undefined;
     const limit = Math.min(input?.limit || 10, 50);
@@ -2142,6 +2278,7 @@ export class ToolExecutorService {
         { module: 'Beyannameler', tools: ['list_beyan_kayitlari', 'get_beyanname_config', 'get_beyan_ozet'], scope: 'beyan tipi, onay no, tahakkuk, dönemsel takip' },
         { module: 'Banka/Cari/Tahsilat', tools: ['get_collection_risk_summary', 'get_operation_briefing'], scope: 'açık bakiye, tahsilat riski, banka aksiyonu' },
         { module: 'Görevler ve Agentlar', tools: ['get_agent_status', 'get_luca_agent_jobs', 'get_mihsap_agent_jobs', 'list_pending_decisions'], scope: 'agent durumu, hata, onay bekleyen karar, iş yükü' },
+        { module: 'Sistem Sağlığı', tools: ['get_system_health'], scope: 'açık uyarılar: ajan ping, token yaşı, kuyruk, hata oranı, modül hash, agent sürüm, veritabanı' },
         { module: 'Evrak ve Galeri', tools: ['list_documents', 'list_araclar_hgs'], scope: 'belge, sözleşme, araç/HGS ihlal durumu' },
         { module: 'Hafıza', tools: ['search_ai_memory', 'save_ai_memory'], scope: 'ofis tercihi, mükellef notu, araştırma kaydı, tekrar öğrenme' },
         { module: 'Mevzuat Araştırma', tools: ['research_official_sources'], scope: 'GİB, SGK, Resmi Gazete, mevzuat.gov.tr, TÜRMOB, HMB, KGK, TCMB ve resmi/mesleki kaynaklar' },
