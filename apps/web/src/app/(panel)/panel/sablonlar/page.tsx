@@ -1,14 +1,22 @@
 'use client';
 
 import { useEffect, useRef, useState } from 'react';
+import Link from 'next/link';
+import { ArrowLeft, MessageSquareText, Plus, Save, Trash2, Paperclip, Zap } from 'lucide-react';
 import {
   listTemplates, createTemplate, updateTemplate, deleteTemplate,
   type MessageTemplate, type TemplateKanal,
 } from '@/lib/message-templates';
 
+const GOLD = '#d4b876';
+const LINE = 'rgba(255,255,255,0.08)';
+const TEXT = '#fafaf9';
+const MUTED = 'rgba(250,250,249,0.58)';
+const ACCENT = '#34d399'; // zümrüt — şablonlar modül rengi
+const CYAN = '#22d3ee';
+
 const OFFICE = 'MOREN MALİ MÜŞAVİRLİK';
 
-// Canlı önizleme örnek verisi (backend ile aynı).
 const SAMPLE: Record<string, string> = {
   ad: 'SABRİ YAŞIN',
   unvan: 'YORGUN NAKLİYAT LOJİSTİK VE DEPOLAMA TİC. LTD. ŞTİ.',
@@ -28,7 +36,6 @@ const PLACEHOLDERS = [
   'ad', 'unvan', 'dönem', 'sonGun', 'beyannameListesi', 'sgkListesi',
   'vergiListesi', 'sgkOdemeListesi', 'toplam', 'tutar', 'vade', 'bakiye', 'link', 'kurum',
 ];
-
 const KATEGORILER = ['evrak', 'beyanname', 'sgk', 'odeme', 'tebligat', 'ekstre', 'genel'];
 const KANALLAR: { v: TemplateKanal; l: string }[] = [
   { v: 'BOTH', l: 'WhatsApp + E-posta' }, { v: 'WHATSAPP', l: 'Sadece WhatsApp' }, { v: 'EMAIL', l: 'Sadece E-posta' },
@@ -39,9 +46,7 @@ function renderPreview(body: string, kanal: TemplateKanal): string {
   return kanal !== 'EMAIL' ? `Gönderen: ${OFFICE}\n\n${filled}` : filled;
 }
 
-const card: React.CSSProperties = { background: '#161b22', border: '1px solid #2a3340', borderRadius: 12, padding: 16 };
-const label: React.CSSProperties = { fontSize: 12, color: '#8b98a8', marginBottom: 4, display: 'block' };
-const input: React.CSSProperties = { width: '100%', background: '#0d1117', border: '1px solid #2a3340', borderRadius: 8, color: '#e6edf3', padding: '8px 10px', fontSize: 14 };
+const fieldStyle: React.CSSProperties = { borderColor: LINE, color: TEXT, background: 'rgba(255,255,255,0.03)' };
 
 export default function SablonlarPage() {
   const [items, setItems] = useState<MessageTemplate[]>([]);
@@ -59,9 +64,8 @@ export default function SablonlarPage() {
       const list = await listTemplates();
       setItems(list);
       setDraft((cur) => cur ?? (list[0] ? { ...list[0] } : null));
-    } catch {
-      setMsg('Şablonlar yüklenemedi.');
-    } finally { setLoading(false); }
+    } catch { setMsg('Şablonlar yüklenemedi.'); }
+    finally { setLoading(false); }
   }
 
   function patch(p: Partial<MessageTemplate>) { setDraft((d) => (d ? { ...d, ...p } : d)); }
@@ -72,8 +76,7 @@ export default function SablonlarPage() {
     if (!ta || !draft) { patch({ body: (draft?.body || '') + token }); return; }
     const s = ta.selectionStart ?? draft.body.length;
     const e = ta.selectionEnd ?? draft.body.length;
-    const next = draft.body.slice(0, s) + token + draft.body.slice(e);
-    patch({ body: next });
+    patch({ body: draft.body.slice(0, s) + token + draft.body.slice(e) });
     requestAnimationFrame(() => { ta.focus(); ta.selectionStart = ta.selectionEnd = s + token.length; });
   }
 
@@ -85,15 +88,10 @@ export default function SablonlarPage() {
         ad: draft.ad, kanal: draft.kanal, kategori: draft.kategori, emailSubject: draft.emailSubject,
         body: draft.body, attachPdf: draft.attachPdf, auto: draft.auto, isActive: draft.isActive,
       };
-      const saved = draft.id.startsWith('new-')
-        ? await createTemplate(dto)
-        : await updateTemplate(draft.id, dto);
-      setMsg('Kaydedildi.');
-      await load();
-      setDraft({ ...saved });
-    } catch {
-      setMsg('Kaydedilemedi.');
-    } finally { setSaving(false); }
+      const saved = draft.id.startsWith('new-') ? await createTemplate(dto) : await updateTemplate(draft.id, dto);
+      setMsg('Kaydedildi.'); await load(); setDraft({ ...saved });
+    } catch { setMsg('Kaydedilemedi.'); }
+    finally { setSaving(false); }
   }
 
   async function remove() {
@@ -110,121 +108,149 @@ export default function SablonlarPage() {
     });
   }
 
-  const previewText = draft ? renderPreview(draft.body, draft.kanal) : '';
-
   return (
-    <div style={{ padding: 20, color: '#e6edf3', maxWidth: 1280, margin: '0 auto' }}>
-      <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 16 }}>
-        <div>
-          <h1 style={{ fontSize: 22, fontWeight: 700, margin: 0 }}>Mesaj Şablonları</h1>
-          <p style={{ color: '#8b98a8', fontSize: 13, margin: '4px 0 0' }}>WhatsApp ve e-posta için kendi şablonlarını tanımla. {'{ad}'} gibi alanlar gönderimde otomatik dolar.</p>
+    <div className="mx-auto max-w-7xl space-y-5 pb-12">
+      {/* BAŞLIK — radial + gökkuşağı şerit + degrade ikon */}
+      <header className="relative overflow-hidden rounded-2xl border p-5" style={{
+        borderColor: LINE,
+        background: 'radial-gradient(120% 140% at 0% 0%, rgba(52,211,153,0.16), transparent 45%), radial-gradient(120% 140% at 100% 0%, rgba(34,211,238,0.14), transparent 45%), #0f0d0b',
+      }}>
+        <div className="absolute inset-x-0 top-0 h-1" style={{ background: 'linear-gradient(90deg, #34d399, #22d3ee, #60a5fa, #a855f7, #f472b6, #fb923c, #d4b876)' }} />
+        <Link href="/panel" className="inline-flex items-center gap-1.5 text-[12px] font-medium" style={{ color: MUTED }}>
+          <ArrowLeft size={14} /> Panel
+        </Link>
+        <div className="mt-2 flex items-center justify-between gap-3">
+          <h1 className="flex items-center gap-2.5 text-[28px] font-semibold leading-tight" style={{ color: TEXT }}>
+            <span className="grid h-10 w-10 place-items-center rounded-xl" style={{ background: 'linear-gradient(135deg, #34d399, #22d3ee)', boxShadow: '0 6px 18px rgba(52,211,153,0.35)' }}>
+              <MessageSquareText size={22} style={{ color: '#0a1410' }} />
+            </span>
+            Mesaj Şablonları
+          </h1>
+          <button onClick={newTemplate} className="inline-flex items-center gap-1.5 rounded-lg px-3 py-2 text-[12px] font-semibold transition-colors"
+            style={{ background: 'rgba(52,211,153,0.16)', color: ACCENT, border: '1px solid rgba(52,211,153,0.35)' }}>
+            <Plus size={14} /> Yeni Şablon
+          </button>
         </div>
-        <button onClick={newTemplate} style={{ ...input, width: 'auto', background: '#1f6feb', border: 'none', fontWeight: 600, cursor: 'pointer' }}>+ Yeni Şablon</button>
-      </div>
+        <p className="mt-2 max-w-2xl text-[13px]" style={{ color: MUTED }}>
+          WhatsApp ve e-posta için kendi şablonlarını tanımla. <span style={{ color: CYAN }}>{'{ad}'}</span>, <span style={{ color: CYAN }}>{'{tutar}'}</span> gibi alanlar gönderimde mükellef verisiyle otomatik dolar.
+        </p>
+        {msg && <div className="mt-3 inline-flex rounded-lg px-3 py-1.5 text-[12px] font-medium" style={{ background: 'rgba(52,211,153,0.12)', color: ACCENT, border: '1px solid rgba(52,211,153,0.3)' }}>{msg}</div>}
+      </header>
 
-      {msg && <div style={{ ...card, padding: '8px 14px', marginBottom: 12, color: '#7ee787' }}>{msg}</div>}
-
-      <div style={{ display: 'grid', gridTemplateColumns: '260px 1fr 360px', gap: 16, alignItems: 'start' }}>
+      <div className="grid gap-4 lg:grid-cols-[260px_1fr_380px]">
 
         {/* SOL — liste */}
-        <div style={{ ...card, padding: 8 }}>
-          {loading ? <div style={{ padding: 12, color: '#8b98a8' }}>Yükleniyor…</div> :
-            items.map((t) => (
-              <button key={t.id} onClick={() => setDraft({ ...t })}
-                style={{ display: 'block', width: '100%', textAlign: 'left', background: draft?.id === t.id ? '#1f6feb22' : 'transparent',
-                  border: draft?.id === t.id ? '1px solid #1f6feb' : '1px solid transparent', borderRadius: 8, padding: '8px 10px', color: '#e6edf3', cursor: 'pointer', marginBottom: 4 }}>
-                <div style={{ fontSize: 14, fontWeight: 600 }}>{t.ad}</div>
-                <div style={{ fontSize: 11, color: '#8b98a8' }}>{t.kategori}{t.auto ? ' · otomatik' : ''}{t.attachPdf ? ' · PDF' : ''}</div>
-              </button>
-            ))}
-          {!loading && !items.length && <div style={{ padding: 12, color: '#8b98a8' }}>Şablon yok.</div>}
-        </div>
+        <section className="rounded-2xl border p-2.5" style={{ borderColor: LINE, background: '#0f0d0b' }}>
+          {loading ? <div className="p-3 text-[13px]" style={{ color: MUTED }}>Yükleniyor…</div> :
+            items.map((t) => {
+              const sel = draft?.id === t.id;
+              return (
+                <button key={t.id} onClick={() => setDraft({ ...t })} className="mb-1.5 block w-full rounded-xl px-3 py-2.5 text-left transition-colors"
+                  style={{ background: sel ? 'rgba(52,211,153,0.12)' : 'transparent', border: `1px solid ${sel ? 'rgba(52,211,153,0.4)' : 'transparent'}` }}>
+                  <div className="text-[14px] font-semibold" style={{ color: TEXT }}>{t.ad}</div>
+                  <div className="mt-0.5 flex items-center gap-1.5 text-[11px]" style={{ color: MUTED }}>
+                    <span>{t.kategori}</span>
+                    {t.auto && <span className="inline-flex items-center gap-0.5" style={{ color: '#60a5fa' }}><Zap size={10} /> oto</span>}
+                    {t.attachPdf && <span className="inline-flex items-center gap-0.5" style={{ color: '#f472b6' }}><Paperclip size={10} /> PDF</span>}
+                    {!t.isActive && <span style={{ color: '#f87171' }}>pasif</span>}
+                  </div>
+                </button>
+              );
+            })}
+          {!loading && !items.length && <div className="p-3 text-[13px]" style={{ color: MUTED }}>Şablon yok.</div>}
+        </section>
 
         {/* ORTA — düzenleyici */}
-        <div style={{ ...card }}>
-          {!draft ? <div style={{ color: '#8b98a8' }}>Soldan bir şablon seç ya da yeni ekle.</div> : (
+        <section className="rounded-2xl border p-5" style={{ borderColor: LINE, background: 'linear-gradient(135deg, rgba(52,211,153,0.06), rgba(34,211,238,0.03) 60%, transparent)' }}>
+          {!draft ? <div className="text-[13px]" style={{ color: MUTED }}>Soldan bir şablon seç ya da “Yeni Şablon” ekle.</div> : (
             <>
-              <label style={label}>Şablon adı</label>
-              <input style={input} value={draft.ad} onChange={(e) => patch({ ad: e.target.value })} />
+              <label className="mb-1 block text-[11px] font-medium uppercase tracking-wider" style={{ color: 'rgba(52,211,153,0.85)' }}>Şablon adı</label>
+              <input className="w-full rounded-lg border px-3 py-2 text-[14px]" style={fieldStyle} value={draft.ad} onChange={(e) => patch({ ad: e.target.value })} />
 
-              <div style={{ display: 'flex', gap: 10, marginTop: 12 }}>
-                <div style={{ flex: 1 }}>
-                  <label style={label}>Kanal</label>
-                  <select style={input} value={draft.kanal} onChange={(e) => patch({ kanal: e.target.value as TemplateKanal })}>
-                    {KANALLAR.map((k) => <option key={k.v} value={k.v}>{k.l}</option>)}
+              <div className="mt-3 flex gap-3">
+                <div className="flex-1">
+                  <label className="mb-1 block text-[11px] font-medium uppercase tracking-wider" style={{ color: MUTED }}>Kanal</label>
+                  <select className="w-full rounded-lg border px-3 py-2 text-[13px]" style={fieldStyle} value={draft.kanal} onChange={(e) => patch({ kanal: e.target.value as TemplateKanal })}>
+                    {KANALLAR.map((k) => <option key={k.v} value={k.v} style={{ color: '#111' }}>{k.l}</option>)}
                   </select>
                 </div>
-                <div style={{ flex: 1 }}>
-                  <label style={label}>Kategori</label>
-                  <select style={input} value={draft.kategori} onChange={(e) => patch({ kategori: e.target.value })}>
-                    {KATEGORILER.map((k) => <option key={k} value={k}>{k}</option>)}
+                <div className="flex-1">
+                  <label className="mb-1 block text-[11px] font-medium uppercase tracking-wider" style={{ color: MUTED }}>Kategori</label>
+                  <select className="w-full rounded-lg border px-3 py-2 text-[13px]" style={fieldStyle} value={draft.kategori} onChange={(e) => patch({ kategori: e.target.value })}>
+                    {KATEGORILER.map((k) => <option key={k} value={k} style={{ color: '#111' }}>{k}</option>)}
                   </select>
                 </div>
               </div>
 
               {draft.kanal !== 'WHATSAPP' && (
-                <div style={{ marginTop: 12 }}>
-                  <label style={label}>E-posta konusu</label>
-                  <input style={input} value={draft.emailSubject || ''} onChange={(e) => patch({ emailSubject: e.target.value })} />
+                <div className="mt-3">
+                  <label className="mb-1 block text-[11px] font-medium uppercase tracking-wider" style={{ color: MUTED }}>E-posta konusu</label>
+                  <input className="w-full rounded-lg border px-3 py-2 text-[14px]" style={fieldStyle} value={draft.emailSubject || ''} onChange={(e) => patch({ emailSubject: e.target.value })} />
                 </div>
               )}
 
-              <div style={{ marginTop: 12 }}>
-                <label style={label}>Mesaj metni</label>
+              <div className="mt-3">
+                <label className="mb-1 block text-[11px] font-medium uppercase tracking-wider" style={{ color: MUTED }}>Mesaj metni</label>
                 <textarea ref={bodyRef} value={draft.body} onChange={(e) => patch({ body: e.target.value })}
-                  style={{ ...input, minHeight: 180, fontFamily: 'inherit', lineHeight: 1.5, resize: 'vertical' }} />
+                  className="w-full rounded-lg border px-3 py-2.5 text-[14px]" style={{ ...fieldStyle, minHeight: 190, lineHeight: 1.5, resize: 'vertical', fontFamily: 'inherit' }} />
               </div>
 
-              <div style={{ marginTop: 8 }}>
-                <div style={{ ...label, marginBottom: 6 }}>Alan ekle (tıkla):</div>
-                <div style={{ display: 'flex', flexWrap: 'wrap', gap: 6 }}>
+              <div className="mt-3">
+                <div className="mb-1.5 text-[11px] font-medium uppercase tracking-wider" style={{ color: MUTED }}>Alan ekle (tıkla)</div>
+                <div className="flex flex-wrap gap-1.5">
                   {PLACEHOLDERS.map((p) => (
-                    <button key={p} onClick={() => insertPlaceholder(p)}
-                      style={{ background: '#0d1117', border: '1px solid #2a3340', borderRadius: 6, color: '#79c0ff', padding: '3px 8px', fontSize: 12, cursor: 'pointer' }}>{`{${p}}`}</button>
+                    <button key={p} onClick={() => insertPlaceholder(p)} className="rounded-md border px-2 py-1 text-[12px] font-medium transition-colors"
+                      style={{ borderColor: 'rgba(34,211,238,0.3)', color: CYAN, background: 'rgba(34,211,238,0.07)' }}>{`{${p}}`}</button>
                   ))}
                 </div>
               </div>
 
-              <div style={{ display: 'flex', gap: 16, marginTop: 14, alignItems: 'center', flexWrap: 'wrap' }}>
-                <label style={{ display: 'flex', alignItems: 'center', gap: 6, fontSize: 13, cursor: 'pointer' }}>
-                  <input type="checkbox" checked={draft.attachPdf} onChange={(e) => patch({ attachPdf: e.target.checked })} /> PDF ekle (ekstre/tebligat)
-                </label>
-                <label style={{ display: 'flex', alignItems: 'center', gap: 6, fontSize: 13, cursor: 'pointer' }}>
-                  <input type="checkbox" checked={draft.auto} onChange={(e) => patch({ auto: e.target.checked })} /> Otomatik (olay olunca)
-                </label>
-                <label style={{ display: 'flex', alignItems: 'center', gap: 6, fontSize: 13, cursor: 'pointer' }}>
-                  <input type="checkbox" checked={draft.isActive} onChange={(e) => patch({ isActive: e.target.checked })} /> Aktif
-                </label>
+              <div className="mt-4 flex flex-wrap items-center gap-x-5 gap-y-2 text-[13px]" style={{ color: TEXT }}>
+                <label className="flex cursor-pointer items-center gap-2"><input type="checkbox" checked={draft.attachPdf} onChange={(e) => patch({ attachPdf: e.target.checked })} /> PDF ekle</label>
+                <label className="flex cursor-pointer items-center gap-2"><input type="checkbox" checked={draft.auto} onChange={(e) => patch({ auto: e.target.checked })} /> Otomatik</label>
+                <label className="flex cursor-pointer items-center gap-2"><input type="checkbox" checked={draft.isActive} onChange={(e) => patch({ isActive: e.target.checked })} /> Aktif</label>
               </div>
 
-              <div style={{ display: 'flex', gap: 10, marginTop: 16 }}>
-                <button onClick={save} disabled={saving} style={{ ...input, width: 'auto', background: '#238636', border: 'none', fontWeight: 600, cursor: 'pointer' }}>{saving ? 'Kaydediliyor…' : 'Kaydet'}</button>
-                <button onClick={remove} style={{ ...input, width: 'auto', background: 'transparent', border: '1px solid #6e2a2a', color: '#ff7b72', cursor: 'pointer' }}>Sil</button>
+              <div className="mt-5 flex gap-2.5">
+                <button onClick={save} disabled={saving} className="inline-flex items-center gap-1.5 rounded-lg px-4 py-2 text-[13px] font-semibold"
+                  style={{ background: 'linear-gradient(135deg, #34d399, #22d3ee)', color: '#0a1410' }}>
+                  <Save size={15} /> {saving ? 'Kaydediliyor…' : 'Kaydet'}
+                </button>
+                <button onClick={remove} className="inline-flex items-center gap-1.5 rounded-lg border px-3 py-2 text-[13px]"
+                  style={{ borderColor: 'rgba(248,113,113,0.4)', color: '#f87171', background: 'transparent' }}>
+                  <Trash2 size={15} /> Sil
+                </button>
               </div>
             </>
           )}
-        </div>
+        </section>
 
         {/* SAĞ — canlı önizleme */}
-        <div style={{ ...card, background: '#0b141a' }}>
-          <div style={{ fontSize: 12, color: '#8b98a8', marginBottom: 10 }}>Canlı önizleme (örnek veriyle)</div>
+        <section className="rounded-2xl border p-4" style={{ borderColor: LINE, background: '#0b141a' }}>
+          <div className="mb-3 text-[11px] font-medium uppercase tracking-wider" style={{ color: MUTED }}>Canlı önizleme · örnek veri</div>
           {draft && draft.kanal !== 'EMAIL' && (
-            <div style={{ background: '#005c4b', borderRadius: '10px 10px 2px 10px', padding: '10px 12px', fontSize: 14, lineHeight: 1.45, whiteSpace: 'pre-wrap', color: '#e9edef', marginBottom: draft.kanal === 'BOTH' ? 14 : 0 }}>
-              {previewText}
-              {draft.attachPdf && <div style={{ marginTop: 8, background: '#0b141a', borderRadius: 8, padding: 8, fontSize: 12, color: '#8aa9a0' }}>📎 Belge.pdf</div>}
-            </div>
-          )}
-          {draft && draft.kanal !== 'WHATSAPP' && (
-            <div style={{ background: '#fff', color: '#1b2230', borderRadius: 10, overflow: 'hidden' }}>
-              <div style={{ background: '#1b3a6b', color: '#fff', padding: '10px 14px', fontWeight: 700, fontSize: 13 }}>MOREN MALİ MÜŞAVİRLİK</div>
-              <div style={{ padding: 14, fontSize: 13, lineHeight: 1.5, whiteSpace: 'pre-wrap' }}>
-                {draft.emailSubject && <div style={{ fontWeight: 700, marginBottom: 8 }}>{renderPreview(draft.emailSubject, 'EMAIL')}</div>}
-                {renderPreview(draft.body, 'EMAIL')}
-                {draft.attachPdf && <div style={{ marginTop: 10, color: '#c00', fontSize: 12 }}>📎 Belge.pdf (ekli)</div>}
+            <div className="mb-4">
+              <div className="mb-1.5 text-[11px]" style={{ color: '#25d366' }}>● WhatsApp</div>
+              <div className="ml-auto max-w-[92%] rounded-[10px] rounded-br-[2px] px-3 py-2.5 text-[13.5px]" style={{ background: '#005c4b', color: '#e9edef', whiteSpace: 'pre-wrap', lineHeight: 1.45 }}>
+                {renderPreview(draft.body, draft.kanal)}
+                {draft.attachPdf && <div className="mt-2 rounded-lg px-2.5 py-2 text-[12px]" style={{ background: '#0b141a', color: '#8aa9a0' }}>📎 Belge.pdf</div>}
               </div>
             </div>
           )}
-        </div>
+          {draft && draft.kanal !== 'WHATSAPP' && (
+            <div>
+              <div className="mb-1.5 text-[11px]" style={{ color: '#60a5fa' }}>● E-posta</div>
+              <div className="overflow-hidden rounded-xl" style={{ background: '#fff', color: '#1b2230' }}>
+                <div className="px-3.5 py-2.5 text-[13px] font-bold text-white" style={{ background: 'linear-gradient(135deg,#1b3a6b,#2a5298)' }}>MOREN MALİ MÜŞAVİRLİK</div>
+                <div className="px-3.5 py-3 text-[13px]" style={{ whiteSpace: 'pre-wrap', lineHeight: 1.5 }}>
+                  {draft.emailSubject && <div className="mb-2 font-bold">{renderPreview(draft.emailSubject, 'EMAIL')}</div>}
+                  {renderPreview(draft.body, 'EMAIL')}
+                  {draft.attachPdf && <div className="mt-2.5 text-[12px]" style={{ color: '#c00' }}>📎 Belge.pdf (ekli)</div>}
+                </div>
+              </div>
+            </div>
+          )}
+        </section>
       </div>
     </div>
   );
