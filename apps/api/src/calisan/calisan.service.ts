@@ -180,6 +180,10 @@ export class CalisanService {
     if (/en kisa surede ofisimiz size donus yapacak/.test(text)) return false;
     if (/ai aylik maliyet tavani doldu/.test(text)) return false;
     if (/su an net bir cevap uretemedim/.test(text)) return false;
+    if (/su an.*cevap.*uretemedim/.test(text)) return false;
+    if (/birazdan tekrar.*dener/.test(text)) return false;
+    if (/claude max|agent sdk|max baglanti|max yanit|ucretli api|api hatti kapali/.test(text)) return false;
+    if (/sistemde henuz tanimli degilsiniz|sizi taniyabilmem|adinizi.*vergi numaranizi/.test(text)) return false;
     return true;
   }
 

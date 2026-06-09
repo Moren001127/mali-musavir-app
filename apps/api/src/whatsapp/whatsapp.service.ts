@@ -205,6 +205,7 @@ export class WhatsAppService {
       if (row) return row.isActive === true;
       // Meta hiç kurulmamış ama QR (Baileys) bağlıysa aktif say.
       if (this.baileys?.isConnected(tenantId)) return true;
+      if (await this.baileys?.hasStoredSession(tenantId).catch(() => false)) return true;
       // DB kaydı yoksa eski env-based kurulumları kırma; env yapılandırılmışsa aktif say.
       return this.isConfigured(this.envConfig);
     } catch {
@@ -215,6 +216,66 @@ export class WhatsAppService {
   /**
    * Master switch toggle — UI'dan çağrılır
    */
+  private qrReconnectWaitMs(): number {
+    return Math.max(3_000, Number(process.env.WHATSAPP_QR_SEND_CONNECT_WAIT_MS || 18_000) || 18_000);
+  }
+
+  private async shouldUseQr(tenantId?: string): Promise<boolean> {
+    if (!tenantId) return false;
+    if (this.baileys.isConnected(tenantId)) return true;
+    return this.baileys.hasStoredSession(tenantId).catch(() => false);
+  }
+
+  private qrDisconnectedResult(): WhatsAppSendResult {
+    return {
+      ok: false,
+      errorCode: 'QR_DISCONNECTED',
+      error: 'QR WhatsApp oturumu su an bagli degil. Telefon internete bagli olmali; portal otomatik yeniden baglanmayi denedi ama henuz acilmadi. Mesaji tekrar gondermeden once QR durumunu bagli gorun.',
+    };
+  }
+
+  private async sendTextViaQr(phone: string, message: string, tenantId?: string): Promise<WhatsAppSendResult | null> {
+    if (!(await this.shouldUseQr(tenantId))) return null;
+    const connected = await this.baileys.ensureConnected(tenantId!, this.qrReconnectWaitMs());
+    if (!connected) return this.qrDisconnectedResult();
+
+    let ok = await this.baileys.sendText(tenantId!, phone, message);
+    if (!ok) {
+      await this.baileys.ensureConnected(tenantId!, 8_000);
+      ok = await this.baileys.sendText(tenantId!, phone, message);
+    }
+    return ok
+      ? { ok: true }
+      : {
+          ok: false,
+          errorCode: 'QR_SEND_FAILED',
+          error: 'QR WhatsApp gonderimi basarisiz oldu. Mesaj Meta/Graph hattina dusurulmedi; ayni sohbete tekrar gondermeden once QR baglantisini kontrol edin.',
+        };
+  }
+
+  private async sendMediaViaQr(
+    phone: string,
+    media: { url: string; mimeType?: string | null; filename?: string | null; caption?: string | null },
+    tenantId?: string,
+  ): Promise<WhatsAppSendResult | null> {
+    if (!(await this.shouldUseQr(tenantId))) return null;
+    const connected = await this.baileys.ensureConnected(tenantId!, this.qrReconnectWaitMs());
+    if (!connected) return this.qrDisconnectedResult();
+
+    let ok = await this.baileys.sendMedia(tenantId!, phone, media);
+    if (!ok) {
+      await this.baileys.ensureConnected(tenantId!, 8_000);
+      ok = await this.baileys.sendMedia(tenantId!, phone, media);
+    }
+    return ok
+      ? { ok: true }
+      : {
+          ok: false,
+          errorCode: 'QR_SEND_FAILED',
+          error: 'QR WhatsApp medya gonderimi basarisiz oldu. Mesaj Meta/Graph hattina dusurulmedi; QR baglantisini kontrol edin.',
+        };
+  }
+
   async setAutomationActive(tenantId: string, active: boolean): Promise<{ active: boolean }> {
     await (this.prisma as any).integrationConnection.upsert({
       where: { tenantId_provider: { tenantId, provider: 'WHATSAPP_META' } },
@@ -231,6 +292,8 @@ export class WhatsAppService {
       this.logger.warn(`[WhatsApp] Master switch PASIF - mesaj atlandi: ${phone}`);
       return { ok: false, error };
     }
+    const qrResult = await this.sendTextViaQr(phone, message, tenantId);
+    if (qrResult) return qrResult;
     if (tenantId && this.baileys.isConnected(tenantId)) {
       const ok = await this.baileys.sendText(tenantId, phone, message);
       return ok ? { ok: true } : { ok: false, error: 'Baileys (QR) gönderimi başarısız — bağlantı kopmuş olabilir.' };
@@ -265,6 +328,8 @@ export class WhatsAppService {
       return { ok: false, error };
     }
     // Baileys'te Meta şablonu yok → parametreleri düz metin gönder.
+    const qrResult = await this.sendTextViaQr(phone, parameters.join(' - '), tenantId);
+    if (qrResult) return qrResult;
     if (tenantId && this.baileys.isConnected(tenantId)) {
       const ok = await this.baileys.sendText(tenantId, phone, parameters.join(' - '));
       return ok ? { ok: true } : { ok: false, error: 'Baileys (QR) gönderimi başarısız.' };
@@ -303,6 +368,8 @@ export class WhatsAppService {
       this.logger.warn(`[WhatsApp] Master switch PASIF - medya atlandi: ${phone}`);
       return { ok: false, error };
     }
+    const qrResult = await this.sendMediaViaQr(phone, media, tenantId);
+    if (qrResult) return qrResult;
     if (tenantId && this.baileys.isConnected(tenantId)) {
       const ok = await this.baileys.sendMedia(tenantId, phone, media);
       return ok ? { ok: true } : { ok: false, error: 'Baileys (QR) medya gönderimi başarısız.' };
@@ -335,14 +402,16 @@ export class WhatsAppService {
   }
 
   async sendMessage(phone: string, message: string, tenantId?: string): Promise<boolean> {
+    const detailed = await this.sendMessageDetailed(phone, message, tenantId);
+    return detailed.ok;
     // MASTER SWITCH KONTROLÜ
     if (tenantId && !(await this.isAutomationActive(tenantId))) {
       this.logger.warn(`[WhatsApp] Master switch PASİF - mesaj atlandı: ${phone}`);
       return false;
     }
     // Baileys (QR) bağlıysa çıkışı oradan yap.
-    if (tenantId && this.baileys.isConnected(tenantId)) {
-      return this.baileys.sendText(tenantId, phone, message);
+    if (tenantId && this.baileys.isConnected(String(tenantId))) {
+      return this.baileys.sendText(String(tenantId), phone, message);
     }
     const cfg = await this.getEffectiveConfig(tenantId);
     if (!this.isConfigured(cfg)) {
@@ -359,7 +428,7 @@ export class WhatsAppService {
       to,
       type: 'text',
       text: { body: message, preview_url: false },
-    }, to);
+    }, to || '');
   }
 
   async sendTemplate(
@@ -368,13 +437,15 @@ export class WhatsAppService {
     templateName?: string,
     tenantId?: string,
   ): Promise<boolean> {
+    const detailed = await this.sendTemplateDetailed(phone, parameters, templateName, tenantId);
+    return detailed.ok;
     // MASTER SWITCH KONTROLÜ
     if (tenantId && !(await this.isAutomationActive(tenantId))) {
       this.logger.warn(`[WhatsApp] Master switch PASİF - şablon atlandı: ${phone}`);
       return false;
     }
-    if (tenantId && this.baileys.isConnected(tenantId)) {
-      return this.baileys.sendText(tenantId, phone, parameters.join(' - '));
+    if (tenantId && this.baileys.isConnected(String(tenantId))) {
+      return this.baileys.sendText(String(tenantId), phone, parameters.join(' - '));
     }
     const cfg = await this.getEffectiveConfig(tenantId);
     if (!this.isConfigured(cfg)) return false;
@@ -395,7 +466,7 @@ export class WhatsAppService {
           ? [{ type: 'body', parameters: parameters.map((text) => ({ type: 'text', text })) }]
           : [],
       },
-    }, to);
+    }, to || '');
   }
 
   private async callGraphApiDetailed(cfg: WhatsAppConfig, payload: any, to: string): Promise<WhatsAppSendResult> {

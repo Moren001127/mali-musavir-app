@@ -20,7 +20,7 @@ function WhatsAppAvatar({
   name,
   url,
   active,
-  size = 36,
+  size = 42,
 }: {
   name?: string | null;
   url?: string | null;
@@ -530,40 +530,39 @@ export default function MesajlarPage() {
     }
   };
 
-  const unreadTotal = conversations.filter((c) => c.windowOpen).length;
 
   return (
-    <div className="flex h-[calc(100vh-120px)] gap-3 max-w-[1600px]">
+    <div className="flex h-[calc(100vh-104px)] w-full gap-3 max-w-[1680px]">
       {/* SOL: KONUŞMA LİSTESİ */}
       <div
-        className="w-[340px] rounded-2xl flex flex-col overflow-hidden"
+        className="w-[378px] rounded-2xl flex flex-col overflow-hidden"
         style={{ background: 'rgba(255,255,255,0.025)', border: '1px solid rgba(255,255,255,0.07)' }}
       >
         {/* Üst başlık + arama */}
-        <div className="px-4 py-3 flex items-center gap-2" style={{ borderBottom: '1px solid rgba(255,255,255,0.06)' }}>
-          <MessageCircle size={18} style={{ color: GOLD }} />
-          <h1 className="text-[15px] font-semibold flex-1" style={{ color: '#fafaf9' }}>Mesajlar</h1>
-          <span className="text-[11px] tabular-nums" style={{ color: 'rgba(250,250,249,0.5)' }}>
+        <div className="px-5 py-4 flex items-center gap-2.5" style={{ borderBottom: '1px solid rgba(255,255,255,0.06)' }}>
+          <MessageCircle size={22} style={{ color: GOLD }} />
+          <h1 className="text-[18px] font-semibold flex-1" style={{ color: '#fafaf9' }}>Mesajlar</h1>
+          <span className="text-[13px] tabular-nums" style={{ color: 'rgba(250,250,249,0.62)' }}>
             {conversations.length} kişi
           </span>
           <button
             type="button"
             onClick={openStartModal}
             title="Yeni konuşma"
-            className="h-8 w-8 rounded-[9px] flex items-center justify-center"
+            className="h-10 w-10 rounded-[10px] flex items-center justify-center"
             style={{ background: 'rgba(212,184,118,0.12)', border: '1px solid rgba(212,184,118,0.24)', color: GOLD }}
           >
-            <Plus size={15} />
+            <Plus size={18} />
           </button>
         </div>
-        <div className="p-3" style={{ borderBottom: '1px solid rgba(255,255,255,0.05)' }}>
+        <div className="p-4" style={{ borderBottom: '1px solid rgba(255,255,255,0.05)' }}>
           <div className="relative">
-            <Search size={14} className="absolute left-3 top-1/2 -translate-y-1/2" style={{ color: 'rgba(250,250,249,0.38)' }} />
+            <Search size={17} className="absolute left-3.5 top-1/2 -translate-y-1/2" style={{ color: 'rgba(250,250,249,0.48)' }} />
             <input
               value={search}
               onChange={(e) => setSearch(e.target.value)}
               placeholder="Mükellef veya telefon ara..."
-              className="w-full h-10 pl-9 pr-3 rounded-[10px] text-[12.5px] outline-none"
+              className="w-full h-12 pl-11 pr-4 rounded-[11px] text-[14.5px] outline-none"
               style={{ background: 'rgba(0,0,0,0.2)', border: '1px solid rgba(255,255,255,0.08)', color: '#fafaf9' }}
             />
           </div>
@@ -591,7 +590,7 @@ export default function MesajlarPage() {
                   key={id}
                   type="button"
                   onClick={() => setSelectedId(id)}
-                  className="w-full px-3 py-2.5 text-left flex items-start gap-2.5 transition-colors"
+                  className="w-full px-4 py-3.5 text-left flex items-start gap-3 transition-colors"
                   style={{
                     background: isSelected ? 'rgba(212,184,118,0.08)' : 'transparent',
                     borderBottom: '1px solid rgba(255,255,255,0.04)',
@@ -603,45 +602,32 @@ export default function MesajlarPage() {
 
                   <div className="flex-1 min-w-0">
                     <div className="flex items-center justify-between gap-2">
-                      <span className="text-[13px] font-semibold truncate" style={{ color: '#fafaf9' }}>
+                      <span className="text-[16px] font-semibold truncate" style={{ color: '#fafaf9' }}>
                         {c.taxpayerName}
                       </span>
-                      <span className="text-[10.5px] tabular-nums flex-shrink-0" style={{ color: 'rgba(250,250,249,0.4)' }}>
+                      <span className="text-[12.5px] tabular-nums flex-shrink-0" style={{ color: 'rgba(250,250,249,0.55)' }}>
                         {fmtTime(c.lastMessageAt)}
                       </span>
                     </div>
                     <div className="flex items-center gap-1.5 mt-0.5">
                       {c.lastMessageDirection === 'outgoing' && (
-                        <Send size={9} style={{ color: 'rgba(250,250,249,0.35)' }} />
+                        <Send size={11} style={{ color: 'rgba(250,250,249,0.45)' }} />
                       )}
                       {c.phone && (
-                        <span className="text-[10px] flex-shrink-0" style={{ color: 'rgba(250,250,249,0.38)' }}>
+                        <span className="text-[13px] font-medium tabular-nums flex-shrink-0" style={{ color: 'rgba(250,250,249,0.62)' }}>
                           {c.phone}
                         </span>
                       )}
-                      <span className="text-[11.5px] truncate flex-1" style={{ color: 'rgba(250,250,249,0.55)' }}>
+                      <span className="text-[13.5px] truncate flex-1" style={{ color: 'rgba(250,250,249,0.68)' }}>
                         {renderWhatsAppLogText(c.lastMessage) || '(boş mesaj)'}
                       </span>
                     </div>
-                    {c.windowOpen ? (
-                      <div className="flex items-center gap-1 mt-1">
-                        <span className="w-1.5 h-1.5 rounded-full" style={{ background: '#86efac' }} />
-                        <span className="text-[10px]" style={{ color: '#86efac' }}>24h pencere açık</span>
-                      </div>
-                    ) : null}
                   </div>
                 </button>
               );
             })
           )}
         </div>
-
-        {unreadTotal > 0 && (
-          <div className="px-4 py-2 text-[11px] flex items-center gap-1.5" style={{ borderTop: '1px solid rgba(255,255,255,0.05)', color: 'rgba(134,239,172,0.85)' }}>
-            <span className="w-1.5 h-1.5 rounded-full" style={{ background: '#86efac' }} />
-            {unreadTotal} aktif konuşma (24h pencere açık)
-          </div>
-        )}
       </div>
 
       {/* SAĞ: SOHBET */}
@@ -656,26 +642,23 @@ export default function MesajlarPage() {
               <p className="text-[14px]" style={{ color: 'rgba(250,250,249,0.5)' }}>
                 Sol taraftan bir mükellef seç, konuşmaya başla
               </p>
-              <p className="text-[12px] mt-2" style={{ color: 'rgba(250,250,249,0.35)' }}>
-                Yeşil avatar = son 24 saatte mesajlaşıldı (serbest yazabilirsin)
-              </p>
             </div>
           </div>
         ) : (
           <>
             {/* Sohbet başlık */}
-            <div className="px-5 py-3 flex items-center gap-3" style={{ borderBottom: '1px solid rgba(255,255,255,0.06)', background: 'rgba(255,255,255,0.02)' }}>
+            <div className="px-6 py-4 flex items-center gap-3.5" style={{ borderBottom: '1px solid rgba(255,255,255,0.06)', background: 'rgba(255,255,255,0.02)' }}>
               <button type="button" onClick={() => setShowProfilePanel(true)} className="rounded-full" title="Kişi bilgisi">
                 <WhatsAppAvatar name={chatData?.taxpayer?.name} url={chatData?.taxpayer?.avatarUrl} active={chatData?.windowOpen} />
               </button>
               <button type="button" onClick={() => setShowProfilePanel(true)} className="flex-1 min-w-0 text-left">
-                <div className="text-[14px] font-semibold" style={{ color: '#fafaf9' }}>
+                <div className="text-[17px] font-semibold" style={{ color: '#fafaf9' }}>
                   {chatData?.taxpayer?.name || 'Yükleniyor...'}
                 </div>
-                <div className="flex items-center gap-3 text-[11px]" style={{ color: 'rgba(250,250,249,0.45)' }}>
+                <div className="flex items-center gap-3 text-[13px]" style={{ color: 'rgba(250,250,249,0.62)' }}>
                   {chatData?.taxpayer?.phone && (
                     <span className="flex items-center gap-1">
-                      <Phone size={9} /> {chatData.taxpayer.phone}
+                      <Phone size={12} /> {chatData.taxpayer.phone}
                     </span>
                   )}
                   {chatData?.taxpayer?.taxNumber && (
@@ -688,36 +671,36 @@ export default function MesajlarPage() {
                   type="button"
                   onClick={openWhatsAppFromHeader}
                   title="WhatsApp'ta aç ve ara"
-                  className="h-8 w-8 rounded-md flex items-center justify-center"
+                  className="h-10 w-10 rounded-md flex items-center justify-center"
                   style={{ background: 'rgba(255,255,255,0.04)', border: '1px solid rgba(255,255,255,0.08)', color: 'rgba(250,250,249,0.82)' }}
                 >
-                  <Phone size={14} />
+                  <Phone size={17} />
                 </button>
               )}
               {chatData?.taxpayer?.unknownContact && (
                 <button
                   type="button"
                   onClick={() => setShowLinkModal(true)}
-                  className="h-8 px-3 rounded-md flex items-center gap-1.5 text-[11px] font-semibold"
+                  className="h-10 px-3.5 rounded-md flex items-center gap-1.5 text-[13px] font-semibold"
                   style={{ background: 'rgba(212,184,118,0.12)', border: '1px solid rgba(212,184,118,0.24)', color: GOLD }}
                 >
-                  <Link2 size={12} /> Mükellefe Bağla
+                  <Link2 size={14} /> Mükellefe Bağla
                 </button>
               )}
-              {/* 24h pencere durumu */}
+              {/* Konuşma durumu */}
               {freeFormAvailable ? (
-                <div className="text-[11px] flex items-center gap-1.5 px-2.5 py-1 rounded-md" style={{ background: 'rgba(34,197,94,0.1)', color: '#86efac' }}>
-                  <CheckCircle2 size={11} /> {qrStatus?.connected ? 'QR bağlı' : '24h pencere açık'}
+                <div className="text-[13px] flex items-center gap-1.5 px-3 py-1.5 rounded-md" style={{ background: 'rgba(34,197,94,0.1)', color: '#86efac' }}>
+                  <CheckCircle2 size={13} /> {qrStatus?.connected ? 'QR bağlı' : 'Hazır'}
                 </div>
               ) : (
-                <div className="text-[11px] flex items-center gap-1.5 px-2.5 py-1 rounded-md" style={{ background: 'rgba(251,191,36,0.1)', color: '#fbbf24' }}>
-                  <Clock size={11} /> Pencere kapalı (şablon gerekli)
+                <div className="text-[13px] flex items-center gap-1.5 px-3 py-1.5 rounded-md" style={{ background: 'rgba(251,191,36,0.1)', color: '#fbbf24' }}>
+                  <Clock size={13} /> Pencere kapalı
                 </div>
               )}
             </div>
 
             {/* Mesaj listesi */}
-            <div ref={scrollRef} className="flex-1 overflow-y-auto px-5 py-4 space-y-2.5">
+            <div ref={scrollRef} className="flex-1 overflow-y-auto px-6 py-5 space-y-3">
               {!chatData ? (
                 <div className="text-center py-10" style={{ color: 'rgba(250,250,249,0.4)' }}>
                   <Loader2 size={16} className="animate-spin mx-auto" />
@@ -734,7 +717,7 @@ export default function MesajlarPage() {
                   return (
                     <div key={m.id} className={`flex ${incoming ? 'justify-start' : 'justify-end'}`}>
                       <div
-                        className="max-w-[70%] px-3.5 py-2 rounded-[14px] text-[13px]"
+                        className="max-w-[76%] px-4 py-2.5 rounded-[14px] text-[15px] leading-relaxed"
                         style={{
                           background: incoming ? 'rgba(255,255,255,0.05)' : 'rgba(212,184,118,0.12)',
                           border: incoming ? '1px solid rgba(255,255,255,0.07)' : '1px solid rgba(212,184,118,0.18)',
@@ -779,7 +762,7 @@ export default function MesajlarPage() {
                             <AlertTriangle size={11} /> WhatsApp'a gonderilemedi
                           </div>
                         )}
-                        <div className="text-[10px] mt-1 text-right" style={{ color: 'rgba(250,250,249,0.4)' }}>
+                        <div className="text-[11.5px] mt-1.5 text-right tabular-nums" style={{ color: 'rgba(250,250,249,0.5)' }}>
                           {fmtFullTime(m.occurredAt)}
                         </div>
                       </div>
@@ -790,9 +773,9 @@ export default function MesajlarPage() {
             </div>
 
             {/* Alt input */}
-            <div className="p-3" style={{ borderTop: '1px solid rgba(255,255,255,0.06)', background: 'rgba(255,255,255,0.015)' }}>
+            <div className="p-5" style={{ borderTop: '1px solid rgba(255,255,255,0.06)', background: 'rgba(255,255,255,0.015)' }}>
               {freeFormAvailable ? (
-                <div className="flex items-end gap-2">
+                <div className="flex items-end gap-3">
                   <input
                     ref={mediaInputRef}
                     type="file"
@@ -808,7 +791,7 @@ export default function MesajlarPage() {
                     onClick={() => mediaInputRef.current?.click()}
                     disabled={mediaMut.isPending}
                     title="Dosya gönder"
-                    className="h-11 w-11 rounded-[10px] flex items-center justify-center disabled:opacity-50"
+                    className="h-12 w-12 rounded-[11px] flex items-center justify-center disabled:opacity-50"
                     style={{ background: 'rgba(255,255,255,0.04)', border: '1px solid rgba(255,255,255,0.08)', color: GOLD }}
                   >
                     {mediaMut.isPending ? <Loader2 size={14} className="animate-spin" /> : <Paperclip size={15} />}
@@ -856,7 +839,7 @@ export default function MesajlarPage() {
                     }}
                     placeholder="Mesaj yaz... (Enter = gönder, Shift+Enter = yeni satır)"
                     rows={2}
-                    className="w-full pl-11 pr-3 py-2 rounded-[10px] text-[13px] outline-none resize-none"
+                    className="w-full pl-12 pr-4 py-3 rounded-[11px] text-[15px] outline-none resize-none"
                     style={{ background: 'rgba(0,0,0,0.2)', border: '1px solid rgba(255,255,255,0.08)', color: '#fafaf9' }}
                   />
                   </div>
@@ -864,7 +847,7 @@ export default function MesajlarPage() {
                     type="button"
                     onClick={handleSend}
                     disabled={!composeText.trim() || sendMut.isPending}
-                    className="h-11 px-4 rounded-[10px] flex items-center gap-1.5 text-[13px] font-semibold"
+                    className="h-12 px-5 rounded-[11px] flex items-center gap-1.5 text-[14px] font-semibold"
                     style={{
                       background: composeText.trim() ? `linear-gradient(135deg, ${GOLD}, #b8a06f)` : 'rgba(255,255,255,0.04)',
                       color: composeText.trim() ? '#0f0d0b' : 'rgba(250,250,249,0.35)',
@@ -876,7 +859,7 @@ export default function MesajlarPage() {
                   </button>
                 </div>
               ) : (() => {
-                // En son giden şablon mesajı var mı (son 24 saat içinde)?
+                // En son giden baslangic mesaji var mi?
                 const lastOutgoing = [...(chatData?.messages || [])].reverse().find((m) => m.direction === 'outgoing');
                 const isTemplateRecent =
                   lastOutgoing &&
@@ -890,9 +873,9 @@ export default function MesajlarPage() {
                       <div className="flex items-start gap-2 px-3 py-2 rounded-[10px]" style={{ background: 'rgba(125,211,252,0.06)', border: '1px solid rgba(125,211,252,0.2)' }}>
                         <Clock size={14} className="flex-shrink-0 mt-0.5" style={{ color: '#7dd3fc' }} />
                         <div className="text-[12px]" style={{ color: 'rgba(250,250,249,0.78)' }}>
-                          <strong>Şablon gönderildi</strong> ({fmtFullTime(lastOutgoing!.occurredAt)}). Müşteri yanıt vermedi, henüz 24 saatlik pencere açılmadı.
+                          <strong>Şablon gönderildi</strong> ({fmtFullTime(lastOutgoing!.occurredAt)}). Müşteri yanıtı bekleniyor.
                           <br />
-                          Müşteri yazdığında <strong>serbest mesaj</strong> kutusu otomatik açılır. Hatırlatma göndermek istersen aşağıdaki butonu kullan.
+                          Müşteri yazdığında normal mesaj kutusu otomatik açılır. Hatırlatma göndermek istersen aşağıdaki butonu kullan.
                         </div>
                       </div>
                       <button
@@ -913,8 +896,8 @@ export default function MesajlarPage() {
                     <div className="flex items-start gap-2 px-3 py-2 rounded-[10px]" style={{ background: 'rgba(251,191,36,0.06)', border: '1px solid rgba(251,191,36,0.18)' }}>
                       <AlertCircle size={14} className="flex-shrink-0 mt-0.5" style={{ color: '#fbbf24' }} />
                       <div className="text-[12px]" style={{ color: 'rgba(250,250,249,0.7)' }}>
-                        Bu mükellef son 24 saatte sana yazmamış. Serbest metin gönderemezsin.
-                        <strong> Meta onaylı bir şablon</strong> kullanarak "kapı çal" mesajı gönder — müşteri yazdığında pencere açılır, sonra serbest yazabilirsin.
+                        Bu konuşmada müşteri yanıtı bekleniyor.
+                        <strong> Başlangıç mesajı</strong> gönder; müşteri yazdığında normal mesaj kutusu açılır.
                       </div>
                     </div>
                     <button
@@ -989,7 +972,7 @@ export default function MesajlarPage() {
                 }}
               >
                 {freeFormAvailable ? <CheckCircle2 size={12} /> : <Clock size={12} />}
-                {qrStatus?.connected ? 'QR bağlı' : chatData.windowOpen ? '24h pencere açık' : 'Pencere kapalı'}
+                {qrStatus?.connected ? 'QR bağlı' : chatData.windowOpen ? 'Hazır' : 'Pencere kapalı'}
               </div>
 
               <div className="mt-5 grid grid-cols-2 gap-3">
@@ -1188,7 +1171,7 @@ export default function MesajlarPage() {
                             <div className="truncate text-[13px] font-semibold" style={{ color: '#fafaf9' }}>{contact.taxpayerName}</div>
                             <div className="mt-0.5 flex items-center gap-2 text-[11px]" style={{ color: 'rgba(250,250,249,0.45)' }}>
                               <span className="truncate">{contact.primaryPhone || 'Telefon yok'}</span>
-                              {contact.windowOpen && <span style={{ color: '#86efac' }}>24h açık</span>}
+                              {contact.windowOpen && <span style={{ color: '#86efac' }}>Aktif</span>}
                             </div>
                           </div>
                           {contact.hasConversation && (

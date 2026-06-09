@@ -1100,6 +1100,13 @@ export class WhatsAppBotController implements OnModuleInit {
     ) {
       return this.ownerIdentityReply(ownerTenant);
     }
+    if (
+      /su an.*cevap.*uretemedim/.test(normalized)
+      || /birazdan tekrar.*dener/.test(normalized)
+      || /claude max|agent sdk|max baglanti|max yanit|ucretli api|api hatti kapali/.test(normalized)
+    ) {
+      return 'Mesajini aldim. AI baglantisi anlik yavasladi; teknik hata metni gondermeden yeniden deneyecegim. Birazdan tekrar yazarsan kaldigimiz yerden cevaplayacagim.';
+    }
     return reply;
   }
 
@@ -1215,7 +1222,7 @@ export class WhatsAppBotController implements OnModuleInit {
         });
       } catch (err: any) {
         this.logger.warn(`Owner AI cevabi uretilemedi (fetch hatasi?): ${err?.message || err}`);
-        const fallbackText = `Su an cevap uretemedim (gecici servis sorunu olabilir). Lutfen birazdan tekrar dener misin?`;
+        const fallbackText = 'Mesajini aldim. AI baglantisi anlik yavasladi; teknik hata metni gondermeden yeniden deneyecegim. Birazdan tekrar yazarsan kaldigimiz yerden cevaplayacagim.';
         try {
           await this.whatsapp.sendMessage(this.replyTarget(msg), fallbackText, ownerTenant.id);
           await this.prisma.communicationLog.create({

@@ -305,6 +305,28 @@ export class BaileysService {
     return Boolean(this.sessions.get(tenantId)?.connected);
   }
 
+  async ensureConnected(tenantId: string, timeoutMs = 15_000): Promise<boolean> {
+    if (this.isConnected(tenantId)) return true;
+    const hasStored = await this.hasStoredSession(tenantId).catch(() => false);
+    if (!hasStored) return false;
+
+    await this.connect(tenantId).catch((e: any) => {
+      const message = e?.message || String(e);
+      this.lastErrors.set(tenantId, message);
+      this.logger.warn(`[Baileys] tenant=${tenantId} reconnect on send failed: ${message}`);
+    });
+
+    const started = Date.now();
+    const wait = (ms: number) => new Promise((resolve) => setTimeout(resolve, ms));
+    while (Date.now() - started < timeoutMs) {
+      const session = this.sessions.get(tenantId);
+      if (session?.connected) return true;
+      if (session?.qr) return false;
+      await wait(500);
+    }
+    return this.isConnected(tenantId);
+  }
+
   async logout(tenantId: string): Promise<void> {
     this.intentionalLogoutTenants.add(tenantId);
     this.clearReconnectTimer(tenantId);
@@ -422,7 +444,8 @@ export class BaileysService {
     try {
       const jid = this.toJid(phone);
       await this.humanPace(s.sock, jid, text);
-      await s.sock.sendMessage(jid, { text });
+      const sent = await s.sock.sendMessage(jid, { text });
+      this.logger.log(`[Baileys] tenant=${tenantId} mesaj gonderildi target=${this.maskTarget(phone)} jid=${this.maskTarget(jid)} id=${sent?.key?.id || 'unknown'}`);
       return true;
     } catch (e: any) {
       this.logger.error(`[Baileys] gönderim hatası ${phone}: ${e?.message || e}`);
@@ -450,11 +473,23 @@ export class BaileysService {
       else if (mime.startsWith('video/')) payload = { video: buffer, caption };
       else if (mime.startsWith('audio/')) payload = { audio: buffer, mimetype: mime || 'audio/ogg' };
       else payload = { document: buffer, mimetype: mime || 'application/octet-stream', fileName: media.filename || 'belge', caption };
-      await s.sock.sendMessage(jid, payload);
+      const sent = await s.sock.sendMessage(jid, payload);
+      this.logger.log(`[Baileys] tenant=${tenantId} medya gonderildi target=${this.maskTarget(phone)} jid=${this.maskTarget(jid)} id=${sent?.key?.id || 'unknown'}`);
       return true;
     } catch (e: any) {
       this.logger.error(`[Baileys] medya gönderim hatası ${phone}: ${e?.message || e}`);
       return false;
     }
+  }
+
+  private maskTarget(value: string): string {
+    const raw = String(value || '');
+    const [left, suffix] = raw.split('@');
+    const digits = left.replace(/[^\d]/g, '');
+    if (!digits) return raw ? '[jid]' : '';
+    const masked = digits.length > 6
+      ? `${digits.slice(0, 4)}...${digits.slice(-3)}`
+      : `${digits.slice(0, 2)}...`;
+    return suffix ? `${masked}@${suffix}` : masked;
   }
 }
