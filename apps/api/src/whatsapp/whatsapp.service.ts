@@ -286,6 +286,18 @@ export class WhatsAppService {
     return { active };
   }
 
+  /**
+   * İşlem sürerken "yazıyor…" göstergesi (yalnız QR/Baileys bağlı hatta; Meta cloud
+   * istem dışı presence desteklemediği için sessiz geçer). on=true aç, on=false durdur.
+   */
+  async setTyping(phone: string, tenantId: string | undefined, on: boolean): Promise<void> {
+    if (!tenantId) return;
+    try {
+      if (!this.baileys.isConnected(tenantId)) return;
+      await this.baileys.setTyping(tenantId, phone, on);
+    } catch { /* gösterge başarısızsa sessiz geç */ }
+  }
+
   async sendMessageDetailed(phone: string, message: string, tenantId?: string): Promise<WhatsAppSendResult> {
     if (tenantId && !(await this.isAutomationActive(tenantId))) {
       const error = 'WhatsApp master switch pasif. Ayarlar > Entegrasyonlar > WhatsApp icinden aktif edin.';

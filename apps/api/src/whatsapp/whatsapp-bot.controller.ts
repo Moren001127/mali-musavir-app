@@ -196,6 +196,28 @@ export class WhatsAppBotController implements OnModuleInit {
     return String(replyTo || from).trim();
   }
 
+  /**
+   * AI cevabı üretilirken telefonda "yazıyor…" göstergesini CANLI tutar; durdurucu
+   * fonksiyon döndürür. WhatsApp'ta "composing" presence ~10 sn'de söner, bu yüzden
+   * periyodik tazelenir. Cevap hazır olunca dönen fonksiyon çağrılıp kapatılır.
+   * Böylece kullanıcı işlem boyunca boş ekrana bakıp "geç cevap veriyor" sanmaz.
+   */
+  private startTypingIndicator(tenantId: string, phone: string): () => void {
+    if (process.env.MOREN_BOT_TYPING === '0') return () => undefined;
+    let stopped = false;
+    const ping = () => { this.whatsapp.setTyping(phone, tenantId, true).catch(() => undefined); };
+    ping();
+    const refreshMs = Math.max(4000, Number(process.env.MOREN_BOT_TYPING_REFRESH_MS) || 8000);
+    const timer = setInterval(() => { if (!stopped) ping(); }, refreshMs);
+    if (typeof (timer as any).unref === 'function') (timer as any).unref();
+    return () => {
+      if (stopped) return;
+      stopped = true;
+      clearInterval(timer);
+      this.whatsapp.setTyping(phone, tenantId, false).catch(() => undefined);
+    };
+  }
+
   private buildOwnerNotification(input: {
     title: string;
     taxpayerName?: string;
@@ -884,6 +906,7 @@ export class WhatsAppBotController implements OnModuleInit {
       `SADECE ${her}'ye gidecek nihai WhatsApp cevabını yaz — başka hiçbir şey yazma. Doğrudan mesaj metni, etiket yok.`,
     ].join('\n');
 
+    const stopPersonalTyping = this.startTypingIndicator(tenant.id, this.replyTarget(msg));
     let rawReply = '';
     try {
       // ÖNCE MAX (ücretsiz). Araçsız saf metin sohbet — Max yeterli.
@@ -905,6 +928,8 @@ export class WhatsAppBotController implements OnModuleInit {
     } catch (err: any) {
       this.logger.warn(`Personal contact bot cevabi uretilemedi (${contact.name}): ${err?.message || err}`);
       return;
+    } finally {
+      stopPersonalTyping();
     }
 
     // Post-filter ATLAMAK gerekiyor — bu kişisel akış, mali-müşavirlik tonu için yapılmış
@@ -1211,6 +1236,8 @@ export class WhatsAppBotController implements OnModuleInit {
 
       // AI çağrısı — fetch failed gibi geçici sorunlarda kullanıcıya bos kalmasın diye
       // try/catch + fallback. Eskiden hata sessizce yakalanıyor, kullanıcı bekliyordu.
+      // İşlem boyunca "yazıyor…" göster (owner 10-20 sn boş ekrana bakmasın).
+      const stopOwnerTyping = this.startTypingIndicator(ownerTenant.id, this.replyTarget(msg));
       let answer: any;
       try {
         // Owner WhatsApp → ÇALIŞAN AJAN köprüsü.
@@ -1224,6 +1251,7 @@ export class WhatsAppBotController implements OnModuleInit {
           source: 'calisan-whatsapp',
         });
       } catch (err: any) {
+        stopOwnerTyping();
         this.logger.warn(`Owner AI cevabi uretilemedi (fetch hatasi?): ${err?.message || err}`);
         const fallbackText = 'Mesajini aldim. AI baglantisi anlik yavasladi; teknik hata metni gondermeden yeniden deneyecegim. Birazdan tekrar yazarsan kaldigimiz yerden cevaplayacagim.';
         try {
@@ -1240,6 +1268,7 @@ export class WhatsAppBotController implements OnModuleInit {
         } catch { /* en kotu ihtimal, sessiz hata */ }
         return;
       }
+      stopOwnerTyping();
       const rawReply = (answer?.assistantMessage || '').slice(0, 1400);
       // Owner için de post-filter uygula — iç monolog/markdown temizle
       const reply = this.repairOwnerReply(
@@ -1622,53 +1651,61 @@ export class WhatsAppBotController implements OnModuleInit {
       `SADECE ${BOT_NAME}'in göndereceği mesajı yaz — başka hiçbir şey yazma, etiket koyma.`,
     ].join('\n');
 
-    const answer = await this.morenAi.chat(taxpayer.tenantId, null, {
-      taxpayerId: taxpayer.id,
-      message: prompt,
-      // voiceMode KAPALI — WhatsApp metin cevabi. Sesli/true olunca max_token 260'a duser
-      // ve compactFinalAnswer 220 karakterde keser => cevaplar yarida kalir (sacma/eksik).
-      voiceMode: false,
-      toolMode: 'taxpayer-readonly',
-      source: 'whatsapp-bot',
-    });
+    // İşlem boyunca "yazıyor…" göster (müşteri 10-20 sn boş ekrana bakmasın).
+    // try/finally: AI hata verse bile gösterge mutlaka kapanır.
+    const stopCustTyping = this.startTypingIndicator(taxpayer.tenantId, this.replyTarget(msg));
+    let reply = '';
+    try {
+      const answer = await this.morenAi.chat(taxpayer.tenantId, null, {
+        taxpayerId: taxpayer.id,
+        message: prompt,
+        // voiceMode KAPALI — WhatsApp metin cevabi. Sesli/true olunca max_token 260'a duser
+        // ve compactFinalAnswer 220 karakterde keser => cevaplar yarida kalir (sacma/eksik).
+        voiceMode: false,
+        toolMode: 'taxpayer-readonly',
+        source: 'whatsapp-bot',
+      });
 
-    const rawAiReply = answer.assistantMessage || '';
-    const contextBlock = [taxpayerContext, recentContext].filter(Boolean).join('\n\n');
-    // SIRA: önce post-filter, SONRA eval (gönderilecek son metin denetlensin).
-    // Retry de aynı sırayı izler: yeni ham cevap → post-filter → tekrar eval.
-    const filteredAiReply = this.postFilter.filterTaxpayerReply(rawAiReply, { recentReplies });
-    const reply = await this.qualityGateReply({
-      tenantId: taxpayer.tenantId,
-      taxpayerId: taxpayer.id,
-      messageId: msg.id || null,
-      intent: classified.intent,
-      customerMessage: msg.text,
-      reply: filteredAiReply,
-      contextBlock,
-      recentReplies,
-      retry: async (reasons) => {
-        const retryPrompt = this.botEval.buildRetryPrompt(
-          rawAiReply,
-          reasons,
-          {
-            tenantId: taxpayer.tenantId,
+      const rawAiReply = answer.assistantMessage || '';
+      const contextBlock = [taxpayerContext, recentContext].filter(Boolean).join('\n\n');
+      // SIRA: önce post-filter, SONRA eval (gönderilecek son metin denetlensin).
+      // Retry de aynı sırayı izler: yeni ham cevap → post-filter → tekrar eval.
+      const filteredAiReply = this.postFilter.filterTaxpayerReply(rawAiReply, { recentReplies });
+      reply = await this.qualityGateReply({
+        tenantId: taxpayer.tenantId,
+        taxpayerId: taxpayer.id,
+        messageId: msg.id || null,
+        intent: classified.intent,
+        customerMessage: msg.text,
+        reply: filteredAiReply,
+        contextBlock,
+        recentReplies,
+        retry: async (reasons) => {
+          const retryPrompt = this.botEval.buildRetryPrompt(
+            rawAiReply,
+            reasons,
+            {
+              tenantId: taxpayer.tenantId,
+              taxpayerId: taxpayer.id,
+              intent: classified.intent,
+              message: msg.text,
+              contextBlock,
+            },
+            recentReplies,
+          );
+          const retryAnswer = await this.morenAi.chat(taxpayer.tenantId, null, {
             taxpayerId: taxpayer.id,
-            intent: classified.intent,
-            message: msg.text,
-            contextBlock,
-          },
-          recentReplies,
-        );
-        const retryAnswer = await this.morenAi.chat(taxpayer.tenantId, null, {
-          taxpayerId: taxpayer.id,
-          message: retryPrompt,
-          voiceMode: false,
-          toolMode: 'taxpayer-readonly',
-          source: 'whatsapp-bot',
-        });
-        return this.postFilter.filterTaxpayerReply(retryAnswer.assistantMessage || '', { recentReplies });
-      },
-    });
+            message: retryPrompt,
+            voiceMode: false,
+            toolMode: 'taxpayer-readonly',
+            source: 'whatsapp-bot',
+          });
+          return this.postFilter.filterTaxpayerReply(retryAnswer.assistantMessage || '', { recentReplies });
+        },
+      });
+    } finally {
+      stopCustTyping();
+    }
     if (reply) {
       // Cache'e yaz — sonraki aynı soru AI'ya gitmeden bu cevapla dönsün.
       // shouldNotCache filtresi (bot-cache.service.ts) generic/hata cevaplarını eler.
@@ -1710,6 +1747,12 @@ export class WhatsAppBotController implements OnModuleInit {
     if (sampleRate < 1 && Math.random() > sampleRate) {
       return input.reply;
     }
+    // HIZ: varsayılan olarak gönderim ÖNCESİ yalnız LOKAL eval (anında, ücretsiz) çalışır;
+    // yavaş LLM-yargıç denetimi cevap gönderildikten SONRA arka planda yapılır
+    // (kalite logu + öğrenme döngüsü korunur, gecikme hot-path'ten çıkar).
+    // Eski davranış (LLM denetimi gönderimden önce + retry): MOREN_AI_EVAL_BLOCKING=1.
+    const blockingEval = process.env.MOREN_AI_EVAL_BLOCKING === '1';
+    const evalOpts = blockingEval ? undefined : { allowLlm: false };
     const recentReplies = input.recentReplies || [];
     const firstEval = await this.botEval.evaluateReply(
       input.reply,
@@ -1722,6 +1765,7 @@ export class WhatsAppBotController implements OnModuleInit {
         source: 'online',
       },
       recentReplies,
+      evalOpts,
     );
 
     let finalReply = input.reply;
@@ -1749,6 +1793,7 @@ export class WhatsAppBotController implements OnModuleInit {
             source: 'online-retry',
           },
           recentReplies,
+          evalOpts,
         );
         reasons = Array.from(new Set([...reasons, ...finalEval.reasons]));
       }
@@ -1759,6 +1804,9 @@ export class WhatsAppBotController implements OnModuleInit {
       fallbackUsed = true;
     }
 
+    // BLOCKING modda LLM-yargıç gönderimden ÖNCE çalıştı → log + öğrenmeyi burada yaz.
+    // FAST modda (varsayılan) bu iş async yapılır (aşağıdaki else dalı).
+    if (blockingEval) {
     const status = fallbackUsed
       ? 'FALLBACK_USED'
       : retryCount > 0
@@ -1812,8 +1860,116 @@ export class WhatsAppBotController implements OnModuleInit {
         importance: 3,
       }).catch(() => {});
     }
+    } else {
+      // FAST MODE: gönderimi geciktirme — final cevabı arka planda TAM LLM denetiminden
+      // geçir; kalite logu + (düşük puanda) öğrenme dersi async yazılır. Böylece her
+      // cevap yine %100 denetlenir ama kullanıcı LLM-yargıcı beklemez.
+      this.asyncQualityAudit({
+        tenantId: input.tenantId,
+        taxpayerId: input.taxpayerId || null,
+        conversationId: input.conversationId || null,
+        messageId: input.messageId || null,
+        intent: input.intent || null,
+        customerMessage: input.customerMessage || null,
+        contextBlock: input.contextBlock || null,
+        recentReplies,
+        originalReply: input.reply,
+        finalReply,
+        retryCount,
+        fallbackUsed,
+        localReasons: reasons,
+      }).catch(() => undefined);
+    }
 
     return finalReply;
+  }
+
+  /**
+   * FAST eval modunda: gönderilmiş cevabı arka planda TAM LLM denetiminden geçirir,
+   * kalite logunu yazar ve LLM-yargıç düşük puan verirse self-improvement dersi düşer.
+   * Gönderim akışını HİÇ bloklamaz (fire-and-forget).
+   */
+  private async asyncQualityAudit(a: {
+    tenantId: string;
+    taxpayerId?: string | null;
+    conversationId?: string | null;
+    messageId?: string | null;
+    intent?: string | null;
+    customerMessage?: string | null;
+    contextBlock?: string | null;
+    recentReplies: string[];
+    originalReply: string;
+    finalReply: string;
+    retryCount: number;
+    fallbackUsed: boolean;
+    localReasons: string[];
+  }): Promise<void> {
+    try {
+      const ev = await this.botEval.evaluateReply(
+        a.finalReply,
+        {
+          tenantId: a.tenantId,
+          taxpayerId: a.taxpayerId || null,
+          intent: a.intent || null,
+          message: a.customerMessage || null,
+          contextBlock: a.contextBlock || null,
+          source: 'online-async',
+        },
+        a.recentReplies,
+      );
+      const reasons = Array.from(new Set([...(a.localReasons || []), ...ev.reasons]));
+      const status = a.fallbackUsed
+        ? 'FALLBACK_USED'
+        : a.retryCount > 0
+          ? 'RETRY_USED'
+          : ev.warning
+            ? 'EVAL_WARN'
+            : ev.score < 6
+              ? 'LOW_SCORE'
+              : 'PASSED';
+      await this.qualityLog.createLog({
+        tenantId: a.tenantId,
+        taxpayerId: a.taxpayerId || null,
+        conversationId: a.conversationId || a.taxpayerId || null,
+        messageId: a.messageId || null,
+        source: 'ONLINE_EVAL',
+        status,
+        score: ev.score,
+        intent: a.intent || null,
+        reasons,
+        originalReply: a.originalReply,
+        finalReply: a.finalReply,
+        retryCount: a.retryCount,
+        fallbackUsed: a.fallbackUsed,
+        evalModel: ev.model,
+        inputTokens: ev.inputTokens,
+        outputTokens: ev.outputTokens,
+        costUsd: ev.costUsd,
+        metadata: {
+          firstScore: ev.score,
+          finalScore: ev.score,
+          evalWarning: ev.warning || null,
+          customerMessage: a.customerMessage ? String(a.customerMessage).slice(0, 500) : null,
+          recentReplyCount: a.recentReplies.length,
+          async: true,
+        },
+      }).catch((err) => {
+        this.logger.warn(`BotQualityLog (async) yazilamadi: ${err?.message || err}`);
+      });
+
+      if (ev.score < 6 || a.fallbackUsed) {
+        const reasonKey = String(reasons[0] || 'genel').split(':')[0];
+        this.calisan.recordSelfImprovementLesson({
+          tenantId: a.tenantId,
+          title: `Bot dusuk kaliteli cevap: ${reasonKey}`,
+          content: `Intent: ${a.intent || '-'} | Musteri: ${String(a.customerMessage || '').slice(0, 200)} | Gonderilen cevap: ${String(a.finalReply || '').slice(0, 200)} | Sebepler: ${reasons.join(', ')}\nDers: Bu tip mesajda dogal, kisa (1-2 cumle), devriksiz/akici Turkce yaz; sablon kalip ve uydurma rakam/tarih kullanma.`,
+          tags: ['self-improvement', 'whatsapp', 'bot-quality', String(a.intent || 'genel')],
+          importance: 3,
+        }).catch(() => {});
+      }
+    } catch (err: any) {
+      this.logger.warn(`asyncQualityAudit hatasi: ${err?.message || err}`);
+    }
   }
 
   /**

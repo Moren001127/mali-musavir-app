@@ -629,13 +629,36 @@ export class BaileysService {
     if (process.env.MOREN_BOT_TYPING === '0') return;
     try {
       await sock.sendPresenceUpdate('composing', jid);
+      // Cevap zaten AI gecikmesiyle üretiliyor; gönderimden önce EK yapay bekleme
+      // artık varsayılan KAPALI (base=0, perChar=0) — boşuna gecikme yapmasın.
+      // Eski "insan temposu" davranışı env ile geri açılır:
+      // MOREN_BOT_TYPING_BASE_MS=800 MOREN_BOT_TYPING_PER_CHAR_MS=35 MOREN_BOT_TYPING_MAX_MS=4500
       const len = (text || '').length;
+      const baseMs = Number(process.env.MOREN_BOT_TYPING_BASE_MS ?? 0) || 0;
+      const perCharMs = Number(process.env.MOREN_BOT_TYPING_PER_CHAR_MS ?? 0) || 0;
       const ms = Math.min(
-        Number(process.env.MOREN_BOT_TYPING_MAX_MS || 4500),
-        800 + len * 35,
+        Number(process.env.MOREN_BOT_TYPING_MAX_MS || 1200),
+        baseMs + len * perCharMs,
       );
-      await new Promise((r) => setTimeout(r, ms));
+      if (ms > 0) await new Promise((r) => setTimeout(r, ms));
       await sock.sendPresenceUpdate('paused', jid);
+    } catch { /* presence başarısızsa sorun değil */ }
+  }
+
+  /**
+   * İşlem sürerken (AI cevabı üretilirken) telefonda "yazıyor…" göstergesini aç/kapat.
+   * Gelen mesajdan HEMEN sonra on=true ile çağrılır, cevap hazır olunca on=false.
+   * Amaç: kullanıcı 10-20 sn boş ekrana bakıp "cevap gelmiyor" sanmasın.
+   * MOREN_BOT_TYPING=0 ile tümüyle kapatılır.
+   */
+  async setTyping(tenantId: string, phone: string, on: boolean): Promise<void> {
+    if (process.env.MOREN_BOT_TYPING === '0') return;
+    const s = this.sessions.get(tenantId);
+    if (!s?.connected || !s.sock) return;
+    try {
+      const jid = this.toSendJid(s, phone);
+      if (!jid) return;
+      await s.sock.sendPresenceUpdate(on ? 'composing' : 'paused', jid);
     } catch { /* presence başarısızsa sorun değil */ }
   }
 
