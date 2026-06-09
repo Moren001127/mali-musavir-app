@@ -171,13 +171,13 @@ export default function SablonlarPage() {
                 <div className="flex-1">
                   <label className="mb-1 block text-[11px] font-medium uppercase tracking-wider" style={{ color: MUTED }}>Kanal</label>
                   <select className="w-full rounded-lg border px-3 py-2 text-[13px]" style={fieldStyle} value={draft.kanal} onChange={(e) => patch({ kanal: e.target.value as TemplateKanal })}>
-                    {KANALLAR.map((k) => <option key={k.v} value={k.v} style={{ color: '#111' }}>{k.l}</option>)}
+                    {KANALLAR.map((k) => <option key={k.v} value={k.v} style={{ background: '#1c1917', color: '#fafaf9' }}>{k.l}</option>)}
                   </select>
                 </div>
                 <div className="flex-1">
                   <label className="mb-1 block text-[11px] font-medium uppercase tracking-wider" style={{ color: MUTED }}>Kategori</label>
                   <select className="w-full rounded-lg border px-3 py-2 text-[13px]" style={fieldStyle} value={draft.kategori} onChange={(e) => patch({ kategori: e.target.value })}>
-                    {KATEGORILER.map((k) => <option key={k} value={k} style={{ color: '#111' }}>{k}</option>)}
+                    {KATEGORILER.map((k) => <option key={k} value={k} style={{ background: '#1c1917', color: '#fafaf9' }}>{k}</option>)}
                   </select>
                 </div>
               </div>
