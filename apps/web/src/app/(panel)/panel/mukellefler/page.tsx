@@ -4,7 +4,7 @@ import { useState, useMemo, useEffect } from 'react';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import Link from 'next/link';
 import { api } from '@/lib/api';
-import { Search, Upload, AlertCircle, PhoneOff, Check as CheckIcon } from 'lucide-react';
+import { ClipboardCheck, Search, Upload, AlertCircle, PhoneOff, Check as CheckIcon } from 'lucide-react';
 
 const GOLD = '#d4b876';
 const GOLD_SOFT = '#b8a06f';
@@ -305,40 +305,57 @@ export default function MukelleflerPage() {
 
   return (
     <div className="space-y-3 max-w-none">
-      {/* HEADER — sade, nötr yüzey + ince altın çizgi */}
-      <div
-        className="flex flex-wrap items-end justify-between gap-3 rounded-2xl px-4 py-3.5"
+      <header
+        className="relative overflow-hidden rounded-[18px] border px-5 py-4"
         style={{
-          background: 'rgba(255,255,255,0.022)',
-          border: '1px solid rgba(255,255,255,0.07)',
-          boxShadow: '0 12px 30px rgba(0,0,0,0.18)',
+          background:
+            'radial-gradient(120% 140% at 0% 0%, rgba(212,184,118,0.16), transparent 46%), radial-gradient(120% 140% at 100% 0%, rgba(139,118,73,0.12), transparent 48%), #0f0d0b',
+          borderColor: 'rgba(255,255,255,0.06)',
+          boxShadow: '0 16px 42px rgba(0,0,0,0.28)',
         }}
       >
-        <div>
-          <div className="mb-1.5 flex items-center gap-2.5">
-            <span className="h-px w-[26px]" style={{ background: GOLD }} />
-            <span className="text-[9.5px] uppercase font-bold tracking-[.18em]" style={{ color: GOLD_SOFT }}>Ana Modül</span>
-          </div>
-          <h1 style={{ fontFamily: 'Manrope, Inter, system-ui, sans-serif', fontSize: 27, fontWeight: 800, color: '#fafaf9', letterSpacing: 0 }}>Aylık Takip Listesi</h1>
-          <div className="mt-2 flex flex-wrap items-center gap-2">
-            <span
-              className="inline-flex items-center rounded-full px-2.5 py-1 text-[11.5px] font-semibold"
-              style={{ background: 'rgba(255,255,255,0.035)', border: '1px solid rgba(255,255,255,0.08)', color: 'rgba(250,250,249,0.72)' }}
-            >
-              İşlem ayı: {donemStr}
-            </span>
-            <span
-              className="inline-flex items-center rounded-full px-2.5 py-1 text-[11.5px] font-bold"
-              style={{ background: 'rgba(212,184,118,0.11)', border: '1px solid rgba(212,184,118,0.32)', color: GOLD }}
-            >
-              Beyanname dönemi: {beyannameDonemiStr}
-            </span>
-            <span className="text-[12px] font-medium" style={{ color: 'rgba(250,250,249,0.46)' }}>
-              işe başlama/bitiş tarihine göre takipte {counts.total} mükellef
-            </span>
-          </div>
+        <div
+          className="absolute inset-x-0 top-0 h-1"
+          style={{ background: 'linear-gradient(90deg, #8b7649, #b8a06f, #d4b876, #e7cf95, #d4b876, #b8a06f)' }}
+        />
+        <div className="mb-3 flex items-center gap-2.5">
+          <span className="h-px w-[26px]" style={{ background: GOLD }} />
+          <span className="text-[10px] font-bold uppercase tracking-[.18em]" style={{ color: GOLD_SOFT }}>Mükellef CRM</span>
         </div>
-        <div className="flex items-center gap-2">
+        <div className="flex flex-wrap items-center justify-between gap-4">
+          <div className="flex min-w-0 items-center gap-3.5">
+            <span
+              className="grid shrink-0 place-items-center rounded-xl"
+              style={{
+                width: 46,
+                height: 46,
+                background: `linear-gradient(135deg, ${GOLD}, ${GOLD_SOFT})`,
+                boxShadow: '0 8px 22px rgba(212,184,118,0.30)',
+              }}
+            >
+              <ClipboardCheck size={24} style={{ color: '#1a1410' }} />
+            </span>
+            <div className="min-w-0">
+              <h1 style={{ fontFamily: 'Fraunces, Georgia, serif', fontSize: 30, fontWeight: 600, color: '#fafaf9', letterSpacing: '-.03em', lineHeight: 1.05 }}>Aylık Takip Listesi</h1>
+              <div className="mt-2 flex flex-wrap items-center gap-2">
+                <span
+                  className="inline-flex items-center rounded-full px-2.5 py-1 text-[11.5px] font-semibold"
+                  style={{ background: 'rgba(255,255,255,0.035)', border: '1px solid rgba(255,255,255,0.08)', color: 'rgba(250,250,249,0.72)' }}
+                >
+                  İşlem ayı: {donemStr}
+                </span>
+                <span
+                  className="inline-flex items-center rounded-full px-2.5 py-1 text-[11.5px] font-bold"
+                  style={{ background: 'rgba(212,184,118,0.11)', border: '1px solid rgba(212,184,118,0.32)', color: GOLD }}
+                >
+                  Beyanname dönemi: {beyannameDonemiStr}
+                </span>
+                <span className="text-[12px] font-semibold" style={{ color: 'rgba(250,250,249,0.48)' }}>
+                  işe başlama/bitiş tarihine göre takipte {counts.total} mükellef
+                </span>
+              </div>
+            </div>
+          </div>
           <button
             type="button"
             onClick={() => {
@@ -370,13 +387,13 @@ export default function MukelleflerPage() {
               a.click();
               URL.revokeObjectURL(url);
             }}
-            className="inline-flex items-center gap-1.5 rounded-[10px] px-3.5 py-2 text-[12.5px] font-semibold transition-all"
-            style={{ background: 'rgba(255,255,255,0.03)', border: '1px solid rgba(255,255,255,0.08)', color: 'rgba(250,250,249,0.75)' }}
+            className="inline-flex h-10 shrink-0 items-center gap-1.5 rounded-[10px] px-4 text-[12.5px] font-bold transition-all"
+            style={{ background: `linear-gradient(135deg, ${GOLD}, ${GOLD_SOFT})`, color: '#0f0d0b', boxShadow: '0 10px 24px rgba(212,184,118,0.16)' }}
           >
             <Upload size={14} /> Dışa Aktar
           </button>
         </div>
-      </div>
+      </header>
 
       {/* TOOLBAR: arama + dönem + profil çipleri */}
       <div className="flex flex-wrap items-center gap-2 rounded-xl px-3 py-2.5" style={{ background: 'rgba(255,255,255,0.018)', border: '1px solid rgba(255,255,255,0.07)' }}>
