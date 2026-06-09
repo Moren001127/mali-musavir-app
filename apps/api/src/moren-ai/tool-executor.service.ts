@@ -307,46 +307,46 @@ export class ToolExecutorService {
     return prev[b.length];
   }
 
-  /** Aranan kelimelerin adaydaki en iyi token benzerliği (0..1). Tam/kısmi içerme yüksek puan, değilse edit-distance oranı. */
-  private fuzzyScore(candidateText: string, searchTokens: string[]): number {
-    const candTokens = candidateText.split(' ').filter(Boolean);
-    if (!searchTokens.length || !candTokens.length) return 0;
-    let total = 0;
-    for (const st of searchTokens) {
-      let best = 0;
-      for (const ct of candTokens) {
-        let sim: number;
-        if (ct.includes(st) || st.includes(ct)) {
-          sim = Math.max(0.85, Math.min(st.length, ct.length) / Math.max(st.length, ct.length));
-        } else {
-          const d = this.levenshtein(st, ct);
-          sim = 1 - d / Math.max(st.length, ct.length);
-        }
-        if (sim > best) best = sim;
-      }
-      total += best;
+  /** İki kelime arası benzerlik (0..1): tam/kısmi içerme yüksek, değilse edit-distance oranı. */
+  private tokenSim(st: string, ct: string): number {
+    if (!st || !ct) return 0;
+    if (ct.includes(st) || st.includes(ct)) {
+      return Math.max(0.85, Math.min(st.length, ct.length) / Math.max(st.length, ct.length));
     }
-    return total / searchTokens.length;
+    return 1 - this.levenshtein(st, ct) / Math.max(st.length, ct.length);
   }
 
+  // Çok yaygın hukuki/genel ek kelimeler — tek başına bir eşleşmeyi SÜRÜKLEMEMELİ
+  // (ör. "gıda", "ticaret" birçok unvanda var). Ayırt edici kelime varsa bunlar elenir.
+  private static readonly TAXPAYER_STOPWORDS = new Set([
+    've', 'ltd', 'sti', 'limited', 'sirket', 'sirketi', 'as', 'anonim',
+    'sanayi', 'ticaret', 'san', 'tic', 'dis', 'holding', 'grup',
+  ]);
+
   /**
-   * Substring araması boş dönünce SON çare: yazım-hatası toleranslı (bulanık) eşleştirme.
-   * "Ditekt"→"Direkt" gibi 1-2 harf hatasını yakalar; eşik altı gürültüyü eler.
-   * Sıralı (en yüksek benzerlik önce) liste döner.
+   * Substring araması boş dönünce SON çare: yazım-hatası toleranslı bulanık eşleştirme.
+   * GÜVENLİK: HER ayırt edici (stopword olmayan) arama kelimesi adayda GÜÇLÜ eşleşmeli
+   * (min token benzerliği >= minToken). Böylece "gito gıda" araması, ortak "gıda" kelimesi
+   * yüzünden "Yılmaz Göktaş Gıda"ya YANLIŞ eşleşmez — yalnız ayırt edici "gito" tutarsa eşleşir.
+   * "Ditekt"→"Direkt" (0,83) gibi gerçek yazım hatalarını yakalamaya devam eder.
    */
-  private fuzzyTaxpayerCandidates(rows: any[], search: string, threshold = 0.7) {
-    const searchTokens = this.normalizeSearchText(search).split(' ').filter(Boolean);
-    if (!searchTokens.length) return [] as any[];
+  private fuzzyTaxpayerCandidates(rows: any[], search: string, minToken = 0.8) {
+    const allTokens = this.normalizeSearchText(search).split(' ').filter((t) => t.length >= 2);
+    if (!allTokens.length) return [] as any[];
+    const distinctive = allTokens.filter((t) => !ToolExecutorService.TAXPAYER_STOPWORDS.has(t));
+    const useTokens = distinctive.length ? distinctive : allTokens;
     return rows
-      .map((t) => ({
-        t,
-        score: this.fuzzyScore(
-          this.normalizeSearchText(`${this.displayName(t)} ${t.taxNumber || ''}`),
-          searchTokens,
-        ),
-      }))
-      .filter((s) => s.score >= threshold)
-      .sort((a, b) => b.score - a.score)
+      .map((t) => {
+        const candTokens = this.normalizeSearchText(`${this.displayName(t)} ${t.taxNumber || ''}`)
+          .split(' ')
+          .filter(Boolean);
+        const sims = useTokens.map((st) => Math.max(0, ...candTokens.map((ct) => this.tokenSim(st, ct))));
+        const minSim = sims.length ? Math.min(...sims) : 0;
+        const avgSim = sims.length ? sims.reduce((a, b) => a + b, 0) / sims.length : 0;
+        return { t, minSim, avgSim };
+      })
+      .filter((s) => s.minSim >= minToken)
+      .sort((a, b) => b.avgSim - a.avgSim)
       .map((s) => s.t);
   }
 
