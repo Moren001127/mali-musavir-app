@@ -203,7 +203,9 @@ export class CalisanService {
       .replace(/[\u0300-\u036f]/g, '');
   }
 
-  private async recordSelfImprovementLesson(input: {
+  // Public: WhatsApp kalite kapısı da (müşteri-cevabı düşük kalite/fallback)
+  // buraya ders yazar; agent-scope recall ile bir sonraki cevap iyileşir.
+  async recordSelfImprovementLesson(input: {
     tenantId: string;
     title: string;
     content: string;

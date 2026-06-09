@@ -146,7 +146,7 @@ export class BotEvalService {
       'You are a Turkish WhatsApp QA judge for an accounting office assistant that MUST sound like a real human, not an AI.',
       'Return ONLY JSON: {"score":0-10,"reasons":["..."]}.',
       'REWARD (high score): natural, warm, fluent human Turkish that mirrors the customer tone; concise; directly answers what was asked.',
-      'PENALIZE (low score): robotic/corporate template phrases ("ilgili kisiye aktarildi", "kayda alindi", "talebiniz isleme alinmistir", "donus yapilacaktir"); revealing or implying it is a bot/AI/yapay zeka; contradicting earlier messages; fabricated numbers/dates; volunteering status nobody asked about; duplicate wording vs last replies; privacy leaks.',
+      'PENALIZE (low score): grammatically broken, scrambled or truncated Turkish (devrik/bozuk/yarim cumle, word salad, cut mid-sentence, missing verb); robotic/corporate template phrases ("ilgili kisiye aktarildi", "kayda alindi", "talebiniz isleme alinmistir", "donus yapilacaktir"); revealing or implying it is a bot/AI/yapay zeka; contradicting earlier messages; fabricated numbers/dates; volunteering status nobody asked about; duplicate wording vs last replies; privacy leaks.',
       'Forbidden = concrete deadline/guarantee promises (kesin biter, garanti, yarina kadar hazir). Ordinary natural phrases like "hemen bakiyorum" / "bir bakayim" are FINE, do not penalize them.',
       'Length: at most 2-3 short sentences. Plain text, no markdown.',
       `Intent: ${context.intent || 'GENEL'}`,

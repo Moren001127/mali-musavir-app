@@ -145,7 +145,9 @@ export class BaileysService {
     });
 
     const session: Session = {
-      tenantId, sock, auth, qr: null, connected: false, connecting: true, startedAt: Date.now(), lidToPhone: new Map(),
+      tenantId, sock, auth, qr: null, connected: false, connecting: true, startedAt: Date.now(),
+      // Restart sonrası gönderim bloklanmasın diye kalıcı LID→telefon eşlemesini geri yükle.
+      lidToPhone: new Map(Object.entries(auth.getLidMap() || {})),
     };
     this.sessions.set(tenantId, session);
 
@@ -156,6 +158,7 @@ export class BaileysService {
       const phone = this.jidDigits(phoneJid || '');
       if (!lid || !phone || lid === phone) return;
       session.lidToPhone.set(lid, phone);
+      auth.saveLidMapping(lid, phone).catch(() => {}); // kalıcı yaz (restart sonrası korunur)
       this.logger.log(`[Baileys] LID telefon eslesmesi alindi: tenant=${tenantId} lid=${lid} phone=${phone}`);
       await this.lidMappingHandler?.(tenantId, lid, phone).catch((e: any) =>
         this.logger.warn(`[Baileys] LID eslesmesi islenemedi tenant=${tenantId}: ${e?.message || e}`));
@@ -246,6 +249,7 @@ export class BaileysService {
     const remoteLid = String(jid || '').includes('@lid') ? this.jidDigits(jid) : '';
     if (remoteLid && remoteLid !== from) {
       session.lidToPhone.set(remoteLid, from);
+      session.auth.saveLidMapping(remoteLid, from).catch(() => {}); // kalıcı yaz
       this.lidMappingHandler?.(session.tenantId, remoteLid, from).catch((e: any) =>
         this.logger.warn(`[Baileys] LID eslesmesi mesajdan islenemedi tenant=${session.tenantId}: ${e?.message || e}`));
     }

@@ -21,12 +21,16 @@ type AnyObj = Record<string, any>;
 interface AuthBlob {
   creds: AnyObj | null;
   keys: Record<string, Record<string, any>>;
+  lidMap: Record<string, string>;
 }
 
 export interface DBAuthState {
   state: { creds: any; keys: any };
   saveCreds: () => Promise<void>;
   clear: () => Promise<void>;
+  /** Kalıcı LID→telefon eşlemesi (restart sonrası gönderim bloklanmasın diye). */
+  getLidMap: () => Record<string, string>;
+  saveLidMapping: (lid: string, phone: string) => Promise<void>;
 }
 
 export async function useDBAuthState(
@@ -52,18 +56,24 @@ export async function useDBAuthState(
     try {
       if (cfg.keysJson) keys = JSON.parse(cfg.keysJson, BufferJSON.reviver) || {};
     } catch { keys = {}; }
-    return { creds, keys };
+    let lidMap: AuthBlob['lidMap'] = {};
+    try {
+      if (cfg.lidMapJson) lidMap = JSON.parse(cfg.lidMapJson) || {};
+    } catch { lidMap = {}; }
+    return { creds, keys, lidMap };
   };
 
   const blob = await loadBlob();
   const creds = blob.creds || initAuthCreds();
   const keys: AuthBlob['keys'] = blob.keys || {};
+  const lidMap: AuthBlob['lidMap'] = blob.lidMap || {};
 
   // --- DB'ye yaz (creds + keys birlikte) ---
   const persist = async () => {
     const config = {
       credsJson: JSON.stringify(creds, BufferJSON.replacer),
       keysJson: JSON.stringify(keys, BufferJSON.replacer),
+      lidMapJson: JSON.stringify(lidMap),
       updatedAt: new Date().toISOString(),
     };
     await (prisma as any).integrationConnection.upsert({
@@ -105,6 +115,15 @@ export async function useDBAuthState(
       },
     },
     saveCreds: persist,
+    getLidMap: () => ({ ...lidMap }),
+    saveLidMapping: async (lid: string, phone: string) => {
+      const l = String(lid || '').replace(/[^\d]/g, '');
+      const p = String(phone || '').replace(/[^\d]/g, '');
+      if (!l || !p || l === p) return;
+      if (lidMap[l] === p) return; // değişiklik yoksa gereksiz DB yazma
+      lidMap[l] = p;
+      await persist();
+    },
     clear: async () => {
       await (prisma as any).integrationConnection
         .deleteMany({ where: { tenantId, provider: BAILEYS_PROVIDER } })

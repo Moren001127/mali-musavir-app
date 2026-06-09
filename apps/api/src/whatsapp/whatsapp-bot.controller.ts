@@ -1376,16 +1376,18 @@ export class WhatsAppBotController implements OnModuleInit {
         } else {
           rawReply = 'Mesajınız alındı, mali müşavirimiz en kısa sürede size dönüş yapacak. Aramızda kayıtlı görünmüyorsunuz; adınızı veya firma unvanınızı paylaşırsanız ekibimiz hızlıca eşleştirme yapabilir.';
         }
-        const qualityReply = await this.qualityGateReply({
+        // SIRA: önce post-filter (devrik/markdown temizliği), SONRA eval —
+        // eval'in GÖNDERİLECEK son metni denetlemesi için.
+        const filteredRaw = this.postFilter.filterTaxpayerReply(rawReply, { recentReplies: recentUnknownReplies });
+        const reply = await this.qualityGateReply({
           tenantId: tenant.id,
           taxpayerId: contact.id,
           messageId: msg.id || null,
           intent: 'UNKNOWN_CONTACT',
           customerMessage: msg.text,
-          reply: rawReply,
+          reply: filteredRaw,
           recentReplies: recentUnknownReplies,
         });
-        const reply = this.postFilter.filterTaxpayerReply(qualityReply, { recentReplies: recentUnknownReplies });
         const sent = await this.whatsapp.sendMessage(this.replyTarget(msg), reply, tenant.id);
         await this.prisma.communicationLog.create({
           data: {
@@ -1498,16 +1500,16 @@ export class WhatsAppBotController implements OnModuleInit {
     const rate = this.rateLimiter.registerIncoming(taxpayer.tenantId, taxpayer.id);
     if (rate.limited) {
       if (rate.shouldNotify) {
-        const qualityReply = await this.qualityGateReply({
+        const filteredRate = this.postFilter.filterTaxpayerReply('Mesajlariniz alindi; yogunluk nedeniyle konuyu siraya aldik.', { recentReplies });
+        const limitedReply = await this.qualityGateReply({
           tenantId: taxpayer.tenantId,
           taxpayerId: taxpayer.id,
           messageId: msg.id || null,
           intent: 'RATE_LIMIT',
           customerMessage: msg.text,
-          reply: 'Mesajlariniz alindi; yogunluk nedeniyle konuyu siraya aldik.',
+          reply: filteredRate,
           recentReplies,
         });
-        const limitedReply = this.postFilter.filterTaxpayerReply(qualityReply, { recentReplies });
         const sent = await this.whatsapp.sendMessage(this.replyTarget(msg), limitedReply, taxpayer.tenantId);
         await this.prisma.communicationLog.create({
           data: {
@@ -1528,16 +1530,16 @@ export class WhatsAppBotController implements OnModuleInit {
     // onaylama gibi kritik komutlar icin guvenlik guard'i kaliyor (bot asla otomatik onaylamaz).
     const guardedReply = this.buildGuardedTaxpayerReply(msg.text);
     if (guardedReply) {
-      const qualityReply = await this.qualityGateReply({
+      const filteredGuard = this.postFilter.filterTaxpayerReply(guardedReply, { recentReplies });
+      const filteredReply = await this.qualityGateReply({
         tenantId: taxpayer.tenantId,
         taxpayerId: taxpayer.id,
         messageId: msg.id || null,
         intent: classified.intent,
         customerMessage: msg.text,
-        reply: guardedReply,
+        reply: filteredGuard,
         recentReplies,
       });
-      const filteredReply = this.postFilter.filterTaxpayerReply(qualityReply, { recentReplies });
       const sent = await this.whatsapp.sendMessage(this.replyTarget(msg), filteredReply, taxpayer.tenantId);
       await this.prisma.communicationLog.create({
         data: {
@@ -1632,13 +1634,16 @@ export class WhatsAppBotController implements OnModuleInit {
 
     const rawAiReply = answer.assistantMessage || '';
     const contextBlock = [taxpayerContext, recentContext].filter(Boolean).join('\n\n');
-    const qualityReply = await this.qualityGateReply({
+    // SIRA: önce post-filter, SONRA eval (gönderilecek son metin denetlensin).
+    // Retry de aynı sırayı izler: yeni ham cevap → post-filter → tekrar eval.
+    const filteredAiReply = this.postFilter.filterTaxpayerReply(rawAiReply, { recentReplies });
+    const reply = await this.qualityGateReply({
       tenantId: taxpayer.tenantId,
       taxpayerId: taxpayer.id,
       messageId: msg.id || null,
       intent: classified.intent,
       customerMessage: msg.text,
-      reply: rawAiReply,
+      reply: filteredAiReply,
       contextBlock,
       recentReplies,
       retry: async (reasons) => {
@@ -1661,10 +1666,9 @@ export class WhatsAppBotController implements OnModuleInit {
           toolMode: 'taxpayer-readonly',
           source: 'whatsapp-bot',
         });
-        return retryAnswer.assistantMessage || '';
+        return this.postFilter.filterTaxpayerReply(retryAnswer.assistantMessage || '', { recentReplies });
       },
     });
-    const reply = this.postFilter.filterTaxpayerReply(qualityReply, { recentReplies });
     if (reply) {
       // Cache'e yaz — sonraki aynı soru AI'ya gitmeden bu cevapla dönsün.
       // shouldNotCache filtresi (bot-cache.service.ts) generic/hata cevaplarını eler.
@@ -1699,7 +1703,10 @@ export class WhatsAppBotController implements OnModuleInit {
     // Maliyet tasarrufu: live cevaplarin %X'i eval'den gecsin (varsayilan %20).
     // Gece synthetic test'ler ayri cron'da, bu sample etkilemez.
     // Ayarlama: MOREN_AI_EVAL_SAMPLE_RATE=0.2 (0-1 arasi)
-    const sampleRate = Number(process.env.MOREN_AI_EVAL_SAMPLE_RATE || 0.2);
+    // Max eval ÜCRETSİZ (Max aboneliği, costUsd=0). Kaliteyi yakalamak için
+    // varsayılan: HER cevap denetlensin. Latency/throttle sorun olursa
+    // MOREN_AI_EVAL_SAMPLE_RATE=0.2 gibi düşürülebilir.
+    const sampleRate = Number(process.env.MOREN_AI_EVAL_SAMPLE_RATE || 1);
     if (sampleRate < 1 && Math.random() > sampleRate) {
       return input.reply;
     }
@@ -1790,6 +1797,21 @@ export class WhatsAppBotController implements OnModuleInit {
     }).catch((err) => {
       this.logger.warn(`BotQualityLog yazilamadi: ${err?.message || err}`);
     });
+
+    // ÖĞRENME DÖNGÜSÜ: cevap fallback'e düştüyse (en kötü kalite), sebebe göre
+    // DEDUP'lu bir ders yaz. agent-scope recall (buildMemoryContext) bunu sonraki
+    // cevaplara taşır → bot gün geçtikçe aynı hatayı tekrarlamaz. Title sebebe
+    // göre sabit olduğundan AiMemory'yi şişirmez (tek kayıt güncellenir).
+    if (fallbackUsed) {
+      const reasonKey = String(reasons[0] || 'genel').split(':')[0];
+      this.calisan.recordSelfImprovementLesson({
+        tenantId: input.tenantId,
+        title: `Bot dusuk kaliteli cevap: ${reasonKey}`,
+        content: `Intent: ${input.intent || '-'} | Musteri: ${String(input.customerMessage || '').slice(0, 200)} | Reddedilen cevap: ${String(input.reply || '').slice(0, 200)} | Sebepler: ${reasons.join(', ')}\nDers: Bu tip mesajda dogal, kisa (1-2 cumle), devriksiz/akici Turkce yaz; sablon kalip ve uydurma rakam/tarih kullanma.`,
+        tags: ['self-improvement', 'whatsapp', 'bot-quality', String(input.intent || 'genel')],
+        importance: 3,
+      }).catch(() => {});
+    }
 
     return finalReply;
   }

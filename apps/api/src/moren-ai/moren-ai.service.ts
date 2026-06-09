@@ -450,13 +450,14 @@ export class MorenAiService {
     });
 
     // Taxpayer kontekst notu (varsa)
-    const taxpayerContext = body.taxpayerId
-      ? await this.buildTaxpayerContext(body.taxpayerId, tenantId)
+    const activeToolTaxpayerId = this.activeToolTaxpayerId(body, conversation);
+    const taxpayerContext = activeToolTaxpayerId
+      ? await this.buildTaxpayerContext(activeToolTaxpayerId, tenantId)
       : '';
     const memoryContext = await this.buildMemoryContext(
       tenantId,
       userMessage,
-      body.taxpayerId || conversation.taxpayerId || undefined,
+      activeToolTaxpayerId,
     );
 
     const voiceHint = body.voiceMode
@@ -598,7 +599,7 @@ export class MorenAiService {
           const result = await this.toolExecutor.execute(tb.name, tb.input || {}, {
             tenantId,
             userId,
-            taxpayerId: body.taxpayerId || conversation.taxpayerId || undefined,
+            taxpayerId: this.activeToolTaxpayerId(body, conversation),
           });
           toolUsesLog.push({ name: tb.name, input: tb.input, result });
           return {
@@ -675,7 +676,7 @@ export class MorenAiService {
     await this.autoLearnFromTurn({
       tenantId,
       userId,
-      taxpayerId: body.taxpayerId || conversation.taxpayerId || undefined,
+      taxpayerId: this.activeToolTaxpayerId(body, conversation),
       userMessage,
       assistantMessage: finalText || '',
     });
@@ -684,7 +685,12 @@ export class MorenAiService {
     // Sebepler: max iteration doldu, tool sonuclari arasinda bir karara varamadi vb.
     let outboundMessage = finalText;
     if (!outboundMessage) {
-      if (toolUsesLog.length > 0) {
+      // Final metin üretilemedi (max iterasyon/timeout) — tool sonuçlarından
+      // DETERMİNİSTİK gerçek-veri cevabı üret; jenerik "işlem başlatıldı" deme.
+      const toolOnly = this.buildToolOnlyAnswer(toolUsesLog, userMessage);
+      if (toolOnly) {
+        outboundMessage = toolOnly;
+      } else if (toolUsesLog.length > 0) {
         const toolNames = Array.from(new Set(toolUsesLog.map((t) => t.name))).slice(0, 3).join(', ');
         outboundMessage = `${toolNames} icin islem baslatildi. Sonucu kisa surede ileteceğim.`;
       } else {
@@ -1043,6 +1049,18 @@ export class MorenAiService {
     });
     if (!max.ok || !max.text.trim()) {
       this.logger.warn(`Claude Max yanit uretmedi: ${max.error || 'bos cevap'}`);
+      const toolOnlyAnswer = this.buildToolOnlyAnswer(toolUsesLog, params.userMessage);
+      if (toolOnlyAnswer) {
+        return this.saveAssistantAndReturn({
+          tenantId: params.tenantId,
+          conversation: params.conversation,
+          body: params.body,
+          text: toolOnlyAnswer,
+          model: `moren-ai-tools:${params.model}`,
+          started: params.started,
+          toolUsesLog,
+        });
+      }
       return null;
     }
 
@@ -1070,7 +1088,7 @@ export class MorenAiService {
     if (!toolNames.length) return [];
 
     const logs: Array<{ name: string; input: any; result: any }> = [];
-    const ctx = { tenantId: params.tenantId, userId: params.userId, taxpayerId: params.body.taxpayerId || params.conversation.taxpayerId || undefined };
+    const ctx = { tenantId: params.tenantId, userId: params.userId, taxpayerId: this.activeToolTaxpayerId(params.body, params.conversation) };
     const period = this.inferPeriodFromText(params.userMessage);
     const previousPeriod = this.previousPeriod(period);
     const taxpayerSearch = this.extractTaxpayerSearch(params.userMessage);
@@ -1092,7 +1110,7 @@ export class MorenAiService {
       'get_taxpayer_work_status',
     ].includes(name));
 
-    let taxpayerId = params.body.taxpayerId || params.conversation.taxpayerId || undefined;
+    let taxpayerId = this.activeToolTaxpayerId(params.body, params.conversation);
     if (!taxpayerId && needsTaxpayer && taxpayerSearch) {
       const input = { search: taxpayerSearch, limit: 5, onlyActive: true };
       const result = await this.toolExecutor.execute('list_taxpayers', input, ctx);
@@ -1266,6 +1284,151 @@ export class MorenAiService {
     return text.length > maxChars ? `${text.slice(0, maxChars)}\n... [kısaltıldı]` : text;
   }
 
+  private buildToolOnlyAnswer(
+    toolUsesLog: Array<{ name: string; input: any; result: any }>,
+    userMessage: string,
+  ): string | null {
+    if (!toolUsesLog.length) return null;
+    const taxpayer = this.firstTaxpayerFromTools(toolUsesLog);
+    const gelir = toolUsesLog.find((log) => log.name === 'get_gelir_tablosu');
+    if (gelir?.result && !gelir.result.error) {
+      return this.formatGelirTablosuAnswer(gelir.result, taxpayer);
+    }
+
+    const bilanco = toolUsesLog.find((log) => log.name === 'get_bilanco');
+    if (bilanco?.result && !bilanco.result.error) {
+      return this.formatBilancoAnswer(bilanco.result, taxpayer);
+    }
+
+    const mizan = toolUsesLog.find((log) => log.name === 'get_mizan');
+    if (mizan?.result && !mizan.result.error) {
+      return this.formatMizanAnswer(mizan.result, taxpayer);
+    }
+
+    const requestedFinancial = /gelir tablos|bilan[cç]o|bilanco|mizan|rasyo|oran|finansal/i.test(userMessage);
+    if (requestedFinancial) {
+      const firstError = toolUsesLog.find((log) =>
+        ['get_gelir_tablosu', 'get_bilanco', 'get_mizan', 'calculate_financial_ratios'].includes(log.name) &&
+        log.result?.error
+      );
+      if (firstError) {
+        const periods = toolUsesLog.find((log) => log.name === 'list_mizan_periods')?.result?.periods || [];
+        const periodText = Array.isArray(periods) && periods.length
+          ? ` Sistemde görünen mizan dönemleri: ${periods.slice(0, 6).map((p: any) => p.donem).filter(Boolean).join(', ')}.`
+          : '';
+        const name = taxpayer?.isim ? `${taxpayer.isim} için ` : '';
+        return `${name}${firstError.result.error}.${periodText} Gerçek tablo kaydı olmadan yorum uydurmadım.`;
+      }
+    }
+
+    const capability = toolUsesLog.find((log) => log.name === 'get_portal_capability_map');
+    if (capability?.result && !capability.result.error) {
+      const modules = (capability.result.modules || [])
+        .map((item: any) => item.module)
+        .filter(Boolean)
+        .slice(0, 8)
+        .join(', ');
+      return modules
+        ? `Portal araçlarına erişim var. Aktif modüller: ${modules}.`
+        : 'Portal araçlarına erişim var; ancak bu istek için özetlenecek net kayıt dönmedi.';
+    }
+
+    // Genel deterministik kuyruk: özel formatlayıcı olmasa bile, hata DÖNDÜRMEYEN
+    // tool sonuçları varsa kullanıcıya gerçek veri çekildiğini söyle (jenerik
+    // "AI yavaşladı" yerine). Böylece KDV/beyanname/evrak gibi tool'larda da
+    // timeout anında veri kaybolmaz.
+    const okTools = toolUsesLog.filter(
+      (log) => log.result && !log.result.error &&
+        log.name !== 'get_portal_capability_map' && log.name !== 'list_taxpayers',
+    );
+    if (okTools.length) {
+      const name = taxpayer?.isim ? `${taxpayer.isim} için ` : '';
+      const fetched = Array.from(new Set(okTools.map((t) => this.toolLabel(t.name)))).slice(0, 4).join(', ');
+      return `${name}istediğin kayıtları portaldan çektim (${fetched}). Bağlantı yavaşladığı için tabloyu tam yazamadım; "detay" yazarsan rakamlarla özetlerim. Veri hazır, kaybolmadı.`;
+    }
+
+    return null;
+  }
+
+  /** Tool adını kullanıcıya gösterilecek kısa Türkçe etikete çevirir. */
+  private toolLabel(name: string): string {
+    const map: Record<string, string> = {
+      get_kdv_summary: 'KDV özeti',
+      list_beyan_kayitlari: 'beyanname kayıtları',
+      get_beyanname_config: 'beyanname ayarları',
+      get_taxpayer: 'mükellef bilgisi',
+      get_taxpayer_work_status: 'çalışma durumu',
+      list_documents: 'evraklar',
+      list_invoices: 'faturalar',
+      get_payroll_summary: 'bordro özeti',
+      list_sgk_declarations: 'SGK bildirgeleri',
+      get_mizan: 'mizan',
+      get_gelir_tablosu: 'gelir tablosu',
+      get_bilanco: 'bilanço',
+      compare_periods: 'dönem karşılaştırma',
+      calculate_financial_ratios: 'finansal rasyolar',
+    };
+    return map[name] || name;
+  }
+
+  private firstTaxpayerFromTools(toolUsesLog: Array<{ name: string; input: any; result: any }>): any | null {
+    const list = toolUsesLog.find((log) => log.name === 'list_taxpayers')?.result?.taxpayers;
+    if (Array.isArray(list) && list.length) return list[0];
+    const get = toolUsesLog.find((log) => log.name === 'get_taxpayer')?.result;
+    if (get && !get.error) return { isim: get.isim || get.ad, id: get.id, vkn_tckn: get.vkn_tckn };
+    return null;
+  }
+
+  private money(value: any): string {
+    const n = Number(value || 0);
+    if (!Number.isFinite(n)) return '0,00 TL';
+    return new Intl.NumberFormat('tr-TR', { minimumFractionDigits: 2, maximumFractionDigits: 2 }).format(n) + ' TL';
+  }
+
+  private pct(value: number | null): string {
+    if (value === null || !Number.isFinite(value)) return '-';
+    return new Intl.NumberFormat('tr-TR', { minimumFractionDigits: 1, maximumFractionDigits: 1 }).format(value) + '%';
+  }
+
+  private ratio(part: any, total: any): number | null {
+    const p = Number(part || 0);
+    const t = Number(total || 0);
+    if (!Number.isFinite(p) || !Number.isFinite(t) || Math.abs(t) < 0.01) return null;
+    return (p / t) * 100;
+  }
+
+  private formatGelirTablosuAnswer(result: any, taxpayer: any | null): string {
+    const k = result.kalemler || {};
+    const name = taxpayer?.isim ? `${taxpayer.isim} için ` : '';
+    const net = Number(k.netSatislar || 0);
+    const brutKar = Number(k.brutSatisKari || 0);
+    const faaliyet = Number(k.faaliyetKari || 0);
+    const netKar = Number(k.donemNetKari || k.donemKari || 0);
+    const yorum = netKar > 0
+      ? 'Sonuç kârlı; asıl bakılacak yer brüt kâr marjı ile faaliyet giderlerinin net satışa oranı.'
+      : netKar < 0
+        ? 'Sonuç zararda; satış maliyeti, faaliyet giderleri ve finansman gideri ayrı kontrol edilmeli.'
+        : 'Net kâr sıfıra yakın; dönem kapanış kayıtları ve maliyet dağılımı kontrol edilmeli.';
+    return `${name}${result.donem} gelir tablosu bulundu. Net satış ${this.money(net)}, brüt kâr ${this.money(brutKar)} (${this.pct(this.ratio(brutKar, net))}), faaliyet kârı ${this.money(faaliyet)} (${this.pct(this.ratio(faaliyet, net))}), net kâr ${this.money(netKar)} (${this.pct(this.ratio(netKar, net))}). ${yorum}`;
+  }
+
+  private formatBilancoAnswer(result: any, taxpayer: any | null): string {
+    const name = taxpayer?.isim ? `${taxpayer.isim} için ` : '';
+    const aktif = result.aktif || {};
+    const pasif = result.pasif || {};
+    const aktifToplami = Number(aktif.aktifToplami || 0);
+    const kvyk = Number(pasif.kvYabanciKaynak || 0);
+    const ozkaynak = Number(pasif.ozkaynaklar || 0);
+    const cariOran = kvyk ? Number(aktif.donenVarliklar || 0) / kvyk : null;
+    const cariText = cariOran ? new Intl.NumberFormat('tr-TR', { maximumFractionDigits: 2 }).format(cariOran) : '-';
+    return `${name}${result.donem} bilançosu bulundu. Aktif toplamı ${this.money(aktifToplami)}, KV yabancı kaynak ${this.money(kvyk)}, özkaynak ${this.money(ozkaynak)}, cari oran ${cariText}. ${result.dengeliMi ? 'Bilanço dengeli görünüyor.' : 'Aktif-pasif dengesi tutarsız görünüyor, kayıt kontrolü gerekir.'}`;
+  }
+
+  private formatMizanAnswer(result: any, taxpayer: any | null): string {
+    const name = taxpayer?.isim ? `${taxpayer.isim} için ` : '';
+    return `${name}${result.donem} mizanı bulundu. Toplam borç ${this.money(result.toplamBorc)}, toplam alacak ${this.money(result.toplamAlacak)}, hesap sayısı ${result.hesapSayisiToplam || result.hesapSayisi}. ${result.dengeliMi ? 'Mizan dengeli.' : 'Mizanda borç/alacak farkı var, kontrol gerekir.'}`;
+  }
+
   private async saveAssistantAndReturn(params: {
     tenantId: string;
     conversation: any;
@@ -1303,7 +1466,7 @@ export class MorenAiService {
       await this.prisma.aiUsageLog.create({
         data: {
           tenantId: params.tenantId,
-          taxpayerId: params.body.taxpayerId || params.conversation.taxpayerId || null,
+          taxpayerId: this.activeToolTaxpayerId(params.body, params.conversation) || null,
           source: params.body.source || 'moren-ai',
           model: params.model,
           inputTokens: 0,
@@ -1320,7 +1483,7 @@ export class MorenAiService {
     await this.autoLearnFromTurn({
       tenantId: params.tenantId,
       userId: params.conversation.userId || null,
-      taxpayerId: params.body.taxpayerId || params.conversation.taxpayerId || undefined,
+      taxpayerId: this.activeToolTaxpayerId(params.body, params.conversation),
       userMessage: params.body.message,
       assistantMessage: params.text || '',
     });
@@ -1379,6 +1542,11 @@ export class MorenAiService {
     }
     msgs.push({ role: 'user', content: newUserMessage });
     return msgs;
+  }
+
+  private activeToolTaxpayerId(body: ChatRequest, conversation?: any): string | undefined {
+    if (body.toolMode === 'owner') return body.taxpayerId || undefined;
+    return body.taxpayerId || conversation?.taxpayerId || undefined;
   }
 
   private async buildTaxpayerContext(taxpayerId: string, tenantId: string): Promise<string> {
