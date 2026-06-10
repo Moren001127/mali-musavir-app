@@ -585,6 +585,14 @@ let preWarmPromise = null;
 // profili yeniler. Basarili her iste 0'lanir.
 let classicFrameStuckStreak = 0;
 
+// Otomatik Luca girisi (loginToLuca) artik is akisina baglidir. Hesap kilidi
+// riskine karsi koruma: ardisik denemeler arasi cooldown + ust uste basarisizlikta
+// otomatik denemeyi durdurup net hata verme. Saglikli iste 0'lanir.
+let lastLoginAttemptAt = 0;
+let loginFailStreak = 0;
+const LOGIN_COOLDOWN_MS = 90_000;
+const LOGIN_FAIL_MAX = 3;
+
 function getCurrentRuntimeVersionForApi() {
   return browserSession?.runtimeVersion || BUNDLED_RUNTIME_VERSION || LOCAL_AGENT_VERSION;
 }
@@ -1085,6 +1093,35 @@ async function runJobWithMorenRuntime(job) {
       await page.waitForTimeout(4500).catch(() => {});
       currentUrl = page.url();
     }
+    // SSO toparlama sonrasi HALA login sayfasindaysak (cerez dusmus): kayitli
+    // loginToLuca akisini CAGIR (kimlik + 2captcha). Onceden bu fonksiyon vardi
+    // ama hicbir yerden cagrilmiyordu -> oturum olunce ajan kendini toparlayamiyordu.
+    // Cooldown + fail-streak ile hesap kilidi riskine karsi korunur.
+    if (/giris\.erp|LUCASSO\/login|\/Luca\/giris\.do/i.test(currentUrl || '')) {
+      if (loginFailStreak >= LOGIN_FAIL_MAX) {
+        throw new Error(`TRANSIENT_LUCA_LOGIN_FAILED: otomatik giris ${loginFailStreak} kez ust uste basarisiz; hesap kilidi riskine karsi otomatik deneme duraklatildi (manuel giris gerekebilir)`);
+      }
+      if (Date.now() - lastLoginAttemptAt < LOGIN_COOLDOWN_MS) {
+        throw new Error('TRANSIENT_LUCA_LOGIN_FAILED: giris denemesi cooldown\'da; kisa sure sonra tekrar denenecek');
+      }
+      lastLoginAttemptAt = Date.now();
+      await logJob(jobId, 'Luca oturumu dusuk; kayitli kimlikle otomatik giris yapiliyor (2captcha).').catch(() => {});
+      try {
+        await loginToLuca(page);
+        loginFailStreak = 0;
+        await logJob(jobId, 'Otomatik Luca girisi basarili; oturum tazelendi.').catch(() => {});
+      } catch (loginErr) {
+        loginFailStreak++;
+        throw new Error(`TRANSIENT_LUCA_LOGIN_FAILED: otomatik giris basarisiz [${loginFailStreak}]: ${loginErr.message}`);
+      }
+      // Giris sonrasi uygulamaya gec — runtime bu sayfada yuklenir.
+      await page.goto(LUCA_URLS.main, { waitUntil: 'domcontentloaded', timeout: 60_000 })
+        .catch(async () => {
+          await page.goto(LUCA_CLASSIC_ENTRY, { waitUntil: 'domcontentloaded', timeout: 60_000 }).catch(() => {});
+        });
+      await page.waitForTimeout(3000).catch(() => {});
+      currentUrl = page.url();
+    }
     const isLucaLoginPage = /^https:\/\/agiris\.luca\.com\.tr\/LUCASSO\/giris\.erp/i.test(currentUrl || '');
     const isLucaPage = /^https:\/\/(agiris|auygs)\.luca\.com\.tr\//i.test(currentUrl || '');
     if (isLucaPage) {
@@ -1375,6 +1412,7 @@ async function processJob(job) {
 
     await runJobWithMorenRuntime(job);
     classicFrameStuckStreak = 0; // saglikli is geldi → bayat-oturum sayacini sifirla
+    loginFailStreak = 0; // saglikli is geldi → otomatik giris fail sayacini sifirla
     // Aynı mükellef hızlı yol cache güncelle — bir sonraki aynı mükellef
     // job'unda fastPath ipucu verilir.
     if (browserSession && mukellefId) {
@@ -1410,6 +1448,15 @@ async function processJob(job) {
       const reason = `Klasik Luca bayat oturum; tarayici cerez korunarak sifirlanip is tekrar siraya alindi [${classicFrameStuckStreak}]: ${err.message}`;
       await logJob(jobId, reason).catch(() => {});
       await closeBrowserSession('frame-stuck-soft').catch(() => {});
+      await requeueJob(jobId, reason);
+      return;
+    }
+    if (/TRANSIENT_LUCA_LOGIN_FAILED/i.test(err.message || '')) {
+      // Otomatik giris basarisiz/cooldown: profil SILINMEZ, cerez korunarak kapat +
+      // tekrar siraya al. Cooldown + fail-streak guvenligi loginToLuca cagrisinda.
+      const reason = `Luca otomatik giris tamamlanamadi; is tekrar siraya alindi: ${err.message}`;
+      await logJob(jobId, reason).catch(() => {});
+      await closeBrowserSession('login-retry').catch(() => {});
       await requeueJob(jobId, reason);
       return;
     }
