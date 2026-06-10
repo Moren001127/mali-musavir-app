@@ -188,6 +188,20 @@ export class AgentEventsController {
     return this.service.atlamaAnalizi(req.user.tenantId, agent, y, m);
   }
 
+  /** Atlama Teşhisi (Faz 2) — bir atlama grubunu AI (Max) ile inceler: bizim hata mı + öneri. */
+  @Post('events/atlama-teshis')
+  @UseGuards(AuthGuard('jwt'))
+  atlamaTeshis(
+    @Req() req: any,
+    @Body() body: { agent: string; year: number; month: number; key: string },
+  ) {
+    if (!body?.agent || !body?.key) throw new BadRequestException('agent ve key gerekli');
+    const y = Number(body.year);
+    const m = Number(body.month);
+    if (!y || !m || m < 1 || m > 12) throw new BadRequestException('geçerli year ve month gerekli');
+    return this.service.atlamaTeshis(req.user.tenantId, body.agent, y, m, body.key);
+  }
+
   /** Mihsap fatura isleme loglarini firma + donem bazinda Excel'e dok. */
   @Get('events/mihsap-report.xlsx')
   @UseGuards(AuthGuard('jwt'))

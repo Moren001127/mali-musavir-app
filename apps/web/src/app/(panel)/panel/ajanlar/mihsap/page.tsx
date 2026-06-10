@@ -1007,6 +1007,20 @@ function AtlamaIncelemesi({
   };
 }) {
   const [acik, setAcik] = useState<string | null>(null);
+  const [teshisler, setTeshisler] = useState<Record<string, any>>({});
+  const [teshisYukleniyor, setTeshisYukleniyor] = useState<string | null>(null);
+  const teshisEt = async (key: string) => {
+    setTeshisYukleniyor(key);
+    try {
+      const [yy, mm] = ay.split('-');
+      const r = await api.post('/agent/events/atlama-teshis', { agent: 'mihsap', year: Number(yy), month: Number(mm), key });
+      setTeshisler((t) => ({ ...t, [key]: r.data }));
+    } catch (e: any) {
+      setTeshisler((t) => ({ ...t, [key]: { ok: false, sebep: e?.response?.data?.message || 'Teşhis hatası' } }));
+    } finally {
+      setTeshisYukleniyor(null);
+    }
+  };
   const AYLAR_TR = ['Ocak','Şubat','Mart','Nisan','Mayıs','Haziran','Temmuz','Ağustos','Eylül','Ekim','Kasım','Aralık'];
   const [yStr, mStr] = ay.split('-');
   const ayEtiket = `${AYLAR_TR[parseInt(mStr, 10) - 1] || ''} ${yStr}`;
@@ -1065,6 +1079,45 @@ function AtlamaIncelemesi({
                 </button>
                 {open && (
                   <div className="px-4 pb-3">
+                    {/* AI TEŞHİS (Faz 2) */}
+                    {(() => {
+                      const t = teshisler[g.key];
+                      const yukleniyor = teshisYukleniyor === g.key;
+                      if (!t) {
+                        return (
+                          <button
+                            onClick={() => teshisEt(g.key)}
+                            disabled={yukleniyor}
+                            className="mb-2 inline-flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-[12px] font-medium transition-all hover:opacity-90"
+                            style={{ background: 'rgba(184,160,111,0.12)', color: '#d4b876', border: '1px solid rgba(184,160,111,0.25)' }}
+                          >
+                            {yukleniyor ? <Loader2 size={13} className="animate-spin" /> : <Zap size={13} />}
+                            {yukleniyor ? 'AI inceliyor…' : 'AI ile Teşhis Et'}
+                          </button>
+                        );
+                      }
+                      if (!t.ok) {
+                        return (
+                          <div className="mb-2 text-[12px] px-3 py-2 rounded-lg flex items-center justify-between gap-2" style={{ background: 'rgba(248,113,113,0.08)', color: '#f87171' }}>
+                            <span>Teşhis alınamadı: {t.sebep}</span>
+                            <button onClick={() => teshisEt(g.key)} className="underline shrink-0" style={{ color: '#f87171' }}>tekrar</button>
+                          </div>
+                        );
+                      }
+                      const renk = t.bizimHata === 'evet' ? '#f87171' : t.bizimHata === 'kismi' ? '#fb923c' : '#34d399';
+                      const etiket = t.bizimHata === 'evet' ? 'Bizim hata' : t.bizimHata === 'kismi' ? 'Kısmen bizim' : 'Bizim hata değil';
+                      return (
+                        <div className="mb-2 px-3 py-2.5 rounded-lg text-[12px]" style={{ background: 'rgba(184,160,111,0.06)', border: '1px solid rgba(184,160,111,0.18)' }}>
+                          <div className="flex items-center gap-2 mb-1 flex-wrap">
+                            <span className="inline-flex items-center gap-1" style={{ color: '#d4b876', fontWeight: 600 }}><Zap size={12} /> AI Teşhis</span>
+                            <span className="px-1.5 py-0.5 rounded text-[10px] font-bold uppercase" style={{ background: `${renk}22`, color: renk }}>{etiket}</span>
+                            {t.guven != null && <span className="text-[10px]" style={{ color: 'rgba(250,250,249,0.4)' }}>%{t.guven} güven</span>}
+                          </div>
+                          {t.kokNeden && <div style={{ color: 'rgba(250,250,249,0.8)' }}><b style={{ color: 'rgba(250,250,249,0.5)' }}>Kök neden:</b> {t.kokNeden}</div>}
+                          {t.onerilenDuzeltme && <div className="mt-0.5" style={{ color: 'rgba(250,250,249,0.8)' }}><b style={{ color: 'rgba(250,250,249,0.5)' }}>Öneri:</b> {t.onerilenDuzeltme}</div>}
+                        </div>
+                      );
+                    })()}
                     <div className="rounded-lg overflow-hidden" style={{ border: '1px solid rgba(255,255,255,0.05)' }}>
                       {g.ornekler.map((o, j) => (
                         <div key={o.id} className="px-3 py-2 text-[12px]" style={{ borderTop: j > 0 ? '1px solid rgba(255,255,255,0.03)' : 'none', background: 'rgba(255,255,255,0.01)' }}>

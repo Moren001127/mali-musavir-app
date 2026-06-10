@@ -1581,6 +1581,57 @@ ${belgeMetni}`;
     };
   }
 
+  /**
+   * ATLAMA TEŞHİSİ (Faz 2) — bir atlama grubunu AI (Max, ücretsiz) ile inceler:
+   * "gerçekten sistem/OCR hatamız mı, yoksa belgenin gerçek sorunu mu" + kök neden
+   * + önerilen düzeltme. Kararı uygulamaz; sadece teşhis koyar (insan onayı için).
+   */
+  async atlamaTeshis(tenantId: string, agent: string, year: number, month: number, groupKey: string) {
+    const analiz = await this.atlamaAnalizi(tenantId, agent, year, month);
+    const grup = analiz.gruplar.find((g) => g.key === groupKey);
+    if (!grup || !grup.ornekler.length) {
+      return { ok: false, sebep: 'Grup bulunamadı veya boş' };
+    }
+    if (!isMaxAvailable()) {
+      return { ok: false, sebep: 'AI (Max) şu an kullanılamıyor' };
+    }
+    const ornekSebepler = Array.from(
+      new Set(grup.ornekler.map((o) => String(o.sebep || '').trim()).filter(Boolean)),
+    ).slice(0, 15);
+
+    const system =
+      'Sen bir muhasebe otomasyon sistemini denetleyen uzmansın. Mihsap fatura işleyicinin ATLADIĞI (işleyemediği) faturaların sebeplerini incele. ' +
+      'Görevin: bu atlamalar SİSTEMİN/OCR\'IN kendi hatasından mı (düzeltilebilir) yoksa belgenin GERÇEK sorunundan mı (manuel bakılmalı) kaynaklanıyor, buna karar ver. ' +
+      'Z raporu gibi yazarkasa fişlerinde belge no ve toplam OCR yanlış okumasından kaynaklanabilir — bunlar sistem hatasıdır. Türkçe, kısa ve net konuş. SADECE JSON dön.';
+    const prompt =
+      `Atlama kategorisi: "${grup.kategori}" (${grup.adet} fatura).\n` +
+      `Atlama sebepleri (örnekler):\n${ornekSebepler.map((s, i) => `${i + 1}. ${s}`).join('\n')}\n\n` +
+      `Şu JSON'u dön:\n` +
+      `{"bizimHata":"evet|hayir|kismi","kokNeden":"en fazla 220 karakter, sade","onerilenDuzeltme":"bizim hataysa ne düzeltilmeli (OCR talimatı / arayüz / kural) — en fazla 220 karakter; değilse boş","guven":0}`;
+
+    try {
+      const max = await claudeTextViaMax({ prompt, system, model: MAX_MODEL_CHEAP, maxTurns: 1 });
+      if (!max.ok || !max.text) {
+        return { ok: false, sebep: (max as any)?.error || 'AI yanıt vermedi' };
+      }
+      const parsed = this.parseFirstJsonObject(max.text);
+      if (!parsed) {
+        return { ok: false, sebep: 'AI yanıtı çözümlenemedi' };
+      }
+      return {
+        ok: true,
+        kategori: grup.kategori,
+        adet: grup.adet,
+        bizimHata: parsed.bizimHata ?? null,
+        kokNeden: parsed.kokNeden ?? null,
+        onerilenDuzeltme: parsed.onerilenDuzeltme ?? null,
+        guven: parsed.guven ?? null,
+      };
+    } catch (e: any) {
+      return { ok: false, sebep: e?.message || 'AI teşhis hatası' };
+    }
+  }
+
   async listEvents(
     tenantId: string,
     opts: { agent?: string; mukellef?: string; status?: string; limit?: number; since?: string } = {},
