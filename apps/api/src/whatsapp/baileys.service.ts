@@ -365,11 +365,23 @@ export class BaileysService implements OnModuleDestroy {
         if (oldest !== undefined) session.lastIncoming.delete(oldest);
       }
     }
-    const remoteLid = String(jid || '').includes('@lid') ? this.jidDigits(jid) : '';
-    if (remoteLid && remoteLid !== from) {
-      session.lidToPhone.set(remoteLid, from);
-      session.auth.saveLidMapping(remoteLid, from).catch(() => {}); // kalıcı yaz
-      this.lidMappingHandler?.(session.tenantId, remoteLid, from).catch((e: any) =>
+    // LID↔telefon eşlemesini ÖĞREN: from gerçek telefona çözüldüyse, mesajdaki
+    // TÜM LID kaynaklarını (remoteJid + key.senderLid + key.participantLid) o
+    // telefona eşle → sonraki "yalnız LID" (senderPn'siz) mesajlar gerçek numaraya
+    // çözülür (owner tanınır + cevap doğru hedefe gider). Baileys 7 LID-öncelikli
+    // adresleme yaptığı için bu öğrenme kritik (eskiden yalnız remoteJid LID ise
+    // öğreniliyordu; telefon-adresli ama LID taşıyan mesajlar kaçıyordu).
+    const mkey: any = m.key || {};
+    const lidSources = [
+      String(jid || '').includes('@lid') ? this.jidDigits(jid) : '',
+      this.jidDigits(mkey.senderLid || ''),
+      this.jidDigits(mkey.participantLid || ''),
+    ];
+    for (const lid of lidSources) {
+      if (!lid || lid === from || session.lidToPhone.get(lid) === from) continue;
+      session.lidToPhone.set(lid, from);
+      session.auth.saveLidMapping(lid, from).catch(() => {}); // kalıcı yaz
+      this.lidMappingHandler?.(session.tenantId, lid, from).catch((e: any) =>
         this.logger.warn(`[Baileys] LID eslesmesi mesajdan islenemedi tenant=${session.tenantId}: ${e?.message || e}`));
     }
 
@@ -742,7 +754,12 @@ export class BaileysService implements OnModuleDestroy {
     if (!digits) return null;
     if (this.isLidTarget(raw)) {
       const mapped = session.lidToPhone.get(digits);
-      return mapped ? `${mapped}@s.whatsapp.net` : null;
+      if (mapped) return `${mapped}@s.whatsapp.net`;
+      // Eşleme yoksa: Baileys 7 LID adreslemeyi NATIVE destekler → doğrudan
+      // <lid>@lid'e gönder. (6.x'te bu "mesaj bekleniyor" üretiyordu, o yüzden
+      // null dönüp gönderilmiyordu; 7.x'te <lid>@lid geçerli bir hedef.)
+      // Kapatma: MOREN_BOT_LID_DIRECT_SEND=0 → eski güvenli davranış (gönderme).
+      return process.env.MOREN_BOT_LID_DIRECT_SEND === '0' ? null : `${digits}@lid`;
     }
     if (raw.includes('@')) return raw;
     return `${digits}@s.whatsapp.net`;
