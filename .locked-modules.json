@@ -42,7 +42,7 @@
       "lockedBy": "muzaffer"
     },
     "apps/api/src/mizan/mizan.service.ts": {
-      "sha256": "c181c62b7ebedb9e941114016f8ac357ea0b18f67d20e798ee261638ee27c737",
+      "sha256": "6adb2f9c8f42f9dcff830516741625add27ec678bfd43f70b979687e39f7adf0",
       "reason": "Mizan service — Luca import logic",
       "lockedBy": "muzaffer"
     },
