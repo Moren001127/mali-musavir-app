@@ -1472,6 +1472,115 @@ ${belgeMetni}`;
     return recorded;
   }
 
+  /**
+   * ATLAMA İNCELEMESİ — Mihsap fatura işleyicinin atladığı faturaları SEBEBE göre
+   * gruplar ve "bizim sistem hatamız mı / gerçek belge sorunu mu" diye etiketler.
+   * Kural bazlı (AI maliyeti yok). Amaç: HAKSIZ (sistemden kaynaklı) atlamaları
+   * görünür kılmak; gerçek belge sorunlarını ayrı tutmak.
+   */
+  private classifyAtlamaSebep(message: string): {
+    key: string;
+    kategori: string;
+    bizimHata: 'evet' | 'muhtemel' | 'incele' | 'hayir';
+    aciklama: string;
+  } {
+    const m = String(message || '').toLocaleLowerCase('tr');
+    const has = (s: string) => m.includes(s);
+    if (has('işlem türü') && has('seçilemedi')) {
+      return { key: 'islem-turu', kategori: 'İşlem Türü seçilemedi', bizimHata: 'evet', aciklama: 'Arayüz: liste seçimi yapılamadı — sistem tarafı, düzeltilebilir.' };
+    }
+    if (has('seçilemedi') || has('blok bulunamadı') || has('blok yok') || has('boş blok')) {
+      return { key: 'arayuz', kategori: 'Arayüz / form seçimi', bizimHata: 'evet', aciklama: 'Arayüz otomasyonu eksik kaldı — sistem tarafı, düzeltilebilir.' };
+    }
+    if (has('okunamıyor') || has('okunamaz') || has('emin degil') || has('emin değil') || has('tanımlanamaz') || has('belirsiz') || has('okunamadı')) {
+      return { key: 'ocr-okuma', kategori: 'OCR / AI okuyamadı', bizimHata: 'muhtemel', aciklama: 'OCR içeriği çıkaramadı — okuma kuralı/talimatı iyileştirilebilir.' };
+    }
+    if (has('uyusmaz') || has('uyuşmaz') || has('toplam belge') || has('belgeno belge') || has('tarih belge')) {
+      return { key: 'uyusmazlik', kategori: 'Belge–Mihsap uyuşmazlığı', bizimHata: 'incele', aciklama: 'OCR yanlış okumuş VEYA belge gerçekten farklı olabilir — incelenmeli.' };
+    }
+    if (has('onay kuyrug') || has('onay bekl')) {
+      return { key: 'onay', kategori: 'Onay bekliyor', bizimHata: 'hayir', aciklama: 'Kullanıcı onayı bekliyor — hata değil.' };
+    }
+    return { key: 'diger', kategori: 'Diğer / sınıflandırılamadı', bizimHata: 'incele', aciklama: 'Otomatik sınıflandırılamadı — incelenmeli.' };
+  }
+
+  async atlamaAnalizi(tenantId: string, agent: string, year: number, month: number) {
+    const donemStr = `${year}-${String(month).padStart(2, '0')}`;
+    const wideStart = new Date(year, month - 3, 1);
+    const wideEnd = new Date(year, month + 2, 1);
+    const periodStart = new Date(year, month - 1, 1);
+    const periodEnd = new Date(year, month, 1);
+
+    const rows = await this.prisma.$queryRaw<
+      Array<{
+        id: string;
+        mukellef: string | null;
+        message: string | null;
+        ts: Date;
+        donem: string | null;
+        belgeno: string | null;
+        tutar: string | null;
+        firma: string | null;
+      }>
+    >`
+      SELECT "id", "mukellef", "message", "ts",
+        "meta"->>'donem' AS "donem",
+        "meta"->>'belgeNo' AS "belgeno",
+        "meta"->>'tutar' AS "tutar",
+        "meta"->>'firma' AS "firma"
+      FROM "agent_events"
+      WHERE "tenantId" = ${tenantId}
+        AND "agent" = ${agent}
+        AND "status" IN ('skip', 'atlandi')
+        AND "ts" >= ${wideStart} AND "ts" < ${wideEnd}
+      ORDER BY "ts" DESC
+    `;
+
+    const inPeriod = rows.filter((r) =>
+      typeof r.donem === 'string' && r.donem.length > 0
+        ? r.donem === donemStr
+        : r.ts >= periodStart && r.ts < periodEnd,
+    );
+
+    const groups = new Map<
+      string,
+      { key: string; kategori: string; bizimHata: string; aciklama: string; ornekler: any[] }
+    >();
+    for (const r of inPeriod) {
+      const c = this.classifyAtlamaSebep(r.message || '');
+      const g =
+        groups.get(c.key) ||
+        { key: c.key, kategori: c.kategori, bizimHata: c.bizimHata, aciklama: c.aciklama, ornekler: [] };
+      g.ornekler.push({
+        id: r.id,
+        mukellef: r.mukellef,
+        firma: r.firma,
+        belgeNo: r.belgeno,
+        tutar: r.tutar,
+        sebep: r.message,
+        ts: r.ts,
+      });
+      groups.set(c.key, g);
+    }
+
+    const SIRA: Record<string, number> = { evet: 0, muhtemel: 1, incele: 2, hayir: 3 };
+    const gruplar = Array.from(groups.values())
+      .map((g) => ({ ...g, adet: g.ornekler.length, ornekler: g.ornekler.slice(0, 100) }))
+      .sort((a, b) => (SIRA[a.bizimHata] ?? 9) - (SIRA[b.bizimHata] ?? 9) || b.adet - a.adet);
+
+    const sum = (pred: (b: string) => boolean) =>
+      gruplar.filter((g) => pred(g.bizimHata)).reduce((s, g) => s + g.adet, 0);
+
+    return {
+      donem: donemStr,
+      toplam: inPeriod.length,
+      bizimHataAdet: sum((b) => b === 'evet' || b === 'muhtemel'),
+      inceleAdet: sum((b) => b === 'incele'),
+      onayAdet: sum((b) => b === 'hayir'),
+      gruplar,
+    };
+  }
+
   async listEvents(
     tenantId: string,
     opts: { agent?: string; mukellef?: string; status?: string; limit?: number; since?: string } = {},

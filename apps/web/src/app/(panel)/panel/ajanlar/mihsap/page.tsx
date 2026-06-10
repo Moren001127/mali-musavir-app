@@ -207,6 +207,21 @@ export default function MihsapAgentPage() {
     refetchInterval: 5000,
   });
 
+  // Atlama İncelemesi — atlanan faturalar sebebe göre gruplu + "bizim hata mı" etiketli
+  type AtlamaOrnek = { id: string; mukellef: string | null; firma: string | null; belgeNo: string | null; tutar: string | null; sebep: string | null; ts: string };
+  type AtlamaGrup = { key: string; kategori: string; bizimHata: 'evet' | 'muhtemel' | 'incele' | 'hayir'; aciklama: string; adet: number; ornekler: AtlamaOrnek[] };
+  type AtlamaAnaliz = { donem: string; toplam: number; bizimHataAdet: number; inceleAdet: number; onayAdet: number; gruplar: AtlamaGrup[] };
+  const { data: atlamaAnaliz } = useQuery<AtlamaAnaliz>({
+    queryKey: ['agent-events-atlama', 'mihsap', ay],
+    queryFn: () => {
+      const [yStr, mStr] = ay.split('-');
+      return api
+        .get('/agent/events/atlama-analizi', { params: { agent: 'mihsap', year: yStr, month: mStr } })
+        .then((r) => r.data);
+    },
+    refetchInterval: 10000,
+  });
+
   const downloadProcessingReport = async () => {
     const [yStr, mStr] = ay.split('-');
     setExportingReport(true);
@@ -830,6 +845,9 @@ export default function MihsapAgentPage() {
         </div>
       )}
 
+      {/* ATLAMA İNCELEMESİ — atlanan faturalar sebebe göre gruplu + "bizim hata mı" */}
+      <AtlamaIncelemesi ay={ay} data={atlamaAnaliz} />
+
       {/* MÜKELLEF BAZINDA AYLIK ÖZET — portal üzerinden işlenen fatura sayıları */}
       <MukellefIslemOzeti
         ay={ay}
@@ -1003,6 +1021,108 @@ function KpiMini({ label, value, color, icon }: { label: string; value: number; 
 
 /** Seçili ayda her mükellef için portal üzerinden işlenen alış/satış fatura sayıları.
  *  Hangi mükellefin ne kadarını sistem üzerinden, ne kadarını manuel işlediğini görmek için. */
+function AtlamaIncelemesi({
+  ay,
+  data,
+}: {
+  ay: string;
+  data?: {
+    donem: string;
+    toplam: number;
+    bizimHataAdet: number;
+    inceleAdet: number;
+    onayAdet: number;
+    gruplar: {
+      key: string;
+      kategori: string;
+      bizimHata: string;
+      aciklama: string;
+      adet: number;
+      ornekler: { id: string; mukellef: string | null; firma: string | null; belgeNo: string | null; tutar: string | null; sebep: string | null; ts: string }[];
+    }[];
+  };
+}) {
+  const [acik, setAcik] = useState<string | null>(null);
+  const AYLAR_TR = ['Ocak','Şubat','Mart','Nisan','Mayıs','Haziran','Temmuz','Ağustos','Eylül','Ekim','Kasım','Aralık'];
+  const [yStr, mStr] = ay.split('-');
+  const ayEtiket = `${AYLAR_TR[parseInt(mStr, 10) - 1] || ''} ${yStr}`;
+  const gruplar = data?.gruplar || [];
+  const toplam = data?.toplam ?? 0;
+
+  const rozet = (b: string) =>
+    b === 'evet' ? { t: 'Bizim hata', c: '#f87171', bg: 'rgba(248,113,113,0.12)' }
+    : b === 'muhtemel' ? { t: 'Muhtemelen bizim', c: '#fb923c', bg: 'rgba(251,146,60,0.12)' }
+    : b === 'incele' ? { t: 'İncele', c: '#facc15', bg: 'rgba(250,204,21,0.12)' }
+    : { t: 'Normal', c: '#34d399', bg: 'rgba(52,211,153,0.12)' };
+
+  return (
+    <div className="rounded-xl border overflow-hidden mb-4" style={{ background: 'rgba(255,255,255,0.02)', borderColor: 'rgba(255,255,255,0.05)' }}>
+      <div className="p-4 border-b" style={{ borderColor: 'rgba(255,255,255,0.05)' }}>
+        <h2 className="font-semibold flex items-center gap-2" style={{ color: '#fafaf9' }}>
+          <AlertTriangle size={14} style={{ color: '#f59e0b' }} /> Atlama İncelemesi — {ayEtiket}
+        </h2>
+        <p className="text-xs mt-0.5" style={{ color: 'rgba(250,250,249,0.45)' }}>
+          İşlenemeyen faturalar — &quot;bizim sistemden mi, gerçek belge sorunundan mı&quot; diye sınıflandırılır
+        </p>
+      </div>
+      <div className="grid grid-cols-2 sm:grid-cols-4 gap-px" style={{ background: 'rgba(255,255,255,0.04)' }}>
+        <OzetHucre label="Toplam Atlanan" value={toplam} alt="fatura" color="#d4b876" />
+        <OzetHucre label="Bizim Hata (muhtemel)" value={data?.bizimHataAdet ?? 0} alt="düzeltilebilir" color="#fb923c" />
+        <OzetHucre label="İncelenecek" value={data?.inceleAdet ?? 0} alt="belirsiz" color="#facc15" />
+        <OzetHucre label="Onay/Normal" value={data?.onayAdet ?? 0} alt="hata değil" color="#34d399" />
+      </div>
+      {gruplar.length === 0 ? (
+        <div className="p-8 text-center text-sm" style={{ color: 'rgba(250,250,249,0.45)' }}>
+          Bu dönem için atlanan fatura yok 🎉
+        </div>
+      ) : (
+        <div>
+          {gruplar.map((g, i) => {
+            const r = rozet(g.bizimHata);
+            const open = acik === g.key;
+            return (
+              <div key={g.key} style={{ borderTop: i > 0 ? '1px solid rgba(255,255,255,0.03)' : 'none' }}>
+                <button
+                  onClick={() => setAcik(open ? null : g.key)}
+                  className="w-full flex items-center justify-between gap-3 px-4 py-3 text-left hover:bg-white/[0.02] transition-all"
+                >
+                  <div className="flex items-center gap-3 min-w-0">
+                    <span className="inline-block px-2 py-0.5 rounded text-[10px] font-bold uppercase shrink-0" style={{ background: r.bg, color: r.c }}>{r.t}</span>
+                    <div className="min-w-0">
+                      <div className="font-medium truncate" style={{ color: '#fafaf9' }}>{g.kategori}</div>
+                      <div className="text-[11px] truncate" style={{ color: 'rgba(250,250,249,0.4)' }}>{g.aciklama}</div>
+                    </div>
+                  </div>
+                  <div className="flex items-center gap-2 shrink-0">
+                    <span className="tabular-nums font-semibold" style={{ color: '#d4b876' }}>{g.adet}</span>
+                    <span className="text-[11px]" style={{ color: 'rgba(250,250,249,0.4)' }}>fatura</span>
+                    <ChevronDown size={14} style={{ color: 'rgba(250,250,249,0.4)', transform: open ? 'rotate(180deg)' : 'none', transition: 'transform .15s' }} />
+                  </div>
+                </button>
+                {open && (
+                  <div className="px-4 pb-3">
+                    <div className="rounded-lg overflow-hidden" style={{ border: '1px solid rgba(255,255,255,0.05)' }}>
+                      {g.ornekler.map((o, j) => (
+                        <div key={o.id} className="px-3 py-2 text-[12px]" style={{ borderTop: j > 0 ? '1px solid rgba(255,255,255,0.03)' : 'none', background: 'rgba(255,255,255,0.01)' }}>
+                          <div className="min-w-0">
+                            <span style={{ color: '#fafaf9' }}>{o.mukellef || '—'}</span>
+                            <span style={{ color: 'rgba(250,250,249,0.4)' }}> · #{o.belgeNo || '—'}{o.tutar ? ` · ${o.tutar} TL` : ''}</span>
+                            <div className="text-[11px]" style={{ color: 'rgba(250,250,249,0.45)' }}>{o.sebep}</div>
+                          </div>
+                        </div>
+                      ))}
+                    </div>
+                  </div>
+                )}
+              </div>
+            );
+          })}
+        </div>
+      )}
+    </div>
+  );
+}
+
 function MukellefIslemOzeti({
   ay,
   summary,

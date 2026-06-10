@@ -170,6 +170,24 @@ export class AgentEventsController {
     return this.service.eventSummaryByMukellef(req.user.tenantId, agent, y, m);
   }
 
+  /** Atlama İncelemesi — atlanan faturaları sebebe göre gruplar, "bizim hata mı" etiketler. */
+  @Get('events/atlama-analizi')
+  @UseGuards(AuthGuard('jwt'))
+  atlamaAnalizi(
+    @Req() req: any,
+    @Query('agent') agent: string,
+    @Query('year') year: string,
+    @Query('month') month: string,
+  ) {
+    if (!agent) throw new BadRequestException('agent gerekli (mihsap)');
+    const y = parseInt(year, 10);
+    const m = parseInt(month, 10);
+    if (!y || !m || m < 1 || m > 12) {
+      throw new BadRequestException('geçerli year ve month gerekli');
+    }
+    return this.service.atlamaAnalizi(req.user.tenantId, agent, y, m);
+  }
+
   /** Mihsap fatura isleme loglarini firma + donem bazinda Excel'e dok. */
   @Get('events/mihsap-report.xlsx')
   @UseGuards(AuthGuard('jwt'))
