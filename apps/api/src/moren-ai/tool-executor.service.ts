@@ -334,8 +334,11 @@ export class ToolExecutorService {
           beyanTipi: k.beyanTipi,
           donem: k.donem,
           durum: verildi ? 'verildi' : 'hazirlanmis',
+          // Hüküm cümlesi hazır — model kendi çıkarımıyla "verilmemiş" demesin.
+          durumAciklama: verildi
+            ? 'VERİLDİ — beyanname GİB\'e sunulmuştur'
+            : 'hazırlık aşamasında — henüz verildiğine dair kayıt yok',
           beyanTarihi: k.beyanTarihi ? k.beyanTarihi.toISOString().slice(0, 10) : null,
-          onayNoVar: !!k.onayNo,
           kayitTarihi: k.createdAt?.toISOString?.().slice(0, 10),
         };
       }),
@@ -884,6 +887,8 @@ export class ToolExecutorService {
       sonuc: rows.length,
       evrakFiltresi: evrakFilter,
       beyannameFiltresi: beyannameFilter,
+      // beyannameVerildi = Aylık Takip'te ELLE işaretlenen ofis-içi kutudur.
+      beyannameNotu: 'beyannameVerildi ofis içi takip kutusudur, GİB hükmü DEĞİLDİR. Beyannamenin gerçekten verilip verilmediği için list_beyan_kayitlari "durum" alanı esastır; çelişkide beyan kayıtları kazanır.',
       mukellefler: rows,
     };
   }
@@ -930,12 +935,26 @@ export class ToolExecutorService {
     const toplamBorc = hesaplar.reduce((s, h) => s + this.toNum(h.borcToplami), 0);
     const toplamAlacak = hesaplar.reduce((s, h) => s + this.toNum(h.alacakToplami), 0);
 
+    const mizanDengeli = Math.abs(toplamBorc - toplamAlacak) < 1;
+    const mizanWhatsappOzet = [
+      `📒 MİZAN — ${mizan.donem}`,
+      '',
+      '💰 TOPLAMLAR',
+      `• Toplam Borç: ${this.fmtTL(toplamBorc)}`,
+      `• Toplam Alacak: ${this.fmtTL(toplamAlacak)}`,
+      `• Denge: ${mizanDengeli ? '✅ Tutarlı' : `⚠️ ${this.fmtTL(Math.abs(toplamBorc - toplamAlacak))} fark`}`,
+      `• Hesap Sayısı: ${hesaplar.length}`,
+      ...(mizan.anomaliler.length ? [`• Anomali: ⚠️ ${mizan.anomaliler.length} adet`] : []),
+    ].join('\n');
+
     return {
       donem: mizan.donem,
       donemTipi: mizan.donemTipi,
       kaynak: mizan.kaynak,
       status: mizan.status,
       kilitli: mizan.locked,
+      // Hazır WhatsApp şablonu — bot bunu AYNEN gönderir, altına 1-2 cümle yorum ekler.
+      whatsappOzet: mizanWhatsappOzet,
       toplamBorc,
       toplamAlacak,
       dengeliMi: Math.abs(toplamBorc - toplamAlacak) < 1,
@@ -1126,7 +1145,23 @@ export class ToolExecutorService {
       olusturma: o.createdAt.toISOString().slice(0, 10),
     }));
 
+    // Hazır WhatsApp şablonu — en güncel kaynak (canlı seans > arşiv) üzerinden.
+    const kdvRef: any = liveSummary[0] || outputSummary[0] || null;
+    const kdvWhatsappOzet = kdvRef
+      ? [
+          `🧾 KDV KONTROL — ${kdvRef.donem}`,
+          '',
+          '📊 EŞLEŞME',
+          `• Eşleşen: ${kdvRef.eslesen ?? kdvRef.tamEslesen ?? 0}`,
+          `• Kısmi: ${kdvRef.kismiEslesen ?? 0}`,
+          `• Eşleşmeyen: ${kdvRef.eslesmeyen ?? 0}`,
+          ...(kdvRef.lucaToplamKdv != null ? [`• Luca Toplam KDV: ${this.fmtTL(this.toNum(kdvRef.lucaToplamKdv))}`] : []),
+        ].join('\n')
+      : undefined;
+
     return {
+      // Bot bunu AYNEN gönderir, altına 1-2 cümle yorum ekler.
+      ...(kdvWhatsappOzet ? { whatsappOzet: kdvWhatsappOzet } : {}),
       aktifSeanslar: liveSummary,
       arsivlenenlerden: outputSummary,
     };
@@ -1665,8 +1700,13 @@ export class ToolExecutorService {
           donem: k.donem,
           verildi,
           durum: verildi ? 'verildi' : 'hazirlanmis',
+          // Hüküm cümlesi HAZIR verilir — model "onay no boş → verilmemiş" çıkarımı yapmasın.
+          durumAciklama: verildi
+            ? 'VERİLDİ — GİB kaydı mevcut (tahakkuk/beyan tarihi/beyanname belgesi var; onay no boş olsa bile verilmiştir)'
+            : 'henüz verildiğine dair kayıt yok (tahakkuk, beyan tarihi veya belge bulunamadı)',
           beyanTarihi: k.beyanTarihi ? k.beyanTarihi.toISOString().slice(0, 10) : null,
-          onayNo: k.onayNo,
+          // null onayNo modeli yanlış "verilmedi" hükmüne itiyordu — sadece doluysa döner.
+          ...(k.onayNo ? { onayNo: k.onayNo } : {}),
           tahakkukTutari: k.tahakkukTutari ? Number(k.tahakkukTutari) : null,
           pdfVar: !!k.pdfUrl,
           beyannameVar: !!k.beyannameUrl,

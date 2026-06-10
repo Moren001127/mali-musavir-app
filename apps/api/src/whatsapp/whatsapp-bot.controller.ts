@@ -1764,7 +1764,7 @@ export class WhatsAppBotController implements OnModuleInit {
     const blockingEval = process.env.MOREN_AI_EVAL_BLOCKING === '1';
     const evalOpts = blockingEval ? undefined : { allowLlm: false };
     const recentReplies = input.recentReplies || [];
-    const firstEval = await this.botEval.evaluateReply(
+    let firstEval = await this.botEval.evaluateReply(
       input.reply,
       {
         tenantId: input.tenantId,
@@ -1777,6 +1777,31 @@ export class WhatsAppBotController implements OnModuleInit {
       recentReplies,
       evalOpts,
     );
+
+    // GRİ BÖLGE YÜKSELTMESİ (FAST modda): lokal denetim 6-7 verdiyse cevap şüpheli —
+    // gönderim ÖNCESİ tam LLM yargıca sor. Temiz cevaplar (8+) beklemez, akış hızlı
+    // kalır; düşükler (<6) zaten retry/fallback'e gidiyor. Saçma ama gramer-temiz
+    // cevaplar böylece müşteriye GİTMEDEN yakalanır. Kapatma: MOREN_AI_EVAL_ESCALATE=0.
+    if (!blockingEval && process.env.MOREN_AI_EVAL_ESCALATE !== '0'
+        && firstEval.score >= 6 && firstEval.score < 8) {
+      try {
+        const escalated = await this.botEval.evaluateReply(
+          input.reply,
+          {
+            tenantId: input.tenantId,
+            taxpayerId: input.taxpayerId || null,
+            intent: input.intent || null,
+            message: input.customerMessage || null,
+            contextBlock: input.contextBlock || null,
+            source: 'online-escalation',
+          },
+          recentReplies,
+        );
+        if (escalated.score < firstEval.score) firstEval = escalated;
+      } catch (err: any) {
+        this.logger.warn(`Eval yukseltme hatasi (gonderim engellenmedi): ${err?.message || err}`);
+      }
+    }
 
     let finalReply = input.reply;
     let finalEval = firstEval;

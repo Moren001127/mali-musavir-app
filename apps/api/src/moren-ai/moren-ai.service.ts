@@ -52,9 +52,15 @@ function needsDeepModel(userMessage: string): boolean {
   return deepPatterns.some((p) => p.test(text));
 }
 
-function pickDefaultModel(toolMode?: string, userMessage?: string): string {
-  // Kişisel/mükellef için her zaman Haiku
-  if (toolMode === 'taxpayer-readonly' || toolMode === 'none') return DEFAULT_MODEL;
+function pickDefaultModel(toolMode?: string, userMessage?: string, taxpayerText?: string): string {
+  // Kişisel sohbet için her zaman Haiku
+  if (toolMode === 'none') return DEFAULT_MODEL;
+  // Mükellef botu: müşterinin HAM mesajı analiz/mevzuat/hesap derinliği istiyorsa
+  // Sonnet (Max aboneliğinden — token ücreti yok), basit sohbet Haiku'da kalır.
+  // userMessage burada KULLANILMAZ: bot prompt'u talimat bloğu içerir, hep tetiklerdi.
+  if (toolMode === 'taxpayer-readonly') {
+    return taxpayerText && needsDeepModel(taxpayerText) ? DEFAULT_MODEL_OWNER_DEEP : DEFAULT_MODEL;
+  }
   // Owner için: mesaj derin analiz istiyorsa Sonnet, degilse Haiku
   if (userMessage && needsDeepModel(userMessage)) return DEFAULT_MODEL_OWNER_DEEP;
   return DEFAULT_MODEL;
@@ -357,7 +363,7 @@ export class MorenAiService {
     body: ChatRequest,
   ): Promise<ChatResponse> {
     const started = Date.now();
-    const model = body.model || pickDefaultModel(body.toolMode, body.message);
+    const model = body.model || pickDefaultModel(body.toolMode, body.message, body.taxpayerText);
     const userMessage = (body.message || '').trim();
     if (!userMessage) throw new BadRequestException('Mesaj boş olamaz');
     const currentPath = String(body.currentPath || '').trim().slice(0, 180);
@@ -633,25 +639,8 @@ export class MorenAiService {
 
     finalText = this.compactFinalAnswer(finalText || '', !!body.voiceMode);
 
-    // DETERMİNİSTİK MALİ TABLO ŞABLONU: bir tool sonucunda `whatsappOzet` (hazır
-    // biçimlenmiş blok) varsa, şablonu modele bırakmadan BAŞA koy. Model gelir
-    // tablosu/bilançoyu düz metne çeviriyordu; artık tabloyu kod ekler, modelin
-    // metni kısa YORUM olarak altına gider. (Sesli modda uygulanmaz.)
-    if (!body.voiceMode) {
-      const ozetler = Array.from(new Set(
-        toolUsesLog
-          .map((t) => (t?.result && typeof t.result.whatsappOzet === 'string' ? t.result.whatsappOzet.trim() : ''))
-          .filter(Boolean),
-      ));
-      if (ozetler.length) {
-        const tablo = ozetler.join('\n\n');
-        const zatenSablon = /📈 GELİR TABLOSU|📊 BİLANÇO/.test(finalText);
-        if (!zatenSablon) {
-          const yorum = String(finalText || '').trim();
-          finalText = yorum ? `${tablo}\n\n📊 YORUM\n${yorum}` : tablo;
-        }
-      }
-    }
+    // DETERMİNİSTİK MALİ TABLO ŞABLONU — ortak metot (Max yolunda da uygulanır).
+    finalText = this.applyWhatsappOzet(finalText, toolUsesLog, !!body.voiceMode);
 
     // Assistant mesajını kaydet
     const aiMessageData: any = {
@@ -1066,6 +1055,7 @@ export class MorenAiService {
       toolContext,
       '## Talimat',
       'Cevabi yalnizca yukaridaki gerçek portal verisi, hafiza ve mesleki bilgiyle uret. Veri yoksa uydurma; hangi kaydin eksik oldugunu soyle. Dış dünyaya mesaj, belge gonderimi, arama veya agent komutu gerekiyorsa onaysiz yapilmis gibi yazma; kisa onay/aksiyon metni hazirla.',
+      'BEYANNAME VERİLDİ Mİ hükmü: tool sonucundaki "durum"/"verildi"/"durumAciklama" alanını AYNEN kullan. durum=verildi ise beyanname GİB\'e VERİLMİŞTİR — onay numarası boş diye "verilmemiş/sunulmamış" deme, kendi çıkarımını yapma. Aylık takipteki beyannameVerildi kutusu ofis içi işaretlemedir, GİB hükmü DEĞİLDİR; çelişkide beyanname kayıtları (list_beyan_kayitlari) esastır.',
       `Kullanici mesaji: ${params.userMessage}`,
     ].filter(Boolean).join('\n\n');
 
@@ -1093,7 +1083,14 @@ export class MorenAiService {
       return null;
     }
 
-    const finalText = this.compactFinalAnswer(max.text, !!params.body.voiceMode);
+    // Max yolunda da deterministik mali tablo şablonu uygulanır — model gelir
+    // tablosu/bilançoyu düz metne çeviriyordu; tabloyu kod ekler, model metni
+    // kısa YORUM olarak altına gider. (Canlıda aktif yol BU — Max aboneliği.)
+    const finalText = this.applyWhatsappOzet(
+      this.compactFinalAnswer(max.text, !!params.body.voiceMode),
+      toolUsesLog,
+      !!params.body.voiceMode,
+    );
     return this.saveAssistantAndReturn({
       tenantId: params.tenantId,
       conversation: params.conversation,
@@ -1103,6 +1100,30 @@ export class MorenAiService {
       started: params.started,
       toolUsesLog,
     });
+  }
+
+  /**
+   * Tool sonuçlarındaki hazır `whatsappOzet` bloklarını cevabın BAŞINA koyar.
+   * Şablonu modele bırakmamak için: tablo deterministik, modelin metni YORUM olur.
+   * Sesli modda uygulanmaz. Hem ücretli API hem Claude Max yolundan çağrılır.
+   */
+  private applyWhatsappOzet(
+    finalText: string,
+    toolUsesLog: Array<{ name: string; input: any; result: any }>,
+    voiceMode: boolean,
+  ): string {
+    if (voiceMode) return finalText;
+    const ozetler = Array.from(new Set(
+      (toolUsesLog || [])
+        .map((t) => (t?.result && typeof t.result.whatsappOzet === 'string' ? t.result.whatsappOzet.trim() : ''))
+        .filter(Boolean),
+    ));
+    if (!ozetler.length) return finalText;
+    const tablo = ozetler.join('\n\n');
+    // Model şablonu zaten kendisi yazdıysa ikinci kez ekleme.
+    if (/📈 GELİR TABLOSU|📊 BİLANÇO|🧾 KDV|📒 MİZAN/.test(finalText)) return finalText;
+    const yorum = String(finalText || '').trim();
+    return yorum ? `${tablo}\n\n📊 YORUM\n${yorum}` : tablo;
   }
 
   private async buildMaxToolContext(params: {

@@ -138,6 +138,24 @@ export class BotEvalService {
       score -= 1;
     }
 
+    // BOZUK METİN sezgileri — saçma/bozuk cevap GÖNDERİLMEDEN yakalansın.
+    // 1) Mojibake / çift kodlanmış Türkçe (Ä±, ÄŸ, Ã¼, â€ ...).
+    if (/Ã[-ÿ]|Ä[-ÿ]|Å[-ÿ]|â€/.test(text)) {
+      reasons.push('BROKEN_ENCODING');
+      score -= 5;
+    }
+    // 2) Yarıda kesilmiş cümle: virgül/bağlaçla bitiyor ya da uzun metin
+    //    noktalamasız harf ile bitiyor (kesilmiş üretim).
+    if (/[,;:]$/.test(text) || (text.length > 60 && /[a-zçğıöşü]$/i.test(text) && !/[.!?…]$/.test(text))) {
+      reasons.push('TRUNCATED_SENTENCE');
+      score -= 3;
+    }
+    // 3) Aynı kelimenin art arda 3+ tekrarı (takılma / kelime salatası).
+    if (/\b(\S{2,})(\s+\1){2,}\b/i.test(text)) {
+      reasons.push('REPEATED_TOKENS');
+      score -= 4;
+    }
+
     return { score: Math.max(0, Math.min(10, score)), reasons };
   }
 

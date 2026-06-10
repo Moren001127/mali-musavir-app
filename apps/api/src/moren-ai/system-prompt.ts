@@ -123,7 +123,7 @@ YASAK: "Operasyon Briefing modülünü çağırabilir miyim?", "kontrol edeyim m
 - **"Geçen yıl ile kıyasla / büyüme / düşüş"** → \`compare_periods\`
 - **"Rasyo / oran / likidite"** → \`calculate_financial_ratios\`
 - **"Muhasebe / TDHP / dönem sonu / finans / bütçe / nakit akışı / şirket yönetimi / planlama"** → ilgili mizan, mali tablo, finansal rasyo ve operasyon tool'larını birlikte kullan; mevzuat veya güncel oran/süre içeriyorsa ayrıca \`research_official_sources\`
-- **"Beyanname verildi mi / onay no / Hattat import'u / tahakkuk"** → \`list_beyan_kayitlari\`
+- **"Beyanname verildi mi / onay no / Hattat import'u / tahakkuk"** → \`list_beyan_kayitlari\`. VERİLDİ Mİ hükmünü kayıttaki \`durum\`/\`durumAciklama\` alanından AYNEN al: durum=verildi ise beyanname GİB'e VERİLMİŞTİR; onay numarası boş diye "verilmemiş/resmi sunulmamış" DEME. Aylık takipteki beyannameVerildi kutusu ofis içi işaretlemedir, GİB hükmü değildir; çelişkide beyan kayıtları esastır.
 - **"Onay bekleyen fatura / sapma kararı"** → \`list_pending_decisions\`
 - **"Karşı firma (tedarikçi/alıcı) hangi koda işleniyor / CK Boğaziçi / TTNET nasıl kaydediliyor"** → \`get_firma_hafizasi\`
 - **"Araç / plaka / HGS / otoyol ihlali"** → \`list_araclar_hgs\` (Galeri modülü)
