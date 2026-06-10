@@ -7,6 +7,7 @@ import { FisYazdirmaService } from '../fis-yazdirma/fis-yazdirma.service';
 import { MihsapService } from '../mihsap/mihsap.service';
 import { EmailService } from '../email/email.service';
 import { KdvBeyannameService } from '../kdv-beyanname/kdv-beyanname.service';
+import { TaxpayersService } from '../taxpayers/taxpayers.service';
 import { ACTION_BY_NAME } from './action-catalog';
 import { claudeTextViaMax } from '../common/max-inference';
 
@@ -38,6 +39,7 @@ export class ActionDispatcherService {
     private readonly mihsap: MihsapService,
     private readonly email: EmailService,
     private readonly kdvBeyanname: KdvBeyannameService,
+    private readonly taxpayers: TaxpayersService,
   ) {}
 
   /**
@@ -114,6 +116,9 @@ export class ActionDispatcherService {
 
       case 'fetch_kdv_from_luca':
         return this.fetchKdvFromLuca(args, ctx);
+
+      case 'set_monthly_status':
+        return this.setMonthlyStatus(args, ctx);
 
       default:
         throw new Error(`Aksiyon "${toolName}" tanımlı ama dispatcher'da uygulanmamış.`);
@@ -457,6 +462,39 @@ export class ActionDispatcherService {
       not: res?.reused
         ? 'Bu donem icin zaten bir Luca job vardi; yenisi acilmadi (tekrar onleme).'
         : undefined,
+    };
+  }
+
+  /**
+   * set_monthly_status — Aylık Takip Listesi durum kutularını günceller.
+   * Sadece verilen boolean alanlar değişir. updateMonthlyStatus, değişen alanlara
+   * göre olay yayınlar (örn. tüm KDV kutuları true olunca KdvKontrolTamam) — yani
+   * bu aksiyon başka otomasyonları da tetikleyebilir (kasıtlı zincir).
+   */
+  private async setMonthlyStatus(args: any, ctx: { tenantId: string }) {
+    const taxpayerId = String(args.taxpayerId ?? '');
+    const year = Number(args.year);
+    const month = Number(args.month);
+    if (!taxpayerId || !Number.isFinite(year) || !Number.isFinite(month) || month < 1 || month > 12) {
+      throw new Error('set_monthly_status: taxpayerId, year ve month (1-12) zorunlu.');
+    }
+    const fields = [
+      'evraklarGeldi', 'evraklarIslendi', 'kontrolEdildi', 'beyannameVerildi',
+      'kdvKontrolEdildi', 'indirilecekKdvKontrol', 'hesaplananKdvKontrol', 'eArsivKontrol',
+    ];
+    const data: any = {};
+    for (const f of fields) {
+      if (typeof args[f] === 'boolean') data[f] = args[f];
+    }
+    if (Object.keys(data).length === 0) {
+      throw new Error('set_monthly_status: en az bir durum alani (orn. indirilecekKdvKontrol) verilmeli.');
+    }
+    await this.taxpayers.updateMonthlyStatus(taxpayerId, ctx.tenantId, year, month, data);
+    return {
+      success: true,
+      taxpayerId,
+      donem: `${year}-${String(month).padStart(2, '0')}`,
+      isaretlenen: data,
     };
   }
 

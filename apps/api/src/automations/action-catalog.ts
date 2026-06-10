@@ -299,6 +299,35 @@ const AI_ACTIONS: AutomationAction[] = [
     },
   },
   {
+    name: 'set_monthly_status',
+    category: 'WRITE',
+    estimatedClaudeCostPerCall: 0,
+    requires: ['taxpayers'],
+    description:
+      'Bir mukellefin AYLIK TAKIP LISTESINDEKI durum kutularini isaretler/gunceller. ' +
+      'Alanlar (hepsi opsiyonel boolean): evraklarGeldi, evraklarIslendi, kontrolEdildi, beyannameVerildi, ' +
+      'kdvKontrolEdildi, indirilecekKdvKontrol, hesaplananKdvKontrol, eArsivKontrol. ' +
+      'Sadece verdigin alanlar degisir, digerlerine dokunulmaz. ' +
+      'Tipik kullanim: KDV kontrol kilitlenince (Taxpayer.KdvKontrolKilitlendi) indirilecekKdvKontrol+hesaplananKdvKontrol+eArsivKontrol=true isaretle.',
+    input_schema: {
+      type: 'object',
+      properties: {
+        taxpayerId: { type: 'string', description: 'Mukellefin sistem ID\'si (genelde "{{trigger.payload.taxpayerId}}").' },
+        year: { type: 'number', description: 'Yil (genelde "{{trigger.payload.year}}").' },
+        month: { type: 'number', description: 'Ay 1-12 (genelde "{{trigger.payload.month}}").' },
+        evraklarGeldi: { type: 'boolean' },
+        evraklarIslendi: { type: 'boolean' },
+        kontrolEdildi: { type: 'boolean' },
+        beyannameVerildi: { type: 'boolean' },
+        kdvKontrolEdildi: { type: 'boolean' },
+        indirilecekKdvKontrol: { type: 'boolean' },
+        hesaplananKdvKontrol: { type: 'boolean' },
+        eArsivKontrol: { type: 'boolean' },
+      },
+      required: ['taxpayerId', 'year', 'month'],
+    },
+  },
+  {
     name: 'fetch_kdv_from_luca',
     category: 'WRITE',
     estimatedClaudeCostPerCall: 0,

@@ -856,9 +856,11 @@ export class TaxpayersService {
             taxpayerId,
             year,
             month,
-            // Sıfır-dolgulu dönem — otomasyonlar {{trigger.payload.periodLabel}} ile
-            // güvenli "YYYY-MM" alsın (year-month concat tek haneli ayda "2026-4" üretir).
+            // İŞLEM ayı (year-month) — sıfır-dolgulu "YYYY-MM".
             periodLabel: `${year}-${String(month).padStart(2, '0')}`,
+            // BEYANNAME dönemi = işlem ayının BİR ÖNCEKİ ayı. Fatura/KDV verisi bu
+            // döneme aittir (örn. Haziran'da işlenen evrak = Mayıs beyannamesi).
+            beyannamePeriodLabel: `${month === 1 ? year - 1 : year}-${String(month === 1 ? 12 : month - 1).padStart(2, '0')}`,
             field,
             oldValue,
             newValue,
@@ -887,12 +889,14 @@ export class TaxpayersService {
             ? t.companyName || ''
             : `${t.firstName ?? ''} ${t.lastName ?? ''}`.trim();
         const periodLabel = `${year}-${String(month).padStart(2, '0')}`;
+        const beyannamePeriodLabel = `${month === 1 ? year - 1 : year}-${String(month === 1 ? 12 : month - 1).padStart(2, '0')}`;
         this.eventBus.emit('Taxpayer.EvraklarHazir', {
           tenantId,
           taxpayerId,
           year,
           month,
-          periodLabel,
+          periodLabel,            // işlem ayı
+          beyannamePeriodLabel,   // beyanname dönemi (işlem ayı - 1) — fatura/KDV bunu kullanır
           taxpayerUnvan: unvan || '(isim yok)',
           taxpayerVkn: t.taxNumber ?? '',
           taxpayerType: t.type,
@@ -922,7 +926,8 @@ export class TaxpayersService {
           taxpayerId,
           year,
           month,
-          donem: `${year}-${String(month).padStart(2, '0')}`,
+          donem: `${year}-${String(month).padStart(2, '0')}`,                 // işlem ayı
+          beyannamePeriodLabel: `${month === 1 ? year - 1 : year}-${String(month === 1 ? 12 : month - 1).padStart(2, '0')}`, // beyanname dönemi (işlem ayı - 1)
           taxpayerUnvan: unvan || '(isim yok)',
           taxpayerVkn: t.taxNumber ?? '',
           taxpayerType: t.type,
