@@ -224,7 +224,9 @@ export class BaileysService implements OnModuleDestroy {
       printQRInTerminal: false,
       browser: ['Moren Portal', 'Chrome', '1.0'],
       syncFullHistory: false,
-      markOnlineOnConnect: false,
+      // 463 (reach-out timelock) azaltma: hesabı "aktif/online" göster — pasif
+      // companion cihazdan giden mesajlar daha çok kilitleniyordu.
+      markOnlineOnConnect: true,
     });
 
     const session: Session = {
@@ -340,6 +342,14 @@ export class BaileysService implements OnModuleDestroy {
     if (!jid || jid.endsWith('@g.us') || jid === 'status@broadcast') return; // grup/durum atla
     const from = this.senderPhoneForMessage(m, jid, session);
     if (!from) return;
+
+    // 463 (reach-out timelock) AZALTMA: gelen mesajı OKUNDU işaretle + karşı
+    // tarafın presence'ına abone ol. Bu, WhatsApp'a "aktif, karşılıklı sohbet"
+    // sinyali verir; pasif/tek-yönlü bot algısını ve gönderim kilidini düşürür.
+    if (process.env.MOREN_BOT_ACTIVE_SIGNALS !== '0') {
+      try { if (m.key) await session.sock.readMessages([m.key]); } catch { /* önemsiz */ }
+      try { await session.sock.presenceSubscribe(jid); } catch { /* önemsiz */ }
+    }
     const remoteLid = String(jid || '').includes('@lid') ? this.jidDigits(jid) : '';
     if (remoteLid && remoteLid !== from) {
       session.lidToPhone.set(remoteLid, from);
