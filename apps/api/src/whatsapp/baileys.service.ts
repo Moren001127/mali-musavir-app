@@ -54,6 +54,8 @@ type Session = {
   lastError?: string;
   startedAt: number;
   lidToPhone: Map<string, string>;
+  /** Telefon(digits) → son gelen mesaj. 463 azaltma: cevabı buna ALINTILI gönder. */
+  lastIncoming: Map<string, any>;
 };
 
 // ESM-only Baileys'i CommonJS/webpack build'inde import etmek için: TS ve
@@ -233,6 +235,7 @@ export class BaileysService implements OnModuleDestroy {
       tenantId, sock, auth, qr: null, connected: false, connecting: true, startedAt: Date.now(),
       // Restart sonrası gönderim bloklanmasın diye kalıcı LID→telefon eşlemesini geri yükle.
       lidToPhone: new Map(Object.entries(auth.getLidMap() || {})),
+      lastIncoming: new Map(),
     };
     this.sessions.set(tenantId, session);
 
@@ -349,6 +352,15 @@ export class BaileysService implements OnModuleDestroy {
     if (process.env.MOREN_BOT_ACTIVE_SIGNALS !== '0') {
       try { if (m.key) await session.sock.readMessages([m.key]); } catch { /* önemsiz */ }
       try { await session.sock.presenceSubscribe(jid); } catch { /* önemsiz */ }
+    }
+    // Cevabı bu mesaja ALINTILI göndermek için sakla (463 reach-out azaltma).
+    const fromDigits = String(from).replace(/[^\d]/g, '');
+    if (fromDigits) {
+      session.lastIncoming.set(fromDigits, m);
+      if (session.lastIncoming.size > 200) {
+        const oldest = session.lastIncoming.keys().next().value;
+        if (oldest !== undefined) session.lastIncoming.delete(oldest);
+      }
     }
     const remoteLid = String(jid || '').includes('@lid') ? this.jidDigits(jid) : '';
     if (remoteLid && remoteLid !== from) {
@@ -776,6 +788,25 @@ export class BaileysService implements OnModuleDestroy {
     }
   }
 
+  /**
+   * Mesajı, karşı tarafın SON GELEN mesajına ALINTILI (quoted) gönderir — 463
+   * (reach-out timelock) azaltma: WhatsApp'a "yeni birine ulaşmıyorum, mevcut
+   * sohbete cevap veriyorum" sinyali. Alıntı geçersizse alıntısız tekrar dener.
+   * Kapatma: MOREN_BOT_QUOTED=0.
+   */
+  private async sendQuoted(s: Session, jid: string, phone: string, payload: any): Promise<any> {
+    const quoted = process.env.MOREN_BOT_QUOTED === '0'
+      ? undefined
+      : s.lastIncoming?.get(String(phone).replace(/[^\d]/g, ''));
+    if (!quoted) return s.sock.sendMessage(jid, payload);
+    try {
+      return await s.sock.sendMessage(jid, payload, { quoted });
+    } catch (e: any) {
+      this.logger.warn(`[Baileys] alıntılı gönderim başarısız, alıntısız deneniyor: ${e?.message || e}`);
+      return s.sock.sendMessage(jid, payload);
+    }
+  }
+
   async sendTextDetailed(tenantId: string, phone: string, text: string): Promise<BaileysSendResult> {
     const s = this.sessions.get(tenantId);
     if (!s?.connected || !s.sock) {
@@ -791,7 +822,7 @@ export class BaileysService implements OnModuleDestroy {
       }
       await this.humanPace(s.sock, jid, text);
       await this.refreshSignalSession(s.sock, jid);
-      const sent = await s.sock.sendMessage(jid, { text });
+      const sent = await this.sendQuoted(s, jid, phone, { text });
       this.rememberSend(tenantId, jid, { text }, sent?.key?.id);
       this.storeDelivery(tenantId, sent?.key?.id, 'sent');
       this.logger.log(`[Baileys] tenant=${tenantId} mesaj gonderildi target=${this.maskTarget(phone)} jid=${this.maskTarget(jid)} id=${sent?.key?.id || 'unknown'}`);
@@ -816,7 +847,7 @@ export class BaileysService implements OnModuleDestroy {
       }
       await this.humanPace(s.sock, jid, text);
       await this.refreshSignalSession(s.sock, jid);
-      const sent = await s.sock.sendMessage(jid, { text });
+      const sent = await this.sendQuoted(s, jid, phone, { text });
       this.rememberSend(tenantId, jid, { text }, sent?.key?.id);
       this.storeDelivery(tenantId, sent?.key?.id, 'sent');
       this.logger.log(`[Baileys] tenant=${tenantId} mesaj gonderildi target=${this.maskTarget(phone)} jid=${this.maskTarget(jid)} id=${sent?.key?.id || 'unknown'}`);
@@ -853,7 +884,7 @@ export class BaileysService implements OnModuleDestroy {
       else if (mime.startsWith('audio/')) payload = { audio: buffer, mimetype: mime || 'audio/ogg' };
       else payload = { document: buffer, mimetype: mime || 'application/octet-stream', fileName: media.filename || 'belge', caption };
       await this.refreshSignalSession(s.sock, jid);
-      const sent = await s.sock.sendMessage(jid, payload);
+      const sent = await this.sendQuoted(s, jid, phone, payload);
       this.rememberSend(tenantId, jid, payload, sent?.key?.id);
       this.storeDelivery(tenantId, sent?.key?.id, 'sent');
       this.logger.log(`[Baileys] tenant=${tenantId} medya gonderildi target=${this.maskTarget(phone)} jid=${this.maskTarget(jid)} id=${sent?.key?.id || 'unknown'}`);
@@ -888,7 +919,7 @@ export class BaileysService implements OnModuleDestroy {
       else if (mime.startsWith('audio/')) payload = { audio: buffer, mimetype: mime || 'audio/ogg' };
       else payload = { document: buffer, mimetype: mime || 'application/octet-stream', fileName: media.filename || 'belge', caption };
       await this.refreshSignalSession(s.sock, jid);
-      const sent = await s.sock.sendMessage(jid, payload);
+      const sent = await this.sendQuoted(s, jid, phone, payload);
       this.rememberSend(tenantId, jid, payload, sent?.key?.id);
       this.storeDelivery(tenantId, sent?.key?.id, 'sent');
       this.logger.log(`[Baileys] tenant=${tenantId} medya gonderildi target=${this.maskTarget(phone)} jid=${this.maskTarget(jid)} id=${sent?.key?.id || 'unknown'}`);
