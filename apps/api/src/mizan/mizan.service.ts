@@ -731,24 +731,33 @@ export class MizanService {
     // ────────────────────────────────────────────────────────────────
     // 370 = Dönem Kârı Vergi ve Yasal Yükümlülük Karşılıkları (alacak bakiyeli)
     // 371 = Dönem Kârının Peşin Ödenen Vergi ve Diğer Yükümlülükleri (borç bakiyeli)
+    // NET bakiyeye bakılır (borç+alacak toplamı DEĞİL — ters taraftaki tutar karşılık sayılmaz).
+    // Karşılığın 370'te durması Nisan tahakkukuna kadar NORMALDİR; bu nedenle:
+    //  - dönem sonu Nisan öncesiyse (örn. Q1) uyarı verilmez,
+    //  - yıl sonu mizanında da verilmez (31.12'de ayrılan yeni karşılık bakiyesi normaldir),
+    //  - yalnızca dönem Nisan'ı kapsıyor VE 370'te hiç kapama (borç) hareketi yokken uyarılır.
     const kv370 = hesaplar.find((h: any) => h.hesapKodu === '370');
     const kv371 = hesaplar.find((h: any) => h.hesapKodu === '371');
-    const kv370Bakiye = kv370
-      ? Number(kv370.alacakBakiye || 0) + Number(kv370.borcBakiye || 0)
+    const kv370Net = kv370
+      ? Number(kv370.alacakBakiye || 0) - Number(kv370.borcBakiye || 0)
       : 0;
-    const kv371Bakiye = kv371
-      ? Number(kv371.alacakBakiye || 0) + Number(kv371.borcBakiye || 0)
+    const kv371Net = kv371
+      ? Number(kv371.borcBakiye || 0) - Number(kv371.alacakBakiye || 0)
       : 0;
-    if (kv370Bakiye > 0 || kv371Bakiye > 0) {
+    const kvDonemSonu = this.donemBitisTarihi(mizanInfo?.donem || '', mizanInfo?.donemTipi);
+    const kvNisanKapsandi = kvDonemSonu.getUTCMonth() >= 3; // dönem sonu Nisan veya sonrası
+    const kv370KapamaYok = kv370 ? Number(kv370.borcToplami || 0) < 0.01 : true;
+    const kv371KapamaYok = kv371 ? Number(kv371.alacakToplami || 0) < 0.01 : true;
+    if (kvNisanKapsandi && !yilSonu && ((kv370Net > 0 && kv370KapamaYok) || (kv371Net > 0 && kv371KapamaYok))) {
       const detayParca: string[] = [];
-      if (kv370Bakiye > 0) detayParca.push(`370: ${this.fmt(kv370Bakiye)}`);
-      if (kv371Bakiye > 0) detayParca.push(`371: ${this.fmt(kv371Bakiye)}`);
+      if (kv370Net > 0 && kv370KapamaYok) detayParca.push(`370: ${this.fmt(kv370Net)} alacak`);
+      if (kv371Net > 0 && kv371KapamaYok) detayParca.push(`371: ${this.fmt(kv371Net)} borç`);
       anomaliler.push({
-        hesapKodu: kv370Bakiye > 0 ? '370' : '371',
+        hesapKodu: kv370Net > 0 && kv370KapamaYok ? '370' : '371',
         tip: 'KURUMLAR_VERGISI_TAHAKKUKU',
         seviye: 'WARN',
-        mesaj: `Kurumlar vergisi tahakkuku yapılmamış — 370/371 hesaplarında bakiye var (${detayParca.join(', ')}). Yıl sonu kapanışında bu hesaplar kapatılmalı.`,
-        detay: { kv370Bakiye, kv371Bakiye },
+        mesaj: `370/371 vergi karşılığı hesapları hâlâ açık (${detayParca.join(', ')}) ve dönem içinde kapama hareketi görünmüyor. Nisan kurumlar vergisi tahakkuk fişi (370 → 371/360) yapılmamış olabilir; kontrol edilmeli.`,
+        detay: { kv370Net, kv371Net, kv370BorcToplami: kv370?.borcToplami ?? 0, kv371AlacakToplami: kv371?.alacakToplami ?? 0 },
       });
     }
 

@@ -732,11 +732,12 @@ export class EDefterControlService {
   }
 
   private isVatAccrualVoucher(rows: ParsedEDefterFisLine[], description: string) {
-    const desc = this.normalizeLoose(description);
     const has191Credit = rows.some((r) => /^191/.test(r.hesapKodu || '') && r.alacak > r.borc);
     const has391Debit = rows.some((r) => /^391/.test(r.hesapKodu || '') && r.borc > r.alacak);
     const hasSettlementAccount = rows.some((r) => /^(190|360)/.test(r.hesapKodu || ''));
-    const hasAccrualText = /kdv|tahakkuk|mahsup|beyanname|devreden|odenecek/.test(desc);
+    // Fis tipi sutunu metne dahil EDILMEZ: Luca'da cogu fisin tipi "Mahsup" oldugundan
+    // fis tipindeki "mahsup" her fisi tahakkuk metnine uydurur (orn. iade fisi tahakkuk sanilir).
+    const hasAccrualText = /kdv|tahakkuk|mahsup|beyanname|devreden|odenecek/.test(this.voucherTextWithoutFisTipi(rows));
     // Gevsetildi: 191 alacak VEYA 391 borc + (190/360 hesabi VEYA tahakkuk metni) yeterli.
     // Boylece sadece-devreden ve tevkifatli tahakkuk fisleri de "tahakkuk" sayilir,
     // KDV_TAHAKKUK_EKSIK yanlis alarmi azalir. (Normal alis 191 borc / satis 391 alacak calistigi icin tetiklenmez.)
@@ -973,13 +974,36 @@ export class EDefterControlService {
       const label = this.describeMonth(monthKey);
       if (!accruals.length) {
         const first = vatRows[0];
-        findings.push({
-          severity: 'WARN',
-          category: 'KDV_TAHAKKUK_EKSIK',
-          message: `${label} icin 191/391 hareketi var ancak KDV tahakkuk/mahsup fisi bulunamadi. (Son ayin tahakkuku bir sonraki doneme kaymis olabilir; kontrol edin.)`,
-          voucherKey: first.voucherKey,
-          rowIndex: first.rowIndex,
-        });
+        // Bazi ofisler tahakkuk fisini beyanname gununde (takip eden ayin ~26'si) keser.
+        // Takip eden ayda ay-sonu tarihli OLMAYAN bir tahakkuk fisi varsa buyuk ihtimalle
+        // bu ayin tahakkukudur: WARN yerine INFO ver ve o fise capala.
+        const nextKey = this.addMonthKey(monthKey, 1);
+        const nextAccrual = [...new Map(
+          rows
+            .filter((r) => r.fisTarihi && this.monthKey(r.fisTarihi) === nextKey)
+            .map((r) => [r.voucherKey, voucherMeta.get(r.voucherKey)]),
+        ).values()]
+          .filter((m): m is VoucherMeta => Boolean(m))
+          .find((m) => m.isVatAccrual && m.date && !this.sameDateUTC(m.date, this.endOfMonthUTC(m.date)));
+        if (nextAccrual) {
+          findings.push({
+            severity: 'INFO',
+            category: 'KDV_TAHAKKUK_EKSIK',
+            message: `${label} icinde KDV tahakkuk/mahsup fisi yok; ${this.fmtDate(nextAccrual.date!)} tarihli tahakkuk fisi takip eden ayda kesilmis gorunuyor (beyanname gununde fislestirme olabilir). Isaretli satir bu tahakkuk fisidir.`,
+            voucherKey: nextAccrual.key,
+            rowIndex: nextAccrual.first.rowIndex,
+            detail: { ay: monthKey, tahakkukTarihi: nextAccrual.date!.toISOString().slice(0, 10) },
+          });
+        } else {
+          findings.push({
+            severity: 'WARN',
+            category: 'KDV_TAHAKKUK_EKSIK',
+            message: `${label} icin 191/391 hareketi var ancak KDV tahakkuk/mahsup fisi bulunamadi. (Son ayin tahakkuku bir sonraki doneme kaymis olabilir; kontrol edin.) Isaretli satir ayin ilk KDV satiridir; sorunlu kayit degildir.`,
+            voucherKey: first.voucherKey,
+            rowIndex: first.rowIndex,
+            detail: { ay: monthKey, isaretNotu: 'ayin ilk 191/391 satiri' },
+          });
+        }
         continue;
       }
 
@@ -1076,7 +1100,17 @@ export class EDefterControlService {
 
   private isClosingLikeVoucher(meta: VoucherMeta) {
     const desc = this.normalizeLoose(meta.description);
-    return /kapanis|yansitma|devir|virman|mahsup|aktarma|duzeltme/.test(desc);
+    if (/kapanis|yansitma|devir|virman|aktarma|duzeltme/.test(desc)) return true;
+    // "mahsup" yalnizca belge turu/aciklama/hesap adinda geciyorsa kapanis sinyalidir.
+    // Fis tipi sutunundaki genel "Mahsup" degeri sayilmaz; yoksa Luca'da neredeyse tum
+    // fisler kapanis-benzeri sayilir ve belge/mukerrer kontrolleri tamamen devre disi kalir.
+    return /mahsup/.test(this.voucherTextWithoutFisTipi(meta.rows));
+  }
+
+  private voucherTextWithoutFisTipi(rows: ParsedEDefterFisLine[]) {
+    return this.normalizeLoose(
+      rows.map((r) => [r.belgeTuru, r.aciklama, r.hesapAdi].filter(Boolean).join(' ')).join(' '),
+    );
   }
 
   private isCostReflectionVoucher(meta: VoucherMeta) {
@@ -2533,6 +2567,11 @@ export class EDefterControlService {
 
   private monthKey(date: Date) {
     return `${date.getUTCFullYear()}-${String(date.getUTCMonth() + 1).padStart(2, '0')}`;
+  }
+
+  private addMonthKey(monthKey: string, count: number) {
+    const [year, month] = monthKey.split('-').map(Number);
+    return this.monthKey(new Date(Date.UTC(year, month - 1 + count, 1)));
   }
 
   private describeMonth(monthKey: string) {
