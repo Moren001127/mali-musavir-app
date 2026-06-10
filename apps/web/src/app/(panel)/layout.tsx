@@ -16,6 +16,23 @@ export default function PanelLayout({ children }: { children: React.ReactNode })
     if (!isLoading && isError) router.push('/giris');
   }, [isLoading, isError, router]);
 
+  // Mihsap token keep-alive: Portal açıkken (kullanıcı çalışırken) Chrome eklentisine
+  // ARKA PLANDA (odaksız) bir Mihsap sekmesi açtırır. Mihsap token'ı yalnız bir Mihsap
+  // sekmesi açıkken (runtime 60sn'de bir senkronlar) taze kalıyor; bu sayede kullanıcı
+  // Mihsap'a hiç girmeden token canlı kalır → Mihsap'tan veri çeken otomasyonlar düşmez.
+  // Eklenti zaten kurulu sürümde 'open_agent' köprüsünü anlıyor — makinede reload gerekmez.
+  useEffect(() => {
+    if (!user) return;
+    const ping = () => {
+      try {
+        (window as any).__morenAutoAgent?.openAgent?.('mihsap', { focus: false });
+      } catch { /* eklenti yoksa sessiz geç */ }
+    };
+    ping();
+    const id = setInterval(ping, 4 * 60 * 1000); // her 4 dk: sekme kapandıysa geri aç
+    return () => clearInterval(id);
+  }, [user]);
+
   if (isLoading) {
     return (
       <div className="min-h-screen flex items-center justify-center" style={{ background: '#050505' }}>
