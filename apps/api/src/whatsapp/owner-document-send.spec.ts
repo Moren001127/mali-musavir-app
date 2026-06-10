@@ -12,15 +12,36 @@ function ctrl(): any {
 
 describe('Owner belge gönderme — niyet tespiti', () => {
   const c = ctrl();
-  it('gönder + beyanname → true', () => {
+  it('gönder + belge türü → true (beyanname/fatura/evrak/sözleşme/dosya)', () => {
     expect(c.isOwnerDocumentSendRequest('gitonun nisan 2026 kdv beyannamesini gönder')).toBe(true);
     expect(c.isOwnerDocumentSendRequest('ahmet atalay muhtasar beyannamesini ilet')).toBe(true);
-    expect(c.isOwnerDocumentSendRequest('bu faturayı bana yolla')).toBe(true);
+    expect(c.isOwnerDocumentSendRequest('gitonun faturasını bana yolla')).toBe(true);
+    expect(c.isOwnerDocumentSendRequest('gito sözleşmesini gönder')).toBe(true);
+    expect(c.isOwnerDocumentSendRequest('ahmet vergi levhasını at')).toBe(true);
+    expect(c.isOwnerDocumentSendRequest('gitonun imza sirkülerini gönder')).toBe(true);
   });
   it('sadece soru / selam → false', () => {
     expect(c.isOwnerDocumentSendRequest('gitonun kdv beyannamesi verildi mi')).toBe(false);
     expect(c.isOwnerDocumentSendRequest('merhaba kolay gelsin')).toBe(false);
     expect(c.isOwnerDocumentSendRequest('bu ay kaç beyanname kaldı')).toBe(false);
+  });
+});
+
+describe('Owner belge gönderme — kategori çıkarımı', () => {
+  const c = ctrl();
+  it('belge türünü kategoriye eşler', () => {
+    expect(c.inferDocCategory('faturasını gönder')).toBe('FATURA');
+    expect(c.inferDocCategory('sözleşmesini ilet')).toBe('SOZLESME');
+    expect(c.inferDocCategory('vergi levhasını yolla')).toBe('EVRAK');
+    expect(c.inferDocCategory('kdv beyannamesini gönder')).toBe('BEYANNAME');
+    expect(c.inferDocCategory('şu dosyayı gönder')).toBeNull();
+  });
+  it('başlık anahtar kelimeleri mükellef adını ve dolguyu eler', () => {
+    const keys = c.docTitleKeywords('gitonun vergi levhasını gönder', 'GİTO GIDA');
+    expect(keys).toContain('vergi');
+    expect(keys).toContain('levhasini');
+    expect(keys).not.toContain('gonder');
+    expect(keys).not.toContain('gito');
   });
 });
 

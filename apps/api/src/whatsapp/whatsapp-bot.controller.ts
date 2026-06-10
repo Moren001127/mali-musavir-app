@@ -1122,12 +1122,46 @@ export class WhatsAppBotController implements OnModuleInit {
   // FAZ 2 — BELGE GÖNDERME (owner → kendi WhatsApp'ı)
   // ============================================================
 
-  /** Owner mesajı bir belge gönderme isteği mi? (gönder/ilet + beyanname/fatura) */
+  /** Owner mesajı bir belge gönderme isteği mi? (gönder/ilet + belge türü) */
   private isOwnerDocumentSendRequest(text: string): boolean {
     const n = this.normalizeForIntent(text);
     const wantsSend = /\b(gonder|gonderir|ilet|iletir|yolla|paylas|at|atar)\b/.test(n) || /\bpdf\b|dosya\s*olarak|belge\s*olarak/.test(n);
-    const aboutDoc = /(beyan|tahakkuk|fatura|belge|pdf|ekstre|dosya)/.test(n);
+    const aboutDoc = /(beyan|tahakkuk|fatura|belge|pdf|ekstre|dosya|evrak|sozlesme|vekalet|imza\s*sirku|levha|sicil|ruhsat)/.test(n);
     return wantsSend && aboutDoc;
+  }
+
+  /** Mesajda geçen belge kategorisi (Document.category) ipucu. */
+  private inferDocCategory(text: string): 'SOZLESME' | 'FATURA' | 'BEYANNAME' | 'EVRAK' | null {
+    const n = this.normalizeForIntent(text);
+    if (/sozlesme/.test(n)) return 'SOZLESME';
+    if (/fatura/.test(n)) return 'FATURA';
+    if (/beyan|tahakkuk/.test(n)) return 'BEYANNAME';
+    if (/evrak|vekalet|imza\s*sirku|levha|sicil|ruhsat/.test(n)) return 'EVRAK';
+    return null;
+  }
+
+  /** Belge başlığı araması için mesajdaki anlamlı kelimeler (mükellef adı + dolgu hariç). */
+  private docTitleKeywords(text: string, taxpayerAd: string): string[] {
+    const STOP = new Set([
+      'gonder', 'gonderir', 'ilet', 'iletir', 'yolla', 'at', 'atar', 'paylas', 'bana', 'icin',
+      'nin', 'nun', 'nin', 'pdf', 'dosya', 'olarak', 'belge', 'beyanname', 'beyan', 'tahakkuk',
+      'fatura', 'sozlesme', 'evrak', 'ekstre', 'lutfen', 'rica', 've', 'bir', 'bu', 'su', 'ile',
+      'ocak', 'subat', 'mart', 'nisan', 'mayis', 'haziran', 'temmuz', 'agustos', 'eylul', 'ekim', 'kasim', 'aralik',
+    ]);
+    const adKel = new Set(this.normalizeForIntent(taxpayerAd).split(/\s+/));
+    return this.normalizeForIntent(text)
+      .split(/\s+/)
+      .filter((w) => w.length >= 3 && !STOP.has(w) && !adKel.has(w) && !/^\d+$/.test(w));
+  }
+
+  private docFilename(d: { title: string; mimeType: string }): string {
+    const base = String(d.title || 'belge').replace(/[^\w.-]+/g, '_').slice(0, 60);
+    const ext = /pdf/.test(d.mimeType) ? 'pdf'
+      : /jpeg|jpg/.test(d.mimeType) ? 'jpg'
+        : /png/.test(d.mimeType) ? 'png'
+          : /word|officedocument.word/.test(d.mimeType) ? 'docx'
+            : /excel|spreadsheet/.test(d.mimeType) ? 'xlsx' : '';
+    return ext && !base.toLowerCase().endsWith(ext) ? `${base}.${ext}` : base;
   }
 
   /** Mesajda geçen mükellefi bul: adının ilk anlamlı kelimesi metinde geçiyor mu. */
@@ -1199,7 +1233,8 @@ export class WhatsAppBotController implements OnModuleInit {
     const adi = (taxpayer.companyName || `${taxpayer.firstName || ''} ${taxpayer.lastName || ''}`).trim();
     const donem = this.extractPeriodFromOwnerText(msg.text);
     const tipler = this.inferBeyanTipiFromOwnerText(msg.text);
-    const isFatura = /fatura/i.test(this.normalizeForIntent(msg.text));
+    const n = this.normalizeForIntent(msg.text);
+    const wantsBeyanname = !!tipler || /beyan|tahakkuk/.test(n);
 
     const sendOwnerText = async (reply: string) => {
       const sent = await this.whatsapp.sendMessage(this.replyTarget(msg), reply, ownerTenant.id);
@@ -1212,51 +1247,80 @@ export class WhatsAppBotController implements OnModuleInit {
       });
     };
 
-    // Şu an yalnız beyanname PDF gönderimi destekli; fatura PDF akışı ayrı.
-    if (isFatura && !tipler) {
-      await sendOwnerText(`${adi} için fatura PDF gönderimi henüz aktif değil; beyanname/tahakkuk PDF'i gönderebilirim.`);
-      return true;
+    // Ortak gönderim: presigned URL + sendMedia + log.
+    const sendDoc = async (s3Key: string, mimeType: string, filename: string, caption: string): Promise<boolean> => {
+      try {
+        const url = await this.storage!.getPresignedDownloadUrl(s3Key, filename);
+        const ok = await this.baileys.sendMedia(ownerTenant.id, this.replyTarget(msg), { url, mimeType, filename, caption });
+        await this.prisma.communicationLog.create({
+          data: {
+            taxpayerId: ownerContactId, channel: 'WHATSAPP',
+            subject: ok ? 'WhatsApp owner belge gonderildi' : 'WhatsApp owner belge gonderilemedi',
+            content: this.withWhatsAppPhone(`[BELGE] ${caption}`, msg.from), occurredAt: new Date(),
+          },
+        });
+        if (!ok) await sendOwnerText(`${caption} dosyasını göndermeye çalıştım ama WhatsApp iletmedi; biraz sonra tekrar dene.`);
+        return ok;
+      } catch (e: any) {
+        this.logger.warn(`[OwnerDocSend] gonderim hatasi: ${e?.message || e}`);
+        await sendOwnerText(`${caption} dosyasını gönderirken bir sorun oldu; kaydı kontrol edip tekrar deneyeyim.`);
+        return false;
+      }
+    };
+
+    // A) BEYANNAME — beyan tipi/“beyanname/tahakkuk” geçiyorsa önce BeyanKaydi PDF.
+    if (wantsBeyanname) {
+      const where: any = { tenantId: ownerTenant.id, taxpayerId: taxpayer.id };
+      if (donem) where.donem = donem;
+      if (tipler?.length) where.beyanTipi = { in: tipler };
+      const kayitlar = await (this.prisma as any).beyanKaydi.findMany({ where, orderBy: [{ donem: 'desc' }], take: 6 });
+      const withDoc = kayitlar.find((k: any) => k.beyannameUrl || k.pdfUrl);
+      if (withDoc) {
+        const key = withDoc.beyannameUrl || withDoc.pdfUrl;
+        await sendDoc(key, 'application/pdf',
+          `${adi}-${withDoc.beyanTipi}-${withDoc.donem}.pdf`.replace(/[^\w.-]+/g, '_'),
+          `${adi} · ${this.beyanLabel(withDoc.beyanTipi)} · ${withDoc.donem}`);
+        return true;
+      }
+      // Beyanname PDF yok → mükellefin yüklü belgelerine (Document) düş.
     }
 
-    const where: any = { tenantId: ownerTenant.id, taxpayerId: taxpayer.id };
-    if (donem) where.donem = donem;
-    if (tipler?.length) where.beyanTipi = { in: tipler };
-    const kayitlar = await (this.prisma as any).beyanKaydi.findMany({
-      where, orderBy: [{ donem: 'desc' }], take: 6,
+    // B) DOCUMENT — mükellef kartına yüklü her tür belge (evrak/fatura/sözleşme/dosya).
+    const kategori = this.inferDocCategory(msg.text);
+    const docWhere: any = { taxpayerId: taxpayer.id, isDeleted: false };
+    if (kategori) docWhere.category = kategori;
+    let docs = await this.prisma.document.findMany({
+      where: docWhere,
+      orderBy: { createdAt: 'desc' },
+      take: 12,
+      select: { id: true, title: true, category: true, mimeType: true, s3Key: true },
     });
 
-    if (!kayitlar.length) {
-      await sendOwnerText(`${adi} için ${donem ? donem + ' ' : ''}${tipler?.[0] || 'beyanname'} kaydı bulamadım.`);
+    // Başlık anahtar kelimeleriyle daralt (birden çok belge varsa).
+    const keys = this.docTitleKeywords(msg.text, adi);
+    if (keys.length && docs.length > 1) {
+      const filtered = docs.filter((d) => { const t = this.normalizeForIntent(d.title); return keys.some((k) => t.includes(k)); });
+      if (filtered.length) docs = filtered;
+    }
+
+    if (docs.length === 1) {
+      const d = docs[0];
+      await sendDoc(d.s3Key, d.mimeType, this.docFilename(d), `${adi} · ${d.title}`);
       return true;
     }
-    const withDoc = kayitlar.find((k: any) => k.beyannameUrl || k.pdfUrl);
-    if (!withDoc) {
-      await sendOwnerText(`${adi} ${kayitlar[0].donem} beyannamesi kayıtlı ama PDF dosyası sisteme eklenmemiş.`);
+    if (docs.length > 1) {
+      const liste = docs.slice(0, 6).map((d, i) => `${i + 1}. ${d.title}${d.category && d.category !== 'DIGER' ? ` (${d.category.toLowerCase()})` : ''}`).join('\n');
+      await sendOwnerText(`${adi} için ${docs.length} belge var, hangisini göndereyim?\n${liste}\nİsmini yazarsan onu yollarım.`);
       return true;
     }
 
-    try {
-      const key = withDoc.beyannameUrl || withDoc.pdfUrl;
-      const filename = `${adi}-${withDoc.beyanTipi}-${withDoc.donem}.pdf`.replace(/[^\w.-]+/g, '_');
-      const url = await this.storage.getPresignedDownloadUrl(key, filename);
-      const caption = `${adi} · ${this.beyanLabel(withDoc.beyanTipi)} · ${withDoc.donem}`;
-      const ok = await this.baileys.sendMedia(ownerTenant.id, this.replyTarget(msg), {
-        url, mimeType: 'application/pdf', filename, caption,
-      });
-      await this.prisma.communicationLog.create({
-        data: {
-          taxpayerId: ownerContactId, channel: 'WHATSAPP',
-          subject: ok ? 'WhatsApp owner belge PDF gonderildi' : 'WhatsApp owner belge PDF gonderilemedi',
-          content: this.withWhatsAppPhone(`[PDF] ${caption}`, msg.from), occurredAt: new Date(),
-        },
-      });
-      if (!ok) await sendOwnerText(`${caption} dosyasını göndermeye çalıştım ama WhatsApp iletmedi; biraz sonra tekrar dene.`);
-      return true;
-    } catch (e: any) {
-      this.logger.warn(`[OwnerDocSend] hata: ${e?.message || e}`);
-      await sendOwnerText(`${adi} beyannamesini gönderirken bir sorun oldu; dosya kaydını kontrol edip tekrar deneyeyim.`);
-      return true;
+    // C) Hiçbir belge yok.
+    if (wantsBeyanname) {
+      await sendOwnerText(`${adi} için ${donem ? donem + ' ' : ''}${tipler ? this.beyanLabel(tipler[0]) + ' ' : ''}beyanname PDF'i bulamadım. Mükellef kartına yüklü bir belge de yok.`);
+    } else {
+      await sendOwnerText(`${adi} için gönderebileceğim kayıtlı belge bulamadım.`);
     }
+    return true;
   }
 
   private beyanLabel(tip: string): string {
@@ -1369,7 +1433,7 @@ export class WhatsAppBotController implements OnModuleInit {
         '5) Kısa selamlama mesajına (kolay gelsin, merhaba, sağ ol) kısa selamlama cevabı ver (1 cümle).',
         '6) Veri/komut isteğinde tool çağır, sonucu kısa söyle.',
         '7) Riskli işlemlerde önce preview + ONAYLIYORUM bekle.',
-        '8) BEYANNAME PDF GÖNDERME aktiftir ve sistem otomatik yapar. Bu mesaja kadar geldiysen mükellef veya dönem NET DEĞİL demektir — kısaca "hangi mükellefin hangi dönem beyannamesini göndereyim?" diye SOR. ASLA "gönderdim / çağrı yapıyorum / işlemi başlattım" gibi YAPMADIĞIN şeyi yazma. (Fatura PDF gönderme henüz yok.)',
+        '8) BELGE GÖNDERME aktiftir (beyanname/tahakkuk PDF + mükellef kartına yüklü tüm evrak/fatura/sözleşme/dosyalar) ve sistem otomatik yapar. Bu mesaja kadar geldiysen mükellef NET DEĞİL demektir — kısaca "hangi mükellefin hangi belgesini göndereyim?" diye SOR. ASLA "gönderdim / çağrı yapıyorum / işlemi başlattım" gibi YAPMADIĞIN şeyi yazma.',
         '9) "Gönder" = belgeyi BİRİNE ilet demektir; "GİB\'e gönder/beyan ver" SANMA. Owner GİB\'e beyan vermeni istemez. Beyanname zaten verildiyse onu "GİB\'e gönderiyorum" diye KARIŞTIRMA.',
         '10) Mesajda hangi beyan tipi sorulduysa SADECE onu konuş. "KDV" sorulduysa MUHSGK/Damga ekleme; "MUHSGK" sorulduysa KDV ekleme.',
         '',
