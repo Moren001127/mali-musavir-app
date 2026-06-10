@@ -116,15 +116,40 @@ export class BaileysService implements OnModuleDestroy {
   private makeLogger(): any {
     const self = this;
     const noop = () => {};
+    // Objeleri JSON yaz — "[object Object]" hata kodunu gizliyordu (2026-06-10
+    // "received error in ack" teşhisinde detay kayboldu).
+    const fmt = (a: any[]) => a.map((x) => {
+      if (x && typeof x === 'object') { try { return JSON.stringify(x).slice(0, 600); } catch { return String(x); } }
+      return String(x);
+    }).join(' ');
     const l: any = {
       level: 'silent',
       trace: noop, debug: noop, info: noop,
-      warn: (...a: any[]) => self.logger.debug(`[baileys] ${a.map(String).join(' ')}`),
-      error: (...a: any[]) => self.logger.debug(`[baileys-err] ${a.map(String).join(' ')}`),
-      fatal: (...a: any[]) => self.logger.warn(`[baileys-fatal] ${a.map(String).join(' ')}`),
+      warn: (...a: any[]) => { const t = fmt(a); self.logger.debug(`[baileys] ${t}`); self.noteInternalError(t); },
+      error: (...a: any[]) => { const t = fmt(a); self.logger.debug(`[baileys-err] ${t}`); self.noteInternalError(t); },
+      fatal: (...a: any[]) => self.logger.warn(`[baileys-fatal] ${fmt(a)}`),
       child: () => l,
     };
     return l;
+  }
+
+  /** Üst üste gönderim-onay/init hatası = soket bozuk ama "bağlı" görünüyor
+   *  (2026-06-10: QR sonrası init queries düştü, mesajlar "gönderildi" ama
+   *  ulaşmadı). Kendi kendine iyileşme: soketi TAZELE (oturum korunur, QR yok). */
+  private ackErrorCount = 0;
+  private lastSelfHealAt = 0;
+  private noteInternalError(text: string) {
+    if (!/received error in ack|unexpected error in 'init queries'/i.test(text)) return;
+    this.ackErrorCount++;
+    if (this.ackErrorCount < 2) return;
+    const now = Date.now();
+    if (now - this.lastSelfHealAt < 10 * 60_000) return; // en çok 10 dk'da bir
+    this.lastSelfHealAt = now;
+    this.ackErrorCount = 0;
+    for (const [tenantId, s] of this.sessions) {
+      this.logger.warn(`[Baileys] tenant=${tenantId} gönderim onay hataları birikti — soket tazeleniyor (oturum korunur, QR gerekmez)`);
+      try { s.sock?.end?.(undefined); } catch { /* close handler yeniden bağlar */ }
+    }
   }
 
   /** Bağlantıyı başlat (kayıtlı oturum varsa QR'sız bağlanır, yoksa QR üretir). */
@@ -227,6 +252,7 @@ export class BaileysService implements OnModuleDestroy {
         this.lastErrors.delete(tenantId);
         this.reconnectAttempts.delete(tenantId);
         this.clearReconnectTimer(tenantId);
+        this.ackErrorCount = 0; // taze soket — gönderim hata sayacı sıfır
         this.logger.log(`[Baileys] tenant=${tenantId} BAĞLANDI`);
       }
       if (connection === 'close') {
