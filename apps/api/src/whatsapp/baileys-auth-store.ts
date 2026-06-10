@@ -95,10 +95,7 @@ export async function useDBAuthState(
           for (const id of ids) {
             let value = cat[id];
             if (value && type === 'app-state-sync-key') {
-              // Baileys 7.x'te proto'da .fromObject KALDIRILDI, .create geldi.
-              // Her iki sürümle uyumlu kalmak için ikisini de dene.
-              const ctor: any = proto.Message.AppStateSyncKeyData;
-              value = (ctor.create || ctor.fromObject).call(ctor, value);
+              value = proto.Message.AppStateSyncKeyData.fromObject(value);
             }
             if (value !== undefined) out[id] = value;
           }
