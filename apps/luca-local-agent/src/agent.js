@@ -1513,7 +1513,14 @@ async function preWarmBrowserSession() {
       await installMorenRuntimeBridge(session.context, page).catch(() => {});
       const currentUrl = page.url();
       if (!/luca\.com\.tr/i.test(currentUrl)) {
-        await gotoLucaWithFallback(page, LUCA_URLS.login, null, 'Pre-warm Luca giris').catch(() => {});
+        // Once SSO main.erp dene — kayitli cerezlerle oturum geri gelir (job
+        // akisindaki kanitlanmis yol). Dogrudan login sayfasina GITME; oradan
+        // SSO oturumu otomatik toparlanmaz ve gereksiz login denemesine duser.
+        await page.goto(LUCA_URLS.main, { waitUntil: 'domcontentloaded', timeout: 60_000 })
+          .catch(async () => {
+            await page.goto(LUCA_CLASSIC_ENTRY, { waitUntil: 'domcontentloaded', timeout: 60_000 }).catch(() => {});
+          });
+        await page.waitForTimeout(3500).catch(() => {});
       } else {
         // Zaten Luca sayfasındaysa reload et ki yeni eklenen init script çalışsın.
         await page.reload({ waitUntil: 'domcontentloaded', timeout: 60_000 }).catch(() => {});
