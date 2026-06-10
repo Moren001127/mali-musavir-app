@@ -2179,6 +2179,38 @@ export class KdvControlService {
       },
     };
 
+    // SATIŞ (hesaplanan KDV / işletme geliri) belgeleri mükellefin KENDİ gelir
+    // belgesidir (Z raporu, satış faturası) — GİDER değil. Gider-doğrulama mantığı
+    // (harcama/işletme gideri/kişisel kullanım) bunlara UYGULANMAZ; ayrı çerçeve kullanılır.
+    const isSatis = ['KDV_391', 'ISLETME_GELIR'].includes(String(session?.type || '').toUpperCase());
+    if (isSatis) {
+      return `Aşağıdaki belge MÜKELLEFİN KENDİ SATIŞ/GELİR belgesidir (ör. Z raporu, satış faturası, satış e-belgesi). Bir GİDER/harcama DEĞİLDİR. Mükellefin SATIŞ/GELİR kaydı açısından içerik riski var mı değerlendir.
+
+Kurallar:
+- Bu bir SATIŞ belgesidir; mükellef burada SATICI/geliri elde eden taraftır. "İşletme gideri olarak kaydedilmeli mi", "harcama", "alış", "alım", "kişisel kullanım/şahsi tüketim" gibi GİDER mantığını ASLA uygulama.
+- Değerlendirme ekseni: satışın mükellefin faaliyetiyle (satıcı olarak) tutarlılığı ve belgenin bu mükellefe/döneme ait olağan bir satış olup olmadığı.
+- Mükellefin faaliyet alanına uygun ürün/hizmet satışında UYGUN seç (örn. giyim mağazasının giyim satışı = olağan satış, UYGUN).
+- KONTROL_ET yalnızca: satış mükellefin faaliyetiyle açıkça bağdaşmıyorsa, ya da iptal/dönem-dışı/şüpheli (olası sahte-naylon) satış sinyali varsa.
+- RISKLI/ISLENMEMELI yalnızca çok net sahtelik/usulsüzlük sinyalinde.
+- KDV oran/tutar matematiği yapma (ayrı KDV kontrol modülünde denetlenir). Z raporu seri/sıra ve numara atlama takibi de AYRI yapılır; onu burada tekrar etme.
+- "Kaydedilmemeli" gibi kesin talimat verme; gri alanda muhasebeci kontrolü öner.
+- Cevap sadece JSON olsun.
+
+JSON şeması:
+{
+  "risk": "UYGUN | KONTROL_ET | RISKLI | ISLENMEMELI",
+  "summary": "tek cümle kısa yorum (satış belgesi dilinde)",
+  "suggestion": "muhasebecinin yapacağı işlem önerisi",
+  "confidence": 0.0,
+  "findings": [
+    { "title": "kısa bulgu", "detail": "neden", "severity": "UYGUN | KONTROL_ET | RISKLI | ISLENMEMELI" }
+  ]
+}
+
+Veri:
+${JSON.stringify(payload, null, 2)}`;
+    }
+
     return `Aşağıdaki belge mükellefin faaliyetine göre KDV kayıtlarına konu edilebilir mi, risk var mı değerlendir.
 
 Kurallar:
