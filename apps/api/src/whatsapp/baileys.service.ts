@@ -1,4 +1,4 @@
-import { Injectable, Logger } from '@nestjs/common';
+import { Injectable, Logger, OnModuleDestroy } from '@nestjs/common';
 import { PrismaService } from '../prisma/prisma.service';
 import { useDBAuthState, BAILEYS_PROVIDER, DBAuthState } from './baileys-auth-store';
 import * as QRCode from 'qrcode';
@@ -61,9 +61,12 @@ type Session = {
 const nativeImport: (m: string) => Promise<any> = new Function('m', 'return import(m)') as any;
 
 @Injectable()
-export class BaileysService {
+export class BaileysService implements OnModuleDestroy {
   private readonly logger = new Logger(BaileysService.name);
   private mod: any = null;
+  /** Süreç kapanıyor (dağıtımda SIGTERM) — soketler sessizce bırakılır,
+   *  oturum SİLİNMEZ ve yeniden bağlanma kurulmaz. */
+  private shuttingDown = false;
   private readonly sessions = new Map<string, Session>();
   private readonly reconnectAttempts = new Map<string, number>();
   private readonly reconnectTimers = new Map<string, ReturnType<typeof setTimeout>>();
@@ -76,6 +79,23 @@ export class BaileysService {
   private lidMappingHandler: ((tenantId: string, lid: string, phone: string) => Promise<void>) | null = null;
 
   constructor(private readonly prisma: PrismaService) {}
+
+  /**
+   * Dağıtımda eski kopya kapanırken (SIGTERM) soketleri DÜZGÜN bırak.
+   * logout DEĞİL — oturum geçerli kalır; yeni kopya kayıtlı oturumla bağlanır.
+   * Bu olmadan eski+yeni kopya aynı oturuma bağlanıyor, WhatsApp "conflict"
+   * verip oturumu düşürüyordu (2026-06-10: QR'a düştü, mesajlar ulaşmadı).
+   */
+  onModuleDestroy() {
+    this.shuttingDown = true;
+    if (this.watchdogTimer) { clearInterval(this.watchdogTimer); this.watchdogTimer = null; }
+    for (const [tenantId, timer] of this.reconnectTimers) { clearTimeout(timer); this.reconnectTimers.delete(tenantId); }
+    for (const [tenantId, s] of this.sessions) {
+      try { s.sock?.end?.(undefined); } catch { /* ignore */ }
+      this.logger.log(`[Baileys] tenant=${tenantId} kapanışta soket bırakıldı (oturum korunuyor)`);
+    }
+    this.sessions.clear();
+  }
 
   /** Bot controller, gelen mesajı handleMessage hattına vermek için bunu kaydeder. */
   setInboundHandler(fn: (msg: BaileysInbound) => Promise<void>) {
@@ -109,6 +129,7 @@ export class BaileysService {
 
   /** Bağlantıyı başlat (kayıtlı oturum varsa QR'sız bağlanır, yoksa QR üretir). */
   async connect(tenantId: string): Promise<{ started: boolean; alreadyConnected?: boolean }> {
+    if (this.shuttingDown) return { started: false };
     this.startWatchdog();
     this.intentionalLogoutTenants.delete(tenantId);
     this.clearReconnectTimer(tenantId);
@@ -216,9 +237,20 @@ export class BaileysService {
         const closeError = lastDisconnect?.error?.message || `kapandı (${statusCode})`;
         session.lastError = closeError;
         this.lastErrors.set(tenantId, closeError);
-        this.logger.warn(`[Baileys] tenant=${tenantId} bağlantı kapandı: ${session.lastError} loggedOut=${loggedOut}`);
         this.sessions.delete(tenantId);
-        if (loggedOut || this.intentionalLogoutTenants.has(tenantId)) {
+        // Süreç kapanıyor (dağıtım/SIGTERM) → ne sil ne yeniden bağlan.
+        if (this.shuttingDown) return;
+        // ÇAKIŞMA (conflict/replaced): dağıtımda eski+yeni kopya aynı oturuma
+        // bağlandı, WhatsApp birini düşürdü. Bu KALICI ÇIKIŞ DEĞİLDİR — oturum
+        // SİLİNMEZ; diğer kopya ölünce kayıtlı oturumla geri bağlanılır.
+        // (2026-06-10 vakası: "Stream Errored (conflict)" loggedOut sayılıp
+        // creds silindi → QR'a düştü, mesajlar ulaşmadı.)
+        const conflict = /conflict|replaced/i.test(String(closeError))
+          || statusCode === DisconnectReason?.connectionReplaced;
+        this.logger.warn(`[Baileys] tenant=${tenantId} bağlantı kapandı: ${session.lastError} loggedOut=${loggedOut} conflict=${conflict}`);
+        if (conflict && !this.intentionalLogoutTenants.has(tenantId)) {
+          this.scheduleReconnect(tenantId, closeError, 20_000); // eski kopyanın ölmesini bekle
+        } else if (loggedOut || this.intentionalLogoutTenants.has(tenantId)) {
           // Telefondan çıkış yapılmış → oturumu temizle, yeniden QR gerekir.
           auth.clear().catch(() => {});
         } else {
@@ -536,12 +568,13 @@ export class BaileysService {
     this.reconnectTimers.delete(tenantId);
   }
 
-  private scheduleReconnect(tenantId: string, reason?: string) {
+  private scheduleReconnect(tenantId: string, reason?: string, minDelayMs = 0) {
+    if (this.shuttingDown) return;
     if (this.intentionalLogoutTenants.has(tenantId)) return;
     if (this.reconnectTimers.has(tenantId)) return;
     const attempt = (this.reconnectAttempts.get(tenantId) || 0) + 1;
     this.reconnectAttempts.set(tenantId, attempt);
-    const delay = Math.min(300_000, 3_000 * Math.pow(2, Math.min(attempt - 1, 6)));
+    const delay = Math.max(minDelayMs, Math.min(300_000, 3_000 * Math.pow(2, Math.min(attempt - 1, 6))));
     this.logger.warn(`[Baileys] tenant=${tenantId} ${Math.round(delay / 1000)} sn sonra yeniden baglanacak (deneme ${attempt})${reason ? `: ${reason}` : ''}`);
     const timer = setTimeout(() => {
       this.reconnectTimers.delete(tenantId);

@@ -101,6 +101,11 @@ async function bootstrap() {
     }),
   );
 
+  // Dağıtımda eski kopya SIGTERM alınca onModuleDestroy çalışsın — Baileys
+  // soketi düzgün bırakılır, yeni kopyayla "conflict" yarışı önlenir
+  // (2026-06-10: çakışma WhatsApp oturumunu düşürüp QR'a döndürmüştü).
+  app.enableShutdownHooks();
+
   const port = process.env.PORT || process.env.API_PORT || 3001;
   await app.listen(port, '0.0.0.0');
   console.log(`API is running on: http://localhost:${port}/api/v1`);
