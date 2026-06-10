@@ -4,7 +4,7 @@
 */
 (function () {
   // Agent versiyon — UI'da gösterilir, debug için kritik
-  const AGENT_VERSION = '1.41.4';
+  const AGENT_VERSION = '1.41.5';
   const AGENT_INSTANCE_ID = 'mai_' + Date.now().toString(36) + '_' + Math.random().toString(36).slice(2, 8);
 
   // === VERSION-AWARE RELOAD ===
@@ -13536,6 +13536,75 @@
     }
   }
 
+  // v1.41.5 — typeAndEnter (yaz+Enter) başarısız olursa GÜVENLİ içerik-eşleştirme:
+  // dropdown'daki TÜM seçeneklerin metnini okuyup hedefe en yakın olanı seçer.
+  // Yazım/boşluk/Türkçe karakter/sondaki harf farkını tolere eder; ama düşük
+  // güvende (eşik altı) ASLA seçim yapmaz → yanlış seçenek riski yok, atlar.
+  function _antNormText(s) {
+    return String(s || '')
+      .toLocaleLowerCase('tr')
+      .replace(/[İI]/g, 'i').replace(/ı/g, 'i')
+      .replace(/ç/g, 'c').replace(/ğ/g, 'g').replace(/ö/g, 'o').replace(/ş/g, 's').replace(/ü/g, 'u')
+      .replace(/[^a-z0-9]/g, '');
+  }
+  async function selectAntOptionByText(antSelectEl, targetText, minScore) {
+    if (!antSelectEl || !targetText) return null;
+    minScore = minScore || 0.85;
+    try {
+      await closeAllAntDropdowns();
+      await sleep(120);
+      antSelectEl.scrollIntoView({ block: 'center', behavior: 'instant' });
+      await sleep(80);
+      const selector = antSelectEl.querySelector('.ant-select-selector') || antSelectEl;
+      selector.dispatchEvent(new MouseEvent('mousedown', { bubbles: true }));
+      selector.dispatchEvent(new MouseEvent('mouseup', { bubbles: true }));
+      selector.click();
+      await sleep(350);
+      const dd = findDropdownForSelect(antSelectEl);
+      if (!dd) { await closeAllAntDropdowns(); return null; }
+      const want = _antNormText(targetText);
+      const wantCore = want.slice(0, Math.min(want.length, 18));
+      const opts = Array.from(dd.querySelectorAll('.ant-select-item-option'));
+      let best = null, bestScore = 0, bestLen = Infinity;
+      for (const o of opts) {
+        const t = _antNormText(o.textContent);
+        if (!t) continue;
+        let score;
+        if (t === want) {
+          score = 1;
+        } else {
+          const n = Math.min(t.length, want.length);
+          let i = 0; while (i < n && t[i] === want[i]) i++;
+          const prefixScore = i / Math.max(t.length, want.length);
+          const containsScore = (wantCore.length >= 12 && t.includes(wantCore)) ? 0.9 : 0;
+          score = Math.max(prefixScore, containsScore);
+        }
+        // Eşit skorda DAHA KISA metni tercih et (temel form, varyant değil)
+        if (score > bestScore || (score === bestScore && t.length < bestLen)) {
+          bestScore = score; best = o; bestLen = t.length;
+        }
+      }
+      if (best && bestScore >= minScore) {
+        best.scrollIntoView({ block: 'center' });
+        best.dispatchEvent(new MouseEvent('mousedown', { bubbles: true }));
+        best.dispatchEvent(new MouseEvent('mouseup', { bubbles: true }));
+        best.click();
+        await sleep(300);
+        if (isAntSelectFilled(antSelectEl)) {
+          const itemText = (antSelectEl.querySelector('.ant-select-selection-item')?.textContent || '').trim();
+          console.log('[Moren.selectAntOptionByText] secildi:', itemText, '(skor', bestScore.toFixed(2) + ')');
+          return itemText || targetText;
+        }
+      }
+      console.warn('[Moren.selectAntOptionByText] guvenli eslesme yok (en iyi skor', bestScore.toFixed(2) + ') — secim yapilmadi');
+      await closeAllAntDropdowns();
+      return null;
+    } catch (e) {
+      console.warn('[Moren.selectAntOptionByText] hata:', e?.message);
+      return null;
+    }
+  }
+
   // v1.12.2 — Mihsap remote-search select için: tam hesap kodu ("600.01.005") yaz,
   // backend cevabını bekle, kod ile başlayan ilk option'ı seç.
   // YENİ: detaylı log + tıklama öncesi tutar doğrulama + seçim sonrası
@@ -14343,6 +14412,9 @@
           let secilen = null;
           if (islemSel) {
             secilen = await typeAndEnter(islemSel, 'Yurtiçi Teslim ve Hizmetleri');
+            // v1.41.5: yaz+Enter tutmadıysa GÜVENLİ içerik-eşleştirmeyle dene
+            // (yazım/boşluk/sondaki harf farkını tolere eder; emin değilse seçmez).
+            if (!secilen) secilen = await selectAntOptionByText(islemSel, 'Yurtiçi Teslim ve Hizmetleri', 0.85);
           }
           if (secilen) {
             ust.islemTuru = secilen;
@@ -14350,7 +14422,7 @@
           } else {
             counters.atla++; counters.toplam++; setCount();
             await logEvent(mukellef.id, mukellef.ad, 'skip',
-              `${mTag} · İşlem Türü seçilemedi (Yurtiçi Teslim ve Hizmetleri yazıldı, Enter tıklamadı)`,
+              `${mTag} · İşlem Türü 'Yurtiçi Teslim ve Hizmetler' seçilemedi (yaz+Enter ve içerik eşleşmesi başarısız)`,
               { firma: meta.firma, belgeNo: meta.belgeNo, tutar: meta.tutar, tarih: meta.tarih });
             await clickIleri(fid); continue;
           }

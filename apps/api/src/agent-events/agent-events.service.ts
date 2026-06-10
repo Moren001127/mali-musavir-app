@@ -4435,6 +4435,14 @@ Fatura görüntüsünden şu alanları çıkarıp JSON'a da ekle (okunamazsa nul
 • ocrMatrah: faturadaki KDV hariç matrah toplamı, sayı olarak. Okunamazsa null, tahmin etme.
 • ocrKdvTutari: faturadaki toplam KDV tutarı, sayı olarak. Okunamazsa null, tahmin etme.
 
+### Z RAPORU / YAZARKASA FİŞİ OKUMA (ÖZEL) ###
+Belge bir Z RAPORU / yazarkasa (ÖKC) fişi ise (üstte "Z RAPORU" / "Z NO" / "EKÜ NO" / "MALİ FİŞ" gibi ibareler görünür):
+• belgeNo = "Z NO" değeridir. FİŞ NO veya EKÜ NO DEĞİL. Raporda hem "FİŞ NO" hem "Z NO" varsa MUTLAKA Z NO'yu al (Mihsap Z NO'yu kullanır).
+• ocrToplam = raporun "TOPLAM" / ödenecek / nakit+kart toplam satırıdır. Bu tutar KDV DAHİLDİR — matrah sanıp ÜSTÜNE KDV TEKRAR EKLEME.
+• ocrKdvTutari = "TOPKDV" veya "KDV" satırı.
+• ocrMatrah = ocrToplam - ocrKdvTutari (KDV hariç). Z raporunda ayrı matrah yazmaz; bu farktan hesapla.
+• "KUM." ile başlayan satırlar (KUM.TOP / KUM.KDV / KUM.KNV) KÜMÜLATİF geçmiş toplamdır — ASLA okuma, ocrToplam ile karıştırma.
+
 ### SEBEP YAZIM KURALI ###
 Sebep yazarken MÜKELLEF AÇISINDAN yaz (işlem yönü "${islemTuru}"):
 • ALIŞ ise "gider/alış" terimleri kullan, karşı firmanın "satış" ifadesini YAZMA.
