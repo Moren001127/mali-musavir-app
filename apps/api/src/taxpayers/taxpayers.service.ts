@@ -856,6 +856,9 @@ export class TaxpayersService {
             taxpayerId,
             year,
             month,
+            // Sıfır-dolgulu dönem — otomasyonlar {{trigger.payload.periodLabel}} ile
+            // güvenli "YYYY-MM" alsın (year-month concat tek haneli ayda "2026-4" üretir).
+            periodLabel: `${year}-${String(month).padStart(2, '0')}`,
             field,
             oldValue,
             newValue,

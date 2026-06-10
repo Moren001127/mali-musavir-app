@@ -378,7 +378,9 @@ export class ActionDispatcherService {
     const turler: ('ALIS' | 'SATIS')[] = faturaTuru ? [faturaTuru] : ['ALIS', 'SATIS'];
     for (const tur of turler) {
       try {
-        const job = await this.mihsap.fetchAndStoreInvoices({
+        // fetchAndStoreInvoices senkron çeker; { jobId, total, fetched, errorMsg } döner.
+        // Hata olursa fırlatır (catch'e düşer). Hatasız ama 0 fatura = "yeşil ama boş".
+        const job: any = await this.mihsap.fetchAndStoreInvoices({
           tenantId: ctx.tenantId,
           mukellefId: taxpayerId,
           mukellefMihsapId: String(taxpayer.mihsapId),
@@ -386,16 +388,33 @@ export class ActionDispatcherService {
           faturaTuru: tur,
           createdBy: ctx.userId ?? undefined,
         });
-        results.push({ tur, jobId: (job as any)?.id ?? null, ok: true });
+        results.push({
+          tur,
+          jobId: job?.jobId ?? null,
+          bulunan: Number(job?.total ?? 0),
+          cekilen: Number(job?.fetched ?? 0),
+          ok: true,
+        });
       } catch (err: any) {
         results.push({ tur, ok: false, error: err.message?.slice(0, 200) });
       }
     }
+    const cekilenFatura = results.reduce((s, r) => s + (Number(r.cekilen) || 0), 0);
+    const bulunanFatura = results.reduce((s, r) => s + (Number(r.bulunan) || 0), 0);
+    const hataVar = results.some((r) => !r.ok);
     return {
-      success: results.some((r) => r.ok),
+      // Hatasız tamamlandıysa success=true; ama GERÇEK fatura sayısını da raporla ki
+      // otomasyon geçmişinde "yeşil ama 0 fatura" durumu görünsün (sessiz boş başarı yok).
+      success: !hataVar,
       taxpayerId,
       donem,
+      cekilenFatura,
+      bulunanFatura,
       results,
+      not:
+        !hataVar && cekilenFatura === 0
+          ? `Mihsap "${donem}" döneminde 0 fatura döndürdü. Muhtemel sebep: faturalar Mihsap arşivine henüz düşmemiş (kutu erken işaretlendi) ya da dönem yanlış. Manuel "Hepsini Çek" ile aynı dönemi doğrula.`
+          : undefined,
     };
   }
 
