@@ -13,7 +13,7 @@ Projenin canlı bilgisi, mimarisi, açık işleri ve kritik kuralları orada tut
 - **Doğru sistem = SUNUCU.** Aktif çalışılan yer deploy edilmiş sürüm (API → Railway, Web → Vercel) = `origin/main`. Yerel kopya **sadece yedek**.
 - **Docker kullanılmıyor.** `docker-compose.yml` terk edilmiş kalıntı; yerel çalıştırma için Docker'a uğraşma.
 - **Kilitli modüllere dokunma** (`KILITLI_MODULLER.md`): Mizan, KDV Kontrol, agent-runtime, E-Arşiv vb.
-- Push = production deploy. Sadece kullanıcı onayıyla push et.
+- **Push = production deploy. SORMA (kullanıcı talimatı 2026-06-10).** Tip kontrolü (tsc) ve testlerden geçen, doğrulanmış değişiklikleri **her seferinde tekrar onay sormadan** push et. Canlı güvenliğini pre-push hook'ları (kilit kontrolü + regresyon testleri) zaten her push'ta sağlıyor. Kullanıcı "tekrar onay iste" diyene kadar bu geçerli. (Kilitli modüllerde yine teşhis + patch göster, ama push için ayrı onay bekleme.)
 
 ## 🔚 OTURUM SONU (her seferinde)
 Her işlem / oturum sonunda:
