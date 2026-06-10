@@ -1518,6 +1518,29 @@ async function preWarmBrowserSession() {
         // Zaten Luca sayfasındaysa reload et ki yeni eklenen init script çalışsın.
         await page.reload({ waitUntil: 'domcontentloaded', timeout: 60_000 }).catch(() => {});
       }
+      // Login sayfasindaysak otomatik giris yap (kimlik + 2captcha) — oturumu
+      // proaktif ac ki ilk is hizli olsun + session sicak kalsin. Ayni cooldown +
+      // fail-streak korumasi (hesap kilidi riskine karsi).
+      if (/giris\.erp|LUCASSO\/login|\/Luca\/giris\.do/i.test(page.url() || '')) {
+        if (loginFailStreak < LOGIN_FAIL_MAX && Date.now() - lastLoginAttemptAt >= LOGIN_COOLDOWN_MS) {
+          lastLoginAttemptAt = Date.now();
+          log.info('Pre-warm: Luca login sayfasi; otomatik giris deneniyor (2captcha)...');
+          try {
+            await loginToLuca(page);
+            loginFailStreak = 0;
+            log.info('Pre-warm: otomatik Luca girisi basarili ✓');
+            await page.goto(LUCA_URLS.main, { waitUntil: 'domcontentloaded', timeout: 60_000 })
+              .catch(async () => {
+                await page.goto(LUCA_CLASSIC_ENTRY, { waitUntil: 'domcontentloaded', timeout: 60_000 }).catch(() => {});
+              });
+          } catch (loginErr) {
+            loginFailStreak++;
+            log.warn(`Pre-warm otomatik giris basarisiz [${loginFailStreak}]: ${loginErr.message}`);
+          }
+        } else {
+          log.info('Pre-warm: otomatik giris atlandi (cooldown/fail-streak); gercek iste tekrar denenecek.');
+        }
+      }
       const finalUrl = page.url();
       log.info(`✓ Pre-warm tamamlandı (url: ${finalUrl.slice(0, 80)})`);
 
