@@ -178,35 +178,6 @@ export default function MihsapAgentPage() {
     onSuccess: () => qc.invalidateQueries({ queryKey: ['pending-decisions'] }),
   });
 
-  // Ay bazında mükellef başına işlenen fatura özeti (portal üzerinden sistem içi işlemler)
-  type MukellefSummaryItem = {
-    mukellef: string;
-    alis: number;
-    satis: number;
-    atlanan: number;
-    toplam: number;
-    maliyetUsd?: number;
-    birimMaliyetUsd?: number;
-    aiCagriSayisi?: number;
-  };
-  type MukellefSummary = {
-    period: { year: number; month: number };
-    toplam: { alis: number; satis: number; toplam: number; mukellefSayisi: number; maliyetUsd?: number; birimMaliyetUsd?: number };
-    items: MukellefSummaryItem[];
-  };
-  const { data: mukellefSummary } = useQuery<MukellefSummary>({
-    queryKey: ['agent-events-summary', 'mihsap', ay],
-    queryFn: () => {
-      const [yStr, mStr] = ay.split('-');
-      return api
-        .get('/agent/events/summary-by-mukellef', {
-          params: { agent: 'mihsap', year: yStr, month: mStr },
-        })
-        .then((r) => r.data);
-    },
-    refetchInterval: 5000,
-  });
-
   // Atlama İncelemesi — atlanan faturalar sebebe göre gruplu + "bizim hata mı" etiketli
   type AtlamaOrnek = { id: string; mukellef: string | null; firma: string | null; belgeNo: string | null; tutar: string | null; sebep: string | null; ts: string };
   type AtlamaGrup = { key: string; kategori: string; bizimHata: 'evet' | 'muhtemel' | 'incele' | 'hayir'; aciklama: string; adet: number; ornekler: AtlamaOrnek[] };
@@ -848,13 +819,6 @@ export default function MihsapAgentPage() {
       {/* ATLAMA İNCELEMESİ — atlanan faturalar sebebe göre gruplu + "bizim hata mı" */}
       <AtlamaIncelemesi ay={ay} data={atlamaAnaliz} />
 
-      {/* MÜKELLEF BAZINDA AYLIK ÖZET — portal üzerinden işlenen fatura sayıları */}
-      <MukellefIslemOzeti
-        ay={ay}
-        summary={mukellefSummary}
-        mihsapTaxpayers={mihsapTaxpayers}
-        taxpayerName={taxpayerName}
-      />
     </div>
   );
 }
@@ -1056,7 +1020,7 @@ function AtlamaIncelemesi({
     : { t: 'Normal', c: '#34d399', bg: 'rgba(52,211,153,0.12)' };
 
   return (
-    <div className="rounded-xl border overflow-hidden mb-4" style={{ background: 'rgba(255,255,255,0.02)', borderColor: 'rgba(255,255,255,0.05)' }}>
+    <div className="rounded-xl border overflow-hidden" style={{ background: 'rgba(255,255,255,0.02)', borderColor: 'rgba(255,255,255,0.05)' }}>
       <div className="p-4 border-b" style={{ borderColor: 'rgba(255,255,255,0.05)' }}>
         <h2 className="font-semibold flex items-center gap-2" style={{ color: '#fafaf9' }}>
           <AlertTriangle size={14} style={{ color: '#f59e0b' }} /> Atlama İncelemesi — {ayEtiket}
@@ -1117,187 +1081,6 @@ function AtlamaIncelemesi({
               </div>
             );
           })}
-        </div>
-      )}
-    </div>
-  );
-}
-
-function MukellefIslemOzeti({
-  ay,
-  summary,
-  mihsapTaxpayers,
-  taxpayerName,
-}: {
-  ay: string;
-  summary: any;
-  mihsapTaxpayers: Taxpayer[];
-  taxpayerName: (t: Taxpayer) => string;
-}) {
-  const [searchQuery, setSearchQuery] = useState('');
-  const [showAll, setShowAll] = useState(false);
-
-  const AYLAR_TR = [
-    'Ocak','Şubat','Mart','Nisan','Mayıs','Haziran',
-    'Temmuz','Ağustos','Eylül','Ekim','Kasım','Aralık',
-  ];
-  const [yStr, mStr] = ay.split('-');
-  const ayEtiket = `${AYLAR_TR[parseInt(mStr, 10) - 1] || ''} ${yStr}`;
-
-  // API'den gelen özet + mihsapId tanımlı olup henüz işlem GÖRMEMİŞ mükellefleri birleştir.
-  // Böylece 0 işlem gören mükellefler de listede olur.
-  type Row = { mukellef: string; alis: number; satis: number; atlanan: number; toplam: number; maliyetUsd?: number; birimMaliyetUsd?: number; aiCagriSayisi?: number };
-  const items: Row[] = summary?.items || [];
-  const islenenSet = new Set(items.map((i) => i.mukellef));
-  const islenmeyen: Row[] = mihsapTaxpayers
-    .map(taxpayerName)
-    .filter((ad) => ad && !islenenSet.has(ad))
-    .map((mukellef) => ({ mukellef, alis: 0, satis: 0, atlanan: 0, toplam: 0, maliyetUsd: 0, birimMaliyetUsd: 0, aiCagriSayisi: 0 }));
-
-  // Alfabetik sıralama (Türkçe locale): işlem gören + görmeyen tek listede.
-  const tumu = [...items, ...islenmeyen].sort((a, b) =>
-    a.mukellef.localeCompare(b.mukellef, 'tr', { sensitivity: 'base' }),
-  );
-  const filtreli = searchQuery
-    ? tumu.filter((i) => i.mukellef.toLowerCase().includes(searchQuery.toLowerCase()))
-    : tumu;
-  const goruntulenen = showAll ? filtreli : filtreli.slice(0, 20);
-
-  const toplamAlis = summary?.toplam?.alis ?? 0;
-  const toplamSatis = summary?.toplam?.satis ?? 0;
-  const toplamMaliyetUsd = summary?.toplam?.maliyetUsd ?? 0;
-  const toplamBirimMaliyetUsd = summary?.toplam?.birimMaliyetUsd ?? 0;
-  const islemGorenAdedi = items.length;
-  const islemGormeyenAdedi = islenmeyen.length;
-  const fmtUsd = (v: number) =>
-    `$${(v || 0).toLocaleString('tr-TR', { minimumFractionDigits: 4, maximumFractionDigits: 4 })}`;
-
-  return (
-    <div
-      className="rounded-xl border overflow-hidden"
-      style={{ background: 'rgba(255,255,255,0.02)', borderColor: 'rgba(255,255,255,0.05)' }}
-    >
-      {/* HEADER */}
-      <div className="flex items-center justify-between p-4 border-b flex-wrap gap-3" style={{ borderColor: 'rgba(255,255,255,0.05)' }}>
-        <div>
-          <h2 className="font-semibold flex items-center gap-2" style={{ color: '#fafaf9' }}>
-            <Users size={14} style={{ color: '#b8a06f' }} /> Mükellef Bazında İşlem Özeti — {ayEtiket}
-          </h2>
-          <p className="text-xs mt-0.5" style={{ color: 'rgba(250,250,249,0.45)' }}>
-            Portal üzerinden işlenen fatura sayıları — manuel işlenenler bu listede görünmez
-          </p>
-        </div>
-        <div className="relative">
-          <Search size={12} className="absolute left-3 top-1/2 -translate-y-1/2" style={{ color: 'rgba(250,250,249,0.4)' }} />
-          <input
-            type="text"
-            value={searchQuery}
-            onChange={(e) => setSearchQuery(e.target.value)}
-            placeholder="Mükellef ara..."
-            className="pl-8 pr-3 py-2 text-[12.5px] rounded-lg outline-none"
-            style={{
-              background: 'rgba(255,255,255,0.03)',
-              border: '1px solid rgba(255,255,255,0.08)',
-              color: '#fafaf9',
-              minWidth: 220,
-            }}
-          />
-        </div>
-      </div>
-
-      {/* TOPLAM ŞERİDİ */}
-      <div
-        className="grid grid-cols-2 sm:grid-cols-5 gap-px"
-        style={{ background: 'rgba(255,255,255,0.04)' }}
-      >
-        <OzetHucre label="Dönemde İşlem Gören" value={islemGorenAdedi} alt={`toplam ${mihsapTaxpayers.length} mükellef`} color="#d4b876" />
-        <OzetHucre label="İşlem Görmeyen" value={islemGormeyenAdedi} alt={islemGormeyenAdedi > 0 ? 'manuel ya da eksik' : ''} color="#f59e0b" />
-        <OzetHucre label="Toplam Alış" value={toplamAlis} alt="fatura" color="#059669" />
-        <OzetHucre label="Toplam Satış" value={toplamSatis} alt="fatura" color="#2563eb" />
-        <OzetHucre label="Toplam Maliyet" valueText={fmtUsd(toplamMaliyetUsd)} alt={`birim ${fmtUsd(toplamBirimMaliyetUsd)}`} color="#a78bfa" />
-      </div>
-
-      {/* TABLO */}
-      {filtreli.length === 0 ? (
-        <div className="p-8 text-center text-sm" style={{ color: 'rgba(250,250,249,0.45)' }}>
-          {searchQuery ? 'Aramayla eşleşen mükellef yok' : 'Bu dönem için işlem kaydı bulunamadı'}
-        </div>
-      ) : (
-        <div className="overflow-x-auto">
-          <table className="w-full text-[13px]">
-            <thead>
-              <tr style={{ background: 'rgba(255,255,255,0.015)' }}>
-                <th className="text-left px-4 py-2.5 text-[10px] uppercase font-semibold tracking-wider" style={{ color: 'rgba(250,250,249,0.4)' }}>Mükellef</th>
-                <th className="text-right px-4 py-2.5 text-[10px] uppercase font-semibold tracking-wider" style={{ color: 'rgba(250,250,249,0.4)' }}>Alış</th>
-                <th className="text-right px-4 py-2.5 text-[10px] uppercase font-semibold tracking-wider" style={{ color: 'rgba(250,250,249,0.4)' }}>Satış</th>
-                <th className="text-right px-4 py-2.5 text-[10px] uppercase font-semibold tracking-wider" style={{ color: 'rgba(250,250,249,0.4)' }}>Atlanan</th>
-                <th className="text-right px-4 py-2.5 text-[10px] uppercase font-semibold tracking-wider" style={{ color: 'rgba(250,250,249,0.4)' }}>Toplam</th>
-                <th className="text-right px-4 py-2.5 text-[10px] uppercase font-semibold tracking-wider" style={{ color: 'rgba(250,250,249,0.4)' }}>Maliyet</th>
-                <th className="text-right px-4 py-2.5 text-[10px] uppercase font-semibold tracking-wider" style={{ color: 'rgba(250,250,249,0.4)' }}>Birim</th>
-              </tr>
-            </thead>
-            <tbody>
-              {goruntulenen.map((row, i) => {
-                // Toplam ETKİLEŞİM = alış + satış + atlanan (her biri bir işlemdir).
-                // "İşlem yok" badge'i: hiçbir kayıt yoksa.
-                const tumToplam = row.alis + row.satis + row.atlanan;
-                const islemYok = tumToplam === 0;
-                return (
-                <tr
-                  key={row.mukellef}
-                  className="transition-all"
-                  style={{
-                    borderTop: i > 0 ? '1px solid rgba(255,255,255,0.03)' : 'none',
-                    background: islemYok ? 'rgba(245,158,11,0.02)' : 'transparent',
-                  }}
-                >
-                  <td className="px-4 py-2.5">
-                    <span style={{ color: islemYok ? 'rgba(250,250,249,0.55)' : '#fafaf9', fontWeight: 500 }}>
-                      {row.mukellef}
-                    </span>
-                    {islemYok && (
-                      <span
-                        className="ml-2 inline-block px-1.5 py-0.5 rounded text-[9.5px] font-bold uppercase"
-                        style={{ background: 'rgba(245,158,11,0.12)', color: '#f59e0b' }}
-                      >
-                        İşlem yok
-                      </span>
-                    )}
-                  </td>
-                  <td className="px-4 py-2.5 text-right tabular-nums" style={{ color: row.alis > 0 ? '#059669' : 'rgba(250,250,249,0.3)' }}>
-                    {row.alis}
-                  </td>
-                  <td className="px-4 py-2.5 text-right tabular-nums" style={{ color: row.satis > 0 ? '#2563eb' : 'rgba(250,250,249,0.3)' }}>
-                    {row.satis}
-                  </td>
-                  <td className="px-4 py-2.5 text-right tabular-nums" style={{ color: row.atlanan > 0 ? '#f59e0b' : 'rgba(250,250,249,0.3)' }}>
-                    {row.atlanan}
-                  </td>
-                  <td className="px-4 py-2.5 text-right tabular-nums font-semibold" style={{ color: tumToplam > 0 ? '#d4b876' : 'rgba(250,250,249,0.3)' }}>
-                    {tumToplam}
-                  </td>
-                  <td className="px-4 py-2.5 text-right tabular-nums" style={{ color: (row.maliyetUsd ?? 0) > 0 ? '#a78bfa' : 'rgba(250,250,249,0.3)' }}>
-                    {fmtUsd(row.maliyetUsd ?? 0)}
-                  </td>
-                  <td className="px-4 py-2.5 text-right tabular-nums" style={{ color: (row.birimMaliyetUsd ?? 0) > 0 ? '#c4b5fd' : 'rgba(250,250,249,0.3)' }}>
-                    {fmtUsd(row.birimMaliyetUsd ?? 0)}
-                  </td>
-                </tr>
-                );
-              })}
-            </tbody>
-          </table>
-          {filtreli.length > 20 && (
-            <div className="text-center py-2 border-t" style={{ borderColor: 'rgba(255,255,255,0.04)' }}>
-              <button
-                onClick={() => setShowAll((v) => !v)}
-                className="text-[12px] font-medium hover:opacity-80 transition-all"
-                style={{ color: '#b8a06f' }}
-              >
-                {showAll ? `İlk 20'yi göster` : `Tümünü göster (${filtreli.length})`}
-              </button>
-            </div>
-          )}
         </div>
       )}
     </div>
