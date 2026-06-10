@@ -1399,28 +1399,27 @@ async function processJob(job) {
       return;
     }
     if (/TRANSIENT_LUCA_FRAME_STUCK_SOFT/i.test(err.message || '')) {
-      // Bayat klasik-Luca oturumu: once tarayiciyi CEREZ KORUNARAK kapat (taze
-      // oturum acilir, yeniden login/captcha gerekmez — manuel restart'in yaptigi).
-      // 3 kez ust uste ise cerezler de bozulmus olabilir → profili yenile (re-login).
+      // Bayat klasik-Luca oturumu: tarayiciyi CEREZ KORUNARAK kapat (taze oturum
+      // acilir, giris korunur — manuel restart'in yaptigi sey). Profil ARTIK SILINMEZ.
+      // frame-stuck'in sebebi neredeyse hic "bozuk cerez" degildir (Luca cercevesi
+      // yavasligi / sunucu hatasi); profili silmek girisi ucurup login/captcha
+      // dongusu yaratiyordu (06-06..06-08 self-heal regresyonu). Oturum gercekten
+      // dustuyse ajan zaten login sayfasini gorup normal akisinda (main.erp SSO)
+      // kendi toparlar; keep-alive da oturumu ayakta tutar.
       classicFrameStuckStreak++;
-      const hard = classicFrameStuckStreak >= 3;
-      const reason = `Klasik Luca bayat oturum; tarayici ${hard ? 'profili yenilenerek' : 'cerez korunarak'} sifirlanip is tekrar siraya alindi [${classicFrameStuckStreak}]: ${err.message}`;
+      const reason = `Klasik Luca bayat oturum; tarayici cerez korunarak sifirlanip is tekrar siraya alindi [${classicFrameStuckStreak}]: ${err.message}`;
       await logJob(jobId, reason).catch(() => {});
       await closeBrowserSession('frame-stuck-soft').catch(() => {});
-      if (hard) {
-        rotateBrowserProfile('frame-stuck-persistent');
-        classicFrameStuckStreak = 0;
-      }
       await requeueJob(jobId, reason);
       return;
     }
     if (/TRANSIENT_(AGENT_RUNTIME_MISSING|LUCA_RELOAD_STUCK)/i.test(err.message || '')) {
-      const reason = `Luca runtime toparlanamadi; browser oturumu sifirlanip is tekrar siraya alindi: ${err.message}`;
+      // Profil ARTIK SILINMEZ: runtime yuklenememesi bir login sorunu degildir;
+      // girisi ucurmak bunu cozmez, yalnizca login/captcha dongusu ekler.
+      // Cerez korunarak kapat + tekrar siraya al; sonraki denemede reload toparlar.
+      const reason = `Luca runtime toparlanamadi; browser oturumu cerez korunarak sifirlanip is tekrar siraya alindi: ${err.message}`;
       await logJob(jobId, reason).catch(() => {});
       await closeBrowserSession('runtime-recovery').catch(() => {});
-      if (/LUCA_RELOAD_STUCK|CLASSIC_FRAME/i.test(err.message || '')) {
-        rotateBrowserProfile('classic-frame-stuck');
-      }
       await requeueJob(jobId, reason);
       return;
     }
