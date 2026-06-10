@@ -360,7 +360,15 @@ export class WhatsAppController {
     });
 
     const documentIds = Array.from(new Set(messages.flatMap((m) => m.documents.map((doc) => doc.id))));
-    const documentMap = await this.buildPublicDocumentMap(tenantId, documentIds);
+    // Doküman presigned URL üretimi + avatar sorgusu depo/WhatsApp ağına bağlı.
+    // Asılı kalırlarsa sohbet HİÇ açılmıyordu (sağ panel sonsuz "Yükleniyor...").
+    // Zaman sınırıyla en kötü ihtimalde belge/avatar boş döner ama SOHBET AÇILIR.
+    const detailTimeoutMs = Number(process.env.WHATSAPP_DETAIL_ENRICH_TIMEOUT_MS || 6000) || 6000;
+    const documentMap = await this.withTimeout(
+      this.buildPublicDocumentMap(tenantId, documentIds).catch(() => new Map<string, any>()),
+      detailTimeoutMs,
+      new Map<string, any>(),
+    );
     for (const message of messages) {
       message.documents = message.documents.map((doc) => documentMap.get(doc.id) || doc);
     }
@@ -373,7 +381,11 @@ export class WhatsAppController {
       : null;
     const phone = ref.phone || this.defaultWhatsAppPhone(taxpayer);
     const avatarJid = logs.map((log) => this.extractWhatsAppJid(log.content)).reverse().find(Boolean) || null;
-    const avatarUrl = await this.baileys.profilePictureUrl(tenantId, avatarJid || phone).catch(() => null);
+    const avatarUrl = await this.withTimeout(
+      this.baileys.profilePictureUrl(tenantId, avatarJid || phone).catch(() => null),
+      detailTimeoutMs,
+      null,
+    );
     const presence = await this.baileys.presenceFor(tenantId, avatarJid || phone).catch(() => null);
 
     return {
@@ -1535,6 +1547,14 @@ export class WhatsAppController {
       atlanacak: rows.filter((r) => !r.gonderilebilir).length,
       rows,
     };
+  }
+
+  /** Bir Promise'i zaman sınırına bağlar — süre dolarsa fallback döner (asılı kalma koruması). */
+  private withTimeout<T>(p: Promise<T>, ms: number, fallback: T): Promise<T> {
+    return Promise.race([
+      p,
+      new Promise<T>((resolve) => setTimeout(() => resolve(fallback), ms)),
+    ]);
   }
 
   private async buildPublicDocumentMap(tenantId: string, documentIds: string[]): Promise<Map<string, any>> {
