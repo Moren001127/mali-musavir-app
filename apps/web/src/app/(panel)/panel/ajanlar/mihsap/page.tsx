@@ -296,6 +296,22 @@ export default function MihsapAgentPage() {
   const selectedNames = selectedIds
     .map((id) => taxpayers.find((t) => t.id === id))
     .filter(Boolean) as Taxpayer[];
+
+  // Atlama İncelemesi "yeniden işle için seç": grup mükelleflerini mevcut seçime koyar.
+  // İşlemi KULLANICI "Mükellef ile Devam" ile başlatır (2. onay kapısı) — burada başlatmıyoruz.
+  const atlananlariSec = (mukellefAdlari: string[]) => {
+    const istenen = new Set(mukellefAdlari.map((a) => a.trim().toLocaleLowerCase('tr')));
+    const ids = (taxpayers as any[])
+      .filter((t) => istenen.has(taxpayerName(t).trim().toLocaleLowerCase('tr')))
+      .map((t) => t.id);
+    if (ids.length === 0) {
+      toast.error('Eşleşen mükellef bulunamadı (Mihsap kimliği tanımlı mı?)');
+      return;
+    }
+    setSelectedIds(ids);
+    toast.success(`${ids.length} mükellef seçildi — işlem türünü seçip "Mükellef ile Devam" ile başlat`);
+    if (typeof window !== 'undefined') window.scrollTo({ top: 0, behavior: 'smooth' });
+  };
   const reportPeriodLabel = new Date(`${ay}-01T00:00:00`).toLocaleDateString('tr-TR', {
     month: 'long',
     year: 'numeric',
@@ -817,7 +833,7 @@ export default function MihsapAgentPage() {
       )}
 
       {/* ATLAMA İNCELEMESİ — atlanan faturalar sebebe göre gruplu + "bizim hata mı" */}
-      <AtlamaIncelemesi ay={ay} data={atlamaAnaliz} />
+      <AtlamaIncelemesi ay={ay} data={atlamaAnaliz} onSec={atlananlariSec} />
 
     </div>
   );
@@ -988,8 +1004,10 @@ function KpiMini({ label, value, color, icon }: { label: string; value: number; 
 function AtlamaIncelemesi({
   ay,
   data,
+  onSec,
 }: {
   ay: string;
+  onSec: (mukellefAdlari: string[]) => void;
   data?: {
     donem: string;
     toplam: number;
@@ -1118,6 +1136,17 @@ function AtlamaIncelemesi({
                         </div>
                       );
                     })()}
+                    {/* ATLANANLARI YENİDEN İŞLE (Faz 2) — mevcut seçim akışına koyar; işlemi "Mükellef ile Devam" başlatır (2. onay) */}
+                    <button
+                      onClick={() => {
+                        const adlar = Array.from(new Set(g.ornekler.map((o) => (o.mukellef || '').trim()).filter(Boolean)));
+                        onSec(adlar);
+                      }}
+                      className="mb-2 inline-flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-[12px] font-medium transition-all hover:opacity-90"
+                      style={{ background: 'rgba(52,211,153,0.10)', color: '#34d399', border: '1px solid rgba(52,211,153,0.25)' }}
+                    >
+                      <PlayCircle size={13} /> Bu mükellefleri seç (yeniden işle)
+                    </button>
                     <div className="rounded-lg overflow-hidden" style={{ border: '1px solid rgba(255,255,255,0.05)' }}>
                       {g.ornekler.map((o, j) => (
                         <div key={o.id} className="px-3 py-2 text-[12px]" style={{ borderTop: j > 0 ? '1px solid rgba(255,255,255,0.03)' : 'none', background: 'rgba(255,255,255,0.01)' }}>
