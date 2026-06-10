@@ -1092,8 +1092,8 @@ function AtlamaIncelemesi({
       {/* GELİŞTİRME KUYRUĞU (Faz 2 "Düzelt" talepleri) */}
       {bekleyenTalepler.length > 0 && (
         <div className="px-4 py-2.5 border-b" style={{ borderColor: 'rgba(255,255,255,0.05)', background: 'rgba(248,113,113,0.04)' }}>
-          <div className="text-[11px] font-semibold uppercase tracking-wider mb-1.5" style={{ color: '#f87171' }}>
-            Geliştirme Kuyruğu — {bekleyenTalepler.length} bekliyor
+          <div className="text-[11px] font-semibold uppercase tracking-wider mb-1.5" style={{ color: '#d4b876' }}>
+            Claude'a Gönderilen Düzeltmeler — {bekleyenTalepler.length} bekliyor
           </div>
           <div className="space-y-1">
             {bekleyenTalepler.slice(0, 6).map((tl: any) => (
@@ -1178,15 +1178,19 @@ function AtlamaIncelemesi({
                           {t.bizimHata !== 'hayir' && t.onerilenDuzeltme && (
                             <div className="mt-1.5">
                               {talepDurum[g.key] === 'eklendi' ? (
-                                <span className="inline-flex items-center gap-1 text-[11px]" style={{ color: '#34d399' }}><CheckCircle2 size={12} /> Geliştirme kuyruğuna eklendi</span>
+                                <span className="inline-flex items-center gap-1 text-[11px]" style={{ color: '#34d399' }}><CheckCircle2 size={12} /> Claude'a gönderildi — düzeltilecek</span>
                               ) : (
                                 <button
-                                  onClick={() => duzeltTalebiEkle(g.key, g.kategori, t)}
+                                  onClick={() => {
+                                    if (window.confirm(`Bu düzeltmeyi Claude'a, düzeltmesi için göndereyim mi?\n\n${g.kategori}\n${t.onerilenDuzeltme || ''}`)) {
+                                      duzeltTalebiEkle(g.key, g.kategori, t);
+                                    }
+                                  }}
                                   disabled={talepDurum[g.key] === 'gonderiliyor'}
                                   className="inline-flex items-center gap-1.5 px-2.5 py-1 rounded-md text-[11.5px] font-medium hover:opacity-90"
-                                  style={{ background: 'rgba(248,113,113,0.12)', color: '#f87171', border: '1px solid rgba(248,113,113,0.25)' }}
+                                  style={{ background: 'rgba(184,160,111,0.14)', color: '#d4b876', border: '1px solid rgba(184,160,111,0.3)' }}
                                 >
-                                  <Edit3 size={12} /> Düzelt (geliştirme kuyruğuna ekle)
+                                  <Edit3 size={12} /> Claude'a gönder (düzeltsin)
                                 </button>
                               )}
                             </div>
