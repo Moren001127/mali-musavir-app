@@ -5,6 +5,7 @@ import { MOREN_AI_TOOLS } from './tools';
 import { buildSystemPrompt } from './system-prompt';
 import { computeCostUsd, computeRealtimeCostUsd, canSpendOnApi, logAiUsage } from '../common/ai-usage-logger';
 import { claudeTextViaMax, isMaxAvailable, MAX_MODEL_CHEAP } from '../common/max-inference';
+import { sablonForTool, sablonZatenVar } from './whatsapp-sablon';
 
 const ANTHROPIC_URL = 'https://api.anthropic.com/v1/messages';
 // Hibrit model secimi — maliyet/kalite dengesi:
@@ -639,8 +640,8 @@ export class MorenAiService {
 
     finalText = this.compactFinalAnswer(finalText || '', !!body.voiceMode);
 
-    // DETERMİNİSTİK MALİ TABLO ŞABLONU — ortak metot (Max yolunda da uygulanır).
-    finalText = this.applyWhatsappOzet(finalText, toolUsesLog, !!body.voiceMode);
+    // DETERMİNİSTİK ŞABLON KATMANI — ortak metot (Max yolunda da uygulanır).
+    finalText = this.applyWhatsappOzet(finalText, toolUsesLog, !!body.voiceMode, body.taxpayerText || userMessage);
 
     // Assistant mesajını kaydet
     const aiMessageData: any = {
@@ -1059,13 +1060,28 @@ export class MorenAiService {
       `Kullanici mesaji: ${params.userMessage}`,
     ].filter(Boolean).join('\n\n');
 
-    const max = await claudeTextViaMax({
+    const maxStarted = Date.now();
+    let max = await claudeTextViaMax({
       prompt,
       system: params.systemPrompt,
       model: params.model,
       maxTurns: 1,
       timeoutMs: params.body.voiceMode ? 25000 : 45000,
     });
+    this.logger.log(`[HIZ] max ${params.model} ${Date.now() - maxStarted}ms ok=${max.ok && !!max.text.trim()}`);
+    // YEDEK MODEL MERDİVENİ: ana model (örn. derin soru → Sonnet) zaman aşar veya boş
+    // dönerse, düz-metin yedeğe düşmeden önce Haiku ile hızlı ikinci deneme yap.
+    // Kullanıcı şikayeti: "şablon yerine düz cümle geldi" = Max tek denemede boş kalmıştı.
+    if ((!max.ok || !max.text.trim()) && params.model !== MAX_MODEL_CHEAP) {
+      this.logger.warn(`Claude Max ${params.model} yanit vermedi (${max.error || 'bos'}); ${MAX_MODEL_CHEAP} ile tekrar deneniyor.`);
+      max = await claudeTextViaMax({
+        prompt,
+        system: params.systemPrompt,
+        model: MAX_MODEL_CHEAP,
+        maxTurns: 1,
+        timeoutMs: params.body.voiceMode ? 15000 : 25000,
+      });
+    }
     if (!max.ok || !max.text.trim()) {
       this.logger.warn(`Claude Max yanit uretmedi: ${max.error || 'bos cevap'}`);
       const toolOnlyAnswer = this.buildToolOnlyAnswer(toolUsesLog, params.userMessage);
@@ -1083,13 +1099,14 @@ export class MorenAiService {
       return null;
     }
 
-    // Max yolunda da deterministik mali tablo şablonu uygulanır — model gelir
+    // Max yolunda da deterministik şablon katmanı uygulanır — model gelir
     // tablosu/bilançoyu düz metne çeviriyordu; tabloyu kod ekler, model metni
     // kısa YORUM olarak altına gider. (Canlıda aktif yol BU — Max aboneliği.)
     const finalText = this.applyWhatsappOzet(
       this.compactFinalAnswer(max.text, !!params.body.voiceMode),
       toolUsesLog,
       !!params.body.voiceMode,
+      params.body.taxpayerText || params.userMessage,
     );
     return this.saveAssistantAndReturn({
       tenantId: params.tenantId,
@@ -1103,25 +1120,30 @@ export class MorenAiService {
   }
 
   /**
-   * Tool sonuçlarındaki hazır `whatsappOzet` bloklarını cevabın BAŞINA koyar.
-   * Şablonu modele bırakmamak için: tablo deterministik, modelin metni YORUM olur.
+   * Tool sonuçlarından üretilen hazır şablon bloklarını cevabın BAŞINA koyar.
+   * SORU-KAPILI: blok yalnızca kullanıcının sorusu o veriyi açıkça istiyorsa
+   * eklenir (whatsapp-sablon.ts) — önden çekilen alakasız veri cevaba yapışmaz
+   * (örn. "beyannameyi gönder" KDV kontrol şablonu getirmez).
+   * Şablon modele bırakılmaz: tablo deterministik, modelin metni YORUM olur.
    * Sesli modda uygulanmaz. Hem ücretli API hem Claude Max yolundan çağrılır.
    */
   private applyWhatsappOzet(
     finalText: string,
     toolUsesLog: Array<{ name: string; input: any; result: any }>,
     voiceMode: boolean,
+    questionText: string,
   ): string {
     if (voiceMode) return finalText;
-    const ozetler = Array.from(new Set(
-      (toolUsesLog || [])
-        .map((t) => (t?.result && typeof t.result.whatsappOzet === 'string' ? t.result.whatsappOzet.trim() : ''))
-        .filter(Boolean),
-    ));
-    if (!ozetler.length) return finalText;
-    const tablo = ozetler.join('\n\n');
+    const bloklar: string[] = [];
+    for (const t of toolUsesLog || []) {
+      const blok = sablonForTool(t?.name, t?.result, questionText);
+      if (blok && !bloklar.includes(blok)) bloklar.push(blok);
+      if (bloklar.length >= 2) break; // mesaj şişmesin — en fazla 2 blok
+    }
+    if (!bloklar.length) return finalText;
     // Model şablonu zaten kendisi yazdıysa ikinci kez ekleme.
-    if (/📈 GELİR TABLOSU|📊 BİLANÇO|🧾 KDV|📒 MİZAN/.test(finalText)) return finalText;
+    if (sablonZatenVar(finalText)) return finalText;
+    const tablo = bloklar.join('\n\n');
     const yorum = String(finalText || '').trim();
     return yorum ? `${tablo}\n\n📊 YORUM\n${yorum}` : tablo;
   }
@@ -1168,8 +1190,12 @@ export class MorenAiService {
       taxpayerId = result?.taxpayers?.[0]?.id;
     }
 
+    // HIZ: ön-çekimler artık PARALEL — eskiden 8 sorgu sırayla bekliyordu,
+    // toplam süre en yavaş sorgu kadar oldu ("cevap çok geç geliyor" şikayeti).
+    const started = Date.now();
+    const planned: Array<{ name: string; input: any }> = [];
     for (const name of toolNames) {
-      if (logs.length >= 8) break;
+      if (planned.length >= 8 - logs.length) break;
       if (MAX_PREFETCH_SKIP_TOOLS.has(name)) continue;
       if (name === 'list_taxpayers' && logs.some((log) => log.name === 'list_taxpayers')) continue;
       const input = this.inferMaxToolInput(name, {
@@ -1182,9 +1208,18 @@ export class MorenAiService {
         taxpayerSearch,
       });
       if (!input) continue;
-      const result = await this.toolExecutor.execute(name, input, { ...ctx, taxpayerId });
-      logs.push({ name, input, result });
+      planned.push({ name, input });
     }
+    const results = await Promise.all(planned.map(async ({ name, input }) => {
+      try {
+        const result = await this.toolExecutor.execute(name, input, { ...ctx, taxpayerId });
+        return { name, input, result };
+      } catch (err: any) {
+        return { name, input, result: { error: String(err?.message || err).slice(0, 200) } };
+      }
+    }));
+    logs.push(...results);
+    this.logger.log(`[HIZ] prefetch ${planned.length} tool paralel ${Date.now() - started}ms (${planned.map((p) => p.name).join(',')})`);
 
     return logs;
   }
@@ -1274,7 +1309,12 @@ export class MorenAiService {
       case 'list_araclar_hgs':
         return { limit: 20 };
       case 'research_official_sources':
-        return { query: ctx.userMessage, limit: 2, remember: true };
+        // HIZ: internetten resmi kaynak araması EN YAVAŞ ön-çekim. Grup deseni
+        // "oran/vergi/süre" gibi sık kelimelerle tetikleniyordu (örn. "cari oran"
+        // sorusu web araması başlatıyordu). Yalnız GERÇEK mevzuat sorusunda çek.
+        return /mevzuat|kanun|teblig|tebliğ|sirk[üu]ler|[öo]zelge|resmi gazete|ceza(s[ıi])?\b|asgari [üu]cret|had(ler|di)?\b|yeni oran|g[üu]ncel (oran|tutar|had)/i.test(gate)
+          ? { query: ctx.userMessage, limit: 2, remember: true }
+          : null;
       default:
         return null;
     }
@@ -1371,19 +1411,28 @@ export class MorenAiService {
   ): string | null {
     if (!toolUsesLog.length) return null;
     const taxpayer = this.firstTaxpayerFromTools(toolUsesLog);
-    const gelir = toolUsesLog.find((log) => log.name === 'get_gelir_tablosu');
-    if (gelir?.result && !gelir.result.error) {
-      return this.formatGelirTablosuAnswer(gelir.result, taxpayer);
+
+    // SORUYA GÖRE tablo seç — "bilanço" diyene gelir tablosu dökme. Soru
+    // hangisini istiyorsa o öne; belirsizse eski öncelik (gelir→bilanço→mizan).
+    const q = String(userMessage || '');
+    const finansalSira = /bilan[cç]o/i.test(q)
+      ? ['get_bilanco', 'get_gelir_tablosu', 'get_mizan']
+      : /mizan/i.test(q)
+        ? ['get_mizan', 'get_gelir_tablosu', 'get_bilanco']
+        : ['get_gelir_tablosu', 'get_bilanco', 'get_mizan'];
+    for (const ad of finansalSira) {
+      const log = toolUsesLog.find((l) => l.name === ad && l.result && !l.result.error);
+      if (!log) continue;
+      if (ad === 'get_gelir_tablosu') return this.formatGelirTablosuAnswer(log.result, taxpayer);
+      if (ad === 'get_bilanco') return this.formatBilancoAnswer(log.result, taxpayer);
+      return this.formatMizanAnswer(log.result, taxpayer);
     }
 
-    const bilanco = toolUsesLog.find((log) => log.name === 'get_bilanco');
-    if (bilanco?.result && !bilanco.result.error) {
-      return this.formatBilancoAnswer(bilanco.result, taxpayer);
-    }
-
-    const mizan = toolUsesLog.find((log) => log.name === 'get_mizan');
-    if (mizan?.result && !mizan.result.error) {
-      return this.formatMizanAnswer(mizan.result, taxpayer);
+    // Diğer veri tipleri: merkezi şablon katmanı (soru-kapılı) bir blok
+    // üretebiliyorsa onu dön — yedek yol da şablonlu cevap versin.
+    for (const log of toolUsesLog) {
+      const blok = sablonForTool(log?.name, log?.result, q);
+      if (blok) return blok;
     }
 
     const requestedFinancial = /gelir tablos|bilan[cç]o|bilanco|mizan|rasyo|oran|finansal/i.test(userMessage);
@@ -1485,12 +1534,20 @@ export class MorenAiService {
     const brutKar = Number(k.brutSatisKari || 0);
     const faaliyet = Number(k.faaliyetKari || 0);
     const netKar = Number(k.donemNetKari || k.donemKari || 0);
+    const vergi = Number(k.vergiKarsiligi || 0);
     const yorum = netKar > 0
       ? 'Sonuç kârlı; asıl bakılacak yer brüt kâr marjı ile faaliyet giderlerinin net satışa oranı.'
       : netKar < 0
         ? 'Sonuç zararda; satış maliyeti, faaliyet giderleri ve finansman gideri ayrı kontrol edilmeli.'
         : 'Net kâr sıfıra yakın; dönem kapanış kayıtları ve maliyet dağılımı kontrol edilmeli.';
-    return `${name}${result.donem} gelir tablosu bulundu. Net satış ${this.money(net)}, brüt kâr ${this.money(brutKar)} (${this.pct(this.ratio(brutKar, net))}), faaliyet kârı ${this.money(faaliyet)} (${this.pct(this.ratio(faaliyet, net))}), net kâr ${this.money(netKar)} (${this.pct(this.ratio(netKar, net))}). ${yorum}`;
+    // Hazır şablon varsa onu kullan — yedek yol da şablonlu cevap versin
+    // (Max cevap dönmediğinde düz cümle gidiyordu, kullanıcı şikayeti).
+    if (typeof result.whatsappOzet === 'string' && result.whatsappOzet.trim()) {
+      const baslik = taxpayer?.isim ? `${taxpayer.isim}\n` : '';
+      const vergiSatiri = vergi ? `• Vergi Karşılığı: ${this.money(vergi)}\n` : '';
+      return `${baslik}${result.whatsappOzet.trim()}\n${vergiSatiri}\n📊 YORUM\n• ${yorum}`;
+    }
+    return `${name}${result.donem} gelir tablosu bulundu. Net satış ${this.money(net)}, brüt kâr ${this.money(brutKar)} (${this.pct(this.ratio(brutKar, net))}), faaliyet kârı ${this.money(faaliyet)} (${this.pct(this.ratio(faaliyet, net))}), net kâr ${this.money(netKar)} (${this.pct(this.ratio(netKar, net))})${vergi ? `, vergi karşılığı ${this.money(vergi)}` : ''}. ${yorum}`;
   }
 
   private formatBilancoAnswer(result: any, taxpayer: any | null): string {
@@ -1502,12 +1559,22 @@ export class MorenAiService {
     const ozkaynak = Number(pasif.ozkaynaklar || 0);
     const cariOran = kvyk ? Number(aktif.donenVarliklar || 0) / kvyk : null;
     const cariText = cariOran ? new Intl.NumberFormat('tr-TR', { maximumFractionDigits: 2 }).format(cariOran) : '-';
-    return `${name}${result.donem} bilançosu bulundu. Aktif toplamı ${this.money(aktifToplami)}, KV yabancı kaynak ${this.money(kvyk)}, özkaynak ${this.money(ozkaynak)}, cari oran ${cariText}. ${result.dengeliMi ? 'Bilanço dengeli görünüyor.' : 'Aktif-pasif dengesi tutarsız görünüyor, kayıt kontrolü gerekir.'}`;
+    const yorum = `${result.dengeliMi ? 'Bilanço dengeli görünüyor.' : 'Aktif-pasif dengesi tutarsız görünüyor, kayıt kontrolü gerekir.'}${ozkaynak < 0 ? ' Özkaynak negatif — TTK 376 (sermaye kaybı) değerlendirilmeli.' : ''}`;
+    if (typeof result.whatsappOzet === 'string' && result.whatsappOzet.trim()) {
+      const baslik = taxpayer?.isim ? `${taxpayer.isim}\n` : '';
+      return `${baslik}${result.whatsappOzet.trim()}\n\n📐 YORUM\n• Cari Oran: ${cariText}\n• ${yorum}`;
+    }
+    return `${name}${result.donem} bilançosu bulundu. Aktif toplamı ${this.money(aktifToplami)}, KV yabancı kaynak ${this.money(kvyk)}, özkaynak ${this.money(ozkaynak)}, cari oran ${cariText}. ${yorum}`;
   }
 
   private formatMizanAnswer(result: any, taxpayer: any | null): string {
     const name = taxpayer?.isim ? `${taxpayer.isim} için ` : '';
-    return `${name}${result.donem} mizanı bulundu. Toplam borç ${this.money(result.toplamBorc)}, toplam alacak ${this.money(result.toplamAlacak)}, hesap sayısı ${result.hesapSayisiToplam || result.hesapSayisi}. ${result.dengeliMi ? 'Mizan dengeli.' : 'Mizanda borç/alacak farkı var, kontrol gerekir.'}`;
+    const yorum = result.dengeliMi ? 'Mizan dengeli.' : 'Mizanda borç/alacak farkı var, kontrol gerekir.';
+    if (typeof result.whatsappOzet === 'string' && result.whatsappOzet.trim()) {
+      const baslik = taxpayer?.isim ? `${taxpayer.isim}\n` : '';
+      return `${baslik}${result.whatsappOzet.trim()}\n\n📊 YORUM\n• ${yorum}`;
+    }
+    return `${name}${result.donem} mizanı bulundu. Toplam borç ${this.money(result.toplamBorc)}, toplam alacak ${this.money(result.toplamAlacak)}, hesap sayısı ${result.hesapSayisiToplam || result.hesapSayisi}. ${yorum}`;
   }
 
   private async saveAssistantAndReturn(params: {
