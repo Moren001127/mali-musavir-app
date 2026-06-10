@@ -320,19 +320,25 @@ export class ToolExecutorService {
       where,
       orderBy: [{ donem: 'desc' }],
       take: 20,
-      select: { beyanTipi: true, donem: true, onayNo: true, createdAt: true },
+      // tahakkukTutari/beyannameUrl sadece "verildi" hesabı için çekilir, çıktıda PAYLAŞILMAZ.
+      select: { beyanTipi: true, donem: true, onayNo: true, beyanTarihi: true, beyannameUrl: true, tahakkukTutari: true, createdAt: true },
     }).catch(() => []);
     return {
       adet: kayitlar.length,
       // POLİTİKA: Ödenecek/tahakkuk tutarı burada PAYLAŞILMAZ (müşavir kesinleştirir).
       tutarPolitikasi: 'Odenecek/tahakkuk tutarini musteriye verme; "musavirimiz kesinlestirince iletir" de.',
-      kayitlar: (kayitlar || []).map((k: any) => ({
-        beyanTipi: k.beyanTipi,
-        donem: k.donem,
-        durum: 'kayitli/verildi',
-        onayNoVar: !!k.onayNo,
-        kayitTarihi: k.createdAt?.toISOString?.().slice(0, 10),
-      })),
+      durumNotu: 'durum=verildi ise beyanname GİB\'e verilmiştir; onayNo boş olması "verilmedi" anlamına GELMEZ.',
+      kayitlar: (kayitlar || []).map((k: any) => {
+        const verildi = Boolean(k.beyanTarihi || k.onayNo || k.beyannameUrl || k.tahakkukTutari);
+        return {
+          beyanTipi: k.beyanTipi,
+          donem: k.donem,
+          durum: verildi ? 'verildi' : 'hazirlanmis',
+          beyanTarihi: k.beyanTarihi ? k.beyanTarihi.toISOString().slice(0, 10) : null,
+          onayNoVar: !!k.onayNo,
+          kayitTarihi: k.createdAt?.toISOString?.().slice(0, 10),
+        };
+      }),
     };
   }
 
@@ -1645,19 +1651,29 @@ export class ToolExecutorService {
     });
     return {
       adet: kayitlar.length,
-      kayitlar: kayitlar.map((k: any) => ({
-        id: k.id,
-        mukellef: k.taxpayer?.companyName || `${k.taxpayer?.firstName || ''} ${k.taxpayer?.lastName || ''}`.trim() || '—',
-        vkn: k.taxpayer?.taxNumber,
-        beyanTipi: k.beyanTipi,
-        donem: k.donem,
-        onayNo: k.onayNo,
-        tahakkukTutari: k.tahakkukTutari ? Number(k.tahakkukTutari) : null,
-        pdfVar: !!k.pdfUrl,
-        beyannameVar: !!k.beyannameUrl,
-        kaynak: k.kaynak,
-        kayitTarihi: k.createdAt,
-      })),
+      // ÖNEMLİ: "verildi mi" sorusunda 'durum'/'verildi' alanına bak. beyanTarihi
+      // (verildiği tarih), tahakkuk veya beyanname belgesi varsa beyanname GİB'e
+      // SUNULMUŞTUR — onayNo BOŞ olsa bile (içe aktarımda numara yakalanmamış olabilir).
+      aciklama: 'verildi=true ise beyanname verilmiştir. onayNo boş olması "verilmedi" anlamına GELMEZ.',
+      kayitlar: kayitlar.map((k: any) => {
+        const verildi = Boolean(k.beyanTarihi || k.onayNo || k.beyannameUrl || k.tahakkukTutari);
+        return {
+          id: k.id,
+          mukellef: k.taxpayer?.companyName || `${k.taxpayer?.firstName || ''} ${k.taxpayer?.lastName || ''}`.trim() || '—',
+          vkn: k.taxpayer?.taxNumber,
+          beyanTipi: k.beyanTipi,
+          donem: k.donem,
+          verildi,
+          durum: verildi ? 'verildi' : 'hazirlanmis',
+          beyanTarihi: k.beyanTarihi ? k.beyanTarihi.toISOString().slice(0, 10) : null,
+          onayNo: k.onayNo,
+          tahakkukTutari: k.tahakkukTutari ? Number(k.tahakkukTutari) : null,
+          pdfVar: !!k.pdfUrl,
+          beyannameVar: !!k.beyannameUrl,
+          kaynak: k.kaynak,
+          kayitTarihi: k.createdAt,
+        };
+      }),
     };
   }
 

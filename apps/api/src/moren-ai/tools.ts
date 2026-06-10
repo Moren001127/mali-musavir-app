@@ -142,7 +142,8 @@ export const MOREN_AI_TOOLS: ToolDefinition[] = [
   {
     name: 'get_my_beyanname',
     description:
-      'Taxpayer WhatsApp mode only. Aktif mukellefin KENDI beyanname DURUMUNU read-only getirir (hangi beyanname kayitli/verildi). ' +
+      'Taxpayer WhatsApp mode only. Aktif mukellefin KENDI beyanname DURUMUNU read-only getirir (durum: verildi/hazirlanmis + beyanTarihi). ' +
+      '"Verildi mi" sorusunda durum alanina bak; onayNo BOS olmasi "verilmedi" anlamina GELMEZ (beyanTarihi varsa verilmistir). ' +
       'ODENECEK/TAHAKKUK TUTARINI DONMEZ ve musteriye soyleme; tutar sorulursa "musavirimiz kesinlestirince iletir" de. ' +
       'Backend aktif mukellefi kendisi baglar; taxpayerId gonderme.',
     input_schema: {
@@ -417,8 +418,9 @@ export const MOREN_AI_TOOLS: ToolDefinition[] = [
     description:
       'İmport edilmiş (Hattat ZIP\'inden veya manuel PDF\'den) geçmiş beyanname kayıtlarını listeler. ' +
       '"X mükellefinin 2025 Mart KDV beyannamesi kaydedilmiş mi?", "Kurumlar beyannamesi yüklenen mükellefler kim?", ' +
-      '"2025-03 dönemi MUHSGK eksik olanlar" gibi sorularda kullan. ' +
-      'Her kayıt: mükellef, beyanTipi, dönem, onay no, tahakkuk tutarı, PDF var mı içerir.',
+      '"2025-03 dönemi MUHSGK eksik olanlar", "X beyannamesi verildi mi?" gibi sorularda kullan. ' +
+      'Her kayıt: mükellef, beyanTipi, dönem, durum(verildi/hazirlanmis), beyanTarihi, onay no, tahakkuk tutarı, PDF var mı. ' +
+      '"Verildi mi" sorusunda durum/verildi alanına bak; onayNo BOŞ olması "verilmedi" anlamına GELMEZ (beyanTarihi/tahakkuk varsa verilmiştir).',
     input_schema: {
       type: 'object',
       properties: {
