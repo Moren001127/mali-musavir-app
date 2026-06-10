@@ -198,10 +198,32 @@ chrome.runtime.onMessage.addListener((msg, sender, sendResponse) => {
   return true; // async response
 });
 
+// ─── Mihsap token KEEP-ALIVE ──────────────────────────────────
+// Mihsap token'ı yalnızca bir Mihsap sekmesi açıkken (runtime 60sn'de bir senkronlar)
+// taze kalır. Kullanıcı Mihsap'a HİÇ girmek zorunda kalmasın diye: Chrome açıkken
+// arka planda (odaksız) daima bir Mihsap sekmesi açık tutulur; kapatılırsa watchdog
+// 5 dk içinde geri açar. NOT: Mihsap oturumu düşerse sekme login ekranı gösterir,
+// o durumda bir kez giriş gerekir (kaçınılmaz minimum).
+async function ensureMihsapKeepAlive() {
+  try {
+    await ensureAgentTab('mihsap', { focus: false, create: true, navigate: false });
+  } catch (e) {
+    console.log('[Moren Auto-Agent BG] mihsap keep-alive hata', String(e));
+  }
+}
+
+// Chrome açıldığında arka planda Mihsap sekmesini garanti et.
+chrome.runtime.onStartup.addListener(() => {
+  console.log('[Moren Auto-Agent BG] startup → mihsap keep-alive');
+  ensureMihsapKeepAlive();
+});
+
 // ─── Watchdog: 5 dk'da bir tüm agent sekmelerini kontrol et ───
 chrome.alarms.create('moren_watchdog', { periodInMinutes: 5 });
 chrome.alarms.onAlarm.addListener(async (alarm) => {
   if (alarm.name !== 'moren_watchdog') return;
+  // Mihsap sekmesi kapandıysa arka planda geri aç (token taze kalsın).
+  await ensureMihsapKeepAlive();
   const status = await getStatus();
   for (const t of status.raw || []) {
     if (!t.running) {
@@ -218,4 +240,6 @@ chrome.runtime.onInstalled.addListener(async () => {
   for (const x of tabs) {
     chrome.tabs.reload(x.tab.id).catch(() => {});
   }
+  // Kurulum/yeniden-yükleme sonrası arka plan Mihsap keep-alive sekmesini hemen aç.
+  await ensureMihsapKeepAlive();
 });
