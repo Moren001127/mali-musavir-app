@@ -4,7 +4,7 @@
 */
 (function () {
   // Agent versiyon — UI'da gösterilir, debug için kritik
-  const AGENT_VERSION = '1.41.5';
+  const AGENT_VERSION = '1.41.6';
   const AGENT_INSTANCE_ID = 'mai_' + Date.now().toString(36) + '_' + Math.random().toString(36).slice(2, 8);
 
   // === VERSION-AWARE RELOAD ===
@@ -8586,6 +8586,24 @@
         f3.src = 'about:blank';
         await sleep(650);
         await log('Detay Fis Listesi icin frm3 temizlendi; eski/yanlis rapor formu kabul edilmeyecek');
+      }
+    } catch {}
+    // ── v1.41.6: Hesap Plani / Stok Tanim / Mukellef gibi yanlis-modul ekranlar
+    //    acik kalinca Detay Fis Listesi (REPFORM) hedef frame'i bulamiyor ve
+    //    "form yuklenmedi" ile fail oluyor. (Canli teshis: ILGI OTO 2026/Q1 —
+    //    ekranda hplan+stoktanim acikken 4 deneme fail; ekran temizken basarili.)
+    //    Mizan sabit raporMizanForm kullandigi icin etkilenmiyor; Detay Fis etkileniyor.
+    //    frm3 ile ayni guvenli about:blank teknigi — sadece bu akisi ilgilendirir.
+    try {
+      const wrongFrameNames = ['hplan', 'stoktanim', 'mukellef', 'sirketTanim', 'tanim'];
+      let cleared = 0;
+      for (const n of wrongFrameNames) {
+        const wf = getLucaFrame(n);
+        if (wf) { try { wf.src = 'about:blank'; cleared += 1; } catch {} }
+      }
+      if (cleared) {
+        await sleep(650);
+        await log(`Detay Fis Listesi: ${cleared} yanlis-modul ekran temizlendi (hplan/stoktanim vb.)`);
       }
     } catch {}
     cacheVisibleLucaMenuIds();
