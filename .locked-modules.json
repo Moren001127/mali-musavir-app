@@ -2,7 +2,7 @@
   "_meta": {
     "description": "Kilitli modul SHA256 hash baseline. Backend SystemHealth her 5 dk hash kontrol eder.",
     "how_to_unlock": "Eger kasitli degisiklik yaptiysan: yeni hash hesapla ve buraya yaz. Aksi halde MODULE_HASH alarmi calar.",
-    "baseline_date": "2026-06-09",
+    "baseline_date": "2026-06-10",
     "baseline_version": "v1.36.16"
   },
   "modules": {
@@ -17,7 +17,7 @@
       "lockedBy": "muzaffer"
     },
     "apps/api/public/agent-runtime.js": {
-      "sha256": "86b07080c6ea93fe2f96399b32649462cb0e5364e17c3992c0e31b1464fbd300",
+      "sha256": "0625a9f710da08550d0fa34f366383d80cc177135cfc4bac9f5eff281ca7f033",
       "reason": "Moren Agent v1.36.64 - log denetim uyarilari + Claude Vision maliyet optimizasyonu",
       "lockedBy": "muzaffer"
     },
