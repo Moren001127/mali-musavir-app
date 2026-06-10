@@ -222,6 +222,25 @@ export class AgentEventsController {
     return this.service.listAtlamaTalepler(req.user.tenantId);
   }
 
+  /** Otonom ajan için (X-Agent-Token) — geliştirme kuyruğunu okur. */
+  @SkipThrottle()
+  @Get('events/atlama-talepler-agent')
+  async listAtlamaTaleplerAgent(@Headers('x-agent-token') token: string) {
+    const tenantId = await this.resolveTenantFromTokenAsync(token);
+    return this.service.listAtlamaTalepler(tenantId);
+  }
+
+  /** Otonom ajan talebi "yapildi" / "onay-bekliyor" işaretler (X-Agent-Token). */
+  @Post('events/atlama-talep/:id/durum')
+  async setAtlamaTalepDurumAgent(
+    @Headers('x-agent-token') token: string,
+    @Param('id') id: string,
+    @Body() body: { durum?: string; not?: string },
+  ) {
+    const tenantId = await this.resolveTenantFromTokenAsync(token);
+    return this.service.markAtlamaTalepDurum(tenantId, id, body?.durum || 'yapildi', body?.not);
+  }
+
   /** Mihsap fatura isleme loglarini firma + donem bazinda Excel'e dok. */
   @Get('events/mihsap-report.xlsx')
   @UseGuards(AuthGuard('jwt'))

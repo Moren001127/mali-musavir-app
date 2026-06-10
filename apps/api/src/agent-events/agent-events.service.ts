@@ -1694,6 +1694,25 @@ ${belgeMetni}`;
     };
   }
 
+  /** Talep durumunu güncelle (otonom ajan "yapildi"/"onay-bekliyor" işaretler). */
+  async markAtlamaTalepDurum(tenantId: string, id: string, durum: string, not?: string) {
+    const ev = await this.prisma.agentEvent.findUnique({
+      where: { id },
+      select: { tenantId: true, agent: true, meta: true },
+    });
+    if (!ev || ev.tenantId !== tenantId || ev.agent !== 'atlama-iyilestirme') {
+      return { ok: false, sebep: 'Talep bulunamadı' };
+    }
+    const yeniMeta = { ...(typeof ev.meta === 'object' && ev.meta ? (ev.meta as any) : {}) };
+    if (not) yeniMeta.ajanNotu = String(not).slice(0, 500);
+    yeniMeta.guncellenme = new Date().toISOString();
+    await this.prisma.agentEvent.update({
+      where: { id },
+      data: { status: durum, meta: yeniMeta as any },
+    });
+    return { ok: true };
+  }
+
   async listEvents(
     tenantId: string,
     opts: { agent?: string; mukellef?: string; status?: string; limit?: number; since?: string } = {},
