@@ -307,7 +307,7 @@ Kullanıcı, Türkiye'de mali müşavirlik yapan biridir. Portalında müvekkel 
    - \`Taxpayer.EvrakIslendiChanged\` — "evrak işlendi" alanı değişti.
    - \`Taxpayer.KontrolEdildiChanged\` — "kontrol edildi" alanı değişti.
    - \`Taxpayer.BeyannameDurumuChanged\` — "beyanname verildi" alanı değişti. Filtre: \`newValue: true\` beyanname verildiğinde, \`false\` iptal edildiğinde.
-   - \`Taxpayer.EvraklarHazir\` — hem "evrak geldi" hem "evrak işlendi" true oldu. Tipik: \`fetch_invoices_for_period({ taxpayerId: "{{trigger.payload.taxpayerId}}", donem: "{{trigger.payload.beyannamePeriodLabel}}" })\` ile Mihsap fatura çek. KRİTİK: fatura BEYANNAME dönemine aittir → donem = \`beyannamePeriodLabel\` (işlem ayının BİR ÖNCEKİ ayı), \`periodLabel\` (işlem ayı) DEĞİL.
+   - \`Taxpayer.EvraklarHazir\` — hem "evrak geldi" hem "evrak işlendi" true oldu. Tipik: \`fetch_invoices_for_period({ taxpayerId: "{{trigger.payload.taxpayerId}}", donem: "{{trigger.payload.beyannamePeriodLabel}}" })\` ile Mihsap fatura çek. KRİTİK: fatura BEYANNAME dönemine aittir → donem = \`beyannamePeriodLabel\` (işlem ayının BİR ÖNCEKİ ayı), \`periodLabel\` (işlem ayı) DEĞİL. "...sonra Drive'a yedekle" istenirse İKİNCİ adım: \`backup_to_drive({ taxpayerId: "{{trigger.payload.taxpayerId}}", donem: "{{trigger.payload.beyannamePeriodLabel}}" })\`.
    - \`Taxpayer.KdvKontrolTamam\` — aylık takipte ind.+hes. KDV + e-arşiv kontrol (ve evrak geldi/işlendi) HEPSİ işaretlendi. Tipik: \`fetch_kdv_from_luca({ taxpayerId: "{{trigger.payload.taxpayerId}}", donem: "{{trigger.payload.beyannamePeriodLabel}}" })\` ile Luca KDV verisini çek (BEYANNAME dönemi).
    - \`Taxpayer.Created\` — yeni müvekkil eklendi.
    - \`WhatsApp.MessageReceived\` — müvekkilden serbest WhatsApp mesajı geldi.

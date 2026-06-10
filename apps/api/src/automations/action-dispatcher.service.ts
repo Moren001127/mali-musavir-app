@@ -8,6 +8,7 @@ import { MihsapService } from '../mihsap/mihsap.service';
 import { EmailService } from '../email/email.service';
 import { KdvBeyannameService } from '../kdv-beyanname/kdv-beyanname.service';
 import { TaxpayersService } from '../taxpayers/taxpayers.service';
+import { DriveService } from '../drive/drive.service';
 import { ACTION_BY_NAME } from './action-catalog';
 import { claudeTextViaMax } from '../common/max-inference';
 
@@ -40,6 +41,7 @@ export class ActionDispatcherService {
     private readonly email: EmailService,
     private readonly kdvBeyanname: KdvBeyannameService,
     private readonly taxpayers: TaxpayersService,
+    private readonly drive: DriveService,
   ) {}
 
   /**
@@ -119,6 +121,9 @@ export class ActionDispatcherService {
 
       case 'set_monthly_status':
         return this.setMonthlyStatus(args, ctx);
+
+      case 'backup_to_drive':
+        return this.backupToDrive(args, ctx);
 
       default:
         throw new Error(`Aksiyon "${toolName}" tanımlı ama dispatcher'da uygulanmamış.`);
@@ -495,6 +500,35 @@ export class ActionDispatcherService {
       taxpayerId,
       donem: `${year}-${String(month).padStart(2, '0')}`,
       isaretlenen: data,
+    };
+  }
+
+  /**
+   * backup_to_drive — bir mükellefin belirtilen dönem faturalarını Google Drive'a yedekler.
+   * Manuel "Drive'a Yedekle" ile aynı startBackup'ı kullanır. auto:false → Drive bağlı
+   * değilse net hata fırlatır (otomasyon geçmişinde görünür). Aynı mükellef+dönem için
+   * çalışan iş varsa yenisi açılmaz (dedup orada).
+   */
+  private async backupToDrive(args: any, ctx: { tenantId: string; userId?: string | null }) {
+    const taxpayerId = String(args.taxpayerId ?? '');
+    const donemRaw = String(args.donem ?? '').trim();
+    if (!taxpayerId) {
+      throw new Error('backup_to_drive: taxpayerId zorunlu.');
+    }
+    const donem = donemRaw ? (this.normalizeDonem(donemRaw) || donemRaw) : undefined;
+    const res = await this.drive.startBackup({
+      tenantId: ctx.tenantId,
+      mukellefId: taxpayerId,
+      donem,
+      createdBy: ctx.userId ?? undefined,
+      auto: false,
+    });
+    return {
+      success: true,
+      taxpayerId,
+      donem: donem ?? null,
+      jobId: res?.jobId ?? null,
+      zatenSuruyor: !!res?.already,
     };
   }
 

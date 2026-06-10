@@ -299,6 +299,24 @@ const AI_ACTIONS: AutomationAction[] = [
     },
   },
   {
+    name: 'backup_to_drive',
+    category: 'WRITE',
+    estimatedClaudeCostPerCall: 0,
+    requires: ['drive'],
+    description:
+      'Bir mukellefin belirtilen donemdeki faturalarini Google Drive\'a yedekler (Faturalar sayfasindaki "Drive\'a Yedekle" butonunun otomasyon esdegeri). ' +
+      'Google Drive bagli degilse hata verir. Ayni mukellef+donem icin zaten calisan yedek varsa yenisi acilmaz. ' +
+      'Tipik kullanim: fetch_invoices_for_period adimindan SONRA, ayni donem icin (beyanname donemi) calistir.',
+    input_schema: {
+      type: 'object',
+      properties: {
+        taxpayerId: { type: 'string', description: 'Mukellefin sistem ID\'si (genelde "{{trigger.payload.taxpayerId}}").' },
+        donem: { type: 'string', description: 'YYYY-MM (genelde "{{trigger.payload.beyannamePeriodLabel}}" — fatura beyanname donemine aittir).' },
+      },
+      required: ['taxpayerId', 'donem'],
+    },
+  },
+  {
     name: 'set_monthly_status',
     category: 'WRITE',
     estimatedClaudeCostPerCall: 0,
