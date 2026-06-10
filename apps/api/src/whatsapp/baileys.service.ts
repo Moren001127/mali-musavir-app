@@ -139,7 +139,11 @@ export class BaileysService implements OnModuleDestroy {
   private ackErrorCount = 0;
   private lastSelfHealAt = 0;
   private noteInternalError(text: string) {
-    if (!/received error in ack|unexpected error in 'init queries'/i.test(text)) return;
+    // SADECE gönderim-onay hatası sayılır. "init queries" zaman aşımı bu Baileys
+    // sürümünde HER bağlantıda oluyor (canlı log 2026-06-10: her connect+60sn,
+    // fetchProps timeout) — teslimatı engellemiyor, sayaca katılırsa gereksiz
+    // soket tazelemesi tetikliyor.
+    if (!/received error in ack/i.test(text)) return;
     this.ackErrorCount++;
     if (this.ackErrorCount < 2) return;
     const now = Date.now();
