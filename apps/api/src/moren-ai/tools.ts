@@ -113,6 +113,56 @@ export const MOREN_AI_TOOLS: ToolDefinition[] = [
     },
   },
   {
+    name: 'get_my_kdv',
+    description:
+      'Taxpayer WhatsApp mode only. Aktif mukellefin KENDI donem KDV ozetini (fatura/eslesme/tutar) read-only getirir. ' +
+      '"KDV\'m ne kadar", "KDV durumum" gibi sorularda kullan. Backend aktif mukellefi kendisi baglar; taxpayerId gonderme.',
+    input_schema: {
+      type: 'object',
+      properties: {
+        donem: { type: 'string', description: 'Opsiyonel donem YYYY-MM. Bos ise guncel ay.' },
+      },
+    },
+  },
+  {
+    name: 'get_my_invoices',
+    description:
+      'Taxpayer WhatsApp mode only. Aktif mukellefin KENDI faturalarini (tutar, karsi firma, tarih) read-only listeler. ' +
+      '"Faturalarim", "su firmaya kestigim fatura", "bu ay kac fatura" gibi sorularda kullan. Backend aktif mukellefi kendisi baglar.',
+    input_schema: {
+      type: 'object',
+      properties: {
+        donem: { type: 'string', description: 'Opsiyonel donem YYYY-MM.' },
+        type: { type: 'string', enum: ['SATIS', 'ALIS'], description: 'Opsiyonel fatura tipi.' },
+        counterpartySearch: { type: 'string', description: 'Opsiyonel karsi firma adi / VKN / fatura no aramasi.' },
+        limit: { type: 'number', description: 'Varsayilan 20, max 50.' },
+      },
+    },
+  },
+  {
+    name: 'get_my_beyanname',
+    description:
+      'Taxpayer WhatsApp mode only. Aktif mukellefin KENDI beyanname DURUMUNU read-only getirir (hangi beyanname kayitli/verildi). ' +
+      'ODENECEK/TAHAKKUK TUTARINI DONMEZ ve musteriye soyleme; tutar sorulursa "musavirimiz kesinlestirince iletir" de. ' +
+      'Backend aktif mukellefi kendisi baglar; taxpayerId gonderme.',
+    input_schema: {
+      type: 'object',
+      properties: {
+        donem: { type: 'string', description: 'Opsiyonel donem YYYY-MM.' },
+      },
+    },
+  },
+  {
+    name: 'get_my_balance',
+    description:
+      'Taxpayer WhatsApp mode only. Aktif mukellefin KENDI cari bakiyesini ve son hareketlerini read-only getirir. ' +
+      '"Borcum ne kadar", "bakiyem", "odeme gecmisim" gibi sorularda kullan. Backend aktif mukellefi kendisi baglar.',
+    input_schema: {
+      type: 'object',
+      properties: {},
+    },
+  },
+  {
     name: 'list_taxpayers_monthly_status',
     description:
       'TEK ÇAĞRIDA ofisteki TÜM mükelleflerin belirli bir aydaki evrak/işlem durumunu listeler. ' +

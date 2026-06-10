@@ -62,6 +62,10 @@ export class ToolExecutorService {
         case 'get_my_documents':    return this.getMyDocuments(input, ctx);
         case 'get_my_open_tasks':   return this.getMyOpenTasks(input, ctx);
         case 'get_my_recent_messages': return this.getMyRecentMessages(input, ctx);
+        case 'get_my_kdv':          return this.getMyKdv(input, ctx);
+        case 'get_my_invoices':     return this.getMyInvoices(input, ctx);
+        case 'get_my_beyanname':    return this.getMyBeyanname(input, ctx);
+        case 'get_my_balance':      return this.getMyBalance(input, ctx);
         case 'list_taxpayers_monthly_status': return this.listTaxpayersMonthlyStatus(input, ctx);
         case 'list_mizan_periods':  return this.listMizanPeriods(input, ctx);
         case 'get_mizan':           return this.getMizan(input, ctx);
@@ -246,6 +250,123 @@ export class ToolExecutorService {
           .trim()
           .slice(0, 500),
         occurredAt: log.occurredAt,
+      })),
+    };
+  }
+
+  // ------------------------------------------------------------
+  // FAZ 1 — Mükellefe-KİLİTLİ WhatsApp veri tool'ları (taxpayer-readonly)
+  // Hepsi scopedTaxpayer(ctx) ile aktif mükellefe sabitlenir; input'taki
+  // taxpayerId/mükellef hedefi YOK SAYILIR → başka mükellefin verisi okunamaz.
+  // ------------------------------------------------------------
+  private async getMyKdv(input: any, ctx: { tenantId: string; taxpayerId?: string | null }) {
+    const taxpayer = await this.scopedTaxpayer(ctx);
+    if (!taxpayer) return { error: 'Aktif mukellef baglami yok.' };
+    const requested = String(input?.donem || input?.period || '').trim();
+    const explicit = /^\d{4}-\d{2}$/.test(requested);
+
+    // En son KDV kontrol dönemini bul (periodLabel "YYYY/MM" formatında).
+    const latest = await (this.prisma as any).kdvControlSession.findFirst({
+      where: { tenantId: ctx.tenantId, taxpayerId: taxpayer.id },
+      orderBy: { createdAt: 'desc' },
+      select: { periodLabel: true },
+    }).catch(() => null);
+    const latestDonem = latest?.periodLabel ? String(latest.periodLabel).replace('/', '-') : null;
+
+    const now = new Date();
+    const currentMonth = `${now.getFullYear()}-${String(now.getMonth() + 1).padStart(2, '0')}`;
+    // Açık dönem verildiyse onu; yoksa en son kayıtlı dönemi; o da yoksa güncel ayı kullan.
+    const donem = explicit ? requested : (latestDonem || currentMonth);
+    const res: any = await this.getKdvSummary({ taxpayerId: taxpayer.id, donem }, ctx);
+
+    // İstenen dönemde kayıt yoksa en son döneme düş, müşteriye hangi dönem olduğunu belirt.
+    if (res?.error && latestDonem && latestDonem !== donem) {
+      const fallback: any = await this.getKdvSummary({ taxpayerId: taxpayer.id, donem: latestDonem }, ctx);
+      if (!fallback?.error) {
+        return { ...fallback, not: `${donem} icin KDV kontrol kaydi yok; en son ${latestDonem} donemi gosteriliyor.` };
+      }
+    }
+    return res;
+  }
+
+  private async getMyInvoices(input: any, ctx: { tenantId: string; taxpayerId?: string | null }) {
+    const taxpayer = await this.scopedTaxpayer(ctx);
+    if (!taxpayer) return { error: 'Aktif mukellef baglami yok.' };
+    // taxpayerId sabitlenir; mükellef adı/arama alanları temizlenir ki başka
+    // mükellefe çözümlenmesin. Karşı-firma filtresi (counterpartySearch) kalır.
+    return this.listModuleInvoices({
+      donem: input?.donem,
+      period: input?.period,
+      type: input?.type,
+      faturaTuru: input?.faturaTuru,
+      source: input?.source,
+      counterpartySearch: input?.counterpartySearch || input?.firma || input?.firmaSearch,
+      startDate: input?.startDate,
+      endDate: input?.endDate,
+      minAmount: input?.minAmount,
+      maxAmount: input?.maxAmount,
+      limit: Math.min(Number(input?.limit) || 20, 50),
+      taxpayerId: taxpayer.id,
+    }, ctx);
+  }
+
+  private async getMyBeyanname(input: any, ctx: { tenantId: string; taxpayerId?: string | null }) {
+    const taxpayer = await this.scopedTaxpayer(ctx);
+    if (!taxpayer) return { error: 'Aktif mukellef baglami yok.' };
+    const donem = String(input?.donem || input?.period || '').trim();
+    const where: any = { tenantId: ctx.tenantId, taxpayerId: taxpayer.id };
+    if (/^\d{4}-\d{2}$/.test(donem)) where.donem = donem;
+    const kayitlar = await (this.prisma as any).beyanKaydi.findMany({
+      where,
+      orderBy: [{ donem: 'desc' }],
+      take: 20,
+      select: { beyanTipi: true, donem: true, onayNo: true, createdAt: true },
+    }).catch(() => []);
+    return {
+      adet: kayitlar.length,
+      // POLİTİKA: Ödenecek/tahakkuk tutarı burada PAYLAŞILMAZ (müşavir kesinleştirir).
+      tutarPolitikasi: 'Odenecek/tahakkuk tutarini musteriye verme; "musavirimiz kesinlestirince iletir" de.',
+      kayitlar: (kayitlar || []).map((k: any) => ({
+        beyanTipi: k.beyanTipi,
+        donem: k.donem,
+        durum: 'kayitli/verildi',
+        onayNoVar: !!k.onayNo,
+        kayitTarihi: k.createdAt?.toISOString?.().slice(0, 10),
+      })),
+    };
+  }
+
+  private async getMyBalance(_input: any, ctx: { tenantId: string; taxpayerId?: string | null }) {
+    const taxpayer = await this.scopedTaxpayer(ctx);
+    if (!taxpayer) return { error: 'Aktif mukellef baglami yok.' };
+    const cariClient = (this.prisma as any).cariHareket;
+    const [sonHareketler, tumHareketler] = await Promise.all([
+      cariClient.findMany({
+        where: { tenantId: ctx.tenantId, taxpayerId: taxpayer.id },
+        orderBy: { tarih: 'desc' },
+        take: 12,
+        select: { tarih: true, tip: true, tutar: true, aciklama: true, odemeYontemi: true },
+      }).catch(() => []),
+      cariClient.findMany({
+        where: { tenantId: ctx.tenantId, taxpayerId: taxpayer.id },
+        select: { tip: true, tutar: true },
+      }).catch(() => []),
+    ]);
+    const bakiye = (tumHareketler || []).reduce((sum: number, r: any) => {
+      const t = this.toNum(r.tutar);
+      if (r.tip === 'TAHAKKUK') return sum + t;
+      if (r.tip === 'TAHSILAT') return sum - t;
+      return sum;
+    }, 0);
+    return {
+      acikBakiye: bakiye > 0 ? bakiye : 0,
+      bakiyeAciklama: bakiye > 0 ? `${bakiye} TL acik bakiye gorunuyor` : 'Acik borc gorunmuyor',
+      sonHareketler: (sonHareketler || []).map((r: any) => ({
+        tarih: r.tarih?.toISOString?.().slice(0, 10),
+        tip: r.tip,
+        tutar: this.toNum(r.tutar),
+        aciklama: r.aciklama,
+        odemeYontemi: r.odemeYontemi,
       })),
     };
   }

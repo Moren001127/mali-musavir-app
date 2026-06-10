@@ -1641,7 +1641,13 @@ export class WhatsAppBotController implements OnModuleInit {
       '• "Anladım", "Müşteri...", "Cevap:", "Şimdilik:" gibi iç düşünce/etiket yazma. Doğrudan mesajı yaz.',
       '',
       `Intent (ipucu, müşteriye söyleme): ${classified.intent}`,
-      'Gerekirse get_my_* read-only tool çağır. taxpayerId verme — backend kendisi bağlar.',
+      '— VERİYE ERİŞİM —',
+      '• Mükellef KENDİ verisini sorarsa TAHMİN ETME, ilgili read-only tool\'u çağır ve GERÇEK rakamı söyle:',
+      '  KDV/durum → get_my_kdv · faturalar → get_my_invoices · beyanname durumu → get_my_beyanname · borç/bakiye → get_my_balance.',
+      '  Evrak listesi → get_my_documents · genel iş durumu → get_my_work_status.',
+      '• taxpayerId/başka mükellef bilgisi GÖNDERME — backend aktif mükellefi kendisi bağlar; mükellef sadece kendi verisini görür.',
+      '• BEYANNAME TUTARI: ödenecek/tahakkuk tutarını ASLA söyleme. Beyannamenin verildi/hazır DURUMUNU söyle; tutar sorulursa "müşavirimiz kesinleştirince paylaşır" de.',
+      '• Tool veri döndürmezse/boşsa rakam uydurma; "bir bakıp döneyim" tarzı doğal geç.',
       '',
       '═══ MÜKELLEF VERİSİ (cevabı burada ara) ═══',
       taxpayerContext,
@@ -1661,6 +1667,7 @@ export class WhatsAppBotController implements OnModuleInit {
       const answer = await this.morenAi.chat(taxpayer.tenantId, null, {
         taxpayerId: taxpayer.id,
         message: prompt,
+        taxpayerText: msg.text, // veri tool prefetch gating'i ham müşteri mesajına bakar
         // voiceMode KAPALI — WhatsApp metin cevabi. Sesli/true olunca max_token 260'a duser
         // ve compactFinalAnswer 220 karakterde keser => cevaplar yarida kalir (sacma/eksik).
         voiceMode: false,
@@ -1698,6 +1705,7 @@ export class WhatsAppBotController implements OnModuleInit {
           const retryAnswer = await this.morenAi.chat(taxpayer.tenantId, null, {
             taxpayerId: taxpayer.id,
             message: retryPrompt,
+            taxpayerText: msg.text, // veri tool prefetch gating'i ham müşteri mesajına bakar
             voiceMode: false,
             toolMode: 'taxpayer-readonly',
             source: 'whatsapp-bot',

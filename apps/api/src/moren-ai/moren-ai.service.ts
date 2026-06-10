@@ -102,6 +102,11 @@ const TAXPAYER_READONLY_TOOL_NAMES = [
   'get_my_documents',
   'get_my_open_tasks',
   'get_my_recent_messages',
+  // FAZ 1 — mükellefin kendi finansal verisi (hepsi backend'de aktif mükellefe kilitli)
+  'get_my_kdv',
+  'get_my_invoices',
+  'get_my_beyanname',
+  'get_my_balance',
 ];
 
 const TOOL_GROUPS: Array<{ pattern: RegExp; tools: string[] }> = [
@@ -198,6 +203,9 @@ export interface ChatRequest {
   /** Maliyet logu için kaynak/modül etiketi (varsayılan 'moren-ai').
    *  WhatsApp botu 'whatsapp-bot' / 'whatsapp-owner' geçer → maliyet ekranında ayrı görünür. */
   source?: string;
+  /** WhatsApp botunda müşterinin HAM mesajı (message tüm talimat bloğunu içerir).
+   *  Veri tool'larının prefetch'i bu ham metne göre tetiklenir → "merhaba"da gereksiz veri çekilmez. */
+  taxpayerText?: string;
 }
 
 export interface ChatResponse {
@@ -1145,6 +1153,8 @@ export class MorenAiService {
       if (name === 'list_taxpayers' && logs.some((log) => log.name === 'list_taxpayers')) continue;
       const input = this.inferMaxToolInput(name, {
         userMessage: params.userMessage,
+        // Veri tool gating'i müşterinin HAM mesajına bakar (message = dev talimat bloğu).
+        gateText: params.body.taxpayerText || params.userMessage,
         period,
         previousPeriod,
         taxpayerId,
@@ -1160,11 +1170,13 @@ export class MorenAiService {
 
   private inferMaxToolInput(name: string, ctx: {
     userMessage: string;
+    gateText?: string;
     period: string;
     previousPeriod: string;
     taxpayerId?: string;
     taxpayerSearch?: string;
   }): any | null {
+    const gate = ctx.gateText || ctx.userMessage;
     const hasTaxpayer = Boolean(ctx.taxpayerId);
     const taxpayerInput = hasTaxpayer ? { taxpayerId: ctx.taxpayerId } : (ctx.taxpayerSearch ? { taxpayerName: ctx.taxpayerSearch } : null);
 
@@ -1202,6 +1214,24 @@ export class MorenAiService {
         return hasTaxpayer ? { taxpayerId: ctx.taxpayerId, period: ctx.period, donem: ctx.period } : null;
       case 'list_documents':
         return hasTaxpayer ? { taxpayerId: ctx.taxpayerId } : null;
+      // FAZ 1 — mükellefe-kilitli WhatsApp veri tool'ları. Backend aktif mükellefi
+      // ctx.taxpayerId ile bağlar; girdide taxpayerId GÖNDERİLMEZ. İsraf/aşırı-paylaşım
+      // olmasın diye SADECE mesaj o konuyla ilgiliyse prefetch edilir.
+      case 'get_my_kdv':
+        return /\bkdv\b/i.test(gate) ? { donem: this.explicitPeriodOrNull(gate, ctx.period) } : null;
+      case 'get_my_invoices':
+        return /fatura/i.test(gate) ? { donem: this.explicitPeriodOrNull(gate, ctx.period), limit: 20 } : null;
+      case 'get_my_beyanname':
+        return /beyan|tahakkuk/i.test(gate) ? { donem: this.explicitPeriodOrNull(gate, ctx.period) } : null;
+      case 'get_my_balance':
+        return /bor[cç]|bakiye|[öo]deme|cari|hesab[ıi]m|ne kadar [öo]de/i.test(gate) ? {} : null;
+      case 'get_my_profile':
+      case 'get_my_work_status':
+      case 'get_my_documents':
+      case 'get_my_open_tasks':
+      case 'get_my_recent_messages':
+        // Bunlar statik mükellef context bloğunda zaten var; prefetch'e gerek yok.
+        return null;
       case 'get_tax_calendar':
         return { fromDate: new Date().toISOString().slice(0, 10), toDate: new Date(Date.now() + 30 * 86400_000).toISOString().slice(0, 10) };
       case 'get_operation_briefing':
@@ -1227,6 +1257,15 @@ export class MorenAiService {
       default:
         return null;
     }
+  }
+
+  // Mesajda AÇIKÇA bir dönem (YYYY-MM veya ay adı) geçiyorsa o dönemi döner;
+  // yoksa undefined — böylece tool kendi mantığıyla (en güncel/son kayıt) seçer.
+  private explicitPeriodOrNull(text: string, period: string): string | undefined {
+    const raw = String(text || '');
+    if (/\b20\d{2}-(0[1-9]|1[0-2])\b/.test(raw)) return period;
+    if (/(ocak|şubat|subat|mart|nisan|mayıs|mayis|haziran|temmuz|ağustos|agustos|eylül|eylul|ekim|kasım|kasim|aralık|aralik)/i.test(raw)) return period;
+    return undefined;
   }
 
   private inferPeriodFromText(text: string): string {
