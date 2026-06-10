@@ -4884,13 +4884,23 @@ ${JSON.stringify(payload, null, 2)}`;
             const unvan = t?.type === 'TUZEL_KISI'
               ? t.companyName || ''
               : `${t?.firstName ?? ''} ${t?.lastName ?? ''}`.trim();
+            // KDV kontrol oturumu BEYANNAME dönemine aittir (year/month). Aylık takip
+            // listesi ise İŞLEM AYINA göre anahtarlanır = beyanname dönemi + 1 ay.
+            // Kutuları (ind/hes/e-arşiv) işaretleyen otomasyon bu işlem ayını kullanmalı,
+            // yoksa kullanıcının çalıştığı (işlem ayı) satırında görünmez.
+            const islemYear = month === 12 ? year + 1 : year;
+            const islemMonth = month === 12 ? 1 : month + 1;
             this.automationEventBus.emit('Taxpayer.KdvKontrolKilitlendi', {
               tenantId,
               taxpayerId: session.taxpayerId,
               taxpayerUnvan: unvan || '(isim yok)',
               taxpayerVkn: t?.taxNumber ?? '',
-              year,
-              month,
+              year,            // beyanname dönemi yılı
+              month,           // beyanname dönemi ayı
+              beyannamePeriodLabel: `${year}-${String(month).padStart(2, '0')}`,
+              islemYear,       // işlem ayı yılı (aylık takip satırı = beyanname + 1)
+              islemMonth,      // işlem ayı ayı
+              islemPeriodLabel: `${islemYear}-${String(islemMonth).padStart(2, '0')}`,
               sessionId: session.id,
               periodLabel: session.periodLabel,
             });
