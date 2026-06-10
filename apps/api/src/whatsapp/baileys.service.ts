@@ -223,12 +223,15 @@ export class BaileysService implements OnModuleDestroy {
         keys: makeCacheableSignalKeyStore(auth.state.keys, logger),
       },
       logger,
-      printQRInTerminal: false,
       browser: ['Moren Portal', 'Chrome', '1.0'],
       syncFullHistory: false,
       // 463 (reach-out timelock) azaltma: hesabı "aktif/online" göster — pasif
       // companion cihazdan giden mesajlar daha çok kilitleniyordu.
       markOnlineOnConnect: true,
+      // Baileys 7.x: mesaj yeniden gönderme / poll / alıntı için zorunlu callback.
+      // Geçmişi DB'de tutmuyoruz → undefined güvenli (retry/poll sınırlanır, akış bozulmaz).
+      // (printQRInTerminal 7.x'te kaldırıldı; QR connection.update üzerinden alınıyor.)
+      getMessage: async () => undefined,
     });
 
     const session: Session = {
