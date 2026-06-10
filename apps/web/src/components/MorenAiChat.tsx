@@ -2,6 +2,8 @@
 
 import { useEffect, useRef, useState } from 'react';
 import { createPortal } from 'react-dom';
+import ReactMarkdown from 'react-markdown';
+import remarkGfm from 'remark-gfm';
 import { Sparkles, X, Send, Mic, Paperclip, Loader2, MicOff } from 'lucide-react';
 import { chat, transcribe, type Message as ApiMessage } from '@/lib/moren-ai';
 
@@ -13,17 +15,6 @@ type UiMessage = {
   attachment?: string;
   toolUses?: Array<{ name: string }>;
 };
-
-function renderText(text: string) {
-  // **bold** desteği + satır atlama
-  const parts = text.split(/(\*\*[^*]+\*\*)/g);
-  return parts.map((p, i) => {
-    if (p.startsWith('**') && p.endsWith('**')) {
-      return <strong key={i} style={{ color: '#fafaf9', fontWeight: 700 }}>{p.slice(2, -2)}</strong>;
-    }
-    return <span key={i}>{p}</span>;
-  });
-}
 
 export function MorenAiButton({ onClick }: { onClick: () => void }) {
   return (
@@ -215,7 +206,6 @@ export default function MorenAiChat({ open, onClose }: { open: boolean; onClose:
                   borderBottomLeftRadius: m.role === 'ai' ? 4 : undefined,
                   fontSize: 13.5,
                   lineHeight: 1.55,
-                  whiteSpace: 'pre-wrap',
                 }}
               >
                 {m.toolUses && m.toolUses.length > 0 && (
@@ -236,7 +226,13 @@ export default function MorenAiChat({ open, onClose }: { open: boolean; onClose:
                     <Paperclip size={12} /> {m.attachment}
                   </div>
                 )}
-                {renderText(m.text)}
+                {m.role === 'ai' ? (
+                  <div className="moren-md" style={{ fontSize: 13.5, lineHeight: 1.55 }}>
+                    <ReactMarkdown remarkPlugins={[remarkGfm]}>{m.text}</ReactMarkdown>
+                  </div>
+                ) : (
+                  <span style={{ whiteSpace: 'pre-wrap' }}>{m.text}</span>
+                )}
               </div>
             </div>
           ))}
