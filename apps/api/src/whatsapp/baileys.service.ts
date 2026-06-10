@@ -133,27 +133,60 @@ export class BaileysService implements OnModuleDestroy {
     return l;
   }
 
-  /** Üst üste gönderim-onay/init hatası = soket bozuk ama "bağlı" görünüyor
-   *  (2026-06-10: QR sonrası init queries düştü, mesajlar "gönderildi" ama
-   *  ulaşmadı). Kendi kendine iyileşme: soketi TAZELE (oturum korunur, QR yok). */
-  private ackErrorCount = 0;
-  private lastSelfHealAt = 0;
-  private noteInternalError(text: string) {
-    // SADECE gönderim-onay hatası sayılır. "init queries" zaman aşımı bu Baileys
-    // sürümünde HER bağlantıda oluyor (canlı log 2026-06-10: her connect+60sn,
-    // fetchProps timeout) — teslimatı engellemiyor, sayaca katılırsa gereksiz
-    // soket tazelemesi tetikliyor.
-    if (!/received error in ack/i.test(text)) return;
-    this.ackErrorCount++;
-    if (this.ackErrorCount < 2) return;
-    const now = Date.now();
-    if (now - this.lastSelfHealAt < 10 * 60_000) return; // en çok 10 dk'da bir
-    this.lastSelfHealAt = now;
-    this.ackErrorCount = 0;
-    for (const [tenantId, s] of this.sessions) {
-      this.logger.warn(`[Baileys] tenant=${tenantId} gönderim onay hataları birikti — soket tazeleniyor (oturum korunur, QR gerekmez)`);
-      try { s.sock?.end?.(undefined); } catch { /* close handler yeniden bağlar */ }
+  /**
+   * Gönderilen mesajların kısa süreli kaydı — 463 (reach-out timelock) ack
+   * hatasında YENİDEN GÖNDERMEK için. id → { tenantId, jid, payload, tries }.
+   */
+  private readonly recentSends = new Map<string, { tenantId: string; jid: string; payload: any; tries: number; at: number }>();
+
+  private rememberSend(tenantId: string, jid: string, payload: any, id?: string | null) {
+    if (!id) return;
+    this.recentSends.set(id, { tenantId, jid, payload, tries: 0, at: Date.now() });
+    if (this.recentSends.size > 300) {
+      const cutoff = Date.now() - 5 * 60_000;
+      for (const [k, v] of this.recentSends) if (v.at < cutoff) this.recentSends.delete(k);
     }
+  }
+
+  /**
+   * Baileys iç logger "received error in ack" yazınca tetiklenir. 463 =
+   * NackCallerReachoutTimelocked (WhatsApp gönderim kilidi). KÖKTEN çözüm
+   * Baileys'te yok (son kararlı 6.7.23 zaten kurulu; düzeltmeler kilidi
+   * azaltıyor ama bitirmiyor). Pratik dengeleme:
+   *  1) İlgili mesajı "teslim edilemedi" işaretle (portal yanlış "gönderildi"
+   *     dememesi için — kullanıcı "portalda gönderildi ama bana ulaşmadı" dedi).
+   *  2) Tek sefer GECİKMELİ yeniden gönder (kilit zaman-bazlı; ikinci deneme
+   *     çoğu zaman geçer). ESKİ davranış (soketi kapat) YANLIŞTI: 463 soket
+   *     bozukluğu değil, soketi kapatmak reconnect fırtınası yaratıp WhatsApp'ı
+   *     daha çok kilitliyordu — kaldırıldı.
+   */
+  private noteInternalError(text: string) {
+    if (!/received error in ack/i.test(text)) return;
+    const id = text.match(/"id":"([^"]+)"/)?.[1];
+    const code = text.match(/"error":"?(\d+)"?/)?.[1];
+    if (!id) return;
+    const rec = this.recentSends.get(id);
+    if (rec) this.storeDelivery(rec.tenantId, id, 'failed');
+    // Yalnız reach-out timelock'ta (463) ve ilk denemede retry et.
+    if (code !== '463' || !rec || rec.tries >= 1) return;
+    rec.tries++;
+    const delay = Number(process.env.WHATSAPP_NACK_RETRY_MS || 12000);
+    const t = setTimeout(async () => {
+      const s = this.sessions.get(rec.tenantId);
+      if (!s?.connected || !s.sock) return;
+      try {
+        await this.refreshSignalSession(s.sock, rec.jid);
+        const sent = await s.sock.sendMessage(rec.jid, rec.payload);
+        this.rememberSend(rec.tenantId, rec.jid, rec.payload, sent?.key?.id);
+        const nr = this.recentSends.get(String(sent?.key?.id || ''));
+        if (nr) nr.tries = 1; // zincirleme sonsuz retry'ı önle
+        this.storeDelivery(rec.tenantId, sent?.key?.id, 'sent');
+        this.logger.warn(`[Baileys] 463 sonrasi yeniden gonderildi id=${id} -> ${sent?.key?.id}`);
+      } catch (e: any) {
+        this.logger.warn(`[Baileys] 463 retry basarisiz id=${id}: ${e?.message || e}`);
+      }
+    }, delay);
+    (t as any).unref?.();
   }
 
   /** Bağlantıyı başlat (kayıtlı oturum varsa QR'sız bağlanır, yoksa QR üretir). */
@@ -256,7 +289,6 @@ export class BaileysService implements OnModuleDestroy {
         this.lastErrors.delete(tenantId);
         this.reconnectAttempts.delete(tenantId);
         this.clearReconnectTimer(tenantId);
-        this.ackErrorCount = 0; // taze soket — gönderim hata sayacı sıfır
         this.logger.log(`[Baileys] tenant=${tenantId} BAĞLANDI`);
       }
       if (connection === 'close') {
@@ -750,6 +782,7 @@ export class BaileysService implements OnModuleDestroy {
       await this.humanPace(s.sock, jid, text);
       await this.refreshSignalSession(s.sock, jid);
       const sent = await s.sock.sendMessage(jid, { text });
+      this.rememberSend(tenantId, jid, { text }, sent?.key?.id);
       this.storeDelivery(tenantId, sent?.key?.id, 'sent');
       this.logger.log(`[Baileys] tenant=${tenantId} mesaj gonderildi target=${this.maskTarget(phone)} jid=${this.maskTarget(jid)} id=${sent?.key?.id || 'unknown'}`);
       return { ok: true, providerMessageId: sent?.key?.id };
@@ -774,6 +807,7 @@ export class BaileysService implements OnModuleDestroy {
       await this.humanPace(s.sock, jid, text);
       await this.refreshSignalSession(s.sock, jid);
       const sent = await s.sock.sendMessage(jid, { text });
+      this.rememberSend(tenantId, jid, { text }, sent?.key?.id);
       this.storeDelivery(tenantId, sent?.key?.id, 'sent');
       this.logger.log(`[Baileys] tenant=${tenantId} mesaj gonderildi target=${this.maskTarget(phone)} jid=${this.maskTarget(jid)} id=${sent?.key?.id || 'unknown'}`);
       return true;
@@ -810,6 +844,7 @@ export class BaileysService implements OnModuleDestroy {
       else payload = { document: buffer, mimetype: mime || 'application/octet-stream', fileName: media.filename || 'belge', caption };
       await this.refreshSignalSession(s.sock, jid);
       const sent = await s.sock.sendMessage(jid, payload);
+      this.rememberSend(tenantId, jid, payload, sent?.key?.id);
       this.storeDelivery(tenantId, sent?.key?.id, 'sent');
       this.logger.log(`[Baileys] tenant=${tenantId} medya gonderildi target=${this.maskTarget(phone)} jid=${this.maskTarget(jid)} id=${sent?.key?.id || 'unknown'}`);
       return { ok: true, providerMessageId: sent?.key?.id };
@@ -844,6 +879,7 @@ export class BaileysService implements OnModuleDestroy {
       else payload = { document: buffer, mimetype: mime || 'application/octet-stream', fileName: media.filename || 'belge', caption };
       await this.refreshSignalSession(s.sock, jid);
       const sent = await s.sock.sendMessage(jid, payload);
+      this.rememberSend(tenantId, jid, payload, sent?.key?.id);
       this.storeDelivery(tenantId, sent?.key?.id, 'sent');
       this.logger.log(`[Baileys] tenant=${tenantId} medya gonderildi target=${this.maskTarget(phone)} jid=${this.maskTarget(jid)} id=${sent?.key?.id || 'unknown'}`);
       return true;
