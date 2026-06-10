@@ -1055,7 +1055,8 @@ export class MorenAiService {
       '## Portal Veri Sonuclari',
       toolContext,
       '## Talimat',
-      'Cevabi yalnizca yukaridaki gerçek portal verisi, hafiza ve mesleki bilgiyle uret. Veri yoksa uydurma; hangi kaydin eksik oldugunu soyle. Dış dünyaya mesaj, belge gonderimi, arama veya agent komutu gerekiyorsa onaysiz yapilmis gibi yazma; kisa onay/aksiyon metni hazirla.',
+      'Cevabi yalnizca yukaridaki gerçek portal verisi, hafiza ve mesleki bilgiyle uret. Veri yoksa uydurma; hangi kaydin eksik oldugunu soyle.',
+      'BELGE/PDF/DOSYA GÖNDERME ŞU AN AKTİF DEĞİL. Belge/fatura/beyanname "gönder/ilet/at" istenirse belgenin DURUMUNU özetle ve DÜRÜSTÇE "şu an dosyayı WhatsApp\'tan iletemiyorum, bu özellik yakında" de. ASLA "gönderdim / çağrı yapıyorum / işlemi başlattım / onay başlatıyorum" gibi YAPMADIĞIN şeyi yazma. "Gönder" = belgeyi birine ilet demek; "GİB\'e beyan ver" SANMA.',
       'BEYANNAME VERİLDİ Mİ hükmü: tool sonucundaki "durum"/"verildi"/"durumAciklama" alanını AYNEN kullan. durum=verildi ise beyanname GİB\'e VERİLMİŞTİR — onay numarası boş diye "verilmemiş/sunulmamış" deme, kendi çıkarımını yapma. Aylık takipteki beyannameVerildi kutusu ofis içi işaretlemedir, GİB hükmü DEĞİLDİR; çelişkide beyanname kayıtları (list_beyan_kayitlari) esastır.',
       `Kullanici mesaji: ${params.userMessage}`,
     ].filter(Boolean).join('\n\n');
@@ -1262,9 +1263,16 @@ export class MorenAiService {
       }
       case 'list_invoices':
         return taxpayerInput ? { ...taxpayerInput, period: ctx.period, limit: 50 } : null;
+      case 'list_beyan_kayitlari': {
+        if (!hasTaxpayer) return null;
+        // "KDV beyannamesi" sorulunca SADECE KDV çekilsin — yoksa MUHSGK/Damga da
+        // gelip cevaba karışıyordu (kullanıcı "kdv verildi mi" dedi, bot MUHSGK'yı
+        // da listeledi). Tip belirtilmezse hepsi (filtresiz).
+        const beyanTipiIn = this.inferBeyanTipiFromText(gate);
+        return { taxpayerId: ctx.taxpayerId, period: ctx.period, donem: ctx.period, ...(beyanTipiIn ? { beyanTipiIn } : {}) };
+      }
       case 'get_payroll_summary':
       case 'list_sgk_declarations':
-      case 'list_beyan_kayitlari':
       case 'get_beyanname_config':
       case 'get_taxpayer_work_status':
         return hasTaxpayer ? { taxpayerId: ctx.taxpayerId, period: ctx.period, donem: ctx.period } : null;
@@ -1322,6 +1330,19 @@ export class MorenAiService {
 
   // Mesajda AÇIKÇA bir dönem (YYYY-MM veya ay adı) geçiyorsa o dönemi döner;
   // yoksa undefined — böylece tool kendi mantığıyla (en güncel/son kayıt) seçer.
+  /** Mesajda açıkça geçen beyan tipini grup olarak çıkar (yoksa null = hepsi). */
+  private inferBeyanTipiFromText(text: string): string[] | null {
+    const t = String(text || '').toLocaleLowerCase('tr-TR');
+    if (/\bkdv\b|katma de[gğ]er/.test(t)) return ['KDV1', 'KDV2', 'KDV'];
+    if (/muhtasar|muhsgk|stopaj|muh\.?sgk/.test(t)) return ['MUHSGK'];
+    if (/damga/.test(t)) return ['DAMGA'];
+    if (/kurumlar/.test(t)) return ['KURUMLAR'];
+    if (/ge[cç]ici/.test(t)) return ['GGECICI', 'KGECICI', 'GECICI_VERGI', 'GECICI'];
+    if (/po[sş]et/.test(t)) return ['POSET'];
+    if (/gelir vergisi|y[ıi]ll[ıi]k gelir/.test(t)) return ['GELIR'];
+    return null;
+  }
+
   private explicitPeriodOrNull(text: string, period: string): string | undefined {
     const raw = String(text || '');
     if (/\b20\d{2}-(0[1-9]|1[0-2])\b/.test(raw)) return period;

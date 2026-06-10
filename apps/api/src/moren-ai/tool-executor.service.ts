@@ -1663,10 +1663,11 @@ export class ToolExecutorService {
 
   /** İmport edilmiş beyanname kayıtlarını listele */
   private async listBeyanKayitlari(input: any, ctx: { tenantId: string }) {
-    const { taxpayerId, beyanTipi, donem, search, limit } = input || {};
+    const { taxpayerId, beyanTipi, beyanTipiIn, donem, search, limit } = input || {};
     const where: any = { tenantId: ctx.tenantId };
     if (taxpayerId) where.taxpayerId = taxpayerId;
     if (beyanTipi) where.beyanTipi = beyanTipi;
+    else if (Array.isArray(beyanTipiIn) && beyanTipiIn.length) where.beyanTipi = { in: beyanTipiIn };
     if (donem) where.donem = donem;
     if (search && search.trim()) {
       const q = search.trim();

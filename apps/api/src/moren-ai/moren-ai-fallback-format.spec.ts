@@ -192,3 +192,23 @@ describe('Merkezi şablonlar — diğer veri tipleri', () => {
     expect(sablonForTool('get_payroll_summary', { toplamPersonel: 3, aktifPersonel: 3 }, 'merhaba')).toBeNull();
   });
 });
+
+describe('Beyan tipi çıkarımı — "KDV" sorusu MUHSGK getirmesin', () => {
+  it('kdv → sadece KDV grubu', () => {
+    expect(svc().inferBeyanTipiFromText('gitonun nisan 2026 kdv beyannamesi verildi mi')).toEqual(['KDV1', 'KDV2', 'KDV']);
+  });
+  it('muhtasar/muhsgk → MUHSGK', () => {
+    expect(svc().inferBeyanTipiFromText('muhtasar verildi mi')).toEqual(['MUHSGK']);
+    expect(svc().inferBeyanTipiFromText('muhsgk durumu')).toEqual(['MUHSGK']);
+  });
+  it('damga / kurumlar / geçici / poşet', () => {
+    expect(svc().inferBeyanTipiFromText('damga beyannamesi')).toEqual(['DAMGA']);
+    expect(svc().inferBeyanTipiFromText('kurumlar verildi mi')).toEqual(['KURUMLAR']);
+    expect(svc().inferBeyanTipiFromText('geçici vergi')).toContain('GGECICI');
+    expect(svc().inferBeyanTipiFromText('poşet beyanı')).toEqual(['POSET']);
+  });
+  it('tip belirtilmezse null (hepsi)', () => {
+    expect(svc().inferBeyanTipiFromText('beyannameleri göster')).toBeNull();
+    expect(svc().inferBeyanTipiFromText('bu ay neler verildi')).toBeNull();
+  });
+});
