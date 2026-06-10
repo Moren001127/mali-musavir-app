@@ -1118,6 +1118,156 @@ export class WhatsAppBotController implements OnModuleInit {
     return `${ownerName}, sen ${officeName} sahibi olarak tanımlısın. Bu hat owner WhatsApp hattın; seni müşteri gibi değil ofis sahibi olarak görüyorum.`;
   }
 
+  // ============================================================
+  // FAZ 2 — BELGE GÖNDERME (owner → kendi WhatsApp'ı)
+  // ============================================================
+
+  /** Owner mesajı bir belge gönderme isteği mi? (gönder/ilet + beyanname/fatura) */
+  private isOwnerDocumentSendRequest(text: string): boolean {
+    const n = this.normalizeForIntent(text);
+    const wantsSend = /\b(gonder|gonderir|ilet|iletir|yolla|paylas|at|atar)\b/.test(n) || /\bpdf\b|dosya\s*olarak|belge\s*olarak/.test(n);
+    const aboutDoc = /(beyan|tahakkuk|fatura|belge|pdf|ekstre|dosya)/.test(n);
+    return wantsSend && aboutDoc;
+  }
+
+  /** Mesajda geçen mükellefi bul: adının ilk anlamlı kelimesi metinde geçiyor mu. */
+  private async findTaxpayerInOwnerText(tenantId: string, text: string): Promise<any | null> {
+    const n = this.normalizeForIntent(text);
+    const taxpayers = await this.prisma.taxpayer.findMany({
+      where: { tenantId, isActive: true },
+      select: { id: true, companyName: true, firstName: true, lastName: true },
+    });
+    let best: { tp: any; len: number } | null = null;
+    for (const tp of taxpayers) {
+      const ad = (tp.companyName || `${tp.firstName || ''} ${tp.lastName || ''}`).trim();
+      const adN = this.normalizeForIntent(ad);
+      // adın 3+ harfli kelimeleri; en az biri mesajda substring olarak geçmeli
+      const kelimeler = adN.split(/\s+/).filter((w) => w.length >= 3);
+      const hit = kelimeler.find((w) => n.includes(w));
+      if (hit && (!best || hit.length > best.len)) best = { tp, len: hit.length };
+    }
+    return best?.tp || null;
+  }
+
+  /** Mesajdan dönem çıkar: "YYYY-MM" ya da ay adı (+yıl, yoksa cari yıl). */
+  private extractPeriodFromOwnerText(text: string): string | null {
+    const direct = String(text || '').match(/\b(20\d{2})[-/.](0[1-9]|1[0-2])\b/);
+    if (direct) return `${direct[1]}-${direct[2]}`;
+    const n = this.normalizeForIntent(text);
+    const aylar: Record<string, number> = {
+      ocak: 1, subat: 2, mart: 3, nisan: 4, mayis: 5, haziran: 6,
+      temmuz: 7, agustos: 8, eylul: 9, ekim: 10, kasim: 11, aralik: 12,
+    };
+    for (const [ad, no] of Object.entries(aylar)) {
+      if (n.includes(ad)) {
+        const yilM = n.match(/\b(20\d{2})\b/);
+        const yil = yilM ? Number(yilM[1]) : new Date().getFullYear();
+        return `${yil}-${String(no).padStart(2, '0')}`;
+      }
+    }
+    return null;
+  }
+
+  /** Mesajda açıkça geçen beyan tipini grup olarak çıkar (yoksa null = hepsi). */
+  private inferBeyanTipiFromOwnerText(text: string): string[] | null {
+    const n = this.normalizeForIntent(text);
+    if (/\bkdv\b|katma deger/.test(n)) return ['KDV1', 'KDV2', 'KDV'];
+    if (/muhtasar|muhsgk|stopaj/.test(n)) return ['MUHSGK'];
+    if (/damga/.test(n)) return ['DAMGA'];
+    if (/kurumlar/.test(n)) return ['KURUMLAR'];
+    if (/gecici/.test(n)) return ['GGECICI', 'KGECICI', 'GECICI_VERGI', 'GECICI'];
+    if (/poset/.test(n)) return ['POSET'];
+    if (/gelir vergisi/.test(n)) return ['GELIR'];
+    return null;
+  }
+
+  /**
+   * Owner belge gönderme akışı. handled=true dönerse normal AI akışı atlanır.
+   * Mükellef bulunamazsa false döner → AI cevaplasın (yanlış yakalama olmasın).
+   */
+  private async maybeHandleOwnerDocumentSend(
+    ownerTenant: any,
+    ownerContactId: string,
+    msg: IncomingWhatsAppMessage,
+  ): Promise<boolean> {
+    if (!this.isOwnerDocumentSendRequest(msg.text)) return false;
+    if (!this.storage) return false;
+
+    const taxpayer = await this.findTaxpayerInOwnerText(ownerTenant.id, msg.text);
+    if (!taxpayer) return false; // mükellef yoksa AI'ya bırak
+
+    const adi = (taxpayer.companyName || `${taxpayer.firstName || ''} ${taxpayer.lastName || ''}`).trim();
+    const donem = this.extractPeriodFromOwnerText(msg.text);
+    const tipler = this.inferBeyanTipiFromOwnerText(msg.text);
+    const isFatura = /fatura/i.test(this.normalizeForIntent(msg.text));
+
+    const sendOwnerText = async (reply: string) => {
+      const sent = await this.whatsapp.sendMessage(this.replyTarget(msg), reply, ownerTenant.id);
+      await this.prisma.communicationLog.create({
+        data: {
+          taxpayerId: ownerContactId, channel: 'WHATSAPP',
+          subject: sent ? 'WhatsApp owner belge cevabi' : 'WhatsApp owner belge cevabi (gonderilemedi)',
+          content: this.withWhatsAppPhone(reply, msg.from), occurredAt: new Date(),
+        },
+      });
+    };
+
+    // Şu an yalnız beyanname PDF gönderimi destekli; fatura PDF akışı ayrı.
+    if (isFatura && !tipler) {
+      await sendOwnerText(`${adi} için fatura PDF gönderimi henüz aktif değil; beyanname/tahakkuk PDF'i gönderebilirim.`);
+      return true;
+    }
+
+    const where: any = { tenantId: ownerTenant.id, taxpayerId: taxpayer.id };
+    if (donem) where.donem = donem;
+    if (tipler?.length) where.beyanTipi = { in: tipler };
+    const kayitlar = await (this.prisma as any).beyanKaydi.findMany({
+      where, orderBy: [{ donem: 'desc' }], take: 6,
+    });
+
+    if (!kayitlar.length) {
+      await sendOwnerText(`${adi} için ${donem ? donem + ' ' : ''}${tipler?.[0] || 'beyanname'} kaydı bulamadım.`);
+      return true;
+    }
+    const withDoc = kayitlar.find((k: any) => k.beyannameUrl || k.pdfUrl);
+    if (!withDoc) {
+      await sendOwnerText(`${adi} ${kayitlar[0].donem} beyannamesi kayıtlı ama PDF dosyası sisteme eklenmemiş.`);
+      return true;
+    }
+
+    try {
+      const key = withDoc.beyannameUrl || withDoc.pdfUrl;
+      const filename = `${adi}-${withDoc.beyanTipi}-${withDoc.donem}.pdf`.replace(/[^\w.-]+/g, '_');
+      const url = await this.storage.getPresignedDownloadUrl(key, filename);
+      const caption = `${adi} · ${this.beyanLabel(withDoc.beyanTipi)} · ${withDoc.donem}`;
+      const ok = await this.baileys.sendMedia(ownerTenant.id, this.replyTarget(msg), {
+        url, mimeType: 'application/pdf', filename, caption,
+      });
+      await this.prisma.communicationLog.create({
+        data: {
+          taxpayerId: ownerContactId, channel: 'WHATSAPP',
+          subject: ok ? 'WhatsApp owner belge PDF gonderildi' : 'WhatsApp owner belge PDF gonderilemedi',
+          content: this.withWhatsAppPhone(`[PDF] ${caption}`, msg.from), occurredAt: new Date(),
+        },
+      });
+      if (!ok) await sendOwnerText(`${caption} dosyasını göndermeye çalıştım ama WhatsApp iletmedi; biraz sonra tekrar dene.`);
+      return true;
+    } catch (e: any) {
+      this.logger.warn(`[OwnerDocSend] hata: ${e?.message || e}`);
+      await sendOwnerText(`${adi} beyannamesini gönderirken bir sorun oldu; dosya kaydını kontrol edip tekrar deneyeyim.`);
+      return true;
+    }
+  }
+
+  private beyanLabel(tip: string): string {
+    const map: Record<string, string> = {
+      KDV1: 'KDV1', KDV2: 'KDV2', MUHSGK: 'MUHSGK', DAMGA: 'Damga', POSET: 'Poşet',
+      KURUMLAR: 'Kurumlar', GELIR: 'Gelir', GGECICI: 'Gelir Geçici', KGECICI: 'Kurum Geçici',
+      GECICI_VERGI: 'Geçici Vergi', BILDIRGE: 'Bildirge', EDEFTER: 'E-Defter',
+    };
+    return map[String(tip || '').toUpperCase()] || tip;
+  }
+
   private repairOwnerReply(reply: string, ownerTenant: any): string {
     const normalized = this.normalizeForIntent(reply);
     if (
@@ -1193,6 +1343,12 @@ export class WhatsAppBotController implements OnModuleInit {
         return;
       }
 
+      // FAZ 2 — BELGE GÖNDERME: owner "X beyannamesini/faturasını gönder" derse
+      // PDF'i bulup WhatsApp'tan owner'a yolla (kendi belgesi → onay gerekmez).
+      if (await this.maybeHandleOwnerDocumentSend(ownerTenant, ownerContact.id, msg)) {
+        return;
+      }
+
       const recentContext = await this.botContext.buildRecentWhatsAppContext(ownerContact.id);
       const ownerName = this.ownerDisplayName();
       const officeName = ownerTenant.name || OFFICE_NAME;
@@ -1213,7 +1369,7 @@ export class WhatsAppBotController implements OnModuleInit {
         '5) Kısa selamlama mesajına (kolay gelsin, merhaba, sağ ol) kısa selamlama cevabı ver (1 cümle).',
         '6) Veri/komut isteğinde tool çağır, sonucu kısa söyle.',
         '7) Riskli işlemlerde önce preview + ONAYLIYORUM bekle.',
-        '8) BELGE/PDF/DOSYA GÖNDERME ŞU AN AKTİF DEĞİL. "X beyannamesini/faturasını gönder" denince: belgenin DURUMUNU özetle, sonra DÜRÜSTÇE "şu an dosyayı WhatsApp\'tan iletemiyorum, bu özellik yakında eklenecek" de. ASLA "gönderdim", "çağrı yapıyorum", "işlemi başlattım", "iki adımlı onay başlatıyorum" gibi YAPMADIĞIN şeyi yazma.',
+        '8) BEYANNAME PDF GÖNDERME aktiftir ve sistem otomatik yapar. Bu mesaja kadar geldiysen mükellef veya dönem NET DEĞİL demektir — kısaca "hangi mükellefin hangi dönem beyannamesini göndereyim?" diye SOR. ASLA "gönderdim / çağrı yapıyorum / işlemi başlattım" gibi YAPMADIĞIN şeyi yazma. (Fatura PDF gönderme henüz yok.)',
         '9) "Gönder" = belgeyi BİRİNE ilet demektir; "GİB\'e gönder/beyan ver" SANMA. Owner GİB\'e beyan vermeni istemez. Beyanname zaten verildiyse onu "GİB\'e gönderiyorum" diye KARIŞTIRMA.',
         '10) Mesajda hangi beyan tipi sorulduysa SADECE onu konuş. "KDV" sorulduysa MUHSGK/Damga ekleme; "MUHSGK" sorulduysa KDV ekleme.',
         '',
