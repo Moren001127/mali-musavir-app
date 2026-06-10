@@ -927,8 +927,38 @@ export class PortalAutomationRailwayRunnerService implements OnModuleInit {
     await page.waitForTimeout(2500);
     await snap(navigated ? 'etebligat_ekrani' : 'etebligat_navigasyon_basarisiz');
 
+    // PDF indirme/goruntuleme ucnoktasini kesfet: OKUNMUS bir tebligatin islem butonuna tikla.
+    // (Okunmus tebligatta yeni "okundu" damgasi olusmaz; hukuki sonuc yok.)
+    const actionTrace: string[] = [];
+    try {
+      for (const lbl of ['İŞLEM YAP', 'ISLEM YAP', 'İşlem Yap']) {
+        const loc = page.getByText(lbl, { exact: false }).first();
+        if (await loc.isVisible().catch(() => false)) {
+          await loc.click({ timeout: 3000 }).catch(() => null);
+          actionTrace.push(`tikla:${lbl}`);
+          await page.waitForTimeout(2500);
+          break;
+        }
+      }
+      for (const sub of ['Görüntüle', 'Goruntule', 'İndir', 'Indir', 'PDF', 'Tebligatı Görüntüle']) {
+        const s = page.getByText(sub, { exact: false }).first();
+        if (await s.isVisible().catch(() => false)) {
+          await Promise.all([
+            page.waitForEvent('download', { timeout: 4000 }).catch(() => null),
+            s.click({ timeout: 3000 }).catch(() => null),
+          ]);
+          actionTrace.push(`tikla:${sub}`);
+          await page.waitForTimeout(3000);
+          break;
+        }
+      }
+      await snap('islem_sonrasi');
+    } catch (err: any) {
+      actionTrace.push(`hata:${this.compact(err?.message || err)}`);
+    }
+
     try { context.off('response', onResponse); } catch { /* yut */ }
-    return { navigated, steps, apiCalls: apiCalls.slice(0, 30) };
+    return { navigated, actionTrace, steps, apiCalls: apiCalls.slice(0, 40) };
   }
 
   private async clickAndCollectPortalDocuments(
