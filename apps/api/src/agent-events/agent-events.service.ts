@@ -1632,6 +1632,68 @@ ${belgeMetni}`;
     }
   }
 
+  /**
+   * GELİŞTİRME TALEBİ (Faz 2 "Düzelt") — AI teşhisini kalıcı bir talep olarak kaydeder.
+   * Ayrı tablo açmadan AgentEvent üzerinde saklanır (agent='atlama-iyilestirme', status='talep').
+   * Otonom ajan bu kuyruğu okuyup düzeltecek; "yapildi" olunca işaretlenir.
+   */
+  async createAtlamaTalep(
+    tenantId: string,
+    data: {
+      key?: string; donem?: string; kategori?: string; kokNeden?: string;
+      onerilenDuzeltme?: string; adet?: number; bizimHata?: string; guven?: number;
+    },
+  ) {
+    const aciklar = await this.prisma.agentEvent.findMany({
+      where: { tenantId, agent: 'atlama-iyilestirme', status: 'talep' },
+      orderBy: { ts: 'desc' },
+      take: 100,
+      select: { id: true, meta: true },
+    });
+    const zatenVar = aciklar.find((e) => {
+      const m: any = e.meta || {};
+      return m.key === data.key && m.donem === data.donem;
+    });
+    if (zatenVar) return { ok: true, id: zatenVar.id, zatenVardi: true };
+
+    const ev = await this.prisma.agentEvent.create({
+      data: {
+        tenantId,
+        agent: 'atlama-iyilestirme',
+        action: data.key || null,
+        status: 'talep',
+        message: `[${data.kategori || 'Atlama'}] ${data.kokNeden || ''}`.slice(0, 500),
+        meta: {
+          key: data.key, donem: data.donem, kategori: data.kategori,
+          kokNeden: data.kokNeden, onerilenDuzeltme: data.onerilenDuzeltme,
+          adet: data.adet, bizimHata: data.bizimHata, guven: data.guven,
+        } as any,
+      },
+      select: { id: true },
+    });
+    return { ok: true, id: ev.id };
+  }
+
+  /** Geliştirme talepleri — bekleyen + yapılan. */
+  async listAtlamaTalepler(tenantId: string) {
+    const rows = await this.prisma.agentEvent.findMany({
+      where: { tenantId, agent: 'atlama-iyilestirme', status: { in: ['talep', 'yapildi'] } },
+      orderBy: { ts: 'desc' },
+      take: 100,
+      select: { id: true, status: true, ts: true, meta: true },
+    });
+    const talepler = rows.map((r) => ({
+      id: r.id,
+      status: r.status,
+      ts: r.ts,
+      ...(typeof r.meta === 'object' && r.meta ? (r.meta as any) : {}),
+    }));
+    return {
+      bekleyen: talepler.filter((t) => t.status === 'talep'),
+      yapilan: talepler.filter((t) => t.status === 'yapildi'),
+    };
+  }
+
   async listEvents(
     tenantId: string,
     opts: { agent?: string; mukellef?: string; status?: string; limit?: number; since?: string } = {},

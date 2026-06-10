@@ -202,6 +202,26 @@ export class AgentEventsController {
     return this.service.atlamaTeshis(req.user.tenantId, body.agent, y, m, body.key);
   }
 
+  /** Geliştirme talebi oluştur (Faz 2 "Düzelt") — AI teşhisini kalıcı kuyruğa ekler. */
+  @Post('events/atlama-talep')
+  @UseGuards(AuthGuard('jwt'))
+  createAtlamaTalep(
+    @Req() req: any,
+    @Body() body: {
+      key?: string; donem?: string; kategori?: string; kokNeden?: string;
+      onerilenDuzeltme?: string; adet?: number; bizimHata?: string; guven?: number;
+    },
+  ) {
+    return this.service.createAtlamaTalep(req.user.tenantId, body || {});
+  }
+
+  /** Geliştirme talepleri — bekleyen + yapılan. */
+  @Get('events/atlama-talepler')
+  @UseGuards(AuthGuard('jwt'))
+  listAtlamaTalepler(@Req() req: any) {
+    return this.service.listAtlamaTalepler(req.user.tenantId);
+  }
+
   /** Mihsap fatura isleme loglarini firma + donem bazinda Excel'e dok. */
   @Get('events/mihsap-report.xlsx')
   @UseGuards(AuthGuard('jwt'))

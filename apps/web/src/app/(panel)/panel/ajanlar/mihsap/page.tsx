@@ -1039,6 +1039,28 @@ function AtlamaIncelemesi({
       setTeshisYukleniyor(null);
     }
   };
+  const [talepDurum, setTalepDurum] = useState<Record<string, 'gonderiliyor' | 'eklendi'>>({});
+  const { data: talepler, refetch: refetchTalepler } = useQuery<{ bekleyen: any[]; yapilan: any[] }>({
+    queryKey: ['atlama-talepler'],
+    queryFn: () => api.get('/agent/events/atlama-talepler').then((r) => r.data),
+    refetchInterval: 15000,
+  });
+  const duzeltTalebiEkle = async (key: string, kategori: string, t: any) => {
+    setTalepDurum((s) => ({ ...s, [key]: 'gonderiliyor' }));
+    try {
+      const [yy, mm] = ay.split('-');
+      await api.post('/agent/events/atlama-talep', {
+        key, donem: `${yy}-${mm}`, kategori,
+        kokNeden: t.kokNeden, onerilenDuzeltme: t.onerilenDuzeltme,
+        adet: t.adet, bizimHata: t.bizimHata, guven: t.guven,
+      });
+      setTalepDurum((s) => ({ ...s, [key]: 'eklendi' }));
+      refetchTalepler();
+    } catch {
+      setTalepDurum((s) => { const n = { ...s }; delete n[key]; return n; });
+    }
+  };
+  const bekleyenTalepler = talepler?.bekleyen || [];
   const AYLAR_TR = ['Ocak','Şubat','Mart','Nisan','Mayıs','Haziran','Temmuz','Ağustos','Eylül','Ekim','Kasım','Aralık'];
   const [yStr, mStr] = ay.split('-');
   const ayEtiket = `${AYLAR_TR[parseInt(mStr, 10) - 1] || ''} ${yStr}`;
@@ -1067,6 +1089,26 @@ function AtlamaIncelemesi({
         <OzetHucre label="İncelenecek" value={data?.inceleAdet ?? 0} alt="belirsiz" color="#facc15" />
         <OzetHucre label="Onay/Normal" value={data?.onayAdet ?? 0} alt="hata değil" color="#34d399" />
       </div>
+      {/* GELİŞTİRME KUYRUĞU (Faz 2 "Düzelt" talepleri) */}
+      {bekleyenTalepler.length > 0 && (
+        <div className="px-4 py-2.5 border-b" style={{ borderColor: 'rgba(255,255,255,0.05)', background: 'rgba(248,113,113,0.04)' }}>
+          <div className="text-[11px] font-semibold uppercase tracking-wider mb-1.5" style={{ color: '#f87171' }}>
+            Geliştirme Kuyruğu — {bekleyenTalepler.length} bekliyor
+          </div>
+          <div className="space-y-1">
+            {bekleyenTalepler.slice(0, 6).map((tl: any) => (
+              <div key={tl.id} className="text-[12px] flex items-start gap-2">
+                <span className="px-1.5 py-0.5 rounded text-[9.5px] font-bold uppercase shrink-0" style={{ background: 'rgba(251,191,36,0.15)', color: '#fbbf24' }}>Bekliyor</span>
+                <span className="min-w-0" style={{ color: 'rgba(250,250,249,0.8)' }}>
+                  <b style={{ color: '#fafaf9' }}>{tl.kategori || 'Atlama'}</b>
+                  {tl.kokNeden ? ` — ${tl.kokNeden}` : ''}
+                  {tl.adet ? <span style={{ color: 'rgba(250,250,249,0.4)' }}> · {tl.adet} fatura</span> : null}
+                </span>
+              </div>
+            ))}
+          </div>
+        </div>
+      )}
       {gruplar.length === 0 ? (
         <div className="p-8 text-center text-sm" style={{ color: 'rgba(250,250,249,0.45)' }}>
           Bu dönem için atlanan fatura yok 🎉
@@ -1133,6 +1175,22 @@ function AtlamaIncelemesi({
                           </div>
                           {t.kokNeden && <div style={{ color: 'rgba(250,250,249,0.8)' }}><b style={{ color: 'rgba(250,250,249,0.5)' }}>Kök neden:</b> {t.kokNeden}</div>}
                           {t.onerilenDuzeltme && <div className="mt-0.5" style={{ color: 'rgba(250,250,249,0.8)' }}><b style={{ color: 'rgba(250,250,249,0.5)' }}>Öneri:</b> {t.onerilenDuzeltme}</div>}
+                          {t.bizimHata !== 'hayir' && t.onerilenDuzeltme && (
+                            <div className="mt-1.5">
+                              {talepDurum[g.key] === 'eklendi' ? (
+                                <span className="inline-flex items-center gap-1 text-[11px]" style={{ color: '#34d399' }}><CheckCircle2 size={12} /> Geliştirme kuyruğuna eklendi</span>
+                              ) : (
+                                <button
+                                  onClick={() => duzeltTalebiEkle(g.key, g.kategori, t)}
+                                  disabled={talepDurum[g.key] === 'gonderiliyor'}
+                                  className="inline-flex items-center gap-1.5 px-2.5 py-1 rounded-md text-[11.5px] font-medium hover:opacity-90"
+                                  style={{ background: 'rgba(248,113,113,0.12)', color: '#f87171', border: '1px solid rgba(248,113,113,0.25)' }}
+                                >
+                                  <Edit3 size={12} /> Düzelt (geliştirme kuyruğuna ekle)
+                                </button>
+                              )}
+                            </div>
+                          )}
                         </div>
                       );
                     })()}
