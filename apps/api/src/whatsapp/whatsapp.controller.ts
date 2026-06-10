@@ -211,11 +211,19 @@ export class WhatsAppController {
 
     // Son mesaj zamanına göre sırala (en yeni üstte)
     result.sort((a, b) => new Date(b.lastMessageAt).getTime() - new Date(a.lastMessageAt).getTime());
-    await Promise.all(result.slice(0, 60).map(async (c) => {
+    // Avatar/presence zenginleştirmesi WhatsApp ağına bağlı. Hesap throttle/kilitli
+    // (463) iken bu sorgular asılı kalıp listeyi HİÇ döndürmüyordu → Mesajlar ekranı
+    // "Yükleniyor..."da takılıyordu. Genel zaman sınırı: süre dolarsa liste avatarsız
+    // döner ama EKRAN AÇILIR (zarif düşüş).
+    const enrich = Promise.all(result.slice(0, 60).map(async (c) => {
       c.avatarUrl = await this.baileys.profilePictureUrl(tenantId, c.whatsAppJid || c.phone).catch(() => null);
       c.presence = await this.baileys.presenceFor(tenantId, c.whatsAppJid || c.phone).catch(() => null);
-      delete c.whatsAppJid;
     }));
+    await Promise.race([
+      enrich,
+      new Promise((resolve) => setTimeout(resolve, Number(process.env.WHATSAPP_CONV_ENRICH_TIMEOUT_MS || 6000) || 6000)),
+    ]);
+    for (const c of result) delete c.whatsAppJid;
     return result;
   }
 

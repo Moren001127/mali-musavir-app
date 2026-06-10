@@ -710,7 +710,14 @@ export class BaileysService implements OnModuleDestroy {
     const session = this.sessions.get(tenantId);
     if (!session?.connected || !session.sock || !phoneOrJid) return null;
     try {
-      return await session.sock.profilePictureUrl(this.toJid(phoneOrJid), 'image');
+      // WhatsApp ağ sorgusu; hesap throttle/kilitliyken (463) yanıt vermeyip
+      // ASILI kalabiliyor → çağıran (örn. Mesajlar listesi) hiç dönmüyordu.
+      // Kısa zaman sınırı: süre dolarsa avatar null döner, akış bloklanmaz.
+      const timeoutMs = Number(process.env.WHATSAPP_PROFILE_PIC_TIMEOUT_MS || 4000) || 4000;
+      return await Promise.race([
+        session.sock.profilePictureUrl(this.toJid(phoneOrJid), 'image'),
+        new Promise<null>((resolve) => setTimeout(() => resolve(null), timeoutMs)),
+      ]);
     } catch {
       return null;
     }
