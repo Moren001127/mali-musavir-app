@@ -299,6 +299,25 @@ const AI_ACTIONS: AutomationAction[] = [
     },
   },
   {
+    name: 'fetch_kdv_from_luca',
+    category: 'WRITE',
+    estimatedClaudeCostPerCall: 0,
+    requires: ['kdv-beyanname', 'luca', 'local-agent'],
+    description:
+      'Bir mukellefin belirtilen donemde KDV verilerini LUCA\'dan otomatik ceker ve KDV beyanname/durum panosunu besler. ' +
+      'Bilanco mukellefi → Luca KDV mizan job\'u (191/391/190); isletme defteri → gelir-gider snapshot. ' +
+      'Manuel "Luca\'dan Cek" butonunun otomasyon esdegeri; ayni donem icin bekleyen/calisan job varsa yenisi acilmaz (tekrar onleme). ' +
+      'Tipik kullanim: KDV kontrol kutulari (ind.+hes. KDV + e-arsiv) tamamlaninca Taxpayer.KdvKontrolTamam event\'inde tetikle.',
+    input_schema: {
+      type: 'object',
+      properties: {
+        taxpayerId: { type: 'string', description: 'Mukellefin sistem ID\'si (genelde "{{trigger.payload.taxpayerId}}").' },
+        donem: { type: 'string', description: 'YYYY-MM formatinda (genelde "{{trigger.payload.donem}}"). Slash/tek hane ay normalize edilir.' },
+      },
+      required: ['taxpayerId', 'donem'],
+    },
+  },
+  {
     name: 'summarize_with_claude',
     category: 'AI',
     estimatedClaudeCostPerCall: 0.01,
@@ -605,7 +624,8 @@ export const TRIGGER_SPECS: TriggerSpec[] = [
           'Taxpayer.EvrakIslendiChanged',      // "Evrak işlendi" alanı değişti
           'Taxpayer.KontrolEdildiChanged',     // "Kontrol edildi" alanı değişti
           'Taxpayer.BeyannameDurumuChanged',   // "Beyanname verildi" alanı değişti
-          'Taxpayer.KdvKontrolKilitlendi',     // KDV kontrolü tamamlanıp kilitlendi
+          'Taxpayer.KdvKontrolKilitlendi',     // KDV kontrolü tamamlanıp kilitlendi (KDV Kontrol modülü)
+          'Taxpayer.KdvKontrolTamam',          // Aylık takipte ind.+hes. KDV + e-arşiv (+evrak geldi/işlendi) hepsi işaretlendi
           'Taxpayer.EvraklarHazir',            // Hem 'evraklar geldi' hem 'evraklar işlendi' true oldu
           'Taxpayer.Created',                   // Yeni müvekkil eklendi
           // İletişim

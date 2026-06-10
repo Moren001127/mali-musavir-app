@@ -6,6 +6,7 @@ import { WhatsAppService } from '../whatsapp/whatsapp.service';
 import { FisYazdirmaService } from '../fis-yazdirma/fis-yazdirma.service';
 import { MihsapService } from '../mihsap/mihsap.service';
 import { EmailService } from '../email/email.service';
+import { KdvBeyannameService } from '../kdv-beyanname/kdv-beyanname.service';
 import { ACTION_BY_NAME } from './action-catalog';
 import { claudeTextViaMax } from '../common/max-inference';
 
@@ -36,6 +37,7 @@ export class ActionDispatcherService {
     private readonly fisYazdirma: FisYazdirmaService,
     private readonly mihsap: MihsapService,
     private readonly email: EmailService,
+    private readonly kdvBeyanname: KdvBeyannameService,
   ) {}
 
   /**
@@ -109,6 +111,9 @@ export class ActionDispatcherService {
         return this.printWordOutput(args, ctx);
       case 'fetch_invoices_for_period':
         return this.fetchInvoicesForPeriod(args, ctx);
+
+      case 'fetch_kdv_from_luca':
+        return this.fetchKdvFromLuca(args, ctx);
 
       default:
         throw new Error(`Aksiyon "${toolName}" tanımlı ama dispatcher'da uygulanmamış.`);
@@ -415,6 +420,43 @@ export class ActionDispatcherService {
         !hataVar && cekilenFatura === 0
           ? `Mihsap "${donem}" döneminde 0 fatura döndürdü. Muhtemel sebep: faturalar Mihsap arşivine henüz düşmemiş (kutu erken işaretlendi) ya da dönem yanlış. Manuel "Hepsini Çek" ile aynı dönemi doğrula.`
           : undefined,
+    };
+  }
+
+  /**
+   * fetch_kdv_from_luca — KDV verilerini Luca'dan çeker (KDV beyanname panosunu besler).
+   * Manuel "Luca'dan Çek" ile aynı `autoFetchForKontrolTamam`'ı kullanır; aynı dönem
+   * için bekleyen/çalışan job varsa yeni açılmaz (tekrar önleme orada). Hata fırlatırsa
+   * runner kırmızı işler — sessiz boş başarı yok.
+   */
+  private async fetchKdvFromLuca(args: any, ctx: { tenantId: string }) {
+    const taxpayerId = String(args.taxpayerId ?? '');
+    const donemRaw = String(args.donem ?? '');
+    if (!taxpayerId || !donemRaw) {
+      throw new Error('fetch_kdv_from_luca: taxpayerId ve donem zorunlu.');
+    }
+    const donem = this.normalizeDonem(donemRaw);
+    if (!donem) {
+      throw new Error(
+        `fetch_kdv_from_luca: donem formati gecersiz ("${donemRaw}"). Beklenen: "YYYY-MM".`,
+      );
+    }
+    const res: any = await this.kdvBeyanname.autoFetchForKontrolTamam({
+      tenantId: ctx.tenantId,
+      mukellefId: taxpayerId,
+      donem,
+    });
+    return {
+      success: true,
+      taxpayerId,
+      donem,
+      tip: res?.tip ?? null,
+      jobId: res?.jobId ?? null,
+      durum: res?.status ?? null,
+      mevcutJob: !!res?.reused,
+      not: res?.reused
+        ? 'Bu donem icin zaten bir Luca job vardi; yenisi acilmadi (tekrar onleme).'
+        : undefined,
     };
   }
 

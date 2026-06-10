@@ -307,12 +307,16 @@ Kullanıcı, Türkiye'de mali müşavirlik yapan biridir. Portalında müvekkel 
    - \`Taxpayer.EvrakIslendiChanged\` — "evrak işlendi" alanı değişti.
    - \`Taxpayer.KontrolEdildiChanged\` — "kontrol edildi" alanı değişti.
    - \`Taxpayer.BeyannameDurumuChanged\` — "beyanname verildi" alanı değişti. Filtre: \`newValue: true\` beyanname verildiğinde, \`false\` iptal edildiğinde.
+   - \`Taxpayer.EvraklarHazir\` — hem "evrak geldi" hem "evrak işlendi" true oldu. Tipik: \`fetch_invoices_for_period\` ile Mihsap fatura çek.
+   - \`Taxpayer.KdvKontrolTamam\` — aylık takipte ind.+hes. KDV + e-arşiv kontrol (ve evrak geldi/işlendi) HEPSİ işaretlendi. Tipik: \`fetch_kdv_from_luca({ taxpayerId: "{{trigger.payload.taxpayerId}}", donem: "{{trigger.payload.donem}}" })\` ile Luca KDV verisini çek.
    - \`Taxpayer.Created\` — yeni müvekkil eklendi.
    - \`WhatsApp.MessageReceived\` — müvekkilden serbest WhatsApp mesajı geldi.
    - \`Document.Uploaded\` — portala belge yüklendi.
    ASLA bu listede olmayan bir event ismi (örn. \`taxpayer.evrak_durumu_guncellendi\`, \`Invoice.Created\`, \`WhatsApp.DocumentReceived\`) üretme. Kullanıcı "fatura oluşunca" veya "WhatsApp'tan belge gelince" gibi henüz desteklenmeyen bir olay isterse confidence: 0, steps: [] ver ve humanReadablePreview'da bu tetikleyicinin henüz aktif olmadığını söyle.
    Event payload alanları (\`{{trigger.payload.X}}\` ile erişilir):
-   - Taxpayer.EvrakDurumuChanged / EvrakIslendiChanged / KontrolEdildiChanged / BeyannameDurumuChanged: \`taxpayerId\`, \`taxpayerUnvan\`, \`taxpayerVkn\`, \`year\`, \`month\`, \`field\`, \`oldValue\`, \`newValue\`
+   - Taxpayer.EvrakDurumuChanged / EvrakIslendiChanged / KontrolEdildiChanged / BeyannameDurumuChanged: \`taxpayerId\`, \`taxpayerUnvan\`, \`taxpayerVkn\`, \`year\`, \`month\`, \`periodLabel\` (YYYY-MM, sıfır-dolgulu — dönem için BUNU kullan), \`field\`, \`oldValue\`, \`newValue\`
+   - Taxpayer.EvraklarHazir: \`taxpayerId\`, \`taxpayerUnvan\`, \`taxpayerVkn\`, \`year\`, \`month\`, \`periodLabel\` (YYYY-MM). Dönem isteyen aksiyonlarda \`donem: "{{trigger.payload.periodLabel}}"\` ver.
+   - Taxpayer.KdvKontrolTamam: \`taxpayerId\`, \`taxpayerUnvan\`, \`taxpayerVkn\`, \`year\`, \`month\`, \`donem\` (YYYY-MM). \`fetch_kdv_from_luca\` için \`donem: "{{trigger.payload.donem}}"\` kullan.
    - Taxpayer.KdvKontrolKilitlendi: \`taxpayerId\`, \`taxpayerUnvan\`, \`taxpayerVkn\`, \`year\`, \`month\`, \`periodLabel\` (YYYY/MM), \`sessionId\`. Bu event tetiklenince \`generate_fis_word_from_invoices\` aksiyonu ile fiş Word'ü üretmek için donem = "{{trigger.payload.year}}-{{trigger.payload.month}}" şeklinde formatlanır (ay tek haneliyse padStart). Pratik: parser triggerConfig.eventName="Taxpayer.KdvKontrolKilitlendi", filter olmadan, sonraki adımda \`generate_fis_word_from_invoices({ taxpayerId: "{{trigger.payload.taxpayerId}}", donem: "{{trigger.payload.periodLabel}}" })\` kullanır — periodLabel zaten "YYYY/MM" değil "YYYY-MM" istiyorsa parser önce bir hesaplama gerek ama periodLabel formatı kontrol edilmeli. ALTERNATİF: trigger.payload.year + "-" + trigger.payload.month string concat ile YYYY-M elde edilir, ama ay padding yoksa sorun olur; bu yüzden parser yıl-ay biçimini istediği gibi kullansın, action dispatcher tarafında strict format kontrolü var.
    - Taxpayer.Created: \`taxpayerId\`, \`taxpayerUnvan\`, \`taxpayerVkn\`, \`taxpayerType\`
    - WhatsApp.MessageReceived: \`taxpayerId\`, \`taxpayerUnvan\`, \`from\` (telefon), \`text\` (mesaj içeriği), \`messageId\`
