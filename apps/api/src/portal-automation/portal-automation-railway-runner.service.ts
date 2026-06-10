@@ -676,6 +676,20 @@ export class PortalAutomationRailwayRunnerService implements OnModuleInit {
         await this.finishLoginAfterFill(page);
       }
 
+      if (jobType === 'E_TEBLIGAT_CHECK' && bundle.job?.payload?.discover === true) {
+        await this.jobProgress(tenantId, bundle.job, 'discover', 'e-Tebligat ekrani kesfediliyor (sadece okuma).');
+        const discovery = await this.discoverETebligatScreen(page, context).catch((err: any) => ({
+          error: this.compact(err?.message || err),
+        }));
+        await this.jobProgress(tenantId, bundle.job, 'discover_done', 'e-Tebligat ekran kesfi tamamlandi.');
+        await context.close().catch(() => {});
+        return {
+          documents: [],
+          recordCount: 0,
+          result: { runner: 'railway', phase: 'etebligat_discover', jobType, url: this.safeUrl(page.url()), discovery },
+        };
+      }
+
       if (this.isCredentialValidationOnlyJob(bundle.job, jobType)) {
         const providerLabel = isSgk ? 'SGK' : 'Vergi dairesi';
         const url = this.safeUrl(page.url());
@@ -861,6 +875,60 @@ export class PortalAutomationRailwayRunnerService implements OnModuleInit {
       if (new RegExp(text.replace(/[.*+?^${}()|[\]\\]/g, '\\$&'), 'i').test(body)) return true;
     }
     return false;
+  }
+
+  // GECICI TANI: e-Tebligat ekraninin gercek DOM ve ic API yapisini kesfeder.
+  // Tebligat ACMAZ / indirmez; sadece okur. payload.discover===true olan manuel iste calisir.
+  private async discoverETebligatScreen(page: any, context: any) {
+    const apiCalls: any[] = [];
+    const seen = new Set<string>();
+    const onResponse = async (resp: any) => {
+      try {
+        const url = String(resp.url() || '');
+        if (/\.(png|jpe?g|gif|svg|css|woff2?|ico|map)(\?|$)/i.test(url)) return;
+        if (!/dispatch|json|api|tebligat|rest|service|query|list|getir|sorgu|ajax/i.test(url)) return;
+        const method = resp.request().method();
+        const key = `${method} ${url.slice(0, 220)}`;
+        if (seen.has(key)) return;
+        seen.add(key);
+        const ct = String((resp.headers() || {})['content-type'] || '');
+        let body = '';
+        if (/json|text|xml|html/i.test(ct)) body = (await resp.text().catch(() => '')).slice(0, 2500);
+        apiCalls.push({ method, url: this.safeUrl(url), status: resp.status(), ct: ct.slice(0, 70), body });
+      } catch {
+        // yut
+      }
+    };
+    context.on('response', onResponse);
+
+    const steps: any[] = [];
+    const snap = async (label: string) => {
+      const dom = await page.evaluate(() => {
+        const tables = Array.from(document.querySelectorAll('table')).slice(0, 3).map((t: any) => t.outerHTML).join('\n---\n');
+        const grids = Array.from(document.querySelectorAll('[class*=grid],[class*=Grid],[class*=list],[class*=List],[role=grid]'))
+          .slice(0, 2).map((g: any) => (g.outerHTML || '').slice(0, 2500)).join('\n---\n');
+        const navText = Array.from(document.querySelectorAll('nav,[class*=menu],[class*=Menu],[class*=nav],[class*=sidebar],ul'))
+          .slice(0, 5).map((n: any) => (n.innerText || '').trim()).filter(Boolean).join(' || ').slice(0, 1800);
+        return {
+          title: document.title || '',
+          navText,
+          tables: tables.slice(0, 7000),
+          grids: grids.slice(0, 5000),
+          bodyText: (document.body?.innerText || '').slice(0, 1800),
+        };
+      }).catch(() => null);
+      steps.push({ label, url: this.safeUrl(page.url()), dom });
+    };
+
+    await page.waitForTimeout(1500);
+    await snap('login_sonrasi_anasayfa');
+
+    const navigated = await this.tryNavigateByTexts(page, this.navigationTextsForJob('E_TEBLIGAT_CHECK')).catch(() => false);
+    await page.waitForTimeout(2500);
+    await snap(navigated ? 'etebligat_ekrani' : 'etebligat_navigasyon_basarisiz');
+
+    try { context.off('response', onResponse); } catch { /* yut */ }
+    return { navigated, steps, apiCalls: apiCalls.slice(0, 30) };
   }
 
   private async clickAndCollectPortalDocuments(
