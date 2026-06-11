@@ -141,12 +141,35 @@ export class BaileysService implements OnModuleDestroy {
    */
   private readonly recentSends = new Map<string, { tenantId: string; jid: string; payload: any; tries: number; at: number }>();
 
-  private rememberSend(tenantId: string, jid: string, payload: any, id?: string | null) {
+  /**
+   * Gönderilen mesajların PROTO içeriği — id → { message, at }. Baileys 7'nin
+   * `getMessage` callback'i için ZORUNLU: alıcı bir mesajı çözemeyince WhatsApp
+   * "tekrar gönder" (retry receipt) istiyor; Baileys o anda getMessage(id) ile
+   * orijinal içeriği isteyip YENİDEN şifreleyip gönderiyor. Boş (undefined)
+   * dönersek mesaj YENİDEN GÖNDERİLEMİYOR → alıcıya hiç ulaşmıyor (sessiz kayıp,
+   * "timed out waiting for message"). Bu yüzden son gönderilenleri saklıyoruz.
+   */
+  private readonly sentMessageStore = new Map<string, { message: any; at: number }>();
+
+  private rememberSend(tenantId: string, jid: string, payload: any, id?: string | null, message?: any) {
     if (!id) return;
     this.recentSends.set(id, { tenantId, jid, payload, tries: 0, at: Date.now() });
     if (this.recentSends.size > 300) {
       const cutoff = Date.now() - 5 * 60_000;
       for (const [k, v] of this.recentSends) if (v.at < cutoff) this.recentSends.delete(k);
+    }
+    if (message) {
+      this.sentMessageStore.set(id, { message, at: Date.now() });
+      if (this.sentMessageStore.size > 1000) {
+        const cutoff = Date.now() - 60 * 60_000; // 1 saat: WhatsApp retry penceresi için yeterli
+        for (const [k, v] of this.sentMessageStore) if (v.at < cutoff) this.sentMessageStore.delete(k);
+        // Hâlâ büyükse en eskiyi at (FIFO güvencesi).
+        while (this.sentMessageStore.size > 1000) {
+          const oldest = this.sentMessageStore.keys().next().value;
+          if (oldest === undefined) break;
+          this.sentMessageStore.delete(oldest);
+        }
+      }
     }
   }
 
@@ -179,7 +202,7 @@ export class BaileysService implements OnModuleDestroy {
       try {
         await this.refreshSignalSession(s.sock, rec.jid);
         const sent = await s.sock.sendMessage(rec.jid, rec.payload);
-        this.rememberSend(rec.tenantId, rec.jid, rec.payload, sent?.key?.id);
+        this.rememberSend(rec.tenantId, rec.jid, rec.payload, sent?.key?.id, sent?.message);
         const nr = this.recentSends.get(String(sent?.key?.id || ''));
         if (nr) nr.tries = 1; // zincirleme sonsuz retry'ı önle
         this.storeDelivery(rec.tenantId, sent?.key?.id, 'sent');
@@ -228,10 +251,15 @@ export class BaileysService implements OnModuleDestroy {
       // 463 (reach-out timelock) azaltma: hesabı "aktif/online" göster — pasif
       // companion cihazdan giden mesajlar daha çok kilitleniyordu.
       markOnlineOnConnect: true,
-      // Baileys 7.x: mesaj yeniden gönderme / poll / alıntı için zorunlu callback.
-      // Geçmişi DB'de tutmuyoruz → undefined güvenli (retry/poll sınırlanır, akış bozulmaz).
+      // Baileys 7.x: alıcı mesajı çözemeyip "tekrar gönder" isteyince Baileys bu
+      // callback'le orijinal içeriği isteyip YENİDEN gönderiyor. Boş dönersek mesaj
+      // teslim EDİLEMİYOR (sessiz kayıp). Son gönderdiklerimizi saklayıp burada
+      // veriyoruz → teslimat güvenilirliği artar.
       // (printQRInTerminal 7.x'te kaldırıldı; QR connection.update üzerinden alınıyor.)
-      getMessage: async () => undefined,
+      getMessage: async (key: any) => {
+        const id = key?.id;
+        return (id && this.sentMessageStore.get(id)?.message) || undefined;
+      },
     });
 
     const session: Session = {
@@ -850,7 +878,7 @@ export class BaileysService implements OnModuleDestroy {
       await this.humanPace(s.sock, jid, text);
       await this.refreshSignalSession(s.sock, jid);
       const sent = await this.sendQuoted(s, jid, phone, { text });
-      this.rememberSend(tenantId, jid, { text }, sent?.key?.id);
+      this.rememberSend(tenantId, jid, { text }, sent?.key?.id, sent?.message);
       this.storeDelivery(tenantId, sent?.key?.id, 'sent');
       this.logger.log(`[Baileys] tenant=${tenantId} mesaj gonderildi target=${this.maskTarget(phone)} jid=${this.maskTarget(jid)} id=${sent?.key?.id || 'unknown'}`);
       return { ok: true, providerMessageId: sent?.key?.id };
@@ -875,7 +903,7 @@ export class BaileysService implements OnModuleDestroy {
       await this.humanPace(s.sock, jid, text);
       await this.refreshSignalSession(s.sock, jid);
       const sent = await this.sendQuoted(s, jid, phone, { text });
-      this.rememberSend(tenantId, jid, { text }, sent?.key?.id);
+      this.rememberSend(tenantId, jid, { text }, sent?.key?.id, sent?.message);
       this.storeDelivery(tenantId, sent?.key?.id, 'sent');
       this.logger.log(`[Baileys] tenant=${tenantId} mesaj gonderildi target=${this.maskTarget(phone)} jid=${this.maskTarget(jid)} id=${sent?.key?.id || 'unknown'}`);
       return true;
@@ -912,7 +940,7 @@ export class BaileysService implements OnModuleDestroy {
       else payload = { document: buffer, mimetype: mime || 'application/octet-stream', fileName: media.filename || 'belge', caption };
       await this.refreshSignalSession(s.sock, jid);
       const sent = await this.sendQuoted(s, jid, phone, payload);
-      this.rememberSend(tenantId, jid, payload, sent?.key?.id);
+      this.rememberSend(tenantId, jid, payload, sent?.key?.id, sent?.message);
       this.storeDelivery(tenantId, sent?.key?.id, 'sent');
       this.logger.log(`[Baileys] tenant=${tenantId} medya gonderildi target=${this.maskTarget(phone)} jid=${this.maskTarget(jid)} id=${sent?.key?.id || 'unknown'}`);
       return { ok: true, providerMessageId: sent?.key?.id };
@@ -947,7 +975,7 @@ export class BaileysService implements OnModuleDestroy {
       else payload = { document: buffer, mimetype: mime || 'application/octet-stream', fileName: media.filename || 'belge', caption };
       await this.refreshSignalSession(s.sock, jid);
       const sent = await this.sendQuoted(s, jid, phone, payload);
-      this.rememberSend(tenantId, jid, payload, sent?.key?.id);
+      this.rememberSend(tenantId, jid, payload, sent?.key?.id, sent?.message);
       this.storeDelivery(tenantId, sent?.key?.id, 'sent');
       this.logger.log(`[Baileys] tenant=${tenantId} medya gonderildi target=${this.maskTarget(phone)} jid=${this.maskTarget(jid)} id=${sent?.key?.id || 'unknown'}`);
       return true;
