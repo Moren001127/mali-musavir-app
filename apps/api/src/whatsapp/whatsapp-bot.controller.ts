@@ -1125,7 +1125,13 @@ export class WhatsAppBotController implements OnModuleInit {
   /** Owner mesajı bir belge gönderme isteği mi? (gönder/ilet + belge türü) */
   private isOwnerDocumentSendRequest(text: string): boolean {
     const n = this.normalizeForIntent(text);
-    const wantsSend = /\b(gonder|gonderir|ilet|iletir|yolla|paylas|at|atar)\b/.test(n) || /\bpdf\b|dosya\s*olarak|belge\s*olarak/.test(n);
+    // Fiil kökleri + ÇEKİMLER (gönder, gönderir, GÖNDERECEKSİN, gönderecektin,
+    // göndersene, yolla, yollar, iletir, paylaş...). Eskiden yalnız düz "gönder"
+    // emri tanınıyordu → "göndereceksin/gönderecektin" gibi çekimler kaçıp AI'ya
+    // düşüyor, AI "gönderiyorum" diye yalan söylüyordu.
+    const wantsSend = /\b(gonder|yolla|ilet|paylas)\w*/.test(n)
+      || /\b(at|atar)\b/.test(n)
+      || /\bpdf\b|dosya\s*olarak|belge\s*olarak/.test(n);
     // Belge anahtar kelimeleri + beyan tipleri (muhtasar/kdv/damga...). "Muhtasarını
     // gönder" eskiden listede olmadığı için belge isteği SAYILMIYOR, AI'ya düşüp
     // "gönderiyorum" deyip GÖNDERMİYORDU. inferBeyanTipiFromOwnerText yedek kapı.
