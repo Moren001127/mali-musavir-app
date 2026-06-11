@@ -936,7 +936,12 @@ export default function EDefterAgentPage() {
             {(() => {
               const groups: any[] = [];
               const groupMap = new Map<string, any>();
-              for (const line of visibleLines.slice(0, 1000)) {
+              // 2026-06-11: Limit 1000 -> 20000 (backend served satır limiti ile aynı).
+              // 1000 çok düşüktü: çok fişli mükellefte (ör. İLGİ OTO ~2600 satır) liste
+              // dönem ortasında (~13.02) kesiliyor, sonraki fişler (31.03 dahil) gizleniyor
+              // -> denetim eksik/yanlış SANILIYORDU. Denetim arka uçta zaten TÜM satırlarda
+              // çalışıyor (doğru); bu yalnız gösterim kesintisiydi.
+              for (const line of visibleLines.slice(0, 20000)) {
                 const key = line.voucherKey || `row-${line.rowIndex}`;
                 if (!groupMap.has(key)) {
                   const g = { key, lines: [] as any[], first: line, borcSum: 0, alacakSum: 0 };
