@@ -864,6 +864,9 @@ export class ToolExecutorService {
         kontrolEdildi: s?.kontrolEdildi ?? false,
         beyannameVerildi: s?.beyannameVerildi ?? false,
         kdvKontrolEdildi: s?.kdvKontrolEdildi ?? false,
+        // BEYANNAME HAZIR = kontrolü yapılmış AMA henüz verilmemiş = "beyannamesi verilebilecek".
+        // (Aylık Takip ekranındaki "Beyanname hazır" sayacı bununla aynıdır.)
+        beyannameHazir: (s?.kontrolEdildi ?? false) && !(s?.beyannameVerildi ?? false),
         kayitVar: !!s, // Bu ay icin durum kaydi olusturulmus mu
       };
     });
@@ -897,6 +900,11 @@ export class ToolExecutorService {
       sonuc: rows.length,
       evrakFiltresi: evrakFilter,
       beyannameFiltresi: beyannameFilter,
+      // "Beyannamesi verilebilecek" = kontrolü yapılmış, henüz verilmemiş = beyannameHazir.
+      // Bu veri BURADADIR — "WhatsApp'tan çekemiyorum" DEME, aşağıdaki listeyi kullan.
+      beyannameHazirSayisi: rows.filter((r) => r.beyannameHazir).length,
+      beyannameHazirlar: rows.filter((r) => r.beyannameHazir).map((r) => r.isim).slice(0, 50),
+      beyannameHazirNotu: 'beyannameHazirlar = beyannamesi verilebilecek (kontrolü bitmiş, verilmemiş) mükellefler. Bu listeyi doğrudan kullan; portala yönlendirme.',
       // beyannameVerildi = Aylık Takip'te ELLE işaretlenen ofis-içi kutudur.
       beyannameNotu: 'beyannameVerildi ofis içi takip kutusudur, GİB hükmü DEĞİLDİR. Beyannamenin gerçekten verilip verilmediği için list_beyan_kayitlari "durum" alanı esastır; çelişkide beyan kayıtları kazanır.',
       mukellefler: rows,
