@@ -417,9 +417,29 @@ export class ActionDispatcherService {
     const cekilenFatura = results.reduce((s, r) => s + (Number(r.cekilen) || 0), 0);
     const bulunanFatura = results.reduce((s, r) => s + (Number(r.bulunan) || 0), 0);
     const hataVar = results.some((r) => !r.ok);
+
+    // SESSİZ YEŞİL YALAN'I BİTİR (Faz 1): Hiç fatura çekilemedi VE hata varsa,
+    // "başarılı" dönme — gerçek hata fırlat. Böylece runner çalışmayı KIRMIZI işler,
+    // "hata olursa bana bildir" politikası tetiklenir ve token/oturum sorunu sessizce
+    // 0 fatura ile kaybolmaz. (Önceki davranış: success:false dönüyordu ama exception
+    // fırlatmadığı için otomasyon "yeşil/başarılı" görünüyordu.)
+    if (hataVar && cekilenFatura === 0) {
+      const detay = results
+        .filter((r) => !r.ok)
+        .map((r) => `${r.tur}: ${r.error}`)
+        .join(' | ');
+      const tokenSorunu = /token|oturum|401|403|bos cevap|boş cevap/i.test(detay);
+      throw new Error(
+        tokenSorunu
+          ? `Mihsap oturumu geçersiz/süresi dolmuş; "${donem}" dönemi faturaları çekilemedi. Mihsap sayfasını açın (eklenti token'ı yeniler), sonra otomasyon tekrar denesin. [${detay}]`
+          : `Mihsap fatura çekme başarısız: "${donem}" döneminde 0 fatura çekildi. [${detay}]`,
+      );
+    }
+
     return {
       // Hatasız tamamlandıysa success=true; ama GERÇEK fatura sayısını da raporla ki
       // otomasyon geçmişinde "yeşil ama 0 fatura" durumu görünsün (sessiz boş başarı yok).
+      // NOT: Kısmi başarı (bir tür çekildi, diğeri hata) burada korunur — çekilen veri kaybolmasın.
       success: !hataVar,
       taxpayerId,
       donem,
