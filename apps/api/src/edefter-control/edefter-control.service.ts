@@ -2645,8 +2645,13 @@ export class EDefterControlService {
       const sonGun = new Date(Date.UTC(yil, ay, 0)).getUTCDate();
       const dogruTarih = new Date(Date.UTC(yil, ay - 1, sonGun));
       for (const r of vrows) {
-        if (r.fisTarihi && !r.evrakTarihi) r.evrakTarihi = r.fisTarihi; // evrak tarihini koru
+        // Hem fis HEM evrak tarihini gercek fis tarihine (ay sonu = 28.02) hizala.
+        // Aksi halde fis=28.02 + evrak=31.03 -> "belge tarihi fis tarihinden sonra"
+        // (VUK 219) yanlis uyarisi cikar. Tahakkuk fisinde beyanname evraki dogal
+        // olarak takip eden ayda kesilir; bu fislerde evrak/fis ayrimi denetim
+        // acisindan anlamli degil -> ikisini de ayin son gunune cekiyoruz.
         r.fisTarihi = new Date(dogruTarih.getTime());
+        r.evrakTarihi = new Date(dogruTarih.getTime());
       }
     }
   }

@@ -282,6 +282,10 @@ ekle('FIX5: correctTahakkukDates → fiş 28.02, eksik uyarısı YOK', 'KDV_TAHA
   if (!tah.fisTarihi || tah.fisTarihi.getUTCMonth() !== 1) {
     throw new Error(`FIX5 tarih duzeltme calismadi: tahakkuk hala ${tah.fisTarihi?.toISOString().slice(0, 10)}`);
   }
+  // evrak tarihi de hizalanmali (yoksa "belge tarihi fis tarihinden sonra" VUK 219 cikar)
+  if (!tah.evrakTarihi || tah.evrakTarihi.getUTCMonth() !== 1) {
+    throw new Error(`FIX5 evrak tarihi hizalanmadi: ${tah.evrakTarihi?.toISOString().slice(0, 10)}`);
+  }
   return rows;
 }, undefined, true);
 
