@@ -254,6 +254,18 @@ ekle('FIX1 regresyon: 28.02 tahakkuk → uyarı yok', 'KDV_TAHAKKUK_EKSIK', 'GEC
   satir({ voucherKey: 'TAH', hesapKodu: '190.01', hesapAdi: 'DEVREDEN KDV', aciklama: 'SUBAT KDV TAHAKKUK', fisTarihi: D(2026, 2, 28), borc: 200 }),
   satir({ voucherKey: 'TAH', hesapKodu: '191.01', hesapAdi: 'INDIRILECEK KDV', aciklama: 'SUBAT KDV TAHAKKUK', fisTarihi: D(2026, 2, 28), alacak: 200 }),
 ], undefined, true);
+// FIX4 (gercek İLGİ OTO vakasi 2026-06-11): tahakkuk AY-SONU tarihine (31.03 = takip
+// eden ayin sonu) kesilmis -> nextAccrual ay-sonu filtresi onu KACIRIR. Ama aciklamada
+// "SUBAT" yazili -> aciklamadan taninmali -> WARN degil INFO. (FIX1 ile ayni; tek fark
+// tarih 26.03 yerine 31.03.) Luca Detay Fis Listesi fis tarihi yerine evrak tarihi
+// (28.02 -> 31.03) verince olusan yanlis "bulunamadi" uyarisini onler.
+ekle('FIX4: Şubat tahakkuku 31.03 (ay sonu) + açıklama "Şubat" → INFO', 'KDV_TAHAKKUK_EKSIK', 'GECICI_Q1', () => [
+  satir({ voucherKey: 'A1', hesapKodu: '153.01', fisTarihi: D(2026, 2, 2), borc: 1000 }),
+  satir({ voucherKey: 'A1', hesapKodu: '191.01', fisTarihi: D(2026, 2, 2), borc: 200 }),
+  satir({ voucherKey: 'A1', hesapKodu: '320.01', fisTarihi: D(2026, 2, 2), alacak: 1200 }),
+  satir({ voucherKey: 'TAH', hesapKodu: '190.01', hesapAdi: 'DEVREDEN KDV', aciklama: 'SUBAT AYI KDV TAHAKKUK', fisTarihi: D(2026, 3, 31), borc: 200 }),
+  satir({ voucherKey: 'TAH', hesapKodu: '191.01', hesapAdi: 'INDIRILECEK KDV', aciklama: 'SUBAT AYI KDV TAHAKKUK', fisTarihi: D(2026, 3, 31), alacak: 200 }),
+], 'INFO');
 
 // ── Düzeltme doğrulaması (Fix 3) ─────────────────────────────
 // İade fişi (391 borç, fiş tipi Mahsup) artık tahakkuk fişi SANILMAMALI:

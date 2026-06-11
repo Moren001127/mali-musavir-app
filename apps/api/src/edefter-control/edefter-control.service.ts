@@ -985,14 +985,30 @@ export class EDefterControlService {
         ).values()]
           .filter((m): m is VoucherMeta => Boolean(m))
           .find((m) => m.isVatAccrual && m.date && !this.sameDateUTC(m.date, this.endOfMonthUTC(m.date)));
-        if (nextAccrual) {
+        // 2026-06-11: Tahakkuk fisi AY-SONU tarihine (or. 31.03) kesilmis olabilir;
+        // ustteki filtre (ay-sonu OLMAYAN) onu kacirir. Ama tahakkuk fisinin
+        // aciklamasinda ay yazili olur ("Subat Ayi KDV Tahakkuk"). Luca Detay Fis
+        // Listesi'nde fis bazen FIS TARIHI (28.02) yerine EVRAK TARIHI (31.03) ile
+        // gelir -> sistem Mart'a atar. Range icinde aciklamasinda BU ayi gecen bir
+        // tahakkuk fisi varsa tahakkuk MEVCUT say; yanlis "bulunamadi" uyarisini onle.
+        const ayAdi = this.ayAdiFromMonthKey(monthKey);
+        const namedAccrual = ayAdi
+          ? ([...voucherMeta.values()].find(
+              (m) =>
+                m.isVatAccrual &&
+                this.normalizeLoose(this.voucherTextWithoutFisTipi(m.rows)).includes(ayAdi),
+            ) || null)
+          : null;
+        const tahakkuk = nextAccrual || namedAccrual;
+        if (tahakkuk) {
+          const tarihNotu = tahakkuk.date ? `${this.fmtDate(tahakkuk.date)} tarihli ` : '';
           findings.push({
             severity: 'INFO',
             category: 'KDV_TAHAKKUK_EKSIK',
-            message: `${label} icinde KDV tahakkuk/mahsup fisi yok; ${this.fmtDate(nextAccrual.date!)} tarihli tahakkuk fisi takip eden ayda kesilmis gorunuyor (beyanname gununde fislestirme olabilir). Isaretli satir bu tahakkuk fisidir.`,
-            voucherKey: nextAccrual.key,
-            rowIndex: nextAccrual.first.rowIndex,
-            detail: { ay: monthKey, tahakkukTarihi: nextAccrual.date!.toISOString().slice(0, 10) },
+            message: `${label} KDV tahakkuk/mahsup fisi ${tarihNotu}olarak MEVCUT; tahakkuk evrak/beyanname tarihine (or. ay sonu) kesilmis gorunuyor, fis tarihi ay icinde olabilir. Isaretli satir bu tahakkuk fisidir.`,
+            voucherKey: tahakkuk.key,
+            rowIndex: tahakkuk.first.rowIndex,
+            detail: { ay: monthKey, tahakkukTarihi: tahakkuk.date ? tahakkuk.date.toISOString().slice(0, 10) : null },
           });
         } else {
           findings.push({
@@ -2581,6 +2597,15 @@ export class EDefterControlService {
       year: 'numeric',
       month: 'long',
     });
+  }
+
+  // monthKey "2026-02" -> normalize edilmis Turkce ay adi "subat" (tahakkuk fisi
+  // aciklamasinda ay-bazli eslesme icin). normalizeLoose ile ayni katlama.
+  private ayAdiFromMonthKey(monthKey: string): string | null {
+    const m = Number(String(monthKey).slice(5, 7));
+    const adlar = ['', 'ocak', 'şubat', 'mart', 'nisan', 'mayıs', 'haziran', 'temmuz', 'ağustos', 'eylül', 'ekim', 'kasım', 'aralık'];
+    const ad = adlar[m];
+    return ad ? this.normalizeLoose(ad) : null;
   }
 
   private endOfMonthUTC(date: Date) {
