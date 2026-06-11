@@ -151,6 +151,14 @@ export class BaileysService implements OnModuleDestroy {
    */
   private readonly sentMessageStore = new Map<string, { message: any; at: number }>();
 
+  /**
+   * Profil fotoğrafı cache'i — `tenant:digits` → { url, at }. Stale-while-revalidate:
+   * kayıtlı URL anında döner (ekran boş/kilitli kalmaz), bayatsa arka planda
+   * tazelenir (profil fotoğrafı DEĞİŞİMİ böyle yakalanır), tazeleme başarısızsa
+   * eski korunur (kaybolmaz). 463/yorgun bağlantıda avatarların "kaybolması" bitti.
+   */
+  private readonly avatarCache = new Map<string, { url: string | null; at: number }>();
+
   private rememberSend(tenantId: string, jid: string, payload: any, id?: string | null, message?: any) {
     if (!id) return;
     this.recentSends.set(id, { tenantId, jid, payload, tries: 0, at: Date.now() });
@@ -859,19 +867,59 @@ export class BaileysService implements OnModuleDestroy {
   }
 
   async profilePictureUrl(tenantId: string, phoneOrJid?: string | null): Promise<string | null> {
+    if (!phoneOrJid) return null;
+    const key = `${tenantId}:${this.jidDigits(phoneOrJid) || String(phoneOrJid)}`;
+    const cached = this.avatarCache.get(key);
+    const ttlMs = Number(process.env.WHATSAPP_AVATAR_TTL_MS || 3 * 60 * 60_000) || 3 * 60 * 60_000;
+    const isFresh = cached && (Date.now() - cached.at) < ttlMs;
+    // Taze cache → anında dön, WhatsApp'a hiç sorma.
+    if (cached && isFresh) return cached.url;
     const session = this.sessions.get(tenantId);
-    if (!session?.connected || !session.sock || !phoneOrJid) return null;
+    // Bağlı değil → elde ne varsa onu ver (kaybolmasın).
+    if (!session?.connected || !session.sock) return cached?.url ?? null;
+    // Bayat ama elde değer var → ESKİYİ HEMEN dön + arka planda tazele (foto
+    // değişimini yakalar, ama ekran beklemez/boşalmaz).
+    if (cached) {
+      void this.refreshAvatar(tenantId, key, phoneOrJid);
+      return cached.url;
+    }
+    // Hiç yok (ilk yükleme) → zaman sınırlı çek + cache'le.
+    return this.refreshAvatar(tenantId, key, phoneOrJid);
+  }
+
+  /** Profil fotoğrafını WhatsApp'tan zaman sınırlı çeker + cache'i günceller. */
+  private async refreshAvatar(tenantId: string, key: string, phoneOrJid?: string | null): Promise<string | null> {
+    const session = this.sessions.get(tenantId);
+    if (!session?.connected || !session.sock || !phoneOrJid) return this.avatarCache.get(key)?.url ?? null;
     try {
-      // WhatsApp ağ sorgusu; hesap throttle/kilitliyken (463) yanıt vermeyip
-      // ASILI kalabiliyor → çağıran (örn. Mesajlar listesi) hiç dönmüyordu.
-      // Kısa zaman sınırı: süre dolarsa avatar null döner, akış bloklanmaz.
+      // WhatsApp ağ sorgusu; hesap throttle/kilitliyken yanıt vermeyip ASILI
+      // kalabiliyor → kısa zaman sınırı, süre dolarsa null.
       const timeoutMs = Number(process.env.WHATSAPP_PROFILE_PIC_TIMEOUT_MS || 4000) || 4000;
-      return await Promise.race([
-        session.sock.profilePictureUrl(this.toJid(phoneOrJid), 'image'),
+      const url = await Promise.race<string | null>([
+        session.sock.profilePictureUrl(this.toJid(phoneOrJid), 'image').catch(() => null),
         new Promise<null>((resolve) => setTimeout(() => resolve(null), timeoutMs)),
       ]);
+      const prev = this.avatarCache.get(key);
+      if (url) {
+        // Yeni (veya aynı) foto geldi → güncelle. Foto DEĞİŞİMİ böyle yakalanır.
+        this.avatarCache.set(key, { url, at: Date.now() });
+      } else {
+        // Çekilemedi: eski varsa KORU (kaybolmasın), at'i tazele ki her açılışta
+        // boşuna tekrar denemeyelim (TTL sonra yine dener).
+        this.avatarCache.set(key, { url: prev?.url ?? null, at: Date.now() });
+      }
+      if (this.avatarCache.size > 3000) {
+        const cutoff = Date.now() - 24 * 60 * 60_000;
+        for (const [k, v] of this.avatarCache) if (v.at < cutoff) this.avatarCache.delete(k);
+        while (this.avatarCache.size > 3000) {
+          const oldest = this.avatarCache.keys().next().value;
+          if (oldest === undefined) break;
+          this.avatarCache.delete(oldest);
+        }
+      }
+      return this.avatarCache.get(key)?.url ?? null;
     } catch {
-      return null;
+      return this.avatarCache.get(key)?.url ?? null;
     }
   }
 
