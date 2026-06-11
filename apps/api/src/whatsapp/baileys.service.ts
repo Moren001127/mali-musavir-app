@@ -270,6 +270,15 @@ export class BaileysService implements OnModuleDestroy {
     };
     this.sessions.set(tenantId, session);
 
+    // KESİN LID→telefon tohumu (env). Baileys bazı kişilerin gerçek numarasını
+    // (senderPn) GÖNDERMİYOR → mesaj LID ile geliyor, owner tanınmıyor ve cevap
+    // hedefi çözülemiyor (Baileys kendisi de o LID'in numarasını bilmiyor).
+    // Bildiğimiz eşlemeleri env'den kesin olarak yükle:
+    //   MOREN_WHATSAPP_LID_MAP="111171101278270:905350587475,LID2:TEL2"
+    // Sonuç: gelen LID gerçek numaraya çözülür → owner normal yoldan tanınır +
+    // cevap gerçek numaraya (sıcak kişi) gider.
+    this.seedEnvLidMap(session);
+
     sock.ev.on('creds.update', () => { auth.saveCreds().catch(() => {}); });
 
     const rememberLidMapping = async (lidJid?: string | null, phoneJid?: string | null) => {
@@ -441,6 +450,24 @@ export class BaileysService implements OnModuleDestroy {
       return;
     }
     await this.inboundHandler({ from, text: finalText, id: m.key?.id, replyTo: jid, media });
+  }
+
+  /**
+   * env `MOREN_WHATSAPP_LID_MAP` ("lid:telefon,lid:telefon") → session.lidToPhone.
+   * Baileys'in çözemediği LID'leri bizim bildiğimiz gerçek numaraya bağlar.
+   */
+  private seedEnvLidMap(session: Session) {
+    const raw = String(process.env.MOREN_WHATSAPP_LID_MAP || '').trim();
+    if (!raw) return;
+    for (const pair of raw.split(',')) {
+      const [lidRaw, phoneRaw] = String(pair || '').split(':');
+      const lid = this.jidDigits(lidRaw || '');
+      const phone = this.jidDigits(phoneRaw || '');
+      if (!lid || !phone || lid === phone) continue;
+      session.lidToPhone.set(lid, phone);
+      session.auth.saveLidMapping(lid, phone).catch(() => {});
+      this.logger.log(`[Baileys] env LID tohumu: ${this.maskTarget(lid)} -> ${this.maskTarget(phone)}`);
+    }
   }
 
   private jidDigits(jid: string): string {
