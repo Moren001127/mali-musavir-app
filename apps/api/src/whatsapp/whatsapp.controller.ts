@@ -1782,6 +1782,7 @@ export class WhatsAppController {
       .replace(/\[\[wa_phone:[^\]]+\]\]\s*/g, '')
       .replace(/\[\[wa_jid:[^\]]+\]\]\s*/g, '')
       .replace(/\[\[wa_msg:[^\]]+\]\]\s*/g, '')
+      .replace(/\[\[doc_ctx:[^\]]+\]\]\s*/g, '')
       .replace(/\[\[document:([^|\]]+)\|([^\]]+)\]\]/g, (_all, id, title) => {
         documents.push({ id, title });
         return '';

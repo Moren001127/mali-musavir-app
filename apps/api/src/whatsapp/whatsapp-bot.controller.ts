@@ -1215,6 +1215,17 @@ export class WhatsAppBotController implements OnModuleInit {
       where: { tenantId, isActive: true },
       select: { id: true, companyName: true, firstName: true, lastName: true },
     });
+    // 1) KESİN: en son gönderilen belgenin mükellef id'si + dönemi (bulanık isim DEĞİL).
+    //    "Tahakkukunu da gönder" gibi devam isteklerinde ortak kelime ("TAŞIMACILIK")
+    //    yanlış mükellef seçiyordu — bu işaret onu kökten engeller.
+    for (const log of logs) {
+      const m = String(log.content || '').match(/\[\[doc_ctx:([^|\]]+)\|?([^\]]*)\]\]/);
+      if (m) {
+        const tp = taxpayers.find((t) => t.id === m[1].trim());
+        if (tp) { taxpayer = tp; if (m[2] && m[2].trim()) donem = m[2].trim(); break; }
+      }
+    }
+    // 2) İşaret yoksa: bulanık isim eşleştirme (eski yol, taxpayer zaten bulunduysa atlar).
     for (const log of logs) {
       const content = String(log.content || '');
       if (!taxpayer) {
@@ -1314,7 +1325,9 @@ export class WhatsAppBotController implements OnModuleInit {
       'Kurallar:',
       '- "gecici/gecici vergi": mukellef sirket(kurum) ise KGECICI, gercek kisi ise GGECICI.',
       '- "muhtasar/sgk/prim"=MUHSGK. "kdv"=KDV1.',
-      '- Mesajda mukellef adi yoksa (or. "muhtasarini da gonder","onu da yolla") SON konusulan mukellefi kullan.',
+      recentCtx.taxpayer
+        ? `- ÖNEMLİ: En son işlem yapılan mükellef = id=${recentCtx.taxpayer.id} (${(recentCtx.taxpayer.companyName || `${recentCtx.taxpayer.firstName || ''} ${recentCtx.taxpayer.lastName || ''}`).trim()}). Mesajda BAŞKA mükellef adı AÇIKÇA geçmiyorsa ("tahakkukunu da gönder","onu da yolla","muhtasarini da") taxpayerId olarak KESİNLİKLE BUNU ver, başka mükellefe atlama.`
+        : '- Mesajda mukellef adi yoksa SON konusulan mukellefi kullan.',
       `- Donem: "nisan 2026"->2026-04, "2026 1.donem/ceyrek"->2026-Q1; yoksa son konusulan donem${recentCtx.donem ? ` (=${recentCtx.donem})` : ''}; o da yoksa null.`,
       '- Yazim hatasi/cekim onemsiz. Belge/dosya gonderme istegi DEGILSE (selam, soru, sohbet) isDocumentSend=false.',
       '\nSADECE su JSON: {"isDocumentSend":true|false,"taxpayerId":"<id|null>","beyanTipi":"<TIP|null>","donem":"<YYYY-MM|YYYY-Qn|null>"}',
@@ -1426,15 +1439,19 @@ export class WhatsAppBotController implements OnModuleInit {
     };
 
     // Ortak gönderim: presigned URL + sendMedia + log.
-    const sendDoc = async (s3Key: string, mimeType: string, filename: string, caption: string): Promise<boolean> => {
+    const sendDoc = async (s3Key: string, mimeType: string, filename: string, caption: string, markerDonem = ''): Promise<boolean> => {
       try {
         const url = await this.storage!.getPresignedDownloadUrl(s3Key, filename);
         const ok = await this.baileys.sendMedia(ownerTenant.id, this.replyTarget(msg), { url, mimeType, filename, caption });
+        // KESİN bağlam işareti: hangi mükellef + dönem için belge gittiğini gizli yaz.
+        // "Tahakkukunu da gönder" gibi isimsiz devam isteğinde bulanık isim eşleştirme
+        // (ortak "TAŞIMACILIK" kelimesi → yanlış mükellef) yerine bu kesin id kullanılır.
+        const ctxMarker = `[[doc_ctx:${taxpayer.id}|${markerDonem || ''}]]`;
         await this.prisma.communicationLog.create({
           data: {
             taxpayerId: ownerContactId, channel: 'WHATSAPP',
             subject: ok ? 'WhatsApp owner belge gonderildi' : 'WhatsApp owner belge gonderilemedi',
-            content: this.withWhatsAppPhone(`[BELGE] ${caption}`, msg.from), occurredAt: new Date(),
+            content: this.withWhatsAppPhone(`[BELGE] ${caption} ${ctxMarker}`, msg.from), occurredAt: new Date(),
           },
         });
         if (!ok) await sendOwnerText(`${caption} dosyasını göndermeye çalıştım ama WhatsApp iletmedi; biraz sonra tekrar dene.`);
@@ -1467,7 +1484,8 @@ export class WhatsAppBotController implements OnModuleInit {
         const key = withDoc.beyannameUrl || withDoc.pdfUrl;
         await sendDoc(key, 'application/pdf',
           `${adi}-${withDoc.beyanTipi}-${withDoc.donem}.pdf`.replace(/[^\w.-]+/g, '_'),
-          `${adi} · ${this.beyanLabel(withDoc.beyanTipi)} · ${withDoc.donem}`);
+          `${adi} · ${this.beyanLabel(withDoc.beyanTipi)} · ${withDoc.donem}`,
+          String(withDoc.donem || ''));
         return true;
       }
       // Beyanname PDF yok → mükellefin yüklü belgelerine (Document) düş.
