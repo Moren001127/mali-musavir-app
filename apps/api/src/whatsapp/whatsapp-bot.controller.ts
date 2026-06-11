@@ -1220,10 +1220,16 @@ export class WhatsAppBotController implements OnModuleInit {
       if (!taxpayer) {
         const n = this.normalizeForIntent(content);
         let best: { tp: any; len: number } | null = null;
+        // Ortak sektör/hukuki ekler tek başına EŞLEŞMESİN; yoksa "gida/insaat/arı"
+        // gibi parçalar yanlış mükellefe çapalanıp YANLIŞ BELGE gönderilebiliyordu.
+        const DOC_STOPWORDS = new Set(['ltd', 'sti', 'tic', 'san', 'sanayi', 'ticaret', 'insaat', 'gida', 'limited', 'anonim', 'sirket', 'sirketi', 'holding', 'grup', 'kollektif', 'komandit', 'icin']);
         for (const tp of taxpayers) {
           const ad = (tp.companyName || `${tp.firstName || ''} ${tp.lastName || ''}`).trim();
-          const kelimeler = this.normalizeForIntent(ad).split(/\s+/).filter((w) => w.length >= 3);
-          const hit = kelimeler.find((w) => n.includes(w));
+          // min 4 harf + kelime SINIRI (başlangıç): "ari" artık "hazirladim" içinde
+          // eşleşmez, ama "fatih" → "fatihin"/"fatih'in" yine eşleşir (önek).
+          const kelimeler = this.normalizeForIntent(ad).split(/\s+/)
+            .filter((w) => w.length >= 4 && !DOC_STOPWORDS.has(w));
+          const hit = kelimeler.find((w) => new RegExp(`\\b${w.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')}`).test(n));
           if (hit && (!best || hit.length > best.len)) best = { tp, len: hit.length };
         }
         if (best) taxpayer = best.tp;
@@ -1677,7 +1683,9 @@ export class WhatsAppBotController implements OnModuleInit {
         return;
       }
       stopOwnerTyping();
-      const rawReply = (answer?.assistantMessage || '').slice(0, 1400);
+      // Owner uzun yapılandırılmış brifing/rapor isteyebilir (compactFinalAnswer 3200'e
+      // izin veriyor, post-filter 3500); burada 1400'de kesmek raporu yarıda bırakıyordu.
+      const rawReply = (answer?.assistantMessage || '').slice(0, 3500);
       // Owner için de post-filter uygula — iç monolog/markdown temizle
       const reply = this.repairOwnerReply(
         this.postFilter.filterTaxpayerReply(rawReply, { mode: 'owner' }),

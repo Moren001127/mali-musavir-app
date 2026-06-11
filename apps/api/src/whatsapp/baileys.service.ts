@@ -901,12 +901,14 @@ export class BaileysService implements OnModuleDestroy {
       ]);
       const prev = this.avatarCache.get(key);
       if (url) {
-        // Yeni (veya aynı) foto geldi → güncelle. Foto DEĞİŞİMİ böyle yakalanır.
+        // Yeni (veya aynı) foto geldi → güncelle (tam tazelik). Foto DEĞİŞİMİ böyle yakalanır.
         this.avatarCache.set(key, { url, at: Date.now() });
       } else {
-        // Çekilemedi: eski varsa KORU (kaybolmasın), at'i tazele ki her açılışta
-        // boşuna tekrar denemeyelim (TTL sonra yine dener).
-        this.avatarCache.set(key, { url: prev?.url ?? null, at: Date.now() });
+        // Çekilemedi (timeout/throttle): eski URL'i KORU (kaybolmasın) ama 'at'i geriye
+        // al ki ~5 dk sonra TEKRAR denensin — TTL (3 sa) boyunca null'da kilitlenmesin
+        // (bağlantı toparlanınca foto gelsin).
+        const ttlMs = Number(process.env.WHATSAPP_AVATAR_TTL_MS || 3 * 60 * 60_000) || 3 * 60 * 60_000;
+        this.avatarCache.set(key, { url: prev?.url ?? null, at: Date.now() - ttlMs + 5 * 60_000 });
       }
       if (this.avatarCache.size > 3000) {
         const cutoff = Date.now() - 24 * 60 * 60_000;
