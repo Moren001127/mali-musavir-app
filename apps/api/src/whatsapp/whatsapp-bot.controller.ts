@@ -1183,6 +1183,50 @@ export class WhatsAppBotController implements OnModuleInit {
     return best?.tp || null;
   }
 
+  /**
+   * Owner konuşma geçmişinde EN SON bahsedilen mükellefi + dönemi bulur.
+   * "Muhtasarını da gönder" gibi isimsiz DEVAM isteklerinde bağlamı taşımak için
+   * — yoksa AI rastgele/yanlış mükellef tutturuyordu.
+   */
+  private async findRecentOwnerDocContext(
+    tenantId: string,
+    ownerContactId: string,
+  ): Promise<{ taxpayer: any | null; donem: string | null }> {
+    let taxpayer: any = null;
+    let donem: string | null = null;
+    const logs = await this.prisma.communicationLog.findMany({
+      where: { taxpayerId: ownerContactId, channel: 'WHATSAPP' },
+      orderBy: { occurredAt: 'desc' },
+      take: 14,
+      select: { content: true },
+    });
+    if (!logs.length) return { taxpayer, donem };
+    const taxpayers = await this.prisma.taxpayer.findMany({
+      where: { tenantId, isActive: true },
+      select: { id: true, companyName: true, firstName: true, lastName: true },
+    });
+    for (const log of logs) {
+      const content = String(log.content || '');
+      if (!taxpayer) {
+        const n = this.normalizeForIntent(content);
+        let best: { tp: any; len: number } | null = null;
+        for (const tp of taxpayers) {
+          const ad = (tp.companyName || `${tp.firstName || ''} ${tp.lastName || ''}`).trim();
+          const kelimeler = this.normalizeForIntent(ad).split(/\s+/).filter((w) => w.length >= 3);
+          const hit = kelimeler.find((w) => n.includes(w));
+          if (hit && (!best || hit.length > best.len)) best = { tp, len: hit.length };
+        }
+        if (best) taxpayer = best.tp;
+      }
+      if (!donem) {
+        const d = this.extractPeriodFromOwnerText(content);
+        if (d) donem = d;
+      }
+      if (taxpayer && donem) break;
+    }
+    return { taxpayer, donem };
+  }
+
   /** Mesajdan dönem çıkar: "YYYY-MM" ya da ay adı (+yıl, yoksa cari yıl). */
   private extractPeriodFromOwnerText(text: string): string | null {
     const direct = String(text || '').match(/\b(20\d{2})[-/.](0[1-9]|1[0-2])\b/);
@@ -1227,11 +1271,20 @@ export class WhatsAppBotController implements OnModuleInit {
     if (!this.isOwnerDocumentSendRequest(msg.text)) return false;
     if (!this.storage) return false;
 
-    const taxpayer = await this.findTaxpayerInOwnerText(ownerTenant.id, msg.text);
-    if (!taxpayer) return false; // mükellef yoksa AI'ya bırak
+    let taxpayer = await this.findTaxpayerInOwnerText(ownerTenant.id, msg.text);
+    let donem = this.extractPeriodFromOwnerText(msg.text);
+    // BAĞLAM HAFIZASI: mesajda mükellef adı / dönem yoksa ("Muhtasarını da gönder",
+    // "onu da yolla" gibi DEVAM istekleri) son konuşulan mükellefi + dönemi konuşma
+    // geçmişinden taşı. Yoksa AI devralıp YANLIŞ/RASTGELE mükellef tutturuyordu
+    // (Gökhan Akgöz vakası) + "kontrol ediyorum" deyip belge göndermiyordu.
+    if (!taxpayer || !donem) {
+      const ctx = await this.findRecentOwnerDocContext(ownerTenant.id, ownerContactId);
+      if (!taxpayer) taxpayer = ctx.taxpayer;
+      if (!donem) donem = ctx.donem;
+    }
+    if (!taxpayer) return false; // yine de mükellef yoksa AI'ya bırak
 
     const adi = (taxpayer.companyName || `${taxpayer.firstName || ''} ${taxpayer.lastName || ''}`).trim();
-    const donem = this.extractPeriodFromOwnerText(msg.text);
     const tipler = this.inferBeyanTipiFromOwnerText(msg.text);
     const n = this.normalizeForIntent(msg.text);
     const wantsBeyanname = !!tipler || /beyan|tahakkuk/.test(n);
