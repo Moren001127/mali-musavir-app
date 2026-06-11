@@ -1237,6 +1237,100 @@ export class WhatsAppBotController implements OnModuleInit {
     return { taxpayer, donem };
   }
 
+  /** Mesaj isimsiz bir DEVAM/gönderim isteği gibi mi? ("da gönder", "onu da", "bekliyorum"). */
+  private looksLikeFollowUpSend(text: string): boolean {
+    const n = this.normalizeForIntent(text);
+    return /\b(gonder|yolla|ilet|paylas)\w*/.test(n)
+      || /\b(onu|bunu|sunu|onlari|hepsini|digerini|oburu|oburunu)\b/.test(n)
+      || /(^|\s)(da|de)(\s|$)/.test(n)
+      || /bekliyorum|hani|nerede|gondersene|atsana/.test(n);
+  }
+
+  /** AI'nın döndürdüğü tek beyan tipini, BeyanKaydi sorgusu için eşanlamlı listeye çevirir. */
+  private beyanTipiToList(t?: string | null): string[] | null {
+    const v = String(t || '').toUpperCase().trim();
+    if (!v) return null;
+    const map: Record<string, string[]> = {
+      KDV: ['KDV1', 'KDV2', 'KDV'], KDV1: ['KDV1'], KDV2: ['KDV2'],
+      MUHSGK: ['MUHSGK'], MUHTASAR: ['MUHSGK'],
+      KGECICI: ['KGECICI'], GGECICI: ['GGECICI'],
+      GECICI: ['KGECICI', 'GGECICI', 'GECICI_VERGI', 'GECICI'],
+      KURUMLAR: ['KURUMLAR'], GELIR: ['GELIR'], DAMGA: ['DAMGA'], POSET: ['POSET'],
+    };
+    return map[v] || [v];
+  }
+
+  /**
+   * Owner belge isteğini AI ile anlar — kelime/çekim/yazım hatasından bağımsız,
+   * konuşma bağlamlı, mükellef TÜRÜNE göre (şirket→Kurum geçici). SADECE JSON ister.
+   * isDocumentSend=false → belge isteği değil (sohbete bırak). Hata/kapalı → null (regex'e düş).
+   * Kapatma: MOREN_OWNER_DOC_AI=0.
+   */
+  private async extractOwnerDocIntentViaAI(
+    tenantId: string,
+    ownerContactId: string,
+    recentCtx: { taxpayer: any | null; donem: string | null },
+    msg: IncomingWhatsAppMessage,
+  ): Promise<{ isDocumentSend: boolean; taxpayer: any | null; tipler: string[] | null; donem: string | null } | null> {
+    if (process.env.MOREN_OWNER_DOC_AI === '0') return null;
+    const taxpayers = await this.prisma.taxpayer.findMany({
+      where: { tenantId, isActive: true },
+      select: { id: true, companyName: true, firstName: true, lastName: true, type: true },
+      take: 1500,
+    });
+    if (!taxpayers.length) return null;
+    const liste = taxpayers.map((t) => {
+      const ad = (t.companyName || `${t.firstName || ''} ${t.lastName || ''}`).trim();
+      const tur = (t as any).type === 'TUZEL_KISI' ? 'sirket(kurum)' : 'gercek kisi';
+      return `id=${t.id}|${ad}|${tur}`;
+    }).join('\n').slice(0, 14000);
+
+    const logs = await this.prisma.communicationLog.findMany({
+      where: { taxpayerId: ownerContactId, channel: 'WHATSAPP' },
+      orderBy: { occurredAt: 'desc' }, take: 8,
+      select: { subject: true, content: true },
+    });
+    const konusma = logs.reverse().map((l) => {
+      const who = /gelen/i.test(l.subject || '') ? 'Patron' : 'Bot';
+      const t = String(l.content || '').replace(/\[\[[^\]]*\]\]/g, '').replace(/\s+/g, ' ').trim().slice(0, 180);
+      return t ? `${who}: ${t}` : '';
+    }).filter(Boolean).join('\n');
+
+    const system = 'Bir mali musavirlik ofisi asistanisin. Patron WhatsApp\'tan yazdi. Gorevin: mesajin bir BELGE/BEYANNAME GONDERME istegi olup olmadigini ve hangi mukellef + beyan tipi + donem oldugunu cikarmak. SADECE tek satir JSON dondur, baska hicbir sey yazma.';
+    const prompt = [
+      `Patronun yeni mesaji: "${String(msg.text || '').slice(0, 400)}"`,
+      konusma ? `\nSon konusma (eski->yeni):\n${konusma}` : '',
+      `\nMukellefler (id|ad|tur):\n${liste}`,
+      '\nBeyan tipleri: KDV1, KDV2, MUHSGK(muhtasar/SGK prim), KGECICI(kurum gecici), GGECICI(gelir gecici), KURUMLAR, GELIR, DAMGA, POSET.',
+      'Kurallar:',
+      '- "gecici/gecici vergi": mukellef sirket(kurum) ise KGECICI, gercek kisi ise GGECICI.',
+      '- "muhtasar/sgk/prim"=MUHSGK. "kdv"=KDV1.',
+      '- Mesajda mukellef adi yoksa (or. "muhtasarini da gonder","onu da yolla") SON konusulan mukellefi kullan.',
+      `- Donem: "nisan 2026"->2026-04, "2026 1.donem/ceyrek"->2026-Q1; yoksa son konusulan donem${recentCtx.donem ? ` (=${recentCtx.donem})` : ''}; o da yoksa null.`,
+      '- Yazim hatasi/cekim onemsiz. Belge/dosya gonderme istegi DEGILSE (selam, soru, sohbet) isDocumentSend=false.',
+      '\nSADECE su JSON: {"isDocumentSend":true|false,"taxpayerId":"<id|null>","beyanTipi":"<TIP|null>","donem":"<YYYY-MM|YYYY-Qn|null>"}',
+    ].filter(Boolean).join('\n');
+
+    const res = await claudeTextViaMax({ prompt, system, model: MAX_MODEL_CHEAP, maxTurns: 1, timeoutMs: 20000 });
+    if (!res?.ok || !res.text) return null;
+    const jsonMatch = res.text.match(/\{[\s\S]*\}/);
+    if (!jsonMatch) return null;
+    let parsed: any;
+    try { parsed = JSON.parse(jsonMatch[0]); } catch { return null; }
+    if (parsed?.isDocumentSend !== true) {
+      return { isDocumentSend: false, taxpayer: null, tipler: null, donem: null };
+    }
+    const taxpayer = parsed.taxpayerId
+      ? (taxpayers.find((t) => t.id === String(parsed.taxpayerId)) || null)
+      : (recentCtx.taxpayer || null);
+    const tipler = this.beyanTipiToList(parsed.beyanTipi);
+    const donem = parsed.donem && /^\d{4}-(\d{2}|Q[1-4])$/i.test(String(parsed.donem))
+      ? String(parsed.donem)
+      : (recentCtx.donem || null);
+    this.logger.log(`[OwnerDocSend] AI niyet: send=${parsed.isDocumentSend} tp=${taxpayer ? (taxpayer.companyName || taxpayer.firstName || taxpayer.id) : 'yok'} tip=${parsed.beyanTipi} donem=${donem}`);
+    return { isDocumentSend: true, taxpayer, tipler, donem };
+  }
+
   /** Mesajdan dönem çıkar: "YYYY-MM" ya da ay adı (+yıl, yoksa cari yıl). */
   private extractPeriodFromOwnerText(text: string): string | null {
     const direct = String(text || '').match(/\b(20\d{2})[-/.](0[1-9]|1[0-2])\b/);
@@ -1278,26 +1372,38 @@ export class WhatsAppBotController implements OnModuleInit {
     ownerContactId: string,
     msg: IncomingWhatsAppMessage,
   ): Promise<boolean> {
-    if (!this.isOwnerDocumentSendRequest(msg.text)) return false;
     if (!this.storage) return false;
 
-    let taxpayer = await this.findTaxpayerInOwnerText(ownerTenant.id, msg.text);
-    let donem = this.extractPeriodFromOwnerText(msg.text);
-    // BAĞLAM HAFIZASI: mesajda mükellef adı / dönem yoksa ("Muhtasarını da gönder",
-    // "onu da yolla" gibi DEVAM istekleri) son konuşulan mükellefi + dönemi konuşma
-    // geçmişinden taşı. Yoksa AI devralıp YANLIŞ/RASTGELE mükellef tutturuyordu
-    // (Gökhan Akgöz vakası) + "kontrol ediyorum" deyip belge göndermiyordu.
-    if (!taxpayer || !donem) {
-      const ctx = await this.findRecentOwnerDocContext(ownerTenant.id, ownerContactId);
-      if (!taxpayer) taxpayer = ctx.taxpayer;
-      if (!donem) donem = ctx.donem;
+    // GATE (gevşek): bu mesaj belge gönderme OLABİLİR mi? Kelime VEYA son konuşma
+    // belge-bağlamlı + devam ifadesi. Gate sadece "AI'ya danışayım mı" kararı;
+    // asıl HANGİ MÜKELLEF/TİP/DÖNEM'i AI çözer — kelimeye/çekime bağımlı değil.
+    const recentCtx = await this.findRecentOwnerDocContext(ownerTenant.id, ownerContactId);
+    const gate = this.isOwnerDocumentSendRequest(msg.text)
+      || (!!recentCtx.taxpayer && this.looksLikeFollowUpSend(msg.text));
+    if (!gate) return false;
+
+    // AI ANLAMA: ne yazılırsa yazılsın hangi mükellef + beyan tipi + dönem (mükellef
+    // TÜRÜ dahil: şirket→Kurum geçici, gerçek kişi→Gelir geçici). Başarısız/kararsızsa
+    // eski regex çıkarımına düşer (çalışan durumlar korunur).
+    let taxpayer: any = null;
+    let tipler: string[] | null = null;
+    let donem: string | null = null;
+    const ai = await this.extractOwnerDocIntentViaAI(ownerTenant.id, ownerContactId, recentCtx, msg)
+      .catch((e: any) => { this.logger.warn(`[OwnerDocSend] AI niyet hatasi: ${e?.message || e}`); return null; });
+    if (ai && ai.isDocumentSend === false) return false; // AI: belge isteği değil → sohbete bırak
+    if (ai?.isDocumentSend && ai.taxpayer) {
+      taxpayer = ai.taxpayer; tipler = ai.tipler; donem = ai.donem;
+    } else {
+      // AI yok/kararsız → eski regex (çalışan durumlar bozulmasın).
+      taxpayer = (await this.findTaxpayerInOwnerText(ownerTenant.id, msg.text)) || recentCtx.taxpayer;
+      tipler = this.inferBeyanTipiFromOwnerText(msg.text);
+      donem = this.extractPeriodFromOwnerText(msg.text) || recentCtx.donem;
     }
-    if (!taxpayer) return false; // yine de mükellef yoksa AI'ya bırak
+    if (!taxpayer) return false; // mükellef çözülemedi → AI'ya bırak
 
     const adi = (taxpayer.companyName || `${taxpayer.firstName || ''} ${taxpayer.lastName || ''}`).trim();
-    const tipler = this.inferBeyanTipiFromOwnerText(msg.text);
     const n = this.normalizeForIntent(msg.text);
-    const wantsBeyanname = !!tipler || /beyan|tahakkuk/.test(n);
+    const wantsBeyanname = !!(tipler && tipler.length) || /beyan|tahakkuk|muhtasar|muhsgk|kdv|gecici|damga|kurumlar|gelir|poset|stopaj/.test(n);
 
     const sendOwnerText = async (reply: string) => {
       const sent = await this.whatsapp.sendMessage(this.replyTarget(msg), reply, ownerTenant.id);
@@ -1333,11 +1439,21 @@ export class WhatsAppBotController implements OnModuleInit {
 
     // A) BEYANNAME — beyan tipi/“beyanname/tahakkuk” geçiyorsa önce BeyanKaydi PDF.
     if (wantsBeyanname) {
-      const where: any = { tenantId: ownerTenant.id, taxpayerId: taxpayer.id };
-      if (donem) where.donem = donem;
-      if (tipler?.length) where.beyanTipi = { in: tipler };
-      const kayitlar = await (this.prisma as any).beyanKaydi.findMany({ where, orderBy: [{ donem: 'desc' }], take: 6 });
-      const withDoc = kayitlar.find((k: any) => k.beyannameUrl || k.pdfUrl);
+      const baseWhere: any = { tenantId: ownerTenant.id, taxpayerId: taxpayer.id };
+      if (tipler?.length) baseWhere.beyanTipi = { in: tipler };
+      // Önce tam dönemle dene; bulamazsan dönemsiz tara (geçici çeyrek "2026-Q1" gibi
+      // format farkı / dönem yokluğu durumunda yıla göre ya da en yeni PDF'li kayda düş).
+      let withDoc: any = null;
+      if (donem && /^\d{4}-\d{2}$/.test(donem)) {
+        const k1 = await (this.prisma as any).beyanKaydi.findMany({ where: { ...baseWhere, donem }, orderBy: [{ donem: 'desc' }], take: 6 });
+        withDoc = k1.find((k: any) => k.beyannameUrl || k.pdfUrl);
+      }
+      if (!withDoc) {
+        const k2 = await (this.prisma as any).beyanKaydi.findMany({ where: baseWhere, orderBy: [{ donem: 'desc' }], take: 12 });
+        const yil = String(donem || '').slice(0, 4);
+        withDoc = (yil ? k2.find((k: any) => (k.beyannameUrl || k.pdfUrl) && String(k.donem || '').startsWith(yil)) : null)
+          || k2.find((k: any) => k.beyannameUrl || k.pdfUrl);
+      }
       if (withDoc) {
         const key = withDoc.beyannameUrl || withDoc.pdfUrl;
         await sendDoc(key, 'application/pdf',
@@ -1496,7 +1612,7 @@ export class WhatsAppBotController implements OnModuleInit {
         '5) Kısa selamlama mesajına (kolay gelsin, merhaba, sağ ol) kısa selamlama cevabı ver (1 cümle).',
         '6) Veri/komut isteğinde tool çağır, sonucu kısa söyle.',
         '7) Riskli işlemlerde önce preview + ONAYLIYORUM bekle.',
-        '8) BELGE GÖNDERME aktiftir (beyanname/tahakkuk PDF + mükellef kartına yüklü tüm evrak/fatura/sözleşme/dosyalar) ve sistem otomatik yapar. Bu mesaja kadar geldiysen mükellef NET DEĞİL demektir — kısaca "hangi mükellefin hangi belgesini göndereyim?" diye SOR. ASLA "gönderdim / çağrı yapıyorum / işlemi başlattım" gibi YAPMADIĞIN şeyi yazma.',
+        '8) BELGE GÖNDERME aktiftir (beyanname/tahakkuk PDF + mükellef kartına yüklü tüm evrak/fatura/sözleşme/dosyalar) ve sistem otomatik yapar. Bu mesaja kadar geldiysen mükellef NET DEĞİL demektir — kısaca "hangi mükellefin hangi belgesini göndereyim?" diye SOR. DİKKAT: belge gönderimini SADECE sistem yapar, sen DEĞİL. Bu yüzden "gönderiyorum / gönderiliyor / gönderecektim / yolluyorum / şimdi atıyorum / tekrar deniyorum / birazdan düşer / sistem aksaklığı oldu" gibi YAPMADIĞIN/YAPAMAYACAĞIN eylem cümlelerini ASLA kurma (geçmiş, şimdiki, gelecek hiçbir zaman). Eğer belge gerçekten gönderildiyse zaten ayrı bir [BELGE] mesajı düşer; senin görevin sadece NETLEŞTİRİCİ soru sormak ya da bilgi vermek.',
         '9) "Gönder" = belgeyi BİRİNE ilet demektir; "GİB\'e gönder/beyan ver" SANMA. Owner GİB\'e beyan vermeni istemez. Beyanname zaten verildiyse onu "GİB\'e gönderiyorum" diye KARIŞTIRMA.',
         '10) Mesajda hangi beyan tipi sorulduysa SADECE onu konuş. "KDV" sorulduysa MUHSGK/Damga ekleme; "MUHSGK" sorulduysa KDV ekleme.',
         '',
