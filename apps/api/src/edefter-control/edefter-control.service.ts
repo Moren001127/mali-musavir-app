@@ -195,6 +195,7 @@ export class EDefterControlService {
     } catch (err: any) {
       throw new BadRequestException(err?.message || 'Detay Fis Listesi Excel parse edilemedi');
     }
+    this.correctTahakkukDates(rows);
 
     const old = await (this.prisma as any).eDefterControlSession.findMany({
       where: {
@@ -340,6 +341,7 @@ export class EDefterControlService {
     const range = this.donemToRange(session.donem, donemTipi);
     const rawExcelBytes = Buffer.from(session.rawExcelBytes);
     const rows = this.parser.parse(rawExcelBytes, { defaultYear: range?.start.getUTCFullYear() });
+    this.correctTahakkukDates(rows);
     const voucherCount = new Set(rows.map((r) => r.voucherKey)).size;
     const findings = this.analyze(rows, range, donemTipi);
     const lineRows = rows.map((r) => ({
@@ -2606,6 +2608,47 @@ export class EDefterControlService {
     const adlar = ['', 'ocak', 'şubat', 'mart', 'nisan', 'mayıs', 'haziran', 'temmuz', 'ağustos', 'eylül', 'ekim', 'kasım', 'aralık'];
     const ad = adlar[m];
     return ad ? this.normalizeLoose(ad) : null;
+  }
+
+  // normalize edilmis metinde Turkce ay adi ara -> 1-12 (yoksa null).
+  private ayNoFromText(normalizedText: string): number | null {
+    const adlar = ['ocak', 'subat', 'mart', 'nisan', 'mayis', 'haziran', 'temmuz', 'agustos', 'eylul', 'ekim', 'kasim', 'aralik'];
+    for (let i = 0; i < 12; i++) {
+      if (normalizedText.includes(adlar[i])) return i + 1;
+    }
+    return null;
+  }
+
+  // TAHAKKUK TARIH DUZELTMESI (2026-06-11): Luca Detay Fis Listesi, KDV tahakkuk
+  // fisinde FIS TARIHI (or. 28.02) yerine EVRAK TARIHI (or. 31.03) veriyor -> tarih
+  // akisi bozuk gorunuyor (31.03, Subat ile Mart arasinda) + ay yanlis atanir
+  // ("Subat tahakkuk bulunamadi" yanlis uyarisi). Aciklamada ay yazili olur
+  // ("Subat Ayi KDV Tahakkuk"). Bu fislerde fisTarihi'ni aciklamadaki ayin SON
+  // gunune (KDV tahakkukunun gercek fis tarihi = ay sonu) ceker; evrak tarihini korur.
+  // Sadece aciklamasinda "kdv" + "tahakkuk" + ay adi gecen, tarihi farkli aydaki fisler.
+  private correctTahakkukDates(rows: ParsedEDefterFisLine[]): void {
+    const byVoucher = new Map<string, ParsedEDefterFisLine[]>();
+    for (const r of rows) {
+      const list = byVoucher.get(r.voucherKey);
+      if (list) list.push(r);
+      else byVoucher.set(r.voucherKey, [r]);
+    }
+    for (const vrows of byVoucher.values()) {
+      const text = this.normalizeLoose(vrows.map((r) => r.aciklama || '').join(' '));
+      if (!text.includes('kdv') || !text.includes('tahakkuk')) continue;
+      const ay = this.ayNoFromText(text);
+      if (!ay) continue;
+      const mevcut = vrows.find((r) => r.fisTarihi)?.fisTarihi;
+      if (!mevcut) continue;
+      const yil = mevcut.getUTCFullYear();
+      if (mevcut.getUTCMonth() === ay - 1) continue; // zaten dogru aydaysa dokunma
+      const sonGun = new Date(Date.UTC(yil, ay, 0)).getUTCDate();
+      const dogruTarih = new Date(Date.UTC(yil, ay - 1, sonGun));
+      for (const r of vrows) {
+        if (r.fisTarihi && !r.evrakTarihi) r.evrakTarihi = r.fisTarihi; // evrak tarihini koru
+        r.fisTarihi = new Date(dogruTarih.getTime());
+      }
+    }
   }
 
   private endOfMonthUTC(date: Date) {

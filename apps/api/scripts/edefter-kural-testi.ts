@@ -266,6 +266,24 @@ ekle('FIX4: Şubat tahakkuku 31.03 (ay sonu) + açıklama "Şubat" → INFO', 'K
   satir({ voucherKey: 'TAH', hesapKodu: '190.01', hesapAdi: 'DEVREDEN KDV', aciklama: 'SUBAT AYI KDV TAHAKKUK', fisTarihi: D(2026, 3, 31), borc: 200 }),
   satir({ voucherKey: 'TAH', hesapKodu: '191.01', hesapAdi: 'INDIRILECEK KDV', aciklama: 'SUBAT AYI KDV TAHAKKUK', fisTarihi: D(2026, 3, 31), alacak: 200 }),
 ], 'INFO');
+// FIX5 (tarih duzeltme): correctTahakkukDates uygulaninca tahakkuk fis tarihi
+// 31.03 (evrak) -> 28.02 (gercek fis tarihi = Subat sonu) cekilir; Subat artik
+// tahakkuku ICERIR -> KDV_TAHAKKUK_EKSIK hic cikmamali (tam İLGİ OTO vakasi cozumu).
+ekle('FIX5: correctTahakkukDates → fiş 28.02, eksik uyarısı YOK', 'KDV_TAHAKKUK_EKSIK', 'GECICI_Q1', () => {
+  const rows = [
+    satir({ voucherKey: 'A1', hesapKodu: '153.01', fisTarihi: D(2026, 2, 2), borc: 1000 }),
+    satir({ voucherKey: 'A1', hesapKodu: '191.01', fisTarihi: D(2026, 2, 2), borc: 200 }),
+    satir({ voucherKey: 'A1', hesapKodu: '320.01', fisTarihi: D(2026, 2, 2), alacak: 1200 }),
+    satir({ voucherKey: 'TAH', hesapKodu: '190.01', hesapAdi: 'DEVREDEN KDV', aciklama: 'Subat Ayi KDV Tahakkuk', fisTarihi: D(2026, 3, 31), borc: 200 }),
+    satir({ voucherKey: 'TAH', hesapKodu: '191.01', hesapAdi: 'INDIRILECEK KDV', aciklama: 'Subat Ayi KDV Tahakkuk', fisTarihi: D(2026, 3, 31), alacak: 200 }),
+  ];
+  (svc as any).correctTahakkukDates(rows);
+  const tah = rows.find((r) => r.voucherKey === 'TAH')!;
+  if (!tah.fisTarihi || tah.fisTarihi.getUTCMonth() !== 1) {
+    throw new Error(`FIX5 tarih duzeltme calismadi: tahakkuk hala ${tah.fisTarihi?.toISOString().slice(0, 10)}`);
+  }
+  return rows;
+}, undefined, true);
 
 // ── Düzeltme doğrulaması (Fix 3) ─────────────────────────────
 // İade fişi (391 borç, fiş tipi Mahsup) artık tahakkuk fişi SANILMAMALI:
