@@ -880,9 +880,19 @@ export class ToolExecutorService {
       rows = rows.filter((r) => r.beyannameVerildi !== true);
     }
 
-    const donem = `${year}-${String(month).padStart(2, '0')}`;
+    const islemAyi = `${year}-${String(month).padStart(2, '0')}`;
+    // İŞLEM ayı = faturaların İŞLENDİĞİ takvim ayı (örn. Haziran). Bu işlemlerin ait
+    // olduğu VERİ dönemi = BEYANNAME dönemi = işlem ayı − 1 (örn. Mayıs). Mayıs'ın
+    // faturaları Haziran'da işlenir. Owner/mükellef "dönem" derken Mayıs'ı kasteder.
+    const byMonth = month === 1 ? 12 : month - 1;
+    const byYear = month === 1 ? year - 1 : year;
+    const beyannameDonem = `${byYear}-${String(byMonth).padStart(2, '0')}`;
     return {
-      donem,
+      // Kullanıcıya-dönük dönem = BEYANNAME dönemi (veri dönemi). Bot bunu söylemeli.
+      donem: beyannameDonem,
+      beyannameDonem,
+      islemAyi,
+      donemNotu: `Bu evrak/işlem kayıtları İŞLEM ayı ${islemAyi}'de tutulur ama ait oldukları VERİ/beyanname dönemi ${beyannameDonem}'dir (işlem ayı−1). Owner'a/mükellefe dönemden bahsederken DAİMA beyanname dönemini (${beyannameDonem}) söyle; işlem ayını (${islemAyi}) SÖYLEME — "${islemAyi}'da evrak geldi" YANLIŞ/kafa karıştırıcı, doğrusu "${beyannameDonem} dönemi evrakı (${islemAyi}'da işlenir)".`,
       toplamMukellef: taxpayers.length,
       sonuc: rows.length,
       evrakFiltresi: evrakFilter,
