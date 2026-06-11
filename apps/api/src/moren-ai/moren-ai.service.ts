@@ -995,13 +995,19 @@ export class MorenAiService {
       return MOREN_AI_TOOLS.filter((tool: any) => TAXPAYER_READONLY_TOOL_NAMES.includes(tool.name));
     }
 
-    const selected = new Set<string>(CORE_TOOL_NAMES);
+    // ÖNCELİK SIRASI ÖNEMLİ: prefetch en fazla 8 tool çeker (buildMaxToolContext).
+    // Soruyla EŞLEŞEN grupların tool'ları ÖNCE gelmeli; yoksa ilgili tool (örn.
+    // list_taxpayers_monthly_status) 8-sınırına takılıp düşüyor ve bot "çekemiyorum"
+    // diyordu. Eşleşen grup tool'ları (eşleşme sırasıyla) → sonra CORE.
+    const ordered: string[] = [];
+    const seen = new Set<string>();
+    const push = (name: string) => { if (name && !seen.has(name)) { seen.add(name); ordered.push(name); } };
     for (const group of TOOL_GROUPS) {
-      if (group.pattern.test(text)) {
-        for (const tool of group.tools) selected.add(tool);
-      }
+      if (group.pattern.test(text)) for (const tool of group.tools) push(tool);
     }
-    return MOREN_AI_TOOLS.filter((tool: any) => selected.has(tool.name));
+    for (const tool of CORE_TOOL_NAMES) push(tool);
+    const byName = new Map<string, any>(MOREN_AI_TOOLS.map((tool: any) => [tool.name, tool]));
+    return ordered.map((name) => byName.get(name)).filter(Boolean);
   }
 
   private allowAnthropicApiFallback() {
