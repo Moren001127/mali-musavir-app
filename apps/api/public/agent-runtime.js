@@ -7,7 +7,9 @@
   // v1.42.0 (2026-06-11): Luca veri çekme tamamen yerel ajana taşındı. Normal
   // tarayıcıdaki eklenti (DEV-*) Luca'da SESSİZ: iş yoklamaz, oto-giriş/captcha
   // denemez, oturum eşitlemez, panel göstermez. Yerel ajan (moren-*) etkilenmez.
-  const AGENT_VERSION = '1.42.0';
+  // v1.42.1 (2026-06-11): Klasik Luca "Zaman Aşımı - Parola Girişi" (inaktivite
+  // oturum düşmesi) popup'ı otomatik re-auth → "çek diyorum çekmiyor" düzeltildi.
+  const AGENT_VERSION = '1.42.1';
   const AGENT_INSTANCE_ID = 'mai_' + Date.now().toString(36) + '_' + Math.random().toString(36).slice(2, 8);
 
   // === VERSION-AWARE RELOAD ===
@@ -1247,6 +1249,31 @@
           await logPendingJob(job, `Luca agent klasik ekranda degil; job bekliyor. URL=${url}`);
         }
         return;
+      }
+
+      // KLASIK LUCA ZAMAN AŞIMI (oturum) — inaktiflikten Luca "Zaman Aşımı - Parola
+      // Girişi" popup'ı çıkmış olabilir. Klasik Luca'da NORMALDE görünür şifre alanı
+      // YOKTUR → görünür bir password input = zaman aşımı re-auth popup'ı demektir.
+      // Otomatik şifre girip oturumu yenile; yoksa firma değişimi/rapor "Firma
+      // DEĞİŞMEDİ" ile patlar ("çek diyorum çekmiyor çünkü kullanıcı düşmüş").
+      {
+        const reauthParts = findLoginFormParts();
+        if (reauthParts && reauthParts.password) {
+          // 60sn cooldown: re-auth başarısız olursa her poll'de tekrar deneyip
+          // hesabı kilitleme riskine girme.
+          const now = Date.now();
+          if (now - (window.__morenLucaReauthAt || 0) > 60000) {
+            window.__morenLucaReauthAt = now;
+            setStatus('Luca zaman aşımı; oturum şifresiyle otomatik yenileniyor');
+            for (const job of jobs) {
+              await logPendingJob(job, 'Luca zaman aşımı (Parola Girişi) algılandı; oturum otomatik yenileniyor — sonraki poll\'de iş sürer.');
+            }
+            await fillLucaLoginFromPortal().catch(() => {});
+          } else {
+            setStatus('Luca zaman aşımı; oturum yenileme bekleniyor (cooldown)');
+          }
+          return;
+        }
       }
 
       if (isDirectClassicLucaError()) {
