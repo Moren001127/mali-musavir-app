@@ -1238,21 +1238,35 @@ async function loginToLuca(page) {
     const { Solver } = require('2captcha');
     const solver = new Solver(twoCaptchaKey);
     let cozuldu = false;
-    for (let deneme = 1; deneme <= 3; deneme++) {
+    // 6 deneme: 2captcha bazen yanlış/kısa okuyor (ör. "46c"); Luca captcha'sı 6 hane.
+    // Yanlış gönderim Luca'da YENİ captcha üretir (hesap kilidi yok) → tekrar dene.
+    for (let deneme = 1; deneme <= 6; deneme++) {
       const capImg = await page.$('#captcha');
       if (!capImg) { cozuldu = true; break; } // captcha kalktı → giriş olmuş
       let cozum;
       try {
         const buffer = await capImg.screenshot({ type: 'png' });
         const t0 = Date.now();
-        // regsense:1 → büyük/küçük harf korunur (Luca captcha'sı harf-duyarlı olabilir)
+        // regsense:1 → büyük/küçük harf korunur. min/max_len: 2captcha'ya beklenen
+        // uzunluğu söyler (Luca captcha'sı 6 hane) → kısa yanlış okumalar azalır.
         cozum = await solver.imageCaptcha(buffer.toString('base64'), {
-          numeric: 0, min_len: 3, max_len: 10, language: 0, regsense: 1,
+          numeric: 0, min_len: 5, max_len: 7, language: 0, regsense: 1,
         });
         log.info(`Luca captcha 2captcha [${deneme}]: "${cozum.data}" (${Date.now() - t0}ms)`);
       } catch (err) {
         log.warn(`2captcha hatası [${deneme}]: ${err.message}`);
         await page.waitForTimeout(1500);
+        continue;
+      }
+      // Açıkça kısa okuma (<5) muhtemelen yanlış → boşa gönderme, yeni captcha iste.
+      if (String(cozum.data || '').trim().length < 5) {
+        try { await solver.reportBad(cozum.id); } catch (_) {}
+        log.warn(`Luca captcha çok kısa okundu ("${cozum.data}"); yeni captcha isteniyor.`);
+        // captcha'yı yenile (resme tıkla / formu yeniden yükle yerine: boş gönder → Luca yeniler)
+        await page.fill('#captcha-input', '0').catch(() => {});
+        const navR = page.waitForNavigation({ waitUntil: 'domcontentloaded', timeout: 20_000 }).catch(() => null);
+        await page.evaluate(() => { const t = document.querySelector('input[value="Tamam"], input[value="TAMAM"]'); if (t) t.click(); else if (document.forms[0]) document.forms[0].submit(); }).catch(() => {});
+        await navR; await page.waitForTimeout(1500);
         continue;
       }
       await page.fill('#captcha-input', String(cozum.data).trim()).catch(() => {});
@@ -1271,7 +1285,7 @@ async function loginToLuca(page) {
       log.warn(`Luca captcha yanlış [${deneme}]; yeni captcha ile tekrar deneniyor...`);
     }
     if (!cozuldu && (await page.$('#captcha'))) {
-      throw new Error('Luca captcha 3 denemede çözülemedi (2captcha). Daha sonra tekrar denenecek.');
+      throw new Error('Luca captcha 6 denemede çözülemedi (2captcha). Oturum gardiyanı/sonraki iş tekrar deneyecek.');
     }
   }
 
