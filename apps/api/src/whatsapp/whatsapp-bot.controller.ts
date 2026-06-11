@@ -1126,7 +1126,11 @@ export class WhatsAppBotController implements OnModuleInit {
   private isOwnerDocumentSendRequest(text: string): boolean {
     const n = this.normalizeForIntent(text);
     const wantsSend = /\b(gonder|gonderir|ilet|iletir|yolla|paylas|at|atar)\b/.test(n) || /\bpdf\b|dosya\s*olarak|belge\s*olarak/.test(n);
-    const aboutDoc = /(beyan|tahakkuk|fatura|belge|pdf|ekstre|dosya|evrak|sozlesme|vekalet|imza\s*sirku|levha|sicil|ruhsat)/.test(n);
+    // Belge anahtar kelimeleri + beyan tipleri (muhtasar/kdv/damga...). "Muhtasarını
+    // gönder" eskiden listede olmadığı için belge isteği SAYILMIYOR, AI'ya düşüp
+    // "gönderiyorum" deyip GÖNDERMİYORDU. inferBeyanTipiFromOwnerText yedek kapı.
+    const aboutDoc = /(beyan|tahakkuk|fatura|belge|pdf|ekstre|dosya|evrak|sozlesme|vekalet|imza\s*sirku|levha|sicil|ruhsat|muhtasar|muhsgk|stopaj|kdv|damga|gecici|kurumlar|poset|bordro|bildirge)/.test(n)
+      || !!this.inferBeyanTipiFromOwnerText(text);
     return wantsSend && aboutDoc;
   }
 
