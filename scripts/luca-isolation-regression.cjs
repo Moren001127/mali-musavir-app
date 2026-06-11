@@ -60,6 +60,8 @@ if (!ag) {
     `${AG}: 2captcha çözümü (imageCaptcha/regsense) kaldırılmış.`);
   need(/captchaKontrol|forms\[0\]\.submit|value="Tamam"/.test(ag),
     `${AG}: captcha gönderim adımı (Tamam/forms[0].submit/captchaKontrol) kaldırılmış.`);
+  need(/startSessionGuardian/.test(ag),
+    `${AG}: oturum gardiyanı (startSessionGuardian) kaldırılmış — düşen oturum otomatik onarılmaz, manuel giriş gerekir.`);
 }
 
 // 3) Pencere gözcüsü

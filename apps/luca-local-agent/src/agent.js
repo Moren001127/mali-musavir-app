@@ -1912,6 +1912,45 @@ function startJobTimeoutWatcher() {
   }, 30_000); // 30sn'de bir
 }
 
+// ====================================================================
+// SELF-HEAL: Oturum gardiyani — tarayici acik ama Luca oturumu dustuyse
+// (login/captcha sayfasina dustuyse) IS BEKLEMEDEN proaktif tekrar giris yapar.
+// Amaç: kullanici HIC manuel mudahale etmesin; ajan her zaman hazir/girisli kalsin.
+// - Sadece tarayici acik + oturum dusmus + bos (is yok) iken devreye girer.
+// - 90sn cooldown + preWarm'in fail-streak korumasi -> hesap kilidi riski yok.
+// - Uzun bekleme (30dk) sonrasi fail-streak'i sifirlar -> gecici 2captcha/captcha
+//   kesintisinden de KENDI KENDINE toparlanir (kalici "manuel gerekir" durumu olmaz).
+// ====================================================================
+const SESSION_GUARD_INTERVAL_MS = 4 * 60 * 1000; // 4 dk
+const FAIL_STREAK_RESET_MS = 30 * 60 * 1000;     // 30 dk sonra fail-streak sifirla
+
+function startSessionGuardian() {
+  setInterval(async () => {
+    try {
+      if (stopped) return;
+      if (activeJobCount > 0) return;   // calisan is varken karisma
+      if (preWarmPromise) return;       // zaten giris/warm suruyor
+      if (!browserSession) return;      // tarayici kapali (idle) -> iste acilir, dokunma
+      const page = browserSession.page;
+      if (!page || page.isClosed()) return;
+      const url = page.url() || '';
+      const oturumDustu = /giris\.erp|LUCASSO\/login|\/Luca\/giris\.do|captchaKontrol/i.test(url);
+      if (!oturumDustu) return;         // oturum saglam -> dokunma
+      // Uzun suredir denenmemisse (gecici kesinti gecmis olabilir) fail-streak'i
+      // sifirla ki kalici kilitlenmeden tekrar denesin.
+      if (loginFailStreak >= LOGIN_FAIL_MAX && Date.now() - lastLoginAttemptAt >= FAIL_STREAK_RESET_MS) {
+        log.info(`Session guardian: ${Math.round(FAIL_STREAK_RESET_MS / 60000)}dk gecti; login fail-streak sifirlandi, yeniden deneniyor.`);
+        loginFailStreak = 0;
+      }
+      log.info('Session guardian: Luca oturumu dusmus (login sayfasi); is beklemeden proaktif tekrar giris...');
+      await preWarmBrowserSession();
+    } catch (e) {
+      // sessiz — bir sonraki tick'te tekrar dener
+    }
+  }, SESSION_GUARD_INTERVAL_MS);
+  log.info(`Oturum gardiyani aktif (${SESSION_GUARD_INTERVAL_MS / 60000}dk; dusen oturumu otomatik onarir).`);
+}
+
 async function start() {
   acquireSingleInstanceLock();
   const poolStarted = await startPortalWorkerPoolIfAvailable();
@@ -1922,6 +1961,7 @@ async function start() {
   // SELF-HEAL watcher'lari baslat
   startMemoryWatcher();
   startJobTimeoutWatcher();
+  startSessionGuardian();
 
   if (!poolStarted) {
     if (!cfg.luca?.uyeNo || !cfg.luca?.username || !cfg.luca?.password) {
