@@ -335,6 +335,10 @@ export class BaileysService implements OnModuleDestroy {
         this.reconnectAttempts.delete(tenantId);
         this.clearReconnectTimer(tenantId);
         this.logger.log(`[Baileys] tenant=${tenantId} BAĞLANDI`);
+        // Owner/personel numaralarının LID'ini Baileys'e sorup OTOMATİK eşle
+        // (env ayarı gerekmez): Baileys gelen mesajda senderPn göndermeyince
+        // mesaj LID ile düşüyor, owner tanınmıyordu. onWhatsApp numara→LID verir.
+        this.resolveConfiguredLids(session).catch(() => {});
       }
       if (connection === 'close') {
         session.connected = false;
@@ -450,6 +454,49 @@ export class BaileysService implements OnModuleDestroy {
       return;
     }
     await this.inboundHandler({ from, text: finalText, id: m.key?.id, replyTo: jid, media });
+  }
+
+  /**
+   * Owner/personel numaralarının LID'ini Baileys'e sorup (onWhatsApp) OTOMATİK
+   * eşler — hiçbir env ayarı gerekmez. Baileys, gelen mesajda kişinin gerçek
+   * numarasını (senderPn) göndermeyince mesaj LID ile düşüyor ve owner
+   * tanınmıyordu; onWhatsApp numara→LID döndürdüğü için bağlantı açılınca bir kez
+   * sorup eşlemeyi kalıcı kuruyoruz. En iyi çaba: hata/zaman aşımı yutulur.
+   */
+  private async resolveConfiguredLids(session: Session) {
+    const phones = String(
+      `${process.env.MOREN_OWNER_WHATSAPP_PHONES || process.env.MOREN_OWNER_WHATSAPP_PHONE || ''},${process.env.MOREN_STAFF_WHATSAPP_PHONES || ''}`,
+    )
+      .split(',')
+      .map((p) => this.jidDigits(p))
+      .filter(Boolean);
+    const unique = Array.from(new Set(phones));
+    for (const phone of unique) {
+      try {
+        const query = session.sock.onWhatsApp(phone);
+        const res: any[] = await Promise.race([
+          query,
+          new Promise<any[]>((resolve) => setTimeout(() => resolve([]), 8000)),
+        ]);
+        for (const item of res || []) {
+          // Olası alanlar: item.lid ('...@lid'), item.jid (PN), bazı sürümlerde farklı.
+          const lid = this.jidDigits(item?.lid || (String(item?.jid || '').includes('@lid') ? item.jid : ''));
+          const pn = this.jidDigits(String(item?.jid || '').includes('@lid') ? phone : (item?.jid || phone));
+          if (lid && pn && lid !== pn && this.isLidTarget(`${lid}@lid`)) {
+            if (session.lidToPhone.get(lid) !== pn) {
+              session.lidToPhone.set(lid, pn);
+              session.auth.saveLidMapping(lid, pn).catch(() => {});
+            }
+            this.logger.log(`[Baileys] owner/personel LID otomatik cozuldu: ${this.maskTarget(lid)} -> ${this.maskTarget(pn)}`);
+          }
+        }
+        if (!res?.length || !res.some((i: any) => i?.lid)) {
+          this.logger.log(`[Baileys] onWhatsApp(${this.maskTarget(phone)}) LID dondurmedi: ${JSON.stringify(res).slice(0, 200)}`);
+        }
+      } catch (e: any) {
+        this.logger.warn(`[Baileys] onWhatsApp(${this.maskTarget(phone)}) cozulemedi: ${e?.message || e}`);
+      }
+    }
   }
 
   /**
