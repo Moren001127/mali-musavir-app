@@ -1282,13 +1282,13 @@ export class MorenAiService {
       // ctx.taxpayerId ile bağlar; girdide taxpayerId GÖNDERİLMEZ. İsraf/aşırı-paylaşım
       // olmasın diye SADECE mesaj o konuyla ilgiliyse prefetch edilir.
       case 'get_my_kdv':
-        return /\bkdv\b/i.test(gate) ? { donem: this.explicitPeriodOrNull(gate, ctx.period) } : null;
+        return /\bkdv\b|katma de[ğg]er|kdv['i]?m/i.test(gate) ? { donem: this.explicitPeriodOrNull(gate, ctx.period) } : null;
       case 'get_my_invoices':
-        return /fatura/i.test(gate) ? { donem: this.explicitPeriodOrNull(gate, ctx.period), limit: 20 } : null;
+        return /fatura|e-?ar[şs]iv|kesti[ğg]im|sat[ıi][şs]\b/i.test(gate) ? { donem: this.explicitPeriodOrNull(gate, ctx.period), limit: 20 } : null;
       case 'get_my_beyanname':
-        return /beyan|tahakkuk/i.test(gate) ? { donem: this.explicitPeriodOrNull(gate, ctx.period) } : null;
+        return /beyan|tahakkuk|muhtasar|muhsgk|stopaj|ge[çc]ici|damga|kurumlar|verildi mi|verdiniz mi|haz[ıi]r m[ıi]/i.test(gate) ? { donem: this.explicitPeriodOrNull(gate, ctx.period) } : null;
       case 'get_my_balance':
-        return /bor[cç]|bakiye|[öo]deme|cari|hesab[ıi]m|ne kadar [öo]de/i.test(gate) ? {} : null;
+        return /bor[cç]|bakiye|[öo]deme|[öo]deyece|[öo]demem|[öo]decek|cari|hesab[ıi]m|hesap durum|ne kadar [öo]de|kalan/i.test(gate) ? {} : null;
       case 'get_my_profile':
       case 'get_my_work_status':
       case 'get_my_documents':

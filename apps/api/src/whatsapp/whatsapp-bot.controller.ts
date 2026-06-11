@@ -1240,10 +1240,13 @@ export class WhatsAppBotController implements OnModuleInit {
   /** Mesaj isimsiz bir DEVAM/gönderim isteği gibi mi? ("da gönder", "onu da", "bekliyorum"). */
   private looksLikeFollowUpSend(text: string): boolean {
     const n = this.normalizeForIntent(text);
-    return /\b(gonder|yolla|ilet|paylas)\w*/.test(n)
-      || /\b(onu|bunu|sunu|onlari|hepsini|digerini|oburu|oburunu)\b/.test(n)
-      || /(^|\s)(da|de)(\s|$)/.test(n)
-      || /bekliyorum|hani|nerede|gondersene|atsana/.test(n);
+    const hasSendVerb = /\b(gonder|yolla|ilet|paylas)\w*/.test(n) || /gondersene|atsana/.test(n);
+    const hasPronoun = /\b(onu|bunu|sunu|onlari|hepsini|digerini|oburu|oburunu)\b/.test(n);
+    const hasDocWord = /muhtasar|muhsgk|stopaj|kdv|beyan|tahakkuk|fatura|gecici|damga|kurumlar|gelir|poset|belge|pdf|ekstre|evrak/.test(n);
+    const hasDaDe = /(^|\s)(da|de)(\s|$)/.test(n);
+    // Salt "da/de" veya "bekliyorum" yetmez ("ben de geliyorum" tetiklemesin);
+    // gönderme fiili VEYA zamir VEYA (da/de + belge kelimesi) gerekli.
+    return hasSendVerb || hasPronoun || (hasDaDe && hasDocWord);
   }
 
   /** AI'nın döndürdüğü tek beyan tipini, BeyanKaydi sorgusu için eşanlamlı listeye çevirir. */
@@ -1615,6 +1618,7 @@ export class WhatsAppBotController implements OnModuleInit {
         '8) BELGE GÖNDERME aktiftir (beyanname/tahakkuk PDF + mükellef kartına yüklü tüm evrak/fatura/sözleşme/dosyalar) ve sistem otomatik yapar. Bu mesaja kadar geldiysen mükellef NET DEĞİL demektir — kısaca "hangi mükellefin hangi belgesini göndereyim?" diye SOR. DİKKAT: belge gönderimini SADECE sistem yapar, sen DEĞİL. Bu yüzden "gönderiyorum / gönderiliyor / gönderecektim / yolluyorum / şimdi atıyorum / tekrar deniyorum / birazdan düşer / sistem aksaklığı oldu" gibi YAPMADIĞIN/YAPAMAYACAĞIN eylem cümlelerini ASLA kurma (geçmiş, şimdiki, gelecek hiçbir zaman). Eğer belge gerçekten gönderildiyse zaten ayrı bir [BELGE] mesajı düşer; senin görevin sadece NETLEŞTİRİCİ soru sormak ya da bilgi vermek.',
         '9) "Gönder" = belgeyi BİRİNE ilet demektir; "GİB\'e gönder/beyan ver" SANMA. Owner GİB\'e beyan vermeni istemez. Beyanname zaten verildiyse onu "GİB\'e gönderiyorum" diye KARIŞTIRMA.',
         '10) Mesajda hangi beyan tipi sorulduysa SADECE onu konuş. "KDV" sorulduysa MUHSGK/Damga ekleme; "MUHSGK" sorulduysa KDV ekleme.',
+        '11) NE YAPABİLİRSİN: (a) Portal verisini sorgulayıp anlatmak (mizan, KDV, beyanname durumu, borç, fatura, mükellef bilgisi, sistem sağlığı). (b) Belge/PDF göndermek (sistem otomatik yapar). BUNLARI rahatça yap. NE YAPAMAZSIN (WhatsApp\'tan): Luca/ajan çalıştırma-başlatma-durdurma, hatırlatma/SMS/mesaj gönderme, beyanname verme, ayar değiştirme gibi İŞLEM BAŞLATMA. Böyle bir komutta ASLA "başlattım/başlatıyorum/gönderdim/yaptım/kuyruğa aldım" deme — bunun yerine DÜRÜSTÇE: "Bu işlemi WhatsApp üzerinden başlatamıyorum; portaldan (ilgili modülden) yapabilirsiniz. İstersen durumu buradan kontrol edip anlatabilirim." de.',
         '',
         'MALİ TABLO ANALİZİ (gelir tablosu / bilanço / mizan / KDV): düz metin paragraf DEĞİL — kalemleri ALT ALTA yaz, emoji bölüm başlığı (💰 KALEMLER, 📊 YORUM), Türk sayı formatı (1.234.567,89 ₺), sonda 1-2 madde kısa yorum. Tek kalem sorulduysa (örn. net kâr) tek satır cevap ver.',
         '',
@@ -2025,10 +2029,10 @@ export class WhatsAppBotController implements OnModuleInit {
       '• Doğal bağlaçlar/ifadeler kullanabilirsin ("tabii", "bir bakayım", "şu an şöyle görünüyor", "merak etme") — ama abartma, kısa tut.',
       '• Emoji: müşteri kullanıyorsa ya da içtenlik katacaksa ara sıra, çok az.',
       '',
-      '— SEN BİR YAPAY ZEKA DEĞİLSİN (müşteriye göre) —',
-      `• ASLA bot/yapay zeka/asistan yazılımı olduğunu söyleme ya da ima etme. Sen ${BOT_NAME}'sin, ofisten.`,
-      `• "Bot musun / yapay zeka mısın / robot musun" diye sorarsa, rahat ve insanca geçiştir: "Yok, ofisten ${BOT_NAME} :)" gibi, sonra yardımına devam et. Savunmaya geçme.`,
-      '• "Moren AI", "yapay zeka", "dil modeli" gibi kelimeleri ASLA kullanma.',
+      '— SICAK VE DOĞAL, AMA DÜRÜST —',
+      `• Sıcak, insan gibi konuş; adın ${BOT_NAME}, ofisten. KİMSE SORMADAN "ben yapay zekayım/dil modeliyim" diye robotik teknik açıklama YAPMA — gereksiz yere kimlik dökme.`,
+      `• AMA "bot musun / yapay zeka mısın / gerçek insan mısın" diye DOĞRUDAN sorulursa DÜRÜST ol: "Ofisin dijital asistanıyım, ${BOT_NAME} diye seslenebilirsiniz; size yardımcı olmak için buradayım" gibi nazik+net cevap ver. ASLA "yok, gerçek insanım / gerçekten ${BOT_NAME}'im" diye YALAN SÖYLEME.`,
+      '• Teknik jargonu ("dil modeli", "Moren AI") öne çıkarma; "ofisin asistanı" demek yeterli.',
       '',
       '— NE SÖYLERSİN, NE SÖYLEMEZSİN —',
       '• SADECE sorulana cevap ver. "KDV ne kadar?" → veride varsa tutarı söyle. "Beyannamem hazır mı?" → durumu söyle. "Evraklarım geldi mi?" → durumu söyle.',
