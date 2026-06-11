@@ -807,19 +807,28 @@ export class ToolExecutorService {
    * ile 73 kez cagri yapmak yerine tek JOIN ile hepsini doker.
    */
   private async listTaxpayersMonthlyStatus(input: any, ctx: { tenantId: string }) {
-    // Donem parse
-    let year: number;
-    let month: number;
+    // ÖNEMLİ DÖNEM MODELİ: Aylık durum kayıtları İŞLEM ayına göre saklanır, ama owner/
+    // mükellef "dönem" derken BEYANNAME dönemini (veri dönemi) kasteder. Mayıs'ın
+    // faturaları Haziran'da işlenir → "Mayıs dönemi" verisi İŞLEM ayı Haziran'dadır.
+    // Gelen period = BEYANNAME dönemi kabul edilir; sorgu İŞLEM ayı (= beyanname + 1)
+    // üzerinden yapılır. period yoksa cari beyanname dönemi = (bu ay − 1).
+    let bYear: number;
+    let bMonth: number;
     const period = (input?.period || '').trim();
     const m = period.match(/^(\d{4})-(\d{2})$/);
     if (m) {
-      year = parseInt(m[1], 10);
-      month = parseInt(m[2], 10);
+      bYear = parseInt(m[1], 10);
+      bMonth = parseInt(m[2], 10);
     } else {
       const now = new Date();
-      year = now.getFullYear();
-      month = now.getMonth() + 1;
+      const prev = new Date(now.getFullYear(), now.getMonth() - 1, 1);
+      bYear = prev.getFullYear();
+      bMonth = prev.getMonth() + 1;
     }
+    // İşlem ayı = beyanname dönemi + 1
+    let year = bYear;
+    let month = bMonth + 1;
+    if (month === 13) { month = 1; year += 1; }
 
     const evrakFilter = (input?.evrakDurumu || 'tumu') as string;
     const beyannameFilter = (input?.beyannameDurumu || 'tumu') as string;
