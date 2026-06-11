@@ -36,6 +36,22 @@ edit yapılamaz.
 - `apps/luca-local-agent/scripts/start-agent.ps1` (başta `git pull` oto-güncelleme + tek-wrapper mutex)
 - NOT: bu dosyalar production'da çoklu makinede canlı; değişiklik onay + test ister.
 
+### Luca İzolasyon + Susturma + Otomatik Giriş — 2026-06-11 kilitlendi
+Kullanıcı talebi: Luca verisi YALNIZ ayrı/izole yerel ajan tarayıcısından çekilsin;
+kullanıcının kendi tarayıcısında Luca arka planda çalışmasın; ayrı tarayıcıya
+kazara müdahale edilemesin. Koruma testi: `scripts/luca-isolation-regression.cjs`
+(pre-commit'te çalışır). Bozulursa commit kesilir.
+- **Eklenti Luca'da SESSİZ** — `agent-runtime.js`: `lucaSilencedInBrowserExt()`
+  (DEV-* + Luca origin → iş yoklamaz, oto-giriş/captcha denemez, oturum eşitlemez,
+  panel göstermez). Yerel ajan (moren-*) ETKİLENMEZ. Acil aç: `window.__morenLucaExtEnable=true`.
+- **Otomatik giriş (captcha)** — `apps/luca-local-agent/src/agent.js` `loginToLuca`:
+  Luca artık 2FA kapalı hesapta girişte CAPTCHA zorunlu. Doğru akış: kimlik gir →
+  `girisbtn()` → captcha sayfasında `#captcha` 2captcha ile çöz (regsense:1) →
+  `#captcha-input` → Tamam/`forms[0].submit` → main.erp. `.env`'de `TWOCAPTCHA_API_KEY` şart.
+- **Ayrı tarayıcı küçük/kilitli** — `scripts/pencere-kucult-gozcu.ps1` ajanın
+  `.browser-data` Chromium penceresini sürekli küçültür (kullanıcı Chrome'una dokunmaz);
+  `start-agent.ps1` bu gözcüyü başlatır.
+
 ## Açık Modüller (geliştirme devam ediyor)
 - İHO (İşletme Hesap Özeti) — Luca otomasyonu deneme aşamasında
 - Mihsap Fatura İşleme — hızlandırma sürüyor

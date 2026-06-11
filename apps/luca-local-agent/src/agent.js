@@ -1185,6 +1185,12 @@ async function loginToLuca(page) {
   await page.waitForLoadState('networkidle', { timeout: 30_000 }).catch(() => {});
   await page.waitForTimeout(1500);
 
+  // Zaten girişliyse (persistent oturum geçerli) login formu olmaz → boşuna doldurma.
+  if (!/giris\.erp/i.test(page.url()) && !(await page.$('#parola, input[type="password"]'))) {
+    log.info(`Login gerekmedi, oturum geçerli: ${page.url()}`);
+    return;
+  }
+
   // Luca form alanları — placeholder ile bulunabilir (Üye Numarası / Kullanıcı Adı / Parola)
   const uyeNoSelector = 'input[name="uyeNo"], input[name="musteriNo"], input#uyeNo, input[placeholder*="Üye" i], input[placeholder*="ye Numara" i]';
   const usernameSelector = 'input[name="kullaniciAdi"], input[name="username"], input#username, input[placeholder*="Kullan" i]';
@@ -1195,121 +1201,84 @@ async function loginToLuca(page) {
   await page.fill(usernameSelector, cfg.luca.username);
   await page.fill(passwordSelector, cfg.luca.password);
 
-  // Submit yöntemi 1: parola alanında Enter
-  // (Luca'nın "GİRİŞ" butonu genelde input[type="button"] veya custom div; Enter en sağlamı)
-  const navPromise = page.waitForNavigation({ waitUntil: 'domcontentloaded', timeout: 30_000 }).catch(() => null);
-  await page.press(passwordSelector, 'Enter');
-  let nav = await navPromise;
+  // ── ADIM 1: Kimlik gönder → captcha sayfası (captchaKontrol.erp) gelir ──
+  // 2026-06-11 doğrulandı: 2FA kapalı Luca hesabında girişte CAPTCHA ZORUNLU.
+  // Doğru akış: girisbtn() ile kimlik gönder → captcha sayfasında 2captcha ile çöz →
+  // "Tamam" (forms[0].submit) → main.erp. (Eski kod captcha'yı submit'ten ÖNCE arayıp
+  // boş buluyor, kimliği captcha olmadan gönderip sürekli login sayfasında kalıyordu.)
+  const navP1 = page.waitForNavigation({ waitUntil: 'domcontentloaded', timeout: 30_000 }).catch(() => null);
+  const girisGonderildi = await page.evaluate(() => {
+    try { if (typeof girisbtn === 'function') { girisbtn(); return 'girisbtn'; } } catch (_) {}
+    const b = document.querySelector('input[value="GİRİŞ"], input[onclick*="giris" i]');
+    if (b) { b.click(); return 'giris-button'; }
+    if (document.girisForm) { document.girisForm.submit(); return 'form.submit'; }
+    return null;
+  });
+  if (!girisGonderildi) {
+    await page.press(passwordSelector, 'Enter').catch(() => {});
+  } else {
+    log.info(`Kimlik gönderildi (${girisGonderildi}); captcha bekleniyor...`);
+  }
+  await navP1;
+  await page.waitForTimeout(2000);
 
-  // Submit yöntemi 2: yine login sayfasındaysak GİRİŞ butonunu metinle yakala ve tıkla
-  if (!nav || page.url().includes('giris.erp') || page.url().includes('login')) {
-    log.info('Enter ile gönderilemedi, GİRİŞ butonunu metinle aranıyor...');
-    const submitButtonSelectors = [
-      'input[type="submit"]',
-      'button[type="submit"]',
-      'input[value="GİRİŞ"]',
-      'input[value="Giriş"]',
-      'input[value="GIRIS"]',
-      'button:has-text("GİRİŞ")',
-      'button:has-text("Giriş")',
-      'a:has-text("GİRİŞ")',
-      'a:has-text("Giriş")',
-      'div.giris-btn',
-      '.login-button',
-      'button.btn-login',
-      '[onclick*="giris" i]',
-    ];
-    for (const sel of submitButtonSelectors) {
-      const btn = await page.$(sel);
-      if (btn && await btn.isVisible().catch(() => false)) {
-        log.info(`GİRİŞ butonu bulundu: ${sel}`);
-        const navPromise2 = page.waitForNavigation({ waitUntil: 'domcontentloaded', timeout: 30_000 }).catch(() => null);
-        await btn.click();
-        nav = await navPromise2;
-        break;
-      }
-    }
+  // Captcha gerekmeden giriş tamamlandıysa (oturum hâlâ geçerliyse) → bitir.
+  if (!/giris\.erp|captchaKontrol/i.test(page.url())) {
+    log.info(`Login başarılı (captcha gerekmedi): ${page.url()}`);
+    return;
   }
 
-  // Submit yöntemi 3: hâlâ login sayfasındaysak metin ile xpath
-  if (page.url().includes('giris.erp')) {
-    log.info('Hâlâ login ekranındayız, xpath ile aranıyor...');
-    const btn = await page.$('xpath=//*[normalize-space(text())="GİRİŞ" or normalize-space(text())="Giriş" or normalize-space(@value)="GİRİŞ" or normalize-space(@value)="Giriş"]');
-    if (btn) {
-      const navPromise3 = page.waitForNavigation({ waitUntil: 'domcontentloaded', timeout: 30_000 }).catch(() => null);
-      await btn.click().catch(() => {});
-      await navPromise3;
-    }
-  }
-
-  // CAPTCHA kontrolü — 2captcha ile otomatik çözüm (TWOCAPTCHA_API_KEY env'inden)
-  await page.waitForTimeout(1500);
-  const captchaImg = await page.$('img[src*="captcha" i], img[alt*="güvenlik" i], #captcha-input');
-  if (captchaImg) {
+  // ── ADIM 2: CAPTCHA — 2captcha ile otomatik çöz (en çok 3 deneme) ──
+  await page.waitForSelector('#captcha-input', { timeout: 15_000 }).catch(() => {});
+  if (await page.$('#captcha-input')) {
     const twoCaptchaKey = process.env.TWOCAPTCHA_API_KEY || process.env.TWO_CAPTCHA_API_KEY;
-    if (twoCaptchaKey) {
-      log.info('CAPTCHA tespit edildi, 2captcha ile çözülüyor...');
+    if (!twoCaptchaKey) {
+      throw new Error('Luca girişinde captcha zorunlu ama TWOCAPTCHA_API_KEY tanımsız (.env). Otomatik giriş yapılamıyor.');
+    }
+    const { Solver } = require('2captcha');
+    const solver = new Solver(twoCaptchaKey);
+    let cozuldu = false;
+    for (let deneme = 1; deneme <= 3; deneme++) {
+      const capImg = await page.$('#captcha');
+      if (!capImg) { cozuldu = true; break; } // captcha kalktı → giriş olmuş
+      let cozum;
       try {
-        const buffer = await captchaImg.screenshot({ type: 'png' });
-        const base64 = buffer.toString('base64');
-        const { Solver } = require('2captcha');
-        const solver = new Solver(twoCaptchaKey);
+        const buffer = await capImg.screenshot({ type: 'png' });
         const t0 = Date.now();
-        const cozum = await solver.imageCaptcha(base64, {
-          numeric: 0,
-          min_len: 4,
-          max_len: 10,
-          language: 0,
+        // regsense:1 → büyük/küçük harf korunur (Luca captcha'sı harf-duyarlı olabilir)
+        cozum = await solver.imageCaptcha(buffer.toString('base64'), {
+          numeric: 0, min_len: 3, max_len: 10, language: 0, regsense: 1,
         });
-        const ms = Date.now() - t0;
-        log.info(`2captcha çözümü: "${cozum.data}" (${ms}ms, id=${cozum.id})`);
-        // Captcha kod input'unu bul ve doldur
-        const kodSelectors = [
-          'input[id*="captcha" i]:not([id*="img" i])',
-          'input[name*="captcha" i]',
-          'input[id*="GuvenlikKod" i]',
-          'input[id*="Kod" i]:not([id*="Plaka" i])',
-          'input[placeholder*="güvenlik" i]',
-          'input[placeholder*="kod" i]',
-          '#captcha-input',
-        ];
-        let kodInput = null;
-        for (const s of kodSelectors) {
-          const el = await page.$(s);
-          if (el) { kodInput = el; break; }
-        }
-        if (!kodInput) {
-          throw new Error('Captcha kod input bulunamadı — 2captcha çözdü ama nereye yazılacağı belli değil');
-        }
-        await kodInput.fill('');
-        await kodInput.type(cozum.data, { delay: 50 });
-        // Submit veya Devam butonu
-        const submitBtn = await page.$('button[type="submit"], input[type="submit"], button:has-text("Giriş"), button:has-text("Onay"), button:has-text("Devam")');
-        if (submitBtn) {
-          const navPromise = page.waitForNavigation({ waitUntil: 'domcontentloaded', timeout: 30_000 }).catch(() => null);
-          await submitBtn.click().catch(() => {});
-          await navPromise;
-        }
-        await page.waitForTimeout(2000);
-        // Tekrar captcha varsa hala başarısız — manuel'a düş
-        const captchaImg2 = await page.$('img[src*="captcha" i], img[alt*="güvenlik" i], #captcha-input');
-        if (captchaImg2) {
-          try { await solver.reportBad(cozum.id); } catch {}
-          throw new Error('2captcha çözümü yanlış — captcha tekrar geldi');
-        }
-        log.info('CAPTCHA otomatik çözüldü ✓');
+        log.info(`Luca captcha 2captcha [${deneme}]: "${cozum.data}" (${Date.now() - t0}ms)`);
       } catch (err) {
-        log.warn(`2captcha hatası: ${err.message} — manuel müdahale gerekli`);
-        throw new Error(`CAPTCHA ekranı: 2captcha çözemedi (${err.message}). Manuel kod girin veya .env'de TWOCAPTCHA_API_KEY kontrol edin.`);
+        log.warn(`2captcha hatası [${deneme}]: ${err.message}`);
+        await page.waitForTimeout(1500);
+        continue;
       }
-    } else {
-      throw new Error('CAPTCHA ekranı geldi — TWOCAPTCHA_API_KEY env tanımsız, manuel müdahale gerekli. .env\'e TWOCAPTCHA_API_KEY ekleyin.');
+      await page.fill('#captcha-input', String(cozum.data).trim()).catch(() => {});
+      const navP2 = page.waitForNavigation({ waitUntil: 'domcontentloaded', timeout: 25_000 }).catch(() => null);
+      const gonderildi = await page.evaluate(() => {
+        const t = document.querySelector('input[value="Tamam"], input[value="TAMAM"]');
+        if (t) { t.click(); return true; }
+        if (document.forms[0]) { document.forms[0].submit(); return true; }
+        return false;
+      });
+      if (!gonderildi) await page.keyboard.press('Enter').catch(() => {});
+      await navP2;
+      await page.waitForTimeout(2000);
+      if (!(await page.$('#captcha'))) { cozuldu = true; break; } // captcha kalktı → başarılı
+      try { await solver.reportBad(cozum.id); } catch (_) {}
+      log.warn(`Luca captcha yanlış [${deneme}]; yeni captcha ile tekrar deneniyor...`);
+    }
+    if (!cozuldu && (await page.$('#captcha'))) {
+      throw new Error('Luca captcha 3 denemede çözülemedi (2captcha). Daha sonra tekrar denenecek.');
     }
   }
 
+  // ── Sonuç doğrula ──
   const url = page.url();
-  if (url.includes('giris.erp') || url.includes('LUCASSO/login')) {
-    throw new Error(`Login başarısız — hâlâ login sayfasında: ${url}`);
+  if (/giris\.erp|LUCASSO\/login|captchaKontrol/i.test(url)) {
+    throw new Error(`Login başarısız — hâlâ login/captcha sayfasında: ${url}`);
   }
   log.info(`Login başarılı: ${url}`);
 }
@@ -1873,8 +1842,11 @@ async function printQueueLoop() {
         }
       }
     } catch (err) {
-      // 404/connection — sessiz gec, backend henuz print modulunu deploy etmemis olabilir
-      if (err.response?.status && err.response.status !== 404) {
+      // 404/connection — sessiz gec, backend henuz print modulunu deploy etmemis olabilir.
+      // 502/503/504 — gecici gateway (Railway cold-start vb.); 8sn'de bir tekrar denenir,
+      // log'u spam'lemesin (zaten dongu kendini iyilestiriyor).
+      const st = err.response?.status;
+      if (st && ![404, 502, 503, 504].includes(st)) {
         log.warn(`Print poll hatasi: ${err.message}`);
       }
     }

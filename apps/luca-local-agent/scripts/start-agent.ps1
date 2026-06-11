@@ -79,6 +79,23 @@ if (-not $wrapperMutexCreated) {
 
 Update-Code
 
+# PENCERE GOZCUSU (2026-06-11 — Luca izolasyon): ajanin Playwright tarayici
+# penceresini surekli kucuk/odaksiz/kilitli tutar (kullanici kazara mudahale
+# etmesin). Gozcu kendi Global mutex'ine sahip → birden fazla baslatma denemesi
+# olsa da makinede TEK calisir. Hidden + detached; ajan exit edip restart olsa
+# da gozcu yasamaya devam eder, gereksiz yere yeniden baslatmayiz.
+$minimizer = Join-Path $BaseDir 'scripts\pencere-kucult-gozcu.ps1'
+if (Test-Path $minimizer) {
+    try {
+        Start-Process -FilePath 'powershell.exe' `
+            -ArgumentList @('-NoProfile', '-ExecutionPolicy', 'Bypass', '-WindowStyle', 'Hidden', '-File', $minimizer) `
+            -WindowStyle Hidden -ErrorAction SilentlyContinue | Out-Null
+        Write-Wrapper 'pencere-kucult-gozcu.ps1 baslatildi (hidden)'
+    } catch {
+        Write-Wrapper "pencere gozcusu baslatilamadi: $($_.Exception.Message)"
+    }
+}
+
 while ($true) {
     $lastStartTime = Get-Date
     Write-Wrapper "node src\agent.js baslatiliyor (crashCount=$crashCount)"

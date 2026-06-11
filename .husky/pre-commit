@@ -22,6 +22,9 @@ node scripts/contract-violation-regression.cjs
 # 5. Luca upload endpoint kontratı
 node scripts/luca-upload-contract-regression.cjs
 
+# 5b. Luca izolasyon/susturma/otomatik-giriş korumaları (2026-06-11)
+node scripts/luca-isolation-regression.cjs
+
 # 6. KDV reconciliation senaryoları (0622, 0647, GKN038 vb. pinli senaryolar)
 node scripts/kdv-reconciliation-regression.cjs
 

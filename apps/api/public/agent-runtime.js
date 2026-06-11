@@ -4,7 +4,10 @@
 */
 (function () {
   // Agent versiyon — UI'da gösterilir, debug için kritik
-  const AGENT_VERSION = '1.41.5';
+  // v1.42.0 (2026-06-11): Luca veri çekme tamamen yerel ajana taşındı. Normal
+  // tarayıcıdaki eklenti (DEV-*) Luca'da SESSİZ: iş yoklamaz, oto-giriş/captcha
+  // denemez, oturum eşitlemez, panel göstermez. Yerel ajan (moren-*) etkilenmez.
+  const AGENT_VERSION = '1.42.0';
   const AGENT_INSTANCE_ID = 'mai_' + Date.now().toString(36) + '_' + Math.random().toString(36).slice(2, 8);
 
   // === VERSION-AWARE RELOAD ===
@@ -774,6 +777,22 @@
   function isLucaOrigin() {
     return /luca\.com\.tr|luca\.net\.tr/i.test(location.hostname);
   }
+  // 2026-06-11: Luca veri çekme TAMAMEN yerel ajana (apps/luca-local-agent) taşındı.
+  // Normal tarayıcıdaki eklenti (DEVICE_ID = "DEV-*") Luca sayfasında HİÇBİR otomasyon
+  // yapmaz: iş yoklamaz, otomatik giriş / güvenlik kodu denemez, oturum eşitlemez,
+  // durum panelini göstermez. Böylece kullanıcının kendi tarayıcısında "Luca arka
+  // planda çalışıyor" durumu biter; tüm çekme görünmez/izole yerel ajandan olur.
+  // Yerel ajan kendi Playwright tarayıcısına aynı runtime'ı "moren-*" deviceId ile
+  // enjekte eder → bu kapı onu ETKİLEMEZ (yalnız DEV-* + Luca origin susar).
+  // Acil durumda yeniden açmak için: konsola `window.__morenLucaExtEnable = true`.
+  function lucaSilencedInBrowserExt() {
+    try {
+      if (window.__morenLucaExtEnable === true) return false;
+      return /^DEV-/i.test(DEVICE_ID || '') && isLucaOrigin();
+    } catch (_) {
+      return false;
+    }
+  }
   function isLucaLandingPage() {
     const host = String(location.hostname || '').toLowerCase();
     return host === 'www.luca.com.tr' || host === 'luca.com.tr';
@@ -1042,6 +1061,7 @@
   }
   async function syncLucaSession() {
     try {
+      if (lucaSilencedInBrowserExt()) return; // eklenti Luca'da sessiz (yerel ajana taşındı)
       if (!isLucaOrigin()) return; // sadece Luca sayfasındaysa çalış
       // Tüm cookie + Luca'nın muhtemel JWT anahtarlarını topla
       const cookies = document.cookie || '';
@@ -1145,6 +1165,7 @@
   // geri yükler.
   async function processLucaJobs() {
     try {
+      if (lucaSilencedInBrowserExt()) return; // eklenti Luca'da sessiz (çekme yerel ajanda)
       if (!isCurrentAgentInstance()) return;
       if (!isLucaOrigin()) return;
       // Luca'nin herhangi bir top frame'inde pending job'u gor ve agentin
@@ -10429,7 +10450,9 @@
     setCount();
   }
 
-  if (window === window.top) {
+  if (window === window.top && !lucaSilencedInBrowserExt()) {
+    // Luca'da eklenti sessizken (yerel ajana taşındı) panel de gösterilmez —
+    // kullanıcının kendi Luca ekranında "MOREN AGENT" rozeti çıkmaz. Mihsap'ta kalır.
     // Pozisyon kalici: localStorage'da sakla, default sag alt kose
     const POS_KEY = 'moren_agent_panel_pos';
     let savedPos = null;
