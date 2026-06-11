@@ -192,6 +192,11 @@ export default function MukelleflerPage() {
     queryKey: ['taxpayers', 'list', search, year, month],
     queryFn: () =>
       api.get('/taxpayers', { params: { search: search || undefined, year, month } }).then(r => r.data),
+    // Arka planda (otomasyon/başka kullanıcı/başka sekme) yapılan durum
+    // değişikliklerini anlık yansıt: 15 sn'de bir tazele + sekmeye dönünce hemen.
+    refetchInterval: 15_000,
+    refetchIntervalInBackground: false, // sekme arka plandayken boşa istek atma
+    refetchOnWindowFocus: true,
   });
 
   // v1.36.76: Tüm mükelleflerin profil tamamlığı — tek toplu fetch
