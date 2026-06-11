@@ -137,8 +137,79 @@ export class AutomationRunnerService implements OnModuleInit {
           this.logger.error(`Event register hatası id=${a.id}: ${err.message}`);
         }
       }
+
+      // Faz 2: Mihsap token tazelendiğinde, token/oturum hatasıyla başarısız olmuş
+      // fatura-çekme otomasyonlarını otomatik yeniden dene. (Bu bir otomasyon
+      // tetikleyicisi değil, iç mekanizmadır — yalnız scheduler açık kopyada kurulur.)
+      this.eventBus.on('Mihsap.TokenYenilendi', (payload: any) => {
+        const tenantId = String(payload?.tenantId ?? '');
+        if (!tenantId) return;
+        this.retryFailedMihsapFetches(tenantId).catch((err) =>
+          this.logger.error(`Mihsap token-retry hatası: ${err?.message ?? err}`),
+        );
+      });
+      this.logger.log('Mihsap token-retry dinleyicisi kuruldu.');
     } catch (err: any) {
       this.logger.error(`Otomasyon boot hatası: ${err.message}`);
+    }
+  }
+
+  /**
+   * Faz 2 — Mihsap token tazelendiğinde otomatik yeniden deneme.
+   *
+   * Token/oturum süresi dolduğu için fatura çekemeyip başarısız olmuş otomasyon
+   * çalışmalarını bulur ve ORİJİNAL payload'la yeniden çalıştırır (fetch + backup tüm
+   * zincir). Eklenti Mihsap sayfası açıkken token'ı yeniler; bu noktaya gelindiğinde
+   * "bekleyen" çekme işleri kendiliğinden tamamlanır — kullanıcı elle uğraşmaz.
+   *
+   * Dedupe: o mükellef+dönem için fatura ARTIK çekildiyse yeniden denenmez
+   * (MihsapInvoice kontrolü). Migration gerektirmez; AutomationRun geçmişinden türetir.
+   */
+  private async retryFailedMihsapFetches(tenantId: string): Promise<void> {
+    const since = new Date(Date.now() - 24 * 60 * 60 * 1000);
+    const failedRuns = await this.prisma.automationRun.findMany({
+      where: {
+        status: 'failure',
+        startedAt: { gte: since },
+        errorMessage: { contains: 'Mihsap' },
+        automation: { tenantId, status: AutomationStatus.ACTIVE },
+      },
+      orderBy: { startedAt: 'desc' },
+      take: 50,
+    });
+    if (failedRuns.length === 0) return;
+
+    const seen = new Set<string>();
+    for (const run of failedRuns) {
+      const payload = (run.triggerPayload ?? {}) as any;
+      const taxpayerId = String(payload.taxpayerId ?? '');
+      const donem = String(payload.beyannamePeriodLabel ?? payload.donem ?? '');
+      if (!taxpayerId || !donem) continue;
+
+      // Aynı (otomasyon + mükellef + dönem) en fazla bir kez denensin.
+      const key = `${run.automationId}|${taxpayerId}|${donem}`;
+      if (seen.has(key)) continue;
+      seen.add(key);
+
+      // Otomasyon hâlâ çalışıyorsa (overlap) atla.
+      if (this.running.has(run.automationId)) continue;
+
+      // Dedupe: bu mükellef+dönem için fatura zaten çekildiyse yeniden deneme.
+      const zatenVar = await this.prisma.mihsapInvoice.count({
+        where: { tenantId, mukellefId: taxpayerId, donem },
+      });
+      if (zatenVar > 0) continue;
+
+      this.logger.log(
+        `Mihsap token yenilendi → fatura çekme yeniden deneniyor: ` +
+          `automation=${run.automationId} taxpayer=${taxpayerId} donem=${donem}`,
+      );
+      // Orijinal payload ile tüm zinciri yeniden çalıştır (fetch + backup).
+      this.executeAutomation(run.automationId, payload).catch((err) =>
+        this.logger.error(
+          `Mihsap retry run hatası (automation=${run.automationId}): ${err?.message ?? err}`,
+        ),
+      );
     }
   }
 

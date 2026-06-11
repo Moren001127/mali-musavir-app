@@ -53,11 +53,32 @@ export class MihsapService {
     if (!token || token.length < 20) {
       throw new BadRequestException('Geçersiz token');
     }
-    return (this.prisma as any).mihsapSession.upsert({
+    // Token gerçekten değişti mi? Eklenti aynı token'ı periyodik (60 sn) gönderebilir;
+    // sadece yeni/yenilenmiş token'da aşağıdaki retry tetiklensin (gereksiz tarama olmasın).
+    const existing = await (this.prisma as any).mihsapSession.findUnique({
+      where: { tenantId },
+      select: { token: true },
+    });
+    const tokenChanged = !existing || existing.token !== token;
+
+    const result = await (this.prisma as any).mihsapSession.upsert({
       where: { tenantId },
       update: { token, email: email || null, updatedBy: updatedBy || null },
       create: { tenantId, token, email: email || null, updatedBy: updatedBy || null },
     });
+
+    // Faz 2: Token tazelendiyse, token/oturum hatasıyla bekleyen Mihsap fatura-çekme
+    // otomasyonlarını otomatik yeniden denemeyi tetikle (AutomationRunner dinler).
+    // Kullanıcı Mihsap sayfasını açınca eklenti taze token gönderir → bu noktaya gelinir.
+    if (tokenChanged && this.eventBus) {
+      try {
+        this.eventBus.emit('Mihsap.TokenYenilendi', { tenantId });
+      } catch (err: any) {
+        this.logger.warn(`Mihsap.TokenYenilendi yayını başarısız: ${err?.message ?? err}`);
+      }
+    }
+
+    return result;
   }
 
   async getSession(tenantId: string) {
