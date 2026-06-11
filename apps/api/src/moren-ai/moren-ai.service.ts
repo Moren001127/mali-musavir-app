@@ -1056,7 +1056,7 @@ export class MorenAiService {
       toolContext,
       '## Talimat',
       'Cevabi yalnizca yukaridaki gerçek portal verisi, hafiza ve mesleki bilgiyle uret. Veri yoksa uydurma; hangi kaydin eksik oldugunu soyle.',
-      'BELGE/PDF/DOSYA GÖNDERME ŞU AN AKTİF DEĞİL. Belge/fatura/beyanname "gönder/ilet/at" istenirse belgenin DURUMUNU özetle ve DÜRÜSTÇE "şu an dosyayı WhatsApp\'tan iletemiyorum, bu özellik yakında" de. ASLA "gönderdim / çağrı yapıyorum / işlemi başlattım / onay başlatıyorum" gibi YAPMADIĞIN şeyi yazma. "Gönder" = belgeyi birine ilet demek; "GİB\'e beyan ver" SANMA.',
+      'BELGE/DOSYA GÖNDERME işini SİSTEM otomatik yapar (sen DEĞİL); belge gerçekten gönderildiyse ayrı bir [BELGE] mesajı düşer. Sana bir belge isteği geldiyse, sistem mükellefi/belgeyi NET çözememiş demektir — kısaca "hangi mükellefin hangi belgesini/dönemini göndereyim?" diye SOR. ASLA "gönderdim / gönderiyorum / gönderiliyor / iletiyorum / yolluyorum / tekrar deniyorum / birazdan düşer / bu özellik yakında / sistem aksaklığı oldu" gibi YAPMADIĞIN/YAPAMAYACAĞIN şeyi yazma (geçmiş/şimdiki/gelecek hiçbir zaman). AYNI KURAL tüm dış eylemler için: ajan/Luca başlatma, hatırlatma/SMS/mesaj gönderme, beyan verme — bunları SEN yapamazsın; "başlattım/gönderdim/yaptım/çağırdım" DEME. Bu işlemler ayrı bir onay akışıyla yapılır; sen yalnız bilgi ver veya netleştirici soru sor. "Gönder" = belgeyi birine ilet demek; "GİB\'e beyan ver" SANMA.',
       'BEYANNAME VERİLDİ Mİ hükmü: tool sonucundaki "durum"/"verildi"/"durumAciklama" alanını AYNEN kullan. durum=verildi ise beyanname GİB\'e VERİLMİŞTİR — onay numarası boş diye "verilmemiş/sunulmamış" deme, kendi çıkarımını yapma. Aylık takipteki beyannameVerildi kutusu ofis içi işaretlemedir, GİB hükmü DEĞİLDİR; çelişkide beyanname kayıtları (list_beyan_kayitlari) esastır.',
       `Kullanici mesaji: ${params.userMessage}`,
     ].filter(Boolean).join('\n\n');
@@ -1104,7 +1104,7 @@ export class MorenAiService {
     // tablosu/bilançoyu düz metne çeviriyordu; tabloyu kod ekler, model metni
     // kısa YORUM olarak altına gider. (Canlıda aktif yol BU — Max aboneliği.)
     const finalText = this.applyWhatsappOzet(
-      this.compactFinalAnswer(max.text, !!params.body.voiceMode),
+      this.compactFinalAnswer(max.text, !!params.body.voiceMode, params.body.toolMode === 'owner'),
       toolUsesLog,
       !!params.body.voiceMode,
       params.body.taxpayerText || params.userMessage,
@@ -1672,14 +1672,16 @@ export class MorenAiService {
     };
   }
 
-  private compactFinalAnswer(text: string, voiceMode: boolean) {
+  private compactFinalAnswer(text: string, voiceMode: boolean, ownerMode = false) {
     const cleaned = String(text || '')
       .replace(/\n{3,}/g, '\n\n')
       .replace(/^Resmi kaynak doğrudan bulamadım\s*[—-]\s*/i, '')
       .replace(/Detaylı bilgi için[^.!?\n]*(mali müşavir|uzman|profesyonel)[^.!?\n]*[.!?]?/gi, '')
       .replace(/[^.!?\n]*(mali müşavire|uzmana|profesyonel destek)[^.!?\n]*(danışın|başvurun|alın)[^.!?\n]*[.!?]?/gi, '')
       .trim();
-    const maxChars = voiceMode ? 360 : 900;
+    // Owner uzun yapılandırılmış brifing/rapor isteyebilir → post-filter zaten 3500'e
+    // izin veriyor; burada 900'de kesmek raporu yarıda bırakıyordu. Owner'da geniş tut.
+    const maxChars = voiceMode ? 360 : (ownerMode ? 3200 : 900);
     if (cleaned.length <= maxChars) return cleaned;
     const sentences = cleaned.match(/[^.!?\n]+[.!?]?/g) || [cleaned];
     let out = '';
@@ -1688,7 +1690,9 @@ export class MorenAiService {
       out += sentence;
       if (voiceMode && out.length > 220) break;
     }
-    return (out.trim() || cleaned.slice(0, maxChars).trim()) + ' Detay istersen açarım.';
+    // Zorla "Detay istersen açarım." EKLEME — proaktif-soru yasağıyla çelişiyordu ve
+    // owner'a yapışıyordu. Kesme olduysa metin doğal biter.
+    return out.trim() || cleaned.slice(0, maxChars).trim();
   }
 
   private generateTitle(msg: string): string {
