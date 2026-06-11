@@ -387,8 +387,16 @@ export class BaileysService implements OnModuleDestroy {
     if (!m?.message || m.key?.fromMe) return;
     const jid: string = m.key?.remoteJid || '';
     if (!jid || jid.endsWith('@g.us') || jid === 'status@broadcast') return; // grup/durum atla
-    const from = this.senderPhoneForMessage(m, jid, session);
+    let from = this.senderPhoneForMessage(m, jid, session);
     if (!from) return;
+
+    // Baileys senderPn göndermeyip mesaj LID ile geldiyse (from = LID), Baileys'in
+    // KENDİ LID↔telefon deposundan (signalRepository.lidMapping) gerçek numaraya çöz.
+    // Bu owner için DE mükellefler için DE çalışır → herkes doğru tanınır.
+    if (String(jid).includes('@lid') && this.jidDigits(jid) === from) {
+      const resolved = await this.resolveIncomingLid(session, jid);
+      if (resolved) from = resolved;
+    }
 
     // 463 (reach-out timelock) AZALTMA: gelen mesajı OKUNDU işaretle + karşı
     // tarafın presence'ına abone ol. Bu, WhatsApp'a "aktif, karşılıklı sohbet"
@@ -457,46 +465,76 @@ export class BaileysService implements OnModuleDestroy {
   }
 
   /**
-   * Owner/personel numaralarının LID'ini Baileys'e sorup (onWhatsApp) OTOMATİK
-   * eşler — hiçbir env ayarı gerekmez. Baileys, gelen mesajda kişinin gerçek
-   * numarasını (senderPn) göndermeyince mesaj LID ile düşüyor ve owner
-   * tanınmıyordu; onWhatsApp numara→LID döndürdüğü için bağlantı açılınca bir kez
-   * sorup eşlemeyi kalıcı kuruyoruz. En iyi çaba: hata/zaman aşımı yutulur.
+   * Owner/personel numaralarının LID'ini Baileys'in KENDİ deposundan
+   * (signalRepository.lidMapping.getLIDForPN) çözüp eşler — hiçbir env gerekmez.
+   * Owner'a gönderim yaptığımız için Baileys PN→LID eşlemesini zaten biliyor.
+   * Bağlantı açılınca bir kez çalışır. En iyi çaba: hata/zaman aşımı yutulur.
    */
   private async resolveConfiguredLids(session: Session) {
+    const store: any = session.sock?.signalRepository?.lidMapping;
+    if (!store?.getLIDForPN) {
+      this.logger.log('[Baileys] signalRepository.lidMapping yok (surum farki), owner LID otomatik cozulemedi');
+      return;
+    }
     const phones = String(
       `${process.env.MOREN_OWNER_WHATSAPP_PHONES || process.env.MOREN_OWNER_WHATSAPP_PHONE || ''},${process.env.MOREN_STAFF_WHATSAPP_PHONES || ''}`,
     )
       .split(',')
       .map((p) => this.jidDigits(p))
       .filter(Boolean);
-    const unique = Array.from(new Set(phones));
-    for (const phone of unique) {
+    for (const phone of Array.from(new Set(phones))) {
       try {
-        const query = session.sock.onWhatsApp(phone);
-        const res: any[] = await Promise.race([
-          query,
-          new Promise<any[]>((resolve) => setTimeout(() => resolve([]), 8000)),
+        const lidJid = await Promise.race([
+          store.getLIDForPN(`${phone}@s.whatsapp.net`),
+          new Promise<string | null>((resolve) => setTimeout(() => resolve(null), 8000)),
         ]);
-        for (const item of res || []) {
-          // Olası alanlar: item.lid ('...@lid'), item.jid (PN), bazı sürümlerde farklı.
-          const lid = this.jidDigits(item?.lid || (String(item?.jid || '').includes('@lid') ? item.jid : ''));
-          const pn = this.jidDigits(String(item?.jid || '').includes('@lid') ? phone : (item?.jid || phone));
-          if (lid && pn && lid !== pn && this.isLidTarget(`${lid}@lid`)) {
-            if (session.lidToPhone.get(lid) !== pn) {
-              session.lidToPhone.set(lid, pn);
-              session.auth.saveLidMapping(lid, pn).catch(() => {});
-            }
-            this.logger.log(`[Baileys] owner/personel LID otomatik cozuldu: ${this.maskTarget(lid)} -> ${this.maskTarget(pn)}`);
+        const lid = this.jidDigits(lidJid || '');
+        if (lid && lid !== phone) {
+          if (session.lidToPhone.get(lid) !== phone) {
+            session.lidToPhone.set(lid, phone);
+            session.auth.saveLidMapping(lid, phone).catch(() => {});
+            this.lidMappingHandler?.(session.tenantId, lid, phone).catch(() => {});
           }
-        }
-        if (!res?.length || !res.some((i: any) => i?.lid)) {
-          this.logger.log(`[Baileys] onWhatsApp(${this.maskTarget(phone)}) LID dondurmedi: ${JSON.stringify(res).slice(0, 200)}`);
+          this.logger.log(`[Baileys] owner/personel PN->LID cozuldu: ${this.maskTarget(phone)} -> ${this.maskTarget(lid)}`);
+        } else {
+          this.logger.log(`[Baileys] getLIDForPN(${this.maskTarget(phone)}) bos dondu: ${JSON.stringify(lidJid)}`);
         }
       } catch (e: any) {
-        this.logger.warn(`[Baileys] onWhatsApp(${this.maskTarget(phone)}) cozulemedi: ${e?.message || e}`);
+        this.logger.warn(`[Baileys] getLIDForPN(${this.maskTarget(phone)}) hata: ${e?.message || e}`);
       }
     }
+  }
+
+  /**
+   * Gelen mesaj LID ile geldiyse (Baileys senderPn vermedi), Baileys'in KENDİ
+   * deposundan (getPNForLID) gerçek numaraya çöz + eşlemeyi kalıcı kaydet.
+   * Owner için de mükellefler için de çalışır.
+   */
+  private async resolveIncomingLid(session: Session, lidJid: string): Promise<string> {
+    const lidDigits = this.jidDigits(lidJid);
+    if (!lidDigits) return '';
+    const cached = session.lidToPhone.get(lidDigits);
+    if (cached) return cached;
+    try {
+      const store: any = session.sock?.signalRepository?.lidMapping;
+      if (!store?.getPNForLID) return '';
+      const pnJid = await Promise.race([
+        store.getPNForLID(String(lidJid).includes('@') ? lidJid : `${lidDigits}@lid`),
+        new Promise<string | null>((resolve) => setTimeout(() => resolve(null), 5000)),
+      ]);
+      const pn = this.jidDigits(pnJid || '');
+      if (pn && pn !== lidDigits) {
+        session.lidToPhone.set(lidDigits, pn);
+        session.auth.saveLidMapping(lidDigits, pn).catch(() => {});
+        this.lidMappingHandler?.(session.tenantId, lidDigits, pn).catch(() => {});
+        this.logger.log(`[Baileys] gelen LID->telefon cozuldu: ${this.maskTarget(lidDigits)} -> ${this.maskTarget(pn)}`);
+        return pn;
+      }
+      this.logger.log(`[Baileys] getPNForLID(${this.maskTarget(lidDigits)}) bos dondu`);
+    } catch (e: any) {
+      this.logger.warn(`[Baileys] getPNForLID hata: ${e?.message || e}`);
+    }
+    return '';
   }
 
   /**
