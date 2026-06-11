@@ -1703,6 +1703,23 @@ export class WhatsAppBotController implements OnModuleInit {
           },
         });
         this.refreshTaxpayerMemory(ownerTenant.id, ownerContact.id);
+        // Owner cevabı da KALİTE DENETİMİNE alınır (Bot Kalite'de görünür) — async,
+        // gönderim sonrası, owner-modu (uzunluk/emoji cezası yok; yalan/çelişki/sahte-eylem/
+        // robotik denetimi var). Owner=patron olduğu için müşteri-tonlu öğrenme dersi yazılmaz.
+        this.asyncQualityAudit({
+          tenantId: ownerTenant.id,
+          taxpayerId: ownerContact.id,
+          conversationId: ownerContact.id,
+          intent: 'OWNER',
+          customerMessage: msg.text || null,
+          recentReplies: [],
+          originalReply: rawReply,
+          finalReply: reply,
+          retryCount: 0,
+          fallbackUsed: false,
+          localReasons: [],
+          ownerMode: true,
+        }).catch(() => {});
       }
       return;
     }
@@ -2352,6 +2369,7 @@ export class WhatsAppBotController implements OnModuleInit {
     retryCount: number;
     fallbackUsed: boolean;
     localReasons: string[];
+    ownerMode?: boolean;
   }): Promise<void> {
     try {
       const ev = await this.botEval.evaluateReply(
@@ -2362,7 +2380,8 @@ export class WhatsAppBotController implements OnModuleInit {
           intent: a.intent || null,
           message: a.customerMessage || null,
           contextBlock: a.contextBlock || null,
-          source: 'online-async',
+          source: a.ownerMode ? 'online-async-owner' : 'online-async',
+          ownerMode: a.ownerMode || false,
         },
         a.recentReplies,
       );
@@ -2406,7 +2425,7 @@ export class WhatsAppBotController implements OnModuleInit {
         this.logger.warn(`BotQualityLog (async) yazilamadi: ${err?.message || err}`);
       });
 
-      if (ev.score < 6 || a.fallbackUsed) {
+      if ((ev.score < 6 || a.fallbackUsed) && !a.ownerMode) {
         const reasonKey = String(reasons[0] || 'genel').split(':')[0];
         this.calisan.recordSelfImprovementLesson({
           tenantId: a.tenantId,

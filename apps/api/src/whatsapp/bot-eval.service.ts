@@ -15,6 +15,9 @@ export type BotEvalContext = {
   message?: string | null;
   contextBlock?: string | null;
   source?: string;
+  /** Owner (patron) cevabı — uzun yapılandırılmış brifing olabilir; uzunluk/cümle/emoji
+   *  cezaları uygulanmaz, ama yalan/çelişki/bozuk-metin/robotik denetimi sürer. */
+  ownerMode?: boolean;
 };
 
 export type BotEvalResult = {
@@ -116,7 +119,8 @@ export class BotEvalService {
     }
 
     const sentenceCount = this.sentenceCount(text);
-    if (sentenceCount > 3 || text.length > 340) {
+    // Owner brifingleri uzun + çok cümleli olabilir → uzunluk cezası YALNIZ müşteri cevabında.
+    if (!context.ownerMode && (sentenceCount > 3 || text.length > 340)) {
       reasons.push(sentenceCount > 3 ? `TOO_MANY_SENTENCES:${sentenceCount}` : `TOO_LONG:${text.length}`);
       score -= 2;
     }
@@ -133,7 +137,8 @@ export class BotEvalService {
     }
 
     const emojiCount = Array.from(text).filter((char) => /\p{Extended_Pictographic}/u.test(char)).length;
-    if (emojiCount > 1) {
+    // Owner brifingleri emoji bölüm başlığı kullanır (📊 DURUM, ⚠️ RİSKLİ) → emoji cezası yalnız müşteride.
+    if (!context.ownerMode && emojiCount > 1) {
       reasons.push(`TOO_MANY_EMOJI:${emojiCount}`);
       score -= 1;
     }
@@ -160,6 +165,21 @@ export class BotEvalService {
   }
 
   private buildJudgePrompt(reply: string, context: BotEvalContext, lastOutgoing: string[]): string {
+    if (context.ownerMode) {
+      return [
+        'You are a Turkish WhatsApp QA judge. The assistant is replying to the ACCOUNTING OFFICE OWNER (the boss), professionally and warmly.',
+        'Return ONLY JSON: {"score":0-10,"reasons":["..."]}.',
+        'REWARD (high score): natural, professional, fluent Turkish; accurate; directly answers; structured briefings/reports are FINE and may be long.',
+        'PENALIZE (low score) — these are the ONLY things that matter for the owner: FALSE ACTION CLAIMS (saying it sent a document / started Luca-agent / sent a reminder / filed a declaration when it cannot — "gonderiyorum/gonderildi/iletiyorum/basladim/baslattim/tekrar deniyorum/birazdan duser/bu ozellik yakinda/sistem aksakligi"); CONTRADICTIONS vs earlier messages; fabricated numbers/dates; robotic/corporate template phrases; revealing/implying it is a bot/AI; rude/curt greeting ("ne var?","ne lazim?"); broken/scrambled/truncated Turkish; privacy leaks.',
+        'DO NOT penalize length, sentence count, emoji section headers, or structured formatting — owner reports are allowed to be long and detailed.',
+        'Ordinary phrases like "bir bakayim / hemen kontrol edeyim" are FINE.',
+        `Intent: ${context.intent || 'OWNER'}`,
+        `Owner message: ${context.message || ''}`,
+        `Last outgoing replies: ${JSON.stringify(lastOutgoing.slice(0, 3))}`,
+        `Context: ${String(context.contextBlock || '').slice(0, 1800)}`,
+        `Reply: ${reply}`,
+      ].join('\n');
+    }
     return [
       'You are a Turkish WhatsApp QA judge for an accounting office assistant that MUST sound like a real human, not an AI.',
       'Return ONLY JSON: {"score":0-10,"reasons":["..."]}.',
