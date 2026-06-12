@@ -88,6 +88,7 @@ for (const route of expectedRoutes) {
 
 const localAgentFiles = [
   'apps/luca-local-agent/scripts/install-service.ps1',
+  'apps/luca-local-agent/scripts/install-scheduled-task.ps1',
   'apps/luca-local-agent/scripts/uninstall-service.ps1',
   'apps/luca-local-agent/scripts/onar-servis.bat',
   'apps/luca-local-agent/scripts/kaldir-servis.bat',
@@ -98,13 +99,21 @@ for (const localAgentFile of localAgentFiles) {
 }
 if (localAgentFiles.every(exists)) {
   const installService = read('apps/luca-local-agent/scripts/install-service.ps1');
+  const installScheduled = read('apps/luca-local-agent/scripts/install-scheduled-task.ps1');
   const uninstallService = read('apps/luca-local-agent/scripts/uninstall-service.ps1');
   const agentReadme = read('apps/luca-local-agent/README.md');
-  if (installService.includes('C:\\Users\\') || agentReadme.includes('C:\\Users\\')) {
+  if (installService.includes('C:\\Users\\') || installScheduled.includes('C:\\Users\\') || agentReadme.includes('C:\\Users\\')) {
     fail('Luca local agent servis kurulumunda sabit C:\\Users yolu kullanilamaz');
   }
-  for (const token of ['where.exe node', 'Register-ScheduledTask', 'wscript.exe', 'start-hidden.vbs', 'Clear-Content']) {
-    if (!installService.includes(token)) fail(`install-service.ps1 icinde beklenen servis onarim parcasi yok: ${token}`);
+  // install-service.ps1 (2026-06-08) kullanimdan kaldirildi: cakisan cift gorev
+  // sorununu cozmek icin tek resmi kuruluma (install-scheduled-task.ps1) delege etmeli.
+  if (!installService.includes('install-scheduled-task.ps1')) {
+    fail('install-service.ps1 kanonik kuruluma (install-scheduled-task.ps1) delege etmiyor');
+  }
+  // Self-heal artik kanonik install-scheduled-task.ps1 icinde: gorev kaydi + gizli
+  // pencere + tek-instance + periyodik watchdog + eski cakisan gorev temizligi korunmali.
+  for (const token of ['Register-ScheduledTask', '-WindowStyle Hidden', 'MultipleInstances IgnoreNew', 'RepetitionInterval', 'Unregister-ScheduledTask', 'start-agent.ps1']) {
+    if (!installScheduled.includes(token)) fail(`install-scheduled-task.ps1 icinde beklenen servis onarim parcasi yok: ${token}`);
   }
   if (!/agent\\.js/.test(uninstallService) || !/Terminate/.test(uninstallService)) {
     fail('uninstall-service.ps1 sadece agent.js node processlerini kapatma kontrolunu icermiyor');

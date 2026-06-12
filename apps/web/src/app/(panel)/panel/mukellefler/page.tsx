@@ -74,7 +74,7 @@ const STAGES: Record<Stage, { label: string; color: string }> = {
   'evrak-bekliyor':   { label: 'Evrak bekleniyor', color: '#e0843e' },
   'islem-bekliyor':   { label: 'İşlem bekliyor',   color: '#5b9bd5' },
   'kontrol-bekliyor': { label: 'Kontrol bekliyor', color: '#a78bdb' },
-  'beyan-hazir':      { label: 'Beyanname hazır',  color: GOLD },
+  'beyan-hazir':      { label: 'Beyanname verilebilir',  color: GOLD },
   'verildi':          { label: 'Verildi',          color: '#4ade80' },
 };
 
@@ -297,7 +297,7 @@ export default function MukelleflerPage() {
     { key: 'evrak-gelmedi',      label: 'Evrak bekleniyor', count: counts.evrakBekliyor,    color: STAGES['evrak-bekliyor'].color },
     { key: 'islem-bekliyor',     label: 'İşlem bekliyor',   count: counts.islemBekliyor,    color: STAGES['islem-bekliyor'].color },
     { key: 'kontrol-bekliyor',   label: 'Kontrol bekliyor', count: counts.kontrolBekliyor,  color: STAGES['kontrol-bekliyor'].color },
-    { key: 'beyanname-bekliyor', label: 'Beyanname hazır',  count: counts.beyanHazir,       color: STAGES['beyan-hazir'].color },
+    { key: 'beyanname-bekliyor', label: 'Beyanname verilebilir',  count: counts.beyanHazir,       color: STAGES['beyan-hazir'].color },
     { key: 'verildi',            label: 'Verildi',          count: counts.verildi,          color: STAGES['verildi'].color },
   ];
 
@@ -736,7 +736,7 @@ function TaxpayerRow({
         <Check
           checked={!!s?.beyannameVerildi}
           onClick={() => onToggle('beyannameVerildi', !s?.beyannameVerildi)}
-          title={stage === 'verildi' ? 'Beyanname verildi' : stage === 'beyan-hazir' ? 'Beyanname hazır' : 'Beyanname verilmedi'}
+          title={stage === 'verildi' ? 'Beyanname verildi' : stage === 'beyan-hazir' ? 'Beyanname verilebilir' : 'Beyanname verilmedi'}
         />
       </div>
 

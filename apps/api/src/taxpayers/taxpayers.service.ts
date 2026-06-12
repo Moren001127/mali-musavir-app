@@ -197,10 +197,36 @@ export class TaxpayersService {
     });
     const statusMap = new Map(statuses.map(s => [s.taxpayerId, s]));
 
-    return taxpayers.map(t => ({
-      ...t,
-      monthlyStatus: statusMap.get(t.id) ?? null,
-    }));
+    // OTOMATİK BEYAN İŞARETİ: bu İŞLEM ayının (month) beyanname dönemi = month−1.
+    // O dönem için KDV beyannamesi İNDİRİLMİŞSE (BeyanKaydi'nde PDF var) → beyanname
+    // GİB'e verilmiş demektir; Aylık Takip BEYAN kutusunu otomatik işaretli göster.
+    const byYear = month === 1 ? year - 1 : year;
+    const byMonth = month === 1 ? 12 : month - 1;
+    const beyannameDonem = `${byYear}-${String(byMonth).padStart(2, '0')}`;
+    const kdvIndirilenler = new Set<string>();
+    try {
+      const kdvKayitlari = await (this.prisma as any).beyanKaydi.findMany({
+        where: {
+          tenantId,
+          taxpayerId: { in: taxpayerIds },
+          donem: beyannameDonem,
+          beyanTipi: { in: ['KDV1', 'KDV2', 'KDV'] },
+          OR: [{ beyannameUrl: { not: null } }, { pdfUrl: { not: null } }],
+        },
+        select: { taxpayerId: true },
+      });
+      for (const k of kdvKayitlari) if (k?.taxpayerId) kdvIndirilenler.add(k.taxpayerId);
+    } catch { /* beyan kaydı sorgusu başarısızsa otomatik işaret atlanır, akış bozulmaz */ }
+
+    return taxpayers.map(t => {
+      let monthlyStatus: any = statusMap.get(t.id) ?? null;
+      if (kdvIndirilenler.has(t.id) && !monthlyStatus?.beyannameVerildi) {
+        // KDV beyannamesi indirilmiş → BEYAN otomatik işaretli (verildi). Kayıt yoksa
+        // türetilmiş bir durum objesi döndür (deriveStage → 'verildi').
+        monthlyStatus = { ...(monthlyStatus || {}), beyannameVerildi: true, beyannameOtomatik: true };
+      }
+      return { ...t, monthlyStatus };
+    });
   }
 
   async findOne(id: string, tenantId: string) {
