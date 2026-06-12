@@ -49,7 +49,7 @@ export interface AiSuggestInput {
   context?: 'sablon' | 'duyuru';
 }
 
-export async function aiSuggestTemplate(dto: AiSuggestInput): Promise<{ ok: boolean; body: string; error?: string }> {
+export async function aiSuggestTemplate(dto: AiSuggestInput): Promise<{ ok: boolean; body: string; title?: string; error?: string }> {
   const { data } = await api.post('/message-templates/ai', dto);
   return data;
 }

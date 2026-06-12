@@ -335,8 +335,11 @@ export default function DuyurularPage() {
     setAiBusy(true);
     try {
       const r = await aiSuggestTemplate({ mode: 'generate', amac: aiPrompt, context: 'duyuru' });
-      if (r.ok && r.body) { update('icerik', r.body); setAiPrompt(''); toast.success('AI duyuru metnini yazdı.'); }
-      else toast.error(r.error || 'AI önerisi alınamadı.');
+      if (r.ok && r.body) {
+        setDraft((d) => ({ ...d, icerik: r.body, baslik: r.title || d.baslik }));
+        setAiPrompt('');
+        toast.success(r.title ? 'AI başlık + metni yazdı.' : 'AI duyuru metnini yazdı.');
+      } else toast.error(r.error || 'AI önerisi alınamadı.');
     } catch { toast.error('AI önerisi alınamadı.'); }
     finally { setAiBusy(false); }
   };

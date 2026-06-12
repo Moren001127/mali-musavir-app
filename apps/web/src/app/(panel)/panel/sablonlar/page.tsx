@@ -156,8 +156,12 @@ export default function SablonlarPage() {
     setAiBusy(true);
     try {
       const r = await aiSuggestTemplate({ mode: 'generate', amac: aiPrompt, kanal: draft.kanal });
-      if (r.ok && r.body) { patch({ body: r.body }); setAiPrompt(''); toast.success('AI şablonu oluşturdu.'); }
-      else toast.error(r.error || 'AI önerisi alınamadı.');
+      if (r.ok && r.body) {
+        const setAd = Boolean(r.title) && (!draft.ad.trim() || draft.ad === 'Yeni Şablon');
+        patch(setAd ? { body: r.body, ad: r.title! } : { body: r.body });
+        setAiPrompt('');
+        toast.success('AI şablonu oluşturdu.');
+      } else toast.error(r.error || 'AI önerisi alınamadı.');
     } catch { toast.error('AI önerisi alınamadı.'); }
     finally { setAiBusy(false); }
   }

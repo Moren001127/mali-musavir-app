@@ -30,6 +30,20 @@ function cleanAiText(s: string): string {
   return t;
 }
 
+// AI'dan {baslik, metin} JSON'u bekle; çıkaramazsan tüm metni gövde say.
+function parseTitleBody(raw: string): { title?: string; body: string } {
+  const m = String(raw || '').match(/\{[\s\S]*\}/);
+  if (m) {
+    try {
+      const o = JSON.parse(m[0]);
+      const baslik = typeof o.baslik === 'string' ? o.baslik : (typeof o.title === 'string' ? o.title : '');
+      const metin = typeof o.metin === 'string' ? o.metin : (typeof o.icerik === 'string' ? o.icerik : (typeof o.body === 'string' ? o.body : ''));
+      if (metin.trim()) return { title: cleanAiText(baslik).slice(0, 80) || undefined, body: cleanAiText(metin) };
+    } catch { /* JSON değilse düz metne düş */ }
+  }
+  return { body: cleanAiText(raw) };
+}
+
 export interface TemplateDto {
   ad?: string;
   kanal?: string;       // WHATSAPP | EMAIL | BOTH
@@ -150,34 +164,36 @@ export class MessageTemplatesService {
    * AI ile şablon yaz / iyileştir. SADECE Max aboneliğinden (claudeTextViaMax) — ücretli API yok.
    * Çıktı kullanıcının düzenlediği bir ÖNERİ; otomatik gönderim yok.
    */
-  async aiSuggest(tenantId: string, dto: AiSuggestDto): Promise<{ ok: boolean; body: string; error?: string }> {
+  async aiSuggest(tenantId: string, dto: AiSuggestDto): Promise<{ ok: boolean; body: string; title?: string; error?: string }> {
     const isDuyuru = dto.context === 'duyuru';
     const ortak = [
       'Sen MOREN Mali Müşavirlik ofisinin Türk yazışma editörüsün — deneyimli bir SMMM gibi yazarsın.',
-      'KURALLAR: Sadece nihai metni yaz. ASLA "İşte", "Tabii", "Elbette" gibi giriş cümlesi, açıklama, başlık, tırnak veya kod bloğu ekleme.',
-      'Resmî ama içten, akıcı ve doğru Türkçe kullan. Kısa ve net ol (3-6 cümle). Abartılı/yapay ifadelerden kaçın.',
+      'KURALLAR: Sadece istenen nihai metni üret. ASLA "İşte", "Tabii", "Elbette" gibi giriş cümlesi, kendi yorumun veya kod bloğu ekleme.',
+      'KISA ve net tut; gereksiz tekrar, süslü/abartılı ifade ve doldurma cümle YAPMA. SADECE sorulan konuya odaklan — istenmeyen başka konuyu (örn. evrak teslimi, başka beyanname) EKLEME.',
+      'Sana kesin tarih / tutar / oran VERİLMEDİYSE UYDURMA.',
     ];
     const system = isDuyuru
       ? [
           ...ortak,
-          'Görev: TÜM mükelleflere gidecek kurumsal bir DUYURU metni yaz. Tek bir genel metindir, kişiye özel değildir.',
-          'Bu yüzden {ad} gibi SÜSLÜ PARANTEZLİ değişken KULLANMA; "Sayın müvekkilimiz," diye başla ve metni tamamla.',
+          'Görev: TÜM mükelleflere gidecek kurumsal bir DUYURU metni. EN FAZLA 3 KISA cümle.',
+          '{ad} gibi süslü parantezli değişken KULLANMA; "Sayın müvekkilimiz," ile başla.',
+          'Tarih/tutar verilmemişse [son ödeme tarihi] gibi KÖŞELİ parantez bırak (kullanıcı sonra doldurur); sayı uydurma.',
         ].join(' ')
       : [
           ...ortak,
-          'Görev: tek bir mükellefe gönderilecek WhatsApp/e-posta mesaj ŞABLONU yaz.',
-          'Kişiye/döneme göre değişen yerlerde şu değişkenleri AYNEN bu yazımla, süslü parantez içinde kullan: {ad} (mükellef adı), {unvan}, {dönem}, {sonGun}, {tutar}, {toplam}, {vade}, {bakiye}, {link}, {kurum}.',
-          'Genelde "Sayın {ad}," ile başla. Değişkeni metne uydurarak yaz (ör. "...son ödeme tarihi {vade} olup...").',
+          'Görev: tek bir mükellefe gönderilecek WhatsApp/e-posta mesaj ŞABLONU. EN FAZLA 4 cümle.',
+          'Kişiye/döneme göre değişen yerlerde şu değişkenleri AYNEN süslü parantezle kullan: {ad} {unvan} {dönem} {sonGun} {tutar} {toplam} {vade} {bakiye} {link} {kurum}.',
+          '"Sayın {ad}," ile başla. Kesin tarih/tutar yerine ilgili {değişkeni} koy, sayı uydurma.',
         ].join(' ');
 
     const mode = dto.mode === 'improve' ? 'improve' : 'generate';
     const prompt = mode === 'improve'
       ? (isDuyuru
-          ? `Aşağıdaki duyuru metnini "${dto.instruction || 'daha akıcı ve profesyonel'}" olacak şekilde yeniden yaz. Anlamı koru, sadece nihai metni ver.\n\n---\n${dto.body || ''}\n---`
+          ? `Aşağıdaki duyuru metnini "${dto.instruction || 'daha akıcı ve profesyonel'}" olacak şekilde yeniden yaz. Anlamı koru, KISALT, sadece nihai metni ver.\n\n---\n${dto.body || ''}\n---`
           : `Aşağıdaki mesaj şablonunu "${dto.instruction || 'daha akıcı ve profesyonel'}" olacak şekilde yeniden yaz. İçindeki {süslü parantezli} alanları AYNEN koru, sadece nihai metni ver.\n\n---\n${dto.body || ''}\n---`)
       : (isDuyuru
-          ? `Konu: ${dto.amac || 'genel bilgilendirme'}. Bu konuda mükelleflere gönderilecek kurumsal duyuru metnini yaz.`
-          : `Konu: ${dto.amac || 'genel bilgilendirme'}. Bu konuda mükellefe gönderilecek mesaj şablonunu, uygun {değişken} alanlarıyla yaz.`);
+          ? `Konu: "${dto.amac || 'genel bilgilendirme'}". Bu konuda KISA bir kurumsal duyuru yaz. Yanıtı SADECE şu JSON olarak ver, başka hiçbir şey yazma:\n{"baslik":"en çok 6 kelimelik başlık","metin":"en fazla 3 cümlelik duyuru metni"}`
+          : `Konu: "${dto.amac || 'genel bilgilendirme'}". Bu konuda KISA bir mesaj şablonu yaz (uygun {değişken} alanlarıyla). Yanıtı SADECE şu JSON olarak ver:\n{"baslik":"en çok 5 kelimelik şablon adı","metin":"mesaj metni"}`);
 
     const t0 = Date.now();
     const res = await claudeTextViaMax({ prompt, system, model: MAX_MODEL_DEFAULT, maxTurns: 1, timeoutMs: 45000 });
@@ -189,6 +205,10 @@ export class MessageTemplatesService {
 
     if (!res.ok || !res.text.trim()) {
       return { ok: false, body: '', error: res.error || 'AI yanıtı alınamadı. Max bağlantısını kontrol edin.' };
+    }
+    if (mode === 'generate') {
+      const parsed = parseTitleBody(res.text);
+      return { ok: true, body: parsed.body, title: parsed.title };
     }
     return { ok: true, body: cleanAiText(res.text) };
   }
