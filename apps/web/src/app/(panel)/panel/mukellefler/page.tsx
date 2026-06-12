@@ -192,9 +192,14 @@ export default function MukelleflerPage() {
     queryKey: ['taxpayers', 'list', search, year, month],
     queryFn: () =>
       api.get('/taxpayers', { params: { search: search || undefined, year, month } }).then(r => r.data),
-    // Arka planda (otomasyon/başka kullanıcı/başka sekme) yapılan durum
-    // değişikliklerini anlık yansıt: 15 sn'de bir tazele + sekmeye dönünce hemen.
-    refetchInterval: 15_000,
+    // Arka planda (otomasyon/başka kullanıcı) veya başka sayfada (KDV kilidi) yapılan
+    // durum değişikliklerini anlık yansıt. ÖNEMLİ: Portal içinde sayfa değişimi (KDV
+    // kontrol → aylık takip) "window focus" saymaz; o yüzden sayfaya her gelişte taze
+    // çekmek için refetchOnMount şart. Açıkken periyodik (8 sn), başka sekmeden dönünce
+    // hemen tazelenir.
+    refetchOnMount: 'always',
+    staleTime: 0,
+    refetchInterval: 8_000,
     refetchIntervalInBackground: false, // sekme arka plandayken boşa istek atma
     refetchOnWindowFocus: true,
   });
