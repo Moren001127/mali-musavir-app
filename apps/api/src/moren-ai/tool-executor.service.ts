@@ -852,6 +852,10 @@ export class ToolExecutorService {
             kontrolEdildi: true,
             beyannameVerildi: true,
             kdvKontrolEdildi: true,
+            // Portaldaki "Beyanname hazır" = İND+HES+ARŞİV üçü de ✓ (deriveStage ile aynı).
+            indirilecekKdvKontrol: true,
+            hesaplananKdvKontrol: true,
+            eArsivKontrol: true,
           },
           take: 1,
         },
@@ -873,9 +877,11 @@ export class ToolExecutorService {
         kontrolEdildi: s?.kontrolEdildi ?? false,
         beyannameVerildi: s?.beyannameVerildi ?? false,
         kdvKontrolEdildi: s?.kdvKontrolEdildi ?? false,
-        // BEYANNAME HAZIR = kontrolü yapılmış AMA henüz verilmemiş = "beyannamesi verilebilecek".
-        // (Aylık Takip ekranındaki "Beyanname hazır" sayacı bununla aynıdır.)
-        beyannameHazir: (s?.kontrolEdildi ?? false) && !(s?.beyannameVerildi ?? false),
+        // BEYANNAME HAZIR = portaldaki deriveStage ile AYNI: evrak gelmiş + işlenmiş +
+        // kontrol bitmiş (İND+HES+ARŞİV üçü de) + henüz verilmemiş = "beyannamesi verilebilecek".
+        beyannameHazir: !!(s?.evraklarGeldi && s?.evraklarIslendi
+          && s?.indirilecekKdvKontrol && s?.hesaplananKdvKontrol && s?.eArsivKontrol)
+          && !(s?.beyannameVerildi ?? false),
         kayitVar: !!s, // Bu ay icin durum kaydi olusturulmus mu
       };
     });

@@ -1427,7 +1427,11 @@ export class WhatsAppBotController implements OnModuleInit {
         id: true, companyName: true, firstName: true, lastName: true,
         monthlyStatuses: {
           where: { year, month },
-          select: { evraklarGeldi: true, evraklarIslendi: true, kontrolEdildi: true, beyannameVerildi: true },
+          select: {
+            evraklarGeldi: true, evraklarIslendi: true, beyannameVerildi: true,
+            // "Kontrol bitti" = portaldaki deriveStage ile AYNI: İND+HES+ARŞİV üçü de ✓.
+            indirilecekKdvKontrol: true, hesaplananKdvKontrol: true, eArsivKontrol: true,
+          },
           take: 1,
         },
       },
@@ -1436,11 +1440,12 @@ export class WhatsAppBotController implements OnModuleInit {
     const rows = taxpayers.map((t) => {
       const s = (t as any).monthlyStatuses?.[0] || null;
       const ad = (t.companyName || `${t.firstName || ''} ${t.lastName || ''}`).trim() || 'Mükellef';
+      const kontrolBitti = !!(s?.indirilecekKdvKontrol && s?.hesaplananKdvKontrol && s?.eArsivKontrol);
       return {
         isim: ad,
         evrakGeldi: s?.evraklarGeldi ?? false,
         islendi: s?.evraklarIslendi ?? false,
-        kontrol: s?.kontrolEdildi ?? false,
+        kontrolBitti,
         verildi: s?.beyannameVerildi ?? false,
       };
     });
@@ -1448,7 +1453,9 @@ export class WhatsAppBotController implements OnModuleInit {
     let baslik: string;
     switch (intent) {
       case 'beyanname_hazir':
-        filtered = rows.filter((r) => r.kontrol && !r.verildi);
+        // Portaldaki "Beyanname hazır" ile AYNI: evrak gelmiş + işlenmiş + kontrol bitmiş
+        // (İND+HES+ARŞİV) + henüz verilmemiş.
+        filtered = rows.filter((r) => r.evrakGeldi && r.islendi && r.kontrolBitti && !r.verildi);
         baslik = `${donemLabel} dönemi beyannamesi verilebilecek (kontrolü bitmiş, henüz verilmemiş)`;
         break;
       case 'evrak_islenen':
