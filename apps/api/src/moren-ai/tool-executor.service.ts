@@ -2608,12 +2608,15 @@ export class ToolExecutorService {
     const domainFilter = domains.map((domain) => `site:${domain}`).join(' OR ');
     const searchQuery = `${query} ${domainFilter}`;
     const bingUrl = `https://www.bing.com/search?setlang=tr&q=${encodeURIComponent(searchQuery)}`;
-    const html = await this.fetchText(bingUrl, 12000);
+    // HIZ: araştırma WhatsApp cevabını bekletmesin. Bing taraması + sayfa okuma
+    // timeout'ları düşürüldü (12s→7s, 9s→6s); boş dönerse model bilgisinden + uydurma
+    // yasağıyla (stabil kural/formül) hızlı cevap verir, takılmaz.
+    const html = await this.fetchText(bingUrl, 7000);
     const searchResults = this.parseBingResults(html, domains, limit);
 
     const sources = await Promise.all(
       searchResults.map(async (result) => {
-        const markdown = await this.fetchText(this.readerUrl(result.url), 9000);
+        const markdown = await this.fetchText(this.readerUrl(result.url), 6000);
         const cleaned = markdown
           .replace(/\n{3,}/g, '\n\n')
           .replace(/[ \t]{2,}/g, ' ')

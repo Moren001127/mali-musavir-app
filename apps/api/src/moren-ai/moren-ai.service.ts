@@ -1330,7 +1330,10 @@ export class MorenAiService {
         // HIZ: internetten resmi kaynak araması EN YAVAŞ ön-çekim. Grup deseni
         // "oran/vergi/süre" gibi sık kelimelerle tetikleniyordu (örn. "cari oran"
         // sorusu web araması başlatıyordu). Yalnız GERÇEK mevzuat sorusunda çek.
-        return /mevzuat|kanun|tebli[ğg]|sirk[üu]ler|[öo]zelge|resmi gazete|ceza(s[ıi])?\b|para cezas|idari para|asgari [üu]cret|had(ler|di)?\b|yeni oran|g[üu]ncel (oran|tutar|had)|kdv oran|vergi oran|tevkifat oran|stopaj oran|damga oran|ka[çc] g[üu]n i[çc]|ne zaman (veril|bildir|yap[ıi]l|[öo]den)|i[şs]ten ([çc][ıi]k|ayr[ıi]l)|i[şs]e (giri[şs]|ba[şs]lama)|bildirge|beyanname (s[üu]resi|son)/i.test(gate)
+        // KDV/vergi oranı GATE'TEN ÇIKARILDI: oranlar (%1/%10/%20) artık system-prompt'ta
+        // sabit → model anında cevaplar, yavaş web araştırması gerekmez. Araştırma yalnız
+        // GERÇEKTEN değişen/güncel veri için (asgari ücret, ceza TL, tevkifat/damga, yeni oran).
+        return /mevzuat|kanun|tebli[ğg]|sirk[üu]ler|[öo]zelge|resmi gazete|ceza(s[ıi])?\b|para cezas|idari para|asgari [üu]cret|had(ler|di)?\b|yeni oran|g[üu]ncel (oran|tutar|had)|tevkifat oran|stopaj oran|damga oran|ka[çc] g[üu]n i[çc]|ne zaman (veril|bildir|yap[ıi]l|[öo]den)|i[şs]ten ([çc][ıi]k|ayr[ıi]l)|i[şs]e (giri[şs]|ba[şs]lama)|bildirge|beyanname (s[üu]resi|son)/i.test(gate)
           ? { query: ctx.userMessage, limit: 2, remember: true }
           : null;
       default:
