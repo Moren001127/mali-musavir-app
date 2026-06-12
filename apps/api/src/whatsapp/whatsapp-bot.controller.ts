@@ -1261,6 +1261,11 @@ export class WhatsAppBotController implements OnModuleInit {
     const hasPronoun = /\b(onu|bunu|sunu|onlari|hepsini|digerini|oburu|oburunu)\b/.test(n);
     const hasDocWord = /muhtasar|muhsgk|stopaj|kdv|beyan|tahakkuk|fatura|gecici|damga|kurumlar|gelir|poset|belge|pdf|ekstre|evrak/.test(n);
     const hasDaDe = /(^|\s)(da|de)(\s|$)/.test(n);
+    // BİLGİ/MEVZUAT SORUSU belge gönderme DEĞİL: "kdv orani da kalmadi", "ceza nedir",
+    // "arastir" gibi cümleler yanlışlıkla rastgele mükellef belgesi gönderiyordu (SONGÜL
+    // YAZAR vakası). Gönderme fiili yoksa ve mesaj soru/araştırma/olumsuzluk taşıyorsa iptal.
+    const looksKnowledge = /\b(nedir|nasil|kac|orani|oran|mi|mı|musun|misin|arastir|ogren|hesapla|kalmadi|yanlis|dogru mu|emin|sahi mi|gercek mi)\b/.test(n) || /\?\s*$/.test(String(text || '').trim());
+    if (looksKnowledge && !hasSendVerb) return false;
     // Salt "da/de" veya "bekliyorum" yetmez ("ben de geliyorum" tetiklemesin);
     // gönderme fiili VEYA zamir VEYA (da/de + belge kelimesi) gerekli.
     return hasSendVerb || hasPronoun || (hasDaDe && hasDocWord);
@@ -1393,7 +1398,7 @@ export class WhatsAppBotController implements OnModuleInit {
    */
   private detectOwnerStatusIntent(text: string):
     | 'beyanname_hazir' | 'kontrol_bekleyen' | 'evrak_islenen' | 'evrak_gelen'
-    | 'evrak_bekleyen' | 'islem_bekleyen' | 'verildi' | 'verilmedi' | null {
+    | 'evrak_bekleyen' | 'islem_bekleyen' | 'verildi' | 'verilmedi' | 'mukellef_sayisi' | null {
     const n = this.normalizeForIntent(text); // aksan sıyrılmış (ş→s, ı→i, ç→c ...)
     const isList = /\b(kim|kimler|kac|listele|hangi|kimlerin|olanlar)\b/.test(n) || /\bvar m[ıi]\b/.test(n);
     if (!isList) return null;
@@ -1418,6 +1423,8 @@ export class WhatsAppBotController implements OnModuleInit {
     if (/(evrak|evrag|belge)[^.]*?islen|gelip[^.]*?islen|islenip|islenen|islenmis/.test(n)) return 'evrak_islenen';
     // Evrakı gelen (sade; olumsuzlar zaten yukarıda elendi) → evrak geldi
     if (/(evrak|evrag|belge)[^.]*?(gel(en|di|mis)|teslim|getir)/.test(n)) return 'evrak_gelen';
+    // "Kaç mükellefim/müşterim var" → toplam aktif mükellef sayısı (durum kelimesi yoksa).
+    if (/(mukellef|musteri|firma)/.test(n) && /(kac|toplam|sayisi|adet|ne kadar)/.test(n)) return 'mukellef_sayisi';
     return null;
   }
 
@@ -1517,11 +1524,17 @@ export class WhatsAppBotController implements OnModuleInit {
         filtered = rows.filter((r) => !r.verildi);
         baslik = 'Beyannamesi henüz verilmemiş';
         break;
+      case 'mukellef_sayisi':
+        filtered = [];
+        baslik = '';
+        break;
       default:
         return false;
     }
     const names = filtered.map((r) => r.isim);
-    const reply = this.formatOwnerStatusList(baslik, donemLabel, names);
+    const reply = intent === 'mukellef_sayisi'
+      ? `👥 Toplam ${taxpayers.length} aktif mükellefin takipte.`
+      : this.formatOwnerStatusList(baslik, donemLabel, names);
     const sent = await this.whatsapp.sendMessage(this.replyTarget(msg), reply, ownerTenant.id);
     await this.prisma.communicationLog.create({
       data: {
