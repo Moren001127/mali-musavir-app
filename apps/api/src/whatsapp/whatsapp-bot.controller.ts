@@ -1386,6 +1386,107 @@ export class WhatsAppBotController implements OnModuleInit {
   }
 
   /**
+   * "Evrakı gelen/işlenen/kontrol edilen/beyannamesi verilebilecek/evrak bekleyen KİMLER
+   * var" gibi TOPLU DURUM sorularını — AI'ya bırakmadan — aylık durum kayıtlarından
+   * DETERMİNİSTİK yanıtlar. AI bu sorularda sürekli "çekemiyorum/Luca'ya bağlantım yok"
+   * halüsinasyonu yapıyordu. Dönem = BEYANNAME dönemi (işlem ayı−1); kayıtlar işlem ayında.
+   */
+  private detectOwnerStatusIntent(text: string):
+    'beyanname_hazir' | 'evrak_islenen' | 'evrak_bekleyen' | 'islem_bekleyen' | 'verildi' | null {
+    const n = this.normalizeForIntent(text);
+    const isList = /\b(kim|kimler|kac|listele|hangi|kimlerin)\b/.test(n) || /\bvar m[ıi]\b/.test(n);
+    if (!isList) return null;
+    // "beyannamesi verilebilecek / kontrol edilen / beyanname hazır" → kontrolü bitmiş, verilmemiş
+    if (/(beyanname|beyan)[^.]*?(verilebil|verilecek|verilir|hazir|haz[ıi]r)|kontrol[uü]? ?edil|kontrol[uü] (yap|bit)|kontrolden gec/.test(n)) return 'beyanname_hazir';
+    // "evrakı gelip işlenen" (işlenmiş; bekleyen/işlenmemiş DEĞİL)
+    if (/(evrak|belge)[^.]*?(islen|işlen)|gelip[^.]*?(islen|işlen)|islenip|işlenip|islenmis|işlenmiş/.test(n)
+        && !/(bekle|gelmedi|gelmemis|gelmemiş|islenmemis|işlenmemiş|henuz islen|henüz işlen)/.test(n)) return 'evrak_islenen';
+    if (/(evrak|belge)[^.]*?(bekle|gelmedi|gelmemis|gelmemiş)/.test(n)) return 'evrak_bekleyen';
+    if (/(islem|işlem)[^.]*?bekle|islenmemis|işlenmemiş|henuz islen|henüz işlen/.test(n)) return 'islem_bekleyen';
+    if (/(beyanname|beyan)[^.]*?(verildi|verilen|verilmis|verilmiş)/.test(n)) return 'verildi';
+    return null;
+  }
+
+  private async maybeHandleOwnerStatusQuery(
+    ownerTenant: any,
+    ownerContactId: string,
+    msg: IncomingWhatsAppMessage,
+  ): Promise<boolean> {
+    const intent = this.detectOwnerStatusIntent(msg.text || '');
+    if (!intent) return false;
+    // Kayıtlar İŞLEM ayında (bu ay) tutulur; owner'a-dönük dönem = BEYANNAME dönemi (bu ay−1).
+    const now = new Date();
+    const year = now.getFullYear();
+    const month = now.getMonth() + 1;
+    const prev = new Date(year, month - 2, 1);
+    const aylar = ['Ocak', 'Şubat', 'Mart', 'Nisan', 'Mayıs', 'Haziran', 'Temmuz', 'Ağustos', 'Eylül', 'Ekim', 'Kasım', 'Aralık'];
+    const donemLabel = `${aylar[prev.getMonth()]} ${prev.getFullYear()}`;
+    const taxpayers = await this.prisma.taxpayer.findMany({
+      where: { tenantId: ownerTenant.id, isActive: true },
+      select: {
+        id: true, companyName: true, firstName: true, lastName: true,
+        monthlyStatuses: {
+          where: { year, month },
+          select: { evraklarGeldi: true, evraklarIslendi: true, kontrolEdildi: true, beyannameVerildi: true },
+          take: 1,
+        },
+      },
+      orderBy: [{ companyName: 'asc' }, { firstName: 'asc' }],
+    });
+    const rows = taxpayers.map((t) => {
+      const s = (t as any).monthlyStatuses?.[0] || null;
+      const ad = (t.companyName || `${t.firstName || ''} ${t.lastName || ''}`).trim() || 'Mükellef';
+      return {
+        isim: ad,
+        evrakGeldi: s?.evraklarGeldi ?? false,
+        islendi: s?.evraklarIslendi ?? false,
+        kontrol: s?.kontrolEdildi ?? false,
+        verildi: s?.beyannameVerildi ?? false,
+      };
+    });
+    let filtered: typeof rows;
+    let baslik: string;
+    switch (intent) {
+      case 'beyanname_hazir':
+        filtered = rows.filter((r) => r.kontrol && !r.verildi);
+        baslik = `${donemLabel} dönemi beyannamesi verilebilecek (kontrolü bitmiş, henüz verilmemiş)`;
+        break;
+      case 'evrak_islenen':
+        filtered = rows.filter((r) => r.evrakGeldi && r.islendi);
+        baslik = `${donemLabel} dönemi evrakı gelip işlenen`;
+        break;
+      case 'evrak_bekleyen':
+        filtered = rows.filter((r) => !r.evrakGeldi);
+        baslik = `${donemLabel} dönemi evrak bekleyen`;
+        break;
+      case 'islem_bekleyen':
+        filtered = rows.filter((r) => r.evrakGeldi && !r.islendi);
+        baslik = `${donemLabel} dönemi evrakı gelip henüz işlenmemiş`;
+        break;
+      case 'verildi':
+        filtered = rows.filter((r) => r.verildi);
+        baslik = `${donemLabel} dönemi beyannamesi verilmiş`;
+        break;
+      default:
+        return false;
+    }
+    const names = filtered.map((r) => r.isim);
+    const reply = names.length
+      ? `${baslik} ${names.length} mükellef:\n${names.slice(0, 60).join(', ')}.`
+      : `${baslik} mükellef yok.`;
+    const sent = await this.whatsapp.sendMessage(this.replyTarget(msg), reply, ownerTenant.id);
+    await this.prisma.communicationLog.create({
+      data: {
+        taxpayerId: ownerContactId, channel: 'WHATSAPP',
+        subject: sent ? 'WhatsApp owner durum cevabi' : 'WhatsApp owner durum cevabi (gonderilemedi)',
+        content: this.withWhatsAppPhone(reply, msg.from), occurredAt: new Date(),
+      },
+    });
+    this.logger.log(`[OwnerStatus] intent=${intent} donem=${donemLabel} sonuc=${names.length}`);
+    return true;
+  }
+
+  /**
    * Owner belge gönderme akışı. handled=true dönerse normal AI akışı atlanır.
    * Mükellef bulunamazsa false döner → AI cevaplasın (yanlış yakalama olmasın).
    */
@@ -1610,6 +1711,13 @@ export class WhatsAppBotController implements OnModuleInit {
           },
         });
         this.refreshTaxpayerMemory(ownerTenant.id, ownerContact.id);
+        return;
+      }
+
+      // DURUM LİSTESİ (deterministik): "evrakı gelen/işlenen/kontrol edilen/beyannamesi
+      // verilebilecek/evrak bekleyen KİMLER var" → AI'ya BIRAKMA (sürekli "çekemiyorum"
+      // halüsinasyonu yapıyordu); aylık durumdan listeyi doğrudan kod hesaplayıp döndür.
+      if (await this.maybeHandleOwnerStatusQuery(ownerTenant, ownerContact.id, msg)) {
         return;
       }
 
