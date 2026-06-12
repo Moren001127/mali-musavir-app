@@ -1,6 +1,7 @@
 'use client';
 
 import { useEffect, useMemo, useRef, useState, type CSSProperties } from 'react';
+import { createPortal } from 'react-dom';
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import {
   BookOpen, Building2, CheckCircle2, ChevronDown, ChevronRight, Clock, Download, EyeOff,
@@ -59,19 +60,39 @@ function isBilancoTaxpayer(t?: Taxpayer | null) {
 }
 
 // Profesyonel, aranabilir mükellef seçici (native <select> yerine).
+// Panel PORTAL ile body'ye render edilir — yoksa üst kartın overflow:hidden'i kırpıyor
+// (kullanıcı listeyi açamıyordu). position:fixed + butonun rect'ine göre konumlanır.
 function TaxpayerSelect({ taxpayers, value, onChange }: { taxpayers: Taxpayer[]; value: string; onChange: (id: string) => void }) {
   const [open, setOpen] = useState(false);
   const [search, setSearch] = useState('');
-  const ref = useRef<HTMLDivElement | null>(null);
+  const [rect, setRect] = useState<{ left: number; top: number; width: number } | null>(null);
+  const wrapRef = useRef<HTMLDivElement | null>(null);
+  const panelRef = useRef<HTMLDivElement | null>(null);
   const selected = taxpayers.find((t) => t.id === value) || null;
 
   useEffect(() => {
     if (!open) return;
-    const onDoc = (e: MouseEvent) => { if (ref.current && !ref.current.contains(e.target as Node)) setOpen(false); };
+    const place = () => {
+      const r = wrapRef.current?.getBoundingClientRect();
+      if (r) setRect({ left: r.left, top: r.bottom + 6, width: r.width });
+    };
+    place();
+    const onDoc = (e: MouseEvent) => {
+      const t = e.target as Node;
+      if (wrapRef.current?.contains(t) || panelRef.current?.contains(t)) return;
+      setOpen(false);
+    };
     const onKey = (e: KeyboardEvent) => { if (e.key === 'Escape') setOpen(false); };
+    window.addEventListener('scroll', place, true);
+    window.addEventListener('resize', place);
     document.addEventListener('mousedown', onDoc);
     document.addEventListener('keydown', onKey);
-    return () => { document.removeEventListener('mousedown', onDoc); document.removeEventListener('keydown', onKey); };
+    return () => {
+      window.removeEventListener('scroll', place, true);
+      window.removeEventListener('resize', place);
+      document.removeEventListener('mousedown', onDoc);
+      document.removeEventListener('keydown', onKey);
+    };
   }, [open]);
 
   const q = search.trim().toLocaleLowerCase('tr-TR');
@@ -80,7 +101,7 @@ function TaxpayerSelect({ taxpayers, value, onChange }: { taxpayers: Taxpayer[];
     : taxpayers;
 
   return (
-    <div ref={ref} className="relative w-full">
+    <div ref={wrapRef} className="relative w-full">
       <button
         type="button"
         onClick={() => setOpen((o) => !o)}
@@ -94,15 +115,15 @@ function TaxpayerSelect({ taxpayers, value, onChange }: { taxpayers: Taxpayer[];
         {selected?.taxNumber && <span className="text-[11px] tabular-nums shrink-0" style={{ color: MUTED2 }}>{selected.taxNumber}</span>}
         <ChevronDown size={15} className="absolute right-3 transition-transform" style={{ color: MUTED, transform: open ? 'rotate(180deg)' : 'none' }} />
       </button>
-      {open && (
-        <div className="absolute z-50 mt-1.5 w-full rounded-xl overflow-hidden" style={{ background: '#16161b', border: `1px solid ${BORDER_STRONG}`, boxShadow: '0 18px 44px rgba(0,0,0,.55)' }}>
+      {open && rect && typeof document !== 'undefined' && createPortal(
+        <div ref={panelRef} className="rounded-xl overflow-hidden" style={{ position: 'fixed', left: rect.left, top: rect.top, width: rect.width, zIndex: 9999, background: '#16161b', border: `1px solid ${BORDER_STRONG}`, boxShadow: '0 18px 44px rgba(0,0,0,.55)' }}>
           <div className="p-2" style={{ borderBottom: `1px solid ${BORDER}` }}>
             <div className="h-9 rounded-lg px-2.5 flex items-center gap-2 w-full" style={{ background: 'rgba(255,255,255,.05)', border: `1px solid ${BORDER}` }}>
               <Search size={13} style={{ color: MUTED2 }} />
               <input autoFocus value={search} onChange={(e) => setSearch(e.target.value)} placeholder="Mükellef veya VKN ara…" className="bg-transparent outline-none text-[13px] w-full" style={{ color: TEXT }} />
             </div>
           </div>
-          <div className="max-h-[320px] overflow-auto py-1">
+          <div className="overflow-auto py-1" style={{ maxHeight: 'min(340px, 60vh)' }}>
             {filtered.length === 0 && (<div className="px-3 py-6 text-center text-[12px]" style={{ color: MUTED }}>Eşleşen mükellef yok</div>)}
             {filtered.map((t) => {
               const on = t.id === value;
@@ -129,7 +150,8 @@ function TaxpayerSelect({ taxpayers, value, onChange }: { taxpayers: Taxpayer[];
           <div className="px-3 py-1.5 text-[10px] text-center" style={{ borderTop: `1px solid ${BORDER}`, color: MUTED2 }}>
             {filtered.length} / {taxpayers.length} bilanço mükellefi
           </div>
-        </div>
+        </div>,
+        document.body,
       )}
     </div>
   );
