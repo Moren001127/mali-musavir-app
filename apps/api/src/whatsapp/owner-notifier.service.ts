@@ -84,11 +84,16 @@ export class OwnerNotifierService implements OnModuleInit {
     const title = String(n.title || '').slice(0, 100).trim();
     const body = String(n.body || '').slice(0, 400).trim();
 
+    // İlk satır "📢 OTOMATİK BİLDİRİM" ile başlar → owner bunu SOHBET CEVABI sanmasın
+    // (önceden bildirim sorunun hemen ardına düşünce "bota sordum bunu mu cevap verdi"
+    // karışıklığı oluyordu — örn. portal şifre hatası bir mevzuat sorusunun cevabı gibi).
     const lines: string[] = [];
-    lines.push(`${meta.emoji} ${meta.label} · ${time}`);
+    lines.push(`📢 OTOMATİK BİLDİRİM · ${meta.label} · ${time}`);
     lines.push('');
     if (title) lines.push(title);
     if (body && body !== title) lines.push(body);
+    lines.push('');
+    lines.push('ℹ️ Bu otomatik bir sistem bildirimidir; mesajınıza verilen bir cevap değildir.');
 
     return lines.join('\n');
   }
@@ -101,6 +106,7 @@ export class OwnerNotifierService implements OnModuleInit {
       AI_COST_LIMIT: { emoji: '⚠️', label: 'AI Maliyet' },
       AI_PROPOSAL: { emoji: '🔔', label: 'AI Oneri' },
       E_TEBLIGAT: { emoji: '📨', label: 'e-Tebligat' },
+      PORTAL_CREDENTIAL_FAIL: { emoji: '🔑', label: 'Portal Şifre' },
       TAX_DEADLINE: { emoji: '📅', label: 'Beyan Suresi' },
       TASK_DUE: { emoji: '✅', label: 'Gorev' },
       EVRAK: { emoji: '📂', label: 'Evrak' },
