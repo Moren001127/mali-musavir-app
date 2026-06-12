@@ -19,6 +19,18 @@ export class OwnerNotifierService implements OnModuleInit {
   /** Spam koruma: ayni tip icin debounce window */
   private readonly DEBOUNCE_MS = Number(process.env.OWNER_NOTIFY_DEBOUNCE_MS || 10_000);
 
+  // WhatsApp'a İLETİLMEYECEK bildirim tipleri (kullanıcı kararı 2026-06-13): gürültü /
+  // aksiyon gerektirmeyen, portal zilinde kalması yeterli olanlar. Kritik/zaman-hassas
+  // tipler (PORTAL_CREDENTIAL_FAIL, E_TEBLIGAT, TAX_DEADLINE, LUCA_SYNC_ERROR,
+  // AI_COST_LIMIT, AUTH_NEW_DEVICE, PENDING_DECISION, BANK_TRANSACTION_ALERT,
+  // INVOICE_OVERDUE, TASK_DUE) WhatsApp'a gelmeye DEVAM eder. Gerekirse env
+  // OWNER_NOTIFY_DISABLE_TYPES ile ek tip kapatılabilir.
+  private static readonly DEFAULT_DISABLED_TYPES = new Set<string>([
+    'DOCUMENT_UPLOADED', 'AGENT', 'AUTOMATION', 'SYSTEM',
+    'AI', 'AI_PROPOSAL', 'MOREN_AI_ALERT', 'OFFICE_CHAT',
+    'KDV_RESULT', 'MIHSAP_RESULT',
+  ]);
+
   constructor(
     private readonly prisma: PrismaService,
     private readonly whatsapp: WhatsAppService,
@@ -42,7 +54,8 @@ export class OwnerNotifierService implements OnModuleInit {
     // (mukellef/kayitsiz/owner bildirim akislari). Duplicate olmasin diye atlanir.
     if (n.type === 'WHATSAPP') return;
 
-    // Tip filtreleme — env'den disable edilebilir (virgulle ayrilmis tip listesi)
+    // Tip filtreleme: koddaki varsayılan kapalı liste + env ek liste.
+    if (OwnerNotifierService.DEFAULT_DISABLED_TYPES.has(n.type)) return;
     const disabledTypes = String(process.env.OWNER_NOTIFY_DISABLE_TYPES || '').split(',').map((s) => s.trim()).filter(Boolean);
     if (disabledTypes.includes(n.type)) return;
 
