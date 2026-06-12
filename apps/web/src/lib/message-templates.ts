@@ -39,3 +39,16 @@ export async function updateTemplate(id: string, dto: TemplateInput): Promise<Me
 export async function deleteTemplate(id: string): Promise<void> {
   await api.delete(`/message-templates/${id}`);
 }
+
+export interface AiSuggestInput {
+  mode: 'generate' | 'improve';
+  amac?: string;        // sıfırdan yaz
+  body?: string;        // iyileştir
+  instruction?: string; // nasıl değişsin
+  kanal?: string;
+}
+
+export async function aiSuggestTemplate(dto: AiSuggestInput): Promise<{ ok: boolean; body: string; error?: string }> {
+  const { data } = await api.post('/message-templates/ai', dto);
+  return data;
+}

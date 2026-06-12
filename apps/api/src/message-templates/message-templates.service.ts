@@ -1,5 +1,23 @@
 import { Injectable, NotFoundException } from '@nestjs/common';
 import { PrismaService } from '../prisma/prisma.service';
+import { claudeTextViaMax, MAX_MODEL_CHEAP } from '../common/max-inference';
+
+export interface AiSuggestDto {
+  mode?: 'generate' | 'improve';
+  amac?: string;       // sıfırdan yaz: ne anlatsın
+  body?: string;       // iyileştir: mevcut metin
+  instruction?: string; // iyileştir: nasıl değiştirilsin
+  kanal?: string;
+}
+
+// AI çıktısını temizle: kod bloğu / tırnak / "Şablon:" gibi önekleri at.
+function cleanAiText(s: string): string {
+  let t = String(s || '').trim();
+  t = t.replace(/^```[a-z]*\s*/i, '').replace(/```\s*$/i, '').trim();
+  t = t.replace(/^["'«»“”]+/, '').replace(/["'«»“”]+$/, '').trim();
+  t = t.replace(/^(Şablon|Mesaj|Metin|İşte|Cevap)\s*[:：-]\s*/i, '').trim();
+  return t;
+}
 
 export interface TemplateDto {
   ad?: string;
@@ -115,6 +133,37 @@ export class MessageTemplatesService {
     if (!existing) throw new NotFoundException('Şablon bulunamadı.');
     await this.model.delete({ where: { id } });
     return { ok: true };
+  }
+
+  /**
+   * AI ile şablon yaz / iyileştir. SADECE Max aboneliğinden (claudeTextViaMax) — ücretli API yok.
+   * Çıktı kullanıcının düzenlediği bir ÖNERİ; otomatik gönderim yok.
+   */
+  async aiSuggest(tenantId: string, dto: AiSuggestDto): Promise<{ ok: boolean; body: string; error?: string }> {
+    const system = [
+      'Sen bir Türk Serbest Muhasebeci Mali Müşavirlik ofisinin yazışma asistanısın.',
+      'Mükelleflere gönderilecek PROFESYONEL, kibar, KISA ve net bir mesaj metni yazarsın.',
+      'Uygun yerlerde şu değişken alanları SÜSLÜ PARANTEZ ile kullan: {ad} {unvan} {dönem} {sonGun} {tutar} {toplam} {vade} {bakiye} {link} {kurum} {beyannameListesi} {sgkListesi}.',
+      'SADECE mesaj metnini döndür: açıklama yapma, tırnak/kod bloğu/başlık ekleme. Türkçe yaz.',
+    ].join(' ');
+
+    const mode = dto.mode === 'improve' ? 'improve' : 'generate';
+    const prompt = mode === 'improve'
+      ? `Aşağıdaki mesaj şablonunu, içindeki {alan} değişkenlerini KORUYARAK yeniden yaz.\nİstenen değişiklik: ${dto.instruction || 'daha akıcı ve profesyonel yap'}.\n\nŞablon:\n${dto.body || ''}`
+      : `Şu amaca uygun, mükellefe gönderilecek bir mesaj şablonu yaz: ${dto.amac || 'genel bilgilendirme'}.`;
+
+    const t0 = Date.now();
+    const res = await claudeTextViaMax({ prompt, system, model: MAX_MODEL_CHEAP, maxTurns: 1, timeoutMs: 30000 });
+
+    // Maliyet görünürlüğü (Max kotasından düşer; best-effort kayıt).
+    this.prisma.aiUsageLog.create({
+      data: { tenantId, source: 'mesaj-sablon-ai', model: res.model, costUsd: res.costUsd || 0, durationMs: Date.now() - t0, karar: res.ok ? 'ok' : 'error' },
+    }).catch(() => null);
+
+    if (!res.ok || !res.text.trim()) {
+      return { ok: false, body: '', error: res.error || 'AI yanıtı alınamadı. Max bağlantısını kontrol edin.' };
+    }
+    return { ok: true, body: cleanAiText(res.text) };
   }
 
   private async ensureSeeded(tenantId: string) {

@@ -1,6 +1,6 @@
 import { Body, Controller, Delete, Get, Param, Post, Put, Req, UseGuards } from '@nestjs/common';
 import { AuthGuard } from '@nestjs/passport';
-import { MessageTemplatesService, TemplateDto } from './message-templates.service';
+import { MessageTemplatesService, TemplateDto, AiSuggestDto } from './message-templates.service';
 
 @Controller('message-templates')
 @UseGuards(AuthGuard('jwt'))
@@ -21,6 +21,12 @@ export class MessageTemplatesController {
   @Post('preview')
   preview(@Body() body: { body?: string; kanal?: string }) {
     return { text: this.svc.renderPreview(body?.body || '', body?.kanal) };
+  }
+
+  // AI ile şablon yaz / iyileştir (Max aboneliğinden — ücretli API yok).
+  @Post('ai')
+  aiSuggest(@Req() req: any, @Body() dto: AiSuggestDto) {
+    return this.svc.aiSuggest(req.user.tenantId, dto);
   }
 
   @Put(':id')

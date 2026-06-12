@@ -5,10 +5,11 @@ import Link from 'next/link';
 import { toast } from 'sonner';
 import {
   ArrowLeft, MessageSquareText, Plus, Save, Trash2, Copy, Search, Paperclip,
-  Zap, Mail, MessageCircle, Check, CircleDot, Power,
+  Zap, Mail, MessageCircle, Check, CircleDot, Power, Sparkles, Wand2, Loader2,
+  Download, Upload,
 } from 'lucide-react';
 import {
-  listTemplates, createTemplate, updateTemplate, deleteTemplate,
+  listTemplates, createTemplate, updateTemplate, deleteTemplate, aiSuggestTemplate,
   type MessageTemplate, type TemplateKanal,
 } from '@/lib/message-templates';
 
@@ -83,7 +84,10 @@ export default function SablonlarPage() {
   const [search, setSearch] = useState('');
   const [catFilter, setCatFilter] = useState<string>('all');
   const [previewKanal, setPreviewKanal] = useState<'WHATSAPP' | 'EMAIL'>('WHATSAPP');
+  const [aiBusy, setAiBusy] = useState(false);
+  const [aiPrompt, setAiPrompt] = useState('');
   const bodyRef = useRef<HTMLTextAreaElement>(null);
+  const fileRef = useRef<HTMLInputElement>(null);
   const cleanRef = useRef<string>(''); // son kaydedilmiş/yüklenmiş halin imzası → değişiklik takibi
 
   useEffect(() => { void load(); }, []);
@@ -124,14 +128,68 @@ export default function SablonlarPage() {
     patch({ kanal: wa && email ? 'BOTH' : wa ? 'WHATSAPP' : 'EMAIL' });
   }
 
-  function insertPlaceholder(name: string) {
+  function insertText(text: string) {
     const ta = bodyRef.current;
-    const token = `{${name}}`;
-    if (!ta || !draft) { patch({ body: (draft?.body || '') + token }); return; }
+    if (!ta || !draft) { patch({ body: (draft?.body || '') + text }); return; }
     const s = ta.selectionStart ?? draft.body.length;
     const e = ta.selectionEnd ?? draft.body.length;
-    patch({ body: draft.body.slice(0, s) + token + draft.body.slice(e) });
-    requestAnimationFrame(() => { ta.focus(); ta.selectionStart = ta.selectionEnd = s + token.length; });
+    patch({ body: draft.body.slice(0, s) + text + draft.body.slice(e) });
+    requestAnimationFrame(() => { ta.focus(); ta.selectionStart = ta.selectionEnd = s + text.length; });
+  }
+  const insertPlaceholder = (name: string) => insertText(`{${name}}`);
+
+  async function aiImprove(instruction: string) {
+    if (!draft) return;
+    if (!draft.body.trim()) { toast.error('Önce bir metin yaz ya da "AI ile yaz" kullan.'); return; }
+    setAiBusy(true);
+    try {
+      const r = await aiSuggestTemplate({ mode: 'improve', body: draft.body, instruction, kanal: draft.kanal });
+      if (r.ok && r.body) { patch({ body: r.body }); toast.success('AI önerisi uygulandı.'); }
+      else toast.error(r.error || 'AI önerisi alınamadı.');
+    } catch { toast.error('AI önerisi alınamadı.'); }
+    finally { setAiBusy(false); }
+  }
+
+  async function aiGenerate() {
+    if (!draft) return;
+    if (!aiPrompt.trim()) { toast.error('Ne anlatsın yaz.'); return; }
+    setAiBusy(true);
+    try {
+      const r = await aiSuggestTemplate({ mode: 'generate', amac: aiPrompt, kanal: draft.kanal });
+      if (r.ok && r.body) { patch({ body: r.body }); setAiPrompt(''); toast.success('AI şablonu oluşturdu.'); }
+      else toast.error(r.error || 'AI önerisi alınamadı.');
+    } catch { toast.error('AI önerisi alınamadı.'); }
+    finally { setAiBusy(false); }
+  }
+
+  function exportJson() {
+    if (!items.length) { toast.error('Dışa aktarılacak şablon yok.'); return; }
+    const data = JSON.stringify(items.map(({ id, sirano, ...rest }) => rest), null, 2);
+    const blob = new Blob([data], { type: 'application/json' });
+    const url = URL.createObjectURL(blob);
+    const a = document.createElement('a');
+    a.href = url; a.download = `moren-sablonlar-${new Date().toISOString().slice(0, 10)}.json`; a.click();
+    URL.revokeObjectURL(url);
+    toast.success(`${items.length} şablon dışa aktarıldı.`);
+  }
+
+  async function importJson(file: File) {
+    try {
+      const arr = JSON.parse(await file.text());
+      if (!Array.isArray(arr)) { toast.error('Geçersiz dosya.'); return; }
+      let n = 0;
+      for (const t of arr) {
+        if (!t || typeof t.body !== 'string') continue;
+        await createTemplate({
+          ad: t.ad || 'İçe aktarılan', kanal: t.kanal || 'BOTH', kategori: t.kategori || 'genel',
+          emailSubject: t.emailSubject ?? null, body: t.body, attachPdf: !!t.attachPdf,
+          auto: !!t.auto, autoEvent: t.autoEvent ?? null, isActive: t.isActive ?? true,
+        });
+        n++;
+      }
+      await load();
+      toast.success(`${n} şablon içe aktarıldı.`);
+    } catch { toast.error('İçe aktarılamadı (dosya bozuk olabilir).'); }
   }
 
   async function save() {
@@ -227,10 +285,19 @@ export default function SablonlarPage() {
             </span>
             Mesaj Şablonları
           </h1>
-          <button onClick={newTemplate} className="inline-flex items-center gap-1.5 rounded-lg px-3 py-2 text-[12px] font-semibold transition-colors"
-            style={{ background: 'rgba(52,211,153,0.16)', color: ACCENT, border: '1px solid rgba(52,211,153,0.35)' }}>
-            <Plus size={14} /> Yeni Şablon
-          </button>
+          <div className="flex items-center gap-2">
+            <button onClick={exportJson} title="Tüm şablonları JSON yedekle" className="inline-flex items-center gap-1.5 rounded-lg border px-2.5 py-2 text-[12px] font-medium" style={{ borderColor: LINE, color: MUTED, background: 'rgba(255,255,255,0.03)' }}>
+              <Download size={13} /> Dışa
+            </button>
+            <button onClick={() => fileRef.current?.click()} title="JSON'dan şablon içe aktar" className="inline-flex items-center gap-1.5 rounded-lg border px-2.5 py-2 text-[12px] font-medium" style={{ borderColor: LINE, color: MUTED, background: 'rgba(255,255,255,0.03)' }}>
+              <Upload size={13} /> İçe
+            </button>
+            <input ref={fileRef} type="file" accept="application/json,.json" className="hidden" onChange={(e) => { const f = e.target.files?.[0]; if (f) void importJson(f); e.target.value = ''; }} />
+            <button onClick={newTemplate} className="inline-flex items-center gap-1.5 rounded-lg px-3 py-2 text-[12px] font-semibold transition-colors"
+              style={{ background: 'rgba(52,211,153,0.16)', color: ACCENT, border: '1px solid rgba(52,211,153,0.35)' }}>
+              <Plus size={14} /> Yeni Şablon
+            </button>
+          </div>
         </div>
         <p className="mt-2 max-w-2xl text-[13px]" style={{ color: MUTED }}>
           WhatsApp ve e-posta için kendi şablonlarını tanımla. <span style={{ color: CYAN }}>{'{ad}'}</span>, <span style={{ color: CYAN }}>{'{tutar}'}</span> gibi alanlar gönderimde mükellef verisiyle otomatik dolar.
@@ -372,6 +439,35 @@ export default function SablonlarPage() {
                       );
                     })}
                   </div>
+                  <div className="mt-2 flex flex-wrap items-center gap-1.5">
+                    <span className="text-[11px]" style={{ color: MUTED }}>Hazır parça:</span>
+                    {([['Selamlama', 'Sayın {ad},\n\n'], ['Kapanış', '\n\nSaygılarımızla,'], ['İmza', '\nMoren Mali Müşavirlik'], ['Teşekkür', '\n\nTeşekkür ederiz.']] as const).map(([lbl, txt]) => (
+                      <button key={lbl} type="button" onClick={() => insertText(txt)} className="rounded-md border px-2 py-0.5 text-[11.5px] font-medium transition-colors" style={{ borderColor: LINE, color: MUTED, background: 'rgba(255,255,255,0.03)' }}>{lbl}</button>
+                    ))}
+                  </div>
+                </div>
+              </div>
+
+              {/* AI Asistan */}
+              <div className="mt-3 overflow-hidden rounded-xl border" style={{ borderColor: 'rgba(168,85,247,0.3)', background: 'rgba(168,85,247,0.06)' }}>
+                <div className="flex items-center gap-1.5 border-b px-3 py-2 text-[11px] font-semibold uppercase tracking-wider" style={{ borderColor: 'rgba(168,85,247,0.2)', color: '#c4a3f0' }}>
+                  <Sparkles size={13} /> AI Asistan {aiBusy && <Loader2 size={12} className="animate-spin" />}
+                </div>
+                <div className="space-y-2.5 p-3">
+                  <div className="flex flex-wrap gap-1.5">
+                    {([['Kısalt', 'daha kısa ve öz yap'], ['Resmileştir', 'daha resmi ve kurumsal yap'], ['Samimileştir', 'daha sıcak ve samimi yap'], ['Kibarlaştır', 'daha kibar ve nazik yap'], ['Dili düzelt', 'yazım ve dil bilgisi hatalarını düzelt']] as const).map(([lbl, ins]) => (
+                      <button key={lbl} type="button" disabled={aiBusy} onClick={() => aiImprove(ins)} className="rounded-md border px-2.5 py-1 text-[12px] font-medium transition-colors disabled:opacity-50" style={{ borderColor: 'rgba(168,85,247,0.3)', color: '#c4a3f0', background: 'rgba(168,85,247,0.08)' }}>{lbl}</button>
+                    ))}
+                  </div>
+                  <div className="flex gap-1.5">
+                    <input value={aiPrompt} onChange={(e) => setAiPrompt(e.target.value)} onKeyDown={(e) => { if (e.key === 'Enter') aiGenerate(); }}
+                      placeholder="Sıfırdan yaz: ne anlatsın? (ör. KDV iadesi için eksik evrak talebi)"
+                      className="flex-1 rounded-lg border px-3 py-2 text-[13px]" style={fieldStyle} />
+                    <button type="button" disabled={aiBusy} onClick={aiGenerate} className="inline-flex items-center gap-1.5 rounded-lg px-3 py-2 text-[13px] font-semibold disabled:opacity-50" style={{ background: 'linear-gradient(135deg,#a855f7,#7c3aed)', color: '#fff' }}>
+                      <Wand2 size={14} /> Yaz
+                    </button>
+                  </div>
+                  <div className="text-[11px]" style={{ color: MUTED }}>AI metni öneri olarak uygular; dilediğin gibi düzenleyebilirsin. (Max aboneliğinden — ek ücret yok.)</div>
                 </div>
               </div>
 
