@@ -247,11 +247,21 @@ export function extractZRaporuKdv(
       let currentRate: number | null = null;
       let inGrandTotal = false;
 
+      // KDV oranlari TR'de {0,1,8,10,18,20}. OCR "%" isaretini cogu zaman yanlis
+      // okur: "$20" / "/20" / "Z20" / "720" / "120" hepsi aslinda %20 demektir
+      // (% -> $,/,Z,7,1). Once dogrudan gecerli oran ara; bulamazsan bastaki
+      // yanlis-% rakamini (1 veya 7) atip kalani gecerli orana esle.
+      const VALID_RATES = [1, 8, 10, 18, 20];
       const rateOfToplam = (l: string): number | null => {
-        const m = l.match(/[%$/]\s*0?(\d{1,2})/) || l.match(/\b0?(\d{1,2})\s*[%$/]/);
-        if (m) {
-          const r = parseInt(m[1], 10);
-          if (r > 0 && r <= 30) return r;
+        const before = l.split(/T[O0]PLAM/)[0] ?? l;
+        const tokens = before.match(/\d{1,3}/g) || [];
+        for (const tok of tokens) {
+          const n = parseInt(tok, 10);
+          if (VALID_RATES.includes(n)) return n;
+          if ((tok[0] === '1' || tok[0] === '7') && tok.length >= 2) {
+            const rest = parseInt(tok.slice(1), 10);
+            if (VALID_RATES.includes(rest)) return rest;
+          }
         }
         return null;
       };
@@ -288,11 +298,14 @@ export function extractZRaporuKdv(
         if (isKdv) {
           const amt = amountBelow(i);
           if (amt > 0) {
-            if (!inGrandTotal && currentRate != null) {
+            if (inGrandTotal) {
+              // Genel toplam KDV ("MALI VERI" altinda) — yalniz ilkini al.
+              if (grandKdv == null) grandKdv = amt;
+            } else if (currentRate != null) {
               perRateKdv[currentRate] = amt;
-            } else if (grandKdv == null) {
-              grandKdv = amt;
             }
+            // !inGrandTotal && currentRate==null → orani belirsiz KDV: ATLA.
+            // (Cozulemeyen "%20" sonrasi gelen KDV'yi genel toplam sanmayalim.)
           }
         }
       }
@@ -300,20 +313,33 @@ export function extractZRaporuKdv(
       for (const oranText of Object.keys(perRateKdv)) {
         addBreakdown(Number(oranText), perRateKdv[Number(oranText)]);
       }
-      if (result.breakdown.length > 0) {
-        const sum = result.breakdown.reduce((s, b) => s + b.tutar, 0);
-        result.kdvTutari = formatAmount(sum);
-      } else if (grandKdv != null && grandKdv > 0) {
-        for (const oranText of Object.keys(result.matrahByOran)) {
-          const oran = Number(oranText);
-          if (!result.breakdown.some((b) => Math.abs(Number(b.oran) - oran) < 0.5)) {
-            addBreakdown(oran, deriveKdvFromGross(oran));
-          }
+      // Orani tespit edildi (brut var) ama KDV satiri kactiysa brut'tan tamamla.
+      // `!some` ile zaten dogru okunan orani ASLA ezmeyiz.
+      for (const oranText of Object.keys(result.matrahByOran)) {
+        const oran = Number(oranText);
+        if (!result.breakdown.some((b) => Math.abs(Number(b.oran) - oran) < 0.5)) {
+          addBreakdown(oran, deriveKdvFromGross(oran));
         }
+      }
+      const breakdownSum = result.breakdown.reduce((s, b) => s + b.tutar, 0);
+      const grossSum = Object.values(result.matrahByOran).reduce(
+        (s, g) => s + (g > 0 ? g : 0),
+        0,
+      );
+      // "MALI VERI / KDV" genel toplami GUVENLIK AGI — ama yalniz MAKUL ise.
+      // KDV asla brut satistan buyuk olamaz; OCR bazen KUM/kumulatif degeri
+      // (or. 1.7M) bu satira tasiyor. O yuzden genel KDV ancak brut toplami
+      // asmiyorsa VE breakdown toplamindan buyukse (bir oran kacmis) kullanilir.
+      const grandKdvNum = grandKdv ?? 0;
+      const grandTrustworthy =
+        grandKdvNum > 0 && grossSum > 0 && grandKdvNum <= grossSum + 0.5;
+      if (result.breakdown.length > 0) {
         result.kdvTutari =
-          result.breakdown.length > 0
-            ? formatAmount(result.breakdown.reduce((s, b) => s + b.tutar, 0))
-            : formatAmount(grandKdv);
+          grandTrustworthy && grandKdvNum > breakdownSum + 0.02
+            ? formatAmount(grandKdvNum)
+            : formatAmount(breakdownSum);
+      } else if (grandTrustworthy) {
+        result.kdvTutari = formatAmount(grandKdvNum);
       }
     }
   }

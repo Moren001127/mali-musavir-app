@@ -485,7 +485,90 @@ const zBereket936 = zRaporu.extractZRaporuKdv(zBereket936Text, zDeps);
 eq(zBereket936.kdvTutari, '162,81', 'z bereket 936 cok oran genel KDV (0,44 sahte degil)');
 approx(zBereket936.breakdown.find((b) => b.oran === 10).tutar, 48.64, 0.01, 'z bereket 936 %10 KDV');
 approx(zBereket936.breakdown.find((b) => b.oran === 20).tutar, 114.17, 0.01, 'z bereket 936 %20 KDV');
-ok('azure/z-raporu.ts Bereket VERGI DOKUMU (5 assertion)');
+
+// 938 — OCR "%20 TOPLAM"i "120 TOPLAM" okumus (% -> 1). Eskiden %20 dilimi (134,16)
+// atlanip toplam 338,19 kaliyordu; dogrusu 472,35. rateOfToplam artik 120->20 esler;
+// ayrica "MALI VERI" genel KDV'si (472,35) guvenlik agi.
+const zBereket938Text = [
+  'BEREKET AVM',
+  'FIŞ NO: 0015',
+  'Z GÜNLÜK RAPORU',
+  'Z SAYAÇ',
+  '938',
+  'TUHAFIYE',
+  '$10',
+  '11,000',
+  '+3.720,00',
+  'BALIK. AV. MALZEME %20',
+  '3.000',
+  '*805,00',
+  'NET SATIŞ',
+  '14',
+  '*4.525,00',
+  '- KASIYER SATIŞ RAPORU',
+  '1 0014',
+  '+4.525,00',
+  'VERGI DOKUMÜ',
+  '%10 TOPLAM',
+  '$3.720,00',
+  'KDV',
+  '+338,19',
+  '120 TOPLAM',
+  '+805,00',
+  'KDV',
+  '*134,16',
+  'MALI VERI',
+  'TOP',
+  '*4.525,00',
+  'KDV',
+  '*472,35',
+  'KUM TOP',
+  '*1.726.764,23',
+  'KUM KDV',
+  '*157.213,58',
+].join('\n');
+const zBereket938 = zRaporu.extractZRaporuKdv(zBereket938Text, zDeps);
+eq(zBereket938.kdvTutari, '472,35', 'z bereket 938 "120 TOPLAM" (%20) okundu, toplam 472,35');
+approx(zBereket938.breakdown.find((b) => b.oran === 10).tutar, 338.19, 0.01, 'z bereket 938 %10 KDV');
+approx(zBereket938.breakdown.find((b) => b.oran === 20).tutar, 134.16, 0.01, 'z bereket 938 %20 KDV (120 TOPLAM cozuldu)');
+
+// 952 — TEK ORAN ama "MALI VERI" bolumu OCR'da karismis: gercek KDV (310,46)
+// "KDV" etiketinden ONCE, KUM TOP degeri (1.777.602,23) etiketten HEMEN SONRA.
+// Genel-KDV guvenlik agi bu KUM degerini ASLA almamali (brut 3.415'i asiyor).
+const zBereket952Text = [
+  'BEREKET AVM',
+  'FİŞ NO: 0006',
+  'Z GÜNLÜK RAPORU',
+  'Z SAYAÇ',
+  '952',
+  'TUHAFİYE',
+  '%10',
+  '5,000',
+  '*3.415,00',
+  'NET SATIŞ',
+  '5',
+  '*3.415,00',
+  '1 0005',
+  '*3.415,00',
+  'VERGİ DOKÜMÜ',
+  '%10 TOPLAM',
+  '*3.415,00',
+  'KDV',
+  '*310,46',
+  'MALI VERİ',
+  'TOP',
+  '*3.415,00',
+  '*310,46',
+  'KDV',
+  '*1.777.602,23',
+  'KUM TOP',
+  'KUM KDV',
+  '$161.894,71',
+].join('\n');
+const zBereket952 = zRaporu.extractZRaporuKdv(zBereket952Text, zDeps);
+eq(zBereket952.kdvTutari, '310,46', 'z bereket 952 KUM degeri (1.7M) toplam sanilmamali');
+approx(zBereket952.breakdown.find((b) => b.oran === 10).tutar, 310.46, 0.01, 'z bereket 952 %10 KDV');
+ok('azure/z-raporu.ts Bereket VERGI DOKUMU (10 assertion)');
 
 // ─── validation/cross-check.ts ───
 const zCrossText = [
