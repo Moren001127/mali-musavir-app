@@ -1,6 +1,7 @@
 import { Injectable, Logger } from '@nestjs/common';
 import { PrismaService } from '../prisma/prisma.service';
 import { MIHSAP_FATURA_ACTIONS, isMihsapFaturaCommandAgent } from '../agent-events/agent-registry';
+import { calculateBeyannameDeadline } from '../schedule/beyanname-deadline.util';
 import { randomBytes } from 'crypto';
 
 const OFFICIAL_SOURCE_DOMAINS = [
@@ -2194,10 +2195,16 @@ export class ToolExecutorService {
   private async getOperationBriefing(input: any, ctx: { tenantId: string }) {
     const { period, year, month } = this.currentPeriod(input);
     const todayStart = this.startOfDay();
-    const [taxpayers, statuses, bankAccounts, bankRecords, cariRows, agentEvents, pendingDecisions, commands, tasks] = await Promise.all([
+    const todayDay = new Date().getDate();
+    // Beyanname dönemi = işlem ayı − 1 (Mayıs faturası Haziran'da işlenir, beyanı Mayıs dönemi).
+    const byMonth = month === 1 ? 12 : month - 1;
+    const byYear = month === 1 ? year - 1 : year;
+    const beyannameDonem = `${byYear}-${String(byMonth).padStart(2, '0')}`;
+
+    const [taxpayers, statuses, bankAccounts, bankRecords, cariRows, agentEvents, pendingDecisions, tasks, beyanDurumlari] = await Promise.all([
       this.prisma.taxpayer.findMany({
         where: { tenantId: ctx.tenantId, isActive: true },
-        select: { id: true, companyName: true, firstName: true, lastName: true, taxNumber: true, type: true },
+        select: { id: true, companyName: true, firstName: true, lastName: true, taxNumber: true, type: true, evrakTeslimGunu: true },
         orderBy: [{ companyName: 'asc' }, { firstName: 'asc' }],
       }),
       (this.prisma as any).taxpayerMonthlyStatus.findMany({ where: { tenantId: ctx.tenantId, year, month } }),
@@ -2212,11 +2219,16 @@ export class ToolExecutorService {
       (this.prisma as any).pendingDecision?.findMany
         ? (this.prisma as any).pendingDecision.findMany({ where: { tenantId: ctx.tenantId, durum: 'bekliyor' }, take: 50 })
         : Promise.resolve([]),
-      (this.prisma as any).agentCommand.findMany({ where: { tenantId: ctx.tenantId }, orderBy: { createdAt: 'desc' }, take: 20 }),
       (this.prisma as any).task.findMany({
         where: { tenantId: ctx.tenantId, isTemplate: false, status: { in: ['OPEN', 'IN_PROGRESS', 'MISSED'] } },
         select: { id: true, title: true, dueDate: true, status: true },
         take: 200,
+      }).catch(() => []),
+      // Beyanname dönemi (işlem ayı−1) için henüz onaylanmamış beyan durumları → son gün hesabı.
+      (this.prisma as any).beyanDurumu.findMany({
+        where: { tenantId: ctx.tenantId, donem: beyannameDonem, durum: 'beklemede' },
+        include: { taxpayer: { select: { companyName: true, firstName: true, lastName: true } } },
+        take: 1000,
       }).catch(() => []),
     ]);
 
@@ -2229,24 +2241,55 @@ export class ToolExecutorService {
       bankRecordMap.set(r.taxpayerId, list);
     }
 
-    let evrakEksik = 0, islenmemis = 0, kdvKontrolEksik = 0, beyanEksik = 0, bankaEksik = 0, bankaHesapsiz = 0;
+    let evrakEksik = 0, islenmemis = 0, kdvKontrolEksik = 0, bankaEksik = 0, beyannameVerilebilir = 0;
     const readinessRows: any[] = [];
+    const verilebilirler: string[] = [];
     for (const t of taxpayers as any[]) {
       const s: any = statusMap.get(t.id) || {};
+      const ad = this.displayName(t);
       const bankaVar = bankAccountSet.has(t.id);
       const ekstreRows = bankRecordMap.get(t.id) || [];
       const ekstreTamam = !bankaVar || (ekstreRows.length > 0 && ekstreRows.every((r: any) => r.ekstreGeldi && r.ekstreIslendi));
-      const kdvTamam = !!(s.kdvKontrolEdildi || (s.indirilecekKdvKontrol && s.hesaplananKdvKontrol && s.eArsivKontrol));
+      // Portal deriveStage ile aynı "kontrol bitti": İND+HES+ARŞİV (veya kdvKontrolEdildi).
+      const kontrolBitti = !!(s.kdvKontrolEdildi || (s.indirilecekKdvKontrol && s.hesaplananKdvKontrol && s.eArsivKontrol));
       const eksikler: string[] = [];
       if (!s.evraklarGeldi) { evrakEksik++; eksikler.push('evrak gelmedi'); }
       if (s.evraklarGeldi && !s.evraklarIslendi) { islenmemis++; eksikler.push('evrak işlenmedi'); }
-      if (!kdvTamam) { kdvKontrolEksik++; eksikler.push('KDV kontrol eksik'); }
-      if (!s.beyannameVerildi) { beyanEksik++; eksikler.push('beyanname işaretlenmedi'); }
-      if (!bankaVar) { bankaHesapsiz++; eksikler.push('banka hesabı yok'); }
-      else if (!ekstreTamam) { bankaEksik++; eksikler.push('banka ekstresi eksik/işlenmedi'); }
-      const score = Math.max(0, 100 - (eksikler.length * 18));
-      if (eksikler.length) readinessRows.push({ id: t.id, ad: this.displayName(t), score, durum: this.riskLevel(score), eksikler: eksikler.slice(0, 4) });
+      if (s.evraklarGeldi && s.evraklarIslendi && !kontrolBitti) { kdvKontrolEksik++; eksikler.push('KDV kontrol eksik'); }
+      // "Banka hesabı yok" ARTIK eksik sayılmaz (banka takibi olmayan mükellef normaldir,
+      // yanlış alarm üretiyordu). Yalnız hesabı VARSA ekstre eksikliği aksiyondur.
+      if (bankaVar && !ekstreTamam) { bankaEksik++; eksikler.push('banka ekstresi eksik/işlenmedi'); }
+      // Beyanname VERİLEBİLİR = portal "beyan-hazir": evrak+işlem+kontrol ✓, henüz verilmemiş.
+      if (s.evraklarGeldi && s.evraklarIslendi && kontrolBitti && !s.beyannameVerildi) {
+        beyannameVerilebilir++;
+        verilebilirler.push(ad);
+      }
+      const score = Math.max(0, 100 - (eksikler.length * 22));
+      if (eksikler.length) readinessRows.push({ id: t.id, ad, score, durum: this.riskLevel(score), eksikler: eksikler.slice(0, 4) });
     }
+
+    // Yaklaşan / geciken beyanname (BeyanDurumu beklemede + TC standart son gün, tek kaynak util).
+    const fmtTr = (d: Date) => d.toLocaleDateString('tr-TR', { day: '2-digit', month: '2-digit', year: 'numeric' });
+    const yaklasanSureler: any[] = [];
+    const gecikenBeyanname: any[] = [];
+    for (const bd of beyanDurumlari as any[]) {
+      const deadline = calculateBeyannameDeadline(bd.beyanTipi, bd.donem);
+      if (!deadline) continue;
+      const kalanGun = Math.ceil((deadline.getTime() - todayStart.getTime()) / 86400000);
+      const ad = this.displayName(bd.taxpayer || {});
+      if (kalanGun < 0) {
+        gecikenBeyanname.push({ mukellef: ad, beyanTipi: bd.beyanTipi, sonGun: fmtTr(deadline), gecenGun: -kalanGun });
+      } else if (kalanGun <= 14) {
+        yaklasanSureler.push({ mukellef: ad, beyanTipi: bd.beyanTipi, sonGun: fmtTr(deadline), kalanGun });
+      }
+    }
+    yaklasanSureler.sort((a, b) => a.kalanGun - b.kalanGun);
+    gecikenBeyanname.sort((a, b) => b.gecenGun - a.gecenGun);
+
+    // Bugün evrakı gelmesi gereken mükellefler (evrakTeslimGunu = ayın günü).
+    const bugunEvrakGelecek = (taxpayers as any[])
+      .filter((t) => Number(t.evrakTeslimGunu) === todayDay)
+      .map((t) => this.displayName(t));
 
     const cariByTaxpayer = new Map<string, number>();
     for (const h of cariRows || []) {
@@ -2261,31 +2304,39 @@ export class ToolExecutorService {
 
     return {
       period,
+      beyannameDonem,
       ozet: {
         aktifMukellef: taxpayers.length,
         evrakEksik,
         islenmemis,
         kdvKontrolEksik,
-        beyanEksik,
+        beyannameVerilebilir,
+        gecikenBeyanname: gecikenBeyanname.length,
+        yaklasanBeyanname: yaklasanSureler.length,
         bankaEksik,
-        bankaHesapsiz,
         borcluMukellef: borclular.length,
         toplamBakiye,
-        bugunAgentOlay: (agentEvents || []).length,
+        bugunEvrakGelecek: bugunEvrakGelecek.length,
         bugunAgentHata: bugunHata,
         bekleyenOnay: (pendingDecisions || []).length,
         gecikenGorev,
       },
       oneriler: [
+        gecikenBeyanname.length ? `${gecikenBeyanname.length} beyannamede SÜRE GEÇTİ (acil)` : null,
+        yaklasanSureler.length ? `${yaklasanSureler.length} beyannamenin son günü yaklaşıyor` : null,
+        beyannameVerilebilir ? `${beyannameVerilebilir} mükellefin beyannamesi verilebilir (kontrol bitti)` : null,
         evrakEksik ? `${evrakEksik} mükellefte evrak bekleniyor` : null,
-        bankaEksik || bankaHesapsiz ? `${bankaEksik + bankaHesapsiz} mükellefte banka takip aksiyonu var` : null,
-        kdvKontrolEksik ? `${kdvKontrolEksik} mükellefte KDV/beyan hazırlığı eksik` : null,
+        bankaEksik ? `${bankaEksik} mükellefte banka ekstresi eksik/işlenmedi` : null,
+        kdvKontrolEksik ? `${kdvKontrolEksik} mükellefte KDV kontrolü eksik` : null,
         borclular.length ? `${borclular.length} mükellefte açık cari bakiye var` : null,
+        bugunEvrakGelecek.length ? `Bugün ${bugunEvrakGelecek.length} mükellefin evrakı gelmeli` : null,
         bugunHata ? `Bugün ${bugunHata} agent hatası var` : null,
       ].filter(Boolean),
+      yaklasanSureler: yaklasanSureler.slice(0, 20),
+      gecikenBeyanname: gecikenBeyanname.slice(0, 20),
+      beyannameVerilebilirler: verilebilirler.slice(0, 20),
+      bugunEvrakGelecek: bugunEvrakGelecek.slice(0, 20),
       riskliMukellefler: readinessRows.sort((a, b) => a.score - b.score).slice(0, 15),
-      sonAgentKomutlari: commands,
-      sonAgentOlaylari: (agentEvents || []).slice(0, 15),
     };
   }
 

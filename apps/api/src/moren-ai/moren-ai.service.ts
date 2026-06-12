@@ -114,6 +114,10 @@ const TAXPAYER_READONLY_TOOL_NAMES = [
   'get_my_invoices',
   'get_my_beyanname',
   'get_my_balance',
+  // GENEL MEVZUAT: mükellef "işe başlama süresi/ceza, KDV oranı, hangi belge" gibi GENEL
+  // soru sorarsa resmi kaynaktan cevaplayabilsin. Mükellef verisi DEĞİL, kamuya açık
+  // mevzuat; inferMaxToolInput yalnız GERÇEK mevzuat sorusunda çalıştırır (gate'li).
+  'research_official_sources',
 ];
 
 const TOOL_GROUPS: Array<{ pattern: RegExp; tools: string[] }> = [

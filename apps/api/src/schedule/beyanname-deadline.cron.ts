@@ -3,6 +3,7 @@ import { Cron } from '@nestjs/schedule';
 import { PrismaService } from '../prisma/prisma.service';
 import { NotificationsService } from '../notifications/notifications.service';
 import { NOTIFICATION_TYPES } from '../notifications/notification-types';
+import { calculateBeyannameDeadline } from './beyanname-deadline.util';
 
 /**
  * Beyanname son tarih hatirlatma cron'u — TAX_DEADLINE bildirimi.
@@ -78,7 +79,7 @@ export class BeyannameDeadlineCron {
     // Beyan tipi -> son tarih dictionary
     let notified = 0;
     for (const rec of records) {
-      const deadline = this.calculateDeadline(rec.beyanTipi, rec.donem);
+      const deadline = calculateBeyannameDeadline(rec.beyanTipi, rec.donem);
       if (!deadline) continue;
 
       const daysRemaining = Math.ceil((deadline.getTime() - today.getTime()) / (24 * 3600 * 1000));
@@ -110,66 +111,6 @@ export class BeyannameDeadlineCron {
       notified++;
     }
     return notified;
-  }
-
-  /** Beyan tipi + donem (YYYY-MM) -> son verme tarihi (Istanbul lokal saatle gun sonu) */
-  private calculateDeadline(beyanTipi: string, donem: string): Date | null {
-    const [yearStr, monthStr] = donem.split('-');
-    const year = Number(yearStr);
-    const month = Number(monthStr); // 1-12
-    if (!year || !month) return null;
-
-    // Bir sonraki ay (donem'in vade'si genelde sonraki ay)
-    const nextMonth = month === 12 ? 1 : month + 1;
-    const nextYear = month === 12 ? year + 1 : year;
-
-    const mkDate = (y: number, m: number, d: number) =>
-      new Date(`${y}-${String(m).padStart(2, '0')}-${String(d).padStart(2, '0')}T23:59:59+03:00`);
-
-    switch (beyanTipi) {
-      case 'KDV1':
-      case 'KDV2':
-      case 'KDV4':
-      case 'KDV9015':
-        return mkDate(nextYear, nextMonth, 28);
-      case 'MUHSGK':
-      case 'MUHSGK2':
-        return mkDate(nextYear, nextMonth, 26);
-      case 'DAMGA':
-        return mkDate(nextYear, nextMonth, 25);
-      case 'BILDIRGE':
-        return mkDate(nextYear, nextMonth, 23);
-      case 'POSET':
-        return mkDate(nextYear, nextMonth, 24);
-      case 'EDEFTER': {
-        // 3 ay sonrasinin son gunu (yaklasik). Ay sonu hesabi:
-        const targetMonth = month + 3 > 12 ? month + 3 - 12 : month + 3;
-        const targetYear = month + 3 > 12 ? year + 1 : year;
-        // Son gun
-        const lastDay = new Date(targetYear, targetMonth, 0).getDate();
-        return mkDate(targetYear, targetMonth, lastDay);
-      }
-      case 'GGECICI':
-      case 'KGECICI':
-        // Geçici vergi: donem son ayinin 17'si (kabaca)
-        return mkDate(nextYear, nextMonth, 17);
-      case 'KURUMLAR':
-        return mkDate(year, 4, 30); // 30 Nisan
-      case 'GELIR':
-        return mkDate(year, 3, 31); // 31 Mart
-      case 'OTV1':
-      case 'OTV3A':
-      case 'OTV3B':
-      case 'OTV4':
-        return mkDate(nextYear, nextMonth, 15);
-      case 'KONAKLAMA':
-      case 'OIV':
-      case 'GMSI':
-      case 'TURIZM':
-        return mkDate(nextYear, nextMonth, 26);
-      default:
-        return null;
-    }
   }
 
   private isEnabled(): boolean {
