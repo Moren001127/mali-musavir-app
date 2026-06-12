@@ -46,6 +46,7 @@ export interface AiSuggestInput {
   body?: string;        // iyileştir
   instruction?: string; // nasıl değişsin
   kanal?: string;
+  context?: 'sablon' | 'duyuru';
 }
 
 export async function aiSuggestTemplate(dto: AiSuggestInput): Promise<{ ok: boolean; body: string; error?: string }> {

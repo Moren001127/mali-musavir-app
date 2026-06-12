@@ -1,10 +1,11 @@
 'use client';
 
 import { api } from '@/lib/api';
+import { aiSuggestTemplate } from '@/lib/message-templates';
 import {
   Bot, CalendarClock, CalendarPlus, CheckCheck, Clock, Download, Edit3,
-  FilePlus2, Globe, History, LibraryBig, Mail, MapPin, Megaphone, MessageCircle, Phone,
-  Save, Search, Send, SlidersHorizontal, Trash2, Users, X,
+  FilePlus2, Globe, History, LibraryBig, Loader2, Mail, MapPin, Megaphone, MessageCircle, Phone,
+  Save, Search, Send, SlidersHorizontal, Sparkles, Trash2, Users, Wand2, X,
 } from 'lucide-react';
 import { toJpeg } from 'html-to-image';
 import type { ReactNode, Ref } from 'react';
@@ -234,6 +235,8 @@ export default function DuyurularPage() {
   const [sending, setSending] = useState(false);
   const [agentPreviewing, setAgentPreviewing] = useState(false);
   const [tick, setTick] = useState(0);
+  const [aiBusy, setAiBusy] = useState(false);
+  const [aiPrompt, setAiPrompt] = useState('');
   const previewRef = useRef<HTMLDivElement>(null);
 
   useEffect(() => {
@@ -314,6 +317,28 @@ export default function DuyurularPage() {
     }));
     toast.success(`"${preset.label}" yüklendi`);
     setTab('duzenle');
+  };
+
+  const aiImproveDuyuru = async (instruction: string) => {
+    if (!draft.icerik.trim()) { toast.error('Önce içerik yaz ya da "AI ile yaz" kullan.'); return; }
+    setAiBusy(true);
+    try {
+      const r = await aiSuggestTemplate({ mode: 'improve', body: draft.icerik, instruction, context: 'duyuru' });
+      if (r.ok && r.body) { update('icerik', r.body); toast.success('AI önerisi uygulandı.'); }
+      else toast.error(r.error || 'AI önerisi alınamadı.');
+    } catch { toast.error('AI önerisi alınamadı.'); }
+    finally { setAiBusy(false); }
+  };
+
+  const aiGenerateDuyuru = async () => {
+    if (!aiPrompt.trim()) { toast.error('Ne anlatsın yaz.'); return; }
+    setAiBusy(true);
+    try {
+      const r = await aiSuggestTemplate({ mode: 'generate', amac: aiPrompt, context: 'duyuru' });
+      if (r.ok && r.body) { update('icerik', r.body); setAiPrompt(''); toast.success('AI duyuru metnini yazdı.'); }
+      else toast.error(r.error || 'AI önerisi alınamadı.');
+    } catch { toast.error('AI önerisi alınamadı.'); }
+    finally { setAiBusy(false); }
   };
 
   const save = () => {
@@ -489,21 +514,46 @@ export default function DuyurularPage() {
 
           <div className="min-h-0 flex-1 space-y-3 overflow-y-auto pr-1">
             {tab === 'duzenle' && (
-              <Panel title="Duyuru Girişi">
-                <div className="grid grid-cols-2 gap-3">
-                  <Field label="Tarih" value={draft.tarih} onChange={(v) => update('tarih', v)} />
-                  <div>
-                    <span className="mb-2 block text-[12.5px] font-semibold uppercase tracking-[.08em]" style={{ color: MUTED }}>Duyuru No</span>
-                    <div className="flex gap-1.5">
-                      <input value={draft.no} onChange={(e) => update('no', e.target.value)} className="h-10 w-full rounded-lg border px-3.5 text-[14px] font-semibold outline-none transition focus:border-[#d7c28b]" style={{ borderColor: BORDER, background: 'rgba(0,0,0,0.22)', color: TEXT }} />
-                      <button title="Sıradaki numara" onClick={() => update('no', nextDuyuruNo(items, history))} className="grid h-10 w-10 shrink-0 place-items-center rounded-lg border" style={{ borderColor: BORDER, color: COPPER, background: 'rgba(217,160,108,0.1)' }}>#</button>
+              <>
+                <Panel title="Duyuru Girişi">
+                  <div className="grid grid-cols-2 gap-3">
+                    <Field label="Tarih" value={draft.tarih} onChange={(v) => update('tarih', v)} />
+                    <div>
+                      <span className="mb-2 block text-[12.5px] font-semibold uppercase tracking-[.08em]" style={{ color: MUTED }}>Duyuru No</span>
+                      <div className="flex gap-1.5">
+                        <input value={draft.no} onChange={(e) => update('no', e.target.value)} className="h-10 w-full rounded-lg border px-3.5 text-[14px] font-semibold outline-none transition focus:border-[#d7c28b]" style={{ borderColor: BORDER, background: 'rgba(0,0,0,0.22)', color: TEXT }} />
+                        <button title="Sıradaki numara" onClick={() => update('no', nextDuyuruNo(items, history))} className="grid h-10 w-10 shrink-0 place-items-center rounded-lg border" style={{ borderColor: BORDER, color: COPPER, background: 'rgba(217,160,108,0.1)' }}>#</button>
+                      </div>
                     </div>
                   </div>
+                  <Field label="Başlık" value={draft.baslik} onChange={(v) => update('baslik', v)} />
+                  <Field label="İçerik" value={draft.icerik} onChange={(v) => update('icerik', v)} textarea rows={5} />
+                  <TypeControls draft={draft} onChange={update} />
+                </Panel>
+
+                {/* AI Asistan — İçerik metnini yazar/düzenler */}
+                <div className="overflow-hidden rounded-[10px] border" style={{ borderColor: 'rgba(168,85,247,0.3)', background: 'rgba(168,85,247,0.06)' }}>
+                  <div className="flex items-center gap-1.5 border-b px-4 py-3 text-[14px] font-semibold" style={{ borderColor: 'rgba(168,85,247,0.2)', color: '#c4a3f0' }}>
+                    <Sparkles size={15} /> AI Asistan {aiBusy && <Loader2 size={13} className="animate-spin" />}
+                  </div>
+                  <div className="space-y-2.5 p-4">
+                    <div className="flex flex-wrap gap-1.5">
+                      {([['Kısalt', 'daha kısa ve öz yap'], ['Resmileştir', 'daha resmi ve kurumsal yap'], ['Kibarlaştır', 'daha kibar ve nazik yap'], ['Dili düzelt', 'yazım ve dil bilgisi hatalarını düzelt']] as const).map(([lbl, ins]) => (
+                        <button key={lbl} type="button" disabled={aiBusy} onClick={() => aiImproveDuyuru(ins)} className="rounded-md border px-2.5 py-1 text-[12px] font-medium transition-colors disabled:opacity-50" style={{ borderColor: 'rgba(168,85,247,0.3)', color: '#c4a3f0', background: 'rgba(168,85,247,0.08)' }}>{lbl}</button>
+                      ))}
+                    </div>
+                    <div className="flex gap-1.5">
+                      <input value={aiPrompt} onChange={(e) => setAiPrompt(e.target.value)} onKeyDown={(e) => { if (e.key === 'Enter') aiGenerateDuyuru(); }}
+                        placeholder="Sıfırdan yaz: ne anlatsın? (ör. ofis bayram tatili duyurusu)"
+                        className="flex-1 rounded-lg border px-3 py-2 text-[13px] outline-none transition focus:border-[#a855f7]" style={{ borderColor: BORDER, background: 'rgba(0,0,0,0.22)', color: TEXT }} />
+                      <button type="button" disabled={aiBusy} onClick={aiGenerateDuyuru} className="inline-flex items-center gap-1.5 rounded-lg px-3 py-2 text-[13px] font-semibold disabled:opacity-50" style={{ background: 'linear-gradient(135deg,#a855f7,#7c3aed)', color: '#fff' }}>
+                        <Wand2 size={14} /> Yaz
+                      </button>
+                    </div>
+                    <div className="text-[11.5px]" style={{ color: SOFT }}>AI, İçerik kutusunu yazar/düzenler — afiş anında güncellenir. (Max aboneliğinden — ek ücret yok.)</div>
+                  </div>
                 </div>
-                <Field label="Başlık" value={draft.baslik} onChange={(v) => update('baslik', v)} />
-                <Field label="İçerik" value={draft.icerik} onChange={(v) => update('icerik', v)} textarea rows={5} />
-                <TypeControls draft={draft} onChange={update} />
-              </Panel>
+              </>
             )}
 
             {tab === 'hazir' && (
