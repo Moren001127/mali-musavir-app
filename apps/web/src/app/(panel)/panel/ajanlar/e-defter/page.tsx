@@ -3,7 +3,7 @@
 import { useEffect, useMemo, useRef, useState, type CSSProperties } from 'react';
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import {
-  BookOpen, CheckCircle2, ChevronDown, ChevronRight, Clock, Download, EyeOff,
+  BookOpen, Building2, CheckCircle2, ChevronDown, ChevronRight, Clock, Download, EyeOff,
   FileSpreadsheet, FileText, History, LayoutGrid, ListChecks, Loader2, Play, RotateCcw,
   Search, Sparkles, UploadCloud, XCircle,
 } from 'lucide-react';
@@ -56,6 +56,83 @@ function isBilancoTaxpayer(t?: Taxpayer | null) {
   const raw = `${t?.defterTuru || ''} ${t?.mihsapDefterTuru || ''}`.toLocaleUpperCase('tr-TR');
   if (/İŞLETME|ISLETME|DEFTER[_\s-]*BEYAN/.test(raw)) return false;
   return /BİLANÇO|BILANÇO|BILANCO/.test(raw);
+}
+
+// Profesyonel, aranabilir mükellef seçici (native <select> yerine).
+function TaxpayerSelect({ taxpayers, value, onChange }: { taxpayers: Taxpayer[]; value: string; onChange: (id: string) => void }) {
+  const [open, setOpen] = useState(false);
+  const [search, setSearch] = useState('');
+  const ref = useRef<HTMLDivElement | null>(null);
+  const selected = taxpayers.find((t) => t.id === value) || null;
+
+  useEffect(() => {
+    if (!open) return;
+    const onDoc = (e: MouseEvent) => { if (ref.current && !ref.current.contains(e.target as Node)) setOpen(false); };
+    const onKey = (e: KeyboardEvent) => { if (e.key === 'Escape') setOpen(false); };
+    document.addEventListener('mousedown', onDoc);
+    document.addEventListener('keydown', onKey);
+    return () => { document.removeEventListener('mousedown', onDoc); document.removeEventListener('keydown', onKey); };
+  }, [open]);
+
+  const q = search.trim().toLocaleLowerCase('tr-TR');
+  const filtered = q
+    ? taxpayers.filter((t) => `${taxpayerName(t)} ${t.taxNumber || ''}`.toLocaleLowerCase('tr-TR').includes(q))
+    : taxpayers;
+
+  return (
+    <div ref={ref} className="relative w-full">
+      <button
+        type="button"
+        onClick={() => setOpen((o) => !o)}
+        className="h-11 w-full rounded-xl pl-3 pr-9 text-[13px] inline-flex items-center gap-2 cursor-pointer transition-colors relative"
+        style={{ background: 'rgba(255,255,255,.04)', border: `1px solid ${open ? BORDER_STRONG : BORDER}`, color: TEXT }}
+      >
+        <span className="grid place-items-center w-[22px] h-[22px] rounded-md shrink-0" style={{ background: NAVY_SOFT, color: NAVY }}><Building2 size={13} /></span>
+        <span className="flex-1 text-left truncate font-semibold" style={{ color: selected ? TEXT : MUTED }}>
+          {selected ? taxpayerName(selected) : (taxpayers.length ? 'Mükellef seçin' : 'Bilanço mükellefi yok')}
+        </span>
+        {selected?.taxNumber && <span className="text-[11px] tabular-nums shrink-0" style={{ color: MUTED2 }}>{selected.taxNumber}</span>}
+        <ChevronDown size={15} className="absolute right-3 transition-transform" style={{ color: MUTED, transform: open ? 'rotate(180deg)' : 'none' }} />
+      </button>
+      {open && (
+        <div className="absolute z-50 mt-1.5 w-full rounded-xl overflow-hidden" style={{ background: '#16161b', border: `1px solid ${BORDER_STRONG}`, boxShadow: '0 18px 44px rgba(0,0,0,.55)' }}>
+          <div className="p-2" style={{ borderBottom: `1px solid ${BORDER}` }}>
+            <div className="h-9 rounded-lg px-2.5 flex items-center gap-2 w-full" style={{ background: 'rgba(255,255,255,.05)', border: `1px solid ${BORDER}` }}>
+              <Search size={13} style={{ color: MUTED2 }} />
+              <input autoFocus value={search} onChange={(e) => setSearch(e.target.value)} placeholder="Mükellef veya VKN ara…" className="bg-transparent outline-none text-[13px] w-full" style={{ color: TEXT }} />
+            </div>
+          </div>
+          <div className="max-h-[320px] overflow-auto py-1">
+            {filtered.length === 0 && (<div className="px-3 py-6 text-center text-[12px]" style={{ color: MUTED }}>Eşleşen mükellef yok</div>)}
+            {filtered.map((t) => {
+              const on = t.id === value;
+              return (
+                <button
+                  key={t.id}
+                  type="button"
+                  onClick={() => { onChange(t.id); setOpen(false); setSearch(''); }}
+                  className="w-full px-3 py-2 text-left flex items-center gap-2.5 transition-colors"
+                  style={{ background: on ? NAVY_SOFT : 'transparent' }}
+                  onMouseEnter={(e) => { if (!on) e.currentTarget.style.background = PANEL_HOVER; }}
+                  onMouseLeave={(e) => { if (!on) e.currentTarget.style.background = 'transparent'; }}
+                >
+                  <span className="w-1.5 h-1.5 rounded-full shrink-0" style={{ background: on ? NAVY : 'rgba(255,255,255,.15)' }} />
+                  <span className="flex-1 min-w-0">
+                    <span className="block truncate text-[13px] font-semibold" style={{ color: on ? NAVY : TEXT }}>{taxpayerName(t)}</span>
+                    {t.taxNumber && <span className="block text-[11px] tabular-nums" style={{ color: MUTED2 }}>VKN {t.taxNumber}</span>}
+                  </span>
+                  {on && <CheckCircle2 size={15} style={{ color: NAVY }} />}
+                </button>
+              );
+            })}
+          </div>
+          <div className="px-3 py-1.5 text-[10px] text-center" style={{ borderTop: `1px solid ${BORDER}`, color: MUTED2 }}>
+            {filtered.length} / {taxpayers.length} bilanço mükellefi
+          </div>
+        </div>
+      )}
+    </div>
+  );
 }
 function apiArray<T>(value: any): T[] {
   if (Array.isArray(value)) return value;
@@ -269,7 +346,12 @@ export default function EDefterAgentPage() {
   });
   // Sadece bilanço usulüne tabi mükellefler (e-Defter mükellefi olabilir).
   // Hem defterTuru hem mihsapDefterTuru'ya bakılır — Mihsap senkronunda tür mihsapDefterTuru'da olabilir.
-  const taxpayers = useMemo(() => allTaxpayers.filter(isBilancoTaxpayer), [allTaxpayers]);
+  const taxpayers = useMemo(
+    () => allTaxpayers
+      .filter(isBilancoTaxpayer)
+      .sort((a, b) => taxpayerName(a).localeCompare(taxpayerName(b), 'tr', { sensitivity: 'base' })),
+    [allTaxpayers],
+  );
   useEffect(() => { if (!taxpayerId && taxpayers[0]?.id) setTaxpayerId(taxpayers[0].id); }, [taxpayers, taxpayerId]);
   const selectedTp = taxpayers.find((t) => t.id === taxpayerId);
 
@@ -638,10 +720,7 @@ export default function EDefterAgentPage() {
         <div className="px-5 py-3.5 flex flex-wrap items-end gap-x-4 gap-y-3" style={{ background: 'rgba(0,0,0,.24)', borderTop: `1px solid ${BORDER}` }}>
           <label className="flex flex-col gap-1.5 flex-1 min-w-[260px]">
             <span className="text-[9px] uppercase tracking-[.16em] font-bold" style={{ color: MUTED2 }}>Mükellef <span style={{ color: NAVY }}>· {taxpayers.length} bilanço</span></span>
-            <select value={taxpayerId} onChange={(e) => { setTaxpayerId(e.target.value); setSelectedSessionId(null); }} className="h-11 rounded-xl px-3 text-[13px] w-full appearance-none cursor-pointer" style={selectStyle()}>
-              {taxpayers.length === 0 && (<option value="" style={{ background: '#1a1a17', color: TEXT }}>Bilanço mükellefi yok</option>)}
-              {taxpayers.map((t) => (<option key={t.id} value={t.id} style={{ background: '#1a1a17', color: TEXT }}>{taxpayerName(t)}</option>))}
-            </select>
+            <TaxpayerSelect taxpayers={taxpayers} value={taxpayerId} onChange={(id) => { setTaxpayerId(id); setSelectedSessionId(null); }} />
           </label>
           <label className="flex flex-col gap-1.5">
             <span className="text-[9px] uppercase tracking-[.16em] font-bold" style={{ color: MUTED2 }}>Yıl</span>
