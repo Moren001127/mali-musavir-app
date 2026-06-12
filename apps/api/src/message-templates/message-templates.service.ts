@@ -1,6 +1,6 @@
 import { Injectable, NotFoundException } from '@nestjs/common';
 import { PrismaService } from '../prisma/prisma.service';
-import { claudeTextViaMax, MAX_MODEL_CHEAP } from '../common/max-inference';
+import { claudeTextViaMax, MAX_MODEL_DEFAULT } from '../common/max-inference';
 
 export interface AiSuggestDto {
   mode?: 'generate' | 'improve';
@@ -11,12 +11,22 @@ export interface AiSuggestDto {
   context?: 'sablon' | 'duyuru'; // sablon: {alan}'lı mesaj; duyuru: parantezsiz tam afiş metni
 }
 
-// AI çıktısını temizle: kod bloğu / tırnak / "Şablon:" gibi önekleri at.
+// AI çıktısını temizle: kod bloğu / giriş cümlesi / etiket / dış tırnak at.
 function cleanAiText(s: string): string {
   let t = String(s || '').trim();
+  // kod bloğu çitleri
   t = t.replace(/^```[a-z]*\s*/i, '').replace(/```\s*$/i, '').trim();
+  // baştaki sohbet/giriş cümlesi (İşte, Tabii, Elbette, Buyurun, Aşağıda ...:)
+  t = t.replace(/^(İşte|Tabii(?: ki)?|Elbette|Buyurun|Aşağıda|Memnuniyetle)[^\n:]{0,80}[:：]?\s*/i, '').trim();
+  // baştaki etiket (Şablon:, Mesaj:, Metin:, Cevap:, Konu:, Başlık:)
+  t = t.replace(/^(Şablon|Mesaj|Metin|Cevap|Konu|Başlık)\s*[:：-]\s*/i, '').trim();
+  // metni tümüyle saran dış tırnaklar
+  if ((t.startsWith('"') && t.endsWith('"')) || (t.startsWith('“') && t.endsWith('”')) || (t.startsWith('«') && t.endsWith('»'))) {
+    t = t.slice(1, -1).trim();
+  }
   t = t.replace(/^["'«»“”]+/, '').replace(/["'«»“”]+$/, '').trim();
-  t = t.replace(/^(Şablon|Mesaj|Metin|İşte|Cevap)\s*[:：-]\s*/i, '').trim();
+  // sondaki yardım cümlesi ("Umarım yardımcı olur", "İhtiyacınıza göre düzenleyebilirsiniz" vb.)
+  t = t.replace(/\n+\s*(Umarım[^\n]*|İhtiyac[ıi]n[ıi]za[^\n]*|Dilerseniz[^\n]*|Başka[^\n]*yardımc[ıi][^\n]*)\s*$/i, '').trim();
   return t;
 }
 
@@ -142,31 +152,35 @@ export class MessageTemplatesService {
    */
   async aiSuggest(tenantId: string, dto: AiSuggestDto): Promise<{ ok: boolean; body: string; error?: string }> {
     const isDuyuru = dto.context === 'duyuru';
+    const ortak = [
+      'Sen MOREN Mali Müşavirlik ofisinin Türk yazışma editörüsün — deneyimli bir SMMM gibi yazarsın.',
+      'KURALLAR: Sadece nihai metni yaz. ASLA "İşte", "Tabii", "Elbette" gibi giriş cümlesi, açıklama, başlık, tırnak veya kod bloğu ekleme.',
+      'Resmî ama içten, akıcı ve doğru Türkçe kullan. Kısa ve net ol (3-6 cümle). Abartılı/yapay ifadelerden kaçın.',
+    ];
     const system = isDuyuru
       ? [
-          'Sen bir Türk Serbest Muhasebeci Mali Müşavirlik ofisinin asistanısın.',
-          'Tüm mükelleflere yönelik KURUMSAL bir DUYURU/afiş metni yazarsın: profesyonel, kibar, net ve kısa.',
-          'SÜSLÜ PARANTEZ {alan} KULLANMA — doğrudan tamamlanmış, herkese hitap eden bir metin yaz (genelde "Sayın müvekkilimiz," ile başlar).',
-          'SADECE metni döndür: açıklama yapma, tırnak/kod bloğu/başlık ekleme. Türkçe yaz.',
+          ...ortak,
+          'Görev: TÜM mükelleflere gidecek kurumsal bir DUYURU metni yaz. Tek bir genel metindir, kişiye özel değildir.',
+          'Bu yüzden {ad} gibi SÜSLÜ PARANTEZLİ değişken KULLANMA; "Sayın müvekkilimiz," diye başla ve metni tamamla.',
         ].join(' ')
       : [
-          'Sen bir Türk Serbest Muhasebeci Mali Müşavirlik ofisinin yazışma asistanısın.',
-          'Mükelleflere gönderilecek PROFESYONEL, kibar, KISA ve net bir mesaj metni yazarsın.',
-          'Uygun yerlerde şu değişken alanları SÜSLÜ PARANTEZ ile kullan: {ad} {unvan} {dönem} {sonGun} {tutar} {toplam} {vade} {bakiye} {link} {kurum} {beyannameListesi} {sgkListesi}.',
-          'SADECE mesaj metnini döndür: açıklama yapma, tırnak/kod bloğu/başlık ekleme. Türkçe yaz.',
+          ...ortak,
+          'Görev: tek bir mükellefe gönderilecek WhatsApp/e-posta mesaj ŞABLONU yaz.',
+          'Kişiye/döneme göre değişen yerlerde şu değişkenleri AYNEN bu yazımla, süslü parantez içinde kullan: {ad} (mükellef adı), {unvan}, {dönem}, {sonGun}, {tutar}, {toplam}, {vade}, {bakiye}, {link}, {kurum}.',
+          'Genelde "Sayın {ad}," ile başla. Değişkeni metne uydurarak yaz (ör. "...son ödeme tarihi {vade} olup...").',
         ].join(' ');
 
     const mode = dto.mode === 'improve' ? 'improve' : 'generate';
     const prompt = mode === 'improve'
       ? (isDuyuru
-          ? `Aşağıdaki duyuru metnini yeniden yaz. İstenen değişiklik: ${dto.instruction || 'daha akıcı ve profesyonel yap'}.\n\nMetin:\n${dto.body || ''}`
-          : `Aşağıdaki mesaj şablonunu, içindeki {alan} değişkenlerini KORUYARAK yeniden yaz.\nİstenen değişiklik: ${dto.instruction || 'daha akıcı ve profesyonel yap'}.\n\nŞablon:\n${dto.body || ''}`)
+          ? `Aşağıdaki duyuru metnini "${dto.instruction || 'daha akıcı ve profesyonel'}" olacak şekilde yeniden yaz. Anlamı koru, sadece nihai metni ver.\n\n---\n${dto.body || ''}\n---`
+          : `Aşağıdaki mesaj şablonunu "${dto.instruction || 'daha akıcı ve profesyonel'}" olacak şekilde yeniden yaz. İçindeki {süslü parantezli} alanları AYNEN koru, sadece nihai metni ver.\n\n---\n${dto.body || ''}\n---`)
       : (isDuyuru
-          ? `Şu konuda mükelleflere kurumsal bir duyuru metni yaz: ${dto.amac || 'genel bilgilendirme'}.`
-          : `Şu amaca uygun, mükellefe gönderilecek bir mesaj şablonu yaz: ${dto.amac || 'genel bilgilendirme'}.`);
+          ? `Konu: ${dto.amac || 'genel bilgilendirme'}. Bu konuda mükelleflere gönderilecek kurumsal duyuru metnini yaz.`
+          : `Konu: ${dto.amac || 'genel bilgilendirme'}. Bu konuda mükellefe gönderilecek mesaj şablonunu, uygun {değişken} alanlarıyla yaz.`);
 
     const t0 = Date.now();
-    const res = await claudeTextViaMax({ prompt, system, model: MAX_MODEL_CHEAP, maxTurns: 1, timeoutMs: 30000 });
+    const res = await claudeTextViaMax({ prompt, system, model: MAX_MODEL_DEFAULT, maxTurns: 1, timeoutMs: 45000 });
 
     // Maliyet görünürlüğü (Max kotasından düşer; best-effort kayıt).
     this.prisma.aiUsageLog.create({
