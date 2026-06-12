@@ -326,12 +326,16 @@ export class WhatsAppController {
     });
     if (!taxpayer) return { error: 'Mükellef bulunamadı', messages: [] };
 
-    const allLogs = await this.prisma.communicationLog.findMany({
+    // ÖNEMLİ: EN YENİ 500 mesajı al (eskiden 'asc' + take:500 = en ESKİ 500'dü; sohbet
+    // 500'ü geçince thread donup yeni mesajlar HİÇ görünmüyordu). 'desc' çekip ekran için
+    // eskiden-yeniye (asc) ters çeviriyoruz; böylece yeni cevaplar thread'in sonuna düşer.
+    const recentLogs = await this.prisma.communicationLog.findMany({
       where: { taxpayerId, channel: 'WHATSAPP' },
-      orderBy: { occurredAt: 'asc' },
+      orderBy: { occurredAt: 'desc' },
       take: 500,
       select: { id: true, subject: true, content: true, occurredAt: true },
     });
+    const allLogs = recentLogs.reverse();
     const logs = ref.phone
       ? allLogs.filter((log) => this.logMatchesConversation(log.content, ref.phone, taxpayer))
       : allLogs;
