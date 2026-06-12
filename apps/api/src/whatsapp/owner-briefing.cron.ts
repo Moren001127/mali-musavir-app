@@ -62,20 +62,42 @@ export class OwnerBriefingCron {
     });
     if (tur === 'sabah') {
       return [
-        `Bugün ${tarih}. Owner'a WhatsApp'tan gidecek SABAH GÜNLÜK PLAN brifingi hazırla.`,
-        'get_operation_briefing (+ gerekiyorsa get_beyanname_readiness_summary, get_collection_risk_summary, get_system_health) ile GERÇEK portal verisini çek.',
+        `Bugün ${tarih}. Owner'a WhatsApp'tan gidecek SABAH GÜNLÜK PLAN brifingi (operasyon durumu) hazırla.`,
+        'Güncel portal verisini (operasyon brifingi, beyanname hazırlığı, tahsilat riski, sistem sağlığı) SİSTEM sana hazır olarak verir; SADECE o veriyle yaz. ASLA araç/tool/fonksiyon adı (get_... gibi) ya da "çağırıyorum/çağıracağım/çekiyorum/sorguluyorum" gibi iç adım YAZMA.',
         '"Günaydın." ile başla; sonra emoji başlıklı kısa maddeler ver:',
         '📊 BUGÜNÜN DURUMU · ⚠️ RİSKLİ/ACİL · 📝 YAKLAŞAN SÜRELER · ▶️ BUGÜN ÖNCELİK',
         'Yıldız markdown yok, • madde kullan, Türk sayı formatı. Kısa ve net ol, UYDURMA yok — veri yoksa açıkça "veri yok" yaz.',
       ].join('\n');
     }
     return [
-      `Bugün ${tarih} akşamı. Owner'a WhatsApp'tan gidecek GÜN DEĞERLENDİRME brifingi hazırla.`,
-      'get_operation_briefing (+ gerekiyorsa get_agent_status, get_system_health) ile GERÇEK portal verisini çek.',
+      `Bugün ${tarih} akşamı. Owner'a WhatsApp'tan gidecek GÜN DEĞERLENDİRME brifingi (operasyon durumu) hazırla.`,
+      'Güncel portal verisini (operasyon brifingi, ajan durumu, sistem sağlığı) SİSTEM sana hazır olarak verir; SADECE o veriyle yaz. ASLA araç/tool/fonksiyon adı (get_... gibi) ya da "çağırıyorum/çağıracağım/çekiyorum/sorguluyorum" gibi iç adım YAZMA.',
       'Kısa bir kapanış girişiyle başla; sonra emoji başlıklı maddeler ver:',
       '✅ BUGÜN İLERLEYEN · ⏳ BEKLEYEN/YARINA KALAN · ⚠️ DİKKAT · ▶️ YARIN ÖNCELİK',
       'Yıldız markdown yok, • madde kullan, Türk sayı formatı. Kısa ve net ol, UYDURMA yok.',
     ].join('\n');
+  }
+
+  /**
+   * Brifingi owner sohbetine (communicationLog) yazar ki portalda görünür/denetlenebilir
+   * olsun. Owner kişisi controller'daki kalıpla aynı: taxNumber = WHATSAPP-OWNER-{tenantId}.
+   * Kişi henüz yoksa (owner bot ile hiç yazışmamış) sessizce atlanır — burada kişi YARATMAZ.
+   */
+  private async logBriefingToPortal(tenantId: string, tur: 'sabah' | 'aksam', text: string): Promise<void> {
+    const owner = await (this.prisma as any).taxpayer.findFirst({
+      where: { tenantId, taxNumber: `WHATSAPP-OWNER-${tenantId}` },
+      select: { id: true },
+    });
+    if (!owner) return;
+    await (this.prisma as any).communicationLog.create({
+      data: {
+        taxpayerId: owner.id,
+        channel: 'WHATSAPP',
+        subject: `WhatsApp owner ${tur === 'sabah' ? 'sabah' : 'akşam'} brifingi`,
+        content: text,
+        occurredAt: new Date(),
+      },
+    });
   }
 
   private async run(tur: 'sabah' | 'aksam'): Promise<void> {
@@ -113,6 +135,10 @@ export class OwnerBriefingCron {
             .sendMessage(phone, text, t.id)
             .catch((e: any) => this.logger.warn(`[OwnerBriefing] gonderim hatasi ${phone}: ${e?.message || e}`));
         }
+        // Portalda (Mesajlar → owner sohbeti) görünsün diye kaydet. Eskiden cron
+        // communicationLog'a HİÇ yazmıyordu → brifingler portalda görünmüyordu.
+        await this.logBriefingToPortal(t.id, tur, text)
+          .catch((e: any) => this.logger.warn(`[OwnerBriefing] portal log hatasi ${t.id}: ${e?.message || e}`));
         this.logger.log(`[OwnerBriefing] ${t.id} ${tur} brifing gonderildi (${phones.length} numara)`);
       } catch (e: any) {
         this.logger.warn(`[OwnerBriefing] ${t.id} ${tur}: ${e?.message || e}`);

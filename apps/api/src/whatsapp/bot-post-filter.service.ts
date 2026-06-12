@@ -5,6 +5,35 @@ const OFFICE_FALLBACK = 'ofisimiz';
 
 @Injectable()
 export class WhatsAppBotPostFilterService {
+  // İÇ ARAÇ-ÇAĞRI METNİ (tool-narration) — model bazen bir tool'u GERÇEKTEN
+  // çağırmak yerine "get_xxx çağırıyorum" diye METİN olarak yazıyor. Bu iç adım
+  // ASLA kullanıcıya gitmemeli (owner da mükellef de). Tek noktada burada kesilir.
+  // 1) Araç adı / protokol token'ı — gerçek Türkçe metinde neredeyse hiç olmaz (kesin sinyal).
+  private static readonly TOOL_TOKEN_RE =
+    /\b(get|list|search|create|preview|compare|calculate|research|save|set|run|send|update|delete|fetch)_[a-z][a-z0-9_]{2,}\b|tool_use|tool_result|<\/?function\b|<\/?antml|"name"\s*:\s*"[a-z_]+_[a-z_]+"/i;
+  // 2) Çağrı/iç-eylem anlatımı — "X aracını/tool'unu/fonksiyonunu çağırıyorum/kullanıyorum"
+  //    VEYA "...çağırıyorum:/çağıracağım:" diye kesik biten cevap (sızıntının tipik şekli).
+  //    Tek başına "çağırıyorum" yakalanmaz (meşru "sizi çağırıyorum" yanlış-pozitif olmasın).
+  private static readonly TOOL_NARRATION_RE =
+    /(arac[ıi](n[ıi])?|tool['’]?u?(nu)?|fonksiyon(u|unu)?)\s*('?[ıi]?)?\s*(ça[ğg][ıi]r|kullan)|(ça[ğg][ıi]r[ıi]yorum|ça[ğg][ıi]raca[ğg][ıi]m)\s*:\s*$/i;
+
+  private hasToolNarration(s: string): boolean {
+    return WhatsAppBotPostFilterService.TOOL_TOKEN_RE.test(s)
+      || WhatsAppBotPostFilterService.TOOL_NARRATION_RE.test(s);
+  }
+
+  /** Araç-anlatımı içeren satır/cümleleri ayıkla. Geriye sağlam, kullanıcıya
+   *  gösterilebilir metin döner; her şey araç-anlatımıysa boş string döner. */
+  private stripToolNarration(text: string): string {
+    if (!text || !this.hasToolNarration(text)) return text;
+    // Önce satır bazında (brifingler çok satırlı), sonra kalanı cümle bazında süpür.
+    let out = text.split('\n').filter((ln) => !this.hasToolNarration(ln)).join('\n');
+    if (this.hasToolNarration(out)) {
+      out = out.split(/(?<=[.!?])\s+/).filter((sn) => !this.hasToolNarration(sn)).join(' ');
+    }
+    return out.replace(/\n{3,}/g, '\n\n').replace(/[ \t]+\n/g, '\n').trim();
+  }
+
   filterTaxpayerReply(raw: string, options?: { recentReplies?: string[]; mode?: 'taxpayer' | 'owner' | 'unknown' }): string {
     let text = String(raw || '').trim();
 
@@ -50,6 +79,10 @@ export class WhatsAppBotPostFilterService {
       .replace(/\s+/g, ' ')
       .trim();
 
+    // İç araç-çağrı metni (get_xxx çağırıyorum) kullanıcıya GİTMESİN.
+    text = this.stripToolNarration(text);
+    if (!text) return 'Bunu bir kontrol edeyim, size net bilgiyle döneyim.';
+
     if (this.looksRisky(text)) {
       return 'Bunu bir kontrol edeyim, size net bilgiyle döneyim.';
     }
@@ -83,6 +116,10 @@ export class WhatsAppBotPostFilterService {
       .replace(/[ \t]+\n/g, '\n')              // satır sonu öncesi boşluk
       .replace(/\n{3,}/g, '\n\n')              // ardışık boş satırları 1'e indir
       .trim();
+
+    // İç araç-çağrı metni (get_xxx çağırıyorum / "aracını çağırıyorum") owner'a da gitmesin.
+    t = this.stripToolNarration(t);
+    if (!t) return 'Durumu portal verisinden derleyip net olarak ileteyim; tekrar yazarsan güncel özeti veririm.';
 
     if (this.looksRisky(t)) {
       return 'Bunu bir kontrol edeyim, size net bilgiyle döneyim.';

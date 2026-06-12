@@ -1392,19 +1392,47 @@ export class WhatsAppBotController implements OnModuleInit {
    * halüsinasyonu yapıyordu. Dönem = BEYANNAME dönemi (işlem ayı−1); kayıtlar işlem ayında.
    */
   private detectOwnerStatusIntent(text: string):
-    'beyanname_hazir' | 'evrak_islenen' | 'evrak_bekleyen' | 'islem_bekleyen' | 'verildi' | null {
-    const n = this.normalizeForIntent(text);
-    const isList = /\b(kim|kimler|kac|listele|hangi|kimlerin)\b/.test(n) || /\bvar m[ıi]\b/.test(n);
+    | 'beyanname_hazir' | 'kontrol_bekleyen' | 'evrak_islenen' | 'evrak_gelen'
+    | 'evrak_bekleyen' | 'islem_bekleyen' | 'verildi' | 'verilmedi' | null {
+    const n = this.normalizeForIntent(text); // aksan sıyrılmış (ş→s, ı→i, ç→c ...)
+    const isList = /\b(kim|kimler|kac|listele|hangi|kimlerin|olanlar)\b/.test(n) || /\bvar m[ıi]\b/.test(n);
     if (!isList) return null;
-    // "beyannamesi verilebilecek / kontrol edilen / beyanname hazır" → kontrolü bitmiş, verilmemiş
-    if (/(beyanname|beyan)[^.]*?(verilebil|verilecek|verilir|hazir|haz[ıi]r)|kontrol[uü]? ?edil|kontrol[uü] (yap|bit)|kontrolden gec/.test(n)) return 'beyanname_hazir';
-    // "evrakı gelip işlenen" (işlenmiş; bekleyen/işlenmemiş DEĞİL)
-    if (/(evrak|belge)[^.]*?(islen|işlen)|gelip[^.]*?(islen|işlen)|islenip|işlenip|islenmis|işlenmiş/.test(n)
-        && !/(bekle|gelmedi|gelmemis|gelmemiş|islenmemis|işlenmemiş|henuz islen|henüz işlen)/.test(n)) return 'evrak_islenen';
-    if (/(evrak|belge)[^.]*?(bekle|gelmedi|gelmemis|gelmemiş)/.test(n)) return 'evrak_bekleyen';
-    if (/(islem|işlem)[^.]*?bekle|islenmemis|işlenmemiş|henuz islen|henüz işlen/.test(n)) return 'islem_bekleyen';
-    if (/(beyanname|beyan)[^.]*?(verildi|verilen|verilmis|verilmiş)/.test(n)) return 'verildi';
+
+    // ── ÖNCE OLUMSUZ / BEKLEYEN kalıplar (en spesifik; olumlu kalıplardan ÖNCE
+    //    değerlendirilmeli, yoksa "edilmemiş" gibi olumsuzlar olumluya sızar). ──
+    // KONTROL bekleyen / edilmemiş / edilecek / yapılmamış → portal "kontrol-bekliyor"
+    if (/kontrol[^.]*?(bekle|edilmed|edilmemis|edilmeyen|edilecek|edilmeli|edilsin|yapilmad|yapilmamis|yapilacak|yapilmali|bitmemis|bitmedi|gecmemis|gecmedi|olmamis|olmadi)/.test(n)) return 'kontrol_bekleyen';
+    // BEYANNAME verilmeyen / verilmedi / geciken / eksik → portal "beyanname-verilmedi" (aşama != verildi)
+    if (/(beyanname|beyan)[^.]*?(verilmed|verilmeyen|verilmemis|vermedi|vermeyen|vermemis|gecik|eksik|kalan)/.test(n)) return 'verilmedi';
+    // EVRAK gelmeyen / gelmedi / bekleyen → portal "evrak-bekliyor". (evrag: "evrağı" ğ→g)
+    if (/(evrak|evrag|belge)[^.]*?(bekle|gelmedi|gelmemis|gelmeyen|gelmiyen|yok)/.test(n)) return 'evrak_bekleyen';
+    // İŞLEM bekleyen / işlenmeyen / işlenmemiş → portal "islem-bekliyor"
+    if (/islenmemis|islenmeyen|islenmedi|henuz islen|(islem|islenme)[^.]*?(bekle|memis|meyen|medi)/.test(n)) return 'islem_bekleyen';
+
+    // ── OLUMLU kalıplar ──
+    // Beyanname verilebilecek / hazır + "kontrol edilen/biten/yapılan" → portal "beyan-hazir"
+    if (/(beyanname|beyan)[^.]*?(verilebil|verilecek|verilir|hazir)|kontrol[^.]*?(edilen|edildi|biten|bitti|bitmis|yapilan|yapildi|yapilmis|gecen|gecti|gecmis|gecirildi|tamamlan)|kontrolden gec/.test(n)) return 'beyanname_hazir';
+    // Beyanname verilen / verildi → portal "verildi"
+    if (/(beyanname|beyan)[^.]*?(verildi|verilen|verilmis|gonderildi|tamamlan)/.test(n)) return 'verildi';
+    // Evrakı gelip işlenen → evrak+işlem ✓
+    if (/(evrak|evrag|belge)[^.]*?islen|gelip[^.]*?islen|islenip|islenen|islenmis/.test(n)) return 'evrak_islenen';
+    // Evrakı gelen (sade; olumsuzlar zaten yukarıda elendi) → evrak geldi
+    if (/(evrak|evrag|belge)[^.]*?(gel(en|di|mis)|teslim|getir)/.test(n)) return 'evrak_gelen';
     return null;
+  }
+
+  /**
+   * Owner durum listesi ŞABLONU: başlık + dönem/sayı + her firma AYRI SATIR (numaralı).
+   * Eskiden virgüllü tek satır düz metindi; kullanıcı alt alta okunaklı liste istedi.
+   */
+  private formatOwnerStatusList(baslik: string, donemLabel: string, names: string[]): string {
+    if (!names.length) {
+      return `📋 ${baslik}\n🗓️ ${donemLabel} dönemi\n\nBu durumda mükellef yok.`;
+    }
+    const gosterilecek = names.slice(0, 60);
+    const satirlar = gosterilecek.map((ad, i) => `${i + 1}. ${ad}`).join('\n');
+    const fazla = names.length > 60 ? `\n… ve ${names.length - 60} mükellef daha.` : '';
+    return `📋 ${baslik}\n🗓️ ${donemLabel} dönemi · ${names.length} mükellef\n\n${satirlar}${fazla}`;
   }
 
   private async maybeHandleOwnerStatusQuery(
@@ -1453,34 +1481,47 @@ export class WhatsAppBotController implements OnModuleInit {
     let baslik: string;
     switch (intent) {
       case 'beyanname_hazir':
-        // Portaldaki "Beyanname hazır" ile AYNI: evrak gelmiş + işlenmiş + kontrol bitmiş
-        // (İND+HES+ARŞİV) + henüz verilmemiş.
+        // Portaldaki "Beyanname verilebilir" ile AYNI: evrak gelmiş + işlenmiş + kontrol
+        // bitmiş (İND+HES+ARŞİV) + henüz verilmemiş.
         filtered = rows.filter((r) => r.evrakGeldi && r.islendi && r.kontrolBitti && !r.verildi);
-        baslik = `${donemLabel} dönemi beyannamesi verilebilecek (kontrolü bitmiş, henüz verilmemiş)`;
+        baslik = 'Beyannamesi verilebilecek (kontrolü bitmiş, henüz verilmemiş)';
+        break;
+      case 'kontrol_bekleyen':
+        // Portal "kontrol-bekliyor": evrak gelmiş + işlenmiş AMA kontrol (İND/HES/ARŞİV)
+        // henüz bitmemiş, beyanname verilmemiş.
+        filtered = rows.filter((r) => r.evrakGeldi && r.islendi && !r.kontrolBitti && !r.verildi);
+        baslik = 'Kontrol bekleyen (evrak işlendi, kontrol edilmemiş)';
         break;
       case 'evrak_islenen':
         filtered = rows.filter((r) => r.evrakGeldi && r.islendi);
-        baslik = `${donemLabel} dönemi evrakı gelip işlenen`;
+        baslik = 'Evrakı gelip işlenen';
+        break;
+      case 'evrak_gelen':
+        filtered = rows.filter((r) => r.evrakGeldi);
+        baslik = 'Evrakı gelen';
         break;
       case 'evrak_bekleyen':
         filtered = rows.filter((r) => !r.evrakGeldi);
-        baslik = `${donemLabel} dönemi evrak bekleyen`;
+        baslik = 'Evrak bekleyen (henüz gelmedi)';
         break;
       case 'islem_bekleyen':
         filtered = rows.filter((r) => r.evrakGeldi && !r.islendi);
-        baslik = `${donemLabel} dönemi evrakı gelip henüz işlenmemiş`;
+        baslik = 'Evrakı gelip henüz işlenmemiş';
         break;
       case 'verildi':
         filtered = rows.filter((r) => r.verildi);
-        baslik = `${donemLabel} dönemi beyannamesi verilmiş`;
+        baslik = 'Beyannamesi verilmiş';
+        break;
+      case 'verilmedi':
+        // Portal "beyanname-verilmedi": aşama != verildi (henüz verilmemiş hepsi).
+        filtered = rows.filter((r) => !r.verildi);
+        baslik = 'Beyannamesi henüz verilmemiş';
         break;
       default:
         return false;
     }
     const names = filtered.map((r) => r.isim);
-    const reply = names.length
-      ? `${baslik} ${names.length} mükellef:\n${names.slice(0, 60).join(', ')}.`
-      : `${baslik} mükellef yok.`;
+    const reply = this.formatOwnerStatusList(baslik, donemLabel, names);
     const sent = await this.whatsapp.sendMessage(this.replyTarget(msg), reply, ownerTenant.id);
     await this.prisma.communicationLog.create({
       data: {
@@ -1752,7 +1793,7 @@ export class WhatsAppBotController implements OnModuleInit {
         '   - Sayıları Türk formatı: 14.421,50 ₺ (binlik nokta, ondalık virgül)',
         '4) ASLA "Cevap (WhatsApp):" gibi etiketle başlama. Doğrudan cevap yaz.',
         '5) Selamlama mesajına (selam, merhaba, kolay gelsin, sağ ol) SICAK ve PROFESYONEL karşılık ver + yardım teklif et, 1 cümle. Örnek: "Merhaba, buyurun; bugün nasıl yardımcı olabilirim?". ASLA "ne var?", "ne lazım?", "ne istiyorsun?", "nedir bu son haberler?" gibi laubali/savsaklayan/küstah ifade kullanma — karşındaki ofisin SAHİBİ, ona saygılı ve nazik bir asistan gibi konuş.',
-        '6) Veri/komut isteğinde tool çağır, sonucu kısa söyle.',
+        '6) Sana gereken portal verisini SİSTEM önceden hazırlar; sen SADECE sonucu yaz. ASLA bir araç/tool/fonksiyon ADI yazma; ASLA "get_xxx çağırıyorum/çağıracağım", "X aracını/tool\'unu kullanıyorum", "şimdi çekiyorum/sorguluyorum/bakıyorum" gibi iç adım ANLATMA. Veri elinde yoksa "elimde ... kaydı yok / eksik" de — uydurma.',
         '7) Riskli işlemlerde önce preview + ONAYLIYORUM bekle.',
         '8) BELGE GÖNDERME aktiftir (beyanname/tahakkuk PDF + mükellef kartına yüklü tüm evrak/fatura/sözleşme/dosyalar) ve sistem otomatik yapar. Bu mesaja kadar geldiysen mükellef NET DEĞİL demektir — kısaca "hangi mükellefin hangi belgesini göndereyim?" diye SOR. DİKKAT: belge gönderimini SADECE sistem yapar, sen DEĞİL. Bu yüzden "gönderiyorum / gönderiliyor / gönderecektim / yolluyorum / şimdi atıyorum / tekrar deniyorum / birazdan düşer / sistem aksaklığı oldu" gibi YAPMADIĞIN/YAPAMAYACAĞIN eylem cümlelerini ASLA kurma (geçmiş, şimdiki, gelecek hiçbir zaman). Eğer belge gerçekten gönderildiyse zaten ayrı bir [BELGE] mesajı düşer; senin görevin sadece NETLEŞTİRİCİ soru sormak ya da bilgi vermek.',
         '9) "Gönder" = belgeyi BİRİNE ilet demektir; "GİB\'e gönder/beyan ver" SANMA. Owner GİB\'e beyan vermeni istemez. Beyanname zaten verildiyse onu "GİB\'e gönderiyorum" diye KARIŞTIRMA.',

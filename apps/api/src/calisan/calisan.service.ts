@@ -171,7 +171,10 @@ export class CalisanService {
 
   private shouldTryPortalTools(message: string): boolean {
     const text = this.normalizeForIntent(message);
-    return /\b(kdv|beyan|beyanname|tahakkuk|gelir tablosu|mizan|bilanco|fatura|evrak|belge|pdf|gonder|yorumla|analiz|mukellef)\b/.test(text);
+    // Brifing/operasyon/günlük değerlendirme/durum/özet soruları da TOOL'lu yola gitmeli:
+    // orada get_operation_briefing önceden çalışıp GERÇEK veriyle cevap üretilir; aksi halde
+    // sistem-prompt'suz çıplak Max dalına düşüp "get_operation_briefing çağırıyorum" sızıntısı olur.
+    return /\b(kdv|beyan|beyanname|tahakkuk|gelir tablosu|mizan|bilanco|fatura|evrak|belge|pdf|gonder|yorumla|analiz|mukellef|brifing|brief|operasyon|gunluk|degerlendirme|ozet|durum|bugun|rapor|borc|tahsilat|cari|ajan)\b/.test(text);
   }
 
   private isUsableOwnerAnswer(answer: string): boolean {
