@@ -1,7 +1,10 @@
 'use client';
 
 import { api } from '@/lib/api';
-import { Bot, Download, Edit3, FilePlus2, Globe, Mail, MapPin, MessageCircle, Phone, Save, Send, Trash2, Users } from 'lucide-react';
+import {
+  Bot, CalendarClock, Download, Edit3, FilePlus2, Globe, Mail, MapPin, Megaphone,
+  MessageCircle, Phone, Save, Send, Trash2, Users,
+} from 'lucide-react';
 import { toJpeg } from 'html-to-image';
 import type { ReactNode, Ref } from 'react';
 import { useEffect, useMemo, useRef, useState } from 'react';
@@ -38,14 +41,17 @@ type LegacyDuyuru = Partial<Duyuru> & {
 
 const STORAGE_KEY = 'moren-duyurular-v3';
 const LEGACY_STORAGE_KEY = 'moren-duyurular-v2';
+const TAKVIM_KEY = 'moren-duyuru-vergi-takvimi';
 
 const NAVY = '#0d1238';
 const PAPER = '#f7f4eb';
 const GOLD = '#d7c28b';
+const COPPER = '#d9a06c';
 const TEXT = '#f8fafc';
 const MUTED = '#cbd5e1';
 const SOFT = '#9ca3af';
 const BORDER = 'rgba(255,255,255,0.14)';
+const LINE = 'rgba(255,255,255,0.08)';
 const ANNOUNCEMENT_LOGO = '/duyuru-sablonlari/assets/logo-white.png';
 const SANS = 'Inter, Manrope, system-ui, -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif';
 const CANVAS_SIZE = 1080;
@@ -87,10 +93,71 @@ const newDraft = (): Duyuru => ({
   icerik: '',
 });
 
+// ───────────────────────── Vergi Takvimi · Hazır Duyurular ─────────────────────────
+const TR_AYLAR = ['Ocak', 'Şubat', 'Mart', 'Nisan', 'Mayıs', 'Haziran', 'Temmuz', 'Ağustos', 'Eylül', 'Ekim', 'Kasım', 'Aralık'];
+
+type VergiPreset = { key: string; kisa: string; label: string; color: string; gun: number; baslik: string; icerik: string };
+
+// gun: ayın kaçıncı günü son ödeme; 0 = ayın son günü. Müşavir kendi takvimine göre düzenleyebilir.
+const VERGI_PRESETS: VergiPreset[] = [
+  {
+    key: 'kdv1', kisa: 'KDV', label: '1 No.lu KDV Beyannamesi', color: '#34d399', gun: 28,
+    baslik: 'KDV Beyannamesi Son Ödeme Hatırlatması',
+    icerik:
+      'Sayın müvekkilimiz,\n\n{donem} dönemine ait 1 No.lu Katma Değer Vergisi (KDV) beyannamesinin son ödeme tarihi {tarih} günüdür. Gecikme faizi ve cezalı duruma düşülmemesi adına ödemelerinizi son güne bırakmamanızı önemle rica ederiz.',
+  },
+  {
+    key: 'kdv2', kisa: 'KDV2', label: '2 No.lu KDV Beyannamesi', color: '#22d3ee', gun: 28,
+    baslik: '2 No.lu KDV Beyannamesi Son Ödeme',
+    icerik:
+      'Sayın müvekkilimiz,\n\n{donem} dönemine ait 2 No.lu (sorumlu sıfatıyla) Katma Değer Vergisi beyannamesinin son ödeme tarihi {tarih} günüdür. Tevkifata tabi işlemlerinize ilişkin ödemelerinizi zamanında gerçekleştirmenizi rica ederiz.',
+  },
+  {
+    key: 'muhtasar', kisa: 'Muhtasar', label: 'Muhtasar ve Prim Hizmet (MUHSGK)', color: '#60a5fa', gun: 26,
+    baslik: 'Muhtasar ve Prim Hizmet Beyannamesi Son Ödeme',
+    icerik:
+      'Sayın müvekkilimiz,\n\n{donem} dönemine ait Muhtasar ve Prim Hizmet Beyannamesi (MUHSGK) tahakkukunun son ödeme tarihi {tarih} günüdür. Vergi ve SGK prim ödemelerinizi zamanında gerçekleştirmenizi rica ederiz.',
+  },
+  {
+    key: 'bagkur', kisa: 'Bağ-Kur', label: 'Bağ-Kur (4/b) Primi', color: '#fb923c', gun: 0,
+    baslik: 'Bağ-Kur Primi Son Ödeme Hatırlatması',
+    icerik:
+      'Sayın müvekkilimiz,\n\n{donem} dönemine ait Bağ-Kur (4/b) sigorta priminin son ödeme tarihi {tarih} günüdür. Sağlık hizmetlerinden kesintisiz yararlanabilmeniz ve gecikme zammı oluşmaması adına priminizi zamanında ödemenizi rica ederiz.',
+  },
+];
+
+const defaultTakvim = (): Record<string, number> => Object.fromEntries(VERGI_PRESETS.map((p) => [p.key, p.gun]));
+
+function lastDayOfMonth(year: number, month0: number) {
+  return new Date(year, month0 + 1, 0).getDate();
+}
+
+function computeDeadline(gun: number, year: number, month0: number) {
+  const son = lastDayOfMonth(year, month0);
+  const d = !gun || gun <= 0 ? son : Math.min(gun, son);
+  const numeric = `${String(d).padStart(2, '0')}.${String(month0 + 1).padStart(2, '0')}.${year}`;
+  const textual = `${d} ${TR_AYLAR[month0]} ${year}`;
+  const pm = month0 === 0 ? 11 : month0 - 1;
+  const py = month0 === 0 ? year - 1 : year;
+  const donem = `${TR_AYLAR[pm]} ${py}`;
+  return { numeric, textual, donem };
+}
+
+function monthOptions() {
+  const now = new Date();
+  const out: { value: string; label: string; year: number; month0: number }[] = [];
+  for (let i = -2; i <= 9; i++) {
+    const d = new Date(now.getFullYear(), now.getMonth() + i, 1);
+    out.push({ value: `${d.getFullYear()}-${d.getMonth()}`, label: `${TR_AYLAR[d.getMonth()]} ${d.getFullYear()}`, year: d.getFullYear(), month0: d.getMonth() });
+  }
+  return out;
+}
+
 export default function DuyurularPage() {
   const [draft, setDraft] = useState<Duyuru>(initial);
   const [items, setItems] = useState<Duyuru[]>([]);
   const [taxpayers, setTaxpayers] = useState<Taxpayer[]>([]);
+  const [takvim, setTakvim] = useState<Record<string, number>>(defaultTakvim);
   const [sending, setSending] = useState(false);
   const [agentPreviewing, setAgentPreviewing] = useState(false);
   const previewRef = useRef<HTMLDivElement>(null);
@@ -98,13 +165,20 @@ export default function DuyurularPage() {
   useEffect(() => {
     try {
       const raw = localStorage.getItem(STORAGE_KEY) || localStorage.getItem(LEGACY_STORAGE_KEY);
-      if (!raw) return;
-      const parsed = JSON.parse(raw) as LegacyDuyuru[];
-      const normalized = Array.isArray(parsed) ? parsed.map(normalizeDuyuru) : [];
-      setItems(normalized);
-      if (normalized[0]) setDraft(normalized[0]);
+      if (raw) {
+        const parsed = JSON.parse(raw) as LegacyDuyuru[];
+        const normalized = Array.isArray(parsed) ? parsed.map(normalizeDuyuru) : [];
+        setItems(normalized);
+        if (normalized[0]) setDraft(normalized[0]);
+      }
     } catch {
       setItems([]);
+    }
+    try {
+      const t = localStorage.getItem(TAKVIM_KEY);
+      if (t) setTakvim({ ...defaultTakvim(), ...(JSON.parse(t) as Record<string, number>) });
+    } catch {
+      /* yoksay */
     }
   }, []);
 
@@ -132,6 +206,21 @@ export default function DuyurularPage() {
   const whatsappUrl = useMemo(() => `https://wa.me/?text=${encodeURIComponent(plainMessage)}`, [plainMessage]);
 
   const update = <K extends keyof Duyuru>(key: K, value: Duyuru[K]) => setDraft((d) => ({ ...d, [key]: value }));
+
+  const updateTakvim = (key: string, gun: number) => {
+    setTakvim((prev) => {
+      const next = { ...prev, [key]: Math.max(0, Math.min(31, Number.isFinite(gun) ? gun : 0)) };
+      try { localStorage.setItem(TAKVIM_KEY, JSON.stringify(next)); } catch { /* yoksay */ }
+      return next;
+    });
+  };
+
+  const loadPreset = (preset: VergiPreset, year: number, month0: number) => {
+    const { numeric, textual, donem } = computeDeadline(takvim[preset.key] ?? preset.gun, year, month0);
+    const icerik = preset.icerik.replace(/\{donem\}/g, donem).replace(/\{tarih\}/g, textual);
+    setDraft((d) => ({ ...d, id: 'draft', tarih: numeric, baslik: preset.baslik, icerik }));
+    toast.success(`${preset.kisa} duyurusu yüklendi · son ödeme ${numeric}`);
+  };
 
   const save = () => {
     if (!draft.baslik.trim() || !draft.icerik.trim()) {
@@ -229,35 +318,43 @@ export default function DuyurularPage() {
 
   return (
     <div className="flex h-full min-h-0 flex-col overflow-hidden px-5 py-4 text-white" style={{ fontFamily: SANS }}>
-      <div className="mb-3 flex shrink-0 flex-wrap items-end justify-between gap-3">
-        <div>
-          <div className="text-[12px] font-bold uppercase tracking-[.14em]" style={{ color: GOLD }}>
-            Portal
+      {/* BAŞLIK — imza: radial + gökkuşağı şerit + degrade ikon */}
+      <header className="relative mb-3 shrink-0 overflow-hidden rounded-2xl border px-5 py-4" style={{
+        borderColor: LINE,
+        background: 'radial-gradient(120% 150% at 0% 0%, rgba(217,160,108,0.18), transparent 46%), radial-gradient(120% 150% at 100% 0%, rgba(232,184,75,0.12), transparent 46%), #0f0d0b',
+      }}>
+        <div className="absolute inset-x-0 top-0 h-1" style={{ background: 'linear-gradient(90deg, #d9a06c, #e8b84b, #d4b876, #f472b6, #a855f7, #60a5fa, #34d399)' }} />
+        <div className="flex flex-wrap items-center justify-between gap-3">
+          <div>
+            <div className="text-[11px] font-bold uppercase tracking-[.18em]" style={{ color: COPPER }}>Portal · Ofis</div>
+            <h1 className="mt-1 flex items-center gap-2.5 text-[26px] font-semibold leading-tight" style={{ color: TEXT, letterSpacing: 0 }}>
+              <span className="grid h-10 w-10 place-items-center rounded-xl" style={{ background: 'linear-gradient(135deg, #d9a06c, #e8b84b)', boxShadow: '0 6px 18px rgba(217,160,108,0.35)' }}>
+                <Megaphone size={21} style={{ color: '#241a10' }} />
+              </span>
+              Duyurular
+            </h1>
+            <p className="mt-1.5 max-w-xl text-[12.5px] font-medium" style={{ color: MUTED }}>
+              Kurumsal duyuru afişini hazırla, JPEG indir veya mükelleflere WhatsApp ile gönder. Sağdaki <span style={{ color: COPPER }}>Vergi Takvimi</span>'nden son ödeme duyurularını tek tıkla yükle.
+            </p>
           </div>
-          <h1 className="mt-1 text-[26px] font-semibold leading-tight" style={{ color: TEXT, fontFamily: SANS, letterSpacing: 0 }}>
-            Duyurular
-          </h1>
-          <p className="mt-1 text-[12.5px] font-medium" style={{ color: MUTED }}>
-            HTML şablonundaki kurumsal duyuru düzeni. Tarih, duyuru no, başlık ve içerik girilir.
-          </p>
-        </div>
 
-        <div className="flex flex-wrap gap-2">
-          <ActionButton icon={<FilePlus2 size={17} />} label="Yeni Oluştur" onClick={startNew} tone="dark" />
-          <ActionButton icon={<Download size={17} />} label="JPEG İndir" onClick={downloadJpeg} tone="dark" />
-          <ActionButton icon={<Save size={17} />} label="Kaydet" onClick={save} tone="gold" />
-          <ActionButton icon={<Bot size={17} />} label={agentPreviewing ? 'Hazırlanıyor' : 'Agent Önizle'} onClick={previewAgentSend} disabled={agentPreviewing || sending} tone="dark" />
-          <ActionButton icon={<Send size={17} />} label={sending ? 'Gönderiliyor' : 'Gönder'} onClick={sendPortalMessage} disabled={sending} tone="blue" />
-          <a
-            href={whatsappUrl}
-            target="_blank"
-            rel="noreferrer"
-            className="inline-flex h-10 items-center justify-center gap-2 rounded-md bg-[#1f8f55] px-4 text-[13px] font-semibold text-white transition hover:bg-[#25a563]"
-          >
-            <MessageCircle size={17} /> WhatsApp
-          </a>
+          <div className="flex flex-wrap gap-2">
+            <ActionButton icon={<FilePlus2 size={17} />} label="Yeni Oluştur" onClick={startNew} tone="dark" />
+            <ActionButton icon={<Download size={17} />} label="JPEG İndir" onClick={downloadJpeg} tone="dark" />
+            <ActionButton icon={<Save size={17} />} label="Kaydet" onClick={save} tone="gold" />
+            <ActionButton icon={<Bot size={17} />} label={agentPreviewing ? 'Hazırlanıyor' : 'Agent Önizle'} onClick={previewAgentSend} disabled={agentPreviewing || sending} tone="dark" />
+            <ActionButton icon={<Send size={17} />} label={sending ? 'Gönderiliyor' : 'Gönder'} onClick={sendPortalMessage} disabled={sending} tone="blue" />
+            <a
+              href={whatsappUrl}
+              target="_blank"
+              rel="noreferrer"
+              className="inline-flex h-10 items-center justify-center gap-2 rounded-md bg-[#1f8f55] px-4 text-[13px] font-semibold text-white transition hover:bg-[#25a563]"
+            >
+              <MessageCircle size={17} /> WhatsApp
+            </a>
+          </div>
         </div>
-      </div>
+      </header>
 
       <div className="grid min-h-0 flex-1 gap-4 xl:grid-cols-[minmax(540px,1fr)_minmax(390px,500px)]">
         <section className="flex min-h-0 items-center justify-center overflow-hidden rounded-[10px] border p-3" style={{ borderColor: BORDER, background: 'rgba(247,244,235,0.035)' }}>
@@ -265,13 +362,15 @@ export default function DuyurularPage() {
         </section>
 
         <aside className="min-h-0 space-y-3 overflow-y-auto pr-1">
+          <VergiTakvimi takvim={takvim} onTakvim={updateTakvim} onLoad={loadPreset} />
+
           <Panel title="Duyuru Girişi">
             <div className="grid grid-cols-2 gap-3">
               <Field label="Tarih" value={draft.tarih} onChange={(v) => update('tarih', v)} />
               <Field label="Duyuru No" value={draft.no} onChange={(v) => update('no', v)} />
             </div>
             <Field label="Başlık" value={draft.baslik} onChange={(v) => update('baslik', v)} />
-            <Field label="İçerik" value={draft.icerik} onChange={(v) => update('icerik', v)} textarea rows={4} />
+            <Field label="İçerik" value={draft.icerik} onChange={(v) => update('icerik', v)} textarea rows={5} />
             <TypeControls draft={draft} onChange={update} />
           </Panel>
 
@@ -310,7 +409,7 @@ export default function DuyurularPage() {
                         {item.baslik}
                       </div>
                       <div className="text-[12.5px] font-medium" style={{ color: MUTED }}>
-                        {item.tarih} · Duyuru No {item.no}
+                        {item.tarih} · Duyuru No {item.no || '—'}
                       </div>
                     </button>
                     <button
@@ -329,6 +428,88 @@ export default function DuyurularPage() {
             </div>
           </Panel>
         </aside>
+      </div>
+    </div>
+  );
+}
+
+function VergiTakvimi({
+  takvim,
+  onTakvim,
+  onLoad,
+}: {
+  takvim: Record<string, number>;
+  onTakvim: (key: string, gun: number) => void;
+  onLoad: (preset: VergiPreset, year: number, month0: number) => void;
+}) {
+  const months = useMemo(monthOptions, []);
+  const [sel, setSel] = useState(months[2]?.value ?? months[0].value); // varsayılan: içinde bulunulan ay
+  const current = months.find((m) => m.value === sel) ?? months[2] ?? months[0];
+
+  return (
+    <div className="rounded-[10px] border" style={{ borderColor: 'rgba(217,160,108,0.32)', background: 'linear-gradient(135deg, rgba(217,160,108,0.10), rgba(232,184,75,0.04) 60%, rgba(255,255,255,0.03))' }}>
+      <div className="flex items-center justify-between border-b px-4 py-3" style={{ borderColor: LINE }}>
+        <div className="flex items-center gap-2 text-[14px] font-semibold" style={{ color: TEXT }}>
+          <CalendarClock size={16} style={{ color: COPPER }} /> Vergi Takvimi · Hazır Duyurular
+        </div>
+      </div>
+      <div className="space-y-2.5 p-4">
+        <label className="block">
+          <span className="mb-1.5 block text-[12px] font-semibold uppercase tracking-[.08em]" style={{ color: MUTED }}>Ödeme Ayı</span>
+          <select
+            value={sel}
+            onChange={(e) => setSel(e.target.value)}
+            className="h-10 w-full rounded-lg border px-3 text-[14px] font-semibold outline-none transition focus:border-[#d9a06c]"
+            style={{ borderColor: BORDER, background: 'rgba(0,0,0,0.22)', color: TEXT }}
+          >
+            {months.map((m) => (
+              <option key={m.value} value={m.value} style={{ background: '#11100d', color: TEXT }}>{m.label}</option>
+            ))}
+          </select>
+        </label>
+
+        <div className="space-y-2">
+          {VERGI_PRESETS.map((p) => {
+            const gun = takvim[p.key] ?? p.gun;
+            const { numeric } = computeDeadline(gun, current.year, current.month0);
+            return (
+              <div key={p.key} className="rounded-lg border p-2.5" style={{ borderColor: LINE, borderLeft: `3px solid ${p.color}`, background: `${p.color}10` }}>
+                <div className="flex items-center justify-between gap-2">
+                  <div className="min-w-0">
+                    <div className="flex items-center gap-1.5 text-[13.5px] font-semibold" style={{ color: TEXT }}>
+                      <span className="h-2 w-2 shrink-0 rounded-full" style={{ background: p.color }} />
+                      {p.kisa}
+                    </div>
+                    <div className="mt-0.5 truncate text-[11.5px]" style={{ color: SOFT }}>{p.label}</div>
+                  </div>
+                  <button
+                    onClick={() => onLoad(p, current.year, current.month0)}
+                    className="shrink-0 rounded-md px-3 py-1.5 text-[12.5px] font-semibold transition-colors"
+                    style={{ background: `${p.color}22`, color: p.color, border: `1px solid ${p.color}55` }}
+                  >
+                    Yükle
+                  </button>
+                </div>
+                <div className="mt-2 flex items-center justify-between gap-2 text-[12px]">
+                  <span style={{ color: MUTED }}>Son ödeme: <strong className="tabular-nums" style={{ color: TEXT }}>{numeric}</strong></span>
+                  <label className="flex items-center gap-1.5" style={{ color: SOFT }}>
+                    Gün
+                    <input
+                      type="number" min={0} max={31} value={gun}
+                      onChange={(e) => onTakvim(p.key, Number(e.target.value))}
+                      className="h-7 w-14 rounded-md border px-2 text-center text-[12.5px] font-semibold tabular-nums outline-none focus:border-[#d9a06c]"
+                      style={{ borderColor: BORDER, background: 'rgba(0,0,0,0.25)', color: TEXT }}
+                    />
+                  </label>
+                </div>
+              </div>
+            );
+          })}
+        </div>
+
+        <p className="text-[11.5px] leading-relaxed" style={{ color: SOFT }}>
+          Tarihler örnek varsayılanlardır; güncel vergi takviminize göre <strong>Gün</strong> alanından düzenleyebilirsiniz. <strong>Gün 0</strong> = ayın son günü (Bağ-Kur). Dönem, seçilen ödeme ayının bir öncesidir.
+        </p>
       </div>
     </div>
   );
@@ -755,19 +936,10 @@ function fitBodyPoint(text: string, requested: number) {
 }
 
 function buildMessage(draft: Duyuru) {
-  return [
-    'DUYURU',
-    `Tarih: ${draft.tarih}`,
-    `Duyuru No: ${draft.no}`,
-    '',
-    draft.baslik,
-    '',
-    draft.icerik,
-    '',
-    'Moren Mali Müşavirlik',
-  ]
-    .filter((line) => line !== undefined)
-    .join('\n');
+  const lines = ['DUYURU', `Tarih: ${draft.tarih}`];
+  if (draft.no.trim()) lines.push(`Duyuru No: ${draft.no}`);
+  lines.push('', draft.baslik, '', draft.icerik, '', 'Moren Mali Müşavirlik');
+  return lines.join('\n');
 }
 
 function removeItem(
