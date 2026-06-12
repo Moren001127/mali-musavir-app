@@ -60,8 +60,17 @@ export function foldTurkishAscii(text: string): string {
 export function detectBelgeTipi(text: string, originalName?: string): string | null {
   const folded = foldTurkishAscii(`${originalName || ''}\n${text || ''}`);
   const looksOkcFis = /\bFIS\s*NO\b|\bEKU\s*NO\b|\bOKC\b|\bOD[EA]ME\s+KAYDEDICI\b/.test(folded);
+  // Z raporu imzalari — yazarkasa fisinde BULUNMAZ:
+  //   "Z (GUNLUK) RAPORU", "GUN SONU", "Z SAYAC", kumulatif "KUM TOP/KDV".
+  //   Onemli: "Z GUNLUK RAPORU"nda araya GUNLUK girdigi icin "Z RAPORU"
+  //   birebir eslesmesi yetmez; ayrica "KUM TOPLAM" yerine "KUM TOP" kisaltmasi
+  //   da kullanilir. Bu fisler "FIS NO"/"EKU NO" tasisa bile Z raporudur.
   const explicitZRapor =
-    /\bZ\s*RAPORU\b|\bKUM\s+T[O0]P\s*K\s*D\s*V\b|\bKUM\s+T[O0]PLAM\b/.test(folded);
+    /\bZ\s*(?:G[UÜ]N\w*\s*)?RAPORU?\b/.test(folded) ||
+    /\bG[UÜ]N\s*SONU\b/.test(folded) ||
+    /\bZ\s*SAYAC\b/.test(folded) ||
+    /\bKUM\s*(?:T[O0]P|KDV|[UÜ]LAT[I1]F)/.test(folded) ||
+    /\bKUM\s+T[O0]PLAM\b/.test(folded);
   if (looksOkcFis && !explicitZRapor) return 'OKC_FIS';
   if (explicitZRapor || /\bT[O0]P\s*K\s*D\s*V\b|\bT[O0]PKD[UV]\b/.test(folded)) return 'Z_RAPORU';
   if (/\bE[-\s]?ARSIV\b|\bEARSIVFATURA\b/.test(folded)) return 'EARSIV';

@@ -224,5 +224,99 @@ export function extractZRaporuKdv(
     result.kdvTutari = formatAmount(topKdvTotal);
   }
 
+  // ── FALLBACK: "VERGI DOKUMU / MALI VERI" duzenli OKC Z raporu ──
+  // Bazi yazarkasalar (or. BEREKET AVM) Z raporunu su sekilde basar:
+  //   VERGI DOKUMU
+  //   %10 TOPLAM        ($10 TOPLAM — OCR % yerine $ okuyabilir)
+  //   *10.605,00        (brut, ETIKETIN ALT SATIRINDA)
+  //   KDV               (duz "KDV", "TOPKDV" degil)
+  //   *964,07           (o oranin KDV'si, alt satirda)
+  //   ...
+  //   MALI VERI
+  //   TOP
+  //   *10.605,00
+  //   KDV
+  //   *964,07           (genel toplam KDV)
+  // Genel mantik "TOPKDV/KDV TOPLAM" etiketi aradigi icin bu duzeni kaciriyor.
+  // Yalnizca yukaridaki generic akis KDV bulamadiysa devreye girer (regresyon yok).
+  if (!result.kdvTutari) {
+    const startIdx = foldedLines.findIndex((l) => /\bVERG[I1]\s*D[O0]KUMU\b/.test(l));
+    if (startIdx !== -1) {
+      const perRateKdv: Record<number, number> = {};
+      let grandKdv: number | null = null;
+      let currentRate: number | null = null;
+      let inGrandTotal = false;
+
+      const rateOfToplam = (l: string): number | null => {
+        const m = l.match(/[%$/]\s*0?(\d{1,2})/) || l.match(/\b0?(\d{1,2})\s*[%$/]/);
+        if (m) {
+          const r = parseInt(m[1], 10);
+          if (r > 0 && r <= 30) return r;
+        }
+        return null;
+      };
+      // Tutar DAIMA etiketin alt satirinda; etiket satirini (idx) atla,
+      // boylece "$10 TOPLAM" icindeki "10" yanlislikla tutar sayilmaz.
+      const amountBelow = (idx: number): number => {
+        for (let j = idx + 1; j < Math.min(idx + 4, foldedLines.length); j++) {
+          if (/\bKUM\b/.test(foldedLines[j])) break;
+          const vals = extractMoneyValues(lines[j] ?? foldedLines[j]);
+          if (vals.length > 0) return vals[vals.length - 1];
+        }
+        return 0;
+      };
+
+      for (let i = startIdx + 1; i < foldedLines.length; i++) {
+        const l = foldedLines[i];
+        if (/\bKUM\b/.test(l)) break;
+        if (/\bMALI\s*[VY]ER[I1]\b/.test(l) || /^\s*T[O0]P\s*$/.test(l)) {
+          inGrandTotal = true;
+          currentRate = null;
+          continue;
+        }
+        const isToplam = /\bT[O0]PLAM\b/.test(l) && !/F[I1][SŞ]\s*SAY|SAYISI/.test(l);
+        const isKdv = /^\s*KDV\b/.test(l) && !/ORAN|MATRAH|DAH[I1]L/.test(l);
+        if (isToplam) {
+          const r = rateOfToplam(l);
+          currentRate = r;
+          if (r != null) {
+            const g = amountBelow(i);
+            if (g > 0) result.matrahByOran[r] = g;
+          }
+          continue;
+        }
+        if (isKdv) {
+          const amt = amountBelow(i);
+          if (amt > 0) {
+            if (!inGrandTotal && currentRate != null) {
+              perRateKdv[currentRate] = amt;
+            } else if (grandKdv == null) {
+              grandKdv = amt;
+            }
+          }
+        }
+      }
+
+      for (const oranText of Object.keys(perRateKdv)) {
+        addBreakdown(Number(oranText), perRateKdv[Number(oranText)]);
+      }
+      if (result.breakdown.length > 0) {
+        const sum = result.breakdown.reduce((s, b) => s + b.tutar, 0);
+        result.kdvTutari = formatAmount(sum);
+      } else if (grandKdv != null && grandKdv > 0) {
+        for (const oranText of Object.keys(result.matrahByOran)) {
+          const oran = Number(oranText);
+          if (!result.breakdown.some((b) => Math.abs(Number(b.oran) - oran) < 0.5)) {
+            addBreakdown(oran, deriveKdvFromGross(oran));
+          }
+        }
+        result.kdvTutari =
+          result.breakdown.length > 0
+            ? formatAmount(result.breakdown.reduce((s, b) => s + b.tutar, 0))
+            : formatAmount(grandKdv);
+      }
+    }
+  }
+
   return result;
 }

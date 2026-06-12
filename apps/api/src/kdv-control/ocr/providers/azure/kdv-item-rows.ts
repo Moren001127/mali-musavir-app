@@ -136,6 +136,18 @@ export function extractMultiRateKdvFromItemRows(text: string, deps: KdvItemRowsD
         if (!cleanedNext) continue;
         const am = cleanedNext.match(amountRe);
         if (am) {
+          // İSKONTO guvenligi: tutardan hemen SONRA "İSKONTO/İndirim" geliyorsa,
+          // bu bir indirim (iskonto) tutaridir — KDV degil. e-arsiv/e-fatura
+          // kalemlerinde indirim orani ("%10") kendi satirinda durup KDV dilimi
+          // gibi gorunebiliyor; tutarini almadan atla. (ALB... faturasi gibi)
+          const afterAmount1 = lines[marker.lineIdx + j + 1] || '';
+          const afterAmount2 = lines[marker.lineIdx + j + 2] || '';
+          const followedByDiscount =
+            (discountRowRe.test(afterAmount1) && !/KDV/i.test(afterAmount1)) ||
+            (discountRowRe.test(afterAmount2) && !/KDV/i.test(afterAmount2));
+          if (followedByDiscount) {
+            continue;
+          }
           const parsed = parseAmount(am[1]);
           if (parsed >= 0 && parsed < 10_000_000) {
             collected.push(parsed);

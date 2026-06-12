@@ -216,10 +216,17 @@ eq(azureHelpers.normalizeAzureText('test space'), 'TEST SPACE', 'helpers normal
 eq(azureHelpers.foldTurkishAscii('İŞÇİ'), 'ISCI', 'helpers fold tr');
 eq(azureHelpers.detectBelgeTipi('FIS NO 123 EKU NO 456'), 'OKC_FIS', 'helpers detect OKC');
 eq(azureHelpers.detectBelgeTipi('Z RAPORU KUM TOPLAM'), 'Z_RAPORU', 'helpers detect Z RAPORU');
+// BEREKET tipi: "Z GÜNLÜK RAPORU" (araya GÜNLÜK girer) + "FİŞ NO"/"EKÜ NO" tasir;
+// eskiden OKC_FIS sanilip Z parser'ina hic gitmiyordu → 22/28 okunamadi.
+eq(
+  azureHelpers.detectBelgeTipi('BEREKET AVM\nFİŞ NO: 0007\nZ GÜNLÜK RAPORU\nZ SAYAÇ\n920\nKUM TOP\nEKÜ NO:0001'),
+  'Z_RAPORU',
+  'helpers detect Z GÜNLÜK RAPORU (FİŞ NO/EKÜ NO olsa bile Z raporu)',
+);
 eq(azureHelpers.detectBelgeTipi('E-ARSIV FATURA'), 'EARSIV', 'helpers detect EARSIV');
 eq(azureHelpers.detectBelgeTipi('E-FATURA'), 'EFATURA', 'helpers detect EFATURA');
 deepEq(azureHelpers.extractMoneyAmounts('Tutar: 1.330,00 ve 665,00', ublDeps.parseAmount), [1330, 665], 'helpers extract money');
-ok('azure/helpers.ts (7 assertion)');
+ok('azure/helpers.ts (8 assertion)');
 
 // ─── azure/sectoral.ts (telekom) ───
 const telekomDeps = {
@@ -405,6 +412,80 @@ eq(zPetravet1425Dot.kdvTutari, '1168,17', 'z petravet 1425 dotted amount total')
 approx(zPetravet1425Dot.breakdown.find((b) => b.oran === 10).tutar, 1168.17, 0.01, 'z petravet 1425 dotted %10');
 approx(zPetravet1425Dot.matrahByOran[10], 12850, 0.01, 'z petravet 1425 dotted gross');
 ok('azure/z-raporu.ts (27 assertion)');
+
+// ─── BEREKET tipi "VERGI DOKUMU / MALI VERI" duzeni (gercek Adem Can kayitlari) ───
+// Etiketler: "%N TOPLAM" (brut, alt satir tutar), duz "KDV" (oran KDV'si, alt satir),
+// "TOP"/"KDV" (genel toplam). Generic mantik "TOPKDV/KDV TOPLAM" arar, bunlari kacirir.
+// Tek oranli (921 — %10): real KDV 964,07 fis uzerinde acik yaziyordu, sistem OKUNAMADI demisti.
+const zBereket921Text = [
+  'BEREKET AVM',
+  'FİŞ NO: 0013',
+  'Z GÜNLÜK RAPORU',
+  'Z SAYAÇ',
+  '921',
+  'TUHAFIYE',
+  '%10',
+  '11,000',
+  '*10.605,00',
+  'NET SATIŞ',
+  '11',
+  '*10.605,00',
+  'VERGİ DÖKÜMÜ - -',
+  '%10 TOPLAM',
+  '*10.605,00',
+  'KDV',
+  '*964,07',
+  'MALI VERİ',
+  'TOP',
+  '*10.605,00',
+  'KDV',
+  '*964,07',
+  'KUM TOP',
+  '*1.683.617,23',
+  'KUM KDV',
+  '*153.140,38',
+].join('\n');
+const zBereket921 = zRaporu.extractZRaporuKdv(zBereket921Text, zDeps);
+eq(zBereket921.kdvTutari, '964,07', 'z bereket 921 tek oran genel KDV (OKUNAMADI degil)');
+approx(zBereket921.breakdown.find((b) => b.oran === 10).tutar, 964.07, 0.01, 'z bereket 921 %10 KDV');
+
+// Cok oranli (936 — %10+%20). OCR % yerine $ okumus ("$10 TOPLAM"), tutar alt satirda.
+// Eskiden miktar (3,000/1,000) tutar sanilip 0,44 TL gibi sahte "basarili" uretiliyordu.
+const zBereket936Text = [
+  'BEREKET AVM',
+  'FIŞ NO: 0006',
+  'Z GÜNLÜK RAPORU',
+  'Z SAYAÇ',
+  '936',
+  'TUHAFIYE',
+  '%10',
+  '3,000',
+  "'535,00",
+  'BALIK.AV.MALZEME %20',
+  '1,000',
+  '¥685,00',
+  'VERGI DÖKÜMÜ',
+  '$10 TOPLAM',
+  '+535,00',
+  'KDV',
+  '*48,64',
+  '$20 TOPLAM',
+  '+685,00',
+  'KDV',
+  '¥114,17',
+  'MALI VERI',
+  'TOP',
+  '*1.220,00',
+  'KDV',
+  '*162,81',
+  'KUM TOP',
+  '*1.719.679,23',
+].join('\n');
+const zBereket936 = zRaporu.extractZRaporuKdv(zBereket936Text, zDeps);
+eq(zBereket936.kdvTutari, '162,81', 'z bereket 936 cok oran genel KDV (0,44 sahte degil)');
+approx(zBereket936.breakdown.find((b) => b.oran === 10).tutar, 48.64, 0.01, 'z bereket 936 %10 KDV');
+approx(zBereket936.breakdown.find((b) => b.oran === 20).tutar, 114.17, 0.01, 'z bereket 936 %20 KDV');
+ok('azure/z-raporu.ts Bereket VERGI DOKUMU (5 assertion)');
 
 // ─── validation/cross-check.ts ───
 const zCrossText = [

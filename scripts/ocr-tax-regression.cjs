@@ -181,6 +181,45 @@ assert(zReportBreakdown.length === 2, `Z raporu iki KDV orani uretmeli: ${JSON.s
 approx(zReportBreakdown.find((row) => row.oran === 20)?.tutar, 10.83, 'Z raporu %20 KDV');
 approx(zReportBreakdown.find((row) => row.oran === 10)?.tutar, 453.08, 'Z raporu %10 KDV');
 
+// ─── e-arsiv kalem indirim orani ("%10 İSKONTO") KDV dilimi sanilmamali ───
+// ALB... faturasi: her kalem %20 KDV; ayrica satir-ici %10 İSKONTO orani kendi
+// satirinda durur, indirim tutari hemen ustte/altta "İSKONTO/İndirim" ile gelir.
+// Eskiden bu indirim tutarlari (36,65...) %10 KDV dilimi olarak toplanip toplami
+// sisirebiliyordu (3.227,53 yerine 3.605,07). Gercek %20 + %1 KDV korunmali, %10 cikmali.
+const albDiscountText = [
+  'e-Arşiv Fatura',
+  'Belge No: ALB2026000001639',
+  '1',
+  '510 ALBA TURNA KAŞIK',
+  '30 Adet',
+  '%20,00',
+  '305,43 TL',
+  '1.527,16 TL',
+  '2',
+  'JIGHEAD 6435 COMPACT SET 3',
+  '1 Kutu',
+  '%20,00',
+  '65,98 TL',
+  '366,50 TL',
+  '%10',
+  'GR 40 LI KT',
+  '36,65 TL',
+  'İSKONTO',
+  'İndirim',
+  '3',
+  'EKMEK',
+  '%1',
+  '4,72 TL',
+  '476,00 TL',
+].join('\n');
+const albBreakdown = service.extractMultiRateKdvFromItemRows(albDiscountText);
+assert(
+  !albBreakdown.some((row) => row.oran === 10),
+  `ALB indirim orani %10 KDV dilimi sanilmamali: ${JSON.stringify(albBreakdown)}`,
+);
+approx(albBreakdown.find((row) => row.oran === 20)?.tutar, 371.41, 'ALB %20 KDV (305,43+65,98) korunmali');
+approx(albBreakdown.find((row) => row.oran === 1)?.tutar, 4.72, 'ALB %1 KDV korunmali');
+
 const zeyrekTevkifatText = [
   'ZEYREK LOJISTIK TASIMACILIK OTOMOTIV INS. GIDA SAN. VE TIC. LTD. STI.',
   'Fatura No ZEF2026000000097',
