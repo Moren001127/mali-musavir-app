@@ -66,10 +66,6 @@ const KATEGORILER: { key: string; label: string; color: string }[] = [
 ];
 const catInfo = (k: string) => KATEGORILER.find((c) => c.key === k) || { key: k, label: k, color: '#9ca3af' };
 
-const KANALLAR: { v: TemplateKanal; l: string }[] = [
-  { v: 'BOTH', l: 'WhatsApp + E-posta' }, { v: 'WHATSAPP', l: 'Sadece WhatsApp' }, { v: 'EMAIL', l: 'Sadece E-posta' },
-];
-
 function renderPreview(body: string, kanal: TemplateKanal): string {
   // {dönem} gibi Türkçe karakterli alanları da yakalar.
   const filled = String(body || '').replace(/\{([^\s{}]+)\}/g, (m, k) => SAMPLE[k] ?? m);
@@ -118,6 +114,15 @@ export default function SablonlarPage() {
   }
 
   function patch(p: Partial<MessageTemplate>) { setDraft((d) => (d ? { ...d, ...p } : d)); }
+
+  function toggleChannel(which: 'WHATSAPP' | 'EMAIL') {
+    if (!draft) return;
+    let wa = draft.kanal !== 'EMAIL';
+    let email = draft.kanal !== 'WHATSAPP';
+    if (which === 'WHATSAPP') wa = !wa; else email = !email;
+    if (!wa && !email) { if (which === 'WHATSAPP') email = true; else wa = true; }
+    patch({ kanal: wa && email ? 'BOTH' : wa ? 'WHATSAPP' : 'EMAIL' });
+  }
 
   function insertPlaceholder(name: string) {
     const ta = bodyRef.current;
@@ -300,18 +305,40 @@ export default function SablonlarPage() {
               </div>
               <input className="w-full rounded-lg border px-3 py-2 text-[14px] font-semibold" style={fieldStyle} value={draft.ad} onChange={(e) => patch({ ad: e.target.value })} />
 
-              <div className="mt-3 flex gap-3">
-                <div className="flex-1">
-                  <label className={labelCls} style={{ color: MUTED }}>Kanal</label>
-                  <select className="w-full rounded-lg border px-3 py-2 text-[13px]" style={fieldStyle} value={draft.kanal} onChange={(e) => patch({ kanal: e.target.value as TemplateKanal })}>
-                    {KANALLAR.map((k) => <option key={k.v} value={k.v} style={{ background: '#1c1917', color: '#fafaf9' }}>{k.l}</option>)}
-                  </select>
+              {/* Kanal — iki yönlü ikon segmenti */}
+              <div className="mt-4">
+                <label className={labelCls} style={{ color: MUTED }}>Kanal</label>
+                <div className="flex gap-1.5 rounded-xl border p-1" style={{ borderColor: LINE, background: 'rgba(255,255,255,0.03)' }}>
+                  {([['WHATSAPP', MessageCircle, 'WhatsApp'], ['EMAIL', Mail, 'E-posta']] as const).map(([key, Icon, lbl]) => {
+                    const on = key === 'WHATSAPP' ? draft.kanal !== 'EMAIL' : draft.kanal !== 'WHATSAPP';
+                    return (
+                      <button key={key} type="button" onClick={() => toggleChannel(key)}
+                        className="flex flex-1 items-center justify-center gap-1.5 rounded-lg py-2 text-[12.5px] font-semibold transition-colors"
+                        style={on ? { background: 'rgba(52,211,153,0.16)', color: ACCENT, boxShadow: 'inset 0 0 0 1px rgba(52,211,153,0.4)' } : { color: MUTED }}>
+                        <Icon size={14} /> {lbl}
+                      </button>
+                    );
+                  })}
                 </div>
-                <div className="flex-1">
-                  <label className={labelCls} style={{ color: MUTED }}>Kategori</label>
-                  <select className="w-full rounded-lg border px-3 py-2 text-[13px]" style={{ ...fieldStyle, color: catInfo(draft.kategori).color }} value={draft.kategori} onChange={(e) => patch({ kategori: e.target.value })}>
-                    {KATEGORILER.map((k) => <option key={k.key} value={k.key} style={{ background: '#1c1917', color: '#fafaf9' }}>{k.label}</option>)}
-                  </select>
+                <div className="mt-1 text-[11px]" style={{ color: MUTED }}>
+                  {draft.kanal === 'BOTH' ? 'WhatsApp ve e-posta birlikte gönderilir' : draft.kanal === 'WHATSAPP' ? 'Yalnızca WhatsApp' : 'Yalnızca e-posta'}
+                </div>
+              </div>
+
+              {/* Kategori — renkli çipler */}
+              <div className="mt-3">
+                <label className={labelCls} style={{ color: MUTED }}>Kategori</label>
+                <div className="flex flex-wrap gap-1.5">
+                  {KATEGORILER.map((k) => {
+                    const on = draft.kategori === k.key;
+                    return (
+                      <button key={k.key} type="button" onClick={() => patch({ kategori: k.key })}
+                        className="inline-flex items-center gap-1.5 rounded-full px-3 py-1.5 text-[12.5px] font-semibold transition-colors"
+                        style={{ border: `1px solid ${on ? `${k.color}66` : LINE}`, background: on ? `${k.color}22` : 'transparent', color: on ? k.color : MUTED }}>
+                        <span className="h-2 w-2 rounded-full" style={{ background: k.color }} /> {k.label}
+                      </button>
+                    );
+                  })}
                 </div>
               </div>
 
@@ -322,31 +349,29 @@ export default function SablonlarPage() {
                 </div>
               )}
 
-              <div className="mt-3">
-                <div className="mb-1 flex items-center justify-between">
-                  <label className={labelCls + ' !mb-0'} style={{ color: MUTED }}>Mesaj metni</label>
+              {/* Mesaj metni + alan ekle tek kart */}
+              <div className="mt-3 overflow-hidden rounded-xl border" style={{ borderColor: LINE, background: 'rgba(255,255,255,0.02)' }}>
+                <div className="flex items-center justify-between border-b px-3 py-2" style={{ borderColor: LINE }}>
+                  <span className="text-[11px] font-medium uppercase tracking-wider" style={{ color: MUTED }}>Mesaj metni</span>
                   <span className="text-[11px] tabular-nums" style={{ color: MUTED }}>{draft.body.length} karakter</span>
                 </div>
                 <textarea ref={bodyRef} value={draft.body} onChange={(e) => patch({ body: e.target.value })}
-                  className="w-full rounded-lg border px-3 py-2.5 text-[14px]" style={{ ...fieldStyle, minHeight: 200, lineHeight: 1.55, resize: 'vertical', fontFamily: 'inherit' }} />
-              </div>
-
-              <div className="mt-3">
-                <div className="mb-1.5 text-[11px] font-medium uppercase tracking-wider" style={{ color: MUTED }}>Alan ekle — tıklayınca metne eklenir</div>
-                <div className="flex flex-wrap gap-1.5">
-                  {PLACEHOLDERS.map((p) => {
-                    const used = usedFields.includes(p.key);
-                    return (
-                      <button key={p.key} onClick={() => insertPlaceholder(p.key)} title={p.label}
-                        className="inline-flex items-center gap-1 rounded-md border px-2 py-1 text-[12px] font-medium transition-colors"
-                        style={{ borderColor: used ? 'rgba(34,211,238,0.6)' : 'rgba(34,211,238,0.28)', color: CYAN, background: used ? 'rgba(34,211,238,0.16)' : 'rgba(34,211,238,0.06)' }}>
-                        {used && <Check size={11} />}{`{${p.key}}`}
-                      </button>
-                    );
-                  })}
-                </div>
-                <div className="mt-1.5 text-[11px]" style={{ color: MUTED }}>
-                  {draft.body.match(/\{[^\s{}]+\}/g) ? <>Kullanılan alanlar gönderimde otomatik dolar.</> : <>Henüz alan eklenmedi.</>}
+                  className="w-full border-0 bg-transparent px-3 py-2.5 text-[14px] outline-none"
+                  style={{ color: TEXT, minHeight: 180, lineHeight: 1.55, resize: 'vertical', fontFamily: 'inherit' }} />
+                <div className="border-t px-3 py-2.5" style={{ borderColor: LINE, background: 'rgba(34,211,238,0.03)' }}>
+                  <div className="mb-1.5 text-[11px] font-medium uppercase tracking-wider" style={{ color: MUTED }}>Alan ekle — tıklayınca metne eklenir</div>
+                  <div className="flex flex-wrap gap-1.5">
+                    {PLACEHOLDERS.map((p) => {
+                      const used = usedFields.includes(p.key);
+                      return (
+                        <button key={p.key} type="button" onClick={() => insertPlaceholder(p.key)} title={p.label}
+                          className="inline-flex items-center gap-1 rounded-md border px-2 py-1 text-[12px] font-medium transition-colors"
+                          style={{ borderColor: used ? 'rgba(34,211,238,0.6)' : 'rgba(34,211,238,0.28)', color: CYAN, background: used ? 'rgba(34,211,238,0.16)' : 'rgba(34,211,238,0.06)' }}>
+                          {used && <Check size={11} />}{`{${p.key}}`}
+                        </button>
+                      );
+                    })}
+                  </div>
                 </div>
               </div>
 
@@ -431,10 +456,13 @@ export default function SablonlarPage() {
 
 function Toggle({ on, color, icon, label, onClick }: { on: boolean; color: string; icon: React.ReactNode; label: string; onClick: () => void }) {
   return (
-    <button onClick={onClick} className="inline-flex items-center gap-1.5 rounded-lg border px-2.5 py-1.5 text-[12.5px] font-semibold transition-colors"
+    <button type="button" onClick={onClick} className="inline-flex items-center gap-2 rounded-lg border px-3 py-2 text-[12.5px] font-semibold transition-colors"
       style={on
         ? { borderColor: `${color}66`, background: `${color}1f`, color }
         : { borderColor: LINE, background: 'transparent', color: MUTED }}>
+      <span className="relative inline-block h-[18px] w-[32px] rounded-full transition-colors" style={{ background: on ? `${color}88` : 'rgba(255,255,255,0.14)' }}>
+        <span className="absolute top-[2px] h-[14px] w-[14px] rounded-full transition-all" style={{ left: on ? 16 : 2, background: on ? '#0a1410' : '#9ca3af' }} />
+      </span>
       <span className="grid h-4 w-4 place-items-center">{icon}</span>
       {label}
     </button>
