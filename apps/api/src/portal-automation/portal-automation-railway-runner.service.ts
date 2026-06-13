@@ -901,6 +901,19 @@ export class PortalAutomationRailwayRunnerService implements OnModuleInit {
     };
     context.on('response', onResponse);
 
+    // INDIRME ADRESI KESFI: apigateway/etebligat istek(post-data) ve indirme cagrilarini yakala.
+    const apiRequests: any[] = [];
+    const onRequest = (req: any) => {
+      try {
+        const url = String(req.url() || '');
+        if (!/apigateway|etebligat|goruntule|indir|belge|dosya|download|pdf/i.test(url)) return;
+        let postData = '';
+        try { postData = (req.postData() || '').slice(0, 1500); } catch { /* yut */ }
+        apiRequests.push({ method: req.method(), url: this.safeUrl(url), postData });
+      } catch { /* yut */ }
+    };
+    context.on('request', onRequest);
+
     const steps: any[] = [];
     const snap = async (label: string) => {
       const dom = await page.evaluate(() => {
@@ -929,36 +942,55 @@ export class PortalAutomationRailwayRunnerService implements OnModuleInit {
 
     // PDF indirme/goruntuleme ucnoktasini kesfet: OKUNMUS bir tebligatin islem butonuna tikla.
     // (Okunmus tebligatta yeni "okundu" damgasi olusmaz; hukuki sonuc yok.)
+    // Dogru akis: Islem Yap -> Zarf Icerigi Gor (detay) -> Belge Goruntule (indirme).
+    // Okunmus tebligatta yapildigi icin yeni "okundu" damgasi/hukuki sonuc olusmaz.
     const actionTrace: string[] = [];
+    let downloadInfo: any = null;
     try {
-      for (const lbl of ['İŞLEM YAP', 'ISLEM YAP', 'İşlem Yap']) {
+      for (const lbl of ['İŞLEM YAP', 'ISLEM YAP', 'İşlem Yap', 'Islem Yap']) {
         const loc = page.getByText(lbl, { exact: false }).first();
         if (await loc.isVisible().catch(() => false)) {
           await loc.click({ timeout: 3000 }).catch(() => null);
           actionTrace.push(`tikla:${lbl}`);
+          await page.waitForTimeout(1200);
+          break;
+        }
+      }
+      for (const sub of ['Zarf İçeriği Gör', 'Zarf Icerigi Gor', 'Zarf İçeriği', 'Zarf Icerigi']) {
+        const s = page.getByText(sub, { exact: false }).first();
+        if (await s.isVisible().catch(() => false)) {
+          await s.click({ timeout: 3000 }).catch(() => null);
+          actionTrace.push(`tikla:${sub}`);
           await page.waitForTimeout(2500);
           break;
         }
       }
-      for (const sub of ['Görüntüle', 'Goruntule', 'İndir', 'Indir', 'PDF', 'Tebligatı Görüntüle']) {
-        const s = page.getByText(sub, { exact: false }).first();
-        if (await s.isVisible().catch(() => false)) {
-          await Promise.all([
-            page.waitForEvent('download', { timeout: 4000 }).catch(() => null),
-            s.click({ timeout: 3000 }).catch(() => null),
+      await snap('zarf_detay');
+      for (const bg of ['BELGE GÖRÜNTÜLE', 'Belge Görüntüle', 'BELGE GORUNTULE', 'Belge Goruntule', 'Görüntüle', 'Goruntule', 'İndir', 'Indir']) {
+        const b = page.getByText(bg, { exact: false }).first();
+        if (await b.isVisible().catch(() => false)) {
+          const [dl] = await Promise.all([
+            page.waitForEvent('download', { timeout: 8000 }).catch(() => null),
+            b.click({ timeout: 3000 }).catch(() => null),
           ]);
-          actionTrace.push(`tikla:${sub}`);
-          await page.waitForTimeout(3000);
+          actionTrace.push(`tikla:${bg}`);
+          if (dl) {
+            const dlUrl = await Promise.resolve(dl.url?.()).catch(() => '');
+            const dlName = await Promise.resolve(dl.suggestedFilename?.()).catch(() => '');
+            downloadInfo = { url: this.safeUrl(String(dlUrl || '')), filename: String(dlName || '') };
+          }
+          await page.waitForTimeout(2500);
           break;
         }
       }
-      await snap('islem_sonrasi');
+      await snap('belge_goruntule_sonrasi');
     } catch (err: any) {
       actionTrace.push(`hata:${this.compact(err?.message || err)}`);
     }
 
     try { context.off('response', onResponse); } catch { /* yut */ }
-    return { navigated, actionTrace, steps, apiCalls: apiCalls.slice(0, 40) };
+    try { context.off('request', onRequest); } catch { /* yut */ }
+    return { navigated, actionTrace, downloadInfo, steps, apiCalls: apiCalls.slice(0, 50), apiRequests: apiRequests.slice(0, 60) };
   }
 
   private async clickAndCollectPortalDocuments(
