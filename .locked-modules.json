@@ -12,7 +12,7 @@
       "lockedBy": "muzaffer"
     },
     "apps/web/src/app/(panel)/panel/kdv-kontrol/page.tsx": {
-      "sha256": "5340d1d8b4a85c294bf6aaed8d54d9f56b72d73c5b03f0b78d8b3d4d95cabb6a",
+      "sha256": "4e3bad49fd012c875bb8d309c24402fe01cc9f7653fc8a7ab3407d7df9562944",
       "reason": "KDV Kontrol modulu — tam otomasyon, dokunma",
       "lockedBy": "muzaffer"
     },
@@ -32,7 +32,7 @@
       "lockedBy": "muzaffer"
     },
     "apps/api/src/kdv-control/kdv-control.service.ts": {
-      "sha256": "75aac42f4d37d9fb9d5e5584898e2128be8e3bc15a8470ec1280adc03e9c0ff6",
+      "sha256": "b95d9b47f14059871b5a19072c4b00e8130d76b96ee6461fd350899d6597569b",
       "reason": "KDV Kontrol service — Luca queueing + reconciliation",
       "lockedBy": "muzaffer"
     },

@@ -6,6 +6,8 @@ import {
   InternalServerErrorException,
   Inject,
   forwardRef,
+  Optional,
+  OnApplicationBootstrap,
 } from '@nestjs/common';
 import { PrismaService } from '../prisma/prisma.service';
 import { StorageService } from '../storage/storage.service';
@@ -19,7 +21,6 @@ import { LucaService } from '../luca/luca.service';
 import { LucaAutoScraperService } from '../luca/luca-auto-scraper.service';
 import { AgentEventsService } from '../agent-events/agent-events.service';
 import { AutomationEventBus } from '../automations/automation-event-bus.service';
-import { Optional } from '@nestjs/common';
 import { computeCostUsd, logAiUsage } from '../common/ai-usage-logger';
 import { NotificationsService } from '../notifications/notifications.service';
 import { NOTIFICATION_TYPES } from '../notifications/notification-types';
@@ -186,7 +187,7 @@ const OCR_KATEGORI_ETIKET: Record<string, string> = {
 };
 
 @Injectable()
-export class KdvControlService {
+export class KdvControlService implements OnApplicationBootstrap {
   private readonly logger = new Logger(KdvControlService.name);
 
   constructor(
@@ -203,6 +204,59 @@ export class KdvControlService {
     private notifications: NotificationsService,
     @Optional() private readonly automationEventBus?: AutomationEventBus,
   ) {}
+
+  /**
+   * Uygulama başladığında son 2 ayın eksik OCR kayıtlarını otomatik yeniden tarar.
+   * Railway her deploy'da çalışır — kullanıcı bir şey yapmak zorunda değil.
+   */
+  onApplicationBootstrap() {
+    setTimeout(() => this.autoFixMissingBreakdowns(), 15_000); // Uygulama tam açılsın, 15s bekle
+  }
+
+  private async autoFixMissingBreakdowns() {
+    try {
+      const now = new Date();
+      // Son 2 ayı tara — "YYYY/MM" formatında (DB periodLabel formatı)
+      const periodLabels: string[] = [];
+      for (let i = 1; i <= 2; i++) {
+        const d = new Date(now.getFullYear(), now.getMonth() - i + 1, 1);
+        periodLabels.push(`${d.getFullYear()}/${String(d.getMonth() + 1).padStart(2, '0')}`);
+      }
+
+      // Eksik breakdown olan image sayısını kontrol et
+      const eksikSayisi = await (this.prisma.receiptImage as any).count({
+        where: {
+          ocrKdvBreakdown: null,
+          ocrStatus: { in: ['SUCCESS', 'NEEDS_REVIEW', 'LOW_CONFIDENCE'] },
+          session: { periodLabel: { in: periodLabels } },
+        },
+      });
+
+      if (eksikSayisi === 0) {
+        this.logger.log('[autoFix] Eksik OCR breakdown yok, atlanıyor.');
+        return;
+      }
+
+      this.logger.log(`[autoFix] ${eksikSayisi} eksik breakdown bulundu — yeniden taranıyor: ${periodLabels.join(', ')}`);
+
+      const tenants = await this.prisma.tenant.findMany({ select: { id: true } });
+      for (const tenant of tenants) {
+        for (const pl of periodLabels) {
+          try {
+            // bulkReocrDonem "2026/05" formatını "2026/05" olarak alıp DB'ye geçirir
+            const r = await this.bulkReocrDonem(tenant.id, pl, { onlyMissing: true });
+            if (r.sessions > 0) {
+              this.logger.log(`[autoFix] tenant=${tenant.id} donem=${pl}: ${r.sessions} session kuyruğa alındı`);
+            }
+          } catch (err: any) {
+            this.logger.warn(`[autoFix] tenant=${tenant.id} donem=${pl}: ${err?.message}`);
+          }
+        }
+      }
+    } catch (err: any) {
+      this.logger.warn(`[autoFix] başlatma hatası: ${err?.message}`);
+    }
+  }
 
   /**
    * KDV işlemleri gösterge panelindeki "Canlı Sistem Akışı"na düşsün diye
@@ -2852,8 +2906,8 @@ ${JSON.stringify(payload, null, 2)}`;
     donem: string,
     opts: { onlyMissing?: boolean } = {},
   ): Promise<{ sessions: number; queued: number; message: string }> {
-    // Dönem formatını normalize et: "2026-05" → periodLabel
-    const periodLabel = donem.length === 7 ? donem : donem.slice(0, 7);
+    // periodLabel DB'de "2026/05" formatında — tire → eğik çizgi (her iki format kabul edilir)
+    const periodLabel = donem.replace('-', '/');
 
     const sessions = await this.prisma.kdvControlSession.findMany({
       where: { tenantId, periodLabel },
