@@ -2987,6 +2987,45 @@ ${JSON.stringify(payload, null, 2)}`;
   }
 
   /**
+   * Bir dönemdeki TÜM session'larda eksik KDV oranlarını tamamlar (backfillSessionOran).
+   * Görseli yeniden okumaz; kayıtlı veriden türetir. donem: "2026-05".
+   */
+  async backfillDonemOran(
+    tenantId: string,
+    donem: string,
+    opts: { dryRun?: boolean } = {},
+  ): Promise<{ sessions: number; scanned: number; fixed: number; stillMissing: number; kdvMoved: number; dryRun: boolean }> {
+    const periodLabel = donem.replace('-', '/');
+    const ay = donem.split('-')[1];
+    const ayNum = String(Number(ay));
+    const yil = donem.split('-')[0];
+    const candidates = [
+      periodLabel, donem, `${yil}/${ayNum}`, `${yil}-${ayNum}`,
+    ];
+    const sessions = await this.prisma.kdvControlSession.findMany({
+      where: { tenantId, periodLabel: { in: candidates } },
+      select: { id: true },
+    });
+
+    let scanned = 0, fixed = 0, stillMissing = 0, kdvMoved = 0;
+    for (const s of sessions) {
+      try {
+        const r = await this.backfillSessionOran(s.id, tenantId, opts);
+        scanned += r.scanned; fixed += r.fixed; stillMissing += r.stillMissing; kdvMoved += r.kdvMoved;
+      } catch (e: any) {
+        this.logger.warn(`[backfillDonemOran] session=${s.id} hata: ${e?.message}`);
+      }
+    }
+    this.logger.log(
+      `[backfillDonemOran] donem=${periodLabel} session=${sessions.length} taranan=${scanned} dolduruldu=${fixed} kalan=${stillMissing}`,
+    );
+    return {
+      sessions: sessions.length, scanned, fixed, stillMissing,
+      kdvMoved: Math.round(kdvMoved * 100) / 100, dryRun: !!opts.dryRun,
+    };
+  }
+
+  /**
    * Belirli bir dönemdeki TÜM session'ların eksik-breakdown görsellerini yeniden OCR'lar.
    * donem: "2026-05" formatında
    */

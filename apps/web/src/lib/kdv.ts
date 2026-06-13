@@ -208,6 +208,15 @@ export const kdvApi = {
       )
       .then((r) => r.data),
 
+  /** Tüm dönemde (tüm mükellefler) eksik KDV oranlarını tek seferde tamamla. */
+  backfillOranDonem: (donem: string, opts?: { dryRun?: boolean }) =>
+    api
+      .post<{ sessions: number; scanned: number; fixed: number; stillMissing: number; kdvMoved: number; dryRun: boolean }>(
+        `/kdv-control/backfill-oran-donem`,
+        { donem, dryRun: opts?.dryRun === true },
+      )
+      .then((r) => r.data),
+
   /**
    * Tek bir fatura görselinin OCR'ını yeniden çalıştır.
    * Her satırın yanındaki ⟳ "OCR Yap" butonu için.

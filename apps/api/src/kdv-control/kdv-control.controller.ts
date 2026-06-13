@@ -337,6 +337,21 @@ export class KdvControlController {
     });
   }
 
+  /**
+   * Bir dönemdeki TÜM mükelleflerde eksik KDV oranlarını tek seferde tamamlar.
+   * Body: { donem: "2026-05", dryRun?: boolean }
+   */
+  @Post('backfill-oran-donem')
+  @Roles('ADMIN', 'STAFF')
+  backfillOranDonem(
+    @Req() req: any,
+    @Body() body: { donem: string; dryRun?: boolean },
+  ) {
+    return this.kdvService.backfillDonemOran(req.user.tenantId, body.donem, {
+      dryRun: !!body?.dryRun,
+    });
+  }
+
   /* ── OTOMATİK ÇEKİM (LUCA + MIHSAP) ──────────────── */
 
   /**

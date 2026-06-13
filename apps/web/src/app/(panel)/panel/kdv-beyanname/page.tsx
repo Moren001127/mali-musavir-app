@@ -683,6 +683,23 @@ function GenelBakisPano({ donem, onSelect }: { donem: string; onSelect: (id: str
     },
   });
 
+  const backfillOranMut = useMutation({
+    mutationFn: () => api.post('/kdv-control/backfill-oran-donem', { donem }).then((r) => r.data),
+    onSuccess: (d: any) => {
+      if ((d?.fixed ?? 0) > 0) {
+        toast.success(
+          `${d.fixed} faturanın oranı dolduruldu` + (d.stillMissing > 0 ? ` · ${d.stillMissing} fatura elle girilmeli` : ''),
+        );
+      } else if ((d?.stillMissing ?? 0) > 0) {
+        toast(`${d.stillMissing} faturanın oranı veriden türetilemedi — Teyit Paneli'nden elle girilmeli`, { icon: 'ℹ️' });
+      } else {
+        toast.success('Doldurulacak eksik oran yok — hepsi tam');
+      }
+      yenile();
+    },
+    onError: (e: any) => toast.error(e?.response?.data?.message || 'Oran tamamlama başarısız'),
+  });
+
   const satirlar = React.useMemo(() => {
     const all = data?.satirlar || [];
     switch (filter) {
@@ -732,6 +749,15 @@ function GenelBakisPano({ donem, onSelect }: { donem: string; onSelect: (id: str
           <span className="text-[11px]" style={{ color: 'rgba(250,250,249,0.4)' }}>
             Son güncelleme: {new Date(data.hesaplandiAt).toLocaleTimeString('tr-TR', { hour: '2-digit', minute: '2-digit' })}
           </span>
+          <button
+            onClick={() => backfillOranMut.mutate()}
+            disabled={backfillOranMut.isPending}
+            title="OCR'ın okuyamadığı KDV oranlarını, görseli yeniden okumadan kayıtlı veriden (matrah + metin) tüm mükelleflerde doldurur"
+            className="inline-flex items-center gap-1.5 rounded-[9px] px-3 py-1.5 text-[12px] font-bold disabled:opacity-50"
+            style={{ background: 'rgba(20,184,166,0.14)', border: `1px solid ${TEAL_LN}`, color: TEAL_BR }}
+          >
+            {backfillOranMut.isPending ? <Loader2 size={13} className="animate-spin" /> : <span className="text-[13px] leading-none">%</span>} Oranları Tamamla
+          </button>
           <button
             onClick={yenile}
             disabled={forcing}
