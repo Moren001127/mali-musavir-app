@@ -81,6 +81,27 @@ export class KdvAgentController {
     return { statusCounts, belgeTipiCounts, needsReviewSamples };
   }
 
+  /** mihsapInvoice raw payload'ını döndürür — KDV alanı analizi için */
+  @Get('mihsap-raw/:imageId')
+  async mihsapRaw(
+    @Headers('x-agent-token') agentToken: string,
+    @Param('imageId') imageId: string,
+  ) {
+    const tenantId = await resolveTenantFromAgentToken(agentToken, this.prisma as any);
+    const img = await (this.prisma as any).receiptImage.findFirst({
+      where: { id: imageId, session: { tenantId } },
+      select: { id: true, s3Key: true, originalName: true, ocrStatus: true },
+    });
+    if (!img) return { error: 'bulunamadı' };
+    if (!img.s3Key?.startsWith('mihsap://')) return { error: 'Mihsap değil' };
+    const invoiceId = img.s3Key.slice('mihsap://'.length);
+    const inv = await (this.prisma as any).mihsapInvoice.findUnique({
+      where: { id: invoiceId },
+      select: { faturaNo: true, faturaTarihi: true, toplamTutar: true, orjDosyaTuru: true, mihsapFileLink: true, raw: true },
+    });
+    return { imageId, originalName: img.originalName, ...inv, rawKeys: inv?.raw ? Object.keys(inv.raw as any) : [] };
+  }
+
   /** Belirli bir görsel için raw OCR text'i döndürür — parser debug için */
   @Get('raw-ocr/:imageId')
   async rawOcrText(
