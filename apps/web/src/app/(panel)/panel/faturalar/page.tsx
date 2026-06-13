@@ -439,16 +439,16 @@ ${isPdf
           <span className="w-[26px] h-px" style={{ background: '#d4b876' }} />
           <span className="text-[10px] uppercase font-bold tracking-[.18em]" style={{ color: '#b8a06f' }}>Belge Yönetimi</span>
         </div>
-        <div className="flex items-center justify-between gap-4">
-          <div className="flex items-center gap-3.5 min-w-0">
+        <div className="flex flex-wrap items-center gap-x-4 gap-y-3">
+          <div className="flex items-center gap-3.5">
             <span
               className="grid place-items-center rounded-xl flex-shrink-0"
               style={{ width: 46, height: 46, background: 'linear-gradient(135deg, #d4b876, #b8a06f)', boxShadow: '0 8px 22px rgba(212,184,118,0.32)' }}
             >
               <Receipt size={24} style={{ color: '#1a1410' }} />
             </span>
-            <div className="min-w-0">
-              <h1 style={{ fontFamily: 'Fraunces, serif', fontSize: 30, fontWeight: 600, color: '#fafaf9', letterSpacing: '-.03em', lineHeight: 1.05 }}>
+            <div>
+              <h1 style={{ fontFamily: 'Fraunces, serif', fontSize: 30, fontWeight: 600, color: '#fafaf9', letterSpacing: '-.03em', lineHeight: 1.05, whiteSpace: 'nowrap' }}>
                 İşlenen Faturalar
               </h1>
               <p className="text-[13px] mt-1.5" style={{ color: 'rgba(250,250,249,0.45)' }}>
@@ -458,7 +458,7 @@ ${isPdf
               </p>
             </div>
           </div>
-          <div className="flex items-center gap-2 flex-wrap justify-end flex-shrink-0">
+          <div className="flex items-center gap-2 flex-wrap justify-end ml-auto flex-shrink-0">
             <DriveControls
               status={driveStatus}
               activeJob={activeDriveJob}
