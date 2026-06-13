@@ -136,7 +136,10 @@ export default function KdvKontrolPage() {
 
   // ── STATE ───────────────────────────────────────────
   const now = new Date();
-  const [ay, setAy] = useState(() => `${now.getFullYear()}-${String(now.getMonth() + 1).padStart(2, '0')}`);
+  const prevMonth = now.getMonth() === 0
+    ? new Date(now.getFullYear() - 1, 11)
+    : new Date(now.getFullYear(), now.getMonth() - 1);
+  const [ay, setAy] = useState(() => `${prevMonth.getFullYear()}-${String(prevMonth.getMonth() + 1).padStart(2, '0')}`);
   const [selectedActions, setSelectedActions] = useState<KdvAction[]>([]);
   const [taxpayerId, setTaxpayerId] = useState<string>('');
   const [pickerOpen, setPickerOpen] = useState(false);
