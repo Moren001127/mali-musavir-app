@@ -1021,7 +1021,9 @@ export class PortalAutomationRailwayRunnerService implements OnModuleInit {
         try { parsed = body ? JSON.parse(body) : null; } catch { /* yut */ }
         if (/tebligat-listele/i.test(url) && parsed?.data) listele = parsed;
         else if (/tebligat-sayilari/i.test(url)) sayilari = parsed;
-        apiCalls.push({ method: resp.request().method(), url: this.safeUrl(url), status: resp.status(), ct: ct.slice(0, 60), body: body.slice(0, 400) });
+        // zarf-detay/report yanitlarini TAM yakala (PDF indirme uuid'sini bulmak icin).
+        const bodyMax = /zarf-detay|report|goruntule|belge-getir|indir/i.test(url) ? 2800 : 400;
+        apiCalls.push({ method: resp.request().method(), url: this.safeUrl(url), status: resp.status(), ct: ct.slice(0, 60), body: body.slice(0, bodyMax) });
       } catch { /* yut */ }
     };
     const onRequest = (req: any) => {
