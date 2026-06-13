@@ -112,7 +112,8 @@ export class ActionDispatcherService {
       case 'generate_fis_word_from_invoices':
         return this.generateFisWordFromInvoices(args, ctx);
       case 'print_word_output':
-        return this.printWordOutput(args, ctx);
+        // Yazdırma özelliği devre dışı — fiş listesi oluşturma yeterli
+        return { success: true, skipped: true, message: 'Yazdırma devre dışı — adım atlandı.' };
       case 'fetch_invoices_for_period':
         return this.fetchInvoicesForPeriod(args, ctx);
 
@@ -322,11 +323,25 @@ export class ActionDispatcherService {
         `generate_fis_word_from_invoices: donem formati gecersiz ("${donemRaw}"). Beklenen: "YYYY-MM" (orn. "2026-04").`,
       );
     }
+    // Mükellef adını event payload'dan al (taxpayerUnvan), yoksa DB'den çek
+    let mukellefName = args.taxpayerUnvan ? String(args.taxpayerUnvan) : '';
+    if (!mukellefName) {
+      const tp = await this.prisma.taxpayer.findFirst({
+        where: { id: taxpayerId, tenantId: ctx.tenantId },
+        select: { firstName: true, lastName: true, companyName: true },
+      });
+      if (tp) {
+        mukellefName = (tp as any).companyName ||
+          `${(tp as any).firstName ?? ''} ${(tp as any).lastName ?? ''}`.trim() || '';
+      }
+    }
     const result = await this.fisYazdirma.generateFromInvoices({
       tenantId: ctx.tenantId,
       mukellefId: taxpayerId,
       donem,
       createdBy: ctx.userId ?? undefined,
+      faturaTuru: 'ALIS',
+      mukellefName: mukellefName || undefined,
     });
     return {
       success: true,
@@ -612,7 +627,7 @@ ${text}`;
   private async httpGet(args: any) {
     const url = String(args.url ?? '');
     if (!url.startsWith('https://')) throw new Error('http_get sadece HTTPS destekler.');
-    // Müvekkil verisi sızıntısını önlemek için allowlist (Faz 7'de genişler).
+    // Mükellef verisi sızıntısını önlemek için allowlist (Faz 7'de genişler).
     const ALLOWLIST = [
       'resmigazete.gov.tr',
       'gib.gov.tr',

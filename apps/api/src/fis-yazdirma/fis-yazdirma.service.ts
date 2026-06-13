@@ -250,15 +250,18 @@ export class FisYazdirmaService {
     mukellefId: string;
     donem: string; // YYYY-MM
     createdBy?: string;
+    faturaTuru?: 'ALIS' | 'SATIS'; // Sadece ALIS veya SATIS — belirtilmezse tümü
+    mukellefName?: string; // Dispatcher'dan geçilebilir; yoksa DB'den çekilir
   }): Promise<{ outputId: string | null; filename: string; fileCount: number; downloadUrl?: string }> {
     const { tenantId, mukellefId, donem, createdBy } = params;
 
-    // 1) FIS faturalarını listele
+    // 1) FIS faturalarını listele (ALIS filtresi)
     const invoices = await this.mihsap.listStoredInvoices({
       tenantId,
       mukellefId,
       donem,
       belgeTuru: 'FIS',
+      ...(params.faturaTuru ? { faturaTuru: params.faturaTuru } : {}),
       limit: 500,
     });
 
@@ -331,15 +334,21 @@ export class FisYazdirmaService {
       );
     }
 
-    // 3) Mükellef adını çek
-    const taxpayer = await this.prisma.taxpayer.findFirst({
-      where: { id: mukellefId, tenantId },
-      select: { firstName: true, lastName: true, companyName: true, type: true },
-    });
-    const t = taxpayer as any;
-    const mukellefName = t?.type === 'TUZEL_KISI'
-      ? t.companyName || ''
-      : `${t?.firstName ?? ''} ${t?.lastName ?? ''}`.trim();
+    // 3) Mükellef adını belirle — dispatcher'dan geçildiyse kullan, yoksa DB'den çek
+    let mukellefName = params.mukellefName?.trim() ?? '';
+    if (!mukellefName) {
+      const taxpayer = await this.prisma.taxpayer.findFirst({
+        where: { id: mukellefId, tenantId },
+        select: { firstName: true, lastName: true, companyName: true, type: true },
+      });
+      const t = taxpayer as any;
+      mukellefName = t
+        ? (t.companyName || `${t.firstName ?? ''} ${t.lastName ?? ''}`.trim() || '')
+        : '';
+      if (!mukellefName) {
+        this.logger.warn(`[generateFromInvoices] Mükellef adı bulunamadı mukellefId=${mukellefId}`);
+      }
+    }
 
     // 4) Word üret
     const wordBuffer = await this.generateWord(files, allDates, {
