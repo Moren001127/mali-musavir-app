@@ -791,10 +791,17 @@ function GenelBakisPano({ donem, onSelect }: { donem: string; onSelect: (id: str
                   <span className="tabular-nums text-[12px]" style={{ color: 'rgba(255,250,240,0.55)' }}>{TRY}{fmt(r.sonrakiAyaDevreden)}</span>
                 </td>
                 <td className="px-3 py-3 text-right" style={{ borderLeft: '2px solid rgba(255,255,255,0.1)' }}>
-                  <span className="tabular-nums text-[14px] font-extrabold" style={{ color: r.odenecekKdv > 0 ? STAT_RED : STAT_GREEN }}>
-                    {r.odenecekKdv > 0 && <span className="mr-1 text-[10px] font-bold tracking-wide opacity-60">ÖDE</span>}
-                    {TRY}{fmt(r.odenecekKdv)}
-                  </span>
+                  {r.odenecekKdv > 0 ? (
+                    <span className="tabular-nums text-[14px] font-extrabold" style={{ color: STAT_RED }}>
+                      {TRY}{fmt(r.odenecekKdv)}
+                    </span>
+                  ) : r.sonrakiAyaDevreden > 0 ? (
+                    <span className="tabular-nums text-[13px] font-semibold" style={{ color: TEAL_BR }}>
+                      {TRY}{fmt(r.sonrakiAyaDevreden)}
+                    </span>
+                  ) : (
+                    <span style={{ color: 'rgba(250,250,249,0.25)' }}>—</span>
+                  )}
                 </td>
                 <td className="px-3 py-3 text-center" style={{ borderLeft: '1px solid rgba(255,255,255,0.06)' }}>
                   <GuvenDot seviye={r.veriGuveniSeviye} puan={r.veriGuveniPuan} />
