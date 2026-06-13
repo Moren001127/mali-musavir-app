@@ -72,6 +72,7 @@ type ManualRunInput = {
   donem?: string;
   force?: boolean;
   validationOnly?: boolean;
+  discover?: boolean;
 };
 
 type JobProgressUpdate = {
@@ -541,6 +542,7 @@ export class PortalAutomationService {
       donem: input.donem,
       force: input.force === true,
       validationOnly: input.validationOnly === true,
+      discover: input.discover === true,
     });
     return {
       ...res,
@@ -827,6 +829,7 @@ export class PortalAutomationService {
       donem?: string;
       force?: boolean;
       validationOnly?: boolean;
+      discover?: boolean;
       dedupeAfter?: Date;
     },
   ) {
@@ -885,6 +888,7 @@ export class PortalAutomationService {
       donem?: string;
       force?: boolean;
       validationOnly?: boolean;
+      discover?: boolean;
     },
   ) {
     const meta = JOB_META[jobType];
@@ -915,6 +919,7 @@ export class PortalAutomationService {
           runnerMode,
           force: opts.force === true,
           validationOnly,
+          discover: opts.discover === true,
           dateFrom: opts.period.start.toISOString(),
           dateTo: opts.period.end.toISOString(),
           instruction: validationOnly
