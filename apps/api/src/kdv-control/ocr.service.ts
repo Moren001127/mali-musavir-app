@@ -225,7 +225,8 @@ export class OcrService {
     const isHtml =
       /\.html?$/i.test(originalName || '') ||
       head512Lower.startsWith('<!doctype html') ||
-      head512Lower.startsWith('<html');
+      head512Lower.startsWith('<html') ||
+      /<html[\s>]/i.test(head4k); // XML declaration ile başlayan HTML dosyalarını da yakala
 
     const hasUblMarker =
       /<\?xml/i.test(head4k) ||
@@ -249,6 +250,7 @@ export class OcrService {
       );
     // HTML dosyaları XML parser'a DÜŞMESİN (isHtml guard)
     const isXml = !isHtml && (hasUblMarker || (filenameIsXml && !isImageMagic));
+    this.logger.log(`Dosya tipi: ${originalName || '—'} · isHtml=${isHtml} isXml=${isXml} hasUblMarker=${hasUblMarker}`);
 
     if (isXml) {
       try {
