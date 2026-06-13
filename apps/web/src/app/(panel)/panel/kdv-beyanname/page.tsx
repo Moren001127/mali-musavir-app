@@ -348,7 +348,7 @@ export default function KdvBeyannamePage() {
   };
 
   return (
-    <div className="px-6 py-4 space-y-3">
+    <div className="px-1 py-2 space-y-3">
       {/* Header */}
       <header
         className="relative overflow-hidden rounded-[18px] border px-5 py-4"
@@ -609,10 +609,23 @@ export default function KdvBeyannamePage() {
 // ============================================================
 // KDV DURUM PANOSU — otomatik genel bakış (teal)
 // ============================================================
+type Filtre = 'hepsi' | 'odeme' | 'hazir' | 'dikkat' | 'kdv2' | 'kdv1verilmeyen' | 'kdv2verilmeyen';
+const FILTRE_ETIKET: Record<Filtre, string> = {
+  hepsi: 'Hepsi',
+  odeme: 'Ödeme çıkanlar',
+  hazir: 'Hazır olanlar',
+  dikkat: 'Dikkat gerekenler',
+  kdv2: 'KDV2 olanlar',
+  kdv1verilmeyen: 'KDV1 verilmeyenler',
+  kdv2verilmeyen: 'KDV2 verilmeyenler',
+};
+
 function GenelBakisPano({ donem, onSelect }: { donem: string; onSelect: (id: string) => void }) {
   const qc = useQueryClient();
-  const [filter, setFilter] = useState<'hepsi' | 'kdv2' | 'dikkat' | 'verilmeyen'>('hepsi');
+  const [filter, setFilter] = useState<Filtre>('hepsi');
   const [forcing, setForcing] = useState(false);
+  // Sayaç kartına tıklanınca aynı filtre tekrar tıklanırsa "hepsi"ye döner
+  const toggleFilter = (k: Filtre) => setFilter((cur) => (cur === k ? 'hepsi' : k));
 
   const { data, isLoading, error } = useQuery<GenelBakis>({
     queryKey: ['kdv-genel-bakis', donem],
@@ -667,11 +680,15 @@ function GenelBakisPano({ donem, onSelect }: { donem: string; onSelect: (id: str
 
   const satirlar = React.useMemo(() => {
     const all = data?.satirlar || [];
-    if (filter === 'kdv2') return all.filter((r) => r.kdv2Var);
-    if (filter === 'dikkat') return all.filter((r) => r.durum !== 'hazir');
-    if (filter === 'verilmeyen')
-      return all.filter((r) => (r.kdv1Var && !r.kdv1Verildi) || (r.kdv2Var && !r.kdv2Verildi));
-    return all;
+    switch (filter) {
+      case 'odeme':          return all.filter((r) => r.odenecekKdv > 0);
+      case 'hazir':          return all.filter((r) => r.durum === 'hazir');
+      case 'dikkat':         return all.filter((r) => r.durum !== 'hazir');
+      case 'kdv2':           return all.filter((r) => r.kdv2Var);
+      case 'kdv1verilmeyen': return all.filter((r) => r.kdv1Var && !r.kdv1Verildi);
+      case 'kdv2verilmeyen': return all.filter((r) => r.kdv2Var && !r.kdv2Verildi);
+      default:               return all;
+    }
   }, [data, filter]);
 
   if (isLoading) return <LoadingCard />;
@@ -683,35 +700,29 @@ function GenelBakisPano({ donem, onSelect }: { donem: string; onSelect: (id: str
   return (
     <div className="space-y-3">
       <div className="grid grid-cols-2 gap-2.5 md:grid-cols-3 xl:grid-cols-6">
-        <StatCard icon={Receipt} label="Ödeme Çıkan" value={String(odemeciAdet)} accent={STAT_RED} sub={`/${t.mukellefAdet} mükellef`} />
-        <StatCard icon={CheckCircle2} label="Hazır" value={`${t.hazirAdet}/${t.mukellefAdet}`} accent={STAT_GREEN} />
-        <StatCard icon={AlertTriangle} label="Dikkat" value={String(t.dikkatAdet)} accent={STAT_AMBER} />
-        <StatCard icon={Layers} label="KDV2 mükellef" value={String(t.kdv2Adet)} accent={TEAL_BR} />
-        <StatCard icon={FileCheck} label="KDV1 verilmeyen" value={String(t.kdv1VerilmeyenAdet)} accent={STAT_RED} />
-        <StatCard icon={Receipt} label="KDV2 verilmeyen" value={String(t.kdv2VerilmeyenAdet)} accent={STAT_RED} />
+        <StatCard icon={Receipt} label="Ödeme Çıkan" value={String(odemeciAdet)} accent={STAT_RED} sub={`/${t.mukellefAdet} mükellef`} active={filter === 'odeme'} onClick={() => toggleFilter('odeme')} />
+        <StatCard icon={CheckCircle2} label="Hazır" value={`${t.hazirAdet}/${t.mukellefAdet}`} accent={STAT_GREEN} active={filter === 'hazir'} onClick={() => toggleFilter('hazir')} />
+        <StatCard icon={AlertTriangle} label="Dikkat" value={String(t.dikkatAdet)} accent={STAT_AMBER} active={filter === 'dikkat'} onClick={() => toggleFilter('dikkat')} />
+        <StatCard icon={Layers} label="KDV2 mükellef" value={String(t.kdv2Adet)} accent={TEAL_BR} active={filter === 'kdv2'} onClick={() => toggleFilter('kdv2')} />
+        <StatCard icon={FileCheck} label="KDV1 verilmeyen" value={String(t.kdv1VerilmeyenAdet)} accent={STAT_RED} active={filter === 'kdv1verilmeyen'} onClick={() => toggleFilter('kdv1verilmeyen')} />
+        <StatCard icon={Receipt} label="KDV2 verilmeyen" value={String(t.kdv2VerilmeyenAdet)} accent={STAT_RED} active={filter === 'kdv2verilmeyen'} onClick={() => toggleFilter('kdv2verilmeyen')} />
       </div>
 
       <div className="flex flex-wrap items-center gap-2">
-        {([
-          ['hepsi', 'Hepsi'],
-          ['kdv2', 'KDV2 olanlar'],
-          ['dikkat', 'Dikkat'],
-          ['verilmeyen', 'Verilmeyen'],
-        ] as const).map(([k, l]) => {
-          const on = filter === k;
-          return (
-            <button
-              key={k}
-              onClick={() => setFilter(k)}
-              className="rounded-[9px] border px-3 py-1.5 text-[12px] font-semibold transition"
-              style={on
-                ? { background: TEAL_SF, borderColor: TEAL_LN, color: TEAL_BR }
-                : { background: 'rgba(255,255,255,0.03)', borderColor: 'rgba(255,255,255,0.08)', color: 'rgba(250,250,249,0.6)' }}
-            >
-              {l}
-            </button>
-          );
-        })}
+        {filter !== 'hepsi' ? (
+          <button
+            onClick={() => setFilter('hepsi')}
+            className="inline-flex items-center gap-1.5 rounded-[9px] border px-3 py-1.5 text-[12px] font-semibold transition"
+            style={{ background: TEAL_SF, borderColor: TEAL_LN, color: TEAL_BR }}
+          >
+            {FILTRE_ETIKET[filter]} · {satirlar.length} kayıt
+            <span className="ml-0.5 text-[14px] leading-none opacity-70">×</span>
+          </button>
+        ) : (
+          <span className="text-[12px] font-semibold" style={{ color: 'rgba(250,250,249,0.4)' }}>
+            Tüm mükellefler · {satirlar.length} kayıt — yukarıdaki sayaçlara tıklayarak süzebilirsiniz
+          </span>
+        )}
         <div className="ml-auto flex items-center gap-2">
           <span className="text-[11px]" style={{ color: 'rgba(250,250,249,0.4)' }}>
             Son güncelleme: {new Date(data.hesaplandiAt).toLocaleTimeString('tr-TR', { hour: '2-digit', minute: '2-digit' })}
@@ -795,10 +806,6 @@ function GenelBakisPano({ donem, onSelect }: { donem: string; onSelect: (id: str
                     <span className="tabular-nums text-[13px] font-extrabold" style={{ color: STAT_RED }}>
                       {TRY}{fmt(r.odenecekKdv)}
                     </span>
-                  ) : r.sonrakiAyaDevreden > 0 ? (
-                    <span className="tabular-nums text-[13px] font-semibold" style={{ color: TEAL_BR }}>
-                      {TRY}{fmt(r.sonrakiAyaDevreden)}
-                    </span>
                   ) : (
                     <span style={{ color: 'rgba(250,250,249,0.25)' }}>—</span>
                   )}
@@ -839,17 +846,26 @@ function GenelBakisPano({ donem, onSelect }: { donem: string; onSelect: (id: str
   );
 }
 
-function StatCard({ icon: Icon, label, value, accent, sub }: { icon: any; label: string; value: string; accent: string; sub?: string }) {
+function StatCard({ icon: Icon, label, value, accent, sub, active, onClick }: { icon: any; label: string; value: string; accent: string; sub?: string; active?: boolean; onClick?: () => void }) {
   return (
-    <div className="rounded-xl border p-3" style={{ background: 'rgba(255,255,255,0.02)', borderColor: 'rgba(255,255,255,0.06)' }}>
-      <div className="flex items-center gap-1.5 text-[10px] uppercase tracking-wider" style={{ color: 'rgba(250,250,249,0.45)' }}>
+    <button
+      type="button"
+      onClick={onClick}
+      className="w-full rounded-xl border p-3 text-left transition hover:bg-white/[0.04] focus:outline-none"
+      style={{
+        background: active ? `${accent}1a` : 'rgba(255,255,255,0.02)',
+        borderColor: active ? accent : 'rgba(255,255,255,0.06)',
+        boxShadow: active ? `0 0 0 1px ${accent}55` : undefined,
+      }}
+    >
+      <div className="flex items-center gap-1.5 text-[10px] uppercase tracking-wider" style={{ color: active ? accent : 'rgba(250,250,249,0.45)' }}>
         <Icon size={12} style={{ color: accent }} /> {label}
       </div>
       <div className="mt-1.5 flex items-baseline gap-1">
         <span className="text-[20px] font-extrabold tabular-nums" style={{ color: '#fafaf9' }}>{value}</span>
         {sub && <span className="text-[11px] font-semibold" style={{ color: 'rgba(250,250,249,0.4)' }}>{sub}</span>}
       </div>
-    </div>
+    </button>
   );
 }
 

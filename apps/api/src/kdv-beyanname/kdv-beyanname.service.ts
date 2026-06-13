@@ -522,7 +522,8 @@ export class KdvBeyannameService {
               : 0;
             const hesaplanan = k1?.sonuc.hesaplananKdv ?? 0;
             const indirilecek = k1?.sonuc.indirilecekKdv ?? 0;
-            // KDV2 tespiti: OCR tevkifatlı alış VEYA beyanConfig.kdv2Enabled=true
+            // KDV2 tespiti: YALNIZ OCR tevkifatlı alış faturası (kdv2Enabled DB yedeği
+            // KALDIRILDI — eski/yanlış config değerleri herkesi KDV2 gösteriyordu).
             const tevkifatliAdet = k1 ? k1.alis.tevkifatli.adet : 0;
             const tevkifatliKdv = k1 ? k1.alis.tevkifatli.kdv : 0;
             const bosMu = !k1 || (realAdet === 0 && hesaplanan === 0 && indirilecek === 0);
@@ -545,7 +546,7 @@ export class KdvBeyannameService {
               durum,
               kdv1Var: !!cfg.kdv1Period,
               kdv1Verildi: kdv1VerildiMi(m.id, d.kdv1),
-              kdv2Var: tevkifatliAdet > 0 || !!cfg.kdv2Enabled,
+              kdv2Var: tevkifatliAdet > 0,
               kdv2TevkifatTutari: tevkifatliKdv,
               kdv2FaturaAdet: tevkifatliAdet,
               kdv2Verildi: kdv2VerildiMi(m.id, d.kdv2),
