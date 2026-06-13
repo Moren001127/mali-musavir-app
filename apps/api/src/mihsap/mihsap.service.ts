@@ -76,6 +76,10 @@ export class MihsapService {
       } catch (err: any) {
         this.logger.warn(`Mihsap.TokenYenilendi yayını başarısız: ${err?.message ?? err}`);
       }
+      // Faz 2+: otomasyon retry (AutomationRunner) + manuel fatura-çekme retry
+      this.retryFailedFetchJobs(tenantId).catch((err: any) =>
+        this.logger.warn(`Mihsap job retry taraması başarısız: ${err?.message ?? err}`),
+      );
     }
 
     return result;
@@ -116,7 +120,67 @@ export class MihsapService {
         'MIHSAP token yok. Lütfen MIHSAP sayfasını açın; eklenti tokenı otomatik senkronize edecek.',
       );
     }
+    // JWT süresi dolmuşsa net hata fırlat — Mihsap 200 + boş body dönerek gizliyor
+    const expiresAt = this.getJwtExpiresAt(s.token);
+    if (expiresAt && expiresAt.getTime() < Date.now() - 30_000) {
+      const minsAgo = Math.round((Date.now() - expiresAt.getTime()) / 60_000);
+      throw new UnauthorizedException(
+        `MIHSAP token süresi ${minsAgo} dakika önce doldu. Mihsap sekmesini açın — eklenti otomatik yenileyecek.`,
+      );
+    }
     return s.token;
+  }
+
+  /** Token yenilenince son 24 saatte token hatasıyla başarısız olmuş
+   *  manuel MihsapFetchJob'ları otomatik yeniden dener. */
+  private async retryFailedFetchJobs(tenantId: string): Promise<void> {
+    const since = new Date(Date.now() - 24 * 60 * 60 * 1000);
+    const failedJobs = await (this.prisma as any).mihsapFetchJob.findMany({
+      where: {
+        tenantId,
+        status: 'failed',
+        createdAt: { gte: since },
+        OR: [
+          { errorMsg: { contains: 'MIHSAP' } },
+          { errorMsg: { contains: 'token' } },
+        ],
+      },
+      orderBy: { createdAt: 'desc' },
+      take: 20,
+    });
+    if (failedJobs.length === 0) return;
+
+    const seen = new Set<string>();
+    for (const job of failedJobs) {
+      const key = `${job.mukellefId}|${job.donem}`;
+      if (seen.has(key)) continue;
+      seen.add(key);
+
+      const alreadyFetched = await (this.prisma as any).mihsapInvoice.count({
+        where: { tenantId, mukellefId: job.mukellefId, donem: job.donem },
+      });
+      if (alreadyFetched > 0) continue;
+
+      const taxpayer = await (this.prisma as any).taxpayer.findUnique({
+        where: { id: job.mukellefId },
+        select: { mihsapId: true },
+      });
+      if (!taxpayer?.mihsapId) continue;
+
+      this.logger.log(
+        `Mihsap token yenilendi → manuel iş yeniden deneniyor: mukellef=${job.mukellefId} donem=${job.donem}`,
+      );
+      this.fetchAndStoreInvoices({
+        tenantId,
+        mukellefId: job.mukellefId,
+        mukellefMihsapId: String(taxpayer.mihsapId),
+        donem: job.donem,
+        faturaTuru: job.faturaTuru as 'ALIS' | 'SATIS' | undefined,
+        createdBy: 'token-retry',
+      }).catch((err: any) =>
+        this.logger.error(`Mihsap job retry hatası (mukellef=${job.mukellefId} donem=${job.donem}): ${err?.message ?? err}`),
+      );
+    }
   }
 
   /**
