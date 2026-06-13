@@ -854,6 +854,22 @@ export class FisYazdirmaService {
     pagesPerSheet?: number;
     createdBy?: string;
   }) {
+    // Aynı mükellef + dönem için eski kayıtları sil — mükerrer oluşmasın
+    if (params.mukellefName && params.donem) {
+      const deleted = await (this.prisma as any).fisYazdirmaOutput.deleteMany({
+        where: {
+          tenantId: params.tenantId,
+          mukellefName: params.mukellefName,
+          donem: params.donem,
+        },
+      });
+      if (deleted.count > 0) {
+        this.logger.log(
+          `[saveOutput] Mükerrer temizlendi: mukellef="${params.mukellefName}" donem=${params.donem} (${deleted.count} kayıt silindi)`,
+        );
+      }
+    }
+
     return (this.prisma as any).fisYazdirmaOutput.create({
       data: {
         tenantId: params.tenantId,
