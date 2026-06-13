@@ -2,6 +2,7 @@ import { Injectable, Logger, BadRequestException } from '@nestjs/common';
 import { PrismaService } from '../prisma/prisma.service';
 import { ToolExecutorService } from './tool-executor.service';
 import { MOREN_AI_TOOLS } from './tools';
+import { runMaxAgent, type AgentToolDef } from '../common/max-agent-runner';
 import { buildSystemPrompt } from './system-prompt';
 import { computeCostUsd, computeRealtimeCostUsd, canSpendOnApi, logAiUsage } from '../common/ai-usage-logger';
 import { claudeTextViaMax, isMaxAvailable, MAX_MODEL_CHEAP } from '../common/max-inference';
@@ -490,6 +491,18 @@ export class MorenAiService {
       : voiceHint;
     const responseMaxTokens = body.voiceMode ? VOICE_MAX_TOKENS : NORMAL_MAX_TOKENS;
     const selectedTools = this.selectToolsForMessage(userMessage, body.toolMode || 'owner');
+
+    // ───── GERÇEK ARAÇ-YÜRÜTME (bayrak: MOREN_AI_AGENT_TOOLS=1) ─────
+    // Model portal araçlarını GERÇEKTEN çağırır, sonucu görür, ZİNCİRLER, ona göre cevaplar
+    // (prefetch tahmininin aksine). Bayrak kapalıyken (varsayılan) mevcut prefetch yolu aynen
+    // çalışır; agent yolu başarısız olursa da prefetch'e DÜŞER (güvenli, additive).
+    if (process.env.MOREN_AI_AGENT_TOOLS === '1' && (body.toolMode === 'owner' || body.toolMode === 'taxpayer-readonly')) {
+      const agentReply = await this.tryAgentToolPath({
+        tenantId, userId, body, conversation, userMessage,
+        systemPrompt, taxpayerContext, memoryContext, model, started,
+      }).catch((e: any) => { this.logger.warn(`[AgentTools] hata, prefetch'e dusuluyor: ${e?.message || e}`); return null; });
+      if (agentReply) return agentReply;
+    }
 
     const maxResponse = await this.chatViaClaudeMax({
       tenantId,
@@ -1017,6 +1030,66 @@ export class MorenAiService {
   private allowAnthropicApiFallback() {
     return process.env.MOREN_AI_ALLOW_ANTHROPIC_API === '1' ||
       process.env.MOREN_AI_LLM_PROVIDER === 'anthropic-api';
+  }
+
+  /**
+   * GERÇEK ARAÇ-YÜRÜTME yolu (Max Agent SDK). Model portal araçlarını GERÇEKTEN çağırır,
+   * sonucu görür, zincirler. Başarılıysa ChatResponse döner; başarısız/boşsa null (çağıran
+   * prefetch'e düşer). FAZ 1: yalnız OKUMA araçları çalışır; yazma araçları (create_/confirm/
+   * send_/...) onay kapısında (canWrite verilmedi) reddedilir.
+   */
+  private async tryAgentToolPath(p: {
+    tenantId: string; userId: string | null; body: ChatRequest; conversation: any;
+    userMessage: string; systemPrompt: string; taxpayerContext: string; memoryContext: string;
+    model: string; started: number;
+  }): Promise<ChatResponse | null> {
+    const isTaxpayer = p.body.toolMode === 'taxpayer-readonly';
+    const base = isTaxpayer
+      ? MOREN_AI_TOOLS.filter((t: any) => TAXPAYER_READONLY_TOOL_NAMES.includes(t.name))
+      : MOREN_AI_TOOLS;
+    const WRITE_RE = /create_|confirm|^send_|delete_|update_|start_|execute/i;
+    const tools: AgentToolDef[] = (base as any[]).map((t) => ({
+      name: t.name, description: t.description, input_schema: t.input_schema, write: WRITE_RE.test(t.name),
+    }));
+
+    const taxpayerId = this.activeToolTaxpayerId(p.body, p.conversation);
+    const fullSystem = [p.systemPrompt, p.taxpayerContext, p.memoryContext].filter(Boolean).join('\n\n');
+
+    const res = await runMaxAgent({
+      systemPrompt: fullSystem,
+      userMessage: p.userMessage,
+      tools,
+      executeTool: (name, input) => this.toolExecutor.execute(name, input, { tenantId: p.tenantId, userId: p.userId, taxpayerId }),
+      model: p.model,
+      maxTurns: Number(process.env.MOREN_AI_AGENT_MAX_TURNS || 8),
+    });
+    if (!res.ok || !res.text.trim()) {
+      this.logger.warn(`[AgentTools] bos/hatali sonuc (${res.error || 'bos'}) — prefetch'e dusuluyor`);
+      return null;
+    }
+
+    const durationMs = Date.now() - p.started;
+    await this.prisma.aiMessage.create({
+      data: {
+        conversationId: p.conversation.id, role: 'assistant', content: res.text,
+        inputTokens: 0, outputTokens: 0, cacheReadTokens: 0, cacheWriteTokens: 0,
+        costUsd: res.costUsd || 0, model: `${res.model}+agent`, durationMs,
+      },
+    });
+    await this.prisma.aiConversation.update({
+      where: { id: p.conversation.id },
+      data: { taxpayerId: p.conversation.taxpayerId || p.body.taxpayerId || null },
+    }).catch(() => {});
+    this.logger.log(`[AgentTools] OK ${res.toolCalls.length} arac, ${durationMs}ms (${res.toolCalls.map((c) => c.name).join(',') || 'arac-yok'})`);
+    return {
+      conversationId: p.conversation.id,
+      assistantMessage: res.text,
+      toolUses: res.toolCalls.map((c) => ({ name: c.name, input: c.input })) as any,
+      usage: {
+        inputTokens: 0, outputTokens: 0, cacheReadTokens: 0, cacheWriteTokens: 0,
+        costUsd: res.costUsd || 0, durationMs, model: `${res.model}+agent`,
+      },
+    };
   }
 
   private async chatViaClaudeMax(params: {
