@@ -2094,7 +2094,7 @@ export class KdvControlService {
     );
     const defaultSummary: Record<ContentAuditRisk, string> = {
       UYGUN: 'Belge faaliyete uygun görünüyor.',
-      KONTROL_ET: 'Belge için muhasebeci kontrolü önerilir.',
+      KONTROL_ET: 'Belge için mali müşavirinizin kontrolü önerilir.',
       RISKLI: 'Belge faaliyet uygunluğu açısından dikkat istiyor.',
       ISLENMEMELI: 'Belge için açık uygunsuzluk sinyali var.',
     };
@@ -2271,7 +2271,7 @@ export class KdvControlService {
       return {
         risk: 'KONTROL_ET',
         summary: 'Mükellef profili sistemde yetersiz; güven skoru düşük belge manuel kontrol edilmeli.',
-        suggestion: 'Faaliyet/sektör kaydı tanımlı olmayan mükellef için belge işletme bağlantısı muhasebeci tarafından teyit edilmeli.',
+        suggestion: 'Faaliyet/sektör kaydı tanımlı olmayan mükellef için belge işletme bağlantısı mali müşavir tarafından teyit edilmeli.',
         findings: [
           {
             title: 'Profil yetersiz',
@@ -2301,7 +2301,7 @@ export class KdvControlService {
 
     return {
       risk: 'KONTROL_ET',
-      summary: 'Belge otomatik olarak net uygunsuz sayılmadı; faaliyet bağlantısı için muhasebeci kontrolü önerilir.',
+      summary: 'Belge otomatik olarak net uygunsuz sayılmadı; faaliyet bağlantısı için mali müşavirinizin kontrolü önerilir.',
       suggestion: 'Belgeyi reddetmeden önce açıklama, faaliyet bağlantısı ve gider dayanağını kontrol edin.',
       findings: [
         {
@@ -2410,14 +2410,14 @@ Kurallar:
 - KONTROL_ET yalnızca: satış mükellefin faaliyetiyle açıkça bağdaşmıyorsa, ya da iptal/dönem-dışı/şüpheli (olası sahte-naylon) satış sinyali varsa.
 - RISKLI/ISLENMEMELI yalnızca çok net sahtelik/usulsüzlük sinyalinde.
 - KDV oran/tutar matematiği yapma (ayrı KDV kontrol modülünde denetlenir). Z raporu seri/sıra ve numara atlama takibi de AYRI yapılır; onu burada tekrar etme.
-- "Kaydedilmemeli" gibi kesin talimat verme; gri alanda muhasebeci kontrolü öner.
+- "Kaydedilmemeli" gibi kesin talimat verme; gri alanda mali müşavirin kontrolü öner.
 - Cevap sadece JSON olsun.
 
 JSON şeması:
 {
   "risk": "UYGUN | KONTROL_ET | RISKLI | ISLENMEMELI",
   "summary": "tek cümle kısa yorum (satış belgesi dilinde)",
-  "suggestion": "muhasebecinin yapacağı işlem önerisi",
+  "suggestion": "mali müşavirin yapacağı işlem önerisi",
   "confidence": 0.0,
   "findings": [
     { "title": "kısa bulgu", "detail": "neden", "severity": "UYGUN | KONTROL_ET | RISKLI | ISLENMEMELI" }
@@ -2435,11 +2435,12 @@ Kurallar:
 - Sadece faaliyet farklı görünüyor diye yemek, market, temizlik, deterjan, yedek parça, aksesuar, bakım/onarım, akaryakıt, kargo, telefon, internet, ofis veya seyahat kalemlerini reddetme ya da KONTROL_ET yapma; açık özel/kişisel/lüks/konut sinyali yoksa normal işletme gideri kabul et.
 - RISKLI için belge metninde açık özel/kişisel/lüks tüketim sinyali ve faaliyete bağlanamama birlikte bulunmalı.
 - ISLENMEMELI sadece ceza, gecikme zammı, KKEG, alkol/tütün veya kanunen açık indirim yasağı gibi çok net durumda kullanılmalı.
-- "Belge muhasebeleştirilmemeli" gibi kesin talimat verme; muhasebeciye kontrol adımı öner.
+- "Belge muhasebeleştirilmemeli" gibi kesin talimat verme; mali müşavire kontrol adımı öner.
 - KDV tutarı ve oranı zaten ayrı KDV kontrol modülünde denetleniyor; içerik denetiminde brüt tutardan KDV oranı hesaplama, "%18 beklenir" gibi matematik yorumu yapma.
 - Akaryakıt belgesinde servis/taşımacılık/turizm faaliyetiyle birlikte plaka, UTTS, taşıt tanıma veya kurumsal yakıt kartı görülüyorsa normalde UYGUN seç; aynı taşıt bağlantısını her belgede tekrar KONTROL_ET yapma.
 - Telefon, internet, mobil hat, elektrik, su, kira, muhasebe, noter, yazılım, kırtasiye, ofis ve kargo gibi olağan işletme giderlerini sadece kullanım amacı metinde tek tek yazmıyor diye KONTROL_ET yapma; bireysel/konut/kişisel kullanım sinyali varsa KONTROL_ET seç.
 - Yemek/restoran/ikram ve araç bakım/yedek parça/aksesuar belgelerini işletmeler için olağan gider say; belge metninde şahsi tüketim, alkol, lüks eğlence veya konut/aile kullanımı yoksa UYGUN seç.
+- ÖKC yazar kasa fişlerinde "TEMEL GIDA" veya %1 KDV kategorisi (ekmek, su, temel gıda) işletme personelinin ihtiyacı için olağandır; açık kişisel/lüks/konut tüketim sinyali yoksa UYGUN seç.
 - Sadece verilen veriye dayan; olağan giderlerde emin değilsen UYGUN kal, ancak açık kişisel kullanım/konut/lüks/ceza/alkol veya gerçekten kritik eksik kanıt varsa KONTROL_ET seç.
 - Faaliyetle açıkça ilgisiz özel harcama, ceza, alkol/tütün, hediye/lüks tüketim gibi kalemleri yükselt.
 - Yemek, otel, akaryakıt, seyahat gibi kalemlerde mükellef faaliyetini ve belge açıklamasını birlikte düşün.
@@ -2449,7 +2450,7 @@ JSON şeması:
 {
   "risk": "UYGUN | KONTROL_ET | RISKLI | ISLENMEMELI",
   "summary": "tek cümle kısa yorum",
-  "suggestion": "muhasebecinin yapacağı işlem önerisi",
+  "suggestion": "mali müşavirin yapacağı işlem önerisi",
   "confidence": 0.0,
   "findings": [
     { "title": "kısa bulgu", "detail": "neden", "severity": "UYGUN | KONTROL_ET | RISKLI | ISLENMEMELI" }
@@ -2474,7 +2475,7 @@ ${JSON.stringify(payload, null, 2)}`;
     return {
       risk: this.normalizeContentAuditRisk(parsed.risk),
       summary: String(parsed.summary || 'İçerik denetimi yorum üretti').slice(0, 1000),
-      suggestion: String(parsed.suggestion || 'Muhasebeci kontrolü önerilir').slice(0, 1000),
+      suggestion: String(parsed.suggestion || 'Mali müşavirinizin kontrolü önerilir').slice(0, 1000),
       findings,
       confidence: Math.max(0, Math.min(1, Number(parsed.confidence || 0))),
     };
@@ -2566,7 +2567,7 @@ ${JSON.stringify(payload, null, 2)}`;
     const summary = risk === 'UYGUN'
       ? 'Belge içeriği mükellef faaliyetiyle belirgin şekilde çelişmiyor.'
       : risk === 'KONTROL_ET'
-        ? 'Belge içeriği için muhasebeci yorumu veya ek dayanak gerekiyor.'
+        ? 'Belge içeriği için mali müşavirinizin yorumu veya ek dayanak gerekiyor.'
         : risk === 'RISKLI'
           ? 'Belge içeriği faaliyet uygunluğu açısından riskli görünüyor.'
           : 'Belge içeriği KDV indirimi açısından işlenmemeli olabilir.';
@@ -3701,9 +3702,9 @@ ${JSON.stringify(payload, null, 2)}`;
       : status === 'FAILED'
         ? 'Hata'
         : riskMap[image.contentAuditRisk] || (status ? 'Kontrol et' : 'Denetlenmedi');
-    const rawSuggestion = image.contentAuditSuggestion || (status ? 'Muhasebeci kontrolü önerilir' : 'İçerik denetimi yapılmadı');
+    const rawSuggestion = image.contentAuditSuggestion || (status ? 'Mali müşavirinizin kontrolü önerilir' : 'İçerik denetimi yapılmadı');
     const rawSummary = image.contentAuditSummary || (status ? 'Yorum yok' : 'İçerik denetimi yapılmadı');
-    const suggestion = this.stripContentAuditKdvArithmeticNoise(rawSuggestion) || 'Muhasebeci kontrolü önerilir';
+    const suggestion = this.stripContentAuditKdvArithmeticNoise(rawSuggestion) || 'Mali müşavirinizin kontrolü önerilir';
     const summary = this.stripContentAuditKdvArithmeticNoise(rawSummary) || 'Yorum yok';
     const findings = (Array.isArray(image.contentAuditFindings) ? image.contentAuditFindings : [])
       .filter((f: any) => !this.isContentAuditKdvArithmeticNoise(`${f?.title || ''} ${f?.detail || ''}`));
