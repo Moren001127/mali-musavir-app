@@ -252,6 +252,20 @@ export async function runClaudeVisionOcr(
     kdvBreakdown[0].tutar = parseAmount(kdvTutari);
   }
 
+  // kdvBreakdown boş ama Claude kdvOrani + kdvTutari döndürdüyse → tek elemanlı breakdown üret.
+  // Matrah belgede yazıyorsa kullan, yoksa KDV / oran'dan hesapla.
+  if (!kdvBreakdown && parsed.kdvOrani && kdvTutari) {
+    const oran = Number(parsed.kdvOrani);
+    const kdvNum = parseAmount(kdvTutari);
+    if (oran > 0 && kdvNum > 0) {
+      const matrahRaw = parsed.matrah ? parseAmount(String(parsed.matrah)) : null;
+      const matrah = matrahRaw && matrahRaw > 0
+        ? matrahRaw
+        : Math.round((kdvNum / (oran / 100)) * 100) / 100;
+      kdvBreakdown = [{ oran, tutar: kdvNum, matrah }];
+    }
+  }
+
   const belgeTipi = parsed.belgeTipi
     ? String(parsed.belgeTipi).toUpperCase().trim()
     : null;
