@@ -287,6 +287,23 @@ export class KdvControlController {
     });
   }
 
+  /**
+   * Session'daki tüm eksik-breakdown görsellerini arka planda yeniden OCR'lar.
+   * ?onlyMissing=false gönderilirse tüm görseller yeniden taranır.
+   */
+  @Post('sessions/:id/bulk-reocr')
+  @Roles('ADMIN', 'STAFF')
+  @HttpCode(HttpStatus.ACCEPTED)
+  bulkReocrSession(
+    @Req() req: any,
+    @Param('id') id: string,
+    @Body() body?: { onlyMissing?: boolean },
+  ) {
+    return this.kdvService.bulkReocrSession(id, req.user.tenantId, {
+      onlyMissing: body?.onlyMissing !== false,
+    });
+  }
+
   /* ── OTOMATİK ÇEKİM (LUCA + MIHSAP) ──────────────── */
 
   /**

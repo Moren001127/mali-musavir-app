@@ -2774,6 +2774,75 @@ ${JSON.stringify(payload, null, 2)}`;
     };
   }
 
+  /**
+   * Bir session'daki tüm eksik-breakdown görsellerini arka planda yeniden OCR'lar.
+   * onlyMissing=true (default): sadece ocrKdvBreakdown boş olanlar.
+   * onlyMissing=false: tüm görseller yeniden taranır.
+   */
+  async bulkReocrSession(
+    sessionId: string,
+    tenantId: string,
+    opts: { onlyMissing?: boolean } = {},
+  ): Promise<{ queued: number; total: number; message: string }> {
+    const session = await this.findSession(sessionId, tenantId);
+    this.assertSessionUnlocked(session);
+
+    const onlyMissing = opts.onlyMissing !== false;
+
+    const images = await this.prisma.receiptImage.findMany({
+      where: {
+        sessionId,
+        ...(onlyMissing
+          ? {
+              OR: [
+                { ocrKdvBreakdown: null },
+                { ocrStatus: { in: ['FAILED', 'PENDING'] as any } },
+              ],
+            }
+          : {}),
+      },
+      select: { id: true, s3Key: true, ocrKdvBreakdown: true, ocrStatus: true },
+    } as any);
+
+    const toProcess = images.filter((img) => !!img.s3Key);
+    this.logger.log(
+      `[bulkReocrSession] session=${sessionId} toplam=${images.length} işlenecek=${toProcess.length} onlyMissing=${onlyMissing}`,
+    );
+
+    if (toProcess.length === 0) {
+      return { queued: 0, total: images.length, message: 'Yeniden taranacak görsel bulunamadı.' };
+    }
+
+    // Arka planda sıraya al — HTTP yanıtını bloklamıyoruz
+    (async () => {
+      for (const img of toProcess) {
+        try {
+          await this.prisma.receiptImage.update({
+            where: { id: img.id },
+            data: { ocrStatus: 'PROCESSING', isManuallyConfirmed: false },
+          });
+          if (img.s3Key!.startsWith('mihsap://')) {
+            const invoiceId = img.s3Key!.slice('mihsap://'.length);
+            await this.runOcrForMihsapInvoice(img.id, invoiceId, tenantId, { forceFresh: true });
+          } else {
+            await this.runOcrForImage(img.id, img.s3Key!, { forceFresh: true });
+          }
+        } catch (err: any) {
+          this.logger.warn(`[bulkReocrSession] imageId=${img.id} hata: ${err?.message}`);
+        }
+        // Her görselden sonra 500ms bekle — rate limit koruması
+        await new Promise((r) => setTimeout(r, 500));
+      }
+      this.logger.log(`[bulkReocrSession] session=${sessionId} tüm ${toProcess.length} görsel tamamlandı`);
+    })();
+
+    return {
+      queued: toProcess.length,
+      total: images.length,
+      message: `${toProcess.length} görsel OCR kuyruğuna alındı. Arka planda çalışıyor.`,
+    };
+  }
+
   /** Görseli sil (DB) — S3'ten silme şimdilik atlanıyor */
   async deleteImage(imageId: string, tenantId: string) {
     const image = await this.prisma.receiptImage.findFirst({
