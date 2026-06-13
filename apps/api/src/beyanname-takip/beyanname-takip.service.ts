@@ -169,6 +169,32 @@ export class BeyannameTakipService {
       if (!kayitMap.has(key)) kayitMap.set(key, k);
     }
 
+    // KDV2 OCR oto-tespiti: mihsap tevkifatlı alış faturaları olan mükellefler
+    const vergiYil = donemTuru === 'VERILME' ? (ay === 1 ? yil - 1 : yil) : yil;
+    const vergiAy  = donemTuru === 'VERILME' ? (ay === 1 ? 12 : ay - 1) : ay;
+    const vergiDonem = `${vergiYil}-${String(vergiAy).padStart(2, '0')}`;
+    const tevkifatliInvoices = await (this.prisma as any).mihsapInvoice.findMany({
+      where: {
+        tenantId,
+        donem: vergiDonem,
+        AND: [{ faturaTuru: { contains: 'TEVKIFAT' } }, { faturaTuru: { contains: 'ALIS' } }],
+      },
+      select: { mukellefId: true },
+      distinct: ['mukellefId'],
+    });
+    const kdv2OcrSet = new Set<string>(tevkifatliInvoices.map((i: any) => i.mukellefId));
+    const kdv191Sessions = await (this.prisma as any).kdvControlSession.findMany({
+      where: {
+        tenantId,
+        type: 'KDV_191',
+        periodLabel: { in: [vergiDonem, vergiDonem.replace('-', '/')] },
+      },
+      select: { taxpayerId: true },
+    });
+    for (const s of kdv191Sessions) {
+      if (s.taxpayerId) kdv2OcrSet.add(s.taxpayerId);
+    }
+
     // Her mükellef için hangi beyanları vermesi gerektiğini hesapla
     type Agg = { beyanTipi: BeyanTipi; toplam: number; onaylanan: number; bekleyen: number; hatali: number; muaf: number; kalan: number };
     const agg = Object.fromEntries(ALL_BEYAN_TIPLERI.map((tip) => [tip, blank(tip)])) as Record<BeyanTipi, Agg>;
@@ -176,7 +202,7 @@ export class BeyannameTakipService {
     for (const tp of taxpayers) {
       if (tp.isActive === false) continue;
       const cfg = effectiveBeyanConfig(tp);
-      const beklenen = beklenenBeyanlar(cfg, yil, ay, donemTuru);
+      const beklenen = beklenenBeyanlar(cfg, yil, ay, donemTuru, kdv2OcrSet, tp.id);
 
       for (const tip of beklenen) {
         // Mükellef bu beyannamenin kapsadığı VERGİ DÖNEMİNDE aktif miydi?
@@ -258,12 +284,38 @@ export class BeyannameTakipService {
       if (!kayitMap.has(key)) kayitMap.set(key, k);
     }
 
+    // KDV2 OCR oto-tespiti (aynı mantık listDonemOzet ile)
+    const vYil2 = donemTuru === 'VERILME' ? (ay === 1 ? yil - 1 : yil) : yil;
+    const vAy2  = donemTuru === 'VERILME' ? (ay === 1 ? 12 : ay - 1) : ay;
+    const vDonem2 = `${vYil2}-${String(vAy2).padStart(2, '0')}`;
+    const tevkInv2 = await (this.prisma as any).mihsapInvoice.findMany({
+      where: {
+        tenantId,
+        donem: vDonem2,
+        AND: [{ faturaTuru: { contains: 'TEVKIFAT' } }, { faturaTuru: { contains: 'ALIS' } }],
+      },
+      select: { mukellefId: true },
+      distinct: ['mukellefId'],
+    });
+    const kdv2OcrSet2 = new Set<string>(tevkInv2.map((i: any) => i.mukellefId));
+    const ses2 = await (this.prisma as any).kdvControlSession.findMany({
+      where: {
+        tenantId,
+        type: 'KDV_191',
+        periodLabel: { in: [vDonem2, vDonem2.replace('-', '/')] },
+      },
+      select: { taxpayerId: true },
+    });
+    for (const s of ses2) {
+      if (s.taxpayerId) kdv2OcrSet2.add(s.taxpayerId);
+    }
+
     return taxpayers
       .filter((tp: any) => tp.isActive !== false)
       .map((tp: any) => {
         const cfg = effectiveBeyanConfig(tp);
         // Sadece mükellefin VERGİ DÖNEMİNDE aktif olduğu beyannameler kalsın
-        const beklenen = beklenenBeyanlar(cfg, yil, ay, donemTuru)
+        const beklenen = beklenenBeyanlar(cfg, yil, ay, donemTuru, kdv2OcrSet2, tp.id)
           .filter((tip) => aktifMiBeyanDoneminde(tp, tip, yil, ay, donem, donemTuru));
         const beyanlar = beklenen.map((tip) => {
           const resolved = resolveBeyanState(durumMap, kayitMap, tp.id, tip, yil, ay, donem, donemTuru);
@@ -572,15 +624,15 @@ function lookupKeysForExpected(tip: BeyanTipi, yil: number, ay: number, donem: s
  * Gelir: sadece Mart (3. ay)
  * E-Defter aylık: her ay; 3 aylık: 3/6/9/12
  */
-function beklenenBeyanlar(cfg: any, yil: number, ay: number, donemTuru: DonemTuru): BeyanTipi[] {
+function beklenenBeyanlar(cfg: any, yil: number, ay: number, donemTuru: DonemTuru, kdv2OcrSet?: Set<string>, taxpayerId?: string): BeyanTipi[] {
   const tipler: BeyanTipi[] = [];
 
   // KDV1
   if (cfg.kdv1Period === 'AYLIK') tipler.push('KDV1');
   else if (periodDue(cfg.kdv1Period, ay, donemTuru)) tipler.push('KDV1');
 
-  // KDV2 (her ay, tevkifat aylık zorunlu)
-  if (cfg.kdv2Enabled) tipler.push('KDV2');
+  // KDV2: OCR tespit (mihsap tevkifatlı alış) veya fallback olarak eski config
+  if ((kdv2OcrSet && taxpayerId && kdv2OcrSet.has(taxpayerId)) || cfg.kdv2Enabled) tipler.push('KDV2');
   if (periodDue(cfg.kdv4Period, ay, donemTuru)) tipler.push('KDV4');
   if (periodDue(cfg.kdv9015Period, ay, donemTuru)) tipler.push('KDV9015');
 

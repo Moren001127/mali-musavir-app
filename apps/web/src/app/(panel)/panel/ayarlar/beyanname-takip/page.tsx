@@ -72,7 +72,7 @@ export default function BeyannameTakipAyarlariPage() {
 
   const totalConfigured = rows.filter((r) => {
     const cfg = r.config;
-    return cfg.kdv1Period || cfg.muhtasarPeriod || cfg.eDefterPeriod || cfg.kdv2Enabled
+    return cfg.kdv1Period || cfg.muhtasarPeriod || cfg.eDefterPeriod
       || cfg.damgaEnabled || cfg.posetEnabled || cfg.sgkBildirgeEnabled || cfg.incomeTaxType;
   }).length;
 
@@ -215,11 +215,6 @@ export default function BeyannameTakipAyarlariPage() {
                   <div>
                     <Label>Ek Yükümlülükler</Label>
                     <div className="flex flex-wrap gap-2">
-                      <Toggle
-                        checked={cfg.kdv2Enabled}
-                        onChange={(v) => setCfg(row.taxpayerId, { kdv2Enabled: v })}
-                        label="KDV2 Tevkifat"
-                      />
                       <Toggle
                         checked={cfg.damgaEnabled}
                         onChange={(v) => setCfg(row.taxpayerId, { damgaEnabled: v })}

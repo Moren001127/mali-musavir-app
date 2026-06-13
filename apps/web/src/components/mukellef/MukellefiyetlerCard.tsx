@@ -86,7 +86,6 @@ type BeyannameDef = {
 
 const KDV_GRUBU: BeyannameDef[] = [
   { key: 'kdv1Period',    kod: 'KDV1',    ad: 'KDV1',                          desc: 'Katma Değer Vergisi (genel)',           tip: 'period' },
-  { key: 'kdv2Enabled',   kod: 'KDV2',    ad: 'KDV2 — Tevkifat',               desc: 'Sorumlu sıfatıyla — aylık zorunlu',     tip: 'toggle' },
 ];
 
 const GECICI_GRUBU: BeyannameDef[] = [
