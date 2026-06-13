@@ -1005,6 +1005,26 @@ export class KdvBeyannameService {
         rows = this.completeControlRows(this.kdvRowsFromRecord(res.kdvRecord), res.kdvRecord, faturaTuru === 'ALIS');
       }
 
+      // FALLBACK: OCR görsel var, toplam KDV tutarı okunmuş ama breakdown yok.
+      // Luca kaydından oran tespit edilebiliyorsa ikisini birleştir.
+      // (Oran bulunamazsa uyarı bırakılır, tahmin yapılmaz.)
+      if (rows.length === 0 && res.image && res.kdvRecord) {
+        const imageKdv = this.parseTrAmount(res.image?.confirmedKdvTutari ?? res.image?.ocrKdvTutari);
+        if (imageKdv > 0) {
+          const recordOran =
+            this.parseTrAmount(res.kdvRecord?.kdvOrani) ||
+            this.oranFromHesapAdi(res.kdvRecord) ||
+            this.oranFromHesapKodu(res.kdvRecord);
+          if (recordOran > 0) {
+            rows = this.completeControlRows(
+              [{ oran: recordOran, matrah: Math.round((imageKdv / (recordOran / 100)) * 100) / 100, kdv: imageKdv }],
+              res.image,
+              faturaTuru === 'ALIS',
+            );
+          }
+        }
+      }
+
       if (imageId && seenImageIds.has(imageId) && rows.length === 0) continue;
       addRows(rows, docKey, belgeNo, finalStatuses.has(status), status);
     }
@@ -1371,7 +1391,9 @@ export class KdvBeyannameService {
     const kdv = this.parseTrAmount(record?.kdvTutari);
     // Luca defter-i kebir kayıtlarında kdvOrani BOŞ olur; oran HESAP ADI'nda durur
     // ("İNDİRİLECEK KDV %10" → 10, "HESAPLANAN KDV %1" → 1). Oranı oradan çıkar.
+    // Hesap ADI regex tutmazsa hesap KODU'ndan (191.02.xxx → %10) dene.
     if (!oran) oran = this.oranFromHesapAdi(record);
+    if (!oran) oran = this.oranFromHesapKodu(record);
     if (oran > 0 && (matrah > 0 || kdv > 0)) {
       return [{
         oran,
@@ -1407,6 +1429,37 @@ export class KdvBeyannameService {
       const o = Number(m[1]);
       if (!Number.isFinite(o) || o <= 0) continue;
       return GECERLI_KDV_ORANLARI.includes(o) ? o : this.nearestKdvRate(o);
+    }
+    return 0;
+  }
+
+  /**
+   * Luca hesap KODU'ndan KDV oranını çıkar.
+   * Türk muhasebe hesap planı standardına göre:
+   *   191.01.xxx / 391.01.xxx → %1
+   *   191.02.xxx / 391.02.xxx → %10
+   *   191.03.xxx / 391.03.xxx → %20
+   * hesapAdi regex tutmadığında (kod sayısal gelirse) bu fallback devreye girer.
+   */
+  private oranFromHesapKodu(record: any): number {
+    const raw = record?.rawData || {};
+    const kodAdaylar = [
+      raw['HESAP KODU'],
+      raw['HESAP KODU '],
+      raw['Hesap Kodu'],
+      raw.hesapKodu,
+      raw.HESAPKODU,
+      record?.hesapKodu,
+    ];
+    for (const aday of kodAdaylar) {
+      if (!aday) continue;
+      const kod = String(aday).trim();
+      const m = kod.match(/^(?:191|391)\.0*(\d+)/);
+      if (!m) continue;
+      const alt = Number(m[1]);
+      if (alt === 1) return 1;
+      if (alt === 2) return 10;
+      if (alt === 3) return 20;
     }
     return 0;
   }
