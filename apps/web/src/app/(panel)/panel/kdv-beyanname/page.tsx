@@ -2016,7 +2016,13 @@ function LucaCrossDetayli({
 function LucaCrossCard({ hesap, mihsap, luca, fark }: { hesap: string; mihsap: number | null; luca: number | null; fark: number | null }) {
   // Terazi kartı (Konsept B): Mihsap ↔ Luca yan yana, ortada eşitlik/fark rozeti.
   const bekliyor = luca == null;
-  const farkliMi = fark !== null && Math.abs(fark) > 0.01;
+  // Veri Güveni ile AYNI tolerans: fark 1 TL'yi VE tutarın %0,5'ini aşarsa "fark"tır.
+  // KDV yuvarlama / OCR-Luca kuruş sapmaları kırmızı "Fark var" yapıp üstteki %100
+  // "Kesin" rozetiyle çelişmesin (tutarlılık).
+  const farkliMi =
+    fark !== null &&
+    Math.abs(fark) > 1 &&
+    Math.abs(fark) > Math.max(Math.abs(mihsap ?? 0), Math.abs(luca ?? 0)) * 0.005;
   const accent = bekliyor ? '#5eead4' : farkliMi ? '#ef6b6b' : '#5fcf8e';
   const accentRgb = bekliyor ? '94,234,212' : farkliMi ? '239,107,107' : '95,207,142';
   const [acctRaw, ...rest] = hesap.split('·');
