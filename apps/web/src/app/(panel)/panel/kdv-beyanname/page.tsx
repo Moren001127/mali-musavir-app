@@ -768,31 +768,31 @@ function GenelBakisPano({ donem, onSelect }: { donem: string; onSelect: (id: str
                   background: r.odenecekKdv > 0 ? 'rgba(239,107,107,0.04)' : undefined,
                 }}
               >
-                <td className="px-4 py-3">
+                <td className="px-4 py-2">
                   <button onClick={() => onSelect(r.mukellefId)} className="inline-flex items-center gap-1.5 text-left">
                     <span className="text-[13px] font-bold" style={{ color: '#fafaf9' }}>{r.ad}</span>
                     <ChevronRight size={12} style={{ color: TEAL_BR, opacity: 0.6 }} />
                   </button>
                   <div className="text-[11px] mt-0.5" style={{ color: 'rgba(250,250,249,0.35)' }}>{r.faturaAdet} fatura</div>
                 </td>
-                <td className="px-3 py-3" style={{ borderLeft: '1px solid rgba(255,255,255,0.06)' }}>
+                <td className="px-3 py-2" style={{ borderLeft: '1px solid rgba(255,255,255,0.06)' }}>
                   <DurumBadge durum={r.durum} />
                 </td>
-                <td className="px-3 py-3 text-right" style={{ borderLeft: '2px solid rgba(255,255,255,0.1)' }}>
+                <td className="px-3 py-2 text-right" style={{ borderLeft: '2px solid rgba(255,255,255,0.1)' }}>
                   <span className="tabular-nums text-[13px] font-semibold" style={{ color: '#fffaf0' }}>{TRY}{fmt(r.hesaplananKdv)}</span>
                 </td>
-                <td className="px-3 py-3 text-right" style={{ borderLeft: '1px solid rgba(255,255,255,0.06)' }}>
+                <td className="px-3 py-2 text-right" style={{ borderLeft: '1px solid rgba(255,255,255,0.06)' }}>
                   <span className="tabular-nums text-[13px] font-semibold" style={{ color: '#fffaf0' }}>{TRY}{fmt(r.indirilecekKdv)}</span>
                 </td>
-                <td className="px-3 py-3 text-right" style={{ borderLeft: '1px solid rgba(255,255,255,0.06)' }}>
-                  <span className="tabular-nums text-[12px]" style={{ color: 'rgba(255,250,240,0.55)' }}>{TRY}{fmt(r.devredenKdv)}</span>
+                <td className="px-3 py-2 text-right" style={{ borderLeft: '1px solid rgba(255,255,255,0.06)' }}>
+                  <span className="tabular-nums text-[13px] font-semibold" style={{ color: '#fffaf0' }}>{TRY}{fmt(r.devredenKdv)}</span>
                 </td>
-                <td className="px-3 py-3 text-right" style={{ borderLeft: '1px solid rgba(255,255,255,0.06)' }}>
-                  <span className="tabular-nums text-[12px]" style={{ color: 'rgba(255,250,240,0.55)' }}>{TRY}{fmt(r.sonrakiAyaDevreden)}</span>
+                <td className="px-3 py-2 text-right" style={{ borderLeft: '1px solid rgba(255,255,255,0.06)' }}>
+                  <span className="tabular-nums text-[13px] font-semibold" style={{ color: '#fffaf0' }}>{TRY}{fmt(r.sonrakiAyaDevreden)}</span>
                 </td>
-                <td className="px-3 py-3 text-right" style={{ borderLeft: '2px solid rgba(255,255,255,0.1)' }}>
+                <td className="px-3 py-2 text-right" style={{ borderLeft: '2px solid rgba(255,255,255,0.1)' }}>
                   {r.odenecekKdv > 0 ? (
-                    <span className="tabular-nums text-[14px] font-extrabold" style={{ color: STAT_RED }}>
+                    <span className="tabular-nums text-[13px] font-extrabold" style={{ color: STAT_RED }}>
                       {TRY}{fmt(r.odenecekKdv)}
                     </span>
                   ) : r.sonrakiAyaDevreden > 0 ? (
@@ -803,17 +803,17 @@ function GenelBakisPano({ donem, onSelect }: { donem: string; onSelect: (id: str
                     <span style={{ color: 'rgba(250,250,249,0.25)' }}>—</span>
                   )}
                 </td>
-                <td className="px-3 py-3 text-center" style={{ borderLeft: '1px solid rgba(255,255,255,0.06)' }}>
+                <td className="px-3 py-2 text-center" style={{ borderLeft: '1px solid rgba(255,255,255,0.06)' }}>
                   <GuvenDot seviye={r.veriGuveniSeviye} puan={r.veriGuveniPuan} />
                 </td>
-                <td className="px-3 py-3 text-center" style={{ borderLeft: '2px solid rgba(255,255,255,0.08)' }}>
+                <td className="px-3 py-2 text-center" style={{ borderLeft: '2px solid rgba(255,255,255,0.08)' }}>
                   {r.kdv1Var ? (
                     <VerToggle verildi={r.kdv1Verildi} onClick={() => durumMut.mutate({ mukellefId: r.mukellefId, tip: 'KDV1', verildi: !r.kdv1Verildi })} />
                   ) : (
                     <span style={{ color: 'rgba(250,250,249,0.2)' }}>—</span>
                   )}
                 </td>
-                <td className="px-3 py-3 text-center" style={{ borderLeft: '1px solid rgba(255,255,255,0.06)' }}>
+                <td className="px-3 py-2 text-center" style={{ borderLeft: '1px solid rgba(255,255,255,0.06)' }}>
                   {r.kdv2Var ? (
                     <div className="inline-flex flex-col items-center gap-1">
                       <span className="text-[11px] tabular-nums font-semibold" style={{ color: TEAL_BR }}>{TRY}{fmt(r.kdv2TevkifatTutari)}</span>
