@@ -2480,6 +2480,49 @@ ${JSON.stringify(payload, null, 2)}`;
           mukellef: mukellefAdi,
           meta: { sessionId, period: session.periodLabel, type: session.type },
         });
+        // Auto-lock: lockSession() ile aynı şekilde kdvKontrolEdildi + otomasyon eventi
+        if (session.taxpayerId && session.periodLabel) {
+          const [yearStr, monthStr] = session.periodLabel.split('/');
+          const autoYear = parseInt(yearStr);
+          const autoMonth = parseInt(monthStr);
+          if (autoYear && autoMonth) {
+            await this.prisma.taxpayerMonthlyStatus.upsert({
+              where: { taxpayerId_year_month: { taxpayerId: session.taxpayerId, year: autoYear, month: autoMonth } },
+              create: { taxpayerId: session.taxpayerId, tenantId, year: autoYear, month: autoMonth, kdvKontrolEdildi: true },
+              update: { kdvKontrolEdildi: true },
+            });
+            if (this.automationEventBus) {
+              try {
+                const taxpayer = await this.prisma.taxpayer.findUnique({
+                  where: { id: session.taxpayerId },
+                  select: { id: true, type: true, firstName: true, lastName: true, companyName: true, taxNumber: true },
+                });
+                const t = taxpayer as any;
+                const unvan = t?.type === 'TUZEL_KISI'
+                  ? t.companyName || ''
+                  : `${t?.firstName ?? ''} ${t?.lastName ?? ''}`.trim();
+                const islemYear = autoMonth === 12 ? autoYear + 1 : autoYear;
+                const islemMonth = autoMonth === 12 ? 1 : autoMonth + 1;
+                this.automationEventBus.emit('Taxpayer.KdvKontrolKilitlendi', {
+                  tenantId,
+                  taxpayerId: session.taxpayerId,
+                  taxpayerUnvan: unvan || '(isim yok)',
+                  taxpayerVkn: t?.taxNumber ?? '',
+                  year: autoYear,
+                  month: autoMonth,
+                  beyannamePeriodLabel: `${autoYear}-${String(autoMonth).padStart(2, '0')}`,
+                  islemYear,
+                  islemMonth,
+                  islemPeriodLabel: `${islemYear}-${String(islemMonth).padStart(2, '0')}`,
+                  sessionId: session.id,
+                  periodLabel: session.periodLabel,
+                });
+              } catch (err: any) {
+                this.logger.warn(`KDV auto-kilitleme event yayını başarısız: ${err.message}`);
+              }
+            }
+          }
+        }
       } else {
         await this.prisma.kdvControlSession.update({
           where: { id: sessionId },
