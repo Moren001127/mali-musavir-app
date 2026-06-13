@@ -216,6 +216,24 @@ export class MihsapService implements OnModuleInit {
       if (seen.has(key)) continue;
       seen.add(key);
 
+      // Son 2 saatte bu (mukellef, dönem) için zaten token-retry yapıldıysa tekrar deneme.
+      // Sabri Yaş gibi Mihsap'ta faturası olmayanlar sonsuz döngüye girmesin.
+      const twoHoursAgo = new Date(Date.now() - 2 * 60 * 60 * 1000);
+      const recentRetry = await (this.prisma as any).mihsapFetchJob.findFirst({
+        where: {
+          tenantId,
+          mukellefId: job.mukellefId,
+          donem: job.donem,
+          createdBy: 'token-retry',
+          createdAt: { gte: twoHoursAgo },
+        },
+        select: { id: true },
+      });
+      if (recentRetry) {
+        this.logger.log(`Mihsap retry atlandı (son 2 saatte zaten denendi): mukellef=${job.mukellefId} donem=${job.donem}`);
+        continue;
+      }
+
       const alreadyFetched = await (this.prisma as any).mihsapInvoice.count({
         where: { tenantId, mukellefId: job.mukellefId, donem: job.donem },
       });
