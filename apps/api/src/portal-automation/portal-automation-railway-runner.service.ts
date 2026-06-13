@@ -709,6 +709,14 @@ export class PortalAutomationRailwayRunnerService implements OnModuleInit {
         };
       }
 
+      // GERCEK e-Tebligat: liste API'den (tiklama yok); generic UI akisina dusme.
+      if (jobType === 'E_TEBLIGAT_CHECK') {
+        const etb = await this.collectETebligatViaApi(page, context, bundle.job, loginUrl);
+        await this.jobProgress(tenantId, bundle.job, 'etebligat_done', `e-Tebligat sorgusu tamamlandi: ${etb.recordCount} kayit.`);
+        await context.close().catch(() => {});
+        return etb;
+      }
+
       const notes: string[] = [`${jobType} girisi basarili`];
       const targetUrl = this.targetUrlForJob(jobType);
       if (targetUrl) {
@@ -991,6 +999,139 @@ export class PortalAutomationRailwayRunnerService implements OnModuleInit {
     try { context.off('response', onResponse); } catch { /* yut */ }
     try { context.off('request', onRequest); } catch { /* yut */ }
     return { navigated, actionTrace, downloadInfo, steps, apiCalls: apiCalls.slice(0, 50), apiRequests: apiRequests.slice(0, 60) };
+  }
+
+  // GERCEK e-Tebligat akisi: giris sonrasi /portal/e-tebligat'a git, SPA'nin cagirdigi
+  // JSON API yanitlarini (tebligat-listele + tebligat-sayilari) YAKALA, kayit uret.
+  // Liste tamamen API'den gelir (tiklama yok). Indirme adresini ogrenmek icin ilk
+  // satirda bir kez "Belge Goruntule"ye basip download URL'sini yakalar (sonra hep API).
+  private async collectETebligatViaApi(page: any, context: any, job: any, loginUrl: string) {
+    let listele: any = null;
+    let sayilari: any = null;
+    const apiCalls: any[] = [];
+    const apiRequests: any[] = [];
+    const onResponse = async (resp: any) => {
+      try {
+        const url = String(resp.url() || '');
+        if (!/apigateway\/etebligat|tebligat-listele|tebligat-sayilari|get-belge-tur|gercek-tuzel-aktivasyon/i.test(url)) return;
+        const ct = String((resp.headers() || {})['content-type'] || '');
+        const body = /json|text/i.test(ct) ? await resp.text().catch(() => '') : '';
+        let parsed: any = null;
+        try { parsed = body ? JSON.parse(body) : null; } catch { /* yut */ }
+        if (/tebligat-listele/i.test(url) && parsed?.data) listele = parsed;
+        else if (/tebligat-sayilari/i.test(url)) sayilari = parsed;
+        apiCalls.push({ method: resp.request().method(), url: this.safeUrl(url), status: resp.status(), ct: ct.slice(0, 60), body: body.slice(0, 400) });
+      } catch { /* yut */ }
+    };
+    const onRequest = (req: any) => {
+      try {
+        const url = String(req.url() || '');
+        if (!/apigateway\/etebligat|goruntule|indir|belge|dosya|download|pdf/i.test(url)) return;
+        let postData = '';
+        try { postData = (req.postData() || '').slice(0, 1500); } catch { /* yut */ }
+        apiRequests.push({ method: req.method(), url: this.safeUrl(url), postData });
+      } catch { /* yut */ }
+    };
+    context.on('response', onResponse);
+    context.on('request', onRequest);
+
+    const base = String(loginUrl).replace(/\/login.*$/i, '');
+    const etebligatUrl = `${base}/e-tebligat`;
+    await page.goto(etebligatUrl, { waitUntil: 'domcontentloaded', timeout: 60_000 }).catch(() => null);
+    for (let i = 0; i < 24 && !listele; i++) await page.waitForTimeout(500);
+    await page.waitForTimeout(1500);
+
+    // Tek seferlik indirme adresi kesfi (okunmus tebligatta; yeni "okundu" damgasi olusmaz).
+    let downloadInfo: any = null;
+    try {
+      for (const lbl of ['İŞLEM YAP', 'ISLEM YAP', 'İşlem Yap', 'Islem Yap']) {
+        const loc = page.getByText(lbl, { exact: false }).first();
+        if (await loc.isVisible().catch(() => false)) { await loc.click({ timeout: 3000 }).catch(() => null); await page.waitForTimeout(1100); break; }
+      }
+      for (const sub of ['Zarf İçeriği Gör', 'Zarf Icerigi Gor', 'Zarf İçeriği', 'Zarf Icerigi']) {
+        const s = page.getByText(sub, { exact: false }).first();
+        if (await s.isVisible().catch(() => false)) { await s.click({ timeout: 3000 }).catch(() => null); await page.waitForTimeout(2500); break; }
+      }
+      for (const bg of ['BELGE GÖRÜNTÜLE', 'Belge Görüntüle', 'BELGE GORUNTULE', 'Belge Goruntule']) {
+        const b = page.getByText(bg, { exact: false }).first();
+        if (await b.isVisible().catch(() => false)) {
+          const [dl] = await Promise.all([
+            page.waitForEvent('download', { timeout: 8000 }).catch(() => null),
+            b.click({ timeout: 3000 }).catch(() => null),
+          ]);
+          if (dl) {
+            const dlUrl = await Promise.resolve(dl.url?.()).catch(() => '');
+            const dlName = await Promise.resolve(dl.suggestedFilename?.()).catch(() => '');
+            downloadInfo = { url: this.safeUrl(String(dlUrl || '')), filename: String(dlName || '') };
+          }
+          break;
+        }
+      }
+    } catch { /* yut */ }
+
+    try { context.off('response', onResponse); } catch { /* yut */ }
+    try { context.off('request', onRequest); } catch { /* yut */ }
+
+    const list: any[] = Array.isArray(listele?.data?.tebligatDtoList) ? listele.data.tebligatDtoList : [];
+    const taxpayerId = job?.taxpayerId || null;
+    const donem = job?.donem || null;
+    const documents = list.map((t: any) => ({
+      taxpayerId,
+      belgeTuru: 'E_TEBLIGAT',
+      title: String(t?.belgeTuruAciklama || t?.belgeTuru || 'e-Tebligat'),
+      referenceNo: t?.belgeNo ? String(t.belgeNo) : null,
+      period: donem,
+      issuedAt: this.etebligatDateToIso(t?.gonderimZamani),
+      receivedAt: this.etebligatDateToIso(t?.tebligZamani),
+      mimeType: 'application/pdf',
+      originalName: t?.belgeNo ? `${t.belgeNo}.pdf` : null,
+      raw: {
+        kurumKodu: t?.kurumKodu ?? null,
+        kurumAciklama: t?.kurumAciklama ?? null,
+        altKurum: t?.altKurum ?? null,
+        belgeTuruKodu: t?.belgeTuru ?? null,
+        belgeTuruAciklama: t?.belgeTuruAciklama ?? null,
+        belgeNo: t?.belgeNo ?? null,
+        kayitZamani: t?.kayitZamani ?? null,
+        gonderimZamani: t?.gonderimZamani ?? null,
+        tebligZamani: t?.tebligZamani ?? null,
+        mukellefOkumaZamani: t?.mukellefOkumaZamani ?? null,
+        tebligId: t?.tebligId ?? null,
+        tebligSecureId: t?.tebligSecureId ?? null,
+        tarafId: t?.tarafId ?? null,
+        tarafSecureId: t?.tarafSecureId ?? null,
+        dizin: t?.dizin ?? null,
+      },
+    }));
+
+    return {
+      documents,
+      recordCount: documents.length,
+      result: {
+        runner: 'railway',
+        phase: 'etebligat_api',
+        jobType: 'E_TEBLIGAT_CHECK',
+        url: this.safeUrl(page.url()),
+        count: documents.length,
+        sayilari: sayilari || null,
+        downloadInfo,
+        apiRequests: apiRequests.slice(0, 30),
+        apiCalls: apiCalls.slice(0, 16),
+        notes: [
+          `e-Tebligat API listesi: ${documents.length} kayit`,
+          listele ? 'tebligat-listele yakalandi' : 'tebligat-listele YAKALANAMADI',
+        ],
+      },
+    };
+  }
+
+  // "20/05/2026 09:25:51" -> ISO (+03:00); zaten ISO ise oldugu gibi birakir.
+  private etebligatDateToIso(v: any): string | null {
+    if (v === null || v === undefined || v === '') return null;
+    const s = String(v).trim();
+    const m = s.match(/^(\d{2})\/(\d{2})\/(\d{4})\s+(\d{2}):(\d{2})(?::(\d{2}))?/);
+    if (m) return `${m[3]}-${m[2]}-${m[1]}T${m[4]}:${m[5]}:${m[6] || '00'}+03:00`;
+    return s;
   }
 
   private async clickAndCollectPortalDocuments(

@@ -1409,6 +1409,14 @@ export class PortalAutomationService {
       const tp = await (this.prisma as any).taxpayer.findFirst({ where: { id: taxpayerId, tenantId }, select: { id: true } });
       if (!tp) throw new NotFoundException('Belge mukellefi bulunamadi');
     }
+    // E-Tebligat mukerrer engelle: ayni belgeNo daha once kaydedildiyse atla (gece tekrar calisinca cogaltmasin).
+    if (String(input.belgeTuru) === 'E_TEBLIGAT' && input.referenceNo && taxpayerId) {
+      const existing = await (this.prisma as any).portalDocument.findFirst({
+        where: { tenantId, taxpayerId, belgeTuru: 'E_TEBLIGAT', referenceNo: String(input.referenceNo) },
+        select: { id: true },
+      });
+      if (existing) return existing;
+    }
     const mimeType = input.mimeType || 'application/pdf';
     const sourceProvider = JOB_META[jobType as PortalJobType]?.provider || 'GIB_IVD';
     let storageKey: string | null = null;
