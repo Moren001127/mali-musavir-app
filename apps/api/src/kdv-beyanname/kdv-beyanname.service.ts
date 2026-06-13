@@ -2732,6 +2732,7 @@ export class KdvBeyannameService {
       let nakliKdv = 0;
       let rowSum = 0; // fallback: TOPLAM satırı yoksa tarihli satırların toplamı
       let adet = 0;
+      const probeUndated: string[] = []; // [IGGPROBE] geçici teşhis
       for (let i = target.idx + 1; i < sectionEnd; i++) {
         const row = matrix[i] || [];
         if (!row.length) continue;
@@ -2741,12 +2742,22 @@ export class KdvBeyannameService {
         if (!tarih) {
           if (firstCells.includes('nakli yekun')) nakliKdv = kdv;
           else if (firstCells.includes('toplam')) toplamKdv = kdv; // rapor grand total
+          if (Math.abs(kdv) > 0 || /nakli|toplam|yekun|devir/.test(firstCells)) {
+            probeUndated.push(`{${firstCells}|kdv=${kdv}}`); // [IGGPROBE]
+          }
           continue;
         }
         if (tarih < start || tarih > end) continue;
         rowSum += kdv;
         adet++;
       }
+      // [IGGPROBE] geçici teşhis — kök neden bulununca KALDIR
+      // eslint-disable-next-line no-console
+      console.log(
+        `[IGGPROBE] ${kind} donem=${donem} kdvCol="${kdvIdx >= 0 ? target.cells[kdvIdx] : 'YOK'}"(idx${kdvIdx}) ` +
+        `tarihIdx=${tarihIdx} toplamKdv=${toplamKdv} nakliKdv=${nakliKdv} rowSum=${Math.round(rowSum * 100) / 100} ` +
+        `adet=${adet} undated=[${probeUndated.join(', ')}]`,
+      );
       const toplam =
         toplamKdv != null
           ? Math.round((toplamKdv - nakliKdv) * 100) / 100 // TOPLAM − Nakli Yekün
