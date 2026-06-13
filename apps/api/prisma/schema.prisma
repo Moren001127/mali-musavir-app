@@ -964,6 +964,7 @@ model PortalDocument {
   storageKey     String?
   documentId     String?
   raw            Json?
+  viewedAt       DateTime? // ilk kez "Görüntüle" ile açıldığı an (buton kırmızı→yeşil kalıcı)
   createdAt      DateTime  @default(now())
   updatedAt      DateTime  @updatedAt
 
@@ -3290,7 +3291,7 @@ model AutomationRun {
   // [{ stepId: "step_1", tool: "...", input: {...}, output: {...}, error: null, ms: 1240 }, ...]
   stepLogs     Json     @default("[]")
 
-  // Kullanıcının liste sayfasında göreceği kısa özet (örn. "12 müvekkile mesaj atıldı, 0 hata")
+  // Kullanıcının liste sayfasında göreceği kısa özet (örn. "12 mükellefe mesaj atıldı, 0 hata")
   summary      String?  @db.Text
   errorMessage String?  @db.Text
 

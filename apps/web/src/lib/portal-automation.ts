@@ -100,6 +100,7 @@ export interface PortalDocument {
   receivedAt: string | null;
   storageKey: string | null;
   documentId: string | null;
+  viewedAt: string | null;
   createdAt: string;
   taxpayer?: {
     id: string;
@@ -183,7 +184,7 @@ export const portalAutomationApi = {
   documents: (params?: { limit?: number; taxpayerId?: string; belgeTuru?: string }) =>
     api.get<PortalDocument[]>('/portal-automation/documents', { params }).then((r) => r.data),
   documentViewUrl: (id: string) =>
-    api.get<{ url: string }>(`/portal-automation/documents/${id}/view`).then((r) => r.data),
+    api.get<{ url: string; viewedAt?: string | null }>(`/portal-automation/documents/${id}/view`).then((r) => r.data),
   manualRun: (data: {
     scope?: 'all' | 'beyanname' | 'tebligat' | 'sgk';
     jobTypes?: PortalJobType[];

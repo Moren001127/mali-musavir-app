@@ -5,7 +5,7 @@ import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import { toast } from 'sonner';
 import {
   Inbox, RefreshCw, Loader2, Search, Users, Clock, ShieldCheck,
-  Building2, FileText, CalendarClock, Download, ChevronDown, Activity, Eye,
+  Building2, FileText, CalendarClock, Download, ChevronDown, Activity, Eye, X,
 } from 'lucide-react';
 import { portalAutomationApi, type PortalDocument } from '@/lib/portal-automation';
 
@@ -46,6 +46,10 @@ export default function ETebligatModule() {
   const qc = useQueryClient();
   const [taxpayerId, setTaxpayerId] = useState<string>('');
   const [search, setSearch] = useState('');
+  // Aynı sayfada büyüyerek açılan PDF önizleme modalı
+  const [pdfModal, setPdfModal] = useState<{ url: string; title: string } | null>(null);
+  // Bu oturumda görüntülenenler (buton anında yeşile dönsün; kalıcısı backend viewedAt)
+  const [viewedIds, setViewedIds] = useState<Set<string>>(() => new Set());
 
   const docsQuery = useQuery({
     queryKey: ['etebligat-docs'],
@@ -117,10 +121,14 @@ export default function ETebligatModule() {
     onError: (e: any) => toast.error(e?.response?.data?.message || 'Sorgu başlatılamadı'),
   });
 
-  const openPdf = async (id: string) => {
+  const openPdf = async (d: PortalDocument) => {
     try {
-      const { url } = await portalAutomationApi.documentViewUrl(id);
-      window.open(url, '_blank', 'noopener');
+      const { url } = await portalAutomationApi.documentViewUrl(d.id);
+      const baslik = [taxpayerName(d.taxpayer), d.title, d.referenceNo].filter(Boolean).join(' · ');
+      setPdfModal({ url, title: baslik || 'e-Tebligat' });
+      // anında yeşile dön + kalıcı işaret backend'de damgalandı
+      setViewedIds((prev) => { const n = new Set(prev); n.add(d.id); return n; });
+      qc.invalidateQueries({ queryKey: ['etebligat-docs'] });
     } catch (e: any) {
       toast.error(e?.response?.data?.message || 'Belge açılamadı');
     }
@@ -237,15 +245,22 @@ export default function ETebligatModule() {
                     <td className="px-3 py-2.5 align-top text-center whitespace-nowrap tabular-nums" style={{ borderBottom: cellBorder, color: 'rgba(250,250,249,0.7)' }}>{fmtTrDate(r.tebligZamani)}</td>
                     <td className="px-3 py-2.5 align-top text-center whitespace-nowrap tabular-nums" style={{ borderBottom: cellBorder, color: 'rgba(250,250,249,0.7)' }}>{fmtTrDate(r.mukellefOkumaZamani)}</td>
                     <td className="px-3 py-2.5 align-top text-center" style={{ borderBottom: cellBorder }}>
-                      {d.storageKey ? (
-                        <button
-                          onClick={() => openPdf(d.id)}
-                          className="inline-flex items-center gap-1 px-2.5 py-1 rounded-md text-[11px] font-semibold hover:brightness-110 transition"
-                          style={{ background: 'rgba(95,207,142,0.1)', border: '1px solid rgba(95,207,142,0.3)', color: '#5fcf8e' }}
-                        >
-                          <Eye size={12} /> Görüntüle
-                        </button>
-                      ) : (
+                      {d.storageKey ? (() => {
+                        const goruldu = !!d.viewedAt || viewedIds.has(d.id);
+                        const renk = goruldu
+                          ? { bg: 'rgba(95,207,142,0.1)', bd: 'rgba(95,207,142,0.32)', fg: '#5fcf8e' }   // yeşil (görüntülendi)
+                          : { bg: 'rgba(239,107,107,0.12)', bd: 'rgba(239,107,107,0.45)', fg: '#ef6b6b' }; // kırmızı (yeni)
+                        return (
+                          <button
+                            onClick={() => openPdf(d)}
+                            title={goruldu ? 'Görüntülendi' : 'Yeni — henüz görüntülenmedi'}
+                            className="inline-flex items-center gap-1 px-2.5 py-1 rounded-md text-[11px] font-semibold hover:brightness-110 transition"
+                            style={{ background: renk.bg, border: `1px solid ${renk.bd}`, color: renk.fg }}
+                          >
+                            <Eye size={12} /> Görüntüle
+                          </button>
+                        );
+                      })() : (
                         <span className="text-[10.5px]" style={{ color: 'rgba(250,250,249,0.35)' }}>bekliyor</span>
                       )}
                     </td>
@@ -262,6 +277,54 @@ export default function ETebligatModule() {
           </div>
         )}
       </div>
+
+      {/* ── PDF önizleme modalı (aynı sayfada büyüyerek açılır) ── */}
+      {pdfModal && (
+        <div
+          onClick={() => setPdfModal(null)}
+          className="fixed inset-0 z-[120] flex items-center justify-center p-3 md:p-8"
+          style={{ background: 'rgba(0,0,0,0.8)', backdropFilter: 'blur(4px)' }}
+        >
+          <div
+            onClick={(e) => e.stopPropagation()}
+            className="relative w-full max-w-5xl h-[90vh] rounded-2xl overflow-hidden border shadow-2xl"
+            style={{ background: '#1a1410', borderColor: 'rgba(212,184,118,0.25)', animation: 'etbZoom .22s ease-out' }}
+          >
+            <div className="flex items-center justify-between px-4 py-2.5 border-b" style={{ borderColor: 'rgba(255,255,255,0.08)', background: 'rgba(255,255,255,0.03)' }}>
+              <div className="flex items-center gap-2 min-w-0">
+                <FileText size={15} style={{ color: GOLD, flexShrink: 0 }} />
+                <span className="text-[13px] font-semibold truncate" style={{ color: '#fafaf9' }}>{pdfModal.title}</span>
+              </div>
+              <div className="flex items-center gap-1.5 flex-shrink-0">
+                <a
+                  href={pdfModal.url}
+                  target="_blank"
+                  rel="noopener noreferrer"
+                  className="h-8 px-2.5 rounded-lg text-[12px] font-semibold flex items-center gap-1.5 border hover:brightness-110"
+                  style={{ borderColor: 'rgba(255,255,255,0.12)', color: 'rgba(250,250,249,0.85)' }}
+                >
+                  <Download size={13} /> İndir
+                </a>
+                <button
+                  onClick={() => setPdfModal(null)}
+                  className="h-8 w-8 grid place-items-center rounded-lg border hover:brightness-110"
+                  style={{ borderColor: 'rgba(255,255,255,0.12)', color: '#fafaf9' }}
+                  aria-label="Kapat"
+                >
+                  <X size={16} />
+                </button>
+              </div>
+            </div>
+            <iframe
+              src={pdfModal.url}
+              title={pdfModal.title}
+              className="w-full"
+              style={{ height: 'calc(90vh - 45px)', border: 'none', background: '#fff' }}
+            />
+          </div>
+          <style>{`@keyframes etbZoom { from { transform: scale(.9); opacity: 0 } to { transform: scale(1); opacity: 1 } }`}</style>
+        </div>
+      )}
     </div>
   );
 }

@@ -533,13 +533,19 @@ export class PortalAutomationService {
   async getDocumentViewUrl(tenantId: string, docId: string) {
     const doc = await (this.prisma as any).portalDocument.findFirst({
       where: { id: docId, tenantId },
-      select: { id: true, storageKey: true, mimeType: true, title: true, referenceNo: true },
+      select: { id: true, storageKey: true, mimeType: true, title: true, referenceNo: true, viewedAt: true },
     });
     if (!doc) throw new NotFoundException('Belge bulunamadi');
     if (!doc.storageKey) throw new BadRequestException('Bu tebligatin PDF dosyasi henuz indirilmedi (bir sonraki sorguda gelir).');
+    // İlk görüntülemede damgala → buton kalıcı yeşile döner.
+    let viewedAt = doc.viewedAt;
+    if (!viewedAt) {
+      viewedAt = new Date();
+      await (this.prisma as any).portalDocument.update({ where: { id: doc.id }, data: { viewedAt } }).catch(() => {});
+    }
     const filename = `${doc.referenceNo || doc.title || 'tebligat'}.pdf`;
     const url = await this.storage.getPresignedInlineUrl(doc.storageKey, filename, doc.mimeType || 'application/pdf');
-    return { url };
+    return { url, viewedAt };
   }
 
   async manualRun(tenantId: string, userId: string | null, input: ManualRunInput) {
