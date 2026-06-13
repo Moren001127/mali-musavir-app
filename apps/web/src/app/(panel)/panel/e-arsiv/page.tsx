@@ -651,19 +651,41 @@ export default function EarsivPage() {
 
   return (
     <div className="space-y-5 max-w-7xl">
-      <div className="pb-5" style={{ borderBottom: '1px solid rgba(255,255,255,0.05)' }}>
-        <div className="flex items-center gap-2.5 mb-2">
+      {/* HEADER — Fiş Yazdırma imzası: kart + üst renk şeridi + radial parıltı + degrade ikon kutusu */}
+      <div
+        className="relative overflow-hidden rounded-2xl border p-5"
+        style={{
+          borderColor: 'rgba(255,255,255,0.06)',
+          background:
+            'radial-gradient(120% 140% at 0% 0%, rgba(212,184,118,0.16), transparent 46%), radial-gradient(120% 140% at 100% 0%, rgba(139,118,73,0.12), transparent 48%), #0f0d0b',
+        }}
+      >
+        <div
+          className="absolute inset-x-0 top-0 h-1"
+          style={{ background: 'linear-gradient(90deg, #8b7649, #b8a06f, #d4b876, #e7cf95, #d4b876, #b8a06f)' }}
+        />
+        <div className="flex items-center gap-2.5 mb-3">
           <span className="w-[26px] h-px" style={{ background: GOLD }} />
           <span className="text-[10px] uppercase font-bold tracking-[.18em]" style={{ color: '#b8a06f' }}>
             <Sparkles size={10} className="inline mr-1" /> Otomasyon
           </span>
         </div>
-        <h1 style={{ fontFamily: 'Fraunces, serif', fontSize: 34, fontWeight: 600, color: '#fafaf9', letterSpacing: '-.03em' }}>
-          E-Fatura / E-Arşiv Fatura Sorgulama
-        </h1>
-        <p className="text-[13px] mt-1.5" style={{ color: 'rgba(250,250,249,0.42)' }}>
-          Luca'dan gelen/giden e-arşiv ve e-fatura kayıtlarını çek, listele, aç ve yazdır. Birden fazla tip aynı anda sorgulanabilir.
-        </p>
+        <div className="flex items-center gap-3.5 min-w-0">
+          <span
+            className="grid place-items-center rounded-xl flex-shrink-0"
+            style={{ width: 46, height: 46, background: 'linear-gradient(135deg, #d4b876, #b8a06f)', boxShadow: '0 8px 22px rgba(212,184,118,0.32)' }}
+          >
+            <Search size={24} style={{ color: '#1a1410' }} />
+          </span>
+          <div className="min-w-0">
+            <h1 style={{ fontFamily: 'Fraunces, serif', fontSize: 30, fontWeight: 600, color: '#fafaf9', letterSpacing: '-.03em', lineHeight: 1.05 }}>
+              E-Fatura / E-Arşiv Fatura Sorgulama
+            </h1>
+            <p className="text-[13px] mt-1.5" style={{ color: 'rgba(250,250,249,0.45)' }}>
+              Luca'dan gelen/giden e-arşiv ve e-fatura kayıtlarını çek, listele, aç ve yazdır. Birden fazla tip aynı anda sorgulanabilir.
+            </p>
+          </div>
+        </div>
       </div>
 
       {/* 4-Tip Sorgulama Seçici — ÇOKLU SEÇİM (toggle) — her tip kendi renginde */}

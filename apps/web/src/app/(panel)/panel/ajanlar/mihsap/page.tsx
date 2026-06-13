@@ -8,7 +8,7 @@ import Link from 'next/link';
 import {
   Play, Pause, Calendar, Users, Search, CheckCircle2, AlertCircle, Loader2, Clock,
   Receipt, ArrowRight, Zap, ChevronDown, X, AlertTriangle, Edit3, ThumbsUp, ThumbsDown,
-  PlayCircle, Download,
+  PlayCircle, Download, Bot,
 } from 'lucide-react';
 import { toast } from 'sonner';
 import { LogCard, LogEvent } from '../_components/LogCard';
@@ -325,17 +325,41 @@ export default function MihsapAgentPage() {
 
   return (
     <div className="space-y-3.5 max-w-7xl">
-      {/* HEADER + KPI tek satırda */}
-      <div className="flex items-end justify-between gap-4 pb-3" style={{ borderBottom: '1px solid rgba(255,255,255,0.05)' }}>
-        <div className="flex-1 min-w-0">
-          <h1 style={{ fontFamily: 'Fraunces, serif', fontSize: 30, fontWeight: 600, color: '#fafaf9', letterSpacing: '-.03em', lineHeight: 1.1 }}>
-            Mihsap Fatura İşleyici
-          </h1>
-          <p className="text-[12px] mt-1" style={{ color: 'rgba(250,250,249,0.42)' }}>
-            Bekleyen alış/satış faturalarını OCR ile okur, kodlarla karşılaştırır, karar verir
-          </p>
+      {/* HEADER — Fiş Yazdırma imzası: kart + üst renk şeridi + degrade ikon kutusu (KPI sağda korunur) */}
+      <div
+        className="relative overflow-hidden rounded-2xl border p-5"
+        style={{
+          borderColor: 'rgba(255,255,255,0.06)',
+          background:
+            'radial-gradient(120% 140% at 0% 0%, rgba(212,184,118,0.16), transparent 46%), radial-gradient(120% 140% at 100% 0%, rgba(139,118,73,0.12), transparent 48%), #0f0d0b',
+        }}
+      >
+        <div
+          className="absolute inset-x-0 top-0 h-1"
+          style={{ background: 'linear-gradient(90deg, #8b7649, #b8a06f, #d4b876, #e7cf95, #d4b876, #b8a06f)' }}
+        />
+        <div className="flex items-center gap-2.5 mb-3">
+          <span className="w-[26px] h-px" style={{ background: '#d4b876' }} />
+          <span className="text-[10px] uppercase font-bold tracking-[.18em]" style={{ color: '#b8a06f' }}>Otomasyon</span>
         </div>
-        <div className="flex flex-col items-end gap-2">
+        <div className="flex items-center justify-between gap-4">
+          <div className="flex items-center gap-3.5 min-w-0">
+            <span
+              className="grid place-items-center rounded-xl flex-shrink-0"
+              style={{ width: 46, height: 46, background: 'linear-gradient(135deg, #d4b876, #b8a06f)', boxShadow: '0 8px 22px rgba(212,184,118,0.32)' }}
+            >
+              <Bot size={24} style={{ color: '#1a1410' }} />
+            </span>
+            <div className="min-w-0">
+              <h1 style={{ fontFamily: 'Fraunces, serif', fontSize: 30, fontWeight: 600, color: '#fafaf9', letterSpacing: '-.03em', lineHeight: 1.05 }}>
+                Mihsap Fatura İşleme
+              </h1>
+              <p className="text-[13px] mt-1.5" style={{ color: 'rgba(250,250,249,0.45)' }}>
+                Bekleyen alış/satış faturalarını OCR ile okur, kodlarla karşılaştırır, karar verir
+              </p>
+            </div>
+          </div>
+          <div className="flex flex-col items-end gap-2 flex-shrink-0">
           {calisiyor ? (
             <span
               className="inline-flex items-center gap-2 px-3 py-1.5 rounded-[10px] text-[11.5px] font-bold"
@@ -357,6 +381,7 @@ export default function MihsapAgentPage() {
             <KpiMini label="Hata" value={kpi.hata} color="#ef4444" icon="✗" />
           </div>
         </div>
+      </div>
       </div>
 
       {/* KOMUT BARI */}
