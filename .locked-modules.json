@@ -32,7 +32,7 @@
       "lockedBy": "muzaffer"
     },
     "apps/api/src/kdv-control/kdv-control.service.ts": {
-      "sha256": "02e64fac454e5944117ae47c8d1fc14dead9ee254a530b986e95b78dbfe667e7",
+      "sha256": "68f35f6891037ce47a179360e3265b5f051be3d15df31437ff171aad6c95a6f4",
       "reason": "KDV Kontrol service — Luca queueing + reconciliation",
       "lockedBy": "muzaffer"
     },
