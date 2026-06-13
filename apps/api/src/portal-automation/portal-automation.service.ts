@@ -530,6 +530,18 @@ export class PortalAutomationService {
     });
   }
 
+  async getDocumentViewUrl(tenantId: string, docId: string) {
+    const doc = await (this.prisma as any).portalDocument.findFirst({
+      where: { id: docId, tenantId },
+      select: { id: true, storageKey: true, mimeType: true, title: true, referenceNo: true },
+    });
+    if (!doc) throw new NotFoundException('Belge bulunamadi');
+    if (!doc.storageKey) throw new BadRequestException('Bu tebligatin PDF dosyasi henuz indirilmedi (bir sonraki sorguda gelir).');
+    const filename = `${doc.referenceNo || doc.title || 'tebligat'}.pdf`;
+    const url = await this.storage.getPresignedInlineUrl(doc.storageKey, filename, doc.mimeType || 'application/pdf');
+    return { url };
+  }
+
   async manualRun(tenantId: string, userId: string | null, input: ManualRunInput) {
     const jobTypes = this.resolveRequestedJobTypes(input);
     const period = this.resolvePeriod(input);
@@ -1414,20 +1426,6 @@ export class PortalAutomationService {
       const tp = await (this.prisma as any).taxpayer.findFirst({ where: { id: taxpayerId, tenantId }, select: { id: true } });
       if (!tp) throw new NotFoundException('Belge mukellefi bulunamadi');
     }
-    // E-Tebligat mukerrer engelle: ayni belge no daha once kaydedildiyse atla (gece tekrar calisinca cogaltmasin).
-    // Belge no mukellef bazinda benzersiz; eski kayitta mukellef eksikse geri doldur.
-    if (String(input.belgeTuru) === 'E_TEBLIGAT' && input.referenceNo) {
-      const existing = await (this.prisma as any).portalDocument.findFirst({
-        where: { tenantId, belgeTuru: 'E_TEBLIGAT', referenceNo: String(input.referenceNo) },
-        select: { id: true, taxpayerId: true },
-      });
-      if (existing) {
-        if (!existing.taxpayerId && taxpayerId) {
-          await (this.prisma as any).portalDocument.update({ where: { id: existing.id }, data: { taxpayerId } }).catch(() => {});
-        }
-        return existing;
-      }
-    }
     const mimeType = input.mimeType || 'application/pdf';
     const sourceProvider = JOB_META[jobType as PortalJobType]?.provider || 'GIB_IVD';
     let storageKey: string | null = null;
@@ -1486,6 +1484,29 @@ export class PortalAutomationService {
         data: { currentVersionId: version.id },
       });
       documentId = doc.id;
+    }
+
+    // E-Tebligat mukerrer engelle (belge no mukellef bazinda benzersiz). Varsa: eksik
+    // mukellefi / PDF'i geri doldur, kopya olusturma.
+    if (String(input.belgeTuru) === 'E_TEBLIGAT' && input.referenceNo) {
+      const existing = await (this.prisma as any).portalDocument.findFirst({
+        where: { tenantId, belgeTuru: 'E_TEBLIGAT', referenceNo: String(input.referenceNo) },
+        select: { id: true, taxpayerId: true, storageKey: true },
+      });
+      if (existing) {
+        const patch: any = {};
+        if (!existing.taxpayerId && taxpayerId) patch.taxpayerId = taxpayerId;
+        if (!existing.storageKey && storageKey) {
+          patch.storageKey = storageKey;
+          patch.sizeBytes = sizeBytes;
+          patch.mimeType = mimeType;
+          if (documentId) patch.documentId = documentId;
+        }
+        if (Object.keys(patch).length) {
+          return (this.prisma as any).portalDocument.update({ where: { id: existing.id }, data: patch });
+        }
+        return existing;
+      }
     }
 
     return (this.prisma as any).portalDocument.create({

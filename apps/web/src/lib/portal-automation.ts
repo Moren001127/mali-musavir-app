@@ -182,6 +182,8 @@ export const portalAutomationApi = {
     api.post<PortalJob>(`/portal-automation/jobs/${id}/cancel`, { reason }).then((r) => r.data),
   documents: (params?: { limit?: number; taxpayerId?: string; belgeTuru?: string }) =>
     api.get<PortalDocument[]>('/portal-automation/documents', { params }).then((r) => r.data),
+  documentViewUrl: (id: string) =>
+    api.get<{ url: string }>(`/portal-automation/documents/${id}/view`).then((r) => r.data),
   manualRun: (data: {
     scope?: 'all' | 'beyanname' | 'tebligat' | 'sgk';
     jobTypes?: PortalJobType[];

@@ -1044,50 +1044,30 @@ export class PortalAutomationRailwayRunnerService implements OnModuleInit {
     for (let i = 0; i < 24 && !listele; i++) await page.waitForTimeout(500);
     await page.waitForTimeout(1500);
 
-    // Tek seferlik indirme adresi kesfi (okunmus tebligatta; yeni "okundu" damgasi olusmaz).
-    let downloadInfo: any = null;
-    try {
-      for (const lbl of ['İŞLEM YAP', 'ISLEM YAP', 'İşlem Yap', 'Islem Yap']) {
-        const loc = page.getByText(lbl, { exact: false }).first();
-        if (await loc.isVisible().catch(() => false)) { await loc.click({ timeout: 3000 }).catch(() => null); await page.waitForTimeout(1100); break; }
-      }
-      for (const sub of ['Zarf İçeriği Gör', 'Zarf Icerigi Gor', 'Zarf İçeriği', 'Zarf Icerigi']) {
-        const s = page.getByText(sub, { exact: false }).first();
-        if (await s.isVisible().catch(() => false)) { await s.click({ timeout: 3000 }).catch(() => null); await page.waitForTimeout(2500); break; }
-      }
-      for (const bg of ['BELGE GÖRÜNTÜLE', 'Belge Görüntüle', 'BELGE GORUNTULE', 'Belge Goruntule']) {
-        const b = page.getByText(bg, { exact: false }).first();
-        if (await b.isVisible().catch(() => false)) {
-          const [dl] = await Promise.all([
-            page.waitForEvent('download', { timeout: 8000 }).catch(() => null),
-            b.click({ timeout: 3000 }).catch(() => null),
-          ]);
-          if (dl) {
-            const dlUrl = await Promise.resolve(dl.url?.()).catch(() => '');
-            const dlName = await Promise.resolve(dl.suggestedFilename?.()).catch(() => '');
-            downloadInfo = { url: this.safeUrl(String(dlUrl || '')), filename: String(dlName || '') };
-          }
-          break;
-        }
-      }
-    } catch { /* yut */ }
-
     try { context.off('response', onResponse); } catch { /* yut */ }
     try { context.off('request', onRequest); } catch { /* yut */ }
 
     const list: any[] = Array.isArray(listele?.data?.tebligatDtoList) ? listele.data.tebligatDtoList : [];
     const taxpayerId = job?.taxpayerId || null;
     const donem = job?.donem || null;
-    const documents = list.map((t: any) => ({
+
+    // PDF'leri SPA'nin "Belge Goruntule" indirmesiyle (headless) cek. Liste saf API; dosya
+    // ise GIB'in oturum-bagli guvenli indirme akisindan gelir (uuid client-side, listede yok).
+    const pdfMap = await this.downloadETebligatPdfs(page, list, loginUrl).catch(() => ({} as Record<string, string>));
+
+    const documents = list.map((t: any) => {
+      const belgeNo = t?.belgeNo ? String(t.belgeNo) : null;
+      return {
       taxpayerId,
       belgeTuru: 'E_TEBLIGAT',
       title: String(t?.belgeTuruAciklama || t?.belgeTuru || 'e-Tebligat'),
-      referenceNo: t?.belgeNo ? String(t.belgeNo) : null,
+      referenceNo: belgeNo,
       period: donem,
       issuedAt: this.etebligatDateToIso(t?.gonderimZamani),
       receivedAt: this.etebligatDateToIso(t?.tebligZamani),
       mimeType: 'application/pdf',
-      originalName: t?.belgeNo ? `${t.belgeNo}.pdf` : null,
+      originalName: belgeNo ? `${belgeNo}.pdf` : null,
+      base64: (belgeNo && pdfMap[belgeNo]) || null,
       raw: {
         kurumKodu: t?.kurumKodu ?? null,
         kurumAciklama: t?.kurumAciklama ?? null,
@@ -1105,7 +1085,10 @@ export class PortalAutomationRailwayRunnerService implements OnModuleInit {
         tarafSecureId: t?.tarafSecureId ?? null,
         dizin: t?.dizin ?? null,
       },
-    }));
+      };
+    });
+
+    const pdfSayisi = documents.filter((d: any) => d.base64).length;
 
     return {
       documents,
@@ -1116,16 +1099,63 @@ export class PortalAutomationRailwayRunnerService implements OnModuleInit {
         jobType: 'E_TEBLIGAT_CHECK',
         url: this.safeUrl(page.url()),
         count: documents.length,
+        pdfCount: pdfSayisi,
         sayilari: sayilari || null,
-        downloadInfo,
-        apiRequests: apiRequests.slice(0, 30),
-        apiCalls: apiCalls.slice(0, 16),
+        apiRequests: apiRequests.slice(0, 20),
         notes: [
-          `e-Tebligat API listesi: ${documents.length} kayit`,
+          `e-Tebligat API listesi: ${documents.length} kayit, ${pdfSayisi} PDF indirildi`,
           listele ? 'tebligat-listele yakalandi' : 'tebligat-listele YAKALANAMADI',
         ],
       },
     };
+  }
+
+  // Her tebligatin PDF'ini SPA'nin "Belge Goruntule" akisiyla indirir (headless download).
+  // Liste sirasi tebligat-listele ile ayni; i. satirin "Islem Yap" -> "Zarf Icerigi Gor" ->
+  // "Belge Goruntule" tiklanir, Playwright download yakalanir, bytes -> base64.
+  private async downloadETebligatPdfs(page: any, list: any[], loginUrl: string, max = 12): Promise<Record<string, string>> {
+    const out: Record<string, string> = {};
+    const base = String(loginUrl).replace(/\/login.*$/i, '');
+    const etebligatUrl = `${base}/e-tebligat`;
+    const n = Math.min(list.length, max);
+    for (let i = 0; i < n; i++) {
+      const belgeNo = list[i]?.belgeNo ? String(list[i].belgeNo) : '';
+      if (!belgeNo) continue;
+      try {
+        await page.goto(etebligatUrl, { waitUntil: 'domcontentloaded', timeout: 45_000 }).catch(() => null);
+        await page.waitForTimeout(2600);
+        const islem = page.getByText(/İŞLEM YAP|ISLEM YAP|İşlem Yap|Islem Yap/i);
+        const cnt = await islem.count().catch(() => 0);
+        if (!cnt || i >= cnt) continue;
+        await islem.nth(i).click({ timeout: 4000 }).catch(() => null);
+        await page.waitForTimeout(1100);
+        for (const sub of ['Zarf İçeriği Gör', 'Zarf Icerigi Gor', 'Zarf İçeriği', 'Zarf Icerigi']) {
+          const s = page.getByText(sub, { exact: false }).first();
+          if (await s.isVisible().catch(() => false)) { await s.click({ timeout: 3000 }).catch(() => null); break; }
+        }
+        await page.waitForTimeout(2600);
+        let dl: any = null;
+        for (const bg of ['BELGE GÖRÜNTÜLE', 'Belge Görüntüle', 'BELGE GORUNTULE', 'Belge Goruntule']) {
+          const b = page.getByText(bg, { exact: false }).first();
+          if (await b.isVisible().catch(() => false)) {
+            const [d] = await Promise.all([
+              page.waitForEvent('download', { timeout: 12_000 }).catch(() => null),
+              b.click({ timeout: 3000 }).catch(() => null),
+            ]);
+            dl = d;
+            break;
+          }
+        }
+        if (dl) {
+          const p = await dl.path().catch(() => null);
+          if (p) {
+            const buf = await readFile(p).catch(() => null);
+            if (buf && buf.length > 200) out[belgeNo] = buf.toString('base64');
+          }
+        }
+      } catch { /* yut */ }
+    }
+    return out;
   }
 
   // "20/05/2026 09:25:51" -> ISO (+03:00); zaten ISO ise oldugu gibi birakir.

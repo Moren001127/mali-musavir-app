@@ -5,7 +5,7 @@ import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import { toast } from 'sonner';
 import {
   Inbox, RefreshCw, Loader2, Search, Users, Clock, ShieldCheck,
-  Building2, FileText, CalendarClock, Download, ChevronDown, Activity,
+  Building2, FileText, CalendarClock, Download, ChevronDown, Activity, Eye,
 } from 'lucide-react';
 import { portalAutomationApi, type PortalDocument } from '@/lib/portal-automation';
 
@@ -116,6 +116,15 @@ export default function ETebligatModule() {
     },
     onError: (e: any) => toast.error(e?.response?.data?.message || 'Sorgu başlatılamadı'),
   });
+
+  const openPdf = async (id: string) => {
+    try {
+      const { url } = await portalAutomationApi.documentViewUrl(id);
+      window.open(url, '_blank', 'noopener');
+    } catch (e: any) {
+      toast.error(e?.response?.data?.message || 'Belge açılamadı');
+    }
+  };
 
   const cellBorder = '1px solid rgba(255,255,255,0.06)';
   const aktifIs = summary?.stats?.activeJobs ?? 0;
@@ -229,9 +238,15 @@ export default function ETebligatModule() {
                     <td className="px-3 py-2.5 align-top text-center whitespace-nowrap tabular-nums" style={{ borderBottom: cellBorder, color: 'rgba(250,250,249,0.7)' }}>{fmtTrDate(r.mukellefOkumaZamani)}</td>
                     <td className="px-3 py-2.5 align-top text-center" style={{ borderBottom: cellBorder }}>
                       {d.storageKey ? (
-                        <span className="inline-flex items-center gap-1 text-[11px] font-semibold" style={{ color: '#5fcf8e' }}><FileText size={12} /> PDF</span>
+                        <button
+                          onClick={() => openPdf(d.id)}
+                          className="inline-flex items-center gap-1 px-2.5 py-1 rounded-md text-[11px] font-semibold hover:brightness-110 transition"
+                          style={{ background: 'rgba(95,207,142,0.1)', border: '1px solid rgba(95,207,142,0.3)', color: '#5fcf8e' }}
+                        >
+                          <Eye size={12} /> Görüntüle
+                        </button>
                       ) : (
-                        <span className="text-[10.5px]" style={{ color: 'rgba(250,250,249,0.35)' }}>metadata</span>
+                        <span className="text-[10.5px]" style={{ color: 'rgba(250,250,249,0.35)' }}>bekliyor</span>
                       )}
                     </td>
                   </tr>

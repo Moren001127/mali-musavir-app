@@ -120,6 +120,11 @@ export class PortalAutomationController {
       belgeTuru,
     });
   }
+
+  @Get('documents/:id/view')
+  documentView(@Req() req: any, @Param('id') id: string) {
+    return this.service.getDocumentViewUrl(req.user.tenantId, id);
+  }
 }
 
 @Controller('agent/portal-automation')
