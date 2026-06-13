@@ -2,7 +2,7 @@
   "_meta": {
     "description": "Kilitli modul SHA256 hash baseline. Backend SystemHealth her 5 dk hash kontrol eder.",
     "how_to_unlock": "Eger kasitli degisiklik yaptiysan: yeni hash hesapla ve buraya yaz. Aksi halde MODULE_HASH alarmi calar.",
-    "baseline_date": "2026-06-11",
+    "baseline_date": "2026-06-13",
     "baseline_version": "v1.36.16"
   },
   "modules": {
@@ -32,7 +32,7 @@
       "lockedBy": "muzaffer"
     },
     "apps/api/src/kdv-control/kdv-control.service.ts": {
-      "sha256": "161a7a0aea6f32b157c5e2f4eac84631b80680009bbf7edf620b74fdbf14d8e9",
+      "sha256": "95ed67d8d225d2b6084b9784ce4ad5298f5f07d6a18807fda9932d6aa1d45d6c",
       "reason": "KDV Kontrol service — Luca queueing + reconciliation",
       "lockedBy": "muzaffer"
     },
