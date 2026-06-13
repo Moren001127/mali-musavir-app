@@ -304,6 +304,59 @@ export class OcrService {
     // .xml uzantılı ama içerik binary (gerçekte image) → image OCR'a düş
 
     // ═══════════════════════════════════════════════════════
+    // 0b. HTML E-ARŞİV — HTML dosyaları Azure OCR'a verilmez; text ayıklanır.
+    // ═══════════════════════════════════════════════════════
+    const isHtml =
+      /\.html?$/i.test(originalName || '') ||
+      imageBuffer.slice(0, 512).toString('utf8').trimStart().toLowerCase().startsWith('<!doctype html') ||
+      imageBuffer.slice(0, 512).toString('utf8').trimStart().toLowerCase().startsWith('<html');
+    if (isHtml) {
+      const htmlText = imageBuffer.toString('utf8');
+      // HTML etiketlerini sil; birden fazla boşluk/satır sıkıştır
+      const plainText = htmlText
+        .replace(/<script[\s\S]*?<\/script>/gi, ' ')
+        .replace(/<style[\s\S]*?<\/style>/gi, ' ')
+        .replace(/<[^>]+>/g, ' ')
+        .replace(/&amp;/g, '&').replace(/&lt;/g, '<').replace(/&gt;/g, '>').replace(/&nbsp;/g, ' ').replace(/&#\d+;/g, ' ')
+        .replace(/[ \t]+/g, ' ')
+        .replace(/\n{3,}/g, '\n\n')
+        .trim();
+      this.logger.log(`HTML e-arşiv text ayıklama: ${originalName} · ${plainText.length} char`);
+      // Text'ten alan çıkar (Azure runner'ın text parser'ları gibi)
+      const date = this.extractPreferredInvoiceDate(plainText) ?? this.extractDate(plainText);
+      const bodyBelgeNo = this.extractBelgeNo(plainText);
+      const belgeNo = belgeNoFromFilename ?? bodyBelgeNo;
+      const kdvTotal = this.extractKdvTotal(plainText);
+      const invoiceTotalsKdv = kdvTotal ? null : this.extractKdvFromInvoiceTotalsAzure(plainText);
+      const kdv = kdvTotal ?? (invoiceTotalsKdv ? this.formatAmount(invoiceTotalsKdv.kdv) : null);
+      const satici = this.extractSaticiFromAzure(plainText);
+      const saticiVkn = this.extractSaticiVknFromAzure(plainText);
+      const foundFields = [belgeNo, date, kdv].filter(Boolean).length;
+      const confidence = belgeNoFromFilename ? 0.3 + (foundFields / 3) * 0.7 : foundFields / 3;
+      const htmlResult: OcrResult = {
+        rawText: plainText.slice(0, 3000),
+        belgeNo,
+        date,
+        kdvTutari: kdv,
+        kdvTevkifat: null,
+        totalTutari: null,
+        satici,
+        saticiVkn,
+        belgeTipi: 'EARSIV',
+        confidence,
+        fieldConfidence: {
+          belgeNo: belgeNo ? (belgeNoFromFilename && belgeNo === belgeNoFromFilename ? 0.95 : 0.72) : null,
+          date: date ? 0.72 : null,
+          kdvTutari: kdv ? 0.72 : null,
+        },
+        engine: 'html-text',
+      };
+      this.postProcessOcrResult(htmlResult, belgeNoFromFilename, originalName);
+      this.logger.log(`HTML OCR: ${originalName} · belgeNo=${belgeNo} date=${date} kdv=${kdv} conf=%${Math.round(confidence * 100)}`);
+      return htmlResult;
+    }
+
+    // ═══════════════════════════════════════════════════════
     // 1. AZURE-FIRST OCR — ucuz ham OCR + deterministik parser'lar.
     //    Claude sadece Azure sonucu eksik/çelişkili/düşük güvenliyse devreye girer.
     // ═══════════════════════════════════════════════════════

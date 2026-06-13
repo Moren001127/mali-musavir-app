@@ -1,4 +1,4 @@
-import { Controller, Post, Get, HttpCode, HttpStatus, Headers, Query } from '@nestjs/common';
+import { Controller, Post, Get, HttpCode, HttpStatus, Headers, Query, Param } from '@nestjs/common';
 import { SkipThrottle } from '@nestjs/throttler';
 import { KdvControlService } from './kdv-control.service';
 import { PrismaService } from '../prisma/prisma.service';
@@ -79,5 +79,20 @@ export class KdvAgentController {
     ]);
 
     return { statusCounts, belgeTipiCounts, needsReviewSamples };
+  }
+
+  /** Belirli bir görsel için raw OCR text'i döndürür — parser debug için */
+  @Get('raw-ocr/:imageId')
+  async rawOcrText(
+    @Headers('x-agent-token') agentToken: string,
+    @Param('imageId') imageId: string,
+  ) {
+    const tenantId = await resolveTenantFromAgentToken(agentToken, this.prisma as any);
+    const img = await (this.prisma as any).receiptImage.findFirst({
+      where: { id: imageId, session: { tenantId } },
+      select: { id: true, s3Key: true, originalName: true, ocrStatus: true, ocrBelgeTipi: true, ocrRawText: true },
+    });
+    if (!img) return { error: 'bulunamadı' };
+    return { id: img.id, originalName: img.originalName, ocrStatus: img.ocrStatus, ocrBelgeTipi: img.ocrBelgeTipi, rawText: img.ocrRawText };
   }
 }
