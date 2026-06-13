@@ -1056,10 +1056,22 @@ export class KdvBeyannameService {
         continue;
       }
 
-      // Tutar YALNIZ OCR'dan (görsel: confirmed/ocr KDV). Luca kaydından TUTAR
-      // alınmaz (oran etiketi aşağıda Luca'dan tamamlanabilir ama tutar değil).
+      // Tutar önceliği: (1) kullanıcı teyidi (confirmedKdvTutari) → (2) eşleşmiş
+      // (MATCHED/CONFIRMED) ise LUCA-MUTABIK kayıt (kdvRecord.kdvTutari) → (3) ham OCR.
+      // NEDEN: KDV Kontrol eşleşmede Luca'yı baz alır (rapor "Fatura OCR = Luca, fark 0");
+      // pano ham OCR toplarsa OCR okuma sapması (tolerans içinde eşleşmiş) panoyu Luca'dan
+      // ayırır → "KDV Kontrol tutuyor ama pano tutmuyor" (ör. ERCAN: OCR 29.194 ≠ Luca 29.722).
+      // Görselsiz kayıt zaten yukarıda elendi (sahte eşit kuralı korunur); burada görselli +
+      // eşleşmiş faturada Luca-mutabık değer kullanmak KDV Kontrol ile bire bir tutar sağlar.
       if (imageId && !seenImageIds.has(imageId)) seenImageIds.add(imageId);
-      const kdvTutari = this.parseTrAmount(res.image?.confirmedKdvTutari ?? res.image?.ocrKdvTutari);
+      const confirmedTutar = this.parseTrAmount(res.image?.confirmedKdvTutari);
+      const lucaTutar = this.parseTrAmount(res.kdvRecord?.kdvTutari);
+      const kdvTutari =
+        confirmedTutar > 0
+          ? confirmedTutar
+          : finalStatuses.has(status) && lucaTutar > 0
+            ? lucaTutar
+            : this.parseTrAmount(res.image?.ocrKdvTutari);
       // Oran (tutar yine YALNIZ OCR'dan). MATRAH ARANMAZ — kullanıcı kuralı 2026-06-13:
       // satış ve tevkifatsız alışta matrah istenmiyor; oran + KDV tutarı yeter.
       // Bu yüzden matrah/genel-toplam türetmesi (completeControlRow) KULLANILMAZ.
