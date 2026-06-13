@@ -251,9 +251,13 @@ function MoneyText({
 
 export default function KdvBeyannamePage() {
   const now = new Date();
+  const prevMonthDate =
+    now.getMonth() === 0
+      ? new Date(now.getFullYear() - 1, 11)
+      : new Date(now.getFullYear(), now.getMonth() - 1);
   const [selectedMukellef, setSelectedMukellef] = useState<string>('');
-  const [year, setYear] = useState(now.getFullYear());
-  const [month, setMonth] = useState(String(now.getMonth() + 1).padStart(2, '0'));
+  const [year, setYear] = useState(prevMonthDate.getFullYear());
+  const [month, setMonth] = useState(String(prevMonthDate.getMonth() + 1).padStart(2, '0'));
   const [tab, setTab] = useState<'KDV1' | 'KDV2'>('KDV1');
 
   const donem = `${year}-${month}`;

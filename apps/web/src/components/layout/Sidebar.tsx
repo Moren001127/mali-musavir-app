@@ -109,7 +109,7 @@ const navGroups = [
     icon: FileCheck2,
     items: [
       { href: '/panel/kdv-kontrol', label: 'KDV Kontrol', icon: FileCheck2 },
-      { href: '/panel/kdv-beyanname', label: 'KDV Beyanname', icon: FileCheck2 },
+      { href: '/panel/kdv-beyanname', label: 'KDV Durum Panosu', icon: FileCheck2 },
       { href: '/panel/beyannameler', label: 'Beyannameler', icon: FileText },
       { href: '/panel/ajanlar/tebligat', label: 'e-Tebligat Kontrol', icon: MailSearch },
       { href: '/panel/ajanlar/sgk', label: 'SGK Otomasyonu', icon: ShieldAlert },

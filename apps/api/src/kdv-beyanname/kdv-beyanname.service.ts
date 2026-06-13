@@ -125,7 +125,13 @@ export class KdvBeyannameService {
     // 3) Geçen dönemden devreden
     const devreden = await this.getDevredenKdv(tenantId, mukellefId, donem, !!computePrevDevreden);
 
-    // 4) Luca çapraz kontrol
+    // 4) İşletme defteri gelir-gider snapshot (mizan yerine çekilen veri)
+    const isIsletme = this.isIsletmeDefteri(mukellef);
+    const isletmeGelirGider = isIsletme
+      ? await this.readIsletmeGgSnapshot(tenantId, mukellefId, donem)
+      : null;
+
+    // 5) Luca çapraz kontrol
     const lucaKontrol = await this.lucaCrosscheck(
       tenantId,
       mukellefId,
@@ -134,8 +140,10 @@ export class KdvBeyannameService {
       alis.toplamIndirilecekKdv,
       devreden.tutar,
     );
+    // İşletme defteri mükellef için gelir-gider listesi çekilmişse Luca verisi mevcut sayılır.
+    const lucaVeriVar = lucaKontrol.mizanVar || !!isletmeGelirGider;
 
-    // 5) Sonuç
+    // 6) Sonuç
     const hesaplananKdv = Math.round(satis.toplamKdv * 100) / 100;
     const indirilecekKdv = Math.round(alis.toplamIndirilecekKdv * 100) / 100;
     const devredenKdv = Math.round(devreden.tutar * 100) / 100;
@@ -143,7 +151,7 @@ export class KdvBeyannameService {
     const odenecekKdv = diff > 0 ? diff : 0;
     const sonrakiAyaDevreden = diff < 0 ? -diff : 0;
 
-    // 6) Kalite raporu
+    // 7) Kalite raporu
     const kaliteRapor = this.raporKalite(satis, alisTumu);
     if (tevkifatAyri.ocrsizTevkifatliAdet > 0) {
       kaliteRapor.uyarilar.push(
@@ -157,13 +165,17 @@ export class KdvBeyannameService {
       ...alisTumu.eksikVeriler,
       ...tevkifatAyri.eksikVeriler,
     ];
-    if (!lucaKontrol.mizanVar) {
+    if (!lucaVeriVar) {
       eksikVeriler.push({
         tur: 'luca_mizan',
         seviye: 'bilgi',
         taraf: 'LUCA',
-        mesaj: 'Bu dönem için KDV’ye özel Luca aylık mizan henüz çekilmedi.',
-        aksiyon: "Luca'dan Veri Çek ile seçili ay mizanını al.",
+        mesaj: isIsletme
+          ? 'Bu dönem için Luca gelir-gider listesi henüz çekilmedi.'
+          : "Bu dönem için KDV'ye özel Luca aylık mizan henüz çekilmedi.",
+        aksiyon: isIsletme
+          ? "Luca'dan Veri Çek ile seçili ay gelir-gider listesini al."
+          : "Luca'dan Veri Çek ile seçili ay mizanını al.",
       });
     }
     if (devreden.kaynak === 'yok') {
@@ -180,14 +192,9 @@ export class KdvBeyannameService {
       toplamFaturaAdet: satis.faturaAdet + alisTumu.faturaAdet,
       kontrolGerekliAdet:
         satis.kontrolGerekliAdet + alisTumu.kontrolGerekliAdet + tevkifatAyri.ocrsizTevkifatliAdet,
-      lucaMizanVar: lucaKontrol.mizanVar,
+      lucaMizanVar: lucaVeriVar,
       kritikEksikAdet: eksikVeriler.filter((e) => e.seviye === 'kritik').length,
     });
-
-    // İşletme defteri mükellefte Luca gelir-gider KDV toplamı (bağımsız snapshot).
-    const isletmeGelirGider = this.isIsletmeDefteri(mukellef)
-      ? await this.readIsletmeGgSnapshot(tenantId, mukellefId, donem)
-      : null;
 
     return {
       mukellefId,
