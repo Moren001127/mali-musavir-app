@@ -871,11 +871,88 @@ export class OcrService {
       }];
     }
 
+    // Oran-okuma güçlendirme: breakdown'da oranı 0/geçersiz kalan satırları,
+    // bu belgenin KENDİ tutarlarından matematikle türet (matrah veya brüt−kdv),
+    // son çare olarak KDV bağlamında TEK bir %oran metinde geçiyorsa onu ata.
+    // Mevcut geçerli oranlara DOKUNMAZ; belirsizse oranı 0 bırakır (yanlış atamaz).
+    this.deriveMissingKdvRates(result, fullText);
+
     this.postProcessOcrResult(result, belgeNoFromFilename, originalName);
     this.crossCheckWithAzure(result, fullText, originalName, belgeNoFromFilename);
     this.validateOcrResult(result, originalName);
 
     return result;
+  }
+
+  /**
+   * OCR sonrası oran-okuma güçlendirme. Breakdown'da KDV tutarı bilinen ama
+   * oranı okunamayan (0 / geçersiz) satırları doldurur:
+   *   1) Satırın matrahı varsa: oran = KDV / matrah × 100
+   *   2) Tek satırlı belgede brüt (totalTutari) varsa: matrah = brüt − KDV − tevkifat
+   *   3) Metinde KDV bağlamında TEK bir geçerli %oran geçiyorsa (tek-oranlı belge)
+   * Tüm türetmeler [1,10,20]'ye DAR toleransla (±0,6) yuvarlanır; aksi halde
+   * 0 bırakılır (yanlış orana asla atamaz). Geçerli oranlı satırlara dokunmaz.
+   */
+  private deriveMissingKdvRates(result: OcrResult, fullText?: string): void {
+    const VALID = [1, 10, 20];
+    const isValid = (o: any) => VALID.includes(Number(o));
+    const snap = (r: number): number | null => {
+      if (!isFinite(r) || r <= 0) return null;
+      let best: number | null = null;
+      let bestD = Infinity;
+      for (const v of VALID) {
+        const d = Math.abs(v - r);
+        if (d < bestD) { bestD = d; best = v; }
+      }
+      return best != null && bestD <= 0.6 ? best : null;
+    };
+
+    const bd = Array.isArray(result.kdvBreakdown) ? result.kdvBreakdown : [];
+    if (!bd.length) return;
+
+    // 1) Satır bazlı: matrah + KDV varsa orandan türet
+    for (const item of bd) {
+      if (isValid(item.oran)) continue;
+      const kdv = Number(item.tutar) || 0;
+      const matrah = Number(item.matrah) || 0;
+      if (kdv > 0 && matrah > 0) {
+        const o = snap((kdv / matrah) * 100);
+        if (o) item.oran = o;
+      }
+    }
+
+    // 2) Tek satırlı belge + brüt biliniyorsa: matrah = brüt − KDV − tevkifat
+    if (bd.length === 1 && !isValid(bd[0].oran)) {
+      const kdv = (Number(bd[0].tutar) || 0) || (this.parseAmount(result.kdvTutari || '') || 0);
+      const brut = this.parseAmount(result.totalTutari || '') || 0;
+      const tevk = this.parseAmount(result.kdvTevkifat || '') || 0;
+      if (kdv > 0 && brut > kdv) {
+        const matrah = brut - kdv - tevk;
+        if (matrah > 0) {
+          const o = snap((kdv / matrah) * 100);
+          if (o) {
+            bd[0].oran = o;
+            if (!(Number(bd[0].matrah) > 0)) bd[0].matrah = Math.round(matrah * 100) / 100;
+          }
+        }
+      }
+    }
+
+    // 3) Son çare: metinde KDV bağlamında TEK bir geçerli %oran varsa onu ata.
+    //    İskonto/ÖİV/tevkifat oranlarını kapmamak için yalnız KDV/TOPKDV bağlamı.
+    if (fullText && bd.some((i) => !isValid(i.oran))) {
+      const norm = this.foldTurkishAscii(this.normalizeAzureText(fullText)).toUpperCase();
+      const rates = new Set<number>();
+      const ctx = /(?:TOPKDV|TOP\s*KDV|KDV|K\.D\.V|KATMA\s*DEGER\s*VERGISI)[^%\d\n]{0,12}%\s*(\d{1,2})|%\s*(\d{1,2})[^%\d\n]{0,12}(?:KDV|TOPKDV)/g;
+      for (const m of norm.matchAll(ctx)) {
+        const r = Number(m[1] || m[2]);
+        if (isValid(r)) rates.add(r);
+      }
+      if (rates.size === 1) {
+        const only = [...rates][0];
+        for (const item of bd) if (!isValid(item.oran)) item.oran = only;
+      }
+    }
   }
 
   // === YARDIMCI FONKSİYONLAR ===
