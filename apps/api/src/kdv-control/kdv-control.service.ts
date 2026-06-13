@@ -4884,6 +4884,8 @@ ${JSON.stringify(payload, null, 2)}`;
           ocrValidationScore: (ocrResult as any).validationScore ?? null,
           ocrKategori: (ocrResult as any).kategori || null,
           imageHash,
+          // forceFresh → içerik denetimi eski DONE sonucuyla kalmasın, yeniden çalışsın
+          ...(opts.forceFresh ? { contentAuditStatus: 'PENDING' } : {}),
           // confirmed* alanlarını DOLDURMUYORUZ — Mihsap verisine güvenilmez.
         } as any,
       });
