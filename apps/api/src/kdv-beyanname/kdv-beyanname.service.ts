@@ -187,6 +187,41 @@ export class KdvBeyannameService {
         aksiyon: 'Önceki KDV1 beyan kaydındaki devreden tutarı kontrol et.',
       });
     }
+    // Luca çapraz fark: İşletme → gelir-gider snapshot; Bilanço → mizan 391/191.
+    // Fark varsa veri güveni "kesin/%100" olamaz (OCR'lar kesin okunmuş olsa bile
+    // Luca defteriyle tutmuyorsa kontrol gerekir). Kullanıcı tespiti 2026-06-13.
+    const TOL_FARK = 1; // TL
+    const farkAnlamli = (a: number, b: number) => {
+      const f = Math.abs(a - b);
+      return f > TOL_FARK && f > Math.max(a, b) * 0.005;
+    };
+    let lucaFarkVar = false;
+    if (isletmeGelirGider) {
+      const lGelir = isletmeGelirGider.gelirKdvToplam || 0;
+      const lGider = isletmeGelirGider.giderKdvToplam || 0;
+      const gelirFark = farkAnlamli(hesaplananKdv, lGelir);
+      const giderFark = farkAnlamli(indirilecekKdv, lGider);
+      if (gelirFark || giderFark) {
+        lucaFarkVar = true;
+        eksikVeriler.push({
+          tur: 'luca_fark',
+          seviye: 'uyari',
+          taraf: 'LUCA',
+          mesaj:
+            'Luca gelir-gider ile KDV toplamı tutmuyor' +
+            (gelirFark ? ` — Hesaplanan: OCR ${this.fmt(hesaplananKdv)} ≠ Luca ${this.fmt(lGelir)}` : '') +
+            (giderFark ? ` — İndirilecek: OCR ${this.fmt(indirilecekKdv)} ≠ Luca ${this.fmt(lGider)}` : ''),
+          aksiyon: 'OCR ile Luca defteri arasındaki farkı kontrol et (eksik/fazla fatura veya yüklenmemiş görsel).',
+        });
+      }
+    } else if (lucaKontrol.mizanVar) {
+      const big = (f: number | null, base: number) =>
+        f != null && Math.abs(f) > TOL_FARK && Math.abs(f) > base * 0.005;
+      if (big(lucaKontrol.fark391, hesaplananKdv) || big(lucaKontrol.fark191, indirilecekKdv)) {
+        lucaFarkVar = true; // mizan fark uyarıları zaten lucaKontrol.uyarilar'da
+      }
+    }
+
     const veriGuveni = this.hesaplaVeriGuveni({
       kesinFaturaAdet: satis.ocrliAdet + satis.xmlAdet + alisTumu.ocrliAdet + alisTumu.xmlAdet,
       toplamFaturaAdet: satis.faturaAdet + alisTumu.faturaAdet,
@@ -194,6 +229,7 @@ export class KdvBeyannameService {
         satis.kontrolGerekliAdet + alisTumu.kontrolGerekliAdet + tevkifatAyri.ocrsizTevkifatliAdet,
       lucaMizanVar: lucaVeriVar,
       kritikEksikAdet: eksikVeriler.filter((e) => e.seviye === 'kritik').length,
+      lucaFarkVar,
     });
 
     return {
@@ -1782,18 +1818,22 @@ export class KdvBeyannameService {
     kontrolGerekliAdet: number;
     lucaMizanVar: boolean;
     kritikEksikAdet: number;
+    lucaFarkVar?: boolean; // Luca (mizan/gelir-gider) ile KDV toplamı tutmuyor mu?
   }): VeriGuveni {
     const toplam = Math.max(params.toplamFaturaAdet, 0);
     // toplam=0 → veri yok → kesinOran=0 (eski kod 1 veriyordu → yanlış %100)
     const kesinOran = toplam > 0 ? params.kesinFaturaAdet / toplam : 0;
     let puan = Math.round(kesinOran * 85) + (params.lucaMizanVar ? 15 : 0);
     puan -= Math.min(params.kritikEksikAdet * 10, 40);
+    // OCR'lar kesin olsa bile Luca ile çapraz tutmuyorsa "kesin/%100" diyemeyiz —
+    // fark gerçek bir kontrol gerekçesidir. Puanı 80'in altına çek (kontrol_gerekli).
+    if (params.lucaFarkVar) puan = Math.min(puan, 80);
     puan = Math.max(0, Math.min(100, puan));
     return {
       seviye:
         params.kritikEksikAdet > 0 || puan < 60
           ? 'eksik'
-          : params.kontrolGerekliAdet > 0 || !params.lucaMizanVar || puan < 90
+          : params.kontrolGerekliAdet > 0 || !params.lucaMizanVar || params.lucaFarkVar || puan < 90
             ? 'kontrol_gerekli'
             : 'kesin',
       puan,

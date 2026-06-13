@@ -17,7 +17,7 @@ export interface OranRow {
 }
 
 export interface KdvEksikVeri {
-  tur: 'kdv_orani' | 'kdv_kontrol' | 'luca_mizan' | 'devreden_kdv' | 'tevkifat_ocr' | 'tevkifat_kodu';
+  tur: 'kdv_orani' | 'kdv_kontrol' | 'luca_mizan' | 'luca_fark' | 'devreden_kdv' | 'tevkifat_ocr' | 'tevkifat_kodu';
   seviye: 'bilgi' | 'uyari' | 'kritik';
   belgeNo?: string | null;
   taraf?: 'ALIS' | 'SATIS' | 'GENEL' | 'LUCA' | 'KDV2';
