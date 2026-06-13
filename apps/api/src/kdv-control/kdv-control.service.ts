@@ -2167,13 +2167,15 @@ export class KdvControlService {
     // SATIŞ oturumunda gider-odaklı override'ları atla — ALIS mantığı SATIS'a uygulanmaz
     const isSatisSession = ['KDV_391', 'ISLETME_GELIR'].includes(String(session?.type || '').toUpperCase());
     if (isSatisSession) {
-      // KONTROL_ET → UYGUN: AI bazen faaliyetle uyumlu satışları yanlış bayraklar.
-      // Mükellef faaliyet profili belgedeki satışla örtüşüyorsa güvenli kabul et.
+      // KONTROL_ET → UYGUN: AI faaliyetle uyumlu satışları zaman zaman yanlış bayraklar.
+      // text = OCR metni + AI özeti; AI özeti faaliyet adını zaten içerdiğinden
+      // hem faaliyet hem satış içeriği text'ten okunabilir.
       if (baseDecision.risk === 'KONTROL_ET' && !hardBlockSignal) {
-        // Nakliye/lojistik mükellef → nakliye/taşıma/liman satışı = olağan
-        const transportTaxpayer = /nakliye|lojistik|ta[şs][ıi]mac[ıi]l[ıi]k|kargo|turizm|liman|sefer/.test(taxpayerText);
-        const transportSale = /nakliye|ta[şs][ıi]ma|kargo|liman|hizmet bedel|navlun|sefer|nakliye bedel/.test(text);
-        if (transportTaxpayer && transportSale) {
+        // Nakliye/lojistik: text'te hem faaliyet hem satış keyword'ü → UYGUN
+        // (GERCEK_KISI için taxpayerText boş olabilir; text AI özetini de kapsar)
+        const nakliyeFaaliyetSignal = /nakliye|lojistik|ta[şs][ıi]mac[ıi]l[ıi]k|kargo|liman/.test(text);
+        const nakliyeSatisSignal = /nakliye bedel|ta[şs][ıi]ma bedel|navlun|liman bedel|kargo bedel/.test(text);
+        if (nakliyeFaaliyetSignal && nakliyeSatisSignal) {
           return {
             ...baseDecision,
             risk: 'UYGUN' as ContentAuditRisk,
@@ -2181,16 +2183,17 @@ export class KdvControlService {
             suggestion: 'Normal satış kaydı; belge dayanağını dosyada saklayın.',
           };
         }
-        // Genel faaliyet-içerik uyumu: taxpayerText'teki anlamlı kelimeler belgede geçiyorsa
-        const profileKeywords = (taxpayerText.match(/[a-zçğıöşüa-z]{5,}/g) || []);
-        const faaliyetMatch = profileKeywords.length > 0 && profileKeywords.some(kw => text.includes(kw));
-        if (faaliyetMatch) {
-          return {
-            ...baseDecision,
-            risk: 'UYGUN' as ContentAuditRisk,
-            summary: 'Satış belgesi mükellefin faaliyet alanıyla uyumlu görünüyor.',
-            suggestion: 'Normal satış kaydı; belge dayanağını dosyada saklayın.',
-          };
+        // Genel: taxpayerText doluysa faaliyet-içerik uyumu
+        if (taxpayerText.length > 5) {
+          const profileKeywords = (taxpayerText.match(/[a-zçğıöşü]{5,}/g) || []);
+          if (profileKeywords.some(kw => text.includes(kw))) {
+            return {
+              ...baseDecision,
+              risk: 'UYGUN' as ContentAuditRisk,
+              summary: 'Satış belgesi mükellefin faaliyet alanıyla uyumlu görünüyor.',
+              suggestion: 'Normal satış kaydı; belge dayanağını dosyada saklayın.',
+            };
+          }
         }
       }
       return baseDecision;
