@@ -2167,6 +2167,32 @@ export class KdvControlService {
     // SATIŞ oturumunda gider-odaklı override'ları atla — ALIS mantığı SATIS'a uygulanmaz
     const isSatisSession = ['KDV_391', 'ISLETME_GELIR'].includes(String(session?.type || '').toUpperCase());
     if (isSatisSession) {
+      // KONTROL_ET → UYGUN: AI bazen faaliyetle uyumlu satışları yanlış bayraklar.
+      // Mükellef faaliyet profili belgedeki satışla örtüşüyorsa güvenli kabul et.
+      if (baseDecision.risk === 'KONTROL_ET' && !hardBlockSignal) {
+        // Nakliye/lojistik mükellef → nakliye/taşıma/liman satışı = olağan
+        const transportTaxpayer = /nakliye|lojistik|ta[şs][ıi]mac[ıi]l[ıi]k|kargo|turizm|liman|sefer/.test(taxpayerText);
+        const transportSale = /nakliye|ta[şs][ıi]ma|kargo|liman|hizmet bedel|navlun|sefer|nakliye bedel/.test(text);
+        if (transportTaxpayer && transportSale) {
+          return {
+            ...baseDecision,
+            risk: 'UYGUN' as ContentAuditRisk,
+            summary: 'Nakliye/lojistik faaliyetiyle uyumlu olağan satış belgesidir.',
+            suggestion: 'Normal satış kaydı; belge dayanağını dosyada saklayın.',
+          };
+        }
+        // Genel faaliyet-içerik uyumu: taxpayerText'teki anlamlı kelimeler belgede geçiyorsa
+        const profileKeywords = (taxpayerText.match(/[a-zçğıöşüa-z]{5,}/g) || []);
+        const faaliyetMatch = profileKeywords.length > 0 && profileKeywords.some(kw => text.includes(kw));
+        if (faaliyetMatch) {
+          return {
+            ...baseDecision,
+            risk: 'UYGUN' as ContentAuditRisk,
+            summary: 'Satış belgesi mükellefin faaliyet alanıyla uyumlu görünüyor.',
+            suggestion: 'Normal satış kaydı; belge dayanağını dosyada saklayın.',
+          };
+        }
+      }
       return baseDecision;
     }
 
