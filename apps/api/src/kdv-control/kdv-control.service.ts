@@ -2843,6 +2843,53 @@ ${JSON.stringify(payload, null, 2)}`;
     };
   }
 
+  /**
+   * Belirli bir dönemdeki TÜM session'ların eksik-breakdown görsellerini yeniden OCR'lar.
+   * donem: "2026-05" formatında
+   */
+  async bulkReocrDonem(
+    tenantId: string,
+    donem: string,
+    opts: { onlyMissing?: boolean } = {},
+  ): Promise<{ sessions: number; queued: number; message: string }> {
+    // Dönem formatını normalize et: "2026-05" → periodLabel
+    const periodLabel = donem.length === 7 ? donem : donem.slice(0, 7);
+
+    const sessions = await this.prisma.kdvControlSession.findMany({
+      where: { tenantId, periodLabel },
+      select: { id: true, taxpayer: { select: { firstName: true, lastName: true, companyName: true } } },
+    });
+
+    if (sessions.length === 0) {
+      return { sessions: 0, queued: 0, message: `${periodLabel} döneminde session bulunamadı.` };
+    }
+
+    this.logger.log(`[bulkReocrDonem] donem=${periodLabel} ${sessions.length} session işlenecek`);
+
+    let totalQueued = 0;
+    // Arka planda sırıyla tara — önce ilk session'ı başlat, sonraki başlamadan önce tamamlanmasını bekleme
+    (async () => {
+      for (const session of sessions) {
+        const adSoyad = this.formatMukellefAdi(session as any);
+        this.logger.log(`[bulkReocrDonem] → session=${session.id} mukellef=${adSoyad}`);
+        try {
+          const r = await this.bulkReocrSession(session.id, tenantId, opts);
+          totalQueued += r.queued;
+          this.logger.log(`[bulkReocrDonem] ✓ ${adSoyad}: ${r.queued} görsel kuyruğa alındı`);
+        } catch (err: any) {
+          this.logger.warn(`[bulkReocrDonem] session=${session.id} hata: ${err?.message}`);
+        }
+      }
+      this.logger.log(`[bulkReocrDonem] TAMAMLANDI donem=${periodLabel} toplam=${totalQueued} görsel`);
+    })();
+
+    return {
+      sessions: sessions.length,
+      queued: sessions.length,
+      message: `${sessions.length} session arka planda yeniden taranıyor (dönem: ${periodLabel}).`,
+    };
+  }
+
   /** Görseli sil (DB) — S3'ten silme şimdilik atlanıyor */
   async deleteImage(imageId: string, tenantId: string) {
     const image = await this.prisma.receiptImage.findFirst({

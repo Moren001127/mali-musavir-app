@@ -289,7 +289,6 @@ export class KdvControlController {
 
   /**
    * Session'daki tüm eksik-breakdown görsellerini arka planda yeniden OCR'lar.
-   * ?onlyMissing=false gönderilirse tüm görseller yeniden taranır.
    */
   @Post('sessions/:id/bulk-reocr')
   @Roles('ADMIN', 'STAFF')
@@ -300,6 +299,22 @@ export class KdvControlController {
     @Body() body?: { onlyMissing?: boolean },
   ) {
     return this.kdvService.bulkReocrSession(id, req.user.tenantId, {
+      onlyMissing: body?.onlyMissing !== false,
+    });
+  }
+
+  /**
+   * Bir dönemdeki TÜM session'ların eksik görsellerini arka planda yeniden OCR'lar.
+   * Body: { donem: "2026-05" }
+   */
+  @Post('bulk-reocr-donem')
+  @Roles('ADMIN', 'STAFF')
+  @HttpCode(HttpStatus.ACCEPTED)
+  bulkReocrDonem(
+    @Req() req: any,
+    @Body() body: { donem: string; onlyMissing?: boolean },
+  ) {
+    return this.kdvService.bulkReocrDonem(req.user.tenantId, body.donem, {
       onlyMissing: body?.onlyMissing !== false,
     });
   }
