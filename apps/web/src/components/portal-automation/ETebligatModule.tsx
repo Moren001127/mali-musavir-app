@@ -57,18 +57,31 @@ export default function ETebligatModule() {
     queryFn: () => portalAutomationApi.summary(),
     refetchInterval: 30_000,
   });
+  // Vergi dairesi sifresi olan mukellefler (henuz tebligati olmasa da sorgulanabilsin).
+  const credsQuery = useQuery({
+    queryKey: ['etebligat-creds'],
+    queryFn: () => portalAutomationApi.credentials(),
+    staleTime: 5 * 60_000,
+  });
 
   const docs = (docsQuery.data || []) as Array<PortalDocument & { raw?: any }>;
   const summary = summaryQuery.data;
 
-  // Mukellef listesi (filtre dropdown'u icin)
+  // Mukellef listesi: GIB_IVD sifresi olanlar + tebligati olanlar (birlesim).
   const mukellefler = useMemo(() => {
     const map = new Map<string, string>();
+    for (const c of credsQuery.data?.rows || []) {
+      if (c.provider === 'GIB_IVD' && c.taxpayer?.id) {
+        const t = c.taxpayer;
+        const name = t.companyName || [t.firstName, t.lastName].filter(Boolean).join(' ').trim() || t.taxNumber || '—';
+        map.set(t.id, name);
+      }
+    }
     for (const d of docs) {
-      if (d.taxpayerId) map.set(d.taxpayerId, taxpayerName(d.taxpayer));
+      if (d.taxpayerId && !map.has(d.taxpayerId)) map.set(d.taxpayerId, taxpayerName(d.taxpayer));
     }
     return Array.from(map.entries()).map(([id, name]) => ({ id, name })).sort((a, b) => a.name.localeCompare(b.name, 'tr'));
-  }, [docs]);
+  }, [docs, credsQuery.data]);
 
   const filtered = useMemo(() => {
     const q = search.trim().toLocaleLowerCase('tr-TR');
