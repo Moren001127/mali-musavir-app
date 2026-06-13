@@ -996,15 +996,27 @@ export class KdvBeyannameService {
         }
       }
 
-      // Sadece KDV tutarı: OCR görsel varsa confirmedKdvTutari/ocrKdvTutari,
-      // yoksa Luca kaydındaki kdvTutari kullanılır. Matrah/oran hesabı yapılmaz.
+      // Matrah YOK — sadece KDV tutarı kullanılır; oran bilgisi ORC/Luca'dan alınır.
       // (Tevkifatlı alış KDV2 hesabı derleTevkifatliAlis'te ayrıca yapılır.)
       if (res.image && imageId && !seenImageIds.has(imageId)) seenImageIds.add(imageId);
       const kdvTutari =
         this.parseTrAmount(res.image?.confirmedKdvTutari ?? res.image?.ocrKdvTutari) ||
         this.parseTrAmount(res.kdvRecord?.kdvTutari);
+      // Oran: OCR breakdown'dan → yoksa Luca kaydından → yoksa 0
+      const detectedOran = (() => {
+        const breakdown: any[] = (res.image as any)?.ocrKdvBreakdown ?? [];
+        if (Array.isArray(breakdown) && breakdown.length > 0) {
+          const o = Number(breakdown[0]?.oran ?? 0);
+          if (GECERLI_KDV_ORANLARI.includes(o)) return o;
+        }
+        const recordOran =
+          this.parseTrAmount(res.kdvRecord?.kdvOrani) ||
+          this.oranFromHesapAdi(res.kdvRecord) ||
+          this.oranFromHesapKodu(res.kdvRecord);
+        return GECERLI_KDV_ORANLARI.includes(recordOran) ? recordOran : 0;
+      })();
       const rows: Array<{ oran: number; matrah: number; kdv: number }> =
-        kdvTutari > 0 ? [{ oran: 0, matrah: 0, kdv: kdvTutari }] : [];
+        kdvTutari > 0 ? [{ oran: detectedOran, matrah: 0, kdv: kdvTutari }] : [];
 
       addRows(rows, docKey, belgeNo, finalStatuses.has(status), status);
     }
