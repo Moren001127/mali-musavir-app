@@ -187,11 +187,11 @@ function dateInputValue(d: Date): string {
   return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}-${String(d.getDate()).padStart(2, '0')}`;
 }
 
-function yesterdayRange(): { from: string; to: string } {
-  const d = new Date();
-  d.setDate(d.getDate() - 1);
-  const v = dateInputValue(d);
-  return { from: v, to: v };
+function lastThreeDaysRange(): { from: string; to: string } {
+  const today = new Date();
+  const from = new Date(today);
+  from.setDate(today.getDate() - 3);
+  return { from: dateInputValue(from), to: dateInputValue(today) };
 }
 
 function firstContact(values?: Array<string | null | undefined>): string {
@@ -291,7 +291,7 @@ export default function BeyannamelerPage() {
   const [periodStart, setPeriodStart] = useState('');
   const [periodEnd, setPeriodEnd] = useState('');
   const [importModal, setImportModal] = useState(false);
-  const defaultPullRange = useMemo(() => yesterdayRange(), []);
+  const defaultPullRange = useMemo(() => lastThreeDaysRange(), []);
   const [pullFrom, setPullFrom] = useState(defaultPullRange.from);
   const [pullTo, setPullTo] = useState(defaultPullRange.to);
   const [selectedDocKeys, setSelectedDocKeys] = useState<Set<string>>(() => new Set());

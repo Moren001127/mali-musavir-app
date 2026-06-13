@@ -96,7 +96,7 @@ const navGroups = [
     items: [
       { href: '/fatura-merkezi', label: 'Fatura İşleme Merkezi', icon: FileStack },
       { href: '/panel/e-arsiv', label: 'E-Fatura / E-Arşiv Sorgulama', icon: FileScan },
-      { href: '/panel/ajanlar/mihsap', label: 'Fatura İşleme', icon: BotMessageSquare },
+      { href: '/panel/ajanlar/mihsap', label: 'Mihsap Fatura İşleme', icon: BotMessageSquare },
       { href: '/panel/faturalar', label: 'İşlenen Faturalar', icon: ReceiptText },
       { href: '/panel/fis-yazdirma', label: 'Fiş Yazdırma', icon: Printer },
       { href: '/panel/banka-takip', label: 'Banka Takip', icon: Landmark },
@@ -110,7 +110,7 @@ const navGroups = [
     items: [
       { href: '/panel/kdv-kontrol', label: 'KDV Kontrol', icon: FileCheck2 },
       { href: '/panel/kdv-beyanname', label: 'KDV Durum Panosu', icon: FileCheck2 },
-      { href: '/panel/beyannameler', label: 'Beyannameler', icon: FileText },
+      { href: '/panel/beyannameler', label: 'Toplu Beyanname', icon: FileText },
       { href: '/panel/ajanlar/tebligat', label: 'e-Tebligat Kontrol', icon: MailSearch },
       { href: '/panel/ajanlar/sgk', label: 'SGK Otomasyonu', icon: ShieldAlert },
     ],

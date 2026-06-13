@@ -197,6 +197,13 @@ function previousIstanbulDayRange(now = new Date()) {
   return { start, end };
 }
 
+function lastThreeDaysRange(now = new Date()) {
+  const todayStart = startOfIstanbulDay(now);
+  const end = new Date(todayStart.getTime() + 24 * 60 * 60 * 1000 - 1);
+  const start = new Date(todayStart.getTime() - 3 * 24 * 60 * 60 * 1000);
+  return { start, end };
+}
+
 @Injectable()
 export class PortalAutomationService {
   private readonly logger = new Logger(PortalAutomationService.name);
@@ -542,7 +549,7 @@ export class PortalAutomationService {
   }
 
   async createNightlyJobsForTenant(tenantId: string) {
-    const { start, end } = previousIstanbulDayRange();
+    const { start, end } = lastThreeDaysRange();
     const todayStart = startOfIstanbulDay(new Date());
     return this.createJobs(tenantId, {
       jobTypes: ['EBEYANNAME_DAILY_DOWNLOAD', 'E_TEBLIGAT_CHECK', ...SGK_JOB_TYPES],
@@ -1044,7 +1051,7 @@ export class PortalAutomationService {
     const from = parseIstanbulDateBoundary(input.dateFrom, 'start');
     const to = parseIstanbulDateBoundary(input.dateTo, 'end');
     if (from && to) return { start: from, end: to };
-    return previousIstanbulDayRange();
+    return lastThreeDaysRange();
   }
 
   private inferDonem(date: Date) {

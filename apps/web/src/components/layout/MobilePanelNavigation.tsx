@@ -102,7 +102,7 @@ const moduleGroups: ModuleGroup[] = [
     items: [
       { href: '/fatura-merkezi', label: 'Fatura Merkezi', icon: FileStack },
       { href: '/panel/e-arsiv', label: 'E-Fatura / E-Arşiv', icon: FileScan },
-      { href: '/panel/ajanlar/mihsap', label: 'Fatura İşleme', icon: BotMessageSquare },
+      { href: '/panel/ajanlar/mihsap', label: 'Mihsap Fatura İşleme', icon: BotMessageSquare },
       { href: '/panel/faturalar', label: 'İşlenen Faturalar', icon: ReceiptText },
       { href: '/panel/fis-yazdirma', label: 'Fiş Yazdırma', icon: Printer },
       { href: '/panel/banka-takip', label: 'Banka Takip', icon: Landmark },
@@ -116,7 +116,7 @@ const moduleGroups: ModuleGroup[] = [
     items: [
       { href: '/panel/kdv-kontrol', label: 'KDV Kontrol', icon: FileCheck2 },
       { href: '/panel/kdv-beyanname', label: 'KDV Beyanname', icon: FileCheck2 },
-      { href: '/panel/beyannameler', label: 'Beyannameler', icon: FileText },
+      { href: '/panel/beyannameler', label: 'Toplu Beyanname', icon: FileText },
       { href: '/panel/ajanlar/tebligat', label: 'e-Tebligat Kontrol', icon: MailSearch, status: 'planned' },
       { href: '/panel/ajanlar/sgk', label: 'SGK Otomasyonu', icon: ShieldAlert, status: 'planned' },
     ],
