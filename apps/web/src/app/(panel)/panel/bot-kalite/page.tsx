@@ -148,7 +148,9 @@ export default function BotKalitePage() {
   });
 
   const dusukKayitlar = useMemo(
-    () => kayitlar.filter((k) => k.score < 6 || ['LOW_SCORE', 'FALLBACK_USED', 'SYNTHETIC_FAIL'].includes(k.status)),
+    () => kayitlar.filter(
+      (k) => k.source !== 'synthetic' && (k.score < 6 || ['LOW_SCORE', 'FALLBACK_USED'].includes(k.status)),
+    ),
     [kayitlar],
   );
 
