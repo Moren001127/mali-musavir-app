@@ -902,7 +902,8 @@ export class KdvBeyannameService {
     const eksikVeriler: KdvEksikVeri[] = [];
 
     const addToOran = (oran: number, matrah: number, kdv: number) => {
-      if (!GECERLI_KDV_ORANLARI.includes(oran)) return;
+      // oran=0: alış için sadece KDV tutarı biliniyorsa özel bucket
+      if (oran !== 0 && !GECERLI_KDV_ORANLARI.includes(oran)) return;
       const g = oranMap.get(oran) || { matrah: 0, kdv: 0, adet: 0, kaynak: 'kdv_kontrol' as const };
       g.matrah += matrah;
       g.kdv += kdv;
@@ -1005,9 +1006,7 @@ export class KdvBeyannameService {
         rows = this.completeControlRows(this.kdvRowsFromRecord(res.kdvRecord), res.kdvRecord, faturaTuru === 'ALIS');
       }
 
-      // FALLBACK: OCR görsel var, toplam KDV tutarı okunmuş ama breakdown yok.
-      // Luca kaydından oran tespit edilebiliyorsa ikisini birleştir.
-      // (Oran bulunamazsa uyarı bırakılır, tahmin yapılmaz.)
+      // FALLBACK 1: OCR görsel var + Luca kaydında oran bilgisi var → matrah hesapla
       if (rows.length === 0 && res.image && res.kdvRecord) {
         const imageKdv = this.parseTrAmount(res.image?.confirmedKdvTutari ?? res.image?.ocrKdvTutari);
         if (imageKdv > 0) {
@@ -1022,6 +1021,21 @@ export class KdvBeyannameService {
               faturaTuru === 'ALIS',
             );
           }
+        }
+      }
+
+      // FALLBACK 2: Normal ALIS + KDV tutarı biliniyorsa matrah olmadan ekle
+      // (Satışlarda ve tevkifatlı alışlarda matrah zorunlu — bu fallback devreye girmez)
+      if (rows.length === 0 && faturaTuru === 'ALIS') {
+        const kdvTutari =
+          this.parseTrAmount(res.image?.confirmedKdvTutari ?? res.image?.ocrKdvTutari) ||
+          this.parseTrAmount(res.kdvRecord?.kdvTutari);
+        const tevkifatTutari =
+          this.parseTrAmount((res.image as any)?.ocrKdvTevkifat) ||
+          this.parseTrAmount((res.kdvRecord as any)?.rawData?.kdvTevkifat);
+        // Tevkifatlı alışta matrah zorunlu (KDV2 için) — bu fallback atlanır
+        if (kdvTutari > 0 && tevkifatTutari <= 0) {
+          rows = [{ oran: 0, matrah: 0, kdv: kdvTutari }];
         }
       }
 
@@ -1046,7 +1060,14 @@ export class KdvBeyannameService {
       if (resultImageIds.has(image.id)) continue;
       const belgeNo = this.controlBelgeNo(null, image);
       const docKey = this.controlDocKey(`image:${image.id}`, belgeNo, image.id, null);
-      const rows = this.completeControlRows(this.kdvRowsFromImage(image), image, faturaTuru === 'ALIS');
+      let rows = this.completeControlRows(this.kdvRowsFromImage(image), image, faturaTuru === 'ALIS');
+      if (rows.length === 0 && faturaTuru === 'ALIS') {
+        const kdvTutari = this.parseTrAmount((image as any).confirmedKdvTutari ?? (image as any).ocrKdvTutari);
+        const tevkifat = this.parseTrAmount((image as any).ocrKdvTevkifat);
+        if (kdvTutari > 0 && tevkifat <= 0) {
+          rows = [{ oran: 0, matrah: 0, kdv: kdvTutari }];
+        }
+      }
       addRows(rows, docKey, belgeNo, false);
     }
 
@@ -1060,7 +1081,10 @@ export class KdvBeyannameService {
       );
     }
 
+    // oran=0: alış-tutarı-only bucket — toplamKdv'ye dahil edilir ama oran listesinde gösterilmez
+    const kdvTutariOnly = oranMap.get(0)?.kdv ?? 0;
     const oranlar: OranRow[] = Array.from(oranMap.entries())
+      .filter(([oran]) => oran !== 0)
       .map(([oran, v]) => ({
         oran,
         matrah: Math.round(v.matrah * 100) / 100,
@@ -1071,7 +1095,7 @@ export class KdvBeyannameService {
       .sort((a: any, b: any) => a.oran - b.oran);
 
     const toplamMatrah = oranlar.reduce((s: number, o: any) => s + o.matrah, 0);
-    const toplamKdv = oranlar.reduce((s: number, o: any) => s + o.kdv, 0);
+    const toplamKdv = oranlar.reduce((s: number, o: any) => s + o.kdv, 0) + kdvTutariOnly;
     const allDocKeys = new Set<string>([...includedDocKeys, ...kontrolDocKeys]);
 
     return {
