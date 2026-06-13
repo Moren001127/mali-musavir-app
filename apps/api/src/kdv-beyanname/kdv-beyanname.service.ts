@@ -993,32 +993,37 @@ export class KdvBeyannameService {
       const docKey = this.controlDocKey(res.id, belgeNo, imageId, recordId);
       const status = String(res.status || '');
 
-      if (!acceptedStatuses.has(status)) {
-        // UNMATCHED ama Luca KAYDI olan (record-only, eşleşecek görsel yok) → resmi
-        // defter satırıdır; hiçbir şeyle eşleşmediği için çift-sayma riski YOK →
-        // beyana DAHİL EDİLİR ama "kontrol gerekir" diye flag'lenir (aşağıda addRows
-        // isFinal=false). Image-only UNMATCHED (Luca'sız OCR) Luca defterinde
-        // karşılığı olmadığından dışlanmaya devam eder (fazla-sayma riski).
-        const lucaKaydiVarEslesmedi =
-          status === 'UNMATCHED' && !!res.kdvRecord && !res.image;
-        if (!lucaKaydiVarEslesmedi) {
-          addIssue(
-            docKey,
-            belgeNo,
-            'kdv_kontrol',
-            status === 'REJECTED' ? 'kritik' : 'uyari',
-            `KDV Kontrol kaydi ${status || 'belirsiz'} durumunda; beyan toplamina dahil edilmedi.`,
-          );
-          continue;
-        }
+      // YALNIZ OCR (görsel) kaynaklı tutarlar beyana girer. Görseli olmayan
+      // (yalnız Luca defter kaydı) satır beyana DAHİL EDİLMEZ — aksi halde OCR
+      // toplamı Luca'dan doldurulup sahte "eşit" üretir. Görsel eksikse FARK
+      // çıkmalı ki kullanıcı belgeyi OCR'a yüklemediğini görsün.
+      // (Kullanıcı kuralı 2026-06-13: "sadece OCR'dan gelen rakamlar yazılacak".)
+      if (!imageId) {
+        addIssue(
+          docKey,
+          belgeNo,
+          'kdv_kontrol',
+          'uyari',
+          "Belgenin OCR görüntüsü yok (yalnız Luca kaydı) — beyan toplamına DAHİL EDİLMEDİ. Görseli OCR Teyit Paneli'ne yükleyin.",
+        );
+        continue;
       }
 
-      // Matrah YOK — sadece KDV tutarı kullanılır; oran bilgisi ORC/Luca'dan alınır.
-      // (Tevkifatlı alış KDV2 hesabı derleTevkifatliAlis'te ayrıca yapılır.)
-      if (res.image && imageId && !seenImageIds.has(imageId)) seenImageIds.add(imageId);
-      const kdvTutari =
-        this.parseTrAmount(res.image?.confirmedKdvTutari ?? res.image?.ocrKdvTutari) ||
-        this.parseTrAmount(res.kdvRecord?.kdvTutari);
+      if (!acceptedStatuses.has(status)) {
+        addIssue(
+          docKey,
+          belgeNo,
+          'kdv_kontrol',
+          status === 'REJECTED' ? 'kritik' : 'uyari',
+          `KDV Kontrol kaydi ${status || 'belirsiz'} durumunda; beyan toplamina dahil edilmedi.`,
+        );
+        continue;
+      }
+
+      // Tutar YALNIZ OCR'dan (görsel: confirmed/ocr KDV). Luca kaydından TUTAR
+      // alınmaz (oran etiketi aşağıda Luca'dan tamamlanabilir ama tutar değil).
+      if (imageId && !seenImageIds.has(imageId)) seenImageIds.add(imageId);
+      const kdvTutari = this.parseTrAmount(res.image?.confirmedKdvTutari ?? res.image?.ocrKdvTutari);
       // Oran: OCR breakdown'dan → yoksa Luca kaydından → yoksa 0
       const detectedOran = (() => {
         const breakdown: any[] = (res.image as any)?.ocrKdvBreakdown ?? [];
@@ -1047,10 +1052,17 @@ export class KdvBeyannameService {
       if (resultRecordIds.has(r.id)) continue;
       const belgeNo = this.controlBelgeNo(r, null);
       const docKey = this.controlDocKey(`record:${r.id}`, belgeNo, null, r.id);
-      const kdvTutari = this.parseTrAmount(r.kdvTutari);
-      const rows: Array<{ oran: number; matrah: number; kdv: number }> =
-        kdvTutari > 0 ? [{ oran: 0, matrah: 0, kdv: kdvTutari }] : [];
-      addRows(rows, docKey, belgeNo, false);
+      // Yalnız Luca kaydı, OCR görüntüsü YOK → beyana DAHİL EDİLMEZ (sadece OCR kuralı).
+      // Görsel eksik diye fark çıkar; kullanıcı belgeyi OCR'a yükleyince kapanır.
+      if (this.parseTrAmount(r.kdvTutari) > 0) {
+        addIssue(
+          docKey,
+          belgeNo,
+          'kdv_kontrol',
+          'uyari',
+          "Belgenin OCR görüntüsü yok (yalnız Luca kaydı) — beyan toplamına DAHİL EDİLMEDİ. Görseli OCR Teyit Paneli'ne yükleyin.",
+        );
+      }
     }
 
     for (const image of orphanImages) {
