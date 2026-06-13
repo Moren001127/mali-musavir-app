@@ -54,6 +54,137 @@ type ContentAuditQueueContext = {
   mukellef?: string | null;
 };
 
+const NACE_ACIKLAMA: Record<string, string> = {
+  '0111': 'Tahıl, baklagil, yağlı tohum yetiştiriciliği',
+  '0141': 'Süt sığırcılığı',
+  '0150': 'Karma tarım',
+  '1011': 'Et ve et ürünleri işleme',
+  '1071': 'Ekmek, pasta, taze hamur işleri üretimi',
+  '1085': 'Hazır yemek üretimi',
+  '2219': 'Kauçuk ürünleri imalatı',
+  '2222': 'Plastik ambalaj malzemeleri imalatı',
+  '2229': 'Plastik ürünler imalatı',
+  '2562': 'Genel amaçlı makine imalatı',
+  '3317': 'Ulaşım araçları tamiri',
+  '4110': 'Bina geliştirme projeleri',
+  '4120': 'Konut ve konut dışı bina inşaatı',
+  '4211': 'Yol ve otoyol inşaatı',
+  '4399': 'Diğer özel inşaat faaliyetleri',
+  '4510': 'Motorlu kara taşıtları ticareti',
+  '4511': 'Yeni otomobil ve hafif motorlu araç ticareti',
+  '4519': 'Diğer motorlu kara taşıtları ticareti',
+  '4520': 'Motorlu kara taşıtlarının bakımı ve onarımı',
+  '4530': 'Motorlu kara taşıtları parça ve aksesuar ticareti',
+  '4540': 'Motosiklet ticareti, bakım ve onarımı',
+  '4611': 'Tarımsal ürün aracısı ve acentesi',
+  '4621': 'Tahıl, baklagil toptancılığı',
+  '4631': 'Meyve ve sebze toptancılığı',
+  '4639': 'Diğer gıda toptancılığı',
+  '4641': 'Tekstil toptancılığı',
+  '4651': 'Bilgisayar ve çevre birimi toptancılığı',
+  '4661': 'Tarımsal makine ve ekipman toptancılığı',
+  '4669': 'Diğer makine ve ekipman toptancılığı',
+  '4671': 'Akaryakıt ve ürünleri toptancılığı',
+  '4673': 'Kereste ve yapı malzemeleri toptancılığı',
+  '4674': 'Hırdavat, tesisat, ısıtma ekipmanı toptancılığı',
+  '4677': 'Hurda ve atık toptancılığı',
+  '4711': 'Gıda ağırlıklı perakende satış mağazaları',
+  '4719': 'Büyük mağazalar ve hipermarketler',
+  '4722': 'Et ve et ürünleri perakende',
+  '4730': 'Akaryakıt perakende',
+  '4741': 'Bilgisayar ve çevre birimi perakende',
+  '4751': 'Tekstil perakende',
+  '4761': 'Kitap perakende',
+  '4771': 'Giyim perakende',
+  '4775': 'Kozmetik, kişisel bakım perakende',
+  '4776': 'Çiçek, bitki perakende',
+  '4789': 'Pazar tezgahları perakende',
+  '4791': 'Posta/internet yoluyla perakende',
+  '4799': 'Mağaza dışı diğer perakende',
+  '4910': 'Demiryolu ile yolcu taşımacılığı',
+  '4920': 'Demiryolu ile yük taşımacılığı',
+  '4941': 'Karayolu ile yük taşımacılığı',
+  '4942': 'Taşıma nakliye yardımcı hizmetleri',
+  '5010': 'Deniz yolu ile yolcu taşımacılığı',
+  '5210': 'Depolama ve ambarlama',
+  '5221': 'Karayolu taşımacılığı yardımcı hizmetleri',
+  '5510': 'Oteller ve konaklama tesisleri',
+  '5520': 'Tatil köyleri ve çadır alanları',
+  '5610': 'Restoran ve gezici yemek hizmetleri',
+  '5621': 'Toplu yemek hizmetleri',
+  '5630': 'İçecek hizmetleri (kafe, bar)',
+  '5811': 'Kitap yayıncılığı',
+  '5820': 'Yazılım yayıncılığı',
+  '6110': 'Kablolu telekomunikasyon',
+  '6120': 'Kablosuz telekomunikasyon',
+  '6201': 'Bilgisayar programlama',
+  '6202': 'Bilgisayar danışmanlık hizmetleri',
+  '6209': 'Diğer bilgi teknolojisi hizmetleri',
+  '6311': 'Veri işleme ve barındırma hizmetleri',
+  '6419': 'Diğer para aracılığı (bankacılık) faaliyetleri',
+  '6491': 'Finansal kiralama',
+  '6499': 'Diğer finansal hizmet faaliyetleri',
+  '6512': 'Hayat dışı sigorta',
+  '6820': 'Kendi mülkünün kiralanması ve işletilmesi',
+  '6831': 'Gayrimenkul acenteleri',
+  '6910': 'Hukuk hizmetleri',
+  '6920': 'Muhasebe ve denetim hizmetleri',
+  '7010': 'İşletme merkezi yönetim faaliyetleri',
+  '7021': 'Halkla ilişkiler ve iletişim',
+  '7022': 'Yönetim danışmanlığı',
+  '7112': 'Mühendislik hizmetleri',
+  '7120': 'Teknik test ve analiz',
+  '7311': 'Reklam ajansları',
+  '7410': 'Özelleşmiş tasarım faaliyetleri',
+  '7460': 'Güvenlik ve soruşturma hizmetleri',
+  '7490': 'Diğer mesleki, bilimsel ve teknik hizmetler',
+  '7711': 'Otomobil ve hafif motorlu araç kiralama',
+  '7712': 'Kamyon ve diğer ağır araç kiralama',
+  '7810': 'İstihdam aracılık faaliyetleri',
+  '7820': 'Geçici istihdam hizmetleri',
+  '8010': 'Özel güvenlik hizmetleri',
+  '8110': 'Bina ve çevre düzenleme hizmetleri',
+  '8130': 'Peyzaj hizmetleri',
+  '8211': 'Ofis yönetim hizmetleri',
+  '8219': 'Fotokopi, belge hazırlama hizmetleri',
+  '8560': 'Özel eğitim faaliyetleri',
+  '8621': 'Genel pratisyen tıbbi hizmetleri',
+  '8690': 'Diğer sağlık hizmetleri',
+  '9311': 'Spor tesisleri işletimi',
+  '9312': 'Spor kulüpleri faaliyetleri',
+  '9601': 'Çamaşır ve kuru temizleme hizmetleri',
+  '9602': 'Kuaförlük ve güzellik salonları',
+  '9609': 'Diğer kişisel hizmet faaliyetleri',
+};
+
+const OCR_KATEGORI_ETIKET: Record<string, string> = {
+  YEDEK_PARCA: 'Yedek Parça',
+  AKARYAKIT: 'Akaryakıt',
+  GIDA: 'Gıda/Market',
+  YEMEK: 'Yemek/Restoran',
+  KIRTASIYE: 'Kırtasiye/Ofis Malzemesi',
+  ELEKTRONIK: 'Elektronik/Teknoloji',
+  TEKSTIL: 'Tekstil/Giyim',
+  HIZMET: 'Genel Hizmet',
+  INSAAT: 'İnşaat Malzemesi',
+  TEMIZLIK: 'Temizlik/Hijyen',
+  SEYAHAT: 'Seyahat/Ulaşım',
+  KONAKLAMA: 'Otel/Konaklama',
+  SAGLIK: 'Sağlık/Eczane',
+  REKLAM: 'Reklam/Tanıtım',
+  MUHASEBE: 'Muhasebe/Danışmanlık',
+  KARGO: 'Kargo/Nakliye',
+  TELEFON: 'Telefon/İletişim',
+  INTERNET: 'İnternet/Yazılım',
+  ELEKTRIK: 'Elektrik/Su/Doğalgaz',
+  KIRA: 'Kira',
+  SIGORTA: 'Sigorta',
+  BANKA: 'Banka/Finans Hizmeti',
+  CEZA: 'Ceza/Gecikme Zammı',
+  ALKOL_TUTUN: 'Alkol/Tütün',
+  DIGER: 'Diğer',
+};
+
 @Injectable()
 export class KdvControlService {
   private readonly logger = new Logger(KdvControlService.name);
@@ -2100,6 +2231,24 @@ export class KdvControlService {
       };
     }
 
+    // Mükellef profili çok ince (sistemde tanımlı bilgi yok) VE AI güveni düşükse → KONTROL_ET
+    if (profileIsThin && baseDecision.risk === 'UYGUN' && lowConfidence) {
+      return {
+        risk: 'KONTROL_ET',
+        summary: 'Mükellef profili sistemde yetersiz; güven skoru düşük belge manuel kontrol edilmeli.',
+        suggestion: 'Faaliyet/sektör kaydı tanımlı olmayan mükellef için belge işletme bağlantısı muhasebeci tarafından teyit edilmeli.',
+        findings: [
+          {
+            title: 'Profil yetersiz',
+            detail: 'Mükellef faaliyet bilgisi sistemde tanımlı değil; AI güven skoru da düşük. Belge işletmeyle ilgili mi gözden geçirin.',
+            severity: 'KONTROL_ET' as ContentAuditRisk,
+          },
+          ...baseDecision.findings,
+        ].slice(0, 6),
+        confidence: Math.min(Number(baseDecision.confidence || 0), 0.65),
+      };
+    }
+
     if (baseDecision.risk !== 'RISKLI' && baseDecision.risk !== 'ISLENMEMELI') return baseDecision;
 
     const shouldDowngrade =
@@ -2150,19 +2299,52 @@ export class KdvControlService {
   private async buildContentAuditPrompt(image: any, session: any, tenantId: string) {
     const profile = await this.findTaxpayerContentProfile(session, tenantId);
     const taxpayer = session.taxpayer || {};
+
+    const naceKodu: string | null = taxpayer.naceKodu || null;
+    const naceAciklama: string | null = naceKodu ? (NACE_ACIKLAMA[naceKodu] || null) : null;
+    // Faaliyet: önce agentRule profili, yoksa NACE açıklamasından türet
+    const profilFaaliyet: string | null = profile?.faaliyet || naceAciklama || null;
+
+    const kategoriEtiketi: string | null = image.ocrKategori
+      ? (OCR_KATEGORI_ETIKET[image.ocrKategori] || image.ocrKategori)
+      : null;
+
     const text = [
       image.ocrRawText,
-      image.ocrKategori ? `Kategori: ${image.ocrKategori}` : '',
+      kategoriEtiketi ? `Kategori: ${kategoriEtiketi}` : '',
       image.ocrBelgeTipi ? `Belge tipi: ${image.ocrBelgeTipi}` : '',
     ].filter(Boolean).join('\n').slice(0, 3500);
+
+    // Bu mükellef için bilinen satıcı→kategori eşleşmeleri (VendorMemory)
+    let bilinenSaticilar: Array<{ vkn: string; unvan: string | null; kategori: string; onay: number }> = [];
+    try {
+      const taxpayerId = session?.taxpayer?.id;
+      if (taxpayerId) {
+        const vmRows = await (this.prisma as any).vendorMemoryDecision.findMany({
+          where: { taxpayerId, kararTipi: 'isletme', onayAdedi: { gt: 0 } },
+          include: { vendorMemory: { select: { firmaKimlikNo: true, firmaUnvan: true } } },
+          orderBy: { onayAdedi: 'desc' },
+          take: 10,
+        });
+        bilinenSaticilar = vmRows.map((d: any) => ({
+          vkn: d.vendorMemory?.firmaKimlikNo,
+          unvan: d.vendorMemory?.firmaUnvan || null,
+          kategori: d.kategori + (d.altKategori ? `/${d.altKategori}` : ''),
+          onay: d.onayAdedi,
+        }));
+      }
+    } catch { /* ignore */ }
+
     const payload = {
       mukellef: {
         ad: this.formatMukellefAdi(session) || null,
         defterTuru: taxpayer.defterTuru || taxpayer.mihsapDefterTuru || null,
-        naceKodu: taxpayer.naceKodu || null,
-        profilFaaliyet: profile?.faaliyet || null,
+        naceKodu,
+        naceAciklama,
+        profilFaaliyet,
         profilDefterTuru: profile?.defterTuru || null,
         profil: profile?.profile || null,
+        bilinenSaticilar: bilinenSaticilar.length > 0 ? bilinenSaticilar : null,
       },
       kontrol: { tip: session.type, donem: session.periodLabel },
       belge: {
@@ -2173,7 +2355,7 @@ export class KdvControlService {
         kdvTevkifat: image.confirmedKdvTevkifat || image.ocrKdvTevkifat || null,
         satici: image.ocrSatici || null,
         saticiVkn: image.ocrSaticiVkn || null,
-        kategori: image.ocrKategori || null,
+        kategori: kategoriEtiketi,
         belgeTipi: image.ocrBelgeTipi || null,
         metin: text || null,
       },
