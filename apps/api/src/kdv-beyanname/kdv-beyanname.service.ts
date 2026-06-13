@@ -698,8 +698,6 @@ export class KdvBeyannameService {
     donem: string,
     faturaTuru: 'ALIS' | 'SATIS',
   ) {
-    return this.derleOranBazliMatrahKdvFromKdvControl(tenantId, mukellefId, donem, faturaTuru);
-
     // ÖNEMLİ: faturaTuru "TEVKIFATLI_ALIS" / "TEVKIFATLI_SATIS" gibi varyantlarda
     // da gelebiliyor. KDV1 ön hazırlığı için tevkifatlı alış da indirilecek
     // KDV'ye dahildir (tevkifat tutarı sonradan ayrılır). contains ile alıyoruz.
