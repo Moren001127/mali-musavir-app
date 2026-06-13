@@ -667,9 +667,18 @@ function startKeepAlive(session) {
       const url = page.url();
       // Sadece Luca domain'inde keep-alive yap
       if (!/luca\.com\.tr/i.test(url)) return;
-      // Hafif evaluate — herhangi bir DOM erişimi cookie'yi refresh eder
-      await page.evaluate(() => Date.now()).catch(() => {});
-      log.debug?.(`Luca keep-alive ping (url: ${url.slice(0, 80)})`);
+      // Luca sunucusuna gerçek HTTP isteği at — sadece JS evaluate değil,
+      // fetch() sunucuya ulaşır ve session timer'ı sıfırlar (30dk drop engeli).
+      await page.evaluate(async () => {
+        try {
+          await fetch(location.origin + '/luca/', {
+            method: 'HEAD',
+            credentials: 'include',
+            cache: 'no-cache',
+          });
+        } catch {}
+      }).catch(() => {});
+      log.debug?.(`Luca keep-alive ping (HTTP HEAD → ${url.slice(0, 60)})`);
     } catch (e) {
       // sessizce yok say — bir sonraki tick'te tekrar dene
     }

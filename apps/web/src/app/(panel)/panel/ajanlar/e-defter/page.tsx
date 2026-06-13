@@ -11,6 +11,7 @@ import {
 import { toast } from 'sonner';
 import { api } from '@/lib/api';
 import { EDefterDonemTipi, edefterControlApi } from '@/lib/edefter-control';
+import { useLucaAgent } from '@/hooks/useLucaAgent';
 
 // ── e-Defter modül kimliği: kurumsal lacivert/mavi (her modüle ayrı renk imzası) ──
 // Palet "Sakin Uyumlu Lacivert": soğuk mavi vurgu + yumuşatılmış uyumlu semantik renkler.
@@ -340,6 +341,7 @@ function mizanIsAncestorCode(parent: string, child: string) {
 
 export default function EDefterAgentPage() {
   const qc = useQueryClient();
+  const { preferredDeviceId } = useLucaAgent();
   const now = new Date();
   const [taxpayerId, setTaxpayerId] = useState('');
   const [year, setYear] = useState(now.getFullYear());
@@ -400,7 +402,7 @@ export default function EDefterAgentPage() {
   });
 
   const fetchMut = useMutation({
-    mutationFn: () => edefterControlApi.fetchFromLucaAgent({ mukellefId: taxpayerId, donem, donemTipi }),
+    mutationFn: () => edefterControlApi.fetchFromLucaAgent({ mukellefId: taxpayerId, donem, donemTipi, targetDeviceId: preferredDeviceId ?? undefined }),
     onSuccess: (data) => {
       setLucaJobId(data.jobId); setSelectedSessionId(null);
       setLucaStatus(data.mizanJobId ? 'Luca ajanı Detay Fiş Listesi ve Mizan raporlarını hazırlıyor...' : 'Luca ajanı Detay Fiş Listesi raporunu hazırlıyor; bitince Mizan otomatik sıraya alınacak...');

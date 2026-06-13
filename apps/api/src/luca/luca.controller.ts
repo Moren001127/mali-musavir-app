@@ -398,6 +398,15 @@ export class LucaController {
     return this.luca.cancelJob(id, req.user.tenantId);
   }
 
+  @Post('luca/jobs/reset-stuck')
+  @UseGuards(AuthGuard('jwt'), RolesGuard)
+  @Roles('ADMIN', 'STAFF')
+  @HttpCode(HttpStatus.OK)
+  async resetStuckJobs(@Req() req: any) {
+    const count = await this.luca.cleanupStuckRunning(req.user.tenantId);
+    return { reset: count };
+  }
+
   // ==================== RUNNER → /agent/luca/* ====================
   // NOT: X-Agent-Token doğrulaması için mevcut agent-events guard'ı kullanılır.
   // Yalnızca token'a sahip tarayıcı eklentisi bu endpoint'leri çağırabilir.

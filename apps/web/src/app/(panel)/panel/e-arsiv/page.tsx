@@ -5,6 +5,7 @@ import { useQuery, useQueries, useMutation, useQueryClient } from '@tanstack/rea
 import { earsivApi, fmtTRY, type EarsivTip, type BelgeKaynak, type EarsivFatura, type LucaFetchJob } from '@/lib/earsiv';
 import { api } from '@/lib/api';
 import { LucaInlineCaptchaPanel } from '@/components/luca/LucaInlineCaptchaPanel';
+import { useLucaAgent } from '@/hooks/useLucaAgent';
 import { toast } from 'sonner';
 import {
   Download, Search, Users, Calendar, Sparkles, Loader2, FileText,
@@ -137,6 +138,7 @@ const JOB_TIP_TO_MODE: Record<string, Mode> = {
 
 export default function EarsivPage() {
   const qc = useQueryClient();
+  const { preferredDeviceId } = useLucaAgent();
   // Sorgulama tipleri — birden fazla seçilebilir (Gelen E-Arşiv + Gelen E-Fatura gibi)
   const [modes, setModes] = useState<Set<Mode>>(new Set(['GELEN_EARSIV']));
   const modeArr = useMemo(() => Array.from(modes), [modes]);
@@ -313,6 +315,7 @@ export default function EarsivPage() {
               donem,
               tip: MODE_INFO[m].tip,
               belgeKaynak: MODE_INFO[m].belgeKaynak,
+              targetDeviceId: preferredDeviceId ?? undefined,
             });
             jobIds.push(r.jobId);
             jobMeta[r.jobId] = { mode: m, mukellef: taxpayerName(mk) };

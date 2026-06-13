@@ -50,6 +50,7 @@ export const earsivApi = {
     donem: string;
     tip: EarsivTip;
     belgeKaynak?: BelgeKaynak;
+    targetDeviceId?: string;
   }) =>
     api
       .post('/earsiv/fetch-from-luca', data)
@@ -63,6 +64,9 @@ export const earsivApi = {
 
   cancelLucaJob: (jobId: string) =>
     api.post(`/luca/jobs/${jobId}/cancel`).then((r) => r.data as any),
+
+  resetStuckJobs: () =>
+    api.post('/luca/jobs/reset-stuck').then((r) => r.data as { reset: number }),
 
   list: (params: {
     taxpayerId?: string;

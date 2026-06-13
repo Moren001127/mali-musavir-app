@@ -5,6 +5,7 @@ import { useSearchParams, useRouter } from 'next/navigation';
 import { mizanApi, fmtTRY } from '@/lib/mizan';
 import { api } from '@/lib/api';
 import { lucaSessionApi } from '@/lib/luca-session';
+import { useLucaAgent } from '@/hooks/useLucaAgent';
 import { formatDonemLabel, formatDonemTipiLabel, getDonemDateRange, normalizeDonemTipi } from '@/lib/period';
 import { toast } from 'sonner';
 import {
@@ -276,6 +277,7 @@ function defaultCriterionForm() {
 export default function MizanPage() {
   const qc = useQueryClient();
   const router = useRouter();
+  const { preferredDeviceId } = useLucaAgent();
   const searchParams = useSearchParams();
   const viewId = searchParams.get('id');
 
@@ -361,6 +363,7 @@ export default function MizanPage() {
         mukellefId: taxpayerId,
         donem: toDonem(year, month, donemTipi),
         donemTipi,
+        targetDeviceId: preferredDeviceId ?? undefined,
       });
     },
     onSuccess: (d) => {
