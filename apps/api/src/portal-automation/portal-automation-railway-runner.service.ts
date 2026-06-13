@@ -1046,6 +1046,19 @@ export class PortalAutomationRailwayRunnerService implements OnModuleInit {
     for (let i = 0; i < 24 && !listele; i++) await page.waitForTimeout(500);
     await page.waitForTimeout(1500);
 
+    // RECON: "Islem Yap" buton/menu yapisini gor (headless tikla calismadi).
+    const domRecon = await page.evaluate(() => {
+      const norm = (s: any) => String(s || '').replace(/\s+/g, ' ').trim();
+      const islem = Array.from(document.querySelectorAll('button, a, [role="button"], [class*="btn"], [class*="Button"], [class*="dropdown"], [class*="menu"]'))
+        .filter((el: any) => /işlem yap|islem yap/i.test(norm(el.innerText)) || /işlem|islem/i.test(norm(el.getAttribute && el.getAttribute('aria-label'))))
+        .slice(0, 3)
+        .map((el: any) => norm(el.outerHTML).slice(0, 700));
+      const firstRow: any = document.querySelector('table tbody tr') || document.querySelector('[role="row"]') || document.querySelector('table tr');
+      const rowHtml = firstRow ? norm(firstRow.outerHTML).slice(0, 1500) : null;
+      const allBtns = Array.from(document.querySelectorAll('button, a[role], [role="button"]')).slice(0, 25).map((b: any) => norm(b.innerText) || norm(b.getAttribute && b.getAttribute('aria-label')) || norm(b.className).slice(0, 40)).filter(Boolean);
+      return { islem, rowHtml, allBtns };
+    }).catch(() => null);
+
     const list: any[] = Array.isArray(listele?.data?.tebligatDtoList) ? listele.data.tebligatDtoList : [];
     const taxpayerId = job?.taxpayerId || null;
     const donem = job?.donem || null;
@@ -1104,6 +1117,7 @@ export class PortalAutomationRailwayRunnerService implements OnModuleInit {
         count: documents.length,
         pdfCount: pdfSayisi,
         sayilari: sayilari || null,
+        domRecon,
         apiRequests: apiRequests.slice(0, 24),
         apiCalls: apiCalls.slice(0, 24),
         notes: [
