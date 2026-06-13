@@ -678,11 +678,13 @@ function GenelBakisPano({ donem, onSelect }: { donem: string; onSelect: (id: str
   if (error) return <ErrorCard error={error} label="Genel bakış" />;
   if (!data) return null;
   const t = data.toplam;
+  const odemeciAdet = data.satirlar.filter((r) => r.odenecekKdv > 0).length;
 
   return (
     <div className="space-y-3">
-      <div className="grid grid-cols-2 gap-2.5 md:grid-cols-3 xl:grid-cols-6">
-        <StatCard icon={Wallet} label="Toplam Ödenecek" value={`${TRY}${fmt(t.toplamOdenecek)}`} accent={TEAL_BR} />
+      <div className="grid grid-cols-2 gap-2.5 md:grid-cols-3 xl:grid-cols-7">
+        <StatCard icon={Wallet} label="Toplam Ödenecek" value={`${TRY}${fmt(t.toplamOdenecek)}`} accent={STAT_RED} />
+        <StatCard icon={Receipt} label="Ödeme Çıkan" value={String(odemeciAdet)} accent={STAT_RED} sub={`/${t.mukellefAdet} mükellef`} />
         <StatCard icon={CheckCircle2} label="Hazır" value={`${t.hazirAdet}/${t.mukellefAdet}`} accent={STAT_GREEN} />
         <StatCard icon={AlertTriangle} label="Dikkat" value={String(t.dikkatAdet)} accent={STAT_AMBER} />
         <StatCard icon={Layers} label="KDV2 mükellef" value={String(t.kdv2Adet)} accent={TEAL_BR} />
@@ -735,49 +737,59 @@ function GenelBakisPano({ donem, onSelect }: { donem: string; onSelect: (id: str
       </div>
 
       <div className="overflow-x-auto rounded-2xl border" style={{ borderColor: 'rgba(255,255,255,0.06)' }}>
-        <table className="w-full border-collapse text-left" style={{ minWidth: 1060 }}>
+        <table className="w-full border-collapse text-left" style={{ minWidth: 1100 }}>
           <thead>
-            <tr className="text-[10px] font-bold uppercase tracking-wider" style={{ color: 'rgba(250,250,249,0.4)', background: 'rgba(255,255,255,0.02)' }}>
-              <th className="px-3 py-2.5">Mükellef</th>
-              <th className="px-3 py-2.5">Durum</th>
-              <th className="px-3 py-2.5 text-right">Hesaplanan</th>
-              <th className="px-3 py-2.5 text-right">İndirilecek</th>
-              <th className="px-3 py-2.5 text-right whitespace-nowrap" title="Önceki dönemden devreden KDV">ÖN.DÖN.DEVREDEN</th>
-              <th className="px-3 py-2.5 text-right whitespace-nowrap" title="Sonraki döneme devreden KDV">SON.DÖN.DEVREDEN</th>
-              <th className="px-3 py-2.5 text-right">Ödenecek</th>
-              <th className="px-3 py-2.5 text-center">Güven</th>
-              <th className="px-3 py-2.5 text-center">KDV1</th>
-              <th className="px-3 py-2.5 text-center">KDV2</th>
+            <tr className="text-[10.5px] font-bold uppercase tracking-wider" style={{ color: 'rgba(250,250,249,0.4)', background: 'rgba(255,255,255,0.02)' }}>
+              <th className="px-4 py-3">Mükellef</th>
+              <th className="px-3 py-3">Durum</th>
+              <th className="px-3 py-3 text-right">Hesaplanan</th>
+              <th className="px-3 py-3 text-right">İndirilecek</th>
+              <th className="px-3 py-3 text-right whitespace-nowrap" title="Önceki dönemden devreden KDV">Ön Dön.</th>
+              <th className="px-3 py-3 text-right whitespace-nowrap" title="Sonraki döneme devreden KDV">Son Dön.</th>
+              <th className="px-3 py-3 text-right">Ödenecek</th>
+              <th className="px-3 py-3 text-center">Güven</th>
+              <th className="px-3 py-3 text-center">KDV1</th>
+              <th className="px-3 py-3 text-center">KDV2</th>
             </tr>
           </thead>
           <tbody>
             {satirlar.map((r) => (
-              <tr key={r.mukellefId} className="border-t transition hover:bg-white/[0.025]" style={{ borderColor: 'rgba(255,255,255,0.05)' }}>
-                <td className="px-3 py-2.5">
+              <tr
+                key={r.mukellefId}
+                className="border-t transition hover:bg-white/[0.025]"
+                style={{
+                  borderColor: 'rgba(255,255,255,0.05)',
+                  background: r.odenecekKdv > 0 ? 'rgba(239,107,107,0.04)' : undefined,
+                }}
+              >
+                <td className="px-4 py-3">
                   <button onClick={() => onSelect(r.mukellefId)} className="inline-flex items-center gap-1.5 text-left">
-                    <span className="text-[13px] font-semibold" style={{ color: '#fafaf9' }}>{r.ad}</span>
+                    <span className="text-[14px] font-bold" style={{ color: '#fafaf9' }}>{r.ad}</span>
                     <ChevronRight size={13} style={{ color: TEAL_BR, opacity: 0.6 }} />
                   </button>
-                  <div className="text-[10.5px]" style={{ color: 'rgba(250,250,249,0.35)' }}>{r.faturaAdet} fatura</div>
+                  <div className="text-[11px]" style={{ color: 'rgba(250,250,249,0.35)' }}>{r.faturaAdet} fatura</div>
                 </td>
-                <td className="px-3 py-2.5"><DurumBadge durum={r.durum} /></td>
-                <td className="px-3 py-2.5 text-right tabular-nums text-[12.5px]" style={{ color: '#fffaf0' }}>{TRY}{fmt(r.hesaplananKdv)}</td>
-                <td className="px-3 py-2.5 text-right tabular-nums text-[12.5px]" style={{ color: '#fffaf0' }}>{TRY}{fmt(r.indirilecekKdv)}</td>
-                <td className="px-3 py-2.5 text-right tabular-nums text-[12.5px]" style={{ color: '#fffaf0' }}>{TRY}{fmt(r.devredenKdv)}</td>
-                <td className="px-3 py-2.5 text-right tabular-nums text-[12.5px]" style={{ color: '#fffaf0' }}>{TRY}{fmt(r.sonrakiAyaDevreden)}</td>
-                <td className="px-3 py-2.5 text-right tabular-nums text-[13px] font-bold" style={{ color: r.odenecekKdv > 0 ? STAT_RED : STAT_GREEN }}>{TRY}{fmt(r.odenecekKdv)}</td>
-                <td className="px-3 py-2.5 text-center"><GuvenDot seviye={r.veriGuveniSeviye} puan={r.veriGuveniPuan} /></td>
-                <td className="px-3 py-2.5 text-center">
+                <td className="px-3 py-3"><DurumBadge durum={r.durum} /></td>
+                <td className="px-3 py-3 text-right tabular-nums text-[14px] font-semibold" style={{ color: '#fffaf0' }}>{TRY}{fmt(r.hesaplananKdv)}</td>
+                <td className="px-3 py-3 text-right tabular-nums text-[14px] font-semibold" style={{ color: '#fffaf0' }}>{TRY}{fmt(r.indirilecekKdv)}</td>
+                <td className="px-3 py-3 text-right tabular-nums text-[13px]" style={{ color: 'rgba(255,250,240,0.65)' }}>{TRY}{fmt(r.devredenKdv)}</td>
+                <td className="px-3 py-3 text-right tabular-nums text-[13px]" style={{ color: 'rgba(255,250,240,0.65)' }}>{TRY}{fmt(r.sonrakiAyaDevreden)}</td>
+                <td className="px-3 py-3 text-right tabular-nums text-[15px] font-extrabold" style={{ color: r.odenecekKdv > 0 ? STAT_RED : STAT_GREEN }}>
+                  {r.odenecekKdv > 0 && <span className="mr-1 text-[11px] font-bold opacity-70">ÖDE</span>}
+                  {TRY}{fmt(r.odenecekKdv)}
+                </td>
+                <td className="px-3 py-3 text-center"><GuvenDot seviye={r.veriGuveniSeviye} puan={r.veriGuveniPuan} /></td>
+                <td className="px-3 py-3 text-center">
                   {r.kdv1Var ? (
                     <VerToggle verildi={r.kdv1Verildi} onClick={() => durumMut.mutate({ mukellefId: r.mukellefId, tip: 'KDV1', verildi: !r.kdv1Verildi })} />
                   ) : (
                     <span style={{ color: 'rgba(250,250,249,0.25)' }}>—</span>
                   )}
                 </td>
-                <td className="px-3 py-2.5 text-center">
+                <td className="px-3 py-3 text-center">
                   {r.kdv2Var ? (
                     <div className="inline-flex flex-col items-center gap-1">
-                      <span className="text-[10.5px] tabular-nums" style={{ color: TEAL_BR }}>{TRY}{fmt(r.kdv2TevkifatTutari)}</span>
+                      <span className="text-[11.5px] tabular-nums font-semibold" style={{ color: TEAL_BR }}>{TRY}{fmt(r.kdv2TevkifatTutari)}</span>
                       <VerToggle verildi={r.kdv2Verildi} onClick={() => durumMut.mutate({ mukellefId: r.mukellefId, tip: 'KDV2', verildi: !r.kdv2Verildi })} />
                     </div>
                   ) : (
@@ -800,13 +812,16 @@ function GenelBakisPano({ donem, onSelect }: { donem: string; onSelect: (id: str
   );
 }
 
-function StatCard({ icon: Icon, label, value, accent }: { icon: any; label: string; value: string; accent: string }) {
+function StatCard({ icon: Icon, label, value, accent, sub }: { icon: any; label: string; value: string; accent: string; sub?: string }) {
   return (
     <div className="rounded-xl border p-3" style={{ background: 'rgba(255,255,255,0.02)', borderColor: 'rgba(255,255,255,0.06)' }}>
       <div className="flex items-center gap-1.5 text-[10px] uppercase tracking-wider" style={{ color: 'rgba(250,250,249,0.45)' }}>
         <Icon size={12} style={{ color: accent }} /> {label}
       </div>
-      <div className="mt-1.5 text-[18px] font-extrabold tabular-nums" style={{ color: '#fafaf9' }}>{value}</div>
+      <div className="mt-1.5 flex items-baseline gap-1">
+        <span className="text-[20px] font-extrabold tabular-nums" style={{ color: '#fafaf9' }}>{value}</span>
+        {sub && <span className="text-[11px] font-semibold" style={{ color: 'rgba(250,250,249,0.4)' }}>{sub}</span>}
+      </div>
     </div>
   );
 }

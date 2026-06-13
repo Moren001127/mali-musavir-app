@@ -522,7 +522,7 @@ export class KdvBeyannameService {
               : 0;
             const hesaplanan = k1?.sonuc.hesaplananKdv ?? 0;
             const indirilecek = k1?.sonuc.indirilecekKdv ?? 0;
-            // KDV2 tespiti: SADECE OCR'dan okunan tevkifatlı alış faturası varsa.
+            // KDV2 tespiti: OCR tevkifatlı alış VEYA beyanConfig.kdv2Enabled=true
             const tevkifatliAdet = k1 ? k1.alis.tevkifatli.adet : 0;
             const tevkifatliKdv = k1 ? k1.alis.tevkifatli.kdv : 0;
             const bosMu = !k1 || (realAdet === 0 && hesaplanan === 0 && indirilecek === 0);
@@ -545,7 +545,7 @@ export class KdvBeyannameService {
               durum,
               kdv1Var: !!cfg.kdv1Period,
               kdv1Verildi: kdv1VerildiMi(m.id, d.kdv1),
-              kdv2Var: tevkifatliAdet > 0,
+              kdv2Var: tevkifatliAdet > 0 || !!cfg.kdv2Enabled,
               kdv2TevkifatTutari: tevkifatliKdv,
               kdv2FaturaAdet: tevkifatliAdet,
               kdv2Verildi: kdv2VerildiMi(m.id, d.kdv2),
@@ -938,6 +938,7 @@ export class KdvBeyannameService {
       belgeNo: string | null,
       isFinal: boolean,
       status?: string,
+      hasImage?: boolean,
     ) => {
       if (!rows.length) {
         addIssue(
@@ -952,7 +953,9 @@ export class KdvBeyannameService {
 
       for (const row of rows) addToOran(row.oran, row.matrah, row.kdv);
       includedDocKeys.add(docKey);
-      if (isFinal) finalDocKeys.add(docKey);
+      // Güven puanı için "kesin" (ocrliAdet) sayacı: MATCHED/CONFIRMED VE görsel olan kayıt.
+      // Görsel olmadan sadece Luca kaydıyla MATCHED olan kayıtlar kontrol_gerekli sayılır.
+      if (isFinal && hasImage) finalDocKeys.add(docKey);
       else {
         addIssue(
           docKey,
@@ -1018,7 +1021,7 @@ export class KdvBeyannameService {
       const rows: Array<{ oran: number; matrah: number; kdv: number }> =
         kdvTutari > 0 ? [{ oran: detectedOran, matrah: 0, kdv: kdvTutari }] : [];
 
-      addRows(rows, docKey, belgeNo, finalStatuses.has(status), status);
+      addRows(rows, docKey, belgeNo, finalStatuses.has(status), status, !!imageId);
     }
 
     const [orphanRecords, orphanImages] = await Promise.all([
@@ -1210,8 +1213,8 @@ export class KdvBeyannameService {
       where: {
         session: {
           tenantId,
-          taxpayerId: mukellefId,
-          periodLabel: { in: [donem, donem.replace('-', '/')] },
+          OR: [{ taxpayerId: mukellefId }, { taxpayerId: null }],
+          periodLabel: { in: this.periodLabelCandidates(donem) },
           type: 'KDV_191',
         },
       },
@@ -1260,8 +1263,8 @@ export class KdvBeyannameService {
       where: {
         session: {
           tenantId,
-          taxpayerId: mukellefId,
-          periodLabel: { in: [donem, donem.replace('-', '/')] },
+          OR: [{ taxpayerId: mukellefId }, { taxpayerId: null }],
+          periodLabel: { in: this.periodLabelCandidates(donem) },
           type: 'KDV_191',
         },
       },
@@ -1752,7 +1755,8 @@ export class KdvBeyannameService {
     kritikEksikAdet: number;
   }): VeriGuveni {
     const toplam = Math.max(params.toplamFaturaAdet, 0);
-    const kesinOran = toplam > 0 ? params.kesinFaturaAdet / toplam : 1;
+    // toplam=0 → veri yok → kesinOran=0 (eski kod 1 veriyordu → yanlış %100)
+    const kesinOran = toplam > 0 ? params.kesinFaturaAdet / toplam : 0;
     let puan = Math.round(kesinOran * 85) + (params.lucaMizanVar ? 15 : 0);
     puan -= Math.min(params.kritikEksikAdet * 10, 40);
     puan = Math.max(0, Math.min(100, puan));
