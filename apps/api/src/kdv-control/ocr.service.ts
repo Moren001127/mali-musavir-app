@@ -921,10 +921,34 @@ export class OcrService {
       }
     }
 
+    // Brüt (genel toplam): önce OcrResult.totalTutari, yoksa metinden
+    // (OKC fiş kısaltmaları: GENEL TOPLAM / TOPLAM / TOP / NAKIT / KART).
+    const grossFromResultOrText = (): number => {
+      const fromResult = this.parseAmount(result.totalTutari || '') || 0;
+      if (fromResult > 0) return fromResult;
+      if (!fullText) return 0;
+      const norm = this.normalizeAzureText(fullText);
+      const pats = [
+        /GENEL\s+TOPLAM\s*[:*]?\s*\*?\s*([\d.,]+)/i,
+        /(?:^|\n)\s*TOPLAM\s*[:*]?\s*\*?\s*([\d.,]+)/im,
+        /(?:^|\n)\s*TOP\.?\s*[:*]?\s*\*?\s*([\d.,]+)/im,
+        /(?:NAK[İIı]T|KART|KRED[İIı])\s*[:*]?\s*\*?\s*([\d.,]+)/i,
+      ];
+      let best = 0;
+      for (const p of pats) {
+        const m = norm.match(p);
+        if (m && m[1]) {
+          const v = this.parseAmount(m[1]);
+          if (v > best) best = v;
+        }
+      }
+      return best;
+    };
+
     // 2) Tek satırlı belge + brüt biliniyorsa: matrah = brüt − KDV − tevkifat
     if (bd.length === 1 && !isValid(bd[0].oran)) {
       const kdv = (Number(bd[0].tutar) || 0) || (this.parseAmount(result.kdvTutari || '') || 0);
-      const brut = this.parseAmount(result.totalTutari || '') || 0;
+      const brut = grossFromResultOrText();
       const tevk = this.parseAmount(result.kdvTevkifat || '') || 0;
       if (kdv > 0 && brut > kdv) {
         const matrah = brut - kdv - tevk;
@@ -938,19 +962,29 @@ export class OcrService {
       }
     }
 
-    // 3) Son çare: metinde KDV bağlamında TEK bir geçerli %oran varsa onu ata.
-    //    İskonto/ÖİV/tevkifat oranlarını kapmamak için yalnız KDV/TOPKDV bağlamı.
+    // 3) Son çare metin:
+    //    (a) KDV bağlamında TEK geçerli %oran (çok satırlı belgede de güvenli)
+    //    (b) hâlâ eksik VE breakdown TEK satır → metnin TAMAMINDA tek geçerli oran
+    //        varsa onu kullan (OKC fiş: oran ürün/fiyat satırında olabiliyor —
+    //        "YEDEK PRÇ %20". Tek oran = KDV oranı; iki+ oran = belirsiz → dokunma).
     if (fullText && bd.some((i) => !isValid(i.oran))) {
       const norm = this.foldTurkishAscii(this.normalizeAzureText(fullText)).toUpperCase();
-      const rates = new Set<number>();
+      const ctxRates = new Set<number>();
       const ctx = /(?:TOPKDV|TOP\s*KDV|KDV|K\.D\.V|KATMA\s*DEGER\s*VERGISI)[^%\d\n]{0,12}%\s*(\d{1,2})|%\s*(\d{1,2})[^%\d\n]{0,12}(?:KDV|TOPKDV)/g;
       for (const m of norm.matchAll(ctx)) {
         const r = Number(m[1] || m[2]);
-        if (isValid(r)) rates.add(r);
+        if (isValid(r)) ctxRates.add(r);
       }
-      if (rates.size === 1) {
-        const only = [...rates][0];
+      if (ctxRates.size === 1) {
+        const only = [...ctxRates][0];
         for (const item of bd) if (!isValid(item.oran)) item.oran = only;
+      } else if (bd.length === 1 && !isValid(bd[0].oran)) {
+        const allRates = new Set<number>();
+        for (const m of norm.matchAll(/%\s*(\d{1,2})(?:[.,]0+)?/g)) {
+          const r = Number(m[1]);
+          if (isValid(r)) allRates.add(r);
+        }
+        if (allRates.size === 1) bd[0].oran = [...allRates][0];
       }
     }
   }
