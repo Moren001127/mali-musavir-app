@@ -222,11 +222,23 @@ export class OcrService {
     // (<ArchiveInvoice>, <Invoice> vb.) bulunabilir. isHtml guard olmadan bu dosyalar
     // XML parser'a düşer, XML parse başarısız olur → %0 confidence döner.
     const head512Lower = imageBuffer.slice(0, 512).toString('utf8').trimStart().toLowerCase();
+    // isImageMagic ÖNCE hesaplanmalı — JPEG/PNG uzantısı .html bile olsa image OCR'a gitmeli
+    const isImageMagic =
+      imageBuffer.length > 4 && (
+        (imageBuffer[0] === 0x89 && imageBuffer[1] === 0x50) || // PNG
+        (imageBuffer[0] === 0xff && imageBuffer[1] === 0xd8) || // JPEG
+        (imageBuffer[0] === 0x25 && imageBuffer[1] === 0x50 && imageBuffer[2] === 0x44) || // PDF
+        (imageBuffer[0] === 0x47 && imageBuffer[1] === 0x49) || // GIF
+        (imageBuffer[0] === 0x49 && imageBuffer[1] === 0x49) || // TIFF
+        (imageBuffer[0] === 0x42 && imageBuffer[1] === 0x4d)    // BMP
+      );
     const isHtml =
-      /\.html?$/i.test(originalName || '') ||
-      head512Lower.startsWith('<!doctype html') ||
-      head512Lower.startsWith('<html') ||
-      /<html[\s>]/i.test(head4k); // XML declaration ile başlayan HTML dosyalarını da yakala
+      !isImageMagic && (
+        /\.html?$/i.test(originalName || '') ||
+        head512Lower.startsWith('<!doctype html') ||
+        head512Lower.startsWith('<html') ||
+        /<html[\s>]/i.test(head4k)
+      );
 
     const hasUblMarker =
       /<\?xml/i.test(head4k) ||
@@ -238,16 +250,6 @@ export class OcrService {
       /UBL-TR|UBL\s*Invoice/i.test(head4k);
     // Uzantı xml ise ve içerik gerçekten XML-benzeri ASCII ise (image magic bytes yok) XML kabul et
     const filenameIsXml = /\.xml$/i.test(originalName || '');
-    const isImageMagic =
-      imageBuffer.length > 4 && (
-        // PNG, JPEG, PDF, GIF, TIFF, BMP
-        (imageBuffer[0] === 0x89 && imageBuffer[1] === 0x50) ||
-        (imageBuffer[0] === 0xff && imageBuffer[1] === 0xd8) ||
-        (imageBuffer[0] === 0x25 && imageBuffer[1] === 0x50 && imageBuffer[2] === 0x44) ||
-        (imageBuffer[0] === 0x47 && imageBuffer[1] === 0x49) ||
-        (imageBuffer[0] === 0x49 && imageBuffer[1] === 0x49) ||
-        (imageBuffer[0] === 0x42 && imageBuffer[1] === 0x4d)
-      );
     // HTML dosyaları XML parser'a DÜŞMESİN (isHtml guard)
     const isXml = !isHtml && (hasUblMarker || (filenameIsXml && !isImageMagic));
     this.logger.log(`Dosya tipi: ${originalName || '—'} · isHtml=${isHtml} isXml=${isXml} hasUblMarker=${hasUblMarker}`);
