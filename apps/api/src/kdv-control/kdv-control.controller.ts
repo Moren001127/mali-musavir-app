@@ -270,6 +270,17 @@ export class KdvControlController {
   }
 
   /**
+   * Bu kiracının tüm NEEDS_REVIEW / FAILED / LOW_CONFIDENCE görsellerini
+   * arka planda yeniden tarar. Anlık hata düzeltme için kullanılır.
+   */
+  @Post('reocr-pending')
+  @Roles('ADMIN', 'STAFF')
+  @HttpCode(HttpStatus.ACCEPTED)
+  reocrAllPending(@Req() req: any) {
+    return this.kdvService.reocrAllPending(req.user.tenantId);
+  }
+
+  /**
    * Tek bir fatura görselinin OCR'ını yeniden çalıştır.
    * "OCR FATURA OKUMA" panelinde her satırın yanındaki ⟳ butonu için.
    * Cache atlanır, manuel teyit sıfırlanır, OCR arkaplanda yeniden çalışır.

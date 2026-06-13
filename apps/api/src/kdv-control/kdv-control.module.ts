@@ -5,6 +5,7 @@ import { KdvControlController } from './kdv-control.controller';
 import { ExcelParserService } from './excel-parser.service';
 import { OcrService } from './ocr';
 import { ReconciliationEngine } from './reconciliation';
+import { KdvOcrCron } from './kdv-ocr.cron';
 import { LucaModule } from '../luca/luca.module';
 import { AgentEventsModule } from '../agent-events/agent-events.module';
 import { NotificationsModule } from '../notifications/notifications.module';
@@ -16,7 +17,7 @@ import { NotificationsModule } from '../notifications/notifications.module';
     AgentEventsModule,
     NotificationsModule,
   ],
-  providers: [KdvControlService, ExcelParserService, OcrService, ReconciliationEngine],
+  providers: [KdvControlService, ExcelParserService, OcrService, ReconciliationEngine, KdvOcrCron],
   controllers: [KdvControlController],
   exports: [KdvControlService, OcrService, ExcelParserService],
 })

@@ -2429,6 +2429,60 @@ ${JSON.stringify(payload, null, 2)}`;
     };
   }
 
+  /**
+   * Tüm NEEDS_REVIEW / FAILED / LOW_CONFIDENCE görsellerini yeniden tara.
+   * tenantId verilirse sadece o kiracı; verilmezse tüm sistem.
+   * Her görsel forceFresh=true ile işlenir → en yeni parser fix'leri devreye girer.
+   * API rate limitine karşı: max 3 eş zamanlı, aralarında 600ms bekleme.
+   */
+  async reocrAllPending(tenantId?: string): Promise<{ queued: number; skipped: number }> {
+    const images = await this.prisma.receiptImage.findMany({
+      where: {
+        ocrStatus: { in: ['NEEDS_REVIEW', 'FAILED', 'LOW_CONFIDENCE'] },
+        isManuallyConfirmed: false,
+        session: {
+          status: { not: 'COMPLETED' },
+          ...(tenantId ? { tenantId } : {}),
+        },
+      },
+      select: { id: true, s3Key: true, session: { select: { tenantId: true, status: true } } },
+      orderBy: { uploadedAt: 'desc' },
+      take: 500,
+    });
+
+    const eligible = images.filter((img) => img.s3Key);
+    this.logger.log(`reocrAllPending: ${eligible.length} görsel sıraya alındı (toplam bulunan: ${images.length})`);
+
+    // Arka planda sıraya al — HTTP yanıtını bloklama
+    (async () => {
+      const CONCURRENCY = 3;
+      const DELAY_MS = 600;
+      for (let i = 0; i < eligible.length; i += CONCURRENCY) {
+        const batch = eligible.slice(i, i + CONCURRENCY);
+        await Promise.allSettled(
+          batch.map(async (img) => {
+            try {
+              if (img.s3Key!.startsWith('mihsap://')) {
+                const invoiceId = img.s3Key!.slice('mihsap://'.length);
+                await this.runOcrForMihsapInvoice(img.id, invoiceId, img.session.tenantId, { forceFresh: true });
+              } else {
+                await this.runOcrForImage(img.id, img.s3Key!, { forceFresh: true });
+              }
+            } catch (err: any) {
+              this.logger.warn(`reocrAllPending [${img.id}]: ${err?.message}`);
+            }
+          }),
+        );
+        if (i + CONCURRENCY < eligible.length) {
+          await new Promise((r) => setTimeout(r, DELAY_MS));
+        }
+      }
+      this.logger.log(`reocrAllPending: tamamlandı (${eligible.length} görsel)`);
+    })();
+
+    return { queued: eligible.length, skipped: images.length - eligible.length };
+  }
+
   /** Görseli sil (DB) — S3'ten silme şimdilik atlanıyor */
   async deleteImage(imageId: string, tenantId: string) {
     const image = await this.prisma.receiptImage.findFirst({
