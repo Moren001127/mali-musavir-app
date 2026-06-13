@@ -1029,10 +1029,12 @@ export class PortalAutomationRailwayRunnerService implements OnModuleInit {
     const onRequest = (req: any) => {
       try {
         const url = String(req.url() || '');
-        if (!/apigateway\/etebligat|goruntule|indir|belge|dosya|download|pdf/i.test(url)) return;
+        if (!/apigateway\/etebligat|goruntule|indir|belge|dosya|download|pdf|rapor|report/i.test(url)) return;
         let postData = '';
         try { postData = (req.postData() || '').slice(0, 1500); } catch { /* yut */ }
-        apiRequests.push({ method: req.method(), url: this.safeUrl(url), postData });
+        const h = (req.headers && req.headers()) || {};
+        const auth = String(h['authorization'] || h['Authorization'] || '');
+        apiRequests.push({ method: req.method(), url: this.safeUrl(url), postData, authScheme: auth ? auth.split(' ')[0] : null, authLen: auth.length });
       } catch { /* yut */ }
     };
     context.on('response', onResponse);
@@ -1044,16 +1046,17 @@ export class PortalAutomationRailwayRunnerService implements OnModuleInit {
     for (let i = 0; i < 24 && !listele; i++) await page.waitForTimeout(500);
     await page.waitForTimeout(1500);
 
-    try { context.off('response', onResponse); } catch { /* yut */ }
-    try { context.off('request', onRequest); } catch { /* yut */ }
-
     const list: any[] = Array.isArray(listele?.data?.tebligatDtoList) ? listele.data.tebligatDtoList : [];
     const taxpayerId = job?.taxpayerId || null;
     const donem = job?.donem || null;
 
-    // PDF'leri SPA'nin "Belge Goruntule" indirmesiyle (headless) cek. Liste saf API; dosya
-    // ise GIB'in oturum-bagli guvenli indirme akisindan gelir (uuid client-side, listede yok).
+    // PDF'leri SPA'nin "Belge Goruntule" indirmesiyle (headless) cek. Interceptor'lar acik
+    // kalir ki indirme akisinin API zinciri (zarf-detay -> report/download + auth) RECON icin
+    // yakalansin (saf-API'ye gecis hazirligi).
     const pdfMap = await this.downloadETebligatPdfs(page, list, loginUrl).catch(() => ({} as Record<string, string>));
+
+    try { context.off('response', onResponse); } catch { /* yut */ }
+    try { context.off('request', onRequest); } catch { /* yut */ }
 
     const documents = list.map((t: any) => {
       const belgeNo = t?.belgeNo ? String(t.belgeNo) : null;
@@ -1101,7 +1104,8 @@ export class PortalAutomationRailwayRunnerService implements OnModuleInit {
         count: documents.length,
         pdfCount: pdfSayisi,
         sayilari: sayilari || null,
-        apiRequests: apiRequests.slice(0, 20),
+        apiRequests: apiRequests.slice(0, 24),
+        apiCalls: apiCalls.slice(0, 24),
         notes: [
           `e-Tebligat API listesi: ${documents.length} kayit, ${pdfSayisi} PDF indirildi`,
           listele ? 'tebligat-listele yakalandi' : 'tebligat-listele YAKALANAMADI',
