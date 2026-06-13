@@ -56,6 +56,8 @@ export interface Kdv1OnHazirlik {
     toplamMatrah: number;
     toplamHesaplananKdv: number;
     faturaAdet: number;
+    oranBelirsizKdv?: number; // Oranı OCR/Luca'dan okunamayan ama tutarı bilinen KDV
+    oranBelirsizAdet?: number;
   };
 
   // === İNDİRİLECEK KDV (ALIŞ tarafı) ===
@@ -66,6 +68,8 @@ export interface Kdv1OnHazirlik {
     faturaAdet: number;
     tevkifatsiz: { matrah: number; kdv: number; adet: number }; // Normal alış
     tevkifatli: { matrah: number; kdv: number; adet: number };  // Tevkifatlı alış (KDV2'ye)
+    oranBelirsizKdv?: number; // Oranı OCR/Luca'dan okunamayan ama tutarı bilinen KDV
+    oranBelirsizAdet?: number;
   };
 
   // === GEÇEN DÖNEMDEN DEVREDEN KDV ===

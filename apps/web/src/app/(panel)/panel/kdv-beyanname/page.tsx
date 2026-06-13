@@ -122,7 +122,7 @@ type Kdv1 = {
     netKdv: number;
     cekildiAt: string | null;
   } | null;
-  satis: { oranlar: OranRow[]; toplamMatrah: number; toplamHesaplananKdv: number; faturaAdet: number };
+  satis: { oranlar: OranRow[]; toplamMatrah: number; toplamHesaplananKdv: number; faturaAdet: number; oranBelirsizKdv?: number; oranBelirsizAdet?: number };
   alis: {
     oranlar: OranRow[];
     toplamMatrah: number;
@@ -130,6 +130,8 @@ type Kdv1 = {
     faturaAdet: number;
     tevkifatsiz: { matrah: number; kdv: number; adet: number };
     tevkifatli: { matrah: number; kdv: number; adet: number };
+    oranBelirsizKdv?: number;
+    oranBelirsizAdet?: number;
   };
   devreden: { tutar: number; kaynak: string; sonKayitDonem: string | null };
   sonuc: {
@@ -1532,6 +1534,8 @@ function Kdv1View({ data, isBilanco }: { data: Kdv1; isBilanco: boolean }) {
           toplamMatrah={displaySatis.toplamMatrah}
           toplamKdv={displaySatis.toplamHesaplananKdv}
           adet={cleanSatisTotal.adet}
+          oranBelirsizKdv={hasInvalidSatisRows ? 0 : (data.satis?.oranBelirsizKdv ?? 0)}
+          oranBelirsizAdet={data.satis?.oranBelirsizAdet ?? 0}
         />
         <OranTablosu
           baslik="Alış · İndirilecek KDV"
@@ -1540,6 +1544,8 @@ function Kdv1View({ data, isBilanco }: { data: Kdv1; isBilanco: boolean }) {
           toplamMatrah={displayAlis.toplamMatrah}
           toplamKdv={displayAlis.toplamIndirilecekKdv}
           adet={cleanAlisTotal.adet}
+          oranBelirsizKdv={hasInvalidAlisRows ? 0 : (data.alis?.oranBelirsizKdv ?? 0)}
+          oranBelirsizAdet={data.alis?.oranBelirsizAdet ?? 0}
           altSatir={[
             { ad: 'Tevkifatsız', v: displayAlis.tevkifatsiz },
             { ad: 'Tevkifatlı (KDV2\'ye)', v: displayAlis.tevkifatli },
@@ -2058,10 +2064,11 @@ function LucaCrossCard({ hesap, mihsap, luca, fark }: { hesap: string; mihsap: n
 }
 
 function OranTablosu({
-  baslik, renk, oranlar, toplamKdv, adet, altSatir,
+  baslik, renk, oranlar, toplamKdv, adet, altSatir, oranBelirsizKdv = 0, oranBelirsizAdet = 0,
 }: {
   baslik: string; renk: string; oranlar: OranRow[] | null | undefined;
   toplamMatrah?: number; toplamKdv: number; adet: number;
+  oranBelirsizKdv?: number; oranBelirsizAdet?: number;
   altSatir?: Array<{ ad: string; v: { matrah: number; kdv: number; adet: number } }>;
 }) {
   // Konsept B — oran payı barlı kart: her oranın KDV'si toplam içindeki payı kadar dolu bar.
@@ -2086,7 +2093,7 @@ function OranTablosu({
         <span className="rounded-full px-3 py-1 text-[11.5px] font-bold tabular-nums" style={{ background: `${renk}24`, color: renk, border: `1px solid ${renk}66` }}>{adet} fatura</span>
       </div>
 
-      {safeOranlar.length === 0 ? (
+      {safeOranlar.length === 0 && oranBelirsizKdv <= 0 ? (
         <div className="py-10 text-center text-[13px]" style={{ color: 'rgba(255,255,255,0.4)' }}>
           Bu dönem için kayıt yok
         </div>
@@ -2109,6 +2116,25 @@ function OranTablosu({
               </div>
             );
           })}
+          {oranBelirsizKdv > 0 && (
+            <div className="py-3" style={{ borderTop: safeOranlar.length === 0 ? 'none' : '1px solid rgba(255,250,240,0.08)' }}>
+              <div className="mb-2 flex items-center justify-between gap-3">
+                <span className="inline-flex items-center gap-2.5">
+                  <span className="inline-flex items-center justify-center rounded-lg px-2.5 py-1 text-[12px] font-extrabold" style={{ background: 'rgba(240,183,85,0.18)', color: STAT_AMBER, border: `1px solid ${STAT_AMBER}55`, minWidth: 46 }}>?</span>
+                  <span className="text-[12px] font-semibold tabular-nums" style={{ color: 'rgba(255,255,255,0.5)' }}>
+                    Oran okunamadı{oranBelirsizAdet > 0 ? ` · ${oranBelirsizAdet} belge` : ''}
+                  </span>
+                </span>
+                <MoneyText value={oranBelirsizKdv} color={STAT_AMBER} strong size={15} />
+              </div>
+              <div className="h-2 overflow-hidden rounded-full" style={{ background: 'rgba(255,255,255,0.06)' }}>
+                <span className="block h-full rounded-full" style={{ width: `${Math.min(100, Math.max(3, Math.round((oranBelirsizKdv / toplamPay) * 100)))}%`, background: STAT_AMBER }} />
+              </div>
+              <p className="mt-1.5 text-[10.5px]" style={{ color: 'rgba(240,183,85,0.65)' }}>
+                Tutar Luca'dan kesin (toplama dahil) ama KDV oranı OCR/Luca kaydından okunamadı.
+              </p>
+            </div>
+          )}
         </div>
       )}
 

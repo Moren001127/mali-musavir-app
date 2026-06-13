@@ -206,6 +206,8 @@ export class KdvBeyannameService {
         toplamMatrah: Math.round(satis.toplamMatrah * 100) / 100,
         toplamHesaplananKdv: hesaplananKdv,
         faturaAdet: satis.faturaAdet,
+        oranBelirsizKdv: satis.oranBelirsizKdv ?? 0,
+        oranBelirsizAdet: satis.oranBelirsizAdet ?? 0,
       },
       alis: {
         oranlar: alis.oranlar,
@@ -222,6 +224,8 @@ export class KdvBeyannameService {
           kdv: Math.round(alis.tevkifatli.kdv * 100) / 100,
           adet: alis.tevkifatli.adet,
         },
+        oranBelirsizKdv: alisTumu.oranBelirsizKdv ?? 0,
+        oranBelirsizAdet: alisTumu.oranBelirsizAdet ?? 0,
       },
       devreden,
       sonuc: {
@@ -867,6 +871,8 @@ export class KdvBeyannameService {
       xmlAdet,
       kontrolGerekliAdet,
       tahminAdet: kontrolGerekliAdet,
+      oranBelirsizKdv: 0,
+      oranBelirsizAdet: 0,
       eksikVeriler,
     };
   }
@@ -1068,6 +1074,7 @@ export class KdvBeyannameService {
 
     // oran=0: alış-tutarı-only bucket — toplamKdv'ye dahil edilir ama oran listesinde gösterilmez
     const kdvTutariOnly = oranMap.get(0)?.kdv ?? 0;
+    const oranBelirsizAdet = oranMap.get(0)?.adet ?? 0;
     const oranlar: OranRow[] = Array.from(oranMap.entries())
       .filter(([oran]) => oran !== 0)
       .map(([oran, v]) => ({
@@ -1092,6 +1099,8 @@ export class KdvBeyannameService {
       xmlAdet: 0,
       kontrolGerekliAdet: kontrolDocKeys.size,
       tahminAdet: 0,
+      oranBelirsizKdv: Math.round(kdvTutariOnly * 100) / 100,
+      oranBelirsizAdet,
       eksikVeriler,
     };
   }
