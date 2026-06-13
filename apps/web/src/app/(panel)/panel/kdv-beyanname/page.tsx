@@ -8,7 +8,7 @@ import { LucaInlineCaptchaPanel } from '@/components/luca/LucaInlineCaptchaPanel
 import {
   FileCheck, Calendar, Users, Download, AlertCircle, CheckCircle2,
   Loader2, Receipt, Sparkles,
-  Bell, RefreshCw, ChevronRight, ChevronDown, Wallet, AlertTriangle, ArrowLeft, Layers,
+  Bell, RefreshCw, ChevronRight, ChevronDown, AlertTriangle, ArrowLeft, Layers,
 } from 'lucide-react';
 import TaxpayerSelect from '@/components/ui/TaxpayerSelect';
 
@@ -682,8 +682,7 @@ function GenelBakisPano({ donem, onSelect }: { donem: string; onSelect: (id: str
 
   return (
     <div className="space-y-3">
-      <div className="grid grid-cols-2 gap-2.5 md:grid-cols-3 xl:grid-cols-7">
-        <StatCard icon={Wallet} label="Toplam Ödenecek" value={`${TRY}${fmt(t.toplamOdenecek)}`} accent={STAT_RED} />
+      <div className="grid grid-cols-2 gap-2.5 md:grid-cols-3 xl:grid-cols-6">
         <StatCard icon={Receipt} label="Ödeme Çıkan" value={String(odemeciAdet)} accent={STAT_RED} sub={`/${t.mukellefAdet} mükellef`} />
         <StatCard icon={CheckCircle2} label="Hazır" value={`${t.hazirAdet}/${t.mukellefAdet}`} accent={STAT_GREEN} />
         <StatCard icon={AlertTriangle} label="Dikkat" value={String(t.dikkatAdet)} accent={STAT_AMBER} />
@@ -737,7 +736,7 @@ function GenelBakisPano({ donem, onSelect }: { donem: string; onSelect: (id: str
       </div>
 
       <div className="overflow-x-auto rounded-2xl border" style={{ borderColor: 'rgba(255,255,255,0.1)', background: '#0f0d0b' }}>
-        <table className="w-full text-left" style={{ minWidth: 1100, borderCollapse: 'collapse' }}>
+        <table className="w-full text-left" style={{ minWidth: 860, borderCollapse: 'collapse' }}>
           <thead>
             <tr
               className="text-[11px] font-bold uppercase tracking-wider"
@@ -748,15 +747,13 @@ function GenelBakisPano({ donem, onSelect }: { donem: string; onSelect: (id: str
               }}
             >
               <th className="px-4 py-3 whitespace-nowrap">Mükellef</th>
-              <th className="px-3 py-3 whitespace-nowrap" style={{ borderLeft: '1px solid rgba(255,255,255,0.07)' }}>Durum</th>
-              <th className="px-3 py-3 text-right whitespace-nowrap" style={{ borderLeft: '1px solid rgba(255,255,255,0.07)' }}>Hesaplanan KDV</th>
-              <th className="px-3 py-3 text-right whitespace-nowrap" style={{ borderLeft: '1px solid rgba(255,255,255,0.07)' }}>İndirilecek KDV</th>
-              <th className="px-3 py-3 text-right whitespace-nowrap" style={{ borderLeft: '1px solid rgba(255,255,255,0.07)' }} title="Önceki dönemden devreden">Ön Dön. Dev.</th>
-              <th className="px-3 py-3 text-right whitespace-nowrap" style={{ borderLeft: '1px solid rgba(255,255,255,0.07)' }} title="Sonraki döneme devreden">Son Dön. Dev.</th>
+              <th className="px-3 py-3 whitespace-nowrap" style={{ borderLeft: '1px solid rgba(255,255,255,0.08)' }}>Durum</th>
+              <th className="px-3 py-3 text-right whitespace-nowrap" style={{ borderLeft: '2px solid rgba(255,255,255,0.12)' }}>Hesaplanan KDV</th>
+              <th className="px-3 py-3 text-right whitespace-nowrap" style={{ borderLeft: '1px solid rgba(255,255,255,0.08)' }}>İndirilecek KDV</th>
               <th className="px-3 py-3 text-right whitespace-nowrap" style={{ borderLeft: '2px solid rgba(255,255,255,0.12)' }}>Ödenecek KDV</th>
-              <th className="px-3 py-3 text-center whitespace-nowrap" style={{ borderLeft: '1px solid rgba(255,255,255,0.07)' }}>Veri Güveni</th>
+              <th className="px-3 py-3 text-center whitespace-nowrap" style={{ borderLeft: '1px solid rgba(255,255,255,0.08)' }}>Veri Güveni</th>
               <th className="px-3 py-3 text-center whitespace-nowrap" style={{ borderLeft: '2px solid rgba(255,255,255,0.12)' }}>KDV1</th>
-              <th className="px-3 py-3 text-center whitespace-nowrap" style={{ borderLeft: '1px solid rgba(255,255,255,0.07)' }}>KDV2</th>
+              <th className="px-3 py-3 text-center whitespace-nowrap" style={{ borderLeft: '1px solid rgba(255,255,255,0.08)' }}>KDV2</th>
             </tr>
           </thead>
           <tbody>
@@ -766,34 +763,42 @@ function GenelBakisPano({ donem, onSelect }: { donem: string; onSelect: (id: str
                 className="transition hover:bg-white/[0.03]"
                 style={{
                   borderTop: idx === 0 ? 'none' : '1px solid rgba(255,255,255,0.08)',
-                  background: r.odenecekKdv > 0 ? 'rgba(239,107,107,0.05)' : undefined,
+                  background: r.odenecekKdv > 0 ? 'rgba(239,107,107,0.04)' : undefined,
                 }}
               >
-                <td className="px-4 py-3.5">
+                <td className="px-4 py-3">
                   <button onClick={() => onSelect(r.mukellefId)} className="inline-flex items-center gap-1.5 text-left">
-                    <span className="text-[14px] font-bold" style={{ color: '#fafaf9' }}>{r.ad}</span>
-                    <ChevronRight size={13} style={{ color: TEAL_BR, opacity: 0.6 }} />
+                    <span className="text-[13px] font-bold" style={{ color: '#fafaf9' }}>{r.ad}</span>
+                    <ChevronRight size={12} style={{ color: TEAL_BR, opacity: 0.6 }} />
                   </button>
-                  <div className="text-[11px] mt-0.5" style={{ color: 'rgba(250,250,249,0.38)' }}>{r.faturaAdet} fatura</div>
+                  <div className="text-[11px] mt-0.5" style={{ color: 'rgba(250,250,249,0.35)' }}>{r.faturaAdet} fatura</div>
                 </td>
-                <td className="px-3 py-3.5" style={{ borderLeft: '1px solid rgba(255,255,255,0.05)' }}><DurumBadge durum={r.durum} /></td>
-                <td className="px-3 py-3.5 text-right tabular-nums text-[14px] font-semibold" style={{ color: '#fffaf0', borderLeft: '1px solid rgba(255,255,255,0.05)' }}>{TRY}{fmt(r.hesaplananKdv)}</td>
-                <td className="px-3 py-3.5 text-right tabular-nums text-[14px] font-semibold" style={{ color: '#fffaf0', borderLeft: '1px solid rgba(255,255,255,0.05)' }}>{TRY}{fmt(r.indirilecekKdv)}</td>
-                <td className="px-3 py-3.5 text-right tabular-nums text-[13px]" style={{ color: 'rgba(255,250,240,0.55)', borderLeft: '1px solid rgba(255,255,255,0.05)' }}>{TRY}{fmt(r.devredenKdv)}</td>
-                <td className="px-3 py-3.5 text-right tabular-nums text-[13px]" style={{ color: 'rgba(255,250,240,0.55)', borderLeft: '1px solid rgba(255,255,255,0.05)' }}>{TRY}{fmt(r.sonrakiAyaDevreden)}</td>
-                <td className="px-3 py-3.5 text-right tabular-nums text-[15px] font-extrabold" style={{ color: r.odenecekKdv > 0 ? STAT_RED : STAT_GREEN, borderLeft: '2px solid rgba(255,255,255,0.1)' }}>
-                  {r.odenecekKdv > 0 && <span className="mr-1 text-[10px] font-bold tracking-wide opacity-70">ÖDE</span>}
-                  {TRY}{fmt(r.odenecekKdv)}
+                <td className="px-3 py-3" style={{ borderLeft: '1px solid rgba(255,255,255,0.06)' }}>
+                  <DurumBadge durum={r.durum} />
                 </td>
-                <td className="px-3 py-3.5 text-center" style={{ borderLeft: '1px solid rgba(255,255,255,0.05)' }}><GuvenDot seviye={r.veriGuveniSeviye} puan={r.veriGuveniPuan} /></td>
-                <td className="px-3 py-3.5 text-center" style={{ borderLeft: '2px solid rgba(255,255,255,0.08)' }}>
+                <td className="px-4 py-3 text-right" style={{ borderLeft: '2px solid rgba(255,255,255,0.1)' }}>
+                  <span className="tabular-nums text-[13px] font-semibold" style={{ color: '#fffaf0' }}>{TRY}{fmt(r.hesaplananKdv)}</span>
+                </td>
+                <td className="px-4 py-3 text-right" style={{ borderLeft: '1px solid rgba(255,255,255,0.06)' }}>
+                  <span className="tabular-nums text-[13px] font-semibold" style={{ color: '#fffaf0' }}>{TRY}{fmt(r.indirilecekKdv)}</span>
+                </td>
+                <td className="px-4 py-3 text-right" style={{ borderLeft: '2px solid rgba(255,255,255,0.1)' }}>
+                  <span className="tabular-nums text-[14px] font-extrabold" style={{ color: r.odenecekKdv > 0 ? STAT_RED : STAT_GREEN }}>
+                    {r.odenecekKdv > 0 && <span className="mr-1 text-[10px] font-bold tracking-wide opacity-60">ÖDE</span>}
+                    {TRY}{fmt(r.odenecekKdv)}
+                  </span>
+                </td>
+                <td className="px-3 py-3 text-center" style={{ borderLeft: '1px solid rgba(255,255,255,0.06)' }}>
+                  <GuvenDot seviye={r.veriGuveniSeviye} puan={r.veriGuveniPuan} />
+                </td>
+                <td className="px-3 py-3 text-center" style={{ borderLeft: '2px solid rgba(255,255,255,0.08)' }}>
                   {r.kdv1Var ? (
                     <VerToggle verildi={r.kdv1Verildi} onClick={() => durumMut.mutate({ mukellefId: r.mukellefId, tip: 'KDV1', verildi: !r.kdv1Verildi })} />
                   ) : (
                     <span style={{ color: 'rgba(250,250,249,0.2)' }}>—</span>
                   )}
                 </td>
-                <td className="px-3 py-3.5 text-center" style={{ borderLeft: '1px solid rgba(255,255,255,0.05)' }}>
+                <td className="px-3 py-3 text-center" style={{ borderLeft: '1px solid rgba(255,255,255,0.06)' }}>
                   {r.kdv2Var ? (
                     <div className="inline-flex flex-col items-center gap-1">
                       <span className="text-[11px] tabular-nums font-semibold" style={{ color: TEAL_BR }}>{TRY}{fmt(r.kdv2TevkifatTutari)}</span>
@@ -807,7 +812,7 @@ function GenelBakisPano({ donem, onSelect }: { donem: string; onSelect: (id: str
             ))}
             {satirlar.length === 0 && (
               <tr>
-                <td colSpan={10} className="px-3 py-10 text-center text-[13px]" style={{ color: 'rgba(250,250,249,0.4)' }}>
+                <td colSpan={8} className="px-3 py-10 text-center text-[13px]" style={{ color: 'rgba(250,250,249,0.4)' }}>
                   Bu filtrede mükellef yok.
                 </td>
               </tr>
@@ -1099,7 +1104,7 @@ function KdvWaterfall({ sonuc }: { sonuc: Kdv1['sonuc'] }) {
     { nm: 'Satış KDV', sub: 'Hesaplanan', val: sonuc.hesaplananKdv, sign: '+', op: '', kind: 'pos', Ico: Receipt },
     { nm: 'İndirilecek', sub: 'Alış KDV', val: sonuc.indirilecekKdv, sign: '−', op: '−', kind: 'neg', Ico: Download },
     { nm: 'Önceki Devreden', sub: 'Geçmiş dönem', val: sonuc.devredenKdv, sign: '−', op: '−', kind: 'neg', Ico: ArrowLeft },
-    { nm: resultLabel, sub: 'Bu dönem', val: resultVal, sign: '', op: '=', kind: 'result', Ico: odenecek ? Wallet : CheckCircle2 },
+    { nm: resultLabel, sub: 'Bu dönem', val: resultVal, sign: '', op: '=', kind: 'result', Ico: odenecek ? Receipt : CheckCircle2 },
   ];
 
   const tileTheme = (kind: 'pos' | 'neg' | 'result') => {

@@ -631,8 +631,8 @@ function beklenenBeyanlar(cfg: any, yil: number, ay: number, donemTuru: DonemTur
   if (cfg.kdv1Period === 'AYLIK') tipler.push('KDV1');
   else if (periodDue(cfg.kdv1Period, ay, donemTuru)) tipler.push('KDV1');
 
-  // KDV2: OCR tespit (mihsap tevkifatlı alış) veya fallback olarak eski config
-  if ((kdv2OcrSet && taxpayerId && kdv2OcrSet.has(taxpayerId)) || cfg.kdv2Enabled) tipler.push('KDV2');
+  // KDV2: sadece OCR tespit — mihsap tevkifatlı alış veya KDV_191 session
+  if (kdv2OcrSet && taxpayerId && kdv2OcrSet.has(taxpayerId)) tipler.push('KDV2');
   if (periodDue(cfg.kdv4Period, ay, donemTuru)) tipler.push('KDV4');
   if (periodDue(cfg.kdv9015Period, ay, donemTuru)) tipler.push('KDV9015');
 
