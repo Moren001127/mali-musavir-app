@@ -1060,10 +1060,11 @@ export class KdvBeyannameService {
       // alınmaz (oran etiketi aşağıda Luca'dan tamamlanabilir ama tutar değil).
       if (imageId && !seenImageIds.has(imageId)) seenImageIds.add(imageId);
       const kdvTutari = this.parseTrAmount(res.image?.confirmedKdvTutari ?? res.image?.ocrKdvTutari);
-      // Oran: KDV Kontrol ile AYNI güçlü türetme zinciri (tutar yine YALNIZ OCR'dan).
-      // 1) OCR breakdown → 2) Luca kaydı (kdvOrani / hesap adı / hesap kodu) →
-      // 3) matrah / genel-toplam / KDV türetmesi (completeControlRow) →
-      // 4) ham OCR metninden matrah + KDV → oran.
+      // Oran (tutar yine YALNIZ OCR'dan). MATRAH ARANMAZ — kullanıcı kuralı 2026-06-13:
+      // satış ve tevkifatsız alışta matrah istenmiyor; oran + KDV tutarı yeter.
+      // Bu yüzden matrah/genel-toplam türetmesi (completeControlRow) KULLANILMAZ.
+      // 1) OCR breakdown oranı → 2) Luca kaydı (kdvOrani / hesap adı / kodu) →
+      // 3) belge üzerinde YAZILI KDV oranı (ham metinden "%20" / "KDV %20" / Z raporu fişi).
       // Hiçbiri tutmazsa 0 döner; tutar yine toplama girer, sadece "oran okunamadı"ya düşer.
       const detectedOran = (() => {
         const breakdown: any[] =
@@ -1078,17 +1079,8 @@ export class KdvBeyannameService {
             this.oranFromHesapKodu(res.kdvRecord),
         );
         if (GECERLI_KDV_ORANLARI.includes(recordOran)) return recordOran;
-        // KDV Kontrol'ün kullandığı türetme zinciri: matrah / fatura toplamı / KDV → oran.
-        const chainRows = this.completeControlRows(
-          this.kdvRowsFromControl(res.kdvRecord, res.image),
-          res.image,
-          faturaTuru === 'ALIS',
-        );
-        if (chainRows.length > 0 && GECERLI_KDV_ORANLARI.includes(chainRows[0].oran)) {
-          return chainRows[0].oran;
-        }
-        // Son çare: ham OCR metninden (belge üzerindeki matrah + KDV satırı) oran çıkar.
-        const fromText = this.oranFromImageText(res.image, kdvTutari);
+        // Belge üzerinde yazılı KDV oranını DOĞRUDAN oku (matrah hesaplamadan; fiş/Z raporu dahil).
+        const fromText = this.oranFromImageText(res.image);
         if (GECERLI_KDV_ORANLARI.includes(fromText)) return fromText;
         return 0;
       })();
@@ -1663,38 +1655,42 @@ export class KdvBeyannameService {
   }
 
   /**
-   * Belgenin ham OCR metninden (ocrRawText) KDV oranını çıkar.
-   * KDV Kontrol modülündeki mantığın aynısı: "matrah" + "KDV" satırını bul,
-   * pencere içinde KDV tutarı geçiyorsa oran = KDV / matrah → en yakın geçerli oran.
-   * Belge üzerinde oran yazılı olmasa bile matrah+KDV'den türetir.
+   * Belgenin ham OCR metninden (ocrRawText) belge üzerinde YAZILI KDV oranını oku.
+   * MATRAH HESAPLAMAZ — kullanıcı kuralı: satış/tevkifatsız alışta matrah aranmaz.
+   * Z raporu / yazar kasa fişi / e-fatura fark etmez; metinde geçen "%20", "KDV %20",
+   * "/20" gibi oran ifadelerini toplar:
+   *   - KDV bağlamlı satırlardaki (KDV / TOPKDV) oranlarda TEK geçerli oran varsa onu,
+   *   - yoksa tüm metinde TEK geçerli oran varsa onu döndürür.
+   * İki+ farklı oran (ör. fişte %10 ve %20) varsa belirsiz kabul edip 0 döner —
+   * yanlış orana ASLA atamaz.
    */
-  private oranFromImageText(image: any, kdvAmount: number): number {
+  private oranFromImageText(image: any): number {
     const rawText = String(image?.ocrRawText || '');
-    if (!rawText || !(kdvAmount > 0)) return 0;
+    if (!rawText) return 0;
     const fold = (value: string) =>
       value
         .toLocaleUpperCase('tr-TR')
         .replace(/Ş/g, 'S').replace(/İ/g, 'I')
         .replace(/Ğ/g, 'G').replace(/Ç/g, 'C')
         .replace(/Ü/g, 'U').replace(/Ö/g, 'O');
-    const lines = rawText.split(/\r?\n/).map((line) => line.trim()).filter(Boolean);
-    const amountRe = /(\d{1,3}(?:[.,]\d{3})*[.,]\d{1,2})/g;
-    for (let i = 0; i < lines.length; i++) {
-      const folded = fold(lines[i]);
-      if (!/\bK\.?\s*D\.?\s*V\.?\b/.test(folded)) continue;
-      if (!/MATRAH/.test(folded) || /TEVKIFAT/.test(folded)) continue;
-      const window = [lines[i], lines[i + 1] || '', lines[i + 2] || ''].join(' ');
-      const matrahMatch = window.match(/matrah[^\d]{0,30}(\d{1,3}(?:[.,]\d{3})*[.,]\d{1,2})/i);
-      const matrah = matrahMatch ? this.parseTrAmount(matrahMatch[1]) : NaN;
-      if (!Number.isFinite(matrah) || matrah <= 0 || matrah <= kdvAmount) continue;
-      amountRe.lastIndex = 0;
-      const amounts = [...window.matchAll(amountRe)]
-        .map((match) => this.parseTrAmount(match[1]))
-        .filter((amount) => Number.isFinite(amount) && amount > 0);
-      if (!amounts.some((amount) => Math.abs(amount - kdvAmount) <= 0.05)) continue;
-      const oran = this.nearestKdvRate((kdvAmount / matrah) * 100);
-      if (GECERLI_KDV_ORANLARI.includes(oran)) return oran;
+    // "% 20", "%20", "%20,00", "/20" → 20  (eski %8/%18 nearestKdvRate ile en yakına çekilir)
+    const rateRe = /(?:%|\/)\s*0?(1|8|10|18|20)(?:[.,]0+)?(?!\d)/;
+    const lines = rawText.split(/\r?\n/);
+    const kdvRates = new Set<number>();
+    const allRates = new Set<number>();
+    for (const line of lines) {
+      const m = line.match(rateRe);
+      if (!m) continue;
+      const oran = this.nearestKdvRate(Number(m[1]));
+      if (!GECERLI_KDV_ORANLARI.includes(oran)) continue;
+      allRates.add(oran);
+      const folded = fold(line);
+      if (/\bK\.?\s*D\.?\s*V\.?\b/.test(folded) || /TOPK(?:DV|OV|D|O)\b/.test(folded)) {
+        kdvRates.add(oran);
+      }
     }
+    if (kdvRates.size === 1) return [...kdvRates][0];
+    if (kdvRates.size === 0 && allRates.size === 1) return [...allRates][0];
     return 0;
   }
 
