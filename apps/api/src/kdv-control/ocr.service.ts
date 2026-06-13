@@ -323,8 +323,12 @@ export class OcrService {
       const htmlText = imageBuffer.toString('utf8');
       // HTML etiketlerini sil; birden fazla boşluk/satır sıkıştır
       const plainText = htmlText
-        .replace(/<script[\s\S]*?<\/script>/gi, ' ')
-        .replace(/<style[\s\S]*?<\/style>/gi, ' ')
+        .replace(/<script[\s\S]*?<\/script>/gi, '')
+        .replace(/<style[\s\S]*?<\/style>/gi, '')
+        // Blok-seviye etiketler → satır sonu; yoksa tüm metin tek satır olur,
+        // tarih parser'ı "FATURA TARİHİ" (+100) ve "SON ÖDEME" (-120) aynı
+        // satırda görüp net skoru 40 < 50 yapar → null döner.
+        .replace(/<\/?(tr|td|th|div|p|br|li|dt|dd|section|article|h[1-6])\b[^>]*>/gi, '\n')
         .replace(/<[^>]+>/g, ' ')
         .replace(/&amp;/g, '&').replace(/&lt;/g, '<').replace(/&gt;/g, '>').replace(/&nbsp;/g, ' ').replace(/&#\d+;/g, ' ')
         .replace(/\x00/g, '') // PostgreSQL UTF8: NULL byte kabul etmez
@@ -973,6 +977,17 @@ export class OcrService {
     // Toplam KDV
     const toplamKdv = cleanText.match(/toplam\s+k\.?d\.?v\.?\s*[:\s]+([\d.,]+)/i);
     if (toplamKdv?.[1]) return toplamKdv[1].replace(/\s/g, '');
+
+    // Operatör faturası (Türk Telekom vb.) — "KDV %18 (matrah): 46,77" veya "KDV %18 46,77"
+    // Birden fazla oran satırı varsa topla.
+    const operatorKdvMatches = [...cleanText.matchAll(/\bk\.?d\.?v\.?\s*%\s*\d{1,2}(?:[,.]\d{1,2})?\s*(?:\([^)]*\))?\s*[:\s]+([\d.,]+)/gi)];
+    if (operatorKdvMatches.length > 0) {
+      const total = operatorKdvMatches.reduce((sum, m) => {
+        const v = this.parseAmount(m[1]);
+        return this.isLikelyStandaloneTaxRate(m[1]) ? sum : sum + v;
+      }, 0);
+      if (total > 0) return this.formatAmount(total);
+    }
 
     return null;
   }
