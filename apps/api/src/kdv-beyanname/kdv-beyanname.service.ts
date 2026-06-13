@@ -190,11 +190,11 @@ export class KdvBeyannameService {
     // Luca çapraz fark: İşletme → gelir-gider snapshot; Bilanço → mizan 391/191.
     // Fark varsa veri güveni "kesin/%100" olamaz (OCR'lar kesin okunmuş olsa bile
     // Luca defteriyle tutmuyorsa kontrol gerekir). Kullanıcı tespiti 2026-06-13.
-    const TOL_FARK = 1; // TL
-    const farkAnlamli = (a: number, b: number) => {
-      const f = Math.abs(a - b);
-      return f > TOL_FARK && f > Math.max(a, b) * 0.005;
-    };
+    // Kuruşu kuruşuna: KDV Kontrol + çapraz kart ile AYNI. Fark 0,01 TL'yi
+    // aşarsa "fark"tır (eski 1 TL + %0,5 toleransı kaldırıldı; fc5e9da sonrası
+    // eşleşen faturalar zaten Luca değerini kullandığı için kuruş yanlış-alarmı yok).
+    const TOL_FARK = 0.01; // TL
+    const farkAnlamli = (a: number, b: number) => Math.abs(a - b) > TOL_FARK;
     let lucaFarkVar = false;
     if (isletmeGelirGider) {
       const lGelir = isletmeGelirGider.gelirKdvToplam || 0;
@@ -215,8 +215,8 @@ export class KdvBeyannameService {
         });
       }
     } else if (lucaKontrol.mizanVar) {
-      const big = (f: number | null, base: number) =>
-        f != null && Math.abs(f) > TOL_FARK && Math.abs(f) > base * 0.005;
+      const big = (f: number | null, _base: number) =>
+        f != null && Math.abs(f) > TOL_FARK;
       if (big(lucaKontrol.fark391, hesaplananKdv) || big(lucaKontrol.fark191, indirilecekKdv)) {
         lucaFarkVar = true; // mizan fark uyarıları zaten lucaKontrol.uyarilar'da
       }
@@ -2225,13 +2225,13 @@ export class KdvBeyannameService {
     const fark391 = luca391 !== null ? Math.round((mihsapHesaplanan - luca391) * 100) / 100 : null;
     const fark191 = luca191 !== null ? Math.round((mihsapIndirilecek - luca191) * 100) / 100 : null;
 
-    const TOL_TL = 1;
-    if (fark391 !== null && Math.abs(fark391) > TOL_TL && Math.abs(fark391) > mihsapHesaplanan * 0.005) {
+    const TOL_TL = 0.01; // kuruşu kuruşuna (KDV Kontrol ile aynı)
+    if (fark391 !== null && Math.abs(fark391) > TOL_TL) {
       uyarilar.push(
         `391 Hesaplanan KDV uyumsuz: Mihsap ${this.fmt(mihsapHesaplanan)} ≠ Luca ${this.fmt(luca391!)} (fark ${this.fmt(fark391)})`,
       );
     }
-    if (fark191 !== null && Math.abs(fark191) > TOL_TL && Math.abs(fark191) > mihsapIndirilecek * 0.005) {
+    if (fark191 !== null && Math.abs(fark191) > TOL_TL) {
       uyarilar.push(
         `191 İndirilecek KDV uyumsuz: Mihsap ${this.fmt(mihsapIndirilecek)} ≠ Luca ${this.fmt(luca191!)} (fark ${this.fmt(fark191)})`,
       );
