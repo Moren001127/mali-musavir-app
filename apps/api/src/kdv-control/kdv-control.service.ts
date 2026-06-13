@@ -2164,6 +2164,12 @@ export class KdvControlService {
     const profileIsThin = taxpayerText.trim().length < 18;
     const lowConfidence = Number(baseDecision.confidence || 0) < 0.82;
 
+    // SATIŞ oturumunda gider-odaklı override'ları atla — ALIS mantığı SATIS'a uygulanmaz
+    const isSatisSession = ['KDV_391', 'ISLETME_GELIR'].includes(String(session?.type || '').toUpperCase());
+    if (isSatisSession) {
+      return baseDecision;
+    }
+
     if (
       baseDecision.risk === 'KONTROL_ET' &&
       !hardBlockSignal &&
