@@ -311,6 +311,8 @@ export default function KdvBeyannamePage() {
         .then((r) => r.data),
     enabled: !!selectedMukellef && tab === 'KDV1',
     retry: 0,
+    staleTime: 0,
+    refetchOnMount: 'always',
   });
 
   const { data: kdv2, isLoading: kdv2Loading, error: kdv2Error } = useQuery<Kdv2>({
@@ -323,6 +325,8 @@ export default function KdvBeyannamePage() {
         .then((r) => r.data),
     enabled: !!selectedMukellef && tab === 'KDV2',
     retry: 0,
+    staleTime: 0,
+    refetchOnMount: 'always',
   });
 
   // NOT: Açılışta otomatik Mihsap/Luca çekme KALDIRILDI (kullanıcı isteği).
@@ -635,6 +639,8 @@ function GenelBakisPano({ donem, onSelect }: { donem: string; onSelect: (id: str
   const { data, isLoading, error } = useQuery<GenelBakis>({
     queryKey: ['kdv-genel-bakis', donem],
     queryFn: () => api.get('/kdv-beyanname/genel-bakis', { params: { donem } }).then((r) => r.data),
+    staleTime: 0,
+    refetchOnMount: 'always',
   });
 
   const yenile = async () => {
@@ -1315,7 +1321,7 @@ function KontrolKarti({ guven, eksikVeriler, uyarilar }: { guven?: VeriGuveni; e
         </div>
       </div>
 
-      {alerts.length === 0 && notlar.length === 0 && (
+      {alerts.length === 0 && notlar.length === 0 && seviye === 'kesin' && (
         <div className="mt-4 flex items-center gap-2 rounded-xl p-3.5 text-[13px] font-semibold" style={{ background: 'rgba(94,207,142,.08)', border: '1px solid rgba(94,207,142,.28)', color: STAT_GREEN }}>
           <CheckCircle2 size={15} /> Tüm kontroller temiz — beyana hazır
         </div>
@@ -1490,48 +1496,22 @@ function Kdv1View({ data, isBilanco }: { data: Kdv1; isBilanco: boolean }) {
   const kaliteRapor = data.kaliteRapor || { ocrliFaturaOrani: 0, tahminFaturaOrani: 0, uyarilar: [] };
   const cleanSatisRows = cleanOranRows(satis.oranlar);
   const cleanAlisRows = cleanOranRows(alis.oranlar);
-  const hasInvalidSatisRows = cleanSatisRows.length !== (satis.oranlar || []).length;
-  const hasInvalidAlisRows = cleanAlisRows.length !== (alis.oranlar || []).length;
   const cleanSatisTotal = sumOranRows(cleanSatisRows);
   const cleanAlisTotal = sumOranRows(cleanAlisRows);
-  const displaySatis = hasInvalidSatisRows
-    ? {
-        ...satis,
-        oranlar: cleanSatisRows,
-        toplamMatrah: cleanSatisTotal.matrah,
-        toplamHesaplananKdv: cleanSatisTotal.kdv,
-      }
-    : { ...satis, oranlar: cleanSatisRows };
-  const displayAlis = hasInvalidAlisRows
-    ? {
-        ...alis,
-        oranlar: cleanAlisRows,
-        toplamMatrah: cleanAlisTotal.matrah,
-        toplamIndirilecekKdv: cleanAlisTotal.kdv,
-        tevkifatsiz: cleanAlisTotal,
-        tevkifatli: { matrah: 0, kdv: 0, adet: 0 },
-      }
-    : { ...alis, oranlar: cleanAlisRows };
-  const displaySonuc =
-    hasInvalidSatisRows || hasInvalidAlisRows
-      ? {
-          ...sonuc,
-          hesaplananKdv: displaySatis.toplamHesaplananKdv,
-          indirilecekKdv: displayAlis.toplamIndirilecekKdv,
-          odenecekKdv: Math.max(
-            0,
-            Math.round((displaySatis.toplamHesaplananKdv - displayAlis.toplamIndirilecekKdv - sonuc.devredenKdv) * 100) / 100,
-          ),
-          sonrakiAyaDevreden: Math.max(
-            0,
-            Math.round((displayAlis.toplamIndirilecekKdv + sonuc.devredenKdv - displaySatis.toplamHesaplananKdv) * 100) / 100,
-          ),
-        }
-      : sonuc;
+  const satisBelirsizAdet = (satis as any).oranBelirsizAdet ?? 0;
+  const alisBelirsizAdet = (alis as any).oranBelirsizAdet ?? 0;
+  // Backend (KDV Kontrol) toplamları OTORİTEDİR — oran-belirsiz tutarı da içerir.
+  // Ekranda yalnız geçerli-oran satırlarını çiziyoruz; oran-belirsiz ayrı satırda
+  // gösteriliyor. (Eski "hasInvalid → toplamı sıfırdan hesapla" yaması KALDIRILDI:
+  //  oran-belirsiz KDV'yi siliyor, Toplam KDV'yi olduğundan düşük gösteriyordu.)
+  const displaySatis = { ...satis, oranlar: cleanSatisRows };
+  const displayAlis = { ...alis, oranlar: cleanAlisRows };
+  const displaySonuc = sonuc;
 
-  // Hero'daki "X fatura" gerçek oran kaleminden gelsin (hayalet allDocKeys değil)
-  (displaySatis as any).faturaAdet = cleanSatisTotal.adet;
-  (displayAlis as any).faturaAdet = cleanAlisTotal.adet;
+  // Başlık "X fatura" = beyana dahil TÜM belge = geçerli-oran + oran-belirsiz
+  // (yoksa "0 fatura" ama "29 belge oran okunamadı" çelişkisi çıkıyordu).
+  const satisFaturaAdet = cleanSatisTotal.adet + satisBelirsizAdet;
+  const alisFaturaAdet = cleanAlisTotal.adet + alisBelirsizAdet;
 
   return (
     <>
@@ -1559,9 +1539,9 @@ function Kdv1View({ data, isBilanco }: { data: Kdv1; isBilanco: boolean }) {
           oranlar={displaySatis.oranlar}
           toplamMatrah={displaySatis.toplamMatrah}
           toplamKdv={displaySatis.toplamHesaplananKdv}
-          adet={cleanSatisTotal.adet}
-          oranBelirsizKdv={hasInvalidSatisRows ? 0 : (data.satis?.oranBelirsizKdv ?? 0)}
-          oranBelirsizAdet={data.satis?.oranBelirsizAdet ?? 0}
+          adet={satisFaturaAdet}
+          oranBelirsizKdv={data.satis?.oranBelirsizKdv ?? 0}
+          oranBelirsizAdet={satisBelirsizAdet}
         />
         <OranTablosu
           baslik="Alış · İndirilecek KDV"
@@ -1569,9 +1549,9 @@ function Kdv1View({ data, isBilanco }: { data: Kdv1; isBilanco: boolean }) {
           oranlar={displayAlis.oranlar}
           toplamMatrah={displayAlis.toplamMatrah}
           toplamKdv={displayAlis.toplamIndirilecekKdv}
-          adet={cleanAlisTotal.adet}
-          oranBelirsizKdv={hasInvalidAlisRows ? 0 : (data.alis?.oranBelirsizKdv ?? 0)}
-          oranBelirsizAdet={data.alis?.oranBelirsizAdet ?? 0}
+          adet={alisFaturaAdet}
+          oranBelirsizKdv={data.alis?.oranBelirsizKdv ?? 0}
+          oranBelirsizAdet={alisBelirsizAdet}
           altSatir={[
             { ad: 'Tevkifatsız', v: displayAlis.tevkifatsiz },
             { ad: 'Tevkifatlı (KDV2\'ye)', v: displayAlis.tevkifatli },

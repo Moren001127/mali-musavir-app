@@ -1136,13 +1136,15 @@ export class KdvBeyannameService {
 
     const toplamMatrah = oranlar.reduce((s: number, o: any) => s + o.matrah, 0);
     const toplamKdv = oranlar.reduce((s: number, o: any) => s + o.kdv, 0) + kdvTutariOnly;
-    const allDocKeys = new Set<string>([...includedDocKeys, ...kontrolDocKeys]);
 
     return {
       oranlar,
       toplamMatrah,
       toplamKdv,
-      faturaAdet: allDocKeys.size,
+      // faturaAdet = beyana DAHİL edilen belge (geçerli-oran + oran-belirsiz).
+      // Kontrol bekleyen/dışlanan belgeler buraya GİRMEZ (ayrıca kontrolGerekliAdet'te).
+      // Böylece başlık "X fatura" = oran satırları + oran-belirsiz, tevkifatsız = dahil − tevkifatlı.
+      faturaAdet: includedDocKeys.size,
       ocrliAdet: finalDocKeys.size,
       xmlAdet: 0,
       kontrolGerekliAdet: kontrolDocKeys.size,
