@@ -1002,10 +1002,11 @@ export class PortalAutomationRailwayRunnerService implements OnModuleInit {
     return { navigated, actionTrace, downloadInfo, steps, apiCalls: apiCalls.slice(0, 50), apiRequests: apiRequests.slice(0, 60) };
   }
 
-  // GERCEK e-Tebligat akisi: giris sonrasi /portal/e-tebligat'a git, SPA'nin cagirdigi
-  // JSON API yanitlarini (tebligat-listele + tebligat-sayilari) YAKALA, kayit uret.
-  // Liste tamamen API'den gelir (tiklama yok). Indirme adresini ogrenmek icin ilk
-  // satirda bir kez "Belge Goruntule"ye basip download URL'sini yakalar (sonra hep API).
+  // GERCEK e-Tebligat akisi: giris sonrasi /portal/e-tebligat'a git (SPA token'i
+  // sessionStorage'a yazar), sonra HER SEY SAF API (tiklama yok):
+  //  - Liste: tebligat-listele (pageSize buyuk) dogrudan fetch -> tum tebligatlar.
+  //  - PDF: belge-ek-listele -> belge-getir -> report/download; gelen PKCS#7 imzali
+  //    zarftan icteki gercek PDF cikarilir (downloadETebligatPdfs).
   private async collectETebligatViaApi(page: any, context: any, job: any, loginUrl: string) {
     let listele: any = null;
     let sayilari: any = null;
@@ -1059,14 +1060,30 @@ export class PortalAutomationRailwayRunnerService implements OnModuleInit {
       return { islem, rowHtml, allBtns };
     }).catch(() => null);
 
+    // Liste icin DOGRUDAN API (SPA render'ina / pagination'a bagimli degil): TUM tebligatlar
+    // tek cagrida (pageSize buyuk). Basarisizsa SPA'nin pasif yakaladigi listeye dus.
+    const directList = await page.evaluate(async () => {
+      try {
+        const token = sessionStorage.getItem('token');
+        if (!token) return null;
+        const base = location.origin + '/apigateway/etebligat';
+        const headers: any = { 'Content-Type': 'application/json', Accept: 'application/json, text/plain, */*', Authorization: 'Bearer ' + token };
+        const body = JSON.stringify({ meta: { pagination: { pageNo: 1, pageSize: 500 }, sortFieldName: 'id', sortType: 'ASC', filters: [{ fieldName: 'arsivDurum', values: ['0'] }] } });
+        const r = await fetch(base + '/etebligat/tebligat-listele', { method: 'POST', headers, body });
+        if (!r.ok) return null;
+        const j = await r.json();
+        return (j && j.data) || null;
+      } catch { return null; }
+    }).catch(() => null);
+    if (directList && Array.isArray(directList.tebligatDtoList)) listele = { data: directList };
+
     const list: any[] = Array.isArray(listele?.data?.tebligatDtoList) ? listele.data.tebligatDtoList : [];
     const taxpayerId = job?.taxpayerId || null;
     const donem = job?.donem || null;
 
-    // PDF'leri SPA'nin "Belge Goruntule" indirmesiyle (headless) cek. Interceptor'lar acik
-    // kalir ki indirme akisinin API zinciri (zarf-detay -> report/download + auth) RECON icin
-    // yakalansin (saf-API'ye gecis hazirligi).
-    const pdfMap = await this.downloadETebligatPdfs(page, list, loginUrl).catch(() => ({} as Record<string, string>));
+    // PDF'leri SAF API ile (tiklama yok) cek: belge-ek-listele -> belge-getir -> report/download,
+    // gelen PKCS#7 imzali zarftan icteki gercek PDF cikarilir. Anahtar: tebligId.
+    const pdfMap = await this.downloadETebligatPdfs(page, list).catch(() => ({} as Record<string, string>));
 
     try { context.off('response', onResponse); } catch { /* yut */ }
     try { context.off('request', onRequest); } catch { /* yut */ }
@@ -1083,7 +1100,7 @@ export class PortalAutomationRailwayRunnerService implements OnModuleInit {
       receivedAt: this.etebligatDateToIso(t?.tebligZamani),
       mimeType: 'application/pdf',
       originalName: belgeNo ? `${belgeNo}.pdf` : null,
-      base64: (belgeNo && pdfMap[belgeNo]) || null,
+      base64: (t?.tebligId && pdfMap[String(t.tebligId)]) || null,
       raw: {
         kurumKodu: t?.kurumKodu ?? null,
         kurumAciklama: t?.kurumAciklama ?? null,
@@ -1128,50 +1145,71 @@ export class PortalAutomationRailwayRunnerService implements OnModuleInit {
     };
   }
 
-  // Her tebligatin PDF'ini SPA'nin "Belge Goruntule" akisiyla indirir (headless download).
-  // Liste sirasi tebligat-listele ile ayni; i. satirin "Islem Yap" -> "Zarf Icerigi Gor" ->
-  // "Belge Goruntule" tiklanir, Playwright download yakalanir, bytes -> base64.
-  private async downloadETebligatPdfs(page: any, list: any[], loginUrl: string, max = 12): Promise<Record<string, string>> {
+  // Her tebligatin PDF'ini SAF API ile ceker (TIKLAMA YOK). Akis tarayicidan birebir
+  // dogrulandi: belge-ek-listele -> belge-getir (reportLink) -> report/download.
+  // report/download'in dondurdugu dosya PKCS#7 (CMS SignedData) IMZALI ZARFTIR;
+  // icindeki gercek PDF (eContent OCTET STRING) cikarilir. Anahtar: tebligId.
+  // Kimlik: SPA'nin sessionStorage.token'i (Authorization: Bearer ...).
+  private async downloadETebligatPdfs(page: any, list: any[], max = 20): Promise<Record<string, string>> {
     const out: Record<string, string> = {};
-    const base = String(loginUrl).replace(/\/login.*$/i, '');
-    const etebligatUrl = `${base}/e-tebligat`;
     const n = Math.min(list.length, max);
     for (let i = 0; i < n; i++) {
-      const belgeNo = list[i]?.belgeNo ? String(list[i].belgeNo) : '';
-      if (!belgeNo) continue;
+      const t = list[i] || {};
+      const tebligId = t?.tebligId ? String(t.tebligId) : '';
+      if (!tebligId || !t?.tebligSecureId || !t?.tarafId || !t?.tarafSecureId) continue;
       try {
-        await page.goto(etebligatUrl, { waitUntil: 'domcontentloaded', timeout: 45_000 }).catch(() => null);
-        await page.waitForTimeout(2600);
-        const islem = page.getByText(/İŞLEM YAP|ISLEM YAP|İşlem Yap|Islem Yap/i);
-        const cnt = await islem.count().catch(() => 0);
-        if (!cnt || i >= cnt) continue;
-        await islem.nth(i).click({ timeout: 4000 }).catch(() => null);
-        await page.waitForTimeout(1100);
-        for (const sub of ['Zarf İçeriği Gör', 'Zarf Icerigi Gor', 'Zarf İçeriği', 'Zarf Icerigi']) {
-          const s = page.getByText(sub, { exact: false }).first();
-          if (await s.isVisible().catch(() => false)) { await s.click({ timeout: 3000 }).catch(() => null); break; }
-        }
-        await page.waitForTimeout(2600);
-        let dl: any = null;
-        for (const bg of ['BELGE GÖRÜNTÜLE', 'Belge Görüntüle', 'BELGE GORUNTULE', 'Belge Goruntule']) {
-          const b = page.getByText(bg, { exact: false }).first();
-          if (await b.isVisible().catch(() => false)) {
-            const [d] = await Promise.all([
-              page.waitForEvent('download', { timeout: 12_000 }).catch(() => null),
-              b.click({ timeout: 3000 }).catch(() => null),
-            ]);
-            dl = d;
-            break;
-          }
-        }
-        if (dl) {
-          const p = await dl.path().catch(() => null);
-          if (p) {
-            const buf = await readFile(p).catch(() => null);
-            if (buf && buf.length > 200) out[belgeNo] = buf.toString('base64');
-          }
-        }
+        const b64: string | null = await page.evaluate(async (a: any) => {
+          try {
+            const token = sessionStorage.getItem('token');
+            if (!token) return null;
+            const auth: any = { Authorization: 'Bearer ' + token };
+            const jh: any = Object.assign({ 'Content-Type': 'application/json', Accept: 'application/json, text/plain, */*' }, auth);
+            const base = location.origin + '/apigateway/etebligat';
+            // 1) zarftaki belgenin kimligi (id/secureId/belgeTip/uzanti/ad)
+            const ekR = await fetch(base + '/etebligat/belge-ek-listele', { method: 'POST', headers: jh, body: JSON.stringify({ tebligId: a.tebligId, tebligSecureId: a.tebligSecureId }) });
+            if (!ekR.ok) return null;
+            const ek = await ekR.json();
+            const b = ek && ek.tebligBelge;
+            if (!b || !b.id) return null;
+            // 2) indirme linkini (uuid) uret
+            const bgR = await fetch(base + '/etebligat/belge-getir', { method: 'POST', headers: jh, body: JSON.stringify({ data: { id: b.id, secureId: b.secureId, belgeTip: b.belgeTip, tarafId: a.tarafId, tarafSecureId: a.tarafSecureId, uzanti: b.uzanti || 'pdf', belgeAdi: b.adi } }) });
+            if (!bgR.ok) return null;
+            const bg = await bgR.json();
+            const link = bg && bg.reportLink;
+            if (!link || typeof link !== 'string') return null;
+            // 3) imzali zarfi indir
+            const dlR = await fetch(link, { method: 'GET', headers: auth });
+            if (!dlR.ok) return null;
+            const buf = new Uint8Array(await dlR.arrayBuffer());
+            // --- PKCS#7 SignedData icinden gercek PDF'i (eContent OCTET STRING) cikar ---
+            const readLen = (arr: any, p: number) => { const b0 = arr[p]; if (b0 < 0x80) return { len: b0, next: p + 1 }; const nn = b0 & 0x7f; let len = 0; for (let k = 0; k < nn; k++) len = len * 256 + arr[p + 1 + k]; return { len, next: p + 1 + nn }; };
+            const idxOf = (arr: any, seq: any, from: number) => { outer: for (let i = from || 0; i <= arr.length - seq.length; i++) { for (let j = 0; j < seq.length; j++) { if (arr[i + j] !== seq[j]) continue outer; } return i; } return -1; };
+            let pdf: any = null;
+            const dataOID = [0x06, 0x09, 0x2a, 0x86, 0x48, 0x86, 0xf7, 0x0d, 0x01, 0x07, 0x01]; // pkcs7-data
+            const oidAt = idxOf(buf, dataOID, 0);
+            if (oidAt >= 0) {
+              let p = oidAt + dataOID.length;
+              if (buf[p] === 0xa0) { const l1 = readLen(buf, p + 1); p = l1.next; } // [0] EXPLICIT
+              if (buf[p] === 0x04) { const l2 = readLen(buf, p + 1); pdf = buf.slice(l2.next, l2.next + l2.len); } // OCTET STRING
+            }
+            const isPdf = (x: any) => x && x[0] === 0x25 && x[1] === 0x50 && x[2] === 0x44 && x[3] === 0x46; // %PDF
+            if (!isPdf(pdf)) {
+              // imzasiz/farkli yapi: ham %PDF .. son %%EOF dilimle (geri dusus)
+              let s = -1; for (let i = 0; i < buf.length - 3; i++) { if (buf[i] === 0x25 && buf[i + 1] === 0x50 && buf[i + 2] === 0x44 && buf[i + 3] === 0x46) { s = i; break; } }
+              let e = -1; for (let i = buf.length - 5; i >= 0; i--) { if (buf[i] === 0x25 && buf[i + 1] === 0x25 && buf[i + 2] === 0x45 && buf[i + 3] === 0x4f && buf[i + 4] === 0x46) { e = i + 5; break; } }
+              if (s >= 0 && e > s) pdf = buf.slice(s, e);
+              else if (s >= 0) pdf = buf.slice(s);
+              else pdf = buf;
+            }
+            // base64'e cevir (chunk'li, buyuk dosyada stack tasmasin)
+            let bin = ''; const CH = 0x8000;
+            for (let i = 0; i < pdf.length; i += CH) bin += String.fromCharCode.apply(null, pdf.subarray(i, i + CH));
+            return btoa(bin);
+          } catch { return null; }
+        }, { tebligId, tebligSecureId: t.tebligSecureId, tarafId: t.tarafId, tarafSecureId: t.tarafSecureId });
+        if (b64 && b64.length > 200) out[tebligId] = b64;
       } catch { /* yut */ }
+      await page.waitForTimeout(150);
     }
     return out;
   }
