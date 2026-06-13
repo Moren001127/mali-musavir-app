@@ -196,6 +196,19 @@ export const kdvApi = {
       .then((r) => r.data),
 
   /**
+   * Eksik KDV oranlarını TAMAMLA — görseli yeniden okumadan, kayıtlı veriden
+   * (matrah + ham OCR metni) oran=0 satırların oranını türetip doldurur.
+   * dryRun=true sadece kaç tane doldurulacağını raporlar (yazmaz).
+   */
+  backfillOran: (sessionId: string, opts?: { dryRun?: boolean }) =>
+    api
+      .post<{ scanned: number; fixed: number; stillMissing: number; kdvMoved: number; dryRun: boolean }>(
+        `/kdv-control/sessions/${sessionId}/backfill-oran`,
+        { dryRun: opts?.dryRun === true },
+      )
+      .then((r) => r.data),
+
+  /**
    * Tek bir fatura görselinin OCR'ını yeniden çalıştır.
    * Her satırın yanındaki ⟳ "OCR Yap" butonu için.
    * Cache atlanır, manuel teyit sıfırlanır, arkaplanda OCR çalışır;

@@ -319,6 +319,24 @@ export class KdvControlController {
     });
   }
 
+  /**
+   * Eksik KDV oranlarını TAMAMLA — görseli yeniden OKUMADAN (Azure'a gitmeden),
+   * zaten kayıtlı veriden (breakdown matrahı + ham OCR metni) oran=0 satırları
+   * türetip doldurur. KDV tutarı/teyit/kilit durumuna dokunmaz.
+   * Body: { dryRun?: boolean } — dryRun=true sadece raporlar, yazmaz.
+   */
+  @Post('sessions/:id/backfill-oran')
+  @Roles('ADMIN', 'STAFF')
+  backfillOranSession(
+    @Req() req: any,
+    @Param('id') id: string,
+    @Body() body?: { dryRun?: boolean },
+  ) {
+    return this.kdvService.backfillSessionOran(id, req.user.tenantId, {
+      dryRun: !!body?.dryRun,
+    });
+  }
+
   /* ── OTOMATİK ÇEKİM (LUCA + MIHSAP) ──────────────── */
 
   /**

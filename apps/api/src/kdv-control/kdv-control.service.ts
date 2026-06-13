@@ -2898,6 +2898,95 @@ ${JSON.stringify(payload, null, 2)}`;
   }
 
   /**
+   * Eksik KDV ORANLARINI TAMAMLA — görseli YENİDEN OKUMADAN (Azure'a gitmeden),
+   * zaten kayıtlı veriden (breakdown matrahı + ham OCR metni) oran=0/geçersiz
+   * satırların oranını türetir. Kanonik mantık: ocrService.deriveMissingKdvRates
+   * (yalnız [1,10,20]'ye dar toleransla yuvarlar; belirsizse 0 bırakır, yanlış
+   * orana ASLA atamaz). KDV tutarına / teyit / kilit durumuna DOKUNMAZ; ocr +
+   * confirmed breakdown'da yalnız oran alanını günceller. Kilitli session'larda
+   * da çalışır (tutar değil, yalnız oran etiketi doldurulduğu için güvenli).
+   */
+  async backfillSessionOran(
+    sessionId: string,
+    tenantId: string,
+    opts: { dryRun?: boolean } = {},
+  ): Promise<{ scanned: number; fixed: number; stillMissing: number; kdvMoved: number; dryRun: boolean }> {
+    const session = await this.findSession(sessionId, tenantId);
+    const dryRun = !!opts.dryRun;
+    const VALID = [1, 10, 20];
+    const isValid = (o: any) => VALID.includes(Number(o));
+    const missingKdv = (bd: any) =>
+      Array.isArray(bd)
+        ? bd.filter((i: any) => !isValid(i.oran)).reduce((s: number, i: any) => s + (Number(i.tutar) || 0), 0)
+        : 0;
+    const hasMissing = (bd: any) =>
+      Array.isArray(bd) && bd.some((i: any) => !isValid(i.oran) && (Number(i.tutar) || 0) > 0);
+
+    const images = await this.prisma.receiptImage.findMany({
+      where: { sessionId: session.id },
+      select: {
+        id: true, ocrRawText: true, ocrKdvTutari: true, ocrKdvTevkifat: true,
+        ocrKdvBreakdown: true, confirmedKdvBreakdown: true,
+      },
+    });
+
+    let scanned = 0;
+    let fixed = 0;
+    let stillMissing = 0;
+    let kdvMoved = 0;
+
+    for (const img of images) {
+      const ocr = Array.isArray(img.ocrKdvBreakdown)
+        ? JSON.parse(JSON.stringify(img.ocrKdvBreakdown))
+        : null;
+      const conf = Array.isArray(img.confirmedKdvBreakdown)
+        ? JSON.parse(JSON.stringify(img.confirmedKdvBreakdown))
+        : null;
+
+      if (!hasMissing(ocr) && !hasMissing(conf)) continue;
+      scanned++;
+      const beforeKdv = Math.max(missingKdv(ocr), missingKdv(conf));
+
+      // Kanonik türetme mantığını her breakdown'a uygula (sentetik OcrResult).
+      const applyDerive = (bd: any): boolean => {
+        if (!bd) return false;
+        const before = JSON.stringify(bd);
+        const synthetic: any = {
+          kdvBreakdown: bd,
+          kdvTutari: img.ocrKdvTutari ?? null,
+          totalTutari: null, // ReceiptImage brüt saklamıyor → brüt-bazlı adım pas geçer
+          kdvTevkifat: img.ocrKdvTevkifat ?? null,
+        };
+        this.ocrService.deriveMissingKdvRates(synthetic, img.ocrRawText || undefined);
+        return JSON.stringify(synthetic.kdvBreakdown) !== before;
+      };
+
+      const c1 = applyDerive(ocr);
+      const c2 = applyDerive(conf);
+
+      const afterKdv = Math.max(missingKdv(ocr), missingKdv(conf));
+      kdvMoved += Math.max(0, beforeKdv - afterKdv);
+
+      if (c1 || c2) {
+        fixed++;
+        if (!dryRun) {
+          const data: any = {};
+          if (c1) data.ocrKdvBreakdown = ocr;
+          if (c2) data.confirmedKdvBreakdown = conf;
+          await this.prisma.receiptImage.update({ where: { id: img.id }, data });
+        }
+      }
+      if (hasMissing(ocr) || hasMissing(conf)) stillMissing++;
+    }
+
+    this.logger.log(
+      `[backfillSessionOran] session=${sessionId} dryRun=${dryRun} taranan=${scanned} dolduruldu=${fixed} kalan=${stillMissing} kdvTasinan=${kdvMoved.toFixed(2)}`,
+    );
+
+    return { scanned, fixed, stillMissing, kdvMoved: Math.round(kdvMoved * 100) / 100, dryRun };
+  }
+
+  /**
    * Belirli bir dönemdeki TÜM session'ların eksik-breakdown görsellerini yeniden OCR'lar.
    * donem: "2026-05" formatında
    */

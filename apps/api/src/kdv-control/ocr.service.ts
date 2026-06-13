@@ -893,7 +893,7 @@ export class OcrService {
    * Tüm türetmeler [1,10,20]'ye DAR toleransla (±0,6) yuvarlanır; aksi halde
    * 0 bırakılır (yanlış orana asla atamaz). Geçerli oranlı satırlara dokunmaz.
    */
-  private deriveMissingKdvRates(result: OcrResult, fullText?: string): void {
+  public deriveMissingKdvRates(result: OcrResult, fullText?: string): void {
     const VALID = [1, 10, 20];
     const isValid = (o: any) => VALID.includes(Number(o));
     const snap = (r: number): number | null => {

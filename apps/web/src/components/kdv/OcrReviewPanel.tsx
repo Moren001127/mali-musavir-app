@@ -255,6 +255,26 @@ export function OcrReviewPanel({
     reocrMut.mutate({ imageId, forceClaude });
   };
 
+  // Eksik KDV oranlarını TAMAMLA — görseli yeniden okumadan, kayıtlı veriden türet.
+  const backfillMut = useMutation({
+    mutationFn: () => kdvApi.backfillOran(sessionId),
+    onSuccess: (d) => {
+      if (d.fixed > 0) {
+        toast.success(
+          `${d.fixed} faturanın oranı dolduruldu (≈${d.kdvMoved.toFixed(2)} TL)` +
+            (d.stillMissing > 0 ? ` · ${d.stillMissing} fatura elle girilmeli` : ''),
+        );
+      } else if (d.stillMissing > 0) {
+        toast(`${d.stillMissing} faturanın oranı veriden türetilemedi — elle girilmeli`, { icon: 'ℹ️' });
+      } else {
+        toast('Doldurulacak eksik oran yok', { icon: '✅' });
+      }
+      qc.invalidateQueries({ queryKey: ['kdv-images', sessionId] });
+      qc.invalidateQueries({ queryKey: ['kdv-stats', sessionId] });
+    },
+    onError: (e: any) => toast.error(e?.response?.data?.message ?? 'Oran tamamlama başarısız'),
+  });
+
   function handleConfirm() {
     if (!activeImg) return;
     // Breakdown varsa toplamı hesapla, yoksa form.kdvTutari'yi kullan
@@ -317,6 +337,16 @@ export function OcrReviewPanel({
         </div>
         {/* Özet chips: tıklayınca filtre değişir */}
         <div className="flex items-center gap-1.5 flex-wrap">
+          <button
+            type="button"
+            onClick={() => backfillMut.mutate()}
+            disabled={backfillMut.isPending}
+            title="OCR'ın okuyamadığı KDV oranlarını, görseli yeniden okumadan kayıtlı veriden (matrah + metin) doldurur"
+            className="inline-flex items-center gap-1.5 rounded-lg px-2.5 py-1 text-[11.5px] font-bold transition disabled:opacity-50"
+            style={{ background: 'rgba(20,184,166,0.14)', color: '#2dd4bf', border: '1px solid rgba(20,184,166,0.4)' }}
+          >
+            {backfillMut.isPending ? '…' : '%'} Oranları Tamamla
+          </button>
           {(summary.success + summary.needsReview + summary.lowConf + summary.failed + summary.confirmed) > 0 && (
             <SummaryChip
               label="Teyit Akışı"
