@@ -15,6 +15,7 @@ import {
 import { OcrReviewPanel } from '@/components/kdv/OcrReviewPanel';
 import { MatchReviewPanel } from '@/components/kdv/MatchReviewPanel';
 import { LucaInlineCaptchaPanel } from '@/components/luca/LucaInlineCaptchaPanel';
+import { useLucaAgent } from '@/hooks/useLucaAgent';
 
 const GOLD = '#d4b876';
 const GOLD_SOFT = '#b8a06f';
@@ -130,6 +131,7 @@ function fmtDate(iso?: string): string {
 export default function KdvKontrolPage() {
   const qc = useQueryClient();
   const searchParams = useSearchParams();
+  const { preferredDeviceId } = useLucaAgent();
   const router = useRouter();
 
   // ── STATE ───────────────────────────────────────────
@@ -399,7 +401,7 @@ export default function KdvKontrolPage() {
       const queued: LucaQueuedJob[] = [];
       for (const selectedAction of actionsToQueue) {
         const s = await ensureSessionForAction(selectedAction);
-        const d = await kdvApi.importFromLuca(s.id);
+        const d = await kdvApi.importFromLuca(s.id, preferredDeviceId ?? undefined);
         queued.push({ id: d.jobId, action: selectedAction, sessionId: s.id });
       }
       return queued;
