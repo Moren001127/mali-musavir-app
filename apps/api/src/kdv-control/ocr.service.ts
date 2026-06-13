@@ -218,6 +218,15 @@ export class OcrService {
     // kadar UBL marker aranır. Ayrıca uzantı .xml ise content ASCII-düzeyinde
     // (binary/image değil) olduğu sürece XML'e zorlarız.
     const head4k = imageBuffer.slice(0, Math.min(4096, imageBuffer.byteLength)).toString('utf8');
+    // HTML kontrolü ÖNCE yapılmalı: e-Arşiv HTML dosyaları içinde UBL XML etiketleri
+    // (<ArchiveInvoice>, <Invoice> vb.) bulunabilir. isHtml guard olmadan bu dosyalar
+    // XML parser'a düşer, XML parse başarısız olur → %0 confidence döner.
+    const head512Lower = imageBuffer.slice(0, 512).toString('utf8').trimStart().toLowerCase();
+    const isHtml =
+      /\.html?$/i.test(originalName || '') ||
+      head512Lower.startsWith('<!doctype html') ||
+      head512Lower.startsWith('<html');
+
     const hasUblMarker =
       /<\?xml/i.test(head4k) ||
       /<Invoice[\s>]/i.test(head4k) ||
@@ -238,7 +247,8 @@ export class OcrService {
         (imageBuffer[0] === 0x49 && imageBuffer[1] === 0x49) ||
         (imageBuffer[0] === 0x42 && imageBuffer[1] === 0x4d)
       );
-    const isXml = hasUblMarker || (filenameIsXml && !isImageMagic);
+    // HTML dosyaları XML parser'a DÜŞMESİN (isHtml guard)
+    const isXml = !isHtml && (hasUblMarker || (filenameIsXml && !isImageMagic));
 
     if (isXml) {
       try {
@@ -305,11 +315,8 @@ export class OcrService {
 
     // ═══════════════════════════════════════════════════════
     // 0b. HTML E-ARŞİV — HTML dosyaları Azure OCR'a verilmez; text ayıklanır.
+    //     (isHtml yukarıda hesaplandı — XML guard için önce tanımlanması gerekiyordu)
     // ═══════════════════════════════════════════════════════
-    const isHtml =
-      /\.html?$/i.test(originalName || '') ||
-      imageBuffer.slice(0, 512).toString('utf8').trimStart().toLowerCase().startsWith('<!doctype html') ||
-      imageBuffer.slice(0, 512).toString('utf8').trimStart().toLowerCase().startsWith('<html');
     if (isHtml) {
       const htmlText = imageBuffer.toString('utf8');
       // HTML etiketlerini sil; birden fazla boşluk/satır sıkıştır

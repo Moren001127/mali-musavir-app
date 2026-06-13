@@ -1,4 +1,4 @@
-import { Injectable, Logger, BadRequestException, UnauthorizedException, Optional } from '@nestjs/common';
+import { Injectable, Logger, BadRequestException, UnauthorizedException, Optional, OnModuleInit } from '@nestjs/common';
 import { Cron } from '@nestjs/schedule';
 import { PrismaService } from '../prisma/prisma.service';
 import { StorageService } from '../storage/storage.service';
@@ -36,8 +36,11 @@ export interface MihsapInvoiceSummary {
   orjDosyaTuru?: string;
 }
 
+/** Takılı 'running' job'lar bu süreden (ms) eski ise başarısız sayılır. */
+const STALE_JOB_MS = 3 * 60 * 1000; // 3 dakika
+
 @Injectable()
-export class MihsapService {
+export class MihsapService implements OnModuleInit {
   private readonly logger = new Logger(MihsapService.name);
 
   constructor(
@@ -46,6 +49,41 @@ export class MihsapService {
     @Optional() private readonly notifications?: NotificationsService,
     @Optional() private readonly eventBus?: AutomationEventBus,
   ) {}
+
+  /** Sunucu başlarken takılı kalmış 'running' job'ları temizle. */
+  async onModuleInit() {
+    await this.closeStaleRunningJobs();
+  }
+
+  /**
+   * Takılı 'running' MihsapFetchJob'ları kapatır.
+   * Sunucu restart/crash sonrası DB'de 'running' kalan job'lar
+   * portal UI'ında sonsuza dek "çekiliyor" gösterir — bu, temizler.
+   */
+  private async closeStaleRunningJobs(): Promise<void> {
+    try {
+      const cutoff = new Date(Date.now() - STALE_JOB_MS);
+      const result = await (this.prisma as any).mihsapFetchJob.updateMany({
+        where: { status: 'running', startedAt: { lt: cutoff } },
+        data: {
+          status: 'failed',
+          errorMsg: 'Zaman aşımı — sunucu yeniden başlatıldı veya işlem takıldı.',
+          finishedAt: new Date(),
+        },
+      });
+      if (result.count > 0) {
+        this.logger.warn(`Boot temizliği: ${result.count} takılı Mihsap fetch job kapatıldı.`);
+      }
+    } catch (err: any) {
+      this.logger.error(`Stale job temizliği hatası: ${err?.message}`);
+    }
+  }
+
+  /** Her 2 dakikada bir takılı job'ları temizle (frontend polling'e bağımlılığı ortadan kaldırır). */
+  @Cron('0 */2 * * * *')
+  async periodicStaleJobCleanup(): Promise<void> {
+    await this.closeStaleRunningJobs();
+  }
 
   // ==================== TOKEN YÖNETİMİ ====================
 
@@ -1297,13 +1335,13 @@ export class MihsapService {
 
   /** Son çekme işlerini listele (progress gösterimi için) */
   async listFetchJobs(tenantId: string, limit = 20) {
-    // Stale job'ları temizle: 5 dk'dan uzun süredir "running" olan job'ları fail yap
-    const fiveMinAgo = new Date(Date.now() - 5 * 60 * 1000);
+    // Stale job'ları temizle: STALE_JOB_MS'den uzun süredir "running" olan job'ları fail yap
+    const staleAgo = new Date(Date.now() - STALE_JOB_MS);
     await (this.prisma as any).mihsapFetchJob.updateMany({
       where: {
         tenantId,
         status: 'running',
-        startedAt: { lt: fiveMinAgo },
+        startedAt: { lt: staleAgo },
       },
       data: {
         status: 'failed',
