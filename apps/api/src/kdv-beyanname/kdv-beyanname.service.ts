@@ -1066,12 +1066,21 @@ export class KdvBeyannameService {
       if (imageId && !seenImageIds.has(imageId)) seenImageIds.add(imageId);
       const confirmedTutar = this.parseTrAmount(res.image?.confirmedKdvTutari);
       const lucaTutar = this.parseTrAmount(res.kdvRecord?.kdvTutari);
+      const isFinalStatus = finalStatuses.has(status);
+      // ÇİFT SAYIM DÜZELTMESİ (2026-06-13): Eşleşmiş (MATCHED/CONFIRMED) kayıtta tutar = LUCA
+      // (0 dahil; Luca otoritedir). Eski "lucaTutar > 0 ? luca : OCR" guard'ı, çok kalemli bir
+      // e-faturanın 0-KDV satırında OCR'a düşüp faturanın TÜM KDV'sini o satıra da ekliyor →
+      // KDV İKİ KEZ sayılıyordu (ör. TTNET e-faturası: 96,92 / 121,48'lik hayalî "fark"). OCR
+      // tutarı yalnız eşleşmemiş (PARTIAL_MATCH / NEEDS_REVIEW) kayıtta kullanılır.
       const kdvTutari =
         confirmedTutar > 0
           ? confirmedTutar
-          : finalStatuses.has(status) && lucaTutar > 0
+          : isFinalStatus
             ? lucaTutar
             : this.parseTrAmount(res.image?.ocrKdvTutari);
+      // Eşleşmiş kayıtta Luca KDV'si 0 → çok kalemli faturanın geçerli 0-KDV satırı: toplama
+      // 0 katkı yapar; OCR'a düşmez ve "okunamadı" uyarısı vermez (gerçek bir eksiklik değil).
+      if (isFinalStatus && confirmedTutar <= 0 && lucaTutar === 0) continue;
       // Oran (tutar yine YALNIZ OCR'dan). MATRAH ARANMAZ — kullanıcı kuralı 2026-06-13:
       // satış ve tevkifatsız alışta matrah istenmiyor; oran + KDV tutarı yeter.
       // Bu yüzden matrah/genel-toplam türetmesi (completeControlRow) KULLANILMAZ.
