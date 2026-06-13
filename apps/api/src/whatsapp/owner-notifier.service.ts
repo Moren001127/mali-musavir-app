@@ -110,6 +110,29 @@ export class OwnerNotifierService implements OnModuleInit {
       where: { id: { in: ids }, tenantId: n.tenantId, belgeTuru: 'E_TEBLIGAT', storageKey: { not: null } },
       include: { taxpayer: { select: { companyName: true, firstName: true, lastName: true, taxNumber: true } } },
     });
+    if (!docs.length) return;
+
+    // Toplu backfill (cok sayida yeni tebligat ayni anda) owner'i PDF yagmuruna bogmasin:
+    // esik ustunde tek tek PDF yerine TEK OZET mesaj gonder. Gunluk normal hacim (<=esik)
+    // PDF olarak gider.
+    const maxPdf = Math.max(1, Number(process.env.ETEBLIGAT_OWNER_PDF_MAX || 6));
+    if (docs.length > maxPdf) {
+      const firmaSet = new Set<string>(docs.map((d: any) => this.docFirmaAdi(d)));
+      const firmalar = Array.from(firmaSet).slice(0, 4).join(', ') + (firmaSet.size > 4 ? ' …' : '');
+      const ozet = [
+        `📨 ${docs.length} yeni e-Tebligat geldi.`,
+        firmalar,
+        'Tümünü portaldan görüntüleyebilirsiniz.',
+      ].filter(Boolean).join('\n');
+      for (const phone of ownerPhones) {
+        try {
+          await this.whatsapp.sendMessage(phone, ozet, n.tenantId);
+        } catch (err: any) {
+          this.logger.warn(`e-Tebligat ozet WhatsApp hatasi (${phone}): ${err?.message || err}`);
+        }
+      }
+      return;
+    }
 
     for (const d of docs) {
       const firma = this.docFirmaAdi(d);
