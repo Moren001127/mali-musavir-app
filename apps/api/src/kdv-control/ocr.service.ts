@@ -338,8 +338,6 @@ export class OcrService {
         .replace(/\n{3,}/g, '\n\n')
         .trim();
       this.logger.log(`HTML e-arşiv text ayıklama: ${originalName} · ${plainText.length} char`);
-      // DEBUG — ilk 800 karakter: parser'ların ne gördüğünü anlamak için
-      this.logger.log(`HTML PLAINTEXT[0:800]: ${plainText.slice(0, 800).replace(/\n/g, '↵')}`);
       // Text'ten alan çıkar (Azure runner'ın text parser'ları gibi)
       const date = this.extractPreferredInvoiceDate(plainText) ?? this.extractDate(plainText);
       const bodyBelgeNo = this.extractBelgeNo(plainText);
@@ -968,7 +966,8 @@ export class OcrService {
     // parantezi atlayıp "20.0" değerini KDV tutarı olarak okuyordu. İki katman koruma:
     //   (a) Ara kelime kabul edilir (?:\s+\S+)? — "GERÇEK" gibi
     //   (b) amount kendisi salt rakam (0/1/8/10/18/20) ise her zaman skip — rate echo
-    const hesaplananMatches = [...cleanText.matchAll(/hesaplanan\s*kdv(?:\s+\S+)?\s*(?:\(\s*%?\s*(\d{1,2})(?:[,.]\d{1,2})?\s*\))?\s*[:\s]+([\d.,]+)/gi)];
+    // "Hesaplanan İade KDV" / "Hesaplanan Gerçek KDV" gibi araya bir kelime girebiliyor — [^\s]+\s+ ile yakala
+    const hesaplananMatches = [...cleanText.matchAll(/hesaplanan\s*(?:[^\s]+\s+)?kdv(?:\s+\S+)?\s*(?:\(\s*%?\s*(\d{1,2})(?:[,.]\d{1,2})?\s*\))?\s*[:\s]+([\d.,]+)/gi)];
     if (hesaplananMatches.length > 0) {
       const total = hesaplananMatches.reduce((sum, m) => {
         const rate = m[1] ? Number(m[1]) : null;
