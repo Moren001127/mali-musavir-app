@@ -1083,7 +1083,7 @@ export class PortalAutomationRailwayRunnerService implements OnModuleInit {
 
     // PDF'leri SAF API ile (tiklama yok) cek: belge-ek-listele -> belge-getir -> report/download,
     // gelen PKCS#7 imzali zarftan icteki gercek PDF cikarilir. Anahtar: tebligId.
-    const pdfMap = await this.downloadETebligatPdfs(page, list).catch(() => ({} as Record<string, string>));
+    const pdfMap = await this.downloadETebligatPdfs(page, list, { tenantId: job?.tenantId, taxpayerId }).catch(() => ({} as Record<string, string>));
 
     try { context.off('response', onResponse); } catch { /* yut */ }
     try { context.off('request', onRequest); } catch { /* yut */ }
@@ -1150,13 +1150,33 @@ export class PortalAutomationRailwayRunnerService implements OnModuleInit {
   // report/download'in dondurdugu dosya PKCS#7 (CMS SignedData) IMZALI ZARFTIR;
   // icindeki gercek PDF (eContent OCTET STRING) cikarilir. Anahtar: tebligId.
   // Kimlik: SPA'nin sessionStorage.token'i (Authorization: Bearer ...).
-  private async downloadETebligatPdfs(page: any, list: any[], max = 20): Promise<Record<string, string>> {
+  private async downloadETebligatPdfs(
+    page: any,
+    list: any[],
+    opts: { tenantId?: string | null; taxpayerId?: string | null } = {},
+  ): Promise<Record<string, string>> {
     const out: Record<string, string> = {};
-    const n = Math.min(list.length, max);
-    for (let i = 0; i < n; i++) {
+    // ZATEN PDF'i (storageKey) olan tebligatlari ATLA -> artimli: her gece/re-query'de yalniz
+    // EKSIK olanlari indir; cok tebligatli mukellef birkac turda tamamlanir, gece ucuz kalir.
+    // Tur basi sinir (is timeout 45dk; 300 PDF ~5dk, rahat sigar).
+    const perRunMax = Math.max(1, Math.min(1000, Number(process.env.ETEBLIGAT_PDF_MAX_PER_RUN || 300)));
+    let alreadyHave = new Set<string>();
+    if (opts.tenantId) {
+      const refs = list.map((t) => t?.belgeNo).filter(Boolean).map((x) => String(x));
+      if (refs.length) {
+        const where: any = { tenantId: opts.tenantId, belgeTuru: 'E_TEBLIGAT', storageKey: { not: null }, referenceNo: { in: refs } };
+        if (opts.taxpayerId) where.taxpayerId = opts.taxpayerId;
+        const have = await (this.prisma as any).portalDocument.findMany({ where, select: { referenceNo: true } }).catch(() => []);
+        alreadyHave = new Set((have || []).map((h: any) => String(h.referenceNo)));
+      }
+    }
+    let done = 0;
+    for (let i = 0; i < list.length && done < perRunMax; i++) {
       const t = list[i] || {};
       const tebligId = t?.tebligId ? String(t.tebligId) : '';
+      const belgeNo = t?.belgeNo ? String(t.belgeNo) : '';
       if (!tebligId || !t?.tebligSecureId || !t?.tarafId || !t?.tarafSecureId) continue;
+      if (belgeNo && alreadyHave.has(belgeNo)) continue; // zaten indirilmis, atla
       try {
         const b64: string | null = await page.evaluate(async (a: any) => {
           try {
@@ -1207,9 +1227,9 @@ export class PortalAutomationRailwayRunnerService implements OnModuleInit {
             return btoa(bin);
           } catch { return null; }
         }, { tebligId, tebligSecureId: t.tebligSecureId, tarafId: t.tarafId, tarafSecureId: t.tarafSecureId });
-        if (b64 && b64.length > 200) out[tebligId] = b64;
+        if (b64 && b64.length > 200) { out[tebligId] = b64; done++; }
       } catch { /* yut */ }
-      await page.waitForTimeout(150);
+      await page.waitForTimeout(120);
     }
     return out;
   }
