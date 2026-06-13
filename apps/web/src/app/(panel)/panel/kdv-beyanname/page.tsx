@@ -736,64 +736,71 @@ function GenelBakisPano({ donem, onSelect }: { donem: string; onSelect: (id: str
         </div>
       </div>
 
-      <div className="overflow-x-auto rounded-2xl border" style={{ borderColor: 'rgba(255,255,255,0.06)' }}>
-        <table className="w-full border-collapse text-left" style={{ minWidth: 1100 }}>
+      <div className="overflow-x-auto rounded-2xl border" style={{ borderColor: 'rgba(255,255,255,0.1)', background: '#0f0d0b' }}>
+        <table className="w-full text-left" style={{ minWidth: 1100, borderCollapse: 'collapse' }}>
           <thead>
-            <tr className="text-[10.5px] font-bold uppercase tracking-wider" style={{ color: 'rgba(250,250,249,0.4)', background: 'rgba(255,255,255,0.02)' }}>
-              <th className="px-4 py-3">Mükellef</th>
-              <th className="px-3 py-3">Durum</th>
-              <th className="px-3 py-3 text-right">Hesaplanan</th>
-              <th className="px-3 py-3 text-right">İndirilecek</th>
-              <th className="px-3 py-3 text-right whitespace-nowrap" title="Önceki dönemden devreden KDV">Ön Dön.</th>
-              <th className="px-3 py-3 text-right whitespace-nowrap" title="Sonraki döneme devreden KDV">Son Dön.</th>
-              <th className="px-3 py-3 text-right">Ödenecek</th>
-              <th className="px-3 py-3 text-center">Güven</th>
-              <th className="px-3 py-3 text-center">KDV1</th>
-              <th className="px-3 py-3 text-center">KDV2</th>
+            <tr
+              className="text-[11px] font-bold uppercase tracking-wider"
+              style={{
+                color: 'rgba(250,250,249,0.5)',
+                background: 'rgba(255,255,255,0.04)',
+                borderBottom: '2px solid rgba(255,255,255,0.12)',
+              }}
+            >
+              <th className="px-4 py-3 whitespace-nowrap">Mükellef</th>
+              <th className="px-3 py-3 whitespace-nowrap" style={{ borderLeft: '1px solid rgba(255,255,255,0.07)' }}>Durum</th>
+              <th className="px-3 py-3 text-right whitespace-nowrap" style={{ borderLeft: '1px solid rgba(255,255,255,0.07)' }}>Hesaplanan KDV</th>
+              <th className="px-3 py-3 text-right whitespace-nowrap" style={{ borderLeft: '1px solid rgba(255,255,255,0.07)' }}>İndirilecek KDV</th>
+              <th className="px-3 py-3 text-right whitespace-nowrap" style={{ borderLeft: '1px solid rgba(255,255,255,0.07)' }} title="Önceki dönemden devreden">Ön Dön. Dev.</th>
+              <th className="px-3 py-3 text-right whitespace-nowrap" style={{ borderLeft: '1px solid rgba(255,255,255,0.07)' }} title="Sonraki döneme devreden">Son Dön. Dev.</th>
+              <th className="px-3 py-3 text-right whitespace-nowrap" style={{ borderLeft: '2px solid rgba(255,255,255,0.12)' }}>Ödenecek KDV</th>
+              <th className="px-3 py-3 text-center whitespace-nowrap" style={{ borderLeft: '1px solid rgba(255,255,255,0.07)' }}>Veri Güveni</th>
+              <th className="px-3 py-3 text-center whitespace-nowrap" style={{ borderLeft: '2px solid rgba(255,255,255,0.12)' }}>KDV1</th>
+              <th className="px-3 py-3 text-center whitespace-nowrap" style={{ borderLeft: '1px solid rgba(255,255,255,0.07)' }}>KDV2</th>
             </tr>
           </thead>
           <tbody>
-            {satirlar.map((r) => (
+            {satirlar.map((r, idx) => (
               <tr
                 key={r.mukellefId}
-                className="border-t transition hover:bg-white/[0.025]"
+                className="transition hover:bg-white/[0.03]"
                 style={{
-                  borderColor: 'rgba(255,255,255,0.05)',
-                  background: r.odenecekKdv > 0 ? 'rgba(239,107,107,0.04)' : undefined,
+                  borderTop: idx === 0 ? 'none' : '1px solid rgba(255,255,255,0.08)',
+                  background: r.odenecekKdv > 0 ? 'rgba(239,107,107,0.05)' : undefined,
                 }}
               >
-                <td className="px-4 py-3">
+                <td className="px-4 py-3.5">
                   <button onClick={() => onSelect(r.mukellefId)} className="inline-flex items-center gap-1.5 text-left">
                     <span className="text-[14px] font-bold" style={{ color: '#fafaf9' }}>{r.ad}</span>
                     <ChevronRight size={13} style={{ color: TEAL_BR, opacity: 0.6 }} />
                   </button>
-                  <div className="text-[11px]" style={{ color: 'rgba(250,250,249,0.35)' }}>{r.faturaAdet} fatura</div>
+                  <div className="text-[11px] mt-0.5" style={{ color: 'rgba(250,250,249,0.38)' }}>{r.faturaAdet} fatura</div>
                 </td>
-                <td className="px-3 py-3"><DurumBadge durum={r.durum} /></td>
-                <td className="px-3 py-3 text-right tabular-nums text-[14px] font-semibold" style={{ color: '#fffaf0' }}>{TRY}{fmt(r.hesaplananKdv)}</td>
-                <td className="px-3 py-3 text-right tabular-nums text-[14px] font-semibold" style={{ color: '#fffaf0' }}>{TRY}{fmt(r.indirilecekKdv)}</td>
-                <td className="px-3 py-3 text-right tabular-nums text-[13px]" style={{ color: 'rgba(255,250,240,0.65)' }}>{TRY}{fmt(r.devredenKdv)}</td>
-                <td className="px-3 py-3 text-right tabular-nums text-[13px]" style={{ color: 'rgba(255,250,240,0.65)' }}>{TRY}{fmt(r.sonrakiAyaDevreden)}</td>
-                <td className="px-3 py-3 text-right tabular-nums text-[15px] font-extrabold" style={{ color: r.odenecekKdv > 0 ? STAT_RED : STAT_GREEN }}>
-                  {r.odenecekKdv > 0 && <span className="mr-1 text-[11px] font-bold opacity-70">ÖDE</span>}
+                <td className="px-3 py-3.5" style={{ borderLeft: '1px solid rgba(255,255,255,0.05)' }}><DurumBadge durum={r.durum} /></td>
+                <td className="px-3 py-3.5 text-right tabular-nums text-[14px] font-semibold" style={{ color: '#fffaf0', borderLeft: '1px solid rgba(255,255,255,0.05)' }}>{TRY}{fmt(r.hesaplananKdv)}</td>
+                <td className="px-3 py-3.5 text-right tabular-nums text-[14px] font-semibold" style={{ color: '#fffaf0', borderLeft: '1px solid rgba(255,255,255,0.05)' }}>{TRY}{fmt(r.indirilecekKdv)}</td>
+                <td className="px-3 py-3.5 text-right tabular-nums text-[13px]" style={{ color: 'rgba(255,250,240,0.55)', borderLeft: '1px solid rgba(255,255,255,0.05)' }}>{TRY}{fmt(r.devredenKdv)}</td>
+                <td className="px-3 py-3.5 text-right tabular-nums text-[13px]" style={{ color: 'rgba(255,250,240,0.55)', borderLeft: '1px solid rgba(255,255,255,0.05)' }}>{TRY}{fmt(r.sonrakiAyaDevreden)}</td>
+                <td className="px-3 py-3.5 text-right tabular-nums text-[15px] font-extrabold" style={{ color: r.odenecekKdv > 0 ? STAT_RED : STAT_GREEN, borderLeft: '2px solid rgba(255,255,255,0.1)' }}>
+                  {r.odenecekKdv > 0 && <span className="mr-1 text-[10px] font-bold tracking-wide opacity-70">ÖDE</span>}
                   {TRY}{fmt(r.odenecekKdv)}
                 </td>
-                <td className="px-3 py-3 text-center"><GuvenDot seviye={r.veriGuveniSeviye} puan={r.veriGuveniPuan} /></td>
-                <td className="px-3 py-3 text-center">
+                <td className="px-3 py-3.5 text-center" style={{ borderLeft: '1px solid rgba(255,255,255,0.05)' }}><GuvenDot seviye={r.veriGuveniSeviye} puan={r.veriGuveniPuan} /></td>
+                <td className="px-3 py-3.5 text-center" style={{ borderLeft: '2px solid rgba(255,255,255,0.08)' }}>
                   {r.kdv1Var ? (
                     <VerToggle verildi={r.kdv1Verildi} onClick={() => durumMut.mutate({ mukellefId: r.mukellefId, tip: 'KDV1', verildi: !r.kdv1Verildi })} />
                   ) : (
-                    <span style={{ color: 'rgba(250,250,249,0.25)' }}>—</span>
+                    <span style={{ color: 'rgba(250,250,249,0.2)' }}>—</span>
                   )}
                 </td>
-                <td className="px-3 py-3 text-center">
+                <td className="px-3 py-3.5 text-center" style={{ borderLeft: '1px solid rgba(255,255,255,0.05)' }}>
                   {r.kdv2Var ? (
                     <div className="inline-flex flex-col items-center gap-1">
-                      <span className="text-[11.5px] tabular-nums font-semibold" style={{ color: TEAL_BR }}>{TRY}{fmt(r.kdv2TevkifatTutari)}</span>
+                      <span className="text-[11px] tabular-nums font-semibold" style={{ color: TEAL_BR }}>{TRY}{fmt(r.kdv2TevkifatTutari)}</span>
                       <VerToggle verildi={r.kdv2Verildi} onClick={() => durumMut.mutate({ mukellefId: r.mukellefId, tip: 'KDV2', verildi: !r.kdv2Verildi })} />
                     </div>
                   ) : (
-                    <span style={{ color: 'rgba(250,250,249,0.25)' }}>—</span>
+                    <span style={{ color: 'rgba(250,250,249,0.2)' }}>—</span>
                   )}
                 </td>
               </tr>
