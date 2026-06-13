@@ -336,6 +336,8 @@ export class OcrService {
         .replace(/\n{3,}/g, '\n\n')
         .trim();
       this.logger.log(`HTML e-arşiv text ayıklama: ${originalName} · ${plainText.length} char`);
+      // DEBUG — ilk 800 karakter: parser'ların ne gördüğünü anlamak için
+      this.logger.log(`HTML PLAINTEXT[0:800]: ${plainText.slice(0, 800).replace(/\n/g, '↵')}`);
       // Text'ten alan çıkar (Azure runner'ın text parser'ları gibi)
       const date = this.extractPreferredInvoiceDate(plainText) ?? this.extractDate(plainText);
       const bodyBelgeNo = this.extractBelgeNo(plainText);
