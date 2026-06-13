@@ -1,6 +1,7 @@
 import { Injectable, Logger, OnModuleInit } from '@nestjs/common';
 import { PrismaService } from '../prisma/prisma.service';
 import { WhatsAppService } from './whatsapp.service';
+import { StorageService } from '../storage/storage.service';
 
 /**
  * Portalda olusan tum bildirimleri (notification.create) yakalar ve ofis sahibine
@@ -34,6 +35,7 @@ export class OwnerNotifierService implements OnModuleInit {
   constructor(
     private readonly prisma: PrismaService,
     private readonly whatsapp: WhatsAppService,
+    private readonly storage: StorageService,
   ) {}
 
   onModuleInit(): void {
@@ -59,19 +61,30 @@ export class OwnerNotifierService implements OnModuleInit {
     const disabledTypes = String(process.env.OWNER_NOTIFY_DISABLE_TYPES || '').split(',').map((s) => s.trim()).filter(Boolean);
     if (disabledTypes.includes(n.type)) return;
 
-    // Debounce — ayni tip son 10 sn icinde gonderildiyse atla
-    const key = `${n.tenantId}::${n.type}`;
-    const now = Date.now();
-    const last = this.lastSent.get(key) || 0;
-    if (now - last < this.DEBOUNCE_MS) {
-      this.logger.debug(`Owner notify debounce: ${key}`);
-      return;
+    // Debounce — ayni tip son 10 sn icinde gonderildiyse atla. E_TEBLIGAT MUAF: her bildirim
+    // farkli mukellefin/tebligatin PDF'ini tasir, gece toplu is bitisinde kaybolmamali.
+    if (n.type !== 'E_TEBLIGAT') {
+      const key = `${n.tenantId}::${n.type}`;
+      const now = Date.now();
+      const last = this.lastSent.get(key) || 0;
+      if (now - last < this.DEBOUNCE_MS) {
+        this.logger.debug(`Owner notify debounce: ${key}`);
+        return;
+      }
+      this.lastSent.set(key, now);
     }
-    this.lastSent.set(key, now);
 
     // Owner WhatsApp telefonlari
     const ownerPhones = this.getOwnerPhones();
     if (!ownerPhones.length) return;
+
+    // e-Tebligat: generic "OTOMATİK BİLDİRİM" formati yerine firma ismiyle + tebligatin
+    // PDF'ini dosya olarak gonder (kullanici karari 2026-06-13).
+    if (n.type === 'E_TEBLIGAT') {
+      await this.sendETebligatToOwner(n, ownerPhones).catch((err) =>
+        this.logger.warn(`e-Tebligat owner gonderim hatasi: ${err?.message || err}`));
+      return;
+    }
 
     const message = this.formatMessage(n);
 
@@ -82,6 +95,63 @@ export class OwnerNotifierService implements OnModuleInit {
         this.logger.warn(`Owner WhatsApp gonderim hatasi (${phone}): ${err?.message || err}`);
       }
     }
+  }
+
+  /**
+   * e-Tebligat bildirimi: metadata.newDocIds'teki her tebligat icin owner'a firma ismi
+   * basligiyla + PDF dosyasi (S3 presigned URL) WhatsApp medya mesaji gonderir.
+   */
+  private async sendETebligatToOwner(n: any, ownerPhones: string[]): Promise<void> {
+    const meta = n.metadata && typeof n.metadata === 'object' ? n.metadata : {};
+    const ids: string[] = Array.isArray(meta.newDocIds) ? meta.newDocIds.filter(Boolean) : [];
+    if (!ids.length) return;
+
+    const docs = await (this.prisma as any).portalDocument.findMany({
+      where: { id: { in: ids }, tenantId: n.tenantId, belgeTuru: 'E_TEBLIGAT', storageKey: { not: null } },
+      include: { taxpayer: { select: { companyName: true, firstName: true, lastName: true, taxNumber: true } } },
+    });
+
+    for (const d of docs) {
+      const firma = this.docFirmaAdi(d);
+      const r = d.raw && typeof d.raw === 'object' ? d.raw : {};
+      const kurum = [r.kurumAciklama, r.altKurum].filter(Boolean).join(' · ');
+      const caption = [
+        `📨 ${firma}`,
+        'Yeni e-Tebligat geldi.',
+        kurum,
+        `${d.title || r.belgeTuruAciklama || 'Tebligat'}${d.referenceNo ? ' · ' + d.referenceNo : ''}`,
+        r.tebligZamani ? `Tebliğ: ${r.tebligZamani}` : '',
+      ].filter(Boolean).join('\n');
+
+      const filename = `${d.referenceNo || 'tebligat'}.pdf`;
+      let url: string | null = null;
+      try {
+        url = await this.storage.getPresignedInlineUrl(d.storageKey, filename, d.mimeType || 'application/pdf');
+      } catch (e: any) {
+        this.logger.warn(`e-Tebligat PDF URL uretilemedi (${d.id}): ${e?.message || e}`);
+      }
+
+      for (const phone of ownerPhones) {
+        try {
+          if (url) {
+            await this.whatsapp.sendMediaDetailed(phone, { url, mimeType: 'application/pdf', filename, caption }, n.tenantId);
+          } else {
+            await this.whatsapp.sendMessage(phone, caption, n.tenantId);
+          }
+        } catch (err: any) {
+          this.logger.warn(`e-Tebligat owner WhatsApp hatasi (${phone}): ${err?.message || err}`);
+        }
+      }
+    }
+  }
+
+  /** Belge mukellefinin gosterilecek adi (firma / ad soyad / vergi no). */
+  private docFirmaAdi(d: any): string {
+    const t = d?.taxpayer;
+    if (!t) return 'Mükellef';
+    if (t.companyName) return t.companyName;
+    const ad = [t.firstName, t.lastName].filter(Boolean).join(' ').trim();
+    return ad || t.taxNumber || 'Mükellef';
   }
 
   /**

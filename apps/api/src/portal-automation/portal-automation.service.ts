@@ -745,6 +745,20 @@ export class PortalAutomationService {
     const declarations = Array.isArray(input?.declarations) ? input.declarations : [];
     const documents = Array.isArray(input?.documents) ? input.documents : [];
 
+    // E_TEBLIGAT: PDF'i BU sorguda ILK KEZ inen tebligatlari belirlemek icin, saklamadan
+    // ONCE mevcut (storageKey'li) belge no'lari snapshot al. Boylece her re-query'de owner'a
+    // tekrar bildirim/PDF gitmez.
+    const etbDocs = documents.filter((d) => d.belgeTuru === 'E_TEBLIGAT' && d.referenceNo);
+    let etbAlreadyBacked = new Set<string>();
+    if (etbDocs.length) {
+      const refs = etbDocs.map((d) => String(d.referenceNo));
+      const prevBacked = await (this.prisma as any).portalDocument.findMany({
+        where: { tenantId, belgeTuru: 'E_TEBLIGAT', referenceNo: { in: refs }, storageKey: { not: null } },
+        select: { referenceNo: true },
+      });
+      etbAlreadyBacked = new Set(prevBacked.map((p: any) => String(p.referenceNo)));
+    }
+
     for (const decl of declarations) {
       await this.storeDeclarationFromAgent(tenantId, jobId, decl);
       recordCount++;
@@ -776,16 +790,29 @@ export class PortalAutomationService {
       },
     });
 
-    if (documents.some((d) => d.belgeTuru === 'E_TEBLIGAT')) {
-      await (this.prisma as any).notification.create({
-        data: {
-          tenantId,
-          title: 'Yeni e-Tebligat indirildi',
-          body: `${documents.filter((d) => d.belgeTuru === 'E_TEBLIGAT').length} yeni e-Tebligat portala kaydedildi.`,
-          type: 'E_TEBLIGAT',
-          metadata: { jobId },
-        },
-      }).catch(() => {});
+    // Sadece PDF'i BU sorguda ilk kez inen tebligatlar icin bildirim uret (re-query'de
+    // tekrarlanmasin). metadata.newDocIds -> owner-notifier firma ismiyle + PDF dosyasini
+    // WhatsApp'tan gonderir.
+    const newEtbRefs = etbDocs
+      .filter((d) => d.base64 && !etbAlreadyBacked.has(String(d.referenceNo)))
+      .map((d) => String(d.referenceNo));
+    if (newEtbRefs.length) {
+      const newRows = await (this.prisma as any).portalDocument.findMany({
+        where: { tenantId, belgeTuru: 'E_TEBLIGAT', referenceNo: { in: newEtbRefs }, storageKey: { not: null } },
+        select: { id: true },
+      });
+      const newDocIds = newRows.map((r: any) => r.id);
+      if (newDocIds.length) {
+        await (this.prisma as any).notification.create({
+          data: {
+            tenantId,
+            title: 'Yeni e-Tebligat',
+            body: `${newDocIds.length} yeni e-Tebligat geldi.`,
+            type: 'E_TEBLIGAT',
+            metadata: { jobId, newDocIds },
+          },
+        }).catch(() => {});
+      }
     }
 
     return updated;
