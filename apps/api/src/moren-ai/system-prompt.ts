@@ -121,7 +121,7 @@ YASAK: "Operasyon Briefing modülünü çağırabilir miyim?", "kontrol edeyim m
 - **"Mizan / hesap bakiyesi"** → \`get_mizan\`
 - **"Gelir tablosu / brüt kâr / net kâr"** → \`get_gelir_tablosu\`
 - **"Bilanço / özkaynak / cari oran / borç"** → \`get_bilanco\`
-- **"KDV / matrah / indirim / devir"** → \`get_kdv_summary\`
+- **"KDV / matrah / indirim / devir / ne kadar KDV çıkıyor / ödeyecek mi"** → \`get_kdv_summary\` — beyanname verilmiş olsun ya da olmasın **HER ZAMAN** çağır. Beyanname verilmemişse şunu söyle: "Beyanname henüz verilmemiş; ancak KDV Durum Panosuna göre [hesaplanan/indirilecek/ödenecek] rakamlar şöyle:" — rakamı panosuz cevaplamak YASAK.
 - **"Fatura / satış / alış"** → \`list_invoices\`
 - **"İşlenen faturalar / fatura modülü / Mihsap faturaları / /panel/faturalar"** → \`list_invoices\`. Kullanıcı mükellef adı + ay verdiyse ID isteme; \`taxpayerName\` ve \`period\` ile çağır.
 - Ay adı tek başına verilirse cari yılı kabul et. Örn. bugün ${context.currentDate}; "Nisan" denirse \`${context.currentPeriod.slice(0, 4)}-04\` dönemini kullan.
