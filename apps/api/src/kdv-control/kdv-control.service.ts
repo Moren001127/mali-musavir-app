@@ -2381,6 +2381,96 @@ ${JSON.stringify(payload, null, 2)}`;
     return 'KONTROL_ET';
   }
 
+  /**
+   * DRY-RUN OCR denetimi — DB'ye hiçbir şey yazmaz.
+   * Sistemdeki TÜM görselleri (SUCCESS dahil) tekrar OCR'dan geçirir,
+   * mevcut kayıtla karşılaştırır, hata pattern'lerini raporlar.
+   * Parser regresyonlarını tespit etmek için kullanılır.
+   */
+  async dryRunOcrAudit(tenantId?: string, limit = 200): Promise<{
+    total: number;
+    scanned: number;
+    regressions: number;
+    errorPatterns: Record<string, number>;
+    samples: Array<{ imageId: string; belgeTipi: string; field: string; stored: string; fresh: string }>;
+  }> {
+    const images = await this.prisma.receiptImage.findMany({
+      where: {
+        s3Key: { not: undefined },
+        ocrStatus: { in: ['SUCCESS', 'NEEDS_REVIEW', 'FAILED', 'LOW_CONFIDENCE'] },
+        ...(tenantId ? { session: { tenantId } } : {}),
+      },
+      select: {
+        id: true, s3Key: true, originalName: true,
+        ocrStatus: true, ocrBelgeNo: true, ocrDate: true, ocrKdvTutari: true,
+        ocrBelgeTipi: true,
+        session: { select: { tenantId: true } },
+      },
+      orderBy: { uploadedAt: 'desc' },
+      take: limit,
+    });
+
+    const errorPatterns: Record<string, number> = {};
+    const samples: Array<{ imageId: string; belgeTipi: string; field: string; stored: string; fresh: string }> = [];
+    let scanned = 0;
+    let regressions = 0;
+
+    const { GetObjectCommand } = await import('@aws-sdk/client-s3');
+    const s3 = (this.storage as any).s3;
+    const bucket = this.storage.getBucket();
+
+    for (const img of images) {
+      if (img.s3Key!.startsWith('mihsap://')) continue; // CDN görselleri atla
+      try {
+        const res = await s3.send(new GetObjectCommand({ Bucket: bucket, Key: img.s3Key! }));
+        const chunks: Buffer[] = [];
+        for await (const chunk of res.Body as any) chunks.push(chunk);
+        const buffer = Buffer.concat(chunks);
+
+        const fresh = await this.ocrService.extractFromImage(buffer, img.originalName || undefined);
+        scanned++;
+
+        const freshStatus = this.ocrService.needsReview(fresh).needs ? 'NEEDS_REVIEW' : 'SUCCESS';
+        const wasSuccess = img.ocrStatus === 'SUCCESS';
+        const nowFails = freshStatus === 'NEEDS_REVIEW';
+
+        if (wasSuccess && nowFails) {
+          regressions++;
+          const pat = `REGRESYON:${fresh.belgeTipi || 'UNKNOWN'}`;
+          errorPatterns[pat] = (errorPatterns[pat] || 0) + 1;
+        }
+
+        // belgeNo farkı
+        if (img.ocrBelgeNo && fresh.belgeNo && img.ocrBelgeNo !== fresh.belgeNo) {
+          const pat = `BELGE_NO_FARKI:${fresh.belgeTipi || 'UNKNOWN'}`;
+          errorPatterns[pat] = (errorPatterns[pat] || 0) + 1;
+          if (samples.length < 20) samples.push({ imageId: img.id, belgeTipi: fresh.belgeTipi || '?', field: 'belgeNo', stored: img.ocrBelgeNo, fresh: fresh.belgeNo });
+        }
+
+        // KDV tutarı farkı
+        const storedKdv = img.ocrKdvTutari ? parseFloat(String(img.ocrKdvTutari).replace(',', '.')) : null;
+        const freshKdv = fresh.kdvTutari ? parseFloat(String(fresh.kdvTutari).replace(',', '.')) : null;
+        if (storedKdv !== null && freshKdv !== null && Math.abs(storedKdv - freshKdv) > 0.05) {
+          const pat = `KDV_FARKI:${fresh.belgeTipi || 'UNKNOWN'}`;
+          errorPatterns[pat] = (errorPatterns[pat] || 0) + 1;
+          if (samples.length < 20) samples.push({ imageId: img.id, belgeTipi: fresh.belgeTipi || '?', field: 'kdvTutari', stored: String(img.ocrKdvTutari), fresh: String(fresh.kdvTutari) });
+        }
+
+        // Tarih farkı
+        if (img.ocrDate && fresh.date && img.ocrDate !== fresh.date) {
+          const pat = `TARIH_FARKI:${fresh.belgeTipi || 'UNKNOWN'}`;
+          errorPatterns[pat] = (errorPatterns[pat] || 0) + 1;
+        }
+
+        await new Promise((r) => setTimeout(r, 300)); // rate limit
+      } catch (err: any) {
+        this.logger.warn(`dryRunOcrAudit [${img.id}]: ${err?.message}`);
+      }
+    }
+
+    return { total: images.length, scanned, regressions, errorPatterns, samples };
+  }
+
   async reocrSingleImage(imageId: string, tenantId: string, opts: { forceClaude?: boolean } = {}) {
     const image = await this.prisma.receiptImage.findFirst({
       where: { id: imageId, session: { tenantId } },
