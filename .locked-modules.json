@@ -7,7 +7,7 @@
   },
   "modules": {
     "apps/web/src/app/(panel)/panel/mizan/page.tsx": {
-      "sha256": "f79a119b2abd38758b98806e038e49ccde913e3870ebcb826f712da1794186bf",
+      "sha256": "5c703d4947978c975f3a1616e765aa5578ef5af3d1068393d2ad2ab061af7357",
       "reason": "Mizan modulu — tam otomasyon, dokunma",
       "lockedBy": "muzaffer"
     },
