@@ -2380,7 +2380,7 @@ export class KdvBeyannameService {
       alacakBakiye: r.alacakBakiye,
     }));
 
-    return (this.prisma as any).kdvLucaSnapshot.upsert({
+    const snap = await (this.prisma as any).kdvLucaSnapshot.upsert({
       where: {
         tenantId_taxpayerId_donem: {
           tenantId: params.tenantId,
@@ -2403,6 +2403,9 @@ export class KdvBeyannameService {
         toplamHesapAdet: ham.length,
       },
     });
+    // Mizan değişti → pano önbelleği geçersiz
+    this.genelBakisCache.delete(`${params.tenantId}:${params.donem}`);
+    return snap;
   }
 
   // ════════════════════════════════════════════════════════════
@@ -2540,6 +2543,8 @@ export class KdvBeyannameService {
         toplamHesapAdet,
       },
     });
+    // Snapshot değişti → pano önbelleği geçersiz
+    this.genelBakisCache.delete(`${params.tenantId}:${params.donem}`);
     return { id: snap.id, gelirKdvToplam, giderKdvToplam, ggMode: mode };
   }
 
