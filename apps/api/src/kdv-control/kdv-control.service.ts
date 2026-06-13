@@ -2420,12 +2420,31 @@ ${JSON.stringify(payload, null, 2)}`;
     const bucket = this.storage.getBucket();
 
     for (const img of images) {
-      if (img.s3Key!.startsWith('mihsap://')) continue; // CDN görselleri atla
       try {
-        const res = await s3.send(new GetObjectCommand({ Bucket: bucket, Key: img.s3Key! }));
-        const chunks: Buffer[] = [];
-        for await (const chunk of res.Body as any) chunks.push(chunk);
-        const buffer = Buffer.concat(chunks);
+        let buffer: Buffer;
+        const s3Key = img.s3Key!;
+
+        if (s3Key.startsWith('mihsap://')) {
+          // Mihsap CDN'den indir
+          const invoiceId = s3Key.slice('mihsap://'.length);
+          const inv = await (this.prisma as any).mihsapInvoice.findUnique({
+            where: { id: invoiceId },
+            select: { mihsapFileLink: true, tenantId: true },
+          });
+          if (!inv?.mihsapFileLink) continue;
+          const cdnRes = await fetch(inv.mihsapFileLink, {
+            headers: { 'User-Agent': 'Mozilla/5.0', Accept: 'image/*,application/pdf,*/*', Referer: 'https://app.mihsap.com/' },
+            redirect: 'follow',
+          });
+          if (!cdnRes.ok) continue;
+          buffer = Buffer.from(await cdnRes.arrayBuffer());
+        } else {
+          // S3'ten indir
+          const res = await s3.send(new GetObjectCommand({ Bucket: bucket, Key: s3Key }));
+          const chunks: Buffer[] = [];
+          for await (const chunk of res.Body as any) chunks.push(chunk);
+          buffer = Buffer.concat(chunks);
+        }
 
         const fresh = await this.ocrService.extractFromImage(buffer, img.originalName || undefined);
         scanned++;
