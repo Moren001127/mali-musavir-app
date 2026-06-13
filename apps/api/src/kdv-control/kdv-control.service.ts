@@ -2393,10 +2393,10 @@ ${JSON.stringify(payload, null, 2)}`;
     regressions: number;
     errorPatterns: Record<string, number>;
     samples: Array<{ imageId: string; belgeTipi: string; field: string; stored: string; fresh: string }>;
+    diag: { nullKey: number; nullInv: number; nullLink: number; cdnFail: number; ocrFail: number; firstCdnStatus?: number };
   }> {
     const images = await this.prisma.receiptImage.findMany({
       where: {
-        s3Key: { not: undefined },
         ocrStatus: { in: ['SUCCESS', 'NEEDS_REVIEW', 'FAILED', 'LOW_CONFIDENCE'] },
         ...(tenantId ? { session: { tenantId } } : {}),
       },
@@ -2414,6 +2414,7 @@ ${JSON.stringify(payload, null, 2)}`;
     const samples: Array<{ imageId: string; belgeTipi: string; field: string; stored: string; fresh: string }> = [];
     let scanned = 0;
     let regressions = 0;
+    const diag = { nullKey: 0, nullInv: 0, nullLink: 0, cdnFail: 0, ocrFail: 0, firstCdnStatus: undefined as number | undefined };
 
     const { GetObjectCommand } = await import('@aws-sdk/client-s3');
     const s3 = (this.storage as any).s3;
@@ -2422,7 +2423,8 @@ ${JSON.stringify(payload, null, 2)}`;
     for (const img of images) {
       try {
         let buffer: Buffer;
-        const s3Key = img.s3Key!;
+        const s3Key = img.s3Key;
+        if (!s3Key) { diag.nullKey++; continue; }
 
         if (s3Key.startsWith('mihsap://')) {
           // Mihsap CDN'den indir
@@ -2431,12 +2433,21 @@ ${JSON.stringify(payload, null, 2)}`;
             where: { id: invoiceId },
             select: { mihsapFileLink: true, tenantId: true },
           });
-          if (!inv?.mihsapFileLink) continue;
+          if (!inv) { diag.nullInv++; continue; }
+          if (!inv.mihsapFileLink) { diag.nullLink++; continue; }
           const cdnRes = await fetch(inv.mihsapFileLink, {
-            headers: { 'User-Agent': 'Mozilla/5.0', Accept: 'image/*,application/pdf,*/*', Referer: 'https://app.mihsap.com/' },
+            headers: {
+              'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 Chrome/121.0',
+              Accept: 'image/*,application/pdf,application/xml,*/*',
+              Referer: 'https://app.mihsap.com/',
+            },
             redirect: 'follow',
           });
-          if (!cdnRes.ok) continue;
+          if (!cdnRes.ok) {
+            diag.cdnFail++;
+            if (diag.firstCdnStatus === undefined) diag.firstCdnStatus = cdnRes.status;
+            continue;
+          }
           buffer = Buffer.from(await cdnRes.arrayBuffer());
         } else {
           // S3'ten indir
@@ -2446,7 +2457,14 @@ ${JSON.stringify(payload, null, 2)}`;
           buffer = Buffer.concat(chunks);
         }
 
-        const fresh = await this.ocrService.extractFromImage(buffer, img.originalName || undefined);
+        let fresh: Awaited<ReturnType<typeof this.ocrService.extractFromImage>>;
+        try {
+          fresh = await this.ocrService.extractFromImage(buffer, img.originalName || undefined);
+        } catch (ocrErr: any) {
+          diag.ocrFail++;
+          this.logger.warn(`dryRunOcrAudit OCR hata [${img.id}]: ${ocrErr?.message}`);
+          continue;
+        }
         scanned++;
 
         const freshStatus = this.ocrService.needsReview(fresh).needs ? 'NEEDS_REVIEW' : 'SUCCESS';
@@ -2487,7 +2505,7 @@ ${JSON.stringify(payload, null, 2)}`;
       }
     }
 
-    return { total: images.length, scanned, regressions, errorPatterns, samples };
+    return { total: images.length, scanned, regressions, errorPatterns, samples, diag };
   }
 
   async reocrSingleImage(imageId: string, tenantId: string, opts: { forceClaude?: boolean } = {}) {
