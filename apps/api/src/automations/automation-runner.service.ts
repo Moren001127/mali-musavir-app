@@ -165,14 +165,31 @@ export class AutomationRunnerService implements OnModuleInit {
    * Dedupe: o mükellef+dönem için fatura ARTIK çekildiyse yeniden denenmez
    * (MihsapInvoice kontrolü). Migration gerektirmez; AutomationRun geçmişinden türetir.
    */
+  /** 12 ay öncesini YYYY-MM formatında döndürür — eski dönem filtresi için. */
+  private donemCutoff(): string {
+    const d = new Date();
+    d.setMonth(d.getMonth() - 11);
+    return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}`;
+  }
+
+  /**
+   * Faz 2 — Mihsap token tazelendiğinde otomatik yeniden deneme.
+   *
+   * Sonsuz döngü koruması:
+   *  - _isTokenRetry=true olan payload'lardan açılan run'lar atlanır
+   *  - 12 aydan eski dönemler atlanır (geçmiş yıl faturası sonsuz döngüsü önlenir)
+   */
   private async retryFailedMihsapFetches(tenantId: string): Promise<void> {
     const since = new Date(Date.now() - 24 * 60 * 60 * 1000);
+    const cutoff = this.donemCutoff();
     const failedRuns = await this.prisma.automationRun.findMany({
       where: {
         status: 'failure',
         startedAt: { gte: since },
         errorMessage: { contains: 'Mihsap' },
         automation: { tenantId, status: AutomationStatus.ACTIVE },
+        // Kendi açtığı retry run'larını tekrar deneme (sonsuz döngü koruması)
+        NOT: [{ triggerPayload: { path: ['_isTokenRetry'], equals: true } } as any],
       },
       orderBy: { startedAt: 'desc' },
       take: 50,
@@ -185,6 +202,12 @@ export class AutomationRunnerService implements OnModuleInit {
       const taxpayerId = String(payload.taxpayerId ?? '');
       const donem = String(payload.beyannamePeriodLabel ?? payload.donem ?? '');
       if (!taxpayerId || !donem) continue;
+
+      // 12 aydan eski dönemler denenmez
+      if (donem < cutoff) {
+        this.logger.log(`Mihsap retry atlandı (eski dönem ${donem} < ${cutoff}): automation=${run.automationId}`);
+        continue;
+      }
 
       // Aynı (otomasyon + mükellef + dönem) en fazla bir kez denensin.
       const key = `${run.automationId}|${taxpayerId}|${donem}`;
@@ -204,8 +227,9 @@ export class AutomationRunnerService implements OnModuleInit {
         `Mihsap token yenilendi → fatura çekme yeniden deneniyor: ` +
           `automation=${run.automationId} taxpayer=${taxpayerId} donem=${donem}`,
       );
-      // Orijinal payload ile tüm zinciri yeniden çalıştır (fetch + backup).
-      this.executeAutomation(run.automationId, payload).catch((err) =>
+      // Orijinal payload ile tüm zinciri yeniden çalıştır; _isTokenRetry işareti
+      // bu run'un tekrar retry'a girmesini engeller.
+      this.executeAutomation(run.automationId, { ...payload, _isTokenRetry: true }).catch((err) =>
         this.logger.error(
           `Mihsap retry run hatası (automation=${run.automationId}): ${err?.message ?? err}`,
         ),

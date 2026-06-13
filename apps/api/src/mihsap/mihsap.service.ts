@@ -1,4 +1,5 @@
 import { Injectable, Logger, BadRequestException, UnauthorizedException, Optional } from '@nestjs/common';
+import { Cron } from '@nestjs/schedule';
 import { PrismaService } from '../prisma/prisma.service';
 import { StorageService } from '../storage/storage.service';
 import { NotificationsService } from '../notifications/notifications.service';
@@ -131,15 +132,30 @@ export class MihsapService {
     return s.token;
   }
 
-  /** Token yenilenince son 24 saatte token hatasıyla başarısız olmuş
-   *  manuel MihsapFetchJob'ları otomatik yeniden dener. */
+  /** 12 ay öncesini YYYY-MM formatında döndürür — eski dönem filtresi için. */
+  private donemCutoff(): string {
+    const d = new Date();
+    d.setMonth(d.getMonth() - 11);
+    return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}`;
+  }
+
+  /**
+   * Token yenilenince (veya proaktif cron tetiklenince) son 24 saatte token
+   * hatasıyla başarısız olmuş manuel MihsapFetchJob'ları otomatik yeniden dener.
+   *
+   * Sonsuz döngü koruması:
+   *  - createdBy='token-retry' olanlar atlanır (kendi açtığı retry job'ını tekrar deneme)
+   *  - 12 aydan eski dönemler atlanır (geçmiş yıl faturası sonsuz döngüsünü önler)
+   */
   private async retryFailedFetchJobs(tenantId: string): Promise<void> {
     const since = new Date(Date.now() - 24 * 60 * 60 * 1000);
+    const cutoff = this.donemCutoff();
     const failedJobs = await (this.prisma as any).mihsapFetchJob.findMany({
       where: {
         tenantId,
         status: 'failed',
         createdAt: { gte: since },
+        NOT: { createdBy: 'token-retry' }, // kendi açtığı retry job'larını tekrar deneme
         OR: [
           { errorMsg: { contains: 'MIHSAP' } },
           { errorMsg: { contains: 'token' } },
@@ -152,6 +168,12 @@ export class MihsapService {
 
     const seen = new Set<string>();
     for (const job of failedJobs) {
+      // 12 aydan eski dönemler denenmez (string karşılaştırması: "2024-03" < "2025-07")
+      if (job.donem && job.donem < cutoff) {
+        this.logger.log(`Mihsap retry atlandı (eski dönem ${job.donem} < ${cutoff}): mukellef=${job.mukellefId}`);
+        continue;
+      }
+
       const key = `${job.mukellefId}|${job.donem}`;
       if (seen.has(key)) continue;
       seen.add(key);
@@ -180,6 +202,31 @@ export class MihsapService {
       }).catch((err: any) =>
         this.logger.error(`Mihsap job retry hatası (mukellef=${job.mukellefId} donem=${job.donem}): ${err?.message ?? err}`),
       );
+    }
+  }
+
+  /**
+   * Proaktif retry cron — 15 dakikada bir çalışır.
+   * Geçerli Mihsap token'ı olan tüm tenant'lar için bekleyen/başarısız
+   * fatura çekme işlerini otomatik yeniden dener.
+   * Kullanıcı elle müdahale etmek zorunda kalmaz.
+   */
+  @Cron('0 */15 * * * *')
+  async proactiveRetryPendingFetches(): Promise<void> {
+    try {
+      const sessions = await (this.prisma as any).mihsapSession.findMany({
+        select: { tenantId: true, token: true },
+      });
+      for (const session of sessions) {
+        const expiresAt = this.getJwtExpiresAt(session.token);
+        // Token süresi dolmuşsa veya 30 sn'den az kalmışsa bu tenant'ı atla
+        if (!expiresAt || expiresAt.getTime() < Date.now() + 30_000) continue;
+        await this.retryFailedFetchJobs(session.tenantId).catch((err: any) =>
+          this.logger.warn(`Proaktif retry hatası tenant=${session.tenantId}: ${err?.message}`),
+        );
+      }
+    } catch (err: any) {
+      this.logger.error(`Proaktif Mihsap retry cron hatası: ${err?.message}`);
     }
   }
 
