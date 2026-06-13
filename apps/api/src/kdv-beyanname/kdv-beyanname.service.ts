@@ -945,7 +945,7 @@ export class KdvBeyannameService {
           belgeNo,
           'kdv_orani',
           'uyari',
-          'KDV Kontrol kaydinda gecerli %1 / %10 / %20 oran-matrah detayi yok; beyan toplamina dahil edilmedi.',
+          'KDV Kontrol kaydinda KDV tutari okunamadi; beyan toplamina dahil edilmedi.',
         );
         return;
       }
@@ -996,50 +996,16 @@ export class KdvBeyannameService {
         }
       }
 
-      let rows: Array<{ oran: number; matrah: number; kdv: number }> = [];
-      if (res.image && imageId && !seenImageIds.has(imageId)) {
-        rows = this.completeControlRows(this.kdvRowsFromImage(res.image), res.image, faturaTuru === 'ALIS');
-        if (rows.length > 0) seenImageIds.add(imageId);
-      }
+      // Sadece KDV tutarı: OCR görsel varsa confirmedKdvTutari/ocrKdvTutari,
+      // yoksa Luca kaydındaki kdvTutari kullanılır. Matrah/oran hesabı yapılmaz.
+      // (Tevkifatlı alış KDV2 hesabı derleTevkifatliAlis'te ayrıca yapılır.)
+      if (res.image && imageId && !seenImageIds.has(imageId)) seenImageIds.add(imageId);
+      const kdvTutari =
+        this.parseTrAmount(res.image?.confirmedKdvTutari ?? res.image?.ocrKdvTutari) ||
+        this.parseTrAmount(res.kdvRecord?.kdvTutari);
+      const rows: Array<{ oran: number; matrah: number; kdv: number }> =
+        kdvTutari > 0 ? [{ oran: 0, matrah: 0, kdv: kdvTutari }] : [];
 
-      if (rows.length === 0 && res.kdvRecord && !(imageId && seenImageIds.has(imageId))) {
-        rows = this.completeControlRows(this.kdvRowsFromRecord(res.kdvRecord), res.kdvRecord, faturaTuru === 'ALIS');
-      }
-
-      // FALLBACK 1: OCR görsel var + Luca kaydında oran bilgisi var → matrah hesapla
-      if (rows.length === 0 && res.image && res.kdvRecord) {
-        const imageKdv = this.parseTrAmount(res.image?.confirmedKdvTutari ?? res.image?.ocrKdvTutari);
-        if (imageKdv > 0) {
-          const recordOran =
-            this.parseTrAmount(res.kdvRecord?.kdvOrani) ||
-            this.oranFromHesapAdi(res.kdvRecord) ||
-            this.oranFromHesapKodu(res.kdvRecord);
-          if (recordOran > 0) {
-            rows = this.completeControlRows(
-              [{ oran: recordOran, matrah: Math.round((imageKdv / (recordOran / 100)) * 100) / 100, kdv: imageKdv }],
-              res.image,
-              faturaTuru === 'ALIS',
-            );
-          }
-        }
-      }
-
-      // FALLBACK 2: Normal ALIS + KDV tutarı biliniyorsa matrah olmadan ekle
-      // (Satışlarda ve tevkifatlı alışlarda matrah zorunlu — bu fallback devreye girmez)
-      if (rows.length === 0 && faturaTuru === 'ALIS') {
-        const kdvTutari =
-          this.parseTrAmount(res.image?.confirmedKdvTutari ?? res.image?.ocrKdvTutari) ||
-          this.parseTrAmount(res.kdvRecord?.kdvTutari);
-        const tevkifatTutari =
-          this.parseTrAmount((res.image as any)?.ocrKdvTevkifat) ||
-          this.parseTrAmount((res.kdvRecord as any)?.rawData?.kdvTevkifat);
-        // Tevkifatlı alışta matrah zorunlu (KDV2 için) — bu fallback atlanır
-        if (kdvTutari > 0 && tevkifatTutari <= 0) {
-          rows = [{ oran: 0, matrah: 0, kdv: kdvTutari }];
-        }
-      }
-
-      if (imageId && seenImageIds.has(imageId) && rows.length === 0) continue;
       addRows(rows, docKey, belgeNo, finalStatuses.has(status), status);
     }
 
@@ -1052,7 +1018,9 @@ export class KdvBeyannameService {
       if (resultRecordIds.has(r.id)) continue;
       const belgeNo = this.controlBelgeNo(r, null);
       const docKey = this.controlDocKey(`record:${r.id}`, belgeNo, null, r.id);
-      const rows = this.completeControlRows(this.kdvRowsFromRecord(r), r, faturaTuru === 'ALIS');
+      const kdvTutari = this.parseTrAmount(r.kdvTutari);
+      const rows: Array<{ oran: number; matrah: number; kdv: number }> =
+        kdvTutari > 0 ? [{ oran: 0, matrah: 0, kdv: kdvTutari }] : [];
       addRows(rows, docKey, belgeNo, false);
     }
 
