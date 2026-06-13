@@ -1405,17 +1405,28 @@ export class PortalAutomationService {
     jobType: string,
   ) {
     let taxpayerId = input.taxpayerId || null;
+    // Belgeye mukellef gelmemisse isin mukellefini kullan (e-Tebligat kayitlari job'a baglidir).
+    if (!taxpayerId && jobId) {
+      const ownerJob = await (this.prisma as any).portalAutomationJob.findFirst({ where: { id: jobId, tenantId }, select: { taxpayerId: true } });
+      if (ownerJob?.taxpayerId) taxpayerId = ownerJob.taxpayerId;
+    }
     if (taxpayerId) {
       const tp = await (this.prisma as any).taxpayer.findFirst({ where: { id: taxpayerId, tenantId }, select: { id: true } });
       if (!tp) throw new NotFoundException('Belge mukellefi bulunamadi');
     }
-    // E-Tebligat mukerrer engelle: ayni belgeNo daha once kaydedildiyse atla (gece tekrar calisinca cogaltmasin).
-    if (String(input.belgeTuru) === 'E_TEBLIGAT' && input.referenceNo && taxpayerId) {
+    // E-Tebligat mukerrer engelle: ayni belge no daha once kaydedildiyse atla (gece tekrar calisinca cogaltmasin).
+    // Belge no mukellef bazinda benzersiz; eski kayitta mukellef eksikse geri doldur.
+    if (String(input.belgeTuru) === 'E_TEBLIGAT' && input.referenceNo) {
       const existing = await (this.prisma as any).portalDocument.findFirst({
-        where: { tenantId, taxpayerId, belgeTuru: 'E_TEBLIGAT', referenceNo: String(input.referenceNo) },
-        select: { id: true },
+        where: { tenantId, belgeTuru: 'E_TEBLIGAT', referenceNo: String(input.referenceNo) },
+        select: { id: true, taxpayerId: true },
       });
-      if (existing) return existing;
+      if (existing) {
+        if (!existing.taxpayerId && taxpayerId) {
+          await (this.prisma as any).portalDocument.update({ where: { id: existing.id }, data: { taxpayerId } }).catch(() => {});
+        }
+        return existing;
+      }
     }
     const mimeType = input.mimeType || 'application/pdf';
     const sourceProvider = JOB_META[jobType as PortalJobType]?.provider || 'GIB_IVD';
