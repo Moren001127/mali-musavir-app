@@ -699,6 +699,15 @@ export class KdvBeyannameService {
     donem: string,
     faturaTuru: 'ALIS' | 'SATIS',
   ) {
+    // KDV BEYANNAME = YALNIZ KDV KONTROL (Luca-mutabık) verisi. Ham Mihsap
+    // listesi toplam üretmek için baz alınmaz — aksi halde Luca'ya girilmemiş /
+    // mutabık olmayan faturalar da sayılıp İndirilecek KDV Luca'dan fazla çıkıyor
+    // (ör. ERDOĞAN BALÇIK: ham 8.863 vs Luca 5.654). KDV Kontrol'den geçmemiş
+    // mükellefte bu fonksiyon 0 + "KDV Kontrol'den geçir" uyarısı döndürür;
+    // yanlış ham rakam yazmaktansa bu doğrudur. (713ac6d kararı; c159810 hatalı
+    // geri almıştı, bu satır onu eski haline getiriyor.)
+    return this.derleOranBazliMatrahKdvFromKdvControl(tenantId, mukellefId, donem, faturaTuru);
+
     // ÖNEMLİ: faturaTuru "TEVKIFATLI_ALIS" / "TEVKIFATLI_SATIS" gibi varyantlarda
     // da gelebiliyor. KDV1 ön hazırlığı için tevkifatlı alış da indirilecek
     // KDV'ye dahildir (tevkifat tutarı sonradan ayrılır). contains ile alıyoruz.

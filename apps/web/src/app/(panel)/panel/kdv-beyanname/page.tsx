@@ -213,7 +213,10 @@ const cleanOranRows = (rows: OranRow[] | undefined) =>
       kdv: Number(row.kdv || 0),
       adet: Number(row.adet || 0),
     }))
-    .filter((row) => isValidKdvRateForDisplay(row.oran) && row.matrah > 0 && row.kdv > 0);
+    // KDV Kontrol kaynağında matrah çoğu kez 0 (yalnız KDV tutarı + oran biliniyor).
+    // Beyan için belirleyici olan KDV tutarı ve geçerli oran; matrah>0 ŞARTI KALDIRILDI
+    // (yoksa Luca-mutabık satırlar elenip "kayıt yok / OCR gelmiyor" görünüyordu).
+    .filter((row) => isValidKdvRateForDisplay(row.oran) && row.kdv > 0);
 
 const sumOranRows = (rows: OranRow[]) => ({
   matrah: Math.round(rows.reduce((sum, row) => sum + Number(row.matrah || 0), 0) * 100) / 100,
@@ -2096,7 +2099,7 @@ function OranTablosu({
                 <div className="mb-2 flex items-center justify-between gap-3">
                   <span className="inline-flex items-center gap-2.5">
                     <span className="inline-flex items-center justify-center rounded-lg px-2.5 py-1 text-[13px] font-extrabold" style={{ background: renk, color: PILL_INK, minWidth: 46 }}>%{o.oran}</span>
-                    <span className="text-[12px] font-semibold tabular-nums" style={{ color: 'rgba(255,255,255,0.5)' }}>{o.adet} belge · {TRY}{fmt(o.matrah)} matrah</span>
+                    <span className="text-[12px] font-semibold tabular-nums" style={{ color: 'rgba(255,255,255,0.5)' }}>{o.adet} belge{o.matrah > 0 ? ` · ${TRY}${fmt(o.matrah)} matrah` : ''}</span>
                   </span>
                   <MoneyText value={o.kdv} color={renk} strong size={15} />
                 </div>
