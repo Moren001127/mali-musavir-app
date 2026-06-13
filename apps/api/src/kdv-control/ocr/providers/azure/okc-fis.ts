@@ -44,7 +44,8 @@ export function extractOkcFisKdv(
   if (!text) return null;
   const lines = normalizeAzureText(text).split(/\r?\n/).map((l) => l.trim()).filter(Boolean);
   const breakdown: KdvBreakdownItem[] = [];
-  const kdvLineRe = /\bT[O0]P\s*K\s*D\s*V\b|\bT[O0]PKD[UV]\b|\bK\.?\s*D\.?\s*V\.?\s*(?:TUTARI|TOPLAM)\b/i;
+  // Dört format: "TOPKDV", "KDV TUTARI/TOPLAM", "KDV" tek başına satır, "PKDV" (Azure OCR "TOPKDV" hatası)
+  const kdvLineRe = /\bT[O0]P\s*K\s*D\s*V\b|\bT[O0]PKD[UV]\b|\bK\.?\s*D\.?\s*V\.?\s*(?:TUTARI|TOPLAM)\b|^K\.?\s*D\.?\s*V\.?$|\bPKD[UV]\b/i;
   const summaryLookaheadLabelRe = /^(?:TOPLAM|GENEL\s*TOPLAM|KDV\s*ORANI|KDV\s*DAHIL\s*TUTAR|KDV\s*DAH[Iİ]L\s*TUTAR)$/i;
   const summaryHardStopRe = /NAK[Iİ]T|KRED[Iİ]|KART|PARA\s*[UÜ]ST[UÜ]|KAS[Iİ]YER|M[UÜ][SŞ]TER[Iİ]/i;
   const otherTaxRe = /ÖZEL\s*İLETİŞİM|ÖİV|OIV|TELSİZ|TELSIZ|ÖTV|OTV|DAMGA|BSMV|KKDF|KONAKLAMA|ÇEVRE|STOPAJ/i;

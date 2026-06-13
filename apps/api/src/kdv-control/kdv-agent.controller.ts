@@ -95,4 +95,60 @@ export class KdvAgentController {
     if (!img) return { error: 'bulunamadı' };
     return { id: img.id, originalName: img.originalName, ocrStatus: img.ocrStatus, ocrBelgeTipi: img.ocrBelgeTipi, rawText: img.ocrRawText };
   }
+
+  /**
+   * NEEDS_REVIEW/FAILED görselleri yeniden OCR'dan geçir, DB'ye yazar.
+   * Parser fix'leri uygulamak için kullanılır.
+   */
+  @Post('reocr-needs-review')
+  @HttpCode(HttpStatus.OK)
+  async reocrNeedsReview(
+    @Headers('x-agent-token') agentToken: string,
+    @Query('limit') limit?: string,
+    @Query('mukellef') mukellefFilter?: string,
+  ) {
+    const tenantId = await resolveTenantFromAgentToken(agentToken, this.prisma as any);
+    const n = Math.min(parseInt(limit || '30', 10) || 30, 100);
+
+    const where: any = {
+      ocrStatus: { in: ['NEEDS_REVIEW', 'FAILED'] },
+      session: { tenantId },
+    };
+    if (mukellefFilter) {
+      where.session = {
+        ...where.session,
+        taxpayer: {
+          OR: [
+            { firstName: { contains: mukellefFilter, mode: 'insensitive' } },
+            { lastName: { contains: mukellefFilter, mode: 'insensitive' } },
+            { companyName: { contains: mukellefFilter, mode: 'insensitive' } },
+          ],
+        },
+      };
+    }
+
+    const images = await (this.prisma as any).receiptImage.findMany({
+      where,
+      select: { id: true, originalName: true, ocrStatus: true, ocrBelgeTipi: true },
+      orderBy: { uploadedAt: 'desc' },
+      take: n,
+    });
+
+    const results: Array<{ id: string; originalName: string; before: string; after: string; error?: string }> = [];
+    for (const img of images) {
+      try {
+        await this.kdvService.reocrSingleImage(img.id, tenantId, {});
+        const updated = await (this.prisma as any).receiptImage.findUnique({
+          where: { id: img.id },
+          select: { ocrStatus: true },
+        });
+        results.push({ id: img.id, originalName: img.originalName, before: img.ocrStatus, after: updated?.ocrStatus || '?' });
+      } catch (err: any) {
+        results.push({ id: img.id, originalName: img.originalName, before: img.ocrStatus, after: 'ERROR', error: err?.message });
+      }
+    }
+
+    const fixed = results.filter((r) => r.after === 'SUCCESS').length;
+    return { total: images.length, fixed, results };
+  }
 }
