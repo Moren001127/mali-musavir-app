@@ -690,6 +690,15 @@ export class PortalAutomationRailwayRunnerService implements OnModuleInit {
         };
       }
 
+      // GERCEK e-Tebligat: explicit "sadece dogrula" degilse HER ZAMAN gercek API taramasi.
+      // (manual+force heuristigi E_TEBLIGAT'i validation-only yapmasin; tebligat cekmek isin amaci.)
+      if (jobType === 'E_TEBLIGAT_CHECK' && bundle.job?.payload?.validationOnly !== true) {
+        const etb = await this.collectETebligatViaApi(page, context, bundle.job, loginUrl);
+        await this.jobProgress(tenantId, bundle.job, 'etebligat_done', `e-Tebligat sorgusu tamamlandi: ${etb.recordCount} kayit.`);
+        await context.close().catch(() => {});
+        return etb;
+      }
+
       if (this.isCredentialValidationOnlyJob(bundle.job, jobType)) {
         const providerLabel = isSgk ? 'SGK' : 'Vergi dairesi';
         const url = this.safeUrl(page.url());
@@ -707,14 +716,6 @@ export class PortalAutomationRailwayRunnerService implements OnModuleInit {
             notes: [`${providerLabel} girisi basarili; belge taramasi yapilmadi`],
           },
         };
-      }
-
-      // GERCEK e-Tebligat: liste API'den (tiklama yok); generic UI akisina dusme.
-      if (jobType === 'E_TEBLIGAT_CHECK') {
-        const etb = await this.collectETebligatViaApi(page, context, bundle.job, loginUrl);
-        await this.jobProgress(tenantId, bundle.job, 'etebligat_done', `e-Tebligat sorgusu tamamlandi: ${etb.recordCount} kayit.`);
-        await context.close().catch(() => {});
-        return etb;
       }
 
       const notes: string[] = [`${jobType} girisi basarili`];
