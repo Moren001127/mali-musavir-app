@@ -1060,14 +1060,8 @@ export class KdvBeyannameService {
       if (resultImageIds.has(image.id)) continue;
       const belgeNo = this.controlBelgeNo(null, image);
       const docKey = this.controlDocKey(`image:${image.id}`, belgeNo, image.id, null);
-      let rows = this.completeControlRows(this.kdvRowsFromImage(image), image, faturaTuru === 'ALIS');
-      if (rows.length === 0 && faturaTuru === 'ALIS') {
-        const kdvTutari = this.parseTrAmount((image as any).confirmedKdvTutari ?? (image as any).ocrKdvTutari);
-        const tevkifat = this.parseTrAmount((image as any).ocrKdvTevkifat);
-        if (kdvTutari > 0 && tevkifat <= 0) {
-          rows = [{ oran: 0, matrah: 0, kdv: kdvTutari }];
-        }
-      }
+      // Orphan görsel = Luca'da karşılığı yok; kdvTutariOnly fallback uygulanmaz
+      const rows = this.completeControlRows(this.kdvRowsFromImage(image), image, faturaTuru === 'ALIS');
       addRows(rows, docKey, belgeNo, false);
     }
 
