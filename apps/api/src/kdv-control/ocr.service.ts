@@ -343,7 +343,23 @@ export class OcrService {
       const kdvTotal = this.extractKdvTotal(plainText);
       const invoiceTotalsKdv = kdvTotal ? null : this.extractKdvFromInvoiceTotalsAzure(plainText);
       const kdv = kdvTotal ?? (invoiceTotalsKdv ? this.formatAmount(invoiceTotalsKdv.kdv) : null);
-      const satici = this.extractSaticiFromAzure(plainText);
+      // HTML e-arşiv: satıcı üst satırda olmayabilir (abone bilgisi önce gelir → stop erken tetiklenir).
+      // Fallback: tam metinde A.Ş./Anonim/Ltd. içeren satırı ara.
+      let satici = this.extractSaticiFromAzure(plainText);
+      if (!satici) {
+        for (const ln of plainText.split('\n')) {
+          const t = ln.trim();
+          if (t.length < 8 || t.length > 250) continue;
+          const folded = this.foldTurkishAscii(t);
+          if (
+            /\b(?:ANONIM|ANONIM SIRKETI?|LIMITED|LTD|STI|TELEKOMUNIKASYON|ELEKTRIK|DOGALGAZ)\b/.test(folded) &&
+            !/\b(?:SAYIN|ALICI|MUSTERI|VKN|TCKN|FATURA NO|BELGE NO)\b/.test(folded)
+          ) {
+            satici = t.slice(0, 200);
+            break;
+          }
+        }
+      }
       const saticiVkn = this.extractSaticiVknFromAzure(plainText);
       const foundFields = [belgeNo, date, kdv].filter(Boolean).length;
       const confidence = belgeNoFromFilename ? 0.3 + (foundFields / 3) * 0.7 : foundFields / 3;
