@@ -215,11 +215,18 @@ const BROWSER_KEEPALIVE_INTERVAL = configuredKeepAliveSeconds > 0
 const nativeBridgePages = new WeakSet();
 
 // --------- Logger ---------
+// DONMA WATCHDOG heartbeat'i: ajan herhangi bir log satiri yazinca tazelenir.
+// Iş adimi / pre-warm / idle loop tick hepsi loglar → "canli" sinyali. Tum loglama
+// uzun süre durursa (13.06 17:28 donmasi: süreç ayakta ama döngü asili, 75dk sessiz)
+// heartbeat bayatlar ve startFreezeWatchdog prosesi öldürür → wrapper taze ajan başlatir.
+let lastAgentProgressAt = Date.now();
+function markAgentProgress() { lastAgentProgressAt = Date.now(); }
 const log = {
-  info: (...args) => console.log(`[${new Date().toISOString()}]`, ...args),
-  warn: (...args) => console.warn(`[${new Date().toISOString()}] WARN`, ...args),
-  error: (...args) => console.error(`[${new Date().toISOString()}] ERROR`, ...args),
+  info: (...args) => { markAgentProgress(); console.log(`[${new Date().toISOString()}]`, ...args); },
+  warn: (...args) => { markAgentProgress(); console.warn(`[${new Date().toISOString()}] WARN`, ...args); },
+  error: (...args) => { markAgentProgress(); console.error(`[${new Date().toISOString()}] ERROR`, ...args); },
   debug: (...args) => {
+    markAgentProgress();
     if (LOG_LEVEL === 'debug') console.log(`[${new Date().toISOString()}] DEBUG`, ...args);
   },
 };
@@ -1936,6 +1943,36 @@ function startJobTimeoutWatcher() {
 }
 
 // ====================================================================
+// SELF-HEAL: Donma watchdog — ana döngü/iş ilerlemesi durduysa restart
+// Memory watcher (RAM) ve job-timeout watcher (yalniz izlenen aktif iş) "döngü
+// asili kaldi ama izlenen aktif iş YOK" durumunu yakalamiyordu — 13.06 17:28'de
+// işler iptale düşüp izlemeden çiktiktan sonra ajan 75dk sessiz dondu, hiçbiri
+// devreye girmedi. Bu watchdog log-heartbeat'ine bakar: ajan uzun süre HİÇBİR log
+// yazmadiysa (gerçek donma) prosesi öldürür; wrapper taze ajan başlatir.
+// - Boşta (aktif iş yok): 5dk log yoksa = donma (idle loop normalde 30sn'de loglar).
+// - Mutlak: aktif iş olsa bile ~30dk hiç log yoksa (job-timeout'tan sonra son çare).
+// Pre-warm/uzun mesru işler adim adim loglar → heartbeat taze → yanliş-kill olmaz.
+// ====================================================================
+function startFreezeWatchdog() {
+  const FREEZE_IDLE_MS = 5 * 60 * 1000;                      // boşta 5dk log yoksa
+  const FREEZE_HARD_CAP_MS = JOB_TIMEOUT_MS + 5 * 60 * 1000; // mutlak (~30dk) hiç log yoksa
+  setInterval(() => {
+    if (stopped) return;
+    const idleMs = Date.now() - lastAgentProgressAt;
+    const frozenIdle = activeJobCount === 0 && idleMs > FREEZE_IDLE_MS;
+    const frozenHard = idleMs > FREEZE_HARD_CAP_MS;
+    if (frozenIdle || frozenHard) {
+      log.error(`Self-heal: ajan ${Math.round(idleMs / 60000)}dk hiç ilerleme/log yapmadi (DONMA). Proses sonlandiriliyor (wrapper taze ajan başlatir).`);
+      for (const jid of activeJobsStartTime.keys()) {
+        api.post(`/agent/luca/jobs/${jid}/requeue`, { reason: 'AGENT_FREEZE_WATCHDOG' }).catch(() => {});
+      }
+      setTimeout(() => process.exit(7), 2000);
+    }
+  }, 60_000); // 60sn'de bir
+  log.info(`Donma watchdog aktif (boşta ${FREEZE_IDLE_MS / 60000}dk / mutlak ${Math.round(FREEZE_HARD_CAP_MS / 60000)}dk log yoksa restart).`);
+}
+
+// ====================================================================
 // SELF-HEAL: Oturum gardiyani — tarayici acik ama Luca oturumu dustuyse
 // (login/captcha sayfasina dustuyse) IS BEKLEMEDEN proaktif tekrar giris yapar.
 // Amaç: kullanici HIC manuel mudahale etmesin; ajan her zaman hazir/girisli kalsin.
@@ -1984,6 +2021,7 @@ async function start() {
   // SELF-HEAL watcher'lari baslat
   startMemoryWatcher();
   startJobTimeoutWatcher();
+  startFreezeWatchdog();
   startSessionGuardian();
 
   if (!poolStarted) {

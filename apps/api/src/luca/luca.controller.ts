@@ -23,6 +23,7 @@ import {
 import { readFileSync } from 'fs';
 import { join } from 'path';
 import { AuthGuard } from '@nestjs/passport';
+import { SkipThrottle } from '@nestjs/throttler';
 import { FileInterceptor } from '@nestjs/platform-express';
 import { memoryStorage } from 'multer';
 import { RolesGuard } from '../auth/guards/roles.guard';
@@ -436,6 +437,9 @@ export class LucaController {
     return this.autoScraper.getWorkerAccountsForAgent(tenantId);
   }
 
+  // Ajan makine-token'lı yüksek-frekanslı poll'ları IP-throttle'a takılmasın
+  // (çoklu makine tek IP = 429 fırtınası → ajan donuyordu). Token guard zaten korur.
+  @SkipThrottle()
   @Get('agent/luca/jobs/pending')
   @Header('Cache-Control', 'no-store, no-cache, must-revalidate, proxy-revalidate')
   @Header('Pragma', 'no-cache')
@@ -462,6 +466,7 @@ export class LucaController {
     });
   }
 
+  @SkipThrottle()
   @Get('agent/luca/jobs/active')
   async activeJobsForAgent(
     @Headers('x-agent-token') agentToken: string,
@@ -495,6 +500,7 @@ export class LucaController {
     return this.kdvControl.repairLucaRecordBelgeNosForAgent(tenantId, body || {});
   }
 
+  @SkipThrottle()
   @Post('agent/luca/captcha')
   @HttpCode(HttpStatus.OK)
   async createAgentCaptcha(
@@ -511,12 +517,14 @@ export class LucaController {
     return this.luca.createCaptchaChallengeFromAgent(tenantId, body);
   }
 
+  @SkipThrottle()
   @Get('agent/luca/captcha/active')
   async getActiveAgentCaptcha(@Headers('x-agent-token') agentToken: string) {
     const tenantId = await this.resolveTenantFromAgentToken(agentToken);
     return this.luca.getActiveCaptchaChallenge(tenantId);
   }
 
+  @SkipThrottle()
   @Post('agent/luca/captcha/:id/answer')
   @HttpCode(HttpStatus.OK)
   async submitAgentCaptchaAnswer(
@@ -529,6 +537,7 @@ export class LucaController {
     return this.luca.submitCaptchaAnswer(tenantId, id, answer, 'local-agent-recovery');
   }
 
+  @SkipThrottle()
   @Get('agent/luca/captcha/:id/answer')
   async getAgentCaptchaAnswer(
     @Param('id') id: string,
@@ -538,6 +547,7 @@ export class LucaController {
     return this.luca.getCaptchaAnswerForAgent(tenantId, id);
   }
 
+  @SkipThrottle()
   @Post('agent/luca/captcha/:id/consume')
   @HttpCode(HttpStatus.OK)
   async consumeAgentCaptchaAnswer(
@@ -549,6 +559,7 @@ export class LucaController {
     return this.luca.consumeCaptchaAnswer(tenantId, id, body?.ok !== false, body?.error);
   }
 
+  @SkipThrottle()
   @Post('agent/luca/jobs/:id/start')
   @HttpCode(HttpStatus.OK)
   async startJob(
@@ -584,6 +595,7 @@ export class LucaController {
     return { ok: !!job, claimed: !!job, job };
   }
 
+  @SkipThrottle()
   @Post('agent/luca/jobs/:id/done')
   @HttpCode(HttpStatus.OK)
   async finishJob(
@@ -596,6 +608,7 @@ export class LucaController {
     return { ok: true };
   }
 
+  @SkipThrottle()
   @Post('agent/luca/jobs/:id/fail')
   @HttpCode(HttpStatus.OK)
   async failJob(
@@ -634,6 +647,7 @@ export class LucaController {
     res.end(buffer);
   }
 
+  @SkipThrottle()
   @Post('agent/luca/jobs/:id/requeue')
   @HttpCode(HttpStatus.OK)
   async requeueJobForAgent(
@@ -646,6 +660,7 @@ export class LucaController {
     return { ok: true, job };
   }
 
+  @SkipThrottle()
   @Get('agent/luca/jobs/:id/status')
   async jobStatus(
     @Param('id') id: string,
@@ -667,6 +682,7 @@ export class LucaController {
   }
 
   /** Agent her aşamada ilerleme mesajı yollar — Mizan sayfası canlı gösterir. */
+  @SkipThrottle()
   @Post('agent/luca/jobs/:id/log')
   @HttpCode(HttpStatus.OK)
   async logJob(
@@ -683,6 +699,7 @@ export class LucaController {
   }
 
   /** LUCA OPERATÖRÜ — ajan o an açık Luca ekranının snapshot'ını yazar (EKRAN_OKU). */
+  @SkipThrottle()
   @Post('agent/luca/jobs/:id/screen')
   @HttpCode(HttpStatus.OK)
   async storeScreen(
