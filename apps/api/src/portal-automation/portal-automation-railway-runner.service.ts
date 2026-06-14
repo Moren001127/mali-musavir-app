@@ -1299,7 +1299,7 @@ export class PortalAutomationRailwayRunnerService implements OnModuleInit {
       return { documents: [], recordCount: 0, result: { runner: 'railway', phase: 'sgk_ebildirge', jobType: 'SGK', reached, notes } };
     }
 
-    // Zaten kayıtlı (PDF'i inmiş) belgeleri atla -> artımlı
+    // Artımlı: zaten kayıtlı belgeleri (refNo bazında) atla (gece ucuz kalsın).
     let alreadyHave = new Set<string>();
     if (tenantId) {
       const where: any = { tenantId, belgeTuru: { in: ['SGK_TAHAKKUK', 'SGK_HIZMET_LISTESI'] }, storageKey: { not: null } };
@@ -1314,94 +1314,115 @@ export class PortalAutomationRailwayRunnerService implements OnModuleInit {
     ];
     const documents: any[] = [];
     let formsFound = 0;
+
+    // Dönem text'ini value'dan çözmek için harita (satırın hizmet_yil_ay_index'i -> "Ay Yıl").
+    const periodTextByValue: Record<string, string> = {};
+    for (const p of periods) periodTextByValue[String(p.v)] = p.t;
+
+    // TEK RANGE (kullanıcı talimatı 2026-06-15): her ayı ayrı sorgulamak yerine
+    // başlangıç = en eski dönem, bitiş = en yeni dönem seçip TEK submit ile tüm dönemleri
+    // çok satırlı getir; satırları sırayla indir (alreadyHave inmiş olanı atlar).
+    // Dönem index value'su: küçük = en yeni, büyük = en eski (memory: 1=en yeni, artan=eskiye).
     const maxPeriods = Math.max(1, Math.min(36, Number(process.env.SGK_PERIOD_MAX || 24)));
-
-    for (const period of periods.slice(0, maxPeriods)) {
-      try {
-        // Dönem seç (başlangıç=bitiş=tek dönem) + "Bilgileri Getir" SUBMIT BUTONUNU TIKLA.
-        // (Struts hangi action'ı işleyeceğini submit butonunun ADINDAN anlar; form.submit()
-        // o parametreyi koymaz -> liste gelmez. Bu yüzden butona tıklamak ZORUNLU.)
-        await page.selectOption('[name="hizmet_yil_ay_index"]', period.v).catch(() => null);
-        await page.selectOption('[name="hizmet_yil_ay_index_bitis"]', period.v).catch(() => null);
-        await Promise.all([
-          page.waitForLoadState('domcontentloaded', { timeout: 20_000 }).catch(() => {}),
-          page.evaluate(() => {
-            const f: any = Array.from(document.querySelectorAll('form')).find((x: any) => /DonemSecildi/i.test(x.getAttribute('action') || ''));
-            if (!f) return;
-            const btn: any = f.querySelector('input[type="submit"], button[type="submit"], button, input[type="image"]');
-            if (btn && typeof btn.click === 'function') btn.click();
-            else f.submit();
-          }),
-        ]);
-        await page.waitForTimeout(1800);
-
-        // Liste sayfasında her bildirge için tahakkuk + hizmet PDF'ini SAF FETCH ile indir
-        const rows: any[] = await page.evaluate(async (cfg: any) => {
-          const norm = (s: any) => String(s || '').replace(/\s+/g, ' ').trim();
-          const forms = Array.from(document.querySelectorAll('form')).filter((f: any) => /pdfGosterim/i.test(f.getAttribute('action') || ''));
-          const result: any[] = [];
-          for (const f of forms as any[]) {
-            const g = (n: string) => { const e = f.querySelector('[name="' + n + '"]'); return e ? String((e as any).value) : null; };
-            const refNo = g('bildirgeRefNo'); const token = g('token');
-            const yilAy = g('hizmet_yil_ay_index'); const yilAyBitis = g('hizmet_yil_ay_index_bitis');
-            if (!refNo || !token) continue;
-            const row: any = f.closest('tr');
-            const cells = row ? Array.from(row.querySelectorAll('td')).map((td: any) => norm(td.innerText)).filter(Boolean) : [];
-            const rowText = row ? norm(row.innerText) : '';
-            const pdfs: any = {};
-            for (const tip of cfg.tips) {
-              const p = new URLSearchParams();
-              p.append('struts.token.name', 'token'); p.append('token', token);
-              p.append('tip', tip); p.append('download', 'true');
-              p.append('hizmet_yil_ay_index', yilAy || ''); p.append('hizmet_yil_ay_index_bitis', yilAyBitis || '');
-              p.append('bildirgeRefNo', refNo);
-              try {
-                const r = await fetch(cfg.base + '/tahakkuk/pdfGosterim.action', { method: 'POST', credentials: 'include', headers: { 'Content-Type': 'application/x-www-form-urlencoded' }, body: p.toString() });
-                if (!r.ok) continue;
-                const buf = new Uint8Array(await r.arrayBuffer());
-                if (!(buf[0] === 0x25 && buf[1] === 0x50 && buf[2] === 0x44 && buf[3] === 0x46) || buf.length < 200) continue;
-                let bin = ''; const CH = 0x8000;
-                for (let i = 0; i < buf.length; i += CH) bin += String.fromCharCode.apply(null, buf.subarray(i, i + CH) as any);
-                pdfs[tip] = btoa(bin);
-              } catch { /* yut */ }
-            }
-            result.push({ refNo, cells, rowText, pdfs });
-          }
-          return result;
-        }, { base, tips: TIPS.map((t) => t.tip) }).catch(() => []);
-
-        formsFound += (rows || []).length;
-        for (const row of rows) {
-          for (const t of TIPS) {
-            const key = `${t.belgeTuru}|${row.refNo}`;
-            if (alreadyHave.has(key)) continue;
-            const b64 = row.pdfs?.[t.tip];
-            if (!b64 || b64.length < 200) continue;
-            documents.push({
-              taxpayerId,
-              belgeTuru: t.belgeTuru,
-              title: t.title,
-              referenceNo: String(row.refNo),
-              period: period.t,
-              mimeType: 'application/pdf',
-              originalName: `${t.belgeTuru}_${row.refNo}.pdf`,
-              base64: b64,
-              raw: { donem: period.t, bildirgeRefNo: row.refNo, cells: row.cells, rowText: String(row.rowText || '').slice(0, 400) },
-            });
-            alreadyHave.add(key);
-          }
-        }
-      } catch (e: any) {
-        notes.push(`Dönem ${period.t} hata: ${this.compact(e?.message || e)}`);
-      }
-      await page.waitForTimeout(200);
+    const numericVals = periods.map((p) => Number(p.v)).filter((n) => Number.isFinite(n));
+    let startVal: string; let endVal: string;
+    if (numericVals.length === periods.length && numericVals.length) {
+      const sorted = [...numericVals].sort((a, b) => a - b); // küçük = en yeni
+      endVal = String(sorted[0]);                                        // bitiş = en yeni
+      startVal = String(sorted[Math.min(sorted.length, maxPeriods) - 1]); // başlangıç = en eski (maxPeriods içinde)
+    } else {
+      // value sayısal değilse dropdown sırasına güven: [0] = en yeni, son = en eski.
+      endVal = String(periods[0].v);
+      startVal = String(periods[Math.min(periods.length, maxPeriods) - 1].v);
     }
 
-    notes.push(`${periods.length} dönem tarandı, ${formsFound} bildirge formu bulundu, ${documents.length} yeni belge indirildi.`);
+    try {
+      // Başlangıç + bitiş dönemini seç, "Bilgileri Getir" SUBMIT BUTONUNU TIKLA.
+      // (Struts hangi action'ı işleyeceğini submit butonunun ADINDAN anlar; form.submit()
+      // o parametreyi koymaz -> liste gelmez. Bu yüzden butona tıklamak ZORUNLU.)
+      await page.selectOption('[name="hizmet_yil_ay_index"]', startVal).catch(() => null);
+      await page.selectOption('[name="hizmet_yil_ay_index_bitis"]', endVal).catch(() => null);
+      await Promise.all([
+        page.waitForLoadState('domcontentloaded', { timeout: 20_000 }).catch(() => {}),
+        page.evaluate(() => {
+          const f: any = Array.from(document.querySelectorAll('form')).find((x: any) => /DonemSecildi/i.test(x.getAttribute('action') || ''));
+          if (!f) return;
+          const btn: any = f.querySelector('input[type="submit"], button[type="submit"], button, input[type="image"]');
+          if (btn && typeof btn.click === 'function') btn.click();
+          else f.submit();
+        }),
+      ]);
+      await page.waitForTimeout(2200);
+
+      // Liste sayfasında HER bildirge satırı için tahakkuk + hizmet PDF'ini SAF FETCH ile indir.
+      // Her satır kendi token + dönem index'ini (hizmet_yil_ay_index) hidden alanında taşır;
+      // sayfa ne ürettiyse onu geri gönderiyoruz (range yönünden bağımsız, sağlam).
+      const rows: any[] = await page.evaluate(async (cfg: any) => {
+        const norm = (s: any) => String(s || '').replace(/\s+/g, ' ').trim();
+        const forms = Array.from(document.querySelectorAll('form')).filter((f: any) => /pdfGosterim/i.test(f.getAttribute('action') || ''));
+        const result: any[] = [];
+        for (const f of forms as any[]) {
+          const g = (n: string) => { const e = f.querySelector('[name="' + n + '"]'); return e ? String((e as any).value) : null; };
+          const refNo = g('bildirgeRefNo'); const token = g('token');
+          const yilAy = g('hizmet_yil_ay_index'); const yilAyBitis = g('hizmet_yil_ay_index_bitis');
+          if (!refNo || !token) continue;
+          const row: any = f.closest('tr');
+          const cells = row ? Array.from(row.querySelectorAll('td')).map((td: any) => norm(td.innerText)).filter(Boolean) : [];
+          const rowText = row ? norm(row.innerText) : '';
+          const pdfs: any = {};
+          for (const tip of cfg.tips) {
+            const p = new URLSearchParams();
+            p.append('struts.token.name', 'token'); p.append('token', token);
+            p.append('tip', tip); p.append('download', 'true');
+            p.append('hizmet_yil_ay_index', yilAy || ''); p.append('hizmet_yil_ay_index_bitis', yilAyBitis || '');
+            p.append('bildirgeRefNo', refNo);
+            try {
+              const r = await fetch(cfg.base + '/tahakkuk/pdfGosterim.action', { method: 'POST', credentials: 'include', headers: { 'Content-Type': 'application/x-www-form-urlencoded' }, body: p.toString() });
+              if (!r.ok) continue;
+              const buf = new Uint8Array(await r.arrayBuffer());
+              if (!(buf[0] === 0x25 && buf[1] === 0x50 && buf[2] === 0x44 && buf[3] === 0x46) || buf.length < 200) continue;
+              let bin = ''; const CH = 0x8000;
+              for (let i = 0; i < buf.length; i += CH) bin += String.fromCharCode.apply(null, buf.subarray(i, i + CH) as any);
+              pdfs[tip] = btoa(bin);
+            } catch { /* yut */ }
+          }
+          result.push({ refNo, periodIndex: yilAy, cells, rowText, pdfs });
+        }
+        return result;
+      }, { base, tips: TIPS.map((t) => t.tip) }).catch(() => []);
+
+      formsFound = (rows || []).length;
+      for (const row of rows) {
+        const periodText = periodTextByValue[String(row.periodIndex)]
+          || (String(row.rowText || '').match(/(0[1-9]|1[0-2])[\/.\-\s]?(20\d{2})/)?.[0] || '');
+        for (const t of TIPS) {
+          const key = `${t.belgeTuru}|${row.refNo}`;
+          if (alreadyHave.has(key)) continue;
+          const b64 = row.pdfs?.[t.tip];
+          if (!b64 || b64.length < 200) continue;
+          documents.push({
+            taxpayerId,
+            belgeTuru: t.belgeTuru,
+            title: t.title,
+            referenceNo: String(row.refNo),
+            period: periodText,
+            mimeType: 'application/pdf',
+            originalName: `${t.belgeTuru}_${row.refNo}.pdf`,
+            base64: b64,
+            raw: { donem: periodText, bildirgeRefNo: row.refNo, cells: row.cells, rowText: String(row.rowText || '').slice(0, 400) },
+          });
+          alreadyHave.add(key);
+        }
+      }
+    } catch (e: any) {
+      notes.push(`SGK range çekimi hata: ${this.compact(e?.message || e)}`);
+    }
+
+    notes.push(`Range ${startVal}→${endVal} (${periods.length} dönem), ${formsFound} bildirge formu bulundu, ${documents.length} yeni belge indirildi.`);
     return {
       documents,
       recordCount: documents.length,
-      result: { runner: 'railway', phase: 'sgk_ebildirge', jobType: 'SGK', periodCount: periods.length, formsFound, newDocs: documents.length, notes },
+      result: { runner: 'railway', phase: 'sgk_ebildirge', jobType: 'SGK', periodCount: periods.length, rangeStart: startVal, rangeEnd: endVal, formsFound, newDocs: documents.length, notes },
     };
   }
 
