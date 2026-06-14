@@ -89,6 +89,8 @@ type EBeyannameListEntry = {
 const DEFAULT_EBEYANNAME_LOGIN_URL = 'https://dijital.gib.gov.tr/portal/login';
 const DEFAULT_GIB_IVD_LOGIN_URL = 'https://dijital.gib.gov.tr/portal/login';
 const DEFAULT_SGK_LOGIN_URL = 'https://uyg.sgk.gov.tr/IsverenSistemi';
+// Onaylı hizmet listesi + tahakkuk e-Bildirge V2'de (İşveren Sistemi'nde DEĞİL).
+const DEFAULT_SGK_EBILDIRGE_LOGIN_URL = 'https://ebildirge.sgk.gov.tr/EBildirgeV2';
 
 const JOB_TYPES_DEFAULT: PortalJobType[] = [
   'EBEYANNAME_DAILY_DOWNLOAD',
@@ -699,6 +701,15 @@ export class PortalAutomationRailwayRunnerService implements OnModuleInit {
         return etb;
       }
 
+      // SGK onaylı hizmet listesi + tahakkuk = e-Bildirge V2 (Struts saf form-POST, tıklamasız PDF).
+      // (manual+force validation-only heuristigi engellemesin; amaç belge çekmek.)
+      if ((jobType === 'SGK_HIZMET_LISTESI' || jobType === 'SGK_TAHAKKUK') && bundle.job?.payload?.validationOnly !== true) {
+        const sgk = await this.collectSgkOnayliBildirgeler(page, bundle.job);
+        await this.jobProgress(tenantId, bundle.job, 'sgk_done', `SGK onaylı belge sorgusu: ${sgk.recordCount} belge indirildi.`);
+        await context.close().catch(() => {});
+        return sgk;
+      }
+
       if (this.isCredentialValidationOnlyJob(bundle.job, jobType)) {
         const providerLabel = isSgk ? 'SGK' : 'Vergi dairesi';
         const url = this.safeUrl(page.url());
@@ -766,6 +777,11 @@ export class PortalAutomationRailwayRunnerService implements OnModuleInit {
   private loginUrlForJob(jobType: PortalJobType) {
     if (jobType === 'E_TEBLIGAT_CHECK') {
       return process.env.PORTAL_AUTOMATION_GIB_IVD_LOGIN_URL || DEFAULT_GIB_IVD_LOGIN_URL;
+    }
+    // Onaylı hizmet listesi + tahakkuk -> e-Bildirge V2 (ayrı sistem). Diğer SGK işleri
+    // (işe giriş-çıkış, işgöremezlik) İşveren Sistemi'nde kalır (Faz 2).
+    if (jobType === 'SGK_HIZMET_LISTESI' || jobType === 'SGK_TAHAKKUK') {
+      return process.env.PORTAL_AUTOMATION_SGK_EBILDIRGE_LOGIN_URL || DEFAULT_SGK_EBILDIRGE_LOGIN_URL;
     }
     if (jobType.startsWith('SGK_')) {
       return process.env.PORTAL_AUTOMATION_SGK_LOGIN_URL || DEFAULT_SGK_LOGIN_URL;
@@ -1241,6 +1257,145 @@ export class PortalAutomationRailwayRunnerService implements OnModuleInit {
     const m = s.match(/^(\d{2})\/(\d{2})\/(\d{4})\s+(\d{2}):(\d{2})(?::(\d{2}))?/);
     if (m) return `${m[3]}-${m[2]}-${m[1]}T${m[4]}:${m[5]}:${m[6] || '00'}+03:00`;
     return s;
+  }
+
+  // SGK onaylı hizmet listesi + tahakkuk = e-Bildirge V2 (Struts) SAF FORM-POST (tıklamasız PDF).
+  // Akış (tarayıcıdan birebir dogrulandi): login -> "Onaylanmış Belgeler" -> dönem seç
+  // (DonemSecildi.action) -> liste -> her bildirge için pdfGosterim.action (tip + bildirgeRefNo +
+  // dönem + struts token) -> PDF. Tip: Tahakkuk Fişi + Hizmet Listesi. Artımlı: zaten kayıtlı
+  // (storageKey'li) belge no'ları atla (gece ucuz kalsın).
+  private async collectSgkOnayliBildirgeler(page: any, job: any) {
+    const taxpayerId = job?.taxpayerId || null;
+    const tenantId = job?.tenantId || null;
+    const base = (process.env.PORTAL_AUTOMATION_SGK_EBILDIRGE_LOGIN_URL || DEFAULT_SGK_EBILDIRGE_LOGIN_URL).replace(/\/+$/, '');
+    const notes: string[] = [];
+
+    // 1) "Onaylanmış Belgeler" menüsüne git
+    let reached = false;
+    for (const t of ['Onaylanmış Belgeler', 'Onaylanmis Belgeler', 'Onaylı Belgeler', 'Onayli Belgeler', 'Onaylı Bildirge']) {
+      const link = page.getByText(t, { exact: false }).first();
+      if (await link.isVisible().catch(() => false)) {
+        await Promise.all([
+          page.waitForLoadState('domcontentloaded', { timeout: 20_000 }).catch(() => {}),
+          link.click({ timeout: 6_000 }).catch(() => null),
+        ]);
+        reached = true;
+        break;
+      }
+    }
+    await page.waitForTimeout(1500);
+
+    // 2) Dönem dropdown'ı (hizmet_yil_ay_index) seçeneklerini oku
+    const periods: Array<{ v: string; t: string }> = await page.evaluate(() => {
+      const sel: any = document.querySelector('[name="hizmet_yil_ay_index"]');
+      if (!sel) return [];
+      return Array.from(sel.options)
+        .map((o: any) => ({ v: String(o.value), t: String(o.text || '').trim() }))
+        .filter((o: any) => o.v && o.v !== '-1' && o.v !== '');
+    }).catch(() => []);
+
+    if (!periods.length) {
+      notes.push(`SGK dönem listesi bulunamadı (Onaylanmış Belgeler ekranına ulaşılamadı, reached=${reached}).`);
+      return { documents: [], recordCount: 0, result: { runner: 'railway', phase: 'sgk_ebildirge', jobType: 'SGK', reached, notes } };
+    }
+
+    // Zaten kayıtlı (PDF'i inmiş) belgeleri atla -> artımlı
+    let alreadyHave = new Set<string>();
+    if (tenantId) {
+      const where: any = { tenantId, belgeTuru: { in: ['SGK_TAHAKKUK', 'SGK_HIZMET_LISTESI'] }, storageKey: { not: null } };
+      if (taxpayerId) where.taxpayerId = taxpayerId;
+      const have = await (this.prisma as any).portalDocument.findMany({ where, select: { referenceNo: true, belgeTuru: true } }).catch(() => []);
+      alreadyHave = new Set((have || []).map((h: any) => `${h.belgeTuru}|${h.referenceNo}`));
+    }
+
+    const TIPS = [
+      { tip: 'tahakkukonayliFisTahakkukPdf', belgeTuru: 'SGK_TAHAKKUK', title: 'SGK Tahakkuk Fişi' },
+      { tip: 'tahakkukonayliFisHizmetPdf', belgeTuru: 'SGK_HIZMET_LISTESI', title: 'SGK Hizmet Listesi' },
+    ];
+    const documents: any[] = [];
+    const maxPeriods = Math.max(1, Math.min(36, Number(process.env.SGK_PERIOD_MAX || 24)));
+
+    for (const period of periods.slice(0, maxPeriods)) {
+      try {
+        // Dönem seç (başlangıç=bitiş=tek dönem) + "Bilgileri Getir" (DonemSecildi formunu submit et)
+        await page.selectOption('[name="hizmet_yil_ay_index"]', period.v).catch(() => null);
+        await page.selectOption('[name="hizmet_yil_ay_index_bitis"]', period.v).catch(() => null);
+        await Promise.all([
+          page.waitForLoadState('domcontentloaded', { timeout: 20_000 }).catch(() => {}),
+          page.evaluate(() => {
+            const f: any = Array.from(document.querySelectorAll('form')).find((x: any) => /DonemSecildi/i.test(x.getAttribute('action') || ''));
+            if (f) f.submit();
+          }),
+        ]);
+        await page.waitForTimeout(1500);
+
+        // Liste sayfasında her bildirge için tahakkuk + hizmet PDF'ini SAF FETCH ile indir
+        const rows: any[] = await page.evaluate(async (cfg: any) => {
+          const norm = (s: any) => String(s || '').replace(/\s+/g, ' ').trim();
+          const forms = Array.from(document.querySelectorAll('form')).filter((f: any) => /pdfGosterim/i.test(f.getAttribute('action') || ''));
+          const result: any[] = [];
+          for (const f of forms as any[]) {
+            const g = (n: string) => { const e = f.querySelector('[name="' + n + '"]'); return e ? String((e as any).value) : null; };
+            const refNo = g('bildirgeRefNo'); const token = g('token');
+            const yilAy = g('hizmet_yil_ay_index'); const yilAyBitis = g('hizmet_yil_ay_index_bitis');
+            if (!refNo || !token) continue;
+            const row: any = f.closest('tr');
+            const cells = row ? Array.from(row.querySelectorAll('td')).map((td: any) => norm(td.innerText)).filter(Boolean) : [];
+            const rowText = row ? norm(row.innerText) : '';
+            const pdfs: any = {};
+            for (const tip of cfg.tips) {
+              const p = new URLSearchParams();
+              p.append('struts.token.name', 'token'); p.append('token', token);
+              p.append('tip', tip); p.append('download', 'true');
+              p.append('hizmet_yil_ay_index', yilAy || ''); p.append('hizmet_yil_ay_index_bitis', yilAyBitis || '');
+              p.append('bildirgeRefNo', refNo);
+              try {
+                const r = await fetch(cfg.base + '/tahakkuk/pdfGosterim.action', { method: 'POST', credentials: 'include', headers: { 'Content-Type': 'application/x-www-form-urlencoded' }, body: p.toString() });
+                if (!r.ok) continue;
+                const buf = new Uint8Array(await r.arrayBuffer());
+                if (!(buf[0] === 0x25 && buf[1] === 0x50 && buf[2] === 0x44 && buf[3] === 0x46) || buf.length < 200) continue;
+                let bin = ''; const CH = 0x8000;
+                for (let i = 0; i < buf.length; i += CH) bin += String.fromCharCode.apply(null, buf.subarray(i, i + CH) as any);
+                pdfs[tip] = btoa(bin);
+              } catch { /* yut */ }
+            }
+            result.push({ refNo, cells, rowText, pdfs });
+          }
+          return result;
+        }, { base, tips: TIPS.map((t) => t.tip) }).catch(() => []);
+
+        for (const row of rows) {
+          for (const t of TIPS) {
+            const key = `${t.belgeTuru}|${row.refNo}`;
+            if (alreadyHave.has(key)) continue;
+            const b64 = row.pdfs?.[t.tip];
+            if (!b64 || b64.length < 200) continue;
+            documents.push({
+              taxpayerId,
+              belgeTuru: t.belgeTuru,
+              title: t.title,
+              referenceNo: String(row.refNo),
+              period: period.t,
+              mimeType: 'application/pdf',
+              originalName: `${t.belgeTuru}_${row.refNo}.pdf`,
+              base64: b64,
+              raw: { donem: period.t, bildirgeRefNo: row.refNo, cells: row.cells, rowText: String(row.rowText || '').slice(0, 400) },
+            });
+            alreadyHave.add(key);
+          }
+        }
+      } catch (e: any) {
+        notes.push(`Dönem ${period.t} hata: ${this.compact(e?.message || e)}`);
+      }
+      await page.waitForTimeout(200);
+    }
+
+    notes.push(`${periods.length} dönem tarandı, ${documents.length} yeni belge indirildi.`);
+    return {
+      documents,
+      recordCount: documents.length,
+      result: { runner: 'railway', phase: 'sgk_ebildirge', jobType: 'SGK', periodCount: periods.length, newDocs: documents.length, notes },
+    };
   }
 
   private async clickAndCollectPortalDocuments(

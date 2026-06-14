@@ -1572,11 +1572,12 @@ export class PortalAutomationService {
       documentId = doc.id;
     }
 
-    // E-Tebligat mukerrer engelle (belge no mukellef bazinda benzersiz). Varsa: eksik
-    // mukellefi / PDF'i geri doldur, kopya olusturma.
-    if (String(input.belgeTuru) === 'E_TEBLIGAT' && input.referenceNo) {
+    // E-Tebligat + SGK (tahakkuk/hizmet) mukerrer engelle (belge no + belgeTuru benzersiz).
+    // Varsa: eksik mukellefi / PDF'i geri doldur, kopya olusturma.
+    const DEDUP_BELGE_TURU = ['E_TEBLIGAT', 'SGK_TAHAKKUK', 'SGK_HIZMET_LISTESI'];
+    if (DEDUP_BELGE_TURU.includes(String(input.belgeTuru)) && input.referenceNo) {
       const existing = await (this.prisma as any).portalDocument.findFirst({
-        where: { tenantId, belgeTuru: 'E_TEBLIGAT', referenceNo: String(input.referenceNo) },
+        where: { tenantId, belgeTuru: String(input.belgeTuru), referenceNo: String(input.referenceNo) },
         select: { id: true, taxpayerId: true, storageKey: true },
       });
       if (existing) {
