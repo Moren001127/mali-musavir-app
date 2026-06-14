@@ -1325,16 +1325,18 @@ export class PortalAutomationRailwayRunnerService implements OnModuleInit {
     // çok satırlı getir; satırları sırayla indir (alreadyHave inmiş olanı atlar).
     // Dönem index value'su: küçük = en yeni, büyük = en eski (memory: 1=en yeni, artan=eskiye).
     const maxPeriods = Math.max(1, Math.min(36, Number(process.env.SGK_PERIOD_MAX || 24)));
+    // Struts dönem aralığını ARTAN index ister: başlangıç (hizmet_yil_ay_index) <= bitiş (_bitis).
+    // Index: en küçük (1) = en yeni, büyüdükçe eskiye gider. En yeniden maxPeriods kadar eskiye aralık.
     const numericVals = periods.map((p) => Number(p.v)).filter((n) => Number.isFinite(n));
     let startVal: string; let endVal: string;
     if (numericVals.length === periods.length && numericVals.length) {
-      const sorted = [...numericVals].sort((a, b) => a - b); // küçük = en yeni
-      endVal = String(sorted[0]);                                        // bitiş = en yeni
-      startVal = String(sorted[Math.min(sorted.length, maxPeriods) - 1]); // başlangıç = en eski (maxPeriods içinde)
+      const sorted = [...numericVals].sort((a, b) => a - b); // 1,2,3... (yeni -> eski)
+      startVal = String(sorted[0]);                                      // başlangıç = en küçük index (en yeni)
+      endVal = String(sorted[Math.min(sorted.length, maxPeriods) - 1]);  // bitiş = en büyük index (en eski, maxPeriods içinde)
     } else {
       // value sayısal değilse dropdown sırasına güven: [0] = en yeni, son = en eski.
-      endVal = String(periods[0].v);
-      startVal = String(periods[Math.min(periods.length, maxPeriods) - 1].v);
+      startVal = String(periods[0].v);
+      endVal = String(periods[Math.min(periods.length, maxPeriods) - 1].v);
     }
 
     try {
@@ -1393,6 +1395,16 @@ export class PortalAutomationRailwayRunnerService implements OnModuleInit {
       }, { base, tips: TIPS.map((t) => t.tip) }).catch(() => []);
 
       formsFound = (rows || []).length;
+      if (formsFound === 0) {
+        // Teşhis: submit sonrası gerçekten hangi sayfadayız, hangi formlar var?
+        const dbg = await page.evaluate(() => ({
+          url: location.href,
+          forms: Array.from(document.querySelectorAll('form')).map((f: any) => f.getAttribute('action') || '').filter(Boolean).slice(0, 8),
+          tr: document.querySelectorAll('tr').length,
+          bodyLen: document.body ? document.body.innerText.length : 0,
+        })).catch(() => null);
+        if (dbg) notes.push(`DBG url=${this.compact(dbg.url)} forms=[${(dbg.forms || []).join(' , ')}] tr=${dbg.tr} bodyLen=${dbg.bodyLen}`);
+      }
       for (const row of rows) {
         const periodText = periodTextByValue[String(row.periodIndex)]
           || (String(row.rowText || '').match(/(0[1-9]|1[0-2])[\/.\-\s]?(20\d{2})/)?.[0] || '');
