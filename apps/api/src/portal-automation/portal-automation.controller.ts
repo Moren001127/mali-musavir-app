@@ -115,7 +115,7 @@ export class PortalAutomationController {
     @Query('belgeTuru') belgeTuru?: string,
   ) {
     return this.service.listDocuments(req.user.tenantId, {
-      limit: limit ? Number(limit) : undefined,
+      limit: limit !== undefined && limit !== '' ? Number(limit) : undefined,
       taxpayerId,
       belgeTuru,
     });

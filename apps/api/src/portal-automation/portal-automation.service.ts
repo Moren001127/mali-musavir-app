@@ -315,17 +315,35 @@ export class PortalAutomationService {
       (this.prisma as any).portalDocument.count({ where: { tenantId, belgeTuru: 'E_TEBLIGAT', issuedAt: { gte: sevenDaysAgo } } }),
       // Gerçek TOPLAM e-Tebligat (frontend liste limitinden bağımsız).
       (this.prisma as any).portalDocument.count({ where: { tenantId, belgeTuru: 'E_TEBLIGAT' } }),
-      // Gece sorgusunda HATA alan mükellefler (son 24s E_TEBLIGAT_CHECK failed, mükellef bazında).
+      // Gece sorgusunda HATA alan mükellefler (son 24s E_TEBLIGAT_CHECK failed, mükellef bazında,
+      // en güncel hata mesajı + mükellef adı ile — KPI'a tıklayınca liste gösterilir).
       (this.prisma as any).portalAutomationJob.findMany({
         where: { tenantId, jobType: 'E_TEBLIGAT_CHECK', status: 'failed', createdAt: { gte: dayAgo } },
         distinct: ['taxpayerId'],
-        select: { taxpayerId: true },
+        orderBy: { createdAt: 'desc' },
+        select: {
+          taxpayerId: true,
+          errorMessage: true,
+          createdAt: true,
+          taxpayer: { select: { companyName: true, firstName: true, lastName: true, taxNumber: true } },
+        },
       }),
       this.listJobs(tenantId, { limit: 8 }),
       this.listDocuments(tenantId, { limit: 8 }),
     ]);
 
-    const tebligatErrorCount = (Array.isArray(tebligatErrorRows) ? tebligatErrorRows : []).filter((r: any) => r?.taxpayerId).length;
+    const tebligatErrors = (Array.isArray(tebligatErrorRows) ? tebligatErrorRows : [])
+      .filter((r: any) => r?.taxpayerId)
+      .map((r: any) => ({
+        taxpayerId: r.taxpayerId,
+        name: r.taxpayer?.companyName
+          || [r.taxpayer?.firstName, r.taxpayer?.lastName].filter(Boolean).join(' ').trim()
+          || r.taxpayer?.taxNumber
+          || 'Mükellef',
+        taxNumber: r.taxpayer?.taxNumber || null,
+        reason: r.errorMessage || null,
+      }));
+    const tebligatErrorCount = tebligatErrors.length;
     const credentials = this.summarizeCredentials(credentialRows);
     return {
       nightly: {
@@ -340,7 +358,7 @@ export class PortalAutomationService {
         deviceId: process.env.PORTAL_AUTOMATION_RAILWAY_DEVICE_ID || 'railway-portal-runner',
         jobTypes: this.runnerJobTypes(),
       },
-      stats: { activeJobs, failed24h, done24h, docs7d, tebligat7d, tebligatTotal, tebligatErrorCount },
+      stats: { activeJobs, failed24h, done24h, docs7d, tebligat7d, tebligatTotal, tebligatErrorCount, tebligatErrors },
       credentials,
       latestJobs,
       latestDocuments,
@@ -531,15 +549,18 @@ export class PortalAutomationService {
   }
 
   async listDocuments(tenantId: string, opts: { limit?: number; taxpayerId?: string; belgeTuru?: string } = {}) {
-    const limit = Math.min(Math.max(Number(opts.limit || 50), 1), 200);
     const where: any = { tenantId };
     if (opts.taxpayerId) where.taxpayerId = opts.taxpayerId;
     if (opts.belgeTuru) where.belgeTuru = opts.belgeTuru;
+    // limit === 0 -> SINIRSIZ (hepsi); aksi halde varsayılan 50, üst sınır 50000.
+    const raw = Number(opts.limit);
+    const take = raw === 0 ? undefined : Math.min(Math.max(Number.isFinite(raw) && raw > 0 ? raw : 50, 1), 50000);
     return (this.prisma as any).portalDocument.findMany({
       where,
       include: { taxpayer: { select: { id: true, companyName: true, firstName: true, lastName: true, taxNumber: true } } },
-      orderBy: [{ createdAt: 'desc' }],
-      take: limit,
+      // GÖNDERIM tarihine göre (yeni→eski); tarihsizler en sona; eşitlikte kayıt zamanı.
+      orderBy: [{ issuedAt: { sort: 'desc', nulls: 'last' } }, { receivedAt: { sort: 'desc', nulls: 'last' } }, { createdAt: 'desc' }],
+      ...(take !== undefined ? { take } : {}),
     });
   }
 

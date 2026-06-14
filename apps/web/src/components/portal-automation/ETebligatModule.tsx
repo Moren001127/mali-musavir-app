@@ -1,6 +1,7 @@
 'use client';
 
 import React, { useMemo, useState } from 'react';
+import { createPortal } from 'react-dom';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import { toast } from 'sonner';
 import {
@@ -29,9 +30,13 @@ function fmtTrDate(v: any): string {
   return s.slice(0, 16);
 }
 
-function Kpi({ icon, label, value, sub }: { icon: React.ReactNode; label: string; value: string; sub?: string }) {
+function Kpi({ icon, label, value, sub, onClick }: { icon: React.ReactNode; label: string; value: string; sub?: string; onClick?: () => void }) {
   return (
-    <div className="rounded-2xl border p-4" style={{ background: 'rgba(255,255,255,0.02)', borderColor: 'rgba(255,255,255,0.06)' }}>
+    <div
+      onClick={onClick}
+      className={`rounded-2xl border p-4 ${onClick ? 'cursor-pointer hover:brightness-125 transition' : ''}`}
+      style={{ background: 'rgba(255,255,255,0.02)', borderColor: 'rgba(255,255,255,0.06)' }}
+    >
       <div className="flex items-center gap-2 mb-2">
         <span className="grid place-items-center rounded-lg flex-shrink-0" style={{ width: 30, height: 30, background: 'rgba(212,184,118,0.12)', color: GOLD }}>{icon}</span>
         <span className="text-[10px] uppercase font-bold tracking-[.12em]" style={{ color: 'rgba(250,250,249,0.5)' }}>{label}</span>
@@ -48,12 +53,14 @@ export default function ETebligatModule() {
   const [search, setSearch] = useState('');
   // Aynı sayfada büyüyerek açılan PDF önizleme modalı
   const [pdfModal, setPdfModal] = useState<{ url: string; title: string } | null>(null);
+  // Gece sorgu hatası listesi modalı
+  const [showErrors, setShowErrors] = useState(false);
   // Bu oturumda görüntülenenler (buton anında yeşile dönsün; kalıcısı backend viewedAt)
   const [viewedIds, setViewedIds] = useState<Set<string>>(() => new Set());
 
   const docsQuery = useQuery({
     queryKey: ['etebligat-docs'],
-    queryFn: () => portalAutomationApi.documents({ belgeTuru: 'E_TEBLIGAT' }),
+    queryFn: () => portalAutomationApi.documents({ belgeTuru: 'E_TEBLIGAT', limit: 0 }),
     refetchInterval: 30_000,
   });
   const summaryQuery = useQuery({
@@ -170,7 +177,8 @@ export default function ETebligatModule() {
           icon={<AlertTriangle size={16} />}
           label="Gece sorgu hatası"
           value={String(summary?.stats?.tebligatErrorCount ?? 0)}
-          sub={(summary?.stats?.tebligatErrorCount ?? 0) > 0 ? 'mükellef giremedi / hata' : 'son sorguda hata yok'}
+          sub={(summary?.stats?.tebligatErrorCount ?? 0) > 0 ? 'görmek için tıkla' : 'son sorguda hata yok'}
+          onClick={(summary?.stats?.tebligatErrorCount ?? 0) > 0 ? () => setShowErrors(true) : undefined}
         />
       </div>
 
@@ -310,11 +318,12 @@ export default function ETebligatModule() {
         )}
       </div>
 
-      {/* ── PDF önizleme modalı (aynı sayfada büyüyerek açılır) ── */}
-      {pdfModal && (
+      {/* ── PDF önizleme modalı — createPortal ile body'ye; transform'lu üst öğeye takılmaz,
+          her zaman EKRAN ORTASINDA açılır (alttaki satırda da üstte açılma sorunu çözüldü). ── */}
+      {pdfModal && typeof document !== 'undefined' && createPortal(
         <div
           onClick={() => setPdfModal(null)}
-          className="fixed inset-0 z-[120] flex items-center justify-center p-3 md:p-8"
+          className="fixed inset-0 z-[1000] flex items-center justify-center p-3 md:p-8"
           style={{ background: 'rgba(0,0,0,0.8)', backdropFilter: 'blur(4px)' }}
         >
           <div
@@ -355,7 +364,48 @@ export default function ETebligatModule() {
             />
           </div>
           <style>{`@keyframes etbZoom { from { transform: scale(.9); opacity: 0 } to { transform: scale(1); opacity: 1 } }`}</style>
-        </div>
+        </div>,
+        document.body,
+      )}
+
+      {/* ── Gece sorgu hatası: hata alan mükellef listesi ── */}
+      {showErrors && typeof document !== 'undefined' && createPortal(
+        <div
+          onClick={() => setShowErrors(false)}
+          className="fixed inset-0 z-[1000] flex items-center justify-center p-4"
+          style={{ background: 'rgba(0,0,0,0.8)', backdropFilter: 'blur(4px)' }}
+        >
+          <div
+            onClick={(e) => e.stopPropagation()}
+            className="relative w-full max-w-lg max-h-[80vh] rounded-2xl overflow-hidden border shadow-2xl flex flex-col"
+            style={{ background: '#1a1410', borderColor: 'rgba(239,107,107,0.3)', animation: 'etbZoom .22s ease-out' }}
+          >
+            <div className="flex items-center justify-between px-4 py-3 border-b" style={{ borderColor: 'rgba(255,255,255,0.08)', background: 'rgba(239,107,107,0.06)' }}>
+              <div className="flex items-center gap-2">
+                <AlertTriangle size={15} style={{ color: '#ef6b6b' }} />
+                <span className="text-[13px] font-semibold" style={{ color: '#fafaf9' }}>Gece sorgusunda hata alan mükellefler</span>
+              </div>
+              <button onClick={() => setShowErrors(false)} className="h-8 w-8 grid place-items-center rounded-lg border hover:brightness-110" style={{ borderColor: 'rgba(255,255,255,0.12)', color: '#fafaf9' }} aria-label="Kapat"><X size={16} /></button>
+            </div>
+            <div className="overflow-y-auto p-2">
+              {(summary?.stats?.tebligatErrors || []).length === 0 ? (
+                <div className="px-3 py-8 text-center text-[12px]" style={{ color: 'rgba(250,250,249,0.45)' }}>Hata kaydı yok.</div>
+              ) : (
+                (summary?.stats?.tebligatErrors || []).map((e, i) => (
+                  <div key={e.taxpayerId || i} className="px-3 py-2.5" style={{ borderBottom: '1px solid rgba(255,255,255,0.05)' }}>
+                    <div className="font-semibold text-[13px]" style={{ color: '#fafaf9' }}>{e.name}</div>
+                    {e.taxNumber && <div className="text-[10.5px]" style={{ color: 'rgba(250,250,249,0.4)' }}>{e.taxNumber}</div>}
+                    <div className="text-[11.5px] mt-1" style={{ color: '#ef9a9a' }}>{e.reason || 'Sorgu başarısız (sebep belirtilmedi).'}</div>
+                  </div>
+                ))
+              )}
+            </div>
+            <div className="px-4 py-2 text-[11px] border-t flex-shrink-0" style={{ borderColor: 'rgba(255,255,255,0.08)', color: 'rgba(250,250,249,0.4)' }}>
+              Son 24 saatte e-Tebligat sorgusu başarısız olan mükellefler. Mükellefi seçip "Bu mükellefi sorgula" ile tekrar deneyebilirsiniz.
+            </div>
+          </div>
+        </div>,
+        document.body,
       )}
     </div>
   );

@@ -132,6 +132,7 @@ export interface PortalSummary {
     tebligat7d: number;
     tebligatTotal?: number;
     tebligatErrorCount?: number;
+    tebligatErrors?: Array<{ taxpayerId: string; name: string; taxNumber: string | null; reason: string | null }>;
   };
   credentials: {
     eBeyannameReady: boolean;
