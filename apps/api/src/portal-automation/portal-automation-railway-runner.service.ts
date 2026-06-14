@@ -705,7 +705,8 @@ export class PortalAutomationRailwayRunnerService implements OnModuleInit {
       // (manual+force validation-only heuristigi engellemesin; amaç belge çekmek.)
       if ((jobType === 'SGK_HIZMET_LISTESI' || jobType === 'SGK_TAHAKKUK') && bundle.job?.payload?.validationOnly !== true) {
         const sgk = await this.collectSgkOnayliBildirgeler(page, bundle.job);
-        await this.jobProgress(tenantId, bundle.job, 'sgk_done', `SGK onaylı belge sorgusu: ${sgk.recordCount} belge indirildi.`);
+        const sgkNotes = ((sgk as any)?.result?.notes || []).join(' ; ');
+        await this.jobProgress(tenantId, bundle.job, 'sgk_done', `SGK onaylı belge sorgusu: ${sgk.recordCount} belge indirildi. [teşhis] ${sgkNotes}`);
         await context.close().catch(() => {});
         return sgk;
       }
