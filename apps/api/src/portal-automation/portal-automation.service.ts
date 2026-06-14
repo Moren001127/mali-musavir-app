@@ -548,6 +548,25 @@ export class PortalAutomationService {
     return { url, viewedAt };
   }
 
+  // "Tümünü Görüntüle": verilen belgeleri (ya da filtreye uyan E_TEBLIGAT'ları) görüntülendi
+  // işaretle -> butonlar kalıcı yeşile döner. ids verilirse onlar; verilmezse belgeTuru/taxpayerId
+  // kapsamındaki, PDF'i olan (storageKey) ve henüz görüntülenmemiş tüm belgeler.
+  async markDocumentsViewed(
+    tenantId: string,
+    input: { ids?: string[]; belgeTuru?: string; taxpayerId?: string } = {},
+  ) {
+    const now = new Date();
+    const where: any = { tenantId, viewedAt: null, storageKey: { not: null } };
+    if (Array.isArray(input.ids) && input.ids.length) {
+      where.id = { in: input.ids.slice(0, 2000) };
+    } else {
+      if (input.belgeTuru) where.belgeTuru = input.belgeTuru;
+      if (input.taxpayerId) where.taxpayerId = input.taxpayerId;
+    }
+    const res = await (this.prisma as any).portalDocument.updateMany({ where, data: { viewedAt: now } });
+    return { updated: res?.count ?? 0, viewedAt: now };
+  }
+
   async manualRun(tenantId: string, userId: string | null, input: ManualRunInput) {
     const jobTypes = this.resolveRequestedJobTypes(input);
     const period = this.resolvePeriod(input);

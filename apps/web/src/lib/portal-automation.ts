@@ -185,6 +185,8 @@ export const portalAutomationApi = {
     api.get<PortalDocument[]>('/portal-automation/documents', { params }).then((r) => r.data),
   documentViewUrl: (id: string) =>
     api.get<{ url: string; viewedAt?: string | null }>(`/portal-automation/documents/${id}/view`).then((r) => r.data),
+  markDocumentsViewed: (data: { ids?: string[]; belgeTuru?: string; taxpayerId?: string }) =>
+    api.post<{ updated: number; viewedAt: string }>('/portal-automation/documents/mark-viewed', data).then((r) => r.data),
   manualRun: (data: {
     scope?: 'all' | 'beyanname' | 'tebligat' | 'sgk';
     jobTypes?: PortalJobType[];

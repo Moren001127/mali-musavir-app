@@ -5,7 +5,7 @@ import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import { toast } from 'sonner';
 import {
   Inbox, RefreshCw, Loader2, Search, Users, Clock, ShieldCheck,
-  Building2, FileText, CalendarClock, Download, ChevronDown, Activity, Eye, X,
+  Building2, FileText, CalendarClock, Download, ChevronDown, Activity, Eye, X, CheckCheck,
 } from 'lucide-react';
 import { portalAutomationApi, type PortalDocument } from '@/lib/portal-automation';
 
@@ -53,7 +53,7 @@ export default function ETebligatModule() {
 
   const docsQuery = useQuery({
     queryKey: ['etebligat-docs'],
-    queryFn: () => portalAutomationApi.documents({ belgeTuru: 'E_TEBLIGAT', limit: 200 }),
+    queryFn: () => portalAutomationApi.documents({ belgeTuru: 'E_TEBLIGAT', limit: 500 }),
     refetchInterval: 30_000,
   });
   const summaryQuery = useQuery({
@@ -89,7 +89,7 @@ export default function ETebligatModule() {
 
   const filtered = useMemo(() => {
     const q = search.trim().toLocaleLowerCase('tr-TR');
-    return docs.filter((d) => {
+    const arr = docs.filter((d) => {
       if (taxpayerId && d.taxpayerId !== taxpayerId) return false;
       if (!q) return true;
       const hay = [
@@ -101,7 +101,29 @@ export default function ETebligatModule() {
       ].filter(Boolean).join(' ').toLocaleLowerCase('tr-TR');
       return hay.includes(q);
     });
+    // Tarih sırası (yeni → eski) — firma firma toplu değil, gönderim tarihine göre karışık.
+    const ts = (d: any) => Date.parse(d.issuedAt || d.receivedAt || d.createdAt || '') || 0;
+    return arr.sort((a, b) => ts(b) - ts(a));
   }, [docs, taxpayerId, search]);
+
+  // "Tümünü Görüntüle": ekrandaki PDF'li + henüz görüntülenmemiş (kırmızı) tebligatları
+  // topluca görüntülendi işaretle → hepsi kalıcı yeşile döner.
+  const markAllMut = useMutation({
+    mutationFn: (ids: string[]) => portalAutomationApi.markDocumentsViewed({ ids }),
+    onMutate: (ids: string[]) => {
+      setViewedIds((prev) => { const n = new Set(prev); ids.forEach((id) => n.add(id)); return n; });
+    },
+    onSuccess: (d) => {
+      toast.success(`${d.updated} tebligat görüntülendi olarak işaretlendi.`);
+      qc.invalidateQueries({ queryKey: ['etebligat-docs'] });
+    },
+    onError: () => toast.error('İşaretlenemedi'),
+  });
+  const markAll = () => {
+    const ids = filtered.filter((d) => d.storageKey && !d.viewedAt && !viewedIds.has(d.id)).map((d) => d.id);
+    if (!ids.length) { toast.info('Görüntülenecek (kırmızı) tebligat yok.'); return; }
+    markAllMut.mutate(ids);
+  };
 
   const sorgulaMut = useMutation({
     mutationFn: () => portalAutomationApi.manualRun({
@@ -179,6 +201,15 @@ export default function ETebligatModule() {
           <Users size={13} className="absolute left-3 top-1/2 -translate-y-1/2 pointer-events-none" style={{ color: 'rgba(250,250,249,0.45)' }} />
           <ChevronDown size={14} className="absolute right-2.5 top-1/2 -translate-y-1/2 pointer-events-none" style={{ color: 'rgba(250,250,249,0.45)' }} />
         </div>
+        <button
+          onClick={markAll}
+          disabled={markAllMut.isPending}
+          title="Ekrandaki tüm tebligatları görüntülendi (yeşil) işaretle"
+          className="h-[38px] px-3 rounded-[10px] text-[13px] font-semibold flex items-center gap-1.5 border disabled:opacity-50"
+          style={{ background: 'rgba(95,207,142,0.12)', borderColor: 'rgba(95,207,142,0.35)', color: '#5fcf8e' }}
+        >
+          {markAllMut.isPending ? <Loader2 size={14} className="animate-spin" /> : <CheckCheck size={14} />} Tümünü Görüntüle
+        </button>
         <button
           onClick={() => qc.invalidateQueries({ queryKey: ['etebligat-docs'] })}
           className="h-[38px] px-3 rounded-[10px] text-[13px] font-semibold flex items-center gap-1.5 border"

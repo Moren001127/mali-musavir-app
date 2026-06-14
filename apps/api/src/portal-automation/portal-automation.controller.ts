@@ -125,6 +125,12 @@ export class PortalAutomationController {
   documentView(@Req() req: any, @Param('id') id: string) {
     return this.service.getDocumentViewUrl(req.user.tenantId, id);
   }
+
+  @Post('documents/mark-viewed')
+  @HttpCode(HttpStatus.OK)
+  markViewed(@Req() req: any, @Body() body: { ids?: string[]; belgeTuru?: string; taxpayerId?: string }) {
+    return this.service.markDocumentsViewed(req.user.tenantId, body || {});
+  }
 }
 
 @Controller('agent/portal-automation')
