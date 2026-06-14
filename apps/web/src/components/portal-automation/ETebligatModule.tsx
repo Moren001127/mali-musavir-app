@@ -1,6 +1,6 @@
 'use client';
 
-import React, { useMemo, useState } from 'react';
+import React, { useMemo, useState, useEffect } from 'react';
 import { createPortal } from 'react-dom';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import { toast } from 'sonner';
@@ -47,6 +47,19 @@ function Kpi({ icon, label, value, sub, onClick }: { icon: React.ReactNode; labe
   );
 }
 
+function PgBtn({ children, onClick, disabled }: { children: React.ReactNode; onClick: () => void; disabled?: boolean }) {
+  return (
+    <button
+      onClick={onClick}
+      disabled={disabled}
+      className="h-7 min-w-[28px] px-2 rounded-md text-[12px] font-semibold border disabled:opacity-30 hover:enabled:brightness-125 transition"
+      style={{ background: 'rgba(255,255,255,0.03)', borderColor: 'rgba(255,255,255,0.1)', color: '#fafaf9' }}
+    >
+      {children}
+    </button>
+  );
+}
+
 export default function ETebligatModule() {
   const qc = useQueryClient();
   const [taxpayerId, setTaxpayerId] = useState<string>('');
@@ -55,6 +68,9 @@ export default function ETebligatModule() {
   const [pdfModal, setPdfModal] = useState<{ url: string; title: string } | null>(null);
   // Gece sorgu hatası listesi modalı
   const [showErrors, setShowErrors] = useState(false);
+  // Sayfalama — sayfa başına 200 tebligat
+  const PAGE_SIZE = 200;
+  const [page, setPage] = useState(1);
   // Bu oturumda görüntülenenler (buton anında yeşile dönsün; kalıcısı backend viewedAt)
   const [viewedIds, setViewedIds] = useState<Set<string>>(() => new Set());
 
@@ -112,6 +128,15 @@ export default function ETebligatModule() {
     const ts = (d: any) => Date.parse(d.issuedAt || d.receivedAt || d.createdAt || '') || 0;
     return arr.sort((a, b) => ts(b) - ts(a));
   }, [docs, taxpayerId, search]);
+
+  // Sayfalama: filtre/arama değişince ilk sayfaya dön; geçerli sayfayı dilimle.
+  useEffect(() => { setPage(1); }, [search, taxpayerId]);
+  const totalPages = Math.max(1, Math.ceil(filtered.length / PAGE_SIZE));
+  const pageClamped = Math.min(Math.max(1, page), totalPages);
+  const pageItems = useMemo(
+    () => filtered.slice((pageClamped - 1) * PAGE_SIZE, pageClamped * PAGE_SIZE),
+    [filtered, pageClamped],
+  );
 
   // "Tümünü Görüntüle": ekrandaki PDF'li + henüz görüntülenmemiş (kırmızı) tebligatları
   // topluca görüntülendi işaretle → hepsi kalıcı yeşile döner.
@@ -257,7 +282,7 @@ export default function ETebligatModule() {
                   {docs.length === 0 ? 'Henüz e-Tebligat kaydı yok. "Şimdi sorgula" ile çekin ya da gece otomatik gelsin.' : 'Filtreye uyan tebligat yok.'}
                 </td></tr>
               )}
-              {filtered.map((d) => {
+              {pageItems.map((d) => {
                 const r = d.raw || {};
                 return (
                   <tr key={d.id} className="hover:bg-white/[0.02]">
@@ -310,9 +335,20 @@ export default function ETebligatModule() {
           </table>
         </div>
         {filtered.length > 0 && (
-          <div className="px-3 py-2 text-[11px] flex items-center gap-2" style={{ borderTop: cellBorder, color: 'rgba(250,250,249,0.45)' }}>
-            <CalendarClock size={12} /> {filtered.length} tebligat gösteriliyor{taxpayerId ? ' (mükellef süzüldü)' : ''}.
+          <div className="px-3 py-2.5 flex items-center gap-x-3 gap-y-2 flex-wrap text-[11px]" style={{ borderTop: cellBorder, color: 'rgba(250,250,249,0.5)' }}>
+            <span className="inline-flex items-center gap-1">
+              <CalendarClock size={12} /> {(pageClamped - 1) * PAGE_SIZE + 1}–{Math.min(pageClamped * PAGE_SIZE, filtered.length)} / {filtered.length} tebligat{taxpayerId ? ' (süzüldü)' : ''}
+            </span>
             {aktifIs > 0 && <span className="inline-flex items-center gap-1" style={{ color: GOLD }}><Loader2 size={11} className="animate-spin" /> {aktifIs} sorgu çalışıyor</span>}
+            {totalPages > 1 && (
+              <div className="inline-flex items-center gap-1">
+                <PgBtn disabled={pageClamped <= 1} onClick={() => setPage(1)}>«</PgBtn>
+                <PgBtn disabled={pageClamped <= 1} onClick={() => setPage((p) => Math.max(1, p - 1))}>‹ Önceki</PgBtn>
+                <span className="px-2 text-[12px] font-semibold" style={{ color: '#fafaf9' }}>Sayfa {pageClamped} / {totalPages}</span>
+                <PgBtn disabled={pageClamped >= totalPages} onClick={() => setPage((p) => Math.min(totalPages, p + 1))}>Sonraki ›</PgBtn>
+                <PgBtn disabled={pageClamped >= totalPages} onClick={() => setPage(totalPages)}>»</PgBtn>
+              </div>
+            )}
             {summary?.runner && <span className="ml-auto inline-flex items-center gap-1"><span className="w-1.5 h-1.5 rounded-full" style={{ background: summary.runner.enabled ? '#5fcf8e' : '#ef6b6b' }} /> Sunucu runner {summary.runner.enabled ? 'aktif' : 'kapalı'}</span>}
           </div>
         )}
