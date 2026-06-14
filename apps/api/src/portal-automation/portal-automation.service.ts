@@ -299,6 +299,8 @@ export class PortalAutomationService {
       tebligat7d,
       tebligatTotal,
       tebligatErrorRows,
+      sgkTotal,
+      sgkErrorRows,
       latestJobs,
       latestDocuments,
     ] = await Promise.all([
@@ -328,6 +330,19 @@ export class PortalAutomationService {
           taxpayer: { select: { companyName: true, firstName: true, lastName: true, taxNumber: true } },
         },
       }),
+      // Toplam SGK belgesi (tahakkuk + hizmet listesi).
+      (this.prisma as any).portalDocument.count({ where: { tenantId, belgeTuru: { in: ['SGK_TAHAKKUK', 'SGK_HIZMET_LISTESI'] } } }),
+      // Son 24s SGK sorgusunda HATA alan mükellefler (mükellef bazında, ad+sebep ile).
+      (this.prisma as any).portalAutomationJob.findMany({
+        where: { tenantId, jobType: { in: ['SGK_HIZMET_LISTESI', 'SGK_TAHAKKUK'] }, status: 'failed', createdAt: { gte: dayAgo } },
+        distinct: ['taxpayerId'],
+        orderBy: { createdAt: 'desc' },
+        select: {
+          taxpayerId: true,
+          errorMessage: true,
+          taxpayer: { select: { companyName: true, firstName: true, lastName: true, taxNumber: true } },
+        },
+      }),
       this.listJobs(tenantId, { limit: 8 }),
       this.listDocuments(tenantId, { limit: 8 }),
     ]);
@@ -344,6 +359,18 @@ export class PortalAutomationService {
         reason: r.errorMessage || null,
       }));
     const tebligatErrorCount = tebligatErrors.length;
+    const sgkErrors = (Array.isArray(sgkErrorRows) ? sgkErrorRows : [])
+      .filter((r: any) => r?.taxpayerId)
+      .map((r: any) => ({
+        taxpayerId: r.taxpayerId,
+        name: r.taxpayer?.companyName
+          || [r.taxpayer?.firstName, r.taxpayer?.lastName].filter(Boolean).join(' ').trim()
+          || r.taxpayer?.taxNumber
+          || 'Mükellef',
+        taxNumber: r.taxpayer?.taxNumber || null,
+        reason: r.errorMessage || null,
+      }));
+    const sgkErrorCount = sgkErrors.length;
     const credentials = this.summarizeCredentials(credentialRows);
     return {
       nightly: {
@@ -358,7 +385,7 @@ export class PortalAutomationService {
         deviceId: process.env.PORTAL_AUTOMATION_RAILWAY_DEVICE_ID || 'railway-portal-runner',
         jobTypes: this.runnerJobTypes(),
       },
-      stats: { activeJobs, failed24h, done24h, docs7d, tebligat7d, tebligatTotal, tebligatErrorCount, tebligatErrors },
+      stats: { activeJobs, failed24h, done24h, docs7d, tebligat7d, tebligatTotal, tebligatErrorCount, tebligatErrors, sgkTotal, sgkErrorCount, sgkErrors },
       credentials,
       latestJobs,
       latestDocuments,
@@ -551,7 +578,11 @@ export class PortalAutomationService {
   async listDocuments(tenantId: string, opts: { limit?: number; taxpayerId?: string; belgeTuru?: string } = {}) {
     const where: any = { tenantId };
     if (opts.taxpayerId) where.taxpayerId = opts.taxpayerId;
-    if (opts.belgeTuru) where.belgeTuru = opts.belgeTuru;
+    if (opts.belgeTuru) {
+      // virgülle çoklu belgeTürü (örn. SGK_TAHAKKUK,SGK_HIZMET_LISTESI)
+      const ts = String(opts.belgeTuru).split(',').map((s) => s.trim()).filter(Boolean);
+      where.belgeTuru = ts.length > 1 ? { in: ts } : ts[0];
+    }
     // limit === 0 -> SINIRSIZ (hepsi); aksi halde varsayılan 50, üst sınır 50000.
     const raw = Number(opts.limit);
     const take = raw === 0 ? undefined : Math.min(Math.max(Number.isFinite(raw) && raw > 0 ? raw : 50, 1), 50000);

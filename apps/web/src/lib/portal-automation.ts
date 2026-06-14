@@ -133,6 +133,9 @@ export interface PortalSummary {
     tebligatTotal?: number;
     tebligatErrorCount?: number;
     tebligatErrors?: Array<{ taxpayerId: string; name: string; taxNumber: string | null; reason: string | null }>;
+    sgkTotal?: number;
+    sgkErrorCount?: number;
+    sgkErrors?: Array<{ taxpayerId: string; name: string; taxNumber: string | null; reason: string | null }>;
   };
   credentials: {
     eBeyannameReady: boolean;
