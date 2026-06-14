@@ -1396,14 +1396,22 @@ export class PortalAutomationRailwayRunnerService implements OnModuleInit {
 
       formsFound = (rows || []).length;
       if (formsFound === 0) {
-        // Teşhis: submit sonrası gerçekten hangi sayfadayız, hangi formlar var?
-        const dbg = await page.evaluate(() => ({
-          url: location.href,
-          forms: Array.from(document.querySelectorAll('form')).map((f: any) => f.getAttribute('action') || '').filter(Boolean).slice(0, 8),
-          tr: document.querySelectorAll('tr').length,
-          bodyLen: document.body ? document.body.innerText.length : 0,
-        })).catch(() => null);
-        if (dbg) notes.push(`DBG url=${this.compact(dbg.url)} forms=[${(dbg.forms || []).join(' , ')}] tr=${dbg.tr} bodyLen=${dbg.bodyLen}`);
+        // Teşhis: submit sonrası hangi sayfa, dönem-seç formundaki butonlar, "kayıt yok" mesajı?
+        const dbg = await page.evaluate(() => {
+          const dform: any = Array.from(document.querySelectorAll('form')).find((f: any) => /DonemSecildi/i.test(f.getAttribute('action') || ''));
+          const btns = dform ? Array.from(dform.querySelectorAll('input[type=submit],input[type=button],input[type=image],button,a[onclick]')).map((b: any) => ({ t: b.type || b.tagName, n: b.name || '', v: String(b.value || b.innerText || '').replace(/\s+/g, ' ').slice(0, 25), oc: b.getAttribute('onclick') ? 1 : 0 })) : [];
+          const bt = document.body ? document.body.innerText : '';
+          const m = bt.match(/(bulunamad[^.\n]{0,30}|kay[ıi]t yok|kay[ıi]t bulun[^.\n]{0,30}|sonu[çc][^.\n]{0,30}bulunamad[^.\n]{0,30})/i);
+          return {
+            url: location.href,
+            forms: Array.from(document.querySelectorAll('form')).map((f: any) => f.getAttribute('action') || '').filter(Boolean).slice(0, 8),
+            tr: document.querySelectorAll('tr').length,
+            bodyLen: bt.length,
+            btns,
+            msg: m ? m[0] : '',
+          };
+        }).catch(() => null);
+        if (dbg) notes.push(`DBG url=${this.compact(dbg.url)} tr=${dbg.tr} len=${dbg.bodyLen} msg="${dbg.msg}" btns=${JSON.stringify(dbg.btns)} forms=[${(dbg.forms || []).join(' , ')}]`);
       }
       for (const row of rows) {
         const periodText = periodTextByValue[String(row.periodIndex)]
