@@ -130,6 +130,8 @@ export interface PortalSummary {
     done24h: number;
     docs7d: number;
     tebligat7d: number;
+    tebligatTotal?: number;
+    tebligatErrorCount?: number;
   };
   credentials: {
     eBeyannameReady: boolean;

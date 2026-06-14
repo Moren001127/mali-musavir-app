@@ -297,6 +297,8 @@ export class PortalAutomationService {
       done24h,
       docs7d,
       tebligat7d,
+      tebligatTotal,
+      tebligatErrorRows,
       latestJobs,
       latestDocuments,
     ] = await Promise.all([
@@ -308,11 +310,22 @@ export class PortalAutomationService {
       (this.prisma as any).portalAutomationJob.count({ where: { tenantId, status: 'failed', createdAt: { gte: dayAgo } } }),
       (this.prisma as any).portalAutomationJob.count({ where: { tenantId, status: 'done', createdAt: { gte: dayAgo } } }),
       (this.prisma as any).portalDocument.count({ where: { tenantId, createdAt: { gte: sevenDaysAgo } } }),
-      (this.prisma as any).portalDocument.count({ where: { tenantId, belgeTuru: 'E_TEBLIGAT', createdAt: { gte: sevenDaysAgo } } }),
+      // "Bu hafta yeni" = tebligatın GERÇEK gönderim tarihi son 7 günde (kayıt tarihi DEĞİL;
+      // bugün toplu çekilen eski tebligatları yeni saymasın).
+      (this.prisma as any).portalDocument.count({ where: { tenantId, belgeTuru: 'E_TEBLIGAT', issuedAt: { gte: sevenDaysAgo } } }),
+      // Gerçek TOPLAM e-Tebligat (frontend liste limitinden bağımsız).
+      (this.prisma as any).portalDocument.count({ where: { tenantId, belgeTuru: 'E_TEBLIGAT' } }),
+      // Gece sorgusunda HATA alan mükellefler (son 24s E_TEBLIGAT_CHECK failed, mükellef bazında).
+      (this.prisma as any).portalAutomationJob.findMany({
+        where: { tenantId, jobType: 'E_TEBLIGAT_CHECK', status: 'failed', createdAt: { gte: dayAgo } },
+        distinct: ['taxpayerId'],
+        select: { taxpayerId: true },
+      }),
       this.listJobs(tenantId, { limit: 8 }),
       this.listDocuments(tenantId, { limit: 8 }),
     ]);
 
+    const tebligatErrorCount = (Array.isArray(tebligatErrorRows) ? tebligatErrorRows : []).filter((r: any) => r?.taxpayerId).length;
     const credentials = this.summarizeCredentials(credentialRows);
     return {
       nightly: {
@@ -327,7 +340,7 @@ export class PortalAutomationService {
         deviceId: process.env.PORTAL_AUTOMATION_RAILWAY_DEVICE_ID || 'railway-portal-runner',
         jobTypes: this.runnerJobTypes(),
       },
-      stats: { activeJobs, failed24h, done24h, docs7d, tebligat7d },
+      stats: { activeJobs, failed24h, done24h, docs7d, tebligat7d, tebligatTotal, tebligatErrorCount },
       credentials,
       latestJobs,
       latestDocuments,

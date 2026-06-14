@@ -4,8 +4,8 @@ import React, { useMemo, useState } from 'react';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import { toast } from 'sonner';
 import {
-  Inbox, RefreshCw, Loader2, Search, Users, Clock, ShieldCheck,
-  Building2, FileText, CalendarClock, Download, ChevronDown, Activity, Eye, X, CheckCheck,
+  Inbox, RefreshCw, Loader2, Search, Users, ShieldCheck,
+  Building2, FileText, CalendarClock, Download, ChevronDown, Activity, Eye, X, CheckCheck, AlertTriangle,
 } from 'lucide-react';
 import { portalAutomationApi, type PortalDocument } from '@/lib/portal-automation';
 
@@ -53,7 +53,7 @@ export default function ETebligatModule() {
 
   const docsQuery = useQuery({
     queryKey: ['etebligat-docs'],
-    queryFn: () => portalAutomationApi.documents({ belgeTuru: 'E_TEBLIGAT', limit: 500 }),
+    queryFn: () => portalAutomationApi.documents({ belgeTuru: 'E_TEBLIGAT' }),
     refetchInterval: 30_000,
   });
   const summaryQuery = useQuery({
@@ -163,14 +163,14 @@ export default function ETebligatModule() {
     <div className="space-y-4">
       {/* ── KPI ── */}
       <div className="grid grid-cols-2 md:grid-cols-4 gap-3">
-        <Kpi icon={<Inbox size={16} />} label="Toplam e-Tebligat" value={String(docs.length)} sub="kayıtlı tebligat" />
-        <Kpi icon={<Activity size={16} />} label="Bu hafta yeni" value={String(summary?.stats?.tebligat7d ?? 0)} sub="son 7 gün" />
+        <Kpi icon={<Inbox size={16} />} label="Toplam e-Tebligat" value={String(summary?.stats?.tebligatTotal ?? docs.length)} sub="kayıtlı tebligat" />
+        <Kpi icon={<Activity size={16} />} label="Bu hafta yeni" value={String(summary?.stats?.tebligat7d ?? 0)} sub="son 7 gün gönderilen" />
         <Kpi icon={<ShieldCheck size={16} />} label="Şifreli mükellef" value={String(summary?.credentials?.eTebligatTaxpayerCount ?? 0)} sub="vergi dairesi şifresi" />
         <Kpi
-          icon={<Clock size={16} />}
-          label="Gece kontrolü"
-          value={summary?.nightly?.time || '—'}
-          sub={aktifIs > 0 ? `${aktifIs} iş çalışıyor` : (summary?.nightly?.active ? 'her gece otomatik' : 'kapalı')}
+          icon={<AlertTriangle size={16} />}
+          label="Gece sorgu hatası"
+          value={String(summary?.stats?.tebligatErrorCount ?? 0)}
+          sub={(summary?.stats?.tebligatErrorCount ?? 0) > 0 ? 'mükellef giremedi / hata' : 'son sorguda hata yok'}
         />
       </div>
 
@@ -304,6 +304,7 @@ export default function ETebligatModule() {
         {filtered.length > 0 && (
           <div className="px-3 py-2 text-[11px] flex items-center gap-2" style={{ borderTop: cellBorder, color: 'rgba(250,250,249,0.45)' }}>
             <CalendarClock size={12} /> {filtered.length} tebligat gösteriliyor{taxpayerId ? ' (mükellef süzüldü)' : ''}.
+            {aktifIs > 0 && <span className="inline-flex items-center gap-1" style={{ color: GOLD }}><Loader2 size={11} className="animate-spin" /> {aktifIs} sorgu çalışıyor</span>}
             {summary?.runner && <span className="ml-auto inline-flex items-center gap-1"><span className="w-1.5 h-1.5 rounded-full" style={{ background: summary.runner.enabled ? '#5fcf8e' : '#ef6b6b' }} /> Sunucu runner {summary.runner.enabled ? 'aktif' : 'kapalı'}</span>}
           </div>
         )}
