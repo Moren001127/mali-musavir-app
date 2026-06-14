@@ -1340,38 +1340,38 @@ export class PortalAutomationRailwayRunnerService implements OnModuleInit {
     }
 
     try {
-      // Başlangıç + bitiş dönemini seç, "Bilgileri Getir" SUBMIT BUTONUNU TIKLA.
-      // (Struts hangi action'ı işleyeceğini submit butonunun ADINDAN anlar; form.submit()
-      // o parametreyi koymaz -> liste gelmez. Bu yüzden butona tıklamak ZORUNLU.)
-      await page.selectOption('[name="hizmet_yil_ay_index"]', startVal).catch(() => null);
-      await page.selectOption('[name="hizmet_yil_ay_index_bitis"]', endVal).catch(() => null);
-      await Promise.all([
-        page.waitForLoadState('domcontentloaded', { timeout: 20_000 }).catch(() => {}),
-        page.evaluate(() => {
-          const f: any = Array.from(document.querySelectorAll('form')).find((x: any) => /DonemSecildi/i.test(x.getAttribute('action') || ''));
-          if (!f) return;
-          const btn: any = f.querySelector('input[type="submit"], button[type="submit"], button, input[type="image"]');
-          if (btn && typeof btn.click === 'function') btn.click();
-          else f.submit();
-        }),
-      ]);
-      await page.waitForTimeout(2200);
-
-      // Liste sayfasında HER bildirge satırı için tahakkuk + hizmet PDF'ini SAF FETCH ile indir.
-      // Her satır kendi token + dönem index'ini (hizmet_yil_ay_index) hidden alanında taşır;
-      // sayfa ne ürettiyse onu geri gönderiyoruz (range yönünden bağımsız, sağlam).
-      const rows: any[] = await page.evaluate(async (cfg: any) => {
+      // Dönem aralığını "Bilgileri Getir" butonuyla DEĞİL, doğrudan SAF FETCH ile gönder.
+      // (Dönem-seç submit butonunun adı BOŞ -> btn.click() Struts'a işlem parametresi
+      //  taşımıyor, sayfa dönem-seç ekranında kalıyordu. e-Tebligat'taki gibi action'a
+      //  direkt POST + dönen liste HTML'ini parse et; sonra her bildirge için pdfGosterim.)
+      const out: any = await page.evaluate(async (cfg: any) => {
         const norm = (s: any) => String(s || '').replace(/\s+/g, ' ').trim();
-        const forms = Array.from(document.querySelectorAll('form')).filter((f: any) => /pdfGosterim/i.test(f.getAttribute('action') || ''));
-        const result: any[] = [];
+        // Dönem-seç sayfasındaki taze struts token
+        const tokEl: any = document.querySelector('form[action*="DonemSecildi"] [name="token"]') || document.querySelector('[name="token"]');
+        const token0 = tokEl ? String(tokEl.value) : '';
+        // 1) Dönem aralığını POST et -> "Onaylı Bildirge Listesi" HTML
+        let listHtml = '';
+        try {
+          const body = new URLSearchParams();
+          body.append('struts.token.name', 'token'); body.append('token', token0);
+          body.append('hizmet_yil_ay_index', cfg.start);
+          body.append('hizmet_yil_ay_index_bitis', cfg.end);
+          const r = await fetch(cfg.base + '/tahakkuk/tahakkukonaylanmisTahakkukDonemSecildi.action', { method: 'POST', credentials: 'include', headers: { 'Content-Type': 'application/x-www-form-urlencoded' }, body: body.toString() });
+          listHtml = await r.text();
+        } catch (e) { return { rows: [], listLen: 0, formCount: 0, err: 'donemsec:' + String(e) }; }
+        // 2) Liste HTML'ini parse -> her pdfGosterim formu (= bir bildirge satırı)
+        const doc = new DOMParser().parseFromString(listHtml, 'text/html');
+        const forms = Array.from(doc.querySelectorAll('form')).filter((f: any) => /pdfGosterim/i.test(f.getAttribute('action') || ''));
+        const rows: any[] = [];
         for (const f of forms as any[]) {
           const g = (n: string) => { const e = f.querySelector('[name="' + n + '"]'); return e ? String((e as any).value) : null; };
           const refNo = g('bildirgeRefNo'); const token = g('token');
           const yilAy = g('hizmet_yil_ay_index'); const yilAyBitis = g('hizmet_yil_ay_index_bitis');
           if (!refNo || !token) continue;
-          const row: any = f.closest('tr');
-          const cells = row ? Array.from(row.querySelectorAll('td')).map((td: any) => norm(td.innerText)).filter(Boolean) : [];
-          const rowText = row ? norm(row.innerText) : '';
+          const tr: any = f.closest('tr');
+          const cells = tr ? Array.from(tr.querySelectorAll('td')).map((td: any) => norm(td.textContent)).filter(Boolean) : [];
+          const rowText = tr ? norm(tr.textContent) : '';
+          // 3) Her tip (tahakkuk + hizmet) için PDF'i SAF FETCH ile indir
           const pdfs: any = {};
           for (const tip of cfg.tips) {
             const p = new URLSearchParams();
@@ -1380,38 +1380,24 @@ export class PortalAutomationRailwayRunnerService implements OnModuleInit {
             p.append('hizmet_yil_ay_index', yilAy || ''); p.append('hizmet_yil_ay_index_bitis', yilAyBitis || '');
             p.append('bildirgeRefNo', refNo);
             try {
-              const r = await fetch(cfg.base + '/tahakkuk/pdfGosterim.action', { method: 'POST', credentials: 'include', headers: { 'Content-Type': 'application/x-www-form-urlencoded' }, body: p.toString() });
-              if (!r.ok) continue;
-              const buf = new Uint8Array(await r.arrayBuffer());
+              const rr = await fetch(cfg.base + '/tahakkuk/pdfGosterim.action', { method: 'POST', credentials: 'include', headers: { 'Content-Type': 'application/x-www-form-urlencoded' }, body: p.toString() });
+              if (!rr.ok) continue;
+              const buf = new Uint8Array(await rr.arrayBuffer());
               if (!(buf[0] === 0x25 && buf[1] === 0x50 && buf[2] === 0x44 && buf[3] === 0x46) || buf.length < 200) continue;
               let bin = ''; const CH = 0x8000;
               for (let i = 0; i < buf.length; i += CH) bin += String.fromCharCode.apply(null, buf.subarray(i, i + CH) as any);
               pdfs[tip] = btoa(bin);
             } catch { /* yut */ }
           }
-          result.push({ refNo, periodIndex: yilAy, cells, rowText, pdfs });
+          rows.push({ refNo, periodIndex: yilAy, cells, rowText, pdfs });
         }
-        return result;
-      }, { base, tips: TIPS.map((t) => t.tip) }).catch(() => []);
+        return { rows, listLen: listHtml.length, formCount: forms.length };
+      }, { base, start: startVal, end: endVal, tips: TIPS.map((t) => t.tip) }).catch((e: any) => ({ rows: [], listLen: 0, formCount: 0, err: String(e) }));
 
-      formsFound = (rows || []).length;
+      const rows: any[] = (out && out.rows) || [];
+      formsFound = rows.length;
       if (formsFound === 0) {
-        // Teşhis: submit sonrası hangi sayfa, dönem-seç formundaki butonlar, "kayıt yok" mesajı?
-        const dbg = await page.evaluate(() => {
-          const dform: any = Array.from(document.querySelectorAll('form')).find((f: any) => /DonemSecildi/i.test(f.getAttribute('action') || ''));
-          const btns = dform ? Array.from(dform.querySelectorAll('input[type=submit],input[type=button],input[type=image],button,a[onclick]')).map((b: any) => ({ t: b.type || b.tagName, n: b.name || '', v: String(b.value || b.innerText || '').replace(/\s+/g, ' ').slice(0, 25), oc: b.getAttribute('onclick') ? 1 : 0 })) : [];
-          const bt = document.body ? document.body.innerText : '';
-          const m = bt.match(/(bulunamad[^.\n]{0,30}|kay[ıi]t yok|kay[ıi]t bulun[^.\n]{0,30}|sonu[çc][^.\n]{0,30}bulunamad[^.\n]{0,30})/i);
-          return {
-            url: location.href,
-            forms: Array.from(document.querySelectorAll('form')).map((f: any) => f.getAttribute('action') || '').filter(Boolean).slice(0, 8),
-            tr: document.querySelectorAll('tr').length,
-            bodyLen: bt.length,
-            btns,
-            msg: m ? m[0] : '',
-          };
-        }).catch(() => null);
-        if (dbg) notes.push(`DBG url=${this.compact(dbg.url)} tr=${dbg.tr} len=${dbg.bodyLen} msg="${dbg.msg}" btns=${JSON.stringify(dbg.btns)} forms=[${(dbg.forms || []).join(' , ')}]`);
+        notes.push(`DBG fetch-DonemSecildi: range=${startVal}→${endVal} listLen=${out?.listLen ?? '?'} formCount=${out?.formCount ?? 0} err=${out?.err || '-'}`);
       }
       for (const row of rows) {
         const periodText = periodTextByValue[String(row.periodIndex)]
