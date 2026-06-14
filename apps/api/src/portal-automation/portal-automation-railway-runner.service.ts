@@ -1313,21 +1313,27 @@ export class PortalAutomationRailwayRunnerService implements OnModuleInit {
       { tip: 'tahakkukonayliFisHizmetPdf', belgeTuru: 'SGK_HIZMET_LISTESI', title: 'SGK Hizmet Listesi' },
     ];
     const documents: any[] = [];
+    let formsFound = 0;
     const maxPeriods = Math.max(1, Math.min(36, Number(process.env.SGK_PERIOD_MAX || 24)));
 
     for (const period of periods.slice(0, maxPeriods)) {
       try {
-        // Dönem seç (başlangıç=bitiş=tek dönem) + "Bilgileri Getir" (DonemSecildi formunu submit et)
+        // Dönem seç (başlangıç=bitiş=tek dönem) + "Bilgileri Getir" SUBMIT BUTONUNU TIKLA.
+        // (Struts hangi action'ı işleyeceğini submit butonunun ADINDAN anlar; form.submit()
+        // o parametreyi koymaz -> liste gelmez. Bu yüzden butona tıklamak ZORUNLU.)
         await page.selectOption('[name="hizmet_yil_ay_index"]', period.v).catch(() => null);
         await page.selectOption('[name="hizmet_yil_ay_index_bitis"]', period.v).catch(() => null);
         await Promise.all([
           page.waitForLoadState('domcontentloaded', { timeout: 20_000 }).catch(() => {}),
           page.evaluate(() => {
             const f: any = Array.from(document.querySelectorAll('form')).find((x: any) => /DonemSecildi/i.test(x.getAttribute('action') || ''));
-            if (f) f.submit();
+            if (!f) return;
+            const btn: any = f.querySelector('input[type="submit"], button[type="submit"], button, input[type="image"]');
+            if (btn && typeof btn.click === 'function') btn.click();
+            else f.submit();
           }),
         ]);
-        await page.waitForTimeout(1500);
+        await page.waitForTimeout(1800);
 
         // Liste sayfasında her bildirge için tahakkuk + hizmet PDF'ini SAF FETCH ile indir
         const rows: any[] = await page.evaluate(async (cfg: any) => {
@@ -1364,6 +1370,7 @@ export class PortalAutomationRailwayRunnerService implements OnModuleInit {
           return result;
         }, { base, tips: TIPS.map((t) => t.tip) }).catch(() => []);
 
+        formsFound += (rows || []).length;
         for (const row of rows) {
           for (const t of TIPS) {
             const key = `${t.belgeTuru}|${row.refNo}`;
@@ -1390,11 +1397,11 @@ export class PortalAutomationRailwayRunnerService implements OnModuleInit {
       await page.waitForTimeout(200);
     }
 
-    notes.push(`${periods.length} dönem tarandı, ${documents.length} yeni belge indirildi.`);
+    notes.push(`${periods.length} dönem tarandı, ${formsFound} bildirge formu bulundu, ${documents.length} yeni belge indirildi.`);
     return {
       documents,
       recordCount: documents.length,
-      result: { runner: 'railway', phase: 'sgk_ebildirge', jobType: 'SGK', periodCount: periods.length, newDocs: documents.length, notes },
+      result: { runner: 'railway', phase: 'sgk_ebildirge', jobType: 'SGK', periodCount: periods.length, formsFound, newDocs: documents.length, notes },
     };
   }
 
