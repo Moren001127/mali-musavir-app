@@ -6,7 +6,7 @@ import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import { toast } from 'sonner';
 import {
   ShieldCheck, RefreshCw, Loader2, Search, Users, FileText, Download, ChevronDown,
-  Eye, X, CheckCheck, AlertTriangle, CalendarClock, Receipt, ListChecks,
+  Eye, X, CheckCheck, AlertTriangle, CalendarClock, Receipt, ListChecks, SlidersHorizontal,
 } from 'lucide-react';
 import { portalAutomationApi, type PortalDocument } from '@/lib/portal-automation';
 
@@ -54,6 +54,19 @@ function PgBtn({ children, onClick, disabled }: { children: React.ReactNode; onC
     </button>
   );
 }
+
+// Etiketli filtre alanı: üstte küçük etiket, altta içerik (select/input). Tutarlı, hizalı görünüm.
+function Field({ label, children }: { label: string; children: React.ReactNode }) {
+  return (
+    <div className="min-w-0">
+      <label className="block text-[10px] font-bold uppercase tracking-[.1em] mb-1.5" style={{ color: 'rgba(250,250,249,0.42)' }}>{label}</label>
+      {children}
+    </div>
+  );
+}
+
+const FLD_CLS = 'w-full h-[40px] pl-9 pr-8 rounded-[10px] text-[13px] outline-none border appearance-none truncate';
+const FLD_STY = { background: 'rgba(255,255,255,0.03)', borderColor: 'rgba(255,255,255,0.08)', color: '#fafaf9' } as React.CSSProperties;
 
 export default function SgkBildirgeModule() {
   const qc = useQueryClient();
@@ -186,57 +199,82 @@ export default function SgkBildirgeModule() {
         </button>
       )}
 
-      <div className="rounded-2xl border p-3.5 flex flex-wrap items-center gap-2.5" style={{ background: 'rgba(255,255,255,0.02)', borderColor: 'rgba(255,255,255,0.06)' }}>
-        <div className="relative flex-1 min-w-[200px]">
-          <Search size={14} className="absolute left-3 top-1/2 -translate-y-1/2" style={{ color: 'rgba(250,250,249,0.4)' }} />
-          <input value={search} onChange={(e) => setSearch(e.target.value)} placeholder="Dönem, tür, mükellef veya kanun no ara…"
-            className="w-full h-[38px] pl-9 pr-3 rounded-[10px] text-[13px] outline-none border" style={{ background: 'rgba(255,255,255,0.03)', borderColor: 'rgba(255,255,255,0.08)', color: '#fafaf9' }} />
+      <div className="rounded-2xl border p-4" style={{ background: 'rgba(255,255,255,0.02)', borderColor: 'rgba(255,255,255,0.06)' }}>
+        {/* Başlık */}
+        <div className="flex items-center gap-2 mb-3.5">
+          <span className="grid place-items-center rounded-md" style={{ width: 24, height: 24, background: 'rgba(212,184,118,0.12)', color: GOLD }}><SlidersHorizontal size={13} /></span>
+          <span className="text-[12px] font-bold uppercase tracking-[.1em]" style={{ color: 'rgba(250,250,249,0.6)' }}>Sorgula ve Filtrele</span>
         </div>
-        <div className="relative">
-          <select value={taxpayerId} onChange={(e) => setTaxpayerId(e.target.value)} className="h-[38px] pl-9 pr-8 rounded-[10px] text-[13px] outline-none border appearance-none min-w-[200px]" style={{ background: 'rgba(255,255,255,0.03)', borderColor: 'rgba(255,255,255,0.08)', color: '#fafaf9' }}>
-            <option value="">Tüm mükellefler ({mukellefler.length})</option>
-            {mukellefler.map((m) => <option key={m.id} value={m.id}>{m.name}</option>)}
-          </select>
-          <Users size={13} className="absolute left-3 top-1/2 -translate-y-1/2 pointer-events-none" style={{ color: 'rgba(250,250,249,0.45)' }} />
-          <ChevronDown size={14} className="absolute right-2.5 top-1/2 -translate-y-1/2 pointer-events-none" style={{ color: 'rgba(250,250,249,0.45)' }} />
+
+        {/* Etiketli filtre alanları */}
+        <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-3">
+          <Field label="Mükellef">
+            <div className="relative">
+              <select value={taxpayerId} onChange={(e) => setTaxpayerId(e.target.value)} className={FLD_CLS} style={FLD_STY}>
+                <option value="">Tüm mükellefler ({mukellefler.length})</option>
+                {mukellefler.map((m) => <option key={m.id} value={m.id}>{m.name}</option>)}
+              </select>
+              <Users size={13} className="absolute left-3 top-1/2 -translate-y-1/2 pointer-events-none" style={{ color: 'rgba(250,250,249,0.45)' }} />
+              <ChevronDown size={14} className="absolute right-2.5 top-1/2 -translate-y-1/2 pointer-events-none" style={{ color: 'rgba(250,250,249,0.45)' }} />
+            </div>
+          </Field>
+
+          <Field label="SGK Türü">
+            <div className="relative">
+              <select value={turFilter} onChange={(e) => setTurFilter(e.target.value)} className={FLD_CLS} style={FLD_STY}>
+                <option value="">Tüm türler</option>
+                <option value="SGK_HIZMET_LISTESI">Hizmet Listesi</option>
+                <option value="SGK_TAHAKKUK">Tahakkuk Fişi</option>
+              </select>
+              <ListChecks size={13} className="absolute left-3 top-1/2 -translate-y-1/2 pointer-events-none" style={{ color: 'rgba(250,250,249,0.45)' }} />
+              <ChevronDown size={14} className="absolute right-2.5 top-1/2 -translate-y-1/2 pointer-events-none" style={{ color: 'rgba(250,250,249,0.45)' }} />
+            </div>
+          </Field>
+
+          <Field label="Dönem">
+            <div className="flex gap-2">
+              <div className="relative flex-1 min-w-0">
+                <select value={queryMonth} onChange={(e) => setQueryMonth(e.target.value)} className={FLD_CLS} style={FLD_STY}>
+                  <option value="" style={{ background: '#1a1410' }}>Tüm dönemler</option>
+                  {AY_ADLARI.map((ad, i) => <option key={i + 1} value={String(i + 1).padStart(2, '0')} style={{ background: '#1a1410' }}>{ad}</option>)}
+                </select>
+                <CalendarClock size={13} className="absolute left-3 top-1/2 -translate-y-1/2 pointer-events-none" style={{ color: 'rgba(250,250,249,0.45)' }} />
+                <ChevronDown size={14} className="absolute right-2.5 top-1/2 -translate-y-1/2 pointer-events-none" style={{ color: 'rgba(250,250,249,0.45)' }} />
+              </div>
+              {queryMonth && (
+                <select value={queryYear} onChange={(e) => setQueryYear(e.target.value)} className="h-[40px] w-[88px] px-2.5 rounded-[10px] text-[13px] outline-none border appearance-none flex-shrink-0" style={FLD_STY}>
+                  {years.map((y) => <option key={y} value={String(y)} style={{ background: '#1a1410' }}>{y}</option>)}
+                </select>
+              )}
+            </div>
+          </Field>
+
+          <Field label="Ara">
+            <div className="relative">
+              <Search size={14} className="absolute left-3 top-1/2 -translate-y-1/2 pointer-events-none" style={{ color: 'rgba(250,250,249,0.4)' }} />
+              <input value={search} onChange={(e) => setSearch(e.target.value)} placeholder="Dönem, mükellef, kanun no…"
+                className="w-full h-[40px] pl-9 pr-3 rounded-[10px] text-[13px] outline-none border" style={FLD_STY} />
+            </div>
+          </Field>
         </div>
-        {/* SGK Türü filtresi: Hizmet Listesi / Tahakkuk Fişi (Hattat referansı) */}
-        <div className="relative">
-          <select value={turFilter} onChange={(e) => setTurFilter(e.target.value)} className="h-[38px] pl-9 pr-8 rounded-[10px] text-[13px] outline-none border appearance-none min-w-[160px]" style={{ background: 'rgba(255,255,255,0.03)', borderColor: 'rgba(255,255,255,0.08)', color: '#fafaf9' }}>
-            <option value="">Tüm türler</option>
-            <option value="SGK_HIZMET_LISTESI">Hizmet Listesi</option>
-            <option value="SGK_TAHAKKUK">Tahakkuk Fişi</option>
-          </select>
-          <ListChecks size={13} className="absolute left-3 top-1/2 -translate-y-1/2 pointer-events-none" style={{ color: 'rgba(250,250,249,0.45)' }} />
-          <ChevronDown size={14} className="absolute right-2.5 top-1/2 -translate-y-1/2 pointer-events-none" style={{ color: 'rgba(250,250,249,0.45)' }} />
+
+        {/* Aksiyonlar */}
+        <div className="flex flex-wrap items-center gap-2 mt-4 pt-3.5" style={{ borderTop: '1px solid rgba(255,255,255,0.06)' }}>
+          <button onClick={() => sorgulaMut.mutate()} disabled={sorgulaMut.isPending} title={queryMonth ? `${AY_ADLARI[Number(queryMonth) - 1]} ${queryYear} dönemini çek` : 'Son dönemleri çek (eksik/yeni bildirgeler)'}
+            className="h-[40px] px-5 rounded-[10px] text-[13px] font-bold flex items-center gap-2 disabled:opacity-50" style={{ background: 'linear-gradient(135deg, #d4b876, #b8a06f)', color: '#1a1410' }}>
+            {sorgulaMut.isPending ? <Loader2 size={15} className="animate-spin" /> : <Download size={15} />}
+            {queryMonth ? `${AY_ADLARI[Number(queryMonth) - 1]} ${queryYear} sorgula` : (taxpayerId ? 'Bu mükellefi sorgula' : 'Şimdi sorgula')}
+          </button>
+          <button onClick={() => qc.invalidateQueries({ queryKey: ['sgk-docs'] })}
+            className="h-[40px] px-3.5 rounded-[10px] text-[13px] font-semibold flex items-center gap-1.5 border" style={{ background: 'rgba(255,255,255,0.03)', borderColor: 'rgba(255,255,255,0.08)', color: '#fafaf9' }}>
+            <RefreshCw size={14} className={docsQuery.isFetching ? 'animate-spin' : ''} /> Yenile
+          </button>
+          <div className="flex-1 min-w-[8px]" />
+          <button onClick={markAll} disabled={markAllMut.isPending} title="Ekrandaki tüm belgeleri görüntülendi (yeşil) işaretle"
+            className="h-[40px] px-3.5 rounded-[10px] text-[13px] font-semibold flex items-center gap-1.5 border disabled:opacity-50" style={{ background: 'rgba(95,207,142,0.12)', borderColor: 'rgba(95,207,142,0.35)', color: '#5fcf8e' }}>
+            {markAllMut.isPending ? <Loader2 size={14} className="animate-spin" /> : <CheckCheck size={14} />} Tümünü Görüntüle
+          </button>
         </div>
-        {/* Dönem seçici: Ay boş = tüm dönemler (gece gibi); ay seçilince Sorgula o dönemi çeker */}
-        <div className="flex items-center gap-1.5 h-[38px] px-2 rounded-[10px] border" style={{ background: 'rgba(255,255,255,0.03)', borderColor: 'rgba(255,255,255,0.08)' }}>
-          <CalendarClock size={14} style={{ color: 'rgba(250,250,249,0.4)', flexShrink: 0 }} />
-          <select value={queryMonth} onChange={(e) => setQueryMonth(e.target.value)} className="h-[30px] pr-1 rounded-[7px] text-[12.5px] outline-none bg-transparent appearance-none cursor-pointer" style={{ color: '#fafaf9' }}>
-            <option value="" style={{ background: '#1a1410' }}>Tüm dönemler</option>
-            {AY_ADLARI.map((ad, i) => <option key={i + 1} value={String(i + 1).padStart(2, '0')} style={{ background: '#1a1410' }}>{ad}</option>)}
-          </select>
-          {queryMonth && (
-            <select value={queryYear} onChange={(e) => setQueryYear(e.target.value)} className="h-[30px] pr-1 rounded-[7px] text-[12.5px] outline-none bg-transparent appearance-none cursor-pointer" style={{ color: '#fafaf9' }}>
-              {years.map((y) => <option key={y} value={String(y)} style={{ background: '#1a1410' }}>{y}</option>)}
-            </select>
-          )}
-        </div>
-        <button onClick={markAll} disabled={markAllMut.isPending} title="Ekrandaki tüm belgeleri görüntülendi (yeşil) işaretle"
-          className="h-[38px] px-3 rounded-[10px] text-[13px] font-semibold flex items-center gap-1.5 border disabled:opacity-50" style={{ background: 'rgba(95,207,142,0.12)', borderColor: 'rgba(95,207,142,0.35)', color: '#5fcf8e' }}>
-          {markAllMut.isPending ? <Loader2 size={14} className="animate-spin" /> : <CheckCheck size={14} />} Tümünü Görüntüle
-        </button>
-        <button onClick={() => qc.invalidateQueries({ queryKey: ['sgk-docs'] })} className="h-[38px] px-3 rounded-[10px] text-[13px] font-semibold flex items-center gap-1.5 border" style={{ background: 'rgba(255,255,255,0.03)', borderColor: 'rgba(255,255,255,0.08)', color: '#fafaf9' }}>
-          <RefreshCw size={14} className={docsQuery.isFetching ? 'animate-spin' : ''} /> Yenile
-        </button>
-        <button onClick={() => sorgulaMut.mutate()} disabled={sorgulaMut.isPending} title={queryMonth ? `${AY_ADLARI[Number(queryMonth) - 1]} ${queryYear} dönemini çek` : 'Son dönemleri çek (eksik/yeni bildirgeler)'}
-          className="h-[38px] px-4 rounded-[10px] text-[13px] font-bold flex items-center gap-2 disabled:opacity-50" style={{ background: 'linear-gradient(135deg, #d4b876, #b8a06f)', color: '#1a1410' }}>
-          {sorgulaMut.isPending ? <Loader2 size={14} className="animate-spin" /> : <Download size={14} />}
-          {queryMonth
-            ? `${AY_ADLARI[Number(queryMonth) - 1]} ${queryYear} sorgula`
-            : (taxpayerId ? 'Bu mükellefi sorgula' : 'Şimdi sorgula')}
-        </button>
       </div>
 
       <div className="rounded-2xl border overflow-hidden" style={{ background: 'rgba(0,0,0,0.18)', borderColor: 'rgba(255,255,255,0.06)' }}>
