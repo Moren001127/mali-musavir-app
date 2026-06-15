@@ -2017,9 +2017,17 @@ export class WhatsAppBotController implements OnModuleInit {
         }).catch(() => 0);
         const isFirstContact = totalLogs <= 1; // bu gelen mesaj zaten log'a yazıldı (1)
 
-        if (isFirstContact) {
+        // "Siz kimsiniz / kim ile görüşüyorum / nedir bu numara" → ÖNCE soruyu
+        // CEVAPLA (kimliğini söyle), sonra isim iste. Eskiden bu soru else'e düşüp
+        // "kayıtlı değilsiniz, adınızı paylaşın" diye KAÇAMAK cevap alıyordu (canlı
+        // eval: "Siz kimsin?" → evasive, skor 4).
+        const asksIdentity = /\bkimsin(iz)?\b|kim(ler)?\s*(le|siniz|sin)|kiminle|kim ile|nedir bu( numara| hat)?|hangi (firma|ofis|kurum|numara)|sizi tan[ıi]m[ıi]yorum|kim ar[ıi]yor/i.test(msg.text || '');
+
+        if (asksIdentity) {
+          rawReply = `Ben ${OFFICE_NAME} ofisinin WhatsApp asistanıyım; mali müşavirlik işlemlerinizde yardımcı oluyorum. Sizi kayıtlarımızda bulabilmem için adınızı veya firma unvanınızı paylaşır mısınız?`;
+        } else if (isFirstContact) {
           // İlk temas — kendini tanıt + kim olduğunu sor
-          rawReply = 'Merhaba, Moren Mali Müşavirlik iletişim hattına hoş geldiniz. Size yardımcı olabilmemiz için adınızı veya firma unvanınızı paylaşır mısınız?';
+          rawReply = `Merhaba, ${OFFICE_NAME} iletişim hattına hoş geldiniz. Size yardımcı olabilmemiz için adınızı veya firma unvanınızı paylaşır mısınız?`;
         } else if (intentResult.intent === 'SELAMLAMA') {
           // Selamlama — sıcak ve doğal cevap
           rawReply = 'Merhaba, iyiyim teşekkür ederim. Size nasıl yardımcı olabiliriz? Mali müşavirlik işlemleriniz için ad veya firma unvanınızı paylaşırsanız sizi kayıtlarımızda bulabiliriz.';
