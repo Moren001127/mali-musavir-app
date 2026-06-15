@@ -1609,7 +1609,7 @@ export class PortalAutomationService {
     if (DEDUP_BELGE_TURU.includes(String(input.belgeTuru)) && input.referenceNo) {
       const existing = await (this.prisma as any).portalDocument.findFirst({
         where: { tenantId, belgeTuru: String(input.belgeTuru), referenceNo: String(input.referenceNo) },
-        select: { id: true, taxpayerId: true, storageKey: true },
+        select: { id: true, taxpayerId: true, storageKey: true, raw: true },
       });
       if (existing) {
         const patch: any = {};
@@ -1619,6 +1619,12 @@ export class PortalAutomationService {
           patch.sizeBytes = sizeBytes;
           patch.mimeType = mimeType;
           if (documentId) patch.documentId = documentId;
+        }
+        // SGK meta backfill: mevcut kaydın raw'ında kanun/mahiyet/tutar yoksa, yeni raw'ı yaz.
+        const exRaw: any = existing.raw || {};
+        const newRaw: any = input.raw || {};
+        if ((newRaw.kanunNo || newRaw.belgeMahiyeti || newRaw.tutar || newRaw.calisan) && !(exRaw.kanunNo || exRaw.belgeMahiyeti || exRaw.tutar)) {
+          patch.raw = input.raw;
         }
         if (Object.keys(patch).length) {
           return (this.prisma as any).portalDocument.update({ where: { id: existing.id }, data: patch });

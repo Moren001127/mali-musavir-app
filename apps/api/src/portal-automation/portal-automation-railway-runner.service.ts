@@ -1304,8 +1304,12 @@ export class PortalAutomationRailwayRunnerService implements OnModuleInit {
     if (tenantId) {
       const where: any = { tenantId, belgeTuru: { in: ['SGK_TAHAKKUK', 'SGK_HIZMET_LISTESI'] }, storageKey: { not: null } };
       if (taxpayerId) where.taxpayerId = taxpayerId;
-      const have = await (this.prisma as any).portalDocument.findMany({ where, select: { referenceNo: true, belgeTuru: true } }).catch(() => []);
-      alreadyHave = new Set((have || []).map((h: any) => `${h.belgeTuru}|${h.referenceNo}`));
+      const have = await (this.prisma as any).portalDocument.findMany({ where, select: { referenceNo: true, belgeTuru: true, raw: true } }).catch(() => []);
+      // Sadece meta'sı TAM (kanun/mahiyet/tutar dolu) kayıtları atla; meta'sı eksik eski kayıtlar
+      // yeniden işlensin ki PDF'ten çıkarılan meta geri doldurulsun (backfill).
+      alreadyHave = new Set((have || [])
+        .filter((h: any) => { const r: any = h.raw || {}; return r.kanunNo || r.belgeMahiyeti || r.tutar; })
+        .map((h: any) => `${h.belgeTuru}|${h.referenceNo}`));
     }
 
     const TIPS = [
@@ -1405,7 +1409,14 @@ export class PortalAutomationRailwayRunnerService implements OnModuleInit {
         notes.push(`Bu dönem aralığında onaylı bildirge bulunamadı (range ${startVal}→${endVal}).${out?.err ? ' Hata: ' + this.compact(out.err) : ''}`);
       }
       for (const row of rows) {
-        const periodText = row.period || periodTextByValue[String(row.periodIndex)] || '';
+        const periodText = row.period || '';
+        // Bu bildirgenin meta'sını PDF'lerden çıkar (mahiyet/kanun/çalışan/tutar) — bir kez,
+        // hem tahakkuk hem hizmet belgesine aynısı yazılır.
+        const tahB64 = row.pdfs?.['tahakkukonayliFisTahakkukPdf'];
+        const hizB64 = row.pdfs?.['tahakkukonayliFisHizmetPdf'];
+        const meta = (tahB64 || hizB64)
+          ? await this.extractSgkMetaFromPdfs(tahB64, hizB64)
+          : { belgeMahiyeti: '', kanunNo: '', calisan: '', tutar: '' };
         for (const t of TIPS) {
           const key = `${t.belgeTuru}|${row.refNo}`;
           if (alreadyHave.has(key)) continue;
@@ -1420,7 +1431,7 @@ export class PortalAutomationRailwayRunnerService implements OnModuleInit {
             mimeType: 'application/pdf',
             originalName: `${t.belgeTuru}_${row.refNo}.pdf`,
             base64: b64,
-            raw: { donem: periodText, bildirgeRefNo: row.refNo, cells: row.cells, rowText: String(row.rowText || '').slice(0, 400) },
+            raw: { donem: periodText, bildirgeRefNo: row.refNo, belgeMahiyeti: meta.belgeMahiyeti, kanunNo: meta.kanunNo, calisan: meta.calisan, tutar: meta.tutar },
           });
           alreadyHave.add(key);
         }
@@ -3870,6 +3881,27 @@ export class PortalAutomationRailwayRunnerService implements OnModuleInit {
       return '';
     });
     return String(ocrText || '').replace(/\s+/g, ' ').trim() || text;
+  }
+
+  // SGK belge meta'sı (mahiyet/kanun no/çalışan/tutar) liste tablosunda YOK, PDF içinde:
+  // Mahiyet -> hizmet listesi "Mahiyet : ASIL"; Kanun/Çalışan/Tutar -> tahakkuk fişi
+  // ("Belge türü:01/05510", "KİŞİ SAYISI : N", "ÖDENECEK NET TUTAR ...").
+  private async extractSgkMetaFromPdfs(tahB64?: string | null, hizB64?: string | null): Promise<{ belgeMahiyeti: string; kanunNo: string; calisan: string; tutar: string }> {
+    const meta = { belgeMahiyeti: '', kanunNo: '', calisan: '', tutar: '' };
+    try {
+      const tahText = tahB64 ? await this.pdfTextFromBase64(tahB64).catch(() => '') : '';
+      const hizText = hizB64 ? await this.pdfTextFromBase64(hizB64).catch(() => '') : '';
+      const all = `${tahText} ${hizText}`;
+      const mm = all.match(/Mahiyet\s*:?\s*(AS[İI]L|EK|[İI]PTAL)/i) || all.match(/\(\s*5510\s*\)\s*(AS[İI]L|EK|[İI]PTAL)/i);
+      if (mm) meta.belgeMahiyeti = mm[1].toLocaleUpperCase('tr-TR');
+      const km = all.match(/Belge\s*t[üu]r[üu]\s*:?\s*\d+\s*\/\s*(\d{4,5})/i) || all.match(/Kanun\s*:?\s*(\d{4,5})/i) || all.match(/(\d{5})\s*SAYILI\s*KANUN/i);
+      if (km) meta.kanunNo = km[1];
+      const cm = tahText.match(/K[İI]Ş[İI]\s*SAYISI\s*:?\s*(\d{1,4})/i);
+      if (cm) meta.calisan = cm[1];
+      const tm = tahText.match(/[ÖO]DENECEK\s*NET\s*TUTAR\s*:?\s*([\d.]*\d,\d{2})/i);
+      if (tm) meta.tutar = tm[1];
+    } catch { /* yut */ }
+    return meta;
   }
 
   private ebeyannamePdfOcrFallbackEnabled() {

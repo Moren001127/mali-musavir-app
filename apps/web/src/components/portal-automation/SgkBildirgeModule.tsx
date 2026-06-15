@@ -20,21 +20,23 @@ function taxpayerName(tp?: PortalDocument['taxpayer']): string {
   return ad || tp.taxNumber || '—';
 }
 
-// SGK satır meta verisini (mahiyet / kanun no / çalışan / tutar) raw'dan en iyi çabayla çıkar.
+// SGK satır meta verisi: backend PDF'ten çıkarıp raw'a yazdı (belgeMahiyeti/kanunNo/calisan/tutar).
+// Yoksa (eski kayıt) raw metninden en iyi çabayla çıkar.
 function sgkMeta(d: any): { donem: string; mahiyet: string; kanunNo: string; calisan: string; tutar: string } {
   const raw = d?.raw || {};
   const cells: string[] = Array.isArray(raw.cells) ? raw.cells : [];
   const text: string = String(raw.rowText || cells.join(' ') || '');
   const donem = String(raw.donem || d?.period || '').trim();
-  const mahiyet = (text.match(/\b(ASIL|EK|İPTAL|IPTAL)\b/i) || [])[0] || '';
-  const kanunNo = (text.match(/\b0?5510\b/) || text.match(/\b\d{5}\b/) || [])[0] || '';
-  const tutarlar = text.match(/\d{1,3}(?:\.\d{3})*,\d{2}/g) || [];
-  const tutar = tutarlar.length ? tutarlar[tutarlar.length - 1] : '';
-  // çalışan: tutar/kanun/dönem dışındaki kısa tam sayı
-  let calisan = '';
-  const nums = (text.match(/\b\d{1,4}\b/g) || []).filter((n) => n !== kanunNo && !/^20\d{2}$/.test(n) && n.length <= 4);
-  if (nums.length) calisan = nums.find((n) => Number(n) > 0 && Number(n) < 1000) || '';
-  return { donem, mahiyet, kanunNo: kanunNo.replace(/^0/, '') || kanunNo, calisan, tutar };
+  const mahiyet = String(raw.belgeMahiyeti || '').trim() || (text.match(/\b(ASIL|EK|İPTAL|IPTAL)\b/i) || [])[0] || '';
+  const kanunRaw = String(raw.kanunNo || '').trim() || (text.match(/\b0?5510\b/) || text.match(/\b\d{5}\b/) || [])[0] || '';
+  let tutar = String(raw.tutar || '').trim();
+  if (!tutar) { const tt = text.match(/\d{1,3}(?:\.\d{3})*,\d{2}/g) || []; tutar = tt.length ? tt[tt.length - 1] : ''; }
+  let calisan = String(raw.calisan || '').trim();
+  if (!calisan) {
+    const nums = (text.match(/\b\d{1,4}\b/g) || []).filter((n) => n !== kanunRaw && !/^20\d{2}$/.test(n) && n.length <= 4);
+    if (nums.length) calisan = nums.find((n) => Number(n) > 0 && Number(n) < 1000) || '';
+  }
+  return { donem, mahiyet, kanunNo: kanunRaw.replace(/^0/, '') || kanunRaw, calisan, tutar };
 }
 
 function turLabel(belgeTuru: string): { label: string; icon: React.ReactNode; color: string } {
@@ -119,7 +121,12 @@ export default function SgkBildirgeModule() {
     const ts = (d: any) => {
       const dn = sgkMeta(d).donem; const m = dn.match(/(\d{4})[/.-](\d{1,2})/); return m ? Number(m[1]) * 100 + Number(m[2]) : 0;
     };
-    return arr.sort((a, b) => ts(b) - ts(a) || (a.belgeTuru < b.belgeTuru ? -1 : 1));
+    // Dönem (yeni->eski) -> firma adı (A-Z) -> belge türü (Hizmet Listesi, sonra Tahakkuk).
+    return arr.sort((a, b) =>
+      ts(b) - ts(a)
+      || taxpayerName(a.taxpayer).localeCompare(taxpayerName(b.taxpayer), 'tr')
+      || (a.belgeTuru < b.belgeTuru ? -1 : a.belgeTuru > b.belgeTuru ? 1 : 0),
+    );
   }, [docs, taxpayerId, search]);
 
   useEffect(() => { setPage(1); }, [search, taxpayerId]);
