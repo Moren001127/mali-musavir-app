@@ -179,7 +179,8 @@ const TOOL_GROUPS: Array<{ pattern: RegExp; tools: string[] }> = [
   { pattern: /fatura|muhasebeleştir|muhasebelestir|mihsap|tedarikçi|tedarikci|alıcı|alici|firma hafıza|firma hafiza/i, tools: ['list_invoices', 'get_firma_hafizasi', 'get_mihsap_agent_jobs', 'list_pending_decisions'] },
   { pattern: /sgk|bordro|personel|prim|işçi|isci|işveren|isveren/i, tools: ['get_payroll_summary', 'list_sgk_declarations'] },
   { pattern: /evrak|belge|sözleşme|sozlesme|doküman|dokuman/i, tools: ['list_documents', 'get_taxpayer_work_status', 'list_taxpayers_monthly_status'] },
-  { pattern: /tahsilat|borç|borc|cari|ödeme|odeme|whatsapp|hatırlatma|hatirlatma/i, tools: ['get_operation_briefing', 'get_collection_risk_summary', 'get_taxpayer_work_status', 'preview_agent_command', 'create_confirmed_agent_command'] },
+  { pattern: /tahsilat|borç|borc|cari|ödeme|odeme|whatsapp|hatırlatma|hatirlatma|tahsil ettik|ne ödedi|odedi mi/i, tools: ['get_cari_hareketler', 'get_operation_briefing', 'get_collection_risk_summary', 'get_taxpayer_work_status', 'preview_agent_command', 'create_confirmed_agent_command'] },
+  { pattern: /banka|iban|ekstre|hesap no|hesap durum|banka hesab/i, tools: ['get_bank_status'] },
   { pattern: /bug[üu]n|acil|öncelik|oncelik|yapmam gereken|neye bak|işler|isler|brifing|briefing|operasyon/i, tools: ['get_operation_briefing', 'get_beyanname_readiness_summary', 'get_collection_risk_summary', 'get_agent_status', 'get_system_health'] },
   { pattern: /sa[gğ]l[ıi]k|sistem durum|sorun var|aksakl[ıi]k|yolunda m|her[ ]?[şs]ey yolunda|alarm|uyar[ıi]|ayakta m|down|cal[ıi][şs][ıi]yor mu|hata var/i, tools: ['get_system_health', 'get_agent_status', 'get_operation_briefing'] },
   { pattern: /ajan|agent|luca|tebligat|otomasyon|komut|çalıştır|calistir|işlem yap|islem yap/i, tools: ['get_agent_status', 'get_luca_agent_jobs', 'get_mihsap_agent_jobs', 'preview_agent_command', 'create_confirmed_agent_command'] },
@@ -1490,6 +1491,10 @@ export class MorenAiService {
         return { period: ctx.period };
       case 'get_collection_risk_summary':
         return { limit: 20 };
+      case 'get_bank_status':
+        return taxpayerInput ? { ...taxpayerInput } : null;
+      case 'get_cari_hareketler':
+        return taxpayerInput ? { ...taxpayerInput, limit: 20 } : null;
       case 'get_beyanname_readiness_summary':
       case 'list_taxpayers_monthly_status':
       case 'get_beyan_ozet':

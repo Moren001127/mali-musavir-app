@@ -97,6 +97,8 @@ export class ToolExecutorService {
         case 'preview_agent_command': return this.previewAgentCommand(input, ctx);
         case 'create_confirmed_agent_command': return this.createAgentCommand(input, ctx);
         case 'get_collection_risk_summary': return this.getCollectionRiskSummary(input, ctx);
+        case 'get_bank_status': return this.getBankStatus(input, ctx);
+        case 'get_cari_hareketler': return this.getCariHareketler(input, ctx);
         case 'get_beyanname_readiness_summary': return this.getBeyannameReadinessSummary(input, ctx);
         case 'get_portal_capability_map': return this.getPortalCapabilityMap();
         case 'research_official_sources': return this.researchOfficialSources(input, ctx);
@@ -1374,6 +1376,68 @@ export class ToolExecutorService {
   // ------------------------------------------------------------
   // BORDRO / SGK
   // ------------------------------------------------------------
+  private async getBankStatus(input: any, ctx: { tenantId: string }) {
+    const taxpayer = await this.resolveTaxpayerFromInput(input, ctx);
+    if (!taxpayer) return { error: 'Mükellef bulunamadı', ipucu: 'taxpayerId veya taxpayerName gönder.' };
+    const hesaplar = await (this.prisma as any).bankaHesap.findMany({
+      where: { tenantId: ctx.tenantId, taxpayerId: taxpayer.id },
+      orderBy: [{ aktif: 'desc' }, { sira: 'asc' }],
+      select: { bankaAdi: true, iban: true, hesapNo: true, sube: true, paraBirimi: true, aciklama: true, aktif: true },
+    });
+    const donem = String(input?.donem || '').match(/^\d{4}-\d{2}$/) ? input.donem : null;
+    const ekstreWhere: any = { tenantId: ctx.tenantId, taxpayerId: taxpayer.id };
+    if (donem) ekstreWhere.donem = donem;
+    const ekstreler = await (this.prisma as any).bankaEkstreKaydi.findMany({
+      where: ekstreWhere,
+      orderBy: [{ donem: 'desc' }],
+      take: donem ? 20 : 12,
+      select: { donem: true, ekstreGeldi: true, geldiTarihi: true, ekstreIslendi: true, islenmeTarihi: true, islenmeNotu: true, notlar: true },
+    });
+    const adi = (taxpayer.companyName || `${taxpayer.firstName || ''} ${taxpayer.lastName || ''}`).trim();
+    const iso = (d: any) => (d ? new Date(d).toISOString().slice(0, 10) : null);
+    return {
+      mukellef: adi,
+      hesapSayisi: hesaplar.length,
+      bankaHesaplari: hesaplar.map((h: any) => ({ banka: h.bankaAdi, iban: h.iban || '-', hesapNo: h.hesapNo || '-', sube: h.sube || '-', paraBirimi: h.paraBirimi, not: h.aciklama || '', aktif: h.aktif })),
+      ekstreDurumu: ekstreler.map((e: any) => ({ donem: e.donem, geldi: e.ekstreGeldi, geldiTarihi: iso(e.geldiTarihi), islendi: e.ekstreIslendi, islenmeTarihi: iso(e.islenmeTarihi), not: e.islenmeNotu || e.notlar || '' })),
+      not: hesaplar.length === 0 ? 'Bu mükellef için kayıtlı banka hesabı yok.' : undefined,
+    };
+  }
+
+  private async getCariHareketler(input: any, ctx: { tenantId: string }) {
+    const taxpayer = await this.resolveTaxpayerFromInput(input, ctx);
+    if (!taxpayer) return { error: 'Mükellef bulunamadı', ipucu: 'taxpayerId veya taxpayerName gönder.' };
+    const tip = String(input?.tip || '').trim().toUpperCase();
+    const where: any = { tenantId: ctx.tenantId, taxpayerId: taxpayer.id };
+    if (['TAHSILAT', 'TAHAKKUK', 'IADE', 'DUZELTME'].includes(tip)) where.tip = tip;
+    const limit = Math.min(Number(input?.limit) || 20, 100);
+    const hareketler = await (this.prisma as any).cariHareket.findMany({
+      where, orderBy: [{ tarih: 'desc' }], take: limit,
+      select: { tarih: true, tip: true, tutar: true, aciklama: true, odemeYontemi: true, belgeNo: true, donem: true },
+    });
+    // Net bakiye: TAHAKKUK borç(+), TAHSILAT/IADE alacak(-). Tüm hareketlerden hesaplanır.
+    const tumu = await (this.prisma as any).cariHareket.findMany({
+      where: { tenantId: ctx.tenantId, taxpayerId: taxpayer.id }, select: { tip: true, tutar: true },
+    });
+    let bakiye = 0;
+    for (const h of tumu) {
+      const t = this.toNum(h.tutar);
+      if (h.tip === 'TAHAKKUK') bakiye += t;
+      else if (h.tip === 'TAHSILAT' || h.tip === 'IADE') bakiye -= t;
+    }
+    const iso = (d: any) => new Date(d).toISOString().slice(0, 10);
+    const sonTahsilat = hareketler.find((h: any) => h.tip === 'TAHSILAT');
+    const adi = (taxpayer.companyName || `${taxpayer.firstName || ''} ${taxpayer.lastName || ''}`).trim();
+    return {
+      mukellef: adi,
+      netBakiye: Math.round(bakiye * 100) / 100,
+      bakiyeAciklama: tumu.length === 0 ? 'Cari hareket kaydı yok' : bakiye > 0 ? 'borçlu görünüyor' : bakiye < 0 ? 'alacaklı/avans' : 'kapalı (0)',
+      hareketSayisi: tumu.length,
+      sonTahsilat: sonTahsilat ? { tarih: iso(sonTahsilat.tarih), tutar: this.toNum(sonTahsilat.tutar), yontem: sonTahsilat.odemeYontemi || '-' } : null,
+      hareketler: hareketler.map((h: any) => ({ tarih: iso(h.tarih), tip: h.tip, tutar: this.toNum(h.tutar), yontem: h.odemeYontemi || '-', belgeNo: h.belgeNo || '-', donem: h.donem || '-', aciklama: h.aciklama || '' })),
+    };
+  }
+
   private async getPayrollSummary(input: any, ctx: { tenantId: string }) {
     const t = await this.prisma.taxpayer.findFirst({
       where: { id: input.taxpayerId, tenantId: ctx.tenantId },

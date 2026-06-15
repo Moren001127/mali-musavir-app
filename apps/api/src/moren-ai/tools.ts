@@ -641,6 +641,33 @@ export const MOREN_AI_TOOLS: ToolDefinition[] = [
     },
   },
   {
+    name: 'get_bank_status',
+    description:
+      'Bir mükellefin banka hesaplarını (banka adı, IBAN, şube, para birimi) ve dönem ekstre durumunu (ekstre geldi mi / işlendi mi + tarih + not) getirir. "X firmanın ekstresi geldi mi", "IBAN ne", "ekstre işlendi mi" sorularında kullan.',
+    input_schema: {
+      type: 'object',
+      properties: {
+        taxpayerId: { type: 'string' },
+        taxpayerName: { type: 'string', description: 'Mükellef adı (taxpayerId yoksa).' },
+        donem: { type: 'string', description: 'YYYY-MM ekstre dönemi (opsiyonel; yoksa son dönemler).' },
+      },
+    },
+  },
+  {
+    name: 'get_cari_hareketler',
+    description:
+      'Bir mükellefin cari kasa hareketlerini (TAHAKKUK/TAHSILAT/IADE/DUZELTME) listeler: tarih, tip, tutar, ödeme yöntemi (nakit/havale/POS/çek), belge no, dönem. Net bakiye + son tahsilat da döner. "Son tahsilat ne zaman nasıl yapıldı", "bu mükellef ne ödedi", "cari hareketleri" sorularında kullan.',
+    input_schema: {
+      type: 'object',
+      properties: {
+        taxpayerId: { type: 'string' },
+        taxpayerName: { type: 'string', description: 'Mükellef adı (taxpayerId yoksa).' },
+        tip: { type: 'string', description: 'Filtre: TAHSILAT | TAHAKKUK | IADE | DUZELTME (opsiyonel).' },
+        limit: { type: 'number', description: 'Kayıt sayısı (varsayılan 20).' },
+      },
+    },
+  },
+  {
     name: 'get_beyanname_readiness_summary',
     description:
       'Tüm mükellefler için beyanname hazırlık skorunu üretir: evrak, işleme, KDV kontrol, banka ekstresi, mizan, beyan kaydı ve cari risk eksikleri.',
