@@ -83,7 +83,9 @@ export default function SgkBildirgeModule() {
   const [page, setPage] = useState(1);
   const now = useMemo(() => new Date(), []);
   const [queryYear, setQueryYear] = useState(String(now.getFullYear()));
-  const [queryMonth, setQueryMonth] = useState(String(now.getMonth() + 1).padStart(2, '0'));
+  const [queryMonth, setQueryMonth] = useState(''); // '' = tüm dönemler (gece gibi son dönemler)
+  const years = useMemo(() => { const y = now.getFullYear(); return [y, y - 1, y - 2]; }, [now]);
+  const AY_ADLARI = ['Ocak', 'Şubat', 'Mart', 'Nisan', 'Mayıs', 'Haziran', 'Temmuz', 'Ağustos', 'Eylül', 'Ekim', 'Kasım', 'Aralık'];
 
   const docsQuery = useQuery({
     queryKey: ['sgk-docs'],
@@ -124,10 +126,13 @@ export default function SgkBildirgeModule() {
     const ts = (d: any) => {
       const dn = sgkMeta(d).donem; const m = dn.match(/(\d{4})[/.-](\d{1,2})/); return m ? Number(m[1]) * 100 + Number(m[2]) : 0;
     };
-    // Dönem (yeni->eski) -> firma adı (A-Z) -> belge türü (Hizmet Listesi, sonra Tahakkuk).
+    // Dönem (yeni->eski) -> firma (A-Z) -> BİLDİRGE (refNo grubu) -> belge türü (Hizmet, sonra Tahakkuk).
+    // refNo grubu sayesinde aynı bildirgenin Hizmet Listesi + Tahakkuk Fişi YAN YANA gelir
+    // (önce hizmet, hemen ardından kendi tahakkuku; sonra diğer bildirge).
     return arr.sort((a, b) =>
       ts(b) - ts(a)
       || taxpayerName(a.taxpayer).localeCompare(taxpayerName(b.taxpayer), 'tr')
+      || String(a.referenceNo || '').localeCompare(String(b.referenceNo || ''), 'tr')
       || (a.belgeTuru < b.belgeTuru ? -1 : a.belgeTuru > b.belgeTuru ? 1 : 0),
     );
   }, [docs, taxpayerId, search]);
@@ -137,30 +142,22 @@ export default function SgkBildirgeModule() {
   const pageClamped = Math.min(Math.max(1, page), totalPages);
   const pageItems = useMemo(() => filtered.slice((pageClamped - 1) * PAGE_SIZE, pageClamped * PAGE_SIZE), [filtered, pageClamped]);
 
+  // Tek sorgu: dönem (ay) seçiliyse o dönemi, değilse son dönemleri (gece gibi) çeker.
   const sorgulaMut = useMutation({
-    mutationFn: () => portalAutomationApi.manualRun({ scope: 'sgk', jobTypes: ['SGK_HIZMET_LISTESI', 'SGK_TAHAKKUK'], taxpayerIds: taxpayerId ? [taxpayerId] : [], force: true }),
-    onSuccess: (d) => {
-      const n = d.created?.length || 0;
-      toast.success(n > 0 ? `${n} iş kuyruğa alındı.` : (d.message || 'Sorgu kuyruğa alındı.'));
-      setTimeout(() => { qc.invalidateQueries({ queryKey: ['sgk-docs'] }); qc.invalidateQueries({ queryKey: ['sgk-summary'] }); }, 1500);
-    },
-    onError: (e: any) => toast.error(e?.response?.data?.message || 'Sorgu başlatılamadı'),
-  });
-
-  const donemSorgulaMut = useMutation({
     mutationFn: () => portalAutomationApi.manualRun({
       scope: 'sgk',
       jobTypes: ['SGK_HIZMET_LISTESI', 'SGK_TAHAKKUK'],
       taxpayerIds: taxpayerId ? [taxpayerId] : [],
       force: true,
-      targetPeriod: `${queryYear}/${queryMonth}`,
+      ...(queryMonth ? { targetPeriod: `${queryYear}/${queryMonth}` } : {}),
     }),
     onSuccess: (d) => {
       const n = d.created?.length || 0;
-      toast.success(n > 0 ? `${n} iş kuyruğa alındı (${queryYear}/${queryMonth}).` : (d.message || 'Sorgu kuyruğa alındı.'));
+      const et = queryMonth ? ` (${AY_ADLARI[Number(queryMonth) - 1]} ${queryYear})` : '';
+      toast.success(n > 0 ? `${n} iş kuyruğa alındı${et}.` : (d.message || 'Sorgu kuyruğa alındı.'));
       setTimeout(() => { qc.invalidateQueries({ queryKey: ['sgk-docs'] }); qc.invalidateQueries({ queryKey: ['sgk-summary'] }); }, 1500);
     },
-    onError: (e: any) => toast.error(e?.response?.data?.message || 'Dönem sorgusu başlatılamadı'),
+    onError: (e: any) => toast.error(e?.response?.data?.message || 'Sorgu başlatılamadı'),
   });
 
   const markAllMut = useMutation({
@@ -214,6 +211,19 @@ export default function SgkBildirgeModule() {
           <Users size={13} className="absolute left-3 top-1/2 -translate-y-1/2 pointer-events-none" style={{ color: 'rgba(250,250,249,0.45)' }} />
           <ChevronDown size={14} className="absolute right-2.5 top-1/2 -translate-y-1/2 pointer-events-none" style={{ color: 'rgba(250,250,249,0.45)' }} />
         </div>
+        {/* Dönem seçici: Ay boş = tüm dönemler (gece gibi); ay seçilince Sorgula o dönemi çeker */}
+        <div className="flex items-center gap-1.5 h-[38px] px-2 rounded-[10px] border" style={{ background: 'rgba(255,255,255,0.03)', borderColor: 'rgba(255,255,255,0.08)' }}>
+          <CalendarClock size={14} style={{ color: 'rgba(250,250,249,0.4)', flexShrink: 0 }} />
+          <select value={queryMonth} onChange={(e) => setQueryMonth(e.target.value)} className="h-[30px] pr-1 rounded-[7px] text-[12.5px] outline-none bg-transparent appearance-none cursor-pointer" style={{ color: '#fafaf9' }}>
+            <option value="" style={{ background: '#1a1410' }}>Tüm dönemler</option>
+            {AY_ADLARI.map((ad, i) => <option key={i + 1} value={String(i + 1).padStart(2, '0')} style={{ background: '#1a1410' }}>{ad}</option>)}
+          </select>
+          {queryMonth && (
+            <select value={queryYear} onChange={(e) => setQueryYear(e.target.value)} className="h-[30px] pr-1 rounded-[7px] text-[12.5px] outline-none bg-transparent appearance-none cursor-pointer" style={{ color: '#fafaf9' }}>
+              {years.map((y) => <option key={y} value={String(y)} style={{ background: '#1a1410' }}>{y}</option>)}
+            </select>
+          )}
+        </div>
         <button onClick={markAll} disabled={markAllMut.isPending} title="Ekrandaki tüm belgeleri görüntülendi (yeşil) işaretle"
           className="h-[38px] px-3 rounded-[10px] text-[13px] font-semibold flex items-center gap-1.5 border disabled:opacity-50" style={{ background: 'rgba(95,207,142,0.12)', borderColor: 'rgba(95,207,142,0.35)', color: '#5fcf8e' }}>
           {markAllMut.isPending ? <Loader2 size={14} className="animate-spin" /> : <CheckCheck size={14} />} Tümünü Görüntüle
@@ -221,29 +231,13 @@ export default function SgkBildirgeModule() {
         <button onClick={() => qc.invalidateQueries({ queryKey: ['sgk-docs'] })} className="h-[38px] px-3 rounded-[10px] text-[13px] font-semibold flex items-center gap-1.5 border" style={{ background: 'rgba(255,255,255,0.03)', borderColor: 'rgba(255,255,255,0.08)', color: '#fafaf9' }}>
           <RefreshCw size={14} className={docsQuery.isFetching ? 'animate-spin' : ''} /> Yenile
         </button>
-        <button onClick={() => sorgulaMut.mutate()} disabled={sorgulaMut.isPending} className="h-[38px] px-4 rounded-[10px] text-[13px] font-bold flex items-center gap-2 disabled:opacity-50" style={{ background: 'linear-gradient(135deg, #d4b876, #b8a06f)', color: '#1a1410' }}>
+        <button onClick={() => sorgulaMut.mutate()} disabled={sorgulaMut.isPending} title={queryMonth ? `${AY_ADLARI[Number(queryMonth) - 1]} ${queryYear} dönemini çek` : 'Son dönemleri çek (eksik/yeni bildirgeler)'}
+          className="h-[38px] px-4 rounded-[10px] text-[13px] font-bold flex items-center gap-2 disabled:opacity-50" style={{ background: 'linear-gradient(135deg, #d4b876, #b8a06f)', color: '#1a1410' }}>
           {sorgulaMut.isPending ? <Loader2 size={14} className="animate-spin" /> : <Download size={14} />}
-          {taxpayerId ? 'Bu mükellefi sorgula' : 'Şimdi sorgula'}
+          {queryMonth
+            ? `${AY_ADLARI[Number(queryMonth) - 1]} ${queryYear} sorgula`
+            : (taxpayerId ? 'Bu mükellefi sorgula' : 'Şimdi sorgula')}
         </button>
-      </div>
-
-      {/* Dönem seçerek manuel sorgulama */}
-      <div className="rounded-2xl border px-3.5 py-2.5 flex flex-wrap items-center gap-2" style={{ background: 'rgba(255,255,255,0.01)', borderColor: 'rgba(255,255,255,0.05)' }}>
-        <CalendarClock size={13} style={{ color: 'rgba(250,250,249,0.45)', flexShrink: 0 }} />
-        <span className="text-[11.5px] font-semibold" style={{ color: 'rgba(250,250,249,0.5)' }}>Belirli dönem:</span>
-        <select value={queryYear} onChange={(e) => setQueryYear(e.target.value)} className="h-[32px] px-2 rounded-[8px] text-[12px] outline-none border appearance-none" style={{ background: 'rgba(255,255,255,0.04)', borderColor: 'rgba(255,255,255,0.1)', color: '#fafaf9' }}>
-          {[2024, 2025, 2026].map((y) => <option key={y} value={String(y)}>{y}</option>)}
-        </select>
-        <select value={queryMonth} onChange={(e) => setQueryMonth(e.target.value)} className="h-[32px] px-2 rounded-[8px] text-[12px] outline-none border appearance-none min-w-[88px]" style={{ background: 'rgba(255,255,255,0.04)', borderColor: 'rgba(255,255,255,0.1)', color: '#fafaf9' }}>
-          {['Ocak','Şubat','Mart','Nisan','Mayıs','Haziran','Temmuz','Ağustos','Eylül','Ekim','Kasım','Aralık'].map((ad, i) => (
-            <option key={i + 1} value={String(i + 1).padStart(2, '0')}>{ad}</option>
-          ))}
-        </select>
-        <button onClick={() => donemSorgulaMut.mutate()} disabled={donemSorgulaMut.isPending} className="h-[32px] px-3 rounded-[8px] text-[12px] font-semibold flex items-center gap-1.5 border disabled:opacity-50" style={{ background: 'rgba(212,184,118,0.12)', borderColor: 'rgba(212,184,118,0.35)', color: GOLD }}>
-          {donemSorgulaMut.isPending ? <Loader2 size={12} className="animate-spin" /> : <Download size={12} />}
-          {taxpayerId ? 'Bu mükellefi bu dönem sorgula' : 'Bu dönemi sorgula'}
-        </button>
-        <span className="text-[10.5px]" style={{ color: 'rgba(250,250,249,0.3)' }}>Seçilen dönem için tüm mükellef şifrelerinde bildirge çeker.</span>
       </div>
 
       <div className="rounded-2xl border overflow-hidden" style={{ background: 'rgba(0,0,0,0.18)', borderColor: 'rgba(255,255,255,0.06)' }}>
@@ -278,15 +272,16 @@ export default function SgkBildirgeModule() {
                     <td className="px-3 py-2.5 align-top" style={{ borderBottom: cellBorder }}>
                       <span className="inline-flex items-center gap-1.5 px-2 py-1 rounded-md text-[11px] font-semibold" style={{ background: `${tur.color}1a`, border: `1px solid ${tur.color}40`, color: tur.color }}>{tur.icon} {tur.label}</span>
                     </td>
-                    <td className="px-3 py-2.5 align-top font-mono text-[11.5px]" style={{ borderBottom: cellBorder, color: '#fafaf9' }}>{m.donem || '—'}</td>
-                    <td className="px-3 py-2.5 align-top" style={{ borderBottom: cellBorder, color: 'rgba(250,250,249,0.75)' }}>{m.mahiyet || '—'}</td>
-                    <td className="px-3 py-2.5 align-top text-center font-mono tabular-nums" style={{ borderBottom: cellBorder, color: 'rgba(250,250,249,0.7)' }}>{m.kanunNo || '0000'}</td>
-                    <td className="px-3 py-2.5 align-top text-center tabular-nums" style={{ borderBottom: cellBorder, color: 'rgba(250,250,249,0.7)' }}>{m.calisan || '—'}</td>
-                    <td className="px-3 py-2.5 align-top text-center tabular-nums whitespace-nowrap" style={{ borderBottom: cellBorder, color: d.belgeTuru === 'SGK_TAHAKKUK' ? '#fafaf9' : 'rgba(250,250,249,0.4)' }}>{d.belgeTuru === 'SGK_TAHAKKUK' ? (m.tutar ? `${m.tutar} ₺` : '—') : '—'}</td>
+                    <td className="px-3 py-2.5 align-top font-mono text-[12.5px] font-semibold" style={{ borderBottom: cellBorder, color: '#fafaf9' }}>{m.donem || '—'}</td>
+                    <td className="px-3 py-2.5 align-top text-[12.5px] font-semibold" style={{ borderBottom: cellBorder, color: '#fafaf9' }}>{m.mahiyet || '—'}</td>
+                    <td className="px-3 py-2.5 align-top text-center font-mono tabular-nums text-[12.5px] font-semibold" style={{ borderBottom: cellBorder, color: '#fafaf9' }}>{m.kanunNo || '0000'}</td>
+                    <td className="px-3 py-2.5 align-top text-center tabular-nums text-[12.5px] font-semibold" style={{ borderBottom: cellBorder, color: '#fafaf9' }}>{m.calisan || '—'}</td>
+                    <td className="px-3 py-2.5 align-top text-center tabular-nums whitespace-nowrap text-[12.5px] font-semibold" style={{ borderBottom: cellBorder, color: d.belgeTuru === 'SGK_TAHAKKUK' ? '#fafaf9' : 'rgba(250,250,249,0.4)' }}>{d.belgeTuru === 'SGK_TAHAKKUK' ? (m.tutar ? `${m.tutar} ₺` : '—') : '—'}</td>
                     <td className="px-3 py-2.5 align-top text-center" style={{ borderBottom: cellBorder }}>
                       {d.storageKey ? (
-                        <button onClick={() => openPdf(d)} title={goruldu ? 'Görüntülendi' : 'Yeni — henüz görüntülenmedi'} className="inline-flex items-center gap-1 px-2.5 py-1 rounded-md text-[11px] font-semibold hover:brightness-110 transition" style={{ background: renk.bg, border: `1px solid ${renk.bd}`, color: renk.fg }}>
-                          <Eye size={12} /> Görüntüle
+                        <button onClick={() => openPdf(d)} title={goruldu ? 'Görüntülendi' : 'Yeni — henüz görüntülenmedi'} aria-label="Görüntüle"
+                          className="inline-grid place-items-center rounded-md hover:brightness-110 transition" style={{ width: 32, height: 32, background: renk.bg, border: `1px solid ${renk.bd}`, color: renk.fg }}>
+                          <Eye size={15} />
                         </button>
                       ) : (<span className="text-[10.5px]" style={{ color: 'rgba(250,250,249,0.35)' }}>bekliyor</span>)}
                     </td>
