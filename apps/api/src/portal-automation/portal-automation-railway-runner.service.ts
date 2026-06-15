@@ -1305,10 +1305,10 @@ export class PortalAutomationRailwayRunnerService implements OnModuleInit {
       const where: any = { tenantId, belgeTuru: { in: ['SGK_TAHAKKUK', 'SGK_HIZMET_LISTESI'] }, storageKey: { not: null } };
       if (taxpayerId) where.taxpayerId = taxpayerId;
       const have = await (this.prisma as any).portalDocument.findMany({ where, select: { referenceNo: true, belgeTuru: true, raw: true } }).catch(() => []);
-      // metaVersion>=4 ile işlenmiş kayıtları atla.
-      // v1/v2/v3 (yanlış tutar: net prim/toplam prim alıyordu) yeniden çekilip düzeltilir.
+      // metaVersion>=5 ile işlenmiş kayıtları atla.
+      // v1-v4 (yanlış tutar: net prim/toplam prim alıyordu) yeniden çekilip düzeltilir.
       alreadyHave = new Set((have || [])
-        .filter((h: any) => { const r: any = h.raw || {}; return (r.metaVersion ?? 0) >= 4; })
+        .filter((h: any) => { const r: any = h.raw || {}; return (r.metaVersion ?? 0) >= 5; })
         .map((h: any) => `${h.belgeTuru}|${h.referenceNo}`));
     }
 
@@ -1448,7 +1448,7 @@ export class PortalAutomationRailwayRunnerService implements OnModuleInit {
             mimeType: 'application/pdf',
             originalName: `${t.belgeTuru}_${row.refNo}.pdf`,
             base64: b64,
-            raw: { donem: periodText, bildirgeRefNo: row.refNo, belgeMahiyeti: meta.belgeMahiyeti, kanunNo: meta.kanunNo, calisan: meta.calisan, tutar: meta.tutar, metaVersion: 4 },
+            raw: { donem: periodText, bildirgeRefNo: row.refNo, belgeMahiyeti: meta.belgeMahiyeti, kanunNo: meta.kanunNo, calisan: meta.calisan, tutar: meta.tutar, metaVersion: 5 },
           });
           alreadyHave.add(key);
         }
@@ -3923,29 +3923,29 @@ export class PortalAutomationRailwayRunnerService implements OnModuleInit {
       // Çalışan (normalized)
       const cm = normTah.match(/KISI\s*SAYISI\s*:?\s*(\d{1,4})/);
       if (cm) meta.calisan = cm[1];
-      // Tutar = ÖDENECEK NET TUTAR. pdf-parse metni görsel-sıralı VEYA etiket/değer-blok
-      // ayrık olabilir (KDV beyannamesindeki gibi) → etiket-bitişik regex tek başına güvenilmez.
-      // EN GÜVENİLİR (sıralamadan bağımsız): ÖDENECEK NET TUTAR = NET PRİM TUTARI + İŞSİZLİK TUTARI
-      // (SGK tahakkuk fişi matematiği — işsizlik primi ayrı ödenir, net prime eklenir).
-      const moneyPat = /\d{1,3}(?:\.\d{3})*,\d{2}/;
+      // Tutar = ÖDENECEK NET TUTAR.
+      // GERÇEK YAPI (Railway log kanıtı): pdf-parse etiket-bloğu ile değer-bloğunu AYRI veriyor
+      // ve sıraları TERS — etikette "...ÖDENECEK NET TUTAR İŞSİZLİK TUTARI", değerde "...990,90 12.799,13"
+      // → pozisyonel/etiket-bitişik eşleştirme İMKANSIZ.
+      // ÇÖZÜM: değer bloğu görsel-sıralı (yukarı→aşağı), ÖDENECEK NET TUTAR fişin EN ALT satırı
+      // = tahakkuk metnindeki SON para değeri. Doğrulama: son = (sondan-2) + (sondan-3)
+      // [NET PRİM TUTARI + İŞSİZLİK TUTARI = ÖDENECEK NET TUTAR — SGK fişi matematiği].
       const toNum = (v: string) => Number(v.replace(/\./g, '').replace(',', '.'));
-      const fmtTr = (n: number) => n.toLocaleString('tr-TR', { minimumFractionDigits: 2, maximumFractionDigits: 2 });
+      const allMoney: string[] = tahText.match(/\d{1,3}(?:\.\d{3})*,\d{2}/g) || [];
+      let dogrulandi = false;
+      if (allMoney.length) {
+        const last = allMoney[allMoney.length - 1];
+        meta.tutar = last;
+        if (allMoney.length >= 3) {
+          const a = toNum(allMoney[allMoney.length - 3]);
+          const b = toNum(allMoney[allMoney.length - 2]);
+          const c = toNum(last);
+          dogrulandi = Math.abs((a + b) - c) <= 0.02;
+        }
+      }
 
-      // Strateji 1: etiket-bitişik (görsel-sıralı metinde çalışır)
-      const odeInline = tahText.match(new RegExp(`[ÖO]DENECEK\\s*NET\\s*TUTAR\\s*:?\\s*(${moneyPat.source})`, 'i'));
-      // Strateji 2: NET PRİM + İŞSİZLİK matematiği (her etiket kendi değerine bitişik → görsel-sıralıda kesin)
-      const netPrimM = tahText.match(new RegExp(`NET\\s*PR[İI]M\\s*TUTARI\\s*:?\\s*(${moneyPat.source})`, 'i'));
-      const issizlikM = tahText.match(new RegExp(`[İI][ŞS]S[İI]ZL[İI]K\\s*TUTARI\\s*:?\\s*(${moneyPat.source})`, 'i'));
-      let sumStr = '';
-      if (netPrimM && issizlikM) sumStr = fmtTr(toNum(netPrimM[1]) + toNum(issizlikM[1]));
-
-      // Karar: matematiksel toplam öncelikli (SGK fişi kesin formülü); yoksa inline'a düş.
-      if (sumStr) meta.tutar = sumStr;
-      else if (odeInline) meta.tutar = odeInline[1];
-
-      // Geçici teşhis: metin yapısı (görsel-sıralı mı blok-ayrık mı) — sebep netleşince KALDIR.
-      const odePos = tahText.search(/[ÖO]DENECEK\s*NET/i);
-      this.logger.log(`[SGKTUT] ode@${odePos} inline=${odeInline?.[1] || '-'} netPrim=${netPrimM?.[1] || '-'} issiz=${issizlikM?.[1] || '-'} sum=${sumStr || '-'} ctx="${odePos >= 0 ? tahText.slice(Math.max(0, odePos - 70), odePos + 90) : tahText.slice(0, 120)}"`);
+      // Geçici teşhis (doğrulama oturunca KALDIR).
+      this.logger.log(`[SGKTUT] tutar=${meta.tutar || '-'} dogrulandi=${dogrulandi} son5=[${allMoney.slice(-5).join(', ')}]`);
     } catch { /* yut */ }
     return meta;
   }
