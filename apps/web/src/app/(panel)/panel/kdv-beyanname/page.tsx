@@ -796,11 +796,11 @@ function GenelBakisPano({ donem, onSelect }: { donem: string; onSelect: (id: str
             >
               <th className="px-4 py-3 whitespace-nowrap">Mükellef</th>
               <th className="px-3 py-3 whitespace-nowrap" style={{ borderLeft: '1px solid rgba(255,255,255,0.08)' }}>Durum</th>
-              <th className="px-3 py-3 text-right whitespace-nowrap" style={{ borderLeft: '2px solid rgba(255,255,255,0.12)' }}>Hesaplanan KDV</th>
-              <th className="px-3 py-3 text-right whitespace-nowrap" style={{ borderLeft: '1px solid rgba(255,255,255,0.08)' }}>İndirilecek KDV</th>
-              <th className="px-3 py-3 text-right whitespace-nowrap" style={{ borderLeft: '1px solid rgba(255,255,255,0.08)' }} title="Önceki dönemden devreden KDV">Önceki Dev.</th>
-              <th className="px-3 py-3 text-right whitespace-nowrap" style={{ borderLeft: '1px solid rgba(255,255,255,0.08)' }} title="Sonraki döneme devreden KDV">Sonraki Dev.</th>
-              <th className="px-3 py-3 text-right whitespace-nowrap" style={{ borderLeft: '2px solid rgba(255,255,255,0.12)' }}>Ödenecek KDV</th>
+              <th className="px-3 py-3 text-center whitespace-nowrap" style={{ borderLeft: '2px solid rgba(255,255,255,0.12)' }}>Hesaplanan KDV</th>
+              <th className="px-3 py-3 text-center whitespace-nowrap" style={{ borderLeft: '1px solid rgba(255,255,255,0.08)' }}>İndirilecek KDV</th>
+              <th className="px-3 py-3 text-center whitespace-nowrap" style={{ borderLeft: '1px solid rgba(255,255,255,0.08)' }} title="Önceki dönemden devreden KDV">Önceki Dev.</th>
+              <th className="px-3 py-3 text-center whitespace-nowrap" style={{ borderLeft: '1px solid rgba(255,255,255,0.08)' }} title="Sonraki döneme devreden KDV">Sonraki Dev.</th>
+              <th className="px-3 py-3 text-center whitespace-nowrap" style={{ borderLeft: '2px solid rgba(255,255,255,0.12)' }}>Ödenecek KDV</th>
               <th className="px-2 py-3 text-center whitespace-nowrap" style={{ borderLeft: '1px solid rgba(255,255,255,0.08)', width: 64 }} title="Veri Güveni">Güven</th>
               <th className="px-3 py-3 text-center whitespace-nowrap" style={{ borderLeft: '2px solid rgba(255,255,255,0.12)' }}>KDV1</th>
               <th className="px-3 py-3 text-center whitespace-nowrap" style={{ borderLeft: '1px solid rgba(255,255,255,0.08)' }}>KDV2</th>
@@ -825,19 +825,19 @@ function GenelBakisPano({ donem, onSelect }: { donem: string; onSelect: (id: str
                 <td className="px-3 py-2" style={{ borderLeft: '1px solid rgba(255,255,255,0.06)' }}>
                   <DurumBadge durum={r.durum} />
                 </td>
-                <td className="px-3 py-2 text-right" style={{ borderLeft: '2px solid rgba(255,255,255,0.1)' }}>
+                <td className="px-3 py-2 text-center" style={{ borderLeft: '2px solid rgba(255,255,255,0.1)' }}>
                   <span className="tabular-nums text-[13px] font-semibold" style={{ color: '#fffaf0' }}>{TRY}{fmt(r.hesaplananKdv)}</span>
                 </td>
-                <td className="px-3 py-2 text-right" style={{ borderLeft: '1px solid rgba(255,255,255,0.06)' }}>
+                <td className="px-3 py-2 text-center" style={{ borderLeft: '1px solid rgba(255,255,255,0.06)' }}>
                   <span className="tabular-nums text-[13px] font-semibold" style={{ color: '#fffaf0' }}>{TRY}{fmt(r.indirilecekKdv)}</span>
                 </td>
-                <td className="px-3 py-2 text-right" style={{ borderLeft: '1px solid rgba(255,255,255,0.06)' }}>
+                <td className="px-3 py-2 text-center" style={{ borderLeft: '1px solid rgba(255,255,255,0.06)' }}>
                   <span className="tabular-nums text-[13px] font-semibold" style={{ color: '#fffaf0' }}>{TRY}{fmt(r.devredenKdv)}</span>
                 </td>
-                <td className="px-3 py-2 text-right" style={{ borderLeft: '1px solid rgba(255,255,255,0.06)' }}>
+                <td className="px-3 py-2 text-center" style={{ borderLeft: '1px solid rgba(255,255,255,0.06)' }}>
                   <span className="tabular-nums text-[13px] font-semibold" style={{ color: '#fffaf0' }}>{TRY}{fmt(r.sonrakiAyaDevreden)}</span>
                 </td>
-                <td className="px-3 py-2 text-right" style={{ borderLeft: '2px solid rgba(255,255,255,0.1)' }}>
+                <td className="px-3 py-2 text-center" style={{ borderLeft: '2px solid rgba(255,255,255,0.1)' }}>
                   {r.odenecekKdv > 0 ? (
                     <span className="tabular-nums text-[13px] font-extrabold" style={{ color: STAT_RED }}>
                       {TRY}{fmt(r.odenecekKdv)}
