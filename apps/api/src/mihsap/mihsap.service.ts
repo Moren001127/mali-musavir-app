@@ -92,12 +92,26 @@ export class MihsapService implements OnModuleInit {
     if (!token || token.length < 20) {
       throw new BadRequestException('Geçersiz token');
     }
-    // Token gerçekten değişti mi? Eklenti aynı token'ı periyodik (60 sn) gönderebilir;
-    // sadece yeni/yenilenmiş token'da aşağıdaki retry tetiklensin (gereksiz tarama olmasın).
     const existing = await (this.prisma as any).mihsapSession.findUnique({
       where: { tenantId },
       select: { token: true },
     });
+    // ÇÖP-TOKEN KORUMASI (kök neden): Eklenti bazen Mihsap JWT'si yerine BAŞKA bir
+    // site/portal token'ını (kısa, JWT OLMAYAN) okuyup gönderiyordu. Backend bunu
+    // Mihsap'a yollayınca Mihsap 200 + BOŞ gövde dönüyor → "MIHSAP bos cevap" hatası,
+    // ve getSession süreyi okuyamadığı için "bağlı/yeşil" görünüyordu (sessiz bozulma).
+    // Gerçek Mihsap token'ı JWT'dir (exp ayrıştırılabilir). JWT OLMAYAN bir token
+    // MEVCUT geçerli JWT'yi ASLA ezmesin; geçerli JWT yoksa da çöpü saklama.
+    const incomingExp = this.getJwtExpiresAt(token);
+    if (!incomingExp) {
+      this.logger.warn(
+        `Mihsap saveToken: JWT olmayan token reddedildi (len=${token.length}, tenant=${tenantId}). ` +
+          `${existing ? 'Mevcut token korunuyor.' : 'Geçerli JWT bekleniyor.'}`,
+      );
+      return existing || null;
+    }
+    // Token gerçekten değişti mi? Eklenti aynı token'ı periyodik (60 sn) gönderebilir;
+    // sadece yeni/yenilenmiş token'da aşağıdaki retry tetiklensin (gereksiz tarama olmasın).
     const tokenChanged = !existing || existing.token !== token;
 
     const result = await (this.prisma as any).mihsapSession.upsert({
@@ -128,7 +142,9 @@ export class MihsapService implements OnModuleInit {
     const s = await (this.prisma as any).mihsapSession.findUnique({ where: { tenantId } });
     if (!s) return null;
     const expiresAt = this.getJwtExpiresAt(s.token);
-    const expired = !!expiresAt && expiresAt.getTime() <= Date.now() + 30_000;
+    // JWT ayrıştırılamıyorsa (çöp token) BAĞLI DEĞİL say — eskiden "bağlı/yeşil" görünüp
+    // çekme sessizce patlıyordu. Artık dürüst: token JWT değilse oturum geçersizdir.
+    const expired = !expiresAt || expiresAt.getTime() <= Date.now() + 30_000;
     return {
       connected: !expired,
       email: s.email,
@@ -159,9 +175,15 @@ export class MihsapService implements OnModuleInit {
         'MIHSAP token yok. Lütfen MIHSAP sayfasını açın; eklenti tokenı otomatik senkronize edecek.',
       );
     }
-    // JWT süresi dolmuşsa net hata fırlat — Mihsap 200 + boş body dönerek gizliyor
+    // JWT süresi dolmuşsa/JWT değilse net hata fırlat — Mihsap 200 + boş body dönerek gizliyor.
     const expiresAt = this.getJwtExpiresAt(s.token);
-    if (expiresAt && expiresAt.getTime() < Date.now() - 30_000) {
+    // JWT olarak ayrıştırılamayan token (çöp) Mihsap'a YOLLANMASIN — "bos cevap" üretiyordu.
+    if (!expiresAt) {
+      throw new UnauthorizedException(
+        'MIHSAP token geçerli görünmüyor (JWT değil). Mihsap sekmesini açın — eklenti doğru tokenı otomatik gönderecek.',
+      );
+    }
+    if (expiresAt.getTime() < Date.now() - 30_000) {
       const minsAgo = Math.round((Date.now() - expiresAt.getTime()) / 60_000);
       throw new UnauthorizedException(
         `MIHSAP token süresi ${minsAgo} dakika önce doldu. Mihsap sekmesini açın — eklenti otomatik yenileyecek.`,
@@ -810,12 +832,20 @@ export class MihsapService implements OnModuleInit {
             mukellefLabel = tp.companyName || [tp.firstName, tp.lastName].filter(Boolean).join(' ') || '';
           }
         }
-        const emoji = errorMsg ? '❌' : '✅';
+        // Token/oturum kaynaklı hatalar GEÇİCİ + OTOMATİK retry'li → kullanıcıya KIRMIZI
+        // "hata" yerine YUMUŞAK "oturum bekleniyor, otomatik tamamlanacak" göster. (Kullanıcı
+        // bu hatayı bir daha görmek istemiyor; token tazelenince zaten kendiliğinden tamamlanır.)
+        const retriable = !!errorMsg && /bos cevap|bo[şs] cevap|token|oturum|yetki|401|403|JWT|geçerli görünmüyor/i.test(errorMsg);
+        const emoji = errorMsg ? (retriable ? '⏳' : '❌') : '✅';
         const title = errorMsg
-          ? `${emoji} Mihsap aktarım hatası${mukellefLabel ? ` - ${mukellefLabel}` : ''}`
+          ? (retriable
+              ? `${emoji} Mihsap oturumu bekleniyor${mukellefLabel ? ` - ${mukellefLabel}` : ''}`
+              : `${emoji} Mihsap aktarım hatası${mukellefLabel ? ` - ${mukellefLabel}` : ''}`)
           : `${emoji} Mihsap aktarım tamam${mukellefLabel ? ` - ${mukellefLabel}` : ''} (${fetched}/${total})`;
         const body = errorMsg
-          ? `${params.donem} dönemi: ${String(errorMsg).slice(0, 300)}`
+          ? (retriable
+              ? `${params.donem} dönemi: Mihsap oturumu (token) tazelenince otomatik tamamlanacak — Mihsap sekmesini bir kez açmanız yeterli.`
+              : `${params.donem} dönemi: ${String(errorMsg).slice(0, 300)}`)
           : `${params.donem} dönemi: ${fetched} fatura indirildi/güncellendi.`;
         await this.notifications.createForTenant({
           tenantId: params.tenantId,

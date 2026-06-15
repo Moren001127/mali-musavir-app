@@ -12,6 +12,12 @@ import {
   Cloud, UploadCloud,
 } from 'lucide-react';
 
+// Mihsap token/oturum kaynaklı hatalar GEÇİCİ + arka planda otomatik retry'li
+// (token tazelenince kendiliğinden tamamlanır). Kullanıcıya KIRMIZI "hata" yerine
+// yumuşak bilgi gösterilir — bu hatayı sürekli görmek istemediği için.
+const isRetriableMihsapError = (msg?: string): boolean =>
+  /bos cevap|bo[şs] cevap|token|oturum|JWT|geçerli görünmüyor|401|403/i.test(String(msg || ''));
+
 type Taxpayer = {
   id: string;
   type: string;
@@ -330,23 +336,36 @@ ${isPdf
     if (!confirm(confirmMsg)) return;
 
     const errors: string[] = [];
+    let retriableCount = 0; // token/oturum kaynaklı, otomatik tamamlanacaklar (hata sayılmaz)
     setBulkProgress({ running: true, current: 0, total: eligible.length, currentName: '', errors: [] });
     for (let i = 0; i < eligible.length; i++) {
       const t = eligible[i];
       const name = taxpayerName(t);
       setBulkProgress((prev) => prev && { ...prev, current: i + 1, currentName: name });
       try {
-        await agentsApi.mihsapFetch({
+        const res: any = await agentsApi.mihsapFetch({
           mukellefId: t.id,
           mukellefMihsapId: t.mihsapId!,
           donem,
           faturaTuru,
           forceRefresh,
         });
+        // /fetch hata fırlatmaz; başarısızlığı errorMsg ile döner — onu da değerlendir.
+        if (res?.errorMsg) {
+          if (isRetriableMihsapError(res.errorMsg)) retriableCount++;
+          else {
+            errors.push(`${name}: ${res.errorMsg}`);
+            setBulkProgress((prev) => prev && { ...prev, errors: [...prev.errors, `${name}: ${res.errorMsg}`] });
+          }
+        }
       } catch (e: any) {
         const msg = e?.response?.data?.message || e?.message || 'bilinmeyen hata';
-        errors.push(`${name}: ${msg}`);
-        setBulkProgress((prev) => prev && { ...prev, errors: [...prev.errors, `${name}: ${msg}`] });
+        if (isRetriableMihsapError(msg)) {
+          retriableCount++;
+        } else {
+          errors.push(`${name}: ${msg}`);
+          setBulkProgress((prev) => prev && { ...prev, errors: [...prev.errors, `${name}: ${msg}`] });
+        }
       }
       // Peş peşe istek MIHSAP'ı yormasın diye küçük gecikme
       await new Promise((r) => setTimeout(r, 400));
@@ -356,6 +375,10 @@ ${isPdf
     qc.invalidateQueries({ queryKey: ['mihsap-jobs'] });
     if (errors.length > 0) {
       alert(`Toplu çekim bitti · ${errors.length} hata:\n\n${errors.slice(0, 10).join('\n')}`);
+    } else if (retriableCount > 0) {
+      toast(`${retriableCount} mükellef için Mihsap oturumu tazelenince çekim otomatik tamamlanacak — Mihsap sekmesini bir kez açmanız yeterli.`, { duration: 10000 });
+    } else {
+      toast.success(`Toplu çekim tamamlandı · ${eligible.length} mükellef`, { duration: 6000 });
     }
   };
 
@@ -400,7 +423,11 @@ ${isPdf
         onError: (e: any) => {
           console.error('[Faturalar] mutate ERROR:', e?.response?.status, JSON.stringify(e?.response?.data || {}), e?.message);
           const msg = e?.response?.data?.message || e?.message || 'hata';
-          toast.error(`Mihsap hata: ${e?.response?.status || ''} ${msg}`, { duration: 12000 });
+          if (isRetriableMihsapError(msg)) {
+            toast('Mihsap oturumu tazelenince çekim otomatik tamamlanacak — Mihsap sekmesini bir kez açmanız yeterli.', { duration: 9000 });
+          } else {
+            toast.error(`Mihsap hata: ${e?.response?.status || ''} ${msg}`, { duration: 12000 });
+          }
         },
       },
     );
