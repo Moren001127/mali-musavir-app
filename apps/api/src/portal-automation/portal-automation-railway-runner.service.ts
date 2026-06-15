@@ -1305,10 +1305,10 @@ export class PortalAutomationRailwayRunnerService implements OnModuleInit {
       const where: any = { tenantId, belgeTuru: { in: ['SGK_TAHAKKUK', 'SGK_HIZMET_LISTESI'] }, storageKey: { not: null } };
       if (taxpayerId) where.taxpayerId = taxpayerId;
       const have = await (this.prisma as any).portalDocument.findMany({ where, select: { referenceNo: true, belgeTuru: true, raw: true } }).catch(() => []);
-      // metaVersion>=3 ile işlenmiş kayıtları atla.
-      // v1 (metaParsed:true) ve v2 (yanlış tutar: normTah-pozisyon hatası) yeniden çekilir.
+      // metaVersion>=4 ile işlenmiş kayıtları atla.
+      // v1/v2/v3 (yanlış tutar: net prim/toplam prim alıyordu) yeniden çekilip düzeltilir.
       alreadyHave = new Set((have || [])
-        .filter((h: any) => { const r: any = h.raw || {}; return (r.metaVersion ?? 0) >= 3; })
+        .filter((h: any) => { const r: any = h.raw || {}; return (r.metaVersion ?? 0) >= 4; })
         .map((h: any) => `${h.belgeTuru}|${h.referenceNo}`));
     }
 
@@ -1448,7 +1448,7 @@ export class PortalAutomationRailwayRunnerService implements OnModuleInit {
             mimeType: 'application/pdf',
             originalName: `${t.belgeTuru}_${row.refNo}.pdf`,
             base64: b64,
-            raw: { donem: periodText, bildirgeRefNo: row.refNo, belgeMahiyeti: meta.belgeMahiyeti, kanunNo: meta.kanunNo, calisan: meta.calisan, tutar: meta.tutar, metaVersion: 3 },
+            raw: { donem: periodText, bildirgeRefNo: row.refNo, belgeMahiyeti: meta.belgeMahiyeti, kanunNo: meta.kanunNo, calisan: meta.calisan, tutar: meta.tutar, metaVersion: 4 },
           });
           alreadyHave.add(key);
         }
@@ -3923,30 +3923,29 @@ export class PortalAutomationRailwayRunnerService implements OnModuleInit {
       // Çalışan (normalized)
       const cm = normTah.match(/KISI\s*SAYISI\s*:?\s*(\d{1,4})/);
       if (cm) meta.calisan = cm[1];
-      // Tutar: özgün tahText'te ÖDENECEK NET TUTAR etiketinden sonraki ilk para değerini al.
-      // UYARI: normTah noktalama sıkıştırır → normTah pozisyonu tahText'tekiyle EŞLEŞMEZ,
-      // doğrudan nIdx kullanmak yanlış bölgeye bakıyor (d2213e9 hatası).
-      const nPos = normTah.search(/ODENECEK\s+NET\s+TUTAR/);
-      if (nPos >= 0) {
-        // Strateji A: özgün tahText'te doğrudan etiket + hemen ardındaki tutar
-        const inlineM = tahText.match(/[ÖO]DENECEK\s+NET\s+TUTAR\s*:?\s*([\d]{1,3}(?:\.[\d]{3})*,[\d]{2})/i);
-        if (inlineM) {
-          meta.tutar = inlineM[1];
-        } else {
-          // Strateji B: ölçeklenmiş pencere (encoding farkı veya etiket-tutar arası metin)
-          // normTah < tahText uzunluğu (noktalama collapse) → scale ile pozisyonu düzelt
-          const scale = normTah.length > 0 ? tahText.length / normTah.length : 1.05;
-          const approx = Math.round(nPos * scale);
-          const wStart = Math.max(0, approx - 80);
-          const win = tahText.slice(wStart, Math.min(tahText.length, wStart + 500));
-          // Pencere içinde etiketi bul, bulunursa ondan sonrasına bak
-          const etiketIdx = win.search(/[ÖO]DENECEK\s+NET\s+TUTAR/i);
-          const searchAfter = etiketIdx >= 0 ? win.slice(etiketIdx) : win;
-          const m = searchAfter.match(/([\d]{1,3}(?:\.[\d]{3})*,[\d]{2})/);
-          if (m) meta.tutar = m[1];
-        }
-      }
-      // NOT: "en büyük para değeri" fallback kaldırıldı — net prim tutarını yazdırıyordu
+      // Tutar = ÖDENECEK NET TUTAR. pdf-parse metni görsel-sıralı VEYA etiket/değer-blok
+      // ayrık olabilir (KDV beyannamesindeki gibi) → etiket-bitişik regex tek başına güvenilmez.
+      // EN GÜVENİLİR (sıralamadan bağımsız): ÖDENECEK NET TUTAR = NET PRİM TUTARI + İŞSİZLİK TUTARI
+      // (SGK tahakkuk fişi matematiği — işsizlik primi ayrı ödenir, net prime eklenir).
+      const moneyPat = /\d{1,3}(?:\.\d{3})*,\d{2}/;
+      const toNum = (v: string) => Number(v.replace(/\./g, '').replace(',', '.'));
+      const fmtTr = (n: number) => n.toLocaleString('tr-TR', { minimumFractionDigits: 2, maximumFractionDigits: 2 });
+
+      // Strateji 1: etiket-bitişik (görsel-sıralı metinde çalışır)
+      const odeInline = tahText.match(new RegExp(`[ÖO]DENECEK\\s*NET\\s*TUTAR\\s*:?\\s*(${moneyPat.source})`, 'i'));
+      // Strateji 2: NET PRİM + İŞSİZLİK matematiği (her etiket kendi değerine bitişik → görsel-sıralıda kesin)
+      const netPrimM = tahText.match(new RegExp(`NET\\s*PR[İI]M\\s*TUTARI\\s*:?\\s*(${moneyPat.source})`, 'i'));
+      const issizlikM = tahText.match(new RegExp(`[İI][ŞS]S[İI]ZL[İI]K\\s*TUTARI\\s*:?\\s*(${moneyPat.source})`, 'i'));
+      let sumStr = '';
+      if (netPrimM && issizlikM) sumStr = fmtTr(toNum(netPrimM[1]) + toNum(issizlikM[1]));
+
+      // Karar: matematiksel toplam öncelikli (SGK fişi kesin formülü); yoksa inline'a düş.
+      if (sumStr) meta.tutar = sumStr;
+      else if (odeInline) meta.tutar = odeInline[1];
+
+      // Geçici teşhis: metin yapısı (görsel-sıralı mı blok-ayrık mı) — sebep netleşince KALDIR.
+      const odePos = tahText.search(/[ÖO]DENECEK\s*NET/i);
+      this.logger.log(`[SGKTUT] ode@${odePos} inline=${odeInline?.[1] || '-'} netPrim=${netPrimM?.[1] || '-'} issiz=${issizlikM?.[1] || '-'} sum=${sumStr || '-'} ctx="${odePos >= 0 ? tahText.slice(Math.max(0, odePos - 70), odePos + 90) : tahText.slice(0, 120)}"`);
     } catch { /* yut */ }
     return meta;
   }
