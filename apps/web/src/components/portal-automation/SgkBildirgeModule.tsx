@@ -265,19 +265,19 @@ export default function SgkBildirgeModule() {
                 const renk = goruldu ? { bg: 'rgba(95,207,142,0.1)', bd: 'rgba(95,207,142,0.32)', fg: '#5fcf8e' } : { bg: 'rgba(239,107,107,0.12)', bd: 'rgba(239,107,107,0.45)', fg: '#ef6b6b' };
                 return (
                   <tr key={d.id} className="hover:bg-white/[0.02]">
-                    <td className="px-3 py-2.5 align-top" style={{ borderBottom: cellBorder }}>
-                      <div className="font-semibold" style={{ color: '#fafaf9' }}>{taxpayerName(d.taxpayer)}</div>
-                      {d.taxpayer?.taxNumber && <div className="text-[10.5px]" style={{ color: 'rgba(250,250,249,0.4)' }}>{d.taxpayer.taxNumber}</div>}
+                    <td className="px-3 py-2.5 align-middle" style={{ borderBottom: cellBorder }}>
+                      <div className="font-semibold text-[13px]" style={{ color: '#fafaf9' }}>{taxpayerName(d.taxpayer)}</div>
+                      {d.taxpayer?.taxNumber && <div className="text-[11px] mt-0.5 font-mono" style={{ color: 'rgba(250,250,249,0.4)' }}>{d.taxpayer.taxNumber}</div>}
                     </td>
-                    <td className="px-3 py-2.5 align-top" style={{ borderBottom: cellBorder }}>
-                      <span className="inline-flex items-center gap-1.5 px-2 py-1 rounded-md text-[11px] font-semibold" style={{ background: `${tur.color}1a`, border: `1px solid ${tur.color}40`, color: tur.color }}>{tur.icon} {tur.label}</span>
+                    <td className="px-3 py-2.5 align-middle" style={{ borderBottom: cellBorder }}>
+                      <span className="inline-flex items-center gap-1.5 px-2.5 py-1 rounded-md text-[11.5px] font-medium whitespace-nowrap" style={{ background: `${tur.color}1a`, border: `1px solid ${tur.color}40`, color: tur.color }}>{tur.icon} {tur.label}</span>
                     </td>
-                    <td className="px-3 py-2.5 align-top font-mono text-[12.5px] font-semibold" style={{ borderBottom: cellBorder, color: '#fafaf9' }}>{m.donem || '—'}</td>
-                    <td className="px-3 py-2.5 align-top text-[12.5px] font-semibold" style={{ borderBottom: cellBorder, color: '#fafaf9' }}>{m.mahiyet || '—'}</td>
-                    <td className="px-3 py-2.5 align-top text-center font-mono tabular-nums text-[12.5px] font-semibold" style={{ borderBottom: cellBorder, color: '#fafaf9' }}>{m.kanunNo || '0000'}</td>
-                    <td className="px-3 py-2.5 align-top text-center tabular-nums text-[12.5px] font-semibold" style={{ borderBottom: cellBorder, color: '#fafaf9' }}>{m.calisan || '—'}</td>
-                    <td className="px-3 py-2.5 align-top text-center tabular-nums whitespace-nowrap text-[12.5px] font-semibold" style={{ borderBottom: cellBorder, color: d.belgeTuru === 'SGK_TAHAKKUK' ? '#fafaf9' : 'rgba(250,250,249,0.4)' }}>{d.belgeTuru === 'SGK_TAHAKKUK' ? (m.tutar ? `${m.tutar} ₺` : '—') : '—'}</td>
-                    <td className="px-3 py-2.5 align-top text-center" style={{ borderBottom: cellBorder }}>
+                    <td className="px-3 py-2.5 align-middle font-mono text-[13px] whitespace-nowrap" style={{ borderBottom: cellBorder, color: 'rgba(250,250,249,0.9)' }}>{m.donem || '—'}</td>
+                    <td className="px-3 py-2.5 align-middle text-[13px]" style={{ borderBottom: cellBorder, color: 'rgba(250,250,249,0.9)' }}>{m.mahiyet || '—'}</td>
+                    <td className="px-3 py-2.5 align-middle text-center font-mono tabular-nums text-[13px]" style={{ borderBottom: cellBorder, color: 'rgba(250,250,249,0.9)' }}>{m.kanunNo || '0000'}</td>
+                    <td className="px-3 py-2.5 align-middle text-center tabular-nums text-[13px]" style={{ borderBottom: cellBorder, color: 'rgba(250,250,249,0.9)' }}>{m.calisan || '—'}</td>
+                    <td className="px-3 py-2.5 align-middle text-center tabular-nums whitespace-nowrap text-[13px]" style={{ borderBottom: cellBorder, color: d.belgeTuru === 'SGK_TAHAKKUK' ? '#fafaf9' : 'rgba(250,250,249,0.35)', fontWeight: d.belgeTuru === 'SGK_TAHAKKUK' && m.tutar ? 600 : 400 }}>{d.belgeTuru === 'SGK_TAHAKKUK' ? (m.tutar ? `${m.tutar} ₺` : '—') : '—'}</td>
+                    <td className="px-3 py-2.5 align-middle text-center" style={{ borderBottom: cellBorder }}>
                       {d.storageKey ? (
                         <button onClick={() => openPdf(d)} title={goruldu ? 'Görüntülendi' : 'Yeni — henüz görüntülenmedi'} aria-label="Görüntüle"
                           className="inline-grid place-items-center rounded-md hover:brightness-110 transition" style={{ width: 32, height: 32, background: renk.bg, border: `1px solid ${renk.bd}`, color: renk.fg }}>
