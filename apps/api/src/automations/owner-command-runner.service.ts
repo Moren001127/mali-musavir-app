@@ -78,6 +78,16 @@ export class OwnerCommandRunnerService {
       }
       case 'mizan_cek':
         return this.luca.createFetchJob({ tenantId: ctx.tenantId, sessionId: undefined as any, mukellefId: p.taxpayerId, donem: p.donem, tip: 'MIZAN', createdBy: ctx.userId ?? undefined });
+      // e-Arşiv / e-Fatura çekme — Luca tip'i job adıyla kodlanır (oturum gerekmez,
+      // mizan ile birebir aynı yol: createFetchJob → yerel ajan → upload-earsiv → done).
+      case 'earsiv_alis_cek':
+        return this.luca.createFetchJob({ tenantId: ctx.tenantId, sessionId: undefined as any, mukellefId: p.taxpayerId, donem: p.donem, tip: 'EARSIV_ALIS', createdBy: ctx.userId ?? undefined });
+      case 'earsiv_satis_cek':
+        return this.luca.createFetchJob({ tenantId: ctx.tenantId, sessionId: undefined as any, mukellefId: p.taxpayerId, donem: p.donem, tip: 'EARSIV_SATIS', createdBy: ctx.userId ?? undefined });
+      case 'efatura_alis_cek':
+        return this.luca.createFetchJob({ tenantId: ctx.tenantId, sessionId: undefined as any, mukellefId: p.taxpayerId, donem: p.donem, tip: 'EFATURA_ALIS', createdBy: ctx.userId ?? undefined });
+      case 'efatura_satis_cek':
+        return this.luca.createFetchJob({ tenantId: ctx.tenantId, sessionId: undefined as any, mukellefId: p.taxpayerId, donem: p.donem, tip: 'EFATURA_SATIS', createdBy: ctx.userId ?? undefined });
       default:
         throw new Error(`Bilinmeyen işlem: ${action}`);
     }

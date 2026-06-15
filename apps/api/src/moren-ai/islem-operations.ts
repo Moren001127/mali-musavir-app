@@ -55,6 +55,26 @@ export const ISLEM_OPERATIONS: Record<string, IslemOperation> = {
     label: 'Mizan çekme',
     impact: (d) => `Luca'dan ${formatIslemDonem(d)} mizanı çekilir ve portala işlenir`,
   },
+  earsiv_alis_cek: {
+    key: 'earsiv_alis_cek',
+    label: 'e-Arşiv alış faturaları çekme',
+    impact: (d) => `Luca'dan ${formatIslemDonem(d)} e-Arşiv ALIŞ faturaları çekilir ve portala işlenir`,
+  },
+  earsiv_satis_cek: {
+    key: 'earsiv_satis_cek',
+    label: 'e-Arşiv satış faturaları çekme',
+    impact: (d) => `Luca'dan ${formatIslemDonem(d)} e-Arşiv SATIŞ faturaları çekilir ve portala işlenir`,
+  },
+  efatura_alis_cek: {
+    key: 'efatura_alis_cek',
+    label: 'e-Fatura alış faturaları çekme',
+    impact: (d) => `Luca'dan ${formatIslemDonem(d)} e-Fatura ALIŞ faturaları çekilir ve portala işlenir`,
+  },
+  efatura_satis_cek: {
+    key: 'efatura_satis_cek',
+    label: 'e-Fatura satış faturaları çekme',
+    impact: (d) => `Luca'dan ${formatIslemDonem(d)} e-Fatura SATIŞ faturaları çekilir ve portala işlenir`,
+  },
 };
 
 export const ISLEM_ACTION_KEYS = Object.keys(ISLEM_OPERATIONS);
