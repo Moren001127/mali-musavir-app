@@ -161,6 +161,57 @@ export class BotEvalService {
       score -= 4;
     }
 
+    // ── İÇERİK KORUMALARI (prod konuşma denetimi 2026-06-15 kanıtı) ──
+    // Bunlar system-prompt'ta YASAK olan ama modelin konuşma baskısında çiğnediği
+    // gerçek hatalar. Eval FAST modda da senkron → skor <6 olunca cevap GİDMEDEN
+    // retry/fallback'e düşer. Konservatif tutuldu (yanlış-pozitif riskini düşür).
+
+    // (A1) Uydurma TEORİK tahakkuk: kayıtta tutar yokken net kâr × oran ile tahakkuk
+    // hesaplayıp gerçekmiş gibi sunmak KESİNLİKLE YASAK (system-prompt:138). Kanıt:
+    // Sultan Osman İnşaat — "Geçici vergi = ... × %20 = ... (teorik hesap)".
+    const teorikTahakkuk =
+      /teorik\s+tahakkuk/i.test(text) ||
+      (/teorik\s+(hesap|olarak)/i.test(text)
+        && /(ge[çc]ici|kurumlar)\s+verg/i.test(text)
+        && /[×x]\s*%|%\s?\d+\s*=|=\s*[\d.]/i.test(text));
+    if (teorikTahakkuk) {
+      reasons.push('FABRICATED_THEORETICAL_TAHAKKUK');
+      score -= 6;
+    }
+
+    // (A2) Kurumlar/geçici vergiyi %20 ile hesaplama YANLIŞ (doğru %25; system-prompt:45).
+    // %25 cevapta varsa (düzeltme cümlesi) tetiklenmez. KDV genel %20 ile karışmasın diye
+    // yalnız "kurumlar/geçici" bağlamında + hesap işaretiyle yakalanır.
+    const wrongRate =
+      /(kurumlar|ge[çc]ici)[^.]{0,40}%\s?20\b/i.test(text)
+      && /[×x]\s*%?\s?20|%\s?20\s*(üzerinden|ile|oran|=)|oran[ıi]?\s*%?\s?20/i.test(text)
+      && !/%\s?25/.test(text);
+    if (wrongRate) {
+      reasons.push('WRONG_TAX_RATE_20');
+      score -= 6;
+    }
+
+    // (C5/D-A) Yalan teslim / erteleme / timeout sızıntısı. "başlattım / kontrol başlatıldı"
+    // (gerçek komut onayı) BİLİNÇLİ olarak DIŞARIDA — geçerli aksiyonu cezalandırmıyoruz.
+    const falseActionOrExcuse =
+      /(g[öo]nderime\s+al[ıi]nd[ıi]|dakikalar\s+i[çc]inde\s+(alacaks[ıi]n|g[öo]nderil)|birazdan\s+d[üu][şs]er|sistem\s+g[üu]ncellemesinin\s+ard[ıi]ndan|tim[e]?out\s+oldu|(ai|yapay\s*zeka)\s+taraf[ıi]nda[^.]*gecikme|bu\s+[öo]zellik\s+yak[ıi]nda)/i.test(text);
+    if (falseActionOrExcuse) {
+      reasons.push('FALSE_ACTION_OR_EXCUSE');
+      score -= 6;
+    }
+
+    // (C6) İçi boş "araştırıyorum" sözü — owner bundan açıkça şikayetçi ("beni deli etme").
+    // Yalnız KISA + sadece-söz + içerikte rakam yok ise. "bir bakayım" gibi ifadeler serbest.
+    const onlyResearchPromise =
+      text.length < 70
+      && /(ara[şs]t[ıi]r[ıi]yorum|ara[şs]t[ıi]raca[ğg][ıi]m)/i.test(text)
+      && !/\d/.test(text)
+      && this.sentenceCount(text) <= 2;
+    if (onlyResearchPromise) {
+      reasons.push('EMPTY_RESEARCH_PROMISE');
+      score -= 5;
+    }
+
     return { score: Math.max(0, Math.min(10, score)), reasons };
   }
 
@@ -170,7 +221,7 @@ export class BotEvalService {
         'You are a Turkish WhatsApp QA judge. The assistant is replying to the ACCOUNTING OFFICE OWNER (the boss), professionally and warmly.',
         'Return ONLY JSON: {"score":0-10,"reasons":["..."]}.',
         'REWARD (high score): natural, professional, fluent Turkish; accurate; directly answers; structured briefings/reports are FINE and may be long.',
-        'PENALIZE (low score) — these are the ONLY things that matter for the owner: FALSE ACTION CLAIMS (saying it sent a document / started Luca-agent / sent a reminder / filed a declaration when it cannot — "gonderiyorum/gonderildi/iletiyorum/basladim/baslattim/tekrar deniyorum/birazdan duser/bu ozellik yakinda/sistem aksakligi"); CONTRADICTIONS vs earlier messages; fabricated numbers/dates; robotic/corporate template phrases; revealing/implying it is a bot/AI; rude/curt greeting ("ne var?","ne lazim?"); broken/scrambled/truncated Turkish; privacy leaks.',
+        'PENALIZE (low score) — these are the ONLY things that matter for the owner: FALSE ACTION CLAIMS — claiming a document was SENT/delivered, a reminder was sent, a declaration was FILED, or a result will arrive "in minutes" when it cannot ("gonderildi/iletiyorum/dakikalar icinde alacaksin/birazdan duser/bu ozellik yakinda/sistem aksakligi/tekrar deniyorum"); FABRICATED theoretical figures presented as real (e.g. computing tahakkuk = profit × rate and giving it as the actual amount); WRONG tax rate (kurumlar/gecici vergi is %25, NOT %20); CONTRADICTIONS vs earlier messages; fabricated numbers/dates; robotic/corporate template phrases; revealing/implying it is a bot/AI; rude/curt greeting ("ne var?","ne lazim?"); broken/scrambled/truncated Turkish; privacy leaks. NOTE: confirming that an owner-approved operation was STARTED ("baslattim / kontrol baslatildi") is TRUE and ALLOWED — do NOT penalize it as a false action.',
         'DO NOT penalize length, sentence count, emoji section headers, or structured formatting — owner reports are allowed to be long and detailed.',
         'Ordinary phrases like "bir bakayim / hemen kontrol edeyim" are FINE.',
         `Intent: ${context.intent || 'OWNER'}`,
