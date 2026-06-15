@@ -822,6 +822,23 @@ export class WhatsAppBotController implements OnModuleInit {
     });
     this.refreshTaxpayerMemory(tenant.id, personalRecord.id);
 
+    // GİZLİ BİLDİRİM: Buse yazınca YALNIZ owner'a (userId-scoped) bildirim. STAFF
+    // kullanıcılar bu bildirimi GÖRMEZ (notification.findAll OR:[{userId},{userId:null}]).
+    const ownerUserId = await this.resolveOwnerUserId(tenant.id);
+    if (ownerUserId) {
+      const preview = String(msg.text || '').replace(/\s+/g, ' ').trim().slice(0, 120);
+      await this.prisma.notification.create({
+        data: {
+          tenantId: tenant.id,
+          userId: ownerUserId,
+          type: 'WHATSAPP',
+          title: `💬 ${contact.name}`,
+          body: preview || (msg.media?.kind ? `${contact.name} bir ${msg.media.kind} gönderdi` : `${contact.name} yazdı`),
+          metadata: { personal: true, taxpayerId: personalRecord.id, phone: msg.from },
+        },
+      }).catch(() => null);
+    }
+
     const recentContext = await this.botContext.buildRecentWhatsAppContext(personalRecord.id);
     const ownerName = String(process.env.MOREN_OWNER_DISPLAY_NAME || 'Muzaffer').trim() || 'Muzaffer';
     const her = contact.name;
@@ -1058,6 +1075,22 @@ export class WhatsAppBotController implements OnModuleInit {
       select: { id: true },
     });
     return created.id;
+  }
+
+  /**
+   * Kişisel kontak (Buse) bildirimlerinin gideceği OWNER kullanıcı id'si.
+   * MOREN_OWNER_USER_ID env'i varsa o; yoksa tenant'ın ADMIN/OWNER rollü kullanıcısı.
+   * Bulunamazsa null → bildirim oluşturulmaz (tenant-geneli sızıntı OLMAZ).
+   */
+  private async resolveOwnerUserId(tenantId: string): Promise<string | null> {
+    const env = String(process.env.MOREN_OWNER_USER_ID || '').trim();
+    if (env) return env;
+    const admin = await this.prisma.user.findFirst({
+      where: { tenantId, isActive: true, userRoles: { some: { role: { name: { in: ['ADMIN', 'OWNER'] } } } } },
+      select: { id: true },
+      orderBy: { createdAt: 'asc' },
+    }).catch(() => null);
+    return admin?.id || null;
   }
 
   private findPersonalContactByPhone(phone: string): { phone: string; name: string } | null {

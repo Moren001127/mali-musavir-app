@@ -17,11 +17,11 @@ import { MorenAiService } from '../moren-ai/moren-ai.service';
  * (whatsapp-bot.controller.ts'e endpoint eklenecek; bu service'i çağırır.)
  */
 /**
- * Sabit override mesaj — Muzaffer tarafindan tanimlanmis.
- * Boş bırakırsan AI yaratıcı bir günaydın üretir.
- * Doluysa AI atlanir ve TAM olarak bu metin gönderilir.
+ * Sabit override mesaj — BOŞ bırakıldı: her gün AI ile FARKLI, özel bir günaydın
+ * üretilir (kullanıcı talebi 2026-06-15: her sabah farklı mesaj). Doldurursan AI
+ * atlanır ve TAM olarak bu metin gönderilir (acil/özel gün için).
  */
-const BUSE_OVERRIDE_MORNING_MESSAGE = 'Günaydınnnnnnnn Ömrümmmmmmmmmmm ❤️🩷💕💖🥹😘✨';
+const BUSE_OVERRIDE_MORNING_MESSAGE = '';
 
 @Injectable()
 export class BuseGunaydinCron {
@@ -33,21 +33,25 @@ export class BuseGunaydinCron {
     private readonly morenAi: MorenAiService,
   ) {}
 
-  /** Her gün İstanbul saati 09:15. */
-  @Cron('15 9 * * *', { timeZone: 'Europe/Istanbul' })
+  /** Her gün İstanbul saati 08:00 — TEK günaydın (her gün farklı). */
+  @Cron('0 8 * * *', { timeZone: 'Europe/Istanbul' })
   async dailyMorningMessage() {
     await this.send('cron');
   }
 
   /**
-   * GEÇİCİ TEST CRON — İstanbul 04:30.
-   * Override mesaj aktifse onu gönderir, yoksa AI üretir.
-   * Test sonrası bu metodu silebilirsin (production'da 09:15 cron'u zaten var).
+   * GÜN İÇİ kısa sevgi/motivasyon mesajları — öğle, ikindi, akşam.
+   * Her biri AI ile FARKLI üretilir; son mesajları görüp tekrarlamaz.
+   * (Kullanıcı talebi: gün içinde belirli aralıklarla kısa sevgi/motive cümleleri.)
    */
-  @Cron('30 4 * * *', { timeZone: 'Europe/Istanbul' })
-  async testMorningMessage_0430() {
-    await this.send('cron');
-  }
+  @Cron('30 13 * * *', { timeZone: 'Europe/Istanbul' })
+  async noonLoveMessage() { await this.sendDaytime('ogle'); }
+
+  @Cron('0 17 * * *', { timeZone: 'Europe/Istanbul' })
+  async afternoonLoveMessage() { await this.sendDaytime('ikindi'); }
+
+  @Cron('30 20 * * *', { timeZone: 'Europe/Istanbul' })
+  async eveningLoveMessage() { await this.sendDaytime('aksam'); }
 
   /**
    * Tekrar kullanılabilir gönderim fonksiyonu — hem cron hem manuel endpoint
@@ -200,6 +204,88 @@ export class BuseGunaydinCron {
     }).catch(() => null);
 
     this.logger.log(`[BuseGunaydin] trigger=${trigger} sent=${sent} len=${reply.length}`);
+    return { ok: sent, reply };
+  }
+
+  /**
+   * GÜN İÇİ kısa sevgi/motivasyon mesajı (öğle/ikindi/akşam). Her seferinde FARKLI;
+   * son sevgi mesajlarını görüp aynı kalıbı tekrarlamaz.
+   */
+  async sendDaytime(slot: 'ogle' | 'ikindi' | 'aksam'): Promise<{ ok: boolean; reason?: string; reply?: string }> {
+    const raw = (String(process.env.MOREN_PERSONAL_CONTACT_PHONES || '').trim()) || '905363048246:Buse';
+    const firstEntry = raw.split(',')[0] || '';
+    const [phonePart, namePart] = firstEntry.split(':').map((s) => (s || '').trim());
+    const phone = this.normalizePhone(phonePart);
+    const her = (namePart || 'Buse').trim();
+    if (!phone) return { ok: false, reason: 'phone-yok' };
+    const tenantId = await this.resolveTenantId();
+    if (!tenantId) return { ok: false, reason: 'tenant-yok' };
+    const contact = await this.ensurePersonalContact(tenantId, phone, her);
+
+    // Son sevgi/motivasyon mesajlarını al — tekrar olmasın.
+    const recent = await this.prisma.communicationLog.findMany({
+      where: { taxpayerId: contact.id, channel: 'WHATSAPP', subject: { contains: 'sevgi' } },
+      orderBy: { occurredAt: 'desc' }, take: 6, select: { content: true },
+    }).catch(() => []);
+    const lastMsgs = recent
+      .map((r) => String(r.content || '').replace(/\[\[wa_phone:[^\]]+\]\]\n?/g, '').trim())
+      .filter(Boolean).slice(0, 6);
+
+    const ownerName = String(process.env.MOREN_OWNER_DISPLAY_NAME || 'Muzaffer').trim() || 'Muzaffer';
+    const slotHint = slot === 'ogle' ? 'öğle vakti' : slot === 'ikindi' ? 'ikindi/öğleden sonra' : 'akşam';
+    const prompt = [
+      `Sen ${ownerName}'in (mali müşavir) yapay zeka asistanısın. Karşındaki kişi ${ownerName}'in SEVGİLİSİ ${her}.`,
+      `${slotHint} vakti, ${her}'ye ${ownerName} adına KISA bir sevgi/motivasyon mesajı yazıyorsun. İstenmemiş, sürpriz, sıcak bir "aklımdasın" mesajı.`,
+      '',
+      '═══ GERÇEK SEVGİLİ NASIL YAZARSA ÖYLE ═══',
+      'WhatsApp mesajı — şiir/edebiyat DEĞİL. KISA, doğal, samimi. Bazen sevgi, bazen motive edici/destek.',
+      '',
+      'GERÇEK ÖRNEKLER (kopyalama, ruhunu yakala):',
+      '- "aklımdasın 🥹 iyi misin?"',
+      '- "bugün güçlüsün, halledersin canım 💪💕"',
+      '- "seni düşündüm birden, öpüyorum 😘"',
+      '- "yoruldun mu tatlım? biraz nefes al, sen değerlisin 🌷"',
+      '- "ne yapıyorsun güzelim ❤️"',
+      '- "her şey yoluna girecek, yanındayım 💖"',
+      '- "gülümse biraz, sana çok yakışıyor ✨"',
+      '',
+      'KURALLAR:',
+      '- 1-2 cümle MAX, çok kısa. 1-2 emoji.',
+      '- Doğal konuşma dili (küçük harf, rahat). Klişe/yapmacık YASAK ("güneşim", "sen olmadan..." gibi kitabi laf yok).',
+      '- İŞ/evrak/ofis YASAK. Kurumsal kalıp YASAK.',
+      `- ${ownerName} ismini her mesaja sokma; çoğu mesajda hiç geçmesin.`,
+      '- Markdown yok, "Cevap:" yok, doğrudan mesaj.',
+      '',
+      lastMsgs.length
+        ? `═══ SON SEVGİ MESAJLARI (AYNISINI YAZMA, farklı kelime/ton) ═══\n${lastMsgs.map((m, i) => `${i + 1}. ${m}`).join('\n')}`
+        : '',
+      '',
+      `SADECE ${her}'ye gidecek kısa mesajı yaz — başka hiçbir şey.`,
+    ].filter(Boolean).join('\n');
+
+    let aiText = '';
+    try {
+      const answer = await this.morenAi.chat(tenantId, null, { message: prompt, voiceMode: false, toolMode: 'none' } as any);
+      aiText = (answer.assistantMessage || '').slice(0, 400);
+    } catch (err: any) {
+      this.logger.warn(`[BuseDaytime] AI hatasi (${slot}): ${err?.message || err}`);
+      return { ok: false, reason: 'ai-hata' };
+    }
+    const reply = this.lightCleanup(aiText);
+    if (!reply) return { ok: false, reason: 'bos-cevap' };
+
+    let sent = false;
+    try { sent = !!(await this.whatsapp.sendMessage(phone, reply, tenantId)); }
+    catch (err: any) { this.logger.warn(`[BuseDaytime] gonderim hatasi (${slot}): ${err?.message || err}`); }
+
+    await this.prisma.communicationLog.create({
+      data: {
+        taxpayerId: contact.id, channel: 'WHATSAPP',
+        subject: sent ? `WhatsApp ${her} (kisisel) sevgi mesaji (${slot})` : `WhatsApp ${her} (kisisel) sevgi mesaji gonderilemedi (${slot})`,
+        content: `[[wa_phone:${phone}]]\n${reply}`, occurredAt: new Date(),
+      },
+    }).catch(() => null);
+    this.logger.log(`[BuseDaytime] slot=${slot} sent=${sent} len=${reply.length}`);
     return { ok: sent, reply };
   }
 

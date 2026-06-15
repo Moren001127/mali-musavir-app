@@ -47,9 +47,26 @@ type PortalMessageBody = {
   period?: string;
 };
 
+// Kişisel kontak (sahibin sevgilisi/yakını) taxNumber öneki. Bu kişilerin konuşmaları
+// GİZLİDİR — yalnız owner görür, STAFF kullanıcılar göremez.
+const PERSONAL_CONTACT_PREFIX = 'WHATSAPP-PERSONAL-';
+
 @Controller('whatsapp')
 @UseGuards(AuthGuard('jwt'))
 export class WhatsAppController {
+  /**
+   * Bakan kullanıcı OWNER mı? Owner kişisel kontak (Buse) konuşmalarını görebilir;
+   * STAFF göremez. Belirleme: MOREN_OWNER_USER_ID env'i varsa o kullanıcı; yoksa
+   * ADMIN rolüne sahip kullanıcı. (Senin tenant'ında ADMIN=sen, STAFF=BÜŞRA/DİLEK.)
+   */
+  private viewerIsOwner(req: any): boolean {
+    const uid = String(req?.user?.sub || req?.user?.userId || '');
+    const ownerEnv = String(process.env.MOREN_OWNER_USER_ID || '').trim();
+    if (ownerEnv) return uid === ownerEnv;
+    const roles = Array.isArray(req?.user?.roles) ? req.user.roles : [];
+    return roles.includes('ADMIN') || roles.includes('OWNER');
+  }
+
   private readonly aylarTr = [
     'Ocak', 'Subat', 'Mart', 'Nisan', 'Mayis', 'Haziran',
     'Temmuz', 'Agustos', 'Eylul', 'Ekim', 'Kasim', 'Aralik',
@@ -129,11 +146,14 @@ export class WhatsAppController {
   @Get('conversations')
   async getConversations(@Req() req: any) {
     const tenantId = req.user.tenantId;
+    // GİZLİLİK: kişisel kontak (Buse vb.) konuşmaları YALNIZ owner'a (ADMIN/env) görünür;
+    // STAFF kullanıcılar (ör. BÜŞRA, DİLEK) bu konuşmaları GÖREMEZ. (Kullanıcı talebi 2026-06-15)
+    const personalFilter = this.viewerIsOwner(req) ? {} : { NOT: { taxNumber: { startsWith: PERSONAL_CONTACT_PREFIX } } };
     // Tüm WhatsApp loglarını çek, mükellef bazlı grupla
     const logs = await this.prisma.communicationLog.findMany({
       where: {
         channel: 'WHATSAPP',
-        taxpayer: { tenantId },
+        taxpayer: { tenantId, ...personalFilter },
       },
       orderBy: { occurredAt: 'desc' },
       take: 2000,
@@ -325,6 +345,10 @@ export class WhatsAppController {
       },
     });
     if (!taxpayer) return { error: 'Mükellef bulunamadı', messages: [] };
+    // GİZLİLİK: kişisel kontak (Buse) konuşması yalnız owner'a açık; STAFF id'yi bilse bile göremez.
+    if (taxpayer.taxNumber?.startsWith(PERSONAL_CONTACT_PREFIX) && !this.viewerIsOwner(req)) {
+      return { error: 'Bu konuşmaya erişim yetkiniz yok.', messages: [] };
+    }
 
     // ÖNEMLİ: EN YENİ 500 mesajı al (eskiden 'asc' + take:500 = en ESKİ 500'dü; sohbet
     // 500'ü geçince thread donup yeni mesajlar HİÇ görünmüyordu). 'desc' çekip ekran için
