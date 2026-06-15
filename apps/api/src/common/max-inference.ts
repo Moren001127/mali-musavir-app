@@ -27,11 +27,39 @@ export interface MaxTextResult {
   model: string;
   costUsd: number; // Max kotasından düşer — token başına fatura DEĞİL; görünürlük için
   error?: string;
+  /** Hata, OAuth token süresi/yetkisi kaynaklıysa true — çağıran owner'ı uyarmalı. */
+  authExpired?: boolean;
 }
 
 /** Max aboneliği bağlı mı (OAuth token var mı)? */
 export function isMaxAvailable(): boolean {
   return !!process.env.CLAUDE_CODE_OAUTH_TOKEN;
+}
+
+/**
+ * Max token sağlık durumu. Token bayatlayınca bot sessizce generic fallback'e
+ * düşüyordu; bu izleyici sayesinde sağlık taraması/owner-bildirimi "token süresi
+ * doldu, yenile" diye NET uyarı verebilir.
+ */
+let _lastAuthFailureAt = 0;
+let _lastAuthFailureMsg = '';
+export function getMaxTokenHealth(): { authExpired: boolean; at: number; message: string } {
+  // Son 10 dakikada kimlik hatası olduysa "expired" say.
+  const fresh = _lastAuthFailureAt > 0 && Date.now() - _lastAuthFailureAt < 10 * 60 * 1000;
+  return { authExpired: fresh, at: _lastAuthFailureAt, message: fresh ? _lastAuthFailureMsg : '' };
+}
+
+/** Hata metni OAuth token süresi/yetkisi kaynaklı mı? */
+function looksLikeAuthError(msg: string): boolean {
+  const s = String(msg || '').toLowerCase();
+  return /oauth|unauthorized|401|403|forbidden|expired|invalid[_ ]?(token|api[_ ]?key|grant)|authentication|auth(?:enticate)?[ _]?fail|token.*(expired|invalid|revoked)|please run .*login|not logged in/.test(s);
+}
+
+function noteAuthFailure(msg: string) {
+  _lastAuthFailureAt = Date.now();
+  _lastAuthFailureMsg = String(msg || '').slice(0, 300);
+  // Railway loglarında aranabilir NET işaret — sessiz degrade etme.
+  console.error(`[MAX-TOKEN-EXPIRED] Max OAuth token süresi/yetkisi sorunlu — yenilenmeli. Detay: ${_lastAuthFailureMsg}`);
 }
 
 /**
@@ -155,7 +183,10 @@ export async function claudeTextViaMax(params: {
     if (hardTimedOut) {
       return { ok: false, text: '', model, costUsd: 0, error: `Max ${HARD_MS}ms icinde yanit vermedi (gorsel/oturum takildi)` };
     }
-    return { ok: false, text: '', model, costUsd: 0, error: e?.message || 'Agent SDK (Max) çağrısı başarısız.' };
+    const err = e?.message || 'Agent SDK (Max) çağrısı başarısız.';
+    const authExpired = looksLikeAuthError(err);
+    if (authExpired) noteAuthFailure(err);
+    return { ok: false, text: '', model, costUsd: 0, error: err, authExpired };
   }
   clearTimeout(hardTimer);
   if (hardTimedOut && !text.trim()) {
@@ -164,13 +195,10 @@ export async function claudeTextViaMax(params: {
 
   text = text.trim();
   if (isError && !text) {
-    return {
-      ok: false,
-      text: '',
-      model,
-      costUsd,
-      error: resultError ? `Agent SDK (Max) sonucu hata dondu: ${resultError}` : 'Agent SDK (Max) sonucu hata döndü.',
-    };
+    const err = resultError ? `Agent SDK (Max) sonucu hata dondu: ${resultError}` : 'Agent SDK (Max) sonucu hata döndü.';
+    const authExpired = looksLikeAuthError(err);
+    if (authExpired) noteAuthFailure(err);
+    return { ok: false, text: '', model, costUsd, error: err, authExpired };
   }
   return { ok: true, text, model, costUsd };
 }

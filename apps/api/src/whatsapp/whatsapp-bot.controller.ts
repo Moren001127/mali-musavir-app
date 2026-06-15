@@ -1079,7 +1079,11 @@ export class WhatsAppBotController implements OnModuleInit {
   }
 
   private clientAutoReplyEnabled(): boolean {
-    return process.env.MOREN_CLIENT_BOT_ENABLED === '1';
+    // Kullanıcı talimatı (2026-06-15): müşteri botu AÇIK olmalı — mükellef bota
+    // yazınca otomatik cevap alsın. Eskiden '1' değilse KAPALIYDI; bu, "bot komut
+    // almıyor / cevap vermiyor" şikayetinin başlıca nedeniydi. Artık açıkça '0'
+    // verilmedikçe açık. Master switch (automationActive) yine ayrı kapı.
+    return process.env.MOREN_CLIENT_BOT_ENABLED !== '0';
   }
 
   private ownerAutoReplyEnabled(): boolean {

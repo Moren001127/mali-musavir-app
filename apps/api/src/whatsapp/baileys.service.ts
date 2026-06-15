@@ -79,6 +79,13 @@ export class BaileysService implements OnModuleDestroy {
   private watchdogTimer: ReturnType<typeof setInterval> | null = null;
   private inboundHandler: ((msg: BaileysInbound) => Promise<void>) | null = null;
   private lidMappingHandler: ((tenantId: string, lid: string, phone: string) => Promise<void>) | null = null;
+  /**
+   * Gelen mesaj tekilleştirme (dedup). Baileys yeniden bağlanma / retry'de aynı
+   * mesajı iki kez 'notify' verebiliyor → çift işleme + çift cevap olurdu.
+   * key=`tenantId:messageId`, value=ilk görülme zamanı (ms). TTL aşınca temizlenir.
+   */
+  private readonly recentInboundIds = new Map<string, number>();
+  private static readonly INBOUND_DEDUP_TTL_MS = 5 * 60 * 1000;
 
   constructor(private readonly prisma: PrismaService) {}
 
@@ -395,6 +402,25 @@ export class BaileysService implements OnModuleDestroy {
     if (!m?.message || m.key?.fromMe) return;
     const jid: string = m.key?.remoteJid || '';
     if (!jid || jid.endsWith('@g.us') || jid === 'status@broadcast') return; // grup/durum atla
+
+    // DEDUP: aynı mesaj iki kez gelirse (Baileys reconnect/retry) ikincisini at.
+    const msgId: string = m.key?.id || '';
+    if (msgId) {
+      const dedupKey = `${session.tenantId}:${msgId}`;
+      const now = Date.now();
+      // Süresi dolmuş kayıtları ara sıra temizle (Map şişmesin).
+      if (this.recentInboundIds.size > 1000) {
+        for (const [k, ts] of this.recentInboundIds) {
+          if (now - ts > BaileysService.INBOUND_DEDUP_TTL_MS) this.recentInboundIds.delete(k);
+        }
+      }
+      const seenAt = this.recentInboundIds.get(dedupKey);
+      if (seenAt !== undefined && now - seenAt < BaileysService.INBOUND_DEDUP_TTL_MS) {
+        this.logger.debug?.(`[Baileys] yinelenen mesaj atlandı id=${msgId} tenant=${session.tenantId}`);
+        return;
+      }
+      this.recentInboundIds.set(dedupKey, now);
+    }
     let from = this.senderPhoneForMessage(m, jid, session);
     if (!from) return;
 
@@ -442,13 +468,28 @@ export class BaileysService implements OnModuleDestroy {
         this.logger.warn(`[Baileys] LID eslesmesi mesajdan islenemedi tenant=${session.tenantId}: ${e?.message || e}`));
     }
 
-    const msg = m.message;
+    // Sarmalanmış mesajları aç: kaybolan (ephemeral) ve tek-görüntüleme (viewOnce)
+    // mesajlar gerçek içeriği iç katmanda taşır; açmazsak metin/medya boş görünüp
+    // mesaj sessizce yutuluyordu.
+    let msg = m.message;
+    msg = msg.ephemeralMessage?.message
+      || msg.viewOnceMessage?.message
+      || msg.viewOnceMessageV2?.message
+      || msg.viewOnceMessageV2Extension?.message
+      || msg.documentWithCaptionMessage?.message
+      || msg;
+
     const text =
       msg.conversation ||
       msg.extendedTextMessage?.text ||
       msg.imageMessage?.caption ||
       msg.videoMessage?.caption ||
       msg.documentMessage?.caption ||
+      // Buton/liste yanıtları: seçilen metin (eskiden okunmuyor, mesaj yutuluyordu).
+      msg.buttonsResponseMessage?.selectedDisplayText ||
+      msg.templateButtonReplyMessage?.selectedDisplayText ||
+      msg.listResponseMessage?.title ||
+      msg.listResponseMessage?.singleSelectReply?.selectedRowId ||
       '';
 
     let media: BaileysInbound['media'];
@@ -456,11 +497,13 @@ export class BaileysService implements OnModuleDestroy {
     else if (msg.documentMessage) media = { kind: 'document', mimeType: msg.documentMessage.mimetype, filename: msg.documentMessage.fileName, caption: msg.documentMessage.caption };
     else if (msg.audioMessage) media = { kind: 'audio', mimeType: msg.audioMessage.mimetype };
     else if (msg.videoMessage) media = { kind: 'video', mimeType: msg.videoMessage.mimetype, caption: msg.videoMessage.caption };
+    else if (msg.stickerMessage) media = { kind: 'sticker', mimeType: msg.stickerMessage.mimetype };
 
     let finalText = text;
     if (!finalText && media) {
       const label = media.kind === 'image' ? 'Görsel' : media.kind === 'document' ? 'Belge/PDF'
-        : media.kind === 'audio' ? 'Ses kaydı' : media.kind === 'video' ? 'Video' : 'Medya';
+        : media.kind === 'audio' ? 'Ses kaydı' : media.kind === 'video' ? 'Video'
+        : media.kind === 'sticker' ? 'Çıkartma' : 'Medya';
       const detail = [media.filename, media.caption].filter(Boolean).join(' - ');
       finalText = detail ? `[${label}] ${detail}` : `[${label} mesajı]`;
     }
