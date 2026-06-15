@@ -2,6 +2,7 @@ import { Injectable, Logger } from '@nestjs/common';
 import { PrismaService } from '../prisma/prisma.service';
 import { MIHSAP_FATURA_ACTIONS, isMihsapFaturaCommandAgent } from '../agent-events/agent-registry';
 import { calculateBeyannameDeadline } from '../schedule/beyanname-deadline.util';
+import { ISLEM_OPERATIONS, ISLEM_ACTION_KEYS, islemCapabilityList } from './islem-operations';
 import { randomBytes } from 'crypto';
 
 const OFFICIAL_SOURCE_DOMAINS = [
@@ -2606,9 +2607,9 @@ export class ToolExecutorService {
       'banka-ekstre': ['scan_missing', 'create_tasks'],
       edefter: ['scan_berat'],
       whatsapp: [...WHATSAPP_AGENT_ACTIONS],
-      // GERÇEKTEN yürütülen owner işlemleri (OwnerCommandRunnerService → ActionDispatcher).
-      // payload: { taxpayerId, donem: "YYYY-MM" }. Tek mükellef + tek dönem.
-      islem: ['mihsap_fatura_cek', 'luca_kdv_cek', 'fis_word_uret'],
+      // GERÇEKTEN yürütülen owner işlemleri — TEK kaynak ISLEM_OPERATIONS registry'si.
+      // payload: { taxpayerId, donem: "YYYY-MM" }. Yeni operasyon = registry'ye 1 satır.
+      islem: ISLEM_ACTION_KEYS,
     };
     const errors: string[] = [];
     if (!supported[agent]) errors.push(`Desteklenmeyen agent: ${agent}`);
@@ -2662,13 +2663,9 @@ export class ToolExecutorService {
 
   private describeAgentImpact(agent: string, action: string, payload: any) {
     if (agent === 'islem') {
+      const op = ISLEM_OPERATIONS[action];
       const d = String(payload?.donem || '');
-      const islemAdi: Record<string, string> = {
-        mihsap_fatura_cek: `Mihsap'tan ${d} dönemi faturaları çekilir (alış+satış) ve portala işlenir`,
-        luca_kdv_cek: `Luca'dan ${d} dönemi KDV verisi çekilir (KDV kontrol için)`,
-        fis_word_uret: `${d} dönemi faturalarından fiş Word raporu üretilir (Fiş Yazdırma çıktıları)`,
-      };
-      return (islemAdi[action] || `${action} işlemi çalıştırılır`) + '. Onaylarsan GERÇEKTEN çalışır; sonucu sana bildiririm.';
+      return (op ? op.impact(d) : `${action} işlemi çalıştırılır`) + '. Onaylarsan GERÇEKTEN çalışır; sonucu sana bildiririm.';
     }
     if (agent === 'luca' && action === 'prepare_beyanname') return 'LUCA beyanname ekranında taslak hazırlık başlatılır; gönderim ayrıca onay gerektirir.';
     if (agent === 'luca' && action === 'fetch_mizan') return 'LUCA’dan mizan çekimi başlatılır ve portala işlenir.';
@@ -2760,13 +2757,17 @@ export class ToolExecutorService {
         { module: 'Hafıza', tools: ['search_ai_memory', 'save_ai_memory'], scope: 'ofis tercihi, mükellef notu, araştırma kaydı, tekrar öğrenme' },
         { module: 'Mevzuat Araştırma', tools: ['research_official_sources'], scope: 'GİB, SGK, Resmi Gazete, mevzuat.gov.tr, TÜRMOB, HMB, KGK, TCMB ve resmi/mesleki kaynaklar' },
       ],
-      commandAndAction: actionAgents,
-      executionRule: 'Okuma ve analiz dogrudan yapilir. Portalda islem baslatan komutlar once preview_agent_command ile previewId uretir; kullanici ONAYLIYORUM #PRV-XXXX yazarsa create_confirmed_agent_command calisir.',
+      // GERÇEKTEN çalıştırılabilen owner işlemleri (preview→ONAYLIYORUM→çalışır).
+      // agent="islem", action=aşağıdakilerden biri, payload={taxpayerId, donem:"YYYY-MM"}.
+      calistirilabilirIslemler: islemCapabilityList(),
+      // Mihsap fatura işleme (kendi runner'ı) — agent="mihsap", action=isle_*.
+      mihsapFaturaIsleme: actionAgents.mihsap,
+      executionRule: 'Okuma/analiz doğrudan yapılır. İŞLEM çalıştırma: agent="islem" + yukarıdaki bir action + payload{taxpayerId,donem} ile preview_agent_command → kullanıcıya NE YAPACAĞINI tekrar et + ONAYLIYORUM #PRV-XXXX iste → create_confirmed_agent_command. Yalnız calistirilabilirIslemler GERÇEKTEN çalışır; listede olmayan bir işlemi (beyanname verme, e-tebligat tarama, mesaj gönderme vb.) "yaptım/başlattım" DEME, kullanıcıya "portaldan yapılması gerek" de.',
       currentLimits: [
-        'Agent tarafında olmayan yeni bir işlem doğrudan yapılmaz; önce uygun agent/action olarak komut kuyruğuna alınır.',
-        'WhatsApp belge gönderme, evrak talebi, konuşma başlatma ve arama istekleri onaylı komut olarak hazırlanır; gerçek gönderim/arama bağlı WhatsApp oturumunun desteklediği işlemlerle sınırlıdır.',
-        'Resmi kaynak araştırması internet erişimi ve resmi sitelerin erişilebilirliğine bağlıdır.',
-        'Kalıcı öğrenme yalnızca ofis/mükellef/portal hafızasına yazılan notlarla yapılır; gereksiz kişisel veri saklanmaz.',
+        'Yalnız calistirilabilirIslemler listesindeki işlemler otomatik çalışır; diğer işlemler şimdilik portaldan yapılır (bot uydurmaz, "yapamam, portaldan" der).',
+        'Mükellefe mesaj/SMS gönderme bot tarafından yapılmaz (proaktif-mesaj kuralı).',
+        'Resmi kaynak araştırması internet erişimine bağlıdır.',
+        'Kalıcı öğrenme ofis/mükellef hafızasına yazılan notlarla yapılır.',
       ],
     };
   }

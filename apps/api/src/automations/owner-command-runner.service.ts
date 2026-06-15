@@ -3,20 +3,24 @@ import { Cron, CronExpression } from '@nestjs/schedule';
 import { PrismaService } from '../prisma/prisma.service';
 import { ActionDispatcherService } from './action-dispatcher.service';
 import { WhatsAppService } from '../whatsapp/whatsapp.service';
+import { EDefterControlService } from '../edefter-control/edefter-control.service';
+import { LucaService } from '../luca/luca.service';
+import { ISLEM_OPERATIONS } from '../moren-ai/islem-operations';
 
 /**
- * OWNER KOMUT YÜRÜTÜCÜSÜ — owner WhatsApp'tan onayladığı (ONAYLIYORUM) komutları
- * GERÇEKTEN çalıştırır. Bot, agent='islem' AgentCommand'ı kuyruğa atar; bu runner
- * pending olanları çekip ActionDispatcherService ile çalıştırır ve owner'a sonucu
- * WhatsApp'tan bildirir.
+ * OWNER KOMUT YÜRÜTÜCÜSÜ — owner WhatsApp'tan onayladığı (ONAYLIYORUM) işlem komutlarını
+ * GERÇEKTEN çalıştırır. Bot agent='islem' AgentCommand'ı kuyruğa atar; bu runner pending
+ * olanları çekip ilgili servisle çalıştırır ve owner'a sonucu WhatsApp'tan bildirir.
  *
  * MİMARİ: dispatcher ToolExecutorService'i çağırdığı için tool-executor'a dispatcher
- * enjekte edilemez (döngü). Bu AYRI runner dispatcher'ı enjekte eder → döngü yok.
+ * enjekte edilemez (döngü). Bu AYRI runner dispatcher + domain servislerini enjekte eder.
  *
  * GÜVENLİK: yalnız MOREN_OWNER_COMMAND_RUNNER=1 iken çalışır (varsayılan KAPALI).
- * Yalnız agent='islem' komutlarını işler (Mihsap isle_* komutlarının kendi runner'ı
- * var, onlara dokunmaz). Yalnız ALLOWLIST'teki aksiyonlar; mesaj gönderen (send_*)
- * aksiyonlar BİLİNÇLİ olarak yok (mükellefe proaktif mesaj kuralı).
+ * Yalnız agent='islem' + ISLEM_OPERATIONS registry'sindeki action'lar. Mesaj gönderen
+ * (send_*) ya da Luca'ya yazan ağır işlemler BİLİNÇLİ kapsam dışı.
+ *
+ * YENİ OPERASYON EKLEME: ISLEM_OPERATIONS'a 1 metadata satırı + buradaki execute() switch'ine
+ * 1 case. Hepsi bu kadar — botun yeteneği otomatik genişler (registry tek kaynak).
  */
 @Injectable()
 export class OwnerCommandRunnerService {
@@ -26,30 +30,9 @@ export class OwnerCommandRunnerService {
     private readonly prisma: PrismaService,
     private readonly dispatcher: ActionDispatcherService,
     private readonly whatsapp: WhatsAppService,
+    private readonly edefter: EDefterControlService,
+    private readonly luca: LucaService,
   ) {}
-
-  /** Owner 'islem' komut action'ı → dispatcher aksiyonu + argüman eşlemesi. */
-  private static readonly EXECUTABLE: Record<string, { dispatch: string; args: (p: any) => any; label: string }> = {
-    mihsap_fatura_cek: {
-      dispatch: 'fetch_invoices_for_period',
-      args: (p) => ({ taxpayerId: p.taxpayerId || p.mukellefId, donem: p.donem || p.period, faturaTuru: p.faturaTuru }),
-      label: 'Mihsap fatura çekme',
-    },
-    luca_kdv_cek: {
-      dispatch: 'fetch_kdv_from_luca',
-      args: (p) => ({ taxpayerId: p.taxpayerId || p.mukellefId, donem: p.donem || p.period }),
-      label: 'Luca KDV verisi çekme',
-    },
-    fis_word_uret: {
-      dispatch: 'generate_fis_word_from_invoices',
-      args: (p) => ({ taxpayerId: p.taxpayerId || p.mukellefId, donem: p.donem || p.period }),
-      label: 'Fiş Word raporu üretme',
-    },
-  };
-
-  static isExecutableAction(action: string): boolean {
-    return !!OwnerCommandRunnerService.EXECUTABLE[String(action || '')];
-  }
 
   @Cron(CronExpression.EVERY_30_SECONDS)
   async processPending() {
@@ -71,64 +54,76 @@ export class OwnerCommandRunnerService {
     }
   }
 
+  /** İŞLEM yürütme — registry action → ilgili servis çağrısı. Yeni operasyon = 1 case. */
+  private async execute(action: string, ctx: { tenantId: string; userId?: string | null }, p: { taxpayerId: string; donem: string }): Promise<any> {
+    const dispatchCtx = { tenantId: ctx.tenantId, userId: ctx.userId ?? null, automationId: `owner-command:${action}` };
+    switch (action) {
+      case 'mihsap_fatura_cek':
+        return this.dispatcher.dispatch('fetch_invoices_for_period', { taxpayerId: p.taxpayerId, donem: p.donem }, dispatchCtx);
+      case 'luca_kdv_cek':
+        return this.dispatcher.dispatch('fetch_kdv_from_luca', { taxpayerId: p.taxpayerId, donem: p.donem }, dispatchCtx);
+      case 'fis_word_uret':
+        return this.dispatcher.dispatch('generate_fis_word_from_invoices', { taxpayerId: p.taxpayerId, donem: p.donem }, dispatchCtx);
+      case 'edefter_kontrol':
+        return this.edefter.createFetchJob({ tenantId: ctx.tenantId, mukellefId: p.taxpayerId, donem: p.donem, createdBy: ctx.userId ?? undefined });
+      case 'mizan_cek':
+        return this.luca.createFetchJob({ tenantId: ctx.tenantId, sessionId: undefined as any, mukellefId: p.taxpayerId, donem: p.donem, tip: 'MIZAN', createdBy: ctx.userId ?? undefined });
+      default:
+        throw new Error(`Bilinmeyen işlem: ${action}`);
+    }
+  }
+
   private async runOne(cmd: any) {
-    const map = OwnerCommandRunnerService.EXECUTABLE[String(cmd.action || '')];
-    if (!map) {
+    const op = ISLEM_OPERATIONS[String(cmd.action || '')];
+    if (!op) {
       await this.finish(cmd, 'failed', { error: `Desteklenmeyen işlem: ${cmd.action}` });
       return;
     }
-    // running'e al (çift işleme önle — tek replica ama yine de atomik).
+    // running'e al (çift işleme önle).
     const claimed = await (this.prisma as any).agentCommand.updateMany({
       where: { id: cmd.id, status: 'pending' },
       data: { status: 'running' },
     });
-    if (!claimed?.count) return; // başkası aldı
+    if (!claimed?.count) return;
 
     const payload = (cmd.payload && typeof cmd.payload === 'object') ? cmd.payload : {};
-    const args = map.args(payload);
-    if (!args.taxpayerId || !args.donem) {
-      await this.finish(cmd, 'failed', { error: 'taxpayerId ve donem zorunlu.' }, `❌ ${map.label}: mükellef/dönem eksik, çalıştıramadım.`);
+    const taxpayerId = String(payload.taxpayerId || payload.mukellefId || '');
+    const donem = String(payload.donem || payload.period || '');
+    if (!taxpayerId || !/^\d{4}-\d{2}$/.test(donem)) {
+      await this.finish(cmd, 'failed', { error: 'taxpayerId ve donem ("YYYY-MM") zorunlu.' }, `❌ ${op.label}: mükellef/dönem eksik, çalıştıramadım.`);
       return;
     }
 
     try {
-      const res = await this.dispatcher.dispatch(map.dispatch, args, {
-        tenantId: cmd.tenantId,
-        userId: cmd.createdBy || null,
-        automationId: `owner-command:${cmd.id}`,
-      });
-      await this.finish(cmd, 'done', res as any, this.successText(map.label, args, res));
+      const res = await this.execute(cmd.action, { tenantId: cmd.tenantId, userId: cmd.createdBy || null }, { taxpayerId, donem });
+      await this.finish(cmd, 'done', this.safe(res), `✅ ${op.label} — ${donem}${this.detayText(res)}. Tamamlandı.`);
     } catch (e: any) {
       const msg = String(e?.message || e).slice(0, 300);
-      await this.finish(cmd, 'failed', { error: msg }, `❌ ${map.label} (${args.donem}) çalışmadı: ${msg}`);
+      await this.finish(cmd, 'failed', { error: msg }, `❌ ${op.label} (${donem}) çalışmadı: ${msg}`);
     }
   }
 
   private async finish(cmd: any, status: string, result: any, ownerText?: string) {
-    await (this.prisma as any).agentCommand.update({
-      where: { id: cmd.id },
-      data: { status, result },
-    }).catch(() => null);
+    await (this.prisma as any).agentCommand.update({ where: { id: cmd.id }, data: { status, result } }).catch(() => null);
     if (ownerText) await this.notifyOwner(cmd.tenantId, ownerText);
   }
 
-  private successText(label: string, args: any, res: any): string {
+  /** Sonuç JSON'unu güvenli (döngüsüz, kısa) hale getir. */
+  private safe(res: any): any {
+    try { return JSON.parse(JSON.stringify(res ?? {})); } catch { return { ok: true }; }
+  }
+
+  private detayText(res: any): string {
     const r: any = res || {};
-    let detay = '';
-    if (typeof r.cekilen === 'number' || typeof r.bulunan === 'number') {
-      detay = ` (${r.cekilen ?? 0} çekildi${r.bulunan != null ? ` / ${r.bulunan} bulundu` : ''})`;
-    } else if (r.jobId || r.durum) {
-      detay = r.mevcutJob ? ' (zaten kuyrukta vardı)' : ' (kuyruğa alındı, işleniyor)';
-    } else if (r.outputId || r.dosya) {
-      detay = ' (rapor üretildi)';
-    }
-    return `✅ ${label} — ${args.donem}${detay}. Tamamlandı.`;
+    if (typeof r.cekilen === 'number' || typeof r.bulunan === 'number') return ` (${r.cekilen ?? 0} çekildi${r.bulunan != null ? ` / ${r.bulunan} bulundu` : ''})`;
+    if (r.detailJob?.id || r.jobId || r.durum) return r.mevcutJob ? ' (zaten kuyrukta vardı)' : ' (kuyruğa alındı, işleniyor)';
+    if (r.outputId || r.dosya || r.success) return ' (üretildi)';
+    return '';
   }
 
   private async notifyOwner(tenantId: string, text: string) {
     const phones = String(process.env.MOREN_OWNER_WHATSAPP_PHONES || process.env.MOREN_OWNER_WHATSAPP_PHONE || '')
       .split(',').map((p) => p.trim()).filter(Boolean);
-    if (!phones.length) return;
     for (const phone of phones.slice(0, 1)) {
       await this.whatsapp.sendMessage(phone, text, tenantId).catch((e: any) =>
         this.logger.warn(`[OwnerCommandRunner] owner bildirimi gönderilemedi: ${e?.message || e}`));
