@@ -1305,10 +1305,10 @@ export class PortalAutomationRailwayRunnerService implements OnModuleInit {
       const where: any = { tenantId, belgeTuru: { in: ['SGK_TAHAKKUK', 'SGK_HIZMET_LISTESI'] }, storageKey: { not: null } };
       if (taxpayerId) where.taxpayerId = taxpayerId;
       const have = await (this.prisma as any).portalDocument.findMany({ where, select: { referenceNo: true, belgeTuru: true, raw: true } }).catch(() => []);
-      // metaVersion>=2 ile işlenmiş kayıtları atla. Eski metaParsed:true (v1, tutar eksik olabilir)
-      // sayılmaz — yeni extractor ile yeniden çekilip raw güncellenir.
+      // metaVersion>=3 ile işlenmiş kayıtları atla.
+      // v1 (metaParsed:true) ve v2 (yanlış tutar: normTah-pozisyon hatası) yeniden çekilir.
       alreadyHave = new Set((have || [])
-        .filter((h: any) => { const r: any = h.raw || {}; return (r.metaVersion ?? 0) >= 2; })
+        .filter((h: any) => { const r: any = h.raw || {}; return (r.metaVersion ?? 0) >= 3; })
         .map((h: any) => `${h.belgeTuru}|${h.referenceNo}`));
     }
 
@@ -1448,7 +1448,7 @@ export class PortalAutomationRailwayRunnerService implements OnModuleInit {
             mimeType: 'application/pdf',
             originalName: `${t.belgeTuru}_${row.refNo}.pdf`,
             base64: b64,
-            raw: { donem: periodText, bildirgeRefNo: row.refNo, belgeMahiyeti: meta.belgeMahiyeti, kanunNo: meta.kanunNo, calisan: meta.calisan, tutar: meta.tutar, metaVersion: 2 },
+            raw: { donem: periodText, bildirgeRefNo: row.refNo, belgeMahiyeti: meta.belgeMahiyeti, kanunNo: meta.kanunNo, calisan: meta.calisan, tutar: meta.tutar, metaVersion: 3 },
           });
           alreadyHave.add(key);
         }
@@ -3923,24 +3923,30 @@ export class PortalAutomationRailwayRunnerService implements OnModuleInit {
       // Çalışan (normalized)
       const cm = normTah.match(/KISI\s*SAYISI\s*:?\s*(\d{1,4})/);
       if (cm) meta.calisan = cm[1];
-      // Tutar: normalizeTextKey nokta/virgülü siliyor → özgün tahText'te ara.
-      // Strateji 1: normTah'taki ODENECEK NET TUTAR pozisyonunu özgün metne eşle (uzunluk yakın).
-      const nIdx = normTah.search(/ODENECEK\s*NET\s*TUTAR/);
-      const tIdx = nIdx >= 0 ? nIdx : tahText.search(/[ÖO]DENECEK\s*NET\s*TUTAR/i);
-      if (tIdx >= 0) {
-        const win = tahText.slice(tIdx, tIdx + 300);
-        const tm = win.match(/(\d{1,3}(?:\.\d{3})*,\d{2})/);
-        if (tm) meta.tutar = tm[1];
-      }
-      // Strateji 2: en büyük para değeri (toplam genellikle en büyük).
-      if (!meta.tutar && tahText) {
-        const allMoney: string[] = tahText.match(/\d{1,3}(?:\.\d{3})*,\d{2}/g) || [];
-        if (allMoney.length) {
-          const toNum = (v: string) => Number(v.replace(/\./g, '').replace(',', '.'));
-          const maxM = allMoney.reduce<string>((best, v) => toNum(v) > toNum(best) ? v : best, allMoney[0]);
-          if (toNum(maxM) > 0) meta.tutar = maxM;
+      // Tutar: özgün tahText'te ÖDENECEK NET TUTAR etiketinden sonraki ilk para değerini al.
+      // UYARI: normTah noktalama sıkıştırır → normTah pozisyonu tahText'tekiyle EŞLEŞMEZ,
+      // doğrudan nIdx kullanmak yanlış bölgeye bakıyor (d2213e9 hatası).
+      const nPos = normTah.search(/ODENECEK\s+NET\s+TUTAR/);
+      if (nPos >= 0) {
+        // Strateji A: özgün tahText'te doğrudan etiket + hemen ardındaki tutar
+        const inlineM = tahText.match(/[ÖO]DENECEK\s+NET\s+TUTAR\s*:?\s*([\d]{1,3}(?:\.[\d]{3})*,[\d]{2})/i);
+        if (inlineM) {
+          meta.tutar = inlineM[1];
+        } else {
+          // Strateji B: ölçeklenmiş pencere (encoding farkı veya etiket-tutar arası metin)
+          // normTah < tahText uzunluğu (noktalama collapse) → scale ile pozisyonu düzelt
+          const scale = normTah.length > 0 ? tahText.length / normTah.length : 1.05;
+          const approx = Math.round(nPos * scale);
+          const wStart = Math.max(0, approx - 80);
+          const win = tahText.slice(wStart, Math.min(tahText.length, wStart + 500));
+          // Pencere içinde etiketi bul, bulunursa ondan sonrasına bak
+          const etiketIdx = win.search(/[ÖO]DENECEK\s+NET\s+TUTAR/i);
+          const searchAfter = etiketIdx >= 0 ? win.slice(etiketIdx) : win;
+          const m = searchAfter.match(/([\d]{1,3}(?:\.[\d]{3})*,[\d]{2})/);
+          if (m) meta.tutar = m[1];
         }
       }
+      // NOT: "en büyük para değeri" fallback kaldırıldı — net prim tutarını yazdırıyordu
     } catch { /* yut */ }
     return meta;
   }
