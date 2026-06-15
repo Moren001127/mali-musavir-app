@@ -1,12 +1,12 @@
 'use client';
 
-import React, { useMemo, useState, useEffect } from 'react';
+import React, { useMemo, useState, useEffect, useRef } from 'react';
 import { createPortal } from 'react-dom';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import { toast } from 'sonner';
 import {
   ShieldCheck, RefreshCw, Loader2, Search, Users, FileText, Download, ChevronDown,
-  Eye, X, CheckCheck, AlertTriangle, CalendarClock, Receipt, ListChecks, SlidersHorizontal,
+  Eye, X, CheckCheck, AlertTriangle, CalendarClock, Receipt, ListChecks, SlidersHorizontal, ChevronLeft, ChevronRight,
 } from 'lucide-react';
 import { portalAutomationApi, type PortalDocument } from '@/lib/portal-automation';
 
@@ -81,8 +81,16 @@ export default function SgkBildirgeModule() {
   const now = useMemo(() => new Date(), []);
   const [queryYear, setQueryYear] = useState(String(now.getFullYear()));
   const [queryMonth, setQueryMonth] = useState(''); // '' = tüm dönemler (gece gibi son dönemler)
-  const years = useMemo(() => { const y = now.getFullYear(); return [y, y - 1, y - 2]; }, [now]);
   const AY_ADLARI = ['Ocak', 'Şubat', 'Mart', 'Nisan', 'Mayıs', 'Haziran', 'Temmuz', 'Ağustos', 'Eylül', 'Ekim', 'Kasım', 'Aralık'];
+  const AY_KISA = ['Oca', 'Şub', 'Mar', 'Nis', 'May', 'Haz', 'Tem', 'Ağu', 'Eyl', 'Eki', 'Kas', 'Ara'];
+  const [donemOpen, setDonemOpen] = useState(false);
+  const donemRef = useRef<HTMLDivElement>(null);
+  useEffect(() => {
+    if (!donemOpen) return;
+    const h = (e: MouseEvent) => { if (donemRef.current && !donemRef.current.contains(e.target as Node)) setDonemOpen(false); };
+    document.addEventListener('mousedown', h);
+    return () => document.removeEventListener('mousedown', h);
+  }, [donemOpen]);
 
   const docsQuery = useQuery({
     queryKey: ['sgk-docs'],
@@ -232,19 +240,40 @@ export default function SgkBildirgeModule() {
           </Field>
 
           <Field label="Dönem">
-            <div className="flex gap-2">
-              <div className="relative flex-1 min-w-0">
-                <select value={queryMonth} onChange={(e) => setQueryMonth(e.target.value)} className={FLD_CLS} style={FLD_STY}>
-                  <option value="" style={{ background: '#1a1410' }}>Tüm dönemler</option>
-                  {AY_ADLARI.map((ad, i) => <option key={i + 1} value={String(i + 1).padStart(2, '0')} style={{ background: '#1a1410' }}>{ad}</option>)}
-                </select>
+            <div className="relative" ref={donemRef}>
+              <button type="button" onClick={() => setDonemOpen((o) => !o)}
+                className="w-full h-[40px] pl-9 pr-9 rounded-[10px] text-[13px] border flex items-center text-left outline-none" style={FLD_STY}>
                 <CalendarClock size={13} className="absolute left-3 top-1/2 -translate-y-1/2 pointer-events-none" style={{ color: 'rgba(250,250,249,0.45)' }} />
-                <ChevronDown size={14} className="absolute right-2.5 top-1/2 -translate-y-1/2 pointer-events-none" style={{ color: 'rgba(250,250,249,0.45)' }} />
-              </div>
-              {queryMonth && (
-                <select value={queryYear} onChange={(e) => setQueryYear(e.target.value)} className="h-[40px] w-[88px] px-2.5 rounded-[10px] text-[13px] outline-none border appearance-none flex-shrink-0" style={FLD_STY}>
-                  {years.map((y) => <option key={y} value={String(y)} style={{ background: '#1a1410' }}>{y}</option>)}
-                </select>
+                <span className="truncate" style={{ color: queryMonth ? '#fafaf9' : 'rgba(250,250,249,0.55)' }}>
+                  {queryMonth ? `${AY_ADLARI[Number(queryMonth) - 1]} ${queryYear}` : 'Tüm dönemler'}
+                </span>
+                <ChevronDown size={14} className="absolute right-2.5 top-1/2 -translate-y-1/2 pointer-events-none transition-transform" style={{ color: 'rgba(250,250,249,0.45)', transform: donemOpen ? 'rotate(180deg)' : 'none' }} />
+              </button>
+              {donemOpen && (
+                <div className="absolute z-50 mt-1.5 left-0 w-[270px] rounded-xl border p-3" style={{ background: '#1a1410', borderColor: 'rgba(212,184,118,0.25)', boxShadow: '0 16px 40px rgba(0,0,0,0.5)' }}>
+                  <div className="flex items-center justify-between mb-2.5">
+                    <button type="button" onClick={() => setQueryYear(String(Number(queryYear) - 1))} className="h-7 w-7 grid place-items-center rounded-lg border hover:brightness-125" style={{ borderColor: 'rgba(255,255,255,0.1)', color: '#fafaf9' }} aria-label="Önceki yıl"><ChevronLeft size={15} /></button>
+                    <span className="text-[14px] font-bold tabular-nums" style={{ color: '#fafaf9' }}>{queryYear}</span>
+                    <button type="button" onClick={() => setQueryYear(String(Number(queryYear) + 1))} className="h-7 w-7 grid place-items-center rounded-lg border hover:brightness-125" style={{ borderColor: 'rgba(255,255,255,0.1)', color: '#fafaf9' }} aria-label="Sonraki yıl"><ChevronRight size={15} /></button>
+                  </div>
+                  <div className="grid grid-cols-4 gap-1.5">
+                    {AY_KISA.map((ad, i) => {
+                      const mv = String(i + 1).padStart(2, '0');
+                      const sel = queryMonth === mv;
+                      return (
+                        <button key={i} type="button" onClick={() => { setQueryMonth(mv); setDonemOpen(false); }}
+                          className="h-9 rounded-lg text-[12.5px] font-semibold transition hover:brightness-125"
+                          style={sel ? { background: GOLD, color: '#1a1410' } : { background: 'rgba(255,255,255,0.04)', color: 'rgba(250,250,249,0.8)' }}>
+                          {ad}
+                        </button>
+                      );
+                    })}
+                  </div>
+                  <div className="flex items-center justify-between mt-2.5 pt-2.5" style={{ borderTop: '1px solid rgba(255,255,255,0.08)' }}>
+                    <button type="button" onClick={() => { setQueryMonth(''); setDonemOpen(false); }} className="text-[12px] font-semibold hover:brightness-125" style={{ color: 'rgba(250,250,249,0.6)' }}>Tüm dönemler</button>
+                    <button type="button" onClick={() => { setQueryMonth(String(now.getMonth() + 1).padStart(2, '0')); setQueryYear(String(now.getFullYear())); setDonemOpen(false); }} className="text-[12px] font-semibold hover:brightness-125" style={{ color: GOLD }}>Bu ay</button>
+                  </div>
+                </div>
               )}
             </div>
           </Field>
