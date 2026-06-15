@@ -705,8 +705,7 @@ export class PortalAutomationRailwayRunnerService implements OnModuleInit {
       // (manual+force validation-only heuristigi engellemesin; amaç belge çekmek.)
       if ((jobType === 'SGK_HIZMET_LISTESI' || jobType === 'SGK_TAHAKKUK') && bundle.job?.payload?.validationOnly !== true) {
         const sgk = await this.collectSgkOnayliBildirgeler(page, bundle.job);
-        const sgkNotes = ((sgk as any)?.result?.notes || []).join(' ; ');
-        await this.jobProgress(tenantId, bundle.job, 'sgk_done', `SGK onaylı belge sorgusu: ${sgk.recordCount} belge indirildi. [teşhis] ${sgkNotes}`);
+        await this.jobProgress(tenantId, bundle.job, 'sgk_done', `SGK onaylı belge sorgusu: ${sgk.recordCount} belge indirildi.`);
         await context.close().catch(() => {});
         return sgk;
       }
@@ -1397,14 +1396,13 @@ export class PortalAutomationRailwayRunnerService implements OnModuleInit {
           const period = pm ? (pm[1] + '/' + String(pm[2]).padStart(2, '0')) : '';
           rows.push({ refNo, period, cells: [], rowText: refNo, pdfs });
         }
-        const onclickSample = (listHtml.match(/on[a-z]+\s*=\s*"[^"]*\d{3,}-20\d{2}-\d{1,2}[^"]*"/i) || [''])[0].replace(/\s+/g, ' ').slice(0, 200);
-        return { rows, listLen: listHtml.length, formCount: refList.length, refNoCount: refList.length, refList: refList.slice(0, 6), sample: onclickSample };
+        return { rows, listLen: listHtml.length, refNoCount: refList.length };
       }, { base, start: startVal, end: endVal, tips: TIPS.map((t) => t.tip) }).catch((e: any) => ({ rows: [], listLen: 0, formCount: 0, err: String(e) }));
 
       const rows: any[] = (out && out.rows) || [];
       formsFound = rows.length;
       if (formsFound === 0) {
-        notes.push(`DBG fetch-DonemSecildi: range=${startVal}→${endVal} listLen=${out?.listLen ?? '?'} refFound=${out?.refNoCount ?? 0} refList=[${(out?.refList || []).join(',')}] sample="${this.compact(out?.sample || '')}" err=${out?.err || '-'}`);
+        notes.push(`Bu dönem aralığında onaylı bildirge bulunamadı (range ${startVal}→${endVal}).${out?.err ? ' Hata: ' + this.compact(out.err) : ''}`);
       }
       for (const row of rows) {
         const periodText = row.period || periodTextByValue[String(row.periodIndex)] || '';
@@ -1431,7 +1429,7 @@ export class PortalAutomationRailwayRunnerService implements OnModuleInit {
       notes.push(`SGK range çekimi hata: ${this.compact(e?.message || e)}`);
     }
 
-    notes.push(`Range ${startVal}→${endVal} (${periods.length} dönem), ${formsFound} bildirge formu bulundu, ${documents.length} yeni belge indirildi.`);
+    notes.push(`${periods.length} dönem (${startVal}→${endVal}) tarandı, ${formsFound} bildirge, ${documents.length} yeni belge indirildi.`);
     return {
       documents,
       recordCount: documents.length,
