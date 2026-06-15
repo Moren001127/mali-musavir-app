@@ -1114,18 +1114,39 @@ export class MorenAiService {
     }));
 
     const taxpayerId = this.activeToolTaxpayerId(p.body, p.conversation);
-    const fullSystem = [p.systemPrompt, p.taxpayerContext, p.memoryContext].filter(Boolean).join('\n\n');
+    // AGENTIC OVERRIDE — paylaşılan prompt prefetch dönemine ait ("veriyi sistem hazırlar",
+    // "tabloyu sistem ekler") ifadeler içeriyor; bunlar agentic'te YANLIŞ. En sona (öncelikli)
+    // düzeltici not koyuyoruz; prefetch yolu etkilenmiyor.
+    const agenticOverride = [
+      '## AGENTIC ÇALIŞMA (bu mesajda geçerli — önceki "veriyi sistem hazırlar" ifadelerini EZER):',
+      '- Veriyi SEN araçları çağırarak alırsın; sistem önceden hazırlamaz. Gerekirse BİRDEN ÇOK aracı sırayla çağır, bir aracın çıktısını (örn. mükellef ID) sonrakine girdi yap (önce list_taxpayers → ID → get_mizan/get_kdv_summary...). 8 tura kadar zincirleyebilirsin.',
+      '- Mali tablo (gelir tablosu/bilanço/mizan/KDV) istenince tabloyu ve kalemleri ARAÇ SONUCUNDAKİ gerçek rakamlarla SEN YAZ (şablona uygun). Sistem otomatik EKLEMEZ; boş bırakma, "sistem ekleyecek" varsayma.',
+      '- Araç ADINI (get_/list_...) cevap metninde yazma; ama veriyi MUTLAKA araç çağırarak al, ezberden uydurma.',
+      '- Önceki konuşma "## Önceki konuşma" altında verilir; "ONAYLIYORUM #PRV-XXXX" gelirse o preview\'i bu geçmişten bul.',
+      '- Bir işlem/komut başlatmadan önce action\'dan emin değilsen get_portal_capability_map ile geçerli agent/action\'ı öğren; UYDURMA.',
+    ].join('\n');
+    const fullSystem = [p.systemPrompt, p.taxpayerContext, p.memoryContext, agenticOverride].filter(Boolean).join('\n\n');
 
-    // KOMUT ÇALIŞTIRMA (Stage 2) — yalnız OWNER, yalnız ONAYLI-komut yolu.
-    // create_(confirmed_)agent_command executor'da ZORUNLU "ONAYLIYORUM #PRV-XXXX" +
-    // OwnerApprovalRequest doğrulama + agent allowlist + 5dk süre kapısını uygular →
-    // owner açıkça onaylamadan HİÇBİR şey çalışmaz. preview zaten salt-okuma. Diğer
-    // tüm doğrudan-yazma araçları (update_/delete_/send_...) REDDEDİLİR.
-    // MOREN_AI_AGENT_COMMANDS=0 ile owner'da komutlar kapatılır (yalnız okuma kalır).
-    const allowCommands = !isTaxpayer && process.env.MOREN_AI_AGENT_COMMANDS !== '0';
+    // KOMUT ÇALIŞTIRMA (Stage 2) — VARSAYILAN KAPALI. Denetim (2026-06-15) gösterdi ki
+    // komut allowlist'indeki agent'ların ÇOĞUNUN yürüten runner'ı YOK (yalnız Mihsap
+    // fatura işleme uçtan-uca çalışıyor; luca/kdv/sgk/tebligat/edefter/tahsilat/whatsapp
+    // komutları kuyruğa yazılıp PENDING kalıyor) → bot "başlattım" deyip hiçbir şey
+    // çalışmazsa YALAN AKSİYON olur. Gerçek yürütme (dispatcher köprüsü) bağlanana dek
+    // komutlar yalnız MOREN_AI_AGENT_COMMANDS=1 ile AÇIK. Okuma her zaman açık.
+    const allowCommands = !isTaxpayer && process.env.MOREN_AI_AGENT_COMMANDS === '1';
+
+    // GEÇMİŞ: agentic yola önceki mesajları taşı (yoksa iki-adımlı ONAYLIYORUM onayı ve
+    // bağlam kırılıyordu — model preview'i hatırlamıyordu).
+    const prior = (p.conversation.messages || []).slice(-6)
+      .map((m: any) => `${m.role === 'assistant' ? 'MOREN AI' : 'Kullanici'}: ${this.flattenMessageContent(m.content).slice(0, 1000)}`)
+      .filter((s: string) => s && s.length > 12).join('\n');
+    const agentUserMessage = prior
+      ? `## Önceki konuşma (eski→yeni)\n${prior}\n\n## Yeni mesaj\n${p.userMessage}`
+      : p.userMessage;
+
     const res = await runMaxAgent({
       systemPrompt: fullSystem,
-      userMessage: p.userMessage,
+      userMessage: agentUserMessage,
       tools,
       executeTool: (name, input) => this.toolExecutor.execute(name, input, { tenantId: p.tenantId, userId: p.userId, taxpayerId }),
       canWrite: allowCommands
