@@ -36,7 +36,12 @@ export class OwnerCommandRunnerService {
 
   @Cron(CronExpression.EVERY_30_SECONDS)
   async processPending() {
-    if (process.env.MOREN_OWNER_COMMAND_RUNNER !== '1') return; // VARSAYILAN KAPALI
+    // Komutlar AÇIKSA runner da çalışır — iki ayrı bayrak "komut oluştu ama çalışmadı"
+    // kafa karışıklığı yaratıyordu (bot "başlattım" der, runner kapalıysa hiç çalışmaz).
+    // MOREN_AI_AGENT_COMMANDS=1 (bot komut üretir) varsa runner da işler. Ayrıca özel
+    // olarak kapatmak istersen MOREN_OWNER_COMMAND_RUNNER=0.
+    const commandsOn = process.env.MOREN_AI_AGENT_COMMANDS === '1' || process.env.MOREN_OWNER_COMMAND_RUNNER === '1';
+    if (!commandsOn || process.env.MOREN_OWNER_COMMAND_RUNNER === '0') return;
     let commands: any[] = [];
     try {
       commands = await (this.prisma as any).agentCommand.findMany({
