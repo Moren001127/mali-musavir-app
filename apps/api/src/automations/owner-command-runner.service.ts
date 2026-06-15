@@ -5,6 +5,7 @@ import { ActionDispatcherService } from './action-dispatcher.service';
 import { WhatsAppService } from '../whatsapp/whatsapp.service';
 import { EDefterControlService } from '../edefter-control/edefter-control.service';
 import { LucaService } from '../luca/luca.service';
+import { PortalAutomationService } from '../portal-automation/portal-automation.service';
 import { ISLEM_OPERATIONS } from '../moren-ai/islem-operations';
 
 /**
@@ -32,6 +33,7 @@ export class OwnerCommandRunnerService {
     private readonly whatsapp: WhatsAppService,
     private readonly edefter: EDefterControlService,
     private readonly luca: LucaService,
+    private readonly portalAutomation: PortalAutomationService,
   ) {}
 
   @Cron(CronExpression.EVERY_30_SECONDS)
@@ -88,6 +90,12 @@ export class OwnerCommandRunnerService {
         return this.luca.createFetchJob({ tenantId: ctx.tenantId, sessionId: undefined as any, mukellefId: p.taxpayerId, donem: p.donem, tip: 'EFATURA_ALIS', createdBy: ctx.userId ?? undefined });
       case 'efatura_satis_cek':
         return this.luca.createFetchJob({ tenantId: ctx.tenantId, sessionId: undefined as any, mukellefId: p.taxpayerId, donem: p.donem, tip: 'EFATURA_SATIS', createdBy: ctx.userId ?? undefined });
+      // SGK e-Bildirge — Railway portal-automation runner (Luca değil). Mükellefin SGK
+      // portal şifresi kayıtlı olmalı; donem "YYYY-MM" → targetPeriod "YYYY/MM".
+      case 'sgk_hizmet_listesi_cek':
+        return this.portalAutomation.manualRun(ctx.tenantId, ctx.userId ?? null, { jobTypes: ['SGK_HIZMET_LISTESI'], taxpayerIds: [p.taxpayerId], targetPeriod: p.donem.replace('-', '/') });
+      case 'sgk_tahakkuk_cek':
+        return this.portalAutomation.manualRun(ctx.tenantId, ctx.userId ?? null, { jobTypes: ['SGK_TAHAKKUK'], taxpayerIds: [p.taxpayerId], targetPeriod: p.donem.replace('-', '/') });
       default:
         throw new Error(`Bilinmeyen işlem: ${action}`);
     }

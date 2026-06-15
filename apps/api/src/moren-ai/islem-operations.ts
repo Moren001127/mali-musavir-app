@@ -75,6 +75,16 @@ export const ISLEM_OPERATIONS: Record<string, IslemOperation> = {
     label: 'e-Fatura satış faturaları çekme',
     impact: (d) => `Luca'dan ${formatIslemDonem(d)} e-Fatura SATIŞ faturaları çekilir ve portala işlenir`,
   },
+  sgk_hizmet_listesi_cek: {
+    key: 'sgk_hizmet_listesi_cek',
+    label: 'SGK hizmet listesi çekme',
+    impact: (d) => `SGK e-Bildirge'den ${formatIslemDonem(d)} hizmet listesi çekilir (mükellefin SGK portal şifresi kayıtlı olmalı)`,
+  },
+  sgk_tahakkuk_cek: {
+    key: 'sgk_tahakkuk_cek',
+    label: 'SGK tahakkuk fişi çekme',
+    impact: (d) => `SGK e-Bildirge'den ${formatIslemDonem(d)} tahakkuk (prim) fişi çekilir (SGK portal şifresi gerekli)`,
+  },
 };
 
 export const ISLEM_ACTION_KEYS = Object.keys(ISLEM_OPERATIONS);
