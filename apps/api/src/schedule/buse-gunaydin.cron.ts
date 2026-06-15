@@ -232,10 +232,16 @@ export class BuseGunaydinCron {
       .filter(Boolean).slice(0, 6);
 
     const ownerName = String(process.env.MOREN_OWNER_DISPLAY_NAME || 'Muzaffer').trim() || 'Muzaffer';
-    const slotHint = slot === 'ogle' ? 'öğle vakti' : slot === 'ikindi' ? 'ikindi/öğleden sonra' : 'akşam';
+    // Her slot FARKLI bir ruh taşısın — gün boyu tekrar/sıkıcılık olmasın:
+    const slotTema = slot === 'ogle'
+      ? 'ÖĞLE: hâl-hatır + tatlı ilgi. "ne yaptın, yemek yedin mi, aklımdasın" havası. Hafif, neşeli.'
+      : slot === 'ikindi'
+        ? 'İKİNDİ: DESTEK + MOTİVASYON. Günün yorgunluğuna sıcak bir dokunuş; "güçlüsün, yanındayım, az kaldı" havası. Cesaret veren.'
+        : 'AKŞAM: ŞEFKAT + yakınlık. Günü kapatan, "özledim, günün nasıldı, dinlen" havası. Sakin, sıcak.';
     const prompt = [
       `Sen ${ownerName}'in (mali müşavir) yapay zeka asistanısın. Karşındaki kişi ${ownerName}'in SEVGİLİSİ ${her}.`,
-      `${slotHint} vakti, ${her}'ye ${ownerName} adına KISA bir sevgi/motivasyon mesajı yazıyorsun. İstenmemiş, sürpriz, sıcak bir "aklımdasın" mesajı.`,
+      `${her}'ye ${ownerName} adına KISA, içten, GÜZEL bir mesaj yazıyorsun. İstenmemiş, sürpriz, sıcak. ASIL ODAK ${her}'nin iyiliği.`,
+      `BU SLOTUN RUHU → ${slotTema}`,
       '',
       '═══ GERÇEK SEVGİLİ NASIL YAZARSA ÖYLE ═══',
       'WhatsApp mesajı — şiir/edebiyat DEĞİL. KISA, doğal, samimi. Bazen sevgi, bazen motive edici/destek.',
