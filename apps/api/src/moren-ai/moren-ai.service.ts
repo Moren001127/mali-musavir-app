@@ -1116,11 +1116,23 @@ export class MorenAiService {
     const taxpayerId = this.activeToolTaxpayerId(p.body, p.conversation);
     const fullSystem = [p.systemPrompt, p.taxpayerContext, p.memoryContext].filter(Boolean).join('\n\n');
 
+    // KOMUT ÇALIŞTIRMA (Stage 2) — yalnız OWNER, yalnız ONAYLI-komut yolu.
+    // create_(confirmed_)agent_command executor'da ZORUNLU "ONAYLIYORUM #PRV-XXXX" +
+    // OwnerApprovalRequest doğrulama + agent allowlist + 5dk süre kapısını uygular →
+    // owner açıkça onaylamadan HİÇBİR şey çalışmaz. preview zaten salt-okuma. Diğer
+    // tüm doğrudan-yazma araçları (update_/delete_/send_...) REDDEDİLİR.
+    // MOREN_AI_AGENT_COMMANDS=0 ile owner'da komutlar kapatılır (yalnız okuma kalır).
+    const allowCommands = !isTaxpayer && process.env.MOREN_AI_AGENT_COMMANDS !== '0';
     const res = await runMaxAgent({
       systemPrompt: fullSystem,
       userMessage: p.userMessage,
       tools,
       executeTool: (name, input) => this.toolExecutor.execute(name, input, { tenantId: p.tenantId, userId: p.userId, taxpayerId }),
+      canWrite: allowCommands
+        ? async (name: string) => (name === 'create_confirmed_agent_command' || name === 'create_agent_command')
+          ? { allow: true }
+          : { allow: false, message: 'Bu işlem yalnız preview_agent_command + "ONAYLIYORUM #PRV-XXXX" onayıyla yapılır.' }
+        : undefined,
       model: p.model,
       maxTurns: Number(process.env.MOREN_AI_AGENT_MAX_TURNS || 8),
     });
