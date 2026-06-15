@@ -129,8 +129,22 @@ export class WhatsAppBotPostFilterService {
     return t || '—';
   }
 
+  /**
+   * GERÇEK sır SIZINTISI mı? Eskiden "parola/şifre/secret" KELİMESİ geçince tüm
+   * cevap yutuluyordu → mükellef "şifremi unuttum, sıfırlar mısın" deyince bot
+   * konuyla ilgili HER cevabı atıp jenerik dönüyordu (yanlış-pozitif). Artık
+   * yalnız gerçek sır DEĞERİ (token/anahtar formatı veya "şifre: <değer>") yakalanır;
+   * konunun adının geçmesi cevabı düşürmez.
+   */
   private looksRisky(text: string): boolean {
-    return /access token|api key|password|parola|sifre|secret/i.test(text);
+    return (
+      // OpenAI/Anthropic anahtar formatları (uzun rastgele dizi)
+      /\bsk-(ant-)?[a-z0-9_-]{16,}\b/i.test(text) ||
+      // "access token / api key / bearer / secret = <değer>" (değer varsa sızıntı)
+      /\b(access[_\s]?token|api[_\s]?key|bearer|client[_\s]?secret|secret[_\s]?key)\b\s*[:=]\s*\S{3,}/i.test(text) ||
+      // "şifre/parola/password : <gerçek değer>" (yalın kelime DEĞİL, ardından değer)
+      /\b(parola|[şs]ifre|password)\b\s*[:=]\s*\S{4,}/i.test(text)
+    );
   }
 
   private avoidRepeatedPhrases(text: string, recentReplies: string[]): string {

@@ -33,6 +33,12 @@ describe('WhatsAppBotPostFilterService', () => {
     expect(out.toLowerCase()).toContain('kontrol');
   });
 
+  it('yalın "şifre" KELİMESİ geçen normal cevabı YUTMAZ (yanlış-pozitif değil)', () => {
+    const out = svc.filterTaxpayerReply('Şifrenizi sıfırlamak için portala girip "şifremi unuttum" adımını izleyin.', {});
+    expect(out.toLowerCase()).toContain('sıfırla');
+    expect(out.toLowerCase()).not.toContain('net bilgiyle döneyim');
+  });
+
   it('en fazla 3 cümleye indirir (sohbet)', () => {
     const out = svc.filterTaxpayerReply('Bir. İki. Üç. Dört. Beş.', {});
     const sentences = out.match(/[^.!?]+[.!?]/g) || [];
