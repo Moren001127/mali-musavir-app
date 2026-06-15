@@ -1359,16 +1359,23 @@ export class PortalAutomationRailwayRunnerService implements OnModuleInit {
           const r = await fetch(cfg.base + '/tahakkuk/tahakkukonaylanmisTahakkukDonemSecildi.action', { method: 'POST', credentials: 'include', headers: { 'Content-Type': 'application/x-www-form-urlencoded' }, body: body.toString() });
           listHtml = await r.text();
         } catch (e) { return { rows: [], listLen: 0, formCount: 0, err: 'donemsec:' + String(e) }; }
-        // 2) Liste HTML'ini parse -> her pdfGosterim formu (= bir bildirge satırı)
+        // 2) Liste HTML'ini parse. Form yapısından BAĞIMSIZ: her bildirgeRefNo alanından git,
+        //    yakınındaki (form/tr/sayfa) token + dönem index'ini kullan (liste tek form da olabilir;
+        //    her satır ayrı pdfGosterim formu OLMAYABİLİR).
         const doc = new DOMParser().parseFromString(listHtml, 'text/html');
-        const forms = Array.from(doc.querySelectorAll('form')).filter((f: any) => /pdfGosterim/i.test(f.getAttribute('action') || ''));
+        const pageTokEl: any = doc.querySelector('form[action*="pdfGosterim"] [name="token"]') || doc.querySelector('[name="token"]');
+        const pageToken = pageTokEl ? String(pageTokEl.value) : token0;
+        const refInputs: any[] = Array.from(doc.querySelectorAll('input[name="bildirgeRefNo"]'));
         const rows: any[] = [];
-        for (const f of forms as any[]) {
-          const g = (n: string) => { const e = f.querySelector('[name="' + n + '"]'); return e ? String((e as any).value) : null; };
-          const refNo = g('bildirgeRefNo'); const token = g('token');
-          const yilAy = g('hizmet_yil_ay_index'); const yilAyBitis = g('hizmet_yil_ay_index_bitis');
-          if (!refNo || !token) continue;
-          const tr: any = f.closest('tr');
+        for (const ri of refInputs) {
+          const refNo = String(ri.value || '');
+          if (!refNo) continue;
+          const scope: any = ri.closest('form') || ri.closest('tr') || doc;
+          const sg = (n: string) => { const e = scope.querySelector('[name="' + n + '"]') || doc.querySelector('[name="' + n + '"]'); return e ? String((e as any).value) : null; };
+          const token = sg('token') || pageToken;
+          const yilAy = sg('hizmet_yil_ay_index') || cfg.start;
+          const yilAyBitis = sg('hizmet_yil_ay_index_bitis') || cfg.end;
+          const tr: any = ri.closest('tr');
           const cells = tr ? Array.from(tr.querySelectorAll('td')).map((td: any) => norm(td.textContent)).filter(Boolean) : [];
           const rowText = tr ? norm(tr.textContent) : '';
           // 3) Her tip (tahakkuk + hizmet) için PDF'i SAF FETCH ile indir
@@ -1391,10 +1398,10 @@ export class PortalAutomationRailwayRunnerService implements OnModuleInit {
           }
           rows.push({ refNo, periodIndex: yilAy, cells, rowText, pdfs });
         }
-        const refNoCount = (listHtml.match(/bildirgeRefNo/g) || []).length;
+        const refTextCount = (listHtml.match(/bildirgeRefNo/g) || []).length;
         const allFormActions = Array.from(doc.querySelectorAll('form')).map((f: any) => f.getAttribute('action') || '').filter(Boolean).slice(0, 12);
         const sample = (listHtml.match(/[\s\S]{0,60}bildirgeRefNo[\s\S]{0,260}/) || [''])[0].replace(/\s+/g, ' ').slice(0, 320);
-        return { rows, listLen: listHtml.length, formCount: forms.length, refNoCount, allFormActions, sample };
+        return { rows, listLen: listHtml.length, formCount: refInputs.length, refNoCount: refTextCount, allFormActions, sample };
       }, { base, start: startVal, end: endVal, tips: TIPS.map((t) => t.tip) }).catch((e: any) => ({ rows: [], listLen: 0, formCount: 0, err: String(e) }));
 
       const rows: any[] = (out && out.rows) || [];
