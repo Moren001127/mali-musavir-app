@@ -27,6 +27,22 @@ describe('WhatsAppBotPostFilterService', () => {
     expect(out).toContain('İki madde');
   });
 
+  it('owner cevabından iç hata/debug jargonunu (previewId, ok:false) keser', () => {
+    const out = svc.filterTaxpayerReply(
+      'Fatih Gedik için kontrol başlattım.\nPortal şu an bu kombinasyonu desteklemiyor — edefter_kontrol aksiyonu için uyumlu agent bulunamadı (ok: false, previewId üretilmedi).',
+      { mode: 'owner' },
+    );
+    expect(out).not.toMatch(/previewId/i);
+    expect(out.toLowerCase()).not.toContain('ok: false');
+    expect(out.toLowerCase()).not.toContain('uyumlu agent');
+  });
+
+  it('debug jargonu cevabın tamamıysa güvenli mesaja düşer (owner)', () => {
+    const out = svc.filterTaxpayerReply('ok: false, previewId üretilmedi; API katmanı yanıt vermedi.', { mode: 'owner' });
+    expect(out).not.toMatch(/previewId|API katman/i);
+    expect(out.trim().length).toBeGreaterThan(0);
+  });
+
   it('hassas içerikte güvenli cevaba düşer', () => {
     const out = svc.filterTaxpayerReply('access token: sk-123 paylaşıyorum', {});
     expect(out.toLowerCase()).not.toContain('sk-123');

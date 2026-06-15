@@ -22,6 +22,23 @@ export class WhatsAppBotPostFilterService {
       || WhatsAppBotPostFilterService.TOOL_NARRATION_RE.test(s);
   }
 
+  // İÇ HATA / DEBUG JARGONU — model bazen aksiyon başarısız olunca ham hata
+  // ayrıntısını (ok:false, previewId, "uyumlu agent bulunamadı", "API katmanı")
+  // owner'a sızdırıyor. Meşru muhasebe cevabında bunlar ASLA geçmez → kesilir.
+  // (Canlı kanıt 2026-06-15: owner'a "ok: false, previewId üretilmedi" + TCKN'li
+  //  debugger çıktısı gitti.) Tek noktada burada süzülür.
+  private static readonly INTERNAL_DEBUG_RE =
+    /previewId|\bok\s*:\s*(false|true)\b|uyumlu\s+agent\s+bulunamad|aksiyonu?\s+i[çc]in\s+uyumlu|API\s+katman|\bca?l[ıi][şs]t[ıi]r[ıi]lamad[ıi]\b.*\bok\b|\bok\b.*previewId/i;
+
+  private stripInternalDebug(text: string): string {
+    if (!text || !WhatsAppBotPostFilterService.INTERNAL_DEBUG_RE.test(text)) return text;
+    let out = text.split('\n').filter((ln) => !WhatsAppBotPostFilterService.INTERNAL_DEBUG_RE.test(ln)).join('\n');
+    if (WhatsAppBotPostFilterService.INTERNAL_DEBUG_RE.test(out)) {
+      out = out.split(/(?<=[.!?])\s+/).filter((sn) => !WhatsAppBotPostFilterService.INTERNAL_DEBUG_RE.test(sn)).join(' ');
+    }
+    return out.replace(/\n{3,}/g, '\n\n').replace(/[ \t]+\n/g, '\n').trim();
+  }
+
   /** Araç-anlatımı içeren satır/cümleleri ayıkla. Geriye sağlam, kullanıcıya
    *  gösterilebilir metin döner; her şey araç-anlatımıysa boş string döner. */
   private stripToolNarration(text: string): string {
@@ -81,6 +98,8 @@ export class WhatsAppBotPostFilterService {
 
     // İç araç-çağrı metni (get_xxx çağırıyorum) kullanıcıya GİTMESİN.
     text = this.stripToolNarration(text);
+    // İç hata/debug jargonu mükellefe de sızmasın.
+    text = this.stripInternalDebug(text);
     if (!text) return 'Bunu bir kontrol edeyim, size net bilgiyle döneyim.';
 
     if (this.looksRisky(text)) {
@@ -119,7 +138,9 @@ export class WhatsAppBotPostFilterService {
 
     // İç araç-çağrı metni (get_xxx çağırıyorum / "aracını çağırıyorum") owner'a da gitmesin.
     t = this.stripToolNarration(t);
-    if (!t) return 'Durumu portal verisinden derleyip net olarak ileteyim; tekrar yazarsan güncel özeti veririm.';
+    // İç hata/debug jargonu (ok:false, previewId, "uyumlu agent bulunamadı") sızmasın.
+    t = this.stripInternalDebug(t);
+    if (!t) return 'Bu işi şu an tamamlayamadım; birazdan tekrar deneyip net bilgiyle döneyim.';
 
     if (this.looksRisky(t)) {
       return 'Bunu bir kontrol edeyim, size net bilgiyle döneyim.';
