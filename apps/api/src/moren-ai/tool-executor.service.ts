@@ -3,6 +3,7 @@ import { PrismaService } from '../prisma/prisma.service';
 import { MIHSAP_FATURA_ACTIONS, isMihsapFaturaCommandAgent } from '../agent-events/agent-registry';
 import { calculateBeyannameDeadline } from '../schedule/beyanname-deadline.util';
 import { ISLEM_OPERATIONS, ISLEM_ACTION_KEYS, islemCapabilityList, isIslemAction } from './islem-operations';
+import { TDHP, tdhpAciklama, vergiOranlari, vergiOraniAciklama } from '../common/accounting-reference';
 import { randomBytes } from 'crypto';
 
 const OFFICIAL_SOURCE_DOMAINS = [
@@ -98,6 +99,7 @@ export class ToolExecutorService {
         case 'preview_agent_command': return this.previewAgentCommand(input, ctx);
         case 'create_confirmed_agent_command': return this.createAgentCommand(input, ctx);
         case 'get_collection_risk_summary': return this.getCollectionRiskSummary(input, ctx);
+        case 'get_accounting_reference': return this.getAccountingReference(input);
         case 'get_bank_status': return this.getBankStatus(input, ctx);
         case 'get_cari_hareketler': return this.getCariHareketler(input, ctx);
         case 'list_earsiv_invoices': return this.listEarsivInvoices(input, ctx);
@@ -329,15 +331,15 @@ export class ToolExecutorService {
       orderBy: [{ donem: 'desc' }],
       take: 20,
       // tahakkukTutari/beyannameUrl sadece "verildi" hesabı için çekilir, çıktıda PAYLAŞILMAZ.
-      select: { beyanTipi: true, donem: true, onayNo: true, beyanTarihi: true, beyannameUrl: true, tahakkukTutari: true, createdAt: true },
+      select: { beyanTipi: true, donem: true, onayNo: true, beyanTarihi: true, beyannameUrl: true, pdfUrl: true, tahakkukTutari: true, createdAt: true },
     }).catch(() => []);
     return {
       adet: kayitlar.length,
       // POLİTİKA: Ödenecek/tahakkuk tutarı burada PAYLAŞILMAZ (müşavir kesinleştirir).
       tutarPolitikasi: 'Odenecek/tahakkuk tutarini musteriye verme; "musavirimiz kesinlestirince iletir" de.',
-      durumNotu: 'durum=verildi ise beyanname GİB\'e verilmiştir; onayNo boş olması "verilmedi" anlamına GELMEZ.',
+      durumNotu: 'durum=verildi ise beyanname GİB\'e verilmiştir; onayNo boş olması "verilmedi" anlamına GELMEZ. Belge (beyanname/tahakkuk PDF) varsa beyanname VERİLMİŞTİR — "verilmemiş" deme.',
       kayitlar: (kayitlar || []).map((k: any) => {
-        const verildi = Boolean(k.beyanTarihi || k.onayNo || k.beyannameUrl || k.tahakkukTutari);
+        const verildi = Boolean(k.beyanTarihi || k.onayNo || k.beyannameUrl || k.pdfUrl || k.tahakkukTutari);
         return {
           beyanTipi: k.beyanTipi,
           donem: k.donem,
@@ -1381,6 +1383,26 @@ export class ToolExecutorService {
   // ------------------------------------------------------------
   // BORDRO / SGK
   // ------------------------------------------------------------
+  /** TDHP hesap kodu→isim + güncel vergi oranı — DOĞRULANMIŞ referans (uydurma yok). */
+  private getAccountingReference(input: any) {
+    const kodlar = Array.isArray(input?.kodlar) ? input.kodlar.map((k: any) => String(k).trim()).filter(Boolean) : [];
+    const oranTipi = input?.oranTipi ? String(input.oranTipi).trim() : '';
+    const out: any = { kaynak: 'TDHP standart + güncel vergi oranları (doğrulanmış; ezberden cevap verme, bunu kullan)' };
+    if (kodlar.length) {
+      out.hesaplar = kodlar.map((kod: string) => ({ kod, ad: TDHP[kod] || TDHP[kod.slice(0, 3)] || null, bilinmiyor: !(TDHP[kod] || TDHP[kod.slice(0, 3)]) }));
+      out.metin = tdhpAciklama(kodlar);
+    }
+    if (oranTipi) {
+      out.vergiOrani = vergiOraniAciklama(oranTipi);
+    }
+    if (!kodlar.length && !oranTipi) {
+      // Genel istek: tam cetvel + oran tablosu.
+      out.hesapPlani = TDHP;
+      out.vergiOranlari = vergiOranlari();
+    }
+    return out;
+  }
+
   private async getBankStatus(input: any, ctx: { tenantId: string }) {
     const taxpayer = await this.resolveTaxpayerFromInput(input, ctx);
     if (!taxpayer) return { error: 'Mükellef bulunamadı', ipucu: 'taxpayerId veya taxpayerName gönder.' };
@@ -1882,9 +1904,11 @@ export class ToolExecutorService {
       // ÖNEMLİ: "verildi mi" sorusunda 'durum'/'verildi' alanına bak. beyanTarihi
       // (verildiği tarih), tahakkuk veya beyanname belgesi varsa beyanname GİB'e
       // SUNULMUŞTUR — onayNo BOŞ olsa bile (içe aktarımda numara yakalanmamış olabilir).
-      aciklama: 'verildi=true ise beyanname verilmiştir. onayNo boş olması "verilmedi" anlamına GELMEZ.',
+      aciklama: 'verildi=true ise beyanname verilmiştir. onayNo boş olması "verilmedi" anlamına GELMEZ. Belge (beyanname/tahakkuk PDF) varsa beyanname VERİLMİŞTİR — "verilmemiş" deme.',
+      tahakkukTutarNotu: 'tahakkukTutari doluysa O RAKAMI ver. null ise "tutar kaydı sistemde yok, tahakkuk fişi PDF\'inde yazılı" de. Net kâr × oran (veya matrah × oran) ile TEORİK tahakkuk HESAPLAYIP gerçekmiş gibi sunmak KESİNLİKLE YASAK — bu uydurmadır.',
       kayitlar: kayitlar.map((k: any) => {
-        const verildi = Boolean(k.beyanTarihi || k.onayNo || k.beyannameUrl || k.tahakkukTutari);
+        const belgeVar = !!(k.beyannameUrl || k.pdfUrl);
+        const verildi = Boolean(k.beyanTarihi || k.onayNo || belgeVar || k.tahakkukTutari);
         return {
           id: k.id,
           mukellef: k.taxpayer?.companyName || `${k.taxpayer?.firstName || ''} ${k.taxpayer?.lastName || ''}`.trim() || '—',
@@ -1895,12 +1919,13 @@ export class ToolExecutorService {
           durum: verildi ? 'verildi' : 'hazirlanmis',
           // Hüküm cümlesi HAZIR verilir — model "onay no boş → verilmemiş" çıkarımı yapmasın.
           durumAciklama: verildi
-            ? 'VERİLDİ — GİB kaydı mevcut (tahakkuk/beyan tarihi/beyanname belgesi var; onay no boş olsa bile verilmiştir)'
+            ? `VERİLDİ — GİB kaydı mevcut (${belgeVar ? 'belge (beyanname/tahakkuk PDF) var; ' : ''}tahakkuk/beyan tarihi var; onay no boş olsa bile verilmiştir)`
             : 'henüz verildiğine dair kayıt yok (tahakkuk, beyan tarihi veya belge bulunamadı)',
           beyanTarihi: k.beyanTarihi ? k.beyanTarihi.toISOString().slice(0, 10) : null,
           // null onayNo modeli yanlış "verilmedi" hükmüne itiyordu — sadece doluysa döner.
           ...(k.onayNo ? { onayNo: k.onayNo } : {}),
           tahakkukTutari: k.tahakkukTutari ? Number(k.tahakkukTutari) : null,
+          tahakkukKayitliMi: k.tahakkukTutari != null, // false → tutarı PDF'ten söyle, UYDURMA
           pdfVar: !!k.pdfUrl,
           beyannameVar: !!k.beyannameUrl,
           kaynak: k.kaynak,

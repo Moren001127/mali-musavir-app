@@ -151,6 +151,7 @@ const CORE_TOOL_NAMES = [
   'get_operation_briefing',
   'get_ai_cost_summary',
   'get_portal_capability_map',
+  'get_accounting_reference', // TDHP kod + vergi oranı — uydurmayı keser, her zaman erişilebilir
 ];
 
 const TAXPAYER_READONLY_TOOL_NAMES = [
@@ -168,10 +169,13 @@ const TAXPAYER_READONLY_TOOL_NAMES = [
   // soru sorarsa resmi kaynaktan cevaplayabilsin. Mükellef verisi DEĞİL, kamuya açık
   // mevzuat; inferMaxToolInput yalnız GERÇEK mevzuat sorusunda çalıştırır (gate'li).
   'research_official_sources',
+  'get_accounting_reference', // mükellef de hesap kodu/oran sorabilir — genel bilgi, veri sızıntısı yok
 ];
 
 const TOOL_GROUPS: Array<{ pattern: RegExp; tools: string[] }> = [
   { pattern: /mizan|hesap kod|gelir tablos|bilanço|bilanco|rasyo|oran|likidite|özkaynak|ozkaynak/i, tools: ['list_mizan_periods', 'get_mizan', 'get_gelir_tablosu', 'get_bilanco', 'compare_periods', 'calculate_financial_ratios'] },
+  // TDHP hesap kodu / vergi oranı sorusu → DOĞRULANMIŞ referans (uydurmayı keser).
+  { pattern: /hangi hesap|hesap kod|hesap plan|tdhp|\b[1-7]\d\d\b.*hesap|kurumlar.*oran|gecici.*oran|geçici.*oran|tevkifat.*oran|vergi oran/i, tools: ['get_accounting_reference'] },
   { pattern: /muhasebe|tdhp|yevmiye|defter|e-defter|e defter|dönem sonu|donem sonu|dönem kapan|donem kapan|amortisman|envanter|mali müşavirlik|mali musavirlik/i, tools: ['list_mizan_periods', 'get_mizan', 'get_gelir_tablosu', 'get_bilanco', 'compare_periods', 'calculate_financial_ratios', 'get_operation_briefing'] },
   { pattern: /finans|nakit akış|nakit akis|bütçe|butce|kârlılık|karlılık|karlilik|finansman|işletme sermayesi|isletme sermayesi|tahsilat|cari|rasyo|likidite/i, tools: ['get_operation_briefing', 'get_collection_risk_summary', 'list_mizan_periods', 'get_mizan', 'get_gelir_tablosu', 'get_bilanco', 'compare_periods', 'calculate_financial_ratios'] },
   { pattern: /şirket yönetimi|sirket yonetimi|planlama|iş planı|is plani|strateji|performans|kpi|görev|gorev|iş akışı|is akisi|risk yönetimi|risk yonetimi/i, tools: ['get_operation_briefing', 'get_beyanname_readiness_summary', 'get_collection_risk_summary', 'get_agent_status', 'list_taxpayers_monthly_status'] },
@@ -1503,6 +1507,13 @@ export class MorenAiService {
         return { period: ctx.period };
       case 'get_collection_risk_summary':
         return { limit: 20 };
+      case 'get_accounting_reference': {
+        const kodlar = (String(ctx.userMessage || '').match(/\b[1-7]\d{2}\b/g) || []).slice(0, 25);
+        const t = String(ctx.userMessage || '').toLocaleLowerCase('tr-TR');
+        const oranTipi = /kurumlar/.test(t) ? 'kurumlar' : /(gecici|geçici)\s*vergi/.test(t) ? 'gecici' : /(tevkifat|kdv2)/.test(t) ? 'kdv2' : /kdv\s*oran/.test(t) ? 'kdv' : '';
+        const hesapSorusu = /hesap kod|hangi hesap|hesap plan|tdhp/.test(t);
+        return (kodlar.length || oranTipi || hesapSorusu) ? { kodlar, oranTipi } : null;
+      }
       case 'get_bank_status':
         return taxpayerInput ? { ...taxpayerInput } : null;
       case 'get_cari_hareketler':

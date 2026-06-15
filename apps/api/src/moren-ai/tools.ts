@@ -727,6 +727,18 @@ export const MOREN_AI_TOOLS: ToolDefinition[] = [
     },
   },
   {
+    name: 'get_accounting_reference',
+    description:
+      'TDHP (Tek Düzen Hesap Planı) hesap kodu→isim ve GÜNCEL vergi oranı (kurumlar/geçici/KDV/KDV2 tevkifat) için DOĞRULANMIŞ referans. Hesap kodu ("100 101 hangi hesaplar"), hesap planı veya vergi oranı sorulursa EZBERDEN cevap verme; bunu çağır. kodlar verilirse o kodların adı; oranTipi verilirse o verginin oranı döner.',
+    input_schema: {
+      type: 'object',
+      properties: {
+        kodlar: { type: 'array', items: { type: 'string' }, description: 'TDHP hesap kodları (örn. ["100","101","391"]). Boşsa tam cetvel.' },
+        oranTipi: { type: 'string', description: 'Vergi oranı: kurumlar | gecici | kdv | kdv2' },
+      },
+    },
+  },
+  {
     name: 'get_beyanname_readiness_summary',
     description:
       'Tüm mükellefler için beyanname hazırlık skorunu üretir: evrak, işleme, KDV kontrol, banka ekstresi, mizan, beyan kaydı ve cari risk eksikleri.',
