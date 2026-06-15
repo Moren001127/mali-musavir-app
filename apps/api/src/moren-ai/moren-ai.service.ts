@@ -1193,13 +1193,24 @@ export class MorenAiService {
       `Kullanici mesaji: ${params.userMessage}`,
     ].filter(Boolean).join('\n\n');
 
+    // Süre sınırı modele göre: Opus (mevzuat) en yavaş ama doğruluk kritik → daha
+    // çok zaman; owner/Sonnet derin analiz orta; basit Haiku/sohbet kısa. Sesli her
+    // zaman hızlı. Bu olmadan Opus'a yönlenen mevzuat sorusu timeout'a takılıp
+    // Haiku yedeğine düşüyor (kötü cevap) ve "bağlantı yavaşladı" kaçışı tetikleniyor.
+    const mainTimeoutMs = params.body.voiceMode
+      ? 25000
+      : params.model === DEFAULT_MODEL_LEGISLATION
+        ? 70000
+        : (params.body.toolMode === 'owner' || params.model === DEFAULT_MODEL_OWNER_DEEP)
+          ? 60000
+          : 45000;
     const maxStarted = Date.now();
     let max = await claudeTextViaMax({
       prompt,
       system: params.systemPrompt,
       model: params.model,
       maxTurns: 1,
-      timeoutMs: params.body.voiceMode ? 25000 : 45000,
+      timeoutMs: mainTimeoutMs,
     });
     this.logger.log(`[HIZ] max ${params.model} ${Date.now() - maxStarted}ms ok=${max.ok && !!max.text.trim()}`);
     // YEDEK MODEL MERDİVENİ: ana model (örn. derin soru → Sonnet) zaman aşar veya boş

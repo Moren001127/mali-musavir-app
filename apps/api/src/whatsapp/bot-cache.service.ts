@@ -15,7 +15,11 @@ import { createHash } from 'crypto';
 export class WhatsAppBotCacheService {
   private readonly logger = new Logger(WhatsAppBotCacheService.name);
   private readonly cache = new Map<string, { reply: string; expiresAt: number; hits: number }>();
-  private readonly TTL_MS = Number(process.env.WHATSAPP_BOT_CACHE_TTL_MS || 24 * 60 * 60 * 1000);
+  // TTL 24s → 2s (2026-06-15): cache soruya göre çalışıyor, veriye göre değil.
+  // 24 saat çok uzundu; arada KDV/fatura/bakiye değişince mükellefe ESKİ rakam
+  // servis ediliyordu. 2 saat + "değişen-veri cevabını cache'leme" (aşağıda) birlikte
+  // bayat rakam riskini kapatır.
+  private readonly TTL_MS = Number(process.env.WHATSAPP_BOT_CACHE_TTL_MS || 2 * 60 * 60 * 1000);
   private readonly MAX_ENTRIES = Number(process.env.WHATSAPP_BOT_CACHE_MAX || 5000);
 
   /**
@@ -73,6 +77,10 @@ export class WhatsAppBotCacheService {
     const t = reply.toLocaleLowerCase('tr-TR');
     if (/kontrol edip d[öo]n[üu][şs]/i.test(t)) return true;
     if (/teknik bir sorun|hata|geri d[öo]n/i.test(t) && reply.length < 100) return true;
+    // ZAMANLA DEĞİŞEN mükellef-verisi içeren cevaplar cache'lenmemeli — yarın
+    // eski rakam/durum servis etmek yanlış. (Para tutarı, bakiye/borç, beyanname durumu.)
+    if (/\d[\d.,]*\s*(₺|tl\b)/i.test(reply)) return true; // para tutarı (12.500 ₺ / 8.300 TL)
+    if (/\b(bakiye|borc|borç|tahakkuk|verildi|verilmedi|od[ée]ndi|ödendi|kalan tutar|cari)\b/i.test(t)) return true;
     return false;
   }
 
