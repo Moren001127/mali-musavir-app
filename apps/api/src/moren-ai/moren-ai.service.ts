@@ -541,11 +541,18 @@ export class MorenAiService {
     const responseMaxTokens = body.voiceMode ? VOICE_MAX_TOKENS : NORMAL_MAX_TOKENS;
     const selectedTools = this.selectToolsForMessage(userMessage, body.toolMode || 'owner');
 
-    // ───── GERÇEK ARAÇ-YÜRÜTME (bayrak: MOREN_AI_AGENT_TOOLS=1) ─────
+    // ───── GERÇEK ARAÇ-YÜRÜTME (agentic) ─────
     // Model portal araçlarını GERÇEKTEN çağırır, sonucu görür, ZİNCİRLER, ona göre cevaplar
-    // (prefetch tahmininin aksine). Bayrak kapalıyken (varsayılan) mevcut prefetch yolu aynen
-    // çalışır; agent yolu başarısız olursa da prefetch'e DÜŞER (güvenli, additive).
-    if (process.env.MOREN_AI_AGENT_TOOLS === '1' && (body.toolMode === 'owner' || body.toolMode === 'taxpayer-readonly')) {
+    // (prefetch tahmininin aksine) → tüm portal verisine dinamik hakimiyet + çok adımlı iş +
+    // hafıza oku/yaz + resmi kaynak araştırma. Agent yolu başarısız/boş olursa prefetch'e
+    // DÜŞER (güvenli, additive). Yazma/komut araçları onay kapısında (canWrite verilmedi) —
+    // şimdilik salt-okuma; komut çalıştırma ayrı fazda.
+    // OWNER (ofis sahibi): VARSAYILAN AÇIK (MOREN_AI_AGENT_TOOLS=0 ile kapatılır) — sahibe
+    // "her veriye hakim, çok adımlı" bot. MÜKELLEF: yalnız açık env ile (önce owner'da test).
+    const agentToolsEnabled = body.toolMode === 'owner'
+      ? process.env.MOREN_AI_AGENT_TOOLS !== '0'
+      : process.env.MOREN_AI_AGENT_TOOLS === '1';
+    if (agentToolsEnabled && (body.toolMode === 'owner' || body.toolMode === 'taxpayer-readonly')) {
       const agentReply = await this.tryAgentToolPath({
         tenantId, userId, body, conversation, userMessage,
         systemPrompt, taxpayerContext, memoryContext, model, started,
