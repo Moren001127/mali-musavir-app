@@ -1068,6 +1068,11 @@ export class MorenAiService {
     const ordered: string[] = [];
     const seen = new Set<string>();
     const push = (name: string) => { if (name && !seen.has(name)) { seen.add(name); ordered.push(name); } };
+    // MEVZUAT/BİLGİ sorusu: resmi kaynak araştırması EN ÖNE alınır. Aksi halde "KDV
+    // oranı" gibi sorularda 'oran/kdv' kelimeleri önce alakasız mizan/KDV-özet
+    // tool'larını prefetch edip 8-tool sınırını dolduruyor, research_official_sources
+    // düşüyor → model kaynaksız kalıp "teyit edeyim" deyip cevapsız dönüyordu (E2).
+    if (needsLegislationModel(text)) push('research_official_sources');
     for (const group of TOOL_GROUPS) {
       if (group.pattern.test(text)) for (const tool of group.tools) push(tool);
     }
