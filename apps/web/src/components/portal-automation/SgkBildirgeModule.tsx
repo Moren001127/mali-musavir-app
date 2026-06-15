@@ -81,6 +81,9 @@ export default function SgkBildirgeModule() {
   const [viewedIds, setViewedIds] = useState<Set<string>>(() => new Set());
   const PAGE_SIZE = 200;
   const [page, setPage] = useState(1);
+  const now = useMemo(() => new Date(), []);
+  const [queryYear, setQueryYear] = useState(String(now.getFullYear()));
+  const [queryMonth, setQueryMonth] = useState(String(now.getMonth() + 1).padStart(2, '0'));
 
   const docsQuery = useQuery({
     queryKey: ['sgk-docs'],
@@ -142,6 +145,22 @@ export default function SgkBildirgeModule() {
       setTimeout(() => { qc.invalidateQueries({ queryKey: ['sgk-docs'] }); qc.invalidateQueries({ queryKey: ['sgk-summary'] }); }, 1500);
     },
     onError: (e: any) => toast.error(e?.response?.data?.message || 'Sorgu başlatılamadı'),
+  });
+
+  const donemSorgulaMut = useMutation({
+    mutationFn: () => portalAutomationApi.manualRun({
+      scope: 'sgk',
+      jobTypes: ['SGK_HIZMET_LISTESI', 'SGK_TAHAKKUK'],
+      taxpayerIds: taxpayerId ? [taxpayerId] : [],
+      force: true,
+      targetPeriod: `${queryYear}/${queryMonth}`,
+    }),
+    onSuccess: (d) => {
+      const n = d.created?.length || 0;
+      toast.success(n > 0 ? `${n} iş kuyruğa alındı (${queryYear}/${queryMonth}).` : (d.message || 'Sorgu kuyruğa alındı.'));
+      setTimeout(() => { qc.invalidateQueries({ queryKey: ['sgk-docs'] }); qc.invalidateQueries({ queryKey: ['sgk-summary'] }); }, 1500);
+    },
+    onError: (e: any) => toast.error(e?.response?.data?.message || 'Dönem sorgusu başlatılamadı'),
   });
 
   const markAllMut = useMutation({
@@ -206,6 +225,25 @@ export default function SgkBildirgeModule() {
           {sorgulaMut.isPending ? <Loader2 size={14} className="animate-spin" /> : <Download size={14} />}
           {taxpayerId ? 'Bu mükellefi sorgula' : 'Şimdi sorgula'}
         </button>
+      </div>
+
+      {/* Dönem seçerek manuel sorgulama */}
+      <div className="rounded-2xl border px-3.5 py-2.5 flex flex-wrap items-center gap-2" style={{ background: 'rgba(255,255,255,0.01)', borderColor: 'rgba(255,255,255,0.05)' }}>
+        <CalendarClock size={13} style={{ color: 'rgba(250,250,249,0.45)', flexShrink: 0 }} />
+        <span className="text-[11.5px] font-semibold" style={{ color: 'rgba(250,250,249,0.5)' }}>Belirli dönem:</span>
+        <select value={queryYear} onChange={(e) => setQueryYear(e.target.value)} className="h-[32px] px-2 rounded-[8px] text-[12px] outline-none border appearance-none" style={{ background: 'rgba(255,255,255,0.04)', borderColor: 'rgba(255,255,255,0.1)', color: '#fafaf9' }}>
+          {[2024, 2025, 2026].map((y) => <option key={y} value={String(y)}>{y}</option>)}
+        </select>
+        <select value={queryMonth} onChange={(e) => setQueryMonth(e.target.value)} className="h-[32px] px-2 rounded-[8px] text-[12px] outline-none border appearance-none min-w-[88px]" style={{ background: 'rgba(255,255,255,0.04)', borderColor: 'rgba(255,255,255,0.1)', color: '#fafaf9' }}>
+          {['Ocak','Şubat','Mart','Nisan','Mayıs','Haziran','Temmuz','Ağustos','Eylül','Ekim','Kasım','Aralık'].map((ad, i) => (
+            <option key={i + 1} value={String(i + 1).padStart(2, '0')}>{ad}</option>
+          ))}
+        </select>
+        <button onClick={() => donemSorgulaMut.mutate()} disabled={donemSorgulaMut.isPending} className="h-[32px] px-3 rounded-[8px] text-[12px] font-semibold flex items-center gap-1.5 border disabled:opacity-50" style={{ background: 'rgba(212,184,118,0.12)', borderColor: 'rgba(212,184,118,0.35)', color: GOLD }}>
+          {donemSorgulaMut.isPending ? <Loader2 size={12} className="animate-spin" /> : <Download size={12} />}
+          {taxpayerId ? 'Bu mükellefi bu dönem sorgula' : 'Bu dönemi sorgula'}
+        </button>
+        <span className="text-[10.5px]" style={{ color: 'rgba(250,250,249,0.3)' }}>Seçilen dönem için tüm mükellef şifrelerinde bildirge çeker.</span>
       </div>
 
       <div className="rounded-2xl border overflow-hidden" style={{ background: 'rgba(0,0,0,0.18)', borderColor: 'rgba(255,255,255,0.06)' }}>

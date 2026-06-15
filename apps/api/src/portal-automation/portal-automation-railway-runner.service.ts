@@ -1305,10 +1305,10 @@ export class PortalAutomationRailwayRunnerService implements OnModuleInit {
       const where: any = { tenantId, belgeTuru: { in: ['SGK_TAHAKKUK', 'SGK_HIZMET_LISTESI'] }, storageKey: { not: null } };
       if (taxpayerId) where.taxpayerId = taxpayerId;
       const have = await (this.prisma as any).portalDocument.findMany({ where, select: { referenceNo: true, belgeTuru: true, raw: true } }).catch(() => []);
-      // Meta'sı zaten PDF'ten işlenmiş (metaParsed) kayıtları atla; işlenmemiş eski kayıtlar
-      // yeniden çekilip meta geri doldurulsun (kanun/tutar gerçekten yoksa boş kalır, sorun değil).
+      // metaVersion>=2 ile işlenmiş kayıtları atla. Eski metaParsed:true (v1, tutar eksik olabilir)
+      // sayılmaz — yeni extractor ile yeniden çekilip raw güncellenir.
       alreadyHave = new Set((have || [])
-        .filter((h: any) => { const r: any = h.raw || {}; return r.metaParsed; })
+        .filter((h: any) => { const r: any = h.raw || {}; return (r.metaVersion ?? 0) >= 2; })
         .map((h: any) => `${h.belgeTuru}|${h.referenceNo}`));
     }
 
@@ -1340,6 +1340,23 @@ export class PortalAutomationRailwayRunnerService implements OnModuleInit {
       // value sayısal değilse dropdown sırasına güven: [0] = en yeni, son = en eski.
       startVal = String(periods[0].v);
       endVal = String(periods[Math.min(periods.length, maxPeriods) - 1].v);
+    }
+
+    // Manuel dönem sorgusu: payload.targetPeriod ('YYYY/MM' veya 'YYYY-MM') varsa sadece o dönem.
+    const targetPeriod = job?.payload?.targetPeriod as string | undefined;
+    if (targetPeriod) {
+      const pm = String(targetPeriod).match(/(\d{4})[\/-](\d{1,2})/);
+      if (pm) {
+        const TR_MONTHS = ['', 'OCAK', 'SUBAT', 'MART', 'NISAN', 'MAYIS', 'HAZIRAN', 'TEMMUZ', 'AGUSTOS', 'EYLUL', 'EKIM', 'KASIM', 'ARALIK'];
+        const yr = pm[1]; const mn = TR_MONTHS[Number(pm[2])] || '';
+        const matched = mn ? periods.find((p) => { const n = this.normalizeTextKey(p.t); return n.includes(yr) && n.includes(mn); }) : null;
+        if (matched) {
+          startVal = matched.v; endVal = matched.v;
+          notes.push(`Manuel dönem sorgusu: ${matched.t} (index ${matched.v})`);
+        } else {
+          notes.push(`Hedef dönem '${targetPeriod}' dropdown'da bulunamadı; tüm aralık sorgulanacak.`);
+        }
+      }
     }
 
     try {
@@ -1431,7 +1448,7 @@ export class PortalAutomationRailwayRunnerService implements OnModuleInit {
             mimeType: 'application/pdf',
             originalName: `${t.belgeTuru}_${row.refNo}.pdf`,
             base64: b64,
-            raw: { donem: periodText, bildirgeRefNo: row.refNo, belgeMahiyeti: meta.belgeMahiyeti, kanunNo: meta.kanunNo, calisan: meta.calisan, tutar: meta.tutar, metaParsed: true },
+            raw: { donem: periodText, bildirgeRefNo: row.refNo, belgeMahiyeti: meta.belgeMahiyeti, kanunNo: meta.kanunNo, calisan: meta.calisan, tutar: meta.tutar, metaVersion: 2 },
           });
           alreadyHave.add(key);
         }
@@ -3884,29 +3901,45 @@ export class PortalAutomationRailwayRunnerService implements OnModuleInit {
   }
 
   // SGK belge meta'sı (mahiyet/kanun no/çalışan/tutar) liste tablosunda YOK, PDF içinde:
-  // Mahiyet -> hizmet listesi "Mahiyet : ASIL"; Kanun/Çalışan/Tutar -> tahakkuk fişi
-  // ("Belge türü:01/05510", "KİŞİ SAYISI : N", "ÖDENECEK NET TUTAR ...").
+  // Mahiyet -> hizmet listesi "Mahiyet : ASIL"; Kanun/Çalışan/Tutar -> tahakkuk fişi.
+  // Arama: normalizeTextKey (NFD+ASCII) ile; Türkçe ö/ü/ş PDF encoding'e göre farklı çıkabilir.
+  // Tutar: normalize nokta/virgülü siler -> özgün tahText'te ara; pozisyon ipucu normTah'tan.
   private async extractSgkMetaFromPdfs(tahB64?: string | null, hizB64?: string | null): Promise<{ belgeMahiyeti: string; kanunNo: string; calisan: string; tutar: string }> {
     const meta = { belgeMahiyeti: '', kanunNo: '', calisan: '', tutar: '' };
     try {
       const tahText = tahB64 ? await this.pdfTextFromBase64(tahB64).catch(() => '') : '';
       const hizText = hizB64 ? await this.pdfTextFromBase64(hizB64).catch(() => '') : '';
-      const all = `${tahText} ${hizText}`;
-      const mm = all.match(/Mahiyet\s*:?\s*(AS[İI]L|EK|[İI]PTAL)/i) || all.match(/\(\s*5510\s*\)\s*(AS[İI]L|EK|[İI]PTAL)/i);
-      if (mm) meta.belgeMahiyeti = mm[1].toLocaleUpperCase('tr-TR');
-      // Kanun no GERÇEKTEN belirtilmişse al: "Belge türü:01/05510", "05510 SAYILI KANUN",
-      // hizmet listesi "Kanun : 05510". Başlıktaki "(5510)" her fişte var -> kanun sayma.
-      const km = all.match(/Belge\s*t[üu]r[üu]\s*:?\s*\d+\s*\/\s*(\d{4,5})/i)
-        || all.match(/(\d{5})\s*SAYILI\s*KANUN/i)
-        || all.match(/Kanun\s*:?\s*(\d{4,5})/i);
+      const normAll = this.normalizeTextKey(`${tahText} ${hizText}`);
+      const normTah = this.normalizeTextKey(tahText);
+      // Mahiyet (normalized)
+      const mm = normAll.match(/MAHIYET\s*:?\s*(ASIL|EK|IPTAL)/)
+        || normAll.match(/5510\s*\)\s*(ASIL|EK|IPTAL)/);
+      if (mm) meta.belgeMahiyeti = mm[1] === 'IPTAL' ? 'İPTAL' : mm[1];
+      // Kanun no: "Belge Türü:01/05510", "05510 SAYILI KANUN", "Kanun: 05510" — başlık "(5510)" sayılmaz.
+      const km = normAll.match(/BELGE\s*TURU\s*:?\s*\d+\s*\/\s*(\d{4,5})/)
+        || normAll.match(/(\d{5})\s*SAYILI\s*KANUN/)
+        || normAll.match(/KANUN\s*:?\s*(\d{4,5})/);
       if (km) meta.kanunNo = km[1];
-      const cm = tahText.match(/K[İI]Ş[İI]\s*SAYISI\s*:?\s*(\d{1,4})/i);
+      // Çalışan (normalized)
+      const cm = normTah.match(/KISI\s*SAYISI\s*:?\s*(\d{1,4})/);
       if (cm) meta.calisan = cm[1];
-      // Tutar: "ÖDENECEK NET TUTAR" etiketinden sonraki ilk para değeri (PDF metni etiket->değer sıralı).
-      const tIdx = tahText.search(/[ÖO]DENECEK\s*NET\s*TUTAR/i);
+      // Tutar: normalizeTextKey nokta/virgülü siliyor → özgün tahText'te ara.
+      // Strateji 1: normTah'taki ODENECEK NET TUTAR pozisyonunu özgün metne eşle (uzunluk yakın).
+      const nIdx = normTah.search(/ODENECEK\s*NET\s*TUTAR/);
+      const tIdx = nIdx >= 0 ? nIdx : tahText.search(/[ÖO]DENECEK\s*NET\s*TUTAR/i);
       if (tIdx >= 0) {
-        const tm = tahText.slice(tIdx, tIdx + 80).match(/(\d{1,3}(?:\.\d{3})*,\d{2})/);
+        const win = tahText.slice(tIdx, tIdx + 300);
+        const tm = win.match(/(\d{1,3}(?:\.\d{3})*,\d{2})/);
         if (tm) meta.tutar = tm[1];
+      }
+      // Strateji 2: en büyük para değeri (toplam genellikle en büyük).
+      if (!meta.tutar && tahText) {
+        const allMoney: string[] = tahText.match(/\d{1,3}(?:\.\d{3})*,\d{2}/g) || [];
+        if (allMoney.length) {
+          const toNum = (v: string) => Number(v.replace(/\./g, '').replace(',', '.'));
+          const maxM = allMoney.reduce<string>((best, v) => toNum(v) > toNum(best) ? v : best, allMoney[0]);
+          if (toNum(maxM) > 0) meta.tutar = maxM;
+        }
       }
     } catch { /* yut */ }
     return meta;

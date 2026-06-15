@@ -70,6 +70,7 @@ type ManualRunInput = {
   dateFrom?: string;
   dateTo?: string;
   donem?: string;
+  targetPeriod?: string;
   force?: boolean;
   validationOnly?: boolean;
   discover?: boolean;
@@ -642,6 +643,7 @@ export class PortalAutomationService {
       taxpayerIds: input.taxpayerIds || [],
       period,
       donem: input.donem,
+      targetPeriod: input.targetPeriod,
       force: input.force === true,
       validationOnly: input.validationOnly === true,
       discover: input.discover === true,
@@ -956,6 +958,7 @@ export class PortalAutomationService {
       taxpayerIds: string[];
       period: { start: Date; end: Date };
       donem?: string;
+      targetPeriod?: string;
       force?: boolean;
       validationOnly?: boolean;
       discover?: boolean;
@@ -1015,6 +1018,7 @@ export class PortalAutomationService {
       userId: string | null;
       period: { start: Date; end: Date };
       donem?: string;
+      targetPeriod?: string;
       force?: boolean;
       validationOnly?: boolean;
       discover?: boolean;
@@ -1049,6 +1053,7 @@ export class PortalAutomationService {
           force: opts.force === true,
           validationOnly,
           discover: opts.discover === true,
+          targetPeriod: opts.targetPeriod || undefined,
           dateFrom: opts.period.start.toISOString(),
           dateTo: opts.period.end.toISOString(),
           instruction: validationOnly
@@ -1622,7 +1627,7 @@ export class PortalAutomationService {
         }
         // SGK meta backfill: PDF'ten meta işlendiyse mevcut raw'ı güncelle (eksik alanları/tutarı doldurur).
         const newRaw: any = input.raw || {};
-        if (newRaw.metaParsed || newRaw.kanunNo || newRaw.belgeMahiyeti || newRaw.tutar) {
+        if (newRaw.metaVersion || newRaw.metaParsed || newRaw.kanunNo || newRaw.belgeMahiyeti || newRaw.tutar) {
           patch.raw = input.raw;
         }
         if (Object.keys(patch).length) {
