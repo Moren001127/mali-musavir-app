@@ -668,6 +668,65 @@ export const MOREN_AI_TOOLS: ToolDefinition[] = [
     },
   },
   {
+    name: 'list_earsiv_invoices',
+    description:
+      'Bir mükellefin e-arşiv/e-fatura DETAYINI listeler (gerçek EarsivFatura tablosu): satıcı/alıcı, matrah, KDV oranı/tutarı, toplam, fatura no, tarih, ETTN. tip=SATIS/ALIS, kaynak=EARSIV/EFATURA, dönem filtreli. "X firmanın nisan e-arşiv satış faturaları", "en büyük alış faturaları" sorularında kullan. (list_invoices İŞLENEN faturadır; bu HAM e-belge.)',
+    input_schema: {
+      type: 'object',
+      properties: {
+        taxpayerId: { type: 'string' },
+        taxpayerName: { type: 'string' },
+        donem: { type: 'string', description: 'YYYY-MM' },
+        tip: { type: 'string', description: 'SATIS | ALIS' },
+        kaynak: { type: 'string', description: 'EARSIV | EFATURA' },
+        limit: { type: 'number' },
+      },
+    },
+  },
+  {
+    name: 'list_tasks',
+    description:
+      'Görev modülündeki görevleri listeler: başlık, durum (OPEN/IN_PROGRESS/DONE...), öncelik, kategori, son tarih, bağlı mükellef. "açık görevler", "geciken görevler", "X için görevler" sorularında kullan. status/onlyOverdue/mükellef filtreli.',
+    input_schema: {
+      type: 'object',
+      properties: {
+        taxpayerId: { type: 'string' },
+        taxpayerName: { type: 'string' },
+        status: { type: 'string', description: 'OPEN | IN_PROGRESS | DONE (opsiyonel)' },
+        onlyOverdue: { type: 'boolean', description: 'Yalnız son tarihi geçmiş, kapanmamış görevler' },
+        limit: { type: 'number' },
+      },
+    },
+  },
+  {
+    name: 'list_etebligat',
+    description:
+      'Mükelleflerin e-Tebligat ve portal belgelerini (PortalDocument: GİB e-tebligat, SGK belgeleri) listeler: belge türü, başlık, dönem, tebliğ/alınma tarihi, referans no, görüntülendi mi. "bugün gelen e-tebligatlar", "X firmanın e-tebligatları" sorularında kullan.',
+    input_schema: {
+      type: 'object',
+      properties: {
+        taxpayerId: { type: 'string' },
+        taxpayerName: { type: 'string' },
+        belgeTuru: { type: 'string', description: 'E_TEBLIGAT (varsayılan) veya TUMU' },
+        limit: { type: 'number' },
+      },
+    },
+  },
+  {
+    name: 'get_isletme_hesap_ozeti',
+    description:
+      'İşletme defteri mükellefi için dönem hesap özeti: satış hasılatı, mal alışı, satılan mal maliyeti, net satışlar, dönem giderleri, dönem kârı, geçici vergi matrahı ve ödenecek geçici vergi. İşletme defteri (2. sınıf) mükellefleri için kullan.',
+    input_schema: {
+      type: 'object',
+      properties: {
+        taxpayerId: { type: 'string' },
+        taxpayerName: { type: 'string' },
+        yil: { type: 'number' },
+        donem: { type: 'number', description: 'çeyrek 1-4' },
+      },
+    },
+  },
+  {
     name: 'get_beyanname_readiness_summary',
     description:
       'Tüm mükellefler için beyanname hazırlık skorunu üretir: evrak, işleme, KDV kontrol, banka ekstresi, mizan, beyan kaydı ve cari risk eksikleri.',

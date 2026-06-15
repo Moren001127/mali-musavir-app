@@ -181,6 +181,10 @@ const TOOL_GROUPS: Array<{ pattern: RegExp; tools: string[] }> = [
   { pattern: /evrak|belge|sözleşme|sozlesme|doküman|dokuman/i, tools: ['list_documents', 'get_taxpayer_work_status', 'list_taxpayers_monthly_status'] },
   { pattern: /tahsilat|borç|borc|cari|ödeme|odeme|whatsapp|hatırlatma|hatirlatma|tahsil ettik|ne ödedi|odedi mi/i, tools: ['get_cari_hareketler', 'get_operation_briefing', 'get_collection_risk_summary', 'get_taxpayer_work_status', 'preview_agent_command', 'create_confirmed_agent_command'] },
   { pattern: /banka|iban|ekstre|hesap no|hesap durum|banka hesab/i, tools: ['get_bank_status'] },
+  { pattern: /e-?ar[şs]iv|e-?fatura|earsiv|kesti[ğg]i fatura|ham fatura|fatura detay|en b[üu]y[üu]k.*fatura/i, tools: ['list_earsiv_invoices'] },
+  { pattern: /görev|gorev|yap[ıi]lacak|to-?do|geciken i[şs]|hat[ıi]rlatma listesi/i, tools: ['list_tasks'] },
+  { pattern: /tebligat|e-?tebligat|gib belge|portal belge/i, tools: ['list_etebligat'] },
+  { pattern: /i[şs]letme defter|i[şs]letme hesap|2\.?\s*s[ıi]n[ıi]f defter/i, tools: ['get_isletme_hesap_ozeti'] },
   { pattern: /bug[üu]n|acil|öncelik|oncelik|yapmam gereken|neye bak|işler|isler|brifing|briefing|operasyon/i, tools: ['get_operation_briefing', 'get_beyanname_readiness_summary', 'get_collection_risk_summary', 'get_agent_status', 'get_system_health'] },
   { pattern: /sa[gğ]l[ıi]k|sistem durum|sorun var|aksakl[ıi]k|yolunda m|her[ ]?[şs]ey yolunda|alarm|uyar[ıi]|ayakta m|down|cal[ıi][şs][ıi]yor mu|hata var/i, tools: ['get_system_health', 'get_agent_status', 'get_operation_briefing'] },
   { pattern: /ajan|agent|luca|tebligat|otomasyon|komut|çalıştır|calistir|işlem yap|islem yap/i, tools: ['get_agent_status', 'get_luca_agent_jobs', 'get_mihsap_agent_jobs', 'preview_agent_command', 'create_confirmed_agent_command'] },
@@ -1495,6 +1499,14 @@ export class MorenAiService {
         return taxpayerInput ? { ...taxpayerInput } : null;
       case 'get_cari_hareketler':
         return taxpayerInput ? { ...taxpayerInput, limit: 20 } : null;
+      case 'list_earsiv_invoices':
+        return taxpayerInput ? { ...taxpayerInput, donem: ctx.period, limit: 30 } : null;
+      case 'list_tasks':
+        return { limit: 25 };
+      case 'list_etebligat':
+        return { limit: 20 };
+      case 'get_isletme_hesap_ozeti':
+        return taxpayerInput ? { ...taxpayerInput } : null;
       case 'get_beyanname_readiness_summary':
       case 'list_taxpayers_monthly_status':
       case 'get_beyan_ozet':

@@ -99,6 +99,10 @@ export class ToolExecutorService {
         case 'get_collection_risk_summary': return this.getCollectionRiskSummary(input, ctx);
         case 'get_bank_status': return this.getBankStatus(input, ctx);
         case 'get_cari_hareketler': return this.getCariHareketler(input, ctx);
+        case 'list_earsiv_invoices': return this.listEarsivInvoices(input, ctx);
+        case 'list_tasks': return this.listTasks(input, ctx);
+        case 'list_etebligat': return this.listETebligat(input, ctx);
+        case 'get_isletme_hesap_ozeti': return this.getIsletmeHesapOzeti(input, ctx);
         case 'get_beyanname_readiness_summary': return this.getBeyannameReadinessSummary(input, ctx);
         case 'get_portal_capability_map': return this.getPortalCapabilityMap();
         case 'research_official_sources': return this.researchOfficialSources(input, ctx);
@@ -1435,6 +1439,95 @@ export class ToolExecutorService {
       hareketSayisi: tumu.length,
       sonTahsilat: sonTahsilat ? { tarih: iso(sonTahsilat.tarih), tutar: this.toNum(sonTahsilat.tutar), yontem: sonTahsilat.odemeYontemi || '-' } : null,
       hareketler: hareketler.map((h: any) => ({ tarih: iso(h.tarih), tip: h.tip, tutar: this.toNum(h.tutar), yontem: h.odemeYontemi || '-', belgeNo: h.belgeNo || '-', donem: h.donem || '-', aciklama: h.aciklama || '' })),
+    };
+  }
+
+  private async listEarsivInvoices(input: any, ctx: { tenantId: string }) {
+    const taxpayer = await this.resolveTaxpayerFromInput(input, ctx);
+    if (!taxpayer) return { error: 'Mükellef bulunamadı', ipucu: 'taxpayerId veya taxpayerName gönder.' };
+    const where: any = { tenantId: ctx.tenantId, taxpayerId: taxpayer.id };
+    const tip = String(input?.tip || '').trim().toUpperCase();
+    if (tip === 'SATIS' || tip === 'ALIS') where.tip = tip;
+    const kaynak = String(input?.kaynak || '').trim().toUpperCase();
+    if (kaynak === 'EARSIV' || kaynak === 'EFATURA') where.belgeKaynak = kaynak;
+    const donem = String(input?.donem || '').match(/^\d{4}-\d{2}$/) ? input.donem : null;
+    if (donem) where.donem = donem;
+    const limit = Math.min(Number(input?.limit) || 30, 100);
+    const faturalar = await (this.prisma as any).earsivFatura.findMany({
+      where, orderBy: [{ faturaTarihi: 'desc' }], take: limit,
+      select: { tip: true, belgeKaynak: true, donem: true, faturaNo: true, faturaTarihi: true, ettn: true, satici: true, alici: true, matrah: true, kdvOrani: true, kdvTutari: true, toplamTutar: true },
+    });
+    const iso = (d: any) => new Date(d).toISOString().slice(0, 10);
+    const adi = (taxpayer.companyName || `${taxpayer.firstName || ''} ${taxpayer.lastName || ''}`).trim();
+    return {
+      mukellef: adi, donem: donem || 'tümü', tip: tip || 'tümü', adet: faturalar.length,
+      toplamMatrah: Math.round(faturalar.reduce((s: number, f: any) => s + this.toNum(f.matrah), 0) * 100) / 100,
+      toplamKdv: Math.round(faturalar.reduce((s: number, f: any) => s + this.toNum(f.kdvTutari), 0) * 100) / 100,
+      faturalar: faturalar.map((f: any) => ({ tip: f.tip, kaynak: f.belgeKaynak, no: f.faturaNo, tarih: iso(f.faturaTarihi), karsiTaraf: f.tip === 'SATIS' ? (f.alici || '-') : (f.satici || '-'), matrah: this.toNum(f.matrah), kdvOrani: f.kdvOrani != null ? this.toNum(f.kdvOrani) : null, kdv: this.toNum(f.kdvTutari), toplam: this.toNum(f.toplamTutar), ettn: f.ettn || '-' })),
+      not: faturalar.length === 0 ? 'Bu kriterlerde e-belge bulunamadı.' : undefined,
+    };
+  }
+
+  private async listTasks(input: any, ctx: { tenantId: string }) {
+    const where: any = { tenantId: ctx.tenantId };
+    if (input?.taxpayerId || input?.taxpayerName || input?.mukellefId) {
+      const t = await this.resolveTaxpayerFromInput(input, ctx);
+      if (t) where.taxpayerId = t.id;
+    }
+    const status = String(input?.status || '').trim().toUpperCase();
+    if (['OPEN', 'IN_PROGRESS', 'DONE', 'SNOOZED', 'MISSED', 'CANCELLED'].includes(status)) where.status = status;
+    if (input?.onlyOverdue) { where.status = { notIn: ['DONE', 'CANCELLED'] }; where.dueDate = { lt: new Date() }; }
+    const limit = Math.min(Number(input?.limit) || 25, 100);
+    const tasks = await (this.prisma as any).task.findMany({
+      where, orderBy: [{ dueDate: 'asc' }, { priority: 'desc' }], take: limit,
+      select: { title: true, status: true, priority: true, category: true, dueDate: true, dueTime: true, taxpayer: { select: { companyName: true, firstName: true, lastName: true } } },
+    });
+    const iso = (d: any) => (d ? new Date(d).toISOString().slice(0, 10) : null);
+    return {
+      adet: tasks.length,
+      gorevler: tasks.map((t: any) => ({ baslik: t.title, durum: t.status, oncelik: t.priority, kategori: t.category || '-', sonTarih: iso(t.dueDate), saat: t.dueTime || null, mukellef: t.taxpayer ? (t.taxpayer.companyName || `${t.taxpayer.firstName || ''} ${t.taxpayer.lastName || ''}`).trim() : null })),
+      not: tasks.length === 0 ? 'Bu kriterlerde görev yok.' : undefined,
+    };
+  }
+
+  private async listETebligat(input: any, ctx: { tenantId: string }) {
+    const where: any = { tenantId: ctx.tenantId };
+    const belgeTuru = String(input?.belgeTuru || 'E_TEBLIGAT').trim().toUpperCase();
+    if (belgeTuru && belgeTuru !== 'TUMU' && belgeTuru !== 'HEPSI') where.belgeTuru = belgeTuru;
+    if (input?.taxpayerId || input?.taxpayerName || input?.mukellefId) {
+      const t = await this.resolveTaxpayerFromInput(input, ctx);
+      if (t) where.taxpayerId = t.id;
+    }
+    const limit = Math.min(Number(input?.limit) || 25, 100);
+    const docs = await (this.prisma as any).portalDocument.findMany({
+      where, orderBy: [{ issuedAt: 'desc' }, { createdAt: 'desc' }], take: limit,
+      select: { belgeTuru: true, title: true, period: true, referenceNo: true, issuedAt: true, receivedAt: true, viewedAt: true, taxpayer: { select: { companyName: true, firstName: true, lastName: true } } },
+    });
+    const iso = (d: any) => (d ? new Date(d).toISOString().slice(0, 10) : null);
+    return {
+      adet: docs.length, belgeTuru,
+      belgeler: docs.map((d: any) => ({ tur: d.belgeTuru, baslik: d.title, donem: d.period || '-', refNo: d.referenceNo || '-', tebligTarihi: iso(d.issuedAt), alinmaTarihi: iso(d.receivedAt), goruntulendi: !!d.viewedAt, mukellef: d.taxpayer ? (d.taxpayer.companyName || `${d.taxpayer.firstName || ''} ${d.taxpayer.lastName || ''}`).trim() : null })),
+      not: docs.length === 0 ? 'Bu kriterlerde belge yok.' : undefined,
+    };
+  }
+
+  private async getIsletmeHesapOzeti(input: any, ctx: { tenantId: string }) {
+    const taxpayer = await this.resolveTaxpayerFromInput(input, ctx);
+    if (!taxpayer) return { error: 'Mükellef bulunamadı', ipucu: 'taxpayerId veya taxpayerName gönder.' };
+    const where: any = { tenantId: ctx.tenantId, taxpayerId: taxpayer.id };
+    if (Number(input?.yil)) where.yil = Number(input.yil);
+    if (Number(input?.donem)) where.donem = Number(input.donem);
+    const ozet = await (this.prisma as any).isletmeHesapOzeti.findFirst({ where, orderBy: [{ yil: 'desc' }, { donem: 'desc' }] });
+    const adi = (taxpayer.companyName || `${taxpayer.firstName || ''} ${taxpayer.lastName || ''}`).trim();
+    if (!ozet) return { mukellef: adi, not: 'İşletme hesap özeti kaydı bulunamadı (mükellef işletme defteri olmayabilir).' };
+    return {
+      mukellef: adi, yil: ozet.yil, donem: `${ozet.donem}. dönem`,
+      satisHasilati: this.toNum(ozet.satisHasilati), digerGelir: this.toNum(ozet.digerGelir),
+      malAlisi: this.toNum(ozet.malAlisi), satilanMalMaliyeti: this.toNum(ozet.satilanMalMaliyeti),
+      netSatislar: this.toNum(ozet.netSatislar), donemIciGiderler: this.toNum(ozet.donemIciGiderler),
+      donemKari: this.toNum(ozet.donemKari), gecmisYilZarari: this.toNum(ozet.gecmisYilZarari),
+      gecVergiMatrahi: this.toNum(ozet.gecVergiMatrahi), hesaplananGecVergi: this.toNum(ozet.hesaplananGecVergi),
+      oncekiOdenenGecVergi: this.toNum(ozet.oncekiOdenenGecVergi), odenecekGecVergi: this.toNum(ozet.odenecekGecVergi),
     };
   }
 
