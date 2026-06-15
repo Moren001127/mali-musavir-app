@@ -76,6 +76,14 @@ export class ReminderCron {
 
   @Cron('0 7 * * 1-5')
   async sendEvrakReminderMessages() {
+    // Kullanıcı talimatı (2026-06-15): ŞİMDİLİK mükelleflere kendiliğinden
+    // (proaktif) mesaj ATILMAYACAK — bot yalnız mükellef YAZINCA cevap verir.
+    // Bu evrak hatırlatması proaktif gönderim olduğu için varsayılan KAPALI.
+    // Tekrar açmak için: MOREN_CLIENT_PROACTIVE_REMINDERS=1
+    if (process.env.MOREN_CLIENT_PROACTIVE_REMINDERS !== '1') {
+      this.logger.log('[ReminderCron] Proaktif evrak hatırlatması KAPALI (MOREN_CLIENT_PROACTIVE_REMINDERS!=1) — mükellefe mesaj atılmadı.');
+      return;
+    }
     const today = new Date();
 
     // Resmi tatil kontrolü - tatildeyse erken çık
