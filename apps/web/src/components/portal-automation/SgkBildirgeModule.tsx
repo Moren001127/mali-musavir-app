@@ -6,7 +6,7 @@ import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import { toast } from 'sonner';
 import {
   ShieldCheck, RefreshCw, Loader2, Search, Users, FileText, Download, ChevronDown,
-  Activity, Eye, X, CheckCheck, AlertTriangle, CalendarClock, Receipt, ListChecks,
+  Eye, X, CheckCheck, AlertTriangle, CalendarClock, Receipt, ListChecks,
 } from 'lucide-react';
 import { portalAutomationApi, type PortalDocument } from '@/lib/portal-automation';
 
@@ -45,23 +45,6 @@ function turLabel(belgeTuru: string): { label: string; icon: React.ReactNode; co
   return { label: belgeTuru, icon: <FileText size={11} />, color: GOLD };
 }
 
-function Kpi({ icon, label, value, sub, onClick }: { icon: React.ReactNode; label: string; value: string; sub?: string; onClick?: () => void }) {
-  return (
-    <div
-      onClick={onClick}
-      className={`rounded-2xl border p-4 ${onClick ? 'cursor-pointer hover:brightness-125 transition' : ''}`}
-      style={{ background: 'rgba(255,255,255,0.02)', borderColor: 'rgba(255,255,255,0.06)' }}
-    >
-      <div className="flex items-center gap-2 mb-2">
-        <span className="grid place-items-center rounded-lg flex-shrink-0" style={{ width: 30, height: 30, background: 'rgba(212,184,118,0.12)', color: GOLD }}>{icon}</span>
-        <span className="text-[10px] uppercase font-bold tracking-[.12em]" style={{ color: 'rgba(250,250,249,0.5)' }}>{label}</span>
-      </div>
-      <div style={{ fontFamily: 'Fraunces, serif', fontSize: 24, fontWeight: 700, color: '#fafaf9', lineHeight: 1.1 }}>{value}</div>
-      {sub && <div className="text-[11px] mt-0.5" style={{ color: 'rgba(250,250,249,0.4)' }}>{sub}</div>}
-    </div>
-  );
-}
-
 function PgBtn({ children, onClick, disabled }: { children: React.ReactNode; onClick: () => void; disabled?: boolean }) {
   return (
     <button onClick={onClick} disabled={disabled}
@@ -75,6 +58,7 @@ function PgBtn({ children, onClick, disabled }: { children: React.ReactNode; onC
 export default function SgkBildirgeModule() {
   const qc = useQueryClient();
   const [taxpayerId, setTaxpayerId] = useState<string>('');
+  const [turFilter, setTurFilter] = useState<string>(''); // '' | SGK_HIZMET_LISTESI | SGK_TAHAKKUK
   const [search, setSearch] = useState('');
   const [pdfModal, setPdfModal] = useState<{ url: string; title: string } | null>(null);
   const [showErrors, setShowErrors] = useState(false);
@@ -117,6 +101,7 @@ export default function SgkBildirgeModule() {
     const q = search.trim().toLocaleLowerCase('tr-TR');
     const arr = docs.filter((d) => {
       if (taxpayerId && d.taxpayerId !== taxpayerId) return false;
+      if (turFilter && d.belgeTuru !== turFilter) return false;
       if (!q) return true;
       const m = sgkMeta(d);
       const hay = [taxpayerName(d.taxpayer), turLabel(d.belgeTuru).label, m.donem, d.referenceNo, m.kanunNo].filter(Boolean).join(' ').toLocaleLowerCase('tr-TR');
@@ -135,9 +120,9 @@ export default function SgkBildirgeModule() {
       || String(a.referenceNo || '').localeCompare(String(b.referenceNo || ''), 'tr')
       || (a.belgeTuru < b.belgeTuru ? -1 : a.belgeTuru > b.belgeTuru ? 1 : 0),
     );
-  }, [docs, taxpayerId, search]);
+  }, [docs, taxpayerId, turFilter, search]);
 
-  useEffect(() => { setPage(1); }, [search, taxpayerId]);
+  useEffect(() => { setPage(1); }, [search, taxpayerId, turFilter]);
   const totalPages = Math.max(1, Math.ceil(filtered.length / PAGE_SIZE));
   const pageClamped = Math.min(Math.max(1, page), totalPages);
   const pageItems = useMemo(() => filtered.slice((pageClamped - 1) * PAGE_SIZE, pageClamped * PAGE_SIZE), [filtered, pageClamped]);
@@ -190,12 +175,16 @@ export default function SgkBildirgeModule() {
 
   return (
     <div className="space-y-4">
-      <div className="grid grid-cols-2 md:grid-cols-4 gap-3">
-        <Kpi icon={<ShieldCheck size={16} />} label="Toplam SGK belgesi" value={String(summary?.stats?.sgkTotal ?? docs.length)} sub="tahakkuk + hizmet listesi" />
-        <Kpi icon={<Users size={16} />} label="Şifreli mükellef" value={String(summary?.credentials?.sgkTaxpayerCount ?? 0)} sub="SGK e-Bildirge" />
-        <Kpi icon={<Activity size={16} />} label="Çekilen mükellef" value={String(mukellefler.filter((m) => docs.some((d) => d.taxpayerId === m.id)).length)} sub="belgesi olan" />
-        <Kpi icon={<AlertTriangle size={16} />} label="Gece sorgu hatası" value={String(sgkErr)} sub={sgkErr > 0 ? 'görmek için tıkla' : 'son sorguda hata yok'} onClick={sgkErr > 0 ? () => setShowErrors(true) : undefined} />
-      </div>
+      {/* Sayaçlar kaldırıldı (gereksiz); yalnız gece sorgu hatası gösterilir. */}
+      {sgkErr > 0 && (
+        <button onClick={() => setShowErrors(true)}
+          className="w-full rounded-2xl border px-4 py-3 flex items-center gap-2.5 text-left hover:brightness-110 transition"
+          style={{ background: 'rgba(239,107,107,0.1)', borderColor: 'rgba(239,107,107,0.4)' }}>
+          <AlertTriangle size={18} style={{ color: '#ef6b6b', flexShrink: 0 }} />
+          <span className="text-[13px] font-semibold" style={{ color: '#ef9a9a' }}>{sgkErr} mükellefte gece sorgu hatası</span>
+          <span className="text-[12px]" style={{ color: 'rgba(239,154,154,0.7)' }}>— görmek için tıkla</span>
+        </button>
+      )}
 
       <div className="rounded-2xl border p-3.5 flex flex-wrap items-center gap-2.5" style={{ background: 'rgba(255,255,255,0.02)', borderColor: 'rgba(255,255,255,0.06)' }}>
         <div className="relative flex-1 min-w-[200px]">
@@ -209,6 +198,16 @@ export default function SgkBildirgeModule() {
             {mukellefler.map((m) => <option key={m.id} value={m.id}>{m.name}</option>)}
           </select>
           <Users size={13} className="absolute left-3 top-1/2 -translate-y-1/2 pointer-events-none" style={{ color: 'rgba(250,250,249,0.45)' }} />
+          <ChevronDown size={14} className="absolute right-2.5 top-1/2 -translate-y-1/2 pointer-events-none" style={{ color: 'rgba(250,250,249,0.45)' }} />
+        </div>
+        {/* SGK Türü filtresi: Hizmet Listesi / Tahakkuk Fişi (Hattat referansı) */}
+        <div className="relative">
+          <select value={turFilter} onChange={(e) => setTurFilter(e.target.value)} className="h-[38px] pl-9 pr-8 rounded-[10px] text-[13px] outline-none border appearance-none min-w-[160px]" style={{ background: 'rgba(255,255,255,0.03)', borderColor: 'rgba(255,255,255,0.08)', color: '#fafaf9' }}>
+            <option value="">Tüm türler</option>
+            <option value="SGK_HIZMET_LISTESI">Hizmet Listesi</option>
+            <option value="SGK_TAHAKKUK">Tahakkuk Fişi</option>
+          </select>
+          <ListChecks size={13} className="absolute left-3 top-1/2 -translate-y-1/2 pointer-events-none" style={{ color: 'rgba(250,250,249,0.45)' }} />
           <ChevronDown size={14} className="absolute right-2.5 top-1/2 -translate-y-1/2 pointer-events-none" style={{ color: 'rgba(250,250,249,0.45)' }} />
         </div>
         {/* Dönem seçici: Ay boş = tüm dönemler (gece gibi); ay seçilince Sorgula o dönemi çeker */}
