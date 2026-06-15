@@ -1359,25 +1359,22 @@ export class PortalAutomationRailwayRunnerService implements OnModuleInit {
           const r = await fetch(cfg.base + '/tahakkuk/tahakkukonaylanmisTahakkukDonemSecildi.action', { method: 'POST', credentials: 'include', headers: { 'Content-Type': 'application/x-www-form-urlencoded' }, body: body.toString() });
           listHtml = await r.text();
         } catch (e) { return { rows: [], listLen: 0, formCount: 0, err: 'donemsec:' + String(e) }; }
-        // 2) Liste HTML'ini parse. Form yapısından BAĞIMSIZ: her bildirgeRefNo alanından git,
-        //    yakınındaki (form/tr/sayfa) token + dönem index'ini kullan (liste tek form da olabilir;
-        //    her satır ayrı pdfGosterim formu OLMAYABİLİR).
+        // 2) Liste parse. SGK listesi = TEK pdfGosterim formu; her satırdaki link JS ile
+        //    #bildirgeRefNoId / #tipId / #downloadId doldurup formu submit ediyor. Gerçek refNo'lar
+        //    satır JS çağrılarında (input değil) -> regex ile çıkar (format: 80957-2026-4).
+        //    token + dönem index'leri pdfGosterim formunun hidden alanlarından.
         const doc = new DOMParser().parseFromString(listHtml, 'text/html');
-        const pageTokEl: any = doc.querySelector('form[action*="pdfGosterim"] [name="token"]') || doc.querySelector('[name="token"]');
-        const pageToken = pageTokEl ? String(pageTokEl.value) : token0;
-        const refInputs: any[] = Array.from(doc.querySelectorAll('input[name="bildirgeRefNo"]'));
+        const pdfForm: any = doc.querySelector('form[action*="pdfGosterim"]');
+        const ff = (n: string) => { const e = pdfForm ? pdfForm.querySelector('[name="' + n + '"]') : null; return e ? String((e as any).value) : null; };
+        const token = ff('token') || token0;
+        const yilAy = ff('hizmet_yil_ay_index') || cfg.start;
+        const yilAyBitis = ff('hizmet_yil_ay_index_bitis') || cfg.end;
+        const refSet = new Set<string>();
+        const rx = /\d{3,}-20\d{2}-\d{1,2}/g; let rmm: any;
+        while ((rmm = rx.exec(listHtml))) refSet.add(rmm[0]);
+        const refList = Array.from(refSet);
         const rows: any[] = [];
-        for (const ri of refInputs) {
-          const refNo = String(ri.value || '');
-          if (!refNo) continue;
-          const scope: any = ri.closest('form') || ri.closest('tr') || doc;
-          const sg = (n: string) => { const e = scope.querySelector('[name="' + n + '"]') || doc.querySelector('[name="' + n + '"]'); return e ? String((e as any).value) : null; };
-          const token = sg('token') || pageToken;
-          const yilAy = sg('hizmet_yil_ay_index') || cfg.start;
-          const yilAyBitis = sg('hizmet_yil_ay_index_bitis') || cfg.end;
-          const tr: any = ri.closest('tr');
-          const cells = tr ? Array.from(tr.querySelectorAll('td')).map((td: any) => norm(td.textContent)).filter(Boolean) : [];
-          const rowText = tr ? norm(tr.textContent) : '';
+        for (const refNo of refList) {
           // 3) Her tip (tahakkuk + hizmet) için PDF'i SAF FETCH ile indir
           const pdfs: any = {};
           for (const tip of cfg.tips) {
@@ -1396,22 +1393,21 @@ export class PortalAutomationRailwayRunnerService implements OnModuleInit {
               pdfs[tip] = btoa(bin);
             } catch { /* yut */ }
           }
-          rows.push({ refNo, periodIndex: yilAy, cells, rowText, pdfs });
+          const pm = refNo.match(/-(\d{4})-(\d{1,2})$/);
+          const period = pm ? (pm[1] + '/' + String(pm[2]).padStart(2, '0')) : '';
+          rows.push({ refNo, period, cells: [], rowText: refNo, pdfs });
         }
-        const refTextCount = (listHtml.match(/bildirgeRefNo/g) || []).length;
-        const allFormActions = Array.from(doc.querySelectorAll('form')).map((f: any) => f.getAttribute('action') || '').filter(Boolean).slice(0, 12);
-        const sample = (listHtml.match(/[\s\S]{0,60}bildirgeRefNo[\s\S]{0,260}/) || [''])[0].replace(/\s+/g, ' ').slice(0, 320);
-        return { rows, listLen: listHtml.length, formCount: refInputs.length, refNoCount: refTextCount, allFormActions, sample };
+        const onclickSample = (listHtml.match(/on[a-z]+\s*=\s*"[^"]*\d{3,}-20\d{2}-\d{1,2}[^"]*"/i) || [''])[0].replace(/\s+/g, ' ').slice(0, 200);
+        return { rows, listLen: listHtml.length, formCount: refList.length, refNoCount: refList.length, refList: refList.slice(0, 6), sample: onclickSample };
       }, { base, start: startVal, end: endVal, tips: TIPS.map((t) => t.tip) }).catch((e: any) => ({ rows: [], listLen: 0, formCount: 0, err: String(e) }));
 
       const rows: any[] = (out && out.rows) || [];
       formsFound = rows.length;
       if (formsFound === 0) {
-        notes.push(`DBG fetch-DonemSecildi: range=${startVal}→${endVal} listLen=${out?.listLen ?? '?'} formCount=${out?.formCount ?? 0} refNoCount=${out?.refNoCount ?? 0} actions=[${(out?.allFormActions || []).join(' | ')}] sample="${this.compact(out?.sample || '')}" err=${out?.err || '-'}`);
+        notes.push(`DBG fetch-DonemSecildi: range=${startVal}→${endVal} listLen=${out?.listLen ?? '?'} refFound=${out?.refNoCount ?? 0} refList=[${(out?.refList || []).join(',')}] sample="${this.compact(out?.sample || '')}" err=${out?.err || '-'}`);
       }
       for (const row of rows) {
-        const periodText = periodTextByValue[String(row.periodIndex)]
-          || (String(row.rowText || '').match(/(0[1-9]|1[0-2])[\/.\-\s]?(20\d{2})/)?.[0] || '');
+        const periodText = row.period || periodTextByValue[String(row.periodIndex)] || '';
         for (const t of TIPS) {
           const key = `${t.belgeTuru}|${row.refNo}`;
           if (alreadyHave.has(key)) continue;
