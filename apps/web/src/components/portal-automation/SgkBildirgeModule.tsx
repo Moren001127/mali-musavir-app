@@ -267,14 +267,14 @@ export default function SgkBildirgeModule() {
                   <tr key={d.id} className="hover:bg-white/[0.02]">
                     <td className="px-3 py-2.5 align-middle" style={{ borderBottom: cellBorder }}>
                       <div className="font-semibold text-[13px]" style={{ color: '#fafaf9' }}>{taxpayerName(d.taxpayer)}</div>
-                      {d.taxpayer?.taxNumber && <div className="text-[11px] mt-0.5 font-mono" style={{ color: 'rgba(250,250,249,0.4)' }}>{d.taxpayer.taxNumber}</div>}
+                      {d.taxpayer?.taxNumber && <div className="text-[11px] mt-0.5 tabular-nums" style={{ color: 'rgba(250,250,249,0.4)' }}>{d.taxpayer.taxNumber}</div>}
                     </td>
                     <td className="px-3 py-2.5 align-middle" style={{ borderBottom: cellBorder }}>
                       <span className="inline-flex items-center gap-1.5 px-2.5 py-1 rounded-md text-[11.5px] font-medium whitespace-nowrap" style={{ background: `${tur.color}1a`, border: `1px solid ${tur.color}40`, color: tur.color }}>{tur.icon} {tur.label}</span>
                     </td>
-                    <td className="px-3 py-2.5 align-middle font-mono text-[13px] whitespace-nowrap" style={{ borderBottom: cellBorder, color: 'rgba(250,250,249,0.9)' }}>{m.donem || '—'}</td>
+                    <td className="px-3 py-2.5 align-middle tabular-nums text-[13px] whitespace-nowrap" style={{ borderBottom: cellBorder, color: 'rgba(250,250,249,0.9)' }}>{m.donem || '—'}</td>
                     <td className="px-3 py-2.5 align-middle text-[13px]" style={{ borderBottom: cellBorder, color: 'rgba(250,250,249,0.9)' }}>{m.mahiyet || '—'}</td>
-                    <td className="px-3 py-2.5 align-middle text-center font-mono tabular-nums text-[13px]" style={{ borderBottom: cellBorder, color: 'rgba(250,250,249,0.9)' }}>{m.kanunNo || '0000'}</td>
+                    <td className="px-3 py-2.5 align-middle text-center tabular-nums text-[13px]" style={{ borderBottom: cellBorder, color: 'rgba(250,250,249,0.9)' }}>{m.kanunNo || '0000'}</td>
                     <td className="px-3 py-2.5 align-middle text-center tabular-nums text-[13px]" style={{ borderBottom: cellBorder, color: 'rgba(250,250,249,0.9)' }}>{m.calisan || '—'}</td>
                     <td className="px-3 py-2.5 align-middle text-center tabular-nums whitespace-nowrap text-[13px]" style={{ borderBottom: cellBorder, color: d.belgeTuru === 'SGK_TAHAKKUK' ? '#fafaf9' : 'rgba(250,250,249,0.35)', fontWeight: d.belgeTuru === 'SGK_TAHAKKUK' && m.tutar ? 600 : 400 }}>{d.belgeTuru === 'SGK_TAHAKKUK' ? (m.tutar ? `${m.tutar} ₺` : '—') : '—'}</td>
                     <td className="px-3 py-2.5 align-middle text-center" style={{ borderBottom: cellBorder }}>
