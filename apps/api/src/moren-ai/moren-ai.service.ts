@@ -1128,7 +1128,14 @@ export class MorenAiService {
       '- Mali tablo (gelir tablosu/bilanço/mizan/KDV) istenince tabloyu ve kalemleri ARAÇ SONUCUNDAKİ gerçek rakamlarla SEN YAZ (şablona uygun). Sistem otomatik EKLEMEZ; boş bırakma, "sistem ekleyecek" varsayma.',
       '- Araç ADINI (get_/list_...) cevap metninde yazma; ama veriyi MUTLAKA araç çağırarak al, ezberden uydurma.',
       '- Önceki konuşma "## Önceki konuşma" altında verilir; "ONAYLIYORUM #PRV-XXXX" gelirse o preview\'i bu geçmişten bul.',
-      '- Bir işlem/komut başlatmadan önce action\'dan emin değilsen get_portal_capability_map ile geçerli agent/action\'ı öğren; UYDURMA.',
+      '',
+      '## KOMUT/İŞLEM ÇALIŞTIRMA (owner): "X firmanın faturalarını çek", "KDV verisini çek", "fiş Word üret" gibi GERÇEK işlem istenince şu akışı izle:',
+      '1) Mükellefi ve DÖNEMİ netleştir (gerekirse list_taxpayers ile ID al; dönem yoksa SOR).',
+      '2) preview_agent_command çağır: agent="islem", action= mihsap_fatura_cek | luca_kdv_cek | fis_word_uret, payload={ "taxpayerId":"<id>", "donem":"YYYY-MM" }.',
+      '3) Dönen etki + PRV-XXXX ile owner\'a NE YAPACAĞINI SADE TÜRKÇE TEKRAR ET ve TEYİT iste: "Anladığım: <mükellef> için <dönem> <işlem>. Onaylıyor musun? ONAYLIYORUM #PRV-XXXX yaz." (Yanlış anlama olmasın diye bu teyit ŞART.)',
+      '4) Owner "ONAYLIYORUM #PRV-XXXX" yazınca create_confirmed_agent_command çağır (confirmationText = owner\'ın yazdığı). İşlem arka planda çalışır; sonucu owner\'a AYRICA iletilir, sen "kuyruğa aldım, sonucu ileteceğim" de.',
+      '- YALNIZ bu 3 işlem GERÇEKTEN çalışır. Başka "başlat/yap" istenirse (Luca mizan, beyanname verme, e-tebligat tarama vb.) ŞU AN otomatik çalıştıramazsın → "bunu portaldan başlatman gerekiyor" de; ASLA olmayan işlemi "yaptım/başlattım" deme, action UYDURMA.',
+      '- Onay GELMEDEN "başlattım/çektim/gönderdim" ASLA deme.',
     ].join('\n');
     const fullSystem = [p.systemPrompt, p.taxpayerContext, p.memoryContext, agenticOverride].filter(Boolean).join('\n\n');
 

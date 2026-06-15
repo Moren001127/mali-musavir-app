@@ -11,6 +11,7 @@ import { KdvBeyannameModule } from '../kdv-beyanname/kdv-beyanname.module';
 import { TaxpayersModule } from '../taxpayers/taxpayers.module';
 import { DriveModule } from '../drive/drive.module';
 import { ActionDispatcherService } from './action-dispatcher.service';
+import { OwnerCommandRunnerService } from './owner-command-runner.service';
 import { AutomationEventBus } from './automation-event-bus.service';
 import { AutomationParserService } from './automation-parser.service';
 import { AutomationRunnerService } from './automation-runner.service';
@@ -42,6 +43,7 @@ import { AutomationsService } from './automations.service';
     ActionDispatcherService,
     AutomationRunnerService,
     AutomationEventBus,
+    OwnerCommandRunnerService,
   ],
   exports: [
     AutomationsService,

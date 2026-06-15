@@ -2302,7 +2302,7 @@ export class ToolExecutorService {
     const agent = String(approval.agent || '').trim();
     const action = String(approval.action || '').trim();
     const payload = approval.payload && typeof approval.payload === 'object' ? approval.payload : {};
-    const allowedAgents = ['mihsap', 'mihsap-supervised-agent', 'mihsap-fatura-isleme-agent', 'luca', 'sgk', 'tebligat', 'kdv', 'beyan-hazirlik', 'luca-beyanname', 'kdv-beyan', 'tahsilat', 'banka-ekstre', 'edefter', 'whatsapp'];
+    const allowedAgents = ['mihsap', 'mihsap-supervised-agent', 'mihsap-fatura-isleme-agent', 'luca', 'sgk', 'tebligat', 'kdv', 'beyan-hazirlik', 'luca-beyanname', 'kdv-beyan', 'tahsilat', 'banka-ekstre', 'edefter', 'whatsapp', 'islem'];
     const allowedMihsapActions = [...MIHSAP_FATURA_ACTIONS];
     if (!allowedAgents.includes(agent)) return { error: `Desteklenmeyen agent: ${agent}` };
     if (isMihsapFaturaCommandAgent(agent) && !allowedMihsapActions.includes(action as any)) {
@@ -2606,12 +2606,18 @@ export class ToolExecutorService {
       'banka-ekstre': ['scan_missing', 'create_tasks'],
       edefter: ['scan_berat'],
       whatsapp: [...WHATSAPP_AGENT_ACTIONS],
+      // GERÇEKTEN yürütülen owner işlemleri (OwnerCommandRunnerService → ActionDispatcher).
+      // payload: { taxpayerId, donem: "YYYY-MM" }. Tek mükellef + tek dönem.
+      islem: ['mihsap_fatura_cek', 'luca_kdv_cek', 'fis_word_uret'],
     };
     const errors: string[] = [];
     if (!supported[agent]) errors.push(`Desteklenmeyen agent: ${agent}`);
     else if (!supported[agent].includes(action)) errors.push(`${agent} için desteklenmeyen action: ${action}`);
     if (isMihsapFaturaCommandAgent(agent) && (!payload.ay || !Array.isArray(payload.mukellefler) || payload.mukellefler.length === 0)) {
       errors.push('Mihsap komutu için payload.ay ve payload.mukellefler gerekir');
+    }
+    if (agent === 'islem' && (!payload.taxpayerId || !/^\d{4}-\d{2}$/.test(String(payload.donem || '')))) {
+      errors.push('İşlem komutu için payload.taxpayerId ve payload.donem ("YYYY-MM") gerekir');
     }
     const impact = this.describeAgentImpact(agent, action, payload);
     let approval: any = null;
@@ -2655,6 +2661,15 @@ export class ToolExecutorService {
   }
 
   private describeAgentImpact(agent: string, action: string, payload: any) {
+    if (agent === 'islem') {
+      const d = String(payload?.donem || '');
+      const islemAdi: Record<string, string> = {
+        mihsap_fatura_cek: `Mihsap'tan ${d} dönemi faturaları çekilir (alış+satış) ve portala işlenir`,
+        luca_kdv_cek: `Luca'dan ${d} dönemi KDV verisi çekilir (KDV kontrol için)`,
+        fis_word_uret: `${d} dönemi faturalarından fiş Word raporu üretilir (Fiş Yazdırma çıktıları)`,
+      };
+      return (islemAdi[action] || `${action} işlemi çalıştırılır`) + '. Onaylarsan GERÇEKTEN çalışır; sonucu sana bildiririm.';
+    }
     if (agent === 'luca' && action === 'prepare_beyanname') return 'LUCA beyanname ekranında taslak hazırlık başlatılır; gönderim ayrıca onay gerektirir.';
     if (agent === 'luca' && action === 'fetch_mizan') return 'LUCA’dan mizan çekimi başlatılır ve portala işlenir.';
     if (isMihsapFaturaCommandAgent(agent)) return `${payload?.mukellefler?.length || 0} mükellef için Mihsap fatura işleme komutu hazırlanır.`;
