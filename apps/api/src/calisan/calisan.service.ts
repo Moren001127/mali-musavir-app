@@ -170,14 +170,16 @@ export class CalisanService {
   }
 
   private shouldTryPortalTools(message: string): boolean {
-    const text = this.normalizeForIntent(message);
-    // Brifing/operasyon/günlük değerlendirme/durum/özet soruları da TOOL'lu yola gitmeli:
-    // orada get_operation_briefing önceden çalışıp GERÇEK veriyle cevap üretilir; aksi halde
-    // sistem-prompt'suz çıplak Max dalına düşüp "get_operation_briefing çağırıyorum" sızıntısı olur.
-    // Mevzuat/vergi/SGK soruları da TOOL'lu yola gitmeli: orada zengin sistem-prompt
-    // (SMMM gibi cevapla, "müşavire danışın" deme) + research_official_sources var.
-    // Aksi halde sistem-prompt'suz çıplak Max dalına düşüp "müşaviriniz söyler" diye savıyor.
-    return /\b(kdv|beyan|beyanname|tahakkuk|gelir tablosu|mizan|bilanco|fatura|evrak|belge|pdf|gonder|yorumla|analiz|mukellef|brifing|brief|operasyon|gunluk|degerlendirme|ozet|durum|bugun|rapor|borc|tahsilat|cari|ajan|mevzuat|kanun|ceza|sure|yasal|teblig|sirkuler|ozelge|oran|had|vuk|gvk|kvk|sgk|bildirim|vade|tesvik|istisna|bordro|kidem|ihbar|vergi|resmi gazete|gib)\b/.test(text);
+    const text = this.normalizeForIntent(message).trim();
+    if (!text || text.length < 2) return false;
+    // AGENTIC yol artık ANA beyin: tüm portal verisi + KOMUT/İŞLEM çalıştırma + hafıza +
+    // mevzuat araştırma orada. Owner'ın NEREDEYSE HER mesajı buraya gitmeli. Eskiden bu
+    // kapı bir kelime-allowlist'iydi → "e-defter kontrolünü başlat", "fişini yazdır" gibi
+    // KOMUTLAR listede olmadığı için araçsız Max'a düşüp "portaldan yap" diyordu (kök bug).
+    // Artık: yalnız SAF selamlama/çok kısa teşekkür araçsız hızlı yola; gerisi (veri sorusu,
+    // KOMUT, işlem, mevzuat) TOOL'lu agentic yola.
+    const pureGreeting = /^(merhaba|selam(un aleykum)?|aleykum selam|gunaydin|iyi (gunler|aksamlar|geceler|calismalar)|hayirli (gunler|isler|aksamlar|sabahlar)|nasilsin(iz)?|naber|ne haber|tesekkur(ler| ederim)?|sag ?ol(un)?|eyvallah|kolay gelsin|eline saglik|ok(ey)?|tamam(dir)?|peki|anladim|super|harika|👍|🙏|❤️|😊)[\s!.,:)]*$/i.test(text);
+    return !pureGreeting;
   }
 
   private isUsableOwnerAnswer(answer: string): boolean {
