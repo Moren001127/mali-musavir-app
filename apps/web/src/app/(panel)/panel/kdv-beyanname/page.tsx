@@ -813,7 +813,6 @@ function GenelBakisPano({ donem, onSelect }: { donem: string; onSelect: (id: str
                 className="transition hover:bg-white/[0.03]"
                 style={{
                   borderTop: idx === 0 ? 'none' : '1px solid rgba(255,255,255,0.08)',
-                  background: r.odenecekKdv > 0 ? 'rgba(239,107,107,0.04)' : undefined,
                 }}
               >
                 <td className="px-4 py-2">
