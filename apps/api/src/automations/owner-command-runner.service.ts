@@ -6,6 +6,7 @@ import { WhatsAppService } from '../whatsapp/whatsapp.service';
 import { EDefterControlService } from '../edefter-control/edefter-control.service';
 import { LucaService } from '../luca/luca.service';
 import { PortalAutomationService } from '../portal-automation/portal-automation.service';
+import { KdvControlService } from '../kdv-control/kdv-control.service';
 import { ISLEM_OPERATIONS } from '../moren-ai/islem-operations';
 
 /**
@@ -34,6 +35,7 @@ export class OwnerCommandRunnerService {
     private readonly edefter: EDefterControlService,
     private readonly luca: LucaService,
     private readonly portalAutomation: PortalAutomationService,
+    private readonly kdvControl: KdvControlService,
   ) {}
 
   @Cron(CronExpression.EVERY_30_SECONDS)
@@ -96,9 +98,40 @@ export class OwnerCommandRunnerService {
         return this.portalAutomation.manualRun(ctx.tenantId, ctx.userId ?? null, { jobTypes: ['SGK_HIZMET_LISTESI'], taxpayerIds: [p.taxpayerId], targetPeriod: p.donem.replace('-', '/') });
       case 'sgk_tahakkuk_cek':
         return this.portalAutomation.manualRun(ctx.tenantId, ctx.userId ?? null, { jobTypes: ['SGK_TAHAKKUK'], taxpayerIds: [p.taxpayerId], targetPeriod: p.donem.replace('-', '/') });
+      // KDV kontrol — Moren Ofis sohbetindeki kanıtlı zincirin aynısı (seans → Luca → bağla → OCR).
+      // KDV kontrol YALNIZ aylık; çeyrek/yıllık dönem net hatayla reddedilir.
+      case 'kdv_191_kontrol':
+        return this.startKdvControl('KDV_191', ctx, p);
+      case 'kdv_391_kontrol':
+        return this.startKdvControl('KDV_391', ctx, p);
       default:
         throw new Error(`Bilinmeyen işlem: ${action}`);
     }
+  }
+
+  /** KDV kontrol seansını başlat: seans bul/aç → Luca import kuyruğu → Mihsap bağla → OCR. */
+  private async startKdvControl(
+    type: 'KDV_191' | 'KDV_391',
+    ctx: { tenantId: string; userId?: string | null },
+    p: { taxpayerId: string; donem: string },
+  ): Promise<any> {
+    if (!/^\d{4}-\d{2}$/.test(p.donem)) {
+      throw new Error('KDV kontrol yalnız aylık dönemle yapılır ("YYYY-MM"). Çeyrek/yıllık dönem geçilemez.');
+    }
+    const userId = ctx.userId ?? '';
+    const periodLabel = p.donem.replace('-', '/'); // "YYYY-MM" → "YYYY/MM" (KDV modülü formatı)
+    const { session, created } = await this.kdvControl.findOrCreateSession(ctx.tenantId, userId, {
+      type,
+      periodLabel,
+      taxpayerId: p.taxpayerId,
+      notes: 'Owner komut operasyonuyla açıldı',
+    });
+    const job = await this.kdvControl.queueLucaImport(session.id, ctx.tenantId, userId);
+    // Bağlama/OCR best-effort: hata seansı bozmaz (Moren Ofis akışıyla aynı tolerans).
+    let linked: any = null, ocr: any = null;
+    try { linked = await this.kdvControl.linkMihsapInvoices(session.id, ctx.tenantId); } catch { /* yoksay */ }
+    try { ocr = await this.kdvControl.startOcrForSession(session.id, ctx.tenantId); } catch { /* yoksay */ }
+    return { sessionId: session.id, created, jobId: job?.jobId, jobStatus: job?.status, linked: linked?.linked ?? 0, ocrQueued: ocr?.queued ?? 0 };
   }
 
   private async runOne(cmd: any) {

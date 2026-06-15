@@ -67,6 +67,7 @@ export class OwnerBriefingCron {
         '"Günaydın." ile başla; sonra emoji başlıklı kısa maddeler ver:',
         '📊 BUGÜNÜN DURUMU · ⚠️ RİSKLİ/ACİL · 📝 YAKLAŞAN SÜRELER · ▶️ BUGÜN ÖNCELİK',
         'Yıldız markdown yok, • madde kullan, Türk sayı formatı. Kısa ve net ol, UYDURMA yok — veri yoksa açıkça "veri yok" yaz.',
+        'Borçlu/cari sayısı boş (null) ya da "veri alınamadı" ise ASLA "borçlu yok / sıfır borçlu" yazma; "borçlu verisi şu an alınamadı" de (veri yokluğu ile sıfır farklıdır).',
       ].join('\n');
     }
     return [

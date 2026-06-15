@@ -15,6 +15,7 @@ import { OwnerCommandRunnerService } from './owner-command-runner.service';
 import { EDefterControlModule } from '../edefter-control/edefter-control.module';
 import { LucaModule } from '../luca/luca.module';
 import { PortalAutomationModule } from '../portal-automation/portal-automation.module';
+import { KdvControlModule } from '../kdv-control/kdv-control.module';
 import { AutomationEventBus } from './automation-event-bus.service';
 import { AutomationParserService } from './automation-parser.service';
 import { AutomationRunnerService } from './automation-runner.service';
@@ -38,7 +39,7 @@ import { AutomationsService } from './automations.service';
  */
 @Global()
 @Module({
-  imports: [PrismaModule, ScheduleModule.forRoot(), MorenAiModule, NotificationsModule, WhatsAppModule, FisYazdirmaModule, MihsapModule, EmailModule, KdvBeyannameModule, TaxpayersModule, DriveModule, EDefterControlModule, LucaModule, PortalAutomationModule],
+  imports: [PrismaModule, ScheduleModule.forRoot(), MorenAiModule, NotificationsModule, WhatsAppModule, FisYazdirmaModule, MihsapModule, EmailModule, KdvBeyannameModule, TaxpayersModule, DriveModule, EDefterControlModule, LucaModule, PortalAutomationModule, KdvControlModule],
   controllers: [AutomationsController],
   providers: [
     AutomationsService,

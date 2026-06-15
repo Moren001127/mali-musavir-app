@@ -85,6 +85,18 @@ export const ISLEM_OPERATIONS: Record<string, IslemOperation> = {
     label: 'SGK tahakkuk fişi çekme',
     impact: (d) => `SGK e-Bildirge'den ${formatIslemDonem(d)} tahakkuk (prim) fişi çekilir (SGK portal şifresi gerekli)`,
   },
+  // KDV kontrol seansını owner komutuyla başlat (Moren Ofis sohbetindeki kanıtlı zincir:
+  // seans aç → Luca'dan KDV verisi çek → Mihsap faturalarını bağla → OCR kuyruğa al).
+  kdv_191_kontrol: {
+    key: 'kdv_191_kontrol',
+    label: '191 KDV (indirilecek) kontrol başlatma',
+    impact: (d) => `${formatIslemDonem(d)} 191 (indirilecek KDV) kontrol seansı açılır: Luca'dan veri çekilir, Mihsap faturaları bağlanır, belgeler OCR'a alınır`,
+  },
+  kdv_391_kontrol: {
+    key: 'kdv_391_kontrol',
+    label: '391 KDV (hesaplanan) kontrol başlatma',
+    impact: (d) => `${formatIslemDonem(d)} 391 (hesaplanan KDV) kontrol seansı açılır: Luca'dan veri çekilir, Mihsap faturaları bağlanır, belgeler OCR'a alınır`,
+  },
 };
 
 export const ISLEM_ACTION_KEYS = Object.keys(ISLEM_OPERATIONS);

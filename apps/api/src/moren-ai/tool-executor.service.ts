@@ -2379,6 +2379,11 @@ export class ToolExecutorService {
     const { period, year, month } = this.currentPeriod(input);
     const todayStart = this.startOfDay();
     const todayDay = new Date().getDate();
+    // "Aktif mükellef" = bu ay GERÇEKTEN aktif olan (portal panel brifingi buildBrifingContext
+    // ile AYNI tanım). isActive olup gelecek ay başlayacak / geçen ay kapanmış mükellefi saymaz.
+    // Eskiden bu filtre yoktu → WhatsApp brifingi "154" derken panel "72" diyordu (tutarsızlık).
+    const firstDay = new Date(year, month - 1, 1);
+    const lastDay = new Date(year, month, 0, 23, 59, 59);
     // Beyanname dönemi = işlem ayı − 1 (Mayıs faturası Haziran'da işlenir, beyanı Mayıs dönemi).
     const byMonth = month === 1 ? 12 : month - 1;
     const byYear = month === 1 ? year - 1 : year;
@@ -2386,14 +2391,21 @@ export class ToolExecutorService {
 
     const [taxpayers, statuses, bankAccounts, bankRecords, cariRows, agentEvents, pendingDecisions, tasks, beyanDurumlari] = await Promise.all([
       this.prisma.taxpayer.findMany({
-        where: { tenantId: ctx.tenantId, isActive: true },
+        where: {
+          tenantId: ctx.tenantId,
+          isActive: true,
+          OR: [{ startDate: null }, { startDate: { lte: lastDay } }],
+          AND: [{ OR: [{ endDate: null }, { endDate: { gte: firstDay } }] }],
+        },
         select: { id: true, companyName: true, firstName: true, lastName: true, taxNumber: true, type: true, evrakTeslimGunu: true },
         orderBy: [{ companyName: 'asc' }, { firstName: 'asc' }],
       }),
       (this.prisma as any).taxpayerMonthlyStatus.findMany({ where: { tenantId: ctx.tenantId, year, month } }),
       (this.prisma as any).bankaHesap.findMany({ where: { tenantId: ctx.tenantId, aktif: true }, select: { taxpayerId: true } }),
       (this.prisma as any).bankaEkstreKaydi.findMany({ where: { tenantId: ctx.tenantId, donem: period } }),
-      (this.prisma as any).cariHareket.findMany({ where: { tenantId: ctx.tenantId }, select: { taxpayerId: true, tip: true, tutar: true } }),
+      // Borçlu verisi catch'siz olunca tek hata TÜM brifingi boşaltıyor (veya "borçlu yok"
+      // yalanı çıkıyordu). İzole et: hata → null (= "veri alınamadı", 0 ile karıştırma).
+      (this.prisma as any).cariHareket.findMany({ where: { tenantId: ctx.tenantId }, select: { taxpayerId: true, tip: true, tutar: true } }).catch(() => null),
       (this.prisma as any).agentEvent.findMany({
         where: { tenantId: ctx.tenantId, ts: { gte: todayStart } },
         orderBy: { ts: 'desc' },
@@ -2474,8 +2486,11 @@ export class ToolExecutorService {
       .filter((t) => Number(t.evrakTeslimGunu) === todayDay)
       .map((t) => this.displayName(t));
 
+    const cariVeriYok = cariRows === null; // sorgu hata verdi → "veri alınamadı" (0 borçlu DEĞİL)
+    const aktifIdSet = new Set((taxpayers as any[]).map((t) => t.id));
     const cariByTaxpayer = new Map<string, number>();
     for (const h of cariRows || []) {
+      if (!aktifIdSet.has(h.taxpayerId)) continue; // pasif/kapanmış mükellef borçlusu sayılmaz
       const tutar = this.toNum(h.tutar);
       const sign = h.tip === 'TAHAKKUK' ? 1 : h.tip === 'TAHSILAT' ? -1 : h.tip === 'IADE' ? 1 : 0;
       cariByTaxpayer.set(h.taxpayerId, (cariByTaxpayer.get(h.taxpayerId) || 0) + sign * tutar);
@@ -2497,8 +2512,9 @@ export class ToolExecutorService {
         gecikenBeyanname: gecikenBeyanname.length,
         yaklasanBeyanname: yaklasanSureler.length,
         bankaEksik,
-        borcluMukellef: borclular.length,
-        toplamBakiye,
+        borcluMukellef: cariVeriYok ? null : borclular.length,
+        toplamBakiye: cariVeriYok ? null : toplamBakiye,
+        cariVeriYok,
         bugunEvrakGelecek: bugunEvrakGelecek.length,
         bugunAgentHata: bugunHata,
         bekleyenOnay: (pendingDecisions || []).length,
@@ -2511,7 +2527,8 @@ export class ToolExecutorService {
         evrakEksik ? `${evrakEksik} mükellefte evrak bekleniyor` : null,
         bankaEksik ? `${bankaEksik} mükellefte banka ekstresi eksik/işlenmedi` : null,
         kdvKontrolEksik ? `${kdvKontrolEksik} mükellefte KDV kontrolü eksik` : null,
-        borclular.length ? `${borclular.length} mükellefte açık cari bakiye var` : null,
+        cariVeriYok ? 'Borçlu/cari verisi şu an alınamadı (sıfır değil — sistem tekrar deneyecek)' : null,
+        !cariVeriYok && borclular.length ? `${borclular.length} mükellefte açık cari bakiye var` : null,
         bugunEvrakGelecek.length ? `Bugün ${bugunEvrakGelecek.length} mükellefin evrakı gelmeli` : null,
         bugunHata ? `Bugün ${bugunHata} agent hatası var` : null,
       ].filter(Boolean),
