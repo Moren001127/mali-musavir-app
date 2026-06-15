@@ -1656,47 +1656,7 @@ export class WhatsAppBotController implements OnModuleInit {
       // Tip yazılmamış ama "beyanname gönder" gibi genel istek → tek öge ile dene.
       const sendList = items.length ? items : [{ tipler: null, donem: recentCtx.donem, belge: this.inferBelgeKindFromText(msg.text) }];
 
-      // Bir (tip,dönem) için PDF'li BeyanKaydi'ni bul (tam dönem → yıl → en yeni).
-      const findRec = async (tipler: string[] | null, donem: string | null): Promise<any> => {
-        const baseWhere: any = { tenantId: ownerTenant.id, taxpayerId: taxpayer.id };
-        if (tipler?.length) baseWhere.beyanTipi = { in: tipler };
-        let rec: any = null;
-        if (donem && /^\d{4}-\d{2}$/.test(donem)) {
-          const k1 = await (this.prisma as any).beyanKaydi.findMany({ where: { ...baseWhere, donem }, orderBy: [{ donem: 'desc' }], take: 6 });
-          rec = k1.find((k: any) => k.beyannameUrl || k.pdfUrl);
-        }
-        if (!rec) {
-          const k2 = await (this.prisma as any).beyanKaydi.findMany({ where: baseWhere, orderBy: [{ donem: 'desc' }], take: 12 });
-          const yil = String(donem || '').slice(0, 4);
-          rec = (yil ? k2.find((k: any) => (k.beyannameUrl || k.pdfUrl) && String(k.donem || '').startsWith(yil)) : null)
-            || k2.find((k: any) => k.beyannameUrl || k.pdfUrl);
-        }
-        return rec;
-      };
-
-      let sentAny = false;
-      const bulunamayan: string[] = [];
-      for (const it of sendList) {
-        const rec = await findRec(it.tipler, it.donem);
-        const etiket = `${it.donem ? it.donem + ' ' : ''}${this.beyanLabel(it.tipler?.[0] || '')}`.trim() || 'beyanname';
-        if (!rec) { bulunamayan.push(etiket); continue; }
-        const wantBey = it.belge === 'beyanname' || it.belge === 'ikisi';
-        const wantTah = it.belge === 'tahakkuk' || it.belge === 'ikisi';
-        const tip = this.beyanLabel(rec.beyanTipi);
-        let any = false;
-        if (wantBey && rec.beyannameUrl) {
-          await sendDoc(rec.beyannameUrl, 'application/pdf', `${adi}-${rec.beyanTipi}-${rec.donem}-beyanname.pdf`.replace(/[^\w.-]+/g, '_'), `${adi} · ${tip} Beyanname · ${rec.donem}`, String(rec.donem || ''));
-          any = true; sentAny = true;
-        }
-        if (wantTah && rec.pdfUrl) {
-          await sendDoc(rec.pdfUrl, 'application/pdf', `${adi}-${rec.beyanTipi}-${rec.donem}-tahakkuk.pdf`.replace(/[^\w.-]+/g, '_'), `${adi} · ${tip} Tahakkuk · ${rec.donem}`, String(rec.donem || ''));
-          any = true; sentAny = true;
-        }
-        if (!any) {
-          if (wantBey && !rec.beyannameUrl) bulunamayan.push(`${etiket} beyanname`);
-          if (wantTah && !rec.pdfUrl) bulunamayan.push(`${etiket} tahakkuk`);
-        }
-      }
+      const { sentAny, bulunamayan } = await this.sendBeyanItemsLoop(ownerTenant.id, taxpayer, adi, sendList, sendDoc);
       if (sentAny) {
         if (bulunamayan.length) await sendOwnerText(`Şunları bulamadım: ${bulunamayan.join(', ')}. Diğerlerini gönderdim.`);
         return true;
@@ -1756,6 +1716,151 @@ export class WhatsAppBotController implements OnModuleInit {
       GECICI_VERGI: 'Geçici Vergi', BILDIRGE: 'Bildirge', EDEFTER: 'E-Defter',
     };
     return map[String(tip || '').toUpperCase()] || tip;
+  }
+
+  /**
+   * PAYLAŞILIR beyanname/tahakkuk gönderim döngüsü (owner + mükellef ortak kullanır).
+   * İstenen HER (tip+dönem+belge) için beyanname (beyannameUrl) ve/veya tahakkuk (pdfUrl)
+   * AYRI dosya olarak gönderir. Mükellef yolunda taxpayer = mesajı atan mükellefin KENDİSİ
+   * (tenantId + taxpayerId ile kilitli; başka mükellefin verisi sızmaz).
+   */
+  private async sendBeyanItemsLoop(
+    tenantId: string,
+    taxpayer: any,
+    adi: string,
+    items: Array<{ tipler: string[] | null; donem: string | null; belge: 'beyanname' | 'tahakkuk' | 'ikisi' }>,
+    sendDoc: (s3Key: string, mimeType: string, filename: string, caption: string, markerDonem?: string) => Promise<boolean>,
+  ): Promise<{ sentAny: boolean; bulunamayan: string[] }> {
+    const findRec = async (tipler: string[] | null, donem: string | null): Promise<any> => {
+      const baseWhere: any = { tenantId, taxpayerId: taxpayer.id };
+      if (tipler?.length) baseWhere.beyanTipi = { in: tipler };
+      let rec: any = null;
+      if (donem && /^\d{4}-\d{2}$/.test(donem)) {
+        const k1 = await (this.prisma as any).beyanKaydi.findMany({ where: { ...baseWhere, donem }, orderBy: [{ donem: 'desc' }], take: 6 });
+        rec = k1.find((k: any) => k.beyannameUrl || k.pdfUrl);
+      }
+      if (!rec) {
+        const k2 = await (this.prisma as any).beyanKaydi.findMany({ where: baseWhere, orderBy: [{ donem: 'desc' }], take: 12 });
+        const yil = String(donem || '').slice(0, 4);
+        rec = (yil ? k2.find((k: any) => (k.beyannameUrl || k.pdfUrl) && String(k.donem || '').startsWith(yil)) : null)
+          || k2.find((k: any) => k.beyannameUrl || k.pdfUrl);
+      }
+      return rec;
+    };
+    let sentAny = false;
+    const bulunamayan: string[] = [];
+    for (const it of items) {
+      const rec = await findRec(it.tipler, it.donem);
+      const etiket = `${it.donem ? it.donem + ' ' : ''}${this.beyanLabel(it.tipler?.[0] || '')}`.trim() || 'beyanname';
+      if (!rec) { bulunamayan.push(etiket); continue; }
+      const wantBey = it.belge === 'beyanname' || it.belge === 'ikisi';
+      const wantTah = it.belge === 'tahakkuk' || it.belge === 'ikisi';
+      const tip = this.beyanLabel(rec.beyanTipi);
+      let any = false;
+      if (wantBey && rec.beyannameUrl) {
+        await sendDoc(rec.beyannameUrl, 'application/pdf', `${adi}-${rec.beyanTipi}-${rec.donem}-beyanname.pdf`.replace(/[^\w.-]+/g, '_'), `${adi} · ${tip} Beyanname · ${rec.donem}`, String(rec.donem || ''));
+        any = true; sentAny = true;
+      }
+      if (wantTah && rec.pdfUrl) {
+        await sendDoc(rec.pdfUrl, 'application/pdf', `${adi}-${rec.beyanTipi}-${rec.donem}-tahakkuk.pdf`.replace(/[^\w.-]+/g, '_'), `${adi} · ${tip} Tahakkuk · ${rec.donem}`, String(rec.donem || ''));
+        any = true; sentAny = true;
+      }
+      if (!any) {
+        if (wantBey && !rec.beyannameUrl) bulunamayan.push(`${etiket} beyanname`);
+        if (wantTah && !rec.pdfUrl) bulunamayan.push(`${etiket} tahakkuk`);
+      }
+    }
+    return { sentAny, bulunamayan };
+  }
+
+  /** Mükellef mesajından istenen belgeleri (tip+dönem+belge) AI ile çıkar — mükellef
+   *  SABİT olduğu için yalnız belge listesi çözülür (mükellef çözümü yok). */
+  private async extractDocItemsViaAI(text: string, taxpayerType: string | null): Promise<Array<{ tipler: string[] | null; donem: string | null; belge: 'beyanname' | 'tahakkuk' | 'ikisi' }> | null> {
+    if (process.env.MOREN_OWNER_DOC_AI === '0') return null;
+    const turHint = taxpayerType === 'TUZEL_KISI'
+      ? 'Bu mukellef SIRKET(kurum): "gecici/gecici vergi"=KGECICI.'
+      : 'Bu mukellef GERCEK KISI: "gecici/gecici vergi"=GGECICI.';
+    const system = 'Bir mali musavirlik ofisi asistanisin. Mukellef kendi belgelerini istiyor. Mesajdan hangi beyan tipi + donem + belge turu istendigini cikar. SADECE tek satir JSON dondur, baska hicbir sey yazma.';
+    const prompt = [
+      `Mukellef mesaji: "${String(text || '').slice(0, 400)}"`,
+      turHint,
+      'Beyan tipleri: KDV1, KDV2, MUHSGK(muhtasar/SGK), KGECICI, GGECICI, KURUMLAR, GELIR, DAMGA, POSET. "kdv"=KDV1.',
+      'Donem: "nisan 2026"->2026-04, "2026 1.donem/ceyrek"->2026-Q1; yoksa null.',
+      'Birden fazla belge istenebilir -> her biri AYRI oge. "beyannamesi"->beyanname, "tahakkuku/tahakkuk fisi"->tahakkuk, "beyannamesi ve tahakkuku" ya da sadece tip->ikisi.',
+      'Belge/beyanname gonderme istegi DEGILSE (selam, soru) belgeler bos dizi olsun.',
+      'SADECE su JSON: {"belgeler":[{"beyanTipi":"<TIP>","donem":"<YYYY-MM|YYYY-Qn|null>","belge":"beyanname|tahakkuk|ikisi"}]}',
+    ].join('\n');
+    const res = await claudeTextViaMax({ prompt, system, model: MAX_MODEL_CHEAP, maxTurns: 1, timeoutMs: 20000 });
+    if (!res?.ok || !res.text) return null;
+    const m = res.text.match(/\{[\s\S]*\}/);
+    if (!m) return null;
+    let parsed: any;
+    try { parsed = JSON.parse(m[0]); } catch { return null; }
+    const raw = Array.isArray(parsed?.belgeler) ? parsed.belgeler : [];
+    const items = raw
+      .map((b: any) => ({
+        tipler: this.beyanTipiToList(b?.beyanTipi),
+        donem: b?.donem && /^\d{4}-(\d{2}|Q[1-4])$/i.test(String(b.donem)) ? String(b.donem) : null,
+        belge: (['beyanname', 'tahakkuk', 'ikisi'].includes(String(b?.belge)) ? String(b.belge) : 'ikisi') as 'beyanname' | 'tahakkuk' | 'ikisi',
+      }))
+      .filter((it: any) => it.tipler && it.tipler.length);
+    return items.length ? items : null;
+  }
+
+  /**
+   * Mükellef KENDİ beyanname/tahakkuk PDF'ini WhatsApp'tan isteyince gönderir (çok-belge).
+   * Yalnız mesajı atan mükellefin KENDİ verisi (tenantId+taxpayerId kilitli). Kullanıcı
+   * kararı (2026-06-15): mükellef kendi resmi belgesini alabilir (tutar dahil).
+   */
+  private async maybeHandleTaxpayerDocumentSend(taxpayer: any, msg: IncomingWhatsAppMessage): Promise<boolean> {
+    if (!this.storage) return false;
+    if (!this.isOwnerDocumentSendRequest(msg.text)) return false; // belge-gönderme anahtar kelime kapısı
+    let items = await this.extractDocItemsViaAI(msg.text, taxpayer.type ?? null).catch(() => null);
+    if (!items?.length) {
+      const tipler = this.inferBeyanTipiFromOwnerText(msg.text);
+      const donem = this.extractPeriodFromOwnerText(msg.text);
+      if (tipler?.length) items = [{ tipler, donem, belge: this.inferBelgeKindFromText(msg.text) }];
+    }
+    if (!items?.length) return false; // beyanname/tahakkuk isteği değil → normal akışa bırak
+
+    const adi = (taxpayer.companyName || `${taxpayer.firstName || ''} ${taxpayer.lastName || ''}`).trim();
+    const sendText = async (reply: string) => {
+      const sent = await this.whatsapp.sendMessage(this.replyTarget(msg), reply, taxpayer.tenantId);
+      await this.prisma.communicationLog.create({
+        data: {
+          taxpayerId: taxpayer.id, channel: 'WHATSAPP',
+          subject: sent ? 'WhatsApp mukellef belge cevabi' : 'WhatsApp mukellef belge cevabi (gonderilemedi)',
+          content: this.withWhatsAppPhone(reply, msg.from), occurredAt: new Date(),
+        },
+      });
+    };
+    const sendDoc = async (s3Key: string, mimeType: string, filename: string, caption: string, markerDonem = ''): Promise<boolean> => {
+      try {
+        const url = await this.storage!.getPresignedDownloadUrl(s3Key, filename);
+        const ok = await this.baileys.sendMedia(taxpayer.tenantId, this.replyTarget(msg), { url, mimeType, filename, caption });
+        await this.prisma.communicationLog.create({
+          data: {
+            taxpayerId: taxpayer.id, channel: 'WHATSAPP',
+            subject: ok ? 'WhatsApp mukellef belge gonderildi' : 'WhatsApp mukellef belge gonderilemedi',
+            content: this.withWhatsAppPhone(`[BELGE] ${caption} [[doc_ctx:${taxpayer.id}|${markerDonem || ''}]]`, msg.from), occurredAt: new Date(),
+          },
+        });
+        if (!ok) await sendText(`${caption} dosyasını göndermeye çalıştım ama WhatsApp iletmedi; biraz sonra tekrar deneyin.`);
+        return ok;
+      } catch (e: any) {
+        this.logger.warn(`[TaxpayerDocSend] gonderim hatasi: ${e?.message || e}`);
+        await sendText(`${caption} dosyasını gönderirken bir sorun oldu; az sonra tekrar deneyin.`);
+        return false;
+      }
+    };
+
+    const { sentAny, bulunamayan } = await this.sendBeyanItemsLoop(taxpayer.tenantId, taxpayer, adi, items, sendDoc);
+    if (sentAny) {
+      if (bulunamayan.length) await sendText(`Şunları bulamadım: ${bulunamayan.join(', ')}. Diğerlerini gönderdim.`);
+      return true;
+    }
+    await sendText(`${bulunamayan.join(', ') || 'İstediğiniz beyanname/tahakkuk'} kaydını bulamadım; hazır olduğunda iletebilirim.`);
+    return true;
   }
 
   private repairOwnerReply(reply: string, ownerTenant: any): string {
@@ -2238,6 +2343,14 @@ export class WhatsAppBotController implements OnModuleInit {
         });
         this.refreshTaxpayerMemory(taxpayer.tenantId, taxpayer.id);
       }
+      return;
+    }
+
+    // Mükellef KENDİ beyanname/tahakkuk PDF'ini istediyse (çok-belge) gönder — AI sohbetinden önce.
+    // Yalnız kendi verisi (tenantId+taxpayerId kilitli). Handle ederse akış burada biter.
+    if (await this.maybeHandleTaxpayerDocumentSend(taxpayer, msg).catch((e: any) => {
+      this.logger.warn(`[TaxpayerDocSend] hata: ${e?.message || e}`); return false;
+    })) {
       return;
     }
 

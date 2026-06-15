@@ -69,3 +69,13 @@ describe('Owner belge gönderme — beyan tipi çıkarımı', () => {
     expect(c.inferBeyanTipiFromOwnerText('beyannameyi gönder')).toBeNull();
   });
 });
+
+describe('Belge türü çıkarımı (beyanname / tahakkuk / ikisi)', () => {
+  const c = ctrl();
+  it('beyannamesi → beyanname, tahakkuku → tahakkuk, ikisi → ikisi', () => {
+    expect(c.inferBelgeKindFromText('kdv beyannamesini gönder')).toBe('beyanname');
+    expect(c.inferBelgeKindFromText('tahakkukunu gönder')).toBe('tahakkuk');
+    expect(c.inferBelgeKindFromText('nisan kdv beyannamesi ve tahakkukunu gönder')).toBe('ikisi');
+    expect(c.inferBelgeKindFromText('gönderebilir misin')).toBe('ikisi'); // belirsiz → ikisi (güvenli)
+  });
+});
