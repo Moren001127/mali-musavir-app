@@ -1132,9 +1132,10 @@ export class MorenAiService {
       '## KOMUT/İŞLEM ÇALIŞTIRMA (owner): "X\'in faturalarını çek", "KDV verisini çek", "e-defter kontrolünü başlat", "mizanını çek", "fiş Word üret" gibi GERÇEK işlem istenince şu akışı izle:',
       '1) HANGİ işlemlerin çalıştırılabildiğini get_portal_capability_map\'ten al (calistirilabilirIslemler listesi — her biri bir action). İstenen işlem bu listede yoksa "şu an portaldan yapılması gerek" de, UYDURMA.',
       '2) Mükellefi ve DÖNEMİ netleştir (gerekirse list_taxpayers ile ID al; dönem yoksa SOR).',
-      '3) preview_agent_command çağır: agent="islem", action=<calistirilabilirIslemler\'deki action>, payload={ "taxpayerId":"<id>", "donem":"YYYY-MM" }.',
-      '4) Dönen etki + PRV-XXXX ile owner\'a NE YAPACAĞINI SADE TÜRKÇE TEKRAR ET ve TEYİT iste: "Anladığım: <mükellef> için <dönem> <işlem>. Onaylıyor musun? ONAYLIYORUM #PRV-XXXX yaz." (Yanlış anlama olmasın diye bu teyit ŞART.)',
-      '5) Owner "ONAYLIYORUM #PRV-XXXX" yazınca create_confirmed_agent_command çağır (confirmationText = owner\'ın yazdığı). İşlem arka planda çalışır; sonucu owner\'a AYRICA iletilir, sen "kuyruğa aldım, sonucu ileteceğim" de.',
+      '   DÖNEM FORMATI: aylık → "YYYY-MM" (örn. Nisan→2026-04). E-DEFTER\'de "1./2./3./4. dönem" veya "1. çeyrek" GEÇİCİ (3 aylık) demektir → "YYYY-Qn" (1. dönem=2026-Q1=Ocak-Mart, 2.=Q2 Nis-Haz...). "yıllık" → "YYYY". "Ocak ayı / aylık" denmişse "YYYY-MM". DÖNEM TÜRÜNDEN EMİN DEĞİLSEN owner\'a sor (aylık mı geçici mi).',
+      '3) preview_agent_command çağır: agent="islem", action=<calistirilabilirIslemler\'deki action>, payload={ "taxpayerId":"<id>", "donem":"<YYYY-MM|YYYY-Qn|YYYY>" }.',
+      '4) Dönen etki ile owner\'a NE YAPACAĞINI SADE TÜRKÇE TEKRAR ET ve TEYİT iste: "Anladığım: <mükellef> için <dönem-okunur, örn. 2026 1. dönem (Ocak-Mart)> <işlem>. Onaylıyor musun?" — KISA "onaylıyor musun?" yeterli. PRV-XXXX KODUNU KULLANICIYA GÖSTERME/yazdırma (teknik, gereksiz).',
+      '5) Owner "onaylıyorum / evet / tamam onayla" derse create_confirmed_agent_command çağır. confirmationText değerini SEN oluştur: "ONAYLIYORUM #<previewId>" (previewId\'yi 3. adımdaki preview sonucundan al; kullanıcının kodu yazmasına GEREK YOK). İşlem arka planda çalışır; "kuyruğa aldım, sonucu ileteceğim" de.',
       '- Onay GELMEDEN "başlattım/çektim/gönderdim/yaptım" ASLA deme. Listede olmayan işlemi "yaptım" DEME.',
     ].join('\n');
     const fullSystem = [p.systemPrompt, p.taxpayerContext, p.memoryContext, agenticOverride].filter(Boolean).join('\n\n');

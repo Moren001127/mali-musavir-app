@@ -16,31 +16,44 @@ export interface IslemOperation {
   impact: (donem: string) => string; // "şunu yapacağım" net açıklama (teyit için)
 }
 
+const AYLAR = ['Ocak', 'Şubat', 'Mart', 'Nisan', 'Mayıs', 'Haziran', 'Temmuz', 'Ağustos', 'Eylül', 'Ekim', 'Kasım', 'Aralık'];
+const CEYREK: Record<string, string> = { '1': 'Ocak-Mart', '2': 'Nisan-Haziran', '3': 'Temmuz-Eylül', '4': 'Ekim-Aralık' };
+
+/** "2026-Q1" → "2026 1. dönem (Ocak-Mart)", "2026-04" → "Nisan 2026", "2026" → "2026 yıllık". */
+export function formatIslemDonem(donem: string): string {
+  const q = String(donem || '').match(/^(\d{4})-Q([1-4])$/i);
+  if (q) return `${q[1]} ${q[2]}. dönem (${CEYREK[q[2]] || ''})`;
+  const m = String(donem || '').match(/^(\d{4})-(\d{2})$/);
+  if (m) { const mi = Number(m[2]); if (mi >= 1 && mi <= 12) return `${AYLAR[mi - 1]} ${m[1]}`; }
+  if (/^\d{4}$/.test(String(donem || ''))) return `${donem} yıllık`;
+  return String(donem || '');
+}
+
 export const ISLEM_OPERATIONS: Record<string, IslemOperation> = {
   mihsap_fatura_cek: {
     key: 'mihsap_fatura_cek',
     label: 'Mihsap fatura çekme',
-    impact: (d) => `Mihsap'tan ${d} dönemi faturaları (alış+satış) çekilir ve portala işlenir`,
+    impact: (d) => `Mihsap'tan ${formatIslemDonem(d)} faturaları (alış+satış) çekilir ve portala işlenir`,
   },
   luca_kdv_cek: {
     key: 'luca_kdv_cek',
     label: 'Luca KDV verisi çekme',
-    impact: (d) => `Luca'dan ${d} dönemi KDV verisi çekilir (KDV kontrol için)`,
+    impact: (d) => `Luca'dan ${formatIslemDonem(d)} KDV verisi çekilir (KDV kontrol için)`,
   },
   fis_word_uret: {
     key: 'fis_word_uret',
     label: 'Fiş Word raporu üretme',
-    impact: (d) => `${d} dönemi faturalarından fiş Word raporu üretilir (Fiş Yazdırma çıktıları)`,
+    impact: (d) => `${formatIslemDonem(d)} faturalarından fiş Word raporu üretilir (Fiş Yazdırma çıktıları)`,
   },
   edefter_kontrol: {
     key: 'edefter_kontrol',
     label: 'e-Defter kontrol başlatma',
-    impact: (d) => `Luca'dan ${d} dönemi e-Defter detay fiş listesi çekilip e-Defter ön kontrolü başlatılır`,
+    impact: (d) => `Luca'dan ${formatIslemDonem(d)} e-Defter detay fiş listesi çekilip e-Defter ön kontrolü başlatılır`,
   },
   mizan_cek: {
     key: 'mizan_cek',
     label: 'Mizan çekme',
-    impact: (d) => `Luca'dan ${d} dönemi mizanı çekilir ve portala işlenir`,
+    impact: (d) => `Luca'dan ${formatIslemDonem(d)} mizanı çekilir ve portala işlenir`,
   },
 };
 

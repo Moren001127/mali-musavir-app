@@ -64,8 +64,13 @@ export class OwnerCommandRunnerService {
         return this.dispatcher.dispatch('fetch_kdv_from_luca', { taxpayerId: p.taxpayerId, donem: p.donem }, dispatchCtx);
       case 'fis_word_uret':
         return this.dispatcher.dispatch('generate_fis_word_from_invoices', { taxpayerId: p.taxpayerId, donem: p.donem }, dispatchCtx);
-      case 'edefter_kontrol':
-        return this.edefter.createFetchJob({ tenantId: ctx.tenantId, mukellefId: p.taxpayerId, donem: p.donem, createdBy: ctx.userId ?? undefined });
+      case 'edefter_kontrol': {
+        // Dönem tipini formattan türet: "YYYY-Qn"→GECICI_Qn (geçici/3-aylık, "1. dönem"=Q1),
+        // "YYYY-MM"→AYLIK, "YYYY"→YILLIK.
+        const q = String(p.donem).match(/^(\d{4})-Q([1-4])$/i);
+        const donemTipi: any = q ? `GECICI_Q${q[2]}` : /^\d{4}-\d{2}$/.test(p.donem) ? 'AYLIK' : /^\d{4}$/.test(p.donem) ? 'YILLIK' : undefined;
+        return this.edefter.createFetchJob({ tenantId: ctx.tenantId, mukellefId: p.taxpayerId, donem: p.donem, donemTipi, createdBy: ctx.userId ?? undefined });
+      }
       case 'mizan_cek':
         return this.luca.createFetchJob({ tenantId: ctx.tenantId, sessionId: undefined as any, mukellefId: p.taxpayerId, donem: p.donem, tip: 'MIZAN', createdBy: ctx.userId ?? undefined });
       default:
@@ -89,8 +94,8 @@ export class OwnerCommandRunnerService {
     const payload = (cmd.payload && typeof cmd.payload === 'object') ? cmd.payload : {};
     const taxpayerId = String(payload.taxpayerId || payload.mukellefId || '');
     const donem = String(payload.donem || payload.period || '');
-    if (!taxpayerId || !/^\d{4}-\d{2}$/.test(donem)) {
-      await this.finish(cmd, 'failed', { error: 'taxpayerId ve donem ("YYYY-MM") zorunlu.' }, `❌ ${op.label}: mükellef/dönem eksik, çalıştıramadım.`);
+    if (!taxpayerId || !/^\d{4}(-(\d{2}|Q[1-4]))?$/i.test(donem)) {
+      await this.finish(cmd, 'failed', { error: 'taxpayerId ve donem ("YYYY-MM" / "YYYY-Qn" / "YYYY") zorunlu.' }, `❌ ${op.label}: mükellef/dönem eksik, çalıştıramadım.`);
       return;
     }
 

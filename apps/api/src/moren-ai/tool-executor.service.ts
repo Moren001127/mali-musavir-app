@@ -2620,8 +2620,9 @@ export class ToolExecutorService {
     if (isMihsapFaturaCommandAgent(agent) && (!payload.ay || !Array.isArray(payload.mukellefler) || payload.mukellefler.length === 0)) {
       errors.push('Mihsap komutu için payload.ay ve payload.mukellefler gerekir');
     }
-    if (agent === 'islem' && (!payload.taxpayerId || !/^\d{4}-\d{2}$/.test(String(payload.donem || '')))) {
-      errors.push('İşlem komutu için payload.taxpayerId ve payload.donem ("YYYY-MM") gerekir');
+    // Dönem: aylık "YYYY-MM", geçici/3-aylık "YYYY-Qn" (e-defter "1. dönem"=Q1), yıllık "YYYY".
+    if (agent === 'islem' && (!payload.taxpayerId || !/^\d{4}(-(\d{2}|Q[1-4]))?$/i.test(String(payload.donem || '')))) {
+      errors.push('İşlem komutu için payload.taxpayerId ve payload.donem ("YYYY-MM" / "YYYY-Qn" / "YYYY") gerekir');
     }
     const impact = this.describeAgentImpact(agent, action, payload);
     let approval: any = null;
