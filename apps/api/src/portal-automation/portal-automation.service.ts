@@ -1620,10 +1620,9 @@ export class PortalAutomationService {
           patch.mimeType = mimeType;
           if (documentId) patch.documentId = documentId;
         }
-        // SGK meta backfill: mevcut kaydın raw'ında kanun/mahiyet/tutar yoksa, yeni raw'ı yaz.
-        const exRaw: any = existing.raw || {};
+        // SGK meta backfill: PDF'ten meta işlendiyse mevcut raw'ı güncelle (eksik alanları/tutarı doldurur).
         const newRaw: any = input.raw || {};
-        if ((newRaw.kanunNo || newRaw.belgeMahiyeti || newRaw.tutar || newRaw.calisan) && !(exRaw.kanunNo || exRaw.belgeMahiyeti || exRaw.tutar)) {
+        if (newRaw.metaParsed || newRaw.kanunNo || newRaw.belgeMahiyeti || newRaw.tutar) {
           patch.raw = input.raw;
         }
         if (Object.keys(patch).length) {

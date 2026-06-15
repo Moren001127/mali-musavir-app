@@ -1305,10 +1305,10 @@ export class PortalAutomationRailwayRunnerService implements OnModuleInit {
       const where: any = { tenantId, belgeTuru: { in: ['SGK_TAHAKKUK', 'SGK_HIZMET_LISTESI'] }, storageKey: { not: null } };
       if (taxpayerId) where.taxpayerId = taxpayerId;
       const have = await (this.prisma as any).portalDocument.findMany({ where, select: { referenceNo: true, belgeTuru: true, raw: true } }).catch(() => []);
-      // Sadece meta'sı TAM (kanun/mahiyet/tutar dolu) kayıtları atla; meta'sı eksik eski kayıtlar
-      // yeniden işlensin ki PDF'ten çıkarılan meta geri doldurulsun (backfill).
+      // Meta'sı zaten PDF'ten işlenmiş (metaParsed) kayıtları atla; işlenmemiş eski kayıtlar
+      // yeniden çekilip meta geri doldurulsun (kanun/tutar gerçekten yoksa boş kalır, sorun değil).
       alreadyHave = new Set((have || [])
-        .filter((h: any) => { const r: any = h.raw || {}; return r.kanunNo || r.belgeMahiyeti || r.tutar; })
+        .filter((h: any) => { const r: any = h.raw || {}; return r.metaParsed; })
         .map((h: any) => `${h.belgeTuru}|${h.referenceNo}`));
     }
 
@@ -1431,7 +1431,7 @@ export class PortalAutomationRailwayRunnerService implements OnModuleInit {
             mimeType: 'application/pdf',
             originalName: `${t.belgeTuru}_${row.refNo}.pdf`,
             base64: b64,
-            raw: { donem: periodText, bildirgeRefNo: row.refNo, belgeMahiyeti: meta.belgeMahiyeti, kanunNo: meta.kanunNo, calisan: meta.calisan, tutar: meta.tutar },
+            raw: { donem: periodText, bildirgeRefNo: row.refNo, belgeMahiyeti: meta.belgeMahiyeti, kanunNo: meta.kanunNo, calisan: meta.calisan, tutar: meta.tutar, metaParsed: true },
           });
           alreadyHave.add(key);
         }
@@ -3894,12 +3894,20 @@ export class PortalAutomationRailwayRunnerService implements OnModuleInit {
       const all = `${tahText} ${hizText}`;
       const mm = all.match(/Mahiyet\s*:?\s*(AS[İI]L|EK|[İI]PTAL)/i) || all.match(/\(\s*5510\s*\)\s*(AS[İI]L|EK|[İI]PTAL)/i);
       if (mm) meta.belgeMahiyeti = mm[1].toLocaleUpperCase('tr-TR');
-      const km = all.match(/Belge\s*t[üu]r[üu]\s*:?\s*\d+\s*\/\s*(\d{4,5})/i) || all.match(/Kanun\s*:?\s*(\d{4,5})/i) || all.match(/(\d{5})\s*SAYILI\s*KANUN/i);
+      // Kanun no GERÇEKTEN belirtilmişse al: "Belge türü:01/05510", "05510 SAYILI KANUN",
+      // hizmet listesi "Kanun : 05510". Başlıktaki "(5510)" her fişte var -> kanun sayma.
+      const km = all.match(/Belge\s*t[üu]r[üu]\s*:?\s*\d+\s*\/\s*(\d{4,5})/i)
+        || all.match(/(\d{5})\s*SAYILI\s*KANUN/i)
+        || all.match(/Kanun\s*:?\s*(\d{4,5})/i);
       if (km) meta.kanunNo = km[1];
       const cm = tahText.match(/K[İI]Ş[İI]\s*SAYISI\s*:?\s*(\d{1,4})/i);
       if (cm) meta.calisan = cm[1];
-      const tm = tahText.match(/[ÖO]DENECEK\s*NET\s*TUTAR\s*:?\s*([\d.]*\d,\d{2})/i);
-      if (tm) meta.tutar = tm[1];
+      // Tutar: "ÖDENECEK NET TUTAR" etiketinden sonraki ilk para değeri (PDF metni etiket->değer sıralı).
+      const tIdx = tahText.search(/[ÖO]DENECEK\s*NET\s*TUTAR/i);
+      if (tIdx >= 0) {
+        const tm = tahText.slice(tIdx, tIdx + 80).match(/(\d{1,3}(?:\.\d{3})*,\d{2})/);
+        if (tm) meta.tutar = tm[1];
+      }
     } catch { /* yut */ }
     return meta;
   }

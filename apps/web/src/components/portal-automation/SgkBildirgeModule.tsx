@@ -242,7 +242,7 @@ export default function SgkBildirgeModule() {
                     </td>
                     <td className="px-3 py-2.5 align-top font-mono text-[11.5px]" style={{ borderBottom: cellBorder, color: '#fafaf9' }}>{m.donem || '—'}</td>
                     <td className="px-3 py-2.5 align-top" style={{ borderBottom: cellBorder, color: 'rgba(250,250,249,0.75)' }}>{m.mahiyet || '—'}</td>
-                    <td className="px-3 py-2.5 align-top text-center font-mono tabular-nums" style={{ borderBottom: cellBorder, color: 'rgba(250,250,249,0.7)' }}>{m.kanunNo || '—'}</td>
+                    <td className="px-3 py-2.5 align-top text-center font-mono tabular-nums" style={{ borderBottom: cellBorder, color: 'rgba(250,250,249,0.7)' }}>{m.kanunNo || '0000'}</td>
                     <td className="px-3 py-2.5 align-top text-center tabular-nums" style={{ borderBottom: cellBorder, color: 'rgba(250,250,249,0.7)' }}>{m.calisan || '—'}</td>
                     <td className="px-3 py-2.5 align-top text-center tabular-nums whitespace-nowrap" style={{ borderBottom: cellBorder, color: d.belgeTuru === 'SGK_TAHAKKUK' ? '#fafaf9' : 'rgba(250,250,249,0.4)' }}>{d.belgeTuru === 'SGK_TAHAKKUK' ? (m.tutar ? `${m.tutar} ₺` : '—') : '—'}</td>
                     <td className="px-3 py-2.5 align-top text-center" style={{ borderBottom: cellBorder }}>
