@@ -133,6 +133,21 @@ export class BeyannameTakipService {
    * Config'e göre mükelleflerin o dönem vermesi gereken beyannameler hesaplanır,
    * BeyanDurumu ile birleştirilir, beyan tipi bazında aggregate edilir.
    */
+  /**
+   * SGK e-Bildirge tahakkuk fişi indirilmiş (= aylık bildirge SGK'ya verilmiş) mükellef id seti.
+   * PortalDocument.period 'YYYY/MM' (örn 2026/04); beyanname-takip vergiDonem 'YYYY-MM' → ikisini de dener.
+   */
+  private async sgkBildirgeVerilenSet(tenantId: string, vergiDonem: string): Promise<Set<string>> {
+    const donemler = Array.from(new Set([vergiDonem, vergiDonem.replace('-', '/')]));
+    const docs = await (this.prisma as any).portalDocument.findMany({
+      where: { tenantId, belgeTuru: 'SGK_TAHAKKUK', storageKey: { not: null }, period: { in: donemler } },
+      select: { taxpayerId: true },
+    }).catch(() => []);
+    const set = new Set<string>();
+    for (const d of docs || []) { if (d.taxpayerId) set.add(d.taxpayerId); }
+    return set;
+  }
+
   async listDonemOzet(tenantId: string, donem: string, donemTuru: DonemTuru = 'VERILME') {
     // donem: "2026-03" formatı
     const [yilStr, ayStr] = donem.split('-');
@@ -195,6 +210,9 @@ export class BeyannameTakipService {
       if (s.taxpayerId) kdv2OcrSet.add(s.taxpayerId);
     }
 
+    // SGK Bildirge: tahakkuk fişi indirildiyse bildirge verilmiş say (BeyanDurumu/BeyanKaydi yoksa da).
+    const sgkBildirgeSet = await this.sgkBildirgeVerilenSet(tenantId, vergiDonem);
+
     // Her mükellef için hangi beyanları vermesi gerektiğini hesapla
     type Agg = { beyanTipi: BeyanTipi; toplam: number; onaylanan: number; bekleyen: number; hatali: number; muaf: number; kalan: number };
     const agg = Object.fromEntries(ALL_BEYAN_TIPLERI.map((tip) => [tip, blank(tip)])) as Record<BeyanTipi, Agg>;
@@ -210,7 +228,12 @@ export class BeyannameTakipService {
         if (!aktifMiBeyanDoneminde(tp, tip, yil, ay, donem, donemTuru)) continue;
         agg[tip].toplam++;
         const resolved = resolveBeyanState(durumMap, kayitMap, tp.id, tip, yil, ay, donem, donemTuru);
-        switch (resolved.durum) {
+        let durum = resolved.durum;
+        // SGK tahakkuk fişi indirilmişse bildirge verilmiş (elle 'hatali' işareti korunur).
+        if (tip === 'BILDIRGE' && (durum === 'kalan' || durum === 'bekleyen' || durum === 'beklemede') && sgkBildirgeSet.has(tp.id)) {
+          durum = 'onaylandi';
+        }
+        switch (durum) {
           case 'onaylandi': agg[tip].onaylanan++; break;
           case 'hatali':    agg[tip].hatali++; break;
           case 'muaf':      agg[tip].muaf++; break;
@@ -310,6 +333,9 @@ export class BeyannameTakipService {
       if (s.taxpayerId) kdv2OcrSet2.add(s.taxpayerId);
     }
 
+    // SGK Bildirge: tahakkuk fişi indirildiyse bildirge verilmiş say (özet ile aynı kural).
+    const sgkBildirgeSet = await this.sgkBildirgeVerilenSet(tenantId, vDonem2);
+
     return taxpayers
       .filter((tp: any) => tp.isActive !== false)
       .map((tp: any) => {
@@ -319,9 +345,13 @@ export class BeyannameTakipService {
           .filter((tip) => aktifMiBeyanDoneminde(tp, tip, yil, ay, donem, donemTuru));
         const beyanlar = beklenen.map((tip) => {
           const resolved = resolveBeyanState(durumMap, kayitMap, tp.id, tip, yil, ay, donem, donemTuru);
+          let durum = resolved.durum;
+          if (tip === 'BILDIRGE' && (durum === 'kalan' || durum === 'bekleyen' || durum === 'beklemede') && sgkBildirgeSet.has(tp.id)) {
+            durum = 'onaylandi';
+          }
           return {
             beyanTipi: tip,
-            durum: resolved.durum,
+            durum,
             vergiDonem: vergiDonemForTip(tip, yil, ay, donem, donemTuru),
             tahakkukTutari: resolved.durumKaydi?.tahakkukTutari || resolved.beyanKaydi?.tahakkukTutari || null,
             onayTarihi: resolved.durumKaydi?.onayTarihi || resolved.beyanKaydi?.beyanTarihi || null,
