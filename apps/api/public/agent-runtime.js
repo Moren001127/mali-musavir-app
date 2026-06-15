@@ -9,7 +9,10 @@
   // denemez, oturum eşitlemez, panel göstermez. Yerel ajan (moren-*) etkilenmez.
   // v1.42.1 (2026-06-11): Klasik Luca "Zaman Aşımı - Parola Girişi" (inaktivite
   // oturum düşmesi) popup'ı otomatik re-auth → "çek diyorum çekmiyor" düzeltildi.
-  const AGENT_VERSION = '1.42.1';
+  // v1.42.2 (2026-06-16): Ajan kendini yenilerken (delete __morenAgent) eski async
+  // döngü "Cannot read 'stopRequested' of undefined/null" ile ÇÖKÜYORDU → yetim
+  // döngü artık nesne yoksa güvenle durur (stopRequested kontrollerine null-guard).
+  const AGENT_VERSION = '1.42.2';
   const AGENT_INSTANCE_ID = 'mai_' + Date.now().toString(36) + '_' + Math.random().toString(36).slice(2, 8);
 
   // === VERSION-AWARE RELOAD ===
@@ -14244,10 +14247,10 @@
     // v1.36.4 — donem bilgisini de logEvent'e otomatik ek (tarih fallback için)
     if (window.__morenAgent) window.__morenAgent.currentDonem = ay || null;
     for (const m of mukellefler) {
-      if (window.__morenAgent.stopRequested) { setStatus('Durduruldu'); return; }
+      if (!window.__morenAgent || window.__morenAgent.stopRequested) { setStatus('Durduruldu'); return; }
       // v1.36.21: Pause kontrolü
       await checkPauseAndWait();
-      if (window.__morenAgent.stopRequested) { setStatus('Durduruldu'); return; }
+      if (!window.__morenAgent || window.__morenAgent.stopRequested) { setStatus('Durduruldu'); return; }
       setStatus(`→ ${m.ad}`);
       await processMukellef({ ay, mukellef: m, action });
     }
@@ -14275,7 +14278,7 @@
     const waitT0 = Date.now();
     let autoNavDenemesi = 0;
     while (!location.pathname.startsWith(targetPath)) {
-      if (window.__morenAgent.stopRequested) return;
+      if (!window.__morenAgent || window.__morenAgent.stopRequested) return;
       if (Date.now() - waitT0 > 180000) { setStatus('URL beklendi, zaman aşımı'); return; }
 
       // Otomatik navigasyon — varsayılan açık, __morenAgent.autoNavigate=false ile kapatılır.
@@ -14313,10 +14316,10 @@
     const seenFids = new Set();
     let initialCount = null;
     for (let i = 0; i < 600; i++) {
-      if (window.__morenAgent.stopRequested) return;
+      if (!window.__morenAgent || window.__morenAgent.stopRequested) return;
       // v1.36.21: Her fatura öncesi pause kontrolü
       if (typeof checkPauseAndWait === 'function') await checkPauseAndWait();
-      if (window.__morenAgent.stopRequested) return;
+      if (!window.__morenAgent || window.__morenAgent.stopRequested) return;
       const fidMatch = location.href.match(/\/(\d+)\?count=/);
       const count = parseInt(location.href.match(/count=(-?\d+)/)?.[1] || '1', 10);
       const fid = fidMatch?.[1];
@@ -15284,7 +15287,7 @@
     const pingIntervalMs = AGENT_NAME === 'luca' ? 5000 : 30000;
     const sendPing = () => pingAgentStatus(true).then(() => { lastPingAt = Date.now(); }).catch(() => {});
     await sendPing();
-    while (window.__morenAgent.running && !window.__morenAgent.stopRequested) {
+    while (window.__morenAgent?.running && !window.__morenAgent?.stopRequested) {
       // Heartbeat: 30 sn'de bir ping at — backend "agent canlı" görsün
       if (Date.now() - lastPingAt > pingIntervalMs) await sendPing();
       try {
