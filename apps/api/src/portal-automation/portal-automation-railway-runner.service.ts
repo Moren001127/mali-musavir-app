@@ -1391,13 +1391,16 @@ export class PortalAutomationRailwayRunnerService implements OnModuleInit {
           }
           rows.push({ refNo, periodIndex: yilAy, cells, rowText, pdfs });
         }
-        return { rows, listLen: listHtml.length, formCount: forms.length };
+        const refNoCount = (listHtml.match(/bildirgeRefNo/g) || []).length;
+        const allFormActions = Array.from(doc.querySelectorAll('form')).map((f: any) => f.getAttribute('action') || '').filter(Boolean).slice(0, 12);
+        const sample = (listHtml.match(/[\s\S]{0,60}bildirgeRefNo[\s\S]{0,260}/) || [''])[0].replace(/\s+/g, ' ').slice(0, 320);
+        return { rows, listLen: listHtml.length, formCount: forms.length, refNoCount, allFormActions, sample };
       }, { base, start: startVal, end: endVal, tips: TIPS.map((t) => t.tip) }).catch((e: any) => ({ rows: [], listLen: 0, formCount: 0, err: String(e) }));
 
       const rows: any[] = (out && out.rows) || [];
       formsFound = rows.length;
       if (formsFound === 0) {
-        notes.push(`DBG fetch-DonemSecildi: range=${startVal}→${endVal} listLen=${out?.listLen ?? '?'} formCount=${out?.formCount ?? 0} err=${out?.err || '-'}`);
+        notes.push(`DBG fetch-DonemSecildi: range=${startVal}→${endVal} listLen=${out?.listLen ?? '?'} formCount=${out?.formCount ?? 0} refNoCount=${out?.refNoCount ?? 0} actions=[${(out?.allFormActions || []).join(' | ')}] sample="${this.compact(out?.sample || '')}" err=${out?.err || '-'}`);
       }
       for (const row of rows) {
         const periodText = periodTextByValue[String(row.periodIndex)]
