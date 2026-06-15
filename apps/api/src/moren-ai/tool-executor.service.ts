@@ -2,7 +2,7 @@ import { Injectable, Logger } from '@nestjs/common';
 import { PrismaService } from '../prisma/prisma.service';
 import { MIHSAP_FATURA_ACTIONS, isMihsapFaturaCommandAgent } from '../agent-events/agent-registry';
 import { calculateBeyannameDeadline } from '../schedule/beyanname-deadline.util';
-import { ISLEM_OPERATIONS, ISLEM_ACTION_KEYS, islemCapabilityList } from './islem-operations';
+import { ISLEM_OPERATIONS, ISLEM_ACTION_KEYS, islemCapabilityList, isIslemAction } from './islem-operations';
 import { randomBytes } from 'crypto';
 
 const OFFICIAL_SOURCE_DOMAINS = [
@@ -2588,8 +2588,11 @@ export class ToolExecutorService {
   }
 
   private async previewAgentCommand(input: any, ctx: { tenantId: string; userId?: string | null }) {
-    const agent = String(input?.agent || '').trim();
     const action = String(input?.action || '').trim();
+    // OTOMATİK DÜZELTME: action bir İŞLEM registry key'iyse (edefter_kontrol, mizan_cek...)
+    // agent HER ZAMAN 'islem'dir. Model "edefter"/"luca" gibi yanlış agent seçse bile
+    // doğru çalışsın (kullanıcı "e-defter kontrolünü başlat" deyince agent uydurmasın).
+    const agent = isIslemAction(action) ? 'islem' : String(input?.agent || '').trim();
     const payload = input?.payload && typeof input.payload === 'object' ? input.payload : {};
     const requiresConfirmation = true;
     const supported: Record<string, string[]> = {
