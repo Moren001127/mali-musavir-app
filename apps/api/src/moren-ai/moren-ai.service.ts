@@ -17,7 +17,54 @@ const ANTHROPIC_URL = 'https://api.anthropic.com/v1/messages';
 //     - Mevzuat/kanun/analiz/yorum/oneri → Sonnet 4.6 (derin)
 // body.model verilirse override eder. Brifing/cron'larda explicit Haiku gecirilebilir.
 const DEFAULT_MODEL = 'claude-haiku-4-5-20251001';        // genel fallback + basit sorular
-const DEFAULT_MODEL_OWNER_DEEP = 'claude-sonnet-4-6';     // mevzuat/analiz/yorum gerekiyorsa
+const DEFAULT_MODEL_OWNER_DEEP = 'claude-sonnet-4-6';     // derin analiz/yorum gerekiyorsa
+// MEVZUAT/BILGI sorulari (oran, ceza, sure, kanun maddesi) en dogru cevabi gerektirir
+// → Opus 4.8. HEPSI Max aboneliginden (token-basi API DEGIL); Opus sadece Max kotasini
+// biraz daha cok kullanir, ekstra para maliyeti yok. Bot eskiden bu sorulari Haiku/Sonnet'te
+// birakip celiskili/yanlis mevzuat cevabi veriyordu (canli: SGK suresi "15->30->15 gun").
+const DEFAULT_MODEL_LEGISLATION = 'claude-opus-4-8';
+
+/**
+ * Mesaj NET bir mevzuat/bilgi sorusu mu? (kanun maddesi, vergi orani, ceza, sure,
+ * istisna/muafiyet kurallari) → en guclu model (Opus). Belirli mukellefin VERISINI
+ * soran sorular ( "Adem Can'a ne kadar KDV") buraya GIRMEZ; onlar arac/veri yoluyla
+ * Sonnet/Haiku'da kalir. Ayirt edici: genel kural/oran/sure bilgisi mi, yoksa tekil
+ * mukellef-verisi mi.
+ */
+export function needsLegislationModel(userMessage: string): boolean {
+  if (!userMessage) return false;
+  const text = String(userMessage)
+    .toLocaleLowerCase('tr-TR')
+    .replace(/ı/g, 'i')
+    .normalize('NFD')
+    .replace(/[̀-ͯ]/g, '');
+
+  // Belirli mukellef-verisi sinyali varsa mevzuat sayma (veri sorusu → arac yolu).
+  const looksLikePersonalData = /\b(benim|bizim|firmamiz|sirketimiz)\b/.test(text)
+    || /'(n[iı]n|n[uü]n|in|un)\b/.test(userMessage); // "Adem Can'in", "Ozela'nin" gibi iyelik
+
+  // NOT: Türkçe sondan eklemeli olduğu için kök kelimelerde SON \b KULLANMA
+  // ("hesaplanır", "tazminatı", "süresinde" eki \b'yi bozar). Yalnız baş \b.
+  const legislationPatterns: RegExp[] = [
+    // Kanun/mevzuat referansi
+    /\b(vuk|gvk|kvk|kdvk|ttk|otv|btmv|6183|5510|6111|6661|7103|7256|213|193|3065)\b/,
+    /\b(mevzuat|kanun|yonetmelik|teblig|sirkuler|resmi gazete|madde\s*\d+|m\.\s*\d+)/,
+    // Oran / yuzde BILGISI (genel kural)
+    /\b(oran|yuzde|%)\w*\s*(kac|nedir|ne\s*kadar|kacti|ne\b)/,
+    /\b(kdv|otv|stopaj|tevkifat|damga|gelir vergisi|kurumlar)\s*(vergisi\s*)?oran/,
+    // Ceza bilgisi
+    /\bceza\w*\s*(ne|kac|nedir|ne\s*kadar|var\s*m[iı])/,
+    // Sure/bildirim bilgisi (genel kural)
+    /\b(kac\s*gun|kac\s*ay|sure|en\s*gec|ne\s*zaman).{0,50}(bildir|beyan|basvur|itiraz|odeme|veril)/,
+    // Calisma hukuku + vergi kavramlari (kök; ek alabilir)
+    /\b(istisna|muafiyet|matrah|tevkifat|amortisman|asgari\s*ucret|kidem|ihbar\s*tazminat|tazminat)\b/,
+    // "nasil ... / hangi durumda / hangi sart" tipi kural sorulari
+    /\b(nasil\s*(hesaplan|beyan|bildir|uygulan)|hangi\s*durumda|hangi\s*sart|sart\w*\s*(ne|mi)|kosul)/,
+  ];
+
+  if (looksLikePersonalData) return false;
+  return legislationPatterns.some((p) => p.test(text));
+}
 
 /**
  * Kullanici mesajinda mali musavir derinligi gerektiren sinyaller var mi?
@@ -54,16 +101,18 @@ function needsDeepModel(userMessage: string): boolean {
   return deepPatterns.some((p) => p.test(text));
 }
 
-function pickDefaultModel(toolMode?: string, userMessage?: string, taxpayerText?: string): string {
+export function pickDefaultModel(toolMode?: string, userMessage?: string, taxpayerText?: string): string {
   // Kişisel sohbet için her zaman Haiku
   if (toolMode === 'none') return DEFAULT_MODEL;
   // Mükellef botu: müşterinin HAM mesajı analiz/mevzuat/hesap derinliği istiyorsa
   // Sonnet (Max aboneliğinden — token ücreti yok), basit sohbet Haiku'da kalır.
   // userMessage burada KULLANILMAZ: bot prompt'u talimat bloğu içerir, hep tetiklerdi.
   if (toolMode === 'taxpayer-readonly') {
+    if (taxpayerText && needsLegislationModel(taxpayerText)) return DEFAULT_MODEL_LEGISLATION;
     return taxpayerText && needsDeepModel(taxpayerText) ? DEFAULT_MODEL_OWNER_DEEP : DEFAULT_MODEL;
   }
-  // Owner için: mesaj derin analiz istiyorsa Sonnet, degilse Haiku
+  // Owner için: mevzuat/bilgi sorusu → Opus, derin analiz → Sonnet, basit → Haiku.
+  if (userMessage && needsLegislationModel(userMessage)) return DEFAULT_MODEL_LEGISLATION;
   if (userMessage && needsDeepModel(userMessage)) return DEFAULT_MODEL_OWNER_DEEP;
   return DEFAULT_MODEL;
 }
