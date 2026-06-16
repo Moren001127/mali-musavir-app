@@ -57,7 +57,9 @@ export default function GeldenBelgelerPanel({ taxpayerId, period, taxpayers, onM
         .get('/fatura-muhasebelestirme/documents', {
           params: {
             taxpayerId,
-            period,
+            // NEEDS_REVIEW modunda dönem filtresi yok: birikmiş faturalar eski tarihli
+            // olabilir (Mihsap bekleyen kuyruğu), hepsi görünmeli
+            period: filterStatus === 'ALL' ? period : undefined,
             status: filterStatus === 'ALL' ? 'PENDING' : 'NEEDS_REVIEW',
             limit: 500,
           },
