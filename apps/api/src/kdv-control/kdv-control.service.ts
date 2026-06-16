@@ -2050,11 +2050,14 @@ export class KdvControlService implements OnApplicationBootstrap {
 
   private async buildContentAuditDecision(image: any, session: any, tenantId: string): Promise<ContentAuditDecision> {
     const fallback = await this.buildRuleBasedContentAudit(image, session, tenantId);
+    // Faaliyet bir kez çözülür; moderasyon "satışta faaliyet bilinmiyorsa uyum
+    // belirsizliğini bayraklama" kararını buradan verir.
+    const profilFaaliyet = await this.resolveContentAuditFaaliyet(session, tenantId);
     // AI içerik denetimi SADECE Gemini (ucuz) üzerinden — ücretli Anthropic API kullanılmaz.
     const geminiKey = process.env.GEMINI_API_KEY;
     const disabled = String(process.env.KDV_CONTENT_AUDIT_AI_DISABLED || '').toLowerCase() === 'true';
     if (!geminiKey || disabled) {
-      const moderatedFallback = this.moderateContentAuditDecision(fallback, image, session);
+      const moderatedFallback = this.moderateContentAuditDecision(fallback, image, session, profilFaaliyet);
       return { ...fallback, ...moderatedFallback };
     }
 
@@ -2092,7 +2095,7 @@ export class KdvControlService implements OnApplicationBootstrap {
         payload?.candidates?.[0]?.content?.parts?.map((p: any) => p?.text || '').join('') || '',
       ).trim();
       const parsed = this.parseContentAuditJson(raw);
-      const moderated = this.moderateContentAuditDecision(parsed, image, session);
+      const moderated = this.moderateContentAuditDecision(parsed, image, session, profilFaaliyet);
       const usage = {
         input_tokens: Number(payload?.usageMetadata?.promptTokenCount || 0),
         output_tokens: Number(payload?.usageMetadata?.candidatesTokenCount || 0),
@@ -2116,7 +2119,7 @@ export class KdvControlService implements OnApplicationBootstrap {
         usage,
       };
     } catch (err: any) {
-      const moderatedFallback = this.moderateContentAuditDecision(fallback, image, session);
+      const moderatedFallback = this.moderateContentAuditDecision(fallback, image, session, profilFaaliyet);
       const providerMessage = err?.name === 'AbortError'
         ? 'Gemini zaman asimina ugradi'
         : String(err?.message || err);
@@ -2149,6 +2152,7 @@ export class KdvControlService implements OnApplicationBootstrap {
     decision: Omit<ContentAuditDecision, 'model' | 'costUsd' | 'usage'>,
     image: any,
     session: any,
+    profilFaaliyet?: string | null,
   ): Omit<ContentAuditDecision, 'model' | 'costUsd' | 'usage'> {
     const cleanFindings = (decision.findings || []).filter(
       (finding) => !this.isContentAuditKdvArithmeticNoise(`${finding?.title || ''} ${finding?.detail || ''}`),
@@ -2228,6 +2232,27 @@ export class KdvControlService implements OnApplicationBootstrap {
     // SATIŞ oturumunda gider-odaklı override'ları atla — ALIS mantığı SATIS'a uygulanmaz
     const isSatisSession = ['KDV_391', 'ISLETME_GELIR'].includes(String(session?.type || '').toUpperCase());
     if (isSatisSession) {
+      // Faaliyet konusu BİLİNMİYORSA (NACE yok + profil faaliyeti yok), satışı sırf
+      // "faaliyetle uyumu belirsiz" diye KONTROL_ET'te tutma — kıyaslanacak faaliyet
+      // olmadan uyumsuzluk iddia edilemez. Yalnızca iptal/dönem-dışı/sahte-fatura
+      // sinyali varsa bayrak kalır. (Mükellefin kendi satışı; faaliyetsiz mükellefte
+      // her satışa "müşavir uyumu kontrol etsin" demek gürültüdür.)
+      const faaliyetBiliniyor = !!(profilFaaliyet && String(profilFaaliyet).trim().length >= 3);
+      const fraudOrCancelSignal =
+        /\b[İiıI]ptal\b|sahte|naylon|muhteviyat|d[öo]nem\s*d[ıi][şs][ıi]|[şs][üu]pheli|usuls[üu]z|komisyon\s*fatura/.test(text);
+      if (
+        baseDecision.risk === 'KONTROL_ET' &&
+        !hardBlockSignal &&
+        !faaliyetBiliniyor &&
+        !fraudOrCancelSignal
+      ) {
+        return {
+          ...baseDecision,
+          risk: 'UYGUN' as ContentAuditRisk,
+          summary: 'Mükellefin kendi satış belgesi; olağan satış olarak değerlendirildi.',
+          suggestion: 'Normal satış kaydı; belge dayanağını dosyada saklayın. (Faaliyet konusu tanımlıysa uyum daha kesin denetlenir.)',
+        };
+      }
       // KONTROL_ET → UYGUN: AI faaliyetle uyumlu satışları zaman zaman yanlış bayraklar.
       // text = OCR metni + AI özeti; AI özeti faaliyet adını zaten içerdiğinden
       // hem faaliyet hem satış içeriği text'ten okunabilir.
@@ -2462,13 +2487,19 @@ export class KdvControlService implements OnApplicationBootstrap {
     // (harcama/işletme gideri/kişisel kullanım) bunlara UYGULANMAZ; ayrı çerçeve kullanılır.
     const isSatis = ['KDV_391', 'ISLETME_GELIR'].includes(String(session?.type || '').toUpperCase());
     if (isSatis) {
+      // Faaliyet konusu sistemde tanımlı değilse satışın faaliyetle uyumu SORGULANAMAZ
+      // (kıyas yapacak faaliyet yok) — bu durumda uyum-belirsizliği bayraklanmaz.
+      const faaliyetBilinmiyorNotu = profilFaaliyet
+        ? ''
+        : `
+- ÖNEMLİ: Bu mükellefin faaliyet konusu sistemde TANIMLI DEĞİL. Faaliyet bilinmediği için satışın "faaliyetle uyumlu mu" sorusunu SORMA; kıyaslayacak faaliyet yok. Sırf hizmet/ürün ÇEŞİTLİLİĞİ ya da "ana faaliyetle ilgili mi" belirsizliği nedeniyle KONTROL_ET VERME — UYGUN seç. Yalnızca iptal/dönem-dışı/açık sahte-naylon fatura sinyalinde KONTROL_ET/RISKLI seç. "Mali müşavir faaliyet uyumunu kontrol etsin" gibi öneri yazma.`;
       return `Aşağıdaki belge MÜKELLEFİN KENDİ SATIŞ/GELİR belgesidir (ör. Z raporu, satış faturası, satış e-belgesi). Bir GİDER/harcama DEĞİLDİR. Mükellefin SATIŞ/GELİR kaydı açısından içerik riski var mı değerlendir.
 
 Kurallar:
 - Bu bir SATIŞ belgesidir; mükellef burada SATICI/geliri elde eden taraftır. "İşletme gideri olarak kaydedilmeli mi", "harcama", "alış", "alım", "kişisel kullanım/şahsi tüketim" gibi GİDER mantığını ASLA uygulama.
 - Değerlendirme ekseni: satışın mükellefin faaliyetiyle (satıcı olarak) tutarlılığı ve belgenin bu mükellefe/döneme ait olağan bir satış olup olmadığı.
 - Mükellefin faaliyet alanına uygun ürün/hizmet satışında UYGUN seç (örn. giyim mağazasının giyim satışı = olağan satış, UYGUN).
-- KONTROL_ET yalnızca: satış mükellefin faaliyetiyle açıkça bağdaşmıyorsa, ya da iptal/dönem-dışı/şüpheli (olası sahte-naylon) satış sinyali varsa.
+- KONTROL_ET yalnızca: satış mükellefin faaliyetiyle açıkça bağdaşmıyorsa, ya da iptal/dönem-dışı/şüpheli (olası sahte-naylon) satış sinyali varsa.${faaliyetBilinmiyorNotu}
 - RISKLI/ISLENMEMELI yalnızca çok net sahtelik/usulsüzlük sinyalinde.
 - KDV oran/tutar matematiği yapma (ayrı KDV kontrol modülünde denetlenir). Z raporu seri/sıra ve numara atlama takibi de AYRI yapılır; onu burada tekrar etme.
 - "Kaydedilmemeli" gibi kesin talimat verme; gri alanda mali müşavirin kontrolü öner.
@@ -2553,6 +2584,18 @@ ${JSON.stringify(payload, null, 2)}`;
     } catch {
       return null;
     }
+  }
+
+  /**
+   * Mükellefin faaliyet konusunu çözer: önce agentRule profili, yoksa NACE
+   * açıklaması, o da yoksa null. İçerik denetimi "faaliyet biliniyor mu" kararını
+   * buradan verir (satışta faaliyet bilinmiyorsa uyum-belirsizliği bayraklanmaz).
+   */
+  private async resolveContentAuditFaaliyet(session: any, tenantId: string): Promise<string | null> {
+    const profile = await this.findTaxpayerContentProfile(session, tenantId);
+    const naceKodu: string | null = session?.taxpayer?.naceKodu || null;
+    const naceAciklama: string | null = naceKodu ? (NACE_ACIKLAMA[naceKodu] || null) : null;
+    return profile?.faaliyet || naceAciklama || null;
   }
 
   private async buildRuleBasedContentAudit(image: any, session: any, tenantId: string): Promise<ContentAuditDecision> {
