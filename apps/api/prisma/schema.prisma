@@ -59,6 +59,13 @@ model User {
   createdAt    DateTime @default(now())
   updatedAt    DateTime @updatedAt
 
+  // İki adımlı doğrulama (TOTP) — opsiyonel, varsayılan kapalı (mevcut giriş bozulmaz)
+  totpSecret       String?  // base32 secret, crypto.ts ile şifreli saklanır
+  totpEnabled      Boolean  @default(false)
+  // Brute-force koruması — hesap bazlı (IP değil; ofis tek-IP'de cezalanmaz)
+  failedLoginCount Int      @default(0)
+  lockedUntil      DateTime?
+
   tenant       Tenant     @relation(fields: [tenantId], references: [id])
   userRoles    UserRole[]
   auditLogs    AuditLog[]

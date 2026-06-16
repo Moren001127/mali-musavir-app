@@ -1,8 +1,10 @@
 import { api, setAccessToken } from './api';
 
 export const authApi = {
-  login: (email: string, password: string) =>
-    api.post('/auth/login', { email, password }).then((r) => r.data),
+  login: (email: string, password: string, totpCode?: string) =>
+    api
+      .post('/auth/login', { email, password, ...(totpCode ? { totpCode } : {}) })
+      .then((r) => r.data),
 
   register: (data: any) => api.post('/auth/register', data).then((r) => r.data),
 

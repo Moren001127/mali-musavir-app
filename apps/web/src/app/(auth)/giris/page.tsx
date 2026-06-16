@@ -3,7 +3,7 @@ import { useForm } from 'react-hook-form';
 import { zodResolver } from '@hookform/resolvers/zod';
 import { LoginSchema, LoginDto } from '@mali-musavir/shared';
 import { useLogin } from '@/hooks/useAuth';
-import { Eye, EyeOff, Lock, Mail, TrendingUp, Shield, Zap, ArrowRight } from 'lucide-react';
+import { Eye, EyeOff, Lock, Mail, TrendingUp, Shield, Zap, ArrowRight, KeyRound } from 'lucide-react';
 import { useState } from 'react';
 
 const GOLD = '#d4b876';
@@ -16,8 +16,11 @@ const features = [
 
 export default function GirisPage() {
   const [showPassword, setShowPassword] = useState(false);
+  const [totpCode, setTotpCode] = useState('');
   const { register, handleSubmit, formState: { errors } } = useForm<LoginDto>({ resolver: zodResolver(LoginSchema) });
   const login = useLogin();
+  const errMsg = (login.error as any)?.response?.data?.message;
+  const twoFaMode = errMsg === '2FA_REQUIRED' || errMsg === '2FA_INVALID';
 
   return (
     <div className="min-h-screen flex" style={{ background: '#17130f' }}>
@@ -154,7 +157,7 @@ export default function GirisPage() {
             </p>
           </div>
 
-          <form onSubmit={handleSubmit((d) => login.mutate(d))} className="space-y-5">
+          <form onSubmit={handleSubmit((d) => login.mutate({ ...d, totpCode: totpCode.trim() || undefined }))} className="space-y-5">
             {/* E-posta */}
             <div>
               <label className="block text-[12px] font-semibold uppercase tracking-wider mb-2" style={{ color: 'rgba(250,250,249,.55)' }}>
@@ -234,8 +237,40 @@ export default function GirisPage() {
               </a>
             </div>
 
+            {/* İki adımlı doğrulama kodu */}
+            {twoFaMode && (
+              <div>
+                <label className="block text-[12px] font-semibold uppercase tracking-wider mb-2" style={{ color: 'rgba(250,250,249,.55)' }}>
+                  Doğrulama Kodu
+                </label>
+                <div className="relative">
+                  <KeyRound size={16} className="absolute left-4 top-1/2 -translate-y-1/2" style={{ color: 'rgba(250,250,249,.3)' }} />
+                  <input
+                    value={totpCode}
+                    onChange={(e) => setTotpCode(e.target.value.replace(/\D/g, '').slice(0, 6))}
+                    inputMode="numeric"
+                    autoComplete="one-time-code"
+                    placeholder="6 haneli kod"
+                    autoFocus
+                    className="w-full px-4 py-[15px] pl-12 text-[15px] rounded-[14px] outline-none transition-all tracking-[0.3em]"
+                    style={{
+                      fontFamily: 'Inter, sans-serif',
+                      color: '#fafaf9',
+                      background: 'rgba(255,255,255,.04)',
+                      border: `1px solid ${errMsg === '2FA_INVALID' ? 'rgba(244,63,94,.5)' : 'rgba(255,255,255,.08)'}`,
+                    }}
+                  />
+                </div>
+                <p className="text-[12px] mt-1.5" style={{ color: errMsg === '2FA_INVALID' ? '#f43f5e' : 'rgba(250,250,249,.45)' }}>
+                  {errMsg === '2FA_INVALID'
+                    ? 'Kod geçersiz. Authenticator uygulamasındaki güncel kodu girin.'
+                    : 'Authenticator uygulamanızdaki 6 haneli kodu girin.'}
+                </p>
+              </div>
+            )}
+
             {/* Hata */}
-            {login.isError && (
+            {login.isError && !twoFaMode && (
               <div className="rounded-xl px-4 py-3 text-[13px]" style={{ background: 'rgba(244,63,94,.08)', border: '1px solid rgba(244,63,94,.25)', color: '#f43f5e' }}>
                 Giriş başarısız. E-posta veya şifrenizi kontrol edin.
               </div>

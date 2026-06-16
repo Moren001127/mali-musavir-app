@@ -8,6 +8,12 @@ import { NotificationsService } from '../notifications/notifications.service';
 import { NOTIFICATION_TYPES } from '../notifications/notification-types';
 import { RegisterDto } from '@mali-musavir/shared';
 import { randomBytes, createHash } from 'crypto';
+import { encrypt, tryDecrypt } from '../common/crypto';
+import { generateBase32Secret, verifyTotp, buildOtpauthUri, formatSecretForDisplay } from '../common/totp';
+
+// Brute-force: hesap bazlı kilit (IP değil — ofis tek-IP'de cezalanmaz)
+const MAX_FAILED_LOGINS = 5;
+const LOCK_MINUTES = 15;
 
 @Injectable()
 export class AuthService {
@@ -29,13 +35,51 @@ export class AuthService {
 
     if (!user) throw new UnauthorizedException('Geçersiz e-posta veya şifre');
 
+    // Hesap kilitli mi? (brute-force koruması)
+    if (user.lockedUntil && user.lockedUntil > new Date()) {
+      const dk = Math.ceil((user.lockedUntil.getTime() - Date.now()) / 60000);
+      throw new UnauthorizedException(`Çok fazla hatalı deneme. Hesap ${dk} dakika kilitli.`);
+    }
+
     const isValid = await argon2.verify(user.passwordHash, password);
-    if (!isValid) throw new UnauthorizedException('Geçersiz e-posta veya şifre');
+    if (!isValid) {
+      await this.registerFailedLogin(user.id, user.failedLoginCount || 0);
+      throw new UnauthorizedException('Geçersiz e-posta veya şifre');
+    }
+
+    // Başarılı giriş → sayaç/kilit sıfırla (gerekiyorsa)
+    if ((user.failedLoginCount || 0) > 0 || user.lockedUntil) {
+      await this.prisma.user
+        .update({ where: { id: user.id }, data: { failedLoginCount: 0, lockedUntil: null } })
+        .catch(() => null);
+    }
 
     return user;
   }
 
-  async login(user: any, ipAddress?: string) {
+  /** Hatalı şifre denemesini say; eşiğe gelince hesabı geçici kilitle. */
+  private async registerFailedLogin(userId: string, current: number) {
+    const next = current + 1;
+    const data: any = { failedLoginCount: next };
+    if (next >= MAX_FAILED_LOGINS) {
+      data.lockedUntil = new Date(Date.now() + LOCK_MINUTES * 60_000);
+      data.failedLoginCount = 0; // kilit süresi koruma sağlar; sayaç sıfırlanır
+    }
+    await this.prisma.user.update({ where: { id: userId }, data }).catch(() => null);
+  }
+
+  async login(user: any, ipAddress?: string, totpCode?: string) {
+    // İki adımlı doğrulama açıksa kod zorunlu
+    if (user.totpEnabled) {
+      if (!totpCode) {
+        throw new UnauthorizedException('2FA_REQUIRED');
+      }
+      const secret = tryDecrypt(user.totpSecret || null);
+      if (!secret || !verifyTotp(secret, totpCode)) {
+        throw new UnauthorizedException('2FA_INVALID');
+      }
+    }
+
     const payload = {
       sub: user.id,
       email: user.email,
@@ -191,6 +235,54 @@ export class AuthService {
       where: { userId, isRevoked: false },
       data: { isRevoked: true },
     });
+  }
+
+  // === İKİ ADIMLI DOĞRULAMA (TOTP) ===
+
+  async getTotpStatus(userId: string) {
+    const u = await this.prisma.user.findUnique({ where: { id: userId }, select: { totpEnabled: true } });
+    return { enabled: !!u?.totpEnabled };
+  }
+
+  /** Yeni secret üret + (henüz aktif etmeden) şifreli sakla; QR/otpauth döndür. */
+  async setupTotp(userId: string) {
+    const u = await this.prisma.user.findUnique({
+      where: { id: userId },
+      select: { email: true, totpEnabled: true },
+    });
+    if (!u) throw new UnauthorizedException();
+    if (u.totpEnabled) throw new ConflictException('İki adımlı doğrulama zaten açık.');
+    const secret = generateBase32Secret();
+    await this.prisma.user.update({
+      where: { id: userId },
+      data: { totpSecret: encrypt(secret), totpEnabled: false },
+    });
+    return { secret: formatSecretForDisplay(secret), otpauthUri: buildOtpauthUri(secret, u.email) };
+  }
+
+  /** İlk kodu doğrulayıp 2FA'yı aç. */
+  async enableTotp(userId: string, code: string) {
+    const u = await this.prisma.user.findUnique({ where: { id: userId }, select: { totpSecret: true } });
+    const secret = tryDecrypt(u?.totpSecret || null);
+    if (!secret) throw new UnauthorizedException('Önce kurulumu başlatın.');
+    if (!verifyTotp(secret, code)) {
+      throw new UnauthorizedException('Kod geçersiz. Uygulamadaki güncel 6 haneli kodu girin.');
+    }
+    await this.prisma.user.update({ where: { id: userId }, data: { totpEnabled: true } });
+    return { enabled: true };
+  }
+
+  /** Geçerli kodla 2FA'yı kapat + secret'ı sil. */
+  async disableTotp(userId: string, code: string) {
+    const u = await this.prisma.user.findUnique({
+      where: { id: userId },
+      select: { totpSecret: true, totpEnabled: true },
+    });
+    if (!u?.totpEnabled) return { enabled: false };
+    const secret = tryDecrypt(u.totpSecret || null);
+    if (!secret || !verifyTotp(secret, code)) throw new UnauthorizedException('Kod geçersiz.');
+    await this.prisma.user.update({ where: { id: userId }, data: { totpEnabled: false, totpSecret: null } });
+    return { enabled: false };
   }
 
   private async generateRefreshToken(userId: string, ipAddress?: string): Promise<string> {

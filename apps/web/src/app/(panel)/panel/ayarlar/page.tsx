@@ -61,6 +61,7 @@ export default function AyarlarPage() {
         >
           <AdvisorPortalCredentialCard />
         </CollapsibleSection>
+        <TwoFactorSection />
         <MessageTemplatesSection />
         <CollapsibleSection
           id="agent"
@@ -403,6 +404,142 @@ function CollapsibleSection({
         </div>
       )}
     </section>
+  );
+}
+
+// =====================================================================
+// İKİ ADIMLI DOĞRULAMA (2FA)
+// =====================================================================
+
+function TwoFactorSection() {
+  const qc = useQueryClient();
+  const { data: status, isLoading } = useQuery({
+    queryKey: ['2fa-status'],
+    queryFn: () => api.get('/auth/2fa/status').then((r) => r.data),
+  });
+  const enabled = !!status?.enabled;
+  const [setup, setSetup] = useState<{ secret: string; otpauthUri: string } | null>(null);
+  const [code, setCode] = useState('');
+
+  const setupMut = useMutation({
+    mutationFn: () => api.post('/auth/2fa/setup').then((r) => r.data),
+    onSuccess: (d: any) => setSetup(d),
+    onError: (e: any) => toast.error(e?.response?.data?.message || 'Kurulum başlatılamadı'),
+  });
+  const enableMut = useMutation({
+    mutationFn: () => api.post('/auth/2fa/enable', { code }).then((r) => r.data),
+    onSuccess: () => {
+      toast.success('İki adımlı doğrulama açıldı');
+      setSetup(null);
+      setCode('');
+      qc.invalidateQueries({ queryKey: ['2fa-status'] });
+    },
+    onError: (e: any) => toast.error(e?.response?.data?.message || 'Kod doğrulanamadı'),
+  });
+  const disableMut = useMutation({
+    mutationFn: () => api.post('/auth/2fa/disable', { code }).then((r) => r.data),
+    onSuccess: () => {
+      toast.success('İki adımlı doğrulama kapatıldı');
+      setCode('');
+      qc.invalidateQueries({ queryKey: ['2fa-status'] });
+    },
+    onError: (e: any) => toast.error(e?.response?.data?.message || 'Kod doğrulanamadı'),
+  });
+
+  const codeInput = (
+    <input
+      value={code}
+      onChange={(e) => setCode(e.target.value.replace(/\D/g, '').slice(0, 6))}
+      inputMode="numeric"
+      placeholder="6 haneli kod"
+      className="w-40 rounded-lg px-3 py-2.5 text-[14px] tracking-[0.3em] outline-none"
+      style={{ background: SOFT, border: `1px solid ${LINE_GOLD}`, color: TEXT }}
+    />
+  );
+
+  return (
+    <CollapsibleSection
+      id="2fa"
+      icon={ShieldCheck}
+      title="İki Adımlı Doğrulama (2FA)"
+      subtitle="Authenticator uygulamasıyla girişe ikinci güvenlik katmanı"
+      tone="gold"
+    >
+      {isLoading ? (
+        <p className="text-[13px]" style={{ color: MUTED }}>Yükleniyor…</p>
+      ) : enabled ? (
+        <div className="space-y-3">
+          <div className="flex items-center gap-2 text-[13.5px]" style={{ color: GREEN }}>
+            <CheckCircle2 size={16} /> Açık — girişte authenticator kodu istenir.
+          </div>
+          <p className="text-[12.5px]" style={{ color: MUTED }}>Kapatmak için uygulamadaki güncel kodu girin:</p>
+          <div className="flex flex-wrap items-center gap-2">
+            {codeInput}
+            <button
+              type="button"
+              onClick={() => disableMut.mutate()}
+              disabled={code.length !== 6 || disableMut.isPending}
+              className="inline-flex items-center gap-2 rounded-lg px-4 py-2.5 text-[13px] font-semibold disabled:opacity-40"
+              style={{ background: 'rgba(248,113,113,0.12)', border: `1px solid ${RED}55`, color: RED }}
+            >
+              {disableMut.isPending ? <Loader2 size={14} className="animate-spin" /> : null} Kapat
+            </button>
+          </div>
+        </div>
+      ) : setup ? (
+        <div className="space-y-4">
+          <p className="text-[13px]" style={{ color: MUTED }}>
+            <strong style={{ color: TEXT }}>1)</strong> Authenticator uygulamanıza (Google Authenticator, Authy vb.) aşağıdaki anahtarı elle ekleyin:
+          </p>
+          <div className="flex flex-wrap items-center gap-2">
+            <code className="rounded-lg px-3 py-2 text-[14px] tracking-widest" style={{ background: SOFT, border: `1px solid ${LINE}`, color: GOLD }}>
+              {setup.secret}
+            </code>
+            <button
+              type="button"
+              onClick={() => { navigator.clipboard?.writeText(setup.secret.replace(/\s/g, '')); toast.success('Anahtar kopyalandı'); }}
+              className="inline-flex items-center gap-1.5 rounded-lg px-3 py-2 text-[12.5px]"
+              style={{ background: SOFT, border: `1px solid ${LINE}`, color: MUTED }}
+            >
+              <Copy size={13} /> Kopyala
+            </button>
+          </div>
+          <p className="text-[13px]" style={{ color: MUTED }}>
+            <strong style={{ color: TEXT }}>2)</strong> Uygulamadaki 6 haneli kodu girip etkinleştirin:
+          </p>
+          <div className="flex flex-wrap items-center gap-2">
+            {codeInput}
+            <button
+              type="button"
+              onClick={() => enableMut.mutate()}
+              disabled={code.length !== 6 || enableMut.isPending}
+              className="inline-flex items-center gap-2 rounded-lg px-4 py-2.5 text-[13px] font-semibold disabled:opacity-40"
+              style={{ background: `linear-gradient(135deg, ${GOLD}, ${GOLD_DEEP})`, color: '#0f0d0b' }}
+            >
+              {enableMut.isPending ? <Loader2 size={14} className="animate-spin" /> : <Check size={14} />} Etkinleştir
+            </button>
+            <button type="button" onClick={() => { setSetup(null); setCode(''); }} className="text-[12.5px]" style={{ color: MUTED }}>
+              Vazgeç
+            </button>
+          </div>
+        </div>
+      ) : (
+        <div className="space-y-3">
+          <p className="text-[13px]" style={{ color: MUTED }}>
+            Şifrenize ek olarak telefondaki authenticator uygulamasından 6 haneli kod ister. Şifreniz çalınsa bile giriş engellenir.
+          </p>
+          <button
+            type="button"
+            onClick={() => setupMut.mutate()}
+            disabled={setupMut.isPending}
+            className="inline-flex items-center gap-2 rounded-lg px-4 py-2.5 text-[13px] font-semibold disabled:opacity-40"
+            style={{ background: `linear-gradient(135deg, ${GOLD}, ${GOLD_DEEP})`, color: '#0f0d0b' }}
+          >
+            {setupMut.isPending ? <Loader2 size={14} className="animate-spin" /> : <ShieldCheck size={14} />} Etkinleştir
+          </button>
+        </div>
+      )}
+    </CollapsibleSection>
   );
 }
 

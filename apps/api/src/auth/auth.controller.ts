@@ -77,10 +77,38 @@ export class AuthController {
   @HttpCode(HttpStatus.OK)
   async login(@Req() req: any, @Res({ passthrough: true }) res: any) {
     const ip = req.ip || req.headers['x-forwarded-for'];
-    const result = await this.authService.login(req.user, ip);
+    const result = await this.authService.login(req.user, ip, req.body?.totpCode);
     this.setRefreshCookie(res, result.refreshToken);
     const { refreshToken, ...publicResult } = result;
     return publicResult;
+  }
+
+  // === İki adımlı doğrulama (TOTP) ===
+  @UseGuards(AuthGuard('jwt'))
+  @Get('2fa/status')
+  get2faStatus(@Req() req: any) {
+    return this.authService.getTotpStatus(req.user.sub);
+  }
+
+  @UseGuards(AuthGuard('jwt'))
+  @Post('2fa/setup')
+  @HttpCode(HttpStatus.OK)
+  setup2fa(@Req() req: any) {
+    return this.authService.setupTotp(req.user.sub);
+  }
+
+  @UseGuards(AuthGuard('jwt'))
+  @Post('2fa/enable')
+  @HttpCode(HttpStatus.OK)
+  enable2fa(@Req() req: any, @Body('code') code: string) {
+    return this.authService.enableTotp(req.user.sub, String(code || ''));
+  }
+
+  @UseGuards(AuthGuard('jwt'))
+  @Post('2fa/disable')
+  @HttpCode(HttpStatus.OK)
+  disable2fa(@Req() req: any, @Body('code') code: string) {
+    return this.authService.disableTotp(req.user.sub, String(code || ''));
   }
 
   @Post('refresh')

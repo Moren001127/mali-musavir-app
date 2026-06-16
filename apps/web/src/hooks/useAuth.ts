@@ -17,8 +17,8 @@ export function useLogin() {
   const router = useRouter();
 
   return useMutation({
-    mutationFn: ({ email, password }: { email: string; password: string }) =>
-      authApi.login(email, password),
+    mutationFn: ({ email, password, totpCode }: { email: string; password: string; totpCode?: string }) =>
+      authApi.login(email, password, totpCode),
     onSuccess: (data) => {
       saveTokens(data.accessToken);
       queryClient.setQueryData(['me'], data.user);
