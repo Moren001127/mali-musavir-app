@@ -59,6 +59,13 @@ export function foldTurkishAscii(text: string): string {
  */
 export function detectBelgeTipi(text: string, originalName?: string): string | null {
   const folded = foldTurkishAscii(`${originalName || ''}\n${text || ''}`);
+  // GÜÇLÜ e-belge sinyali ("EARSIVFATURA"/"e-Arşiv Fatura"/"TEMEL/TİCARİ FATURA")
+  // bir Z raporunda veya yazarkasa fişinde BULUNMAZ. e-Arşiv faturasının notlarında
+  // mağazanın "Gün Sonu No"/"Fiş No" bilgisi geçebildiğinden, bu güçlü sinyaller
+  // OKC/Z_RAPORU sınıflamasından ÖNCE değerlendirilir — yoksa e-Arşiv yanlışlıkla
+  // Z_RAPORU sayılıp KDV kırılımı (ör. %20 oranı) eksik okunuyordu.
+  if (/\bEARSIVFATURA\b|\bE[-\s]?AR[SŞ]IV\s*FATURA\b/.test(folded)) return 'EARSIV';
+  if (/\bTEMELFATURA\b|\bTICARIFATURA\b/.test(folded)) return 'EFATURA';
   const looksOkcFis = /\bFIS\s*NO\b|\bEKU\s*NO\b|\bOKC\b|\bOD[EA]ME\s+KAYDEDICI\b/.test(folded);
   // Z raporu imzalari — yazarkasa fisinde BULUNMAZ:
   //   "Z (GUNLUK) RAPORU", "GUN SONU", "Z SAYAC", kumulatif "KUM TOP/KDV".

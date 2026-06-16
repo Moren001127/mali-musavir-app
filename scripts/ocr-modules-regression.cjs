@@ -231,7 +231,15 @@ deepEq(azureHelpers.extractMoneyAmounts('Tutar: 1.330,00 ve 665,00', ublDeps.par
 // Hiçbir OKC/Z imzası kalmadığından belgeTipi=null oluyordu → KDV hiç okunmuyordu.
 // TOPKDV varyantı yakalanınca yazarkasa fişi Z_RAPORU olarak sınıflanır.
 eq(azureHelpers.detectBelgeTipi('SOK MARKETLER\n115 No\n0029\nTOPKOV\n*3,36'), 'Z_RAPORU', 'helpers detect TOPKOV (D->O) variant');
-ok('azure/helpers.ts (9 assertion)');
+// GERÇEK örnek (FİLE/BİM e-Arşiv): notlarında "Gün Sonu No"/"Fiş No" geçtiği için
+// yanlışlıkla Z_RAPORU sınıflanıp çok-oranlı KDV (%20) düşüyordu. Güçlü e-belge
+// sinyali (EARSIVFATURA) artık Z_RAPORU/OKC'den ÖNCE değerlendirilir → EARSIV.
+eq(
+  azureHelpers.detectBelgeTipi('FİLE MARKET\nSenaryo:\nEARSIVFATURA\ne-Arşiv Fatura\nFatura No:\nZE02026000238705\nHesaplanan KDV(%20)\n86,83\nNot: NOT:Gün Sonu No: 551\nNot: NOT:Fiş No: 457'),
+  'EARSIV',
+  'helpers e-Arşiv (notunda Gün Sonu/Fiş No olsa bile) EARSIV kalır',
+);
+ok('azure/helpers.ts (10 assertion)');
 
 // ─── azure/sectoral.ts (telekom) ───
 const telekomDeps = {
