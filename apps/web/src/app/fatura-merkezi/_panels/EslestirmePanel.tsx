@@ -6,6 +6,7 @@ import {
   AlertTriangle, CheckCircle2, Check, Loader2, ListChecks,
   ChevronRight, ArrowDownLeft, ArrowUpRight, Pencil, Inbox, RefreshCw,
 } from 'lucide-react';
+import { toast } from 'sonner';
 import { api } from '@/lib/api';
 import { taxpayerName } from '../_lib/taxpayer';
 import FaturaDetayDrawer from '../_dialogs/FaturaDetayDrawer';
@@ -68,11 +69,28 @@ export default function EslestirmePanel({ taxpayerId, period, taxpayers }: Props
   const dirHighConfidence = docs.filter((d) => (d.confidence ?? d.matchConfidence ?? 0) >= 0.85 && d.status !== 'PROCESSING');
   const bulkApproveMut = useMutation({
     mutationFn: async () => {
+      let ok = 0;
+      const failed: string[] = [];
       for (const d of dirHighConfidence) {
-        await api.post(`/fatura-muhasebelestirme/documents/${d.id}/approve`).catch(() => null);
+        try {
+          await api.post(`/fatura-muhasebelestirme/documents/${d.id}/approve`);
+          ok++;
+        } catch {
+          failed.push(d.vendorName || d.customerName || d.belgeNo || d.id);
+        }
+      }
+      return { ok, failed };
+    },
+    onSuccess: (res) => {
+      qc.invalidateQueries({ queryKey: ['fatura-merkezi'] });
+      if (res.failed.length === 0) {
+        toast.success(`${res.ok} belge onaylandı`);
+      } else {
+        const ornek = res.failed.slice(0, 3).join(', ') + (res.failed.length > 3 ? '…' : '');
+        toast.error(`${res.ok} onaylandı · ${res.failed.length} başarısız: ${ornek}`);
       }
     },
-    onSuccess: () => qc.invalidateQueries({ queryKey: ['fatura-merkezi'] }),
+    onError: () => toast.error('Toplu onay başarısız oldu'),
   });
 
   return (

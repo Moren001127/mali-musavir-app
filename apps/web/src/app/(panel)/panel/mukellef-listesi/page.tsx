@@ -3,6 +3,7 @@
 import { useMemo, useState } from 'react';
 import Link from 'next/link';
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
+import { useMe } from '@/hooks/useAuth';
 import {
   AlertTriangle,
   BadgeCheck,
@@ -127,6 +128,8 @@ function matchesLetter(t: Taxpayer, letter: string): boolean {
 
 export default function MukellefListesiPage() {
   const qc = useQueryClient();
+  const { data: me } = useMe();
+  const canDelete = !!(me as any)?.roles?.includes('ADMIN');
   const [search, setSearch] = useState('');
   const [typeFilter, setTypeFilter] = useState<TypeFilter>('TUMU');
   const [statusFilter, setStatusFilter] = useState<StatusFilter>('active');
@@ -337,6 +340,7 @@ export default function MukellefListesiPage() {
                 if (confirm(`${taxpayerName(taxpayer)} silinsin mi?`)) deleteTaxpayer.mutate(taxpayer.id);
               }}
               deleteBusy={deleteTaxpayer.isPending}
+              canDelete={canDelete}
             />
           ))}
         </div>
@@ -475,12 +479,14 @@ function TaxpayerCard({
   busy,
   onDelete,
   deleteBusy,
+  canDelete,
 }: {
   taxpayer: Taxpayer;
   onToggle: () => void;
   busy: boolean;
   onDelete: () => void;
   deleteBusy: boolean;
+  canDelete: boolean;
 }) {
   const name = taxpayerName(taxpayer);
   const phone = primaryPhone(taxpayer);
@@ -567,21 +573,23 @@ function TaxpayerCard({
             </div>
           )}
         </div>
-        <button
-          type="button"
-          onClick={onDelete}
-          disabled={deleteBusy}
-          className="inline-flex h-8 items-center justify-center rounded-[6px] px-3 text-[12px] font-black transition hover:brightness-110 disabled:opacity-40 md:w-[64px]"
-          style={{
-            background: 'rgba(216,27,96,0.13)',
-            border: '1px solid rgba(216,27,96,0.36)',
-            color: '#ff8fb0',
-            boxShadow: 'inset 0 1px 0 rgba(255,255,255,0.035)',
-          }}
-          title="Mükellefi sil"
-        >
-          Sil
-        </button>
+        {canDelete && (
+          <button
+            type="button"
+            onClick={onDelete}
+            disabled={deleteBusy}
+            className="inline-flex h-8 items-center justify-center rounded-[6px] px-3 text-[12px] font-black transition hover:brightness-110 disabled:opacity-40 md:w-[64px]"
+            style={{
+              background: 'rgba(216,27,96,0.13)',
+              border: '1px solid rgba(216,27,96,0.36)',
+              color: '#ff8fb0',
+              boxShadow: 'inset 0 1px 0 rgba(255,255,255,0.035)',
+            }}
+            title="Mükellefi sil"
+          >
+            Sil
+          </button>
+        )}
       </div>
     </article>
   );

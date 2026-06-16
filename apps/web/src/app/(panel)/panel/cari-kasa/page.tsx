@@ -7,7 +7,7 @@ import { api } from '@/lib/api';
 import { toast } from 'sonner';
 import { CariTahsilatWorkspace } from './CariTahsilatWorkbench';
 import {
-  Plus, Download, Trash2, Loader2, X, Edit3, ArrowLeft, FileText, MoreHorizontal, HandCoins,
+  Plus, Download, Trash2, Loader2, X, Edit3, ArrowLeft, FileText, HandCoins,
 } from 'lucide-react';
 
 // ===== Palet (cari-06 / cari-07 referansı) =====
@@ -190,12 +190,6 @@ export default function CariKasaPage() {
               style={{ border: '1px solid rgba(255,255,255,0.10)', background: 'rgba(255,255,255,0.02)', color: '#d4d4d8' }}
             >
               <Download className="h-4 w-4" /> Ekstre indir
-            </button>
-            <button
-              className="grid h-10 w-10 place-items-center rounded-xl transition"
-              style={{ border: '1px solid rgba(255,255,255,0.10)', background: 'rgba(255,255,255,0.02)', color: '#a1a1aa' }}
-            >
-              <MoreHorizontal className="h-4 w-4" />
             </button>
           </div>
         </div>

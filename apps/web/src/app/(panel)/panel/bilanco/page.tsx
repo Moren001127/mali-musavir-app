@@ -749,6 +749,42 @@ function BilancoAmount({
   );
 }
 
+function HesapSatirlari({ hesaplar }: { hesaplar?: Array<{ kod: string; ad: string; tutar: number }> }) {
+  const [acik, setAcik] = useState(false);
+  const list = hesaplar || [];
+  const LIMIT = 6;
+  const gosterilen = acik ? list : list.slice(0, LIMIT);
+  const kalan = list.length - gosterilen.length;
+  return (
+    <>
+      {gosterilen.map((h, hi) => (
+        <div key={hi} className="px-5 py-2 pl-10 grid grid-cols-[1fr_auto] gap-3 text-[13.5px] items-center" style={{
+          color: 'rgba(250,250,249,0.82)',
+          borderTop: '1px solid rgba(255,255,255,0.10)',
+          background: 'rgba(255,255,255,0.006)',
+        }}>
+          <div style={{ fontWeight: 500 }}><span style={{ color: 'rgba(216,193,127,0.82)', fontFamily: REPORT_FONT, fontSize: 12.5, marginRight: 8, fontWeight: 700, fontVariantNumeric: 'tabular-nums' }}>{h.kod}</span>{h.ad}</div>
+          <BilancoAmount value={h.tutar} variant="account" />
+        </div>
+      ))}
+      {kalan > 0 && (
+        <button type="button" onClick={() => setAcik(true)}
+          className="w-full text-left px-5 py-1.5 pl-10 text-[12px]"
+          style={{ color: 'rgba(216,193,127,0.9)', background: 'rgba(255,255,255,0.006)', borderTop: '1px solid rgba(255,255,255,0.10)', cursor: 'pointer', fontWeight: 600 }}>
+          + {kalan} hesap daha göster
+        </button>
+      )}
+      {acik && list.length > LIMIT && (
+        <button type="button" onClick={() => setAcik(false)}
+          className="w-full text-left px-5 py-1.5 pl-10 text-[12px]"
+          style={{ color: 'rgba(250,250,249,0.5)', background: 'rgba(255,255,255,0.006)', borderTop: '1px solid rgba(255,255,255,0.10)', cursor: 'pointer', fontWeight: 600 }}>
+          − Daralt
+        </button>
+      )}
+    </>
+  );
+}
+
 function BilancoColumn({
   baslik,
   toplam,
@@ -793,16 +829,7 @@ function BilancoColumn({
                   <div style={{ color: '#fafaf9', fontWeight: 600 }}>{k.grup}</div>
                   <BilancoAmount value={k.toplam} variant="group" />
                 </div>
-                {k.hesaplar?.slice(0, 6).map((h: any, hi: number) => (
-                  <div key={hi} className="px-5 py-2 pl-10 grid grid-cols-[1fr_auto] gap-3 text-[13.5px] items-center" style={{
-                    color: 'rgba(250,250,249,0.82)',
-                    borderTop: '1px solid rgba(255,255,255,0.10)',
-                    background: 'rgba(255,255,255,0.006)',
-                  }}>
-                    <div style={{ fontWeight: 500 }}><span style={{ color: 'rgba(216,193,127,0.82)', fontFamily: REPORT_FONT, fontSize: 12.5, marginRight: 8, fontWeight: 700, fontVariantNumeric: 'tabular-nums' }}>{h.kod}</span>{h.ad}</div>
-                    <BilancoAmount value={h.tutar} variant="account" />
-                  </div>
-                ))}
+                <HesapSatirlari hesaplar={k.hesaplar} />
               </React.Fragment>
             ))}
           </div>
