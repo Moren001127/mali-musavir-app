@@ -18,9 +18,9 @@ export default function MukellefCari() {
     <div>
       <PageTitle ust="Ofis" baslik="Cari Hesabım" />
       <div className="grid grid-cols-1 sm:grid-cols-3 gap-3 mb-5">
-        <OzetCard icon={ArrowUpRight} label="Toplam Tahakkuk" value={fmtTRY(data?.tahakkukToplam ?? 0)} />
-        <OzetCard icon={ArrowDownLeft} label="Toplam Tahsilat" value={fmtTRY(data?.tahsilatToplam ?? 0)} accent="#4ade80" />
-        <OzetCard icon={Wallet} label="Açık Bakiye" value={fmtTRY(bakiye)} accent={bakiye > 0 ? '#f87171' : '#4ade80'} />
+        <OzetCard icon={ArrowUpRight} label="Toplam Tahakkuk" value={fmtTRY(data?.tahakkukToplam ?? 0)} accent="#fbbf24" sub="tahakkuk eden" />
+        <OzetCard icon={ArrowDownLeft} label="Toplam Tahsilat" value={fmtTRY(data?.tahsilatToplam ?? 0)} accent="#4ade80" sub="ödenen" />
+        <OzetCard icon={Wallet} label="Açık Bakiye" value={fmtTRY(bakiye)} accent={bakiye > 0 ? '#f87171' : '#4ade80'} sub={bakiye > 0 ? 'kalan borç' : 'bakiye'} />
       </div>
 
       <Card>

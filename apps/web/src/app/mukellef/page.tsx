@@ -3,7 +3,7 @@ import Link from 'next/link';
 import { useQuery } from '@tanstack/react-query';
 import { taxpayerApi } from '@/lib/taxpayer-api';
 import { FileText, Wallet, FolderArchive, Sparkles, ArrowRight } from 'lucide-react';
-import { GOLD, fmtTRY, DURUM, Card, Empty, Spinner, OzetCard } from './_lib/shared';
+import { GOLD, fmtTRY, DURUM, Card, Empty, Spinner, OzetCard, PageTitle } from './_lib/shared';
 
 export default function MukellefOverview() {
   const { data, isLoading } = useQuery({
@@ -19,15 +19,12 @@ export default function MukellefOverview() {
 
   return (
     <div className="space-y-6">
-      <div>
-        <p className="text-[11px] uppercase tracking-[.18em]" style={{ color: '#b8a06f' }}>Hoş geldiniz</p>
-        <h1 style={{ fontFamily: 'Fraunces, serif', fontSize: 28, fontWeight: 600, color: '#fafaf9', letterSpacing: '-.03em' }}>{ad}</h1>
-      </div>
+      <PageTitle ust="Hoş geldiniz" baslik={ad} />
 
       <div className="grid grid-cols-1 sm:grid-cols-3 gap-3">
-        <OzetCard icon={FileText} label="Bekleyen Beyanname" value={String(ozet.bekleyenBeyan ?? 0)} />
-        <OzetCard icon={Wallet} label="Cari Bakiye" value={fmtTRY(ozet.cariBakiye ?? 0)} accent={(ozet.cariBakiye ?? 0) > 0 ? '#f87171' : '#4ade80'} />
-        <OzetCard icon={FolderArchive} label="Evrak" value={String(ozet.evrakSayisi ?? 0)} />
+        <OzetCard icon={FileText} label="Bekleyen Beyanname" value={String(ozet.bekleyenBeyan ?? 0)} accent="#fbbf24" sub="onay bekliyor" />
+        <OzetCard icon={Wallet} label="Cari Bakiye" value={fmtTRY(ozet.cariBakiye ?? 0)} accent={(ozet.cariBakiye ?? 0) > 0 ? '#f87171' : '#4ade80'} sub={(ozet.cariBakiye ?? 0) > 0 ? 'açık bakiye (borç)' : 'bakiye'} />
+        <OzetCard icon={FolderArchive} label="Evrak" value={String(ozet.evrakSayisi ?? 0)} accent="#60a5fa" sub="arşivde" />
       </div>
 
       <div className="grid grid-cols-1 lg:grid-cols-[1fr_300px] gap-5">
