@@ -106,6 +106,36 @@ export class EFaturaSyncService {
   }
 
   /**
+   * efatura_inbox listesi — mükellef/dönem bazlı filtre destekli
+   */
+  async listInbox(
+    tenantId: string,
+    opts: { taxpayerId?: string; direction?: string; period?: string; limit?: string } = {},
+  ) {
+    const where: Record<string, any> = { tenantId };
+    if (opts.taxpayerId) where.taxpayerId = opts.taxpayerId;
+    if (opts.direction) where.direction = opts.direction.toUpperCase();
+    if (opts.period) {
+      const start = new Date(`${opts.period}-01`);
+      const end = new Date(start);
+      end.setMonth(end.getMonth() + 1);
+      where.faturaDate = { gte: start, lt: end };
+    }
+    const limit = Math.min(parseInt(opts.limit || '200', 10) || 200, 1000);
+    return (this.prisma as any).eFaturaInbox.findMany({
+      where,
+      orderBy: { createdAt: 'desc' },
+      take: limit,
+      select: {
+        id: true, entegrator: true, uuid: true, faturaNo: true, faturaDate: true,
+        senderVkn: true, senderTitle: true, receiverVkn: true,
+        matrah: true, kdv: true, toplam: true, paraBirimi: true,
+        direction: true, invoiceProfile: true, markedAt: true, createdAt: true,
+      },
+    });
+  }
+
+  /**
    * Bir tenant altındaki tüm entegratör bağlantılarını sync et.
    */
   async syncAll(tenantId: string, opts: { direction?: 'IN' | 'OUT' } = {}): Promise<void> {
