@@ -197,6 +197,12 @@ model Taxpayer {
   webSitesi          String?  // Şirket web sitesi
   eFaturaEntegrator String?  // "UYUMSOFT" | "BILGENET" | "FORIBA" | "GIB_PORTAL" | diğer
 
+  // === Mükellef self-servis portal girişi (opsiyonel; müşavir açar) ===
+  portalEmail        String?    // portal giriş e-postası (yoksa `email` kullanılır)
+  portalPasswordHash String?    // argon2id hash
+  portalEnabled      Boolean    @default(false)
+  portalLastLoginAt  DateTime?
+
   createdAt   DateTime     @default(now())
   updatedAt   DateTime     @updatedAt
 

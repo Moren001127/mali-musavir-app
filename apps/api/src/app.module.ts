@@ -43,6 +43,7 @@ import { OfficeChatModule } from './office-chat/office-chat.module';
 import { EmailModule } from './email/email.module';
 import { AiCostModule } from './ai-cost/ai-cost.module';
 import { DriveModule } from './drive/drive.module';
+import { TaxpayerPortalModule } from './taxpayer-portal/taxpayer-portal.module';
 import { ReminderCron } from './schedule/reminder.cron';
 import { HgsCron } from './schedule/hgs.cron';
 import { TaskReminderCron } from './schedule/task-reminder.cron';
@@ -94,6 +95,7 @@ import { InvoiceOverdueCron } from './schedule/invoice-overdue.cron';
     OfficeChatModule,
     EmailModule,
     AiCostModule,
+    TaxpayerPortalModule,
   ],
   providers: [
     { provide: APP_GUARD, useClass: ThrottlerGuard },
