@@ -64,8 +64,9 @@ export class OpenRouterAdapter {
       this.logger.warn(`Max çağrısı başarısız (${req.model}): ${max.error}`);
       // API fallback yalnızca açıkça izin verilmişse; değilse yumuşak hata (orkestrasyon çökmesin).
       if (process.env.AI_ALLOW_API_FALLBACK !== '1') {
+        // Ham hata kullanıcıya gösterilmez; gerçek hata yukarıda loglandı (line 64).
         return {
-          content: `[Max servisi şu an cevap veremedi: ${max.error}]`,
+          content: 'Şu anda yanıt üretemiyorum, servis geçici olarak yanıt vermedi. Lütfen birazdan tekrar deneyin.',
           model: req.model,
           usage: { promptTokens: 0, completionTokens: 0, totalTokens: 0, costUsd: 0 },
         };
