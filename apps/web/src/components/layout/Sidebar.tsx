@@ -18,6 +18,7 @@ import {
   FileScan,
   FileStack,
   FileText,
+  FolderArchive,
   Gauge,
   Gavel,
   HandCoins,
@@ -133,6 +134,7 @@ const navGroups = [
     icon: Building2,
     items: [
       { href: '/panel/cari-kasa', label: 'Cari Kasa & Tahsilat', icon: HandCoins },
+      { href: '/panel/evraklar', label: 'Evrak Arşivi', icon: FolderArchive },
       { href: '/panel/duyurular', label: 'Duyurular', icon: Megaphone },
       { href: '/panel/galeri/hgs-ihlal', label: 'HGS İhlal Sorgulama', icon: Gavel },
     ],
