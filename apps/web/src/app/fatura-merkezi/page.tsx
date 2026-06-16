@@ -5,16 +5,16 @@ import { useQuery, useQueryClient } from '@tanstack/react-query';
 import { toast } from 'sonner';
 import {
   FileText, ChevronDown, Users, CalendarDays, Search,
-  Cloud, Upload, RefreshCw, BarChart3, GitMerge, Inbox,
-  Database,
+  Cloud, Upload, RefreshCw, BarChart3, GitMerge,
+  Database, PackageOpen,
 } from 'lucide-react';
 import { api } from '@/lib/api';
 import { taxpayerName, taxpayerTaxNumber, taxpayerSearchMatch } from './_lib/taxpayer';
 import { buildKdvClientReportHtml, fetchKdvClientReport } from './_lib/kdv-client-report';
 import GenelBakisPanel from './_panels/GenelBakisPanel';
+import GeldenBelgelerPanel from './_panels/GeldenBelgelerPanel';
 import EslestirmePanel from './_panels/EslestirmePanel';
 import MukelleflerPanel from './_panels/MukelleflerPanel';
-import EFaturaInboxPanel from './_panels/EFaturaInboxPanel';
 import UploadDialog from './_dialogs/UploadDialog';
 import EntegratorDialog from './_dialogs/EntegratorDialog';
 
@@ -32,13 +32,13 @@ const PIPELINE_STEPS = [
   { id: 6, label: 'Arşiv',        key: 'archived' },
 ];
 
-type TabId = 'genel' | 'eslestirme' | 'efatura-inbox' | 'mukellefler';
+type TabId = 'genel' | 'gelen-belgeler' | 'eslestirme' | 'mukellefler';
 
 const NAV: Array<{ id: TabId; label: string; Icon: any; color: string }> = [
-  { id: 'genel',         label: 'Genel Bakış',        Icon: BarChart3, color: '#2dd4bf' },
-  { id: 'eslestirme',    label: 'Eşleştirme & Onay',  Icon: GitMerge,  color: '#a78bfa' },
-  { id: 'efatura-inbox', label: 'E-Fatura Kutusu',     Icon: Inbox,     color: '#60a5fa' },
-  { id: 'mukellefler',   label: 'Mükellefler',          Icon: Users,     color: '#4ade80' },
+  { id: 'genel',          label: 'Genel Bakış',       Icon: BarChart3,   color: '#2dd4bf' },
+  { id: 'gelen-belgeler', label: 'Gelen Belgeler',    Icon: PackageOpen, color: '#fb923c' },
+  { id: 'eslestirme',     label: 'Eşleştirme & Onay', Icon: GitMerge,    color: '#a78bfa' },
+  { id: 'mukellefler',    label: 'Mükellefler',        Icon: Users,       color: '#4ade80' },
 ];
 
 export default function FaturaMerkeziPage() {
@@ -291,14 +291,14 @@ export default function FaturaMerkeziPage() {
           {tab === 'genel' && (
             <GenelBakisPanel taxpayerId={taxpayerId} period={period} taxpayers={taxpayers} dashData={dash} dashLoading={dashQ.isLoading} />
           )}
+          {tab === 'gelen-belgeler' && (
+            <GeldenBelgelerPanel taxpayerId={taxpayerId} period={period} taxpayers={taxpayers} onMihsapCek={handleMihsapCek} mihsapLoading={mihsapLoading} />
+          )}
           {tab === 'eslestirme' && (
             <EslestirmePanel taxpayerId={taxpayerId} period={period} taxpayers={taxpayers} />
           )}
-          {tab === 'efatura-inbox' && (
-            <EFaturaInboxPanel taxpayerId={taxpayerId} period={period} />
-          )}
           {tab === 'mukellefler' && (
-            <MukelleflerPanel taxpayers={taxpayers} loading={taxpayersQ.isLoading} period={period} onRefresh={refresh} onSelectTaxpayer={(id) => { setTaxpayerId(id); setTab('eslestirme'); }} />
+            <MukelleflerPanel taxpayers={taxpayers} loading={taxpayersQ.isLoading} period={period} onRefresh={refresh} onSelectTaxpayer={(id) => { setTaxpayerId(id); setTab('gelen-belgeler'); }} />
           )}
         </div>
       </div>
