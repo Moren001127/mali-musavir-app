@@ -2,7 +2,7 @@
 
 import { useState, useMemo } from 'react';
 import {
-  Settings, Cloud, FileText, Plug, BookOpen,
+  Settings, Cloud, Plug, BookOpen,
   Search, ChevronRight,
   type LucideIcon,
 } from 'lucide-react';
@@ -15,7 +15,6 @@ import {
 } from '../_lib/taxpayer';
 import EntegratorDialog from '../_dialogs/EntegratorDialog';
 import UploadDialog from '../_dialogs/UploadDialog';
-import GibPortalDialog from '../_dialogs/GibPortalDialog';
 import HesapPlaniDialog from '../_dialogs/HesapPlaniDialog';
 import MukellefAyarDialog from '../_dialogs/MukellefAyarDialog';
 
@@ -27,7 +26,7 @@ type Props = {
   onSelectTaxpayer: (id: string) => void;
 };
 
-type ActionId = 'ayar' | 'yukle' | 'gib' | 'entegrator' | 'hesap';
+type ActionId = 'ayar' | 'yukle' | 'entegrator' | 'hesap';
 
 const ACTIONS: Array<{
   id: ActionId;
@@ -37,11 +36,10 @@ const ACTIONS: Array<{
   color: string;
   bg: string;
 }> = [
-  { id: 'ayar',       label: 'Mukellef Ayarları', desc: 'Defter türü, KDV, stok',       icon: Settings, color: '#94a3b8', bg: 'rgba(148,163,184,0.12)' },
+  { id: 'ayar',       label: 'Mükellef Ayarları', desc: 'Defter türü, KDV, stok',       icon: Settings, color: '#94a3b8', bg: 'rgba(148,163,184,0.12)' },
   { id: 'yukle',      label: 'Belge Yükle',       desc: 'Alış/Satış/Banka — drag-drop', icon: Cloud,    color: '#60a5fa', bg: 'rgba(96,165,250,0.12)'  },
-  { id: 'gib',        label: 'GİB e-Arşiv',       desc: 'GİB portalından satış çek',    icon: FileText, color: '#fb923c', bg: 'rgba(251,146,60,0.12)'  },
-  { id: 'entegrator', label: 'Entegratör',         desc: 'e-Logo, Uyumsoft, Paraşüt',   icon: Plug,     color: '#34d399', bg: 'rgba(52,211,153,0.12)'  },
-  { id: 'hesap',      label: 'Hesap Planı',        desc: 'Luca senkron + yeni hesap',   icon: BookOpen, color: '#a78bfa', bg: 'rgba(167,139,250,0.12)' },
+  { id: 'entegrator', label: 'Entegratör',        desc: 'e-Logo, Uyumsoft, Paraşüt',   icon: Plug,     color: '#34d399', bg: 'rgba(52,211,153,0.12)'  },
+  { id: 'hesap',      label: 'Hesap Planı',       desc: 'Luca senkron + yeni hesap',   icon: BookOpen, color: '#a78bfa', bg: 'rgba(167,139,250,0.12)' },
 ];
 
 const TIP_STYLE: Record<string, { color: string; bg: string }> = {
@@ -267,12 +265,6 @@ export default function MukelleflerPanel({ taxpayers, loading, period, onRefresh
         <UploadDialog
           taxpayer={activeDialog.taxpayer}
           period={period}
-          onClose={() => { setActiveDialog(null); onRefresh(); }}
-        />
-      )}
-      {activeDialog?.action === 'gib' && (
-        <GibPortalDialog
-          taxpayer={activeDialog.taxpayer}
           onClose={() => { setActiveDialog(null); onRefresh(); }}
         />
       )}
