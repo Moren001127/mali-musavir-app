@@ -163,6 +163,22 @@
 .moren-task-pulse {
   animation: moren-task-pulse 3.2s ease-in-out infinite;
 }
+/* ── Canlı MOREN AI sesli katman animasyonları ── */
+@keyframes moren-voice-ring {
+  0%   { transform: scale(0.7); opacity: 0.6; }
+  100% { transform: scale(1.25); opacity: 0; }
+}
+.moren-voice-ring { animation: moren-voice-ring 2.4s ease-out infinite; }
+@keyframes moren-voice-wave {
+  0%, 100% { height: 3px; }
+  50% { height: 14px; }
+}
+.moren-voice-bar { animation: moren-voice-wave 1s ease-in-out infinite; }
+@keyframes moren-voice-orb {
+  0%, 100% { box-shadow: 0 6px 16px rgba(240,154,168,0.40), inset 0 2px 5px rgba(255,255,255,0.40); }
+  50%      { box-shadow: 0 6px 24px rgba(240,154,168,0.66), inset 0 2px 5px rgba(255,255,255,0.52); }
+}
+.moren-voice-orb-live { animation: moren-voice-orb 1.8s ease-in-out infinite; }
 .moren-feed-wrap {
   position: relative;
   max-height: 380px;

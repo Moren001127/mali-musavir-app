@@ -211,6 +211,8 @@ export default function MorenAIPage() {
   const [realtimeSessionCost, setRealtimeSessionCost] = useState(0);
   const [realtimeSessionTokens, setRealtimeSessionTokens] = useState(0);
   const [memoryText, setMemoryText] = useState('');
+  const [leftCollapsed, setLeftCollapsed] = useState(false);
+  const [rightCollapsed, setRightCollapsed] = useState(false);
   const scrollRef = useRef<HTMLDivElement>(null);
   const inputRef = useRef<HTMLTextAreaElement>(null);
   const audioRef = useRef<HTMLAudioElement>(null);
@@ -794,8 +796,70 @@ export default function MorenAIPage() {
           ? 'Ses yazıya çevriliyor...'
           : 'Mali tablo, mükellef veya ofis akışı sor...';
 
+  const voiceActive = voiceMode || realtimeActiveRef.current || ['listening', 'transcribing', 'thinking', 'speaking'].includes(voiceStatus);
+
   return (
-    <div className="flex h-full min-h-0 max-w-none gap-3 overflow-hidden">
+    <div className="flex h-full min-h-0 max-w-none flex-col gap-3 overflow-hidden">
+      {/* ── İmza başlık (gül+altın radial + renk şeridi, yapışkan değil) ── */}
+      <header
+        className="relative shrink-0 overflow-hidden rounded-2xl border px-5 py-3.5"
+        style={{
+          borderColor: LINE,
+          background:
+            'radial-gradient(120% 140% at 0% 0%, rgba(240,154,168,0.16), transparent 46%), radial-gradient(120% 140% at 100% 0%, rgba(212,184,118,0.14), transparent 46%), #0f0d0b',
+        }}
+      >
+        <div className="absolute inset-x-0 top-0 h-1" style={{ background: 'linear-gradient(90deg,#f09aa8,#e7b6a0,#d4b876,#c8a25e,#f09aa8)' }} />
+        <div className="flex flex-wrap items-center justify-between gap-3">
+          <div className="flex items-center gap-3">
+            <span className="grid h-11 w-11 place-items-center rounded-2xl" style={{ background: 'linear-gradient(135deg,#f09aa8,#d4b876)', boxShadow: '0 6px 18px rgba(240,154,168,0.34)', color: '#1a1410' }}>
+              <Brain size={21} />
+            </span>
+            <div>
+              <h1 className="text-[22px] font-bold leading-tight" style={{ color: TEXT }}>MOREN AI</h1>
+              <p className="text-[12px]" style={{ color: MUTED }}>Ofisin aklı — konuş, sor, yönet.</p>
+            </div>
+          </div>
+          <div className="flex items-center gap-2">
+            {(messages.length > 0 || realtimeSessionCost > 0) && (
+              <div className="hidden items-center gap-1.5 rounded-xl border px-3 py-2 text-[12px] sm:flex" style={{ borderColor: LINE, color: MUTED }}>
+                Oturum <b className="tabular-nums" style={{ color: TEXT }}>${visibleSessionCost.toFixed(4)}</b>
+              </div>
+            )}
+            <button
+              type="button"
+              onClick={() => setTtsEnabled((value) => !value)}
+              className="flex h-10 w-10 items-center justify-center rounded-xl border transition hover:bg-white/[0.06]"
+              style={{ borderColor: ttsEnabled ? LINE_GOLD : LINE, color: ttsEnabled ? GOLD : MUTED }}
+              title={ttsEnabled ? 'Sesli okuma açık' : 'Sesli okuma kapalı'}
+            >
+              {ttsEnabled ? <Volume2 size={16} /> : <VolumeX size={16} />}
+            </button>
+            <button
+              type="button"
+              onClick={() => setLeftCollapsed((value) => !value)}
+              className="hidden h-10 items-center gap-2 rounded-xl border px-3 text-[12.5px] font-semibold transition hover:bg-white/[0.06] lg:flex"
+              style={{ borderColor: leftCollapsed ? LINE : LINE_GOLD, color: leftCollapsed ? MUTED : GOLD }}
+              title="Sohbet panelini gizle/göster"
+            >
+              <MessageSquare size={15} /> Sohbetler
+            </button>
+            <button
+              type="button"
+              onClick={() => setRightCollapsed((value) => !value)}
+              className="hidden h-10 items-center gap-2 rounded-xl border px-3 text-[12.5px] font-semibold transition hover:bg-white/[0.06] xl:flex"
+              style={{ borderColor: rightCollapsed ? LINE : LINE_GOLD, color: rightCollapsed ? MUTED : GOLD }}
+              title="Ofis Beyni panelini gizle/göster"
+            >
+              <Brain size={15} /> Ofis Beyni
+            </button>
+          </div>
+        </div>
+      </header>
+
+      {/* ── Gövde: sohbet listesi · konuşma · ofis beyni ── */}
+      <div className="flex min-h-0 flex-1 gap-3 overflow-hidden">
+      {!leftCollapsed && (
       <aside className="flex w-[260px] shrink-0 flex-col overflow-hidden rounded-lg border bg-[#0f0d0b]/80" style={{ borderColor: LINE }}>
         <div className="flex items-center gap-3 border-b px-4 py-3" style={{ borderColor: LINE }}>
           <div className="flex h-9 w-9 items-center justify-center rounded-lg" style={{ background: 'rgba(212,184,118,0.12)', color: GOLD }}>
@@ -957,46 +1021,95 @@ export default function MorenAIPage() {
           )}
         </div>
       </aside>
+      )}
 
-      <section className="flex min-w-0 flex-1 flex-col overflow-hidden rounded-lg border bg-[#0f0d0b]/80" style={{ borderColor: LINE }}>
-        <div className="flex items-center gap-3 border-b px-5 py-3" style={{ borderColor: LINE }}>
+      <section className="flex min-w-0 flex-1 flex-col gap-3 overflow-hidden">
+        {/* ── Canlı MOREN AI — kompakt şerit (konuşma öncelikli) ── */}
+        <div
+          className="relative flex shrink-0 items-center gap-3 overflow-hidden rounded-xl border px-4 py-2.5"
+          style={{
+            borderColor: voiceActive ? 'rgba(240,154,168,0.5)' : LINE_GOLD,
+            background: 'radial-gradient(90% 160% at 10% 0%, rgba(240,154,168,0.12), transparent 60%), #14110e',
+            boxShadow: voiceActive ? '0 0 0 1px rgba(240,154,168,0.16)' : 'none',
+          }}
+        >
+          <div className="relative grid h-11 w-11 shrink-0 place-items-center">
+            {voiceActive && (
+              <>
+                <span className="moren-voice-ring absolute inset-0 rounded-full" style={{ border: '2px solid rgba(240,154,168,0.5)' }} />
+                <span className="moren-voice-ring absolute inset-0 rounded-full" style={{ border: '2px solid rgba(240,154,168,0.5)', animationDelay: '0.8s' }} />
+                <span className="moren-voice-ring absolute inset-0 rounded-full" style={{ border: '2px solid rgba(240,154,168,0.5)', animationDelay: '1.6s' }} />
+              </>
+            )}
+            <div
+              className={`grid h-10 w-10 place-items-center rounded-full ${voiceActive ? 'moren-voice-orb-live' : ''}`}
+              style={{ background: 'radial-gradient(circle at 35% 30%, #ffd9e0, #f09aa8 55%, #9f5260)', color: '#1a1012', boxShadow: '0 6px 16px rgba(240,154,168,0.4), inset 0 2px 5px rgba(255,255,255,0.4)' }}
+            >
+              {voiceStatus === 'connecting' ? <Loader2 size={18} className="animate-spin" /> : voiceStatus === 'speaking' ? <Sparkles size={18} /> : <Mic size={18} />}
+            </div>
+          </div>
           <div className="min-w-0 flex-1">
-            <p className="text-[11px] font-semibold uppercase tracking-[0.14em]" style={{ color: GOLD }}>
+            <div className="flex items-center gap-2">
+              <p className="text-[14px] font-bold" style={{ color: TEXT }}>Canlı MOREN AI</p>
+              <span
+                className="inline-flex items-center gap-1.5 rounded-full px-2 py-0.5 text-[10.5px] font-bold"
+                style={{ background: voiceActive ? 'rgba(34,197,94,0.14)' : 'rgba(212,184,118,0.14)', color: voiceActive ? '#86efac' : GOLD }}
+              >
+                <span className="h-1.5 w-1.5 rounded-full" style={{ background: 'currentColor' }} />
+                {voiceLabel}
+              </span>
+            </div>
+            {voiceActive ? (
+              <div className="mt-1 flex items-end gap-[2px]" style={{ height: 15 }}>
+                {Array.from({ length: 18 }).map((_, index) => (
+                  <span
+                    key={index}
+                    className="moren-voice-bar w-[2.5px] rounded-full"
+                    style={{ background: 'linear-gradient(180deg,#f09aa8,#d4b876)', animationDelay: `${index * 0.05}s` }}
+                  />
+                ))}
+              </div>
+            ) : (
+              <p className="mt-0.5 truncate text-[11px]" style={{ color: MUTED }}>
+                Gerçek zamanlı sesli asistan — bas, konuş, gerçek biriyle konuşur gibi.
+              </p>
+            )}
+          </div>
+          <div className="flex shrink-0 items-center gap-3">
+            <div className="hidden text-right sm:block">
+              <p className="text-[9.5px]" style={{ color: 'rgba(250,250,249,0.40)' }}>maliyet · token</p>
+              <p className="text-[12px] font-bold tabular-nums" style={{ color: TEXT }}>${realtimeSessionCost.toFixed(4)} · {realtimeSessionTokens}</p>
+            </div>
+            <button
+              type="button"
+              onClick={handleVoiceModeToggle}
+              className="flex h-10 items-center justify-center gap-2 rounded-xl px-4 text-[13px] font-bold transition"
+              style={{
+                background: voiceActive ? 'rgba(248,113,113,0.16)' : 'linear-gradient(135deg,#f09aa8,#9f5260)',
+                color: voiceActive ? '#fca5a5' : '#160d10',
+                border: voiceActive ? '1px solid rgba(248,113,113,0.34)' : 'none',
+              }}
+            >
+              {voiceStatus === 'connecting' ? <Loader2 size={16} className="animate-spin" /> : voiceActive ? <MicOff size={16} /> : <Mic size={16} />}
+              {voiceActive ? 'Sesi Kapat' : 'Canlı Konuş'}
+            </button>
+          </div>
+        </div>
+
+        {/* ── Konuşma kartı ── */}
+        <div className="flex min-h-0 flex-1 flex-col overflow-hidden rounded-xl border bg-[#0f0d0b]/80" style={{ borderColor: LINE }}>
+        <div className="flex items-center gap-3 border-b px-4 py-2.5" style={{ borderColor: LINE }}>
+          <div className="min-w-0 flex-1">
+            <p className="text-[10px] font-bold uppercase tracking-[0.14em]" style={{ color: GOLD }}>
               {selectedTaxpayer ? taxpayerName(selectedTaxpayer) : 'Genel çalışma'}
             </p>
-            <h2 className="truncate text-[18px] font-semibold" style={{ color: TEXT }}>
+            <h2 className="truncate text-[14px] font-semibold" style={{ color: TEXT }}>
               {activeConv?.title || 'Yeni konuşma'}
             </h2>
           </div>
-          {(messages.length > 0 || realtimeSessionCost > 0) && (
-            <div className="hidden rounded-lg border px-3 py-2 text-right sm:block" style={{ borderColor: LINE, color: MUTED }}>
-              <p className="text-[10px] uppercase tracking-[0.12em]">Oturum</p>
-              <p className="text-[12px] tabular-nums" style={{ color: TEXT }}>{messages.length} mesaj · ${visibleSessionCost.toFixed(4)}</p>
-              {realtimeSessionCost > 0 && (
-                <p className="mt-0.5 text-[10px] tabular-nums" style={{ color: GOLD }}>
-                  Canlı ses · ${realtimeSessionCost.toFixed(4)} · {realtimeSessionTokens} token
-                </p>
-              )}
-            </div>
+          {messages.length > 0 && (
+            <p className="hidden text-[11px] tabular-nums sm:block" style={{ color: MUTED }}>{messages.length} mesaj</p>
           )}
-          <button
-            type="button"
-            onClick={handleVoiceModeToggle}
-            className="hidden h-9 items-center gap-2 rounded-lg border px-3 text-[12px] font-semibold transition hover:bg-white/[0.06] md:flex"
-            style={{ borderColor: voiceMode ? LINE_GOLD : LINE, color: voiceMode ? GOLD : MUTED }}
-          >
-            {voiceStatus === 'connecting' || recorder.recording ? <Loader2 size={14} className="animate-spin" /> : <Mic size={14} />}
-            {voiceLabel}
-          </button>
-          <button
-            type="button"
-            onClick={() => setTtsEnabled((value) => !value)}
-            className="flex h-9 w-9 items-center justify-center rounded-lg border transition hover:bg-white/[0.06]"
-            style={{ borderColor: ttsEnabled ? LINE_GOLD : LINE, color: ttsEnabled ? GOLD : MUTED }}
-            title={ttsEnabled ? 'Sesli okuma açık' : 'Sesli okuma kapalı'}
-          >
-            {ttsEnabled ? <Volume2 size={15} /> : <VolumeX size={15} />}
-          </button>
         </div>
 
         <div ref={scrollRef} className="flex-1 overflow-y-auto px-5 py-5">
@@ -1072,8 +1185,10 @@ export default function MorenAIPage() {
             </button>
           </div>
         </div>
+        </div>
       </section>
 
+      {!rightCollapsed && (
       <OfficeBrainPanel
         data={officeBrain}
         loading={brainLoading}
@@ -1085,6 +1200,8 @@ export default function MorenAIPage() {
         refetch={() => refetchBrain()}
         askQuick={askQuick}
       />
+      )}
+      </div>
 
       <audio ref={audioRef} />
     </div>

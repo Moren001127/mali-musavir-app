@@ -232,6 +232,9 @@ export default function GlobalMorenVoice() {
   } | null>(null);
 
   const isPortalPath = !!pathname && (pathname.startsWith('/panel') || pathname.startsWith('/fatura-merkezi'));
+  // MOREN AI sayfasının kendi tam ses katmanı var; orada bu global yüzen paneli
+  // göstermeyiz (iki ses paneli üst üste binmesin). Ofis sohbeti etkilenmez.
+  const isMorenAiPage = !!pathname && pathname.startsWith('/panel/moren-ai');
   const currentRoute = useMemo(() => getCurrentRoute(pathname), [pathname]);
 
   useEffect(() => {
@@ -716,7 +719,7 @@ export default function GlobalMorenVoice() {
   if (!isPortalPath) return null;
 
   const useTopbarActions = desktopTopbar && !!topbarActionsEl;
-  const voiceTrigger = !expanded ? (
+  const voiceTrigger = (!expanded && !isMorenAiPage) ? (
     <button
       type="button"
       onClick={() => {
@@ -777,7 +780,7 @@ export default function GlobalMorenVoice() {
       {topbarActions}
       {!useTopbarActions ? <OfficeChatWidget enabled={isPortalPath} /> : null}
       <audio ref={audioRef} />
-      {!expanded ? (
+      {isMorenAiPage ? null : !expanded ? (
         !useTopbarActions ? voiceTrigger : null
       ) : (
         <div
