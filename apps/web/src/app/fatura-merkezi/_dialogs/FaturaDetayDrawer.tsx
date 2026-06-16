@@ -402,6 +402,36 @@ function FaturaForm({ doc, taxpayerId, defterTuru, onApprove, onDelete, approvin
     [accountsQ.data],
   );
 
+  /* İçerik tabanlı hesap kodu / gider türü önerisi */
+  const icerikQ = useQuery({
+    queryKey: ['fatura-merkezi', 'icerik-eslestir', doc.id],
+    queryFn: () =>
+      api
+        .post('/fatura-muhasebelestirme/icerik-eslestir', {
+          taxpayerId,
+          senderVkn: doc.sellerVkn || doc.senderVkn || null,
+          kalemler: doc.ocrData?.kalemler || doc.kalemler || [],
+          defterTuru: defterTuru || 'BILANCO',
+        })
+        .then((r) => r.data as {
+          hesapKodu: string | null;
+          hesapAdi: string | null;
+          guven: number;
+          seviye: 'YUKSEK' | 'ORTA' | 'DUSUK';
+          celisiki: boolean;
+          isletmeGiderTuru: string | null;
+          amortismanaTabi: boolean;
+          neden: string;
+        })
+        .catch(() => null),
+    enabled: !!taxpayerId && !isSale,
+    staleTime: 300_000,
+  });
+  const oneri = icerikQ.data;
+  const oneriRenkBg  = oneri?.seviye === 'YUKSEK' ? 'rgba(74,222,128,0.1)' : oneri?.seviye === 'ORTA' ? 'rgba(251,191,36,0.1)' : 'rgba(255,255,255,0.05)';
+  const oneriRenkBdr = oneri?.seviye === 'YUKSEK' ? 'rgba(74,222,128,0.3)' : oneri?.seviye === 'ORTA' ? 'rgba(251,191,36,0.3)' : 'rgba(255,255,255,0.1)';
+  const oneriRenkTxt = oneri?.seviye === 'YUKSEK' ? '#4ade80' : oneri?.seviye === 'ORTA' ? '#fbbf24' : 'rgba(250,250,249,0.5)';
+
   /* Editable line state */
   const [lines, setLines] = useState<EditableLine[]>(() =>
     (Array.isArray(doc.lines) ? doc.lines : []).map((l: any) => ({
@@ -541,6 +571,28 @@ function FaturaForm({ doc, taxpayerId, defterTuru, onApprove, onDelete, approvin
           </div>
         </div>
       </div>
+
+      {/* İçerik tabanlı hesap / gider türü önerisi (yalnız alış) */}
+      {!isSale && oneri && (oneri.hesapKodu || oneri.isletmeGiderTuru) && (
+        <div style={{ padding: '8px 12px', borderRadius: 9, background: oneriRenkBg, border: `1px solid ${oneriRenkBdr}`, display: 'flex', alignItems: 'center', gap: 10, flexWrap: 'wrap' }}>
+          <div style={{ fontSize: 10.5, fontWeight: 700, color: oneriRenkTxt, textTransform: 'uppercase', letterSpacing: 0.5 }}>
+            AI Öneri · %{oneri.guven}
+          </div>
+          {oneri.hesapKodu && (
+            <div style={{ fontSize: 12, color: '#fafaf9', fontWeight: 600 }}>
+              {oneri.hesapKodu} — {oneri.hesapAdi}
+            </div>
+          )}
+          {oneri.isletmeGiderTuru && (
+            <div style={{ fontSize: 12, color: '#fafaf9' }}>
+              Gider türü: <strong>{oneri.isletmeGiderTuru}</strong>
+              {oneri.amortismanaTabi && <span style={{ marginLeft: 6, color: '#fbbf24', fontSize: 11 }}>⚠ Amortisman</span>}
+            </div>
+          )}
+          {oneri.celisiki && <div style={{ fontSize: 11, color: '#fb923c' }}>⚡ Geçmişle çelişki</div>}
+          <div style={{ fontSize: 11, color: 'rgba(250,250,249,0.4)', flex: 1, textAlign: 'right' }}>{oneri.neden}</div>
+        </div>
+      )}
 
       {/* Validation hata paneli */}
       {(doc.validationStatus === 'INVALID' || doc.validationStatus === 'INCOMPLETE') && validationIssues.length > 0 && (

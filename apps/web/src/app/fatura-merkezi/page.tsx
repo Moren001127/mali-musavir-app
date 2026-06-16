@@ -5,7 +5,7 @@ import { useQuery } from '@tanstack/react-query';
 import { toast } from 'sonner';
 import {
   FileText, ChevronDown, Users, CalendarDays, Search,
-  Cloud, Upload, RefreshCw, BarChart3, GitMerge,
+  Cloud, Upload, RefreshCw, BarChart3, GitMerge, Inbox,
 } from 'lucide-react';
 import { api } from '@/lib/api';
 import { taxpayerName, taxpayerTaxNumber, taxpayerSearchMatch } from './_lib/taxpayer';
@@ -13,6 +13,7 @@ import { buildKdvClientReportHtml, fetchKdvClientReport } from './_lib/kdv-clien
 import GenelBakisPanel from './_panels/GenelBakisPanel';
 import EslestirmePanel from './_panels/EslestirmePanel';
 import MukelleflerPanel from './_panels/MukelleflerPanel';
+import EFaturaInboxPanel from './_panels/EFaturaInboxPanel';
 import UploadDialog from './_dialogs/UploadDialog';
 import EntegratorDialog from './_dialogs/EntegratorDialog';
 
@@ -32,7 +33,7 @@ const PIPELINE_STEPS: Array<{ id: number; label: string; desc: string }> = [
   { id: 6, label: 'Arşiv',         desc: 'Arşivlenen' },
 ];
 
-type TabId = 'genel' | 'eslestirme' | 'mukellefler';
+type TabId = 'genel' | 'eslestirme' | 'efatura-inbox' | 'mukellefler';
 
 export default function FaturaMerkeziPage() {
   const [tab, setTab] = useState<TabId>('genel');
@@ -101,9 +102,10 @@ export default function FaturaMerkeziPage() {
   };
 
   const TABS: Array<{ id: TabId; label: string; icon: React.ReactNode }> = [
-    { id: 'genel',       label: 'Genel Bakış',       icon: <BarChart3 size={15} /> },
-    { id: 'eslestirme',  label: 'Eşleştirme & Onay', icon: <GitMerge size={15} /> },
-    { id: 'mukellefler', label: 'Mükellefler',        icon: <Users size={15} /> },
+    { id: 'genel',          label: 'Genel Bakış',       icon: <BarChart3 size={15} /> },
+    { id: 'eslestirme',     label: 'Eşleştirme & Onay', icon: <GitMerge size={15} /> },
+    { id: 'efatura-inbox',  label: 'E-Fatura Kutusu',   icon: <Inbox size={15} /> },
+    { id: 'mukellefler',    label: 'Mükellefler',        icon: <Users size={15} /> },
   ];
 
   const isIsletme = /ISLETME/i.test(selectedTaxpayer?.defterTuru || '');
@@ -263,6 +265,9 @@ export default function FaturaMerkeziPage() {
         )}
         {tab === 'eslestirme' && (
           <EslestirmePanel taxpayerId={taxpayerId} period={period} taxpayers={taxpayers} />
+        )}
+        {tab === 'efatura-inbox' && (
+          <EFaturaInboxPanel taxpayerId={taxpayerId} period={period} />
         )}
         {tab === 'mukellefler' && (
           <MukelleflerPanel taxpayers={taxpayers} loading={taxpayersQ.isLoading} period={period} onRefresh={refresh} onSelectTaxpayer={(id) => { setTaxpayerId(id); setTab('eslestirme'); }} />

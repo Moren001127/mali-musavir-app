@@ -2846,6 +2846,12 @@ export class FaturaMuhasebelestirmeService {
       throw new Error('taxpayerId zorunlu');
     }
 
+    const taxpayerRecord: any = await (this.prisma as any).taxpayer.findFirst({
+      where: { id: body.taxpayerId, tenantId },
+      select: { id: true, defterTuru: true, mihsapDefterTuru: true },
+    });
+    const defterTuru: string = taxpayerRecord?.defterTuru || taxpayerRecord?.mihsapDefterTuru || 'BILANCO';
+
     // Hangi belgeler bu batch'e dahil — ya verilen ID listesi ya QUEUED filtresi
     // v2.2: validation kolonları olmayabilir — filtreleme application-side (validation OK olmayanları sonradan ele)
     const where: any = {
@@ -2910,6 +2916,7 @@ export class FaturaMuhasebelestirmeService {
         payload: {
           mode: 'BATCH_EXCEL',
           taxpayerId: body.taxpayerId,
+          defterTuru,
           period: dominantPeriod,
           totalCount: docs.length,
           invoices: docs.map((d: any) => ({
