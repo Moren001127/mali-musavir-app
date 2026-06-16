@@ -8,11 +8,12 @@ import { FaturaMuhasebelestirmeController } from './fatura-muhasebelestirme.cont
 import { FaturaMuhasebelestirmeService } from './fatura-muhasebelestirme.service';
 import { FaturaMuhasebelestirmeCron } from './fatura-muhasebelestirme.cron';
 import { EFaturaSyncService } from '../efatura-adapters/efatura-sync.service';
+import { IcerikEslestirmeService } from './icerik-eslestirme.service';
 
 @Module({
   imports: [PrismaModule, StorageModule, forwardRef(() => KdvControlModule), VendorMemoryModule],
   controllers: [FaturaMuhasebelestirmeController],
-  providers: [FaturaMuhasebelestirmeService, EarsivRenderService, FaturaMuhasebelestirmeCron, EFaturaSyncService],
-  exports: [FaturaMuhasebelestirmeService, EFaturaSyncService],
+  providers: [FaturaMuhasebelestirmeService, EarsivRenderService, FaturaMuhasebelestirmeCron, EFaturaSyncService, IcerikEslestirmeService],
+  exports: [FaturaMuhasebelestirmeService, EFaturaSyncService, IcerikEslestirmeService],
 })
 export class FaturaMuhasebelestirmeModule {}

@@ -16,6 +16,8 @@ import { AuthGuard } from '@nestjs/passport';
 import { FilesInterceptor } from '@nestjs/platform-express';
 import { memoryStorage } from 'multer';
 import { FaturaMuhasebelestirmeService } from './fatura-muhasebelestirme.service';
+import { IcerikEslestirmeService } from './icerik-eslestirme.service';
+import { EFaturaSyncService } from '../efatura-adapters/efatura-sync.service';
 
 const documentUploadInterceptor = () =>
   FilesInterceptor('files', 100, {
@@ -29,7 +31,11 @@ const documentUploadInterceptor = () =>
 @Controller('fatura-muhasebelestirme')
 @UseGuards(AuthGuard('jwt'))
 export class FaturaMuhasebelestirmeController {
-  constructor(private readonly service: FaturaMuhasebelestirmeService) {}
+  constructor(
+    private readonly service: FaturaMuhasebelestirmeService,
+    private readonly icerikEslestirme: IcerikEslestirmeService,
+    private readonly eFaturaSyncService: EFaturaSyncService,
+  ) {}
 
   @Get('documents')
   list(
@@ -279,5 +285,32 @@ export class FaturaMuhasebelestirmeController {
   @Delete('documents/:id')
   remove(@Req() req: any, @Param('id') id: string) {
     return this.service.remove(req.user.tenantId, id);
+  }
+
+  /** İçerik tabanlı hesap kodu / gider türü önerisi */
+  @Post('icerik-eslestir')
+  icerikEslestir(@Req() req: any, @Body() body: any) {
+    return this.icerikEslestirme.eslestir({
+      tenantId: req.user.tenantId,
+      taxpayerId: body.taxpayerId,
+      senderVkn: body.senderVkn || null,
+      kalemler: body.kalemler || [],
+      defterTuru: body.defterTuru || 'BILANCO',
+    });
+  }
+
+  /** EFatura inbox listesi */
+  @Get('efatura-inbox')
+  efaturaInbox(@Req() req: any, @Query() q: any) {
+    return (this.eFaturaSyncService as any).listInbox
+      ? (this.eFaturaSyncService as any).listInbox(req.user.tenantId, q)
+      : [];
+  }
+
+  /** Manuel tetikleme: entegratörden hemen çek */
+  @Post('efatura-sync')
+  async efaturaSync(@Req() req: any, @Body() body: any) {
+    const direction = body?.direction === 'OUT' ? 'OUT' : 'IN';
+    return this.eFaturaSyncService.syncAll(req.user.tenantId, { direction });
   }
 }

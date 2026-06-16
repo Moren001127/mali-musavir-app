@@ -2,6 +2,7 @@ import { Injectable, Logger } from '@nestjs/common';
 import { Cron } from '@nestjs/schedule';
 import { PrismaService } from '../prisma/prisma.service';
 import { FaturaMuhasebelestirmeService } from './fatura-muhasebelestirme.service';
+import { EFaturaSyncService } from '../efatura-adapters/efatura-sync.service';
 
 /**
  * Fatura Merkezi — gece scheduler.
@@ -21,6 +22,7 @@ export class FaturaMuhasebelestirmeCron {
   constructor(
     private readonly prisma: PrismaService,
     private readonly service: FaturaMuhasebelestirmeService,
+    private readonly eFaturaSyncService: EFaturaSyncService,
   ) {}
 
   @Cron('0 15 3 * * *', { timeZone: 'Europe/Istanbul' })
@@ -43,12 +45,19 @@ export class FaturaMuhasebelestirmeCron {
     const now = new Date();
     const donem = `${now.getFullYear()}-${String(now.getMonth() + 1).padStart(2, '0')}`;
 
-    // Tüm tenant'ları tara — multi-tenant olsa da tek ofis için tek tenant
     const tenants = await (this.prisma as any).tenant.findMany({
       select: { id: true },
     });
 
     for (const tenant of tenants) {
+      // Yeni adapter tabanlı inbox sync (efatura_inbox tablosuna yazar)
+      try {
+        await this.eFaturaSyncService.syncAll(tenant.id, { direction: 'IN' });
+        await this.eFaturaSyncService.syncAll(tenant.id, { direction: 'OUT' });
+      } catch (err: any) {
+        this.logger.error(`[Tenant ${tenant.id}] EFatura adapter sync hata: ${err?.message}`);
+      }
+
       await this.runForTenant(tenant.id, donem);
     }
   }

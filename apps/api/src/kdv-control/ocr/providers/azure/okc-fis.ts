@@ -129,6 +129,7 @@ export function extractOkcFisItemRateBreakdown(
   const lines = normalizeAzureText(text).split(/\r?\n/).map((l) => l.trim()).filter(Boolean);
   const grossByRate = new Map<number, number>();
   let pendingRate: number | null = null;
+  let afterToplam = false; // TOPLAM görüldükten sonra KDV özet tablosu gelir — ürün satırı sayma
   const rateRe = /(?:%|\/)\s*0?(1|8|10|18|20)(?:[,.]00)?\b/i;
   // OCR sometimes inserts spaces inside amounts: "* 1. 000, 00".
   // Keep the capture broad enough for that form, then let parseAmount remove spaces.
@@ -170,9 +171,11 @@ export function extractOkcFisItemRateBreakdown(
 
   for (const line of lines) {
     if (skipRe.test(line)) {
+      if (/^TOPLAM$/i.test(line.trim())) afterToplam = true;
       pendingRate = null;
       continue;
     }
+    if (afterToplam) continue;
     const detectedRate = detectRate(line);
     if (detectedRate) {
       const oran = detectedRate.oran;
