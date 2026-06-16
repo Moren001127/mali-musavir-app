@@ -259,7 +259,7 @@ export default function FaturaMerkeziPage() {
       </div>
 
       {/* Icerik */}
-      <div style={{ flex: 1, minHeight: 0 }}>
+      <div style={{ flex: 1, minHeight: 0, overflowY: 'auto' }}>
         {tab === 'genel' && (
           <GenelBakisPanel taxpayerId={taxpayerId} period={period} taxpayers={taxpayers} dashData={dash} dashLoading={dashQ.isLoading} />
         )}
