@@ -94,6 +94,7 @@ const zRaporu = require(path.join(ROOT, 'apps/api/src/kdv-control/ocr/providers/
 const azureHelpers = require(path.join(ROOT, 'apps/api/src/kdv-control/ocr/providers/azure/helpers.ts'));
 const sectoral = require(path.join(ROOT, 'apps/api/src/kdv-control/ocr/providers/azure/sectoral.ts'));
 const crossCheck = require(path.join(ROOT, 'apps/api/src/kdv-control/ocr/validation/cross-check.ts'));
+const postProcess = require(path.join(ROOT, 'apps/api/src/kdv-control/ocr/validation/post-process.ts'));
 
 const log = [];
 const ok = (name) => log.push(`  ✓ ${name}`);
@@ -919,6 +920,33 @@ crossCheck.crossCheckWithAzure(okcCrossResult, okcCrossText, '0276.image', '0276
 eq(okcCrossResult.kdvTutari, '2,91', 'cross-check okc receipt keeps Azure TOPKDV total');
 approx(okcCrossResult.kdvBreakdown.reduce((sum, b) => sum + b.tutar, 0), 2.91, 0.01, 'cross-check okc receipt breakdown total');
 ok('validation/cross-check.ts OKC_FIS guard (2 assertion)');
+
+// ─── validation/post-process.ts belge no format (e-belge regex) ───
+const ppDeps = {
+  parseAmount: ublDeps.parseAmount,
+  formatAmount: ublDeps.formatAmount,
+  formatIsoToTr: () => null,
+  logger: { log: () => {}, warn: () => {} },
+};
+// GERÇEK örnek (EDELER alış): "12A2026000000104" = rakamla başlayan e-Arşiv no.
+// Doğru okunup 0.95 verilmiş; eski regex bu biçimi tanımayıp 0.30 düşürüp %65
+// yapıyordu. Artık format geçerli → güven korunur.
+const eArsivOk = {
+  belgeTipi: 'EARSIV', belgeNo: '12A2026000000104', date: '2026-05-21',
+  kdvTutari: '36,14', kdvBreakdown: [{ oran: 1, tutar: 36.14, matrah: null }],
+  fieldConfidence: { belgeNo: 0.95, date: 0.9, kdvTutari: 0.92 },
+};
+postProcess.validateOcrResult(eArsivOk, '12A2026000000104.pdf', ppDeps);
+assert(eArsivOk.fieldConfidence.belgeNo >= 0.9, 'e-belge "12A..." formatı belge no güvenini düşürmemeli');
+// Negatif kontrol: gerçekten bozuk EFATURA no'su hâlâ cezalandırılmalı
+const eFaturaBad = {
+  belgeTipi: 'EFATURA', belgeNo: 'XYZ', date: '2026-05-21',
+  kdvTutari: '10,00', kdvBreakdown: [],
+  fieldConfidence: { belgeNo: 0.95, date: 0.9, kdvTutari: 0.9 },
+};
+postProcess.validateOcrResult(eFaturaBad, 'bozuk.pdf', ppDeps);
+assert(eFaturaBad.fieldConfidence.belgeNo < 0.9, 'gerçekten bozuk e-belge no hâlâ cezalanmalı');
+ok('validation/post-process.ts belge no format (2 assertion)');
 
 // ═══════════════════════════════════════════════════════════
 // SONUC

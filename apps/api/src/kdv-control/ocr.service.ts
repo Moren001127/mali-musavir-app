@@ -171,7 +171,9 @@ const DEFAULT_OCR_MODEL = 'claude-haiku-4-5-20251001';
 /** Alan-bazlı güven eşiği; altındaki alanlar kullanıcı teyidine gider */
 export const FIELD_CONFIDENCE_THRESHOLD = 0.7;
 
-const E_BELGE_NO_REGEX = /^(?:[A-Z]{2,4}\d{12,14}|[A-Z]\d{2}20\d{2}\d{6,12}|\d{13,20})$/;
+// E-belge no biçimleri. GİB 3 karakterlik öneki HARF veya RAKAM olabilir
+// (ör. "12A2026..." rakamla başlar) — [A-Z0-9]{3}20\d{2}\d{6,12} bunu kapsar.
+const E_BELGE_NO_REGEX = /^(?:[A-Z]{2,4}\d{12,14}|[A-Z]\d{2}20\d{2}\d{6,12}|[A-Z0-9]{3}20\d{2}\d{6,12}|\d{13,20})$/;
 
 /** Log için confidence'ı kısa yazı — %84 veya "—" */
 const fmtConf = (v: number | null | undefined): string =>

@@ -42,7 +42,8 @@ interface BreakdownItem {
   matrah?: number | null;
 }
 
-const E_BELGE_NO_REGEX = /^(?:[A-Z]{2,4}\d{12,14}|[A-Z]\d{2}20\d{2}\d{6,12}|\d{13,20})$/;
+// e-Belge no biçimleri; 3 karakterlik GİB öneki rakamla da başlayabilir ("12A2026...").
+const E_BELGE_NO_REGEX = /^(?:[A-Z]{2,4}\d{12,14}|[A-Z]\d{2}20\d{2}\d{6,12}|[A-Z0-9]{3}20\d{2}\d{6,12}|\d{13,20})$/;
 
 /**
  * Image'ın breakdown'unu al — onaylanmış varsa onu, yoksa OCR'dakini.

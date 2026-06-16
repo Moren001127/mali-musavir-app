@@ -19,8 +19,10 @@
 
 import type { OcrResult } from '../types';
 
-/** E-belge no genel format: 2-4 harf + 12-14 rakam veya alfanumerik 13-20 hane. */
-const E_BELGE_NO_REGEX = /^(?:[A-Z]{2,4}\d{12,14}|[A-Z]\d{2}20\d{2}\d{6,12}|\d{13,20})$/;
+// E-belge no biçimleri. GİB 3 karakterlik öneki HARF veya RAKAM olabilir:
+// "EFA2026...", "GIB2026...", AMA "12A2026..." gibi RAKAMLA başlayan da geçerlidir.
+// [A-Z0-9]{3}20\d{2}\d{6,12} bu genel biçimi kapsar; eski alternatifler korunur.
+const E_BELGE_NO_REGEX = /^(?:[A-Z]{2,4}\d{12,14}|[A-Z]\d{2}20\d{2}\d{6,12}|[A-Z0-9]{3}20\d{2}\d{6,12}|\d{13,20})$/;
 
 export interface PostProcessDeps {
   parseAmount: (s: string) => number;
