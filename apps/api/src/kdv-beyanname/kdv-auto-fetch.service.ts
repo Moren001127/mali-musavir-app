@@ -48,7 +48,12 @@ export class KdvAutoFetchService implements OnModuleInit, OnModuleDestroy {
   private async handle(payload: Record<string, any>) {
     const tenantId = payload?.tenantId;
     const taxpayerId = payload?.taxpayerId;
-    const donem = payload?.donem;
+    // KDV mizan BEYANNAME dönemine aittir (örn. Mayıs beyannamesi = 2026-05),
+    // işlem ayına (2026-06) değil. payload.donem işlem ayını taşır; bu yüzden
+    // beyannamePeriodLabel kullan. Böylece kullanıcının fetch_kdv_from_luca
+    // otomasyonuyla AYNI dönem çekilir → tekrar-önleme tek job'a indirir
+    // (yoksa işlem ayı + beyanname dönemi iki ayrı job üretiyordu).
+    const donem = payload?.beyannamePeriodLabel || payload?.donem;
     if (!tenantId || !taxpayerId || !donem) return;
     try {
       // Defter türüne göre: bilanço → Luca mizan, işletme → gelir-gider listesi.
