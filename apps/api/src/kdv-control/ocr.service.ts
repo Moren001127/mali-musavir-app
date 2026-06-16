@@ -74,6 +74,24 @@ export interface KdvBreakdownItem {
   tutar: number;
 }
 
+
+/** Fatura kalemi — içerik tabanlı eşleştirme için */
+export interface OcrKalem {
+  sira: number;
+  tanim: string;
+  miktar?: number | null;
+  birim?: string | null;
+  birimFiyat?: number | null;
+  tutar: number;
+  kdvOrani?: number | null;
+  kdvTutari?: number | null;
+  /**
+   * AI tarafından çıkarılan kalem kategorisi.
+   * Değerler: 'ticari_mal' | 'tasit' | 'demirbaş' | 'hizmet' | 'akaryakit' | 'kira' | 'diger'
+   */
+  icerikKategori?: string | null;
+}
+
 export interface OcrResult {
   rawText: string;
   belgeNo: string | null;
@@ -114,6 +132,12 @@ export interface OcrResult {
   validationScore?: number | null;
   /** Validation hataları — confidence düşürme/UI uyarı için */
   validationIssues?: string[];
+  /**
+   * Belge kalemleri — içerik tabanlı hesap kodu eşleştirmesi için zorunlu.
+   * UBL-TR XML parse'dan dolu gelir. Görüntü OCR'dan tahmin edilir (Claude Vision).
+   * null = okuma başarısız / belge kalemi yok (Z raporu, fiş vb.)
+   */
+  kalemler?: OcrKalem[] | null;
   engine: string;
   /** Claude API response'undan gelen token kullanımı — maliyet hesabı için. */
   usage?: {

@@ -176,3 +176,109 @@ export async function buildLucaImportExcel(payload: BatchPayload): Promise<Buffe
   const buffer = await wb.xlsx.writeBuffer();
   return Buffer.from(buffer);
 }
+
+// ─────────────────────────────────────────────────────────────────────
+// İşletme Defteri (VUK 194 — 2. Sınıf Tüccarlar) Excel Formatı
+// Luca'nın "Gelir/Gider Defteri Girişi" modülü için
+// ─────────────────────────────────────────────────────────────────────
+
+const ISLETME_HEADERS = [
+  'Tarih',
+  'Belge No',
+  'Açıklama',
+  'Gider/Gelir Türü',
+  'Yön',         // GİDER | GELİR
+  'Matrah',      // Bilgi — deftere yazılmaz (demirbaş/taşıt için sadece KDV deftere girer)
+  'KDV Oranı',
+  'KDV Tutarı',  // Gerçek deftere giren tutar (demirbaş/taşıt için YALNIZ bu)
+  'Toplam',
+  'Para Birimi',
+  'Not',
+];
+
+export interface IsletmeInvoicePayload {
+  documentId: string;
+  belgeNo?: string | null;
+  faturaTarihi?: string | null;
+  vendorName?: string | null;
+  customerName?: string | null;
+  isletmeYon: 'GIDER' | 'GELIR';
+  isletmeGiderTuru: string;
+  matrah?: string | number | null;     // bilgi — deftere yazılmaz eğer amortismana tabi
+  kdvOrani?: string | number | null;
+  kdvTutari?: string | number | null;
+  isAmortismanaTabiTur?: boolean;      // true ise matrah deftere yazılmaz, yalnız KDV
+  aciklama?: string | null;
+  currency?: string | null;
+}
+
+export interface IsletmeBatchPayload {
+  mode: 'ISLETME_EXCEL';
+  taxpayerId: string;
+  period: string;
+  totalCount: number;
+  invoices: IsletmeInvoicePayload[];
+  fisAciklama?: string;
+}
+
+/**
+ * İşletme hesabı esası için Luca Gelir/Gider Defteri Excel'i üretir.
+ *
+ * VUK 313/315 kuralı: Demirbaş ve taşıt bedeli gider DEĞİL.
+ * isAmortismanaTabiTur=true ise Matrah sütununa "(bilgi)" notu düşülür,
+ * KDV Tutarı deftere giren gerçek tutar olur.
+ */
+export async function buildLucaIsletmeExcel(payload: IsletmeBatchPayload): Promise<Buffer> {
+  const wb = new ExcelJS.Workbook();
+  const ws = wb.addWorksheet('Gelir-Gider Defteri');
+
+  ws.addRow(ISLETME_HEADERS);
+  ws.getRow(1).font = { bold: true };
+
+  const [py, pm] = String(payload.period || '').split('-').map((n) => parseInt(n, 10));
+  const fisAciklama = payload.fisAciklama
+    || `${payload.period} dönemi işletme defteri (${payload.totalCount} belge)`;
+
+  for (const inv of payload.invoices) {
+    const tarih = parseDate(inv.faturaTarihi);
+    const tarihStr = tarih ? fmtTr(tarih) : (
+      Number.isFinite(py) && Number.isFinite(pm)
+        ? fmtTr(new Date(Date.UTC(py, pm, 0)))
+        : fmtTr(new Date())
+    );
+    const matrah = parseAmount(inv.matrah as string | null | undefined);
+    const kdv = parseAmount(inv.kdvTutari as string | null | undefined);
+    const toplam = matrah + kdv;
+    const aciklama = inv.vendorName || inv.customerName || fisAciklama;
+
+    // Amortismana tabi ise matrah deftere yazılmaz — nota düşülür
+    const matrahGoster = inv.isAmortismanaTabiTur
+      ? `(${matrah.toLocaleString('tr-TR', { minimumFractionDigits: 2 })} — deftere yazılmaz)`
+      : matrah;
+
+    ws.addRow([
+      tarihStr,
+      inv.belgeNo || '-',
+      inv.aciklama || aciklama,
+      inv.isletmeGiderTuru,
+      inv.isletmeYon,
+      matrahGoster,
+      inv.kdvOrani != null ? `%${inv.kdvOrani}` : '',
+      kdv > 0 ? kdv : '',
+      inv.isAmortismanaTabiTur ? kdv : toplam,  // amortismana tabi = yalnız KDV
+      inv.currency || 'TL',
+      inv.isAmortismanaTabiTur ? 'VUK 313/315: bedel deftere yazılmadı' : '',
+    ]);
+  }
+
+  ws.getColumn(6).numFmt = '#,##0.00';
+  ws.getColumn(8).numFmt = '#,##0.00';
+  ws.getColumn(9).numFmt = '#,##0.00';
+
+  const widths = [12, 22, 48, 28, 10, 18, 10, 16, 16, 12, 44];
+  widths.forEach((w, i) => { ws.getColumn(i + 1).width = w; });
+
+  const buffer = await wb.xlsx.writeBuffer();
+  return Buffer.from(buffer);
+}
+

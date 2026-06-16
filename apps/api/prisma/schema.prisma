@@ -2394,6 +2394,12 @@ model InvoiceAccountingLine {
   credit      Decimal  @default(0) @db.Decimal(14, 2)
   orderNo     Int      @default(0)
   createdAt   DateTime @default(now())
+
+  // v3.0: İşletme defteri desteği
+  isletmeYon       String?  // "GIDER" | "GELIR" — işletme hesabı için
+  isletmeGiderTuru String?  // IsletmeGiderTurleri.kod — gider/gelir türü
+  isletmeMatrah    Decimal? @db.Decimal(14, 2)  // bilgi amaçlı (deftere yazılmaz, VUK kuralı)
+
   updatedAt   DateTime @updatedAt
 
   document    InvoiceAccountingDocument @relation(fields: [documentId], references: [id], onDelete: Cascade)
@@ -3303,4 +3309,43 @@ model AutomationRun {
   @@index([automationId, startedAt])
   @@index([status, startedAt])
   @@map("automation_runs")
+}
+
+// ============================================================
+// EFATURA INBOX — Entegratörden çekilen ham faturalar
+// Her entegratör adaptörü faturayı buraya yazar.
+// @@unique([entegrator, uuid]) ile aynı fatura iki kez giremez.
+// ============================================================
+model EFaturaInbox {
+  id            String    @id @default(cuid())
+  tenantId      String
+  taxpayerId    String
+  entegrator    String    // "NILVERA" | "IZIBIZ" | "UYUMSOFT" | "TURKCELL" | "EDM" | "FORIBA" | "PARASUT" | "ELOGO" | "GIB_PORTAL"
+  uuid          String
+  ettn          String?
+  senderVkn     String?
+  senderTitle   String?
+  receiverVkn   String?
+  faturaNo      String?
+  faturaDate    DateTime?
+  matrah        Decimal?  @db.Decimal(14, 2)
+  kdv           Decimal?  @db.Decimal(14, 2)
+  toplam        Decimal?  @db.Decimal(14, 2)
+  paraBirimi    String    @default("TRY")
+  direction     String    @default("IN")   // IN | OUT
+  invoiceProfile String?  // TEMELFATURA | TICARIFATURA | IHRACAT vb.
+  ublXmlKey     String?   // S3 storage key — UBL-TR XML
+  ublXmlRaw     String?   @db.Text  // Küçük XML'leri doğrudan saklama seçeneği (<50KB)
+  rawJson       Json?     // Entegratörden gelen özet metadata
+  isTransferred Boolean   @default(false)  // accounting modülüne aktarıldı mı
+  documentId    String?   // InvoiceAccountingDocument.id ile ilişki (işlendikten sonra)
+  syncedAt      DateTime  @default(now())
+  markedAt      DateTime? // Entegratöre "aktarıldı" bayrağı atıldığı an
+  processedAt   DateTime? // Muhasebe modülüne aktarıldığı an
+
+  @@unique([entegrator, uuid])
+  @@index([tenantId, taxpayerId, faturaDate])
+  @@index([tenantId, isTransferred])
+  @@index([tenantId, entegrator, syncedAt])
+  @@map("efatura_inbox")
 }
