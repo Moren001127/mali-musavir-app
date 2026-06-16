@@ -3179,6 +3179,16 @@ ${JSON.stringify(payload, null, 2)}`;
           const autoYear = parseInt(yearStr);
           const autoMonth = parseInt(monthStr);
           if (autoYear && autoMonth) {
+            // Alış + satış AYRI oturum; aylık işaretleme + Luca panosu çekimi YALNIZ
+            // her iki taraf da kilitliyken yapılır (karşı taraf devam ederken erken değil).
+            const herIkiTarafKilitli = await this.kdvHerIkiTarafKilitliMi(
+              session.taxpayerId, session.periodLabel, session.type,
+            );
+            if (!herIkiTarafKilitli) {
+              this.logger.log(
+                `[KDV oto-kilit] taxpayer=${session.taxpayerId} ${session.periodLabel}: karşı taraf (alış/satış) henüz tamamlanmadı — aylık işaretleme + KDV panosu çekimi ertelendi.`,
+              );
+            } else {
             await this.prisma.taxpayerMonthlyStatus.upsert({
               where: { taxpayerId_year_month: { taxpayerId: session.taxpayerId, year: autoYear, month: autoMonth } },
               create: { taxpayerId: session.taxpayerId, tenantId, year: autoYear, month: autoMonth, kdvKontrolEdildi: true },
@@ -3213,6 +3223,7 @@ ${JSON.stringify(payload, null, 2)}`;
               } catch (err: any) {
                 this.logger.warn(`KDV auto-kilitleme event yayını başarısız: ${err.message}`);
               }
+            }
             }
           }
         }
@@ -5584,6 +5595,36 @@ ${JSON.stringify(payload, null, 2)}`;
   }
 
   /** Oturumu tamamlandı olarak işaretle */
+  /**
+   * KDV kontrolde alış (191/gider) ve satış (391/gelir) AYRI oturumlardır. Aylık
+   * takip işaretlemesi + KDV durum panosu Luca çekimi YALNIZ her iki taraf da
+   * kilitliyken yapılmalı; biri devam ederken erken işaretleme/çekim olmamalı.
+   *
+   * Verilen oturumun KARŞI tarafında (alış↔satış) içerik taşıyan (kayıt/görsel olan)
+   * ve henüz COMPLETED olmayan bir oturum VARSA false döner (henüz erken). Karşı
+   * tarafta hiç (içerikli) oturum yoksa — tek taraflı mükellef — true döner.
+   */
+  private async kdvHerIkiTarafKilitliMi(
+    taxpayerId: string,
+    periodLabel: string,
+    sessionType: string,
+  ): Promise<boolean> {
+    const ALIS = ['KDV_191', 'ISLETME_GIDER'];
+    const SATIS = ['KDV_391', 'ISLETME_GELIR'];
+    const otherTypes = ALIS.includes(String(sessionType)) ? SATIS : ALIS;
+    const bekleyen = await this.prisma.kdvControlSession.count({
+      where: {
+        taxpayerId,
+        periodLabel,
+        type: { in: otherTypes as any },
+        status: { not: 'COMPLETED' },
+        // Boş DRAFT oturumlar engellemesin — en az bir kayıt veya görsel içersin.
+        OR: [{ kdvRecords: { some: {} } }, { images: { some: {} } }],
+      },
+    });
+    return bekleyen === 0;
+  }
+
   async completeSession(sessionId: string, tenantId: string) {
     const session = await this.findSession(sessionId, tenantId);
     const results = await this.prisma.reconciliationResult.findMany({
@@ -5605,6 +5646,16 @@ ${JSON.stringify(payload, null, 2)}`;
       const year = parseInt(yearStr);
       const month = parseInt(monthStr);
       if (year && month) {
+        // Alış + satış AYRI oturum; aylık işaretleme + Luca panosu çekimi YALNIZ her
+        // iki taraf da kilitliyken yapılır. Karşı taraf devam ederken erken tetikleme yok.
+        const herIkiTarafKilitli = await this.kdvHerIkiTarafKilitliMi(
+          session.taxpayerId, session.periodLabel, session.type,
+        );
+        if (!herIkiTarafKilitli) {
+          this.logger.log(
+            `[KDV kilit] taxpayer=${session.taxpayerId} ${session.periodLabel}: karşı taraf (alış/satış) henüz tamamlanmadı — aylık işaretleme + KDV panosu çekimi diğer taraf kilitlenince yapılacak.`,
+          );
+        } else {
         await this.prisma.taxpayerMonthlyStatus.upsert({
           where: { taxpayerId_year_month: { taxpayerId: session.taxpayerId, year, month } },
           create: { taxpayerId: session.taxpayerId, tenantId, year, month, kdvKontrolEdildi: true },
@@ -5645,6 +5696,7 @@ ${JSON.stringify(payload, null, 2)}`;
           } catch (err: any) {
             this.logger.warn(`KDV kilitleme event yayını başarısız: ${err.message}`);
           }
+        }
         }
       }
     }
