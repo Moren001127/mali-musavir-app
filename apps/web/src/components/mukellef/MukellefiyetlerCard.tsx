@@ -106,12 +106,6 @@ const DIGER_GRUBU: BeyannameDef[] = [
   { key: 'eDefterPeriod',     kod: 'EDEFTER',   ad: 'E-Defter / E-Berat',     desc: 'Bilanço usulü için zorunlu',          tip: 'period' },
 ];
 
-const YILLIK_GRUBU: Array<{ value: Exclude<IncomeTaxType, null>; kod: string; ad: string; desc: string }> = [
-  { value: 'KURUMLAR', kod: 'KURUMLAR', ad: 'Kurumlar Vergisi', desc: 'Yıllık kurumlar vergisi beyannamesi' },
-  { value: 'GELIR', kod: 'GELIR', ad: 'Gelir Vergisi', desc: 'Yıllık gelir vergisi beyannamesi' },
-  { value: 'BASIT_USUL', kod: 'BASIT', ad: 'Basit Usul', desc: 'Basit usul yıllık beyan' },
-];
-
 /**
  * v1.37.1: Mükellefiyetler kartı — Hattat tarzı tüm beyanname türleri.
  * Backend: PUT /beyanname-takip/configs/:taxpayerId
@@ -207,12 +201,10 @@ export function MukellefiyetlerCard({
         </span>
       </div>
 
-      <div className="grid gap-2 md:grid-cols-2 xl:grid-cols-3">
-        {YILLIK_GRUBU.map((item) => (
-          <YillikBeyanRow key={item.value} item={item} form={form} setForm={setForm} />
-        ))}
-        {visibleDefs.map((item) => (
-          <BeyanRow key={item.key as string} item={item} form={form} setForm={setForm} />
+      <div className="overflow-hidden rounded-[10px] border" style={{ borderColor: LINE, background: CARD2 }}>
+        <IncomeRow form={form} setForm={setForm} />
+        {visibleDefs.map((item, i) => (
+          <BeyanListRow key={item.key as string} item={item} form={form} setForm={setForm} last={i === visibleDefs.length - 1} />
         ))}
       </div>
 
@@ -233,107 +225,92 @@ export function MukellefiyetlerCard({
   );
 }
 
-function YillikBeyanRow({
-  item,
-  form,
-  setForm,
-}: {
-  item: { value: Exclude<IncomeTaxType, null>; kod: string; ad: string; desc: string };
-  form: BeyanConfig;
-  setForm: React.Dispatch<React.SetStateAction<BeyanConfig>>;
-}) {
-  const isActive = form.incomeTaxType === item.value;
-
+// Yıllık vergi türü tek satır + tek segment (Yok/Kurumlar/Gelir/Basit).
+function IncomeSegment({ value, onChange }: { value: IncomeTaxType; onChange: (v: IncomeTaxType) => void }) {
+  const opts: Array<{ v: IncomeTaxType; l: string }> = [
+    { v: null, l: 'Yok' },
+    { v: 'KURUMLAR', l: 'Kurumlar' },
+    { v: 'GELIR', l: 'Gelir' },
+    { v: 'BASIT_USUL', l: 'Basit' },
+  ];
   return (
-    <div
-      className="rounded-[8px] border p-3 transition"
-      style={{
-        background: isActive ? 'rgba(95,207,142,0.085)' : '#111217',
-        borderColor: isActive ? GOOD_LN : 'rgba(255,255,255,0.095)',
-        boxShadow: isActive ? 'inset 0 1px 0 rgba(255,255,255,0.04)' : 'none',
-      }}
-    >
-      <div className="flex items-start justify-between gap-3">
-        <div className="min-w-0 flex-1">
-          <div className="flex items-center gap-2">
-            <span className="rounded px-1.5 py-0.5 text-[9.5px] font-bold tabular-nums" style={{ background: isActive ? GOOD : 'rgba(255,255,255,0.08)', color: isActive ? '#08100c' : MUTED }}>
-              {item.kod}
-            </span>
-            <div className="text-[12.5px] font-semibold" style={{ color: TEXT }}>{item.ad}</div>
-          </div>
-          <div className="mt-0.5 text-[11px]" style={{ color: MUTED }}>{item.desc}</div>
-        </div>
-        <button
-          type="button"
-          onClick={() => setForm((prev) => ({ ...prev, incomeTaxType: isActive ? null : item.value }))}
-          className="rounded-lg border px-3 py-1.5 text-[11px] font-semibold transition hover:brightness-110"
-          style={isActive
-            ? { borderColor: GOOD_LN, background: GOOD_SF, color: GOOD_BR }
-            : { borderColor: LINE, background: 'rgba(255,255,255,0.035)', color: MUTED }}
-        >
-          {isActive ? 'Aktif' : 'Kapalı'}
-        </button>
-      </div>
+    <div className="inline-flex rounded-[9px] border p-0.5" style={{ borderColor: LINE, background: FIELD }}>
+      {opts.map((o) => {
+        const sel = value === o.v;
+        const off = o.v === null;
+        return (
+          <button key={String(o.v)} type="button" onClick={() => onChange(o.v)}
+            className="rounded-[7px] px-3 py-1.5 text-[11.5px] font-medium transition"
+            style={sel
+              ? (off ? { background: 'rgba(255,255,255,0.08)', color: MUTED } : { background: 'rgba(95,207,142,0.16)', color: GOOD_BR })
+              : { background: 'transparent', color: 'rgba(245,245,244,0.42)' }}>
+            {o.l}
+          </button>
+        );
+      })}
     </div>
   );
 }
 
-function BeyanRow({
-  item,
-  form,
-  setForm,
+// Sol kod rozeti — aktifse yeşil, değilse sönük.
+function KodBadge({ kod, active }: { kod: string; active: boolean }) {
+  return (
+    <span className="shrink-0 rounded px-1.5 py-0.5 text-[9.5px] font-semibold tabular-nums"
+      style={{ background: active ? GOOD : 'rgba(255,255,255,0.07)', color: active ? '#08100c' : MUTED }}>{kod}</span>
+  );
+}
+
+function IncomeRow({ form, setForm }: { form: BeyanConfig; setForm: React.Dispatch<React.SetStateAction<BeyanConfig>> }) {
+  const active = !!form.incomeTaxType;
+  return (
+    <div className="flex flex-wrap items-center gap-x-3 gap-y-2 px-4 py-3" style={{ borderBottom: `1px solid ${LINE}` }}>
+      <KodBadge kod="YILLIK" active={active} />
+      <div className="min-w-0 flex-1">
+        <div className="text-[13px] font-medium" style={{ color: TEXT }}>Yıllık Vergi Türü</div>
+        <div className="text-[11px]" style={{ color: MUTED }}>Kurumlar, gelir veya basit usul</div>
+      </div>
+      <IncomeSegment value={form.incomeTaxType} onChange={(v) => setForm((prev) => ({ ...prev, incomeTaxType: v }))} />
+    </div>
+  );
+}
+
+function BeyanListRow({
+  item, form, setForm, last,
 }: {
   item: BeyannameDef;
   form: BeyanConfig;
   setForm: React.Dispatch<React.SetStateAction<BeyanConfig>>;
+  last: boolean;
 }) {
   const value = (form as any)[item.key];
   const isActive = item.tip === 'toggle' ? !!value : value !== null;
-
   return (
-    <div
-      className="rounded-[8px] border p-3 transition"
-      style={{
-        background: isActive ? 'rgba(95,207,142,0.085)' : '#111217',
-        borderColor: isActive ? GOOD_LN : 'rgba(255,255,255,0.095)',
-        boxShadow: isActive ? 'inset 0 1px 0 rgba(255,255,255,0.04)' : 'none',
-      }}
-    >
-      <div className="flex items-start justify-between gap-3">
-        <div className="min-w-0 flex-1">
-          <div className="flex items-center gap-2">
-            <span className="rounded px-1.5 py-0.5 text-[9.5px] font-bold tabular-nums" style={{ background: isActive ? GOOD : 'rgba(255,255,255,0.08)', color: isActive ? '#08100c' : MUTED }}>
-              {item.kod}
-            </span>
-            <div className="text-[12.5px] font-semibold" style={{ color: TEXT }}>{item.ad}</div>
-          </div>
-          <div className="mt-0.5 text-[11px]" style={{ color: MUTED }}>{item.desc}</div>
-        </div>
-        <div className="shrink-0">
-          {item.tip === 'toggle' ? (
-            <button
-              type="button"
-              onClick={() => setForm({ ...form, [item.key]: !value } as BeyanConfig)}
-              className="rounded-lg border px-3 py-1.5 text-[11px] font-semibold transition hover:brightness-110"
-              style={isActive
-                ? { borderColor: GOOD_LN, background: GOOD_SF, color: GOOD_BR }
-                : { borderColor: LINE, background: 'rgba(255,255,255,0.035)', color: MUTED }}
-            >
-              {isActive ? 'Aktif' : 'Kapalı'}
-            </button>
-          ) : null}
-        </div>
+    <div className="flex flex-wrap items-center gap-x-3 gap-y-2 px-4 py-3" style={last ? undefined : { borderBottom: `1px solid ${LINE}` }}>
+      <KodBadge kod={item.kod} active={isActive} />
+      <div className="min-w-0 flex-1">
+        <div className="text-[13px] font-medium" style={{ color: TEXT }}>{item.ad}</div>
+        <div className="text-[11px]" style={{ color: MUTED }}>{item.desc}</div>
       </div>
-
-      {(item.tip === 'period' || item.tip === 'period_full' || item.tip === 'period_15gun') && (
-        <div className="mt-2.5">
+      <div className="shrink-0">
+        {item.tip === 'toggle' ? (
+          <button
+            type="button"
+            onClick={() => setForm({ ...form, [item.key]: !value } as BeyanConfig)}
+            className="rounded-[9px] border px-3.5 py-1.5 text-[11.5px] font-medium transition hover:brightness-110"
+            style={isActive
+              ? { borderColor: GOOD_LN, background: GOOD_SF, color: GOOD_BR }
+              : { borderColor: LINE, background: 'transparent', color: MUTED }}
+          >
+            {isActive ? 'Açık' : 'Kapalı'}
+          </button>
+        ) : (
           <PeriodSegment
             value={value}
             full15={item.tip === 'period_15gun'}
             onChange={(v) => setForm({ ...form, [item.key]: v } as BeyanConfig)}
           />
-        </div>
-      )}
+        )}
+      </div>
     </div>
   );
 }
