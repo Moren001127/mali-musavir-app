@@ -74,9 +74,9 @@ const GREEN = '#5fcf8e';
 const AMBER = '#f0b755';
 const RED = '#ef6b6b';
 
-const FIELD_CLS = 'h-11 w-full rounded-[8px] border border-white/12 bg-[#0b0c10] px-3.5 text-[13px] font-bold text-[#f5f5f4] outline-none transition placeholder:text-white/28 focus:border-[#d4b876]/60 focus:bg-[#0e1014] focus:shadow-[0_0_0_3px_rgba(212,184,118,0.14)]';
+const FIELD_CLS = 'h-11 w-full rounded-[9px] border border-white/10 bg-[#0b0c10] px-3.5 text-[13.5px] font-medium text-[#f5f5f4] outline-none transition placeholder:text-white/28 focus:border-[#d4b876]/55 focus:bg-[#0e1014] focus:shadow-[0_0_0_3px_rgba(212,184,118,0.13)]';
 const SELECT_CLS = `${FIELD_CLS} cursor-pointer`;
-const TEXTAREA_CLS = 'w-full resize-none rounded-[8px] border border-white/12 bg-[#0b0c10] px-3.5 py-3 text-[13px] font-bold text-[#f5f5f4] outline-none transition placeholder:text-white/28 focus:border-[#4f86c9]/60 focus:bg-[#0e1014] focus:shadow-[0_0_0_3px_rgba(79,134,201,0.15)]';
+const TEXTAREA_CLS = 'w-full resize-none rounded-[9px] border border-white/10 bg-[#0b0c10] px-3.5 py-3 text-[13.5px] font-medium text-[#f5f5f4] outline-none transition placeholder:text-white/28 focus:border-[#4f86c9]/55 focus:bg-[#0e1014] focus:shadow-[0_0_0_3px_rgba(79,134,201,0.14)]';
 
 const TAXPAYER_TYPES = [
   { value: 'TUZEL_KISI', label: 'Tüzel Kişi', detail: 'Şirket veya kurum kaydı' },
@@ -1974,21 +1974,60 @@ function PortalTh({ children, right }: { children: React.ReactNode; right?: bool
   );
 }
 
+// Aynı sayfada büyüyerek açılan PDF önizleme modalı (yeni sekme yerine).
+function PortalPdfModal({ url, title, onClose }: { url: string; title: string; onClose: () => void }) {
+  const [shown, setShown] = useState(false);
+  useEffect(() => {
+    setShown(true);
+    const onKey = (e: KeyboardEvent) => { if (e.key === 'Escape') onClose(); };
+    window.addEventListener('keydown', onKey);
+    return () => window.removeEventListener('keydown', onKey);
+  }, [onClose]);
+  if (typeof document === 'undefined') return null;
+  return createPortal(
+    <div className="fixed inset-0 z-[70] flex items-center justify-center p-3 sm:p-6"
+         style={{ background: 'rgba(0,0,0,0.72)', backdropFilter: 'blur(3px)' }} onClick={onClose}>
+      <div
+        className="flex h-[90vh] w-[min(1040px,97vw)] flex-col overflow-hidden rounded-[14px] border"
+        style={{ borderColor: LINE, background: CARD, transform: shown ? 'scale(1)' : 'scale(0.94)', opacity: shown ? 1 : 0, transition: 'transform .18s ease, opacity .18s ease' }}
+        onClick={(e) => e.stopPropagation()}
+      >
+        <div className="flex items-center gap-3 border-b px-4 py-3" style={{ borderColor: HAIR }}>
+          <div className="min-w-0 flex-1 truncate text-[13.5px] font-bold" style={{ color: TEXT }}>{title}</div>
+          <a href={url} target="_blank" rel="noopener noreferrer"
+             className="inline-flex items-center gap-1.5 rounded-[8px] border px-3 py-1.5 text-[12px] font-semibold transition hover:bg-white/[0.06]"
+             style={{ borderColor: LINE, color: MUTED }}>
+            <Download size={14} /> İndir
+          </a>
+          <button type="button" onClick={onClose}
+            className="flex h-8 w-8 items-center justify-center rounded-[8px] border transition hover:bg-white/[0.06]"
+            style={{ borderColor: LINE, color: MUTED }} title="Kapat (Esc)">
+            <X size={16} />
+          </button>
+        </div>
+        <iframe src={url} title="Belge önizleme" className="w-full flex-1" style={{ border: 0, background: '#fff' }} />
+      </div>
+    </div>,
+    document.body,
+  );
+}
+
 function SgkTab({ taxpayerId }: { taxpayerId: string }) {
   const { data = [], isLoading } = useQuery({
     queryKey: ['sgk-docs', taxpayerId],
     queryFn: () => portalAutomationApi.documents({ taxpayerId, belgeTuru: 'SGK_TAHAKKUK,SGK_HIZMET_LISTESI', limit: 200 }),
   });
   const [busy, setBusy] = useState<string | null>(null);
+  const [pdf, setPdf] = useState<{ url: string; title: string } | null>(null);
   const rows = useMemo(
     () => [...(Array.isArray(data) ? data : [])].sort((a, b) => sgkDocMeta(b).donem.localeCompare(sgkDocMeta(a).donem)),
     [data],
   );
-  const openDoc = async (docId: string) => {
+  const openDoc = async (docId: string, title: string) => {
     setBusy(docId);
     try {
       const { url } = await portalAutomationApi.documentViewUrl(docId);
-      if (url) window.open(url, '_blank', 'noopener'); else toast.warning('Belge bulunamadı');
+      if (url) setPdf({ url, title }); else toast.warning('Belge bulunamadı');
     } catch (e: any) { toast.error(e?.response?.data?.message || e?.message || 'Belge açılamadı'); }
     finally { setBusy(null); }
   };
@@ -2018,7 +2057,7 @@ function SgkTab({ taxpayerId }: { taxpayerId: string }) {
               const m = sgkDocMeta(d);
               const tahakkuk = d.belgeTuru === 'SGK_TAHAKKUK';
               return (
-                <tr key={d.id} onClick={() => openDoc(d.id)} className="cursor-pointer transition hover:bg-white/[0.04]" style={{ borderBottom: `1px solid ${HAIR}` }}>
+                <tr key={d.id} onClick={() => openDoc(d.id, `${tahakkuk ? 'SGK Tahakkuk Fişi' : 'SGK Hizmet Listesi'} · ${m.donem || ''}`)} className="cursor-pointer transition hover:bg-white/[0.04]" style={{ borderBottom: `1px solid ${HAIR}` }}>
                   <td className="px-3 py-3 text-[12.5px] font-semibold tabular-nums" style={{ color: TEXT }}>{m.donem || '—'}</td>
                   <td className="px-3 py-3">
                     <span className="rounded-[6px] px-2 py-1 text-[10.5px] font-bold"
@@ -2041,6 +2080,7 @@ function SgkTab({ taxpayerId }: { taxpayerId: string }) {
         </table>
       </div>
       <p className="mt-2.5 text-[11.5px]" style={{ color: FAINT }}>Veri SGK otomasyonundan gelir — satıra tıklayınca belge (PDF) açılır.</p>
+      {pdf && <PortalPdfModal url={pdf.url} title={pdf.title} onClose={() => setPdf(null)} />}
     </div>
   );
 }
@@ -2051,16 +2091,17 @@ function ETebligatTab({ taxpayerId }: { taxpayerId: string }) {
     queryFn: () => portalAutomationApi.documents({ taxpayerId, belgeTuru: 'E_TEBLIGAT', limit: 200 }),
   });
   const [busy, setBusy] = useState<string | null>(null);
+  const [pdf, setPdf] = useState<{ url: string; title: string } | null>(null);
   const rows = useMemo(
     () => [...(Array.isArray(data) ? data : [])].sort((a, b) =>
       String(b.receivedAt || b.createdAt || '').localeCompare(String(a.receivedAt || a.createdAt || ''))),
     [data],
   );
-  const openDoc = async (docId: string) => {
+  const openDoc = async (docId: string, title: string) => {
     setBusy(docId);
     try {
       const { url } = await portalAutomationApi.documentViewUrl(docId);
-      if (url) window.open(url, '_blank', 'noopener'); else toast.warning('Belge bulunamadı');
+      if (url) setPdf({ url, title }); else toast.warning('Belge bulunamadı');
     } catch (e: any) { toast.error(e?.response?.data?.message || e?.message || 'Belge açılamadı'); }
     finally { setBusy(null); }
   };
@@ -2090,7 +2131,7 @@ function ETebligatTab({ taxpayerId }: { taxpayerId: string }) {
               const raw = d.raw || {};
               const okundu = !!(d.viewedAt || raw.mukellefOkumaZamani);
               return (
-                <tr key={d.id} onClick={() => openDoc(d.id)} className="cursor-pointer transition hover:bg-white/[0.04]" style={{ borderBottom: `1px solid ${HAIR}` }}>
+                <tr key={d.id} onClick={() => openDoc(d.id, `E-Tebligat · ${raw.kurumAciklama || d.title || ''}`)} className="cursor-pointer transition hover:bg-white/[0.04]" style={{ borderBottom: `1px solid ${HAIR}` }}>
                   <td className="px-3 py-3">
                     <div className="text-[12.5px] font-semibold" style={{ color: TEXT }}>{raw.kurumAciklama || d.title || '—'}</div>
                     {raw.altKurum ? <div className="text-[11px]" style={{ color: FAINT }}>{raw.altKurum}</div> : null}
@@ -2115,6 +2156,7 @@ function ETebligatTab({ taxpayerId }: { taxpayerId: string }) {
         </table>
       </div>
       <p className="mt-2.5 text-[11.5px]" style={{ color: FAINT }}>Veri e-Tebligat otomasyonundan gelir — satıra tıklayınca tebligat (PDF) açılır.</p>
+      {pdf && <PortalPdfModal url={pdf.url} title={pdf.title} onClose={() => setPdf(null)} />}
     </div>
   );
 }

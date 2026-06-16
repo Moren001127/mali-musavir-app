@@ -266,7 +266,7 @@ function YillikBeyanRow({
         <button
           type="button"
           onClick={() => setForm((prev) => ({ ...prev, incomeTaxType: isActive ? null : item.value }))}
-          className="rounded-lg border px-3 py-1.5 text-[11px] font-black transition hover:brightness-110"
+          className="rounded-lg border px-3 py-1.5 text-[11px] font-semibold transition hover:brightness-110"
           style={isActive
             ? { borderColor: GOOD_LN, background: GOOD_SF, color: GOOD_BR }
             : { borderColor: LINE, background: 'rgba(255,255,255,0.035)', color: MUTED }}
@@ -314,7 +314,7 @@ function BeyanRow({
             <button
               type="button"
               onClick={() => setForm({ ...form, [item.key]: !value } as BeyanConfig)}
-              className="rounded-lg border px-3 py-1.5 text-[11px] font-black transition hover:brightness-110"
+              className="rounded-lg border px-3 py-1.5 text-[11px] font-semibold transition hover:brightness-110"
               style={isActive
                 ? { borderColor: GOOD_LN, background: GOOD_SF, color: GOOD_BR }
                 : { borderColor: LINE, background: 'rgba(255,255,255,0.035)', color: MUTED }}
@@ -326,33 +326,45 @@ function BeyanRow({
       </div>
 
       {(item.tip === 'period' || item.tip === 'period_full' || item.tip === 'period_15gun') && (
-        <div className="mt-2 flex flex-wrap gap-1.5">
-          <PeriodChip selected={value === null} label="Yok" onClick={() => setForm({ ...form, [item.key]: null } as BeyanConfig)} />
-          <PeriodChip selected={value === 'AYLIK'} label="Aylık" onClick={() => setForm({ ...form, [item.key]: 'AYLIK' } as BeyanConfig)} />
-          <PeriodChip selected={value === 'UCAYLIK'} label="3 Aylık" onClick={() => setForm({ ...form, [item.key]: 'UCAYLIK' } as BeyanConfig)} />
-          {item.tip === 'period_15gun' && (
-            <PeriodChip selected={value === 'ON_BES_GUNLUK'} label="15 Günlük" onClick={() => setForm({ ...form, [item.key]: 'ON_BES_GUNLUK' } as BeyanConfig)} />
-          )}
+        <div className="mt-2.5">
+          <PeriodSegment
+            value={value}
+            full15={item.tip === 'period_15gun'}
+            onChange={(v) => setForm({ ...form, [item.key]: v } as BeyanConfig)}
+          />
         </div>
       )}
     </div>
   );
 }
 
-function PeriodChip({ label, selected, onClick }: { label: string; selected: boolean; onClick: () => void }) {
-  const emptySelected = selected && label === 'Yok';
+// Tek parça segment kontrolü — eski 3 ayrı buton dağınık görünüyordu.
+function PeriodSegment({ value, full15, onChange }: { value: Period; full15?: boolean; onChange: (v: Period) => void }) {
+  const opts: Array<{ v: Period; l: string }> = [
+    { v: null, l: 'Yok' },
+    { v: 'AYLIK', l: 'Aylık' },
+    { v: 'UCAYLIK', l: '3 Aylık' },
+    ...(full15 ? [{ v: 'ON_BES_GUNLUK' as Period, l: '15 Gün' }] : []),
+  ];
   return (
-    <button
-      type="button"
-      onClick={onClick}
-      className="rounded-md px-2.5 py-1 text-[11px] font-semibold transition"
-      style={{
-        background: selected ? (emptySelected ? 'rgba(255,255,255,0.07)' : 'rgba(212,184,118,0.16)') : 'rgba(255,255,255,0.04)',
-        color: selected ? (emptySelected ? MUTED : GOLD) : MUTED,
-        border: `1px solid ${selected ? (emptySelected ? LINE : 'rgba(212,184,118,0.34)') : LINE}`,
-      }}
-    >
-      {label}
-    </button>
+    <div className="inline-flex rounded-[9px] border p-0.5" style={{ borderColor: LINE, background: FIELD }}>
+      {opts.map((o) => {
+        const sel = value === o.v;
+        const off = o.v === null;
+        return (
+          <button
+            key={String(o.v)}
+            type="button"
+            onClick={() => onChange(o.v)}
+            className="rounded-[7px] px-3 py-1.5 text-[11.5px] font-medium transition"
+            style={sel
+              ? (off ? { background: 'rgba(255,255,255,0.08)', color: MUTED } : { background: 'rgba(212,184,118,0.18)', color: GOLD })
+              : { background: 'transparent', color: 'rgba(245,245,244,0.42)' }}
+          >
+            {o.l}
+          </button>
+        );
+      })}
+    </div>
   );
 }
