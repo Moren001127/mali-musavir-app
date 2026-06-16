@@ -17,7 +17,7 @@ export default function KayitPage() {
 
   const registerMutation = useMutation({
     mutationFn: (data: RegisterDto) => authApi.register(data),
-    onSuccess: () => router.push('/giris?registered=1'),
+    onSuccess: () => router.push('/giris/musavir?registered=1'),
   });
 
   return (
@@ -115,7 +115,7 @@ export default function KayitPage() {
 
         <p className="text-center text-sm text-gray-600 mt-6">
           Zaten hesabınız var mı?{' '}
-          <Link href="/giris" className="text-blue-600 hover:underline font-medium">
+          <Link href="/giris/musavir" className="text-blue-600 hover:underline font-medium">
             Giriş yapın
           </Link>
         </p>
