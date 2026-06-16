@@ -1391,6 +1391,7 @@ export class FaturaMuhasebelestirmeService {
       where: { id: taxpayerId, tenantId },
       select: {
         id: true,
+        tenantId: true,
         companyName: true,
         firstName: true,
         lastName: true,
