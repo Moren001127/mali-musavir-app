@@ -50,6 +50,7 @@ export default function GeldenBelgelerPanel({ taxpayerId, period, taxpayers, onM
   const qc = useQueryClient();
   const [drawerDoc, setDrawerDoc] = useState<{ taxpayerId: string; direction: 'ALIS' | 'SATIS'; defterTuru?: string | null } | null>(null);
   const [filterStatus, setFilterStatus] = useState<'NEEDS_REVIEW' | 'ALL'>('NEEDS_REVIEW');
+  const [dirFilter, setDirFilter] = useState<'ALL' | 'ALIS' | 'SATIS'>('ALL');
 
   // Gelen kutusu mantığı: dönemden bağımsız TÜM bekleyenleri çek (Mihsap kuyruğu
   // eski tarihli olabilir). OCR sürerken PROCESSING, bitince NEEDS_REVIEW görünür.
@@ -70,7 +71,11 @@ export default function GeldenBelgelerPanel({ taxpayerId, period, taxpayers, onM
   });
 
   const allDocs: any[] = docsQ.data || [];
-  const docs = filterStatus === 'ALL' ? allDocs : allDocs.filter((d) => d.status === 'NEEDS_REVIEW');
+  const dirOf = (d: any) => String(d?.invoiceKind ?? d?.direction ?? '').toUpperCase().startsWith('ALI') ? 'ALIS' : 'SATIS';
+  const statusFiltered = filterStatus === 'ALL' ? allDocs : allDocs.filter((d) => d.status === 'NEEDS_REVIEW');
+  const docs = dirFilter === 'ALL' ? statusFiltered : statusFiltered.filter((d) => dirOf(d) === dirFilter);
+  const alisCount = statusFiltered.filter((d) => dirOf(d) === 'ALIS').length;
+  const satisCount = statusFiltered.filter((d) => dirOf(d) === 'SATIS').length;
   const needsReviewCount = allDocs.filter((d) => d.status === 'NEEDS_REVIEW').length;
   const processingCount = allDocs.filter((d) => d.status === 'PROCESSING').length;
   const selectedTaxpayer = taxpayers.find((t) => t.id === taxpayerId);
@@ -116,7 +121,25 @@ export default function GeldenBelgelerPanel({ taxpayerId, period, taxpayers, onM
         )}
         <div style={{ flex: 1 }} />
 
-        {/* Filtre */}
+        {/* Alış / Satış yön filtresi */}
+        <div style={{ display: 'flex', borderRadius: 8, overflow: 'hidden', border: '1px solid rgba(255,255,255,0.08)' }}>
+          {([
+            { id: 'ALL',   label: 'Tümü',  count: statusFiltered.length, color: '#fafaf9' },
+            { id: 'ALIS',  label: 'Alış',  count: alisCount,  color: '#60a5fa' },
+            { id: 'SATIS', label: 'Satış', count: satisCount, color: '#fbbf24' },
+          ] as const).map((f) => {
+            const active = dirFilter === f.id;
+            return (
+              <button key={f.id} type="button" onClick={() => setDirFilter(f.id as any)}
+                style={{ display: 'flex', alignItems: 'center', gap: 5, padding: '5px 11px', fontSize: 12, fontWeight: active ? 700 : 500, cursor: 'pointer', border: 'none', background: active ? `${f.color}1f` : 'transparent', color: active ? f.color : 'rgba(250,250,249,0.4)', transition: 'all 0.12s' }}>
+                {f.label}
+                <span style={{ fontSize: 10.5, opacity: 0.8 }}>{f.count}</span>
+              </button>
+            );
+          })}
+        </div>
+
+        {/* Durum filtresi */}
         <div style={{ display: 'flex', borderRadius: 8, overflow: 'hidden', border: '1px solid rgba(255,255,255,0.08)' }}>
           {(['NEEDS_REVIEW', 'ALL'] as const).map((f) => (
             <button key={f} type="button" onClick={() => setFilterStatus(f)}
