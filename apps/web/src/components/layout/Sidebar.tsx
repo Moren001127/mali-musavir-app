@@ -135,6 +135,7 @@ const navGroups = [
     items: [
       { href: '/panel/cari-kasa', label: 'Cari Kasa & Tahsilat', icon: HandCoins },
       { href: '/panel/evraklar', label: 'Evrak Arşivi', icon: FolderArchive },
+      { href: '/panel/mukellef-erisim', label: 'Mükellef Portal Erişimi', icon: LockKeyhole },
       { href: '/panel/duyurular', label: 'Duyurular', icon: Megaphone },
       { href: '/panel/galeri/hgs-ihlal', label: 'HGS İhlal Sorgulama', icon: Gavel },
     ],
