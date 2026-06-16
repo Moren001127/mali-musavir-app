@@ -111,7 +111,7 @@ export default function FaturaMerkeziPage() {
   const isIsletme = /ISLETME/i.test(selectedTaxpayer?.defterTuru || '');
 
   return (
-    <div className="min-h-screen flex flex-col" style={{ background: '#0f0d0b', color: '#fafaf9' }}>
+    <div className="h-screen flex flex-col overflow-hidden" style={{ background: '#0f0d0b', color: '#fafaf9' }}>
 
       {/* Gokkusagi seridi */}
       <div style={{ height: 4, background: 'linear-gradient(90deg,#d4b876,#fb923c,#f472b6,#a855f7,#60a5fa,#22d3ee,#4ade80)', flexShrink: 0 }} />
@@ -228,17 +228,16 @@ export default function FaturaMerkeziPage() {
           )}
         </div>
 
-        {/* Pipeline strip */}
-        <div style={{ display: 'flex', alignItems: 'stretch', marginTop: 20, background: '#15110d', borderRadius: 12, border: '1px solid rgba(255,255,255,0.08)', overflow: 'hidden' }}>
+        {/* Pipeline strip — kompakt */}
+        <div style={{ display: 'flex', alignItems: 'center', marginTop: 12, background: '#15110d', borderRadius: 10, border: '1px solid rgba(255,255,255,0.08)', overflow: 'hidden' }}>
           {PIPELINE_STEPS.map((step, idx) => {
             const count = pipelineCounts[idx];
             const isActive = count > 0;
             const isLast = idx === PIPELINE_STEPS.length - 1;
             return (
-              <div key={step.id} style={{ flex: 1, padding: '12px 14px', borderRight: isLast ? 'none' : '1px solid rgba(255,255,255,0.06)', background: isActive ? 'rgba(45,212,191,0.06)' : 'transparent' }}>
-                <div style={{ fontSize: 22, fontWeight: 700, color: isActive ? '#2dd4bf' : 'rgba(250,250,249,0.2)', lineHeight: 1.1 }}>{count}</div>
-                <div style={{ fontSize: 12, fontWeight: 600, color: isActive ? '#fafaf9' : 'rgba(250,250,249,0.35)', marginTop: 2 }}>{step.id}. {step.label}</div>
-                <div style={{ fontSize: 10.5, color: 'rgba(250,250,249,0.3)', marginTop: 1 }}>{step.desc}</div>
+              <div key={step.id} style={{ flex: 1, display: 'flex', alignItems: 'center', gap: 6, padding: '7px 12px', borderRight: isLast ? 'none' : '1px solid rgba(255,255,255,0.06)', background: isActive ? 'rgba(45,212,191,0.05)' : 'transparent' }}>
+                <span style={{ fontSize: 15, fontWeight: 700, color: isActive ? '#2dd4bf' : 'rgba(250,250,249,0.2)', lineHeight: 1, minWidth: 20, textAlign: 'right' }}>{count}</span>
+                <span style={{ fontSize: 11.5, fontWeight: 500, color: isActive ? '#fafaf9' : 'rgba(250,250,249,0.3)', whiteSpace: 'nowrap' }}>{step.label}</span>
               </div>
             );
           })}
