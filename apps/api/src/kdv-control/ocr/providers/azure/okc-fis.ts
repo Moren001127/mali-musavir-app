@@ -50,6 +50,12 @@ export function extractOkcFisKdv(
   const kdvLineRe = /\b[T1I7][O0]\s*P\s*K\s*[D0O]\s*[VUY]\b|\bK\.?\s*D\.?\s*V\.?\s*(?:TUTARI|TOPLAM)\b|^K\.?\s*D\.?\s*V\.?$|\bPK[D0O][VUY]\b/i;
   const summaryLookaheadLabelRe = /^(?:TOPLAM|GENEL\s*TOPLAM|KDV\s*ORANI|KDV\s*DAHIL\s*TUTAR|KDV\s*DAH[Iİ]L\s*TUTAR)$/i;
   const summaryHardStopRe = /NAK[Iİ]T|KRED[Iİ]|KART|PARA\s*[UÜ]ST[UÜ]|KAS[Iİ]YER|M[UÜ][SŞ]TER[Iİ]/i;
+  // Yalın "KDV" satırı (sadece "KDV"); çoğu zaman "KDV Oranı | KDV Dahil Tutar | KDV"
+  // kırılım tablosunun sütun başlığıdır — grand-total değil.
+  const bareKdvRe = /^K\.?\s*D\.?\s*V\.?$/i;
+  // Sadece oran taşıyan satır (%10, %01, /20, 20% …). Yalın "KDV" başlığından sonra
+  // böyle bir satır gelirse bu bir KDV-kırılım tablosudur, "KDV: tutar" çifti değil.
+  const rateOnlyRe = /^\s*(?:[%/]\s*0?\d{1,2}|0?\d{1,2}\s*[%/])\s*$/;
   const otherTaxRe = /ÖZEL\s*İLETİŞİM|ÖİV|OIV|TELSİZ|TELSIZ|ÖTV|OTV|DAMGA|BSMV|KKDF|KONAKLAMA|ÇEVRE|STOPAJ/i;
   // OCR sometimes inserts spaces inside amounts: "* 1. 000, 00".
   // Keep the capture broad enough for that form, then let parseAmount remove spaces.
@@ -72,10 +78,14 @@ export function extractOkcFisKdv(
     if (otherTaxRe.test(line) || isMatrahOrRateLine(line)) continue;
     const rateMatch = line.match(/(?:K\.?\s*D\.?\s*V\.?\s*)?[%/]\s*(\d{1,2})(?:[.,]\d+)?/i);
     const oran = rateMatch ? Number(rateMatch[1]) : null;
+    const isBareKdv = bareKdvRe.test(line);
     let tutar = parseLastAmount(line);
     if (tutar <= 0) {
       for (let j = 1; j <= 4 && i + j < lines.length; j++) {
         const next = lines[i + j];
+        // Yalın "KDV" başlığı + hemen ardından oran satırı = kırılım tablosu başlığı.
+        // Tutar (brüt/KDV-dahil) çekme; yoksa %10'un brütünü (ör. 70,00) KDV sanırız.
+        if (isBareKdv && rateOnlyRe.test(next)) break;
         tutar = parseLastAmount(next);
         if (tutar > 0) break;
         if (summaryLookaheadLabelRe.test(next)) continue;

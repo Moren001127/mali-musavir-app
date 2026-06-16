@@ -843,7 +843,38 @@ const okcGarbledTopKdvText = [
 const okcGarbled = okcFis.extractOkcFisKdv(okcGarbledTopKdvText, okcDeps);
 assert(okcGarbled !== null, 'okc 1OPKDV (T->1) variant result not null');
 eq(okcGarbled.kdvTutari, '125,00', 'okc 1OPKDV (T->1) variant kdv read');
-ok('azure/okc-fis.ts (27 assertion)');
+
+// GERÇEK bozuk OCR (0283.image / ERSAN): alttaki "KDV Oranı | KDV Dahil Tutar | KDV"
+// kırılım tablosu sütun-sütun karışıp yalın bir "KDV" satırı oluşturuyor. Eski akış
+// bunu KDV-toplam satırı sanıp ardından gelen "*70,00" (%10 brütü) değerini ekliyor
+// ve TOPKDV 12,06 yerine 82,06 üretiyordu.
+const okcKdvHeaderText = [
+  'FIS NO',
+  '0283',
+  'COCA COLA 1,5 LT',
+  '%10',
+  '*70,00',
+  'ULKER CIK',
+  '%01',
+  '*70,00',
+  'TOPKDV',
+  'TOPLAM',
+  '*12,06',
+  '*645,46',
+  'KDV Orani',
+  'KDV Dahil Tutar',
+  '%1',
+  '*575,46',
+  'KDV',
+  '%10',
+  '*70,00',
+  '*5,70',
+  '*6,36',
+].join('\n');
+const okcKdvHeader = okcFis.extractOkcFisKdv(okcKdvHeaderText, okcDeps);
+assert(okcKdvHeader !== null, 'okc KDV-header table result not null');
+eq(okcKdvHeader.kdvTutari, '12,06', 'okc bare-KDV header does not add gross 70,00 (TOPKDV wins)');
+ok('azure/okc-fis.ts (29 assertion)');
 
 const okcCrossText = [
   'FIS NO : 0276',
