@@ -563,9 +563,11 @@ export default function GlobalMorenVoice() {
     }
 
     if (event.type === 'input_audio_buffer.speech_started') {
+      // Sadece arayüzü güncelle. Cevabı manuel İPTAL ETME: bu satır küçük/ani
+      // seslerde bile AI'ı anında susturuyordu. Gerçekten araya girmeyi sunucudaki
+      // akıllı sıra-algılama (semantic_vad + interrupt_response) doğal yönetir.
       setStatus('listening');
       setErrorText('');
-      sendRealtimeEvent({ type: 'response.cancel' });
     }
     if (event.type === 'input_audio_buffer.speech_stopped') setStatus('thinking');
     if (event.type === 'response.created') setStatus('thinking');

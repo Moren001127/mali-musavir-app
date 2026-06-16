@@ -52,11 +52,16 @@ export class VoiceService {
         ],
         audio: {
           input: {
+            // Mikrofon gürültüsünü bastır; VAD'in ortam "çıt" seslerine takılmasını azaltır.
+            noise_reduction: { type: 'near_field' },
+            // Akıllı sıra-algılama: ses enerjisine değil, konuşmanın gerçekten bitip
+            // bitmediğine bakar. Küçük/ani seslerde cevabı kesmez; kullanıcı gerçekten
+            // konuşmaya başlayınca doğal şekilde araya girilebilir (interrupt_response).
             turn_detection: {
-              type: 'server_vad',
-              threshold: 0.55,
-              silence_duration_ms: 850,
-              prefix_padding_ms: 250,
+              type: 'semantic_vad',
+              eagerness: 'low',
+              interrupt_response: true,
+              create_response: true,
             },
           },
           output: {
