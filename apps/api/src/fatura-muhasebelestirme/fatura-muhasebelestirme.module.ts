@@ -7,11 +7,12 @@ import { EarsivRenderService } from '../earsiv/earsiv-render.service';
 import { FaturaMuhasebelestirmeController } from './fatura-muhasebelestirme.controller';
 import { FaturaMuhasebelestirmeService } from './fatura-muhasebelestirme.service';
 import { FaturaMuhasebelestirmeCron } from './fatura-muhasebelestirme.cron';
+import { EFaturaSyncService } from '../efatura-adapters/efatura-sync.service';
 
 @Module({
   imports: [PrismaModule, StorageModule, forwardRef(() => KdvControlModule), VendorMemoryModule],
   controllers: [FaturaMuhasebelestirmeController],
-  providers: [FaturaMuhasebelestirmeService, EarsivRenderService, FaturaMuhasebelestirmeCron],
-  exports: [FaturaMuhasebelestirmeService],
+  providers: [FaturaMuhasebelestirmeService, EarsivRenderService, FaturaMuhasebelestirmeCron, EFaturaSyncService],
+  exports: [FaturaMuhasebelestirmeService, EFaturaSyncService],
 })
 export class FaturaMuhasebelestirmeModule {}
