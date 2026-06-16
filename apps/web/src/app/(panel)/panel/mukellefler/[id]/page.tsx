@@ -46,8 +46,12 @@ import { MukellefiyetlerCard } from '@/components/mukellef/MukellefiyetlerCard';
 import { TaxpayerPortalCredentialsCard } from '@/components/portal-automation/PortalCredentialCards';
 import { beyanKayitlariApi, BEYAN_TIPI_LABEL, type BeyanKaydi } from '@/lib/beyan-kayitlari';
 import { documentsApi } from '@/lib/documents';
-import { portalAutomationApi, type PortalProvider } from '@/lib/portal-automation';
+import { portalAutomationApi, type PortalProvider, type PortalDocument } from '@/lib/portal-automation';
 import { DocumentCategory } from '@mali-musavir/shared';
+
+// Mükellef kartı tipografisi — Inter (onaylanan tasarım). Font globals/layout'taki
+// Google Fonts link'i ile yüklenir; burada yalnız bu sayfaya uygulanır.
+const CARD_FONT = "'Inter', ui-sans-serif, system-ui, -apple-system, 'Segoe UI', Roboto, sans-serif";
 
 // ── Kurumsal duo palet (altın marka + çelik mavisi yapı), siyah zemin ──
 const GOLD = '#d4b876';
@@ -428,7 +432,7 @@ export default function MukellefDetayPage() {
   }
 
   return (
-    <form onSubmit={handleSubmit} className="mx-auto max-w-[1500px] space-y-3 px-1">
+    <form onSubmit={handleSubmit} className="mx-auto max-w-[1500px] space-y-3 px-1" style={{ fontFamily: CARD_FONT }}>
       <header className="rounded-[8px] border px-4 py-3" style={{ borderColor: LINE, background: CARD }}>
         <div className="grid gap-3 lg:grid-cols-[minmax(0,1fr)_auto] lg:items-start">
           <div className="flex min-w-0 items-center gap-3">
@@ -589,18 +593,8 @@ export default function MukellefDetayPage() {
         <div className="p-4 sm:p-5">
           {activeTab === 'bilgiler' && <BilgilerTab form={form} setForm={setForm} taxpayerId={isNew ? null : id} onSave={saveForm} saving={isPending} />}
           {activeTab === 'beyannameler' && !isNew && id && <BeyannamelerTab taxpayerId={id} />}
-          {activeTab === 'sgk' && (
-            <PlaceholderTab
-              icon={Shield}
-              title="SGK İşlemleri"
-              description="Mükellefin SGK bildirgeleri, çalışan listesi ve bordro akışı burada toplanacak."
-              linkLabel="Bordro modülüne git"
-              linkHref={`/panel/bordro?taxpayerId=${id}`}
-            />
-          )}
-          {activeTab === 'tebligat' && (
-            <PlaceholderTab icon={Mail} title="E-Tebligat" description="GİB e-tebligat takibi ve okundu durumları burada izlenecek." comingSoon />
-          )}
+          {activeTab === 'sgk' && !isNew && id && <SgkTab taxpayerId={id} />}
+          {activeTab === 'tebligat' && !isNew && id && <ETebligatTab taxpayerId={id} />}
           {activeTab === 'dosyalar' && !isNew && id && <DosyalarTab taxpayerId={id} />}
           {false && activeTab === 'dosyalar' && (
             <PlaceholderTab icon={BookOpen} title="Dosyalar" description="Mükellefe bağlı evraklar ve dosya arşivi." linkLabel="Evraklar modülüne git" linkHref={`/panel/evraklar?taxpayerId=${id}`} />
@@ -1942,6 +1936,189 @@ function mukellefBeyanMessage(row: BeyanKaydi): string {
 // ============================================================
 // BEYANNAME TAB — Beyannameler modülünden bu mükellefe ait kayıtlar
 // ============================================================
+// ============================================================
+// SGK & E-TEBLİGAT — portal otomasyonu belgeleri (mükellefe filtreli)
+// ============================================================
+function portalDateTr(v: any): string {
+  if (!v) return '—';
+  const s = String(v).trim();
+  const tr = s.match(/^(\d{2})\/(\d{2})\/(\d{4})\s+(\d{2}):(\d{2})/);
+  if (tr) return `${tr[1]}/${tr[2]}/${tr[3]} ${tr[4]}:${tr[5]}`;
+  const iso = s.match(/^(\d{4})-(\d{2})-(\d{2})/);
+  if (iso) return `${iso[3]}/${iso[2]}/${iso[1]}`;
+  return s.slice(0, 16);
+}
+
+// SGK satır meta: backend PDF'ten raw'a yazdı; yoksa ham metinden çıkar (SGK modülüyle aynı).
+function sgkDocMeta(d: any): { donem: string; mahiyet: string; kanunNo: string; calisan: string; tutar: string } {
+  const raw = d?.raw || {};
+  const cells: string[] = Array.isArray(raw.cells) ? raw.cells : [];
+  const text = String(raw.rowText || cells.join(' ') || '');
+  const donem = String(raw.donem || d?.period || '').trim();
+  const mahiyet = String(raw.belgeMahiyeti || '').trim() || (text.match(/\b(ASIL|EK|İPTAL|IPTAL)\b/i) || [])[0] || '';
+  const kanunRaw = String(raw.kanunNo || '').trim() || (text.match(/\b0?5510\b/) || text.match(/\b\d{5}\b/) || [])[0] || '';
+  let tutar = String(raw.tutar || '').trim();
+  if (!tutar) { const tt = text.match(/\d{1,3}(?:\.\d{3})*,\d{2}/g) || []; tutar = tt.length ? tt[tt.length - 1] : ''; }
+  const calisan = String(raw.calisan || '').trim();
+  return { donem, mahiyet, kanunNo: kanunRaw.replace(/^0/, '') || kanunRaw, calisan, tutar };
+}
+
+function PortalTabState({ children }: { children: React.ReactNode }) {
+  return <div className="flex min-h-[160px] items-center justify-center text-[13px]" style={{ color: MUTED }}>{children}</div>;
+}
+
+function PortalTh({ children, right }: { children: React.ReactNode; right?: boolean }) {
+  return (
+    <th className={`whitespace-nowrap px-3 py-2.5 text-[10.5px] font-bold uppercase tracking-wider ${right ? 'text-right' : 'text-left'}`}
+        style={{ color: MUTED, background: CARD2, borderBottom: `1px solid ${LINE}` }}>{children}</th>
+  );
+}
+
+function SgkTab({ taxpayerId }: { taxpayerId: string }) {
+  const { data = [], isLoading } = useQuery({
+    queryKey: ['sgk-docs', taxpayerId],
+    queryFn: () => portalAutomationApi.documents({ taxpayerId, belgeTuru: 'SGK_TAHAKKUK,SGK_HIZMET_LISTESI', limit: 200 }),
+  });
+  const [busy, setBusy] = useState<string | null>(null);
+  const rows = useMemo(
+    () => [...(Array.isArray(data) ? data : [])].sort((a, b) => sgkDocMeta(b).donem.localeCompare(sgkDocMeta(a).donem)),
+    [data],
+  );
+  const openDoc = async (docId: string) => {
+    setBusy(docId);
+    try {
+      const { url } = await portalAutomationApi.documentViewUrl(docId);
+      if (url) window.open(url, '_blank', 'noopener'); else toast.warning('Belge bulunamadı');
+    } catch (e: any) { toast.error(e?.response?.data?.message || e?.message || 'Belge açılamadı'); }
+    finally { setBusy(null); }
+  };
+
+  if (isLoading) return <PortalTabState><Loader2 className="mr-2 animate-spin" size={16} /> Yükleniyor…</PortalTabState>;
+  if (!rows.length) return (
+    <PortalTabState>
+      <div className="text-center">
+        <Shield size={26} style={{ color: FAINT, margin: '0 auto 8px' }} />
+        <p style={{ color: TEXT }} className="text-[13px] font-bold">SGK kaydı yok</p>
+        <p className="mt-1 text-[12px]" style={{ color: MUTED }}>SGK tahakkuk fişi ve hizmet listeleri otomasyon çalışınca burada görünür.</p>
+      </div>
+    </PortalTabState>
+  );
+
+  return (
+    <div>
+      <h3 className="mb-3 text-[14px] font-extrabold" style={{ color: TEXT }}>SGK — Tahakkuk Fişleri & Hizmet Listeleri</h3>
+      <div className="overflow-x-auto rounded-[10px] border" style={{ borderColor: LINE }}>
+        <table className="w-full border-collapse">
+          <thead><tr>
+            <PortalTh>Dönem</PortalTh><PortalTh>Tür</PortalTh><PortalTh>Mahiyet</PortalTh>
+            <PortalTh right>Çalışan</PortalTh><PortalTh right>Tutar</PortalTh><PortalTh right>Belge</PortalTh>
+          </tr></thead>
+          <tbody>
+            {rows.map((d: any) => {
+              const m = sgkDocMeta(d);
+              const tahakkuk = d.belgeTuru === 'SGK_TAHAKKUK';
+              return (
+                <tr key={d.id} onClick={() => openDoc(d.id)} className="cursor-pointer transition hover:bg-white/[0.04]" style={{ borderBottom: `1px solid ${HAIR}` }}>
+                  <td className="px-3 py-3 text-[12.5px] font-semibold tabular-nums" style={{ color: TEXT }}>{m.donem || '—'}</td>
+                  <td className="px-3 py-3">
+                    <span className="rounded-[6px] px-2 py-1 text-[10.5px] font-bold"
+                      style={tahakkuk ? { color: GOLD_BR, background: 'rgba(212,184,118,0.13)' } : { color: STEEL_BR, background: STEEL_SF }}>
+                      {tahakkuk ? 'Tahakkuk' : 'Hizmet L.'}
+                    </span>
+                  </td>
+                  <td className="px-3 py-3 text-[12.5px]" style={{ color: MUTED }}>{m.mahiyet || '—'}</td>
+                  <td className="px-3 py-3 text-right text-[12.5px] tabular-nums" style={{ color: TEXT }}>{m.calisan || '—'}</td>
+                  <td className="px-3 py-3 text-right text-[12.5px] font-semibold tabular-nums" style={{ color: m.tutar ? TEXT : FAINT }}>{m.tutar ? `${m.tutar} ₺` : '—'}</td>
+                  <td className="px-3 py-3 text-right">
+                    {busy === d.id
+                      ? <Loader2 className="ml-auto animate-spin" size={16} style={{ color: STEEL_BR }} />
+                      : <Eye size={17} style={{ color: STEEL_BR, marginLeft: 'auto' }} />}
+                  </td>
+                </tr>
+              );
+            })}
+          </tbody>
+        </table>
+      </div>
+      <p className="mt-2.5 text-[11.5px]" style={{ color: FAINT }}>Veri SGK otomasyonundan gelir — satıra tıklayınca belge (PDF) açılır.</p>
+    </div>
+  );
+}
+
+function ETebligatTab({ taxpayerId }: { taxpayerId: string }) {
+  const { data = [], isLoading } = useQuery({
+    queryKey: ['etebligat-docs', taxpayerId],
+    queryFn: () => portalAutomationApi.documents({ taxpayerId, belgeTuru: 'E_TEBLIGAT', limit: 200 }),
+  });
+  const [busy, setBusy] = useState<string | null>(null);
+  const rows = useMemo(
+    () => [...(Array.isArray(data) ? data : [])].sort((a, b) =>
+      String(b.receivedAt || b.createdAt || '').localeCompare(String(a.receivedAt || a.createdAt || ''))),
+    [data],
+  );
+  const openDoc = async (docId: string) => {
+    setBusy(docId);
+    try {
+      const { url } = await portalAutomationApi.documentViewUrl(docId);
+      if (url) window.open(url, '_blank', 'noopener'); else toast.warning('Belge bulunamadı');
+    } catch (e: any) { toast.error(e?.response?.data?.message || e?.message || 'Belge açılamadı'); }
+    finally { setBusy(null); }
+  };
+
+  if (isLoading) return <PortalTabState><Loader2 className="mr-2 animate-spin" size={16} /> Yükleniyor…</PortalTabState>;
+  if (!rows.length) return (
+    <PortalTabState>
+      <div className="text-center">
+        <Mail size={26} style={{ color: FAINT, margin: '0 auto 8px' }} />
+        <p style={{ color: TEXT }} className="text-[13px] font-bold">E-Tebligat yok</p>
+        <p className="mt-1 text-[12px]" style={{ color: MUTED }}>GİB e-Tebligat kayıtları otomasyon çalışınca burada görünür.</p>
+      </div>
+    </PortalTabState>
+  );
+
+  return (
+    <div>
+      <h3 className="mb-3 text-[14px] font-extrabold" style={{ color: TEXT }}>E-Tebligat</h3>
+      <div className="overflow-x-auto rounded-[10px] border" style={{ borderColor: LINE }}>
+        <table className="w-full border-collapse">
+          <thead><tr>
+            <PortalTh>Gönderen Kurum</PortalTh><PortalTh>Belge No</PortalTh><PortalTh>Tebliğ</PortalTh>
+            <PortalTh>Durum</PortalTh><PortalTh right>Belge</PortalTh>
+          </tr></thead>
+          <tbody>
+            {rows.map((d: any) => {
+              const raw = d.raw || {};
+              const okundu = !!(d.viewedAt || raw.mukellefOkumaZamani);
+              return (
+                <tr key={d.id} onClick={() => openDoc(d.id)} className="cursor-pointer transition hover:bg-white/[0.04]" style={{ borderBottom: `1px solid ${HAIR}` }}>
+                  <td className="px-3 py-3">
+                    <div className="text-[12.5px] font-semibold" style={{ color: TEXT }}>{raw.kurumAciklama || d.title || '—'}</div>
+                    {raw.altKurum ? <div className="text-[11px]" style={{ color: FAINT }}>{raw.altKurum}</div> : null}
+                  </td>
+                  <td className="px-3 py-3 text-[12.5px] tabular-nums" style={{ color: MUTED }}>{d.referenceNo || '—'}</td>
+                  <td className="px-3 py-3 text-[12.5px] tabular-nums" style={{ color: TEXT }}>{portalDateTr(raw.tebligZamani || d.receivedAt)}</td>
+                  <td className="px-3 py-3">
+                    <span className="inline-flex items-center gap-1.5 text-[12px] font-semibold" style={{ color: okundu ? GREEN : RED }}>
+                      <span style={{ width: 7, height: 7, borderRadius: '50%', background: okundu ? GREEN : RED, display: 'inline-block' }} />
+                      {okundu ? 'Okundu' : 'Okunmadı'}
+                    </span>
+                  </td>
+                  <td className="px-3 py-3 text-right">
+                    {busy === d.id
+                      ? <Loader2 className="ml-auto animate-spin" size={16} style={{ color: STEEL_BR }} />
+                      : <Eye size={17} style={{ color: STEEL_BR, marginLeft: 'auto' }} />}
+                  </td>
+                </tr>
+              );
+            })}
+          </tbody>
+        </table>
+      </div>
+      <p className="mt-2.5 text-[11.5px]" style={{ color: FAINT }}>Veri e-Tebligat otomasyonundan gelir — satıra tıklayınca tebligat (PDF) açılır.</p>
+    </div>
+  );
+}
+
 function BeyannamelerTab({ taxpayerId }: { taxpayerId: string }) {
   const { data: kayitlar = [], isLoading } = useQuery({
     queryKey: ['beyan-kayitlari', 'mukellef', taxpayerId],
