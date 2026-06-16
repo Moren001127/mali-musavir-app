@@ -73,10 +73,14 @@ export default function EntegratorDialog({ taxpayer, onClose }: Props) {
   const [editing, setEditing] = useState<any | null>(null);
 
   useEffect(() => {
-    if (!integrationsQ.isLoading && configured.length === 0 && mode === 'list') {
+    if (integrationsQ.isLoading) return;
+    if (configured.length === 0 && mode === 'list') {
       setMode('add');
+    } else if (configured.length > 0 && mode === 'add' && !editing) {
+      // Veri geldi, kayıtlı entegratör var — listeye geç
+      setMode('list');
     }
-  }, [integrationsQ.isLoading, configured.length, mode]);
+  }, [integrationsQ.isLoading, configured.length, mode, editing]);
 
   const saveMut = useMutation({
     mutationFn: async (payload: IntegrationFormPayload) => {
@@ -376,6 +380,8 @@ function EntegratorForm({
             onChange={(e) => setUsername(e.target.value)}
             placeholder="Genelde VKN/TCKN"
             required
+            autoComplete="off"
+            name="entegrator-username"
             className="w-full px-3 py-2.5 text-[13px] outline-none rounded-lg font-mono"
             style={{ background: 'var(--surface-2)', border: '1px solid var(--border)', color: 'var(--text)' }}
           />
@@ -393,6 +399,8 @@ function EntegratorForm({
               onChange={(e) => setPassword(e.target.value)}
               placeholder={isEdit ? '••••••' : 'Sağlayıcı şifresi'}
               required={!isEdit}
+              autoComplete="new-password"
+              name="entegrator-password"
               className="w-full px-3 py-2.5 pr-16 text-[13px] outline-none rounded-lg font-mono"
               style={{ background: 'var(--surface-2)', border: '1px solid var(--border)', color: 'var(--text)' }}
             />
