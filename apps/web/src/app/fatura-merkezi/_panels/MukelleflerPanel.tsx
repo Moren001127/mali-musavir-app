@@ -19,16 +19,6 @@ import GibPortalDialog from '../_dialogs/GibPortalDialog';
 import HesapPlaniDialog from '../_dialogs/HesapPlaniDialog';
 import MukellefAyarDialog from '../_dialogs/MukellefAyarDialog';
 
-/* ════════════════════════════════════════════════════════════════════
-   MÜKELLEFLER PANELİ — Mihsap referansı
-   Her mukellef satırında 5 hızlı işlem ikonu:
-     1) Mukellef Ayar      (Settings)
-     2) Yükleme Menüsü     (Cloud — drag-drop & QR mobil)
-     3) GIB Portal         (FileText — e-Arşiv satış çekme)
-     4) Entegratör         (Plug — e-Fatura sağlayıcı config)
-     5) Hesap Planı        (BookOpen — Luca senkron)
-   ════════════════════════════════════════════════════════════════════ */
-
 type Props = {
   taxpayers: Array<any>;
   loading: boolean;
@@ -45,17 +35,29 @@ const ACTIONS: Array<{
   desc: string;
   icon: LucideIcon;
   color: string;
+  bg: string;
 }> = [
-  { id: 'ayar',       label: 'Mukellef Ayarları', desc: 'Defter türü, KDV, stok',          icon: Settings, color: '#9ca3af' },
-  { id: 'yukle',      label: 'Belge Yükle',       desc: 'Alış/Satış/Banka — drag-drop',     icon: Cloud,    color: '#60a5fa' },
-  { id: 'gib',        label: 'GİB e-Arşiv',       desc: 'GİB portalından satış çek',        icon: FileText, color: '#f97316' },
-  { id: 'entegrator', label: 'Entegratör',         desc: 'e-Logo, Uyumsoft, Paraşüt vb.',    icon: Plug,     color: '#10b981' },
-  { id: 'hesap',      label: 'Hesap Planı',       desc: 'Luca senkron + yeni hesap',         icon: BookOpen, color: '#a78bfa' },
+  { id: 'ayar',       label: 'Mukellef Ayarları', desc: 'Defter türü, KDV, stok',       icon: Settings, color: '#94a3b8', bg: 'rgba(148,163,184,0.12)' },
+  { id: 'yukle',      label: 'Belge Yükle',       desc: 'Alış/Satış/Banka — drag-drop', icon: Cloud,    color: '#60a5fa', bg: 'rgba(96,165,250,0.12)'  },
+  { id: 'gib',        label: 'GİB e-Arşiv',       desc: 'GİB portalından satış çek',    icon: FileText, color: '#fb923c', bg: 'rgba(251,146,60,0.12)'  },
+  { id: 'entegrator', label: 'Entegratör',         desc: 'e-Logo, Uyumsoft, Paraşüt',   icon: Plug,     color: '#34d399', bg: 'rgba(52,211,153,0.12)'  },
+  { id: 'hesap',      label: 'Hesap Planı',        desc: 'Luca senkron + yeni hesap',   icon: BookOpen, color: '#a78bfa', bg: 'rgba(167,139,250,0.12)' },
 ];
+
+const TIP_STYLE: Record<string, { color: string; bg: string }> = {
+  Bireysel:  { color: '#60a5fa', bg: 'rgba(96,165,250,0.12)'  },
+  Kurumsal:  { color: '#f472b6', bg: 'rgba(244,114,182,0.12)' },
+};
+
+const DEFTER_STYLE: Record<string, { color: string; bg: string }> = {
+  İşletme:  { color: '#2dd4bf', bg: 'rgba(45,212,191,0.1)'  },
+  Bilanço:  { color: '#fbbf24', bg: 'rgba(251,191,36,0.1)'  },
+};
 
 export default function MukelleflerPanel({ taxpayers, loading, period, onRefresh, onSelectTaxpayer }: Props) {
   const [search, setSearch] = useState('');
   const [activeDialog, setActiveDialog] = useState<{ action: ActionId; taxpayer: any } | null>(null);
+  const [hoveredRow, setHoveredRow] = useState<string | null>(null);
 
   const filtered = useMemo(() => {
     if (!search) return taxpayers;
@@ -63,142 +65,198 @@ export default function MukelleflerPanel({ taxpayers, loading, period, onRefresh
   }, [taxpayers, search]);
 
   return (
-    <div className="p-6">
-      {/* Üst eylem barı */}
-      <div className="flex items-center gap-3 mb-5">
-        <div className="text-[20px] font-semibold tracking-tight" style={{ color: 'var(--text)', fontFamily: 'var(--font-heading)' }}>
-          Mükellefler
-        </div>
-        <div className="text-[12.5px]" style={{ color: 'var(--text-muted)' }}>
-          {filtered.length} kayıt
-        </div>
+    <div style={{ padding: '24px 28px', height: '100%', display: 'flex', flexDirection: 'column', gap: 0 }}>
 
-        <div className="flex-1" />
+      {/* Başlık */}
+      <div style={{ display: 'flex', alignItems: 'baseline', gap: 10, marginBottom: 16 }}>
+        <span style={{ fontSize: 20, fontWeight: 700, color: '#fafaf9', letterSpacing: '-0.3px' }}>Mükellefler</span>
+        <span style={{ fontSize: 12.5, color: 'rgba(250,250,249,0.4)', fontWeight: 500 }}>{filtered.length} kayıt</span>
       </div>
 
       {/* Arama */}
-      <div
-        className="flex items-center gap-2 px-3 py-2 mb-4 rounded-lg"
-        style={{ background: 'var(--surface)', border: '1px solid var(--border)' }}
-      >
-        <Search size={15} style={{ color: 'var(--text-muted)' }} />
+      <div style={{
+        display: 'flex', alignItems: 'center', gap: 8,
+        padding: '9px 14px', borderRadius: 10, marginBottom: 16,
+        background: 'rgba(255,255,255,0.04)', border: '1px solid rgba(255,255,255,0.08)',
+      }}>
+        <Search size={14} style={{ color: 'rgba(250,250,249,0.3)', flexShrink: 0 }} />
         <input
           placeholder="Mükellef adı veya VKN ile ara..."
           value={search}
           onChange={(e) => setSearch(e.target.value)}
-          className="flex-1 bg-transparent outline-none text-[13px]"
-          style={{ color: 'var(--text)' }}
+          style={{ flex: 1, background: 'transparent', border: 'none', outline: 'none', fontSize: 13, color: '#fafaf9' }}
         />
       </div>
 
       {/* Tablo */}
-      <div
-        className="rounded-xl overflow-hidden"
-        style={{ background: 'var(--surface)', border: '1px solid var(--border)' }}
-      >
-        <table className="w-full">
+      <div style={{
+        flex: 1, overflowY: 'auto',
+        borderRadius: 12, border: '1px solid rgba(255,255,255,0.07)',
+        background: 'rgba(255,255,255,0.02)',
+      }}>
+        <table style={{ width: '100%', borderCollapse: 'collapse' }}>
           <thead>
-            <tr style={{ background: 'var(--surface-2)', borderBottom: '1px solid var(--border)' }}>
-              <th className="text-left px-4 py-2.5 text-[11px] font-semibold tracking-wide" style={{ color: 'var(--text-muted)' }}>VERGİ NO</th>
-              <th className="text-left px-3 py-2.5 text-[11px] font-semibold tracking-wide" style={{ color: 'var(--text-muted)' }}>FİRMA / AD</th>
-              <th className="text-left px-3 py-2.5 text-[11px] font-semibold tracking-wide" style={{ color: 'var(--text-muted)' }}>TİP</th>
-              <th className="text-left px-3 py-2.5 text-[11px] font-semibold tracking-wide" style={{ color: 'var(--text-muted)' }}>DEFTER</th>
-              <th className="text-right px-3 py-2.5 text-[11px] font-semibold tracking-wide" style={{ color: 'var(--text-muted)' }}>HIZLI İŞLEMLER</th>
+            <tr style={{ background: 'rgba(255,255,255,0.03)', borderBottom: '1px solid rgba(255,255,255,0.07)' }}>
+              <th style={{ padding: '10px 16px', textAlign: 'left', fontSize: 11, fontWeight: 600, letterSpacing: '0.06em', color: 'rgba(250,250,249,0.35)', whiteSpace: 'nowrap' }}>VERGİ NO</th>
+              <th style={{ padding: '10px 12px', textAlign: 'left', fontSize: 11, fontWeight: 600, letterSpacing: '0.06em', color: 'rgba(250,250,249,0.35)' }}>FİRMA / AD</th>
+              <th style={{ padding: '10px 12px', textAlign: 'left', fontSize: 11, fontWeight: 600, letterSpacing: '0.06em', color: 'rgba(250,250,249,0.35)' }}>TİP</th>
+              <th style={{ padding: '10px 12px', textAlign: 'left', fontSize: 11, fontWeight: 600, letterSpacing: '0.06em', color: 'rgba(250,250,249,0.35)' }}>DEFTER</th>
+              <th style={{ padding: '10px 16px', textAlign: 'right', fontSize: 11, fontWeight: 600, letterSpacing: '0.06em', color: 'rgba(250,250,249,0.35)', whiteSpace: 'nowrap' }}>HIZLI İŞLEMLER</th>
             </tr>
           </thead>
           <tbody>
             {loading && (
               <tr>
-                <td colSpan={5} className="px-4 py-10 text-center text-[13px]" style={{ color: 'var(--text-muted)' }}>
+                <td colSpan={5} style={{ padding: '40px 16px', textAlign: 'center', fontSize: 13, color: 'rgba(250,250,249,0.3)' }}>
                   Yükleniyor...
                 </td>
               </tr>
             )}
             {!loading && filtered.length === 0 && (
               <tr>
-                <td colSpan={5} className="px-4 py-10 text-center text-[13px]" style={{ color: 'var(--text-muted)' }}>
-                  {search ? 'Eşleşen mukellef yok' : 'Henüz mukellef eklenmemiş'}
+                <td colSpan={5} style={{ padding: '40px 16px', textAlign: 'center', fontSize: 13, color: 'rgba(250,250,249,0.3)' }}>
+                  {search ? 'Eşleşen mükellef bulunamadı' : 'Henüz mükellef eklenmemiş'}
                 </td>
               </tr>
             )}
-            {filtered.map((t, idx) => (
-              <tr
-                key={t.id}
-                className="group transition-colors"
-                style={{
-                  borderBottom: idx === filtered.length - 1 ? 'none' : '1px solid var(--border-soft)',
-                }}
-                onMouseEnter={(e) => { e.currentTarget.style.background = 'var(--surface-2)'; }}
-                onMouseLeave={(e) => { e.currentTarget.style.background = 'transparent'; }}
-              >
-                <td className="px-4 py-2.5 text-[12.5px] font-mono" style={{ color: 'var(--text-secondary)' }}>
-                  {taxpayerTaxNumber(t)}
-                </td>
-                <td className="px-3 py-2.5">
-                  <button
-                    type="button"
-                    onClick={() => onSelectTaxpayer(t.id)}
-                    className="text-[13px] font-medium text-left hover:underline"
-                    style={{ color: 'var(--text)' }}
-                  >
-                    {taxpayerName(t)}
-                  </button>
-                </td>
-                <td className="px-3 py-2.5 text-[12px]" style={{ color: 'var(--text-secondary)' }}>
-                  {taxpayerType(t)}
-                </td>
-                <td className="px-3 py-2.5 text-[12px]" style={{ color: 'var(--text-secondary)' }}>
-                  {taxpayerBookType(t)}
-                </td>
-                <td className="px-3 py-2.5">
-                  <div className="flex items-center justify-end gap-1">
-                    {ACTIONS.map((a) => {
-                      const Icon = a.icon;
-                      return (
-                        <button
-                          key={a.id}
-                          type="button"
-                          title={`${a.label} — ${a.desc}`}
-                          onClick={() => setActiveDialog({ action: a.id, taxpayer: t })}
-                          className="p-2 rounded-md transition-all"
-                          style={{
-                            background: 'transparent',
-                            color: a.color,
-                            border: '1px solid transparent',
-                          }}
-                          onMouseEnter={(e) => {
-                            e.currentTarget.style.background = `${a.color}15`;
-                            e.currentTarget.style.borderColor = `${a.color}40`;
-                          }}
-                          onMouseLeave={(e) => {
-                            e.currentTarget.style.background = 'transparent';
-                            e.currentTarget.style.borderColor = 'transparent';
-                          }}
-                        >
-                          <Icon size={15} strokeWidth={1.8} />
-                        </button>
-                      );
-                    })}
+            {filtered.map((t, idx) => {
+              const tip    = taxpayerType(t);
+              const defter = taxpayerBookType(t);
+              const tipStyle    = TIP_STYLE[tip]    || { color: 'rgba(250,250,249,0.5)', bg: 'rgba(255,255,255,0.06)' };
+              const defterStyle = DEFTER_STYLE[defter] || { color: 'rgba(250,250,249,0.5)', bg: 'rgba(255,255,255,0.06)' };
+              const isHovered = hoveredRow === t.id;
+
+              return (
+                <tr
+                  key={t.id}
+                  onMouseEnter={() => setHoveredRow(t.id)}
+                  onMouseLeave={() => setHoveredRow(null)}
+                  style={{
+                    borderBottom: idx === filtered.length - 1 ? 'none' : '1px solid rgba(255,255,255,0.05)',
+                    background: isHovered ? 'rgba(255,255,255,0.04)' : 'transparent',
+                    transition: 'background 0.12s',
+                  }}
+                >
+                  {/* VERGİ NO */}
+                  <td style={{ padding: '13px 16px', whiteSpace: 'nowrap' }}>
+                    <span style={{ fontFamily: 'monospace', fontSize: 13, color: 'rgba(250,250,249,0.5)', letterSpacing: '0.04em' }}>
+                      {taxpayerTaxNumber(t)}
+                    </span>
+                  </td>
+
+                  {/* FİRMA / AD */}
+                  <td style={{ padding: '13px 12px', maxWidth: 360 }}>
                     <button
                       type="button"
                       onClick={() => onSelectTaxpayer(t.id)}
-                      className="ml-1 p-2 rounded-md transition-colors"
-                      style={{ color: 'var(--text-muted)' }}
-                      onMouseEnter={(e) => { e.currentTarget.style.color = 'var(--accent)'; }}
-                      onMouseLeave={(e) => { e.currentTarget.style.color = 'var(--text-muted)'; }}
-                      title="Detaya git"
+                      style={{
+                        background: 'none', border: 'none', padding: 0, cursor: 'pointer',
+                        textAlign: 'left', display: 'block', width: '100%',
+                      }}
                     >
-                      <ChevronRight size={15} />
+                      <span style={{
+                        display: 'block', fontSize: 14, fontWeight: 600,
+                        color: '#fafaf9', lineHeight: 1.3,
+                        overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap',
+                      }}>
+                        {taxpayerName(t)}
+                      </span>
                     </button>
-                  </div>
-                </td>
-              </tr>
-            ))}
+                  </td>
+
+                  {/* TİP */}
+                  <td style={{ padding: '13px 12px', whiteSpace: 'nowrap' }}>
+                    <span style={{
+                      display: 'inline-block', padding: '3px 10px', borderRadius: 20,
+                      fontSize: 11.5, fontWeight: 600,
+                      color: tipStyle.color, background: tipStyle.bg,
+                    }}>
+                      {tip}
+                    </span>
+                  </td>
+
+                  {/* DEFTER */}
+                  <td style={{ padding: '13px 12px', whiteSpace: 'nowrap' }}>
+                    <span style={{
+                      display: 'inline-block', padding: '3px 10px', borderRadius: 20,
+                      fontSize: 11.5, fontWeight: 600,
+                      color: defterStyle.color, background: defterStyle.bg,
+                    }}>
+                      {defter}
+                    </span>
+                  </td>
+
+                  {/* HIZLI İŞLEMLER */}
+                  <td style={{ padding: '13px 16px' }}>
+                    <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'flex-end', gap: 6 }}>
+                      {ACTIONS.map((a) => {
+                        const Icon = a.icon;
+                        return (
+                          <button
+                            key={a.id}
+                            type="button"
+                            title={`${a.label} — ${a.desc}`}
+                            onClick={() => setActiveDialog({ action: a.id, taxpayer: t })}
+                            style={{
+                              width: 32, height: 32, borderRadius: 8,
+                              display: 'flex', alignItems: 'center', justifyContent: 'center',
+                              background: a.bg,
+                              border: `1px solid ${a.color}30`,
+                              color: a.color,
+                              cursor: 'pointer',
+                              transition: 'transform 0.1s, filter 0.1s',
+                              flexShrink: 0,
+                            }}
+                            onMouseEnter={(e) => {
+                              e.currentTarget.style.transform = 'scale(1.12)';
+                              e.currentTarget.style.filter = 'brightness(1.2)';
+                            }}
+                            onMouseLeave={(e) => {
+                              e.currentTarget.style.transform = 'scale(1)';
+                              e.currentTarget.style.filter = 'brightness(1)';
+                            }}
+                          >
+                            <Icon size={15} strokeWidth={1.9} />
+                          </button>
+                        );
+                      })}
+
+                      {/* Detay ok */}
+                      <button
+                        type="button"
+                        onClick={() => onSelectTaxpayer(t.id)}
+                        title="Detaya git"
+                        style={{
+                          width: 32, height: 32, borderRadius: 8, marginLeft: 2,
+                          display: 'flex', alignItems: 'center', justifyContent: 'center',
+                          background: 'rgba(255,255,255,0.05)',
+                          border: '1px solid rgba(255,255,255,0.08)',
+                          color: 'rgba(250,250,249,0.4)',
+                          cursor: 'pointer',
+                          transition: 'color 0.1s, border-color 0.1s',
+                          flexShrink: 0,
+                        }}
+                        onMouseEnter={(e) => {
+                          e.currentTarget.style.color = '#fafaf9';
+                          e.currentTarget.style.borderColor = 'rgba(255,255,255,0.2)';
+                        }}
+                        onMouseLeave={(e) => {
+                          e.currentTarget.style.color = 'rgba(250,250,249,0.4)';
+                          e.currentTarget.style.borderColor = 'rgba(255,255,255,0.08)';
+                        }}
+                      >
+                        <ChevronRight size={14} strokeWidth={2} />
+                      </button>
+                    </div>
+                  </td>
+                </tr>
+              );
+            })}
           </tbody>
         </table>
       </div>
 
-      {/* Hızlı işlem dialog'ları */}
+      {/* Dialog'lar */}
       {activeDialog?.action === 'entegrator' && (
         <EntegratorDialog
           taxpayer={activeDialog.taxpayer}
