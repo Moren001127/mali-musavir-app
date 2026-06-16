@@ -64,9 +64,20 @@ export default function EFaturaInboxPanel({ taxpayerId, period }: Props) {
 
   const syncMut = useMutation({
     mutationFn: async (direction: 'IN' | 'OUT') =>
-      api.post('/fatura-muhasebelestirme/efatura-sync', { direction }),
-    onSuccess: (_, dir) => {
-      toast.success(`${DIR_LABEL[dir]} faturaları entegratörden çekildi`);
+      api.post('/fatura-muhasebelestirme/efatura-sync', { direction }).then(r => r.data),
+    onSuccess: (data: any, dir) => {
+      if (data?.connections === 0) {
+        toast.warning('Kayıtlı entegratör bağlantısı bulunamadı. Entegratör ayarlarını kontrol edin.');
+        return;
+      }
+      if (data?.errors?.length > 0) {
+        toast.error(`${DIR_LABEL[dir]} sync hatası: ${data.errors[0]}`);
+        return;
+      }
+      const msg = data?.added > 0
+        ? `${DIR_LABEL[dir]}: ${data.added} yeni fatura alındı`
+        : `${DIR_LABEL[dir]}: yeni fatura yok (${data?.skipped ?? 0} zaten mevcut)`;
+      toast.success(msg);
       qc.invalidateQueries({ queryKey: ['efatura-inbox'] });
     },
     onError: (e: any) => toast.error(e?.response?.data?.message || 'Sync hatası'),

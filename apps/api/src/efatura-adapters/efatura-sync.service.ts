@@ -2,6 +2,7 @@ import { Injectable, Logger } from '@nestjs/common';
 import { PrismaService } from '../prisma/prisma.service';
 import { getEFaturaAdapter, SUPPORTED_PROVIDERS } from './efatura-adapter.factory';
 import { EFaturaCredentials } from './efatura-adapter.interface';
+import { tryDecrypt } from '../common/crypto';
 
 @Injectable()
 export class EFaturaSyncService {
@@ -137,8 +138,13 @@ export class EFaturaSyncService {
 
   /**
    * Bir tenant altındaki tüm entegratör bağlantılarını sync et.
+   * Kimlik bilgileri config.taxpayers[key] içinde şifreli saklanır —
+   * tryDecrypt ile açılarak adapter'a iletilir.
    */
-  async syncAll(tenantId: string, opts: { direction?: 'IN' | 'OUT' } = {}): Promise<void> {
+  async syncAll(
+    tenantId: string,
+    opts: { direction?: 'IN' | 'OUT' } = {},
+  ): Promise<{ added: number; skipped: number; errors: string[]; connections: number }> {
     const connections = await (this.prisma as any).integrationConnection.findMany({
       where: {
         tenantId,
@@ -147,35 +153,49 @@ export class EFaturaSyncService {
       },
     });
 
+    let totalAdded = 0;
+    let totalSkipped = 0;
+    const totalErrors: string[] = [];
+
     for (const conn of connections) {
       const cfg: any = conn.config || {};
-      const credentials: EFaturaCredentials = {
-        username: cfg.username || cfg.user,
-        password: cfg.password || cfg.pass,
-        apiKey: cfg.apiKey,
-        apiSecret: cfg.apiSecret,
-        baseUrl: cfg.baseUrl,
-        firmaNo: cfg.firmaNo,
-      };
-
-      // Mükellef bazlı kimlik bilgileri varsa onları kullan
       const taxpayers: Record<string, any> = cfg.taxpayers || {};
-      const hasTaxpayerCreds =
-        Object.keys(taxpayers).filter((k) => k !== 'global').length > 0;
 
-      if (hasTaxpayerCreds) {
-        for (const [taxpayerId, tpCfg] of Object.entries(taxpayers)) {
-          if (!tpCfg || taxpayerId === 'global') continue;
-          const tpCredentials: EFaturaCredentials = {
-            ...credentials,
-            ...(typeof tpCfg === 'object' ? (tpCfg as Record<string, any>) : {}),
+      const entries = Object.entries(taxpayers).filter(([k, v]) => v && k !== 'global');
+
+      if (entries.length > 0) {
+        for (const [taxpayerId, tpCfg] of entries) {
+          const tp: any = tpCfg || {};
+          const credentials: EFaturaCredentials = {
+            username: tp.username || '',
+            password: tryDecrypt(tp.encryptedPassword) || '',
+            apiKey: tryDecrypt(tp.encryptedApiKey) || '',
+            apiSecret: tryDecrypt(tp.encryptedApiSecret) || '',
+            baseUrl: tp.baseUrl || cfg.baseUrl || '',
+            firmaNo: tp.firmaNo || cfg.firmaNo || '',
           };
-          await this.syncTaxpayer(tenantId, taxpayerId, conn.provider, tpCredentials, opts);
+          const r = await this.syncTaxpayer(tenantId, taxpayerId, conn.provider, credentials, opts);
+          totalAdded += r.added;
+          totalSkipped += r.skipped;
+          totalErrors.push(...r.errors);
         }
       } else {
-        // Tek kimlik bilgisi, tüm mükellefler için
-        await this.syncTaxpayer(tenantId, 'global', conn.provider, credentials, opts);
+        const global: any = taxpayers.global || {};
+        const credentials: EFaturaCredentials = {
+          username: global.username || '',
+          password: tryDecrypt(global.encryptedPassword) || '',
+          apiKey: tryDecrypt(global.encryptedApiKey) || '',
+          apiSecret: tryDecrypt(global.encryptedApiSecret) || '',
+          baseUrl: global.baseUrl || cfg.baseUrl || '',
+          firmaNo: global.firmaNo || cfg.firmaNo || '',
+        };
+        const r = await this.syncTaxpayer(tenantId, 'global', conn.provider, credentials, opts);
+        totalAdded += r.added;
+        totalSkipped += r.skipped;
+        totalErrors.push(...r.errors);
       }
     }
+
+    return { added: totalAdded, skipped: totalSkipped, errors: totalErrors, connections: connections.length };
   }
 }
