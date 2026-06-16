@@ -419,8 +419,15 @@ export class KdvControlService implements OnApplicationBootstrap {
     visibleResults.forEach((r) => (statusMap[r.status] = (statusMap[r.status] ?? 0) + 1));
     const isReviewStatus = (status: string) => status === 'PARTIAL_MATCH' || status === 'NEEDS_REVIEW';
     const isRejectedStatus = (status: string) => status === 'REJECTED' || status === 'MISMATCH';
-    const isAmountMismatch = (r: (typeof visibleResults)[number]) =>
-      this.isKdvMatchedStatus(r.status) && Math.abs(this.getExportFarkValue(r, visibleResults, sessionType)) > 0.01;
+    const isAmountMismatch = (r: (typeof visibleResults)[number]) => {
+      if (!this.isKdvMatchedStatus(r.status)) return false;
+      const fark = Math.abs(this.getExportFarkValue(r, visibleResults, sessionType));
+      const luca = r.kdvRecord?.kdvTutari ? Math.abs(Number(r.kdvRecord.kdvTutari)) : 0;
+      // Sayaç, eşleştirme motoruyla AYNI toleransı kullanır (≈%1 göreli + 1 kuruş taban):
+      // motor "eşleşti" dediği kuruş yuvarlama / OCR mikro farkını sayaç "incele" saymasın.
+      // (Örn. Luca 61,37 ↔ fatura 61,33 = 4 kuruş → eşleşmiş kabul, incele DEĞİL.)
+      return fark > Math.max(0.01, luca * 0.01);
+    };
     const partialMatch = statusMap['PARTIAL_MATCH'] ?? 0;
     const needsReview = statusMap['NEEDS_REVIEW'] ?? 0;
     const unmatched = statusMap['UNMATCHED'] ?? 0;
