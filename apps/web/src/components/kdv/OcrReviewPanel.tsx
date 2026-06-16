@@ -73,6 +73,8 @@ export function OcrReviewPanel({
   const qc = useQueryClient();
   const [activeId, setActiveId] = useState<string | null>(null);
   const [previewUrl, setPreviewUrl] = useState<string | null>(null);
+  const [previewError, setPreviewError] = useState(false);
+  const [previewNonce, setPreviewNonce] = useState(0);
   const [form, setForm] = useState<{
     belgeNo: string;
     date: string;
@@ -165,6 +167,7 @@ export function OcrReviewPanel({
     if (!activeImg) {
       setForm({ belgeNo: '', date: '', kdvTutari: '', kdvTevkifat: '', breakdown: null });
       setPreviewUrl(null);
+      setPreviewError(false);
       return;
     }
     setForm({
@@ -174,15 +177,27 @@ export function OcrReviewPanel({
       kdvTevkifat: activeImg.confirmedKdvTevkifat ?? activeImg.ocrKdvTevkifat ?? '',
       breakdown: (activeImg.confirmedKdvBreakdown ?? activeImg.ocrKdvBreakdown ?? null) as KdvBreakdownItem[] | null,
     });
-    // Presigned URL'i yükle
+    // Presigned URL'i yükle — hata yakalama + retry; takılırsa sonsuz spinner kalmasın.
     let cancelled = false;
-    kdvApi.getImageUrl(activeImg.id).then((r: any) => {
-      if (!cancelled) setPreviewUrl(r.url);
-    });
+    const id = activeImg.id;
+    setPreviewUrl(null);
+    setPreviewError(false);
+    let tries = 0;
+    const attempt = () => {
+      kdvApi.getImageUrl(id)
+        .then((r: any) => { if (!cancelled) setPreviewUrl(r.url); })
+        .catch(() => {
+          if (cancelled) return;
+          tries += 1;
+          if (tries < 3) setTimeout(attempt, 700);
+          else setPreviewError(true);
+        });
+    };
+    attempt();
     return () => {
       cancelled = true;
     };
-  }, [activeImg?.id]);
+  }, [activeImg?.id, previewNonce]);
 
   const confirmMut = useMutation({
     mutationFn: (payload: {
@@ -572,7 +587,22 @@ export function OcrReviewPanel({
         {activeImg ? (
           <div className="p-5 grid grid-cols-1 md:grid-cols-2 gap-5">
             {/* Fatura görseli — büyüteçli */}
-            <ZoomableImage key={activeImg.id} src={previewUrl} alt={activeImg.originalName} />
+            {previewError ? (
+              <div className="flex flex-col items-center justify-center gap-3 rounded-xl" style={{ minHeight: 320, background: 'rgba(255,255,255,0.02)', border: '1px solid rgba(255,255,255,0.08)' }}>
+                <AlertTriangle size={26} style={{ color: '#fbbf24' }} />
+                <p className="text-[13px] text-center px-4" style={{ color: 'rgba(250,250,249,0.6)' }}>Fatura görseli yüklenemedi.<br />Bağlantı yavaş olabilir.</p>
+                <button
+                  type="button"
+                  onClick={() => setPreviewNonce((n) => n + 1)}
+                  className="inline-flex items-center gap-1.5 px-3.5 py-2 rounded-lg text-[12.5px] font-semibold"
+                  style={{ background: 'rgba(212,184,118,0.14)', border: '1px solid rgba(212,184,118,0.3)', color: GOLD }}
+                >
+                  <RefreshCw size={13} /> Tekrar dene
+                </button>
+              </div>
+            ) : (
+              <ZoomableImage key={activeImg.id} src={previewUrl} alt={activeImg.originalName} />
+            )}
 
             {/* Alan inputları */}
             <div className="space-y-4">
