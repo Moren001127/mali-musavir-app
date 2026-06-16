@@ -237,9 +237,14 @@ export class FaturaMuhasebelestirmeService {
   private readonly uploadOcrQueue: Array<{
     tenantId: string;
     documentId: string;
-    buffer: Buffer;
-    originalName: string;
+    buffer?: Buffer;
+    originalName?: string;
     forceClaude?: boolean;
+    // Mihsap'tan çekilen belgeler: buffer CDN'den lazy indirilir (210 buffer'i
+    // bellekte tutmamak icin), yon-duyarli yevmiye uretilir.
+    kind?: 'upload' | 'mihsap';
+    mihsapInvoiceId?: string;
+    invoiceKind?: 'ALIS' | 'SATIS';
   }> = [];
 
   constructor(
@@ -2064,15 +2069,23 @@ export class FaturaMuhasebelestirmeService {
       const job = this.uploadOcrQueue.shift();
       if (!job) return;
       this.uploadOcrActive++;
-      void this.processUploadedDocumentOcr(
-        job.tenantId,
-        job.documentId,
-        job.buffer,
-        job.originalName,
-        job.forceClaude,
-      )
+      const work = job.kind === 'mihsap'
+        ? this.processMihsapDocumentOcr(
+            job.tenantId,
+            job.documentId,
+            String(job.mihsapInvoiceId || ''),
+            (job.invoiceKind || 'ALIS') as 'ALIS' | 'SATIS',
+          )
+        : this.processUploadedDocumentOcr(
+            job.tenantId,
+            job.documentId,
+            job.buffer as Buffer,
+            String(job.originalName || ''),
+            job.forceClaude,
+          );
+      void work
         .catch((e: any) => {
-          this.logger.error(`Yuklenen belge OCR arka plan islemi basarisiz (${job.documentId}): ${e?.message || e}`);
+          this.logger.error(`Belge OCR arka plan islemi basarisiz (${job.documentId}): ${e?.message || e}`);
         })
         .finally(() => {
           this.uploadOcrActive = Math.max(0, this.uploadOcrActive - 1);
@@ -2180,6 +2193,142 @@ export class FaturaMuhasebelestirmeService {
       });
       throw e;
     }
+  }
+
+  private enqueueMihsapDocumentOcr(
+    tenantId: string,
+    documentId: string,
+    mihsapInvoiceId: string,
+    invoiceKind: 'ALIS' | 'SATIS',
+  ) {
+    this.uploadOcrQueue.push({ tenantId, documentId, kind: 'mihsap', mihsapInvoiceId, invoiceKind });
+    this.drainUploadedOcrQueue();
+  }
+
+  /**
+   * Mihsap'tan cekilen bir belgenin dosyasini CDN'den indirir, OCR/XML parse eder,
+   * yon-duyarli yevmiye satirlarini uretir ve hesap planiyla otomatik eslestirir.
+   * e-Fatura (XML) -> UBL parse (AI'siz, birebir). e-Arsiv/OKC (JPEG) -> Azure Vision.
+   * Mihsap basligindan gelen VKN/unvan/tutar GUVENILIR kabul edilir; OCR yalniz
+   * matrah/KDV kirilimini ve kalemleri saglar.
+   */
+  private async processMihsapDocumentOcr(
+    tenantId: string,
+    documentId: string,
+    mihsapInvoiceId: string,
+    invoiceKind: 'ALIS' | 'SATIS',
+  ) {
+    await (this.prisma as any).invoiceAccountingDocument.updateMany({
+      where: { id: documentId, tenantId },
+      data: { ocrStatus: 'IN_PROGRESS' },
+    });
+
+    try {
+      const existing = await (this.prisma as any).invoiceAccountingDocument.findFirst({
+        where: { id: documentId, tenantId },
+        select: {
+          id: true, taxpayerId: true, totalAmount: true,
+          vendorName: true, customerName: true,
+          belgeNo: true, faturaTarihi: true,
+        },
+      });
+      if (!existing) return;
+
+      const file = await this.mihsapService.getInvoiceFile(tenantId, mihsapInvoiceId);
+      const ocr = await this.ocr.extractFromImage(file.buffer, file.filename, {});
+
+      // Toplam: Mihsap basligi guvenilir, yoksa OCR'dan
+      // (Prisma.Decimal -> Number dogrudan NaN verebilir; string uzerinden cevir)
+      const totalNum = existing.totalAmount != null
+        ? this.numFromOcr(String(existing.totalAmount))
+        : this.numFromOcr(ocr.totalTutari);
+
+      // KDV kirilimi: OCR {oran,matrah?,tutar} -> linesFromAmounts {rate,base,amount}
+      const rawBreakdown = Array.isArray(ocr.kdvBreakdown) ? ocr.kdvBreakdown : [];
+      const breakdown = rawBreakdown
+        .map((b: any) => {
+          const rate = Number(b.oran) || 0;
+          const amount = Number(b.tutar) || 0;
+          const base = (b.matrah != null && Number(b.matrah) > 0)
+            ? Number(b.matrah)
+            : (rate > 0 ? Number((amount / (rate / 100)).toFixed(2)) : 0);
+          return { rate, base, amount };
+        })
+        .filter((b: { base: number; amount: number }) => b.amount > 0 || b.base > 0);
+
+      const kdvTotal = breakdown.length
+        ? breakdown.reduce((s, b) => s + b.amount, 0)
+        : this.numFromOcr(ocr.kdvTutari);
+      const matrah = Math.max(totalNum - kdvTotal, 0);
+      const vendorOrCustomer = invoiceKind === 'SATIS' ? existing.customerName : existing.vendorName;
+
+      const lines = this.linesFromAmounts({
+        invoiceKind,
+        matrah,
+        kdvTutari: kdvTotal,
+        kdvOrani: breakdown[0]?.rate,
+        total: totalNum,
+        vendorName: vendorOrCustomer,
+        kdvBreakdown: breakdown.length ? breakdown : null,
+      });
+
+      const ocrStatus = (ocr.confidence ?? 0) >= 0.7 ? 'SUCCESS' : 'NEEDS_REVIEW';
+
+      await (this.prisma as any).$transaction(async (tx: any) => {
+        await tx.invoiceAccountingLine.deleteMany({ where: { documentId } });
+        if (lines.length) {
+          await tx.invoiceAccountingLine.createMany({
+            data: lines.map((line) => ({ ...line, documentId })),
+          });
+        }
+        await tx.invoiceAccountingDocument.update({
+          where: { id: documentId },
+          data: {
+            // Mihsap basligini koru; sadece eksikse OCR ile doldur
+            belgeNo: existing.belgeNo || ocr.belgeNo || null,
+            faturaTarihi: existing.faturaTarihi || parseDate(ocr.date || null) || null,
+            totalAmount: money(totalNum),
+            status: 'NEEDS_REVIEW',
+            ocrStatus,
+            ocrEngine: ocr.engine || null,
+            ocrRawText: ocr.rawText || null,
+            ocrConfidence: ocr.confidence ?? null,
+            ocrData: ocr as any,
+          },
+        });
+      });
+
+      await this.revalidateDocument(tenantId, documentId).catch((e: any) => {
+        this.logger.warn(`Mihsap belge validation basarisiz (${documentId}): ${e?.message || e}`);
+      });
+      await this.rematchDocumentsWithLatestAccountPlan(tenantId, existing.taxpayerId, [documentId]).catch(() => null);
+    } catch (e: any) {
+      // OCR/indirme basarisiz: belge yine de listede kalsin (NEEDS_REVIEW),
+      // kullanici tutari elle girip onaylayabilsin.
+      await (this.prisma as any).invoiceAccountingDocument.updateMany({
+        where: { id: documentId, tenantId },
+        data: {
+          status: 'NEEDS_REVIEW',
+          ocrStatus: 'FAILED',
+          ocrEngine: 'failed',
+          ocrRawText: (e?.message || 'Mihsap belge OCR hatasi').slice(0, 500),
+          ocrConfidence: 0,
+        },
+      });
+      this.logger.warn(`Mihsap belge OCR hatasi (${documentId}): ${e?.message || e}`);
+    }
+  }
+
+  private numFromOcr(value: any): number {
+    if (value == null) return 0;
+    if (typeof value === 'number') return Number.isFinite(value) ? value : 0;
+    const raw = String(value).trim();
+    if (!raw) return 0;
+    const normalized = raw.includes(',')
+      ? raw.replace(/\./g, '').replace(',', '.')
+      : raw.replace(/[^\d.-]/g, '');
+    const n = Number(normalized);
+    return Number.isFinite(n) ? n : 0;
   }
 
   async ensureFromEarsivFatura(tenantId: string, faturaId: string) {
@@ -2578,20 +2727,31 @@ export class FaturaMuhasebelestirmeService {
     });
 
     let created = 0;
+    let reprocessed = 0;
     let skipped = 0;
     let failed = 0;
     const errors: string[] = [];
 
     for (const inv of rows) {
       try {
-        const existing = await (this.prisma as any).invoiceAccountingDocument.findFirst({
-          where: { tenantId, source: 'mihsap', sourceRefId: String(inv.mihsapId) },
-          select: { id: true },
-        });
-        if (existing) { skipped++; continue; }
-
         const rawTur = String(inv.faturaTuru || 'ALIS').toUpperCase();
         const invoiceKind: 'ALIS' | 'SATIS' = rawTur.includes('SATIS') ? 'SATIS' : 'ALIS';
+
+        const existing = await (this.prisma as any).invoiceAccountingDocument.findFirst({
+          where: { tenantId, source: 'mihsap', sourceRefId: String(inv.mihsapId) },
+          select: { id: true, _count: { select: { lines: true } } },
+        });
+        if (existing) {
+          // Daha once cekilmis ama yevmiyesi yoksa (eski hatali import) yeniden OCR'la
+          if ((existing._count?.lines || 0) === 0) {
+            this.enqueueMihsapDocumentOcr(tenantId, existing.id, inv.id, invoiceKind);
+            reprocessed++;
+          } else {
+            skipped++;
+          }
+          continue;
+        }
+
         const rawBelge = String(inv.belgeTuru || '').toUpperCase();
         const documentType =
           rawBelge.includes('E_FATURA') || rawBelge === 'EFATURA' ? 'E_FATURA'
@@ -2604,7 +2764,7 @@ export class FaturaMuhasebelestirmeService {
           : ext === 'XML' ? 'application/xml'
           : 'application/pdf';
 
-        await (this.prisma as any).invoiceAccountingDocument.create({
+        const doc = await (this.prisma as any).invoiceAccountingDocument.create({
           data: {
             tenantId,
             taxpayerId: opts.taxpayerId,
@@ -2612,8 +2772,9 @@ export class FaturaMuhasebelestirmeService {
             sourceRefId: String(inv.mihsapId),
             documentType,
             invoiceKind,
-            status: 'NEEDS_REVIEW',
-            originalName: `${inv.faturaNo || inv.mihsapId}.pdf`,
+            // OCR arka planda yevmiye uretene kadar PROCESSING; bitince NEEDS_REVIEW
+            status: 'PROCESSING',
+            originalName: `${inv.faturaNo || inv.mihsapId}.${ext.toLowerCase() || 'pdf'}`,
             mimeType,
             sizeBytes: 1,
             s3Key: inv.storageKey || inv.storageUrl || `mihsap:${inv.mihsapId}`,
@@ -2624,10 +2785,12 @@ export class FaturaMuhasebelestirmeService {
             buyerVkn: invoiceKind === 'SATIS' ? (inv.firmaKimlikNo || null) : null,
             customerName: invoiceKind === 'SATIS' ? (inv.firmaUnvan || null) : null,
             totalAmount: inv.toplamTutar != null ? inv.toplamTutar : null,
-            ocrStatus: 'DONE',
+            ocrStatus: 'PENDING',
             createdBy: opts.createdBy || null,
           },
+          select: { id: true },
         });
+        this.enqueueMihsapDocumentOcr(tenantId, doc.id, inv.id, invoiceKind);
         created++;
       } catch (e: any) {
         failed++;
@@ -2635,8 +2798,8 @@ export class FaturaMuhasebelestirmeService {
       }
     }
 
-    this.logger.log(`importFromMihsap [${opts.taxpayerId}/${opts.donem}]: scan=${rows.length} created=${created} skipped=${skipped} failed=${failed}`);
-    return { scanned: rows.length, created, skipped, failed, errors };
+    this.logger.log(`importFromMihsap [${opts.taxpayerId}/${opts.donem}]: scan=${rows.length} created=${created} reprocessed=${reprocessed} skipped=${skipped} failed=${failed}`);
+    return { scanned: rows.length, created, reprocessed, skipped, failed, errors };
   }
 
   async fileUrl(tenantId: string, id: string) {
@@ -2698,6 +2861,47 @@ export class FaturaMuhasebelestirmeService {
           ? ('original-xslt' as const)
           : fatura ? ('rendered-from-xml' as const) : ('placeholder' as const),
       };
+    }
+    // Mihsap kaynakli belge: dosya S3'te degil, Mihsap CDN'inde. Backend proxy
+    // ile indirip data-URI (resim/PDF) veya render edilmis HTML (XML) doneriz.
+    if (String((doc as any).source || '') === 'mihsap') {
+      const refId = String((doc as any).sourceRefId || '').trim();
+      const inv = refId
+        ? await (this.prisma as any).mihsapInvoice.findFirst({
+            where: { tenantId, mihsapId: refId },
+            select: { id: true },
+          })
+        : null;
+      if (inv?.id) {
+        try {
+          const file = await this.mihsapService.getInvoiceFile(tenantId, inv.id);
+          const ct = String(file.contentType || '').toLowerCase();
+          if (/^image\//.test(ct)) {
+            return {
+              url: `data:${file.contentType};base64,${file.buffer.toString('base64')}`,
+              mimeType: file.contentType,
+              source: 'mihsap' as const,
+            };
+          }
+          if (/pdf/.test(ct)) {
+            return {
+              url: `data:application/pdf;base64,${file.buffer.toString('base64')}`,
+              mimeType: 'application/pdf',
+              source: 'mihsap' as const,
+            };
+          }
+          const raw = file.buffer.toString('utf8');
+          const html = /html/.test(ct) ? raw : this.inlinePreviewHtml(raw);
+          return { url: '', inlineHtml: html, mimeType: 'text/html', source: 'mihsap' as const };
+        } catch (e: any) {
+          return {
+            url: '',
+            inlineHtml: this.inlinePreviewHtml(`Mihsap belgesi getirilemedi: ${e?.message || ''}`),
+            mimeType: 'text/html',
+            source: 'placeholder' as const,
+          };
+        }
+      }
     }
     if (/text\/html|xml/i.test(mimeType)) {
       const buffer = await this.storage.getBuffer(doc.s3Key);

@@ -109,10 +109,11 @@ export default function FaturaMerkeziPage() {
         donem: period,
       });
       const d = res.data;
-      if (d.created > 0) {
-        toast.success(`Mihsap'tan ${d.scanned} fatura tarandı, ${d.created} yeni belge aktarıldı`);
-      } else if (d.skipped > 0 && d.created === 0) {
-        toast.info(`${d.scanned} fatura tarandı, tümü zaten aktarılmış`);
+      const islenecek = (d.created || 0) + (d.reprocessed || 0);
+      if (islenecek > 0) {
+        toast.success(`${d.scanned} fatura tarandı · ${islenecek} belge OCR'a alındı (arka planda işleniyor, Gelen Belgeler'de görünecek)`);
+      } else if (d.skipped > 0) {
+        toast.info(`${d.scanned} fatura tarandı, tümü zaten işlenmiş`);
       } else if (d.scanned === 0) {
         toast.info('Mihsap\'ta bu dönem için bekleyen fatura bulunamadı');
       } else {

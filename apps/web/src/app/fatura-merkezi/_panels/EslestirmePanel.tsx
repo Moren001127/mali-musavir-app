@@ -33,7 +33,7 @@ export default function EslestirmePanel({ taxpayerId, period, taxpayers }: Props
     queryKey: ['fatura-merkezi', 'approval-queue', taxpayerId, period],
     queryFn: () =>
       api
-        .get('/fatura-muhasebelestirme', { params: { taxpayerId, period, status: 'PENDING', limit: 100 } })
+        .get('/fatura-muhasebelestirme/documents', { params: { taxpayerId, period, status: 'PENDING', limit: 200 } })
         .then((r) => (Array.isArray(r.data) ? r.data : (r.data?.documents || r.data?.data || [])))
         .catch(() => []),
   });

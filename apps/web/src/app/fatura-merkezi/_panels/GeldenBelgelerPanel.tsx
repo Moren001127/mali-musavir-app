@@ -26,6 +26,7 @@ const SOURCE_LABEL: Record<string, { label: string; color: string; bg: string }>
 };
 
 const STATUS_LABEL: Record<string, { label: string; color: string }> = {
+  PROCESSING:    { label: 'İşleniyor (OCR)',   color: '#38bdf8' },
   NEEDS_REVIEW:  { label: 'İnceleme Bekliyor', color: '#fbbf24' },
   READY:         { label: 'Hazır',             color: '#4ade80' },
   PENDING:       { label: 'Onay Bekliyor',     color: '#60a5fa' },
@@ -50,26 +51,28 @@ export default function GeldenBelgelerPanel({ taxpayerId, period, taxpayers, onM
   const [drawerDoc, setDrawerDoc] = useState<{ taxpayerId: string; direction: 'ALIS' | 'SATIS'; defterTuru?: string | null } | null>(null);
   const [filterStatus, setFilterStatus] = useState<'NEEDS_REVIEW' | 'ALL'>('NEEDS_REVIEW');
 
+  // Gelen kutusu mantığı: dönemden bağımsız TÜM bekleyenleri çek (Mihsap kuyruğu
+  // eski tarihli olabilir). OCR sürerken PROCESSING, bitince NEEDS_REVIEW görünür.
   const docsQ = useQuery({
-    queryKey: ['fatura-merkezi', 'gelen-belgeler', taxpayerId, period, filterStatus],
+    queryKey: ['fatura-merkezi', 'gelen-belgeler', taxpayerId],
     queryFn: () =>
       api
         .get('/fatura-muhasebelestirme/documents', {
-          params: {
-            taxpayerId,
-            // NEEDS_REVIEW modunda dönem filtresi yok: birikmiş faturalar eski tarihli
-            // olabilir (Mihsap bekleyen kuyruğu), hepsi görünmeli
-            period: filterStatus === 'ALL' ? period : undefined,
-            status: filterStatus === 'ALL' ? 'PENDING' : 'NEEDS_REVIEW',
-            limit: 500,
-          },
+          params: { taxpayerId, status: 'PENDING', limit: 500 },
         })
         .then((r) => (Array.isArray(r.data) ? r.data : (r.data?.documents || r.data?.data || [])))
         .catch(() => []),
+    // OCR arka planda sürerken otomatik tazele
+    refetchInterval: (q) => {
+      const data = (q.state.data as any[]) || [];
+      return data.some((d) => d.status === 'PROCESSING') ? 4000 : false;
+    },
   });
 
-  const docs: any[] = docsQ.data || [];
-  const needsReviewCount = docs.filter((d) => d.status === 'NEEDS_REVIEW').length;
+  const allDocs: any[] = docsQ.data || [];
+  const docs = filterStatus === 'ALL' ? allDocs : allDocs.filter((d) => d.status === 'NEEDS_REVIEW');
+  const needsReviewCount = allDocs.filter((d) => d.status === 'NEEDS_REVIEW').length;
+  const processingCount = allDocs.filter((d) => d.status === 'PROCESSING').length;
   const selectedTaxpayer = taxpayers.find((t) => t.id === taxpayerId);
 
   const approveMut = useMutation({
@@ -103,6 +106,12 @@ export default function GeldenBelgelerPanel({ taxpayerId, period, taxpayers, onM
         {needsReviewCount > 0 && (
           <span style={{ display: 'inline-flex', alignItems: 'center', justifyContent: 'center', minWidth: 22, height: 20, padding: '0 7px', borderRadius: 20, fontSize: 11.5, fontWeight: 700, background: 'rgba(251,191,36,0.18)', color: '#fbbf24', border: '1px solid rgba(251,191,36,0.3)' }}>
             {needsReviewCount}
+          </span>
+        )}
+        {processingCount > 0 && (
+          <span style={{ display: 'inline-flex', alignItems: 'center', gap: 5, padding: '2px 9px', borderRadius: 20, fontSize: 11.5, fontWeight: 600, background: 'rgba(56,189,248,0.15)', color: '#38bdf8', border: '1px solid rgba(56,189,248,0.3)' }}>
+            <Loader2 size={11} className="animate-spin" />
+            {processingCount} işleniyor
           </span>
         )}
         <div style={{ flex: 1 }} />
