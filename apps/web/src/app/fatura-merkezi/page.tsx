@@ -1,11 +1,12 @@
 'use client';
 
 import { useState, useMemo } from 'react';
-import { useQuery } from '@tanstack/react-query';
+import { useQuery, useQueryClient } from '@tanstack/react-query';
 import { toast } from 'sonner';
 import {
   FileText, ChevronDown, Users, CalendarDays, Search,
   Cloud, Upload, RefreshCw, BarChart3, GitMerge, Inbox,
+  Database,
 } from 'lucide-react';
 import { api } from '@/lib/api';
 import { taxpayerName, taxpayerTaxNumber, taxpayerSearchMatch } from './_lib/taxpayer';
@@ -52,6 +53,8 @@ export default function FaturaMerkeziPage() {
   const [showUpload, setShowUpload] = useState(false);
   const [showEntegrator, setShowEntegrator] = useState(false);
   const [kdvReportLoading, setKdvReportLoading] = useState(false);
+  const qc = useQueryClient();
+  const [mihsapLoading, setMihsapLoading] = useState(false);
 
   const taxpayersQ = useQuery({
     queryKey: ['fatura-merkezi', 'taxpayers'],
@@ -94,6 +97,33 @@ export default function FaturaMerkeziPage() {
       toast.error(e?.response?.data?.message || 'KDV çıktısı hazırlanamadı');
     } finally {
       setKdvReportLoading(false);
+    }
+  };
+
+  const handleMihsapCek = async () => {
+    if (!taxpayerId) { toast.error('Önce mükellef seçin'); return; }
+    setMihsapLoading(true);
+    try {
+      const res = await api.post('/fatura-muhasebelestirme/import-from-mihsap', {
+        taxpayerId,
+        donem: period,
+      });
+      const d = res.data;
+      if (d.created > 0) {
+        toast.success(`Mihsap'tan ${d.scanned} fatura tarandı, ${d.created} yeni belge aktarıldı`);
+      } else if (d.skipped > 0 && d.created === 0) {
+        toast.info(`${d.scanned} fatura tarandı, tümü zaten aktarılmış`);
+      } else if (d.scanned === 0) {
+        toast.info('Mihsap\'ta bu dönem için bekleyen fatura bulunamadı');
+      } else {
+        toast.warning(`${d.scanned} tarandı, ${d.failed} hata oluştu`);
+      }
+      qc.invalidateQueries({ queryKey: ['fatura-merkezi'] });
+    } catch (e: any) {
+      const msg = e?.response?.data?.message || e?.message || 'Mihsap bağlantı hatası';
+      toast.error(msg);
+    } finally {
+      setMihsapLoading(false);
     }
   };
 
@@ -191,6 +221,11 @@ export default function FaturaMerkeziPage() {
         <div style={{ flex: 1 }} />
 
         {/* Aksiyon butonları */}
+        <button type="button" onClick={handleMihsapCek} disabled={mihsapLoading || !taxpayerId}
+          style={{ display: 'flex', alignItems: 'center', gap: 5, padding: '5px 12px', borderRadius: 8, background: 'rgba(45,212,191,0.1)', border: '1px solid rgba(45,212,191,0.25)', color: '#2dd4bf', fontSize: 12, fontWeight: 600, cursor: mihsapLoading || !taxpayerId ? 'not-allowed' : 'pointer', opacity: !taxpayerId ? 0.45 : 1, height: 34, flexShrink: 0 }}>
+          {mihsapLoading ? <RefreshCw size={13} className="animate-spin" /> : <Database size={13} />}
+          Mihsap'tan Çek
+        </button>
         <button type="button" onClick={handleKdvOutput} disabled={kdvReportLoading || !taxpayerId}
           style={{ display: 'flex', alignItems: 'center', gap: 5, padding: '5px 12px', borderRadius: 8, background: 'rgba(212,184,118,0.1)', border: '1px solid rgba(212,184,118,0.25)', color: '#d4b876', fontSize: 12, fontWeight: 600, cursor: kdvReportLoading || !taxpayerId ? 'not-allowed' : 'pointer', opacity: !taxpayerId ? 0.45 : 1, height: 34, flexShrink: 0 }}>
           <FileText size={13} />KDV Çıktısı

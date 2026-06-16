@@ -10,6 +10,7 @@ import { KdvControlService } from '../kdv-control/kdv-control.service';
 import { EarsivRenderService } from '../earsiv/earsiv-render.service';
 import { encrypt, tryDecrypt } from '../common/crypto';
 import { VendorMemoryService } from '../vendor-memory/vendor-memory.service';
+import { MihsapService } from '../mihsap/mihsap.service';
 
 type AccountingLineInput = {
   id?: string;
@@ -248,6 +249,7 @@ export class FaturaMuhasebelestirmeService {
     private readonly kdvControl: KdvControlService,
     private readonly earsivRender: EarsivRenderService,
     private readonly vendorMemory: VendorMemoryService,
+    private readonly mihsapService: MihsapService,
   ) {}
 
   async list(tenantId: string, opts: { status?: string; limit?: number; taxpayerId?: string; period?: string }) {
@@ -2531,6 +2533,110 @@ export class FaturaMuhasebelestirmeService {
       failed,
       errors,
     };
+  }
+
+  async importFromMihsap(
+    tenantId: string,
+    opts: {
+      taxpayerId: string;
+      donem: string;
+      faturaTuru?: 'ALIS' | 'SATIS';
+      createdBy?: string;
+    },
+  ) {
+    const taxpayer = await (this.prisma as any).taxpayer.findFirst({
+      where: { id: opts.taxpayerId, tenantId },
+      select: { id: true, mihsapId: true },
+    });
+    if (!taxpayer?.mihsapId) {
+      throw new BadRequestException('Bu mükellef için Mihsap ID tanımlı değil (mükellef kartında "Mihsap ID" alanını doldurun)');
+    }
+
+    // 1. Mihsap'tan çek → mihsap_invoices tablosuna yaz
+    try {
+      await this.mihsapService.fetchAndStoreInvoices({
+        tenantId,
+        mukellefId: opts.taxpayerId,
+        mukellefMihsapId: String(taxpayer.mihsapId),
+        donem: opts.donem,
+        faturaTuru: opts.faturaTuru,
+        kaynak: 'bekleyen',
+        createdBy: opts.createdBy || undefined,
+      });
+    } catch (fetchErr: any) {
+      this.logger.warn(`Mihsap fetch hatasi (devam ediyoruz): ${fetchErr?.message}`);
+    }
+
+    // 2. mihsap_invoices → invoiceAccountingDocument bridge
+    const where: any = { tenantId, mukellefId: opts.taxpayerId, donem: opts.donem };
+    if (opts.faturaTuru) where.faturaTuru = opts.faturaTuru;
+
+    const rows = await (this.prisma as any).mihsapInvoice.findMany({
+      where,
+      take: 3000,
+      orderBy: { faturaTarihi: 'desc' },
+    });
+
+    let created = 0;
+    let skipped = 0;
+    let failed = 0;
+    const errors: string[] = [];
+
+    for (const inv of rows) {
+      try {
+        const existing = await (this.prisma as any).invoiceAccountingDocument.findFirst({
+          where: { tenantId, source: 'mihsap', sourceRefId: String(inv.mihsapId) },
+          select: { id: true },
+        });
+        if (existing) { skipped++; continue; }
+
+        const rawTur = String(inv.faturaTuru || 'ALIS').toUpperCase();
+        const invoiceKind: 'ALIS' | 'SATIS' = rawTur.includes('SATIS') ? 'SATIS' : 'ALIS';
+        const rawBelge = String(inv.belgeTuru || '').toUpperCase();
+        const documentType =
+          rawBelge.includes('E_FATURA') || rawBelge === 'EFATURA' ? 'E_FATURA'
+          : rawBelge.includes('E_ARSIV') || rawBelge === 'EARSIV'  ? 'E_ARSIV'
+          : rawBelge.includes('FIS')                               ? 'OKC_FIS'
+          : 'DIGER';
+
+        const ext = String(inv.orjDosyaTuru || '').toUpperCase();
+        const mimeType = ext === 'JPEG' || ext === 'JPG' ? 'image/jpeg'
+          : ext === 'XML' ? 'application/xml'
+          : 'application/pdf';
+
+        await (this.prisma as any).invoiceAccountingDocument.create({
+          data: {
+            tenantId,
+            taxpayerId: opts.taxpayerId,
+            source: 'mihsap',
+            sourceRefId: String(inv.mihsapId),
+            documentType,
+            invoiceKind,
+            status: 'NEEDS_REVIEW',
+            originalName: `${inv.faturaNo || inv.mihsapId}.pdf`,
+            mimeType,
+            sizeBytes: 1,
+            s3Key: inv.storageKey || inv.storageUrl || `mihsap:${inv.mihsapId}`,
+            belgeNo: inv.faturaNo || null,
+            faturaTarihi: inv.faturaTarihi || null,
+            sellerVkn: invoiceKind === 'ALIS' ? (inv.firmaKimlikNo || null) : null,
+            vendorName: invoiceKind === 'ALIS' ? (inv.firmaUnvan || null) : null,
+            buyerVkn: invoiceKind === 'SATIS' ? (inv.firmaKimlikNo || null) : null,
+            customerName: invoiceKind === 'SATIS' ? (inv.firmaUnvan || null) : null,
+            totalAmount: inv.toplamTutar != null ? inv.toplamTutar : null,
+            ocrStatus: 'DONE',
+            createdBy: opts.createdBy || null,
+          },
+        });
+        created++;
+      } catch (e: any) {
+        failed++;
+        if (errors.length < 5) errors.push(`${inv.faturaNo || inv.mihsapId}: ${e?.message}`);
+      }
+    }
+
+    this.logger.log(`importFromMihsap [${opts.taxpayerId}/${opts.donem}]: scan=${rows.length} created=${created} skipped=${skipped} failed=${failed}`);
+    return { scanned: rows.length, created, skipped, failed, errors };
   }
 
   async fileUrl(tenantId: string, id: string) {

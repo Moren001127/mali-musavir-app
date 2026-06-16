@@ -1,4 +1,5 @@
 import {
+  BadRequestException,
   Body,
   Controller,
   Delete,
@@ -230,6 +231,23 @@ export class FaturaMuhasebelestirmeController {
       belgeKaynak: body?.belgeKaynak || undefined,
       limit: body?.limit,
       ids: Array.isArray(body?.ids) ? body.ids : undefined,
+    });
+  }
+
+  @Post('import-from-mihsap')
+  @UseGuards(AuthGuard('jwt'))
+  importFromMihsap(
+    @Req() req: any,
+    @Body() body: { taxpayerId: string; donem: string; faturaTuru?: 'ALIS' | 'SATIS' },
+  ) {
+    if (!body?.taxpayerId || !body?.donem) {
+      throw new BadRequestException('taxpayerId ve donem gerekli');
+    }
+    return this.service.importFromMihsap(req.user.tenantId, {
+      taxpayerId: body.taxpayerId,
+      donem: body.donem,
+      faturaTuru: body.faturaTuru,
+      createdBy: req.user.userId,
     });
   }
 
