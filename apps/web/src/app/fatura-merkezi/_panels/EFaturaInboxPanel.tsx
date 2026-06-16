@@ -63,24 +63,32 @@ export default function EFaturaInboxPanel({ taxpayerId, period }: Props) {
   });
 
   const syncMut = useMutation({
-    mutationFn: async (direction: 'IN' | 'OUT') =>
-      api.post('/fatura-muhasebelestirme/efatura-sync', { direction }).then(r => r.data),
-    onSuccess: (data: any, dir) => {
-      if (data?.connections === 0) {
-        toast.warning('Kayıtlı entegratör bağlantısı bulunamadı. Entegratör ayarlarını kontrol edin.');
-        return;
-      }
-      if (data?.errors?.length > 0) {
-        toast.error(`${DIR_LABEL[dir]} sync hatası: ${data.errors[0]}`);
-        return;
-      }
-      const msg = data?.added > 0
-        ? `${DIR_LABEL[dir]}: ${data.added} yeni fatura alındı`
-        : `${DIR_LABEL[dir]}: yeni fatura yok (${data?.skipped ?? 0} zaten mevcut)`;
-      toast.success(msg);
-      qc.invalidateQueries({ queryKey: ['efatura-inbox'] });
+    mutationFn: async (direction: 'IN' | 'OUT') => {
+      if (!taxpayerId) throw new Error('Önce mükellef seçin');
+      // integrations/fetch: tüm entegratörleri destekler (TURMOB dahil Luca üzerinden)
+      return api.post('/fatura-muhasebelestirme/integrations/fetch', {
+        taxpayerId,
+        direction: direction === 'IN' ? 'ALIS' : 'SATIS',
+        donem: period,
+        limit: 500,
+      }).then(r => r.data);
     },
-    onError: (e: any) => toast.error(e?.response?.data?.message || 'Sync hatası'),
+    onSuccess: (data: any, dir) => {
+      const created = data?.totals?.created ?? data?.created ?? 0;
+      const fetched = data?.totals?.fetched ?? data?.fetched ?? 0;
+      const failed  = data?.totals?.failed  ?? data?.failed  ?? 0;
+      if (failed > 0 && fetched === 0) {
+        const errMsg = data?.statuses?.find((s: any) => s.status === 'ERROR')?.reason || 'Entegratör hatası';
+        toast.error(`${DIR_LABEL[dir]} sync: ${errMsg}`);
+      } else if (fetched === 0) {
+        toast.info(`${DIR_LABEL[dir]}: yeni fatura bulunamadı`);
+      } else {
+        toast.success(`${DIR_LABEL[dir]}: ${fetched} fatura çekildi, ${created} yeni belge oluşturuldu`);
+      }
+      qc.invalidateQueries({ queryKey: ['efatura-inbox'] });
+      qc.invalidateQueries({ queryKey: ['fatura-merkezi'] });
+    },
+    onError: (e: any) => toast.error(e?.response?.data?.message || e?.message || 'Sync hatası'),
   });
 
   const items: InboxItem[] = inboxQ.data || [];
