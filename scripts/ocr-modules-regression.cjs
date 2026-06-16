@@ -226,7 +226,11 @@ eq(
 eq(azureHelpers.detectBelgeTipi('E-ARSIV FATURA'), 'EARSIV', 'helpers detect EARSIV');
 eq(azureHelpers.detectBelgeTipi('E-FATURA'), 'EFATURA', 'helpers detect EFATURA');
 deepEq(azureHelpers.extractMoneyAmounts('Tutar: 1.330,00 ve 665,00', ublDeps.parseAmount), [1330, 665], 'helpers extract money');
-ok('azure/helpers.ts (8 assertion)');
+// GERÇEK bozuk OCR (0029.image / ŞOK): "TOPKDV" -> "TOPKOV" (D->O) + "FİŞ No" -> "115 No".
+// Hiçbir OKC/Z imzası kalmadığından belgeTipi=null oluyordu → KDV hiç okunmuyordu.
+// TOPKDV varyantı yakalanınca yazarkasa fişi Z_RAPORU olarak sınıflanır.
+eq(azureHelpers.detectBelgeTipi('SOK MARKETLER\n115 No\n0029\nTOPKOV\n*3,36'), 'Z_RAPORU', 'helpers detect TOPKOV (D->O) variant');
+ok('azure/helpers.ts (9 assertion)');
 
 // ─── azure/sectoral.ts (telekom) ───
 const telekomDeps = {
@@ -823,7 +827,23 @@ const okcTahir0368 = okcFis.extractOkcFisKdv(okcTahir0368Text, okcDeps);
 assert(okcTahir0368 !== null, 'okc tahir 0368 result not null');
 eq(okcTahir0368.kdvTutari, '20,61', 'okc tahir 0368 topkdv wins over discounted item inference');
 approx(okcTahir0368.breakdown.reduce((sum, b) => sum + b.tutar, 0), 20.61, 0.01, 'okc tahir 0368 breakdown total');
-ok('azure/okc-fis.ts (25 assertion)');
+
+// GERÇEK bozuk OCR (16.image / ANADOLU YAPI): "TOPKDV" -> "1OPKDV" (T->1) +
+// "+125,00" -> "¥125,00". Eski özet-KDV regex'i "1OPKDV"yi kaçırıp KDV=null veriyordu.
+const okcGarbledTopKdvText = [
+  'ANADOLU YAPI MARKET',
+  'FİŞ NO 16',
+  'INŞAAT MALZEMESI /20',
+  '*750,00',
+  '1OPKDV',
+  '¥125,00',
+  'TOPLAM',
+  '+750,00',
+].join('\n');
+const okcGarbled = okcFis.extractOkcFisKdv(okcGarbledTopKdvText, okcDeps);
+assert(okcGarbled !== null, 'okc 1OPKDV (T->1) variant result not null');
+eq(okcGarbled.kdvTutari, '125,00', 'okc 1OPKDV (T->1) variant kdv read');
+ok('azure/okc-fis.ts (27 assertion)');
 
 const okcCrossText = [
   'FIS NO : 0276',

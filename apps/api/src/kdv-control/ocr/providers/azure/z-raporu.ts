@@ -30,7 +30,9 @@ export function extractZRaporuKdv(
 
   const lines = text.split(/\r?\n/).map((l) => l.trim()).filter(Boolean);
   const foldedLines = lines.map((line) => foldTurkishAscii(line));
-  const topKdvLabel = /\bT[O0]P\s*K\s*D\s*V\b|\bT[O0]PKD[UV]\b|\bKDV\s*T[O0]PLAM\b|\bT[O0]PLAM\s*KDV\b/;
+  // "TOPKDV" OCR varyantlarına toleranslı: ilk harf T↔1↔I↔7, D↔O↔0, V↔U↔Y
+  // (gerçek örnekler: "TOPKOV", "1OPKDV"). "TOPLAM" eşleşmez (K yok).
+  const topKdvLabel = /\b[T1I7][O0]\s*P\s*K\s*[D0O]\s*[VUY]\b|\bKDV\s*T[O0]PLAM\b|\bT[O0]PLAM\s*KDV\b/;
   const moneyTokenRe = /[-+]?[\*â‚ºÂ¥]?\s*\d(?:[\d.,:;]|\s(?=\d{2}\b|\d{3}\b))*\d/g;
   let topKdvTotal: number | null = null;
 

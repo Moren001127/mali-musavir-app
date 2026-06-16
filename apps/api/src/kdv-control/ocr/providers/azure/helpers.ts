@@ -72,7 +72,9 @@ export function detectBelgeTipi(text: string, originalName?: string): string | n
     /\bKUM\s*(?:T[O0]P|KDV|[UÜ]LAT[I1]F)/.test(folded) ||
     /\bKUM\s+T[O0]PLAM\b/.test(folded);
   if (looksOkcFis && !explicitZRapor) return 'OKC_FIS';
-  if (explicitZRapor || /\bT[O0]P\s*K\s*D\s*V\b|\bT[O0]PKD[UV]\b/.test(folded)) return 'Z_RAPORU';
+  // "TOPKDV" OCR varyantlarına toleranslı (ilk harf T↔1↔I↔7, D↔O↔0, V↔U↔Y):
+  // "TOPKOV"/"1OPKDV" gibi bozuk okumalarda da yazarkasa fişi sınıflanabilsin.
+  if (explicitZRapor || /\b[T1I7][O0]\s*P\s*K\s*[D0O]\s*[VUY]\b/.test(folded)) return 'Z_RAPORU';
   if (/\bE[-\s]?ARSIV\b|\bEARSIVFATURA\b/.test(folded)) return 'EARSIV';
   if (/\bE[-\s]?FATURA\b|\bTEMELFATURA\b|\bTICARIFATURA\b/.test(folded)) return 'EFATURA';
   if (looksOkcFis) return 'OKC_FIS';
