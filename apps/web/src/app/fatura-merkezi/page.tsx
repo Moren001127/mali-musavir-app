@@ -1,73 +1,41 @@
-'use client';
+﻿'use client';
 
 import { useState, useMemo } from 'react';
-import Link from 'next/link';
 import { useQuery } from '@tanstack/react-query';
 import { toast } from 'sonner';
 import {
-  LayoutDashboard, Inbox, Users, Workflow, Send, Upload, Archive,
-  FileSpreadsheet, ArrowLeftRight, ArrowLeft, RefreshCw, Palette,
-  CalendarDays, Search, ChevronDown, Sparkles, Settings, FileText,
-  Cloud, Building, BookOpen, BarChart3,
-  type LucideIcon,
+  FileText, ChevronDown, Users, CalendarDays, Search,
+  Cloud, Upload, RefreshCw, BarChart3, GitMerge,
 } from 'lucide-react';
 import { api } from '@/lib/api';
-import MukelleflerPanel from './_panels/MukelleflerPanel';
 import { taxpayerName, taxpayerTaxNumber, taxpayerSearchMatch } from './_lib/taxpayer';
-import GelenBelgelerPanel from './_panels/GelenBelgelerPanel';
-import EntegratorListesiPanel from './_panels/EntegratorListesiPanel';
-import VeriAktarimiPanel from './_panels/VeriAktarimiPanel';
-import SurecTakipPanel from './_panels/SurecTakipPanel';
-import GenelBakisPanel from './_panels/GenelBakisPanel';
-import HesapPlaniPanel from './_panels/HesapPlaniPanel';
-import YuklenenlerPanel from './_panels/YuklenenlerPanel';
-import ArsivPanel from './_panels/ArsivPanel';
 import { buildKdvClientReportHtml, fetchKdvClientReport } from './_lib/kdv-client-report';
+import GenelBakisPanel from './_panels/GenelBakisPanel';
+import EslestirmePanel from './_panels/EslestirmePanel';
+import MukelleflerPanel from './_panels/MukelleflerPanel';
+import UploadDialog from './_dialogs/UploadDialog';
+import EntegratorDialog from './_dialogs/EntegratorDialog';
 
-/* ════════════════════════════════════════════════════════════════════
-   FATURA İŞLEME MERKEZİ — v2 (Tam Sayfa)
-   Mihsap analizinden çıkan iş akışını + Moren'in görsel dilini
-   harmanlayan tam-ekran çalışma alanı.
-   ════════════════════════════════════════════════════════════════════ */
-
-type SectionId =
-  | 'genel'
-  | 'gelen'
-  | 'mukellefler'
-  | 'entegrator-listesi'
-  | 'surec'
-  | 'veri-aktarimi'
-  | 'yuklenenler'
-  | 'hesap-plani'
-  | 'arsiv';
-
-const SECTIONS: Array<{
-  id: SectionId;
-  label: string;
-  icon: LucideIcon;
-  group: string;
-  badge?: (counts: Counts) => string | null;
-}> = [
-  { id: 'genel',              label: 'Genel Bakış',         icon: LayoutDashboard,   group: 'OVERVIEW' },
-  { id: 'gelen',              label: 'Gelen Belgeler',      icon: Inbox,              group: 'OVERVIEW', badge: (c) => c.pendingWithTaxpayer > 0 ? String(c.pendingWithTaxpayer) : null },
-  { id: 'mukellefler',        label: 'Mükellefler',         icon: Users,              group: 'KAYIT' },
-  { id: 'entegrator-listesi', label: 'Entegratör Listesi',  icon: Cloud,              group: 'KAYIT' },
-  { id: 'hesap-plani',        label: 'Hesap Planı',         icon: BookOpen,           group: 'KAYIT' },
-  { id: 'yuklenenler',        label: 'Yüklenen Faturalar',  icon: Upload,             group: 'PIPELINE' },
-  { id: 'surec',              label: 'Süreç Takibi',        icon: Workflow,           group: 'PIPELINE', badge: (c) => c.openPeriods > 0 ? String(c.openPeriods) : null },
-  { id: 'veri-aktarimi',      label: 'Luca\'ya Aktarım',    icon: Send,               group: 'AKTARIM' },
-  { id: 'arsiv',              label: 'Arşiv',               icon: Archive,            group: 'AKTARIM' },
-];
-
-type Counts = { pending: number; pendingWithTaxpayer: number; orphanCount: number; invalidCount: number; openPeriods: number };
+/* Fatura İşleme Merkezi — v3 (AI Maliyet stili) */
 
 const PERIODS = [
   'Ocak', 'Şubat', 'Mart', 'Nisan', 'Mayıs', 'Haziran',
   'Temmuz', 'Ağustos', 'Eylül', 'Ekim', 'Kasım', 'Aralık',
 ];
 
+const PIPELINE_STEPS: Array<{ id: number; label: string; desc: string }> = [
+  { id: 1, label: 'Topla',         desc: 'Entegratörden çekilen' },
+  { id: 2, label: 'OCR + İçerik',  desc: 'İşlenen belgeler' },
+  { id: 3, label: 'Eşleştir',      desc: 'Kural atanan' },
+  { id: 4, label: 'Onay',          desc: 'Mali müşavir onayi' },
+  { id: 5, label: "Luca'ya Aktar", desc: 'Aktarilan' },
+  { id: 6, label: 'Arşiv',         desc: 'Arşivlenen' },
+];
+
+type TabId = 'genel' | 'eslestirme' | 'mukellefler';
+
 export default function FaturaMerkeziPage() {
-  const [section, setSection] = useState<SectionId>('genel');
+  const [tab, setTab] = useState<TabId>('genel');
   const [taxpayerId, setTaxpayerId] = useState<string | undefined>(undefined);
   const [period, setPeriod] = useState<string>(() => {
     const now = new Date();
@@ -75,420 +43,241 @@ export default function FaturaMerkeziPage() {
   });
   const [showTaxpayerPicker, setShowTaxpayerPicker] = useState(false);
   const [taxpayerSearch, setTaxpayerSearch] = useState('');
+  const [showUpload, setShowUpload] = useState(false);
+  const [showEntegrator, setShowEntegrator] = useState(false);
   const [kdvReportLoading, setKdvReportLoading] = useState(false);
 
-  /* ─── Mükellef listesi ─── */
+  /* Mükellef listesi */
   const taxpayersQ = useQuery({
     queryKey: ['fatura-merkezi', 'taxpayers'],
     queryFn: () => api.get('/taxpayers').then((r) => r.data),
   });
+  const taxpayers: Array<any> = Array.isArray(taxpayersQ.data)
+    ? taxpayersQ.data
+    : (taxpayersQ.data?.items || []);
 
-  const taxpayers: Array<any> = Array.isArray(taxpayersQ.data) ? taxpayersQ.data : (taxpayersQ.data?.items || []);
   const filteredTaxpayers = useMemo(() => {
     if (!taxpayerSearch) return taxpayers;
     return taxpayers.filter((t) => taxpayerSearchMatch(t, taxpayerSearch));
   }, [taxpayers, taxpayerSearch]);
+  const selectedTaxpayer: any = taxpayers.find((t) => t.id === taxpayerId) || null;
 
-  const selectedTaxpayer = taxpayers.find((t) => t.id === taxpayerId);
-
-  /* ─── Özet sayılar (badge'ler için) ─── */
-  const summaryQ = useQuery({
-    queryKey: ['fatura-merkezi', 'summary', period],
-    queryFn: () => api.get('/fatura-muhasebelestirme/summary', { params: { period } }).then((r) => r.data).catch(() => ({})),
+  /* Dashboard özet */
+  const dashQ = useQuery({
+    queryKey: ['fatura-merkezi', 'dashboard', taxpayerId, period],
+    queryFn: () =>
+      api
+        .get('/fatura-muhasebelestirme/dashboard', { params: { taxpayerId, period } })
+        .then((r) => r.data)
+        .catch(() => ({})),
   });
+  const dash = dashQ.data || {};
+  const [y, m] = period.split('-');
 
-  const counts: Counts = {
-    pending: summaryQ.data?.pending ?? 0,
-    pendingWithTaxpayer: summaryQ.data?.pendingWithTaxpayer ?? 0,
-    orphanCount: summaryQ.data?.orphanCount ?? 0,
-    invalidCount: summaryQ.data?.invalidCount ?? 0,
-    openPeriods: summaryQ.data?.openPeriods ?? 0,
-  };
+  const pipelineCounts: number[] = [
+    dash.collected ?? 0, dash.ocr ?? 0, dash.matched ?? 0,
+    dash.pending ?? 0, dash.posted ?? 0, dash.archived ?? 0,
+  ];
 
-  const [year, month] = period.split('-');
-  const periodLabel = `${PERIODS[Number(month) - 1] || ''} ${year}`;
+  const refresh = () => { taxpayersQ.refetch(); dashQ.refetch(); };
 
-  const refresh = () => {
-    taxpayersQ.refetch();
-    summaryQ.refetch();
-  };
-
-  const handleKdvClientOutput = async () => {
-    if (!taxpayerId) {
-      toast.error('Önce mükellef seçin');
-      return;
-    }
-
+  const handleKdvOutput = async () => {
+    if (!taxpayerId) { toast.error('Önce mükellef seçin'); return; }
     setKdvReportLoading(true);
     try {
       const report = await fetchKdvClientReport({ taxpayerId, period });
-      const printWindow = window.open('', '_blank', 'width=980,height=760');
-      if (!printWindow) {
-        toast.error('Çıktı penceresi açılamadı. Tarayıcı pop-up iznini kontrol edin.');
-        return;
-      }
-
-      const reportHtml = buildKdvClientReportHtml(
-        report,
-        `${window.location.origin}/brand/moren-logo-gold.png`,
-      );
-      printWindow.document.open();
-      printWindow.document.write(reportHtml);
-      printWindow.document.close();
-      printWindow.focus();
-      printWindow.document.title = '';
-      setTimeout(() => {
-        printWindow.document.title = '';
-        printWindow.print();
-      }, 750);
+      const win = window.open('', '_blank', 'width=980,height=760');
+      if (!win) { toast.error('Çıktı penceresi açılamadı'); return; }
+      win.document.open();
+      win.document.write(buildKdvClientReportHtml(report, `${window.location.origin}/brand/moren-logo-gold.png`));
+      win.document.close();
+      win.focus();
+      setTimeout(() => win.print(), 750);
     } catch (e: any) {
-      toast.error(e?.response?.data?.message || e?.message || 'KDV mükellef çıktısı hazırlanamadı');
+      toast.error(e?.response?.data?.message || 'KDV çıktısı hazırlanamadı');
     } finally {
       setKdvReportLoading(false);
     }
   };
 
-  /* ─── Sidebar grupları ─── */
-  const grouped = useMemo(() => {
-    const map = new Map<string, typeof SECTIONS>();
-    SECTIONS.forEach((s) => {
-      const list = map.get(s.group) || [];
-      list.push(s);
-      map.set(s.group, list);
-    });
-    return Array.from(map.entries());
-  }, []);
+  const TABS: Array<{ id: TabId; label: string; icon: React.ReactNode }> = [
+    { id: 'genel',       label: 'Genel Bakış',       icon: <BarChart3 size={15} /> },
+    { id: 'eslestirme',  label: 'Eşleştirme & Onay', icon: <GitMerge size={15} /> },
+    { id: 'mukellefler', label: 'Mükellefler',        icon: <Users size={15} /> },
+  ];
 
-  const groupLabels: Record<string, string> = {
-    OVERVIEW:  'Özet',
-    KAYIT:     'Kayıt',
-    PIPELINE:  'İş Akışı',
-    AKTARIM:   'Aktarım',
-  };
+  const isIsletme = /ISLETME/i.test(selectedTaxpayer?.defterTuru || '');
 
   return (
-    <div className="flex h-full w-full">
-      {/* ═══════════ SOL SIDEBAR ═══════════ */}
-      <aside
-        className="flex flex-col"
+    <div className="min-h-screen flex flex-col" style={{ background: '#0f0d0b', color: '#fafaf9' }}>
+
+      {/* Gokkusagi seridi */}
+      <div style={{ height: 4, background: 'linear-gradient(90deg,#d4b876,#fb923c,#f472b6,#a855f7,#60a5fa,#22d3ee,#4ade80)', flexShrink: 0 }} />
+
+      {/* Hero baslik */}
+      <div
         style={{
-          width: 248,
-          background: 'var(--surface)',
-          borderRight: '1px solid var(--border)',
+          background: 'radial-gradient(120% 140% at 0% 0%, rgba(45,212,191,0.14) 0%, transparent 45%), #0f0d0b',
+          borderBottom: '1px solid rgba(255,255,255,0.08)',
+          padding: '20px 28px 16px',
         }}
       >
-        {/* Logo + geri */}
-        <div className="px-5 pt-5 pb-4" style={{ borderBottom: '1px solid var(--border)' }}>
-          <Link
-            href="/panel"
-            className="flex items-center gap-2 text-xs mb-3 hover:opacity-80 transition-opacity"
-            style={{ color: 'var(--text-muted)' }}
-          >
-            <ArrowLeft size={14} />
-            <span>Ana panele dön</span>
-          </Link>
-          <div className="flex items-center gap-2">
-            <Sparkles size={18} style={{ color: 'var(--accent)' }} />
-            <h1
-              className="text-[15px] tracking-tight"
-              style={{ color: 'var(--text)', fontFamily: 'var(--font-heading)', fontWeight: 600 }}
-            >
-              Fatura İşleme Merkezi
-            </h1>
-          </div>
-          <div className="text-[11px] mt-1.5" style={{ color: 'var(--text-light)' }}>
-            Moren Mali Müşavirlik
-          </div>
-        </div>
-
-        {/* Menü grupları */}
-        <nav className="flex-1 overflow-y-auto py-3 px-2">
-          {grouped.map(([group, items]) => (
-            <div key={group} className="mb-3">
-              <div
-                className="px-3 pt-2 pb-1.5 text-[10px] tracking-wider font-semibold"
-                style={{ color: 'var(--text-light)' }}
-              >
-                {groupLabels[group] || group}
-              </div>
-              {items.map((s) => {
-                const Icon = s.icon;
-                const active = section === s.id;
-                const badge = s.badge?.(counts) || null;
-                return (
-                  <button
-                    key={s.id}
-                    type="button"
-                    onClick={() => setSection(s.id)}
-                    className="w-full flex items-center gap-2.5 px-3 py-2 text-[13px] rounded-md transition-all duration-150 mb-0.5"
-                    style={{
-                      background: active ? 'var(--accent-light)' : 'transparent',
-                      color: active ? 'var(--accent)' : 'var(--text-secondary)',
-                      fontWeight: active ? 600 : 500,
-                    }}
-                    onMouseEnter={(e) => {
-                      if (!active) e.currentTarget.style.background = 'var(--surface-2)';
-                    }}
-                    onMouseLeave={(e) => {
-                      if (!active) e.currentTarget.style.background = 'transparent';
-                    }}
-                  >
-                    <Icon size={16} strokeWidth={active ? 2.2 : 1.6} />
-                    <span className="flex-1 text-left">{s.label}</span>
-                    {badge && (
-                      <span
-                        className="text-[10px] px-1.5 py-0.5 rounded-full font-semibold"
-                        style={{
-                          background: 'var(--accent)',
-                          color: 'var(--bg)',
-                          minWidth: 18,
-                          textAlign: 'center',
-                        }}
-                      >
-                        {badge}
-                      </span>
-                    )}
-                  </button>
-                );
-              })}
+        {/* Baslik + aksiyon butonlari */}
+        <div className="flex items-center justify-between gap-4 mb-4">
+          <div className="flex items-center gap-3">
+            <div style={{ background: 'linear-gradient(135deg, #2dd4bf, #22d3ee)', borderRadius: 13, width: 42, height: 42, display: 'flex', alignItems: 'center', justifyContent: 'center', flexShrink: 0 }}>
+              <FileText size={20} color="#0f0d0b" strokeWidth={2.2} />
             </div>
-          ))}
-        </nav>
-
-        {/* Alt bilgi */}
-        <div
-          className="px-4 py-3 text-[10px]"
-          style={{ borderTop: '1px solid var(--border)', color: 'var(--text-light)' }}
-        >
-          v2.0 · Mihsap referansı
-        </div>
-      </aside>
-
-      {/* ═══════════ İÇERIK ALANI ═══════════ */}
-      <div className="flex-1 flex flex-col min-w-0">
-        {/* Üst Toolbar */}
-        <header
-          className="flex items-center gap-3 px-6 py-3"
-          style={{
-            background: 'var(--surface)',
-            borderBottom: '1px solid var(--border)',
-            minHeight: 60,
-          }}
-        >
-          {/* Mukellef seçici */}
-          <div className="relative">
-            <button
-              type="button"
-              onClick={() => setShowTaxpayerPicker((v) => !v)}
-              className="flex items-center gap-2 px-4 py-2 text-[13px] rounded-lg transition-colors"
-              style={{
-                background: 'var(--surface-2)',
-                border: '1px solid var(--border)',
-                color: 'var(--text)',
-                minWidth: 320,
-              }}
-            >
-              <Users size={15} style={{ color: 'var(--text-muted)' }} />
-              <span className="flex-1 text-left truncate">
-                {selectedTaxpayer
-                  ? taxpayerName(selectedTaxpayer)
-                  : `Tüm Mükellefler · ${taxpayers.length}`}
-              </span>
-              <ChevronDown size={14} style={{ color: 'var(--text-muted)' }} />
+            <div>
+              <h1 style={{ fontSize: 22, fontWeight: 700, color: '#fafaf9', letterSpacing: -0.5, lineHeight: 1.2 }}>
+                Fatura {'İ'}{'ş'}leme Merkezi
+              </h1>
+              <div style={{ fontSize: 12, color: 'rgba(250,250,249,0.5)', marginTop: 2 }}>Moren Mali {'M'}{'ü'}{'ş'}avirlik</div>
+            </div>
+          </div>
+          <div className="flex items-center gap-2">
+            <button type="button" onClick={handleKdvOutput} disabled={kdvReportLoading || !taxpayerId}
+              style={{ display: 'flex', alignItems: 'center', gap: 6, padding: '8px 14px', borderRadius: 9, background: 'rgba(212,184,118,0.12)', border: '1px solid rgba(212,184,118,0.3)', color: '#d4b876', fontSize: 13, fontWeight: 600, cursor: kdvReportLoading || !taxpayerId ? 'not-allowed' : 'pointer', opacity: kdvReportLoading || !taxpayerId ? 0.5 : 1 }}>
+              <FileText size={14} />KDV Ciktisi
             </button>
+            <button type="button" onClick={() => setShowEntegrator(true)}
+              style={{ display: 'flex', alignItems: 'center', gap: 6, padding: '8px 14px', borderRadius: 9, background: 'rgba(255,255,255,0.05)', border: '1px solid rgba(255,255,255,0.1)', color: '#fafaf9', fontSize: 13, fontWeight: 500, cursor: 'pointer' }}>
+              <Cloud size={14} />Entegrat{'ö'}rden {'Ç'}ek
+            </button>
+            <button type="button" onClick={() => setShowUpload(true)}
+              style={{ display: 'flex', alignItems: 'center', gap: 6, padding: '8px 14px', borderRadius: 9, background: 'linear-gradient(135deg, #2dd4bf, #22d3ee)', border: 'none', color: '#0f0d0b', fontSize: 13, fontWeight: 700, cursor: 'pointer' }}>
+              <Upload size={14} />Belge Y{'ü'}kle
+            </button>
+            <button type="button" onClick={refresh} disabled={taxpayersQ.isFetching || dashQ.isFetching}
+              style={{ display: 'flex', alignItems: 'center', padding: '8px 10px', borderRadius: 9, background: 'rgba(255,255,255,0.05)', border: '1px solid rgba(255,255,255,0.08)', color: 'rgba(250,250,249,0.58)', cursor: taxpayersQ.isFetching || dashQ.isFetching ? 'not-allowed' : 'pointer' }}>
+              <RefreshCw size={14} className={taxpayersQ.isFetching || dashQ.isFetching ? 'animate-spin' : ''} />
+            </button>
+          </div>
+        </div>
 
+        {/* Alt kontrol */}
+        <div className="flex items-center gap-3 flex-wrap">
+          <div style={{ position: 'relative' }}>
+            <button type="button" onClick={() => setShowTaxpayerPicker((v) => !v)}
+              style={{ display: 'flex', alignItems: 'center', gap: 8, padding: '7px 12px', borderRadius: 9, background: '#15110d', border: '1px solid rgba(255,255,255,0.08)', color: '#fafaf9', fontSize: 13, fontWeight: 500, minWidth: 260, cursor: 'pointer' }}>
+              <Users size={14} style={{ color: 'rgba(250,250,249,0.58)' }} />
+              <span style={{ flex: 1, textAlign: 'left', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
+                {selectedTaxpayer ? taxpayerName(selectedTaxpayer) : `T{'ü'}m M{'ü'}kellefler · ${taxpayers.length}`}
+              </span>
+              <ChevronDown size={13} style={{ color: 'rgba(250,250,249,0.4)', flexShrink: 0 }} />
+            </button>
             {showTaxpayerPicker && (
-              <div
-                className="absolute top-full left-0 mt-1 z-50 rounded-lg shadow-xl overflow-hidden"
-                style={{
-                  background: 'var(--surface)',
-                  border: '1px solid var(--border)',
-                  width: 380,
-                  maxHeight: 460,
-                }}
-              >
-                <div className="p-2" style={{ borderBottom: '1px solid var(--border)' }}>
-                  <div
-                    className="flex items-center gap-2 px-2 py-1.5 rounded-md"
-                    style={{ background: 'var(--surface-2)' }}
-                  >
-                    <Search size={14} style={{ color: 'var(--text-muted)' }} />
-                    <input
-                      autoFocus
-                      placeholder="Ara — ad veya VKN..."
-                      value={taxpayerSearch}
-                      onChange={(e) => setTaxpayerSearch(e.target.value)}
-                      className="flex-1 bg-transparent outline-none text-[13px]"
-                      style={{ color: 'var(--text)' }}
-                    />
+              <div style={{ position: 'absolute', top: '100%', left: 0, marginTop: 4, zIndex: 50, background: '#15110d', border: '1px solid rgba(255,255,255,0.1)', borderRadius: 12, boxShadow: '0 20px 48px rgba(0,0,0,0.6)', width: 360, maxHeight: 460, overflow: 'hidden', display: 'flex', flexDirection: 'column' }}>
+                <div style={{ padding: 8, borderBottom: '1px solid rgba(255,255,255,0.08)' }}>
+                  <div style={{ display: 'flex', alignItems: 'center', gap: 8, padding: '6px 10px', borderRadius: 8, background: 'rgba(255,255,255,0.04)' }}>
+                    <Search size={13} style={{ color: 'rgba(250,250,249,0.4)' }} />
+                    <input autoFocus placeholder="Ara" value={taxpayerSearch} onChange={(e) => setTaxpayerSearch(e.target.value)}
+                      style={{ flex: 1, background: 'transparent', border: 'none', outline: 'none', fontSize: 13, color: '#fafaf9' }} />
                   </div>
                 </div>
-                <div className="max-h-[380px] overflow-y-auto">
-                  <button
-                    type="button"
-                    onClick={() => { setTaxpayerId(undefined); setShowTaxpayerPicker(false); }}
-                    className="w-full px-3 py-2.5 text-left text-[13px] transition-colors hover:bg-[var(--surface-2)] flex items-center justify-between"
-                    style={{
-                      color: !taxpayerId ? 'var(--accent)' : 'var(--text)',
-                      background: !taxpayerId ? 'var(--accent-light)' : 'transparent',
-                      fontWeight: !taxpayerId ? 600 : 500,
-                    }}
-                  >
-                    <span>Tüm mükellefler · {taxpayers.length}</span>
-                    {!taxpayerId && <span style={{ color: 'var(--accent)' }}>✓</span>}
+                <div style={{ overflowY: 'auto', flex: 1 }}>
+                  <button type="button" onClick={() => { setTaxpayerId(undefined); setShowTaxpayerPicker(false); setTaxpayerSearch(''); }}
+                    style={{ width: '100%', display: 'flex', alignItems: 'center', justifyContent: 'space-between', padding: '10px 12px', fontSize: 13, background: !taxpayerId ? 'rgba(45,212,191,0.1)' : 'transparent', color: !taxpayerId ? '#2dd4bf' : '#fafaf9', fontWeight: !taxpayerId ? 600 : 500, cursor: 'pointer', border: 'none', textAlign: 'left' }}>
+                    <span>T{'ü'}m m{'ü'}kellefler {'·'} {taxpayers.length}</span>
+                    {!taxpayerId && <span style={{ color: '#2dd4bf' }}>{'✓'}</span>}
                   </button>
-                  {filteredTaxpayers.length === 0 && (
-                    <div className="px-3 py-6 text-center text-[12.5px]" style={{ color: 'var(--text-muted)' }}>
-                      {taxpayerSearch ? 'Eşleşen mükellef yok' : 'Henüz mükellef yok'}
-                    </div>
-                  )}
-                  {filteredTaxpayers.map((t) => {
+                  {filteredTaxpayers.map((t: any) => {
                     const sel = t.id === taxpayerId;
                     return (
-                      <button
-                        key={t.id}
-                        type="button"
-                        onClick={() => { setTaxpayerId(t.id); setShowTaxpayerPicker(false); }}
-                        className="w-full px-3 py-2 text-left text-[13px] transition-colors hover:bg-[var(--surface-2)]"
-                        style={{
-                          background: sel ? 'var(--accent-light)' : 'transparent',
-                          color: sel ? 'var(--accent)' : 'var(--text)',
-                        }}
-                      >
-                        <div className="font-medium truncate">{taxpayerName(t)}</div>
-                        <div className="text-[11px] mt-0.5" style={{ color: 'var(--text-muted)' }}>
-                          {taxpayerTaxNumber(t)}
-                        </div>
+                      <button key={t.id} type="button" onClick={() => { setTaxpayerId(t.id); setShowTaxpayerPicker(false); setTaxpayerSearch(''); }}
+                        style={{ width: '100%', display: 'block', padding: '8px 12px', textAlign: 'left', fontSize: 13, background: sel ? 'rgba(45,212,191,0.1)' : 'transparent', color: sel ? '#2dd4bf' : '#fafaf9', cursor: 'pointer', border: 'none' }}>
+                        <div style={{ fontWeight: 500, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{taxpayerName(t)}</div>
+                        <div style={{ fontSize: 11, color: 'rgba(250,250,249,0.45)', marginTop: 1 }}>{taxpayerTaxNumber(t)}</div>
                       </button>
                     );
                   })}
+                  {filteredTaxpayers.length === 0 && (
+                    <div style={{ padding: '24px 12px', textAlign: 'center', fontSize: 13, color: 'rgba(250,250,249,0.4)' }}>Sonuc yok</div>
+                  )}
                 </div>
-                <div
-                  className="px-3 py-2 text-[10.5px] text-right"
-                  style={{ borderTop: '1px solid var(--border)', color: 'var(--text-light)' }}
-                >
-                  {filteredTaxpayers.length} / {taxpayers.length} mükellef
+                <div style={{ padding: '6px 12px', borderTop: '1px solid rgba(255,255,255,0.06)', fontSize: 10.5, color: 'rgba(250,250,249,0.3)', textAlign: 'right' }}>
+                  {filteredTaxpayers.length} / {taxpayers.length}
                 </div>
               </div>
             )}
           </div>
 
-          {/* Dönem seçici */}
-          <div className="flex items-center gap-2 px-4 py-2 rounded-lg" style={{ background: 'var(--surface-2)', border: '1px solid var(--border)' }}>
-            <CalendarDays size={15} style={{ color: 'var(--text-muted)' }} />
-            <select
-              value={period}
-              onChange={(e) => setPeriod(e.target.value)}
-              className="bg-transparent outline-none text-[13px] font-medium"
-              style={{ color: 'var(--text)' }}
-            >
-              {Array.from({ length: 12 }, (_, i) => i).map((monthIdx) => {
-                const m = String(monthIdx + 1).padStart(2, '0');
-                const v = `${year}-${m}`;
-                return (
-                  <option key={v} value={v} style={{ background: 'var(--surface)', color: 'var(--text)' }}>
-                    {PERIODS[monthIdx]} {year}
-                  </option>
-                );
+          <div style={{ display: 'flex', alignItems: 'center', gap: 8, padding: '7px 12px', borderRadius: 9, background: '#15110d', border: '1px solid rgba(255,255,255,0.08)' }}>
+            <CalendarDays size={14} style={{ color: 'rgba(250,250,249,0.4)' }} />
+            <select value={period} onChange={(e) => setPeriod(e.target.value)}
+              style={{ background: 'transparent', border: 'none', outline: 'none', fontSize: 13, fontWeight: 500, color: '#fafaf9', cursor: 'pointer' }}>
+              {Array.from({ length: 12 }, (_, i) => i).map((idx) => {
+                const monthStr = String(idx + 1).padStart(2, '0');
+                const val = `${y}-${monthStr}`;
+                return (<option key={val} value={val} style={{ background: '#15110d', color: '#fafaf9' }}>{PERIODS[idx]} {y}</option>);
               })}
             </select>
-            <span style={{ color: 'var(--text-light)' }}>·</span>
-            <select
-              value={year}
-              onChange={(e) => setPeriod(`${e.target.value}-${month}`)}
-              className="bg-transparent outline-none text-[13px] font-medium"
-              style={{ color: 'var(--text)' }}
-            >
-              {[2024, 2025, 2026, 2027].map((y) => (
-                <option key={y} value={y} style={{ background: 'var(--surface)', color: 'var(--text)' }}>
-                  {y}
-                </option>
-              ))}
+            <span style={{ color: 'rgba(255,255,255,0.2)' }}>{'·'}</span>
+            <select value={y} onChange={(e) => setPeriod(`${e.target.value}-${m}`)}
+              style={{ background: 'transparent', border: 'none', outline: 'none', fontSize: 13, fontWeight: 500, color: '#fafaf9', cursor: 'pointer' }}>
+              {[2024, 2025, 2026, 2027].map((yr) => (<option key={yr} value={yr} style={{ background: '#15110d', color: '#fafaf9' }}>{yr}</option>))}
             </select>
           </div>
 
-          <div className="flex-1" />
+          {selectedTaxpayer && (
+            <div style={{ padding: '5px 10px', borderRadius: 20, fontSize: 11.5, fontWeight: 600, background: isIsletme ? 'rgba(56,189,248,0.12)' : 'rgba(167,139,250,0.12)', color: isIsletme ? '#7dd3fc' : '#c4b5fd', border: `1px solid ${isIsletme ? 'rgba(56,189,248,0.3)' : 'rgba(167,139,250,0.3)'}` }}>
+              {isIsletme ? 'Isletme Defteri' : 'Bilanco Esasi'}
+            </div>
+          )}
+        </div>
 
-          {/* KDV mukellef ciktisi */}
-          <button
-            type="button"
-            onClick={handleKdvClientOutput}
-            disabled={kdvReportLoading}
-            className="flex items-center gap-2 px-3 py-2 text-[13px] rounded-lg transition-colors"
-            style={{
-              background: 'var(--accent-light)',
-              border: '1px solid var(--border)',
-              color: 'var(--accent)',
-              opacity: kdvReportLoading ? 0.72 : 1,
-              fontWeight: 600,
-            }}
-          >
-            <FileText size={14} />
-            {kdvReportLoading ? 'Hazırlanıyor' : 'KDV Mükellef Çıktısı'}
-          </button>
+        {/* Pipeline strip */}
+        <div style={{ display: 'flex', alignItems: 'stretch', marginTop: 20, background: '#15110d', borderRadius: 12, border: '1px solid rgba(255,255,255,0.08)', overflow: 'hidden' }}>
+          {PIPELINE_STEPS.map((step, idx) => {
+            const count = pipelineCounts[idx];
+            const isActive = count > 0;
+            const isLast = idx === PIPELINE_STEPS.length - 1;
+            return (
+              <div key={step.id} style={{ flex: 1, padding: '12px 14px', borderRight: isLast ? 'none' : '1px solid rgba(255,255,255,0.06)', background: isActive ? 'rgba(45,212,191,0.06)' : 'transparent' }}>
+                <div style={{ fontSize: 22, fontWeight: 700, color: isActive ? '#2dd4bf' : 'rgba(250,250,249,0.2)', lineHeight: 1.1 }}>{count}</div>
+                <div style={{ fontSize: 12, fontWeight: 600, color: isActive ? '#fafaf9' : 'rgba(250,250,249,0.35)', marginTop: 2 }}>{step.id}. {step.label}</div>
+                <div style={{ fontSize: 10.5, color: 'rgba(250,250,249,0.3)', marginTop: 1 }}>{step.desc}</div>
+              </div>
+            );
+          })}
+        </div>
 
-          {/* Yenile */}
-          <button
-            type="button"
-            onClick={refresh}
-            disabled={taxpayersQ.isFetching || summaryQ.isFetching}
-            className="flex items-center gap-2 px-3 py-2 text-[13px] rounded-lg transition-colors"
-            style={{
-              background: 'var(--surface-2)',
-              border: '1px solid var(--border)',
-              color: 'var(--text-secondary)',
-            }}
-          >
-            <RefreshCw
-              size={14}
-              className={taxpayersQ.isFetching || summaryQ.isFetching ? 'animate-spin' : ''}
-            />
-            Yenile
-          </button>
-        </header>
-
-        {/* İçerik */}
-        <main className="flex-1 overflow-auto" style={{ background: 'var(--bg)' }}>
-          {section === 'genel' && (
-            <GenelBakisPanel
-              taxpayerId={taxpayerId}
-              period={period}
-              taxpayers={taxpayers}
-            />
-          )}
-          {section === 'gelen' && (
-            <GelenBelgelerPanel taxpayerId={taxpayerId} period={period} />
-          )}
-          {section === 'mukellefler' && (
-            <MukelleflerPanel
-              taxpayers={taxpayers}
-              loading={taxpayersQ.isLoading}
-              period={period}
-              onRefresh={refresh}
-              onSelectTaxpayer={(id) => { setTaxpayerId(id); setSection('gelen'); }}
-            />
-          )}
-          {section === 'entegrator-listesi' && (
-            <EntegratorListesiPanel taxpayers={taxpayers} />
-          )}
-          {section === 'hesap-plani' && (
-            <HesapPlaniPanel taxpayerId={taxpayerId} />
-          )}
-          {section === 'yuklenenler' && (
-            <YuklenenlerPanel taxpayerId={taxpayerId} period={period} />
-          )}
-          {section === 'surec' && (
-            <SurecTakipPanel period={period} taxpayers={taxpayers} />
-          )}
-          {section === 'veri-aktarimi' && (
-            <VeriAktarimiPanel period={period} />
-          )}
-          {section === 'arsiv' && (
-            <ArsivPanel taxpayerId={taxpayerId} />
-          )}
-        </main>
+        {/* Sekmeler */}
+        <div style={{ display: 'flex', gap: 4, marginTop: 16 }}>
+          {TABS.map((t) => {
+            const active = tab === t.id;
+            return (
+              <button key={t.id} type="button" onClick={() => setTab(t.id)}
+                style={{ display: 'flex', alignItems: 'center', gap: 7, padding: '7px 16px', borderRadius: 8, fontSize: 13, fontWeight: active ? 600 : 500, background: active ? '#1b1510' : 'transparent', color: active ? '#2dd4bf' : 'rgba(250,250,249,0.55)', border: active ? '1px solid rgba(45,212,191,0.25)' : '1px solid transparent', cursor: 'pointer' }}>
+                {t.icon}{t.label}
+              </button>
+            );
+          })}
+        </div>
       </div>
+
+      {/* Icerik */}
+      <div style={{ flex: 1, minHeight: 0 }}>
+        {tab === 'genel' && (
+          <GenelBakisPanel taxpayerId={taxpayerId} period={period} taxpayers={taxpayers} dashData={dash} dashLoading={dashQ.isLoading} />
+        )}
+        {tab === 'eslestirme' && (
+          <EslestirmePanel taxpayerId={taxpayerId} period={period} taxpayers={taxpayers} />
+        )}
+        {tab === 'mukellefler' && (
+          <MukelleflerPanel taxpayers={taxpayers} loading={taxpayersQ.isLoading} period={period} onRefresh={refresh} onSelectTaxpayer={(id) => { setTaxpayerId(id); setTab('eslestirme'); }} />
+        )}
+      </div>
+
+      {showUpload && selectedTaxpayer && (
+        <UploadDialog taxpayer={selectedTaxpayer} period={period} onClose={() => setShowUpload(false)} />
+      )}
+      {showEntegrator && selectedTaxpayer && (
+        <EntegratorDialog taxpayer={selectedTaxpayer} onClose={() => setShowEntegrator(false)} />
+      )}
+      {showTaxpayerPicker && (
+        <div style={{ position: 'fixed', inset: 0, zIndex: 40 }} onClick={() => setShowTaxpayerPicker(false)} />
+      )}
     </div>
   );
 }
-

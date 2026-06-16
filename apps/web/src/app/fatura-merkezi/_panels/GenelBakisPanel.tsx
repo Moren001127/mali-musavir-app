@@ -1,155 +1,256 @@
-'use client';
+﻿'use client';
 
 import { useQuery } from '@tanstack/react-query';
-import { Inbox, CheckCircle2, AlertTriangle, Send, FileText, Users, TrendingUp, Sparkles } from 'lucide-react';
+import {
+  Inbox, CheckCircle2, AlertTriangle, Send, Sparkles,
+  Users, Cloud, TrendingUp, ArrowRight,
+} from 'lucide-react';
 import { api } from '@/lib/api';
+import { taxpayerName, taxpayerBookType } from '../_lib/taxpayer';
 
 type Props = {
   taxpayerId?: string;
   period: string;
   taxpayers: Array<any>;
+  dashData?: any;
+  dashLoading?: boolean;
 };
 
-/* ════════════════════════════════════════════════════════════════════
-   GENEL BAKIŞ — Mihsap'taki "Genel Bakış" dashboard'ının Moren versiyonu
-   ════════════════════════════════════════════════════════════════════ */
-export default function GenelBakisPanel({ taxpayerId, period, taxpayers }: Props) {
-  const summary = useQuery({
-    queryKey: ['fatura-merkezi', 'overview', taxpayerId, period],
-    queryFn: () => api
-      .get('/fatura-muhasebelestirme/summary', {
-        params: { taxpayerId, period },
-      })
-      .then((r) => r.data)
-      .catch(() => ({})),
+/* Renk paleti her metrik kart icin */
+const METRIC_CARDS = [
+  { key: 'pending',  label: 'Bekleyen Belge',     color: '#60a5fa', icon: Inbox },
+  { key: 'conflict', label: 'İcerik Celiskili',    color: '#f59e0b', icon: AlertTriangle },
+  { key: 'posted',   label: "Luca'ya Aktarilan",   color: '#4ade80', icon: Send },
+  { key: 'autoRate', label: 'Otomatik İsabet %',   color: '#2dd4bf', icon: Sparkles },
+];
+
+export default function GenelBakisPanel({ taxpayerId, period, taxpayers, dashData, dashLoading }: Props) {
+  /* Per-mukellef ozet */
+  const summaryQ = useQuery({
+    queryKey: ['fatura-merkezi', 'per-taxpayer-summary', period],
+    queryFn: () =>
+      api
+        .get('/fatura-muhasebelestirme/per-taxpayer-summary', { params: { period } })
+        .then((r) => (Array.isArray(r.data) ? r.data : []))
+        .catch(() => []),
   });
 
-  const data = summary.data || {};
+  /* Entegrator durumu */
+  const integrationsQ = useQuery({
+    queryKey: ['fatura-merkezi', 'integrations-overview'],
+    queryFn: () =>
+      api
+        .get('/fatura-muhasebelestirme/integrations')
+        .then((r) => (Array.isArray(r.data) ? r.data : []))
+        .catch(() => []),
+  });
 
-  const stats = [
-    { label: 'Toplam Mükellef',  value: taxpayers.length,             icon: Users,        tone: '#d4b876' },
-    { label: 'Bekleyen Belge',    value: data.pending ?? 0,             icon: Inbox,        tone: '#f59e0b' },
-    { label: 'Onaylanan',          value: data.approved ?? 0,            icon: CheckCircle2, tone: '#10b981' },
-    { label: 'Hata',               value: data.errors ?? 0,              icon: AlertTriangle, tone: '#ef4444' },
-    { label: 'Luca\'ya Aktarılan',  value: data.posted ?? 0,              icon: Send,         tone: '#a78bfa' },
-    { label: 'OCR Pipeline',        value: data.ocrInProgress ?? 0,        icon: Sparkles,     tone: '#60a5fa' },
-  ];
+  const d = dashData || {};
+  const metricValues: Record<string, number> = {
+    pending:  d.pending  ?? 0,
+    conflict: d.conflict ?? 0,
+    posted:   d.posted   ?? 0,
+    autoRate: d.autoRate ?? 0,
+  };
+
+  const summaryRows: any[] = summaryQ.data || [];
+  const integrations: any[] = integrationsQ.data || [];
+
+  /* Mukellef tablosu icin veri birlestir */
+  const summaryMap = new Map(summaryRows.map((s: any) => [s.taxpayerId, s]));
+  const tableRows = taxpayers
+    .filter((t) => !taxpayerId || t.id === taxpayerId)
+    .map((t) => {
+      const s: any = summaryMap.get(t.id) || {};
+      const gelen = (s.pendingAlis || 0) + (s.pendingSatis || 0);
+      const onay  = (s.approvedAlis || 0) + (s.approvedSatis || 0);
+      const aktar = s.postedToLuca || 0;
+      const total = gelen + onay + aktar;
+      return { ...t, gelen, onay, aktar, total };
+    })
+    .sort((a, b) => b.gelen - a.gelen);
 
   return (
-    <div className="p-6 max-w-7xl mx-auto">
-      <div className="mb-6">
-        <div className="text-[22px] font-semibold tracking-tight" style={{ color: 'var(--text)', fontFamily: 'var(--font-heading)' }}>
-          Genel Bakış
-        </div>
-        <div className="text-[12.5px] mt-0.5" style={{ color: 'var(--text-muted)' }}>
-          {taxpayerId
-            ? taxpayers.find((t) => t.id === taxpayerId)?.name
-            : `Tüm mükellefler · ${taxpayers.length} kayıt`}
-        </div>
-      </div>
+    <div style={{ padding: '24px 28px', maxWidth: 1200 }}>
 
-      {/* İstatistik kartları */}
-      <div className="grid grid-cols-3 gap-3 mb-6">
-        {stats.map((s) => {
-          const Icon = s.icon;
+      {/* 4 metrik kart */}
+      <div style={{ display: 'grid', gridTemplateColumns: 'repeat(4, 1fr)', gap: 14, marginBottom: 24 }}>
+        {METRIC_CARDS.map((card) => {
+          const Icon = card.icon;
+          const value = metricValues[card.key];
+          const isPercent = card.key === 'autoRate';
           return (
             <div
-              key={s.label}
-              className="rounded-xl p-4 transition-colors"
-              style={{ background: 'var(--surface)', border: '1px solid var(--border)' }}
+              key={card.key}
+              style={{
+                background: '#15110d',
+                border: '1px solid rgba(255,255,255,0.08)',
+                borderRadius: 16,
+                padding: '18px 20px',
+              }}
             >
-              <div className="flex items-start justify-between mb-2">
+              <div style={{ display: 'flex', alignItems: 'flex-start', justifyContent: 'space-between', marginBottom: 10 }}>
                 <div
-                  className="p-2 rounded-lg"
-                  style={{ background: `${s.tone}18`, color: s.tone }}
+                  style={{
+                    width: 36, height: 36, borderRadius: 10,
+                    background: `${card.color}18`,
+                    display: 'flex', alignItems: 'center', justifyContent: 'center',
+                  }}
                 >
-                  <Icon size={16} />
+                  <Icon size={17} color={card.color} />
                 </div>
-                <div className="text-[10px] tracking-wider font-semibold" style={{ color: 'var(--text-light)' }}>
-                  {s.label.toUpperCase()}
-                </div>
+                {dashLoading && (
+                  <div style={{ width: 8, height: 8, borderRadius: '50%', background: card.color, opacity: 0.5 }} />
+                )}
               </div>
               <div
-                className="text-[28px] font-semibold tabular-nums"
-                style={{ color: 'var(--text)', fontFamily: 'var(--font-heading)' }}
+                style={{
+                  fontSize: 30, fontWeight: 700, color: card.color,
+                  lineHeight: 1.1, fontVariantNumeric: 'tabular-nums',
+                }}
               >
-                {s.value}
+                {value}{isPercent ? '%' : ''}
+              </div>
+              <div style={{ fontSize: 12, color: 'rgba(250,250,249,0.5)', marginTop: 4 }}>
+                {card.label}
               </div>
             </div>
           );
         })}
       </div>
 
-      {/* Yapılacak işler / akış göstergesi */}
-      <div className="grid grid-cols-2 gap-4">
+      {/* Alt: 2 sutun */}
+      <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 16 }}>
+
+        {/* Sol: Mukellef durum tablosu */}
         <div
-          className="rounded-xl p-5"
-          style={{ background: 'var(--surface)', border: '1px solid var(--border)' }}
+          style={{
+            background: '#15110d',
+            border: '1px solid rgba(255,255,255,0.08)',
+            borderRadius: 16,
+            overflow: 'hidden',
+          }}
         >
-          <div className="flex items-center gap-2 mb-3">
-            <TrendingUp size={15} style={{ color: 'var(--accent)' }} />
-            <div className="text-[13px] font-semibold" style={{ color: 'var(--text)' }}>
-              Bu Ay Performans
-            </div>
+          <div style={{ padding: '14px 18px', borderBottom: '1px solid rgba(255,255,255,0.06)', display: 'flex', alignItems: 'center', gap: 8 }}>
+            <Users size={15} color="#2dd4bf" />
+            <span style={{ fontSize: 13, fontWeight: 600, color: '#fafaf9' }}>Mukellef Durumu</span>
+            <span style={{ fontSize: 11, color: 'rgba(250,250,249,0.4)', marginLeft: 'auto' }}>{tableRows.length} mukellef</span>
           </div>
-          <ProgressLine label="Çekilen → İşlenen" value={data.processedRate ?? 0} />
-          <ProgressLine label="İşlenen → Onay"       value={data.approvalRate ?? 0} />
-          <ProgressLine label="Onay → Luca"           value={data.postedRate ?? 0} />
+          <div style={{ overflowY: 'auto', maxHeight: 360 }}>
+            {summaryQ.isLoading && (
+              <div style={{ padding: '20px', textAlign: 'center', fontSize: 13, color: 'rgba(250,250,249,0.4)' }}>Yukleniyor...</div>
+            )}
+            {tableRows.map((row) => {
+              const total = row.total || 1;
+              const pct = Math.round((row.aktar / total) * 100);
+              return (
+                <div
+                  key={row.id}
+                  style={{
+                    padding: '10px 18px',
+                    borderBottom: '1px solid rgba(255,255,255,0.04)',
+                  }}
+                >
+                  <div style={{ display: 'flex', alignItems: 'center', gap: 8, marginBottom: 6 }}>
+                    <span style={{ fontSize: 13, fontWeight: 500, color: '#fafaf9', flex: 1, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
+                      {taxpayerName(row)}
+                    </span>
+                    <span
+                      style={{
+                        fontSize: 10, fontWeight: 600, padding: '2px 7px', borderRadius: 20,
+                        background: /ISLETME/i.test(row.defterTuru || '') ? 'rgba(56,189,248,0.12)' : 'rgba(167,139,250,0.12)',
+                        color: /ISLETME/i.test(row.defterTuru || '') ? '#7dd3fc' : '#c4b5fd',
+                      }}
+                    >
+                      {taxpayerBookType(row)}
+                    </span>
+                  </div>
+                  <div style={{ display: 'flex', gap: 12, fontSize: 11, color: 'rgba(250,250,249,0.5)', marginBottom: 5 }}>
+                    <span style={{ color: '#60a5fa' }}>Gelen: {row.gelen}</span>
+                    <span style={{ color: '#4ade80' }}>Onay: {row.onay}</span>
+                    <span style={{ color: '#a78bfa' }}>Aktar: {row.aktar}</span>
+                  </div>
+                  <div style={{ height: 3, background: 'rgba(255,255,255,0.06)', borderRadius: 2, overflow: 'hidden' }}>
+                    <div style={{ height: '100%', width: `${pct}%`, background: 'linear-gradient(90deg, #2dd4bf, #4ade80)', borderRadius: 2 }} />
+                  </div>
+                </div>
+              );
+            })}
+            {!summaryQ.isLoading && tableRows.length === 0 && (
+              <div style={{ padding: '20px', textAlign: 'center', fontSize: 13, color: 'rgba(250,250,249,0.4)' }}>
+                {period} donemi icin kayit yok
+              </div>
+            )}
+          </div>
         </div>
 
+        {/* Sag: Entegrator durumu */}
         <div
-          className="rounded-xl p-5"
-          style={{ background: 'var(--surface)', border: '1px solid var(--border)' }}
+          style={{
+            background: '#15110d',
+            border: '1px solid rgba(255,255,255,0.08)',
+            borderRadius: 16,
+            overflow: 'hidden',
+          }}
         >
-          <div className="flex items-center gap-2 mb-3">
-            <FileText size={15} style={{ color: 'var(--accent)' }} />
-            <div className="text-[13px] font-semibold" style={{ color: 'var(--text)' }}>
-              Hızlı Aksiyonlar
-            </div>
+          <div style={{ padding: '14px 18px', borderBottom: '1px solid rgba(255,255,255,0.06)', display: 'flex', alignItems: 'center', gap: 8 }}>
+            <Cloud size={15} color="#2dd4bf" />
+            <span style={{ fontSize: 13, fontWeight: 600, color: '#fafaf9' }}>Entegrator Durumu</span>
           </div>
-          <div className="space-y-2">
-            <QuickAction label="Bekleyen belgeleri onayla" desc="OCR'dan geçmiş, mali müşavir gözden geçirmesi bekleniyor" />
-            <QuickAction label="Talimat olmayan mukellefleri tamamla" desc="Otomatik fatura çekimi için talimat ver" />
-            <QuickAction label="Luca'ya aktarımı bekleyenleri gönder" desc="Toplu Excel — tek tıkla" />
+          <div style={{ overflowY: 'auto', maxHeight: 360 }}>
+            {integrationsQ.isLoading && (
+              <div style={{ padding: '20px', textAlign: 'center', fontSize: 13, color: 'rgba(250,250,249,0.4)' }}>Yukleniyor...</div>
+            )}
+            {integrations.map((intg: any, idx: number) => {
+              const hasError = intg.status === 'ERROR' || intg.lastError;
+              return (
+                <div
+                  key={idx}
+                  style={{
+                    display: 'flex', alignItems: 'center', gap: 12,
+                    padding: '10px 18px',
+                    borderBottom: '1px solid rgba(255,255,255,0.04)',
+                  }}
+                >
+                  <div
+                    style={{
+                      width: 34, height: 34, borderRadius: 9,
+                      background: hasError ? 'rgba(239,68,68,0.12)' : 'rgba(74,222,128,0.12)',
+                      display: 'flex', alignItems: 'center', justifyContent: 'center',
+                    }}
+                  >
+                    <Cloud size={15} color={hasError ? '#f87171' : '#4ade80'} />
+                  </div>
+                  <div style={{ flex: 1, minWidth: 0 }}>
+                    <div style={{ fontSize: 13, fontWeight: 500, color: '#fafaf9', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
+                      {intg.provider || intg.name || 'Entegrator'}
+                    </div>
+                    <div style={{ fontSize: 11, color: 'rgba(250,250,249,0.4)', marginTop: 1 }}>
+                      Son cekim: {intg.lastSync ? new Date(intg.lastSync).toLocaleDateString('tr-TR') : '—'}
+                    </div>
+                  </div>
+                  <div
+                    style={{
+                      padding: '3px 8px', borderRadius: 20, fontSize: 10.5, fontWeight: 600,
+                      background: hasError ? 'rgba(239,68,68,0.12)' : 'rgba(74,222,128,0.12)',
+                      color: hasError ? '#f87171' : '#4ade80',
+                      border: `1px solid ${hasError ? 'rgba(239,68,68,0.3)' : 'rgba(74,222,128,0.3)'}`,
+                    }}
+                  >
+                    {hasError ? 'Hata' : 'Bagli'}
+                  </div>
+                </div>
+              );
+            })}
+            {!integrationsQ.isLoading && integrations.length === 0 && (
+              <div style={{ padding: '20px', textAlign: 'center', fontSize: 13, color: 'rgba(250,250,249,0.4)' }}>
+                Tanimli entegrator yok
+              </div>
+            )}
           </div>
         </div>
+
       </div>
     </div>
-  );
-}
-
-function ProgressLine({ label, value }: { label: string; value: number }) {
-  const pct = Math.min(100, Math.max(0, value));
-  return (
-    <div className="mb-3 last:mb-0">
-      <div className="flex justify-between text-[11.5px] mb-1">
-        <span style={{ color: 'var(--text-secondary)' }}>{label}</span>
-        <span className="font-semibold" style={{ color: 'var(--accent)' }}>%{pct}</span>
-      </div>
-      <div
-        className="h-1.5 rounded-full overflow-hidden"
-        style={{ background: 'var(--surface-2)' }}
-      >
-        <div
-          className="h-full rounded-full"
-          style={{ width: `${pct}%`, background: 'var(--accent)' }}
-        />
-      </div>
-    </div>
-  );
-}
-
-function QuickAction({ label, desc }: { label: string; desc: string }) {
-  return (
-    <button
-      type="button"
-      className="w-full text-left p-3 rounded-lg transition-all"
-      style={{ background: 'var(--surface-2)', border: '1px solid var(--border)' }}
-      onMouseEnter={(e) => { e.currentTarget.style.borderColor = 'var(--accent)'; }}
-      onMouseLeave={(e) => { e.currentTarget.style.borderColor = 'var(--border)'; }}
-    >
-      <div className="text-[12.5px] font-semibold mb-0.5" style={{ color: 'var(--text)' }}>{label}</div>
-      <div className="text-[11px]" style={{ color: 'var(--text-muted)' }}>{desc}</div>
-    </button>
   );
 }
