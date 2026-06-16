@@ -3,6 +3,8 @@ export {
   OcrService,
 } from '../ocr.service';
 
+export type { OcrKalem } from '../ocr.service';
+
 export type {
   ExtractOcrOptions,
   KdvBreakdownItem,

@@ -1,6 +1,6 @@
 import { Injectable } from '@nestjs/common';
 import { PrismaService } from '../prisma/prisma.service';
-import { OcrKalem } from '../kdv-control/ocr.service';
+import { OcrKalem } from '../kdv-control/ocr';
 import {
   icerikKategoridenGiderTuru,
   isAmortismanaTabiTur,
