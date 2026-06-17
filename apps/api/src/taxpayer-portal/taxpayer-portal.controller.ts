@@ -6,10 +6,12 @@ import {
   Param,
   Query,
   Req,
+  Res,
   UseGuards,
   HttpCode,
   HttpStatus,
   BadRequestException,
+  NotFoundException,
 } from '@nestjs/common';
 import { AuthGuard } from '@nestjs/passport';
 import { TaxpayerPortalService } from './taxpayer-portal.service';
@@ -91,6 +93,17 @@ export class TaxpayerPortalController {
   @Get('belge/:tur/:id/view')
   belgeView(@Req() req: any, @Param('tur') tur: string, @Param('id') id: string, @Query('kind') kind?: string) {
     return this.service.getBelgeViewUrl(req.user.taxpayerId, req.user.tenantId, tur, id, kind);
+  }
+
+  // Fatura görüntüsü (Drive-öncelikli → MIHSAP) — storageKey olmasa da gösterir.
+  @UseGuards(AuthGuard('taxpayer-jwt'))
+  @Get('belge/fatura/:id/file')
+  async faturaFile(@Req() req: any, @Param('id') id: string, @Res() res: any) {
+    const data = await this.service.getFaturaFile(req.user.taxpayerId, req.user.tenantId, id);
+    if (!data) throw new NotFoundException('Dosya bulunamadı');
+    res.setHeader('Content-Type', data.contentType || 'application/octet-stream');
+    res.setHeader('Content-Disposition', `inline; filename="${encodeURIComponent(data.filename || 'fatura')}"`);
+    res.send(data.buffer);
   }
 
   // Belge özeti — AI belgeyi okuyup sade Türkçe özetler.

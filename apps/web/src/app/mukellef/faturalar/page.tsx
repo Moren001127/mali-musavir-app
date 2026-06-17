@@ -2,7 +2,7 @@
 import { useState } from 'react';
 import { useQuery, keepPreviousData } from '@tanstack/react-query';
 import { taxpayerApi } from '@/lib/taxpayer-api';
-import { fmtTRY, Card, Section, Empty, Spinner, PageTitle, StatStrip, GOLD, Badge, Th, THead, openBelge } from '../_lib/shared';
+import { fmtTRY, Card, Section, Empty, Spinner, PageTitle, StatStrip, GOLD, Badge, Th, THead, openFaturaGoruntu } from '../_lib/shared';
 import {
   ArrowDownLeft, ArrowUpRight, Eye, BarChart3, Calendar,
   Scale, Percent, FileStack, TrendingUp, ReceiptText,
@@ -206,7 +206,7 @@ export default function MukellefFaturalar() {
                           <td className="px-4 py-2.5">
                             <div className="flex justify-center">
                               {f.goruntulenebilir
-                                ? <button type="button" onClick={() => openBelge('fatura', f.id, undefined, `${turEtiket(f.faturaTuru)} · ${f.firmaUnvan || f.faturaNo || ''}`)} title="Fatura görüntüsünü aç" className="flex h-7 w-7 items-center justify-center rounded-lg transition hover:bg-white/[0.06]" style={{ border: '1px solid rgba(212,184,118,0.3)', color: GOLD, background: 'rgba(212,184,118,0.08)' }}><Eye size={14} /></button>
+                                ? <button type="button" onClick={() => openFaturaGoruntu(f.id, `${turEtiket(f.faturaTuru)} · ${f.firmaUnvan || f.faturaNo || ''}`)} title="Fatura görüntüsünü aç" className="flex h-7 w-7 items-center justify-center rounded-lg transition hover:bg-white/[0.06]" style={{ border: '1px solid rgba(212,184,118,0.3)', color: GOLD, background: 'rgba(212,184,118,0.08)' }}><Eye size={14} /></button>
                                 : <span title="Bu belgenin görüntüsü sistemde yok" className="flex h-7 w-7 items-center justify-center rounded-lg" style={{ border: '1px solid rgba(255,255,255,0.06)', color: 'rgba(250,250,249,0.22)' }}><Eye size={14} /></span>}
                             </div>
                           </td>

@@ -9,6 +9,20 @@ export const GOLD = '#d4b876';
 const BELGE_EVENT = 'moren:belge-onizle';
 type BelgeEvt = { loading?: boolean; url?: string; title?: string; error?: string; ozet?: string };
 
+/** Fatura görüntüsünü (Drive/MIHSAP) blob olarak çekip sayfa içi önizlemede açar. */
+export async function openFaturaGoruntu(id: string, title?: string) {
+  const fire = (d: BelgeEvt) => window.dispatchEvent(new CustomEvent(BELGE_EVENT, { detail: d }));
+  const baslik = title || 'Fatura';
+  fire({ loading: true, title: baslik });
+  try {
+    const res = await taxpayerApi.get(`/portal/belge/fatura/${id}/file`, { responseType: 'blob' });
+    const url = URL.createObjectURL(res.data as Blob);
+    fire({ url, title: baslik });
+  } catch {
+    fire({ error: 'Fatura görüntüsü açılamadı. Daha sonra tekrar deneyin.', title: baslik });
+  }
+}
+
 /** Belgeyi AI'ya özetletir; sonucu önizleme modalında metin olarak gösterir. */
 export async function ozetBelge(tur: string, id: string, kind?: string, title?: string) {
   const fire = (d: BelgeEvt) => window.dispatchEvent(new CustomEvent(BELGE_EVENT, { detail: d }));

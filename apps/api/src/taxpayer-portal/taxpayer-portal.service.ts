@@ -11,6 +11,7 @@ import { PrismaService } from '../prisma/prisma.service';
 import { StorageService } from '../storage/storage.service';
 import { claudeTextViaMax } from '../common/max-inference';
 import { KdvBeyannameService } from '../kdv-beyanname/kdv-beyanname.service';
+import { DriveService } from '../drive/drive.service';
 import { PDFParse } from 'pdf-parse';
 
 /**
@@ -29,7 +30,15 @@ export class TaxpayerPortalService {
     private jwt: JwtService,
     private storage: StorageService,
     private kdvBeyanname: KdvBeyannameService,
+    private drive: DriveService,
   ) {}
+
+  /** Fatura görüntüsü (mükellefe KİLİTLİ) — Drive-öncelikli, MIHSAP fallback. storageKey olmasa da çalışır. */
+  async getFaturaFile(taxpayerId: string, tenantId: string, id: string) {
+    const f = await (this.prisma as any).mihsapInvoice.findFirst({ where: { id, mukellefId: taxpayerId, tenantId } });
+    if (!f) throw new NotFoundException('Fatura bulunamadı');
+    return this.drive.serveInvoiceFile(tenantId, id);
+  }
 
   // ============ AUTH ============
 
@@ -331,7 +340,7 @@ export class TaxpayerPortalService {
       orderBy: { faturaTarihi: 'desc' },
       select: {
         id: true, donem: true, faturaTuru: true, belgeTuru: true, faturaNo: true,
-        firmaUnvan: true, firmaKimlikNo: true, faturaTarihi: true, toplamTutar: true, storageKey: true,
+        firmaUnvan: true, firmaKimlikNo: true, faturaTarihi: true, toplamTutar: true, storageKey: true, mihsapFileLink: true,
       },
     });
 
@@ -374,7 +383,7 @@ export class TaxpayerPortalService {
       faturalar: ayRows.slice(0, 300).map((r: any) => ({
         id: r.id, donem: r.donem, faturaTuru: r.faturaTuru, belgeTuru: r.belgeTuru, faturaNo: r.faturaNo,
         firmaUnvan: r.firmaUnvan, firmaKimlikNo: r.firmaKimlikNo, faturaTarihi: r.faturaTarihi,
-        toplamTutar: Number(r.toplamTutar) || 0, goruntulenebilir: !!r.storageKey,
+        toplamTutar: Number(r.toplamTutar) || 0, goruntulenebilir: !!(r.storageKey || r.mihsapFileLink),
       })),
     };
   }
