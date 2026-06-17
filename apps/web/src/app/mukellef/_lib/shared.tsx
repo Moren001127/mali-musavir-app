@@ -3,7 +3,7 @@ import { useEffect, useState } from 'react';
 import { createPortal } from 'react-dom';
 import ReactMarkdown from 'react-markdown';
 import remarkGfm from 'remark-gfm';
-import { CheckCircle2, Clock, AlertTriangle, ShieldCheck, Eye, X, ExternalLink, Loader2 } from 'lucide-react';
+import { CheckCircle2, Clock, AlertTriangle, ShieldCheck, Eye, X, ExternalLink, Loader2, ZoomIn, ZoomOut, Maximize2 } from 'lucide-react';
 import { taxpayerApi } from '@/lib/taxpayer-api';
 
 export const GOLD = '#d4b876';
@@ -60,11 +60,14 @@ export async function openBelge(tur: string, id: string, kind?: string, title?: 
 /** Sayfa içi belge önizleme modalı — layout'ta bir kez mount edilir. */
 export function BelgePreviewHost() {
   const [st, setSt] = useState<BelgeEvt | null>(null);
+  const [zoom, setZoom] = useState(1);
   useEffect(() => {
-    const handler = (e: Event) => setSt((e as CustomEvent).detail as BelgeEvt);
+    const handler = (e: Event) => { setSt((e as CustomEvent).detail as BelgeEvt); setZoom(1); };
     window.addEventListener(BELGE_EVENT, handler);
     return () => window.removeEventListener(BELGE_EVENT, handler);
   }, []);
+  const isGorsel = (st?.mediaType || '').startsWith('image/');
+  const zoomlanabilir = !!st?.url && !st?.loading && !st?.error;
   useEffect(() => {
     const onKey = (e: KeyboardEvent) => { if (e.key === 'Escape') setSt(null); };
     if (st) window.addEventListener('keydown', onKey);
@@ -79,7 +82,15 @@ export function BelgePreviewHost() {
             <Eye size={15} style={{ color: GOLD }} />
             <span className="text-[14px] font-semibold truncate" style={{ color: '#fafaf9' }}>{st.title || 'Belge'}</span>
           </div>
-          <div className="flex items-center gap-2 shrink-0">
+          <div className="flex items-center gap-1.5 shrink-0">
+            {zoomlanabilir && (
+              <div className="flex items-center gap-1 mr-1 rounded-lg px-1 py-0.5" style={{ border: '1px solid rgba(255,255,255,0.1)' }}>
+                <button type="button" onClick={() => setZoom((z) => Math.max(0.4, +(z - 0.25).toFixed(2)))} title="Uzaklaştır" className="flex h-7 w-7 items-center justify-center rounded-md transition hover:bg-white/[0.06]" style={{ color: 'rgba(250,250,249,0.8)' }}><ZoomOut size={15} /></button>
+                <span className="text-[11.5px] tabular-nums w-9 text-center" style={{ color: 'rgba(250,250,249,0.6)' }}>%{Math.round(zoom * 100)}</span>
+                <button type="button" onClick={() => setZoom((z) => Math.min(4, +(z + 0.25).toFixed(2)))} title="Yakınlaştır" className="flex h-7 w-7 items-center justify-center rounded-md transition hover:bg-white/[0.06]" style={{ color: 'rgba(250,250,249,0.8)' }}><ZoomIn size={15} /></button>
+                <button type="button" onClick={() => setZoom(1)} title="Sığdır (genişlik)" className="flex h-7 w-7 items-center justify-center rounded-md transition hover:bg-white/[0.06]" style={{ color: 'rgba(250,250,249,0.8)' }}><Maximize2 size={14} /></button>
+              </div>
+            )}
             {st.url && (
               <a href={st.url} target="_blank" rel="noopener noreferrer" title="Yeni sekmede aç" className="flex h-8 w-8 items-center justify-center rounded-lg transition hover:bg-white/[0.06]" style={{ border: '1px solid rgba(212,184,118,0.25)', color: GOLD }}><ExternalLink size={15} /></a>
             )}
@@ -97,9 +108,11 @@ export function BelgePreviewHost() {
           ) : st.ozet ? (
             <div className="moren-md px-5 py-4 text-[13.5px]" style={{ color: '#fafaf9' }}><ReactMarkdown remarkPlugins={[remarkGfm]}>{st.ozet}</ReactMarkdown></div>
           ) : st.url ? (
-            (st.mediaType || '').startsWith('image/')
-              ? <div className="w-full h-full flex items-center justify-center p-2" style={{ background: '#0f0d0b' }}><img src={st.url} alt={st.title || 'Belge'} style={{ maxWidth: '100%', maxHeight: '100%', objectFit: 'contain' }} /></div>
-              : <iframe src={st.url} title={st.title || 'Belge'} className="w-full h-full" style={{ border: 0, background: '#fff' }} />
+            <div className="w-full h-full overflow-auto" style={{ background: '#0f0d0b' }}>
+              {isGorsel
+                ? <img src={st.url} alt={st.title || 'Belge'} style={{ width: `${zoom * 100}%`, height: 'auto', display: 'block', margin: '0 auto' }} />
+                : <iframe src={st.url} title={st.title || 'Belge'} style={{ border: 0, background: '#fff', width: `${100 / zoom}%`, height: `${100 / zoom}%`, minHeight: '100%', transform: `scale(${zoom})`, transformOrigin: '0 0' }} />}
+            </div>
           ) : null}
         </div>
       </div>
