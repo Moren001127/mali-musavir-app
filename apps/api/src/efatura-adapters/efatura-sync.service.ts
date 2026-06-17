@@ -48,7 +48,7 @@ export class EFaturaSyncService {
         if (!inv.uuid) continue;
         try {
           await (this.prisma as any).eFaturaInbox.upsert({
-            where: { entegrator_uuid: { entegrator: providerUpper, uuid: inv.uuid } },
+            where: { tenantId_taxpayerId_entegrator_uuid: { tenantId, taxpayerId, entegrator: providerUpper, uuid: inv.uuid } },
             create: {
               tenantId,
               taxpayerId,
@@ -87,7 +87,9 @@ export class EFaturaSyncService {
         try {
           await adapter.markAsTransferred(credentials, markedUuids);
           await (this.prisma as any).eFaturaInbox.updateMany({
-            where: { entegrator: providerUpper, uuid: { in: markedUuids } },
+            // tenant+taxpayer scope: aynı UUID başka mükellefte de olabilir,
+            // yalnız bu mükellefin satırları işaretlensin.
+            where: { tenantId, taxpayerId, entegrator: providerUpper, uuid: { in: markedUuids } },
             data: { markedAt: new Date() },
           });
         } catch (markErr: any) {

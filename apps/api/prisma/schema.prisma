@@ -3379,7 +3379,10 @@ model EFaturaInbox {
   markedAt      DateTime? // Entegratöre "aktarıldı" bayrağı atıldığı an
   processedAt   DateTime? // Muhasebe modülüne aktarıldığı an
 
-  @@unique([entegrator, uuid])
+  // Mükellef izolasyonu: aynı UUID birden çok mükellef/tenant'ta çekilebilir
+  // (aynı entegratör hesabı çok mükellefe hizmet verince). Eskiden (entegrator,uuid)
+  // unique olduğu için ikinci mükellefin faturası P2002 alıp sessizce atlanıyordu.
+  @@unique([tenantId, taxpayerId, entegrator, uuid])
   @@index([tenantId, taxpayerId, faturaDate])
   @@index([tenantId, isTransferred])
   @@index([tenantId, entegrator, syncedAt])
