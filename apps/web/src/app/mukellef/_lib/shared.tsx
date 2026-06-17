@@ -227,13 +227,16 @@ export function THead({ children }: { children: React.ReactNode }) {
   );
 }
 
-/** Düz liste bölümü — ofis (müşavir) liste dili: hafif kart, üstte başlık+alt yazı, sonra tablo. */
-export function Section({ baslik, aciklama, children }: { baslik: string; aciklama?: string; children: React.ReactNode }) {
+/** Düz liste bölümü — ofis (müşavir) liste dili: hafif kart, üstte başlık+alt yazı, sonra tablo. sag: başlık sağına aksiyon/filtre. */
+export function Section({ baslik, aciklama, sag, children }: { baslik: string; aciklama?: string; sag?: React.ReactNode; children: React.ReactNode }) {
   return (
     <section className="rounded-2xl overflow-hidden" style={{ background: 'rgba(255,255,255,0.02)', border: '1px solid rgba(255,255,255,0.07)' }}>
-      <div className="px-4 py-3" style={{ borderBottom: '1px solid rgba(255,255,255,0.06)' }}>
-        <h2 className="text-[15px] font-semibold" style={{ color: '#fafaf9' }}>{baslik}</h2>
-        {aciklama ? <p className="text-[12px] mt-0.5" style={{ color: 'rgba(250,250,249,0.45)' }}>{aciklama}</p> : null}
+      <div className="px-4 py-3 flex items-center justify-between gap-3 flex-wrap" style={{ borderBottom: '1px solid rgba(255,255,255,0.06)' }}>
+        <div>
+          <h2 className="text-[15px] font-semibold" style={{ color: '#fafaf9' }}>{baslik}</h2>
+          {aciklama ? <p className="text-[12px] mt-0.5" style={{ color: 'rgba(250,250,249,0.45)' }}>{aciklama}</p> : null}
+        </div>
+        {sag ? <div className="shrink-0">{sag}</div> : null}
       </div>
       {children}
     </section>

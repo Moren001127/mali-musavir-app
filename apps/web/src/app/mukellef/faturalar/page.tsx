@@ -27,6 +27,7 @@ export default function MukellefFaturalar() {
   const now = new Date();
   const [yil, setYil] = useState(now.getFullYear());
   const [ay, setAy] = useState(now.getMonth() + 1); // 1-12
+  const [tab, setTab] = useState<'all' | 'ALIS' | 'SATIS'>('all');
   const donem = `${yil}-${String(ay).padStart(2, '0')}`;
 
   const { data, isLoading, isFetching } = useQuery({
@@ -45,6 +46,25 @@ export default function MukellefFaturalar() {
   const toplamHacim = (ayOzet.alisToplam || 0) + (ayOzet.satisToplam || 0);
   const alisPct = toplamHacim > 0 ? Math.round(((ayOzet.alisToplam || 0) / toplamHacim) * 100) : 0;
   const satisPct = toplamHacim > 0 ? 100 - alisPct : 0;
+  const isSatisF = (f: any) => /SATIS/i.test(f.faturaTuru || '');
+  const alisListe = faturalar.filter((f) => !isSatisF(f));
+  const satisListe = faturalar.filter((f) => isSatisF(f));
+  const filtreli = tab === 'ALIS' ? alisListe : tab === 'SATIS' ? satisListe : faturalar;
+  const FiltreSekmeleri = (
+    <div className="flex gap-1">
+      {([['all', 'Tümü', faturalar.length], ['ALIS', 'Alış', alisListe.length], ['SATIS', 'Satış', satisListe.length]] as const).map(([k, et, adet]) => {
+        const aktif = tab === k;
+        const renk = k === 'SATIS' ? SATIS : k === 'ALIS' ? ALIS : GOLD;
+        return (
+          <button key={k} type="button" onClick={() => setTab(k as any)}
+            className="px-3 py-1.5 rounded-[8px] text-[11.5px] font-semibold transition"
+            style={{ background: aktif ? `${renk}1f` : 'rgba(255,255,255,0.03)', color: aktif ? renk : 'rgba(250,250,249,0.55)', border: `1px solid ${aktif ? `${renk}55` : 'rgba(255,255,255,0.08)'}` }}>
+            {et} ({adet})
+          </button>
+        );
+      })}
+    </div>
+  );
 
   // Sağ üst — yıl + ay seçici araç çubuğu
   const seciciler = (
@@ -159,9 +179,9 @@ export default function MukellefFaturalar() {
             <p className="text-[11px] mt-2.5" style={{ color: 'rgba(250,250,249,0.35)' }}>Bir aya tıklayarak o ayın faturalarını ve KDV özetini görebilirsiniz.</p>
           </Card>
 
-          {/* Liste — seçili ay */}
-          <Section baslik={`İşlenen Faturalar · ${AY_ADLARI[ay - 1]} ${yil}`} aciklama={`${ayOzet.toplamAdet} belge`}>
-            {faturalar.length === 0 ? <div className="px-5 py-5"><Empty>Bu dönem için işlenen fatura bulunamadı.</Empty></div> : (
+          {/* Liste — seçili ay (Alış/Satış filtreli) */}
+          <Section baslik={`İşlenen Faturalar · ${AY_ADLARI[ay - 1]} ${yil}`} aciklama={`${filtreli.length} belge gösteriliyor`} sag={FiltreSekmeleri}>
+            {filtreli.length === 0 ? <div className="px-5 py-5"><Empty>Bu dönem için {tab === 'ALIS' ? 'alış faturası' : tab === 'SATIS' ? 'satış faturası' : 'işlenen fatura'} bulunamadı.</Empty></div> : (
               <div className="overflow-x-auto">
                 <table className="w-full text-sm">
                   <THead>
@@ -170,14 +190,14 @@ export default function MukellefFaturalar() {
                     <Th>Belge</Th>
                     <Th>Tarih</Th>
                     <Th align="right">Tutar</Th>
-                    <Th align="center">İşlem</Th>
+                    <Th align="center">Görüntüle</Th>
                   </THead>
                   <tbody>
-                    {faturalar.map((f) => {
-                      const satis = /SATIS/i.test(f.faturaTuru || '');
+                    {filtreli.map((f) => {
+                      const satis = isSatisF(f);
                       const renk = satis ? SATIS : ALIS;
                       return (
-                        <tr key={f.id} className="border-t" style={{ borderColor: 'rgba(255,255,255,0.05)' }}>
+                        <tr key={f.id} className="border-t transition-colors hover:bg-white/[0.025]" style={{ borderColor: 'rgba(255,255,255,0.05)' }}>
                           <td className="px-4 py-2.5"><Badge color={renk}>{turEtiket(f.faturaTuru)}</Badge></td>
                           <td className="px-4 py-2.5 text-[13px] max-w-[240px] truncate" style={{ color: '#fafaf9' }}>{f.firmaUnvan || f.faturaNo || '—'}</td>
                           <td className="px-4 py-2.5 text-[12px]" style={{ color: 'rgba(250,250,249,0.5)' }}>{belgeEtiket(f.belgeTuru)} · {f.faturaNo}</td>
@@ -186,8 +206,8 @@ export default function MukellefFaturalar() {
                           <td className="px-4 py-2.5">
                             <div className="flex justify-center">
                               {f.goruntulenebilir
-                                ? <button type="button" onClick={() => openBelge('fatura', f.id)} title="Görüntüle" className="flex h-7 w-7 items-center justify-center rounded-lg transition hover:bg-white/[0.06]" style={{ border: '1px solid rgba(212,184,118,0.25)', color: GOLD }}><Eye size={14} /></button>
-                                : <span className="text-[11px]" style={{ color: 'rgba(250,250,249,0.25)' }}>—</span>}
+                                ? <button type="button" onClick={() => openBelge('fatura', f.id, undefined, `${turEtiket(f.faturaTuru)} · ${f.firmaUnvan || f.faturaNo || ''}`)} title="Fatura görüntüsünü aç" className="flex h-7 w-7 items-center justify-center rounded-lg transition hover:bg-white/[0.06]" style={{ border: '1px solid rgba(212,184,118,0.3)', color: GOLD, background: 'rgba(212,184,118,0.08)' }}><Eye size={14} /></button>
+                                : <span title="Bu belgenin görüntüsü sistemde yok" className="flex h-7 w-7 items-center justify-center rounded-lg" style={{ border: '1px solid rgba(255,255,255,0.06)', color: 'rgba(250,250,249,0.22)' }}><Eye size={14} /></span>}
                             </div>
                           </td>
                         </tr>
