@@ -59,19 +59,39 @@ export function PageTitle({ ust, baslik }: { ust: string; baslik: string }) {
   );
 }
 
-export function Card({ children, accent, className = '' }: { children: React.ReactNode; accent?: string; className?: string }) {
+/** Düz kart — ofis paneli .card dili (degrade/glow yok). */
+export function Card({ children, accent, className = '', pad = true }: { children: React.ReactNode; accent?: string; className?: string; pad?: boolean }) {
   return (
     <div
-      className={`relative overflow-hidden rounded-2xl p-4 ${className}`}
-      style={{
-        background: 'linear-gradient(180deg, rgba(255,255,255,0.022), rgba(255,255,255,0.008)), #100d0a',
-        border: '1px solid rgba(255,255,255,0.07)',
-        boxShadow: '0 10px 24px rgba(0,0,0,0.22), inset 0 1px 0 rgba(255,255,255,0.03)',
-      }}
+      className={`relative overflow-hidden rounded-2xl ${pad ? 'p-5' : ''} ${className}`}
+      style={{ background: '#0f0d0b', border: '1px solid rgba(255,255,255,0.08)', boxShadow: '0 1px 2px rgba(0,0,0,0.3)' }}
     >
-      {accent ? <div className="absolute inset-x-0 top-0 h-[3px]" style={{ background: `linear-gradient(90deg, ${accent}, ${accent}33)` }} /> : null}
+      {accent ? <div className="absolute inset-x-0 top-0 h-[2px]" style={{ background: accent, opacity: 0.5 }} /> : null}
       {children}
     </div>
+  );
+}
+
+/** Durum/etiket pill rozeti — ofis .badge dili. */
+export function Badge({ color, children, icon: Icon }: { color: string; children: React.ReactNode; icon?: any }) {
+  return (
+    <span className="inline-flex items-center gap-1.5 rounded-full px-2.5 py-0.5 text-[11.5px] font-medium whitespace-nowrap" style={{ background: `${color}1a`, color }}>
+      {Icon ? <Icon size={12} /> : null}{children}
+    </span>
+  );
+}
+
+/** Tablo başlık hücresi — ofis tablo dili (10px uppercase, harf aralığı). */
+export function Th({ children, align = 'left' }: { children?: React.ReactNode; align?: 'left' | 'right' | 'center' }) {
+  return <th className={`px-4 py-2.5 ${align === 'right' ? 'text-right' : align === 'center' ? 'text-center' : 'text-left'}`}>{children}</th>;
+}
+export function THead({ children }: { children: React.ReactNode }) {
+  return (
+    <thead>
+      <tr className="text-[10px] font-semibold uppercase" style={{ background: 'rgba(255,255,255,0.015)', color: 'rgba(250,250,249,0.4)', letterSpacing: '0.12em' }}>
+        {children}
+      </tr>
+    </thead>
   );
 }
 
@@ -87,30 +107,18 @@ export function Spinner() {
   );
 }
 
-/** İmza premium sayaç kartı: metriğe özel renk + degrade zemin + radyal parıltı + glow'lu ikon + büyük serif rakam. */
-export function OzetCard({ icon: Icon, label, value, accent = GOLD, sub }: { icon: any; label: string; value: string; accent?: string; sub?: string }) {
+/** Düz sayaç kartı — ofis .stat-card dili: nötr büyük rakam + ince ikon çipi (degrade/glow yok). */
+export function OzetCard({ icon: Icon, label, value, accent = GOLD, sub, valueColor }: { icon: any; label: string; value: string; accent?: string; sub?: string; valueColor?: string }) {
   return (
-    <div
-      className="relative overflow-hidden rounded-2xl border p-5"
-      style={{
-        borderColor: `${accent}4d`,
-        background: `linear-gradient(135deg, ${accent}24, ${accent}0a 60%), #100d0a`,
-        boxShadow: `0 16px 32px rgba(0,0,0,0.30), inset 0 1px 0 rgba(255,255,255,0.05)`,
-      }}
-    >
-      <div className="absolute inset-x-0 top-0 h-1" style={{ background: `linear-gradient(90deg, ${accent}, ${accent}33)` }} />
-      <div className="pointer-events-none absolute -right-7 -top-7 h-28 w-28 rounded-full" style={{ background: `radial-gradient(circle, ${accent}33, transparent 70%)` }} />
-      <div className="relative flex items-start justify-between">
-        <span className="text-[11px] font-semibold uppercase tracking-[.14em]" style={{ color: `${accent}e0` }}>{label}</span>
-        <span
-          className="flex h-9 w-9 items-center justify-center rounded-xl shrink-0"
-          style={{ background: `linear-gradient(135deg, ${accent}, ${accent}aa)`, color: '#0f0d0b', boxShadow: `0 6px 16px ${accent}55` }}
-        >
-          <Icon size={16} />
+    <div className="rounded-2xl p-5" style={{ background: '#0f0d0b', border: '1px solid rgba(255,255,255,0.08)' }}>
+      <div className="flex items-center justify-between">
+        <span className="text-[11.5px] font-medium uppercase tracking-[.05em]" style={{ color: 'rgba(250,250,249,0.45)' }}>{label}</span>
+        <span className="flex h-8 w-8 items-center justify-center rounded-lg shrink-0" style={{ background: `${accent}14`, border: `1px solid ${accent}2e`, color: accent }}>
+          <Icon size={15} />
         </span>
       </div>
-      <div className="relative mt-3 leading-none tabular-nums" style={{ color: accent, fontFamily: 'Fraunces, serif', fontSize: 34, fontWeight: 700, letterSpacing: '-0.02em' }}>{value}</div>
-      {sub ? <div className="relative mt-1.5 text-[12px]" style={{ color: 'rgba(250,250,249,0.5)' }}>{sub}</div> : null}
+      <div className="mt-3 leading-none tabular-nums" style={{ color: valueColor || '#fafaf9', fontSize: 26, fontWeight: 600, letterSpacing: '-0.025em' }}>{value}</div>
+      {sub ? <div className="mt-1.5 text-[12px]" style={{ color: 'rgba(250,250,249,0.4)' }}>{sub}</div> : null}
     </div>
   );
 }

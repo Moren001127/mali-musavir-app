@@ -1,7 +1,7 @@
 'use client';
 import { useQuery } from '@tanstack/react-query';
 import { taxpayerApi } from '@/lib/taxpayer-api';
-import { fmtTRY, Card, Empty, Spinner, PageTitle, OzetCard, GOLD, openBelge } from '../_lib/shared';
+import { fmtTRY, Card, Empty, Spinner, PageTitle, OzetCard, GOLD, Badge, Th, THead, openBelge } from '../_lib/shared';
 import { ArrowDownLeft, ArrowUpRight, ReceiptText, Eye, BarChart3 } from 'lucide-react';
 
 const ALIS = '#d4b876';
@@ -64,37 +64,42 @@ export default function MukellefFaturalar() {
       </Card>
 
       {/* Liste */}
-      <Card>
-        <div className="flex items-center gap-2 mb-3"><ReceiptText size={15} style={{ color: GOLD }} /><h2 className="text-[14px] font-semibold" style={{ color: '#fafaf9' }}>İşlenen Faturalar</h2></div>
-        {faturalar.length === 0 ? <Empty>İşlenen fatura bulunamadı.</Empty> : (
-          <div className="divide-y" style={{ borderColor: 'rgba(255,255,255,0.06)' }}>
-            {faturalar.map((f) => {
-              const satis = /SATIS/i.test(f.faturaTuru || '');
-              const renk = satis ? SATIS : ALIS;
-              return (
-                <div key={f.id} className="flex items-center justify-between py-2.5 gap-3">
-                  <div className="min-w-0">
-                    <div className="flex items-center gap-2">
-                      <span className="text-[11px] font-semibold px-1.5 py-0.5 rounded" style={{ background: `${renk}1a`, color: renk }}>{turEtiket(f.faturaTuru)}</span>
-                      <span className="text-[13px] font-medium truncate" style={{ color: '#fafaf9' }}>{f.firmaUnvan || f.faturaNo || '—'}</span>
-                    </div>
-                    <p className="text-[11.5px] mt-0.5" style={{ color: 'rgba(250,250,249,0.4)' }}>
-                      {belgeEtiket(f.belgeTuru)} · {f.faturaNo}{f.faturaTarihi ? ` · ${new Date(f.faturaTarihi).toLocaleDateString('tr-TR')}` : ''}
-                    </p>
-                  </div>
-                  <div className="flex items-center gap-2 shrink-0">
-                    <span className="text-[13px] tabular-nums font-semibold" style={{ color: '#fafaf9' }}>{fmtTRY(f.toplamTutar)}</span>
-                    {f.goruntulenebilir && (
-                      <button type="button" onClick={() => openBelge('fatura', f.id)} title="Görüntüle"
-                        className="flex h-8 w-8 items-center justify-center rounded-lg transition hover:bg-white/[0.06]"
-                        style={{ border: '1px solid rgba(212,184,118,0.28)', color: GOLD, background: 'rgba(212,184,118,0.08)' }}>
-                        <Eye size={15} />
-                      </button>
-                    )}
-                  </div>
-                </div>
-              );
-            })}
+      <Card pad={false}>
+        <div className="flex items-center gap-2 px-5 pt-4 pb-3"><ReceiptText size={15} style={{ color: GOLD }} /><h2 className="text-[14px] font-semibold" style={{ color: '#fafaf9' }}>İşlenen Faturalar</h2></div>
+        {faturalar.length === 0 ? <div className="px-5 pb-5"><Empty>İşlenen fatura bulunamadı.</Empty></div> : (
+          <div className="overflow-x-auto">
+            <table className="w-full text-sm">
+              <THead>
+                <Th>Tür</Th>
+                <Th>Karşı Firma</Th>
+                <Th>Belge</Th>
+                <Th>Tarih</Th>
+                <Th align="right">Tutar</Th>
+                <Th align="center">İşlem</Th>
+              </THead>
+              <tbody>
+                {faturalar.map((f) => {
+                  const satis = /SATIS/i.test(f.faturaTuru || '');
+                  const renk = satis ? SATIS : ALIS;
+                  return (
+                    <tr key={f.id} className="border-t" style={{ borderColor: 'rgba(255,255,255,0.05)' }}>
+                      <td className="px-4 py-2.5"><Badge color={renk}>{turEtiket(f.faturaTuru)}</Badge></td>
+                      <td className="px-4 py-2.5 text-[13px] max-w-[240px] truncate" style={{ color: '#fafaf9' }}>{f.firmaUnvan || f.faturaNo || '—'}</td>
+                      <td className="px-4 py-2.5 text-[12px]" style={{ color: 'rgba(250,250,249,0.5)' }}>{belgeEtiket(f.belgeTuru)} · {f.faturaNo}</td>
+                      <td className="px-4 py-2.5 text-[12.5px]" style={{ color: 'rgba(250,250,249,0.55)' }}>{f.faturaTarihi ? new Date(f.faturaTarihi).toLocaleDateString('tr-TR') : '—'}</td>
+                      <td className="px-4 py-2.5 text-right text-[13px] tabular-nums font-semibold" style={{ color: '#fafaf9' }}>{fmtTRY(f.toplamTutar)}</td>
+                      <td className="px-4 py-2.5">
+                        <div className="flex justify-center">
+                          {f.goruntulenebilir
+                            ? <button type="button" onClick={() => openBelge('fatura', f.id)} title="Görüntüle" className="flex h-7 w-7 items-center justify-center rounded-lg transition hover:bg-white/[0.06]" style={{ border: '1px solid rgba(212,184,118,0.25)', color: GOLD }}><Eye size={14} /></button>
+                            : <span className="text-[11px]" style={{ color: 'rgba(250,250,249,0.25)' }}>—</span>}
+                        </div>
+                      </td>
+                    </tr>
+                  );
+                })}
+              </tbody>
+            </table>
           </div>
         )}
       </Card>
