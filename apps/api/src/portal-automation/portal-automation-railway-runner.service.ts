@@ -1611,7 +1611,10 @@ export class PortalAutomationRailwayRunnerService implements OnModuleInit {
     const browser = await pwChromium.launch({
       executablePath: process.env.PLAYWRIGHT_CHROMIUM_EXECUTABLE_PATH || process.env.CHROMIUM_PATH,
       headless: this.browserHeadless(),
-      args: this.browserLaunchArgs(),
+      // KGM'nin eski sunucusu Chromium HTTP/2 istegine govde akitmiyor (head gelir, body takilir;
+      // ham HTTP/1.1 fetch sorunsuz). HTTP/2 + QUIC kapatip HTTP/1.1'e zorla. Bu launch SADECE
+      // GALERI_HGS'e ozel — e-Tebligat/GIB/SGK paylasilan browserLaunchArgs'tan etkilenmez.
+      args: [...this.browserLaunchArgs(), '--disable-http2', '--disable-quic'],
     });
 
     try {
