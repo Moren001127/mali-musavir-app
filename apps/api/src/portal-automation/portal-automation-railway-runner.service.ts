@@ -1629,7 +1629,15 @@ export class PortalAutomationRailwayRunnerService implements OnModuleInit {
       if (mode === 'kgm_test') {
         const testPlaka = String(job?.payload?.testPlaka || '').trim();
         if (!testPlaka) throw new Error('kgm_test icin testPlaka gerekli');
-        await this.jobProgress(tenantId, job, 'kgm_test', `KGM sunucu testi baslatiliyor: ${testPlaka}`);
+        // 1) HAM AGI PROBU (tarayicisiz): KGM sunucu IP'sine TCP/HTTP seviyesinde ulasiyor mu?
+        await this.jobProgress(tenantId, job, 'kgm_probe', 'KGM ham ag erisimi test ediliyor (tarayicisiz).');
+        const netProbe = await this.probeKgmConnectivity();
+        await this.jobProgress(
+          tenantId, job, 'kgm_probe_done',
+          netProbe.ok ? `Ham fetch OK: HTTP ${netProbe.httpStatus} (${netProbe.ms}ms)` : `Ham fetch BASARISIZ: ${netProbe.error}`,
+        );
+        // 2) TARAYICI ile gercek sorgu.
+        await this.jobProgress(tenantId, job, 'kgm_test', `KGM tarayici testi: ${testPlaka}`);
         const sonuc = await this.sorgulaKgmPlaka(context, testPlaka, apiKey);
         await context.close().catch(() => {});
         const ulasildi = sonuc.durum !== 'hatali';
@@ -1637,7 +1645,7 @@ export class PortalAutomationRailwayRunnerService implements OnModuleInit {
           tenantId, job, 'kgm_test_done',
           ulasildi
             ? `KGM sunucudan ULASILDI: ${sonuc.ihlalSayisi || 0} ihlal / ${(sonuc.toplamTutar || 0).toFixed(2)} ₺`
-            : `KGM sunucudan ULASILAMADI: ${sonuc.hataMesaji || 'bilinmeyen hata'}`,
+            : `KGM tarayici ULASILAMADI: ${sonuc.hataMesaji || 'bilinmeyen hata'}`,
         );
         return {
           recordCount: 0,
@@ -1646,6 +1654,7 @@ export class PortalAutomationRailwayRunnerService implements OnModuleInit {
             phase: 'kgm_test',
             plaka: testPlaka,
             kgmUlasildi: ulasildi,
+            netProbe,
             durum: sonuc.durum,
             ihlalSayisi: sonuc.ihlalSayisi || 0,
             toplamTutar: sonuc.toplamTutar || 0,
@@ -1920,6 +1929,28 @@ export class PortalAutomationRailwayRunnerService implements OnModuleInit {
 
   // ── KGM (HGS ihlal) sorgu — matematik captcha'li ──
 
+  /** Tarayicisiz ham HTTP probu — KGM sunucu IP'sine ulasiyor mu? (engel/coğrafi teshis) */
+  private async probeKgmConnectivity(): Promise<{ ok: boolean; httpStatus?: number; ms?: number; error?: string }> {
+    const t0 = Date.now();
+    const ctrl = new AbortController();
+    const to = setTimeout(() => ctrl.abort(), 20_000);
+    try {
+      const resp = await fetch(KGM_HGS_URL, {
+        signal: ctrl.signal,
+        headers: {
+          'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/124.0.0.0 Safari/537.36',
+          'Accept-Language': 'tr-TR,tr;q=0.9',
+        },
+      });
+      // Govdeyi tuketmeden baglanti kuruldu mu yeterli; status'u al.
+      return { ok: true, httpStatus: resp.status, ms: Date.now() - t0 };
+    } catch (err: any) {
+      return { ok: false, ms: Date.now() - t0, error: this.compact(err?.message || err) };
+    } finally {
+      clearTimeout(to);
+    }
+  }
+
   /** Tek plaka KGM sorgusu; captcha yanlissa 4 kez dener. */
   private async sorgulaKgmPlaka(context: any, plaka: string, apiKey: string) {
     const plakaTemiz = String(plaka || '').replace(/\s/g, '').toUpperCase();
@@ -1937,8 +1968,10 @@ export class PortalAutomationRailwayRunnerService implements OnModuleInit {
     const page = await context.newPage();
     page.setDefaultTimeout(20_000);
     try {
-      await page.goto(KGM_HGS_URL, { waitUntil: 'domcontentloaded', timeout: 30_000 });
-      await page.waitForTimeout(1500);
+      // KGM (eski ASP.NET) yavas acilabilir: 'commit'te don, sonra plaka input'unu bekle.
+      await page.goto(KGM_HGS_URL, { waitUntil: 'commit', timeout: 60_000 });
+      await page.waitForSelector('#txtPlk', { timeout: 30_000 });
+      await page.waitForTimeout(1000);
 
       // Bilgilendirme modal + "OKUDUM ANLADIM" checkbox.
       const anladimBtn = await page.$('#btnCloseUyariModal');
