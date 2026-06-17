@@ -1,4 +1,4 @@
-import { Injectable, Logger } from '@nestjs/common';
+import { Injectable, Logger, NotFoundException } from '@nestjs/common';
 import { createHash } from 'crypto';
 import { Prisma } from '@prisma/client';
 import * as ExcelJS from 'exceljs';
@@ -5149,6 +5149,15 @@ Fatura görüntüsünü incele. Yukarıdaki MEVCUT SEÇENEKLER'den Kayıt Türü
     id: string,
     data: { status?: string; result?: any },
   ) {
+    // IDOR koruması: komut bu tenant'a ait mi? (Eskiden where:{id} idi →
+    // geçerli agent-token'lı başka tenant, id ile başka tenant'ın komutunu
+    // güncelleyebiliyordu.)
+    const own = await this.prisma.agentCommand.findFirst({
+      where: { id, tenantId },
+      select: { id: true },
+    });
+    if (!own) throw new NotFoundException('Komut bulunamadı');
+
     const finishedAt = data.status === 'done' || data.status === 'failed' ? new Date() : undefined;
     // Result alanını overwrite ETMEMEK için mevcut logs'u koru (canlı log akışı için kritik)
     let mergedResult = data.result;

@@ -46,11 +46,15 @@ export class NotificationsService {
     });
   }
 
-  async markRead(id: string) {
-    return this.prisma.notification.update({
-      where: { id },
+  async markRead(id: string, tenantId: string, userId: string) {
+    // IDOR koruması: yalnız kendi tenant'ındaki + kendine/tenant geneline ait
+    // bildirimi okundu işaretle. (Eskiden where:{id} idi → başka tenant'ın
+    // bildirimi işaretlenebiliyordu.)
+    const res = await this.prisma.notification.updateMany({
+      where: { id, tenantId, OR: [{ userId }, { userId: null }] },
       data: { isRead: true, readAt: new Date() },
     });
+    return { updated: res.count };
   }
 
   /** Tenant + (kullanicinin kendi + tenant geneli) tum okunmamis bildirimleri okundu isaretler */
