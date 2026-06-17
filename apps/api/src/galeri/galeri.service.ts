@@ -314,6 +314,53 @@ export class GaleriService {
     };
   }
 
+  /**
+   * Haftalık (Pazartesi cron) sunucu HGS sorgusu — galeri aracı olan + aktif GİB_IVD kimliği
+   * olan her mükellef için GALERI_HGS tam-akış işi oluşturur. (Borç özeti runner'daki sabit
+   * iki numaraya gider; tek-seferlik tanıtım yok.)
+   */
+  async baslatHaftalikSunucuSorgu() {
+    const aracTaxpayers = await (this.prisma as any).arac.findMany({
+      where: { taxpayerId: { not: null } },
+      select: { tenantId: true, taxpayerId: true },
+      distinct: ['tenantId', 'taxpayerId'],
+    });
+    let olusturulan = 0;
+    let atlanan = 0;
+    for (const a of aracTaxpayers) {
+      const cred = await (this.prisma as any).portalCredential.findFirst({
+        where: { tenantId: a.tenantId, provider: 'GIB_IVD', ownerType: 'TAXPAYER', ownerId: a.taxpayerId, isActive: true },
+        select: { id: true },
+      });
+      if (!cred) { atlanan++; continue; }
+      const mevcut = await (this.prisma as any).portalAutomationJob.findFirst({
+        where: { tenantId: a.tenantId, taxpayerId: a.taxpayerId, jobType: 'GALERI_HGS', status: { in: ['pending', 'running'] } },
+        select: { id: true },
+      });
+      if (mevcut) { atlanan++; continue; }
+      await (this.prisma as any).portalAutomationJob.create({
+        data: {
+          tenantId: a.tenantId,
+          taxpayerId: a.taxpayerId,
+          jobType: 'GALERI_HGS',
+          status: 'pending',
+          source: 'nightly',
+          scheduledAt: new Date(),
+          priority: 40,
+          payload: {
+            mode: 'full',
+            label: 'Galeri HGS haftalık (Pazartesi)',
+            provider: 'GIB_IVD',
+            ownerType: 'TAXPAYER',
+            progress: { at: new Date().toISOString(), step: 'pending', message: 'Haftalık HGS sorgusu kuyrukta.' },
+          },
+        },
+      });
+      olusturulan++;
+    }
+    return { olusturulan, atlanan, aday: aracTaxpayers.length };
+  }
+
   /** Agent'ın son ping'i, running durumu, son meta bilgisi */
   async agentDurumu(tenantId: string) {
     // findFirst ile deviceId-agnostik arama (composite key uyumsuzluğunu önler).

@@ -1719,7 +1719,21 @@ export class PortalAutomationRailwayRunnerService implements OnModuleInit {
         const arac = await this.upsertGaleriArac(tenantId, job.taxpayerId, pl, taxpayer);
         if (arac) araclar.push(arac);
       }
-      await this.jobProgress(tenantId, job, 'arac_done', `${araclar.length} plaka kaydedildi, HGS sorgusu basliyor.`);
+
+      // SENKRON: GIB'de OLMAYAN ama portalda olan araclari sil — AMA SADECE cekim EKSIKSIZ ise
+      // (yoksa gercek araci yanlislikla sileriz). eksiksiz = scraped >= GIB toplam.
+      let silinenler: string[] = [];
+      const eksiksiz = scrapeRes.diag?.eksiksiz === true;
+      if (eksiksiz) {
+        silinenler = await this.senkronAracSil(tenantId, job.taxpayerId, plakalar).catch((err: any) => {
+          this.logger.warn(`[GALERI_HGS] senkron silme hatasi: ${err?.message || err}`);
+          return [] as string[];
+        });
+      }
+      await this.jobProgress(
+        tenantId, job, 'arac_done',
+        `${araclar.length} plaka kaydedildi${eksiksiz ? `, ${silinenler.length} eski araç silindi` : ' (çekim eksik → silme atlandı)'}. HGS sorgusu basliyor.`,
+      );
 
       // KGM sorgulari icin AYRI context (kaynak-kesme route'lu; GIB SPA'sini etkilemez).
       const kgmContext = await this.createKgmContext(browser);
@@ -1760,16 +1774,18 @@ export class PortalAutomationRailwayRunnerService implements OnModuleInit {
       }
       await kgmContext.close().catch(() => {});
 
-      // WhatsApp borc ozeti.
-      const ozet = this.buildGaleriHgsOzet(araclar, sonuclar, taxpayer);
-      await this.gonderGaleriHgsOzet(tenantId, ozet.mesaj, phones).catch((err: any) =>
+      // WhatsApp borc ozeti (+ tek-seferlik onsoz varsa basa ekle).
+      const ozet = this.buildGaleriHgsOzet(araclar, sonuclar, taxpayer, silinenler);
+      const onsoz = String(job?.payload?.onsozMesaji || '').trim();
+      const finalMesaj = onsoz ? `${onsoz}\n\n— — — — —\n\n${ozet.mesaj}` : ozet.mesaj;
+      await this.gonderGaleriHgsOzet(tenantId, finalMesaj, phones).catch((err: any) =>
         this.logger.warn(`[GALERI_HGS] WhatsApp ozet hatasi: ${err?.message || err}`));
       await this.jobProgress(
         tenantId, job, 'hgs_done',
-        `HGS sorgusu tamam: ${ozet.totals.borcluArac} borçlu, ${ozet.totals.toplamBorc.toFixed(2)} ₺, ${ozet.totals.hataliArac} hatalı.`,
+        `HGS sorgusu tamam: ${ozet.totals.borcluArac} borçlu, ${ozet.totals.toplamBorc.toFixed(2)} ₺, ${ozet.totals.hataliArac} hatalı, ${silinenler.length} eski araç silindi.`,
       );
 
-      return { recordCount: araclar.length, result: { runner: 'railway', phase: 'galeri_hgs', codeVersion: 'v8-fullctx', plakalar: araclar.map((a) => a.plaka), ...ozet.totals } };
+      return { recordCount: araclar.length, result: { runner: 'railway', phase: 'galeri_hgs', codeVersion: 'v17-final', plakalar: araclar.map((a) => a.plaka), silinen: silinenler, eksiksiz, ...ozet.totals } };
     } finally {
       await browser.close().catch(() => {});
     }
@@ -1993,6 +2009,23 @@ export class PortalAutomationRailwayRunnerService implements OnModuleInit {
     });
   }
 
+  /**
+   * SENKRON: portal araç listesini GIB ile birebir esitler — GIB'de OLMAYAN portal araclarini SILER.
+   * Yalnizca cekim EKSIKSIZ oldugunda cagrilir (yanlis silmeyi onler). Bu galeri mukellefinin
+   * (taxpayerId) + henuz baglanmamis (null) araclari kapsanir. Silinen plakalari dondurur.
+   */
+  private async senkronAracSil(tenantId: string, taxpayerId: string | null, gibPlakalar: string[]): Promise<string[]> {
+    const norm = (p: string) => String(p || '').replace(/[\s-]/g, '').toUpperCase().trim();
+    const gibSet = new Set(gibPlakalar.map(norm));
+    const where: any = taxpayerId ? { tenantId, OR: [{ taxpayerId }, { taxpayerId: null }] } : { tenantId };
+    const mevcut = await (this.prisma as any).arac.findMany({ where, select: { id: true, plaka: true } });
+    const silinecek = mevcut.filter((a: any) => !gibSet.has(norm(a.plaka)));
+    if (silinecek.length) {
+      await (this.prisma as any).arac.deleteMany({ where: { id: { in: silinecek.map((a: any) => a.id) } } });
+    }
+    return silinecek.map((a: any) => a.plaka);
+  }
+
   /** Sorgu sonucunu HgsIhlalSorguSonucu olarak kaydeder (kaynak='sunucu'). */
   private async kaydetGaleriHgsSonucu(tenantId: string, aracId: string, sonuc: any) {
     const basarili = sonuc?.durum === 'basarili';
@@ -2015,6 +2048,7 @@ export class PortalAutomationRailwayRunnerService implements OnModuleInit {
     araclar: Array<{ id: string; plaka: string }>,
     sonuclar: Map<string, any>,
     taxpayer: any,
+    silinenler: string[] = [],
   ): { mesaj: string; totals: { plakaSayisi: number; borcluArac: number; borcsuzArac: number; hataliArac: number; toplamBorc: number } } {
     const fmtPlaka = (p: string) => {
       const s = String(p || '').replace(/[\s-]/g, '').toUpperCase();
@@ -2060,6 +2094,9 @@ export class PortalAutomationRailwayRunnerService implements OnModuleInit {
     lines.push('');
     lines.push(`Borçsuz: ${borcsuz} araç`);
     if (hatali) lines.push(`⚠️ Sorgulanamayan: ${hatali} araç`);
+    if (silinenler && silinenler.length) {
+      lines.push(`🗑️ Listeden düşen (GİB'de yok): ${silinenler.map(fmtPlaka).join(', ')}`);
+    }
     lines.push('');
     lines.push(`TOPLAM BORÇ: ${fmtTl(toplamBorc)} ₺ (${borclular.length} araç)`);
 
@@ -2273,6 +2310,12 @@ export class PortalAutomationRailwayRunnerService implements OnModuleInit {
       }
 
       const sonuc = await this.parseKgmIhlaller(page);
+      // SAGLAMLASTIRMA: ihlal tablosu YOK ve "ihlal bulunamadi" mesaji da YOK ise sonuc
+      // DOGRULANAMADI (cogu zaman yanlis captcha / sayfa yuklenmedi) -> sahte "0 ihlal" yazma,
+      // captcha_yanlis dondur ki tekrar denensin. Boylece "borcsuz" yalani onlenir.
+      if (sonuc.ihlaller.length === 0 && !sonuc.temiz) {
+        return { durum: 'captcha_yanlis', captchaId: cozum.captchaId };
+      }
       return {
         durum: 'basarili',
         ihlalSayisi: sonuc.ihlaller.length,
