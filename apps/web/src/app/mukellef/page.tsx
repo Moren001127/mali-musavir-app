@@ -3,7 +3,7 @@ import Link from 'next/link';
 import { useQuery } from '@tanstack/react-query';
 import { taxpayerApi } from '@/lib/taxpayer-api';
 import { FileText, Wallet, FolderArchive, Sparkles, ArrowRight, ReceiptText, MailWarning, BellDot, BarChart3, Gauge } from 'lucide-react';
-import { fmtTRY, Card, Spinner, OzetCard, PageTitle } from './_lib/shared';
+import { fmtTRY, Card, Spinner, PageTitle } from './_lib/shared';
 import { MukellefBrifing } from './_lib/MukellefBrifing';
 import { MukellefTakvim } from './_lib/MukellefTakvim';
 
@@ -53,13 +53,6 @@ export default function MukellefOverview() {
           <ArrowRight size={14} className="ml-auto" style={{ color: '#fbbf24' }} />
         </Link>
       )}
-
-      <div className="grid grid-cols-2 lg:grid-cols-4 gap-3">
-        <OzetCard icon={FileText} label="Bekleyen Beyanname" value={String(ozet.bekleyenBeyan ?? 0)} accent="#fbbf24" sub="onay bekliyor" />
-        <OzetCard icon={Wallet} label="Cari Bakiye" value={fmtTRY(ozet.cariBakiye ?? 0)} accent={(ozet.cariBakiye ?? 0) > 0 ? '#f87171' : '#4ade80'} sub={(ozet.cariBakiye ?? 0) > 0 ? 'açık bakiye (borç)' : 'bakiye'} />
-        <OzetCard icon={ReceiptText} label="Fatura" value={String(ozet.faturaSayisi ?? 0)} accent="#8fd7bd" sub="işlenen belge" />
-        <OzetCard icon={FolderArchive} label="Evrak" value={String(ozet.evrakSayisi ?? 0)} accent="#60a5fa" sub="arşivde" />
-      </div>
 
       {/* Hızlı erişim */}
       <div className="grid grid-cols-3 sm:grid-cols-6 gap-2.5">

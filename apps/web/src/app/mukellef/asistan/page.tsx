@@ -3,6 +3,8 @@ import { useState, useRef, useEffect } from 'react';
 import { useQuery, useMutation } from '@tanstack/react-query';
 import { taxpayerApi } from '@/lib/taxpayer-api';
 import { Sparkles, Send, Loader2 } from 'lucide-react';
+import ReactMarkdown from 'react-markdown';
+import remarkGfm from 'remark-gfm';
 import { GOLD, PageTitle } from '../_lib/shared';
 
 type ChatMsg = { role: 'user' | 'assistant'; text: string };
@@ -69,21 +71,21 @@ export default function MukellefAsistan() {
   return (
     <div>
       <PageTitle ust="Size özel asistan" baslik="MOREN AI" icon={Sparkles} />
-      <div className="rounded-2xl overflow-hidden flex flex-col" style={{ background: 'rgba(255,255,255,0.02)', border: '1px solid rgba(184,160,111,0.2)', height: '68vh', minHeight: 460 }}>
-        <div className="flex items-center gap-2 px-4 py-3" style={{ borderBottom: '1px solid rgba(255,255,255,0.06)', background: 'linear-gradient(180deg, rgba(184,160,111,0.1), transparent)' }}>
-          <div className="flex h-8 w-8 items-center justify-center rounded-lg" style={{ background: `linear-gradient(135deg, ${GOLD}, #8b7649)`, color: '#0f0d0b' }}><Sparkles size={16} /></div>
-          <div><p className="text-[13px] font-semibold" style={{ color: '#fafaf9' }}>MOREN AI</p><p className="text-[10.5px]" style={{ color: 'rgba(250,250,249,0.4)' }}>Yalnız sizin verinize göre yanıtlar</p></div>
-        </div>
-
+      <div className="rounded-2xl overflow-hidden flex flex-col" style={{ background: 'rgba(255,255,255,0.02)', border: '1px solid rgba(184,160,111,0.2)', height: 'calc(100vh - 190px)', minHeight: 520 }}>
         <div ref={scrollRef} className="flex-1 overflow-y-auto px-4 py-4 space-y-3">
           {messages.map((m, i) => (
             <div key={i} className={`flex ${m.role === 'user' ? 'justify-end' : 'justify-start'}`}>
-              <div className="max-w-[80%] px-3.5 py-2.5 text-[13.5px] leading-relaxed whitespace-pre-wrap"
-                style={m.role === 'user'
-                  ? { background: `linear-gradient(135deg, ${GOLD}, #b8a06f)`, color: '#0f0d0b', borderRadius: '14px 14px 4px 14px' }
-                  : { background: 'rgba(255,255,255,0.05)', color: '#fafaf9', borderRadius: '14px 14px 14px 4px', border: '1px solid rgba(255,255,255,0.06)' }}>
-                {m.text}
-              </div>
+              {m.role === 'user' ? (
+                <div className="max-w-[80%] px-3.5 py-2.5 text-[13.5px] leading-relaxed whitespace-pre-wrap"
+                  style={{ background: `linear-gradient(135deg, ${GOLD}, #b8a06f)`, color: '#0f0d0b', borderRadius: '14px 14px 4px 14px' }}>
+                  {m.text}
+                </div>
+              ) : (
+                <div className="moren-md max-w-[88%] px-3.5 py-2.5 text-[13.5px]"
+                  style={{ background: 'rgba(255,255,255,0.05)', color: '#fafaf9', borderRadius: '14px 14px 14px 4px', border: '1px solid rgba(255,255,255,0.06)' }}>
+                  <ReactMarkdown remarkPlugins={[remarkGfm]}>{m.text}</ReactMarkdown>
+                </div>
+              )}
             </div>
           ))}
           {chatMut.isPending && <div className="flex justify-start"><div className="px-3.5 py-2.5 rounded-2xl" style={{ background: 'rgba(255,255,255,0.05)' }}><Loader2 size={15} className="animate-spin" style={{ color: GOLD }} /></div></div>}

@@ -1,6 +1,8 @@
 'use client';
 import { useEffect, useState } from 'react';
 import { createPortal } from 'react-dom';
+import ReactMarkdown from 'react-markdown';
+import remarkGfm from 'remark-gfm';
 import { CheckCircle2, Clock, AlertTriangle, ShieldCheck, Eye, X, ExternalLink, Loader2 } from 'lucide-react';
 import { taxpayerApi } from '@/lib/taxpayer-api';
 
@@ -92,7 +94,7 @@ export function BelgePreviewHost() {
           ) : st.error ? (
             <div className="h-full flex items-center justify-center text-[13px]" style={{ color: 'rgba(250,250,249,0.6)' }}>{st.error}</div>
           ) : st.ozet ? (
-            <div className="px-5 py-4 text-[13.5px] leading-relaxed whitespace-pre-wrap" style={{ color: '#fafaf9' }}>{st.ozet}</div>
+            <div className="moren-md px-5 py-4 text-[13.5px]" style={{ color: '#fafaf9' }}><ReactMarkdown remarkPlugins={[remarkGfm]}>{st.ozet}</ReactMarkdown></div>
           ) : st.url ? (
             <iframe src={st.url} title={st.title || 'Belge'} className="w-full h-full" style={{ border: 0, background: '#fff' }} />
           ) : null}
