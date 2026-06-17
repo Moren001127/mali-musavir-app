@@ -5,7 +5,7 @@ import Link from 'next/link';
 import { useQuery } from '@tanstack/react-query';
 import {
   LogOut, Gauge, FileText, Wallet, FolderArchive, Sparkles, UserRound,
-  PanelTop, BrainCircuit, ReceiptText, MailWarning,
+  PanelTop, BrainCircuit, ReceiptText, MailWarning, ShieldCheck,
 } from 'lucide-react';
 import { getTaxpayerToken, setTaxpayerToken, taxpayerApi } from '@/lib/taxpayer-api';
 
@@ -27,6 +27,7 @@ const NAV_GROUPS = [
       { href: '/mukellef/faturalar', label: 'Faturalarım', icon: ReceiptText },
       { href: '/mukellef/cari', label: 'Cari Hesabım', icon: Wallet },
       { href: '/mukellef/tebligatlar', label: 'e-Tebligat', icon: MailWarning },
+      { href: '/mukellef/sgk', label: 'SGK Belgeleri', icon: ShieldCheck },
       { href: '/mukellef/evraklar', label: 'Evraklarım', icon: FolderArchive },
     ],
   },
