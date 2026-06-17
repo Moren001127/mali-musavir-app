@@ -999,6 +999,35 @@ export class BaileysService implements OnModuleDestroy {
   }
 
   /**
+   * Gonderim hedefini KANONIK jid'e cozumle. Ham PN (@s.whatsapp.net) hedeflerde — yani botun
+   * ILK KEZ yazdigi numaralarda (or. galeri musterisi) — yeni WhatsApp LID adreslemesinde mesaj
+   * teslim OLMAYABILIR. onWhatsApp(number) sunucudan gercek/kanonik jid'i (LID olabilir) verir;
+   * ona gonderince teslim olur. Cozulemezse eski davranisa (ham PN) duser — mevcut akislar bozulmaz.
+   */
+  private async ensureSendJid(s: Session, phone: string): Promise<string | null> {
+    const base = this.toSendJid(s, phone);
+    if (!base || !base.endsWith('@s.whatsapp.net')) return base;
+    const digits = this.jidDigits(base);
+    if (!digits || !s.sock?.onWhatsApp) return base;
+    try {
+      const res: any = await Promise.race([
+        s.sock.onWhatsApp(digits),
+        new Promise((resolve) => setTimeout(() => resolve(null), 8000)),
+      ]);
+      const hit = Array.isArray(res) ? res[0] : null;
+      if (hit?.jid) {
+        if (this.jidDigits(hit.jid) !== digits || String(hit.jid).includes('@lid')) {
+          this.logger.log(`[Baileys] gonderim hedefi onWhatsApp ile cozuldu: ${this.maskTarget(digits)} -> ${this.maskTarget(hit.jid)}`);
+        }
+        return hit.jid;
+      }
+    } catch (e: any) {
+      this.logger.warn(`[Baileys] onWhatsApp cozumleme hata ${this.maskTarget(digits)}: ${e?.message || e}`);
+    }
+    return base;
+  }
+
+  /**
    * İnsan gibi tempo: "yazıyor…" göstergesi + mesaj uzunluğuyla orantılı kısa
    * gecikme. Cevabın anında/robotik düşmesini önler. MOREN_BOT_TYPING=0 ile kapatılır.
    */
@@ -1074,7 +1103,7 @@ export class BaileysService implements OnModuleDestroy {
       return { ok: false, error: 'QR WhatsApp oturumu bagli degil.' };
     }
     try {
-      const jid = this.toSendJid(s, phone);
+      const jid = await this.ensureSendJid(s, phone);
       if (!jid) {
         const error = 'WhatsApp LID adresi gercek telefon numarasina cozumlenemedi; bekleyen mesaj olusmamasi icin gonderim durduruldu.';
         this.logger.warn(`[Baileys] tenant=${tenantId} LID hedef cozumlenemedi target=${this.maskTarget(phone)}`);
@@ -1100,7 +1129,7 @@ export class BaileysService implements OnModuleDestroy {
       return false;
     }
     try {
-      const jid = this.toSendJid(s, phone);
+      const jid = await this.ensureSendJid(s, phone);
       if (!jid) {
         this.logger.warn(`[Baileys] tenant=${tenantId} LID hedef cozumlenemedi target=${this.maskTarget(phone)}`);
         return false;

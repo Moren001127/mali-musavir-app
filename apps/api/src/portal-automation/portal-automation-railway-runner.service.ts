@@ -1602,11 +1602,38 @@ export class PortalAutomationRailwayRunnerService implements OnModuleInit {
   private async runGaleriHgs(job: any): Promise<{ recordCount: number; result: any }> {
     const tenantId = job.tenantId;
     const mode = String(job?.payload?.mode || 'full');
-    const apiKey = process.env.TWOCAPTCHA_API_KEY || process.env.TWO_CAPTCHA_API_KEY;
-    if (!apiKey) throw new Error('TWOCAPTCHA_API_KEY env yok; KGM captcha cozulemez');
     const phones: string[] = Array.isArray(job?.payload?.whatsappPhones) && job.payload.whatsappPhones.length
       ? job.payload.whatsappPhones
       : GALERI_HGS_WHATSAPP_PHONES;
+
+    // ── RESEND: KGM/GIB'e GIRMEDEN, kayitli son sonuclardan ozeti kur + WhatsApp gonder (hizli) ──
+    if (mode === 'resend') {
+      const taxpayer = await (this.prisma as any).taxpayer.findFirst({
+        where: { id: job.taxpayerId, tenantId },
+        select: { id: true, companyName: true, firstName: true, lastName: true, taxNumber: true },
+      });
+      const araclar = await (this.prisma as any).arac.findMany({
+        where: { tenantId, taxpayerId: job.taxpayerId },
+        select: { id: true, plaka: true },
+      });
+      const sonuclar = new Map<string, any>();
+      for (const a of araclar) {
+        const son = await (this.prisma as any).hgsIhlalSorguSonucu.findFirst({
+          where: { aracId: a.id }, orderBy: { sorguTarihi: 'desc' },
+          select: { durum: true, ihlalSayisi: true, toplamTutar: true },
+        });
+        if (son) sonuclar.set(a.id, { durum: son.durum, ihlalSayisi: son.ihlalSayisi, toplamTutar: Number(son.toplamTutar || 0) });
+      }
+      const ozet = this.buildGaleriHgsOzet(araclar, sonuclar, taxpayer);
+      const onsoz = String(job?.payload?.onsozMesaji || '').trim();
+      const finalMesaj = onsoz ? `${onsoz}\n\n— — — — —\n\n${ozet.mesaj}` : ozet.mesaj;
+      await this.gonderGaleriHgsOzet(tenantId, finalMesaj, phones);
+      await this.jobProgress(tenantId, job, 'resend_done', `Özet ${phones.length} numaraya yeniden gönderildi.`);
+      return { recordCount: 0, result: { runner: 'railway', phase: 'galeri_hgs_resend', phones, ...ozet.totals } };
+    }
+
+    const apiKey = process.env.TWOCAPTCHA_API_KEY || process.env.TWO_CAPTCHA_API_KEY;
+    if (!apiKey) throw new Error('TWOCAPTCHA_API_KEY env yok; KGM captcha cozulemez');
 
     const browser = await pwChromium.launch({
       executablePath: process.env.PLAYWRIGHT_CHROMIUM_EXECUTABLE_PATH || process.env.CHROMIUM_PATH,
