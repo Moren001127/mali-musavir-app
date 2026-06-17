@@ -1,7 +1,34 @@
 'use client';
-import { CheckCircle2, Clock, AlertTriangle, ShieldCheck } from 'lucide-react';
+import { CheckCircle2, Clock, AlertTriangle, ShieldCheck, Eye } from 'lucide-react';
+import { taxpayerApi } from '@/lib/taxpayer-api';
 
 export const GOLD = '#d4b876';
+
+/** Belgeyi presigned inline URL alıp yeni sekmede açar. tur: beyanname|evrak|tebligat|sgk|fatura */
+export async function openBelge(tur: string, id: string, kind?: string) {
+  try {
+    const { data } = await taxpayerApi.get(`/portal/belge/${tur}/${id}/view`, { params: kind ? { kind } : undefined });
+    if (data?.url) window.open(data.url, '_blank', 'noopener,noreferrer');
+    else alert('Belge bulunamadı.');
+  } catch {
+    alert('Belge açılamadı. Daha sonra tekrar deneyin.');
+  }
+}
+
+/** Küçük "göz" görüntüleme butonu. */
+export function GozBtn({ onClick, title = 'Görüntüle' }: { onClick: () => void; title?: string }) {
+  return (
+    <button
+      type="button"
+      onClick={onClick}
+      title={title}
+      className="flex h-8 w-8 items-center justify-center rounded-lg transition hover:bg-white/[0.06]"
+      style={{ border: '1px solid rgba(212,184,118,0.28)', color: GOLD, background: 'rgba(212,184,118,0.08)' }}
+    >
+      <Eye size={15} />
+    </button>
+  );
+}
 
 export const fmtTRY = (n: number) =>
   `${(n || 0).toLocaleString('tr-TR', { minimumFractionDigits: 2, maximumFractionDigits: 2 })} ₺`;
