@@ -42,9 +42,9 @@ function SgkTablo({ rows, accent }: { rows: any[]; accent: string }) {
 function Bolum({ icon: Icon, baslik, accent, adet, children }: { icon: any; baslik: string; accent: string; adet: number; children: React.ReactNode }) {
   return (
     <Card pad={false} accent={accent}>
-      <div className="flex items-center gap-2 px-5 pt-4 pb-3">
+      <div className="flex items-center gap-2 px-4 py-3" style={{ borderBottom: '1px solid rgba(255,255,255,0.06)' }}>
         <span className="flex h-7 w-7 items-center justify-center rounded-lg" style={{ background: `${accent}18`, border: `1px solid ${accent}30`, color: accent }}><Icon size={14} /></span>
-        <h2 className="text-[14px] font-semibold" style={{ color: '#fafaf9' }}>{baslik}</h2>
+        <h2 className="text-[15px] font-semibold" style={{ color: '#fafaf9' }}>{baslik}</h2>
         <span className="ml-auto text-[11.5px] font-semibold tabular-nums rounded-full px-2.5 py-0.5" style={{ background: `${accent}1a`, color: accent }}>{adet} belge</span>
       </div>
       {children}

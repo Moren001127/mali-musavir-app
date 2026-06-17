@@ -1,7 +1,7 @@
 'use client';
 import { useQuery } from '@tanstack/react-query';
 import { taxpayerApi } from '@/lib/taxpayer-api';
-import { fmtTRY, Card, Empty, Spinner, PageTitle, OzetCard, Badge, Th, THead } from '../_lib/shared';
+import { fmtTRY, Section, Empty, Spinner, PageTitle, OzetCard, Badge, Th, THead } from '../_lib/shared';
 import { Wallet, ArrowDownLeft, ArrowUpRight } from 'lucide-react';
 
 export default function MukellefCari() {
@@ -24,9 +24,8 @@ export default function MukellefCari() {
         <OzetCard icon={Wallet} label="Açık Bakiye" value={fmtTRY(bakiye)} accent={bakiye > 0 ? '#f87171' : '#4ade80'} valueColor={bakiye > 0 ? '#f87171' : '#4ade80'} sub={bakiye > 0 ? 'kalan borç' : 'bakiye kapalı'} />
       </div>
 
-      <Card pad={false}>
-        <h2 className="text-[14px] font-semibold px-5 pt-4 pb-3" style={{ color: '#fafaf9' }}>Hareketler</h2>
-        {hareketler.length === 0 ? <div className="px-5 pb-5"><Empty>Cari hareket bulunamadı.</Empty></div> : (
+      <Section baslik="Hareketler" aciklama="Tahakkuk ve tahsilat hareketleriniz, yeni tarihliler üstte.">
+        {hareketler.length === 0 ? <div className="px-5 py-5"><Empty>Cari hareket bulunamadı.</Empty></div> : (
           <div className="overflow-x-auto">
             <table className="w-full text-sm">
               <THead>
@@ -53,7 +52,7 @@ export default function MukellefCari() {
             </table>
           </div>
         )}
-      </Card>
+      </Section>
     </div>
   );
 }

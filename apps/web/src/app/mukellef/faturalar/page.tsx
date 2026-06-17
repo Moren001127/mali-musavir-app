@@ -2,9 +2,9 @@
 import { useState } from 'react';
 import { useQuery, keepPreviousData } from '@tanstack/react-query';
 import { taxpayerApi } from '@/lib/taxpayer-api';
-import { fmtTRY, Card, Empty, Spinner, PageTitle, StatStrip, GOLD, Badge, Th, THead, openBelge } from '../_lib/shared';
+import { fmtTRY, Card, Section, Empty, Spinner, PageTitle, StatStrip, GOLD, Badge, Th, THead, openBelge } from '../_lib/shared';
 import {
-  ArrowDownLeft, ArrowUpRight, ReceiptText, Eye, BarChart3, Calendar,
+  ArrowDownLeft, ArrowUpRight, Eye, BarChart3, Calendar,
   Scale, Percent, FileStack, TrendingUp,
 } from 'lucide-react';
 
@@ -137,12 +137,8 @@ export default function MukellefFaturalar() {
           </Card>
 
           {/* Liste — seçili ay */}
-          <Card pad={false}>
-            <div className="flex items-center gap-2 px-5 pt-4 pb-3">
-              <ReceiptText size={15} style={{ color: GOLD }} />
-              <h2 className="text-[14px] font-semibold" style={{ color: '#fafaf9' }}>İşlenen Faturalar · {AY_ADLARI[ay - 1]} {yil}</h2>
-            </div>
-            {faturalar.length === 0 ? <div className="px-5 pb-5"><Empty>Bu dönem için işlenen fatura bulunamadı.</Empty></div> : (
+          <Section baslik={`İşlenen Faturalar · ${AY_ADLARI[ay - 1]} ${yil}`} aciklama={`${ayOzet.toplamAdet} belge`}>
+            {faturalar.length === 0 ? <div className="px-5 py-5"><Empty>Bu dönem için işlenen fatura bulunamadı.</Empty></div> : (
               <div className="overflow-x-auto">
                 <table className="w-full text-sm">
                   <THead>
@@ -178,7 +174,7 @@ export default function MukellefFaturalar() {
                 </table>
               </div>
             )}
-          </Card>
+          </Section>
         </div>
       )}
     </div>

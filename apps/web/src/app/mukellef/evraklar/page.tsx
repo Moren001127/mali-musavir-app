@@ -1,7 +1,7 @@
 'use client';
 import { useQuery } from '@tanstack/react-query';
 import { taxpayerApi } from '@/lib/taxpayer-api';
-import { GOLD, Card, Empty, Spinner, PageTitle, Th, THead, openBelge } from '../_lib/shared';
+import { GOLD, Section, Empty, Spinner, PageTitle, Th, THead, openBelge } from '../_lib/shared';
 import { Eye } from 'lucide-react';
 
 const KATEGORI: Record<string, string> = {
@@ -15,10 +15,10 @@ export default function MukellefEvraklar() {
   });
 
   return (
-    <div>
+    <div className="space-y-4">
       <PageTitle ust="Arşiv" baslik="Evraklarım" />
       {isLoading ? <Spinner /> : (
-        <Card pad={false}>
+        <Section baslik="Belgeler" aciklama="Müşavirinizin mükellef kartınıza yüklediği dosyalar burada yer alır.">
           {(!evraklar || evraklar.length === 0) ? (
             <div className="p-5"><Empty>Müşaviriniz tarafından kartınıza yüklenen belge bulunmuyor.</Empty></div>
           ) : (
@@ -49,11 +49,8 @@ export default function MukellefEvraklar() {
               </table>
             </div>
           )}
-        </Card>
+        </Section>
       )}
-      <p className="text-[12px] mt-3" style={{ color: 'rgba(250,250,249,0.35)' }}>
-        Bu alanda müşavirinizin mükellef kartınıza yüklediği dosyalar yer alır.
-      </p>
     </div>
   );
 }

@@ -90,12 +90,12 @@ export function StatStrip({ items }: { items: { label: string; value: string; su
   );
 }
 
-/** Düz kart — ofis paneli .card dili (degrade/glow yok). */
+/** Düz kart — ofis (müşavir) paneli .card dili: açık zemin, degrade/glow yok. */
 export function Card({ children, accent, className = '', pad = true }: { children: React.ReactNode; accent?: string; className?: string; pad?: boolean }) {
   return (
     <div
       className={`relative overflow-hidden rounded-2xl ${pad ? 'p-5' : ''} ${className}`}
-      style={{ background: '#0f0d0b', border: '1px solid rgba(255,255,255,0.08)', boxShadow: '0 1px 2px rgba(0,0,0,0.3)' }}
+      style={{ background: 'rgba(255,255,255,0.02)', border: '1px solid rgba(255,255,255,0.07)' }}
     >
       {accent ? <div className="absolute inset-x-0 top-0 h-[2px]" style={{ background: accent, opacity: 0.5 }} /> : null}
       {children}
@@ -114,12 +114,12 @@ export function Badge({ color, children, icon: Icon }: { color: string; children
 
 /** Tablo başlık hücresi — ofis tablo dili (10px uppercase, harf aralığı). */
 export function Th({ children, align = 'left' }: { children?: React.ReactNode; align?: 'left' | 'right' | 'center' }) {
-  return <th className={`px-4 py-2.5 ${align === 'right' ? 'text-right' : align === 'center' ? 'text-center' : 'text-left'}`}>{children}</th>;
+  return <th className={`px-4 py-3 ${align === 'right' ? 'text-right' : align === 'center' ? 'text-center' : 'text-left'}`}>{children}</th>;
 }
 export function THead({ children }: { children: React.ReactNode }) {
   return (
-    <thead>
-      <tr className="text-[10px] font-semibold uppercase" style={{ background: 'rgba(255,255,255,0.015)', color: 'rgba(250,250,249,0.4)', letterSpacing: '0.12em' }}>
+    <thead style={{ background: 'rgba(255,255,255,0.025)' }}>
+      <tr className="text-[10.5px] font-semibold uppercase" style={{ color: 'rgba(250,250,249,0.45)', letterSpacing: '0.12em' }}>
         {children}
       </tr>
     </thead>
@@ -154,7 +154,7 @@ export function Spinner() {
 /** Düz sayaç kartı — ofis .stat-card dili: nötr büyük rakam + ince ikon çipi (degrade/glow yok). */
 export function OzetCard({ icon: Icon, label, value, accent = GOLD, sub, valueColor }: { icon: any; label: string; value: string; accent?: string; sub?: string; valueColor?: string }) {
   return (
-    <div className="rounded-2xl p-5" style={{ background: '#0f0d0b', border: '1px solid rgba(255,255,255,0.08)' }}>
+    <div className="rounded-2xl p-5" style={{ background: 'rgba(255,255,255,0.02)', border: '1px solid rgba(255,255,255,0.07)' }}>
       <div className="flex items-center justify-between">
         <span className="text-[11.5px] font-medium uppercase tracking-[.05em]" style={{ color: 'rgba(250,250,249,0.45)' }}>{label}</span>
         <span className="flex h-8 w-8 items-center justify-center rounded-lg shrink-0" style={{ background: `${accent}14`, border: `1px solid ${accent}2e`, color: accent }}>

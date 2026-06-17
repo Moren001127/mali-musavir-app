@@ -1,7 +1,7 @@
 'use client';
 import { useQuery } from '@tanstack/react-query';
 import { taxpayerApi } from '@/lib/taxpayer-api';
-import { Card, Empty, Spinner, PageTitle, openBelge } from '../_lib/shared';
+import { Section, Empty, Spinner, PageTitle, openBelge } from '../_lib/shared';
 import { MailWarning, Eye, BellDot } from 'lucide-react';
 
 const SARI = '#fbbf24';
@@ -30,9 +30,9 @@ export default function MukellefTebligatlar() {
             </div>
           )}
 
-          <Card accent={SARI}>
-            {liste.length === 0 ? <Empty>e-Tebligat bulunmuyor.</Empty> : (
-              <div className="divide-y" style={{ borderColor: 'rgba(255,255,255,0.06)' }}>
+          <Section baslik="Gelen e-Tebligatlar" aciklama="Açtığınızda okundu olarak işaretlenir.">
+            {liste.length === 0 ? <div className="px-4 py-5"><Empty>e-Tebligat bulunmuyor.</Empty></div> : (
+              <div className="divide-y px-4" style={{ borderColor: 'rgba(255,255,255,0.06)' }}>
                 {liste.map((t: any) => {
                   const yeni = !t.viewedAt;
                   return (
@@ -61,7 +61,7 @@ export default function MukellefTebligatlar() {
                 })}
               </div>
             )}
-          </Card>
+          </Section>
         </>
       )}
     </div>
