@@ -225,7 +225,7 @@ export default function MukellefLayout({ children }: { children: React.ReactNode
         </header>
 
         <main className="flex-1 min-w-0 max-w-full overflow-y-auto overflow-x-hidden p-3 pb-24 sm:p-4 lg:p-6 animate-fade-up">
-          <div className="mx-auto max-w-5xl">{children}</div>
+          {children}
         </main>
       </div>
       <BelgePreviewHost />
