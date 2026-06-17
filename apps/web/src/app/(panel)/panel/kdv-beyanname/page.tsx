@@ -122,11 +122,12 @@ type Kdv1 = {
     netKdv: number;
     cekildiAt: string | null;
   } | null;
-  satis: { oranlar: OranRow[]; toplamMatrah: number; toplamHesaplananKdv: number; faturaAdet: number; oranBelirsizKdv?: number; oranBelirsizAdet?: number };
+  satis: { oranlar: OranRow[]; toplamMatrah: number; toplamHesaplananKdv: number; mihsapOcrKdv?: number; faturaAdet: number; oranBelirsizKdv?: number; oranBelirsizAdet?: number };
   alis: {
     oranlar: OranRow[];
     toplamMatrah: number;
     toplamIndirilecekKdv: number;
+    mihsapOcrKdv?: number;
     faturaAdet: number;
     tevkifatsiz: { matrah: number; kdv: number; adet: number };
     tevkifatli: { matrah: number; kdv: number; adet: number };
@@ -1694,11 +1695,19 @@ function IsletmeGgFetchPanel({ data, hesaplanan, indirilecek }: { data: Kdv1; he
       {gg && (
         <>
           <div className="grid grid-cols-1 gap-2.5 sm:grid-cols-2">
-            <LucaCrossCard hesap="Gelir KDV · Hesaplanan" mihsap={hesaplanan} luca={gg.gelirKdvToplam} fark={Math.round((hesaplanan - gg.gelirKdvToplam) * 100) / 100} />
-            <LucaCrossCard hesap="Gider KDV · İndirilecek" mihsap={indirilecek} luca={gg.giderKdvToplam} fark={Math.round((indirilecek - gg.giderKdvToplam) * 100) / 100} />
+            {(() => {
+              const ocrGelir = data.satis?.mihsapOcrKdv ?? hesaplanan;
+              const ocrGider = data.alis?.mihsapOcrKdv ?? indirilecek;
+              return (
+                <>
+                  <LucaCrossCard hesap="Gelir KDV · Hesaplanan" mihsap={ocrGelir} luca={gg.gelirKdvToplam} fark={Math.round((ocrGelir - gg.gelirKdvToplam) * 100) / 100} />
+                  <LucaCrossCard hesap="Gider KDV · İndirilecek" mihsap={ocrGider} luca={gg.giderKdvToplam} fark={Math.round((ocrGider - gg.giderKdvToplam) * 100) / 100} />
+                </>
+              );
+            })()}
           </div>
           <div className="text-[11.5px]" style={{ color: 'rgba(250,250,249,0.5)' }}>
-            Luca gelir-gider listesindeki "Hesaplanan / İndirilecek K.D.V." toplamları.
+            MİHSAP = OCR'dan okunan toplam (her fatura bir kez); LUCA = gelir-gider listesindeki "Hesaplanan / İndirilecek K.D.V." Fark, OCR ile Luca arasındaki gerçek farktır.
           </div>
         </>
       )}

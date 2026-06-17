@@ -55,6 +55,7 @@ export interface Kdv1OnHazirlik {
     oranlar: OranRow[]; // %1, %10, %20 kırılımı
     toplamMatrah: number;
     toplamHesaplananKdv: number;
+    mihsapOcrKdv?: number; // Saf OCR toplamı (her fatura bir kez) — çapraz-kontrol MİHSAP sütunu (Luca ile kıyaslanır)
     faturaAdet: number;
     oranBelirsizKdv?: number; // Oranı OCR/Luca'dan okunamayan ama tutarı bilinen KDV
     oranBelirsizAdet?: number;
@@ -65,6 +66,7 @@ export interface Kdv1OnHazirlik {
     oranlar: OranRow[];
     toplamMatrah: number;
     toplamIndirilecekKdv: number;
+    mihsapOcrKdv?: number; // Saf OCR toplamı (her fatura bir kez) — çapraz-kontrol MİHSAP sütunu (Luca ile kıyaslanır)
     faturaAdet: number;
     tevkifatsiz: { matrah: number; kdv: number; adet: number }; // Normal alış
     tevkifatli: { matrah: number; kdv: number; adet: number };  // Tevkifatlı alış (KDV2'ye)
