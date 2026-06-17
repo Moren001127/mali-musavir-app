@@ -90,9 +90,10 @@ export class TaxpayerPortalController {
   @UseGuards(AuthGuard('taxpayer-jwt'))
   @Post('ai/chat')
   @HttpCode(HttpStatus.OK)
-  chat(@Req() req: any, @Body() body: { message?: string }) {
+  chat(@Req() req: any, @Body() body: { message?: string; history?: { role?: string; text?: string }[] }) {
     if (!body?.message?.trim()) throw new BadRequestException('message zorunlu');
-    return this.service.chat(req.user.taxpayerId, req.user.tenantId, body.message);
+    const history = Array.isArray(body.history) ? body.history.slice(-8) : [];
+    return this.service.chat(req.user.taxpayerId, req.user.tenantId, body.message, history);
   }
 
   // ============ MÜŞAVİR TARAFI: portal erişimi yönetimi (advisor jwt + ADMIN) ============

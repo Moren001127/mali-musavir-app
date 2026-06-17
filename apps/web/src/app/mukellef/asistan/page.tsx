@@ -16,11 +16,12 @@ export default function MukellefAsistan() {
   const scrollRef = useRef<HTMLDivElement>(null);
 
   useEffect(() => {
-    setMessages([{ role: 'assistant', text: `Merhaba! Ben MOREN AI. ${ad} olarak beyanname, cari bakiye ve evrak durumunuz hakkında soru sorabilirsiniz.` }]);
+    setMessages([{ role: 'assistant', text: `Merhaba! Ben MOREN AI. ${ad} için beyanname, cari bakiye, faturalar, KDV, SGK, e-Tebligat ve evraklarınız hakkında soru sorabilirsiniz.` }]);
   }, [ad]);
 
   const chatMut = useMutation({
-    mutationFn: (message: string) => taxpayerApi.post('/portal/ai/chat', { message }).then((r) => r.data),
+    mutationFn: ({ message, history }: { message: string; history: ChatMsg[] }) =>
+      taxpayerApi.post('/portal/ai/chat', { message, history }).then((r) => r.data),
     onSuccess: (res) => setMessages((m) => [...m, { role: 'assistant', text: res.reply || '...' }]),
     onError: () => setMessages((m) => [...m, { role: 'assistant', text: 'Şu anda yanıt veremiyorum, lütfen birazdan tekrar deneyin.' }]),
   });
@@ -29,16 +30,28 @@ export default function MukellefAsistan() {
     scrollRef.current?.scrollTo({ top: scrollRef.current.scrollHeight, behavior: 'smooth' });
   }, [messages, chatMut.isPending]);
 
-  function send(e: React.FormEvent) {
-    e.preventDefault();
-    const q = input.trim();
+  function ask(q: string) {
     if (!q || chatMut.isPending) return;
+    // Hafıza: o ana kadarki son 8 mesajı (selamlama hariç) geçmiş olarak yolla.
+    const history = messages.filter((m, i) => !(i === 0 && m.role === 'assistant')).slice(-8);
     setMessages((m) => [...m, { role: 'user', text: q }]);
     setInput('');
-    chatMut.mutate(q);
+    chatMut.mutate({ message: q, history });
   }
 
-  const sorular = ['Bekleyen beyannamelerim neler?', 'Cari bakiyem ne kadar?', 'Bu ay ne ödemem gerekiyor?'];
+  function send(e: React.FormEvent) {
+    e.preventDefault();
+    ask(input.trim());
+  }
+
+  const sorular = [
+    'Bu ay ne kadar KDV ödeyeceğim?',
+    'Bekleyen beyannamem var mı?',
+    'Cari bakiyem ne kadar?',
+    'Son e-Tebligatım ne hakkında?',
+    'Bu ay satış toplamım ne kadar?',
+    'SGK tahakkukum geldi mi?',
+  ];
 
   return (
     <div>
@@ -64,7 +77,7 @@ export default function MukellefAsistan() {
           {messages.length <= 1 && (
             <div className="flex flex-wrap gap-2 pt-2">
               {sorular.map((s) => (
-                <button key={s} type="button" onClick={() => { setMessages((m) => [...m, { role: 'user', text: s }]); chatMut.mutate(s); }}
+                <button key={s} type="button" onClick={() => ask(s)}
                   className="text-[12px] px-3 py-1.5 rounded-full" style={{ background: 'rgba(184,160,111,0.08)', border: '1px solid rgba(184,160,111,0.2)', color: 'rgba(250,250,249,0.75)' }}>
                   {s}
                 </button>
