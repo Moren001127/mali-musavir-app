@@ -4,6 +4,7 @@ import {
   Post,
   Body,
   Param,
+  Query,
   Req,
   UseGuards,
   HttpCode,
@@ -36,7 +37,7 @@ export class TaxpayerPortalController {
   @UseGuards(AuthGuard('taxpayer-jwt'))
   @Get('dashboard')
   dashboard(@Req() req: any) {
-    return this.service.getDashboard(req.user.taxpayerId);
+    return this.service.getDashboard(req.user.taxpayerId, req.user.tenantId);
   }
 
   @UseGuards(AuthGuard('taxpayer-jwt'))
@@ -58,11 +59,36 @@ export class TaxpayerPortalController {
   }
 
   @UseGuards(AuthGuard('taxpayer-jwt'))
+  @Get('faturalar')
+  faturalar(@Req() req: any) {
+    return this.service.getFaturalar(req.user.taxpayerId, req.user.tenantId);
+  }
+
+  @UseGuards(AuthGuard('taxpayer-jwt'))
+  @Get('tebligatlar')
+  tebligatlar(@Req() req: any) {
+    return this.service.getTebligatlar(req.user.taxpayerId, req.user.tenantId);
+  }
+
+  @UseGuards(AuthGuard('taxpayer-jwt'))
+  @Get('sgk')
+  sgk(@Req() req: any) {
+    return this.service.getSgkBelgeleri(req.user.taxpayerId, req.user.tenantId);
+  }
+
+  // Belge görüntüleme (presigned inline URL) — tur: beyanname | evrak | tebligat | sgk | fatura
+  @UseGuards(AuthGuard('taxpayer-jwt'))
+  @Get('belge/:tur/:id/view')
+  belgeView(@Req() req: any, @Param('tur') tur: string, @Param('id') id: string, @Query('kind') kind?: string) {
+    return this.service.getBelgeViewUrl(req.user.taxpayerId, req.user.tenantId, tur, id, kind);
+  }
+
+  @UseGuards(AuthGuard('taxpayer-jwt'))
   @Post('ai/chat')
   @HttpCode(HttpStatus.OK)
   chat(@Req() req: any, @Body() body: { message?: string }) {
     if (!body?.message?.trim()) throw new BadRequestException('message zorunlu');
-    return this.service.chat(req.user.taxpayerId, body.message);
+    return this.service.chat(req.user.taxpayerId, req.user.tenantId, body.message);
   }
 
   // ============ MÜŞAVİR TARAFI: portal erişimi yönetimi (advisor jwt + ADMIN) ============

@@ -8,7 +8,10 @@ import {
 import { JwtService } from '@nestjs/jwt';
 import * as argon2 from 'argon2';
 import { PrismaService } from '../prisma/prisma.service';
+import { StorageService } from '../storage/storage.service';
 import { claudeTextViaMax } from '../common/max-inference';
+
+const SGK_TURLER = ['SGK_TAHAKKUK', 'SGK_HIZMET_LISTESI', 'SGK_ISE_GIRIS', 'SGK_ISTEN_CIKIS', 'SGK_ISGOREMEZLIK'];
 
 /**
  * Mükellef self-servis portal mantığı.
@@ -19,7 +22,11 @@ import { claudeTextViaMax } from '../common/max-inference';
 export class TaxpayerPortalService {
   private readonly logger = new Logger(TaxpayerPortalService.name);
 
-  constructor(private prisma: PrismaService, private jwt: JwtService) {}
+  constructor(
+    private prisma: PrismaService,
+    private jwt: JwtService,
+    private storage: StorageService,
+  ) {}
 
   // ============ AUTH ============
 
@@ -117,19 +124,29 @@ export class TaxpayerPortalService {
   }
 
   async getBeyannameler(taxpayerId: string) {
-    const rows = await this.prisma.beyanDurumu.findMany({
-      where: { taxpayerId },
-      orderBy: [{ donem: 'desc' }, { beyanTipi: 'asc' }],
-      take: 60,
-      select: {
-        beyanTipi: true,
-        donem: true,
-        durum: true,
-        onayTarihi: true,
-        tahakkukTutari: true,
-      },
+    const [rows, kayitlar] = await Promise.all([
+      this.prisma.beyanDurumu.findMany({
+        where: { taxpayerId },
+        orderBy: [{ donem: 'desc' }, { beyanTipi: 'asc' }],
+        take: 80,
+        select: { beyanTipi: true, donem: true, durum: true, onayTarihi: true, tahakkukTutari: true },
+      }),
+      this.prisma.beyanKaydi.findMany({
+        where: { taxpayerId },
+        select: { id: true, beyanTipi: true, donem: true, pdfUrl: true, beyannameUrl: true, xmlUrl: true, beyanTarihi: true, onayNo: true },
+      }),
+    ]);
+    const kmap = new Map(kayitlar.map((k) => [`${k.beyanTipi}::${k.donem}`, k]));
+    return rows.map((r) => {
+      const k = kmap.get(`${r.beyanTipi}::${r.donem}`);
+      return {
+        ...r,
+        tahakkukTutari: r.tahakkukTutari ? Number(r.tahakkukTutari) : null,
+        belge: k
+          ? { kayitId: k.id, pdf: !!k.pdfUrl, beyanname: !!k.beyannameUrl, xml: !!k.xmlUrl, beyanTarihi: k.beyanTarihi, onayNo: k.onayNo }
+          : null,
+      };
     });
-    return rows.map((r) => ({ ...r, tahakkukTutari: r.tahakkukTutari ? Number(r.tahakkukTutari) : null }));
   }
 
   async getCariOzet(taxpayerId: string) {
@@ -159,40 +176,153 @@ export class TaxpayerPortalService {
     const docs = await this.prisma.document.findMany({
       where: { taxpayerId, isDeleted: false },
       orderBy: { createdAt: 'desc' },
-      take: 50,
-      select: { id: true, title: true, category: true, createdAt: true, expiresAt: true },
+      take: 100,
+      select: { id: true, title: true, category: true, createdAt: true, expiresAt: true, s3Key: true },
     });
-    return docs;
+    return docs.map((d) => ({
+      id: d.id, title: d.title, category: d.category, createdAt: d.createdAt, expiresAt: d.expiresAt,
+      goruntulenebilir: !!d.s3Key,
+    }));
   }
 
-  async getDashboard(taxpayerId: string) {
-    const [profile, beyannameler, cari, evraklar] = await Promise.all([
+  /** İşlenen faturalar (Mihsap) — liste + aylık/tür toplama (grafik için). */
+  async getFaturalar(taxpayerId: string, tenantId: string) {
+    const rows = await (this.prisma as any).mihsapInvoice.findMany({
+      where: { tenantId, mukellefId: taxpayerId },
+      orderBy: { faturaTarihi: 'desc' },
+      take: 400,
+      select: {
+        id: true, donem: true, faturaTuru: true, belgeTuru: true, faturaNo: true,
+        firmaUnvan: true, firmaKimlikNo: true, faturaTarihi: true, toplamTutar: true, storageKey: true,
+      },
+    });
+    const aylik = new Map<string, { donem: string; alis: number; satis: number; alisAdet: number; satisAdet: number }>();
+    let alisToplam = 0, satisToplam = 0, alisAdet = 0, satisAdet = 0;
+    for (const r of rows) {
+      const isSatis = /SATIS/i.test(r.faturaTuru || '');
+      const isAlis = !isSatis; // ALIS / TEVKIFATLI_ALIS / diğer → alış sayılır
+      const d = r.donem || (r.faturaTarihi ? new Date(r.faturaTarihi).toISOString().slice(0, 7) : '—');
+      if (!aylik.has(d)) aylik.set(d, { donem: d, alis: 0, satis: 0, alisAdet: 0, satisAdet: 0 });
+      const a = aylik.get(d)!;
+      const tut = Number(r.toplamTutar) || 0;
+      if (isSatis) { a.satis += tut; a.satisAdet++; satisToplam += tut; satisAdet++; }
+      else if (isAlis) { a.alis += tut; a.alisAdet++; alisToplam += tut; alisAdet++; }
+    }
+    const aylikArr = Array.from(aylik.values()).filter((x) => x.donem !== '—').sort((a, b) => a.donem.localeCompare(b.donem)).slice(-12);
+    return {
+      ozet: { toplamAdet: rows.length, alisAdet, satisAdet, alisToplam, satisToplam },
+      aylik: aylikArr,
+      faturalar: rows.slice(0, 120).map((r: any) => ({
+        id: r.id, donem: r.donem, faturaTuru: r.faturaTuru, belgeTuru: r.belgeTuru, faturaNo: r.faturaNo,
+        firmaUnvan: r.firmaUnvan, firmaKimlikNo: r.firmaKimlikNo, faturaTarihi: r.faturaTarihi,
+        toplamTutar: Number(r.toplamTutar) || 0, goruntulenebilir: !!r.storageKey,
+      })),
+    };
+  }
+
+  /** e-Tebligat belgeleri (GİB'den çekilen). */
+  async getTebligatlar(taxpayerId: string, tenantId: string) {
+    const rows = await (this.prisma as any).portalDocument.findMany({
+      where: { tenantId, taxpayerId, belgeTuru: 'E_TEBLIGAT' },
+      orderBy: { createdAt: 'desc' },
+      take: 120,
+      select: { id: true, title: true, referenceNo: true, period: true, issuedAt: true, receivedAt: true, createdAt: true, viewedAt: true, storageKey: true },
+    });
+    return rows.map((r: any) => ({
+      id: r.id, title: r.title, referenceNo: r.referenceNo, period: r.period,
+      issuedAt: r.issuedAt, receivedAt: r.receivedAt, createdAt: r.createdAt, viewedAt: r.viewedAt,
+      goruntulenebilir: !!r.storageKey,
+    }));
+  }
+
+  /** SGK belgeleri — Tahakkuk Fişi ve Hizmet Listesi AYRI gruplar. */
+  async getSgkBelgeleri(taxpayerId: string, tenantId: string) {
+    const rows = await (this.prisma as any).portalDocument.findMany({
+      where: { tenantId, taxpayerId, belgeTuru: { in: SGK_TURLER } },
+      orderBy: { createdAt: 'desc' },
+      take: 200,
+      select: { id: true, belgeTuru: true, title: true, referenceNo: true, period: true, issuedAt: true, createdAt: true, viewedAt: true, storageKey: true },
+    });
+    const map = (r: any) => ({
+      id: r.id, belgeTuru: r.belgeTuru, title: r.title, referenceNo: r.referenceNo,
+      period: r.period, issuedAt: r.issuedAt, createdAt: r.createdAt, viewedAt: r.viewedAt,
+      goruntulenebilir: !!r.storageKey,
+    });
+    return {
+      tahakkuk: rows.filter((r: any) => r.belgeTuru === 'SGK_TAHAKKUK').map(map),
+      hizmetListesi: rows.filter((r: any) => r.belgeTuru === 'SGK_HIZMET_LISTESI').map(map),
+      diger: rows.filter((r: any) => !['SGK_TAHAKKUK', 'SGK_HIZMET_LISTESI'].includes(r.belgeTuru)).map(map),
+    };
+  }
+
+  /** Mükellefe-kilitli belge görüntüleme — presigned inline URL döner. */
+  async getBelgeViewUrl(taxpayerId: string, tenantId: string, tur: string, id: string, kind?: string) {
+    const inline = (key: string, filename: string, ct?: string) => this.storage.getPresignedInlineUrl(key, filename, ct);
+    if (tur === 'beyanname') {
+      const k = await this.prisma.beyanKaydi.findFirst({ where: { id, taxpayerId } });
+      if (!k) throw new NotFoundException('Belge bulunamadı');
+      const key = kind === 'beyanname' ? k.beyannameUrl : kind === 'xml' ? k.xmlUrl : k.pdfUrl;
+      if (!key) throw new NotFoundException('Bu belge mevcut değil');
+      const ext = kind === 'xml' ? 'xml' : 'pdf';
+      return { url: await inline(key, `${k.beyanTipi}-${k.donem}.${ext}`, ext === 'xml' ? 'application/xml' : 'application/pdf') };
+    }
+    if (tur === 'evrak') {
+      const d = await this.prisma.document.findFirst({ where: { id, taxpayerId, isDeleted: false } });
+      if (!d || !d.s3Key) throw new NotFoundException('Belge bulunamadı');
+      return { url: await inline(d.s3Key, d.title || 'belge') };
+    }
+    if (tur === 'tebligat' || tur === 'sgk') {
+      const doc = await (this.prisma as any).portalDocument.findFirst({ where: { id, taxpayerId, tenantId } });
+      if (!doc || !doc.storageKey) throw new NotFoundException('Belge bulunamadı');
+      if (!doc.viewedAt) {
+        await (this.prisma as any).portalDocument.update({ where: { id: doc.id }, data: { viewedAt: new Date() } }).catch(() => null);
+      }
+      return { url: await inline(doc.storageKey, doc.title || 'belge', doc.mimeType || undefined) };
+    }
+    if (tur === 'fatura') {
+      const f = await (this.prisma as any).mihsapInvoice.findFirst({ where: { id, mukellefId: taxpayerId, tenantId } });
+      if (!f || !f.storageKey) throw new NotFoundException('Belge bulunamadı');
+      return { url: await inline(f.storageKey, f.faturaNo || 'fatura') };
+    }
+    throw new BadRequestException('Geçersiz belge türü');
+  }
+
+  async getDashboard(taxpayerId: string, tenantId: string) {
+    const [profile, beyannameler, cari, evraklar, faturalar, tebligatlar] = await Promise.all([
       this.getProfile(taxpayerId),
       this.getBeyannameler(taxpayerId),
       this.getCariOzet(taxpayerId),
       this.getEvraklar(taxpayerId),
+      this.getFaturalar(taxpayerId, tenantId),
+      this.getTebligatlar(taxpayerId, tenantId),
     ]);
     const bekleyenBeyan = beyannameler.filter((b) => b.durum === 'beklemede').length;
+    const okunmamisTebligat = tebligatlar.filter((t: any) => !t.viewedAt).length;
     return {
       profile,
       ozet: {
         bekleyenBeyan,
         cariBakiye: cari.bakiye,
         evrakSayisi: evraklar.length,
+        faturaSayisi: faturalar.ozet.toplamAdet,
+        okunmamisTebligat,
       },
       beyannameler: beyannameler.slice(0, 12),
       cari,
       evraklar: evraklar.slice(0, 12),
+      faturaOzet: faturalar.ozet,
+      faturaAylik: faturalar.aylik,
+      sonTebligatlar: tebligatlar.slice(0, 5),
     };
   }
 
   // ============ MÜKELLEFE KİLİTLİ AI SOHBETİ (araçsız, bağlam-temelli) ============
 
-  async chat(taxpayerId: string, message: string) {
+  async chat(taxpayerId: string, tenantId: string, message: string) {
     const msg = String(message || '').trim();
     if (!msg) throw new BadRequestException('Mesaj boş olamaz');
 
-    const dash = await this.getDashboard(taxpayerId);
+    const dash = await this.getDashboard(taxpayerId, tenantId);
     const p = dash.profile;
     const ad = p.companyName || [p.firstName, p.lastName].filter(Boolean).join(' ') || 'Mükellef';
 
