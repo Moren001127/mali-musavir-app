@@ -1786,7 +1786,7 @@ export class PortalAutomationRailwayRunnerService implements OnModuleInit {
         `HGS sorgusu tamam: ${ozet.totals.borcluArac} borçlu, ${ozet.totals.toplamBorc.toFixed(2)} ₺, ${ozet.totals.hataliArac} hatalı, ${silinenler.length} eski araç silindi.`,
       );
 
-      return { recordCount: araclar.length, result: { runner: 'railway', phase: 'galeri_hgs', codeVersion: 'v18-izole', plakalar: araclar.map((a) => a.plaka), silinen: silinenler, eksiksiz, ...ozet.totals } };
+      return { recordCount: araclar.length, result: { runner: 'railway', phase: 'galeri_hgs', codeVersion: 'v19-tablovar', plakalar: araclar.map((a) => a.plaka), silinen: silinenler, eksiksiz, ...ozet.totals } };
     } finally {
       await browser.close().catch(() => {});
     }
@@ -2307,6 +2307,8 @@ export class PortalAutomationRailwayRunnerService implements OnModuleInit {
       await sorgulaBtn.click();
 
       await Promise.race([
+        // Sonuc tablosu render oldu (0 ihlalde bile bos gv tablolari gelir) -> sorgu calisti.
+        page.waitForSelector('table[id^="gv"]', { timeout: 20_000 }),
         page.waitForSelector('#gvKgm tbody tr, #gvAvrasya tbody tr, [id^="gv"] tbody tr', { timeout: 20_000 }),
         page.waitForFunction(
           () => /ihlal\s*bulun|kayıt\s*bulun|sorgu\s*sonucunda|ihlalli\s*geçiş\s*yok|geçiş ihlaliniz/i.test(document.body.innerText || ''),
@@ -2321,10 +2323,11 @@ export class PortalAutomationRailwayRunnerService implements OnModuleInit {
       }
 
       const sonuc = await this.parseKgmIhlaller(page);
-      // SAGLAMLASTIRMA: ihlal tablosu YOK ve "ihlal bulunamadi" mesaji da YOK ise sonuc
-      // DOGRULANAMADI (cogu zaman yanlis captcha / sayfa yuklenmedi) -> sahte "0 ihlal" yazma,
-      // captcha_yanlis dondur ki tekrar denensin. Boylece "borcsuz" yalani onlenir.
-      if (sonuc.ihlaller.length === 0 && !sonuc.temiz) {
+      // SAGLAMLASTIRMA (DOGRU AYRIM): sorgu CALISMADIYSA (gv* sonuc tablosu YOK) ve "ihlal yok"
+      // mesaji da YOK ise -> yanlis captcha / sayfa yuklenmedi -> captcha_yanlis (retry).
+      // ihlal tablolari VARSA (0 ihlal olsa bile bos tablolar gelir) sonuc GECERLI -> basarili.
+      // Boylece gercek borcsuz (0 ihlal) araclar yanlislikla "hatali" sayilmaz.
+      if (!sonuc.tabloVar && !sonuc.temiz) {
         return { durum: 'captcha_yanlis', captchaId: cozum.captchaId };
       }
       return {
@@ -2342,7 +2345,7 @@ export class PortalAutomationRailwayRunnerService implements OnModuleInit {
   }
 
   /** KGM ihlal tablolarini parse eder (gvKgm, gvAvrasya, vb.). */
-  private async parseKgmIhlaller(page: any): Promise<{ ihlaller: any[]; toplamTutar: number; temiz: boolean }> {
+  private async parseKgmIhlaller(page: any): Promise<{ ihlaller: any[]; toplamTutar: number; temiz: boolean; tabloVar: boolean }> {
     return page.evaluate(() => {
       function paraParse(s: string) {
         if (!s) return 0;
@@ -2386,7 +2389,11 @@ export class PortalAutomationRailwayRunnerService implements OnModuleInit {
       }
       const bodyText = (document.body.innerText || '').toLowerCase();
       const temiz = /ihlal\s*bulun|kayıt\s*bulun|sorgu\s*sonucunda|ihlalli\s*geçiş\s*yok|geçiş ihlaliniz bulun/i.test(bodyText) && ihlaller.length === 0;
-      return { ihlaller, toplamTutar: toplam, temiz };
+      // Sorgu CALISTI mi? Sonuc sayfasinda gv* tablolari render olur (0 ihlalde bile bos tablolar
+      // gelir). Yanlis captcha'da form yeniden yuklenir, gv tablosu OLMAZ. Boylece gercek-0 ile
+      // yanlis-captcha ayirt edilir.
+      const tabloVar = tables.length > 0;
+      return { ihlaller, toplamTutar: toplam, temiz, tabloVar };
     });
   }
 
