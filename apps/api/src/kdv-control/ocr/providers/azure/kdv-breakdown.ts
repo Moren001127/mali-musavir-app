@@ -257,15 +257,23 @@ export function extractKdvFromInvoiceTotals(
   };
 
   const findExplicitKdvAmount = (): number | null => {
-    for (const line of lines) {
+    for (let idx = 0; idx < lines.length; idx++) {
+      const line = lines[idx];
       if (/TEVK[İI]FAT/i.test(line)) continue;
-      if (isMatrahOrRateLine(line)) continue;
       if (isForbiddenKdvAmountLine(line)) continue;
       const label = line.match(/HESAPLANAN\s+K\.?\s*D\.?\s*V\.?\s*\(\s*%?\s*\d{1,2}(?:[.,]\d{1,2})?\s*\)/i);
       if (!label) continue;
       const valuePart = stripMatrahFragments(line.slice((label.index ?? 0) + label[0].length));
       const sameLine = parseLastAmount(valuePart);
       if (sameLine != null) return sameLine;
+      // Tutar yoksa sonraki 2 satıra bak — Azure "Hesaplanan KDV (%20)" ile tutarını
+      // ("546,00 TL") ayrı satırlara bölebiliyor (ör. SAM TEKNİK / samixir e-Arşiv).
+      for (let j = 1; j <= 2 && idx + j < lines.length; j++) {
+        const next = lines[idx + j];
+        if (/HESAPLANAN|TOPLAM|MATRAH|[ÖO]DENECEK/i.test(foldTurkishAscii(next))) break;
+        const v = parseLineAmount(next);
+        if (v != null) return v;
+      }
     }
     return null;
   };
@@ -354,9 +362,11 @@ export function extractKdvFromInvoiceTotals(
   };
 
   const explicitKdv =
+    // "Hesaplanan KDV(%NN)" en güvenilir toplam KDV etiketi — önce o (table-header
+    // ürün satırından "1,0 Adet" miktarını KDV sanıp 1 dönmesin diye öne alındı).
+    findExplicitKdvAmount() ??
     findKdvFromSummaryMathLine() ??
     findKdvFromTableHeader() ??
-    findExplicitKdvAmount() ??
     findAmountNear(
       /HESAPLANAN\s+K\.?\s*D\.?\s*V\.?|KATMA\s*DE[ĞG]ER\s*VERG[İI]S[İI]|KDV\s*TUTARI|K\.?\s*D\.?\s*V\.?(?:\s*[-/]?\s*VAT)?\s*\(\s*%?\s*\d{1,2}(?:[.,]\d{1,2})?\s*\)/i,
       { skipMatrah: true },

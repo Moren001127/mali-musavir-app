@@ -841,7 +841,18 @@ const earsivTruncText = [
 ].join('\n');
 const earsivTrunc = kdvBreakdown.extractKdvFromInvoiceTotals(earsivTruncText, breakdownDeps);
 assert(earsivTrunc && Math.abs(earsivTrunc.kdv - 1237.02) < 0.02, `kesik çok-kalem tek oran matrah×oran -> 1237,02 (gercek=${JSON.stringify(earsivTrunc)})`);
-ok('azure/kdv-breakdown.ts extractKdvFromInvoiceTotals tek-oran e-arsiv (2 assertion)');
+// (3) İskontolu tek-oran (SAM TEKNİK/samixir): "Hesaplanan KDV (%20)" + alt satır "546,00".
+// Eskiden table-header ürün satırı "1,0 Adet" miktarını KDV=1 sanıyordu (cross-check
+// rate-echo diye reddediyordu). İskonto var → matrah×oran (4.200×%20=840) DEĞİL, açık 546.
+const earsivIskontoText = [
+  "Sıra No","Ürün No","Mal Hizmet","Miktar","Birim Fiyat","Net Tutar","İskonto Oranı","KDV Oranı","KDV Tutarı","Mal Hizmet Tutarı",
+  "1","YM-0492","SLUSH SOĞUTUCU TAS","1,0 Adet","4.200,0000 TL","1.470,00 TL %35,00","%20,00","546,00 TL","2.730,00 TL",
+  "Mal Hizmet Toplam Tutarı","4.200,00 TL","Toplam İskonto(% 35)","1.470,00 TL","Ara Toplam","2.730,00 TL",
+  "Hesaplanan KDV (%20)","546,00 TL","Genel Toplam","3.276,00 TL",
+].join('\n');
+const earsivIskonto = kdvBreakdown.extractKdvFromInvoiceTotals(earsivIskontoText, breakdownDeps);
+assert(earsivIskonto && Math.abs(earsivIskonto.kdv - 546) < 0.01, `iskontolu tek-oran e-arsiv Hesaplanan KDV 546 okunmali (gercek=${JSON.stringify(earsivIskonto)})`);
+ok('azure/kdv-breakdown.ts extractKdvFromInvoiceTotals tek-oran e-arsiv (3 assertion)');
 
 // ─── azure/kdv-item-rows.ts (e-fatura alt-toplam cift-sayim regresyonu) ───
 const kdvItemRows = require(path.join(ROOT, 'apps/api/src/kdv-control/ocr/providers/azure/kdv-item-rows.ts'));
