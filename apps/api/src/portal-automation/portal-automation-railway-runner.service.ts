@@ -1704,7 +1704,7 @@ export class PortalAutomationRailwayRunnerService implements OnModuleInit {
         await this.jobProgress(tenantId, job, 'arac_test_done', `Araç teşhis: ${plakalar.length}/${scrapeRes.diag?.reportedTotal ?? '?'} plaka (eksiksiz=${scrapeRes.diag?.eksiksiz})`);
         return {
           recordCount: 0,
-          result: { runner: 'railway', phase: 'arac_test', codeVersion: 'v15-reqinfo', plakaSayisi: plakalar.length, plakalar, diag: scrapeRes.diag },
+          result: { runner: 'railway', phase: 'arac_test', codeVersion: 'v16-pageno', plakaSayisi: plakalar.length, plakalar, diag: scrapeRes.diag },
         };
       }
 
@@ -1904,7 +1904,8 @@ export class PortalAutomationRailwayRunnerService implements OnModuleInit {
         if (body) {
           try {
             const j = JSON.parse(body);
-            if (j && j.pageDetail && typeof j.pageDetail === 'object') { j.pageDetail.pageNo = pageNo; j.pageDetail.pageSize = 100; }
+            if (j && j.meta && j.meta.pagination && typeof j.meta.pagination === 'object') { j.meta.pagination.pageNo = pageNo; j.meta.pagination.pageSize = 100; }
+            else if (j && j.pageDetail && typeof j.pageDetail === 'object') { j.pageDetail.pageNo = pageNo; j.pageDetail.pageSize = 100; }
             else { j.pageNo = pageNo; j.pageSize = 100; }
             body = JSON.stringify(j);
           } catch { /* body JSON degil; oldugu gibi birak */ }
