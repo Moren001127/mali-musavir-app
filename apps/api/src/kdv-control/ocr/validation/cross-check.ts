@@ -29,6 +29,49 @@ import type { KdvBreakdownItem, OcrResult } from '../types';
 // "EFA2026...", "GIB2026...", AMA "12A2026..." gibi RAKAMLA başlayan da geçerlidir.
 const E_BELGE_NO_REGEX = /^(?:[A-Z]{2,4}\d{12,14}|[A-Z]\d{2}20\d{2}\d{6,12}|[A-Z0-9]{3}20\d{2}\d{6,12}|\d{13,20})$/;
 
+/**
+ * Belgede AÇIK YAZAN toplam KDV tutar(lar)ını döndürür.
+ *
+ * "KDV" geçen ama oran (%) taşımayan ve başka vergi/matrah olmayan satırlardaki
+ * tutarları toplar (ör. "KDV *123,03", "TOPKDV 1.034,54", "KDV Tutarı 50,00").
+ * Brüt-tutar-KDV-sanma düzeltmesinde "ikinci tanık" olarak kullanılır: oran
+ * satırlarını brüt kabul edip çevirince bu açık toplama oturuyorsa düzeltme yapılır.
+ */
+function findExplicitKdvTotals(
+  text: string,
+  parseAmount: (s: string) => number,
+  normalizeAzureText: (text: string) => string,
+): number[] {
+  if (!text) return [];
+  const lines = normalizeAzureText(text)
+    .split(/\r?\n/)
+    .map((l) => l.trim())
+    .filter(Boolean);
+  const amountReSource = /(\d{1,3}(?:[.,]\d{3})*[.,]\d{2})\s*(?:TL|TRY|₺)?/;
+  const hasAmountRe = new RegExp(amountReSource.source, 'i');
+  const kdvLabelRe = /\bK\.?\s*D\.?\s*V\.?\b|\bTOP\s*K\.?\s*D\.?\s*V\.?\b|HESAPLANAN\s*K\.?\s*D\.?\s*V\.?/i;
+  // Oran satırı (%), matrah ya da KDV-dışı vergi içeren satırlar TOPLAM değildir.
+  const notTotalRe = /%|MATRAH|ORAN|[ÖO][İI]V|[ÖO]TV|TEVK[İI]FAT|DAMGA|BSMV|KKDF/i;
+  const out: number[] = [];
+  const collect = (line: string) => {
+    for (const m of line.matchAll(new RegExp(amountReSource.source, 'gi'))) {
+      const v = parseAmount(m[1]);
+      if (v > 0 && v < 100_000_000) out.push(v);
+    }
+  };
+  for (let i = 0; i < lines.length; i++) {
+    const line = lines[i];
+    if (!kdvLabelRe.test(line) || notTotalRe.test(line)) continue;
+    if (hasAmountRe.test(line)) {
+      collect(line);
+    } else if (lines[i + 1] && !kdvLabelRe.test(lines[i + 1]) && !notTotalRe.test(lines[i + 1])) {
+      // Tutar aynı satırda yoksa hemen sonraki satıra bak (OCR "KDV" / "123,03" ayırabilir).
+      collect(lines[i + 1]);
+    }
+  }
+  return out;
+}
+
 export interface CrossCheckDeps {
   // Pure helpers
   parseAmount: (s: string) => number;
@@ -401,6 +444,36 @@ export function crossCheckWithAzure(
       multiA.length >= 2 ? multiA :
       multiB.length >= 2 ? multiB :
       multiA;
+
+    // ─── KDV-dahil (brüt) tutarı KDV sanma koruması ───
+    // Köprü/geçiş, otopark, OGS gibi yapısal-olmayan fişlerde satırlar "%10 *125,00"
+    // biçiminde KDV-DAHİL tutar taşır; jenerik extractor bunları KDV sanar (toplam
+    // şişer). Belgede açık bir toplam KDV varsa (ör. "KDV 123,03") ve oran satırlarını
+    // brüt kabul edip KDV = brüt×oran/(100+oran) ile çevirince o toplama oturuyorsa
+    // satırlar brüttür → çevir. Doğru-okunan belgede brüt-çevrimi açık toplama
+    // OTURMAZ (oran satırları zaten KDV'dir), bu yüzden dokunulmaz.
+    if (azureBreakdown.length >= 2 && azureBreakdown.every((b) => b.oran > 0)) {
+      const directSum = azureBreakdown.reduce((s, b) => s + (Number(b.tutar) || 0), 0);
+      const grossConverted = azureBreakdown.map((b) => ({
+        oran: b.oran,
+        tutar: Math.round(((Number(b.tutar) || 0) * b.oran) / (100 + b.oran) * 100) / 100,
+        matrah: null as number | null,
+      }));
+      const grossSum = grossConverted.reduce((s, b) => s + b.tutar, 0);
+      const explicitKdvTotals = findExplicitKdvTotals(azureText, parseAmount, normalizeAzureText);
+      const reconciledTotal = explicitKdvTotals.find((t) => {
+        const tol = Math.max(0.5, t * 0.02);
+        return t > 0 && Math.abs(grossSum - t) <= tol && Math.abs(directSum - t) > tol;
+      });
+      if (reconciledTotal != null && grossConverted.every((b) => b.tutar > 0)) {
+        logger.warn(
+          `KDV-dahil tutar duzeltmesi: oran satirlari brut kabul edilip KDV cevrildi ` +
+            `(direct=${formatAmount(directSum)} -> KDV=${formatAmount(grossSum)} ~ acik KDV=${formatAmount(reconciledTotal)}, ${originalName})`,
+        );
+        azureBreakdown = grossConverted;
+      }
+    }
+
     if (hesMatrah.totalKdv !== null && hesMatrah.totalKdv > 0) {
       if (isLikelyRateEcho(hesMatrah.totalKdv)) {
         logger.warn(
