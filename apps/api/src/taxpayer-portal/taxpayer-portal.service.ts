@@ -591,28 +591,67 @@ export class TaxpayerPortalService {
     return { ok: true };
   }
 
-  /** Yaklaşan resmî son tarihler — ulusal Vergi Takvimi (önümüzdeki `gun` gün). */
+  /**
+   * Yaklaşan resmî son tarihler (önümüzdeki `gun` gün).
+   * Önce ulusal Vergi Takvimi (TaxCalendar) tablosuna bakar; doluysa onu kullanır.
+   * BOŞsa standart son ödeme kurallarından OTOMATİK hesaplar (manuel veri girişi gerekmez).
+   * Hesaplananlar "tahmini" işaretlidir; resmî tatil/uzatmalarda değişebilir.
+   */
   async getVergiTakvimi(gun = 45) {
     const now = new Date();
     const to = new Date(now.getTime() + gun * 86400000);
-    let rows: any[] = [];
     try {
-      rows = await (this.prisma as any).taxCalendar.findMany({
+      const rows = await (this.prisma as any).taxCalendar.findMany({
         where: { dueDate: { gte: now, lte: to } },
         orderBy: { dueDate: 'asc' },
         take: 40,
       });
+      if (rows.length) {
+        return rows.map((c: any) => {
+          const donem = c.periodMonth
+            ? `${c.periodYear}-${String(c.periodMonth).padStart(2, '0')}`
+            : c.periodQuarter ? `${c.periodYear}-Q${c.periodQuarter}` : `${c.periodYear}`;
+          const kalanGun = Math.max(0, Math.ceil((new Date(c.dueDate).getTime() - now.getTime()) / 86400000));
+          return { tip: c.declarationType, donem, sonTarih: c.dueDate, aciklama: c.description || null, kalanGun, tahmini: false };
+        });
+      }
     } catch (e) {
-      this.logger.warn(`Vergi takvimi okunamadı: ${(e as Error).message}`);
-      return [];
+      this.logger.warn(`Vergi takvimi (DB) okunamadı, hesaplamaya düşülüyor: ${(e as Error).message}`);
     }
-    return rows.map((c: any) => {
-      const donem = c.periodMonth
-        ? `${c.periodYear}-${String(c.periodMonth).padStart(2, '0')}`
-        : c.periodQuarter ? `${c.periodYear}-Q${c.periodQuarter}` : `${c.periodYear}`;
-      const kalanGun = Math.max(0, Math.ceil((new Date(c.dueDate).getTime() - now.getTime()) / 86400000));
-      return { tip: c.declarationType, donem, sonTarih: c.dueDate, aciklama: c.description || null, kalanGun };
-    });
+    return this.computeVergiTakvimi(gun, now, to);
+  }
+
+  /** Standart son ödeme kurallarından yaklaşan tarihleri üretir (TaxCalendar boşsa). */
+  private computeVergiTakvimi(gun: number, now: Date, to: Date) {
+    const bugun = new Date(now); bugun.setHours(0, 0, 0, 0);
+    const items: Array<{ tip: string; donem: string; sonTarih: Date; aciklama: string; kalanGun: number; tahmini: boolean }> = [];
+    const ekle = (tip: string, donem: string, sonTarih: Date, aciklama: string) => {
+      if (sonTarih >= bugun && sonTarih <= to) {
+        items.push({ tip, donem, sonTarih, aciklama, kalanGun: Math.max(0, Math.ceil((sonTarih.getTime() - bugun.getTime()) / 86400000)), tahmini: true });
+      }
+    };
+    // Aylık beyannameler: son tarih ayı = M; ait olduğu dönem = M-1
+    for (let off = 0; off <= 2; off++) {
+      const d = new Date(now.getFullYear(), now.getMonth() + off, 1);
+      const y = d.getFullYear(), m = d.getMonth(); // m: 0-index son tarih ayı
+      const donemAy = m === 0 ? 12 : m;
+      const donemYil = m === 0 ? y - 1 : y;
+      const donem = `${donemYil}-${String(donemAy).padStart(2, '0')}`;
+      ekle('KDV1', donem, new Date(y, m, 28), `KDV Beyannamesi (${donem}) beyan/ödeme son günü`);
+      ekle('MUHSGK', donem, new Date(y, m, 26), `Muhtasar ve Prim Hizmet Beyannamesi (${donem}) son günü`);
+    }
+    // Geçici Vergi (3 dönem): Q1→17 Mayıs, Q2→17 Ağustos, Q3→17 Kasım
+    for (const yr of [now.getFullYear(), now.getFullYear() + 1]) {
+      ekle('GECICI', `${yr}-Q1`, new Date(yr, 4, 17), `Geçici Vergi (${yr}/1. dönem) beyan/ödeme son günü`);
+      ekle('GECICI', `${yr}-Q2`, new Date(yr, 7, 17), `Geçici Vergi (${yr}/2. dönem) beyan/ödeme son günü`);
+      ekle('GECICI', `${yr}-Q3`, new Date(yr, 10, 17), `Geçici Vergi (${yr}/3. dönem) beyan/ödeme son günü`);
+    }
+    // Yıllık beyanlar (önceki yıl için)
+    const yilOnce = now.getFullYear() - 1;
+    ekle('GELIR', `${yilOnce}`, new Date(now.getFullYear(), 2, 31), `Gelir Vergisi yıllık beyannamesi (${yilOnce}) son günü`);
+    ekle('KURUMLAR', `${yilOnce}`, new Date(now.getFullYear(), 3, 30), `Kurumlar Vergisi yıllık beyannamesi (${yilOnce}) son günü`);
+
+    return items.sort((a, b) => a.sonTarih.getTime() - b.sonTarih.getTime());
   }
 
   async getDashboard(taxpayerId: string, tenantId: string) {
@@ -705,7 +744,7 @@ export class TaxpayerPortalService {
     const evrakSatir = (dash.evraklar || []).slice(0, 10).map((e: any) => `- ${e.title}`).join('\n') || 'Yok.';
 
     const takvimSatir = (dash.vergiTakvimi || []).slice(0, 12).map((t: any) =>
-      `- ${t.aciklama || t.tip} (${t.donem}): son tarih ${dt(t.sonTarih)} — ${t.kalanGun} gün kaldı`).join('\n') || 'Önümüzdeki dönemde kayıtlı son tarih yok.';
+      `- ${t.aciklama || t.tip} (${t.donem}): son tarih ${dt(t.sonTarih)} — ${t.kalanGun} gün kaldı${t.tahmini ? ' (tahmini — resmî tatil/uzatmada değişebilir)' : ''}`).join('\n') || 'Önümüzdeki dönemde kayıtlı son tarih yok.';
 
     const cariSon = (dash.cari?.hareketler || []).slice(0, 5).map((h: any) =>
       `  ${dt(h.tarih)} ${h.tip} ${TL(h.tutar)}`).join('\n');
