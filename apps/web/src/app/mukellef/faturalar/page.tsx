@@ -89,10 +89,10 @@ export default function MukellefFaturalar() {
                 )}
               </div>
               <div className="grid grid-cols-2 lg:grid-cols-4 gap-3">
-                <KdvKutu label="İndirilecek KDV (Alış)" value={fmtTRY(kdv.indirilecekKdv)} accent={ALIS} icon={ArrowDownLeft} />
-                <KdvKutu label="Hesaplanan KDV (Satış)" value={fmtTRY(kdv.hesaplananKdv)} accent={SATIS} icon={ArrowUpRight} />
-                <KdvKutu label="Ödenecek KDV" value={fmtTRY(kdv.odenecekKdv)} accent={KDV_RENK} icon={TrendingUp} />
-                <KdvKutu label="Sonraki Aya Devreden" value={fmtTRY(kdv.devredenKdv)} accent="#60a5fa" icon={Scale} />
+                <KdvKutu label="İndirilecek KDV (Alış)" value={kdv.indirilecekKdv != null ? fmtTRY(kdv.indirilecekKdv) : '—'} accent={ALIS} icon={ArrowDownLeft} />
+                <KdvKutu label="Hesaplanan KDV (Satış)" value={kdv.hesaplananKdv != null ? fmtTRY(kdv.hesaplananKdv) : '—'} accent={SATIS} icon={ArrowUpRight} />
+                <KdvKutu label="Ödenecek KDV" value={kdv.odenecekKdv != null ? fmtTRY(kdv.odenecekKdv) : '—'} accent={KDV_RENK} icon={TrendingUp} />
+                <KdvKutu label="Sonraki Aya Devreden" value={kdv.devredenKdv != null ? fmtTRY(kdv.devredenKdv) : '—'} accent="#60a5fa" icon={Scale} />
               </div>
               <p className="text-[11.5px] mt-3" style={{ color: 'rgba(250,250,249,0.38)' }}>
                 {kdv.beyanVar

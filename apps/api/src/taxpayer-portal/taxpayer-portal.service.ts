@@ -365,32 +365,41 @@ export class TaxpayerPortalService {
    * Hesaplanamazsa (KDV1 mükellefi değil / veri yok) null döner → frontend kartı gizler.
    */
   private async kdvOzetForDonem(tenantId: string, taxpayerId: string, donem: string) {
+    // Resmî beyan (KDV1 tahakkuk) ve fatura-bazlı ön-hazırlık BAĞIMSIZ alınır;
+    // biri patlasa diğerinden değer gelsin (eski hâlde ön-hazırlık hatası tüm KDV'yi
+    // sessizce null yapıyordu — AI "hesaplanamadı" diyordu).
+    let beyan: any = null;
+    let oh: any = null;
     try {
-      const [beyan, oh] = await Promise.all([
-        this.prisma.beyanDurumu.findFirst({
-          where: { taxpayerId, donem, beyanTipi: 'KDV1' },
-          select: { tahakkukTutari: true, durum: true },
-        }),
-        this.kdvBeyanname.kdv1OnHazirlik({ tenantId, mukellefId: taxpayerId, donem, computePrevDevreden: false }),
-      ]);
-      const beyanOdenecek = beyan?.tahakkukTutari != null ? Number(beyan.tahakkukTutari) : null;
-      const faturaAdet = (oh.satis?.faturaAdet || 0) + (oh.alis?.faturaAdet || 0);
-      if (faturaAdet === 0 && beyanOdenecek == null) return null;
-      return {
-        donem,
-        hesaplananKdv: oh.sonuc?.hesaplananKdv ?? 0,
-        indirilecekKdv: oh.sonuc?.indirilecekKdv ?? 0,
-        odenecekKdv: beyanOdenecek ?? oh.sonuc?.odenecekKdv ?? 0,
-        devredenKdv: oh.sonuc?.sonrakiAyaDevreden ?? 0,
-        veriGuveni: oh.veriGuveni?.seviye || 'eksik',
-        faturaAdet,
-        beyanVar: !!beyan,
-        beyanDurum: beyan?.durum || null,
-      };
+      beyan = await this.prisma.beyanDurumu.findFirst({
+        where: { taxpayerId, donem, beyanTipi: 'KDV1' },
+        select: { tahakkukTutari: true, durum: true },
+      });
     } catch (e) {
-      this.logger.warn(`KDV özeti hesaplanamadı (${donem}): ${(e as Error).message}`);
-      return null;
+      this.logger.warn(`KDV beyan durumu okunamadı (${donem}): ${(e as Error).message}`);
     }
+    try {
+      oh = await this.kdvBeyanname.kdv1OnHazirlik({ tenantId, mukellefId: taxpayerId, donem, computePrevDevreden: false });
+    } catch (e) {
+      this.logger.warn(`KDV ön-hazırlık başarısız (${donem}): ${(e as Error).message}`);
+    }
+    const beyanOdenecek = beyan?.tahakkukTutari != null ? Number(beyan.tahakkukTutari) : null;
+    const faturaAdet = (oh?.satis?.faturaAdet || 0) + (oh?.alis?.faturaAdet || 0);
+    // Gösterilecek hiçbir şey yoksa null.
+    if (!oh && beyanOdenecek == null) return null;
+    if (oh && faturaAdet === 0 && beyanOdenecek == null) return null;
+    const num = (v: any) => (v == null || Number.isNaN(Number(v)) ? null : Number(v));
+    return {
+      donem,
+      hesaplananKdv: num(oh?.sonuc?.hesaplananKdv),
+      indirilecekKdv: num(oh?.sonuc?.indirilecekKdv),
+      odenecekKdv: beyanOdenecek ?? num(oh?.sonuc?.odenecekKdv),
+      devredenKdv: num(oh?.sonuc?.sonrakiAyaDevreden),
+      veriGuveni: oh?.veriGuveni?.seviye || (beyanOdenecek != null ? 'beyan' : 'eksik'),
+      faturaAdet,
+      beyanVar: !!beyan,
+      beyanDurum: beyan?.durum || null,
+    };
   }
 
   /** e-Tebligat belgeleri (GİB'den çekilen). */
@@ -415,7 +424,7 @@ export class TaxpayerPortalService {
         // Müşavir e-Tebligat tablosu ile aynı alanlar:
         kurumAciklama: raw.kurumAciklama || null,
         altKurum: raw.altKurum || null,
-        tebligZamani: raw.tebligZamani || null,
+        tebligZamani: raw.tebligZamani || raw.tebligTarihi || raw.tebligatTarihi || raw.tarih || raw.gonderimZamani || null,
         goruntulenebilir: !!r.storageKey,
       };
     });
@@ -538,10 +547,16 @@ export class TaxpayerPortalService {
       this.getDashboard(taxpayerId, tenantId),
       this.getSgkBelgeleri(taxpayerId, tenantId).catch(() => [] as any[]),
     ]);
-    const sonDonem = Array.isArray(dash.faturaAylik) && dash.faturaAylik.length
-      ? dash.faturaAylik[dash.faturaAylik.length - 1].donem
-      : null;
-    const kdv = sonDonem ? await this.kdvOzetForDonem(tenantId, taxpayerId, sonDonem).catch(() => null) : null;
+    // KDV özeti: son 3 dönemi dene (en yeni → eski); biri boş olsa diğeri gelsin.
+    const kdvDonemler = Array.from(new Set((dash.faturaAylik || []).map((a: any) => a.donem)))
+      .filter(Boolean)
+      .slice(-3)
+      .reverse();
+    const kdvList: any[] = [];
+    for (const d of kdvDonemler) {
+      const k = await this.kdvOzetForDonem(tenantId, taxpayerId, d).catch(() => null);
+      if (k) kdvList.push(k);
+    }
 
     const p: any = dash.profile;
     const ad = p.companyName || [p.firstName, p.lastName].filter(Boolean).join(' ') || 'Mükellef';
@@ -555,9 +570,16 @@ export class TaxpayerPortalService {
     const f: any = dash.faturaOzet || {};
     const sonAylar = (dash.faturaAylik || []).slice(-3).map((a: any) =>
       `  ${a.donem}: alış ${TL(a.alis)} (${a.alisAdet}), satış ${TL(a.satis)} (${a.satisAdet})`).join('\n');
-    const kdvSatir = kdv
-      ? `KDV (${kdv.donem}): Hesaplanan ${TL(kdv.hesaplananKdv)}, İndirilecek ${TL(kdv.indirilecekKdv)}, Ödenecek ${TL(kdv.odenecekKdv)}, Sonraki aya devreden ${TL(kdv.devredenKdv)} (veri güveni: ${kdv.veriGuveni}).`
-      : 'KDV özeti: hesaplanamadı (KDV mükellefi olmayabilir).';
+    const kdvSatir = kdvList.length
+      ? kdvList.map((k) => {
+          const parts: string[] = [];
+          if (k.odenecekKdv != null) parts.push(`Ödenecek ${TL(k.odenecekKdv)}`);
+          if (k.hesaplananKdv != null) parts.push(`Hesaplanan/satış ${TL(k.hesaplananKdv)}`);
+          if (k.indirilecekKdv != null) parts.push(`İndirilecek/alış ${TL(k.indirilecekKdv)}`);
+          if (k.devredenKdv != null) parts.push(`Devreden ${TL(k.devredenKdv)}`);
+          return `- ${k.donem}: ${parts.join(', ') || 'rakam yok'}${k.beyanVar ? ' [KDV1 beyanı verildi]' : ''}`;
+        }).join('\n')
+      : 'Hesaplanamadı (KDV mükellefi olmayabilir veya bu dönemler için veri yok).';
 
     const sgkSatir = (Array.isArray(sgk) ? sgk : []).slice(0, 6).map((s: any) =>
       `- ${s.donem || '—'} ${s.belgeTuru === 'SGK_TAHAKKUK' ? 'Tahakkuk Fişi' : 'Hizmet Listesi'}${s.tutar ? ` · ${s.tutar} TL` : ''}${s.calisan ? ` · ${s.calisan} çalışan` : ''}`).join('\n') || 'Kayıt yok.';
@@ -583,6 +605,7 @@ export class TaxpayerPortalService {
       '',
       `FATURALAR (son 12 ay): toplam ${f.toplamAdet || 0} belge · Alış ${TL(f.alisToplam)} (${f.alisAdet || 0} belge) · Satış ${TL(f.satisToplam)} (${f.satisAdet || 0} belge).`,
       sonAylar ? `Son aylar:\n${sonAylar}` : '',
+      'KDV ÖZETİ (son dönemler):',
       kdvSatir,
       '',
       'SGK BELGELERİ:',
@@ -622,10 +645,16 @@ export class TaxpayerPortalService {
       .join('\n');
     const prompt = gecmis ? `Önceki konuşma:\n${gecmis}\n\nMükellefin yeni sorusu: ${msg}` : msg;
 
+    // Geçici Max hatası/zaman aşımına karşı 1 retry (eval'de tek seferlik boş yanıt görüldü).
     try {
-      const res = await claudeTextViaMax({ prompt, system, model: 'claude-sonnet-4-6' });
-      if (res.ok) return { reply: res.text };
-      this.logger.warn(`Mükellef AI Max hatası: ${res.error}`);
+      let res = await claudeTextViaMax({ prompt, system, model: 'claude-sonnet-4-6' });
+      if (!res.ok || !res.text?.trim()) {
+        this.logger.warn(`Mükellef AI ilk deneme başarısız (${res.error || 'boş yanıt'}) — retry`);
+        await new Promise((r) => setTimeout(r, 600));
+        res = await claudeTextViaMax({ prompt, system, model: 'claude-sonnet-4-6' });
+      }
+      if (res.ok && res.text?.trim()) return { reply: res.text };
+      this.logger.warn(`Mükellef AI Max hatası (retry sonrası): ${res.error}`);
       return { reply: 'Şu anda yanıt veremiyorum, lütfen birazdan tekrar deneyin.' };
     } catch (e) {
       this.logger.error(`Mükellef AI hata: ${(e as Error).message}`);
