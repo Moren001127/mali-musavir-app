@@ -145,7 +145,7 @@ export class TaxpayerPortalService {
       }),
       this.prisma.beyanKaydi.findMany({
         where: { taxpayerId },
-        select: { id: true, beyanTipi: true, donem: true, pdfUrl: true, beyannameUrl: true, xmlUrl: true, beyanTarihi: true, onayNo: true },
+        select: { id: true, beyanTipi: true, donem: true, pdfUrl: true, beyannameUrl: true, xmlUrl: true, beyanTarihi: true, onayNo: true, tahakkukTutari: true },
       }),
     ]);
     const kmap = new Map(kayitlar.map((k) => [`${k.beyanTipi}::${k.donem}`, k]));
@@ -156,10 +156,13 @@ export class TaxpayerPortalService {
       // — verilmiş beyannamenin "bekleyen" görünmesi hatası buradan kaynaklanıyordu.
       const verildi = !!(k && (k.beyanTarihi || k.onayNo || k.beyannameUrl || k.pdfUrl || k.xmlUrl));
       const durum = verildi && (!r.durum || r.durum === 'beklemede') ? 'verildi' : r.durum;
+      // Tahakkuk: durum tablosu boşsa fiilî beyanname kaydından (BeyanKaydi) al
+      // — Muhtasar gibi beyannamelerde tutar BeyanKaydi'nde, AI "görmüyorum" diyordu.
+      const tah = r.tahakkukTutari ?? k?.tahakkukTutari ?? null;
       return {
         ...r,
         durum,
-        tahakkukTutari: r.tahakkukTutari ? Number(r.tahakkukTutari) : null,
+        tahakkukTutari: tah != null ? Number(tah) : null,
         verildiTarihi: k?.beyanTarihi ?? r.onayTarihi ?? null,
         belge: k
           ? { kayitId: k.id, pdf: !!k.pdfUrl, beyanname: !!k.beyannameUrl, xml: !!k.xmlUrl, beyanTarihi: k.beyanTarihi, onayNo: k.onayNo }
