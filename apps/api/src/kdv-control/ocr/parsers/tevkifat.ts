@@ -121,12 +121,27 @@ export function extractTevkifatTotalsFromText(text: string): TevkifatTotals | nu
   }
 
   const explicitTotal = max(explicitTevkifatTotals);
-  const lineSum = sum(lineTevkifatAmounts.filter((value) => value < tamKdv - 0.05));
-  const tevkifat = round2(
-    lineTevkifatAmounts.length > 1 && lineSum > 0
-      ? (explicitTotal > 0 && Math.abs(explicitTotal - lineSum) <= 0.05 ? explicitTotal : lineSum)
-      : (explicitTotal > 0 ? explicitTotal : lineSum),
-  );
+  const filteredLineAmounts = lineTevkifatAmounts.filter((value) => value < tamKdv - 0.05);
+  const lineSum = sum(filteredLineAmounts);
+  // Aynı tevkifat tutarı belgenin iki bölümünde (KDV kırılım tablosu + özet) tekrar
+  // edebilir; bunlar AYNI tevkifattır, ayrı oran değil. Farklı değerler = gerçek
+  // çok-satırlı tevkifat (ör. Zeyrek 158+251,20).
+  const distinctLineAmounts = [...new Set(filteredLineAmounts.map((value) => value.toFixed(2)))];
+  let tevkifatRaw: number;
+  if (filteredLineAmounts.length > 1 && lineSum > 0) {
+    if (explicitTotal > 0 && Math.abs(explicitTotal - lineSum) <= 0.05) {
+      // Açık tevkifat toplamı = satır toplamı → gerçek çok-satırlı tevkifat.
+      tevkifatRaw = explicitTotal;
+    } else if (distinctLineAmounts.length === 1) {
+      // Tüm satırlar aynı tutar → eko (tekrar). Toplama bug'ı: 1.064 + 1.064 = 2.128.
+      tevkifatRaw = Number(distinctLineAmounts[0]);
+    } else {
+      tevkifatRaw = lineSum;
+    }
+  } else {
+    tevkifatRaw = explicitTotal > 0 ? explicitTotal : lineSum;
+  }
+  const tevkifat = round2(tevkifatRaw);
   if (!(tevkifat > 0) || tevkifat >= tamKdv - 0.05) return null;
 
   return {

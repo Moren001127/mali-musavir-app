@@ -277,4 +277,24 @@ approx(zeyrekInterleavedTevkifat.tamKdv, 2156, 'Zeyrek 103 tam KDV');
 approx(zeyrekInterleavedTevkifat.tevkifat, 431.2, 'Zeyrek 103 toplam tevkifat');
 approx(zeyrekInterleavedTevkifat.netKdv, 1724.8, 'Zeyrek 103 net KDV');
 
+// EKO TEVKIFAT (GIB...045): tek oranli ama tevkifat tutari belgenin iki bolumunde
+// (KDV kirilim tablosu + ozet) tekrar yaziliyor -> 1.064 + 1.064 = 2.128 toplaniyordu.
+// Ayni tutar tekrari ayri oran degil; tek deger (1.064) alinmali.
+const echoTevkifatText = [
+  'GIB2026000000045',
+  'Mal Hizmet Toplam Tutari 26.600,00 TL',
+  'Hesaplanan KDV(%20) 5.320,00 TL',
+  'KDV Tevkifati(%20) 1.064,00 TL',
+  'Tevkifata Tabi Islem Tutari 26.600,00 TL',
+  'Tevkifata Tabi Islem Uzerinden Hes. KDV 5.320,00 TL',
+  'KDV Tevkifati(%20) 1.064,00 TL',
+  'Vergiler Dahil Toplam Tutar 31.920,00 TL',
+  'Odenecek Tutar 30.856,00 TL',
+].join('\n');
+const echoTevkifat = service.extractTevkifatliFaturaFromAzure(echoTevkifatText);
+assert(echoTevkifat, 'eko tevkifat faturasi parse edilmeli');
+approx(echoTevkifat.tamKdv, 5320, 'eko tam KDV');
+approx(echoTevkifat.tevkifat, 1064, 'eko tevkifat tek deger (2x echo toplanmamali)');
+approx(echoTevkifat.netKdv, 4256, 'eko net KDV');
+
 console.log('OK ocr-tax-regression');

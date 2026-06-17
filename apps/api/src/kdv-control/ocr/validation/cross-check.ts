@@ -72,6 +72,30 @@ function findExplicitKdvTotals(
   return out;
 }
 
+/**
+ * Belgedeki EN BÜYÜK para tutarını döndürür (genel toplam çapası).
+ *
+ * Bir KDV kırılımının toplamı, belgenin en büyük tutarına (genel toplam/ödenecek)
+ * EŞİT OLAMAZ — KDV her zaman bedelden küçüktür. Brüt-tutarı-KDV-sanma
+ * düzeltmesinde, açık "KDV" satırı OCR'da okunamasa bile ikinci çapa olarak
+ * kullanılır: oran satırlarının ham toplamı belgenin genel toplamına eşitse,
+ * o satırlar KDV değil brüttür. (Barkod/uzun sayılar `,dd` ondalık zorunlu
+ * olduğundan elenir; tarih de eşleşmez.)
+ */
+function maxDocumentAmount(
+  text: string,
+  parseAmount: (s: string) => number,
+  normalizeAzureText: (text: string) => string,
+): number {
+  if (!text) return 0;
+  let mx = 0;
+  for (const m of normalizeAzureText(text).matchAll(/(\d{1,3}(?:[.,]\d{3})*[.,]\d{2})/g)) {
+    const v = parseAmount(m[1]);
+    if (v > 0 && v < 100_000_000 && v > mx) mx = v;
+  }
+  return mx;
+}
+
 export interface CrossCheckDeps {
   // Pure helpers
   parseAmount: (s: string) => number;
@@ -460,15 +484,26 @@ export function crossCheckWithAzure(
         matrah: null as number | null,
       }));
       const grossSum = grossConverted.reduce((s, b) => s + b.tutar, 0);
+      // Çapa (a): belgede açık toplam KDV var; satırları brüt sayıp çevirince ona
+      // oturuyor ama ham toplama oturmuyor.
       const explicitKdvTotals = findExplicitKdvTotals(azureText, parseAmount, normalizeAzureText);
       const reconciledTotal = explicitKdvTotals.find((t) => {
         const tol = Math.max(0.5, t * 0.02);
         return t > 0 && Math.abs(grossSum - t) <= tol && Math.abs(directSum - t) > tol;
       });
-      if (reconciledTotal != null && grossConverted.every((b) => b.tutar > 0)) {
+      // Çapa (b): oran satırlarının ham toplamı belgenin EN BÜYÜK tutarına eşit →
+      // bunlar KDV olamaz (KDV genel toplama eşit olamaz) → kesin brüt. Açık KDV
+      // satırı OCR'da kırpılsa bile çalışır.
+      const maxDoc = maxDocumentAmount(azureText, parseAmount, normalizeAzureText);
+      const matchesGrandTotal =
+        maxDoc > 0 &&
+        Math.abs(directSum - maxDoc) <= Math.max(0.5, maxDoc * 0.01) &&
+        grossSum < directSum * 0.6;
+      if ((reconciledTotal != null || matchesGrandTotal) && grossConverted.every((b) => b.tutar > 0)) {
+        const anchor = reconciledTotal != null ? `acik KDV=${formatAmount(reconciledTotal)}` : `genel toplam=${formatAmount(maxDoc)}`;
         logger.warn(
           `KDV-dahil tutar duzeltmesi: oran satirlari brut kabul edilip KDV cevrildi ` +
-            `(direct=${formatAmount(directSum)} -> KDV=${formatAmount(grossSum)} ~ acik KDV=${formatAmount(reconciledTotal)}, ${originalName})`,
+            `(direct=${formatAmount(directSum)} -> KDV=${formatAmount(grossSum)}, ${anchor}, ${originalName})`,
         );
         azureBreakdown = grossConverted;
       }

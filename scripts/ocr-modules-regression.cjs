@@ -689,6 +689,7 @@ const goodMultiText = [
   'Hesaplanan KDV (%10) 50,00',
   'Hesaplanan KDV (%20) 200,00',
   'KDV 250,00',
+  'Odenecek Tutar 1.750,00',
 ].join('\n');
 const goodMultiResult = {
   rawText: goodMultiText,
@@ -725,7 +726,53 @@ crossCheck.crossCheckWithAzure(goodMultiResult, goodMultiText, 'A1.image', 'A1',
 });
 approx(goodMultiResult.kdvBreakdown.find((b) => b.oran === 10).tutar, 50, 0.01, 'dogru breakdown %10 korunur (brut-cevrim yok)');
 approx(goodMultiResult.kdvBreakdown.find((b) => b.oran === 20).tutar, 200, 0.01, 'dogru breakdown %20 korunur (brut-cevrim yok)');
-ok('validation/cross-check.ts KDV-dahil brut koruması (5 assertion)');
+// Genel-toplam çapası (b): açık "KDV" satırı OCR'da kırpık/garbled ("SDV") olsa bile,
+// oran satırlarının ham toplamı (125+670=795) belgenin en büyük tutarına (795) eşitse
+// → brüt kabul edilip çevrilir (11,36 + 111,67 = 123,03).
+const bridgeNoKdvText = [
+  'ICTAS ALTYAPI YSS KOPRUSU',
+  'GECISI %10 *125,00',
+  'GECISI %20 *670,00',
+  'SDV *123,03',
+  'AM *795,00',
+  '*795,00',
+].join('\n');
+const bridgeNoKdvResult = {
+  rawText: bridgeNoKdvText,
+  belgeNo: '0695',
+  date: '07.05.2026',
+  kdvTutari: '795,00',
+  kdvBreakdown: [
+    { oran: 10, tutar: 125, matrah: null },
+    { oran: 20, tutar: 670, matrah: null },
+  ],
+  belgeTipi: 'DIGER',
+  fieldConfidence: { belgeNo: 0.9, date: 0.9, kdvTutari: 0.9 },
+  confidence: 0.9,
+};
+crossCheck.crossCheckWithAzure(bridgeNoKdvResult, bridgeNoKdvText, '0695b.image', '0695', {
+  parseAmount: ublDeps.parseAmount,
+  formatAmount: ublDeps.formatAmount,
+  foldTurkishAscii: azureHelpers.foldTurkishAscii,
+  normalizeAzureText: azureHelpers.normalizeAzureText,
+  eBelgeNoDistance: () => 0,
+  extractZRaporuKdvFromAzure: () => ({ kdvTutari: null, breakdown: [], matrahByOran: {} }),
+  extractOkcFisKdvFromAzure: () => null,
+  extractTevkifatliFaturaFromAzure: () => null,
+  extractKdvOnlyFromTelekomAzure: () => null,
+  extractKdvFromInvoiceTotalsAzure: () => null,
+  extractMultiRateKdvFromAzure: () => [],
+  extractMultiRateKdvFromItemRows: () => [
+    { oran: 10, tutar: 125, matrah: null },
+    { oran: 20, tutar: 670, matrah: null },
+  ],
+  extractHesMatrahKdvTable: () => ({ breakdown: [], totalKdv: null }),
+  isFieldInAzureText: () => true,
+  logger: { log: () => {}, warn: () => {} },
+});
+approx(bridgeNoKdvResult.kdvBreakdown.find((b) => b.oran === 10).tutar, 11.36, 0.01, 'kopru (acik KDV yok) %10 genel-toplam capasiyla 11,36');
+approx(bridgeNoKdvResult.kdvBreakdown.find((b) => b.oran === 20).tutar, 111.67, 0.01, 'kopru (acik KDV yok) %20 genel-toplam capasiyla 111,67');
+ok('validation/cross-check.ts KDV-dahil brut koruması (7 assertion)');
 
 // ─── azure/tevkifatli-fatura.ts ───
 const foldFn = azureHelpers.foldTurkishAscii;
