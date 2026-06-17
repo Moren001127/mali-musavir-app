@@ -149,7 +149,7 @@ export class TaxpayerPortalService {
       }),
     ]);
     const kmap = new Map(kayitlar.map((k) => [`${k.beyanTipi}::${k.donem}`, k]));
-    return rows.map((r) => {
+    const mapped = rows.map((r) => {
       const k = kmap.get(`${r.beyanTipi}::${r.donem}`);
       // Resmî beyanname kaydı (verilme tarihi / onay no / belge) varsa beyanname
       // fiilen VERİLMİŞ demektir. Durum hâlâ "beklemede" kalmışsa "verildi"ye çek
@@ -169,6 +169,18 @@ export class TaxpayerPortalService {
           : null,
       };
     });
+
+    // Mükerrer geçici vergi: jenerik GECICI_VERGI ile aynı dönemde KGECICI/GGECICI
+    // "verildi" ise jenerik satır da verilmiştir (sahte "bekliyor" uyarısını önler).
+    const ozelGeciciVerildi = new Set(
+      mapped.filter((m: any) => (m.beyanTipi === 'KGECICI' || m.beyanTipi === 'GGECICI') && (m.durum === 'verildi' || m.durum === 'onaylandi')).map((m: any) => m.donem),
+    );
+    for (const m of mapped as any[]) {
+      if (m.beyanTipi === 'GECICI_VERGI' && m.durum !== 'verildi' && m.durum !== 'onaylandi' && ozelGeciciVerildi.has(m.donem)) {
+        m.durum = 'verildi';
+      }
+    }
+    return mapped;
   }
 
   /**
