@@ -118,12 +118,27 @@ export class TaxpayerPortalController {
     return this.service.chat(req.user.taxpayerId, req.user.tenantId, body.message, history);
   }
 
+  // Mükellefin kendi MOREN AI sohbet geçmişi (kalıcı — sayfa değişince gitmez).
+  @UseGuards(AuthGuard('taxpayer-jwt'))
+  @Get('ai/gecmis')
+  aiGecmis(@Req() req: any) {
+    return this.service.getChatHistory(req.user.taxpayerId);
+  }
+
   // ============ MÜŞAVİR TARAFI: portal erişimi yönetimi (advisor jwt + ADMIN) ============
   @UseGuards(AuthGuard('jwt'), RolesGuard)
   @Roles('ADMIN')
   @Get('admin/taxpayers/:id/access')
   accessStatus(@Req() req: any, @Param('id') id: string) {
     return this.service.getPortalAccessStatus(req.user.tenantId, id);
+  }
+
+  // Müşavir tarafı: bir mükellefin MOREN AI sohbet dökümü.
+  @UseGuards(AuthGuard('jwt'), RolesGuard)
+  @Roles('ADMIN')
+  @Get('admin/taxpayers/:id/ai-chat')
+  taxpayerAiChat(@Req() req: any, @Param('id') id: string) {
+    return this.service.getTaxpayerChatForAdvisor(req.user.tenantId, id);
   }
 
   @UseGuards(AuthGuard('jwt'), RolesGuard)

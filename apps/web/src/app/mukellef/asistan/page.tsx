@@ -14,10 +14,23 @@ export default function MukellefAsistan() {
   const [messages, setMessages] = useState<ChatMsg[]>([]);
   const [input, setInput] = useState('');
   const scrollRef = useRef<HTMLDivElement>(null);
+  const initRef = useRef(false);
+
+  // Sohbet KALICI: açılışta sunucudan geçmiş yüklenir (sayfa değişince gitmez).
+  const { data: gecmis } = useQuery({
+    queryKey: ['portal-ai-gecmis'],
+    queryFn: () => taxpayerApi.get('/portal/ai/gecmis').then((r) => r.data),
+  });
 
   useEffect(() => {
-    setMessages([{ role: 'assistant', text: `Merhaba! Ben MOREN AI. ${ad} için beyanname, cari bakiye, faturalar, KDV, SGK, e-Tebligat ve evraklarınız hakkında soru sorabilirsiniz.` }]);
-  }, [ad]);
+    if (initRef.current || gecmis === undefined) return;
+    initRef.current = true;
+    if (Array.isArray(gecmis) && gecmis.length > 0) {
+      setMessages(gecmis.map((m: any) => ({ role: m.role === 'user' ? 'user' : 'assistant', text: m.text })));
+    } else {
+      setMessages([{ role: 'assistant', text: `Merhaba! Ben MOREN AI. ${ad} için beyanname, cari bakiye, faturalar, KDV, SGK, e-Tebligat ve evraklarınız hakkında soru sorabilirsiniz.` }]);
+    }
+  }, [gecmis, ad]);
 
   const chatMut = useMutation({
     mutationFn: ({ message, history }: { message: string; history: ChatMsg[] }) =>

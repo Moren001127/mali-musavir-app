@@ -229,10 +229,27 @@ export class TaxpayerPortalService {
     const docs = await this.prisma.document.findMany({
       where: { taxpayerId, isDeleted: false },
       orderBy: { createdAt: 'desc' },
-      take: 200,
-      select: { id: true, title: true, category: true, notes: true, sizeBytes: true, mimeType: true, createdAt: true, updatedAt: true, expiresAt: true, s3Key: true },
+      take: 300,
+      select: { id: true, title: true, category: true, notes: true, sizeBytes: true, mimeType: true, createdAt: true, updatedAt: true, expiresAt: true, s3Key: true, tags: { select: { tag: true } } },
     });
-    return docs.map((d) => ({
+    // SADECE müşavirin "Dosyalar" sekmesinden elle yüklediği belgeler — SGK/GİB/portal
+    // otomatik indirilen belgeler buraya GELMEZ (ofis isManualMukellefDocument ile aynı kural).
+    const isManual = (d: any) => {
+      const title = String(d.title || '').toLocaleUpperCase('tr-TR');
+      const notes = String(d.notes || '').toLocaleUpperCase('tr-TR');
+      const category = String(d.category || '').toLocaleUpperCase('tr-TR');
+      const tags = (d.tags || []).map((t: any) => String(t.tag || '').toLocaleUpperCase('tr-TR')).join(' ');
+      const combined = `${title} ${notes} ${category} ${tags}`;
+      if (category === 'BEYANNAME') return false;
+      if (title.startsWith('DBS_')) return false;
+      if (combined.includes('GIB_BEYANNAME') || combined.includes('GİB_BEYANNAME')) return false;
+      if (combined.includes('GIB_TAHAKKUK') || combined.includes('GİB_TAHAKKUK')) return false;
+      if (combined.includes('SGK_TAHAKKUK') || combined.includes('SGK_HIZMET')) return false;
+      if (combined.includes('PORTALDAN OTOMATIK') || combined.includes('PORTALDAN OTOMATİK')) return false;
+      if (combined.includes('PORTAL-AUTOMATION') || combined.includes('OTOMATIK') || combined.includes('OTOMATİK')) return false;
+      return true;
+    };
+    return docs.filter(isManual).map((d) => ({
       id: d.id, title: d.title, category: d.category, notes: d.notes ?? null,
       sizeBytes: d.sizeBytes ?? null, mimeType: d.mimeType ?? null,
       createdAt: d.createdAt, updatedAt: d.updatedAt, expiresAt: d.expiresAt,
@@ -914,13 +931,54 @@ export class TaxpayerPortalService {
         await new Promise((r) => setTimeout(r, 600));
         res = await claudeTextViaMax({ prompt, system, model: 'claude-sonnet-4-6', timeoutMs: 60000 });
       }
-      if (res.ok && res.text?.trim()) return { reply: res.text };
+      if (res.ok && res.text?.trim()) {
+        await this.saveChat(tenantId, taxpayerId, msg, res.text.trim());
+        return { reply: res.text };
+      }
       this.logger.warn(`Mükellef AI Max hatası (retry sonrası): ${res.error}`);
       return { reply: 'Şu anda yanıt veremiyorum, lütfen birazdan tekrar deneyin.' };
     } catch (e) {
       this.logger.error(`Mükellef AI hata: ${(e as Error).message}`);
       return { reply: 'Şu anda yanıt veremiyorum, lütfen birazdan tekrar deneyin.' };
     }
+  }
+
+  /** Mükellef ↔ MOREN AI mesajlarını kaydeder (kalıcı + müşavir görünürlüğü). */
+  private async saveChat(tenantId: string, taxpayerId: string, soru: string, cevap: string) {
+    try {
+      await (this.prisma as any).taxpayerChatMessage.createMany({
+        data: [
+          { tenantId, taxpayerId, role: 'user', text: String(soru).slice(0, 4000) },
+          { tenantId, taxpayerId, role: 'assistant', text: String(cevap).slice(0, 8000) },
+        ],
+      });
+    } catch (e) {
+      this.logger.warn(`Sohbet kaydedilemedi: ${(e as Error).message}`);
+    }
+  }
+
+  /** Mükellefin kendi MOREN AI sohbet geçmişi (eski→yeni sıralı). */
+  async getChatHistory(taxpayerId: string, limit = 60) {
+    const rows = await (this.prisma as any).taxpayerChatMessage.findMany({
+      where: { taxpayerId },
+      orderBy: { createdAt: 'desc' },
+      take: limit,
+      select: { id: true, role: true, text: true, createdAt: true },
+    });
+    return rows.reverse().map((r: any) => ({ id: r.id, role: r.role, text: r.text, createdAt: r.createdAt }));
+  }
+
+  /** Müşavir tarafı: bir mükellefin MOREN AI sohbeti (tenant doğrulamalı). */
+  async getTaxpayerChatForAdvisor(tenantId: string, taxpayerId: string, limit = 300) {
+    const tp = await this.prisma.taxpayer.findFirst({ where: { id: taxpayerId, tenantId }, select: { id: true } });
+    if (!tp) throw new NotFoundException('Mükellef bulunamadı');
+    const rows = await (this.prisma as any).taxpayerChatMessage.findMany({
+      where: { tenantId, taxpayerId },
+      orderBy: { createdAt: 'desc' },
+      take: limit,
+      select: { id: true, role: true, text: true, createdAt: true },
+    });
+    return rows.reverse().map((r: any) => ({ id: r.id, role: r.role, text: r.text, createdAt: r.createdAt }));
   }
 
   // ============ yardımcı ============

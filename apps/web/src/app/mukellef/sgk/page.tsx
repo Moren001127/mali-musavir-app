@@ -53,7 +53,7 @@ export default function MukellefSgk() {
                         </td>
                         <td className="px-4 py-3 text-[12.5px]" style={{ color: 'rgba(250,250,249,0.55)' }}>{s.mahiyet || '—'}</td>
                         <td className="px-4 py-3 text-right text-[12.5px] tabular-nums" style={{ color: 'rgba(250,250,249,0.7)' }}>{s.calisan || '—'}</td>
-                        <td className="px-4 py-3 text-right text-[12.5px] font-semibold tabular-nums" style={{ color: s.tutar ? '#fafaf9' : 'rgba(250,250,249,0.3)' }}>{s.tutar ? `${s.tutar} ₺` : '—'}</td>
+                        <td className="px-4 py-3 text-right text-[12.5px] font-semibold tabular-nums" style={{ color: tahakkuk && s.tutar ? '#fafaf9' : 'rgba(250,250,249,0.3)' }}>{tahakkuk && s.tutar ? `${s.tutar} ₺` : '—'}</td>
                         <td className="px-4 py-3">
                           <div className="flex justify-end">
                             {s.goruntulenebilir

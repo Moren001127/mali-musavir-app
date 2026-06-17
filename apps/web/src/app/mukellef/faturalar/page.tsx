@@ -42,6 +42,9 @@ export default function MukellefFaturalar() {
   const kdv = data?.kdv;
   const net = (ayOzet.satisToplam || 0) - (ayOzet.alisToplam || 0);
   const maxAy = Math.max(1, ...aylik.map((a) => Math.max(a.alis, a.satis)));
+  const toplamHacim = (ayOzet.alisToplam || 0) + (ayOzet.satisToplam || 0);
+  const alisPct = toplamHacim > 0 ? Math.round(((ayOzet.alisToplam || 0) / toplamHacim) * 100) : 0;
+  const satisPct = toplamHacim > 0 ? 100 - alisPct : 0;
 
   // Sağ üst — yıl + ay seçici araç çubuğu
   const seciciler = (
@@ -75,6 +78,26 @@ export default function MukellefFaturalar() {
               { label: 'Net (Satış − Alış)', value: fmtTRY(net), icon: Scale, accent: net >= 0 ? SATIS : '#f87171' },
             ]}
           />
+
+          {/* Alış / Satış dengesi — seçili ay */}
+          {toplamHacim > 0 && (
+            <Card>
+              <div className="flex items-center justify-between gap-3 mb-3 flex-wrap">
+                <h2 className="text-[14px] font-semibold flex items-center gap-2" style={{ color: '#fafaf9' }}><Scale size={15} style={{ color: GOLD }} /> Bu Ayın Alış / Satış Dengesi</h2>
+                <span className="text-[12px] font-medium" style={{ color: net >= 0 ? SATIS : '#f87171' }}>
+                  {net >= 0 ? 'Net satış fazlası' : 'Net alış fazlası'}: {fmtTRY(Math.abs(net))}
+                </span>
+              </div>
+              <div className="flex h-3.5 rounded-full overflow-hidden" style={{ background: 'rgba(255,255,255,0.05)' }}>
+                {alisPct > 0 && <div style={{ width: `${alisPct}%`, background: `linear-gradient(90deg, ${ALIS}, ${ALIS}aa)` }} />}
+                {satisPct > 0 && <div style={{ width: `${satisPct}%`, background: `linear-gradient(90deg, ${SATIS}aa, ${SATIS})` }} />}
+              </div>
+              <div className="flex justify-between mt-2 text-[11.5px]">
+                <span style={{ color: ALIS }}>Alış %{alisPct} · {fmtTRY(ayOzet.alisToplam)}</span>
+                <span style={{ color: SATIS }}>Satış %{satisPct} · {fmtTRY(ayOzet.satisToplam)}</span>
+              </div>
+            </Card>
+          )}
 
           {/* KDV Özeti — KDV1 beyanname / Luca-mutabık ön-hazırlık */}
           {kdv ? (

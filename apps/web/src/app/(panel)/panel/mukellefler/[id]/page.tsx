@@ -254,6 +254,7 @@ type TabKey =
   | 'tebligat'
   | 'dosyalar'
   | 'cariHesap'
+  | 'morenAi'
   | 'iseGiris'
   | 'notlar';
 
@@ -264,6 +265,7 @@ const REAL_TABS: Array<{ key: TabKey; label: string; icon: React.ElementType }> 
   { key: 'tebligat', label: 'E-Tebligat', icon: Mail },
   { key: 'dosyalar', label: 'Dosyalar', icon: BookOpen },
   { key: 'cariHesap', label: 'Cari Hesap', icon: Landmark },
+  { key: 'morenAi', label: 'MOREN AI', icon: Sparkles },
   { key: 'iseGiris', label: 'İşe Giriş Bildirgesi', icon: UserCog },
   { key: 'notlar', label: 'Mükellef Not', icon: MessageSquareText },
 ];
@@ -600,6 +602,7 @@ export default function MukellefDetayPage() {
             <PlaceholderTab icon={BookOpen} title="Dosyalar" description="Mükellefe bağlı evraklar ve dosya arşivi." linkLabel="Evraklar modülüne git" linkHref={`/panel/evraklar?taxpayerId=${id}`} />
           )}
           {activeTab === 'cariHesap' && !isNew && id && <CariHesapTab taxpayerId={id} />}
+          {activeTab === 'morenAi' && !isNew && id && <MorenAiSohbetTab taxpayerId={id} />}
           {activeTab === 'iseGiris' && (
             <PlaceholderTab icon={UserCog} title="İşe Giriş Bildirgesi" description="İşe giriş ve işten çıkış bildirimleri için ayrılmış alan." comingSoon />
           )}
@@ -2157,6 +2160,52 @@ function ETebligatTab({ taxpayerId }: { taxpayerId: string }) {
       </div>
       <p className="mt-2.5 text-[11.5px]" style={{ color: FAINT }}>Veri e-Tebligat otomasyonundan gelir — satıra tıklayınca tebligat (PDF) açılır.</p>
       {pdf && <PortalPdfModal url={pdf.url} title={pdf.title} onClose={() => setPdf(null)} />}
+    </div>
+  );
+}
+
+function MorenAiSohbetTab({ taxpayerId }: { taxpayerId: string }) {
+  const { data = [], isLoading } = useQuery({
+    queryKey: ['taxpayer-ai-chat', taxpayerId],
+    queryFn: () => api.get(`/portal/admin/taxpayers/${taxpayerId}/ai-chat`).then((r) => r.data),
+  });
+  const rows: any[] = Array.isArray(data) ? data : [];
+
+  if (isLoading) return <PortalTabState><Loader2 className="mr-2 animate-spin" size={16} /> Yükleniyor…</PortalTabState>;
+  if (!rows.length) return (
+    <PortalTabState>
+      <div className="text-center">
+        <Sparkles size={26} style={{ color: FAINT, margin: '0 auto 8px' }} />
+        <p style={{ color: TEXT }} className="text-[13px] font-bold">MOREN AI sohbeti yok</p>
+        <p className="mt-1 text-[12px]" style={{ color: MUTED }}>Mükellef portalda MOREN AI ile konuştukça konuşmalar burada görünür.</p>
+      </div>
+    </PortalTabState>
+  );
+
+  return (
+    <div>
+      <h3 className="mb-1 text-[14px] font-extrabold" style={{ color: TEXT }}>MOREN AI Sohbetleri</h3>
+      <p className="mb-3 text-[12px]" style={{ color: MUTED }}>Mükellefin portalda MOREN AI ile yaptığı konuşmalar (eski → yeni).</p>
+      <div className="space-y-2.5 rounded-[10px] border p-3" style={{ borderColor: LINE, background: CARD2 }}>
+        {rows.map((m: any) => {
+          const user = m.role === 'user';
+          return (
+            <div key={m.id} className={`flex ${user ? 'justify-end' : 'justify-start'}`}>
+              <div
+                className="max-w-[78%] rounded-[12px] px-3.5 py-2.5"
+                style={user
+                  ? { background: 'rgba(212,184,118,0.14)', border: '1px solid rgba(212,184,118,0.30)' }
+                  : { background: 'rgba(255,255,255,0.03)', border: `1px solid ${HAIR}` }}
+              >
+                <div className="mb-1 flex items-center gap-1.5 text-[10px] font-bold uppercase tracking-wider" style={{ color: user ? GOLD : STEEL_BR }}>
+                  {user ? 'Mükellef' : 'MOREN AI'} · {portalDateTr(m.createdAt)}
+                </div>
+                <div className="text-[13px] whitespace-pre-wrap" style={{ color: TEXT, lineHeight: 1.55 }}>{m.text}</div>
+              </div>
+            </div>
+          );
+        })}
+      </div>
     </div>
   );
 }

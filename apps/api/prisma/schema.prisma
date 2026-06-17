@@ -404,6 +404,24 @@ model BeyanKaydi {
   @@map("beyan_kayitlari")
 }
 
+// ============================================================
+// MÜKELLEF ↔ MOREN AI SOHBET KAYDI
+// Mükellef portalı MOREN AI sohbeti kalıcı olsun (sayfa değişince gitmesin)
+// + müşavir, mükellef detayından konuşmaları görebilsin.
+// ============================================================
+model TaxpayerChatMessage {
+  id         String   @id @default(cuid())
+  tenantId   String
+  taxpayerId String
+  role       String   // "user" | "assistant"
+  text       String   @db.Text
+  createdAt  DateTime @default(now())
+
+  @@index([taxpayerId, createdAt])
+  @@index([tenantId, createdAt])
+  @@map("taxpayer_chat_messages")
+}
+
 enum TaxpayerType {
   GERCEK_KISI
   TUZEL_KISI
