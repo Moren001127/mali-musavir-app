@@ -10,6 +10,30 @@ const { PrismaClient } = require('@prisma/client');
 const MIGRATION_NAME = '20260428_earsiv_fatura';
 const LUCA_CAPTCHA_MIGRATION_NAME = '20260511210000_luca_captcha_challenges';
 const HATTAT_CARI_MIGRATION_NAME = '20260531153000_add_cari_hareket_source_fields';
+const EFATURA_INBOX_MIGRATION_NAME = '20260617150000_efatura_inbox_tenant_isolation';
+
+// Çok-cümleli SQL'i tek tek çalıştırır. $executeRawUnsafe tek seferde birden çok
+// komut (";" ile ayrılmış) kabul etmez: "cannot insert multiple commands into a
+// prepared statement". Bu yüzden cümlelere bölüp her birini ayrı çalıştırıyoruz.
+// (Bu SQL'lerde "$$" bloğu / metin-içi ";" yok, basit bölme güvenli.)
+async function execEachStatement(prisma, sql, label) {
+  const statements = sql
+    .split(';')
+    .map((s) => s.trim())
+    .filter((s) => s.length > 0);
+  let ok = 0;
+  let fail = 0;
+  for (const stmt of statements) {
+    try {
+      await prisma.$executeRawUnsafe(stmt);
+      ok++;
+    } catch (e) {
+      fail++;
+      console.error(`[startup] ${label} stmt failed: ${stmt.slice(0, 50)}... -> ${e.message}`);
+    }
+  }
+  return { ok, fail };
+}
 
 const SCHEMA_SQL = `
 DO $$ BEGIN
@@ -187,6 +211,16 @@ CREATE UNIQUE INDEX IF NOT EXISTS "cari_hareketler_tenant_source_ref_uidx"
       console.log(`[startup] ${HATTAT_CARI_MIGRATION_NAME} basarisiz kaydi silindi (${hattatCariFailed})`);
     }
 
+    // efatura_inbox tenant izolasyonu (20260617150000) — ilk denemede basarisiz kalip
+    // P3009'a yol acti (migrate deploy bloke -> app cokmesi). Basarisiz/yarim kaydi sil;
+    // asagida kisit idempotent uygulanip "applied" isaretlenecek.
+    const efaturaInboxFailed = await prisma.$executeRawUnsafe(
+      `DELETE FROM _prisma_migrations WHERE migration_name = '${EFATURA_INBOX_MIGRATION_NAME}' AND finished_at IS NULL`,
+    );
+    if (efaturaInboxFailed > 0) {
+      console.log(`[startup] ${EFATURA_INBOX_MIGRATION_NAME} basarisiz kaydi silindi (${efaturaInboxFailed})`);
+    }
+
     // 3) Eski yarım kayıtlar
     const r2 = await prisma.$executeRawUnsafe(`
       DELETE FROM _prisma_migrations
@@ -217,6 +251,10 @@ CREATE UNIQUE INDEX IF NOT EXISTS "cari_hareketler_tenant_source_ref_uidx"
     // PATCH: belgeKaynak + Mihsap kolonları yoksa ekle (idempotent ALTER)
     // Her statement'ı ayrı çalıştır — biri patlasa diğeri çalışsın.
     const patches = [
+      // efatura_inbox: unique (entegrator,uuid) -> (tenantId,taxpayerId,entegrator,uuid)
+      // Idempotent: eski kisiti dusur, yeniyi (varsa atla) ekle. Her cumle ayri calisir.
+      `ALTER TABLE "efatura_inbox" DROP CONSTRAINT IF EXISTS "efatura_inbox_entegrator_uuid_key";`,
+      `DO $$ BEGIN ALTER TABLE "efatura_inbox" ADD CONSTRAINT "efatura_inbox_tenantId_taxpayerId_entegrator_uuid_key" UNIQUE ("tenantId", "taxpayerId", "entegrator", "uuid"); EXCEPTION WHEN duplicate_object THEN NULL; WHEN duplicate_table THEN NULL; END $$;`,
       // v2.1 — Çoklu KDV oranı detayı (UBL TaxSubtotal)
       `ALTER TABLE "earsiv_faturalar" ADD COLUMN IF NOT EXISTS "kdvBreakdown" JSONB;`,
       // v2.1 — Belge validation field'ları (üçlü eşitlik + sahiplik kontrolü)
@@ -360,7 +398,7 @@ CREATE UNIQUE INDEX IF NOT EXISTS "cari_hareketler_tenant_source_ref_uidx"
     console.log(`[startup] earsiv patch: ${patchOk} ok, ${patchFail} fail (${patches.length} total)`);
 
     try {
-      await prisma.$executeRawUnsafe(HATTAT_CARI_SQL);
+      await execEachStatement(prisma, HATTAT_CARI_SQL, HATTAT_CARI_MIGRATION_NAME);
       const checksum = require('crypto').createHash('sha256').update(HATTAT_CARI_SQL).digest('hex');
       await prisma.$executeRawUnsafe(`
         INSERT INTO _prisma_migrations (id, checksum, finished_at, migration_name, logs, rolled_back_at, started_at, applied_steps_count)
@@ -375,7 +413,7 @@ CREATE UNIQUE INDEX IF NOT EXISTS "cari_hareketler_tenant_source_ref_uidx"
     }
 
     try {
-      await prisma.$executeRawUnsafe(LUCA_CAPTCHA_SQL);
+      await execEachStatement(prisma, LUCA_CAPTCHA_SQL, LUCA_CAPTCHA_MIGRATION_NAME);
       const checksum = require('crypto').createHash('sha256').update(LUCA_CAPTCHA_SQL).digest('hex');
       await prisma.$executeRawUnsafe(`
         INSERT INTO _prisma_migrations (id, checksum, finished_at, migration_name, logs, rolled_back_at, started_at, applied_steps_count)
@@ -387,6 +425,27 @@ CREATE UNIQUE INDEX IF NOT EXISTS "cari_hareketler_tenant_source_ref_uidx"
       console.log(`[startup] ${LUCA_CAPTCHA_MIGRATION_NAME} schema garanti edildi`);
     } catch (e) {
       console.error(`[startup] ${LUCA_CAPTCHA_MIGRATION_NAME} patch failed: ${e.message}`);
+    }
+
+    // efatura_inbox migration'ini "applied" isaretle ki migrate deploy onu calistirmaya
+    // calismasin (kisit yukarida patches icinde idempotent uygulandi). Basarisiz kayit
+    // yukarida silindigi icin INSERT calisir; zaten tamamlanmis kayit varsa atlar.
+    try {
+      const checksum = require('crypto')
+        .createHash('sha256')
+        .update(EFATURA_INBOX_MIGRATION_NAME)
+        .digest('hex');
+      await prisma.$executeRawUnsafe(`
+        INSERT INTO _prisma_migrations (id, checksum, finished_at, migration_name, logs, rolled_back_at, started_at, applied_steps_count)
+        SELECT gen_random_uuid()::text, '${checksum}', NOW(), '${EFATURA_INBOX_MIGRATION_NAME}', NULL, NULL, NOW(), 1
+        WHERE NOT EXISTS (
+          SELECT 1 FROM _prisma_migrations
+          WHERE migration_name = '${EFATURA_INBOX_MIGRATION_NAME}' AND finished_at IS NOT NULL
+        )
+      `);
+      console.log(`[startup] ${EFATURA_INBOX_MIGRATION_NAME} applied isaretlendi (P3009 fix)`);
+    } catch (e) {
+      console.error(`[startup] ${EFATURA_INBOX_MIGRATION_NAME} applied-mark failed: ${e.message}`);
     }
   } catch (e) {
     console.error('[startup] HATA:', e.message);
