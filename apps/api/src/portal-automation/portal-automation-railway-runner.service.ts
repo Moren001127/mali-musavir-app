@@ -1701,10 +1701,10 @@ export class PortalAutomationRailwayRunnerService implements OnModuleInit {
 
       // ── ARAC CEKME TESHIS modu: sadece scrape sonucu + DOM teshisi (KGM/silme/WhatsApp yok) ──
       if (mode === 'arac_test') {
-        await this.jobProgress(tenantId, job, 'arac_test_done', `Araç teşhis: ${plakalar.length} plaka — "${scrapeRes.diag?.paginatorText || ''}"`);
+        await this.jobProgress(tenantId, job, 'arac_test_done', `Araç teşhis: ${plakalar.length}/${scrapeRes.diag?.reportedTotal ?? '?'} plaka (eksiksiz=${scrapeRes.diag?.eksiksiz})`);
         return {
           recordCount: 0,
-          result: { runner: 'railway', phase: 'arac_test', codeVersion: 'v10-aracdiag2', plakaSayisi: plakalar.length, plakalar, diag: scrapeRes.diag },
+          result: { runner: 'railway', phase: 'arac_test', codeVersion: 'v11-mui', plakaSayisi: plakalar.length, plakalar, diag: scrapeRes.diag },
         };
       }
 
@@ -1793,6 +1793,7 @@ export class PortalAutomationRailwayRunnerService implements OnModuleInit {
     const seen = new Set<string>();
     const pageSnaps: any[] = [];
     let paginatorText = '';
+    let reportedTotal = 0;
     for (let p = 0; p < 40; p++) {
       const snap: any = await page.evaluate(() => {
         const isPlate = (s: string) => /^\d{2}[A-Z]{1,4}\d{1,5}$/.test(s);
@@ -1826,6 +1827,10 @@ export class PortalAutomationRailwayRunnerService implements OnModuleInit {
         return { pagText, rowCount: rows.length, plates, sampleRows, rangeTexts, selects, nextBtns, tbodyTr };
       });
       if (snap.pagText) paginatorText = snap.pagText;
+      // GIB'in bildirdigi TOPLAM (Z) — "1–10/11" -> 11. Silme guvenligi icin esas alinir.
+      if (!reportedTotal && Array.isArray(snap.rangeTexts)) {
+        for (const t of snap.rangeTexts) { const m = String(t).match(/\/\s*(\d+)/); if (m) { reportedTotal = parseInt(m[1], 10); break; } }
+      }
       let yeni = 0;
       for (const pl of snap.plates) { if (!seen.has(pl)) { seen.add(pl); yeni++; } }
       pageSnaps.push({
@@ -1833,34 +1838,42 @@ export class PortalAutomationRailwayRunnerService implements OnModuleInit {
         ...(p === 0 ? { sampleRows: snap.sampleRows, rangeTexts: snap.rangeTexts, selects: snap.selects, nextBtns: snap.nextBtns } : {}),
       });
 
+      // Hepsini topladiysak dur.
+      if (reportedTotal && seen.size >= reportedTotal) break;
+
+      // MUI TablePagination "sonraki sayfa" (aria-label "Go to next page") + mat fallback.
       const next = await page.$(
-        '.mat-mdc-paginator-navigation-next, .mat-paginator-navigation-next, button[aria-label*="onraki"], button[aria-label*="Next"]',
+        'button[aria-label="Go to next page"], button[aria-label*="next page"], .mat-mdc-paginator-navigation-next, button[aria-label*="onraki"], button[aria-label*="sonraki"]',
       );
       if (!next) break;
-      const disabled = await next.evaluate((el: any) => el.disabled || el.getAttribute('aria-disabled') === 'true').catch(() => true);
+      const disabled = await next.evaluate((el: any) => !!el.disabled || el.getAttribute('aria-disabled') === 'true').catch(() => true);
       if (disabled) break;
-      if (p > 0 && yeni === 0) break; // tek sayfa (boyut 100) -> sonsuz donguyu kes.
-      await next.click();
-      await page.waitForTimeout(1300);
+      if (p > 0 && yeni === 0) break; // ilerleme yoksa sonsuz donguyu kes.
+      await next.click().catch(() => {});
+      await page.waitForTimeout(1500);
     }
-    return { plakalar: Array.from(seen), diag: { paginatorText, total: seen.size, pages: pageSnaps } };
+    return { plakalar: Array.from(seen), diag: { paginatorText, reportedTotal, scraped: seen.size, eksiksiz: reportedTotal ? seen.size >= reportedTotal : null, pages: pageSnaps } };
   }
 
-  /** mat-paginator "Satır sayısı" select'ini 100 yapar (best-effort). */
+  /** "Satır sayısı" sayfa boyutunu 100 yapar — MUI TablePagination (+ mat fallback). */
   private async gibAracSayfaBoyutu100(page: any): Promise<void> {
     const sel = await page.$(
-      '.mat-mdc-paginator-page-size-select, .mat-paginator-page-size-select, mat-select[aria-label*="ayfa"], mat-select[aria-label*="atır"]',
+      '.MuiTablePagination-select, .MuiTablePagination-input, [aria-haspopup="listbox"], .mat-mdc-paginator-page-size-select, .mat-paginator-page-size-select',
     );
     if (!sel) return;
-    await sel.click();
-    await page.waitForTimeout(700);
-    const opts = await page.$$('mat-option, .mat-mdc-option, .mat-option, [role="option"]');
+    await sel.click().catch(() => {});
+    await page.waitForTimeout(800);
+    const opts = await page.$$(
+      'li[role="option"], .MuiMenuItem-root, .MuiTablePagination-menuItem, ul[role="listbox"] li, mat-option, .mat-mdc-option, [role="option"]',
+    );
+    let picked = false;
     for (const o of opts) {
       const t = String((await o.textContent().catch(() => '')) || '').trim();
-      if (t === '100') { await o.click().catch(() => {}); return; }
+      if (t === '100') { await o.click().catch(() => {}); picked = true; break; }
     }
-    // 100 yoksa en buyuk secenegi sec.
-    if (opts.length) await opts[opts.length - 1].click().catch(() => {});
+    // 100 yoksa en buyuk secenegi sec (genelde son).
+    if (!picked && opts.length) await opts[opts.length - 1].click().catch(() => {});
+    await page.waitForTimeout(1500);
   }
 
   /** Plakayi galeri ile ayni sekilde normalize edip Arac tablosuna upsert eder. */
