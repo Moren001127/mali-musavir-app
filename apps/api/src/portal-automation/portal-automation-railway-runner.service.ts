@@ -1628,6 +1628,26 @@ export class PortalAutomationRailwayRunnerService implements OnModuleInit {
       });
       await this.applyBrowserStealth(context);
 
+      // KGM sayfasinda head'deki UCUNCU-PARTI script (static host ozelyuk.kgm.gov.tr) Railway'den
+      // takiliyor; senkron script parser'i kilitleyince <body> (form #txtPlk) hic insa edilmiyor
+      // (ham HTTP/1.1 fetch tum HTML'i aliyor cunku alt-kaynak istemiyor). Cozum: gereksiz/bloke-eden
+      // alt-kaynaklari kes — CSS/font/media her yerde, ana-host DISI script'ler. Captcha resmi
+      // (#Image1) ANA hostta + image tipi -> dokunulmaz. Inline __doPostBack etkilenmez.
+      const kgmMainHost = 'webihlaltakip.kgm.gov.tr';
+      await context.route('**/*', (route: any) => {
+        try {
+          const req = route.request();
+          const type = req.resourceType();
+          let host = '';
+          try { host = new URL(req.url()).host; } catch { /* yoksay */ }
+          if (type === 'stylesheet' || type === 'font' || type === 'media') return route.abort();
+          if (type === 'script' && host && host !== kgmMainHost) return route.abort();
+          return route.continue();
+        } catch {
+          return route.continue().catch(() => {});
+        }
+      }).catch(() => {});
+
       // ── KGM SUNUCU TESTI ──
       if (mode === 'kgm_test') {
         const testPlaka = String(job?.payload?.testPlaka || '').trim();
@@ -2008,13 +2028,13 @@ export class PortalAutomationRailwayRunnerService implements OnModuleInit {
         .slice(0, 25);
       return {
         ...dom,
-        codeVersion: 'v5-netdiag',
+        codeVersion: 'v6-route',
         requestCount: requests.length,
         respondedCount: responded.size,
         pending,
       };
     } catch (err: any) {
-      return { error: this.compact(err?.message || err), codeVersion: 'v5-netdiag' };
+      return { error: this.compact(err?.message || err), codeVersion: 'v6-route' };
     } finally {
       await page.close().catch(() => {});
     }
