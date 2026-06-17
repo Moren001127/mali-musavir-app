@@ -887,6 +887,23 @@ const okcShok = okcFis.extractOkcFisKdv(okcShokText, okcDeps);
 assert(okcShok !== null, 'okc shok result not null');
 eq(okcShok.kdvTutari, '0,80', 'okc shok topkdv wins');
 approx(okcShok.breakdown.find((b) => b.oran === 1).tutar, 0.63, 0.01, 'okc shok 401 alias as %1');
+
+// FATIH HOME tek oranli OKC: toplam KDV "KDV %20 *1.225,34" biciminde (TOPKDV / KDV
+// TUTARI yok). Eskiden kdvLineRe bunu yakalamadigi + tek-oran item-breakdown bos
+// dondugu icin null donuyordu -> portal "OKUNAMADI" (Omer Ozen'in 75 alis fisi).
+const okcSingleRatePctText = [
+  'FATIH HOME ALISVERIS MERKEZI',
+  'FIS NO: 1942',
+  'SIVI DETERJAN %20 *7.352,05',
+  'KDV %20 *1.225,34',
+  'TOPLAM *7.352,05',
+  'KREDI *7.352,05',
+  'EKU NO:0001 Z NO:00001',
+].join('\n');
+const okcSingleRatePct = okcFis.extractOkcFisKdv(okcSingleRatePctText, okcDeps);
+assert(okcSingleRatePct !== null, 'OKC tek oranli "KDV %20 *tutar" sonucu null olmamali (OKUNAMADI fix)');
+approx(ublDeps.parseAmount(okcSingleRatePct.kdvTutari), 1225.34, 0.01, 'OKC tek oran KDV %20 = 1.225,34');
+approx(okcSingleRatePct.breakdown.find((b) => b.oran === 20).tutar, 1225.34, 0.01, 'OKC tek oran breakdown %20 = 1.225,34');
 approx(okcShok.breakdown.find((b) => b.oran === 20).tutar, 0.17, 0.01, 'okc shok %20 gross to kdv');
 
 const okcCancelText = [
@@ -1063,7 +1080,7 @@ const okcKdvHeaderText = [
 const okcKdvHeader = okcFis.extractOkcFisKdv(okcKdvHeaderText, okcDeps);
 assert(okcKdvHeader !== null, 'okc KDV-header table result not null');
 eq(okcKdvHeader.kdvTutari, '12,06', 'okc bare-KDV header does not add gross 70,00 (TOPKDV wins)');
-ok('azure/okc-fis.ts (29 assertion)');
+ok('azure/okc-fis.ts (32 assertion)');
 
 const okcCrossText = [
   'FIS NO : 0276',

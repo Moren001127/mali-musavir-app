@@ -47,7 +47,11 @@ export function extractOkcFisKdv(
   // Dört format: "TOPKDV", "KDV TUTARI/TOPLAM", "KDV" tek başına satır, "PKDV" (Azure OCR "TOPKDV" hatası)
   // "TOPKDV" OCR varyantlarına toleranslı: ilk harf T↔1↔I↔7, D↔O↔0, V↔U↔Y
   // (gerçek örnekler: "TOPKOV" D→O, "1OPKDV" T→1). "TOPLAM" eşleşmez (K yok).
-  const kdvLineRe = /\b[T1I7][O0]\s*P\s*K\s*[D0O]\s*[VUY]\b|\bK\.?\s*D\.?\s*V\.?\s*(?:TUTARI|TOPLAM)\b|^K\.?\s*D\.?\s*V\.?$|\bPK[D0O][VUY]\b/i;
+  // Son kalip: "KDV %20 *1.225,34" gibi TEK ORANLI KDV satiri. Bazi yazarkasalar
+  // (ör. FATIH HOME) toplam KDV'yi "KDV %ORAN tutar" biciminde yaziyor; "TOPKDV"
+  // veya "KDV TUTARI" yok. Satirin BASINDA "KDV %NN" + ayni satirda tutar sarti
+  // (urun satiri "SIVI DETERJAN %20 ..." KDV ile baslamadigi icin yakalanmaz).
+  const kdvLineRe = /\b[T1I7][O0]\s*P\s*K\s*[D0O]\s*[VUY]\b|\bK\.?\s*D\.?\s*V\.?\s*(?:TUTARI|TOPLAM)\b|^K\.?\s*D\.?\s*V\.?$|\bPK[D0O][VUY]\b|^K\.?\s*D\.?\s*V\.?\s*[%/]\s*\d{1,2}\b(?=.*\d[.,]\d{2})/i;
   const summaryLookaheadLabelRe = /^(?:TOPLAM|GENEL\s*TOPLAM|KDV\s*ORANI|KDV\s*DAHIL\s*TUTAR|KDV\s*DAH[Iİ]L\s*TUTAR)$/i;
   const summaryHardStopRe = /NAK[Iİ]T|KRED[Iİ]|KART|PARA\s*[UÜ]ST[UÜ]|KAS[Iİ]YER|M[UÜ][SŞ]TER[Iİ]/i;
   // Yalın "KDV" satırı (sadece "KDV"); çoğu zaman "KDV Oranı | KDV Dahil Tutar | KDV"
@@ -146,7 +150,7 @@ export function extractOkcFisItemRateBreakdown(
   // OCR sometimes inserts spaces inside amounts: "* 1. 000, 00".
   // Keep the capture broad enough for that form, then let parseAmount remove spaces.
   const amountRe = /([+-])?\s*[*]?\s*([+-])?\s*(\d{1,3}(?:\s*[.,]\s*\d{3})*\s*[.,]\s*\d{2}|\d+\s*[.,]\s*\d{2})\s*(?:TL|TRY)?/g;
-  const skipRe = /TOPKDV|TOPLAM|KDV\s*TUTARI|KDV\s*TOPLAM|KDV\s*ORAN|KDV\s*DAH[Iİ]L|KDV\s*DAHIL|^KDV$|NAK[Iİ]T|KRED[Iİ]|KART|PARA\s*[UÜ]ST[UÜ]|KAS[Iİ]YER|MERS[Iİ]S|EKU|Z\s*NO|F[Iİ][SŞ]\s*NO|TAR[Iİ]H|SAAT|VERG[Iİ]|V\.?D\.?|T\.?C\.?|TE[SŞ]EKK[UÜ]R|M[UÜ][SŞ]TER[Iİ]/i;
+  const skipRe = /TOPKDV|TOPLAM|KDV\s*TUTARI|KDV\s*TOPLAM|KDV\s*ORAN|KDV\s*DAH[Iİ]L|KDV\s*DAHIL|^KDV$|^K\s*D\s*V\s*[%/]\s*\d|NAK[Iİ]T|KRED[Iİ]|KART|PARA\s*[UÜ]ST[UÜ]|KAS[Iİ]YER|MERS[Iİ]S|EKU|Z\s*NO|F[Iİ][SŞ]\s*NO|TAR[Iİ]H|SAAT|VERG[Iİ]|V\.?D\.?|T\.?C\.?|TE[SŞ]EKK[UÜ]R|M[UÜ][SŞ]TER[Iİ]/i;
   const quantityUnitLineRe = /\b\d+(?:[.,]\d+)?\s*(?:KG|GR|AD|ADET|LT|L)?\s*[x×]\s*\d+(?:[.,]\d+)?/i;
 
   const parseLastAmount = (raw: string): number => {
