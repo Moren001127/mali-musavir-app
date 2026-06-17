@@ -17,6 +17,9 @@ model Tenant {
   email       String?
   phone       String?
   address     String?
+  // Galeri HGS ihlal sorgu sonuc ozetinin gonderilecegi WhatsApp numaralari.
+  // Bos ise runner'daki eski sabit liste / owner devreye girer.
+  galeriHgsPhones String[] @default([])
   createdAt   DateTime @default(now())
   updatedAt   DateTime @updatedAt
 

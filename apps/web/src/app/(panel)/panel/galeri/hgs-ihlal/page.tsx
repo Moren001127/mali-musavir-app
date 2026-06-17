@@ -1,13 +1,13 @@
 'use client';
 
-import { useState } from 'react';
+import { useState, useEffect } from 'react';
 import Link from 'next/link';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import { galeriApi, Arac } from '@/lib/galeri';
 import {
   Gavel, Plus, Search, Trash2, ExternalLink, RefreshCw, Car,
   CheckCircle2, AlertCircle, Clock, X as IconX, Save,
-  PlayCircle, Bot, FileText, Square,
+  PlayCircle, Bot, FileText, Square, Send,
   ArrowLeft, Wallet,
 } from 'lucide-react';
 import { toast } from 'sonner';
@@ -98,6 +98,29 @@ export default function HgsIhlalPage() {
       toast.success(`${data.plaka || ''} için KGM sunucu testi kuyruğa alındı. Sonuç birkaç dakikada portal-otomasyon işlerinde görünür.`);
     },
     onError: (err: any) => toast.error(err?.response?.data?.message || 'Sunucu testi başlatılamadı'),
+  });
+
+  // ── HGS sonuç alıcı WhatsApp numaraları (ofis bazlı) ──
+  const { data: hgsAlicilar = [] } = useQuery({
+    queryKey: ['galeri-hgs-alicilar'],
+    queryFn: () => galeriApi.getHgsAlicilar(),
+  });
+  const [aliciInput, setAliciInput] = useState('');
+  const [aliciEdited, setAliciEdited] = useState(false);
+  // Sunucudan gelen liste değişince input'u senkronla (kullanıcı düzenlemediyse).
+  useEffect(() => {
+    if (!aliciEdited) setAliciInput(hgsAlicilar.join(', '));
+  }, [hgsAlicilar, aliciEdited]);
+  const aliciKaydetMut = useMutation({
+    mutationFn: () => galeriApi.setHgsAlicilar(
+      aliciInput.split(/[\n,;]+/).map((s) => s.trim()).filter(Boolean),
+    ),
+    onSuccess: (d) => {
+      toast.success(`Alıcı numaralar kaydedildi (${d.numaralar.length} numara)`);
+      setAliciEdited(false);
+      qc.invalidateQueries({ queryKey: ['galeri-hgs-alicilar'] });
+    },
+    onError: (err: any) => toast.error(err?.response?.data?.message || 'Numaralar kaydedilemedi'),
   });
 
   // Tek araç için sorgu — satırın yanındaki butona basınca agent o plakayı sorgular
@@ -274,6 +297,37 @@ export default function HgsIhlalPage() {
           )}
         </div>
 
+      </section>
+
+      {/* ═══ HGS SONUÇ ALICILARI (WhatsApp) ═══ */}
+      <section className="rounded-2xl border p-5" style={{ background: 'rgba(255,255,255,0.02)', borderColor: 'rgba(255,255,255,0.06)' }}>
+        <div className="flex items-center gap-2 mb-1.5">
+          <Send size={15} style={{ color: ACCENT }} />
+          <span className="text-[14px] font-semibold" style={{ color: '#fafaf9' }}>HGS Sonuç Alıcıları (WhatsApp)</span>
+        </div>
+        <p className="text-[11.5px] mb-3" style={{ color: 'rgba(250,250,249,0.55)' }}>
+          Sorgu bitince ihlal/borç özeti bu numaralara WhatsApp&apos;tan otomatik gönderilir. Numaraları virgülle ayır (örn: <b>0532 111 22 33, 0535 058 74 75</b>). Boş bırakırsan eski varsayılan numaralara gider. Not: Daha önce bizim hattımızla hiç yazışmamış numarada ilk mesaj WhatsApp&apos;ın güvenlik gecikmesine takılıp birkaç dakika sonra düşebilir.
+        </p>
+        <div className="flex items-end gap-2 flex-wrap">
+          <textarea
+            value={aliciInput}
+            onChange={(e) => { setAliciInput(e.target.value); setAliciEdited(true); }}
+            rows={2}
+            placeholder="0532 111 22 33, 0535 058 74 75"
+            className="flex-1 min-w-[260px] px-3 py-2 text-[13px] rounded-lg outline-none resize-y"
+            style={{ background: 'rgba(255,255,255,0.03)', border: '1px solid rgba(255,255,255,0.08)', color: '#fafaf9' }}
+          />
+          <button
+            onClick={() => aliciKaydetMut.mutate()}
+            disabled={aliciKaydetMut.isPending || !aliciEdited}
+            className="inline-flex items-center gap-1.5 px-4 py-2.5 text-[13px] font-bold rounded-[10px] transition-all disabled:opacity-50 disabled:cursor-not-allowed"
+            style={{ background: `linear-gradient(135deg, ${ACCENT}, ${ACCENT_DEEP})`, color: INK }}
+          >
+            {aliciKaydetMut.isPending
+              ? <><RefreshCw size={14} className="animate-spin" /> Kaydediliyor...</>
+              : <><Save size={14} /> Kaydet</>}
+          </button>
+        </div>
       </section>
 
       {/* ═══ ARAÇ LİSTESİ ═══ */}

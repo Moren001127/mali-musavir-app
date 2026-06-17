@@ -92,6 +92,20 @@ export class GaleriController {
     });
   }
 
+  // ── HGS SONUÇ ALICI NUMARALARI ─────────────────────
+  /** HGS sonuç özetinin gönderileceği WhatsApp numaraları (ofis bazlı). */
+  @Get('hgs-alicilar')
+  async getHgsAlicilar(@Req() req: any) {
+    const numaralar = await this.svc.getHgsAliciNumaralar(req.user.tenantId);
+    return { numaralar };
+  }
+
+  /** Numara listesini kaydet. */
+  @Put('hgs-alicilar')
+  setHgsAlicilar(@Req() req: any, @Body() body: { numaralar?: string[] }) {
+    return this.svc.setHgsAliciNumaralar(req.user.tenantId, body?.numaralar || []);
+  }
+
   /** Canlı agent durumu (son ping, çalışıyor mu, aktif komut var mı) */
   @Get('agent-durumu')
   agentDurumu(@Req() req: any) {

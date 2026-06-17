@@ -287,6 +287,8 @@ export class GaleriService {
       return { ok: false, sebep: 'Zaten çalışan bir sunucu HGS sorgusu var', jobId: mevcut.id, durum: mevcut.status };
     }
 
+    const alicilar = await this.getHgsAliciNumaralar(tenantId);
+
     const job = await (this.prisma as any).portalAutomationJob.create({
       data: {
         tenantId,
@@ -302,6 +304,7 @@ export class GaleriService {
           label: 'Galeri HGS ihlal sorgu (sunucu)',
           provider: 'GIB_IVD',
           ownerType: 'TAXPAYER',
+          ...(alicilar.length ? { whatsappPhones: alicilar } : {}),
           progress: { at: new Date().toISOString(), step: 'pending', message: 'Sunucu HGS sorgusu kuyrukta.' },
         },
       },
@@ -338,6 +341,7 @@ export class GaleriService {
         select: { id: true },
       });
       if (mevcut) { atlanan++; continue; }
+      const alicilar = await this.getHgsAliciNumaralar(a.tenantId);
       await (this.prisma as any).portalAutomationJob.create({
         data: {
           tenantId: a.tenantId,
@@ -352,6 +356,7 @@ export class GaleriService {
             label: 'Galeri HGS haftalık (Pazartesi)',
             provider: 'GIB_IVD',
             ownerType: 'TAXPAYER',
+            ...(alicilar.length ? { whatsappPhones: alicilar } : {}),
             progress: { at: new Date().toISOString(), step: 'pending', message: 'Haftalık HGS sorgusu kuyrukta.' },
           },
         },
@@ -359,6 +364,38 @@ export class GaleriService {
       olusturulan++;
     }
     return { olusturulan, atlanan, aday: aracTaxpayers.length };
+  }
+
+  // ════════════ HGS SONUC ALICI NUMARALARI (ofis bazli) ════════════
+
+  /** Numarayi sadelestir: bosluk/parantez/tire at, sadece rakam birak. */
+  private temizleTelefon(raw: string): string {
+    return String(raw || '').replace(/[^\d]/g, '');
+  }
+
+  /**
+   * Bu ofisin HGS sonuc ozetini gonderecegi WhatsApp numaralari.
+   * Bos ise runner kendi varsayilanina (eski sabit liste / owner) duser.
+   */
+  async getHgsAliciNumaralar(tenantId: string): Promise<string[]> {
+    const t = await (this.prisma as any).tenant.findUnique({
+      where: { id: tenantId },
+      select: { galeriHgsPhones: true },
+    }).catch(() => null);
+    const list = Array.isArray(t?.galeriHgsPhones) ? t.galeriHgsPhones : [];
+    return list.map((p: string) => this.temizleTelefon(p)).filter((p: string) => p.length >= 10);
+  }
+
+  /** Galeri sayfasi: HGS sonuc alici numaralarini kaydet (en fazla 10 numara). */
+  async setHgsAliciNumaralar(tenantId: string, numaralar: string[]): Promise<{ ok: boolean; numaralar: string[] }> {
+    const temiz = Array.from(
+      new Set((Array.isArray(numaralar) ? numaralar : []).map((p) => this.temizleTelefon(p)).filter((p) => p.length >= 10)),
+    ).slice(0, 10);
+    await (this.prisma as any).tenant.update({
+      where: { id: tenantId },
+      data: { galeriHgsPhones: temiz },
+    });
+    return { ok: true, numaralar: temiz };
   }
 
   /** Agent'ın son ping'i, running durumu, son meta bilgisi */

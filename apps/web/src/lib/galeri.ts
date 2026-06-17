@@ -92,6 +92,13 @@ export const galeriApi = {
   komutKuyrugu: () =>
     api.get<any[]>('/galeri/komut-kuyrugu').then((r) => r.data),
 
+  // ── HGS sonuç alıcı WhatsApp numaraları (ofis bazlı) ──
+  getHgsAlicilar: () =>
+    api.get<{ numaralar: string[] }>('/galeri/hgs-alicilar').then((r) => r.data.numaralar),
+
+  setHgsAlicilar: (numaralar: string[]) =>
+    api.put<{ ok: boolean; numaralar: string[] }>('/galeri/hgs-alicilar', { numaralar }).then((r) => r.data),
+
   // ── PDF Rapor (Selim Motors logolu, print-optimize HTML) ──
   /**
    * PDF rapor HTML'ini JWT auth ile çeker, yeni pencerede açar.
