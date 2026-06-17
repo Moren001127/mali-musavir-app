@@ -385,15 +385,28 @@ export class TaxpayerPortalService {
   async getTebligatlar(taxpayerId: string, tenantId: string) {
     const rows = await (this.prisma as any).portalDocument.findMany({
       where: { tenantId, taxpayerId, belgeTuru: 'E_TEBLIGAT' },
-      orderBy: { createdAt: 'desc' },
-      take: 120,
-      select: { id: true, title: true, referenceNo: true, period: true, issuedAt: true, receivedAt: true, createdAt: true, viewedAt: true, storageKey: true },
+      orderBy: [{ receivedAt: 'desc' }, { createdAt: 'desc' }],
+      take: 200,
+      select: { id: true, title: true, referenceNo: true, period: true, issuedAt: true, receivedAt: true, createdAt: true, viewedAt: true, storageKey: true, raw: true },
     });
-    return rows.map((r: any) => ({
-      id: r.id, title: r.title, referenceNo: r.referenceNo, period: r.period,
-      issuedAt: r.issuedAt, receivedAt: r.receivedAt, createdAt: r.createdAt, viewedAt: r.viewedAt,
-      goruntulenebilir: !!r.storageKey,
-    }));
+    return rows.map((r: any) => {
+      const raw = r.raw || {};
+      return {
+        id: r.id,
+        title: r.title,
+        referenceNo: r.referenceNo,
+        period: r.period,
+        issuedAt: r.issuedAt,
+        receivedAt: r.receivedAt,
+        createdAt: r.createdAt,
+        viewedAt: r.viewedAt,
+        // Müşavir e-Tebligat tablosu ile aynı alanlar:
+        kurumAciklama: raw.kurumAciklama || null,
+        altKurum: raw.altKurum || null,
+        tebligZamani: raw.tebligZamani || null,
+        goruntulenebilir: !!r.storageKey,
+      };
+    });
   }
 
   /** SGK belgeleri — Tahakkuk Fişi ve Hizmet Listesi AYRI gruplar. */

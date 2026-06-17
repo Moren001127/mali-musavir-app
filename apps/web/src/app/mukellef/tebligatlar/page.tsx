@@ -1,10 +1,19 @@
 'use client';
 import { useQuery } from '@tanstack/react-query';
 import { taxpayerApi } from '@/lib/taxpayer-api';
-import { Section, Empty, Spinner, PageTitle, openBelge } from '../_lib/shared';
-import { MailWarning, Eye, BellDot } from 'lucide-react';
+import { Section, Empty, Spinner, PageTitle, Th, THead, openBelge } from '../_lib/shared';
+import { Eye, BellDot } from 'lucide-react';
 
 const SARI = '#fbbf24';
+const YESIL = '#4ade80';
+const KIRMIZI = '#f87171';
+
+const fmtTarih = (v?: string | null) => {
+  if (!v) return '—';
+  const d = new Date(v);
+  if (!Number.isFinite(d.getTime())) return '—';
+  return d.toLocaleDateString('tr-TR');
+};
 
 export default function MukellefTebligatlar() {
   const { data = [], isLoading } = useQuery({
@@ -16,7 +25,7 @@ export default function MukellefTebligatlar() {
   const okunmamis = liste.filter((t) => !t.viewedAt).length;
 
   return (
-    <div className="space-y-5">
+    <div className="space-y-4">
       <PageTitle ust="GİB" baslik="e-Tebligatlarım" />
 
       {isLoading ? <Spinner /> : (
@@ -30,35 +39,46 @@ export default function MukellefTebligatlar() {
             </div>
           )}
 
-          <Section baslik="Gelen e-Tebligatlar" aciklama="Açtığınızda okundu olarak işaretlenir.">
+          <Section baslik="e-Tebligat" aciklama="GİB'den gelen tebligatlar, yeni tarihliler üstte. Satırdaki simge ile tebligatı (PDF) açabilirsiniz.">
             {liste.length === 0 ? <div className="px-4 py-5"><Empty>e-Tebligat bulunmuyor.</Empty></div> : (
-              <div className="divide-y px-4" style={{ borderColor: 'rgba(255,255,255,0.06)' }}>
-                {liste.map((t: any) => {
-                  const yeni = !t.viewedAt;
-                  return (
-                    <div key={t.id} className="flex items-center justify-between py-3 gap-3">
-                      <div className="flex items-center gap-3 min-w-0">
-                        <span className="flex h-9 w-9 items-center justify-center rounded-lg shrink-0" style={{ background: `${SARI}14`, border: `1px solid ${SARI}30`, color: SARI }}><MailWarning size={16} /></span>
-                        <div className="min-w-0">
-                          <div className="flex items-center gap-2">
-                            <p className="text-[13.5px] font-medium truncate" style={{ color: '#fafaf9' }}>{t.title}</p>
-                            {yeni && <span className="text-[10px] font-bold px-1.5 py-0.5 rounded" style={{ background: `${SARI}22`, color: SARI }}>YENİ</span>}
-                          </div>
-                          <p className="text-[11.5px]" style={{ color: 'rgba(250,250,249,0.4)' }}>
-                            {t.referenceNo ? `${t.referenceNo} · ` : ''}{t.issuedAt ? new Date(t.issuedAt).toLocaleDateString('tr-TR') : (t.createdAt ? new Date(t.createdAt).toLocaleDateString('tr-TR') : '')}
-                          </p>
-                        </div>
-                      </div>
-                      {t.goruntulenebilir && (
-                        <button type="button" onClick={() => openBelge('tebligat', t.id)} title="Görüntüle"
-                          className="flex h-8 w-8 items-center justify-center rounded-lg shrink-0 transition hover:bg-white/[0.06]"
-                          style={{ border: `1px solid ${SARI}45`, color: SARI, background: `${SARI}12` }}>
-                          <Eye size={15} />
-                        </button>
-                      )}
-                    </div>
-                  );
-                })}
+              <div className="overflow-x-auto">
+                <table className="w-full min-w-[640px] text-sm">
+                  <THead>
+                    <Th>Gönderen Kurum</Th>
+                    <Th>Belge No</Th>
+                    <Th>Tebliğ</Th>
+                    <Th align="center">Durum</Th>
+                    <Th align="right">Belge</Th>
+                  </THead>
+                  <tbody>
+                    {liste.map((t: any) => {
+                      const okundu = !!t.viewedAt;
+                      return (
+                        <tr key={t.id} className="border-t" style={{ borderColor: 'rgba(255,255,255,0.055)' }}>
+                          <td className="px-4 py-3">
+                            <div className="text-[12.5px] font-semibold max-w-[320px] truncate" style={{ color: '#fafaf9' }}>{t.kurumAciklama || t.title || '—'}</div>
+                            {t.altKurum && <div className="text-[11px] mt-0.5" style={{ color: 'rgba(250,250,249,0.4)' }}>{t.altKurum}</div>}
+                          </td>
+                          <td className="px-4 py-3 text-[12.5px] tabular-nums" style={{ color: 'rgba(250,250,249,0.55)' }}>{t.referenceNo || '—'}</td>
+                          <td className="px-4 py-3 text-[12.5px] tabular-nums" style={{ color: 'rgba(250,250,249,0.7)' }}>{fmtTarih(t.tebligZamani || t.issuedAt || t.receivedAt || t.createdAt)}</td>
+                          <td className="px-4 py-3 text-center">
+                            <span className="inline-flex items-center gap-1.5 text-[12px] font-semibold" style={{ color: okundu ? YESIL : KIRMIZI }}>
+                              <span style={{ width: 7, height: 7, borderRadius: '50%', background: okundu ? YESIL : KIRMIZI, display: 'inline-block' }} />
+                              {okundu ? 'Okundu' : 'Okunmadı'}
+                            </span>
+                          </td>
+                          <td className="px-4 py-3">
+                            <div className="flex justify-end">
+                              {t.goruntulenebilir
+                                ? <button type="button" onClick={() => openBelge('tebligat', t.id)} title="Tebligatı görüntüle" className="flex h-8 w-8 items-center justify-center rounded-lg transition hover:bg-white/[0.06]" style={{ border: `1px solid ${SARI}45`, color: SARI, background: `${SARI}12` }}><Eye size={15} /></button>
+                                : <span className="text-[11px]" style={{ color: 'rgba(250,250,249,0.25)' }}>—</span>}
+                            </div>
+                          </td>
+                        </tr>
+                      );
+                    })}
+                  </tbody>
+                </table>
               </div>
             )}
           </Section>
