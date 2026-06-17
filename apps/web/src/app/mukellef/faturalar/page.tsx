@@ -5,7 +5,7 @@ import { taxpayerApi } from '@/lib/taxpayer-api';
 import { fmtTRY, Card, Section, Empty, Spinner, PageTitle, StatStrip, GOLD, Badge, Th, THead, openBelge } from '../_lib/shared';
 import {
   ArrowDownLeft, ArrowUpRight, Eye, BarChart3, Calendar,
-  Scale, Percent, FileStack, TrendingUp,
+  Scale, Percent, FileStack, TrendingUp, ReceiptText,
 } from 'lucide-react';
 
 const ALIS = '#d4b876';
@@ -62,7 +62,7 @@ export default function MukellefFaturalar() {
 
   return (
     <div className="space-y-5">
-      <PageTitle ust="Fatura Merkezi" baslik="Faturalarım" right={seciciler} />
+      <PageTitle ust="Fatura Merkezi" baslik="Faturalarım" icon={ReceiptText} right={seciciler} />
 
       {isLoading ? <Spinner /> : (
         <div className={`space-y-5 transition-opacity ${isFetching ? 'opacity-60' : ''}`}>

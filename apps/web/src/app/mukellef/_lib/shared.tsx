@@ -116,22 +116,49 @@ export const DURUM: Record<string, { label: string; color: string; Icon: any }> 
 };
 
 /** Sayfa başlığı — ofis paneli PageHeader ile birebir aynı kompakt dil. right: sağ aksiyon (ör. dönem seçici). */
-export function PageTitle({ ust, baslik, right }: { ust: string; baslik: string; right?: React.ReactNode }) {
+/**
+ * Zengin sayfa başlığı — ofis "Aylık Takip Listesi" başlığıyla BİREBİR:
+ * üst altın şerit + radial parıltı + altın ikon dairesi + Fraunces başlık + rozet/aksiyon.
+ * icon: sol daire ikonu · aciklama: başlık altı rozet(ler) (string→nötr pill) · right: sağ aksiyon.
+ */
+export function PageTitle({ ust, baslik, icon: Icon, aciklama, right }: { ust: string; baslik: string; icon?: any; aciklama?: React.ReactNode; right?: React.ReactNode }) {
   return (
-    <div
-      className="mb-4 flex items-center justify-between gap-3 rounded-2xl px-4 py-3"
+    <header
+      className="relative overflow-hidden rounded-2xl border p-5 mb-4"
       style={{
-        background: 'linear-gradient(135deg, rgba(212,184,118,0.055), rgba(8,18,18,0.70))',
-        border: '1px solid rgba(212,184,118,0.12)',
-        boxShadow: '0 14px 34px rgba(0,0,0,0.14)',
+        background: 'radial-gradient(120% 140% at 0% 0%, rgba(212,184,118,0.16), transparent 46%), radial-gradient(120% 140% at 100% 0%, rgba(139,118,73,0.12), transparent 48%), #0f0d0b',
+        borderColor: 'rgba(255,255,255,0.06)',
+        boxShadow: '0 16px 42px rgba(0,0,0,0.28)',
       }}
     >
-      <div>
-        {ust ? <p className="text-[10.5px] font-semibold uppercase tracking-[.16em] mb-0.5" style={{ color: 'rgba(212,184,118,0.8)' }}>{ust}</p> : null}
-        <h1 className="page-title">{baslik}</h1>
+      <div className="absolute inset-x-0 top-0 h-1" style={{ background: 'linear-gradient(90deg, #8b7649, #b8a06f, #d4b876, #e7cf95, #d4b876, #b8a06f)' }} />
+      {ust ? (
+        <div className="mb-3 flex items-center gap-2.5">
+          <span className="h-px w-[26px]" style={{ background: GOLD }} />
+          <span className="text-[10px] font-bold uppercase tracking-[.18em]" style={{ color: '#b8a06f' }}>{ust}</span>
+        </div>
+      ) : null}
+      <div className="flex flex-wrap items-center justify-between gap-4">
+        <div className="flex min-w-0 items-center gap-3.5">
+          {Icon ? (
+            <span className="grid shrink-0 place-items-center rounded-xl" style={{ width: 46, height: 46, background: `linear-gradient(135deg, ${GOLD}, #b8a06f)`, boxShadow: '0 8px 22px rgba(212,184,118,0.30)' }}>
+              <Icon size={24} style={{ color: '#1a1410' }} />
+            </span>
+          ) : null}
+          <div className="min-w-0">
+            <h1 style={{ fontFamily: 'Fraunces, Georgia, serif', fontSize: 28, fontWeight: 600, color: '#fafaf9', letterSpacing: '-.03em', lineHeight: 1.08 }}>{baslik}</h1>
+            {aciklama ? (
+              <div className="mt-2 flex flex-wrap items-center gap-2">
+                {typeof aciklama === 'string'
+                  ? <span className="inline-flex items-center rounded-full px-2.5 py-1 text-[11.5px] font-semibold" style={{ background: 'rgba(255,255,255,0.035)', border: '1px solid rgba(255,255,255,0.08)', color: 'rgba(250,250,249,0.72)' }}>{aciklama}</span>
+                  : aciklama}
+              </div>
+            ) : null}
+          </div>
+        </div>
+        {right ? <div className="flex items-center gap-2 flex-wrap justify-end shrink-0">{right}</div> : null}
       </div>
-      {right ? <div className="flex items-center gap-2 flex-wrap justify-end shrink-0">{right}</div> : null}
-    </div>
+    </header>
   );
 }
 

@@ -2,7 +2,7 @@
 import { useQuery } from '@tanstack/react-query';
 import { taxpayerApi } from '@/lib/taxpayer-api';
 import { Section, Empty, Spinner, PageTitle, Th, THead, openBelge } from '../_lib/shared';
-import { Eye } from 'lucide-react';
+import { Eye, ShieldCheck } from 'lucide-react';
 
 const GOLD = '#d4b876';
 const STEEL = '#9da8b7';
@@ -22,7 +22,7 @@ export default function MukellefSgk() {
 
   return (
     <div className="space-y-4">
-      <PageTitle ust="SGK" baslik="SGK Belgelerim" />
+      <PageTitle ust="SGK" baslik="SGK Belgelerim" icon={ShieldCheck} aciklama={`${rows.length} belge`} />
       {isLoading ? <Spinner /> : (
         <Section
           baslik="SGK — Tahakkuk Fişleri & Hizmet Listeleri"

@@ -3,7 +3,7 @@ import { useState } from 'react';
 import { useQuery, useMutation } from '@tanstack/react-query';
 import { taxpayerApi } from '@/lib/taxpayer-api';
 import { GOLD, Card, Spinner, PageTitle } from '../_lib/shared';
-import { KeyRound, Check, Loader2 } from 'lucide-react';
+import { KeyRound, Check, Loader2, UserRound } from 'lucide-react';
 
 export default function MukellefProfil() {
   const { data: me, isLoading } = useQuery({ queryKey: ['portal-me'], queryFn: () => taxpayerApi.get('/portal/me').then((r) => r.data) });
@@ -27,7 +27,7 @@ export default function MukellefProfil() {
     sifreMut.mutate();
   }
 
-  if (isLoading) return (<div><PageTitle ust="Hesap" baslik="Profilim" /><Spinner /></div>);
+  if (isLoading) return (<div><PageTitle ust="Hesap" baslik="Profilim" icon={UserRound} /><Spinner /></div>);
 
   const ad = me?.companyName || [me?.firstName, me?.lastName].filter(Boolean).join(' ') || '—';
   const rows: Array<[string, string]> = [
@@ -44,7 +44,7 @@ export default function MukellefProfil() {
 
   return (
     <div className="space-y-4">
-      <PageTitle ust="Hesap" baslik="Profilim" />
+      <PageTitle ust="Hesap" baslik="Profilim" icon={UserRound} />
       <Card>
         <div className="divide-y" style={{ borderColor: 'rgba(255,255,255,0.06)' }}>
           {rows.map(([k, v]) => (

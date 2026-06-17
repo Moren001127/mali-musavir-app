@@ -2,7 +2,7 @@
 import { useQuery } from '@tanstack/react-query';
 import { taxpayerApi } from '@/lib/taxpayer-api';
 import { Section, Empty, Spinner, PageTitle, openBelge } from '../_lib/shared';
-import { Eye } from 'lucide-react';
+import { Eye, FolderArchive } from 'lucide-react';
 
 const STEEL = '#9da8b7';
 const KATEGORI: Record<string, string> = {
@@ -30,7 +30,7 @@ export default function MukellefEvraklar() {
 
   return (
     <div className="space-y-4">
-      <PageTitle ust="Arşiv" baslik="Evraklarım" />
+      <PageTitle ust="Arşiv" baslik="Evraklarım" icon={FolderArchive} aciklama={`${liste.length} belge`} />
       {isLoading ? <Spinner /> : (
         <Section baslik="Yüklü evraklar" aciklama="Müşavirinizin mükellef kartınıza yüklediği dosyalar. Simge ile görüntüleyebilirsiniz.">
           {liste.length === 0 ? (

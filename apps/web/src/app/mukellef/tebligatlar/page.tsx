@@ -2,7 +2,7 @@
 import { useQuery } from '@tanstack/react-query';
 import { taxpayerApi } from '@/lib/taxpayer-api';
 import { Section, Empty, Spinner, PageTitle, Th, THead, openBelge, ozetBelge } from '../_lib/shared';
-import { Eye, BellDot, Sparkles } from 'lucide-react';
+import { Eye, BellDot, Sparkles, MailWarning } from 'lucide-react';
 
 const SARI = '#fbbf24';
 const YESIL = '#4ade80';
@@ -26,7 +26,7 @@ export default function MukellefTebligatlar() {
 
   return (
     <div className="space-y-4">
-      <PageTitle ust="GİB" baslik="e-Tebligatlarım" />
+      <PageTitle ust="GİB" baslik="e-Tebligatlarım" icon={MailWarning} aciklama={`${liste.length} tebligat${okunmamis > 0 ? ` · ${okunmamis} okunmamış` : ''}`} />
 
       {isLoading ? <Spinner /> : (
         <>

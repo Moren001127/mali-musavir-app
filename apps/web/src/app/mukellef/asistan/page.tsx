@@ -55,7 +55,7 @@ export default function MukellefAsistan() {
 
   return (
     <div>
-      <PageTitle ust="Size özel asistan" baslik="MOREN AI" />
+      <PageTitle ust="Size özel asistan" baslik="MOREN AI" icon={Sparkles} />
       <div className="rounded-2xl overflow-hidden flex flex-col" style={{ background: 'rgba(255,255,255,0.02)', border: '1px solid rgba(184,160,111,0.2)', height: '68vh', minHeight: 460 }}>
         <div className="flex items-center gap-2 px-4 py-3" style={{ borderBottom: '1px solid rgba(255,255,255,0.06)', background: 'linear-gradient(180deg, rgba(184,160,111,0.1), transparent)' }}>
           <div className="flex h-8 w-8 items-center justify-center rounded-lg" style={{ background: `linear-gradient(135deg, ${GOLD}, #8b7649)`, color: '#0f0d0b' }}><Sparkles size={16} /></div>

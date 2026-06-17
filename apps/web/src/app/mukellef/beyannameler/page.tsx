@@ -2,7 +2,7 @@
 import { useQuery } from '@tanstack/react-query';
 import { taxpayerApi } from '@/lib/taxpayer-api';
 import { fmtTRY, Empty, Spinner, PageTitle, Section, openBelge, ozetBelge } from '../_lib/shared';
-import { Eye, Sparkles } from 'lucide-react';
+import { Eye, Sparkles, FileText } from 'lucide-react';
 
 // Beyanname türü etiketleri — müşavir Beyanname Listesi ile aynı.
 const TIP_ETIKET: Record<string, string> = {
@@ -48,7 +48,7 @@ export default function MukellefBeyannameler() {
 
   return (
     <div className="space-y-4">
-      <PageTitle ust="Vergi & Beyan" baslik="Beyannamelerim" />
+      <PageTitle ust="Vergi & Beyan" baslik="Beyannamelerim" icon={FileText} aciklama={`${liste.length} beyanname kaydı`} />
 
       {isLoading ? <Spinner /> : (
         <Section

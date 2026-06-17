@@ -2,7 +2,7 @@
 import Link from 'next/link';
 import { useQuery } from '@tanstack/react-query';
 import { taxpayerApi } from '@/lib/taxpayer-api';
-import { FileText, Wallet, FolderArchive, Sparkles, ArrowRight, ReceiptText, MailWarning, BellDot, BarChart3 } from 'lucide-react';
+import { FileText, Wallet, FolderArchive, Sparkles, ArrowRight, ReceiptText, MailWarning, BellDot, BarChart3, Gauge } from 'lucide-react';
 import { fmtTRY, Card, Spinner, OzetCard, PageTitle } from './_lib/shared';
 import { MukellefBrifing } from './_lib/MukellefBrifing';
 import { MukellefTakvim } from './_lib/MukellefTakvim';
@@ -42,7 +42,7 @@ export default function MukellefOverview() {
 
   return (
     <div className="space-y-6">
-      <PageTitle ust="Hoş geldiniz" baslik={ad} />
+      <PageTitle ust="Hoş geldiniz" baslik={ad} icon={Gauge} />
 
       <MukellefBrifing userName={ad} />
 

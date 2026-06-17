@@ -2,7 +2,7 @@
 import { useQuery } from '@tanstack/react-query';
 import { taxpayerApi } from '@/lib/taxpayer-api';
 import { fmtTRY, Section, Empty, Spinner, PageTitle, Th, THead } from '../_lib/shared';
-import { Printer } from 'lucide-react';
+import { Printer, Wallet } from 'lucide-react';
 
 const YESIL = '#4ade80';
 const KIRMIZI = '#f87171';
@@ -33,7 +33,7 @@ export default function MukellefCari() {
   });
   const { data: me } = useQuery({ queryKey: ['portal-me'], queryFn: () => taxpayerApi.get('/portal/me').then((r) => r.data) });
 
-  if (isLoading) return (<div><PageTitle ust="Ofis" baslik="Cari Hesabım" /><Spinner /></div>);
+  if (isLoading) return (<div><PageTitle ust="Ofis" baslik="Cari Hesabım" icon={Wallet} /><Spinner /></div>);
 
   const netBakiye = Number(data?.bakiye ?? 0);
   const borclu = netBakiye > 0;
@@ -86,7 +86,7 @@ export default function MukellefCari() {
 
   return (
     <div className="space-y-4">
-      <PageTitle ust="Ofis" baslik="Cari Hesabım" right={
+      <PageTitle ust="Ofis" baslik="Cari Hesabım" icon={Wallet} right={
         <button type="button" onClick={ekstreYazdir} className="inline-flex items-center gap-1.5 h-[36px] px-3 rounded-[10px] text-[12.5px] font-semibold transition hover:brightness-110" style={{ background: 'rgba(212,184,118,0.14)', border: '1px solid rgba(212,184,118,0.3)', color: '#d4b876' }}>
           <Printer size={14} /> Ekstre indir
         </button>
