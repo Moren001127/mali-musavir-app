@@ -63,7 +63,12 @@ export function extractMultiRateKdvFromItemRows(text: string, deps: KdvItemRowsD
 
   type Marker = { oran: number; lineIdx: number; afterLabel: string; isSummary: boolean; hasMatrahLabel: boolean };
   const markers: Marker[] = [];
-  const summaryLineRe = /HESAPLANAN\s*K\.?\s*D\.?\s*V\.?|TOPKDV|TOP\s*K\.?\s*D\.?\s*V\.?|HES\.?\s*MATRAH\s*[/-]?\s*K\.?\s*D\.?\s*V\.?|MATRAH\s*[/-]?\s*K\.?\s*D\.?\s*V\.?/i;
+  // Summary (authoritative) KDV satir kaliplari. "KDV Tutari(MATRAH %ORAN)" e-fatura
+  // alt-toplam satiri da buraya dahil: bu satir taninmazsa kalem satirlarindaki ayni
+  // oranli KDV ile TOPLANIP iki katina cikiyordu (gercek bug: UKF2026000000235 →
+  // %10 1.176 + 1.176 = 2.352, %20 11.184,40 + 11.184,40 = 22.368,80). Bu kalip
+  // summary sayilinca oranCoveredBySummary devreye girer, kalem satirlari atilir.
+  const summaryLineRe = /HESAPLANAN\s*K\.?\s*D\.?\s*V\.?|TOPKDV|TOP\s*K\.?\s*D\.?\s*V\.?|HES\.?\s*MATRAH\s*[/-]?\s*K\.?\s*D\.?\s*V\.?|MATRAH\s*[/-]?\s*K\.?\s*D\.?\s*V\.?|K\.?\s*D\.?\s*V\.?\s*TUTAR[IİI]?\s*\(/i;
   const matrahLabelRe = /HES\.?\s*MATRAH\s*[/-]?\s*K\.?\s*D\.?\s*V\.?|MATRAH\s*[/-]?\s*K\.?\s*D\.?\s*V\.?/i;
 
   for (let i = 0; i < lines.length; i++) {

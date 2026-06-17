@@ -902,7 +902,19 @@ export class ReconciliationEngine {
         normRaw.includes('20') &&
         normDirect.startsWith(normRaw) &&
         normDirect.length - normRaw.length === 1;
-      if (this.sameBelgeNo(direct, rawInvoiceNo) || directLooksComplete) return direct;
+      // ocrBelgeNo gecerli ve TAM bir e-belge no ise, ham metinden cikan kirpik
+      // varyant (bas/son 1-2 karakter dusmus) onu EZMEMELI. Gercek hata:
+      // ocrBelgeNo "IRU2026000004080" dogru, ham metinde "Fatura No: RU2026..."
+      // (bas "I" dusmus) → eski mantik kirpik "RU..."i donduruyor, e-fatura belge
+      // no uyumsuz sayilip MATCHED olmuyordu. normDirect gecerli e-belge formatinda
+      // ve normRaw onun bas/son kirpilmis hali ise temiz ocrBelgeNo'yu kullan.
+      const directIsEFatura = E_BELGE_NO_REGEX.test(normDirect);
+      const rawIsTruncationOfDirect =
+        directIsEFatura &&
+        normDirect.length > normRaw.length &&
+        normDirect.length - normRaw.length <= 2 &&
+        (normDirect.endsWith(normRaw) || normDirect.startsWith(normRaw));
+      if (this.sameBelgeNo(direct, rawInvoiceNo) || directLooksComplete || rawIsTruncationOfDirect) return direct;
     }
     if (rawInvoiceNo) return rawInvoiceNo;
     if (direct && !this.isOcrHeaderWordAsBelgeNo(direct)) return direct;
