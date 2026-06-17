@@ -782,32 +782,29 @@ export class TaxpayerPortalService {
     };
     const motivation = motivationByFocus[focus];
 
-    // Kurallı yedek özet
-    const yedek = (() => {
-      const parcalar: string[] = [];
-      if (okunmamis > 0) parcalar.push(`${okunmamis} okunmamış e-Tebligatınız`);
-      if (bekleyen > 0) parcalar.push(`${bekleyen} bekleyen beyannameniz`);
-      if (yakin.length > 0) parcalar.push(`${yakin.length} yaklaşan son tarihiniz`);
-      if (bakiye > 0) parcalar.push(`${TL(bakiye)} açık bakiyeniz`);
-      if (!parcalar.length) return 'Bugün acil bir başlık görünmüyor; portalınız güncel görünüyor.';
-      return `Bugün dikkat etmeniz gereken başlıklar: ${parcalar.join(', ')}.`;
-    })();
+    // Kurallı yedek özet — GENEL çerçeve (rakam/kalem tekrarı YOK; detaylar uyarılarda).
+    const acilSayi = (okunmamis > 0 ? 1 : 0) + (bekleyen > 0 ? 1 : 0) + (yakin.length > 0 ? 1 : 0) + (bakiye > 0 ? 1 : 0);
+    const yedek = acilSayi === 0
+      ? 'Bugün acil bir başlık görünmüyor; portalınız güncel. Dilediğiniz konuyu MOREN AI’ya sorabilirsiniz.'
+      : 'Aşağıda bugün takip etmenizde fayda olan başlıkları öncelik sırasıyla derledim; üzerlerine dokunarak ilgili sayfaya geçebilirsiniz.';
 
     let summary = yedek;
     try {
       const system = [
-        "Sen MOREN AI'sın — mükellef portalında günlük brifing yazıyorsun. Mükellefe (şirkete) bugünkü durumunu",
-        '1-2 KISA cümleyle, sade ve profesyonel Türkçe ile özetle. SADECE aşağıdaki verilerden konuş, rakam uydurma.',
-        'Şirket adını yazma, "siz" diye hitap et. Liste değil, akıcı cümle. Abartma.',
+        "Sen MOREN AI'sın — mükellef portalında günlük brifing yazıyorsun. Bugünkü genel durumu TEK kısa,",
+        'sıcak ve profesyonel Türkçe cümleyle çerçevele. ÖNEMLİ: Uyarı maddeleri ekranda AYRICA listeleniyor;',
+        'bu yüzden rakamları (cari bakiye, tutar) ve kalemleri TEK TEK TEKRARLAMA — sadece günü genel olarak',
+        'çerçevele (ör. "sakin bir gün", "birkaç başlık takip istiyor"). Şirket adı yazma, "siz" diye hitap et, abartma.',
       ].join(' ');
       const prompt = [
-        `Okunmamış e-Tebligat: ${okunmamis}`,
-        `İşlem bekleyen beyanname: ${bekleyen}`,
-        `Açık cari bakiye: ${TL(bakiye)}`,
-        `Yaklaşan son tarihler (7 gün): ${yakin.map((t) => `${t.tip} ${dt(t.sonTarih)} (${t.kalanGun}g)`).join('; ') || 'yok'}`,
+        'Bugünkü durum sinyalleri (sadece tonu belirlemek için; rakamları cevabında tekrarlama):',
+        `- Okunmamış e-Tebligat var mı: ${okunmamis > 0 ? 'evet' : 'hayır'}`,
+        `- İşlem bekleyen beyanname var mı: ${bekleyen > 0 ? 'evet' : 'hayır'}`,
+        `- Açık cari bakiye var mı: ${bakiye > 0 ? 'evet' : 'hayır'}`,
+        `- 7 gün içinde yaklaşan son tarih var mı: ${yakin.length > 0 ? 'evet' : 'hayır'}`,
       ].join('\n');
       const res = await claudeTextViaMax({ prompt, system, model: 'claude-sonnet-4-6', timeoutMs: 30000 });
-      if (res.ok && res.text?.trim()) summary = res.text.trim().slice(0, 240);
+      if (res.ok && res.text?.trim()) summary = res.text.trim().slice(0, 220);
     } catch (e) {
       this.logger.warn(`Brifing özeti Max hatası: ${(e as Error).message}`);
     }
