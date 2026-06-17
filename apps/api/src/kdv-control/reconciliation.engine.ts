@@ -64,7 +64,10 @@ function getImageBreakdown(image: ReceiptImage): BreakdownItem[] {
         matrah: null,
       };
     })
-    .filter((b: BreakdownItem) => b.tutar > 0);
+    // tutar>0 ama oran=0 olan satır çelişkilidir (KDV var, oran yok) — downstream
+    // zaten oran>0 filtreler; burada da eleyerek tutarsız satırın breakdown'a
+    // sızmasını engelle.
+    .filter((b: BreakdownItem) => b.tutar > 0 && b.oran > 0);
 }
 
 @Injectable()

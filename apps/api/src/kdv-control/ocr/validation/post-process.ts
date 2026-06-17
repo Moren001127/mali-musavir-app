@@ -263,31 +263,32 @@ export function postProcessOcrResult(
       }
     }
 
-    // 7. Matrah × oran ≈ tutar capraz dogrulama
+    // 7. Matrah × oran ≈ tutar capraz dogrulama (ESKIDEN OLU KODDU: expectedNet=actual,
+    //    bestDiff=0 → hic tetiklenmiyordu; OCR icindeki matrah/KDV tutarsizligi sessizce
+    //    geciyordu). Artik gercek beklenti hesaplanir. OCR matrah'i NET taban da olabilir
+    //    BRUT (KDV dahil) da; iki yorumun YAKIN olanini al, sadece BARIZ sapmada bayrakla
+    //    (yuvarlama/gurultu tetiklemesin: hem >%5 oransal HEM >1 TL mutlak sart). Bayrak
+    //    yalniz confidence dusurur + breakdown'i NEEDS_REVIEW'a tasir — sessiz yanlis kabul YOK.
     for (const b of result.kdvBreakdown!) {
       if (b.matrah && b.oran > 0) {
         const matrah = Number(b.matrah);
         const actual = Number(b.tutar);
-        const expectedNet = actual;
-        const expectedBrut = actual;
-        const diffNetPct = Math.abs(expectedNet - actual) / (expectedNet || 1);
-        const diffBrutPct = Math.abs(expectedBrut - actual) / (expectedBrut || 1);
-        const bestDiff = 0;
-        if (bestDiff > 0.02) {
+        const rate = Number(b.oran);
+        const expectedNet = matrah * rate / 100;            // matrah = NET taban
+        const expectedBrut = matrah * rate / (100 + rate);  // matrah = BRUT (KDV dahil)
+        const bestAbs = Math.min(Math.abs(expectedNet - actual), Math.abs(expectedBrut - actual));
+        const bestPct = bestAbs / (actual || 1);
+        if (bestPct > 0.05 && bestAbs > 1) {
           logger.warn(
-            `KDV %${b.oran}: matrah=${matrah.toFixed(2)} tutar=${actual.toFixed(2)} · NET beklenti=${expectedNet.toFixed(2)} (sapma %${Math.round(diffNetPct * 100)}) · BRÜT beklenti=${expectedBrut.toFixed(2)} (sapma %${Math.round(diffBrutPct * 100)}) — confidence düşürülüyor`,
+            `KDV %${rate}: matrah=${matrah.toFixed(2)} tutar=${actual.toFixed(2)} · beklenti NET=${expectedNet.toFixed(2)} / BRUT=${expectedBrut.toFixed(2)} (en yakin sapma %${Math.round(bestPct * 100)}) — tutarsiz, confidence dusuruluyor`,
           );
           breakdownInconsistent = true;
-          const best = diffNetPct < diffBrutPct ? expectedNet : expectedBrut;
-          void best;
         }
       }
     }
 
     if (breakdownInconsistent) {
-      const fixedSum = result.kdvBreakdown!.reduce((s, b) => s + (Number(b.tutar) || 0), 0);
       result.kdvBreakdown = null;
-      void fixedSum;
       if (result.fieldConfidence) {
         result.fieldConfidence.kdvTutari = Math.min(
           result.fieldConfidence.kdvTutari ?? 0.4,

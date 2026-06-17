@@ -997,6 +997,35 @@ postProcess.validateOcrResult(eFaturaBad, 'bozuk.pdf', ppDeps);
 assert(eFaturaBad.fieldConfidence.belgeNo < 0.9, 'gerçekten bozuk e-belge no hâlâ cezalanmalı');
 ok('validation/post-process.ts belge no format (2 assertion)');
 
+// ─── post-process matrah×oran çapraz doğrulama (eskiden ölü koddu) ───
+const ppDeps2 = {
+  parseAmount: ublDeps.parseAmount,
+  formatAmount: ublDeps.formatAmount,
+  formatIsoToTr: () => null,
+  eBelgeNoDistance: () => 99,
+  extractDateFromText: () => null,
+  logger: { log: () => {}, warn: () => {} },
+};
+// TUTARSIZ: %20 oran, matrah=100 → beklenen ~20, ama tutar=50 (matrah×oran tutmuyor).
+// Eskiden bestDiff=0 sabit olduğu için hiç yakalanmazdı; artık breakdown null + güven düşer.
+const badBreakdown = {
+  belgeTipi: 'EFATURA', belgeNo: 'ABC2026000000123', date: '2026-05-21', rawText: '',
+  kdvTutari: '500,00', totalTutari: null, kdvBreakdown: [{ oran: 20, tutar: 500, matrah: 1000 }],
+  fieldConfidence: { belgeNo: 0.95, date: 0.9, kdvTutari: 0.92 },
+};
+postProcess.postProcessOcrResult(badBreakdown, null, 'tutarsiz.pdf', ppDeps2);
+assert(badBreakdown.kdvBreakdown === null, 'matrah×oran tutarsiz breakdown null edilmeli');
+assert((badBreakdown.fieldConfidence.kdvTutari ?? 1) <= 0.4, 'tutarsiz breakdown KDV guveni dusurulmeli');
+// TUTARLI: %20 oran, matrah=1000, tutar=200 → korunur (yanlış pozitif olmamalı).
+const goodBreakdown = {
+  belgeTipi: 'EFATURA', belgeNo: 'ABC2026000000124', date: '2026-05-21', rawText: '',
+  kdvTutari: '200,00', totalTutari: null, kdvBreakdown: [{ oran: 20, tutar: 200, matrah: 1000 }],
+  fieldConfidence: { belgeNo: 0.95, date: 0.9, kdvTutari: 0.92 },
+};
+postProcess.postProcessOcrResult(goodBreakdown, null, 'tutarli.pdf', ppDeps2);
+assert(Array.isArray(goodBreakdown.kdvBreakdown) && goodBreakdown.kdvBreakdown.length === 1, 'tutarli breakdown korunmali');
+ok('validation/post-process.ts matrah×oran capraz dogrulama (3 assertion)');
+
 // ═══════════════════════════════════════════════════════════
 // SONUC
 // ═══════════════════════════════════════════════════════════
