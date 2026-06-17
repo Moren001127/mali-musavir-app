@@ -679,6 +679,32 @@ eq(multiNoParen.length, 3, 'multi-rate eksik parantezde de 3 oran');
 approx(multiNoParen.find((b) => b.oran === 20).tutar, 31.5, 0.01, 'multi-rate "KDV(%20" (parantezsiz) %20 yakalanir');
 ok('azure/kdv-breakdown.ts extractMultiRateKdv (5 assertion)');
 
+// ─── azure/kdv-item-rows.ts (e-fatura alt-toplam cift-sayim regresyonu) ───
+const kdvItemRows = require(path.join(ROOT, 'apps/api/src/kdv-control/ocr/providers/azure/kdv-item-rows.ts'));
+const itemRowDeps = {
+  parseAmount: ublDeps.parseAmount,
+  normalizeAzureText: azureHelpers.normalizeAzureText,
+  stripMatrahFragments: azureHelpers.stripMatrahFragments,
+  isForbiddenKdvAmountLine: (v) => textClassifiers.isForbiddenKdvAmountLine(v, foldFn),
+  isLikelyKdvAmountColumnHeader: (ls, i) => textClassifiers.isLikelyKdvAmountColumnHeader(ls, i, foldFn),
+};
+// GERCEK bug (UKF2026000000235): "KDV Tutari(MATRAH %ORAN) deger" e-fatura alt-toplam
+// satiri summary olarak taninmayip kalem satirlariyla TOPLANIP her oran 2x cikiyordu
+// (%10 1.176 -> 2.352, %20 ... -> 2x). Footer summary sayilinca kalem satirlari atilir.
+const itemRowDoubleText = [
+  'GUAJ BOYA %10,00 1.176,00 TL 11.760,00 TL',
+  'DEFTER %20,00 500,00 TL 2.500,00 TL',
+  'Mal/Hizmet Toplam Tutari 14.260,00 TL',
+  'KDV Tutari(11.760,00 %10) 1.176,00 TL',
+  'KDV Tutari(2.500,00 %20) 500,00 TL',
+  'Vergiler Dahil Toplam Tutar 15.936,00 TL',
+].join('\n');
+const itemRowResult = kdvItemRows.extractMultiRateKdvFromItemRows(itemRowDoubleText, itemRowDeps);
+eq(itemRowResult.length, 2, 'item-rows cift-sayim: 2 oran');
+approx(itemRowResult.find((b) => b.oran === 10).tutar, 1176, 0.01, 'item-rows %10 cift-saymaz (1.176, 2.352 degil)');
+approx(itemRowResult.find((b) => b.oran === 20).tutar, 500, 0.01, 'item-rows %20 cift-saymaz (500, 1.000 degil)');
+ok('azure/kdv-item-rows.ts cift-sayim regresyonu (3 assertion)');
+
 // ─── azure/okc-fis.ts ───
 const okcDeps = {
   parseAmount: ublDeps.parseAmount,
