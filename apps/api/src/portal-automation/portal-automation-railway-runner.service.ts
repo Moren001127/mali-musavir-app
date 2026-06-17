@@ -1977,13 +1977,18 @@ export class PortalAutomationRailwayRunnerService implements OnModuleInit {
     }
   }
 
-  /** Tarayicida KGM sayfasi GERCEKTE ne render ediyor? (#txtPlk yoksa neden — WAF/iframe/render) */
+  /** Tarayicida KGM sayfasi GERCEKTE ne render ediyor + HANGI istek takiliyor (pending)? */
   private async kgmTarayiciTeshis(context: any) {
     const page = await context.newPage();
+    const requests: Array<{ url: string; type: string }> = [];
+    const responded = new Set<string>();
+    page.on('request', (r: any) => requests.push({ url: r.url(), type: r.resourceType() }));
+    page.on('response', (r: any) => responded.add(r.url()));
+    page.on('requestfailed', (r: any) => responded.add(r.url()));
     try {
       await page.goto(KGM_HGS_URL, { waitUntil: 'commit', timeout: 60_000 });
-      await page.waitForTimeout(8000);
-      return await page.evaluate(() => ({
+      await page.waitForTimeout(10_000);
+      const dom = await page.evaluate(() => ({
         url: location.href,
         title: document.title,
         hasTxtPlk: !!document.querySelector('#txtPlk'),
@@ -1992,11 +1997,24 @@ export class PortalAutomationRailwayRunnerService implements OnModuleInit {
           .filter(Boolean)
           .slice(0, 30),
         iframeCount: document.querySelectorAll('iframe').length,
-        bodyTextHead: String((document.body && document.body.innerText) || '').replace(/\s+/g, ' ').slice(0, 800),
+        bodyTextHead: String((document.body && document.body.innerText) || '').replace(/\s+/g, ' ').slice(0, 400),
         htmlLen: document.documentElement.outerHTML.length,
+        readyState: document.readyState,
       }));
+      // Cevap gelmemis (takili) istekler = body'yi blokeleyen suclu(lar).
+      const pending = requests
+        .filter((q) => !responded.has(q.url))
+        .map((q) => `${q.type} ${q.url}`)
+        .slice(0, 25);
+      return {
+        ...dom,
+        codeVersion: 'v5-netdiag',
+        requestCount: requests.length,
+        respondedCount: responded.size,
+        pending,
+      };
     } catch (err: any) {
-      return { error: this.compact(err?.message || err) };
+      return { error: this.compact(err?.message || err), codeVersion: 'v5-netdiag' };
     } finally {
       await page.close().catch(() => {});
     }
