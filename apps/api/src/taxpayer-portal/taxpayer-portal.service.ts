@@ -647,11 +647,11 @@ export class TaxpayerPortalService {
 
     // Geçici Max hatası/zaman aşımına karşı 1 retry (eval'de tek seferlik boş yanıt görüldü).
     try {
-      let res = await claudeTextViaMax({ prompt, system, model: 'claude-sonnet-4-6' });
+      let res = await claudeTextViaMax({ prompt, system, model: 'claude-sonnet-4-6', timeoutMs: 60000 });
       if (!res.ok || !res.text?.trim()) {
         this.logger.warn(`Mükellef AI ilk deneme başarısız (${res.error || 'boş yanıt'}) — retry`);
         await new Promise((r) => setTimeout(r, 600));
-        res = await claudeTextViaMax({ prompt, system, model: 'claude-sonnet-4-6' });
+        res = await claudeTextViaMax({ prompt, system, model: 'claude-sonnet-4-6', timeoutMs: 60000 });
       }
       if (res.ok && res.text?.trim()) return { reply: res.text };
       this.logger.warn(`Mükellef AI Max hatası (retry sonrası): ${res.error}`);
