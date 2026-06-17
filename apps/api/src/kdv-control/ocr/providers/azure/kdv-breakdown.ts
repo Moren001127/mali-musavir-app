@@ -315,10 +315,53 @@ export function extractKdvFromInvoiceTotals(
     return null;
   };
 
-  const explicitKdv = findKdvFromSummaryMathLine() ?? findKdvFromTableHeader() ?? findExplicitKdvAmount() ?? findAmountNear(
-    /HESAPLANAN\s+K\.?\s*D\.?\s*V\.?|KATMA\s*DE[ĞG]ER\s*VERG[İI]S[İI]|KDV\s*TUTARI|K\.?\s*D\.?\s*V\.?\s*\(\s*%?\s*\d{1,2}(?:[.,]\d{1,2})?\s*\)/i,
-    { skipMatrah: true },
-  );
+  // Tek-oranli e-Arsivde acik KDV bulunamazsa: KDV Matrahi (veya Mal/Hizmet Toplam)
+  // × TEK oran. Birden fazla farkli oran varsa devreye GIRMEZ (multi-rate baska
+  // stratejilerin isi). Truncate olmus/totali kesik tek-oranli faturalarda calisir.
+  const findKdvFromMatrahTimesRate = (): number | null => {
+    const rates = new Set<number>();
+    const hasKdvOranLabel = lines.some((l) => /K\.?\s*D\.?\s*V\.?\s*ORAN/i.test(foldTurkishAscii(l)));
+    for (const line of lines) {
+      const f = foldTurkishAscii(line);
+      const m =
+        f.match(/K\.?\s*D\.?\s*V\.?[^%\n]{0,20}\(\s*%\s*(\d{1,2})(?:[.,]\d{1,2})?\s*\)/) ||
+        f.match(/K\.?\s*D\.?\s*V\.?\s*ORAN[II]?[^%\n]{0,12}%\s*(\d{1,2})/);
+      if (m) {
+        rates.add(parseInt(m[1], 10));
+        continue;
+      }
+      // "KDV Orani" etiketli belgede (cok kalemli, totali kesik fatura) kalem-ici
+      // "% 20,00" oranlarini da topla — HEPSI ayni olmali (tek oran sarti korunur).
+      if (hasKdvOranLabel) {
+        const mm = f.match(/^%\s*(\d{1,2})(?:[.,]\d{1,2})?\b/);
+        if (mm) rates.add(parseInt(mm[1], 10));
+      }
+    }
+    if (rates.size !== 1) return null;
+    const rate = [...rates][0];
+    if (!(rate >= 1 && rate <= 30)) return null; // %0/muaf burada cozulmez
+    const baseLabels = [/K\.?\s*D\.?\s*V\.?\s*MATRAH/i, /MAL\s*[/ ]?\s*H[İI]ZMET\s*TOPLAM\s*TUTAR/i];
+    for (const lab of baseLabels) {
+      for (let i = 0; i < lines.length; i++) {
+        if (!lab.test(foldTurkishAscii(lines[i]))) continue;
+        for (let j = 0; j <= 3 && i + j < lines.length; j++) {
+          const base = extractAmounts(lines[i + j]).find((a) => a > rate);
+          if (base != null) return Math.round(((base * rate) / 100) * 100) / 100;
+        }
+      }
+    }
+    return null;
+  };
+
+  const explicitKdv =
+    findKdvFromSummaryMathLine() ??
+    findKdvFromTableHeader() ??
+    findExplicitKdvAmount() ??
+    findAmountNear(
+      /HESAPLANAN\s+K\.?\s*D\.?\s*V\.?|KATMA\s*DE[ĞG]ER\s*VERG[İI]S[İI]|KDV\s*TUTARI|K\.?\s*D\.?\s*V\.?(?:\s*[-/]?\s*VAT)?\s*\(\s*%?\s*\d{1,2}(?:[.,]\d{1,2})?\s*\)/i,
+      { skipMatrah: true },
+    ) ??
+    findKdvFromMatrahTimesRate();
   const oranMatch =
     normalized.match(/K\.?\s*D\.?\s*V\.?[^\n%]{0,120}%\s*(\d{1,2})(?:[.,]\d{1,2})?/i)
     ?? normalized.match(/%\s*(\d{1,2})(?:[.,]\d{1,2})?\s*K\.?\s*D\.?\s*V\.?/i);

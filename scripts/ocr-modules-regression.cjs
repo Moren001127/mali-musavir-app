@@ -818,6 +818,31 @@ eq(multiNoParen.length, 3, 'multi-rate eksik parantezde de 3 oran');
 approx(multiNoParen.find((b) => b.oran === 20).tutar, 31.5, 0.01, 'multi-rate "KDV(%20" (parantezsiz) %20 yakalanir');
 ok('azure/kdv-breakdown.ts extractMultiRateKdv (5 assertion)');
 
+// ─── extractKdvFromInvoiceTotals: tek-oranlı e-Arşiv (Ömer Özen OKUNAMADI fix) ───
+// Gerçek IGA/ARV OCR metni (kayıtlı fişlerden birebir). (1) "KDV-VAT(%20)" etiketi:
+// "-VAT" arası yüzünden eskiden kaçıyordu; tutarlar "KDV Tutarı" başlığından uzakta.
+const earsivVatText = [
+  "KDV Oranı","KDV Tutarı","Mal Hizmet Tutarı","Row","Material","Goods or Service","Quantity",
+  "Unit Price","Discount","Amount","Vat Rate","Vat Amount","Goods or Service","Code","Rate","Amount",
+  "1","SD000302","OTOPARK (OTOMOBİL) /","CARPARK AUTO","1,0 Adet","225,00 TL","%20,00","45,00 TL",
+  "225,00 TL","Mal Hizmet Toplam Tutarı","Goods or Service Total Amount","225,00 TL","Toplam İskonto",
+  "Total Discount","0,00 TL","KDV-VAT(%20)","45,00 TL","KDV Matrahı","Vat Exclusive Amount","225,00 TL",
+  "Ödenecek Tutar","Payable Amount",
+].join('\n');
+const earsivVat = kdvBreakdown.extractKdvFromInvoiceTotals(earsivVatText, breakdownDeps);
+assert(earsivVat && Math.abs(earsivVat.kdv - 45) < 0.01, `KDV-VAT(%20) tek oran e-arsiv 45 okunmali (gercek=${JSON.stringify(earsivVat)})`);
+// (2) Totali OCR'da kesik çok-kalemli tek-oran fatura (ARV): "KDV Oranı" etiketi +
+// kalem-içi "% 20,00" oranlar + "Mal/Hizmet Toplam 6.185,09" → matrah×oran = 1.237,02.
+const earsivTruncText = [
+  "KDV Oranı","KDV Tutarı","Vergiler","Açıklaması","Tutarı","Embraco NEU","6.090,09","1","AE-6220GK",
+  "AE-6220GK","1 Adet","6.090,0900 TL","% 20,00 1.218,02 TL","6220 GK-CSR","TL","Bakır Kılcal","2",
+  "BK-002","BK-002","Boru","0,1 KG","950,0000 TL","% 20,00","19,00 TL","95,00 TL","1.00×2.00mm",
+  "Mal / Hizmet Toplam Tutarı","6.185,09 TL","Toplam İskonto","0,00 TL",
+].join('\n');
+const earsivTrunc = kdvBreakdown.extractKdvFromInvoiceTotals(earsivTruncText, breakdownDeps);
+assert(earsivTrunc && Math.abs(earsivTrunc.kdv - 1237.02) < 0.02, `kesik çok-kalem tek oran matrah×oran -> 1237,02 (gercek=${JSON.stringify(earsivTrunc)})`);
+ok('azure/kdv-breakdown.ts extractKdvFromInvoiceTotals tek-oran e-arsiv (2 assertion)');
+
 // ─── azure/kdv-item-rows.ts (e-fatura alt-toplam cift-sayim regresyonu) ───
 const kdvItemRows = require(path.join(ROOT, 'apps/api/src/kdv-control/ocr/providers/azure/kdv-item-rows.ts'));
 const itemRowDeps = {

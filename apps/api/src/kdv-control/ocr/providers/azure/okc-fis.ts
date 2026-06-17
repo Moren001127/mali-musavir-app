@@ -47,11 +47,14 @@ export function extractOkcFisKdv(
   // Dört format: "TOPKDV", "KDV TUTARI/TOPLAM", "KDV" tek başına satır, "PKDV" (Azure OCR "TOPKDV" hatası)
   // "TOPKDV" OCR varyantlarına toleranslı: ilk harf T↔1↔I↔7, D↔O↔0, V↔U↔Y
   // (gerçek örnekler: "TOPKOV" D→O, "1OPKDV" T→1). "TOPLAM" eşleşmez (K yok).
-  // Son kalip: "KDV %20 *1.225,34" gibi TEK ORANLI KDV satiri. Bazi yazarkasalar
-  // (ör. FATIH HOME) toplam KDV'yi "KDV %ORAN tutar" biciminde yaziyor; "TOPKDV"
-  // veya "KDV TUTARI" yok. Satirin BASINDA "KDV %NN" + ayni satirda tutar sarti
-  // (urun satiri "SIVI DETERJAN %20 ..." KDV ile baslamadigi icin yakalanmaz).
-  const kdvLineRe = /\b[T1I7][O0]\s*P\s*K\s*[D0O]\s*[VUY]\b|\bK\.?\s*D\.?\s*V\.?\s*(?:TUTARI|TOPLAM)\b|^K\.?\s*D\.?\s*V\.?$|\bPK[D0O][VUY]\b|^K\.?\s*D\.?\s*V\.?\s*[%/]\s*\d{1,2}\b(?=.*\d[.,]\d{2})/i;
+  // Son kalip: "KDV %20" ile baslayan TEK ORANLI KDV satiri. Bazi yazarkasalar
+  // (ör. FATIH HOME, OTO ILKER) toplam KDV'yi "KDV %ORAN" biciminde yaziyor
+  // (TOPKDV / KDV TUTARI yok); tutar AYNI satirda ("KDV %20 *1.276,50") VEYA
+  // ALT satirda ("KDV %20\n*1.276,50") olabilir — alttakini asagidaki 4-satir
+  // lookahead yakalar. Satir BASINDA "KDV" + sadece bosluk + "%NN" sarti var:
+  // urun satiri "YEDEK PARCA %20 ..." KDV ile baslamaz, "KDV ORANI %20" ise araya
+  // "ORANI" girdigi icin eslesmez (yanlis pozitif yok).
+  const kdvLineRe = /\b[T1I7][O0]\s*P\s*K\s*[D0O]\s*[VUY]\b|\bK\.?\s*D\.?\s*V\.?\s*(?:TUTARI|TOPLAM)\b|^K\.?\s*D\.?\s*V\.?$|\bPK[D0O][VUY]\b|^K\.?\s*D\.?\s*V\.?\s*[%/]\s*\d{1,2}\b/i;
   const summaryLookaheadLabelRe = /^(?:TOPLAM|GENEL\s*TOPLAM|KDV\s*ORANI|KDV\s*DAHIL\s*TUTAR|KDV\s*DAH[Iİ]L\s*TUTAR)$/i;
   const summaryHardStopRe = /NAK[Iİ]T|KRED[Iİ]|KART|PARA\s*[UÜ]ST[UÜ]|KAS[Iİ]YER|M[UÜ][SŞ]TER[Iİ]/i;
   // Yalın "KDV" satırı (sadece "KDV"); çoğu zaman "KDV Oranı | KDV Dahil Tutar | KDV"
