@@ -305,10 +305,12 @@ export class WhatsAppBotController implements OnModuleInit {
     return 'Medya g\u00f6nderdi';
   }
 
-  private async findTaxpayerByPhone(phone: string) {
+  private async findTaxpayerByPhone(phone: string, tenantId?: string) {
     const normalized = this.normalize(phone);
     const taxpayers = await this.prisma.taxpayer.findMany({
-      where: { isActive: true },
+      // Tenant'a kilitle: aksi halde aynı telefon başka ofiste kayıtlıysa
+      // çapraz-tenant mükellef verisi sızabilir (çoklu ofis senaryosu).
+      where: { isActive: true, ...(tenantId ? { tenantId } : {}) },
       select: {
         id: true,
         tenantId: true,
@@ -363,16 +365,9 @@ export class WhatsAppBotController implements OnModuleInit {
         return tenant;
       }
       this.logger.warn(`[OwnerCheck] env phone matched but tenant slug=${tenantSlug} not found`);
-
-      // 3) Son fallback: tek tenant varsa direkt onu kullan (single-tenant kurulum)
-      const allTenants = await this.prisma.tenant.findMany({
-        select: { id: true, name: true, slug: true, phone: true },
-        take: 2,
-      });
-      if (allTenants.length === 1) {
-        this.logger.log(`[OwnerCheck] tek tenant tespit edildi, owner kabul edildi: ${allTenants[0].id} (${allTenants[0].slug})`);
-        return allTenants[0];
-      }
+      // NOT: "tek tenant varsa owner kabul et" fallback'i KALDIRILDI (fail-closed).
+      // Owner için MOREN_OWNER_TENANT_ID veya MOREN_OWNER_TENANT_SLUG zorunlu;
+      // aksi halde owner yetkisi verilmez (yanlış kişiye owner verisi gitmesin).
     }
 
     const integrationRows = await (this.prisma as any).integrationConnection.findMany({
@@ -2110,13 +2105,16 @@ export class WhatsAppBotController implements OnModuleInit {
 
     // Gelen mesaj kaydi, musteri auto-reply ayarindan bagimsizdir.
     // MOREN_CLIENT_BOT_ENABLED yalniz otomatik cevap uretimini acar/kapatir.
-    const taxpayer: any = await this.findTaxpayerByPhone(msg.from);
+    // Önce bu mesajın geldiği ofisi (tenant) çöz, sonra mükellefi YALNIZ o
+    // tenant içinde ara — çapraz-tenant veri sızıntısını engeller.
+    const inboundTenant = await this.findTenantForInbound(msg);
+    if (!inboundTenant) {
+      this.logger.warn(`WhatsApp bot: tenant bulunamadi ${msg.from}`);
+      return;
+    }
+    const taxpayer: any = await this.findTaxpayerByPhone(msg.from, inboundTenant.id);
     if (!taxpayer) {
-      const tenant = await this.findTenantForInbound(msg);
-      if (!tenant) {
-        this.logger.warn(`WhatsApp bot: telefon eslesmedi ve tenant bulunamadi ${msg.from}`);
-        return;
-      }
+      const tenant = inboundTenant;
       const contact = await this.ensureWhatsAppConversationContact(tenant.id, msg.from, 'unknown');
       const incomingContent = await this.contentWithSavedMedia(tenant.id, contact.id, msg);
       await this.prisma.communicationLog.create({
