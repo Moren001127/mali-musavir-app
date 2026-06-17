@@ -1704,7 +1704,7 @@ export class PortalAutomationRailwayRunnerService implements OnModuleInit {
         await this.jobProgress(tenantId, job, 'arac_test_done', `Araç teşhis: ${plakalar.length}/${scrapeRes.diag?.reportedTotal ?? '?'} plaka (eksiksiz=${scrapeRes.diag?.eksiksiz})`);
         return {
           recordCount: 0,
-          result: { runner: 'railway', phase: 'arac_test', codeVersion: 'v12-stable', plakaSayisi: plakalar.length, plakalar, diag: scrapeRes.diag },
+          result: { runner: 'railway', phase: 'arac_test', codeVersion: 'v13-api', plakaSayisi: plakalar.length, plakalar, diag: scrapeRes.diag },
         };
       }
 
@@ -1777,6 +1777,19 @@ export class PortalAutomationRailwayRunnerService implements OnModuleInit {
 
   /** Dijital Vergi Dairesi "Mevcut Araç Bilgilerim" tablosundaki plakalari okur (+teshis). */
   private async scrapeGibAracPlakalari(page: any): Promise<{ plakalar: string[]; diag: any }> {
+    // Sayfanin kendi API'sini yakala (JSON arac listesi) — DOM/sanal-kaydirmadan bagimsiz, eksiksiz.
+    const apiHits: any[] = [];
+    page.on('response', async (resp: any) => {
+      try {
+        const u = String(resp.url() || '');
+        if (!/gateway|api|arac|sorgu|liste|getir|dvd/i.test(u)) return;
+        const ct = String((resp.headers() || {})['content-type'] || '');
+        if (!/json/i.test(ct)) return;
+        const txt = await resp.text();
+        if (!/plaka|plate|tescil|arac/i.test(txt)) return;
+        if (apiHits.length < 6) apiHits.push({ url: u.slice(0, 200), status: resp.status(), sample: txt.slice(0, 1800) });
+      } catch { /* yoksay */ }
+    });
     await page.goto(GIB_ARAC_BILGILERIM_URL, { waitUntil: 'domcontentloaded', timeout: 60_000 });
     await page.waitForTimeout(3000);
     // Tabloyu bekle (SPA render).
@@ -1854,7 +1867,7 @@ export class PortalAutomationRailwayRunnerService implements OnModuleInit {
       await next.click().catch(() => {});
       await page.waitForTimeout(1500);
     }
-    return { plakalar: Array.from(seen), diag: { paginatorText, reportedTotal, scraped: seen.size, eksiksiz: reportedTotal ? seen.size >= reportedTotal : null, pages: pageSnaps } };
+    return { plakalar: Array.from(seen), diag: { paginatorText, reportedTotal, scraped: seen.size, eksiksiz: reportedTotal ? seen.size >= reportedTotal : null, pages: pageSnaps, apiHits } };
   }
 
   /** MUI tablo async dolar — satir sayisi 1.2s sabit kalana kadar bekle (max ~12s). */
