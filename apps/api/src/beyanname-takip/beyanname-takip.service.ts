@@ -148,6 +148,53 @@ export class BeyannameTakipService {
     return set;
   }
 
+  /** "1.234,56" / "0,00" → number. Boş/geçersiz → 0. */
+  private parseTrTutar(v: unknown): number {
+    if (v == null) return 0;
+    const n = Number(String(v).replace(/\./g, '').replace(',', '.').trim());
+    return Number.isFinite(n) ? n : 0;
+  }
+
+  /**
+   * KDV2 (2 No.lu KDV / tevkifat beyannamesi) GEREKEN mükellef kümesi.
+   *
+   * İş kuralı: KDV2 yalnız TEVKİFATLI ALIMI olan mükellef için verilir. Bu yüzden
+   * "alış (KDV_191) kontrol seansı VAR" yetmez — o dönem alış belgelerinde GERÇEK
+   * tevkifat (ocr/confirmed tevkifat tutarı > 0) bulunmalı. Aksi halde tevkifatsız
+   * mükellef de yanlışlıkla KDV2'ye düşüyordu.
+   */
+  private async computeKdv2OcrSet(tenantId: string, vergiDonem: string): Promise<Set<string>> {
+    const set = new Set<string>();
+    const donemler = Array.from(new Set([vergiDonem, vergiDonem.replace('-', '/')]));
+    // 1) Mihsap tevkifatlı alış faturası (faturaTuru tevkifat bilgisi taşıyorsa)
+    const tevkifatliInvoices = await (this.prisma as any).mihsapInvoice.findMany({
+      where: {
+        tenantId,
+        donem: vergiDonem,
+        AND: [{ faturaTuru: { contains: 'TEVKIFAT' } }, { faturaTuru: { contains: 'ALIS' } }],
+      },
+      select: { mukellefId: true },
+      distinct: ['mukellefId'],
+    }).catch(() => []);
+    for (const i of tevkifatliInvoices || []) { if (i.mukellefId) set.add(i.mukellefId); }
+    // 2) OCR/KDV kontrolü: alış seansında tevkifat tutarı > 0 olan fatura bulunan mükellef
+    const alisImages = await (this.prisma as any).receiptImage.findMany({
+      where: {
+        session: { tenantId, type: { in: ['KDV_191', 'ISLETME_GIDER'] }, periodLabel: { in: donemler } },
+      },
+      select: {
+        confirmedKdvTevkifat: true,
+        ocrKdvTevkifat: true,
+        session: { select: { taxpayerId: true } },
+      },
+    }).catch(() => []);
+    for (const im of alisImages || []) {
+      const tev = this.parseTrTutar(im.confirmedKdvTevkifat ?? im.ocrKdvTevkifat);
+      if (tev > 0 && im.session?.taxpayerId) set.add(im.session.taxpayerId);
+    }
+    return set;
+  }
+
   async listDonemOzet(tenantId: string, donem: string, donemTuru: DonemTuru = 'VERILME') {
     // donem: "2026-03" formatı
     const [yilStr, ayStr] = donem.split('-');
@@ -188,27 +235,8 @@ export class BeyannameTakipService {
     const vergiYil = donemTuru === 'VERILME' ? (ay === 1 ? yil - 1 : yil) : yil;
     const vergiAy  = donemTuru === 'VERILME' ? (ay === 1 ? 12 : ay - 1) : ay;
     const vergiDonem = `${vergiYil}-${String(vergiAy).padStart(2, '0')}`;
-    const tevkifatliInvoices = await (this.prisma as any).mihsapInvoice.findMany({
-      where: {
-        tenantId,
-        donem: vergiDonem,
-        AND: [{ faturaTuru: { contains: 'TEVKIFAT' } }, { faturaTuru: { contains: 'ALIS' } }],
-      },
-      select: { mukellefId: true },
-      distinct: ['mukellefId'],
-    });
-    const kdv2OcrSet = new Set<string>(tevkifatliInvoices.map((i: any) => i.mukellefId));
-    const kdv191Sessions = await (this.prisma as any).kdvControlSession.findMany({
-      where: {
-        tenantId,
-        type: 'KDV_191',
-        periodLabel: { in: [vergiDonem, vergiDonem.replace('-', '/')] },
-      },
-      select: { taxpayerId: true },
-    });
-    for (const s of kdv191Sessions) {
-      if (s.taxpayerId) kdv2OcrSet.add(s.taxpayerId);
-    }
+    // KDV2: tevkifatlı ALIMI olan mükellef (gerçek tevkifat tutarı > 0) — detay için computeKdv2OcrSet
+    const kdv2OcrSet = await this.computeKdv2OcrSet(tenantId, vergiDonem);
 
     // SGK Bildirge: tahakkuk fişi indirildiyse bildirge verilmiş say (BeyanDurumu/BeyanKaydi yoksa da).
     const sgkBildirgeSet = await this.sgkBildirgeVerilenSet(tenantId, vergiDonem);
@@ -311,27 +339,7 @@ export class BeyannameTakipService {
     const vYil2 = donemTuru === 'VERILME' ? (ay === 1 ? yil - 1 : yil) : yil;
     const vAy2  = donemTuru === 'VERILME' ? (ay === 1 ? 12 : ay - 1) : ay;
     const vDonem2 = `${vYil2}-${String(vAy2).padStart(2, '0')}`;
-    const tevkInv2 = await (this.prisma as any).mihsapInvoice.findMany({
-      where: {
-        tenantId,
-        donem: vDonem2,
-        AND: [{ faturaTuru: { contains: 'TEVKIFAT' } }, { faturaTuru: { contains: 'ALIS' } }],
-      },
-      select: { mukellefId: true },
-      distinct: ['mukellefId'],
-    });
-    const kdv2OcrSet2 = new Set<string>(tevkInv2.map((i: any) => i.mukellefId));
-    const ses2 = await (this.prisma as any).kdvControlSession.findMany({
-      where: {
-        tenantId,
-        type: 'KDV_191',
-        periodLabel: { in: [vDonem2, vDonem2.replace('-', '/')] },
-      },
-      select: { taxpayerId: true },
-    });
-    for (const s of ses2) {
-      if (s.taxpayerId) kdv2OcrSet2.add(s.taxpayerId);
-    }
+    const kdv2OcrSet2 = await this.computeKdv2OcrSet(tenantId, vDonem2);
 
     // SGK Bildirge: tahakkuk fişi indirildiyse bildirge verilmiş say (özet ile aynı kural).
     const sgkBildirgeSet = await this.sgkBildirgeVerilenSet(tenantId, vDonem2);
