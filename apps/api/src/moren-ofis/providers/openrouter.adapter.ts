@@ -74,6 +74,18 @@ export class OpenRouterAdapter {
       // izin verildiyse aşağıdaki OpenRouter akışına düş
     }
 
+    // MAX-ONLY GÜVENLİĞİ: Claude-DIŞI model (GPT/Gemini vb.) = ücretli OpenRouter
+    // çağrısı. Bu, Max-only kuralının sessiz bypass yüzeyiydi. Yalnız açık izinle
+    // (AI_ALLOW_API_FALLBACK=1) geç; aksi halde yumuşak hata ver, ücretli API'ye düşme.
+    if (!isClaude && process.env.AI_ALLOW_API_FALLBACK !== '1') {
+      this.logger.warn(`Claude-disi model (${req.model}) AI_ALLOW_API_FALLBACK=1 olmadan reddedildi (Max-only kurali).`);
+      return {
+        content: 'Şu anda yanıt üretemiyorum (yalnız Max modelleri etkin).',
+        model: req.model,
+        usage: { promptTokens: 0, completionTokens: 0, totalTokens: 0, costUsd: 0 },
+      };
+    }
+
     if (!this.apiKey) {
       throw new Error('OPENROUTER_API_KEY env değişkeni tanımlı değil');
     }
