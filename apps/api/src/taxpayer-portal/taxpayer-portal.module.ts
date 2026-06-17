@@ -5,10 +5,13 @@ import { ConfigModule, ConfigService } from '@nestjs/config';
 import { TaxpayerPortalController } from './taxpayer-portal.controller';
 import { TaxpayerPortalService } from './taxpayer-portal.service';
 import { TaxpayerJwtStrategy } from './strategies/taxpayer-jwt.strategy';
+import { KdvBeyannameModule } from '../kdv-beyanname/kdv-beyanname.module';
 
 @Module({
   imports: [
     PassportModule,
+    // KDV özeti (aylık alış/satış/ödenecek KDV) — Luca-mutabık ön-hazırlık verisi.
+    KdvBeyannameModule,
     JwtModule.registerAsync({
       imports: [ConfigModule],
       useFactory: (config: ConfigService) => {

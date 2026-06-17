@@ -10,6 +10,7 @@ import * as argon2 from 'argon2';
 import { PrismaService } from '../prisma/prisma.service';
 import { StorageService } from '../storage/storage.service';
 import { claudeTextViaMax } from '../common/max-inference';
+import { KdvBeyannameService } from '../kdv-beyanname/kdv-beyanname.service';
 
 const SGK_TURLER = ['SGK_TAHAKKUK', 'SGK_HIZMET_LISTESI', 'SGK_ISE_GIRIS', 'SGK_ISTEN_CIKIS', 'SGK_ISGOREMEZLIK'];
 
@@ -26,6 +27,7 @@ export class TaxpayerPortalService {
     private prisma: PrismaService,
     private jwt: JwtService,
     private storage: StorageService,
+    private kdvBeyanname: KdvBeyannameService,
   ) {}
 
   // ============ AUTH ============
@@ -218,6 +220,127 @@ export class TaxpayerPortalService {
         toplamTutar: Number(r.toplamTutar) || 0, goruntulenebilir: !!r.storageKey,
       })),
     };
+  }
+
+  /**
+   * Faturalar sayfası — yıl/ay seçimli detay.
+   * Seçili yılın 12 aylık alış/satış grafiği + yıl özeti + seçili ay listesi/özeti
+   * + seçili dönem KDV özeti (Luca-mutabık ön-hazırlıktan: alış/satış/ödenecek KDV).
+   * NOT: getFaturalar (dashboard) bilerek korunur; bu metot ayrıdır.
+   */
+  async getFaturalarDetay(
+    taxpayerId: string,
+    tenantId: string,
+    opts: { yil?: number; donem?: string },
+  ) {
+    const now = new Date();
+
+    // Mevcut yıllar (dropdown için) — fatura dönemlerinden türet
+    const donemRows: { donem: string | null }[] = await (this.prisma as any).mihsapInvoice.findMany({
+      where: { tenantId, mukellefId: taxpayerId },
+      select: { donem: true },
+      distinct: ['donem'],
+    });
+    const yillarSet = new Set<number>();
+    for (const d of donemRows) {
+      const m = /^(\d{4})-\d{2}$/.exec(d.donem || '');
+      if (m) yillarSet.add(Number(m[1]));
+    }
+    yillarSet.add(now.getFullYear());
+    const mevcutYillar = Array.from(yillarSet).sort((a, b) => b - a);
+
+    const yil = opts.yil && yillarSet.has(opts.yil) ? opts.yil : mevcutYillar[0];
+    const donem =
+      opts.donem && /^\d{4}-\d{2}$/.test(opts.donem) && opts.donem.startsWith(`${yil}-`)
+        ? opts.donem
+        : `${yil}-${String(now.getMonth() + 1).padStart(2, '0')}`;
+
+    // Seçili yılın tüm faturaları
+    const rows = await (this.prisma as any).mihsapInvoice.findMany({
+      where: { tenantId, mukellefId: taxpayerId, donem: { startsWith: `${yil}-` } },
+      orderBy: { faturaTarihi: 'desc' },
+      select: {
+        id: true, donem: true, faturaTuru: true, belgeTuru: true, faturaNo: true,
+        firmaUnvan: true, firmaKimlikNo: true, faturaTarihi: true, toplamTutar: true, storageKey: true,
+      },
+    });
+
+    // 12 aylık grafik iskeleti + yıl özeti
+    const aylar = new Map<string, { donem: string; alis: number; satis: number; alisAdet: number; satisAdet: number }>();
+    for (let m = 1; m <= 12; m++) {
+      const dd = `${yil}-${String(m).padStart(2, '0')}`;
+      aylar.set(dd, { donem: dd, alis: 0, satis: 0, alisAdet: 0, satisAdet: 0 });
+    }
+    let yAlis = 0, ySatis = 0, yAlisAdet = 0, ySatisAdet = 0;
+    for (const r of rows) {
+      const isSatis = /SATIS/i.test(r.faturaTuru || '');
+      const dd = r.donem || (r.faturaTarihi ? new Date(r.faturaTarihi).toISOString().slice(0, 7) : '');
+      const a = aylar.get(dd);
+      const tut = Number(r.toplamTutar) || 0;
+      if (isSatis) { ySatis += tut; ySatisAdet++; if (a) { a.satis += tut; a.satisAdet++; } }
+      else { yAlis += tut; yAlisAdet++; if (a) { a.alis += tut; a.alisAdet++; } }
+    }
+    const aylik = Array.from(aylar.values());
+
+    // Seçili ay listesi + özeti
+    const ayRows = rows.filter((r: any) => (r.donem || '') === donem);
+    let aAlis = 0, aSatis = 0, aAlisAdet = 0, aSatisAdet = 0;
+    for (const r of ayRows) {
+      const isSatis = /SATIS/i.test(r.faturaTuru || '');
+      const tut = Number(r.toplamTutar) || 0;
+      if (isSatis) { aSatis += tut; aSatisAdet++; } else { aAlis += tut; aAlisAdet++; }
+    }
+
+    const kdv = await this.kdvOzetForDonem(tenantId, taxpayerId, donem);
+
+    return {
+      yil,
+      donem,
+      mevcutYillar,
+      yilOzet: { alisToplam: yAlis, satisToplam: ySatis, alisAdet: yAlisAdet, satisAdet: ySatisAdet },
+      ayOzet: { alisToplam: aAlis, satisToplam: aSatis, alisAdet: aAlisAdet, satisAdet: aSatisAdet, toplamAdet: ayRows.length },
+      aylik,
+      kdv,
+      faturalar: ayRows.slice(0, 300).map((r: any) => ({
+        id: r.id, donem: r.donem, faturaTuru: r.faturaTuru, belgeTuru: r.belgeTuru, faturaNo: r.faturaNo,
+        firmaUnvan: r.firmaUnvan, firmaKimlikNo: r.firmaKimlikNo, faturaTarihi: r.faturaTarihi,
+        toplamTutar: Number(r.toplamTutar) || 0, goruntulenebilir: !!r.storageKey,
+      })),
+    };
+  }
+
+  /**
+   * Seçili dönemin KDV özeti — Luca-mutabık KDV1 ön-hazırlıktan.
+   * Ödenecek KDV: resmî beyan (BeyanDurumu KDV1 tahakkuk) varsa o; yoksa ön-hazırlık sonucu.
+   * Hesaplanamazsa (KDV1 mükellefi değil / veri yok) null döner → frontend kartı gizler.
+   */
+  private async kdvOzetForDonem(tenantId: string, taxpayerId: string, donem: string) {
+    try {
+      const [beyan, oh] = await Promise.all([
+        this.prisma.beyanDurumu.findFirst({
+          where: { taxpayerId, donem, beyanTipi: 'KDV1' },
+          select: { tahakkukTutari: true, durum: true },
+        }),
+        this.kdvBeyanname.kdv1OnHazirlik({ tenantId, mukellefId: taxpayerId, donem, computePrevDevreden: false }),
+      ]);
+      const beyanOdenecek = beyan?.tahakkukTutari != null ? Number(beyan.tahakkukTutari) : null;
+      const faturaAdet = (oh.satis?.faturaAdet || 0) + (oh.alis?.faturaAdet || 0);
+      if (faturaAdet === 0 && beyanOdenecek == null) return null;
+      return {
+        donem,
+        hesaplananKdv: oh.sonuc?.hesaplananKdv ?? 0,
+        indirilecekKdv: oh.sonuc?.indirilecekKdv ?? 0,
+        odenecekKdv: beyanOdenecek ?? oh.sonuc?.odenecekKdv ?? 0,
+        devredenKdv: oh.sonuc?.sonrakiAyaDevreden ?? 0,
+        veriGuveni: oh.veriGuveni?.seviye || 'eksik',
+        faturaAdet,
+        beyanVar: !!beyan,
+        beyanDurum: beyan?.durum || null,
+      };
+    } catch (e) {
+      this.logger.warn(`KDV özeti hesaplanamadı (${donem}): ${(e as Error).message}`);
+      return null;
+    }
   }
 
   /** e-Tebligat belgeleri (GİB'den çekilen). */

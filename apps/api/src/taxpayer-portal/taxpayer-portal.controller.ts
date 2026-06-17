@@ -60,8 +60,12 @@ export class TaxpayerPortalController {
 
   @UseGuards(AuthGuard('taxpayer-jwt'))
   @Get('faturalar')
-  faturalar(@Req() req: any) {
-    return this.service.getFaturalar(req.user.taxpayerId, req.user.tenantId);
+  faturalar(@Req() req: any, @Query('yil') yil?: string, @Query('donem') donem?: string) {
+    const yilNum = yil && /^\d{4}$/.test(yil) ? Number(yil) : undefined;
+    return this.service.getFaturalarDetay(req.user.taxpayerId, req.user.tenantId, {
+      yil: yilNum,
+      donem: donem && /^\d{4}-\d{2}$/.test(donem) ? donem : undefined,
+    });
   }
 
   @UseGuards(AuthGuard('taxpayer-jwt'))

@@ -241,7 +241,6 @@ export class KdvBeyannameService {
         oranlar: satis.oranlar,
         toplamMatrah: Math.round(satis.toplamMatrah * 100) / 100,
         toplamHesaplananKdv: hesaplananKdv,
-        mihsapOcrKdv: Math.round(((satis as any).ocrToplamKdv || 0) * 100) / 100,
         faturaAdet: satis.faturaAdet,
         oranBelirsizKdv: satis.oranBelirsizKdv ?? 0,
         oranBelirsizAdet: satis.oranBelirsizAdet ?? 0,
@@ -250,7 +249,6 @@ export class KdvBeyannameService {
         oranlar: alis.oranlar,
         toplamMatrah: Math.round(alis.toplamMatrah * 100) / 100,
         toplamIndirilecekKdv: indirilecekKdv,
-        mihsapOcrKdv: Math.round((((alisTumu as any).ocrToplamKdv || 0) - tevkifatAyri.tevkifatKdvToplam) * 100) / 100,
         faturaAdet: alis.faturaAdet,
         tevkifatsiz: {
           matrah: Math.round(alis.tevkifatsiz.matrah * 100) / 100,
@@ -943,20 +941,6 @@ export class KdvBeyannameService {
       orderBy: [{ createdAt: 'asc' }],
     });
 
-    // Bir GÖRSEL kaç ACCEPTED sonuçla eşleşmiş? (çok-oranlı fatura = aynı görsel
-    // birden fazla Luca oran-satırına eşleşir). Çift-sayım önlemede kullanılır.
-    const imageResultCounts = new Map<string, number>();
-    for (const res of kdvResults) {
-      const iid = res.imageId || res.image?.id;
-      if (iid && acceptedStatuses.has(String(res.status || ''))) {
-        imageResultCounts.set(iid, (imageResultCounts.get(iid) || 0) + 1);
-      }
-    }
-    // SAF OCR toplamı — her GÖRSEL bir kez (çapraz-kontrol MİHSAP sütunu = OCR↔Luca).
-    // Beyannamenin Luca-mutabık toplamından (toplamKdv) AYRIDIR.
-    let ocrToplamKdv = 0;
-    const ocrCountedImageIds = new Set<string>();
-
     const oranMap = new Map<number, { matrah: number; kdv: number; adet: number; kaynak?: 'kdv_kontrol' }>();
     const includedDocKeys = new Set<string>();
     const finalDocKeys = new Set<string>();
@@ -1082,32 +1066,18 @@ export class KdvBeyannameService {
       if (imageId && !seenImageIds.has(imageId)) seenImageIds.add(imageId);
       const confirmedTutar = this.parseTrAmount(res.image?.confirmedKdvTutari);
       const lucaTutar = this.parseTrAmount(res.kdvRecord?.kdvTutari);
-      const ocrTutar = this.parseTrAmount(res.image?.ocrKdvTutari);
       const isFinalStatus = finalStatuses.has(status);
-      // Çok-oranlı görsel: aynı fatura birden fazla Luca oran-satırına eşleşir → her
-      // oran için ayrı sonuç. confirmed/ocr TOPLAM değerleri görselin tamamıdır; her
-      // oran-satırına ayrı eklenince fatura N KEZ sayılır (ör. 0283: 12,06 × 2 = 24,12).
-      const imageMultiRate = !!(imageId && (imageResultCounts.get(imageId) || 1) > 1);
-      // (B) ÇAPRAZ-KONTROL (saf OCR): her GÖRSEL bir kez. confirmed (kullanıcı teyidi =
-      // OCR) varsa o, yoksa ham OCR toplamı. Luca KARIŞTIRILMAZ — pano OCR↔Luca kıyaslar.
-      if (imageId && !ocrCountedImageIds.has(imageId)) {
-        ocrCountedImageIds.add(imageId);
-        ocrToplamKdv += confirmedTutar > 0 ? confirmedTutar : ocrTutar;
-      }
       // ÇİFT SAYIM DÜZELTMESİ (2026-06-13): Eşleşmiş (MATCHED/CONFIRMED) kayıtta tutar = LUCA
       // (0 dahil; Luca otoritedir). Eski "lucaTutar > 0 ? luca : OCR" guard'ı, çok kalemli bir
       // e-faturanın 0-KDV satırında OCR'a düşüp faturanın TÜM KDV'sini o satıra da ekliyor →
       // KDV İKİ KEZ sayılıyordu (ör. TTNET e-faturası: 96,92 / 121,48'lik hayalî "fark"). OCR
       // tutarı yalnız eşleşmemiş (PARTIAL_MATCH / NEEDS_REVIEW) kayıtta kullanılır.
-      // (A) BEYANNAME tarafı — Luca-mutabık. Çok-oranlı görselde confirmed/OCR TOPLAM
-      // yerine oran başına Luca değeri kullanılır (çift sayım önlenir; beyanname şişmez).
-      const kdvTutari = imageMultiRate
-        ? lucaTutar
-        : confirmedTutar > 0
+      const kdvTutari =
+        confirmedTutar > 0
           ? confirmedTutar
           : isFinalStatus
             ? lucaTutar
-            : ocrTutar;
+            : this.parseTrAmount(res.image?.ocrKdvTutari);
       // Eşleşmiş kayıtta Luca KDV'si 0 → çok kalemli faturanın geçerli 0-KDV satırı: toplama
       // 0 katkı yapar; OCR'a düşmez ve "okunamadı" uyarısı vermez (gerçek bir eksiklik değil).
       if (isFinalStatus && confirmedTutar <= 0 && lucaTutar === 0) continue;
@@ -1118,20 +1088,17 @@ export class KdvBeyannameService {
       // 3) belge üzerinde YAZILI KDV oranı (ham metinden "%20" / "KDV %20" / Z raporu fişi).
       // Hiçbiri tutmazsa 0 döner; tutar yine toplama girer, sadece "oran okunamadı"ya düşer.
       const detectedOran = (() => {
-        const recordOran = this.nearestKdvRate(
-          this.parseTrAmount(res.kdvRecord?.kdvOrani) ||
-            this.oranFromHesapAdi(res.kdvRecord) ||
-            this.oranFromHesapKodu(res.kdvRecord),
-        );
-        // Çok-oranlı görselde her sonuç = bir Luca oran-satırı; oran o satırın Luca
-        // oranıdır (görsel breakdown'unun ilk oranı tüm satırlara YANLIŞ atanmasın).
-        if (imageMultiRate && GECERLI_KDV_ORANLARI.includes(recordOran)) return recordOran;
         const breakdown: any[] =
           (res.image as any)?.confirmedKdvBreakdown ?? (res.image as any)?.ocrKdvBreakdown ?? [];
         if (Array.isArray(breakdown) && breakdown.length > 0) {
           const o = this.nearestKdvRate(Number(breakdown[0]?.oran ?? 0));
           if (GECERLI_KDV_ORANLARI.includes(o)) return o;
         }
+        const recordOran = this.nearestKdvRate(
+          this.parseTrAmount(res.kdvRecord?.kdvOrani) ||
+            this.oranFromHesapAdi(res.kdvRecord) ||
+            this.oranFromHesapKodu(res.kdvRecord),
+        );
         if (GECERLI_KDV_ORANLARI.includes(recordOran)) return recordOran;
         // Belge üzerinde yazılı KDV oranını DOĞRUDAN oku (matrah hesaplamadan; fiş/Z raporu dahil).
         const fromText = this.oranFromImageText(res.image);
@@ -1206,7 +1173,6 @@ export class KdvBeyannameService {
       oranlar,
       toplamMatrah,
       toplamKdv,
-      ocrToplamKdv: Math.round(ocrToplamKdv * 100) / 100, // saf OCR (her görsel bir kez) — çapraz-kontrol MİHSAP'ı
       // faturaAdet = beyana DAHİL edilen belge (geçerli-oran + oran-belirsiz).
       // Kontrol bekleyen/dışlanan belgeler buraya GİRMEZ (ayrıca kontrolGerekliAdet'te).
       // Böylece başlık "X fatura" = oran satırları + oran-belirsiz, tevkifatsız = dahil − tevkifatlı.

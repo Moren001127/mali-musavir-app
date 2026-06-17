@@ -59,6 +59,77 @@ export function PageTitle({ ust, baslik }: { ust: string; baslik: string }) {
   );
 }
 
+/**
+ * Zengin sayfa başlığı — ofis (müşavir) imzası: üst renk şeridi + radial parıltı +
+ * degrade ikon kutusu. Mükellef portalının tüm ana sayfalarında ortak kullanılır.
+ * accent ile her modüle ayrı renk verilebilir. right: sağ tarafa araç/rozet alanı.
+ */
+export function PortalHeader({
+  ust, baslik, aciklama, icon: Icon, accent = GOLD, right,
+}: {
+  ust: string; baslik: string; aciklama?: string; icon: any; accent?: string; right?: React.ReactNode;
+}) {
+  return (
+    <div
+      className="relative overflow-hidden rounded-2xl p-5 mb-5"
+      style={{
+        border: '1px solid rgba(255,255,255,0.06)',
+        background: `radial-gradient(120% 140% at 0% 0%, ${accent}26, transparent 46%), radial-gradient(120% 140% at 100% 0%, ${accent}1a, transparent 48%), #0f0d0b`,
+      }}
+    >
+      <div className="absolute inset-x-0 top-0 h-1" style={{ background: `linear-gradient(90deg, ${accent}77, ${accent}, ${accent}dd, ${accent})` }} />
+      <div className="flex items-center gap-2.5 mb-3">
+        <span className="w-[26px] h-px" style={{ background: accent }} />
+        <span className="text-[10px] uppercase font-bold tracking-[.18em]" style={{ color: accent }}>{ust}</span>
+      </div>
+      <div className="flex flex-wrap items-center gap-x-4 gap-y-3">
+        <div className="flex items-center gap-3.5 min-w-0">
+          <span
+            className="grid place-items-center rounded-xl flex-shrink-0"
+            style={{ width: 46, height: 46, background: `linear-gradient(135deg, ${accent}, ${accent}aa)`, boxShadow: `0 8px 22px ${accent}44` }}
+          >
+            <Icon size={24} style={{ color: '#1a1410' }} />
+          </span>
+          <div className="min-w-0">
+            <h1 style={{ fontFamily: 'Fraunces, serif', fontSize: 28, fontWeight: 600, color: '#fafaf9', letterSpacing: '-.03em', lineHeight: 1.05 }}>{baslik}</h1>
+            {aciklama ? <p className="text-[13px] mt-1.5 truncate" style={{ color: 'rgba(250,250,249,0.45)' }}>{aciklama}</p> : null}
+          </div>
+        </div>
+        {right ? <div className="ml-auto flex items-center gap-2 flex-wrap justify-end flex-shrink-0">{right}</div> : null}
+      </div>
+    </div>
+  );
+}
+
+/**
+ * İnce sayaç şeridi — ofis faturalar dilindeki tek-satır birleşik sayaç kutusu.
+ * items: { label, value, sub?, icon, accent? }
+ */
+export function StatStrip({ items }: { items: { label: string; value: string; sub?: string; icon: any; accent?: string }[] }) {
+  return (
+    <div className="flex items-stretch flex-wrap rounded-[14px] overflow-hidden" style={{ background: 'rgba(255,255,255,0.02)', border: '1px solid rgba(255,255,255,0.06)' }}>
+      {items.map(({ label, value, sub, icon: Icon, accent = GOLD }, idx) => (
+        <div
+          key={label}
+          className="flex-1 min-w-[150px] flex items-center gap-2.5 px-4 py-3"
+          style={idx > 0 ? { borderLeft: '1px solid rgba(255,255,255,0.04)' } : undefined}
+        >
+          <div className="w-9 h-9 rounded-[10px] flex items-center justify-center flex-shrink-0" style={{ background: `${accent}14`, border: `1px solid ${accent}2e`, color: accent }}>
+            <Icon size={16} />
+          </div>
+          <div className="min-w-0">
+            <p className="text-[10px] uppercase font-bold tracking-[.1em] truncate" style={{ color: 'rgba(250,250,249,0.35)' }}>{label}</p>
+            <p className="leading-tight tabular-nums truncate" style={{ fontWeight: 700, fontSize: 18, letterSpacing: '-0.02em', color: '#fafaf9' }}>
+              {value}
+              {sub ? <span className="ml-1.5 text-[11px] font-medium" style={{ color: 'rgba(250,250,249,0.4)' }}>{sub}</span> : null}
+            </p>
+          </div>
+        </div>
+      ))}
+    </div>
+  );
+}
+
 /** Düz kart — ofis paneli .card dili (degrade/glow yok). */
 export function Card({ children, accent, className = '', pad = true }: { children: React.ReactNode; accent?: string; className?: string; pad?: boolean }) {
   return (
