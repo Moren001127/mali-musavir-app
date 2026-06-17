@@ -1704,7 +1704,7 @@ export class PortalAutomationRailwayRunnerService implements OnModuleInit {
         await this.jobProgress(tenantId, job, 'arac_test_done', `Araç teşhis: ${plakalar.length}/${scrapeRes.diag?.reportedTotal ?? '?'} plaka (eksiksiz=${scrapeRes.diag?.eksiksiz})`);
         return {
           recordCount: 0,
-          result: { runner: 'railway', phase: 'arac_test', codeVersion: 'v14-apifetch', plakaSayisi: plakalar.length, plakalar, diag: scrapeRes.diag },
+          result: { runner: 'railway', phase: 'arac_test', codeVersion: 'v15-reqinfo', plakaSayisi: plakalar.length, plakalar, diag: scrapeRes.diag },
         };
       }
 
@@ -1798,14 +1798,16 @@ export class PortalAutomationRailwayRunnerService implements OnModuleInit {
 
     // ── BIRINCIL: API'yi tekrar oynat (tum sayfalar) — DOM'dan bagimsiz, eksiksiz ──
     if (aracListReq) {
-      const apiRes = await this.fetchGibAracViaApi(page, aracListReq).catch(() => null);
+      const reqInfo = { method: aracListReq.method, headerKeys: Object.keys(aracListReq.headers || {}), postData: String(aracListReq.postData || '').slice(0, 400) };
+      const apiRes = await this.fetchGibAracViaApi(page, aracListReq).catch((e: any) => ({ plakalar: [], total: 0, pages: [{ error: this.compact(e?.message || e) }] }));
       if (apiRes && apiRes.plakalar.length && apiRes.total && apiRes.plakalar.length >= apiRes.total) {
-        return { plakalar: apiRes.plakalar, diag: { source: 'api', reportedTotal: apiRes.total, scraped: apiRes.plakalar.length, eksiksiz: true, pages: apiRes.pages } };
+        return { plakalar: apiRes.plakalar, diag: { source: 'api', reqInfo, reportedTotal: apiRes.total, scraped: apiRes.plakalar.length, eksiksiz: true, pages: apiRes.pages } };
       }
-      // API kismi geldiyse de en azindan onu sakla; DOM ile tamamlamayi dene.
       if (apiRes && apiRes.plakalar.length) {
-        return { plakalar: apiRes.plakalar, diag: { source: 'api_kismi', reportedTotal: apiRes.total, scraped: apiRes.plakalar.length, eksiksiz: apiRes.total ? apiRes.plakalar.length >= apiRes.total : null, pages: apiRes.pages } };
+        return { plakalar: apiRes.plakalar, diag: { source: 'api_kismi', reqInfo, reportedTotal: apiRes.total, scraped: apiRes.plakalar.length, eksiksiz: apiRes.total ? apiRes.plakalar.length >= apiRes.total : null, pages: apiRes.pages } };
       }
+      // API hic plaka vermedi — DOM yedegine dus ama reqInfo'yu sakla (teshis).
+      (this as any)._lastAracReqInfo = reqInfo;
     }
 
     // ── YEDEK: DOM scrape (API yakalanamazsa) ──
