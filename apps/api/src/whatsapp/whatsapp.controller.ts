@@ -1075,11 +1075,20 @@ export class WhatsAppController {
       let hatali = 0;
       const results: any[] = [];
 
+      // Toplu gönderimde WhatsApp ban koruması: alıcılar arası kısa gecikme
+      // (tek alıcıyı yavaşlatmaz — yalnız ikinci ve sonraki alıcıdan önce bekler).
+      const BULK_SEND_DELAY_MS = Math.max(0, Number(process.env.MOREN_BULK_SEND_DELAY_MS || 1000));
+      let gonderimSayaci = 0;
+
       for (const row of preview.rows as any[]) {
         if (!row.gonderilecek) {
           results.push({ taxpayerId: row.id, ad: row.ad, ok: false, skipped: true, error: row.sebep });
           continue;
         }
+        if (gonderimSayaci > 0 && BULK_SEND_DELAY_MS > 0) {
+          await new Promise((r) => setTimeout(r, BULK_SEND_DELAY_MS));
+        }
+        gonderimSayaci++;
 
         const phoneResults: Array<{ phone: string; ok: boolean; error?: string }> = [];
         const errors: string[] = [];

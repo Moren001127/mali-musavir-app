@@ -85,6 +85,7 @@ export class AutomationRunnerService implements OnModuleInit {
   private readonly running = new Set<string>();
   /** Zamanlayıcı bu kopyada açık mı? Çok kopyalı kurulumda yalnız birinde 'true' bırakılır. */
   private readonly schedulerEnabled = process.env.AUTOMATIONS_SCHEDULER_ENABLED !== 'false';
+  private staleWatchdog?: NodeJS.Timeout;
 
   constructor(
     private readonly prisma: PrismaService,
@@ -149,6 +150,17 @@ export class AutomationRunnerService implements OnModuleInit {
         );
       });
       this.logger.log('Mihsap token-retry dinleyicisi kuruldu.');
+
+      // Periyodik takılan-iş temizliği: eskiden closeStaleRunningRuns YALNIZ boot'ta
+      // çalışıyordu; süreç ayakta kalırken bir run kill/deadlock ile 'running' takılırsa
+      // sunucu yeniden başlamadan temizlenmiyor ve sonraki turlar this.running ile sessizce
+      // atlanıyordu. Artık dakikada bir watchdog ile kendi kendine iyileşir.
+      this.staleWatchdog = setInterval(() => {
+        this.closeStaleRunningRuns().catch((err) =>
+          this.logger.warn(`Stale-run watchdog hatası: ${err?.message ?? err}`),
+        );
+      }, 60_000);
+      if (typeof this.staleWatchdog?.unref === 'function') this.staleWatchdog.unref();
     } catch (err: any) {
       this.logger.error(`Otomasyon boot hatası: ${err.message}`);
     }
