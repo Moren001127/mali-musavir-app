@@ -2202,6 +2202,10 @@ export class KdvControlService implements OnApplicationBootstrap {
       session?.taxpayer?.naceKodu,
       session?.taxpayer?.defterTuru,
       session?.taxpayer?.mihsapDefterTuru,
+      // Çözülen faaliyet/sektör (AgentRule profile.sektor dahil) profile metnine
+      // KATILMALI; aksi halde mükellef sektörünü girmiş olsa bile profil "zayıf"
+      // sayılıp (profileIsThin) olağan giderler gereksiz KONTROL_ET'e düşüyordu.
+      profilFaaliyet,
     ].filter(Boolean).join(' ').toLocaleLowerCase('tr-TR');
 
     const hardBlockSignal =
@@ -2423,8 +2427,9 @@ export class KdvControlService implements OnApplicationBootstrap {
 
     const naceKodu: string | null = taxpayer.naceKodu || null;
     const naceAciklama: string | null = naceKodu ? (NACE_ACIKLAMA[naceKodu] || null) : null;
-    // Faaliyet: önce agentRule profili, yoksa NACE açıklamasından türet
-    const profilFaaliyet: string | null = profile?.faaliyet || naceAciklama || null;
+    // Faaliyet: önce agentRule profili (faaliyet kolonu veya profile.sektor),
+    // yoksa NACE açıklamasından türet
+    const profilFaaliyet: string | null = this.deriveProfileFaaliyet(profile) || naceAciklama || null;
 
     const kategoriEtiketi: string | null = image.ocrKategori
       ? (OCR_KATEGORI_ETIKET[image.ocrKategori] || image.ocrKategori)
@@ -2591,11 +2596,27 @@ ${JSON.stringify(payload, null, 2)}`;
    * açıklaması, o da yoksa null. İçerik denetimi "faaliyet biliniyor mu" kararını
    * buradan verir (satışta faaliyet bilinmiyorsa uyum-belirsizliği bayraklanmaz).
    */
+  /** AgentRule satirindan faaliyet/sektor turetir: once 'faaliyet' kolonu, yoksa
+   *  profile JSON icindeki 'sektor'/'faaliyet'. Kullanici sektoru mukellef
+   *  profiline (profile.sektor, or. "KIRTASİYE, REKLAMCILIK") giriyor; eski kod
+   *  yalniz bos 'faaliyet' kolonuna bakip "faaliyet bilinmiyor" saniyordu. */
+  private deriveProfileFaaliyet(profileRow: any): string | null {
+    if (!profileRow) return null;
+    const col = profileRow.faaliyet;
+    if (col && String(col).trim().length >= 2) return String(col).trim();
+    const p = profileRow.profile;
+    let obj: any = p;
+    if (typeof p === 'string') { try { obj = JSON.parse(p); } catch { obj = null; } }
+    const cand = obj?.sektor || obj?.faaliyet || obj?.faaliyetKonusu;
+    if (cand && String(cand).trim().length >= 2) return String(cand).trim();
+    return null;
+  }
+
   private async resolveContentAuditFaaliyet(session: any, tenantId: string): Promise<string | null> {
     const profile = await this.findTaxpayerContentProfile(session, tenantId);
     const naceKodu: string | null = session?.taxpayer?.naceKodu || null;
     const naceAciklama: string | null = naceKodu ? (NACE_ACIKLAMA[naceKodu] || null) : null;
-    return profile?.faaliyet || naceAciklama || null;
+    return this.deriveProfileFaaliyet(profile) || naceAciklama || null;
   }
 
   private async buildRuleBasedContentAudit(image: any, session: any, tenantId: string): Promise<ContentAuditDecision> {
