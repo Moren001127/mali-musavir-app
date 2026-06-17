@@ -1636,7 +1636,16 @@ export class PortalAutomationRailwayRunnerService implements OnModuleInit {
           tenantId, job, 'kgm_probe_done',
           netProbe.ok ? `Ham fetch OK: HTTP ${netProbe.httpStatus} (${netProbe.ms}ms)` : `Ham fetch BASARISIZ: ${netProbe.error}`,
         );
-        // 2) TARAYICI ile gercek sorgu.
+        // 2) TARAYICI TESHIS: sayfa gercekte ne render ediyor (form geliyor mu)?
+        await this.jobProgress(tenantId, job, 'kgm_teshis', 'KGM tarayici sayfasi inceleniyor.');
+        const tarayiciTeshis: any = await this.kgmTarayiciTeshis(context);
+        await this.jobProgress(
+          tenantId, job, 'kgm_teshis_done',
+          tarayiciTeshis?.hasTxtPlk
+            ? 'Form geldi (#txtPlk var).'
+            : `Form YOK — url=${tarayiciTeshis?.url || '-'}, title=${tarayiciTeshis?.title || '-'}`,
+        );
+        // 3) TARAYICI ile gercek sorgu.
         await this.jobProgress(tenantId, job, 'kgm_test', `KGM tarayici testi: ${testPlaka}`);
         const sonuc = await this.sorgulaKgmPlaka(context, testPlaka, apiKey);
         await context.close().catch(() => {});
@@ -1655,6 +1664,7 @@ export class PortalAutomationRailwayRunnerService implements OnModuleInit {
             plaka: testPlaka,
             kgmUlasildi: ulasildi,
             netProbe,
+            tarayiciTeshis,
             durum: sonuc.durum,
             ihlalSayisi: sonuc.ihlalSayisi || 0,
             toplamTutar: sonuc.toplamTutar || 0,
@@ -1942,12 +1952,50 @@ export class PortalAutomationRailwayRunnerService implements OnModuleInit {
           'Accept-Language': 'tr-TR,tr;q=0.9',
         },
       });
-      // Govdeyi tuketmeden baglanti kuruldu mu yeterli; status'u al.
-      return { ok: true, httpStatus: resp.status, ms: Date.now() - t0 };
+      const text = await resp.text().catch(() => '');
+      const wafMarkers: string[] = [];
+      for (const m of ['incapsula', 'radware', 'distil', 'perimeterx', 'cloudflare', 'akamai', 'captcha', 'robot kontrol', 'unsuccessful', 'access denied', 'forbidden', '__cf', 'challenge']) {
+        if (new RegExp(m, 'i').test(text)) wafMarkers.push(m);
+      }
+      const hasForm = /id=["']?txtPlk/i.test(text);
+      return {
+        ok: true,
+        httpStatus: resp.status,
+        ms: Date.now() - t0,
+        bodyLen: text.length,
+        hasTxtPlkInHtml: hasForm,
+        wafMarkers,
+        bodySnippet: text.replace(/\s+/g, ' ').slice(0, 400),
+      } as any;
     } catch (err: any) {
       return { ok: false, ms: Date.now() - t0, error: this.compact(err?.message || err) };
     } finally {
       clearTimeout(to);
+    }
+  }
+
+  /** Tarayicida KGM sayfasi GERCEKTE ne render ediyor? (#txtPlk yoksa neden — WAF/iframe/render) */
+  private async kgmTarayiciTeshis(context: any) {
+    const page = await context.newPage();
+    try {
+      await page.goto(KGM_HGS_URL, { waitUntil: 'commit', timeout: 60_000 });
+      await page.waitForTimeout(8000);
+      return await page.evaluate(() => ({
+        url: location.href,
+        title: document.title,
+        hasTxtPlk: !!document.querySelector('#txtPlk'),
+        inputIds: Array.from(document.querySelectorAll('input,textarea,select'))
+          .map((e) => e.id || e.getAttribute('name') || '')
+          .filter(Boolean)
+          .slice(0, 30),
+        iframeCount: document.querySelectorAll('iframe').length,
+        bodyTextHead: String((document.body && document.body.innerText) || '').replace(/\s+/g, ' ').slice(0, 800),
+        htmlLen: document.documentElement.outerHTML.length,
+      }));
+    } catch (err: any) {
+      return { error: this.compact(err?.message || err) };
+    } finally {
+      await page.close().catch(() => {});
     }
   }
 
