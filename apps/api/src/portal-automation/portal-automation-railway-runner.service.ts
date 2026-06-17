@@ -1694,9 +1694,20 @@ export class PortalAutomationRailwayRunnerService implements OnModuleInit {
       await this.loginGibDigitalWithCaptcha(page, credential, loginUrl, 'galeri-hgs');
 
       await this.jobProgress(tenantId, job, 'arac', 'Araç bilgileri okunuyor (Satır sayısı 100).');
-      const plakalar = await this.scrapeGibAracPlakalari(page);
+      const scrapeRes = await this.scrapeGibAracPlakalari(page);
+      const plakalar = scrapeRes.plakalar;
       await page.close().catch(() => {});
       await context.close().catch(() => {}); // GIB context isi bitti (route'suz).
+
+      // ── ARAC CEKME TESHIS modu: sadece scrape sonucu + DOM teshisi (KGM/silme/WhatsApp yok) ──
+      if (mode === 'arac_test') {
+        await this.jobProgress(tenantId, job, 'arac_test_done', `Araç teşhis: ${plakalar.length} plaka — "${scrapeRes.diag?.paginatorText || ''}"`);
+        return {
+          recordCount: 0,
+          result: { runner: 'railway', phase: 'arac_test', codeVersion: 'v9-aracdiag', plakaSayisi: plakalar.length, plakalar, diag: scrapeRes.diag },
+        };
+      }
+
       if (!plakalar.length) {
         await this.jobProgress(tenantId, job, 'arac_bos', 'Araç bilgileri tablosunda plaka bulunamadi.');
         return { recordCount: 0, result: { runner: 'railway', phase: 'galeri_hgs', plakaSayisi: 0, not: 'Plaka bulunamadi' } };
@@ -1764,8 +1775,8 @@ export class PortalAutomationRailwayRunnerService implements OnModuleInit {
     }
   }
 
-  /** Dijital Vergi Dairesi "Mevcut Araç Bilgilerim" tablosundaki plakalari okur. */
-  private async scrapeGibAracPlakalari(page: any): Promise<string[]> {
+  /** Dijital Vergi Dairesi "Mevcut Araç Bilgilerim" tablosundaki plakalari okur (+teshis). */
+  private async scrapeGibAracPlakalari(page: any): Promise<{ plakalar: string[]; diag: any }> {
     await page.goto(GIB_ARAC_BILGILERIM_URL, { waitUntil: 'domcontentloaded', timeout: 60_000 });
     await page.waitForTimeout(3000);
     // Tabloyu bekle (SPA render).
@@ -1778,24 +1789,32 @@ export class PortalAutomationRailwayRunnerService implements OnModuleInit {
     await this.gibAracSayfaBoyutu100(page).catch(() => {});
     await page.waitForTimeout(1500);
 
-    // Yine de sayfalama varsa tum sayfalari dolas, plakalari biriktir.
+    // Sayfalama varsa tum sayfalari dolas, plakalari biriktir + TESHIS topla.
     const seen = new Set<string>();
+    const pageSnaps: any[] = [];
+    let paginatorText = '';
     for (let p = 0; p < 40; p++) {
-      const pagePlakalar: string[] = await page.evaluate(() => {
+      const snap: any = await page.evaluate(() => {
         const isPlate = (s: string) => /^\d{2}[A-Z]{1,4}\d{1,5}$/.test(s);
-        const out = [];
-        const rows = Array.from(document.querySelectorAll('table tr, [role="row"]'));
+        const pag = document.querySelector('.mat-mdc-paginator-range-label, .mat-paginator-range-label');
+        const pagText = pag ? String(pag.textContent || '').trim() : '';
+        const rows = Array.from(document.querySelectorAll('table tbody tr, table tr, [role="row"]'));
+        const plates: string[] = [];
+        const sampleRows: any[] = [];
         for (const r of rows) {
-          const cells = Array.from(r.querySelectorAll('td, [role="cell"], [role="gridcell"]'));
-          for (const c of cells) {
-            const norm = String((c.textContent || '')).replace(/[\s-]/g, '').toUpperCase();
-            if (isPlate(norm)) { out.push(norm); break; }
-          }
+          const cells = Array.from(r.querySelectorAll('td, [role="cell"], [role="gridcell"]')).map((c) => String(c.textContent || '').trim());
+          if (!cells.length) continue;
+          let plate = '';
+          for (const c of cells) { const n = c.replace(/[\s-]/g, '').toUpperCase(); if (isPlate(n)) { plate = n; break; } }
+          if (plate) plates.push(plate);
+          if (sampleRows.length < 15) sampleRows.push({ cells: cells.slice(0, 4), plate });
         }
-        return out;
+        return { pagText, rowCount: rows.length, plates, sampleRows };
       });
+      if (snap.pagText) paginatorText = snap.pagText;
       let yeni = 0;
-      for (const pl of pagePlakalar) { if (!seen.has(pl)) { seen.add(pl); yeni++; } }
+      for (const pl of snap.plates) { if (!seen.has(pl)) { seen.add(pl); yeni++; } }
+      pageSnaps.push({ page: p, pagText: snap.pagText, rowCount: snap.rowCount, plateCount: snap.plates.length, yeni, sampleRows: p === 0 ? snap.sampleRows : undefined });
 
       const next = await page.$(
         '.mat-mdc-paginator-navigation-next, .mat-paginator-navigation-next, button[aria-label*="onraki"], button[aria-label*="Next"]',
@@ -1803,12 +1822,11 @@ export class PortalAutomationRailwayRunnerService implements OnModuleInit {
       if (!next) break;
       const disabled = await next.evaluate((el: any) => el.disabled || el.getAttribute('aria-disabled') === 'true').catch(() => true);
       if (disabled) break;
-      // Yeni sayfa yeni plaka getirmiyorsa (boyut 100 ile tek sayfa) sonsuz donguyu kes.
-      if (p > 0 && yeni === 0) break;
+      if (p > 0 && yeni === 0) break; // tek sayfa (boyut 100) -> sonsuz donguyu kes.
       await next.click();
-      await page.waitForTimeout(1200);
+      await page.waitForTimeout(1300);
     }
-    return Array.from(seen);
+    return { plakalar: Array.from(seen), diag: { paginatorText, total: seen.size, pages: pageSnaps } };
   }
 
   /** mat-paginator "Satır sayısı" select'ini 100 yapar (best-effort). */
