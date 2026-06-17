@@ -50,6 +50,28 @@ export interface ReviewImage {
   isManuallyConfirmed: boolean;
 }
 
+// Dosya adı Prisma cuid()/rastgele DB id'si mi? ("cmqgpx7xd0d7swns6sw3am42o").
+// Böyle dosyalar yüklenirken cuid adıyla geldi; listede çirkin cuid yerine belge
+// no gösterilmeli.
+function isCuidName(base: string): boolean {
+  return /^c[a-z0-9]{23,30}$/.test(base) && /[a-z]/.test(base) && /\d/.test(base);
+}
+
+// Liste başlığı için temiz ad: dosya adı cuid ise "Fiş <belge no>", değilse dosya adı.
+function imageDisplayName(img: {
+  originalName: string;
+  ocrBelgeNo: string | null;
+  confirmedBelgeNo: string | null;
+  id: string;
+}): string {
+  const base = (img.originalName || '').replace(/\.[^/.]+$/, '');
+  const belge = img.confirmedBelgeNo ?? img.ocrBelgeNo ?? null;
+  if (!base || isCuidName(base)) {
+    return belge ? `Fiş ${belge}` : img.originalName || img.id.slice(0, 8);
+  }
+  return img.originalName;
+}
+
 /**
  * OCR teyit paneli — alan-bazlı confidence ile düşük güvenli okunmuş görselleri
  * kullanıcıya tek tek elle kontrol ettirir. Excel import'tan sonra burası
@@ -510,7 +532,7 @@ export function OcrReviewPanel({
                     >
                       {confirmed && <CheckCircle2 size={11} style={{ color: '#22c55e', flexShrink: 0 }} />}
                       {isSuccess && <CheckCircle2 size={11} style={{ color: '#60a5fa', flexShrink: 0 }} />}
-                      <span className="truncate">{img.originalName}</span>
+                      <span className="truncate">{imageDisplayName(img)}</span>
                     </p>
                     {typeof avg === 'number' && (
                       <span

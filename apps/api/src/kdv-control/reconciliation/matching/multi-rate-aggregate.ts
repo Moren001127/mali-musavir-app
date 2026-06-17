@@ -65,11 +65,27 @@ export function aggregateMultiRateRecords(
       continue;
     }
 
+    // Özdeş kopya Luca satırlarını ele: aynı fiş Excel'e iki kez girilince (aynı
+    // belge+tarih+taraf grubunda aynı oran+tutar+matrah satırı tekrar eder),
+    // reconciliation toplarken 2× şişiyordu (UI: "%20 KDV uyumsuz: Luca 2× ≠
+    // Fatura"). Tutar hesabı DEDUP üzerinden yapılır; virtualGroups yine TÜM kopya
+    // id'lerini kapsar ki kopya satır ayrıca "fatura yok" olarak görünmesin.
+    const seenDup = new Set<string>();
+    const deduped = group.filter((record) => {
+      const oran = deps.inferRecordRate(record) ?? 0;
+      const tutar = parseFloat(record.kdvTutari?.toString() || '0').toFixed(2);
+      const matrah = parseFloat(record.kdvMatrahi?.toString() || '0').toFixed(2);
+      const dk = `${oran}|${tutar}|${matrah}`;
+      if (seenDup.has(dk)) return false;
+      seenDup.add(dk);
+      return true;
+    });
+
     let kdvToplam = 0;
     let matrahToplam = 0;
     const expectedByRate = new Map<number, number>();
 
-    for (const record of group) {
+    for (const record of deduped) {
       const tutar = parseFloat(record.kdvTutari?.toString() || '0');
       kdvToplam += tutar;
       matrahToplam += parseFloat(record.kdvMatrahi?.toString() || '0');
@@ -103,13 +119,14 @@ export function aggregateMultiRateRecords(
 
     virtualOriginalKdvAmounts.set(
       virtualId,
-      group
+      deduped
         .map((record) => parseFloat(record.kdvTutari?.toString() || '0'))
         .filter((amount) => amount > 0),
     );
 
+    const dropped = group.length - deduped.length;
     deps.log?.(
-      `Cok oranli KDV aggregate: belge=${base.belgeNo} · ${group.length} satir -> toplam KDV=${kdvToplam.toFixed(2)} · oranlar=[${Array.from(expectedByRate.entries()).map(([oran, tutar]) => `%${oran}:${tutar.toFixed(2)}`).join(', ')}]`,
+      `Cok oranli KDV aggregate: belge=${base.belgeNo} · ${deduped.length}${dropped > 0 ? `/${group.length} (${dropped} kopya elendi)` : ''} satir -> toplam KDV=${kdvToplam.toFixed(2)} · oranlar=[${Array.from(expectedByRate.entries()).map(([oran, tutar]) => `%${oran}:${tutar.toFixed(2)}`).join(', ')}]`,
     );
   }
 

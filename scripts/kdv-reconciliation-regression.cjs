@@ -43,6 +43,16 @@ const { ExcelParserService } = require(path.join(
   'kdv-control',
   'excel-parser.service.ts',
 ));
+const { aggregateMultiRateRecords } = require(path.join(
+  ROOT,
+  'apps',
+  'api',
+  'src',
+  'kdv-control',
+  'reconciliation',
+  'matching',
+  'multi-rate-aggregate.ts',
+));
 
 function date(iso) {
   return new Date(`${iso}T00:00:00.000Z`);
@@ -861,6 +871,44 @@ const cases = [
       process.exit(1);
     }
     console.log(`[kdv-regression] OK: ${testCase.name}`);
+  }
+
+  // ── aggregateMultiRateRecords: özdeş kopya Luca satırı elenmeli (Ömer Özen
+  //    "Luca 2× ≠ Fatura" KISMİ fix). Aynı fiş Excel'e iki kez girilince toplam
+  //    şişmemeli; her iki kopya id'si yine kapsanmalı. ──
+  {
+    const aggDeps = {
+      normalizeBelgeNo: (v) => (v || '').replace(/\D/g, ''),
+      recordPartyKey: (r) => r.karsiTaraf || 'noparty',
+      inferRecordRate: (r) => (r.kdvOrani != null ? Number(r.kdvOrani) : null),
+    };
+    const fail = (m) => { console.error(`\n[kdv-regression] FAIL: agg-dedup ${m}`); process.exit(1); };
+    // Tek-oran kopya (0293): aynı oran+tutar iki kez → 545.71 (1091.42 DEĞİL)
+    const dup = aggregateMultiRateRecords([
+      record({ id: 'a', belgeNo: '0293', date: '2026-05-28', kdv: 545.71, oran: 20, karsiTaraf: 'IKIZLER PETROL' }),
+      record({ id: 'b', belgeNo: '0293', date: '2026-05-28', kdv: 545.71, oran: 20, karsiTaraf: 'IKIZLER PETROL' }),
+    ], true, aggDeps);
+    const v1 = dup.records.find((r) => String(r.id).startsWith('__virtual__'));
+    if (!v1) fail('kopya -> virtual olusmali');
+    if (Math.abs(Number(v1.kdvTutari) - 545.71) > 0.01) fail(`kopya elenmeli 545.71 bekleniyor, gercek=${v1.kdvTutari}`);
+    if ((dup.virtualGroups.get(v1.id) || []).length !== 2) fail('her iki kopya id kapsanmali');
+    // Çok-oran kopya (0127): {1,10,20} seti iki kez → 6.48+9.08+8.33=23.89 (47.78 DEĞİL)
+    const mk = (id, oran, kdv) => record({ id, belgeNo: '0127', date: '2026-05-30', kdv, oran, karsiTaraf: 'HAKMAR' });
+    const dup2 = aggregateMultiRateRecords([
+      mk('c1', 1, 6.48), mk('c2', 10, 9.08), mk('c3', 20, 8.33),
+      mk('c4', 1, 6.48), mk('c5', 10, 9.08), mk('c6', 20, 8.33),
+    ], true, aggDeps);
+    const v2 = dup2.records.find((r) => String(r.id).startsWith('__virtual__'));
+    if (!v2 || Math.abs(Number(v2.kdvTutari) - 23.89) > 0.01) fail(`cok-oran kopya 23.89 bekleniyor, gercek=${v2 && v2.kdvTutari}`);
+    if ((dup2.virtualGroups.get(v2.id) || []).length !== 6) fail('cok-oran 6 kopya id kapsanmali');
+    // Gerçek çok-oran (kopya değil): farklı tutarlar toplanmalı (regresyon koruması)
+    const real = aggregateMultiRateRecords([
+      record({ id: 'g1', belgeNo: '0700', date: '2026-05-15', kdv: 50, oran: 10, karsiTaraf: 'X' }),
+      record({ id: 'g2', belgeNo: '0700', date: '2026-05-15', kdv: 200, oran: 20, karsiTaraf: 'X' }),
+    ], true, aggDeps);
+    const v3 = real.records.find((r) => String(r.id).startsWith('__virtual__'));
+    if (!v3 || Math.abs(Number(v3.kdvTutari) - 250) > 0.01) fail(`gercek cok-oran 250 bekleniyor, gercek=${v3 && v3.kdvTutari}`);
+    console.log('[kdv-regression] OK: aggregateMultiRateRecords ozdes kopya elenir (3 senaryo)');
   }
 
   for (const testCase of cases) {
