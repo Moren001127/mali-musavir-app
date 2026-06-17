@@ -87,11 +87,37 @@ export class TaxpayerPortalService {
     if (!taxpayer || !taxpayer.portalPasswordHash) {
       throw new UnauthorizedException('Geçersiz e-posta veya şifre');
     }
+
+    // Brute-force koruması (müşavir girişiyle aynı: 5 hata → 15 dk kilit).
+    const MAX_FAILED = 5;
+    const LOCK_MIN = 15;
+    if ((taxpayer as any).portalLockedUntil && (taxpayer as any).portalLockedUntil > new Date()) {
+      const dk = Math.ceil(((taxpayer as any).portalLockedUntil.getTime() - Date.now()) / 60000);
+      throw new UnauthorizedException(`Çok fazla hatalı deneme. Giriş ${dk} dakika kilitli.`);
+    }
+
     const ok = await argon2.verify(taxpayer.portalPasswordHash, password);
-    if (!ok) throw new UnauthorizedException('Geçersiz e-posta veya şifre');
+    if (!ok) {
+      const next = ((taxpayer as any).portalFailedLoginCount || 0) + 1;
+      const data: any = { portalFailedLoginCount: next };
+      if (next >= MAX_FAILED) {
+        data.portalLockedUntil = new Date(Date.now() + LOCK_MIN * 60_000);
+        data.portalFailedLoginCount = 0; // kilit süresi koruma sağlar
+      }
+      await this.prisma.taxpayer.update({ where: { id: taxpayer.id }, data }).catch(() => null);
+      throw new UnauthorizedException('Geçersiz e-posta veya şifre');
+    }
 
     await this.prisma.taxpayer
-      .update({ where: { id: taxpayer.id }, data: { portalLastLoginAt: new Date() } })
+      .update({
+        where: { id: taxpayer.id },
+        data: {
+          portalLastLoginAt: new Date(),
+          ...(((taxpayer as any).portalFailedLoginCount || 0) > 0 || (taxpayer as any).portalLockedUntil
+            ? { portalFailedLoginCount: 0, portalLockedUntil: null }
+            : {}),
+        } as any,
+      })
       .catch(() => null);
 
     const accessToken = this.jwt.sign(
@@ -121,8 +147,8 @@ export class TaxpayerPortalService {
       data.portalEmail = mail;
       data.portalEnabled = true;
       if (opts.password) {
-        if (String(opts.password).length < 6) {
-          throw new BadRequestException('Şifre en az 6 karakter olmalı');
+        if (String(opts.password).length < 8) {
+          throw new BadRequestException('Şifre en az 8 karakter olmalı');
         }
         data.portalPasswordHash = await argon2.hash(opts.password, {
           type: argon2.argon2id,

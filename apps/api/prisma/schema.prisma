@@ -205,6 +205,8 @@ model Taxpayer {
   portalPasswordHash String?    // argon2id hash
   portalEnabled      Boolean    @default(false)
   portalLastLoginAt  DateTime?
+  portalFailedLoginCount Int    @default(0)  // brute-force koruması
+  portalLockedUntil  DateTime?               // bu ana kadar giriş kilitli
 
   createdAt   DateTime     @default(now())
   updatedAt   DateTime     @updatedAt
