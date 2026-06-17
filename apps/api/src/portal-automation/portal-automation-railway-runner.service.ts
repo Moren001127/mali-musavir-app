@@ -1704,7 +1704,7 @@ export class PortalAutomationRailwayRunnerService implements OnModuleInit {
         await this.jobProgress(tenantId, job, 'arac_test_done', `Araç teşhis: ${plakalar.length}/${scrapeRes.diag?.reportedTotal ?? '?'} plaka (eksiksiz=${scrapeRes.diag?.eksiksiz})`);
         return {
           recordCount: 0,
-          result: { runner: 'railway', phase: 'arac_test', codeVersion: 'v11-mui', plakaSayisi: plakalar.length, plakalar, diag: scrapeRes.diag },
+          result: { runner: 'railway', phase: 'arac_test', codeVersion: 'v12-stable', plakaSayisi: plakalar.length, plakalar, diag: scrapeRes.diag },
         };
       }
 
@@ -1795,6 +1795,8 @@ export class PortalAutomationRailwayRunnerService implements OnModuleInit {
     let paginatorText = '';
     let reportedTotal = 0;
     for (let p = 0; p < 40; p++) {
+      // MUI tabloyu async dolduruyor — satir sayisi sabitlenene kadar bekle (eksik okumayi onler).
+      await this.waitGibRowsStable(page);
       const snap: any = await page.evaluate(() => {
         const isPlate = (s: string) => /^\d{2}[A-Z]{1,4}\d{1,5}$/.test(s);
         const pag = document.querySelector('.mat-mdc-paginator-range-label, .mat-paginator-range-label');
@@ -1853,6 +1855,20 @@ export class PortalAutomationRailwayRunnerService implements OnModuleInit {
       await page.waitForTimeout(1500);
     }
     return { plakalar: Array.from(seen), diag: { paginatorText, reportedTotal, scraped: seen.size, eksiksiz: reportedTotal ? seen.size >= reportedTotal : null, pages: pageSnaps } };
+  }
+
+  /** MUI tablo async dolar — satir sayisi 1.2s sabit kalana kadar bekle (max ~12s). */
+  private async waitGibRowsStable(page: any): Promise<void> {
+    await page.waitForFunction(
+      () => {
+        const n = document.querySelectorAll('table tr, [role="row"]').length;
+        const w: any = window;
+        const stable = w.__gibRowN === n && n > 1;
+        w.__gibRowN = n;
+        return stable;
+      },
+      { timeout: 12_000, polling: 1200 },
+    ).catch(() => {});
   }
 
   /** "Satır sayısı" sayfa boyutunu 100 yapar — MUI TablePagination (+ mat fallback). */
