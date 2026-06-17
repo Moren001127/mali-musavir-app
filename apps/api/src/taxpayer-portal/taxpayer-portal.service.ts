@@ -12,8 +12,6 @@ import { StorageService } from '../storage/storage.service';
 import { claudeTextViaMax } from '../common/max-inference';
 import { KdvBeyannameService } from '../kdv-beyanname/kdv-beyanname.service';
 
-const SGK_TURLER = ['SGK_TAHAKKUK', 'SGK_HIZMET_LISTESI', 'SGK_ISE_GIRIS', 'SGK_ISTEN_CIKIS', 'SGK_ISGOREMEZLIK'];
-
 /**
  * Mükellef self-servis portal mantığı.
  * TÜM veri okumaları taxpayerId'ye KİLİTLİdir; client'tan gelen taxpayerId asla
@@ -409,24 +407,44 @@ export class TaxpayerPortalService {
     });
   }
 
-  /** SGK belgeleri — Tahakkuk Fişi ve Hizmet Listesi AYRI gruplar. */
+  /**
+   * SGK belgeleri — müşavir SGK sekmesi (SgkTab) ile aynı: Tahakkuk Fişi + Hizmet
+   * Listesi TEK tabloda, dönem/tür/mahiyet/çalışan/tutar kolonlarıyla, dönem azalan.
+   * Meta (dönem/mahiyet/çalışan/tutar) belge raw'ından çıkarılır (sgkDocMeta ile aynı).
+   */
   async getSgkBelgeleri(taxpayerId: string, tenantId: string) {
     const rows = await (this.prisma as any).portalDocument.findMany({
-      where: { tenantId, taxpayerId, belgeTuru: { in: SGK_TURLER } },
+      where: { tenantId, taxpayerId, belgeTuru: { in: ['SGK_TAHAKKUK', 'SGK_HIZMET_LISTESI'] } },
       orderBy: { createdAt: 'desc' },
-      take: 200,
-      select: { id: true, belgeTuru: true, title: true, referenceNo: true, period: true, issuedAt: true, createdAt: true, viewedAt: true, storageKey: true },
+      take: 300,
+      select: { id: true, belgeTuru: true, period: true, viewedAt: true, storageKey: true, raw: true },
     });
-    const map = (r: any) => ({
-      id: r.id, belgeTuru: r.belgeTuru, title: r.title, referenceNo: r.referenceNo,
-      period: r.period, issuedAt: r.issuedAt, createdAt: r.createdAt, viewedAt: r.viewedAt,
-      goruntulenebilir: !!r.storageKey,
-    });
-    return {
-      tahakkuk: rows.filter((r: any) => r.belgeTuru === 'SGK_TAHAKKUK').map(map),
-      hizmetListesi: rows.filter((r: any) => r.belgeTuru === 'SGK_HIZMET_LISTESI').map(map),
-      diger: rows.filter((r: any) => !['SGK_TAHAKKUK', 'SGK_HIZMET_LISTESI'].includes(r.belgeTuru)).map(map),
+    const meta = (d: any) => {
+      const raw = d?.raw || {};
+      const cells: string[] = Array.isArray(raw.cells) ? raw.cells : [];
+      const text = String(raw.rowText || cells.join(' ') || '');
+      const donem = String(raw.donem || d?.period || '').trim();
+      const mahiyet = String(raw.belgeMahiyeti || '').trim() || (text.match(/\b(ASIL|EK|İPTAL|IPTAL)\b/i) || [])[0] || '';
+      let tutar = String(raw.tutar || '').trim();
+      if (!tutar) { const tt = text.match(/\d{1,3}(?:\.\d{3})*,\d{2}/g) || []; tutar = tt.length ? tt[tt.length - 1] : ''; }
+      const calisan = String(raw.calisan || '').trim();
+      return { donem, mahiyet, calisan, tutar };
     };
+    return rows
+      .map((r: any) => {
+        const m = meta(r);
+        return {
+          id: r.id,
+          belgeTuru: r.belgeTuru,
+          donem: m.donem || r.period || '',
+          mahiyet: m.mahiyet || '',
+          calisan: m.calisan || '',
+          tutar: m.tutar || '',
+          viewedAt: r.viewedAt,
+          goruntulenebilir: !!r.storageKey,
+        };
+      })
+      .sort((a: any, b: any) => String(b.donem).localeCompare(String(a.donem)));
   }
 
   /** Mükellefe-kilitli belge görüntüleme — presigned inline URL döner. */

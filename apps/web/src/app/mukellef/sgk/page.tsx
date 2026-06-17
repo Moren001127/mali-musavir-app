@@ -1,84 +1,74 @@
 'use client';
 import { useQuery } from '@tanstack/react-query';
 import { taxpayerApi } from '@/lib/taxpayer-api';
-import { Card, Empty, Spinner, PageTitle, Th, THead, openBelge } from '../_lib/shared';
-import { ShieldCheck, ListChecks, Eye } from 'lucide-react';
+import { Section, Empty, Spinner, PageTitle, Th, THead, openBelge } from '../_lib/shared';
+import { Eye } from 'lucide-react';
 
-const YESIL = '#4ade80';
-const MAVI = '#60a5fa';
+const GOLD = '#d4b876';
+const STEEL = '#9da8b7';
 
-function SgkTablo({ rows, accent }: { rows: any[]; accent: string }) {
-  if (!rows || rows.length === 0) return <div className="px-5 pb-5"><Empty>Kayıt bulunmuyor.</Empty></div>;
-  return (
-    <div className="overflow-x-auto">
-      <table className="w-full text-sm">
-        <THead>
-          <Th>Belge</Th>
-          <Th>Dönem</Th>
-          <Th>Tarih</Th>
-          <Th align="center">Görüntüle</Th>
-        </THead>
-        <tbody>
-          {rows.map((s) => (
-            <tr key={s.id} className="border-t" style={{ borderColor: 'rgba(255,255,255,0.05)' }}>
-              <td className="px-4 py-2.5 text-[13px] max-w-[320px] truncate" style={{ color: '#fafaf9' }}>{s.title}</td>
-              <td className="px-4 py-2.5 text-[12.5px]" style={{ color: 'rgba(250,250,249,0.55)' }}>{s.period || '—'}</td>
-              <td className="px-4 py-2.5 text-[12.5px]" style={{ color: 'rgba(250,250,249,0.5)' }}>{s.issuedAt ? new Date(s.issuedAt).toLocaleDateString('tr-TR') : (s.createdAt ? new Date(s.createdAt).toLocaleDateString('tr-TR') : '—')}</td>
-              <td className="px-4 py-2.5">
-                <div className="flex justify-center">
-                  {s.goruntulenebilir
-                    ? <button type="button" onClick={() => openBelge('sgk', s.id)} title="Görüntüle" className="flex h-7 w-7 items-center justify-center rounded-lg transition hover:bg-white/[0.06]" style={{ border: `1px solid ${accent}45`, color: accent }}><Eye size={14} /></button>
-                    : <span className="text-[11px]" style={{ color: 'rgba(250,250,249,0.25)' }}>—</span>}
-                </div>
-              </td>
-            </tr>
-          ))}
-        </tbody>
-      </table>
-    </div>
-  );
-}
-
-function Bolum({ icon: Icon, baslik, accent, adet, children }: { icon: any; baslik: string; accent: string; adet: number; children: React.ReactNode }) {
-  return (
-    <Card pad={false} accent={accent}>
-      <div className="flex items-center gap-2 px-4 py-3" style={{ borderBottom: '1px solid rgba(255,255,255,0.06)' }}>
-        <span className="flex h-7 w-7 items-center justify-center rounded-lg" style={{ background: `${accent}18`, border: `1px solid ${accent}30`, color: accent }}><Icon size={14} /></span>
-        <h2 className="text-[15px] font-semibold" style={{ color: '#fafaf9' }}>{baslik}</h2>
-        <span className="ml-auto text-[11.5px] font-semibold tabular-nums rounded-full px-2.5 py-0.5" style={{ background: `${accent}1a`, color: accent }}>{adet} belge</span>
-      </div>
-      {children}
-    </Card>
-  );
-}
+type SgkRow = {
+  id: string; belgeTuru: string; donem: string; mahiyet: string; calisan: string; tutar: string;
+  viewedAt: string | null; goruntulenebilir: boolean;
+};
 
 export default function MukellefSgk() {
-  const { data, isLoading } = useQuery({
+  const { data = [], isLoading } = useQuery<SgkRow[]>({
     queryKey: ['portal-sgk'],
     queryFn: () => taxpayerApi.get('/portal/sgk').then((r) => r.data),
   });
 
-  const tahakkuk: any[] = data?.tahakkuk || [];
-  const hizmet: any[] = data?.hizmetListesi || [];
-  const diger: any[] = data?.diger || [];
+  const rows: SgkRow[] = Array.isArray(data) ? data : [];
 
   return (
-    <div className="space-y-5">
+    <div className="space-y-4">
       <PageTitle ust="SGK" baslik="SGK Belgelerim" />
       {isLoading ? <Spinner /> : (
-        <>
-          <Bolum icon={ShieldCheck} baslik="SGK Tahakkuk Fişleri" accent={YESIL} adet={tahakkuk.length}>
-            <SgkTablo rows={tahakkuk} accent={YESIL} />
-          </Bolum>
-          <Bolum icon={ListChecks} baslik="SGK Hizmet Listeleri" accent={MAVI} adet={hizmet.length}>
-            <SgkTablo rows={hizmet} accent={MAVI} />
-          </Bolum>
-          {diger.length > 0 && (
-            <Bolum icon={ShieldCheck} baslik="Diğer SGK Belgeleri" accent="#d4b876" adet={diger.length}>
-              <SgkTablo rows={diger} accent="#d4b876" />
-            </Bolum>
+        <Section
+          baslik="SGK — Tahakkuk Fişleri & Hizmet Listeleri"
+          aciklama="Dönem azalan sırada. Satırdaki simge ile belgeyi (PDF) görüntüleyebilirsiniz."
+        >
+          {rows.length === 0 ? <div className="px-4 py-5"><Empty>SGK belgesi bulunmuyor.</Empty></div> : (
+            <div className="overflow-x-auto">
+              <table className="w-full min-w-[680px] text-sm">
+                <THead>
+                  <Th>Dönem</Th>
+                  <Th>Tür</Th>
+                  <Th>Mahiyet</Th>
+                  <Th align="right">Çalışan</Th>
+                  <Th align="right">Tutar</Th>
+                  <Th align="right">Belge</Th>
+                </THead>
+                <tbody>
+                  {rows.map((s) => {
+                    const tahakkuk = s.belgeTuru === 'SGK_TAHAKKUK';
+                    return (
+                      <tr key={s.id} className="border-t" style={{ borderColor: 'rgba(255,255,255,0.055)' }}>
+                        <td className="px-4 py-3 text-[12.5px] font-semibold tabular-nums" style={{ color: '#fafaf9' }}>{s.donem || '—'}</td>
+                        <td className="px-4 py-3">
+                          <span className="rounded-md px-2 py-1 text-[10.5px] font-bold"
+                            style={tahakkuk ? { color: GOLD, background: 'rgba(212,184,118,0.13)' } : { color: STEEL, background: 'rgba(157,168,183,0.14)' }}>
+                            {tahakkuk ? 'Tahakkuk' : 'Hizmet L.'}
+                          </span>
+                        </td>
+                        <td className="px-4 py-3 text-[12.5px]" style={{ color: 'rgba(250,250,249,0.55)' }}>{s.mahiyet || '—'}</td>
+                        <td className="px-4 py-3 text-right text-[12.5px] tabular-nums" style={{ color: 'rgba(250,250,249,0.7)' }}>{s.calisan || '—'}</td>
+                        <td className="px-4 py-3 text-right text-[12.5px] font-semibold tabular-nums" style={{ color: s.tutar ? '#fafaf9' : 'rgba(250,250,249,0.3)' }}>{s.tutar ? `${s.tutar} ₺` : '—'}</td>
+                        <td className="px-4 py-3">
+                          <div className="flex justify-end">
+                            {s.goruntulenebilir
+                              ? <button type="button" onClick={() => openBelge('sgk', s.id)} title="Belgeyi görüntüle" className="flex h-8 w-8 items-center justify-center rounded-lg transition hover:bg-white/[0.06]" style={{ border: '1px solid rgba(157,168,183,0.35)', color: STEEL }}><Eye size={15} /></button>
+                              : <span className="text-[11px]" style={{ color: 'rgba(250,250,249,0.25)' }}>—</span>}
+                          </div>
+                        </td>
+                      </tr>
+                    );
+                  })}
+                </tbody>
+              </table>
+            </div>
           )}
-        </>
+        </Section>
       )}
     </div>
   );
