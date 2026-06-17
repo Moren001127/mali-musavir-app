@@ -662,7 +662,22 @@ const multiResult = kdvBreakdown.extractMultiRateKdv(multiText, breakdownDeps);
 eq(multiResult.length, 2, 'multi-rate count');
 approx(multiResult.find((b) => b.oran === 20).tutar, 200, 0.01, 'multi-rate %20 tutar');
 approx(multiResult.find((b) => b.oran === 10).tutar, 50, 0.01, 'multi-rate %10 tutar');
-ok('azure/kdv-breakdown.ts extractMultiRateKdv (3 assertion)');
+// GERÇEK örnek (A101 e-Arşiv): Azure kapanış parantezini kaçırıyor → "Hesaplanan
+// KDV(%20" satırı eskiden eşleşmeyip %20 oranı komple düşüyordu. Kapanış parantezi
+// opsiyonel olunca tutar (alt satırda) yakalanır.
+const multiNoParenText = [
+  'Hesaplanan KDV(%1)',
+  '16,23 TL',
+  'Hesaplanan KDV(%10)',
+  '107,45 TL',
+  'Hesaplanan KDV(%20',
+  '31,50 TL',
+  'Vergiler Dahil Toplam Tutar',
+].join('\n');
+const multiNoParen = kdvBreakdown.extractMultiRateKdv(multiNoParenText, breakdownDeps);
+eq(multiNoParen.length, 3, 'multi-rate eksik parantezde de 3 oran');
+approx(multiNoParen.find((b) => b.oran === 20).tutar, 31.5, 0.01, 'multi-rate "KDV(%20" (parantezsiz) %20 yakalanir');
+ok('azure/kdv-breakdown.ts extractMultiRateKdv (5 assertion)');
 
 // ─── azure/okc-fis.ts ───
 const okcDeps = {

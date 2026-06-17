@@ -55,7 +55,9 @@ export function extractMultiRateKdv(text: string, deps: KdvBreakdownDeps): KdvBr
   const breakdown: KdvBreakdownItem[] = [];
   const seen = new Set<number>();
 
-  const labelRe = /(?:HESAPLANAN\s*)?K\.?\s*D\.?\s*V\.?\s*\(\s*%\s*(\d{1,2})(?:[,.]\d{1,2})?\s*\)/i;
+  // Kapanış parantezi OPSİYONEL: Azure bazen "Hesaplanan KDV(%20" şeklinde ")" yi
+  // kaçırıyor (gerçek örnek: A101 e-Arşiv %20 satırı) → o oran komple düşüyordu.
+  const labelRe = /(?:HESAPLANAN\s*)?K\.?\s*D\.?\s*V\.?\s*\(\s*%\s*(\d{1,2})(?:[,.]\d{1,2})?\s*\)?/i;
   const amountRe = /([\d]{1,3}(?:[.,]\d{3})*[.,]\d{1,2})\s*(?:TL|TRY|₺)?/i;
   const skipTaxRe = /ÖZEL\s*İLETİŞİM|ÖIV|OIV|TELSİZ|TELSIZ|ÖTV|OTV|DAMGA|BSMV|KKDF|KONAKLAMA|ÇEVRE/i;
 
