@@ -277,32 +277,47 @@ export class TaxpayerPortalService {
    * Borç = TAHAKKUK (+) / IADE (−), Alacak = TAHSILAT (+) / DÜZELTME (−).
    */
   async getCariOzet(taxpayerId: string) {
-    const hareketler = await this.prisma.cariHareket.findMany({
+    // 4 metrik TÜM hareketler üzerinden (kayıt sayısından bağımsız doğru bakiye).
+    // Eskiden yalnız en eski 500 hareket alınıp toplam ondan hesaplanıyordu →
+    // 500'ü aşan mükellefte bakiye/toplam kayıyordu.
+    const sums = await this.prisma.cariHareket.groupBy({
+      by: ['tip'],
       where: { taxpayerId },
-      orderBy: [{ tarih: 'asc' }, { createdAt: 'asc' }],
-      take: 500,
+      _sum: { tutar: true },
+    });
+    const sumOf = (tip: string) => Number(sums.find((s) => s.tip === tip)?._sum.tutar || 0);
+    const tahakkuk = sumOf('TAHAKKUK');
+    const tahsilat = sumOf('TAHSILAT');
+    const iade = sumOf('IADE');
+    const duzeltme = sumOf('DUZELTME');
+    // Ofis tarafıyla aynı: bakiye = (TAHAKKUK − IADE) − (TAHSILAT − DÜZELTME)
+    const bakiye = (tahakkuk - iade) - (tahsilat - duzeltme);
+
+    // Hareket tablosu: en GÜNCEL 120 hareket; yürüyen bakiye GERÇEK son bakiyeye
+    // hizalı (en yeniden eskiye doğru her satırın "işlem sonrası bakiyesi").
+    const recent = await this.prisma.cariHareket.findMany({
+      where: { taxpayerId },
+      orderBy: [{ tarih: 'desc' }, { createdAt: 'desc' }],
+      take: 120,
       select: { tarih: true, tip: true, tutar: true, aciklama: true, donem: true, hizmet: { select: { hizmetAdi: true } } },
     });
-    let tahakkuk = 0;
-    let tahsilat = 0;
-    let running = 0;
-    const withRunning = hareketler.map((h) => {
+    let run = bakiye;
+    const withRunning = recent.map((h) => {
       const t = Number(h.tutar);
       const borc = h.tip === 'TAHAKKUK' ? t : h.tip === 'IADE' ? -t : 0;
       const alacak = h.tip === 'TAHSILAT' ? t : h.tip === 'DUZELTME' ? -t : 0;
-      running += borc - alacak;
-      if (h.tip === 'TAHAKKUK') tahakkuk += t;
-      else if (h.tip === 'TAHSILAT') tahsilat += t;
-      return {
+      const row = {
         tarih: h.tarih, tip: h.tip, tutar: t, aciklama: h.aciklama, donem: h.donem,
-        hizmetAdi: h.hizmet?.hizmetAdi || null, borc, alacak, runningBakiye: running,
+        hizmetAdi: h.hizmet?.hizmetAdi || null, borc, alacak, runningBakiye: run,
       };
+      run -= (borc - alacak); // bir önceki (daha eski) satırın işlem-sonrası bakiyesi
+      return row;
     });
     return {
-      bakiye: running,
+      bakiye,
       tahakkukToplam: tahakkuk,
       tahsilatToplam: tahsilat,
-      hareketler: withRunning.reverse().slice(0, 120),
+      hareketler: withRunning,
     };
   }
 

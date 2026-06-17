@@ -1,5 +1,5 @@
 'use client';
-import { useQuery } from '@tanstack/react-query';
+import { useQuery, useQueryClient } from '@tanstack/react-query';
 import { taxpayerApi } from '@/lib/taxpayer-api';
 import { Section, Empty, Spinner, PageTitle, Th, THead, openBelge, ozetBelge } from '../_lib/shared';
 import { Eye, BellDot, Sparkles, MailWarning } from 'lucide-react';
@@ -16,10 +16,20 @@ const fmtTarih = (v?: string | null) => {
 };
 
 export default function MukellefTebligatlar() {
+  const qc = useQueryClient();
   const { data = [], isLoading } = useQuery({
     queryKey: ['portal-tebligatlar'],
     queryFn: () => taxpayerApi.get('/portal/tebligatlar').then((r) => r.data),
   });
+  // Tebligat açılınca backend viewedAt yazar; "okundu" durumu + dashboard rozeti
+  // anında yansısın diye kısa süre sonra listeyi tazele.
+  const acVeTazele = (id: string, baslik: string) => {
+    openBelge('tebligat', id, undefined, baslik);
+    setTimeout(() => {
+      qc.invalidateQueries({ queryKey: ['portal-tebligatlar'] });
+      qc.invalidateQueries({ queryKey: ['portal-dashboard'] });
+    }, 1500);
+  };
 
   const liste: any[] = Array.isArray(data) ? data : [];
   const okunmamis = liste.filter((t) => !t.viewedAt).length;
@@ -72,7 +82,7 @@ export default function MukellefTebligatlar() {
                               {t.goruntulenebilir ? (
                                 <>
                                   <button type="button" onClick={() => ozetBelge('tebligat', t.id, undefined, t.kurumAciklama || t.title || 'e-Tebligat')} title="MOREN AI ile özetle" className="flex h-8 w-8 items-center justify-center rounded-lg transition hover:bg-white/[0.06]" style={{ border: '1px solid rgba(184,160,111,0.4)', color: '#d4b876', background: 'rgba(184,160,111,0.1)' }}><Sparkles size={15} /></button>
-                                  <button type="button" onClick={() => openBelge('tebligat', t.id, undefined, t.kurumAciklama || t.title || 'e-Tebligat')} title="Tebligatı görüntüle" className="flex h-8 w-8 items-center justify-center rounded-lg transition hover:bg-white/[0.06]" style={{ border: `1px solid ${SARI}45`, color: SARI, background: `${SARI}12` }}><Eye size={15} /></button>
+                                  <button type="button" onClick={() => acVeTazele(t.id, t.kurumAciklama || t.title || 'e-Tebligat')} title="Tebligatı görüntüle" className="flex h-8 w-8 items-center justify-center rounded-lg transition hover:bg-white/[0.06]" style={{ border: `1px solid ${SARI}45`, color: SARI, background: `${SARI}12` }}><Eye size={15} /></button>
                                 </>
                               ) : <span className="text-[11px]" style={{ color: 'rgba(250,250,249,0.25)' }}>—</span>}
                             </div>

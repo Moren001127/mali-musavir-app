@@ -238,7 +238,7 @@ export default function GeldenBelgelerPanel({ taxpayerId, period, taxpayers, onM
 
                     {/* TARİH */}
                     <td style={{ padding: '10px 12px', fontSize: 12, color: 'rgba(250,250,249,0.55)', whiteSpace: 'nowrap' }}>
-                      {fmtDate(doc.invoiceDate || doc.createdAt)}
+                      {fmtDate(doc.faturaTarihi || doc.invoiceDate || doc.createdAt)}
                     </td>
 
                     {/* FİRMA */}
