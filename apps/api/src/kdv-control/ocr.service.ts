@@ -8,7 +8,7 @@ import {
   extractDate as extractDatePure,
   normalizeOcrYear as normalizeOcrYearPure,
 } from './ocr/parsers/date';
-import { extractBelgeNo as extractBelgeNoPure } from './ocr/parsers/belge-no';
+import { extractBelgeNo as extractBelgeNoPure, isRandomDbId } from './ocr/parsers/belge-no';
 import {
   extractSaticiVkn as extractSaticiVknPure,
   extractSaticiUnvan as extractSaticiUnvanPure,
@@ -1019,6 +1019,9 @@ export class OcrService {
   private extractBelgeNoFromFilename(filename?: string): string | null {
     if (!filename) return null;
     const base = filename.replace(/\.[^/.]+$/, '').trim();
+    // Dosya adı Prisma cuid()/rastgele DB id'si ise belge no üretme — OCR'daki
+    // gerçek FİŞ/FATURA NO kullanılsın (yoksa OKC fişleri Luca ile eşleşmez).
+    if (isRandomDbId(base)) return null;
     if (E_BELGE_NO_REGEX.test(base.toUpperCase())) return base.toUpperCase();
     if (/^[A-Z0-9]{3}\d{4}\d{6,12}$/i.test(base)) return base.toUpperCase();
     if (/^[A-Z0-9\-_]{8,30}$/i.test(base)) return base.toUpperCase();

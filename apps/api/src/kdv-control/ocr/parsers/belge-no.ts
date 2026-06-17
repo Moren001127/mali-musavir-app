@@ -23,6 +23,18 @@
  * @param text       Orijinal OCR metni (Turkce karakter korunmus, Z raporu detection icin)
  * @param foldedText foldTurkishAscii(text) sonucu (genel desenler bunun uzerinde calisir)
  */
+/**
+ * Dosya adı Prisma `cuid()` / rastgele DB id'si mi? (ör. "cmqgpx7xd0d7swns6sw3am42o").
+ *
+ * Bunlar belge no DEĞİLDİR; filename'den belge no üretilirken elenmeli — aksi halde
+ * OKC fişlerinde belge no=cuid kalıp Luca ile EŞLEŞMEZ ("Luca'da yok" yığını).
+ * cuid: 'c' + 24-30 küçük-harf base36, hem harf hem rakam. Gerçek belge no'lar
+ * büyük-harf önekli (GIB/EFA…) veya rakam-yapılı olduğundan elenmez.
+ */
+export function isRandomDbId(base: string): boolean {
+  return /^c[a-z0-9]{23,30}$/.test(base) && /[a-z]/.test(base) && /\d/.test(base);
+}
+
 export function extractBelgeNo(text: string, foldedText: string): string | null {
   // Z RAPORU tespiti — eger metinde Z RAPORU geciyorsa Z NO/Z SAYAC'ı al
   const isZRapor = /z\s*rapor(u|[ıi])?|z\s*report|z\s*g[uü]nl[uü]k/i.test(text);
