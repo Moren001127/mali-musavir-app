@@ -13,22 +13,22 @@ export const DURUM: Record<string, { label: string; color: string; Icon: any }> 
   muaf: { label: 'Muaf', color: '#94a3b8', Icon: ShieldCheck },
 };
 
-/** İmza premium başlık: radyal arka plan + üst altın renk şeridi (ofis portalı ile aynı dil). */
+/** Sayfa başlığı — ofis paneli PageHeader ile birebir aynı kompakt dil. */
 export function PageTitle({ ust, baslik }: { ust: string; baslik: string }) {
   return (
-    <header
-      className="relative overflow-hidden rounded-2xl border p-5 mb-6"
+    <div
+      className="mb-4 flex items-center justify-between rounded-2xl px-4 py-3"
       style={{
-        borderColor: 'rgba(212,184,118,0.18)',
-        background:
-          'radial-gradient(120% 140% at 0% 0%, rgba(212,184,118,0.18), transparent 45%), radial-gradient(120% 140% at 100% 0%, rgba(217,160,108,0.12), transparent 45%), #0f0d0b',
-        boxShadow: '0 16px 34px rgba(0,0,0,0.26), inset 0 1px 0 rgba(255,255,255,0.04)',
+        background: 'linear-gradient(135deg, rgba(212,184,118,0.055), rgba(8,18,18,0.70))',
+        border: '1px solid rgba(212,184,118,0.12)',
+        boxShadow: '0 14px 34px rgba(0,0,0,0.14)',
       }}
     >
-      <div className="absolute inset-x-0 top-0 h-1" style={{ background: 'linear-gradient(90deg, #d4b876, #e0b878, #d9a06c, #b8863a)' }} />
-      <p className="text-[11px] font-semibold uppercase tracking-[.18em]" style={{ color: 'rgba(212,184,118,0.85)' }}>{ust}</p>
-      <h1 className="mt-1.5" style={{ fontFamily: 'Fraunces, serif', fontSize: 30, fontWeight: 600, color: '#fafaf9', letterSpacing: '-.03em', lineHeight: 1.1 }}>{baslik}</h1>
-    </header>
+      <div>
+        {ust ? <p className="text-[10.5px] font-semibold uppercase tracking-[.16em] mb-0.5" style={{ color: 'rgba(212,184,118,0.8)' }}>{ust}</p> : null}
+        <h1 className="page-title">{baslik}</h1>
+      </div>
+    </div>
   );
 }
 
