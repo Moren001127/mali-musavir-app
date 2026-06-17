@@ -9,7 +9,7 @@ import { taxpayerApi } from '@/lib/taxpayer-api';
 export const GOLD = '#d4b876';
 
 const BELGE_EVENT = 'moren:belge-onizle';
-type BelgeEvt = { loading?: boolean; url?: string; title?: string; error?: string; ozet?: string };
+type BelgeEvt = { loading?: boolean; url?: string; title?: string; error?: string; ozet?: string; mediaType?: string };
 
 /** Fatura görüntüsünü (Drive/MIHSAP) blob olarak çekip sayfa içi önizlemede açar. */
 export async function openFaturaGoruntu(id: string, title?: string) {
@@ -18,8 +18,9 @@ export async function openFaturaGoruntu(id: string, title?: string) {
   fire({ loading: true, title: baslik });
   try {
     const res = await taxpayerApi.get(`/portal/belge/fatura/${id}/file`, { responseType: 'blob' });
-    const url = URL.createObjectURL(res.data as Blob);
-    fire({ url, title: baslik });
+    const blob = res.data as Blob;
+    const url = URL.createObjectURL(blob);
+    fire({ url, title: baslik, mediaType: blob.type || '' });
   } catch {
     fire({ error: 'Fatura görüntüsü açılamadı. Daha sonra tekrar deneyin.', title: baslik });
   }
@@ -96,7 +97,9 @@ export function BelgePreviewHost() {
           ) : st.ozet ? (
             <div className="moren-md px-5 py-4 text-[13.5px]" style={{ color: '#fafaf9' }}><ReactMarkdown remarkPlugins={[remarkGfm]}>{st.ozet}</ReactMarkdown></div>
           ) : st.url ? (
-            <iframe src={st.url} title={st.title || 'Belge'} className="w-full h-full" style={{ border: 0, background: '#fff' }} />
+            (st.mediaType || '').startsWith('image/')
+              ? <div className="w-full h-full flex items-center justify-center p-2" style={{ background: '#0f0d0b' }}><img src={st.url} alt={st.title || 'Belge'} style={{ maxWidth: '100%', maxHeight: '100%', objectFit: 'contain' }} /></div>
+              : <iframe src={st.url} title={st.title || 'Belge'} className="w-full h-full" style={{ border: 0, background: '#fff' }} />
           ) : null}
         </div>
       </div>
