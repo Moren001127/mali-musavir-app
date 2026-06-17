@@ -95,17 +95,17 @@ export function MukellefBrifing({ userName }: { userName?: string }) {
         </div>
       </div>
 
-      <div className="px-5 pt-3 pb-2 grid gap-3 xl:grid-cols-[minmax(0,1fr)_minmax(320px,440px)] xl:items-start">
-        <div className="min-w-0">
+      <div className="px-5 pt-3 pb-2 grid gap-3 xl:grid-cols-[minmax(0,1fr)_minmax(400px,580px)] xl:items-stretch">
+        <div className="min-w-0 flex flex-col justify-center">
           <h2 style={{ fontFamily: 'Inter, ui-sans-serif, system-ui, sans-serif', fontSize: 22, fontWeight: 800, color: '#f6fbf7', lineHeight: 1.1 }}>Bugünkü Öncelikler</h2>
           <p className="text-[12px] mt-1 tabular-nums" style={{ color: 'rgba(250,250,249,0.42)' }}>{KISA_TARIH}{adi ? ` · ${adi}` : ''}</p>
         </div>
         {!isLoading && data?.motivation && (
-          <div className="w-full rounded-lg px-3 py-2 flex items-center gap-2.5 select-none xl:justify-self-end" style={{ background: 'linear-gradient(135deg, rgba(143,215,189,0.075), rgba(216,189,134,0.045))', border: '1px solid rgba(143,215,189,0.16)', boxShadow: 'inset 0 1px 0 rgba(255,255,255,0.025)' }}>
-            <span className="w-7 h-7 rounded-md flex items-center justify-center shrink-0" style={{ background: focusTone.bg, border: `1px solid ${focusTone.border}`, color: focusTone.color }}><Sparkles size={13} /></span>
+          <div className="w-full rounded-xl px-4 py-3.5 flex items-center gap-3.5 select-none xl:justify-self-end" style={{ background: 'linear-gradient(135deg, rgba(143,215,189,0.10), rgba(216,189,134,0.06))', border: '1px solid rgba(143,215,189,0.2)', boxShadow: 'inset 0 1px 0 rgba(255,255,255,0.03)' }}>
+            <span className="w-10 h-10 rounded-lg flex items-center justify-center shrink-0" style={{ background: focusTone.bg, border: `1px solid ${focusTone.border}`, color: focusTone.color }}><Sparkles size={19} /></span>
             <span className="min-w-0 flex-1">
-              <span className="flex items-center gap-1.5 text-[9px] uppercase font-black tracking-[.14em]" style={{ color: '#d8c38f' }}><Sparkles size={10} /> Odak Notu</span>
-              <span className="block mt-0.5 text-[12.5px] font-semibold leading-snug" style={{ color: 'rgba(250,250,249,0.88)' }}>{data.motivation}</span>
+              <span className="flex items-center gap-1.5 text-[9.5px] uppercase font-black tracking-[.16em]" style={{ color: '#d8c38f' }}><Sparkles size={11} /> Günün Notu</span>
+              <span className="block mt-1 text-[15px] font-semibold leading-snug" style={{ color: '#fafaf9', fontFamily: 'Fraunces, Georgia, serif' }}>{data.motivation}</span>
             </span>
           </div>
         )}

@@ -14,6 +14,37 @@ import { KdvBeyannameService } from '../kdv-beyanname/kdv-beyanname.service';
 import { DriveService } from '../drive/drive.service';
 import { PDFParse } from 'pdf-parse';
 
+/** Brifing "Odak Notu" — sürekli değişen ticari/motivasyon cümleleri (her açılışta rastgele). */
+const TICARI_MOTIVASYON: string[] = [
+  'Düzenli kayıt, büyümenin sessiz kahramanıdır.',
+  'Bugün attığınız küçük adımlar, yarının büyük kazançlarını hazırlar.',
+  'İşini rakamlarıyla bilen, geleceğini sağlam kurar.',
+  'Disiplinli takip, huzurlu bir bilanço demektir.',
+  'Sağlam mali düzen, cesur kararların temelidir.',
+  'Bugünün düzeni, yarının rahatıdır.',
+  'Kontrolü elinde tutan, büyümeyi de yönetir.',
+  'Net rakamlar, net kararlar getirir.',
+  'İşletmeni her gün bir adım daha ileri taşı.',
+  'Güçlü bir bugün, güvenli bir yarın inşa eder.',
+  'Mali farkındalık, kârın görünmeyen kaynağıdır.',
+  'Planlı ilerleyen, krizden değil fırsattan konuşur.',
+  'Bugün düzene ayırdığın dakika, yarın saatler kazandırır.',
+  'Başarı tesadüf değil, düzenli takibin sonucudur.',
+  'İşini büyütmenin ilk adımı, bugünkü düzenindir.',
+  'Şeffaf kayıt, sağlam itibar demektir.',
+  'Küçük işletmelerin gücü, düzenli yönetimden gelir.',
+  'Bugün biraz emek, yıl sonunda büyük fark.',
+  'İyi tutulan defter, rahat uyutan yastıktır.',
+  'Rakamlarına hâkim ol, geleceğine yön ver.',
+  'Düzen, en sessiz ama en güçlü ortağındır.',
+  'Bugünü iyi yönet; yarın seni kendi yönetir.',
+  'Vergi yükümlülüğünü zamanında karşılamak, itibarının teminatıdır.',
+  'Bilinçli adımlar, sürdürülebilir başarıyı getirir.',
+];
+function rastgeleMotivasyon(): string {
+  return TICARI_MOTIVASYON[Math.floor(Math.random() * TICARI_MOTIVASYON.length)];
+}
+
 /**
  * Mükellef self-servis portal mantığı.
  * TÜM veri okumaları taxpayerId'ye KİLİTLİdir; client'tan gelen taxpayerId asla
@@ -739,7 +770,8 @@ export class TaxpayerPortalService {
   async getBrifing(taxpayerId: string, tenantId: string, force = false) {
     const cached = this.brifingCache.get(taxpayerId);
     if (!force && cached && Date.now() - cached.at < 30 * 60 * 1000) {
-      return { ...cached.data, fromCache: true };
+      // Önbellekten dönsek de motivasyon (Odak Notu) her açılışta yenilensin.
+      return { ...cached.data, motivation: rastgeleMotivasyon(), fromCache: true };
     }
 
     const dash = await this.getDashboard(taxpayerId, tenantId);
@@ -774,13 +806,8 @@ export class TaxpayerPortalService {
     suggestions.push({ text: 'Faturalarımı gör', href: '/mukellef/faturalar', icon: 'Receipt' });
     suggestions.push({ text: 'MOREN AI’ya sor', href: '/mukellef/asistan', icon: 'Sparkles' });
 
-    const motivationByFocus: Record<string, string> = {
-      calm: 'Bugün işler sakin görünüyor; belgelerinizi gözden geçirmek için iyi bir gün.',
-      busy: 'Birkaç başlık takip istiyor; sırayla bakınca gün rahat toparlanır.',
-      critical: 'Öncelikli birkaç konu var; bunları bugün netleştirmek yükü azaltır.',
-      review: 'Kısa bir kontrol, ilerideki yükü bugünden hafifletir.',
-    };
-    const motivation = motivationByFocus[focus];
+    // Odak Notu = sürekli değişen ticari motivasyon (her açılışta rastgele).
+    const motivation = rastgeleMotivasyon();
 
     // Kurallı yedek özet — GENEL çerçeve (rakam/kalem tekrarı YOK; detaylar uyarılarda).
     const acilSayi = (okunmamis > 0 ? 1 : 0) + (bekleyen > 0 ? 1 : 0) + (yakin.length > 0 ? 1 : 0) + (bakiye > 0 ? 1 : 0);
