@@ -1704,7 +1704,7 @@ export class PortalAutomationRailwayRunnerService implements OnModuleInit {
         await this.jobProgress(tenantId, job, 'arac_test_done', `Araç teşhis: ${plakalar.length} plaka — "${scrapeRes.diag?.paginatorText || ''}"`);
         return {
           recordCount: 0,
-          result: { runner: 'railway', phase: 'arac_test', codeVersion: 'v9-aracdiag', plakaSayisi: plakalar.length, plakalar, diag: scrapeRes.diag },
+          result: { runner: 'railway', phase: 'arac_test', codeVersion: 'v10-aracdiag2', plakaSayisi: plakalar.length, plakalar, diag: scrapeRes.diag },
         };
       }
 
@@ -1807,14 +1807,31 @@ export class PortalAutomationRailwayRunnerService implements OnModuleInit {
           let plate = '';
           for (const c of cells) { const n = c.replace(/[\s-]/g, '').toUpperCase(); if (isPlate(n)) { plate = n; break; } }
           if (plate) plates.push(plate);
-          if (sampleRows.length < 15) sampleRows.push({ cells: cells.slice(0, 4), plate });
+          if (sampleRows.length < 20) sampleRows.push({ cells: cells.slice(0, 4), plate });
         }
-        return { pagText, rowCount: rows.length, plates, sampleRows };
+        // "X-Y/Z" aralik metni (toplam Z) — paginator markup'tan bagimsiz, tum DOM'da ara.
+        const rangeTexts = Array.from(document.querySelectorAll('*'))
+          .filter((e) => e.children.length === 0)
+          .map((e) => String(e.textContent || '').trim())
+          .filter((t) => /\d+\s*[-–—]\s*\d+\s*\/\s*\d+/.test(t))
+          .slice(0, 6);
+        const selects = Array.from(document.querySelectorAll('select, mat-select, [role="combobox"], .mat-mdc-select, .mat-select'))
+          .map((e: any) => ({ cls: String(e.className || '').slice(0, 60), txt: String(e.textContent || '').trim().slice(0, 30) }))
+          .slice(0, 6);
+        const nextBtns = Array.from(document.querySelectorAll('button'))
+          .filter((b: any) => /onraki|next|sonraki|ileri/i.test((b.getAttribute('aria-label') || '') + ' ' + (b.className || '')))
+          .map((b: any) => ({ label: b.getAttribute('aria-label'), cls: String(b.className || '').slice(0, 70), disabled: !!b.disabled, ariaDisabled: b.getAttribute('aria-disabled') }))
+          .slice(0, 6);
+        const tbodyTr = document.querySelectorAll('table tbody tr').length;
+        return { pagText, rowCount: rows.length, plates, sampleRows, rangeTexts, selects, nextBtns, tbodyTr };
       });
       if (snap.pagText) paginatorText = snap.pagText;
       let yeni = 0;
       for (const pl of snap.plates) { if (!seen.has(pl)) { seen.add(pl); yeni++; } }
-      pageSnaps.push({ page: p, pagText: snap.pagText, rowCount: snap.rowCount, plateCount: snap.plates.length, yeni, sampleRows: p === 0 ? snap.sampleRows : undefined });
+      pageSnaps.push({
+        page: p, pagText: snap.pagText, rowCount: snap.rowCount, tbodyTr: snap.tbodyTr, plateCount: snap.plates.length, yeni,
+        ...(p === 0 ? { sampleRows: snap.sampleRows, rangeTexts: snap.rangeTexts, selects: snap.selects, nextBtns: snap.nextBtns } : {}),
+      });
 
       const next = await page.$(
         '.mat-mdc-paginator-navigation-next, .mat-paginator-navigation-next, button[aria-label*="onraki"], button[aria-label*="Next"]',
