@@ -941,6 +941,19 @@ export class KdvBeyannameService {
       orderBy: [{ createdAt: 'asc' }],
     });
 
+    // ÇOK ORANLI FATURA TESPİTİ (2026-06-17): Bir OCR görseli birden çok Luca oran-satırıyla
+    // eşleşebilir (ör. %1 + %20 olan tek e-fatura → 2 ReconciliationResult, aynı imageId).
+    // Bu durumda görsel-seviye confirmedKdvTutari/ocrKdvTutari faturanın TÜM KDV'sidir;
+    // her oran-satırına tekrar eklenirse KDV ÇİFT (üç kalemde üç kez) sayılır. Çok oranlıda
+    // tutar olarak SATIR-bazlı Luca kaydı (kdvRecord.kdvTutari) kullanılır.
+    const imageResultCounts = new Map<string, number>();
+    for (const res of kdvResults) {
+      const iid = res.imageId || res.image?.id;
+      if (iid && acceptedStatuses.has(String(res.status || ''))) {
+        imageResultCounts.set(iid, (imageResultCounts.get(iid) || 0) + 1);
+      }
+    }
+
     const oranMap = new Map<number, { matrah: number; kdv: number; adet: number; kaynak?: 'kdv_kontrol' }>();
     const includedDocKeys = new Set<string>();
     const finalDocKeys = new Set<string>();
@@ -1067,13 +1080,17 @@ export class KdvBeyannameService {
       const confirmedTutar = this.parseTrAmount(res.image?.confirmedKdvTutari);
       const lucaTutar = this.parseTrAmount(res.kdvRecord?.kdvTutari);
       const isFinalStatus = finalStatuses.has(status);
-      // ÇİFT SAYIM DÜZELTMESİ (2026-06-13): Eşleşmiş (MATCHED/CONFIRMED) kayıtta tutar = LUCA
+      // Bu görsel birden çok Luca oran-satırıyla mı eşleşti? (çok oranlı tek fatura)
+      const imageMultiRate = !!(imageId && (imageResultCounts.get(imageId) || 1) > 1);
+      // ÇİFT SAYIM DÜZELTMESİ (2026-06-13/17): Eşleşmiş (MATCHED/CONFIRMED) kayıtta tutar = LUCA
       // (0 dahil; Luca otoritedir). Eski "lucaTutar > 0 ? luca : OCR" guard'ı, çok kalemli bir
       // e-faturanın 0-KDV satırında OCR'a düşüp faturanın TÜM KDV'sini o satıra da ekliyor →
-      // KDV İKİ KEZ sayılıyordu (ör. TTNET e-faturası: 96,92 / 121,48'lik hayalî "fark"). OCR
-      // tutarı yalnız eşleşmemiş (PARTIAL_MATCH / NEEDS_REVIEW) kayıtta kullanılır.
-      const kdvTutari =
-        confirmedTutar > 0
+      // KDV İKİ KEZ sayılıyordu (ör. TTNET e-faturası: 96,92 / 121,48'lik hayalî "fark").
+      // ÇOK ORANLI: görsel-seviye confirmed/OCR faturanın TOPLAM KDV'sidir; her oran-satırına
+      // eklenirse çift sayılır → çok oranlıda DAİMA satır-bazlı Luca tutarı kullanılır.
+      const kdvTutari = imageMultiRate
+        ? lucaTutar
+        : confirmedTutar > 0
           ? confirmedTutar
           : isFinalStatus
             ? lucaTutar
@@ -1088,17 +1105,20 @@ export class KdvBeyannameService {
       // 3) belge üzerinde YAZILI KDV oranı (ham metinden "%20" / "KDV %20" / Z raporu fişi).
       // Hiçbiri tutmazsa 0 döner; tutar yine toplama girer, sadece "oran okunamadı"ya düşer.
       const detectedOran = (() => {
+        const recordOran = this.nearestKdvRate(
+          this.parseTrAmount(res.kdvRecord?.kdvOrani) ||
+            this.oranFromHesapAdi(res.kdvRecord) ||
+            this.oranFromHesapKodu(res.kdvRecord),
+        );
+        // ÇOK ORANLI: bu satırın oranı görselin breakdown[0]'ı DEĞİL, eşleştiği Luca
+        // kaydının kendi oranıdır; aksi halde tüm oran-satırları ilk orana yığılır.
+        if (imageMultiRate && GECERLI_KDV_ORANLARI.includes(recordOran)) return recordOran;
         const breakdown: any[] =
           (res.image as any)?.confirmedKdvBreakdown ?? (res.image as any)?.ocrKdvBreakdown ?? [];
         if (Array.isArray(breakdown) && breakdown.length > 0) {
           const o = this.nearestKdvRate(Number(breakdown[0]?.oran ?? 0));
           if (GECERLI_KDV_ORANLARI.includes(o)) return o;
         }
-        const recordOran = this.nearestKdvRate(
-          this.parseTrAmount(res.kdvRecord?.kdvOrani) ||
-            this.oranFromHesapAdi(res.kdvRecord) ||
-            this.oranFromHesapKodu(res.kdvRecord),
-        );
         if (GECERLI_KDV_ORANLARI.includes(recordOran)) return recordOran;
         // Belge üzerinde yazılı KDV oranını DOĞRUDAN oku (matrah hesaplamadan; fiş/Z raporu dahil).
         const fromText = this.oranFromImageText(res.image);
