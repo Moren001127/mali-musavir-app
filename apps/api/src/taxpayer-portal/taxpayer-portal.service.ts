@@ -187,26 +187,38 @@ export class TaxpayerPortalService {
     }));
   }
 
+  /**
+   * Cari özet — müşavir "Cari Hesap" sekmesi (CariHesapTab) ile aynı: 4 metrik +
+   * Tarih/Tip/Açıklama/Borç/Alacak/Bakiye (yürüyen bakiye) hareket tablosu.
+   * Borç = TAHAKKUK (+) / IADE (−), Alacak = TAHSILAT (+) / DÜZELTME (−).
+   */
   async getCariOzet(taxpayerId: string) {
     const hareketler = await this.prisma.cariHareket.findMany({
       where: { taxpayerId },
-      orderBy: { tarih: 'desc' },
-      take: 50,
-      select: { tarih: true, tip: true, tutar: true, aciklama: true, donem: true },
+      orderBy: [{ tarih: 'asc' }, { createdAt: 'asc' }],
+      take: 500,
+      select: { tarih: true, tip: true, tutar: true, aciklama: true, donem: true, hizmet: { select: { hizmetAdi: true } } },
     });
     let tahakkuk = 0;
     let tahsilat = 0;
-    for (const h of hareketler) {
+    let running = 0;
+    const withRunning = hareketler.map((h) => {
       const t = Number(h.tutar);
+      const borc = h.tip === 'TAHAKKUK' ? t : h.tip === 'IADE' ? -t : 0;
+      const alacak = h.tip === 'TAHSILAT' ? t : h.tip === 'DUZELTME' ? -t : 0;
+      running += borc - alacak;
       if (h.tip === 'TAHAKKUK') tahakkuk += t;
       else if (h.tip === 'TAHSILAT') tahsilat += t;
-      else if (h.tip === 'IADE') tahsilat += t; // mükellefe iade → borcu azaltır
-    }
+      return {
+        tarih: h.tarih, tip: h.tip, tutar: t, aciklama: h.aciklama, donem: h.donem,
+        hizmetAdi: h.hizmet?.hizmetAdi || null, borc, alacak, runningBakiye: running,
+      };
+    });
     return {
-      bakiye: tahakkuk - tahsilat,
+      bakiye: running,
       tahakkukToplam: tahakkuk,
       tahsilatToplam: tahsilat,
-      hareketler: hareketler.map((h) => ({ ...h, tutar: Number(h.tutar) })),
+      hareketler: withRunning.reverse().slice(0, 120),
     };
   }
 
@@ -214,11 +226,13 @@ export class TaxpayerPortalService {
     const docs = await this.prisma.document.findMany({
       where: { taxpayerId, isDeleted: false },
       orderBy: { createdAt: 'desc' },
-      take: 100,
-      select: { id: true, title: true, category: true, createdAt: true, expiresAt: true, s3Key: true },
+      take: 200,
+      select: { id: true, title: true, category: true, notes: true, sizeBytes: true, mimeType: true, createdAt: true, updatedAt: true, expiresAt: true, s3Key: true },
     });
     return docs.map((d) => ({
-      id: d.id, title: d.title, category: d.category, createdAt: d.createdAt, expiresAt: d.expiresAt,
+      id: d.id, title: d.title, category: d.category, notes: d.notes ?? null,
+      sizeBytes: d.sizeBytes ?? null, mimeType: d.mimeType ?? null,
+      createdAt: d.createdAt, updatedAt: d.updatedAt, expiresAt: d.expiresAt,
       goruntulenebilir: !!d.s3Key,
     }));
   }
