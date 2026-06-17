@@ -111,6 +111,16 @@ export default function HgsIhlalPage() {
     },
   });
 
+  // Faz 0 — KGM sunucu testi: tek plakayı sunucudan (Railway) KGM'de sorgular.
+  // Sonuç portal-otomasyon işleri listesinde (job.result.kgmUlasildi) görünür.
+  const kgmTestMut = useMutation({
+    mutationFn: (plaka: string) => galeriApi.kgmSunucuTest(plaka),
+    onSuccess: (data) => {
+      toast.success(`${data.plaka || ''} için KGM sunucu testi kuyruğa alındı. Sonuç birkaç dakikada portal-otomasyon işlerinde görünür.`);
+    },
+    onError: (err: any) => toast.error(err?.response?.data?.message || 'Sunucu testi başlatılamadı'),
+  });
+
   // Tek araç için sorgu — satırın yanındaki butona basınca agent o plakayı sorgular
   const tekAracSorguMut = useMutation({
     mutationFn: (aracId: string) => galeriApi.baslatTopluSorgu({ aracIds: [aracId], sadeceAktif: true }),
@@ -254,6 +264,20 @@ export default function HgsIhlalPage() {
             style={{ background: 'rgba(255,255,255,0.03)', border: '1px solid rgba(255,255,255,0.08)', color: 'rgba(250,250,249,0.85)' }}
           >
             <FileText size={14} /> PDF Rapor
+          </button>
+          <button
+            onClick={() => {
+              const plaka = window.prompt('Sunucu (KGM) testi için bir plaka girin:\n(GİB girişi gerekmez — sadece sunucudan KGM\'ye ulaşılıp ulaşılmadığını test eder)', '34 HYE 99');
+              if (plaka && plaka.trim()) kgmTestMut.mutate(plaka.trim());
+            }}
+            disabled={kgmTestMut.isPending}
+            title="Sunucudan (Railway) tek plaka KGM testi — KGM sunucu IP'sini engelliyor mu?"
+            className="inline-flex items-center gap-1.5 px-4 py-2.5 text-[13px] font-medium rounded-[10px] transition-all disabled:opacity-50"
+            style={{ background: 'rgba(255,255,255,0.03)', border: '1px solid rgba(255,255,255,0.08)', color: 'rgba(250,250,249,0.85)' }}
+          >
+            {kgmTestMut.isPending
+              ? <><RefreshCw size={14} className="animate-spin" /> Test ediliyor...</>
+              : <><Bot size={14} /> Sunucu Testi</>}
           </button>
           {!!aktifKomutId && (
             <button

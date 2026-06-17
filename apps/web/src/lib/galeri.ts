@@ -76,6 +76,19 @@ export const galeriApi = {
       sonKomut: any | null;
     }>('/galeri/agent-durumu').then((r) => r.data),
 
+  // ── Sunucu (Railway) HGS sorgu ──
+  // Faz 0: KGM sunucu testi (tek plaka, GİB girişi gerekmez).
+  kgmSunucuTest: (plaka: string) =>
+    api.post<{ ok: boolean; jobId?: string; plaka?: string; mesaj?: string }>(
+      '/galeri/kgm-sunucu-test', { plaka },
+    ).then((r) => r.data),
+
+  // Tam akış: GİB'den plakaları çek + sorgula + WhatsApp özet (local agent gerekmez).
+  baslatSunucuSorgu: (taxpayerId: string) =>
+    api.post<{ ok: boolean; sebep?: string; jobId?: string; durum?: string; mesaj?: string }>(
+      '/galeri/sunucu-sorgu-baslat', { taxpayerId },
+    ).then((r) => r.data),
+
   komutKuyrugu: () =>
     api.get<any[]>('/galeri/komut-kuyrugu').then((r) => r.data),
 

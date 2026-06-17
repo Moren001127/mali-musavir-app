@@ -71,6 +71,27 @@ export class GaleriController {
     });
   }
 
+  // ── SUNUCU (Railway) HGS SORGU ─────────────────────
+  /**
+   * Faz 0 — KGM sunucu testi. Tek plakayı sunucudan KGM'de sorgular (GİB girişi gerekmez).
+   * Sonuç: portal-otomasyon işleri listesinde job.result.kgmUlasildi.
+   */
+  @Post('kgm-sunucu-test')
+  kgmSunucuTest(@Req() req: any, @Body() body: { plaka: string }) {
+    return this.svc.kgmSunucuTest(req.user.tenantId, req.user.userId, body?.plaka);
+  }
+
+  /**
+   * Tam akış — sunucu HGS sorgusu. Dijital Vergi Dairesi'nden plakaları çekip sorgular,
+   * sonucu WhatsApp'tan iki sabit numaraya gönderir. Local agent gerekmez.
+   */
+  @Post('sunucu-sorgu-baslat')
+  baslatSunucuSorgu(@Req() req: any, @Body() body: { taxpayerId: string }) {
+    return this.svc.baslatSunucuSorgu(req.user.tenantId, req.user.userId, {
+      taxpayerId: body?.taxpayerId,
+    });
+  }
+
   /** Canlı agent durumu (son ping, çalışıyor mu, aktif komut var mı) */
   @Get('agent-durumu')
   agentDurumu(@Req() req: any) {

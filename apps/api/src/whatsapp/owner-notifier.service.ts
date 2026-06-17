@@ -56,6 +56,14 @@ export class OwnerNotifierService implements OnModuleInit {
     // (mukellef/kayitsiz/owner bildirim akislari). Duplicate olmasin diye atlanir.
     if (n.type === 'WHATSAPP') return;
 
+    // GALERI_HGS_OZET: borc ozeti metadata.message'taki hazir metinle, metadata.phones'taki
+    // SABIT numaralara gonderilir (owner listesi DEGIL). Tip filtresinden once islenir.
+    if (n.type === 'GALERI_HGS_OZET') {
+      await this.sendGaleriHgsOzet(n).catch((err) =>
+        this.logger.warn(`Galeri HGS ozet gonderim hatasi: ${err?.message || err}`));
+      return;
+    }
+
     // Tip filtreleme: koddaki varsayılan kapalı liste + env ek liste.
     if (OwnerNotifierService.DEFAULT_DISABLED_TYPES.has(n.type)) return;
     const disabledTypes = String(process.env.OWNER_NOTIFY_DISABLE_TYPES || '').split(',').map((s) => s.trim()).filter(Boolean);
@@ -93,6 +101,32 @@ export class OwnerNotifierService implements OnModuleInit {
         await this.whatsapp.sendMessage(phone, message, n.tenantId);
       } catch (err: any) {
         this.logger.warn(`Owner WhatsApp gonderim hatasi (${phone}): ${err?.message || err}`);
+      }
+    }
+  }
+
+  /**
+   * Galeri HGS borc ozeti: hazir metni (metadata.message) metadata.phones'taki sabit
+   * numaralara gonderir. Numara yoksa env GALERI_HGS_WHATSAPP_PHONES, o da yoksa owner.
+   */
+  private async sendGaleriHgsOzet(n: any): Promise<void> {
+    const meta = n.metadata && typeof n.metadata === 'object' ? n.metadata : {};
+    const message = String(meta.message || n.body || '').trim();
+    if (!message) return;
+    let phones: string[] = Array.isArray(meta.phones) ? meta.phones : [];
+    if (!phones.length) {
+      phones = String(process.env.GALERI_HGS_WHATSAPP_PHONES || '').split(',').map((p) => p.trim()).filter(Boolean);
+    }
+    const targets = Array.from(new Set(phones.map((p) => this.normalize(p)).filter(Boolean)));
+    if (!targets.length) {
+      // Hedef numara tanimli degilse owner'a dus (sessizce kaybolmasin).
+      targets.push(...this.getOwnerPhones());
+    }
+    for (const phone of targets) {
+      try {
+        await this.whatsapp.sendMessage(phone, message, n.tenantId);
+      } catch (err: any) {
+        this.logger.warn(`Galeri HGS WhatsApp hatasi (${phone}): ${err?.message || err}`);
       }
     }
   }

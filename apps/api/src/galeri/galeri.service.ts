@@ -225,6 +225,95 @@ export class GaleriService {
     };
   }
 
+  // ════════════ SUNUCU (Railway) HGS SORGU — PortalAutomationJob köprüsü ════════════
+
+  /**
+   * Faz 0 — KGM SUNUCU TESTİ.
+   * GİB girişi gerektirmez; tek plakayı sunucudan (Railway runner) KGM'de sorgular.
+   * Amaç: KGM, sunucu IP'sini engelliyor mu? Sonuç job.result'ta (kgmUlasildi).
+   */
+  async kgmSunucuTest(tenantId: string, userId: string | null, plaka: string) {
+    const plakaTemiz = normalizePlaka(plaka);
+    if (!plakaTemiz || plakaTemiz.length < 5) throw new BadRequestException('Geçerli bir plaka girin');
+    const job = await (this.prisma as any).portalAutomationJob.create({
+      data: {
+        tenantId,
+        taxpayerId: null,
+        jobType: 'GALERI_HGS',
+        status: 'pending',
+        source: 'manual',
+        scheduledAt: new Date(),
+        createdBy: userId,
+        priority: 60,
+        payload: {
+          mode: 'kgm_test',
+          testPlaka: plakaTemiz,
+          label: 'KGM sunucu testi',
+          provider: 'GIB_IVD',
+          ownerType: 'TAXPAYER',
+          progress: { at: new Date().toISOString(), step: 'pending', message: 'KGM sunucu testi kuyrukta.' },
+        },
+      },
+      select: { id: true },
+    });
+    return { ok: true, jobId: job.id, plaka: formatPlaka(plakaTemiz), mesaj: 'KGM sunucu testi kuyruğa alındı.' };
+  }
+
+  /**
+   * Tam akış — sunucu HGS sorgusu.
+   * GİB_IVD ile girip Dijital Vergi Dairesi'nden plakaları çeker, Arac tablosuna kaydeder,
+   * her plakayı KGM'de sorgular (hatalılar liste bitince tekrar denenir) ve borç özetini
+   * WhatsApp'tan iki sabit numaraya gönderir. Local agent gerekmez.
+   */
+  async baslatSunucuSorgu(tenantId: string, userId: string | null, opts: { taxpayerId: string }) {
+    const taxpayerId = String(opts?.taxpayerId || '').trim();
+    if (!taxpayerId) throw new BadRequestException('Mükellef (galeri) seçimi gerekli');
+    const tp = await (this.prisma as any).taxpayer.findFirst({
+      where: { id: taxpayerId, tenantId },
+      select: { id: true },
+    });
+    if (!tp) throw new NotFoundException('Mükellef bulunamadı');
+    const cred = await (this.prisma as any).portalCredential.findFirst({
+      where: { tenantId, provider: 'GIB_IVD', ownerType: 'TAXPAYER', ownerId: taxpayerId, isActive: true },
+      select: { id: true },
+    });
+    if (!cred) throw new BadRequestException('Bu mükellef için Dijital Vergi Dairesi (GİB) girişi kayıtlı değil');
+
+    const mevcut = await (this.prisma as any).portalAutomationJob.findFirst({
+      where: { tenantId, taxpayerId, jobType: 'GALERI_HGS', status: { in: ['pending', 'running'] } },
+      orderBy: { createdAt: 'desc' },
+    });
+    if (mevcut) {
+      return { ok: false, sebep: 'Zaten çalışan bir sunucu HGS sorgusu var', jobId: mevcut.id, durum: mevcut.status };
+    }
+
+    const job = await (this.prisma as any).portalAutomationJob.create({
+      data: {
+        tenantId,
+        taxpayerId,
+        jobType: 'GALERI_HGS',
+        status: 'pending',
+        source: 'manual',
+        scheduledAt: new Date(),
+        createdBy: userId,
+        priority: 55,
+        payload: {
+          mode: 'full',
+          label: 'Galeri HGS ihlal sorgu (sunucu)',
+          provider: 'GIB_IVD',
+          ownerType: 'TAXPAYER',
+          progress: { at: new Date().toISOString(), step: 'pending', message: 'Sunucu HGS sorgusu kuyrukta.' },
+        },
+      },
+      select: { id: true },
+    });
+    return {
+      ok: true,
+      jobId: job.id,
+      mesaj: 'Sunucu HGS sorgusu kuyruğa alındı. Araçlar Dijital Vergi Dairesi’nden çekilip sorgulanacak.',
+    };
+  }
+
   /** Agent'ın son ping'i, running durumu, son meta bilgisi */
   async agentDurumu(tenantId: string) {
     // findFirst ile deviceId-agnostik arama (composite key uyumsuzluğunu önler).

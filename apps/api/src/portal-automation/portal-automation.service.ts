@@ -20,6 +20,10 @@ export const PORTAL_JOB_TYPES = [
   'SGK_TAHAKKUK',
   'SGK_ISE_GIRIS_CIKIS',
   'SGK_ISGOREMEZLIK',
+  // Galeri HGS: Dijital Vergi Dairesi'nden araç plakalarını çek + KGM ihlal sorgusu.
+  // ownerType TAXPAYER (galeri mükellefinin GIB_IVD girişi). Gece cron'una DAHIL DEĞİL —
+  // yalnızca galeri ekranındaki butondan / HGS cron'undan tetiklenir.
+  'GALERI_HGS',
 ] as const;
 export type PortalJobType = (typeof PORTAL_JOB_TYPES)[number];
 
@@ -60,6 +64,11 @@ const JOB_META: Record<PortalJobType, { provider: PortalProvider; ownerType: 'TE
     provider: 'SGK_EBILDIRGE',
     ownerType: 'TAXPAYER',
     label: 'Isgoremezlik raporu sorgu',
+  },
+  GALERI_HGS: {
+    provider: 'GIB_IVD',
+    ownerType: 'TAXPAYER',
+    label: 'Galeri HGS ihlal sorgu',
   },
 };
 

@@ -99,7 +99,15 @@ const JOB_TYPES_DEFAULT: PortalJobType[] = [
   'SGK_TAHAKKUK',
   'SGK_ISE_GIRIS_CIKIS',
   'SGK_ISGOREMEZLIK',
+  'GALERI_HGS',
 ];
+
+// KGM ihlal sorgulama sayfasi (HGS). GIB girisi gerektirmez; matematik captcha'li.
+const KGM_HGS_URL = 'https://webihlaltakip.kgm.gov.tr/WebIhlalSorgulama/Sayfalar/Sorgulama.aspx?lang=tr';
+// Galeri araç plakalarinin okundugu Dijital Vergi Dairesi ekrani.
+const GIB_ARAC_BILGILERIM_URL = 'https://dijital.gib.gov.tr/portal/arac-bilgilerim';
+// HGS borç özeti WhatsApp hedef numaralari (kullanici karari: sabit iki numara).
+const GALERI_HGS_WHATSAPP_PHONES = ['05348610965', '05350587475'];
 
 const TEXT = {
   captcha: /captcha|dogrulama|doğrulama|guvenlik kodu|güvenlik kodu|security code/i,
@@ -189,6 +197,7 @@ export class PortalAutomationRailwayRunnerService implements OnModuleInit {
       'SGK_TAHAKKUK',
       'SGK_ISE_GIRIS_CIKIS',
       'SGK_ISGOREMEZLIK',
+      'GALERI_HGS',
     ]);
     const parsed = raw
       .split(',')
@@ -478,6 +487,14 @@ export class PortalAutomationRailwayRunnerService implements OnModuleInit {
     this.logger.log(`[PortalRailwayRunner] job aliniyor: ${job.id} ${job.jobType}`);
     await this.portalAutomation.markRunning(job.tenantId, job.id, this.deviceId);
     try {
+      // GALERI_HGS: kgm_test modunda GIB girisi/kimlik gerekmez (sadece KGM sorgusu).
+      // Tam modda GIB_IVD kimligi getCredentialForJob ile cozulur.
+      if (job.jobType === 'GALERI_HGS') {
+        const result = await this.runGaleriHgs(job);
+        await this.portalAutomation.completeJob(job.tenantId, job.id, result);
+        this.logger.log(`[PortalRailwayRunner] job tamam: ${job.id} GALERI_HGS count=${result.recordCount || 0}`);
+        return;
+      }
       const bundle = await this.portalAutomation.getCredentialForJob(job.tenantId, job.id) as RunnerJobBundle;
       if (job.jobType === 'EBEYANNAME_DAILY_DOWNLOAD') {
         const result = await this.runEBeyanname(job.tenantId, bundle);
@@ -1569,6 +1586,545 @@ export class PortalAutomationRailwayRunnerService implements OnModuleInit {
   private gibValidationLoginAttempts() {
     const value = Number(process.env.PORTAL_AUTOMATION_GIB_VALIDATION_LOGIN_ATTEMPTS || 3);
     return Math.max(1, Math.min(5, Number.isFinite(value) ? value : 3));
+  }
+
+  // ══════════════════════════════════════════════════════════════════════
+  // GALERI HGS — Dijital Vergi Dairesi araç plakaları + KGM ihlal sorgusu
+  // ══════════════════════════════════════════════════════════════════════
+
+  /**
+   * GALERI_HGS isini calistirir.
+   *  - mode='kgm_test' : GIB girisi YOK; sadece tek plaka KGM'den sorgulanir (sunucu IP testi).
+   *  - mode='full'     : GIB_IVD ile gir -> arac-bilgilerim plakalarini oku -> Arac upsert ->
+   *                      her plaka icin KGM sorgu -> liste bitince HATALI kalanlari tekrar sorgula ->
+   *                      sonuclari kaydet -> WhatsApp borc ozeti gonder.
+   */
+  private async runGaleriHgs(job: any): Promise<{ recordCount: number; result: any }> {
+    const tenantId = job.tenantId;
+    const mode = String(job?.payload?.mode || 'full');
+    const apiKey = process.env.TWOCAPTCHA_API_KEY || process.env.TWO_CAPTCHA_API_KEY;
+    if (!apiKey) throw new Error('TWOCAPTCHA_API_KEY env yok; KGM captcha cozulemez');
+    const phones: string[] = Array.isArray(job?.payload?.whatsappPhones) && job.payload.whatsappPhones.length
+      ? job.payload.whatsappPhones
+      : GALERI_HGS_WHATSAPP_PHONES;
+
+    const browser = await pwChromium.launch({
+      executablePath: process.env.PLAYWRIGHT_CHROMIUM_EXECUTABLE_PATH || process.env.CHROMIUM_PATH,
+      headless: this.browserHeadless(),
+      args: this.browserLaunchArgs(),
+    });
+
+    try {
+      const context = await browser.newContext({
+        acceptDownloads: false,
+        viewport: { width: 1440, height: 950 },
+        locale: 'tr-TR',
+        timezoneId: 'Europe/Istanbul',
+        userAgent:
+          'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/124.0.0.0 Safari/537.36',
+      });
+      await this.applyBrowserStealth(context);
+
+      // ── KGM SUNUCU TESTI ──
+      if (mode === 'kgm_test') {
+        const testPlaka = String(job?.payload?.testPlaka || '').trim();
+        if (!testPlaka) throw new Error('kgm_test icin testPlaka gerekli');
+        await this.jobProgress(tenantId, job, 'kgm_test', `KGM sunucu testi baslatiliyor: ${testPlaka}`);
+        const sonuc = await this.sorgulaKgmPlaka(context, testPlaka, apiKey);
+        await context.close().catch(() => {});
+        const ulasildi = sonuc.durum !== 'hatali';
+        await this.jobProgress(
+          tenantId, job, 'kgm_test_done',
+          ulasildi
+            ? `KGM sunucudan ULASILDI: ${sonuc.ihlalSayisi || 0} ihlal / ${(sonuc.toplamTutar || 0).toFixed(2)} ₺`
+            : `KGM sunucudan ULASILAMADI: ${sonuc.hataMesaji || 'bilinmeyen hata'}`,
+        );
+        return {
+          recordCount: 0,
+          result: {
+            runner: 'railway',
+            phase: 'kgm_test',
+            plaka: testPlaka,
+            kgmUlasildi: ulasildi,
+            durum: sonuc.durum,
+            ihlalSayisi: sonuc.ihlalSayisi || 0,
+            toplamTutar: sonuc.toplamTutar || 0,
+            hataMesaji: sonuc.hataMesaji || null,
+          },
+        };
+      }
+
+      // ── TAM AKIS: GIB girisi + arac cekme ──
+      const bundle = await this.portalAutomation.getCredentialForJob(tenantId, job.id) as RunnerJobBundle;
+      const credential = bundle.credential;
+      const taxpayer = bundle.taxpayer;
+      if (!credential.userCode || !(credential.secondaryPassword || credential.password)) {
+        throw new Error('Vergi dairesi kullanici kodu ve sifre eksik');
+      }
+
+      const loginUrl = DEFAULT_GIB_IVD_LOGIN_URL;
+      const page = await context.newPage();
+      page.setDefaultTimeout(15_000);
+      await this.jobProgress(tenantId, job, 'login', 'Dijital Vergi Dairesi girisi yapiliyor.');
+      await page.goto(loginUrl, { waitUntil: 'domcontentloaded', timeout: 60_000 });
+      await this.loginGibDigitalWithCaptcha(page, credential, loginUrl, 'galeri-hgs');
+
+      await this.jobProgress(tenantId, job, 'arac', 'Araç bilgileri okunuyor (Satır sayısı 100).');
+      const plakalar = await this.scrapeGibAracPlakalari(page);
+      await page.close().catch(() => {});
+      if (!plakalar.length) {
+        await context.close().catch(() => {});
+        await this.jobProgress(tenantId, job, 'arac_bos', 'Araç bilgileri tablosunda plaka bulunamadi.');
+        return { recordCount: 0, result: { runner: 'railway', phase: 'galeri_hgs', plakaSayisi: 0, not: 'Plaka bulunamadi' } };
+      }
+
+      // Plakalari Arac tablosuna upsert (manuel giris yok).
+      const araclar: Array<{ id: string; plaka: string }> = [];
+      for (const pl of plakalar) {
+        const arac = await this.upsertGaleriArac(tenantId, job.taxpayerId, pl, taxpayer);
+        if (arac) araclar.push(arac);
+      }
+      await this.jobProgress(tenantId, job, 'arac_done', `${araclar.length} plaka kaydedildi, HGS sorgusu basliyor.`);
+
+      // Her plaka icin KGM sorgu.
+      const sonuclar = new Map<string, any>();
+      for (let i = 0; i < araclar.length; i++) {
+        const a = araclar[i];
+        const s = await this.sorgulaKgmPlaka(context, a.plaka, apiKey);
+        sonuclar.set(a.id, s);
+        await this.jobProgress(
+          tenantId, job, 'hgs',
+          `${a.plaka}: ${s.durum} — ${s.ihlalSayisi || 0} ihlal (${i + 1}/${araclar.length})`,
+          { current: i + 1, total: araclar.length },
+        );
+      }
+
+      // LISTE BITINCE: hatali kalan plakalari tekrar sorgula (en cok 2 tur).
+      const maxRetryRounds = Math.max(0, Number(process.env.GALERI_HGS_RETRY_ROUNDS || 2));
+      for (let round = 1; round <= maxRetryRounds; round++) {
+        const failed = araclar.filter((a) => (sonuclar.get(a.id)?.durum) === 'hatali');
+        if (!failed.length) break;
+        await this.jobProgress(
+          tenantId, job, 'hgs_retry',
+          `${failed.length} hatali plaka tekrar sorgulaniyor (tur ${round}/${maxRetryRounds}).`,
+        );
+        for (const a of failed) {
+          const s = await this.sorgulaKgmPlaka(context, a.plaka, apiKey);
+          sonuclar.set(a.id, s);
+          await this.jobProgress(tenantId, job, 'hgs_retry', `${a.plaka}: ${s.durum} (tekrar)`);
+        }
+      }
+
+      // Sonuclari kaydet.
+      for (const a of araclar) {
+        await this.kaydetGaleriHgsSonucu(tenantId, a.id, sonuclar.get(a.id)).catch((err: any) =>
+          this.logger.warn(`[GALERI_HGS] sonuc kaydedilemedi (${a.plaka}): ${err?.message || err}`));
+      }
+      await context.close().catch(() => {});
+
+      // WhatsApp borc ozeti.
+      const ozet = this.buildGaleriHgsOzet(araclar, sonuclar, taxpayer);
+      await this.gonderGaleriHgsOzet(tenantId, ozet.mesaj, phones).catch((err: any) =>
+        this.logger.warn(`[GALERI_HGS] WhatsApp ozet hatasi: ${err?.message || err}`));
+      await this.jobProgress(
+        tenantId, job, 'hgs_done',
+        `HGS sorgusu tamam: ${ozet.totals.borcluArac} borçlu, ${ozet.totals.toplamBorc.toFixed(2)} ₺, ${ozet.totals.hataliArac} hatalı.`,
+      );
+
+      return { recordCount: araclar.length, result: { runner: 'railway', phase: 'galeri_hgs', ...ozet.totals } };
+    } finally {
+      await browser.close().catch(() => {});
+    }
+  }
+
+  /** Dijital Vergi Dairesi "Mevcut Araç Bilgilerim" tablosundaki plakalari okur. */
+  private async scrapeGibAracPlakalari(page: any): Promise<string[]> {
+    await page.goto(GIB_ARAC_BILGILERIM_URL, { waitUntil: 'domcontentloaded', timeout: 60_000 });
+    await page.waitForTimeout(3000);
+    // Tabloyu bekle (SPA render).
+    await page.waitForFunction(
+      () => /Plaka\s*Numaras/i.test(document.body.innerText || ''),
+      { timeout: 20_000 },
+    ).catch(() => {});
+
+    // "Satır sayısı" sayfa boyutunu 100'e cek (tek listede gorunsun).
+    await this.gibAracSayfaBoyutu100(page).catch(() => {});
+    await page.waitForTimeout(1500);
+
+    // Yine de sayfalama varsa tum sayfalari dolas, plakalari biriktir.
+    const seen = new Set<string>();
+    for (let p = 0; p < 40; p++) {
+      const pagePlakalar: string[] = await page.evaluate(() => {
+        const isPlate = (s: string) => /^\d{2}[A-Z]{1,4}\d{1,5}$/.test(s);
+        const out = [];
+        const rows = Array.from(document.querySelectorAll('table tr, [role="row"]'));
+        for (const r of rows) {
+          const cells = Array.from(r.querySelectorAll('td, [role="cell"], [role="gridcell"]'));
+          for (const c of cells) {
+            const norm = String((c.textContent || '')).replace(/[\s-]/g, '').toUpperCase();
+            if (isPlate(norm)) { out.push(norm); break; }
+          }
+        }
+        return out;
+      });
+      let yeni = 0;
+      for (const pl of pagePlakalar) { if (!seen.has(pl)) { seen.add(pl); yeni++; } }
+
+      const next = await page.$(
+        '.mat-mdc-paginator-navigation-next, .mat-paginator-navigation-next, button[aria-label*="onraki"], button[aria-label*="Next"]',
+      );
+      if (!next) break;
+      const disabled = await next.evaluate((el: any) => el.disabled || el.getAttribute('aria-disabled') === 'true').catch(() => true);
+      if (disabled) break;
+      // Yeni sayfa yeni plaka getirmiyorsa (boyut 100 ile tek sayfa) sonsuz donguyu kes.
+      if (p > 0 && yeni === 0) break;
+      await next.click();
+      await page.waitForTimeout(1200);
+    }
+    return Array.from(seen);
+  }
+
+  /** mat-paginator "Satır sayısı" select'ini 100 yapar (best-effort). */
+  private async gibAracSayfaBoyutu100(page: any): Promise<void> {
+    const sel = await page.$(
+      '.mat-mdc-paginator-page-size-select, .mat-paginator-page-size-select, mat-select[aria-label*="ayfa"], mat-select[aria-label*="atır"]',
+    );
+    if (!sel) return;
+    await sel.click();
+    await page.waitForTimeout(700);
+    const opts = await page.$$('mat-option, .mat-mdc-option, .mat-option, [role="option"]');
+    for (const o of opts) {
+      const t = String((await o.textContent().catch(() => '')) || '').trim();
+      if (t === '100') { await o.click().catch(() => {}); return; }
+    }
+    // 100 yoksa en buyuk secenegi sec.
+    if (opts.length) await opts[opts.length - 1].click().catch(() => {});
+  }
+
+  /** Plakayi galeri ile ayni sekilde normalize edip Arac tablosuna upsert eder. */
+  private async upsertGaleriArac(tenantId: string, taxpayerId: string | null, plaka: string, taxpayer: any) {
+    const plakaNormal = String(plaka || '').replace(/[\s-]/g, '').toUpperCase().trim();
+    if (plakaNormal.length < 5) return null;
+    const sahipAd = taxpayer
+      ? (taxpayer.companyName || [taxpayer.firstName, taxpayer.lastName].filter(Boolean).join(' ').trim() || null)
+      : null;
+    return (this.prisma as any).arac.upsert({
+      where: { tenantId_plaka: { tenantId, plaka: plakaNormal } },
+      create: {
+        tenantId,
+        plaka: plakaNormal,
+        taxpayerId: taxpayerId || null,
+        sahipAd,
+        aktif: true,
+        notlar: 'Dijital Vergi Dairesi araç bilgilerinden otomatik eklendi',
+      },
+      update: { aktif: true, ...(taxpayerId ? { taxpayerId } : {}) },
+      select: { id: true, plaka: true },
+    });
+  }
+
+  /** Sorgu sonucunu HgsIhlalSorguSonucu olarak kaydeder (kaynak='sunucu'). */
+  private async kaydetGaleriHgsSonucu(tenantId: string, aracId: string, sonuc: any) {
+    const basarili = sonuc?.durum === 'basarili';
+    await (this.prisma as any).hgsIhlalSorguSonucu.create({
+      data: {
+        tenantId,
+        aracId,
+        durum: basarili ? 'basarili' : 'hatali',
+        ihlalSayisi: sonuc?.ihlalSayisi || 0,
+        toplamTutar: basarili ? (sonuc?.toplamTutar ?? null) : null,
+        detaylar: sonuc?.detaylar || null,
+        hataMesaji: basarili ? null : (sonuc?.hataMesaji || 'KGM sorgusu başarısız'),
+        kaynak: 'sunucu',
+      },
+    });
+  }
+
+  /** Borç özeti mesajı + toplamlar. */
+  private buildGaleriHgsOzet(
+    araclar: Array<{ id: string; plaka: string }>,
+    sonuclar: Map<string, any>,
+    taxpayer: any,
+  ): { mesaj: string; totals: { plakaSayisi: number; borcluArac: number; borcsuzArac: number; hataliArac: number; toplamBorc: number } } {
+    const fmtPlaka = (p: string) => {
+      const s = String(p || '').replace(/[\s-]/g, '').toUpperCase();
+      const m = s.match(/^(\d{1,3})([A-Z]{1,3})(\d{1,4})$/);
+      return m ? `${m[1]} ${m[2]} ${m[3]}` : s;
+    };
+    const fmtTl = (n: number) => new Intl.NumberFormat('tr-TR', { maximumFractionDigits: 0 }).format(Math.round(n || 0));
+
+    const borclular: Array<{ plaka: string; ihlal: number; tutar: number }> = [];
+    let borcsuz = 0;
+    let hatali = 0;
+    let toplamBorc = 0;
+    for (const a of araclar) {
+      const s = sonuclar.get(a.id);
+      if (!s || s.durum === 'hatali') { hatali++; continue; }
+      const tutar = Number(s.toplamTutar || 0);
+      if ((s.ihlalSayisi || 0) > 0 || tutar > 0) {
+        borclular.push({ plaka: a.plaka, ihlal: s.ihlalSayisi || 0, tutar });
+        toplamBorc += tutar;
+      } else {
+        borcsuz++;
+      }
+    }
+    borclular.sort((x, y) => y.tutar - x.tutar);
+
+    const firma = taxpayer
+      ? (taxpayer.companyName || [taxpayer.firstName, taxpayer.lastName].filter(Boolean).join(' ').trim() || 'Galeri')
+      : 'Galeri';
+    const tarih = new Date().toLocaleString('tr-TR', { dateStyle: 'short', timeStyle: 'short', timeZone: 'Europe/Istanbul' });
+
+    const lines: string[] = [];
+    lines.push(`🚗 ${firma} — HGS İhlal Sorgu`);
+    lines.push(tarih);
+    lines.push('');
+    if (borclular.length) {
+      lines.push('Borçlu araçlar:');
+      for (const b of borclular) {
+        lines.push(`• ${fmtPlaka(b.plaka)} — ${b.ihlal} ihlal — ${fmtTl(b.tutar)} ₺`);
+      }
+    } else {
+      lines.push('✅ Borçlu araç yok.');
+    }
+    lines.push('');
+    lines.push(`Borçsuz: ${borcsuz} araç`);
+    if (hatali) lines.push(`⚠️ Sorgulanamayan: ${hatali} araç`);
+    lines.push('');
+    lines.push(`TOPLAM BORÇ: ${fmtTl(toplamBorc)} ₺ (${borclular.length} araç)`);
+
+    return {
+      mesaj: lines.join('\n'),
+      totals: {
+        plakaSayisi: araclar.length,
+        borcluArac: borclular.length,
+        borcsuzArac: borcsuz,
+        hataliArac: hatali,
+        toplamBorc,
+      },
+    };
+  }
+
+  /** WhatsApp ozetini bildirim olarak yazar; owner-notifier sabit numaralara iletir. */
+  private async gonderGaleriHgsOzet(tenantId: string, mesaj: string, phones: string[]) {
+    await (this.prisma as any).notification.create({
+      data: {
+        tenantId,
+        title: 'HGS İhlal Sorgu Sonucu',
+        body: mesaj.slice(0, 480),
+        type: 'GALERI_HGS_OZET',
+        metadata: { message: mesaj, phones },
+      },
+    });
+  }
+
+  // ── KGM (HGS ihlal) sorgu — matematik captcha'li ──
+
+  /** Tek plaka KGM sorgusu; captcha yanlissa 4 kez dener. */
+  private async sorgulaKgmPlaka(context: any, plaka: string, apiKey: string) {
+    const plakaTemiz = String(plaka || '').replace(/\s/g, '').toUpperCase();
+    const MAX_DENEME = 4;
+    let sonuc: any = null;
+    for (let i = 1; i <= MAX_DENEME; i++) {
+      sonuc = await this.sorgulaKgmPlakaTekSefer(context, plakaTemiz, apiKey);
+      if (sonuc.durum !== 'captcha_yanlis') return sonuc;
+      if (sonuc.captchaId) await this.report2captchaBad(apiKey, sonuc.captchaId);
+    }
+    return { durum: 'hatali', ihlalSayisi: 0, toplamTutar: 0, detaylar: [], hataMesaji: `${MAX_DENEME} deneme captcha yanlış geldi` };
+  }
+
+  private async sorgulaKgmPlakaTekSefer(context: any, plaka: string, apiKey: string) {
+    const page = await context.newPage();
+    page.setDefaultTimeout(20_000);
+    try {
+      await page.goto(KGM_HGS_URL, { waitUntil: 'domcontentloaded', timeout: 30_000 });
+      await page.waitForTimeout(1500);
+
+      // Bilgilendirme modal + "OKUDUM ANLADIM" checkbox.
+      const anladimBtn = await page.$('#btnCloseUyariModal');
+      if (anladimBtn && await anladimBtn.isVisible().catch(() => false)) {
+        await anladimBtn.click().catch(() => {});
+        await page.waitForTimeout(400);
+      }
+      const chk = await page.$('#chkGuvenlikUyari');
+      if (chk && !(await chk.isChecked().catch(() => false))) {
+        await chk.check().catch(() => {});
+      }
+
+      const plakaInput = await page.$('#txtPlk');
+      if (!plakaInput) throw new Error('Plaka input (#txtPlk) bulunamadı');
+      await plakaInput.fill('');
+      await plakaInput.type(plaka, { delay: 40 });
+
+      const cozum = await this.solveKgmCaptchaOnPage(page, apiKey);
+      if (!cozum) throw new Error('Captcha çözülemedi');
+      if (cozum.formatBozuk) return { durum: 'captcha_yanlis', captchaId: cozum.captchaId };
+
+      const kodInput = await page.$('#txtimgcode');
+      if (!kodInput) throw new Error('Captcha textarea (#txtimgcode) bulunamadı');
+      await kodInput.fill('');
+      await kodInput.type(cozum.cevap, { delay: 40 });
+
+      const sorgulaBtn = await page.$('#btnSorgula');
+      if (!sorgulaBtn) throw new Error('Sorgula butonu (#btnSorgula) bulunamadı');
+      await sorgulaBtn.click();
+
+      await Promise.race([
+        page.waitForSelector('#gvKgm tbody tr, #gvAvrasya tbody tr, [id^="gv"] tbody tr', { timeout: 20_000 }),
+        page.waitForFunction(
+          () => /ihlal\s*bulun|kayıt\s*bulun|sorgu\s*sonucunda|ihlalli\s*geçiş\s*yok|geçiş ihlaliniz/i.test(document.body.innerText || ''),
+          { timeout: 20_000 },
+        ),
+      ]).catch(() => {});
+      await page.waitForTimeout(1500);
+
+      const icerik = await page.content();
+      if (/güvenlik kodu.*hatalı|captcha.*yanlış|kod.*hatalı|matematiksel.*hatalı|tekrar deneyin/i.test(icerik)) {
+        return { durum: 'captcha_yanlis', captchaId: cozum.captchaId };
+      }
+
+      const sonuc = await this.parseKgmIhlaller(page);
+      return {
+        durum: 'basarili',
+        ihlalSayisi: sonuc.ihlaller.length,
+        toplamTutar: sonuc.toplamTutar,
+        detaylar: sonuc.ihlaller,
+        temiz: sonuc.temiz,
+      };
+    } catch (err: any) {
+      return { durum: 'hatali', ihlalSayisi: 0, toplamTutar: 0, detaylar: [], hataMesaji: this.compact(err?.message || err) };
+    } finally {
+      await page.close().catch(() => {});
+    }
+  }
+
+  /** KGM ihlal tablolarini parse eder (gvKgm, gvAvrasya, vb.). */
+  private async parseKgmIhlaller(page: any): Promise<{ ihlaller: any[]; toplamTutar: number; temiz: boolean }> {
+    return page.evaluate(() => {
+      function paraParse(s: string) {
+        if (!s) return 0;
+        const cleaned = String(s).replace(/[^\d,.\-₺TL ]/gi, '').replace(/[₺TL\s]/gi, '').trim();
+        const normalized = cleaned.replace(/\./g, '').replace(',', '.');
+        return parseFloat(normalized) || 0;
+      }
+      const allTables = Array.from(document.querySelectorAll('table[id^="gv"], table.dataTable'));
+      const tables = Array.from(new Set(allTables));
+      const ihlaller = [];
+      let toplam = 0;
+      for (const t of tables) {
+        const tableId = t.id || '(no-id)';
+        const headers = Array.from(t.querySelectorAll('thead th, thead td')).map((h) => (h.textContent || '').trim());
+        const odenecekIdx = headers.findIndex((h) => /Ödenecek\s*Tutar/i.test(h));
+        const gecisUcretIdx = headers.findIndex((h) => /Geçiş\s*Ücreti/i.test(h));
+        const tarihIdx = headers.findIndex((h) => /Çıkış\s*Tarih|Tarih/i.test(h));
+        const girisIdx = headers.findIndex((h) => /Giriş/i.test(h));
+        const cikisIdx = headers.findIndex((h) => /Çıkış\s*İstasyon|^Çıkış$/i.test(h));
+        const dataRows = Array.from(t.querySelectorAll('tbody tr')).filter((r) => r.querySelectorAll('td').length > 0);
+        for (const r of dataRows) {
+          const cells = Array.from(r.querySelectorAll('td')).map((c) => (c.textContent || '').trim());
+          if (cells.length < 2) continue;
+          let tutar = 0;
+          if (odenecekIdx >= 0 && cells[odenecekIdx]) tutar = paraParse(cells[odenecekIdx]);
+          if (tutar === 0) {
+            for (let i = cells.length - 1; i >= 0; i--) {
+              if (/₺|TL/i.test(cells[i])) { const v = paraParse(cells[i]); if (v > 0) { tutar = v; break; } }
+            }
+          }
+          ihlaller.push({
+            kaynak: tableId,
+            tarih: tarihIdx >= 0 ? cells[tarihIdx] : '',
+            giris: girisIdx >= 0 ? cells[girisIdx] : '',
+            cikis: cikisIdx >= 0 ? cells[cikisIdx] : '',
+            gecisUcreti: gecisUcretIdx >= 0 ? paraParse(cells[gecisUcretIdx]) : 0,
+            tutar,
+          });
+          toplam += tutar;
+        }
+      }
+      const bodyText = (document.body.innerText || '').toLowerCase();
+      const temiz = /ihlal\s*bulun|kayıt\s*bulun|sorgu\s*sonucunda|ihlalli\s*geçiş\s*yok|geçiş ihlaliniz bulun/i.test(bodyText) && ihlaller.length === 0;
+      return { ihlaller, toplamTutar: toplam, temiz };
+    });
+  }
+
+  /** Sayfadaki #Image1 captcha'sini 2captcha'ya yollar, matematik sonucunu formatlar. */
+  private async solveKgmCaptchaOnPage(page: any, apiKey: string) {
+    const captchaEl = await page.$('#Image1');
+    if (!captchaEl) return null;
+    const buffer = await captchaEl.screenshot({ type: 'png' });
+    const base64 = buffer.toString('base64');
+    const { raw, captchaId } = await this.solveKgmCaptchaWith2Captcha(base64, apiKey);
+    const formatted = this.kgmCaptchaFormat(raw);
+    const parts = formatted.split(/\s+/);
+    const isValid = parts.length >= 2 && parts.every((p) => /^\d+$/.test(p)) && formatted.length >= 5;
+    if (!isValid) {
+      await this.report2captchaBad(apiKey, captchaId);
+      return { cevap: formatted, captchaId, formatBozuk: true };
+    }
+    return { cevap: formatted, captchaId };
+  }
+
+  /**
+   * 2captcha image OCR — KGM "16+8 83236" formatini KORUR (bosluk + islem isareti silinmez).
+   * Bu yuzden GIB icin kullanilan solveCaptchaWith2Captcha'dan AYRI (o alfanumerik disini siler).
+   */
+  private async solveKgmCaptchaWith2Captcha(base64: string, apiKey: string): Promise<{ raw: string; captchaId: string }> {
+    const inForm = new URLSearchParams();
+    inForm.append('key', apiKey);
+    inForm.append('method', 'base64');
+    inForm.append('body', base64);
+    inForm.append('json', '0');
+    inForm.append('numeric', '0');
+    inForm.append('min_len', '5');
+    inForm.append('max_len', '20');
+    inForm.append('language', '0');
+    const inRes = await fetch('https://2captcha.com/in.php', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/x-www-form-urlencoded' },
+      body: inForm.toString(),
+    });
+    const inText = (await inRes.text()).trim();
+    if (!inText.startsWith('OK|')) throw new Error(`2captcha in.php: ${inText}`);
+    const captchaId = inText.slice(3);
+    const maxAttempts = Number(process.env.PORTAL_2CAPTCHA_MAX_POLL || 30);
+    const pollInterval = Number(process.env.PORTAL_2CAPTCHA_POLL_INTERVAL_MS || 5000);
+    await new Promise((r) => setTimeout(r, pollInterval));
+    for (let i = 0; i < maxAttempts; i++) {
+      const resUrl = `https://2captcha.com/res.php?key=${encodeURIComponent(apiKey)}&action=get&id=${encodeURIComponent(captchaId)}&json=0`;
+      const r = await fetch(resUrl);
+      const t = (await r.text()).trim();
+      if (t === 'CAPCHA_NOT_READY') { await new Promise((r2) => setTimeout(r2, pollInterval)); continue; }
+      if (t.startsWith('OK|')) return { raw: t.slice(3).trim(), captchaId };
+      throw new Error(`2captcha res.php: ${t}`);
+    }
+    throw new Error('2captcha zaman asimi (KGM)');
+  }
+
+  private async report2captchaBad(apiKey: string, captchaId: string) {
+    if (!captchaId) return;
+    try {
+      await fetch(`https://2captcha.com/res.php?key=${encodeURIComponent(apiKey)}&action=reportbad&id=${encodeURIComponent(captchaId)}`);
+    } catch { /* onemsiz */ }
+  }
+
+  /** "16+8 83236" -> "24 83236" (matematik kismini hesaplar). */
+  private kgmCaptchaFormat(rawText: string): string {
+    const cleaned = String(rawText || '').trim().replace(/\s+/g, ' ');
+    const parts = cleaned.split(' ');
+    if (parts.length < 2) return cleaned;
+    const m = parts[0].match(/^(\d+)\s*([+\-*\/xX×])\s*(\d+)$/);
+    if (!m) return cleaned;
+    const a = parseInt(m[1], 10);
+    const b = parseInt(m[3], 10);
+    let result: number;
+    switch (m[2]) {
+      case '+': result = a + b; break;
+      case '-': result = a - b; break;
+      case '*': case 'x': case 'X': case '×': result = a * b; break;
+      case '/': result = Math.floor(a / b); break;
+      default: return cleaned;
+    }
+    return `${result} ${parts.slice(1).join(' ')}`;
   }
 
   private async loginGibDigitalWithCaptcha(
