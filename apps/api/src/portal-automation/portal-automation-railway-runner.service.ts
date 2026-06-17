@@ -1628,28 +1628,10 @@ export class PortalAutomationRailwayRunnerService implements OnModuleInit {
       });
       await this.applyBrowserStealth(context);
 
-      // KGM sayfasinda head'deki UCUNCU-PARTI script (static host ozelyuk.kgm.gov.tr) Railway'den
-      // takiliyor; senkron script parser'i kilitleyince <body> (form #txtPlk) hic insa edilmiyor
-      // (ham HTTP/1.1 fetch tum HTML'i aliyor cunku alt-kaynak istemiyor). Cozum: gereksiz/bloke-eden
-      // alt-kaynaklari kes — CSS/font/media her yerde, ana-host DISI script'ler. Captcha resmi
-      // (#Image1) ANA hostta + image tipi -> dokunulmaz. Inline __doPostBack etkilenmez.
-      const kgmMainHost = 'webihlaltakip.kgm.gov.tr';
-      await context.route('**/*', (route: any) => {
-        try {
-          const req = route.request();
-          const type = req.resourceType();
-          let host = '';
-          try { host = new URL(req.url()).host; } catch { /* yoksay */ }
-          if (type === 'stylesheet' || type === 'font' || type === 'media') return route.abort();
-          if (type === 'script' && host && host !== kgmMainHost) return route.abort();
-          return route.continue();
-        } catch {
-          return route.continue().catch(() => {});
-        }
-      }).catch(() => {});
-
       // ── KGM SUNUCU TESTI ──
       if (mode === 'kgm_test') {
+        // KGM kaynak-kesme route'u SADECE bu context'e (GIB SPA'sini bozmaz; full modda ayri context).
+        await this.applyKgmResourceRoute(context);
         const testPlaka = String(job?.payload?.testPlaka || '').trim();
         if (!testPlaka) throw new Error('kgm_test icin testPlaka gerekli');
         // 1) HAM AGI PROBU (tarayicisiz): KGM sunucu IP'sine TCP/HTTP seviyesinde ulasiyor mu?
@@ -1714,8 +1696,8 @@ export class PortalAutomationRailwayRunnerService implements OnModuleInit {
       await this.jobProgress(tenantId, job, 'arac', 'Araç bilgileri okunuyor (Satır sayısı 100).');
       const plakalar = await this.scrapeGibAracPlakalari(page);
       await page.close().catch(() => {});
+      await context.close().catch(() => {}); // GIB context isi bitti (route'suz).
       if (!plakalar.length) {
-        await context.close().catch(() => {});
         await this.jobProgress(tenantId, job, 'arac_bos', 'Araç bilgileri tablosunda plaka bulunamadi.');
         return { recordCount: 0, result: { runner: 'railway', phase: 'galeri_hgs', plakaSayisi: 0, not: 'Plaka bulunamadi' } };
       }
@@ -1728,11 +1710,14 @@ export class PortalAutomationRailwayRunnerService implements OnModuleInit {
       }
       await this.jobProgress(tenantId, job, 'arac_done', `${araclar.length} plaka kaydedildi, HGS sorgusu basliyor.`);
 
+      // KGM sorgulari icin AYRI context (kaynak-kesme route'lu; GIB SPA'sini etkilemez).
+      const kgmContext = await this.createKgmContext(browser);
+
       // Her plaka icin KGM sorgu.
       const sonuclar = new Map<string, any>();
       for (let i = 0; i < araclar.length; i++) {
         const a = araclar[i];
-        const s = await this.sorgulaKgmPlaka(context, a.plaka, apiKey);
+        const s = await this.sorgulaKgmPlaka(kgmContext, a.plaka, apiKey);
         sonuclar.set(a.id, s);
         await this.jobProgress(
           tenantId, job, 'hgs',
@@ -1751,7 +1736,7 @@ export class PortalAutomationRailwayRunnerService implements OnModuleInit {
           `${failed.length} hatali plaka tekrar sorgulaniyor (tur ${round}/${maxRetryRounds}).`,
         );
         for (const a of failed) {
-          const s = await this.sorgulaKgmPlaka(context, a.plaka, apiKey);
+          const s = await this.sorgulaKgmPlaka(kgmContext, a.plaka, apiKey);
           sonuclar.set(a.id, s);
           await this.jobProgress(tenantId, job, 'hgs_retry', `${a.plaka}: ${s.durum} (tekrar)`);
         }
@@ -1762,7 +1747,7 @@ export class PortalAutomationRailwayRunnerService implements OnModuleInit {
         await this.kaydetGaleriHgsSonucu(tenantId, a.id, sonuclar.get(a.id)).catch((err: any) =>
           this.logger.warn(`[GALERI_HGS] sonuc kaydedilemedi (${a.plaka}): ${err?.message || err}`));
       }
-      await context.close().catch(() => {});
+      await kgmContext.close().catch(() => {});
 
       // WhatsApp borc ozeti.
       const ozet = this.buildGaleriHgsOzet(araclar, sonuclar, taxpayer);
@@ -1773,7 +1758,7 @@ export class PortalAutomationRailwayRunnerService implements OnModuleInit {
         `HGS sorgusu tamam: ${ozet.totals.borcluArac} borçlu, ${ozet.totals.toplamBorc.toFixed(2)} ₺, ${ozet.totals.hataliArac} hatalı.`,
       );
 
-      return { recordCount: araclar.length, result: { runner: 'railway', phase: 'galeri_hgs', ...ozet.totals } };
+      return { recordCount: araclar.length, result: { runner: 'railway', phase: 'galeri_hgs', codeVersion: 'v8-fullctx', plakalar: araclar.map((a) => a.plaka), ...ozet.totals } };
     } finally {
       await browser.close().catch(() => {});
     }
@@ -1961,6 +1946,45 @@ export class PortalAutomationRailwayRunnerService implements OnModuleInit {
   }
 
   // ── KGM (HGS ihlal) sorgu — matematik captcha'li ──
+
+  /** KGM'ye ozel context: kaynak-kesme route'lu (GIB context'inden AYRI). */
+  private async createKgmContext(browser: any) {
+    const ctx = await browser.newContext({
+      acceptDownloads: false,
+      viewport: { width: 1440, height: 950 },
+      locale: 'tr-TR',
+      timezoneId: 'Europe/Istanbul',
+      userAgent:
+        'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/124.0.0.0 Safari/537.36',
+    });
+    await this.applyBrowserStealth(ctx);
+    await this.applyKgmResourceRoute(ctx);
+    return ctx;
+  }
+
+  /**
+   * KGM sayfasinda head'deki UCUNCU-PARTI senkron script (static host ozelyuk.kgm.gov.tr)
+   * Railway'den takilip HTML parser'i kilitliyor -> <body> (form #txtPlk) hic insa edilmiyor
+   * (ham HTTP/1.1 fetch tum HTML'i aliyor cunku alt-kaynak istemiyor). Cozum: gereksiz/bloke-eden
+   * alt-kaynaklari kes — CSS/font/media + ANA-host DISI script'ler. Captcha (#Image1) ANA hostta
+   * image tipi -> dokunulmaz. Inline __doPostBack etkilenmez. SADECE KGM context'ine uygulanir.
+   */
+  private async applyKgmResourceRoute(context: any) {
+    const kgmMainHost = 'webihlaltakip.kgm.gov.tr';
+    await context.route('**/*', (route: any) => {
+      try {
+        const req = route.request();
+        const type = req.resourceType();
+        let host = '';
+        try { host = new URL(req.url()).host; } catch { /* yoksay */ }
+        if (type === 'stylesheet' || type === 'font' || type === 'media') return route.abort();
+        if (type === 'script' && host && host !== kgmMainHost) return route.abort();
+        return route.continue();
+      } catch {
+        return route.continue().catch(() => {});
+      }
+    }).catch(() => {});
+  }
 
   /** Tarayicisiz ham HTTP probu — KGM sunucu IP'sine ulasiyor mu? (engel/coğrafi teshis) */
   private async probeKgmConnectivity(): Promise<{ ok: boolean; httpStatus?: number; ms?: number; error?: string }> {
