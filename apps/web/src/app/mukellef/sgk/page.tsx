@@ -1,8 +1,8 @@
 'use client';
 import { useQuery } from '@tanstack/react-query';
 import { taxpayerApi } from '@/lib/taxpayer-api';
-import { Card, Empty, Spinner, PortalHeader, StatStrip, Th, THead, openBelge } from '../_lib/shared';
-import { ShieldCheck, ListChecks, Eye, FileStack } from 'lucide-react';
+import { Card, Empty, Spinner, PageTitle, Th, THead, openBelge } from '../_lib/shared';
+import { ShieldCheck, ListChecks, Eye } from 'lucide-react';
 
 const YESIL = '#4ade80';
 const MAVI = '#60a5fa';
@@ -61,26 +61,12 @@ export default function MukellefSgk() {
   const tahakkuk: any[] = data?.tahakkuk || [];
   const hizmet: any[] = data?.hizmetListesi || [];
   const diger: any[] = data?.diger || [];
-  const toplam = tahakkuk.length + hizmet.length + diger.length;
 
   return (
     <div className="space-y-5">
-      <PortalHeader
-        ust="SGK"
-        baslik="SGK Belgelerim"
-        aciklama={`${toplam} belge`}
-        icon={ShieldCheck}
-        accent={YESIL}
-      />
+      <PageTitle ust="SGK" baslik="SGK Belgelerim" />
       {isLoading ? <Spinner /> : (
         <>
-          <StatStrip
-            items={[
-              { label: 'Tahakkuk Fişi', value: String(tahakkuk.length), icon: ShieldCheck, accent: YESIL },
-              { label: 'Hizmet Listesi', value: String(hizmet.length), icon: ListChecks, accent: MAVI },
-              ...(diger.length ? [{ label: 'Diğer Belgeler', value: String(diger.length), icon: FileStack, accent: '#d4b876' }] : []),
-            ]}
-          />
           <Bolum icon={ShieldCheck} baslik="SGK Tahakkuk Fişleri" accent={YESIL} adet={tahakkuk.length}>
             <SgkTablo rows={tahakkuk} accent={YESIL} />
           </Bolum>

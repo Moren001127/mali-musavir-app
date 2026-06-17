@@ -43,7 +43,7 @@ export class TaxpayerPortalController {
   @UseGuards(AuthGuard('taxpayer-jwt'))
   @Get('beyannameler')
   beyannameler(@Req() req: any) {
-    return this.service.getBeyannameler(req.user.taxpayerId);
+    return this.service.getBeyannamelerListe(req.user.taxpayerId);
   }
 
   @UseGuards(AuthGuard('taxpayer-jwt'))

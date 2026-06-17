@@ -158,6 +158,37 @@ export class TaxpayerPortalService {
     });
   }
 
+  /**
+   * Beyanname Listesi (mükellef) — müşavir "Beyanname Listesi" ile aynı dil:
+   * fiilen verilmiş (BeyanKaydi) kayıtlar, yeni tarihliler üstte. Her kayıt frontend'de
+   * iki satır olur (EBeyanname + Tahakkuk). "beklemede" satırı YOK.
+   */
+  async getBeyannamelerListe(taxpayerId: string) {
+    const rows = await this.prisma.beyanKaydi.findMany({
+      where: { taxpayerId },
+      orderBy: [{ beyanTarihi: 'desc' }, { createdAt: 'desc' }],
+      take: 400,
+      select: {
+        id: true, beyanTipi: true, donem: true, beyanTarihi: true, createdAt: true,
+        tahakkukTutari: true, onayNo: true, notlar: true, pdfUrl: true, beyannameUrl: true, xmlUrl: true,
+      },
+    });
+    const isDuzeltme = (s: string | null) => !!s && /D[ÜU]ZELTME/i.test(s);
+    return rows.map((r) => ({
+      id: r.id,
+      beyanTipi: r.beyanTipi,
+      donem: r.donem,
+      beyanTarihi: r.beyanTarihi,
+      createdAt: r.createdAt,
+      tahakkukTutari: r.tahakkukTutari != null ? Number(r.tahakkukTutari) : null,
+      onayNo: r.onayNo,
+      mahiyet: isDuzeltme(r.notlar) ? 'DUZELTME' : 'ASIL',
+      hasBeyanname: !!r.beyannameUrl,
+      hasTahakkuk: !!r.pdfUrl,
+      hasXml: !!r.xmlUrl,
+    }));
+  }
+
   async getCariOzet(taxpayerId: string) {
     const hareketler = await this.prisma.cariHareket.findMany({
       where: { taxpayerId },

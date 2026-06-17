@@ -41,11 +41,11 @@ export const DURUM: Record<string, { label: string; color: string; Icon: any }> 
   muaf: { label: 'Muaf', color: '#94a3b8', Icon: ShieldCheck },
 };
 
-/** Sayfa başlığı — ofis paneli PageHeader ile birebir aynı kompakt dil. */
-export function PageTitle({ ust, baslik }: { ust: string; baslik: string }) {
+/** Sayfa başlığı — ofis paneli PageHeader ile birebir aynı kompakt dil. right: sağ aksiyon (ör. dönem seçici). */
+export function PageTitle({ ust, baslik, right }: { ust: string; baslik: string; right?: React.ReactNode }) {
   return (
     <div
-      className="mb-4 flex items-center justify-between rounded-2xl px-4 py-3"
+      className="mb-4 flex items-center justify-between gap-3 rounded-2xl px-4 py-3"
       style={{
         background: 'linear-gradient(135deg, rgba(212,184,118,0.055), rgba(8,18,18,0.70))',
         border: '1px solid rgba(212,184,118,0.12)',
@@ -56,48 +56,7 @@ export function PageTitle({ ust, baslik }: { ust: string; baslik: string }) {
         {ust ? <p className="text-[10.5px] font-semibold uppercase tracking-[.16em] mb-0.5" style={{ color: 'rgba(212,184,118,0.8)' }}>{ust}</p> : null}
         <h1 className="page-title">{baslik}</h1>
       </div>
-    </div>
-  );
-}
-
-/**
- * Zengin sayfa başlığı — ofis (müşavir) imzası: üst renk şeridi + radial parıltı +
- * degrade ikon kutusu. Mükellef portalının tüm ana sayfalarında ortak kullanılır.
- * accent ile her modüle ayrı renk verilebilir. right: sağ tarafa araç/rozet alanı.
- */
-export function PortalHeader({
-  ust, baslik, aciklama, icon: Icon, accent = GOLD, right,
-}: {
-  ust: string; baslik: string; aciklama?: string; icon: any; accent?: string; right?: React.ReactNode;
-}) {
-  return (
-    <div
-      className="relative overflow-hidden rounded-2xl p-5 mb-5"
-      style={{
-        border: '1px solid rgba(255,255,255,0.06)',
-        background: `radial-gradient(120% 140% at 0% 0%, ${accent}26, transparent 46%), radial-gradient(120% 140% at 100% 0%, ${accent}1a, transparent 48%), #0f0d0b`,
-      }}
-    >
-      <div className="absolute inset-x-0 top-0 h-1" style={{ background: `linear-gradient(90deg, ${accent}77, ${accent}, ${accent}dd, ${accent})` }} />
-      <div className="flex items-center gap-2.5 mb-3">
-        <span className="w-[26px] h-px" style={{ background: accent }} />
-        <span className="text-[10px] uppercase font-bold tracking-[.18em]" style={{ color: accent }}>{ust}</span>
-      </div>
-      <div className="flex flex-wrap items-center gap-x-4 gap-y-3">
-        <div className="flex items-center gap-3.5 min-w-0">
-          <span
-            className="grid place-items-center rounded-xl flex-shrink-0"
-            style={{ width: 46, height: 46, background: `linear-gradient(135deg, ${accent}, ${accent}aa)`, boxShadow: `0 8px 22px ${accent}44` }}
-          >
-            <Icon size={24} style={{ color: '#1a1410' }} />
-          </span>
-          <div className="min-w-0">
-            <h1 style={{ fontFamily: 'Fraunces, serif', fontSize: 28, fontWeight: 600, color: '#fafaf9', letterSpacing: '-.03em', lineHeight: 1.05 }}>{baslik}</h1>
-            {aciklama ? <p className="text-[13px] mt-1.5 truncate" style={{ color: 'rgba(250,250,249,0.45)' }}>{aciklama}</p> : null}
-          </div>
-        </div>
-        {right ? <div className="ml-auto flex items-center gap-2 flex-wrap justify-end flex-shrink-0">{right}</div> : null}
-      </div>
+      {right ? <div className="flex items-center gap-2 flex-wrap justify-end shrink-0">{right}</div> : null}
     </div>
   );
 }
@@ -164,6 +123,19 @@ export function THead({ children }: { children: React.ReactNode }) {
         {children}
       </tr>
     </thead>
+  );
+}
+
+/** Düz liste bölümü — ofis (müşavir) liste dili: hafif kart, üstte başlık+alt yazı, sonra tablo. */
+export function Section({ baslik, aciklama, children }: { baslik: string; aciklama?: string; children: React.ReactNode }) {
+  return (
+    <section className="rounded-2xl overflow-hidden" style={{ background: 'rgba(255,255,255,0.02)', border: '1px solid rgba(255,255,255,0.07)' }}>
+      <div className="px-4 py-3" style={{ borderBottom: '1px solid rgba(255,255,255,0.06)' }}>
+        <h2 className="text-[15px] font-semibold" style={{ color: '#fafaf9' }}>{baslik}</h2>
+        {aciklama ? <p className="text-[12px] mt-0.5" style={{ color: 'rgba(250,250,249,0.45)' }}>{aciklama}</p> : null}
+      </div>
+      {children}
+    </section>
   );
 }
 

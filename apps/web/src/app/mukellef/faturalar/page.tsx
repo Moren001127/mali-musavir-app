@@ -2,7 +2,7 @@
 import { useState } from 'react';
 import { useQuery, keepPreviousData } from '@tanstack/react-query';
 import { taxpayerApi } from '@/lib/taxpayer-api';
-import { fmtTRY, Card, Empty, Spinner, PortalHeader, StatStrip, GOLD, Badge, Th, THead, openBelge } from '../_lib/shared';
+import { fmtTRY, Card, Empty, Spinner, PageTitle, StatStrip, GOLD, Badge, Th, THead, openBelge } from '../_lib/shared';
 import {
   ArrowDownLeft, ArrowUpRight, ReceiptText, Eye, BarChart3, Calendar,
   Scale, Percent, FileStack, TrendingUp,
@@ -62,14 +62,7 @@ export default function MukellefFaturalar() {
 
   return (
     <div className="space-y-5">
-      <PortalHeader
-        ust="Fatura Merkezi"
-        baslik="Faturalarım"
-        aciklama={`${AY_ADLARI[ay - 1]} ${yil} · ${ayOzet.toplamAdet} belge`}
-        icon={ReceiptText}
-        accent={GOLD}
-        right={seciciler}
-      />
+      <PageTitle ust="Fatura Merkezi" baslik="Faturalarım" right={seciciler} />
 
       {isLoading ? <Spinner /> : (
         <div className={`space-y-5 transition-opacity ${isFetching ? 'opacity-60' : ''}`}>

@@ -1,8 +1,8 @@
 'use client';
 import { useQuery } from '@tanstack/react-query';
 import { taxpayerApi } from '@/lib/taxpayer-api';
-import { Card, Empty, Spinner, PortalHeader, StatStrip, openBelge } from '../_lib/shared';
-import { MailWarning, Eye, BellDot, Mails } from 'lucide-react';
+import { Card, Empty, Spinner, PageTitle, openBelge } from '../_lib/shared';
+import { MailWarning, Eye, BellDot } from 'lucide-react';
 
 const SARI = '#fbbf24';
 
@@ -17,23 +17,10 @@ export default function MukellefTebligatlar() {
 
   return (
     <div className="space-y-5">
-      <PortalHeader
-        ust="GİB"
-        baslik="e-Tebligatlarım"
-        aciklama={`${liste.length} tebligat`}
-        icon={MailWarning}
-        accent={SARI}
-      />
+      <PageTitle ust="GİB" baslik="e-Tebligatlarım" />
 
       {isLoading ? <Spinner /> : (
         <>
-          <StatStrip
-            items={[
-              { label: 'Toplam Tebligat', value: String(liste.length), icon: Mails, accent: SARI },
-              { label: 'Okunmamış', value: String(okunmamis), icon: BellDot, accent: okunmamis > 0 ? '#f87171' : '#4ade80' },
-            ]}
-          />
-
           {okunmamis > 0 && (
             <div className="flex items-center gap-2.5 rounded-2xl px-4 py-3" style={{ background: `${SARI}14`, border: `1px solid ${SARI}3a` }}>
               <BellDot size={16} style={{ color: SARI }} />
