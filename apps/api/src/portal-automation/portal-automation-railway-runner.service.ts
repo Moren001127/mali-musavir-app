@@ -2028,13 +2028,13 @@ export class PortalAutomationRailwayRunnerService implements OnModuleInit {
         .slice(0, 25);
       return {
         ...dom,
-        codeVersion: 'v6-route',
+        codeVersion: 'v7-canvas',
         requestCount: requests.length,
         respondedCount: responded.size,
         pending,
       };
     } catch (err: any) {
-      return { error: this.compact(err?.message || err), codeVersion: 'v6-route' };
+      return { error: this.compact(err?.message || err), codeVersion: 'v7-canvas' };
     } finally {
       await page.close().catch(() => {});
     }
@@ -2173,8 +2173,24 @@ export class PortalAutomationRailwayRunnerService implements OnModuleInit {
   private async solveKgmCaptchaOnPage(page: any, apiKey: string) {
     const captchaEl = await page.$('#Image1');
     if (!captchaEl) return null;
-    const buffer = await captchaEl.screenshot({ type: 'png' });
-    const base64 = buffer.toString('base64');
+    // elementHandle.screenshot() font/stabilite bekledigi icin (font'lari kestik) takiliyor.
+    // Captcha ANA hostta (same-origin) -> yuklenen img'i CANVAS ile pixel olarak oku (bekleme yok).
+    await page.waitForFunction(
+      () => { const i: any = document.querySelector('#Image1'); return !!(i && i.complete && i.naturalWidth > 0); },
+      { timeout: 15_000 },
+    ).catch(() => {});
+    const base64 = await page.evaluate(() => {
+      const img: any = document.querySelector('#Image1');
+      if (!img || !img.naturalWidth) return null;
+      const c = document.createElement('canvas');
+      c.width = img.naturalWidth;
+      c.height = img.naturalHeight;
+      const ctx = c.getContext('2d');
+      if (!ctx) return null;
+      ctx.drawImage(img, 0, 0);
+      try { return c.toDataURL('image/png').split(',')[1]; } catch { return null; }
+    });
+    if (!base64) return null;
     const { raw, captchaId } = await this.solveKgmCaptchaWith2Captcha(base64, apiKey);
     const formatted = this.kgmCaptchaFormat(raw);
     const parts = formatted.split(/\s+/);
