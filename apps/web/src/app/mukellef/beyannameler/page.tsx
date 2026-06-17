@@ -1,8 +1,8 @@
 'use client';
 import { useQuery } from '@tanstack/react-query';
 import { taxpayerApi } from '@/lib/taxpayer-api';
-import { fmtTRY, Empty, Spinner, PageTitle, Section, openBelge } from '../_lib/shared';
-import { Eye } from 'lucide-react';
+import { fmtTRY, Empty, Spinner, PageTitle, Section, openBelge, ozetBelge } from '../_lib/shared';
+import { Eye, Sparkles } from 'lucide-react';
 
 // Beyanname türü etiketleri — müşavir Beyanname Listesi ile aynı.
 const TIP_ETIKET: Record<string, string> = {
@@ -97,17 +97,28 @@ export default function MukellefBeyannameler() {
                           ) : <span style={{ color: 'rgba(250,250,249,0.25)' }}>—</span>}
                         </td>
                         <td className="px-3 py-3">
-                          <div className="flex justify-end">
+                          <div className="flex justify-end gap-1.5">
                             {item.hasFile ? (
-                              <button
-                                type="button"
-                                onClick={() => openBelge('beyanname', k.id, item.kind)}
-                                title={item.kind === 'pdf' ? 'Tahakkuk fişini görüntüle' : 'Beyannameyi görüntüle'}
-                                className="flex h-8 w-8 items-center justify-center rounded-lg transition hover:bg-white/[0.06]"
-                                style={{ border: '1px solid rgba(244,63,94,0.25)', color: '#fda4af', background: 'rgba(244,63,94,0.08)' }}
-                              >
-                                <Eye size={15} />
-                              </button>
+                              <>
+                                <button
+                                  type="button"
+                                  onClick={() => ozetBelge('beyanname', k.id, item.kind, `${k.beyanTipi} ${fmtDonem(k.donem)} ${item.tur}`)}
+                                  title="MOREN AI ile özetle"
+                                  className="flex h-8 w-8 items-center justify-center rounded-lg transition hover:bg-white/[0.06]"
+                                  style={{ border: '1px solid rgba(184,160,111,0.4)', color: '#d4b876', background: 'rgba(184,160,111,0.1)' }}
+                                >
+                                  <Sparkles size={15} />
+                                </button>
+                                <button
+                                  type="button"
+                                  onClick={() => openBelge('beyanname', k.id, item.kind, `${k.beyanTipi} ${fmtDonem(k.donem)} ${item.tur}`)}
+                                  title={item.kind === 'pdf' ? 'Tahakkuk fişini görüntüle' : 'Beyannameyi görüntüle'}
+                                  className="flex h-8 w-8 items-center justify-center rounded-lg transition hover:bg-white/[0.06]"
+                                  style={{ border: '1px solid rgba(244,63,94,0.25)', color: '#fda4af', background: 'rgba(244,63,94,0.08)' }}
+                                >
+                                  <Eye size={15} />
+                                </button>
+                              </>
                             ) : (
                               <span className="flex h-8 w-8 items-center justify-center rounded-lg" style={{ border: '1px solid rgba(255,255,255,0.06)', color: 'rgba(250,250,249,0.25)' }}>
                                 <Eye size={15} />

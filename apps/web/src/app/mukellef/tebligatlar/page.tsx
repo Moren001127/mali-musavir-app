@@ -1,8 +1,8 @@
 'use client';
 import { useQuery } from '@tanstack/react-query';
 import { taxpayerApi } from '@/lib/taxpayer-api';
-import { Section, Empty, Spinner, PageTitle, Th, THead, openBelge } from '../_lib/shared';
-import { Eye, BellDot } from 'lucide-react';
+import { Section, Empty, Spinner, PageTitle, Th, THead, openBelge, ozetBelge } from '../_lib/shared';
+import { Eye, BellDot, Sparkles } from 'lucide-react';
 
 const SARI = '#fbbf24';
 const YESIL = '#4ade80';
@@ -68,10 +68,13 @@ export default function MukellefTebligatlar() {
                             </span>
                           </td>
                           <td className="px-4 py-3">
-                            <div className="flex justify-end">
-                              {t.goruntulenebilir
-                                ? <button type="button" onClick={() => openBelge('tebligat', t.id)} title="Tebligatı görüntüle" className="flex h-8 w-8 items-center justify-center rounded-lg transition hover:bg-white/[0.06]" style={{ border: `1px solid ${SARI}45`, color: SARI, background: `${SARI}12` }}><Eye size={15} /></button>
-                                : <span className="text-[11px]" style={{ color: 'rgba(250,250,249,0.25)' }}>—</span>}
+                            <div className="flex justify-end gap-1.5">
+                              {t.goruntulenebilir ? (
+                                <>
+                                  <button type="button" onClick={() => ozetBelge('tebligat', t.id, undefined, t.kurumAciklama || t.title || 'e-Tebligat')} title="MOREN AI ile özetle" className="flex h-8 w-8 items-center justify-center rounded-lg transition hover:bg-white/[0.06]" style={{ border: '1px solid rgba(184,160,111,0.4)', color: '#d4b876', background: 'rgba(184,160,111,0.1)' }}><Sparkles size={15} /></button>
+                                  <button type="button" onClick={() => openBelge('tebligat', t.id, undefined, t.kurumAciklama || t.title || 'e-Tebligat')} title="Tebligatı görüntüle" className="flex h-8 w-8 items-center justify-center rounded-lg transition hover:bg-white/[0.06]" style={{ border: `1px solid ${SARI}45`, color: SARI, background: `${SARI}12` }}><Eye size={15} /></button>
+                                </>
+                              ) : <span className="text-[11px]" style={{ color: 'rgba(250,250,249,0.25)' }}>—</span>}
                             </div>
                           </td>
                         </tr>

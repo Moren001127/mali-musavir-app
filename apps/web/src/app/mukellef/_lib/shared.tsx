@@ -1,18 +1,92 @@
 'use client';
-import { CheckCircle2, Clock, AlertTriangle, ShieldCheck, Eye } from 'lucide-react';
+import { useEffect, useState } from 'react';
+import { createPortal } from 'react-dom';
+import { CheckCircle2, Clock, AlertTriangle, ShieldCheck, Eye, X, ExternalLink, Loader2 } from 'lucide-react';
 import { taxpayerApi } from '@/lib/taxpayer-api';
 
 export const GOLD = '#d4b876';
 
-/** Belgeyi presigned inline URL alıp yeni sekmede açar. tur: beyanname|evrak|tebligat|sgk|fatura */
-export async function openBelge(tur: string, id: string, kind?: string) {
+const BELGE_EVENT = 'moren:belge-onizle';
+type BelgeEvt = { loading?: boolean; url?: string; title?: string; error?: string; ozet?: string };
+
+/** Belgeyi AI'ya özetletir; sonucu önizleme modalında metin olarak gösterir. */
+export async function ozetBelge(tur: string, id: string, kind?: string, title?: string) {
+  const fire = (d: BelgeEvt) => window.dispatchEvent(new CustomEvent(BELGE_EVENT, { detail: d }));
+  const baslik = `${title || 'Belge'} — MOREN AI özeti`;
+  fire({ loading: true, title: baslik });
+  try {
+    const { data } = await taxpayerApi.post(`/portal/belge/${tur}/${id}/ozet`, null, { params: kind ? { kind } : undefined });
+    fire({ ozet: data?.ozet || 'Özet çıkarılamadı.', title: baslik });
+  } catch {
+    fire({ error: 'Özet çıkarılamadı. Daha sonra tekrar deneyin.', title: baslik });
+  }
+}
+
+/**
+ * Belgeyi presigned inline URL alıp SAYFA İÇİ önizleme modalında açar
+ * (yeni sekme yerine — ofis paneliyle aynı deneyim). Çağrı yerleri değişmez;
+ * layout'taki <BelgePreviewHost/> olayı dinler. tur: beyanname|evrak|tebligat|sgk|fatura
+ */
+export async function openBelge(tur: string, id: string, kind?: string, title?: string) {
+  const fire = (d: BelgeEvt) => window.dispatchEvent(new CustomEvent(BELGE_EVENT, { detail: d }));
+  const baslik = title || ({ beyanname: 'Beyanname', evrak: 'Evrak', tebligat: 'e-Tebligat', sgk: 'SGK Belgesi', fatura: 'Fatura' } as any)[tur] || 'Belge';
+  fire({ loading: true, title: baslik });
   try {
     const { data } = await taxpayerApi.get(`/portal/belge/${tur}/${id}/view`, { params: kind ? { kind } : undefined });
-    if (data?.url) window.open(data.url, '_blank', 'noopener,noreferrer');
-    else alert('Belge bulunamadı.');
+    if (data?.url) fire({ url: data.url, title: baslik });
+    else fire({ error: 'Belge bulunamadı.', title: baslik });
   } catch {
-    alert('Belge açılamadı. Daha sonra tekrar deneyin.');
+    fire({ error: 'Belge açılamadı. Daha sonra tekrar deneyin.', title: baslik });
   }
+}
+
+/** Sayfa içi belge önizleme modalı — layout'ta bir kez mount edilir. */
+export function BelgePreviewHost() {
+  const [st, setSt] = useState<BelgeEvt | null>(null);
+  useEffect(() => {
+    const handler = (e: Event) => setSt((e as CustomEvent).detail as BelgeEvt);
+    window.addEventListener(BELGE_EVENT, handler);
+    return () => window.removeEventListener(BELGE_EVENT, handler);
+  }, []);
+  useEffect(() => {
+    const onKey = (e: KeyboardEvent) => { if (e.key === 'Escape') setSt(null); };
+    if (st) window.addEventListener('keydown', onKey);
+    return () => window.removeEventListener('keydown', onKey);
+  }, [st]);
+  if (!st || typeof document === 'undefined') return null;
+  return createPortal(
+    <div className="fixed inset-0 z-[9999] flex items-center justify-center p-3 sm:p-4" style={{ background: 'rgba(0,0,0,0.72)' }} onClick={() => setSt(null)}>
+      <div className="flex h-[min(92vh,920px)] w-full max-w-[1100px] flex-col overflow-hidden rounded-2xl" style={{ background: '#0f0d0b', border: '1px solid rgba(255,255,255,0.1)' }} onClick={(e) => e.stopPropagation()}>
+        <div className="flex items-center justify-between gap-3 px-4 py-3" style={{ borderBottom: '1px solid rgba(255,255,255,0.08)' }}>
+          <div className="flex items-center gap-2 min-w-0">
+            <Eye size={15} style={{ color: GOLD }} />
+            <span className="text-[14px] font-semibold truncate" style={{ color: '#fafaf9' }}>{st.title || 'Belge'}</span>
+          </div>
+          <div className="flex items-center gap-2 shrink-0">
+            {st.url && (
+              <a href={st.url} target="_blank" rel="noopener noreferrer" title="Yeni sekmede aç" className="flex h-8 w-8 items-center justify-center rounded-lg transition hover:bg-white/[0.06]" style={{ border: '1px solid rgba(212,184,118,0.25)', color: GOLD }}><ExternalLink size={15} /></a>
+            )}
+            <button type="button" onClick={() => setSt(null)} title="Kapat" className="flex h-8 w-8 items-center justify-center rounded-lg transition hover:bg-white/[0.06]" style={{ border: '1px solid rgba(255,255,255,0.12)', color: 'rgba(250,250,249,0.7)' }}><X size={16} /></button>
+          </div>
+        </div>
+        <div className="flex-1 min-h-0 overflow-y-auto" style={{ background: st.ozet ? '#0f0d0b' : '#1a1a1a' }}>
+          {st.loading ? (
+            <div className="h-full flex flex-col items-center justify-center gap-3">
+              <Loader2 size={26} className="animate-spin" style={{ color: GOLD }} />
+              {st.title?.includes('özet') ? <span className="text-[12px]" style={{ color: 'rgba(250,250,249,0.5)' }}>Belge okunuyor, özet hazırlanıyor…</span> : null}
+            </div>
+          ) : st.error ? (
+            <div className="h-full flex items-center justify-center text-[13px]" style={{ color: 'rgba(250,250,249,0.6)' }}>{st.error}</div>
+          ) : st.ozet ? (
+            <div className="px-5 py-4 text-[13.5px] leading-relaxed whitespace-pre-wrap" style={{ color: '#fafaf9' }}>{st.ozet}</div>
+          ) : st.url ? (
+            <iframe src={st.url} title={st.title || 'Belge'} className="w-full h-full" style={{ border: 0, background: '#fff' }} />
+          ) : null}
+        </div>
+      </div>
+    </div>,
+    document.body,
+  );
 }
 
 /** Küçük "göz" görüntüleme butonu. */

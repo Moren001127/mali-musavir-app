@@ -11,6 +11,7 @@ import { PrismaService } from '../prisma/prisma.service';
 import { StorageService } from '../storage/storage.service';
 import { claudeTextViaMax } from '../common/max-inference';
 import { KdvBeyannameService } from '../kdv-beyanname/kdv-beyanname.service';
+import { PDFParse } from 'pdf-parse';
 
 /**
  * Mükellef self-servis portal mantığı.
@@ -502,14 +503,127 @@ export class TaxpayerPortalService {
     throw new BadRequestException('Geçersiz belge türü');
   }
 
+  /** Belgenin storage anahtarı + mimeType (özet/okuma için). Mükellefe KİLİTLİ. */
+  private async resolveBelgeKey(taxpayerId: string, tenantId: string, tur: string, id: string, kind?: string): Promise<{ key: string; mimeType?: string | null } | null> {
+    if (tur === 'beyanname') {
+      const k = await this.prisma.beyanKaydi.findFirst({ where: { id, taxpayerId } });
+      if (!k) return null;
+      const key = kind === 'beyanname' ? k.beyannameUrl : kind === 'xml' ? k.xmlUrl : k.pdfUrl;
+      return key ? { key, mimeType: kind === 'xml' ? 'application/xml' : 'application/pdf' } : null;
+    }
+    if (tur === 'evrak') {
+      const d = await this.prisma.document.findFirst({ where: { id, taxpayerId, isDeleted: false } });
+      return d?.s3Key ? { key: d.s3Key, mimeType: d.mimeType } : null;
+    }
+    if (tur === 'tebligat' || tur === 'sgk') {
+      const doc = await (this.prisma as any).portalDocument.findFirst({ where: { id, taxpayerId, tenantId } });
+      return doc?.storageKey ? { key: doc.storageKey, mimeType: doc.mimeType } : null;
+    }
+    if (tur === 'fatura') {
+      const f = await (this.prisma as any).mihsapInvoice.findFirst({ where: { id, mukellefId: taxpayerId, tenantId } });
+      return f?.storageKey ? { key: f.storageKey, mimeType: null } : null;
+    }
+    return null;
+  }
+
+  /** Belgeyi (PDF metni / görsel) okuyup mükellefe sade Türkçe özet çıkarır — Max ile. */
+  async belgeOzeti(taxpayerId: string, tenantId: string, tur: string, id: string, kind?: string) {
+    const resolved = await this.resolveBelgeKey(taxpayerId, tenantId, tur, id, kind);
+    if (!resolved?.key) throw new NotFoundException('Belge bulunamadı');
+    let buffer: Buffer;
+    try {
+      buffer = await this.storage.getBuffer(resolved.key);
+    } catch {
+      throw new BadRequestException('Belge indirilemedi');
+    }
+    const mt = (resolved.mimeType || '').toLowerCase();
+    const isPdf = mt.includes('pdf') || /\.pdf$/i.test(resolved.key);
+    const isImg = mt.includes('image') || /\.(jpe?g|png)$/i.test(resolved.key);
+
+    let metin = '';
+    let images: { base64: string; mediaType?: string }[] | undefined;
+    if (isPdf) {
+      try {
+        const parser = new PDFParse({ data: buffer });
+        try {
+          const r = await parser.getText();
+          metin = String(r?.text || '').replace(/\s+\n/g, '\n').slice(0, 12000);
+        } finally {
+          const destroy = (parser as any).destroy;
+          if (typeof destroy === 'function') await destroy.call(parser).catch(() => {});
+        }
+      } catch (e) {
+        this.logger.warn(`Belge PDF metni alınamadı (${id}): ${(e as Error).message}`);
+      }
+    } else if (isImg) {
+      images = [{ base64: buffer.toString('base64'), mediaType: mt || 'image/jpeg' }];
+    }
+    if (!metin.trim() && !images) {
+      return { ozet: 'Bu belge türünden otomatik özet çıkarılamadı. Belgeyi açıp inceleyebilirsiniz.' };
+    }
+    const system = [
+      "Sen MOREN AI'sın — Moren Mali Müşavirlik'in mükellef asistanısın. Aşağıdaki resmî belgeyi mükellefe SADE Türkçe ile özetle.",
+      'Şunları madde madde ver: belgenin TÜRÜ, KİMDEN geldiği, KONUSU, varsa TUTAR / SON TARİH / REFERANS NO ve mükellefin NE YAPMASI gerektiği.',
+      'Belgede OLMAYAN bilgiyi uydurma. Kesin hukuki yorum yapma; sonuna "kesin işlem için müşavirinize danışın" ekle. Kısa ve net tut.',
+    ].join('\n');
+    const prompt = metin.trim() ? `Belge içeriği:\n${metin}` : 'Ekteki belgeyi özetle.';
+    try {
+      const res = await claudeTextViaMax({ prompt, system, model: 'claude-sonnet-4-6', images, timeoutMs: 60000 });
+      if (res.ok && res.text?.trim()) return { ozet: res.text };
+      this.logger.warn(`Belge özeti Max hatası: ${res.error}`);
+    } catch (e) {
+      this.logger.error(`Belge özeti hata: ${(e as Error).message}`);
+    }
+    return { ozet: 'Şu anda belge özeti çıkarılamadı, lütfen birazdan tekrar deneyin.' };
+  }
+
+  /** Mükellef kendi portal şifresini değiştirir. */
+  async changePassword(taxpayerId: string, currentPassword: string, newPassword: string) {
+    const cur = String(currentPassword || '');
+    const nw = String(newPassword || '');
+    if (nw.length < 6) throw new BadRequestException('Yeni şifre en az 6 karakter olmalı');
+    const tp = await this.prisma.taxpayer.findUnique({ where: { id: taxpayerId } });
+    if (!tp || !tp.portalPasswordHash) throw new BadRequestException('Şifre tanımlı değil — müşavirinizle görüşün');
+    const ok = await argon2.verify(tp.portalPasswordHash, cur);
+    if (!ok) throw new UnauthorizedException('Mevcut şifre yanlış');
+    const hash = await argon2.hash(nw, { type: argon2.argon2id, memoryCost: 65536, timeCost: 3 });
+    await this.prisma.taxpayer.update({ where: { id: taxpayerId }, data: { portalPasswordHash: hash } });
+    return { ok: true };
+  }
+
+  /** Yaklaşan resmî son tarihler — ulusal Vergi Takvimi (önümüzdeki `gun` gün). */
+  async getVergiTakvimi(gun = 45) {
+    const now = new Date();
+    const to = new Date(now.getTime() + gun * 86400000);
+    let rows: any[] = [];
+    try {
+      rows = await (this.prisma as any).taxCalendar.findMany({
+        where: { dueDate: { gte: now, lte: to } },
+        orderBy: { dueDate: 'asc' },
+        take: 40,
+      });
+    } catch (e) {
+      this.logger.warn(`Vergi takvimi okunamadı: ${(e as Error).message}`);
+      return [];
+    }
+    return rows.map((c: any) => {
+      const donem = c.periodMonth
+        ? `${c.periodYear}-${String(c.periodMonth).padStart(2, '0')}`
+        : c.periodQuarter ? `${c.periodYear}-Q${c.periodQuarter}` : `${c.periodYear}`;
+      const kalanGun = Math.max(0, Math.ceil((new Date(c.dueDate).getTime() - now.getTime()) / 86400000));
+      return { tip: c.declarationType, donem, sonTarih: c.dueDate, aciklama: c.description || null, kalanGun };
+    });
+  }
+
   async getDashboard(taxpayerId: string, tenantId: string) {
-    const [profile, beyannameler, cari, evraklar, faturalar, tebligatlar] = await Promise.all([
+    const [profile, beyannameler, cari, evraklar, faturalar, tebligatlar, vergiTakvimi] = await Promise.all([
       this.getProfile(taxpayerId),
       this.getBeyannameler(taxpayerId),
       this.getCariOzet(taxpayerId),
       this.getEvraklar(taxpayerId),
       this.getFaturalar(taxpayerId, tenantId),
       this.getTebligatlar(taxpayerId, tenantId),
+      this.getVergiTakvimi().catch(() => [] as any[]),
     ]);
     const bekleyenBeyan = beyannameler.filter((b) => b.durum === 'beklemede').length;
     const okunmamisTebligat = tebligatlar.filter((t: any) => !t.viewedAt).length;
@@ -528,6 +642,7 @@ export class TaxpayerPortalService {
       faturaOzet: faturalar.ozet,
       faturaAylik: faturalar.aylik,
       sonTebligatlar: tebligatlar.slice(0, 5),
+      vergiTakvimi,
     };
   }
 
@@ -589,6 +704,9 @@ export class TaxpayerPortalService {
 
     const evrakSatir = (dash.evraklar || []).slice(0, 10).map((e: any) => `- ${e.title}`).join('\n') || 'Yok.';
 
+    const takvimSatir = (dash.vergiTakvimi || []).slice(0, 12).map((t: any) =>
+      `- ${t.aciklama || t.tip} (${t.donem}): son tarih ${dt(t.sonTarih)} — ${t.kalanGun} gün kaldı`).join('\n') || 'Önümüzdeki dönemde kayıtlı son tarih yok.';
+
     const cariSon = (dash.cari?.hareketler || []).slice(0, 5).map((h: any) =>
       `  ${dt(h.tarih)} ${h.tip} ${TL(h.tutar)}`).join('\n');
 
@@ -616,6 +734,9 @@ export class TaxpayerPortalService {
       '',
       `EVRAKLAR (toplam ${dash.ozet.evrakSayisi}):`,
       evrakSatir,
+      '',
+      'YAKLAŞAN SON TARİHLER (resmî vergi takvimi):',
+      takvimSatir,
     ].filter((x) => x !== '').join('\n');
 
     const system = [

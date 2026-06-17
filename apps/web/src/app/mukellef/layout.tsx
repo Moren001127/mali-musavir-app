@@ -8,6 +8,7 @@ import {
   PanelTop, BrainCircuit, ReceiptText, MailWarning, ShieldCheck,
 } from 'lucide-react';
 import { getTaxpayerToken, setTaxpayerToken, taxpayerApi } from '@/lib/taxpayer-api';
+import { BelgePreviewHost } from './_lib/shared';
 
 const GOLD = '#d4b876';
 const ROSE = '#f09aa8';
@@ -227,6 +228,7 @@ export default function MukellefLayout({ children }: { children: React.ReactNode
           <div className="mx-auto max-w-5xl">{children}</div>
         </main>
       </div>
+      <BelgePreviewHost />
     </div>
   );
 }

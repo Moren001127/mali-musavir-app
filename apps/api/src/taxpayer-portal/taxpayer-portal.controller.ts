@@ -87,6 +87,22 @@ export class TaxpayerPortalController {
     return this.service.getBelgeViewUrl(req.user.taxpayerId, req.user.tenantId, tur, id, kind);
   }
 
+  // Belge özeti — AI belgeyi okuyup sade Türkçe özetler.
+  @UseGuards(AuthGuard('taxpayer-jwt'))
+  @Post('belge/:tur/:id/ozet')
+  @HttpCode(HttpStatus.OK)
+  belgeOzet(@Req() req: any, @Param('tur') tur: string, @Param('id') id: string, @Query('kind') kind?: string) {
+    return this.service.belgeOzeti(req.user.taxpayerId, req.user.tenantId, tur, id, kind);
+  }
+
+  // Mükellef kendi şifresini değiştirir.
+  @UseGuards(AuthGuard('taxpayer-jwt'))
+  @Post('me/password')
+  @HttpCode(HttpStatus.OK)
+  changePassword(@Req() req: any, @Body() body: { currentPassword?: string; newPassword?: string }) {
+    return this.service.changePassword(req.user.taxpayerId, String(body?.currentPassword || ''), String(body?.newPassword || ''));
+  }
+
   @UseGuards(AuthGuard('taxpayer-jwt'))
   @Post('ai/chat')
   @HttpCode(HttpStatus.OK)
