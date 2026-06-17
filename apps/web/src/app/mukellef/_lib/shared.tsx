@@ -34,6 +34,7 @@ export const fmtTRY = (n: number) =>
   `${(n || 0).toLocaleString('tr-TR', { minimumFractionDigits: 2, maximumFractionDigits: 2 })} ₺`;
 
 export const DURUM: Record<string, { label: string; color: string; Icon: any }> = {
+  verildi: { label: 'Verildi', color: '#4ade80', Icon: CheckCircle2 },
   onaylandi: { label: 'Onaylandı', color: '#4ade80', Icon: CheckCircle2 },
   beklemede: { label: 'Beklemede', color: '#fbbf24', Icon: Clock },
   hatali: { label: 'Hatalı', color: '#f87171', Icon: AlertTriangle },

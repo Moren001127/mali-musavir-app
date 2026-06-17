@@ -141,9 +141,16 @@ export class TaxpayerPortalService {
     const kmap = new Map(kayitlar.map((k) => [`${k.beyanTipi}::${k.donem}`, k]));
     return rows.map((r) => {
       const k = kmap.get(`${r.beyanTipi}::${r.donem}`);
+      // Resmî beyanname kaydı (verilme tarihi / onay no / belge) varsa beyanname
+      // fiilen VERİLMİŞ demektir. Durum hâlâ "beklemede" kalmışsa "verildi"ye çek
+      // — verilmiş beyannamenin "bekleyen" görünmesi hatası buradan kaynaklanıyordu.
+      const verildi = !!(k && (k.beyanTarihi || k.onayNo || k.beyannameUrl || k.pdfUrl || k.xmlUrl));
+      const durum = verildi && (!r.durum || r.durum === 'beklemede') ? 'verildi' : r.durum;
       return {
         ...r,
+        durum,
         tahakkukTutari: r.tahakkukTutari ? Number(r.tahakkukTutari) : null,
+        verildiTarihi: k?.beyanTarihi ?? r.onayTarihi ?? null,
         belge: k
           ? { kayitId: k.id, pdf: !!k.pdfUrl, beyanname: !!k.beyannameUrl, xml: !!k.xmlUrl, beyanTarihi: k.beyanTarihi, onayNo: k.onayNo }
           : null,

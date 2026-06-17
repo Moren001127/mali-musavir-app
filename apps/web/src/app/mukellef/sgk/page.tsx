@@ -1,8 +1,11 @@
 'use client';
 import { useQuery } from '@tanstack/react-query';
 import { taxpayerApi } from '@/lib/taxpayer-api';
-import { Card, Empty, Spinner, PageTitle, Th, THead, openBelge } from '../_lib/shared';
-import { ShieldCheck, ListChecks, Eye } from 'lucide-react';
+import { Card, Empty, Spinner, PortalHeader, StatStrip, Th, THead, openBelge } from '../_lib/shared';
+import { ShieldCheck, ListChecks, Eye, FileStack } from 'lucide-react';
+
+const YESIL = '#4ade80';
+const MAVI = '#60a5fa';
 
 function SgkTablo({ rows, accent }: { rows: any[]; accent: string }) {
   if (!rows || rows.length === 0) return <div className="px-5 pb-5"><Empty>Kayıt bulunmuyor.</Empty></div>;
@@ -36,12 +39,13 @@ function SgkTablo({ rows, accent }: { rows: any[]; accent: string }) {
   );
 }
 
-function Bolum({ icon: Icon, baslik, accent, children }: { icon: any; baslik: string; accent: string; children: React.ReactNode }) {
+function Bolum({ icon: Icon, baslik, accent, adet, children }: { icon: any; baslik: string; accent: string; adet: number; children: React.ReactNode }) {
   return (
     <Card pad={false} accent={accent}>
       <div className="flex items-center gap-2 px-5 pt-4 pb-3">
         <span className="flex h-7 w-7 items-center justify-center rounded-lg" style={{ background: `${accent}18`, border: `1px solid ${accent}30`, color: accent }}><Icon size={14} /></span>
         <h2 className="text-[14px] font-semibold" style={{ color: '#fafaf9' }}>{baslik}</h2>
+        <span className="ml-auto text-[11.5px] font-semibold tabular-nums rounded-full px-2.5 py-0.5" style={{ background: `${accent}1a`, color: accent }}>{adet} belge</span>
       </div>
       {children}
     </Card>
@@ -54,23 +58,41 @@ export default function MukellefSgk() {
     queryFn: () => taxpayerApi.get('/portal/sgk').then((r) => r.data),
   });
 
+  const tahakkuk: any[] = data?.tahakkuk || [];
+  const hizmet: any[] = data?.hizmetListesi || [];
+  const diger: any[] = data?.diger || [];
+  const toplam = tahakkuk.length + hizmet.length + diger.length;
+
   return (
     <div className="space-y-5">
-      <PageTitle ust="SGK" baslik="SGK Belgelerim" />
+      <PortalHeader
+        ust="SGK"
+        baslik="SGK Belgelerim"
+        aciklama={`${toplam} belge`}
+        icon={ShieldCheck}
+        accent={YESIL}
+      />
       {isLoading ? <Spinner /> : (
-        <div className="space-y-5">
-          <Bolum icon={ShieldCheck} baslik="SGK Tahakkuk Fişleri" accent="#4ade80">
-            <SgkTablo rows={data?.tahakkuk || []} accent="#4ade80" />
+        <>
+          <StatStrip
+            items={[
+              { label: 'Tahakkuk Fişi', value: String(tahakkuk.length), icon: ShieldCheck, accent: YESIL },
+              { label: 'Hizmet Listesi', value: String(hizmet.length), icon: ListChecks, accent: MAVI },
+              ...(diger.length ? [{ label: 'Diğer Belgeler', value: String(diger.length), icon: FileStack, accent: '#d4b876' }] : []),
+            ]}
+          />
+          <Bolum icon={ShieldCheck} baslik="SGK Tahakkuk Fişleri" accent={YESIL} adet={tahakkuk.length}>
+            <SgkTablo rows={tahakkuk} accent={YESIL} />
           </Bolum>
-          <Bolum icon={ListChecks} baslik="SGK Hizmet Listeleri" accent="#60a5fa">
-            <SgkTablo rows={data?.hizmetListesi || []} accent="#60a5fa" />
+          <Bolum icon={ListChecks} baslik="SGK Hizmet Listeleri" accent={MAVI} adet={hizmet.length}>
+            <SgkTablo rows={hizmet} accent={MAVI} />
           </Bolum>
-          {data?.diger && data.diger.length > 0 && (
-            <Bolum icon={ShieldCheck} baslik="Diğer SGK Belgeleri" accent="#d4b876">
-              <SgkTablo rows={data.diger} accent="#d4b876" />
+          {diger.length > 0 && (
+            <Bolum icon={ShieldCheck} baslik="Diğer SGK Belgeleri" accent="#d4b876" adet={diger.length}>
+              <SgkTablo rows={diger} accent="#d4b876" />
             </Bolum>
           )}
-        </div>
+        </>
       )}
     </div>
   );
