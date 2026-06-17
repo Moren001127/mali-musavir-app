@@ -21,6 +21,8 @@ import { PDFParse } from 'pdf-parse';
 @Injectable()
 export class TaxpayerPortalService {
   private readonly logger = new Logger(TaxpayerPortalService.name);
+  /** Mükellef brifing önbelleği (30 dk) — her açılışta AI çağrısı yapmamak için. */
+  private brifingCache = new Map<string, { at: number; data: any }>();
 
   constructor(
     private prisma: PrismaService,
@@ -683,6 +685,105 @@ export class TaxpayerPortalService {
       sonTebligatlar: tebligatlar.slice(0, 5),
       vergiTakvimi,
     };
+  }
+
+  // ============ GÜNLÜK BRİFİNG (ofis BrifingKart'ın mükellef karşılığı) ============
+
+  /**
+   * Mükellefe özel günlük brifing — ofis /moren-ai/brifing ile aynı yapı:
+   * { summary, motivation, alerts[], suggestions[], focus, metrics, generatedAt, fromCache }.
+   * Uyarılar/öneriler DETERMİNİSTİK (mükellefin kendi verisinden); özet cümlesi Max ile
+   * (hata olursa kurallı yedeğe düşer). 30 dk önbellekli.
+   */
+  async getBrifing(taxpayerId: string, tenantId: string, force = false) {
+    const cached = this.brifingCache.get(taxpayerId);
+    if (!force && cached && Date.now() - cached.at < 30 * 60 * 1000) {
+      return { ...cached.data, fromCache: true };
+    }
+
+    const dash = await this.getDashboard(taxpayerId, tenantId);
+    const p: any = dash.profile;
+    const ad = p.companyName || [p.firstName, p.lastName].filter(Boolean).join(' ') || 'Mükellef';
+    const TL = (n: any) => `${(Number(n) || 0).toLocaleString('tr-TR', { minimumFractionDigits: 2, maximumFractionDigits: 2 })} TL`;
+    const dt = (v: any) => (v ? new Date(v).toLocaleDateString('tr-TR') : '');
+
+    const okunmamis = dash.ozet.okunmamisTebligat || 0;
+    const bekleyen = dash.ozet.bekleyenBeyan || 0;
+    const bakiye = Number(dash.cari?.bakiye || 0);
+    const takvim: any[] = dash.vergiTakvimi || [];
+    const yakin = takvim.filter((t) => t.kalanGun <= 7);
+    const cokYakin = takvim.filter((t) => t.kalanGun <= 3);
+
+    const focus: 'calm' | 'busy' | 'critical' | 'review' =
+      (okunmamis > 0 || cokYakin.length > 0 || bekleyen > 0) ? 'critical'
+        : (yakin.length > 0 || bakiye > 0) ? 'busy' : 'calm';
+
+    const alerts: { severity: 'high' | 'medium' | 'low'; text: string; href?: string }[] = [];
+    if (okunmamis > 0) alerts.push({ severity: 'high', text: `${okunmamis} okunmamış e-Tebligatınız var`, href: '/mukellef/tebligatlar' });
+    if (bekleyen > 0) alerts.push({ severity: 'high', text: `${bekleyen} beyannameniz işlem bekliyor görünüyor`, href: '/mukellef/beyannameler' });
+    if (yakin.length > 0) {
+      const t0 = yakin[0];
+      alerts.push({ severity: 'medium', text: `${t0.tip || 'Beyanname'} son tarihi ${dt(t0.sonTarih)} — ${t0.kalanGun} gün kaldı`, href: '/mukellef/beyannameler' });
+    }
+    if (bakiye > 0) alerts.push({ severity: 'medium', text: `Cari hesabınızda ${TL(bakiye)} açık bakiye (borç) görünüyor`, href: '/mukellef/cari' });
+
+    const suggestions: { text: string; href: string; icon?: string }[] = [];
+    if (okunmamis > 0) suggestions.push({ text: 'e-Tebligatları görüntüle', href: '/mukellef/tebligatlar', icon: 'Bell' });
+    if (bakiye > 0) suggestions.push({ text: 'Cari hesabımı incele', href: '/mukellef/cari', icon: 'FileCheck' });
+    suggestions.push({ text: 'Faturalarımı gör', href: '/mukellef/faturalar', icon: 'Receipt' });
+    suggestions.push({ text: 'MOREN AI’ya sor', href: '/mukellef/asistan', icon: 'Sparkles' });
+
+    const motivationByFocus: Record<string, string> = {
+      calm: 'Bugün işler sakin görünüyor; belgelerinizi gözden geçirmek için iyi bir gün.',
+      busy: 'Birkaç başlık takip istiyor; sırayla bakınca gün rahat toparlanır.',
+      critical: 'Öncelikli birkaç konu var; bunları bugün netleştirmek yükü azaltır.',
+      review: 'Kısa bir kontrol, ilerideki yükü bugünden hafifletir.',
+    };
+    const motivation = motivationByFocus[focus];
+
+    // Kurallı yedek özet
+    const yedek = (() => {
+      const parcalar: string[] = [];
+      if (okunmamis > 0) parcalar.push(`${okunmamis} okunmamış e-Tebligatınız`);
+      if (bekleyen > 0) parcalar.push(`${bekleyen} bekleyen beyannameniz`);
+      if (yakin.length > 0) parcalar.push(`${yakin.length} yaklaşan son tarihiniz`);
+      if (bakiye > 0) parcalar.push(`${TL(bakiye)} açık bakiyeniz`);
+      if (!parcalar.length) return 'Bugün acil bir başlık görünmüyor; portalınız güncel görünüyor.';
+      return `Bugün dikkat etmeniz gereken başlıklar: ${parcalar.join(', ')}.`;
+    })();
+
+    let summary = yedek;
+    try {
+      const system = [
+        "Sen MOREN AI'sın — mükellef portalında günlük brifing yazıyorsun. Mükellefe (şirkete) bugünkü durumunu",
+        '1-2 KISA cümleyle, sade ve profesyonel Türkçe ile özetle. SADECE aşağıdaki verilerden konuş, rakam uydurma.',
+        'Şirket adını yazma, "siz" diye hitap et. Liste değil, akıcı cümle. Abartma.',
+      ].join(' ');
+      const prompt = [
+        `Okunmamış e-Tebligat: ${okunmamis}`,
+        `İşlem bekleyen beyanname: ${bekleyen}`,
+        `Açık cari bakiye: ${TL(bakiye)}`,
+        `Yaklaşan son tarihler (7 gün): ${yakin.map((t) => `${t.tip} ${dt(t.sonTarih)} (${t.kalanGun}g)`).join('; ') || 'yok'}`,
+      ].join('\n');
+      const res = await claudeTextViaMax({ prompt, system, model: 'claude-sonnet-4-6', timeoutMs: 30000 });
+      if (res.ok && res.text?.trim()) summary = res.text.trim().slice(0, 240);
+    } catch (e) {
+      this.logger.warn(`Brifing özeti Max hatası: ${(e as Error).message}`);
+    }
+
+    const data = {
+      summary,
+      motivation,
+      alerts,
+      suggestions,
+      focus,
+      metrics: { okunmamisTebligat: okunmamis, bekleyenBeyan: bekleyen, acikBakiye: bakiye, yakinSonTarih: yakin.length },
+      generatedAt: new Date().toISOString(),
+      fromCache: false,
+      ad,
+    };
+    this.brifingCache.set(taxpayerId, { at: Date.now(), data });
+    return data;
   }
 
   // ============ MÜKELLEFE KİLİTLİ AI SOHBETİ (araçsız, bağlam-temelli) ============

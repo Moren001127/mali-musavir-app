@@ -2,8 +2,10 @@
 import Link from 'next/link';
 import { useQuery } from '@tanstack/react-query';
 import { taxpayerApi } from '@/lib/taxpayer-api';
-import { FileText, Wallet, FolderArchive, Sparkles, ArrowRight, ReceiptText, MailWarning, BellDot, BarChart3, CalendarClock } from 'lucide-react';
+import { FileText, Wallet, FolderArchive, Sparkles, ArrowRight, ReceiptText, MailWarning, BellDot, BarChart3 } from 'lucide-react';
 import { GOLD, fmtTRY, DURUM, Card, Empty, Spinner, OzetCard, PageTitle } from './_lib/shared';
+import { MukellefBrifing } from './_lib/MukellefBrifing';
+import { MukellefTakvim } from './_lib/MukellefTakvim';
 
 const ALIS = '#d4b876';
 const SATIS = '#4ade80';
@@ -41,6 +43,8 @@ export default function MukellefOverview() {
   return (
     <div className="space-y-6">
       <PageTitle ust="Hoş geldiniz" baslik={ad} />
+
+      <MukellefBrifing userName={ad} />
 
       {(ozet.okunmamisTebligat ?? 0) > 0 && (
         <Link href="/mukellef/tebligatlar" className="flex items-center gap-2.5 rounded-2xl px-4 py-3 transition hover:brightness-110" style={{ background: 'rgba(251,191,36,0.12)', border: '1px solid rgba(251,191,36,0.36)' }}>
@@ -96,33 +100,8 @@ export default function MukellefOverview() {
         </Link>
       </div>
 
-      {/* Yaklaşan son tarihler — resmî vergi takvimi */}
-      {(data?.vergiTakvimi?.length ?? 0) > 0 && (
-        <Card accent="#fbbf24">
-          <div className="flex items-center gap-2 mb-3">
-            <CalendarClock size={15} style={{ color: '#fbbf24' }} />
-            <h2 className="text-[14px] font-semibold" style={{ color: '#fafaf9' }}>Yaklaşan Son Tarihler</h2>
-          </div>
-          <div className="divide-y" style={{ borderColor: 'rgba(255,255,255,0.06)' }}>
-            {data.vergiTakvimi.slice(0, 6).map((t: any, i: number) => {
-              const renk = t.kalanGun <= 7 ? '#f87171' : t.kalanGun <= 15 ? '#fbbf24' : '#8fd7bd';
-              return (
-                <div key={i} className="flex items-center justify-between gap-3 py-2.5">
-                  <div className="min-w-0">
-                    <span className="text-[13px] font-medium" style={{ color: '#fafaf9' }}>{t.aciklama || t.tip}</span>
-                    <span className="text-[11.5px] ml-2" style={{ color: 'rgba(250,250,249,0.45)' }}>{t.donem}</span>
-                  </div>
-                  <div className="flex items-center gap-2.5 shrink-0">
-                    <span className="text-[12px] tabular-nums" style={{ color: 'rgba(250,250,249,0.6)' }}>{t.sonTarih ? new Date(t.sonTarih).toLocaleDateString('tr-TR') : '—'}</span>
-                    <span className="text-[11px] font-semibold px-2 py-0.5 rounded-md tabular-nums" style={{ background: `${renk}1a`, color: renk }}>{t.kalanGun} gün</span>
-                  </div>
-                </div>
-              );
-            })}
-          </div>
-          <p className="text-[11px] mt-2.5" style={{ color: 'rgba(250,250,249,0.35)' }}>Resmî vergi takviminden; kesin işlem için müşavirinizle görüşün.</p>
-        </Card>
-      )}
+      {/* Mali takvim — ofis BuHaftaTakvim ile birebir */}
+      <MukellefTakvim />
 
       {/* Fatura mini grafik */}
       {aylik.length > 0 && (

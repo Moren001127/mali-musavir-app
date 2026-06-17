@@ -41,6 +41,12 @@ export class TaxpayerPortalController {
   }
 
   @UseGuards(AuthGuard('taxpayer-jwt'))
+  @Get('brifing')
+  brifing(@Req() req: any, @Query('force') force?: string) {
+    return this.service.getBrifing(req.user.taxpayerId, req.user.tenantId, force === '1' || force === 'true');
+  }
+
+  @UseGuards(AuthGuard('taxpayer-jwt'))
   @Get('beyannameler')
   beyannameler(@Req() req: any) {
     return this.service.getBeyannamelerListe(req.user.taxpayerId);
