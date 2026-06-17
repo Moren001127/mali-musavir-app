@@ -1735,23 +1735,24 @@ export class PortalAutomationRailwayRunnerService implements OnModuleInit {
         `${araclar.length} plaka kaydedildi${eksiksiz ? `, ${silinenler.length} eski araç silindi` : ' (çekim eksik → silme atlandı)'}. HGS sorgusu basliyor.`,
       );
 
-      // KGM sorgulari icin AYRI context (kaynak-kesme route'lu; GIB SPA'sini etkilemez).
-      const kgmContext = await this.createKgmContext(browser);
-
-      // Her plaka icin KGM sorgu.
+      // Her plaka icin SIFIRDAN izole sorgu: her plakaya TAZE context (yeni cerez/oturum) +
+      // aralarinda bekleme. KGM pes pese sorguda oturum-bazli throttle ettigi icin her sorgu
+      // yeni bir ziyaretci gibi olur -> kararliik artar.
+      const gecikmeMs = Math.max(0, Number(process.env.GALERI_HGS_PLAKA_GECIKME_MS || 5000));
       const sonuclar = new Map<string, any>();
       for (let i = 0; i < araclar.length; i++) {
         const a = araclar[i];
-        const s = await this.sorgulaKgmPlaka(kgmContext, a.plaka, apiKey);
+        const s = await this.sorgulaKgmPlakaIzole(browser, a.plaka, apiKey);
         sonuclar.set(a.id, s);
         await this.jobProgress(
           tenantId, job, 'hgs',
           `${a.plaka}: ${s.durum} — ${s.ihlalSayisi || 0} ihlal (${i + 1}/${araclar.length})`,
           { current: i + 1, total: araclar.length },
         );
+        if (i < araclar.length - 1) await new Promise((r) => setTimeout(r, gecikmeMs));
       }
 
-      // LISTE BITINCE: hatali kalan plakalari tekrar sorgula (en cok 2 tur).
+      // LISTE BITINCE: hatali kalan plakalari tekrar sorgula (en cok 2 tur) — yine izole.
       const maxRetryRounds = Math.max(0, Number(process.env.GALERI_HGS_RETRY_ROUNDS || 2));
       for (let round = 1; round <= maxRetryRounds; round++) {
         const failed = araclar.filter((a) => (sonuclar.get(a.id)?.durum) === 'hatali');
@@ -1761,7 +1762,8 @@ export class PortalAutomationRailwayRunnerService implements OnModuleInit {
           `${failed.length} hatali plaka tekrar sorgulaniyor (tur ${round}/${maxRetryRounds}).`,
         );
         for (const a of failed) {
-          const s = await this.sorgulaKgmPlaka(kgmContext, a.plaka, apiKey);
+          await new Promise((r) => setTimeout(r, gecikmeMs));
+          const s = await this.sorgulaKgmPlakaIzole(browser, a.plaka, apiKey);
           sonuclar.set(a.id, s);
           await this.jobProgress(tenantId, job, 'hgs_retry', `${a.plaka}: ${s.durum} (tekrar)`);
         }
@@ -1772,7 +1774,6 @@ export class PortalAutomationRailwayRunnerService implements OnModuleInit {
         await this.kaydetGaleriHgsSonucu(tenantId, a.id, sonuclar.get(a.id)).catch((err: any) =>
           this.logger.warn(`[GALERI_HGS] sonuc kaydedilemedi (${a.plaka}): ${err?.message || err}`));
       }
-      await kgmContext.close().catch(() => {});
 
       // WhatsApp borc ozeti (+ tek-seferlik onsoz varsa basa ekle).
       const ozet = this.buildGaleriHgsOzet(araclar, sonuclar, taxpayer, silinenler);
@@ -1785,7 +1786,7 @@ export class PortalAutomationRailwayRunnerService implements OnModuleInit {
         `HGS sorgusu tamam: ${ozet.totals.borcluArac} borçlu, ${ozet.totals.toplamBorc.toFixed(2)} ₺, ${ozet.totals.hataliArac} hatalı, ${silinenler.length} eski araç silindi.`,
       );
 
-      return { recordCount: araclar.length, result: { runner: 'railway', phase: 'galeri_hgs', codeVersion: 'v17-final', plakalar: araclar.map((a) => a.plaka), silinen: silinenler, eksiksiz, ...ozet.totals } };
+      return { recordCount: araclar.length, result: { runner: 'railway', phase: 'galeri_hgs', codeVersion: 'v18-izole', plakalar: araclar.map((a) => a.plaka), silinen: silinenler, eksiksiz, ...ozet.totals } };
     } finally {
       await browser.close().catch(() => {});
     }
@@ -2241,6 +2242,16 @@ export class PortalAutomationRailwayRunnerService implements OnModuleInit {
       return { error: this.compact(err?.message || err), codeVersion: 'v7-canvas' };
     } finally {
       await page.close().catch(() => {});
+    }
+  }
+
+  /** Plakayi SIFIRDAN izole sorgular: TAZE context (yeni cerez/oturum) ac, sorgula, kapat. */
+  private async sorgulaKgmPlakaIzole(browser: any, plaka: string, apiKey: string) {
+    const ctx = await this.createKgmContext(browser);
+    try {
+      return await this.sorgulaKgmPlaka(ctx, plaka, apiKey);
+    } finally {
+      await ctx.close().catch(() => {});
     }
   }
 

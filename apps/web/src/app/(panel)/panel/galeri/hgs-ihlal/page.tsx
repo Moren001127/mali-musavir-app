@@ -1,13 +1,13 @@
 'use client';
 
-import { useState, useEffect, useRef } from 'react';
+import { useState } from 'react';
 import Link from 'next/link';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import { galeriApi, Arac } from '@/lib/galeri';
 import {
   Gavel, Plus, Search, Trash2, ExternalLink, RefreshCw, Car,
   CheckCircle2, AlertCircle, Clock, X as IconX, Save,
-  PlayCircle, Bot, FileText, Terminal, Square, ChevronDown, ChevronUp,
+  PlayCircle, Bot, FileText, Square,
   ArrowLeft, Wallet,
 } from 'lucide-react';
 import { toast } from 'sonner';
@@ -56,24 +56,8 @@ export default function HgsIhlalPage() {
     refetchInterval: (q) => ((q.state.data as any)?.aktifKomut ? 3000 : 15000),
   });
 
-  // Aktif veya son komutun log'larını çek (aktifse 2sn polling, son komut için tek seferlik)
+  // Çalışan toplu sorgu komutu (İptal butonu için).
   const aktifKomutId = (agentInfo as any)?.aktifKomut?.id;
-  const sonKomutId = (agentInfo as any)?.sonKomut?.id;
-  const izlenenKomutId = aktifKomutId || sonKomutId;
-  const [logsOpen, setLogsOpen] = useState(true);
-  const { data: izlenenKomutDetay } = useQuery({
-    queryKey: ['agent-command-detail', izlenenKomutId],
-    queryFn: async () => {
-      if (!izlenenKomutId) return null;
-      const { data } = await api.get(`/agent/commands-jwt/${izlenenKomutId}`);
-      return data;
-    },
-    enabled: !!izlenenKomutId,
-    // Aktif komut varsa 2sn'de bir, sadece son komut görüntüleniyorsa 15sn'de bir (statik)
-    refetchInterval: aktifKomutId ? 2000 : (izlenenKomutId ? 15000 : false),
-  });
-  const canliLoglar = ((izlenenKomutDetay as any)?.result?.logs || []) as Array<{ ts: string; level: string; message: string }>;
-  const izlenenKomutStatus = (izlenenKomutDetay as any)?.status;
 
   // Komut iptal mutation
   const iptalMut = useMutation({
@@ -89,11 +73,6 @@ export default function HgsIhlalPage() {
     onError: (err: any) => toast.error(err?.response?.data?.message || 'İptal başarısız'),
   });
 
-  // Log paneli en alta otomatik kaydır
-  const logRef = useRef<HTMLDivElement>(null);
-  useEffect(() => {
-    if (logRef.current && logsOpen) logRef.current.scrollTop = logRef.current.scrollHeight;
-  }, [canliLoglar.length, logsOpen]);
 
   // Toplu sorgu başlatma mutation — AgentCommand tablosuna komut yazar
   const topluSorguMut = useMutation({
@@ -295,58 +274,6 @@ export default function HgsIhlalPage() {
           )}
         </div>
 
-        {/* Canlı / son sorgu logları — komut kartının içinde açılır bölüm */}
-        {!!izlenenKomutId && (
-          <div style={{ borderTop: '1px solid rgba(255,255,255,0.06)' }}>
-            <button
-              onClick={() => setLogsOpen(!logsOpen)}
-              className="w-full flex items-center justify-between px-5 py-2.5 hover:bg-white/[0.02] transition-colors"
-            >
-              <span className="flex items-center gap-2 text-[12px] font-semibold" style={{ color: ACCENT }}>
-                <Terminal size={14} /> {aktifKomutId ? 'Canlı Agent Logları' : 'Son Sorgu Logları'}
-                {aktifKomutId ? (
-                  <span className="inline-flex items-center gap-1 text-[10px] font-bold px-2 py-0.5 rounded-full ml-1" style={{ background: 'rgba(34,197,94,0.15)', color: GREEN }}>
-                    <span className="w-1.5 h-1.5 rounded-full animate-pulse" style={{ background: GREEN }} /> CANLI · {canliLoglar.length} satır
-                  </span>
-                ) : (
-                  <span
-                    className="inline-flex items-center gap-1 text-[10px] font-bold px-2 py-0.5 rounded-full ml-1"
-                    style={{
-                      background: izlenenKomutStatus === 'done' ? 'rgba(34,197,94,0.12)' : izlenenKomutStatus === 'failed' ? 'rgba(239,68,68,0.12)' : izlenenKomutStatus === 'cancelled' ? 'rgba(250,204,21,0.12)' : 'rgba(250,250,249,0.06)',
-                      color: izlenenKomutStatus === 'done' ? GREEN : izlenenKomutStatus === 'failed' ? '#ef4444' : izlenenKomutStatus === 'cancelled' ? '#facc15' : 'rgba(250,250,249,0.6)',
-                    }}
-                  >
-                    {izlenenKomutStatus === 'done' ? 'TAMAMLANDI' : izlenenKomutStatus === 'failed' ? 'HATALI' : izlenenKomutStatus === 'cancelled' ? 'İPTAL' : 'BİTTİ'} · {canliLoglar.length} satır
-                  </span>
-                )}
-              </span>
-              {logsOpen ? <ChevronUp size={14} style={{ color: 'rgba(250,250,249,0.5)' }} /> : <ChevronDown size={14} style={{ color: 'rgba(250,250,249,0.5)' }} />}
-            </button>
-            {logsOpen && (
-              <div
-                ref={logRef}
-                className="px-5 py-3 max-h-[280px] overflow-y-auto font-mono text-[11.5px] leading-[1.55]"
-                style={{ background: 'rgba(0,0,0,0.4)', borderTop: '1px solid rgba(255,255,255,0.04)' }}
-              >
-                {canliLoglar.length === 0 ? (
-                  <div style={{ color: 'rgba(250,250,249,0.4)' }}>
-                    {aktifKomutId ? 'Henüz log yok — agent komutu işlemeye başlamak üzere…' : 'Son sorgu için log kaydı bulunamadı (eski sorgular log akışı eklemeden önce yapılmış olabilir).'}
-                  </div>
-                ) : (
-                  canliLoglar.map((l, i) => {
-                    const t = new Date(l.ts).toLocaleTimeString('tr-TR', { hour12: false });
-                    const c = l.level === 'warn' ? '#fbbf24' : l.level === 'error' ? '#ef4444' : 'rgba(250,250,249,0.85)';
-                    return (
-                      <div key={i} style={{ color: c, whiteSpace: 'pre-wrap', wordBreak: 'break-word' }}>
-                        <span style={{ color: 'rgba(250,250,249,0.35)' }}>[{t}]</span> {l.message}
-                      </div>
-                    );
-                  })
-                )}
-              </div>
-            )}
-          </div>
-        )}
       </section>
 
       {/* ═══ ARAÇ LİSTESİ ═══ */}
