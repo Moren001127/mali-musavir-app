@@ -1798,7 +1798,10 @@ export default function KdvKontrolPage() {
                     const unmatched = summary ? (summary.unmatched ?? 0) + (summary.rejected ?? 0) : (o?.unmatchedCount ?? null);
                     const totalResults = summary?.totalResults ?? null;
                     const isLocked = Boolean(s?.isLocked || s?.status === 'COMPLETED');
-                    const canLock = Boolean(s && !isLocked && totalResults && totalResults > 0);
+                    // Tamamen boş oturum: o dönem hiç Luca hareketi VE fatura yok → manuel kilide izin ver.
+                    const hasCount = !!(s && s._count && typeof s._count.kdvRecords !== 'undefined');
+                    const bosOturum = !!(hasCount && Number(s._count.kdvRecords) === 0 && Number(s._count.images) === 0);
+                    const canLock = Boolean(s && !isLocked && ((totalResults && totalResults > 0) || bosOturum));
                     const rowKey = s?.id || o?.id || idx;
                     return (
                       <tr key={rowKey} style={{ borderTop: idx === 0 ? 'none' : '1px solid rgba(255,255,255,0.03)' }}>
@@ -1939,11 +1942,16 @@ export default function KdvKontrolPage() {
                               </button>
                             ) : s && canLock ? (
                               <button
-                                onClick={() => lockSessionMut.mutate(s.id)}
+                                onClick={() => {
+                                  if (bosOturum && (!totalResults || totalResults === 0)) {
+                                    if (!confirm('Bu dönem hiç Luca hareketi veya fatura yok. Kontrolü BOŞ olarak kilitlemek istiyor musunuz?')) return;
+                                  }
+                                  lockSessionMut.mutate(s.id);
+                                }}
                                 disabled={lockSessionMut.isPending}
                                 className="inline-flex h-8 w-8 shrink-0 items-center justify-center rounded-lg"
                                 style={{ color: '#60a5fa', background: 'rgba(96,165,250,0.08)' }}
-                                title="Bu kontrolü kilitle"
+                                title={bosOturum && (!totalResults || totalResults === 0) ? 'Boş kontrolü kilitle (hareket yok)' : 'Bu kontrolü kilitle'}
                               >
                                 <Lock size={14} />
                               </button>

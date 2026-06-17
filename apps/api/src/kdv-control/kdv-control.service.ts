@@ -5633,7 +5633,17 @@ ${JSON.stringify(payload, null, 2)}`;
     });
     const summary = this.buildMatchSummary(results, session.type);
     if (summary.totalResults === 0) {
-      throw new BadRequestException('Eşleştirme sonucu oluşmadan KDV kontrolü kilitlenemez.');
+      // İçerik (Luca kaydı veya fatura görseli) VARSA reconciliation henüz çalışmamış
+      // demektir → kilitleme engellenir. Ama o dönem HİÇ hareket/fatura yoksa
+      // (boş oturum) mükellefin kontrolü "yapıldı" diye manuel kilitlenebilmeli.
+      const [recCount, imgCount] = await Promise.all([
+        this.prisma.kdvRecord.count({ where: { sessionId } }),
+        this.prisma.receiptImage.count({ where: { sessionId } }),
+      ]);
+      if (recCount > 0 || imgCount > 0) {
+        throw new BadRequestException('Eşleştirme sonucu oluşmadan KDV kontrolü kilitlenemez. Önce eşleştirmeyi çalıştırın.');
+      }
+      // recCount === 0 && imgCount === 0 → tamamen boş dönem; kilide izin ver.
     }
     const updated = await this.prisma.kdvControlSession.update({
       where: { id: sessionId },
