@@ -1704,7 +1704,7 @@ export class PortalAutomationRailwayRunnerService implements OnModuleInit {
         await this.jobProgress(tenantId, job, 'arac_test_done', `Araç teşhis: ${plakalar.length}/${scrapeRes.diag?.reportedTotal ?? '?'} plaka (eksiksiz=${scrapeRes.diag?.eksiksiz})`);
         return {
           recordCount: 0,
-          result: { runner: 'railway', phase: 'arac_test', codeVersion: 'v13-api', plakaSayisi: plakalar.length, plakalar, diag: scrapeRes.diag },
+          result: { runner: 'railway', phase: 'arac_test', codeVersion: 'v14-apifetch', plakaSayisi: plakalar.length, plakalar, diag: scrapeRes.diag },
         };
       }
 
@@ -1777,21 +1777,38 @@ export class PortalAutomationRailwayRunnerService implements OnModuleInit {
 
   /** Dijital Vergi Dairesi "Mevcut Araç Bilgilerim" tablosundaki plakalari okur (+teshis). */
   private async scrapeGibAracPlakalari(page: any): Promise<{ plakalar: string[]; diag: any }> {
-    // Sayfanin kendi API'sini yakala (JSON arac listesi) — DOM/sanal-kaydirmadan bagimsiz, eksiksiz.
-    const apiHits: any[] = [];
-    page.on('response', async (resp: any) => {
+    // Sayfanin kendi araç-listesi API istegini yakala (method+header+body) -> birebir tekrar oynat.
+    let aracListReq: any = null;
+    page.on('request', (req: any) => {
       try {
-        const u = String(resp.url() || '');
-        if (!/gateway|api|arac|sorgu|liste|getir|dvd/i.test(u)) return;
-        const ct = String((resp.headers() || {})['content-type'] || '');
-        if (!/json/i.test(ct)) return;
-        const txt = await resp.text();
-        if (!/plaka|plate|tescil|arac/i.test(txt)) return;
-        if (apiHits.length < 6) apiHits.push({ url: u.slice(0, 200), status: resp.status(), sample: txt.slice(0, 1800) });
+        const u = String(req.url() || '');
+        if (!/aracBilgilerim\/list/i.test(u)) return;
+        if (aracListReq) return;
+        const h = req.headers() || {};
+        const keep: any = {};
+        for (const k of Object.keys(h)) {
+          if (k.startsWith(':')) continue; // HTTP/2 pseudo-header
+          if (/^(authorization|content-type|accept|accept-language)$/i.test(k) || /^x-/i.test(k)) keep[k] = h[k];
+        }
+        aracListReq = { url: u, method: req.method(), headers: keep, postData: req.postData() || null };
       } catch { /* yoksay */ }
     });
     await page.goto(GIB_ARAC_BILGILERIM_URL, { waitUntil: 'domcontentloaded', timeout: 60_000 });
-    await page.waitForTimeout(3000);
+    await page.waitForTimeout(4000);
+
+    // ── BIRINCIL: API'yi tekrar oynat (tum sayfalar) — DOM'dan bagimsiz, eksiksiz ──
+    if (aracListReq) {
+      const apiRes = await this.fetchGibAracViaApi(page, aracListReq).catch(() => null);
+      if (apiRes && apiRes.plakalar.length && apiRes.total && apiRes.plakalar.length >= apiRes.total) {
+        return { plakalar: apiRes.plakalar, diag: { source: 'api', reportedTotal: apiRes.total, scraped: apiRes.plakalar.length, eksiksiz: true, pages: apiRes.pages } };
+      }
+      // API kismi geldiyse de en azindan onu sakla; DOM ile tamamlamayi dene.
+      if (apiRes && apiRes.plakalar.length) {
+        return { plakalar: apiRes.plakalar, diag: { source: 'api_kismi', reportedTotal: apiRes.total, scraped: apiRes.plakalar.length, eksiksiz: apiRes.total ? apiRes.plakalar.length >= apiRes.total : null, pages: apiRes.pages } };
+      }
+    }
+
+    // ── YEDEK: DOM scrape (API yakalanamazsa) ──
     // Tabloyu bekle (SPA render).
     await page.waitForFunction(
       () => /Plaka\s*Numaras/i.test(document.body.innerText || ''),
@@ -1867,7 +1884,53 @@ export class PortalAutomationRailwayRunnerService implements OnModuleInit {
       await next.click().catch(() => {});
       await page.waitForTimeout(1500);
     }
-    return { plakalar: Array.from(seen), diag: { paginatorText, reportedTotal, scraped: seen.size, eksiksiz: reportedTotal ? seen.size >= reportedTotal : null, pages: pageSnaps, apiHits } };
+    return { plakalar: Array.from(seen), diag: { source: 'dom', paginatorText, reportedTotal, scraped: seen.size, eksiksiz: reportedTotal ? seen.size >= reportedTotal : null, pages: pageSnaps } };
+  }
+
+  /** Yakalanan araç-listesi istegini sayfa-icinde tekrar oynatir; TUM sayfalardan plaka toplar. */
+  private async fetchGibAracViaApi(page: any, req: any): Promise<{ plakalar: string[]; total: number; pages: any[] }> {
+    return page.evaluate(async (r: any) => {
+      const norm = (s: string) => String(s || '').replace(/[\s-]/g, '').toUpperCase().trim();
+      const seen: string[] = [];
+      const seenSet: Record<string, boolean> = {};
+      const pages: any[] = [];
+      let total = 0;
+      for (let pageNo = 1; pageNo <= 30; pageNo++) {
+        // Body'deki pageNo'yu artir, pageSize'i buyut (varsa). Body yoksa GET query dene.
+        let body = r.postData;
+        let url = r.url;
+        if (body) {
+          try {
+            const j = JSON.parse(body);
+            if (j && j.pageDetail && typeof j.pageDetail === 'object') { j.pageDetail.pageNo = pageNo; j.pageDetail.pageSize = 100; }
+            else { j.pageNo = pageNo; j.pageSize = 100; }
+            body = JSON.stringify(j);
+          } catch { /* body JSON degil; oldugu gibi birak */ }
+        } else if (r.method === 'GET') {
+          url = url + (url.includes('?') ? '&' : '?') + 'pageNo=' + pageNo + '&pageSize=100';
+        }
+        let resp: Response;
+        try {
+          resp = await fetch(url, { method: r.method || 'GET', headers: r.headers || {}, body: (r.method === 'GET' || r.method === 'HEAD') ? undefined : body, credentials: 'include' });
+        } catch (e) { pages.push({ pageNo, error: String(e) }); break; }
+        let j: any = null;
+        try { j = await resp.json(); } catch { pages.push({ pageNo, status: resp.status, error: 'json degil' }); break; }
+        const data = (j && j.data) || [];
+        const pd = (j && j.pageDetail) || {};
+        total = Number(j && (j.totalCount || (pd && pd.total))) || total;
+        let yeni = 0;
+        for (const d of data) {
+          const pl = norm(d && (d.plaka || d.plakaNo || d.plate));
+          if (pl && pl.length >= 5 && !seenSet[pl]) { seenSet[pl] = true; seen.push(pl); yeni++; }
+        }
+        pages.push({ pageNo, status: resp.status, count: data.length, yeni, total });
+        const totalPage = Number(pd && pd.totalPage) || 0;
+        if (totalPage && pageNo >= totalPage) break;
+        if (total && seen.length >= total) break;
+        if (!data.length || yeni === 0) break;
+      }
+      return { plakalar: seen, total, pages };
+    }, req);
   }
 
   /** MUI tablo async dolar — satir sayisi 1.2s sabit kalana kadar bekle (max ~12s). */
