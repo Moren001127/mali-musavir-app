@@ -2891,7 +2891,7 @@ export class FaturaMuhasebelestirmeService {
             };
           }
           const raw = file.buffer.toString('utf8');
-          const html = /html/.test(ct) ? raw : this.inlinePreviewHtml(raw);
+          const html = /html/.test(ct) ? raw : this.inlinePreviewHtml(raw, doc);
           return { url: '', inlineHtml: html, mimeType: 'text/html', source: 'mihsap' as const };
         } catch (e: any) {
           return {
@@ -2906,16 +2906,22 @@ export class FaturaMuhasebelestirmeService {
     if (/text\/html|xml/i.test(mimeType)) {
       const buffer = await this.storage.getBuffer(doc.s3Key);
       const raw = buffer.toString('utf8');
-      const html = mimeType.includes('html') ? raw : this.inlinePreviewHtml(raw);
+      const html = mimeType.includes('html') ? raw : this.inlinePreviewHtml(raw, doc);
       return { url: '', inlineHtml: html, mimeType: 'text/html', source: 'stored-html' as const };
     }
     const url = await this.storage.getPresignedInlineUrl(doc.s3Key, doc.originalName, mimeType || undefined);
     return { url, mimeType, source: 'stored-file' as const };
   }
 
-  private inlinePreviewHtml(raw: string) {
+  private inlinePreviewHtml(raw: string, doc?: any) {
     const source = String(raw || '');
     if (/<html[\s>]/i.test(source)) return source;
+
+    const escEarly = (v: string) => String(v || '').replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;');
+    // XML/UBL degilse (or. hata mesaji): duz mesaj goster, bos sablon degil
+    if (!/</.test(source)) {
+      return `<!doctype html><html><head><meta charset="utf-8"><style>body{margin:0;font:14px/1.5 Arial,sans-serif;color:#374151;padding:32px;background:#f8fafc}.m{max-width:680px;margin:auto;background:#fff;border:1px solid #e5e7eb;border-radius:10px;padding:24px}</style></head><body><div class="m">${escEarly(source) || 'Belge önizlemesi yok.'}</div></body></html>`;
+    }
 
     const text = (tag: string) => {
       const m = source.match(new RegExp(`<[^:>]*(?::)?${tag}[^>]*>([\\s\\S]*?)<\\/[^:>]*(?::)?${tag}>`, 'i'));
@@ -2942,7 +2948,31 @@ export class FaturaMuhasebelestirmeService {
       });
     const rows = items.length
       ? items.map((i) => `<tr><td>${esc(i.name)}</td><td>${esc(i.qty)}</td><td class="num">${esc(i.amount)}</td></tr>`).join('')
-      : '<tr><td colspan="3">Kalem bilgisi XML icinden okunamadi.</td></tr>';
+      : '<tr><td colspan="3" style="color:#6b7280">Kalem dökümü belgenin dosyasında yok — başlık ve toplam bilgileri aşağıda.</td></tr>';
+
+    // XML'den okunamayan alanlar için belge kaydına (doc) düş
+    const fmtTL = (v: any) => {
+      const n = Number(typeof v === 'object' && v != null ? String(v) : v);
+      return Number.isFinite(n) && n !== 0 ? n.toLocaleString('tr-TR', { minimumFractionDigits: 2, maximumFractionDigits: 2 }) : '';
+    };
+    const isSale = String(doc?.invoiceKind || 'ALIS') === 'SATIS';
+    const docFirma = (isSale ? doc?.customerName : doc?.vendorName) || '';
+    const docVkn = (isSale ? doc?.buyerVkn : doc?.sellerVkn) || '';
+    let dMatrah = 0, dKdv = 0, hasLine = false;
+    for (const l of (Array.isArray(doc?.lines) ? doc.lines : [])) {
+      const amt = Number(isSale ? l.credit : l.debit) || 0;
+      if (l.group === 'matrah') { dMatrah += amt; hasLine = true; }
+      else if (l.group === 'vergi') { dKdv += amt; hasLine = true; }
+    }
+    if (!hasLine) { dMatrah = Number(doc?.ocrData?.matrah) || 0; dKdv = Number(doc?.ocrData?.kdvTutari) || 0; }
+
+    const satici = text('RegistrationName') || text('Name') || docFirma || '—';
+    const saticiId = text('CompanyID') || docVkn || '';
+    const belge = text('ID') || doc?.belgeNo || '—';
+    const tarih = text('IssueDate') || (doc?.faturaTarihi ? new Date(doc.faturaTarihi).toLocaleDateString('tr-TR') : '');
+    const malTop = text('LineExtensionAmount') || fmtTL(dMatrah);
+    const kdvTop = text('TaxAmount') || fmtTL(dKdv);
+    const genelTop = text('PayableAmount') || fmtTL(doc?.totalAmount);
 
     return `<!doctype html><html><head><meta charset="utf-8"><style>
       body{margin:0;background:#f8fafc;color:#111827;font:14px/1.45 Arial,sans-serif;padding:24px}
@@ -2954,14 +2984,14 @@ export class FaturaMuhasebelestirmeService {
     </style></head><body><div class="sheet">
       <h1>e-Fatura / e-Arsiv Onizleme</h1>
       <div class="grid">
-        <div class="box"><div class="muted">Satici</div><b>${esc(text('RegistrationName') || text('Name'))}</b><br>${esc(text('CompanyID'))}</div>
-        <div class="box"><div class="muted">Belge</div><b>${esc(text('ID'))}</b><br>${esc(text('IssueDate'))}</div>
+        <div class="box"><div class="muted">${isSale ? 'Alici' : 'Satici'}</div><b>${esc(satici)}</b><br>${esc(saticiId)}</div>
+        <div class="box"><div class="muted">Belge</div><b>${esc(belge)}</b><br>${esc(tarih)}</div>
       </div>
       <table><thead><tr><th>Mal/Hizmet</th><th>Miktar</th><th>Tutar</th></tr></thead><tbody>${rows}</tbody></table>
       <div class="totals">
-        <div><span>Mal Hizmet Toplam</span><b>${esc(text('LineExtensionAmount'))}</b></div>
-        <div><span>KDV</span><b>${esc(text('TaxAmount'))}</b></div>
-        <div class="big"><span>Genel Toplam</span><b>${esc(text('PayableAmount'))}</b></div>
+        <div><span>Mal Hizmet Toplam</span><b>${esc(malTop)}</b></div>
+        <div><span>KDV</span><b>${esc(kdvTop)}</b></div>
+        <div class="big"><span>Genel Toplam</span><b>${esc(genelTop)}</b></div>
       </div>
     </div></body></html>`;
   }
