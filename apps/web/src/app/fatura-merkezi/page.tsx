@@ -1,6 +1,6 @@
 'use client';
 
-import { useState, useRef } from 'react';
+import { useState, useRef, useEffect } from 'react';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import { api } from '@/lib/api';
 import { toast } from 'sonner';
@@ -102,36 +102,69 @@ function periodOptions(): { v: string; l: string }[] {
   return out;
 }
 /**
- * Belgeyi yeni sekmede aç (file-url).
- * Uç iki biçimde döner: ya `url` (presigned/data-uri) ya da `inlineHtml`
- * (e-arşiv/e-fatura HTML/XML render — url boş gelir). İkisini de açar.
- * Popup engeline takılmamak için boş sekme tıklama anında açılır, sonra doldurulur.
+ * Belgeyi EKRANDA (modal) açar — ayrı sekme/tarayıcı açmaz.
+ * Uç ya `url` (presigned/data-uri pdf/resim) ya da `inlineHtml`
+ * (e-arşiv/e-fatura HTML/XML render) döner. Sonucu 'fm-view-doc' olayıyla
+ * DocModal'a iletir; modal iframe içinde tam ekrana yakın gösterir.
  */
 async function openDocFile(id: string) {
-  const w = window.open('', '_blank');
   try {
     const r = await api.get(`/fatura-muhasebelestirme/documents/${id}/file-url`);
     const d: any = r.data || {};
     const url = typeof d.url === 'string' ? d.url : typeof d.fileUrl === 'string' ? d.fileUrl : '';
-    if (url) {
-      if (w) w.location.href = url; else window.open(url, '_blank', 'noopener');
-      return;
-    }
-    if (typeof d.inlineHtml === 'string' && d.inlineHtml) {
-      if (w) { w.document.open(); w.document.write(d.inlineHtml); w.document.close(); }
-      else {
-        const blobUrl = URL.createObjectURL(new Blob([d.inlineHtml], { type: 'text/html' }));
-        window.open(blobUrl, '_blank', 'noopener');
-        setTimeout(() => URL.revokeObjectURL(blobUrl), 60000);
-      }
-      return;
-    }
-    if (w) w.close();
-    toast.error('Belge dosyası bulunamadı');
+    const html = typeof d.inlineHtml === 'string' ? d.inlineHtml : '';
+    if (!url && !html) { toast.error('Belge dosyası bulunamadı'); return; }
+    window.dispatchEvent(new CustomEvent('fm-view-doc', { detail: { url, html } }));
   } catch {
-    if (w) w.close();
     toast.error('Belge açılamadı');
   }
+}
+
+/** Belge görüntüleme modalı — ekranda büyük gösterir (iframe). */
+function DocModal() {
+  const [doc, setDoc] = useState<{ url?: string; html?: string } | null>(null);
+  useEffect(() => {
+    const onView = (e: any) => setDoc(e.detail || null);
+    const onKey = (e: KeyboardEvent) => { if (e.key === 'Escape') setDoc(null); };
+    window.addEventListener('fm-view-doc', onView as any);
+    window.addEventListener('keydown', onKey);
+    return () => { window.removeEventListener('fm-view-doc', onView as any); window.removeEventListener('keydown', onKey); };
+  }, []);
+  if (!doc) return null;
+  return (
+    <div className="docov" onClick={() => setDoc(null)}>
+      <div className="docbox" onClick={(e) => e.stopPropagation()}>
+        <div className="docbar">
+          <b>Belge görüntüle</b>
+          <div className="sp" />
+          {doc.url ? <a className="btn sm ghost" href={doc.url} target="_blank" rel="noopener noreferrer">Yeni sekmede aç</a> : null}
+          <button className="btn sm" onClick={() => setDoc(null)}>Kapat ✕</button>
+        </div>
+        {doc.html
+          ? <iframe className="docframe" srcDoc={doc.html} title="Belge" sandbox="allow-same-origin" />
+          : doc.url
+            ? <iframe className="docframe" src={doc.url} title="Belge" />
+            : <div className="empty">Belge yok</div>}
+      </div>
+    </div>
+  );
+}
+
+/** Listede KDV Hariç (matrah) + KDV — önce fiş satırlarından, yoksa ocrData'dan. */
+function kdvParts(d: any): { matrah: number | null; kdv: number | null } {
+  const lines = Array.isArray(d.lines) ? d.lines : [];
+  const sale = (d.invoiceKind || 'ALIS') === 'SATIS';
+  let matrah = 0, kdv = 0, has = false;
+  for (const l of lines) {
+    const amt = Number(sale ? l.credit : l.debit) || 0;
+    if (l.group === 'matrah') { matrah += amt; has = true; }
+    else if (l.group === 'vergi') { kdv += amt; has = true; }
+  }
+  if (has) return { matrah, kdv };
+  const om = d.ocrData?.matrah, ok = d.ocrData?.kdvTutari;
+  const m = om != null ? Number(om) : null;
+  const k = ok != null ? Number(ok) : null;
+  return { matrah: m, kdv: k };
 }
 
 const TITLES: Record<string, string> = {
@@ -225,6 +258,7 @@ export default function FaturaMerkeziPage() {
   return (
     <div id="fm-root" data-accent={accent}>
       <style dangerouslySetInnerHTML={{ __html: CSS }} />
+      <DocModal />
       <div className="app">
         <aside className="side">
           <div className="brand"><span className="lg">M</span><div><b>Fatura Merkezi</b><small>MOREN Müşavirlik</small></div></div>
@@ -398,8 +432,7 @@ function ScreenFaturalar({ taxpayerId, period, kind = 'ALIS' }: { taxpayerId: st
                 const firma = (sat ? d.customerName : d.vendorName) || '—';
                 const vkn = sat ? d.buyerVkn : d.sellerVkn;
                 const code = (Array.isArray(d.lines) ? d.lines.find((l: any) => l.accountCode) : null)?.accountCode || '';
-                const matrah = d.ocrData?.matrah;
-                const kdv = d.ocrData?.kdvTutari;
+                const { matrah, kdv } = kdvParts(d);
                 return (
                   <tr key={d.id}>
                     <td><Check checked={sel.has(d.id)} onToggle={() => toggle(d.id)} /></td>
@@ -1097,43 +1130,48 @@ function ScreenGenel({ taxpayers, period, onOpen }: { taxpayers: any[]; period: 
     const t = taxpayers.find((x) => x.id === id);
     return t ? taxpayerLabel(t) : id;
   };
+  const pendingOf = (r: any) => Number(r.pendingAlis || 0) + Number(r.pendingSatis || 0);
   const tot = rows.reduce(
     (a, r) => ({
-      pending: a.pending + Number(r.pendingAlis || 0) + Number(r.pendingSatis || 0),
+      pending: a.pending + pendingOf(r),
       posted: a.posted + Number(r.postedToLuca || 0),
       issue: a.issue + Number(r.hasIssue || 0),
     }),
     { pending: 0, posted: 0, issue: 0 },
   );
+  // Genel Bakış = ÖZET + sadece DİKKAT GEREKTİREN (bekleyen ya da sorunlu) mükellefler,
+  // önceliğe göre sıralı. Tüm mükellef listesi + arama için ayrı "Mükellefler" ekranı var.
+  const attention = rows
+    .filter((r) => pendingOf(r) > 0 || Number(r.hasIssue || 0) > 0)
+    .sort((a, b) => (Number(b.hasIssue || 0) - Number(a.hasIssue || 0)) || (pendingOf(b) - pendingOf(a)));
   return (
     <section className="screen">
       <div className="h2">Genel Bakış</div>
-      <div className="sub">Tüm mükelleflerde fatura işleme durumu — {period}.</div>
+      <div className="sub" dangerouslySetInnerHTML={{ __html: `${period} döneminin özeti ve dikkat gerektiren mükellefler. Tüm mükellef listesi ve arama için sol menüden <b>Mükellefler</b>'e geç.` }} />
       <div className="mgrid">
         <div className="mcard"><div className="ml">Bekleyen belge</div><div className="mv">{tot.pending}</div></div>
         <div className="mcard"><div className="ml">Luca'ya aktarılan</div><div className="mv">{tot.posted}</div></div>
         <div className="mcard"><div className="ml">Sorunlu (kontrol)</div><div className="mv">{tot.issue}</div></div>
-        <div className="mcard"><div className="ml">Mükellef</div><div className="mv">{rows.length}</div></div>
+        <div className="mcard"><div className="ml">Dikkat gereken mükellef</div><div className="mv">{attention.length}</div></div>
       </div>
       <div className="card">
-        <div className="ch"><h3>Mükellef bazlı durum</h3></div>
+        <div className="ch"><h3>Dikkat gerektirenler</h3><div className="sp" /><span className="mu">bekleyen ya da sorunlu olanlar</span></div>
         <div className="twrap">
           <table>
-            <thead><tr><th>Mükellef</th><th className="num">Bek. alış</th><th className="num">Bek. satış</th><th className="num">Onaylı</th><th className="num">Luca'ya</th><th className="num">Sorunlu</th><th style={{ width: 60 }} /></tr></thead>
+            <thead><tr><th>Mükellef</th><th className="num">Bek. alış</th><th className="num">Bek. satış</th><th className="num">Sorunlu</th><th className="num">Luca'ya</th><th className="actcol" style={{ width: 60 }} /></tr></thead>
             <tbody>
-              {rows.map((r) => (
+              {attention.map((r) => (
                 <tr key={r.taxpayerId} style={{ cursor: 'pointer' }} onClick={() => onOpen(r.taxpayerId)}>
                   <td className="firm"><b>{nameOf(r.taxpayerId)}</b></td>
                   <td className="num">{r.pendingAlis || 0}</td>
                   <td className="num">{r.pendingSatis || 0}</td>
-                  <td className="num">{Number(r.approvedAlis || 0) + Number(r.approvedSatis || 0)}</td>
+                  <td className="num">{Number(r.hasIssue || 0) > 0 ? <span className="pill miss">{r.hasIssue}</span> : '0'}</td>
                   <td className="num">{r.postedToLuca || 0}</td>
-                  <td className="num">{r.hasIssue || 0}</td>
-                  <td><button className="btn ghost sm" onClick={(e) => { e.stopPropagation(); onOpen(r.taxpayerId); }}>Aç</button></td>
+                  <td className="actcol"><button className="btn ghost sm" onClick={(e) => { e.stopPropagation(); onOpen(r.taxpayerId); }}>Aç</button></td>
                 </tr>
               ))}
-              {!sumQ.isLoading && rows.length === 0 && (
-                <tr><td colSpan={7}><div className="empty">Bu dönemde veri yok.</div></td></tr>
+              {!sumQ.isLoading && attention.length === 0 && (
+                <tr><td colSpan={6}><div className="empty">Bu dönemde bekleyen ya da sorunlu mükellef yok — her şey güncel. 🎉</div></td></tr>
               )}
             </tbody>
           </table>
@@ -1293,4 +1331,10 @@ const CSS = `
 #fm-root .eform{border:1px dashed var(--line2);border-radius:12px;padding:16px;background:#fbfcfd}
 #fm-root .eform .erw{display:grid;grid-template-columns:1fr 1fr;gap:11px;margin-bottom:11px}
 #fm-root .endcol{justify-content:flex-end}
+/* Belge görüntüleme modalı (ekranda büyük, ayrı sekme yok) */
+#fm-root .docov{position:fixed;inset:0;background:rgba(15,23,42,.55);display:grid;place-items:center;z-index:60;padding:24px}
+#fm-root .docbox{background:#fff;border-radius:14px;width:min(1000px,96vw);height:min(90vh,1000px);display:flex;flex-direction:column;overflow:hidden;box-shadow:0 24px 70px rgba(0,0,0,.35)}
+#fm-root .docbar{display:flex;align-items:center;gap:9px;padding:11px 14px;border-bottom:1px solid var(--line);flex-shrink:0}
+#fm-root .docbar b{font-size:13.5px}
+#fm-root .docframe{flex:1;width:100%;border:none;background:#fff}
 `;
