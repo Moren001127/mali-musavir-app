@@ -9,6 +9,7 @@ import { OcrService, OcrResult } from '../kdv-control/ocr';
 import { KdvControlService } from '../kdv-control/kdv-control.service';
 import { EarsivRenderService } from '../earsiv/earsiv-render.service';
 import { encrypt, tryDecrypt } from '../common/crypto';
+import { claudeTextViaMax } from '../common/max-inference';
 import { VendorMemoryService } from '../vendor-memory/vendor-memory.service';
 import { MihsapService } from '../mihsap/mihsap.service';
 
@@ -4700,6 +4701,87 @@ export class FaturaMuhasebelestirmeService {
       }
     }
     return { ok, skipped, kdvOrani: rate, accountCode: hasManualCode ? manualCode : null };
+  }
+
+  /**
+   * Bir belgeyi Max-vision (claudeTextViaMax görsel) ile OKUR — Azure/ücretli API GEREKMEZ,
+   * Max aboneliğinden çalışır (Max-only kuralına uygun). KDV kırılımını çıkarıp fiş satırlarını üretir.
+   * Kilitli KDV/OCR modülüne DOKUNMAZ. Tek belge (frontend sırayla çağırır → HTTP timeout yok).
+   */
+  async aiReadDocument(tenantId: string, documentId: string) {
+    const d = await (this.prisma as any).invoiceAccountingDocument.findFirst({
+      where: { tenantId, id: documentId },
+      select: { id: true, status: true, taxpayerId: true, invoiceKind: true, totalAmount: true, vendorName: true, customerName: true, belgeNo: true, source: true, sourceRefId: true, mimeType: true, s3Key: true, ocrData: true },
+    });
+    if (!d) throw new NotFoundException('Belge bulunamadı');
+    if (d.status === 'APPROVED') return { ok: false, reason: 'onaylı' };
+
+    // Dosyayı indir (Mihsap CDN ya da storage). Sadece görsel — XML/PDF Max-vision'a uygun değil.
+    let buffer: Buffer | null = null;
+    let mediaType = String(d.mimeType || '');
+    try {
+      if (String(d.source) === 'mihsap' && d.sourceRefId) {
+        const inv = await (this.prisma as any).mihsapInvoice.findFirst({ where: { tenantId, mihsapId: String(d.sourceRefId) }, select: { id: true } });
+        if (inv?.id) { const file = await this.mihsapService.getInvoiceFile(tenantId, inv.id); buffer = file.buffer; mediaType = String(file.contentType || mediaType); }
+      } else if (d.s3Key && !String(d.s3Key).startsWith('earsiv-inline://') && !String(d.s3Key).startsWith('mihsap:')) {
+        buffer = await this.storage.getBuffer(d.s3Key);
+      }
+    } catch (e: any) {
+      return { ok: false, reason: 'dosya indirilemedi: ' + (e?.message || '') };
+    }
+    if (!buffer || buffer.length < 200) return { ok: false, reason: 'dosya yok' };
+    if (!/^image\//i.test(mediaType)) return { ok: false, reason: 'görsel değil (XML/PDF Max-vision ile okunamaz)' };
+
+    const prompt = [
+      'Aşağıdaki görüntü bir Türk faturası veya yazarkasa fişidir. İçindeki bilgileri oku.',
+      'YALNIZCA şu JSON\'u döndür — kod bloğu, açıklama, başka metin YOK:',
+      '{"belgeNo":"<fatura/fiş no ya da null>","tarih":"<GG.AA.YYYY ya da null>","kdv":[{"oran":<KDV yüzdesi sayı>,"matrah":<KDV hariç tutar sayı>,"kdv":<KDV tutarı sayı>}]}',
+      'KURALLAR: Türk sayı biçimi "1.234,56" = 1234.56 (tümünü ondalıklı sayıya çevir). Birden çok KDV oranı varsa her oran ayrı nesne. matrah=KDV hariç tutar, kdv=o orana ait KDV. Okunamayan alanı null bırak, UYDURMA.',
+    ].join('\n');
+
+    const res = await claudeTextViaMax({ prompt, images: [{ base64: buffer.toString('base64'), mediaType }], timeoutMs: 16000 });
+    if (!res.ok || !res.text) return { ok: false, reason: res.error || 'okunamadı' };
+
+    let parsed: any = null;
+    try {
+      const m = res.text.match(/\{[\s\S]*\}/);
+      parsed = m ? JSON.parse(m[0]) : null;
+    } catch { parsed = null; }
+    if (!parsed) return { ok: false, reason: 'AI yanıtı çözülemedi' };
+
+    const breakdown = (Array.isArray(parsed.kdv) ? parsed.kdv : [])
+      .map((x: any) => ({ rate: Number(x?.oran) || 0, base: Number(x?.matrah) || 0, amount: Number(x?.kdv) || 0 }))
+      .filter((x: any) => x.base > 0 || x.amount > 0);
+    if (!breakdown.length) return { ok: false, reason: 'KDV kırılımı okunamadı' };
+
+    const isSale = String(d.invoiceKind || 'ALIS') === 'SATIS';
+    const matrah = Math.round(breakdown.reduce((s: number, b: any) => s + b.base, 0) * 100) / 100;
+    const kdv = Math.round(breakdown.reduce((s: number, b: any) => s + b.amount, 0) * 100) / 100;
+    const headerTotal = Number(typeof d.totalAmount === 'object' && d.totalAmount != null ? String(d.totalAmount) : d.totalAmount);
+    const total = Number.isFinite(headerTotal) && headerTotal > 0 ? headerTotal : Math.round((matrah + kdv) * 100) / 100;
+
+    const lines = this.linesFromAmounts({
+      invoiceKind: d.invoiceKind || 'ALIS',
+      matrah, kdvTutari: kdv, kdvOrani: breakdown[0].rate, total,
+      vendorName: isSale ? d.customerName : d.vendorName,
+      kdvBreakdown: breakdown,
+    });
+    await (this.prisma as any).$transaction(async (tx: any) => {
+      await tx.invoiceAccountingLine.deleteMany({ where: { documentId: d.id } });
+      if (lines.length) await tx.invoiceAccountingLine.createMany({ data: lines.map((l: any) => ({ ...l, documentId: d.id })) });
+      await tx.invoiceAccountingDocument.update({
+        where: { id: d.id },
+        data: {
+          belgeNo: d.belgeNo || (parsed.belgeNo ? String(parsed.belgeNo) : null),
+          status: 'NEEDS_REVIEW',
+          validationStatus: 'OK',
+          ocrEngine: 'max-vision',
+          ocrData: { ...((d.ocrData as any) || {}), matrah, kdvTutari: kdv, kdvOrani: breakdown[0].rate, kdvBreakdown: breakdown.map((b: any) => ({ oran: b.rate, matrah: b.base, tutar: b.amount })), engine: 'max-vision' },
+        },
+      });
+    });
+    if (d.taxpayerId) await this.applyLearnedVendorCodes(tenantId, d.taxpayerId, [d.id]).catch(() => {});
+    return { ok: true, matrah, kdv, oranSayisi: breakdown.length };
   }
 
   private async rematchPendingDocumentsWithAccountPlan(

@@ -430,6 +430,24 @@ function ScreenFaturalar({ taxpayerId, period, kind = 'ALIS' }: { taxpayerId: st
   });
   const fisOlustur = () => { if (sel.size === 0) { toast.error('Önce belge seç'); return; } genMut.mutate([...sel]); };
 
+  // AI ile oku — seçili faturaları Max-vision ile tek tek okur (KDV kırılımı otomatik); her belge ayrı çağrı (HTTP timeout olmaz)
+  const [aiProg, setAiProg] = useState<{ done: number; total: number } | null>(null);
+  const aiOku = async () => {
+    const ids = [...sel];
+    if (!ids.length) { toast.error('Önce belge seç'); return; }
+    setAiProg({ done: 0, total: ids.length });
+    let ok = 0, fail = 0;
+    for (let i = 0; i < ids.length; i++) {
+      try { const r = await api.post('/fatura-muhasebelestirme/documents/ai-read', { documentId: ids[i] }); if (r?.data?.ok) ok++; else fail++; }
+      catch { fail++; }
+      setAiProg({ done: i + 1, total: ids.length });
+    }
+    setAiProg(null);
+    setSel(new Set());
+    toast.success(`AI okudu · ${ok} başarılı${fail ? `, ${fail} okunamadı` : ''}`);
+    qc.invalidateQueries({ queryKey: ['fm2'] });
+  };
+
   const muhasebelestir = () => {
     const hazir = docs.filter((d) => sel.has(d.id) && d.status !== 'APPROVED' && Array.isArray(d.lines) && d.lines.some((l: any) => l.accountCode));
     if (hazir.length === 0) {
@@ -451,6 +469,7 @@ function ScreenFaturalar({ taxpayerId, period, kind = 'ALIS' }: { taxpayerId: st
           <button className="btn sm" disabled={!taxpayerId || uploadMut.isPending} onClick={() => fileRef.current?.click()} title={!taxpayerId ? 'Önce mükellef seç' : 'JPEG / PDF / XML belge yükle (elle)'}><Ico html={I.plus} size={13} /> {uploadMut.isPending ? 'Yükleniyor…' : 'Belge Yükle'}</button>
           <button className="btn sm" disabled={!taxpayerId || fetchMut.isPending} onClick={() => fetchMut.mutate()} title={!taxpayerId ? 'Önce mükellef seç' : 'Entegratörden çek (henüz tamamlanmadı)'}><Ico html={I.download} size={13} /> {fetchMut.isPending ? 'Çekiliyor…' : 'Belgeleri Getir'}</button>
           <button className="btn sm ghost" disabled={syncMut.isPending} onClick={() => syncMut.mutate()}><Ico html={I.sync} size={13} /> {syncMut.isPending ? 'Eşitleniyor…' : 'Belgeleri Eşitle'}</button>
+          <button className="btn sm blue" disabled={!!aiProg || sel.size === 0} onClick={aiOku} title="Seçili faturaları yapay zeka (Max) ile oku — KDV kırılımı otomatik çıkar, oran girmeye gerek yok">{aiProg ? `Okunuyor ${aiProg.done}/${aiProg.total}` : `AI ile oku${sel.size ? ` (${sel.size})` : ''}`}</button>
           <select className="fmsel" style={{ maxWidth: 108 }} value={genRate} onChange={(e) => setGenRate(e.target.value)} title="Fiş üretmek için KDV oranı">
             <option value="20">KDV %20</option>
             <option value="10">KDV %10</option>

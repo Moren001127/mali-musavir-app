@@ -232,6 +232,12 @@ export class FaturaMuhasebelestirmeController {
     return this.service.setDocumentsKdvRate(req.user.tenantId, body || {});
   }
 
+  /** Belgeyi Max-vision (Max aboneliği) ile oku → KDV kırılımı + fiş üret. Tek belge (frontend sırayla çağırır). */
+  @Post('documents/ai-read')
+  aiReadDocument(@Req() req: any, @Body() body: { documentId?: string }) {
+    return this.service.aiReadDocument(req.user.tenantId, String(body?.documentId || ''));
+  }
+
   @Post('documents/from-earsiv/:faturaId')
   fromEarsiv(@Req() req: any, @Param('faturaId') faturaId: string) {
     return this.service.ensureFromEarsivFatura(req.user.tenantId, faturaId);
