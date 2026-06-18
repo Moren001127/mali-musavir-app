@@ -101,14 +101,35 @@ function periodOptions(): { v: string; l: string }[] {
   }
   return out;
 }
-/** Belgeyi yeni sekmede aç (file-url) */
+/**
+ * Belgeyi yeni sekmede aç (file-url).
+ * Uç iki biçimde döner: ya `url` (presigned/data-uri) ya da `inlineHtml`
+ * (e-arşiv/e-fatura HTML/XML render — url boş gelir). İkisini de açar.
+ * Popup engeline takılmamak için boş sekme tıklama anında açılır, sonra doldurulur.
+ */
 async function openDocFile(id: string) {
+  const w = window.open('', '_blank');
   try {
     const r = await api.get(`/fatura-muhasebelestirme/documents/${id}/file-url`);
-    const url = r.data?.url || r.data?.fileUrl || r.data;
-    if (url && typeof url === 'string') window.open(url, '_blank', 'noopener');
-    else toast.error('Belge dosyası bulunamadı');
+    const d: any = r.data || {};
+    const url = typeof d.url === 'string' ? d.url : typeof d.fileUrl === 'string' ? d.fileUrl : '';
+    if (url) {
+      if (w) w.location.href = url; else window.open(url, '_blank', 'noopener');
+      return;
+    }
+    if (typeof d.inlineHtml === 'string' && d.inlineHtml) {
+      if (w) { w.document.open(); w.document.write(d.inlineHtml); w.document.close(); }
+      else {
+        const blobUrl = URL.createObjectURL(new Blob([d.inlineHtml], { type: 'text/html' }));
+        window.open(blobUrl, '_blank', 'noopener');
+        setTimeout(() => URL.revokeObjectURL(blobUrl), 60000);
+      }
+      return;
+    }
+    if (w) w.close();
+    toast.error('Belge dosyası bulunamadı');
   } catch {
+    if (w) w.close();
     toast.error('Belge açılamadı');
   }
 }
@@ -820,15 +841,15 @@ function ScreenEntegrator({ taxpayerId, period }: { taxpayerId: string; period: 
                     {PROVIDER_OPTS.map((p) => (<option key={p.v} value={p.v}>{p.l}</option>))}
                   </select>
                 </div>
-                <div className="fld"><label>client_id {isParasut ? '' : '(varsa)'}</label><input value={apiKey} onChange={(e) => setApiKey(e.target.value)} placeholder={isParasut ? 'Paraşüt destekten alınan' : '—'} /></div>
+                <div className="fld"><label>client_id {isParasut ? '' : '(varsa)'}</label><input autoComplete="off" value={apiKey} onChange={(e) => setApiKey(e.target.value)} placeholder={isParasut ? 'Paraşüt destekten alınan' : '—'} /></div>
               </div>
               <div className="erw">
-                <div className="fld"><label>client_secret</label><input type="password" value={apiSecret} onChange={(e) => setApiSecret(e.target.value)} placeholder="••••••••" /></div>
-                <div className="fld"><label>{isParasut ? 'Firma No' : 'Hesap / Firma No'}</label><input value={accountId} onChange={(e) => setAccountId(e.target.value)} placeholder={isParasut ? "Paraşüt URL'deki rakam" : '—'} /></div>
+                <div className="fld"><label>client_secret</label><input type="password" autoComplete="new-password" value={apiSecret} onChange={(e) => setApiSecret(e.target.value)} placeholder="••••••••" /></div>
+                <div className="fld"><label>{isParasut ? 'Firma No' : 'Hesap / Firma No'}</label><input autoComplete="off" value={accountId} onChange={(e) => setAccountId(e.target.value)} placeholder={isParasut ? "Paraşüt URL'deki rakam" : '—'} /></div>
               </div>
               <div className="erw">
-                <div className="fld"><label>Kullanıcı adı</label><input value={username} onChange={(e) => setUsername(e.target.value)} placeholder="mükellefin giriş kullanıcısı" /></div>
-                <div className="fld"><label>Şifre</label><input type="password" value={password} onChange={(e) => setPassword(e.target.value)} placeholder="••••••••" /></div>
+                <div className="fld"><label>Kullanıcı adı</label><input autoComplete="off" value={username} onChange={(e) => setUsername(e.target.value)} placeholder="mükellefin giriş kullanıcısı" /></div>
+                <div className="fld"><label>Şifre</label><input type="password" autoComplete="new-password" value={password} onChange={(e) => setPassword(e.target.value)} placeholder="••••••••" /></div>
               </div>
               <div className="erw">
                 <div className="fld" /><div className="fld endcol">
