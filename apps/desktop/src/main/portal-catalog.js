@@ -44,17 +44,17 @@ const sgkRecipe = {
 
 const PORTAL_CATALOG = [
   { key: 'dijital_vd',    label: 'Dijital Vergi Dairesi',   group: 'Vergi / GİB', provider: 'GIB_IVD',        logo: 'dijitalVergiDairesiLogo.png', url: GIB_LOGIN, recipe: gibRecipe },
-  { key: 'interaktif_vd', label: 'İnteraktif Vergi Dairesi', group: 'Vergi / GİB', provider: 'GIB_IVD',        logo: 'ivd.png',                     url: GIB_LOGIN, recipe: gibRecipe },
-  { key: 'internet_vd',   label: 'İnternet Vergi Dairesi',   group: 'Vergi / GİB', provider: 'GIB_IVD',        logo: 'intvd.png',                   url: GIB_LOGIN, recipe: gibRecipe },
   { key: 'ebeyanname',    label: 'e-Beyanname',              group: 'Vergi / GİB', provider: 'GIB_EBEYANNAME', logo: 'YeniEBeyanname.svg',          url: GIB_LOGIN, recipe: gibRecipe },
-  { key: 'edefter',       label: 'e-Defter',                 group: 'Muhasebe',    provider: 'GIB_IVD',        logo: 'EDefter.svg',                 url: 'https://uyg.edefter.gov.tr', recipe: gibRecipe },
-  { key: 'sgk_ebildirge',   label: 'e-Bildirge',        group: 'SGK', provider: 'SGK_EBILDIRGE', logo: 'sgk_ebildirge.png',     url: 'https://uyg.sgk.gov.tr/WBildirimNet/amp/loginldap.xhtml', recipe: sgkRecipe },
-  { key: 'sgk_ebildirgev2', label: 'e-Bildirge V2',     group: 'SGK', provider: 'SGK_EBILDIRGE', logo: 'sgk_ebildirgev2.png',   url: 'https://uyg.sgk.gov.tr/eBildirgeV2/', recipe: sgkRecipe },
-  { key: 'sgk_isveren',     label: 'İşveren Sistemi',   group: 'SGK', provider: 'SGK_EBILDIRGE', logo: 'sgk_isveren.png',       url: 'https://uyg.sgk.gov.tr/IsverenSistemi/', recipe: sgkRecipe },
-  { key: 'sgk_erapor',      label: 'e-Rapor',           group: 'SGK', provider: 'SGK_EBILDIRGE', logo: 'sgk_erapor.png',        url: 'https://uyg.sgk.gov.tr/Ws_Rapor/', recipe: sgkRecipe },
-  { key: 'sgk_isgiris',     label: 'İşe Giriş / Çıkış', group: 'SGK', provider: 'SGK_EBILDIRGE', logo: 'sgk_isgiriscikis.png',  url: 'https://uyg.sgk.gov.tr/SigortaliTescil/amp/loginldap.xhtml', recipe: sgkRecipe },
-  { key: 'sgk_ebildirim',   label: 'e-Bildirim',        group: 'SGK', provider: 'SGK_EBILDIRGE', logo: 'Sgk_ebildirim.png',     url: 'https://uyg.sgk.gov.tr/HizmetTakip/', recipe: sgkRecipe },
-  { key: 'earsiv',        label: 'E-Arşiv Fatura',           group: 'Muhasebe',    provider: 'GIB_IVD',        logo: '__earsiv__',                  url: 'https://earsivportal.efatura.gov.tr', recipe: gibRecipe },
+  // e-Defter: ana sayfaya gidince GİB OAuth (authebelge.gib.gov.tr realm=ebelge,
+  // IdP broker=dijital) üzerinden Dijital Vergi Dairesi giriş formuna yönlenir —
+  // aynı #userid/#sifre/#dk formu, gibRecipe uyar. (state tek kullanımlık, sabitlenmez.)
+  { key: 'edefter',       label: 'e-Defter',                 group: 'Muhasebe',    provider: 'GIB_IVD',        logo: 'EDefter.svg',                 url: 'https://edefter.gib.gov.tr/default/home', recipe: gibRecipe },
+  { key: 'sgk_ebildirge',   label: 'e-Bildirge',        group: 'SGK', provider: 'SGK_EBILDIRGE', logo: 'sgk_ebildirge.png',     url: 'https://ebildirge.sgk.gov.tr/WPEB/amp/loginldap', recipe: sgkRecipe },
+  { key: 'sgk_ebildirgev2', label: 'e-Bildirge V2',     group: 'SGK', provider: 'SGK_EBILDIRGE', logo: 'sgk_ebildirgev2.png',   url: 'https://ebildirge.sgk.gov.tr/EBildirgeV2', recipe: sgkRecipe },
+  { key: 'sgk_isveren',     label: 'İşveren Sistemi',   group: 'SGK', provider: 'SGK_EBILDIRGE', logo: 'sgk_isveren.png',       url: 'https://uyg.sgk.gov.tr/IsverenSistemi', recipe: sgkRecipe },
+  { key: 'sgk_erapor',      label: 'e-Rapor',           group: 'SGK', provider: 'SGK_EBILDIRGE', logo: 'sgk_erapor.png',        url: 'https://uyg.sgk.gov.tr/vizite/welcome.do', recipe: sgkRecipe },
+  { key: 'sgk_isgiris',     label: 'İşe Giriş / Çıkış', group: 'SGK', provider: 'SGK_EBILDIRGE', logo: 'sgk_isgiriscikis.png',  url: 'https://uyg.sgk.gov.tr/SigortaliTescil/amp/loginldap', recipe: sgkRecipe },
+  { key: 'earsiv',        label: 'E-Arşiv Fatura',           group: 'Muhasebe',    provider: 'GIB_IVD',        logo: '__earsiv__',                  url: 'https://earsivportal.efatura.gov.tr/intragiris.html', recipe: gibRecipe },
 ];
 
 // Arayüze (renderer) gönderilen sade liste — url ve recipe GİTMEZ (güvenlik + gereksiz).

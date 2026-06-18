@@ -104,15 +104,21 @@ export class DesktopService {
       }
     }
 
-    return {
-      portals: DESKTOP_PORTALS,
-      taxpayers: taxpayers.map((t: any) => ({
+    // Görünen ada göre TÜRKÇE alfabetik sırala (DB orderBy companyName/firstName
+    // gerçek/tüzel kişiyi karıştırıyordu; kullanıcı listeyi A→Z görmek istiyor).
+    const taxpayerList = taxpayers
+      .map((t: any) => ({
         id: t.id,
         ad: taxpayerDisplayName(t),
         vkn: t.taxNumber,
         vergiDairesi: t.taxOffice,
         tur: t.type,
-      })),
+      }))
+      .sort((a: any, b: any) => a.ad.localeCompare(b.ad, 'tr', { sensitivity: 'base' }));
+
+    return {
+      portals: DESKTOP_PORTALS,
+      taxpayers: taxpayerList,
       credentials: { tenant: tenantProviders, byTaxpayer },
     };
   }

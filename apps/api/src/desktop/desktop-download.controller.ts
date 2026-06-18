@@ -15,7 +15,7 @@ import * as path from 'path';
 
 const INSTALLER_FILE = 'Moren-Masaustu-Kurulum.exe';
 // Yeni sürüm derlenip public/downloads'a konulduğunda burayı güncelle.
-const INSTALLER_VERSION = '1.1.0';
+const INSTALLER_VERSION = '1.2.0';
 
 function resolveInstallerPath(): string | null {
   const candidates = [
