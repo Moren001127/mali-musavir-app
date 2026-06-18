@@ -55,6 +55,9 @@ export function extractOkcFisKdv(
   // urun satiri "YEDEK PARCA %20 ..." KDV ile baslamaz, "KDV ORANI %20" ise araya
   // "ORANI" girdigi icin eslesmez (yanlis pozitif yok).
   const kdvLineRe = /\b[T1I7][O0]\s*P\s*K\s*[D0O]\s*[VUY]\b|\bK\.?\s*D\.?\s*V\.?\s*(?:TUTARI|TOPLAM)\b|^K\.?\s*D\.?\s*V\.?$|\bPK[D0O][VUY]\b|^K\.?\s*D\.?\s*V\.?\s*[%/]\s*\d{1,2}\b/i;
+  // "TOPKDV" (açık genel toplam KDV) tespiti — varsa yetkili toplamdır.
+  const topKdvRe = /\b[T1I7][O0]\s*P\s*K\s*[D0O]\s*[VUY]\b|\bPK[D0O][VUY]\b/i;
+  let topKdvAmount = 0;
   const summaryLookaheadLabelRe = /^(?:TOPLAM|GENEL\s*TOPLAM|KDV\s*ORANI|KDV\s*DAHIL\s*TUTAR|KDV\s*DAH[Iİ]L\s*TUTAR)$/i;
   const summaryHardStopRe = /NAK[Iİ]T|KRED[Iİ]|KART|PARA\s*[UÜ]ST[UÜ]|KAS[Iİ]YER|M[UÜ][SŞ]TER[Iİ]/i;
   // Yalın "KDV" satırı (sadece "KDV"); çoğu zaman "KDV Oranı | KDV Dahil Tutar | KDV"
@@ -105,10 +108,15 @@ export function extractOkcFisKdv(
         tutar,
         matrah: null,
       });
+      // "TOPKDV" AÇIK GENEL TOPLAM KDV'dir — varsa yetkili. Bazı fişlerde (ör. HAKMAR
+      // çok-oranlı) hem "TOPKDV *23,89" hem ayrı "KDV TUTARI" sütun başlığı + oran-bazlı
+      // tutarlar bulunur; hepsi toplanınca KDV şişiyordu (23,89 + 6,48 = 30,37). TOPKDV
+      // bulunduğunda toplam = TOPKDV (diğer KDV-satırı captures eklenmez).
+      if (topKdvRe.test(line)) topKdvAmount = Math.max(topKdvAmount, tutar);
     }
   }
 
-  const summarySum = breakdown.reduce((total, item) => total + item.tutar, 0);
+  const summarySum = topKdvAmount > 0 ? topKdvAmount : breakdown.reduce((total, item) => total + item.tutar, 0);
   const itemRateBreakdown = extractOkcFisItemRateBreakdown(text, summarySum, deps);
   if (itemRateBreakdown.length >= 1) {
     const itemSum = itemRateBreakdown.reduce((total, item) => total + item.tutar, 0);
@@ -121,9 +129,11 @@ export function extractOkcFisKdv(
   }
 
   if (breakdown.length === 0) return null;
+  // TOPKDV yetkiliyse breakdown'u tek genel-toplam satırına indir (stray "KDV TUTARI"
+  // başlık captures'ı toplama girmesin). Aksi halde mevcut breakdown korunur.
   return {
     kdvTutari: formatAmount(summarySum),
-    breakdown,
+    breakdown: topKdvAmount > 0 ? [{ oran: 0, tutar: topKdvAmount, matrah: null }] : breakdown,
   };
 }
 

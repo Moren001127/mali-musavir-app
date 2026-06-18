@@ -1123,7 +1123,15 @@ const okcKdvHeaderText = [
 const okcKdvHeader = okcFis.extractOkcFisKdv(okcKdvHeaderText, okcDeps);
 assert(okcKdvHeader !== null, 'okc KDV-header table result not null');
 eq(okcKdvHeader.kdvTutari, '12,06', 'okc bare-KDV header does not add gross 70,00 (TOPKDV wins)');
-ok('azure/okc-fis.ts (32 assertion)');
+
+// HAKMAR çok-oranlı: hem "TOPKDV *23,89" hem ayrı "KDV TUTARI" sütun başlığı + oran
+// tutarları var. Eskiden TOPKDV (23,89) + stray KDV-TUTARI capture (6,48) TOPLANIP
+// 30,37 dönüyordu. TOPKDV bulununca toplam = TOPKDV (stray eklenmez).
+const okcTopKdvText = ['FIS NO 0127', 'TOPKDV', '*23,89', 'KDV TUTARI', '*6,48', 'TOPLAM', '*804,25'].join('\n');
+const okcTopKdv = okcFis.extractOkcFisKdv(okcTopKdvText, okcDeps);
+assert(okcTopKdv !== null, 'okc TOPKDV result not null');
+approx(ublDeps.parseAmount(okcTopKdv.kdvTutari), 23.89, 0.05, `TOPKDV yetkili 23,89 (stray KDV TUTARI 6,48 toplanmamali), gercek=${JSON.stringify(okcTopKdv)}`);
+ok('azure/okc-fis.ts (33 assertion)');
 
 const okcCrossText = [
   'FIS NO : 0276',
