@@ -680,6 +680,15 @@ function ScreenMuhasebe({ taxpayerId, period, isIsletme = false }: { taxpayerId:
   const gg = selDoc ? kdvParts(selDoc) : { matrah: null, kdv: null };
   const ggReady = isIsletme ? ((Number(gg.matrah) || 0) > 0 || (Number(gg.kdv) || 0) > 0 || Number(selDoc?.totalAmount) > 0) : dengeli;
 
+  // Gerçek hesap kodunu elle ver — o satıcının tüm faturalarına uygulanır + öğrenilir (770 tahmini yerine)
+  const [codeInput, setCodeInput] = useState('');
+  const selVkn = String(selDoc?.sellerVkn || '').replace(/\D/g, '');
+  const codeMut = useMutation({
+    mutationFn: () => api.post('/fatura-muhasebelestirme/vendor-rule', { taxpayerId, vendorVkn: selVkn, vendorName: selDoc?.vendorName || undefined, accountCode: codeInput }),
+    onSuccess: (r: any) => { const n = r?.data?.applied; toast.success(`Kod uygulandı${n != null ? ` · ${n} belgeye` : ''} ve öğrenildi`); setCodeInput(''); qc.invalidateQueries({ queryKey: ['fm2'] }); },
+    onError: (e: any) => toast.error('Kod uygulanamadı: ' + (e?.response?.data?.message || e?.message || 'hata')),
+  });
+
   // Talimat (gece otomatik) — entegratör kayıtlarından türetilir
   const intQ = useQuery({
     queryKey: ['fm2', 'integrations', taxpayerId],
@@ -796,6 +805,14 @@ function ScreenMuhasebe({ taxpayerId, period, isIsletme = false }: { taxpayerId:
                     <span className="bnote">Borç {fmtMoney(borc)} {dengeli ? '=' : '≠'} Alacak {fmtMoney(alacak)} ₺</span>
                   </div>
                 )}
+                {!isIsletme && selDoc.invoiceKind !== 'SATIS' && selVkn ? (
+                  <div className="balance" style={{ background: '#fbfcfd', borderColor: 'var(--line)', flexWrap: 'wrap' }}>
+                    <Ico html={I.rules} size={15} /><b>Gerçek hesap kodu</b>
+                    <input className="fmsel" style={{ maxWidth: 150 }} placeholder="örn. 153.01.001" value={codeInput} onChange={(e) => setCodeInput(e.target.value)} />
+                    <button className="btn primary sm" disabled={codeMut.isPending || !codeInput.trim()} onClick={() => codeMut.mutate()}>{codeMut.isPending ? 'Uygulanıyor…' : 'Uygula & öğren'}</button>
+                    <span className="bnote" style={{ flexBasis: '100%', marginTop: 4 }}>770 tahmini default — bu satıcının gerçek kodunu gir; o satıcının bu mükellefteki tüm faturalarına uygulanır ve öğrenilir (sonrakiler otomatik alır).</span>
+                  </div>
+                ) : null}
                 <div className="wactions">
                   <div className="sp" />
                   <button className="btn sm ghost" onClick={() => openDocFile(selDoc.id)}><Ico html={I.eye} size={13} /> Belgeyi aç</button>

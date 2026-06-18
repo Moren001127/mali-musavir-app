@@ -4643,14 +4643,16 @@ export class FaturaMuhasebelestirmeService {
    * için: verilen KDV oranına göre toplamı matrah+KDV'ye böler ve fiş satırlarını yeniden üretir.
    * Oranı MÜŞAVİR verir — tahmin yok. Satışta kod 600, alışta 770 default; sonra öğrenilen kod uygulanır.
    */
-  async setDocumentsKdvRate(tenantId: string, input: { documentIds?: string[]; kdvOrani?: number }) {
+  async setDocumentsKdvRate(tenantId: string, input: { documentIds?: string[]; kdvOrani?: number; accountCode?: string }) {
     const rate = Number(input.kdvOrani);
     if (!Number.isFinite(rate) || rate < 0 || rate > 100) throw new BadRequestException('Geçerli KDV oranı girin (0–100)');
     const ids = (input.documentIds || []).filter(Boolean);
     if (!ids.length) throw new BadRequestException('Belge seçilmedi');
+    const manualCode = String(input.accountCode || '').trim();
+    const hasManualCode = /^\d/.test(manualCode);
     const docs = await (this.prisma as any).invoiceAccountingDocument.findMany({
       where: { tenantId, id: { in: ids }, status: { not: 'APPROVED' } },
-      select: { id: true, taxpayerId: true, invoiceKind: true, totalAmount: true, vendorName: true, customerName: true, ocrData: true },
+      select: { id: true, taxpayerId: true, invoiceKind: true, totalAmount: true, vendorName: true, customerName: true, sellerVkn: true, ocrData: true },
     });
     let ok = 0, skipped = 0;
     const taxpayerIds = new Set<string>();
@@ -4669,6 +4671,9 @@ export class FaturaMuhasebelestirmeService {
       await (this.prisma as any).$transaction(async (tx: any) => {
         await tx.invoiceAccountingLine.deleteMany({ where: { documentId: d.id } });
         if (lines.length) await tx.invoiceAccountingLine.createMany({ data: lines.map((l: any) => ({ ...l, documentId: d.id })) });
+        if (hasManualCode) {
+          await tx.invoiceAccountingLine.updateMany({ where: { documentId: d.id, group: 'matrah' }, data: { accountCode: manualCode } });
+        }
         await tx.invoiceAccountingDocument.update({
           where: { id: d.id },
           data: {
@@ -4678,14 +4683,23 @@ export class FaturaMuhasebelestirmeService {
           },
         });
       });
+      // Elle verilen hesap kodunu öğren — bu satıcının sonraki faturaları otomatik alsın
+      if (hasManualCode && !isSale && d.sellerVkn) {
+        await this.vendorMemory.recordDecision({
+          tenantId, firmaKimlikNo: String(d.sellerVkn).replace(/\D/g, ''), firmaUnvan: d.vendorName,
+          kararTipi: 'fatura', kategori: manualCode, taxpayerId: d.taxpayerId,
+        }).catch(() => {});
+      }
       if (d.taxpayerId) taxpayerIds.add(d.taxpayerId);
       ok++;
     }
-    // Alış belgelerinde öğrenilmiş satıcı kodlarını da uygula (601 yerine 153 vb.)
-    for (const tid of taxpayerIds) {
-      await this.applyLearnedVendorCodes(tenantId, tid).catch(() => {});
+    // Elle kod verilmediyse, alış belgelerinde öğrenilmiş satıcı kodlarını uygula (770 yerine 153 vb.)
+    if (!hasManualCode) {
+      for (const tid of taxpayerIds) {
+        await this.applyLearnedVendorCodes(tenantId, tid).catch(() => {});
+      }
     }
-    return { ok, skipped, kdvOrani: rate };
+    return { ok, skipped, kdvOrani: rate, accountCode: hasManualCode ? manualCode : null };
   }
 
   private async rematchPendingDocumentsWithAccountPlan(
