@@ -42,6 +42,15 @@ function normalizeCommonOcrSeries(value: string): string {
   if (m) {
     return `${m[1].replace(/O/g, '0').replace(/I/g, '1')}S${m[2]}`;
   }
+  // Seri başındaki/içindeki O harfi ↔ 0 (sıfır) karışıklığı (ör. "OSI" ↔ "0SI").
+  // Luca girişi ile e-fatura serisi aynı belgeyi gösterdiği hâlde tek karakter
+  // O/0 farkıyla "farklı" sayılıp eşleşmiyordu. e-belge yapısı:
+  // 2-4 karakter seri + 20YY + 6-14 hane sıra. SADECE seri foldlanır;
+  // sayısal sıra (gövde) DEĞİŞMEZ.
+  const eSeries = norm.match(/^([A-Z0-9]{2,4})(20\d{2}\d{6,14})$/);
+  if (eSeries) {
+    return `${eSeries[1].replace(/O/g, '0')}${eSeries[2]}`;
+  }
   return norm;
 }
 

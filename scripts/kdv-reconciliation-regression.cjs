@@ -421,6 +421,28 @@ const cases = [
     ],
   },
   {
+    // SULTAN OSMAN satış: Luca serisi "0SI..." (sıfır), e-fatura "OSI..." (harf O).
+    // Aynı belge olduğu hâlde O/0 farkıyla eşleşmiyordu → "incele". Seri foldu sonrası MATCHED.
+    name: 'sales e-invoice series with O/0 confusion still matches (0SI vs OSI)',
+    sessionType: 'KDV_391',
+    records: [
+      record({ id: 'r-osi010', belgeNo: '0SI2026000000010', date: '2026-05-15', kdv: 1000, oran: 20 }),
+    ],
+    images: [
+      image({
+        id: 'img-osi010',
+        belgeNo: 'OSI2026000000010',
+        date: '15.05.2026',
+        kdv: '1.000,00',
+        breakdown: [{ oran: 20, tutar: 1000 }],
+      }),
+    ],
+    expectedStats: { matched: 1, partial: 0, unmatched: 0, needsReview: 0 },
+    expectedRows: [
+      { record: 'r-osi010', image: 'img-osi010', status: 'MATCHED' },
+    ],
+  },
+  {
     name: 'same e-invoice number and date but KDV mismatch is not accepted as matched',
     sessionType: 'KDV_391',
     records: [
