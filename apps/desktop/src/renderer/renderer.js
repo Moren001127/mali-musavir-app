@@ -112,6 +112,7 @@ async function loadShortcuts() {
   }
   renderFirmaList('');
   renderGrid();
+  restoreSelectedFirma();
 }
 
 function logoHtml(portal) {
@@ -196,7 +197,18 @@ function selectFirma(t) {
   $('firma-meta').textContent = 'VKN ' + (t.vkn || '—') + (t.vergiDairesi ? ' · ' + t.vergiDairesi : '');
   $('firma-av').textContent = initials(t.ad);
   $('firma-dd').classList.remove('open');
+  // Seçimi hatırla — pencere yenilense/yeniden odaklansa da firma seçili kalsın.
+  try { localStorage.setItem('moren-selected-firma', t.id); } catch { /* yoksay */ }
   renderGrid();
+}
+
+// Önceki oturumda seçili firmayı (varsa) geri getir.
+function restoreSelectedFirma() {
+  let id = null;
+  try { id = localStorage.getItem('moren-selected-firma'); } catch { /* yoksay */ }
+  if (!id) return;
+  const t = state.taxpayers.find((x) => x.id === id);
+  if (t) selectFirma(t);
 }
 
 function setupFirmaPicker() {

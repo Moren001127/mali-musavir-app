@@ -32,14 +32,19 @@ const gibRecipe = {
 // SGK giriş formları (kullanıcı adı + e-kod/işyeri kodu + sistem şifresi + işyeri
 // şifresi + güvenlik kodu). Seçiciler runner'daki kullaniciIlkKontrollerGiris_*
 // alanlarıyla aynı; eski portallar için yedek adaylar da var.
+// SGK portallarının üç farklı login formu vardır (canlı doğrulandı):
+//  1) e-Bildirge / İşe Giriş (loginldap): j_username, isyeri_kod, j_password, isyeri_sifre, isyeri_guvenlik, img /PG
+//  2) İşveren / e-Bildirge V2: kullaniciIlkKontrollerGiris_* ids, #guvenlik_kod
+//  3) e-Rapor (vizite): kullaniciAdi, isyeriKodu, isyeriSifresi (TEK şifre=işyeri), guvenlikKodu, img Captcha.jpg
+// Tüm aday seçiciler aynı reçetede; her alan görünen ilk eşleşmeye dolar (olmayan atlanır).
 const sgkRecipe = {
-  user: ['#kullaniciIlkKontrollerGiris_username', 'input[name="username"]', '#userName', '#kullaniciAdi', 'input[name="userName"]', 'input[name="j_username"]'],
-  workplace: ['#kullaniciIlkKontrollerGiris_isyeri_kod', 'input[name="isyeri_kod"]'],
-  pass: ['#kullaniciIlkKontrollerGiris_password', 'input[name="password"]', '#sistemSifre', 'input[name="sistemSifre"]', 'input[name="j_password"]'],
-  pass2: ['#kullaniciIlkKontrollerGiris_isyeri_sifre', 'input[name="isyeri_sifre"]', '#isyeriSifre', 'input[name="isyeriSifre"]'],
-  captchaImg: ['#guvenlik_kod', 'img[src*="/PG"]', 'img[id*="guvenlik" i]', 'img[src*="captcha" i]', 'img[id*="captcha" i]'],
-  captcha: ['#kullaniciIlkKontrollerGiris_isyeri_guvenlik', 'input[name="isyeri_guvenlik"]', 'input[id*="guvenlik" i]', 'input[name*="guvenlik" i]', 'input[name*="captcha" i]'],
-  submit: ['button[type="submit"]', 'input[type="submit"]', 'button:has-text("Giriş")', 'button:has-text("Giris")', 'a:has-text("Giriş")'],
+  user: ['#kullaniciIlkKontrollerGiris_username', 'input[name="username"]', 'input[name="j_username"]', 'input[name="kullaniciAdi"]', '#userName', '#kullaniciAdi', 'input[name="userName"]'],
+  workplace: ['#kullaniciIlkKontrollerGiris_isyeri_kod', 'input[name="isyeri_kod"]', 'input[name="isyeriKodu"]'],
+  pass: ['#kullaniciIlkKontrollerGiris_password', 'input[name="password"]', 'input[name="j_password"]', '#sistemSifre', 'input[name="sistemSifre"]'],
+  pass2: ['#kullaniciIlkKontrollerGiris_isyeri_sifre', 'input[name="isyeri_sifre"]', 'input[name="isyeriSifresi"]', '#isyeriSifre', 'input[name="isyeriSifre"]'],
+  captchaImg: ['#guvenlik_kod', 'img[src*="/PG"]', 'img[src*="Captcha" i]', 'img[id*="guvenlik" i]', 'img[src*="captcha" i]', 'img[id*="captcha" i]'],
+  captcha: ['#kullaniciIlkKontrollerGiris_isyeri_guvenlik', 'input[name="isyeri_guvenlik"]', 'input[name="guvenlikKodu"]', 'input[id*="guvenlik" i]', 'input[name*="guvenlik" i]', 'input[name*="captcha" i]'],
+  submit: ['input[name="kaydet"]', 'button[type="submit"]', 'input[type="submit"]', 'button:has-text("Giriş")', 'button:has-text("Giris")', 'a:has-text("Giriş")'],
 };
 
 const PORTAL_CATALOG = [
