@@ -213,9 +213,9 @@ export class DesktopService {
     // runner'ın yavaş (5sn) yoklamasını DEĞİL, hızlı yoklamayı kullanırız:
     // ilk denemeden önce kısa bekle (~2sn), sonra sık yokla (~1.5sn). Tipik
     // bekleme ~10sn'den ~4-6sn'ye düşer (2captcha'nın gerçek çözüm süresi alt sınır).
-    const maxAttempts = Number(process.env.DESKTOP_2CAPTCHA_MAX_POLL || 40);
-    const firstWait = Number(process.env.DESKTOP_2CAPTCHA_FIRST_WAIT_MS || 2000);
-    const pollInterval = Number(process.env.DESKTOP_2CAPTCHA_POLL_INTERVAL_MS || 1500);
+    const maxAttempts = Number(process.env.DESKTOP_2CAPTCHA_MAX_POLL || 60);
+    const firstWait = Number(process.env.DESKTOP_2CAPTCHA_FIRST_WAIT_MS || 1200);
+    const pollInterval = Number(process.env.DESKTOP_2CAPTCHA_POLL_INTERVAL_MS || 900);
     await new Promise((r) => setTimeout(r, firstWait));
 
     for (let i = 0; i < maxAttempts; i++) {
