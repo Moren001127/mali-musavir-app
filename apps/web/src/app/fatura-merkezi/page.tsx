@@ -1,6 +1,6 @@
 'use client';
 
-import { useState } from 'react';
+import { useState, useRef } from 'react';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import { api } from '@/lib/api';
 import { toast } from 'sonner';
@@ -328,6 +328,26 @@ function ScreenFaturalar({ taxpayerId, period, kind = 'ALIS' }: { taxpayerId: st
     },
     onError: (e: any) => toast.error("Mihsap'tan aktarılamadı: " + (e?.response?.data?.message || e?.message || 'hata')),
   });
+  // Manuel belge yükleme (JPEG/PDF/XML/ZIP) — OCR arka planda işler
+  const fileRef = useRef<HTMLInputElement>(null);
+  const uploadMut = useMutation({
+    mutationFn: async (files: FileList) => {
+      const fd = new FormData();
+      Array.from(files).forEach((f) => fd.append('files', f));
+      fd.append('taxpayerId', taxpayerId);
+      fd.append('source', 'fatura-merkezi');
+      fd.append('documentType', kind === 'SATIS' ? 'SATIS_FATURA' : 'ALIS_FATURA');
+      fd.append('invoiceKind', kind);
+      fd.append('period', period);
+      return api.post('/fatura-muhasebelestirme/documents/upload', fd, { headers: { 'Content-Type': 'multipart/form-data' } });
+    },
+    onSuccess: (r: any) => {
+      const n = Array.isArray(r?.data) ? r.data.length : (r?.data?.count ?? r?.data?.created ?? null);
+      toast.success(`Belge yüklendi${n != null ? ` · ${n}` : ''}. OCR arka planda işleniyor.`);
+      qc.invalidateQueries({ queryKey: ['fm2'] });
+    },
+    onError: (e: any) => toast.error('Yüklenemedi: ' + (e?.response?.data?.message || e?.message || 'hata')),
+  });
   const syncMut = useMutation({
     mutationFn: () => api.post('/fatura-muhasebelestirme/documents/match-orphans', { period }),
     onSuccess: (r: any) => { toast.success(`Eşitlendi${r?.data?.matched != null ? ` · ${r.data.matched} belge bağlandı` : ''}`); qc.invalidateQueries({ queryKey: ['fm2'] }); },
@@ -362,13 +382,15 @@ function ScreenFaturalar({ taxpayerId, period, kind = 'ALIS' }: { taxpayerId: st
         <div className="ch">
           <h3>{docsQ.isLoading ? 'Yükleniyor…' : `${docs.length} belge`}</h3><div className="sp" />
           <button className="btn sm blue" disabled={!taxpayerId || mihsapMut.isPending} onClick={() => mihsapMut.mutate()} title={!taxpayerId ? 'Önce mükellef seç' : "Mihsap 'bekleyen evraklar'daki faturaları portala aktarır"}><Ico html={I.download} size={13} /> {mihsapMut.isPending ? 'Aktarılıyor…' : "Mihsap'tan Aktar"}</button>
+          <input ref={fileRef} type="file" multiple accept=".pdf,.jpg,.jpeg,.jpe,.jfif,.png,.webp,.gif,.tif,.tiff,.bmp,.heic,.heif,.avif,.xml,.ubl,.zip" style={{ display: 'none' }} onChange={(e) => { const f = e.target.files; if (f && f.length) uploadMut.mutate(f); e.target.value = ''; }} />
+          <button className="btn sm" disabled={!taxpayerId || uploadMut.isPending} onClick={() => fileRef.current?.click()} title={!taxpayerId ? 'Önce mükellef seç' : 'JPEG / PDF / XML belge yükle (elle)'}><Ico html={I.plus} size={13} /> {uploadMut.isPending ? 'Yükleniyor…' : 'Belge Yükle'}</button>
           <button className="btn sm" disabled={!taxpayerId || fetchMut.isPending} onClick={() => fetchMut.mutate()} title={!taxpayerId ? 'Önce mükellef seç' : 'Entegratörden çek (henüz tamamlanmadı)'}><Ico html={I.download} size={13} /> {fetchMut.isPending ? 'Çekiliyor…' : 'Belgeleri Getir'}</button>
           <button className="btn sm ghost" disabled={syncMut.isPending} onClick={() => syncMut.mutate()}><Ico html={I.sync} size={13} /> {syncMut.isPending ? 'Eşitleniyor…' : 'Belgeleri Eşitle'}</button>
           <button className="btn sm primary" disabled={approveMut.isPending} onClick={muhasebelestir}><Ico html={I.checkSm} size={13} /> {approveMut.isPending ? 'İşleniyor…' : `Muhasebeleştir${sel.size ? ` (${sel.size})` : ''}`}</button>
         </div>
         <div className="twrap">
           <table>
-            <thead><tr><th style={{ width: 30 }}><Check checked={allSelected} onToggle={toggleAll} /></th><th>Tarih</th><th>Fatura No</th><th>Firma Adı</th><th>Tip</th><th className="num">KDV Hariç</th><th className="num">KDV</th><th className="num">Tutar</th><th>Hesap Kodu</th><th>Durum</th><th style={{ width: 40 }} /></tr></thead>
+            <thead><tr><th style={{ width: 30 }}><Check checked={allSelected} onToggle={toggleAll} /></th><th>Tarih</th><th>Fatura No</th><th>Firma Adı</th><th>Tip</th><th className="num">KDV Hariç</th><th className="num">KDV</th><th className="num">Tutar</th><th>Hesap Kodu</th><th>Durum</th><th className="actcol" style={{ width: 40 }} /></tr></thead>
             <tbody>
               {docs.map((d) => {
                 const du = deriveDurum(d);
@@ -390,7 +412,7 @@ function ScreenFaturalar({ taxpayerId, period, kind = 'ALIS' }: { taxpayerId: st
                     <td className="num">{fmtMoney(d.totalAmount)}</td>
                     <td>{code ? <span className="hk">{code}</span> : <span className="hk no">— yok —</span>}</td>
                     <td><span className={`pill ${du.k}`}>{du.t}</span></td>
-                    <td><span className="eye" onClick={() => openDocFile(d.id)}><Ico html={I.eye} size={15} /></span></td>
+                    <td className="actcol"><span className="eye" onClick={() => openDocFile(d.id)}><Ico html={I.eye} size={15} /></span></td>
                   </tr>
                 );
               })}
@@ -704,7 +726,7 @@ function ScreenAktarilanlar({ taxpayerId, period }: { taxpayerId: string; period
         <div className="ch"><h3>{docsQ.isLoading ? 'Yükleniyor…' : `${docs.length} belge`}</h3></div>
         <div className="twrap">
           <table>
-            <thead><tr><th>Tarih</th><th>Fatura No</th><th>Firma</th><th>Tip</th><th className="num">Tutar</th><th>Hesap Kodu</th><th>Luca Durumu</th><th style={{ width: 40 }} /></tr></thead>
+            <thead><tr><th>Tarih</th><th>Fatura No</th><th>Firma</th><th>Tip</th><th className="num">Tutar</th><th>Hesap Kodu</th><th>Luca Durumu</th><th className="actcol" style={{ width: 40 }} /></tr></thead>
             <tbody>
               {docs.map((d) => {
                 const sat = (d.invoiceKind || 'ALIS') === 'SATIS';
@@ -719,7 +741,7 @@ function ScreenAktarilanlar({ taxpayerId, period }: { taxpayerId: string; period
                     <td className="num">{fmtMoney(d.totalAmount)}</td>
                     <td>{code ? <span className="hk">{code}</span> : <span className="hk no">—</span>}</td>
                     <td>{lucaPill(d)}</td>
-                    <td><span className="eye" onClick={() => openDocFile(d.id)}><Ico html={I.eye} size={15} /></span></td>
+                    <td className="actcol"><span className="eye" onClick={() => openDocFile(d.id)}><Ico html={I.eye} size={15} /></span></td>
                   </tr>
                 );
               })}
@@ -1200,9 +1222,13 @@ const CSS = `
 #fm-root .fin.acc{color:var(--accent)}
 #fm-root .twrap{overflow-x:auto}
 #fm-root table{width:100%;border-collapse:collapse;font-size:12.5px}
-#fm-root thead th{text-align:left;font-weight:700;color:var(--th-text);font-size:11px;text-transform:uppercase;letter-spacing:.3px;padding:11px 14px;background:var(--th);white-space:nowrap}
-#fm-root tbody td{padding:11px 14px;border-bottom:1px solid var(--line);white-space:nowrap}
+#fm-root thead th{text-align:left;font-weight:700;color:var(--th-text);font-size:11px;text-transform:uppercase;letter-spacing:.3px;padding:11px 11px;background:var(--th);white-space:nowrap}
+#fm-root tbody td{padding:11px 11px;border-bottom:1px solid var(--line);white-space:nowrap}
 #fm-root tbody tr:hover{background:#fafbfd}
+/* Aksiyon (göz) sütunu daima görünür kalsın — geniş tabloda sağda kesilmesin */
+#fm-root td.actcol{position:sticky;right:0;background:#fff;box-shadow:-6px 0 6px -6px rgba(0,0,0,.12)}
+#fm-root th.actcol{position:sticky;right:0;background:var(--th)}
+#fm-root tbody tr:hover td.actcol{background:#fafbfd}
 #fm-root .num{text-align:right;font-variant-numeric:tabular-nums}
 #fm-root .cb{height:16px;width:16px;border-radius:4px;border:1.5px solid var(--line2);display:inline-grid;place-items:center;cursor:pointer;background:#fff;vertical-align:middle;color:#fff}
 #fm-root .cb.on{background:var(--accent);border-color:var(--accent)}
