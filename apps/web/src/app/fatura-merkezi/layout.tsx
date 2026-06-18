@@ -5,13 +5,13 @@ import { useRouter } from 'next/navigation';
 import { useMe } from '@/hooks/useAuth';
 
 /**
- * Fatura İşleme Merkezi — Tam Sayfa Mod
+ * Fatura İşleme Merkezi v2 — Tam Sayfa Mod (yeni tasarım)
  *
- * Bu route panel layout'unu BYPASS eder; kendi tam ekran arayüzünü
- * (sol sidebar + üst toolbar) içerir. Sebep: Mihsap benzeri yoğun
- * tablolar ve çoklu sekmeler panel-içi 6 padding'de sıkışıyordu.
+ * Mevcut /fatura-merkezi route'unun yeniden tasarlanan sürümü.
+ * Panel layout'unu BYPASS eder; kendi sol-menülü beyaz/yeşil arayüzünü içerir.
+ * Portal temasından bağımsız kendi teması vardır (page.tsx içinde #fm-root scope'lu).
  *
- * Auth kontrolü burada yapılır — login değilse /giris'e yönlendirir.
+ * Auth kontrolü burada — login değilse /giris'e yönlendirir.
  */
 export default function FaturaMerkeziLayout({ children }: { children: React.ReactNode }) {
   const { data: user, isLoading, isError } = useMe();
@@ -25,14 +25,14 @@ export default function FaturaMerkeziLayout({ children }: { children: React.Reac
     return (
       <div
         className="min-h-screen flex items-center justify-center"
-        style={{ background: 'var(--bg)' }}
+        style={{ background: '#f4f6f5' }}
       >
         <div className="text-center">
           <div
             className="w-10 h-10 rounded-full border-2 border-transparent animate-spin mx-auto"
-            style={{ borderTopColor: 'var(--accent)', borderRightColor: 'var(--accent)' }}
+            style={{ borderTopColor: '#15803d', borderRightColor: '#15803d' }}
           />
-          <p className="text-sm mt-3" style={{ color: 'var(--text-muted)' }}>Yükleniyor...</p>
+          <p className="text-sm mt-3" style={{ color: '#6b7280' }}>Yükleniyor...</p>
         </div>
       </div>
     );
@@ -41,10 +41,7 @@ export default function FaturaMerkeziLayout({ children }: { children: React.Reac
   if (!user) return null;
 
   return (
-    <div
-      className="h-screen w-screen overflow-hidden"
-      style={{ background: 'var(--bg)', color: 'var(--text)' }}
-    >
+    <div className="h-screen w-screen overflow-auto" style={{ background: '#f4f6f5' }}>
       {children}
     </div>
   );
