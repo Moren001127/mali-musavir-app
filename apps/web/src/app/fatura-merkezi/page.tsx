@@ -1380,6 +1380,6 @@ const CSS = `
 #fm-root .docbar{display:flex;align-items:center;gap:9px;padding:11px 14px;border-bottom:1px solid var(--line);flex-shrink:0}
 #fm-root .docbar b{font-size:13.5px}
 #fm-root .docframe{flex:1;width:100%;border:none;background:#fff}
-#fm-root .docimgwrap{flex:1;min-height:0;overflow:auto;background:#eef1f4;display:flex;justify-content:center;align-items:flex-start;padding:18px}
-#fm-root .docimg{max-width:100%;height:auto;border-radius:6px;box-shadow:0 3px 16px rgba(0,0,0,.18);background:#fff}
+#fm-root .docimgwrap{flex:1;min-height:0;overflow:auto;background:#eef1f4;display:flex;justify-content:center;align-items:center;padding:18px}
+#fm-root .docimg{max-width:100%;max-height:100%;width:auto;height:auto;object-fit:contain;border-radius:6px;box-shadow:0 3px 16px rgba(0,0,0,.18);background:#fff}
 `;
