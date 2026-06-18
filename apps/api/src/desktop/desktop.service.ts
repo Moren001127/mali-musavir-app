@@ -191,10 +191,15 @@ export class DesktopService {
       throw new BadRequestException('Güvenlik kodu görseli çok büyük.');
     }
 
+    // SGK güvenlik kodu görseli çok küçük (~50×25) ve bozuk; 2captcha bunu sık
+    // yanlış okuyor. Göndermeden önce 3× büyütüp keskinleştirince okunabilirlik
+    // (dolayısıyla doğru çözüm oranı) belirgin artar. Hata olursa orijinali yollarız.
+    const uploadBase64 = await this.upscaleCaptcha(base64);
+
     const inForm = new URLSearchParams();
     inForm.append('key', apiKey);
     inForm.append('method', 'base64');
-    inForm.append('body', base64);
+    inForm.append('body', uploadBase64);
     inForm.append('json', '0');
     inForm.append('regsense', '1');
     inForm.append('min_len', '4');
@@ -232,6 +237,30 @@ export class DesktopService {
       throw new BadRequestException(`Güvenlik kodu çözülemedi: ${t}`);
     }
     throw new BadRequestException(`Güvenlik kodu zaman aşımı (${maxAttempts} deneme).`);
+  }
+
+  /**
+   * Küçük captcha görselini 2captcha'ya göndermeden önce büyütüp keskinleştirir.
+   * Zaten yeterince büyükse (genişlik ≥ 200px) dokunmaz. Hata olursa orijinali döner.
+   */
+  private async upscaleCaptcha(base64: string): Promise<string> {
+    try {
+      // eslint-disable-next-line @typescript-eslint/no-var-requires
+      const sharp = require('sharp');
+      const input = Buffer.from(base64, 'base64');
+      const meta = await sharp(input).metadata();
+      const width = meta.width || 0;
+      if (width && width >= 200) return base64; // yeterince büyük
+      const factor = width ? Math.min(6, Math.max(3, Math.ceil(200 / width))) : 3;
+      const out = await sharp(input)
+        .resize({ width: (width || 60) * factor, kernel: 'lanczos3', withoutEnlargement: false })
+        .sharpen()
+        .png()
+        .toBuffer();
+      return out.toString('base64');
+    } catch {
+      return base64; // sharp yoksa/hata → orijinali gönder
+    }
   }
 
   /** 2captcha'ya yanlış çözümü bildirir (iade + doğruluk iyileştirmesi). */

@@ -167,8 +167,11 @@ const RE_LOGIN_ERR = /hatali|hatalı|yanlis|yanlış|gecersiz|geçersiz|blok|kil
 async function autoLoginPortal(page, portal, creds) {
   const recipe = portal.recipe || {};
   const isSgk = String(portal.provider || '').startsWith('SGK');
+  // SGK güvenlik kodu küçük/bozuk olduğu için 2captcha sık yanılır; yanlış captcha
+  // hesabı KİLİTLEMEZ (sadece sayfayı yeniler), bu yüzden SGK'da daha çok deneriz.
+  const maxAttempts = isSgk ? 6 : LOGIN_MAX_ATTEMPTS;
 
-  for (let attempt = 1; attempt <= LOGIN_MAX_ATTEMPTS; attempt++) {
+  for (let attempt = 1; attempt <= maxAttempts; attempt++) {
     if (attempt > 1) {
       try { await page.goto(portal.url, { waitUntil: 'domcontentloaded', timeout: 30000 }); } catch (e) { /* yoksay */ }
       await page.waitForTimeout(800);
@@ -192,7 +195,7 @@ async function autoLoginPortal(page, portal, creds) {
       return; // ŞİFRE yanlış → tekrar DENEME YOK (hesap kilidi riski)
     }
     // captcha yanlış / belirsiz → yeniden dene
-    if (attempt < LOGIN_MAX_ATTEMPTS) {
+    if (attempt < maxAttempts) {
       sendPortalEvent(portal.key, 'info', portal.label + ': güvenlik kodu tutmadı, yeniden deneniyor…');
     }
   }
