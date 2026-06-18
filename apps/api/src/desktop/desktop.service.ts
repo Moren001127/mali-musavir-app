@@ -203,9 +203,14 @@ export class DesktopService {
     if (!inText.startsWith('OK|')) throw new BadRequestException(`Güvenlik kodu gönderilemedi: ${inText}`);
     const captchaId = inText.slice(3);
 
-    const maxAttempts = Number(process.env.PORTAL_2CAPTCHA_MAX_POLL || 30);
-    const pollInterval = Number(process.env.PORTAL_2CAPTCHA_POLL_INTERVAL_MS || 5000);
-    await new Promise((r) => setTimeout(r, pollInterval));
+    // Masaüstü etkileşimlidir — kullanıcı tarayıcının önünde bekler. Bu yüzden
+    // runner'ın yavaş (5sn) yoklamasını DEĞİL, hızlı yoklamayı kullanırız:
+    // ilk denemeden önce kısa bekle (~2sn), sonra sık yokla (~1.5sn). Tipik
+    // bekleme ~10sn'den ~4-6sn'ye düşer (2captcha'nın gerçek çözüm süresi alt sınır).
+    const maxAttempts = Number(process.env.DESKTOP_2CAPTCHA_MAX_POLL || 40);
+    const firstWait = Number(process.env.DESKTOP_2CAPTCHA_FIRST_WAIT_MS || 2000);
+    const pollInterval = Number(process.env.DESKTOP_2CAPTCHA_POLL_INTERVAL_MS || 1500);
+    await new Promise((r) => setTimeout(r, firstWait));
 
     for (let i = 0; i < maxAttempts; i++) {
       const resUrl = `https://2captcha.com/res.php?key=${encodeURIComponent(apiKey)}&action=get&id=${encodeURIComponent(captchaId)}&json=0`;
