@@ -114,7 +114,7 @@ async function openDocFile(id: string) {
     const url = typeof d.url === 'string' ? d.url : typeof d.fileUrl === 'string' ? d.fileUrl : '';
     const html = typeof d.inlineHtml === 'string' ? d.inlineHtml : '';
     if (!url && !html) { toast.error('Belge dosyası bulunamadı'); return; }
-    window.dispatchEvent(new CustomEvent('fm-view-doc', { detail: { url, html } }));
+    window.dispatchEvent(new CustomEvent('fm-view-doc', { detail: { url, html, mime: String(d.mimeType || '') } }));
   } catch {
     toast.error('Belge açılamadı');
   }
@@ -122,7 +122,7 @@ async function openDocFile(id: string) {
 
 /** Belge görüntüleme modalı — ekranda büyük gösterir (iframe). */
 function DocModal() {
-  const [doc, setDoc] = useState<{ url?: string; html?: string } | null>(null);
+  const [doc, setDoc] = useState<{ url?: string; html?: string; mime?: string } | null>(null);
   useEffect(() => {
     const onView = (e: any) => setDoc(e.detail || null);
     const onKey = (e: KeyboardEvent) => { if (e.key === 'Escape') setDoc(null); };
@@ -131,20 +131,28 @@ function DocModal() {
     return () => { window.removeEventListener('fm-view-doc', onView as any); window.removeEventListener('keydown', onKey); };
   }, []);
   if (!doc) return null;
+  const url = doc.url || '';
+  const isImg = !doc.html && (
+    (doc.mime || '').startsWith('image/') ||
+    /^data:image\//i.test(url) ||
+    /\.(jpe?g|jpe|jfif|png|gif|webp|bmp|tiff?|heic|heif|avif)(\?|#|$)/i.test(url)
+  );
   return (
     <div className="docov" onClick={() => setDoc(null)}>
       <div className="docbox" onClick={(e) => e.stopPropagation()}>
         <div className="docbar">
           <b>Belge görüntüle</b>
           <div className="sp" />
-          {doc.url ? <a className="btn sm ghost" href={doc.url} target="_blank" rel="noopener noreferrer">Yeni sekmede aç</a> : null}
+          {url ? <a className="btn sm ghost" href={url} target="_blank" rel="noopener noreferrer">Yeni sekmede aç</a> : null}
           <button className="btn sm" onClick={() => setDoc(null)}>Kapat ✕</button>
         </div>
         {doc.html
           ? <iframe className="docframe" srcDoc={doc.html} title="Belge" sandbox="allow-same-origin" />
-          : doc.url
-            ? <iframe className="docframe" src={doc.url} title="Belge" />
-            : <div className="empty">Belge yok</div>}
+          : isImg
+            ? <div className="docimgwrap"><img className="docimg" src={url} alt="Belge" /></div>
+            : url
+              ? <iframe className="docframe" src={url} title="Belge" />
+              : <div className="empty">Belge yok</div>}
       </div>
     </div>
   );
@@ -164,7 +172,16 @@ function kdvParts(d: any): { matrah: number | null; kdv: number | null } {
   const om = d.ocrData?.matrah, ok = d.ocrData?.kdvTutari;
   const m = om != null ? Number(om) : null;
   const k = ok != null ? Number(ok) : null;
-  return { matrah: m, kdv: k };
+  if (m != null || k != null) return { matrah: m, kdv: k };
+  // Son çare: OCR KDV kırılımı (kdvBreakdown) varsa topla
+  const bd = Array.isArray(d.ocrData?.kdvBreakdown) ? d.ocrData.kdvBreakdown : [];
+  let mb = 0, kb = 0;
+  for (const b of bd) { kb += Number(b?.tutar ?? b?.amount ?? 0) || 0; mb += Number(b?.matrah ?? b?.base ?? 0) || 0; }
+  if (kb || mb) {
+    const tot = Number(d.totalAmount || 0);
+    return { matrah: mb || (tot ? Math.max(tot - kb, 0) : null), kdv: kb || null };
+  }
+  return { matrah: null, kdv: null };
 }
 
 const TITLES: Record<string, string> = {
@@ -1270,8 +1287,9 @@ const CSS = `
 #fm-root .num{text-align:right;font-variant-numeric:tabular-nums}
 #fm-root .cb{height:16px;width:16px;border-radius:4px;border:1.5px solid var(--line2);display:inline-grid;place-items:center;cursor:pointer;background:#fff;vertical-align:middle;color:#fff}
 #fm-root .cb.on{background:var(--accent);border-color:var(--accent)}
-#fm-root .firm b{font-weight:600}
-#fm-root .firm small{display:block;color:var(--faint);font-size:11px}
+#fm-root td.firm{max-width:230px}
+#fm-root .firm b{font-weight:600;display:block;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+#fm-root .firm small{display:block;color:var(--faint);font-size:11px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
 #fm-root .hk{font-family:"Consolas",monospace;font-weight:700;color:var(--accent)}
 #fm-root .hk.no{color:var(--red)}
 #fm-root .pill{font-size:11px;font-weight:700;padding:3px 9px;border-radius:6px;white-space:nowrap;display:inline-block}
@@ -1337,4 +1355,6 @@ const CSS = `
 #fm-root .docbar{display:flex;align-items:center;gap:9px;padding:11px 14px;border-bottom:1px solid var(--line);flex-shrink:0}
 #fm-root .docbar b{font-size:13.5px}
 #fm-root .docframe{flex:1;width:100%;border:none;background:#fff}
+#fm-root .docimgwrap{flex:1;min-height:0;overflow:auto;background:#eef1f4;display:flex;justify-content:center;align-items:flex-start;padding:18px}
+#fm-root .docimg{max-width:100%;height:auto;border-radius:6px;box-shadow:0 3px 16px rgba(0,0,0,.18);background:#fff}
 `;
