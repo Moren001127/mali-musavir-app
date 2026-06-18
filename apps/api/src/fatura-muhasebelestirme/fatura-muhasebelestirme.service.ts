@@ -4638,6 +4638,56 @@ export class FaturaMuhasebelestirmeService {
     return { ok: true, vendorVkn, accountCode, applied };
   }
 
+  /**
+   * Matrah/KDV kırılımı çıkmamış belgeler (ör. Mihsap'tan yalnız toplamı gelen satış faturaları)
+   * için: verilen KDV oranına göre toplamı matrah+KDV'ye böler ve fiş satırlarını yeniden üretir.
+   * Oranı MÜŞAVİR verir — tahmin yok. Satışta kod 600, alışta 770 default; sonra öğrenilen kod uygulanır.
+   */
+  async setDocumentsKdvRate(tenantId: string, input: { documentIds?: string[]; kdvOrani?: number }) {
+    const rate = Number(input.kdvOrani);
+    if (!Number.isFinite(rate) || rate < 0 || rate > 100) throw new BadRequestException('Geçerli KDV oranı girin (0–100)');
+    const ids = (input.documentIds || []).filter(Boolean);
+    if (!ids.length) throw new BadRequestException('Belge seçilmedi');
+    const docs = await (this.prisma as any).invoiceAccountingDocument.findMany({
+      where: { tenantId, id: { in: ids }, status: { not: 'APPROVED' } },
+      select: { id: true, taxpayerId: true, invoiceKind: true, totalAmount: true, vendorName: true, customerName: true, ocrData: true },
+    });
+    let ok = 0, skipped = 0;
+    const taxpayerIds = new Set<string>();
+    for (const d of docs) {
+      const total = Number(typeof d.totalAmount === 'object' && d.totalAmount != null ? String(d.totalAmount) : d.totalAmount);
+      if (!Number.isFinite(total) || total <= 0) { skipped++; continue; }
+      const matrah = rate > 0 ? Math.round((total / (1 + rate / 100)) * 100) / 100 : total;
+      const kdv = Math.round((total - matrah) * 100) / 100;
+      const isSale = String(d.invoiceKind || 'ALIS') === 'SATIS';
+      const lines = this.linesFromAmounts({
+        invoiceKind: d.invoiceKind || 'ALIS',
+        matrah, kdvTutari: kdv, kdvOrani: rate, total,
+        vendorName: isSale ? d.customerName : d.vendorName,
+        kdvBreakdown: (kdv > 0 || matrah > 0) ? [{ rate, base: matrah, amount: kdv }] : null,
+      });
+      await (this.prisma as any).$transaction(async (tx: any) => {
+        await tx.invoiceAccountingLine.deleteMany({ where: { documentId: d.id } });
+        if (lines.length) await tx.invoiceAccountingLine.createMany({ data: lines.map((l: any) => ({ ...l, documentId: d.id })) });
+        await tx.invoiceAccountingDocument.update({
+          where: { id: d.id },
+          data: {
+            status: 'NEEDS_REVIEW',
+            validationStatus: 'OK',
+            ocrData: { ...((d.ocrData as any) || {}), matrah, kdvTutari: kdv, kdvOrani: rate, kdvBreakdown: [{ oran: rate, matrah, tutar: kdv }] },
+          },
+        });
+      });
+      if (d.taxpayerId) taxpayerIds.add(d.taxpayerId);
+      ok++;
+    }
+    // Alış belgelerinde öğrenilmiş satıcı kodlarını da uygula (601 yerine 153 vb.)
+    for (const tid of taxpayerIds) {
+      await this.applyLearnedVendorCodes(tenantId, tid).catch(() => {});
+    }
+    return { ok, skipped, kdvOrani: rate };
+  }
+
   private async rematchPendingDocumentsWithAccountPlan(
     tenantId: string,
     taxpayerId: string,

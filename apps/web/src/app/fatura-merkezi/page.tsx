@@ -416,6 +416,20 @@ function ScreenFaturalar({ taxpayerId, period, kind = 'ALIS' }: { taxpayerId: st
     onError: () => toast.error('Muhasebeleştirme başarısız'),
   });
 
+  // Matrah/KDV kırılımı çıkmamış belgelere (ör. Mihsap'tan yalnız toplamı gelen satışlar) oranla fiş üret
+  const [genRate, setGenRate] = useState('20');
+  const genMut = useMutation({
+    mutationFn: (ids: string[]) => api.post('/fatura-muhasebelestirme/documents/set-kdv-rate', { documentIds: ids, kdvOrani: Number(genRate) }),
+    onSuccess: (r: any) => {
+      const d = r?.data || {};
+      toast.success(`${d.ok ?? 0} belgeye %${genRate} ile fiş oluşturuldu${d.skipped ? ` · ${d.skipped} atlandı (tutar yok)` : ''}`);
+      setSel(new Set());
+      qc.invalidateQueries({ queryKey: ['fm2'] });
+    },
+    onError: (e: any) => toast.error('Fiş oluşturulamadı: ' + (e?.response?.data?.message || e?.message || 'hata')),
+  });
+  const fisOlustur = () => { if (sel.size === 0) { toast.error('Önce belge seç'); return; } genMut.mutate([...sel]); };
+
   const muhasebelestir = () => {
     const hazir = docs.filter((d) => sel.has(d.id) && d.status !== 'APPROVED' && Array.isArray(d.lines) && d.lines.some((l: any) => l.accountCode));
     if (hazir.length === 0) {
@@ -437,6 +451,13 @@ function ScreenFaturalar({ taxpayerId, period, kind = 'ALIS' }: { taxpayerId: st
           <button className="btn sm" disabled={!taxpayerId || uploadMut.isPending} onClick={() => fileRef.current?.click()} title={!taxpayerId ? 'Önce mükellef seç' : 'JPEG / PDF / XML belge yükle (elle)'}><Ico html={I.plus} size={13} /> {uploadMut.isPending ? 'Yükleniyor…' : 'Belge Yükle'}</button>
           <button className="btn sm" disabled={!taxpayerId || fetchMut.isPending} onClick={() => fetchMut.mutate()} title={!taxpayerId ? 'Önce mükellef seç' : 'Entegratörden çek (henüz tamamlanmadı)'}><Ico html={I.download} size={13} /> {fetchMut.isPending ? 'Çekiliyor…' : 'Belgeleri Getir'}</button>
           <button className="btn sm ghost" disabled={syncMut.isPending} onClick={() => syncMut.mutate()}><Ico html={I.sync} size={13} /> {syncMut.isPending ? 'Eşitleniyor…' : 'Belgeleri Eşitle'}</button>
+          <select className="fmsel" style={{ maxWidth: 108 }} value={genRate} onChange={(e) => setGenRate(e.target.value)} title="Fiş üretmek için KDV oranı">
+            <option value="20">KDV %20</option>
+            <option value="10">KDV %10</option>
+            <option value="1">KDV %1</option>
+            <option value="0">KDV %0</option>
+          </select>
+          <button className="btn sm" disabled={genMut.isPending || sel.size === 0} onClick={fisOlustur} title="Seçili belgelere KDV oranıyla fiş üret — matrah/KDV çıkmamış (eksik kod) olanlar için"><Ico html={I.checkSm} size={13} /> {genMut.isPending ? 'Üretiliyor…' : `Fiş oluştur${sel.size ? ` (${sel.size})` : ''}`}</button>
           <button className="btn sm primary" disabled={approveMut.isPending} onClick={muhasebelestir}><Ico html={I.checkSm} size={13} /> {approveMut.isPending ? 'İşleniyor…' : `Muhasebeleştir${sel.size ? ` (${sel.size})` : ''}`}</button>
         </div>
         <div className="twrap">

@@ -223,6 +223,15 @@ export class FaturaMuhasebelestirmeController {
     return this.service.setVendorRule(req.user.tenantId, body || {});
   }
 
+  /** Matrah/KDV çıkmamış belgelere KDV oranı verip fiş satırlarını üret (toplam → matrah+KDV). */
+  @Post('documents/set-kdv-rate')
+  setDocumentsKdvRate(
+    @Req() req: any,
+    @Body() body: { documentIds?: string[]; kdvOrani?: number },
+  ) {
+    return this.service.setDocumentsKdvRate(req.user.tenantId, body || {});
+  }
+
   @Post('documents/from-earsiv/:faturaId')
   fromEarsiv(@Req() req: any, @Param('faturaId') faturaId: string) {
     return this.service.ensureFromEarsivFatura(req.user.tenantId, faturaId);
