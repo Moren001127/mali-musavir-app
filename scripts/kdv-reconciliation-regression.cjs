@@ -835,6 +835,23 @@ const cases = [
       { record: 'r-songul-senol', image: 'img-songul-senol', status: 'MATCHED' },
     ],
   },
+  {
+    // Aynı fiş Luca Excel'ine iki kez girilmiş (birebir aynı satır). Eşleştirme
+    // bunu çoğaltmamalı (UI'da "6 özdeş satır" sorunu) — tek MATCHED üretmeli.
+    name: 'ozdes kopya Luca satiri coraltilmaz (tek MATCHED)',
+    sessionType: 'KDV_191',
+    records: [
+      record({ id: 'r-dup-a', belgeNo: '0500', date: '2026-05-15', kdv: 100, oran: 20, karsiTaraf: 'FIRMA X' }),
+      record({ id: 'r-dup-b', belgeNo: '0500', date: '2026-05-15', kdv: 100, oran: 20, karsiTaraf: 'FIRMA X' }),
+    ],
+    images: [
+      image({ id: 'img-0500', belgeNo: '0500', date: '15.05.2026', kdv: '100,00' }),
+    ],
+    expectedStats: { matched: 1, partial: 0, unmatched: 0, needsReview: 0 },
+    expectedRows: [
+      { record: 'r-dup-a', image: 'img-0500', status: 'MATCHED' },
+    ],
+  },
 ];
 
 (async () => {

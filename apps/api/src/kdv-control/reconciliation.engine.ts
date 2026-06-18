@@ -104,11 +104,16 @@ export class ReconciliationEngine {
       this.prisma.kdvRecord.findMany({ where: { sessionId } }),
       this.prisma.receiptImage.findMany({ where: { sessionId } }),
     ]);
-    const rawRecords = allRawRecords.filter((record) => !isAggregateLucaRecord(record));
-    const skippedAggregateRecords = allRawRecords.length - rawRecords.length;
+    const filteredRecords = allRawRecords.filter((record) => !isAggregateLucaRecord(record));
+    const skippedAggregateRecords = allRawRecords.length - filteredRecords.length;
     if (skippedAggregateRecords > 0) {
       this.logger.log(`Luca toplam/nakli yekun satirlari reconciliation disinda birakildi: ${skippedAggregateRecords}`);
     }
+    // Aynı fiş Luca Excel'ine iki kez girilince (belge+oran+tutar+tarih+taraf
+    // BİREBİR aynı satır) eşleştirme bu kopyaya da sonuç üretip aynı KISMİ/eşleşme
+    // satırını çoğaltıyordu (UI'da "6 özdeş 0127 satırı"). Özdeş kopyaları eşleştirme
+    // dışında bırak — DB'ye dokunmadan. Gerçek çok-oran (farklı oran/tutar) etkilenmez.
+    const rawRecords = this.dedupeExactDuplicateRecords(filteredRecords);
 
     // ═══════════════════════════════════════════════════════
     // ÇOK ORANLI KDV AGGREGATE — Luca'dan gelen kontrol verisinde
@@ -1365,6 +1370,37 @@ export class ReconciliationEngine {
 
   private stringSimilarity(a: string, b: string): number {
     return stringSimilarity(a, b);
+  }
+
+  /**
+   * Aynı Luca satırı (belgeNo + oran + tutar + tarih + karşı taraf BİREBİR aynı)
+   * iki kez girilmişse (Excel'de çift kayıt) yalnızca ilkini tutar. Eşleştirmenin
+   * aynı sonucu çoğaltmasını (kopya KISMİ/eşleşme satırları) önler. DB'ye dokunmaz.
+   * Gerçek çok-oranlı fatura (aynı belgede FARKLI oran/tutar) satırları korunur.
+   */
+  private dedupeExactDuplicateRecords(records: KdvRecord[]): KdvRecord[] {
+    const seen = new Set<string>();
+    const out: KdvRecord[] = [];
+    let dropped = 0;
+    for (const r of records) {
+      const key = [
+        (r.belgeNo || '').trim(),
+        r.kdvOrani != null ? String(r.kdvOrani) : '',
+        r.kdvTutari != null ? Number(r.kdvTutari).toFixed(2) : '',
+        r.belgeDate ? new Date(r.belgeDate).toISOString().slice(0, 10) : '',
+        (r.karsiTaraf || '').trim(),
+      ].join('|');
+      if (seen.has(key)) {
+        dropped++;
+        continue;
+      }
+      seen.add(key);
+      out.push(r);
+    }
+    if (dropped > 0) {
+      this.logger.log(`Ozdes kopya Luca satiri eslestirme disinda birakildi: ${dropped} (kalan ${out.length}/${records.length})`);
+    }
+    return out;
   }
 
   private aggregateMultiRateRecords(rawRecords: KdvRecord[], isAlis = false): {
