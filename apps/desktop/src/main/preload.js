@@ -17,6 +17,8 @@ contextBridge.exposeInMainWorld('moren', {
 
   // Portal otomatik giriş — şifre arayüze GELMEZ, sadece taxpayer + portal gönderilir
   openPortal: (portalKey, taxpayer) => ipcRenderer.invoke('portal:open', { portalKey, taxpayer }),
+  // Otomatik giriş durumu (çözülüyor / giriş yapıldı / hata) bildirimleri
+  onPortalEvent: (cb) => ipcRenderer.on('portal-event', (_e, data) => cb(data)),
 
   // WhatsApp QR
   waStatus: () => ipcRenderer.invoke('wa:status'),

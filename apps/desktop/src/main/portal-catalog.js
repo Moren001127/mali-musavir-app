@@ -17,20 +17,29 @@
 // GİB tek kapı: Dijital Vergi Dairesi giriş sayfası. İnteraktif/İnternet VD ve
 // e-Beyanname de buraya yönleniyor (GİB tüm hizmetleri burada topladı).
 // Form: kullanıcı kodu #userid, şifre #sifre, doğrulama kodu (captcha) #dk.
+// Seçiciler portal-automation runner'ında (e-Tebligat/şifre doğrulama) ÜRETİMDE
+// doğrulanmış olanlarla aynıdır.
 const GIB_LOGIN = 'https://dijital.gib.gov.tr/portal/login';
 const gibRecipe = {
-  code: ['#userid', 'input[name="userid"]'],
-  pass: ['#sifre', 'input[name="sifre"]'],
-  submit: ['button[type="submit"]'],
+  code: ['#userid', 'input[name="userid"]', 'input[name*="user" i]', 'input[id*="user" i]', 'input[autocomplete="username"]'],
+  pass: ['#sifre', 'input[name="sifre"]', 'input[name*="sifre" i]', 'input[id*="sifre" i]', 'input[autocomplete="current-password"]', 'input[type="password"]'],
+  // Güvenlik kodu (CAPTCHA) görseli ve giriş alanı — yeni GİB UI: img[alt="captchaImg"], #dk.
+  captchaImg: ['img[alt="captchaImg"]', 'img[alt*="captcha" i]', 'img[src*="captcha" i]', 'img[id*="captcha" i]', 'canvas'],
+  captcha: ['#dk', 'input[name="dk"]', 'input[name*="dogrulama" i]', 'input[id*="dogrulama" i]', 'input[placeholder*="doğrulama" i]', 'input[placeholder*="güvenlik" i]', 'input[placeholder*="kod" i]', 'input[maxlength="6"]'],
+  submit: ['button:has-text("Giriş Yap")', 'button:has-text("Giris Yap")', 'button[type="submit"]', 'input[type="submit"]', 'button:has-text("Giriş")', 'button:has-text("Giris")'],
 };
 
-// SGK giriş formları (kullanıcı adı + sistem şifresi + işyeri şifresi).
-// Seçiciler canlı testte doğrulanacak; çoklu aday denenir.
+// SGK giriş formları (kullanıcı adı + e-kod/işyeri kodu + sistem şifresi + işyeri
+// şifresi + güvenlik kodu). Seçiciler runner'daki kullaniciIlkKontrollerGiris_*
+// alanlarıyla aynı; eski portallar için yedek adaylar da var.
 const sgkRecipe = {
-  user: ['#userName', '#kullaniciAdi', 'input[name="userName"]', 'input[name="j_username"]'],
-  pass: ['#sistemSifre', '#password', 'input[name="sistemSifre"]', 'input[name="j_password"]'],
-  pass2: ['#isyeriSifre', 'input[name="isyeriSifre"]'],
-  submit: ['button[type="submit"]', 'input[type="submit"]'],
+  user: ['#kullaniciIlkKontrollerGiris_username', 'input[name="username"]', '#userName', '#kullaniciAdi', 'input[name="userName"]', 'input[name="j_username"]'],
+  workplace: ['#kullaniciIlkKontrollerGiris_isyeri_kod', 'input[name="isyeri_kod"]'],
+  pass: ['#kullaniciIlkKontrollerGiris_password', 'input[name="password"]', '#sistemSifre', 'input[name="sistemSifre"]', 'input[name="j_password"]'],
+  pass2: ['#kullaniciIlkKontrollerGiris_isyeri_sifre', 'input[name="isyeri_sifre"]', '#isyeriSifre', 'input[name="isyeriSifre"]'],
+  captchaImg: ['#guvenlik_kod', 'img[src*="/PG"]', 'img[id*="guvenlik" i]', 'img[src*="captcha" i]', 'img[id*="captcha" i]'],
+  captcha: ['#kullaniciIlkKontrollerGiris_isyeri_guvenlik', 'input[name="isyeri_guvenlik"]', 'input[id*="guvenlik" i]', 'input[name*="guvenlik" i]', 'input[name*="captcha" i]'],
+  submit: ['button[type="submit"]', 'input[type="submit"]', 'button:has-text("Giriş")', 'button:has-text("Giris")', 'a:has-text("Giriş")'],
 };
 
 const PORTAL_CATALOG = [

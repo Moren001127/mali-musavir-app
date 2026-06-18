@@ -30,6 +30,7 @@ import {
   Megaphone,
   MessageSquareText,
   MessageCircle,
+  MonitorDown,
   PanelLeftClose,
   PanelLeftOpen,
   PanelTop,
@@ -146,6 +147,7 @@ const navGroups = [
     icon: Settings2,
     items: [
       { href: '/panel/hatirlatmalar', label: 'WhatsApp Otomasyonu', icon: MessageSquareText },
+      { href: '/panel/masaustu', label: 'Masaüstü Uygulaması', icon: MonitorDown },
       { href: '/panel/ajanlar', label: 'Tüm Ajanlar', icon: Cpu },
       { href: '/panel/maliyet', label: 'AI Maliyet', icon: Coins },
       { href: '/panel/ajanlar/luca', label: 'Luca Oturumu', icon: ShieldCheck },

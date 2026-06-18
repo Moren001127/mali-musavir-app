@@ -57,4 +57,16 @@ async function getCredential(taxpayerId, provider) {
   return apiFetch('/desktop/credential', { method: 'POST', body: { taxpayerId, provider } });
 }
 
-module.exports = { apiFetch, login, getShortcuts, getCredential, setToken, getToken };
+// Portal giriş güvenlik kodunu (CAPTCHA) sunucuda çöz. Görsel base64 olarak
+// gider; çözücü anahtarı sunucuda kalır. { text, captchaId } döner.
+async function solveCaptcha(imageBase64) {
+  return apiFetch('/desktop/solve-captcha', { method: 'POST', body: { imageBase64 } });
+}
+
+// Yanlış çözülen güvenlik kodunu sunucu üzerinden 2captcha'ya bildir (iade).
+async function reportBadCaptcha(captchaId) {
+  try { return await apiFetch('/desktop/captcha-bad', { method: 'POST', body: { captchaId } }); }
+  catch { return { ok: false }; }
+}
+
+module.exports = { apiFetch, login, getShortcuts, getCredential, solveCaptcha, reportBadCaptcha, setToken, getToken };

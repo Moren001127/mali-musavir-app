@@ -1,5 +1,6 @@
 import { Module } from '@nestjs/common';
 import { DesktopController } from './desktop.controller';
+import { DesktopDownloadController } from './desktop-download.controller';
 import { DesktopService } from './desktop.service';
 
 /**
@@ -7,7 +8,7 @@ import { DesktopService } from './desktop.service';
  * PrismaService global olarak sağlandığı için ekstra import gerekmez.
  */
 @Module({
-  controllers: [DesktopController],
+  controllers: [DesktopController, DesktopDownloadController],
   providers: [DesktopService],
   exports: [DesktopService],
 })

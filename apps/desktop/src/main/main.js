@@ -108,10 +108,17 @@ ipcMain.handle('portal:open', async (_e, { portalKey, taxpayer }) => {
   return { ok: true };
 });
 
+// Arayüze (renderer) otomatik giriş durumunu bildirir (çözülüyor / giriş yapıldı / hata).
+function sendPortalEvent(key, level, message) {
+  if (mainWindow && !mainWindow.isDestroyed()) {
+    mainWindow.webContents.send('portal-event', { key, level, message });
+  }
+}
+
 // Gömülü Electron penceresi GİB'in React şifre alanına yazamadığı için (kanıtlandı),
 // Hattat gibi GERÇEK Chrome/Edge'i playwright-core ile açıp dolduruyoruz. Sistemdeki
-// tarayıcı kullanılır (ek indirme yok); kullanıcı adı + şifre otomatik dolar, captcha
-// kullanıcıya bırakılır. Her firma+portal için kalıcı profil → oturum hatırlanır.
+// tarayıcı kullanılır (ek indirme yok); kullanıcı adı + şifre + GÜVENLİK KODU otomatik
+// dolar ve "Giriş Yap"a basılır. Her firma+portal için kalıcı profil → oturum hatırlanır.
 async function openPortalWindow(portal, taxpayer, creds) {
   const profileDir = path.join(
     app.getPath('userData'),
@@ -135,42 +142,210 @@ async function openPortalWindow(portal, taxpayer, creds) {
     }
   }
   if (!context) {
-    if (mainWindow && !mainWindow.isDestroyed()) {
-      mainWindow.webContents.send('portal-error', 'Bilgisayarda Chrome veya Edge bulunamadı. Lütfen birini kurun.');
-    }
+    sendPortalEvent(portal.key, 'err', 'Bilgisayarda Chrome veya Edge bulunamadı. Lütfen birini kurun.');
     return;
   }
   try {
     const page = context.pages()[0] || (await context.newPage());
     await page.goto(portal.url, { waitUntil: 'domcontentloaded', timeout: 30000 });
-    await autoFillPortal(page, portal.recipe, creds);
+    await autoLoginPortal(page, portal, creds);
   } catch (e) {
-    /* sayfa/doldurma hatası — tarayıcı kullanıcıda açık kalır, elle devam edebilir */
+    sendPortalEvent(portal.key, 'warn', portal.label + ': otomatik giriş tamamlanamadı, tarayıcı açık — elle devam edebilirsiniz.');
   }
 }
 
-// Gerçek Chrome'da giriş formunu doldurur. Playwright fill = gerçek (isTrusted) giriş;
-// React/GİB reddetmez (gerçek tarayıcıda doğrulandı). Kullanıcı adı + şifre dolar;
-// doğrulama kodu (captcha) kullanıcıya bırakılır.
-async function autoFillPortal(page, recipe, creds) {
-  async function fill(selectors, value) {
-    if (!value || !selectors) return;
-    for (const sel of selectors) {
-      try {
-        const loc = page.locator(sel).first();
-        await loc.waitFor({ state: 'visible', timeout: 8000 });
-        await loc.click({ timeout: 3000 }).catch(() => {});
-        await loc.fill(String(value));
-        return;
-      } catch (e) {
-        /* sonraki seçiciyi dene */
-      }
+// ── Otomatik giriş motoru ──
+// Gerçek Chrome'da: alanları doldur → güvenlik kodunu (captcha) sunucuda çöz →
+// "Giriş Yap"a bas → sonucu doğrula. Captcha yanlışsa sayfayı yenileyip en çok 3
+// kez dener (yanlış captcha hesabı kilitlemez). Şifre/kullanıcı reddedilirse HEMEN
+// durur (hesap kilidini önlemek için tekrar denemez). Mantık, üretimde çalışan
+// portal-automation runner'ı ile aynıdır.
+const LOGIN_MAX_ATTEMPTS = 3;
+const RE_CAPTCHA = /captcha|dogrulama|doğrulama|guvenlik kodu|güvenlik kodu|security code/i;
+const RE_LOGIN_ERR = /hatali|hatalı|yanlis|yanlış|gecersiz|geçersiz|blok|kilit|basarisiz|başarısız/i;
+
+async function autoLoginPortal(page, portal, creds) {
+  const recipe = portal.recipe || {};
+  const isSgk = String(portal.provider || '').startsWith('SGK');
+
+  for (let attempt = 1; attempt <= LOGIN_MAX_ATTEMPTS; attempt++) {
+    if (attempt > 1) {
+      try { await page.goto(portal.url, { waitUntil: 'domcontentloaded', timeout: 30000 }); } catch (e) { /* yoksay */ }
+      await page.waitForTimeout(800);
+    }
+
+    await fillLoginFields(page, recipe, creds, isSgk);
+    const captcha = await solveCaptchaIfPresent(page, recipe, portal);
+    await submitLogin(page, recipe);
+    await page.waitForLoadState('domcontentloaded', { timeout: 20000 }).catch(() => {});
+    await page.waitForTimeout(2200);
+
+    const res = await evaluateLoginResult(page, recipe);
+    if (res.ok) {
+      sendPortalEvent(portal.key, 'ok', portal.label + ': giriş yapıldı ✓');
+      return;
+    }
+    // Bu denemede çözülen captcha yanlış çıktıysa 2captcha'ya bildir (iade).
+    if (captcha && captcha.captchaId) api.reportBadCaptcha(captcha.captchaId).catch(() => {});
+    if (res.passwordRejected) {
+      sendPortalEvent(portal.key, 'err', portal.label + ': portal şifresi/kullanıcı kodu reddedildi. Kayıtlı bilgileri kontrol edin.');
+      return; // ŞİFRE yanlış → tekrar DENEME YOK (hesap kilidi riski)
+    }
+    // captcha yanlış / belirsiz → yeniden dene
+    if (attempt < LOGIN_MAX_ATTEMPTS) {
+      sendPortalEvent(portal.key, 'info', portal.label + ': güvenlik kodu tutmadı, yeniden deneniyor…');
     }
   }
-  await fill(recipe.code, creds.userCode);
-  await fill(recipe.user, creds.username);
-  await fill(recipe.pass, creds.password || creds.secondaryPassword);
-  if (recipe.pass2) await fill(recipe.pass2, creds.secondaryPassword);
+  sendPortalEvent(portal.key, 'warn', portal.label + ': güvenlik kodu otomatik çözülemedi. Tarayıcı açık — kodu elle girip giriş yapabilirsiniz.');
+}
+
+// Kullanıcı/şifre alanlarını doldurur. GİB: kullanıcı kodu + şifre (şifre çoğunlukla
+// secondaryPassword'da). SGK: kullanıcı adı + e-kod + sistem şifresi + işyeri şifresi.
+async function fillLoginFields(page, recipe, creds, isSgk) {
+  await page.waitForSelector('input', { state: 'visible', timeout: 20000 }).catch(() => {});
+  if (isSgk) {
+    await fillField(page, recipe.user, creds.username || creds.userCode);
+    if (recipe.workplace) await fillField(page, recipe.workplace, creds.workplaceCode || creds.officeCode);
+    await fillField(page, recipe.pass, creds.password || creds.secondaryPassword);
+    if (recipe.pass2) await fillField(page, recipe.pass2, creds.secondaryPassword);
+  } else {
+    await fillField(page, recipe.code, creds.userCode || creds.username);
+    await fillField(page, recipe.pass, creds.secondaryPassword || creds.password);
+  }
+}
+
+async function fillField(page, selectors, value) {
+  if (!value || !selectors) return false;
+  for (const sel of selectors) {
+    try {
+      const loc = page.locator(sel).first();
+      if (!(await loc.isVisible().catch(() => false))) continue;
+      await loc.click({ timeout: 2500 }).catch(() => {});
+      await loc.fill(String(value));
+      return true;
+    } catch (e) { /* sonraki seçiciyi dene */ }
+  }
+  return false;
+}
+
+// Sayfada güvenlik kodu (captcha) görseli varsa: yakala → sunucuda çöz → alana yaz.
+// Captcha yoksa null döner (e-Arşiv gibi captcha'sız portalları es geçer).
+async function solveCaptchaIfPresent(page, recipe, portal) {
+  const imgSelectors = recipe.captchaImg || [];
+  const inputSelectors = recipe.captcha || [];
+  if (!imgSelectors.length || !inputSelectors.length) return null;
+
+  let imgLoc = null;
+  for (const sel of imgSelectors) {
+    const loc = page.locator(sel).first();
+    if (await loc.isVisible().catch(() => false)) { imgLoc = loc; break; }
+  }
+  if (!imgLoc) return null; // bu portalda captcha yok
+
+  let base64 = '';
+  try {
+    const src = await imgLoc.evaluate((el) => (el.getAttribute && el.getAttribute('src')) || '').catch(() => '');
+    const m = String(src || '').match(/^data:image\/[a-zA-Z0-9.+-]+;base64,(.+)$/);
+    if (m) base64 = m[1].trim();
+    else { const buf = await imgLoc.screenshot({ type: 'png' }); base64 = buf.toString('base64'); }
+  } catch (e) { return null; }
+  if (!base64) return null;
+
+  sendPortalEvent(portal.key, 'info', portal.label + ': güvenlik kodu çözülüyor…');
+  let solved;
+  try {
+    solved = await api.solveCaptcha(base64);
+  } catch (e) {
+    sendPortalEvent(portal.key, 'warn', portal.label + ': güvenlik kodu çözücü hatası — ' + (e.message || ''));
+    return null;
+  }
+  const text = solved && solved.text ? String(solved.text).trim() : '';
+  if (!text) return solved || null;
+
+  for (const sel of inputSelectors) {
+    const loc = page.locator(sel).first();
+    if (!(await loc.isVisible().catch(() => false))) continue;
+    await loc.click({ timeout: 2000 }).catch(() => {});
+    await loc.fill(text).catch(() => {});
+    break;
+  }
+  return { text, captchaId: solved && solved.captchaId };
+}
+
+async function submitLogin(page, recipe) {
+  const selectors = recipe.submit || ['button[type="submit"]', 'input[type="submit"]'];
+  for (const sel of selectors) {
+    const loc = page.locator(sel).first();
+    if (await loc.isVisible().catch(() => false)) {
+      await Promise.all([
+        page.waitForLoadState('domcontentloaded', { timeout: 20000 }).catch(() => {}),
+        loc.click().catch(() => {}),
+      ]);
+      return;
+    }
+  }
+  await page.keyboard.press('Enter').catch(() => {});
+}
+
+// Giriş sonucunu sınıflandırır:
+//  ok=true               → giriş başarılı (form artık yok)
+//  passwordRejected=true → şifre/kullanıcı reddedildi → DURDUR (kilit riski)
+//  diğer                 → captcha yanlış/belirsiz → güvenli tekrar
+async function evaluateLoginResult(page, recipe) {
+  if (!(await isLoginFormVisible(page, recipe))) return { ok: true };
+
+  const alert = await visibleAlertText(page);
+  const body = await page.evaluate(() => (document.body ? document.body.innerText : '')).catch(() => '');
+  const captchaStill = await captchaVisible(page, recipe);
+
+  // Şifre/kullanıcı reddi: hata mesajı VAR ama captcha bağlamı YOK → kesin durdur.
+  if (RE_LOGIN_ERR.test(alert) && !RE_CAPTCHA.test(alert)) {
+    return { ok: false, passwordRejected: true, info: alert };
+  }
+  // Captcha görünüyor ya da captcha hatası → tekrar.
+  if (captchaStill || RE_CAPTCHA.test(alert) || RE_CAPTCHA.test(body || '')) {
+    return { ok: false, passwordRejected: false, info: alert || 'captcha' };
+  }
+  // Mesaj yok ama form duruyor → büyük olasılıkla captcha → tekrar.
+  return { ok: false, passwordRejected: false, info: alert || 'belirsiz' };
+}
+
+async function isLoginFormVisible(page, recipe) {
+  const userSel = recipe.code || recipe.user || [];
+  const passSel = recipe.pass || ['input[type="password"]'];
+  const anyVisible = async (selectors) => {
+    for (const sel of selectors) {
+      if (await page.locator(sel).first().isVisible().catch(() => false)) return true;
+    }
+    return false;
+  };
+  const user = await anyVisible(userSel);
+  const pass = await anyVisible(passSel);
+  return user && pass;
+}
+
+async function captchaVisible(page, recipe) {
+  const sels = [].concat(recipe.captchaImg || [], recipe.captcha || []);
+  for (const sel of sels) {
+    if (await page.locator(sel).first().isVisible().catch(() => false)) return true;
+  }
+  return false;
+}
+
+async function visibleAlertText(page) {
+  const selectors = ['[role="alert"]', '.alert', '.error', '.text-danger', '.invalid-feedback', '.notification', '.toast', '.message', '.swal2-html-container'];
+  const pieces = [];
+  for (const sel of selectors) {
+    const loc = page.locator(sel);
+    const count = Math.min(await loc.count().catch(() => 0), 5);
+    for (let i = 0; i < count; i++) {
+      const item = loc.nth(i);
+      if (!(await item.isVisible().catch(() => false))) continue;
+      const text = (await item.innerText().catch(() => '')).trim();
+      if (text && !pieces.includes(text)) pieces.push(text);
+    }
+  }
+  return pieces.join(' | ').slice(0, 500);
 }
 
 // ─────────────────────────── WHATSAPP QR ───────────────────────────

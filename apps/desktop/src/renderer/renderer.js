@@ -288,10 +288,21 @@ function setupLogout() {
   });
 }
 
+// ───────── otomatik giriş bildirimleri ─────────
+function setupPortalEvents() {
+  if (!api.onPortalEvent) return;
+  api.onPortalEvent((ev) => {
+    if (!ev || !ev.message) return;
+    const type = ev.level === 'ok' ? 'ok' : (ev.level === 'err' ? 'err' : '');
+    toast(ev.message, type);
+  });
+}
+
 // ───────── başlat ─────────
 setupLogin();
 setupFirmaPicker();
 setupNav();
 setupWa();
 setupLogout();
+setupPortalEvents();
 boot();

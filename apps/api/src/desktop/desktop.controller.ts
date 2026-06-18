@@ -23,4 +23,22 @@ export class DesktopController {
   credential(@Req() req: any, @Body() body: { taxpayerId?: string; provider?: string }) {
     return this.service.credential(req.user.tenantId, body || {});
   }
+
+  /**
+   * Portal giriş güvenlik kodunu (CAPTCHA) çöz. Masaüstü, açtığı tarayıcıda
+   * captcha görselini yakalar ve base64 olarak buraya gönderir; çözücü anahtarı
+   * (TWOCAPTCHA_API_KEY) sunucuda kalır.
+   */
+  @Post('solve-captcha')
+  @HttpCode(HttpStatus.OK)
+  solveCaptcha(@Body() body: { imageBase64?: string }) {
+    return this.service.solveCaptcha(String(body?.imageBase64 || ''));
+  }
+
+  /** Yanlış çözülen güvenlik kodunu 2captcha'ya bildir (iade). */
+  @Post('captcha-bad')
+  @HttpCode(HttpStatus.OK)
+  reportBadCaptcha(@Body() body: { captchaId?: string }) {
+    return this.service.reportBadCaptcha(String(body?.captchaId || ''));
+  }
 }

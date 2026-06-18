@@ -161,4 +161,78 @@ export class DesktopService {
       secondaryPassword: tryDecrypt(cred.encryptedSecondaryPassword) || '',
     };
   }
+
+  /**
+   * Masaüstünden gelen GİB/SGK giriş güvenlik kodu (CAPTCHA) görselini 2captcha
+   * ile çözer. Anahtar (TWOCAPTCHA_API_KEY) yalnızca sunucudadır; masaüstüne
+   * inmez. Aynı çözücü ayarları portal-automation runner'ında üretimde
+   * kullanılıyor (regsense=1 → büyük/küçük harf korunur, GİB kodu çoğu zaman
+   * BÜYÜK harf).
+   *
+   * @param imageBase64  Saf base64 (data: öneki olmadan) PNG/JPEG.
+   * @returns { text, captchaId } — yanlış çözümde reportBadCaptcha için captchaId.
+   */
+  async solveCaptcha(imageBase64: string): Promise<{ text: string; captchaId: string }> {
+    const apiKey = process.env.TWOCAPTCHA_API_KEY || process.env.TWO_CAPTCHA_API_KEY;
+    if (!apiKey) {
+      throw new BadRequestException('Sunucuda güvenlik kodu çözücü ayarlı değil (TWOCAPTCHA_API_KEY).');
+    }
+    const base64 = String(imageBase64 || '').replace(/^data:image\/[a-zA-Z0-9.+-]+;base64,/, '').trim();
+    if (!base64 || base64.length < 80) {
+      throw new BadRequestException('Geçerli güvenlik kodu görseli gönderilmedi.');
+    }
+    if (base64.length > 1_500_000) {
+      throw new BadRequestException('Güvenlik kodu görseli çok büyük.');
+    }
+
+    const inForm = new URLSearchParams();
+    inForm.append('key', apiKey);
+    inForm.append('method', 'base64');
+    inForm.append('body', base64);
+    inForm.append('json', '0');
+    inForm.append('regsense', '1');
+    inForm.append('min_len', '4');
+    inForm.append('max_len', '6');
+
+    const inRes = await fetch('https://2captcha.com/in.php', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/x-www-form-urlencoded' },
+      body: inForm.toString(),
+    });
+    const inText = (await inRes.text()).trim();
+    if (!inText.startsWith('OK|')) throw new BadRequestException(`Güvenlik kodu gönderilemedi: ${inText}`);
+    const captchaId = inText.slice(3);
+
+    const maxAttempts = Number(process.env.PORTAL_2CAPTCHA_MAX_POLL || 30);
+    const pollInterval = Number(process.env.PORTAL_2CAPTCHA_POLL_INTERVAL_MS || 5000);
+    await new Promise((r) => setTimeout(r, pollInterval));
+
+    for (let i = 0; i < maxAttempts; i++) {
+      const resUrl = `https://2captcha.com/res.php?key=${encodeURIComponent(apiKey)}&action=get&id=${encodeURIComponent(captchaId)}&json=0`;
+      const r = await fetch(resUrl);
+      const t = (await r.text()).trim();
+      if (t === 'CAPCHA_NOT_READY') {
+        await new Promise((rr) => setTimeout(rr, pollInterval));
+        continue;
+      }
+      if (t.startsWith('OK|')) {
+        return { text: String(t.slice(3)).replace(/[^0-9A-Za-z]/g, ''), captchaId };
+      }
+      throw new BadRequestException(`Güvenlik kodu çözülemedi: ${t}`);
+    }
+    throw new BadRequestException(`Güvenlik kodu zaman aşımı (${maxAttempts} deneme).`);
+  }
+
+  /** 2captcha'ya yanlış çözümü bildirir (iade + doğruluk iyileştirmesi). */
+  async reportBadCaptcha(captchaId: string): Promise<{ ok: boolean }> {
+    const apiKey = process.env.TWOCAPTCHA_API_KEY || process.env.TWO_CAPTCHA_API_KEY;
+    const id = String(captchaId || '').trim();
+    if (!apiKey || !id) return { ok: false };
+    try {
+      await fetch(`https://2captcha.com/res.php?key=${encodeURIComponent(apiKey)}&action=reportbad&id=${encodeURIComponent(id)}`);
+    } catch {
+      /* önemsiz */
+    }
+    return { ok: true };
+  }
 }
