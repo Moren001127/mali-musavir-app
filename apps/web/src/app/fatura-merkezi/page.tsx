@@ -315,7 +315,7 @@ export default function FaturaMerkeziPage() {
             {(screen === 'faturalar' || screen === 'satis') && <ScreenFaturalar taxpayerId={taxpayerId} period={period} kind={screen === 'satis' ? 'SATIS' : 'ALIS'} />}
             {screen === 'mukellefler' && <ScreenMukellefler taxpayers={taxpayers} period={period} onOpen={(id) => { setTaxpayerId(id); setScreen('faturalar'); }} />}
             {screen === 'kurallar' && <ScreenKurallar taxpayerId={taxpayerId} period={period} />}
-            {screen === 'muhasebe' && <ScreenMuhasebe taxpayerId={taxpayerId} period={period} />}
+            {screen === 'muhasebe' && <ScreenMuhasebe taxpayerId={taxpayerId} period={period} isIsletme={String(taxpayers.find((t) => t.id === taxpayerId)?.defterTuru || '').toUpperCase() === 'ISLETME'} />}
             {screen === 'aktarilanlar' && <ScreenAktarilanlar taxpayerId={taxpayerId} period={period} />}
             {screen === 'entegrator' && <ScreenEntegrator taxpayerId={taxpayerId} period={period} />}
             {screen === 'kdv' && <ScreenKdv taxpayerId={taxpayerId} period={period} />}
@@ -616,13 +616,16 @@ function ScreenKurallar({ taxpayerId, period }: { taxpayerId: string; period: st
 }
 
 /* ===================== EKRAN: MUHASEBELEŞTİR ===================== */
-function ScreenMuhasebe({ taxpayerId, period }: { taxpayerId: string; period: string }) {
+function ScreenMuhasebe({ taxpayerId, period, isIsletme = false }: { taxpayerId: string; period: string; isIsletme?: boolean }) {
   const qc = useQueryClient();
   const docsQ = useDocuments(taxpayerId, period);
   const all: any[] = docsQ.data || [];
   const hasCode = (d: any) => Array.isArray(d.lines) && d.lines.some((l: any) => l.accountCode);
-  const hazir = all.filter((d) => d.status !== 'APPROVED' && hasCode(d));
-  const eksik = all.filter((d) => d.status !== 'APPROVED' && !hasCode(d));
+  const hasAmount = (d: any) => { const p = kdvParts(d); return (Number(p.matrah) || 0) > 0 || (Number(p.kdv) || 0) > 0 || Number(d.totalAmount) > 0; };
+  // İşletme defterinde hesap kodu yok — hazır olma şartı belgenin tutarının olması.
+  const ready = (d: any) => (isIsletme ? hasAmount(d) : hasCode(d));
+  const hazir = all.filter((d) => d.status !== 'APPROVED' && ready(d));
+  const eksik = all.filter((d) => d.status !== 'APPROVED' && !ready(d));
 
   const [selId, setSelId] = useState<string>('');
   const selDoc = hazir.find((d) => d.id === selId) || hazir[0];
@@ -630,6 +633,8 @@ function ScreenMuhasebe({ taxpayerId, period }: { taxpayerId: string; period: st
   const borc = lines.reduce((s: number, l: any) => s + Number(l.debit || 0), 0);
   const alacak = lines.reduce((s: number, l: any) => s + Number(l.credit || 0), 0);
   const dengeli = lines.length > 0 && Math.abs(borc - alacak) < 0.01;
+  const gg = selDoc ? kdvParts(selDoc) : { matrah: null, kdv: null };
+  const ggReady = isIsletme ? ((Number(gg.matrah) || 0) > 0 || (Number(gg.kdv) || 0) > 0 || Number(selDoc?.totalAmount) > 0) : dengeli;
 
   // Talimat (gece otomatik) — entegratör kayıtlarından türetilir
   const intQ = useQuery({
@@ -692,7 +697,7 @@ function ScreenMuhasebe({ taxpayerId, period }: { taxpayerId: string; period: st
               const code = (d.lines.find((l: any) => l.accountCode) || {}).accountCode || '';
               return (
                 <div key={d.id} className={`wrow${selDoc?.id === d.id ? ' on' : ''}`} onClick={() => setSelId(d.id)}>
-                  <div className="wt"><b>{firmaOf(d)}</b><span className="hk">{code}</span></div><small>{fmtMoney(d.totalAmount)} ₺</small>
+                  <div className="wt"><b>{firmaOf(d)}</b><span className="hk">{isIsletme ? 'G/G' : code}</span></div><small>{fmtMoney(d.totalAmount)} ₺</small>
                 </div>
               );
             })}
@@ -708,29 +713,49 @@ function ScreenMuhasebe({ taxpayerId, period }: { taxpayerId: string; period: st
                 <div className="banner info"><Ico html={I.info} size={16} /><span>Bilanço usulü mükellefte <b>muhasebe fişi</b> kesilir. İşletme defteri mükellefte bu ekran <b>Gelir-Gider girişi</b>ne döner (KDV/gider, hesap kodu yok).</span></div>
                 <div className="ph">{firmaOf(selDoc)} · {selDoc.invoiceKind === 'SATIS' ? 'Satış' : 'Alış'} faturası <span className="mu">{selDoc.belgeNo || ''}</span></div>
                 <div className="twrap">
-                  <table>
-                    <thead><tr><th>Hesap</th><th>Açıklama</th><th className="num">Borç</th><th className="num">Alacak</th></tr></thead>
-                    <tbody>
-                      {lines.map((l: any) => (
-                        <tr key={l.id}>
-                          <td>{l.accountCode ? <span className="hk">{l.accountCode}</span> : <span className="hk no">—</span>}</td>
-                          <td>{l.description || l.group}</td>
-                          <td className="num">{Number(l.debit) ? fmtMoney(l.debit) : '—'}</td>
-                          <td className="num">{Number(l.credit) ? fmtMoney(l.credit) : '—'}</td>
+                  {isIsletme ? (
+                    <table>
+                      <thead><tr><th>Açıklama</th><th className="num">Matrah (KDV hariç)</th><th className="num">KDV</th></tr></thead>
+                      <tbody>
+                        <tr>
+                          <td>{selDoc.invoiceKind === 'SATIS' ? 'Gelir (satış)' : 'Gider (alış)'} — {firmaOf(selDoc)}</td>
+                          <td className="num">{gg.matrah != null ? fmtMoney(gg.matrah) : '—'}</td>
+                          <td className="num">{gg.kdv != null ? fmtMoney(gg.kdv) : '—'}</td>
                         </tr>
-                      ))}
-                      {lines.length === 0 && <tr><td colSpan={4}><div className="empty">Bu belgede fiş satırı yok.</div></td></tr>}
-                    </tbody>
-                  </table>
+                      </tbody>
+                    </table>
+                  ) : (
+                    <table>
+                      <thead><tr><th>Hesap</th><th>Açıklama</th><th className="num">Borç</th><th className="num">Alacak</th></tr></thead>
+                      <tbody>
+                        {lines.map((l: any) => (
+                          <tr key={l.id}>
+                            <td>{l.accountCode ? <span className="hk">{l.accountCode}</span> : <span className="hk no">—</span>}</td>
+                            <td>{l.description || l.group}</td>
+                            <td className="num">{Number(l.debit) ? fmtMoney(l.debit) : '—'}</td>
+                            <td className="num">{Number(l.credit) ? fmtMoney(l.credit) : '—'}</td>
+                          </tr>
+                        ))}
+                        {lines.length === 0 && <tr><td colSpan={4}><div className="empty">Bu belgede fiş satırı yok.</div></td></tr>}
+                      </tbody>
+                    </table>
+                  )}
                 </div>
-                <div className="balance" style={!dengeli ? { background: '#fdeaea', borderColor: '#f3c9c9' } : undefined}>
-                  <Ico html={I.checkSm} size={16} /><b style={!dengeli ? { color: '#c0353a' } : undefined}>{dengeli ? 'Denge tamam' : 'Denge tutmuyor'}</b>
-                  <span className="bnote">Borç {fmtMoney(borc)} {dengeli ? '=' : '≠'} Alacak {fmtMoney(alacak)} ₺</span>
-                </div>
+                {isIsletme ? (
+                  <div className="balance">
+                    <Ico html={I.checkSm} size={16} /><b>Gelir-Gider girişi</b>
+                    <span className="bnote">{selDoc.invoiceKind === 'SATIS' ? 'Gelir' : 'Gider'} {fmtMoney(gg.matrah || 0)} ₺ + KDV {fmtMoney(gg.kdv || 0)} ₺ · hesap kodu yok</span>
+                  </div>
+                ) : (
+                  <div className="balance" style={!dengeli ? { background: '#fdeaea', borderColor: '#f3c9c9' } : undefined}>
+                    <Ico html={I.checkSm} size={16} /><b style={!dengeli ? { color: '#c0353a' } : undefined}>{dengeli ? 'Denge tamam' : 'Denge tutmuyor'}</b>
+                    <span className="bnote">Borç {fmtMoney(borc)} {dengeli ? '=' : '≠'} Alacak {fmtMoney(alacak)} ₺</span>
+                  </div>
+                )}
                 <div className="wactions">
                   <div className="sp" />
                   <button className="btn sm ghost" onClick={() => openDocFile(selDoc.id)}><Ico html={I.eye} size={13} /> Belgeyi aç</button>
-                  <button className="btn primary sm" disabled={approveMut.isPending || !dengeli} onClick={() => selDoc && approveMut.mutate(selDoc.id)}>
+                  <button className="btn primary sm" disabled={approveMut.isPending || !ggReady} onClick={() => selDoc && approveMut.mutate(selDoc.id)}>
                     <Ico html={I.checkSm} size={13} /> {approveMut.isPending ? 'Gönderiliyor…' : "Onayla & Luca'ya gönder"}
                   </button>
                 </div>
