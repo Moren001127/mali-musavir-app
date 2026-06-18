@@ -214,6 +214,15 @@ export class FaturaMuhasebelestirmeController {
     });
   }
 
+  /** Elle eşleştirme kuralı: satıcı VKN → hesap kodu (öğrenilir + bekleyen belgelere uygulanır). */
+  @Post('vendor-rule')
+  setVendorRule(
+    @Req() req: any,
+    @Body() body: { taxpayerId?: string; vendorVkn?: string; vendorName?: string; accountCode?: string },
+  ) {
+    return this.service.setVendorRule(req.user.tenantId, body || {});
+  }
+
   @Post('documents/from-earsiv/:faturaId')
   fromEarsiv(@Req() req: any, @Param('faturaId') faturaId: string) {
     return this.service.ensureFromEarsivFatura(req.user.tenantId, faturaId);

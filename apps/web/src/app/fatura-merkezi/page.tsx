@@ -543,6 +543,21 @@ function ScreenKurallar({ taxpayerId, period }: { taxpayerId: string; period: st
   });
   const rules: any[] = rulesQ.data || [];
 
+  const qc = useQueryClient();
+  const [rVkn, setRVkn] = useState('');
+  const [rName, setRName] = useState('');
+  const [rCode, setRCode] = useState('');
+  const ruleMut = useMutation({
+    mutationFn: () => api.post('/fatura-muhasebelestirme/vendor-rule', { taxpayerId, vendorVkn: rVkn, vendorName: rName || undefined, accountCode: rCode }),
+    onSuccess: (r: any) => {
+      const n = r?.data?.applied;
+      toast.success(`Kural kaydedildi${n != null ? ` · ${n} belgeye uygulandı` : ''}`);
+      setRVkn(''); setRName(''); setRCode('');
+      qc.invalidateQueries({ queryKey: ['fm2'] });
+    },
+    onError: (e: any) => toast.error('Kural kaydedilemedi: ' + (e?.response?.data?.message || e?.message || 'hata')),
+  });
+
   const docsQ = useDocuments(taxpayerId, period);
   const docs: any[] = docsQ.data || [];
   const istisnalar = docs
@@ -557,9 +572,16 @@ function ScreenKurallar({ taxpayerId, period }: { taxpayerId: string; period: st
       <div className="h2">Eşleştirme Kuralları</div>
       <div className="sub">Bir belgeyi onayladığında sistem o satıcı + içerik için hesap kodunu <b>öğrenir</b>; sonraki benzer belgeleri otomatik eşleştirir. Aşağıda öğrenilmiş kurallar ve henüz kurala uymayan istisnalar var.</div>
 
-      <div className="banner info" style={{ marginBottom: 14 }}>
-        <Ico html={I.info} size={16} />
-        <span>Kurallar belge onaylarından otomatik öğrenilir. Elle kural ekleme (satıcı/içerik → hesap kodu girip kaydetme) bir sonraki sürümde gelecek.</span>
+      <div className="card">
+        <div className="ch"><h3>Kural ekle</h3><div className="sp" /><span className="mu">satıcı VKN → hesap kodu · o satıcının bekleyen + sonraki faturalarına otomatik uygulanır</span></div>
+        <div style={{ display: 'grid', gridTemplateColumns: '1fr 1.2fr 1fr auto', gap: 11, padding: '15px 16px', alignItems: 'end' }}>
+          <div className="fld"><label>Satıcı VKN / TCKN</label><input value={rVkn} onChange={(e) => setRVkn(e.target.value)} placeholder="10–11 hane" /></div>
+          <div className="fld"><label>Satıcı adı (opsiyonel)</label><input value={rName} onChange={(e) => setRName(e.target.value)} placeholder="firma adı" /></div>
+          <div className="fld"><label>Hesap kodu</label><input value={rCode} onChange={(e) => setRCode(e.target.value)} placeholder="örn. 153.01.001" /></div>
+          <button className="btn primary sm" style={{ height: 35 }} disabled={!taxpayerId || ruleMut.isPending || !rVkn.trim() || !rCode.trim()} onClick={() => ruleMut.mutate()} title={!taxpayerId ? 'Önce üstten mükellef seç' : ''}><Ico html={I.plus} size={13} /> {ruleMut.isPending ? 'Kaydediliyor…' : 'Kaydet'}</button>
+        </div>
+        {!taxpayerId && <div className="empty" style={{ padding: '4px 16px 14px' }}>Kural mükellefe göre tanımlanır — önce üstten bir mükellef seç.</div>}
+        <div className="lrow" style={{ borderTop: '1px solid var(--line)', color: 'var(--muted)' }}><Ico html={I.info} size={15} /><span style={{ fontSize: 12 }}>Bu kural <b>tahmin değildir</b> — yalnız senin verdiğin kodu o satıcının faturalarına uygular. Belge onayladıkça da otomatik öğrenir.</span></div>
       </div>
 
       <div className="card">
@@ -605,6 +627,7 @@ function ScreenKurallar({ taxpayerId, period }: { taxpayerId: string; period: st
               <div key={d.id} className="lrow">
                 <div className="ico">{ini}</div>
                 <div className="lx"><b>{firma}</b> — {du.k === 'miss' ? 'hesap kodu atanmamış, elle ya da öğrenmeyle atanmalı.' : 'içerik geçmişle çelişiyor, kontrol gerekiyor.'} <small style={{ color: 'var(--faint)' }}>{d.belgeNo ? `· ${d.belgeNo}` : ''} · {fmtMoney(d.totalAmount)} ₺</small></div>
+                {!sat && d.sellerVkn ? <button className="btn sm primary" onClick={() => { setRVkn(String(d.sellerVkn).replace(/\D/g, '')); setRName(d.vendorName || ''); if (typeof window !== 'undefined') window.scrollTo({ top: 0, behavior: 'smooth' }); }}>Kod ata</button> : null}
                 <button className="btn sm" onClick={() => openDocFile(d.id)}>Belgeyi aç</button>
               </div>
             );

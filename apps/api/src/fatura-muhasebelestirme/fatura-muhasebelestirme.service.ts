@@ -4543,8 +4543,99 @@ export class FaturaMuhasebelestirmeService {
       orderBy: { createdAt: 'desc' },
       select: { id: true },
     });
-    if (!latest?.id) return;
-    await this.rematchPendingDocumentsWithAccountPlan(tenantId, taxpayerId, latest.id, documentIds);
+    if (latest?.id) {
+      await this.rematchPendingDocumentsWithAccountPlan(tenantId, taxpayerId, latest.id, documentIds);
+    } else {
+      // Hesap planı çekilmemiş mükellefte bile öğrenilmiş satıcı kodlarını uygula.
+      await this.applyLearnedVendorCodes(tenantId, taxpayerId, documentIds).catch(() => {});
+    }
+  }
+
+  /**
+   * Bir satıcı için öğrenilmiş (müşavirin onayladığı) hesap kodunu döndürür — hesap planı GEREKTİRMEZ.
+   * kararTipi='fatura' kararlarında `kategori` = hesap kodudur. Yalnız rakamla başlayan gerçek kod döner.
+   */
+  private async pickLearnedAccountCode(tenantId: string, taxpayerId: string, firmaKimlikNo: string): Promise<string | null> {
+    const vkn = String(firmaKimlikNo || '').trim();
+    if (!vkn || !taxpayerId) return null;
+    const memory = await (this.prisma as any).vendorMemory.findUnique({
+      where: { tenantId_firmaKimlikNo: { tenantId, firmaKimlikNo: vkn } },
+      include: {
+        decisions: {
+          where: { taxpayerId, kararTipi: 'fatura' },
+          orderBy: [{ onayAdedi: 'desc' }, { sonKullanim: 'desc' }],
+          take: 1,
+        },
+      },
+    });
+    const code = String(memory?.decisions?.[0]?.kategori || '').trim();
+    return code && /^\d/.test(code) ? code : null;
+  }
+
+  /**
+   * Öğrenilmiş satıcı kodlarını bekleyen ALIŞ belgelerinin matrah satırlarına uygular.
+   * Yalnız müşavirin onayladığı kodları kullanır — tahmin/sınıflandırma YAPMAZ, sıfır risk.
+   * Hesap planı çekilmemiş mükelleflerde de çalışır.
+   */
+  private async applyLearnedVendorCodes(tenantId: string, taxpayerId: string, documentIds?: string[]): Promise<number> {
+    const docs = await (this.prisma as any).invoiceAccountingDocument.findMany({
+      where: {
+        tenantId,
+        taxpayerId,
+        invoiceKind: 'ALIS',
+        status: { in: ['READY', 'NEEDS_REVIEW', 'DRAFT'] },
+        ...(documentIds?.length ? { id: { in: documentIds } } : {}),
+      },
+      select: { id: true, sellerVkn: true, lines: { where: { group: 'matrah' }, select: { id: true, accountCode: true } } },
+      take: 1000,
+    });
+    if (!docs.length) return 0;
+    const cache = new Map<string, string | null>();
+    let applied = 0;
+    for (const doc of docs) {
+      const vkn = String(doc.sellerVkn || '').replace(/\D/g, '');
+      if (!vkn) continue;
+      let learned = cache.get(vkn);
+      if (learned === undefined) {
+        learned = await this.pickLearnedAccountCode(tenantId, taxpayerId, vkn);
+        cache.set(vkn, learned);
+      }
+      if (!learned) continue;
+      const needsUpdate = (doc.lines || []).some((l: any) => String(l.accountCode || '').trim() !== learned);
+      if (!needsUpdate) continue;
+      await (this.prisma as any).invoiceAccountingLine.updateMany({
+        where: { documentId: doc.id, group: 'matrah' },
+        data: { accountCode: learned },
+      });
+      applied++;
+    }
+    return applied;
+  }
+
+  /**
+   * Elle eşleştirme kuralı: satıcı VKN → hesap kodu. recordDecision ile öğrenilir
+   * ve hemen o satıcının bekleyen belgelerine uygulanır (hesap planı gerekmez).
+   */
+  async setVendorRule(
+    tenantId: string,
+    input: { taxpayerId?: string; vendorVkn?: string; vendorName?: string; accountCode?: string },
+  ) {
+    const taxpayerId = String(input.taxpayerId || '').trim();
+    const vendorVkn = String(input.vendorVkn || '').replace(/\D/g, '');
+    const accountCode = String(input.accountCode || '').trim();
+    if (!taxpayerId) throw new BadRequestException('Mükellef seçilmeli');
+    if (!vendorVkn) throw new BadRequestException('Satıcı VKN/TCKN gerekli');
+    if (!/^\d/.test(accountCode)) throw new BadRequestException('Geçerli bir hesap kodu girin (rakamla başlamalı)');
+    await this.vendorMemory.recordDecision({
+      tenantId,
+      firmaKimlikNo: vendorVkn,
+      firmaUnvan: input.vendorName || null,
+      kararTipi: 'fatura',
+      kategori: accountCode,
+      taxpayerId,
+    });
+    const applied = await this.applyLearnedVendorCodes(tenantId, taxpayerId);
+    return { ok: true, vendorVkn, accountCode, applied };
   }
 
   private async rematchPendingDocumentsWithAccountPlan(
