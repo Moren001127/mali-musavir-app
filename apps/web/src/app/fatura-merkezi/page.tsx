@@ -724,7 +724,35 @@ function ScreenMuhasebe({ taxpayerId, period, isIsletme = false }: { taxpayerId:
   const eksik = all.filter((d) => d.status !== 'APPROVED' && !ready(d));
 
   const [selId, setSelId] = useState<string>('');
-  const selDoc = hazir.find((d) => d.id === selId) || hazir[0];
+  const selDoc = [...hazir, ...eksik].find((d) => d.id === selId) || hazir[0] || eksik[0];
+
+  // Belge bilgileri elle düzenleme (tarih/tür/belge türü/belge no/VKN) — PATCH ile kaydeder.
+  const [meta, setMeta] = useState<any>({});
+  useEffect(() => {
+    const d = selDoc;
+    setMeta(d ? {
+      faturaTarihi: d.faturaTarihi ? String(d.faturaTarihi).slice(0, 10) : '',
+      invoiceKind: String(d.invoiceKind || 'ALIS').includes('SATIS') ? 'SATIS' : 'ALIS',
+      documentType: d.documentType || '',
+      belgeNo: d.belgeNo || '',
+      vkn: (String(d.invoiceKind || '').includes('SATIS') ? d.buyerVkn : d.sellerVkn) || '',
+    } : {});
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [selDoc?.id]);
+  const saveMetaMut = useMutation({
+    mutationFn: () => {
+      const isSale = String(meta.invoiceKind).includes('SATIS');
+      return api.patch(`/fatura-muhasebelestirme/documents/${selDoc.id}`, {
+        faturaTarihi: meta.faturaTarihi || undefined,
+        invoiceKind: meta.invoiceKind,
+        documentType: meta.documentType || undefined,
+        belgeNo: meta.belgeNo || undefined,
+        ...(isSale ? { buyerVkn: meta.vkn || undefined } : { sellerVkn: meta.vkn || undefined }),
+      });
+    },
+    onSuccess: () => { toast.success('Belge bilgileri kaydedildi'); qc.invalidateQueries({ queryKey: ['fm2'] }); },
+    onError: (e: any) => toast.error('Kaydedilemedi: ' + (e?.response?.data?.message || e?.message || 'hata')),
+  });
   const lines: any[] = selDoc?.lines || [];
   const borc = lines.reduce((s: number, l: any) => s + Number(l.debit || 0), 0);
   const alacak = lines.reduce((s: number, l: any) => s + Number(l.credit || 0), 0);
@@ -808,24 +836,7 @@ function ScreenMuhasebe({ taxpayerId, period, isIsletme = false }: { taxpayerId:
       <div className="h2">Muhasebeleştir &amp; Aktar</div>
       <div className="sub">Taslak fiş → denge kontrolü → onayla → Luca'ya aktar (elle ya da gece otomatik).</div>
       <div className="card" style={{ padding: 0 }}>
-        <div className="work">
-          <div className="wlist">
-            <div className="wgrp"><span>Muhasebeleştirilebilir · {hazir.length}</span><span className="pill ok">hazır</span></div>
-            {hazir.map((d) => {
-              const code = (d.lines.find((l: any) => l.accountCode) || {}).accountCode || '';
-              return (
-                <div key={d.id} className={`wrow${selDoc?.id === d.id ? ' on' : ''}`} onClick={() => setSelId(d.id)}>
-                  <div className="wt"><b>{firmaOf(d)}</b><span className="hk">{isIsletme ? 'G/G' : code}</span></div><small>{fmtMoney(d.totalAmount)} ₺</small>
-                </div>
-              );
-            })}
-            {hazir.length === 0 && <div className="empty" style={{ padding: 18 }}>Hazır belge yok.</div>}
-            <div className="wgrp" style={{ marginTop: 6 }}><span>Eksik / hatalı kod · {eksik.length}</span><span className="pill miss">bekliyor</span></div>
-            {eksik.slice(0, 10).map((d) => (
-              <div key={d.id} className="wrow"><div className="wt"><b>{firmaOf(d)}</b><span className="hk no">yok</span></div><small>{fmtMoney(d.totalAmount)} ₺ · kod atanmalı</small></div>
-            ))}
-          </div>
-          <div className="wright">
+        <div className="wmain">
             {selDoc ? (
               <>
                 <div className="banner info"><Ico html={I.info} size={16} /><span>Bilanço usulü mükellefte <b>muhasebe fişi</b> kesilir. İşletme defteri mükellefte bu ekran <b>Gelir-Gider girişi</b>ne döner (KDV/gider, hesap kodu yok).</span></div>
@@ -834,16 +845,25 @@ function ScreenMuhasebe({ taxpayerId, period, isIsletme = false }: { taxpayerId:
                 <div className="fispane">
                 <div className="ph">{firmaOf(selDoc)} · {selDoc.invoiceKind === 'SATIS' ? 'Satış' : 'Alış'} faturası <span className="mu">{selDoc.belgeNo || ''}</span></div>
                 <div className="docmeta">
-                  {[
-                    { l: 'Tarih', v: fmtDate(selDoc.faturaTarihi || selDoc.createdAt) },
-                    { l: 'Fatura Türü', v: selDoc.invoiceKind === 'SATIS' ? 'Satış' : 'Alış' },
-                    { l: 'Belge Türü', v: ({ E_FATURA: 'e-Fatura', E_ARSIV: 'e-Arşiv', OKC_FIS: 'ÖKC Fiş', SATIS_FATURA: 'Satış Faturası', ALIS_FATURA: 'Alış Faturası', DIGER: 'Diğer' } as any)[selDoc.documentType] || selDoc.documentType || '—' },
-                    { l: 'Belge No', v: selDoc.belgeNo || '—' },
-                    { l: selDoc.invoiceKind === 'SATIS' ? 'Alıcı VKN' : 'Satıcı VKN', v: (selDoc.invoiceKind === 'SATIS' ? selDoc.buyerVkn : selDoc.sellerVkn) || '—' },
-                    { l: 'Para Birimi', v: selDoc.currency || 'TL' },
-                  ].map((m, i) => (
-                    <div key={i} className="dm"><span className="dml">{m.l}</span><span className="dmv">{m.v}</span></div>
-                  ))}
+                  <div className="dm"><span className="dml">Tarih</span><input className="dmi" type="date" value={meta.faturaTarihi || ''} onChange={(e) => setMeta({ ...meta, faturaTarihi: e.target.value })} /></div>
+                  <div className="dm"><span className="dml">Fatura Türü</span>
+                    <select className="dmi" value={meta.invoiceKind || 'ALIS'} onChange={(e) => setMeta({ ...meta, invoiceKind: e.target.value })}>
+                      <option value="ALIS">Alış</option>
+                      <option value="SATIS">Satış</option>
+                    </select>
+                  </div>
+                  <div className="dm"><span className="dml">Belge Türü</span>
+                    <select className="dmi" value={meta.documentType || ''} onChange={(e) => setMeta({ ...meta, documentType: e.target.value })}>
+                      <option value="">—</option>
+                      <option value="E_FATURA">e-Fatura</option>
+                      <option value="E_ARSIV">e-Arşiv</option>
+                      <option value="OKC_FIS">ÖKC Fiş</option>
+                      <option value="DIGER">Diğer</option>
+                    </select>
+                  </div>
+                  <div className="dm"><span className="dml">Belge No</span><input className="dmi" value={meta.belgeNo || ''} onChange={(e) => setMeta({ ...meta, belgeNo: e.target.value })} /></div>
+                  <div className="dm"><span className="dml">{String(meta.invoiceKind).includes('SATIS') ? 'Alıcı VKN' : 'Satıcı VKN'}</span><input className="dmi" value={meta.vkn || ''} onChange={(e) => setMeta({ ...meta, vkn: e.target.value })} /></div>
+                  <div className="dm" style={{ alignSelf: 'end' }}><button className="btn sm primary" disabled={saveMetaMut.isPending} onClick={() => saveMetaMut.mutate()}>{saveMetaMut.isPending ? 'Kaydediliyor…' : 'Bilgileri kaydet'}</button></div>
                 </div>
                 <div className="twrap">
                   {isIsletme ? (
@@ -906,6 +926,17 @@ function ScreenMuhasebe({ taxpayerId, period, isIsletme = false }: { taxpayerId:
               <div className="empty">Hazır belge yok ya da soldan bir belge seç.</div>
             )}
           </div>
+        <div className="wstrip">
+          {[...hazir.map((d: any) => ({ d, ready: true })), ...eksik.slice(0, 40).map((d: any) => ({ d, ready: false }))].map(({ d, ready }) => {
+            const code = (Array.isArray(d.lines) ? d.lines.find((l: any) => l.accountCode) : null)?.accountCode || '';
+            return (
+              <div key={d.id} className={`wchip${selDoc?.id === d.id ? ' on' : ''}${ready ? '' : ' miss'}`} onClick={() => setSelId(d.id)} title={firmaOf(d)}>
+                <b>{firmaOf(d)}</b>
+                <small>{fmtMoney(d.totalAmount)} ₺ · {isIsletme ? 'G/G' : (ready ? (code || '—') : 'kod yok')}</small>
+              </div>
+            );
+          })}
+          {hazir.length === 0 && eksik.length === 0 && <div className="empty" style={{ padding: 14 }}>Belge yok.</div>}
         </div>
         <div className="auto">
           <Ico html={I.clock} size={20} />
@@ -1509,8 +1540,18 @@ const CSS = `
 #fm-root .docmeta .dm{display:flex;flex-direction:column;gap:1px}
 #fm-root .docmeta .dml{font-size:10px;font-weight:700;color:var(--faint);text-transform:uppercase;letter-spacing:.4px}
 #fm-root .docmeta .dmv{font-size:13px;font-weight:600;color:var(--text)}
-#fm-root .fiseditor{display:flex;gap:16px;align-items:flex-start}
-#fm-root .belgepane{flex:0 0 40%;max-width:40%;position:sticky;top:12px}
+#fm-root .docmeta .dmi{width:100%;height:30px;padding:0 8px;border:1px solid var(--line2);border-radius:7px;font-size:13px;font-weight:600;color:var(--text);background:#fff;font-family:inherit}
+#fm-root .docmeta .dmi:focus{outline:none;border-color:var(--accent)}
+#fm-root .wmain{padding:18px}
+#fm-root .wstrip{display:flex;gap:9px;overflow-x:auto;padding:11px 16px;border-top:1px solid var(--line);background:#fbfcfd}
+#fm-root .wchip{flex:0 0 auto;max-width:230px;padding:8px 12px;border:1px solid var(--line2);border-radius:9px;background:#fff;cursor:pointer;display:flex;flex-direction:column;gap:2px}
+#fm-root .wchip:hover{border-color:var(--accent-line)}
+#fm-root .wchip.on{border-color:var(--accent);background:var(--accent-soft);box-shadow:inset 0 -2px 0 var(--accent)}
+#fm-root .wchip.miss{border-style:dashed}
+#fm-root .wchip b{font-size:12.5px;font-weight:700;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;max-width:206px}
+#fm-root .wchip small{font-size:11px;color:var(--muted)}
+#fm-root .fiseditor{display:flex;gap:18px;align-items:flex-start}
+#fm-root .belgepane{flex:0 0 46%;max-width:46%;position:sticky;top:12px}
 #fm-root .fispane{flex:1;min-width:0}
 #fm-root .belgebox{border:1px solid var(--line);border-radius:10px;overflow:hidden;background:#fff;display:flex;flex-direction:column}
 #fm-root .belgebox .bpbar{display:flex;align-items:center;justify-content:space-between;padding:7px 11px;border-bottom:1px solid var(--line);background:#fbfcfd;font-size:11px;font-weight:700;color:var(--muted);text-transform:uppercase;letter-spacing:.4px}
