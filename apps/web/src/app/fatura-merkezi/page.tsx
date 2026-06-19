@@ -681,29 +681,26 @@ function ScreenKurallar({ taxpayerId, period }: { taxpayerId: string; period: st
 /** Muhasebeleştir ekranında belgeyi (fatura görüntüsü/HTML) fişin yanında gösterir. */
 function InlineBelge({ id }: { id: string }) {
   const [d, setD] = useState<any | null>(null);
-  const [zoom, setZoom] = useState(1);
+  const [zoom, setZoom] = useState(0);   // 0 = sığdır (otomatik); >0 = elle ölçek
+  const [fit, setFit] = useState(1);
   const frameRef = useRef<HTMLIFrameElement | null>(null);
-  const fitFrame = () => {
-    const f = frameRef.current;
-    if (!f) return;
+  const wrapRef = useRef<HTMLDivElement | null>(null);
+  // HTML belge: iframe'i içeriğin tam boyuna ölç, görüntü alanına sığacak fit oranını hesapla.
+  const measure = () => {
+    const f = frameRef.current, w = wrapRef.current;
+    if (!f || !w) return;
     try {
       const doc = f.contentDocument;
       if (!doc) return;
-      const h = Math.max(
-        doc.body?.scrollHeight || 0,
-        doc.documentElement?.scrollHeight || 0,
-        doc.body?.offsetHeight || 0,
-        doc.documentElement?.offsetHeight || 0,
-      );
-      if (h > 60) f.style.height = Math.min(h + 32, 7000) + 'px';
-    } catch { /* cross-origin — sabit yükseklik kalır */ }
+      const h = Math.max(doc.body?.scrollHeight || 0, doc.documentElement?.scrollHeight || 0, doc.body?.offsetHeight || 0);
+      if (h > 60) { f.style.height = h + 'px'; const vh = w.clientHeight || 560; setFit(Math.min(1, (vh - 16) / h)); }
+    } catch { /* cross-origin */ }
   };
-  // HTML e-faturada görseller geç yüklendiğinden yüksekliği birkaç kez yeniden ölç.
-  const onFrameLoad = () => { fitFrame(); setTimeout(fitFrame, 250); setTimeout(fitFrame, 900); setTimeout(fitFrame, 2000); };
+  // Görseller geç yüklendiğinden birkaç kez yeniden ölç.
+  const onFrameLoad = () => { measure(); setTimeout(measure, 250); setTimeout(measure, 900); setTimeout(measure, 2000); };
   useEffect(() => {
     let alive = true;
-    setD(null);
-    setZoom(1);
+    setD(null); setZoom(0); setFit(1);
     api.get(`/fatura-muhasebelestirme/documents/${id}/file-url`)
       .then((r) => { if (alive) setD(r.data || {}); })
       .catch(() => { if (alive) setD({}); });
@@ -717,30 +714,36 @@ function InlineBelge({ id }: { id: string }) {
     /^data:image\//i.test(url) ||
     /\.(jpe?g|jpe|jfif|png|gif|webp|bmp|tiff?|heic|heif|avif)(\?|#|$)/i.test(url)
   );
-  const dz = (f: number) => setZoom((s) => Math.min(6, Math.max(0.4, Math.round((s + f) * 100) / 100)));
+  const isPdf = !html && !isImg && !!url;
+  const baseScale = html ? fit : 1;            // "Sığdır" temeli (html: hesaplanan fit, resim: contain=1)
+  const scale = zoom > 0 ? zoom : baseScale;
+  const canZoom = html || isImg;
+  const dz = (delta: number) => setZoom((s) => { const b = s > 0 ? s : baseScale; return Math.min(6, Math.max(0.2, Math.round((b + delta) * 100) / 100)); });
   return (
     <div className="belgebox">
       <div className="bpbar">
         <span>Belge</span>
         <div className="bpzoom">
-          {isImg ? (
+          {canZoom ? (
             <>
-              <button type="button" onClick={() => dz(-0.25)} title="Uzaklaştır">−</button>
-              <span className="bpz">{Math.round(zoom * 100)}%</span>
-              <button type="button" onClick={() => dz(0.25)} title="Yakınlaştır">+</button>
-              <button type="button" onClick={() => setZoom(1)} title="Genişliğe sığdır">Sığdır</button>
+              <button type="button" onClick={() => dz(-0.15)} title="Uzaklaştır">−</button>
+              <span className="bpz">{Math.round(scale * 100)}%</span>
+              <button type="button" onClick={() => dz(0.15)} title="Yakınlaştır">+</button>
+              <button type="button" onClick={() => setZoom(0)} title="Tümünü sığdır">Sığdır</button>
             </>
           ) : null}
           {url ? <a href={url} target="_blank" rel="noopener noreferrer" title="Yeni sekmede aç">↗</a> : null}
         </div>
       </div>
-      {html
-        ? <iframe ref={frameRef} onLoad={onFrameLoad} className="bpframe bpframe-html" srcDoc={html} title="Belge" sandbox="allow-same-origin" />
-        : isImg
-          ? <div className="bpimgwrap"><img className="bpimg" src={url} alt="Belge" style={{ transform: `scale(${zoom})`, transformOrigin: 'top center' }} /></div>
-          : url
-            ? <iframe className="bpframe" src={url.includes('#') ? url : `${url}#view=FitH&toolbar=1`} title="Belge" />
-            : <div className="bpempty">Belge görüntüsü yok</div>}
+      <div ref={wrapRef} className="bpview">
+        {html
+          ? <iframe ref={frameRef} onLoad={onFrameLoad} className="bpframe-h" srcDoc={html} title="Belge" sandbox="allow-same-origin" style={{ transform: `scale(${scale})`, transformOrigin: 'top center' }} />
+          : isImg
+            ? <img className="bpimg" src={url} alt="Belge" style={{ transform: `scale(${scale})`, transformOrigin: 'top center' }} />
+            : isPdf
+              ? <iframe className="bppdf" src={url.includes('#') ? url : `${url}#view=FitH`} title="Belge" />
+              : <div className="bpempty">Belge görüntüsü yok</div>}
+      </div>
     </div>
   );
 }
@@ -1638,9 +1641,10 @@ const CSS = `
 #fm-root .belgebox .bpzoom button:last-of-type{width:auto;padding:0 9px;font-size:11px}
 #fm-root .belgebox .bpzoom button:hover{border-color:var(--accent);color:var(--accent)}
 #fm-root .belgebox .bpzoom .bpz{font-size:11px;font-weight:700;color:var(--muted);min-width:38px;text-align:center}
-#fm-root .belgebox .bpframe{width:100%;height:76vh;min-height:560px;border:0;background:#fff}
-#fm-root .belgebox .bpimgwrap{height:76vh;min-height:560px;display:flex;align-items:flex-start;justify-content:center;overflow:auto;background:#f1f3f7;padding:8px}
+#fm-root .belgebox .bpview{height:78vh;min-height:560px;overflow:auto;background:#f1f3f7;display:flex;align-items:flex-start;justify-content:center;padding:8px}
+#fm-root .belgebox .bpframe-h{width:100%;border:0;background:#fff;display:block}
 #fm-root .belgebox .bpimg{display:block;max-width:100%;max-height:100%;object-fit:contain;transition:transform .12s ease}
+#fm-root .belgebox .bppdf{width:100%;height:78vh;min-height:560px;border:0;background:#fff}
 #fm-root .belgebox .bpempty{height:200px;display:flex;align-items:center;justify-content:center;color:var(--faint);font-size:12px}
 @media(max-width:1100px){#fm-root .fiseditor{flex-direction:column}#fm-root .belgepane{flex:none;max-width:100%;width:100%;position:static}}
 #fm-root .ph .mu{margin-left:auto;font-weight:500}
