@@ -4441,8 +4441,13 @@ ${JSON.stringify(payload, null, 2)}`;
       if (sorted.length < 2) continue;
       const padLen = Math.max(...entries.map((e) => e.padLen));
       const eksikler: number[] = [];
+      // Büyük kesintisiz boşluk = ayrı seri / dönem sınırı (gerçek "eksik" değil) → atla.
+      const MAX_GAP = Number(process.env.KDV_SERI_MAX_GAP) || 10;
       for (let i = 1; i < sorted.length; i++) {
-        for (let n = sorted[i - 1] + 1; n < sorted[i]; n++) {
+        const start = sorted[i - 1] + 1;
+        const end = sorted[i] - 1;
+        if (end < start || end - start + 1 > MAX_GAP) continue;
+        for (let n = start; n <= end; n++) {
           eksikler.push(n);
         }
       }
@@ -4479,8 +4484,16 @@ ${JSON.stringify(payload, null, 2)}`;
       const sortedZ = [...new Set(zNumbers)].sort((a, b) => a - b);
       if (sortedZ.length >= 2) {
         const eksikler: number[] = [];
+        // Büyük kesintisiz boşluk = ayrı yazar kasa (ÖKC) / seri / dönem sınırı.
+        // 2 kasa farklı Z No serisi verir (ör. 1380-1404 ve 1506-1518); aradaki
+        // ~100 numara GERÇEK eksik değildir. Sadece küçük boşlukları (gerçekten
+        // atlanmış Z raporu) işaretle. KDV_SERI_MAX_GAP ile ayarlanır.
+        const MAX_GAP = Number(process.env.KDV_SERI_MAX_GAP) || 10;
         for (let i = 1; i < sortedZ.length; i++) {
-          for (let n = sortedZ[i - 1] + 1; n < sortedZ[i]; n++) {
+          const start = sortedZ[i - 1] + 1;
+          const end = sortedZ[i] - 1;
+          if (end < start || end - start + 1 > MAX_GAP) continue;
+          for (let n = start; n <= end; n++) {
             eksikler.push(n);
           }
         }
