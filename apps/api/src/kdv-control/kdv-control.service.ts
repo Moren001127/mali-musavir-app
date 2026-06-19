@@ -212,6 +212,45 @@ export class KdvControlService implements OnApplicationBootstrap {
    */
   onApplicationBootstrap() {
     setTimeout(() => this.autoFixMissingBreakdowns(), 15_000); // Uygulama tam açılsın, 15s bekle
+    setTimeout(() => this.recoverOrphanedContentAudits(), 25_000); // Restart'ta ölen içerik denetimi kuyruğunu kurtar
+  }
+
+  /**
+   * İçerik denetimi kuyruğu BELLEKTE (void fire-forget) çalışır; deploy/restart
+   * sırasında ölürse belgeler PROCESSING'de ÖKSÜZ kalır (kullanıcı "yapmıyor" görür).
+   * Açılışta TÜM PROCESSING belgeler öksüzdür (kuyruğu kuran süreç öldü) — bunları
+   * bulup oturum oturum YENİDEN işler; kullanıcı tıklamadan kendiliğinden tamamlanır.
+   */
+  private async recoverOrphanedContentAudits() {
+    try {
+      const orphans = await this.prisma.receiptImage.findMany({
+        where: { contentAuditStatus: 'PROCESSING' },
+        select: { id: true, sessionId: true, session: { select: { tenantId: true } } },
+        take: 500,
+      });
+      if (orphans.length === 0) {
+        this.logger.log('[contentAuditRecover] Öksüz PROCESSING içerik denetimi yok.');
+        return;
+      }
+      const bySession = new Map<string, { tenantId: string; ids: string[] }>();
+      for (const o of orphans) {
+        const tid: string | undefined = (o as any).session?.tenantId;
+        if (!tid) continue;
+        const g: { tenantId: string; ids: string[] } =
+          bySession.get(o.sessionId) || { tenantId: tid, ids: [] };
+        g.ids.push(o.id);
+        bySession.set(o.sessionId, g);
+      }
+      this.logger.warn(
+        `[contentAuditRecover] ${orphans.length} öksüz PROCESSING belge, ${bySession.size} oturum — restart kurtarma, yeniden işleniyor`,
+      );
+      // Oturumları SIRAYLA işle (hepsini aynı anda başlatıp Max'i boğmayalım).
+      for (const [sessionId, g] of bySession) {
+        await this.processContentAuditQueue(g.ids, g.tenantId, undefined, { sessionId } as any);
+      }
+    } catch (err: any) {
+      this.logger.error(`[contentAuditRecover] hata: ${err?.message || err}`);
+    }
   }
 
   private async autoFixMissingBreakdowns() {
