@@ -402,6 +402,30 @@ export function validateOcrResult(
     score -= 0.25;
   }
 
+  // 4b) Tevkifat ORANI standart mı? KDV tevkifat oranları yasal SABİTtir
+  // (2/10, 3/10, 4/10, 5/10, 7/10, 9/10, 10/10). kdvTutari = NET KDV (tam − tevkifat)
+  // olduğundan tam KDV = net + tevkifat; tevkifat/tamKDV mutlaka bu oranlardan biri
+  // olmalı. Azure bazı tevkifatlı e-faturalarda tam KDV'yi doğru okuyup tevkifatı
+  // YANLIŞ böldü (ör. %50 yerine %27,6) → net KDV şişti, Luca ile eşleşmedi. Oran
+  // hiçbir standarda yakın değilse: güveni düşür → NEEDS_REVIEW → Max-vision yeniden-okuma
+  // (sessiz yanlış net KABUL EDİLMEZ). Yuvarlama gürültüsü için küçük tutarlar atlanır.
+  if (tevkifatNum > 0 && kdvNum > 0) {
+    const fullKdv = kdvNum + tevkifatNum;
+    if (fullKdv > 50) {
+      const impliedRatio = tevkifatNum / fullKdv;
+      const STD_TEVKIFAT = [0.2, 0.3, 0.4, 0.5, 0.7, 0.9, 1.0];
+      const nearest = STD_TEVKIFAT.reduce((a, b) =>
+        Math.abs(b - impliedRatio) < Math.abs(a - impliedRatio) ? b : a,
+      );
+      if (Math.abs(impliedRatio - nearest) > 0.015) {
+        issues.push(
+          `Tevkifat oranı standart değil: tevkifat=${formatAmount(tevkifatNum)} / tam KDV=${formatAmount(fullKdv)} = %${(impliedRatio * 100).toFixed(1)} (yasal: 2/10..10/10) — tevkifat/net KDV yanlış okunmuş olabilir`,
+        );
+        score -= 0.4;
+      }
+    }
+  }
+
   // 5) KDV var ama oran 0
   if (kdvNum > 0 && breakdown.length > 0) {
     const allZeroRate = breakdown.every((b) => !b.oran || b.oran === 0);

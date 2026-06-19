@@ -1233,6 +1233,27 @@ postProcess.postProcessOcrResult(goodBreakdown, null, 'tutarli.pdf', ppDeps2);
 assert(Array.isArray(goodBreakdown.kdvBreakdown) && goodBreakdown.kdvBreakdown.length === 1, 'tutarli breakdown korunmali');
 ok('validation/post-process.ts matrah×oran capraz dogrulama (3 assertion)');
 
+// ── post-process tevkifat ORANI standart kontrolu (OZ ELA CLL092/111 gercek hata) ──
+// Azure tam KDV'yi dogru okuyup tevkifati YANLIS boldu → net KDV sisti, Luca ile
+// eslesmedi. tevkifat/tamKDV hicbir yasal orana (2/10..10/10) yakin degilse guven dusmeli.
+const mkTevk = (net, tevk) => ({
+  belgeTipi: 'EFATURA', kdvTutari: net, kdvTevkifat: tevk, kdvBreakdown: [],
+  fieldConfidence: { belgeNo: 0.9, date: 0.9, kdvTutari: 0.92 },
+});
+const tevkBad1 = mkTevk('24800,00', '9460,00');   // 9460/34260 = %27,6 (standart degil)
+postProcess.validateOcrResult(tevkBad1, 'CLL092.xml', ppDeps);
+assert((tevkBad1.fieldConfidence.kdvTutari ?? 1) < 0.7, 'standart-disi tevkifat orani (%27,6) KDV guvenini dusurmeli');
+const tevkBad2 = mkTevk('13300,00', '8200,00');   // 8200/21500 = %38,1 (standart degil)
+postProcess.validateOcrResult(tevkBad2, 'CLL111.xml', ppDeps);
+assert((tevkBad2.fieldConfidence.kdvTutari ?? 1) < 0.7, 'standart-disi tevkifat orani (%38,1) KDV guvenini dusurmeli');
+const tevkGood50 = mkTevk('4046,80', '4046,80');  // %50 (net=tevkifat) — DOGRU
+postProcess.validateOcrResult(tevkGood50, 'dogru50.xml', ppDeps);
+assert((tevkGood50.fieldConfidence.kdvTutari ?? 0) >= 0.9, '%50 tevkifat (net=tevkifat) bayraklanmamali');
+const tevkGood20 = mkTevk('800,00', '200,00');    // 2/10 = %20 — DOGRU (yanlis pozitif yok)
+postProcess.validateOcrResult(tevkGood20, 'dogru20.xml', ppDeps);
+assert((tevkGood20.fieldConfidence.kdvTutari ?? 0) >= 0.9, '2/10 tevkifat standart → bayraklanmamali');
+ok('validation/post-process.ts tevkifat oran standart kontrolu (4 assertion)');
+
 // ── providers/claude.ts parseClaudeOcrResult — Z RAPORU gunluk KDV ──
 // Z raporunda model bazen kumulatif (KUM TOPKDV) degeri kdvTutari'na koyar;
 // tutarli breakdown varken gunluk = breakdown toplami olmalidir.
