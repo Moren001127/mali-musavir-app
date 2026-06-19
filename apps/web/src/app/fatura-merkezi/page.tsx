@@ -684,11 +684,22 @@ function InlineBelge({ id }: { id: string }) {
   const [zoom, setZoom] = useState(1);
   const frameRef = useRef<HTMLIFrameElement | null>(null);
   const fitFrame = () => {
+    const f = frameRef.current;
+    if (!f) return;
     try {
-      const b = frameRef.current?.contentDocument?.body;
-      if (b) frameRef.current!.style.height = Math.min(b.scrollHeight + 28, 5000) + 'px';
+      const doc = f.contentDocument;
+      if (!doc) return;
+      const h = Math.max(
+        doc.body?.scrollHeight || 0,
+        doc.documentElement?.scrollHeight || 0,
+        doc.body?.offsetHeight || 0,
+        doc.documentElement?.offsetHeight || 0,
+      );
+      if (h > 60) f.style.height = Math.min(h + 32, 7000) + 'px';
     } catch { /* cross-origin — sabit yükseklik kalır */ }
   };
+  // HTML e-faturada görseller geç yüklendiğinden yüksekliği birkaç kez yeniden ölç.
+  const onFrameLoad = () => { fitFrame(); setTimeout(fitFrame, 250); setTimeout(fitFrame, 900); setTimeout(fitFrame, 2000); };
   useEffect(() => {
     let alive = true;
     setD(null);
@@ -724,7 +735,7 @@ function InlineBelge({ id }: { id: string }) {
         </div>
       </div>
       {html
-        ? <iframe ref={frameRef} onLoad={fitFrame} className="bpframe bpframe-html" srcDoc={html} title="Belge" sandbox="allow-same-origin" />
+        ? <iframe ref={frameRef} onLoad={onFrameLoad} className="bpframe bpframe-html" srcDoc={html} title="Belge" sandbox="allow-same-origin" />
         : isImg
           ? <div className="bpimgwrap"><img className="bpimg" src={url} alt="Belge" style={{ transform: `scale(${zoom})`, transformOrigin: 'top center' }} /></div>
           : url
