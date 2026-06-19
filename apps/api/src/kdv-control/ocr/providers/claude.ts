@@ -18,6 +18,7 @@
  */
 
 import type { KdvBreakdownItem, OcrResult } from '../types';
+import { claudeTextViaMax, MAX_MODEL_DEFAULT } from '../../../common/max-inference';
 
 /** Claude model fiyatlari ($/M token) */
 const CLAUDE_PRICES: Record<string, { input: number; output: number }> = {
@@ -100,8 +101,8 @@ export async function runClaudeVisionOcr(
     }
   }
 
-  const systemPrompt = SYSTEM_PROMPT;
-  const userText = USER_TEXT;
+  const systemPrompt = CLAUDE_OCR_SYSTEM_PROMPT;
+  const userText = CLAUDE_OCR_USER_TEXT;
 
   const startMs = Date.now();
   const MAX_RETRIES = 6;
@@ -171,6 +172,22 @@ export async function runClaudeVisionOcr(
     (cacheReadTokens / 1_000_000) * (price.input * 0.1);
   const usage = { inputTokens, outputTokens, cacheCreationTokens, cacheReadTokens, costUsd };
 
+  return parseClaudeOcrResult(raw, deps, MODEL, usage);
+}
+
+/**
+ * Claude OCR JSON metnini yapilandirilmis OcrResult'a cevirir.
+ * Hem ucretli API (runClaudeVisionOcr) hem Max-vision (runClaudeVisionOcrViaMax)
+ * AYNI parse mantigini paylasir — kod tek kaynak.
+ */
+export function parseClaudeOcrResult(
+  raw: string,
+  deps: ClaudeProviderDeps,
+  engineLabel: string,
+  usage?: any,
+): OcrResult {
+  const { parseAmount, formatAmount, formatIsoToTr, clampConfidence, logger } = deps;
+
   const jsonMatch = raw.match(/\{[\s\S]*\}/);
   if (!jsonMatch) {
     logger.warn(`Claude beklenen JSON döndürmedi: ${raw.slice(0, 100)}`);
@@ -182,7 +199,7 @@ export async function runClaudeVisionOcr(
       totalTutari: null,
       confidence: 0,
       fieldConfidence: { belgeNo: null, date: null, kdvTutari: null },
-      engine: MODEL,
+      engine: engineLabel,
       usage,
     } as any;
   }
@@ -229,8 +246,7 @@ export async function runClaudeVisionOcr(
 
   logger.log(
     `Claude OCR ✓ Alan:${foundFields}/3 · Conf:%${Math.round(confidence * 100)} ` +
-      `(belgeNo:${fmtConf(fieldConfidence.belgeNo)} · tarih:${fmtConf(fieldConfidence.date)} · kdv:${fmtConf(fieldConfidence.kdvTutari)}) ` +
-      `${Date.now() - startMs}ms`,
+      `(belgeNo:${fmtConf(fieldConfidence.belgeNo)} · tarih:${fmtConf(fieldConfidence.date)} · kdv:${fmtConf(fieldConfidence.kdvTutari)}) · ${engineLabel}`,
   );
 
   // KDV BREAKDOWN
@@ -298,16 +314,62 @@ export async function runClaudeVisionOcr(
     kategori,
     confidence,
     fieldConfidence,
-    engine: MODEL,
+    engine: engineLabel,
     usage,
   } as any;
+}
+
+/**
+ * Max-vision OCR — ucretli Anthropic API yerine Max aboneligi (claudeTextViaMax)
+ * uzerinden gorseli okur. AYNI Turkce prompt + AYNI parse. Azure'un yetersiz
+ * kaldigi yogun/elektrik faturalarini gorseldenokur (kaynak = belge, Mihsap rakami DEGIL).
+ * PDF desteklemez (Max image-blok bekler) → null doner, cagiran Azure fallback'e duser.
+ */
+export async function runClaudeVisionOcrViaMax(
+  buffer: Buffer,
+  deps: ClaudeProviderDeps,
+): Promise<OcrResult | null> {
+  const { logger } = deps;
+  const isPdf =
+    buffer.length >= 4 &&
+    buffer[0] === 0x25 && buffer[1] === 0x50 &&
+    buffer[2] === 0x44 && buffer[3] === 0x46;
+  if (isPdf) {
+    logger.warn('Max-vision: PDF girdi (image bekleniyor) — atlanıyor, Azure fallback');
+    return null;
+  }
+  let b64: string;
+  try {
+    const sharp = (await import('sharp')).default;
+    const resized = await sharp(buffer)
+      .rotate()
+      .resize({ width: 2000, withoutEnlargement: true })
+      .jpeg({ quality: 90 })
+      .toBuffer();
+    b64 = resized.toString('base64');
+  } catch {
+    b64 = buffer.toString('base64');
+  }
+  const res = await claudeTextViaMax({
+    prompt: `${CLAUDE_OCR_SYSTEM_PROMPT}\n\n${CLAUDE_OCR_USER_TEXT}`,
+    images: [{ base64: b64, mediaType: 'image/jpeg' }],
+    model: process.env.OCR_MAX_MODEL || MAX_MODEL_DEFAULT,
+    timeoutMs: Number(process.env.KDV_OCR_MAX_MS) || 60000,
+  });
+  if (!res.ok || !res.text) {
+    logger.warn(`Max-vision başarısız: ${res.error || 'boş yanıt'}`);
+    return null;
+  }
+  const parsed = parseClaudeOcrResult(res.text, deps, 'max-vision');
+  (parsed as any).usage = { costUsd: res.costUsd || 0 };
+  return parsed;
 }
 
 // ═══════════════════════════════════════════════════════════
 // PROMPT TEMPLATES (uzun, modul sonunda)
 // ═══════════════════════════════════════════════════════════
 
-const SYSTEM_PROMPT = [
+export const CLAUDE_OCR_SYSTEM_PROMPT = [
   'Sen Türk muhasebe dokümanları (e-Fatura, e-Arşiv, ÖKC fişi, Z raporu, makbuz, dekont) için uzmanlaşmış bir OCR sistemisin.',
   'Görseli karakter karakter incele ve SADECE geçerli JSON dön — açıklama/prolog YOK.',
   '',
@@ -587,7 +649,7 @@ const SYSTEM_PROMPT = [
   'Birden fazla kalem topladıysan ve biri şüpheliyse skorlu düşür.',
 ].join('\n');
 
-const USER_TEXT = [
+export const CLAUDE_OCR_USER_TEXT = [
   'Bu Türk muhasebe belgesinin yapısal verilerini JSON olarak çıkar.',
   '',
   'ADIM 1: Belge tipini tespit et (EFATURA/EARSIV/OKC_FIS/Z_RAPORU/MAKBUZ/GIDER_PUSULASI/SMM/DEKONT/SEVK_IRSALIYESI/DIGER).',

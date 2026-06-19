@@ -28,7 +28,11 @@ import {
   parseXmlAmount as parseXmlAmountPure,
 } from './ocr/parsers/xml-helpers';
 import { parseUblXml as parseUblXmlPure } from './ocr/providers/ubl';
-import { runClaudeVisionOcr as runClaudeVisionOcrPure } from './ocr/providers/claude';
+import {
+  runClaudeVisionOcr as runClaudeVisionOcrPure,
+  runClaudeVisionOcrViaMax as runClaudeVisionOcrViaMaxPure,
+} from './ocr/providers/claude';
+import { isMaxAvailable } from '../common/max-inference';
 import { crossCheckWithAzure as crossCheckWithAzurePure } from './ocr/validation/cross-check';
 import {
   postProcessOcrResult as postProcessOcrResultPure,
@@ -458,8 +462,15 @@ export class OcrService {
           );
         }
         if (!hasClaudeKey || !allowAutoClaude) {
+          // Ücretli Claude yok/kapalı → Max-vision (abonelik) ile eskalasyon dene.
+          if (this.maxVisionAllowed(forceClaude)) {
+            const maxResult = await this.escalateWithMaxVision(
+              imageBuffer, azureRawText, belgeNoFromFilename, originalName,
+            );
+            if (maxResult) return maxResult;
+          }
           this.logger.warn(
-            `Azure-first teyit gerektiriyor ve Claude yok: ${originalName || '—'} · reason=${review.reason}`,
+            `Azure-first teyit gerektiriyor, eskalasyon veremedi: ${originalName || '—'} · reason=${review.reason}`,
           );
           return azureResult;
         }
@@ -469,6 +480,15 @@ export class OcrService {
       } catch (e: any) {
         this.logger.warn(`Azure-first hatası (${originalName || '—'}): ${e?.message}`);
       }
+    }
+
+    // forceClaude veya Azure yok/atlandı/hata → Max-vision (abonelik) eskalasyonunu
+    // ÜCRETLİ Claude'dan ÖNCE dene. (Azure düşük-güven yolu yukarıda zaten denedi.)
+    if (this.maxVisionAllowed(forceClaude)) {
+      const maxResult = await this.escalateWithMaxVision(
+        imageBuffer, azureRawText, belgeNoFromFilename, originalName,
+      );
+      if (maxResult) return maxResult;
     }
 
     if (!forceClaude && !allowAutoClaude) {
@@ -570,6 +590,72 @@ export class OcrService {
         warn: (m) => this.logger.warn(m),
       },
     });
+  }
+
+  /**
+   * Max-vision OCR — Max aboneliği (claudeTextViaMax) ile görseli okur; ücretli
+   * Anthropic API'ye düşmez. Azure'un yetersiz kaldığı yoğun/elektrik faturalarını
+   * görselden doğru okumak için eskalasyon yolu. PDF'te null döner (Azure fallback).
+   */
+  private async runMaxVisionOcr(buffer: Buffer): Promise<OcrResult | null> {
+    return runClaudeVisionOcrViaMaxPure(buffer, {
+      parseAmount: (s) => this.parseAmount(s),
+      formatAmount: (n) => this.formatAmount(n),
+      formatIsoToTr: (iso) => this.formatIsoToTr(iso),
+      clampConfidence: (v) => this.clampConfidence(v),
+      logger: {
+        log: (m) => this.logger.log(m),
+        warn: (m) => this.logger.warn(m),
+      },
+    });
+  }
+
+  /** Max-vision eskalasyonu devrede mi? Max bağlı + (forceClaude veya env kapalı değil). */
+  private maxVisionAllowed(forceClaude: boolean): boolean {
+    if (!isMaxAvailable()) return false;
+    if (forceClaude) return true;
+    const flag = String(process.env.KDV_OCR_MAX_VISION ?? '1').toLowerCase();
+    return flag !== '0' && flag !== 'false';
+  }
+
+  /**
+   * Azure düşük güven verdi (ya da forceClaude) → görseli Max-vision ile oku,
+   * post-process + Azure cross-check + multi-pass validation uygula. Başarısızsa null.
+   */
+  private async escalateWithMaxVision(
+    imageBuffer: Buffer,
+    azureRawTextIn: string,
+    belgeNoFromFilename: string | null,
+    originalName?: string,
+  ): Promise<OcrResult | null> {
+    try {
+      const maxResult = await this.runMaxVisionOcr(imageBuffer);
+      if (!maxResult || !(maxResult.belgeNo || maxResult.date || maxResult.kdvTutari)) {
+        this.logger.warn(`Max-vision boş/başarısız: ${originalName || '—'}`);
+        return null;
+      }
+      this.postProcessOcrResult(maxResult, belgeNoFromFilename, originalName);
+      let azureRawText = azureRawTextIn;
+      if (!azureRawText && this.azureClient) {
+        azureRawText = await this.getAzureRawText(imageBuffer).catch((e) => {
+          this.logger.warn(`Azure cross-check hatası: ${e?.message}`);
+          return '';
+        });
+      }
+      if (azureRawText) {
+        this.crossCheckWithAzure(maxResult, azureRawText, originalName, belgeNoFromFilename);
+        maxResult.rawText = `[MAX] ${maxResult.rawText}\n[AZURE]\n${azureRawText.slice(0, 2000)}`;
+      }
+      this.validateOcrResult(maxResult, originalName);
+      maxResult.engine = `${maxResult.engine || 'max-vision'} (max-escalation)`;
+      this.logger.log(
+        `Max-vision eskalasyon ✓: ${originalName || '—'} · belgeNo=${maxResult.belgeNo || '—'} kdv=${maxResult.kdvTutari || '—'}`,
+      );
+      return maxResult;
+    } catch (e: any) {
+      this.logger.warn(`Max-vision eskalasyon hatası (${originalName || '—'}): ${e?.message}`);
+      return null;
+    }
   }
 
   /** Claude'dan gelen confidence değerini 0–1 aralığına sıkıştır (geçersizse 0.5) */
