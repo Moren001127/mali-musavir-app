@@ -674,15 +674,22 @@ export default function KdvKontrolPage() {
   const runContentAudit = useMutation({
     mutationFn: async () => {
       const s = await ensureSession.mutateAsync();
+      // Takılan (kural-yedeği) belge varsa: SADECE onları yeniden dene (force YOK) —
+      // başarılı AI yorumları korunur, hızlı biter. Her şey AI ile yorumlanmışsa
+      // tekrar tıklamak güncel kurallarla tam yeniden değerlendirme yapar (force).
+      const onlyRetryStragglers = contentAuditProviderIssueCount > 0;
+      const force = contentAuditDoneCount > 0 && !onlyRetryStragglers;
       pushFeed({
         group: 'content',
         kind: 'info',
         title: 'İçerik denetimi başladı',
-        detail: contentAuditDoneCount > 0
+        detail: onlyRetryStragglers
+          ? 'Yalnızca AI yorumu alamayan belgeler yeniden deneniyor'
+          : contentAuditDoneCount > 0
           ? 'Mevcut yorumlar güncel kurallarla yeniden değerlendiriliyor'
           : 'Fatura içeriği ve mükellef faaliyeti birlikte değerlendiriliyor',
       });
-      return kdvApi.startContentAudit(s.id, { force: contentAuditDoneCount > 0 });
+      return kdvApi.startContentAudit(s.id, { force });
     },
     onSuccess: (d: any) => {
       clearFeedErrorsInGroup('content');

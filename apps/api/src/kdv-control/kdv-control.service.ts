@@ -1800,10 +1800,15 @@ export class KdvControlService implements OnApplicationBootstrap {
         sessionId,
         ocrStatus: { in: ['SUCCESS', 'NEEDS_REVIEW', 'LOW_CONFIDENCE'] as any },
       },
-      select: { id: true, contentAuditStatus: true },
+      select: { id: true, contentAuditStatus: true, contentAuditModel: true },
       orderBy: { uploadedAt: 'asc' },
     });
-    const queue = images.filter((img: any) => opts.force || img.contentAuditStatus !== 'DONE');
+    // force YOKKEN bile: henüz yapılmamış (DONE değil) VEYA AI yerine kural-yedeğine
+    // düşmüş (rule-fallback/failed) belgeler kuyruğa alınır. Böylece tekrar tıklamak
+    // başarılı AI yorumlarını KORUR, yalnız takılan straggler'ları yeniden dener.
+    const needsRedo = (img: any) =>
+      img.contentAuditStatus !== 'DONE' || ['rule-fallback', 'failed'].includes(img.contentAuditModel);
+    const queue = images.filter((img: any) => opts.force || needsRedo(img));
 
     if (queue.length === 0) {
       return {
