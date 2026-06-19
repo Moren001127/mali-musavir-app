@@ -4952,8 +4952,12 @@ ${JSON.stringify(payload, null, 2)}`;
     // NEEDS_REVIEW'ı da kapsar çünkü kullanıcı OCR kodunu/promptunu
     // düzelttiğinde bu kartı kullanarak eski sonuçları silip yeniden OCR'lamak
     // ister.
+    // PROCESSING: servis yeniden başlarsa (deploy/restart) yarıda kalan OCR'lar
+    // "PROCESSING"de öksüz kalıyor; eski liste bunları kapsamadığı için "Yenile"
+    // dahi kurtaramıyordu → oturum sonsuza dek "OCR çalışıyor"da takılıyordu.
+    // forceFresh artık öksüz PROCESSING kayıtlarını da yeniden okur (kurtarır).
     const targetStatuses = forceFresh
-      ? ['PENDING', 'SUCCESS', 'LOW_CONFIDENCE', 'FAILED', 'NEEDS_REVIEW']
+      ? ['PENDING', 'SUCCESS', 'LOW_CONFIDENCE', 'FAILED', 'NEEDS_REVIEW', 'PROCESSING']
       : ['PENDING', 'LOW_CONFIDENCE', 'FAILED'];
     const pending = await this.prisma.receiptImage.findMany({
       where: {
