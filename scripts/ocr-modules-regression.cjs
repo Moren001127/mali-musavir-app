@@ -1233,6 +1233,34 @@ postProcess.postProcessOcrResult(goodBreakdown, null, 'tutarli.pdf', ppDeps2);
 assert(Array.isArray(goodBreakdown.kdvBreakdown) && goodBreakdown.kdvBreakdown.length === 1, 'tutarli breakdown korunmali');
 ok('validation/post-process.ts matrah×oran capraz dogrulama (3 assertion)');
 
+// ── providers/claude.ts parseClaudeOcrResult — Z RAPORU gunluk KDV ──
+// Z raporunda model bazen kumulatif (KUM TOPKDV) degeri kdvTutari'na koyar;
+// tutarli breakdown varken gunluk = breakdown toplami olmalidir.
+const claudeProvider = require(path.join(ROOT, 'apps/api/src/kdv-control/ocr/providers/claude.ts'));
+const amountCheck = require(path.join(ROOT, 'apps/api/src/kdv-control/reconciliation/validators/amount-check.ts'));
+const txtParser = require(path.join(ROOT, 'apps/api/src/kdv-control/ocr/parsers/text.ts'));
+const claudeDeps = {
+  parseAmount: amountCheck.parseTrUsAmount,
+  formatAmount: amountCheck.formatAmountTr,
+  formatIsoToTr: (x) => x,
+  clampConfidence: (v) => (typeof v === 'number' ? v : 0.5),
+  normalizeTaxText: txtParser.normalizeTaxText,
+  logger: { log() {}, warn() {} },
+};
+const zCum = claudeProvider.parseClaudeOcrResult(
+  JSON.stringify({ belgeTipi: 'Z_RAPORU', kdvTutari: '350898,42', kdvBreakdown: [{ oran: 20, tutar: '25,00', matrah: '125,00' }] }),
+  claudeDeps, 'max-vision');
+assert(zCum.kdvTutari === '25,00', 'Z raporu kumulatif kdvTutari gunluk breakdown toplamina cekilmeli');
+const zNormal = claudeProvider.parseClaudeOcrResult(
+  JSON.stringify({ belgeTipi: 'Z_RAPORU', kdvTutari: '290,69', kdvBreakdown: [{ oran: 20, tutar: '47,50', matrah: '285,00' }, { oran: 10, tutar: '243,19', matrah: '2675,00' }] }),
+  claudeDeps, 'max-vision');
+assert(zNormal.kdvTutari === '290,69', 'normal Z raporu (kdvTutari=breakdown toplami) degismemeli');
+const efaturaZ = claudeProvider.parseClaudeOcrResult(
+  JSON.stringify({ belgeTipi: 'EFATURA', kdvTutari: '1000,00', kdvBreakdown: [{ oran: 20, tutar: '1000,00', matrah: '5000,00' }] }),
+  claudeDeps, 'max-vision');
+assert(efaturaZ.kdvTutari === '1000,00', 'e-fatura Z raporu kuralindan etkilenmemeli');
+ok('providers/claude.ts parseClaudeOcrResult Z raporu gunluk KDV (3 assertion)');
+
 // ═══════════════════════════════════════════════════════════
 // SONUC
 // ═══════════════════════════════════════════════════════════

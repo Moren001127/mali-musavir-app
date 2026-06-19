@@ -429,7 +429,14 @@ export class OcrService {
         const azureResult = await this.runAzureOcr(imageBuffer, belgeNoFromFilename, originalName);
         azureRawText = azureResult.rawText || '';
         const review = this.needsReview(azureResult);
-        if (!review.needs) {
+        // Z RAPORU: Azure bu belgede sık "KUM TOPKDV" (kümülatif) ya da %oran'ı tutar
+        // sanma hatası yapar ve bunu YÜKSEK güvenle döner → teyit istemez, kaçar.
+        // Z raporunu güvenden BAĞIMSIZ Max-vision'a eskale et (env ile kapatılabilir).
+        const escalateZRaporu =
+          azureResult.belgeTipi === 'Z_RAPORU' &&
+          this.maxVisionAllowed(forceClaude) &&
+          !['0', 'false'].includes(String(process.env.KDV_OCR_ZRAPORU_MAX ?? '1').toLowerCase());
+        if (!review.needs && !escalateZRaporu) {
           this.logger.log(
             `Azure-first başarılı: ${originalName || '—'} · belgeNo=${azureResult.belgeNo || '—'} date=${azureResult.date || '—'} kdv=${azureResult.kdvTutari || '—'} validation=%${Math.round((azureResult.validationScore ?? 0) * 100)}`,
           );
@@ -449,7 +456,8 @@ export class OcrService {
           isStructuredReceipt &&
           azureKdvAmount > 0 &&
           azureValidation >= 0.95 &&
-          !looksCumulative
+          !looksCumulative &&
+          !escalateZRaporu
         ) {
           this.logger.log(
             `Azure-first fis/Z guvenilir (validation=%${Math.round(azureValidation * 100)}), Claude eskalasyonu yok: ${originalName || '-'} - kdv=${azureResult.kdvTutari}`,

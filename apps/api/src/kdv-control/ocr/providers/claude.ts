@@ -300,6 +300,22 @@ export function parseClaudeOcrResult(
   const katRaw = parsed.kategori ? String(parsed.kategori).trim().toLowerCase() : null;
   const kategori = katRaw && VALID_KATEGORI.has(katRaw) ? katRaw : null;
 
+  // ── Z RAPORU: GÜNLÜK KDV = breakdown toplamı ──────────────────
+  // Z raporunda günlük KDV, per-oran "TOPKDV %N" satırlarının toplamıdır.
+  // Model bazen "KUM TOPKDV" / "Mali Belge Top KDV" (kümülatif/lifetime) değerini
+  // kdvTutari'na koyuyor — bu YANLIŞ (günlük değil). Breakdown tutarlı (oran×matrah)
+  // ve kdvTutari ondan belirgin BÜYÜKSE (kümülatif şüphesi), günlük = breakdown toplamı.
+  if (belgeTipi === 'Z_RAPORU' && kdvBreakdown && kdvBreakdown.length > 0 && kdvTevkifatNum <= 0) {
+    const bdSum = kdvBreakdown.reduce((s, b) => s + (b.tutar || 0), 0);
+    const cur = kdvTutari ? parseAmount(kdvTutari) : 0;
+    if (bdSum > 0 && (!kdvTutari || cur > bdSum * 1.5)) {
+      logger.warn(
+        `Z raporu kdvTutari kümülatif görünüyor (${cur}); günlük breakdown toplamı kullanılıyor: ${bdSum}`,
+      );
+      kdvTutari = formatAmount(bdSum);
+    }
+  }
+
   return {
     rawText: JSON.stringify(parsed).slice(0, 2000),
     belgeNo,
