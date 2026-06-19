@@ -12,7 +12,7 @@
   // v1.42.2 (2026-06-16): Ajan kendini yenilerken (delete __morenAgent) eski async
   // döngü "Cannot read 'stopRequested' of undefined/null" ile ÇÖKÜYORDU → yetim
   // döngü artık nesne yoksa güvenle durur (stopRequested kontrollerine null-guard).
-  const AGENT_VERSION = '1.42.2';
+  const AGENT_VERSION = '1.43.0';
   const AGENT_INSTANCE_ID = 'mai_' + Date.now().toString(36) + '_' + Math.random().toString(36).slice(2, 8);
 
   // === VERSION-AWARE RELOAD ===
@@ -1661,6 +1661,79 @@
               await fetch(API + `/agent/luca/jobs/${job.id}/fail`, {
                 method: 'POST', headers: { 'Content-Type': 'application/json', 'X-Agent-Token': TOKEN },
                 body: JSON.stringify({ error: (e && e.message) || 'işlem hatası' }),
+              }).catch(() => {});
+            }
+            continue;
+          }
+
+          // ─── INVOICE_POST: backend'in urettigi Fis Aktarim dosyasini Luca'nin
+          //     "Excel Fis Aktarim" ekranina yukler (Muhasebe > Fis Islemleri >
+          //     Excel Veri Aktarimi). Bilanco=xlsx, Isletme=csv. Ilk surum:
+          //     dosyayi yukler + "Yukle"ye basar; deftere yazan "Fis Kes" adimini
+          //     KULLANICIYA birakir (kullanici Luca'da kontrol edip fis boler). ───
+          if (job.tip === 'INVOICE_POST') {
+            try {
+              const p = job.payload || {};
+              const isCsv = p.format === 'ISLETME_CSV';
+              await log(`📤 INVOICE_POST: ${p.direction || ''} ${p.totalCount || 0} belge, format=${p.format || 'BATCH_EXCEL'}`);
+
+              // 1) Aktarim dosyasini backend'ten al
+              const resp = await fetch(API + `/agent/luca/jobs/${job.id}/invoice-excel`, { headers: { 'X-Agent-Token': TOKEN } });
+              if (!resp.ok) throw new Error(`Aktarim dosyasi alinamadi: HTTP ${resp.status}`);
+              const blob = await resp.blob();
+              const fname = isCsv ? `luca-isletme-${job.donem || 'donem'}.csv` : `luca-fis-${job.donem || 'donem'}.xlsx`;
+              const file = new File([blob], fname, { type: isCsv ? 'text/csv' : 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet' });
+              await log(`📥 Aktarim dosyasi alindi: ${Math.round(blob.size / 1024)} KB (${fname})`);
+
+              // 2) Dogru firma secili olsun (best-effort)
+              try { await ensureLucaFirma(job, log); } catch (e) { await log(`Firma secimi atlandi: ${(e && e.message) || e}`); }
+
+              // 3) Dosya input'unu bul — yoksa menuyu ac (bilanco yolu)
+              const findFileInput = () => {
+                for (const doc of lucaDocuments()) {
+                  try { const el = doc.querySelector('input[type="file"]'); if (el) return el; } catch {}
+                }
+                return null;
+              };
+              let input = findFileInput();
+              if (!input) {
+                await log('Excel Fiş Aktarım ekranı açık değil — menüden açılıyor (Muhasebe → Fiş İşlemleri → Excel Veri Aktarımı)');
+                try {
+                  await nativeClickLucaText('Muhasebe', { settleMs: 1000 }); await sleep(900);
+                  await nativeClickLucaText('Fiş İşlemleri', { settleMs: 1000 }); await sleep(900);
+                  await nativeClickLucaText('Excel Veri Aktarımı', { settleMs: 1200 }); await sleep(1500);
+                } catch (e) { await log(`Menü gezinme uyarısı: ${(e && e.message) || e}`); }
+                for (let i = 0; i < 12 && !input; i++) { await sleep(700); input = findFileInput(); }
+              }
+              if (!input) throw new Error('Excel Fiş Aktarım ekranındaki dosya alanı bulunamadı. Luca\'da o ekranı açıp tekrar deneyin.');
+
+              // 4) Dosyayi input'a koy (DataTransfer) + change tetikle
+              const dt = new DataTransfer();
+              dt.items.add(file);
+              input.files = dt.files;
+              input.dispatchEvent(new Event('input', { bubbles: true }));
+              input.dispatchEvent(new Event('change', { bubbles: true }));
+              await log(`📎 Dosya seçildi: ${fname}`);
+              await sleep(900);
+
+              // 5) "Yukle" butonuna bas (satirlar import ekranina dolar)
+              const yuklendi = lucaClickByText('Yükle');
+              if (!yuklendi) throw new Error('"Yükle" butonu bulunamadı (ekran beklenenden farklı olabilir)');
+              await log('⏫ "Yükle" tıklandı — satırlar Luca aktarım ekranına yükleniyor');
+              await sleep(2500);
+
+              // 6) Ilk surum: deftere yazan "Fis Kes" adimi KULLANICIDA. Yuklemeyi raporla.
+              await fetch(API + `/agent/luca/jobs/${job.id}/done`, {
+                method: 'POST', headers: { 'Content-Type': 'application/json', 'X-Agent-Token': TOKEN },
+                body: JSON.stringify({ recordCount: p.totalCount || 0 }),
+              }).catch(() => {});
+              setStatus('Luca: fatura Excel yüklendi (Fiş Kes kullanıcıda)');
+              await log('✅ Excel Luca\'ya yüklendi. Luca\'da satırları kontrol edip "Fiş Kes" ile fişi oluşturun (fiş bölme sizde).');
+            } catch (e) {
+              await log(`✗ INVOICE_POST hata: ${(e && e.message) || e}`);
+              await fetch(API + `/agent/luca/jobs/${job.id}/fail`, {
+                method: 'POST', headers: { 'Content-Type': 'application/json', 'X-Agent-Token': TOKEN },
+                body: JSON.stringify({ error: (e && e.message) || 'INVOICE_POST hata' }),
               }).catch(() => {});
             }
             continue;

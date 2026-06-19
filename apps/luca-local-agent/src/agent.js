@@ -1400,15 +1400,11 @@ async function processJob(job) {
   await pingAgentStatus(true, { activeJobId: jobId, activeJobType: tip });
 
   try {
-    // v1.38: INVOICE_POST ozel akis — Luca'ya yevmiye fisi yazar
-    // (fetch + upload pattern degil, post pattern). Scraper henuz hazir degil,
-    // belgeyi "Luca'da manuel girilmesi gerek" diye isaretler.
-    if (tip === 'INVOICE_POST') {
-      await postInvoiceVoucher(job);
-      log.info(`OK INVOICE_POST tamamlandi: jobId=${jobId.slice(0, 8)}`);
-      return;
-    }
-
+    // v2.3: INVOICE_POST artik RUNTIME'da islenir — agent-runtime.js Luca
+    // "Excel Fis Aktarim" ekranina dosyayi yukler (Muhasebe > Fis Islemleri >
+    // Excel Veri Aktarimi). Eski disk-placeholder postInvoiceVoucher artik
+    // cagrilmiyor; is normal runJobWithMorenRuntime yolundan runtime job
+    // loop'una duser ve oradaki INVOICE_POST handler calisir.
     await runJobWithMorenRuntime(job);
     classicFrameStuckStreak = 0; // saglikli is geldi → bayat-oturum sayacini sifirla
     loginFailStreak = 0; // saglikli is geldi → otomatik giris fail sayacini sifirla
