@@ -742,9 +742,9 @@ function InlineBelge({ id }: { id: string }) {
       </div>
       <div ref={wrapRef} className="bpview" style={{ overflow: zoom > 0 ? 'auto' : 'hidden' }}>
         {html
-          ? <iframe ref={frameRef} onLoad={onFrameLoad} className="bpframe-h" srcDoc={htmlDoc} title="Belge" sandbox="allow-same-origin" scrolling="no" style={{ transform: `scale(${scale})`, transformOrigin: 'top center' }} />
+          ? <iframe ref={frameRef} onLoad={onFrameLoad} className="bpframe-h" srcDoc={htmlDoc} title="Belge" sandbox="allow-same-origin" scrolling="no" style={{ zoom: scale } as any} />
           : isImg
-            ? <img className="bpimg" src={url} alt="Belge" style={{ transform: `scale(${scale})`, transformOrigin: 'top center' }} />
+            ? <img className="bpimg" src={url} alt="Belge" style={{ zoom: zoom > 0 ? zoom : 1 } as any} />
             : isPdf
               ? <iframe className="bppdf" src={url.includes('#') ? url : `${url}#view=FitH`} title="Belge" />
               : <div className="bpempty">Belge görüntüsü yok</div>}
