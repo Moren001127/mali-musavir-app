@@ -22,6 +22,7 @@ import { LucaAutoScraperService } from '../luca/luca-auto-scraper.service';
 import { AgentEventsService } from '../agent-events/agent-events.service';
 import { AutomationEventBus } from '../automations/automation-event-bus.service';
 import { computeCostUsd, logAiUsage } from '../common/ai-usage-logger';
+import { claudeTextViaMax, isMaxAvailable, MAX_MODEL_DEFAULT } from '../common/max-inference';
 import { NotificationsService } from '../notifications/notifications.service';
 import { NOTIFICATION_TYPES } from '../notifications/notification-types';
 import { randomUUID } from 'crypto';
@@ -2053,76 +2054,39 @@ export class KdvControlService implements OnApplicationBootstrap {
     // Faaliyet bir kez çözülür; moderasyon "satışta faaliyet bilinmiyorsa uyum
     // belirsizliğini bayraklama" kararını buradan verir.
     const profilFaaliyet = await this.resolveContentAuditFaaliyet(session, tenantId);
-    // AI içerik denetimi SADECE Gemini (ucuz) üzerinden — ücretli Anthropic API kullanılmaz.
-    const geminiKey = process.env.GEMINI_API_KEY;
+    // AI içerik denetimi SADECE Max aboneliğinden (claudeTextViaMax, saf metin) —
+    // ücretli API (Gemini/Anthropic token) KULLANILMAZ. Metin işi olduğu için hızlı.
     const disabled = String(process.env.KDV_CONTENT_AUDIT_AI_DISABLED || '').toLowerCase() === 'true';
-    if (!geminiKey || disabled) {
+    if (!isMaxAvailable() || disabled) {
       const moderatedFallback = this.moderateContentAuditDecision(fallback, image, session, profilFaaliyet);
       return { ...fallback, ...moderatedFallback };
     }
 
-    const model = process.env.KDV_CONTENT_AUDIT_MODEL || process.env.MIHSAP_GEMINI_MODEL || 'gemini-2.5-flash-lite';
+    const model = process.env.KDV_CONTENT_AUDIT_MODEL || MAX_MODEL_DEFAULT;
     try {
       const prompt = await this.buildContentAuditPrompt(image, session, tenantId);
-      const timeoutMs = Math.max(3000, Math.min(45000, Number(process.env.KDV_CONTENT_AUDIT_TIMEOUT_MS) || 15000));
-      const controller = new AbortController();
-      const timer = setTimeout(() => controller.abort(), timeoutMs);
+      const timeoutMs = Math.max(3000, Math.min(45000, Number(process.env.KDV_CONTENT_AUDIT_TIMEOUT_MS) || 20000));
       const system =
-        'Türk muhasebe KDV belge içerik uygunluğu için karar destek asistanısın. Nihai hukuki/mali karar vermezsin; gri alanları KONTROL_ET seviyesinde tutar, riskleri kısa, denetlenebilir ve JSON formatında yazarsın.';
-      const res = await fetch(
-        `https://generativelanguage.googleapis.com/v1beta/models/${encodeURIComponent(model)}:generateContent?key=${encodeURIComponent(geminiKey)}`,
-        {
-          method: 'POST',
-          signal: controller.signal,
-          headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({
-            systemInstruction: { parts: [{ text: system }] },
-            contents: [{ role: 'user', parts: [{ text: prompt }] }],
-            generationConfig: {
-              responseMimeType: 'application/json',
-              temperature: 0,
-              maxOutputTokens: 700,
-            },
-          }),
-        },
-      ).finally(() => clearTimeout(timer));
-
-      if (!res.ok) {
-        throw new Error(`Gemini ${res.status}: ${(await res.text().catch(() => '')).slice(0, 120)}`);
+        'Türk muhasebe KDV belge içerik uygunluğu için karar destek asistanısın. Nihai hukuki/mali karar vermezsin; gri alanları KONTROL_ET seviyesinde tutarsın. Her belge için KISA, AÇIK ve ANLAŞILIR bir Türkçe açıklama yaz: belge mükellefin faaliyetiyle uyumlu mu, KDV indirimi açısından dikkat edilmesi gereken bir şey var mı net belirt. SADECE geçerli JSON dön — açıklama/prolog YOK.';
+      const res = await claudeTextViaMax({ prompt, system, model, timeoutMs });
+      if (!res.ok || !res.text) {
+        throw new Error(res.error || 'Max içerik denetimi boş yanıt döndü');
       }
-      const payload: any = await res.json();
-      const raw = String(
-        payload?.candidates?.[0]?.content?.parts?.map((p: any) => p?.text || '').join('') || '',
-      ).trim();
-      const parsed = this.parseContentAuditJson(raw);
+      const parsed = this.parseContentAuditJson(res.text);
       const moderated = this.moderateContentAuditDecision(parsed, image, session, profilFaaliyet);
-      const usage = {
-        input_tokens: Number(payload?.usageMetadata?.promptTokenCount || 0),
-        output_tokens: Number(payload?.usageMetadata?.candidatesTokenCount || 0),
-        cache_read_input_tokens: 0,
-        cache_creation_input_tokens: 0,
-      };
-      const costUsd = computeCostUsd(model, {
-        input: usage.input_tokens,
-        output: usage.output_tokens,
-        cacheRead: usage.cache_read_input_tokens,
-        cacheWrite: usage.cache_creation_input_tokens,
-      });
       return {
         risk: moderated.risk,
         summary: moderated.summary,
         suggestion: moderated.suggestion,
         findings: moderated.findings,
         confidence: moderated.confidence,
-        model,
-        costUsd,
-        usage,
+        model: res.model || model,
+        costUsd: res.costUsd || 0,
+        usage: { input_tokens: 0, output_tokens: 0, cache_read_input_tokens: 0, cache_creation_input_tokens: 0 },
       };
     } catch (err: any) {
       const moderatedFallback = this.moderateContentAuditDecision(fallback, image, session, profilFaaliyet);
-      const providerMessage = err?.name === 'AbortError'
-        ? 'Gemini zaman asimina ugradi'
-        : String(err?.message || err);
+      const providerMessage = String(err?.message || err);
       const fallbackSummary = moderatedFallback.risk === 'UYGUN'
         ? 'Kural tabanli on denetimde belirgin icerik riski bulunmadi.'
         : moderatedFallback.summary;
