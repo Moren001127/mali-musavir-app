@@ -1899,17 +1899,8 @@ export class KdvControlService implements OnApplicationBootstrap {
     userId?: string,
     context?: ContentAuditQueueContext,
   ) {
-    // Toplu çağrı sayesinde toplam çağrı azaldı → eşzamanlılığı güvenle artırabiliriz
-    // (tavan 8). Asıl hızlanma: az sayıda batch'i paralel sürmek.
-    const concurrency = Math.max(1, Math.min(8, Number(process.env.KDV_CONTENT_AUDIT_CONCURRENCY) || 2));
-    // Her "iş", tek belge yerine bir BELGE GRUBUDUR (toplu Max çağrısı). Süreç başlatma
-    // maliyeti grup boyutuna bölünür → asıl hızlanma buradan gelir.
-    const batchSize = Math.max(1, Math.min(12, Number(process.env.KDV_CONTENT_AUDIT_BATCH) || 6));
-    const batches: string[][] = [];
-    for (let i = 0; i < imageIds.length; i += batchSize) {
-      batches.push(imageIds.slice(i, i + batchSize));
-    }
-    const queue = [...batches];
+    const concurrency = Math.max(1, Math.min(4, Number(process.env.KDV_CONTENT_AUDIT_CONCURRENCY) || 2));
+    const queue = [...imageIds];
     let done = 0;
     let risky = 0;
     const alertRows: Array<{
@@ -1921,29 +1912,27 @@ export class KdvControlService implements OnApplicationBootstrap {
 
     const worker = async () => {
       while (queue.length > 0) {
-        const batch = queue.shift();
-        if (!batch || batch.length === 0) return;
-        const updatedList = await this.runContentAuditBatch(batch, tenantId, userId).catch((err) => {
-          this.logger.error(`KDV content audit batch failed [${batch.join(',')}]: ${err?.message || err}`);
-          return [] as any[];
+        const imageId = queue.shift();
+        if (!imageId) return;
+        const updated = await this.runContentAuditForImage(imageId, tenantId, userId).catch((err) => {
+          this.logger.error(`KDV content audit failed [${imageId}]: ${err?.message || err}`);
+          return null;
         });
-        done += batch.length;
-        for (const updated of updatedList) {
-          const risk = (updated as any)?.contentAuditRisk;
-          if (risk === 'RISKLI' || risk === 'ISLENMEMELI') {
-            risky++;
-            alertRows.push({
-              imageId: (updated as any)?.id,
-              originalName: (updated as any)?.originalName,
-              risk,
-              summary: (updated as any)?.contentAuditSummary,
-            });
-          }
+        done++;
+        const risk = (updated as any)?.contentAuditRisk;
+        if (risk === 'RISKLI' || risk === 'ISLENMEMELI') {
+          risky++;
+          alertRows.push({
+            imageId,
+            originalName: (updated as any)?.originalName,
+            risk,
+            summary: (updated as any)?.contentAuditSummary,
+          });
         }
       }
     };
 
-    await Promise.all(Array.from({ length: Math.min(concurrency, batches.length) }, worker));
+    await Promise.all(Array.from({ length: Math.min(concurrency, imageIds.length) }, worker));
 
     if (alertRows.length > 0) {
       const notAllowedCount = alertRows.filter((row) => row.risk === 'ISLENMEMELI').length;
@@ -2060,112 +2049,6 @@ export class KdvControlService implements OnApplicationBootstrap {
     }
   }
 
-  /**
-   * Bir grup belgeyi TEK Max çağrısıyla denetler ve sonuçları DB'ye yazar.
-   * runContentAuditForImage'ın toplu eşi — N belge için tek alt-süreç açılır.
-   * Güncellenen ReceiptImage satırlarını döner (uyarı/alarm için).
-   */
-  private async runContentAuditBatch(imageIds: string[], tenantId: string, userId?: string): Promise<any[]> {
-    const images = await this.prisma.receiptImage.findMany({
-      where: { id: { in: imageIds }, session: { tenantId } },
-      include: {
-        session: {
-          include: {
-            taxpayer: {
-              select: {
-                id: true,
-                firstName: true,
-                lastName: true,
-                companyName: true,
-                taxNumber: true,
-                defterTuru: true,
-                mihsapDefterTuru: true,
-                naceKodu: true,
-                notes: true,
-              },
-            },
-          },
-        },
-      },
-    });
-    if (images.length === 0) return [];
-
-    // Normalde hepsi tek oturumdandır; yine de oturuma göre grupla (savunmacı).
-    const bySession = new Map<string, any[]>();
-    for (const img of images) {
-      const list = bySession.get(img.sessionId) || [];
-      list.push(img);
-      bySession.set(img.sessionId, list);
-    }
-
-    const updatedRows: any[] = [];
-    for (const group of bySession.values()) {
-      const session = group[0].session;
-      const startedAt = Date.now();
-      let decisions = new Map<string, ContentAuditDecision>();
-      try {
-        decisions = await this.buildContentAuditDecisionBatch(group, session, tenantId);
-      } catch (err: any) {
-        this.logger.error(`KDV içerik denetimi toplu karar hatası: ${err?.message || err}`);
-      }
-      const durationMs = Date.now() - startedAt;
-      for (const img of group) {
-        const decision = decisions.get(img.id);
-        if (!decision) {
-          const failed = await this.prisma.receiptImage.update({
-            where: { id: img.id },
-            data: {
-              contentAuditStatus: 'FAILED',
-              contentAuditRisk: 'KONTROL_ET',
-              contentAuditSummary: 'İçerik denetimi tamamlanamadı',
-              contentAuditSuggestion: 'Tekrar deneyin',
-              contentAuditFindings: [{ title: 'Sistem hatası', detail: 'Toplu denetimde sonuç üretilemedi', severity: 'KONTROL_ET' }] as any,
-              contentAuditConfidence: 0,
-              contentAuditModel: 'failed',
-              contentAuditCostUsd: 0,
-              contentAuditCheckedAt: new Date(),
-            } as any,
-          });
-          updatedRows.push(failed);
-          continue;
-        }
-        const updated = await this.prisma.receiptImage.update({
-          where: { id: img.id },
-          data: {
-            contentAuditStatus: 'DONE',
-            contentAuditRisk: decision.risk,
-            contentAuditSummary: decision.summary.slice(0, 1000),
-            contentAuditSuggestion: decision.suggestion.slice(0, 1000),
-            contentAuditFindings: decision.findings as any,
-            contentAuditConfidence: Math.max(0, Math.min(1, decision.confidence || 0)),
-            contentAuditModel: decision.model,
-            contentAuditCostUsd: decision.costUsd ?? 0,
-            contentAuditCheckedAt: new Date(),
-          } as any,
-        });
-        updatedRows.push(updated);
-
-        if (decision.usage) {
-          const tp = session.taxpayer;
-          const mukellef = this.formatMukellefAdi(session);
-          await logAiUsage(this.prisma, {
-            tenantId,
-            source: 'kdv-content-audit',
-            model: decision.model,
-            taxpayerId: session.taxpayerId || tp?.id || null,
-            mukellef,
-            belgeNo: (img as any).confirmedBelgeNo || img.ocrBelgeNo || null,
-            karar: decision.risk,
-            sebep: `session:${img.sessionId} (batch)`,
-            durationMs,
-            usage: decision.usage,
-          }).catch(() => undefined);
-        }
-      }
-    }
-    return updatedRows;
-  }
-
   private async buildContentAuditDecision(image: any, session: any, tenantId: string): Promise<ContentAuditDecision> {
     const fallback = await this.buildRuleBasedContentAudit(image, session, tenantId);
     // Faaliyet bir kez çözülür; moderasyon "satışta faaliyet bilinmiyorsa uyum
@@ -2242,145 +2125,6 @@ export class KdvControlService implements OnApplicationBootstrap {
           ...moderatedFallback.findings,
         ].slice(0, 6),
       };
-    }
-  }
-
-  /**
-   * Belge başına kural-tabanlı yedek ContentAuditDecision üretir. providerMessage
-   * verilirse "AI denendi ama olmadı" (rule-fallback) biçiminde; verilmezse AI hiç
-   * çalışmadı (rule-based) biçiminde döner. buildContentAuditDecision'daki yedek
-   * mantığının toplu yol için paylaşılan hâli.
-   */
-  private async buildContentAuditFallbackDecision(
-    image: any,
-    session: any,
-    tenantId: string,
-    profilFaaliyet: string | null,
-    providerMessage?: string,
-  ): Promise<ContentAuditDecision> {
-    const fallback = await this.buildRuleBasedContentAudit(image, session, tenantId);
-    const moderatedFallback = this.moderateContentAuditDecision(fallback, image, session, profilFaaliyet);
-    if (!providerMessage) {
-      return { ...fallback, ...moderatedFallback, model: 'rule-based', costUsd: 0 } as ContentAuditDecision;
-    }
-    const fallbackSummary = moderatedFallback.risk === 'UYGUN'
-      ? 'Kural tabanli on denetimde belirgin icerik riski bulunmadi.'
-      : moderatedFallback.summary;
-    const fallbackSuggestion = moderatedFallback.risk === 'UYGUN'
-      ? 'AI servisi kullanilamadigi icin sonuc kural tabanlidir; olagan disi belgeleri manuel gozden gecirin.'
-      : moderatedFallback.suggestion;
-    return {
-      ...fallback,
-      ...moderatedFallback,
-      summary: fallbackSummary,
-      suggestion: fallbackSuggestion,
-      model: 'rule-fallback',
-      confidence: Math.min(moderatedFallback.confidence, 0.55),
-      findings: [
-        {
-          title: 'AI servis uyarısı',
-          detail: `Kural tabanli on denetim kullanildi: ${providerMessage.slice(0, 180)}`,
-          severity: 'KONTROL_ET' as ContentAuditRisk,
-        },
-        ...moderatedFallback.findings,
-      ].slice(0, 6),
-    } as ContentAuditDecision;
-  }
-
-  /**
-   * TOPLU içerik denetimi: aynı oturumdaki N belgeyi TEK Max çağrısında değerlendirir.
-   * Her belgenin tek-belge promptu (buildContentAuditPrompt) numaralandırılıp birleştirilir;
-   * Max bir JSON DİZİSİ döner. Böylece N ayrı Max alt-süreci yerine 1 alt-süreç açılır —
-   * asıl yavaşlık olan "süreç başlatma" maliyeti N'e bölünür (yine SADECE Max, kalite aynı).
-   * Tüm çağrı başarısız olursa eksiksizlik için tek-belge yola düşülür.
-   * imageId → ContentAuditDecision haritası döner.
-   */
-  private async buildContentAuditDecisionBatch(
-    images: any[],
-    session: any,
-    tenantId: string,
-  ): Promise<Map<string, ContentAuditDecision>> {
-    const out = new Map<string, ContentAuditDecision>();
-    if (images.length === 0) return out;
-    if (images.length === 1) {
-      out.set(images[0].id, await this.buildContentAuditDecision(images[0], session, tenantId));
-      return out;
-    }
-
-    const profilFaaliyet = await this.resolveContentAuditFaaliyet(session, tenantId);
-    const disabled = String(process.env.KDV_CONTENT_AUDIT_AI_DISABLED || '').toLowerCase() === 'true';
-    if (!isMaxAvailable() || disabled) {
-      for (const img of images) {
-        out.set(img.id, await this.buildContentAuditFallbackDecision(img, session, tenantId, profilFaaliyet));
-      }
-      return out;
-    }
-
-    const model = process.env.KDV_CONTENT_AUDIT_MODEL || MAX_MODEL_DEFAULT;
-    try {
-      const blocks: string[] = [];
-      for (let i = 0; i < images.length; i++) {
-        const p = await this.buildContentAuditPrompt(images[i], session, tenantId);
-        blocks.push(`=== BELGE ${i + 1} ===\n${p}`);
-      }
-      const system =
-        'Türk muhasebe KDV belge içerik uygunluğu için karar destek asistanısın. Nihai hukuki/mali karar vermezsin; gri alanları KONTROL_ET seviyesinde tutarsın. Her belge için KISA, AÇIK ve ANLAŞILIR bir Türkçe açıklama yaz: belge mükellefin faaliyetiyle uyumlu mu, KDV indirimi açısından dikkat edilmesi gereken bir şey var mı net belirt. SADECE geçerli bir JSON DİZİSİ dön — prolog/açıklama YOK.';
-      const prompt = `Aşağıda AYNI mükellefe ait ${images.length} belge var; her biri kendi kuralları ve JSON şemasıyla ayrı blokta (=== BELGE n ===). HER belgeyi ayrı ayrı, kendi bloğundaki kurallara göre değerlendir.
-SADECE bir JSON DİZİSİ dön: [{"belge":1,"risk":"...","summary":"...","suggestion":"...","confidence":0.0,"findings":[...]}, ...].
-Dizi tam ${images.length} eleman içermeli; her elemanın "belge" alanı blok numarasıyla (1..${images.length}) eşleşmeli. Diziden başka hiçbir metin yazma.
-
-${blocks.join('\n\n')}`;
-
-      // Toplu çağrı daha uzun sürer (N belge tek yanıtta) → süre belge sayısıyla ölçeklenir.
-      const baseTimeout = Math.min(150000, 30000 + images.length * 6000);
-      const maxAttempts = Math.max(1, Math.min(3, Number(process.env.KDV_CONTENT_AUDIT_RETRY) || 2));
-      let res: Awaited<ReturnType<typeof claudeTextViaMax>> | null = null;
-      let lastErr = '';
-      for (let attempt = 1; attempt <= maxAttempts; attempt++) {
-        const timeoutMs = Math.min(180000, baseTimeout + (attempt - 1) * 15000);
-        const r = await claudeTextViaMax({ prompt, system, model, timeoutMs });
-        if (r.ok && r.text) {
-          res = r;
-          break;
-        }
-        lastErr = r.error || 'Max içerik denetimi boş yanıt döndü';
-        if (r.authExpired) break;
-      }
-      if (!res) throw new Error(lastErr || 'Max içerik denetimi boş yanıt döndü');
-
-      const arr = this.parseContentAuditJsonArray(res.text);
-      for (let i = 0; i < images.length; i++) {
-        const img = images[i];
-        const hit = arr.find((e) => e.belge === i + 1) || arr[i];
-        if (!hit) {
-          // AI bu belgeyi diziye koymadı → yalnız bu belge kural yedeğine düşer.
-          out.set(
-            img.id,
-            await this.buildContentAuditFallbackDecision(img, session, tenantId, profilFaaliyet, 'AI yanıtında bu belge yok'),
-          );
-          continue;
-        }
-        const moderated = this.moderateContentAuditDecision(hit.decision, img, session, profilFaaliyet);
-        out.set(img.id, {
-          risk: moderated.risk,
-          summary: moderated.summary,
-          suggestion: moderated.suggestion,
-          findings: moderated.findings,
-          confidence: moderated.confidence,
-          model: res.model || model,
-          costUsd: 0,
-          usage: { input_tokens: 0, output_tokens: 0, cache_read_input_tokens: 0, cache_creation_input_tokens: 0 },
-        });
-      }
-      return out;
-    } catch (err: any) {
-      // Toplu çağrı tümüyle başarısız (timeout/parse) → eksiksizlik için tek-belge yola düş
-      // (her birinin kendi retry'si var). Yalnız bu nadir durumda eski yavaş yol devreye girer.
-      this.logger.warn(`KDV içerik denetimi toplu çağrı başarısız (${images.length} belge), tek-belgeye düşülüyor: ${String(err?.message || err).slice(0, 160)}`);
-      for (const img of images) {
-        out.set(img.id, await this.buildContentAuditDecision(img, session, tenantId));
-      }
-      return out;
     }
   }
 
@@ -2797,42 +2541,21 @@ ${JSON.stringify(payload, null, 2)}`;
   private parseContentAuditJson(raw: string): Omit<ContentAuditDecision, 'model' | 'costUsd' | 'usage'> {
     const jsonMatch = raw.match(/\{[\s\S]*\}/);
     if (!jsonMatch) throw new Error('İçerik denetimi JSON dönmedi');
-    return this.normalizeContentAuditDecisionObject(JSON.parse(jsonMatch[0]));
-  }
-
-  /** Tek bir ayrıştırılmış JSON nesnesini güvenli ContentAuditDecision alanlarına çevirir. */
-  private normalizeContentAuditDecisionObject(parsed: any): Omit<ContentAuditDecision, 'model' | 'costUsd' | 'usage'> {
-    const findings = Array.isArray(parsed?.findings)
+    const parsed = JSON.parse(jsonMatch[0]);
+    const findings = Array.isArray(parsed.findings)
       ? parsed.findings.slice(0, 8).map((f: any) => ({
           title: String(f?.title || 'Bulgu').slice(0, 120),
           detail: String(f?.detail || '').slice(0, 500),
-          severity: this.normalizeContentAuditRisk(f?.severity || parsed?.risk),
+          severity: this.normalizeContentAuditRisk(f?.severity || parsed.risk),
         }))
       : [];
     return {
-      risk: this.normalizeContentAuditRisk(parsed?.risk),
-      summary: String(parsed?.summary || 'İçerik denetimi yorum üretti').slice(0, 1000),
-      suggestion: String(parsed?.suggestion || 'Mali müşavirinizin kontrolü önerilir').slice(0, 1000),
+      risk: this.normalizeContentAuditRisk(parsed.risk),
+      summary: String(parsed.summary || 'İçerik denetimi yorum üretti').slice(0, 1000),
+      suggestion: String(parsed.suggestion || 'Mali müşavirinizin kontrolü önerilir').slice(0, 1000),
       findings,
-      confidence: Math.max(0, Math.min(1, Number(parsed?.confidence || 0))),
+      confidence: Math.max(0, Math.min(1, Number(parsed.confidence || 0))),
     };
-  }
-
-  /**
-   * Toplu içerik denetimi yanıtını ([{belge, ...}, ...]) ayrıştırır. Her elemanı
-   * blok numarasıyla eşler; eksik/bozuk eleman çağıran tarafta kural yedeğine düşer.
-   */
-  private parseContentAuditJsonArray(
-    raw: string,
-  ): Array<{ belge: number; decision: Omit<ContentAuditDecision, 'model' | 'costUsd' | 'usage'> }> {
-    const arrMatch = raw.match(/\[[\s\S]*\]/);
-    if (!arrMatch) throw new Error('İçerik denetimi JSON dizisi dönmedi');
-    const arr = JSON.parse(arrMatch[0]);
-    if (!Array.isArray(arr)) throw new Error('İçerik denetimi dizi döndürmedi');
-    return arr.map((e: any, idx: number) => ({
-      belge: Number(e?.belge ?? e?.no ?? e?.index ?? idx + 1),
-      decision: this.normalizeContentAuditDecisionObject(e),
-    }));
   }
 
   private async findTaxpayerContentProfile(session: any, tenantId: string) {
