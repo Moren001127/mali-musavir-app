@@ -429,11 +429,22 @@ export class OcrService {
         const azureResult = await this.runAzureOcr(imageBuffer, belgeNoFromFilename, originalName);
         azureRawText = azureResult.rawText || '';
         const review = this.needsReview(azureResult);
-        // Z RAPORU: Azure bu belgede sık "KUM TOPKDV" (kümülatif) ya da %oran'ı tutar
+        // Z RAPORU: Azure bu belgede "KUM TOPKDV" (kümülatif) ya da %oran'ı tutar
         // sanma hatası yapar ve bunu YÜKSEK güvenle döner → teyit istemez, kaçar.
-        // Z raporunu güvenden BAĞIMSIZ Max-vision'a eskale et (env ile kapatılabilir).
+        // AMA her Z raporunu Max-vision'a yollamak yavaş (İşletme mükellefinde onlarca
+        // günlük rapor). Sadece ŞÜPHELİ okumalarda eskale et:
+        //   • KDV > 50.000 → kümülatif şüphesi
+        //   • KDV tam bir orana eşit ("10,00"/"20,00") → Azure oranı tutar sanmış
+        //   • KDV güveni düşük (<%70)
+        const zKdv = azureResult.kdvTutari ? this.parseAmount(azureResult.kdvTutari) : 0;
+        const zKdvConf = azureResult.fieldConfidence?.kdvTutari ?? 1;
+        const zRaporuSuspect =
+          zKdv > 50_000 ||
+          [1, 8, 10, 18, 20].includes(zKdv) ||
+          zKdvConf < 0.7;
         const escalateZRaporu =
           azureResult.belgeTipi === 'Z_RAPORU' &&
+          zRaporuSuspect &&
           this.maxVisionAllowed(forceClaude) &&
           !['0', 'false'].includes(String(process.env.KDV_OCR_ZRAPORU_MAX ?? '1').toLowerCase());
         if (!review.needs && !escalateZRaporu) {
