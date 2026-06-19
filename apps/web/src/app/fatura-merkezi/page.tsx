@@ -715,6 +715,11 @@ function InlineBelge({ id }: { id: string }) {
     /\.(jpe?g|jpe|jfif|png|gif|webp|bmp|tiff?|heic|heif|avif)(\?|#|$)/i.test(url)
   );
   const isPdf = !html && !isImg && !!url;
+  // e-faturanın kendi iç kaydırmasını/yükseklik kilidini kapat → içerik düz aksın,
+  // "ekran içinde ekran" (iç içe kaydırma) olmasın; gerçek yükseklik ölçülebilsin.
+  const htmlDoc = html
+    ? `<style>html,body{margin:0!important;padding:0!important;height:auto!important;min-height:0!important;max-height:none!important;overflow:visible!important}</style>${html}`
+    : '';
   const baseScale = html ? fit : 1;            // "Sığdır" temeli (html: hesaplanan fit, resim: contain=1)
   const scale = zoom > 0 ? zoom : baseScale;
   const canZoom = html || isImg;
@@ -735,9 +740,9 @@ function InlineBelge({ id }: { id: string }) {
           {url ? <a href={url} target="_blank" rel="noopener noreferrer" title="Yeni sekmede aç">↗</a> : null}
         </div>
       </div>
-      <div ref={wrapRef} className="bpview">
+      <div ref={wrapRef} className="bpview" style={{ overflow: zoom > 0 ? 'auto' : 'hidden' }}>
         {html
-          ? <iframe ref={frameRef} onLoad={onFrameLoad} className="bpframe-h" srcDoc={html} title="Belge" sandbox="allow-same-origin" style={{ transform: `scale(${scale})`, transformOrigin: 'top center' }} />
+          ? <iframe ref={frameRef} onLoad={onFrameLoad} className="bpframe-h" srcDoc={htmlDoc} title="Belge" sandbox="allow-same-origin" scrolling="no" style={{ transform: `scale(${scale})`, transformOrigin: 'top center' }} />
           : isImg
             ? <img className="bpimg" src={url} alt="Belge" style={{ transform: `scale(${scale})`, transformOrigin: 'top center' }} />
             : isPdf
