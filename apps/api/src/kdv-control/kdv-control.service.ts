@@ -2065,12 +2065,28 @@ export class KdvControlService implements OnApplicationBootstrap {
     const model = process.env.KDV_CONTENT_AUDIT_MODEL || MAX_MODEL_DEFAULT;
     try {
       const prompt = await this.buildContentAuditPrompt(image, session, tenantId);
-      const timeoutMs = Math.max(3000, Math.min(45000, Number(process.env.KDV_CONTENT_AUDIT_TIMEOUT_MS) || 20000));
+      // Her çağrı ayrı Agent SDK subprocess'i açar; soğuk başlatma yük altında
+      // (toplu denetim, eşzamanlı OCR) 20sn'yi aşıp timeout'a düşüyordu → belgelerin
+      // çoğu kural-fallback'e kalıyordu. Cömert süre + bir kez yeniden deneme ile
+      // (yine SADECE Max) yavaş subprocess'ler de tamamlanır.
+      const baseTimeout = Math.max(8000, Math.min(45000, Number(process.env.KDV_CONTENT_AUDIT_TIMEOUT_MS) || 38000));
+      const maxAttempts = Math.max(1, Math.min(3, Number(process.env.KDV_CONTENT_AUDIT_RETRY) || 2));
       const system =
         'Türk muhasebe KDV belge içerik uygunluğu için karar destek asistanısın. Nihai hukuki/mali karar vermezsin; gri alanları KONTROL_ET seviyesinde tutarsın. Her belge için KISA, AÇIK ve ANLAŞILIR bir Türkçe açıklama yaz: belge mükellefin faaliyetiyle uyumlu mu, KDV indirimi açısından dikkat edilmesi gereken bir şey var mı net belirt. SADECE geçerli JSON dön — açıklama/prolog YOK.';
-      const res = await claudeTextViaMax({ prompt, system, model, timeoutMs });
-      if (!res.ok || !res.text) {
-        throw new Error(res.error || 'Max içerik denetimi boş yanıt döndü');
+      let res: Awaited<ReturnType<typeof claudeTextViaMax>> | null = null;
+      let lastErr = '';
+      for (let attempt = 1; attempt <= maxAttempts; attempt++) {
+        const timeoutMs = Math.min(45000, baseTimeout + (attempt - 1) * 5000);
+        const r = await claudeTextViaMax({ prompt, system, model, timeoutMs });
+        if (r.ok && r.text) {
+          res = r;
+          break;
+        }
+        lastErr = r.error || 'Max içerik denetimi boş yanıt döndü';
+        if (r.authExpired) break; // token sorunu → tekrar denemek anlamsız
+      }
+      if (!res) {
+        throw new Error(lastErr || 'Max içerik denetimi boş yanıt döndü');
       }
       const parsed = this.parseContentAuditJson(res.text);
       const moderated = this.moderateContentAuditDecision(parsed, image, session, profilFaaliyet);
