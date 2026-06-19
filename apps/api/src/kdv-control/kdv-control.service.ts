@@ -190,6 +190,8 @@ const OCR_KATEGORI_ETIKET: Record<string, string> = {
 @Injectable()
 export class KdvControlService implements OnApplicationBootstrap {
   private readonly logger = new Logger(KdvControlService.name);
+  /** İçerik denetimi kuyruğu MUTEX'i — aynı anda tek kuyruk çalışsın (çakışma=timeout). */
+  private contentAuditChain: Promise<void> = Promise.resolve();
 
   constructor(
     private prisma: PrismaService,
@@ -223,13 +225,23 @@ export class KdvControlService implements OnApplicationBootstrap {
    */
   private async recoverOrphanedContentAudits() {
     try {
+      // Mutex sayesinde kurtarma artık kullanıcı kuyruğuyla ÇAKIŞMAZ → fallback'leri de
+      // güvenle toparlar. Son 7 günün aktif oturumlarında HEM öksüz PROCESSING HEM
+      // timeout'tan kural-yedeğine (rule-fallback/failed) düşmüş belgeler yeniden işlenir.
+      const recentSince = new Date(Date.now() - 7 * 24 * 60 * 60 * 1000);
       const orphans = await this.prisma.receiptImage.findMany({
-        where: { contentAuditStatus: 'PROCESSING' },
+        where: {
+          session: { updatedAt: { gte: recentSince } },
+          OR: [
+            { contentAuditStatus: 'PROCESSING' },
+            { contentAuditModel: { in: ['rule-fallback', 'failed'] } },
+          ],
+        },
         select: { id: true, sessionId: true, session: { select: { tenantId: true } } },
         take: 500,
       });
       if (orphans.length === 0) {
-        this.logger.log('[contentAuditRecover] Öksüz PROCESSING içerik denetimi yok.');
+        this.logger.log('[contentAuditRecover] Toparlanacak içerik denetimi yok.');
         return;
       }
       const bySession = new Map<string, { tenantId: string; ids: string[] }>();
@@ -1937,7 +1949,31 @@ export class KdvControlService implements OnApplicationBootstrap {
     };
   }
 
+  /**
+   * İçerik denetimi kuyruğu — AYNI ANDA TEK çalışır (mutex). İki kuyruk (kullanıcı
+   * tetiklemesi + açılış-kurtarma) çakışınca eşzamanlı Max çağrısı concurrency
+   * sınırını (2) aşıp timeout/fallback üretiyordu. Kuyrukları zincire dizip seri
+   * çalıştırırız → asla 2'den fazla eşzamanlı Max çağrısı olmaz → contention yok.
+   */
   private async processContentAuditQueue(
+    imageIds: string[],
+    tenantId: string,
+    userId?: string,
+    context?: ContentAuditQueueContext,
+  ) {
+    if (imageIds.length === 0) return;
+    const prev = this.contentAuditChain;
+    let release!: () => void;
+    this.contentAuditChain = new Promise<void>((r) => { release = r; });
+    await prev.catch(() => undefined);
+    try {
+      await this.runContentAuditQueueInner(imageIds, tenantId, userId, context);
+    } finally {
+      release();
+    }
+  }
+
+  private async runContentAuditQueueInner(
     imageIds: string[],
     tenantId: string,
     userId?: string,
