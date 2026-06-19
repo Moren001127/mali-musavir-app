@@ -1939,6 +1939,42 @@ export class KdvControlService implements OnApplicationBootstrap {
 
     await Promise.all(Array.from({ length: Math.min(concurrency, imageIds.length) }, worker));
 
+    // ─── OTOMATİK STRAGGLER KURTARMA ───
+    // Ana geçişte eşzamanlılık yükü altında timeout'a düşüp kural-yedeğine
+    // (rule-fallback/failed) kalan belgeleri SAKIN (tek tek, çekişmesiz) yeniden
+    // dener → AI'a geçerler, KULLANICI TIKLAMAK ZORUNDA KALMAZ. Hiç iyileşme
+    // olmayan turda durur (Max gerçekten yoksa boşuna deneme yok).
+    const maxAutoRetry = Math.max(0, Math.min(3, Number(process.env.KDV_CONTENT_AUDIT_AUTO_RETRY ?? 2)));
+    for (let round = 1; round <= maxAutoRetry; round++) {
+      const stragglers = await this.prisma.receiptImage.findMany({
+        where: { id: { in: imageIds }, contentAuditModel: { in: ['rule-fallback', 'failed'] } },
+        select: { id: true },
+      });
+      if (stragglers.length === 0) break;
+      this.logger.warn(
+        `KDV içerik denetimi oto-kurtarma ${round}/${maxAutoRetry}: ${stragglers.length} takılan belge sakin (tek tek) yeniden deneniyor`,
+      );
+      let recovered = 0;
+      for (const s of stragglers) {
+        const updated = await this.runContentAuditForImage(s.id, tenantId, userId).catch(() => null);
+        const model = (updated as any)?.contentAuditModel;
+        if (model && !['rule-fallback', 'failed'].includes(model)) {
+          recovered++;
+          const risk = (updated as any)?.contentAuditRisk;
+          if (risk === 'RISKLI' || risk === 'ISLENMEMELI') {
+            alertRows.push({
+              imageId: s.id,
+              originalName: (updated as any)?.originalName,
+              risk,
+              summary: (updated as any)?.contentAuditSummary,
+            });
+          }
+        }
+      }
+      this.logger.log(`KDV içerik denetimi oto-kurtarma ${round}: ${recovered}/${stragglers.length} belge AI'a alındı`);
+      if (recovered === 0) break; // iyileşme yok → Max muhtemelen erişilemiyor, daha fazla deneme boşa
+    }
+
     if (alertRows.length > 0) {
       const notAllowedCount = alertRows.filter((row) => row.risk === 'ISLENMEMELI').length;
       const riskyCount = alertRows.length - notAllowedCount;
