@@ -218,13 +218,22 @@ export class KdvControlService implements OnApplicationBootstrap {
   /**
    * İçerik denetimi kuyruğu BELLEKTE (void fire-forget) çalışır; deploy/restart
    * sırasında ölürse belgeler PROCESSING'de ÖKSÜZ kalır (kullanıcı "yapmıyor" görür).
-   * Açılışta TÜM PROCESSING belgeler öksüzdür (kuyruğu kuran süreç öldü) — bunları
-   * bulup oturum oturum YENİDEN işler; kullanıcı tıklamadan kendiliğinden tamamlanır.
+   * Açılışta, son 7 günün aktif oturumlarında HEM öksüz PROCESSING HEM de timeout'tan
+   * kural-yedeğine (rule-fallback/failed) düşmüş belgeleri bulup YENİDEN işler →
+   * kullanıcı tıklamadan kendiliğinden AI'a yakınsar (her restart ilerletir, self-healing).
+   * (rule-based = AI bilerek kapalı → dokunulmaz.)
    */
   private async recoverOrphanedContentAudits() {
     try {
+      const recentSince = new Date(Date.now() - 7 * 24 * 60 * 60 * 1000);
       const orphans = await this.prisma.receiptImage.findMany({
-        where: { contentAuditStatus: 'PROCESSING' },
+        where: {
+          session: { updatedAt: { gte: recentSince } },
+          OR: [
+            { contentAuditStatus: 'PROCESSING' },
+            { contentAuditModel: { in: ['rule-fallback', 'failed'] } },
+          ],
+        },
         select: { id: true, sessionId: true, session: { select: { tenantId: true } } },
         take: 500,
       });
