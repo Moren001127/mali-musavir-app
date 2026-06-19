@@ -719,7 +719,7 @@ function InlineBelge({ id }: { id: string }) {
       {html
         ? <iframe className="bpframe" srcDoc={html} title="Belge" sandbox="allow-same-origin" />
         : isImg
-          ? <div className="bpimgwrap"><img className="bpimg" src={url} alt="Belge" style={{ width: `${zoom * 100}%`, maxWidth: zoom > 1 ? 'none' : '100%' }} /></div>
+          ? <div className="bpimgwrap"><img className="bpimg" src={url} alt="Belge" style={{ transform: `scale(${zoom})`, transformOrigin: 'top center' }} /></div>
           : url
             ? <iframe className="bpframe" src={url} title="Belge" />
             : <div className="bpempty">Belge görüntüsü yok</div>}
@@ -872,7 +872,7 @@ function ScreenMuhasebe({ taxpayerId, period, isIsletme = false }: { taxpayerId:
         <div className="wmain">
             {selDoc ? (
               <>
-                <div className="banner info"><Ico html={I.info} size={16} /><span>Bilanço usulü mükellefte <b>muhasebe fişi</b> kesilir. İşletme defteri mükellefte bu ekran <b>Gelir-Gider girişi</b>ne döner (KDV/gider, hesap kodu yok).</span></div>
+                <div className="fihint"><Ico html={I.info} size={13} /><span>{isIsletme ? <><b>İşletme defteri:</b> Gelir-Gider girişi (KDV/gider, hesap kodu yok).</> : <><b>Bilanço:</b> muhasebe fişi kesilir.</>}</span></div>
                 <div className="fiseditor">
                 <div className="belgepane"><InlineBelge id={selDoc.id} /></div>
                 <div className="fispane">
@@ -1588,8 +1588,10 @@ const CSS = `
 #fm-root .wchip b{font-size:12.5px;font-weight:700;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;max-width:206px}
 #fm-root .wchip small{font-size:11px;color:var(--muted)}
 #fm-root .fiseditor{display:flex;gap:18px;align-items:flex-start}
-#fm-root .belgepane{flex:0 0 46%;max-width:46%;position:sticky;top:12px}
+#fm-root .belgepane{flex:0 0 55%;max-width:55%;position:sticky;top:12px}
 #fm-root .fispane{flex:1;min-width:0}
+#fm-root .fihint{display:flex;align-items:center;gap:7px;font-size:11.5px;color:var(--muted);padding:4px 2px 10px}
+#fm-root .fihint b{color:var(--text)}
 #fm-root .belgebox{border:1px solid var(--line);border-radius:10px;overflow:hidden;background:#fff;display:flex;flex-direction:column}
 #fm-root .belgebox .bpbar{display:flex;align-items:center;justify-content:space-between;padding:7px 11px;border-bottom:1px solid var(--line);background:#fbfcfd;font-size:11px;font-weight:700;color:var(--muted);text-transform:uppercase;letter-spacing:.4px}
 #fm-root .belgebox .bpbar a{color:var(--accent);text-decoration:none;font-weight:700;text-transform:none;letter-spacing:0}
@@ -1598,9 +1600,9 @@ const CSS = `
 #fm-root .belgebox .bpzoom button:last-of-type{width:auto;padding:0 9px;font-size:11px}
 #fm-root .belgebox .bpzoom button:hover{border-color:var(--accent);color:var(--accent)}
 #fm-root .belgebox .bpzoom .bpz{font-size:11px;font-weight:700;color:var(--muted);min-width:38px;text-align:center}
-#fm-root .belgebox .bpframe{width:100%;height:660px;border:0;background:#fff}
-#fm-root .belgebox .bpimgwrap{height:660px;display:flex;align-items:flex-start;justify-content:center;overflow:auto;background:#f1f3f7}
-#fm-root .belgebox .bpimg{display:block;height:auto}
+#fm-root .belgebox .bpframe{width:100%;height:76vh;min-height:560px;border:0;background:#fff}
+#fm-root .belgebox .bpimgwrap{height:76vh;min-height:560px;display:flex;align-items:flex-start;justify-content:center;overflow:auto;background:#f1f3f7;padding:8px}
+#fm-root .belgebox .bpimg{display:block;max-width:100%;max-height:100%;object-fit:contain;transition:transform .12s ease}
 #fm-root .belgebox .bpempty{height:200px;display:flex;align-items:center;justify-content:center;color:var(--faint);font-size:12px}
 @media(max-width:1100px){#fm-root .fiseditor{flex-direction:column}#fm-root .belgepane{flex:none;max-width:100%;width:100%;position:static}}
 #fm-root .ph .mu{margin-left:auto;font-weight:500}
