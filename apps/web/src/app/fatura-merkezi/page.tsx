@@ -728,7 +728,7 @@ function InlineBelge({ id }: { id: string }) {
         : isImg
           ? <div className="bpimgwrap"><img className="bpimg" src={url} alt="Belge" style={{ transform: `scale(${zoom})`, transformOrigin: 'top center' }} /></div>
           : url
-            ? <iframe className="bpframe" src={url} title="Belge" />
+            ? <iframe className="bpframe" src={url.includes('#') ? url : `${url}#view=FitH&toolbar=1`} title="Belge" />
             : <div className="bpempty">Belge görüntüsü yok</div>}
     </div>
   );
@@ -1517,9 +1517,9 @@ const CSS = `
 #fm-root .tsw{height:18px;width:18px;border-radius:50%;cursor:pointer;border:2px solid #fff;outline:1px solid var(--line2)}
 #fm-root .tsw:hover{transform:scale(1.12)}
 #fm-root .tsw.on{outline:2px solid var(--text)}
-#fm-root .content{padding:20px 22px;flex:1}
-#fm-root .h2{font-size:19px;font-weight:700;margin-bottom:3px}
-#fm-root .sub{font-size:12.5px;color:var(--muted);margin-bottom:16px}
+#fm-root .content{padding:12px 22px;flex:1}
+#fm-root .h2{font-size:16px;font-weight:700;margin-bottom:1px}
+#fm-root .sub{font-size:12px;color:var(--muted);margin-bottom:9px}
 #fm-root .ph-empty{padding:10px 0}
 #fm-root .btn{display:inline-flex;align-items:center;gap:7px;border-radius:9px;padding:9px 14px;font-size:12.5px;font-weight:600;border:1px solid var(--line2);background:#fff;color:var(--text);cursor:pointer}
 #fm-root .btn:hover{border-color:var(--accent)}
