@@ -682,6 +682,13 @@ function ScreenKurallar({ taxpayerId, period }: { taxpayerId: string; period: st
 function InlineBelge({ id }: { id: string }) {
   const [d, setD] = useState<any | null>(null);
   const [zoom, setZoom] = useState(1);
+  const frameRef = useRef<HTMLIFrameElement | null>(null);
+  const fitFrame = () => {
+    try {
+      const b = frameRef.current?.contentDocument?.body;
+      if (b) frameRef.current!.style.height = Math.min(b.scrollHeight + 28, 5000) + 'px';
+    } catch { /* cross-origin — sabit yükseklik kalır */ }
+  };
   useEffect(() => {
     let alive = true;
     setD(null);
@@ -717,7 +724,7 @@ function InlineBelge({ id }: { id: string }) {
         </div>
       </div>
       {html
-        ? <iframe className="bpframe" srcDoc={html} title="Belge" sandbox="allow-same-origin" />
+        ? <iframe ref={frameRef} onLoad={fitFrame} className="bpframe bpframe-html" srcDoc={html} title="Belge" sandbox="allow-same-origin" />
         : isImg
           ? <div className="bpimgwrap"><img className="bpimg" src={url} alt="Belge" style={{ transform: `scale(${zoom})`, transformOrigin: 'top center' }} /></div>
           : url
@@ -911,20 +918,30 @@ function ScreenMuhasebe({ taxpayerId, period, isIsletme = false }: { taxpayerId:
                       </tbody>
                     </table>
                   ) : (
-                    <table>
-                      <thead><tr><th>Hesap</th><th>Açıklama</th><th className="num">Borç</th><th className="num">Alacak</th></tr></thead>
-                      <tbody>
-                        {lines.map((l: any, i: number) => (
-                          <tr key={i}>
-                            <td><input className="li licode" value={l.accountCode || ''} placeholder="hesap kodu" onChange={(e) => setLine(i, 'accountCode', e.target.value)} /></td>
-                            <td>{l.description || l.group}</td>
-                            <td className="num"><input className="li linum" type="number" step="0.01" value={l.debit || ''} placeholder="0,00" onChange={(e) => setLine(i, 'debit', e.target.value === '' ? 0 : Number(e.target.value))} /></td>
-                            <td className="num"><input className="li linum" type="number" step="0.01" value={l.credit || ''} placeholder="0,00" onChange={(e) => setLine(i, 'credit', e.target.value === '' ? 0 : Number(e.target.value))} /></td>
-                          </tr>
-                        ))}
-                        {lines.length === 0 && <tr><td colSpan={4}><div className="empty">Bu belgede fiş satırı yok.</div></td></tr>}
-                      </tbody>
-                    </table>
+                    <div className="fgrps">
+                      {([
+                        { key: 'matrah', label: 'Matrah', side: 'debit' as const },
+                        { key: 'vergi', label: 'KDV (İndirilecek/Hesaplanan)', side: 'debit' as const },
+                        { key: 'cari', label: 'Cari Hesap', side: 'credit' as const },
+                      ]).map((g) => {
+                        const rows = lineDraft.map((l: any, i: number) => ({ l, i })).filter(({ l }) => (l.group || 'matrah') === g.key);
+                        const tot = rows.reduce((s, { l }) => s + (Number(g.side === 'debit' ? l.debit : l.credit) || 0), 0);
+                        return (
+                          <div key={g.key} className="fgrp">
+                            <div className="fgh"><span>{g.label}</span><span className="fgs">{g.side === 'debit' ? 'Borç' : 'Alacak'}</span></div>
+                            {rows.map(({ l, i }) => (
+                              <div key={i} className="frow">
+                                <input className="li licode" value={l.accountCode || ''} placeholder="hesap kodu" onChange={(e) => setLine(i, 'accountCode', e.target.value)} />
+                                <span className="fdesc">{l.description || (l.rate ? `KDV ${l.rate}` : g.label)}</span>
+                                <input className="li linum" type="number" step="0.01" value={(g.side === 'debit' ? l.debit : l.credit) || ''} placeholder="0,00" onChange={(e) => setLine(i, g.side, e.target.value === '' ? 0 : Number(e.target.value))} />
+                              </div>
+                            ))}
+                            {rows.length === 0 && <div className="frow"><span className="fdesc" style={{ color: 'var(--faint)' }}>—</span></div>}
+                            <div className="fgt"><span>Toplam</span><b>{fmtMoney(tot)} ₺</b></div>
+                          </div>
+                        );
+                      })}
+                    </div>
                   )}
                 </div>
                 {isIsletme ? (
@@ -1579,6 +1596,16 @@ const CSS = `
 #fm-root .li:focus{outline:none;border-color:var(--accent)}
 #fm-root .licode{width:120px}
 #fm-root .linum{width:120px;text-align:right}
+#fm-root .fgrps{display:flex;flex-direction:column;gap:12px}
+#fm-root .fgrp{border:1px solid var(--line2);border-radius:10px;overflow:hidden}
+#fm-root .fgrp .fgh{display:flex;justify-content:space-between;align-items:center;padding:8px 12px;background:var(--th);color:var(--th-text);font-size:12.5px;font-weight:700}
+#fm-root .fgrp .fgh .fgs{font-size:10px;opacity:.85;text-transform:uppercase;letter-spacing:.4px}
+#fm-root .fgrp .frow{display:flex;align-items:center;gap:10px;padding:7px 12px;border-top:1px solid var(--line)}
+#fm-root .fgrp .frow .fdesc{flex:1;min-width:0;font-size:12.5px;color:var(--muted);white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+#fm-root .fgrp .frow .licode{flex:0 0 130px;width:auto}
+#fm-root .fgrp .frow .linum{flex:0 0 130px;width:auto}
+#fm-root .fgrp .fgt{display:flex;justify-content:space-between;padding:7px 12px;border-top:1px solid var(--line2);background:#fbfcfd;font-size:12.5px}
+#fm-root .fgrp .fgt b{font-weight:800}
 #fm-root .wmain{padding:18px}
 #fm-root .wstrip{display:flex;gap:9px;overflow-x:auto;padding:11px 16px;border-top:1px solid var(--line);background:#fbfcfd}
 #fm-root .wchip{flex:0 0 auto;max-width:230px;padding:8px 12px;border:1px solid var(--line2);border-radius:9px;background:#fff;cursor:pointer;display:flex;flex-direction:column;gap:2px}
