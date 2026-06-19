@@ -2115,6 +2115,7 @@ export class FaturaMuhasebelestirmeService {
           id: true,
           taxpayerId: true,
           documentType: true,
+          invoiceKind: true,
           duplicateOfId: true,
           duplicateReason: true,
           duplicateSeverity: true,
@@ -2123,6 +2124,8 @@ export class FaturaMuhasebelestirmeService {
         },
       });
       if (!existing) return;
+      const invoiceKind = String(existing.invoiceKind || 'ALIS').toUpperCase() === 'SATIS' ? 'SATIS' : 'ALIS';
+      const isSale = invoiceKind === 'SATIS';
 
       const imageHash = ocrResult.imageHash || existing.imageHash || this.ocr.computeImageHash(buffer);
       const duplicate = await this.findDuplicate(tenantId, {
@@ -2136,7 +2139,7 @@ export class FaturaMuhasebelestirmeService {
       const duplicateOfId = duplicate?.duplicateOfId || existing.duplicateOfId || null;
       const ocrStatus = ocrResult.confidence >= 0.7 ? 'SUCCESS' : 'NEEDS_REVIEW';
       const status = duplicateOfId ? 'NEEDS_REVIEW' : ocrStatus === 'SUCCESS' ? 'READY' : 'NEEDS_REVIEW';
-      const lines = this.linesFromOcr(ocrResult);
+      const lines = this.linesFromOcr(ocrResult, invoiceKind);
 
       await (this.prisma as any).$transaction(async (tx: any) => {
         await tx.invoiceAccountingLine.deleteMany({ where: { documentId } });
@@ -2159,8 +2162,10 @@ export class FaturaMuhasebelestirmeService {
             imageHash,
             belgeNo: ocrResult.belgeNo || null,
             faturaTarihi: parseDate(ocrResult.date || null) || existing.faturaTarihi || null,
-            sellerVkn: ocrResult.saticiVkn || null,
-            vendorName: ocrResult.satici || null,
+            // v2.3: SATIS belgesinde OCR'in okudugu taraf bizim mukellef olur —
+            // satici alanlarina yazip mukellefi "satici" gibi gostermeyelim.
+            sellerVkn: isSale ? null : (ocrResult.saticiVkn || null),
+            vendorName: isSale ? null : (ocrResult.satici || null),
             totalAmount: money(ocrResult.totalTutari),
             ocrStatus,
             ocrEngine: ocrResult.engine || null,
@@ -3235,74 +3240,95 @@ export class FaturaMuhasebelestirmeService {
       throw new Error(`Bu mukellef icin Luca'ya aktarilabilir belge bulunamadi${extra}`);
     }
 
-    // Tek job icin period etiketi: en cok rastlanan ay
-    const periodCounts: Record<string, number> = {};
-    for (const d of docs) {
-      const dt = d.faturaTarihi ? new Date(d.faturaTarihi) : new Date();
-      const key = `${dt.getFullYear()}-${String(dt.getMonth() + 1).padStart(2, '0')}`;
-      periodCounts[key] = (periodCounts[key] || 0) + 1;
-    }
-    const dominantPeriod = Object.entries(periodCounts).sort((a, b) => b[1] - a[1])[0][0];
+    // v2.3: Kullanici talebi — ALIS ve SATIS faturalari AYRI dosya/fis olarak
+    // aktarilir (her biri tek fis; kullanici Luca'da "fis bol" yapar).
+    // Bu yuzden belgeleri yone gore gruplayip her grup icin ayri INVOICE_POST job uretiyoruz.
+    const toInvoicePayload = (d: any) => ({
+      documentId: d.id,
+      documentType: d.documentType,
+      invoiceKind: d.invoiceKind,
+      belgeNo: d.belgeNo,
+      seriNo: d.seriNo,
+      faturaTarihi: d.faturaTarihi ? d.faturaTarihi.toISOString() : null,
+      sellerVkn: d.sellerVkn,
+      buyerVkn: d.buyerVkn,
+      vendorName: d.vendorName,
+      customerName: d.customerName,
+      totalAmount: d.totalAmount ? String(d.totalAmount) : null,
+      currency: d.currency || 'TL',
+      lines: (d.lines || []).map((line: any) => ({
+        group: line.group,
+        accountCode: line.accountCode,
+        description: line.description,
+        rate: line.rate,
+        debit: line.debit ? String(line.debit) : '0',
+        credit: line.credit ? String(line.credit) : '0',
+        orderNo: line.orderNo,
+      })),
+    });
 
-    // Tek INVOICE_POST job — payload.invoices butun listesi
-    const job = await (this.prisma as any).lucaFetchJob.create({
-      data: {
-        tenantId,
-        mukellefId: body.taxpayerId,
-        donem: dominantPeriod,
-        tip: 'INVOICE_POST',
-        status: 'pending',
-        priority: 5,
-        createdBy: userId || null,
-        invoiceDocumentId: null, // batch — tek belgeye bagli degil
-        payload: {
-          mode: 'BATCH_EXCEL',
-          taxpayerId: body.taxpayerId,
-          defterTuru,
-          period: dominantPeriod,
-          totalCount: docs.length,
-          invoices: docs.map((d: any) => ({
-            documentId: d.id,
-            documentType: d.documentType,
-            invoiceKind: d.invoiceKind,
-            belgeNo: d.belgeNo,
-            seriNo: d.seriNo,
-            faturaTarihi: d.faturaTarihi ? d.faturaTarihi.toISOString() : null,
-            sellerVkn: d.sellerVkn,
-            buyerVkn: d.buyerVkn,
-            vendorName: d.vendorName,
-            customerName: d.customerName,
-            totalAmount: d.totalAmount ? String(d.totalAmount) : null,
-            currency: d.currency || 'TL',
-            lines: (d.lines || []).map((line: any) => ({
-              group: line.group,
-              accountCode: line.accountCode,
-              description: line.description,
-              rate: line.rate,
-              debit: line.debit ? String(line.debit) : '0',
-              credit: line.credit ? String(line.credit) : '0',
-              orderNo: line.orderNo,
-            })),
-          })),
+    const groups: Array<{ kind: 'ALIS' | 'SATIS'; docs: any[] }> = [];
+    const alisDocs = docs.filter((d: any) => String(d.invoiceKind || 'ALIS').toUpperCase() !== 'SATIS');
+    const satisDocs = docs.filter((d: any) => String(d.invoiceKind || 'ALIS').toUpperCase() === 'SATIS');
+    if (alisDocs.length) groups.push({ kind: 'ALIS', docs: alisDocs });
+    if (satisDocs.length) groups.push({ kind: 'SATIS', docs: satisDocs });
+
+    const jobs: Array<{ jobId: string; kind: string; period: string; documentCount: number }> = [];
+    for (const g of groups) {
+      // Grubun en cok rastlanan ayi → fis tarihi/donem etiketi
+      const periodCounts: Record<string, number> = {};
+      for (const d of g.docs) {
+        const dt = d.faturaTarihi ? new Date(d.faturaTarihi) : new Date();
+        const key = `${dt.getFullYear()}-${String(dt.getMonth() + 1).padStart(2, '0')}`;
+        periodCounts[key] = (periodCounts[key] || 0) + 1;
+      }
+      const dominantPeriod = Object.entries(periodCounts).sort((a, b) => b[1] - a[1])[0][0];
+      const kindLabel = g.kind === 'SATIS' ? 'SATIŞ' : 'ALIŞ';
+
+      const job = await (this.prisma as any).lucaFetchJob.create({
+        data: {
+          tenantId,
+          mukellefId: body.taxpayerId,
+          donem: dominantPeriod,
+          tip: 'INVOICE_POST',
+          status: 'pending',
+          priority: 5,
+          createdBy: userId || null,
+          invoiceDocumentId: null, // batch — tek belgeye bagli degil (belgeler lucaJobId ile bagli)
+          payload: {
+            mode: 'BATCH_EXCEL',
+            // v2.3: ISLETME → Hızlı Fiş Aktarım CSV (cp1254), BILANCO → 14 sütun fiş xlsx
+            format: String(defterTuru).toUpperCase().includes('ISLETME') ? 'ISLETME_CSV' : 'BATCH_EXCEL',
+            taxpayerId: body.taxpayerId,
+            defterTuru,
+            direction: g.kind,
+            period: dominantPeriod,
+            totalCount: g.docs.length,
+            fisAciklama: `${kindLabel} faturaları — ${dominantPeriod} (${g.docs.length} belge)`,
+            invoices: g.docs.map(toInvoicePayload),
+          },
         },
-      },
-    });
+      });
 
-    // Tum belgeleri POSTING durumuna al + job id'yi yaz
-    await (this.prisma as any).invoiceAccountingDocument.updateMany({
-      where: { id: { in: docs.map((d: any) => d.id) } },
-      data: {
-        lucaStatus: 'POSTING',
-        lucaJobId: job.id,
-        lucaErrorMessage: null,
-        lucaAttemptCount: { increment: 1 },
-      },
-    });
+      await (this.prisma as any).invoiceAccountingDocument.updateMany({
+        where: { id: { in: g.docs.map((d: any) => d.id) } },
+        data: {
+          lucaStatus: 'POSTING',
+          lucaJobId: job.id,
+          lucaErrorMessage: null,
+          lucaAttemptCount: { increment: 1 },
+        },
+      });
+
+      jobs.push({ jobId: job.id, kind: g.kind, period: dominantPeriod, documentCount: g.docs.length });
+    }
 
     return {
-      jobId: job.id,
+      jobs,
+      // Geriye donuk uyum: tek-job bekleyen eski cagiranlar icin ilk job alanlari
+      jobId: jobs[0]?.jobId,
       taxpayerId: body.taxpayerId,
-      period: dominantPeriod,
+      period: jobs[0]?.period,
       documentCount: docs.length,
       skippedInvalid: skippedCount, // v2.1: validation hatası olan + bu yüzden Luca'ya gitmeyen belgeler
     };
@@ -4203,57 +4229,37 @@ export class FaturaMuhasebelestirmeService {
     return null;
   }
 
-  private linesFromOcr(ocrResult: OcrResult | null) {
-    const breakdown = ocrResult?.kdvBreakdown || [];
-    const total = money(ocrResult?.totalTutari) || new Prisma.Decimal(0);
+  // v2.3: Upload-OCR yolu da satis/alis yon-duyarli olsun (eskiden hep ALIS
+  // varsayip 770/320 yaziyordu; yuklenen satis faturasi yanlis fislenirdi).
+  // Yon bilgisini alip ortak, test edilmis linesFromAmounts'a delege ediyoruz.
+  private linesFromOcr(ocrResult: OcrResult | null, invoiceKind: string = 'ALIS') {
+    const rawBreakdown = Array.isArray(ocrResult?.kdvBreakdown) ? (ocrResult as any).kdvBreakdown : [];
+    const breakdown = rawBreakdown
+      .map((b: any) => {
+        const rate = Number(b.oran) || 0;
+        const amount = Number(b.tutar) || 0;
+        const base = (b.matrah != null && Number(b.matrah) > 0)
+          ? Number(b.matrah)
+          : (rate > 0 ? Number((amount / (rate / 100)).toFixed(2)) : 0);
+        return { rate, base, amount };
+      })
+      .filter((b: { base: number; amount: number }) => b.amount > 0 || b.base > 0);
+
+    const totalNum = this.numFromOcr(ocrResult?.totalTutari);
     const kdvTotal = breakdown.length
-      ? breakdown.reduce((sum, item) => sum.plus(item.tutar || 0), new Prisma.Decimal(0))
-      : money(ocrResult?.kdvTutari) || new Prisma.Decimal(0);
-    const matrah = Prisma.Decimal.max(total.minus(kdvTotal), new Prisma.Decimal(0));
-    const lines: any[] = [
-      {
-        group: 'matrah',
-        accountCode: '770.01.010',
-        description: ocrResult?.kategori ? `Gider / ${ocrResult.kategori}` : 'Gider / matrah',
-        debit: matrah,
-        credit: new Prisma.Decimal(0),
-        orderNo: 0,
-      },
-    ];
+      ? breakdown.reduce((s: number, b: { amount: number }) => s + b.amount, 0)
+      : this.numFromOcr(ocrResult?.kdvTutari);
+    const matrah = Math.max(totalNum - kdvTotal, 0);
 
-    if (breakdown.length) {
-      breakdown.forEach((item, idx) => {
-        lines.push({
-          group: 'vergi',
-          accountCode: `191.01.${String(item.oran).padStart(3, '0')}`,
-          description: 'Indirilecek KDV',
-          rate: `%${item.oran}`,
-          debit: new Prisma.Decimal(item.tutar || 0),
-          credit: new Prisma.Decimal(0),
-          orderNo: idx + 1,
-        });
-      });
-    } else if (kdvTotal.gt(0)) {
-      lines.push({
-        group: 'vergi',
-        accountCode: '191.01.020',
-        description: 'Indirilecek KDV',
-        rate: '%20',
-        debit: kdvTotal,
-        credit: new Prisma.Decimal(0),
-        orderNo: 1,
-      });
-    }
-
-    lines.push({
-      group: 'cari',
-      accountCode: '320.01.001',
-      description: ocrResult?.satici || 'Cari hesap',
-      debit: new Prisma.Decimal(0),
-      credit: total,
-      orderNo: lines.length,
+    return this.linesFromAmounts({
+      invoiceKind,
+      matrah,
+      kdvTutari: kdvTotal,
+      kdvOrani: breakdown[0]?.rate,
+      total: totalNum,
+      vendorName: ocrResult?.satici || null,
+      kdvBreakdown: breakdown.length ? breakdown : null,
     });
-    return lines;
   }
 
   private linesFromAmounts(opts: {

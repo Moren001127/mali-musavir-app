@@ -422,10 +422,15 @@ export class LucaService {
     });
 
     // v1.38: INVOICE_POST -> InvoiceAccountingDocument.lucaStatus = POSTED
-    if (current?.tip === 'INVOICE_POST' && current?.invoiceDocumentId) {
+    // v2.3: Toplu (BATCH_EXCEL) job'da invoiceDocumentId=null; belgeler lucaJobId ile
+    // bagli. Bu yuzden hem lucaJobId hem (eski tekil) invoiceDocumentId ile eslestir —
+    // aksi halde toplu aktarimda hicbir belge POSTED'e donmuyordu.
+    if (current?.tip === 'INVOICE_POST') {
       try {
+        const orWhere: any[] = [{ lucaJobId: jobId }];
+        if (current.invoiceDocumentId) orWhere.push({ id: current.invoiceDocumentId });
         await (this.prisma as any).invoiceAccountingDocument.updateMany({
-          where: { id: current.invoiceDocumentId },
+          where: { OR: orWhere },
           data: {
             lucaStatus: 'POSTED',
             lucaPostedAt: new Date(),
@@ -708,10 +713,13 @@ export class LucaService {
     }
 
     // v1.38: INVOICE_POST -> InvoiceAccountingDocument.lucaStatus = FAILED
-    if (job?.tip === 'INVOICE_POST' && job?.invoiceDocumentId) {
+    // v2.3: Toplu job'da invoiceDocumentId=null; lucaJobId ile de eslestir (bkz. markJobDone).
+    if (job?.tip === 'INVOICE_POST') {
       try {
+        const orWhere: any[] = [{ lucaJobId: jobId }];
+        if (job.invoiceDocumentId) orWhere.push({ id: job.invoiceDocumentId });
         await (this.prisma as any).invoiceAccountingDocument.updateMany({
-          where: { id: job.invoiceDocumentId },
+          where: { OR: orWhere },
           data: {
             lucaStatus: 'FAILED',
             lucaErrorMessage: String(errorMsg || '').slice(0, 1000),

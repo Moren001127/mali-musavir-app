@@ -745,6 +745,19 @@ function ScreenMuhasebe({ taxpayerId, period, isIsletme = false }: { taxpayerId:
     onError: () => toast.error('Toplu fişleme başarısız'),
   });
 
+  // v2.3: Onaylı (QUEUED/FAILED) belgeleri tek toplu işle Luca'ya GÖNDER.
+  // approve sadece kuyruğa alır; gerçek aktarım bu butonla (batch-post-to-luca) tetiklenir.
+  const queuedDocs = all.filter((d: any) => d.status === 'APPROVED' && ['QUEUED', 'FAILED', 'NOT_STARTED'].includes(d.lucaStatus));
+  const batchMut = useMutation({
+    mutationFn: () => api.post('/fatura-muhasebelestirme/batch-post-to-luca', { taxpayerId, period }),
+    onSuccess: (r: any) => {
+      const d = r?.data || {};
+      toast.success(`Luca'ya aktarım başlatıldı · ${d.documentCount ?? 0} belge${d.skippedInvalid ? ` · ${d.skippedInvalid} veri hatası nedeniyle hariç` : ''}. Ajan açıkken işlenir.`);
+      qc.invalidateQueries({ queryKey: ['fm2'] });
+    },
+    onError: (e: any) => toast.error("Luca'ya aktarılamadı: " + (e?.response?.data?.message || e?.message || 'hata')),
+  });
+
   if (!taxpayerId) {
     return (
       <section className="screen">
@@ -852,8 +865,11 @@ function ScreenMuhasebe({ taxpayerId, period, isIsletme = false }: { taxpayerId:
             <button className={!talimatliVar ? 'on' : ''} disabled={talimatMut.isPending || configured.length === 0} onClick={() => talimatMut.mutate(false)}>Kapalı</button>
             <button className={talimatliVar ? 'on' : ''} disabled={talimatMut.isPending || configured.length === 0} onClick={() => talimatMut.mutate(true)}>Açık (her gece)</button>
           </div>
-          <button className="btn primary sm" disabled={bulkMut.isPending || hazir.length === 0} onClick={() => bulkMut.mutate()}>
+          <button className="btn sm" disabled={bulkMut.isPending || hazir.length === 0} onClick={() => bulkMut.mutate()}>
             <Ico html={I.checkSm} size={13} /> {bulkMut.isPending ? 'Fişleniyor…' : `${hazir.length} belgeyi toplu fişle`}
+          </button>
+          <button className="btn primary sm" disabled={batchMut.isPending || queuedDocs.length === 0} onClick={() => batchMut.mutate()} title={queuedDocs.length === 0 ? 'Önce belgeleri fişle (onayla)' : "Onaylı belgeleri Luca'ya aktar"}>
+            <Ico html={I.send} size={13} /> {batchMut.isPending ? 'Aktarılıyor…' : `Luca'ya Aktar${queuedDocs.length ? ` (${queuedDocs.length})` : ''}`}
           </button>
         </div>
       </div>
@@ -863,13 +879,21 @@ function ScreenMuhasebe({ taxpayerId, period, isIsletme = false }: { taxpayerId:
 
 /* ===================== EKRAN: AKTARILANLAR ===================== */
 function ScreenAktarilanlar({ taxpayerId, period }: { taxpayerId: string; period: string }) {
+  const qc = useQueryClient();
   const docsQ = useDocuments(taxpayerId, period);
   const all: any[] = docsQ.data || [];
-  const docs = all.filter((d) => d.status === 'APPROVED' || d.lucaStatus === 'POSTED' || d.lucaStatus === 'QUEUED');
+  const docs = all.filter((d) => d.status === 'APPROVED' || d.lucaStatus === 'POSTED' || d.lucaStatus === 'QUEUED' || d.lucaStatus === 'POSTING' || d.lucaStatus === 'FAILED');
+  const retryMut = useMutation({
+    mutationFn: (id: string) => api.post(`/fatura-muhasebelestirme/documents/${id}/retry-luca`),
+    onSuccess: () => { toast.success("Luca'ya yeniden gönderildi"); qc.invalidateQueries({ queryKey: ['fm2'] }); },
+    onError: (e: any) => toast.error('Tekrar denenemedi: ' + (e?.response?.data?.message || e?.message || 'hata')),
+  });
   const lucaPill = (d: any) => {
-    if (d.lucaStatus === 'POSTED') return <span className="pill ok">Luca'da</span>;
-    if (d.lucaStatus === 'QUEUED') return <span className="pill warn">Kuyrukta</span>;
-    if (d.lucaStatus === 'ERROR') return <span className="pill miss">Hata</span>;
+    const s = d.lucaStatus;
+    if (s === 'POSTED') return <span className="pill ok">Luca'da</span>;
+    if (s === 'POSTING') return <span className="pill warn">Aktarılıyor…</span>;
+    if (s === 'QUEUED') return <span className="pill warn">Kuyrukta</span>;
+    if (s === 'FAILED' || s === 'ERROR') return <span className="pill miss" title={d.lucaErrorMessage || ''}>Hata</span>;
     return <span className="pill n">Onaylı</span>;
   };
 
@@ -896,7 +920,12 @@ function ScreenAktarilanlar({ taxpayerId, period }: { taxpayerId: string; period
                     <td className="num">{fmtMoney(d.totalAmount)}</td>
                     <td>{code ? <span className="hk">{code}</span> : <span className="hk no">—</span>}</td>
                     <td>{lucaPill(d)}</td>
-                    <td className="actcol"><span className="eye" onClick={() => openDocFile(d.id)}><Ico html={I.eye} size={15} /></span></td>
+                    <td className="actcol" style={{ display: 'flex', gap: 6, alignItems: 'center' }}>
+                      {(d.lucaStatus === 'FAILED' || d.lucaStatus === 'ERROR') && (
+                        <button className="btn ghost sm" disabled={retryMut.isPending} onClick={() => retryMut.mutate(d.id)} title={d.lucaErrorMessage || "Luca'ya tekrar gönder"}><Ico html={I.sync} size={12} /></button>
+                      )}
+                      <span className="eye" onClick={() => openDocFile(d.id)}><Ico html={I.eye} size={15} /></span>
+                    </td>
                   </tr>
                 );
               })}

@@ -38,7 +38,7 @@ import { IsletmeHesapOzetiService } from '../isletme-hesap-ozeti/isletme-hesap-o
 import { EarsivService, EarsivTip, BelgeKaynak } from '../earsiv/earsiv.service';
 import { MizanParserService } from '../mizan/mizan-parser.service';
 import { FaturaMuhasebelestirmeService } from '../fatura-muhasebelestirme/fatura-muhasebelestirme.service';
-import { buildLucaImportExcel } from '../fatura-muhasebelestirme/luca-excel.service';
+import { buildLucaImportExcel, buildLucaIsletmeHizliFisCsv } from '../fatura-muhasebelestirme/luca-excel.service';
 import { resolveTenantFromAgentToken as resolveAgentTenant } from '../common/agent-token';
 
 /**
@@ -641,6 +641,16 @@ export class LucaController {
     const payload: any = job.payload || {};
     if (payload.mode !== 'BATCH_EXCEL' || !Array.isArray(payload.invoices) || !payload.invoices.length) {
       throw new BadRequestException('Job payload BATCH_EXCEL formatinda degil');
+    }
+    // v2.3: ISLETME mukellefte Luca "Hızlı Fiş Aktarım" CSV (cp1254);
+    // BILANCO'da 14 sütun fiş xlsx (Excel Veri Aktarımı ekranı).
+    if (payload.format === 'ISLETME_CSV') {
+      const csv = buildLucaIsletmeHizliFisCsv(payload);
+      res.setHeader('Content-Type', 'text/csv; charset=windows-1254');
+      res.setHeader('Content-Disposition', 'attachment; filename="luca-isletme-hizli-fis.csv"');
+      res.setHeader('Content-Length', csv.length.toString());
+      res.end(csv);
+      return;
     }
     const buffer = await buildLucaImportExcel(payload);
     res.setHeader('Content-Length', buffer.length.toString());
