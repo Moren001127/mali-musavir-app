@@ -322,6 +322,16 @@ export default function KdvKontrolPage() {
     Number(contentAuditStats.ruleBased ?? images.filter((i: any) => i.contentAuditModel === 'rule-based').length);
   const contentAuditProviderIssueCount =
     Number(contentAuditStats.providerIssue ?? (contentAuditFallbackCount + contentAuditFailedCount));
+  // AI ile gerçekten yorumlanan belge sayısı (kural-fallback / kural / hata dışı).
+  const contentAuditAiOkCount = Math.max(
+    0,
+    contentAuditDoneCount - contentAuditFallbackCount - contentAuditRuleBasedCount,
+  );
+  // AI çoğunluk için çalıştıysa birkaç fallback yalnızca "geç kalan"dır; tabloya
+  // "AI YOK" demek yanıltıcı. "AI yok" rozeti SADECE hiçbir belge AI ile
+  // yorumlanamadığında çıkar; aksi halde sade "N kural" bilgisi gösterilir.
+  const contentAuditAiBroadlyDown =
+    contentAuditAiOkCount === 0 && contentAuditProviderIssueCount > 0;
   const contentAuditAuditableCount = readCount;
   const contentAuditPendingAuditCount = Math.max(
     0,
@@ -1268,7 +1278,8 @@ export default function KdvKontrolPage() {
               : contentAuditPendingAuditCount > 0 && contentAuditDoneCount > 0 ? `${contentAuditDoneCount}/${contentAuditAuditableCount} yorum · ${contentAuditPendingAuditCount} bekliyor`
               : contentAuditDoneCount > 0 && contentAuditHardRiskCount > 0 ? `${contentAuditDoneCount} yorum · ${contentAuditHardRiskCount} net risk`
               : contentAuditDoneCount > 0 && contentAuditReviewCount > 0 ? `${contentAuditDoneCount} yorum · ${contentAuditReviewCount} kontrol`
-              : contentAuditDoneCount > 0 && contentAuditProviderIssueCount > 0 ? `${contentAuditDoneCount} yorum · AI yok, kural`
+              : contentAuditDoneCount > 0 && contentAuditAiBroadlyDown ? `${contentAuditDoneCount} yorum · AI yok, kural`
+              : contentAuditDoneCount > 0 && contentAuditProviderIssueCount > 0 ? `${contentAuditDoneCount} yorum · ${contentAuditProviderIssueCount} kural`
               : contentAuditDoneCount > 0 && contentAuditRuleBasedCount > 0 ? `${contentAuditDoneCount} yorum · kural denetimi`
               : contentAuditDoneCount > 0 ? `${contentAuditDoneCount} yorum · belirgin risk yok`
               : !taxpayerId ? 'Önce mükellef seçin'
@@ -1607,9 +1618,14 @@ export default function KdvKontrolPage() {
                   {contentAuditReviewCount} kontrol
                 </span>
               )}
-              {contentAuditProviderIssueCount > 0 && (
+              {contentAuditAiBroadlyDown && (
                 <span className="text-[10.5px] font-bold uppercase tracking-wider px-2 py-0.5 rounded" style={{ background: 'rgba(96,165,250,0.13)', color: '#93c5fd' }}>
                   AI yok, kural
+                </span>
+              )}
+              {!contentAuditAiBroadlyDown && contentAuditProviderIssueCount > 0 && (
+                <span className="text-[10.5px] font-bold uppercase tracking-wider px-2 py-0.5 rounded" style={{ background: 'rgba(96,165,250,0.10)', color: '#93c5fd' }}>
+                  {contentAuditProviderIssueCount} kural
                 </span>
               )}
               {contentAuditPendingAuditCount > 0 && (
