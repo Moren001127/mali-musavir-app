@@ -678,6 +678,39 @@ function ScreenKurallar({ taxpayerId, period }: { taxpayerId: string; period: st
   );
 }
 
+/** Muhasebeleştir ekranında belgeyi (fatura görüntüsü/HTML) fişin yanında gösterir. */
+function InlineBelge({ id }: { id: string }) {
+  const [d, setD] = useState<any | null>(null);
+  useEffect(() => {
+    let alive = true;
+    setD(null);
+    api.get(`/fatura-muhasebelestirme/documents/${id}/file-url`)
+      .then((r) => { if (alive) setD(r.data || {}); })
+      .catch(() => { if (alive) setD({}); });
+    return () => { alive = false; };
+  }, [id]);
+  if (!d) return <div className="belgebox"><div className="bpempty">Belge yükleniyor…</div></div>;
+  const url = typeof d.url === 'string' ? d.url : typeof d.fileUrl === 'string' ? d.fileUrl : '';
+  const html = typeof d.inlineHtml === 'string' ? d.inlineHtml : '';
+  const isImg = !html && (
+    (d.mimeType || '').startsWith('image/') ||
+    /^data:image\//i.test(url) ||
+    /\.(jpe?g|jpe|jfif|png|gif|webp|bmp|tiff?|heic|heif|avif)(\?|#|$)/i.test(url)
+  );
+  return (
+    <div className="belgebox">
+      <div className="bpbar"><span>Belge</span>{url ? <a href={url} target="_blank" rel="noopener noreferrer">Tam ekran ↗</a> : null}</div>
+      {html
+        ? <iframe className="bpframe" srcDoc={html} title="Belge" sandbox="allow-same-origin" />
+        : isImg
+          ? <div className="bpimgwrap"><img className="bpimg" src={url} alt="Belge" /></div>
+          : url
+            ? <iframe className="bpframe" src={url} title="Belge" />
+            : <div className="bpempty">Belge görüntüsü yok</div>}
+    </div>
+  );
+}
+
 /* ===================== EKRAN: MUHASEBELEŞTİR ===================== */
 function ScreenMuhasebe({ taxpayerId, period, isIsletme = false }: { taxpayerId: string; period: string; isIsletme?: boolean }) {
   const qc = useQueryClient();
@@ -796,7 +829,22 @@ function ScreenMuhasebe({ taxpayerId, period, isIsletme = false }: { taxpayerId:
             {selDoc ? (
               <>
                 <div className="banner info"><Ico html={I.info} size={16} /><span>Bilanço usulü mükellefte <b>muhasebe fişi</b> kesilir. İşletme defteri mükellefte bu ekran <b>Gelir-Gider girişi</b>ne döner (KDV/gider, hesap kodu yok).</span></div>
+                <div className="fiseditor">
+                <div className="belgepane"><InlineBelge id={selDoc.id} /></div>
+                <div className="fispane">
                 <div className="ph">{firmaOf(selDoc)} · {selDoc.invoiceKind === 'SATIS' ? 'Satış' : 'Alış'} faturası <span className="mu">{selDoc.belgeNo || ''}</span></div>
+                <div className="docmeta">
+                  {[
+                    { l: 'Tarih', v: fmtDate(selDoc.faturaTarihi || selDoc.createdAt) },
+                    { l: 'Fatura Türü', v: selDoc.invoiceKind === 'SATIS' ? 'Satış' : 'Alış' },
+                    { l: 'Belge Türü', v: ({ E_FATURA: 'e-Fatura', E_ARSIV: 'e-Arşiv', OKC_FIS: 'ÖKC Fiş', SATIS_FATURA: 'Satış Faturası', ALIS_FATURA: 'Alış Faturası', DIGER: 'Diğer' } as any)[selDoc.documentType] || selDoc.documentType || '—' },
+                    { l: 'Belge No', v: selDoc.belgeNo || '—' },
+                    { l: selDoc.invoiceKind === 'SATIS' ? 'Alıcı VKN' : 'Satıcı VKN', v: (selDoc.invoiceKind === 'SATIS' ? selDoc.buyerVkn : selDoc.sellerVkn) || '—' },
+                    { l: 'Para Birimi', v: selDoc.currency || 'TL' },
+                  ].map((m, i) => (
+                    <div key={i} className="dm"><span className="dml">{m.l}</span><span className="dmv">{m.v}</span></div>
+                  ))}
+                </div>
                 <div className="twrap">
                   {isIsletme ? (
                     <table>
@@ -852,6 +900,7 @@ function ScreenMuhasebe({ taxpayerId, period, isIsletme = false }: { taxpayerId:
                     <Ico html={I.checkSm} size={13} /> {approveMut.isPending ? 'Gönderiliyor…' : "Onayla & Luca'ya gönder"}
                   </button>
                 </div>
+                </div></div>
               </>
             ) : (
               <div className="empty">Hazır belge yok ya da soldan bir belge seç.</div>
@@ -1456,6 +1505,21 @@ const CSS = `
 #fm-root .wrow small{font-size:11px;color:var(--faint)}
 #fm-root .wright{padding:18px}
 #fm-root .ph{font-size:13px;font-weight:700;display:flex;align-items:center;gap:8px;margin-bottom:12px}
+#fm-root .docmeta{display:grid;grid-template-columns:repeat(auto-fit,minmax(150px,1fr));gap:8px 14px;padding:11px 13px;margin-bottom:14px;background:#fbfcfd;border:1px solid var(--line);border-radius:10px}
+#fm-root .docmeta .dm{display:flex;flex-direction:column;gap:1px}
+#fm-root .docmeta .dml{font-size:10px;font-weight:700;color:var(--faint);text-transform:uppercase;letter-spacing:.4px}
+#fm-root .docmeta .dmv{font-size:13px;font-weight:600;color:var(--text)}
+#fm-root .fiseditor{display:flex;gap:16px;align-items:flex-start}
+#fm-root .belgepane{flex:0 0 40%;max-width:40%;position:sticky;top:12px}
+#fm-root .fispane{flex:1;min-width:0}
+#fm-root .belgebox{border:1px solid var(--line);border-radius:10px;overflow:hidden;background:#fff;display:flex;flex-direction:column}
+#fm-root .belgebox .bpbar{display:flex;align-items:center;justify-content:space-between;padding:7px 11px;border-bottom:1px solid var(--line);background:#fbfcfd;font-size:11px;font-weight:700;color:var(--muted);text-transform:uppercase;letter-spacing:.4px}
+#fm-root .belgebox .bpbar a{color:var(--accent);text-decoration:none;font-weight:700;text-transform:none;letter-spacing:0}
+#fm-root .belgebox .bpframe{width:100%;height:540px;border:0;background:#fff}
+#fm-root .belgebox .bpimgwrap{height:540px;display:flex;align-items:center;justify-content:center;overflow:auto;background:#f7f8fb}
+#fm-root .belgebox .bpimg{max-width:100%;max-height:540px;object-fit:contain}
+#fm-root .belgebox .bpempty{height:200px;display:flex;align-items:center;justify-content:center;color:var(--faint);font-size:12px}
+@media(max-width:1100px){#fm-root .fiseditor{flex-direction:column}#fm-root .belgepane{flex:none;max-width:100%;width:100%;position:static}}
 #fm-root .ph .mu{margin-left:auto;font-weight:500}
 #fm-root .balance{display:flex;align-items:center;gap:10px;margin-top:13px;padding:11px 13px;border-radius:10px;background:#e9f7ee;border:1px solid #c7ecd3;color:#15803d;font-weight:700}
 #fm-root .balance .bnote{color:var(--muted);font-size:12px;margin-left:auto;font-weight:400}
