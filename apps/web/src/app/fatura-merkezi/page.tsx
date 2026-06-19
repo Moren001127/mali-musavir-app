@@ -681,9 +681,11 @@ function ScreenKurallar({ taxpayerId, period }: { taxpayerId: string; period: st
 /** Muhasebeleştir ekranında belgeyi (fatura görüntüsü/HTML) fişin yanında gösterir. */
 function InlineBelge({ id }: { id: string }) {
   const [d, setD] = useState<any | null>(null);
+  const [zoom, setZoom] = useState(1);
   useEffect(() => {
     let alive = true;
     setD(null);
+    setZoom(1);
     api.get(`/fatura-muhasebelestirme/documents/${id}/file-url`)
       .then((r) => { if (alive) setD(r.data || {}); })
       .catch(() => { if (alive) setD({}); });
@@ -697,13 +699,27 @@ function InlineBelge({ id }: { id: string }) {
     /^data:image\//i.test(url) ||
     /\.(jpe?g|jpe|jfif|png|gif|webp|bmp|tiff?|heic|heif|avif)(\?|#|$)/i.test(url)
   );
+  const dz = (f: number) => setZoom((s) => Math.min(6, Math.max(0.4, Math.round((s + f) * 100) / 100)));
   return (
     <div className="belgebox">
-      <div className="bpbar"><span>Belge</span>{url ? <a href={url} target="_blank" rel="noopener noreferrer">Tam ekran ↗</a> : null}</div>
+      <div className="bpbar">
+        <span>Belge</span>
+        <div className="bpzoom">
+          {isImg ? (
+            <>
+              <button type="button" onClick={() => dz(-0.25)} title="Uzaklaştır">−</button>
+              <span className="bpz">{Math.round(zoom * 100)}%</span>
+              <button type="button" onClick={() => dz(0.25)} title="Yakınlaştır">+</button>
+              <button type="button" onClick={() => setZoom(1)} title="Genişliğe sığdır">Sığdır</button>
+            </>
+          ) : null}
+          {url ? <a href={url} target="_blank" rel="noopener noreferrer" title="Yeni sekmede aç">↗</a> : null}
+        </div>
+      </div>
       {html
         ? <iframe className="bpframe" srcDoc={html} title="Belge" sandbox="allow-same-origin" />
         : isImg
-          ? <div className="bpimgwrap"><img className="bpimg" src={url} alt="Belge" /></div>
+          ? <div className="bpimgwrap"><img className="bpimg" src={url} alt="Belge" style={{ width: `${zoom * 100}%`, maxWidth: zoom > 1 ? 'none' : '100%' }} /></div>
           : url
             ? <iframe className="bpframe" src={url} title="Belge" />
             : <div className="bpempty">Belge görüntüsü yok</div>}
@@ -753,10 +769,27 @@ function ScreenMuhasebe({ taxpayerId, period, isIsletme = false }: { taxpayerId:
     onSuccess: () => { toast.success('Belge bilgileri kaydedildi'); qc.invalidateQueries({ queryKey: ['fm2'] }); },
     onError: (e: any) => toast.error('Kaydedilemedi: ' + (e?.response?.data?.message || e?.message || 'hata')),
   });
-  const lines: any[] = selDoc?.lines || [];
+  // Fiş satırları elle düzenleme (hesap kodu / borç / alacak) — PATCH lines ile kaydeder.
+  const [lineDraft, setLineDraft] = useState<any[]>([]);
+  useEffect(() => {
+    setLineDraft((selDoc?.lines || []).map((l: any) => ({
+      group: l.group, accountCode: l.accountCode || '', description: l.description || '',
+      rate: l.rate || '', debit: Number(l.debit) || 0, credit: Number(l.credit) || 0,
+    })));
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [selDoc?.id]);
+  const lines: any[] = lineDraft;
+  const setLine = (i: number, k: string, v: any) => setLineDraft((arr) => arr.map((l, j) => (j === i ? { ...l, [k]: v } : l)));
   const borc = lines.reduce((s: number, l: any) => s + Number(l.debit || 0), 0);
   const alacak = lines.reduce((s: number, l: any) => s + Number(l.credit || 0), 0);
   const dengeli = lines.length > 0 && Math.abs(borc - alacak) < 0.01;
+  const saveLinesMut = useMutation({
+    mutationFn: () => api.patch(`/fatura-muhasebelestirme/documents/${selDoc.id}`, {
+      lines: lineDraft.map((l) => ({ group: l.group || 'matrah', accountCode: l.accountCode || null, description: l.description || null, rate: l.rate || null, debit: String(l.debit || 0), credit: String(l.credit || 0) })),
+    }),
+    onSuccess: () => { toast.success('Fiş satırları kaydedildi'); qc.invalidateQueries({ queryKey: ['fm2'] }); },
+    onError: (e: any) => toast.error('Kaydedilemedi: ' + (e?.response?.data?.message || e?.message || 'hata')),
+  });
   const gg = selDoc ? kdvParts(selDoc) : { matrah: null, kdv: null };
   const ggReady = isIsletme ? ((Number(gg.matrah) || 0) > 0 || (Number(gg.kdv) || 0) > 0 || Number(selDoc?.totalAmount) > 0) : dengeli;
 
@@ -881,12 +914,12 @@ function ScreenMuhasebe({ taxpayerId, period, isIsletme = false }: { taxpayerId:
                     <table>
                       <thead><tr><th>Hesap</th><th>Açıklama</th><th className="num">Borç</th><th className="num">Alacak</th></tr></thead>
                       <tbody>
-                        {lines.map((l: any) => (
-                          <tr key={l.id}>
-                            <td>{l.accountCode ? <span className="hk">{l.accountCode}</span> : <span className="hk no">—</span>}</td>
+                        {lines.map((l: any, i: number) => (
+                          <tr key={i}>
+                            <td><input className="li licode" value={l.accountCode || ''} placeholder="hesap kodu" onChange={(e) => setLine(i, 'accountCode', e.target.value)} /></td>
                             <td>{l.description || l.group}</td>
-                            <td className="num">{Number(l.debit) ? fmtMoney(l.debit) : '—'}</td>
-                            <td className="num">{Number(l.credit) ? fmtMoney(l.credit) : '—'}</td>
+                            <td className="num"><input className="li linum" type="number" step="0.01" value={l.debit || ''} placeholder="0,00" onChange={(e) => setLine(i, 'debit', e.target.value === '' ? 0 : Number(e.target.value))} /></td>
+                            <td className="num"><input className="li linum" type="number" step="0.01" value={l.credit || ''} placeholder="0,00" onChange={(e) => setLine(i, 'credit', e.target.value === '' ? 0 : Number(e.target.value))} /></td>
                           </tr>
                         ))}
                         {lines.length === 0 && <tr><td colSpan={4}><div className="empty">Bu belgede fiş satırı yok.</div></td></tr>}
@@ -915,7 +948,7 @@ function ScreenMuhasebe({ taxpayerId, period, isIsletme = false }: { taxpayerId:
                 ) : null}
                 <div className="wactions">
                   <div className="sp" />
-                  <button className="btn sm ghost" onClick={() => openDocFile(selDoc.id)}><Ico html={I.eye} size={13} /> Belgeyi aç</button>
+                  {!isIsletme && <button className="btn sm" disabled={saveLinesMut.isPending || lines.length === 0} onClick={() => saveLinesMut.mutate()} title="Hesap kodu / borç / alacak değişikliklerini kaydet"><Ico html={I.checkSm} size={13} /> {saveLinesMut.isPending ? 'Kaydediliyor…' : 'Satırları kaydet'}</button>}
                   <button className="btn primary sm" disabled={approveMut.isPending || !ggReady} onClick={() => selDoc && approveMut.mutate(selDoc.id)}>
                     <Ico html={I.checkSm} size={13} /> {approveMut.isPending ? 'Gönderiliyor…' : "Onayla & Luca'ya gönder"}
                   </button>
@@ -1542,6 +1575,10 @@ const CSS = `
 #fm-root .docmeta .dmv{font-size:13px;font-weight:600;color:var(--text)}
 #fm-root .docmeta .dmi{width:100%;height:30px;padding:0 8px;border:1px solid var(--line2);border-radius:7px;font-size:13px;font-weight:600;color:var(--text);background:#fff;font-family:inherit}
 #fm-root .docmeta .dmi:focus{outline:none;border-color:var(--accent)}
+#fm-root .li{height:28px;border:1px solid var(--line2);border-radius:6px;padding:0 7px;font-size:12.5px;font-weight:600;color:var(--text);background:#fff;font-family:inherit}
+#fm-root .li:focus{outline:none;border-color:var(--accent)}
+#fm-root .licode{width:120px}
+#fm-root .linum{width:120px;text-align:right}
 #fm-root .wmain{padding:18px}
 #fm-root .wstrip{display:flex;gap:9px;overflow-x:auto;padding:11px 16px;border-top:1px solid var(--line);background:#fbfcfd}
 #fm-root .wchip{flex:0 0 auto;max-width:230px;padding:8px 12px;border:1px solid var(--line2);border-radius:9px;background:#fff;cursor:pointer;display:flex;flex-direction:column;gap:2px}
@@ -1556,9 +1593,14 @@ const CSS = `
 #fm-root .belgebox{border:1px solid var(--line);border-radius:10px;overflow:hidden;background:#fff;display:flex;flex-direction:column}
 #fm-root .belgebox .bpbar{display:flex;align-items:center;justify-content:space-between;padding:7px 11px;border-bottom:1px solid var(--line);background:#fbfcfd;font-size:11px;font-weight:700;color:var(--muted);text-transform:uppercase;letter-spacing:.4px}
 #fm-root .belgebox .bpbar a{color:var(--accent);text-decoration:none;font-weight:700;text-transform:none;letter-spacing:0}
-#fm-root .belgebox .bpframe{width:100%;height:540px;border:0;background:#fff}
-#fm-root .belgebox .bpimgwrap{height:540px;display:flex;align-items:center;justify-content:center;overflow:auto;background:#f7f8fb}
-#fm-root .belgebox .bpimg{max-width:100%;max-height:540px;object-fit:contain}
+#fm-root .belgebox .bpzoom{display:flex;align-items:center;gap:6px}
+#fm-root .belgebox .bpzoom button{width:24px;height:24px;border:1px solid var(--line2);border-radius:6px;background:#fff;color:var(--text);font-size:15px;font-weight:700;cursor:pointer;display:grid;place-items:center;line-height:1}
+#fm-root .belgebox .bpzoom button:last-of-type{width:auto;padding:0 9px;font-size:11px}
+#fm-root .belgebox .bpzoom button:hover{border-color:var(--accent);color:var(--accent)}
+#fm-root .belgebox .bpzoom .bpz{font-size:11px;font-weight:700;color:var(--muted);min-width:38px;text-align:center}
+#fm-root .belgebox .bpframe{width:100%;height:660px;border:0;background:#fff}
+#fm-root .belgebox .bpimgwrap{height:660px;display:flex;align-items:flex-start;justify-content:center;overflow:auto;background:#f1f3f7}
+#fm-root .belgebox .bpimg{display:block;height:auto}
 #fm-root .belgebox .bpempty{height:200px;display:flex;align-items:center;justify-content:center;color:var(--faint);font-size:12px}
 @media(max-width:1100px){#fm-root .fiseditor{flex-direction:column}#fm-root .belgepane{flex:none;max-width:100%;width:100%;position:static}}
 #fm-root .ph .mu{margin-left:auto;font-weight:500}
