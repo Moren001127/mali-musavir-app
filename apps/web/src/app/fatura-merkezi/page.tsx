@@ -801,6 +801,7 @@ function ScreenMuhasebe({ taxpayerId, period, isIsletme = false }: { taxpayerId:
       tevkifatli: Number(d?.ocrData?.tevkifatOrani) > 0,
       tevkifatPay: Number(d?.ocrData?.tevkifatOrani) > 0 ? Math.round(Number(d.ocrData.tevkifatOrani) * 10) : 5,
       kdvRate: Number(d?.ocrData?.kdvOrani) || 20,
+      cariUnvan: (String(d.invoiceKind || '').includes('SATIS') ? d.customerName : d.vendorName) || '',
     } : {});
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [selDoc?.id]);
@@ -822,7 +823,9 @@ function ScreenMuhasebe({ taxpayerId, period, isIsletme = false }: { taxpayerId:
         invoiceKind: meta.invoiceKind,
         documentType: meta.documentType || undefined,
         belgeNo: meta.belgeNo || undefined,
-        ...(isSale ? { buyerVkn: meta.vkn || undefined } : { sellerVkn: meta.vkn || undefined }),
+        ...(isSale
+          ? { buyerVkn: meta.vkn || undefined, customerName: meta.cariUnvan || undefined }
+          : { sellerVkn: meta.vkn || undefined, vendorName: meta.cariUnvan || undefined }),
       });
     },
     onSuccess: () => { toast.success('Belge bilgileri kaydedildi'); qc.invalidateQueries({ queryKey: ['fm2'] }); },
@@ -968,7 +971,7 @@ function ScreenMuhasebe({ taxpayerId, period, isIsletme = false }: { taxpayerId:
                   </div>
                   <div className="dm"><span className="dml">Belge No</span><input className="dmi" value={meta.belgeNo || ''} onChange={(e) => setMeta({ ...meta, belgeNo: e.target.value })} /></div>
                   <div className="dm"><span className="dml">{String(meta.invoiceKind).includes('SATIS') ? 'Alıcı VKN' : 'Satıcı VKN'}</span><input className="dmi" value={meta.vkn || ''} onChange={(e) => setMeta({ ...meta, vkn: e.target.value })} /></div>
-                  <div className="dm" style={{ alignSelf: 'end' }}><button className="btn sm primary" disabled={saveMetaMut.isPending} onClick={() => saveMetaMut.mutate()}>{saveMetaMut.isPending ? 'Kaydediliyor…' : 'Bilgileri kaydet'}</button></div>
+                  <div className="dm"><span className="dml">Cari Ünvanı</span><input className="dmi" value={meta.cariUnvan || ''} placeholder="satıcı/alıcı ünvanı" onChange={(e) => setMeta({ ...meta, cariUnvan: e.target.value })} /></div>
                 </div>
                 {meta.tevkifatli && !isIsletme && (
                   <div className="tevpanel">
@@ -1049,6 +1052,7 @@ function ScreenMuhasebe({ taxpayerId, period, isIsletme = false }: { taxpayerId:
                 )}
                 <div className="wactions">
                   <div className="sp" />
+                  <button className="btn sm" disabled={saveMetaMut.isPending} onClick={() => saveMetaMut.mutate()} title="Tarih/tür/belge no/VKN/ünvan değişikliklerini kaydet"><Ico html={I.checkSm} size={13} /> {saveMetaMut.isPending ? 'Kaydediliyor…' : 'Bilgileri kaydet'}</button>
                   {!isIsletme && <button className="btn sm" disabled={saveLinesMut.isPending || lines.length === 0} onClick={() => saveLinesMut.mutate()} title="Hesap kodu / borç / alacak değişikliklerini kaydet"><Ico html={I.checkSm} size={13} /> {saveLinesMut.isPending ? 'Kaydediliyor…' : 'Satırları kaydet'}</button>}
                   <button className="btn primary sm" disabled={approveMut.isPending || !ggReady} onClick={() => selDoc && approveMut.mutate(selDoc.id)}>
                     <Ico html={I.checkSm} size={13} /> {approveMut.isPending ? 'Gönderiliyor…' : "Onayla & Luca'ya gönder"}
