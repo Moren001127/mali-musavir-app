@@ -819,6 +819,16 @@ function ScreenMuhasebe({ taxpayerId, period, isIsletme = false }: { taxpayerId:
   }, [selDoc?.id]);
   const lines: any[] = lineDraft;
   const setLine = (i: number, k: string, v: any) => setLineDraft((arr) => arr.map((l, j) => (j === i ? { ...l, [k]: v } : l)));
+  const addLine = (group: string) => setLineDraft((arr) => [...arr, { group, accountCode: '', description: '', rate: '', debit: 0, credit: 0 }]);
+  const delLine = (i: number) => setLineDraft((arr) => arr.filter((_, j) => j !== i));
+  // Luca'dan çekilen hesap planı — kod alanlarında otomatik tamamlama (datalist).
+  const planQ = useQuery({
+    queryKey: ['fm2', 'account-plan-pick', taxpayerId],
+    queryFn: () => api.get('/fatura-muhasebelestirme/account-plan', { params: { taxpayerId, limit: 2000 } })
+      .then((r) => (Array.isArray(r.data) ? r.data : [])).catch(() => []),
+    enabled: !!taxpayerId,
+  });
+  const accountPlan: any[] = planQ.data || [];
   const borc = lines.reduce((s: number, l: any) => s + Number(l.debit || 0), 0);
   const alacak = lines.reduce((s: number, l: any) => s + Number(l.credit || 0), 0);
   const dengeli = lines.length > 0 && Math.abs(borc - alacak) < 0.01;
@@ -905,9 +915,10 @@ function ScreenMuhasebe({ taxpayerId, period, isIsletme = false }: { taxpayerId:
 
   return (
     <section className="screen">
-      <div className="h2">Muhasebeleştir &amp; Aktar</div>
-      <div className="sub">Taslak fiş → denge kontrolü → onayla → Luca'ya aktar (elle ya da gece otomatik).</div>
-      <div className="card" style={{ padding: 0 }}>
+      <datalist id="fm-hesap-plani">
+        {accountPlan.map((a: any) => <option key={a.id || a.code} value={a.code}>{a.name || ''}</option>)}
+      </datalist>
+      <div className="card" style={{ padding: 0, marginTop: 2 }}>
         <div className="wmain">
             {selDoc ? (
               <>
@@ -980,12 +991,13 @@ function ScreenMuhasebe({ taxpayerId, period, isIsletme = false }: { taxpayerId:
                             <div className="fgh"><span>{g.label}</span><span className="fgs">{g.side === 'debit' ? 'Borç' : 'Alacak'}</span></div>
                             {rows.map(({ l, i }) => (
                               <div key={i} className="frow">
-                                <input className="li licode" value={l.accountCode || ''} placeholder="hesap kodu" onChange={(e) => setLine(i, 'accountCode', e.target.value)} />
+                                <input className="li licode" list="fm-hesap-plani" value={l.accountCode || ''} placeholder="hesap kodu" onChange={(e) => setLine(i, 'accountCode', e.target.value)} />
                                 <span className="fdesc">{l.description || (l.rate ? `KDV ${l.rate}` : g.label)}</span>
                                 <input className="li linum" type="number" step="0.01" value={(g.side === 'debit' ? l.debit : l.credit) || ''} placeholder="0,00" onChange={(e) => setLine(i, g.side, e.target.value === '' ? 0 : Number(e.target.value))} />
+                                <button type="button" className="frowdel" title="Satırı sil" onClick={() => delLine(i)}>×</button>
                               </div>
                             ))}
-                            {rows.length === 0 && <div className="frow"><span className="fdesc" style={{ color: 'var(--faint)' }}>—</span></div>}
+                            <div className="frowadd" onClick={() => addLine(g.key)}>+ satır ekle</div>
                             <div className="fgt"><span>Toplam</span><b>{fmtMoney(tot)} ₺</b></div>
                           </div>
                         );
@@ -1007,7 +1019,7 @@ function ScreenMuhasebe({ taxpayerId, period, isIsletme = false }: { taxpayerId:
                 {!isIsletme && selDoc.invoiceKind !== 'SATIS' && selVkn ? (
                   <div className="balance" style={{ background: '#fbfcfd', borderColor: 'var(--line)', flexWrap: 'wrap' }}>
                     <Ico html={I.rules} size={15} /><b>Gerçek hesap kodu</b>
-                    <input className="fmsel" style={{ maxWidth: 150 }} placeholder="örn. 153.01.001" value={codeInput} onChange={(e) => setCodeInput(e.target.value)} />
+                    <input className="fmsel" list="fm-hesap-plani" style={{ maxWidth: 150 }} placeholder="örn. 153.01.001" value={codeInput} onChange={(e) => setCodeInput(e.target.value)} />
                     <button className="btn primary sm" disabled={codeMut.isPending || !codeInput.trim()} onClick={() => codeMut.mutate()}>{codeMut.isPending ? 'Uygulanıyor…' : 'Uygula & öğren'}</button>
                     <span className="bnote" style={{ flexBasis: '100%', marginTop: 4 }}>770 tahmini default — bu satıcının gerçek kodunu gir; o satıcının bu mükellefteki tüm faturalarına uygulanır ve öğrenilir (sonrakiler otomatik alır).</span>
                   </div>
@@ -1658,6 +1670,10 @@ const CSS = `
 #fm-root .fgrp .frow .linum{flex:0 0 130px;width:auto}
 #fm-root .fgrp .fgt{display:flex;justify-content:space-between;padding:7px 12px;border-top:1px solid var(--line2);background:#fbfcfd;font-size:12.5px}
 #fm-root .fgrp .fgt b{font-weight:800}
+#fm-root .fgrp .frow .frowdel{width:24px;height:24px;flex:0 0 24px;border:1px solid var(--line2);border-radius:6px;background:#fff;color:var(--red);font-size:16px;font-weight:700;cursor:pointer;line-height:1;display:grid;place-items:center}
+#fm-root .fgrp .frow .frowdel:hover{background:#fdeaea;border-color:#f3c9c9}
+#fm-root .fgrp .frowadd{padding:6px 12px;border-top:1px dashed var(--line2);color:var(--accent);font-size:12px;font-weight:700;cursor:pointer}
+#fm-root .fgrp .frowadd:hover{background:var(--accent-soft)}
 #fm-root .wmain{padding:18px}
 #fm-root .wstrip{display:flex;gap:9px;overflow-x:auto;padding:11px 16px;border-top:1px solid var(--line);background:#fbfcfd}
 #fm-root .wchip{flex:0 0 auto;max-width:230px;padding:8px 12px;border:1px solid var(--line2);border-radius:9px;background:#fff;cursor:pointer;display:flex;flex-direction:column;gap:2px}
