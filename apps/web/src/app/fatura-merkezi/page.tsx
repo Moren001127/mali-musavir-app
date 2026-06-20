@@ -221,7 +221,7 @@ function useDocuments(taxpayerId: string, period: string) {
 }
 
 export default function FaturaMerkeziPage() {
-  const [screen, setScreen] = useState('genel');
+  const [screen, setScreen] = useState('mukellefler');
   const [accent, setAccent] = useState('yesil');
   const [taxpayerId, setTaxpayerId] = useState('');
   const nowP = new Date();
@@ -254,7 +254,6 @@ export default function FaturaMerkeziPage() {
   const nav = (
     <nav className="nav">
       <div className="ncap">Çalışma</div>
-      <div className={`nitem${screen === 'genel' ? ' on' : ''}`} onClick={() => go('genel')}><Ico html={I.grid} /> Genel Bakış</div>
       <div className={`nitem${screen === 'mukellefler' ? ' on' : ''}`} onClick={() => go('mukellefler')}><Ico html={I.users} /> Mükellefler</div>
 
       <div className="ncap">Belgeler</div>
@@ -535,16 +534,28 @@ function ScreenMukellefler({ taxpayers, period, onOpen }: { taxpayers: any[]; pe
   const rows: any[] = sumQ.data || [];
   const byId = new Map(rows.map((r) => [r.taxpayerId, r]));
   const [q, setQ] = useState('');
+  const pendingOf = (s: any) => Number(s.pendingAlis || 0) + Number(s.pendingSatis || 0);
   const list = taxpayers
     .filter((t) => !q.trim() || taxpayerLabel(t).toLocaleLowerCase('tr').includes(q.toLocaleLowerCase('tr')))
-    .map((t) => ({ t, s: byId.get(t.id) || {} }));
+    .map((t) => ({ t, s: byId.get(t.id) || {} }))
+    .sort((a, b) => (Number(b.s.hasIssue || 0) - Number(a.s.hasIssue || 0)) || (pendingOf(b.s) - pendingOf(a.s)));
+  const tot = rows.reduce((acc, r) => ({
+    pending: acc.pending + pendingOf(r),
+    posted: acc.posted + Number(r.postedToLuca || 0),
+    issue: acc.issue + Number(r.hasIssue || 0),
+    attention: acc.attention + ((pendingOf(r) > 0 || Number(r.hasIssue || 0) > 0) ? 1 : 0),
+  }), { pending: 0, posted: 0, issue: 0, attention: 0 });
 
   return (
     <section className="screen">
-      <div className="h2">Mükellefler</div>
-      <div className="sub">Her mükellefin {period} dönemindeki fatura işleme durumu. Satıra tıkla → o mükellefin belgelerine geç.</div>
+      <div className="mgrid">
+        <div className="mcard"><div className="ml">Bekleyen belge</div><div className="mv">{tot.pending}</div></div>
+        <div className="mcard"><div className="ml">Luca'ya aktarılan</div><div className="mv">{tot.posted}</div></div>
+        <div className="mcard"><div className="ml">Sorunlu (kontrol)</div><div className="mv">{tot.issue}</div></div>
+        <div className="mcard"><div className="ml">Dikkat gereken</div><div className="mv">{tot.attention}</div></div>
+      </div>
       <div className="card">
-        <div className="ch"><h3>{list.length} mükellef</h3><div className="sp" /><input className="fmsel" style={{ maxWidth: 240 }} placeholder="Mükellef ara…" value={q} onChange={(e) => setQ(e.target.value)} /></div>
+        <div className="ch"><h3>{list.length} mükellef · {period}</h3><div className="sp" /><input className="fmsel" style={{ maxWidth: 240 }} placeholder="Mükellef ara…" value={q} onChange={(e) => setQ(e.target.value)} /></div>
         <div className="twrap">
           <table>
             <thead><tr><th>Mükellef</th><th className="num">Bek. alış</th><th className="num">Bek. satış</th><th className="num">Onaylı</th><th className="num">Luca'ya</th><th className="num">Sorunlu</th><th style={{ width: 70 }} /></tr></thead>
@@ -842,24 +853,24 @@ function ScreenMuhasebe({ taxpayerId, period, isIsletme = false }: { taxpayerId:
   const alacak = lines.reduce((s: number, l: any) => s + Number(l.credit || 0), 0);
   const dengeli = lines.length > 0 && Math.abs(borc - alacak) < 0.01;
   const saveLinesMut = useMutation({
-    mutationFn: () => api.patch(`/fatura-muhasebelestirme/documents/${selDoc.id}`, {
-      lines: lineDraft.map((l) => ({ group: l.group || 'matrah', accountCode: l.accountCode || null, description: l.description || null, rate: l.rate || null, debit: String(l.debit || 0), credit: String(l.credit || 0) })),
-    }),
-    onSuccess: () => { toast.success('Fiş satırları kaydedildi'); qc.invalidateQueries({ queryKey: ['fm2'] }); },
+    mutationFn: async () => {
+      await api.patch(`/fatura-muhasebelestirme/documents/${selDoc.id}`, {
+        lines: lineDraft.map((l) => ({ group: l.group || 'matrah', accountCode: l.accountCode || null, description: l.description || null, rate: l.rate || null, debit: String(l.debit || 0), credit: String(l.credit || 0) })),
+      });
+      // Matrah hesap kodunu o satıcıya ÖĞRET (ayrı "Gerçek hesap kodu" paneline gerek kalmadı).
+      const vkn = String(selDoc?.sellerVkn || '').replace(/\D/g, '');
+      const matrahCode = (lineDraft.find((l: any) => (l.group || 'matrah') === 'matrah' && l.accountCode))?.accountCode;
+      if (String(selDoc?.invoiceKind || 'ALIS') !== 'SATIS' && vkn && matrahCode) {
+        await api.post('/fatura-muhasebelestirme/vendor-rule', { taxpayerId, vendorVkn: vkn, vendorName: selDoc?.vendorName || undefined, accountCode: matrahCode }).catch(() => {});
+      }
+    },
+    onSuccess: () => { toast.success('Fiş satırları kaydedildi · satıcı kodu öğrenildi'); qc.invalidateQueries({ queryKey: ['fm2'] }); },
     onError: (e: any) => toast.error('Kaydedilemedi: ' + (e?.response?.data?.message || e?.message || 'hata')),
   });
   const gg = selDoc ? kdvParts(selDoc) : { matrah: null, kdv: null };
   const ggReady = isIsletme ? ((Number(gg.matrah) || 0) > 0 || (Number(gg.kdv) || 0) > 0 || Number(selDoc?.totalAmount) > 0) : dengeli;
 
   // Gerçek hesap kodunu elle ver — o satıcının tüm faturalarına uygulanır + öğrenilir (770 tahmini yerine)
-  const [codeInput, setCodeInput] = useState('');
-  const selVkn = String(selDoc?.sellerVkn || '').replace(/\D/g, '');
-  const codeMut = useMutation({
-    mutationFn: () => api.post('/fatura-muhasebelestirme/vendor-rule', { taxpayerId, vendorVkn: selVkn, vendorName: selDoc?.vendorName || undefined, accountCode: codeInput }),
-    onSuccess: (r: any) => { const n = r?.data?.applied; toast.success(`Kod uygulandı${n != null ? ` · ${n} belgeye` : ''} ve öğrenildi`); setCodeInput(''); qc.invalidateQueries({ queryKey: ['fm2'] }); },
-    onError: (e: any) => toast.error('Kod uygulanamadı: ' + (e?.response?.data?.message || e?.message || 'hata')),
-  });
-
   // Talimat (gece otomatik) — entegratör kayıtlarından türetilir
   const intQ = useQuery({
     queryKey: ['fm2', 'integrations', taxpayerId],
@@ -1027,14 +1038,6 @@ function ScreenMuhasebe({ taxpayerId, period, isIsletme = false }: { taxpayerId:
                     <span className="bnote">Borç {fmtMoney(borc)} {dengeli ? '=' : '≠'} Alacak {fmtMoney(alacak)} ₺</span>
                   </div>
                 )}
-                {!isIsletme && selDoc.invoiceKind !== 'SATIS' && selVkn ? (
-                  <div className="balance" style={{ background: '#fbfcfd', borderColor: 'var(--line)', flexWrap: 'wrap' }}>
-                    <Ico html={I.rules} size={15} /><b>Gerçek hesap kodu</b>
-                    <input className="fmsel" list="fm-hesap-plani" style={{ maxWidth: 150 }} placeholder="örn. 153.01.001" value={codeInput} onChange={(e) => setCodeInput(e.target.value)} />
-                    <button className="btn primary sm" disabled={codeMut.isPending || !codeInput.trim()} onClick={() => codeMut.mutate()}>{codeMut.isPending ? 'Uygulanıyor…' : 'Uygula & öğren'}</button>
-                    <span className="bnote" style={{ flexBasis: '100%', marginTop: 4 }}>770 tahmini default — bu satıcının gerçek kodunu gir; o satıcının bu mükellefteki tüm faturalarına uygulanır ve öğrenilir (sonrakiler otomatik alır).</span>
-                  </div>
-                ) : null}
                 <div className="wactions">
                   <div className="sp" />
                   {!isIsletme && <button className="btn sm" disabled={saveLinesMut.isPending || lines.length === 0} onClick={() => saveLinesMut.mutate()} title="Hesap kodu / borç / alacak değişikliklerini kaydet"><Ico html={I.checkSm} size={13} /> {saveLinesMut.isPending ? 'Kaydediliyor…' : 'Satırları kaydet'}</button>}
