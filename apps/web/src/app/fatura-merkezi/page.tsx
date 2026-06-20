@@ -936,7 +936,7 @@ function ScreenMuhasebe({ taxpayerId, period, isIsletme = false }: { taxpayerId:
   return (
     <section className="screen">
       <datalist id="fm-hesap-plani">
-        {accountPlan.map((a: any) => <option key={a.id || a.code} value={a.code}>{a.name || ''}</option>)}
+        {accountPlan.map((a: any) => <option key={a.id || a.code} value={a.name ? `${a.code} — ${a.name}` : a.code} />)}
       </datalist>
       <div className="card" style={{ padding: 0, marginTop: 2 }}>
         <div className="wmain">
@@ -1011,7 +1011,7 @@ function ScreenMuhasebe({ taxpayerId, period, isIsletme = false }: { taxpayerId:
                             <div className="fgh"><span>{g.label}</span><span className="fgs">{g.side === 'debit' ? 'Borç' : 'Alacak'}</span></div>
                             {rows.map(({ l, i }) => (
                               <div key={i} className="frow">
-                                <input className="li licode" list="fm-hesap-plani" value={l.accountCode || ''} placeholder="hesap kodu" onChange={(e) => setLine(i, 'accountCode', e.target.value)} />
+                                <input className="li licode" list="fm-hesap-plani" value={l.accountCode || ''} placeholder="kod ya da isim ara" onChange={(e) => { const r = e.target.value; setLine(i, 'accountCode', r.includes(' — ') ? r.split(' — ')[0].trim() : r); }} />
                                 {g.key !== 'cari'
                                   ? <input className="li lirate" value={l.rate || ''} placeholder="%" onChange={(e) => setLine(i, 'rate', e.target.value)} />
                                   : <span className="fdesc">{l.description || ''}</span>}
