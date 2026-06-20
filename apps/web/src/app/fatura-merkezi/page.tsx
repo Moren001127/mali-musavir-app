@@ -692,7 +692,16 @@ function InlineBelge({ id }: { id: string }) {
     try {
       const doc = f.contentDocument;
       if (!doc) return;
-      const h = Math.max(doc.body?.scrollHeight || 0, doc.documentElement?.scrollHeight || 0, doc.body?.offsetHeight || 0);
+      const scroll = Math.max(doc.body?.scrollHeight || 0, doc.documentElement?.scrollHeight || 0, doc.body?.offsetHeight || 0);
+      // Gerçek içerik altını bul — e-faturanın sondaki BOŞ alanını dahil etme (alt boşluk gitsin).
+      let bottom = 0;
+      doc.body.querySelectorAll('*').forEach((el: any) => {
+        const txt = (el.textContent || '').trim();
+        if (!txt && !['IMG', 'TABLE', 'HR', 'TR', 'TD'].includes(el.tagName)) return;
+        const r = el.getBoundingClientRect();
+        if (r.height > 0 && r.height < 6000 && r.bottom > bottom) bottom = r.bottom;
+      });
+      const h = bottom > 60 ? Math.min(Math.ceil(bottom) + 14, scroll || 99999) : scroll;
       if (h > 60) { f.style.height = h + 'px'; const vh = w.clientHeight || 560; setFit(Math.min(1, (vh - 16) / h)); }
     } catch { /* cross-origin */ }
   };
@@ -1684,7 +1693,10 @@ const CSS = `
 #fm-root .wchip small{font-size:11px;color:var(--muted)}
 #fm-root .fiseditor{display:flex;gap:18px;align-items:flex-start}
 #fm-root .belgepane{flex:0 0 58%;max-width:58%;position:sticky;top:8px}
-#fm-root .fispane{flex:1;min-width:0}
+#fm-root .fispane{flex:1;min-width:0;display:flex;flex-direction:column}
+#fm-root .fispane > .docmeta{order:7}
+#fm-root .fispane > .tevpanel{order:8}
+#fm-root .fispane > .wactions{order:9}
 #fm-root .fihint{display:flex;align-items:center;gap:7px;font-size:11.5px;color:var(--muted);padding:4px 2px 10px}
 #fm-root .fihint b{color:var(--text)}
 #fm-root .belgebox{border:1px solid var(--line);border-radius:10px;overflow:hidden;background:#fff;display:flex;flex-direction:column}
