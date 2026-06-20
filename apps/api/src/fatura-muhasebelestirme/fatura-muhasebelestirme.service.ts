@@ -4271,6 +4271,8 @@ export class FaturaMuhasebelestirmeService {
     vendorName?: string | null;
     // v2.1: çoklu KDV oranı detayı varsa her oran için ayrı yevmiye satırı üret
     kdvBreakdown?: Array<{ rate: number; base: number; amount: number }> | null;
+    // v2.4: KDV tevkifat oranı (KDV'nin sorumlu sıfatıyla beyan edilen kesri, 0..1; örn 5/10=0.5)
+    tevkifatOrani?: number | null;
   }) {
     const isSale = opts.invoiceKind === 'SATIS';
     const cariCode = isSale ? '120.01.001' : '320.01.001';
@@ -4280,6 +4282,38 @@ export class FaturaMuhasebelestirmeService {
     // Breakdown geçerli mi? — En az bir satırda base veya amount > 0 olmalı
     const breakdown = this.normalizeKdvBreakdown(opts.kdvBreakdown);
     const hasBreakdown = breakdown.some((b) => Number(b.base || 0) > 0 || Number(b.amount || 0) > 0);
+
+    // v2.4: TEVKİFATLI fatura — alışta 2×191 (normal + sorumlu sıf.) + net cari + 360;
+    // satışta hesaplanan KDV yalnız tevkifat-dışı kısımdır (kalanı alıcı sorumlu sıf. beyan eder).
+    const tk = Number(opts.tevkifatOrani) || 0;
+    if (tk > 0 && tk < 1) {
+      const m = hasBreakdown
+        ? breakdown.reduce((s, b) => s.plus(money(b.base) || zero()), zero())
+        : (money(opts.matrah) || zero());
+      const k = hasBreakdown
+        ? breakdown.reduce((s, b) => s.plus(money(b.amount) || zero()), zero())
+        : (money(opts.kdvTutari) || zero());
+      const tevk = k.mul(tk);
+      const normalK = k.minus(tevk);
+      const primaryRate = hasBreakdown ? breakdown[0]?.rate : (opts.kdvOrani ? Number(opts.kdvOrani) : undefined);
+      const rl = primaryRate ? `%${primaryRate}` : undefined;
+      const sfx = primaryRate ? String(Math.round(primaryRate)).padStart(3, '0') : '001';
+      const net = m.plus(normalK);
+      if (!isSale) {
+        return [
+          { group: 'matrah', accountCode: matrahCode, description: 'Gider / matrah', debit: m, credit: zero(), orderNo: 0 },
+          { group: 'vergi', accountCode: this.kdvAccountCode(false, primaryRate), description: `İndirilecek KDV ${rl || ''}`.trim(), rate: rl, debit: normalK, credit: zero(), orderNo: 1 },
+          { group: 'vergi', accountCode: `191.02.${sfx}`, description: `Sorumlu sıf. indirilecek KDV (tevkifat) ${rl || ''}`.trim(), rate: rl, debit: tevk, credit: zero(), orderNo: 2 },
+          { group: 'cari', accountCode: cariCode, description: opts.vendorName || 'Cari hesap', debit: zero(), credit: net, orderNo: 3 },
+          { group: 'cari', accountCode: '360.01.001', description: 'Ödenecek KDV (sorumlu sıf. — KDV2 ile beyan)', rate: rl, debit: zero(), credit: tevk, orderNo: 4 },
+        ];
+      }
+      return [
+        { group: 'cari', accountCode: cariCode, description: opts.vendorName || 'Cari hesap', debit: net, credit: zero(), orderNo: 0 },
+        { group: 'matrah', accountCode: matrahCode, description: 'Satış matrahı', debit: zero(), credit: m, orderNo: 1 },
+        { group: 'vergi', accountCode: this.kdvAccountCode(true, primaryRate), description: `Hesaplanan KDV (tevkifat sonrası) ${rl || ''}`.trim(), rate: rl, debit: zero(), credit: normalK, orderNo: 2 },
+      ];
+    }
 
     const lines: any[] = [];
     let orderNo = 0;
@@ -4650,9 +4684,10 @@ export class FaturaMuhasebelestirmeService {
    * için: verilen KDV oranına göre toplamı matrah+KDV'ye böler ve fiş satırlarını yeniden üretir.
    * Oranı MÜŞAVİR verir — tahmin yok. Satışta kod 600, alışta 770 default; sonra öğrenilen kod uygulanır.
    */
-  async setDocumentsKdvRate(tenantId: string, input: { documentIds?: string[]; kdvOrani?: number; accountCode?: string }) {
+  async setDocumentsKdvRate(tenantId: string, input: { documentIds?: string[]; kdvOrani?: number; accountCode?: string; tevkifatOrani?: number }) {
     const rate = Number(input.kdvOrani);
     if (!Number.isFinite(rate) || rate < 0 || rate > 100) throw new BadRequestException('Geçerli KDV oranı girin (0–100)');
+    const tevkifatOrani = Number(input.tevkifatOrani) > 0 && Number(input.tevkifatOrani) < 1 ? Number(input.tevkifatOrani) : 0;
     const ids = (input.documentIds || []).filter(Boolean);
     if (!ids.length) throw new BadRequestException('Belge seçilmedi');
     const manualCode = String(input.accountCode || '').trim();
@@ -4674,6 +4709,7 @@ export class FaturaMuhasebelestirmeService {
         matrah, kdvTutari: kdv, kdvOrani: rate, total,
         vendorName: isSale ? d.customerName : d.vendorName,
         kdvBreakdown: (kdv > 0 || matrah > 0) ? [{ rate, base: matrah, amount: kdv }] : null,
+        tevkifatOrani: tevkifatOrani || null,
       });
       await (this.prisma as any).$transaction(async (tx: any) => {
         await tx.invoiceAccountingLine.deleteMany({ where: { documentId: d.id } });
@@ -4686,7 +4722,7 @@ export class FaturaMuhasebelestirmeService {
           data: {
             status: 'NEEDS_REVIEW',
             validationStatus: 'OK',
-            ocrData: { ...((d.ocrData as any) || {}), matrah, kdvTutari: kdv, kdvOrani: rate, kdvBreakdown: [{ oran: rate, matrah, tutar: kdv }] },
+            ocrData: { ...((d.ocrData as any) || {}), matrah, kdvTutari: kdv, kdvOrani: rate, kdvBreakdown: [{ oran: rate, matrah, tutar: kdv }], tevkifatOrani: tevkifatOrani || 0 },
           },
         });
       });

@@ -778,9 +778,22 @@ function ScreenMuhasebe({ taxpayerId, period, isIsletme = false }: { taxpayerId:
       documentType: d.documentType || '',
       belgeNo: d.belgeNo || '',
       vkn: (String(d.invoiceKind || '').includes('SATIS') ? d.buyerVkn : d.sellerVkn) || '',
+      tevkifatli: Number(d?.ocrData?.tevkifatOrani) > 0,
+      tevkifatPay: Number(d?.ocrData?.tevkifatOrani) > 0 ? Math.round(Number(d.ocrData.tevkifatOrani) * 10) : 5,
+      kdvRate: Number(d?.ocrData?.kdvOrani) || 20,
     } : {});
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [selDoc?.id]);
+  // Tevkifatlı fatura: KDV oranı + tevkifat oranıyla 2×191 + 360 fişi kurar (set-kdv-rate, backend).
+  const applyTevkifatMut = useMutation({
+    mutationFn: () => api.post('/fatura-muhasebelestirme/documents/set-kdv-rate', {
+      documentIds: [selDoc.id],
+      kdvOrani: Number(meta.kdvRate) || 20,
+      tevkifatOrani: (Number(meta.tevkifatPay) || 5) / 10,
+    }),
+    onSuccess: () => { toast.success('Tevkifatlı fiş kuruldu (2×191 + 360)'); qc.invalidateQueries({ queryKey: ['fm2'] }); },
+    onError: (e: any) => toast.error('Tevkifat uygulanamadı: ' + (e?.response?.data?.message || e?.message || 'hata')),
+  });
   const saveMetaMut = useMutation({
     mutationFn: () => {
       const isSale = String(meta.invoiceKind).includes('SATIS');
@@ -906,9 +919,11 @@ function ScreenMuhasebe({ taxpayerId, period, isIsletme = false }: { taxpayerId:
                 <div className="docmeta">
                   <div className="dm"><span className="dml">Tarih</span><input className="dmi" type="date" value={meta.faturaTarihi || ''} onChange={(e) => setMeta({ ...meta, faturaTarihi: e.target.value })} /></div>
                   <div className="dm"><span className="dml">Fatura Türü</span>
-                    <select className="dmi" value={meta.invoiceKind || 'ALIS'} onChange={(e) => setMeta({ ...meta, invoiceKind: e.target.value })}>
+                    <select className="dmi" value={`${meta.invoiceKind || 'ALIS'}${meta.tevkifatli ? '_TEV' : ''}`} onChange={(e) => { const v = e.target.value; setMeta({ ...meta, invoiceKind: v.startsWith('SATIS') ? 'SATIS' : 'ALIS', tevkifatli: v.endsWith('_TEV') }); }}>
                       <option value="ALIS">Alış</option>
+                      <option value="ALIS_TEV">Tevkifatlı Alış</option>
                       <option value="SATIS">Satış</option>
+                      <option value="SATIS_TEV">Tevkifatlı Satış</option>
                     </select>
                   </div>
                   <div className="dm"><span className="dml">Belge Türü</span>
@@ -924,6 +939,21 @@ function ScreenMuhasebe({ taxpayerId, period, isIsletme = false }: { taxpayerId:
                   <div className="dm"><span className="dml">{String(meta.invoiceKind).includes('SATIS') ? 'Alıcı VKN' : 'Satıcı VKN'}</span><input className="dmi" value={meta.vkn || ''} onChange={(e) => setMeta({ ...meta, vkn: e.target.value })} /></div>
                   <div className="dm" style={{ alignSelf: 'end' }}><button className="btn sm primary" disabled={saveMetaMut.isPending} onClick={() => saveMetaMut.mutate()}>{saveMetaMut.isPending ? 'Kaydediliyor…' : 'Bilgileri kaydet'}</button></div>
                 </div>
+                {meta.tevkifatli && !isIsletme && (
+                  <div className="tevpanel">
+                    <span className="tlbl">Tevkifat</span>
+                    <select className="dmi" style={{ maxWidth: 110 }} value={meta.kdvRate || 20} onChange={(e) => setMeta({ ...meta, kdvRate: Number(e.target.value) })}>
+                      <option value={20}>KDV %20</option>
+                      <option value={10}>KDV %10</option>
+                      <option value={1}>KDV %1</option>
+                    </select>
+                    <select className="dmi" style={{ maxWidth: 110 }} value={meta.tevkifatPay || 5} onChange={(e) => setMeta({ ...meta, tevkifatPay: Number(e.target.value) })}>
+                      {[2, 3, 4, 5, 7, 9, 10].map((p) => <option key={p} value={p}>{p}/10</option>)}
+                    </select>
+                    <button className="btn sm primary" disabled={applyTevkifatMut.isPending} onClick={() => applyTevkifatMut.mutate()}>{applyTevkifatMut.isPending ? 'Kuruluyor…' : 'Tevkifat fişini kur'}</button>
+                    <span className="tnote">2×191 (normal + sorumlu sıf.) + 360 (KDV2) fişi oluşturur</span>
+                  </div>
+                )}
                 <div className="twrap">
                   {isIsletme ? (
                     <table>
@@ -1611,6 +1641,9 @@ const CSS = `
 #fm-root .docmeta .dmv{font-size:13px;font-weight:600;color:var(--text)}
 #fm-root .docmeta .dmi{width:100%;height:30px;padding:0 8px;border:1px solid var(--line2);border-radius:7px;font-size:13px;font-weight:600;color:var(--text);background:#fff;font-family:inherit}
 #fm-root .docmeta .dmi:focus{outline:none;border-color:var(--accent)}
+#fm-root .tevpanel{display:flex;align-items:center;gap:9px;flex-wrap:wrap;padding:10px 13px;margin-bottom:12px;background:#fbf4e9;border:1px solid #f0d6ad;border-radius:10px}
+#fm-root .tevpanel .tlbl{font-size:12px;font-weight:800;color:#a85d08;text-transform:uppercase;letter-spacing:.4px}
+#fm-root .tevpanel .tnote{font-size:11.5px;color:var(--muted);flex-basis:100%}
 #fm-root .li{height:28px;border:1px solid var(--line2);border-radius:6px;padding:0 7px;font-size:12.5px;font-weight:600;color:var(--text);background:#fff;font-family:inherit}
 #fm-root .li:focus{outline:none;border-color:var(--accent)}
 #fm-root .licode{width:120px}

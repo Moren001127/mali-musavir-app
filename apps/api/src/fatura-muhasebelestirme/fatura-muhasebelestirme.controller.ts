@@ -227,7 +227,7 @@ export class FaturaMuhasebelestirmeController {
   @Post('documents/set-kdv-rate')
   setDocumentsKdvRate(
     @Req() req: any,
-    @Body() body: { documentIds?: string[]; kdvOrani?: number; accountCode?: string },
+    @Body() body: { documentIds?: string[]; kdvOrani?: number; accountCode?: string; tevkifatOrani?: number },
   ) {
     return this.service.setDocumentsKdvRate(req.user.tenantId, body || {});
   }
