@@ -1013,7 +1013,16 @@ function ScreenMuhasebe({ taxpayerId, period, isIsletme = false }: { taxpayerId:
                               <div key={i} className="frow">
                                 <input className="li licode" list="fm-hesap-plani" value={l.accountCode || ''} placeholder="kod ya da isim ara" onChange={(e) => { const r = e.target.value; setLine(i, 'accountCode', r.includes(' — ') ? r.split(' — ')[0].trim() : r); }} />
                                 {g.key !== 'cari'
-                                  ? <input className="li lirate" value={l.rate || ''} placeholder="%" onChange={(e) => setLine(i, 'rate', e.target.value)} />
+                                  ? (() => { const rv = String(l.rate || '').replace(/[^0-9]/g, ''); return (
+                                      <select className="li lirate" value={rv} onChange={(e) => setLine(i, 'rate', e.target.value ? `%${e.target.value}` : '')}>
+                                        <option value="">%</option>
+                                        <option value="0">%0</option>
+                                        <option value="1">%1</option>
+                                        <option value="10">%10</option>
+                                        <option value="20">%20</option>
+                                        {rv && !['0', '1', '10', '20'].includes(rv) ? <option value={rv}>%{rv}</option> : null}
+                                      </select>
+                                    ); })()
                                   : <span className="fdesc">{l.description || ''}</span>}
                                 <input className="li linum" type="number" step="0.01" value={(g.side === 'debit' ? l.debit : l.credit) || ''} placeholder="0,00" onChange={(e) => setLine(i, g.side, e.target.value === '' ? 0 : Number(e.target.value))} />
                                 <button type="button" className="frowdel" title="Satırı sil" onClick={() => delLine(i)}>×</button>
@@ -1681,9 +1690,9 @@ const CSS = `
 #fm-root .fgrp .frow{display:flex;align-items:center;gap:6px;padding:4px 10px;border-top:1px solid var(--line)}
 #fm-root .fgrp .frow .li{height:27px}
 #fm-root .fgrp .frow .licode{flex:1;min-width:0;width:auto;appearance:none;background:#fff url("data:image/svg+xml;utf8,<svg xmlns='http://www.w3.org/2000/svg' width='10' height='6' viewBox='0 0 10 6'><path d='M1 1l4 4 4-4' fill='none' stroke='%2394a3b2' stroke-width='1.5'/></svg>") no-repeat right 7px center;padding-right:22px}
-#fm-root .fgrp .frow .lirate{flex:0 0 58px;width:auto;text-align:center}
+#fm-root .fgrp .frow .lirate{flex:0 0 72px;width:auto;text-align:center;padding:0 4px;cursor:pointer}
 #fm-root .fgrp .frow .fdesc{flex:1;min-width:0;font-size:12px;color:var(--muted);white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
-#fm-root .fgrp .frow .linum{flex:0 0 104px;width:auto;text-align:right}
+#fm-root .fgrp .frow .linum{flex:0 0 92px;width:auto;text-align:right}
 #fm-root .fgrp .fgt{display:flex;justify-content:space-between;padding:5px 10px;border-top:1px solid var(--line2);background:#fbfcfd;font-size:12px}
 #fm-root .fgrp .fgt b{font-weight:800}
 #fm-root .fgrp .frow .frowdel{width:22px;height:22px;flex:0 0 22px;border:1px solid var(--line2);border-radius:6px;background:#fff;color:var(--red);font-size:15px;font-weight:700;cursor:pointer;line-height:1;display:grid;place-items:center}
