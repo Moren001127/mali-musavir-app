@@ -681,7 +681,7 @@ function ScreenKurallar({ taxpayerId, period }: { taxpayerId: string; period: st
 /** Muhasebeleştir ekranında belgeyi (fatura görüntüsü/HTML) fişin yanında gösterir. */
 function InlineBelge({ id }: { id: string }) {
   const [d, setD] = useState<any | null>(null);
-  const [zoom, setZoom] = useState(0);   // 0 = sığdır (otomatik); >0 = elle ölçek
+  const [zoom, setZoom] = useState(1);   // çarpan: 1 = Sığdır = %100 (tüm fatura); 1.5 = %150 yakın
   const [fit, setFit] = useState(1);
   const frameRef = useRef<HTMLIFrameElement | null>(null);
   const wrapRef = useRef<HTMLDivElement | null>(null);
@@ -709,7 +709,7 @@ function InlineBelge({ id }: { id: string }) {
   const onFrameLoad = () => { measure(); setTimeout(measure, 250); setTimeout(measure, 900); setTimeout(measure, 2000); };
   useEffect(() => {
     let alive = true;
-    setD(null); setZoom(0); setFit(1);
+    setD(null); setZoom(1); setFit(1);
     api.get(`/fatura-muhasebelestirme/documents/${id}/file-url`)
       .then((r) => { if (alive) setD(r.data || {}); })
       .catch(() => { if (alive) setD({}); });
@@ -729,10 +729,10 @@ function InlineBelge({ id }: { id: string }) {
   const htmlDoc = html
     ? `<style>html,body{margin:0!important;padding:0!important;height:auto!important;min-height:0!important;max-height:none!important;overflow:visible!important}</style>${html}`
     : '';
-  const baseScale = html ? fit : 1;            // "Sığdır" temeli (html: hesaplanan fit, resim: contain=1)
-  const scale = zoom > 0 ? zoom : baseScale;
+  // zoom = çarpan (1 = Sığdır = %100 = tüm fatura). Gerçek ölçek = taban(fit/contain) × zoom.
+  const appliedScale = (html ? fit : 1) * zoom;
   const canZoom = html || isImg;
-  const dz = (delta: number) => setZoom((s) => { const b = s > 0 ? s : baseScale; return Math.min(6, Math.max(0.2, Math.round((b + delta) * 100) / 100)); });
+  const dz = (delta: number) => setZoom((z) => Math.min(5, Math.max(0.25, Math.round((z + delta) * 100) / 100)));
   return (
     <div className="belgebox">
       <div className="bpbar">
@@ -740,20 +740,20 @@ function InlineBelge({ id }: { id: string }) {
         <div className="bpzoom">
           {canZoom ? (
             <>
-              <button type="button" onClick={() => dz(-0.15)} title="Uzaklaştır">−</button>
-              <span className="bpz">{Math.round(scale * 100)}%</span>
-              <button type="button" onClick={() => dz(0.15)} title="Yakınlaştır">+</button>
-              <button type="button" onClick={() => setZoom(0)} title="Tümünü sığdır">Sığdır</button>
+              <button type="button" onClick={() => dz(-0.25)} title="Uzaklaştır">−</button>
+              <span className="bpz">{Math.round(zoom * 100)}%</span>
+              <button type="button" onClick={() => dz(0.25)} title="Yakınlaştır">+</button>
+              <button type="button" onClick={() => setZoom(1)} title="Tümünü sığdır (%100)">Sığdır</button>
             </>
           ) : null}
           {url ? <a href={url} target="_blank" rel="noopener noreferrer" title="Yeni sekmede aç">↗</a> : null}
         </div>
       </div>
-      <div ref={wrapRef} className="bpview" style={{ overflow: zoom > 0 ? 'auto' : 'hidden' }}>
+      <div ref={wrapRef} className="bpview" style={{ overflow: zoom > 1 ? 'auto' : 'hidden' }}>
         {html
-          ? <iframe ref={frameRef} onLoad={onFrameLoad} className="bpframe-h" srcDoc={htmlDoc} title="Belge" sandbox="allow-same-origin" scrolling="no" style={{ zoom: scale } as any} />
+          ? <iframe ref={frameRef} onLoad={onFrameLoad} className="bpframe-h" srcDoc={htmlDoc} title="Belge" sandbox="allow-same-origin" scrolling="no" style={{ zoom: appliedScale } as any} />
           : isImg
-            ? <img className="bpimg" src={url} alt="Belge" style={{ zoom: zoom > 0 ? zoom : 1 } as any} />
+            ? <img className="bpimg" src={url} alt="Belge" style={{ zoom: appliedScale } as any} />
             : isPdf
               ? <iframe className="bppdf" src={url.includes('#') ? url : `${url}#view=FitH`} title="Belge" />
               : <div className="bpempty">Belge görüntüsü yok</div>}
@@ -1001,7 +1001,9 @@ function ScreenMuhasebe({ taxpayerId, period, isIsletme = false }: { taxpayerId:
                             {rows.map(({ l, i }) => (
                               <div key={i} className="frow">
                                 <input className="li licode" list="fm-hesap-plani" value={l.accountCode || ''} placeholder="hesap kodu" onChange={(e) => setLine(i, 'accountCode', e.target.value)} />
-                                <span className="fdesc">{l.description || (l.rate ? `KDV ${l.rate}` : g.label)}</span>
+                                {g.key !== 'cari'
+                                  ? <input className="li lirate" value={l.rate || ''} placeholder="%" onChange={(e) => setLine(i, 'rate', e.target.value)} />
+                                  : <span className="fdesc">{l.description || ''}</span>}
                                 <input className="li linum" type="number" step="0.01" value={(g.side === 'debit' ? l.debit : l.credit) || ''} placeholder="0,00" onChange={(e) => setLine(i, g.side, e.target.value === '' ? 0 : Number(e.target.value))} />
                                 <button type="button" className="frowdel" title="Satırı sil" onClick={() => delLine(i)}>×</button>
                               </div>
@@ -1671,17 +1673,19 @@ const CSS = `
 #fm-root .linum{width:120px;text-align:right}
 #fm-root .fgrps{display:flex;flex-direction:column;gap:12px}
 #fm-root .fgrp{border:1px solid var(--line2);border-radius:10px;overflow:hidden}
-#fm-root .fgrp .fgh{display:flex;justify-content:space-between;align-items:center;padding:8px 12px;background:var(--th);color:var(--th-text);font-size:12.5px;font-weight:700}
-#fm-root .fgrp .fgh .fgs{font-size:10px;opacity:.85;text-transform:uppercase;letter-spacing:.4px}
-#fm-root .fgrp .frow{display:flex;align-items:center;gap:10px;padding:7px 12px;border-top:1px solid var(--line)}
-#fm-root .fgrp .frow .fdesc{flex:1;min-width:0;font-size:12.5px;color:var(--muted);white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
-#fm-root .fgrp .frow .licode{flex:0 0 130px;width:auto}
-#fm-root .fgrp .frow .linum{flex:0 0 130px;width:auto}
-#fm-root .fgrp .fgt{display:flex;justify-content:space-between;padding:7px 12px;border-top:1px solid var(--line2);background:#fbfcfd;font-size:12.5px}
+#fm-root .fgrp .fgh{display:flex;justify-content:space-between;align-items:center;padding:5px 10px;background:var(--th);color:var(--th-text);font-size:11.5px;font-weight:700}
+#fm-root .fgrp .fgh .fgs{font-size:9.5px;opacity:.85;text-transform:uppercase;letter-spacing:.4px}
+#fm-root .fgrp .frow{display:flex;align-items:center;gap:6px;padding:4px 10px;border-top:1px solid var(--line)}
+#fm-root .fgrp .frow .li{height:27px}
+#fm-root .fgrp .frow .licode{flex:1;min-width:0;width:auto;appearance:none;background:#fff url("data:image/svg+xml;utf8,<svg xmlns='http://www.w3.org/2000/svg' width='10' height='6' viewBox='0 0 10 6'><path d='M1 1l4 4 4-4' fill='none' stroke='%2394a3b2' stroke-width='1.5'/></svg>") no-repeat right 7px center;padding-right:22px}
+#fm-root .fgrp .frow .lirate{flex:0 0 58px;width:auto;text-align:center}
+#fm-root .fgrp .frow .fdesc{flex:1;min-width:0;font-size:12px;color:var(--muted);white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+#fm-root .fgrp .frow .linum{flex:0 0 104px;width:auto;text-align:right}
+#fm-root .fgrp .fgt{display:flex;justify-content:space-between;padding:5px 10px;border-top:1px solid var(--line2);background:#fbfcfd;font-size:12px}
 #fm-root .fgrp .fgt b{font-weight:800}
-#fm-root .fgrp .frow .frowdel{width:24px;height:24px;flex:0 0 24px;border:1px solid var(--line2);border-radius:6px;background:#fff;color:var(--red);font-size:16px;font-weight:700;cursor:pointer;line-height:1;display:grid;place-items:center}
+#fm-root .fgrp .frow .frowdel{width:22px;height:22px;flex:0 0 22px;border:1px solid var(--line2);border-radius:6px;background:#fff;color:var(--red);font-size:15px;font-weight:700;cursor:pointer;line-height:1;display:grid;place-items:center}
 #fm-root .fgrp .frow .frowdel:hover{background:#fdeaea;border-color:#f3c9c9}
-#fm-root .fgrp .frowadd{padding:6px 12px;border-top:1px dashed var(--line2);color:var(--accent);font-size:12px;font-weight:700;cursor:pointer}
+#fm-root .fgrp .frowadd{padding:4px 10px;border-top:1px dashed var(--line2);color:var(--accent);font-size:11.5px;font-weight:700;cursor:pointer}
 #fm-root .fgrp .frowadd:hover{background:var(--accent-soft)}
 #fm-root .wmain{padding:18px}
 #fm-root .wstrip{display:flex;gap:9px;overflow-x:auto;padding:11px 16px;border-top:1px solid var(--line);background:#fbfcfd}
