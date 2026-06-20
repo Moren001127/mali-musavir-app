@@ -4772,16 +4772,27 @@ export class FaturaMuhasebelestirmeService {
       return { ok: false, reason: 'dosya indirilemedi: ' + (e?.message || '') };
     }
     if (!buffer || buffer.length < 200) return { ok: false, reason: 'dosya yok' };
-    if (!/^image\//i.test(mediaType)) return { ok: false, reason: 'görsel değil (XML/PDF Max-vision ile okunamaz)' };
+    const isImage = /^image\//i.test(mediaType);
+    const head = buffer.slice(0, 4000).toString('utf8');
+    // e-Fatura/e-Arşiv genelde XML/HTML gelir — görsel değil ama METİN olarak okunabilir.
+    const isTextual = !isImage && (/xml|html|text|json/i.test(mediaType) || /<\?xml|<html|<Invoice|ETTN|[Mm]atrah|KDV/i.test(head));
+    if (!isImage && !isTextual) return { ok: false, reason: 'okunamaz biçim (görsel ya da XML/HTML değil)' };
 
     const prompt = [
-      'Aşağıdaki görüntü bir Türk faturası veya yazarkasa fişidir. İçindeki bilgileri oku.',
+      isImage
+        ? 'Aşağıdaki görüntü bir Türk faturası veya yazarkasa fişidir. İçindeki bilgileri oku.'
+        : 'Aşağıda bir Türk e-Fatura/e-Arşiv XML veya HTML içeriği var. İçindeki bilgileri oku.',
       'YALNIZCA şu JSON\'u döndür — kod bloğu, açıklama, başka metin YOK:',
       '{"belgeNo":"<fatura/fiş no ya da null>","tarih":"<GG.AA.YYYY ya da null>","kdv":[{"oran":<KDV yüzdesi sayı>,"matrah":<KDV hariç tutar sayı>,"kdv":<KDV tutarı sayı>}]}',
-      'KURALLAR: Türk sayı biçimi "1.234,56" = 1234.56 (tümünü ondalıklı sayıya çevir). Birden çok KDV oranı varsa her oran ayrı nesne. matrah=KDV hariç tutar, kdv=o orana ait KDV. Okunamayan alanı null bırak, UYDURMA.',
-    ].join('\n');
+      'KURALLAR: Türk sayı biçimi "1.234,56" = 1234.56 (tümünü ondalıklı sayıya çevir). Birden çok KDV oranı varsa her oran ayrı nesne. matrah=KDV hariç tutar, kdv=o orana ait KDV. ÖTV/ÖİV/tevkifat varsa matrahı şişirme — gerçek mal/hizmet matrahını ver. Okunamayan alanı null bırak, UYDURMA.',
+      isImage ? '' : ('\nİÇERİK:\n' + buffer.toString('utf8').slice(0, 45000)),
+    ].filter(Boolean).join('\n');
 
-    const res = await claudeTextViaMax({ prompt, images: [{ base64: buffer.toString('base64'), mediaType }], timeoutMs: 16000 });
+    const res = await claudeTextViaMax(
+      isImage
+        ? { prompt, images: [{ base64: buffer.toString('base64'), mediaType }], timeoutMs: 16000 }
+        : { prompt, timeoutMs: 22000 },
+    );
     if (!res.ok || !res.text) return { ok: false, reason: res.error || 'okunamadı' };
 
     let parsed: any = null;
