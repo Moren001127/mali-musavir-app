@@ -25,6 +25,7 @@ import {
   type LucaSessionManagerStatus,
   type LucaWorkerAccount,
 } from '@/lib/luca-session';
+import { lucaCredentialApi } from '@/lib/kdv';
 
 const GOLD = '#d4b876';
 const SHOW_LUCA_WORKER_ACCOUNTS =
@@ -170,6 +171,8 @@ export default function LucaSessionPage() {
         />
       </div>
 
+      <LucaCredentialEditor credential={data?.credential} />
+
       {SHOW_LUCA_WORKER_ACCOUNTS ? <LucaWorkerAccountsPanel /> : null}
 
       {activeChallenge ? (
@@ -268,6 +271,144 @@ export default function LucaSessionPage() {
         </section>
       </div>
     </div>
+  );
+}
+
+function LucaCredentialEditor({
+  credential,
+}: {
+  credential?: { saved?: boolean; uyeNo?: string | null; username?: string | null } | null;
+}) {
+  const qc = useQueryClient();
+  const [open, setOpen] = useState(false);
+  const [uyeNo, setUyeNo] = useState('');
+  const [username, setUsername] = useState('');
+  const [password, setPassword] = useState('');
+  const [showPassword, setShowPassword] = useState(false);
+
+  useEffect(() => {
+    setUyeNo(credential?.uyeNo || '');
+    setUsername(credential?.username || '');
+  }, [credential?.uyeNo, credential?.username, open]);
+
+  const saveMut = useMutation({
+    mutationFn: () => lucaCredentialApi.save(uyeNo.trim(), username.trim(), password.trim()),
+    onSuccess: () => {
+      toast.success('Luca giriş bilgileri güncellendi');
+      setPassword('');
+      setOpen(false);
+      qc.invalidateQueries({ queryKey: ['luca-session-manager'] });
+    },
+    onError: (e: any) => toast.error(e?.response?.data?.message || e?.message || 'Kaydedilemedi'),
+  });
+
+  const submit = () => {
+    if (!uyeNo.trim() || !username.trim()) {
+      toast.error('Üye no ve kullanıcı adı gerekli');
+      return;
+    }
+    if (!password.trim()) {
+      toast.error('Yeni şifreyi yazın');
+      return;
+    }
+    saveMut.mutate();
+  };
+
+  const inputStyle: React.CSSProperties = {
+    background: 'rgba(0,0,0,0.25)',
+    borderColor: 'rgba(255,255,255,0.12)',
+    color: '#fafaf9',
+  };
+
+  return (
+    <section
+      className="relative overflow-hidden rounded-2xl border p-4"
+      style={{ background: 'rgba(255,255,255,0.02)', borderColor: 'rgba(255,255,255,0.06)' }}
+    >
+      <div className="absolute inset-x-0 top-0 h-[3px]" style={{ background: 'linear-gradient(90deg, #2dd4bf, #d4b876)' }} />
+      <div className="flex flex-col gap-2 sm:flex-row sm:items-center sm:justify-between">
+        <div className="flex items-center gap-2">
+          <span className="grid h-7 w-7 place-items-center rounded-lg" style={{ background: 'linear-gradient(135deg, #2dd4bf, #0d9488)' }}>
+            <KeyRound size={14} style={{ color: '#07201c' }} />
+          </span>
+          <div>
+            <h2 className="text-sm font-bold" style={{ color: '#fafaf9' }}>Luca Giriş Bilgileri</h2>
+            <div className="text-[11px] mt-0.5" style={{ color: 'rgba(250,250,249,0.5)' }}>
+              {credential?.saved
+                ? `Kayıtlı — Üye no: ${credential.uyeNo || '-'} · Kullanıcı: ${credential.username || '-'}`
+                : 'Henüz tanımlı değil'}
+            </div>
+          </div>
+        </div>
+        <button
+          onClick={() => setOpen((v) => !v)}
+          className="inline-flex items-center gap-1.5 rounded-lg px-3 py-2 text-[12px] font-semibold"
+          style={{ background: 'rgba(212,184,118,0.14)', color: GOLD, border: '1px solid rgba(212,184,118,0.35)' }}
+        >
+          {open ? <X size={14} /> : <KeyRound size={14} />}
+          {open ? 'Vazgeç' : 'Şifreyi Güncelle'}
+        </button>
+      </div>
+
+      {open ? (
+        <div className="mt-4 grid grid-cols-1 sm:grid-cols-3 gap-3">
+          <label className="block">
+            <span className="text-[11px] font-semibold" style={{ color: 'rgba(250,250,249,0.6)' }}>Üye No</span>
+            <input
+              value={uyeNo}
+              onChange={(e) => setUyeNo(e.target.value)}
+              className="mt-1 w-full rounded-lg border px-3 py-2 text-sm outline-none"
+              style={inputStyle}
+            />
+          </label>
+          <label className="block">
+            <span className="text-[11px] font-semibold" style={{ color: 'rgba(250,250,249,0.6)' }}>Kullanıcı Adı</span>
+            <input
+              value={username}
+              onChange={(e) => setUsername(e.target.value)}
+              className="mt-1 w-full rounded-lg border px-3 py-2 text-sm outline-none"
+              style={inputStyle}
+            />
+          </label>
+          <label className="block">
+            <span className="text-[11px] font-semibold" style={{ color: 'rgba(250,250,249,0.6)' }}>Yeni Şifre</span>
+            <div className="mt-1 flex items-center rounded-lg border" style={{ ...inputStyle, padding: 0 }}>
+              <input
+                value={password}
+                onChange={(e) => setPassword(e.target.value)}
+                type={showPassword ? 'text' : 'password'}
+                placeholder="Yeni şifre"
+                className="w-full bg-transparent px-3 py-2 text-sm outline-none"
+                style={{ color: '#fafaf9', minWidth: 0 }}
+                onKeyDown={(e) => { if (e.key === 'Enter') submit(); }}
+              />
+              <button
+                type="button"
+                onClick={() => setShowPassword((v) => !v)}
+                className="px-2"
+                style={{ color: 'rgba(250,250,249,0.55)' }}
+              >
+                {showPassword ? <EyeOff size={15} /> : <Eye size={15} />}
+              </button>
+            </div>
+          </label>
+          <div className="sm:col-span-3 flex items-center gap-2">
+            <button
+              onClick={submit}
+              disabled={saveMut.isPending}
+              className="inline-flex items-center gap-1.5 rounded-lg px-4 py-2 text-[12px] font-semibold disabled:opacity-60"
+              style={{ background: 'linear-gradient(135deg, #2dd4bf, #0d9488)', color: '#07201c' }}
+            >
+              {saveMut.isPending ? <Loader2 size={14} className="animate-spin" /> : <Save size={14} />}
+              Kaydet
+            </button>
+            <span className="text-[11px]" style={{ color: 'rgba(250,250,249,0.45)' }}>
+              Şifre sunucuda şifrelenir; veri çekerken otomatik kullanılır.
+            </span>
+          </div>
+        </div>
+      ) : null}
+    </section>
   );
 }
 
