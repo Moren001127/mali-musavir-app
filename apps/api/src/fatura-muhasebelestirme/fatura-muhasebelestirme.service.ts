@@ -4794,10 +4794,13 @@ export class FaturaMuhasebelestirmeService {
       isImage ? '' : ('\nİÇERİK:\n' + html.replace(/<[^>]+>/g, ' ').replace(/\s+/g, ' ').slice(0, 45000)),
     ].filter(Boolean).join('\n');
 
+    // Süre: Max CLI ilk çağrıda soğuk başlar + uzun HTML metni yavaş işlenir; 22sn YETMİYORDU
+    // (toplu okumada belgelerin ~yarısı "22000ms içinde yanıt vermedi"ye düşüyordu). Frontend
+    // axios timeout'u yok (sınırsız bekler), Railway uzun isteği kesmez → bolca süre veriyoruz.
     const res = await claudeTextViaMax(
       isImage
-        ? { prompt, images: [{ base64: imgBuf!.toString('base64'), mediaType: imgMedia }], timeoutMs: 16000 }
-        : { prompt, timeoutMs: 22000 },
+        ? { prompt, images: [{ base64: imgBuf!.toString('base64'), mediaType: imgMedia }], timeoutMs: 30000 }
+        : { prompt, timeoutMs: 60000 },
     );
     if (!res.ok || !res.text) return { ok: false, reason: res.error || 'okunamadı' };
 
