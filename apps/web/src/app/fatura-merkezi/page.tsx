@@ -91,11 +91,11 @@ function deriveDurum(doc: any): { k: string; t: string } {
 function taxpayerLabel(t: any): string {
   return t?.companyName || [t?.firstName, t?.lastName].filter(Boolean).join(' ') || t?.taxNumber || 'Mükellef';
 }
-// Hesap kodu seçici — Mihsap gibi tek temiz açılır liste (datalist'in çift-ok + kötü
-// açılış sorununu giderir). Tıkla → arama + kod/isim listesi; tıkla seç ya da yaz-Enter.
+// Hesap kodu seçici — Mihsap gibi: KUTUNUN İÇİNE doğrudan yazılır (ayrı arama kutusu yok),
+// yazdıkça altta kod/isim listesi filtrelenir; tıkla seç ya da Enter. Tek temiz ok.
 function CodeSelect({ value, accounts, onChange }: { value: string; accounts: any[]; onChange: (code: string) => void }) {
   const [open, setOpen] = useState(false);
-  const [q, setQ] = useState('');
+  const [typing, setTyping] = useState(false); // kullanıcı kutuya yazıyor mu (filtre buna göre)
   const [pos, setPos] = useState<{ top: number; left: number; width: number } | null>(null);
   const boxRef = useRef<HTMLDivElement>(null);
   const popRef = useRef<HTMLDivElement>(null);
@@ -106,7 +106,7 @@ function CodeSelect({ value, accounts, onChange }: { value: string; accounts: an
   const measure = () => {
     const el = boxRef.current; if (!el) return;
     const r = el.getBoundingClientRect();
-    const width = Math.min(440, Math.max(300, r.width));
+    const width = Math.min(440, Math.max(r.width, 300));
     let left = r.left; if (left + width > window.innerWidth - 8) left = Math.max(8, window.innerWidth - 8 - width);
     setPos({ top: r.bottom + 4, left, width });
   };
@@ -117,7 +117,7 @@ function CodeSelect({ value, accounts, onChange }: { value: string; accounts: an
       const t = e.target as Node;
       if (boxRef.current && boxRef.current.contains(t)) return;
       if (popRef.current && popRef.current.contains(t)) return;
-      setOpen(false); setQ('');
+      setOpen(false); setTyping(false);
     };
     const reflow = () => measure();
     document.addEventListener('mousedown', onDoc);
@@ -125,35 +125,36 @@ function CodeSelect({ value, accounts, onChange }: { value: string; accounts: an
     window.addEventListener('resize', reflow);
     return () => { document.removeEventListener('mousedown', onDoc); window.removeEventListener('scroll', reflow, true); window.removeEventListener('resize', reflow); };
   }, [open]);
-  const term = q.trim().toLocaleLowerCase('tr');
+  // Yazarken kutu metnine göre filtre; seçili dururken (yazmıyorsa) tüm liste gezilebilir.
+  const term = (typing ? value : '').trim().toLocaleLowerCase('tr');
   const list = (term
     ? accounts.filter((a) => String(a.code || '').toLocaleLowerCase('tr').includes(term) || String(a.name || '').toLocaleLowerCase('tr').includes(term))
     : accounts
   ).slice(0, 80);
-  const pick = (code: string) => { onChange(code); setOpen(false); setQ(''); };
+  const pick = (code: string) => { onChange(code); setOpen(false); setTyping(false); inpRef.current?.blur(); };
   return (
     <div className="csel" ref={boxRef}>
-      <div className={`cselfield${open ? ' on' : ''}`} title={value ? (selName ? `${value} — ${selName}` : value) : ''}
-        onClick={() => { setOpen((o) => !o); setTimeout(() => inpRef.current?.focus(), 0); }}>
-        <span className={`cselval${value ? '' : ' ph'}`}>{value || 'kod seç'}</span>
-        <span className="cselcar" />
+      <div className={`cselfield${open ? ' on' : ''}`} title={value ? (selName ? `${value} — ${selName}` : value) : ''}>
+        <input ref={inpRef} className="cselinp" value={value} placeholder="kod ya da isim yaz"
+          onFocus={() => { setOpen(true); measure(); }}
+          onChange={(e) => { onChange(e.target.value); setTyping(true); setOpen(true); }}
+          onKeyDown={(e) => {
+            if (e.key === 'Escape') { setOpen(false); setTyping(false); inpRef.current?.blur(); }
+            else if (e.key === 'Enter') { e.preventDefault(); if (typing && list.length === 1) pick(String(list[0].code)); else setOpen(false); }
+            else if (e.key === 'ArrowDown' && !open) { setOpen(true); }
+          }} />
+        <span className="cselcar" onMouseDown={(e) => { e.preventDefault(); if (open) { setOpen(false); } else { setTyping(false); setOpen(true); inpRef.current?.focus(); measure(); } }} />
       </div>
       {open && pos && (
         <div className="cselpop" ref={popRef} style={{ position: 'fixed', top: pos.top, left: pos.left, width: pos.width }}>
-          <input ref={inpRef} className="cselsearch" value={q} placeholder="Ara: kod ya da isim…"
-            onChange={(e) => setQ(e.target.value)}
-            onKeyDown={(e) => {
-              if (e.key === 'Escape') { setOpen(false); setQ(''); }
-              else if (e.key === 'Enter') { if (list[0]) pick(String(list[0].code)); else if (term) pick(q.trim()); }
-            }} />
           <div className="csellist">
-            {list.length === 0 && <div className="cselempty">Eşleşen hesap yok{term ? ' — Enter ile bu kodu kullan' : ''}</div>}
+            {list.length === 0 && <div className="cselempty">Eşleşen hesap yok — yazdığın kod aynen kullanılır</div>}
             {list.map((a) => (
-              <div key={a.id || a.code} className={`cselopt${String(a.code) === String(value) ? ' sel' : ''}`} onClick={() => pick(String(a.code))}>
+              <div key={a.id || a.code} className={`cselopt${String(a.code) === String(value) ? ' sel' : ''}`} onMouseDown={(e) => { e.preventDefault(); pick(String(a.code)); }}>
                 <b>{a.code}</b>{a.name ? <span>{a.name}</span> : null}
               </div>
             ))}
-            {!term && accounts.length > 80 && <div className="cselmore">… {accounts.length - 80} hesap daha — aramayla daralt</div>}
+            {!term && accounts.length > 80 && <div className="cselmore">… {accounts.length - 80} hesap daha — yazarak daralt</div>}
           </div>
         </div>
       )}
@@ -1774,14 +1775,13 @@ const CSS = `
 #fm-root .fgrp .frow{display:flex;align-items:center;gap:6px;padding:4px 10px;border-top:1px solid var(--line)}
 #fm-root .fgrp .frow .li{height:27px}
 #fm-root .fgrp .frow .csel{flex:1;min-width:0;position:relative}
-#fm-root .csel .cselfield{display:flex;align-items:center;gap:6px;height:27px;border:1px solid var(--line2);border-radius:6px;background:#fff;padding:0 9px;cursor:pointer}
+#fm-root .csel .cselfield{display:flex;align-items:center;gap:4px;height:27px;border:1px solid var(--line2);border-radius:6px;background:#fff;padding:0 7px 0 9px}
 #fm-root .csel .cselfield.on{border-color:var(--accent);box-shadow:0 0 0 2px var(--accent-soft)}
-#fm-root .csel .cselval{flex:1;min-width:0;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;font-size:12.5px;font-weight:600;color:var(--text);font-variant-numeric:tabular-nums}
-#fm-root .csel .cselval.ph{color:#9aa6b2;font-weight:400}
-#fm-root .csel .cselcar{flex:0 0 auto;width:7px;height:7px;border-right:1.6px solid #94a3b2;border-bottom:1.6px solid #94a3b2;transform:rotate(45deg) translateY(-2px);transition:transform .15s,border-color .15s}
+#fm-root .csel .cselinp{flex:1;min-width:0;border:0;outline:0;background:transparent;padding:0;height:100%;font-size:12.5px;font-weight:600;color:var(--text);font-family:inherit;font-variant-numeric:tabular-nums}
+#fm-root .csel .cselinp::placeholder{color:#9aa6b2;font-weight:400}
+#fm-root .csel .cselcar{flex:0 0 auto;width:7px;height:7px;border-right:1.6px solid #94a3b2;border-bottom:1.6px solid #94a3b2;transform:rotate(45deg) translateY(-2px);transition:transform .15s,border-color .15s;cursor:pointer}
 #fm-root .csel .cselfield.on .cselcar{transform:rotate(-135deg) translateY(2px);border-color:var(--accent)}
 #fm-root .csel .cselpop{z-index:9000;background:#fff;border:1px solid var(--line2);border-radius:10px;box-shadow:0 12px 34px rgba(15,23,42,.18);overflow:hidden}
-#fm-root .csel .cselsearch{width:100%;height:34px;border:0;border-bottom:1px solid var(--line);padding:0 11px;font-size:12.5px;font-family:inherit;color:var(--text);outline:none;box-sizing:border-box}
 #fm-root .csel .csellist{max-height:248px;overflow:auto;padding:4px}
 #fm-root .csel .cselopt{display:flex;align-items:baseline;gap:9px;padding:6px 9px;border-radius:6px;cursor:pointer}
 #fm-root .csel .cselopt:hover,#fm-root .csel .cselopt.sel{background:var(--accent-soft)}
