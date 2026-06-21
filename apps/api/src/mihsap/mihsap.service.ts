@@ -652,6 +652,7 @@ export class MihsapService implements OnModuleInit {
     mukellefId: string,
     item: MihsapInvoiceSummary,
     donem: string,
+    kaynak?: 'arsiv' | 'bekleyen',
   ): Promise<{ stored: boolean; skipped?: boolean; reason?: string }> {
     // Daha önce kaydedilmiş mi? mihsapId unique
     const mihsapInternalId =
@@ -696,6 +697,7 @@ export class MihsapService implements OnModuleInit {
         mihsapFaturaId: item.faturaId ? String(item.faturaId) : null,
         orjDosyaTuru: item.orjDosyaTuru || null,
         mihsapFileLink: item.fileLink || item.fileDownloadLink || null,
+        ...(kaynak ? { kaynak } : {}),
         raw: item as any,
         ...(storageKey ? { storageKey, storageUrl, downloadedAt: new Date() } : {}),
       },
@@ -719,6 +721,7 @@ export class MihsapService implements OnModuleInit {
         storageKey: storageKey || null,
         storageUrl: storageUrl || null,
         mihsapFileLink: item.fileLink || item.fileDownloadLink || null,
+        kaynak: kaynak || null,
         downloadedAt: storageKey ? new Date() : null,
         raw: item as any,
       },
@@ -793,7 +796,7 @@ export class MihsapService implements OnModuleInit {
           const batch = items.slice(i, i + CONCURRENCY);
           const results = await Promise.all(
             batch.map((it) =>
-              this.downloadAndStore(params.tenantId, params.mukellefId, it, params.donem),
+              this.downloadAndStore(params.tenantId, params.mukellefId, it, params.donem, params.kaynak || 'arsiv'),
             ),
           );
           fetched += results.filter((r) => r.stored || r.skipped).length;
@@ -900,12 +903,19 @@ export class MihsapService implements OnModuleInit {
     faturaTuru?: string;
     belgeTuru?: string;
     limit?: number;
+    // true: "bekleyen" (gelen evrak) kaynakli kayitlari haric tut. Islenen Faturalar
+    // modulu bunu kullanir; Fatura Isleme Merkezi'nden cekilenler orada gorunmesin.
+    excludeBekleyen?: boolean;
   }) {
     const where: any = { tenantId: params.tenantId };
     if (params.mukellefId) where.mukellefId = params.mukellefId;
     if (params.donem) where.donem = params.donem;
     if (params.faturaTuru) where.faturaTuru = params.faturaTuru;
     if (params.belgeTuru) where.belgeTuru = params.belgeTuru;
+    // Gelen-evrak (bekleyen) kayitlarini disla; eski/null kayitlar arsiv sayilir (gorunur).
+    if (params.excludeBekleyen) {
+      where.OR = [{ kaynak: null }, { kaynak: { not: 'bekleyen' } }];
+    }
 
     // Limit: kullanıcı belirtmişse en fazla 10000, hiç belirtmemişse 5000.
     // Büyük mükellef dosyalarında (1500+ fatura/ay) 500 limiti yetersizdi.

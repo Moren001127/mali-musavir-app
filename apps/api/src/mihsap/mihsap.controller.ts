@@ -104,6 +104,9 @@ export class MihsapController {
       faturaTuru,
       belgeTuru,
       limit: limit ? parseInt(limit, 10) : undefined,
+      // Islenen Faturalar modulu: yalniz arsivden cekilenleri goster. Fatura Isleme
+      // Merkezi'nin "Mihsap'tan Cek"i ile gelen (bekleyen) kayitlar burada gorunmez.
+      excludeBekleyen: true,
     });
   }
 

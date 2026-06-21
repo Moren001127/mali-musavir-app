@@ -1477,6 +1477,10 @@ model MihsapInvoice {
   storageKey         String?  // Railway volume / S3 path: {tenant}/{mukellef}/{ay}/{belgeNo}.jpg
   storageUrl         String?  // Download URL (presigned veya internal)
   mihsapFileLink     String?  // Orijinal MIHSAP link (fallback)
+  // Kayit hangi MIHSAP kaynagindan geldi: "arsiv" (Arsivim) | "bekleyen" (gelen evraklar).
+  // Islenen Faturalar modulu YALNIZ arsiv kaynakli kayitlari listeler; Fatura Isleme
+  // Merkezi'nin "Mihsap'tan Cek"i bekleyen ceker, o kayitlar Islenen Faturalar'da gorunmez.
+  kaynak             String?
   downloadedAt       DateTime?
   raw                Json?    // Orijinal MIHSAP payload
   createdAt          DateTime @default(now())
