@@ -85,6 +85,9 @@ export class CalisanService {
           toolMode: 'owner',
           source: params.source || 'calisan-whatsapp',
           currentPath: '/panel/mesajlar',
+          // userId=null olduğundan owner adını AÇIKÇA geçir → bot "Karşındaki kişi Muzaffer"
+          // bilir, "sen kimsin"de kimlik tahmin etmez (önceki "Sen Buse'sin?" hatasının kökü).
+          userName: process.env.MOREN_OWNER_DISPLAY_NAME || 'Muzaffer',
         } as any);
         const assistantMessage = String(toolAnswer?.assistantMessage || '').trim();
         if (this.isUsableOwnerAnswer(assistantMessage)) {

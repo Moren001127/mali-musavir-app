@@ -275,6 +275,9 @@ export interface ChatRequest {
   /** WhatsApp botunda müşterinin HAM mesajı (message tüm talimat bloğunu içerir).
    *  Veri tool'larının prefetch'i bu ham metne göre tetiklenir → "merhaba"da gereksiz veri çekilmez. */
   taxpayerText?: string;
+  /** userId DB'den yüklenemeyen yollarda (ör. owner WhatsApp köprüsü) kimlik adı override'ı.
+   *  Sistem-prompt'ta "Karşındaki kişi X" için kullanılır → bot kiminle konuştuğunu bilir. */
+  userName?: string;
 }
 
 export interface ChatResponse {
@@ -521,7 +524,8 @@ export class MorenAiService {
     // Tenant + kullanıcı + cari dönem bağlamı
     const systemPrompt = buildSystemPrompt({
       officeName: user?.tenant?.name,
-      userName: cleanFirstName(user?.firstName) || cleanFirstName(user?.lastName),
+      // DB user yoksa (owner WhatsApp köprüsü userId=null) body.userName ile kimliği bil.
+      userName: cleanFirstName(user?.firstName) || cleanFirstName(user?.lastName) || cleanFirstName(body.userName),
       tenantId,
       currentDate: today.toISOString().slice(0, 10),
       currentPeriod,
