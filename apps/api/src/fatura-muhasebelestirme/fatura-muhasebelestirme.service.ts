@@ -183,10 +183,29 @@ function parseDecimal(value: any, fallback = '0') {
   return new Prisma.Decimal(normalized || fallback);
 }
 
+// Tarihi DAİMA UTC gece-yarısı olarak üretir → slice(0,10) her saat diliminde doğru günü
+// verir (eski `new Date(value)` TR'de UTC+3 yüzünden 1 gün geri kaydırıyordu; ayrıca
+// "GG.AA.YYYY"yi yanlış aya yorumluyordu). Türk biçimi GÜN önce gelir.
 function parseDate(value: string | null | undefined) {
   if (!value) return null;
-  const d = new Date(value);
-  return Number.isNaN(d.getTime()) ? null : d;
+  const s = String(value).trim();
+  if (!s) return null;
+  // GG.AA.YYYY | GG-AA-YYYY | GG/AA/YYYY
+  let m = s.match(/^(\d{1,2})[.\-/](\d{1,2})[.\-/](\d{4})$/);
+  if (m) {
+    const d = +m[1], mo = +m[2], y = +m[3];
+    if (mo >= 1 && mo <= 12 && d >= 1 && d <= 31) return new Date(Date.UTC(y, mo - 1, d));
+  }
+  // YYYY-MM-DD (saat olsa da yalnız gün kısmını al)
+  m = s.match(/^(\d{4})-(\d{1,2})-(\d{1,2})/);
+  if (m) {
+    const y = +m[1], mo = +m[2], d = +m[3];
+    if (mo >= 1 && mo <= 12 && d >= 1 && d <= 31) return new Date(Date.UTC(y, mo - 1, d));
+  }
+  // Son çare: yerel ayrıştır, ama YEREL takvim gününü UTC gece-yarısına sabitle.
+  const nd = new Date(s);
+  if (Number.isNaN(nd.getTime())) return null;
+  return new Date(Date.UTC(nd.getFullYear(), nd.getMonth(), nd.getDate()));
 }
 
 function money(value: string | number | null | undefined) {
@@ -4837,6 +4856,8 @@ export class FaturaMuhasebelestirmeService {
         where: { id: d.id },
         data: {
           belgeNo: d.belgeNo || (parsed.belgeNo ? String(parsed.belgeNo) : null),
+          // AI geçerli tarih çıkardıysa düzelt (UTC gece-yarısı → gün kayması yok); yoksa dokunma
+          ...(parseDate(parsed.tarih) ? { faturaTarihi: parseDate(parsed.tarih) } : {}),
           status: 'NEEDS_REVIEW',
           validationStatus: 'OK',
           ocrEngine: 'max-vision',
