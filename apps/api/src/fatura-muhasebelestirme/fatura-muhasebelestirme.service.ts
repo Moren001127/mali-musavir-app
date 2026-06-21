@@ -4841,7 +4841,8 @@ export class FaturaMuhasebelestirmeService {
         ? 'Aşağıdaki görüntü bir Türk faturası veya yazarkasa fişidir. İçindeki bilgileri oku.'
         : 'Aşağıda bir Türk e-Fatura/e-Arşiv belgesinin HTML/metin içeriği var. İçindeki bilgileri oku.',
       'YALNIZCA şu JSON\'u döndür — kod bloğu, açıklama, başka metin YOK:',
-      '{"belgeNo":"<fatura/fiş no ya da null>","tarih":"<GG.AA.YYYY ya da null>","kategori":"<asagidaki tek deger>","kdv":[{"oran":<KDV yüzdesi sayı>,"matrah":<KDV hariç tutar sayı>,"kdv":<KDV tutarı sayı>}]}',
+      '{"belgeNo":"<fatura/fiş no ya da null>","tarih":"<GG.AA.YYYY ya da null>","saticiVkn":"<satıcının VKN/TCKN ya da null>","aliciVkn":"<alıcının VKN/TCKN ya da null>","kategori":"<asagidaki tek deger>","kdv":[{"oran":<KDV yüzdesi sayı>,"matrah":<KDV hariç tutar sayı>,"kdv":<KDV tutarı sayı>}]}',
+      'saticiVkn/aliciVkn: belgedeki SATICI ve ALICI taraflarının vergi numarası (VKN 10 hane) ya da TC kimlik no (11 hane) — SADECE rakam. Yazarkasa fişinde satıcı = mağaza VKN. Bulamazsan null.',
       'KURALLAR: Türk sayı biçimi "1.234,56" = 1234.56 (tümünü ondalıklı sayıya çevir). Birden çok KDV oranı varsa her oran ayrı nesne. matrah=KDV hariç tutar, kdv=o orana ait KDV. ÖTV/ÖİV/tevkifat varsa matrahı şişirme — gerçek mal/hizmet matrahını ver. Okunamayan alanı null bırak, UYDURMA.',
       'kategori: faturadaki mal/hizmetin TÜRÜNE göre TEK kelime seç → "ticari_mal" (satılmak üzere alınan ürün/emtia), "hammadde" (üretimde kullanılan ilk madde/malzeme), "demirbas" (makine/cihaz/ekipman/mobilya/bilgisayar gibi sabit kıymet alımı), "pazarlama" (reklam/ilan/kargo-nakliye/pazarlama), "genel_gider" (kira/elektrik/su/doğalgaz/telefon/internet/akaryakıt/danışmanlık/kırtasiye/yemek/abonelik gibi genel giderler). EMİN DEĞİLSEN "genel_gider".',
       mukellefBilgi
@@ -4887,12 +4888,20 @@ export class FaturaMuhasebelestirmeService {
     await (this.prisma as any).$transaction(async (tx: any) => {
       await tx.invoiceAccountingLine.deleteMany({ where: { documentId: d.id } });
       if (lines.length) await tx.invoiceAccountingLine.createMany({ data: lines.map((l: any) => ({ ...l, documentId: d.id })) });
+      // Karşı-taraf VKN'si: alışta satıcı, satışta alıcı. Mihsap içe-aktarımı tüm belgelere
+      // hesap-sahibinin VKN'sini yazıyor (yanlış); AI faturadan gerçek VKN'yi okuyunca düzelt.
+      // (Satıcıya göre kural/öğrenme bu VKN'ye dayanır.)
+      const aiSaticiVkn = String(parsed.saticiVkn || '').replace(/\D/g, '');
+      const aiAliciVkn = String(parsed.aliciVkn || '').replace(/\D/g, '');
+      const karsiVkn = isSale ? aiAliciVkn : aiSaticiVkn;
+      const karsiVknValid = karsiVkn.length === 10 || karsiVkn.length === 11;
       await tx.invoiceAccountingDocument.update({
         where: { id: d.id },
         data: {
           belgeNo: d.belgeNo || (parsed.belgeNo ? String(parsed.belgeNo) : null),
           // AI geçerli tarih çıkardıysa düzelt (UTC gece-yarısı → gün kayması yok); yoksa dokunma
           ...(parseDate(parsed.tarih) ? { faturaTarihi: parseDate(parsed.tarih) } : {}),
+          ...(karsiVknValid ? (isSale ? { buyerVkn: karsiVkn } : { sellerVkn: karsiVkn }) : {}),
           status: 'NEEDS_REVIEW',
           validationStatus: 'OK',
           ocrEngine: 'max-vision',
