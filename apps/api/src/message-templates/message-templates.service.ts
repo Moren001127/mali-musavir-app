@@ -224,9 +224,11 @@ export class MessageTemplatesService {
         const r = await this.email.send({ to: target, subject, html, text: filledBody }, tenantId);
         if (!r.sent) return { ok: false, error: 'E-posta gönderilemedi. Ayarlar > E-posta yapılandırmasını kontrol et.' };
       } else {
+        const phone = this.normalizeTrPhone(target);
+        if (!phone) return { ok: false, error: 'Telefon numarası geçersiz. Örn: 0535 058 74 75' };
         const text = `🧪 TEST — "${tpl.ad}" (örnek veriyle)\n\n${filledBody}`;
-        const r = await this.whatsapp.sendMessageDetailed(target, text, tenantId);
-        if (!r.ok) return { ok: false, error: r.error || 'WhatsApp gönderilemedi.' };
+        const r = await this.whatsapp.sendMessageDetailed(phone, text, tenantId);
+        if (!r.ok) return { ok: false, error: r.error || 'WhatsApp gönderilemedi. WhatsApp bağlı mı? (Ayarlar > Entegrasyonlar)' };
       }
       await this.markUsed(id);
       return { ok: true };
@@ -237,6 +239,15 @@ export class MessageTemplatesService {
 
   private escapeHtml(s: string): string {
     return String(s || '').replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;');
+  }
+
+  /** TR cep telefonunu WhatsApp formatına çevir: "0535 058 74 75" -> "905350587475". Geçersizse null. */
+  private normalizeTrPhone(raw: string): string | null {
+    let d = String(raw || '').replace(/\D/g, '');
+    if (d.startsWith('00')) d = d.slice(2);
+    if (d.length === 11 && d.startsWith('0')) d = d.slice(1);   // 0535... -> 535...
+    if (d.length === 10 && d.startsWith('5')) d = '90' + d;     // 535... -> 90535...
+    return /^90\d{10}$/.test(d) ? d : null;
   }
 
   /**

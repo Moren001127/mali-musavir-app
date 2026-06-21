@@ -591,7 +591,7 @@ function Drawer(p: DrawerProps) {
   const isNew = draft.id.startsWith('new-');
   return (
     <>
-      <div className="fixed inset-0 z-40" style={{ background: 'rgba(5,5,5,0.62)', backdropFilter: 'blur(2px)' }} onClick={p.onClose} />
+      <div className="fixed inset-0 z-40" style={{ background: 'rgba(0,0,0,0.82)', backdropFilter: 'blur(6px)' }} onClick={p.onClose} />
       <aside className="fixed inset-y-0 right-0 z-50 flex w-[min(960px,96vw)] overflow-hidden border-l shadow-2xl"
         style={{ borderColor: LINE2, background: '#0f0d0b' }}>
         <span className="absolute inset-y-0 left-0 w-1" style={{ background: 'linear-gradient(180deg,#34d399,#22d3ee)' }} />
