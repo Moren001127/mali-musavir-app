@@ -95,7 +95,6 @@ function taxpayerLabel(t: any): string {
 // yazdıkça altta kod/isim listesi filtrelenir; tıkla seç ya da Enter. Tek temiz ok.
 function CodeSelect({ value, accounts, onChange }: { value: string; accounts: any[]; onChange: (code: string) => void }) {
   const [open, setOpen] = useState(false);
-  const [typing, setTyping] = useState(false); // kullanıcı kutuya yazıyor mu (filtre buna göre)
   const [pos, setPos] = useState<{ top: number; left: number; width: number } | null>(null);
   const boxRef = useRef<HTMLDivElement>(null);
   const popRef = useRef<HTMLDivElement>(null);
@@ -117,7 +116,7 @@ function CodeSelect({ value, accounts, onChange }: { value: string; accounts: an
       const t = e.target as Node;
       if (boxRef.current && boxRef.current.contains(t)) return;
       if (popRef.current && popRef.current.contains(t)) return;
-      setOpen(false); setTyping(false);
+      setOpen(false);
     };
     const reflow = () => measure();
     document.addEventListener('mousedown', onDoc);
@@ -125,25 +124,26 @@ function CodeSelect({ value, accounts, onChange }: { value: string; accounts: an
     window.addEventListener('resize', reflow);
     return () => { document.removeEventListener('mousedown', onDoc); window.removeEventListener('scroll', reflow, true); window.removeEventListener('resize', reflow); };
   }, [open]);
-  // Yazarken kutu metnine göre filtre; seçili dururken (yazmıyorsa) tüm liste gezilebilir.
-  const term = (typing ? value : '').trim().toLocaleLowerCase('tr');
+  // Filtre DAİMA kutudaki metne (value) göre → tıklayınca dropdown seçili koda filtreli
+  // açılır (baştan tüm plan değil); silmeye başlayınca anında güncellenir. Kutu boşsa tüm liste.
+  const term = String(value || '').trim().toLocaleLowerCase('tr');
   const list = (term
     ? accounts.filter((a) => String(a.code || '').toLocaleLowerCase('tr').includes(term) || String(a.name || '').toLocaleLowerCase('tr').includes(term))
     : accounts
   ).slice(0, 80);
-  const pick = (code: string) => { onChange(code); setOpen(false); setTyping(false); inpRef.current?.blur(); };
+  const pick = (code: string) => { onChange(code); setOpen(false); inpRef.current?.blur(); };
   return (
     <div className="csel" ref={boxRef}>
       <div className={`cselfield${open ? ' on' : ''}`} title={value ? (selName ? `${value} — ${selName}` : value) : ''}>
         <input ref={inpRef} className="cselinp" value={open ? value : (value && selName ? `${value} — ${selName}` : value)} placeholder="kod ya da isim yaz"
-          onFocus={() => { setOpen(true); measure(); }}
-          onChange={(e) => { const r = e.target.value; onChange(r.includes(' — ') ? r.split(' — ')[0].trim() : r); setTyping(true); setOpen(true); }}
+          onFocus={() => { setOpen(true); measure(); setTimeout(() => inpRef.current?.select(), 0); }}
+          onChange={(e) => { const r = e.target.value; onChange(r.includes(' — ') ? r.split(' — ')[0].trim() : r); setOpen(true); }}
           onKeyDown={(e) => {
-            if (e.key === 'Escape') { setOpen(false); setTyping(false); inpRef.current?.blur(); }
-            else if (e.key === 'Enter') { e.preventDefault(); if (typing && list.length === 1) pick(String(list[0].code)); else setOpen(false); }
+            if (e.key === 'Escape') { setOpen(false); inpRef.current?.blur(); }
+            else if (e.key === 'Enter') { e.preventDefault(); if (list.length === 1) pick(String(list[0].code)); else setOpen(false); }
             else if (e.key === 'ArrowDown' && !open) { setOpen(true); }
           }} />
-        <span className="cselcar" onMouseDown={(e) => { e.preventDefault(); if (open) { setOpen(false); } else { setTyping(false); setOpen(true); inpRef.current?.focus(); measure(); } }} />
+        <span className="cselcar" onMouseDown={(e) => { e.preventDefault(); if (open) { setOpen(false); } else { setOpen(true); inpRef.current?.focus(); measure(); setTimeout(() => inpRef.current?.select(), 0); } }} />
       </div>
       {open && pos && (
         <div className="cselpop" ref={popRef} style={{ position: 'fixed', top: pos.top, left: pos.left, width: pos.width }}>
