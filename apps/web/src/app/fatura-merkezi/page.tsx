@@ -456,7 +456,7 @@ export default function FaturaMerkeziPage() {
             {(screen === 'faturalar' || screen === 'satis') && <ScreenFaturalar taxpayerId={taxpayerId} period={period} kind={screen === 'satis' ? 'SATIS' : 'ALIS'} />}
             {screen === 'mukellefler' && <ScreenMukellefler taxpayers={taxpayers} period={period} onOpen={(id) => { setTaxpayerId(id); setScreen('faturalar'); }} />}
             {screen === 'kurallar' && <ScreenKurallar taxpayerId={taxpayerId} period={period} />}
-            {screen === 'muhasebe' && <ScreenMuhasebe taxpayerId={taxpayerId} period={period} isIsletme={String(taxpayers.find((t) => t.id === taxpayerId)?.defterTuru || '').toUpperCase() === 'ISLETME'} taxpayerNace={(taxpayers.find((t) => t.id === taxpayerId) as any)?.naceKodu || ''} taxpayerAd={(() => { const t = taxpayers.find((x) => x.id === taxpayerId); return t ? taxpayerLabel(t) : ''; })()} full={editorFull} onToggleFull={() => setEditorFull((v) => !v)} />}
+            {screen === 'muhasebe' && <ScreenMuhasebe taxpayerId={taxpayerId} period={period} isIsletme={String(taxpayers.find((t) => t.id === taxpayerId)?.defterTuru || '').toUpperCase() === 'ISLETME'} taxpayerNace={(taxpayers.find((t) => t.id === taxpayerId) as any)?.naceKodu || ''} taxpayerFaaliyet={(taxpayers.find((t) => t.id === taxpayerId) as any)?.faaliyetAciklama || ''} taxpayerAd={(() => { const t = taxpayers.find((x) => x.id === taxpayerId); return t ? taxpayerLabel(t) : ''; })()} full={editorFull} onToggleFull={() => setEditorFull((v) => !v)} />}
             {screen === 'aktarilanlar' && <ScreenAktarilanlar taxpayerId={taxpayerId} period={period} />}
             {screen === 'entegrator' && <ScreenEntegrator taxpayerId={taxpayerId} period={period} />}
             {screen === 'kdv' && <ScreenKdv taxpayerId={taxpayerId} period={period} />}
@@ -907,7 +907,7 @@ function InlineBelge({ id }: { id: string }) {
 }
 
 /* ===================== EKRAN: MUHASEBELEŞTİR ===================== */
-function ScreenMuhasebe({ taxpayerId, period, isIsletme = false, taxpayerNace = '', taxpayerAd = '', full = false, onToggleFull }: { taxpayerId: string; period: string; isIsletme?: boolean; taxpayerNace?: string; taxpayerAd?: string; full?: boolean; onToggleFull?: () => void }) {
+function ScreenMuhasebe({ taxpayerId, period, isIsletme = false, taxpayerNace = '', taxpayerFaaliyet = '', taxpayerAd = '', full = false, onToggleFull }: { taxpayerId: string; period: string; isIsletme?: boolean; taxpayerNace?: string; taxpayerFaaliyet?: string; taxpayerAd?: string; full?: boolean; onToggleFull?: () => void }) {
   const qc = useQueryClient();
   const docsQ = useDocuments(taxpayerId, period);
   const all: any[] = docsQ.data || [];
@@ -1079,9 +1079,9 @@ function ScreenMuhasebe({ taxpayerId, period, isIsletme = false, taxpayerNace = 
                 <div className="belgepane"><InlineBelge id={selDoc.id} /></div>
                 <div className="fispane">
                 <div className="ph">{firmaOf(selDoc)} · {selDoc.invoiceKind === 'SATIS' ? 'Satış' : 'Alış'} faturası <span className="mu">{selDoc.belgeNo || ''}</span><div className="sp" /><button type="button" className="fifull" onClick={() => onToggleFull?.()} title={full ? 'Küçült — menüyü geri getir' : 'Büyüt — menüyü gizle, tam ekran işle'}><Ico html={full ? I.compress : I.expand} size={14} /><span>{full ? 'Küçült' : 'Büyüt'}</span></button></div>
-                {!isIsletme && (taxpayerAd || taxpayerNace) && (
-                  <div className="sektorbar" title="Hesap kodu eşleştirmesi mükellefin bu işine göre yapılır — düzeltmek için Mükellefler → mükellef detayı → NACE/faaliyet">
-                    <Ico html={I.info} size={12} /><span>Mükellef: <b>{taxpayerAd || '—'}</b>{taxpayerNace ? <> · NACE <b>{taxpayerNace}</b></> : <> · <i>faaliyet kodu girilmemiş</i></>} · {isIsletme ? 'İşletme' : 'Bilanço'} — eşleştirme bu işe göre</span>
+                {!isIsletme && (taxpayerAd || taxpayerNace || taxpayerFaaliyet) && (
+                  <div className="sektorbar" title="Hesap kodu eşleştirmesi mükellefin bu işine göre yapılır — düzeltmek için Mükellefler → mükellef detayı → Faaliyet/Sektör">
+                    <Ico html={I.info} size={12} /><span>Mükellef: <b>{taxpayerAd || '—'}</b>{taxpayerFaaliyet ? <> · faaliyet: <b>{taxpayerFaaliyet}</b></> : (taxpayerNace ? <> · NACE <b>{taxpayerNace}</b></> : <> · <i>faaliyet/sektör girilmemiş — Mükellef detayından gir</i></>)} · {isIsletme ? 'İşletme' : 'Bilanço'} — eşleştirme bu işe göre</span>
                   </div>
                 )}
                 <div className="docmeta">

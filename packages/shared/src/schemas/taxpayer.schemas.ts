@@ -36,6 +36,7 @@ export const CreateTaxpayerSchema = z.object({
   // === v1.37.0: Mükellef kartı genişletme (Hattat tarzı) ===
   logoUrl: z.string().url().optional().nullable().or(z.literal('')),
   naceKodu: z.string().max(20).optional().nullable().or(z.literal('')),
+  faaliyetAciklama: z.string().max(300).optional().nullable().or(z.literal('')),
   ticaretSicilNo: z.string().max(50).optional().nullable().or(z.literal('')),
   mersisNo: z.string().max(20).optional().nullable().or(z.literal('')),
   odaSicilNo: z.string().max(50).optional().nullable().or(z.literal('')),
@@ -77,6 +78,7 @@ export const UpdateTaxpayerSchema = z.object({
   defterTuru: z.enum(['BILANCO', 'ISLETME']).optional().nullable(),
   logoUrl: z.string().url().optional().nullable().or(z.literal('')),
   naceKodu: z.string().max(20).optional().nullable().or(z.literal('')),
+  faaliyetAciklama: z.string().max(300).optional().nullable().or(z.literal('')),
   ticaretSicilNo: z.string().max(50).optional().nullable().or(z.literal('')),
   mersisNo: z.string().max(20).optional().nullable().or(z.literal('')),
   odaSicilNo: z.string().max(50).optional().nullable().or(z.literal('')),

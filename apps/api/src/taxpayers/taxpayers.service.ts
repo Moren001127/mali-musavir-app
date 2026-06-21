@@ -115,6 +115,7 @@ export class TaxpayersService {
         logoUrl: true,
         hattatId: true,
         naceKodu: true,
+        faaliyetAciklama: true,
         ticaretSicilNo: true,
         mersisNo: true,
         odaSicilNo: true,

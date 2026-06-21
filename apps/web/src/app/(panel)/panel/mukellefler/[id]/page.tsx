@@ -117,6 +117,7 @@ type FormState = {
   // v1.37.0 yeni alanlar
   logoUrl: string;
   naceKodu: string;
+  faaliyetAciklama: string;
   ticaretSicilNo: string;
   mersisNo: string;
   odaSicilNo: string;
@@ -150,6 +151,7 @@ function emptyForm(): FormState {
     defterTuru: 'BILANCO',
     logoUrl: '',
     naceKodu: '',
+    faaliyetAciklama: '',
     ticaretSicilNo: '',
     mersisNo: '',
     odaSicilNo: '',
@@ -333,6 +335,7 @@ export default function MukellefDetayPage() {
       defterTuru,
       logoUrl: (taxpayer as any).logoUrl ?? '',
       naceKodu: (taxpayer as any).naceKodu ?? '',
+      faaliyetAciklama: (taxpayer as any).faaliyetAciklama ?? '',
       ticaretSicilNo: (taxpayer as any).ticaretSicilNo ?? '',
       mersisNo: (taxpayer as any).mersisNo ?? '',
       odaSicilNo: (taxpayer as any).odaSicilNo ?? '',
@@ -865,6 +868,9 @@ function BilgilerTab({
               </Field>
               <Field label="NACE Kodu">
                 <InputBase value={form.naceKodu} onChange={(e) => setForm((p) => ({ ...p, naceKodu: e.target.value }))} />
+              </Field>
+              <Field label="Faaliyet / Sektör (fatura eşleştirmede kullanılır)">
+                <InputBase value={form.faaliyetAciklama} placeholder="ör. yemek üretimi, inşaat malzemeleri toptan ticareti, lokanta" onChange={(e) => setForm((p) => ({ ...p, faaliyetAciklama: e.target.value }))} />
               </Field>
               <Field label="Ticaret Sicil No">
                 <InputBase value={form.ticaretSicilNo} onChange={(e) => setForm((p) => ({ ...p, ticaretSicilNo: e.target.value }))} />

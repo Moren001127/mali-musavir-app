@@ -192,6 +192,7 @@ model Taxpayer {
   // === v1.37.0: Mükellef kartı genişletme (Hattat tarzı) ===
   logoUrl            String?  // Mükellef logosu (S3/MinIO URL)
   naceKodu           String?  // NACE faaliyet kodu (örn. "56.10.06")
+  faaliyetAciklama   String?  // Serbest faaliyet/sektör açıklaması (ör. "yemek üretimi") — fatura hesap eşleştirmede öncelikli sinyal
   ticaretSicilNo    String?  // Ticaret sicil numarası
   mersisNo           String?  // MERSİS no (16 hane)
   odaSicilNo         String?  // Oda sicil no (İTO/ATO vb.)

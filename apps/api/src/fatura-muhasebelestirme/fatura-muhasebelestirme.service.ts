@@ -4811,12 +4811,18 @@ export class FaturaMuhasebelestirmeService {
     if (d.taxpayerId) {
       const tp = await (this.prisma as any).taxpayer.findFirst({
         where: { id: d.taxpayerId, tenantId },
-        select: { companyName: true, firstName: true, lastName: true, naceKodu: true, defterTuru: true },
+        select: { companyName: true, firstName: true, lastName: true, naceKodu: true, faaliyetAciklama: true, defterTuru: true },
       }).catch(() => null);
       if (tp) {
         const ad = String(tp.companyName || `${tp.firstName || ''} ${tp.lastName || ''}`).trim();
         const defter = String(tp.defterTuru || '').toUpperCase() === 'ISLETME' ? 'İşletme defteri' : 'Bilanço usulü';
-        mukellefBilgi = [ad && `ünvanı "${ad}"`, tp.naceKodu && `NACE faaliyet kodu ${tp.naceKodu}`, defter].filter(Boolean).join(', ');
+        const faaliyet = String(tp.faaliyetAciklama || '').trim();
+        // Öncelik: serbest faaliyet açıklaması (en güvenilir) > NACE kodu > ünvan.
+        mukellefBilgi = [
+          ad && `ünvanı "${ad}"`,
+          faaliyet ? `faaliyeti: ${faaliyet}` : (tp.naceKodu && `NACE faaliyet kodu ${tp.naceKodu}`),
+          defter,
+        ].filter(Boolean).join(', ');
       }
     }
     const prompt = [
