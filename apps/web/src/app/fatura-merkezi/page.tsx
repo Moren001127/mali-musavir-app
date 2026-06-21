@@ -51,6 +51,8 @@ const I = {
   send: '<svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M22 2 11 13"/><path d="M22 2 15 22l-4-9-9-4 20-7z"/></svg>',
   clock: '<svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="12" cy="12" r="9"/><path d="M12 7v5l3 2"/></svg>',
   info: '<svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2"><path d="M12 16v-4m0-4h.01M22 12a10 10 0 1 1-20 0 10 10 0 0 1 20 0z"/></svg>',
+  expand: '<svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.1"><path d="M8 3H5a2 2 0 0 0-2 2v3m18 0V5a2 2 0 0 0-2-2h-3M3 16v3a2 2 0 0 0 2 2h3m13-5v3a2 2 0 0 1-2 2h-3"/></svg>',
+  compress: '<svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.1"><path d="M8 3v3a2 2 0 0 1-2 2H3m18 0h-3a2 2 0 0 1-2-2V3M3 16h3a2 2 0 0 1 2 2v3m8 0v-3a2 2 0 0 1 2-2h3"/></svg>',
 };
 
 const COLORS = [
@@ -295,6 +297,9 @@ export default function FaturaMerkeziPage() {
   const [taxpayerId, setTaxpayerId] = useState('');
   const nowP = new Date();
   const [period, setPeriod] = useState(`${nowP.getFullYear()}-${String(nowP.getMonth() + 1).padStart(2, '0')}`);
+  // Belge işleme tam ekran — sol menü gizlenir, ekran tamamen editöre kalır.
+  const [editorFull, setEditorFull] = useState(false);
+  useEffect(() => { if (screen !== 'muhasebe') setEditorFull(false); }, [screen]);
 
   const taxpayersQ = useQuery({
     queryKey: ['fm2', 'taxpayers'],
@@ -344,7 +349,7 @@ export default function FaturaMerkeziPage() {
     <div id="fm-root" data-accent={accent}>
       <style dangerouslySetInnerHTML={{ __html: CSS }} />
       <DocModal />
-      <div className="app">
+      <div className={`app${editorFull ? ' editorfull' : ''}`}>
         <aside className="side">
           <div className="brand"><span className="lg">M</span><div><b>Fatura Merkezi</b><small>MOREN Müşavirlik</small></div></div>
           {nav}
@@ -383,7 +388,7 @@ export default function FaturaMerkeziPage() {
             {(screen === 'faturalar' || screen === 'satis') && <ScreenFaturalar taxpayerId={taxpayerId} period={period} kind={screen === 'satis' ? 'SATIS' : 'ALIS'} />}
             {screen === 'mukellefler' && <ScreenMukellefler taxpayers={taxpayers} period={period} onOpen={(id) => { setTaxpayerId(id); setScreen('faturalar'); }} />}
             {screen === 'kurallar' && <ScreenKurallar taxpayerId={taxpayerId} period={period} />}
-            {screen === 'muhasebe' && <ScreenMuhasebe taxpayerId={taxpayerId} period={period} isIsletme={String(taxpayers.find((t) => t.id === taxpayerId)?.defterTuru || '').toUpperCase() === 'ISLETME'} />}
+            {screen === 'muhasebe' && <ScreenMuhasebe taxpayerId={taxpayerId} period={period} isIsletme={String(taxpayers.find((t) => t.id === taxpayerId)?.defterTuru || '').toUpperCase() === 'ISLETME'} full={editorFull} onToggleFull={() => setEditorFull((v) => !v)} />}
             {screen === 'aktarilanlar' && <ScreenAktarilanlar taxpayerId={taxpayerId} period={period} />}
             {screen === 'entegrator' && <ScreenEntegrator taxpayerId={taxpayerId} period={period} />}
             {screen === 'kdv' && <ScreenKdv taxpayerId={taxpayerId} period={period} />}
@@ -843,7 +848,7 @@ function InlineBelge({ id }: { id: string }) {
 }
 
 /* ===================== EKRAN: MUHASEBELEŞTİR ===================== */
-function ScreenMuhasebe({ taxpayerId, period, isIsletme = false }: { taxpayerId: string; period: string; isIsletme?: boolean }) {
+function ScreenMuhasebe({ taxpayerId, period, isIsletme = false, full = false, onToggleFull }: { taxpayerId: string; period: string; isIsletme?: boolean; full?: boolean; onToggleFull?: () => void }) {
   const qc = useQueryClient();
   const docsQ = useDocuments(taxpayerId, period);
   const all: any[] = docsQ.data || [];
@@ -1011,7 +1016,7 @@ function ScreenMuhasebe({ taxpayerId, period, isIsletme = false }: { taxpayerId:
         <div className="wmain">
             {selDoc ? (
               <>
-                <div className="fihint"><Ico html={I.info} size={13} /><span>{isIsletme ? <><b>İşletme defteri:</b> Gelir-Gider girişi (KDV/gider, hesap kodu yok).</> : <><b>Bilanço:</b> muhasebe fişi kesilir.</>}</span></div>
+                <div className="fihint"><Ico html={I.info} size={13} /><span>{isIsletme ? <><b>İşletme defteri:</b> Gelir-Gider girişi (KDV/gider, hesap kodu yok).</> : <><b>Bilanço:</b> muhasebe fişi kesilir.</>}</span><div className="sp" /><button type="button" className="fifull" onClick={() => onToggleFull?.()} title={full ? 'Küçült — menüyü geri getir' : 'Büyüt — menüyü gizle, tam ekran işle'}><Ico html={full ? I.compress : I.expand} size={15} /><span>{full ? 'Küçült' : 'Büyüt'}</span></button></div>
                 <div className="fiseditor">
                 <div className="belgepane"><InlineBelge id={selDoc.id} /></div>
                 <div className="fispane">
@@ -1799,6 +1804,9 @@ const CSS = `
 #fm-root .fispane > .wactions{order:9}
 #fm-root .fihint{display:flex;align-items:center;gap:7px;font-size:11.5px;color:var(--muted);padding:4px 2px 10px}
 #fm-root .fihint b{color:var(--text)}
+#fm-root .fihint .fifull{display:inline-flex;align-items:center;gap:6px;height:28px;padding:0 12px;border:1px solid var(--accent-line);border-radius:8px;background:var(--accent-soft);color:var(--accent);font-size:12px;font-weight:700;cursor:pointer;font-family:inherit}
+#fm-root .fihint .fifull:hover{background:var(--accent);color:#fff;border-color:var(--accent)}
+#fm-root .app.editorfull .side{display:none}
 #fm-root .belgebox{border:1px solid var(--line);border-radius:10px;overflow:hidden;background:#fff;display:flex;flex-direction:column}
 #fm-root .belgebox .bpbar{display:flex;align-items:center;justify-content:space-between;padding:7px 11px;border-bottom:1px solid var(--line);background:#fbfcfd;font-size:11px;font-weight:700;color:var(--muted);text-transform:uppercase;letter-spacing:.4px}
 #fm-root .belgebox .bpbar a{color:var(--accent);text-decoration:none;font-weight:700;text-transform:none;letter-spacing:0}
