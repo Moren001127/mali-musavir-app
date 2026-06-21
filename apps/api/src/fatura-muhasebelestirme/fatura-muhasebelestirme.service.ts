@@ -2960,7 +2960,7 @@ export class FaturaMuhasebelestirmeService {
       .replace(/>/g, '&gt;');
 
     const items = [...source.matchAll(/<[^:>]*(?::)?InvoiceLine\b[\s\S]*?<\/[^:>]*(?::)?InvoiceLine>/gi)]
-      .slice(0, 20)
+      .slice(0, 30)
       .map((m) => {
         const block = m[0];
         const pick = (tag: string) => {
@@ -2973,9 +2973,6 @@ export class FaturaMuhasebelestirmeService {
           amount: pick('LineExtensionAmount') || '-',
         };
       });
-    const rows = items.length
-      ? items.map((i) => `<tr><td>${esc(i.name)}</td><td>${esc(i.qty)}</td><td class="num">${esc(i.amount)}</td></tr>`).join('')
-      : '<tr><td colspan="3" style="color:#6b7280">Kalem dökümü belgenin dosyasında yok — başlık ve toplam bilgileri aşağıda.</td></tr>';
 
     // XML'den okunamayan alanlar için belge kaydına (doc) düş
     const fmtTL = (v: any) => {
@@ -2992,6 +2989,7 @@ export class FaturaMuhasebelestirmeService {
       else if (l.group === 'vergi') { dKdv += amt; hasLine = true; }
     }
     if (!hasLine) { dMatrah = Number(doc?.ocrData?.matrah) || 0; dKdv = Number(doc?.ocrData?.kdvTutari) || 0; }
+    const kb = Array.isArray(doc?.ocrData?.kdvBreakdown) ? doc.ocrData.kdvBreakdown : [];
 
     const satici = text('RegistrationName') || text('Name') || docFirma || '—';
     const saticiId = text('CompanyID') || docVkn || '';
@@ -3001,24 +2999,37 @@ export class FaturaMuhasebelestirmeService {
     const kdvTop = text('TaxAmount') || fmtTL(dKdv);
     const genelTop = text('PayableAmount') || fmtTL(doc?.totalAmount);
 
+    // Gövde tablosu: 1) gerçek kalem dökümü, 2) yoksa KDV oran kırılımı, 3) o da yoksa not.
+    const bodyTable = items.length
+      ? `<table><thead><tr><th>Mal/Hizmet</th><th>Miktar</th><th class="num">Tutar</th></tr></thead><tbody>${
+          items.map((i) => `<tr><td>${esc(i.name)}</td><td>${esc(i.qty)}</td><td class="num">${esc(i.amount)}</td></tr>`).join('')
+        }</tbody></table>`
+      : kb.length
+        ? `<table><thead><tr><th>KDV Oranı</th><th class="num">Matrah</th><th class="num">KDV</th></tr></thead><tbody>${
+            kb.map((b: any) => `<tr><td>%${esc(String(b.oran ?? 0))}</td><td class="num">${esc(fmtTL(b.matrah))}</td><td class="num">${esc(fmtTL(b.tutar))}</td></tr>`).join('')
+          }</tbody></table>`
+        : `<div class="note">Belgenin orijinal görüntüsü entegratörden gelmedi. Aşağıda kayıttaki özet bilgiler var; tutarları "AI ile oku" ile doğrulayabilirsin.</div>`;
+
     return `<!doctype html><html><head><meta charset="utf-8"><style>
       body{margin:0;background:#f8fafc;color:#111827;font:14px/1.45 Arial,sans-serif;padding:24px}
-      .sheet{max-width:940px;margin:auto;background:white;border:1px solid #e5e7eb;padding:28px;box-shadow:0 8px 28px rgba(15,23,42,.08)}
-      h1{margin:0 0 16px;font-size:24px}.grid{display:grid;grid-template-columns:1fr 1fr;gap:14px;margin:18px 0}
-      .box{border:1px solid #e5e7eb;padding:12px}.muted{color:#6b7280;font-size:12px;text-transform:uppercase;font-weight:700}
-      table{width:100%;border-collapse:collapse;margin-top:18px}th,td{border:1px solid #e5e7eb;padding:8px;text-align:left}th{background:#f3f4f6}.num{text-align:right}
-      .totals{margin-left:auto;margin-top:18px;width:320px}.totals div{display:flex;justify-content:space-between;border-bottom:1px solid #e5e7eb;padding:7px 0}.big{font-size:20px;font-weight:700}
+      .sheet{max-width:940px;margin:auto;background:white;border:1px solid #e5e7eb;border-radius:10px;padding:28px;box-shadow:0 8px 28px rgba(15,23,42,.08)}
+      h1{margin:0;font-size:22px}.cap{color:#6b7280;font-size:12px;margin:4px 0 16px}.grid{display:grid;grid-template-columns:1fr 1fr;gap:14px;margin:14px 0}
+      .box{border:1px solid #e5e7eb;border-radius:8px;padding:12px}.muted{color:#6b7280;font-size:11px;text-transform:uppercase;font-weight:700;letter-spacing:.4px}
+      table{width:100%;border-collapse:collapse;margin-top:14px}th,td{border:1px solid #e5e7eb;padding:8px;text-align:left}th{background:#f3f4f6;font-size:12px}.num{text-align:right}
+      .note{margin-top:14px;padding:12px;background:#fff7ed;border:1px solid #fed7aa;border-radius:8px;color:#9a3412;font-size:13px}
+      .totals{margin-left:auto;margin-top:16px;width:320px}.totals div{display:flex;justify-content:space-between;border-bottom:1px solid #e5e7eb;padding:7px 0}.big{font-size:19px;font-weight:800}
     </style></head><body><div class="sheet">
-      <h1>e-Fatura / e-Arsiv Onizleme</h1>
+      <h1>${isSale ? 'Satış' : 'Alış'} Faturası — Özet</h1>
+      <div class="cap">${isSale ? 'Müşteri' : 'Tedarikçi'} ve toplam bilgileri belgeden alınmıştır.</div>
       <div class="grid">
-        <div class="box"><div class="muted">${isSale ? 'Alici' : 'Satici'}</div><b>${esc(satici)}</b><br>${esc(saticiId)}</div>
-        <div class="box"><div class="muted">Belge</div><b>${esc(belge)}</b><br>${esc(tarih)}</div>
+        <div class="box"><div class="muted">${isSale ? 'Alıcı (müşteri)' : 'Satıcı (tedarikçi)'}</div><b>${esc(satici)}</b><br>${esc(saticiId ? 'VKN/TCKN ' + saticiId : '')}</div>
+        <div class="box"><div class="muted">Belge No · Tarih</div><b>${esc(belge)}</b><br>${esc(tarih)}</div>
       </div>
-      <table><thead><tr><th>Mal/Hizmet</th><th>Miktar</th><th>Tutar</th></tr></thead><tbody>${rows}</tbody></table>
+      ${bodyTable}
       <div class="totals">
-        <div><span>Mal Hizmet Toplam</span><b>${esc(malTop)}</b></div>
-        <div><span>KDV</span><b>${esc(kdvTop)}</b></div>
-        <div class="big"><span>Genel Toplam</span><b>${esc(genelTop)}</b></div>
+        <div><span>Matrah (KDV hariç)</span><b>${esc(malTop)} ₺</b></div>
+        <div><span>KDV</span><b>${esc(kdvTop)} ₺</b></div>
+        <div class="big"><span>Genel Toplam</span><b>${esc(genelTop)} ₺</b></div>
       </div>
     </div></body></html>`;
   }
