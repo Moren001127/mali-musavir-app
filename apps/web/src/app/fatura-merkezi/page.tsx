@@ -89,6 +89,75 @@ function deriveDurum(doc: any): { k: string; t: string } {
 function taxpayerLabel(t: any): string {
   return t?.companyName || [t?.firstName, t?.lastName].filter(Boolean).join(' ') || t?.taxNumber || 'Mükellef';
 }
+// Hesap kodu seçici — Mihsap gibi tek temiz açılır liste (datalist'in çift-ok + kötü
+// açılış sorununu giderir). Tıkla → arama + kod/isim listesi; tıkla seç ya da yaz-Enter.
+function CodeSelect({ value, accounts, onChange }: { value: string; accounts: any[]; onChange: (code: string) => void }) {
+  const [open, setOpen] = useState(false);
+  const [q, setQ] = useState('');
+  const [pos, setPos] = useState<{ top: number; left: number; width: number } | null>(null);
+  const boxRef = useRef<HTMLDivElement>(null);
+  const popRef = useRef<HTMLDivElement>(null);
+  const inpRef = useRef<HTMLInputElement>(null);
+  const sel = accounts.find((a) => String(a.code) === String(value));
+  const selName = sel?.name || '';
+  // Panel overflow:hidden gruplarca kırpılmasın diye position:fixed; alan konumunu ölç.
+  const measure = () => {
+    const el = boxRef.current; if (!el) return;
+    const r = el.getBoundingClientRect();
+    const width = Math.min(440, Math.max(300, r.width));
+    let left = r.left; if (left + width > window.innerWidth - 8) left = Math.max(8, window.innerWidth - 8 - width);
+    setPos({ top: r.bottom + 4, left, width });
+  };
+  useEffect(() => {
+    if (!open) { setPos(null); return; }
+    measure();
+    const onDoc = (e: MouseEvent) => {
+      const t = e.target as Node;
+      if (boxRef.current && boxRef.current.contains(t)) return;
+      if (popRef.current && popRef.current.contains(t)) return;
+      setOpen(false); setQ('');
+    };
+    const reflow = () => measure();
+    document.addEventListener('mousedown', onDoc);
+    window.addEventListener('scroll', reflow, true);
+    window.addEventListener('resize', reflow);
+    return () => { document.removeEventListener('mousedown', onDoc); window.removeEventListener('scroll', reflow, true); window.removeEventListener('resize', reflow); };
+  }, [open]);
+  const term = q.trim().toLocaleLowerCase('tr');
+  const list = (term
+    ? accounts.filter((a) => String(a.code || '').toLocaleLowerCase('tr').includes(term) || String(a.name || '').toLocaleLowerCase('tr').includes(term))
+    : accounts
+  ).slice(0, 80);
+  const pick = (code: string) => { onChange(code); setOpen(false); setQ(''); };
+  return (
+    <div className="csel" ref={boxRef}>
+      <div className={`cselfield${open ? ' on' : ''}`} title={value ? (selName ? `${value} — ${selName}` : value) : ''}
+        onClick={() => { setOpen((o) => !o); setTimeout(() => inpRef.current?.focus(), 0); }}>
+        <span className={`cselval${value ? '' : ' ph'}`}>{value || 'kod seç'}</span>
+        <span className="cselcar" />
+      </div>
+      {open && pos && (
+        <div className="cselpop" ref={popRef} style={{ position: 'fixed', top: pos.top, left: pos.left, width: pos.width }}>
+          <input ref={inpRef} className="cselsearch" value={q} placeholder="Ara: kod ya da isim…"
+            onChange={(e) => setQ(e.target.value)}
+            onKeyDown={(e) => {
+              if (e.key === 'Escape') { setOpen(false); setQ(''); }
+              else if (e.key === 'Enter') { if (list[0]) pick(String(list[0].code)); else if (term) pick(q.trim()); }
+            }} />
+          <div className="csellist">
+            {list.length === 0 && <div className="cselempty">Eşleşen hesap yok{term ? ' — Enter ile bu kodu kullan' : ''}</div>}
+            {list.map((a) => (
+              <div key={a.id || a.code} className={`cselopt${String(a.code) === String(value) ? ' sel' : ''}`} onClick={() => pick(String(a.code))}>
+                <b>{a.code}</b>{a.name ? <span>{a.name}</span> : null}
+              </div>
+            ))}
+            {!term && accounts.length > 80 && <div className="cselmore">… {accounts.length - 80} hesap daha — aramayla daralt</div>}
+          </div>
+        </div>
+      )}
+    </div>
+  );
+}
 function periodOptions(): { v: string; l: string }[] {
   const aylar = ['Ocak', 'Şubat', 'Mart', 'Nisan', 'Mayıs', 'Haziran', 'Temmuz', 'Ağustos', 'Eylül', 'Ekim', 'Kasım', 'Aralık'];
   const out: { v: string; l: string }[] = [];
@@ -938,9 +1007,6 @@ function ScreenMuhasebe({ taxpayerId, period, isIsletme = false }: { taxpayerId:
 
   return (
     <section className="screen">
-      <datalist id="fm-hesap-plani">
-        {accountPlan.map((a: any) => <option key={a.id || a.code} value={a.name ? `${a.code} — ${a.name}` : a.code} />)}
-      </datalist>
       <div className="card" style={{ padding: 0, marginTop: 2 }}>
         <div className="wmain">
             {selDoc ? (
@@ -1014,7 +1080,7 @@ function ScreenMuhasebe({ taxpayerId, period, isIsletme = false }: { taxpayerId:
                             <div className="fgh"><span>{g.label}</span><span className="fgs">{g.side === 'debit' ? 'Borç' : 'Alacak'}</span></div>
                             {rows.map(({ l, i }) => (
                               <div key={i} className="frow">
-                                <input className="li licode" list="fm-hesap-plani" value={l.accountCode || ''} placeholder="kod ya da isim ara" onChange={(e) => { const r = e.target.value; setLine(i, 'accountCode', r.includes(' — ') ? r.split(' — ')[0].trim() : r); }} />
+                                <CodeSelect value={l.accountCode || ''} accounts={accountPlan} onChange={(code) => setLine(i, 'accountCode', code)} />
                                 {g.key !== 'cari'
                                   ? (() => { const rv = String(l.rate || '').replace(/[^0-9]/g, ''); return (
                                       <select className="li lirate" value={rv} onChange={(e) => setLine(i, 'rate', e.target.value ? `%${e.target.value}` : '')}>
@@ -1693,7 +1759,21 @@ const CSS = `
 #fm-root .fgrp .fgh .fgs{font-size:9.5px;opacity:.85;text-transform:uppercase;letter-spacing:.4px}
 #fm-root .fgrp .frow{display:flex;align-items:center;gap:6px;padding:4px 10px;border-top:1px solid var(--line)}
 #fm-root .fgrp .frow .li{height:27px}
-#fm-root .fgrp .frow .licode{flex:1;min-width:0;width:auto;appearance:none;background:#fff url("data:image/svg+xml;utf8,<svg xmlns='http://www.w3.org/2000/svg' width='10' height='6' viewBox='0 0 10 6'><path d='M1 1l4 4 4-4' fill='none' stroke='%2394a3b2' stroke-width='1.5'/></svg>") no-repeat right 7px center;padding-right:22px}
+#fm-root .fgrp .frow .csel{flex:1;min-width:0;position:relative}
+#fm-root .csel .cselfield{display:flex;align-items:center;gap:6px;height:27px;border:1px solid var(--line2);border-radius:6px;background:#fff;padding:0 9px;cursor:pointer}
+#fm-root .csel .cselfield.on{border-color:var(--accent);box-shadow:0 0 0 2px var(--accent-soft)}
+#fm-root .csel .cselval{flex:1;min-width:0;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;font-size:12.5px;font-weight:600;color:var(--text);font-variant-numeric:tabular-nums}
+#fm-root .csel .cselval.ph{color:#9aa6b2;font-weight:400}
+#fm-root .csel .cselcar{flex:0 0 auto;width:7px;height:7px;border-right:1.6px solid #94a3b2;border-bottom:1.6px solid #94a3b2;transform:rotate(45deg) translateY(-2px);transition:transform .15s,border-color .15s}
+#fm-root .csel .cselfield.on .cselcar{transform:rotate(-135deg) translateY(2px);border-color:var(--accent)}
+#fm-root .csel .cselpop{z-index:9000;background:#fff;border:1px solid var(--line2);border-radius:10px;box-shadow:0 12px 34px rgba(15,23,42,.18);overflow:hidden}
+#fm-root .csel .cselsearch{width:100%;height:34px;border:0;border-bottom:1px solid var(--line);padding:0 11px;font-size:12.5px;font-family:inherit;color:var(--text);outline:none;box-sizing:border-box}
+#fm-root .csel .csellist{max-height:248px;overflow:auto;padding:4px}
+#fm-root .csel .cselopt{display:flex;align-items:baseline;gap:9px;padding:6px 9px;border-radius:6px;cursor:pointer}
+#fm-root .csel .cselopt:hover,#fm-root .csel .cselopt.sel{background:var(--accent-soft)}
+#fm-root .csel .cselopt b{flex:0 0 auto;font-size:12px;font-weight:800;color:var(--accent);font-variant-numeric:tabular-nums}
+#fm-root .csel .cselopt span{flex:1;min-width:0;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;font-size:12px;color:#374151}
+#fm-root .csel .cselempty,#fm-root .csel .cselmore{padding:9px 11px;font-size:11.5px;color:var(--muted)}
 #fm-root .fgrp .frow .lirate{flex:0 0 72px;width:auto;text-align:center;padding:0 4px;cursor:pointer}
 #fm-root .fgrp .frow .fdesc{flex:1;min-width:0;font-size:12px;color:var(--muted);white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
 #fm-root .fgrp .frow .linum{flex:0 0 92px;width:auto;text-align:right}
