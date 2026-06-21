@@ -53,6 +53,7 @@ const I = {
   info: '<svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2"><path d="M12 16v-4m0-4h.01M22 12a10 10 0 1 1-20 0 10 10 0 0 1 20 0z"/></svg>',
   expand: '<svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.1"><path d="M8 3H5a2 2 0 0 0-2 2v3m18 0V5a2 2 0 0 0-2-2h-3M3 16v3a2 2 0 0 0 2 2h3m13-5v3a2 2 0 0 1-2 2h-3"/></svg>',
   compress: '<svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.1"><path d="M8 3v3a2 2 0 0 1-2 2H3m18 0h-3a2 2 0 0 1-2-2V3M3 16h3a2 2 0 0 1 2 2v3m8 0v-3a2 2 0 0 1 2-2h3"/></svg>',
+  trash: '<svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M3 6h18M8 6V4a2 2 0 0 1 2-2h4a2 2 0 0 1 2 2v2m2 0v14a2 2 0 0 1-2 2H7a2 2 0 0 1-2-2V6"/><path d="M10 11v6M14 11v6"/></svg>',
 };
 
 const COLORS = [
@@ -573,6 +574,11 @@ function ScreenFaturalar({ taxpayerId, period, kind = 'ALIS' }: { taxpayerId: st
     },
     onError: (e: any) => toast.error('Yüklenemedi: ' + (e?.response?.data?.message || e?.message || 'hata')),
   });
+  const delMut = useMutation({
+    mutationFn: (id: string) => api.delete(`/fatura-muhasebelestirme/documents/${id}`),
+    onSuccess: () => { toast.success('Belge silindi'); qc.invalidateQueries({ queryKey: ['fm2'] }); },
+    onError: (e: any) => toast.error('Silinemedi: ' + (e?.response?.data?.message || e?.message || 'hata')),
+  });
   const syncMut = useMutation({
     mutationFn: () => api.post('/fatura-muhasebelestirme/documents/match-orphans', { period }),
     onSuccess: (r: any) => { toast.success(`Eşitlendi${r?.data?.matched != null ? ` · ${r.data.matched} belge bağlandı` : ''}`); qc.invalidateQueries({ queryKey: ['fm2'] }); },
@@ -657,7 +663,10 @@ function ScreenFaturalar({ taxpayerId, period, kind = 'ALIS' }: { taxpayerId: st
                     <td className="num">{fmtMoney(d.totalAmount)}</td>
                     <td>{code ? <span className="hk">{code}</span> : <span className="hk no">— yok —</span>}</td>
                     <td><span className={`pill ${du.k}`}>{du.t}</span></td>
-                    <td className="actcol"><span className="eye" onClick={() => openDocFile(d.id)}><Ico html={I.eye} size={15} /></span></td>
+                    <td className="actcol" style={{ display: 'flex', gap: 8, alignItems: 'center' }}>
+                      <span className="eye" onClick={() => openDocFile(d.id)} title="Belgeyi aç"><Ico html={I.eye} size={15} /></span>
+                      <span className="eye del" title="Belgeyi sil" onClick={() => { if (window.confirm(`Bu belge silinsin mi?\n${firma} · ${fmtMoney(d.totalAmount)} ₺${d.belgeNo ? ' · ' + d.belgeNo : ''}`)) delMut.mutate(d.id); }}><Ico html={I.trash} size={14} /></span>
+                    </td>
                   </tr>
                 );
               })}
@@ -1853,6 +1862,7 @@ const CSS = `
 #fm-root .pill.n{background:#eef1f5;color:#64748b}
 #fm-root .eye{height:28px;width:28px;border-radius:7px;border:1px solid var(--line2);display:grid;place-items:center;color:var(--muted);cursor:pointer}
 #fm-root .eye:hover{border-color:var(--accent);color:var(--accent)}
+#fm-root .eye.del:hover{border-color:#f3c9c9;color:var(--red);background:#fdeaea}
 #fm-root .foot{display:flex;align-items:center;gap:14px;padding:13px 16px;border-top:1px solid var(--line);flex-wrap:wrap}
 #fm-root .selinfo{font-size:12px;color:var(--muted)}
 #fm-root .pg{display:flex;align-items:center;gap:4px;font-size:12px;color:var(--muted)}
