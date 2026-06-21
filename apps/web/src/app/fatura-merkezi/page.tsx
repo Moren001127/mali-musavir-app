@@ -263,7 +263,7 @@ const TITLES: Record<string, string> = {
   aktarilanlar: 'Belgeler · <b>Aktarılanlar</b>',
   entegrator: 'Kurulum · <b>Entegratörler</b>',
   kdv: 'Kurulum · <b>KDV Raporu</b>',
-  ayarlar: 'Kurulum · <b>Ayarlar</b>',
+  ayarlar: 'Kurulum · <b>Hesap Planı</b>',
   mukellefler: 'Çalışma · <b>Mükellefler</b>',
   genel: '<b>Genel Bakış</b>',
 };
@@ -341,7 +341,7 @@ export default function FaturaMerkeziPage() {
       <div className={`nitem${screen === 'kurallar' ? ' on' : ''}`} onClick={() => go('kurallar')}><Ico html={I.rules} /> Eşleştirme Kuralları</div>
       <div className={`nitem${screen === 'entegrator' ? ' on' : ''}`} onClick={() => go('entegrator')}><Ico html={I.plug} /> Entegratörler</div>
       <div className={`nitem${screen === 'kdv' ? ' on' : ''}`} onClick={() => go('kdv')}><Ico html={I.chart} /> KDV Raporu</div>
-      <div className={`nitem${screen === 'ayarlar' ? ' on' : ''}`} onClick={() => go('ayarlar')}><Ico html={I.gear} /> Ayarlar</div>
+      <div className={`nitem${screen === 'ayarlar' ? ' on' : ''}`} onClick={() => go('ayarlar')}><Ico html={I.ledger} /> Hesap Planı</div>
     </nav>
   );
 
@@ -1490,7 +1490,7 @@ function ScreenAyarlar({ taxpayerId }: { taxpayerId: string }) {
   const planQ = useQuery({
     queryKey: ['fm2', 'account-plan', taxpayerId, q],
     queryFn: () =>
-      api.get('/fatura-muhasebelestirme/account-plan', { params: { taxpayerId, q: q || undefined, limit: 400 } })
+      api.get('/fatura-muhasebelestirme/account-plan', { params: { taxpayerId, q: q || undefined, limit: 5000 } })
         .then((r) => (Array.isArray(r.data) ? r.data : []))
         .catch(() => []),
     enabled: !!taxpayerId,
@@ -1512,7 +1512,7 @@ function ScreenAyarlar({ taxpayerId }: { taxpayerId: string }) {
   if (!taxpayerId) {
     return (
       <section className="screen">
-        <div className="h2">Ayarlar</div>
+        <div className="h2">Hesap Planı</div>
         <div className="sub">Hesap planı mükellefe göre yönetilir — önce üstten bir mükellef seç.</div>
         <div className="card"><div className="empty">Mükellef seçilmedi.</div></div>
       </section>
@@ -1521,17 +1521,17 @@ function ScreenAyarlar({ taxpayerId }: { taxpayerId: string }) {
 
   return (
     <section className="screen">
-      <div className="h2">Ayarlar</div>
+      <div className="h2">Hesap Planı</div>
       <div className="sub">Mükellefin hesap planı — Luca'dan çekilir, yerel açılan hesaplar Luca'ya gönderilebilir.</div>
       <div className="card">
         <div className="ch">
-          <h3>Hesap Planı</h3>
+          <h3>Hesap Planı{accounts.length ? <span className="cnt">{accounts.length}{q ? ' eşleşme' : ' hesap'}</span> : null}</h3>
           <div className="sp" />
           <input className="fmsel" style={{ maxWidth: 220 }} placeholder="Kod / ad ara…" value={q} onChange={(e) => setQ(e.target.value)} />
           <button className="btn sm ghost" disabled={refreshMut.isPending} onClick={() => refreshMut.mutate()}><Ico html={I.sync} size={13} /> {refreshMut.isPending ? 'Yenileniyor…' : "Luca'dan yenile"}</button>
           <button className="btn sm primary" disabled={pushMut.isPending || localCount === 0} onClick={() => pushMut.mutate()} title={localCount === 0 ? 'Gönderilecek yerel hesap yok' : ''}><Ico html={I.send} size={13} /> {pushMut.isPending ? 'Gönderiliyor…' : `Yerelleri gönder${localCount ? ` (${localCount})` : ''}`}</button>
         </div>
-        <div className="twrap">
+        <div className="twrap planwrap">
           <table>
             <thead><tr><th>Kod</th><th>Hesap Adı</th><th className="num">Borç Bakiye</th><th className="num">Alacak Bakiye</th><th>Durum</th></tr></thead>
             <tbody>
@@ -1702,6 +1702,15 @@ const CSS = `
 #fm-root table{width:100%;border-collapse:collapse;font-size:12.5px}
 #fm-root thead th{text-align:left;font-weight:700;color:var(--th-text);font-size:11px;text-transform:uppercase;letter-spacing:.3px;padding:11px 11px;background:var(--th);white-space:nowrap}
 #fm-root tbody td{padding:11px 11px;border-bottom:1px solid var(--line);white-space:nowrap}
+/* Hesap Planı — yüzlerce satır; sıkışık, okunur, gereksiz boşluk yok */
+#fm-root .planwrap{max-height:calc(100vh - 230px);overflow:auto}
+#fm-root .planwrap table{font-size:12px}
+#fm-root .planwrap thead th{position:sticky;top:0;z-index:2;padding:7px 11px;font-size:10px}
+#fm-root .planwrap tbody td{padding:4px 11px;border-bottom:1px solid #f1f3f7}
+#fm-root .planwrap tbody tr:hover td{background:#fafbfc}
+#fm-root .planwrap .hk{font-size:11.5px}
+#fm-root .planwrap .pill{padding:1px 7px;font-size:10px}
+#fm-root .ch h3 .cnt{margin-left:8px;padding:1px 8px;border-radius:20px;background:var(--accent-soft);color:var(--accent);font-size:11px;font-weight:700;vertical-align:middle}
 #fm-root tbody tr:hover{background:#fafbfd}
 /* Aksiyon (göz) sütunu daima görünür kalsın — geniş tabloda sağda kesilmesin */
 #fm-root td.actcol{position:sticky;right:0;background:#fff;box-shadow:-6px 0 6px -6px rgba(0,0,0,.12)}

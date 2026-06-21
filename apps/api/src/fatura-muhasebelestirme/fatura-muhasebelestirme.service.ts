@@ -1618,7 +1618,9 @@ export class FaturaMuhasebelestirmeService {
     const rows = await (this.prisma as any).lucaAccountPlanLine.findMany({
       where,
       orderBy: [{ accountCode: 'asc' }],
-      take: Math.min(Math.max(opts.limit || 250, 1), 1000),
+      // Hesap planı tam görünsün — bazı mükelleflerde 800+ kod var (eski 1000 tavanı
+      // büyük planları kesip "eksik" gösteriyordu); 5000'e çıkarıldı.
+      take: Math.min(Math.max(opts.limit || 250, 1), 5000),
       select: {
         id: true,
         accountCode: true,
