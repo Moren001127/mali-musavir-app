@@ -135,9 +135,9 @@ function CodeSelect({ value, accounts, onChange }: { value: string; accounts: an
   return (
     <div className="csel" ref={boxRef}>
       <div className={`cselfield${open ? ' on' : ''}`} title={value ? (selName ? `${value} — ${selName}` : value) : ''}>
-        <input ref={inpRef} className="cselinp" value={value} placeholder="kod ya da isim yaz"
+        <input ref={inpRef} className="cselinp" value={open ? value : (value && selName ? `${value} — ${selName}` : value)} placeholder="kod ya da isim yaz"
           onFocus={() => { setOpen(true); measure(); }}
-          onChange={(e) => { onChange(e.target.value); setTyping(true); setOpen(true); }}
+          onChange={(e) => { const r = e.target.value; onChange(r.includes(' — ') ? r.split(' — ')[0].trim() : r); setTyping(true); setOpen(true); }}
           onKeyDown={(e) => {
             if (e.key === 'Escape') { setOpen(false); setTyping(false); inpRef.current?.blur(); }
             else if (e.key === 'Enter') { e.preventDefault(); if (typing && list.length === 1) pick(String(list[0].code)); else setOpen(false); }
@@ -558,18 +558,6 @@ function ScreenFaturalar({ taxpayerId, period, kind = 'ALIS' }: { taxpayerId: st
   });
 
   // Matrah/KDV kırılımı çıkmamış belgelere (ör. Mihsap'tan yalnız toplamı gelen satışlar) oranla fiş üret
-  const [genRate, setGenRate] = useState('20');
-  const genMut = useMutation({
-    mutationFn: (ids: string[]) => api.post('/fatura-muhasebelestirme/documents/set-kdv-rate', { documentIds: ids, kdvOrani: Number(genRate) }),
-    onSuccess: (r: any) => {
-      const d = r?.data || {};
-      toast.success(`${d.ok ?? 0} belgeye %${genRate} ile fiş oluşturuldu${d.skipped ? ` · ${d.skipped} atlandı (tutar yok)` : ''}`);
-      setSel(new Set());
-      qc.invalidateQueries({ queryKey: ['fm2'] });
-    },
-    onError: (e: any) => toast.error('Fiş oluşturulamadı: ' + (e?.response?.data?.message || e?.message || 'hata')),
-  });
-  const fisOlustur = () => { if (sel.size === 0) { toast.error('Önce belge seç'); return; } genMut.mutate([...sel]); };
 
   // AI ile oku — seçili faturaları Max-vision ile tek tek okur (KDV kırılımı otomatik); her belge ayrı çağrı (HTTP timeout olmaz)
   const [aiProg, setAiProg] = useState<{ done: number; total: number } | null>(null);
@@ -611,13 +599,6 @@ function ScreenFaturalar({ taxpayerId, period, kind = 'ALIS' }: { taxpayerId: st
           <button className="btn sm" disabled={!taxpayerId || fetchMut.isPending} onClick={() => fetchMut.mutate()} title={!taxpayerId ? 'Önce mükellef seç' : 'Entegratörden çek (henüz tamamlanmadı)'}><Ico html={I.download} size={13} /> {fetchMut.isPending ? 'Çekiliyor…' : 'Belgeleri Getir'}</button>
           <button className="btn sm ghost" disabled={syncMut.isPending} onClick={() => syncMut.mutate()}><Ico html={I.sync} size={13} /> {syncMut.isPending ? 'Eşitleniyor…' : 'Belgeleri Eşitle'}</button>
           <button className="btn sm blue" disabled={!!aiProg || sel.size === 0} onClick={aiOku} title="Seçili faturaları yapay zeka (Max) ile oku — KDV kırılımı otomatik çıkar, oran girmeye gerek yok">{aiProg ? `Okunuyor ${aiProg.done}/${aiProg.total}` : `AI ile oku${sel.size ? ` (${sel.size})` : ''}`}</button>
-          <select className="fmsel" style={{ maxWidth: 108 }} value={genRate} onChange={(e) => setGenRate(e.target.value)} title="Fiş üretmek için KDV oranı">
-            <option value="20">KDV %20</option>
-            <option value="10">KDV %10</option>
-            <option value="1">KDV %1</option>
-            <option value="0">KDV %0</option>
-          </select>
-          <button className="btn sm" disabled={genMut.isPending || sel.size === 0} onClick={fisOlustur} title="Seçili belgelere KDV oranıyla fiş üret — matrah/KDV çıkmamış (eksik kod) olanlar için"><Ico html={I.checkSm} size={13} /> {genMut.isPending ? 'Üretiliyor…' : `Fiş oluştur${sel.size ? ` (${sel.size})` : ''}`}</button>
           <button className="btn sm primary" disabled={approveMut.isPending} onClick={muhasebelestir}><Ico html={I.checkSm} size={13} /> {approveMut.isPending ? 'İşleniyor…' : `Muhasebeleştir${sel.size ? ` (${sel.size})` : ''}`}</button>
         </div>
         <div className="twrap">
@@ -1094,11 +1075,10 @@ function ScreenMuhasebe({ taxpayerId, period, isIsletme = false, full = false, o
         <div className="wmain">
             {selDoc ? (
               <>
-                <div className="fihint"><Ico html={I.info} size={13} /><span>{isIsletme ? <><b>İşletme defteri:</b> Gelir-Gider girişi (KDV/gider, hesap kodu yok).</> : <><b>Bilanço:</b> muhasebe fişi kesilir.</>}</span><div className="sp" /><button type="button" className="fifull" onClick={() => onToggleFull?.()} title={full ? 'Küçült — menüyü geri getir' : 'Büyüt — menüyü gizle, tam ekran işle'}><Ico html={full ? I.compress : I.expand} size={15} /><span>{full ? 'Küçült' : 'Büyüt'}</span></button></div>
                 <div className="fiseditor">
                 <div className="belgepane"><InlineBelge id={selDoc.id} /></div>
                 <div className="fispane">
-                <div className="ph">{firmaOf(selDoc)} · {selDoc.invoiceKind === 'SATIS' ? 'Satış' : 'Alış'} faturası <span className="mu">{selDoc.belgeNo || ''}</span></div>
+                <div className="ph">{firmaOf(selDoc)} · {selDoc.invoiceKind === 'SATIS' ? 'Satış' : 'Alış'} faturası <span className="mu">{selDoc.belgeNo || ''}</span><div className="sp" /><button type="button" className="fifull" onClick={() => onToggleFull?.()} title={full ? 'Küçült — menüyü geri getir' : 'Büyüt — menüyü gizle, tam ekran işle'}><Ico html={full ? I.compress : I.expand} size={14} /><span>{full ? 'Küçült' : 'Büyüt'}</span></button></div>
                 <div className="docmeta">
                   <div className="dm"><span className="dml">Tarih</span><input className="dmi" type="date" value={meta.faturaTarihi || ''} onChange={(e) => setMeta({ ...meta, faturaTarihi: e.target.value })} /></div>
                   <div className="dm"><span className="dml">Fatura Türü</span>
@@ -1857,10 +1837,10 @@ const CSS = `
 #fm-root .csel .cselopt span{flex:1;min-width:0;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;font-size:12px;color:#374151}
 #fm-root .csel .cselempty,#fm-root .csel .cselmore{padding:9px 11px;font-size:11.5px;color:var(--muted)}
 #fm-root .fgrp .frow .fdesc{flex:1;min-width:0;font-size:12px;color:var(--muted);white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
-#fm-root .fgrp .frow .linum{flex:0 0 110px;width:auto;text-align:right}
+#fm-root .fgrp .frow .linum{flex:0 0 92px;width:auto;text-align:right}
 #fm-root .fgrp .frow .money{font-variant-numeric:tabular-nums;font-weight:700;font-size:13px;color:var(--text)}
 /* KDV oranı — temiz özel dropdown (native siyah liste değil) */
-#fm-root .fgrp .frow .rsel{flex:0 0 64px;position:relative}
+#fm-root .fgrp .frow .rsel{flex:0 0 56px;position:relative}
 #fm-root .rsel .rselfield{display:flex;align-items:center;justify-content:center;gap:4px;height:27px;border:1px solid var(--line2);border-radius:6px;background:#fff;cursor:pointer;font-size:12.5px;font-weight:700;color:var(--text)}
 #fm-root .rsel .rselfield.on{border-color:var(--accent);box-shadow:0 0 0 2px var(--accent-soft)}
 #fm-root .rsel .rselcar{width:6px;height:6px;border-right:1.6px solid #94a3b2;border-bottom:1.6px solid #94a3b2;transform:rotate(45deg) translateY(-2px);transition:transform .15s}
@@ -1888,10 +1868,8 @@ const CSS = `
 #fm-root .fispane > .docmeta{order:7}
 #fm-root .fispane > .tevpanel{order:8}
 #fm-root .fispane > .wactions{order:9}
-#fm-root .fihint{display:flex;align-items:center;gap:7px;font-size:11.5px;color:var(--muted);padding:4px 2px 10px}
-#fm-root .fihint b{color:var(--text)}
-#fm-root .fihint .fifull{display:inline-flex;align-items:center;gap:6px;height:28px;padding:0 12px;border:1px solid var(--accent-line);border-radius:8px;background:var(--accent-soft);color:var(--accent);font-size:12px;font-weight:700;cursor:pointer;font-family:inherit}
-#fm-root .fihint .fifull:hover{background:var(--accent);color:#fff;border-color:var(--accent)}
+#fm-root .ph .fifull{display:inline-flex;align-items:center;gap:6px;height:26px;padding:0 11px;border:1px solid var(--accent-line);border-radius:7px;background:var(--accent-soft);color:var(--accent);font-size:11.5px;font-weight:700;cursor:pointer;font-family:inherit;text-transform:none;letter-spacing:0}
+#fm-root .ph .fifull:hover{background:var(--accent);color:#fff;border-color:var(--accent)}
 #fm-root .app.editorfull .side{display:none}
 #fm-root .belgebox{border:1px solid var(--line);border-radius:10px;overflow:hidden;background:#fff;display:flex;flex-direction:column}
 #fm-root .belgebox .bpbar{display:flex;align-items:center;justify-content:space-between;padding:7px 11px;border-bottom:1px solid var(--line);background:#fbfcfd;font-size:11px;font-weight:700;color:var(--muted);text-transform:uppercase;letter-spacing:.4px}
