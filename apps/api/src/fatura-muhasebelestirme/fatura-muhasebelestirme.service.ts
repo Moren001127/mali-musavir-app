@@ -4758,39 +4758,45 @@ export class FaturaMuhasebelestirmeService {
     if (!d) throw new NotFoundException('Belge bulunamadı');
     if (d.status === 'APPROVED') return { ok: false, reason: 'onaylı' };
 
-    // Dosyayı indir (Mihsap CDN ya da storage). Sadece görsel — XML/PDF Max-vision'a uygun değil.
-    let buffer: Buffer | null = null;
-    let mediaType = String(d.mimeType || '');
+    // Belge içeriğini fileUrl mantığıyla getir — Mihsap CDN indirme + XML→HTML render
+    // ORADA çalışıyor (belge görüntüsü açılıyor). Eski özel indirme yolu "dosya yok"
+    // dönüyordu; artık aynı kaynağı kullanıyoruz.
+    let html = '';
+    let imgBuf: Buffer | null = null;
+    let imgMedia = '';
     try {
-      if (String(d.source) === 'mihsap' && d.sourceRefId) {
-        const inv = await (this.prisma as any).mihsapInvoice.findFirst({ where: { tenantId, mihsapId: String(d.sourceRefId) }, select: { id: true } });
-        if (inv?.id) { const file = await this.mihsapService.getInvoiceFile(tenantId, inv.id); buffer = file.buffer; mediaType = String(file.contentType || mediaType); }
-      } else if (d.s3Key && !String(d.s3Key).startsWith('earsiv-inline://') && !String(d.s3Key).startsWith('mihsap:')) {
-        buffer = await this.storage.getBuffer(d.s3Key);
+      const fu: any = await this.fileUrl(tenantId, documentId);
+      if (fu?.inlineHtml) {
+        html = String(fu.inlineHtml);
+      } else if (typeof fu?.url === 'string' && fu.url) {
+        const dm = fu.url.match(/^data:([^;]+);base64,(.+)$/);
+        if (dm) { imgMedia = dm[1]; imgBuf = Buffer.from(dm[2], 'base64'); }
+        else if (/^https?:/i.test(fu.url)) { const r = await fetch(fu.url); imgBuf = Buffer.from(await r.arrayBuffer()); imgMedia = String(fu.mimeType || r.headers.get('content-type') || ''); }
       }
     } catch (e: any) {
-      return { ok: false, reason: 'dosya indirilemedi: ' + (e?.message || '') };
+      return { ok: false, reason: 'belge getirilemedi: ' + (e?.message || '') };
     }
-    if (!buffer || buffer.length < 200) return { ok: false, reason: 'dosya yok' };
-    const isImage = /^image\//i.test(mediaType);
-    const head = buffer.slice(0, 4000).toString('utf8');
-    // e-Fatura/e-Arşiv genelde XML/HTML gelir — görsel değil ama METİN olarak okunabilir.
-    const isTextual = !isImage && (/xml|html|text|json/i.test(mediaType) || /<\?xml|<html|<Invoice|ETTN|[Mm]atrah|KDV/i.test(head));
-    if (!isImage && !isTextual) return { ok: false, reason: 'okunamaz biçim (görsel ya da XML/HTML değil)' };
+    const isImage = !!imgBuf && imgBuf.length > 200 && /^image\//i.test(imgMedia);
+    // HTML metni varsa onu, görsel varsa vision; PDF base64'i vision'a veremeyiz.
+    if (html && html.length > 80) {
+      // metin yolu
+    } else if (!isImage) {
+      return { ok: false, reason: imgBuf ? 'desteklenmeyen biçim (PDF) — e-Fatura XML/görsel gerek' : 'belge içeriği boş' };
+    }
 
     const prompt = [
       isImage
         ? 'Aşağıdaki görüntü bir Türk faturası veya yazarkasa fişidir. İçindeki bilgileri oku.'
-        : 'Aşağıda bir Türk e-Fatura/e-Arşiv XML veya HTML içeriği var. İçindeki bilgileri oku.',
+        : 'Aşağıda bir Türk e-Fatura/e-Arşiv belgesinin HTML/metin içeriği var. İçindeki bilgileri oku.',
       'YALNIZCA şu JSON\'u döndür — kod bloğu, açıklama, başka metin YOK:',
       '{"belgeNo":"<fatura/fiş no ya da null>","tarih":"<GG.AA.YYYY ya da null>","kdv":[{"oran":<KDV yüzdesi sayı>,"matrah":<KDV hariç tutar sayı>,"kdv":<KDV tutarı sayı>}]}',
       'KURALLAR: Türk sayı biçimi "1.234,56" = 1234.56 (tümünü ondalıklı sayıya çevir). Birden çok KDV oranı varsa her oran ayrı nesne. matrah=KDV hariç tutar, kdv=o orana ait KDV. ÖTV/ÖİV/tevkifat varsa matrahı şişirme — gerçek mal/hizmet matrahını ver. Okunamayan alanı null bırak, UYDURMA.',
-      isImage ? '' : ('\nİÇERİK:\n' + buffer.toString('utf8').slice(0, 45000)),
+      isImage ? '' : ('\nİÇERİK:\n' + html.replace(/<[^>]+>/g, ' ').replace(/\s+/g, ' ').slice(0, 45000)),
     ].filter(Boolean).join('\n');
 
     const res = await claudeTextViaMax(
       isImage
-        ? { prompt, images: [{ base64: buffer.toString('base64'), mediaType }], timeoutMs: 16000 }
+        ? { prompt, images: [{ base64: imgBuf!.toString('base64'), mediaType: imgMedia }], timeoutMs: 16000 }
         : { prompt, timeoutMs: 22000 },
     );
     if (!res.ok || !res.text) return { ok: false, reason: res.error || 'okunamadı' };
