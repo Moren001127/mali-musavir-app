@@ -1194,7 +1194,7 @@ function ScreenMuhasebe({ taxpayerId, period, isIsletme = false, taxpayerNace = 
                                 <CodeSelect value={l.accountCode || ''} accounts={accountPlan} onChange={(code) => setLine(i, 'accountCode', code)} />
                                 {g.key !== 'cari'
                                   ? <RateSelect value={String(l.rate || '').replace(/[^0-9]/g, '')} onChange={(v) => setLine(i, 'rate', v ? `%${v}` : '')} />
-                                  : <span className="fdesc">{l.description || ''}</span>}
+                                  : null}
                                 <MoneyInput value={Number((g.side === 'debit' ? l.debit : l.credit) || 0)} onChange={(n) => setLine(i, g.side, n)} />
                                 <button type="button" className="frowdel" title="Satırı sil" onClick={() => delLine(i)}>×</button>
                               </div>
