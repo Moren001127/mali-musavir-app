@@ -1,5 +1,5 @@
 import React, { useEffect, useMemo, useState } from 'react';
-import { KeyboardAvoidingView, Platform, StyleSheet, Text, TextInput, View } from 'react-native';
+import { Image, KeyboardAvoidingView, Platform, StyleSheet, Text, TextInput, View } from 'react-native';
 import { LinearGradient } from 'expo-linear-gradient';
 import { router } from 'expo-router';
 import { Fingerprint, LogIn, Sparkles } from 'lucide-react-native';
@@ -53,9 +53,7 @@ export default function LoginScreen() {
     <KeyboardAvoidingView style={styles.flex} behavior={Platform.select({ ios: 'padding', android: undefined })}>
       <Screen>
         <View style={styles.hero}>
-          <LinearGradient colors={[colors.gold, colors.goldDeep]} style={styles.logo}>
-            <Text style={styles.logoText}>M</Text>
-          </LinearGradient>
+          <Image source={require('../assets/logo-mark.png')} style={styles.logoImg} resizeMode="contain" />
           <Text style={styles.brandName}>Moren</Text>
           <Text style={styles.brandSub}>Mali Müşavirlik</Text>
           <View style={[styles.roleBadge, audience === 'taxpayer' && styles.roleBadgeTaxpayer]}>
@@ -157,6 +155,11 @@ const styles = StyleSheet.create({
     alignItems: 'center',
     justifyContent: 'center',
     marginBottom: spacing.md,
+  },
+  logoImg: {
+    width: 104,
+    height: 84,
+    marginBottom: spacing.sm,
   },
   logoText: {
     color: colors.surface,

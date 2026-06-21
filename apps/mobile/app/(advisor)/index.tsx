@@ -1,5 +1,5 @@
 import React from 'react';
-import { StyleSheet, Text, View } from 'react-native';
+import { Pressable, StyleSheet, Text, View } from 'react-native';
 import { router } from 'expo-router';
 import {
   Bot,
@@ -20,7 +20,7 @@ import { ActivityRow, PremiumCard, QuickAction, SectionLabel } from '../../compo
 import { api } from '../../lib/api';
 import { useAuth } from '../../lib/auth';
 import { advisorStats } from '../../lib/sample-data';
-import { advisorModules } from '../../lib/mobile-modules';
+import { advisorModules, getModuleNav } from '../../lib/mobile-modules';
 import { colors, fonts, spacing } from '../../lib/theme';
 
 export default function AdvisorHomeScreen() {
@@ -46,13 +46,17 @@ export default function AdvisorHomeScreen() {
     { ...advisorStats[3], hint: 'Gönderime yakın' },
   ];
 
+  const statRoutes = ['/(advisor)/onay', '/(advisor)/gorevler', '/(advisor)/mukellefler', '/(advisor)/beyannameler'];
+
   return (
     <Screen>
       <TopBar title="Ofis kontrol" subtitle="Moren mobil operasyon" audience="advisor" onLogout={auth.logout} />
 
       <View style={styles.statsGrid}>
-        {stats.map((stat) => (
-          <StatCard key={stat.label} {...stat} />
+        {stats.map((stat, i) => (
+          <Pressable key={stat.label} style={styles.statPress} onPress={() => router.push(statRoutes[i] as any)}>
+            <StatCard {...stat} />
+          </Pressable>
         ))}
       </View>
 
@@ -121,7 +125,11 @@ export default function AdvisorHomeScreen() {
           .filter((module) => module.priority === 'high')
           .slice(0, 4)
           .map((module) => (
-            <ModuleTile key={module.id} module={module} />
+            <ModuleTile
+              key={module.id}
+              module={module}
+              onPress={() => router.push(getModuleNav(module.id).route as any)}
+            />
           ))}
       </View>
     </Screen>
@@ -133,6 +141,10 @@ const styles = StyleSheet.create({
     flexDirection: 'row',
     flexWrap: 'wrap',
     gap: spacing.md,
+  },
+  statPress: {
+    flexBasis: '47%',
+    flexGrow: 1,
   },
   quickGrid: {
     flexDirection: 'row',

@@ -1,5 +1,5 @@
 import React, { createContext, PropsWithChildren, useContext, useEffect, useMemo, useState } from 'react';
-import { api, clearTokenPair, hasStoredSession, saveTokenPair } from './api';
+import { api, clearTokenPair, hasStoredSession, saveTokenPair, setApiAudience } from './api';
 import { AppAudience } from './mobile-modules';
 import { deleteStoredItem, getStoredItem, setStoredItem } from './secure-storage';
 
@@ -12,6 +12,8 @@ export type MobileUser = {
   lastName?: string;
   roles?: string[];
   taxpayerId?: string;
+  companyName?: string;
+  vkn?: string;
   isDemo?: boolean;
 };
 
@@ -50,6 +52,21 @@ function sanitizeUser(raw: any): MobileUser {
   };
 }
 
+// Mükellef profili (taxpayer-portal publicProfile / getProfile) -> MobileUser
+function sanitizeTaxpayer(raw: any): MobileUser {
+  const company = raw?.unvan || raw?.title || raw?.ad || raw?.name || raw?.companyName;
+  return {
+    id: raw?.id || raw?.taxpayerId || 'taxpayer',
+    email: raw?.email || '',
+    firstName: company,
+    roles: ['TAXPAYER'],
+    taxpayerId: raw?.id || raw?.taxpayerId,
+    companyName: company,
+    vkn: raw?.vkn || raw?.tckn || raw?.taxNumber,
+    isDemo: raw?.isDemo,
+  };
+}
+
 async function storeAudience(audience: AppAudience) {
   await setStoredItem(AUDIENCE_KEY, audience);
 }
@@ -76,7 +93,9 @@ export function AuthProvider({ children }: PropsWithChildren) {
       const hasSession = await hasStoredSession();
 
       if (!mounted) return;
-      setAudienceState(storedAudience === 'taxpayer' ? 'taxpayer' : 'advisor');
+      const activeAudience: AppAudience = storedAudience === 'taxpayer' ? 'taxpayer' : 'advisor';
+      setAudienceState(activeAudience);
+      setApiAudience(activeAudience);
 
       if (!hasSession) {
         if (storedUser) {
@@ -89,8 +108,8 @@ export function AuthProvider({ children }: PropsWithChildren) {
       }
 
       try {
-        const { data } = await api.get('/auth/me');
-        const nextUser = sanitizeUser(data);
+        const { data } = await api.get(activeAudience === 'taxpayer' ? '/portal/me' : '/auth/me');
+        const nextUser = activeAudience === 'taxpayer' ? sanitizeTaxpayer(data) : sanitizeUser(data);
         await storeUser(nextUser);
         if (mounted) {
           setUser(nextUser);
@@ -120,14 +139,27 @@ export function AuthProvider({ children }: PropsWithChildren) {
       user,
       setAudience: (nextAudience) => {
         setAudienceState(nextAudience);
+        setApiAudience(nextAudience);
         storeAudience(nextAudience);
       },
       login: async ({ email, password, audience: nextAudience }) => {
-        const { data } = await api.post('/auth/login', {
-          email,
-          password,
-          audience: nextAudience,
-        });
+        setApiAudience(nextAudience);
+
+        if (nextAudience === 'taxpayer') {
+          // Mükellef: ayrı uç + ayrı taxpayer-jwt (refresh yok)
+          const { data } = await api.post('/portal/auth/login', { email, password });
+          const nextUser = sanitizeTaxpayer(data.taxpayer || data);
+          await saveTokenPair(data.accessToken);
+          await storeAudience(nextAudience);
+          await storeUser(nextUser);
+          setAudienceState(nextAudience);
+          setUser(nextUser);
+          setStatus('authenticated');
+          return;
+        }
+
+        // Müşavir: standart kimlik (accessToken + refreshToken)
+        const { data } = await api.post('/auth/login', { email, password });
         const nextUser = sanitizeUser(data.user || data);
         await saveTokenPair(data.accessToken, data.refreshToken);
         await storeAudience(nextAudience);
@@ -137,6 +169,7 @@ export function AuthProvider({ children }: PropsWithChildren) {
         setStatus('authenticated');
       },
       continueDemo: async (nextAudience) => {
+        setApiAudience(nextAudience);
         const demoUser: MobileUser = {
           id: `demo-${nextAudience}`,
           email: nextAudience === 'advisor' ? 'ofis@moren.local' : 'mukellef@moren.local',

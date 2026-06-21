@@ -5,16 +5,16 @@ import { Screen } from '../../components/Screen';
 import { TopBar } from '../../components/TopBar';
 import { ModuleTile } from '../../components/ModuleTile';
 import { useAuth } from '../../lib/auth';
-import { advisorModules, getModuleNav, groupModules } from '../../lib/mobile-modules';
+import { getModuleNav, groupModules, taxpayerModules } from '../../lib/mobile-modules';
 import { colors, spacing } from '../../lib/theme';
 
-export default function AdvisorModulesScreen() {
+export default function TaxpayerModulesScreen() {
   const auth = useAuth();
-  const groups = groupModules(advisorModules);
+  const groups = groupModules(taxpayerModules);
 
   return (
     <Screen>
-      <TopBar title="Portal modülleri" subtitle="Mobil MVP kapsam matrisi" audience="advisor" onLogout={auth.logout} />
+      <TopBar title="Bölümler" subtitle="Tüm mükellef modülleri" audience="taxpayer" onLogout={auth.logout} />
 
       {Object.entries(groups).map(([group, modules]) => (
         <View key={group} style={styles.group}>
@@ -44,4 +44,3 @@ const styles = StyleSheet.create({
     letterSpacing: 0,
   },
 });
-

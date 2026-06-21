@@ -20,9 +20,44 @@ export const colors = {
   amber: '#fbbf24',
   rose: '#fb7185',
   purple: '#a78bfa',
+  sage: '#8fd7bd',
+  copper: '#d9a06c',
+  steel: '#9da8b7',
   white: '#ffffff',
   black: '#000000',
 };
+
+// Portal imzası: her modül grubunun kendi aksan rengi
+export type ModuleColor =
+  | 'gold'
+  | 'rose'
+  | 'amber'
+  | 'sage'
+  | 'green'
+  | 'blue'
+  | 'copper'
+  | 'steel'
+  | 'purple';
+
+export const moduleAccents: Record<ModuleColor, string> = {
+  gold: colors.gold,
+  rose: colors.rose,
+  amber: colors.amber,
+  sage: colors.sage,
+  green: colors.green,
+  blue: colors.blue,
+  copper: colors.copper,
+  steel: colors.steel,
+  purple: colors.purple,
+};
+
+/** Hex renge alfa ekler: withAlpha('#d4b876', 0.12) -> hex8 */
+export function withAlpha(hex: string, alpha: number): string {
+  const a = Math.round(Math.max(0, Math.min(1, alpha)) * 255)
+    .toString(16)
+    .padStart(2, '0');
+  return `${hex}${a}`;
+}
 
 export const spacing = {
   xs: 6,

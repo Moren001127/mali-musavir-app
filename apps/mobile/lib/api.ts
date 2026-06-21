@@ -8,14 +8,26 @@ const REFRESH_TOKEN_KEY = 'moren.mobile.refreshToken';
 
 let refreshPromise: Promise<string | null> | null = null;
 
+// Aktif kimlik: müşavir mi mükellef mi? Mükellef token'ı refresh edilmez (12 saatlik, 401'de yeniden giriş).
+type Audience = 'advisor' | 'taxpayer';
+let currentAudience: Audience = 'advisor';
+
+export function setApiAudience(audience: Audience) {
+  currentAudience = audience;
+}
+
 export const api = axios.create({
   baseURL: API_BASE,
   timeout: 20000,
 });
 
-export async function saveTokenPair(accessToken: string, refreshToken: string) {
+export async function saveTokenPair(accessToken: string, refreshToken?: string) {
   await setStoredItem(ACCESS_TOKEN_KEY, accessToken);
-  await setStoredItem(REFRESH_TOKEN_KEY, refreshToken);
+  if (refreshToken) {
+    await setStoredItem(REFRESH_TOKEN_KEY, refreshToken);
+  } else {
+    await deleteStoredItem(REFRESH_TOKEN_KEY);
+  }
 }
 
 export async function clearTokenPair() {
@@ -62,11 +74,14 @@ api.interceptors.response.use(
     const isAuthRequest =
       url.includes('/auth/login') ||
       url.includes('/auth/register') ||
-      url.includes('/auth/refresh');
+      url.includes('/auth/refresh') ||
+      url.includes('/portal/auth/login');
 
     if (error.response?.status === 401 && original && !original._retry && !isAuthRequest) {
       original._retry = true;
-      const accessToken = await refreshAccessToken();
+
+      // Mükellef oturumunda refresh yok; 401 = oturum bitti, token temizlenir.
+      const accessToken = currentAudience === 'advisor' ? await refreshAccessToken() : null;
 
       if (accessToken) {
         original.headers = original.headers || {};

@@ -1,5 +1,5 @@
 import React from 'react';
-import { StyleSheet, Text, View } from 'react-native';
+import { Pressable, StyleSheet, Text, View } from 'react-native';
 import { router } from 'expo-router';
 import { FileArchive, FileText, MessageCircle, ReceiptText, ShieldCheck, UploadCloud, Users } from 'lucide-react-native';
 import { Screen } from '../../components/Screen';
@@ -9,7 +9,7 @@ import { StatusPill } from '../../components/StatusPill';
 import { ModuleTile } from '../../components/ModuleTile';
 import { ActivityRow, CompanyHero, PremiumCard, QuickAction, SectionLabel } from '../../components/Premium';
 import { useAuth } from '../../lib/auth';
-import { taxpayerModules } from '../../lib/mobile-modules';
+import { getModuleNav, taxpayerModules } from '../../lib/mobile-modules';
 import { taxpayerSummary } from '../../lib/sample-data';
 import { colors, fonts, spacing } from '../../lib/theme';
 
@@ -27,16 +27,20 @@ export default function TaxpayerHomeScreen() {
       />
 
       <View style={styles.statsGrid}>
-        <StatCard label="Açık bakiye" value={taxpayerSummary.balance} tone="amber" hint="Bu ay ödenecek" />
-        <StatCard label="Yakın son tarih" value={taxpayerSummary.dueDate} tone="rose" hint="Beyan ödeme" />
+        <Pressable style={styles.statPress} onPress={() => router.push('/(taxpayer)/cari')}>
+          <StatCard label="Açık bakiye" value={taxpayerSummary.balance} tone="amber" hint="Bu ay ödenecek" />
+        </Pressable>
+        <Pressable style={styles.statPress} onPress={() => router.push('/(taxpayer)/beyannameler')}>
+          <StatCard label="Yakın son tarih" value={taxpayerSummary.dueDate} tone="rose" hint="Beyan ödeme" />
+        </Pressable>
       </View>
 
       <SectionLabel label="Hızlı erişim" right="Mali müşavir bağlı" />
       <View style={styles.quickGrid}>
         <QuickAction label="Evrak gönder" Icon={UploadCloud} active onPress={() => router.push('/(taxpayer)/evrak')} />
         <QuickAction label="Belgelerim" Icon={FileArchive} tone="blue" onPress={() => router.push('/(taxpayer)/belgeler')} />
-        <QuickAction label="Beyanlar" Icon={FileText} tone="green" />
-        <QuickAction label="Mesaj" Icon={MessageCircle} tone="purple" onPress={() => router.push('/(taxpayer)/mesaj')} />
+        <QuickAction label="Beyanlar" Icon={FileText} tone="green" onPress={() => router.push('/(taxpayer)/beyannameler')} />
+        <QuickAction label="Asistan" Icon={MessageCircle} tone="purple" onPress={() => router.push('/(taxpayer)/asistan')} />
       </View>
 
       <SectionLabel label="Bu ay" right="Mart 2026" />
@@ -85,7 +89,11 @@ export default function TaxpayerHomeScreen() {
           .filter((module) => module.priority === 'high')
           .slice(0, 4)
           .map((module) => (
-            <ModuleTile key={module.id} module={module} />
+            <ModuleTile
+              key={module.id}
+              module={module}
+              onPress={() => router.push(getModuleNav(module.id).route as any)}
+            />
           ))}
       </View>
     </Screen>
@@ -97,6 +105,10 @@ const styles = StyleSheet.create({
     flexDirection: 'row',
     flexWrap: 'wrap',
     gap: spacing.md,
+  },
+  statPress: {
+    flexBasis: '47%',
+    flexGrow: 1,
   },
   quickGrid: {
     flexDirection: 'row',
