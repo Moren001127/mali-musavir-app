@@ -1884,7 +1884,7 @@ const CSS = `
 #fm-root .psel{position:relative;width:100%}
 #fm-root .psel .pselfield{display:flex;align-items:center;gap:6px;height:30px;border:1px solid var(--line2);border-radius:7px;background:#fff;padding:0 9px;cursor:pointer;font-size:13px;font-weight:600;color:var(--text)}
 #fm-root .psel .pselfield.on{border-color:var(--accent);box-shadow:0 0 0 2px var(--accent-soft)}
-#fm-root .psel .pselfield > span{flex:1;min-width:0;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+#fm-root .psel .pselfield > span:first-child{flex:1;min-width:0;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
 #fm-root .psel .pselfield .ph{color:#9aa6b2;font-weight:400}
 #fm-root .psel .pselcar{flex:0 0 auto;width:7px;height:7px;border-right:1.6px solid #94a3b2;border-bottom:1.6px solid #94a3b2;transform:rotate(45deg) translateY(-2px);transition:transform .15s,border-color .15s}
 #fm-root .psel .pselfield.on .pselcar{transform:rotate(-135deg) translateY(2px);border-color:var(--accent)}
