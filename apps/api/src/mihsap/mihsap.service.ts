@@ -835,6 +835,12 @@ export class MihsapService implements OnModuleInit {
             mukellefLabel = tp.companyName || [tp.firstName, tp.lastName].filter(Boolean).join(' ') || '';
           }
         }
+        // Kaynaga gore hedef modul: "bekleyen" (gelen evrak) -> Fatura Isleme Merkezi'nde
+        // gorunur, Islenen Faturalar'da DEGIL. "arsiv" -> Islenen Faturalar. Bildirim
+        // dogru modulu soylesin + linki oraya gitsin (yaniltici "indirildi" yerine).
+        const isBekleyen = (params.kaynak || 'arsiv') === 'bekleyen';
+        const hedefModul = isBekleyen ? 'Fatura İşleme Merkezi' : 'İşlenen Faturalar';
+        const hedefLink = isBekleyen ? '/fatura-merkezi' : '/panel/faturalar';
         // Token/oturum kaynaklı hatalar GEÇİCİ + OTOMATİK retry'li → kullanıcıya KIRMIZI
         // "hata" yerine YUMUŞAK "oturum bekleniyor, otomatik tamamlanacak" göster. (Kullanıcı
         // bu hatayı bir daha görmek istemiyor; token tazelenince zaten kendiliğinden tamamlanır.)
@@ -849,7 +855,7 @@ export class MihsapService implements OnModuleInit {
           ? (retriable
               ? `${params.donem} dönemi: Mihsap oturumu (token) tazelenince otomatik tamamlanacak — Mihsap sekmesini bir kez açmanız yeterli.`
               : `${params.donem} dönemi: ${String(errorMsg).slice(0, 300)}`)
-          : `${params.donem} dönemi: ${fetched} fatura indirildi/güncellendi.`;
+          : `${params.donem} dönemi: ${fetched} fatura çekildi → ${hedefModul}.`;
         await this.notifications.createForTenant({
           tenantId: params.tenantId,
           type: NOTIFICATION_TYPES.MIHSAP_RESULT,
@@ -862,7 +868,7 @@ export class MihsapService implements OnModuleInit {
             total,
             fetched,
             errorMsg: errorMsg || null,
-            link: '/panel/ajanlar/mihsap',
+            link: hedefLink,
           },
           dedupeKey: `mihsap-result:${job.id}`,
           dedupeWindowMin: 60,
