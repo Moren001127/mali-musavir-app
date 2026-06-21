@@ -218,9 +218,15 @@ export class FaturaMuhasebelestirmeController {
   @Post('vendor-rule')
   setVendorRule(
     @Req() req: any,
-    @Body() body: { taxpayerId?: string; vendorVkn?: string; vendorName?: string; accountCode?: string },
+    @Body() body: { taxpayerId?: string; vendorVkn?: string; vendorName?: string; accountCode?: string; kdvOrani?: number | string | null },
   ) {
     return this.service.setVendorRule(req.user.tenantId, body || {});
+  }
+
+  /** Öğrenilmiş eşleştirme kuralını sil. */
+  @Delete('vendor-rule/:decisionId')
+  deleteVendorRule(@Req() req: any, @Param('decisionId') decisionId: string) {
+    return this.service.deleteVendorRule(req.user.tenantId, decisionId);
   }
 
   /** Matrah/KDV çıkmamış belgelere KDV oranı verip fiş satırlarını üret (toplam → matrah+KDV). */

@@ -763,15 +763,21 @@ function ScreenKurallar({ taxpayerId, period }: { taxpayerId: string; period: st
   const [rVkn, setRVkn] = useState('');
   const [rName, setRName] = useState('');
   const [rCode, setRCode] = useState('');
+  const [rRate, setRRate] = useState(''); // '' = tüm oranlar, '1'/'10'/'20' = o orana özel
   const ruleMut = useMutation({
-    mutationFn: () => api.post('/fatura-muhasebelestirme/vendor-rule', { taxpayerId, vendorVkn: rVkn, vendorName: rName || undefined, accountCode: rCode }),
+    mutationFn: () => api.post('/fatura-muhasebelestirme/vendor-rule', { taxpayerId, vendorVkn: rVkn, vendorName: rName || undefined, accountCode: rCode, kdvOrani: rRate || undefined }),
     onSuccess: (r: any) => {
       const n = r?.data?.applied;
       toast.success(`Kural kaydedildi${n != null ? ` · ${n} belgeye uygulandı` : ''}`);
-      setRVkn(''); setRName(''); setRCode('');
-      qc.invalidateQueries({ queryKey: ['fm2'] });
+      setRVkn(''); setRName(''); setRCode(''); setRRate('');
+      qc.invalidateQueries({ queryKey: ['fm2', 'vendor-memory'] }); qc.invalidateQueries({ queryKey: ['fm2'] });
     },
     onError: (e: any) => toast.error('Kural kaydedilemedi: ' + (e?.response?.data?.message || e?.message || 'hata')),
+  });
+  const delRuleMut = useMutation({
+    mutationFn: (decisionId: string) => api.delete(`/fatura-muhasebelestirme/vendor-rule/${decisionId}`),
+    onSuccess: () => { toast.success('Kural silindi'); qc.invalidateQueries({ queryKey: ['fm2', 'vendor-memory'] }); },
+    onError: (e: any) => toast.error('Silinemedi: ' + (e?.response?.data?.message || e?.message || 'hata')),
   });
 
   // Satır-içi "Kod ata" — o satıcı için hesap kodu seç, anında kural olarak kaydet (öğrenilir).
@@ -803,10 +809,19 @@ function ScreenKurallar({ taxpayerId, period }: { taxpayerId: string; period: st
       <div className="sub">Bir belgeyi onayladığında sistem o satıcı + içerik için hesap kodunu <b>öğrenir</b>; sonraki benzer belgeleri otomatik eşleştirir. Aşağıda öğrenilmiş kurallar ve henüz kurala uymayan istisnalar var.</div>
 
       <div className="card">
-        <div className="ch"><h3>Kural ekle</h3><div className="sp" /><span className="mu">satıcı VKN → hesap kodu · o satıcının bekleyen + sonraki faturalarına otomatik uygulanır</span></div>
-        <div style={{ display: 'grid', gridTemplateColumns: '1fr 1.2fr 1fr auto', gap: 11, padding: '15px 16px', alignItems: 'end' }}>
+        <div className="ch"><h3>Kural ekle</h3><div className="sp" /><span className="mu">satıcı VKN (+ istenirse KDV oranı) → hesap kodu · o satıcının bekleyen + sonraki faturalarına otomatik uygulanır</span></div>
+        <div style={{ display: 'grid', gridTemplateColumns: '1fr 1.1fr 0.7fr 1fr auto', gap: 11, padding: '15px 16px', alignItems: 'end' }}>
           <div className="fld"><label>Satıcı VKN / TCKN</label><input value={rVkn} onChange={(e) => setRVkn(e.target.value)} placeholder="10–11 hane" /></div>
           <div className="fld"><label>Satıcı adı (opsiyonel)</label><input value={rName} onChange={(e) => setRName(e.target.value)} placeholder="firma adı" /></div>
+          <div className="fld"><label>KDV oranı</label>
+            <select value={rRate} onChange={(e) => setRRate(e.target.value)} title="Bu kural sadece bu KDV oranlı faturalara uygulansın. 'Tüm oranlar' = ayrım yapma.">
+              <option value="">Tüm oranlar</option>
+              <option value="1">%1</option>
+              <option value="10">%10</option>
+              <option value="20">%20</option>
+              <option value="0">%0</option>
+            </select>
+          </div>
           <div className="fld"><label>Hesap kodu</label><input value={rCode} onChange={(e) => setRCode(e.target.value)} placeholder="örn. 153.01.001" /></div>
           <button className="btn primary sm" style={{ height: 35 }} disabled={!taxpayerId || ruleMut.isPending || !rVkn.trim() || !rCode.trim()} onClick={() => ruleMut.mutate()} title={!taxpayerId ? 'Önce üstten mükellef seç' : ''}><Ico html={I.plus} size={13} /> {ruleMut.isPending ? 'Kaydediliyor…' : 'Kaydet'}</button>
         </div>
@@ -815,28 +830,30 @@ function ScreenKurallar({ taxpayerId, period }: { taxpayerId: string; period: st
       </div>
 
       <div className="card">
-        <div className="ch"><h3>Öğrenilen kurallar{taxpayerId ? '' : ' (tüm mükellefler)'}</h3><div className="sp" /><span className="mu">{rulesQ.isLoading ? 'yükleniyor…' : `${rules.length} satıcı`}</span></div>
+        <div className="ch"><h3>Öğrenilen kurallar{taxpayerId ? '' : ' (tüm mükellefler)'}</h3><div className="sp" /><span className="mu">{rulesQ.isLoading ? 'yükleniyor…' : `${rules.reduce((s: number, r: any) => s + (r.decisions || []).filter((d: any) => d.kararTipi === 'fatura' && /^\d/.test(String(d.kategori || ''))).length, 0)} kural`}</span></div>
         <div className="twrap">
           <table>
-            <thead><tr><th>Satıcı / Alıcı</th><th>VKN</th><th>Öğrenilen hesap kodu</th><th className="num">Onay (belge)</th><th>Mükellef</th><th>Son kullanım</th></tr></thead>
+            <thead><tr><th>Satıcı / Alıcı</th><th>VKN</th><th>KDV Oranı</th><th>Hesap Kodu</th><th className="num">Onay</th><th>Son kullanım</th><th className="actcol" style={{ width: 40 }} /></tr></thead>
             <tbody>
-              {rules.map((r) => {
-                const top = (r.decisions || []).filter((d: any) => d.kararTipi === 'fatura').sort((a: any, b: any) => (b.onayAdedi || 0) - (a.onayAdedi || 0))[0]
-                  || (r.decisions || []).sort((a: any, b: any) => (b.onayAdedi || 0) - (a.onayAdedi || 0))[0];
-                const muk = (r.mukellefler || []).map((m: any) => m.ad).slice(0, 2).join(', ');
-                return (
-                  <tr key={r.id}>
-                    <td className="firm"><b>{r.firmaUnvan || '(unvan yok)'}</b></td>
-                    <td>{r.firmaKimlikNo || '—'}</td>
-                    <td>{top?.kategori ? <span className="hk">{top.kategori}</span> : <span className="hk no">—</span>}{top?.altKategori ? <small style={{ color: 'var(--faint)', marginLeft: 6 }}>{top.altKategori}</small> : null}</td>
-                    <td className="num">{r.toplamOnay || 0}</td>
-                    <td>{muk || <span className="mu">—</span>}</td>
-                    <td>{fmtDate(r.sonKullanim)}</td>
-                  </tr>
-                );
-              })}
+              {rules.flatMap((r: any) => (r.decisions || [])
+                .filter((d: any) => d.kararTipi === 'fatura' && /^\d/.test(String(d.kategori || '')))
+                .sort((a: any, b: any) => (b.onayAdedi || 0) - (a.onayAdedi || 0))
+                .map((d: any) => {
+                  const rate = String(d.altKategori || '').replace(/[^0-9]/g, '');
+                  return (
+                    <tr key={d.id}>
+                      <td className="firm"><b>{r.firmaUnvan || '(unvan yok)'}</b></td>
+                      <td>{r.firmaKimlikNo || '—'}</td>
+                      <td>{rate ? <span className="pill alis">%{rate}</span> : <span className="mu">Tüm oranlar</span>}</td>
+                      <td><span className="hk">{d.kategori}</span></td>
+                      <td className="num">{d.onayAdedi || 0}</td>
+                      <td>{fmtDate(d.sonKullanim)}</td>
+                      <td className="actcol"><span className="eye del" title="Bu kuralı sil" onClick={() => { if (window.confirm(`Kural silinsin mi?\n${r.firmaUnvan || r.firmaKimlikNo} · ${rate ? '%' + rate : 'tüm oranlar'} → ${d.kategori}`)) delRuleMut.mutate(d.id); }}><Ico html={I.trash} size={14} /></span></td>
+                    </tr>
+                  );
+                }))}
               {!rulesQ.isLoading && rules.length === 0 && (
-                <tr><td colSpan={6}><div className="empty">Henüz öğrenilmiş kural yok. Belge onayladıkça burası dolar.</div></td></tr>
+                <tr><td colSpan={7}><div className="empty">Henüz öğrenilmiş kural yok. Belge onayladıkça ya da yukarıdan kural ekledikçe burası dolar.</div></td></tr>
               )}
             </tbody>
           </table>

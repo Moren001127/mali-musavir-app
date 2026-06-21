@@ -3185,17 +3185,22 @@ export class FaturaMuhasebelestirmeService {
     const firmaKimlikNo = String((isSale ? doc.buyerVkn : doc.sellerVkn) || '').replace(/\D/g, '');
     if (!firmaKimlikNo) return;
     const firmaUnvan = String((isSale ? doc.customerName : doc.vendorName) || '').trim() || null;
-    const accountCodes = this.memoryAccountCodesFromLines(doc.lines || []);
-    if (!accountCodes.length) return;
-
-    for (const accountCode of accountCodes) {
+    // ORAN-BAZLI ÖĞRENME: her matrah satırının kodunu KENDİ KDV oranıyla (altKategori) öğren —
+    // aynı satıcının %1/%10/%20 alımları farklı koda gidebilsin (ör. A101 market). Oran yoksa
+    // altKategori=null (genel kural).
+    const blocked = (code: string) => ['191', '391', '120', '320', '321', '322', '329', '331'].some((p) => code.startsWith(p));
+    const matrahLines = (doc.lines || []).filter((l: any) => String(l.group || '').toLowerCase() === 'matrah');
+    const seen = new Set<string>();
+    for (const l of matrahLines) {
+      const code = String(l.accountCode || '').trim();
+      if (!code || blocked(code)) continue;
+      const rate = String(l.rate || '').replace(/[^0-9]/g, '') || null;
+      const key = `${code}|${rate || ''}`;
+      if (seen.has(key)) continue;
+      seen.add(key);
       await this.vendorMemory.recordDecision({
-        tenantId,
-        firmaKimlikNo,
-        firmaUnvan,
-        kararTipi: 'fatura',
-        kategori: accountCode,
-        taxpayerId: doc.taxpayerId,
+        tenantId, firmaKimlikNo, firmaUnvan, kararTipi: 'fatura',
+        kategori: code, altKategori: rate, taxpayerId: doc.taxpayerId,
       });
     }
   }
@@ -4628,7 +4633,7 @@ export class FaturaMuhasebelestirmeService {
    * Bir satıcı için öğrenilmiş (müşavirin onayladığı) hesap kodunu döndürür — hesap planı GEREKTİRMEZ.
    * kararTipi='fatura' kararlarında `kategori` = hesap kodudur. Yalnız rakamla başlayan gerçek kod döner.
    */
-  private async pickLearnedAccountCode(tenantId: string, taxpayerId: string, firmaKimlikNo: string): Promise<string | null> {
+  private async pickLearnedAccountCode(tenantId: string, taxpayerId: string, firmaKimlikNo: string, rate?: string | null): Promise<string | null> {
     const vkn = String(firmaKimlikNo || '').trim();
     if (!vkn || !taxpayerId) return null;
     const memory = await (this.prisma as any).vendorMemory.findUnique({
@@ -4637,11 +4642,17 @@ export class FaturaMuhasebelestirmeService {
         decisions: {
           where: { taxpayerId, kararTipi: 'fatura' },
           orderBy: [{ onayAdedi: 'desc' }, { sonKullanim: 'desc' }],
-          take: 1,
+          take: 16,
         },
       },
     });
-    const code = String(memory?.decisions?.[0]?.kategori || '').trim();
+    const decisions = (memory?.decisions || []).filter((d: any) => /^\d/.test(String(d.kategori || '').trim()));
+    const r = String(rate || '').replace(/[^0-9]/g, '');
+    // Öncelik: 1) bu KDV oranına özel kural, 2) orana bağsız (genel) kural, 3) en çok onaylanan.
+    const byRate = r ? decisions.find((d: any) => String(d.altKategori || '').replace(/[^0-9]/g, '') === r) : null;
+    const general = decisions.find((d: any) => !String(d.altKategori || '').trim());
+    const pick = byRate || general || decisions[0];
+    const code = String(pick?.kategori || '').trim();
     return code && /^\d/.test(code) ? code : null;
   }
 
@@ -4659,28 +4670,31 @@ export class FaturaMuhasebelestirmeService {
         status: { in: ['READY', 'NEEDS_REVIEW', 'DRAFT'] },
         ...(documentIds?.length ? { id: { in: documentIds } } : {}),
       },
-      select: { id: true, sellerVkn: true, lines: { where: { group: 'matrah' }, select: { id: true, accountCode: true } } },
+      select: { id: true, sellerVkn: true, lines: { where: { group: 'matrah' }, select: { id: true, accountCode: true, rate: true } } },
       take: 1000,
     });
     if (!docs.length) return 0;
+    // (vkn|rate) → öğrenilmiş kod önbelleği. Her matrah satırı KENDİ oranına göre kodlanır.
     const cache = new Map<string, string | null>();
     let applied = 0;
     for (const doc of docs) {
       const vkn = String(doc.sellerVkn || '').replace(/\D/g, '');
       if (!vkn) continue;
-      let learned = cache.get(vkn);
-      if (learned === undefined) {
-        learned = await this.pickLearnedAccountCode(tenantId, taxpayerId, vkn);
-        cache.set(vkn, learned);
+      for (const l of (doc.lines || [])) {
+        const rate = String(l.rate || '').replace(/[^0-9]/g, '');
+        const key = `${vkn}|${rate}`;
+        let learned = cache.get(key);
+        if (learned === undefined) {
+          learned = await this.pickLearnedAccountCode(tenantId, taxpayerId, vkn, rate);
+          cache.set(key, learned);
+        }
+        if (!learned || String(l.accountCode || '').trim() === learned) continue;
+        await (this.prisma as any).invoiceAccountingLine.update({
+          where: { id: l.id },
+          data: { accountCode: learned },
+        });
+        applied++;
       }
-      if (!learned) continue;
-      const needsUpdate = (doc.lines || []).some((l: any) => String(l.accountCode || '').trim() !== learned);
-      if (!needsUpdate) continue;
-      await (this.prisma as any).invoiceAccountingLine.updateMany({
-        where: { documentId: doc.id, group: 'matrah' },
-        data: { accountCode: learned },
-      });
-      applied++;
     }
     return applied;
   }
@@ -4691,11 +4705,13 @@ export class FaturaMuhasebelestirmeService {
    */
   async setVendorRule(
     tenantId: string,
-    input: { taxpayerId?: string; vendorVkn?: string; vendorName?: string; accountCode?: string },
+    input: { taxpayerId?: string; vendorVkn?: string; vendorName?: string; accountCode?: string; kdvOrani?: number | string | null },
   ) {
     const taxpayerId = String(input.taxpayerId || '').trim();
     const vendorVkn = String(input.vendorVkn || '').replace(/\D/g, '');
     const accountCode = String(input.accountCode || '').trim();
+    // kdvOrani verilirse kural O ORANA ÖZEL olur (altKategori); verilmezse tüm oranlar (genel).
+    const rate = String(input.kdvOrani ?? '').replace(/[^0-9]/g, '') || null;
     if (!taxpayerId) throw new BadRequestException('Mükellef seçilmeli');
     if (!vendorVkn) throw new BadRequestException('Satıcı VKN/TCKN gerekli');
     if (!/^\d/.test(accountCode)) throw new BadRequestException('Geçerli bir hesap kodu girin (rakamla başlamalı)');
@@ -4705,10 +4721,24 @@ export class FaturaMuhasebelestirmeService {
       firmaUnvan: input.vendorName || null,
       kararTipi: 'fatura',
       kategori: accountCode,
+      altKategori: rate,
       taxpayerId,
     });
     const applied = await this.applyLearnedVendorCodes(tenantId, taxpayerId);
-    return { ok: true, vendorVkn, accountCode, applied };
+    return { ok: true, vendorVkn, accountCode, rate, applied };
+  }
+
+  // Öğrenilmiş bir kuralı (vendor decision) sil.
+  async deleteVendorRule(tenantId: string, decisionId: string) {
+    const id = String(decisionId || '').trim();
+    if (!id) throw new BadRequestException('Kural id gerekli');
+    const dec = await (this.prisma as any).vendorMemoryDecision.findUnique({
+      where: { id },
+      include: { vendorMemory: { select: { tenantId: true } } },
+    });
+    if (!dec || dec.vendorMemory?.tenantId !== tenantId) throw new NotFoundException('Kural bulunamadı');
+    await (this.prisma as any).vendorMemoryDecision.delete({ where: { id } });
+    return { ok: true };
   }
 
   /**
@@ -4945,9 +4975,7 @@ export class FaturaMuhasebelestirmeService {
       const isSale = doc.invoiceKind === 'SATIS';
       const vendorName = isSale ? doc.customerName : doc.vendorName;
       const vendorVkn = String((isSale ? doc.buyerVkn : doc.sellerVkn) || '').replace(/\D/g, '');
-      const memoryMatrah = await this.pickVendorMemoryAccount(tenantId, taxpayerId, vendorVkn, accounts);
       // Kalem-bazlı kategori (AI ile oku'dan): stok/masraf/demirbaş ayrımını plana eşle.
-      // Öğrenilmiş satıcı kodu yine önceliklidir.
       const kat = String((doc.ocrData as any)?.matrahKategori || '').toLowerCase().trim();
       const KAT_PREFIX: Record<string, string[]> = {
         ticari_mal: ['153', '150', '770'],       // stok yoksa gidere düş
@@ -4957,15 +4985,27 @@ export class FaturaMuhasebelestirmeService {
         genel_gider: ['770', '760', '740', '730'],
       };
       const alisMatrahPrefixes = KAT_PREFIX[kat] || ['770', '760', '740', '730', ' gider '];
-      const replacements = {
-        matrah: memoryMatrah || this.pickAccount(accounts, isSale ? ['600'] : alisMatrahPrefixes, vendorName),
-        vergi: this.pickAccount(accounts, isSale ? ['391'] : ['191'], null),
-        cari: this.pickAccount(accounts, isSale ? ['120'] : ['320', '329', '331'], vendorName),
+      const categoryMatrah = this.pickAccount(accounts, isSale ? ['600'] : alisMatrahPrefixes, vendorName);
+      const vergiMatch = this.pickAccount(accounts, isSale ? ['391'] : ['191'], null);
+      const cariMatch = this.pickAccount(accounts, isSale ? ['120'] : ['320', '329', '331'], vendorName);
+      // ORAN-BAZLI matrah: her matrah satırı KENDİ KDV oranına göre öğrenilmiş kodu alır;
+      // yoksa kategori/varsayılan. Öğrenilmiş kod (satıcı+oran) her zaman önceliklidir.
+      const matrahCache = new Map<string, any>();
+      const matrahForRate = async (rate: string) => {
+        if (matrahCache.has(rate)) return matrahCache.get(rate);
+        const learned = vendorVkn ? await this.pickVendorMemoryAccount(tenantId, taxpayerId, vendorVkn, accounts, rate) : null;
+        const m = learned || categoryMatrah;
+        matrahCache.set(rate, m);
+        return m;
       };
 
       for (const line of doc.lines || []) {
         const group = String(line.group || '') as 'matrah' | 'vergi' | 'cari';
-        const match = replacements[group];
+        const match = group === 'matrah'
+          ? await matrahForRate(String(line.rate || '').replace(/[^0-9]/g, ''))
+          : group === 'vergi' ? vergiMatch
+          : group === 'cari' ? cariMatch
+          : null;
         const current = String(line.accountCode || '');
         const isPlaceholder =
           !current ||
@@ -5009,6 +5049,7 @@ export class FaturaMuhasebelestirmeService {
     taxpayerId: string,
     firmaKimlikNo: string,
     accounts: Array<{ accountCode: string; accountName: string }>,
+    rate?: string | null,
   ) {
     if (!firmaKimlikNo || !taxpayerId || !accounts.length) return null;
     const accountByCode = new Map(accounts.map((account) => [String(account.accountCode || '').trim(), account]));
@@ -5018,16 +5059,17 @@ export class FaturaMuhasebelestirmeService {
         decisions: {
           where: { taxpayerId, kararTipi: 'fatura' },
           orderBy: [{ onayAdedi: 'desc' }, { sonKullanim: 'desc' }],
-          take: 8,
+          take: 16,
         },
       },
     });
-    for (const decision of memory?.decisions || []) {
-      const code = String(decision.kategori || '').trim();
-      const match = accountByCode.get(code);
-      if (match) return match;
-    }
-    return null;
+    const decisions = (memory?.decisions || []).filter((d: any) => accountByCode.has(String(d.kategori || '').trim()));
+    const r = String(rate || '').replace(/[^0-9]/g, '');
+    // Öncelik: bu orana özel kural → orana bağsız (genel) → en çok onaylanan (plana uyan).
+    const byRate = r ? decisions.find((d: any) => String(d.altKategori || '').replace(/[^0-9]/g, '') === r) : null;
+    const general = decisions.find((d: any) => !String(d.altKategori || '').trim());
+    const pick = byRate || general || decisions[0];
+    return pick ? accountByCode.get(String(pick.kategori).trim()) : null;
   }
 
   private pickAccount(
