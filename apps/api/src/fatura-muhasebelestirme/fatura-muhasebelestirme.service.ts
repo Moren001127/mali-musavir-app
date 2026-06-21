@@ -4810,8 +4810,9 @@ export class FaturaMuhasebelestirmeService {
         ? 'Aşağıdaki görüntü bir Türk faturası veya yazarkasa fişidir. İçindeki bilgileri oku.'
         : 'Aşağıda bir Türk e-Fatura/e-Arşiv belgesinin HTML/metin içeriği var. İçindeki bilgileri oku.',
       'YALNIZCA şu JSON\'u döndür — kod bloğu, açıklama, başka metin YOK:',
-      '{"belgeNo":"<fatura/fiş no ya da null>","tarih":"<GG.AA.YYYY ya da null>","kdv":[{"oran":<KDV yüzdesi sayı>,"matrah":<KDV hariç tutar sayı>,"kdv":<KDV tutarı sayı>}]}',
+      '{"belgeNo":"<fatura/fiş no ya da null>","tarih":"<GG.AA.YYYY ya da null>","kategori":"<asagidaki tek deger>","kdv":[{"oran":<KDV yüzdesi sayı>,"matrah":<KDV hariç tutar sayı>,"kdv":<KDV tutarı sayı>}]}',
       'KURALLAR: Türk sayı biçimi "1.234,56" = 1234.56 (tümünü ondalıklı sayıya çevir). Birden çok KDV oranı varsa her oran ayrı nesne. matrah=KDV hariç tutar, kdv=o orana ait KDV. ÖTV/ÖİV/tevkifat varsa matrahı şişirme — gerçek mal/hizmet matrahını ver. Okunamayan alanı null bırak, UYDURMA.',
+      'kategori: faturadaki mal/hizmetin TÜRÜNE göre TEK kelime seç → "ticari_mal" (satılmak üzere alınan ürün/emtia), "hammadde" (üretimde kullanılan ilk madde/malzeme), "demirbas" (makine/cihaz/ekipman/mobilya/bilgisayar gibi sabit kıymet alımı), "pazarlama" (reklam/ilan/kargo-nakliye/pazarlama), "genel_gider" (kira/elektrik/su/doğalgaz/telefon/internet/akaryakıt/danışmanlık/kırtasiye/yemek/abonelik gibi genel giderler). EMİN DEĞİLSEN "genel_gider".',
       isImage ? '' : ('\nİÇERİK:\n' + html.replace(/<[^>]+>/g, ' ').replace(/\s+/g, ' ').slice(0, 45000)),
     ].filter(Boolean).join('\n');
 
@@ -4861,7 +4862,7 @@ export class FaturaMuhasebelestirmeService {
           status: 'NEEDS_REVIEW',
           validationStatus: 'OK',
           ocrEngine: 'max-vision',
-          ocrData: { ...((d.ocrData as any) || {}), matrah, kdvTutari: kdv, kdvOrani: breakdown[0].rate, kdvBreakdown: breakdown.map((b: any) => ({ oran: b.rate, matrah: b.base, tutar: b.amount })), engine: 'max-vision' },
+          ocrData: { ...((d.ocrData as any) || {}), matrah, kdvTutari: kdv, kdvOrani: breakdown[0].rate, kdvBreakdown: breakdown.map((b: any) => ({ oran: b.rate, matrah: b.base, tutar: b.amount })), matrahKategori: typeof parsed.kategori === 'string' ? parsed.kategori : undefined, engine: 'max-vision' },
         },
       });
     });
@@ -4902,8 +4903,19 @@ export class FaturaMuhasebelestirmeService {
       const vendorName = isSale ? doc.customerName : doc.vendorName;
       const vendorVkn = String((isSale ? doc.buyerVkn : doc.sellerVkn) || '').replace(/\D/g, '');
       const memoryMatrah = await this.pickVendorMemoryAccount(tenantId, taxpayerId, vendorVkn, accounts);
+      // Kalem-bazlı kategori (AI ile oku'dan): stok/masraf/demirbaş ayrımını plana eşle.
+      // Öğrenilmiş satıcı kodu yine önceliklidir.
+      const kat = String((doc.ocrData as any)?.matrahKategori || '').toLowerCase().trim();
+      const KAT_PREFIX: Record<string, string[]> = {
+        ticari_mal: ['153', '150', '770'],       // stok yoksa gidere düş
+        hammadde: ['150', '153', '730', '740', '770'],
+        demirbas: ['255', '253', '254'],          // sabit kıymet yoksa BOŞ bırak (gidere yazma yanlış olur)
+        pazarlama: ['760', '770'],
+        genel_gider: ['770', '760', '740', '730'],
+      };
+      const alisMatrahPrefixes = KAT_PREFIX[kat] || ['770', '760', '740', '730', ' gider '];
       const replacements = {
-        matrah: memoryMatrah || this.pickAccount(accounts, isSale ? ['600'] : ['770', '760', '740', '730', ' gider '], vendorName),
+        matrah: memoryMatrah || this.pickAccount(accounts, isSale ? ['600'] : alisMatrahPrefixes, vendorName),
         vergi: this.pickAccount(accounts, isSale ? ['391'] : ['191'], null),
         cari: this.pickAccount(accounts, isSale ? ['120'] : ['320', '329', '331'], vendorName),
       };
