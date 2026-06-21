@@ -11,7 +11,6 @@ import { sablonForTool, sablonZatenVar } from './whatsapp-sablon';
 const ANTHROPIC_URL = 'https://api.anthropic.com/v1/messages';
 // Hibrit model secimi — maliyet/kalite dengesi:
 //   taxpayer-readonly → her zaman Haiku 4.5 (kisa musteri cevabi, ucuz)
-//   none              → her zaman Haiku 4.5 (kisisel/Buse, ucuz)
 //   owner / undefined → soru tipine gore:
 //     - Veri/data sorgusu, kisa sohbet → Haiku 4.5 (ucuz, hizli)
 //     - Mevzuat/kanun/analiz/yorum/oneri → Sonnet 4.6 (derin)

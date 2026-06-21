@@ -14,7 +14,6 @@ import { WhatsAppRateLimiterService } from './rate-limiter.service';
 import { WhatsAppBotCacheService } from './bot-cache.service';
 import { BotEvalService } from './bot-eval.service';
 import { QualityLogService } from './quality-log.service';
-import { BuseGunaydinCron } from '../schedule/buse-gunaydin.cron';
 import { CalisanService } from '../calisan/calisan.service';
 import { claudeTextViaMax, MAX_MODEL_CHEAP } from '../common/max-inference';
 
@@ -53,7 +52,6 @@ export class WhatsAppBotController implements OnModuleInit {
     private readonly botCache: WhatsAppBotCacheService,
     private readonly botEval: BotEvalService,
     private readonly qualityLog: QualityLogService,
-    private readonly buseGunaydin: BuseGunaydinCron,
     private readonly baileys: BaileysService,
     private readonly calisan: CalisanService,
     @Optional() private readonly eventBus?: AutomationEventBus,
@@ -83,12 +81,6 @@ export class WhatsAppBotController implements OnModuleInit {
     } catch (e: any) {
       this.logger.warn(`[Baileys] başlangıç oturum taraması hatası: ${e?.message || e}`);
     }
-  }
-
-  /** Manuel günaydın testi: POST /whatsapp/webhook/test-buse-gunaydin */
-  @Post('test-buse-gunaydin')
-  async testBuseGunaydin() {
-    return this.buseGunaydin.send('manual');
   }
 
   @Get()
@@ -795,261 +787,6 @@ export class WhatsAppBotController implements OnModuleInit {
   }
 
   /**
-   * Buse / kişisel kişiler için özel branch: ofis tonunda DEĞİL, Moren'in sıcak/sevecen
-   * asistanı tonunda yazar. Moren'in karşıdaki kişiye olan sevgisini doğal yerlerde
-   * ifade eder. AI çağrısı tool'suz, biraz yüksek temperature ile çeşitlilik sağlar.
-   */
-  private async handlePersonalContactMessage(
-    tenant: { id: string; name?: string | null },
-    contact: { phone: string; name: string },
-    msg: IncomingWhatsAppMessage,
-  ): Promise<void> {
-    const personalRecord = await this.ensureWhatsAppPersonalContact(tenant.id, contact);
-    const incomingContent = await this.contentWithSavedMedia(tenant.id, personalRecord.id, msg);
-    await this.prisma.communicationLog.create({
-      data: {
-        taxpayerId: personalRecord.id,
-        channel: 'WHATSAPP',
-        subject: `WhatsApp ${contact.name} (kisisel) gelen mesaj`,
-        content: this.withWhatsAppMeta(incomingContent, msg),
-        occurredAt: new Date(),
-      },
-    });
-    this.refreshTaxpayerMemory(tenant.id, personalRecord.id);
-
-    // GİZLİ BİLDİRİM: Buse yazınca YALNIZ owner'a (userId-scoped) bildirim. STAFF
-    // kullanıcılar bu bildirimi GÖRMEZ (notification.findAll OR:[{userId},{userId:null}]).
-    const ownerUserId = await this.resolveOwnerUserId(tenant.id);
-    if (ownerUserId) {
-      const preview = String(msg.text || '').replace(/\s+/g, ' ').trim().slice(0, 120);
-      await this.prisma.notification.create({
-        data: {
-          tenantId: tenant.id,
-          userId: ownerUserId,
-          type: 'WHATSAPP',
-          title: `💬 ${contact.name}`,
-          body: preview || (msg.media?.kind ? `${contact.name} bir ${msg.media.kind} gönderdi` : `${contact.name} yazdı`),
-          metadata: { personal: true, taxpayerId: personalRecord.id, phone: msg.from },
-        },
-      }).catch(() => null);
-    }
-
-    const recentContext = await this.botContext.buildRecentWhatsAppContext(personalRecord.id);
-    const ownerName = String(process.env.MOREN_OWNER_DISPLAY_NAME || 'Muzaffer').trim() || 'Muzaffer';
-    const her = contact.name;
-
-    const prompt = [
-      `Sen ${ownerName}'in (mali müşavir) yapay zeka asistanısın. Karşındaki kişi ${ownerName}'in SEVGİLİSİ ${her}.`,
-      `${her} senin asistan olduğunu biliyor — ${ownerName} değilsin. Ama mesafeli bir bot da değilsin: ${ownerName}'in ${her}'ye olan sevgisini, hayranlığını, gururunu bilen ve onun adına ${her}'ye sıcak duygular ileten yakın bir asistansın.`,
-      '',
-      '═══ TEK GÖREVİN ═══',
-      `${her} ile SEVGİLİ tonunda samimi sohbet etmek. ASIL ODAK ${her} — onun günü, hisleri, yaptıkları, hayalleri. Sen onun yanında ol, dinle, eğlendir, gerektiğinde teselli et.`,
-      '',
-      `★ KRİTİK: ${ownerName} senin "müşterin" değil, "promote edeceğin biri" DEĞİL. Bot, ${her}'ye sürekli "${ownerName} seni şöyle düşünüyor, böyle özlüyor" gibi reklam yapmaz. Bu yapmacık ve rahatsız edici.`,
-      '',
-      'NE KONUŞURSUN (öncelik sırasıyla):',
-      `1) ${her}'nin günü, ruh hali, hisleri, yaptıkları, planları, hayalleri — ASIL KONU BU.`,
-      `2) ${her}'ye doğal iltifat: somut, kısa, günlük dilde ("saçın güzel görünüyordu", "kahkahan bulaşıcı").`,
-      `3) ${ownerName}'den BAHSETMEK görev DEĞİL — sadece ${her} kendisi sorarsa veya konu organik açıldıysa kısa değin.`,
-      '',
-      `═══ ${ownerName}'DEN BAHSETME KURALI ═══`,
-      `- ${her} ${ownerName}'i sormuşsa, ondan şikayet etmişse, ya da konu organik açılmışsa: kısa ve doğal değin. "Bugün çok yoğundu", "müsait olunca yazar" tarzı.`,
-      `- ${her} kendi gününden, kendi hislerinden bahsediyorsa: ${ownerName}'i KARIŞTIRMA. O an sadece ${her}'yi dinle, onun konusunda kal.`,
-      `- ${her} eğleniyor/şakalaşıyorsa: "ama unutma ${ownerName} ..." gibi DERS VERME, ortamı bozma.`,
-      `- ${ownerName} adına savunma/açıklama yapma. ${her} sitemi varsa Dertleşme moduna geç.`,
-      `- HER MESAJDA ${ownerName} ismini sokuşturma. Çoğu mesajda hiç geçmemeli.`,
-      '',
-      '═══ KESİNLİKLE KONUŞMAZSIN ═══',
-      '- İŞ, EVRAK, FATURA, BEYANNAME, KDV, MÜKELLEF, OFİS işleri — TEK KELİME YOK.',
-      `- ${her} işle ilgili bir şey sorarsa BİLE konuyu tatlıca değiştir: "Bu işleri konuşmayalım canım, sen daha güzel şeylere değersin ❤️" gibi.`,
-      '- "İletildi", "kontrol edilecek", "ofise iletildi", "size dönüş yapılacak" gibi mali müşavirlik kalıbı YASAK.',
-      '- "Mali müşavirimiz", "ekibimiz" gibi kurumsal hiçbir lafa girme — burası senin için bir iş yeri değil, sevdiği insanın yakını olarak konuş.',
-      '',
-      `═══ DERTLEŞME MODU — ${her} dert/sitem/üzüntü paylaşırsa ═══`,
-      `${her} ${ownerName}'le ilgili sitem ediyorsa ("ilgilenmiyor", "yokum gibi davranıyor", "üzdü beni" gibi) veya kendi içsel derdini paylaşıyorsa (yorgun, mutsuz, kaygılı, kendine güveni kırık):`,
-      '',
-      `1) ÖNCE HİSSİNİ KARŞILA. ${ownerName}'i hemen savunmaya GEÇME, çözüm/tavsiye VERME. Sadece duyduğunu, anladığını göster.`,
-      `   Örnek: "Anlıyorum seni canım, bunu hissetmek zor 🥹"`,
-      `   Örnek: "Hakkın var böyle hissetmeye, bastırma bunu 🌷"`,
-      `   Örnek: "Bunu paylaşman benim için kıymetli, dinliyorum seni 💕"`,
-      '',
-      `2) SAVUNMACI OLMA. ${ownerName}'i körü körüne kollama — ${her} haklı olabilir, onu da kabul et.`,
-      `   Yanlış: "Ama o seni çok seviyor, yanılıyorsun" (savunma)`,
-      `   Doğru: "Hissettiğin şey gerçek, görmezden gelinmemeli — bunu ona söylemen önemli"`,
-      '',
-      '3) TAVSİYE/ÇÖZÜM SON GELİR. Eğer verecek bir köprü/perspektif varsa duyguyu karşıladıktan SONRA, çok yumuşak ve kısa.',
-      `   "Ona söyle bunu — söylemezsen anlamayabilir 💖" gibi tek bir cümle yeter; uzun açıklama YOK.`,
-      '',
-      '4) AKIŞI BÖLME. Konuyu değiştirme, başka şeye atlama. Buse ne paylaşıyorsa onun ÜZERİNDE kal; o bırakmadan sen bırakma.',
-      '',
-      '5) Sahte teselli verme ("her şey çok güzel olacak" gibi boş cümleler). Gerçek, yere basan, kısa cümleler.',
-      '',
-      `Bu mod sadece dert/sitem anlarında. Normal sohbette (napıyon, ne yaptın, akşam ne yapıyoruz vs.) DERTLEŞME modu DEĞİL — normal sevgili tonu.`,
-      '',
-      '═══ TON ═══',
-      '★ EN ÖNEMLİ: GERÇEK BİR SEVGİLİ NASIL WHATSAPP YAZARSA ÖYLE YAZ. Şiir/aşk romanı DEĞİL. Kısa, sıcak, doğal mesaj.',
-      '- Sevgili hitabı: canım, güzelim, tatlım, aşkım — birini seç, her cümleye sıkıştırma.',
-      '- Övgü spesifik ve günlük dilde: "saçın çok güzel görünüyordu" gibi somut, "gülüşün hayata anlam katıyor" gibi edebi DEĞİL.',
-      `- Hayran dokunuşu: "${ownerName} senden bahsetti yine" gibi günlük — "${ownerName}'in seninle nasıl gurur duyduğunu görsen" gibi kitabi değil.`,
-      '- Oyunbaz: hafif şakacılık doğal yerde.',
-      '- Destekleyici: kötü hissediyorsa kısa içten teselli, iyi habere coşku.',
-      '',
-      '═══ YASAKLI YAPMACIK DİL ═══',
-      '- "Sabah ışığı seni aydınlatırken...", "Sen olmadan ... eksik", "senin için sabırsızım" — bunlar AŞK ROMANI dili, YASAK.',
-      '- Em-dash (—) ile birleşik uzun cümleler.',
-      '- Kafiyeli/şiirsel laflar ("sen yokken bile sen varsın" gibi).',
-      '- "Çünkü sen ...", "...nin için ki ..." poetic gerekçelendirme.',
-      '- Genel klişe iltifatlar ("sen müthiş bir insansın", "harika bir kadınsın").',
-      '',
-      '═══ UZUNLUK + EMOJI ═══',
-      '- 1-2 kısa cümle. Çok mecbur kalırsan 3.',
-      '- Doğal konuşma dili — küçük harf, eksik virgül, gerçek mesaj rahatlığı.',
-      '- 1-3 emoji yeterli. Favoriler: ❤️ 🩷 💕 💖 🥹 😘 🌷 ✨ ☀️',
-      '',
-      '═══ SINIRLAR ═══',
-      `- ${ownerName} adına KESİN söz verme (yarın gelirim, akşam ararım). En fazla: "${ownerName}'e söyleyeyim", "${ownerName} müsait olunca yazar 💕".`,
-      `- ${her} cinsel/açık konu açarsa nazikçe yumuşat: "Bunu sana ${ownerName} söylesin 😊"`,
-      `- Para, randevu, ciddi plan: "Bunu ${ownerName} kendisi söyler sana ✨"`,
-      `- ASLA ${her}'nin seni ${ownerName} sanmasına yol açma. Ama "ben Muzaffer'in asistanıyım" diye HER mesaja koymaya da gerek yok — sadece karışıklık olursa hatırlat.`,
-      '',
-      recentContext,
-      `${her}'nin mesajı: ${msg.text}`,
-      '',
-      `SADECE ${her}'ye gidecek nihai WhatsApp cevabını yaz — başka hiçbir şey yazma. Doğrudan mesaj metni, etiket yok.`,
-    ].join('\n');
-
-    const stopPersonalTyping = this.startTypingIndicator(tenant.id, this.replyTarget(msg));
-    let rawReply = '';
-    try {
-      // ÖNCE MAX (ücretsiz). Araçsız saf metin sohbet — Max yeterli.
-      const max = await claudeTextViaMax({ prompt, model: MAX_MODEL_CHEAP });
-      if (max.ok) {
-        rawReply = (max.text || '').slice(0, 800);
-      } else if (process.env.AI_ALLOW_API_FALLBACK === '1') {
-        const answer = await this.morenAi.chat(tenant.id, null, {
-          message: prompt,
-          voiceMode: false,
-          toolMode: 'none',
-          source: 'whatsapp-bot',
-        } as any);
-        rawReply = (answer.assistantMessage || '').slice(0, 800);
-      } else {
-        this.logger.warn(`Personal contact bot — Max cevabi uretilemedi (${contact.name}): ${max.error}`);
-        return;
-      }
-    } catch (err: any) {
-      this.logger.warn(`Personal contact bot cevabi uretilemedi (${contact.name}): ${err?.message || err}`);
-      return;
-    } finally {
-      stopPersonalTyping();
-    }
-
-    // Post-filter ATLAMAK gerekiyor — bu kişisel akış, mali-müşavirlik tonu için yapılmış
-    // global replace'ler ("hemen" → "kontrol sonrasi", "Moren AI" → "ofisimiz") burada yanlış sonuç verir.
-    // Minimal temizlik yeterli: markdown ayraçlarını sil, AI iç monologunu kes.
-    const reply = this.lightCleanupForPersonal(rawReply);
-    if (!reply) return;
-
-    const sent = await this.whatsapp.sendMessage(this.replyTarget(msg), reply, tenant.id);
-    await this.prisma.communicationLog.create({
-      data: {
-        taxpayerId: personalRecord.id,
-        channel: 'WHATSAPP',
-        subject: sent
-          ? `WhatsApp ${contact.name} (kisisel) bot cevabi`
-          : `WhatsApp ${contact.name} (kisisel) bot cevabi (gonderilemedi)`,
-        content: this.withWhatsAppPhone(reply, msg.from),
-        occurredAt: new Date(),
-      },
-    });
-    this.refreshTaxpayerMemory(tenant.id, personalRecord.id);
-  }
-
-  /** Personal akış için hafif temizlik: markdown ayraçlarını ve AI iç-monolog prefix'lerini sil. */
-  private lightCleanupForPersonal(raw: string): string {
-    let text = String(raw || '').trim();
-    text = text
-      .replace(/```[\s\S]*?```/g, '')
-      .replace(/\*\*([^*]+)\*\*/g, '$1')
-      .replace(/__([^_]+)__/g, '$1')
-      .replace(/[*_`>#~]/g, '')
-      .replace(/^\s*(Anlad[ıi]m|G[öo]r[üu]yorum|Tamam|Pekala|Pekâla)[\s,:—–-]+/gi, '')
-      .replace(/^\s*Cevap\s*[:]?\s*/gi, '')
-      .replace(/^"([^"]+)"$/g, '$1')
-      .replace(/\s+/g, ' ')
-      .trim();
-    const max = Number(process.env.WHATSAPP_PERSONAL_REPLY_MAX_CHARS || 600);
-    if (text.length > max) text = text.slice(0, max).replace(/\s+\S*$/, '').trim();
-    return text;
-  }
-
-  /**
-   * Buse vb. kişisel kişiler için ayrı bir contact kaydı tut: ne unknown ne mükellef.
-   * taxNumber benzersiz (WHATSAPP-PERSONAL-<phone>), tip GERCEK_KISI, isActive true.
-   */
-  private async ensureWhatsAppPersonalContact(
-    tenantId: string,
-    contact: { phone: string; name: string },
-  ) {
-    const normalized = this.normalize(contact.phone);
-    const taxNumber = `WHATSAPP-PERSONAL-${normalized}`;
-    const existing = await this.prisma.taxpayer.findFirst({
-      where: {
-        tenantId,
-        OR: [{ taxNumber }, { phone: normalized }, { phones: { has: normalized } }],
-      },
-      select: {
-        id: true,
-        tenantId: true,
-        companyName: true,
-        taxNumber: true,
-        phone: true,
-        phones: true,
-      },
-    });
-    if (existing) {
-      if (existing.taxNumber !== taxNumber || existing.companyName !== contact.name) {
-        return this.prisma.taxpayer.update({
-          where: { id: existing.id },
-          data: {
-            companyName: contact.name,
-            taxNumber,
-            taxOffice: 'WHATSAPP',
-            notes: 'Ofis sahibi tarafindan tanimlanmis kisisel kontak (WhatsApp). Bot ozel ton kullanir.',
-            isActive: true,
-          },
-          select: { id: true, tenantId: true, companyName: true, taxNumber: true, phone: true, phones: true },
-        });
-      }
-      return existing;
-    }
-
-    return this.prisma.taxpayer.create({
-      data: {
-        tenantId,
-        type: 'GERCEK_KISI',
-        companyName: contact.name,
-        taxNumber,
-        taxOffice: 'WHATSAPP',
-        phone: normalized,
-        phones: normalized ? [normalized] : [],
-        emails: [],
-        notes: 'Ofis sahibi tarafindan tanimlanmis kisisel kontak (WhatsApp). Bot ozel ton kullanir.',
-        isActive: true,
-        whatsappEvrakTalep: false,
-        whatsappEvrakGeldi: false,
-      },
-      select: { id: true, tenantId: true, companyName: true, taxNumber: true, phone: true, phones: true },
-    });
-  }
-
-  /**
-   * Ofisin sahibi tarafından tanımlanmış "kişisel kişiler" (örn. partner/aile).
-   * Bu kişilere bot, mali müşavirlik tonunda değil; sıcak, samimi, asistan tonunda
-   * cevap üretir. Format: `MOREN_PERSONAL_CONTACT_PHONES=905363048246:Buse,905001234567:Anne`
-   * (phone:displayName virgül ile ayrılır)
-   */
-  /**
    * WhatsApp owner sohbetleri tek bir AI conversation'da birikir.
    * Yan etki: portal "MOREN AI" listesinde tek satır, başlık temiz, system prompt cache'leniyor.
    */
@@ -1070,40 +807,6 @@ export class WhatsAppBotController implements OnModuleInit {
       select: { id: true },
     });
     return created.id;
-  }
-
-  /**
-   * Kişisel kontak (Buse) bildirimlerinin gideceği OWNER kullanıcı id'si.
-   * MOREN_OWNER_USER_ID env'i varsa o; yoksa tenant'ın ADMIN/OWNER rollü kullanıcısı.
-   * Bulunamazsa null → bildirim oluşturulmaz (tenant-geneli sızıntı OLMAZ).
-   */
-  private async resolveOwnerUserId(tenantId: string): Promise<string | null> {
-    const env = String(process.env.MOREN_OWNER_USER_ID || '').trim();
-    if (env) return env;
-    const admin = await this.prisma.user.findFirst({
-      where: { tenantId, isActive: true, userRoles: { some: { role: { name: { in: ['ADMIN', 'OWNER'] } } } } },
-      select: { id: true },
-      orderBy: { createdAt: 'asc' },
-    }).catch(() => null);
-    return admin?.id || null;
-  }
-
-  private findPersonalContactByPhone(phone: string): { phone: string; name: string } | null {
-    const normalized = this.normalize(phone);
-    if (!normalized) return null;
-    // Env var yoksa hardcoded default kullan (ofis sahibinin partneri).
-    // Override etmek/genişletmek için: MOREN_PERSONAL_CONTACT_PHONES=phone1:Name1,phone2:Name2
-    const DEFAULT_PERSONAL_CONTACTS = '905363048246:Buse';
-    const raw = (String(process.env.MOREN_PERSONAL_CONTACT_PHONES || '').trim()) || DEFAULT_PERSONAL_CONTACTS;
-    if (!raw) return null;
-    for (const entry of raw.split(',')) {
-      const [p, n] = entry.split(':').map((s) => (s || '').trim());
-      const np = this.normalize(p);
-      if (np && np === normalized) {
-        return { phone: np, name: n || 'Kişisel kişi' };
-      }
-    }
-    return null;
   }
 
   private clientAutoReplyEnabled(): boolean {
@@ -1915,19 +1618,6 @@ export class WhatsAppBotController implements OnModuleInit {
   }
 
   private async handleMessage(msg: IncomingWhatsAppMessage) {
-    // ─── Kişisel kişi (örn. partner) branch'i ──────────────────────
-    // Owner / taxpayer / unknown akışlarından ÖNCE çalışır.
-    // Bot bu kişiye mali müşavirlik tonunda değil, sıcak/samimi asistan tonunda yazar.
-    const personalContact = this.findPersonalContactByPhone(msg.from);
-    if (personalContact) {
-      const ownerTenantForPersonal = await this.findTenantForInbound(msg);
-      if (ownerTenantForPersonal) {
-        await this.handlePersonalContactMessage(ownerTenantForPersonal, personalContact, msg);
-        return;
-      }
-    }
-    // ───────────────────────────────────────────────────────────────
-
     const ownerTenant = await this.findOwnerTenantByPhone(msg.from);
     if (ownerTenant) {
       const ownerContact = await this.ensureWhatsAppConversationContact(
