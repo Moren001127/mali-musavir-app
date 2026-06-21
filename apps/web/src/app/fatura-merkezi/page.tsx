@@ -161,6 +161,73 @@ function CodeSelect({ value, accounts, onChange }: { value: string; accounts: an
     </div>
   );
 }
+// Türk para girişi — kutuda binlik/ondalık ayrılmış (1.234,56) görünür, okunur; düzenlenince
+// "1.234,56" ya da "1234,56" ya da "1234.56" hepsi doğru sayıya çevrilir.
+function parseTrNumber(s: string): number {
+  if (!s) return 0;
+  let t = String(s).trim().replace(/\s/g, '').replace(/[^\d.,-]/g, '');
+  if (!t) return 0;
+  const lastComma = t.lastIndexOf(','), lastDot = t.lastIndexOf('.');
+  const decSep = lastComma > lastDot ? ',' : (lastDot > lastComma ? '.' : '');
+  if (decSep) { const thousands = decSep === ',' ? '.' : ','; t = t.split(thousands).join('').replace(decSep, '.'); }
+  const n = parseFloat(t);
+  return Number.isFinite(n) ? n : 0;
+}
+function MoneyInput({ value, onChange }: { value: number; onChange: (n: number) => void }) {
+  const [focused, setFocused] = useState(false);
+  const [raw, setRaw] = useState('');
+  const display = focused
+    ? raw
+    : (value ? value.toLocaleString('tr-TR', { minimumFractionDigits: 2, maximumFractionDigits: 2 }) : '');
+  return (
+    <input className="li linum money" inputMode="decimal" value={display} placeholder="0,00"
+      onFocus={() => { setFocused(true); setRaw(value ? String(value).replace('.', ',') : ''); }}
+      onChange={(e) => { setRaw(e.target.value); onChange(parseTrNumber(e.target.value)); }}
+      onBlur={() => setFocused(false)} />
+  );
+}
+// KDV oranı seçici — temiz özel dropdown (native siyah liste + tek başına "%" YOK).
+function RateSelect({ value, onChange }: { value: string; onChange: (v: string) => void }) {
+  const [open, setOpen] = useState(false);
+  const [pos, setPos] = useState<{ top: number; left: number; width: number } | null>(null);
+  const boxRef = useRef<HTMLDivElement>(null);
+  const popRef = useRef<HTMLDivElement>(null);
+  const opts = ['0', '1', '10', '20'];
+  const all = value && !opts.includes(value) ? [...opts, value] : opts;
+  const measure = () => {
+    const el = boxRef.current; if (!el) return;
+    const r = el.getBoundingClientRect();
+    setPos({ top: r.bottom + 3, left: r.left, width: Math.max(r.width, 64) });
+  };
+  useEffect(() => {
+    if (!open) { setPos(null); return; }
+    measure();
+    const onDoc = (e: MouseEvent) => {
+      const t = e.target as Node;
+      if (boxRef.current?.contains(t) || popRef.current?.contains(t)) return;
+      setOpen(false);
+    };
+    const reflow = () => measure();
+    document.addEventListener('mousedown', onDoc);
+    window.addEventListener('scroll', reflow, true);
+    window.addEventListener('resize', reflow);
+    return () => { document.removeEventListener('mousedown', onDoc); window.removeEventListener('scroll', reflow, true); window.removeEventListener('resize', reflow); };
+  }, [open]);
+  return (
+    <div className="rsel" ref={boxRef}>
+      <div className={`rselfield${open ? ' on' : ''}`} onClick={() => setOpen((o) => !o)}>
+        <span>%{value || '—'}</span><span className="rselcar" />
+      </div>
+      {open && pos && (
+        <div className="rselpop" ref={popRef} style={{ position: 'fixed', top: pos.top, left: pos.left, minWidth: pos.width }}>
+          {all.map((o) => (
+            <div key={o} className={`rselopt${o === value ? ' sel' : ''}`} onMouseDown={(e) => { e.preventDefault(); onChange(o); setOpen(false); }}>%{o}</div>
+          ))}
+        </div>
+      )}
+    </div>
+  );
+}
 function periodOptions(): { v: string; l: string }[] {
   const aylar = ['Ocak', 'Şubat', 'Mart', 'Nisan', 'Mayıs', 'Haziran', 'Temmuz', 'Ağustos', 'Eylül', 'Ekim', 'Kasım', 'Aralık'];
   const out: { v: string; l: string }[] = [];
@@ -1098,18 +1165,9 @@ function ScreenMuhasebe({ taxpayerId, period, isIsletme = false, full = false, o
                               <div key={i} className="frow">
                                 <CodeSelect value={l.accountCode || ''} accounts={accountPlan} onChange={(code) => setLine(i, 'accountCode', code)} />
                                 {g.key !== 'cari'
-                                  ? (() => { const rv = String(l.rate || '').replace(/[^0-9]/g, ''); return (
-                                      <select className="li lirate" value={rv} onChange={(e) => setLine(i, 'rate', e.target.value ? `%${e.target.value}` : '')}>
-                                        <option value="">%</option>
-                                        <option value="0">%0</option>
-                                        <option value="1">%1</option>
-                                        <option value="10">%10</option>
-                                        <option value="20">%20</option>
-                                        {rv && !['0', '1', '10', '20'].includes(rv) ? <option value={rv}>%{rv}</option> : null}
-                                      </select>
-                                    ); })()
+                                  ? <RateSelect value={String(l.rate || '').replace(/[^0-9]/g, '')} onChange={(v) => setLine(i, 'rate', v ? `%${v}` : '')} />
                                   : <span className="fdesc">{l.description || ''}</span>}
-                                <input className="li linum" type="number" step="0.01" value={(g.side === 'debit' ? l.debit : l.credit) || ''} placeholder="0,00" onChange={(e) => setLine(i, g.side, e.target.value === '' ? 0 : Number(e.target.value))} />
+                                <MoneyInput value={Number((g.side === 'debit' ? l.debit : l.credit) || 0)} onChange={(n) => setLine(i, g.side, n)} />
                                 <button type="button" className="frowdel" title="Satırı sil" onClick={() => delLine(i)}>×</button>
                               </div>
                             ))}
@@ -1798,9 +1856,18 @@ const CSS = `
 #fm-root .csel .cselopt b{flex:0 0 auto;font-size:12px;font-weight:800;color:var(--accent);font-variant-numeric:tabular-nums}
 #fm-root .csel .cselopt span{flex:1;min-width:0;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;font-size:12px;color:#374151}
 #fm-root .csel .cselempty,#fm-root .csel .cselmore{padding:9px 11px;font-size:11.5px;color:var(--muted)}
-#fm-root .fgrp .frow .lirate{flex:0 0 72px;width:auto;text-align:center;padding:0 4px;cursor:pointer}
 #fm-root .fgrp .frow .fdesc{flex:1;min-width:0;font-size:12px;color:var(--muted);white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
-#fm-root .fgrp .frow .linum{flex:0 0 92px;width:auto;text-align:right}
+#fm-root .fgrp .frow .linum{flex:0 0 110px;width:auto;text-align:right}
+#fm-root .fgrp .frow .money{font-variant-numeric:tabular-nums;font-weight:700;font-size:13px;color:var(--text)}
+/* KDV oranı — temiz özel dropdown (native siyah liste değil) */
+#fm-root .fgrp .frow .rsel{flex:0 0 64px;position:relative}
+#fm-root .rsel .rselfield{display:flex;align-items:center;justify-content:center;gap:4px;height:27px;border:1px solid var(--line2);border-radius:6px;background:#fff;cursor:pointer;font-size:12.5px;font-weight:700;color:var(--text)}
+#fm-root .rsel .rselfield.on{border-color:var(--accent);box-shadow:0 0 0 2px var(--accent-soft)}
+#fm-root .rsel .rselcar{width:6px;height:6px;border-right:1.6px solid #94a3b2;border-bottom:1.6px solid #94a3b2;transform:rotate(45deg) translateY(-2px);transition:transform .15s}
+#fm-root .rsel .rselfield.on .rselcar{transform:rotate(-135deg) translateY(2px);border-color:var(--accent)}
+#fm-root .rsel .rselpop{z-index:9000;background:#fff;border:1px solid var(--line2);border-radius:8px;box-shadow:0 10px 26px rgba(15,23,42,.16);overflow:hidden;padding:3px}
+#fm-root .rsel .rselopt{padding:6px 12px;border-radius:5px;cursor:pointer;font-size:12.5px;font-weight:600;color:var(--text);text-align:center}
+#fm-root .rsel .rselopt:hover,#fm-root .rsel .rselopt.sel{background:var(--accent-soft);color:var(--accent)}
 #fm-root .fgrp .fgt{display:flex;justify-content:space-between;padding:5px 10px;border-top:1px solid var(--line2);background:#fbfcfd;font-size:12px}
 #fm-root .fgrp .fgt b{font-weight:800}
 #fm-root .fgrp .frow .frowdel{width:22px;height:22px;flex:0 0 22px;border:1px solid var(--line2);border-radius:6px;background:#fff;color:var(--red);font-size:15px;font-weight:700;cursor:pointer;line-height:1;display:grid;place-items:center}

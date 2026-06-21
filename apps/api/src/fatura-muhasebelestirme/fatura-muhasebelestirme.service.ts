@@ -4844,7 +4844,10 @@ export class FaturaMuhasebelestirmeService {
         },
       });
     });
-    if (d.taxpayerId) await this.applyLearnedVendorCodes(tenantId, d.taxpayerId, [d.id]).catch(() => {});
+    // Placeholder kodları (770.01.010 vb. — mükellefin planında olmayabilir) mükellefin
+    // GERÇEK hesap planındaki kodla değiştir; öğrenilmiş satıcı kodu varsa onu uygula.
+    // (Sadece applyLearnedVendorCodes yetmiyordu → öğrenilmemiş satıcıda placeholder kalıyordu.)
+    if (d.taxpayerId) await this.rematchDocumentsWithLatestAccountPlan(tenantId, d.taxpayerId, [d.id]).catch(() => {});
     return { ok: true, matrah, kdv, oranSayisi: breakdown.length };
   }
 
