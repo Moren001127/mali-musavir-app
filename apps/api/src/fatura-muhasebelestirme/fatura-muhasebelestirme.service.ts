@@ -4911,7 +4911,6 @@ export class FaturaMuhasebelestirmeService {
       for (const line of doc.lines || []) {
         const group = String(line.group || '') as 'matrah' | 'vergi' | 'cari';
         const match = replacements[group];
-        if (!match) continue;
         const current = String(line.accountCode || '');
         const isPlaceholder =
           !current ||
@@ -4929,14 +4928,23 @@ export class FaturaMuhasebelestirmeService {
             '320.01.001',
             '120.01.001',
           ].includes(current);
-        if (!isPlaceholder) continue;
-        await (this.prisma as any).invoiceAccountingLine.update({
-          where: { id: line.id },
-          data: {
-            accountCode: match.accountCode,
-            description: group === 'cari' ? match.accountName : line.description,
-          },
-        });
+        if (!isPlaceholder) continue; // kullanıcının seçtiği kod — dokunma
+        if (match) {
+          await (this.prisma as any).invoiceAccountingLine.update({
+            where: { id: line.id },
+            data: {
+              accountCode: match.accountCode,
+              description: group === 'cari' ? match.accountName : line.description,
+            },
+          });
+        } else if (current) {
+          // Planda uygun kod YOK → var olmayan placeholder'ı (ör. 770.01.010) BOŞALT.
+          // "Eksik hesap kodu" görünür; kullanıcı 1 kez seçer → satıcı için öğrenilir.
+          await (this.prisma as any).invoiceAccountingLine.update({
+            where: { id: line.id },
+            data: { accountCode: '' },
+          });
+        }
       }
     }
   }
@@ -4973,21 +4981,28 @@ export class FaturaMuhasebelestirmeService {
     nameHint?: string | null,
   ) {
     const hint = this.norm(nameHint || '');
-    const candidates = accounts.filter((a) => {
-      const code = String(a.accountCode || '');
-      const name = ` ${this.norm(a.accountName || '')} `;
-      return prefixesOrNeedles.some((p) => {
-        const key = p.trim();
-        if (/^\d/.test(key)) return code.startsWith(key);
-        return name.includes(this.norm(key));
+    // Önekleri ÖNCELİK SIRASIYLA dene; ilk dolu grubu kullan. Karışık havuzdan EN YÜKSEK
+    // kodu seçmek 798 (olağandışı gider) gibi yanlış seçimlere yol açıyordu. Artık: en
+    // düşük (en genel) leaf'i al, 79x'i (olağandışı/yıl-sonu) asla otomatik seçme.
+    for (const p of prefixesOrNeedles) {
+      const key = p.trim();
+      const isPrefix = /^\d/.test(key);
+      const needle = this.norm(key);
+      const group = accounts.filter((a) => {
+        const code = String(a.accountCode || '');
+        if (code.startsWith('79')) return false;
+        if (isPrefix) return code.startsWith(key);
+        return ` ${this.norm(a.accountName || '')} `.includes(needle);
       });
-    });
-    if (!candidates.length) return null;
-    if (hint) {
-      const hinted = candidates.find((a) => this.norm(a.accountName || '').includes(hint.slice(0, 18)));
-      if (hinted) return hinted;
+      if (!group.length) continue;
+      if (hint) {
+        const hinted = group.find((a) => this.norm(a.accountName || '').includes(hint.slice(0, 18)));
+        if (hinted) return hinted;
+      }
+      // accounts kod artan sıralı → en düşük (en genel) kod
+      return group[0];
     }
-    return candidates[candidates.length - 1];
+    return null;
   }
 
   private norm(value: string) {
