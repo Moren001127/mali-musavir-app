@@ -526,6 +526,8 @@ export class MorenAiService {
       tenantId,
       currentDate: today.toISOString().slice(0, 10),
       currentPeriod,
+      // Mükellef (WhatsApp müşterisi) için ayrı kimlik/ton → "ofis asistanı", müşavir değil.
+      audience: body.toolMode === 'taxpayer-readonly' ? 'taxpayer' : 'owner',
     });
 
     // Taxpayer kontekst notu (varsa)

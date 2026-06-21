@@ -1021,10 +1021,36 @@ export class BaileysService implements OnModuleDestroy {
         }
         return hit.jid;
       }
+      // İlk çözümleme boş: numara TR-yerel formatında (0xxx ya da 10 hane 5xx) girilmiş
+      // olabilir (özellikle hiç yazışılmamış SOĞUK/ilk-mesaj numaraları). 90'lı uluslararası
+      // forma çevirip TEK kez daha dene. EKLEMELİ: zaten çözülen numaralar yukarıda döndüğü
+      // için mevcut akışlar etkilenmez; yalnız çözülemeyen yerel-format numaraya yardım eder.
+      const intl = this.toTrMsisdn(digits);
+      if (intl && intl !== digits && s.sock?.onWhatsApp) {
+        const res2: any = await Promise.race([
+          s.sock.onWhatsApp(intl),
+          new Promise((resolve) => setTimeout(() => resolve(null), 8000)),
+        ]);
+        const hit2 = Array.isArray(res2) ? res2[0] : null;
+        if (hit2?.jid) {
+          this.logger.log(`[Baileys] gonderim hedefi TR-normalize ile cozuldu: ${this.maskTarget(digits)} -> ${this.maskTarget(hit2.jid)}`);
+          return hit2.jid;
+        }
+        return `${intl}@s.whatsapp.net`; // çözülemese bile uluslararası form daha doğru
+      }
     } catch (e: any) {
       this.logger.warn(`[Baileys] onWhatsApp cozumleme hata ${this.maskTarget(digits)}: ${e?.message || e}`);
     }
     return base;
+  }
+
+  /** TR cep numarasını uluslararası MSISDN'e çevir (90XXXXXXXXXX). Uygun değilse null. */
+  private toTrMsisdn(digits: string): string | null {
+    let d = String(digits || '').replace(/\D/g, '');
+    if (d.startsWith('00')) d = d.slice(2);
+    if (d.length === 11 && d.startsWith('0')) d = d.slice(1);   // 0535... -> 535...
+    if (d.length === 10 && d.startsWith('5')) d = '90' + d;     // 535... -> 90535...
+    return /^90\d{10}$/.test(d) ? d : null;
   }
 
   /**

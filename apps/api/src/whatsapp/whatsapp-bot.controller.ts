@@ -1107,10 +1107,13 @@ export class WhatsAppBotController implements OnModuleInit {
   }
 
   private clientAutoReplyEnabled(): boolean {
-    // Kullanıcı talimatı (2026-06-15): müşteri botu AÇIK olmalı — mükellef bota
-    // yazınca otomatik cevap alsın. Eskiden '1' değilse KAPALIYDI; bu, "bot komut
-    // almıyor / cevap vermiyor" şikayetinin başlıca nedeniydi. Artık açıkça '0'
-    // verilmedikçe açık. Master switch (automationActive) yine ayrı kapı.
+    // GÜVENLİK KAPISI (2026-06-22, kullanıcı talimatı): Mükellef tarafı, sistemin tam
+    // profesyonel olduğundan EMİN OLUNANA KADAR kapalı tutulacak — mükellefe otomatik
+    // HİÇBİR cevap gitmesin. Bu kapı, MOREN_CLIENT_BOT_ENABLED=1 olsa bile mükellef
+    // oto-cevabını KAPALI tutar. Bu tek kapı hem AI cevabını hem belge gönderimini keser
+    // (akış handleMessage'da bu false ise mükellefe bir şey göndermeden return eder).
+    // YAYINA ALMAK (mükellef tarafını açmak) için: Railway'de MOREN_CLIENT_BOT_GO_LIVE=1.
+    if (process.env.MOREN_CLIENT_BOT_GO_LIVE !== '1') return false;
     return process.env.MOREN_CLIENT_BOT_ENABLED !== '0';
   }
 
@@ -2523,6 +2526,7 @@ export class WhatsAppBotController implements OnModuleInit {
         reply: filteredAiReply,
         contextBlock,
         recentReplies,
+        blocking: true, // mükellefe gidecek cevap → LLM-yargıç gönderimden ÖNCE
         retry: async (reasons) => {
           const retryPrompt = this.botEval.buildRetryPrompt(
             rawAiReply,
@@ -2580,6 +2584,7 @@ export class WhatsAppBotController implements OnModuleInit {
     contextBlock?: string | null;
     recentReplies?: string[];
     retry?: (reasons: string[]) => Promise<string>;
+    blocking?: boolean;  // true → LLM-yargıç gönderimden ÖNCE (mükellef hattı için)
   }): Promise<string> {
     // Maliyet tasarrufu: live cevaplarin %X'i eval'den gecsin (varsayilan %20).
     // Gece synthetic test'ler ayri cron'da, bu sample etkilemez.
@@ -2595,7 +2600,10 @@ export class WhatsAppBotController implements OnModuleInit {
     // yavaş LLM-yargıç denetimi cevap gönderildikten SONRA arka planda yapılır
     // (kalite logu + öğrenme döngüsü korunur, gecikme hot-path'ten çıkar).
     // Eski davranış (LLM denetimi gönderimden önce + retry): MOREN_AI_EVAL_BLOCKING=1.
-    const blockingEval = process.env.MOREN_AI_EVAL_BLOCKING === '1';
+    // Mükellef hattı (input.blocking=true) HER ZAMAN bloklayıcı: müşteriye gidecek cevap
+    // gönderilmeden ÖNCE LLM-yargıçtan geçer (Max ücretsiz). "Akıcı ama yanlış" cevap
+    // mükellefe ulaşmadan yakalanır. Owner hattı hızlı (FAST) kalır.
+    const blockingEval = input.blocking === true || process.env.MOREN_AI_EVAL_BLOCKING === '1';
     const evalOpts = blockingEval ? undefined : { allowLlm: false };
     const recentReplies = input.recentReplies || [];
     let firstEval = await this.botEval.evaluateReply(
