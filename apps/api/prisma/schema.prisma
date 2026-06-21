@@ -2196,6 +2196,9 @@ model MessageTemplate {
   autoEvent    String?
   sirano       Int      @default(0)
   isActive     Boolean  @default(true)
+  favori         Boolean  @default(false)  // sık kullanılan — galeride sabitlenir
+  kullanimSayisi Int      @default(0)      // toplam gönderim sayısı (test + gerçek)
+  sonKullanim    DateTime?                 // en son ne zaman gönderildi
   createdAt    DateTime @default(now())
   updatedAt    DateTime @updatedAt
 

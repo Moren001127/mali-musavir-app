@@ -1,6 +1,8 @@
 import { Injectable, NotFoundException } from '@nestjs/common';
 import { PrismaService } from '../prisma/prisma.service';
 import { claudeTextViaMax, MAX_MODEL_DEFAULT } from '../common/max-inference';
+import { WhatsAppService } from '../whatsapp/whatsapp.service';
+import { EmailService } from '../email/email.service';
 
 export interface AiSuggestDto {
   mode?: 'generate' | 'improve';
@@ -55,6 +57,12 @@ export interface TemplateDto {
   autoEvent?: string | null;
   sirano?: number;
   isActive?: boolean;
+  favori?: boolean;
+}
+
+export interface TestSendDto {
+  kanal?: string;   // WHATSAPP | EMAIL
+  target?: string;  // telefon ya da e-posta (boşsa hata)
 }
 
 // Önizleme için örnek veri — placeholder'lar bununla doldurulur.
@@ -100,15 +108,24 @@ const OFFICE = process.env.MOREN_OFFICE_NAME || 'MOREN MALİ MÜŞAVİRLİK';
 
 @Injectable()
 export class MessageTemplatesService {
-  constructor(private readonly prisma: PrismaService) {}
+  constructor(
+    private readonly prisma: PrismaService,
+    private readonly whatsapp: WhatsAppService,
+    private readonly email: EmailService,
+  ) {}
 
   private get model(): any {
     return (this.prisma as any).messageTemplate;
   }
 
+  /** {ad} gibi alanları örnek veriyle doldur. Türkçe karakterli ({dönem}) alanları da yakalar. */
+  private fillSample(body: string): string {
+    return String(body || '').replace(/\{([^\s{}]+)\}/g, (m, k) => SAMPLE[k] ?? m);
+  }
+
   /** Placeholder'ları örnek veriyle doldur (önizleme). Bilinmeyen {x} olduğu gibi kalır. */
   renderPreview(body: string, kanal?: string): string {
-    const filled = String(body || '').replace(/\{(\w+)\}/g, (m, k) => SAMPLE[k] ?? m);
+    const filled = this.fillSample(body);
     // WhatsApp'ta gönderen markası mesajın başına otomatik eklenir.
     if ((kanal || 'BOTH') !== 'EMAIL') {
       return `Gönderen: ${OFFICE}\n\n${filled}`;
@@ -139,6 +156,7 @@ export class MessageTemplatesService {
         autoEvent: dto.autoEvent ?? null,
         sirano: dto.sirano ?? ((max?._max?.sirano ?? 0) + 1),
         isActive: dto.isActive ?? true,
+        favori: dto.favori ?? false,
       },
     });
   }
@@ -147,7 +165,7 @@ export class MessageTemplatesService {
     const existing = await this.model.findFirst({ where: { id, tenantId } });
     if (!existing) throw new NotFoundException('Şablon bulunamadı.');
     const data: any = {};
-    for (const k of ['ad', 'kanal', 'kategori', 'emailSubject', 'body', 'attachPdf', 'auto', 'autoEvent', 'sirano', 'isActive'] as const) {
+    for (const k of ['ad', 'kanal', 'kategori', 'emailSubject', 'body', 'attachPdf', 'auto', 'autoEvent', 'sirano', 'isActive', 'favori'] as const) {
       if (dto[k] !== undefined) data[k] = dto[k];
     }
     return this.model.update({ where: { id }, data });
@@ -158,6 +176,67 @@ export class MessageTemplatesService {
     if (!existing) throw new NotFoundException('Şablon bulunamadı.');
     await this.model.delete({ where: { id } });
     return { ok: true };
+  }
+
+  /** Sürükle-bırak sırasını kalıcı kıl: gelen id dizisindeki sıraya göre sirano yaz. */
+  async reorder(tenantId: string, ids: string[]) {
+    if (!Array.isArray(ids) || !ids.length) return { ok: true };
+    const owned = await this.model.findMany({ where: { tenantId, id: { in: ids } }, select: { id: true } });
+    const ownedIds = new Set(owned.map((o: any) => o.id));
+    const updates = ids
+      .filter((id) => ownedIds.has(id))
+      .map((id, i) => this.model.update({ where: { id }, data: { sirano: i } }));
+    await this.prisma.$transaction(updates).catch(() => null);
+    return { ok: true };
+  }
+
+  /** Kullanım sayacını artır (test + ileride gerçek gönderimler de çağırabilir). */
+  private async markUsed(id: string) {
+    await this.model.update({
+      where: { id },
+      data: { kullanimSayisi: { increment: 1 }, sonKullanim: new Date() },
+    }).catch(() => null);
+  }
+
+  /**
+   * Şablonu örnek mükellef verisiyle doldurup belirtilen numaraya/adrese TEST gönder.
+   * Mükelleflere gitmez; sadece owner'ın kendi test hedefine. Başarılıysa kullanım sayacı artar.
+   */
+  async sendTest(tenantId: string, id: string, dto: TestSendDto): Promise<{ ok: boolean; error?: string }> {
+    const tpl = await this.model.findFirst({ where: { id, tenantId } });
+    if (!tpl) throw new NotFoundException('Şablon bulunamadı.');
+
+    const kanal = String(dto.kanal || '').toUpperCase() === 'EMAIL' ? 'EMAIL' : 'WHATSAPP';
+    const target = String(dto.target || '').trim();
+    if (!target) {
+      return { ok: false, error: kanal === 'EMAIL' ? 'Test için e-posta adresi gir.' : 'Test için telefon numarası gir.' };
+    }
+    if (kanal === 'EMAIL' && !/.+@.+\..+/.test(target)) {
+      return { ok: false, error: 'Geçerli bir e-posta adresi gir.' };
+    }
+
+    const filledBody = this.fillSample(tpl.body || '');
+
+    try {
+      if (kanal === 'EMAIL') {
+        const subject = this.fillSample(tpl.emailSubject || tpl.ad || 'Test') + ' (TEST)';
+        const html = `<p style="color:#9333ea;font-weight:bold">🧪 Bu, Moren Portal "${tpl.ad}" şablonunun örnek veriyle gönderilen TEST mesajıdır.</p><hr/><div style="white-space:pre-wrap">${this.escapeHtml(filledBody)}</div>`;
+        const r = await this.email.send({ to: target, subject, html, text: filledBody }, tenantId);
+        if (!r.sent) return { ok: false, error: 'E-posta gönderilemedi. Ayarlar > E-posta yapılandırmasını kontrol et.' };
+      } else {
+        const text = `🧪 TEST — "${tpl.ad}" (örnek veriyle)\n\n${filledBody}`;
+        const r = await this.whatsapp.sendMessageDetailed(target, text, tenantId);
+        if (!r.ok) return { ok: false, error: r.error || 'WhatsApp gönderilemedi.' };
+      }
+      await this.markUsed(id);
+      return { ok: true };
+    } catch (e: any) {
+      return { ok: false, error: e?.message || 'Test gönderimi başarısız.' };
+    }
+  }
+
+  private escapeHtml(s: string): string {
+    return String(s || '').replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;');
   }
 
   /**

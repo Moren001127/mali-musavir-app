@@ -1,6 +1,6 @@
 import { Body, Controller, Delete, Get, Param, Post, Put, Req, UseGuards } from '@nestjs/common';
 import { AuthGuard } from '@nestjs/passport';
-import { MessageTemplatesService, TemplateDto, AiSuggestDto } from './message-templates.service';
+import { MessageTemplatesService, TemplateDto, AiSuggestDto, TestSendDto } from './message-templates.service';
 
 @Controller('message-templates')
 @UseGuards(AuthGuard('jwt'))
@@ -27,6 +27,18 @@ export class MessageTemplatesController {
   @Post('ai')
   aiSuggest(@Req() req: any, @Body() dto: AiSuggestDto) {
     return this.svc.aiSuggest(req.user.tenantId, dto);
+  }
+
+  // Sürükle-bırak sırasını kalıcı kıl.
+  @Post('reorder')
+  reorder(@Req() req: any, @Body() body: { ids: string[] }) {
+    return this.svc.reorder(req.user.tenantId, body?.ids || []);
+  }
+
+  // Şablonu örnek veriyle test gönder (owner'ın kendi numarasına/adresine).
+  @Post(':id/test')
+  test(@Req() req: any, @Param('id') id: string, @Body() dto: TestSendDto) {
+    return this.svc.sendTest(req.user.tenantId, id, dto);
   }
 
   @Put(':id')

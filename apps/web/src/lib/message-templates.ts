@@ -17,6 +17,9 @@ export interface MessageTemplate {
   autoEvent?: string | null;
   sirano: number;
   isActive: boolean;
+  favori?: boolean;
+  kullanimSayisi?: number;
+  sonKullanim?: string | null;
 }
 
 export type TemplateInput = Partial<Omit<MessageTemplate, 'id'>>;
@@ -38,6 +41,20 @@ export async function updateTemplate(id: string, dto: TemplateInput): Promise<Me
 
 export async function deleteTemplate(id: string): Promise<void> {
   await api.delete(`/message-templates/${id}`);
+}
+
+/** Sürükle-bırak sırasını kalıcı kıl — id'ler yeni sıralarıyla. */
+export async function reorderTemplates(ids: string[]): Promise<void> {
+  await api.post('/message-templates/reorder', { ids });
+}
+
+/** Şablonu örnek veriyle test gönder (kendi numarana/adresine). */
+export async function testTemplate(
+  id: string,
+  dto: { kanal: 'WHATSAPP' | 'EMAIL'; target: string },
+): Promise<{ ok: boolean; error?: string }> {
+  const { data } = await api.post(`/message-templates/${id}/test`, dto);
+  return data;
 }
 
 export interface AiSuggestInput {
