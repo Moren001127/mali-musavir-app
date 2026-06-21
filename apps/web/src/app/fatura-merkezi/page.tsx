@@ -771,24 +771,34 @@ function InlineBelge({ id }: { id: string }) {
   const [fit, setFit] = useState(1);
   const frameRef = useRef<HTMLIFrameElement | null>(null);
   const wrapRef = useRef<HTMLDivElement | null>(null);
-  // HTML belge: iframe'i içeriğin tam boyuna ölç, görüntü alanına sığacak fit oranını hesapla.
+  // HTML belge: belgeyi panonun GENİŞLİĞİNE sığdır (fit-to-width) → yanlarda boşluk
+  // kalmaz, fatura tam genişlikte ve okunur görünür; uzunsa dikey kaydırılır.
   const measure = () => {
     const f = frameRef.current, w = wrapRef.current;
     if (!f || !w) return;
     try {
       const doc = f.contentDocument;
-      if (!doc) return;
-      const scroll = Math.max(doc.body?.scrollHeight || 0, doc.documentElement?.scrollHeight || 0, doc.body?.offsetHeight || 0);
-      // Gerçek içerik altını bul — e-faturanın sondaki BOŞ alanını dahil etme (alt boşluk gitsin).
+      if (!doc || !doc.body) return;
+      // 1) İçeriğin DOĞAL genişliğini ölç: iframe'i daralt → sabit-genişlikli fatura
+      //    tablosu kendi gerçek genişliğini (min-content) açığa çıkarır.
+      f.style.width = '60px';
+      let cw = Math.max(doc.body.scrollWidth || 0, doc.documentElement.scrollWidth || 0);
+      cw = Math.min(Math.max(cw, 480), 1600); // aşırı uçları kırp
+      f.style.width = cw + 'px';
+      // 2) Gerçek içerik altı (sondaki boş alanı dahil etme).
       let bottom = 0;
       doc.body.querySelectorAll('*').forEach((el: any) => {
         const txt = (el.textContent || '').trim();
         if (!txt && !['IMG', 'TABLE', 'HR', 'TR', 'TD'].includes(el.tagName)) return;
         const r = el.getBoundingClientRect();
-        if (r.height > 0 && r.height < 6000 && r.bottom > bottom) bottom = r.bottom;
+        if (r.height > 0 && r.height < 8000 && r.bottom > bottom) bottom = r.bottom;
       });
-      const h = bottom > 60 ? Math.min(Math.ceil(bottom) + 14, scroll || 99999) : scroll;
-      if (h > 60) { f.style.height = h + 'px'; const vh = w.clientHeight || 560; setFit(Math.min(1, (vh - 16) / h)); }
+      const scrollH = Math.max(doc.body.scrollHeight || 0, doc.documentElement.scrollHeight || 0);
+      const ch = bottom > 60 ? Math.min(Math.ceil(bottom) + 10, scrollH || 99999) : scrollH;
+      if (ch > 40) f.style.height = ch + 'px';
+      // 3) Genişliğe sığdır oranı (üst-aşırı büyütmeyi engelle).
+      const paneW = (w.clientWidth || 600) - 20;
+      setFit(Math.min(2.4, Math.max(0.3, paneW / cw)));
     } catch { /* cross-origin */ }
   };
   // Görseller geç yüklendiğinden birkaç kez yeniden ölç.
@@ -835,7 +845,7 @@ function InlineBelge({ id }: { id: string }) {
           {url ? <a href={url} target="_blank" rel="noopener noreferrer" title="Yeni sekmede aç">↗</a> : null}
         </div>
       </div>
-      <div ref={wrapRef} className="bpview" style={{ overflow: zoom > 1 ? 'auto' : 'hidden' }}>
+      <div ref={wrapRef} className="bpview" style={{ overflow: 'auto' }}>
         {html
           ? <iframe ref={frameRef} onLoad={onFrameLoad} className="bpframe-h" srcDoc={htmlDoc} title="Belge" sandbox="allow-same-origin" scrolling="no" style={{ zoom: appliedScale } as any} />
           : isImg
