@@ -4999,8 +4999,12 @@ export class FaturaMuhasebelestirmeService {
         const hinted = group.find((a) => this.norm(a.accountName || '').includes(hint.slice(0, 18)));
         if (hinted) return hinted;
       }
-      // accounts kod artan sıralı → en düşük (en genel) kod
-      return group[0];
+      // Fiş LEAF (detay) hesaba kesilir → grup başlığı ("770") yerine en derin seviyeyi
+      // seç, o seviyede en düşük (en genel) kodu al (ör. 770.01.001). accounts kod artan sıralı.
+      const depth = (c: string) => (String(c || '').match(/\./g) || []).length;
+      const maxDepth = group.reduce((mx: number, a: any) => Math.max(mx, depth(a.accountCode)), 0);
+      const leaves = group.filter((a: any) => depth(a.accountCode) === maxDepth);
+      return leaves[0] || group[0];
     }
     return null;
   }
