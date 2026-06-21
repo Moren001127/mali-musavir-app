@@ -765,6 +765,20 @@ function ScreenKurallar({ taxpayerId, period }: { taxpayerId: string; period: st
     onError: (e: any) => toast.error('Kural kaydedilemedi: ' + (e?.response?.data?.message || e?.message || 'hata')),
   });
 
+  // Satır-içi "Kod ata" — o satıcı için hesap kodu seç, anında kural olarak kaydet (öğrenilir).
+  const [assignId, setAssignId] = useState<string>('');
+  const planQ = useQuery({
+    queryKey: ['fm2', 'account-plan-pick', taxpayerId],
+    queryFn: () => api.get('/fatura-muhasebelestirme/account-plan', { params: { taxpayerId, limit: 5000 } }).then((r) => (Array.isArray(r.data) ? r.data : [])).catch(() => []),
+    enabled: !!taxpayerId,
+  });
+  const accountPlan: any[] = planQ.data || [];
+  const assignMut = useMutation({
+    mutationFn: (v: { vkn: string; name: string; code: string }) => api.post('/fatura-muhasebelestirme/vendor-rule', { taxpayerId, vendorVkn: v.vkn, vendorName: v.name || undefined, accountCode: v.code }),
+    onSuccess: (r: any) => { const n = r?.data?.applied; toast.success(`Kod atandı${n != null ? ` · ${n} belgeye uygulandı` : ''}`); setAssignId(''); qc.invalidateQueries({ queryKey: ['fm2'] }); },
+    onError: (e: any) => toast.error('Atanamadı: ' + (e?.response?.data?.message || e?.message || 'hata')),
+  });
+
   const docsQ = useDocuments(taxpayerId, period);
   const docs: any[] = docsQ.data || [];
   const istisnalar = docs
@@ -834,7 +848,20 @@ function ScreenKurallar({ taxpayerId, period }: { taxpayerId: string; period: st
               <div key={d.id} className="lrow">
                 <div className="ico">{ini}</div>
                 <div className="lx"><b>{firma}</b> — {du.k === 'miss' ? 'hesap kodu atanmamış, elle ya da öğrenmeyle atanmalı.' : 'içerik geçmişle çelişiyor, kontrol gerekiyor.'} <small style={{ color: 'var(--faint)' }}>{d.belgeNo ? `· ${d.belgeNo}` : ''} · {fmtMoney(d.totalAmount)} ₺</small></div>
-                {!sat && d.sellerVkn ? <button className="btn sm primary" onClick={() => { setRVkn(String(d.sellerVkn).replace(/\D/g, '')); setRName(d.vendorName || ''); if (typeof window !== 'undefined') window.scrollTo({ top: 0, behavior: 'smooth' }); }}>Kod ata</button> : null}
+                {(() => {
+                  const vkn = String((sat ? d.buyerVkn : d.sellerVkn) || '').replace(/\D/g, '');
+                  const adi = (sat ? d.customerName : d.vendorName) || '';
+                  if (!vkn) return null;
+                  if (assignId === d.id) {
+                    return (
+                      <div className="kodatainl">
+                        <div style={{ width: 220 }}><CodeSelect value={''} accounts={accountPlan} onChange={(code) => { if (code && !assignMut.isPending) assignMut.mutate({ vkn, name: adi, code }); }} /></div>
+                        <button className="btn sm ghost" onClick={() => setAssignId('')}>İptal</button>
+                      </div>
+                    );
+                  }
+                  return <button className="btn sm primary" disabled={!taxpayerId} title={!taxpayerId ? 'Önce üstten mükellef seç' : 'Bu satıcıya hesap kodu ata (öğrenilir)'} onClick={() => setAssignId(d.id)}>Kod ata</button>;
+                })()}
                 <button className="btn sm" onClick={() => openDocFile(d.id)}>Belgeyi aç</button>
               </div>
             );
@@ -1274,15 +1301,15 @@ function ScreenAktarilanlar({ taxpayerId, period }: { taxpayerId: string; period
     <section className="screen">
       <div className="h2">Aktarılanlar — Luca'ya Aktarım</div>
       <div className="sub">Onaylı fişleri {period} döneminde Luca'ya aktar (alış/satış ayrı fiş olarak gider). Üstten dönem seçilir.</div>
-      {aktarilabilir.length > 0 && (
-        <div className="aktarbar">
-          <div className="akbil"><b>{aktarilabilir.length}</b> onaylı belge aktarıma hazır · <span className="pill alis">Alış {bekAlis}</span> <span className="pill satis">Satış {bekSatis}</span></div>
-          <div className="sp" />
-          <button className="btn primary" disabled={batchMut.isPending} onClick={() => batchMut.mutate()}>
-            <Ico html={I.send} size={14} /> {batchMut.isPending ? 'Aktarılıyor…' : `Luca'ya Aktar (${aktarilabilir.length})`}
-          </button>
-        </div>
-      )}
+      <div className="aktarbar">
+        <div className="akbil">{aktarilabilir.length > 0
+          ? <><b>{aktarilabilir.length}</b> onaylı belge aktarıma hazır · <span className="pill alis">Alış {bekAlis}</span> <span className="pill satis">Satış {bekSatis}</span></>
+          : <>Aktarılacak onaylı belge yok. Muhasebeleştir'de <b>Kaydet ve Onayla</b> yap; sonra burada toplu Luca'ya aktar (alış/satış ayrı fiş).</>}</div>
+        <div className="sp" />
+        <button className="btn primary" disabled={batchMut.isPending || aktarilabilir.length === 0} onClick={() => batchMut.mutate()}>
+          <Ico html={I.send} size={14} /> {batchMut.isPending ? 'Aktarılıyor…' : `Luca'ya Aktar${aktarilabilir.length ? ` (${aktarilabilir.length})` : ''}`}
+        </button>
+      </div>
       <div className="card">
         <div className="ch"><h3>{docsQ.isLoading ? 'Yükleniyor…' : `${docs.length} belge`}</h3></div>
         <div className="twrap">
@@ -1869,6 +1896,7 @@ const CSS = `
 #fm-root .aktarbar .akbil b{color:var(--accent);font-weight:800}
 #fm-root .amini{font-size:11px;color:var(--muted)}
 #fm-root .amini b{color:var(--accent)}
+#fm-root .kodatainl{display:flex;align-items:center;gap:8px}
 #fm-root .tevpanel{display:flex;align-items:center;gap:9px;flex-wrap:wrap;padding:10px 13px;margin-bottom:12px;background:#fbf4e9;border:1px solid #f0d6ad;border-radius:10px}
 #fm-root .tevpanel .tlbl{font-size:12px;font-weight:800;color:#a85d08;text-transform:uppercase;letter-spacing:.4px}
 #fm-root .tevpanel .tnote{font-size:11.5px;color:var(--muted);flex-basis:100%}
@@ -1897,7 +1925,7 @@ const CSS = `
 #fm-root .csel .cselopt span{flex:1;min-width:0;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;font-size:12px;color:#374151}
 #fm-root .csel .cselempty,#fm-root .csel .cselmore{padding:9px 11px;font-size:11.5px;color:var(--muted)}
 #fm-root .fgrp .frow .fdesc{flex:1;min-width:0;font-size:12px;color:var(--muted);white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
-#fm-root .fgrp .frow .linum{flex:0 0 78px;width:auto;text-align:right}
+#fm-root .fgrp .frow .linum{flex:0 0 96px;width:96px;min-width:0;text-align:right}
 #fm-root .fgrp .frow .money{font-variant-numeric:tabular-nums;font-weight:700;font-size:13px;color:var(--text)}
 /* KDV oranı — temiz özel dropdown (native siyah liste değil) */
 #fm-root .fgrp .frow .rsel{flex:0 0 50px;position:relative}
