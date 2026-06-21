@@ -228,6 +228,39 @@ function RateSelect({ value, onChange }: { value: string; onChange: (v: string) 
     </div>
   );
 }
+// Genel temiz açılır liste (native siyah select yerine) — Fatura Türü, Belge Türü vb.
+function PlainSelect({ value, options, onChange }: { value: string; options: { value: string; label: string }[]; onChange: (v: string) => void }) {
+  const [open, setOpen] = useState(false);
+  const [pos, setPos] = useState<{ top: number; left: number; width: number } | null>(null);
+  const boxRef = useRef<HTMLDivElement>(null);
+  const popRef = useRef<HTMLDivElement>(null);
+  const cur = options.find((o) => String(o.value) === String(value));
+  const measure = () => { const el = boxRef.current; if (!el) return; const r = el.getBoundingClientRect(); setPos({ top: r.bottom + 3, left: r.left, width: r.width }); };
+  useEffect(() => {
+    if (!open) { setPos(null); return; }
+    measure();
+    const onDoc = (e: MouseEvent) => { const t = e.target as Node; if (boxRef.current?.contains(t) || popRef.current?.contains(t)) return; setOpen(false); };
+    const reflow = () => measure();
+    document.addEventListener('mousedown', onDoc);
+    window.addEventListener('scroll', reflow, true);
+    window.addEventListener('resize', reflow);
+    return () => { document.removeEventListener('mousedown', onDoc); window.removeEventListener('scroll', reflow, true); window.removeEventListener('resize', reflow); };
+  }, [open]);
+  return (
+    <div className="psel" ref={boxRef}>
+      <div className={`pselfield${open ? ' on' : ''}`} onClick={() => setOpen((o) => !o)}>
+        <span className={cur ? '' : 'ph'}>{cur ? cur.label : '—'}</span><span className="pselcar" />
+      </div>
+      {open && pos && (
+        <div className="pselpop" ref={popRef} style={{ position: 'fixed', top: pos.top, left: pos.left, minWidth: pos.width }}>
+          {options.map((o) => (
+            <div key={o.value} className={`pselopt${String(o.value) === String(value) ? ' sel' : ''}`} onMouseDown={(e) => { e.preventDefault(); onChange(o.value); setOpen(false); }}>{o.label}</div>
+          ))}
+        </div>
+      )}
+    </div>
+  );
+}
 function periodOptions(): { v: string; l: string }[] {
   const aylar = ['Ocak', 'Şubat', 'Mart', 'Nisan', 'Mayıs', 'Haziran', 'Temmuz', 'Ağustos', 'Eylül', 'Ekim', 'Kasım', 'Aralık'];
   const out: { v: string; l: string }[] = [];
@@ -1046,17 +1079,6 @@ function ScreenMuhasebe({ taxpayerId, period, isIsletme = false, taxpayerNace = 
 
   // v2.3: Onaylı (QUEUED/FAILED) belgeleri tek toplu işle Luca'ya GÖNDER.
   // approve sadece kuyruğa alır; gerçek aktarım bu butonla (batch-post-to-luca) tetiklenir.
-  const queuedDocs = all.filter((d: any) => d.status === 'APPROVED' && ['QUEUED', 'FAILED', 'NOT_STARTED'].includes(d.lucaStatus));
-  const batchMut = useMutation({
-    mutationFn: () => api.post('/fatura-muhasebelestirme/batch-post-to-luca', { taxpayerId, period }),
-    onSuccess: (r: any) => {
-      const d = r?.data || {};
-      toast.success(`Luca'ya aktarım başlatıldı · ${d.documentCount ?? 0} belge${d.skippedInvalid ? ` · ${d.skippedInvalid} veri hatası nedeniyle hariç` : ''}. Ajan açıkken işlenir.`);
-      qc.invalidateQueries({ queryKey: ['fm2'] });
-    },
-    onError: (e: any) => toast.error("Luca'ya aktarılamadı: " + (e?.response?.data?.message || e?.message || 'hata')),
-  });
-
   if (!taxpayerId) {
     return (
       <section className="screen">
@@ -1087,21 +1109,21 @@ function ScreenMuhasebe({ taxpayerId, period, isIsletme = false, taxpayerNace = 
                 <div className="docmeta">
                   <div className="dm"><span className="dml">Tarih</span><input className="dmi" type="date" value={meta.faturaTarihi || ''} onChange={(e) => setMeta({ ...meta, faturaTarihi: e.target.value })} /></div>
                   <div className="dm"><span className="dml">Fatura Türü</span>
-                    <select className="dmi" value={`${meta.invoiceKind || 'ALIS'}${meta.tevkifatli ? '_TEV' : ''}`} onChange={(e) => { const v = e.target.value; setMeta({ ...meta, invoiceKind: v.startsWith('SATIS') ? 'SATIS' : 'ALIS', tevkifatli: v.endsWith('_TEV') }); }}>
-                      <option value="ALIS">Alış</option>
-                      <option value="ALIS_TEV">Tevkifatlı Alış</option>
-                      <option value="SATIS">Satış</option>
-                      <option value="SATIS_TEV">Tevkifatlı Satış</option>
-                    </select>
+                    <PlainSelect value={`${meta.invoiceKind || 'ALIS'}${meta.tevkifatli ? '_TEV' : ''}`} onChange={(v) => setMeta({ ...meta, invoiceKind: v.startsWith('SATIS') ? 'SATIS' : 'ALIS', tevkifatli: v.endsWith('_TEV') })} options={[
+                      { value: 'ALIS', label: 'Alış' },
+                      { value: 'ALIS_TEV', label: 'Tevkifatlı Alış' },
+                      { value: 'SATIS', label: 'Satış' },
+                      { value: 'SATIS_TEV', label: 'Tevkifatlı Satış' },
+                    ]} />
                   </div>
                   <div className="dm"><span className="dml">Belge Türü</span>
-                    <select className="dmi" value={meta.documentType || ''} onChange={(e) => setMeta({ ...meta, documentType: e.target.value })}>
-                      <option value="">—</option>
-                      <option value="E_FATURA">e-Fatura</option>
-                      <option value="E_ARSIV">e-Arşiv</option>
-                      <option value="OKC_FIS">ÖKC Fiş</option>
-                      <option value="DIGER">Diğer</option>
-                    </select>
+                    <PlainSelect value={meta.documentType || ''} onChange={(v) => setMeta({ ...meta, documentType: v })} options={[
+                      { value: '', label: '—' },
+                      { value: 'E_FATURA', label: 'e-Fatura' },
+                      { value: 'E_ARSIV', label: 'e-Arşiv' },
+                      { value: 'OKC_FIS', label: 'ÖKC Fiş' },
+                      { value: 'DIGER', label: 'Diğer' },
+                    ]} />
                   </div>
                   <div className="dm"><span className="dml">Belge No</span><input className="dmi" value={meta.belgeNo || ''} onChange={(e) => setMeta({ ...meta, belgeNo: e.target.value })} /></div>
                   <div className="dm"><span className="dml">{String(meta.invoiceKind).includes('SATIS') ? 'Alıcı VKN' : 'Satıcı VKN'}</span><input className="dmi" value={meta.vkn || ''} onChange={(e) => setMeta({ ...meta, vkn: e.target.value })} /></div>
@@ -1110,14 +1132,8 @@ function ScreenMuhasebe({ taxpayerId, period, isIsletme = false, taxpayerNace = 
                 {meta.tevkifatli && !isIsletme && (
                   <div className="tevpanel">
                     <span className="tlbl">Tevkifat</span>
-                    <select className="dmi" style={{ maxWidth: 110 }} value={meta.kdvRate || 20} onChange={(e) => setMeta({ ...meta, kdvRate: Number(e.target.value) })}>
-                      <option value={20}>KDV %20</option>
-                      <option value={10}>KDV %10</option>
-                      <option value={1}>KDV %1</option>
-                    </select>
-                    <select className="dmi" style={{ maxWidth: 110 }} value={meta.tevkifatPay || 5} onChange={(e) => setMeta({ ...meta, tevkifatPay: Number(e.target.value) })}>
-                      {[2, 3, 4, 5, 7, 9, 10].map((p) => <option key={p} value={p}>{p}/10</option>)}
-                    </select>
+                    <div style={{ maxWidth: 110, flex: '0 0 110px' }}><PlainSelect value={String(meta.kdvRate || 20)} onChange={(v) => setMeta({ ...meta, kdvRate: Number(v) })} options={[{ value: '20', label: 'KDV %20' }, { value: '10', label: 'KDV %10' }, { value: '1', label: 'KDV %1' }]} /></div>
+                    <div style={{ maxWidth: 90, flex: '0 0 90px' }}><PlainSelect value={String(meta.tevkifatPay || 5)} onChange={(v) => setMeta({ ...meta, tevkifatPay: Number(v) })} options={[2, 3, 4, 5, 7, 9, 10].map((p) => ({ value: String(p), label: `${p}/10` }))} /></div>
                     <button className="btn sm primary" disabled={applyTevkifatMut.isPending} onClick={() => applyTevkifatMut.mutate()}>{applyTevkifatMut.isPending ? 'Kuruluyor…' : 'Tevkifat fişini kur'}</button>
                     <span className="tnote">2×191 (normal + sorumlu sıf.) + 360 (KDV2) fişi oluşturur</span>
                   </div>
@@ -1177,10 +1193,13 @@ function ScreenMuhasebe({ taxpayerId, period, isIsletme = false, taxpayerNace = 
                 )}
                 <div className="wactions">
                   <div className="sp" />
-                  <button className="btn sm" disabled={saveMetaMut.isPending} onClick={() => saveMetaMut.mutate()} title="Tarih/tür/belge no/VKN/ünvan değişikliklerini kaydet"><Ico html={I.checkSm} size={13} /> {saveMetaMut.isPending ? 'Kaydediliyor…' : 'Bilgileri kaydet'}</button>
-                  {!isIsletme && <button className="btn sm" disabled={saveLinesMut.isPending || lines.length === 0} onClick={() => saveLinesMut.mutate()} title="Hesap kodu / borç / alacak değişikliklerini kaydet"><Ico html={I.checkSm} size={13} /> {saveLinesMut.isPending ? 'Kaydediliyor…' : 'Satırları kaydet'}</button>}
-                  <button className="btn primary sm" disabled={approveMut.isPending || !ggReady} onClick={() => selDoc && approveMut.mutate(selDoc.id)}>
-                    <Ico html={I.checkSm} size={13} /> {approveMut.isPending ? 'Gönderiliyor…' : "Onayla & Luca'ya gönder"}
+                  <button className="btn sm" disabled={saveMetaMut.isPending || saveLinesMut.isPending} title="Bilgileri ve satırları kaydet (Luca'ya GÖNDERMEZ)"
+                    onClick={async () => { try { await saveMetaMut.mutateAsync(); if (!isIsletme) await saveLinesMut.mutateAsync(); } catch { /* mutasyon kendi hatasını gösterir */ } }}>
+                    <Ico html={I.checkSm} size={13} /> {(saveMetaMut.isPending || saveLinesMut.isPending) ? 'Kaydediliyor…' : 'Kaydet'}
+                  </button>
+                  <button className="btn primary sm" disabled={approveMut.isPending || saveMetaMut.isPending || saveLinesMut.isPending || !ggReady} title="Kaydet + Onayla (aktarıma hazır). Luca'ya aktarım AKTARILANLAR ekranından toplu yapılır."
+                    onClick={async () => { try { await saveMetaMut.mutateAsync(); if (!isIsletme) await saveLinesMut.mutateAsync(); if (selDoc) approveMut.mutate(selDoc.id); } catch { /* atla */ } }}>
+                    <Ico html={I.checkSm} size={13} /> {approveMut.isPending ? 'Onaylanıyor…' : 'Kaydet ve Onayla'}
                   </button>
                 </div>
                 </div></div>
@@ -1208,12 +1227,10 @@ function ScreenMuhasebe({ taxpayerId, period, isIsletme = false, taxpayerNace = 
             <button className={!talimatliVar ? 'on' : ''} disabled={talimatMut.isPending || configured.length === 0} onClick={() => talimatMut.mutate(false)}>Kapalı</button>
             <button className={talimatliVar ? 'on' : ''} disabled={talimatMut.isPending || configured.length === 0} onClick={() => talimatMut.mutate(true)}>Açık (her gece)</button>
           </div>
-          <button className="btn sm" disabled={bulkMut.isPending || hazir.length === 0} onClick={() => bulkMut.mutate()}>
-            <Ico html={I.checkSm} size={13} /> {bulkMut.isPending ? 'Fişleniyor…' : `${hazir.length} belgeyi toplu fişle`}
+          <button className="btn sm primary" disabled={bulkMut.isPending || hazir.length === 0} onClick={() => bulkMut.mutate()}>
+            <Ico html={I.checkSm} size={13} /> {bulkMut.isPending ? 'Onaylanıyor…' : `${hazir.length} belgeyi toplu onayla`}
           </button>
-          <button className="btn primary sm" disabled={batchMut.isPending || queuedDocs.length === 0} onClick={() => batchMut.mutate()} title={queuedDocs.length === 0 ? 'Önce belgeleri fişle (onayla)' : "Onaylı belgeleri Luca'ya aktar"}>
-            <Ico html={I.send} size={13} /> {batchMut.isPending ? 'Aktarılıyor…' : `Luca'ya Aktar${queuedDocs.length ? ` (${queuedDocs.length})` : ''}`}
-          </button>
+          <span className="amini">Luca'ya aktarım → <b>Aktarılanlar</b> ekranından</span>
         </div>
       </div>
     </section>
@@ -1231,6 +1248,19 @@ function ScreenAktarilanlar({ taxpayerId, period }: { taxpayerId: string; period
     onSuccess: () => { toast.success("Luca'ya yeniden gönderildi"); qc.invalidateQueries({ queryKey: ['fm2'] }); },
     onError: (e: any) => toast.error('Tekrar denenemedi: ' + (e?.response?.data?.message || e?.message || 'hata')),
   });
+  // Onaylı ama Luca'ya henüz aktarılmamış belgeler — alış/satış ayrı fiş olarak aktarılır.
+  const aktarilabilir = all.filter((d) => d.status === 'APPROVED' && !['POSTED', 'POSTING', 'QUEUED'].includes(d.lucaStatus));
+  const bekAlis = aktarilabilir.filter((d) => (d.invoiceKind || 'ALIS') !== 'SATIS').length;
+  const bekSatis = aktarilabilir.filter((d) => (d.invoiceKind || 'ALIS') === 'SATIS').length;
+  const batchMut = useMutation({
+    mutationFn: () => api.post('/fatura-muhasebelestirme/batch-post-to-luca', { taxpayerId, period }),
+    onSuccess: (r: any) => {
+      const d = r?.data || {};
+      toast.success(`Luca'ya aktarım başlatıldı · ${d.documentCount ?? 0} belge${d.skippedInvalid ? ` · ${d.skippedInvalid} veri hatası nedeniyle hariç` : ''}. Ajan açıkken işlenir (alış/satış ayrı fiş).`);
+      qc.invalidateQueries({ queryKey: ['fm2'] });
+    },
+    onError: (e: any) => toast.error("Luca'ya aktarılamadı: " + (e?.response?.data?.message || e?.message || 'hata')),
+  });
   const lucaPill = (d: any) => {
     const s = d.lucaStatus;
     if (s === 'POSTED') return <span className="pill ok">Luca'da</span>;
@@ -1242,8 +1272,17 @@ function ScreenAktarilanlar({ taxpayerId, period }: { taxpayerId: string; period
 
   return (
     <section className="screen">
-      <div className="h2">Aktarılanlar</div>
-      <div className="sub">Onaylanıp Luca'ya gönderilen / kuyruğa alınan belgeler — {period}.</div>
+      <div className="h2">Aktarılanlar — Luca'ya Aktarım</div>
+      <div className="sub">Onaylı fişleri {period} döneminde Luca'ya aktar (alış/satış ayrı fiş olarak gider). Üstten dönem seçilir.</div>
+      {aktarilabilir.length > 0 && (
+        <div className="aktarbar">
+          <div className="akbil"><b>{aktarilabilir.length}</b> onaylı belge aktarıma hazır · <span className="pill alis">Alış {bekAlis}</span> <span className="pill satis">Satış {bekSatis}</span></div>
+          <div className="sp" />
+          <button className="btn primary" disabled={batchMut.isPending} onClick={() => batchMut.mutate()}>
+            <Ico html={I.send} size={14} /> {batchMut.isPending ? 'Aktarılıyor…' : `Luca'ya Aktar (${aktarilabilir.length})`}
+          </button>
+        </div>
+      )}
       <div className="card">
         <div className="ch"><h3>{docsQ.isLoading ? 'Yükleniyor…' : `${docs.length} belge`}</h3></div>
         <div className="twrap">
@@ -1814,6 +1853,22 @@ const CSS = `
 #fm-root .docmeta .dmv{font-size:13px;font-weight:600;color:var(--text)}
 #fm-root .docmeta .dmi{width:100%;height:30px;padding:0 8px;border:1px solid var(--line2);border-radius:7px;font-size:13px;font-weight:600;color:var(--text);background:#fff;font-family:inherit}
 #fm-root .docmeta .dmi:focus{outline:none;border-color:var(--accent)}
+/* Temiz açılır liste (native siyah select yerine) */
+#fm-root .psel{position:relative;width:100%}
+#fm-root .psel .pselfield{display:flex;align-items:center;gap:6px;height:30px;border:1px solid var(--line2);border-radius:7px;background:#fff;padding:0 9px;cursor:pointer;font-size:13px;font-weight:600;color:var(--text)}
+#fm-root .psel .pselfield.on{border-color:var(--accent);box-shadow:0 0 0 2px var(--accent-soft)}
+#fm-root .psel .pselfield > span{flex:1;min-width:0;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+#fm-root .psel .pselfield .ph{color:#9aa6b2;font-weight:400}
+#fm-root .psel .pselcar{flex:0 0 auto;width:7px;height:7px;border-right:1.6px solid #94a3b2;border-bottom:1.6px solid #94a3b2;transform:rotate(45deg) translateY(-2px);transition:transform .15s,border-color .15s}
+#fm-root .psel .pselfield.on .pselcar{transform:rotate(-135deg) translateY(2px);border-color:var(--accent)}
+#fm-root .psel .pselpop{z-index:9000;background:#fff;border:1px solid var(--line2);border-radius:9px;box-shadow:0 12px 30px rgba(15,23,42,.18);overflow:hidden;padding:4px}
+#fm-root .psel .pselopt{padding:7px 11px;border-radius:6px;cursor:pointer;font-size:12.5px;font-weight:600;color:var(--text);white-space:nowrap}
+#fm-root .psel .pselopt:hover,#fm-root .psel .pselopt.sel{background:var(--accent-soft);color:var(--accent)}
+/* Aktarılanlar — Luca aktarım barı */
+#fm-root .aktarbar{display:flex;align-items:center;gap:10px;margin:0 0 14px;padding:11px 15px;background:var(--accent-soft);border:1px solid var(--accent-line);border-radius:10px;font-size:13px}
+#fm-root .aktarbar .akbil b{color:var(--accent);font-weight:800}
+#fm-root .amini{font-size:11px;color:var(--muted)}
+#fm-root .amini b{color:var(--accent)}
 #fm-root .tevpanel{display:flex;align-items:center;gap:9px;flex-wrap:wrap;padding:10px 13px;margin-bottom:12px;background:#fbf4e9;border:1px solid #f0d6ad;border-radius:10px}
 #fm-root .tevpanel .tlbl{font-size:12px;font-weight:800;color:#a85d08;text-transform:uppercase;letter-spacing:.4px}
 #fm-root .tevpanel .tnote{font-size:11.5px;color:var(--muted);flex-basis:100%}
@@ -1842,10 +1897,10 @@ const CSS = `
 #fm-root .csel .cselopt span{flex:1;min-width:0;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;font-size:12px;color:#374151}
 #fm-root .csel .cselempty,#fm-root .csel .cselmore{padding:9px 11px;font-size:11.5px;color:var(--muted)}
 #fm-root .fgrp .frow .fdesc{flex:1;min-width:0;font-size:12px;color:var(--muted);white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
-#fm-root .fgrp .frow .linum{flex:0 0 92px;width:auto;text-align:right}
+#fm-root .fgrp .frow .linum{flex:0 0 78px;width:auto;text-align:right}
 #fm-root .fgrp .frow .money{font-variant-numeric:tabular-nums;font-weight:700;font-size:13px;color:var(--text)}
 /* KDV oranı — temiz özel dropdown (native siyah liste değil) */
-#fm-root .fgrp .frow .rsel{flex:0 0 56px;position:relative}
+#fm-root .fgrp .frow .rsel{flex:0 0 50px;position:relative}
 #fm-root .rsel .rselfield{display:flex;align-items:center;justify-content:center;gap:4px;height:27px;border:1px solid var(--line2);border-radius:6px;background:#fff;cursor:pointer;font-size:12.5px;font-weight:700;color:var(--text)}
 #fm-root .rsel .rselfield.on{border-color:var(--accent);box-shadow:0 0 0 2px var(--accent-soft)}
 #fm-root .rsel .rselcar{width:6px;height:6px;border-right:1.6px solid #94a3b2;border-bottom:1.6px solid #94a3b2;transform:rotate(45deg) translateY(-2px);transition:transform .15s}
