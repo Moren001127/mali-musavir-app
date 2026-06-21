@@ -4805,6 +4805,20 @@ export class FaturaMuhasebelestirmeService {
       return { ok: false, reason: imgBuf ? 'desteklenmeyen biçim (PDF) — e-Fatura XML/görsel gerek' : 'belge içeriği boş' };
     }
 
+    // Mükellefin İŞİNİ/SEKTÖRÜNÜ eşleştirmeye kat → kategori firmanın faaliyetine göre
+    // seçilsin (ör. yemek üreticisinde un=hammadde, tüccarda satılan ürün=ticari_mal).
+    let mukellefBilgi = '';
+    if (d.taxpayerId) {
+      const tp = await (this.prisma as any).taxpayer.findFirst({
+        where: { id: d.taxpayerId, tenantId },
+        select: { companyName: true, firstName: true, lastName: true, naceKodu: true, defterTuru: true },
+      }).catch(() => null);
+      if (tp) {
+        const ad = String(tp.companyName || `${tp.firstName || ''} ${tp.lastName || ''}`).trim();
+        const defter = String(tp.defterTuru || '').toUpperCase() === 'ISLETME' ? 'İşletme defteri' : 'Bilanço usulü';
+        mukellefBilgi = [ad && `ünvanı "${ad}"`, tp.naceKodu && `NACE faaliyet kodu ${tp.naceKodu}`, defter].filter(Boolean).join(', ');
+      }
+    }
     const prompt = [
       isImage
         ? 'Aşağıdaki görüntü bir Türk faturası veya yazarkasa fişidir. İçindeki bilgileri oku.'
@@ -4813,6 +4827,9 @@ export class FaturaMuhasebelestirmeService {
       '{"belgeNo":"<fatura/fiş no ya da null>","tarih":"<GG.AA.YYYY ya da null>","kategori":"<asagidaki tek deger>","kdv":[{"oran":<KDV yüzdesi sayı>,"matrah":<KDV hariç tutar sayı>,"kdv":<KDV tutarı sayı>}]}',
       'KURALLAR: Türk sayı biçimi "1.234,56" = 1234.56 (tümünü ondalıklı sayıya çevir). Birden çok KDV oranı varsa her oran ayrı nesne. matrah=KDV hariç tutar, kdv=o orana ait KDV. ÖTV/ÖİV/tevkifat varsa matrahı şişirme — gerçek mal/hizmet matrahını ver. Okunamayan alanı null bırak, UYDURMA.',
       'kategori: faturadaki mal/hizmetin TÜRÜNE göre TEK kelime seç → "ticari_mal" (satılmak üzere alınan ürün/emtia), "hammadde" (üretimde kullanılan ilk madde/malzeme), "demirbas" (makine/cihaz/ekipman/mobilya/bilgisayar gibi sabit kıymet alımı), "pazarlama" (reklam/ilan/kargo-nakliye/pazarlama), "genel_gider" (kira/elektrik/su/doğalgaz/telefon/internet/akaryakıt/danışmanlık/kırtasiye/yemek/abonelik gibi genel giderler). EMİN DEĞİLSEN "genel_gider".',
+      mukellefBilgi
+        ? `BU FATURAYI ALAN MÜKELLEFİN İŞİ: ${mukellefBilgi}. kategoriyi mükellefin ANA FAALİYETİNE göre seç: üretim/imalat firması ana işinde kullandığı/işlediği malı alırsa "hammadde"; alım-satım (toptan/perakende/market) firması satacağı ürünü alırsa "ticari_mal"; her firmanın kendi işinde tükettiği sarf/abonelik/kira/yakıt vb. "genel_gider". (Örnek: yemek/gıda üreticisi un-yağ-et alırsa hammadde; market aynı ürünü satmak için alırsa ticari_mal.)`
+        : '',
       isImage ? '' : ('\nİÇERİK:\n' + html.replace(/<[^>]+>/g, ' ').replace(/\s+/g, ' ').slice(0, 45000)),
     ].filter(Boolean).join('\n');
 
