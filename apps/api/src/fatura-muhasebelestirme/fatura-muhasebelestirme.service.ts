@@ -2427,6 +2427,19 @@ export class FaturaMuhasebelestirmeService {
     return null;
   }
 
+  // Belge türünü doğrudan FATURA METNİNDEN tespit et (OCR motorunun belgeTipi alanından
+  // daha güvenilir — e-Arşiv faturada "Senaryo: EARSIVFATURA" yazar). "Diğer" hatasını önler.
+  private docTypeFromText(text?: string | null): string | null {
+    const s = String(text || '').toUpperCase();
+    if (!s) return null;
+    if (/EARSIVFATURA|E[\s-]?AR[SŞ]IV/.test(s)) return 'E_ARSIV';
+    if (/SERBEST\s*MESLEK\s*MAKBUZ|\bE[\s-]?SMM\b/.test(s)) return 'E_SMM';
+    if (/Z\s*RAPOR/.test(s)) return 'Z_RAPORU';
+    if (/TEMELFATURA|TICARIFATURA|E[\s-]?FATURA/.test(s)) return 'E_FATURA';
+    if (/YAZAR\s*KASA|\bÖKC\b|\bOKC\b/.test(s)) return 'OKC_FIS';
+    return null;
+  }
+
   private async processMihsapDocumentOcr(
     tenantId: string,
     documentId: string,
@@ -2519,7 +2532,7 @@ export class FaturaMuhasebelestirmeService {
             totalAmount: money(totalNum),
             // BELGE TURU GORUNTUDEN: OCR belgeTipi (EARSIV/EFATURA/FIS) → Mihsap'in guvenilmez
             // belgeTuru alanina degil, OKUDUGUMUZ tipe gore. Okunamazsa mevcut kalir.
-            ...((() => { const t = this.mapOcrBelgeTipi(ocr.belgeTipi); return t ? { documentType: t } : {}; })()),
+            ...((() => { const t = this.docTypeFromText(ocr.rawText) || this.mapOcrBelgeTipi(ocr.belgeTipi); return t ? { documentType: t } : {}; })()),
             // OCR satici VKN'sini (gercek) yaz → sahiplik/yon kontrolu ve satici-bazli
             // ogrenme dogru VKN'ye dayansin. Azure yalniz saticiyi verir; alici AI-oku'da gelir.
             ...((() => { const sv = String(ocr.saticiVkn || '').replace(/\D/g, ''); return sv.length === 10 || sv.length === 11 ? { sellerVkn: sv } : {}; })()),
@@ -3351,7 +3364,7 @@ export class FaturaMuhasebelestirmeService {
     const breakdown = Array.isArray(ocrData?.kdvBreakdown) ? ocrData.kdvBreakdown : null;
     // K7: tevkifat tespiti — fatura tevkifatlı (OCR'da tevkifat tutarı/oranı) ama tevkifat
     // fişi (360/KDV2 sorumlu sıfatı) kurulmamışsa onayda blokla (düz KDV ile gitmesin).
-    const tevkifatli = Number(ocrData?.kdvTevkifat || 0) > 0 || Number(ocrData?.tevkifatOrani || 0) > 0;
+    const tevkifatli = Number(ocrData?.kdvTevkifat || 0) > 0 || Number(ocrData?.tevkifatOrani || 0) > 0 || ocrData?.tevkifatHint === true;
     const hasTevkifatLine = (doc.lines || []).some((l: any) => String(l.accountCode || '').startsWith('360'));
     // Faz D/1: iade/iptal — normal kayıt yapılmasın (ters kayıt/610 gerekli). 610 satırı
     // varsa müşavir düzeltmiş demektir → engelleme.
@@ -5277,6 +5290,8 @@ export class FaturaMuhasebelestirmeService {
           toplam: ubl.toplamTutar,
           // İADE faturası: UBL kök öğesi CreditNote ise ya da belgede İADE/İPTAL geçiyorsa.
           iade: /<\w*:?CreditNote[\s>]/i.test(xml) || /\b(İADE|IADE|İPTAL|IPTAL)\b/i.test(xml.slice(0, 4000)),
+          // TEVKİFAT: belgede tevkifat/WithholdingTax geçiyorsa (e-Arşiv "Fatura Tipi: TEVKIFAT").
+          tevkifat: /TEVKIFAT|WithholdingTax/i.test(xml),
           kdv: [{ oran: ubl.kdvOrani || 0, matrah: ubl.matrah || 0, kdv: ubl.kdvTutari || 0 }],
         };
       }
@@ -5324,6 +5339,7 @@ export class FaturaMuhasebelestirmeService {
       '{"belgeNo":"<fatura/fiş no ya da null>","tarih":"<GG.AA.YYYY ya da null>","belgeTuru":"<e-arsiv|e-fatura|fis|diger>","saticiAd":"<satıcı ünvanı ya da null>","saticiVkn":"<satıcının VKN/TCKN ya da null>","aliciAd":"<alıcı ünvanı ya da null>","aliciVkn":"<alıcının VKN/TCKN ya da null>","toplam":<genel toplam KDV dahil sayı ya da null>,"kategori":"<asagidaki tek deger>","kdv":[{"oran":<KDV yüzdesi sayı>,"matrah":<KDV hariç tutar sayı>,"kdv":<KDV tutarı sayı>}]}',
       'belgeTuru: belgenin üstündeki ibareye göre → "e-arsiv" (e-Arşiv Fatura), "e-fatura" (e-Fatura), "e-smm" (Serbest Meslek Makbuzu / SMM), "fis" (yazarkasa/ÖKC fişi), yoksa "diger".',
       'JSON\'a "iade": true/false ekle — belge bir İADE FATURASI / İPTAL / CreditNote ise true (üstte "İADE", "İADE FATURASI" yazar ya da senaryo İADE/IPTAL\'dir), normal satış/alış faturasıysa false.',
+      'JSON\'a "tevkifat": true/false ekle — belgede KDV TEVKİFATI varsa true (Fatura Tipi: TEVKIFAT, ya da "KDV TEVKİFAT (%..)=... TL" satırı/Diğer Vergiler\'de tevkifat), yoksa false.',
       'saticiAd/aliciAd: SATICI (faturayı kesen) ve ALICI (SAYIN/müşteri) ünvanları. saticiVkn/aliciVkn: bu tarafların VKN (10 hane) ya da TC (11 hane) — SADECE rakam. Yazarkasa fişinde satıcı = mağaza. toplam: genel/ödenecek toplam (KDV dahil). Bulamazsan null, UYDURMA.',
       'KURALLAR: Türk sayı biçimi "1.234,56" = 1234.56 (tümünü ondalıklı sayıya çevir). Birden çok KDV oranı varsa her oran ayrı nesne. matrah=KDV hariç tutar, kdv=o orana ait KDV. ÖTV/ÖİV/tevkifat varsa matrahı şişirme — gerçek mal/hizmet matrahını ver. Okunamayan alanı null bırak, UYDURMA.',
       'kategori: faturadaki mal/hizmetin TÜRÜNE göre TEK kelime seç → "ticari_mal" (satılmak üzere alınan ürün/emtia), "hammadde" (üretimde kullanılan ilk madde/malzeme), "demirbas" (makine/cihaz/ekipman/mobilya/bilgisayar gibi sabit kıymet alımı), "pazarlama" (reklam/ilan/kargo-nakliye/pazarlama), "genel_gider" (kira/elektrik/su/doğalgaz/telefon/internet/akaryakıt/danışmanlık/kırtasiye/yemek/abonelik gibi genel giderler). EMİN DEĞİLSEN "genel_gider".',
@@ -5385,7 +5401,8 @@ export class FaturaMuhasebelestirmeService {
     const total = readTotal > 0 ? readTotal : Math.round((matrah + kdv) * 100) / 100;
     // Karşı taraf (cari) adı: satışta ALICI, alışta SATICI.
     const counterName = String((isSale ? parsed.aliciAd : parsed.saticiAd) || '').trim();
-    const mappedType = this.mapOcrBelgeTipi(parsed.belgeTuru);
+    // Belge türü: önce GERÇEK METİNDEN (e-Arşiv/e-Fatura ibaresi), yoksa AI'nın dediği.
+    const mappedType = this.docTypeFromText(html) || this.mapOcrBelgeTipi(parsed.belgeTuru);
 
     const lines = await this.gateCodesByPlan(tenantId, d.taxpayerId, this.linesFromAmounts({
       invoiceKind: kind,
@@ -5411,7 +5428,7 @@ export class FaturaMuhasebelestirmeService {
           ...(counterName ? (isSale ? { customerName: counterName } : { vendorName: counterName }) : {}),
           status: 'NEEDS_REVIEW',
           ocrEngine: 'max-vision',
-          ocrData: { ...((d.ocrData as any) || {}), matrah, kdvTutari: kdv, kdvOrani: breakdown[0].rate, kdvBreakdown: breakdown.map((b: any) => ({ oran: b.rate, matrah: b.base, tutar: b.amount })), matrahKategori: typeof parsed.kategori === 'string' ? parsed.kategori : undefined, isReturn: parsed.iade === true || /iade|iptal/i.test(String(parsed.belgeTuru || '')), engine: parsed === preParsed ? 'ubl-xml' : 'max-vision' },
+          ocrData: { ...((d.ocrData as any) || {}), matrah, kdvTutari: kdv, kdvOrani: breakdown[0].rate, kdvBreakdown: breakdown.map((b: any) => ({ oran: b.rate, matrah: b.base, tutar: b.amount })), matrahKategori: typeof parsed.kategori === 'string' ? parsed.kategori : undefined, isReturn: parsed.iade === true || /iade|iptal/i.test(String(parsed.belgeTuru || '')), tevkifatHint: parsed.tevkifat === true || /tevkifat/i.test(String(html || '')), engine: parsed === preParsed ? 'ubl-xml' : 'max-vision' },
         },
       });
     });

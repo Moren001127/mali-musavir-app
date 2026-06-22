@@ -842,7 +842,7 @@ function ScreenFaturalar({ taxpayerId, period, kind = 'ALIS' }: { taxpayerId: st
                     <td className="num">{kdv != null ? fmtMoney(kdv) : '—'}</td>
                     <td className="num">{fmtMoney(d.totalAmount)}</td>
                     <td>{code ? <span className="hk">{code}</span> : <span className="hk no">— yok —</span>}</td>
-                    <td><span className={`pill ${du.k}`}>{du.t}</span></td>
+                    <td><span className={`pill ${du.k}`} title={du.cat === 'okunamadi' && d.lucaErrorMessage ? `Neden: ${d.lucaErrorMessage}` : du.t}>{du.t}</span></td>
                     <td className="actcol" style={{ display: 'flex', gap: 8, alignItems: 'center' }}>
                       <span className="eye" onClick={() => openDocFile(d.id)} title="Belgeyi aç"><Ico html={I.eye} size={15} /></span>
                       <span className="eye del" title="Belgeyi sil" onClick={() => { if (window.confirm(`Bu belge silinsin mi?\n${firma} · ${fmtMoney(d.totalAmount)} ₺${d.belgeNo ? ' · ' + d.belgeNo : ''}`)) delMut.mutate(d.id); }}><Ico html={I.trash} size={14} /></span>
