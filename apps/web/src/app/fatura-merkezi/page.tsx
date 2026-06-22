@@ -1138,21 +1138,21 @@ function InlineBelge({ id }: { id: string }) {
       // 2) İçerik yüksekliğine sığdır → kısa belgede altta boşluk kalmasın.
       const scrollH = Math.max(doc.body.scrollHeight || 0, doc.documentElement.scrollHeight || 0);
       if (scrollH > 40) f.style.height = Math.ceil(scrollH) + 'px';
-      // 3) Genişliğe sığdır oranı — dar belge de büyütülür (yan boşluk kalmasın). Üst sınır
-      //    2x (effektif genişlik = pano genişliği olduğundan taşma olmaz, yalnız aşırı blur'u önler).
+      // 3) Genişliğe sığdır — GENİŞ belgeyi küçült; DAR fişi BÜYÜTME (en çok %100). Tam-ekran
+      //    önizlemeyle tutarlı (kullanıcı isteği). Daha büyük için zoom (+) kullanılır.
       const paneW = (w.clientWidth || 600) - 16;
-      setFit(Math.min(2, Math.max(0.3, paneW / cw)));
+      setFit(Math.min(1, Math.max(0.3, paneW / cw)));
     } catch { /* cross-origin */ }
   };
-  // Resim için de genişliğe sığdır: doğal genişliğe göre fit hesapla (eskiden resimde
-  // fit=1 sabitti, dar resim yanlarda boşluk bırakıyordu).
+  // Resim de genişliğe sığdırılır ama DAR fiş BÜYÜTÜLMEZ (en çok %100) — tam-ekran önizlemeyle
+  // tutarlı; geniş resim panoya küçültülür. Daha büyük için zoom (+).
   const onImgLoad = (e: any) => {
     const w = wrapRef.current;
     const nw = e.currentTarget?.naturalWidth || 0;
     if (!w || !nw) return;
     setImgW(Math.ceil(nw));
     const paneW = (w.clientWidth || 600) - 16;
-    setFit(Math.min(2, Math.max(0.3, paneW / nw)));
+    setFit(Math.min(1, Math.max(0.3, paneW / nw)));
   };
   // Görseller geç yüklendiğinden birkaç kez yeniden ölç.
   const onFrameLoad = () => { measure(); setTimeout(measure, 250); setTimeout(measure, 900); setTimeout(measure, 2000); };
