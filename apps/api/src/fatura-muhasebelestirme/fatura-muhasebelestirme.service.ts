@@ -2289,7 +2289,7 @@ export class FaturaMuhasebelestirmeService {
       const matrah = Math.max(totalNum - kdvTotal, 0);
       const vendorOrCustomer = invoiceKind === 'SATIS' ? existing.customerName : existing.vendorName;
 
-      const lines = this.linesFromAmounts({
+      const lines = await this.gateCodesByPlan(tenantId, existing.taxpayerId, this.linesFromAmounts({
         invoiceKind,
         matrah,
         kdvTutari: kdvTotal,
@@ -2297,7 +2297,7 @@ export class FaturaMuhasebelestirmeService {
         total: totalNum,
         vendorName: vendorOrCustomer,
         kdvBreakdown: breakdown.length ? breakdown : null,
-      });
+      }));
 
       const ocrStatus = (ocr.confidence ?? 0) >= 0.7 ? 'SUCCESS' : 'NEEDS_REVIEW';
 
@@ -2412,7 +2412,7 @@ export class FaturaMuhasebelestirmeService {
     const breakdownArr = Array.isArray((f as any).kdvBreakdown)
       ? (f as any).kdvBreakdown as Array<{ rate: number; base: number; amount: number }>
       : null;
-    const lines = this.linesFromAmounts({
+    const lines = await this.gateCodesByPlan(tenantId, f.taxpayerId, this.linesFromAmounts({
       invoiceKind,
       matrah: f.matrah,
       kdvTutari: f.kdvTutari,
@@ -2420,7 +2420,7 @@ export class FaturaMuhasebelestirmeService {
       total: f.toplamTutar,
       vendorName: invoiceKind === 'ALIS' ? f.satici : f.alici,
       kdvBreakdown: breakdownArr,
-    });
+    }));
 
     if (existing) {
       const refreshed = await this.refreshExistingEarsivDocumentIfNeeded({
@@ -4033,14 +4033,14 @@ export class FaturaMuhasebelestirmeService {
       buyerVkn: parsed.aliciVergiNo || null,
       totalAmount: total,
     });
-    const lines = this.linesFromAmounts({
+    const lines = await this.gateCodesByPlan(tenantId, taxpayer.id, this.linesFromAmounts({
       invoiceKind: direction,
       matrah: parsed.matrah,
       kdvTutari: parsed.kdvTutari,
       kdvOrani: parsed.kdvOrani,
       total,
       vendorName: direction === 'SATIS' ? parsed.alici : parsed.satici,
-    });
+    }));
 
     const doc = await (this.prisma as any).invoiceAccountingDocument.create({
       data: {
@@ -4316,6 +4316,24 @@ export class FaturaMuhasebelestirmeService {
       vendorName: ocrResult?.satici || null,
       kdvBreakdown: breakdown.length ? breakdown : null,
     });
+  }
+
+  /** Mükellefin Luca hesap planı (READY snapshot, en az 1 kod) çekilmiş mi? */
+  private async hasAccountPlan(tenantId: string, taxpayerId?: string | null): Promise<boolean> {
+    if (!taxpayerId) return false;
+    const snap = await (this.prisma as any).lucaAccountPlanSnapshot.findFirst({
+      where: { tenantId, taxpayerId, status: 'READY' },
+      orderBy: { createdAt: 'desc' },
+      select: { accountCount: true },
+    }).catch(() => null);
+    return !!(snap && Number(snap.accountCount) > 0);
+  }
+
+  /** Hesap planı yoksa satır hesap kodlarını BOŞALT — kullanıcı talebi: plan yoksa
+   *  kod atanmasın (önce hesap planı çekilsin). Plan varsa kodlar olduğu gibi kalır. */
+  private async gateCodesByPlan(tenantId: string, taxpayerId: string | null | undefined, lines: any[]): Promise<any[]> {
+    if (await this.hasAccountPlan(tenantId, taxpayerId)) return lines;
+    return (lines || []).map((l) => ({ ...l, accountCode: null }));
   }
 
   private linesFromAmounts(opts: {
@@ -4939,12 +4957,12 @@ export class FaturaMuhasebelestirmeService {
     const headerTotal = Number(typeof d.totalAmount === 'object' && d.totalAmount != null ? String(d.totalAmount) : d.totalAmount);
     const total = Number.isFinite(headerTotal) && headerTotal > 0 ? headerTotal : Math.round((matrah + kdv) * 100) / 100;
 
-    const lines = this.linesFromAmounts({
+    const lines = await this.gateCodesByPlan(tenantId, d.taxpayerId, this.linesFromAmounts({
       invoiceKind: d.invoiceKind || 'ALIS',
       matrah, kdvTutari: kdv, kdvOrani: breakdown[0].rate, total,
       vendorName: isSale ? d.customerName : d.vendorName,
       kdvBreakdown: breakdown,
-    });
+    }));
     await (this.prisma as any).$transaction(async (tx: any) => {
       await tx.invoiceAccountingLine.deleteMany({ where: { documentId: d.id } });
       if (lines.length) await tx.invoiceAccountingLine.createMany({ data: lines.map((l: any) => ({ ...l, documentId: d.id })) });
