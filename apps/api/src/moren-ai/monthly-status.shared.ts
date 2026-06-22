@@ -231,7 +231,7 @@ function normalizeForIntent(value: string): string {
     .toLocaleLowerCase('tr-TR')
     .replace(/ı/g, 'i')
     .normalize('NFD')
-    .replace(/[̀-ͯ]/g, '');
+    .replace(/[\u0300-\u036f]/g, '');
 }
 
 /** Owner mesajından durum-listesi niyetini çıkarır; durum sorusu değilse null. */
