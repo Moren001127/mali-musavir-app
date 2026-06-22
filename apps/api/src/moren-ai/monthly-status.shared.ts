@@ -498,9 +498,11 @@ export async function computeRevenueRanking(
   const explicit = /^\d{4}-(\d{2}|Q[1-4])$/i.test(reqPeriod);
   let donem = explicit ? reqPeriod : '';
   let donemDinamikSecildi = false;
+  // NOT: gelirTablosu'nda `taxpayer` İLİŞKİSİ YOK (sadece taxpayerId skaler) → ilişki
+  // filtresi/select HATA verir. İsimler ayrı taxpayer sorgusuyla çekilir, aktiflik orada süzülür.
   if (!donem) {
     const son = await prisma.gelirTablosu.findFirst({
-      where: { tenantId: opts.tenantId, ...(onlyActive ? { taxpayer: { isActive: true } } : {}) },
+      where: { tenantId: opts.tenantId },
       orderBy: [{ donem: 'desc' }, { createdAt: 'desc' }],
       select: { donem: true },
     }).catch(() => null);
@@ -511,17 +513,30 @@ export async function computeRevenueRanking(
     return { donem: '', liste: [], whatsappOzet: 'Gelir tablosu verisi bulunamadı.', donemDinamikSecildi };
   }
   const rows = await prisma.gelirTablosu.findMany({
-    where: { tenantId: opts.tenantId, donem, ...(onlyActive ? { taxpayer: { isActive: true } } : {}) },
-    select: {
-      netSatislar: true, brutSatislar: true, donemNetKari: true,
-      taxpayer: { select: { companyName: true, firstName: true, lastName: true } },
-    },
+    where: { tenantId: opts.tenantId, donem },
+    select: { netSatislar: true, brutSatislar: true, donemNetKari: true, taxpayerId: true },
   }).catch(() => []);
-  const liste = rows.map((r: any) => ({
-    mukellef: (r.taxpayer?.companyName || `${r.taxpayer?.firstName || ''} ${r.taxpayer?.lastName || ''}`).trim() || 'Mükellef',
-    ciro: Number(r.netSatislar) || Number(r.brutSatislar) || 0,
-    kar: Number(r.donemNetKari) || 0,
-  })).sort((a: any, b: any) => b.ciro - a.ciro);
+  // Mükellef adlarını + aktiflik durumunu tek sorguda çek.
+  const ids = Array.from(new Set(rows.map((r: any) => r.taxpayerId).filter(Boolean)));
+  const txs = ids.length
+    ? await prisma.taxpayer.findMany({
+        where: { id: { in: ids } },
+        select: { id: true, companyName: true, firstName: true, lastName: true, isActive: true },
+      }).catch(() => [])
+    : [];
+  const txMap = new Map<string, any>(txs.map((t: any) => [t.id, t]));
+  const liste = rows
+    .map((r: any) => {
+      const t = txMap.get(r.taxpayerId);
+      return {
+        mukellef: (t?.companyName || `${t?.firstName || ''} ${t?.lastName || ''}`).trim() || 'Mükellef',
+        ciro: Number(r.netSatislar) || Number(r.brutSatislar) || 0,
+        kar: Number(r.donemNetKari) || 0,
+        _aktif: t ? t.isActive !== false : true,
+      };
+    })
+    .filter((r: any) => (onlyActive ? r._aktif : true))
+    .sort((a: any, b: any) => b.ciro - a.ciro);
 
   const top = liste.slice(0, limit);
   const satirlar = top.map((r: any, i: number) =>
