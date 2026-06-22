@@ -277,9 +277,34 @@ export class FaturaMuhasebelestirmeService {
     private readonly mihsapService: MihsapService,
   ) {}
 
+  // Plan YOK → kod ASLA görünmesin (kullanıcı talebi). Mükellefin hesap planı çekilmemişse
+  // belgelerindeki SABİT placeholder kodlarını (600.01.001 vb.) boşalt — okuma başarısız olsa
+  // ya da belge eski (gate öncesi) import edilmiş olsa bile "Eksik hesap kodu" görünür.
+  private readonly PLACEHOLDER_CODES = [
+    '770.01.010', '760.01.001', '740.01.001', '600.01.001',
+    '191.01.001', '191.01.010', '191.01.020',
+    '391.01.001', '391.01.010', '391.01.020',
+    '320.01.001', '120.01.001',
+  ];
+  private async gateExistingDocsIfNoPlan(tenantId: string, taxpayerId?: string) {
+    if (!taxpayerId) return;
+    if (await this.hasAccountPlan(tenantId, taxpayerId)) return;
+    const docs = await (this.prisma as any).invoiceAccountingDocument.findMany({
+      where: { tenantId, taxpayerId, status: { not: 'APPROVED' } },
+      select: { id: true },
+    }).catch(() => []);
+    if (!docs.length) return;
+    await (this.prisma as any).invoiceAccountingLine.updateMany({
+      where: { documentId: { in: docs.map((d: any) => d.id) }, accountCode: { in: this.PLACEHOLDER_CODES } },
+      data: { accountCode: null },
+    }).catch(() => {});
+  }
+
   async list(tenantId: string, opts: { status?: string; limit?: number; taxpayerId?: string; period?: string }) {
     // status='PENDING' frontend konvansiyonu = onaylanmamış belgeler (READY + NEEDS_REVIEW).
     // Schema status enum: NEEDS_REVIEW | READY | APPROVED | REJECTED
+    // Plan yoksa sahte kodları temizle (tek mükellef listesinde).
+    await this.gateExistingDocsIfNoPlan(tenantId, opts.taxpayerId);
     const statusFilter = (() => {
       const s = String(opts.status || '').toUpperCase();
       if (!s) return {};
