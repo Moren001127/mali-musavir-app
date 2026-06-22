@@ -1293,11 +1293,20 @@ function ScreenMuhasebe({ taxpayerId, period, isIsletme = false, taxpayerNace = 
                     </table>
                   ) : (
                     <div className="fgrps">
-                      {([
-                        { key: 'matrah', label: 'Matrah', side: 'debit' as const },
-                        { key: 'vergi', label: 'KDV (İndirilecek/Hesaplanan)', side: 'debit' as const },
-                        { key: 'cari', label: 'Cari Hesap', side: 'credit' as const },
-                      ]).map((g) => {
+                      {(String(selDoc.invoiceKind || '').includes('SATIS')
+                        ? [
+                            // SATIŞ: matrah(600)+KDV(391) ALACAK, cari(120) BORÇ
+                            { key: 'matrah', label: 'Matrah (Gelir)', side: 'credit' as const },
+                            { key: 'vergi', label: 'Hesaplanan KDV', side: 'credit' as const },
+                            { key: 'cari', label: 'Cari Hesap', side: 'debit' as const },
+                          ]
+                        : [
+                            // ALIŞ: matrah+KDV BORÇ, cari ALACAK
+                            { key: 'matrah', label: 'Matrah', side: 'debit' as const },
+                            { key: 'vergi', label: 'İndirilecek KDV', side: 'debit' as const },
+                            { key: 'cari', label: 'Cari Hesap', side: 'credit' as const },
+                          ]
+                      ).map((g) => {
                         const rows = lineDraft.map((l: any, i: number) => ({ l, i })).filter(({ l }) => (l.group || 'matrah') === g.key);
                         const tot = rows.reduce((s, { l }) => s + (Number(g.side === 'debit' ? l.debit : l.credit) || 0), 0);
                         return (
