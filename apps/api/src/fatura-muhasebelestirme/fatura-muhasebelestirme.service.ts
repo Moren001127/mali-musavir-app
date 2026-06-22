@@ -1,4 +1,4 @@
-import { BadRequestException, Injectable, Logger, NotFoundException } from '@nestjs/common';
+import { BadRequestException, Injectable, Logger, NotFoundException, OnModuleInit, OnModuleDestroy } from '@nestjs/common';
 import { createHash, randomUUID } from 'crypto';
 import { Prisma } from '@prisma/client';
 import * as JSZip from 'jszip';
@@ -250,10 +250,15 @@ function periodWhere(period?: string | null) {
 }
 
 @Injectable()
-export class FaturaMuhasebelestirmeService {
+export class FaturaMuhasebelestirmeService implements OnModuleInit, OnModuleDestroy {
   private readonly logger = new Logger(FaturaMuhasebelestirmeService.name);
-  private readonly uploadOcrConcurrency = Math.max(1, Number(process.env.INVOICE_OCR_CONCURRENCY || 2));
+  // Eş zamanlı okuma: Mihsap görüntülerini Max-vision ile okumak yavaş; 2 paralel az kalıyordu.
+  // Varsayılan 3 (Max kotasını zorlamadan throughput artar); INVOICE_OCR_CONCURRENCY ile ayarlanır.
+  private readonly uploadOcrConcurrency = Math.max(1, Number(process.env.INVOICE_OCR_CONCURRENCY || 3));
   private uploadOcrActive = 0;
+  private readonly uploadOcrActiveIds = new Set<string>(); // işlenmekte olan belge id'leri (resume çift-işlemesin)
+  private ocrResumeTimer: NodeJS.Timeout | null = null;
+  private ocrResuming = false;
   private readonly uploadOcrQueue: Array<{
     tenantId: string;
     documentId: string;
@@ -276,6 +281,49 @@ export class FaturaMuhasebelestirmeService {
     private readonly vendorMemory: VendorMemoryService,
     private readonly mihsapService: MihsapService,
   ) {}
+
+  onModuleInit() {
+    // Sunucu restart'ı in-memory OCR kuyruğunu siler → "AI ile oku"ya basılmış ama henüz
+    // okunmamış belgeler PENDING'de öksüz kalıyor (kullanıcı "okunamadı" görüyor). Başlangıçta
+    // (kısa gecikme sonra, app tam ayağa kalksın) + periyodik olarak öksüzleri kurtar.
+    setTimeout(() => { this.resumeStuckOcr().catch(() => {}); }, 20000);
+    this.ocrResumeTimer = setInterval(() => { this.resumeStuckOcr().catch(() => {}); }, 120000);
+    if (this.ocrResumeTimer.unref) this.ocrResumeTimer.unref();
+  }
+
+  onModuleDestroy() {
+    if (this.ocrResumeTimer) { clearInterval(this.ocrResumeTimer); this.ocrResumeTimer = null; }
+  }
+
+  /** Restart sonrası öksüz kalan PENDING/IN_PROGRESS belgeleri yeniden kuyruğa alır. Kuyrukta
+   *  ya da işlenmekte olanları atlar (çift-işleme yok). FAILED (gerçek hata) belgelere dokunmaz →
+   *  sonsuz döngü olmaz. Eş zamanlılık sınırı doğal throttle eder. */
+  async resumeStuckOcr(): Promise<number> {
+    if (this.ocrResuming) return 0;
+    this.ocrResuming = true;
+    try {
+      const stuck = await (this.prisma as any).invoiceAccountingDocument.findMany({
+        where: { ocrStatus: { in: ['PENDING', 'IN_PROGRESS'] }, status: { not: 'APPROVED' } },
+        select: { id: true, tenantId: true },
+        orderBy: { createdAt: 'asc' },
+        take: 500,
+      }).catch(() => []);
+      const queued = new Set(this.uploadOcrQueue.map((j) => j.documentId));
+      let n = 0;
+      for (const d of stuck) {
+        if (queued.has(d.id) || this.uploadOcrActiveIds.has(d.id)) continue;
+        this.uploadOcrQueue.push({ tenantId: d.tenantId, documentId: d.id, kind: 'ai-read' });
+        n++;
+      }
+      if (n) {
+        this.logger.log(`OCR resume: ${n} oksuz PENDING belge yeniden kuyruga alindi (restart kurtarma)`);
+        this.drainUploadedOcrQueue();
+      }
+      return n;
+    } finally {
+      this.ocrResuming = false;
+    }
+  }
 
   // Plan YOK → kod ASLA görünmesin (kullanıcı talebi). Mükellefin hesap planı çekilmemişse
   // belgelerindeki SABİT placeholder kodlarını (600.01.001 vb.) boşalt — okuma başarısız olsa
@@ -2148,6 +2196,7 @@ export class FaturaMuhasebelestirmeService {
       const job = this.uploadOcrQueue.shift();
       if (!job) return;
       this.uploadOcrActive++;
+      if (job.documentId) this.uploadOcrActiveIds.add(job.documentId);
       const work = job.kind === 'mihsap'
         ? this.processMihsapDocumentOcr(
             job.tenantId,
@@ -2170,6 +2219,7 @@ export class FaturaMuhasebelestirmeService {
         })
         .finally(() => {
           this.uploadOcrActive = Math.max(0, this.uploadOcrActive - 1);
+          if (job.documentId) this.uploadOcrActiveIds.delete(job.documentId);
           this.drainUploadedOcrQueue();
         });
     }
@@ -5493,7 +5543,9 @@ export class FaturaMuhasebelestirmeService {
           ...(counterName ? (isSale ? { customerName: counterName } : { vendorName: counterName }) : {}),
           status: 'NEEDS_REVIEW',
           ocrEngine: 'max-vision',
-          ocrData: { ...((d.ocrData as any) || {}), matrah, kdvTutari: kdv, kdvOrani: breakdown[0].rate, kdvBreakdown: breakdown.map((b: any) => ({ oran: b.rate, matrah: b.base, tutar: b.amount })), matrahKategori: typeof parsed.kategori === 'string' ? parsed.kategori : undefined, isReturn: parsed.iade === true || /iade|iptal/i.test(String(parsed.belgeTuru || '')), tevkifatHint: parsed.tevkifat === true || tevkifatOrani > 0 || /tevkifat/i.test(String(html || '')), tevkifatOrani: tevkifatOrani || 0, tevkifatKdv: tevkKdv || 0, engine: parsed === preParsed ? 'ubl-xml' : 'max-vision' },
+          ocrData: { ...((d.ocrData as any) || {}), matrah, kdvTutari: kdv, kdvOrani: breakdown[0].rate, kdvBreakdown: breakdown.map((b: any) => ({ oran: b.rate, matrah: b.base, tutar: b.amount })), matrahKategori: typeof parsed.kategori === 'string' ? parsed.kategori : undefined, isReturn: parsed.iade === true || /iade|iptal/i.test(String(parsed.belgeTuru || '')), tevkifatHint: parsed.tevkifat === true || tevkifatOrani > 0 || /tevkifat/i.test(String(html || '')), tevkifatOrani: tevkifatOrani || 0, tevkifatKdv: tevkKdv || 0, engine: parsed === preParsed ? 'ubl-xml' : 'max-vision',
+            readMode: parsed === preParsed ? 'ubl-xml' : (isImage ? 'image' : /pdf/i.test(imgMedia) ? 'pdf-text' : /xml/i.test(imgMedia) ? 'xml-text' : 'html'),
+            ...(!preParsed && imgBuf && /xml/i.test(imgMedia) ? { xmlHead: imgBuf.toString('utf8').slice(0, 220).replace(/\s+/g, ' ') } : {}) },
         },
       });
     });
