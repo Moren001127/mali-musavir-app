@@ -4,7 +4,7 @@ import { ToolExecutorService } from './tool-executor.service';
 import { MOREN_AI_TOOLS } from './tools';
 import { runMaxAgent, type AgentToolDef } from '../common/max-agent-runner';
 import { buildSystemPrompt } from './system-prompt';
-import { buildOwnerStatusReply } from './monthly-status.shared';
+import { buildOwnerStatusReply, buildOwnerTaxPayableReply } from './monthly-status.shared';
 import { computeCostUsd, computeRealtimeCostUsd, canSpendOnApi, logAiUsage } from '../common/ai-usage-logger';
 import { claudeTextViaMax, isMaxAvailable, MAX_MODEL_CHEAP } from '../common/max-inference';
 import { sablonForTool, sablonZatenVar } from './whatsapp-sablon';
@@ -534,25 +534,34 @@ export class MorenAiService {
     // → undefined; audience hesabı da bunu 'owner' kabul eder). Mükellef/none HARİÇ.
     const ownerEfektif = body.toolMode !== 'taxpayer-readonly' && body.toolMode !== 'none';
     if (ownerEfektif) {
-      const statusRes = await buildOwnerStatusReply(this.prisma, tenantId, userMessage).catch(() => null);
-      if (statusRes) {
+      // Aynı kaynaktan iki deterministik kısayol: durum-listesi + vergi-ödeme listesi.
+      const shortcut = async (): Promise<{ reply: string; model: string } | null> => {
+        const statusRes = await buildOwnerStatusReply(this.prisma, tenantId, userMessage).catch(() => null);
+        if (statusRes) return { reply: statusRes.reply, model: 'moren-ai-status-shortcut' };
+        // "kimlere kdv/muhtasar/geçici/damga ödemesi çıkıyor" → portföy vergi listesi.
+        const taxRes = await buildOwnerTaxPayableReply(this.prisma, tenantId, userMessage).catch(() => null);
+        if (taxRes) return { reply: taxRes.reply, model: 'moren-ai-tax-payable-shortcut' };
+        return null;
+      };
+      const sc = await shortcut();
+      if (sc) {
         const durationMs = Date.now() - started;
         await this.prisma.aiMessage.create({
           data: {
             conversationId: conversation.id,
             role: 'assistant',
-            content: statusRes.reply,
+            content: sc.reply,
             inputTokens: 0, outputTokens: 0, cacheReadTokens: 0, cacheWriteTokens: 0,
-            costUsd: 0, model: 'moren-ai-status-shortcut', durationMs,
+            costUsd: 0, model: sc.model, durationMs,
           },
         });
         return {
           conversationId: conversation.id,
-          assistantMessage: statusRes.reply,
+          assistantMessage: sc.reply,
           toolUses: [],
           usage: {
             inputTokens: 0, outputTokens: 0, cacheReadTokens: 0, cacheWriteTokens: 0,
-            costUsd: 0, durationMs, model: 'moren-ai-status-shortcut',
+            costUsd: 0, durationMs, model: sc.model,
           },
         };
       }

@@ -336,3 +336,142 @@ export async function buildOwnerStatusReply(
     intent, count: names.length, donemLabel: list.donemLabel,
   };
 }
+
+// ============================================================================
+// PORTFÖY VERGİ ÖDEME LİSTESİ (TEK KAYNAK) — "kimlere kdv/muhtasar/geçici/damga
+// ödemesi çıkıyor". Agentic model bu listeyi güvenilir üretemiyordu (124sn dönüp
+// "tamamlayamadım" / mevzuat anlatma); deterministik fast-path olarak buradan üretilir.
+// tool-executor.getTaxPayableList de computeTaxPayableList'i çağırır (kopya kaymaz).
+// ============================================================================
+
+const VERGI_TURLERI: Array<{ re: RegExp; filter: string; label: string }> = [
+  { re: /muh|sgk|stopaj|prim|muhtasar/i, filter: 'MUHSGK', label: 'Muhtasar-SGK' },
+  { re: /damga/i, filter: 'DAMGA', label: 'Damga Vergisi' },
+  { re: /geç|gec|geçici|gecici/i, filter: 'GECICI', label: 'Geçici Vergi' },
+  { re: /kurumlar/i, filter: 'KURUMLAR', label: 'Kurumlar Vergisi' },
+  { re: /gelir vergi|gelir beyan/i, filter: 'GELIR', label: 'Gelir Vergisi' },
+  { re: /kdv/i, filter: 'KDV', label: 'KDV' },
+];
+
+export function resolveBeyanTipiFilter(raw: string): { filter: string; label: string } {
+  const m = VERGI_TURLERI.find((x) => x.re.test(String(raw || '')));
+  return m ? { filter: m.filter, label: m.label } : { filter: 'KDV', label: 'KDV' };
+}
+
+export interface TaxPayableList {
+  vergiTuru: string;
+  donem: string;
+  mukellefSayisi: number;
+  toplamTutar: number;
+  liste: Array<{ mukellef: string; toplam: number }>;
+  whatsappOzet: string;
+  donemDinamikSecildi: boolean;
+}
+
+export interface TaxPayableOpts {
+  tenantId: string;
+  beyanTipi?: string | null;
+  period?: string | null;
+  onlyActive?: boolean;
+  onlyPayable?: boolean;
+}
+
+function fmtTLshared(n: number): string {
+  return new Intl.NumberFormat('tr-TR', { minimumFractionDigits: 2, maximumFractionDigits: 2 }).format(n || 0) + ' ₺';
+}
+
+/** TEK KAYNAK: bir dönemde bir vergi türü için mükellef+tutar listesi (beyanKaydi tahakkuk). */
+export async function computeTaxPayableList(prisma: any, opts: TaxPayableOpts): Promise<TaxPayableList> {
+  const { filter, label } = resolveBeyanTipiFilter(opts.beyanTipi || '');
+  const onlyActive = opts.onlyActive !== false;
+  const onlyPayable = opts.onlyPayable !== false;
+  const reqPeriod = String(opts.period || '').trim();
+  const explicit = /^\d{4}-(\d{2}|Q[1-4])$/i.test(reqPeriod);
+  let donem = explicit ? reqPeriod : '';
+  let donemDinamikSecildi = false;
+
+  if (!donem) {
+    const son = await prisma.beyanKaydi.findFirst({
+      where: {
+        tenantId: opts.tenantId,
+        beyanTipi: { contains: filter },
+        tahakkukTutari: { not: null, gt: 0 },
+        ...(onlyActive ? { taxpayer: { isActive: true } } : {}),
+      },
+      orderBy: [{ beyanTarihi: 'desc' }, { createdAt: 'desc' }],
+      select: { donem: true },
+    }).catch(() => null);
+    donem = son?.donem || '';
+    donemDinamikSecildi = true;
+  }
+  if (!donem) {
+    return { vergiTuru: label, donem: '', mukellefSayisi: 0, toplamTutar: 0, liste: [],
+      whatsappOzet: `${label} tahakkuk verisi bulunamadı.`, donemDinamikSecildi };
+  }
+
+  const where: any = { tenantId: opts.tenantId, donem, beyanTipi: { contains: filter } };
+  where.tahakkukTutari = onlyPayable ? { not: null, gt: 0 } : { not: null };
+  if (onlyActive) where.taxpayer = { isActive: true };
+
+  const kayitlar = await prisma.beyanKaydi.findMany({
+    where,
+    select: {
+      tahakkukTutari: true,
+      taxpayer: { select: { companyName: true, firstName: true, lastName: true } },
+    },
+  }).catch(() => []);
+
+  const byTaxpayer = new Map<string, { isim: string; toplam: number }>();
+  for (const k of kayitlar) {
+    const isim = (k.taxpayer?.companyName ||
+      `${k.taxpayer?.firstName || ''} ${k.taxpayer?.lastName || ''}`).trim() || 'Mükellef';
+    const tutar = Number(k.tahakkukTutari) || 0;
+    const g = byTaxpayer.get(isim) || { isim, toplam: 0 };
+    g.toplam += tutar;
+    byTaxpayer.set(isim, g);
+  }
+  const liste = Array.from(byTaxpayer.values()).sort((a, b) => b.toplam - a.toplam);
+  const toplam = liste.reduce((s, r) => s + r.toplam, 0);
+
+  const satirlar = liste.slice(0, 60).map((r, i) => `${i + 1}. ${r.isim}: ${fmtTLshared(r.toplam)}`).join('\n');
+  const whatsappOzet = liste.length
+    ? `🧾 ${label.toLocaleUpperCase('tr-TR')} ÖDEMESİ ÇIKAN MÜKELLEFLER — ${donem}\n\n${satirlar}` +
+      `${liste.length > 60 ? `\n… ve ${liste.length - 60} mükellef daha.` : ''}` +
+      `\n\n💰 Toplam: ${fmtTLshared(toplam)} · ${liste.length} mükellef`
+    : `${donem} döneminde ${label} ödemesi çıkan mükellef yok.`;
+
+  return {
+    vergiTuru: label, donem, mukellefSayisi: liste.length, toplamTutar: toplam,
+    liste: liste.map((r) => ({ mukellef: r.isim, toplam: r.toplam })),
+    whatsappOzet, donemDinamikSecildi,
+  };
+}
+
+/** Owner mesajı portföy vergi-ödeme listesi mi? Değilse null. */
+export function detectTaxPayableIntent(text: string): { beyanTipi: string } | null {
+  const n = normalizeForIntent(text);
+  const isList = /\b(kim|kimler|kimlere|liste|listele|yaz|kaç|kac|tüm|tum|herkes|hangi)\b/.test(n);
+  if (!isList) return null;
+  // ödeme/çıkıyor/tutar sinyali + bir vergi türü VEYA genel "ödeme/vergi çıkıyor"
+  const odemeSinyal = /(çık|cik|öde|ode|ödeyecek|odeyecek|tahakkuk|tutar|ödemesi|odemesi|borç|borc)/.test(n);
+  if (!odemeSinyal) return null;
+  const turVar = /(kdv|muhtasar|muhsgk|sgk|stopaj|geçici|gecici|damga|kurumlar)/.test(n);
+  const genelVergiOdeme = /(vergi|ödeme|odeme).{0,16}(çık|cik|ödeyecek|odeyecek)|(çık|cik).{0,16}(vergi|ödeme|odeme)/.test(n);
+  if (!turVar && !genelVergiOdeme) return null;
+  const { filter } = resolveBeyanTipiFilter(n);
+  return { beyanTipi: filter };
+}
+
+/** ÜST DÜZEY: owner vergi-ödeme listesi sorusunu uçtan uca cevaplar. Değilse null. */
+export async function buildOwnerTaxPayableReply(
+  prisma: any,
+  tenantId: string,
+  text: string,
+): Promise<{ reply: string; vergiTuru: string; donem: string; count: number } | null> {
+  const intent = detectTaxPayableIntent(text);
+  if (!intent) return null;
+  // Dönem metinde açıkça verilmişse al (YYYY-MM veya YYYY-Qn)
+  const pm = text.match(/\b(\d{4})-(\d{2}|Q[1-4])\b/i);
+  const list = await computeTaxPayableList(prisma, { tenantId, beyanTipi: intent.beyanTipi, period: pm ? pm[0] : '' });
+  return { reply: list.whatsappOzet, vergiTuru: list.vergiTuru, donem: list.donem, count: list.mukellefSayisi };
+}

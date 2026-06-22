@@ -4,7 +4,7 @@ import { MIHSAP_FATURA_ACTIONS, isMihsapFaturaCommandAgent } from '../agent-even
 import { calculateBeyannameDeadline } from '../schedule/beyanname-deadline.util';
 import { ISLEM_OPERATIONS, ISLEM_ACTION_KEYS, islemCapabilityList, isIslemAction } from './islem-operations';
 import { TDHP, tdhpAciklama, vergiOranlari, vergiOraniAciklama } from '../common/accounting-reference';
-import { computeMonthlyStatusList } from './monthly-status.shared';
+import { computeMonthlyStatusList, computeTaxPayableList } from './monthly-status.shared';
 import { randomBytes } from 'crypto';
 
 const OFFICIAL_SOURCE_DOMAINS = [
@@ -1095,95 +1095,29 @@ export class ToolExecutorService {
   // KDV
   // ------------------------------------------------------------
 
-  /** beyanTipi serbest metnini beyanKaydi'ndeki gerçek koda + okunur etikete çevirir. */
-  private resolveBeyanTipiFilter(raw: string): { filter: string; label: string } {
-    const t = String(raw || '').toLocaleLowerCase('tr-TR');
-    if (/muh|sgk|stopaj|prim|muhtasar/.test(t)) return { filter: 'MUHSGK', label: 'Muhtasar-SGK' };
-    if (/damga/.test(t)) return { filter: 'DAMGA', label: 'Damga Vergisi' };
-    if (/geç|gec|geçici|gecici|gecıcı|gгecici/.test(t)) return { filter: 'GECICI', label: 'Geçici Vergi' };
-    if (/kurumlar/.test(t)) return { filter: 'KURUMLAR', label: 'Kurumlar Vergisi' };
-    if (/gelir/.test(t)) return { filter: 'GELIR', label: 'Gelir Vergisi' };
-    if (/kdv/.test(t)) return { filter: 'KDV', label: 'KDV' };
-    return { filter: 'KDV', label: 'KDV' }; // belirtilmezse en sık tür
-  }
-
   /**
-   * PORTFÖY-GENELİ VERGİ ÖDEMESİ: bir dönemde ofisteki TÜM mükelleflerin ödeyeceği vergiyi
-   * (beyanKaydi tahakkuk) tür bazında listeler + tutarlar. "kdv/muhtasar/geçici/damga çıkan
-   * mükellefler", "kimlere ödeme çıkıyor" gibi TOPLU owner sorularının doğru kaynağı
-   * (get_kdv_summary tek mükellef içindir). beyanTipi verilmezse KDV. Dönem verilmezse o
-   * türün tahakkuku DOLU EN SON dönemi otomatik seçilir (gerçekleşen beyan tarihine göre,
-   * monthly/quarterly karışsa da doğru) → bot dönemi geri sormaz, yanlış "işlenmemiş" demez.
+   * PORTFÖY-GENELİ VERGİ ÖDEMESİ — TEK KAYNAK (monthly-status.shared.computeTaxPayableList).
+   * Deterministik fast-path (buildOwnerTaxPayableReply) ile AYNI fonksiyon → tutarsızlık yok.
    * SADECE owner (tutar içerir).
    */
   private async getTaxPayableList(input: any, ctx: { tenantId: string }) {
-    const reqPeriod = String(input?.period || input?.donem || '').trim();
-    const explicit = /^\d{4}-(\d{2}|Q[1-4])$/i.test(reqPeriod);
-    let donem = explicit ? reqPeriod : '';
-    const onlyActive = input?.onlyActive !== false;
-    const onlyPayable = input?.sadeceOdemeCikan !== false; // varsayılan: sadece ödeme çıkanlar
-    const { filter, label } = this.resolveBeyanTipiFilter(input?.beyanTipi || input?.tip || input?.vergiTuru);
-
-    if (!donem) {
-      // En son dönem = en son GERÇEKLEŞEN beyan (beyanTarihi) → string-sort tuzağı yok.
-      const son = await (this.prisma as any).beyanKaydi.findFirst({
-        where: {
-          tenantId: ctx.tenantId,
-          beyanTipi: { contains: filter },
-          tahakkukTutari: { not: null, gt: 0 },
-          ...(onlyActive ? { taxpayer: { isActive: true } } : {}),
-        },
-        orderBy: [{ beyanTarihi: 'desc' }, { createdAt: 'desc' }],
-        select: { donem: true },
-      }).catch(() => null);
-      donem = son?.donem || '';
-    }
-    if (!donem) return { error: `${label} tahakkuk verisi bulunamadı.` };
-
-    const where: any = { tenantId: ctx.tenantId, donem, beyanTipi: { contains: filter } };
-    where.tahakkukTutari = onlyPayable ? { not: null, gt: 0 } : { not: null };
-    if (onlyActive) where.taxpayer = { isActive: true };
-
-    const kayitlar = await (this.prisma as any).beyanKaydi.findMany({
-      where,
-      select: {
-        beyanTipi: true,
-        tahakkukTutari: true,
-        taxpayer: { select: { companyName: true, firstName: true, lastName: true } },
-      },
-    }).catch(() => []);
-
-    const byTaxpayer = new Map<string, { isim: string; toplam: number }>();
-    for (const k of kayitlar) {
-      const isim = (k.taxpayer?.companyName ||
-        `${k.taxpayer?.firstName || ''} ${k.taxpayer?.lastName || ''}`).trim() || 'Mükellef';
-      const tutar = this.toNum(k.tahakkukTutari);
-      const g = byTaxpayer.get(isim) || { isim, toplam: 0 };
-      g.toplam += tutar;
-      byTaxpayer.set(isim, g);
-    }
-    const liste = Array.from(byTaxpayer.values()).sort((a, b) => b.toplam - a.toplam);
-    const toplam = liste.reduce((s, r) => s + r.toplam, 0);
-
-    const satirlar = liste.slice(0, 60).map((r, i) => `${i + 1}. ${r.isim}: ${this.fmtTL(r.toplam)}`).join('\n');
-    const whatsappOzet = liste.length
-      ? `🧾 ${label.toLocaleUpperCase('tr-TR')} ÖDEMESİ ÇIKAN MÜKELLEFLER — ${donem}\n\n${satirlar}` +
-        `${liste.length > 60 ? `\n… ve ${liste.length - 60} mükellef daha.` : ''}` +
-        `\n\n💰 Toplam: ${this.fmtTL(toplam)} · ${liste.length} mükellef`
-      : `${donem} döneminde ${label} ödemesi çıkan mükellef yok.`;
-
+    const list = await computeTaxPayableList(this.prisma, {
+      tenantId: ctx.tenantId,
+      beyanTipi: input?.beyanTipi || input?.tip || input?.vergiTuru,
+      period: input?.period || input?.donem,
+      onlyActive: input?.onlyActive,
+      onlyPayable: input?.sadeceOdemeCikan,
+    });
     return {
-      vergiTuru: label,
-      donem,
-      sadeceOdemeCikan: onlyPayable,
-      mukellefSayisi: liste.length,
-      toplamTutar: toplam,
-      // Bot bunu AYNEN gönderebilir; owner olduğu için tutarlar paylaşılır.
-      whatsappOzet,
-      liste: liste.map((r) => ({ mukellef: r.isim, toplam: r.toplam })),
-      not: explicit
-        ? undefined
-        : `Dönem belirtilmedi; ${label} tahakkuku dolu EN SON dönem (${donem}) gösteriliyor. Dönemi geri SORMA.`,
+      vergiTuru: list.vergiTuru,
+      donem: list.donem,
+      mukellefSayisi: list.mukellefSayisi,
+      toplamTutar: list.toplamTutar,
+      whatsappOzet: list.whatsappOzet,
+      liste: list.liste,
+      not: list.donemDinamikSecildi
+        ? `Dönem belirtilmedi; ${list.vergiTuru} tahakkuku dolu EN SON dönem (${list.donem}) gösteriliyor. Dönemi geri SORMA.`
+        : undefined,
     };
   }
 
