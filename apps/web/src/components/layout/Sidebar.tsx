@@ -83,7 +83,7 @@ const navGroups = [
       { href: '/panel', label: 'Gösterge Paneli', icon: Gauge },
       { href: '/panel/mukellef-listesi', label: 'Mükellef Listesi', icon: UserRoundSearch },
       { href: '/panel/mukellefler', label: 'Aylık Takip Listesi', icon: ClipboardCheck },
-      { href: '/panel/mesajlar', label: 'Mesajlar', icon: MessageCircle },
+      { href: '/panel/mesajlar', label: 'WhatsApp Mesajlar', icon: MessageCircle },
       { href: '/panel/sablonlar', label: 'Mesaj Şablonları', icon: MessageCircle },
       { href: '/panel/bot-kalite', label: 'Bot Kalite', icon: ShieldCheck },
       { href: '/panel/is-yuku', label: 'İş Akışı', icon: Workflow },

@@ -628,7 +628,7 @@ export default function MesajlarPage() {
         {/* Üst başlık + arama */}
         <div className="px-5 py-4 flex items-center gap-2.5" style={{ borderBottom: '1px solid rgba(255,255,255,0.06)' }}>
           <MessageCircle size={22} style={{ color: GOLD }} />
-          <h1 className="text-[18px] font-semibold flex-1" style={{ color: '#fafaf9' }}>Mesajlar</h1>
+          <h1 className="text-[18px] font-semibold flex-1" style={{ color: '#fafaf9' }}>WhatsApp Mesajlar</h1>
           <span className="text-[13px] tabular-nums" style={{ color: 'rgba(250,250,249,0.62)' }}>
             {conversations.length} kişi
           </span>
