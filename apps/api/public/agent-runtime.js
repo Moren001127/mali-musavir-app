@@ -12,7 +12,7 @@
   // v1.42.2 (2026-06-16): Ajan kendini yenilerken (delete __morenAgent) eski async
   // döngü "Cannot read 'stopRequested' of undefined/null" ile ÇÖKÜYORDU → yetim
   // döngü artık nesne yoksa güvenle durur (stopRequested kontrollerine null-guard).
-  const AGENT_VERSION = '1.43.3';
+  const AGENT_VERSION = '1.44.0';
   const AGENT_INSTANCE_ID = 'mai_' + Date.now().toString(36) + '_' + Math.random().toString(36).slice(2, 8);
 
   // === VERSION-AWARE RELOAD ===
@@ -1772,13 +1772,69 @@
                 throw new Error('"Yükle" tıklandı ama yükleme başlamadı (dialog açık kaldı). Luca ekranında "Yükle"ye elle basıp tamamlayabilir ya da tekrar deneyebilirsin.');
               }
 
-              // 6) Yükleme tetiklendi. Deftere yazan "Fiş Kes" (fiş bölme) adımı KULLANICIDA. Raporla.
+              // 6) Yükleme tetiklendi → İşlem Takip uyarısını KAPAT → fişi SEÇ → "Fiş Kes" ile
+              //    GERÇEK fişi oluştur. (Kullanıcı süreci gösterdi: Yükle → İşlem Takip "Kapat" →
+              //    Fiş No yanı/Tümünü Seç → sağ-alt "Fiş Kes".) Metinli butonlar: DOM tıkla, tutmazsa native.
+              const robustClick = async (label, opts = {}) => {
+                const want = String(label).toLocaleLowerCase('tr-TR');
+                for (const doc of lucaDocuments()) {
+                  try {
+                    for (const el of doc.querySelectorAll('input[type=button],input[type=submit],button,a')) {
+                      const t = ((el.value || el.innerText || el.textContent) || '').trim().toLocaleLowerCase('tr-TR');
+                      if (t === want && (el.offsetParent !== null || el.tagName === 'INPUT')) {
+                        try { el.scrollIntoView({ block: 'center' }); } catch {}
+                        el.click(); await sleep(opts.settleMs || 800); return 'dom';
+                      }
+                    }
+                  } catch {}
+                }
+                if (await nativeClickLucaText(label, { exact: true, settleMs: opts.settleMs || 1200, timeoutMs: 5000 })) return 'native';
+                return null;
+              };
+              const islemTakipAcik = () => {
+                for (const doc of lucaDocuments()) {
+                  try { const t = doc.body ? doc.body.textContent : ''; if (/i[şs]lem\s+takip/i.test(t) && /excelde\s+\d+\s+adet|fi[şs]\s+ekran/i.test(t)) return true; } catch {}
+                }
+                return false;
+              };
+              await sleep(1500);
+              // 6a) İşlem Takip uyarısını kapat
+              if (islemTakipAcik()) {
+                await robustClick('Kapat', { settleMs: 800 });
+                for (let i = 0; i < 16 && islemTakipAcik(); i++) { await sleep(300); }
+                await log('✓ İşlem Takip uyarısı kapatıldı');
+              }
+              await sleep(900);
+              // 6b) Fişi SEÇ — alt çubuk "Tümünü Seç"; tutmazsa Fiş No yanındaki ilk checkbox
+              let secim = await robustClick('Tümünü Seç', { settleMs: 700 });
+              if (!secim) {
+                for (const doc of lucaDocuments()) {
+                  try { const cb = doc.querySelector('input[type=checkbox]'); if (cb && !cb.checked) { cb.click(); secim = 'cb'; break; } } catch {}
+                }
+              }
+              await log(secim ? '✓ Fiş(ler) seçildi' : '⚠ Fiş seçimi yapılamadı (checkbox bulunamadı)');
+              await sleep(700);
+              // 6c) "Fiş Kes" (sağ-alt) → deftere yazan GERÇEK fişi oluşturur
+              const kes = await robustClick('Fiş Kes', { settleMs: 2000 });
+              if (!kes) throw new Error('"Fiş Kes" butonu bulunamadı (ekran beklenenden farklı; fiş oluşturulmadı).');
+              await log('✂ "Fiş Kes" tıklandı — fiş oluşturuluyor');
+              await sleep(3000);
+              // 6d) Onay popup'ı çıkarsa (Evet/Tamam) onayla; sonra başarı doğrula (best-effort)
+              await robustClick('Evet', { settleMs: 1200 });
+              await robustClick('Tamam', { settleMs: 1200 });
+              await sleep(1500);
+              let fisBasari = false;
+              for (const doc of lucaDocuments()) {
+                try { const t = doc.body ? doc.body.textContent : ''; if (/(fi[şs].*olu[şs]turuldu|kaydedildi|ba[şs]ar[ıi]l[ıi]|i[şs]lem\s+tamamland)/i.test(t)) { fisBasari = true; break; } } catch {}
+              }
               await fetch(API + `/agent/luca/jobs/${job.id}/done`, {
                 method: 'POST', headers: { 'Content-Type': 'application/json', 'X-Agent-Token': TOKEN },
                 body: JSON.stringify({ recordCount: p.totalCount || 0 }),
               }).catch(() => {});
-              setStatus('Luca: fatura Excel yüklendi (Fiş Kes kullanıcıda)');
-              await log('✅ Excel Luca\'ya yüklendi. Luca\'da satırları kontrol edip "Fiş Kes" ile fişi oluşturun (fiş bölme sizde).');
+              setStatus(fisBasari ? 'Luca: fiş OLUŞTURULDU (Fiş Kes tamam)' : 'Luca: Fiş Kes tıklandı');
+              await log(fisBasari
+                ? '✅ Fiş Luca\'da OLUŞTURULDU (Yükle → kapat → seç → Fiş Kes tamam).'
+                : '✅ Excel yüklendi + "Fiş Kes" tıklandı. Luca\'da Fiş Listesi\'nden teyit et (onay gerekmiş olabilir).');
             } catch (e) {
               await log(`✗ INVOICE_POST hata: ${(e && e.message) || e}`);
               await fetch(API + `/agent/luca/jobs/${job.id}/fail`, {
