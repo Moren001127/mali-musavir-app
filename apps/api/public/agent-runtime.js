@@ -12,7 +12,7 @@
   // v1.42.2 (2026-06-16): Ajan kendini yenilerken (delete __morenAgent) eski async
   // döngü "Cannot read 'stopRequested' of undefined/null" ile ÇÖKÜYORDU → yetim
   // döngü artık nesne yoksa güvenle durur (stopRequested kontrollerine null-guard).
-  const AGENT_VERSION = '1.43.2';
+  const AGENT_VERSION = '1.43.3';
   const AGENT_INSTANCE_ID = 'mai_' + Date.now().toString(36) + '_' + Math.random().toString(36).slice(2, 8);
 
   // === VERSION-AWARE RELOAD ===
@@ -1694,6 +1694,19 @@
                   try { const el = doc.querySelector('input[type="file"]'); if (el) return el; } catch {}
                 }
                 return null;
+              };
+              // YEREL native-tık: global nativeClickLucaText BAŞKA scope'ta tanımlı (bu blokta
+              // "not defined" hatası veriyordu) → bridge'i (__morenNativeClickText) doğrudan çağır.
+              const nativeClickLucaText = async (text, opts = {}) => {
+                try {
+                  let bridge = null;
+                  try { bridge = window.__morenNativeClickText; } catch {}
+                  if (!bridge) { try { bridge = window.top && window.top.__morenNativeClickText; } catch {} }
+                  if (typeof bridge !== 'function') return false;
+                  const res = await bridge({ text, exact: !!opts.exact, hoverOnly: !!opts.hoverOnly, timeoutMs: opts.timeoutMs || opts.maxMs || 6000 });
+                  if (res && res.ok) { await sleep(opts.settleMs || 800); return true; }
+                } catch {}
+                return false;
               };
               let input = findFileInput();
               if (!input) {
