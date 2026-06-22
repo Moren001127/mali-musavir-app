@@ -3609,7 +3609,7 @@ export class FaturaMuhasebelestirmeService implements OnModuleInit, OnModuleDest
   // ekranina yukler, tek yevmiye fisi olusur. Kullanici sonra Luca'da boler.
   async batchPostToLuca(
     tenantId: string,
-    body: { taxpayerId: string; period?: string; documentIds?: string[] },
+    body: { taxpayerId: string; period?: string; documentIds?: string[]; direction?: 'ALIS' | 'SATIS' },
     userId?: string,
   ) {
     if (!body?.taxpayerId) {
@@ -3630,6 +3630,11 @@ export class FaturaMuhasebelestirmeService implements OnModuleInit, OnModuleDest
       status: 'APPROVED',
       lucaStatus: { in: ['QUEUED', 'FAILED', 'NOT_STARTED'] },
     };
+    // YÖN filtresi: Aktarım ekranında "Alış'ı aktar" / "Satış'ı aktar" ayrı butonlar → yalnız o
+    // yöndeki belgeleri tek fişe çevir (zaten yön×dönem gruplanıyor; burası kullanıcı seçimini kısıtlar).
+    if (body.direction === 'ALIS' || body.direction === 'SATIS') {
+      where.invoiceKind = body.direction;
+    }
     if (Array.isArray(body.documentIds) && body.documentIds.length > 0) {
       where.id = { in: body.documentIds };
     } else if (body.period) {

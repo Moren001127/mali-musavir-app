@@ -491,7 +491,7 @@ const TITLES: Record<string, string> = {
   satis: 'Belgeler · <b>Satış Faturaları</b>',
   kurallar: 'Kurulum · <b>Eşleştirme Kuralları</b>',
   muhasebe: 'Belgeler · <b>Muhasebeleştir &amp; Aktar</b>',
-  aktarilanlar: 'Belgeler · <b>Aktarılanlar</b>',
+  aktarilanlar: 'Belgeler · <b>Aktarım</b>',
   entegrator: 'Kurulum · <b>Entegratörler</b>',
   kdv: 'Kurulum · <b>KDV Raporu</b>',
   ayarlar: 'Kurulum · <b>Hesap Planı</b>',
@@ -579,7 +579,7 @@ export default function FaturaMerkeziPage() {
       <div className={`nsub${screen === 'faturalar' ? ' on' : ''}`} onClick={() => go('faturalar')}><span className="d" /> Alış Faturaları</div>
       <div className={`nsub${screen === 'satis' ? ' on' : ''}`} onClick={() => go('satis')}><span className="d" /> Satış Faturaları</div>
       <div className={`nitem${screen === 'muhasebe' ? ' on' : ''}`} onClick={() => go('muhasebe')}><Ico html={I.ledger} /> Muhasebeleştir {badge(sum.pending)}</div>
-      <div className={`nitem${screen === 'aktarilanlar' ? ' on' : ''}`} onClick={() => go('aktarilanlar')}><Ico html={I.check} /> Aktarılanlar {badge(sum.posted)}</div>
+      <div className={`nitem${screen === 'aktarilanlar' ? ' on' : ''}`} onClick={() => go('aktarilanlar')}><Ico html={I.check} /> Aktarım {badge(sum.posted)}</div>
 
       <div className="ncap">Kurulum</div>
       <div className={`nitem${screen === 'kurallar' ? ' on' : ''}`} onClick={() => go('kurallar')}><Ico html={I.rules} /> Eşleştirme Kuralları</div>
@@ -1603,7 +1603,7 @@ function ScreenMuhasebe({ taxpayerId, period, isIsletme = false, taxpayerNace = 
           <button className="btn sm primary" disabled={bulkMut.isPending || hazir.length === 0} onClick={() => bulkMut.mutate()}>
             <Ico html={I.checkSm} size={13} /> {bulkMut.isPending ? 'Onaylanıyor…' : `${hazir.length} belgeyi toplu onayla`}
           </button>
-          <span className="amini">Luca'ya aktarım → <b>Aktarılanlar</b> ekranından</span>
+          <span className="amini">Luca'ya aktarım → <b>Aktarım</b> ekranından</span>
         </div>
       </div>
     </section>
@@ -1627,110 +1627,126 @@ function ScreenAktarilanlar({ taxpayerId, period }: { taxpayerId: string; period
     onSuccess: () => { toast.success('Onay geri alındı — Muhasebeleştir\'de düzenleyebilirsin'); qc.invalidateQueries({ queryKey: ['fm2'] }); },
     onError: (e: any) => toast.error('Geri alınamadı: ' + (e?.response?.data?.message || e?.message || 'hata')),
   });
-  // Onaylı ama Luca'ya henüz aktarılmamış belgeler — alış/satış ayrı fiş olarak aktarılır.
-  const aktarilabilir = all.filter((d) => d.status === 'APPROVED' && !['POSTED', 'POSTING', 'QUEUED'].includes(d.lucaStatus));
-  const bekAlis = aktarilabilir.filter((d) => (d.invoiceKind || 'ALIS') !== 'SATIS').length;
-  const bekSatis = aktarilabilir.filter((d) => (d.invoiceKind || 'ALIS') === 'SATIS').length;
+  // YÖN bazlı toplu aktarım: "Alış'ı aktar" / "Satış'ı aktar" → o yönü TEK fişe çevirir.
+  const [aktarYon, setAktarYon] = useState<'' | 'ALIS' | 'SATIS'>('');
   const batchMut = useMutation({
-    mutationFn: () => api.post('/fatura-muhasebelestirme/batch-post-to-luca', { taxpayerId, period }),
+    mutationFn: (direction: 'ALIS' | 'SATIS') => api.post('/fatura-muhasebelestirme/batch-post-to-luca', { taxpayerId, period, direction }),
     onSuccess: (r: any) => {
       const d = r?.data || {};
-      toast.success(`Luca'ya aktarım başlatıldı · ${d.documentCount ?? 0} belge${d.skippedInvalid ? ` · ${d.skippedInvalid} veri hatası nedeniyle hariç` : ''}. Ajan açıkken işlenir (alış/satış ayrı fiş).`);
+      const yon = aktarYon === 'SATIS' ? 'Satış' : 'Alış';
+      toast.success(`${yon} TEK fiş olarak Luca'ya gönderildi · ${d.documentCount ?? 0} belge${d.skippedInvalid ? ` · ${d.skippedInvalid} veri hatası nedeniyle hariç` : ''}. Ajan açıkken işlenir.`);
+      setAktarYon('');
       qc.invalidateQueries({ queryKey: ['fm2'] });
     },
-    onError: (e: any) => toast.error("Luca'ya aktarılamadı: " + (e?.response?.data?.message || e?.message || 'hata')),
+    onError: (e: any) => { setAktarYon(''); toast.error("Luca'ya aktarılamadı: " + (e?.response?.data?.message || e?.message || 'hata')); },
   });
   const [detayId, setDetayId] = useState<string>('');
+  // ONAY = "Aktarıma hazır" (tek tek Luca'ya GİTMEZ). Gerçek aktarım yön butonuyla toplu olur.
   const lucaPill = (d: any) => {
     const s = d.lucaStatus;
-    if (s === 'POSTED') return <span className="pill ok">Luca'da</span>;
+    if (s === 'POSTED') return <span className="pill ok">Aktarıldı ✓</span>;
     if (s === 'POSTING') return <span className="pill warn">Aktarılıyor…</span>;
-    if (s === 'QUEUED') return <span className="pill warn">Kuyrukta</span>;
     if (s === 'FAILED' || s === 'ERROR') return <span className="pill miss" title={d.lucaErrorMessage || ''}>Hata</span>;
-    return <span className="pill n">Onaylı</span>;
+    return <span className="pill n">Aktarıma hazır</span>;
   };
-
-  return (
-    <section className="screen">
-      <div className="h2">Aktarılanlar — Luca'ya Aktarım</div>
-      <div className="sub">Onaylı fişleri {period} döneminde Luca'ya aktar (alış/satış ayrı fiş olarak gider). Üstten dönem seçilir.</div>
-      <div className="aktarbar">
-        <div className="akbil">{aktarilabilir.length > 0
-          ? <><b>{aktarilabilir.length}</b> onaylı belge aktarıma hazır · <span className="pill alis">Alış {bekAlis}</span> <span className="pill satis">Satış {bekSatis}</span></>
-          : <>Aktarılacak onaylı belge yok. Muhasebeleştir'de <b>Kaydet ve Onayla</b> yap; sonra burada toplu Luca'ya aktar (alış/satış ayrı fiş).</>}</div>
-        <div className="sp" />
-        <button className="btn primary" disabled={batchMut.isPending || aktarilabilir.length === 0} onClick={() => batchMut.mutate()}>
-          <Ico html={I.send} size={14} /> {batchMut.isPending ? 'Aktarılıyor…' : `Luca'ya Aktar${aktarilabilir.length ? ` (${aktarilabilir.length})` : ''}`}
-        </button>
-      </div>
-      <div className="card">
-        <div className="ch"><h3>{docsQ.isLoading ? 'Yükleniyor…' : `${docs.length} belge`}</h3></div>
+  const grpLabel = (g: string) => g === 'matrah' ? 'Matrah' : g === 'vergi' ? 'KDV' : g === 'cari' ? 'Cari' : g === 'tevkifat' ? 'Tevkifat' : (g || '—');
+  const renderRow = (d: any) => {
+    const sat = (d.invoiceKind || 'ALIS') === 'SATIS';
+    const firma = (sat ? d.customerName : d.vendorName) || '—';
+    const code = (() => { const ls = Array.isArray(d.lines) ? d.lines : []; return (ls.find((l: any) => String(l.group) === 'matrah' && l.accountCode) || ls.find((l: any) => l.accountCode))?.accountCode || ''; })();
+    const acik = detayId === d.id;
+    const lines: any[] = Array.isArray(d.lines) ? d.lines : [];
+    return (
+      <Fragment key={d.id}>
+        <tr className={acik ? 'detay-on' : ''}>
+          <td>{fmtDate(d.faturaTarihi || d.createdAt)}</td>
+          <td>{d.belgeNo || '—'}</td>
+          <td className="firm"><b>{firma}</b></td>
+          <td className="num">{fmtMoney(d.totalAmount)}</td>
+          <td>{code ? <span className="hk">{code}</span> : <span className="hk no">—</span>}</td>
+          <td>{lucaPill(d)}</td>
+          <td className="actcol" style={{ display: 'flex', gap: 6, alignItems: 'center' }}>
+            {(d.lucaStatus === 'FAILED' || d.lucaStatus === 'ERROR') && (
+              <button className="btn ghost sm" disabled={retryMut.isPending} onClick={() => retryMut.mutate(d.id)} title={d.lucaErrorMessage || "Luca'ya tekrar gönder"}><Ico html={I.sync} size={12} /></button>
+            )}
+            {d.status === 'APPROVED' && !['POSTED', 'POSTING'].includes(d.lucaStatus) && (
+              <button className="btn ghost sm" disabled={reopenMut.isPending} onClick={() => { if (confirm('Onayı geri al? Belge tekrar düzenlenebilir olacak.')) reopenMut.mutate(d.id); }} title="Onayı geri al (Luca'ya gitmemişse)">↩</button>
+            )}
+            <button className="btn ghost sm" onClick={() => setDetayId(acik ? '' : d.id)} title={acik ? 'Fiş detayını gizle' : 'Fiş (yevmiye) detayını göster'}>{acik ? '▾' : '▸'}</button>
+            <span className="eye" onClick={() => openDocFile(d.id)}><Ico html={I.eye} size={15} /></span>
+          </td>
+        </tr>
+        {acik && (
+          <tr className="detayrow">
+            <td colSpan={7}>
+              <div className="detaybox">
+                {lines.length ? (
+                  <table className="detaytbl">
+                    <thead><tr><th>Tür</th><th>Hesap Kodu</th><th>Açıklama</th><th className="num">Borç</th><th className="num">Alacak</th></tr></thead>
+                    <tbody>
+                      {lines.map((l: any, i: number) => (
+                        <tr key={l.id || i}>
+                          <td>{grpLabel(String(l.group || ''))}{l.rate ? ` %${String(l.rate).replace(/[^0-9.,]/g, '')}` : ''}</td>
+                          <td>{l.accountCode ? <span className="hk">{l.accountCode}</span> : <span className="hk no">eksik</span>}</td>
+                          <td>{l.description || '—'}</td>
+                          <td className="num">{Number(l.debit) ? fmtMoney(l.debit) : ''}</td>
+                          <td className="num">{Number(l.credit) ? fmtMoney(l.credit) : ''}</td>
+                        </tr>
+                      ))}
+                    </tbody>
+                  </table>
+                ) : <div className="empty" style={{ padding: 10 }}>Bu belgenin fiş satırı yok.</div>}
+              </div>
+            </td>
+          </tr>
+        )}
+      </Fragment>
+    );
+  };
+  const renderSection = (yon: 'ALIS' | 'SATIS') => {
+    const isSat = yon === 'SATIS';
+    const dd = docs.filter((d) => ((d.invoiceKind || 'ALIS') === 'SATIS') === isSat);
+    const hazir = dd.filter((d) => d.status === 'APPROVED' && !['POSTED', 'POSTING'].includes(d.lucaStatus));
+    const toplam = hazir.reduce((s, d) => s + (Number(d.totalAmount) || 0), 0);
+    const aktarildi = dd.filter((d) => d.lucaStatus === 'POSTED').length;
+    const label = isSat ? 'Satış' : 'Alış';
+    const busy = batchMut.isPending && aktarYon === yon;
+    return (
+      <div className="card" key={yon}>
+        <div className="aktarbar">
+          <div className="akbil">
+            <span className={`pill ${isSat ? 'satis' : 'alis'}`}>{label} Faturaları</span>{' '}
+            {hazir.length > 0
+              ? <><b>{hazir.length}</b> belge aktarıma hazır · toplam <b>{fmtMoney(toplam)} ₺</b>{aktarildi ? ` · ${aktarildi} aktarıldı` : ''}</>
+              : (aktarildi ? <>{aktarildi} belge aktarıldı · yeni hazır yok</> : <>Aktarıma hazır {label.toLowerCase()} belge yok</>)}
+          </div>
+          <div className="sp" />
+          <button className="btn primary" disabled={batchMut.isPending || hazir.length === 0} onClick={() => { setAktarYon(yon); batchMut.mutate(yon); }}>
+            <Ico html={I.send} size={14} /> {busy ? 'Aktarılıyor…' : `${label}'ı tek fiş olarak aktar${hazir.length ? ` (${hazir.length})` : ''}`}
+          </button>
+        </div>
         <div className="twrap">
           <table>
-            <thead><tr><th>Tarih</th><th>Fatura No</th><th>Firma</th><th>Tip</th><th className="num">Tutar</th><th>Hesap Kodu</th><th>Luca Durumu</th><th className="actcol" style={{ width: 40 }} /></tr></thead>
+            <thead><tr><th>Tarih</th><th>Fatura No</th><th>Firma</th><th className="num">Tutar</th><th>Hesap Kodu</th><th>Durum</th><th className="actcol" style={{ width: 40 }} /></tr></thead>
             <tbody>
-              {docs.map((d) => {
-                const sat = (d.invoiceKind || 'ALIS') === 'SATIS';
-                const firma = (sat ? d.customerName : d.vendorName) || '—';
-                const code = (() => { const ls = Array.isArray(d.lines) ? d.lines : []; return (ls.find((l: any) => String(l.group) === 'matrah' && l.accountCode) || ls.find((l: any) => l.accountCode))?.accountCode || ''; })();
-                const acik = detayId === d.id;
-                const lines: any[] = Array.isArray(d.lines) ? d.lines : [];
-                const grpLabel = (g: string) => g === 'matrah' ? 'Matrah' : g === 'vergi' ? 'KDV' : g === 'cari' ? 'Cari' : (g || '—');
-                return (
-                  <Fragment key={d.id}>
-                  <tr className={acik ? 'detay-on' : ''}>
-                    <td>{fmtDate(d.faturaTarihi || d.createdAt)}</td>
-                    <td>{d.belgeNo || '—'}</td>
-                    <td className="firm"><b>{firma}</b></td>
-                    <td><span className={`pill ${sat ? 'satis' : 'alis'}`}>{sat ? 'Satış' : 'Alış'}</span></td>
-                    <td className="num">{fmtMoney(d.totalAmount)}</td>
-                    <td>{code ? <span className="hk">{code}</span> : <span className="hk no">—</span>}</td>
-                    <td>{lucaPill(d)}</td>
-                    <td className="actcol" style={{ display: 'flex', gap: 6, alignItems: 'center' }}>
-                      {(d.lucaStatus === 'FAILED' || d.lucaStatus === 'ERROR') && (
-                        <button className="btn ghost sm" disabled={retryMut.isPending} onClick={() => retryMut.mutate(d.id)} title={d.lucaErrorMessage || "Luca'ya tekrar gönder"}><Ico html={I.sync} size={12} /></button>
-                      )}
-                      {d.status === 'APPROVED' && !['POSTED', 'POSTING'].includes(d.lucaStatus) && (
-                        <button className="btn ghost sm" disabled={reopenMut.isPending} onClick={() => { if (confirm('Onayı geri al? Belge tekrar düzenlenebilir olacak.')) reopenMut.mutate(d.id); }} title="Onayı geri al (Luca'ya gitmemişse)">↩</button>
-                      )}
-                      <button className="btn ghost sm" onClick={() => setDetayId(acik ? '' : d.id)} title={acik ? 'Fiş detayını gizle' : 'Fiş (yevmiye) detayını göster'}>{acik ? '▾' : '▸'}</button>
-                      <span className="eye" onClick={() => openDocFile(d.id)}><Ico html={I.eye} size={15} /></span>
-                    </td>
-                  </tr>
-                  {acik && (
-                    <tr className="detayrow">
-                      <td colSpan={8}>
-                        <div className="detaybox">
-                          {lines.length ? (
-                            <table className="detaytbl">
-                              <thead><tr><th>Tür</th><th>Hesap Kodu</th><th>Açıklama</th><th className="num">Borç</th><th className="num">Alacak</th></tr></thead>
-                              <tbody>
-                                {lines.map((l: any, i: number) => (
-                                  <tr key={l.id || i}>
-                                    <td>{grpLabel(String(l.group || ''))}{l.rate ? ` %${String(l.rate).replace(/[^0-9.,]/g, '')}` : ''}</td>
-                                    <td>{l.accountCode ? <span className="hk">{l.accountCode}</span> : <span className="hk no">eksik</span>}</td>
-                                    <td>{l.description || '—'}</td>
-                                    <td className="num">{Number(l.debit) ? fmtMoney(l.debit) : ''}</td>
-                                    <td className="num">{Number(l.credit) ? fmtMoney(l.credit) : ''}</td>
-                                  </tr>
-                                ))}
-                              </tbody>
-                            </table>
-                          ) : <div className="empty" style={{ padding: 10 }}>Bu belgenin fiş satırı yok.</div>}
-                        </div>
-                      </td>
-                    </tr>
-                  )}
-                  </Fragment>
-                );
-              })}
-              {!docsQ.isLoading && docs.length === 0 && (
-                <tr><td colSpan={8}><div className="empty">Bu dönemde aktarılan belge yok.</div></td></tr>
+              {dd.map(renderRow)}
+              {dd.length === 0 && (
+                <tr><td colSpan={7}><div className="empty">Bu dönemde {label.toLowerCase()} belge yok.</div></td></tr>
               )}
             </tbody>
           </table>
         </div>
       </div>
+    );
+  };
+
+  return (
+    <section className="screen">
+      <div className="h2">Aktarım — Luca'ya Toplu Fiş</div>
+      <div className="sub">Onaylanan faturalar burada toplanır. <b>Alış</b> ve <b>Satış</b> AYRI birer <b>tek toplu fiş</b> olarak Luca'ya aktarılır ({period}). Onaylamak tek tek Luca'ya GÖNDERMEZ — buradan yön yön toplu aktarırsın.</div>
+      {docsQ.isLoading
+        ? <div className="card"><div className="ch"><h3>Yükleniyor…</h3></div></div>
+        : <>{renderSection('ALIS')}{renderSection('SATIS')}</>}
     </section>
   );
 }
