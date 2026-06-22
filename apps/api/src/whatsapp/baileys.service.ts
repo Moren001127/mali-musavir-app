@@ -165,6 +165,8 @@ export class BaileysService implements OnModuleDestroy {
    * eski korunur (kaybolmaz). 463/yorgun bağlantıda avatarların "kaybolması" bitti.
    */
   private readonly avatarCache = new Map<string, { url: string | null; at: number }>();
+  // Durum (about/hakkında) metni cache'i — avatar ile aynı mantık: TTL + zaman sınırı + zarif düşüş.
+  private readonly statusCache = new Map<string, { text: string | null; setAt: number | null; at: number }>();
 
   private rememberSend(tenantId: string, jid: string, payload: any, id?: string | null, message?: any) {
     if (!id) return;
@@ -972,6 +974,70 @@ export class BaileysService implements OnModuleDestroy {
       return this.avatarCache.get(key)?.url ?? null;
     } catch {
       return this.avatarCache.get(key)?.url ?? null;
+    }
+  }
+
+  /**
+   * WhatsApp "Durum" (about/hakkında) metnini döndürür — profilePictureUrl ile birebir
+   * aynı dayanıklılık: taze cache → anında; bayat → eskiyi ver + arka planda tazele;
+   * bağlı değil → eldekini koru. Hiçbir koşulda ekran bekletmez/boşaltmaz.
+   */
+  async statusFor(
+    tenantId: string,
+    phoneOrJid?: string | null,
+  ): Promise<{ text: string | null; setAt: string | null } | null> {
+    if (!phoneOrJid) return null;
+    const key = `${tenantId}:${this.jidDigits(phoneOrJid) || String(phoneOrJid)}`;
+    const cached = this.statusCache.get(key);
+    const ttlMs = Number(process.env.WHATSAPP_STATUS_TTL_MS || 6 * 60 * 60_000) || 6 * 60 * 60_000;
+    const isFresh = cached && (Date.now() - cached.at) < ttlMs;
+    const shape = (c?: { text: string | null; setAt: number | null }) =>
+      c ? { text: c.text, setAt: c.setAt ? new Date(c.setAt).toISOString() : null } : null;
+    if (cached && isFresh) return shape(cached);
+    const session = this.sessions.get(tenantId);
+    if (!session?.connected || !session.sock) return shape(cached ?? undefined);
+    if (cached) {
+      void this.refreshStatus(tenantId, key, phoneOrJid);
+      return shape(cached);
+    }
+    await this.refreshStatus(tenantId, key, phoneOrJid);
+    return shape(this.statusCache.get(key) ?? undefined);
+  }
+
+  /** Durum metnini WhatsApp'tan zaman sınırlı çeker + cache'i günceller. */
+  private async refreshStatus(tenantId: string, key: string, phoneOrJid?: string | null): Promise<void> {
+    const session = this.sessions.get(tenantId);
+    if (!session?.connected || !session.sock || !phoneOrJid) return;
+    try {
+      const timeoutMs = Number(process.env.WHATSAPP_STATUS_TIMEOUT_MS || 4000) || 4000;
+      const res = await Promise.race<any>([
+        session.sock.fetchStatus(this.toJid(phoneOrJid)).catch(() => null),
+        new Promise((resolve) => setTimeout(() => resolve(null), timeoutMs)),
+      ]);
+      // Baileys sürümüne göre {status, setAt} ya da [{status,setAt}] dönebilir.
+      const node = Array.isArray(res) ? res[0]?.status ?? res[0] : res?.status ?? res;
+      const text: string | null = (typeof node?.status === 'string' ? node.status : typeof node === 'string' ? node : null) || null;
+      const setAtRaw = node?.setAt ?? res?.setAt ?? null;
+      const setAt = setAtRaw ? new Date(setAtRaw).getTime() : null;
+      const prev = this.statusCache.get(key);
+      if (text) {
+        this.statusCache.set(key, { text, setAt: setAt || prev?.setAt || null, at: Date.now() });
+      } else {
+        // Çekilemedi → eskiyi koru ama ~5 dk sonra tekrar dene (TTL boyunca null'da kilitlenme).
+        const ttlMs = Number(process.env.WHATSAPP_STATUS_TTL_MS || 6 * 60 * 60_000) || 6 * 60 * 60_000;
+        this.statusCache.set(key, { text: prev?.text ?? null, setAt: prev?.setAt ?? null, at: Date.now() - ttlMs + 5 * 60_000 });
+      }
+      if (this.statusCache.size > 3000) {
+        const cutoff = Date.now() - 24 * 60 * 60_000;
+        for (const [k, v] of this.statusCache) if (v.at < cutoff) this.statusCache.delete(k);
+        while (this.statusCache.size > 3000) {
+          const oldest = this.statusCache.keys().next().value;
+          if (oldest === undefined) break;
+          this.statusCache.delete(oldest);
+        }
+      }
+    } catch {
+      /* eldeki cache korunur */
     }
   }
 

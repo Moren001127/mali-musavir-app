@@ -85,7 +85,7 @@ interface ChatMessage {
 
 interface ChatData {
   conversationId?: string;
-  taxpayer: { id: string; name: string; phone: string | null; taxNumber: string; unknownContact?: boolean; avatarUrl?: string | null };
+  taxpayer: { id: string; name: string; phone: string | null; taxNumber: string; unknownContact?: boolean; avatarUrl?: string | null; about?: string | null; aboutSetAt?: string | null };
   messages: ChatMessage[];
   windowOpen: boolean;
   windowExpiresAt: string | null;
@@ -214,12 +214,31 @@ function isLivePresence(p?: ChatPresence | null): boolean {
   return p?.status === 'online' || p?.status === 'typing' || p?.status === 'recording';
 }
 
+// Son görülme zamanını WhatsApp tarzı biçimler: "bugün 14:32 / dün 09:05 / 12 Haziran"
+function formatLastSeen(iso?: string | null): string | null {
+  if (!iso) return null;
+  const d = new Date(iso);
+  if (isNaN(d.getTime())) return null;
+  const now = new Date();
+  const saat = `${String(d.getHours()).padStart(2, '0')}:${String(d.getMinutes()).padStart(2, '0')}`;
+  const gun = (x: Date) => new Date(x.getFullYear(), x.getMonth(), x.getDate()).getTime();
+  const farkGun = Math.round((gun(now) - gun(d)) / 86400000);
+  if (farkGun <= 0) return `bugün ${saat}`;
+  if (farkGun === 1) return `dün ${saat}`;
+  const aylar = ['Ocak', 'Şubat', 'Mart', 'Nisan', 'Mayıs', 'Haziran', 'Temmuz', 'Ağustos', 'Eylül', 'Ekim', 'Kasım', 'Aralık'];
+  return `${d.getDate()} ${aylar[d.getMonth()]} ${saat}`;
+}
+
 function presenceText(p?: ChatPresence | null): string | null {
   if (!p || p.status === 'unknown') return null;
   if (p.status === 'online') return 'çevrimiçi';
   if (p.status === 'typing') return 'yazıyor...';
   if (p.status === 'recording') return 'ses kaydediyor...';
   if (p.status === 'paused') return 'az önce aktifti';
+  if (p.status === 'offline') {
+    const ls = formatLastSeen(p.lastSeenAt);
+    return ls ? `son görülme ${ls}` : null;
+  }
   return null;
 }
 
@@ -1105,6 +1124,91 @@ export default function MesajlarPage() {
                 </button>
               )}
             </div>
+
+            {/* Durum (WhatsApp about/hakkında) */}
+            {chatData.taxpayer.about && (
+              <div className="px-5 py-4" style={{ borderTop: '1px solid rgba(255,255,255,0.08)' }}>
+                <div className="mb-2 text-[11px] font-semibold uppercase tracking-wider" style={{ color: 'rgba(250,250,249,0.42)' }}>
+                  Durum
+                </div>
+                <div className="text-[13.5px] leading-relaxed" style={{ color: '#fafaf9' }}>
+                  {chatData.taxpayer.about}
+                </div>
+                {formatLastSeen(chatData.taxpayer.aboutSetAt) && (
+                  <div className="mt-1 text-[11px]" style={{ color: 'rgba(250,250,249,0.4)' }}>
+                    {formatLastSeen(chatData.taxpayer.aboutSetAt)}
+                  </div>
+                )}
+              </div>
+            )}
+
+            {/* Çevrimiçi / son görülme */}
+            {presenceText(chatData.presence) && (
+              <div className="px-5 py-3 flex items-center justify-between gap-3" style={{ borderTop: '1px solid rgba(255,255,255,0.08)' }}>
+                <span className="text-[13px]" style={{ color: 'rgba(250,250,249,0.56)' }}>Durum bilgisi</span>
+                <span
+                  className="text-[13px] font-medium"
+                  style={{ color: isLivePresence(chatData.presence) ? '#86efac' : 'rgba(250,250,249,0.78)' }}
+                >
+                  {presenceText(chatData.presence)}
+                </span>
+              </div>
+            )}
+
+            {/* Ortak medya, bağlantılar ve belgeler */}
+            {(() => {
+              const docs = chatData.messages
+                .flatMap((m) => (m.documents || []).map((d) => ({ ...d })))
+                .filter((d) => d.url);
+              if (!docs.length) return null;
+              const images = docs.filter((d) => isImageDoc(d));
+              const files = docs.filter((d) => !isImageDoc(d));
+              return (
+                <div className="px-5 py-4" style={{ borderTop: '1px solid rgba(255,255,255,0.08)' }}>
+                  <div className="mb-3 flex items-center justify-between">
+                    <span className="text-[11px] font-semibold uppercase tracking-wider" style={{ color: 'rgba(250,250,249,0.42)' }}>
+                      Medya, bağlantılar ve belgeler
+                    </span>
+                    <span className="text-[12px]" style={{ color: 'rgba(250,250,249,0.5)' }}>{docs.length}</span>
+                  </div>
+                  {images.length > 0 && (
+                    <div className="grid grid-cols-3 gap-1.5">
+                      {images.slice(0, 9).map((d) => (
+                        <a
+                          key={d.id}
+                          href={d.url || '#'}
+                          target="_blank"
+                          rel="noreferrer"
+                          className="aspect-square overflow-hidden rounded-[8px]"
+                          style={{ background: 'rgba(255,255,255,0.05)' }}
+                          title={d.title}
+                        >
+                          <img src={d.url || ''} alt={d.title} className="h-full w-full object-cover" />
+                        </a>
+                      ))}
+                    </div>
+                  )}
+                  {files.length > 0 && (
+                    <div className="mt-2 space-y-1.5">
+                      {files.slice(0, 6).map((d) => (
+                        <a
+                          key={d.id}
+                          href={d.url || '#'}
+                          target="_blank"
+                          rel="noreferrer"
+                          className="flex items-center gap-2.5 rounded-[8px] px-2.5 py-2 text-[12.5px]"
+                          style={{ background: 'rgba(255,255,255,0.04)', color: '#fafaf9' }}
+                          title={d.title}
+                        >
+                          <Paperclip size={14} style={{ color: GOLD, flexShrink: 0 }} />
+                          <span className="truncate">{d.title}</span>
+                        </a>
+                      ))}
+                    </div>
+                  )}
+                </div>
+              );
+            })()}
 
             <div className="px-5 py-4" style={{ borderTop: '1px solid rgba(255,255,255,0.08)' }}>
               <div className="mb-3 text-[11px] font-semibold uppercase tracking-wider" style={{ color: 'rgba(250,250,249,0.42)' }}>

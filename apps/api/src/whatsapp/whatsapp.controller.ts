@@ -415,6 +415,11 @@ export class WhatsAppController {
       null,
     );
     const presence = await this.baileys.presenceFor(tenantId, avatarJid || phone).catch(() => null);
+    const about = await this.withTimeout(
+      this.baileys.statusFor(tenantId, avatarJid || phone).catch(() => null),
+      detailTimeoutMs,
+      null,
+    );
 
     return {
       conversationId: this.conversationId(taxpayer.id, phone),
@@ -425,6 +430,8 @@ export class WhatsAppController {
         taxNumber: this.publicTaxNumber(taxpayer.taxNumber),
         unknownContact: this.isWhatsAppVirtualTaxNumber(taxpayer.taxNumber),
         avatarUrl,
+        about: about?.text || null,
+        aboutSetAt: about?.setAt || null,
       },
       messages,
       windowOpen,
