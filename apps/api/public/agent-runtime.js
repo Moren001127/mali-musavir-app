@@ -12,7 +12,7 @@
   // v1.42.2 (2026-06-16): Ajan kendini yenilerken (delete __morenAgent) eski async
   // döngü "Cannot read 'stopRequested' of undefined/null" ile ÇÖKÜYORDU → yetim
   // döngü artık nesne yoksa güvenle durur (stopRequested kontrollerine null-guard).
-  const AGENT_VERSION = '1.45.6';
+  const AGENT_VERSION = '1.45.7';
   const AGENT_INSTANCE_ID = 'mai_' + Date.now().toString(36) + '_' + Math.random().toString(36).slice(2, 8);
 
   // === VERSION-AWARE RELOAD ===
@@ -1933,6 +1933,16 @@
                   const oc2 = String((fisKesBtn.getAttribute && fisKesBtn.getAttribute('onclick')) || '');
                   const fn = (oc2.match(/([\w$]+)\s*\(/) || [])[1];
                   const fw = fisKesBtn.ownerDocument && fisKesBtn.ownerDocument.defaultView;
+                  // TEŞHİS (v1.45.7): fisKes() ne yapıyor + neyi seçili bekliyor? Kaynağı ve checkbox
+                  //   durumunu logla ki tahmin yerine GERÇEĞİ görüp tam çözelim.
+                  try {
+                    const d2 = fisKesBtn.ownerDocument;
+                    const cbs = d2 ? d2.querySelectorAll('input[type=checkbox]') : [];
+                    let checked = 0; for (const c of cbs) { if (c.checked) checked++; }
+                    const src = (fn && fw && fw[fn]) ? String(fw[fn]).replace(/\s+/g, ' ').slice(0, 420) : '(fn yok)';
+                    await log(`🧪 ${fn}() kaynak: ${src}`);
+                    await log(`🧪 checkbox: ${cbs.length} adet / ${checked} işaretli`);
+                  } catch (e2) { await log(`🧪 teşhis uyarısı: ${(e2 && e2.message) || e2}`); }
                   if (fn && fw && typeof fw[fn] === 'function') { fw[fn](); kes = 'fn:' + fn; }
                 } catch (e) { await log(`fisKes() doğrudan çağrı uyarısı: ${(e && e.message) || e}`); }
                 if (!kes) {
