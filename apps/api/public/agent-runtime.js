@@ -12,7 +12,7 @@
   // v1.42.2 (2026-06-16): Ajan kendini yenilerken (delete __morenAgent) eski async
   // döngü "Cannot read 'stopRequested' of undefined/null" ile ÇÖKÜYORDU → yetim
   // döngü artık nesne yoksa güvenle durur (stopRequested kontrollerine null-guard).
-  const AGENT_VERSION = '1.45.1';
+  const AGENT_VERSION = '1.45.2';
   const AGENT_INSTANCE_ID = 'mai_' + Date.now().toString(36) + '_' + Math.random().toString(36).slice(2, 8);
 
   // === VERSION-AWARE RELOAD ===
@@ -1762,15 +1762,17 @@
               //   seçili dosya yükleme BAŞARILI olup popup açıldıktan SONRA da DOM'da kalıyor → popup
               //   açıkken bile "yükleme başlamadı" deyip ATIYOR, sonraki adımlara (ESC/Fiş Kes) hiç geçmiyordu.
               //   Artık POZİTİF sinyale (popup açıldı mı) bakıyoruz ve bulamasak BİLE ATMIYORUZ.
+              //   TESPİT: v1.45.1'de "İşlem Takip" tam-başlık öğesine bakıyordu; başlık çubuğu ✕ ikonuyla
+              //   aynı yapıda olunca eşleşmedi → false döndü → 6a kapatma bloğu KOMPLE atlandı, ESC HİÇ
+              //   basılmadı (loglarda "İşlem Takip sinyali yok"). Artık popup'ın AYIRT EDİCİ GÖVDE METNİNE
+              //   bakıyoruz ("Excelde N adet... ayrıştırıldı... fiş ve detayları"); popup kapanınca bu
+              //   metin kaybolur → güvenle false. (Alttaki FİŞ AKTARIMI ekranında bu metinler yok.)
               const islemTakipAcik = () => {
                 for (const doc of lucaDocuments()) {
                   try {
-                    for (const el of doc.querySelectorAll('div,span,td,th,b,font,h1,h2,h3,legend')) {
-                      if (!/^\s*i[şs]lem\s+takip\s*$/i.test((el.textContent || '').trim())) continue;
-                      if (el.children.length > 1) continue;
-                      let vis = false; try { const r = el.getBoundingClientRect(); vis = r.width > 0 && r.height > 0; } catch { vis = true; }
-                      if (vis) return true;
-                    }
+                    const t = (doc.body && doc.body.textContent) || '';
+                    if (!/i[şs]lem\s+takip/i.test(t)) continue;
+                    if (/excelde\s+\d+\s+adet|ayr[ıi][şs]t[ıi]r[ıi]ld[ıi]|fi[şs]\s+ve\s+detaylar[ıi]/i.test(t)) return true;
                   } catch {}
                 }
                 return false;
@@ -1840,31 +1842,40 @@
               };
               // GERÇEK (trusted) ESC köprüsü — kullanıcı popup'ı elle ESC ile kapatıyor; sayfa-içi
               //   sentetik dispatchEvent(Escape) isTrusted=false olduğundan Luca yok sayıyordu.
-              const nativePressEscape = async (times = 2) => {
+              let escBridgeWarned = false;
+              const nativePressEscape = async (times = 1) => {
                 try {
                   let bridge = null;
                   try { bridge = window.__morenNativePressKey; } catch {}
                   if (!bridge) { try { bridge = window.top && window.top.__morenNativePressKey; } catch {} }
-                  if (typeof bridge !== 'function') return false;
+                  if (typeof bridge !== 'function') {
+                    if (!escBridgeWarned) { escBridgeWarned = true; await log('⚠ ESC köprüsü (native __morenNativePressKey) yok — ✕ ikonu ile denenecek'); }
+                    return false;
+                  }
                   const res = await bridge({ key: 'Escape', times });
                   return !!(res && res.ok);
                 } catch { return false; }
               };
-              if (islemTakipAcik()) {
-                let kapandi = false;
-                for (let tries = 0; tries < 6 && !kapandi; tries++) {
-                  // 1) GERÇEK ESC (CDP, trusted) — birincil kapatma yolu
-                  await nativePressEscape(2);
-                  await sleep(500);
-                  if (!islemTakipAcik()) { kapandi = true; break; }
-                  // 2) Yedek: başlık çubuğundaki ✕ ikonu
-                  closeIslemTakipX();
-                  await sleep(600);
-                  if (!islemTakipAcik()) kapandi = true;
-                }
-                await log(kapandi ? '✓ İşlem Takip uyarısı kapatıldı (ESC)' : '⚠ İşlem Takip kapatılamadı — yine de devam deneniyor');
+              // 6a) KOŞULSUZ kapat: Yükle sonrası İşlem Takip popup'ı HER ZAMAN açılır. Tespit yapıya
+              //   takılsa bile en az bir GERÇEK ESC bas (eskiden if(islemTakipAcik()) yanlış false olunca
+              //   blok tümden atlanıyor, ESC HİÇ basılmıyordu). Kapanmazsa DUR — açık popup altında
+              //   "Fiş Kes" boşa gider ve yalan başarı üretir.
+              await nativePressEscape(1);
+              await sleep(700);
+              let kapandi = !islemTakipAcik();
+              for (let tries = 0; tries < 6 && !kapandi; tries++) {
+                await nativePressEscape(1);
+                await sleep(600);
+                if (!islemTakipAcik()) { kapandi = true; break; }
+                closeIslemTakipX();
+                await sleep(600);
+                if (!islemTakipAcik()) kapandi = true;
               }
-              await sleep(900);
+              if (!kapandi) {
+                throw new Error('İşlem Takip uyarısı kapatılamadı (ESC/✕ tutmadı). Excel YÜKLENDİ ve fiş ayrıştırıldı — Luca ekranında uyarıyı kapatıp "Fiş Kes"e basman yeterli.');
+              }
+              await log('✓ İşlem Takip uyarısı kapatıldı (ESC)');
+              await sleep(700);
               // 6b) Fişi SEÇ — alt çubuk "Tümünü Seç"; tutmazsa Fiş No yanındaki ilk checkbox
               let secim = await robustClick('Tümünü Seç', { settleMs: 700 });
               if (!secim) {
@@ -1886,9 +1897,15 @@
               await robustClick('Evet', { settleMs: 1200 });
               await robustClick('Tamam', { settleMs: 1200 });
               await sleep(1500);
+              // Başarı DOĞRULAMA: İşlem Takip popup'ı parsing aşamasında "...fiş oluşturuldu" yazar —
+              //   bunu Fiş Kes başarısı SANMA (eski regex /fiş.*oluşturuldu/ buna takılıp YALAN başarı
+              //   veriyordu). Popup HÂLÂ açıksa booking olmamıştır. 6a popup'ı zaten kapattı; burada
+              //   yalnız Fiş Kes sonrası AYIRT EDİCİ onay ararız (parsing metni kapanınca kaybolur).
               let fisBasari = false;
-              for (const doc of lucaDocuments()) {
-                try { const t = doc.body ? doc.body.textContent : ''; if (/(fi[şs].*olu[şs]turuldu|kaydedildi|ba[şs]ar[ıi]l[ıi]|i[şs]lem\s+tamamland)/i.test(t)) { fisBasari = true; break; } } catch {}
+              if (!islemTakipAcik()) {
+                for (const doc of lucaDocuments()) {
+                  try { const t = doc.body ? doc.body.textContent : ''; if (/(fi[şs]ler?\s+ba[şs]ar[ıi]yla|fi[şs]\s+kesildi|muhasebe\s+fi[şs]i.*olu[şs]turuldu|kay[ıi]t\s+ba[şs]ar[ıi]l[ıi]|i[şs]lem\s+ba[şs]ar[ıi]yla\s+tamamland)/i.test(t)) { fisBasari = true; break; } } catch {}
+                }
               }
               await fetch(API + `/agent/luca/jobs/${job.id}/done`, {
                 method: 'POST', headers: { 'Content-Type': 'application/json', 'X-Agent-Token': TOKEN },
