@@ -5252,6 +5252,22 @@ export class FaturaMuhasebelestirmeService {
           : group === 'cari' ? cariMatch
           : null;
         const current = String(line.accountCode || '');
+        // CARI özel: cari HER ZAMAN karşı tarafa eşleşmeli. Mevcut kod (placeholder olmasa
+        // bile) karşı tarafı içermiyorsa ve VKN-hafızasından gelmiyorsa → YANLIŞ otomatik
+        // eşleşme (ör. KAYIKÇI faturasına AYDE cari); doğrusuyla değiştir ya da BOŞALT.
+        if (group === 'cari') {
+          const curAcc = current ? accounts.find((a: any) => String(a.accountCode || '') === current) : null;
+          const fromMemory = !!cariMemory && !!curAcc && String(curAcc.accountCode) === String((cariMemory as any).accountCode);
+          const nameOk = !!curAcc && this.nameMatchScore(vendorName || '', String(curAcc.accountName || '')) > 0;
+          if (current && (fromMemory || nameOk)) continue; // doğru cari — dokunma
+          await (this.prisma as any).invoiceAccountingLine.update({
+            where: { id: line.id },
+            data: cariMatch
+              ? { accountCode: (cariMatch as any).accountCode, description: (cariMatch as any).accountName }
+              : { accountCode: '' },
+          });
+          continue;
+        }
         const isPlaceholder =
           !current ||
           [
@@ -5270,12 +5286,10 @@ export class FaturaMuhasebelestirmeService {
           ].includes(current);
         if (!isPlaceholder) continue; // kullanıcının seçtiği kod — dokunma
         if (match) {
+          // (cari yukarıda ele alındı) — matrah/vergi: açıklamaya dokunma.
           await (this.prisma as any).invoiceAccountingLine.update({
             where: { id: line.id },
-            data: {
-              accountCode: match.accountCode,
-              description: group === 'cari' ? match.accountName : line.description,
-            },
+            data: { accountCode: match.accountCode },
           });
         } else if (current) {
           // Planda uygun kod YOK → var olmayan placeholder'ı (ör. 770.01.010) BOŞALT.
@@ -5400,20 +5414,32 @@ export class FaturaMuhasebelestirmeService {
   // ipucu kelimelerinin yarısı ortaksa eşleşme sayılır. Skor yoksa 0 → eşleşme yok.
   private nameMatchScore(hint: string, name: string): number {
     const STOP = new Set([
+      // hukuk/biçim
       'san', 'tic', 'sti', 'ltd', 'as', 've', 'anonim', 'limited', 'sirket', 'sirketi',
-      'sanayi', 'ticaret', 'ithalat', 'ihracat', 'imalat', 'mah', 'cad', 'sok', 'apt',
-      'no', 'vd', 'vergi', 'dairesi', 'turkiye', 'kollektif', 'komandit', 'kom',
+      'sanayi', 'ticaret', 'ithalat', 'ihracat', 'imalat', 'kollektif', 'komandit', 'kom',
+      'holding', 'grup', 'grubu', 'mah', 'cad', 'sok', 'apt', 'no', 'vd', 'vergi', 'dairesi', 'turkiye',
+      // JENERİK SEKTÖR/ORTAK kelimeler — bunlar firma ADI değildir, ortak çıkıp YANLIŞ eşleşme üretir
+      'turizm', 'insaat', 'yatirim', 'gida', 'nakliyat', 'nakliye', 'lojistik', 'enerji', 'otomotiv',
+      'tekstil', 'konfeksiyon', 'plastik', 'kimya', 'elektrik', 'elektronik', 'muhendislik',
+      'danismanlik', 'hizmetleri', 'hizmet', 'urunleri', 'urun', 'market', 'magaza', 'dis', 'yapi',
+      'emlak', 'gayrimenkul', 'saglik', 'egitim', 'teknoloji', 'bilisim', 'medya', 'reklam',
+      'organizasyon', 'profesyonel', 'mutfak', 'ekipmanlari', 'ekipman', 'endustri', 'endustriyel',
+      'fen', 'lisesi', 'okul', 'aile', 'birligi', 'kiz', 'erkek', 'ana', 'anaokulu', 'sitesi',
+      'yonetimi', 'teknik', 'servis', 'sistemleri', 'sistem', 'makina', 'makine',
     ]);
     const toks = (s: string) => this.norm(s).split(' ').filter((t) => t.length >= 3 && !STOP.has(t));
     const h = toks(hint);
     const nameSet = new Set(toks(name));
     if (!h.length || !nameSet.size) return 0;
+    // ASIL FİRMA ADI KURALI: ipucunun İLK ayırt edici kelimesi (KAYIKÇI/UNOX/YAŞAR/ALTEKS gibi
+    // asıl unvan) hesap adında GEÇMEK ZORUNDA. Geçmiyorsa eşleşme YOK — "TURİZM/MUTFAK/AİLE
+    // BİRLİĞİ" gibi sektör kelimeleri ortak olsa bile yanlış cari atanmaz.
+    if (!nameSet.has(h[0])) return 0;
     let shared = 0;
     for (const t of h) if (nameSet.has(t)) shared++;
-    if (!shared) return 0;
-    const ratio = shared / h.length;
-    if (shared >= 2 || ratio >= 0.5) return shared * 100 + Math.round(ratio * 10);
-    return 0; // tek zayıf eşleşme — kabul etme
+    // Birden çok ayırt edici kelime varsa en az 2 ortak iste (MURAT YILMAZ ≠ MURAT DEMİR).
+    if (h.length >= 2 && shared < 2) return 0;
+    return shared * 100;
   }
 
   private norm(value: string) {
