@@ -294,10 +294,41 @@ export class ToolExecutorService {
     if (res?.error && latestDonem && latestDonem !== donem) {
       const fallback: any = await this.getKdvSummary({ taxpayerId: taxpayer.id, donem: latestDonem }, ctx);
       if (!fallback?.error) {
-        return { ...fallback, not: `${donem} icin KDV kontrol kaydi yok; en son ${latestDonem} donemi gosteriliyor.` };
+        return this.redactKdvForTaxpayer({ ...fallback, not: `${donem} icin KDV kontrol kaydi yok; en son ${latestDonem} donemi gosteriliyor.` });
       }
     }
-    return res;
+    return this.redactKdvForTaxpayer(res);
+  }
+
+  /**
+   * MÜKELLEF KORUMASI: KDV özetindeki PARASAL tutarları (toplam/ödenecek KDV) mükelleften
+   * GİZLE. Mükellef yalnız DURUM görmeli (kontrol tamam mı, eşleşme); ödenecek/tahakkuk
+   * tutarını müşavir kesinleştirir. Eskiden tutar sızıyor + iki figür "X ile Y arası" gibi
+   * kafa karıştırıcı aralık olarak çıkıyordu. (Owner'ın get_kdv_summary'si bu kırpmadan GEÇMEZ.)
+   */
+  private redactKdvForTaxpayer(res: any): any {
+    if (!res || res.error) return res;
+    const stripAmount = (arr: any[]) =>
+      Array.isArray(arr) ? arr.map(({ lucaToplamKdv, ...rest }: any) => rest) : arr;
+    let ozet = res.whatsappOzet;
+    if (typeof ozet === 'string') {
+      ozet = ozet
+        .split('\n')
+        .filter((ln: string) => !/(toplam kdv|odenecek|ödenecek|tahakkuk|₺)/i.test(ln))
+        .join('\n')
+        .replace(/\n{3,}/g, '\n\n')
+        .trim();
+    }
+    return {
+      ...res,
+      ...(ozet ? { whatsappOzet: ozet } : { whatsappOzet: undefined }),
+      aktifSeanslar: stripAmount(res.aktifSeanslar),
+      arsivlenenlerden: stripAmount(res.arsivlenenlerden),
+      tutarPolitikasi:
+        'MÜKELLEFE KDV ödenecek/tahakkuk/toplam TUTARINI SÖYLEME ve RAKAM ARALIĞI ("X ile Y arası") VERME. ' +
+        'Sadece kontrol DURUMUNU söyle (ör. "Mayıs KDV kontrolü tamamlandı, eşleşmeler tamam"). ' +
+        'Tutar sorulursa: "Müşavirimiz kesinleştirince size iletecek" de. Rakam UYDURMA.',
+    };
   }
 
   private async getMyInvoices(input: any, ctx: { tenantId: string; taxpayerId?: string | null }) {
