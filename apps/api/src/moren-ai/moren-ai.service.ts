@@ -4,7 +4,7 @@ import { ToolExecutorService } from './tool-executor.service';
 import { MOREN_AI_TOOLS } from './tools';
 import { runMaxAgent, type AgentToolDef } from '../common/max-agent-runner';
 import { buildSystemPrompt } from './system-prompt';
-import { buildOwnerStatusReply, buildOwnerTaxPayableReply, buildOwnerRevenueRankingReply } from './monthly-status.shared';
+import { buildOwnerStatusReply, buildOwnerTaxPayableReply, buildOwnerRevenueRankingReply, buildOwnerDebtRankingReply, buildOwnerTaxTotalReply } from './monthly-status.shared';
 import { computeCostUsd, computeRealtimeCostUsd, canSpendOnApi, logAiUsage } from '../common/ai-usage-logger';
 import { claudeTextViaMax, isMaxAvailable, MAX_MODEL_CHEAP } from '../common/max-inference';
 import { sablonForTool, sablonZatenVar } from './whatsapp-sablon';
@@ -541,9 +541,15 @@ export class MorenAiService {
         // "kimlere kdv/muhtasar/geçici/damga ödemesi çıkıyor" → portföy vergi listesi.
         const taxRes = await buildOwnerTaxPayableReply(this.prisma, tenantId, userMessage).catch(() => null);
         if (taxRes) return { reply: taxRes.reply, model: 'moren-ai-tax-payable-shortcut' };
-        // "en çok ciro yapan mükellefler" → gelir tablosu netSatışlar sıralaması.
+        // "en çok ciro/kâr yapan mükellefler" → gelir tablosu sıralaması.
         const revRes = await buildOwnerRevenueRankingReply(this.prisma, tenantId, userMessage).catch(() => null);
         if (revRes) return { reply: revRes.reply, model: 'moren-ai-revenue-shortcut' };
+        // "borcu en yüksek / borçlu mükellefler" → cari bakiye sıralaması.
+        const debtRes = await buildOwnerDebtRankingReply(this.prisma, tenantId, userMessage).catch(() => null);
+        if (debtRes) return { reply: debtRes.reply, model: 'moren-ai-debt-shortcut' };
+        // "bu dönem toplam ne kadar vergi/tahakkuk çıktı" → toplam tahakkuk.
+        const taxTotalRes = await buildOwnerTaxTotalReply(this.prisma, tenantId, userMessage).catch(() => null);
+        if (taxTotalRes) return { reply: taxTotalRes.reply, model: 'moren-ai-tax-total-shortcut' };
         return null;
       };
       const sc = await shortcut();

@@ -490,9 +490,10 @@ export interface RevenueRankingResult {
 
 export async function computeRevenueRanking(
   prisma: any,
-  opts: { tenantId: string; period?: string | null; limit?: number; onlyActive?: boolean },
+  opts: { tenantId: string; period?: string | null; limit?: number; onlyActive?: boolean; kind?: 'ciro' | 'kar' },
 ): Promise<RevenueRankingResult> {
   const onlyActive = opts.onlyActive !== false;
+  const kind = opts.kind === 'kar' ? 'kar' : 'ciro';
   const limit = Math.min(Math.max(Number(opts.limit) || 10, 1), 60);
   const reqPeriod = String(opts.period || '').trim();
   const explicit = /^\d{4}-(\d{2}|Q[1-4])$/i.test(reqPeriod);
@@ -536,25 +537,29 @@ export async function computeRevenueRanking(
       };
     })
     .filter((r: any) => (onlyActive ? r._aktif : true))
-    .sort((a: any, b: any) => b.ciro - a.ciro);
+    .sort((a: any, b: any) => (kind === 'kar' ? b.kar - a.kar : b.ciro - a.ciro));
 
   const top = liste.slice(0, limit);
+  const deger = (r: any) => kind === 'kar' ? r.kar : r.ciro;
   const satirlar = top.map((r: any, i: number) =>
-    `${i + 1}. ${r.mukellef}: ${new Intl.NumberFormat('tr-TR', { maximumFractionDigits: 0 }).format(r.ciro)} ₺`).join('\n');
+    `${i + 1}. ${r.mukellef}: ${new Intl.NumberFormat('tr-TR', { maximumFractionDigits: 0 }).format(deger(r))} ₺`).join('\n');
+  const baslik = kind === 'kar' ? '🏆 EN ÇOK KÂR EDEN MÜKELLEFLER' : '📈 EN ÇOK CİRO YAPAN MÜKELLEFLER';
+  const dipnot = kind === 'kar' ? 'Dönem net kârı' : 'Net satışlar';
   const whatsappOzet = top.length
-    ? `📈 EN ÇOK CİRO YAPAN MÜKELLEFLER — ${donem}\n\n${satirlar}\n\n(Net satışlar; ${liste.length} mükellefin gelir tablosu var)`
+    ? `${baslik} — ${donem}\n\n${satirlar}\n\n(${dipnot}; ${liste.length} mükellefin gelir tablosu var)`
     : `${donem} için gelir tablosu kaydı yok.`;
   return { donem, liste: top, whatsappOzet, donemDinamikSecildi };
 }
 
-/** "en çok ciro/satış yapan" sıralaması mı? Değilse null. */
-export function detectRevenueRankingIntent(text: string): { limit: number } | null {
+/** "en çok ciro/satış/kâr yapan" sıralaması mı? Değilse null. kind: ciro|kar. */
+export function detectRevenueRankingIntent(text: string): { limit: number; kind: 'ciro' | 'kar' } | null {
   const n = normalizeForIntent(text);
-  const ciro = /(ciro|satis|hasilat|kazan|gelir(?!\s*vergi)|en buyuk mukellef|en buyuk musteri)/.test(n);
-  const ranking = /(en cok|en fazla|en yuksek|en buyuk|siralama|sirala|top\s*\d|ilk\s*\d|liste)/.test(n);
+  const karWord = /(en (cok|fazla) kar|en karli|net kar|kar eden|kar yapan|kazanc|en cok kazan)/.test(n);
+  const ciro = /(ciro|satis|hasilat|kazan|gelir(?!\s*vergi)|en buyuk mukellef|en buyuk musteri)/.test(n) || karWord;
+  const ranking = /(en cok|en fazla|en yuksek|en buyuk|en karli|siralama|sirala|top\s*\d|ilk\s*\d|liste)/.test(n);
   if (!ciro || !ranking) return null;
   const m = n.match(/\b(\d{1,2})\b/);
-  return { limit: m ? parseInt(m[1], 10) : 10 };
+  return { limit: m ? parseInt(m[1], 10) : 10, kind: karWord ? 'kar' : 'ciro' };
 }
 
 export async function buildOwnerRevenueRankingReply(
@@ -563,6 +568,103 @@ export async function buildOwnerRevenueRankingReply(
   const intent = detectRevenueRankingIntent(text);
   if (!intent) return null;
   const pm = text.match(/\b(\d{4})-(\d{2}|Q[1-4])\b/i);
-  const r = await computeRevenueRanking(prisma, { tenantId, period: pm ? pm[0] : '', limit: intent.limit });
+  const r = await computeRevenueRanking(prisma, { tenantId, period: pm ? pm[0] : '', limit: intent.limit, kind: intent.kind });
   return { reply: r.whatsappOzet, donem: r.donem, count: r.liste.length };
+}
+
+// ============================================================================
+// BORÇ/CARİ SIRALAMASI — "borcu en yüksek / borçlu mükellefler". cariHareket
+// (TAHAKKUK − TAHSILAT). getCollectionRiskSummary ile AYNI mantık, deterministik.
+// ============================================================================
+
+export function detectDebtRankingIntent(text: string): { limit: number } | null {
+  const n = normalizeForIntent(text);
+  const borc = /(borc|borclu|acik bakiye|acik cari|odemeyen|odememiş|tahsil edil|alacag|alacak)/.test(n);
+  const liste = /(en cok|en fazla|en yuksek|en buyuk|kim|kimler|liste|sirala|siralama|hangi|top\s*\d|var m)/.test(n);
+  if (!borc || !liste) return null;
+  const m = n.match(/\b(\d{1,2})\b/);
+  return { limit: m ? parseInt(m[1], 10) : 20 };
+}
+
+export async function buildOwnerDebtRankingReply(
+  prisma: any, tenantId: string, text: string,
+): Promise<{ reply: string; count: number } | null> {
+  const intent = detectDebtRankingIntent(text);
+  if (!intent) return null;
+  const limit = Math.min(Math.max(intent.limit, 1), 60);
+  const [taxpayers, rows] = await Promise.all([
+    prisma.taxpayer.findMany({ where: { tenantId }, select: { id: true, companyName: true, firstName: true, lastName: true, isActive: true } }).catch(() => []),
+    prisma.cariHareket.findMany({ where: { tenantId }, select: { taxpayerId: true, tip: true, tutar: true } }).catch(() => []),
+  ]);
+  const tMap = new Map<string, any>(taxpayers.map((t: any) => [t.id, t]));
+  const bal = new Map<string, number>();
+  for (const h of rows) {
+    let cur = bal.get(h.taxpayerId) || 0;
+    if (h.tip === 'TAHAKKUK') cur += Number(h.tutar) || 0;
+    else if (h.tip === 'TAHSILAT') cur -= Number(h.tutar) || 0;
+    bal.set(h.taxpayerId, cur);
+  }
+  const liste = [...bal.entries()]
+    .map(([id, b]) => {
+      const t = tMap.get(id);
+      return { ad: (t?.companyName || `${t?.firstName || ''} ${t?.lastName || ''}`).trim() || 'Mükellef', bakiye: b, aktif: t ? t.isActive !== false : true };
+    })
+    .filter((r) => r.bakiye > 0 && r.aktif)
+    .sort((a, b) => b.bakiye - a.bakiye);
+  const toplam = liste.reduce((s, r) => s + r.bakiye, 0);
+  const fmt = (n: number) => new Intl.NumberFormat('tr-TR', { minimumFractionDigits: 2, maximumFractionDigits: 2 }).format(n) + ' ₺';
+  const satirlar = liste.slice(0, limit).map((r, i) => `${i + 1}. ${r.ad}: ${fmt(r.bakiye)}`).join('\n');
+  const reply = liste.length
+    ? `💰 BORÇLU MÜKELLEFLER (açık cari bakiye)\n\n${satirlar}` +
+      `${liste.length > limit ? `\n… ve ${liste.length - limit} mükellef daha.` : ''}` +
+      `\n\n📊 Toplam: ${fmt(toplam)} · ${liste.length} borçlu mükellef`
+    : 'Açık cari bakiyesi (borcu) olan mükellef yok.';
+  return { reply, count: liste.length };
+}
+
+// ============================================================================
+// TOPLAM VERGİ TAHAKKUKU — "bu dönem toplam ne kadar vergi/tahakkuk çıktı".
+// beyanKaydi tahakkuk, tür kırılımıyla.
+// ============================================================================
+
+export function detectTaxTotalIntent(text: string): boolean {
+  const n = normalizeForIntent(text);
+  const toplam = /(toplam|ne kadar|kac tl|kac para|genel toplam|hepsi)/.test(n);
+  const vergi = /(vergi|tahakkuk|ödeme|odeme|beyanname)/.test(n);
+  const liste = /(kim|kimler|hangi mukellef|listele)/.test(n); // liste sorusu DEĞİL (o tax-payable)
+  return toplam && vergi && !liste;
+}
+
+export async function buildOwnerTaxTotalReply(
+  prisma: any, tenantId: string, text: string,
+): Promise<{ reply: string } | null> {
+  if (!detectTaxTotalIntent(text)) return null;
+  const pm = text.match(/\b(\d{4})-(\d{2}|Q[1-4])\b/i);
+  let donem = pm ? pm[0] : '';
+  if (!donem) {
+    const son = await prisma.beyanKaydi.findFirst({
+      where: { tenantId, tahakkukTutari: { not: null, gt: 0 }, taxpayer: { isActive: true } },
+      orderBy: [{ beyanTarihi: 'desc' }, { createdAt: 'desc' }],
+      select: { donem: true },
+    }).catch(() => null);
+    donem = son?.donem || '';
+  }
+  if (!donem) return { reply: 'Tahakkuk verisi bulunamadı.' };
+  const kayitlar = await prisma.beyanKaydi.findMany({
+    where: { tenantId, donem, tahakkukTutari: { not: null, gt: 0 }, taxpayer: { isActive: true } },
+    select: { beyanTipi: true, tahakkukTutari: true },
+  }).catch(() => []);
+  const byType = new Map<string, number>();
+  let toplam = 0;
+  for (const k of kayitlar) {
+    const tutar = Number(k.tahakkukTutari) || 0;
+    toplam += tutar;
+    byType.set(k.beyanTipi, (byType.get(k.beyanTipi) || 0) + tutar);
+  }
+  const fmt = (n: number) => new Intl.NumberFormat('tr-TR', { minimumFractionDigits: 2, maximumFractionDigits: 2 }).format(n) + ' ₺';
+  const satirlar = [...byType.entries()].sort((a, b) => b[1] - a[1]).map(([t, v]) => `• ${t}: ${fmt(v)}`).join('\n');
+  const reply = kayitlar.length
+    ? `🧾 TOPLAM TAHAKKUK — ${donem}\n\n${satirlar}\n\n💰 GENEL TOPLAM: ${fmt(toplam)} (${kayitlar.length} beyanname)`
+    : `${donem} için tahakkuk kaydı yok.`;
+  return { reply };
 }
