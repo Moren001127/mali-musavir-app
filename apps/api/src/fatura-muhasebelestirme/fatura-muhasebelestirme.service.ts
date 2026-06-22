@@ -2266,12 +2266,21 @@ export class FaturaMuhasebelestirmeService {
   }
 
   /**
-   * Mihsap'tan cekilen bir belgenin dosyasini CDN'den indirir, OCR/XML parse eder,
+   * Mihsap'tan cekilen bir belgenin dosyasini CDN'den indirir, GORUNTUDEN okur,
    * yon-duyarli yevmiye satirlarini uretir ve hesap planiyla otomatik eslestirir.
-   * e-Fatura (XML) -> UBL parse (AI'siz, birebir). e-Arsiv/OKC (JPEG) -> Azure Vision.
-   * Mihsap basligindan gelen VKN/unvan/tutar GUVENILIR kabul edilir; OCR yalniz
-   * matrah/KDV kirilimini ve kalemleri saglar.
+   * KURAL: Mihsap'tan SADECE GORUNTU alinir; belge turu/taraf/VKN/tutar hep
+   * bizim okumamizdan (OCR belgeTipi/saticiVkn + bos kalirsa Max-vision AI) gelir.
    */
+  // OCR'in okudugu belge tipini (EARSIV/EFATURA/FIS/Z_RAPORU) UI documentType'ina cevir.
+  private mapOcrBelgeTipi(t?: string | null): string | null {
+    const s = String(t || '').toUpperCase().replace(/[^A-Z]/g, '');
+    if (!s) return null;
+    if (s.includes('EARSIV') || s.includes('ARSIV')) return 'E_ARSIV';
+    if (s.includes('EFATURA') || s.includes('FATURA')) return 'E_FATURA';
+    if (s.includes('OKC') || s.includes('FIS') || s.includes('ZRAPOR') || s.includes('MAKBUZ')) return 'OKC_FIS';
+    return null;
+  }
+
   private async processMihsapDocumentOcr(
     tenantId: string,
     documentId: string,
@@ -2348,6 +2357,9 @@ export class FaturaMuhasebelestirmeService {
             belgeNo: existing.belgeNo || ocr.belgeNo || null,
             faturaTarihi: existing.faturaTarihi || parseDate(ocr.date || null) || null,
             totalAmount: money(totalNum),
+            // BELGE TURU GORUNTUDEN: OCR belgeTipi (EARSIV/EFATURA/FIS) → Mihsap'in guvenilmez
+            // belgeTuru alanina degil, OKUDUGUMUZ tipe gore. Okunamazsa mevcut kalir.
+            ...((() => { const t = this.mapOcrBelgeTipi(ocr.belgeTipi); return t ? { documentType: t } : {}; })()),
             // OCR satici VKN'sini (gercek) yaz → sahiplik/yon kontrolu ve satici-bazli
             // ogrenme dogru VKN'ye dayansin. Azure yalniz saticiyi verir; alici AI-oku'da gelir.
             ...((() => { const sv = String(ocr.saticiVkn || '').replace(/\D/g, ''); return sv.length === 10 || sv.length === 11 ? { sellerVkn: sv } : {}; })()),
@@ -2849,9 +2861,12 @@ export class FaturaMuhasebelestirmeService {
             s3Key: inv.storageKey || inv.storageUrl || `mihsap:${inv.mihsapId}`,
             belgeNo: inv.faturaNo || null,
             faturaTarihi: inv.faturaTarihi || null,
-            sellerVkn: invoiceKind === 'ALIS' ? (inv.firmaKimlikNo || null) : null,
+            // Mihsap'tan VKN ALMA: firmaKimlikNo = HESAP SAHİBİNİN numarası (karşı taraf değil)
+            // — tüm satırlarda aynı çıkıyordu. Gerçek satıcı/alıcı VKN'si GÖRÜNTÜDEN (OCR/AI) gelir.
+            sellerVkn: null,
+            buyerVkn: null,
+            // İsim provizyonel (firmaUnvan = karşı taraf adı); OCR/AI okuması netleştirir.
             vendorName: invoiceKind === 'ALIS' ? (inv.firmaUnvan || null) : null,
-            buyerVkn: invoiceKind === 'SATIS' ? (inv.firmaKimlikNo || null) : null,
             customerName: invoiceKind === 'SATIS' ? (inv.firmaUnvan || null) : null,
             totalAmount: inv.toplamTutar != null ? inv.toplamTutar : null,
             ocrStatus: 'PENDING',
