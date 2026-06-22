@@ -4,7 +4,7 @@ import { ToolExecutorService } from './tool-executor.service';
 import { MOREN_AI_TOOLS } from './tools';
 import { runMaxAgent, type AgentToolDef } from '../common/max-agent-runner';
 import { buildSystemPrompt } from './system-prompt';
-import { buildOwnerStatusReply, buildOwnerTaxPayableReply, buildOwnerRevenueRankingReply, buildOwnerDebtRankingReply, buildOwnerTaxTotalReply, buildOwnerMizanStatusReply, buildOwnerSingleTaxpayerKdvReply, buildOwnerSingleTaxpayerReply } from './monthly-status.shared';
+import { buildOwnerStatusReply, buildOwnerTaxPayableReply, buildOwnerRevenueRankingReply, buildOwnerDebtRankingReply, buildOwnerTaxTotalReply, buildOwnerMizanStatusReply, buildOwnerSingleTaxpayerKdvReply, buildOwnerSingleTaxpayerReply, buildOwnerInvoiceCountReply } from './monthly-status.shared';
 import { computeCostUsd, computeRealtimeCostUsd, canSpendOnApi, logAiUsage } from '../common/ai-usage-logger';
 import { claudeTextViaMax, isMaxAvailable, MAX_MODEL_CHEAP } from '../common/max-inference';
 import { sablonForTool, sablonZatenVar } from './whatsapp-sablon';
@@ -553,6 +553,9 @@ export class MorenAiService {
         // "kimlerin mizanı yüklenmemiş/eksik / kimde mizan var" → mizan yükleme durumu.
         const mizanRes = await buildOwnerMizanStatusReply(this.prisma, tenantId, userMessage).catch(() => null);
         if (mizanRes) return { reply: mizanRes.reply, model: 'moren-ai-mizan-status-shortcut' };
+        // "bu ay kaç fatura işledik / fatura sayısı" → işlenen dönem + bu ay (net etiketli).
+        const invRes = await buildOwnerInvoiceCountReply(this.prisma, tenantId, userMessage).catch(() => null);
+        if (invRes) return { reply: invRes.reply, model: 'moren-ai-invoice-count-shortcut' };
         // "X'in/X'e ne kadar KDV çıkıyor" → TEK mükellef KDV (391−191), temkinli isim eşleme.
         const skRes = await buildOwnerSingleTaxpayerKdvReply(this.prisma, tenantId, userMessage).catch(() => null);
         if (skRes) return { reply: skRes.reply, model: 'moren-ai-single-kdv-shortcut' };

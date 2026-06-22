@@ -926,3 +926,49 @@ export async function buildOwnerSingleTaxpayerReply(
   const reply = `📝 BEYANNAME DURUMU — ${ad}\n🗓️ ${donemOku(sonDonem)} dönemi\n\n${satirlar}`;
   return { reply, mukellef: ad };
 }
+
+// ============================================================================
+// İŞLENEN FATURA ADEDİ (portföy) — "bu ay kaç fatura işledik / fatura sayısı".
+// mihsapInvoice.donem; "bu ay" belirsizliği → işlenen dönem (önceki ay) + bu ay
+// gelen NET etiketle gösterilir (bot eskiden "Haziran 0/henüz yok" diyordu).
+// ============================================================================
+
+export function detectInvoiceCountIntent(text: string): boolean {
+  const n = normalizeForIntent(text);
+  if (!/fatura/.test(n)) return false;
+  // SADECE sayım/hacim sorusu (komut "fatura çek" DEĞİL).
+  return /(kac fatura|fatura sayi|fatura adet|fatura adedi|fatura hacm|kac tane fatura|fatura isled|toplam fatura|fatura islend)/.test(n);
+}
+
+export async function buildOwnerInvoiceCountReply(
+  prisma: any, tenantId: string, text: string,
+): Promise<{ reply: string } | null> {
+  if (!detectInvoiceCountIntent(text)) return null;
+  // Tek-mükellef ("X'in kaç faturası") ise portföy sayımı DEĞİL → agentic'e bırak.
+  const txp = await prisma.taxpayer.findMany({ where: { tenantId, isActive: true }, select: { id: true, companyName: true, firstName: true, lastName: true } }).catch(() => []);
+  if (resolveTaxpayerByText(txp, text)) return null;
+  const pm = text.match(/\b(\d{4})-(\d{2})\b/);
+  const now = new Date();
+  const cur = `${now.getFullYear()}-${String(now.getMonth() + 1).padStart(2, '0')}`;
+  const pd = new Date(now.getFullYear(), now.getMonth() - 1, 1);
+  const prev = `${pd.getFullYear()}-${String(pd.getMonth() + 1).padStart(2, '0')}`;
+  const target = pm ? pm[0] : prev; // varsayılan: işlenen (önceki) dönem
+  const [byTuru, curCount] = await Promise.all([
+    prisma.mihsapInvoice.groupBy({ by: ['faturaTuru'], where: { tenantId, donem: target }, _count: { _all: true } }).catch(() => []),
+    prisma.mihsapInvoice.count({ where: { tenantId, donem: cur } }).catch(() => 0),
+  ]);
+  let alis = 0, satis = 0;
+  for (const r of byTuru) { if (/ALIS/i.test(String(r.faturaTuru))) alis += r._count._all; else satis += r._count._all; }
+  const targetTotal = alis + satis;
+  if (targetTotal === 0 && curCount === 0) {
+    return { reply: 'Henüz işlenmiş fatura kaydı bulamadım.' };
+  }
+  const fmtN = (x: number) => new Intl.NumberFormat('tr-TR').format(x);
+  const lines = [`🧾 İŞLENEN FATURA ADEDİ`, ''];
+  if (targetTotal > 0) {
+    lines.push(`📅 ${donemOku(target)} dönemi: *${fmtN(targetTotal)} fatura*`);
+    lines.push(`   • Alış: ${fmtN(alis)} · Satış: ${fmtN(satis)}`);
+  }
+  if (!pm) lines.push(`🆕 ${donemOku(cur)} (bu ay gelen): ${fmtN(curCount)}`);
+  return { reply: lines.join('\n') };
+}
