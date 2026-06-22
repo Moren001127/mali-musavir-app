@@ -3222,6 +3222,18 @@ export class FaturaMuhasebelestirmeService {
         kategori: code, altKategori: rate, taxpayerId: doc.taxpayerId,
       });
     }
+
+    // CARI ÖĞRENME: müşavirin seçtiği cari hesabı (120/320/329/331) VKN'ye bağla.
+    // altKategori='CARI' işareti matrah kararlarından ayırır. Sonraki faturalarda
+    // pickCariMemoryAccount bu kodu otomatik getirir → isim tahmini gerekmez.
+    const cariLine = (doc.lines || []).find((l: any) => String(l.group || '').toLowerCase() === 'cari');
+    const cariCode = String(cariLine?.accountCode || '').trim();
+    if (cariCode && /^(120|320|329|331)/.test(cariCode)) {
+      await this.vendorMemory.recordDecision({
+        tenantId, firmaKimlikNo, firmaUnvan, kararTipi: 'fatura',
+        kategori: cariCode, altKategori: 'CARI', taxpayerId: doc.taxpayerId,
+      }).catch(() => {});
+    }
   }
 
   private memoryAccountCodesFromLines(lines: any[]) {
@@ -4694,7 +4706,10 @@ export class FaturaMuhasebelestirmeService {
         },
       },
     });
-    const decisions = (memory?.decisions || []).filter((d: any) => /^\d/.test(String(d.kategori || '').trim()));
+    const decisions = (memory?.decisions || [])
+      .filter((d: any) => /^\d/.test(String(d.kategori || '').trim()))
+      // Cari (altKategori='CARI') kararları matrah/gider kodu DEĞİLDİR — dışla.
+      .filter((d: any) => String(d.altKategori || '').trim().toUpperCase() !== 'CARI');
     const r = String(rate || '').replace(/[^0-9]/g, '');
     // Öncelik: 1) bu KDV oranına özel kural, 2) orana bağsız (genel) kural, 3) en çok onaylanan.
     const byRate = r ? decisions.find((d: any) => String(d.altKategori || '').replace(/[^0-9]/g, '') === r) : null;
@@ -5035,7 +5050,15 @@ export class FaturaMuhasebelestirmeService {
       const alisMatrahPrefixes = KAT_PREFIX[kat] || ['770', '760', '740', '730', ' gider '];
       const categoryMatrah = this.pickAccount(accounts, isSale ? ['600'] : alisMatrahPrefixes, vendorName);
       const vergiMatch = this.pickAccount(accounts, isSale ? ['391'] : ['191'], null);
-      const cariMatch = this.pickAccount(accounts, isSale ? ['120'] : ['320', '329', '331'], vendorName);
+      // CARI: önce VKN bazlı öğrenilmiş cari (kesin), yoksa KATI isim eşleşmesi. İsim de
+      // tutmazsa null → placeholder boşaltılır ("Eksik cari"). Eskiden plandaki İLK cari
+      // (ör. ALTEKS) sessizce seçiliyordu — yanlış eşleştirmenin ana kaynağıydı.
+      const cariMemory = vendorVkn
+        ? await this.pickCariMemoryAccount(tenantId, taxpayerId, vendorVkn, accounts)
+        : null;
+      const cariMatch =
+        cariMemory ||
+        this.pickAccount(accounts, isSale ? ['120'] : ['320', '329', '331'], vendorName, { requireHint: true });
       // ORAN-BAZLI matrah: her matrah satırı KENDİ KDV oranına göre öğrenilmiş kodu alır;
       // yoksa kategori/varsayılan. Öğrenilmiş kod (satıcı+oran) her zaman önceliklidir.
       const matrahCache = new Map<string, any>();
@@ -5111,7 +5134,10 @@ export class FaturaMuhasebelestirmeService {
         },
       },
     });
-    const decisions = (memory?.decisions || []).filter((d: any) => accountByCode.has(String(d.kategori || '').trim()));
+    const decisions = (memory?.decisions || [])
+      .filter((d: any) => accountByCode.has(String(d.kategori || '').trim()))
+      // Cari (altKategori='CARI') kararları matrah/gider kodu DEĞİLDİR — dışla.
+      .filter((d: any) => String(d.altKategori || '').trim().toUpperCase() !== 'CARI');
     const r = String(rate || '').replace(/[^0-9]/g, '');
     // Öncelik: bu orana özel kural → orana bağsız (genel) → en çok onaylanan (plana uyan).
     const byRate = r ? decisions.find((d: any) => String(d.altKategori || '').replace(/[^0-9]/g, '') === r) : null;
@@ -5120,12 +5146,45 @@ export class FaturaMuhasebelestirmeService {
     return pick ? accountByCode.get(String(pick.kategori).trim()) : null;
   }
 
+  /**
+   * VKN bazlı CARI hesap öğrenmesi: müşavir bir kez karşı taraf için cari hesabı seçip
+   * onaylayınca (altKategori='CARI' işaretiyle) öğrenilir; aynı VKN'nin sonraki faturalarında
+   * cari otomatik gelir. İsim benzerliğine güvenmez — VKN kesin anahtardır.
+   */
+  private async pickCariMemoryAccount(
+    tenantId: string,
+    taxpayerId: string,
+    firmaKimlikNo: string,
+    accounts: Array<{ accountCode: string; accountName: string }>,
+  ) {
+    const vkn = String(firmaKimlikNo || '').replace(/\D/g, '');
+    if (!vkn || !taxpayerId || !accounts.length) return null;
+    const accountByCode = new Map(accounts.map((a) => [String(a.accountCode || '').trim(), a]));
+    const memory = await (this.prisma as any).vendorMemory.findUnique({
+      where: { tenantId_firmaKimlikNo: { tenantId, firmaKimlikNo: vkn } },
+      include: {
+        decisions: {
+          where: { taxpayerId, kararTipi: 'fatura' },
+          orderBy: [{ onayAdedi: 'desc' }, { sonKullanim: 'desc' }],
+          take: 16,
+        },
+      },
+    });
+    const cari = (memory?.decisions || []).find(
+      (d: any) =>
+        String(d.altKategori || '').trim().toUpperCase() === 'CARI' &&
+        accountByCode.has(String(d.kategori || '').trim()),
+    );
+    return cari ? accountByCode.get(String(cari.kategori).trim()) : null;
+  }
+
   private pickAccount(
     accounts: Array<{ accountCode: string; accountName: string }>,
     prefixesOrNeedles: string[],
     nameHint?: string | null,
+    opts?: { requireHint?: boolean },
   ) {
-    const hint = this.norm(nameHint || '');
+    const hint = String(nameHint || '').trim();
     // Önekleri ÖNCELİK SIRASIYLA dene; ilk dolu grubu kullan. Karışık havuzdan EN YÜKSEK
     // kodu seçmek 798 (olağandışı gider) gibi yanlış seçimlere yol açıyordu. Artık: en
     // düşük (en genel) leaf'i al, 79x'i (olağandışı/yıl-sonu) asla otomatik seçme.
@@ -5141,8 +5200,16 @@ export class FaturaMuhasebelestirmeService {
       });
       if (!group.length) continue;
       if (hint) {
-        const hinted = group.find((a) => this.norm(a.accountName || '').includes(hint.slice(0, 18)));
-        if (hinted) return hinted;
+        // İsim benzerliği: "ilk 18 karakter içeriyor mu" yerine AYIRT EDİCİ kelime
+        // örtüşmesine göre skorla. Eşik altı eşleşmeleri kabul etme (yanlış cari önler).
+        const scored = group
+          .map((a) => ({ a, s: this.nameMatchScore(hint, a.accountName || '') }))
+          .filter((x) => x.s > 0)
+          .sort((x, y) => y.s - x.s);
+        if (scored.length) return scored[0].a;
+        // KATI mod (cari): isim eşleşmesi YOKSA rastgele ilk hesabı seçme → null dön.
+        // Böylece "Eksik cari" görünür; müşavir 1 kez seçer → VKN bazında öğrenilir.
+        if (opts?.requireHint) return null;
       }
       // Fiş LEAF (detay) hesaba kesilir → grup başlığı ("770") yerine en derin seviyeyi
       // seç, o seviyede en düşük (en genel) kodu al (ör. 770.01.001). accounts kod artan sıralı.
@@ -5152,6 +5219,27 @@ export class FaturaMuhasebelestirmeService {
       return leaves[0] || group[0];
     }
     return null;
+  }
+
+  // İki firma/cari ünvanı arasında AYIRT EDİCİ kelime örtüşme skoru. Jenerik hukuk/adres
+  // kelimeleri (san, tic, ltd, şti, mah...) elenir; kalan kelimelerden en az 2 ortak veya
+  // ipucu kelimelerinin yarısı ortaksa eşleşme sayılır. Skor yoksa 0 → eşleşme yok.
+  private nameMatchScore(hint: string, name: string): number {
+    const STOP = new Set([
+      'san', 'tic', 'sti', 'ltd', 'as', 've', 'anonim', 'limited', 'sirket', 'sirketi',
+      'sanayi', 'ticaret', 'ithalat', 'ihracat', 'imalat', 'mah', 'cad', 'sok', 'apt',
+      'no', 'vd', 'vergi', 'dairesi', 'turkiye', 'kollektif', 'komandit', 'kom',
+    ]);
+    const toks = (s: string) => this.norm(s).split(' ').filter((t) => t.length >= 3 && !STOP.has(t));
+    const h = toks(hint);
+    const nameSet = new Set(toks(name));
+    if (!h.length || !nameSet.size) return 0;
+    let shared = 0;
+    for (const t of h) if (nameSet.has(t)) shared++;
+    if (!shared) return 0;
+    const ratio = shared / h.length;
+    if (shared >= 2 || ratio >= 0.5) return shared * 100 + Math.round(ratio * 10);
+    return 0; // tek zayıf eşleşme — kabul etme
   }
 
   private norm(value: string) {
