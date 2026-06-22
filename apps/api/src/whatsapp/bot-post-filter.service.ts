@@ -14,6 +14,11 @@ export class WhatsAppBotPostFilterService {
   // 1) Araç adı / protokol token'ı — gerçek Türkçe metinde neredeyse hiç olmaz (kesin sinyal).
   private static readonly TOOL_TOKEN_RE =
     /\b(get|list|search|create|preview|compare|calculate|research|save|set|run|send|update|delete|fetch)_[a-z][a-z0-9_]{2,}\b|\((get|list|search|create|preview|compare|calculate|research|save|run|send|update|delete|fetch)[a-z]{4,}\)|tool_use|tool_result|<\/?function\b|<\/?antml|"name"\s*:\s*"[a-z_]+_[a-z_]+"/i;
+  // 1b) Alt-çizgisiz/birleşik İngilizce araç adı (camelCase→küçük): getmybalance,
+  //     getaccountingreference, getmykdv, listinvoices… Parantez/virgül şart değil.
+  //     Bilinen araç-kelime parçalarıyla sınırlı → Türkçe "getir/getiriyorum" yakalanmaz.
+  private static readonly TOOL_CONCAT_RE =
+    /\b(get|list|create|preview|fetch|send|set|run|search|compare|calculate|research)(my|all)?(balance|bakiye|kdv|tax|account|reference|invoice|fatura|mizan|beyan|taxpayer|mukellef|profile|profil|document|belge|status|durum|payable|summary|ozet|work|open|recent|message|mesaj|deadline|calendar|takvim|firma|hafiza|payroll|bordro|sgk|collection|risk|operation|brief)[a-z]*\b/i;
   // 2) Çağrı/iç-eylem anlatımı — "X aracını/tool'unu/fonksiyonunu çağırıyorum/kullanıyorum"
   //    VEYA "...çağırıyorum:/çağıracağım:" diye kesik biten cevap (sızıntının tipik şekli).
   //    Tek başına "çağırıyorum" yakalanmaz (meşru "sizi çağırıyorum" yanlış-pozitif olmasın).
@@ -22,6 +27,7 @@ export class WhatsAppBotPostFilterService {
 
   private hasToolNarration(s: string): boolean {
     return WhatsAppBotPostFilterService.TOOL_TOKEN_RE.test(s)
+      || WhatsAppBotPostFilterService.TOOL_CONCAT_RE.test(s)
       || WhatsAppBotPostFilterService.TOOL_NARRATION_RE.test(s);
   }
 
@@ -117,6 +123,9 @@ export class WhatsAppBotPostFilterService {
 
     const maxChars = Number(process.env.WHATSAPP_BOT_REPLY_MAX_CHARS || 480);
     if (text.length > maxChars) text = text.slice(0, maxChars).replace(/\s+\S*$/, '').trim();
+    // EN SON: sayı boşluğunu tekrar düzelt — limitSentences "26." + boşluğu cümle sınırı
+    // sanıp ayırıp birleştirince "26. 000" geri gelebiliyordu; son adımda kesinleştir.
+    text = fixNumberSpacing(text);
     return text || 'Bir bakıp size döneyim.';
   }
 
@@ -152,6 +161,7 @@ export class WhatsAppBotPostFilterService {
     }
     const maxChars = Number(process.env.WHATSAPP_BOT_OWNER_MAX_CHARS || 3500);
     if (t.length > maxChars) t = t.slice(0, maxChars).replace(/\s+\S*$/, '').trim();
+    t = fixNumberSpacing(t); // EN SON: binlik ayraç boşluğunu kesinleştir
     return t || '—';
   }
 
