@@ -256,6 +256,13 @@ export class FaturaMuhasebelestirmeController {
     return this.service.ocrProgress(req.user.tenantId, { taxpayerId, period });
   }
 
+  /** Hızlı düzeltme: belgeleri tekrar okumadan hesap kodlarını plana göre yeniden eşleştir
+   *  (yanlış carileri temizler). */
+  @Post('documents/reapply-codes')
+  reapplyCodes(@Req() req: any, @Body() body: { taxpayerId?: string }) {
+    return this.service.reapplyAccountCodes(req.user.tenantId, String(body?.taxpayerId || ''));
+  }
+
   @Post('documents/from-earsiv/:faturaId')
   fromEarsiv(@Req() req: any, @Param('faturaId') faturaId: string) {
     return this.service.ensureFromEarsivFatura(req.user.tenantId, faturaId);

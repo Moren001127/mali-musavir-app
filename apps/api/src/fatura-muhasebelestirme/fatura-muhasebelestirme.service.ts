@@ -4818,6 +4818,15 @@ export class FaturaMuhasebelestirmeService {
     return { status, issues };
   }
 
+  /** HIZLI düzeltme: belgeleri TEKRAR OKUMADAN (Max-vision yok) hesap kodlarını plana göre
+   *  yeniden eşleştirir — yanlış carileri (KAYIKÇI→AYDE) temizler/doğrular. Saniyeler sürer. */
+  async reapplyAccountCodes(tenantId: string, taxpayerId: string) {
+    if (!taxpayerId) throw new BadRequestException('Mükellef seçilmeli');
+    await this.gateExistingDocsIfNoPlan(tenantId, taxpayerId);
+    await this.rematchDocumentsWithLatestAccountPlan(tenantId, taxpayerId);
+    return { ok: true };
+  }
+
   private async rematchDocumentsWithLatestAccountPlan(tenantId: string, taxpayerId?: string | null, documentIds?: string[]) {
     if (!taxpayerId) return;
     const latest = await (this.prisma as any).lucaAccountPlanSnapshot.findFirst({
