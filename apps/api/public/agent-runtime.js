@@ -12,7 +12,7 @@
   // v1.42.2 (2026-06-16): Ajan kendini yenilerken (delete __morenAgent) eski async
   // döngü "Cannot read 'stopRequested' of undefined/null" ile ÇÖKÜYORDU → yetim
   // döngü artık nesne yoksa güvenle durur (stopRequested kontrollerine null-guard).
-  const AGENT_VERSION = '1.43.1';
+  const AGENT_VERSION = '1.43.2';
   const AGENT_INSTANCE_ID = 'mai_' + Date.now().toString(36) + '_' + Math.random().toString(36).slice(2, 8);
 
   // === VERSION-AWARE RELOAD ===
@@ -1729,13 +1729,37 @@
               await log(`📎 Dosya seçildi: ${fname}`);
               await sleep(900);
 
-              // 5) "Yukle" butonuna bas (satirlar import ekranina dolar)
-              const yuklendi = lucaClickByText('Yükle');
+              // 5) "Yükle" — POPUP dialog butonu. DOM click (lucaClickByText) Luca'da TETİKLEMİYOR
+              //    (dosya seçili, dialog açık kalıyor, yükleme olmuyor — kullanıcı ekranda gördü).
+              //    GERÇEK (native) tıklama gerek; tutmazsa DOM son çare.
+              const yukleHala = () => {
+                for (const doc of lucaDocuments()) {
+                  try {
+                    const b = Array.from(doc.querySelectorAll('input[type=button],input[type=submit],button,a'))
+                      .find((el) => /^\s*y[üu]kle\s*$/i.test(el.value || el.innerText || el.textContent || ''));
+                    if (b) return true;
+                  } catch {}
+                }
+                return false;
+              };
+              const dosyaHala = () => { const fi = findFileInput(); return !!(fi && fi.files && fi.files.length > 0); };
+              let yuklendi = await nativeClickLucaText('Yükle', { exact: true, settleMs: 1800, timeoutMs: 6000 });
+              if (!yuklendi) yuklendi = lucaClickByText('Yükle');
               if (!yuklendi) throw new Error('"Yükle" butonu bulunamadı (ekran beklenenden farklı olabilir)');
-              await log('⏫ "Yükle" tıklandı — satırlar Luca aktarım ekranına yükleniyor');
-              await sleep(2500);
+              await log('⏫ "Yükle" tıklandı (native) — yükleme bekleniyor');
+              await sleep(3000);
+              // DOĞRULAMA: yükleme tetiklenmediyse (dialog hâlâ açık + dosya seçili) bir kez daha
+              //    native dene; yine olmazsa "başarılı" DEME — yalan pozitif önlenir, NET hata.
+              if (dosyaHala() && yukleHala()) {
+                await log('↻ Yükleme başlamadı gibi — "Yükle" tekrar (native) deneniyor');
+                await nativeClickLucaText('Yükle', { exact: true, settleMs: 2000, timeoutMs: 6000 });
+                await sleep(3000);
+              }
+              if (dosyaHala() && yukleHala()) {
+                throw new Error('"Yükle" tıklandı ama yükleme başlamadı (dialog açık kaldı). Luca ekranında "Yükle"ye elle basıp tamamlayabilir ya da tekrar deneyebilirsin.');
+              }
 
-              // 6) Ilk surum: deftere yazan "Fis Kes" adimi KULLANICIDA. Yuklemeyi raporla.
+              // 6) Yükleme tetiklendi. Deftere yazan "Fiş Kes" (fiş bölme) adımı KULLANICIDA. Raporla.
               await fetch(API + `/agent/luca/jobs/${job.id}/done`, {
                 method: 'POST', headers: { 'Content-Type': 'application/json', 'X-Agent-Token': TOKEN },
                 body: JSON.stringify({ recordCount: p.totalCount || 0 }),
