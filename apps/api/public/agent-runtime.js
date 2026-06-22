@@ -12,7 +12,7 @@
   // v1.42.2 (2026-06-16): Ajan kendini yenilerken (delete __morenAgent) eski async
   // döngü "Cannot read 'stopRequested' of undefined/null" ile ÇÖKÜYORDU → yetim
   // döngü artık nesne yoksa güvenle durur (stopRequested kontrollerine null-guard).
-  const AGENT_VERSION = '1.45.5';
+  const AGENT_VERSION = '1.45.6';
   const AGENT_INSTANCE_ID = 'mai_' + Date.now().toString(36) + '_' + Math.random().toString(36).slice(2, 8);
 
   // === VERSION-AWARE RELOAD ===
@@ -1926,17 +1926,28 @@
               await log(`🔎 Fiş Kes butonu: ${fisKesDbg.join(' | ') || 'YOK (input/button bulunamadı)'}`);
               let kes = null;
               if (fisKesBtn) {
-                try { fisKesBtn.scrollIntoView({ block: 'center' }); } catch {}
-                try { fisKesBtn.focus(); } catch {}
-                await sleep(350);
-                const isInputBtn = fisKesBtn.tagName === 'INPUT' && /button/i.test((fisKesBtn.getAttribute && fisKesBtn.getAttribute('type')) || '');
-                // <button>/submit → Enter; <input type=button> → Space. İlki tetiklemezse (buton hâlâ
-                //   focus'ta) diğerini de dene; tetikleyince activeElement değişir → ikinciyi atlar.
-                await nativePressKey(isInputBtn ? 'Space' : 'Enter');
-                await sleep(800);
-                let stillFocused = false; try { stillFocused = document.activeElement === fisKesBtn; } catch {}
-                if (stillFocused) { await nativePressKey(isInputBtn ? 'Enter' : 'Space'); await sleep(800); }
-                kes = 'focus-key';
+                // EN SAĞLAM: butonun çağırdığı fonksiyonu (onclick="fisKes()") DOĞRUDAN çalıştır —
+                //   tıklama/koordinat/görünürlük/odak HİÇ gerekmez. fisKes() bir confirm() açarsa
+                //   agent.js dialog handler artık KABUL ediyor (v1.45.6) → fiş gerçekten kesilir.
+                try {
+                  const oc2 = String((fisKesBtn.getAttribute && fisKesBtn.getAttribute('onclick')) || '');
+                  const fn = (oc2.match(/([\w$]+)\s*\(/) || [])[1];
+                  const fw = fisKesBtn.ownerDocument && fisKesBtn.ownerDocument.defaultView;
+                  if (fn && fw && typeof fw[fn] === 'function') { fw[fn](); kes = 'fn:' + fn; }
+                } catch (e) { await log(`fisKes() doğrudan çağrı uyarısı: ${(e && e.message) || e}`); }
+                if (!kes) {
+                  // Fonksiyon bulunamadı/çağrılamadı → focus + gerçek Enter/Space (koordinatsız).
+                  try { fisKesBtn.scrollIntoView({ block: 'center' }); } catch {}
+                  try { fisKesBtn.focus(); } catch {}
+                  await sleep(350);
+                  const isInputBtn = fisKesBtn.tagName === 'INPUT' && /button/i.test((fisKesBtn.getAttribute && fisKesBtn.getAttribute('type')) || '');
+                  await nativePressKey(isInputBtn ? 'Space' : 'Enter');
+                  await sleep(800);
+                  let stillFocused = false; try { stillFocused = document.activeElement === fisKesBtn; } catch {}
+                  if (stillFocused) { await nativePressKey(isInputBtn ? 'Enter' : 'Space'); await sleep(800); }
+                  kes = 'focus-key';
+                }
+                await sleep(1200);
               } else {
                 // Buton elemanı bulunamadıysa son çare: native metin-tıklama (koordinatlı).
                 kes = await robustClick('Fiş Kes', { settleMs: 2000 });

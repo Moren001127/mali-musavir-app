@@ -1087,6 +1087,20 @@ async function runJobWithMorenRuntime(job) {
     page.on('pageerror', (err) => log.warn(`Browser pageerror: ${err.message}`));
     page.on('dialog', async (dialog) => {
       const msg = String(dialog.message() || '').trim();
+      const type = dialog.type();
+      // Fiş Kes / kaydetme gibi POZİTİF onay confirm'lerini KABUL et. Eskiden HER dialog dismiss
+      //   ediliyordu → fisKes()'in açtığı "fiş kesilecek, onaylıyor musunuz?" confirm'i iptal edilip
+      //   fiş HİÇ kesilmiyordu (tüm Fiş Kes denemelerinin sessiz başarısızlığının kök nedeni).
+      //   Yıkıcı (sil/iptal/vazgeç) confirm'leri ve diğer alert'leri yine kapat.
+      const wantAccept = type === 'confirm'
+        && /(fi[şs]|kes|kaydet|aktar|olu[şs]tur|onayl|devam|emin\s*misin|kesilecek|aktar[ıi]lacak)/i.test(msg)
+        && !/(sil|iptal|vazge[çc]|geri\s*al)/i.test(msg);
+      if (wantAccept) {
+        log.info(`Luca onay penceresi KABUL edildi (Evet): ${msg}`);
+        await logJob(jobId, `Luca onay penceresi KABUL edildi: ${msg}`).catch(() => {});
+        await dialog.accept().catch(() => {});
+        return;
+      }
       if (msg) {
         log.warn(`Luca dialog kapatildi: ${msg}`);
         await logJob(jobId, `Luca uyarı penceresi kapatıldı: ${msg}`).catch(() => {});
