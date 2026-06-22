@@ -2288,7 +2288,10 @@ export class FaturaMuhasebelestirmeService {
       }, documentId);
 
       const duplicateOfId = duplicate?.duplicateOfId || existing.duplicateOfId || null;
-      const ocrStatus = ocrResult.confidence >= 0.7 ? 'SUCCESS' : 'NEEDS_REVIEW';
+      // K2: güven skoru "doluluk" ölçüyor — yüksek olsa bile İÇERİK şüpheliyse (validationScore
+      // düşük ya da OCR sorun bildirdiyse) SUCCESS sayma, insan kontrolüne (NEEDS_REVIEW) düşür.
+      const contentOk = (ocrResult.validationScore == null || ocrResult.validationScore >= 0.7) && !(ocrResult.validationIssues?.length);
+      const ocrStatus = ocrResult.confidence >= 0.7 && contentOk ? 'SUCCESS' : 'NEEDS_REVIEW';
       const status = duplicateOfId ? 'NEEDS_REVIEW' : ocrStatus === 'SUCCESS' ? 'READY' : 'NEEDS_REVIEW';
       // Plan yoksa kod atanmasın (diğer yollarla tutarlı) — placeholder 770/600 sızmasın.
       const lines = await this.gateCodesByPlan(tenantId, existing.taxpayerId, this.linesFromOcr(ocrResult, invoiceKind));
@@ -2452,7 +2455,9 @@ export class FaturaMuhasebelestirmeService {
         kdvBreakdown: breakdown.length ? breakdown : null,
       }));
 
-      const ocrStatus = (ocr.confidence ?? 0) >= 0.7 ? 'SUCCESS' : 'NEEDS_REVIEW';
+      // K2: güven (doluluk) yüksek olsa bile içerik şüpheliyse insan kontrolüne düşür.
+      const contentOk = (ocr.validationScore == null || ocr.validationScore >= 0.7) && !(ocr.validationIssues?.length);
+      const ocrStatus = (ocr.confidence ?? 0) >= 0.7 && contentOk ? 'SUCCESS' : 'NEEDS_REVIEW';
 
       await (this.prisma as any).$transaction(async (tx: any) => {
         await tx.invoiceAccountingLine.deleteMany({ where: { documentId } });
