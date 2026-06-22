@@ -1486,7 +1486,9 @@ export class WhatsAppBotController implements OnModuleInit {
     const sendDoc = async (s3Key: string, mimeType: string, filename: string, caption: string, markerDonem = ''): Promise<boolean> => {
       try {
         const url = await this.storage!.getPresignedDownloadUrl(s3Key, filename);
-        const ok = await this.baileys.sendMedia(ownerTenant.id, this.replyTarget(msg), { url, mimeType, filename, caption });
+        // STANDART: önce bilgilendirme mesajı, sonra temiz dosya (her şey tek düzende).
+        await sendOwnerText(`📎 ${caption}`);
+        const ok = await this.baileys.sendMedia(ownerTenant.id, this.replyTarget(msg), { url, mimeType, filename, caption: null });
         // KESİN bağlam işareti: hangi mükellef + dönem için belge gittiğini gizli yaz.
         // "Tahakkukunu da gönder" gibi isimsiz devam isteğinde bulanık isim eşleştirme
         // (ortak "TAŞIMACILIK" kelimesi → yanlış mükellef) yerine bu kesin id kullanılır.
@@ -1695,7 +1697,9 @@ export class WhatsAppBotController implements OnModuleInit {
     const sendDoc = async (s3Key: string, mimeType: string, filename: string, caption: string, markerDonem = ''): Promise<boolean> => {
       try {
         const url = await this.storage!.getPresignedDownloadUrl(s3Key, filename);
-        const ok = await this.baileys.sendMedia(taxpayer.tenantId, this.replyTarget(msg), { url, mimeType, filename, caption });
+        // STANDART: önce bilgilendirme mesajı, sonra temiz dosya (her şey tek düzende).
+        await sendText(`📎 ${caption}`);
+        const ok = await this.baileys.sendMedia(taxpayer.tenantId, this.replyTarget(msg), { url, mimeType, filename, caption: null });
         await this.prisma.communicationLog.create({
           data: {
             taxpayerId: taxpayer.id, channel: 'WHATSAPP',
