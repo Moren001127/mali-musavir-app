@@ -1,7 +1,10 @@
 import { Injectable } from '@nestjs/common';
 
 // "Moren AI" / "yapay zeka" gibi ifadeleri gizlemek için doğal karşılık.
-const OFFICE_FALLBACK = 'ofisimiz';
+// "ofisimiz" gramer bozuyordu ("ben yapay zeka" → "ben ofisimiz"); "ofisin dijital asistanı" doğru.
+const OFFICE_FALLBACK = 'ofisin dijital asistanı';
+// Binlik ayraçtan sonra kaçan boşluğu temizle: "26. 000" → "26.000", "249. 359" → "249.359".
+const fixNumberSpacing = (s: string) => String(s || '').replace(/(\d)\.\s+(\d{3})(?=\D|$)/g, '$1.$2');
 
 @Injectable()
 export class WhatsAppBotPostFilterService {
@@ -95,6 +98,7 @@ export class WhatsAppBotPostFilterService {
       .replace(/\bdil modeli\b/gi, OFFICE_FALLBACK)
       .replace(/\s+/g, ' ')
       .trim();
+    text = fixNumberSpacing(text);
 
     // İç araç-çağrı metni (get_xxx çağırıyorum) kullanıcıya GİTMESİN.
     text = this.stripToolNarration(text);
@@ -135,6 +139,7 @@ export class WhatsAppBotPostFilterService {
       .replace(/[ \t]+\n/g, '\n')              // satır sonu öncesi boşluk
       .replace(/\n{3,}/g, '\n\n')              // ardışık boş satırları 1'e indir
       .trim();
+    t = fixNumberSpacing(t);
 
     // İç araç-çağrı metni (get_xxx çağırıyorum / "aracını çağırıyorum") owner'a da gitmesin.
     t = this.stripToolNarration(t);
