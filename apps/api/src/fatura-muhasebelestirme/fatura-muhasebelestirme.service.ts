@@ -9,7 +9,7 @@ import { OcrService, OcrResult } from '../kdv-control/ocr';
 import { KdvControlService } from '../kdv-control/kdv-control.service';
 import { EarsivRenderService } from '../earsiv/earsiv-render.service';
 import { encrypt, tryDecrypt } from '../common/crypto';
-import { claudeTextViaMax } from '../common/max-inference';
+import { claudeTextViaMax, MAX_MODEL_CHEAP } from '../common/max-inference';
 import { VendorMemoryService } from '../vendor-memory/vendor-memory.service';
 import { MihsapService } from '../mihsap/mihsap.service';
 
@@ -5469,15 +5469,18 @@ export class FaturaMuhasebelestirmeService implements OnModuleInit, OnModuleDest
     // Süre: Max CLI ilk çağrıda soğuk başlar + uzun HTML metni yavaş işlenir; 22sn YETMİYORDU
     // (toplu okumada belgelerin ~yarısı "22000ms içinde yanıt vermedi"ye düşüyordu). Frontend
     // axios timeout'u yok (sınırsız bekler), Railway uzun isteği kesmez → bolca süre veriyoruz.
-    // XML'den UBL parse edildiyse AI çağrısı YOK (birebir veri). Aksi halde Max-vision:
-    // Max CLI soğuk başlangıç/geçici hatada başarısız olabiliyor → 2 deneme yap.
+    // XML'den UBL parse edildiyse AI çağrısı YOK (birebir veri). Aksi halde Max-vision.
+    // HIZ (kullanıcı tercihi): 1-2. deneme HIZLI model (Haiku) — ~2 kat hız, daha ucuz, rate-limit
+    // riski az. Haiku okuyamazsa (boş/çözülemez) 3. deneme SONNET'e yükselt → zor belge doğru okunsun.
+    // (Yanlış-okuma'yı sonra denge + KDV-matematik doğrulaması yakalar.)
     let parsed: any = preParsed;
     let reason = 'okunamadı';
     for (let attempt = 1; attempt <= 3 && !parsed; attempt++) {
+      const model = attempt >= 3 ? undefined : MAX_MODEL_CHEAP; // 3. deneme: Sonnet (varsayılan)
       const res = await claudeTextViaMax(
         isImage
-          ? { prompt, images: [{ base64: imgBuf!.toString('base64'), mediaType: imgMedia }], timeoutMs: 45000 }
-          : { prompt, timeoutMs: 60000 },
+          ? { prompt, images: [{ base64: imgBuf!.toString('base64'), mediaType: imgMedia }], timeoutMs: 45000, model }
+          : { prompt, timeoutMs: 60000, model },
       );
       if (!res.ok || !res.text) { reason = res.error || 'okunamadı'; continue; }
       try {
