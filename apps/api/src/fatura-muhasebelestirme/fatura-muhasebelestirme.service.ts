@@ -2316,6 +2316,9 @@ export class FaturaMuhasebelestirmeService {
             belgeNo: existing.belgeNo || ocr.belgeNo || null,
             faturaTarihi: existing.faturaTarihi || parseDate(ocr.date || null) || null,
             totalAmount: money(totalNum),
+            // OCR satici VKN'sini (gercek) yaz → sahiplik/yon kontrolu ve satici-bazli
+            // ogrenme dogru VKN'ye dayansin. Azure yalniz saticiyi verir; alici AI-oku'da gelir.
+            ...((() => { const sv = String(ocr.saticiVkn || '').replace(/\D/g, ''); return sv.length === 10 || sv.length === 11 ? { sellerVkn: sv } : {}; })()),
             status: 'NEEDS_REVIEW',
             ocrStatus,
             ocrEngine: ocr.engine || null,
@@ -4983,27 +4986,30 @@ export class FaturaMuhasebelestirmeService {
     await (this.prisma as any).$transaction(async (tx: any) => {
       await tx.invoiceAccountingLine.deleteMany({ where: { documentId: d.id } });
       if (lines.length) await tx.invoiceAccountingLine.createMany({ data: lines.map((l: any) => ({ ...l, documentId: d.id })) });
-      // Karşı-taraf VKN'si: alışta satıcı, satışta alıcı. Mihsap içe-aktarımı tüm belgelere
-      // hesap-sahibinin VKN'sini yazıyor (yanlış); AI faturadan gerçek VKN'yi okuyunca düzelt.
-      // (Satıcıya göre kural/öğrenme bu VKN'ye dayanır.)
+      // Faturanın GERÇEK iki tarafının VKN'sini yaz (satıcı + alıcı). Mihsap içe-aktarımı
+      // tüm belgelere yalnız bir tarafı yazıyor; AI faturadan ikisini de okuyunca düzelt.
+      // Böylece sahiplik/yön kontrolü (OWNERSHIP_MISMATCH) ÇALIŞIR: yanlış yönlü belge
+      // "İçerik çelişkisi" olarak görünür (eskiden validationStatus elle 'OK' yapılıp gizleniyordu).
       const aiSaticiVkn = String(parsed.saticiVkn || '').replace(/\D/g, '');
       const aiAliciVkn = String(parsed.aliciVkn || '').replace(/\D/g, '');
-      const karsiVkn = isSale ? aiAliciVkn : aiSaticiVkn;
-      const karsiVknValid = karsiVkn.length === 10 || karsiVkn.length === 11;
+      const vknOk = (v: string) => v.length === 10 || v.length === 11;
       await tx.invoiceAccountingDocument.update({
         where: { id: d.id },
         data: {
           belgeNo: d.belgeNo || (parsed.belgeNo ? String(parsed.belgeNo) : null),
           // AI geçerli tarih çıkardıysa düzelt (UTC gece-yarısı → gün kayması yok); yoksa dokunma
           ...(parseDate(parsed.tarih) ? { faturaTarihi: parseDate(parsed.tarih) } : {}),
-          ...(karsiVknValid ? (isSale ? { buyerVkn: karsiVkn } : { sellerVkn: karsiVkn }) : {}),
+          ...(vknOk(aiSaticiVkn) ? { sellerVkn: aiSaticiVkn } : {}),
+          ...(vknOk(aiAliciVkn) ? { buyerVkn: aiAliciVkn } : {}),
           status: 'NEEDS_REVIEW',
-          validationStatus: 'OK',
           ocrEngine: 'max-vision',
           ocrData: { ...((d.ocrData as any) || {}), matrah, kdvTutari: kdv, kdvOrani: breakdown[0].rate, kdvBreakdown: breakdown.map((b: any) => ({ oran: b.rate, matrah: b.base, tutar: b.amount })), matrahKategori: typeof parsed.kategori === 'string' ? parsed.kategori : undefined, engine: 'max-vision' },
         },
       });
     });
+    // Yeni yazılan satıcı/alıcı VKN'leriyle sahiplik/yön kontrolünü yeniden hesapla —
+    // yanlış yönlü/mükellefe ait olmayan belge "İçerik çelişkisi" olarak işaretlenir.
+    await this.revalidateDocument(tenantId, d.id).catch(() => {});
     // Placeholder kodları (770.01.010 vb. — mükellefin planında olmayabilir) mükellefin
     // GERÇEK hesap planındaki kodla değiştir; öğrenilmiş satıcı kodu varsa onu uygula.
     // (Sadece applyLearnedVendorCodes yetmiyordu → öğrenilmemiş satıcıda placeholder kalıyordu.)
