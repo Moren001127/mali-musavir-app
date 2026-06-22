@@ -10,6 +10,7 @@ import { KdvControlService } from '../kdv-control/kdv-control.service';
 import { EarsivRenderService } from '../earsiv/earsiv-render.service';
 import { encrypt, tryDecrypt } from '../common/crypto';
 import { claudeTextViaMax, MAX_MODEL_CHEAP } from '../common/max-inference';
+import { buildLucaImportExcel, buildLucaIsletmeHizliFisCsv } from './luca-excel.service';
 import { VendorMemoryService } from '../vendor-memory/vendor-memory.service';
 import { MihsapService } from '../mihsap/mihsap.service';
 
@@ -3607,6 +3608,65 @@ export class FaturaMuhasebelestirmeService implements OnModuleInit, OnModuleDest
   // v1.38: Bir mukellef+donem icin TUM QUEUED belgeleri tek INVOICE_POST job
   // halinde Luca'ya yollar — agent Excel hazirlayip Luca'nin "Toplu Aktarim"
   // ekranina yukler, tek yevmiye fisi olusur. Kullanici sonra Luca'da boler.
+  /** İNDİRME: Aktarım'daki belgeleri (yön/dönem) Luca'ya GİTMEDEN tek toplu fiş Excel/CSV olarak
+   *  üretir — kullanıcı indirip Luca'ya elle yükleyebilir ya da arşivler. batchPostToLuca ile aynı
+   *  birleştirme + format (Bilanço: 14 sütun xlsx "Excel Veri Aktarımı"; İşletme: Hızlı Fiş CSV). */
+  async buildBatchExcel(
+    tenantId: string,
+    q: { taxpayerId: string; period?: string; direction?: 'ALIS' | 'SATIS' },
+  ): Promise<{ buffer: Buffer; filename: string; contentType: string }> {
+    if (!q?.taxpayerId) throw new BadRequestException('Mükellef seçilmeli');
+    const tp: any = await (this.prisma as any).taxpayer.findFirst({
+      where: { id: q.taxpayerId, tenantId }, select: { defterTuru: true, mihsapDefterTuru: true },
+    });
+    const isIsletme = String(tp?.defterTuru || tp?.mihsapDefterTuru || 'BILANCO').toUpperCase().includes('ISLETME');
+    const where: any = { tenantId, taxpayerId: q.taxpayerId, status: 'APPROVED' };
+    if (q.direction === 'ALIS' || q.direction === 'SATIS') where.invoiceKind = q.direction;
+    if (q.period) {
+      const [y, m] = String(q.period).split('-').map((n) => parseInt(n, 10));
+      if (Number.isFinite(y) && Number.isFinite(m)) {
+        where.faturaTarihi = { gte: new Date(Date.UTC(y, m - 1, 1)), lt: new Date(Date.UTC(y, m, 1)) };
+      }
+    }
+    const allDocs: any[] = await (this.prisma as any).invoiceAccountingDocument.findMany({
+      where, include: { lines: { orderBy: { orderNo: 'asc' } } }, orderBy: { faturaTarihi: 'asc' },
+    });
+    const docs = allDocs.filter((d: any) => {
+      const v = String((d as any).validationStatus || d.ocrData?.validationStatus || '').toUpperCase();
+      if (v === 'INVALID' || v === 'INCOMPLETE') return false;
+      const lines = d.lines || [];
+      const sd = lines.reduce((s: number, l: any) => s + Number(l.debit || 0), 0);
+      const sc = lines.reduce((s: number, l: any) => s + Number(l.credit || 0), 0);
+      const blankCode = lines.some((l: any) => (Number(l.debit || 0) + Number(l.credit || 0)) > 0 && !String(l.accountCode || '').trim());
+      return lines.length && Math.abs(sd - sc) <= 0.02 && !blankCode;
+    });
+    if (!docs.length) throw new BadRequestException('İndirilecek (dengeli, kodlu) belge yok');
+    const kind: 'ALIS' | 'SATIS' = q.direction === 'SATIS' || (!q.direction && String(docs[0].invoiceKind).toUpperCase() === 'SATIS') ? 'SATIS' : 'ALIS';
+    const toInvoicePayload = (d: any) => ({
+      documentId: d.id, documentType: d.documentType, invoiceKind: d.invoiceKind, belgeNo: d.belgeNo,
+      seriNo: d.seriNo, faturaTarihi: d.faturaTarihi ? d.faturaTarihi.toISOString() : null,
+      sellerVkn: d.sellerVkn, buyerVkn: d.buyerVkn, vendorName: d.vendorName, customerName: d.customerName,
+      totalAmount: d.totalAmount ? String(d.totalAmount) : null, currency: d.currency || 'TL',
+      lines: (d.lines || []).map((line: any) => ({
+        group: line.group, accountCode: line.accountCode, description: line.description, rate: line.rate,
+        debit: line.debit ? String(line.debit) : '0', credit: line.credit ? String(line.credit) : '0', orderNo: line.orderNo,
+      })),
+    });
+    const payload: any = {
+      mode: 'BATCH_EXCEL', format: isIsletme ? 'ISLETME_CSV' : 'BATCH_EXCEL', direction: kind,
+      period: q.period || '', totalCount: docs.length,
+      fisAciklama: `${kind === 'SATIS' ? 'SATIŞ' : 'ALIŞ'} faturaları — ${q.period || ''} (${docs.length} belge)`,
+      invoices: docs.map(toInvoicePayload),
+    };
+    const yon = kind === 'SATIS' ? 'satis' : 'alis';
+    if (isIsletme) {
+      const csv = buildLucaIsletmeHizliFisCsv(payload);
+      return { buffer: Buffer.isBuffer(csv) ? csv : Buffer.from(String(csv), 'binary'), filename: `luca-isletme-${yon}-${q.period || 'donem'}.csv`, contentType: 'text/csv; charset=windows-1254' };
+    }
+    const buf = await buildLucaImportExcel(payload);
+    return { buffer: buf, filename: `luca-fis-${yon}-${q.period || 'donem'}.xlsx`, contentType: 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet' };
+  }
+
   async batchPostToLuca(
     tenantId: string,
     body: { taxpayerId: string; period?: string; documentIds?: string[]; direction?: 'ALIS' | 'SATIS' },

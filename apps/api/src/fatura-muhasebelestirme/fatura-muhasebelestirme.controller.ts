@@ -9,6 +9,7 @@ import {
   Post,
   Query,
   Req,
+  Res,
   UploadedFiles,
   UseGuards,
   UseInterceptors,
@@ -359,6 +360,26 @@ export class FaturaMuhasebelestirmeController {
   @Post('batch-post-to-luca')
   batchPostToLuca(@Req() req: any, @Body() body: any) {
     return this.service.batchPostToLuca(req.user.tenantId, body, req.user?.userId);
+  }
+
+  /** Aktarım'daki toplu fişi (yön/dönem) Luca'ya GİTMEDEN Excel/CSV indir — kullanıcı elle yükler/arşivler. */
+  @Get('batch-excel')
+  async batchExcel(
+    @Req() req: any,
+    @Query('taxpayerId') taxpayerId: string,
+    @Query('period') period: string,
+    @Query('direction') direction: string,
+    @Res() res: any,
+  ) {
+    const out = await this.service.buildBatchExcel(req.user.tenantId, {
+      taxpayerId,
+      period,
+      direction: direction === 'ALIS' || direction === 'SATIS' ? (direction as 'ALIS' | 'SATIS') : undefined,
+    });
+    res.setHeader('Content-Type', out.contentType);
+    res.setHeader('Content-Disposition', `attachment; filename="${out.filename}"`);
+    res.setHeader('Content-Length', out.buffer.length.toString());
+    res.end(out.buffer);
   }
 
   @Delete('documents/:id')

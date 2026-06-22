@@ -1703,6 +1703,23 @@ function ScreenAktarilanlar({ taxpayerId, period }: { taxpayerId: string; period
       </Fragment>
     );
   };
+  // Toplu fiş Excel'i Luca'ya GİTMEDEN indir (kullanıcı elle yükler/arşivler). Auth gerektiği
+  // için axios (blob) ile çekip tarayıcıda indirme tetiklenir.
+  const [indiriliyor, setIndiriliyor] = useState<'' | 'ALIS' | 'SATIS'>('');
+  const indirExcel = async (yon: 'ALIS' | 'SATIS') => {
+    setIndiriliyor(yon);
+    try {
+      const r = await api.get('/fatura-muhasebelestirme/batch-excel', { params: { taxpayerId, period, direction: yon }, responseType: 'blob' });
+      const cd = String(r.headers?.['content-disposition'] || '');
+      const m = cd.match(/filename="?([^"]+)"?/);
+      const fname = m ? m[1] : `luca-fis-${yon.toLowerCase()}-${period}.xlsx`;
+      const url = URL.createObjectURL(r.data);
+      const a = document.createElement('a'); a.href = url; a.download = fname; document.body.appendChild(a); a.click(); a.remove();
+      setTimeout(() => URL.revokeObjectURL(url), 1500);
+    } catch {
+      toast.error('Excel indirilemedi — dengeli/kodlu belge olmayabilir.');
+    } finally { setIndiriliyor(''); }
+  };
   const renderSection = (yon: 'ALIS' | 'SATIS') => {
     const isSat = yon === 'SATIS';
     const dd = docs.filter((d) => ((d.invoiceKind || 'ALIS') === 'SATIS') === isSat);
@@ -1721,6 +1738,9 @@ function ScreenAktarilanlar({ taxpayerId, period }: { taxpayerId: string; period
               : (aktarildi ? <>{aktarildi} belge aktarıldı · yeni hazır yok</> : <>Aktarıma hazır {label.toLowerCase()} belge yok</>)}
           </div>
           <div className="sp" />
+          <button className="btn sm" disabled={indiriliyor === yon || dd.length === 0} onClick={() => indirExcel(yon)} title="Bu yöndeki toplu fişi Excel olarak indir — Luca'ya elle yükle ya da arşivle">
+            {indiriliyor === yon ? 'İndiriliyor…' : '⬇ Excel İndir'}
+          </button>
           <button className="btn primary" disabled={batchMut.isPending || hazir.length === 0} onClick={() => { setAktarYon(yon); batchMut.mutate(yon); }}>
             <Ico html={I.send} size={14} /> {busy ? 'Aktarılıyor…' : `${label}'ı tek fiş olarak aktar${hazir.length ? ` (${hazir.length})` : ''}`}
           </button>
