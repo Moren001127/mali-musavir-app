@@ -12,7 +12,7 @@
   // v1.42.2 (2026-06-16): Ajan kendini yenilerken (delete __morenAgent) eski async
   // döngü "Cannot read 'stopRequested' of undefined/null" ile ÇÖKÜYORDU → yetim
   // döngü artık nesne yoksa güvenle durur (stopRequested kontrollerine null-guard).
-  const AGENT_VERSION = '1.46.0';
+  const AGENT_VERSION = '1.46.1';
   const AGENT_INSTANCE_ID = 'mai_' + Date.now().toString(36) + '_' + Math.random().toString(36).slice(2, 8);
 
   // === VERSION-AWARE RELOAD ===
@@ -1201,6 +1201,9 @@
       if (!r.ok) return;
       const jobs = await r.json();
       if (!Array.isArray(jobs) || jobs.length === 0) return;
+      // AUTO-ENTEGRASYON: yeni hesaplar fişten ÖNCE açılsın → ACCOUNT_PLAN_PUSH işlerini en öne al
+      //   (Luca'da o cari/hesap yoksa fiş kesilemez). Gerisi stabil kalır (Array.sort kararlı).
+      try { jobs.sort((a, b) => ((a && a.tip === 'ACCOUNT_PLAN_PUSH') ? 0 : 1) - ((b && b.tip === 'ACCOUNT_PLAN_PUSH') ? 0 : 1)); } catch {}
 
       const logPendingJob = async (job, line) => {
         try {
@@ -1741,14 +1744,21 @@
               await log('⏫ "Yükle" tıklandı — hesaplar Luca\'ya aktarılıyor');
               await sleep(3500);
 
-              // 6) Sonuç: başarı metni ara (best-effort) — İşlem Takip / sonuç ekranı
-              let basari = false;
-              for (let w = 0; w < 14 && !basari; w++) {
-                for (const doc of lucaDocuments()) {
-                  try { const t = (doc.body && doc.body.textContent) || ''; if (/(aktar[ıi]ld[ıi]|ba[şs]ar[ıi]yla|olu[şs]turuldu|kaydedildi|i[şs]lem\s+tamamland|eklendi)/i.test(t)) { basari = true; break; } } catch {}
-                }
-                if (!basari) await sleep(900);
+              // 6) Sonuç: hesap aktarımı NON-DESTRUCTIVE (yükleme hesapları doğrudan açar; Fiş Kes gibi
+              //    ikinci adım yok). Bu yüzden HATA metni yoksa BAŞARILI say (başarı metnine güvenme —
+              //    test: hesaplar açıldı ama başarı metni yakalanmamıştı). Sonuç metnini de logla.
+              await sleep(3500);
+              let hata = false; let sonuc = '';
+              for (const doc of lucaDocuments()) {
+                try {
+                  const t = (doc.body && doc.body.textContent) || '';
+                  if (/(ge[çc]ersiz|ba[şs]ar[ıi]s[ıi]z|y[üu]klenemedi|eksik\s+alan|zorunlu\s+alan|hatal[ıi]\s+format|i[şs]lem\s+yap[ıi]lamad)/i.test(t)) hata = true;
+                  const m = t.match(/(i[şs]lem\s+takip[\s\S]{0,120}|\d+\s*hesap[^.!\n]{0,40}|aktar[ıi]ld[ıi][^.!\n]{0,30})/i);
+                  if (m && !sonuc) sonuc = m[0].replace(/\s+/g, ' ').trim().slice(0, 130);
+                } catch {}
               }
+              const basari = !hata;
+              await log(`🔎 Hesap aktarım sonucu: ${basari ? 'BAŞARILI' : 'HATA'}${sonuc ? ' · ' + sonuc : ''}`);
 
               // 7) Başarılıysa hesapları syncedToLuca=true yap; sonra job done
               if (basari) {

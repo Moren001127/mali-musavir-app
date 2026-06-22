@@ -3797,6 +3797,15 @@ export class FaturaMuhasebelestirmeService implements OnModuleInit, OnModuleDest
     }
     const groups = [...groupMap.values()];
 
+    // AUTO-ENTEGRASYON (kullanıcı: önce hesap, sonra fiş): mükellefin Luca'ya GÖNDERİLMEMİŞ yerel
+    //   hesabı varsa, fiş işinden ÖNCE bir ACCOUNT_PLAN_PUSH işi yarat. Ajan bunu INVOICE_POST'tan
+    //   önce işler (job sort) → fiş kesilirken o cari/hesap Luca'da hazır olur. Yeni hesap yoksa no-op.
+    try {
+      await this.pushAccountPlanToLuca(tenantId, { taxpayerId: body.taxpayerId, createdBy: userId });
+    } catch (e: any) {
+      this.logger.warn(`Auto hesap-açma atlandı: ${e?.message || e}`);
+    }
+
     const jobs: Array<{ jobId: string; kind: string; period: string; documentCount: number }> = [];
     for (const g of groups) {
       const dominantPeriod = g.period;
