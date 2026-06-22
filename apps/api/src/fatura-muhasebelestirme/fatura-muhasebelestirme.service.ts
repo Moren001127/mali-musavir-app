@@ -3295,11 +3295,17 @@ export class FaturaMuhasebelestirmeService {
     // ocrData içinden breakdown'ı oku (varsa)
     const ocrData: any = doc.ocrData || {};
     const breakdown = Array.isArray(ocrData?.kdvBreakdown) ? ocrData.kdvBreakdown : null;
+    // K7: tevkifat tespiti — fatura tevkifatlı (OCR'da tevkifat tutarı/oranı) ama tevkifat
+    // fişi (360/KDV2 sorumlu sıfatı) kurulmamışsa onayda blokla (düz KDV ile gitmesin).
+    const tevkifatli = Number(ocrData?.kdvTevkifat || 0) > 0 || Number(ocrData?.tevkifatOrani || 0) > 0;
+    const hasTevkifatLine = (doc.lines || []).some((l: any) => String(l.accountCode || '').startsWith('360'));
 
     const validation = await this.runValidation({
       tenantId,
       taxpayerId: doc.taxpayerId,
       invoiceKind: doc.invoiceKind,
+      tevkifatli,
+      hasTevkifatLine,
       lines: doc.lines || [],
       totalAmount: doc.totalAmount,
       sellerVkn: doc.sellerVkn,
@@ -4760,6 +4766,8 @@ export class FaturaMuhasebelestirmeService {
     matrah?: any;
     kdvTutari?: any;
     kdvBreakdown?: Array<{ rate: number; base: number; amount: number }> | null;
+    tevkifatli?: boolean;
+    hasTevkifatLine?: boolean;
   }): Promise<{
     status: 'OK' | 'INCOMPLETE' | 'INVALID';
     issues: Array<{ code: string; severity: 'WARNING' | 'ERROR'; message: string; expected?: any; actual?: any }>;
@@ -4873,6 +4881,16 @@ export class FaturaMuhasebelestirmeService {
           actual: amount,
         });
       }
+    }
+
+    // ── 6) TEVKIFAT_NEEDED — tevkifatlı fatura ama tevkifat fişi (360/KDV2) yok.
+    //     Düz KDV ile onaylanıp Luca'ya gitmesin; müşavir "Tevkifat fişini kur" yapmalı.
+    if (opts.tevkifatli && !opts.hasTevkifatLine) {
+      issues.push({
+        code: 'TEVKIFAT_NEEDED',
+        severity: 'ERROR',
+        message: 'Tevkifatlı fatura — tevkifat fişi (KDV2 / 360 sorumlu sıfatı) kurulmadan onaylanamaz. "Tevkifat fişini kur" ile oranı seç.',
+      });
     }
 
     // Sonuç durumu
