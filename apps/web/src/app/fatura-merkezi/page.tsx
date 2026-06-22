@@ -515,6 +515,18 @@ export default function FaturaMerkeziPage() {
   const [editorFull, setEditorFull] = useState(false);
   useEffect(() => { if (screen !== 'muhasebe') setEditorFull(false); }, [screen]);
 
+  // Seçimi (mükellef + dönem + ekran) KALICI yap — sayfa yenilenince kaybolmasın.
+  useEffect(() => {
+    try {
+      const t = localStorage.getItem('fm-taxpayerId'); if (t) setTaxpayerId(t);
+      const p = localStorage.getItem('fm-period'); if (p) setPeriod(p);
+      const s = localStorage.getItem('fm-screen'); if (s) setScreen(s);
+    } catch { /* localStorage yoksa atla */ }
+  }, []);
+  useEffect(() => { try { localStorage.setItem('fm-taxpayerId', taxpayerId); } catch {} }, [taxpayerId]);
+  useEffect(() => { try { localStorage.setItem('fm-period', period); } catch {} }, [period]);
+  useEffect(() => { try { localStorage.setItem('fm-screen', screen); } catch {} }, [screen]);
+
   const taxpayersQ = useQuery({
     queryKey: ['fm2', 'taxpayers'],
     queryFn: () =>

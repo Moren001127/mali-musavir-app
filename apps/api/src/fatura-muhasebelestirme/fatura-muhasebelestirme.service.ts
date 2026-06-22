@@ -5304,6 +5304,17 @@ export class FaturaMuhasebelestirmeService {
       return { ok: false, reason: imgBuf ? `belge biçimi okunamadı (${imgMedia || 'bilinmeyen'}, ${imgBuf.length}b)` : 'belge dosyası boş/gelmedi' };
     }
 
+    // GÖRÜNTÜ SIKIŞTIRMA: yüksek çözünürlüklü fatura JPEG'i Max-vision CLI'ı çökertiyordu
+    // ("Claude Code process exited with code 1"). ~1600px'e indirip kaliteyi düşür → çökmez,
+    // hızlı okunur, metin yine net. (sharp zaten bağımlı.)
+    if (isImage && imgBuf && imgBuf.length > 350_000) {
+      try {
+        const sharp = require('sharp');
+        imgBuf = await sharp(imgBuf).rotate().resize({ width: 1600, withoutEnlargement: true }).jpeg({ quality: 78 }).toBuffer();
+        imgMedia = 'image/jpeg';
+      } catch { /* sharp başarısızsa orijinali gönder */ }
+    }
+
     // Mükellefin İŞİNİ/SEKTÖRÜNÜ eşleştirmeye kat → kategori firmanın faaliyetine göre
     // seçilsin (ör. yemek üreticisinde un=hammadde, tüccarda satılan ürün=ticari_mal).
     let mukellefBilgi = '';
