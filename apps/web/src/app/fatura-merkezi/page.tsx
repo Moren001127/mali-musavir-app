@@ -1150,20 +1150,21 @@ function InlineBelge({ id }: { id: string }) {
   return (
     <div className="belgebox">
       <div className="bpbar">
-        <span>Belge</span>
+        <span>Belge <span className="bphint">(çift tıkla → tam ekran)</span></span>
         <div className="bpzoom">
           {canZoom ? (
             <>
               <button type="button" onClick={() => dz(-0.25)} title="Uzaklaştır">−</button>
-              <span className="bpz">{Math.round(appliedScale * 100)}%</span>
+              <span className="bpz">{Math.round(zoom * 100)}%</span>
               <button type="button" onClick={() => dz(0.25)} title="Yakınlaştır">+</button>
-              <button type="button" onClick={() => setZoom(1)} title="Tümünü sığdır (%100)">Sığdır</button>
+              <button type="button" onClick={() => setZoom(1)} title="Ekrana sığdır (%100)">Sığdır</button>
             </>
           ) : null}
+          <button type="button" onClick={() => openDocFile(id)} title="Tam ekran aç">⛶</button>
           {url ? <a href={url} target="_blank" rel="noopener noreferrer" title="Yeni sekmede aç">↗</a> : null}
         </div>
       </div>
-      <div ref={wrapRef} className="bpview" style={{ overflow: 'auto' }}>
+      <div ref={wrapRef} className="bpview" style={{ overflow: 'auto' }} onDoubleClick={() => openDocFile(id)}>
         {html
           ? <iframe ref={frameRef} onLoad={onFrameLoad} className="bpframe-h" srcDoc={htmlDoc} title="Belge" sandbox="allow-same-origin" scrolling="no" style={{ zoom: appliedScale } as any} />
           : isImg
@@ -2314,7 +2315,9 @@ const CSS = `
 #fm-root .wchip b{font-size:12.5px;font-weight:700;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;max-width:206px}
 #fm-root .wchip small{font-size:11px;color:var(--muted)}
 #fm-root .fiseditor{display:flex;gap:18px;align-items:flex-start}
-#fm-root .belgepane{flex:0 0 58%;max-width:58%;position:sticky;top:8px}
+#fm-root .belgepane{flex:0 0 64%;max-width:64%;position:sticky;top:8px}
+#fm-root .app.editorfull .belgepane{flex:0 0 72%;max-width:72%}
+#fm-root .bphint{font-weight:400;color:var(--faint);font-size:10.5px}
 #fm-root .fispane{flex:1;min-width:0;display:flex;flex-direction:column}
 #fm-root .fispane > .docmeta{order:7}
 #fm-root .fispane > .tevpanel{order:8}
