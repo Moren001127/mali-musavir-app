@@ -2048,14 +2048,14 @@ const CSS = `
 #fm-root .endcol{justify-content:flex-end}
 /* Belge görüntüleme modalı (ekranda büyük, ayrı sekme yok) */
 #fm-root .docov{position:fixed;inset:0;background:rgba(15,23,42,.55);display:grid;place-items:center;z-index:60;padding:10px}
-#fm-root .docbox{background:#fff;border-radius:14px;width:min(1500px,99vw);height:97vh;display:flex;flex-direction:column;overflow:hidden;box-shadow:0 24px 70px rgba(0,0,0,.35)}
+#fm-root .docbox{background:#fff;border-radius:14px;width:min(1040px,97vw);height:96vh;display:flex;flex-direction:column;overflow:hidden;box-shadow:0 24px 70px rgba(0,0,0,.35)}
 #fm-root .docbar{display:flex;align-items:center;gap:9px;padding:9px 12px;border-bottom:1px solid var(--line);flex-shrink:0}
 #fm-root .zoomctl{display:flex;align-items:center;gap:4px;margin-right:6px}
 #fm-root .zbtn{min-width:30px;height:30px;padding:0 8px;border:1px solid var(--line);background:#f8fafc;border-radius:7px;cursor:pointer;font-size:16px;font-weight:700;line-height:1;color:#0f172a;display:inline-flex;align-items:center;justify-content:center}
 #fm-root .zbtn:hover{background:#eef2f7}
 #fm-root .zbtn.zreset{font-size:12px;font-weight:600}
 #fm-root .zval{min-width:46px;text-align:center;font-size:12.5px;font-weight:600;color:#334155}
-#fm-root .docview{flex:1;min-height:0;overflow:auto;background:#e9edf2;text-align:center}
+#fm-root .docview{flex:1;min-height:0;overflow:auto;background:#fff;text-align:center}
 #fm-root .docbar b{font-size:13.5px}
 #fm-root .docframe{display:block;width:100%;height:100%;border:none;background:#fff}
 #fm-root .docimg{display:inline-block;max-width:100%;height:auto;vertical-align:top;border-radius:6px;box-shadow:0 3px 16px rgba(0,0,0,.18);background:#fff}

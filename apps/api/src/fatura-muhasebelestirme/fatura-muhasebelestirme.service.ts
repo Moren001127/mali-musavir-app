@@ -2744,14 +2744,20 @@ export class FaturaMuhasebelestirmeService {
     }
 
     // 2. mihsap_invoices → invoiceAccountingDocument bridge
+    // ÖNEMLİ: faturaTuru DB'de "SATIS" yaninda "TEVKIFATLI_SATIS" (ya da farkli case)
+    // olabiliyor. Tam esitlikle sorgularsak tevkifatli olanlar köprüye girmez ve
+    // belge dusmez (8 cekilir, 4 gorunur). Yon bazli (includes) filtre uyguluyoruz.
     const where: any = { tenantId, mukellefId: opts.taxpayerId, donem: opts.donem };
-    if (opts.faturaTuru) where.faturaTuru = opts.faturaTuru;
-
-    const rows = await (this.prisma as any).mihsapInvoice.findMany({
+    const allRows = await (this.prisma as any).mihsapInvoice.findMany({
       where,
       take: 3000,
       orderBy: { faturaTarihi: 'desc' },
     });
+    const rows = opts.faturaTuru
+      ? allRows.filter((r: any) =>
+          String(r.faturaTuru || '').toUpperCase().includes(opts.faturaTuru!.toUpperCase()),
+        )
+      : allRows;
 
     let created = 0;
     let reprocessed = 0;
