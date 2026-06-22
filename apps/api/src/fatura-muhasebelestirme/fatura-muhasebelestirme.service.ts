@@ -2903,23 +2903,36 @@ export class FaturaMuhasebelestirmeService {
         try {
           const file = await this.mihsapService.getInvoiceFile(tenantId, inv.id);
           const ct = String(file.contentType || '').toLowerCase();
+          const buf = file.buffer;
+          // ÖNEMLİ: Mihsap CDN content-type başlığı çoğu zaman gelmiyor ve orjDosyaTuru
+          // yanlış "XML" olabiliyor (oysa dosya JPEG). O yüzden gerçek tipi içeriğin
+          // MAGIC-BYTE'ından tespit ediyoruz; yanlış content-type'a güvenmiyoruz.
+          const isJpeg = buf.length > 2 && buf[0] === 0xff && buf[1] === 0xd8 && buf[2] === 0xff;
+          const isPng = buf.length > 7 && buf[0] === 0x89 && buf[1] === 0x50 && buf[2] === 0x4e && buf[3] === 0x47;
+          const isPdf = buf.length > 4 && buf[0] === 0x25 && buf[1] === 0x50 && buf[2] === 0x44 && buf[3] === 0x46;
+          if (isJpeg || /^image\/jpe?g/.test(ct)) {
+            return { url: `data:image/jpeg;base64,${buf.toString('base64')}`, mimeType: 'image/jpeg', source: 'mihsap' as const };
+          }
+          if (isPng || /^image\/png/.test(ct)) {
+            return { url: `data:image/png;base64,${buf.toString('base64')}`, mimeType: 'image/png', source: 'mihsap' as const };
+          }
           if (/^image\//.test(ct)) {
-            return {
-              url: `data:${file.contentType};base64,${file.buffer.toString('base64')}`,
-              mimeType: file.contentType,
-              source: 'mihsap' as const,
-            };
+            return { url: `data:${file.contentType};base64,${buf.toString('base64')}`, mimeType: file.contentType, source: 'mihsap' as const };
           }
-          if (/pdf/.test(ct)) {
-            return {
-              url: `data:application/pdf;base64,${file.buffer.toString('base64')}`,
-              mimeType: 'application/pdf',
-              source: 'mihsap' as const,
-            };
+          if (isPdf || /pdf/.test(ct)) {
+            return { url: `data:application/pdf;base64,${buf.toString('base64')}`, mimeType: 'application/pdf', source: 'mihsap' as const };
           }
-          const raw = file.buffer.toString('utf8');
-          const html = /html/.test(ct) ? raw : this.inlinePreviewHtml(raw, doc);
-          return { url: '', inlineHtml: html, mimeType: 'text/html', source: 'mihsap' as const };
+          const raw = buf.toString('utf8');
+          // Gerçek HTML → olduğu gibi (iframe srcDoc render eder)
+          if (/html/.test(ct) || /<html[\s>]/i.test(raw.slice(0, 500))) {
+            return { url: '', inlineHtml: raw, mimeType: 'text/html', source: 'mihsap' as const };
+          }
+          // e-Arşiv XML (gömülü XSLT) → data-URL; DocModal iframe src ile tam faturayı render eder
+          if (/<\?xml/i.test(raw.slice(0, 200)) || /xml/.test(ct)) {
+            return { url: `data:application/xml;base64,${buf.toString('base64')}`, mimeType: 'application/xml', source: 'mihsap' as const };
+          }
+          // Hiçbiri değilse son çare: kayıttaki özet
+          return { url: '', inlineHtml: this.inlinePreviewHtml(raw, doc), mimeType: 'text/html', source: 'mihsap' as const };
         } catch (e: any) {
           return {
             url: '',
