@@ -12,7 +12,7 @@
   // v1.42.2 (2026-06-16): Ajan kendini yenilerken (delete __morenAgent) eski async
   // döngü "Cannot read 'stopRequested' of undefined/null" ile ÇÖKÜYORDU → yetim
   // döngü artık nesne yoksa güvenle durur (stopRequested kontrollerine null-guard).
-  const AGENT_VERSION = '1.45.3';
+  const AGENT_VERSION = '1.45.4';
   const AGENT_INSTANCE_ID = 'mai_' + Date.now().toString(36) + '_' + Math.random().toString(36).slice(2, 8);
 
   // === VERSION-AWARE RELOAD ===
@@ -1892,7 +1892,25 @@
                 throw new Error('Yükleme doğrulanamadı ve seçilecek fiş bulunamadı — Luca ekranını kontrol et (fiş oluşturulmadı).');
               }
               await sleep(700);
-              // 6c) "Fiş Kes" (sağ-alt) → deftere yazan GERÇEK fişi oluşturur
+              // 6c) "Fiş Kes" (sağ-alt) → deftere yazan GERÇEK fişi oluşturur. Kullanıcı doğru tespit etti:
+              //     buton alt çubukta; viewport kısaysa GÖRÜNÜR ALANIN DIŞINDA kalıp native tık ıskalayabilir
+              //     ("görmediği şeye nasıl tıklasın"). → Önce TÜM "Fiş Kes" adaylarını GÖRÜNÜR ALANA KAYDIR +
+              //     ne bulduğumuzu LOGLA (tag·görünür@konum), sonra native (trusted) tıkla.
+              const fisKesInfo = [];
+              for (const doc of lucaDocuments()) {
+                try {
+                  for (const el of doc.querySelectorAll('input[type=button],input[type=submit],button,a,div,span,td')) {
+                    const tx = ((el.value || el.innerText || el.textContent) || '').trim();
+                    if (!/fi[şs]\s*kes/i.test(tx) || tx.length > 24) continue;
+                    let top = -9999, vis = false;
+                    try { const r = el.getBoundingClientRect(); top = Math.round(r.top); vis = r.width > 0 && r.height > 0; } catch {}
+                    try { el.scrollIntoView({ block: 'center', inline: 'center' }); } catch {}
+                    fisKesInfo.push(`${el.tagName}${vis ? '·gör' : '·gizli'}@${top}"${tx.slice(0, 14)}"`);
+                  }
+                } catch {}
+              }
+              await log(`🔎 Fiş Kes adayı(${fisKesInfo.length}): ${fisKesInfo.slice(0, 6).join(' | ') || 'YOK'}`);
+              await sleep(700);
               const kes = await robustClick('Fiş Kes', { settleMs: 2000 });
               if (!kes) throw new Error('"Fiş Kes" butonu bulunamadı (ekran beklenenden farklı; fiş oluşturulmadı).');
               await log('✂ "Fiş Kes" tıklandı — fiş oluşturuluyor');
