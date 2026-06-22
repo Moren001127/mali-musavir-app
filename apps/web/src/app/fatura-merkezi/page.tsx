@@ -979,25 +979,21 @@ function InlineBelge({ id }: { id: string }) {
     try {
       const doc = f.contentDocument;
       if (!doc || !doc.body) return;
-      // 1) İçeriğin DOĞAL genişliğini ölç: iframe'i daralt → sabit-genişlikli fatura
-      //    tablosu kendi gerçek genişliğini (min-content) açığa çıkarır.
-      f.style.width = '60px';
-      let cw = Math.max(doc.body.scrollWidth || 0, doc.documentElement.scrollWidth || 0);
-      cw = Math.min(Math.max(cw, 480), 1600); // aşırı uçları kırp
+      // 1) İçeriğin gerçek genişliği = en geniş çocuk öğe (tablo/kapsayıcı).
+      //    Eski "60px daraltma" tablolarda min-content'i şişirip fit'i küçültüyordu.
+      f.style.width = '100%';
+      let cw = 0;
+      for (const ch of Array.from(doc.body.children) as any[]) {
+        cw = Math.max(cw, ch.scrollWidth || 0, ch.offsetWidth || 0, ch.getBoundingClientRect?.().width || 0);
+      }
+      if (!cw) cw = Math.max(doc.body.scrollWidth || 0, doc.documentElement.scrollWidth || 0);
+      cw = Math.min(Math.max(cw, 320), 2200);
       f.style.width = cw + 'px';
-      // 2) Gerçek içerik altı (sondaki boş alanı dahil etme).
-      let bottom = 0;
-      doc.body.querySelectorAll('*').forEach((el: any) => {
-        const txt = (el.textContent || '').trim();
-        if (!txt && !['IMG', 'TABLE', 'HR', 'TR', 'TD'].includes(el.tagName)) return;
-        const r = el.getBoundingClientRect();
-        if (r.height > 0 && r.height < 8000 && r.bottom > bottom) bottom = r.bottom;
-      });
+      // 2) İçerik yüksekliğine sığdır → kısa belgede altta boşluk kalmasın.
       const scrollH = Math.max(doc.body.scrollHeight || 0, doc.documentElement.scrollHeight || 0);
-      const ch = bottom > 60 ? Math.min(Math.ceil(bottom) + 10, scrollH || 99999) : scrollH;
-      if (ch > 40) f.style.height = ch + 'px';
-      // 3) Genişliğe sığdır oranı (üst-aşırı büyütmeyi engelle).
-      const paneW = (w.clientWidth || 600) - 20;
+      if (scrollH > 40) f.style.height = Math.ceil(scrollH) + 'px';
+      // 3) Genişliğe sığdır oranı.
+      const paneW = (w.clientWidth || 600) - 16;
       setFit(Math.min(2.4, Math.max(0.3, paneW / cw)));
     } catch { /* cross-origin */ }
   };
@@ -2102,7 +2098,7 @@ const CSS = `
 #fm-root .belgebox .bpzoom button:last-of-type{width:auto;padding:0 9px;font-size:11px}
 #fm-root .belgebox .bpzoom button:hover{border-color:var(--accent);color:var(--accent)}
 #fm-root .belgebox .bpzoom .bpz{font-size:11px;font-weight:700;color:var(--muted);min-width:38px;text-align:center}
-#fm-root .belgebox .bpview{height:84vh;min-height:580px;overflow:auto;background:#eef1f5;display:flex;align-items:flex-start;justify-content:center;padding:10px}
+#fm-root .belgebox .bpview{height:auto;max-height:86vh;min-height:200px;overflow:auto;background:#eef1f5;display:flex;align-items:flex-start;justify-content:center;padding:10px}
 #fm-root .belgebox .bpframe-h{width:100%;border:0;background:#fff;display:block}
 #fm-root .belgebox .bpimg{display:block;max-width:100%;max-height:100%;object-fit:contain;transition:transform .12s ease}
 #fm-root .belgebox .bppdf{width:100%;height:84vh;min-height:580px;border:0;background:#fff}
