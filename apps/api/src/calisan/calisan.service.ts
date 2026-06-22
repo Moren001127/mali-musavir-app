@@ -195,13 +195,17 @@ export class CalisanService {
     if (/birazdan tekrar.*dener/.test(text)) return false;
     if (/claude max|agent sdk|max baglanti|max yanit|ucretli api|api hatti kapali/.test(text)) return false;
     if (/sistemde henuz tanimli degilsiniz|sizi taniyabilmem|adinizi.*vergi numaranizi/.test(text)) return false;
-    // YARIM / ARA-ANLATIM cevabı (veri yok, sadece "çekiyorum/tamamlayamadım/birazdan dönerim"
-    // gibi) → kullanma, Max-metin yedeğine düş ki gerçek cevap/dürüst geçici cevap gelsin.
-    if (/tamamlayamad|tamamlayamad/.test(text)) return false;
+    // YARIM / ARA-ANLATIM cevabı (veri yok, sadece "çekiyorum/getiriyorum/bulayım/bir dakika"
+    // gibi planı/eylemi anlatıp veriyi VERMEYEN) → kullanma, Max-metin yedeğine düş.
+    if (/tamamlayamad/.test(text)) return false;
     if (/birazdan.*(dene|don|yaz|ilet|paylas)/.test(text)) return false;
-    if (/(cekiyorum|cagiriyorum|sorguluyorum|bakiyorum|ariyorum|baslayacagim|deneyecegim|denecegim|denemeliyim|cekecegim|kontrol ediyorum|arastiriyorum|hesapliyorum|sorgu(luyor|laci)yorum)\s*\.?\s*:?\s*$/.test(text)) return false;
+    if (/\bbir (dakika|saniye)\b/.test(text)) return false;
+    // "…getiriyorum / bulayım / kontrol edeyim / erişimim var / çalıştırmam gerek" gibi
+    // EYLEM-ANLATIMI içeren cevaplar: rakam yoksa ya da kısaysa = eksik, reddet.
+    const aboutToAct = /(cekiyorum|cagiriyorum|sorguluyorum|bakiyorum|ariyorum|getiriyorum|getireyim|getirecegim|buluyorum|bulay[iı]m|bulayim|kontrol ediyorum|kontrol edeyim|hesapliyorum|arastiriyorum|baslayacagim|deneyecegim|denecegim|denemeliyim|cekecegim|calistir(mam|acagim|iyorum)|erisim(im)? var|sorgu(lar[iı]n[iı])? (calistir|cek|getir)|hemen (cevab|getir|bul|bak|kontrol))/.test(text);
+    if (aboutToAct && (!/\d/.test(answer) || answer.trim().length < 180)) return false;
     // Çok kısa + iki nokta ile biten ("Şimdi araçları çağırıyorum:") = eksik
-    if (answer.trim().length < 90 && /[:：]\s*$/.test(answer.trim())) return false;
+    if (answer.trim().length < 110 && /[:：]\s*$/.test(answer.trim())) return false;
     return true;
   }
 
