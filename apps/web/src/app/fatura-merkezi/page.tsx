@@ -86,14 +86,25 @@ function periodLabel(p: string): string {
   return `${AY_ADLARI[Number(m[2]) - 1] || m[2]} ${m[1]}`;
 }
 function deriveDurum(doc: any): { k: string; t: string } {
+  if (doc.status === 'APPROVED') return { k: 'ok', t: 'Onaylandı' };
+  // OCR/işleme henüz bitmemiş — satır yok diye "Eksik kod" demek yanıltıcı; işleniyor.
+  if (doc.status === 'PROCESSING') return { k: 'proc', t: 'İşleniyor' };
   const hasCode = Array.isArray(doc.lines) && doc.lines.some((l: any) => l.accountCode);
+  const issues = Array.isArray(doc.validationIssues) ? doc.validationIssues : [];
+  // İçerik çelişkisi = denge/sahiplik/toplam hatası (INCOMPLETE hariç gerçek hata).
   const vissue =
     doc.validationStatus === 'INVALID' ||
     doc.ocrData?.validationStatus === 'INVALID' ||
-    (Array.isArray(doc.validationIssues) && doc.validationIssues.length > 0);
-  if (doc.status === 'APPROVED') return { k: 'ok', t: 'Onaylandı' };
-  if (!hasCode) return { k: 'miss', t: 'Eksik hesap kodu' };
+    issues.some((i: any) => i?.code && i.code !== 'INCOMPLETE_AMOUNTS' && i?.severity !== 'WARNING');
+  // Tutar eksik = matrah/KDV ayrıştırılamadı (ayrı durum, "çelişki" değil).
+  const incomplete =
+    doc.validationStatus === 'INCOMPLETE' ||
+    doc.ocrData?.validationStatus === 'INCOMPLETE' ||
+    issues.some((i: any) => i?.code === 'INCOMPLETE_AMOUNTS');
+  // Öncelik: içerik çelişkisi (kritik) > tutar eksik > hesap kodu eksik.
   if (vissue) return { k: 'warn', t: 'İçerik çelişkisi' };
+  if (incomplete) return { k: 'warn', t: 'Tutar eksik' };
+  if (!hasCode) return { k: 'miss', t: 'Eksik hesap kodu' };
   return { k: 'ok', t: 'Muhasebeleştirilebilir' };
 }
 function taxpayerLabel(t: any): string {
@@ -947,7 +958,7 @@ function ScreenKurallar({ taxpayerId, period }: { taxpayerId: string; period: st
             return (
               <div key={d.id} className="lrow">
                 <div className="ico">{ini}</div>
-                <div className="lx"><b>{firma}</b> — {du.k === 'miss' ? 'hesap kodu atanmamış, elle ya da öğrenmeyle atanmalı.' : 'içerik geçmişle çelişiyor, kontrol gerekiyor.'} <small style={{ color: 'var(--faint)' }}>{d.belgeNo ? `· ${d.belgeNo}` : ''} · {fmtMoney(d.totalAmount)} ₺</small></div>
+                <div className="lx"><b>{firma}</b> — {du.k === 'miss' ? 'hesap kodu atanmamış, elle ya da öğrenmeyle atanmalı.' : du.t === 'Tutar eksik' ? 'matrah/KDV ayrıştırılamadı, tutar girilmeli.' : 'içerik geçmişle çelişiyor, kontrol gerekiyor.'} <small style={{ color: 'var(--faint)' }}>{d.belgeNo ? `· ${d.belgeNo}` : ''} · {fmtMoney(d.totalAmount)} ₺</small></div>
                 {(() => {
                   const vkn = String((sat ? d.buyerVkn : d.sellerVkn) || '').replace(/\D/g, '');
                   const adi = (sat ? d.customerName : d.vendorName) || '';
@@ -1983,6 +1994,7 @@ const CSS = `
 #fm-root .pill.ok{background:#e7f6ec;color:#15803d}
 #fm-root .pill.miss{background:#fdeaea;color:#c0353a}
 #fm-root .pill.warn{background:#fdf2e0;color:#b45309}
+#fm-root .pill.proc{background:#e6eefc;color:#2563eb}
 #fm-root .pill.n{background:#eef1f5;color:#64748b}
 #fm-root .eye{height:28px;width:28px;border-radius:7px;border:1px solid var(--line2);display:grid;place-items:center;color:var(--muted);cursor:pointer}
 #fm-root .eye:hover{border-color:var(--accent);color:var(--accent)}

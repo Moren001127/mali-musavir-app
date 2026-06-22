@@ -2160,7 +2160,8 @@ export class FaturaMuhasebelestirmeService {
       const duplicateOfId = duplicate?.duplicateOfId || existing.duplicateOfId || null;
       const ocrStatus = ocrResult.confidence >= 0.7 ? 'SUCCESS' : 'NEEDS_REVIEW';
       const status = duplicateOfId ? 'NEEDS_REVIEW' : ocrStatus === 'SUCCESS' ? 'READY' : 'NEEDS_REVIEW';
-      const lines = this.linesFromOcr(ocrResult, invoiceKind);
+      // Plan yoksa kod atanmasın (diğer yollarla tutarlı) — placeholder 770/600 sızmasın.
+      const lines = await this.gateCodesByPlan(tenantId, existing.taxpayerId, this.linesFromOcr(ocrResult, invoiceKind));
 
       await (this.prisma as any).$transaction(async (tx: any) => {
         await tx.invoiceAccountingLine.deleteMany({ where: { documentId } });
@@ -4829,13 +4830,14 @@ export class FaturaMuhasebelestirmeService {
       const matrah = rate > 0 ? Math.round((total / (1 + rate / 100)) * 100) / 100 : total;
       const kdv = Math.round((total - matrah) * 100) / 100;
       const isSale = String(d.invoiceKind || 'ALIS') === 'SATIS';
-      const lines = this.linesFromAmounts({
+      // Plan yoksa kod atanmasın (tutarlılık). Elle kod verildiyse aşağıda matrah'a yine yazılır.
+      const lines = await this.gateCodesByPlan(tenantId, d.taxpayerId, this.linesFromAmounts({
         invoiceKind: d.invoiceKind || 'ALIS',
         matrah, kdvTutari: kdv, kdvOrani: rate, total,
         vendorName: isSale ? d.customerName : d.vendorName,
         kdvBreakdown: (kdv > 0 || matrah > 0) ? [{ rate, base: matrah, amount: kdv }] : null,
         tevkifatOrani: tevkifatOrani || null,
-      });
+      }));
       await (this.prisma as any).$transaction(async (tx: any) => {
         await tx.invoiceAccountingLine.deleteMany({ where: { documentId: d.id } });
         if (lines.length) await tx.invoiceAccountingLine.createMany({ data: lines.map((l: any) => ({ ...l, documentId: d.id })) });
