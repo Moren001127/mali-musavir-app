@@ -5039,23 +5039,36 @@ export class FaturaMuhasebelestirmeService {
     // Süre: Max CLI ilk çağrıda soğuk başlar + uzun HTML metni yavaş işlenir; 22sn YETMİYORDU
     // (toplu okumada belgelerin ~yarısı "22000ms içinde yanıt vermedi"ye düşüyordu). Frontend
     // axios timeout'u yok (sınırsız bekler), Railway uzun isteği kesmez → bolca süre veriyoruz.
-    const res = await claudeTextViaMax(
-      isImage
-        ? { prompt, images: [{ base64: imgBuf!.toString('base64'), mediaType: imgMedia }], timeoutMs: 30000 }
-        : { prompt, timeoutMs: 60000 },
-    );
-    if (!res.ok || !res.text) return { ok: false, reason: res.error || 'okunamadı' };
-
+    // Max CLI soğuk başlangıç/geçici hatada başarısız olabiliyor → 2 deneme yap.
     let parsed: any = null;
-    try {
-      const m = res.text.match(/\{[\s\S]*\}/);
-      parsed = m ? JSON.parse(m[0]) : null;
-    } catch { parsed = null; }
-    if (!parsed) return { ok: false, reason: 'AI yanıtı çözülemedi' };
+    let reason = 'okunamadı';
+    for (let attempt = 1; attempt <= 2 && !parsed; attempt++) {
+      const res = await claudeTextViaMax(
+        isImage
+          ? { prompt, images: [{ base64: imgBuf!.toString('base64'), mediaType: imgMedia }], timeoutMs: 45000 }
+          : { prompt, timeoutMs: 60000 },
+      );
+      if (!res.ok || !res.text) { reason = res.error || 'okunamadı'; continue; }
+      try {
+        const m = res.text.match(/\{[\s\S]*\}/);
+        parsed = m ? JSON.parse(m[0]) : null;
+        if (!parsed) reason = 'AI yanıtı çözülemedi';
+      } catch { parsed = null; reason = 'AI yanıtı çözülemedi'; }
+    }
+    if (!parsed) return { ok: false, reason };
 
-    const breakdown = (Array.isArray(parsed.kdv) ? parsed.kdv : [])
+    let breakdown = (Array.isArray(parsed.kdv) ? parsed.kdv : [])
       .map((x: any) => ({ rate: Number(x?.oran) || 0, base: Number(x?.matrah) || 0, amount: Number(x?.kdv) || 0 }))
       .filter((x: any) => x.base > 0 || x.amount > 0);
+    // KURTARMA: kırılım boş ama TOPLAM + tek ORAN okunduysa → toplam'dan matrah/KDV ayır.
+    if (!breakdown.length) {
+      const toplam = Number(parsed.toplam) || 0;
+      const oran = Number((Array.isArray(parsed.kdv) ? parsed.kdv : []).find((x: any) => Number(x?.oran) > 0)?.oran) || 0;
+      if (toplam > 0 && oran > 0) {
+        const base = Math.round((toplam / (1 + oran / 100)) * 100) / 100;
+        breakdown = [{ rate: oran, base, amount: Math.round((toplam - base) * 100) / 100 }];
+      }
+    }
     if (!breakdown.length) return { ok: false, reason: 'KDV kırılımı okunamadı' };
 
     const matrah = Math.round(breakdown.reduce((s: number, b: any) => s + b.base, 0) * 100) / 100;
