@@ -33,11 +33,15 @@ public class MorenWin {
   [DllImport("user32.dll")] public static extern bool IsWindowVisible(IntPtr hWnd);
   [DllImport("user32.dll")] public static extern bool IsIconic(IntPtr hWnd);
   [DllImport("user32.dll")] public static extern bool ShowWindowAsync(IntPtr hWnd, int nCmdShow);
+  [DllImport("user32.dll")] public static extern IntPtr GetForegroundWindow();
   public delegate bool EnumWindowsProc(IntPtr hWnd, IntPtr lParam);
   // Verilen PID kumesine ait, gorunur ve simdi simge-durumunda OLMAYAN pencereleri bul.
+  // ODAKTAKI (kullanici aktif bakan) pencere HARIC tutulur — kullanici izlerken kuculmesin.
   public static List<IntPtr> WindowsToMinimize(HashSet<uint> pids) {
+    IntPtr fg = GetForegroundWindow();
     List<IntPtr> result = new List<IntPtr>();
     EnumWindows(delegate(IntPtr h, IntPtr l) {
+      if (h == fg) return true;            // ODAKTA: kullanici bakiyor → DOKUNMA
       if (!IsWindowVisible(h)) return true;
       if (IsIconic(h)) return true;
       uint pid; GetWindowThreadProcessId(h, out pid);
@@ -58,8 +62,14 @@ $SW_MINIMIZE = 6  # kuculturur ve odagi bir sonraki pencereye verir (kullaniciya
 $agentRoot = Split-Path -Parent $PSScriptRoot   # ...\apps\luca-local-agent
 $profileSig = ([regex]::Escape((Join-Path $agentRoot '.browser-data')))
 
+# IZLEME MODU bayragi: bu dosya VARSA gozcu kuculmeyi tamamen birakir → kullanici ajan
+# penceresini SABIT acik tutup ne yaptigini izleyebilir. Dosya silininca izolasyon geri gelir.
+# Ac/kapat: pencere-izle.ps1 (ayni klasor) ya da elle bu dosyayi olustur/sil.
+$watchFlag = Join-Path $agentRoot '.pencere-gor'
+
 while ($true) {
   try {
+    if (Test-Path $watchFlag) { Start-Sleep -Milliseconds 500; continue }  # izleme modu — kuculme yok
     # Ajanin tarayici (Chromium browser) proseslerini bul — user-data-dir profil imzasi ile.
     $pidSet = New-Object 'System.Collections.Generic.HashSet[uint32]'
     Get-CimInstance Win32_Process -Filter "Name='chrome.exe'" -ErrorAction SilentlyContinue |
