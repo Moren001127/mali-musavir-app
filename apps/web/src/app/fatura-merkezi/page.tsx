@@ -4,6 +4,7 @@ import { useState, useRef, useEffect, Fragment } from 'react';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import { api } from '@/lib/api';
 import { toast } from 'sonner';
+import { isletmeRef, ISLETME_ISLEM_TURU, ISLETME_KDV_ORAN, defaultBelgeTuruKod } from '@mali-musavir/shared';
 
 /**
  * Fatura İşleme Merkezi v2 — ana sayfa (CANLI)
@@ -1328,6 +1329,21 @@ function ScreenMuhasebe({ taxpayerId, period, isIsletme = false, taxpayerNace = 
   const saveMetaMut = useMutation({
     mutationFn: () => {
       const isSale = String(meta.invoiceKind).includes('SATIS');
+      // İşletme: seçilen sınıflandırmayı kod+etiket olarak ocrData.isletme'ye yaz (Luca CSV bunu kullanır).
+      const islPayload = isIsletme ? (() => {
+        const ref = isletmeRef(meta.invoiceKind);
+        const alt = ((ref.kayitAltTuru as any)[isl.kayitTuruKod] || []).find((x: any) => x.kod === isl.kayitAltKod);
+        return {
+          belgeTuruKod: isl.belgeTuruKod, belgeTuruAd: ref.belgeTuru.find((x) => x.kod === isl.belgeTuruKod)?.ad,
+          alisSatisKod: isl.alisSatisKod, alisSatisAd: ref.alisSatisTuru.find((x) => x.kod === isl.alisSatisKod)?.ad,
+          islemTuruKod: isl.islemTuruKod, islemTuruAd: ISLETME_ISLEM_TURU.find((x) => x.kod === isl.islemTuruKod)?.ad,
+          kayitTuruKod: isl.kayitTuruKod, kayitTuruAd: ref.kayitTuru.find((x) => x.kod === isl.kayitTuruKod)?.ad,
+          kayitAltKod: isl.kayitAltKod || '', kayitAltAd: alt?.ad || '',
+          kdvOranKod: isl.kdvOranKod, plakaNo: isl.plakaNo || '',
+          matrah: Number(isl.matrah) || 0, kdvTutar: Number(isl.kdvTutar) || 0,
+          krediliTutar: Number(isl.krediliTutar) || 0, donem: !!alt?.donem,
+        };
+      })() : undefined;
       return api.patch(`/fatura-muhasebelestirme/documents/${selDoc.id}`, {
         faturaTarihi: meta.faturaTarihi || undefined,
         invoiceKind: meta.invoiceKind,
@@ -1336,6 +1352,7 @@ function ScreenMuhasebe({ taxpayerId, period, isIsletme = false, taxpayerNace = 
         ...(isSale
           ? { buyerVkn: meta.vkn || undefined, customerName: meta.cariUnvan || undefined }
           : { sellerVkn: meta.vkn || undefined, vendorName: meta.cariUnvan || undefined }),
+        ...(islPayload ? { isletme: islPayload } : {}),
       });
     },
     onSuccess: () => { qc.invalidateQueries({ queryKey: ['fm2'] }); },
@@ -1403,6 +1420,47 @@ function ScreenMuhasebe({ taxpayerId, period, isIsletme = false, taxpayerNace = 
   });
   const gg = selDoc ? kdvParts(selDoc) : { matrah: null, kdv: null };
   const ggReady = isIsletme ? ((Number(gg.matrah) || 0) > 0 || (Number(gg.kdv) || 0) > 0 || Number(selDoc?.totalAmount) > 0) : dengeli;
+
+  // ── İşletme defteri (Mihsap-birebir) sınıflandırması ──
+  // faturaTuru = invoiceKind (SATIS=Gelir, ALIS=Gider). Listeler shared referanstan, bağlama göre.
+  const islKind = String(meta.invoiceKind || 'ALIS').includes('SATIS') ? 'SATIS' : 'ALIS';
+  const islRef = isletmeRef(islKind);
+  const [isl, setIsl] = useState<any>({});
+  useEffect(() => {
+    if (!isIsletme || !selDoc) { setIsl({}); return; }
+    const saved: any = (selDoc.ocrData?.isletme) || {};
+    const kind = String(selDoc.invoiceKind || 'ALIS').includes('SATIS') ? 'SATIS' : 'ALIS';
+    const p = kdvParts(selDoc);
+    const r = Math.round(Number(selDoc.ocrData?.kdvOrani) || 20);
+    const kdvKod = [20, 10, 1, 0].includes(r) ? `KDV${r}` : 'KDV20';
+    setIsl({
+      belgeTuruKod: saved.belgeTuruKod || defaultBelgeTuruKod(selDoc.documentType, kind),
+      alisSatisKod: saved.alisSatisKod || '1',           // Normal Satış / Normal Alım
+      islemTuruKod: saved.islemTuruKod || '1100',         // Yurtiçi Teslim ve Hizmetleri
+      plakaNo: saved.plakaNo || '',
+      kayitTuruKod: saved.kayitTuruKod || (kind === 'SATIS' ? '2' : '4'), // Hizmet Satışı / İndirilecek Gider
+      kayitAltKod: saved.kayitAltKod || '',
+      kdvOranKod: saved.kdvOranKod || kdvKod,
+      matrah: saved.matrah ?? (Number(p.matrah) || 0),
+      kdvTutar: saved.kdvTutar ?? (Number(p.kdv) || 0),
+      krediliTutar: saved.krediliTutar ?? 0,
+    });
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [selDoc?.id, isIsletme]);
+  const setIslF = (k: string, v: any) => setIsl((s: any) => ({ ...s, [k]: v }));
+  const recalcKdv = (matrah: number, kdvKod: string) => {
+    const o = ({ KDV20: 0.2, KDV10: 0.1, KDV1: 0.01, KDV0: 0 } as Record<string, number>)[kdvKod] ?? 0.2;
+    return Math.round(matrah * o * 100) / 100;
+  };
+  const islAltList: any[] = (islRef.kayitAltTuru as any)[isl.kayitTuruKod] || [];
+  // Fatura Türü (Gelir/Gider) değişince İşletme bağlam alanlarını yeni türe göre sıfırla.
+  const setIslKind = (kind: 'SATIS' | 'ALIS') => {
+    if (!isIsletme) return;
+    setIsl((s: any) => ({ ...s, belgeTuruKod: defaultBelgeTuruKod(selDoc?.documentType, kind), alisSatisKod: '1', kayitTuruKod: kind === 'SATIS' ? '2' : '4', kayitAltKod: '', plakaNo: kind === 'SATIS' ? '' : s.plakaNo }));
+  };
+  // İşletme: aktarıma çıkan değerlerin özeti (alt çubuk).
+  const islBelgeAd = islRef.belgeTuru.find((x) => x.kod === isl.belgeTuruKod)?.ad || '—';
+  const islKayitAd = islRef.kayitTuru.find((x) => x.kod === isl.kayitTuruKod)?.ad || '—';
 
   // Gerçek hesap kodunu elle ver — o satıcının tüm faturalarına uygulanır + öğrenilir (770 tahmini yerine)
   // Talimat (gece otomatik) — entegratör kayıtlarından türetilir
@@ -1557,13 +1615,14 @@ function ScreenMuhasebe({ taxpayerId, period, isIsletme = false, taxpayerNace = 
                 <div className="docmeta">
                   <div className="dm"><span className="dml">Tarih</span><input className="dmi" type="date" value={meta.faturaTarihi || ''} onChange={(e) => setMeta({ ...meta, faturaTarihi: e.target.value })} /></div>
                   <div className="dm"><span className="dml">Fatura Türü</span>
-                    <PlainSelect value={`${meta.invoiceKind || 'ALIS'}${meta.tevkifatli ? '_TEV' : ''}`} onChange={(v) => setMeta({ ...meta, invoiceKind: v.startsWith('SATIS') ? 'SATIS' : 'ALIS', tevkifatli: v.endsWith('_TEV') })} options={[
+                    <PlainSelect value={`${meta.invoiceKind || 'ALIS'}${meta.tevkifatli ? '_TEV' : ''}`} onChange={(v) => { const k = v.startsWith('SATIS') ? 'SATIS' : 'ALIS'; setMeta({ ...meta, invoiceKind: k, tevkifatli: v.endsWith('_TEV') }); setIslKind(k); }} options={[
                       { value: 'ALIS', label: 'Alış' },
                       { value: 'ALIS_TEV', label: 'Tevkifatlı Alış' },
                       { value: 'SATIS', label: 'Satış' },
                       { value: 'SATIS_TEV', label: 'Tevkifatlı Satış' },
                     ]} />
                   </div>
+                  {!isIsletme && (
                   <div className="dm"><span className="dml">Belge Türü</span>
                     <PlainSelect value={meta.documentType || ''} onChange={(v) => setMeta({ ...meta, documentType: v })} options={[
                       { value: '', label: '—' },
@@ -1575,6 +1634,7 @@ function ScreenMuhasebe({ taxpayerId, period, isIsletme = false, taxpayerNace = 
                       { value: 'DIGER', label: 'Diğer' },
                     ]} />
                   </div>
+                  )}
                   <div className="dm"><span className="dml">Belge No</span><input className="dmi" value={meta.belgeNo || ''} onChange={(e) => setMeta({ ...meta, belgeNo: e.target.value })} /></div>
                   <div className="dm"><span className="dml">{String(meta.invoiceKind).includes('SATIS') ? 'Alıcı VKN' : 'Satıcı VKN'}</span><input className="dmi" value={meta.vkn || ''} onChange={(e) => setMeta({ ...meta, vkn: e.target.value })} /></div>
                   <div className="dm"><span className="dml">Cari Ünvanı</span><input className="dmi" value={meta.cariUnvan || ''} placeholder="satıcı/alıcı ünvanı" onChange={(e) => setMeta({ ...meta, cariUnvan: e.target.value })} /></div>
@@ -1590,16 +1650,38 @@ function ScreenMuhasebe({ taxpayerId, period, isIsletme = false, taxpayerNace = 
                 )}
                 <div className="twrap">
                   {isIsletme ? (
-                    <table>
-                      <thead><tr><th>Açıklama</th><th className="num">Matrah (KDV hariç)</th><th className="num">KDV</th></tr></thead>
-                      <tbody>
-                        <tr>
-                          <td>{selDoc.invoiceKind === 'SATIS' ? 'Gelir (satış)' : 'Gider (alış)'} — {firmaOf(selDoc)}</td>
-                          <td className="num">{gg.matrah != null ? fmtMoney(gg.matrah) : '—'}</td>
-                          <td className="num">{gg.kdv != null ? fmtMoney(gg.kdv) : '—'}</td>
-                        </tr>
-                      </tbody>
-                    </table>
+                    <div className="islforms">
+                      <div className="docmeta">
+                        <div className="dm"><span className="dml">Belge Türü</span>
+                          <PlainSelect value={isl.belgeTuruKod || ''} onChange={(v) => setIslF('belgeTuruKod', v)} options={islRef.belgeTuru.map((x) => ({ value: x.kod, label: x.ad }))} />
+                        </div>
+                        <div className="dm"><span className="dml">Alış/Satış Türü</span>
+                          <PlainSelect value={isl.alisSatisKod || ''} onChange={(v) => setIslF('alisSatisKod', v)} options={islRef.alisSatisTuru.map((x) => ({ value: x.kod, label: x.ad }))} />
+                        </div>
+                        {islRef.plaka && (
+                          <div className="dm"><span className="dml">Plaka No</span><input className="dmi" value={isl.plakaNo || ''} placeholder="34 ABC 123" onChange={(e) => setIslF('plakaNo', e.target.value)} /></div>
+                        )}
+                        <div className="dm" style={{ flex: '1 1 340px' }}><span className="dml">İşlem Türü</span>
+                          <PlainSelect value={isl.islemTuruKod || '1100'} onChange={(v) => setIslF('islemTuruKod', v)} options={ISLETME_ISLEM_TURU.map((x) => ({ value: x.kod, label: x.ad }))} />
+                        </div>
+                      </div>
+                      <div className="docmeta">
+                        <div className="dm" style={{ flex: '1 1 260px' }}><span className="dml">Kayıt Türü</span>
+                          <PlainSelect value={isl.kayitTuruKod || ''} onChange={(v) => setIsl((s: any) => ({ ...s, kayitTuruKod: v, kayitAltKod: '' }))} options={islRef.kayitTuru.map((x) => ({ value: x.kod, label: x.ad }))} />
+                        </div>
+                        <div className="dm" style={{ flex: '1 1 360px' }}><span className="dml">Kayıt Alt Türü {islAltList.length === 0 ? '(bu kayıt türünde liste yok — opsiyonel)' : ''}</span>
+                          <PlainSelect value={isl.kayitAltKod || ''} onChange={(v) => setIslF('kayitAltKod', v)} options={[{ value: '', label: '— (opsiyonel)' }, ...islAltList.map((x: any) => ({ value: x.kod, label: x.ad }))]} />
+                        </div>
+                      </div>
+                      <div className="docmeta">
+                        <div className="dm"><span className="dml">Matrah (KDV hariç)</span><MoneyInput value={Number(isl.matrah) || 0} onChange={(n) => setIsl((s: any) => ({ ...s, matrah: n, kdvTutar: recalcKdv(n, s.kdvOranKod) }))} /></div>
+                        <div className="dm"><span className="dml">KDV Oranı</span>
+                          <PlainSelect value={isl.kdvOranKod || 'KDV20'} onChange={(v) => setIsl((s: any) => ({ ...s, kdvOranKod: v, kdvTutar: recalcKdv(Number(s.matrah) || 0, v) }))} options={ISLETME_KDV_ORAN.map((x) => ({ value: x.kod, label: x.ad }))} />
+                        </div>
+                        <div className="dm"><span className="dml">KDV Tutarı</span><MoneyInput value={Number(isl.kdvTutar) || 0} onChange={(n) => setIslF('kdvTutar', n)} /></div>
+                        <div className="dm"><span className="dml">Kredili Tutar</span><MoneyInput value={Number(isl.krediliTutar) || 0} onChange={(n) => setIslF('krediliTutar', n)} /></div>
+                      </div>
+                    </div>
                   ) : (
                     <div className="fgrps">
                       {(String(selDoc.invoiceKind || '').includes('SATIS')
@@ -1645,8 +1727,8 @@ function ScreenMuhasebe({ taxpayerId, period, isIsletme = false, taxpayerNace = 
                 </div>
                 {isIsletme ? (
                   <div className="balance">
-                    <Ico html={I.checkSm} size={16} /><b>Gelir-Gider girişi</b>
-                    <span className="bnote">{selDoc.invoiceKind === 'SATIS' ? 'Gelir' : 'Gider'} {fmtMoney(gg.matrah || 0)} ₺ + KDV {fmtMoney(gg.kdv || 0)} ₺ · hesap kodu yok</span>
+                    <Ico html={I.checkSm} size={16} /><b>{islKind === 'SATIS' ? 'Gelir' : 'Gider'} · {islBelgeAd}</b>
+                    <span className="bnote">{islKayitAd} · Matrah {fmtMoney(Number(isl.matrah) || 0)} ₺ + KDV {fmtMoney(Number(isl.kdvTutar) || 0)} ₺ = {fmtMoney((Number(isl.matrah) || 0) + (Number(isl.kdvTutar) || 0))} ₺{isl.plakaNo ? ` · ${isl.plakaNo}` : ''}</span>
                   </div>
                 ) : (
                   <div className="balance" style={!dengeli ? { background: '#fdeaea', borderColor: '#f3c9c9' } : undefined}>

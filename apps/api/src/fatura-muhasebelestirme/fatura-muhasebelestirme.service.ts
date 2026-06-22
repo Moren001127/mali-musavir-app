@@ -40,6 +40,8 @@ type UpdateDocumentInput = {
   customerName?: string | null;
   totalAmount?: string | number | null;
   lines?: AccountingLineInput[];
+  /** İşletme defteri (Defter-Beyan) sınıflandırması — ocrData.isletme'ye yazılır (migration yok). */
+  isletme?: any;
 };
 
 type AccountPlanQuery = {
@@ -3389,6 +3391,11 @@ export class FaturaMuhasebelestirmeService implements OnModuleInit, OnModuleDest
     if ('exchangeRate' in body) data.exchangeRate = parseDecimal(body.exchangeRate, '1');
     if ('faturaTarihi' in body) data.faturaTarihi = parseDate(body.faturaTarihi);
     if ('totalAmount' in body) data.totalAmount = money(body.totalAmount);
+    // İşletme defteri sınıflandırması — yerleşik desen: ekstra veriyi ocrData JSON'a yaz (migration yok).
+    if ('isletme' in body && body.isletme && typeof body.isletme === 'object') {
+      const curOcr: any = (before as any)?.ocrData || {};
+      data.ocrData = { ...curOcr, isletme: body.isletme };
+    }
     const duplicate = await this.findDuplicate(tenantId, {
       taxpayerId: body.taxpayerId,
       belgeNo: body.belgeNo,
@@ -3651,18 +3658,25 @@ export class FaturaMuhasebelestirmeService implements OnModuleInit, OnModuleDest
       const v = String((d as any).validationStatus || d.ocrData?.validationStatus || '').toUpperCase();
       if (v === 'INVALID' || v === 'INCOMPLETE') return false;
       const lines = d.lines || [];
+      if (isIsletme) {
+        // İşletme defteri TEK TARAFLI: borç=alacak dengesi / hesap kodu aranmaz; tutarın olması yeterli.
+        const isl: any = d.ocrData?.isletme || {};
+        const lineTot = lines.reduce((s: number, l: any) => s + Number(l.debit || 0) + Number(l.credit || 0), 0);
+        return (Number(isl.matrah) || 0) > 0 || (Number(isl.kdvTutar) || 0) > 0 || lineTot > 0 || Number(d.totalAmount) > 0;
+      }
       const sd = lines.reduce((s: number, l: any) => s + Number(l.debit || 0), 0);
       const sc = lines.reduce((s: number, l: any) => s + Number(l.credit || 0), 0);
       const blankCode = lines.some((l: any) => (Number(l.debit || 0) + Number(l.credit || 0)) > 0 && !String(l.accountCode || '').trim());
       return lines.length && Math.abs(sd - sc) <= 0.02 && !blankCode;
     });
-    if (!docs.length) throw new BadRequestException('İndirilecek (dengeli, kodlu) belge yok');
+    if (!docs.length) throw new BadRequestException(isIsletme ? 'Aktarılacak (tutarı olan) İşletme belgesi yok' : 'İndirilecek (dengeli, kodlu) belge yok');
     const kind: 'ALIS' | 'SATIS' = q.direction === 'SATIS' || (!q.direction && String(docs[0].invoiceKind).toUpperCase() === 'SATIS') ? 'SATIS' : 'ALIS';
     const toInvoicePayload = (d: any) => ({
       documentId: d.id, documentType: d.documentType, invoiceKind: d.invoiceKind, belgeNo: d.belgeNo,
       seriNo: d.seriNo, faturaTarihi: d.faturaTarihi ? d.faturaTarihi.toISOString() : null,
       sellerVkn: d.sellerVkn, buyerVkn: d.buyerVkn, vendorName: d.vendorName, customerName: d.customerName,
       totalAmount: d.totalAmount ? String(d.totalAmount) : null, currency: d.currency || 'TL',
+      isletme: d.ocrData?.isletme || null,
       lines: (d.lines || []).map((line: any) => ({
         group: line.group, accountCode: line.accountCode, description: line.description, rate: line.rate,
         debit: line.debit ? String(line.debit) : '0', credit: line.credit ? String(line.credit) : '0', orderNo: line.orderNo,
@@ -3697,6 +3711,7 @@ export class FaturaMuhasebelestirmeService implements OnModuleInit, OnModuleDest
       select: { id: true, defterTuru: true, mihsapDefterTuru: true },
     });
     const defterTuru: string = taxpayerRecord?.defterTuru || taxpayerRecord?.mihsapDefterTuru || 'BILANCO';
+    const isIsletme = /i[şs]letme|defter.?beyan|basit/i.test(String(defterTuru));
 
     // Hangi belgeler bu batch'e dahil — ya verilen ID listesi ya QUEUED filtresi
     // v2.2: validation kolonları olmayabilir — filtreleme application-side (validation OK olmayanları sonradan ele)
@@ -3738,6 +3753,13 @@ export class FaturaMuhasebelestirmeService implements OnModuleInit, OnModuleDest
       const v = String((d as any).validationStatus || d.ocrData?.validationStatus || '').toUpperCase();
       if (v === 'INVALID' || v === 'INCOMPLETE') { skippedCount++; return false; }
       const lines = d.lines || [];
+      if (isIsletme) {
+        // İşletme defteri TEK TARAFLI: borç=alacak / hesap kodu aranmaz; tutarın olması yeterli.
+        const isl: any = d.ocrData?.isletme || {};
+        const lineTot = lines.reduce((s: number, l: any) => s + Number(l.debit || 0) + Number(l.credit || 0), 0);
+        if ((Number(isl.matrah) || 0) > 0 || (Number(isl.kdvTutar) || 0) > 0 || lineTot > 0 || Number(d.totalAmount) > 0) return true;
+        skippedBalance++; return false;
+      }
       const sd = lines.reduce((s: number, l: any) => s + Number(l.debit || 0), 0);
       const sc = lines.reduce((s: number, l: any) => s + Number(l.credit || 0), 0);
       const blankCode = lines.some((l: any) => (Number(l.debit || 0) + Number(l.credit || 0)) > 0 && !String(l.accountCode || '').trim());
@@ -3770,6 +3792,7 @@ export class FaturaMuhasebelestirmeService implements OnModuleInit, OnModuleDest
       customerName: d.customerName,
       totalAmount: d.totalAmount ? String(d.totalAmount) : null,
       currency: d.currency || 'TL',
+      isletme: d.ocrData?.isletme || null,
       lines: (d.lines || []).map((line: any) => ({
         group: line.group,
         accountCode: line.accountCode,

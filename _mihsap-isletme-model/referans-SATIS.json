@@ -1,0 +1,86 @@
+{
+  "_kaynak": "Mihsap İşletme Defteri (Defter-Beyan) fatura-işleme formu — React props'tan birebir çekildi",
+  "_baglam": "faturaTuru=Gelir(SATIS), belgeTuru=e-Arşiv, kayitTuru=Hizmet Satışı bağlamı",
+  "_tarih": "2026-06-22",
+  "_api_uclari": {
+    "belgeTurleri": "GET /api/isletmeDefteri/{gelir|gider}/belgeTurleri/ISLETME",
+    "satisTurleri": "GET /api/isletmeDefteri/{gelir|gider}/satisTurleri/{belgeTuruId}/ISLETME",
+    "islemTuruList": "GET /api/isletmeDefteri/islemTuruList",
+    "kayitTurleri": "GET /api/isletmeDefteri/{gelir|gider}/kayitTurleri/{belgeTuruId}/{satisTuruId}/ISLETME",
+    "kayitAltTurleri": "GET /api/isletmeDefteri/{gelir|gider}/kayitAltTurleri/{kayitTuruId}/{mukellefId}/ISLETME",
+    "not": "JWT zorunlu (çerez yetmiyor); listeler GİB Defter-Beyan standart verisidir"
+  },
+  "faturaTuru": [
+    { "kod": "ALIS", "ad": "Gider" },
+    { "kod": "SATIS", "ad": "Gelir" }
+  ],
+  "belgeTuru": [
+    { "kod": "6", "ad": "Diğer" },
+    { "kod": "8", "ad": "e-Arşiv" },
+    { "kod": "15", "ad": "e-Bilet" },
+    { "kod": "7", "ad": "e-Fatura" },
+    { "kod": "1", "ad": "Fatura" },
+    { "kod": "3", "ad": "Perakende Satış Fişi" },
+    { "kod": "11", "ad": "Tevsiki Zaruri Olmayan Gelir" },
+    { "kod": "13", "ad": "Yolcu Taşıma Bileti" },
+    { "kod": "2", "ad": "Z Raporu" }
+  ],
+  "islemTuru": [
+    { "kod": "1100", "ad": "Yurtiçi Teslim ve Hizmetleri" },
+    { "kod": "1101", "ad": "Yenilenmiş Cep Telefonu Satışları" },
+    { "kod": "701", "ad": "İhracatı Yapılacak Nihai Ürünlerin Kanunun 11/1-C Maddesi Kapsamında Teslimi" },
+    { "kod": "702", "ad": "Dahilde İşleme Veya Geçici Kabul Rejimleri Kapsamında Ihracati Yapılacak Ürünün İmalinde Kullanılacak Malların DIIB Veya GKIB Sahiplerine Kanunun Geçici 17 nci Maddesi Kapsamında Teslimi" },
+    { "kod": "1001", "ad": "Altından Mamul Eşya Teslimleri" },
+    { "kod": "1002", "ad": "Gümüşten Mamul Eşya Teslimleri" },
+    { "kod": "1003", "ad": "Kıymetli Taş Teslimleri" },
+    { "kod": "1004", "ad": "İkinci El Araç Ticareti" },
+    { "kod": "1005", "ad": "İkinci El Taşınmaz Ticareti" },
+    { "kod": "1006", "ad": "Gazete, Dergi ve Benzeri Periyodik Yayınlar" },
+    { "kod": "1007", "ad": "Tütün Mamulü Teslimleri" },
+    { "kod": "1008", "ad": "Belediyeler Tarafından Yapılan Şehir İçi Yolcu Taşımacılığı" },
+    { "kod": "1009", "ad": "Ön Ödemeli Elektronik Haberleşme Hizmetleri" },
+    { "kod": "1010", "ad": "Türkiye Şoförler ve Otomobilciler Federasyonu Tarafından Araç Plakaları ile Basılı Evrakın Teslimi" },
+    { "kod": "1011", "ad": "Şans Oyunları, Profesyonel Gösteriler ve Açık Artırmalar" }
+  ],
+  "alisSatisTuru_SATIS": [
+    { "kod": "10", "ad": "Diğer" },
+    { "kod": "3", "ad": "Diğer İşlemler(KDV Beyannamesi)", "altKodlar": "diger 501/503/504/505/550" },
+    { "kod": "13", "ad": "İsteğe Bağlı Tam Tevkifat Uygulanan İşlemler" },
+    { "kod": "4", "ad": "Kısmi istisna kapsamına giren işlemler", "altKodlar": "kismiIstisna 201-250" },
+    { "kod": "2", "ad": "Kısmi Tevkifat Uygulanan İşlemler" },
+    { "kod": "1", "ad": "Normal Satış" },
+    { "kod": "5", "ad": "Tam istisna kapsamına giren işlemler", "altKodlar": "tamIstisna 301-350" },
+    { "kod": "6", "ad": "Özel Matrah" }
+  ],
+  "kayitTuru_SATIS": [
+    { "kod": "14", "ad": "Diğer Gelir" },
+    { "kod": "4", "ad": "Diğer Hasılat" },
+    { "kod": "2", "ad": "Hizmet Satışı" },
+    { "kod": "1", "ad": "Mal Satışı" }
+  ],
+  "kayitAltTuru_HizmetSatisi": [
+    { "kod": "99024", "ad": "At yarışları ve diğer müşterek bahis ve talih oyunları (KDVK md. 23/b)" },
+    { "kod": "99036", "ad": "Belediyeler tarafından yapılan şehiriçi yolcu taşımacılığında kullanılan biletlerin ve kartların bayiler tarafından satışı (81 no'lu KDV GT)" },
+    { "kod": "99099", "ad": "Diğer Özel Matrah Satışları" },
+    { "kod": "99029", "ad": "Gümrük depolarında ve müzayede salonlarında yapılan satışlar (KDVK md. 23/d)" },
+    { "kod": "188", "ad": "Hizmet Satışı" },
+    { "kod": "99044", "ad": "İkinci El Araç ve Taşınmaz Ticareti" },
+    { "kod": "189", "ad": "Konaklama Hizmeti" },
+    { "kod": "99022", "ad": "Milli piyango, spor-toto ve benzeri Devletçe organize edilen organizasyonlar (KDVK md. 23/a)" },
+    { "kod": "99026", "ad": "Profesyonel sanatçıların yer aldığı gösteriler ve konserler ile profesyonel sporcuların katıldığı sportif faaliyetler (KDVK md. 23/c)" },
+    { "kod": "99039", "ad": "Türkiye Şoförler ve Otomobilciler Federasyonu tarafından araç plakaları ile sürücü kurslarında kullanılan evrakın basımı (91 no'lu KDV GT)" },
+    { "kod": "186", "ad": "Yıllara Yaygın İnşaat ve Onarım Hakediş Bedeli" },
+    { "kod": "99041", "ad": "Ön Ödemeli Elektronik Haberleşme Hizmetleri" }
+  ],
+  "kdvOran": [
+    { "kod": "KDV0", "ad": "%0 Kdv" },
+    { "kod": "KDV1", "ad": "%1 Kdv" },
+    { "kod": "KDV10", "ad": "%10 Kdv" },
+    { "kod": "KDV20", "ad": "%20 Kdv" }
+  ],
+  "formAlanlari": {
+    "ustBilgi": ["faturaTuru (Gelir/Gider)", "belgeTuru", "alisSatisTuru", "evrakTarihi", "kayitTarihi", "firmaAdi (Ad)", "firmaSoyAdi (Soyad/Ünvan)", "evrakNo", "kimlikNo (TCKN/VKN)", "islemTuru", "toplamTutar"],
+    "satir": ["kayitTuru", "kayitAltTuru", "krediliTutar", "matrahTutar", "kdvOran", "kdvTutar", "hesapKodu (açılır)", "stopajIslemleri (açılır)"],
+    "butonlar": ["İptal Et", "Kaydet", "Kaydet ve Onayla (F2)", "Geri (F8)", "İleri (F9)", "Listeye Dön"]
+  }
+}

@@ -5,6 +5,7 @@ export * from './types';
 export * from './schemas/auth.schemas';
 export * from './schemas/taxpayer.schemas';
 export * from './schemas/document.schemas';
+export * from './isletme-referans';
 
 // Modüller arası kontrat katmanı (Zod schemas at module boundaries)
 export * from './contracts';

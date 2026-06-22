@@ -44,6 +44,16 @@ export interface InvoicePayload {
   totalAmount?: string | null;
   currency?: string | null;
   lines: InvoiceLine[];
+  /** İşletme defteri (Defter-Beyan) sınıflandırması — ocrData.isletme'den gelir. */
+  isletme?: {
+    belgeTuruKod?: string; belgeTuruAd?: string;
+    alisSatisKod?: string; alisSatisAd?: string;
+    islemTuruKod?: string; islemTuruAd?: string;
+    kayitTuruKod?: string; kayitTuruAd?: string;
+    kayitAltKod?: string; kayitAltAd?: string;
+    kdvOranKod?: string; plakaNo?: string;
+    matrah?: number; kdvTutar?: number; krediliTutar?: number; donem?: boolean;
+  } | null;
 }
 
 export interface BatchPayload {
@@ -264,45 +274,51 @@ export function buildLucaIsletmeHizliFisCsv(payload: BatchPayload): Buffer {
     const counterpartyVkn = isSale ? (inv.buyerVkn || '') : (inv.sellerVkn || '');
     const counterpartyName = isSale ? (inv.customerName || '') : (inv.vendorName || '');
 
-    // 36 sutun — sirayla. Bilinmeyen/opsiyonel alanlar bos birakildi.
+    // İşletme sınıflandırması (Muhasebeleştir → İşletme formunda seçilen) — varsa CSV alanlarını doldur.
+    const isl = inv.isletme || {};
+    const kdvOranNum = ({ KDV20: '20', KDV10: '10', KDV1: '1', KDV0: '0' } as Record<string, string>)[String(isl.kdvOranKod || '')] || rate || '';
+    const islMatrah = Number.isFinite(isl.matrah as number) && (isl.matrah as number) > 0 ? (isl.matrah as number) : matrah;
+    const islKdv = Number.isFinite(isl.kdvTutar as number) && (isl.kdvTutar as number) > 0 ? (isl.kdvTutar as number) : kdv;
+
+    // 37 sutun — sirayla. İşletme formundan gelen seçimlerle dolar; boşlar opsiyonel/serbest.
     const row = [
-      isSale ? 'Gelir' : 'Gider',        // 1 İŞLEM            [DOGRULANACAK]
-      '',                                 // 2 KATEGORİ
-      inferIsletmeBelgeTuru(inv),         // 3 BELGE TURU       [DOGRULANACAK]
-      tarihStr,                           // 4 EVRAK TARİHİ
-      tarihStr,                           // 5 KAYIT TARİHİ
-      inv.seriNo || '',                   // 6 SERİ NO
-      inv.belgeNo || '',                  // 7 EVRAK NO
-      counterpartyVkn,                    // 8 TCKN/VKN
-      '',                                 // 9 VERGİ DAİRESİ
-      counterpartyName,                   // 10 SOYADI ÜNVAN
-      '',                                 // 11 ADI DEVAMI
-      '',                                 // 12 ADRES
-      '',                                 // 13 CARİ HESAP
-      '',                                 // 14 KDV İSTİSNASI
-      '',                                 // 15 KOD
-      '',                                 // 16 BELGE TÜRÜ(DB)
-      isSale ? 'Satış' : 'Alış',          // 17 ALIŞ/SATIŞ TÜRÜ  [DOGRULANACAK]
-      '',                                 // 18 KAYIT ALT TÜRÜ
-      '',                                 // 19 PLAKA NO  (şablonda VAR — eksikti, sonraki sütunlar kayıyordu)
-      '',                                 // 20 MAL VE HİZMET KODU
-      inv.vendorName || inv.customerName || '', // 21 AÇIKLAMA
-      '',                                 // 22 MİKTAR
-      '',                                 // 23 B.FİYAT
-      trAmount(matrah),                   // 24 TUTAR (matrah/KDV hariç)
-      '',                                 // 25 TEVKİFAT
-      rate || '',                         // 26 KDV ORANI
-      '',                                 // 27 İŞLEM BEDELİ
-      '',                                 // 28 MATRAHTAN DÜŞÜLECEK TUTAR
-      '',                                 // 29 ÖZEL MATRAH ŞEKLİNE DAHİL OLMAYAN BEDEL
-      trAmount(kdv),                      // 30 KDV TUTARI
-      trAmount(total),                    // 31 TOPLAM TUTAR
-      '',                                 // 32 KREDİLİ TUTAR
-      '',                                 // 33 STOPAJ KODU
-      '',                                 // 34 STOPAJ TUTARI
-      '',                                 // 35 DÖNEMSELLİK İLKESİ
-      '',                                 // 36 FAALIYET KODU
-      '',                                 // 37 ÖDEME TÜRÜ      [DOGRULANACAK]
+      isSale ? 'Gelir' : 'Gider',                  // 1 İŞLEM
+      isl.kayitTuruAd || '',                        // 2 KATEGORİ (Kayıt Türü: Mal/Hizmet Satışı, İndirilecek Gider…)
+      isl.belgeTuruAd || inferIsletmeBelgeTuru(inv),// 3 BELGE TURU
+      tarihStr,                                     // 4 EVRAK TARİHİ
+      tarihStr,                                     // 5 KAYIT TARİHİ
+      inv.seriNo || '',                             // 6 SERİ NO
+      inv.belgeNo || '',                            // 7 EVRAK NO
+      counterpartyVkn,                              // 8 TCKN/VKN
+      '',                                           // 9 VERGİ DAİRESİ
+      counterpartyName,                             // 10 SOYADI ÜNVAN
+      '',                                           // 11 ADI DEVAMI
+      '',                                           // 12 ADRES
+      '',                                           // 13 CARİ HESAP
+      '',                                           // 14 KDV İSTİSNASI
+      isl.islemTuruKod || '',                       // 15 KOD (İşlem Türü kodu)
+      isl.belgeTuruKod || '',                       // 16 BELGE TÜRÜ(DB) (GİB Defter-Beyan kodu)
+      isl.alisSatisAd || (isSale ? 'Normal Satış' : 'Normal Alım'), // 17 ALIŞ/SATIŞ TÜRÜ
+      isl.kayitAltAd || '',                         // 18 KAYIT ALT TÜRÜ
+      isl.plakaNo || '',                            // 19 PLAKA NO
+      '',                                           // 20 MAL VE HİZMET KODU
+      counterpartyName || '',                       // 21 AÇIKLAMA (firma adı)
+      '',                                           // 22 MİKTAR
+      '',                                           // 23 B.FİYAT
+      trAmount(islMatrah),                          // 24 TUTAR (matrah/KDV hariç)
+      '',                                           // 25 TEVKİFAT
+      kdvOranNum,                                   // 26 KDV ORANI
+      '',                                           // 27 İŞLEM BEDELİ
+      '',                                           // 28 MATRAHTAN DÜŞÜLECEK TUTAR
+      '',                                           // 29 ÖZEL MATRAH ŞEKLİNE DAHİL OLMAYAN BEDEL
+      trAmount(islKdv),                             // 30 KDV TUTARI
+      trAmount(total),                              // 31 TOPLAM TUTAR
+      isl.krediliTutar ? trAmount(Number(isl.krediliTutar)) : '', // 32 KREDİLİ TUTAR
+      '',                                           // 33 STOPAJ KODU
+      '',                                           // 34 STOPAJ TUTARI
+      isl.donem ? 'Evet' : '',                      // 35 DÖNEMSELLİK İLKESİ
+      '',                                           // 36 FAALIYET KODU
+      '',                                           // 37 ÖDEME TÜRÜ
     ].map(csvCell).join(';');
 
     lines.push(iconv.encode(row, 'win1254'));
