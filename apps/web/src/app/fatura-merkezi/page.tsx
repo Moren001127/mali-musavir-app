@@ -293,31 +293,80 @@ async function openDocFile(id: string) {
   }
 }
 
-/** Belge görüntüleme modalı — neredeyse tam ekran + yaklaştır/uzaklaştır. */
+/** Belge görüntüleme modalı — belge ekrana sığdırılır (boşluksuz) + yaklaştır/uzaklaştır. */
 function DocModal() {
   const [doc, setDoc] = useState<{ url?: string; html?: string; mime?: string } | null>(null);
   const [scale, setScale] = useState(1);
+  const [blobUrl, setBlobUrl] = useState('');
+  const [dim, setDim] = useState<{ w: number; h: number }>({ w: 0, h: 0 });
+  const viewRef = useRef<HTMLDivElement>(null);
+  const fittedRef = useRef(false);
+
   useEffect(() => {
-    const onView = (e: any) => { setDoc(e.detail || null); setScale(1); };
+    const onView = (e: any) => { setDoc(e.detail || null); setScale(1); setDim({ w: 0, h: 0 }); fittedRef.current = false; };
     const onKey = (e: KeyboardEvent) => {
       if (e.key === 'Escape') setDoc(null);
       if (e.key === '+' || e.key === '=') setScale((s) => Math.min(4, +(s + 0.2).toFixed(2)));
-      if (e.key === '-' || e.key === '_') setScale((s) => Math.max(0.4, +(s - 0.2).toFixed(2)));
+      if (e.key === '-' || e.key === '_') setScale((s) => Math.max(0.3, +(s - 0.2).toFixed(2)));
     };
     window.addEventListener('fm-view-doc', onView as any);
     window.addEventListener('keydown', onKey);
     return () => { window.removeEventListener('fm-view-doc', onView as any); window.removeEventListener('keydown', onKey); };
   }, []);
+
+  const rawUrl = doc?.url || '';
+  const isImgMime = (doc?.mime || '').startsWith('image/') || /^data:image\//i.test(rawUrl) ||
+    /\.(jpe?g|jpe|jfif|png|gif|webp|bmp|tiff?|heic|heif|avif)(\?|#|$)/i.test(rawUrl);
+
+  // data: URL'i blob URL'e çevir → iframe same-origin olur (içeriği ÖLÇEBİLİRİZ) ve gömülü XSLT render olur
+  useEffect(() => {
+    setBlobUrl('');
+    if (!rawUrl || isImgMime || doc?.html || !/^data:/i.test(rawUrl)) return;
+    let created = '';
+    let alive = true;
+    fetch(rawUrl).then((r) => r.blob()).then((b) => {
+      if (!alive) return;
+      created = URL.createObjectURL(b);
+      setBlobUrl(created);
+    }).catch(() => {});
+    return () => { alive = false; if (created) setTimeout(() => URL.revokeObjectURL(created), 500); };
+  }, [rawUrl, isImgMime, doc?.html]);
+
+  const fitToWidth = (w: number) => {
+    const vw = viewRef.current?.clientWidth || 0;
+    if (w > 0 && vw > 0) setScale(Math.min(3, Math.max(0.3, +((vw - 6) / w).toFixed(3))));
+  };
+  const onFrameLoad = (e: any) => {
+    if (fittedRef.current) return;
+    try {
+      const cd = e.currentTarget.contentDocument;
+      if (!cd || !cd.body) return; // cross-origin (ham data: URL) — blob gelince ölçeriz
+      // İÇERİĞİN gerçek genişliği: body iframe enini verir; faturanın asıl genişliği
+      // en geniş çocuk öğededir (tablo/kapsayıcı). Onu ölçüp ekrana sığdırıyoruz.
+      let w = 0;
+      for (const ch of Array.from(cd.body.children) as any[]) {
+        w = Math.max(w, ch.scrollWidth || 0, ch.offsetWidth || 0, ch.getBoundingClientRect?.().width || 0);
+      }
+      if (!w) w = cd.body.scrollWidth || 0;
+      const h = Math.max(cd.body.scrollHeight || 0, cd.documentElement?.scrollHeight || 0);
+      if (w > 0) { fittedRef.current = true; setDim({ w: Math.ceil(w), h: Math.ceil(h) }); fitToWidth(w); }
+    } catch { /* cross-origin — atla */ }
+  };
+  const onImgLoad = (e: any) => {
+    if (fittedRef.current) return;
+    fittedRef.current = true;
+    fitToWidth(e.currentTarget.naturalWidth || 0);
+  };
+
   if (!doc) return null;
-  const url = doc.url || '';
-  const isImg = !doc.html && (
-    (doc.mime || '').startsWith('image/') ||
-    /^data:image\//i.test(url) ||
-    /\.(jpe?g|jpe|jfif|png|gif|webp|bmp|tiff?|heic|heif|avif)(\?|#|$)/i.test(url)
-  );
-  const zoomStyle = { zoom: scale } as any;
-  const dec = () => setScale((s) => Math.max(0.4, +(s - 0.2).toFixed(2)));
+  const isImg = !doc.html && isImgMime;
+  const frameSrc = blobUrl || rawUrl;
+  const zoomStyle: any = { zoom: scale };
+  const sizeStyle: any = dim.w ? { width: dim.w, height: dim.h || undefined, margin: '0 auto' } : {};
+  const dec = () => setScale((s) => Math.max(0.3, +(s - 0.2).toFixed(2)));
   const inc = () => setScale((s) => Math.min(4, +(s + 0.2).toFixed(2)));
+  const fit = () => { if (dim.w) fitToWidth(dim.w); else setScale(1); };
+
   return (
     <div className="docov" onClick={() => setDoc(null)}>
       <div className="docbox" onClick={(e) => e.stopPropagation()}>
@@ -328,18 +377,18 @@ function DocModal() {
             <button className="zbtn" onClick={dec} title="Uzaklaştır (−)">−</button>
             <span className="zval">{Math.round(scale * 100)}%</span>
             <button className="zbtn" onClick={inc} title="Yaklaştır (+)">+</button>
-            <button className="zbtn zreset" onClick={() => setScale(1)} title="Sığdır">Sığdır</button>
+            <button className="zbtn zreset" onClick={fit} title="Sığdır">Sığdır</button>
           </div>
-          {url ? <a className="btn sm ghost" href={url} target="_blank" rel="noopener noreferrer">Yeni sekmede aç</a> : null}
+          {rawUrl ? <a className="btn sm ghost" href={frameSrc} target="_blank" rel="noopener noreferrer">Yeni sekmede aç</a> : null}
           <button className="btn sm" onClick={() => setDoc(null)}>Kapat ✕</button>
         </div>
-        <div className="docview">
+        <div className="docview" ref={viewRef}>
           {doc.html
-            ? <iframe className="docframe" style={zoomStyle} srcDoc={doc.html} title="Belge" sandbox="allow-same-origin" />
+            ? <iframe className="docframe" style={{ ...zoomStyle, ...sizeStyle }} srcDoc={doc.html} title="Belge" onLoad={onFrameLoad} />
             : isImg
-              ? <img className="docimg" style={zoomStyle} src={url} alt="Belge" />
-              : url
-                ? <iframe className="docframe" style={zoomStyle} src={url} title="Belge" />
+              ? <img className="docimg" style={zoomStyle} src={rawUrl} alt="Belge" onLoad={onImgLoad} />
+              : frameSrc
+                ? <iframe className="docframe" style={{ ...zoomStyle, ...sizeStyle }} src={frameSrc} title="Belge" onLoad={onFrameLoad} />
                 : <div className="empty">Belge yok</div>}
         </div>
       </div>
