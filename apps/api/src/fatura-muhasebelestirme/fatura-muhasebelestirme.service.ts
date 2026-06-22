@@ -2420,6 +2420,7 @@ export class FaturaMuhasebelestirmeService {
     const s = String(t || '').toUpperCase().replace(/[^A-Z]/g, '');
     if (!s) return null;
     if (s.includes('ZRAPOR')) return 'Z_RAPORU';
+    if (s.includes('SMM') || s.includes('SERBESTMESLEK')) return 'E_SMM';
     if (s.includes('EARSIV') || s.includes('ARSIV')) return 'E_ARSIV';
     if (s.includes('EFATURA') || s.includes('FATURA')) return 'E_FATURA';
     if (s.includes('OKC') || s.includes('FIS') || s.includes('MAKBUZ')) return 'OKC_FIS';
@@ -3365,6 +3366,7 @@ export class FaturaMuhasebelestirmeService {
       hasTevkifatLine,
       isReturn,
       hasReturnLine,
+      documentType: doc.documentType,
       lines: doc.lines || [],
       totalAmount: doc.totalAmount,
       sellerVkn: doc.sellerVkn,
@@ -4862,6 +4864,7 @@ export class FaturaMuhasebelestirmeService {
     hasTevkifatLine?: boolean;
     isReturn?: boolean;
     hasReturnLine?: boolean;
+    documentType?: string | null;
   }): Promise<{
     status: 'OK' | 'INCOMPLETE' | 'INVALID';
     issues: Array<{ code: string; severity: 'WARNING' | 'ERROR'; message: string; expected?: any; actual?: any }>;
@@ -4984,6 +4987,18 @@ export class FaturaMuhasebelestirmeService {
         code: 'RETURN_NEEDS_REVERSAL',
         severity: 'ERROR',
         message: 'İade/iptal faturası — normal kayıt yapılamaz. Satıştan iadede 610 (ters kayıt) kullan; borç/alacak yönünü çevir. Satırları elle düzelt, sonra onayla.',
+      });
+    }
+
+    // ── 8) SMM_STOPAJ_NEEDED — alınan Serbest Meslek Makbuzu'nda gelir vergisi stopajı
+    //     (%20 → 360 sorumlu) yoksa onaylanamaz. İşletme/bilanço fark etmez, alışta stopaj şart.
+    if (String(opts.documentType || '').toUpperCase() === 'E_SMM'
+      && String(opts.invoiceKind || '').toUpperCase() !== 'SATIS'
+      && !(opts.lines || []).some((l: any) => String((l as any).accountCode || '').startsWith('360'))) {
+      issues.push({
+        code: 'SMM_STOPAJ_NEEDED',
+        severity: 'ERROR',
+        message: 'Serbest Meslek Makbuzu — gelir vergisi stopajı (%20 / 360 sorumlu sıfatı) eklenmeden onaylanamaz. Stopaj satırını ekle.',
       });
     }
 
@@ -5307,7 +5322,7 @@ export class FaturaMuhasebelestirmeService {
         : 'Aşağıda bir Türk e-Fatura/e-Arşiv belgesinin HTML/metin içeriği var. İçindeki bilgileri oku.',
       'YALNIZCA şu JSON\'u döndür — kod bloğu, açıklama, başka metin YOK:',
       '{"belgeNo":"<fatura/fiş no ya da null>","tarih":"<GG.AA.YYYY ya da null>","belgeTuru":"<e-arsiv|e-fatura|fis|diger>","saticiAd":"<satıcı ünvanı ya da null>","saticiVkn":"<satıcının VKN/TCKN ya da null>","aliciAd":"<alıcı ünvanı ya da null>","aliciVkn":"<alıcının VKN/TCKN ya da null>","toplam":<genel toplam KDV dahil sayı ya da null>,"kategori":"<asagidaki tek deger>","kdv":[{"oran":<KDV yüzdesi sayı>,"matrah":<KDV hariç tutar sayı>,"kdv":<KDV tutarı sayı>}]}',
-      'belgeTuru: belgenin üstündeki ibareye göre → "e-arsiv" (e-Arşiv Fatura / Senaryo EARSIVFATURA), "e-fatura" (e-Fatura / TEMEL/TICARI fatura), "fis" (yazarkasa/ÖKC fişi), yoksa "diger".',
+      'belgeTuru: belgenin üstündeki ibareye göre → "e-arsiv" (e-Arşiv Fatura), "e-fatura" (e-Fatura), "e-smm" (Serbest Meslek Makbuzu / SMM), "fis" (yazarkasa/ÖKC fişi), yoksa "diger".',
       'JSON\'a "iade": true/false ekle — belge bir İADE FATURASI / İPTAL / CreditNote ise true (üstte "İADE", "İADE FATURASI" yazar ya da senaryo İADE/IPTAL\'dir), normal satış/alış faturasıysa false.',
       'saticiAd/aliciAd: SATICI (faturayı kesen) ve ALICI (SAYIN/müşteri) ünvanları. saticiVkn/aliciVkn: bu tarafların VKN (10 hane) ya da TC (11 hane) — SADECE rakam. Yazarkasa fişinde satıcı = mağaza. toplam: genel/ödenecek toplam (KDV dahil). Bulamazsan null, UYDURMA.',
       'KURALLAR: Türk sayı biçimi "1.234,56" = 1234.56 (tümünü ondalıklı sayıya çevir). Birden çok KDV oranı varsa her oran ayrı nesne. matrah=KDV hariç tutar, kdv=o orana ait KDV. ÖTV/ÖİV/tevkifat varsa matrahı şişirme — gerçek mal/hizmet matrahını ver. Okunamayan alanı null bırak, UYDURMA.',

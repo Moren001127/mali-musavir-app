@@ -1437,6 +1437,7 @@ function ScreenMuhasebe({ taxpayerId, period, isIsletme = false, taxpayerNace = 
                       { value: '', label: '—' },
                       { value: 'E_FATURA', label: 'e-Fatura' },
                       { value: 'E_ARSIV', label: 'e-Arşiv' },
+                      { value: 'E_SMM', label: 'e-SMM (Serbest Meslek)' },
                       { value: 'OKC_FIS', label: 'ÖKC Fiş' },
                       { value: 'Z_RAPORU', label: 'Z Raporu' },
                       { value: 'DIGER', label: 'Diğer' },
