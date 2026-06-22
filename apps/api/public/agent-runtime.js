@@ -12,7 +12,7 @@
   // v1.42.2 (2026-06-16): Ajan kendini yenilerken (delete __morenAgent) eski async
   // döngü "Cannot read 'stopRequested' of undefined/null" ile ÇÖKÜYORDU → yetim
   // döngü artık nesne yoksa güvenle durur (stopRequested kontrollerine null-guard).
-  const AGENT_VERSION = '1.45.8';
+  const AGENT_VERSION = '1.45.9';
   const AGENT_INSTANCE_ID = 'mai_' + Date.now().toString(36) + '_' + Math.random().toString(36).slice(2, 8);
 
   // === VERSION-AWARE RELOAD ===
@@ -1947,12 +1947,15 @@
                   const oc2 = String((fisKesBtn.getAttribute && fisKesBtn.getAttribute('onclick')) || '');
                   const fn = (oc2.match(/([\w$]+)\s*\(/) || [])[1];
                   const fw = fisKesBtn.ownerDocument && fisKesBtn.ownerDocument.defaultView;
-                  // DOĞRULAMA: fisKes çağrılmadan ÖNCE .secim:checked > 0 mı? (kaynak: $j(".secim:checked"))
+                  // TEŞHİS (v1.45.9): seçim doğru (.secim:checked=1) ama fiş kesilmiyor → fisKes'in
+                  //   SUBMIT mekanizmasını görmek için TAM kaynağını + validateFis'i logla.
                   try {
                     const d2 = fisKesBtn.ownerDocument;
-                    const secimAll = d2 ? d2.querySelectorAll('input.secim').length : 0;
                     const secimChecked = d2 ? d2.querySelectorAll('.secim:checked').length : 0;
-                    await log(`🧪 fisKes öncesi: input.secim=${secimAll} / .secim:checked=${secimChecked}`);
+                    await log(`🧪 .secim:checked=${secimChecked}`);
+                    const src = (fn && fw && fw[fn]) ? String(fw[fn]).replace(/\s+/g, ' ') : '';
+                    for (let i = 0; i < src.length && i < 2400; i += 600) { await log(`🧪 fisKes[${i}]: ${src.slice(i, i + 600)}`); }
+                    if (fw && typeof fw.validateFis === 'function') { await log(`🧪 validateFis: ${String(fw.validateFis).replace(/\s+/g, ' ').slice(0, 500)}`); }
                   } catch (e2) { await log(`🧪 teşhis: ${(e2 && e2.message) || e2}`); }
                   if (fn && fw && typeof fw[fn] === 'function') { fw[fn](); kes = 'fn:' + fn; }
                   // fisKes SONRASI Luca bildirimi (lucaNotYaz) — başardı mı yoksa "seçiniz/hata" mı?
