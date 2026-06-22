@@ -102,16 +102,17 @@ function parseAmount(s: string | null | undefined): number {
   return Number.isFinite(n) ? n : 0;
 }
 
-function inferBelgeTuru(_invoice: InvoicePayload): string {
-  // KÖK NEDEN (agent log kanıtı): Luca'nın Fiş Kes doğrulaması belgeTurKontrol() yalnız KENDİ
-  // belgeTurList'indeki değerleri kabul ediyor. "E-ARŞİV/E-FATURA" gibi serbest metinler listede
-  // OLMADIĞI için belgeTurKontrol false döner → fisKes() "if(hataliBelgeTuru>0) return" ile SESSİZCE
-  // çıkar, AJAX (fis_kes.jq) hiç çağrılmaz, fiş kesilmez. belgeTurKontrol BOŞ değeri ise GEÇER
-  // (if(val && ...) → val boşsa atlar). Geçerli kod listesi Luca versiyonuna göre değiştiğinden ve
-  // yanlış kod yine reddedileceğinden belge türünü BOŞ bırakıyoruz → fiş kesilir. Doğru kodlar
-  // (belgeTurList) netleşince buraya eşleştirme eklenir.
-  void _invoice;
-  return '';
+function inferBelgeTuru(invoice: InvoicePayload): string {
+  // Luca'nın GEÇERLİ belge türü KISA KODLARI (kullanıcı Luca'dan verdi). belgeTurKontrol() bu kodları
+  // belgeTurList'te arıyor; "E-ARŞİV/E-FATURA" gibi serbest metinler listede OLMADIĞI için reddedilip
+  // fisKes() "if(hataliBelgeTuru>0) return" ile SESSİZCE çıkıyor, fiş kesilmiyordu (kök neden).
+  // Kodlar: EA=e-Arşiv, EF=e-Fatura, FT=Fatura, PS=Perakende Satış Fişi (ÖKC/yazarkasa), İF=İrsaliyeli
+  // Fatura, SM=Serbest Meslek Makbuzu, MK=Makbuz, ÇK=Çek, SN=Senet...
+  const t = String(invoice.documentType || '').toUpperCase();
+  if (t === 'E_ARSIV') return 'EA';
+  if (t === 'E_FATURA') return 'EF';
+  if (t === 'OKC_FIS') return 'PS';
+  return 'FT';
 }
 
 /**
