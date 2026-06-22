@@ -204,6 +204,12 @@ export class CalisanService {
     // EYLEM-ANLATIMI içeren cevaplar: rakam yoksa ya da kısaysa = eksik, reddet.
     const aboutToAct = /(cekiyorum|cagiriyorum|sorguluyorum|bakiyorum|ariyorum|getiriyorum|getireyim|getirecegim|buluyorum|bulay[iı]m|bulayim|kontrol ediyorum|kontrol edeyim|hesapliyorum|arastiriyorum|baslayacagim|deneyecegim|denecegim|denemeliyim|cekecegim|calistir(mam|acagim|iyorum)|erisim(im)? var|sorgu(lar[iı]n[iı])? (calistir|cek|getir)|hemen (cevab|getir|bul|bak|kontrol))/.test(text);
     if (aboutToAct && (!/\d/.test(answer) || answer.trim().length < 180)) return false;
+    // PLAN/NİYET ANLATIMI: "veri çekmem gerekiyor", "kontrol etmeliyim", "sorgulamalıyım",
+    // "kayıtları getirmem lazım" gibi YAPACAĞINI anlatıp veriyi VERMEYEN cevaplar.
+    // (Canlı bug: "beyannamesi verilmiş olanlar kimler" → "Veri çekmem gerekiyor… kontrol
+    //  etmeliyim" diye yarım cevap geçiyordu; aboveki kalıba takılmıyordu.)
+    const planNarration = /(cek|getir|bak|al|kontrol et|sorgula|hesapla|arastir|incele|cagir|listele|tara)\w*(meli|mali)y[iı]m|(cekmem|getirmem|bakmam|almam|sorgulamam|hesaplamam|kontrol etmem|cagirmam|listelemem|taramam)\s*(gerek|laz[iı]m)|veri\w*\s*(cek|getir|al|sorgula|kontrol)\w*\s*(gerek|laz[iı]m)/.test(text);
+    if (planNarration && (!/\d/.test(answer) || answer.trim().length < 200)) return false;
     // Çok kısa + iki nokta ile biten ("Şimdi araçları çağırıyorum:") = eksik
     if (answer.trim().length < 110 && /[:：]\s*$/.test(answer.trim())) return false;
     return true;
