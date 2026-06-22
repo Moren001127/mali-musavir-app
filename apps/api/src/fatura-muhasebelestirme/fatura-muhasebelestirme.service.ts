@@ -5539,7 +5539,18 @@ export class FaturaMuhasebelestirmeService {
       };
       const alisMatrahPrefixes = KAT_PREFIX[kat] || ['770', '760', '740', '730', ' gider '];
       const categoryMatrah = this.pickAccount(accounts, isSale ? ['600'] : alisMatrahPrefixes, vendorName);
-      const vergiMatch = this.pickAccount(accounts, isSale ? ['391'] : ['191'], null);
+      // KDV hesabı: tevkifatlıda planında ADINDA oranı (ör "2/10") ya da "tevkifat" geçen
+      // hesabı tercih et (391.01.004 "HESAPLANAN KDV %20 2/10"), düz 391.01.003 değil.
+      const vergiPrefix = isSale ? '391' : '191';
+      const tevkPay = Math.round(Number((doc.ocrData as any)?.tevkifatOrani || 0) * 10); // 0.2→2 (2/10)
+      const vergiMatch = (() => {
+        if (tevkPay >= 1 && tevkPay <= 9) {
+          const grp = accounts.filter((a: any) => String(a.accountCode || '').startsWith(vergiPrefix));
+          const hit = grp.find((a: any) => { const n = String(a.accountName || ''); return n.includes(`${tevkPay}/10`) || /tevk[iı]fat/i.test(n); });
+          if (hit) return hit;
+        }
+        return this.pickAccount(accounts, [vergiPrefix], null);
+      })();
       // CARI: önce VKN bazlı öğrenilmiş cari (kesin), yoksa KATI isim eşleşmesi. İsim de
       // tutmazsa null → placeholder boşaltılır ("Eksik cari"). Eskiden plandaki İLK cari
       // (ör. ALTEKS) sessizce seçiliyordu — yanlış eşleştirmenin ana kaynağıydı.
@@ -5581,6 +5592,15 @@ export class FaturaMuhasebelestirmeService {
             data: cariMatch
               ? { accountCode: (cariMatch as any).accountCode, description: (cariMatch as any).accountName }
               : { accountCode: '' },
+          });
+          continue;
+        }
+        // VERGİ özel (TEVKİFAT): tevkifatlıda KDV hesabı tevkifat hesabına (ör 391.01.004
+        // "...2/10") çekilir — düz 391.01.003'te kalmasın. "Kodları düzelt" ile de düzelir.
+        if (group === 'vergi' && tevkPay >= 1 && vergiMatch && current !== String((vergiMatch as any).accountCode)) {
+          await (this.prisma as any).invoiceAccountingLine.update({
+            where: { id: line.id },
+            data: { accountCode: (vergiMatch as any).accountCode },
           });
           continue;
         }
