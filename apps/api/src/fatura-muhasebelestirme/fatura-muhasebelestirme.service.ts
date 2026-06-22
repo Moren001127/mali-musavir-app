@@ -252,9 +252,11 @@ function periodWhere(period?: string | null) {
 @Injectable()
 export class FaturaMuhasebelestirmeService implements OnModuleInit, OnModuleDestroy {
   private readonly logger = new Logger(FaturaMuhasebelestirmeService.name);
-  // Eş zamanlı okuma: 3 paralel + agresif resume Max'i bunaltıp "exited code 1" verdiriyordu
-  // (storm). 2'ye düşürüldü; INVOICE_OCR_CONCURRENCY ile ayarlanır (Max kotası elveriyorsa artır).
-  private readonly uploadOcrConcurrency = Math.max(1, Number(process.env.INVOICE_OCR_CONCURRENCY || 2));
+  // Eş zamanlı okuma: storm'un asıl sebebi AGRESİF global resume'du (naziklendi). 2 güvenliydi,
+  // 3'e çıkarıyoruz (1.5 kat). Her Max-vision bir Claude Code alt-süreci → çok süreç OOM/rate-limit
+  // ("exited code 1") riski; KDV Kontrol de süreç açar. 3 temkinli üst sınır. Re-storm olursa düşür.
+  // INVOICE_OCR_CONCURRENCY ile ayarlanır. (Daha büyük hız için hızlı-OCR/Azure-öncelik yolu var.)
+  private readonly uploadOcrConcurrency = Math.max(1, Number(process.env.INVOICE_OCR_CONCURRENCY || 3));
   private uploadOcrActive = 0;
   private readonly uploadOcrActiveIds = new Set<string>(); // işlenmekte olan belge id'leri (resume çift-işlemesin)
   private ocrResumeTimer: NodeJS.Timeout | null = null;
