@@ -719,3 +719,104 @@ export async function buildOwnerMizanStatusReply(
     : (intent.durum === 'var' ? `${donem} için mizanı yüklenmiş mükellef yok.` : `${donem} için tüm aktif mükelleflerin mizanı yüklenmiş 👍`);
   return { reply, count: hedef.length };
 }
+
+// ============================================================================
+// TEK-MÜKELLEF KDV — "X'in/X'e ne kadar KDV çıkıyor/ödeyecek". TEMKİNLİ isim eşleme
+// (tek-net kazanan yoksa null→agentic). En son dönem KDV kontrol seansından
+// 391(hesaplanan)−191(indirilecek)=ödenecek. ŞABLON + anında.
+// ============================================================================
+
+const KDV_AYLAR = ['Ocak','Şubat','Mart','Nisan','Mayıs','Haziran','Temmuz','Ağustos','Eylül','Ekim','Kasım','Aralık'];
+const SIRKET_GENERIK = new Set([
+  'limited','sirketi','sirket','sti','ltd','anonim','as','kollektif','komandit','kooperatif',
+  've','dis','ic','sanayi','ticaret','hizmetleri','hizmet','organizasyon','ltdsti',
+]);
+
+/** Sorgu metninden TEK-NET mükellef çöz (ayırt edici ad-kelimeleri sorguda geçiyorsa). Belirsizse null. */
+export function resolveTaxpayerByText(taxpayers: any[], text: string): any | null {
+  const q = normalizeForIntent(text);
+  const qTokens = new Set(q.split(/\s+/).filter((t) => t.length >= 2));
+  if (!qTokens.size) return null;
+  const qArr = Array.from(qTokens);
+  // Türkçe ek toleransı: sorgu-kelimesi ad-kökünü AYNEN içerir VEYA onunla BAŞLAR
+  // ("akgozun"→"akgoz", "madeninin"→"madeni"; kök ≥3 harf olmalı, kısa yanlış-eşleşme olmasın).
+  const eslesir = (nameTok: string) =>
+    qTokens.has(nameTok) || (nameTok.length >= 3 && qArr.some((qt) => qt.startsWith(nameTok)));
+  let best: any = null, bestScore = 0, secondScore = 0;
+  for (const t of taxpayers) {
+    const ad = (t.companyName || `${t.firstName || ''} ${t.lastName || ''}`).trim();
+    const nameTokens = normalizeForIntent(ad).split(/\s+/).filter((w) => w.length >= 2 && !SIRKET_GENERIK.has(w));
+    let score = 0;
+    for (const w of nameTokens) if (eslesir(w)) score++;
+    if (score > bestScore) { secondScore = bestScore; bestScore = score; best = t; }
+    else if (score > secondScore) secondScore = score;
+  }
+  // GÜVENLİ: en az 2 ayırt edici ad-kelimesi eşleşmeli VE net kazanan olmalı (yanlış mükellef riski yüksek).
+  return bestScore >= 2 && bestScore > secondScore ? best : null;
+}
+
+export interface SingleKdv { periodLabel: string; donemLabel: string; hesaplanan: number; indirilecek: number; odenecek: number; }
+
+export async function computeTaxpayerKdvPayable(prisma: any, tenantId: string, taxpayerId: string, periodLabel?: string): Promise<SingleKdv | null> {
+  let pl = periodLabel || '';
+  if (!pl) {
+    const son = await prisma.kdvControlSession.findFirst({
+      where: { tenantId, taxpayerId, status: 'COMPLETED' },
+      orderBy: [{ periodLabel: 'desc' }, { createdAt: 'desc' }],
+      select: { periodLabel: true },
+    }).catch(() => null);
+    pl = son?.periodLabel || '';
+  }
+  if (!pl) return null;
+  const sessions = await prisma.kdvControlSession.findMany({
+    where: { tenantId, taxpayerId, periodLabel: pl },
+    orderBy: { createdAt: 'desc' },
+    include: { kdvRecords: { select: { kdvTutari: true } } },
+  }).catch(() => []);
+  let hesaplanan: number | null = null, indirilecek: number | null = null;
+  for (const s of sessions) {
+    const tot = (s.kdvRecords || []).reduce((a: number, r: any) => a + (Number(r.kdvTutari) || 0), 0);
+    if (/391/.test(String(s.type)) && hesaplanan === null) hesaplanan = tot;
+    if (/191/.test(String(s.type)) && indirilecek === null) indirilecek = tot;
+  }
+  if (hesaplanan === null && indirilecek === null) return null;
+  const h = hesaplanan || 0, i = indirilecek || 0;
+  const m = pl.match(/^(\d{4})[\/-](\d{2})$/);
+  const donemLabel = m ? `${KDV_AYLAR[parseInt(m[2], 10) - 1]} ${m[1]}` : pl;
+  return { periodLabel: pl, donemLabel, hesaplanan: h, indirilecek: i, odenecek: h - i };
+}
+
+export function detectSingleTaxpayerKdvIntent(text: string): boolean {
+  const n = normalizeForIntent(text);
+  if (!/kdv/.test(n)) return false;
+  if (/(kim|kimler|kimlere|liste|listele|herkes|tum|hangi mukellef)/.test(n)) return false; // portföy sorusu
+  return /(ne kadar|odeyecek|odecek|cikiyor|cikti|cikan|durum|detay|borc|kac tl|tutar|hesaplanan|indirilecek)/.test(n);
+}
+
+export async function buildOwnerSingleTaxpayerKdvReply(
+  prisma: any, tenantId: string, text: string,
+): Promise<{ reply: string; mukellef: string } | null> {
+  if (!detectSingleTaxpayerKdvIntent(text)) return null;
+  const taxpayers = await prisma.taxpayer.findMany({
+    where: { tenantId, isActive: true },
+    select: { id: true, companyName: true, firstName: true, lastName: true },
+  }).catch(() => []);
+  const t = resolveTaxpayerByText(taxpayers, text);
+  if (!t) return null; // belirsiz → agentic
+  const pm = text.match(/\b(\d{4})[\/-](\d{2})\b/);
+  const kdv = await computeTaxpayerKdvPayable(prisma, tenantId, t.id, pm ? `${pm[1]}/${pm[2]}` : '');
+  const ad = (t.companyName || `${t.firstName || ''} ${t.lastName || ''}`).trim();
+  if (!kdv) {
+    return { reply: `${ad} için tamamlanmış KDV kontrolü bulamadım; kontrol yapılınca KDV tutarını iletebilirim.`, mukellef: ad };
+  }
+  const fmt = (x: number) => new Intl.NumberFormat('tr-TR', { minimumFractionDigits: 2, maximumFractionDigits: 2 }).format(x) + ' ₺';
+  const sonuc = kdv.odenecek >= 0
+    ? `💰 Ödenecek KDV: ${fmt(kdv.odenecek)}`
+    : `↪️ Devreden KDV: ${fmt(-kdv.odenecek)} (ödeme çıkmıyor)`;
+  const reply =
+    `🧾 KDV — ${ad}\n🗓️ ${kdv.donemLabel}\n\n` +
+    `• Hesaplanan (391): ${fmt(kdv.hesaplanan)}\n` +
+    `• İndirilecek (191): ${fmt(kdv.indirilecek)}\n` +
+    `────────────\n${sonuc}`;
+  return { reply, mukellef: ad };
+}
