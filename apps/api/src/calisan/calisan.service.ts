@@ -195,6 +195,13 @@ export class CalisanService {
     if (/birazdan tekrar.*dener/.test(text)) return false;
     if (/claude max|agent sdk|max baglanti|max yanit|ucretli api|api hatti kapali/.test(text)) return false;
     if (/sistemde henuz tanimli degilsiniz|sizi taniyabilmem|adinizi.*vergi numaranizi/.test(text)) return false;
+    // YARIM / ARA-ANLATIM cevabı (veri yok, sadece "çekiyorum/tamamlayamadım/birazdan dönerim"
+    // gibi) → kullanma, Max-metin yedeğine düş ki gerçek cevap/dürüst geçici cevap gelsin.
+    if (/tamamlayamad|tamamlayamad/.test(text)) return false;
+    if (/birazdan.*(dene|don|yaz|ilet|paylas)/.test(text)) return false;
+    if (/(cekiyorum|cagiriyorum|sorguluyorum|bakiyorum|ariyorum|baslayacagim|deneyecegim|denecegim|denemeliyim|cekecegim|kontrol ediyorum|arastiriyorum|hesapliyorum|sorgu(luyor|laci)yorum)\s*\.?\s*:?\s*$/.test(text)) return false;
+    // Çok kısa + iki nokta ile biten ("Şimdi araçları çağırıyorum:") = eksik
+    if (answer.trim().length < 90 && /[:：]\s*$/.test(answer.trim())) return false;
     return true;
   }
 
