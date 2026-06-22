@@ -494,13 +494,14 @@ function Check({ checked, onToggle }: { checked?: boolean; onToggle?: () => void
 function useDocuments(taxpayerId: string, period: string) {
   return useQuery({
     queryKey: ['fm2', 'documents', taxpayerId, period],
-    queryFn: () =>
-      api
-        .get('/fatura-muhasebelestirme/documents', {
-          params: { taxpayerId: taxpayerId || undefined, period, limit: 300 },
-        })
-        .then((r) => (Array.isArray(r.data) ? r.data : []))
-        .catch(() => []),
+    // Hatayı YUTMA — react-query isError versin ki "Yüklenemedi, tekrar dene" gösterelim
+    // (eskiden catch([]) ile ağ hatası "veri yok" gibi görünüyordu).
+    queryFn: async () => {
+      const r = await api.get('/fatura-muhasebelestirme/documents', {
+        params: { taxpayerId: taxpayerId || undefined, period, limit: 300 },
+      });
+      return Array.isArray(r.data) ? r.data : [];
+    },
   });
 }
 
@@ -782,8 +783,14 @@ function ScreenFaturalar({ taxpayerId, period, kind = 'ALIS' }: { taxpayerId: st
           <button className="btn sm ghost" disabled={syncMut.isPending} onClick={() => syncMut.mutate()} title="Mükellefe bağlanmamış (sahipsiz) belgeleri VKN/TCKN'ye göre ilgili mükellefe bağlar"><Ico html={I.sync} size={13} /> {syncMut.isPending ? 'Bağlanıyor…' : 'Sahipsiz belgeleri bağla'}</button>
           <button className="btn sm ghost" disabled={!taxpayerId || recodeMut.isPending} onClick={() => recodeMut.mutate()} title="Belgeleri TEKRAR OKUMADAN hesap kodlarını plana göre yeniden eşleştir — yanlış carileri düzeltir/temizler (saniyeler sürer)"><Ico html={I.sync} size={13} /> {recodeMut.isPending ? 'Düzeltiliyor…' : 'Kodları düzelt'}</button>
           <button className="btn sm blue" disabled={aiBusy || sel.size === 0} onClick={aiOku} title="Seçili faturaları yapay zeka (Max) ile oku — sunucuda okur, sayfa değişince durmaz">{aiBusy ? 'Başlatılıyor…' : `AI ile oku${sel.size ? ` (${sel.size})` : ''}`}</button>
-          <button className="btn sm primary" disabled={approveMut.isPending} onClick={muhasebelestir}><Ico html={I.checkSm} size={13} /> {approveMut.isPending ? 'İşleniyor…' : `Muhasebeleştir${sel.size ? ` (${sel.size})` : ''}`}</button>
+          <button className="btn sm primary" disabled={approveMut.isPending} onClick={muhasebelestir} title="Seçili, kodu tam olan belgeleri toplu onayla (Luca kuyruğuna alır). Tek tek inceleme için soldaki 'Muhasebeleştir' ekranını kullan."><Ico html={I.checkSm} size={13} /> {approveMut.isPending ? 'İşleniyor…' : `Seçilenleri onayla${sel.size ? ` (${sel.size})` : ''}`}</button>
         </div>
+        {docsQ.isError && (
+          <div className="yuklenemedi">
+            <span><Ico html={I.info} size={14} /> Belgeler yüklenemedi (bağlantı/sunucu hatası) — "veri yok" değil.</span>
+            <button className="btn sm" onClick={() => docsQ.refetch()}><Ico html={I.sync} size={12} /> Tekrar dene</button>
+          </div>
+        )}
         {ocrProg && (ocrProg.active || ocrProg.failed > 0) && (
           <div className={`ocrstrip${ocrProg.active ? ' scanning' : ''}`}>
             <div className="ocrbar"><div className="ocrfill" /></div>
@@ -850,9 +857,9 @@ function ScreenFaturalar({ taxpayerId, period, kind = 'ALIS' }: { taxpayerId: st
           </table>
         </div>
         <div className="foot">
-          <div className="selinfo">{docs.length} belge · {sayac.ok} muhasebeleştirilebilir · {sayac.miss} eksik kod · {sayac.warn} çelişki</div>
+          <div className="selinfo">{docsAll.length} belge · {sayac.ok} eşleşti · {sayac.miss} eksik kod · {sayac.warn} çelişki{durumF !== 'all' ? ` · (filtre: ${docs.length})` : ''}</div>
           <div className="sp" />
-          <div className="pg">İlk 300 kayıt <span className="pb act">1</span></div>
+          {docsAll.length >= 300 && <div className="pg">İlk 300 gösteriliyor — dönem/durum filtresiyle daralt</div>}
         </div>
       </div>
     </section>
@@ -2254,6 +2261,8 @@ const CSS = `
 #fm-root .dfchip{display:inline-flex;align-items:center;gap:6px;height:26px;padding:0 11px;border:1px solid var(--line2);border-radius:13px;background:#fff;color:var(--muted);font-size:11.5px;font-weight:600;cursor:pointer;font-family:inherit}
 #fm-root .dfchip:hover{border-color:var(--accent-line);color:var(--accent)}
 #fm-root .dfchip.on{background:var(--accent);border-color:var(--accent);color:#fff}
+#fm-root .yuklenemedi{display:flex;align-items:center;justify-content:space-between;gap:10px;margin:10px 16px 0;padding:9px 12px;background:#fdeaea;border:1px solid #f0b3b3;border-radius:9px;font-size:12px;color:#a23a3a}
+#fm-root .yuklenemedi span{display:inline-flex;align-items:center;gap:6px}
 #fm-root .eksikbelge{display:flex;align-items:flex-start;gap:8px;margin:10px 16px 0;padding:9px 12px;background:#fef6e7;border:1px solid #f0d28a;border-radius:9px;font-size:12px;color:#8a6314}
 #fm-root .eksikbelge b{color:#6b4d0f}
 #fm-root .dfchip .dfn{font-size:10px;font-weight:700;opacity:.7}
