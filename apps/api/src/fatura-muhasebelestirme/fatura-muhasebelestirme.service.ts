@@ -3466,18 +3466,28 @@ export class FaturaMuhasebelestirmeService {
       orderBy: { faturaTarihi: 'asc' },
     });
 
-    // v2.2: validationStatus ocrData içinde — application-side filter
+    // K9: validationStatus DB KOLONUNDAN oku (ocrData'da değil — Mihsap belgelerinde
+    // ocrData.validationStatus hiç set edilmiyor, eski filtre ölüydü). Ayrıca belge başına
+    // GERÇEK denge + boş-kod kontrolü → dengesiz/eksik-kodlu fiş Luca'ya GİTMESİN (sessiz değil).
     let skippedCount = 0;
+    let skippedBalance = 0;
     const docs = allDocs.filter((d: any) => {
-      const v = d.ocrData?.validationStatus;
+      const v = String((d as any).validationStatus || d.ocrData?.validationStatus || '').toUpperCase();
       if (v === 'INVALID' || v === 'INCOMPLETE') { skippedCount++; return false; }
+      const lines = d.lines || [];
+      const sd = lines.reduce((s: number, l: any) => s + Number(l.debit || 0), 0);
+      const sc = lines.reduce((s: number, l: any) => s + Number(l.credit || 0), 0);
+      const blankCode = lines.some((l: any) => (Number(l.debit || 0) + Number(l.credit || 0)) > 0 && !String(l.accountCode || '').trim());
+      if (!lines.length || Math.abs(sd - sc) > 0.02 || blankCode) { skippedBalance++; return false; }
       return true;
     });
 
     if (!docs.length) {
-      const extra = skippedCount > 0
-        ? ` (${skippedCount} belge veri kontrolü hatası nedeniyle hariç tutuldu — Gelen Belgeler'de düzelt)`
-        : '';
+      const parts = [
+        skippedCount > 0 ? `${skippedCount} belge veri kontrolü hatası` : '',
+        skippedBalance > 0 ? `${skippedBalance} belge dengesiz/eksik kod` : '',
+      ].filter(Boolean).join(', ');
+      const extra = parts ? ` (${parts} nedeniyle hariç tutuldu — Gelen Belgeler'de düzelt)` : '';
       throw new Error(`Bu mukellef icin Luca'ya aktarilabilir belge bulunamadi${extra}`);
     }
 
@@ -3508,22 +3518,25 @@ export class FaturaMuhasebelestirmeService {
       })),
     });
 
-    const groups: Array<{ kind: 'ALIS' | 'SATIS'; docs: any[] }> = [];
-    const alisDocs = docs.filter((d: any) => String(d.invoiceKind || 'ALIS').toUpperCase() !== 'SATIS');
-    const satisDocs = docs.filter((d: any) => String(d.invoiceKind || 'ALIS').toUpperCase() === 'SATIS');
-    if (alisDocs.length) groups.push({ kind: 'ALIS', docs: alisDocs });
-    if (satisDocs.length) groups.push({ kind: 'SATIS', docs: satisDocs });
+    // K8: yön (ALIŞ/SATIŞ) × AY ayrı fiş. Eskiden tüm aylar tek fişe yığılıp "dominant ay"
+    // tarihiyle birleşiyordu → Nisan faturası Mart fişine girip DÖNEM KAYIYORDU. Artık her
+    // (yön+ay) kendi fişine, kendi tarihiyle gider.
+    const groupMap = new Map<string, { kind: 'ALIS' | 'SATIS'; period: string; docs: any[] }>();
+    for (const d of docs) {
+      const kind: 'ALIS' | 'SATIS' = String(d.invoiceKind || 'ALIS').toUpperCase() === 'SATIS' ? 'SATIS' : 'ALIS';
+      const dt = d.faturaTarihi ? new Date(d.faturaTarihi) : null;
+      const period = dt && !Number.isNaN(dt.getTime())
+        ? `${dt.getUTCFullYear()}-${String(dt.getUTCMonth() + 1).padStart(2, '0')}`
+        : (body.period || 'bilinmiyor');
+      const key = `${kind}|${period}`;
+      if (!groupMap.has(key)) groupMap.set(key, { kind, period, docs: [] });
+      groupMap.get(key)!.docs.push(d);
+    }
+    const groups = [...groupMap.values()];
 
     const jobs: Array<{ jobId: string; kind: string; period: string; documentCount: number }> = [];
     for (const g of groups) {
-      // Grubun en cok rastlanan ayi → fis tarihi/donem etiketi
-      const periodCounts: Record<string, number> = {};
-      for (const d of g.docs) {
-        const dt = d.faturaTarihi ? new Date(d.faturaTarihi) : new Date();
-        const key = `${dt.getFullYear()}-${String(dt.getMonth() + 1).padStart(2, '0')}`;
-        periodCounts[key] = (periodCounts[key] || 0) + 1;
-      }
-      const dominantPeriod = Object.entries(periodCounts).sort((a, b) => b[1] - a[1])[0][0];
+      const dominantPeriod = g.period;
       const kindLabel = g.kind === 'SATIS' ? 'SATIŞ' : 'ALIŞ';
 
       const job = await (this.prisma as any).lucaFetchJob.create({
@@ -5051,11 +5064,13 @@ export class FaturaMuhasebelestirmeService {
           where: { id: d.id },
           data: {
             status: 'NEEDS_REVIEW',
-            validationStatus: 'OK',
+            // K9: hardcoded 'OK' KALDIRILDI — gerçek doğrulama aşağıda revalidateDocument
+            // ile hesaplanır (dengesiz/yanlış KDV sessizce 'OK' damgalanmasın).
             ocrData: { ...((d.ocrData as any) || {}), matrah, kdvTutari: kdv, kdvOrani: rate, kdvBreakdown: [{ oran: rate, matrah, tutar: kdv }], tevkifatOrani: tevkifatOrani || 0 },
           },
         });
       });
+      await this.revalidateDocument(tenantId, d.id).catch(() => {});
       // Elle verilen hesap kodunu öğren — bu satıcının sonraki faturaları otomatik alsın
       if (hasManualCode && !isSale && d.sellerVkn) {
         await this.vendorMemory.recordDecision({
