@@ -475,3 +475,79 @@ export async function buildOwnerTaxPayableReply(
   const list = await computeTaxPayableList(prisma, { tenantId, beyanTipi: intent.beyanTipi, period: pm ? pm[0] : '' });
   return { reply: list.whatsappOzet, vergiTuru: list.vergiTuru, donem: list.donem, count: list.mukellefSayisi };
 }
+
+// ============================================================================
+// CİRO/SATIŞ SIRALAMASI (TEK KAYNAK) — "en çok ciro yapan mükellefler".
+// gelirTablosu.netSatislar bazında sıralar. Deterministik fast-path + tool aynı kaynak.
+// ============================================================================
+
+export interface RevenueRankingResult {
+  donem: string;
+  liste: Array<{ mukellef: string; ciro: number; kar: number }>;
+  whatsappOzet: string;
+  donemDinamikSecildi: boolean;
+}
+
+export async function computeRevenueRanking(
+  prisma: any,
+  opts: { tenantId: string; period?: string | null; limit?: number; onlyActive?: boolean },
+): Promise<RevenueRankingResult> {
+  const onlyActive = opts.onlyActive !== false;
+  const limit = Math.min(Math.max(Number(opts.limit) || 10, 1), 60);
+  const reqPeriod = String(opts.period || '').trim();
+  const explicit = /^\d{4}-(\d{2}|Q[1-4])$/i.test(reqPeriod);
+  let donem = explicit ? reqPeriod : '';
+  let donemDinamikSecildi = false;
+  if (!donem) {
+    const son = await prisma.gelirTablosu.findFirst({
+      where: { tenantId: opts.tenantId, ...(onlyActive ? { taxpayer: { isActive: true } } : {}) },
+      orderBy: [{ donem: 'desc' }, { createdAt: 'desc' }],
+      select: { donem: true },
+    }).catch(() => null);
+    donem = son?.donem || '';
+    donemDinamikSecildi = true;
+  }
+  if (!donem) {
+    return { donem: '', liste: [], whatsappOzet: 'Gelir tablosu verisi bulunamadı.', donemDinamikSecildi };
+  }
+  const rows = await prisma.gelirTablosu.findMany({
+    where: { tenantId: opts.tenantId, donem, ...(onlyActive ? { taxpayer: { isActive: true } } : {}) },
+    select: {
+      netSatislar: true, brutSatislar: true, donemNetKari: true,
+      taxpayer: { select: { companyName: true, firstName: true, lastName: true } },
+    },
+  }).catch(() => []);
+  const liste = rows.map((r: any) => ({
+    mukellef: (r.taxpayer?.companyName || `${r.taxpayer?.firstName || ''} ${r.taxpayer?.lastName || ''}`).trim() || 'Mükellef',
+    ciro: Number(r.netSatislar) || Number(r.brutSatislar) || 0,
+    kar: Number(r.donemNetKari) || 0,
+  })).sort((a: any, b: any) => b.ciro - a.ciro);
+
+  const top = liste.slice(0, limit);
+  const satirlar = top.map((r: any, i: number) =>
+    `${i + 1}. ${r.mukellef}: ${new Intl.NumberFormat('tr-TR', { maximumFractionDigits: 0 }).format(r.ciro)} ₺`).join('\n');
+  const whatsappOzet = top.length
+    ? `📈 EN ÇOK CİRO YAPAN MÜKELLEFLER — ${donem}\n\n${satirlar}\n\n(Net satışlar; ${liste.length} mükellefin gelir tablosu var)`
+    : `${donem} için gelir tablosu kaydı yok.`;
+  return { donem, liste: top, whatsappOzet, donemDinamikSecildi };
+}
+
+/** "en çok ciro/satış yapan" sıralaması mı? Değilse null. */
+export function detectRevenueRankingIntent(text: string): { limit: number } | null {
+  const n = normalizeForIntent(text);
+  const ciro = /(ciro|satis|hasilat|kazan|gelir(?!\s*vergi)|en buyuk mukellef|en buyuk musteri)/.test(n);
+  const ranking = /(en cok|en fazla|en yuksek|en buyuk|siralama|sirala|top\s*\d|ilk\s*\d|liste)/.test(n);
+  if (!ciro || !ranking) return null;
+  const m = n.match(/\b(\d{1,2})\b/);
+  return { limit: m ? parseInt(m[1], 10) : 10 };
+}
+
+export async function buildOwnerRevenueRankingReply(
+  prisma: any, tenantId: string, text: string,
+): Promise<{ reply: string; donem: string; count: number } | null> {
+  const intent = detectRevenueRankingIntent(text);
+  if (!intent) return null;
+  const pm = text.match(/\b(\d{4})-(\d{2}|Q[1-4])\b/i);
+  const r = await computeRevenueRanking(prisma, { tenantId, period: pm ? pm[0] : '', limit: intent.limit });
+  return { reply: r.whatsappOzet, donem: r.donem, count: r.liste.length };
+}

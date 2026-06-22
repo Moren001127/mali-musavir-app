@@ -4,7 +4,7 @@ import { ToolExecutorService } from './tool-executor.service';
 import { MOREN_AI_TOOLS } from './tools';
 import { runMaxAgent, type AgentToolDef } from '../common/max-agent-runner';
 import { buildSystemPrompt } from './system-prompt';
-import { buildOwnerStatusReply, buildOwnerTaxPayableReply } from './monthly-status.shared';
+import { buildOwnerStatusReply, buildOwnerTaxPayableReply, buildOwnerRevenueRankingReply } from './monthly-status.shared';
 import { computeCostUsd, computeRealtimeCostUsd, canSpendOnApi, logAiUsage } from '../common/ai-usage-logger';
 import { claudeTextViaMax, isMaxAvailable, MAX_MODEL_CHEAP } from '../common/max-inference';
 import { sablonForTool, sablonZatenVar } from './whatsapp-sablon';
@@ -534,13 +534,16 @@ export class MorenAiService {
     // → undefined; audience hesabı da bunu 'owner' kabul eder). Mükellef/none HARİÇ.
     const ownerEfektif = body.toolMode !== 'taxpayer-readonly' && body.toolMode !== 'none';
     if (ownerEfektif) {
-      // Aynı kaynaktan iki deterministik kısayol: durum-listesi + vergi-ödeme listesi.
+      // Aynı kaynaktan deterministik kısayollar: durum-listesi + vergi-ödeme + ciro sıralaması.
       const shortcut = async (): Promise<{ reply: string; model: string } | null> => {
         const statusRes = await buildOwnerStatusReply(this.prisma, tenantId, userMessage).catch(() => null);
         if (statusRes) return { reply: statusRes.reply, model: 'moren-ai-status-shortcut' };
         // "kimlere kdv/muhtasar/geçici/damga ödemesi çıkıyor" → portföy vergi listesi.
         const taxRes = await buildOwnerTaxPayableReply(this.prisma, tenantId, userMessage).catch(() => null);
         if (taxRes) return { reply: taxRes.reply, model: 'moren-ai-tax-payable-shortcut' };
+        // "en çok ciro yapan mükellefler" → gelir tablosu netSatışlar sıralaması.
+        const revRes = await buildOwnerRevenueRankingReply(this.prisma, tenantId, userMessage).catch(() => null);
+        if (revRes) return { reply: revRes.reply, model: 'moren-ai-revenue-shortcut' };
         return null;
       };
       const sc = await shortcut();
