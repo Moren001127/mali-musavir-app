@@ -4,7 +4,7 @@ import { ToolExecutorService } from './tool-executor.service';
 import { MOREN_AI_TOOLS } from './tools';
 import { runMaxAgent, type AgentToolDef } from '../common/max-agent-runner';
 import { buildSystemPrompt } from './system-prompt';
-import { buildOwnerStatusReply, buildOwnerTaxPayableReply, buildOwnerRevenueRankingReply, buildOwnerDebtRankingReply, buildOwnerTaxTotalReply } from './monthly-status.shared';
+import { buildOwnerStatusReply, buildOwnerTaxPayableReply, buildOwnerRevenueRankingReply, buildOwnerDebtRankingReply, buildOwnerTaxTotalReply, buildOwnerMizanStatusReply } from './monthly-status.shared';
 import { computeCostUsd, computeRealtimeCostUsd, canSpendOnApi, logAiUsage } from '../common/ai-usage-logger';
 import { claudeTextViaMax, isMaxAvailable, MAX_MODEL_CHEAP } from '../common/max-inference';
 import { sablonForTool, sablonZatenVar } from './whatsapp-sablon';
@@ -550,6 +550,9 @@ export class MorenAiService {
         // "bu dönem toplam ne kadar vergi/tahakkuk çıktı" → toplam tahakkuk.
         const taxTotalRes = await buildOwnerTaxTotalReply(this.prisma, tenantId, userMessage).catch(() => null);
         if (taxTotalRes) return { reply: taxTotalRes.reply, model: 'moren-ai-tax-total-shortcut' };
+        // "kimlerin mizanı yüklenmemiş/eksik / kimde mizan var" → mizan yükleme durumu.
+        const mizanRes = await buildOwnerMizanStatusReply(this.prisma, tenantId, userMessage).catch(() => null);
+        if (mizanRes) return { reply: mizanRes.reply, model: 'moren-ai-mizan-status-shortcut' };
         return null;
       };
       const sc = await shortcut();

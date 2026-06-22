@@ -668,3 +668,54 @@ export async function buildOwnerTaxTotalReply(
     : `${donem} için tahakkuk kaydı yok.`;
   return { reply };
 }
+
+// ============================================================================
+// MİZAN YÜKLEME DURUMU — "kimlerin mizanı yüklenmemiş/eksik / kimde mizan var".
+// mizan tablosu (taxpayerId × donem). Aktif mükelleflerle karşılaştırır.
+// ============================================================================
+
+export function detectMizanStatusIntent(text: string): { durum: 'yok' | 'var' } | null {
+  const n = normalizeForIntent(text);
+  if (!/mizan/.test(n)) return null;
+  const isList = /(kim|kimler|kimlerin|hangi|liste|listele|kac|tum|olan|olmayan|var m|eksik)/.test(n);
+  if (!isList) return null;
+  const yok = /(yok|eksik|yuklenmemis|yuklenmedi|gelmemis|gelmedi|olmayan|girilmemis|girilmedi|cekilmemis)/.test(n);
+  const varr = /(yuklenmis|yuklendi|gelmis|geldi|girilmis|girildi|cekilmis|olan)/.test(n);
+  return { durum: yok ? 'yok' : (varr ? 'var' : 'yok') };
+}
+
+export async function buildOwnerMizanStatusReply(
+  prisma: any, tenantId: string, text: string,
+): Promise<{ reply: string; count: number } | null> {
+  const intent = detectMizanStatusIntent(text);
+  if (!intent) return null;
+  const pm = text.match(/\b(\d{4})-(\d{2}|Q[1-4])\b/i);
+  let donem = pm ? pm[0] : '';
+  if (!donem) {
+    const son = await prisma.mizan.findFirst({
+      where: { tenantId },
+      orderBy: [{ donem: 'desc' }, { createdAt: 'desc' }],
+      select: { donem: true },
+    }).catch(() => null);
+    donem = son?.donem || '';
+  }
+  if (!donem) return { reply: 'Mizan verisi bulunamadı.', count: 0 };
+
+  const [taxpayers, mizanlar] = await Promise.all([
+    prisma.taxpayer.findMany({ where: { tenantId, isActive: true }, select: { id: true, companyName: true, firstName: true, lastName: true } }).catch(() => []),
+    prisma.mizan.findMany({ where: { tenantId, donem }, select: { taxpayerId: true }, distinct: ['taxpayerId'] }).catch(() => []),
+  ]);
+  const mizanliIds = new Set<string>(mizanlar.map((m: any) => m.taxpayerId).filter(Boolean));
+  const ad = (t: any) => (t.companyName || `${t.firstName || ''} ${t.lastName || ''}`).trim() || 'Mükellef';
+  const olan = taxpayers.filter((t: any) => mizanliIds.has(t.id)).map(ad).sort((a: string, b: string) => a.localeCompare(b, 'tr'));
+  const olmayan = taxpayers.filter((t: any) => !mizanliIds.has(t.id)).map(ad).sort((a: string, b: string) => a.localeCompare(b, 'tr'));
+
+  const hedef = intent.durum === 'var' ? olan : olmayan;
+  const baslik = intent.durum === 'var' ? `📒 MİZANI YÜKLENMİŞ MÜKELLEFLER — ${donem}` : `📋 MİZANI EKSİK (YÜKLENMEMİŞ) MÜKELLEFLER — ${donem}`;
+  const satirlar = hedef.slice(0, 60).map((isim: string, i: number) => `${i + 1}. ${isim}`).join('\n');
+  const reply = hedef.length
+    ? `${baslik}\n\n${satirlar}${hedef.length > 60 ? `\n… ve ${hedef.length - 60} mükellef daha.` : ''}` +
+      `\n\n📊 ${hedef.length} mükellef (toplam ${taxpayers.length} aktif; ${olan.length} mizanlı / ${olmayan.length} eksik)`
+    : (intent.durum === 'var' ? `${donem} için mizanı yüklenmiş mükellef yok.` : `${donem} için tüm aktif mükelleflerin mizanı yüklenmiş 👍`);
+  return { reply, count: hedef.length };
+}
