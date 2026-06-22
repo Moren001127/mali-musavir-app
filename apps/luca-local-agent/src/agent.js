@@ -926,6 +926,23 @@ async function installNativeClickBridge(page) {
       throw e;
     }
   });
+  // v1.45: GERÇEK (trusted) klavye köprüsü. Sayfa-içi dispatchEvent(Escape) isTrusted=false
+  //   olduğu için Luca'nın modal dialog'larını (İşlem Takip) KAPATMIYOR. Playwright
+  //   keyboard.press CDP üzerinden trusted event üretir → kullanıcının elle bastığı ESC ile
+  //   AYNI; pencere arkada/küçük olsa bile çalışır.
+  await page.exposeBinding('__morenNativePressKey', async (_source, payload) => {
+    const key = (payload && payload.key) || 'Escape';
+    const times = Math.max(1, Math.min(10, (payload && payload.times) || 1));
+    for (let i = 0; i < times; i++) {
+      await page.keyboard.press(key).catch(() => {});
+      await new Promise((r) => setTimeout(r, 120));
+    }
+    return { ok: true, key, times };
+  }).catch((e) => {
+    if (!/has been already registered|already registered/i.test(String(e?.message || e))) {
+      throw e;
+    }
+  });
 }
 
 async function installMorenRuntimeBridge(context, page) {

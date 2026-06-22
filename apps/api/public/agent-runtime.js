@@ -12,7 +12,7 @@
   // v1.42.2 (2026-06-16): Ajan kendini yenilerken (delete __morenAgent) eski async
   // döngü "Cannot read 'stopRequested' of undefined/null" ile ÇÖKÜYORDU → yetim
   // döngü artık nesne yoksa güvenle durur (stopRequested kontrollerine null-guard).
-  const AGENT_VERSION = '1.44.1';
+  const AGENT_VERSION = '1.45.0';
   const AGENT_INSTANCE_ID = 'mai_' + Date.now().toString(36) + '_' + Math.random().toString(36).slice(2, 8);
 
   // === VERSION-AWARE RELOAD ===
@@ -1827,15 +1827,31 @@
                 }
                 return false;
               };
+              // GERÇEK (trusted) ESC köprüsü — kullanıcı popup'ı elle ESC ile kapatıyor; sayfa-içi
+              //   sentetik dispatchEvent(Escape) isTrusted=false olduğundan Luca yok sayıyordu.
+              const nativePressEscape = async (times = 2) => {
+                try {
+                  let bridge = null;
+                  try { bridge = window.__morenNativePressKey; } catch {}
+                  if (!bridge) { try { bridge = window.top && window.top.__morenNativePressKey; } catch {} }
+                  if (typeof bridge !== 'function') return false;
+                  const res = await bridge({ key: 'Escape', times });
+                  return !!(res && res.ok);
+                } catch { return false; }
+              };
               if (islemTakipAcik()) {
                 let kapandi = false;
                 for (let tries = 0; tries < 6 && !kapandi; tries++) {
+                  // 1) GERÇEK ESC (CDP, trusted) — birincil kapatma yolu
+                  await nativePressEscape(2);
+                  await sleep(500);
+                  if (!islemTakipAcik()) { kapandi = true; break; }
+                  // 2) Yedek: başlık çubuğundaki ✕ ikonu
                   closeIslemTakipX();
-                  try { for (const doc of lucaDocuments()) { for (const tgt of [doc, doc.body, doc.documentElement].filter(Boolean)) { try { tgt.dispatchEvent(new KeyboardEvent('keydown', { key: 'Escape', code: 'Escape', keyCode: 27, which: 27, bubbles: true, cancelable: true })); tgt.dispatchEvent(new KeyboardEvent('keyup', { key: 'Escape', code: 'Escape', keyCode: 27, which: 27, bubbles: true, cancelable: true })); } catch {} } } } catch {}
-                  await sleep(700);
+                  await sleep(600);
                   if (!islemTakipAcik()) kapandi = true;
                 }
-                await log(kapandi ? '✓ İşlem Takip uyarısı kapatıldı (✕)' : '⚠ İşlem Takip kapatılamadı — yine de devam deneniyor');
+                await log(kapandi ? '✓ İşlem Takip uyarısı kapatıldı (ESC)' : '⚠ İşlem Takip kapatılamadı — yine de devam deneniyor');
               }
               await sleep(900);
               // 6b) Fişi SEÇ — alt çubuk "Tümünü Seç"; tutmazsa Fiş No yanındaki ilk checkbox
