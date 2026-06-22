@@ -99,6 +99,11 @@ type SafeImportGroup = {
 @Injectable()
 export class BeyanKayitlariService {
   private readonly logger = new Logger(BeyanKayitlariService.name);
+  /** Geçici vergi tekrar-kayıt onarımı son çalışma zamanı (tenant başına). Liste HER çekildiğinde
+   *  değil, en fazla bu aralıkta bir çalışsın — sayfa iş sırasında 3-5 sn'de bir poll ediyor ve
+   *  bu onarım yazma-ağırlıklı ($transaction); her poll'de çalışınca DB'yi döverek donmayı besliyordu. */
+  private readonly lastTempRepairAt = new Map<string, number>();
+  private static readonly TEMP_REPAIR_THROTTLE_MS = 5 * 60 * 1000;
 
   constructor(
     private prisma: PrismaService,
@@ -965,9 +970,16 @@ export class BeyanKayitlariService {
     tenantId: string,
     opts: { taxpayerId?: string; beyanTipi?: string; donem?: string; search?: string; limit?: number } = {},
   ) {
-    await this.repairTemporaryTaxDuplicates(tenantId).catch((err) => {
-      this.logger.warn(`Gecici vergi liste onarimi calismadi: ${err?.message || err}`);
-    });
+    // Onarım ARTIK liste yanıtını BLOKLAMIYOR ve her çağrıda çalışmıyor: tenant başına en fazla
+    // 5 dk'da bir, arka planda (await'siz). Liste anında döner; donmayı besleyen poll-başı yük gider.
+    const nowMs = Date.now();
+    const lastRepair = this.lastTempRepairAt.get(tenantId) || 0;
+    if (nowMs - lastRepair > BeyanKayitlariService.TEMP_REPAIR_THROTTLE_MS) {
+      this.lastTempRepairAt.set(tenantId, nowMs);
+      void this.repairTemporaryTaxDuplicates(tenantId).catch((err) => {
+        this.logger.warn(`Gecici vergi liste onarimi calismadi: ${err?.message || err}`);
+      });
+    }
 
     const where: any = { tenantId };
     if (opts.taxpayerId) where.taxpayerId = opts.taxpayerId;

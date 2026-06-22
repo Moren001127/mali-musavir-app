@@ -149,6 +149,10 @@ function beyanMahiyeti(row: BeyanKaydi): 'ASIL' | 'DUZELTME' {
   return /\bDUZELTME\b/.test(textKey(raw)) ? 'DUZELTME' : 'ASIL';
 }
 
+// Tablo sanallaştırılmadığı için tek seferde en çok bu kadar satır çizilir; gerisi filtre/arama ile
+// daraltılır. Binlerce satırı aynı anda çizmek (özellikle iş sırasında her yenilemede) tarayıcıyı kilitliyordu.
+const BEYAN_RENDER_CAP = 300;
+
 function portalJobProgress(job: PortalJob) {
   const progress = job.payload?.progress && typeof job.payload.progress === 'object' ? job.payload.progress : {};
   const current = Number(progress.current);
@@ -306,7 +310,11 @@ export default function BeyannamelerPage() {
   const { data: portalSummary } = useQuery({
     queryKey: ['portal-automation-summary', 'beyanname-page'],
     queryFn: () => portalAutomationApi.summary(),
-    refetchInterval: 3000,
+    // Aktif iş varken 3 sn (ilerleme için), boştayken 15 sn — sayfa açık dururken sunucuyu yormasın.
+    refetchInterval: (query) => {
+      const job = query.state.data?.latestJobs?.find((j) => j.jobType === 'EBEYANNAME_DAILY_DOWNLOAD');
+      return job?.status === 'running' || job?.status === 'pending' ? 3000 : 15000;
+    },
   });
 
   const latestBeyanJob = portalSummary?.latestJobs?.find((job) => job.jobType === 'EBEYANNAME_DAILY_DOWNLOAD');
@@ -320,10 +328,15 @@ export default function BeyannamelerPage() {
   });
 
   useEffect(() => {
-    if (!latestBeyanJob || latestBeyanJob.status === 'pending') return;
+    // Yalnız iş BİTTİĞİNDE (done/failed/cancelled) tazele. Eskiden recordCount deps'teydi → iş
+    // ilerledikçe her poll'de (~3 sn) gereksiz invalidate; üstüne zaten iş sırasında 5 sn'lik
+    // refetchInterval var. Bu çift-çekim ağır liste endpoint'ini 2 kat dövüp donmayı besliyordu.
+    if (!latestBeyanJob) return;
+    const terminal = latestBeyanJob.status === 'done' || latestBeyanJob.status === 'failed' || latestBeyanJob.status === 'cancelled';
+    if (!terminal) return;
     qc.invalidateQueries({ queryKey: ['beyan-kayitlari'] });
     qc.invalidateQueries({ queryKey: ['beyan-kayitlari-ozet'] });
-  }, [qc, latestBeyanJob?.id, latestBeyanJob?.status, latestBeyanJob?.finishedAt, latestBeyanJob?.recordCount]);
+  }, [qc, latestBeyanJob?.id, latestBeyanJob?.status]);
 
   useEffect(() => {
     return () => {
@@ -485,6 +498,12 @@ export default function BeyannamelerPage() {
       return rows;
     });
   }, [filtered, docFilter]);
+
+  // PERFORMANS: çok satırda tarayıcı kilitlenmesin diye yalnız ilk BEYAN_RENDER_CAP satırı çiz.
+  const renderRows = useMemo(
+    () => (tableRows.length > BEYAN_RENDER_CAP ? tableRows.slice(0, BEYAN_RENDER_CAP) : tableRows),
+    [tableRows],
+  );
 
   const missingFileStats = useMemo(() => {
     const beyanname = filtered.filter((row) => !row.beyannameUrl).length;
@@ -869,8 +888,8 @@ export default function BeyannamelerPage() {
                   <th className="px-3 py-3 w-[42px]">
                     <input
                       type="checkbox"
-                      checked={tableRows.length > 0 && selectedDocKeys.size === tableRows.length}
-                      onChange={(e) => setSelectedDocKeys(e.target.checked ? new Set(tableRows.map((item) => item.key)) : new Set())}
+                      checked={renderRows.length > 0 && renderRows.every((item) => selectedDocKeys.has(item.key))}
+                      onChange={(e) => setSelectedDocKeys(e.target.checked ? new Set(renderRows.map((item) => item.key)) : new Set())}
                     />
                   </th>
                   <th className="px-3 py-3">Mukellef</th>
@@ -883,7 +902,7 @@ export default function BeyannamelerPage() {
                 </tr>
               </thead>
               <tbody>
-                {tableRows.map((item) => {
+                {renderRows.map((item) => {
                   const row = item.row;
                   const mahiyet = beyanMahiyeti(row);
                   const viewed = viewedDocKeys.has(item.key);
@@ -976,7 +995,9 @@ export default function BeyannamelerPage() {
               </tbody>
             </table>
             <div className="px-4 py-3 text-[12.5px]" style={{ color: 'rgba(250,250,249,0.55)', borderTop: '1px solid rgba(255,255,255,0.055)' }}>
-              Toplam {tableRows.length.toLocaleString('tr-TR')} belge satiri gosteriliyor.
+              {tableRows.length > BEYAN_RENDER_CAP
+                ? <>Toplam {tableRows.length.toLocaleString('tr-TR')} belge satirindan ilk {BEYAN_RENDER_CAP} tanesi gosteriliyor — <b style={{ color: '#fcd34d' }}>daraltmak icin mukellef/donem filtresi veya arama kullan</b>.</>
+                : <>Toplam {tableRows.length.toLocaleString('tr-TR')} belge satiri gosteriliyor.</>}
               {(missingFileStats.beyanname > 0 || missingFileStats.tahakkuk > 0) && (
                 <span style={{ color: '#fcd34d' }}>
                   {' '}PDF eksik: {missingFileStats.beyanname.toLocaleString('tr-TR')} beyanname, {missingFileStats.tahakkuk.toLocaleString('tr-TR')} tahakkuk{missingFileStats.both ? `, ${missingFileStats.both.toLocaleString('tr-TR')} tamamen bos kayit` : ''}.
