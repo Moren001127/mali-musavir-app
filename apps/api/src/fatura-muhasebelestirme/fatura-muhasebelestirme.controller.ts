@@ -244,6 +244,18 @@ export class FaturaMuhasebelestirmeController {
     return this.service.aiReadDocument(req.user.tenantId, String(body?.documentId || ''));
   }
 
+  /** Seçili belgeleri SUNUCU kuyruğunda AI ile oku (sayfa değişince durmaz). Hemen döner. */
+  @Post('documents/ai-read-batch')
+  aiReadBatch(@Req() req: any, @Body() body: { documentIds?: string[] }) {
+    return this.service.aiReadBatch(req.user.tenantId, Array.isArray(body?.documentIds) ? body.documentIds : []);
+  }
+
+  /** OCR/okuma ilerlemesi — tarama şeridi için. */
+  @Get('ocr-progress')
+  ocrProgress(@Req() req: any, @Query('taxpayerId') taxpayerId?: string, @Query('period') period?: string) {
+    return this.service.ocrProgress(req.user.tenantId, { taxpayerId, period });
+  }
+
   @Post('documents/from-earsiv/:faturaId')
   fromEarsiv(@Req() req: any, @Param('faturaId') faturaId: string) {
     return this.service.ensureFromEarsivFatura(req.user.tenantId, faturaId);

@@ -262,7 +262,7 @@ export class FaturaMuhasebelestirmeService {
     forceClaude?: boolean;
     // Mihsap'tan çekilen belgeler: buffer CDN'den lazy indirilir (210 buffer'i
     // bellekte tutmamak icin), yon-duyarli yevmiye uretilir.
-    kind?: 'upload' | 'mihsap';
+    kind?: 'upload' | 'mihsap' | 'ai-read';
     mihsapInvoiceId?: string;
     invoiceKind?: 'ALIS' | 'SATIS';
   }> = [];
@@ -2155,6 +2155,8 @@ export class FaturaMuhasebelestirmeService {
             String(job.mihsapInvoiceId || ''),
             (job.invoiceKind || 'ALIS') as 'ALIS' | 'SATIS',
           )
+        : job.kind === 'ai-read'
+        ? this.runQueuedAiRead(job.tenantId, job.documentId)
         : this.processUploadedDocumentOcr(
             job.tenantId,
             job.documentId,
@@ -2171,6 +2173,60 @@ export class FaturaMuhasebelestirmeService {
           this.drainUploadedOcrQueue();
         });
     }
+  }
+
+  // Kuyruktan AI okuma (sunucu tarafı) — sayfa değişse de DURMAZ. ocrStatus'u yönetir
+  // ki ilerleme şeridi doğru göstersin.
+  private async runQueuedAiRead(tenantId: string, documentId: string) {
+    await (this.prisma as any).invoiceAccountingDocument.updateMany({
+      where: { id: documentId, tenantId }, data: { ocrStatus: 'IN_PROGRESS' },
+    }).catch(() => {});
+    const r: any = await this.aiReadDocument(tenantId, documentId).catch(() => ({ ok: false }));
+    await (this.prisma as any).invoiceAccountingDocument.updateMany({
+      where: { id: documentId, tenantId }, data: { ocrStatus: r?.ok ? 'SUCCESS' : 'FAILED' },
+    }).catch(() => {});
+  }
+
+  /** Seçili belgeleri SUNUCU kuyruğunda AI ile oku (frontend döngüsü değil → sayfa
+   *  değişince durmaz). Hemen döner; ilerleme ocrProgress ile izlenir. */
+  async aiReadBatch(tenantId: string, documentIds: string[]) {
+    const ids = [...new Set((documentIds || []).map((s) => String(s || '').trim()).filter(Boolean))];
+    if (!ids.length) throw new BadRequestException('Belge seçilmedi');
+    const docs = await (this.prisma as any).invoiceAccountingDocument.findMany({
+      where: { tenantId, id: { in: ids }, status: { not: 'APPROVED' } },
+      select: { id: true },
+    });
+    for (const d of docs) {
+      await (this.prisma as any).invoiceAccountingDocument.updateMany({
+        where: { id: d.id, tenantId }, data: { ocrStatus: 'PENDING' },
+      }).catch(() => {});
+      this.uploadOcrQueue.push({ tenantId, documentId: d.id, kind: 'ai-read' });
+    }
+    this.drainUploadedOcrQueue();
+    return { queued: docs.length, skipped: ids.length - docs.length };
+  }
+
+  /** OCR/okuma ilerlemesi — tarama şeridi için. ocrStatus'a göre sayar. */
+  async ocrProgress(tenantId: string, opts: { taxpayerId?: string; period?: string }) {
+    const where: any = {
+      tenantId,
+      ...(opts.taxpayerId ? { taxpayerId: opts.taxpayerId } : {}),
+      ...periodWhere(opts.period),
+    };
+    const grouped = await (this.prisma as any).invoiceAccountingDocument.groupBy({
+      by: ['ocrStatus'], where, _count: { _all: true },
+    }).catch(() => []);
+    let pending = 0, inProgress = 0, failed = 0, done = 0, total = 0;
+    for (const g of grouped) {
+      const c = g._count?._all || 0;
+      total += c;
+      const s = String(g.ocrStatus || '').toUpperCase();
+      if (s === 'PENDING') pending += c;
+      else if (s === 'IN_PROGRESS') inProgress += c;
+      else if (s === 'FAILED') failed += c;
+      else done += c;
+    }
+    return { total, pending, inProgress, failed, done, reading: pending + inProgress, active: pending + inProgress > 0, queued: this.uploadOcrQueue.length };
   }
 
   private async processUploadedDocumentOcr(
