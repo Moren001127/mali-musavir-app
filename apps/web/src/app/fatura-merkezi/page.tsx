@@ -141,6 +141,7 @@ function CodeSelect({ value, accounts, onChange }: { value: string; accounts: an
   const boxRef = useRef<HTMLDivElement>(null);
   const popRef = useRef<HTMLDivElement>(null);
   const inpRef = useRef<HTMLInputElement>(null);
+  const [active, setActive] = useState(0); // yön tuşuyla gezilen satır
   const sel = accounts.find((a) => String(a.code) === String(value));
   const selName = sel?.name || '';
   // Panel overflow:hidden gruplarca kırpılmasın diye position:fixed; alan konumunu ölç.
@@ -174,16 +175,31 @@ function CodeSelect({ value, accounts, onChange }: { value: string; accounts: an
     : accounts
   ).slice(0, 80);
   const pick = (code: string) => { onChange(code); setOpen(false); inpRef.current?.blur(); };
+  const actIdx = list.length ? Math.min(active, list.length - 1) : 0;
+  // Açılınca aktif satırı mevcut seçili koda getir (yoksa baş).
+  useEffect(() => {
+    if (!open) return;
+    const i = list.findIndex((a) => String(a.code) === String(value));
+    setActive(i >= 0 ? i : 0);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [open]);
+  // Yön tuşuyla gezilen satırı liste içinde görünür tut.
+  useEffect(() => {
+    if (!open || !popRef.current) return;
+    const el = popRef.current.querySelector('.cselopt.act') as HTMLElement | null;
+    el?.scrollIntoView({ block: 'nearest' });
+  }, [actIdx, open]);
   return (
     <div className="csel" ref={boxRef}>
       <div className={`cselfield${open ? ' on' : ''}`} title={value ? (selName ? `${value} — ${selName}` : value) : ''}>
         <input ref={inpRef} className="cselinp" value={open ? value : (value && selName ? `${value} — ${selName}` : value)} placeholder="kod ya da isim yaz"
           onFocus={() => { setOpen(true); measure(); setTimeout(() => inpRef.current?.select(), 0); }}
-          onChange={(e) => { const r = e.target.value; onChange(r.includes(' — ') ? r.split(' — ')[0].trim() : r); setOpen(true); }}
+          onChange={(e) => { const r = e.target.value; onChange(r.includes(' — ') ? r.split(' — ')[0].trim() : r); setOpen(true); setActive(0); }}
           onKeyDown={(e) => {
             if (e.key === 'Escape') { setOpen(false); inpRef.current?.blur(); }
-            else if (e.key === 'Enter') { e.preventDefault(); if (list.length === 1) pick(String(list[0].code)); else setOpen(false); }
-            else if (e.key === 'ArrowDown' && !open) { setOpen(true); }
+            else if (e.key === 'ArrowDown') { e.preventDefault(); if (!open) { setOpen(true); } else { setActive((i) => Math.min(list.length - 1, Math.min(i, list.length - 1) + 1)); } }
+            else if (e.key === 'ArrowUp') { if (open) { e.preventDefault(); setActive((i) => Math.max(0, Math.min(i, list.length - 1) - 1)); } }
+            else if (e.key === 'Enter') { e.preventDefault(); if (open && list.length) { pick(String(list[Math.min(active, list.length - 1)].code)); } else if (list.length === 1) { pick(String(list[0].code)); } else { setOpen(false); } }
           }} />
         <span className="cselcar" onMouseDown={(e) => { e.preventDefault(); if (open) { setOpen(false); } else { setOpen(true); inpRef.current?.focus(); measure(); setTimeout(() => inpRef.current?.select(), 0); } }} />
       </div>
@@ -191,8 +207,8 @@ function CodeSelect({ value, accounts, onChange }: { value: string; accounts: an
         <div className="cselpop" ref={popRef} style={{ position: 'fixed', top: pos.top, left: pos.left, width: pos.width }}>
           <div className="csellist">
             {list.length === 0 && <div className="cselempty">Eşleşen hesap yok — yazdığın kod aynen kullanılır</div>}
-            {list.map((a) => (
-              <div key={a.id || a.code} className={`cselopt${String(a.code) === String(value) ? ' sel' : ''}`} onMouseDown={(e) => { e.preventDefault(); pick(String(a.code)); }}>
+            {list.map((a, idx) => (
+              <div key={a.id || a.code} className={`cselopt${String(a.code) === String(value) ? ' sel' : ''}${idx === actIdx ? ' act' : ''}`} onMouseEnter={() => setActive(idx)} onMouseDown={(e) => { e.preventDefault(); pick(String(a.code)); }}>
                 <b>{a.code}</b>{a.name ? <span>{a.name}</span> : null}
               </div>
             ))}
@@ -2364,6 +2380,7 @@ const CSS = `
 #fm-root .csel .csellist{max-height:248px;overflow:auto;padding:4px}
 #fm-root .csel .cselopt{display:flex;align-items:baseline;gap:9px;padding:6px 9px;border-radius:6px;cursor:pointer}
 #fm-root .csel .cselopt:hover,#fm-root .csel .cselopt.sel{background:var(--accent-soft)}
+#fm-root .csel .cselopt.act{background:var(--accent-soft);box-shadow:inset 3px 0 0 var(--accent)}
 #fm-root .csel .cselopt b{flex:0 0 auto;font-size:12px;font-weight:800;color:var(--accent);font-variant-numeric:tabular-nums}
 #fm-root .csel .cselopt span{flex:1;min-width:0;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;font-size:12px;color:#374151}
 #fm-root .csel .cselempty,#fm-root .csel .cselmore{padding:9px 11px;font-size:11.5px;color:var(--muted)}

@@ -5552,12 +5552,21 @@ export class FaturaMuhasebelestirmeService {
       const vergiPrefix = isSale ? '391' : '191';
       const tevkPay = Math.round(Number((doc.ocrData as any)?.tevkifatOrani || 0) * 10); // 0.2→2 (2/10)
       const vergiMatch = (() => {
+        const grp = accounts.filter((a: any) => { const c = String(a.accountCode || ''); return c.startsWith(vergiPrefix) && !c.startsWith('79'); });
+        if (!grp.length) return this.pickAccount(accounts, [vergiPrefix], null);
+        // Tevkifatlı: adında oran ("2/10") ya da "tevkifat" geçen hesabı tercih et.
         if (tevkPay >= 1 && tevkPay <= 9) {
-          const grp = accounts.filter((a: any) => String(a.accountCode || '').startsWith(vergiPrefix));
           const hit = grp.find((a: any) => { const n = String(a.accountName || ''); return n.includes(`${tevkPay}/10`) || /tevk[iı]fat/i.test(n); });
           if (hit) return hit;
         }
-        return this.pickAccount(accounts, [vergiPrefix], null);
+        // NORMAL (ya da tevkifat hesabı yok): "tevkifat/iade/ihrac/istisna" GEÇMEYEN normal hesabı
+        // seç — planın ilk 391/191'i tevkifatlıysa normal satış oraya DÜŞMESİN (matrahla simetrik).
+        const nm = (a: any) => this.norm(String(a.accountName || ''));
+        const normals = grp.filter((a: any) => !/(tevkifat|iade|ihrac|istisna)/.test(nm(a)));
+        const pool = normals.length ? normals : grp;
+        const depth = (c: string) => (String(c || '').match(/\./g) || []).length;
+        const mx = pool.reduce((m: number, a: any) => Math.max(m, depth(String(a.accountCode || ''))), 0);
+        return pool.filter((a: any) => depth(String(a.accountCode || '')) === mx)[0] || pool[0];
       })();
       // TEVKİFAT (KDV2 — sorumlu sıfatı): ALIŞ tevkifatta 360 satırı plandaki GERÇEK 360
       // hesabına bağlanır. Adında "KDV / sorumlu / tevkifat / beyan" geçen 360 alt-hesabını
@@ -5571,6 +5580,25 @@ export class FaturaMuhasebelestirmeService {
         const depth = (c: string) => (String(c || '').match(/\./g) || []).length;
         const mx = g360.reduce((mxv: number, a: any) => Math.max(mxv, depth(String(a.accountCode || ''))), 0);
         return g360.filter((a: any) => depth(String(a.accountCode || '')) === mx)[0] || g360[0];
+      })();
+      // SATIŞ matrahı TEVKİFAT-FARKINDA (KDV hesabıyla simetrik): tevkifatlı satış → adında
+      // "tevkifat" geçen 600; NORMAL satış → "tevkifat/iade/ihrac/istisna" GEÇMEYEN normal 600.
+      // Eskiden isim eşleşmesi olmayınca EN DÜŞÜK 600 leaf seçiliyordu → planın ilk hesabı
+      // "600.01.003 TEVKİFATLI GELİRLER" ise NORMAL satışlar da oraya düşüyordu (kullanıcı bildirdi).
+      const saleMatrahDefault = (() => {
+        if (!isSale) return categoryMatrah;
+        const g600 = accounts.filter((a: any) => { const c = String(a.accountCode || ''); return c.startsWith('600') && !c.startsWith('79'); });
+        if (!g600.length) return categoryMatrah;
+        const nm = (a: any) => this.norm(String(a.accountName || ''));
+        if (tevkPay >= 1) {
+          const hit = g600.find((a: any) => nm(a).includes('tevkifat'));
+          return hit || categoryMatrah;
+        }
+        const normals = g600.filter((a: any) => !/(tevkifat|iade|ihrac|istisna)/.test(nm(a)));
+        const pool = normals.length ? normals : g600;
+        const depth = (c: string) => (String(c || '').match(/\./g) || []).length;
+        const mx = pool.reduce((m: number, a: any) => Math.max(m, depth(String(a.accountCode || ''))), 0);
+        return pool.filter((a: any) => depth(String(a.accountCode || '')) === mx)[0] || pool[0];
       })();
       // CARI: önce VKN bazlı öğrenilmiş cari (kesin), yoksa KATI isim eşleşmesi. İsim de
       // tutmazsa null → placeholder boşaltılır ("Eksik cari"). Eskiden plandaki İLK cari
@@ -5590,7 +5618,7 @@ export class FaturaMuhasebelestirmeService {
       const matrahForRate = async (rate: string) => {
         if (matrahCache.has(rate)) return matrahCache.get(rate);
         const learned = vendorVkn ? await this.pickVendorMemoryAccount(tenantId, taxpayerId, vendorVkn, accounts, rate) : null;
-        const m = learned || categoryMatrah;
+        const m = learned || saleMatrahDefault;
         matrahCache.set(rate, m);
         return m;
       };
@@ -5644,14 +5672,33 @@ export class FaturaMuhasebelestirmeService {
           });
           continue;
         }
-        // VERGİ özel (TEVKİFAT): tevkifatlıda KDV hesabı tevkifat hesabına (ör 391.01.004
-        // "...2/10") çekilir — düz 391.01.003'te kalmasın. "Kodları düzelt" ile de düzelir.
-        if (group === 'vergi' && tevkPay >= 1 && vergiMatch && current !== String((vergiMatch as any).accountCode)) {
-          await (this.prisma as any).invoiceAccountingLine.update({
-            where: { id: line.id },
-            data: { accountCode: (vergiMatch as any).accountCode },
-          });
-          continue;
+        // MATRAH özel (SATIŞ tevkifat-lik): mevcut 600 hesabının tevkifat-liği belgeyle çelişiyorsa
+        // (normal satış ama tevkifatlı-600, ya da tevkifatlı satış ama normal-600) → doğru tevkifat-
+        // likteki 600'e çek. Doğru tevkifat-likteki BAŞKA bir 600'e (kullanıcı seçimi) dokunmaz.
+        if (group === 'matrah' && isSale && saleMatrahDefault) {
+          const curAcc = current ? accounts.find((a: any) => String(a.accountCode || '') === current) : null;
+          const curIsTevk = !!curAcc && this.norm(String(curAcc.accountName || '')).includes('tevkifat');
+          if (curAcc && curIsTevk !== (tevkPay >= 1) && current !== String((saleMatrahDefault as any).accountCode)) {
+            await (this.prisma as any).invoiceAccountingLine.update({
+              where: { id: line.id },
+              data: { accountCode: (saleMatrahDefault as any).accountCode },
+            });
+            continue;
+          }
+        }
+        // VERGİ özel (TEVKİFAT-lik): mevcut KDV hesabının tevkifat-liği belgeyle çelişiyorsa düzelt —
+        // tevkifatlıda tevkifat/"2-10" hesabına, normalde düz hesaba (391.01.003 gibi). vergiMatch
+        // zaten doğru tevkifat-likte. Doğru tevkifat-likteki başka KDV hesabına (kullanıcı) dokunmaz.
+        if (group === 'vergi' && vergiMatch) {
+          const curAcc = current ? accounts.find((a: any) => String(a.accountCode || '') === current) : null;
+          const curIsTevk = !!curAcc && this.norm(String(curAcc.accountName || '')).includes('tevkifat');
+          if (curAcc && curIsTevk !== (tevkPay >= 1) && current !== String((vergiMatch as any).accountCode)) {
+            await (this.prisma as any).invoiceAccountingLine.update({
+              where: { id: line.id },
+              data: { accountCode: (vergiMatch as any).accountCode },
+            });
+            continue;
+          }
         }
         const isPlaceholder =
           !current ||
