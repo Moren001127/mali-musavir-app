@@ -1041,6 +1041,20 @@ export class FaturaMuhasebelestirmeService {
     return byId;
   }
 
+  /**
+   * KDV raporunda gösterilebilir GEÇERLİ oran. Karışık oranlı faturada tek orana
+   * indirgenen değer (KDV÷matrah) %17 gibi VAR OLMAYAN oranlar üretiyordu. Standart
+   * orana (0/1/8/10/18/20) yakınsa ona snap'le; değilse null → "Diğer" kovasına düşsün.
+   * Matrah/KDV değerleri korunur (toplam doğru kalır), yalnız oran etiketi düzelir.
+   */
+  private validReportRate(rate: any): number | null {
+    const r = this.reportNumber(rate);
+    if (!Number.isFinite(r)) return null;
+    if (Math.abs(r) <= 0.5) return 0;
+    for (const s of [1, 8, 10, 18, 20]) if (Math.abs(r - s) <= 0.5) return s;
+    return null;
+  }
+
   private normalizeReportBreakdown(raw: any, fallbackRate: any, fallbackBase: number, fallbackVat: number) {
     const parsed = typeof raw === 'string'
       ? (() => {
@@ -1058,7 +1072,9 @@ export class FaturaMuhasebelestirmeService {
       .filter((item) => Math.abs(item.base) > REPORT_EPSILON || Math.abs(item.vat) > REPORT_EPSILON);
     if (normalized.length > 0) return normalized;
     return [{
-      rate: this.reportNumber(fallbackRate),
+      // Tek-oran fallback'i: KDV÷matrah ile türetilen oran %17 gibi sahte olabilir →
+      // geçerli değilse null ("Diğer"). Matrah/KDV aynen korunur.
+      rate: this.validReportRate(fallbackRate),
       base: fallbackBase,
       vat: fallbackVat,
     }];

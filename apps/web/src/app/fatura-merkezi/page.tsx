@@ -1717,7 +1717,7 @@ function ScreenKdv({ taxpayerId, period }: { taxpayerId: string; period: string 
                     {rep.vatByRate.map((v: any, i: number) => (
                       <tr key={i}>
                         <td><span className={`pill ${v.side === 'SATIS' ? 'satis' : 'alis'}`}>{v.side === 'SATIS' ? 'Satış' : 'Alış'}</span></td>
-                        <td className="num">%{v.rate ?? 0}</td>
+                        <td className="num">{v.rate == null ? 'Diğer' : `%${v.rate}`}</td>
                         <td className="num">{fmtMoney(v.base)}</td>
                         <td className="num">{fmtMoney(v.vat)}</td>
                       </tr>
