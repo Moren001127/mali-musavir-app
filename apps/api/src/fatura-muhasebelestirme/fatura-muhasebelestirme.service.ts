@@ -5304,9 +5304,15 @@ export class FaturaMuhasebelestirmeService {
         if (r?.text && String(r.text).trim().length > 80) html = String(r.text);
       } catch { /* taranmış/şifreli PDF — aşağıda elenir */ }
     }
+    // XML ama UBL PARSE BAŞARISIZ → XML'i düz METNE çevirip Max-vision'a ver (yine de okunsun).
+    // Bu, "XML yapısı farklı → UBL null → okunamadı" deterministik hatasını kurtarır.
+    if (!preParsed && !isImage && !(html && html.length > 80) && imgBuf && /xml/i.test(imgMedia)) {
+      const xmlText = imgBuf.toString('utf8').replace(/<[^>]+>/g, ' ').replace(/&[a-z]+;/gi, ' ').replace(/\s+/g, ' ').trim();
+      if (xmlText.length > 80) html = xmlText;
+    }
     // UBL parse / HTML metni / görsel — üçü de yoksa okunamaz.
     if (!preParsed && !(html && html.length > 80) && !isImage) {
-      return { ok: false, reason: imgBuf ? 'belge biçimi okunamadı (taranmış/şifreli PDF)' : 'belge içeriği boş' };
+      return { ok: false, reason: imgBuf ? `belge biçimi okunamadı (${imgMedia || 'bilinmeyen'}, ${imgBuf.length}b)` : 'belge dosyası boş/gelmedi' };
     }
 
     // Mükellefin İŞİNİ/SEKTÖRÜNÜ eşleştirmeye kat → kategori firmanın faaliyetine göre

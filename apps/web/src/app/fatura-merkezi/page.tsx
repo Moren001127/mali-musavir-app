@@ -842,7 +842,7 @@ function ScreenFaturalar({ taxpayerId, period, kind = 'ALIS' }: { taxpayerId: st
                     <td className="num">{kdv != null ? fmtMoney(kdv) : '—'}</td>
                     <td className="num">{fmtMoney(d.totalAmount)}</td>
                     <td>{code ? <span className="hk">{code}</span> : <span className="hk no">— yok —</span>}</td>
-                    <td><span className={`pill ${du.k}`} title={du.cat === 'okunamadi' && d.lucaErrorMessage ? `Neden: ${d.lucaErrorMessage}` : du.t}>{du.t}</span></td>
+                    <td><span className={`pill ${du.k}`} title={du.cat === 'okunamadi' && d.lucaErrorMessage ? `Neden: ${d.lucaErrorMessage}` : du.t}>{du.t}</span>{du.cat === 'okunamadi' && d.lucaErrorMessage ? <div className="oneden">{d.lucaErrorMessage}</div> : null}</td>
                     <td className="actcol" style={{ display: 'flex', gap: 8, alignItems: 'center' }}>
                       <span className="eye" onClick={() => openDocFile(d.id)} title="Belgeyi aç"><Ico html={I.eye} size={15} /></span>
                       <span className="eye del" title="Belgeyi sil" onClick={() => { if (window.confirm(`Bu belge silinsin mi?\n${firma} · ${fmtMoney(d.totalAmount)} ₺${d.belgeNo ? ' · ' + d.belgeNo : ''}`)) delMut.mutate(d.id); }}><Ico html={I.trash} size={14} /></span>
@@ -2261,6 +2261,7 @@ const CSS = `
 #fm-root .dfchip{display:inline-flex;align-items:center;gap:6px;height:26px;padding:0 11px;border:1px solid var(--line2);border-radius:13px;background:#fff;color:var(--muted);font-size:11.5px;font-weight:600;cursor:pointer;font-family:inherit}
 #fm-root .dfchip:hover{border-color:var(--accent-line);color:var(--accent)}
 #fm-root .dfchip.on{background:var(--accent);border-color:var(--accent);color:#fff}
+#fm-root .oneden{font-size:10px;color:#c0353a;margin-top:3px;max-width:200px;line-height:1.3}
 #fm-root .yuklenemedi{display:flex;align-items:center;justify-content:space-between;gap:10px;margin:10px 16px 0;padding:9px 12px;background:#fdeaea;border:1px solid #f0b3b3;border-radius:9px;font-size:12px;color:#a23a3a}
 #fm-root .yuklenemedi span{display:inline-flex;align-items:center;gap:6px}
 #fm-root .eksikbelge{display:flex;align-items:flex-start;gap:8px;margin:10px 16px 0;padding:9px 12px;background:#fef6e7;border:1px solid #f0d28a;border-radius:9px;font-size:12px;color:#8a6314}
