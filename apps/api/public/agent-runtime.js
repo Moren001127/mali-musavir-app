@@ -12,7 +12,7 @@
   // v1.42.2 (2026-06-16): Ajan kendini yenilerken (delete __morenAgent) eski async
   // döngü "Cannot read 'stopRequested' of undefined/null" ile ÇÖKÜYORDU → yetim
   // döngü artık nesne yoksa güvenle durur (stopRequested kontrollerine null-guard).
-  const AGENT_VERSION = '1.43.0';
+  const AGENT_VERSION = '1.43.1';
   const AGENT_INSTANCE_ID = 'mai_' + Date.now().toString(36) + '_' + Math.random().toString(36).slice(2, 8);
 
   // === VERSION-AWARE RELOAD ===
@@ -1697,15 +1697,28 @@
               };
               let input = findFileInput();
               if (!input) {
-                await log('Excel Fiş Aktarım ekranı açık değil — menüden açılıyor (Muhasebe → Fiş İşlemleri → Excel Veri Aktarımı)');
+                await log('Excel Veri Aktarımı ekranı açık değil — Luca menü kodu (II1a) ile açılıyor');
                 try {
-                  await nativeClickLucaText('Muhasebe', { settleMs: 1000 }); await sleep(900);
-                  await nativeClickLucaText('Fiş İşlemleri', { settleMs: 1000 }); await sleep(900);
-                  await nativeClickLucaText('Excel Veri Aktarımı', { settleMs: 1200 }); await sleep(1500);
+                  // SAĞLAM YOL: metin-tıklama/hover/mouse pozisyonu yerine Luca'nın KENDİ menü
+                  // fonksiyonunu (II1a) ETİKETE göre cache'ten DOĞRUDAN çağır (KDV/mizan ile aynı
+                  // sağlam mekanizma). Menü onclick kodları DOM'da gömülü → cache'leyip
+                  // "Excel Veri Aktarımı"nı koduyla açıyoruz; iç içe menü tıklamasına gerek yok.
+                  try { cacheVisibleLucaMenuIds(); } catch {}
+                  let opened = await openCachedLucaMenu('Excel Veri Aktarımı', log, 1500);
+                  if (!opened) {
+                    // Kod cache'de yoksa: üst menüleri aç (kodlar DOM'da görünür/erişilir olsun) →
+                    // tazele → tekrar II1a ile dene; o da olmazsa son çare metin tıklaması.
+                    await nativeClickLucaText('Muhasebe', { settleMs: 1000 }); await sleep(700);
+                    await nativeClickLucaText('Fiş İşlemleri', { hoverOnly: true, settleMs: 1000 }); await sleep(800);
+                    try { cacheVisibleLucaMenuIds(); } catch {}
+                    opened = await openCachedLucaMenu('Excel Veri Aktarımı', log, 1500);
+                    if (!opened) { await nativeClickLucaText('Excel Veri Aktarımı', { settleMs: 1500 }); }
+                  }
+                  await sleep(1500);
                 } catch (e) { await log(`Menü gezinme uyarısı: ${(e && e.message) || e}`); }
-                for (let i = 0; i < 12 && !input; i++) { await sleep(700); input = findFileInput(); }
+                for (let i = 0; i < 16 && !input; i++) { await sleep(900); input = findFileInput(); }
               }
-              if (!input) throw new Error('Excel Fiş Aktarım ekranındaki dosya alanı bulunamadı. Luca\'da o ekranı açıp tekrar deneyin.');
+              if (!input) throw new Error('Excel Veri Aktarımı ekranındaki dosya alanı bulunamadı. Luca\'da o ekranı açıp tekrar deneyin.');
 
               // 4) Dosyayi input'a koy (DataTransfer) + change tetikle
               const dt = new DataTransfer();
