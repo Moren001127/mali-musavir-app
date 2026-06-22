@@ -12,7 +12,7 @@
   // v1.42.2 (2026-06-16): Ajan kendini yenilerken (delete __morenAgent) eski async
   // döngü "Cannot read 'stopRequested' of undefined/null" ile ÇÖKÜYORDU → yetim
   // döngü artık nesne yoksa güvenle durur (stopRequested kontrollerine null-guard).
-  const AGENT_VERSION = '1.45.9';
+  const AGENT_VERSION = '1.45.10';
   const AGENT_INSTANCE_ID = 'mai_' + Date.now().toString(36) + '_' + Math.random().toString(36).slice(2, 8);
 
   // === VERSION-AWARE RELOAD ===
@@ -1951,11 +1951,24 @@
                   //   SUBMIT mekanizmasını görmek için TAM kaynağını + validateFis'i logla.
                   try {
                     const d2 = fisKesBtn.ownerDocument;
-                    const secimChecked = d2 ? d2.querySelectorAll('.secim:checked').length : 0;
-                    await log(`🧪 .secim:checked=${secimChecked}`);
-                    const src = (fn && fw && fw[fn]) ? String(fw[fn]).replace(/\s+/g, ' ') : '';
-                    for (let i = 0; i < src.length && i < 2400; i += 600) { await log(`🧪 fisKes[${i}]: ${src.slice(i, i + 600)}`); }
-                    if (fw && typeof fw.validateFis === 'function') { await log(`🧪 validateFis: ${String(fw.validateFis).replace(/\s+/g, ' ').slice(0, 500)}`); }
+                    const fw2 = fw;
+                    const $j = fw2 && fw2.$j;
+                    const parent = d2.querySelector('.fis-aktarim');
+                    const detaylar = parent ? parent.querySelectorAll('.detaylar tr') : [];
+                    await log(`🧪 .fis-aktarim=${parent ? 1 : 0} | .detaylar tr=${detaylar.length} | .secim:checked=${d2.querySelectorAll('.secim:checked').length}`);
+                    let btSamples = []; let btFail = 0; let idx = 0;
+                    for (const tr of detaylar) {
+                      const bt = tr.querySelector('.belgeturkod');
+                      const v = bt ? (bt.value || '') : '(yok)';
+                      let ok = '?';
+                      try { if (fw2 && typeof fw2.belgeTurKontrol === 'function' && $j) { ok = fw2.belgeTurKontrol($j(bt)) ? 'OK' : 'FAIL'; if (ok !== 'OK') btFail++; } } catch (e3) { ok = 'ERR'; }
+                      if (idx < 5) btSamples.push(`"${v}":${ok}`); idx++;
+                    }
+                    await log(`🧪 belgeturkod: ${btSamples.join(' ')} | toplam FAIL=${btFail}`);
+                    if (fw2 && typeof fw2.belgeTurKontrol === 'function') await log(`🧪 belgeTurKontrol: ${String(fw2.belgeTurKontrol).replace(/\s+/g, ' ').slice(0, 450)}`);
+                    const src = (fn && fw2 && fw2[fn]) ? String(fw2[fn]).replace(/\s+/g, ' ') : '';
+                    await log(`🧪 fisKes[2400]: ${src.slice(2400, 3100)}`);
+                    await log(`🧪 fisKes[3100]: ${src.slice(3100, 3800)}`);
                   } catch (e2) { await log(`🧪 teşhis: ${(e2 && e2.message) || e2}`); }
                   if (fn && fw && typeof fw[fn] === 'function') { fw[fn](); kes = 'fn:' + fn; }
                   // fisKes SONRASI Luca bildirimi (lucaNotYaz) — başardı mı yoksa "seçiniz/hata" mı?
