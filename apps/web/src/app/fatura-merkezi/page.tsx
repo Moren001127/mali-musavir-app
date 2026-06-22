@@ -657,11 +657,19 @@ export default function FaturaMerkeziPage() {
 }
 
 /* ===================== EKRAN: ALIŞ / SATIŞ FATURALARI ===================== */
+// "Aktarım" (arşiv) kapsamı = işlenmiş/onaylanmış/aktarılmış belgeler. "Gelen Faturalar" (gelen
+//   kutusu) bunun TAM TERSİ: henüz işlenmemiş gelen belgeler. İki ekran asla çakışmasın/ikilenmesin
+//   diye tek ortak ölçü. (Kullanıcı: aktarılanlar Alış/Satış içinde görünmesin; Aktarım arşiv olsun.)
+function isInAktarim(d: any): boolean {
+  return d?.status === 'APPROVED' || ['POSTED', 'QUEUED', 'POSTING', 'FAILED'].includes(d?.lucaStatus);
+}
 function ScreenFaturalar({ taxpayerId, period, kind = 'ALIS' }: { taxpayerId: string; period: string; kind?: 'ALIS' | 'SATIS' }) {
   const qc = useQueryClient();
   const docsQ = useDocuments(taxpayerId, period);
   const all: any[] = docsQ.data || [];
-  const docsAll = all.filter((d) => (d.invoiceKind || 'ALIS') === kind);
+  // Gelen kutusu: yalnız HENÜZ İŞLENMEMİŞ gelen belgeler. Onaylanan/aktarıma alınan/aktarılan
+  //   belgeler buradan çıkar (Aktarım arşivinde görünür) — kullanıcı talebi.
+  const docsAll = all.filter((d) => (d.invoiceKind || 'ALIS') === kind && !isInAktarim(d));
   // Durum filtresi (Hepsi / Eşleşti / Kod eksik / Çelişki / …)
   const [durumF, setDurumF] = useState('all');
   const durumCount = (cat: string) => cat === 'all' ? docsAll.length : docsAll.filter((d) => deriveDurum(d).cat === cat).length;
@@ -1692,7 +1700,7 @@ function ScreenAktarilanlar({ taxpayerId, period }: { taxpayerId: string; period
   const qc = useQueryClient();
   const docsQ = useDocuments(taxpayerId, period);
   const all: any[] = docsQ.data || [];
-  const docs = all.filter((d) => d.status === 'APPROVED' || d.lucaStatus === 'POSTED' || d.lucaStatus === 'QUEUED' || d.lucaStatus === 'POSTING' || d.lucaStatus === 'FAILED');
+  const docs = all.filter(isInAktarim); // Gelen Faturalar'ın TAM TERSİ — çakışma olmaz
   const retryMut = useMutation({
     mutationFn: (id: string) => api.post(`/fatura-muhasebelestirme/documents/${id}/retry-luca`),
     onSuccess: () => { toast.success("Luca'ya yeniden gönderildi"); qc.invalidateQueries({ queryKey: ['fm2'] }); },
