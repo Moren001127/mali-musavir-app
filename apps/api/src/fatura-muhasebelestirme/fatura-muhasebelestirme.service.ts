@@ -2279,11 +2279,13 @@ export class FaturaMuhasebelestirmeService implements OnModuleInit, OnModuleDest
       where: { tenantId, id: { in: ids }, status: { not: 'APPROVED' } },
       select: { id: true },
     });
+    // ÖNCELİK: kullanıcının elle "AI ile oku" isteği kuyruğun ÖNÜNE (unshift) → arka plan
+    // kurtarma (push, arkada) onu bekletmesin; seçtiğin mükellefin belgeleri hemen sıraya geçer.
     for (const d of docs) {
       await (this.prisma as any).invoiceAccountingDocument.updateMany({
         where: { id: d.id, tenantId }, data: { ocrStatus: 'PENDING' },
       }).catch(() => {});
-      this.uploadOcrQueue.push({ tenantId, documentId: d.id, kind: 'ai-read' });
+      this.uploadOcrQueue.unshift({ tenantId, documentId: d.id, kind: 'ai-read' });
     }
     this.drainUploadedOcrQueue();
     return { queued: docs.length, skipped: ids.length - docs.length };
