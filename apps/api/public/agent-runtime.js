@@ -12,7 +12,7 @@
   // v1.42.2 (2026-06-16): Ajan kendini yenilerken (delete __morenAgent) eski async
   // döngü "Cannot read 'stopRequested' of undefined/null" ile ÇÖKÜYORDU → yetim
   // döngü artık nesne yoksa güvenle durur (stopRequested kontrollerine null-guard).
-  const AGENT_VERSION = '1.45.10';
+  const AGENT_VERSION = '1.45.11';
   const AGENT_INSTANCE_ID = 'mai_' + Date.now().toString(36) + '_' + Math.random().toString(36).slice(2, 8);
 
   // === VERSION-AWARE RELOAD ===
@@ -1947,38 +1947,28 @@
                   const oc2 = String((fisKesBtn.getAttribute && fisKesBtn.getAttribute('onclick')) || '');
                   const fn = (oc2.match(/([\w$]+)\s*\(/) || [])[1];
                   const fw = fisKesBtn.ownerDocument && fisKesBtn.ownerDocument.defaultView;
-                  // TEŞHİS (v1.45.9): seçim doğru (.secim:checked=1) ama fiş kesilmiyor → fisKes'in
-                  //   SUBMIT mekanizmasını görmek için TAM kaynağını + validateFis'i logla.
+                  // DOĞRULAMA: belgeTurKontrol FAIL sayısı 0 olmalı (Excel'de belge türü artık BOŞ; boş
+                  //   değer belgeTurKontrol'den geçer → fisKes "hataliBelgeTuru" ile çıkmaz, AJAX çalışır).
                   try {
                     const d2 = fisKesBtn.ownerDocument;
-                    const fw2 = fw;
-                    const $j = fw2 && fw2.$j;
-                    const parent = d2.querySelector('.fis-aktarim');
+                    const $j = fw && fw.$j;
+                    const parent = d2 ? d2.querySelector('.fis-aktarim') : null;
                     const detaylar = parent ? parent.querySelectorAll('.detaylar tr') : [];
-                    await log(`🧪 .fis-aktarim=${parent ? 1 : 0} | .detaylar tr=${detaylar.length} | .secim:checked=${d2.querySelectorAll('.secim:checked').length}`);
-                    let btSamples = []; let btFail = 0; let idx = 0;
-                    for (const tr of detaylar) {
-                      const bt = tr.querySelector('.belgeturkod');
-                      const v = bt ? (bt.value || '') : '(yok)';
-                      let ok = '?';
-                      try { if (fw2 && typeof fw2.belgeTurKontrol === 'function' && $j) { ok = fw2.belgeTurKontrol($j(bt)) ? 'OK' : 'FAIL'; if (ok !== 'OK') btFail++; } } catch (e3) { ok = 'ERR'; }
-                      if (idx < 5) btSamples.push(`"${v}":${ok}`); idx++;
-                    }
-                    await log(`🧪 belgeturkod: ${btSamples.join(' ')} | toplam FAIL=${btFail}`);
-                    if (fw2 && typeof fw2.belgeTurKontrol === 'function') await log(`🧪 belgeTurKontrol: ${String(fw2.belgeTurKontrol).replace(/\s+/g, ' ').slice(0, 450)}`);
-                    const src = (fn && fw2 && fw2[fn]) ? String(fw2[fn]).replace(/\s+/g, ' ') : '';
-                    await log(`🧪 fisKes[2400]: ${src.slice(2400, 3100)}`);
-                    await log(`🧪 fisKes[3100]: ${src.slice(3100, 3800)}`);
+                    let btFail = 0;
+                    for (const tr of detaylar) { const bt = tr.querySelector('.belgeturkod'); try { if (fw && typeof fw.belgeTurKontrol === 'function' && $j && bt && fw.belgeTurKontrol($j(bt)) === false) btFail++; } catch {} }
+                    const btList = (fw && fw.belgeTurList) ? JSON.stringify(fw.belgeTurList).slice(0, 220) : '(yok)';
+                    await log(`🧪 belgeturkod FAIL=${btFail}/${detaylar.length} | belgeTurList=${btList}`);
                   } catch (e2) { await log(`🧪 teşhis: ${(e2 && e2.message) || e2}`); }
                   if (fn && fw && typeof fw[fn] === 'function') { fw[fn](); kes = 'fn:' + fn; }
-                  // fisKes SONRASI Luca bildirimi (lucaNotYaz) — başardı mı yoksa "seçiniz/hata" mı?
-                  await sleep(1500);
+                  // fisKes SONRASI: AJAX bitsin → .fis-aktarim KAYBOLDU = fiş KESİLDİ (success'te parent.remove()).
+                  //   message-div'de hata/uyarı varsa onu da yakala (kesin sonuç).
+                  await sleep(4000);
                   try {
-                    for (const doc of lucaDocuments()) {
-                      const t = (doc.body && doc.body.textContent) || '';
-                      const m = t.match(/(L[üu]tfen\s+muhasebele[şs]ecek[^.!\n]{0,40}|ba[şs]ar[ıi]yla[^.!\n]{0,40}|kesildi[^.!\n]{0,30}|olu[şs]turuldu[^.!\n]{0,30}|hata[^.!\n]{0,50})/i);
-                      if (m) { await log(`🧪 fisKes sonrası: "${m[0].trim().slice(0, 80)}"`); break; }
-                    }
+                    const d3 = fisKesBtn.ownerDocument;
+                    const kalan = d3 ? d3.querySelectorAll('.fis-aktarim').length : -1;
+                    let msg = '';
+                    if (d3) { for (const md of d3.querySelectorAll('.message-div')) { const tt = (md.textContent || '').trim(); if (tt) { msg = tt.slice(0, 90); break; } } }
+                    await log(`🧪 fisKes sonrası: kalan .fis-aktarim=${kalan}${msg ? ' | mesaj: ' + msg : ''}`);
                   } catch {}
                 } catch (e) { await log(`fisKes() doğrudan çağrı uyarısı: ${(e && e.message) || e}`); }
                 if (!kes) {
