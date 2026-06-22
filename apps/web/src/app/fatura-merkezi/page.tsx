@@ -1485,22 +1485,22 @@ function ScreenMuhasebe({ taxpayerId, period, isIsletme = false, taxpayerNace = 
               <button type="button" onClick={() => setAddAcc(null)} style={{ background: 'none', border: 0, fontSize: 22, cursor: 'pointer', color: '#999' }}>✕</button>
             </div>
             <div style={{ display: 'grid', gap: 5, marginTop: 16 }}>
-              <label style={{ fontSize: 14, fontWeight: 600 }}>Hesap Kodu</label>
+              <label style={{ fontSize: 14, fontWeight: 600, color: '#374151' }}>Hesap Kodu</label>
               <input value={addAcc.code} onChange={(e) => setAddAcc({ ...addAcc, code: e.target.value })}
                 style={{ padding: '11px 13px', borderRadius: 9, border: '1px solid #ddd', fontSize: 15 }} />
             </div>
             <div style={{ display: 'grid', gap: 5, marginTop: 16 }}>
-              <label style={{ fontSize: 14, fontWeight: 600 }}>Hesap Adı</label>
+              <label style={{ fontSize: 14, fontWeight: 600, color: '#374151' }}>Hesap Adı</label>
               <input value={addAcc.name} maxLength={64} onChange={(e) => setAddAcc({ ...addAcc, name: e.target.value })}
                 style={{ padding: '11px 13px', borderRadius: 9, border: '1px solid #ddd', fontSize: 15 }} />
               <span style={{ fontSize: 12, color: '#999' }}>{addAcc.name.length}/64 karakter</span>
             </div>
-            <label style={{ display: 'flex', alignItems: 'center', gap: 8, marginTop: 16, fontSize: 15, fontWeight: 600 }}>
+            <label style={{ display: 'flex', alignItems: 'center', gap: 8, marginTop: 16, fontSize: 15, fontWeight: 600, color: '#374151' }}>
               Cari Hesap Mı? : <input type="checkbox" checked={addAcc.isCari} onChange={(e) => setAddAcc({ ...addAcc, isCari: e.target.checked })} style={{ width: 18, height: 18 }} />
             </label>
             {addAcc.isCari && (
               <div style={{ display: 'grid', gap: 5, marginTop: 16 }}>
-                <label style={{ fontSize: 14, fontWeight: 600 }}>Vergi No / T.C. Kimlik No</label>
+                <label style={{ fontSize: 14, fontWeight: 600, color: '#374151' }}>Vergi No / T.C. Kimlik No</label>
                 <input value={addAcc.vkn} onChange={(e) => setAddAcc({ ...addAcc, vkn: e.target.value.replace(/\D/g, '') })}
                   style={{ padding: '11px 13px', borderRadius: 9, border: '1px solid #ddd', fontSize: 15 }} />
               </div>
