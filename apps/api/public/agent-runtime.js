@@ -12,7 +12,7 @@
   // v1.42.2 (2026-06-16): Ajan kendini yenilerken (delete __morenAgent) eski async
   // döngü "Cannot read 'stopRequested' of undefined/null" ile ÇÖKÜYORDU → yetim
   // döngü artık nesne yoksa güvenle durur (stopRequested kontrollerine null-guard).
-  const AGENT_VERSION = '1.45.4';
+  const AGENT_VERSION = '1.45.5';
   const AGENT_INSTANCE_ID = 'mai_' + Date.now().toString(36) + '_' + Math.random().toString(36).slice(2, 8);
 
   // === VERSION-AWARE RELOAD ===
@@ -1860,6 +1860,19 @@
                   return !!(res && res.ok);
                 } catch { return false; }
               };
+              // GENEL gerçek (trusted) tuş köprüsü — FOCUS'taki elemana tuş gönderir. Enter/Space ile
+              //   focus'lu butonu aktive etmek için; KOORDİNATTAN ve GÖRÜNÜRLÜKTEN bağımsız (kullanıcı:
+              //   "fiş kes'i göremiyorum" — görmemize gerek yok, odaklayıp Enter basıyoruz).
+              const nativePressKey = async (key, times = 1) => {
+                try {
+                  let bridge = null;
+                  try { bridge = window.__morenNativePressKey; } catch {}
+                  if (!bridge) { try { bridge = window.top && window.top.__morenNativePressKey; } catch {} }
+                  if (typeof bridge !== 'function') return false;
+                  const res = await bridge({ key, times });
+                  return !!(res && res.ok);
+                } catch { return false; }
+              };
               // 6a) KOŞULSUZ kapat: Yükle sonrası İşlem Takip popup'ı HER ZAMAN açılır. Tespit yapıya
               //   takılsa bile en az bir GERÇEK ESC bas (eskiden if(islemTakipAcik()) yanlış false olunca
               //   blok tümden atlanıyor, ESC HİÇ basılmıyordu). Kapanmazsa DUR — açık popup altında
@@ -1892,28 +1905,44 @@
                 throw new Error('Yükleme doğrulanamadı ve seçilecek fiş bulunamadı — Luca ekranını kontrol et (fiş oluşturulmadı).');
               }
               await sleep(700);
-              // 6c) "Fiş Kes" (sağ-alt) → deftere yazan GERÇEK fişi oluşturur. Kullanıcı doğru tespit etti:
-              //     buton alt çubukta; viewport kısaysa GÖRÜNÜR ALANIN DIŞINDA kalıp native tık ıskalayabilir
-              //     ("görmediği şeye nasıl tıklasın"). → Önce TÜM "Fiş Kes" adaylarını GÖRÜNÜR ALANA KAYDIR +
-              //     ne bulduğumuzu LOGLA (tag·görünür@konum), sonra native (trusted) tıkla.
-              const fisKesInfo = [];
+              // 6c) "Fiş Kes" → deftere yazan GERÇEK fişi oluşturur. SORUN (kullanıcı doğru tespit etti):
+              //     buton alt çubukta, pencere viewport'tan kısa olunca KOORDİNATLA tıklama görünmeyen yere
+              //     ıskalıyor ("fiş kes'i göremiyorum"). ÇÖZÜM: KOORDİNATSIZ — butonu BUL → FOCUS et →
+              //     GERÇEK (trusted) Enter/Space bas. Görünürlükten tamamen bağımsız (elle Tab+Enter gibi).
+              let fisKesBtn = null; const fisKesDbg = [];
               for (const doc of lucaDocuments()) {
                 try {
-                  for (const el of doc.querySelectorAll('input[type=button],input[type=submit],button,a,div,span,td')) {
+                  for (const el of doc.querySelectorAll('input[type=button],input[type=submit],button')) {
                     const tx = ((el.value || el.innerText || el.textContent) || '').trim();
-                    if (!/fi[şs]\s*kes/i.test(tx) || tx.length > 24) continue;
-                    let top = -9999, vis = false;
-                    try { const r = el.getBoundingClientRect(); top = Math.round(r.top); vis = r.width > 0 && r.height > 0; } catch {}
-                    try { el.scrollIntoView({ block: 'center', inline: 'center' }); } catch {}
-                    fisKesInfo.push(`${el.tagName}${vis ? '·gör' : '·gizli'}@${top}"${tx.slice(0, 14)}"`);
+                    if (!/^fi[şs]\s*kes$/i.test(tx)) continue;
+                    fisKesBtn = el;
+                    const oc = String((el.getAttribute && (el.getAttribute('onclick') || el.getAttribute('href'))) || '');
+                    fisKesDbg.push(`${el.tagName}#${el.id || el.name || '-'} oc="${oc.slice(0, 40)}"`);
+                    break;
                   }
+                  if (fisKesBtn) break;
                 } catch {}
               }
-              await log(`🔎 Fiş Kes adayı(${fisKesInfo.length}): ${fisKesInfo.slice(0, 6).join(' | ') || 'YOK'}`);
-              await sleep(700);
-              const kes = await robustClick('Fiş Kes', { settleMs: 2000 });
-              if (!kes) throw new Error('"Fiş Kes" butonu bulunamadı (ekran beklenenden farklı; fiş oluşturulmadı).');
-              await log('✂ "Fiş Kes" tıklandı — fiş oluşturuluyor');
+              await log(`🔎 Fiş Kes butonu: ${fisKesDbg.join(' | ') || 'YOK (input/button bulunamadı)'}`);
+              let kes = null;
+              if (fisKesBtn) {
+                try { fisKesBtn.scrollIntoView({ block: 'center' }); } catch {}
+                try { fisKesBtn.focus(); } catch {}
+                await sleep(350);
+                const isInputBtn = fisKesBtn.tagName === 'INPUT' && /button/i.test((fisKesBtn.getAttribute && fisKesBtn.getAttribute('type')) || '');
+                // <button>/submit → Enter; <input type=button> → Space. İlki tetiklemezse (buton hâlâ
+                //   focus'ta) diğerini de dene; tetikleyince activeElement değişir → ikinciyi atlar.
+                await nativePressKey(isInputBtn ? 'Space' : 'Enter');
+                await sleep(800);
+                let stillFocused = false; try { stillFocused = document.activeElement === fisKesBtn; } catch {}
+                if (stillFocused) { await nativePressKey(isInputBtn ? 'Enter' : 'Space'); await sleep(800); }
+                kes = 'focus-key';
+              } else {
+                // Buton elemanı bulunamadıysa son çare: native metin-tıklama (koordinatlı).
+                kes = await robustClick('Fiş Kes', { settleMs: 2000 });
+              }
+              if (!kes) throw new Error('"Fiş Kes" butonu bulunamadı/tetiklenemedi (ekran beklenenden farklı; fiş oluşturulmadı).');
+              await log(`✂ "Fiş Kes" tetiklendi (${kes}) — fiş oluşturuluyor`);
               await sleep(3000);
               // 6d) Onay popup'ı çıkarsa (Evet/Tamam) onayla; sonra başarı doğrula (best-effort)
               await robustClick('Evet', { settleMs: 1200 });
