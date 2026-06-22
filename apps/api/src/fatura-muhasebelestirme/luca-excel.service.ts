@@ -51,7 +51,7 @@ export interface InvoicePayload {
     islemTuruKod?: string; islemTuruAd?: string;
     kayitTuruKod?: string; kayitTuruAd?: string;
     kayitAltKod?: string; kayitAltAd?: string;
-    kdvOranKod?: string; plakaNo?: string;
+    kdvOranKod?: string; plakaNo?: string; kayitTarihi?: string;
     matrah?: number; kdvTutar?: number; krediliTutar?: number; donem?: boolean;
   } | null;
 }
@@ -279,6 +279,7 @@ export function buildLucaIsletmeHizliFisCsv(payload: BatchPayload): Buffer {
     const kdvOranNum = ({ KDV20: '20', KDV10: '10', KDV1: '1', KDV0: '0' } as Record<string, string>)[String(isl.kdvOranKod || '')] || rate || '';
     const islMatrah = Number.isFinite(isl.matrah as number) && (isl.matrah as number) > 0 ? (isl.matrah as number) : matrah;
     const islKdv = Number.isFinite(isl.kdvTutar as number) && (isl.kdvTutar as number) > 0 ? (isl.kdvTutar as number) : kdv;
+    const islKayitTarih = (() => { const kd = isl.kayitTarihi ? parseDate(isl.kayitTarihi) : null; return kd ? fmtTr(kd) : tarihStr; })();
 
     // 37 sutun — sirayla. İşletme formundan gelen seçimlerle dolar; boşlar opsiyonel/serbest.
     const row = [
@@ -286,7 +287,7 @@ export function buildLucaIsletmeHizliFisCsv(payload: BatchPayload): Buffer {
       isl.kayitTuruAd || '',                        // 2 KATEGORİ (Kayıt Türü: Mal/Hizmet Satışı, İndirilecek Gider…)
       isl.belgeTuruAd || inferIsletmeBelgeTuru(inv),// 3 BELGE TURU
       tarihStr,                                     // 4 EVRAK TARİHİ
-      tarihStr,                                     // 5 KAYIT TARİHİ
+      islKayitTarih,                                // 5 KAYIT TARİHİ
       inv.seriNo || '',                             // 6 SERİ NO
       inv.belgeNo || '',                            // 7 EVRAK NO
       counterpartyVkn,                              // 8 TCKN/VKN

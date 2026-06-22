@@ -198,6 +198,28 @@ export function isletmeRef(invoiceKind?: string | null): IsletmeContext {
   return String(invoiceKind || 'ALIS').toUpperCase() === 'SATIS' ? ISLETME_REFERANS.SATIS : ISLETME_REFERANS.ALIS;
 }
 
+// Kayıt türü → alt tür listesi. ÇAĞRI ANINDA değerlendirilir; nesne-literal init sırası
+// tuzaklarından bağımsız (deploy'da alt listenin boş gelmesi bu yüzdendi). Yeni liste
+// yakaladıkça buraya eklenir; yoksa boş (alt tür opsiyonel kalır).
+export function getKayitAltList(invoiceKind: string | null | undefined, kayitTuruKod: string): IsletmeRefItem[] {
+  const sale = String(invoiceKind || 'ALIS').toUpperCase() === 'SATIS';
+  const kt = String(kayitTuruKod || '');
+  if (sale) {
+    if (kt === '2') return SATIS_ALT_HIZMET; // Hizmet Satışı
+    return [];                                // Mal Satışı/Diğer — henüz yakalanmadı
+  }
+  if (kt === '4') return GIDER_ALT_GVK40;     // İndirilecek Giderler (GVK 40)
+  return [];                                  // Mal Alışı/Sabit Kıymet/GKEÖ — henüz yakalanmadı
+}
+
+/** Kayıt türü seçilince Mihsap-benzeri varsayılan alt tür kodu (alt = kayıt türünün kendisi). */
+export function defaultKayitAltKod(invoiceKind: string | null | undefined, kayitTuruKod: string, kayitTuruAd?: string): string {
+  const list = getKayitAltList(invoiceKind, kayitTuruKod);
+  if (!list.length) return '';
+  const byName = kayitTuruAd ? list.find((x) => x.ad.toLowerCase() === String(kayitTuruAd).toLowerCase()) : undefined;
+  return (byName || list[0]).kod;
+}
+
 /** Mihsap-benzeri akıllı varsayılan: belge türü kodu (documentType → İşletme belge kodu) */
 export function defaultBelgeTuruKod(documentType?: string | null, invoiceKind?: string | null): string {
   const sale = String(invoiceKind || 'ALIS').toUpperCase() === 'SATIS';
