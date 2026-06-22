@@ -743,6 +743,13 @@ function ScreenFaturalar({ taxpayerId, period, kind = 'ALIS' }: { taxpayerId: st
     refetchInterval: 3000,
   });
   const ocrProg: any = ocrProgQ.data;
+  // Faz F/6: eksik belge takibi — sadece Alış'ta, düzenli gelip bu dönem gelmeyen satıcılar.
+  const missingQ = useQuery({
+    queryKey: ['fm-missing', taxpayerId, period, kind],
+    queryFn: async () => (await api.get('/fatura-muhasebelestirme/missing-suppliers', { params: { taxpayerId, period } })).data,
+    enabled: !!taxpayerId && kind === 'ALIS',
+  });
+  const missing: any[] = missingQ.data?.missing || [];
   // Okuma bitince listeyi tazele (yeni veriler insin).
   const prevReadingRef = useRef(0);
   useEffect(() => {
@@ -787,6 +794,12 @@ function ScreenFaturalar({ taxpayerId, period, kind = 'ALIS' }: { taxpayerId: st
                 <><span className="ocrdot err" /> {ocrProg.failed} belge okunamadı — seçip <b>AI ile oku</b> ile tekrar dene</>
               )}
             </div>
+          </div>
+        )}
+        {kind === 'ALIS' && missing.length > 0 && (
+          <div className="eksikbelge" title="Bu satıcılar son aylarda düzenli alış faturası gönderdi ama bu dönem henüz yok — eksik belge olabilir.">
+            <Ico html={I.info} size={14} />
+            <span><b>{missing.length}</b> satıcıdan bu dönem belge gelmemiş olabilir (düzenli geliyordu): {missing.slice(0, 8).map((m: any) => m.name).join(', ')}{missing.length > 8 ? ` +${missing.length - 8}` : ''}</span>
           </div>
         )}
         <div className="durumfiltre">
@@ -2240,6 +2253,8 @@ const CSS = `
 #fm-root .dfchip{display:inline-flex;align-items:center;gap:6px;height:26px;padding:0 11px;border:1px solid var(--line2);border-radius:13px;background:#fff;color:var(--muted);font-size:11.5px;font-weight:600;cursor:pointer;font-family:inherit}
 #fm-root .dfchip:hover{border-color:var(--accent-line);color:var(--accent)}
 #fm-root .dfchip.on{background:var(--accent);border-color:var(--accent);color:#fff}
+#fm-root .eksikbelge{display:flex;align-items:flex-start;gap:8px;margin:10px 16px 0;padding:9px 12px;background:#fef6e7;border:1px solid #f0d28a;border-radius:9px;font-size:12px;color:#8a6314}
+#fm-root .eksikbelge b{color:#6b4d0f}
 #fm-root .dfchip .dfn{font-size:10px;font-weight:700;opacity:.7}
 #fm-root .dfchip.on .dfn{opacity:.95}
 #fm-root .pill.n{background:#eef1f5;color:#64748b}

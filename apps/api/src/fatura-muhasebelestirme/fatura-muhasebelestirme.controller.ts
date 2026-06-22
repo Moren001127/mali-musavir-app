@@ -256,6 +256,12 @@ export class FaturaMuhasebelestirmeController {
     return this.service.ocrProgress(req.user.tenantId, { taxpayerId, period });
   }
 
+  /** Faz F/6: eksik belge takibi — düzenli gelen ama bu dönem gelmeyen satıcılar. */
+  @Get('missing-suppliers')
+  missingSuppliers(@Req() req: any, @Query('taxpayerId') taxpayerId?: string, @Query('period') period?: string) {
+    return this.service.missingSuppliers(req.user.tenantId, { taxpayerId, period });
+  }
+
   /** Hızlı düzeltme: belgeleri tekrar okumadan hesap kodlarını plana göre yeniden eşleştir
    *  (yanlış carileri temizler). */
   @Post('documents/reapply-codes')

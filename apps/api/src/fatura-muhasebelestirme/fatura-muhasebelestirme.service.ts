@@ -2246,6 +2246,49 @@ export class FaturaMuhasebelestirmeService {
     return { total, pending, inProgress, failed, done, reading: pending + inProgress, active: pending + inProgress > 0, queued: this.uploadOcrQueue.length };
   }
 
+  /**
+   * Faz F/6: EKSİK BELGE TAKİBİ — bir satıcı son 3 ayın en az 2'sinde alış faturası
+   * gönderdiyse ama bu dönem GÖNDERMEMİŞSE uyarır ("bu satıcıdan her ay gelir, bu ay yok").
+   * Mevcut belgelerden hesaplanır (migration yok). Rakiplerde var, TR'de yok.
+   */
+  async missingSuppliers(tenantId: string, opts: { taxpayerId?: string; period?: string }) {
+    const taxpayerId = String(opts.taxpayerId || '').trim();
+    const period = String(opts.period || '').trim();
+    const mm = period.match(/^(\d{4})-(\d{1,2})$/);
+    if (!taxpayerId || !mm) return { missing: [], period };
+    const y = Number(mm[1]); const m = Number(mm[2]);
+    const start = new Date(Date.UTC(y, m - 4, 1)); // bu ay + 3 önceki ay
+    const end = new Date(Date.UTC(y, m, 1));
+    const docs = await (this.prisma as any).invoiceAccountingDocument.findMany({
+      where: { tenantId, taxpayerId, invoiceKind: 'ALIS', faturaTarihi: { gte: start, lt: end }, sellerVkn: { not: null } },
+      select: { sellerVkn: true, vendorName: true, faturaTarihi: true },
+    }).catch(() => []);
+    const curKey = `${y}-${String(m).padStart(2, '0')}`;
+    const priorMonths = [1, 2, 3].map((i) => { const d = new Date(Date.UTC(y, m - 1 - i, 1)); return `${d.getUTCFullYear()}-${String(d.getUTCMonth() + 1).padStart(2, '0')}`; });
+    const byVkn = new Map<string, { name: string; periods: Set<string>; lastSeen: string }>();
+    for (const d of docs) {
+      const vkn = String(d.sellerVkn || '').replace(/\D/g, '');
+      if (vkn.length !== 10 && vkn.length !== 11) continue;
+      const dt = d.faturaTarihi ? new Date(d.faturaTarihi) : null;
+      if (!dt || Number.isNaN(dt.getTime())) continue;
+      const pk = `${dt.getUTCFullYear()}-${String(dt.getUTCMonth() + 1).padStart(2, '0')}`;
+      const e = byVkn.get(vkn) || { name: d.vendorName || vkn, periods: new Set<string>(), lastSeen: pk };
+      e.periods.add(pk);
+      if (pk > e.lastSeen) e.lastSeen = pk;
+      if (d.vendorName) e.name = d.vendorName;
+      byVkn.set(vkn, e);
+    }
+    const missing: Array<{ vkn: string; name: string; lastSeen: string; gecmisAy: number }> = [];
+    for (const [vkn, e] of byVkn) {
+      const priorCount = priorMonths.filter((pm) => e.periods.has(pm)).length;
+      if (priorCount >= 2 && !e.periods.has(curKey)) {
+        missing.push({ vkn, name: e.name, lastSeen: e.lastSeen, gecmisAy: priorCount });
+      }
+    }
+    missing.sort((a, b) => b.gecmisAy - a.gecmisAy);
+    return { missing, period: curKey };
+  }
+
   private async processUploadedDocumentOcr(
     tenantId: string,
     documentId: string,
