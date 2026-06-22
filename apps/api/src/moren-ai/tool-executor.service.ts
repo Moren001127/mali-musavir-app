@@ -4,6 +4,7 @@ import { MIHSAP_FATURA_ACTIONS, isMihsapFaturaCommandAgent } from '../agent-even
 import { calculateBeyannameDeadline } from '../schedule/beyanname-deadline.util';
 import { ISLEM_OPERATIONS, ISLEM_ACTION_KEYS, islemCapabilityList, isIslemAction } from './islem-operations';
 import { TDHP, tdhpAciklama, vergiOranlari, vergiOraniAciklama } from '../common/accounting-reference';
+import { computeMonthlyStatusList } from './monthly-status.shared';
 import { randomBytes } from 'crypto';
 
 const OFFICIAL_SOURCE_DOMAINS = [
@@ -817,86 +818,23 @@ export class ToolExecutorService {
    * ile 73 kez cagri yapmak yerine tek JOIN ile hepsini doker.
    */
   private async listTaxpayersMonthlyStatus(input: any, ctx: { tenantId: string }) {
-    // ÖNEMLİ DÖNEM MODELİ: Aylık durum kayıtları İŞLEM ayına göre saklanır, ama owner/
-    // mükellef "dönem" derken BEYANNAME dönemini (veri dönemi) kasteder. Mayıs'ın
-    // faturaları Haziran'da işlenir → "Mayıs dönemi" verisi İŞLEM ayı Haziran'dadır.
-    // Gelen period = BEYANNAME dönemi kabul edilir; sorgu İŞLEM ayı (= beyanname + 1)
-    // üzerinden yapılır. period yoksa cari beyanname dönemi = (bu ay − 1).
-    let bYear: number;
-    let bMonth: number;
-    const period = (input?.period || '').trim();
-    const m = period.match(/^(\d{4})-(\d{2})$/);
-    if (m) {
-      bYear = parseInt(m[1], 10);
-      bMonth = parseInt(m[2], 10);
-    } else {
-      const now = new Date();
-      const prev = new Date(now.getFullYear(), now.getMonth() - 1, 1);
-      bYear = prev.getFullYear();
-      bMonth = prev.getMonth() + 1;
-    }
-    // İşlem ayı = beyanname dönemi + 1
-    let year = bYear;
-    let month = bMonth + 1;
-    if (month === 13) { month = 1; year += 1; }
-
+    // TEK KAYNAK: Aylık durum listesini WhatsApp kısayolu ile AYNI fonksiyondan al
+    // (monthly-status.shared → computeMonthlyStatusList). Böylece sayfa ve WhatsApp
+    // harfi harfine aynı cevabı verir, dönem mantığı (verildi→dinamik dönem dahil) tek yerde.
     const evrakFilter = (input?.evrakDurumu || 'tumu') as string;
     const beyannameFilter = (input?.beyannameDurumu || 'tumu') as string;
     const onlyActive = input?.onlyActive !== false;
 
-    // Tum mukellefleri + o aydaki durum kaydini JOIN ile cek.
-    // Aylik durum kaydi yoksa null doner (henuz hicbir islem yapilmamis demektir).
-    const whereTaxpayer: any = { tenantId: ctx.tenantId };
-    if (onlyActive) whereTaxpayer.isActive = true;
-
-    const taxpayers = await this.prisma.taxpayer.findMany({
-      where: whereTaxpayer,
-      select: {
-        id: true, type: true, companyName: true, firstName: true, lastName: true,
-        taxNumber: true, evrakTeslimGunu: true,
-        monthlyStatuses: {
-          where: { year, month },
-          select: {
-            evraklarGeldi: true,
-            evraklarIslendi: true,
-            kontrolEdildi: true,
-            beyannameVerildi: true,
-            kdvKontrolEdildi: true,
-            // Portaldaki "Beyanname hazır" = İND+HES+ARŞİV üçü de ✓ (deriveStage ile aynı).
-            indirilecekKdvKontrol: true,
-            hesaplananKdvKontrol: true,
-            eArsivKontrol: true,
-          },
-          take: 1,
-        },
-      },
-      orderBy: [{ companyName: 'asc' }, { firstName: 'asc' }],
+    const list = await computeMonthlyStatusList(this.prisma, {
+      tenantId: ctx.tenantId,
+      period: input?.period,
+      verildiMode: beyannameFilter === 'verildi',
+      onlyActive,
     });
+    const { year, month, islemAyi, beyannameDonem } = list;
 
-    // Satirlari hazirla
-    let rows = taxpayers.map((t) => {
-      const s = t.monthlyStatuses[0] || null;
-      return {
-        id: t.id,
-        isim: this.displayName(t),
-        vkn_tckn: t.taxNumber,
-        tip: t.type,
-        evrakTeslimGunu: t.evrakTeslimGunu,
-        evraklarGeldi: s?.evraklarGeldi ?? false,
-        evraklarIslendi: s?.evraklarIslendi ?? false,
-        kontrolEdildi: s?.kontrolEdildi ?? false,
-        beyannameVerildi: s?.beyannameVerildi ?? false,
-        kdvKontrolEdildi: s?.kdvKontrolEdildi ?? false,
-        // BEYANNAME HAZIR = portaldaki deriveStage ile AYNI: evrak gelmiş + işlenmiş +
-        // kontrol bitmiş (İND+HES+ARŞİV üçü de) + henüz verilmemiş = "beyannamesi verilebilecek".
-        beyannameHazir: !!(s?.evraklarGeldi && s?.evraklarIslendi
-          && s?.indirilecekKdvKontrol && s?.hesaplananKdvKontrol && s?.eArsivKontrol)
-          && !(s?.beyannameVerildi ?? false),
-        kayitVar: !!s, // Bu ay icin durum kaydi olusturulmus mu
-      };
-    });
-
-    // Filtre uygula
+    // Satırlar tek kaynaktan; filtreyi BURADA uygula (aynı satırlar → aynı sonuç).
+    let rows = list.rows;
     if (evrakFilter === 'geldi') {
       rows = rows.filter((r) => r.evraklarGeldi === true);
     } else if (evrakFilter === 'gelmedi') {
@@ -908,20 +846,13 @@ export class ToolExecutorService {
       rows = rows.filter((r) => r.beyannameVerildi !== true);
     }
 
-    const islemAyi = `${year}-${String(month).padStart(2, '0')}`;
-    // İŞLEM ayı = faturaların İŞLENDİĞİ takvim ayı (örn. Haziran). Bu işlemlerin ait
-    // olduğu VERİ dönemi = BEYANNAME dönemi = işlem ayı − 1 (örn. Mayıs). Mayıs'ın
-    // faturaları Haziran'da işlenir. Owner/mükellef "dönem" derken Mayıs'ı kasteder.
-    const byMonth = month === 1 ? 12 : month - 1;
-    const byYear = month === 1 ? year - 1 : year;
-    const beyannameDonem = `${byYear}-${String(byMonth).padStart(2, '0')}`;
     return {
       // Kullanıcıya-dönük dönem = BEYANNAME dönemi (veri dönemi). Bot bunu söylemeli.
       donem: beyannameDonem,
       beyannameDonem,
       islemAyi,
       donemNotu: `Bu evrak/işlem kayıtları İŞLEM ayı ${islemAyi}'de tutulur ama ait oldukları VERİ/beyanname dönemi ${beyannameDonem}'dir (işlem ayı−1). Owner'a/mükellefe dönemden bahsederken DAİMA beyanname dönemini (${beyannameDonem}) söyle; işlem ayını (${islemAyi}) SÖYLEME — "${islemAyi}'da evrak geldi" YANLIŞ/kafa karıştırıcı, doğrusu "${beyannameDonem} dönemi evrakı (${islemAyi}'da işlenir)".`,
-      toplamMukellef: taxpayers.length,
+      toplamMukellef: list.toplamMukellef,
       sonuc: rows.length,
       evrakFiltresi: evrakFilter,
       beyannameFiltresi: beyannameFilter,

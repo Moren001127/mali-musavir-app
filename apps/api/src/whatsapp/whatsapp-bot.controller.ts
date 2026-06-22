@@ -16,6 +16,7 @@ import { BotEvalService } from './bot-eval.service';
 import { QualityLogService } from './quality-log.service';
 import { CalisanService } from '../calisan/calisan.service';
 import { claudeTextViaMax, MAX_MODEL_CHEAP } from '../common/max-inference';
+import { computeMonthlyStatusList } from '../moren-ai/monthly-status.shared';
 
 type IncomingWhatsAppMessage = {
   from: string;
@@ -1331,57 +1332,23 @@ export class WhatsAppBotController implements OnModuleInit {
   ): Promise<boolean> {
     const intent = this.detectOwnerStatusIntent(msg.text || '');
     if (!intent) return false;
-    // Kayıtlar İŞLEM ayında (bu ay) tutulur; owner'a-dönük dönem = BEYANNAME dönemi (bu ay−1).
-    const now = new Date();
-    const year = now.getFullYear();
-    const month = now.getMonth() + 1;
-    const prev = new Date(year, month - 2, 1);
-    const aylar = ['Ocak', 'Şubat', 'Mart', 'Nisan', 'Mayıs', 'Haziran', 'Temmuz', 'Ağustos', 'Eylül', 'Ekim', 'Kasım', 'Aralık'];
-    const donemLabel = `${aylar[prev.getMonth()]} ${prev.getFullYear()}`;
-    // SORGU dönemi normalde cari işlem ayı. AMA "verildi" (beyannamesi VERİLMİŞ olanlar)
-    // sorgusunda cari ay henüz verilmemiş olur (vade gelmemiş) → "0/yok" yanlışı çıkar.
-    // Bu yüzden "verildi"de GERÇEKTEN beyanname verilen en son işlem ayını bul ve onu göster.
-    let qYear = year, qMonth = month, qDonemLabel = donemLabel;
-    if (intent === 'verildi') {
-      const son = await (this.prisma as any).taxpayerMonthlyStatus.findFirst({
-        where: { tenantId: ownerTenant.id, beyannameVerildi: true, taxpayer: { isActive: true } },
-        orderBy: [{ year: 'desc' }, { month: 'desc' }],
-        select: { year: true, month: true },
-      }).catch(() => null);
-      if (son) {
-        qYear = son.year; qMonth = son.month;
-        const sp = new Date(son.year, son.month - 2, 1);
-        qDonemLabel = `${aylar[sp.getMonth()]} ${sp.getFullYear()}`;
-      }
-    }
-    const taxpayers = await this.prisma.taxpayer.findMany({
-      where: { tenantId: ownerTenant.id, isActive: true },
-      select: {
-        id: true, companyName: true, firstName: true, lastName: true,
-        monthlyStatuses: {
-          where: { year: qYear, month: qMonth },
-          select: {
-            evraklarGeldi: true, evraklarIslendi: true, beyannameVerildi: true,
-            // "Kontrol bitti" = portaldaki deriveStage ile AYNI: İND+HES+ARŞİV üçü de ✓.
-            indirilecekKdvKontrol: true, hesaplananKdvKontrol: true, eArsivKontrol: true,
-          },
-          take: 1,
-        },
-      },
-      orderBy: [{ companyName: 'asc' }, { firstName: 'asc' }],
+    // TEK KAYNAK: Aylık durum listesini MOREN AI tool'u ile AYNI fonksiyondan al
+    // (monthly-status.shared → computeMonthlyStatusList). "verildi" sorgusunda dinamik
+    // dönem (son verilen ay) dahil tüm dönem mantığı orada; sayfa ve WhatsApp aynı cevap.
+    const list = await computeMonthlyStatusList(this.prisma, {
+      tenantId: ownerTenant.id,
+      verildiMode: intent === 'verildi',
+      onlyActive: true,
     });
-    const rows = taxpayers.map((t) => {
-      const s = (t as any).monthlyStatuses?.[0] || null;
-      const ad = (t.companyName || `${t.firstName || ''} ${t.lastName || ''}`).trim() || 'Mükellef';
-      const kontrolBitti = !!(s?.indirilecekKdvKontrol && s?.hesaplananKdvKontrol && s?.eArsivKontrol);
-      return {
-        isim: ad,
-        evrakGeldi: s?.evraklarGeldi ?? false,
-        islendi: s?.evraklarIslendi ?? false,
-        kontrolBitti,
-        verildi: s?.beyannameVerildi ?? false,
-      };
-    });
+    const donemLabel = list.donemLabel;
+    const qDonemLabel = donemLabel;
+    const rows = list.rows.map((r) => ({
+      isim: r.isim,
+      evrakGeldi: r.evraklarGeldi,
+      islendi: r.evraklarIslendi,
+      kontrolBitti: r.kontrolBitti,
+      verildi: r.beyannameVerildi,
+    }));
     let filtered: typeof rows;
     let baslik: string;
     switch (intent) {
@@ -1431,7 +1398,7 @@ export class WhatsAppBotController implements OnModuleInit {
     }
     const names = filtered.map((r) => r.isim);
     const reply = intent === 'mukellef_sayisi'
-      ? `👥 Toplam ${taxpayers.length} aktif mükellefin takipte.`
+      ? `👥 Toplam ${list.toplamMukellef} aktif mükellefin takipte.`
       : this.formatOwnerStatusList(baslik, qDonemLabel, names);
     const sent = await this.whatsapp.sendMessage(this.replyTarget(msg), reply, ownerTenant.id);
     await this.prisma.communicationLog.create({
