@@ -1338,12 +1338,28 @@ export class WhatsAppBotController implements OnModuleInit {
     const prev = new Date(year, month - 2, 1);
     const aylar = ['Ocak', 'Şubat', 'Mart', 'Nisan', 'Mayıs', 'Haziran', 'Temmuz', 'Ağustos', 'Eylül', 'Ekim', 'Kasım', 'Aralık'];
     const donemLabel = `${aylar[prev.getMonth()]} ${prev.getFullYear()}`;
+    // SORGU dönemi normalde cari işlem ayı. AMA "verildi" (beyannamesi VERİLMİŞ olanlar)
+    // sorgusunda cari ay henüz verilmemiş olur (vade gelmemiş) → "0/yok" yanlışı çıkar.
+    // Bu yüzden "verildi"de GERÇEKTEN beyanname verilen en son işlem ayını bul ve onu göster.
+    let qYear = year, qMonth = month, qDonemLabel = donemLabel;
+    if (intent === 'verildi') {
+      const son = await (this.prisma as any).taxpayerMonthlyStatus.findFirst({
+        where: { tenantId: ownerTenant.id, beyannameVerildi: true, taxpayer: { isActive: true } },
+        orderBy: [{ year: 'desc' }, { month: 'desc' }],
+        select: { year: true, month: true },
+      }).catch(() => null);
+      if (son) {
+        qYear = son.year; qMonth = son.month;
+        const sp = new Date(son.year, son.month - 2, 1);
+        qDonemLabel = `${aylar[sp.getMonth()]} ${sp.getFullYear()}`;
+      }
+    }
     const taxpayers = await this.prisma.taxpayer.findMany({
       where: { tenantId: ownerTenant.id, isActive: true },
       select: {
         id: true, companyName: true, firstName: true, lastName: true,
         monthlyStatuses: {
-          where: { year, month },
+          where: { year: qYear, month: qMonth },
           select: {
             evraklarGeldi: true, evraklarIslendi: true, beyannameVerildi: true,
             // "Kontrol bitti" = portaldaki deriveStage ile AYNI: İND+HES+ARŞİV üçü de ✓.
@@ -1416,7 +1432,7 @@ export class WhatsAppBotController implements OnModuleInit {
     const names = filtered.map((r) => r.isim);
     const reply = intent === 'mukellef_sayisi'
       ? `👥 Toplam ${taxpayers.length} aktif mükellefin takipte.`
-      : this.formatOwnerStatusList(baslik, donemLabel, names);
+      : this.formatOwnerStatusList(baslik, qDonemLabel, names);
     const sent = await this.whatsapp.sendMessage(this.replyTarget(msg), reply, ownerTenant.id);
     await this.prisma.communicationLog.create({
       data: {
