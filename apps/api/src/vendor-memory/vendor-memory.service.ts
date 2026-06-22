@@ -137,8 +137,10 @@ Yanlış ipucuna uyup yanlış karar vermek, ipucu olmamasından DAHA KÖTÜDÜR
     const { tenantId, firmaKimlikNo, firmaUnvan, kararTipi, kategori, altKategori, taxpayerId } = params;
     if (!firmaKimlikNo) return;
     if (!taxpayerId) return;
-    const vkn = firmaKimlikNo.trim();
-    if (!vkn || !kategori) return;
+    // K5: VKN/TCKN NORMALİZE + hane doğrulaması — geçersiz/kısmi VKN'de farklı satıcılar
+    // tek bozuk anahtara düşüp kodları KARIŞMASIN (öğrenme yalnız geçerli VKN'de).
+    const vkn = String(firmaKimlikNo).replace(/\D/g, '');
+    if ((vkn.length !== 10 && vkn.length !== 11) || !kategori) return;
 
     // Upsert VendorMemory (tenant geneli — mükellef bağımsız)
     const memory = await (this.prisma as any).vendorMemory.upsert({

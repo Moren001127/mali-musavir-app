@@ -3233,6 +3233,10 @@ export class FaturaMuhasebelestirmeService {
     ] as const) {
       if (key in body) data[key] = (body as any)[key] || null;
     }
+    // K4: VKN'leri NORMALİZE et (sadece rakam). Eskiden ham "123 456..." yazılınca
+    // öğrenme/okuma normalize VKN beklediği için öğrenilen kod SESSİZCE uygulanmıyordu.
+    if ('sellerVkn' in data && data.sellerVkn) data.sellerVkn = String(data.sellerVkn).replace(/\D/g, '') || null;
+    if ('buyerVkn' in data && data.buyerVkn) data.buyerVkn = String(data.buyerVkn).replace(/\D/g, '') || null;
     if ('exchangeRate' in body) data.exchangeRate = parseDecimal(body.exchangeRate, '1');
     if ('faturaTarihi' in body) data.faturaTarihi = parseDate(body.faturaTarihi);
     if ('totalAmount' in body) data.totalAmount = money(body.totalAmount);
@@ -4833,6 +4837,28 @@ export class FaturaMuhasebelestirmeService {
             actual: expectedVkn,
           });
         }
+      }
+    }
+
+    // ── 5) KDV_MATH_MISMATCH — KDV tutarı matrah×oran'dan FAZLA olamaz (okuma hatası).
+    //     Tevkifat KDV'yi AZALTIR (artırmaz); "fazla" yönü kesin hatadır → tevkifatlı
+    //     faturada yanlış alarm vermez. Bu, "yanlış ama dengeli" sessiz KDV hatasını yakalar
+    //     (ör. matrah 900 %20 iken KDV 280 okunmuşsa: beklenen 180, fazla → hata).
+    const stdRates = new Set([1, 8, 10, 18, 20]);
+    for (const b of (opts.kdvBreakdown || [])) {
+      const rate = Number(b?.rate || 0);
+      const base = Number(b?.base || 0);
+      const amount = Number(b?.amount || 0);
+      if (base <= 0 || amount <= 0 || !stdRates.has(Math.round(rate))) continue;
+      const expectedFull = base * rate / 100;
+      if (amount > expectedFull * 1.02 + 0.5) {
+        issues.push({
+          code: 'KDV_MATH_MISMATCH',
+          severity: 'ERROR',
+          message: `%${rate} satırda KDV ${amount.toLocaleString('tr-TR')} ₺, matrahtan (${base.toLocaleString('tr-TR')} ₺) beklenen ${expectedFull.toLocaleString('tr-TR')} ₺'den FAZLA — okuma hatası, kontrol et.`,
+          expected: Math.round(expectedFull * 100) / 100,
+          actual: amount,
+        });
       }
     }
 
