@@ -108,6 +108,7 @@ function deriveDurum(doc: any): { k: string; t: string; cat: string } {
   if (blank('cari')) missing.push('cari hesap');
   if (blank('matrah')) missing.push(sale ? 'gelir kodu' : 'gider kodu');
   if (blank('vergi')) missing.push('KDV kodu');
+  if (blank('tevkifat')) missing.push('tevkifat 360 hesabı');
   if (missing.length) {
     const cap = (s: string) => s.charAt(0).toLocaleUpperCase('tr-TR') + s.slice(1);
     const t = missing.length === 1 ? `${cap(missing[0])} boş` : `Eksik: ${missing.join(', ')}`;
@@ -1472,7 +1473,7 @@ function ScreenMuhasebe({ taxpayerId, period, isIsletme = false, taxpayerNace = 
                     <div style={{ maxWidth: 110, flex: '0 0 110px' }}><PlainSelect value={String(meta.kdvRate || 20)} onChange={(v) => setMeta({ ...meta, kdvRate: Number(v) })} options={[{ value: '20', label: 'KDV %20' }, { value: '10', label: 'KDV %10' }, { value: '1', label: 'KDV %1' }]} /></div>
                     <div style={{ maxWidth: 90, flex: '0 0 90px' }}><PlainSelect value={String(meta.tevkifatPay || 5)} onChange={(v) => setMeta({ ...meta, tevkifatPay: Number(v) })} options={[2, 3, 4, 5, 7, 9, 10].map((p) => ({ value: String(p), label: `${p}/10` }))} /></div>
                     <button className="btn sm primary" disabled={applyTevkifatMut.isPending} onClick={() => applyTevkifatMut.mutate()}>{applyTevkifatMut.isPending ? 'Kuruluyor…' : 'Tevkifat fişini kur'}</button>
-                    <span className="tnote">2×191 (normal + sorumlu sıf.) + 360 (KDV2) fişi oluşturur</span>
+                    <span className="tnote">191 (tam KDV indirimi) + 320 net cari + 360 (KDV2 sorumlu sıf.) fişi oluşturur</span>
                   </div>
                 )}
                 <div className="twrap">
@@ -1497,9 +1498,13 @@ function ScreenMuhasebe({ taxpayerId, period, isIsletme = false, taxpayerNace = 
                             { key: 'cari', label: 'Cari Hesap', side: 'debit' as const },
                           ]
                         : [
-                            // ALIŞ: matrah+KDV BORÇ, cari ALACAK
+                            // ALIŞ: matrah+KDV BORÇ, cari ALACAK. Tevkifatlıda 360 (KDV2 sorumlu sıf.)
+                            // AYRI bölüm — Mihsap gibi (Matrah · Vergi · Tevkifat · Cari).
                             { key: 'matrah', label: 'Matrah', side: 'debit' as const },
                             { key: 'vergi', label: 'İndirilecek KDV', side: 'debit' as const },
+                            ...((Number(selDoc?.ocrData?.tevkifatOrani) > 0 || lineDraft.some((l: any) => (l.group) === 'tevkifat'))
+                              ? [{ key: 'tevkifat', label: 'Tevkifat — Ödenecek KDV (360 · KDV2)', side: 'credit' as const }]
+                              : []),
                             { key: 'cari', label: 'Cari Hesap', side: 'credit' as const },
                           ]
                       ).map((g) => {
@@ -1511,7 +1516,7 @@ function ScreenMuhasebe({ taxpayerId, period, isIsletme = false, taxpayerNace = 
                             {rows.map(({ l, i }) => (
                               <div key={i} className="frow">
                                 <CodeSelect value={l.accountCode || ''} accounts={accountPlan} onChange={(code) => setLine(i, 'accountCode', code)} />
-                                {g.key !== 'cari'
+                                {g.key !== 'cari' && g.key !== 'tevkifat'
                                   ? <RateSelect value={String(l.rate || '').replace(/[^0-9]/g, '')} onChange={(v) => setLine(i, 'rate', v ? `%${v}` : '')} />
                                   : null}
                                 <MoneyInput value={Number((g.side === 'debit' ? l.debit : l.credit) || 0)} onChange={(n) => setLine(i, g.side, n)} />

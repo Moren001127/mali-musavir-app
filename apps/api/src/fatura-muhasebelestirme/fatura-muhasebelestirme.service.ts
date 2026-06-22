@@ -284,7 +284,7 @@ export class FaturaMuhasebelestirmeService {
     '770.01.010', '760.01.001', '740.01.001', '600.01.001',
     '191.01.001', '191.01.010', '191.01.020',
     '391.01.001', '391.01.010', '391.01.020',
-    '320.01.001', '120.01.001',
+    '320.01.001', '120.01.001', '360.01.001',
   ];
   private async gateExistingDocsIfNoPlan(tenantId: string, taxpayerId?: string) {
     if (!taxpayerId) return;
@@ -4696,15 +4696,18 @@ export class FaturaMuhasebelestirmeService {
       const normalK = k.minus(tevk);
       const primaryRate = hasBreakdown ? breakdown[0]?.rate : (opts.kdvOrani ? Number(opts.kdvOrani) : undefined);
       const rl = primaryRate ? `%${primaryRate}` : undefined;
-      const sfx = primaryRate ? String(Math.round(primaryRate)).padStart(3, '0') : '001';
       const net = m.plus(normalK);
       if (!isSale) {
+        // ALIŞ tevkifat (KDV2): alıcı TAM KDV'yi indirir (191), satıcıya NET öder (320),
+        // tevkifat kısmını sorumlu sıfatıyla 360'a yazıp KDV2 beyannamesiyle bildirir.
+        //   770 matrah (Borç) · 191 TAM KDV (Borç) · 320 net cari (Alacak) · 360 tevkifat (Alacak)
+        // 360 ayrı 'tevkifat' grubunda → cari eşleştirme onu satıcı carisine EZMESİN; plandaki
+        // gerçek 360 hesabına bağlanır (bkz. rematch 'tevkifat' kolu).
         return [
           { group: 'matrah', accountCode: matrahCode, description: 'Gider / matrah', debit: m, credit: zero(), orderNo: 0 },
-          { group: 'vergi', accountCode: this.kdvAccountCode(false, primaryRate), description: `İndirilecek KDV ${rl || ''}`.trim(), rate: rl, debit: normalK, credit: zero(), orderNo: 1 },
-          { group: 'vergi', accountCode: `191.02.${sfx}`, description: `Sorumlu sıf. indirilecek KDV (tevkifat) ${rl || ''}`.trim(), rate: rl, debit: tevk, credit: zero(), orderNo: 2 },
-          { group: 'cari', accountCode: cariCode, description: opts.vendorName || 'Cari hesap', debit: zero(), credit: net, orderNo: 3 },
-          { group: 'cari', accountCode: '360.01.001', description: 'Ödenecek KDV (sorumlu sıf. — KDV2 ile beyan)', rate: rl, debit: zero(), credit: tevk, orderNo: 4 },
+          { group: 'vergi', accountCode: this.kdvAccountCode(false, primaryRate), description: `İndirilecek KDV ${rl || ''}`.trim(), rate: rl, debit: k, credit: zero(), orderNo: 1 },
+          { group: 'cari', accountCode: cariCode, description: opts.vendorName || 'Cari hesap', debit: zero(), credit: net, orderNo: 2 },
+          { group: 'tevkifat', accountCode: '360.01.001', description: 'Ödenecek KDV (sorumlu sıf. — KDV2 ile beyan)', rate: rl, debit: zero(), credit: tevk, orderNo: 3 },
         ];
       }
       return [
@@ -5040,7 +5043,7 @@ export class FaturaMuhasebelestirmeService {
         issues.push({
           code: 'TEVKIFAT_NEEDED',
           severity: 'ERROR',
-          message: 'Tevkifatlı ALIŞ — sorumlu sıfatıyla KDV2 (360) satırı kurulmadan onaylanamaz. "Tevkifat fişini kur" ile oranı seç.',
+          message: 'Tevkifatlı ALIŞ — sorumlu sıfatıyla KDV2 (360) satırı eksik. Tevkifat oranı okunmadıysa "Tevkifat fişini kur" ile seç; hesap planında 360 (Ödenecek KDV) hesabı yoksa önce onu ekle.',
         });
       } else if (sale && !(Number(opts.tevkifatOrani || 0) > 0)) {
         issues.push({
@@ -5262,6 +5265,11 @@ export class FaturaMuhasebelestirmeService {
       for (const tid of taxpayerIds) {
         await this.applyLearnedVendorCodes(tenantId, tid).catch(() => {});
       }
+    }
+    // Placeholder kodları (cari 320/120, KDV 191/391, TEVKİFAT 360) mükellefin planındaki
+    // gerçek hesaplara eşle — "Tevkifat fişini kur"da 360 sahte placeholder'da kalmasın.
+    for (const tid of taxpayerIds) {
+      await this.rematchDocumentsWithLatestAccountPlan(tenantId, tid, ids).catch(() => {});
     }
     return { ok, skipped, kdvOrani: rate, accountCode: hasManualCode ? manualCode : null };
   }
@@ -5551,6 +5559,19 @@ export class FaturaMuhasebelestirmeService {
         }
         return this.pickAccount(accounts, [vergiPrefix], null);
       })();
+      // TEVKİFAT (KDV2 — sorumlu sıfatı): ALIŞ tevkifatta 360 satırı plandaki GERÇEK 360
+      // hesabına bağlanır. Adında "KDV / sorumlu / tevkifat / beyan" geçen 360 alt-hesabını
+      // tercih et (gelir-vergisi-stopajı 360'ını DEĞİL); yoksa en genel 360 leaf'i. 360 hiç
+      // yoksa null → satır boşalır, K7 "360 hesabı ekle" uyarısı verir (sahte kod yazılmaz).
+      const tevkMatch = (() => {
+        const g360 = accounts.filter((a: any) => { const c = String(a.accountCode || ''); return c.startsWith('360') && !c.startsWith('79'); });
+        if (!g360.length) return null;
+        const pref = g360.find((a: any) => { const n = this.norm(String(a.accountName || '')); return n.includes('kdv') || n.includes('sorumlu') || n.includes('tevkifat') || n.includes('beyan'); });
+        if (pref) return pref;
+        const depth = (c: string) => (String(c || '').match(/\./g) || []).length;
+        const mx = g360.reduce((mxv: number, a: any) => Math.max(mxv, depth(String(a.accountCode || ''))), 0);
+        return g360.filter((a: any) => depth(String(a.accountCode || '')) === mx)[0] || g360[0];
+      })();
       // CARI: önce VKN bazlı öğrenilmiş cari (kesin), yoksa KATI isim eşleşmesi. İsim de
       // tutmazsa null → placeholder boşaltılır ("Eksik cari"). Eskiden plandaki İLK cari
       // (ör. ALTEKS) sessizce seçiliyordu — yanlış eşleştirmenin ana kaynağıydı.
@@ -5575,13 +5596,28 @@ export class FaturaMuhasebelestirmeService {
       };
 
       for (const line of doc.lines || []) {
-        const group = String(line.group || '') as 'matrah' | 'vergi' | 'cari';
+        const group = String(line.group || '') as 'matrah' | 'vergi' | 'cari' | 'tevkifat';
         const match = group === 'matrah'
           ? await matrahForRate(String(line.rate || '').replace(/[^0-9]/g, ''))
           : group === 'vergi' ? vergiMatch
           : group === 'cari' ? cariMatch
           : null;
         const current = String(line.accountCode || '');
+        // TEVKİFAT özel (KDV2 360): satıcı carisine EZME. Plandaki gerçek 360'a bağla; 360 yoksa
+        // boşalt (K7 "360 ekle" uyarır). Sahte 360.01.001 placeholder'ı asla canlı kalmasın.
+        if (group === 'tevkifat') {
+          if (tevkMatch) {
+            if (current !== String((tevkMatch as any).accountCode)) {
+              await (this.prisma as any).invoiceAccountingLine.update({
+                where: { id: line.id },
+                data: { accountCode: (tevkMatch as any).accountCode },
+              });
+            }
+          } else if (current) {
+            await (this.prisma as any).invoiceAccountingLine.update({ where: { id: line.id }, data: { accountCode: '' } });
+          }
+          continue;
+        }
         // CARI özel: cari HER ZAMAN karşı tarafa eşleşmeli. Mevcut kod (placeholder olmasa
         // bile) karşı tarafı içermiyorsa ve VKN-hafızasından gelmiyorsa → YANLIŞ otomatik
         // eşleşme (ör. KAYIKÇI faturasına AYDE cari); doğrusuyla değiştir ya da BOŞALT.
