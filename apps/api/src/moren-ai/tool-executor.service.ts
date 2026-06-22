@@ -76,6 +76,7 @@ export class ToolExecutorService {
         case 'get_gelir_tablosu':   return this.getGelirTablosu(input, ctx);
         case 'get_bilanco':         return this.getBilanco(input, ctx);
         case 'get_kdv_summary':     return this.getKdvSummary(input, ctx);
+        case 'list_kdv_payable':    return this.getKdvPayableList(input, ctx);
         case 'list_invoices':       return this.listInvoices(input, ctx);
         case 'get_payroll_summary': return this.getPayrollSummary(input, ctx);
         case 'list_sgk_declarations': return this.listSgkDeclarations(input, ctx);
@@ -1092,6 +1093,83 @@ export class ToolExecutorService {
   // ------------------------------------------------------------
   // KDV
   // ------------------------------------------------------------
+
+  /**
+   * PORTFÖY-GENELİ KDV: bir dönemde ofisteki TÜM mükelleflerin ödeyeceği KDV (KDV1+KDV2
+   * tahakkuk) listesi + tutarlar. "kdv çıkan mükellefler ve tutarları", "kimlere KDV
+   * ödemesi çıkıyor" gibi TOPLU owner sorularının doğru kaynağı (get_kdv_summary tek
+   * mükellef içindir). Dönem verilmezse KDV tahakkuku DOLU en son dönem otomatik seçilir
+   * → bot dönemi geri sormaz, yanlış "işlenmemiş" demez. SADECE owner (tutar içerir).
+   */
+  private async getKdvPayableList(input: any, ctx: { tenantId: string }) {
+    const reqPeriod = String(input?.period || input?.donem || '').trim();
+    const explicit = /^\d{4}-\d{2}$/.test(reqPeriod);
+    let donem = explicit ? reqPeriod : '';
+    const onlyActive = input?.onlyActive !== false;
+    const onlyPayable = input?.sadeceOdemeCikan !== false; // varsayılan: sadece ödeme çıkanlar
+
+    if (!donem) {
+      const son = await (this.prisma as any).beyanKaydi.findFirst({
+        where: {
+          tenantId: ctx.tenantId,
+          beyanTipi: { contains: 'KDV' },
+          tahakkukTutari: { not: null, gt: 0 },
+          ...(onlyActive ? { taxpayer: { isActive: true } } : {}),
+        },
+        orderBy: { donem: 'desc' },
+        select: { donem: true },
+      }).catch(() => null);
+      donem = son?.donem || '';
+    }
+    if (!donem) return { error: 'KDV tahakkuk verisi bulunamadı.' };
+
+    const where: any = { tenantId: ctx.tenantId, donem, beyanTipi: { contains: 'KDV' } };
+    where.tahakkukTutari = onlyPayable ? { not: null, gt: 0 } : { not: null };
+    if (onlyActive) where.taxpayer = { isActive: true };
+
+    const kayitlar = await (this.prisma as any).beyanKaydi.findMany({
+      where,
+      select: {
+        beyanTipi: true,
+        tahakkukTutari: true,
+        taxpayer: { select: { companyName: true, firstName: true, lastName: true } },
+      },
+    }).catch(() => []);
+
+    const byTaxpayer = new Map<string, { isim: string; kdv1: number; kdv2: number; toplam: number }>();
+    for (const k of kayitlar) {
+      const isim = (k.taxpayer?.companyName ||
+        `${k.taxpayer?.firstName || ''} ${k.taxpayer?.lastName || ''}`).trim() || 'Mükellef';
+      const tutar = this.toNum(k.tahakkukTutari);
+      const g = byTaxpayer.get(isim) || { isim, kdv1: 0, kdv2: 0, toplam: 0 };
+      if (/KDV\s*2|KDV2/i.test(k.beyanTipi)) g.kdv2 += tutar; else g.kdv1 += tutar;
+      g.toplam += tutar;
+      byTaxpayer.set(isim, g);
+    }
+    const liste = Array.from(byTaxpayer.values()).sort((a, b) => b.toplam - a.toplam);
+    const toplamKdv = liste.reduce((s, r) => s + r.toplam, 0);
+
+    const satirlar = liste.slice(0, 60).map((r, i) => `${i + 1}. ${r.isim}: ${this.fmtTL(r.toplam)}`).join('\n');
+    const whatsappOzet = liste.length
+      ? `🧾 KDV ÖDEMESİ ÇIKAN MÜKELLEFLER — ${donem}\n\n${satirlar}` +
+        `${liste.length > 60 ? `\n… ve ${liste.length - 60} mükellef daha.` : ''}` +
+        `\n\n💰 Toplam: ${this.fmtTL(toplamKdv)} · ${liste.length} mükellef`
+      : `${donem} döneminde KDV ödemesi çıkan mükellef yok.`;
+
+    return {
+      donem,
+      sadeceOdemeCikan: onlyPayable,
+      mukellefSayisi: liste.length,
+      toplamKdv,
+      // Bot bunu AYNEN gönderebilir; owner olduğu için tutarlar paylaşılır.
+      whatsappOzet,
+      liste: liste.map((r) => ({ mukellef: r.isim, kdv1: r.kdv1, kdv2: r.kdv2, toplam: r.toplam })),
+      not: explicit
+        ? undefined
+        : `Dönem belirtilmedi; KDV tahakkuku dolu EN SON dönem (${donem}) gösteriliyor. Dönemi geri SORMA.`,
+    };
+  }
+
   private async getKdvSummary(input: any, ctx: { tenantId: string }) {
     // KdvControlOutput — arşiv tablosu, "YYYY-MM" formatında donem alanı var
     const outputs = await this.prisma.kdvControlOutput.findMany({
