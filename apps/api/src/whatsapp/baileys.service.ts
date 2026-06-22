@@ -207,23 +207,30 @@ export class BaileysService implements OnModuleDestroy {
     if (!id) return;
     const rec = this.recentSends.get(id);
     if (rec) this.storeDelivery(rec.tenantId, id, 'failed');
-    // Yalnız reach-out timelock'ta (463) ve ilk denemede retry et.
-    if (code !== '463' || !rec || rec.tries >= 1) return;
+    // 463 (reach-out timelock) = soğuk-temas kilidi. Kilit ZAMAN-BAZLI; her denemede
+    // biraz daha geçer. Tek denemede vazgeçmek yerine KADEMELİ backoff ile birkaç kez
+    // dene (varsayılan 3). İlk-mesaj (hiç yazmamış mükellef) gönderimi için kritik.
+    const maxRetry = Math.max(1, Number(process.env.WHATSAPP_NACK_MAX_RETRY || 3));
+    if (code !== '463' || !rec || rec.tries >= maxRetry) return;
     rec.tries++;
-    const delay = Number(process.env.WHATSAPP_NACK_RETRY_MS || 12000);
+    const base = Number(process.env.WHATSAPP_NACK_RETRY_MS || 12000);
+    const delay = base * rec.tries; // kademeli: 12s, 24s, 36s …
+    const tries = rec.tries;
     const t = setTimeout(async () => {
       const s = this.sessions.get(rec.tenantId);
       if (!s?.connected || !s.sock) return;
       try {
+        // Yeniden denemeden önce online görün + presence (soğuk-temas ısınması).
+        try { await s.sock.sendPresenceUpdate('available'); await s.sock.presenceSubscribe(rec.jid); } catch { /* önemsiz */ }
         await this.refreshSignalSession(s.sock, rec.jid);
         const sent = await s.sock.sendMessage(rec.jid, rec.payload);
         this.rememberSend(rec.tenantId, rec.jid, rec.payload, sent?.key?.id, sent?.message);
         const nr = this.recentSends.get(String(sent?.key?.id || ''));
-        if (nr) nr.tries = 1; // zincirleme sonsuz retry'ı önle
+        if (nr) nr.tries = tries; // deneme sayacını taşı → backoff sürer, üst sınır korunur
         this.storeDelivery(rec.tenantId, sent?.key?.id, 'sent');
-        this.logger.warn(`[Baileys] 463 sonrasi yeniden gonderildi id=${id} -> ${sent?.key?.id}`);
+        this.logger.warn(`[Baileys] 463 sonrasi yeniden gonderildi (deneme ${tries}/${maxRetry}) id=${id} -> ${sent?.key?.id}`);
       } catch (e: any) {
-        this.logger.warn(`[Baileys] 463 retry basarisiz id=${id}: ${e?.message || e}`);
+        this.logger.warn(`[Baileys] 463 retry (deneme ${tries}) basarisiz id=${id}: ${e?.message || e}`);
       }
     }, delay);
     (t as any).unref?.();
@@ -1078,6 +1085,25 @@ export class BaileysService implements OnModuleDestroy {
   }
 
   /**
+   * SOĞUK-TEMAS ISINMASI (463 azaltma): hedef bize HİÇ yazmamışsa (lastIncoming yok),
+   * göndermeden önce hesabı "online/available" göster + karşı tarafın presence'ına
+   * abone ol + kısa bekle. WhatsApp'a "yeni birine spam atmıyorum, normal etkileşim"
+   * sinyali verir; ilk-mesajın 463 ile kilitlenme olasılığını düşürür. Sıcak temasta
+   * (daha önce yazışılmış) atlanır → normal hız korunur. Kapatma: WHATSAPP_COLD_WARMUP_MS=0.
+   */
+  private async warmUpIfCold(s: Session, jid: string, phone: string): Promise<void> {
+    try {
+      const digits = String(phone).replace(/[^\d]/g, '');
+      if (s.lastIncoming?.get(digits)) return; // sıcak temas → ısınmaya gerek yok
+      const ms = Number(process.env.WHATSAPP_COLD_WARMUP_MS ?? 2500);
+      await s.sock.sendPresenceUpdate('available');
+      try { await s.sock.presenceSubscribe(jid); } catch { /* önemsiz */ }
+      await s.sock.sendPresenceUpdate('composing', jid);
+      if (ms > 0) await new Promise((r) => setTimeout(r, ms));
+    } catch { /* ısınma başarısızsa yine de göndermeyi dene */ }
+  }
+
+  /**
    * İşlem sürerken (AI cevabı üretilirken) telefonda "yazıyor…" göstergesini aç/kapat.
    * Gelen mesajdan HEMEN sonra on=true ile çağrılır, cevap hazır olunca on=false.
    * Amaç: kullanıcı 10-20 sn boş ekrana bakıp "cevap gelmiyor" sanmasın.
@@ -1135,6 +1161,7 @@ export class BaileysService implements OnModuleDestroy {
         this.logger.warn(`[Baileys] tenant=${tenantId} LID hedef cozumlenemedi target=${this.maskTarget(phone)}`);
         return { ok: false, error };
       }
+      await this.warmUpIfCold(s, jid, phone);
       await this.humanPace(s.sock, jid, text);
       await this.refreshSignalSession(s.sock, jid);
       const sent = await this.sendQuoted(s, jid, phone, { text }, opts?.quote);
@@ -1160,6 +1187,7 @@ export class BaileysService implements OnModuleDestroy {
         this.logger.warn(`[Baileys] tenant=${tenantId} LID hedef cozumlenemedi target=${this.maskTarget(phone)}`);
         return false;
       }
+      await this.warmUpIfCold(s, jid, phone);
       await this.humanPace(s.sock, jid, text);
       await this.refreshSignalSession(s.sock, jid);
       const sent = await this.sendQuoted(s, jid, phone, { text }, opts?.quote);
@@ -1199,6 +1227,7 @@ export class BaileysService implements OnModuleDestroy {
       else if (mime.startsWith('video/')) payload = { video: buffer, caption };
       else if (mime.startsWith('audio/')) payload = { audio: buffer, mimetype: mime || 'audio/ogg' };
       else payload = { document: buffer, mimetype: mime || 'application/octet-stream', fileName: media.filename || 'belge', caption };
+      await this.warmUpIfCold(s, jid, phone);
       await this.refreshSignalSession(s.sock, jid);
       const sent = await this.sendQuoted(s, jid, phone, payload, opts?.quote);
       this.rememberSend(tenantId, jid, payload, sent?.key?.id, sent?.message);
@@ -1235,6 +1264,7 @@ export class BaileysService implements OnModuleDestroy {
       else if (mime.startsWith('video/')) payload = { video: buffer, caption };
       else if (mime.startsWith('audio/')) payload = { audio: buffer, mimetype: mime || 'audio/ogg' };
       else payload = { document: buffer, mimetype: mime || 'application/octet-stream', fileName: media.filename || 'belge', caption };
+      await this.warmUpIfCold(s, jid, phone);
       await this.refreshSignalSession(s.sock, jid);
       const sent = await this.sendQuoted(s, jid, phone, payload, opts?.quote);
       this.rememberSend(tenantId, jid, payload, sent?.key?.id, sent?.message);
