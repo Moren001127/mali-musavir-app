@@ -252,9 +252,9 @@ function periodWhere(period?: string | null) {
 @Injectable()
 export class FaturaMuhasebelestirmeService implements OnModuleInit, OnModuleDestroy {
   private readonly logger = new Logger(FaturaMuhasebelestirmeService.name);
-  // Eş zamanlı okuma: Mihsap görüntülerini Max-vision ile okumak yavaş; 2 paralel az kalıyordu.
-  // Varsayılan 3 (Max kotasını zorlamadan throughput artar); INVOICE_OCR_CONCURRENCY ile ayarlanır.
-  private readonly uploadOcrConcurrency = Math.max(1, Number(process.env.INVOICE_OCR_CONCURRENCY || 3));
+  // Eş zamanlı okuma: 3 paralel + agresif resume Max'i bunaltıp "exited code 1" verdiriyordu
+  // (storm). 2'ye düşürüldü; INVOICE_OCR_CONCURRENCY ile ayarlanır (Max kotası elveriyorsa artır).
+  private readonly uploadOcrConcurrency = Math.max(1, Number(process.env.INVOICE_OCR_CONCURRENCY || 2));
   private uploadOcrActive = 0;
   private readonly uploadOcrActiveIds = new Set<string>(); // işlenmekte olan belge id'leri (resume çift-işlemesin)
   private ocrResumeTimer: NodeJS.Timeout | null = null;
@@ -286,8 +286,8 @@ export class FaturaMuhasebelestirmeService implements OnModuleInit, OnModuleDest
     // Sunucu restart'ı in-memory OCR kuyruğunu siler → "AI ile oku"ya basılmış ama henüz
     // okunmamış belgeler PENDING'de öksüz kalıyor (kullanıcı "okunamadı" görüyor). Başlangıçta
     // (kısa gecikme sonra, app tam ayağa kalksın) + periyodik olarak öksüzleri kurtar.
-    setTimeout(() => { this.resumeStuckOcr().catch(() => {}); }, 20000);
-    this.ocrResumeTimer = setInterval(() => { this.resumeStuckOcr().catch(() => {}); }, 120000);
+    setTimeout(() => { this.resumeStuckOcr().catch(() => {}); }, 35000);
+    this.ocrResumeTimer = setInterval(() => { this.resumeStuckOcr().catch(() => {}); }, 300000);
     if (this.ocrResumeTimer.unref) this.ocrResumeTimer.unref();
   }
 
@@ -302,11 +302,15 @@ export class FaturaMuhasebelestirmeService implements OnModuleInit, OnModuleDest
     if (this.ocrResuming) return 0;
     this.ocrResuming = true;
     try {
+      // NAZİK: kuyruk doluyken EKLEME — global yığın oluşturup Max'i bunaltma (storm → "exited
+      // code 1"). Sadece kuyruk boşalınca (idle) KÜÇÜK parti ekle → kullanıcının "AI ile oku"
+      // isteği öncelikli kalsın, arka plan onu ezmesin.
+      if (this.uploadOcrQueue.length >= this.uploadOcrConcurrency) return 0;
       const stuck = await (this.prisma as any).invoiceAccountingDocument.findMany({
         where: { ocrStatus: { in: ['PENDING', 'IN_PROGRESS'] }, status: { not: 'APPROVED' } },
         select: { id: true, tenantId: true },
         orderBy: { createdAt: 'asc' },
-        take: 500,
+        take: 60,
       }).catch(() => []);
       const queued = new Set(this.uploadOcrQueue.map((j) => j.documentId));
       let n = 0;
