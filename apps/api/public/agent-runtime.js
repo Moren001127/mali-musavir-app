@@ -12,7 +12,7 @@
   // v1.42.2 (2026-06-16): Ajan kendini yenilerken (delete __morenAgent) eski async
   // döngü "Cannot read 'stopRequested' of undefined/null" ile ÇÖKÜYORDU → yetim
   // döngü artık nesne yoksa güvenle durur (stopRequested kontrollerine null-guard).
-  const AGENT_VERSION = '1.45.2';
+  const AGENT_VERSION = '1.45.3';
   const AGENT_INSTANCE_ID = 'mai_' + Date.now().toString(36) + '_' + Math.random().toString(36).slice(2, 8);
 
   // === VERSION-AWARE RELOAD ===
@@ -1792,8 +1792,13 @@
 
               // 6) Yükleme tetiklendi → İşlem Takip uyarısını KAPAT → fişi SEÇ → "Fiş Kes" ile
               //    GERÇEK fişi oluştur. (Kullanıcı süreci gösterdi: Yükle → İşlem Takip "Kapat" →
-              //    Fiş No yanı/Tümünü Seç → sağ-alt "Fiş Kes".) Metinli butonlar: DOM tıkla, tutmazsa native.
+              //    Fiş No yanı/Tümünü Seç → sağ-alt "Fiş Kes".)
+              // ÖNEMLİ: Luca'nın form/dialog butonları (Yükle, Fiş Kes, Evet, Tamam...) GÜVENİLİR (native,
+              //   CDP) tık ister. DOM el.click() isTrusted=false olduğundan onclick TETİKLENMİYOR —
+              //   "Yükle"de de böyleydi, "Fiş Kes"te de: buton bulunup tıklanmış SAYILIYOR ('dom' döner)
+              //   ama Luca işlemiyor (fiş kesilmiyor). Bu yüzden ÖNCE native (trusted), tutmazsa DOM yedek.
               const robustClick = async (label, opts = {}) => {
+                if (await nativeClickLucaText(label, { exact: true, settleMs: opts.settleMs || 1200, timeoutMs: 5000 })) return 'native';
                 const want = String(label).toLocaleLowerCase('tr-TR');
                 for (const doc of lucaDocuments()) {
                   try {
@@ -1806,7 +1811,6 @@
                     }
                   } catch {}
                 }
-                if (await nativeClickLucaText(label, { exact: true, settleMs: opts.settleMs || 1200, timeoutMs: 5000 })) return 'native';
                 return null;
               };
               // (islemTakipAcik yukarıda — popup başlık öğesine göre — tanımlandı)
