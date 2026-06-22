@@ -968,6 +968,7 @@ function InlineBelge({ id }: { id: string }) {
   const [d, setD] = useState<any | null>(null);
   const [zoom, setZoom] = useState(1);   // çarpan: 1 = Sığdır = %100 (tüm fatura); 1.5 = %150 yakın
   const [fit, setFit] = useState(1);
+  const [blobUrl, setBlobUrl] = useState(''); // XML data: URL → blob (same-origin, ölçülebilir + XSLT render)
   const frameRef = useRef<HTMLIFrameElement | null>(null);
   const wrapRef = useRef<HTMLDivElement | null>(null);
   // HTML belge: belgeyi panonun GENİŞLİĞİNE sığdır (fit-to-width) → yanlarda boşluk
@@ -1010,6 +1011,19 @@ function InlineBelge({ id }: { id: string }) {
       .catch(() => { if (alive) setD({}); });
     return () => { alive = false; };
   }, [id]);
+  // XML (e-arşiv) data: URL'i blob URL'e çevir → same-origin olur, ölçüp sığdırabiliriz.
+  useEffect(() => {
+    setBlobUrl('');
+    const u = (d && (typeof d.url === 'string' ? d.url : d.fileUrl)) || '';
+    const mt = String(d?.mimeType || '');
+    const xml = !!u && !mt.startsWith('image/') && !(typeof d?.inlineHtml === 'string' && d.inlineHtml) &&
+      (/^data:(application|text)\/xml/i.test(u) || mt.includes('xml'));
+    if (!xml || !/^data:/i.test(u)) return;
+    let created = '';
+    let alive = true;
+    fetch(u).then((r) => r.blob()).then((b) => { if (!alive) return; created = URL.createObjectURL(b); setBlobUrl(created); }).catch(() => {});
+    return () => { alive = false; if (created) setTimeout(() => URL.revokeObjectURL(created), 500); };
+  }, [d]);
   if (!d) return <div className="belgebox"><div className="bpempty">Belge yükleniyor…</div></div>;
   const url = typeof d.url === 'string' ? d.url : typeof d.fileUrl === 'string' ? d.fileUrl : '';
   const html = typeof d.inlineHtml === 'string' ? d.inlineHtml : '';
@@ -1018,15 +1032,17 @@ function InlineBelge({ id }: { id: string }) {
     /^data:image\//i.test(url) ||
     /\.(jpe?g|jpe|jfif|png|gif|webp|bmp|tiff?|heic|heif|avif)(\?|#|$)/i.test(url)
   );
-  const isPdf = !html && !isImg && !!url;
+  // e-Arşiv XML: PDF gibi ham iframe'e koymak yerine blob + ölç-ve-sığdır (boşluk olmasın)
+  const isXml = !html && !isImg && !!url && (/^data:(application|text)\/xml/i.test(url) || (d.mimeType || '').includes('xml'));
+  const isPdf = !html && !isImg && !isXml && !!url;
   // e-faturanın kendi iç kaydırmasını/yükseklik kilidini kapat → içerik düz aksın,
   // "ekran içinde ekran" (iç içe kaydırma) olmasın; gerçek yükseklik ölçülebilsin.
   const htmlDoc = html
     ? `<style>html,body{margin:0!important;padding:0!important;height:auto!important;min-height:0!important;max-height:none!important;overflow:visible!important}</style>${html}`
     : '';
   // zoom = çarpan (1 = Sığdır = %100 = tüm fatura). Gerçek ölçek = taban(fit/contain) × zoom.
-  const appliedScale = (html ? fit : 1) * zoom;
-  const canZoom = html || isImg;
+  const appliedScale = (html || isXml ? fit : 1) * zoom;
+  const canZoom = html || isImg || isXml;
   const dz = (delta: number) => setZoom((z) => Math.min(5, Math.max(0.25, Math.round((z + delta) * 100) / 100)));
   return (
     <div className="belgebox">
@@ -1049,9 +1065,11 @@ function InlineBelge({ id }: { id: string }) {
           ? <iframe ref={frameRef} onLoad={onFrameLoad} className="bpframe-h" srcDoc={htmlDoc} title="Belge" sandbox="allow-same-origin" scrolling="no" style={{ zoom: appliedScale } as any} />
           : isImg
             ? <img className="bpimg" src={url} alt="Belge" style={{ zoom: appliedScale } as any} />
-            : isPdf
-              ? <iframe className="bppdf" src={url.includes('#') ? url : `${url}#view=FitH`} title="Belge" />
-              : <div className="bpempty">Belge görüntüsü yok</div>}
+            : isXml
+              ? <iframe ref={frameRef} onLoad={onFrameLoad} className="bpframe-h" src={blobUrl || url} title="Belge" scrolling="no" style={{ zoom: appliedScale } as any} />
+              : isPdf
+                ? <iframe className="bppdf" src={url.includes('#') ? url : `${url}#view=FitH`} title="Belge" />
+                : <div className="bpempty">Belge görüntüsü yok</div>}
       </div>
     </div>
   );
@@ -1062,12 +1080,17 @@ function ScreenMuhasebe({ taxpayerId, period, isIsletme = false, taxpayerNace = 
   const qc = useQueryClient();
   const docsQ = useDocuments(taxpayerId, period);
   const all: any[] = docsQ.data || [];
+  const dirOf = (d: any) => (String(d.invoiceKind || '').includes('SATIS') ? 'SATIS' : 'ALIS');
+  const [dir, setDir] = useState<'ALL' | 'ALIS' | 'SATIS'>('ALL');
+  const cAlis = all.filter((d) => dirOf(d) === 'ALIS').length;
+  const cSatis = all.filter((d) => dirOf(d) === 'SATIS').length;
+  const allF = dir === 'ALL' ? all : all.filter((d) => dirOf(d) === dir);
   const hasCode = (d: any) => Array.isArray(d.lines) && d.lines.some((l: any) => l.accountCode);
   const hasAmount = (d: any) => { const p = kdvParts(d); return (Number(p.matrah) || 0) > 0 || (Number(p.kdv) || 0) > 0 || Number(d.totalAmount) > 0; };
   // İşletme defterinde hesap kodu yok — hazır olma şartı belgenin tutarının olması.
   const ready = (d: any) => (isIsletme ? hasAmount(d) : hasCode(d));
-  const hazir = all.filter((d) => d.status !== 'APPROVED' && ready(d));
-  const eksik = all.filter((d) => d.status !== 'APPROVED' && !ready(d));
+  const hazir = allF.filter((d) => d.status !== 'APPROVED' && ready(d));
+  const eksik = allF.filter((d) => d.status !== 'APPROVED' && !ready(d));
 
   const [selId, setSelId] = useState<string>('');
   const selDoc = [...hazir, ...eksik].find((d) => d.id === selId) || hazir[0] || eksik[0];
@@ -1327,6 +1350,11 @@ function ScreenMuhasebe({ taxpayerId, period, isIsletme = false, taxpayerNace = 
             )}
           </div>
         <div className="wstrip">
+          <div className="wfilter">
+            <button className={dir === 'ALL' ? 'on' : ''} onClick={() => setDir('ALL')}>Tümü ({all.length})</button>
+            <button className={dir === 'ALIS' ? 'on' : ''} onClick={() => setDir('ALIS')}>Alış ({cAlis})</button>
+            <button className={dir === 'SATIS' ? 'on' : ''} onClick={() => setDir('SATIS')}>Satış ({cSatis})</button>
+          </div>
           {[...hazir.map((d: any) => ({ d, ready: true })), ...eksik.slice(0, 40).map((d: any) => ({ d, ready: false }))].map(({ d, ready }) => {
             const code = (Array.isArray(d.lines) ? d.lines.find((l: any) => l.accountCode) : null)?.accountCode || '';
             return (
@@ -2036,6 +2064,9 @@ const CSS = `
 #fm-root .fgrp .frowadd:hover{background:var(--accent-soft)}
 #fm-root .wmain{padding:18px}
 #fm-root .wstrip{display:flex;gap:9px;overflow-x:auto;padding:11px 16px;border-top:1px solid var(--line);background:#fbfcfd}
+#fm-root .wfilter{flex:0 0 auto;display:flex;gap:4px;align-items:center;padding-right:10px;margin-right:2px;border-right:1px solid var(--line2)}
+#fm-root .wfilter button{padding:6px 11px;border:1px solid var(--line2);border-radius:8px;background:#fff;cursor:pointer;font-size:12px;font-weight:600;white-space:nowrap;color:#475569}
+#fm-root .wfilter button.on{background:#2dd4bf;border-color:#2dd4bf;color:#06302b}
 #fm-root .wchip{flex:0 0 auto;max-width:230px;padding:8px 12px;border:1px solid var(--line2);border-radius:9px;background:#fff;cursor:pointer;display:flex;flex-direction:column;gap:2px}
 #fm-root .wchip:hover{border-color:var(--accent-line)}
 #fm-root .wchip.on{border-color:var(--accent);background:var(--accent-soft);box-shadow:inset 0 -2px 0 var(--accent)}
