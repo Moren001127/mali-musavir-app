@@ -2184,7 +2184,30 @@ export class FaturaMuhasebelestirmeService {
     await (this.prisma as any).invoiceAccountingDocument.updateMany({
       where: { id: documentId, tenantId }, data: { ocrStatus: 'IN_PROGRESS' },
     }).catch(() => {});
-    const r: any = await this.aiReadDocument(tenantId, documentId).catch((e: any) => ({ ok: false, reason: e?.message || 'okuma hatası' }));
+    let r: any = await this.aiReadDocument(tenantId, documentId).catch((e: any) => ({ ok: false, reason: e?.message || 'okuma hatası' }));
+    // GÜVENLİK AĞI: Max-vision çökerse (ör. "exited with code 1") Mihsap belgesini DOĞRU
+    // mihsapInvoice DB id'siyle processMihsapDocumentOcr'a düşür → Azure yedeği okur.
+    if (!r?.ok) {
+      const doc = await (this.prisma as any).invoiceAccountingDocument.findFirst({
+        where: { id: documentId, tenantId }, select: { source: true, sourceRefId: true, invoiceKind: true },
+      }).catch(() => null);
+      if (doc?.source === 'mihsap' && doc?.sourceRefId) {
+        const inv = await (this.prisma as any).mihsapInvoice.findFirst({
+          where: { tenantId, mihsapId: String(doc.sourceRefId) }, select: { id: true },
+        }).catch(() => null);
+        if (inv?.id) {
+          await this.processMihsapDocumentOcr(
+            tenantId, documentId, String(inv.id),
+            (doc.invoiceKind === 'SATIS' ? 'SATIS' : 'ALIS') as 'ALIS' | 'SATIS',
+          ).catch(() => {});
+          // processMihsapDocumentOcr ocrStatus'u kendi içinde yazar (SUCCESS/NEEDS_REVIEW/FAILED).
+          const after = await (this.prisma as any).invoiceAccountingDocument.findFirst({
+            where: { id: documentId, tenantId }, select: { ocrStatus: true },
+          }).catch(() => null);
+          if (after && after.ocrStatus !== 'FAILED') return; // Azure okudu
+        }
+      }
+    }
     await (this.prisma as any).invoiceAccountingDocument.updateMany({
       where: { id: documentId, tenantId },
       data: r?.ok
@@ -5318,13 +5341,19 @@ export class FaturaMuhasebelestirmeService {
       return { ok: false, reason: imgBuf ? `belge biçimi okunamadı (${imgMedia || 'bilinmeyen'}, ${imgBuf.length}b)` : 'belge dosyası boş/gelmedi' };
     }
 
-    // GÖRÜNTÜ SIKIŞTIRMA: yüksek çözünürlüklü fatura JPEG'i Max-vision CLI'ı çökertiyordu
-    // ("Claude Code process exited with code 1"). ~1600px'e indirip kaliteyi düşür → çökmez,
-    // hızlı okunur, metin yine net. (sharp zaten bağımlı.)
-    if (isImage && imgBuf && imgBuf.length > 350_000) {
+    // GÖRÜNTÜ YENİDEN-KODLAMA: bazı fatura JPEG'leri (CMYK renk uzayı / progressive / bozuk
+    // EXIF / şeffaflık) Max-vision CLI'ı çökertiyordu ("Claude Code process exited with code 1").
+    // HER görüntüyü sharp ile temiz baseline RGB JPEG'e çevir + küçült → bu çökmeyi giderir,
+    // hızlandırır; metin yine okunur. (sharp zaten bağımlı.)
+    if (isImage && imgBuf) {
       try {
         const sharp = require('sharp');
-        imgBuf = await sharp(imgBuf).rotate().resize({ width: 1600, withoutEnlargement: true }).jpeg({ quality: 78 }).toBuffer();
+        imgBuf = await sharp(imgBuf)
+          .rotate()
+          .flatten({ background: '#ffffff' })
+          .resize({ width: 1500, withoutEnlargement: true })
+          .jpeg({ quality: 75 })
+          .toBuffer();
         imgMedia = 'image/jpeg';
       } catch { /* sharp başarısızsa orijinali gönder */ }
     }
