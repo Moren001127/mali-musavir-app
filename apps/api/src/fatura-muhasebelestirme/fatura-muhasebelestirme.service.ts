@@ -3354,6 +3354,7 @@ export class FaturaMuhasebelestirmeService {
     // K7: tevkifat tespiti — fatura tevkifatlı (OCR'da tevkifat tutarı/oranı) ama tevkifat
     // fişi (360/KDV2 sorumlu sıfatı) kurulmamışsa onayda blokla (düz KDV ile gitmesin).
     const tevkifatli = Number(ocrData?.kdvTevkifat || 0) > 0 || Number(ocrData?.tevkifatOrani || 0) > 0 || ocrData?.tevkifatHint === true;
+    const tevkifatOrani = Number(ocrData?.tevkifatOrani || 0);
     const hasTevkifatLine = (doc.lines || []).some((l: any) => String(l.accountCode || '').startsWith('360'));
     // Faz D/1: iade/iptal — normal kayıt yapılmasın (ters kayıt/610 gerekli). 610 satırı
     // varsa müşavir düzeltmiş demektir → engelleme.
@@ -3366,6 +3367,7 @@ export class FaturaMuhasebelestirmeService {
       invoiceKind: doc.invoiceKind,
       tevkifatli,
       hasTevkifatLine,
+      tevkifatOrani,
       isReturn,
       hasReturnLine,
       documentType: doc.documentType,
@@ -4864,6 +4866,7 @@ export class FaturaMuhasebelestirmeService {
     kdvBreakdown?: Array<{ rate: number; base: number; amount: number }> | null;
     tevkifatli?: boolean;
     hasTevkifatLine?: boolean;
+    tevkifatOrani?: number;
     isReturn?: boolean;
     hasReturnLine?: boolean;
     documentType?: string | null;
@@ -5004,14 +5007,25 @@ export class FaturaMuhasebelestirmeService {
       });
     }
 
-    // ── 6) TEVKIFAT_NEEDED — tevkifatlı fatura ama tevkifat fişi (360/KDV2) yok.
-    //     Düz KDV ile onaylanıp Luca'ya gitmesin; müşavir "Tevkifat fişini kur" yapmalı.
-    if (opts.tevkifatli && !opts.hasTevkifatLine) {
-      issues.push({
-        code: 'TEVKIFAT_NEEDED',
-        severity: 'ERROR',
-        message: 'Tevkifatlı fatura — tevkifat fişi (KDV2 / 360 sorumlu sıfatı) kurulmadan onaylanamaz. "Tevkifat fişini kur" ile oranı seç.',
-      });
+    // ── 6) TEVKIFAT — yöne göre:
+    //   • ALIŞ tevkifat: alıcı KDV2 sorumlu sıfatıyla beyan eder → 360 satırı ŞART; yoksa blokla.
+    //   • SATIŞ tevkifat: satıcı yalnız NET KDV'yi tahsil/beyan eder (360 GEREKMEZ). Ama tevkifat
+    //     tutarı OKUNMADIYSA (tevkifatOrani=0) yevmiye TAM KDV ile çıkar → yanlış; kontrol et.
+    if (opts.tevkifatli) {
+      const sale = String(opts.invoiceKind || '').toUpperCase() === 'SATIS';
+      if (!sale && !opts.hasTevkifatLine) {
+        issues.push({
+          code: 'TEVKIFAT_NEEDED',
+          severity: 'ERROR',
+          message: 'Tevkifatlı ALIŞ — sorumlu sıfatıyla KDV2 (360) satırı kurulmadan onaylanamaz. "Tevkifat fişini kur" ile oranı seç.',
+        });
+      } else if (sale && !(Number(opts.tevkifatOrani || 0) > 0)) {
+        issues.push({
+          code: 'TEVKIFAT_NET_NEEDED',
+          severity: 'ERROR',
+          message: 'Tevkifatlı SATIŞ — tevkifat tutarı okunamadı, KDV TAM görünüyor. Tevkifat oranını gir (KDV net hesaplanmalı: tahsil edilen = KDV − tevkifat).',
+        });
+      }
     }
 
     // Sonuç durumu
@@ -5346,6 +5360,7 @@ export class FaturaMuhasebelestirmeService {
       'belgeTuru: belgenin üstündeki ibareye göre → "e-arsiv" (e-Arşiv Fatura), "e-fatura" (e-Fatura), "e-smm" (Serbest Meslek Makbuzu / SMM), "fis" (yazarkasa/ÖKC fişi), yoksa "diger".',
       'JSON\'a "iade": true/false ekle — belge bir İADE FATURASI / İPTAL / CreditNote ise true (üstte "İADE", "İADE FATURASI" yazar ya da senaryo İADE/IPTAL\'dir), normal satış/alış faturasıysa false.',
       'JSON\'a "tevkifat": true/false ekle — belgede KDV TEVKİFATI varsa true (Fatura Tipi: TEVKIFAT, ya da "KDV TEVKİFAT (%..)=... TL" satırı/Diğer Vergiler\'de tevkifat), yoksa false.',
+      'JSON\'a "tevkifatKdv": <tevkifata düşen KDV tutarı (TL) sayı, yoksa 0> ekle — belgede "Hesaplanan KDV Tevkifat", "KDV TEVKİFAT(%..)=... TL" ya da "Tevkifata Tabi İşlem Üzerinden Hes. KDV"den ALIKONAN/tevkif edilen KDV kısmı. Örn "KDV TEVKİFAT(%20,00)=520,00 TL" → 520. Tevkifat yoksa 0.',
       'saticiAd/aliciAd: SATICI (faturayı kesen) ve ALICI (SAYIN/müşteri) ünvanları. saticiVkn/aliciVkn: bu tarafların VKN (10 hane) ya da TC (11 hane) — SADECE rakam. Yazarkasa fişinde satıcı = mağaza. toplam: genel/ödenecek toplam (KDV dahil). Bulamazsan null, UYDURMA.',
       'KURALLAR: Türk sayı biçimi "1.234,56" = 1234.56 (tümünü ondalıklı sayıya çevir). Birden çok KDV oranı varsa her oran ayrı nesne. matrah=KDV hariç tutar, kdv=o orana ait KDV. ÖTV/ÖİV/tevkifat varsa matrahı şişirme — gerçek mal/hizmet matrahını ver. Okunamayan alanı null bırak, UYDURMA.',
       'kategori: faturadaki mal/hizmetin TÜRÜNE göre TEK kelime seç → "ticari_mal" (satılmak üzere alınan ürün/emtia), "hammadde" (üretimde kullanılan ilk madde/malzeme), "demirbas" (makine/cihaz/ekipman/mobilya/bilgisayar gibi sabit kıymet alımı), "pazarlama" (reklam/ilan/kargo-nakliye/pazarlama), "genel_gider" (kira/elektrik/su/doğalgaz/telefon/internet/akaryakıt/danışmanlık/kırtasiye/yemek/abonelik gibi genel giderler). EMİN DEĞİLSEN "genel_gider".',
@@ -5402,9 +5417,15 @@ export class FaturaMuhasebelestirmeService {
     if (ownVkn && vknOk(aiSaticiVkn) && ownVkn === aiSaticiVkn) kind = 'SATIS';
     else if (ownVkn && vknOk(aiAliciVkn) && ownVkn === aiAliciVkn) kind = 'ALIS';
     const isSale = kind === 'SATIS';
-    // Toplam GÖRÜNTÜDEN okunur (Mihsap toplamına güvenmeyiz); okunamazsa matrah+KDV.
+    // TEVKİFAT: okunan tevkifat KDV tutarından oran çıkar (520/2600=0.2). linesFromAmounts'un
+    // tevkifat yolu NET KDV + ÖDENECEK cariyi doğru üretir (tam KDV/tam toplam değil).
+    const tevkKdv = Number(parsed.tevkifatKdv) || 0;
+    const tevkifatOrani = (tevkKdv > 0 && kdv > 0 && tevkKdv < kdv) ? Math.round((tevkKdv / kdv) * 1000) / 1000 : 0;
+    // Toplam: tevkifatlıda ödenecek = matrah + NET KDV (validasyon yevmiyeyle tutsun).
     const readTotal = Number(parsed.toplam) || 0;
-    const total = readTotal > 0 ? readTotal : Math.round((matrah + kdv) * 100) / 100;
+    const total = tevkifatOrani > 0
+      ? Math.round((matrah + kdv * (1 - tevkifatOrani)) * 100) / 100
+      : (readTotal > 0 ? readTotal : Math.round((matrah + kdv) * 100) / 100);
     // Karşı taraf (cari) adı: satışta ALICI, alışta SATICI.
     const counterName = String((isSale ? parsed.aliciAd : parsed.saticiAd) || '').trim();
     // Belge türü: önce GERÇEK METİNDEN (e-Arşiv/e-Fatura ibaresi), yoksa AI'nın dediği.
@@ -5415,6 +5436,7 @@ export class FaturaMuhasebelestirmeService {
       matrah, kdvTutari: kdv, kdvOrani: breakdown[0].rate, total,
       vendorName: counterName || (isSale ? d.customerName : d.vendorName),
       kdvBreakdown: breakdown,
+      tevkifatOrani: tevkifatOrani || null,
     }));
     await (this.prisma as any).$transaction(async (tx: any) => {
       await tx.invoiceAccountingLine.deleteMany({ where: { documentId: d.id } });
@@ -5434,7 +5456,7 @@ export class FaturaMuhasebelestirmeService {
           ...(counterName ? (isSale ? { customerName: counterName } : { vendorName: counterName }) : {}),
           status: 'NEEDS_REVIEW',
           ocrEngine: 'max-vision',
-          ocrData: { ...((d.ocrData as any) || {}), matrah, kdvTutari: kdv, kdvOrani: breakdown[0].rate, kdvBreakdown: breakdown.map((b: any) => ({ oran: b.rate, matrah: b.base, tutar: b.amount })), matrahKategori: typeof parsed.kategori === 'string' ? parsed.kategori : undefined, isReturn: parsed.iade === true || /iade|iptal/i.test(String(parsed.belgeTuru || '')), tevkifatHint: parsed.tevkifat === true || /tevkifat/i.test(String(html || '')), engine: parsed === preParsed ? 'ubl-xml' : 'max-vision' },
+          ocrData: { ...((d.ocrData as any) || {}), matrah, kdvTutari: kdv, kdvOrani: breakdown[0].rate, kdvBreakdown: breakdown.map((b: any) => ({ oran: b.rate, matrah: b.base, tutar: b.amount })), matrahKategori: typeof parsed.kategori === 'string' ? parsed.kategori : undefined, isReturn: parsed.iade === true || /iade|iptal/i.test(String(parsed.belgeTuru || '')), tevkifatHint: parsed.tevkifat === true || tevkifatOrani > 0 || /tevkifat/i.test(String(html || '')), tevkifatOrani: tevkifatOrani || 0, tevkifatKdv: tevkKdv || 0, engine: parsed === preParsed ? 'ubl-xml' : 'max-vision' },
         },
       });
     });
