@@ -12,7 +12,7 @@
   // v1.42.2 (2026-06-16): Ajan kendini yenilerken (delete __morenAgent) eski async
   // döngü "Cannot read 'stopRequested' of undefined/null" ile ÇÖKÜYORDU → yetim
   // döngü artık nesne yoksa güvenle durur (stopRequested kontrollerine null-guard).
-  const AGENT_VERSION = '1.44.0';
+  const AGENT_VERSION = '1.44.1';
   const AGENT_INSTANCE_ID = 'mai_' + Date.now().toString(36) + '_' + Math.random().toString(36).slice(2, 8);
 
   // === VERSION-AWARE RELOAD ===
@@ -1798,11 +1798,44 @@
                 return false;
               };
               await sleep(1500);
-              // 6a) İşlem Takip uyarısını kapat
+              // 6a) İşlem Takip uyarısını KAPAT — kapatma ✕ İKONUDUR (metin "Kapat" DEĞİL; v1.44.0'da
+              //     "Kapat" arandığı için kapanmıyordu). "İşlem Takip" başlıklı popup'ı bul → başlık
+              //     çubuğundaki ✕/close öğesini tıkla; yedek ESC.
+              const closeIslemTakipX = () => {
+                for (const doc of lucaDocuments()) {
+                  try {
+                    let titleEl = null;
+                    for (const el of doc.querySelectorAll('div,span,td,th,b,font')) {
+                      if (/^\s*i[şs]lem\s+takip\s*$/i.test((el.textContent || '').trim()) && el.children.length <= 1) { titleEl = el; break; }
+                    }
+                    if (!titleEl) continue;
+                    let box = titleEl;
+                    for (let up = 0; up < 4 && box.parentElement; up++) box = box.parentElement;
+                    const cands = [];
+                    for (const el of box.querySelectorAll('span,a,div,button,img,input[type=button],input[type=image]')) {
+                      const t = ((el.textContent || el.value || el.alt || '') + '').trim();
+                      const meta = (String(el.className || '') + ' ' + String(el.id || '') + ' ' + String(el.title || '') + ' ' + String((el.getAttribute && el.getAttribute('onclick')) || '') + ' ' + String(el.src || '')).toLowerCase();
+                      const isX = ['x', '×', '✕', '✖'].includes(t.toLowerCase());
+                      const isClose = /close|kapat|hide|gizle/.test(meta);
+                      if ((isX || isClose) && (el.offsetParent !== null || el.tagName === 'A' || el.tagName === 'IMG')) {
+                        let top = 0; try { top = el.getBoundingClientRect().top; } catch {}
+                        cands.push({ el, top });
+                      }
+                    }
+                    if (cands.length) { cands.sort((a, b) => a.top - b.top); try { cands[0].el.click(); } catch {} return true; }
+                  } catch {}
+                }
+                return false;
+              };
               if (islemTakipAcik()) {
-                await robustClick('Kapat', { settleMs: 800 });
-                for (let i = 0; i < 16 && islemTakipAcik(); i++) { await sleep(300); }
-                await log('✓ İşlem Takip uyarısı kapatıldı');
+                let kapandi = false;
+                for (let tries = 0; tries < 6 && !kapandi; tries++) {
+                  closeIslemTakipX();
+                  try { for (const doc of lucaDocuments()) { for (const tgt of [doc, doc.body, doc.documentElement].filter(Boolean)) { try { tgt.dispatchEvent(new KeyboardEvent('keydown', { key: 'Escape', code: 'Escape', keyCode: 27, which: 27, bubbles: true, cancelable: true })); tgt.dispatchEvent(new KeyboardEvent('keyup', { key: 'Escape', code: 'Escape', keyCode: 27, which: 27, bubbles: true, cancelable: true })); } catch {} } } } catch {}
+                  await sleep(700);
+                  if (!islemTakipAcik()) kapandi = true;
+                }
+                await log(kapandi ? '✓ İşlem Takip uyarısı kapatıldı (✕)' : '⚠ İşlem Takip kapatılamadı — yine de devam deneniyor');
               }
               await sleep(900);
               // 6b) Fişi SEÇ — alt çubuk "Tümünü Seç"; tutmazsa Fiş No yanındaki ilk checkbox
