@@ -181,6 +181,10 @@ const TOOL_GROUPS: Array<{ pattern: RegExp; tools: string[] }> = [
   { pattern: /şirket yönetimi|sirket yonetimi|planlama|iş planı|is plani|strateji|performans|kpi|görev|gorev|iş akışı|is akisi|risk yönetimi|risk yonetimi/i, tools: ['get_operation_briefing', 'get_beyanname_readiness_summary', 'get_collection_risk_summary', 'get_agent_status', 'list_taxpayers_monthly_status'] },
   // PORTFÖY-GENELİ KDV ödeme listesi: "kdv çıkan mükellefler/tutarları", "kimlere ödeme çıkıyor".
   { pattern: /kdv.*(çıkan|cikan|öde|ode|tutar|borç|borc|ödeyecek|odeyecek|çıkıyor|cikiyor)|(kim|hangi|tüm|tum|herkes|liste).*kdv|kdv.*(kim|liste|mükellef|musteri)/i, tools: ['list_kdv_payable', 'get_kdv_summary', 'list_taxpayers_monthly_status'] },
+  // "kdv" geçmeyen ama ödeme/tahakkuk listesi soran haller ("kimlere ödeme çıkıyor",
+  // "ödeme tutarlarını yaz", "kim ne kadar ödeyecek") → KDV ödeme listesi aracını sun
+  // (vergi ödemesinin baskın hali KDV); AI gerekirse SGK/diğer için ayrıca yönlendirir.
+  { pattern: /(kim|hangi|tüm|tum|herkes|liste|kaç|kac).{0,20}(öde|ode|tahakkuk|borç|borc).{0,12}(çık|cik|var|kim|yaz|tutar)|(öde|ode|tahakkuk).{0,12}(çıkan|cikan|çıkıyor|cikiyor)|ödeme tutar|odeme tutar|kim ne kadar öde|kim ne kadar ode/i, tools: ['list_kdv_payable', 'list_beyan_kayitlari', 'get_collection_risk_summary'] },
   { pattern: /kdv|beyan|muhtasar|muhsgk|kurumlar|damga|tahakkuk|onay no|hattat|verilebil|verilecek|hazir|hazır/i, tools: ['list_kdv_payable', 'get_kdv_summary', 'list_beyan_kayitlari', 'get_beyanname_config', 'get_beyan_ozet', 'get_beyanname_readiness_summary', 'list_taxpayers_monthly_status', 'get_tax_calendar'] },
   { pattern: /fatura|muhasebeleştir|muhasebelestir|mihsap|tedarikçi|tedarikci|alıcı|alici|firma hafıza|firma hafiza/i, tools: ['list_invoices', 'get_firma_hafizasi', 'get_mihsap_agent_jobs', 'list_pending_decisions'] },
   { pattern: /sgk|bordro|personel|prim|işçi|isci|işveren|isveren/i, tools: ['get_payroll_summary', 'list_sgk_declarations'] },
