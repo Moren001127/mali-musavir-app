@@ -912,6 +912,26 @@ export class MorenAiService {
     });
   }
 
+  /**
+   * Canlı ses oturumu için sahibin kimliği (ad + ofis). Realtime talimatına gömülür
+   * ki ses katmanı "ben kimim / beni tanıyor musun" sorularını anında, doğru cevaplasın
+   * (metin MOREN AI zaten tanıyor; ses oturumuna kimlik geçmiyordu).
+   */
+  async getVoiceIdentity(
+    tenantId: string,
+    userId: string | null,
+  ): Promise<{ userName?: string; officeName?: string }> {
+    const user = userId
+      ? await this.prisma.user
+          .findFirst({ where: { id: userId }, include: { tenant: true } })
+          .catch(() => null)
+      : null;
+    const userName =
+      cleanFirstName(user?.firstName) || cleanFirstName(user?.lastName) || undefined;
+    const officeName = user?.tenant?.name || undefined;
+    return { userName, officeName };
+  }
+
   async logRealtimeUsage(
     tenantId: string,
     userId: string | null,

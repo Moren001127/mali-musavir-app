@@ -147,8 +147,12 @@ export class MorenAiController {
   }
 
   @Get('voice/realtime-token')
-  async realtimeToken() {
-    return this.voice.createRealtimeClientSecret();
+  async realtimeToken(@Req() req: any) {
+    // Sahibin kimliğini ses oturumuna taşı — "ben kimim" anında cevaplanır.
+    const identity = await this.service
+      .getVoiceIdentity(req.user.tenantId, req.user.sub)
+      .catch(() => ({}));
+    return this.voice.createRealtimeClientSecret(identity);
   }
 
   // -------- KISA YOL: ses dosyası → chat → ses (tek uç) --------

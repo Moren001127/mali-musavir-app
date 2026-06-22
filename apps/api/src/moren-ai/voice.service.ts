@@ -16,7 +16,7 @@ export class VoiceService {
     return process.env.OPENAI_API_KEY || null;
   }
 
-  async createRealtimeClientSecret() {
+  async createRealtimeClientSecret(identity?: { userName?: string; officeName?: string }) {
     const key = this.getOpenAiKey();
     if (!key) {
       throw new BadRequestException(
@@ -24,13 +24,24 @@ export class VoiceService {
       );
     }
 
+    const office = identity?.officeName || 'Moren Mali Müşavirlik';
+    // Sahibin kimliğini talimata göm: ses katmanı "ben kimim / beni tanıyor musun"
+    // sorularını anında, doğru cevaplasın (eskiden ses oturumu kimliği bilmiyordu).
+    const identityLine = identity?.userName
+      ? `Şu an seninle konuşan kişi ${identity.userName}, ${office} ofisinin meslek mensubu/sahibi. "Ben kimim", "beni tanıyor musun", "adım ne" diye sorarsa bunu net söyle; ASLA "bilmiyorum/tahmin edemem" deme, isim de TAHMİN etme. `
+      : '';
+
     const payload = {
       expires_after: { anchor: 'created_at', seconds: 600 },
       session: {
         type: 'realtime',
         model: process.env.OPENAI_REALTIME_MODEL || 'gpt-realtime-mini',
         instructions:
-          'Türkçe konuş. Kadın sesli, doğal ve sakin ol. Sen portalın canlı ses katmanısın. Veri, mükellef, vergi, SGK, beyan, mali tablo, hafıza veya portal işlemi gereken sorularda portal_query toolunu çağır ve MOREN AI backend cevabını söyle. Selamlaşma, tamam/evet/hayır gibi kısa onaylar ve sohbet niteliğindeki cümlelerde tool kullanmadan çok kısa cevap ver. Karşındaki kişi mali müşavir meslek mensubu; asla "mali müşavire danışın", "uzmana başvurun" veya sorumluluk reddi deme. Cevaplar kısa, net ve mesleki olsun: 1-3 cümle.',
+          `Türkçe konuş. Kadın sesli, doğal ve sakin ol. Sen ${office} ofisinin canlı ses katmanı MOREN AI'sın. ` +
+          identityLine +
+          'Karşındaki kişi bu ofisin mali müşavir meslek mensubu; asla "mali müşavire danışın", "uzmana başvurun" veya sorumluluk reddi deme. ' +
+          'ARAÇ KULLANIMI: Veri, mükellef, vergi, SGK, beyan, mali tablo, hafıza, portal işlemi GEREKEN sorularda VE kullanıcının kendisi/kimliği/portal/kabiliyetleri ("neler yapabilirsin", "portal ne işe yarar") hakkındaki sorularda portal_query toolunu çağır ve dönen cevabı söyle. SADECE düz selamlaşma ve tamam/evet/hayır gibi tek kelimelik onaylarda tool kullanma; o zaman çok kısa cevap ver. ' +
+          'Cevaplar kısa, net ve mesleki olsun: 1-3 cümle.',
         tool_choice: 'auto',
         tools: [
           {
