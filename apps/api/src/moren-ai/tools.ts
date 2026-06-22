@@ -266,23 +266,29 @@ export const MOREN_AI_TOOLS: ToolDefinition[] = [
 
   // ============ KDV ============
   {
-    name: 'list_kdv_payable',
+    name: 'list_tax_payable',
     description:
-      'TEK ÇAĞRIDA ofisteki TÜM mükelleflerin belirli bir dönemde ÖDEYECEĞİ KDV (KDV1+KDV2 tahakkuk) tutarını listeler. ' +
-      '"KDV çıkan mükellefler ve tutarları", "kimlere KDV ödemesi çıkıyor", "bu dönem KDV ödeyecekler kimler", ' +
-      '"KDV ödeme tutarlarını yaz" gibi PORTFÖY-GENELİ KDV sorularında MUTLAKA bunu kullan — get_kdv_summary TEK mükellef içindir, onu 50 kez çağırma. ' +
-      'Dönem YYYY-MM (örn "2026-05"=Mayıs dönemi). Dönem BOŞ bırakılırsa KDV tahakkuku DOLU EN SON dönem otomatik seçilir — kullanıcıya dönemi GERİ SORMA, listeyi hemen ver. ' +
+      'TEK ÇAĞRIDA ofisteki TÜM mükelleflerin belirli bir dönemde ÖDEYECEĞİ vergiyi (beyanname tahakkuk) TÜR bazında listeler + tutarlar. ' +
+      'PORTFÖY-GENELİ "kimlere ÖDEME/vergi çıkıyor", "X çıkan mükellefler ve tutarları", "kim ne kadar ödeyecek" sorularında MUTLAKA bunu kullan — ' +
+      'get_kdv_summary TEK mükellef içindir, onu 50 kez çağırma. ' +
+      'beyanTipi: KDV (varsayılan), MUHSGK (muhtasar/SGK/stopaj), GECICI (geçici vergi), DAMGA, KURUMLAR, GELIR. ' +
+      'Kullanıcı "muhtasar/SGK ödemesi çıkanlar"→MUHSGK, "geçici vergi çıkanlar"→GECICI, "damga"→DAMGA, sadece "ödeme/vergi çıkanlar"→KDV. ' +
+      'Dönem aylıkta "YYYY-MM" (2026-05), geçici/çeyreklikte "YYYY-Qn" (2026-Q1). Dönem BOŞ bırakılırsa o türün tahakkuku DOLU EN SON dönem otomatik seçilir — dönemi GERİ SORMA, listeyi hemen ver. ' +
       'Sonuç para içerir → YALNIZ ofis sahibi (owner) için.',
     input_schema: {
       type: 'object',
       properties: {
+        beyanTipi: {
+          type: 'string',
+          description: 'Vergi türü: KDV | MUHSGK | GECICI | DAMGA | KURUMLAR | GELIR. Belirtilmezse KDV.',
+        },
         period: {
           type: 'string',
-          description: 'Dönem "YYYY-MM" (beyanname dönemi, örn "2026-05"). Boş bırakılırsa KDV tahakkuku dolu en son dönem.',
+          description: 'Dönem "YYYY-MM" (aylık) veya "YYYY-Qn" (geçici/çeyreklik). Boş=o türün tahakkuku dolu en son dönem.',
         },
         sadeceOdemeCikan: {
           type: 'boolean',
-          description: 'true=sadece ödeme çıkanlar (tahakkuk>0, varsayılan). false=devreden/sıfır dahil tüm KDV kayıtları.',
+          description: 'true=sadece ödeme çıkanlar (tahakkuk>0, varsayılan). false=devreden/sıfır dahil hepsi.',
         },
         onlyActive: {
           type: 'boolean',
