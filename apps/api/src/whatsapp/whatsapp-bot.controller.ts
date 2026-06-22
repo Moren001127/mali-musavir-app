@@ -124,31 +124,50 @@ export class WhatsAppBotController implements OnModuleInit {
     if (!tenant) return { ok: false, error: 'owner tenant bulunamadi' };
     const questions: string[] = Array.isArray(body?.questions) ? body.questions.slice(0, 50) : [];
     const runId = String(body?.runId || ('st-' + Date.now()));
+    const mode = String(body?.mode || 'owner') === 'taxpayer' ? 'taxpayer' : 'owner';
+    const taxpayerId = mode === 'taxpayer' ? String(body?.taxpayerId || 'cmnydmger001leazy6moim5b2') : null;
     // Fire-and-forget: cevap beklemeden çalış, her soruyu botQualityLog'a yaz.
     void (async () => {
+      const tpCtx = taxpayerId ? await this.botContext.buildTaxpayerContextBlock(tenant.id, taxpayerId).catch(() => '') : '';
       for (let i = 0; i < questions.length; i++) {
         const q = String(questions[i]);
         const t0 = Date.now();
         let answer = '', err = '';
         try {
-          // GERÇEK AKIŞA SADIK: aynı owner prompt'u + aynı post-filtre (mode:'owner').
-          const prompt = this.buildOwnerWhatsAppPrompt(this.ownerDisplayName(), tenant.name || '', '', q, false);
-          const a = await this.calisan.runViaMorenAi({
-            tenantId: tenant.id, message: prompt, originalMessage: q, source: 'owner-selftest',
-          });
-          answer = this.postFilter.filterTaxpayerReply(a.assistantMessage || '', { mode: 'owner' });
+          if (mode === 'taxpayer') {
+            // GERÇEK MÜKELLEF AKIŞINA SADIK: taxpayer-readonly + mükellef prompt + post-filtre.
+            const prompt = [
+              "Sen ofisin dijital asistanısın; WhatsApp'tan ofisin MÜKELLEFİYLE (müşterisiyle) yazışıyorsun. Kısa, sıcak, doğal yaz (2-3 cümle, markdown yok).",
+              'Mükellef KENDİ verisini sorarsa (KDV/durum/fatura/beyanname/borç/evrak) get_my_* ile GERÇEK rakamı söyle. Beyanname ödenecek TUTARINI söyleme; "müşavirimiz kesinleştirince paylaşır" de.',
+              'Genel mevzuat/vergi/SGK sorusunu (fatura kaç günde, kdv oranı, işe giriş süresi, yıllık izin vb.) NET cevapla — "müşavirinize sorun" DEME.',
+              'Veri yoksa "elimde kayıt yok, kontrol edip döneyim" de; "çekiyorum/getiriyorum" deyip yarım bırakma, uydurma.',
+              '═══ MÜKELLEF VERİSİ ═══', tpCtx, '═══',
+              `Mükellefin mesajı: ${q}`,
+            ].join('\n');
+            const a = await this.morenAi.chat(tenant.id, null, {
+              taxpayerId: taxpayerId!, message: prompt, taxpayerText: q, voiceMode: false,
+              toolMode: 'taxpayer-readonly', source: 'whatsapp-bot',
+            } as any);
+            answer = this.postFilter.filterTaxpayerReply(a.assistantMessage || '', {});
+          } else {
+            const prompt = this.buildOwnerWhatsAppPrompt(this.ownerDisplayName(), tenant.name || '', '', q, false);
+            const a = await this.calisan.runViaMorenAi({
+              tenantId: tenant.id, message: prompt, originalMessage: q, source: 'owner-selftest',
+            });
+            answer = this.postFilter.filterTaxpayerReply(a.assistantMessage || '', { mode: 'owner' });
+          }
         } catch (e: any) { err = e?.message || String(e); }
         await this.prisma.botQualityLog.create({
           data: {
             tenantId: tenant.id, source: 'SELFTEST', status: err ? 'SYNTHETIC_FAIL' : 'EVAL_WARN',
             score: 0, scenarioKey: runId, intent: q.slice(0, 190),
             finalReply: (answer || ('HATA: ' + err)).slice(0, 4000),
-            metadata: { idx: i, ms: Date.now() - t0, err: err || undefined },
+            metadata: { idx: i, ms: Date.now() - t0, err: err || undefined, mode },
           },
         }).catch(() => null);
       }
     })();
-    return { ok: true, tenant: tenant.id, runId, started: questions.length };
+    return { ok: true, tenant: tenant.id, runId, mode, started: questions.length };
   }
 
   private extractMessages(body: any): IncomingWhatsAppMessage[] {
