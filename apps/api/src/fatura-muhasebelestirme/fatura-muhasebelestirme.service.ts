@@ -5451,6 +5451,7 @@ export class FaturaMuhasebelestirmeService implements OnModuleInit, OnModuleDest
       'saticiAd/aliciAd: SATICI (faturayı kesen) ve ALICI (SAYIN/müşteri) ünvanları. saticiVkn/aliciVkn: bu tarafların VKN (10 hane) ya da TC (11 hane) — SADECE rakam. Yazarkasa fişinde satıcı = mağaza. toplam: genel/ödenecek toplam (KDV dahil). Bulamazsan null, UYDURMA.',
       'KURALLAR: Türk sayı biçimi "1.234,56" = 1234.56 (tümünü ondalıklı sayıya çevir). Birden çok KDV oranı varsa her oran ayrı nesne. matrah=KDV hariç tutar, kdv=o orana ait KDV. ÖTV/ÖİV/tevkifat varsa matrahı şişirme — gerçek mal/hizmet matrahını ver. Okunamayan alanı null bırak, UYDURMA.',
       'kategori: faturadaki mal/hizmetin TÜRÜNE göre TEK kelime seç → "ticari_mal" (satılmak üzere alınan ürün/emtia), "hammadde" (üretimde kullanılan ilk madde/malzeme), "demirbas" (makine/cihaz/ekipman/mobilya/bilgisayar gibi sabit kıymet alımı), "pazarlama" (reklam/ilan/kargo-nakliye/pazarlama), "genel_gider" (kira/elektrik/su/doğalgaz/telefon/internet/akaryakıt/danışmanlık/kırtasiye/yemek/abonelik gibi genel giderler). EMİN DEĞİLSEN "genel_gider".',
+      'giderTuru: ALIŞ ise faturadaki ANA mal/hizmetin kısa adı — hesap planındaki gider hesabı adıyla eşleşecek tek-iki kelime: ör. yakıt/motorin/benzin → "akaryakıt"; ayrıca "kira", "elektrik", "su", "doğalgaz", "telefon", "internet", "kırtasiye", "danışmanlık", "nakliye", "yemek", "temizlik", "bakım onarım", "sigorta", "reklam" vb. Yazarkasa fişinde de ürüne bak (benzinlik → akaryakıt). Net değilse "" (boş). SATIŞ ise "".',
       mukellefBilgi
         ? `BU FATURAYI ALAN MÜKELLEFİN İŞİ: ${mukellefBilgi}. kategoriyi mükellefin ANA FAALİYETİNE göre seç: üretim/imalat firması ana işinde kullandığı/işlediği malı alırsa "hammadde"; alım-satım (toptan/perakende/market) firması satacağı ürünü alırsa "ticari_mal"; her firmanın kendi işinde tükettiği sarf/abonelik/kira/yakıt vb. "genel_gider". (Örnek: yemek/gıda üreticisi un-yağ-et alırsa hammadde; market aynı ürünü satmak için alırsa ticari_mal.)`
         : '',
@@ -5543,7 +5544,7 @@ export class FaturaMuhasebelestirmeService implements OnModuleInit, OnModuleDest
           ...(counterName ? (isSale ? { customerName: counterName } : { vendorName: counterName }) : {}),
           status: 'NEEDS_REVIEW',
           ocrEngine: 'max-vision',
-          ocrData: { ...((d.ocrData as any) || {}), matrah, kdvTutari: kdv, kdvOrani: breakdown[0].rate, kdvBreakdown: breakdown.map((b: any) => ({ oran: b.rate, matrah: b.base, tutar: b.amount })), matrahKategori: typeof parsed.kategori === 'string' ? parsed.kategori : undefined, isReturn: parsed.iade === true || /iade|iptal/i.test(String(parsed.belgeTuru || '')), tevkifatHint: parsed.tevkifat === true || tevkifatOrani > 0 || /tevkifat/i.test(String(html || '')), tevkifatOrani: tevkifatOrani || 0, tevkifatKdv: tevkKdv || 0, engine: parsed === preParsed ? 'ubl-xml' : 'max-vision',
+          ocrData: { ...((d.ocrData as any) || {}), matrah, kdvTutari: kdv, kdvOrani: breakdown[0].rate, kdvBreakdown: breakdown.map((b: any) => ({ oran: b.rate, matrah: b.base, tutar: b.amount })), matrahKategori: typeof parsed.kategori === 'string' ? parsed.kategori : undefined, giderTuru: typeof parsed.giderTuru === 'string' ? parsed.giderTuru.slice(0, 40) : undefined, isReturn: parsed.iade === true || /iade|iptal/i.test(String(parsed.belgeTuru || '')), tevkifatHint: parsed.tevkifat === true || tevkifatOrani > 0 || /tevkifat/i.test(String(html || '')), tevkifatOrani: tevkifatOrani || 0, tevkifatKdv: tevkKdv || 0, engine: parsed === preParsed ? 'ubl-xml' : 'max-vision',
             readMode: parsed === preParsed ? 'ubl-xml' : (isImage ? 'image' : /pdf/i.test(imgMedia) ? 'pdf-text' : /xml/i.test(imgMedia) ? 'xml-text' : 'html'),
             ...(!preParsed && imgBuf && /xml/i.test(imgMedia) ? { xmlHead: imgBuf.toString('utf8').slice(0, 220).replace(/\s+/g, ' ') } : {}) },
         },
@@ -5598,28 +5599,59 @@ export class FaturaMuhasebelestirmeService implements OnModuleInit, OnModuleDest
         genel_gider: ['770', '760', '740', '730'],
       };
       const alisMatrahPrefixes = KAT_PREFIX[kat] || ['770', '760', '740', '730', ' gider '];
-      const categoryMatrah = this.pickAccount(accounts, isSale ? ['600'] : alisMatrahPrefixes, vendorName);
+      // GİDER hesabı: faturanın İÇERİĞİNE göre. Eskiden satıcı adıyla eşleşmeyince en DÜŞÜK 770
+      // (= planın ilk hesabı, ör. "MUTFAK VE YEMEKHANE") seçiliyordu → yakıt fişi mutfağa gidiyordu.
+      const giderTuru = String((doc.ocrData as any)?.giderTuru || '').trim();
+      // GİDER hesabı SADECE EMİN olunca atanır (KULLANICI KURALI): gider türü hesap ADIYLA
+      // eşleşirse o hesap; eşleşmezse null = BOŞ. Rastgele/jenerik/en-düşük hesaba ASLA düşürme.
+      // Kullanıcı 1 kez seçer → VKN+oran bazında öğrenilir (matrahForRate 'learned').
+      const categoryMatrah = (isSale || !giderTuru)
+        ? null
+        : this.pickAccount(accounts, alisMatrahPrefixes, giderTuru, { requireHint: true });
       // KDV hesabı: tevkifatlıda planında ADINDA oranı (ör "2/10") ya da "tevkifat" geçen
       // hesabı tercih et (391.01.004 "HESAPLANAN KDV %20 2/10"), düz 391.01.003 değil.
       const vergiPrefix = isSale ? '391' : '191';
       const tevkPay = Math.round(Number((doc.ocrData as any)?.tevkifatOrani || 0) * 10); // 0.2→2 (2/10)
-      const vergiMatch = (() => {
+      // KDV hesabı ORANA göre seçilir: %20 satır → adında "20" geçen 191/391 ("İNDİRİLECEK KDV %20").
+      // Eskiden orana bakmadan en düşük 191 (= "%1" hesabı) seçiliyordu → %20 KDV "%1" hesabına
+      // gidiyordu (kullanıcı bildirdi). Tevkifatlıda oran/"tevkifat" hesabı önceliklidir.
+      const vergiCache = new Map<string, any>();
+      const vergiForRate = (rateDigits: string) => {
+        const key = rateDigits || '';
+        if (vergiCache.has(key)) return vergiCache.get(key);
         const grp = accounts.filter((a: any) => { const c = String(a.accountCode || ''); return c.startsWith(vergiPrefix) && !c.startsWith('79'); });
-        if (!grp.length) return this.pickAccount(accounts, [vergiPrefix], null);
-        // Tevkifatlı: adında oran ("2/10") ya da "tevkifat" geçen hesabı tercih et.
-        if (tevkPay >= 1 && tevkPay <= 9) {
-          const hit = grp.find((a: any) => { const n = String(a.accountName || ''); return n.includes(`${tevkPay}/10`) || /tevk[iı]fat/i.test(n); });
-          if (hit) return hit;
+        let result: any = null;
+        if (!grp.length) {
+          result = this.pickAccount(accounts, [vergiPrefix], null);
+        } else {
+          // Tevkifatlı: adında oran ("2/10") ya da "tevkifat" geçen hesabı tercih et.
+          if (tevkPay >= 1 && tevkPay <= 9) {
+            result = grp.find((a: any) => { const n = String(a.accountName || ''); return n.includes(`${tevkPay}/10`) || /tevk[iı]fat/i.test(n); }) || null;
+          }
+          if (!result) {
+            // tevkifat/iade/ihrac/istisna GEÇMEYEN düz hesaplar (matrahla simetrik).
+            const normals = grp.filter((a: any) => !this.isTevkifatAccountName(a.accountName || '') && !/(iade|ihrac|istisna)/i.test(String(a.accountName || '')));
+            const pool = normals.length ? normals : grp;
+            // ORANA göre: adındaki sayılar arasında satırın KDV oranı geçen hesabı seç (%20→"20").
+            if (rateDigits) {
+              result = pool.find((a: any) => (this.norm(String(a.accountName || '')).match(/\d+/g) || ([] as string[])).includes(rateDigits)) || null;
+            }
+            // Oran eşleşmedi: TEK aday varsa (planın tek KDV hesabı) onu kullan; ya da adında HİÇ
+            // oran-sayısı olmayan TEK genel "İNDİRİLECEK/HESAPLANAN KDV" hesabı varsa onu. Aksi
+            // halde (birden çok oranlı hesap var ama bu oran yok) → null = BOŞ (kural: rastgele
+            // orana düşürme; kullanıcı doğru oranı ekler/seçer).
+            if (!result) {
+              if (pool.length === 1) result = pool[0];
+              else {
+                const noRate = pool.filter((a: any) => (this.norm(String(a.accountName || '')).match(/\d+/g) || []).length === 0);
+                result = noRate.length === 1 ? noRate[0] : null;
+              }
+            }
+          }
         }
-        // NORMAL (ya da tevkifat hesabı yok): tevkifat (kelime/oran) / iade / ihrac / istisna
-        // GEÇMEYEN düz hesabı seç — planın ilk 391/191'i tevkifatlıysa normal satış oraya
-        // DÜŞMESİN (matrahla simetrik).
-        const normals = grp.filter((a: any) => !this.isTevkifatAccountName(a.accountName || '') && !/(iade|ihrac|istisna)/i.test(String(a.accountName || '')));
-        const pool = normals.length ? normals : grp;
-        const depth = (c: string) => (String(c || '').match(/\./g) || []).length;
-        const mx = pool.reduce((m: number, a: any) => Math.max(m, depth(String(a.accountCode || ''))), 0);
-        return pool.filter((a: any) => depth(String(a.accountCode || '')) === mx)[0] || pool[0];
-      })();
+        vergiCache.set(key, result);
+        return result;
+      };
       // TEVKİFAT (KDV2 — sorumlu sıfatı): ALIŞ tevkifatta 360 satırı plandaki GERÇEK 360
       // hesabına bağlanır. Adında "KDV / sorumlu / tevkifat / beyan" geçen 360 alt-hesabını
       // tercih et (gelir-vergisi-stopajı 360'ını DEĞİL); yoksa en genel 360 leaf'i. 360 hiç
@@ -5679,9 +5711,10 @@ export class FaturaMuhasebelestirmeService implements OnModuleInit, OnModuleDest
 
       for (const line of doc.lines || []) {
         const group = String(line.group || '') as 'matrah' | 'vergi' | 'cari' | 'tevkifat';
+        const lineRate = String(line.rate || '').replace(/[^0-9]/g, '');
         const match = group === 'matrah'
-          ? await matrahForRate(String(line.rate || '').replace(/[^0-9]/g, ''))
-          : group === 'vergi' ? vergiMatch
+          ? await matrahForRate(lineRate)
+          : group === 'vergi' ? vergiForRate(lineRate)
           : group === 'cari' ? cariMatch
           : null;
         const current = String(line.accountCode || '');
@@ -5740,18 +5773,42 @@ export class FaturaMuhasebelestirmeService implements OnModuleInit, OnModuleDest
             continue;
           }
         }
-        // VERGİ özel (TEVKİFAT-lik): mevcut KDV hesabının tevkifat-liği belgeyle çelişiyorsa düzelt —
-        // tevkifatlıda tevkifat/"2-10" hesabına, normalde düz hesaba (391.01.003 gibi). vergiMatch
-        // zaten doğru tevkifat-likte. Doğru tevkifat-likteki başka KDV hesabına (kullanıcı) dokunmaz.
-        if (group === 'vergi' && vergiMatch) {
-          const curAcc = current ? accounts.find((a: any) => String(a.accountCode || '') === current) : null;
-          const curIsTevk = !!curAcc && this.isTevkifatAccountName(String(curAcc.accountName || ''));
-          if (curAcc && curIsTevk !== (tevkPay >= 1) && current !== String((vergiMatch as any).accountCode)) {
-            await (this.prisma as any).invoiceAccountingLine.update({
-              where: { id: line.id },
-              data: { accountCode: (vergiMatch as any).accountCode },
-            });
+        // MATRAH özel (ALIŞ gider — KULLANICI KURALI: emin değilse BOŞ): mevcut gider hesabı
+        // GÜVENİLİR değilse (öğrenilmiş/gider-türü 'match' ile aynı DEĞİL ve gider türü adıyla
+        // eşleşmiyor) → 'match' (gider türü/öğrenilmiş) varsa onunla değiştir, YOKSA BOŞALT.
+        // Eskiden otomatik gelen rastgele "MUTFAK" gibi kodlar "Kodları düzelt"te temizlenir.
+        if (group === 'matrah' && !isSale && current) {
+          const curAcc = accounts.find((a: any) => String(a.accountCode || '') === current);
+          if (curAcc) {
+            const matchCode = match ? String((match as any).accountCode) : '';
+            const typeOk = !!giderTuru && this.nameMatchScore(giderTuru, String(curAcc.accountName || '')) > 0;
+            if (current !== matchCode && !typeOk) {
+              await (this.prisma as any).invoiceAccountingLine.update({
+                where: { id: line.id },
+                data: matchCode ? { accountCode: matchCode } : { accountCode: '' },
+              });
+            }
             continue;
+          }
+        }
+        // VERGİ özel (ORAN + TEVKİFAT-lik): mevcut KDV hesabının ADINDAKİ oranı satır oranıyla
+        // çelişiyorsa (ör. %20 satır ama "İNDİRİLECEK KDV %1" hesabı) ya da tevkifat-liği
+        // çelişiyorsa → orana/tevkifata uygun hesaba çek. Doğru hesaba (kullanıcı) dokunmaz.
+        if (group === 'vergi') {
+          const want = vergiForRate(lineRate);
+          const curAcc = current ? accounts.find((a: any) => String(a.accountCode || '') === current) : null;
+          if (want && curAcc) {
+            const curIsTevk = this.isTevkifatAccountName(String(curAcc.accountName || ''));
+            const curRates = this.norm(String(curAcc.accountName || '')).match(/\d+/g) || ([] as string[]);
+            const rateOk = !lineRate || curRates.length === 0 || curRates.includes(lineRate);
+            const tevkOk = curIsTevk === (tevkPay >= 1);
+            if ((!rateOk || !tevkOk) && current !== String((want as any).accountCode)) {
+              await (this.prisma as any).invoiceAccountingLine.update({
+                where: { id: line.id },
+                data: { accountCode: (want as any).accountCode },
+              });
+              continue;
+            }
           }
         }
         const isPlaceholder =
