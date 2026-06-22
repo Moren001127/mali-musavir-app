@@ -16,7 +16,7 @@ import { BotEvalService } from './bot-eval.service';
 import { QualityLogService } from './quality-log.service';
 import { CalisanService } from '../calisan/calisan.service';
 import { claudeTextViaMax, MAX_MODEL_CHEAP } from '../common/max-inference';
-import { computeMonthlyStatusList } from '../moren-ai/monthly-status.shared';
+import { buildOwnerStatusReply } from '../moren-ai/monthly-status.shared';
 
 type IncomingWhatsAppMessage = {
   from: string;
@@ -1279,127 +1279,17 @@ export class WhatsAppBotController implements OnModuleInit {
    * DETERMİNİSTİK yanıtlar. AI bu sorularda sürekli "çekemiyorum/Luca'ya bağlantım yok"
    * halüsinasyonu yapıyordu. Dönem = BEYANNAME dönemi (işlem ayı−1); kayıtlar işlem ayında.
    */
-  private detectOwnerStatusIntent(text: string):
-    | 'beyanname_hazir' | 'kontrol_bekleyen' | 'evrak_islenen' | 'evrak_gelen'
-    | 'evrak_bekleyen' | 'islem_bekleyen' | 'verildi' | 'verilmedi' | 'mukellef_sayisi' | null {
-    const n = this.normalizeForIntent(text); // aksan sıyrılmış (ş→s, ı→i, ç→c ...)
-    const isList = /\b(kim|kimler|kac|listele|hangi|kimlerin|olanlar)\b/.test(n) || /\bvar m[ıi]\b/.test(n);
-    if (!isList) return null;
-
-    // ── ÖNCE OLUMSUZ / BEKLEYEN kalıplar (en spesifik; olumlu kalıplardan ÖNCE
-    //    değerlendirilmeli, yoksa "edilmemiş" gibi olumsuzlar olumluya sızar). ──
-    // KONTROL bekleyen / edilmemiş / edilecek / yapılmamış → portal "kontrol-bekliyor"
-    if (/kontrol[^.]*?(bekle|edilmed|edilmemis|edilmeyen|edilecek|edilmeli|edilsin|yapilmad|yapilmamis|yapilacak|yapilmali|bitmemis|bitmedi|gecmemis|gecmedi|olmamis|olmadi)/.test(n)) return 'kontrol_bekleyen';
-    // BEYANNAME verilmeyen / verilmedi / geciken / eksik → portal "beyanname-verilmedi" (aşama != verildi)
-    if (/(beyanname|beyan)[^.]*?(verilmed|verilmeyen|verilmemis|vermedi|vermeyen|vermemis|gecik|eksik|kalan)/.test(n)) return 'verilmedi';
-    // EVRAK gelmeyen / gelmedi / bekleyen → portal "evrak-bekliyor". (evrag: "evrağı" ğ→g)
-    if (/(evrak|evrag|belge)[^.]*?(bekle|gelmedi|gelmemis|gelmeyen|gelmiyen|yok)/.test(n)) return 'evrak_bekleyen';
-    // İŞLEM bekleyen / işlenmeyen / işlenmemiş → portal "islem-bekliyor"
-    if (/islenmemis|islenmeyen|islenmedi|henuz islen|(islem|islenme)[^.]*?(bekle|memis|meyen|medi)/.test(n)) return 'islem_bekleyen';
-
-    // ── OLUMLU kalıplar ──
-    // Beyanname verilebilecek / hazır + "kontrol edilen/biten/yapılan" → portal "beyan-hazir"
-    if (/(beyanname|beyan)[^.]*?(verilebil|verilecek|verilir|hazir)|kontrol[^.]*?(edilen|edildi|biten|bitti|bitmis|yapilan|yapildi|yapilmis|gecen|gecti|gecmis|gecirildi|tamamlan)|kontrolden gec/.test(n)) return 'beyanname_hazir';
-    // Beyanname verilen / verildi → portal "verildi"
-    if (/(beyanname|beyan)[^.]*?(verildi|verilen|verilmis|gonderildi|tamamlan)/.test(n)) return 'verildi';
-    // Evrakı gelip işlenen → evrak+işlem ✓
-    if (/(evrak|evrag|belge)[^.]*?islen|gelip[^.]*?islen|islenip|islenen|islenmis/.test(n)) return 'evrak_islenen';
-    // Evrakı gelen (sade; olumsuzlar zaten yukarıda elendi) → evrak geldi
-    if (/(evrak|evrag|belge)[^.]*?(gel(en|di|mis)|teslim|getir)/.test(n)) return 'evrak_gelen';
-    // "Kaç mükellefim/müşterim var" → toplam aktif mükellef sayısı (durum kelimesi yoksa).
-    if (/(mukellef|musteri|firma)/.test(n) && /(kac|toplam|sayisi|adet|ne kadar)/.test(n)) return 'mukellef_sayisi';
-    return null;
-  }
-
-  /**
-   * Owner durum listesi ŞABLONU: başlık + dönem/sayı + her firma AYRI SATIR (numaralı).
-   * Eskiden virgüllü tek satır düz metindi; kullanıcı alt alta okunaklı liste istedi.
-   */
-  private formatOwnerStatusList(baslik: string, donemLabel: string, names: string[]): string {
-    if (!names.length) {
-      return `📋 ${baslik}\n🗓️ ${donemLabel} dönemi\n\nBu durumda mükellef yok.`;
-    }
-    const gosterilecek = names.slice(0, 60);
-    const satirlar = gosterilecek.map((ad, i) => `${i + 1}. ${ad}`).join('\n');
-    const fazla = names.length > 60 ? `\n… ve ${names.length - 60} mükellef daha.` : '';
-    return `📋 ${baslik}\n🗓️ ${donemLabel} dönemi · ${names.length} mükellef\n\n${satirlar}${fazla}`;
-  }
-
   private async maybeHandleOwnerStatusQuery(
     ownerTenant: any,
     ownerContactId: string,
     msg: IncomingWhatsAppMessage,
   ): Promise<boolean> {
-    const intent = this.detectOwnerStatusIntent(msg.text || '');
-    if (!intent) return false;
-    // TEK KAYNAK: Aylık durum listesini MOREN AI tool'u ile AYNI fonksiyondan al
-    // (monthly-status.shared → computeMonthlyStatusList). "verildi" sorgusunda dinamik
-    // dönem (son verilen ay) dahil tüm dönem mantığı orada; sayfa ve WhatsApp aynı cevap.
-    const list = await computeMonthlyStatusList(this.prisma, {
-      tenantId: ownerTenant.id,
-      verildiMode: intent === 'verildi',
-      onlyActive: true,
-    });
-    const donemLabel = list.donemLabel;
-    const qDonemLabel = donemLabel;
-    const rows = list.rows.map((r) => ({
-      isim: r.isim,
-      evrakGeldi: r.evraklarGeldi,
-      islendi: r.evraklarIslendi,
-      kontrolBitti: r.kontrolBitti,
-      verildi: r.beyannameVerildi,
-    }));
-    let filtered: typeof rows;
-    let baslik: string;
-    switch (intent) {
-      case 'beyanname_hazir':
-        // Portaldaki "Beyanname verilebilir" ile AYNI: evrak gelmiş + işlenmiş + kontrol
-        // bitmiş (İND+HES+ARŞİV) + henüz verilmemiş.
-        filtered = rows.filter((r) => r.evrakGeldi && r.islendi && r.kontrolBitti && !r.verildi);
-        baslik = 'Beyannamesi verilebilecek (kontrolü bitmiş, henüz verilmemiş)';
-        break;
-      case 'kontrol_bekleyen':
-        // Portal "kontrol-bekliyor": evrak gelmiş + işlenmiş AMA kontrol (İND/HES/ARŞİV)
-        // henüz bitmemiş, beyanname verilmemiş.
-        filtered = rows.filter((r) => r.evrakGeldi && r.islendi && !r.kontrolBitti && !r.verildi);
-        baslik = 'Kontrol bekleyen (evrak işlendi, kontrol edilmemiş)';
-        break;
-      case 'evrak_islenen':
-        filtered = rows.filter((r) => r.evrakGeldi && r.islendi);
-        baslik = 'Evrakı gelip işlenen';
-        break;
-      case 'evrak_gelen':
-        filtered = rows.filter((r) => r.evrakGeldi);
-        baslik = 'Evrakı gelen';
-        break;
-      case 'evrak_bekleyen':
-        filtered = rows.filter((r) => !r.evrakGeldi);
-        baslik = 'Evrak bekleyen (henüz gelmedi)';
-        break;
-      case 'islem_bekleyen':
-        filtered = rows.filter((r) => r.evrakGeldi && !r.islendi);
-        baslik = 'Evrakı gelip henüz işlenmemiş';
-        break;
-      case 'verildi':
-        filtered = rows.filter((r) => r.verildi);
-        baslik = 'Beyannamesi verilmiş';
-        break;
-      case 'verilmedi':
-        // Portal "beyanname-verilmedi": aşama != verildi (henüz verilmemiş hepsi).
-        filtered = rows.filter((r) => !r.verildi);
-        baslik = 'Beyannamesi henüz verilmemiş';
-        break;
-      case 'mukellef_sayisi':
-        filtered = [];
-        baslik = '';
-        break;
-      default:
-        return false;
-    }
-    const names = filtered.map((r) => r.isim);
-    const reply = intent === 'mukellef_sayisi'
-      ? `👥 Toplam ${list.toplamMukellef} aktif mükellefin takipte.`
-      : this.formatOwnerStatusList(baslik, qDonemLabel, names);
+    // TEK KAYNAK: intent algılama + tek-kaynak veri + biçimlendirme hepsi
+    // monthly-status.shared → buildOwnerStatusReply'da. MOREN AI sayfası (moren-ai.chat
+    // owner fast-path) AYNI fonksiyonu çağırır → sayfa ile WhatsApp birebir aynı cevap.
+    const res = await buildOwnerStatusReply(this.prisma, ownerTenant.id, msg.text || '');
+    if (!res) return false;
+    const { reply, intent, donemLabel, count } = res;
     const sent = await this.whatsapp.sendMessage(this.replyTarget(msg), reply, ownerTenant.id);
     await this.prisma.communicationLog.create({
       data: {
@@ -1408,7 +1298,7 @@ export class WhatsAppBotController implements OnModuleInit {
         content: this.withWhatsAppPhone(reply, msg.from), occurredAt: new Date(),
       },
     });
-    this.logger.log(`[OwnerStatus] intent=${intent} donem=${donemLabel} sonuc=${names.length}`);
+    this.logger.log(`[OwnerStatus] intent=${intent} donem=${donemLabel} sonuc=${count}`);
     return true;
   }
 

@@ -212,3 +212,127 @@ export async function computeMonthlyStatusList(prisma: any, opts: ComputeOpts): 
     bosDonemFallback,
   };
 }
+
+// ============================================================================
+// OWNER DURUM-LİSTESİ KISAYOLU (TEK KAYNAK) — intent algılama + biçimlendirme
+// Hem WhatsApp owner kısayolu (whatsapp-bot.controller) hem MOREN AI sayfası
+// (moren-ai.service.chat owner fast-path) BUNU çağırır → "kimler evrak getirdi /
+// beyannamesi verildi" soruları her yüzeyde AYNI, güvenilir, hızlı cevaplanır
+// (agentic AI'nın 'çekmem gerekiyor' yarım-cevabına düşmeden).
+// ============================================================================
+
+export type OwnerStatusIntent =
+  | 'beyanname_hazir' | 'kontrol_bekleyen' | 'evrak_islenen' | 'evrak_gelen'
+  | 'evrak_bekleyen' | 'islem_bekleyen' | 'verildi' | 'verilmedi' | 'mukellef_sayisi';
+
+/** Türkçe aksanı sıyırır (ş→s, ı→i, ç→c …) + küçük harf. */
+function normalizeForIntent(value: string): string {
+  return String(value || '')
+    .toLocaleLowerCase('tr-TR')
+    .replace(/ı/g, 'i')
+    .normalize('NFD')
+    .replace(/[̀-ͯ]/g, '');
+}
+
+/** Owner mesajından durum-listesi niyetini çıkarır; durum sorusu değilse null. */
+export function detectOwnerStatusIntent(text: string): OwnerStatusIntent | null {
+  const n = normalizeForIntent(text);
+  const isList = /\b(kim|kimler|kac|listele|hangi|kimlerin|olanlar)\b/.test(n) || /\bvar m[ıi]\b/.test(n);
+  if (!isList) return null;
+
+  // ── ÖNCE OLUMSUZ / BEKLEYEN kalıplar (en spesifik) ──
+  if (/kontrol[^.]*?(bekle|edilmed|edilmemis|edilmeyen|edilecek|edilmeli|edilsin|yapilmad|yapilmamis|yapilacak|yapilmali|bitmemis|bitmedi|gecmemis|gecmedi|olmamis|olmadi)/.test(n)) return 'kontrol_bekleyen';
+  if (/(beyanname|beyan)[^.]*?(verilmed|verilmeyen|verilmemis|vermedi|vermeyen|vermemis|gecik|eksik|kalan)/.test(n)) return 'verilmedi';
+  if (/(evrak|evrag|belge)[^.]*?(bekle|gelmedi|gelmemis|gelmeyen|gelmiyen|yok)/.test(n)) return 'evrak_bekleyen';
+  if (/islenmemis|islenmeyen|islenmedi|henuz islen|(islem|islenme)[^.]*?(bekle|memis|meyen|medi)/.test(n)) return 'islem_bekleyen';
+
+  // ── OLUMLU kalıplar ──
+  if (/(beyanname|beyan)[^.]*?(verilebil|verilecek|verilir|hazir)|kontrol[^.]*?(edilen|edildi|biten|bitti|bitmis|yapilan|yapildi|yapilmis|gecen|gecti|gecmis|gecirildi|tamamlan)|kontrolden gec/.test(n)) return 'beyanname_hazir';
+  if (/(beyanname|beyan)[^.]*?(verildi|verilen|verilmis|gonderildi|tamamlan)/.test(n)) return 'verildi';
+  if (/(evrak|evrag|belge)[^.]*?islen|gelip[^.]*?islen|islenip|islenen|islenmis/.test(n)) return 'evrak_islenen';
+  if (/(evrak|evrag|belge)[^.]*?(gel(en|di|mis)|teslim|getir)/.test(n)) return 'evrak_gelen';
+  if (/(mukellef|musteri|firma)/.test(n) && /(kac|toplam|sayisi|adet|ne kadar)/.test(n)) return 'mukellef_sayisi';
+  return null;
+}
+
+/** Owner durum listesi ŞABLONU: başlık + dönem/sayı + her firma AYRI SATIR (numaralı). */
+export function formatOwnerStatusList(baslik: string, donemLabel: string, names: string[]): string {
+  if (!names.length) {
+    return `📋 ${baslik}\n🗓️ ${donemLabel} dönemi\n\nBu durumda mükellef yok.`;
+  }
+  const gosterilecek = names.slice(0, 60);
+  const satirlar = gosterilecek.map((ad, i) => `${i + 1}. ${ad}`).join('\n');
+  const fazla = names.length > 60 ? `\n… ve ${names.length - 60} mükellef daha.` : '';
+  return `📋 ${baslik}\n🗓️ ${donemLabel} dönemi · ${names.length} mükellef\n\n${satirlar}${fazla}`;
+}
+
+/**
+ * ÜST DÜZEY: owner durum sorusunu uçtan uca cevaplar (intent + tek-kaynak veri + format).
+ * Durum sorusu değilse null döner (çağıran agentic AI'ya devam etsin).
+ */
+export async function buildOwnerStatusReply(
+  prisma: any,
+  tenantId: string,
+  text: string,
+): Promise<{ reply: string; intent: OwnerStatusIntent; count: number; donemLabel: string } | null> {
+  const intent = detectOwnerStatusIntent(text);
+  if (!intent) return null;
+
+  const list = await computeMonthlyStatusList(prisma, {
+    tenantId,
+    verildiMode: intent === 'verildi',
+    onlyActive: true,
+  });
+
+  if (intent === 'mukellef_sayisi') {
+    return {
+      reply: `👥 Toplam ${list.toplamMukellef} aktif mükellefin takipte.`,
+      intent, count: list.toplamMukellef, donemLabel: list.donemLabel,
+    };
+  }
+
+  const rows = list.rows;
+  let filtered: typeof rows;
+  let baslik: string;
+  switch (intent) {
+    case 'beyanname_hazir':
+      filtered = rows.filter((r) => r.evraklarGeldi && r.evraklarIslendi && r.kontrolBitti && !r.beyannameVerildi);
+      baslik = 'Beyannamesi verilebilecek (kontrolü bitmiş, henüz verilmemiş)';
+      break;
+    case 'kontrol_bekleyen':
+      filtered = rows.filter((r) => r.evraklarGeldi && r.evraklarIslendi && !r.kontrolBitti && !r.beyannameVerildi);
+      baslik = 'Kontrol bekleyen (evrak işlendi, kontrol edilmemiş)';
+      break;
+    case 'evrak_islenen':
+      filtered = rows.filter((r) => r.evraklarGeldi && r.evraklarIslendi);
+      baslik = 'Evrakı gelip işlenen';
+      break;
+    case 'evrak_gelen':
+      filtered = rows.filter((r) => r.evraklarGeldi);
+      baslik = 'Evrakı gelen';
+      break;
+    case 'evrak_bekleyen':
+      filtered = rows.filter((r) => !r.evraklarGeldi);
+      baslik = 'Evrak bekleyen (henüz gelmedi)';
+      break;
+    case 'islem_bekleyen':
+      filtered = rows.filter((r) => r.evraklarGeldi && !r.evraklarIslendi);
+      baslik = 'Evrakı gelip henüz işlenmemiş';
+      break;
+    case 'verildi':
+      filtered = rows.filter((r) => r.beyannameVerildi);
+      baslik = 'Beyannamesi verilmiş';
+      break;
+    case 'verilmedi':
+      filtered = rows.filter((r) => !r.beyannameVerildi);
+      baslik = 'Beyannamesi henüz verilmemiş';
+      break;
+    default:
+      return null;
+  }
+  const names = filtered.map((r) => r.isim);
+  return {
+    reply: formatOwnerStatusList(baslik, list.donemLabel, names),
+    intent, count: names.length, donemLabel: list.donemLabel,
+  };
+}

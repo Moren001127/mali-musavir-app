@@ -4,6 +4,7 @@ import { ToolExecutorService } from './tool-executor.service';
 import { MOREN_AI_TOOLS } from './tools';
 import { runMaxAgent, type AgentToolDef } from '../common/max-agent-runner';
 import { buildSystemPrompt } from './system-prompt';
+import { buildOwnerStatusReply } from './monthly-status.shared';
 import { computeCostUsd, computeRealtimeCostUsd, canSpendOnApi, logAiUsage } from '../common/ai-usage-logger';
 import { claudeTextViaMax, isMaxAvailable, MAX_MODEL_CHEAP } from '../common/max-inference';
 import { sablonForTool, sablonZatenVar } from './whatsapp-sablon';
@@ -517,6 +518,39 @@ export class MorenAiService {
           model: 'moren-ai-verified-rule',
         },
       };
+    }
+
+    // OWNER DURUM-LİSTESİ FAST-PATH (TEK KAYNAK): "kimler evrak getirdi / beyannamesi
+    // verildi / kontrol bekleyen kim" gibi durum sorularını agentic AI'ya BIRAKMA
+    // (agentic yol bunlarda "çekmem gerekiyor" yarım-cevabına düşebiliyordu). WhatsApp
+    // owner kısayolu ile AYNI fonksiyondan (buildOwnerStatusReply) deterministik cevap
+    // üret → SAYFA da WhatsApp ile birebir aynı, hızlı ve güvenilir.
+    // Efektif owner = mükellef-readonly ve none DIŞINDAKİ her şey (sayfa toolMode GÖNDERMEZ
+    // → undefined; audience hesabı da bunu 'owner' kabul eder). Mükellef/none HARİÇ.
+    const ownerEfektif = body.toolMode !== 'taxpayer-readonly' && body.toolMode !== 'none';
+    if (ownerEfektif) {
+      const statusRes = await buildOwnerStatusReply(this.prisma, tenantId, userMessage).catch(() => null);
+      if (statusRes) {
+        const durationMs = Date.now() - started;
+        await this.prisma.aiMessage.create({
+          data: {
+            conversationId: conversation.id,
+            role: 'assistant',
+            content: statusRes.reply,
+            inputTokens: 0, outputTokens: 0, cacheReadTokens: 0, cacheWriteTokens: 0,
+            costUsd: 0, model: 'moren-ai-status-shortcut', durationMs,
+          },
+        });
+        return {
+          conversationId: conversation.id,
+          assistantMessage: statusRes.reply,
+          toolUses: [],
+          usage: {
+            inputTokens: 0, outputTokens: 0, cacheReadTokens: 0, cacheWriteTokens: 0,
+            costUsd: 0, durationMs, model: 'moren-ai-status-shortcut',
+          },
+        };
+      }
     }
 
     const messages = this.buildMessages(conversation.messages, userMessage);
