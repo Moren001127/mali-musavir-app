@@ -3323,6 +3323,13 @@ export class FaturaMuhasebelestirmeService {
   async approve(tenantId: string, id: string, userId?: string) {
     const doc = await this.get(tenantId, id);
 
+    // Boş hesap kodu (ör. cari) ile onaylama YASAK — Luca'ya eksik fiş gitmesin.
+    const blankLine = (doc.lines || []).find((l: any) => !String(l.accountCode || '').trim());
+    if (blankLine) {
+      const grpAd = String(blankLine.group) === 'cari' ? 'Cari hesap' : String(blankLine.group) === 'vergi' ? 'KDV hesabı' : 'Gelir/gider hesabı';
+      throw new BadRequestException(`Bu belge onaylanamaz — ${grpAd} boş. Önce hesap kodunu seç.`);
+    }
+
     // v2.1: Approve öncesi mutlaka revalidate çalıştır — sonucu OK değilse reddet.
     // Validation şu durumlarda hata atar:
     //   - Yevmiye dengesiz (Borç ≠ Alacak)

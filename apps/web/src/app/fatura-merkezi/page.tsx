@@ -85,28 +85,50 @@ function periodLabel(p: string): string {
   if (!m) return p || '';
   return `${AY_ADLARI[Number(m[2]) - 1] || m[2]} ${m[1]}`;
 }
-function deriveDurum(doc: any): { k: string; t: string } {
-  if (doc.status === 'APPROVED') return { k: 'ok', t: 'Onaylandı' };
-  // OCR/işleme henüz bitmemiş — satır yok diye "Eksik kod" demek yanıltıcı; işleniyor.
-  if (doc.status === 'PROCESSING') return { k: 'proc', t: 'İşleniyor' };
-  const hasCode = Array.isArray(doc.lines) && doc.lines.some((l: any) => l.accountCode);
+// Durum: TAM olarak neyin eksik olduğunu söyler (cari/gelir/gider/KDV kodu boş mu).
+// cat = filtreleme kategorisi.
+function deriveDurum(doc: any): { k: string; t: string; cat: string } {
+  if (doc.status === 'APPROVED') return { k: 'ok', t: 'Onaylandı ✓', cat: 'onayli' };
+  if (doc.status === 'PROCESSING') return { k: 'proc', t: 'Okunuyor…', cat: 'okunuyor' };
+  if (String(doc.ocrStatus || '').toUpperCase() === 'FAILED') return { k: 'miss', t: 'Okunamadı', cat: 'okunamadi' };
+  const lines: any[] = Array.isArray(doc.lines) ? doc.lines : [];
   const issues = Array.isArray(doc.validationIssues) ? doc.validationIssues : [];
-  // İçerik çelişkisi = denge/sahiplik/toplam hatası (INCOMPLETE hariç gerçek hata).
+  // İçerik çelişkisi = denge/sahiplik/toplam hatası (en kritik).
   const vissue =
     doc.validationStatus === 'INVALID' ||
     doc.ocrData?.validationStatus === 'INVALID' ||
     issues.some((i: any) => i?.code && i.code !== 'INCOMPLETE_AMOUNTS' && i?.severity !== 'WARNING');
-  // Tutar eksik = matrah/KDV ayrıştırılamadı (ayrı durum, "çelişki" değil).
+  if (vissue) return { k: 'warn', t: 'Çelişki — kontrol et', cat: 'celiski' };
+  // Hiç satır yok → matrah/KDV okunamamış.
+  if (!lines.length) return { k: 'warn', t: 'Tutar okunamadı', cat: 'tutar' };
+  // Hangi grupların KODU boş? (cari hesap / gelir-gider / KDV) — tam söyle.
+  const sale = (doc.invoiceKind || 'ALIS') === 'SATIS';
+  const blank = (g: string) => { const gl = lines.filter((l: any) => String(l.group || '') === g); return gl.length > 0 && gl.some((l: any) => !l.accountCode); };
+  const missing: string[] = [];
+  if (blank('cari')) missing.push('cari hesap');
+  if (blank('matrah')) missing.push(sale ? 'gelir kodu' : 'gider kodu');
+  if (blank('vergi')) missing.push('KDV kodu');
+  if (missing.length) {
+    const cap = (s: string) => s.charAt(0).toLocaleUpperCase('tr-TR') + s.slice(1);
+    const t = missing.length === 1 ? `${cap(missing[0])} boş` : `Eksik: ${missing.join(', ')}`;
+    return { k: 'miss', t, cat: 'eksik' };
+  }
   const incomplete =
     doc.validationStatus === 'INCOMPLETE' ||
     doc.ocrData?.validationStatus === 'INCOMPLETE' ||
     issues.some((i: any) => i?.code === 'INCOMPLETE_AMOUNTS');
-  // Öncelik: içerik çelişkisi (kritik) > tutar eksik > hesap kodu eksik.
-  if (vissue) return { k: 'warn', t: 'İçerik çelişkisi' };
-  if (incomplete) return { k: 'warn', t: 'Tutar eksik' };
-  if (!hasCode) return { k: 'miss', t: 'Eksik hesap kodu' };
-  return { k: 'ok', t: 'Muhasebeleştirilebilir' };
+  if (incomplete) return { k: 'warn', t: 'Tutar okunamadı', cat: 'tutar' };
+  return { k: 'ok', t: 'Eşleşti ✓', cat: 'ready' };
 }
+const DURUM_FILTRELER: Array<{ v: string; l: string }> = [
+  { v: 'all', l: 'Hepsi' },
+  { v: 'ready', l: 'Eşleşti' },
+  { v: 'eksik', l: 'Kod eksik' },
+  { v: 'celiski', l: 'Çelişki' },
+  { v: 'tutar', l: 'Tutar okunamadı' },
+  { v: 'okunuyor', l: 'Okunuyor' },
+  { v: 'okunamadi', l: 'Okunamadı' },
+];
 function taxpayerLabel(t: any): string {
   return t?.companyName || [t?.firstName, t?.lastName].filter(Boolean).join(' ') || t?.taxNumber || 'Mükellef';
 }
@@ -597,7 +619,11 @@ function ScreenFaturalar({ taxpayerId, period, kind = 'ALIS' }: { taxpayerId: st
   const qc = useQueryClient();
   const docsQ = useDocuments(taxpayerId, period);
   const all: any[] = docsQ.data || [];
-  const docs = all.filter((d) => (d.invoiceKind || 'ALIS') === kind);
+  const docsAll = all.filter((d) => (d.invoiceKind || 'ALIS') === kind);
+  // Durum filtresi (Hepsi / Eşleşti / Kod eksik / Çelişki / …)
+  const [durumF, setDurumF] = useState('all');
+  const durumCount = (cat: string) => cat === 'all' ? docsAll.length : docsAll.filter((d) => deriveDurum(d).cat === cat).length;
+  const docs = durumF === 'all' ? docsAll : docsAll.filter((d) => deriveDurum(d).cat === durumF);
   const [sel, setSel] = useState<Set<string>>(new Set());
   const toggle = (id: string) =>
     setSel((prev) => {
@@ -610,7 +636,7 @@ function ScreenFaturalar({ taxpayerId, period, kind = 'ALIS' }: { taxpayerId: st
     setSel(() => (allSelected ? new Set() : new Set(docs.map((d) => d.id))));
 
   const sayac = { ok: 0, miss: 0, warn: 0 };
-  docs.forEach((d) => {
+  docsAll.forEach((d) => {
     const k = deriveDurum(d).k;
     if (k === 'miss') sayac.miss++;
     else if (k === 'warn') sayac.warn++;
@@ -726,9 +752,10 @@ function ScreenFaturalar({ taxpayerId, period, kind = 'ALIS' }: { taxpayerId: st
   }, [ocrProg?.reading, qc]);
 
   const muhasebelestir = () => {
-    const hazir = docs.filter((d) => sel.has(d.id) && d.status !== 'APPROVED' && Array.isArray(d.lines) && d.lines.some((l: any) => l.accountCode));
+    // TÜM satırların kodu dolu olmalı (cari dahil) — boş carili belge onaylanmasın.
+    const hazir = docs.filter((d) => sel.has(d.id) && d.status !== 'APPROVED' && Array.isArray(d.lines) && d.lines.length > 0 && d.lines.every((l: any) => l.accountCode));
     if (hazir.length === 0) {
-      toast.error(sel.size === 0 ? 'Önce belge seç' : 'Seçilenlerin hesap kodu yok ya da zaten onaylı');
+      toast.error(sel.size === 0 ? 'Önce belge seç' : 'Seçilenlerde eksik hesap kodu var (cari/KDV/gider) ya da zaten onaylı');
       return;
     }
     approveMut.mutate(hazir.map((d) => d.id));
@@ -762,6 +789,17 @@ function ScreenFaturalar({ taxpayerId, period, kind = 'ALIS' }: { taxpayerId: st
             </div>
           </div>
         )}
+        <div className="durumfiltre">
+          {DURUM_FILTRELER.map((f) => {
+            const n = durumCount(f.v);
+            if (f.v !== 'all' && n === 0) return null;
+            return (
+              <button key={f.v} className={`dfchip${durumF === f.v ? ' on' : ''}`} onClick={() => setDurumF(f.v)}>
+                {f.l} <span className="dfn">{n}</span>
+              </button>
+            );
+          })}
+        </div>
         <div className="twrap">
           <table>
             <thead><tr><th style={{ width: 30 }}><Check checked={allSelected} onToggle={toggleAll} /></th><th>Tarih</th><th>Fatura No</th><th>Firma Adı</th><th>Tip</th><th className="num">KDV Hariç</th><th className="num">KDV</th><th className="num">Tutar</th><th>Hesap Kodu</th><th>Durum</th><th className="actcol" style={{ width: 40 }} /></tr></thead>
@@ -995,7 +1033,7 @@ function ScreenKurallar({ taxpayerId, period }: { taxpayerId: string; period: st
             return (
               <div key={d.id} className="lrow">
                 <div className="ico">{ini}</div>
-                <div className="lx"><b>{firma}</b> — {du.k === 'miss' ? 'hesap kodu atanmamış, elle ya da öğrenmeyle atanmalı.' : du.t === 'Tutar eksik' ? 'matrah/KDV ayrıştırılamadı, tutar girilmeli.' : 'içerik geçmişle çelişiyor, kontrol gerekiyor.'} <small style={{ color: 'var(--faint)' }}>{d.belgeNo ? `· ${d.belgeNo}` : ''} · {fmtMoney(d.totalAmount)} ₺</small></div>
+                <div className="lx"><b>{firma}</b> — {du.cat === 'eksik' ? `${du.t.toLocaleLowerCase('tr-TR')} — elle ya da öğrenmeyle atanmalı.` : du.cat === 'tutar' ? 'matrah/KDV okunamadı, tutar girilmeli.' : du.cat === 'okunamadi' ? 'belge okunamadı, tekrar oku.' : 'içerik geçmişle çelişiyor, kontrol gerekiyor.'} <small style={{ color: 'var(--faint)' }}>{d.belgeNo ? `· ${d.belgeNo}` : ''} · {fmtMoney(d.totalAmount)} ₺</small></div>
                 {(() => {
                   const vkn = String((sat ? d.buyerVkn : d.sellerVkn) || '').replace(/\D/g, '');
                   const adi = (sat ? d.customerName : d.vendorName) || '';
@@ -1150,7 +1188,9 @@ function ScreenMuhasebe({ taxpayerId, period, isIsletme = false, taxpayerNace = 
   const cAlis = all.filter((d) => dirOf(d) === 'ALIS').length;
   const cSatis = all.filter((d) => dirOf(d) === 'SATIS').length;
   const allF = dir === 'ALL' ? all : all.filter((d) => dirOf(d) === dir);
-  const hasCode = (d: any) => Array.isArray(d.lines) && d.lines.some((l: any) => l.accountCode);
+  // HAZIR = TÜM satırların kodu dolu (cari dahil). Eskiden "herhangi bir satır" yeterdi →
+  // cari boşken bile "hazır/muhasebeleştirilebilir" görünüyordu (yanlış).
+  const hasCode = (d: any) => Array.isArray(d.lines) && d.lines.length > 0 && d.lines.every((l: any) => l.accountCode);
   const hasAmount = (d: any) => { const p = kdvParts(d); return (Number(p.matrah) || 0) > 0 || (Number(p.kdv) || 0) > 0 || Number(d.totalAmount) > 0; };
   // İşletme defterinde hesap kodu yok — hazır olma şartı belgenin tutarının olması.
   const ready = (d: any) => (isIsletme ? hasAmount(d) : hasCode(d));
@@ -2156,6 +2196,12 @@ const CSS = `
 #fm-root .ocrdot{width:8px;height:8px;border-radius:50%;background:var(--accent,#2563eb);animation:ocrpulse 1s ease-in-out infinite;flex-shrink:0}
 #fm-root .ocrdot.err{background:#c0353a;animation:none}
 @keyframes ocrpulse{0%,100%{opacity:.35}50%{opacity:1}}
+#fm-root .durumfiltre{display:flex;gap:6px;flex-wrap:wrap;padding:10px 16px 2px}
+#fm-root .dfchip{display:inline-flex;align-items:center;gap:6px;height:26px;padding:0 11px;border:1px solid var(--line2);border-radius:13px;background:#fff;color:var(--muted);font-size:11.5px;font-weight:600;cursor:pointer;font-family:inherit}
+#fm-root .dfchip:hover{border-color:var(--accent-line);color:var(--accent)}
+#fm-root .dfchip.on{background:var(--accent);border-color:var(--accent);color:#fff}
+#fm-root .dfchip .dfn{font-size:10px;font-weight:700;opacity:.7}
+#fm-root .dfchip.on .dfn{opacity:.95}
 #fm-root .pill.n{background:#eef1f5;color:#64748b}
 #fm-root .eye{height:28px;width:28px;border-radius:7px;border:1px solid var(--line2);display:grid;place-items:center;color:var(--muted);cursor:pointer}
 #fm-root .eye:hover{border-color:var(--accent);color:var(--accent)}
