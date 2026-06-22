@@ -135,7 +135,7 @@ function taxpayerLabel(t: any): string {
 }
 // Hesap kodu seçici — Mihsap gibi: KUTUNUN İÇİNE doğrudan yazılır (ayrı arama kutusu yok),
 // yazdıkça altta kod/isim listesi filtrelenir; tıkla seç ya da Enter. Tek temiz ok.
-function CodeSelect({ value, accounts, onChange }: { value: string; accounts: any[]; onChange: (code: string) => void }) {
+function CodeSelect({ value, accounts, onChange, onAddNew }: { value: string; accounts: any[]; onChange: (code: string) => void; onAddNew?: (code: string) => void }) {
   const [open, setOpen] = useState(false);
   const [pos, setPos] = useState<{ top: number; left: number; width: number } | null>(null);
   const boxRef = useRef<HTMLDivElement>(null);
@@ -170,6 +170,9 @@ function CodeSelect({ value, accounts, onChange }: { value: string; accounts: an
   // Filtre DAİMA kutudaki metne (value) göre → tıklayınca dropdown seçili koda filtreli
   // açılır (baştan tüm plan değil); silmeye başlayınca anında güncellenir. Kutu boşsa tüm liste.
   const term = String(value || '').trim().toLocaleLowerCase('tr');
+  const codeTrim = String(value || '').trim();
+  // Yazılan kod planda TAM olarak yoksa "+" çıkar (Mihsap modeli — yeni hesap aç).
+  const exactExists = !codeTrim || accounts.some((a) => String(a.code) === codeTrim);
   const list = (term
     ? accounts.filter((a) => String(a.code || '').toLocaleLowerCase('tr').includes(term) || String(a.name || '').toLocaleLowerCase('tr').includes(term))
     : accounts
@@ -206,7 +209,15 @@ function CodeSelect({ value, accounts, onChange }: { value: string; accounts: an
       {open && pos && (
         <div className="cselpop" ref={popRef} style={{ position: 'fixed', top: pos.top, left: pos.left, width: pos.width }}>
           <div className="csellist">
-            {list.length === 0 && <div className="cselempty">Eşleşen hesap yok — yazdığın kod aynen kullanılır</div>}
+            {onAddNew && !exactExists && (
+              <div onMouseDown={(e) => { e.preventDefault(); setOpen(false); onAddNew(codeTrim); }}
+                style={{ display: 'flex', alignItems: 'center', gap: 8, padding: '9px 11px', cursor: 'pointer', color: '#16a34a', fontWeight: 700, borderBottom: '1px solid rgba(255,255,255,0.06)' }}
+                title="Bu hesap Luca planında yok — yeni hesap aç">
+                <span style={{ display: 'inline-grid', placeItems: 'center', width: 22, height: 22, borderRadius: '50%', border: '2px solid #16a34a', fontSize: 15, lineHeight: 1 }}>+</span>
+                Yeni hesap aç: <b>{codeTrim}</b>
+              </div>
+            )}
+            {list.length === 0 && exactExists && <div className="cselempty">Eşleşen hesap yok — yazdığın kod aynen kullanılır</div>}
             {list.map((a, idx) => (
               <div key={a.id || a.code} className={`cselopt${String(a.code) === String(value) ? ' sel' : ''}${idx === actIdx ? ' act' : ''}`} onMouseEnter={() => setActive(idx)} onMouseDown={(e) => { e.preventDefault(); pick(String(a.code)); }}>
                 <b>{a.code}</b>{a.name ? <span>{a.name}</span> : null}
@@ -1333,6 +1344,27 @@ function ScreenMuhasebe({ taxpayerId, period, isIsletme = false, taxpayerNace = 
     enabled: !!taxpayerId,
   });
   const accountPlan: any[] = planQ.data || [];
+  // ── Mihsap modeli: Luca'da olmayan hesabı aç ("+" → "Yeni Hesap Planı Ekle" modalı) ──
+  const [addAcc, setAddAcc] = useState<{ code: string; name: string; isCari: boolean; vkn: string } | null>(null);
+  const openAddAccount = (code: string) => {
+    const c = String(code || '').trim();
+    const cari = /^(120|320|329|331)/.test(c);
+    const sale = String(selDoc?.invoiceKind || 'ALIS') === 'SATIS';
+    const firma = sale ? (selDoc?.customerName || '') : (selDoc?.vendorName || '');
+    const vkn = String((sale ? selDoc?.buyerVkn : selDoc?.sellerVkn) || '').replace(/\D/g, '');
+    setAddAcc({ code: c, name: cari ? String(firma || '') : '', isCari: cari, vkn: cari ? vkn : '' });
+  };
+  const createAccMut = useMutation({
+    mutationFn: (v: { code: string; name: string; isCari: boolean; vkn: string }) =>
+      api.post('/fatura-muhasebelestirme/account-plan', { taxpayerId, code: v.code, name: v.name, isCari: v.isCari, vkn: v.vkn || undefined }).then((r) => r.data),
+    onSuccess: (_d, v) => {
+      qc.invalidateQueries({ queryKey: ['fm2', 'account-plan-pick', taxpayerId] });
+      qc.invalidateQueries({ queryKey: ['fm2'] });
+      toast.success(`"${v.code}" hesabı açıldı — aktarımda Luca'ya da otomatik açılacak.`);
+      setAddAcc(null);
+    },
+    onError: (e: any) => toast.error(e?.response?.data?.message || 'Hesap açılamadı'),
+  });
   const borc = lines.reduce((s: number, l: any) => s + Number(l.debit || 0), 0);
   const alacak = lines.reduce((s: number, l: any) => s + Number(l.credit || 0), 0);
   const dengeli = lines.length > 0 && Math.abs(borc - alacak) < 0.01;
@@ -1437,6 +1469,51 @@ function ScreenMuhasebe({ taxpayerId, period, isIsletme = false, taxpayerNace = 
 
   return (
     <section className="screen">
+      {addAcc && (
+        <div onMouseDown={() => setAddAcc(null)} style={{ position: 'fixed', inset: 0, zIndex: 10000, background: 'rgba(0,0,0,0.55)', display: 'grid', placeItems: 'center', padding: 16 }}>
+          <div onMouseDown={(e) => e.stopPropagation()} style={{ width: 'min(620px, 96vw)', background: '#fff', color: '#1a1a1a', borderRadius: 14, padding: '22px 26px', boxShadow: '0 24px 70px rgba(0,0,0,0.5)' }}>
+            <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: 4 }}>
+              <h3 style={{ margin: 0, fontSize: 20, fontWeight: 800 }}>Yeni Hesap Planı Ekle</h3>
+              <button type="button" onClick={() => setAddAcc(null)} style={{ background: 'none', border: 0, fontSize: 22, cursor: 'pointer', color: '#999' }}>✕</button>
+            </div>
+            <div style={{ display: 'grid', gap: 5, marginTop: 16 }}>
+              <label style={{ fontSize: 14, fontWeight: 600 }}>Hesap Kodu</label>
+              <input value={addAcc.code} onChange={(e) => setAddAcc({ ...addAcc, code: e.target.value })}
+                style={{ padding: '11px 13px', borderRadius: 9, border: '1px solid #ddd', fontSize: 15 }} />
+            </div>
+            <div style={{ display: 'grid', gap: 5, marginTop: 16 }}>
+              <label style={{ fontSize: 14, fontWeight: 600 }}>Hesap Adı</label>
+              <input value={addAcc.name} maxLength={64} onChange={(e) => setAddAcc({ ...addAcc, name: e.target.value })}
+                style={{ padding: '11px 13px', borderRadius: 9, border: '1px solid #ddd', fontSize: 15 }} />
+              <span style={{ fontSize: 12, color: '#999' }}>{addAcc.name.length}/64 karakter</span>
+            </div>
+            <label style={{ display: 'flex', alignItems: 'center', gap: 8, marginTop: 16, fontSize: 15, fontWeight: 600 }}>
+              Cari Hesap Mı? : <input type="checkbox" checked={addAcc.isCari} onChange={(e) => setAddAcc({ ...addAcc, isCari: e.target.checked })} style={{ width: 18, height: 18 }} />
+            </label>
+            {addAcc.isCari && (
+              <div style={{ display: 'grid', gap: 5, marginTop: 16 }}>
+                <label style={{ fontSize: 14, fontWeight: 600 }}>Vergi No / T.C. Kimlik No</label>
+                <input value={addAcc.vkn} onChange={(e) => setAddAcc({ ...addAcc, vkn: e.target.value.replace(/\D/g, '') })}
+                  style={{ padding: '11px 13px', borderRadius: 9, border: '1px solid #ddd', fontSize: 15 }} />
+              </div>
+            )}
+            <div style={{ display: 'flex', gap: 12, justifyContent: 'center', marginTop: 24 }}>
+              <button type="button" onClick={() => {
+                const c = String(addAcc.code || '').trim();
+                const exists = accountPlan.some((a) => String(a.code) === c);
+                if (exists) toast.warning(`"${c}" hesabı planda zaten var.`);
+                else toast.success(`"${c}" planda yok — açabilirsin.`);
+              }} style={{ padding: '11px 18px', borderRadius: 9, border: 0, background: '#ef4444', color: '#fff', fontWeight: 700, cursor: 'pointer' }}>
+                🔍 Hesap Planı Kontrol
+              </button>
+              <button type="button" disabled={createAccMut.isPending || !addAcc.code.trim() || !addAcc.name.trim()} onClick={() => createAccMut.mutate(addAcc)}
+                style={{ padding: '11px 30px', borderRadius: 9, border: 0, background: '#2563eb', color: '#fff', fontWeight: 700, cursor: 'pointer', opacity: (createAccMut.isPending || !addAcc.code.trim() || !addAcc.name.trim()) ? 0.55 : 1 }}>
+                {createAccMut.isPending ? 'Kaydediliyor…' : 'Kaydet'}
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
       <div className="card" style={{ padding: 0, marginTop: 2 }}>
         <div className="wmain">
             {selDoc ? (
@@ -1532,7 +1609,7 @@ function ScreenMuhasebe({ taxpayerId, period, isIsletme = false, taxpayerNace = 
                             <div className="fgh"><span>{g.label}</span><span className="fgs">{g.side === 'debit' ? 'Borç' : 'Alacak'}</span></div>
                             {rows.map(({ l, i }) => (
                               <div key={i} className="frow">
-                                <CodeSelect value={l.accountCode || ''} accounts={accountPlan} onChange={(code) => setLine(i, 'accountCode', code)} />
+                                <CodeSelect value={l.accountCode || ''} accounts={accountPlan} onChange={(code) => setLine(i, 'accountCode', code)} onAddNew={(code) => openAddAccount(code)} />
                                 {g.key !== 'cari' && g.key !== 'tevkifat'
                                   ? <RateSelect value={String(l.rate || '').replace(/[^0-9]/g, '')} onChange={(v) => setLine(i, 'rate', v ? `%${v}` : '')} />
                                   : null}

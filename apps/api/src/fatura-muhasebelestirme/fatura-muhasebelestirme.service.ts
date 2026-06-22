@@ -1788,12 +1788,13 @@ export class FaturaMuhasebelestirmeService implements OnModuleInit, OnModuleDest
    */
   async createAccount(
     tenantId: string,
-    input: { taxpayerId: string; code: string; name: string },
+    input: { taxpayerId: string; code: string; name: string; isCari?: boolean; vkn?: string },
   ) {
     if (!input.taxpayerId) throw new BadRequestException('taxpayerId gerekli');
     if (!input.code?.trim()) throw new BadRequestException('Hesap kodu gerekli');
     if (!input.name?.trim()) throw new BadRequestException('Hesap adı gerekli');
 
+    const code = input.code.trim();
     const latest = await (this.prisma as any).lucaAccountPlanSnapshot.findFirst({
       where: { tenantId, taxpayerId: input.taxpayerId, status: 'READY' },
       orderBy: { createdAt: 'desc' },
@@ -1806,21 +1807,36 @@ export class FaturaMuhasebelestirmeService implements OnModuleInit, OnModuleDest
       );
     }
 
-    // Lokal hesap olarak işaretle (Luca'ya henüz gönderilmedi)
+    // Hesap Planı Kontrol: aynı kod planda (Luca'dan ya da yerel) zaten varsa tekrar açma.
+    const dup = await (this.prisma as any).lucaAccountPlanLine.findFirst({
+      where: { snapshotId: latest.id, accountCode: code },
+      select: { id: true, syncedToLuca: true },
+    });
+    if (dup) {
+      throw new BadRequestException(`"${code}" hesabı planda zaten var.`);
+    }
+
+    // Cari işareti verilmemişse koddan türet (120/320/32x/331 = cari). VKN'yi sadeleştir.
+    const isCari = input.isCari != null ? !!input.isCari : /^(120|320|329|331)/.test(code);
+    const vkn = (input.vkn || '').replace(/\D/g, '').trim() || null;
+
+    // Lokal hesap olarak işaretle (Luca'ya henüz gönderilmedi → push-to-luca ile açılacak)
     const created = await (this.prisma as any).lucaAccountPlanLine.create({
       data: {
         snapshotId: latest.id,
-        accountCode: input.code.trim(),
+        accountCode: code,
         accountName: input.name.trim(),
-        level: input.code.trim().split('.').length,
+        level: code.split('.').length,
         debitBalance: 0,
         creditBalance: 0,
         source: 'LOCAL',
         syncedToLuca: false,
+        isCari,
+        vkn,
       },
     });
 
-    return { ok: true, id: created.id, code: created.accountCode, name: created.accountName, local: true, syncedToLuca: false };
+    return { ok: true, id: created.id, code: created.accountCode, name: created.accountName, isCari, vkn, local: true, syncedToLuca: false };
   }
 
   /**
@@ -1844,7 +1860,7 @@ export class FaturaMuhasebelestirmeService implements OnModuleInit, OnModuleDest
     // Henüz Luca'ya senkron edilmemiş hesaplar
     const localItems = await (this.prisma as any).lucaAccountPlanLine.findMany({
       where: { snapshotId: latest.id, syncedToLuca: false },
-      select: { id: true, accountCode: true, accountName: true },
+      select: { id: true, accountCode: true, accountName: true, isCari: true, vkn: true },
     });
 
     if (localItems.length === 0) {

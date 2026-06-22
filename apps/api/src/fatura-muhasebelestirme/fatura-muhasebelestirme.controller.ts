@@ -194,12 +194,14 @@ export class FaturaMuhasebelestirmeController {
   @Post('account-plan')
   createAccount(
     @Req() req: any,
-    @Body() body: { taxpayerId?: string; code?: string; name?: string },
+    @Body() body: { taxpayerId?: string; code?: string; name?: string; isCari?: boolean; vkn?: string },
   ) {
     return this.service.createAccount(req.user.tenantId, {
       taxpayerId: body?.taxpayerId || '',
       code: body?.code || '',
       name: body?.name || '',
+      isCari: body?.isCari,
+      vkn: body?.vkn,
     });
   }
 

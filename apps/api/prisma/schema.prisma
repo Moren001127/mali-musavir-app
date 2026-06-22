@@ -2483,6 +2483,9 @@ model LucaAccountPlanLine {
   // v2: Fatura Merkezi hesap planı senkronizasyonu
   source       String?  // null=Luca'dan geldi, "LOCAL"=yerel olarak eklendi
   syncedToLuca Boolean  @default(true)
+  // Mihsap modeli — yeni hesap açma: Luca formundaki "Cari Hesap Mı?" + VKN/TCKN
+  isCari       Boolean  @default(false)
+  vkn          String?
 
   snapshot    LucaAccountPlanSnapshot @relation(fields: [snapshotId], references: [id], onDelete: Cascade)
 
