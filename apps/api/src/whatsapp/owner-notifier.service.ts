@@ -172,13 +172,7 @@ export class OwnerNotifierService implements OnModuleInit {
       const firma = this.docFirmaAdi(d);
       const r = d.raw && typeof d.raw === 'object' ? d.raw : {};
       const kurum = [r.kurumAciklama, r.altKurum].filter(Boolean).join(' · ');
-      const caption = [
-        `📨 ${firma}`,
-        'Yeni e-Tebligat geldi.',
-        kurum,
-        `${d.title || r.belgeTuruAciklama || 'Tebligat'}${d.referenceNo ? ' · ' + d.referenceNo : ''}`,
-        r.tebligZamani ? `Tebliğ: ${r.tebligZamani}` : '',
-      ].filter(Boolean).join('\n');
+      const belge = `${d.title || r.belgeTuruAciklama || 'Tebligat'}${d.referenceNo ? ' · ' + d.referenceNo : ''}`;
 
       const filename = `${d.referenceNo || 'tebligat'}.pdf`;
       let url: string | null = null;
@@ -188,12 +182,27 @@ export class OwnerNotifierService implements OnModuleInit {
         this.logger.warn(`e-Tebligat PDF URL uretilemedi (${d.id}): ${e?.message || e}`);
       }
 
+      // STANDART ŞABLON — bilgilendirme mesajı ÖNCE gönderilir, belge SONRA ayrı dosya olarak.
+      // (Eskiden PDF caption ile birlikte gidiyordu → karışık görünüyordu. Kullanıcı isteği:
+      //  önce mesaj, sonra dosya, hepsi tek standart formatta.)
+      const mesaj = [
+        '📨 YENİ E-TEBLİGAT',
+        '',
+        `🏢 Mükellef: ${firma}`,
+        kurum ? `🏛️ Kurum: ${kurum}` : '',
+        `📄 Belge: ${belge}`,
+        r.tebligZamani ? `🗓️ Tebliğ: ${r.tebligZamani}` : '',
+        '',
+        url ? '📎 Tebligat belgesi aşağıda paylaşılmıştır.' : 'Belgeyi portaldan görüntüleyebilirsiniz.',
+      ].filter(Boolean).join('\n');
+
       for (const phone of ownerPhones) {
         try {
+          // 1) ÖNCE bilgilendirme mesajı
+          await this.whatsapp.sendMessage(phone, mesaj, n.tenantId);
+          // 2) SONRA belgeyi caption'sız temiz dosya olarak gönder
           if (url) {
-            await this.whatsapp.sendMediaDetailed(phone, { url, mimeType: 'application/pdf', filename, caption }, n.tenantId);
-          } else {
-            await this.whatsapp.sendMessage(phone, caption, n.tenantId);
+            await this.whatsapp.sendMediaDetailed(phone, { url, mimeType: 'application/pdf', filename, caption: null }, n.tenantId);
           }
         } catch (err: any) {
           this.logger.warn(`e-Tebligat owner WhatsApp hatasi (${phone}): ${err?.message || err}`);
