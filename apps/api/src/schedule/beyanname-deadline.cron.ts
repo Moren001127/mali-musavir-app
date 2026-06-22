@@ -76,34 +76,43 @@ export class BeyannameDeadlineCron {
     });
     if (!records.length) return 0;
 
-    // Beyan tipi -> son tarih dictionary
-    let notified = 0;
+    // BEYAN TİPİNE GÖRE GRUPLA → mükellef başına AYRI bildirim YERİNE tek ÖZET bildirim.
+    // (Eskiden her mükellefe ayrı bildirim üretiyordu; owner-notifier aynı-tip bildirimleri
+    //  10 sn debounce ettiği için 22 deadline'dan sadece 1'i gidiyordu = "sadece Sabri Yaşın".)
+    const grup = new Map<string, { deadline: Date; daysRemaining: number; names: string[] }>();
     for (const rec of records) {
       const deadline = calculateBeyannameDeadline(rec.beyanTipi, rec.donem);
       if (!deadline) continue;
-
       const daysRemaining = Math.ceil((deadline.getTime() - today.getTime()) / (24 * 3600 * 1000));
       if (daysRemaining < 0 || daysRemaining > 7) continue;
-
-      const urgency = daysRemaining <= 1 ? '🚨 ACİL' : daysRemaining <= 3 ? '⚠️' : '⏰';
       const mukellefName = rec.taxpayer?.companyName ||
         [rec.taxpayer?.firstName, rec.taxpayer?.lastName].filter(Boolean).join(' ') ||
         'Mükellef';
+      const g = grup.get(rec.beyanTipi) || { deadline, daysRemaining, names: [] };
+      g.names.push(mukellefName);
+      // En yakın (en küçük gün) deadline'ı tut
+      if (daysRemaining < g.daysRemaining) { g.daysRemaining = daysRemaining; g.deadline = deadline; }
+      grup.set(rec.beyanTipi, g);
+    }
 
+    let notified = 0;
+    for (const [beyanTipi, g] of grup) {
+      const urgency = g.daysRemaining <= 1 ? '🚨 ACİL' : g.daysRemaining <= 3 ? '⚠️' : '⏰';
+      const isimler = g.names.slice(0, 40).join(', ') + (g.names.length > 40 ? ` … (+${g.names.length - 40})` : '');
       await this.notifications.createForTenant({
         tenantId,
         type: NOTIFICATION_TYPES.TAX_DEADLINE,
-        title: `${urgency} ${rec.beyanTipi} son ${daysRemaining} gün: ${mukellefName}`,
-        body: `${donem} dönemi ${rec.beyanTipi} beyannamesinin son verme tarihi ${this.formatTr(deadline)}. Beyanname henüz onaylanmadı.`,
+        title: `${urgency} ${beyanTipi} son ${g.daysRemaining} gün — ${g.names.length} mükellef`,
+        body: `${donem} dönemi ${beyanTipi} son verme tarihi ${this.formatTr(g.deadline)}. Henüz onaylanmamış (${g.names.length}): ${isimler}`,
         metadata: {
-          beyanTipi: rec.beyanTipi,
-          donem: rec.donem,
-          taxpayerId: rec.taxpayerId,
-          deadline: deadline.toISOString(),
-          daysRemaining,
+          beyanTipi,
+          donem,
+          mukellefSayisi: g.names.length,
+          deadline: g.deadline.toISOString(),
+          daysRemaining: g.daysRemaining,
           link: `/panel/beyannameler?donem=${encodeURIComponent(donem)}`,
         },
-        dedupeKey: `tax-deadline:${rec.id}:${this.todayKey(today)}`,
+        dedupeKey: `tax-deadline:${beyanTipi}:${donem}:${this.todayKey(today)}`,
         dedupeWindowMin: 60 * 20,
       }).catch((e) => {
         this.logger.warn(`TAX_DEADLINE notif failed: ${(e as Error).message}`);
