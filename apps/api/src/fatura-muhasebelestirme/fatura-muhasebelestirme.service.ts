@@ -3635,7 +3635,7 @@ export class FaturaMuhasebelestirmeService implements OnModuleInit, OnModuleDest
     const tp: any = await (this.prisma as any).taxpayer.findFirst({
       where: { id: q.taxpayerId, tenantId }, select: { defterTuru: true, mihsapDefterTuru: true },
     });
-    const isIsletme = String(tp?.defterTuru || tp?.mihsapDefterTuru || 'BILANCO').toUpperCase().includes('ISLETME');
+    const isIsletme = /i[şs]letme|defter.?beyan|basit/i.test(`${tp?.defterTuru || ''} ${tp?.mihsapDefterTuru || ''}`);
     const where: any = { tenantId, taxpayerId: q.taxpayerId, status: 'APPROVED' };
     if (q.direction === 'ALIS' || q.direction === 'SATIS') where.invoiceKind = q.direction;
     if (q.period) {
@@ -3824,7 +3824,7 @@ export class FaturaMuhasebelestirmeService implements OnModuleInit, OnModuleDest
           payload: {
             mode: 'BATCH_EXCEL',
             // v2.3: ISLETME → Hızlı Fiş Aktarım CSV (cp1254), BILANCO → 14 sütun fiş xlsx
-            format: String(defterTuru).toUpperCase().includes('ISLETME') ? 'ISLETME_CSV' : 'BATCH_EXCEL',
+            format: /i[şs]letme|defter.?beyan|basit/i.test(String(defterTuru)) ? 'ISLETME_CSV' : 'BATCH_EXCEL',
             taxpayerId: body.taxpayerId,
             defterTuru,
             direction: g.kind,

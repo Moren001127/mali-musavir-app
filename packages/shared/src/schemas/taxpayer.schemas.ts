@@ -12,7 +12,12 @@ export const CreateTaxpayerSchema = z.object({
     .regex(/^\d+$/, 'Sadece rakam giriniz'),
   taxOffice: z.string().min(2, 'Vergi dairesi zorunludur').max(100),
   email: z.string().email('Geçerli e-posta giriniz').optional().or(z.literal('')),
-  emails: z.array(z.string().email().or(z.literal(''))).optional().default([]),
+  // E-postalar: her elemanı TRIM et, boş/boşluk olanları ELE. Eski/bozuk tek bir e-posta yüzünden
+  //   mükellef güncellemesi (ör. NACE ekleme) engellenmesin — "emails.0: Invalid email" hatasının kökü.
+  emails: z.preprocess(
+    (v) => (Array.isArray(v) ? v.map((e) => String(e ?? '').trim()).filter((e) => e.length > 0) : []),
+    z.array(z.string()).optional().default([]),
+  ),
   phone: z.string().optional().or(z.literal('')),
   phones: z.array(z.string()).optional().default([]),
   address: z.string().optional().or(z.literal('')),
@@ -60,7 +65,12 @@ export const UpdateTaxpayerSchema = z.object({
     .optional(),
   taxOffice: z.string().min(2, 'Vergi dairesi zorunludur').max(100).optional(),
   email: z.string().email('Gecerli e-posta giriniz').optional().or(z.literal('')),
-  emails: z.array(z.string().email().or(z.literal(''))).optional(),
+  // E-postalar: trim + boşları ele; geçersiz eski veri güncellemeyi engellemesin. Gönderilmezse
+  //   (undefined) dokunma (mevcut e-postaları silme).
+  emails: z.preprocess(
+    (v) => (v === undefined ? undefined : Array.isArray(v) ? v.map((e) => String(e ?? '').trim()).filter((e) => e.length > 0) : []),
+    z.array(z.string()).optional(),
+  ),
   phone: z.string().optional().or(z.literal('')),
   phones: z.array(z.string()).optional(),
   address: z.string().optional().or(z.literal('')),
