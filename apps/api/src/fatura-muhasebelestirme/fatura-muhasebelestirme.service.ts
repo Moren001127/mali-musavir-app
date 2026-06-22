@@ -2373,9 +2373,10 @@ export class FaturaMuhasebelestirmeService {
   private mapOcrBelgeTipi(t?: string | null): string | null {
     const s = String(t || '').toUpperCase().replace(/[^A-Z]/g, '');
     if (!s) return null;
+    if (s.includes('ZRAPOR')) return 'Z_RAPORU';
     if (s.includes('EARSIV') || s.includes('ARSIV')) return 'E_ARSIV';
     if (s.includes('EFATURA') || s.includes('FATURA')) return 'E_FATURA';
-    if (s.includes('OKC') || s.includes('FIS') || s.includes('ZRAPOR') || s.includes('MAKBUZ')) return 'OKC_FIS';
+    if (s.includes('OKC') || s.includes('FIS') || s.includes('MAKBUZ')) return 'OKC_FIS';
     return null;
   }
 
