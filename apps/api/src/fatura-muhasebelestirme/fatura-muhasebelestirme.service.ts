@@ -5559,10 +5559,10 @@ export class FaturaMuhasebelestirmeService {
           const hit = grp.find((a: any) => { const n = String(a.accountName || ''); return n.includes(`${tevkPay}/10`) || /tevk[iı]fat/i.test(n); });
           if (hit) return hit;
         }
-        // NORMAL (ya da tevkifat hesabı yok): "tevkifat/iade/ihrac/istisna" GEÇMEYEN normal hesabı
-        // seç — planın ilk 391/191'i tevkifatlıysa normal satış oraya DÜŞMESİN (matrahla simetrik).
-        const nm = (a: any) => this.norm(String(a.accountName || ''));
-        const normals = grp.filter((a: any) => !/(tevkifat|iade|ihrac|istisna)/.test(nm(a)));
+        // NORMAL (ya da tevkifat hesabı yok): tevkifat (kelime/oran) / iade / ihrac / istisna
+        // GEÇMEYEN düz hesabı seç — planın ilk 391/191'i tevkifatlıysa normal satış oraya
+        // DÜŞMESİN (matrahla simetrik).
+        const normals = grp.filter((a: any) => !this.isTevkifatAccountName(a.accountName || '') && !/(iade|ihrac|istisna)/i.test(String(a.accountName || '')));
         const pool = normals.length ? normals : grp;
         const depth = (c: string) => (String(c || '').match(/\./g) || []).length;
         const mx = pool.reduce((m: number, a: any) => Math.max(m, depth(String(a.accountCode || ''))), 0);
@@ -5589,12 +5589,14 @@ export class FaturaMuhasebelestirmeService {
         if (!isSale) return categoryMatrah;
         const g600 = accounts.filter((a: any) => { const c = String(a.accountCode || ''); return c.startsWith('600') && !c.startsWith('79'); });
         if (!g600.length) return categoryMatrah;
-        const nm = (a: any) => this.norm(String(a.accountName || ''));
         if (tevkPay >= 1) {
-          const hit = g600.find((a: any) => nm(a).includes('tevkifat'));
+          // önce TAM oran ("2/10"), sonra "tevkifat" kelimesi ya da herhangi "X/10" deseni.
+          const exact = g600.find((a: any) => String(a.accountName || '').includes(`${tevkPay}/10`));
+          const hit = exact || g600.find((a: any) => this.isTevkifatAccountName(a.accountName || ''));
           return hit || categoryMatrah;
         }
-        const normals = g600.filter((a: any) => !/(tevkifat|iade|ihrac|istisna)/.test(nm(a)));
+        // NORMAL satış → tevkifat (KELİME ya da "X/10" ORAN) / iade / ihrac / istisna GEÇMEYEN 600.
+        const normals = g600.filter((a: any) => !this.isTevkifatAccountName(a.accountName || '') && !/(iade|ihrac|istisna)/i.test(String(a.accountName || '')));
         const pool = normals.length ? normals : g600;
         const depth = (c: string) => (String(c || '').match(/\./g) || []).length;
         const mx = pool.reduce((m: number, a: any) => Math.max(m, depth(String(a.accountCode || ''))), 0);
@@ -5677,7 +5679,7 @@ export class FaturaMuhasebelestirmeService {
         // likteki 600'e çek. Doğru tevkifat-likteki BAŞKA bir 600'e (kullanıcı seçimi) dokunmaz.
         if (group === 'matrah' && isSale && saleMatrahDefault) {
           const curAcc = current ? accounts.find((a: any) => String(a.accountCode || '') === current) : null;
-          const curIsTevk = !!curAcc && this.norm(String(curAcc.accountName || '')).includes('tevkifat');
+          const curIsTevk = !!curAcc && this.isTevkifatAccountName(String(curAcc.accountName || ''));
           if (curAcc && curIsTevk !== (tevkPay >= 1) && current !== String((saleMatrahDefault as any).accountCode)) {
             await (this.prisma as any).invoiceAccountingLine.update({
               where: { id: line.id },
@@ -5691,7 +5693,7 @@ export class FaturaMuhasebelestirmeService {
         // zaten doğru tevkifat-likte. Doğru tevkifat-likteki başka KDV hesabına (kullanıcı) dokunmaz.
         if (group === 'vergi' && vergiMatch) {
           const curAcc = current ? accounts.find((a: any) => String(a.accountCode || '') === current) : null;
-          const curIsTevk = !!curAcc && this.norm(String(curAcc.accountName || '')).includes('tevkifat');
+          const curIsTevk = !!curAcc && this.isTevkifatAccountName(String(curAcc.accountName || ''));
           if (curAcc && curIsTevk !== (tevkPay >= 1) && current !== String((vergiMatch as any).accountCode)) {
             await (this.prisma as any).invoiceAccountingLine.update({
               where: { id: line.id },
@@ -5880,5 +5882,16 @@ export class FaturaMuhasebelestirmeService {
       .replace(/[^\p{L}\p{N}]+/gu, ' ')
       .replace(/\s+/g, ' ')
       .trim();
+  }
+
+  /** Hesap ADI tevkifatı işaret ediyor mu? — KDV hesabı gibi 600/391/191 tevkifat hesapları
+   *  ya "TEVKİFAT" kelimesiyle ya da "2/10" tarzı ORAN deseniyle adlandırılır (KDV oranı %20
+   *  ile karışmaz: payda /10'dur). İkisini de tanırız ki tevkifat hesabı kaçmasın / normal
+   *  satış yanlışlıkla tevkifat hesabına düşmesin. */
+  private isTevkifatAccountName(name: string): boolean {
+    const n = String(name || '');
+    if (/tevk[iı]fat/i.test(n)) return true;
+    if (/\b(?:10|[1-9])\s*\/\s*10\b/.test(n)) return true; // 2/10, 5/10, 9/10, 10/10 …
+    return false;
   }
 }
