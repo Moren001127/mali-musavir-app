@@ -108,6 +108,34 @@ export class WhatsAppBotController implements OnModuleInit {
     return { ok: true, count: messages.length };
   }
 
+  // GEÇİCİ ÖZ-TEST: owner AI'yı bir batarya gerçekçi soruyla GERÇEK yoldan (calisan→MorenAI)
+  // çalıştırıp üretilen cevapları döndürür. Hataları kullanıcı tek tek test etmeden ben
+  // toplu bulayım diye. Token korumalı; iş bitince KALDIRILACAK.
+  @Post('owner-selftest')
+  async ownerSelftest(@Body() body: any) {
+    if (String(body?.token || '') !== (process.env.MOREN_SELFTEST_TOKEN || 'moren-st-7Yq2x')) {
+      return { ok: false, error: 'unauthorized' };
+    }
+    const ownerPhone = String(process.env.MOREN_OWNER_WHATSAPP_PHONES || process.env.MOREN_OWNER_WHATSAPP_PHONE || '')
+      .split(',')[0]?.trim();
+    const tenant = ownerPhone ? await this.findOwnerTenantByPhone(ownerPhone) : null;
+    if (!tenant) return { ok: false, error: 'owner tenant bulunamadi' };
+    const questions: string[] = Array.isArray(body?.questions) ? body.questions.slice(0, 30) : [];
+    const results: any[] = [];
+    for (const q of questions) {
+      const t0 = Date.now();
+      try {
+        const a = await this.calisan.runViaMorenAi({
+          tenantId: tenant.id, message: String(q), originalMessage: String(q), source: 'owner-selftest',
+        });
+        results.push({ q, a: a.assistantMessage, model: a.model, ms: Date.now() - t0 });
+      } catch (e: any) {
+        results.push({ q, error: e?.message || String(e), ms: Date.now() - t0 });
+      }
+    }
+    return { ok: true, tenant: tenant.id, count: results.length, results };
+  }
+
   private extractMessages(body: any): IncomingWhatsAppMessage[] {
     const out: IncomingWhatsAppMessage[] = [];
     for (const entry of body?.entry || []) {
