@@ -771,7 +771,7 @@ function ScreenFaturalar({ taxpayerId, period, kind = 'ALIS' }: { taxpayerId: st
           <button className="btn sm blue" disabled={!taxpayerId || mihsapMut.isPending} onClick={() => mihsapMut.mutate()} title={!taxpayerId ? 'Önce mükellef seç' : "Mihsap 'bekleyen evraklar'daki faturaları portala aktarır"}><Ico html={I.download} size={13} /> {mihsapMut.isPending ? 'Aktarılıyor…' : "Mihsap'tan Aktar"}</button>
           <input ref={fileRef} type="file" multiple accept=".pdf,.jpg,.jpeg,.jpe,.jfif,.png,.webp,.gif,.tif,.tiff,.bmp,.heic,.heif,.avif,.xml,.ubl,.zip" style={{ display: 'none' }} onChange={(e) => { const f = e.target.files; if (f && f.length) uploadMut.mutate(f); e.target.value = ''; }} />
           <button className="btn sm" disabled={!taxpayerId || uploadMut.isPending} onClick={() => fileRef.current?.click()} title={!taxpayerId ? 'Önce mükellef seç' : 'JPEG / PDF / XML belge yükle (elle)'}><Ico html={I.plus} size={13} /> {uploadMut.isPending ? 'Yükleniyor…' : 'Belge Yükle'}</button>
-          <button className="btn sm" disabled={!taxpayerId || fetchMut.isPending} onClick={() => fetchMut.mutate()} title={!taxpayerId ? 'Önce mükellef seç' : 'Entegratörden çek (henüz tamamlanmadı)'}><Ico html={I.download} size={13} /> {fetchMut.isPending ? 'Çekiliyor…' : 'Belgeleri Getir'}</button>
+          <button className="btn sm" disabled title="Entegratörden otomatik çekme — yakında. Şimdilik 'Mihsap'tan Aktar' ya da 'Belge Yükle' kullan." style={{ opacity: .55 }}><Ico html={I.download} size={13} /> Belgeleri Getir <span style={{ fontSize: 9, fontWeight: 700, opacity: .8 }}>YAKINDA</span></button>
           <button className="btn sm ghost" disabled={syncMut.isPending} onClick={() => syncMut.mutate()} title="Mükellefe bağlanmamış (sahipsiz) belgeleri VKN/TCKN'ye göre ilgili mükellefe bağlar"><Ico html={I.sync} size={13} /> {syncMut.isPending ? 'Bağlanıyor…' : 'Sahipsiz belgeleri bağla'}</button>
           <button className="btn sm ghost" disabled={!taxpayerId || recodeMut.isPending} onClick={() => recodeMut.mutate()} title="Belgeleri TEKRAR OKUMADAN hesap kodlarını plana göre yeniden eşleştir — yanlış carileri düzeltir/temizler (saniyeler sürer)"><Ico html={I.sync} size={13} /> {recodeMut.isPending ? 'Düzeltiliyor…' : 'Kodları düzelt'}</button>
           <button className="btn sm blue" disabled={aiBusy || sel.size === 0} onClick={aiOku} title="Seçili faturaları yapay zeka (Max) ile oku — sunucuda okur, sayfa değişince durmaz">{aiBusy ? 'Başlatılıyor…' : `AI ile oku${sel.size ? ` (${sel.size})` : ''}`}</button>
@@ -1259,7 +1259,7 @@ function ScreenMuhasebe({ taxpayerId, period, isIsletme = false, taxpayerNace = 
           : { sellerVkn: meta.vkn || undefined, vendorName: meta.cariUnvan || undefined }),
       });
     },
-    onSuccess: () => { toast.success('Belge bilgileri kaydedildi'); qc.invalidateQueries({ queryKey: ['fm2'] }); },
+    onSuccess: () => { qc.invalidateQueries({ queryKey: ['fm2'] }); },
     onError: (e: any) => toast.error('Kaydedilemedi: ' + (e?.response?.data?.message || e?.message || 'hata')),
   });
   // Fiş satırları elle düzenleme (hesap kodu / borç / alacak) — PATCH lines ile kaydeder.
@@ -1298,7 +1298,7 @@ function ScreenMuhasebe({ taxpayerId, period, isIsletme = false, taxpayerNace = 
         await api.post('/fatura-muhasebelestirme/vendor-rule', { taxpayerId, vendorVkn: vkn, vendorName: selDoc?.vendorName || undefined, accountCode: matrahCode }).catch(() => {});
       }
     },
-    onSuccess: () => { toast.success('Fiş satırları kaydedildi · satıcı kodu öğrenildi'); qc.invalidateQueries({ queryKey: ['fm2'] }); },
+    onSuccess: () => { qc.invalidateQueries({ queryKey: ['fm2'] }); },
     onError: (e: any) => toast.error('Kaydedilemedi: ' + (e?.response?.data?.message || e?.message || 'hata')),
   });
   const gg = selDoc ? kdvParts(selDoc) : { matrah: null, kdv: null };
@@ -1330,6 +1330,35 @@ function ScreenMuhasebe({ taxpayerId, period, isIsletme = false, taxpayerNace = 
     onSuccess: () => { toast.success('Onaylandı — Luca kuyruğuna alındı'); qc.invalidateQueries({ queryKey: ['fm2'] }); },
     onError: (e: any) => toast.error('Onay başarısız: ' + (e?.response?.data?.message || e?.message || 'hata')),
   });
+  // Faz E: TEK kaydet (bilgi+satır birlikte, tek bildirim). Ctrl+S buna bağlı.
+  const saveAll = async (silent = false) => {
+    await saveMetaMut.mutateAsync();
+    if (!isIsletme) await saveLinesMut.mutateAsync();
+    if (!silent) toast.success('Kaydedildi');
+  };
+  // Faz E: Kaydet + Onayla → başarılıysa OTOMATİK sonraki belgeye geç (akış kopmasın).
+  const saveApprove = async () => {
+    if (!selDoc) return;
+    try {
+      await saveAll(true);
+      const nextId = navList[navIdx + 1]?.id;
+      await approveMut.mutateAsync(selDoc.id);
+      if (nextId) setSelId(nextId);
+    } catch { /* mutasyon hatasını gösterir */ }
+  };
+  // Faz E: klavye kısayolları — Ctrl+S Kaydet, Ctrl+Enter Kaydet+Onayla (form alanında da çalışır).
+  useEffect(() => {
+    const onKey = (e: KeyboardEvent) => {
+      if ((e.ctrlKey || e.metaKey) && (e.key === 's' || e.key === 'S')) {
+        e.preventDefault(); saveAll().catch(() => {});
+      } else if ((e.ctrlKey || e.metaKey) && e.key === 'Enter') {
+        e.preventDefault(); if (ggReady) saveApprove();
+      }
+    };
+    window.addEventListener('keydown', onKey);
+    return () => window.removeEventListener('keydown', onKey);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [selDoc?.id, navIdx, navList.length, ggReady, isIsletme, meta, lineDraft]);
   const bulkMut = useMutation({
     mutationFn: async () => {
       let ok = 0;
@@ -1477,12 +1506,12 @@ function ScreenMuhasebe({ taxpayerId, period, isIsletme = false, taxpayerNace = 
                 )}
                 <div className="wactions">
                   <div className="sp" />
-                  <button className="btn sm" disabled={saveMetaMut.isPending || saveLinesMut.isPending} title="Bilgileri ve satırları kaydet (Luca'ya GÖNDERMEZ)"
-                    onClick={async () => { try { await saveMetaMut.mutateAsync(); if (!isIsletme) await saveLinesMut.mutateAsync(); } catch { /* mutasyon kendi hatasını gösterir */ } }}>
+                  <button className="btn sm" disabled={saveMetaMut.isPending || saveLinesMut.isPending} title="Bilgileri ve satırları kaydet — Luca'ya GÖNDERMEZ (kısayol: Ctrl+S)"
+                    onClick={() => { saveAll().catch(() => {}); }}>
                     <Ico html={I.checkSm} size={13} /> {(saveMetaMut.isPending || saveLinesMut.isPending) ? 'Kaydediliyor…' : 'Kaydet'}
                   </button>
-                  <button className="btn primary sm" disabled={approveMut.isPending || saveMetaMut.isPending || saveLinesMut.isPending || !ggReady} title="Kaydet + Onayla (aktarıma hazır). Luca'ya aktarım AKTARILANLAR ekranından toplu yapılır."
-                    onClick={async () => { try { await saveMetaMut.mutateAsync(); if (!isIsletme) await saveLinesMut.mutateAsync(); if (selDoc) approveMut.mutate(selDoc.id); } catch { /* atla */ } }}>
+                  <button className="btn primary sm" disabled={approveMut.isPending || saveMetaMut.isPending || saveLinesMut.isPending || !ggReady} title="Kaydet + Onayla, otomatik sonraki belgeye geç (kısayol: Ctrl+Enter). Luca'ya aktarım AKTARILANLAR ekranından toplu."
+                    onClick={() => saveApprove()}>
                     <Ico html={I.checkSm} size={13} /> {approveMut.isPending ? 'Onaylanıyor…' : 'Kaydet ve Onayla'}
                   </button>
                 </div>
