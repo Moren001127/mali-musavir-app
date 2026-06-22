@@ -352,9 +352,9 @@ function DocModal() {
 
   const fitToWidth = (w: number) => {
     const vw = viewRef.current?.clientWidth || 0;
-    // Sığdır: belgeyi gerçek boyutunu AŞMADAN (max %100) genişliğe oturt. Dar belge
-    // büyütülmez (kullanıcı isterse + ile büyütür); geniş belge küçültülerek sığar.
-    if (w > 0 && vw > 0) setScale(Math.min(1, Math.max(0.3, +((vw - 6) / w).toFixed(3))));
+    // Sığdır: belgeyi panonun GENİŞLİĞİNE oturt — dar belge de büyütülür (yan boşluk
+    // kalmasın), geniş belge küçültülür. Üst sınır 3x (küçük görüntü aşırı bozulmasın).
+    if (w > 0 && vw > 0) setScale(Math.min(3, Math.max(0.3, +((vw - 6) / w).toFixed(3))));
   };
   const onFrameLoad = (e: any) => {
     if (fittedRef.current) return;
@@ -375,14 +375,18 @@ function DocModal() {
   const onImgLoad = (e: any) => {
     if (fittedRef.current) return;
     fittedRef.current = true;
-    fitToWidth(e.currentTarget.naturalWidth || 0);
+    const w = e.currentTarget.naturalWidth || 0;
+    const h = e.currentTarget.naturalHeight || 0;
+    // Resimde de gerçek boyutu sakla → "Sığdır" butonu (fit) resimde de çalışsın.
+    if (w > 0) setDim({ w: Math.ceil(w), h: Math.ceil(h) });
+    fitToWidth(w);
   };
 
   if (!doc) return null;
   const isImg = !doc.html && isImgMime;
   const frameSrc = blobUrl || rawUrl;
   const zoomStyle: any = { zoom: scale };
-  const sizeStyle: any = dim.w ? { width: dim.w, height: dim.h || undefined, margin: '0 auto' } : {};
+  const sizeStyle: any = dim.w ? { width: dim.w, height: dim.h || undefined, maxWidth: 'none', margin: '0 auto' } : {};
   const dec = () => setScale((s) => Math.max(0.3, +(s - 0.2).toFixed(2)));
   const inc = () => setScale((s) => Math.min(4, +(s + 0.2).toFixed(2)));
   const fit = () => { if (dim.w) fitToWidth(dim.w); else setScale(1); };
@@ -406,7 +410,7 @@ function DocModal() {
           {doc.html
             ? <iframe className="docframe" style={{ ...zoomStyle, ...sizeStyle }} srcDoc={doc.html} title="Belge" onLoad={onFrameLoad} />
             : isImg
-              ? <img className="docimg" style={zoomStyle} src={rawUrl} alt="Belge" onLoad={onImgLoad} />
+              ? <img className="docimg" style={{ ...zoomStyle, ...sizeStyle }} src={rawUrl} alt="Belge" onLoad={onImgLoad} />
               : frameSrc
                 ? <iframe className="docframe" style={{ ...zoomStyle, ...sizeStyle }} src={frameSrc} title="Belge" onLoad={onFrameLoad} />
                 : <div className="empty">Belge yok</div>}
@@ -721,7 +725,7 @@ function ScreenFaturalar({ taxpayerId, period, kind = 'ALIS' }: { taxpayerId: st
           <input ref={fileRef} type="file" multiple accept=".pdf,.jpg,.jpeg,.jpe,.jfif,.png,.webp,.gif,.tif,.tiff,.bmp,.heic,.heif,.avif,.xml,.ubl,.zip" style={{ display: 'none' }} onChange={(e) => { const f = e.target.files; if (f && f.length) uploadMut.mutate(f); e.target.value = ''; }} />
           <button className="btn sm" disabled={!taxpayerId || uploadMut.isPending} onClick={() => fileRef.current?.click()} title={!taxpayerId ? 'Önce mükellef seç' : 'JPEG / PDF / XML belge yükle (elle)'}><Ico html={I.plus} size={13} /> {uploadMut.isPending ? 'Yükleniyor…' : 'Belge Yükle'}</button>
           <button className="btn sm" disabled={!taxpayerId || fetchMut.isPending} onClick={() => fetchMut.mutate()} title={!taxpayerId ? 'Önce mükellef seç' : 'Entegratörden çek (henüz tamamlanmadı)'}><Ico html={I.download} size={13} /> {fetchMut.isPending ? 'Çekiliyor…' : 'Belgeleri Getir'}</button>
-          <button className="btn sm ghost" disabled={syncMut.isPending} onClick={() => syncMut.mutate()}><Ico html={I.sync} size={13} /> {syncMut.isPending ? 'Eşitleniyor…' : 'Belgeleri Eşitle'}</button>
+          <button className="btn sm ghost" disabled={syncMut.isPending} onClick={() => syncMut.mutate()} title="Mükellefe bağlanmamış (sahipsiz) belgeleri VKN/TCKN'ye göre ilgili mükellefe bağlar"><Ico html={I.sync} size={13} /> {syncMut.isPending ? 'Bağlanıyor…' : 'Sahipsiz belgeleri bağla'}</button>
           <button className="btn sm blue" disabled={!!aiProg || sel.size === 0} onClick={aiOku} title="Seçili faturaları yapay zeka (Max) ile oku — KDV kırılımı otomatik çıkar, oran girmeye gerek yok">{aiProg ? `Okunuyor ${aiProg.done}/${aiProg.total}` : `AI ile oku${sel.size ? ` (${sel.size})` : ''}`}</button>
           <button className="btn sm primary" disabled={approveMut.isPending} onClick={muhasebelestir}><Ico html={I.checkSm} size={13} /> {approveMut.isPending ? 'İşleniyor…' : `Muhasebeleştir${sel.size ? ` (${sel.size})` : ''}`}</button>
         </div>
@@ -988,6 +992,7 @@ function InlineBelge({ id }: { id: string }) {
   const [d, setD] = useState<any | null>(null);
   const [zoom, setZoom] = useState(1);   // çarpan: 1 = Sığdır = %100 (tüm fatura); 1.5 = %150 yakın
   const [fit, setFit] = useState(1);
+  const [imgW, setImgW] = useState(0);   // resmin doğal genişliği → açık width ile tam sığdırma
   const [blobUrl, setBlobUrl] = useState(''); // XML data: URL → blob (same-origin, ölçülebilir + XSLT render)
   const frameRef = useRef<HTMLIFrameElement | null>(null);
   const wrapRef = useRef<HTMLDivElement | null>(null);
@@ -1012,16 +1017,27 @@ function InlineBelge({ id }: { id: string }) {
       // 2) İçerik yüksekliğine sığdır → kısa belgede altta boşluk kalmasın.
       const scrollH = Math.max(doc.body.scrollHeight || 0, doc.documentElement.scrollHeight || 0);
       if (scrollH > 40) f.style.height = Math.ceil(scrollH) + 'px';
-      // 3) Genişliğe sığdır oranı.
+      // 3) Genişliğe sığdır oranı — dar belge de büyütülür (yan boşluk kalmasın). Üst sınır
+      //    2x (effektif genişlik = pano genişliği olduğundan taşma olmaz, yalnız aşırı blur'u önler).
       const paneW = (w.clientWidth || 600) - 16;
-      setFit(Math.min(1, Math.max(0.3, paneW / cw)));
+      setFit(Math.min(2, Math.max(0.3, paneW / cw)));
     } catch { /* cross-origin */ }
+  };
+  // Resim için de genişliğe sığdır: doğal genişliğe göre fit hesapla (eskiden resimde
+  // fit=1 sabitti, dar resim yanlarda boşluk bırakıyordu).
+  const onImgLoad = (e: any) => {
+    const w = wrapRef.current;
+    const nw = e.currentTarget?.naturalWidth || 0;
+    if (!w || !nw) return;
+    setImgW(Math.ceil(nw));
+    const paneW = (w.clientWidth || 600) - 16;
+    setFit(Math.min(2, Math.max(0.3, paneW / nw)));
   };
   // Görseller geç yüklendiğinden birkaç kez yeniden ölç.
   const onFrameLoad = () => { measure(); setTimeout(measure, 250); setTimeout(measure, 900); setTimeout(measure, 2000); };
   useEffect(() => {
     let alive = true;
-    setD(null); setZoom(1); setFit(1);
+    setD(null); setZoom(1); setFit(1); setImgW(0);
     api.get(`/fatura-muhasebelestirme/documents/${id}/file-url`)
       .then((r) => { if (alive) setD(r.data || {}); })
       .catch(() => { if (alive) setD({}); });
@@ -1056,8 +1072,8 @@ function InlineBelge({ id }: { id: string }) {
   const htmlDoc = html
     ? `<style>html,body{margin:0!important;padding:0!important;height:auto!important;min-height:0!important;max-height:none!important;overflow:visible!important}</style>${html}`
     : '';
-  // zoom = çarpan (1 = Sığdır = %100 = tüm fatura). Gerçek ölçek = taban(fit/contain) × zoom.
-  const appliedScale = (html || isXml ? fit : 1) * zoom;
+  // zoom = çarpan (1 = Sığdır = genişliğe sığdır). Gerçek ölçek = taban(fit/contain) × zoom.
+  const appliedScale = (html || isXml || isImg ? fit : 1) * zoom;
   const canZoom = html || isImg || isXml;
   const dz = (delta: number) => setZoom((z) => Math.min(5, Math.max(0.25, Math.round((z + delta) * 100) / 100)));
   return (
@@ -1080,7 +1096,7 @@ function InlineBelge({ id }: { id: string }) {
         {html
           ? <iframe ref={frameRef} onLoad={onFrameLoad} className="bpframe-h" srcDoc={htmlDoc} title="Belge" sandbox="allow-same-origin" scrolling="no" style={{ zoom: appliedScale } as any} />
           : isImg
-            ? <img className="bpimg" src={url} alt="Belge" style={{ zoom: appliedScale } as any} />
+            ? <img className="bpimg" src={url} alt="Belge" onLoad={onImgLoad} style={{ zoom: appliedScale, ...(imgW ? { width: imgW, maxWidth: 'none' } : {}) } as any} />
             : isXml
               ? <iframe ref={frameRef} onLoad={onFrameLoad} className="bpframe-h" src={blobUrl || url} title="Belge" scrolling="no" style={{ zoom: appliedScale } as any} />
               : isPdf
@@ -1109,7 +1125,25 @@ function ScreenMuhasebe({ taxpayerId, period, isIsletme = false, taxpayerNace = 
   const eksik = allF.filter((d) => d.status !== 'APPROVED' && !ready(d));
 
   const [selId, setSelId] = useState<string>('');
-  const selDoc = [...hazir, ...eksik].find((d) => d.id === selId) || hazir[0] || eksik[0];
+  const navList = [...hazir, ...eksik];
+  const selDoc = navList.find((d) => d.id === selId) || hazir[0] || eksik[0];
+  const navIdx = selDoc ? navList.findIndex((d) => d.id === selDoc.id) : -1;
+  const goNav = (delta: number) => {
+    if (navIdx < 0) return;
+    const next = navList[navIdx + delta];
+    if (next) setSelId(next.id);
+  };
+  // Klavye ok tuşlarıyla önceki/sonraki belgeye geç (form alanındayken serbest bırak).
+  useEffect(() => {
+    const onKey = (e: KeyboardEvent) => {
+      const t = e.target as HTMLElement | null;
+      if (t && /^(INPUT|TEXTAREA|SELECT)$/.test(t.tagName)) return;
+      if (e.key === 'ArrowLeft') goNav(-1);
+      else if (e.key === 'ArrowRight') goNav(1);
+    };
+    window.addEventListener('keydown', onKey);
+    return () => window.removeEventListener('keydown', onKey);
+  }, [navIdx, navList.length]); // eslint-disable-line react-hooks/exhaustive-deps
 
   // Belge bilgileri elle düzenleme (tarih/tür/belge türü/belge no/VKN) — PATCH ile kaydeder.
   const [meta, setMeta] = useState<any>({});
@@ -1257,12 +1291,21 @@ function ScreenMuhasebe({ taxpayerId, period, isIsletme = false, taxpayerNace = 
                 <div className="fiseditor">
                 <div className="belgepane"><InlineBelge id={selDoc.id} /></div>
                 <div className="fispane">
-                <div className="ph">{firmaOf(selDoc)} · {selDoc.invoiceKind === 'SATIS' ? 'Satış' : 'Alış'} faturası <span className="mu">{selDoc.belgeNo || ''}</span><div className="sp" /><button type="button" className="fifull" onClick={() => onToggleFull?.()} title={full ? 'Küçült — menüyü geri getir' : 'Büyüt — menüyü gizle, tam ekran işle'}><Ico html={full ? I.compress : I.expand} size={14} /><span>{full ? 'Küçült' : 'Büyüt'}</span></button></div>
-                {!isIsletme && (taxpayerAd || taxpayerNace || taxpayerFaaliyet) && (
-                  <div className="sektorbar" title="Hesap kodu eşleştirmesi mükellefin bu işine göre yapılır — düzeltmek için Mükellefler → mükellef detayı → Faaliyet/Sektör">
-                    <Ico html={I.info} size={12} /><span>Mükellef: <b>{taxpayerAd || '—'}</b>{taxpayerFaaliyet ? <> · faaliyet: <b>{taxpayerFaaliyet}</b></> : (taxpayerNace ? <> · NACE <b>{taxpayerNace}</b></> : <> · <i>faaliyet/sektör girilmemiş — Mükellef detayından gir</i></>)} · {isIsletme ? 'İşletme' : 'Bilanço'} — eşleştirme bu işe göre</span>
-                  </div>
-                )}
+                <div className="ph">
+                  <span className="navbtns">
+                    <button type="button" className="navb" disabled={navIdx <= 0} onClick={() => goNav(-1)} title="Önceki belge (←)">‹</button>
+                    <span className="navpos">{navIdx >= 0 ? `${navIdx + 1}/${navList.length}` : ''}</span>
+                    <button type="button" className="navb" disabled={navIdx < 0 || navIdx >= navList.length - 1} onClick={() => goNav(1)} title="Sonraki belge (→)">›</button>
+                  </span>
+                  <span className="phname">{firmaOf(selDoc)} · {selDoc.invoiceKind === 'SATIS' ? 'Satış' : 'Alış'} faturası <span className="mu">{selDoc.belgeNo || ''}</span></span>
+                  {!isIsletme && (taxpayerAd || taxpayerNace || taxpayerFaaliyet) && (
+                    <span className="nacechip" title={`Mükellef: ${taxpayerAd || '—'}${taxpayerFaaliyet ? ` · faaliyet: ${taxpayerFaaliyet}` : (taxpayerNace ? ` · NACE ${taxpayerNace}` : ' · faaliyet/sektör girilmemiş')} · ${isIsletme ? 'İşletme' : 'Bilanço'} — hesap eşleştirmesi bu işe göre yapılır`}>
+                      <Ico html={I.info} size={11} />{taxpayerNace ? `NACE ${taxpayerNace}` : 'sektör?'}
+                    </span>
+                  )}
+                  <div className="sp" />
+                  <button type="button" className="fifull" onClick={() => onToggleFull?.()} title={full ? 'Küçült — menüyü geri getir' : 'Büyüt — menüyü gizle, tam ekran işle'}><Ico html={full ? I.compress : I.expand} size={14} /><span>{full ? 'Küçült' : 'Büyüt'}</span></button>
+                </div>
                 <div className="docmeta">
                   <div className="dm"><span className="dml">Tarih</span><input className="dmi" type="date" value={meta.faturaTarihi || ''} onChange={(e) => setMeta({ ...meta, faturaTarihi: e.target.value })} /></div>
                   <div className="dm"><span className="dml">Fatura Türü</span>
@@ -2019,7 +2062,14 @@ const CSS = `
 #fm-root .wrow b{font-size:12.5px}
 #fm-root .wrow small{font-size:11px;color:var(--faint)}
 #fm-root .wright{padding:18px}
-#fm-root .ph{font-size:13px;font-weight:700;display:flex;align-items:center;gap:8px;margin-bottom:12px}
+#fm-root .ph{font-size:13px;font-weight:700;display:flex;align-items:center;gap:8px;margin-bottom:12px;flex-wrap:wrap}
+#fm-root .ph .phname{min-width:0}
+#fm-root .navbtns{display:inline-flex;align-items:center;gap:3px;flex-shrink:0}
+#fm-root .navb{width:24px;height:24px;display:inline-flex;align-items:center;justify-content:center;border:1px solid var(--line2);border-radius:6px;background:#fff;color:var(--text);font-size:16px;line-height:1;cursor:pointer;font-family:inherit;padding:0}
+#fm-root .navb:hover:not(:disabled){background:var(--accent-soft);border-color:var(--accent-line);color:var(--accent)}
+#fm-root .navb:disabled{opacity:.35;cursor:default}
+#fm-root .navpos{font-size:10.5px;font-weight:600;color:var(--faint);min-width:34px;text-align:center}
+#fm-root .nacechip{display:inline-flex;align-items:center;gap:4px;height:22px;padding:0 8px;border:1px solid var(--accent-line);border-radius:11px;background:var(--accent-soft);color:var(--accent);font-size:10.5px;font-weight:700;text-transform:none;letter-spacing:0;cursor:help;flex-shrink:0}
 #fm-root .docmeta{display:grid;grid-template-columns:repeat(auto-fit,minmax(150px,1fr));gap:8px 14px;padding:11px 13px;margin-bottom:14px;background:#fbfcfd;border:1px solid var(--line);border-radius:10px}
 #fm-root .docmeta .dm{display:flex;flex-direction:column;gap:1px}
 #fm-root .docmeta .dml{font-size:10px;font-weight:700;color:var(--faint);text-transform:uppercase;letter-spacing:.4px}
