@@ -111,6 +111,8 @@ export class WhatsAppBotController implements OnModuleInit {
   // GEÇİCİ ÖZ-TEST: owner AI'yı bir batarya gerçekçi soruyla GERÇEK yoldan (calisan→MorenAI)
   // çalıştırıp üretilen cevapları döndürür. Hataları kullanıcı tek tek test etmeden ben
   // toplu bulayım diye. Token korumalı; iş bitince KALDIRILACAK.
+  // ARKA PLANDA çalışır (HTTP zaman aşımı olmasın), her sonucu botQualityLog'a
+  // (source='SELFTEST', scenarioKey=runId) yazar. Sonuçlar DB'den okunur.
   @Post('owner-selftest')
   async ownerSelftest(@Body() body: any) {
     if (String(body?.token || '') !== (process.env.MOREN_SELFTEST_TOKEN || 'moren-st-7Yq2x')) {
@@ -120,20 +122,31 @@ export class WhatsAppBotController implements OnModuleInit {
       .split(',')[0]?.trim();
     const tenant = ownerPhone ? await this.findOwnerTenantByPhone(ownerPhone) : null;
     if (!tenant) return { ok: false, error: 'owner tenant bulunamadi' };
-    const questions: string[] = Array.isArray(body?.questions) ? body.questions.slice(0, 30) : [];
-    const results: any[] = [];
-    for (const q of questions) {
-      const t0 = Date.now();
-      try {
-        const a = await this.calisan.runViaMorenAi({
-          tenantId: tenant.id, message: String(q), originalMessage: String(q), source: 'owner-selftest',
-        });
-        results.push({ q, a: a.assistantMessage, model: a.model, ms: Date.now() - t0 });
-      } catch (e: any) {
-        results.push({ q, error: e?.message || String(e), ms: Date.now() - t0 });
+    const questions: string[] = Array.isArray(body?.questions) ? body.questions.slice(0, 50) : [];
+    const runId = String(body?.runId || ('st-' + Date.now()));
+    // Fire-and-forget: cevap beklemeden çalış, her soruyu botQualityLog'a yaz.
+    void (async () => {
+      for (let i = 0; i < questions.length; i++) {
+        const q = String(questions[i]);
+        const t0 = Date.now();
+        let answer = '', err = '';
+        try {
+          const a = await this.calisan.runViaMorenAi({
+            tenantId: tenant.id, message: q, originalMessage: q, source: 'owner-selftest',
+          });
+          answer = a.assistantMessage || '';
+        } catch (e: any) { err = e?.message || String(e); }
+        await this.prisma.botQualityLog.create({
+          data: {
+            tenantId: tenant.id, source: 'SELFTEST', status: err ? 'SYNTHETIC_FAIL' : 'EVAL_WARN',
+            score: 0, scenarioKey: runId, intent: q.slice(0, 190),
+            finalReply: (answer || ('HATA: ' + err)).slice(0, 4000),
+            metadata: { idx: i, ms: Date.now() - t0, err: err || undefined },
+          },
+        }).catch(() => null);
       }
-    }
-    return { ok: true, tenant: tenant.id, count: results.length, results };
+    })();
+    return { ok: true, tenant: tenant.id, runId, started: questions.length };
   }
 
   private extractMessages(body: any): IncomingWhatsAppMessage[] {
