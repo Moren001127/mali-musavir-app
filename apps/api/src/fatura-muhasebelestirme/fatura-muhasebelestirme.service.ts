@@ -2303,6 +2303,18 @@ export class FaturaMuhasebelestirmeService {
       });
       if (!existing) return;
 
+      // KURAL (kullanıcı): Mihsap'tan yalnız GÖRÜNTÜ alınır; BİLGİYİ biz okuruz.
+      // BİRİNCİL okuyucu = Max-vision (tam okur: belge türü + iki taraf ad/VKN + tutar
+      // + yönü mükellef VKN'sinden türetir). Başarılıysa bitti; değilse aşağıda Azure'a düşer.
+      const aiOk = await this.aiReadDocument(tenantId, documentId).then((r: any) => !!r?.ok).catch(() => false);
+      if (aiOk) {
+        await (this.prisma as any).invoiceAccountingDocument.updateMany({
+          where: { id: documentId, tenantId },
+          data: { ocrStatus: 'SUCCESS' },
+        });
+        return;
+      }
+
       const file = await this.mihsapService.getInvoiceFile(tenantId, mihsapInvoiceId);
       const ocr = await this.ocr.extractFromImage(file.buffer, file.filename, {});
 
@@ -4964,12 +4976,14 @@ export class FaturaMuhasebelestirmeService {
     // Mükellefin İŞİNİ/SEKTÖRÜNÜ eşleştirmeye kat → kategori firmanın faaliyetine göre
     // seçilsin (ör. yemek üreticisinde un=hammadde, tüccarda satılan ürün=ticari_mal).
     let mukellefBilgi = '';
+    let ownVkn = ''; // mükellefin kendi VKN/TCKN'si → faturanın YÖNÜNÜ (alış/satış) türetmek için
     if (d.taxpayerId) {
       const tp = await (this.prisma as any).taxpayer.findFirst({
         where: { id: d.taxpayerId, tenantId },
-        select: { companyName: true, firstName: true, lastName: true, naceKodu: true, faaliyetAciklama: true, defterTuru: true },
+        select: { companyName: true, firstName: true, lastName: true, naceKodu: true, faaliyetAciklama: true, defterTuru: true, taxNumber: true, identityNumber: true },
       }).catch(() => null);
       if (tp) {
+        ownVkn = String(tryDecrypt(tp.taxNumber) || tp.taxNumber || tryDecrypt(tp.identityNumber) || tp.identityNumber || '').replace(/\D/g, '');
         const ad = String(tp.companyName || `${tp.firstName || ''} ${tp.lastName || ''}`).trim();
         const defter = String(tp.defterTuru || '').toUpperCase() === 'ISLETME' ? 'İşletme defteri' : 'Bilanço usulü';
         const faaliyet = String(tp.faaliyetAciklama || '').trim();
@@ -4986,8 +5000,9 @@ export class FaturaMuhasebelestirmeService {
         ? 'Aşağıdaki görüntü bir Türk faturası veya yazarkasa fişidir. İçindeki bilgileri oku.'
         : 'Aşağıda bir Türk e-Fatura/e-Arşiv belgesinin HTML/metin içeriği var. İçindeki bilgileri oku.',
       'YALNIZCA şu JSON\'u döndür — kod bloğu, açıklama, başka metin YOK:',
-      '{"belgeNo":"<fatura/fiş no ya da null>","tarih":"<GG.AA.YYYY ya da null>","saticiVkn":"<satıcının VKN/TCKN ya da null>","aliciVkn":"<alıcının VKN/TCKN ya da null>","kategori":"<asagidaki tek deger>","kdv":[{"oran":<KDV yüzdesi sayı>,"matrah":<KDV hariç tutar sayı>,"kdv":<KDV tutarı sayı>}]}',
-      'saticiVkn/aliciVkn: belgedeki SATICI ve ALICI taraflarının vergi numarası (VKN 10 hane) ya da TC kimlik no (11 hane) — SADECE rakam. Yazarkasa fişinde satıcı = mağaza VKN. Bulamazsan null.',
+      '{"belgeNo":"<fatura/fiş no ya da null>","tarih":"<GG.AA.YYYY ya da null>","belgeTuru":"<e-arsiv|e-fatura|fis|diger>","saticiAd":"<satıcı ünvanı ya da null>","saticiVkn":"<satıcının VKN/TCKN ya da null>","aliciAd":"<alıcı ünvanı ya da null>","aliciVkn":"<alıcının VKN/TCKN ya da null>","toplam":<genel toplam KDV dahil sayı ya da null>,"kategori":"<asagidaki tek deger>","kdv":[{"oran":<KDV yüzdesi sayı>,"matrah":<KDV hariç tutar sayı>,"kdv":<KDV tutarı sayı>}]}',
+      'belgeTuru: belgenin üstündeki ibareye göre → "e-arsiv" (e-Arşiv Fatura / Senaryo EARSIVFATURA), "e-fatura" (e-Fatura / TEMEL/TICARI fatura), "fis" (yazarkasa/ÖKC fişi), yoksa "diger".',
+      'saticiAd/aliciAd: SATICI (faturayı kesen) ve ALICI (SAYIN/müşteri) ünvanları. saticiVkn/aliciVkn: bu tarafların VKN (10 hane) ya da TC (11 hane) — SADECE rakam. Yazarkasa fişinde satıcı = mağaza. toplam: genel/ödenecek toplam (KDV dahil). Bulamazsan null, UYDURMA.',
       'KURALLAR: Türk sayı biçimi "1.234,56" = 1234.56 (tümünü ondalıklı sayıya çevir). Birden çok KDV oranı varsa her oran ayrı nesne. matrah=KDV hariç tutar, kdv=o orana ait KDV. ÖTV/ÖİV/tevkifat varsa matrahı şişirme — gerçek mal/hizmet matrahını ver. Okunamayan alanı null bırak, UYDURMA.',
       'kategori: faturadaki mal/hizmetin TÜRÜNE göre TEK kelime seç → "ticari_mal" (satılmak üzere alınan ürün/emtia), "hammadde" (üretimde kullanılan ilk madde/malzeme), "demirbas" (makine/cihaz/ekipman/mobilya/bilgisayar gibi sabit kıymet alımı), "pazarlama" (reklam/ilan/kargo-nakliye/pazarlama), "genel_gider" (kira/elektrik/su/doğalgaz/telefon/internet/akaryakıt/danışmanlık/kırtasiye/yemek/abonelik gibi genel giderler). EMİN DEĞİLSEN "genel_gider".',
       mukellefBilgi
@@ -5018,36 +5033,46 @@ export class FaturaMuhasebelestirmeService {
       .filter((x: any) => x.base > 0 || x.amount > 0);
     if (!breakdown.length) return { ok: false, reason: 'KDV kırılımı okunamadı' };
 
-    const isSale = String(d.invoiceKind || 'ALIS') === 'SATIS';
     const matrah = Math.round(breakdown.reduce((s: number, b: any) => s + b.base, 0) * 100) / 100;
     const kdv = Math.round(breakdown.reduce((s: number, b: any) => s + b.amount, 0) * 100) / 100;
-    const headerTotal = Number(typeof d.totalAmount === 'object' && d.totalAmount != null ? String(d.totalAmount) : d.totalAmount);
-    const total = Number.isFinite(headerTotal) && headerTotal > 0 ? headerTotal : Math.round((matrah + kdv) * 100) / 100;
+    const aiSaticiVkn = String(parsed.saticiVkn || '').replace(/\D/g, '');
+    const aiAliciVkn = String(parsed.aliciVkn || '').replace(/\D/g, '');
+    const vknOk = (v: string) => v.length === 10 || v.length === 11;
+    // YÖN GÖRÜNTÜDEN: mükellef VKN'si satıcıyla eşleşirse SATIŞ, alıcıyla eşleşirse ALIŞ.
+    // Mihsap'ın sekme/etiket bilgisine güvenmeyiz — fatura kimin adına kesilmiş, ona bakarız.
+    let kind: 'ALIS' | 'SATIS' = (String(d.invoiceKind || 'ALIS') === 'SATIS' ? 'SATIS' : 'ALIS');
+    if (ownVkn && vknOk(aiSaticiVkn) && ownVkn === aiSaticiVkn) kind = 'SATIS';
+    else if (ownVkn && vknOk(aiAliciVkn) && ownVkn === aiAliciVkn) kind = 'ALIS';
+    const isSale = kind === 'SATIS';
+    // Toplam GÖRÜNTÜDEN okunur (Mihsap toplamına güvenmeyiz); okunamazsa matrah+KDV.
+    const readTotal = Number(parsed.toplam) || 0;
+    const total = readTotal > 0 ? readTotal : Math.round((matrah + kdv) * 100) / 100;
+    // Karşı taraf (cari) adı: satışta ALICI, alışta SATICI.
+    const counterName = String((isSale ? parsed.aliciAd : parsed.saticiAd) || '').trim();
+    const mappedType = this.mapOcrBelgeTipi(parsed.belgeTuru);
 
     const lines = await this.gateCodesByPlan(tenantId, d.taxpayerId, this.linesFromAmounts({
-      invoiceKind: d.invoiceKind || 'ALIS',
+      invoiceKind: kind,
       matrah, kdvTutari: kdv, kdvOrani: breakdown[0].rate, total,
-      vendorName: isSale ? d.customerName : d.vendorName,
+      vendorName: counterName || (isSale ? d.customerName : d.vendorName),
       kdvBreakdown: breakdown,
     }));
     await (this.prisma as any).$transaction(async (tx: any) => {
       await tx.invoiceAccountingLine.deleteMany({ where: { documentId: d.id } });
       if (lines.length) await tx.invoiceAccountingLine.createMany({ data: lines.map((l: any) => ({ ...l, documentId: d.id })) });
-      // Faturanın GERÇEK iki tarafının VKN'sini yaz (satıcı + alıcı). Mihsap içe-aktarımı
-      // tüm belgelere yalnız bir tarafı yazıyor; AI faturadan ikisini de okuyunca düzelt.
-      // Böylece sahiplik/yön kontrolü (OWNERSHIP_MISMATCH) ÇALIŞIR: yanlış yönlü belge
-      // "İçerik çelişkisi" olarak görünür (eskiden validationStatus elle 'OK' yapılıp gizleniyordu).
-      const aiSaticiVkn = String(parsed.saticiVkn || '').replace(/\D/g, '');
-      const aiAliciVkn = String(parsed.aliciVkn || '').replace(/\D/g, '');
-      const vknOk = (v: string) => v.length === 10 || v.length === 11;
       await tx.invoiceAccountingDocument.update({
         where: { id: d.id },
         data: {
-          belgeNo: d.belgeNo || (parsed.belgeNo ? String(parsed.belgeNo) : null),
-          // AI geçerli tarih çıkardıysa düzelt (UTC gece-yarısı → gün kayması yok); yoksa dokunma
+          invoiceKind: kind,
+          totalAmount: money(total),
+          ...(mappedType ? { documentType: mappedType } : {}),
+          belgeNo: (parsed.belgeNo ? String(parsed.belgeNo) : null) || d.belgeNo || null,
           ...(parseDate(parsed.tarih) ? { faturaTarihi: parseDate(parsed.tarih) } : {}),
+          // GERÇEK iki tarafın VKN'si → sahiplik/yön kontrolü çalışır.
           ...(vknOk(aiSaticiVkn) ? { sellerVkn: aiSaticiVkn } : {}),
           ...(vknOk(aiAliciVkn) ? { buyerVkn: aiAliciVkn } : {}),
+          // Karşı taraf adını DOĞRU tarafa yaz (cari eşleştirmesi buna dayanır).
+          ...(counterName ? (isSale ? { customerName: counterName } : { vendorName: counterName }) : {}),
           status: 'NEEDS_REVIEW',
           ocrEngine: 'max-vision',
           ocrData: { ...((d.ocrData as any) || {}), matrah, kdvTutari: kdv, kdvOrani: breakdown[0].rate, kdvBreakdown: breakdown.map((b: any) => ({ oran: b.rate, matrah: b.base, tutar: b.amount })), matrahKategori: typeof parsed.kategori === 'string' ? parsed.kategori : undefined, engine: 'max-vision' },
