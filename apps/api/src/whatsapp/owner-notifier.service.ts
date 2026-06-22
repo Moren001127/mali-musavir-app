@@ -98,7 +98,7 @@ export class OwnerNotifierService implements OnModuleInit {
 
     for (const phone of ownerPhones) {
       try {
-        await this.whatsapp.sendMessage(phone, message, n.tenantId);
+        await this.whatsapp.sendMessage(phone, message, n.tenantId, { quote: false });
       } catch (err: any) {
         this.logger.warn(`Owner WhatsApp gonderim hatasi (${phone}): ${err?.message || err}`);
       }
@@ -124,7 +124,7 @@ export class OwnerNotifierService implements OnModuleInit {
     }
     for (const phone of targets) {
       try {
-        await this.whatsapp.sendMessage(phone, message, n.tenantId);
+        await this.whatsapp.sendMessage(phone, message, n.tenantId, { quote: false });
       } catch (err: any) {
         this.logger.warn(`Galeri HGS WhatsApp hatasi (${phone}): ${err?.message || err}`);
       }
@@ -160,7 +160,7 @@ export class OwnerNotifierService implements OnModuleInit {
       ].filter(Boolean).join('\n');
       for (const phone of ownerPhones) {
         try {
-          await this.whatsapp.sendMessage(phone, ozet, n.tenantId);
+          await this.whatsapp.sendMessage(phone, ozet, n.tenantId, { quote: false });
         } catch (err: any) {
           this.logger.warn(`e-Tebligat ozet WhatsApp hatasi (${phone}): ${err?.message || err}`);
         }
@@ -199,10 +199,10 @@ export class OwnerNotifierService implements OnModuleInit {
       for (const phone of ownerPhones) {
         try {
           // 1) ÖNCE bilgilendirme mesajı
-          await this.whatsapp.sendMessage(phone, mesaj, n.tenantId);
+          await this.whatsapp.sendMessage(phone, mesaj, n.tenantId, { quote: false });
           // 2) SONRA belgeyi caption'sız temiz dosya olarak gönder
           if (url) {
-            await this.whatsapp.sendMediaDetailed(phone, { url, mimeType: 'application/pdf', filename, caption: null }, n.tenantId);
+            await this.whatsapp.sendMediaDetailed(phone, { url, mimeType: 'application/pdf', filename, caption: null }, n.tenantId, { quote: false });
           }
         } catch (err: any) {
           this.logger.warn(`e-Tebligat owner WhatsApp hatasi (${phone}): ${err?.message || err}`);

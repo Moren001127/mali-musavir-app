@@ -133,7 +133,7 @@ export class OwnerBriefingCron {
         }
         for (const phone of phones) {
           await this.whatsapp
-            .sendMessage(phone, text, t.id)
+            .sendMessage(phone, text, t.id, { quote: false })
             .catch((e: any) => this.logger.warn(`[OwnerBriefing] gonderim hatasi ${phone}: ${e?.message || e}`));
         }
         // Portalda (Mesajlar → owner sohbeti) görünsün diye kaydet. Eskiden cron
