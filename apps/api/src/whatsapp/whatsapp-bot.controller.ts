@@ -820,6 +820,17 @@ export class WhatsAppBotController implements OnModuleInit {
     return process.env.MOREN_CLIENT_BOT_ENABLED !== '0';
   }
 
+  /**
+   * Owner mesajı belge göndermenin ÖTESİNDE analiz/özet/soru da istiyor mu?
+   * ("...gönder VE tablo olarak özetle" gibi) → belgeyi gönderdikten sonra AI'ya devam et.
+   * Sadece "X belgesini gönder" ise (ek istek yok) belge gönderilip akış biter.
+   */
+  private ownerMessageAlsoWantsAnswer(text: string): boolean {
+    const t = String(text || '').toLocaleLowerCase('tr');
+    // Analiz/özet/soru sinyalleri (gönderme fiilinin ötesinde bir talep)
+    return /(özetle|ozetle|özet|tablo|analiz|yorumla|yorum|açıkla|acikla|kıyasla|kiyasla|karşılaştır|karsilastir|durumu(nu)?|ne kadar|kaç|hesapla|göster|goster|nedir|mı\b|mi\b|mu\b|mü\b|\?)/.test(t);
+  }
+
   private ownerAutoReplyEnabled(): boolean {
     return process.env.MOREN_OWNER_BOT_REPLY_ENABLED !== '0';
   }
@@ -1668,7 +1679,11 @@ export class WhatsAppBotController implements OnModuleInit {
 
       // FAZ 2 — BELGE GÖNDERME: owner "X beyannamesini/faturasını gönder" derse
       // PDF'i bulup WhatsApp'tan owner'a yolla (kendi belgesi → onay gerekmez).
-      if (await this.maybeHandleOwnerDocumentSend(ownerTenant, ownerContact.id, msg)) {
+      // Mesaj AYRICA analiz/özet/soru içeriyorsa (ör. "...gönder VE tablo olarak özetle")
+      // belgeyi gönderdikten SONRA da AI'ya devam et ki o kısmı da cevaplansın (eskiden
+      // sadece belge gönderip return ediyordu → özet/analiz isteği sessizce düşüyordu).
+      const ownerDocSent = await this.maybeHandleOwnerDocumentSend(ownerTenant, ownerContact.id, msg);
+      if (ownerDocSent && !this.ownerMessageAlsoWantsAnswer(msg.text)) {
         return;
       }
 
@@ -1712,6 +1727,9 @@ export class WhatsAppBotController implements OnModuleInit {
         'KISA SOHBET için: 1-2 cümle, sade. Brifing yapısı uygulama.',
         '',
         'SADECE müşavire (size) gidecek FINAL CEVABI yaz, başka hiçbir şey yazma.',
+        ownerDocSent
+          ? '[SİSTEM NOTU: Mesajda istenen belge(ler) owner\'a ZATEN gönderildi. Sen SADECE mesajdaki ANALİZ / ÖZET / SORU kısmını cevapla (ör. "tablo olarak KDV durumunu özetle"). Belgeyi "gönderdim/gönderiyorum" DEME, belge işini tekrar etme.]'
+          : '',
         recentContext,
         `Mesajınız: ${msg.text}`,
       ].join('\n');
