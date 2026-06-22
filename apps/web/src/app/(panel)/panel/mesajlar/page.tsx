@@ -1,6 +1,6 @@
 'use client';
 
-import { useState, useMemo, useRef, useEffect } from 'react';
+import { useState, useMemo, useRef, useEffect, Fragment } from 'react';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import { api } from '@/lib/api';
 import {
@@ -28,19 +28,36 @@ function WhatsAppAvatar({
   size?: number;
 }) {
   const initial = (name || '?').trim().charAt(0).toUpperCase() || '?';
+  const dotSize = Math.max(9, Math.round(size * 0.26));
   return (
-    <div
-      className="rounded-full flex items-center justify-center flex-shrink-0 overflow-hidden text-[12px] font-semibold"
-      style={{
-        width: size,
-        height: size,
-        fontSize: Math.max(12, Math.round(size * 0.34)),
-        background: active ? 'rgba(34,197,94,0.15)' : 'rgba(255,255,255,0.04)',
-        color: active ? '#86efac' : 'rgba(250,250,249,0.55)',
-        border: `1px solid ${active ? 'rgba(34,197,94,0.3)' : 'rgba(255,255,255,0.08)'}`,
-      }}
-    >
-      {url ? <img src={url} alt={name || 'WhatsApp profil'} className="h-full w-full object-cover" /> : initial}
+    <div className="relative flex-shrink-0" style={{ width: size, height: size }}>
+      <div
+        className="rounded-full flex items-center justify-center overflow-hidden text-[12px] font-semibold h-full w-full"
+        style={{
+          fontSize: Math.max(12, Math.round(size * 0.34)),
+          background: active ? 'rgba(34,197,94,0.15)' : 'rgba(255,255,255,0.04)',
+          color: active ? '#86efac' : 'rgba(250,250,249,0.55)',
+          border: `1px solid ${active ? 'rgba(34,197,94,0.3)' : 'rgba(255,255,255,0.08)'}`,
+        }}
+      >
+        {url ? <img src={url} alt={name || 'WhatsApp profil'} className="h-full w-full object-cover" /> : initial}
+      </div>
+      {/* Çevrimiçi yeşil noktası (WhatsApp tarzı) */}
+      {active && (
+        <span
+          title="çevrimiçi"
+          style={{
+            position: 'absolute',
+            right: Math.round(size * 0.02),
+            bottom: Math.round(size * 0.02),
+            width: dotSize,
+            height: dotSize,
+            borderRadius: '50%',
+            background: '#25d366',
+            border: '2px solid #1c1c1a',
+          }}
+        />
+      )}
     </div>
   );
 }
@@ -155,6 +172,27 @@ function fmtFullTime(iso: string): string {
   return new Date(iso).toLocaleString('tr-TR', {
     day: '2-digit', month: '2-digit', year: 'numeric', hour: '2-digit', minute: '2-digit',
   });
+}
+
+// Sadece saat (balon içi, WhatsApp tarzı): "14:32"
+function fmtClock(iso: string): string {
+  return new Date(iso).toLocaleTimeString('tr-TR', { hour: '2-digit', minute: '2-digit' });
+}
+
+// Sohbet içi tarih ayıracı: "Bugün / Dün / 12 Haziran 2026"
+function fmtDateSeparator(iso: string): string {
+  const d = new Date(iso);
+  const now = new Date();
+  const day = (x: Date) => new Date(x.getFullYear(), x.getMonth(), x.getDate()).getTime();
+  const diff = Math.round((day(now) - day(d)) / 86400000);
+  if (diff <= 0) return 'Bugün';
+  if (diff === 1) return 'Dün';
+  return d.toLocaleDateString('tr-TR', { day: 'numeric', month: 'long', year: 'numeric' });
+}
+
+function sameDayKey(iso: string): string {
+  const d = new Date(iso);
+  return `${d.getFullYear()}-${d.getMonth()}-${d.getDate()}`;
 }
 
 function parseMessageContent(content: string): { text: string; docs: Array<{ id: string; title: string; mimeType?: string; sizeBytes?: number; url?: string | null }> } {
@@ -800,7 +838,15 @@ export default function MesajlarPage() {
             </div>
 
             {/* Mesaj listesi */}
-            <div ref={scrollRef} className="flex-1 overflow-y-auto px-6 py-5 space-y-3">
+            <div
+              ref={scrollRef}
+              className="flex-1 overflow-y-auto px-6 py-5 space-y-2.5"
+              style={{
+                backgroundColor: '#0b141a',
+                backgroundImage: 'radial-gradient(rgba(255,255,255,0.022) 1px, transparent 1px)',
+                backgroundSize: '18px 18px',
+              }}
+            >
               {!chatData ? (
                 <div className="text-center py-10" style={{ color: 'rgba(250,250,249,0.4)' }}>
                   <Loader2 size={16} className="animate-spin mx-auto" />
@@ -810,22 +856,35 @@ export default function MesajlarPage() {
                   {qrStatus?.connected ? 'Henüz mesaj yok. Aşağıdan normal WhatsApp mesajı yazabilirsin.' : 'Henüz mesaj yok. Şablon ile konuşmayı başlatabilirsin.'}
                 </div>
               ) : (
-                chatData.messages.map((m) => {
+                chatData.messages.map((m, idx) => {
                   const incoming = m.direction === 'incoming';
                   const parsed = parseMessageContent(m.content);
                   const docs = m.documents?.length ? m.documents : parsed.docs;
                   const delivery = incoming ? null : deliveryMeta(m);
                   const DeliveryIcon = delivery?.icon;
+                  const prev = idx > 0 ? chatData.messages[idx - 1] : null;
+                  const showDate = !prev || sameDayKey(prev.occurredAt) !== sameDayKey(m.occurredAt);
                   return (
-                    <div key={m.id} className={`flex ${incoming ? 'justify-start' : 'justify-end'}`}>
+                    <Fragment key={m.id}>
+                      {showDate && (
+                        <div className="flex justify-center py-1.5">
+                          <span
+                            className="px-3 py-1 rounded-[8px] text-[11px] font-medium"
+                            style={{ background: 'rgba(255,255,255,0.06)', color: 'rgba(250,250,249,0.6)' }}
+                          >
+                            {fmtDateSeparator(m.occurredAt)}
+                          </span>
+                        </div>
+                      )}
+                      <div className={`flex ${incoming ? 'justify-start' : 'justify-end'}`}>
                       <div
-                        className="max-w-[76%] px-4 py-2.5 rounded-[14px] text-[15px] leading-relaxed"
+                        className="max-w-[76%] px-3 py-2 rounded-[10px] text-[14.5px] leading-relaxed"
                         style={{
-                          background: incoming ? 'rgba(255,255,255,0.05)' : 'rgba(212,184,118,0.12)',
-                          border: incoming ? '1px solid rgba(255,255,255,0.07)' : '1px solid rgba(212,184,118,0.18)',
-                          color: '#fafaf9',
-                          borderTopLeftRadius: incoming ? 4 : 14,
-                          borderTopRightRadius: incoming ? 14 : 4,
+                          background: incoming ? '#1f2c33' : '#114a3a',
+                          border: incoming ? '1px solid rgba(255,255,255,0.04)' : '1px solid rgba(37,211,102,0.16)',
+                          color: '#e9edef',
+                          borderTopLeftRadius: incoming ? 3 : 10,
+                          borderTopRightRadius: incoming ? 10 : 3,
                         }}
                       >
                         <div className="whitespace-pre-wrap break-words">{parsed.text || '(boş)'}</div>
@@ -836,8 +895,8 @@ export default function MesajlarPage() {
                                 key={doc.id}
                                 className="overflow-hidden rounded-md border"
                                 style={{
-                                  borderColor: incoming ? 'rgba(255,255,255,0.12)' : 'rgba(212,184,118,0.28)',
-                                  background: incoming ? 'rgba(255,255,255,0.04)' : 'rgba(212,184,118,0.08)',
+                                  borderColor: incoming ? 'rgba(255,255,255,0.12)' : 'rgba(37,211,102,0.28)',
+                                  background: incoming ? 'rgba(255,255,255,0.04)' : 'rgba(37,211,102,0.08)',
                                 }}
                               >
                                 {isImageDoc(doc) && doc.url ? (
@@ -864,17 +923,17 @@ export default function MesajlarPage() {
                             <AlertTriangle size={11} /> WhatsApp'a gonderilemedi
                           </div>
                         )}
-                        <div className="mt-1.5 flex items-center justify-end gap-2 text-[11.5px] tabular-nums" style={{ color: 'rgba(250,250,249,0.5)' }}>
-                          <span>{fmtFullTime(m.occurredAt)}</span>
+                        <div className="mt-1 flex items-center justify-end gap-1.5 text-[11px] tabular-nums" style={{ color: 'rgba(233,237,239,0.5)' }}>
+                          <span title={fmtFullTime(m.occurredAt)}>{fmtClock(m.occurredAt)}</span>
                           {delivery && DeliveryIcon && (
-                            <span className="inline-flex items-center gap-1" style={{ color: delivery.color }} title={delivery.label}>
-                              <DeliveryIcon size={12} />
-                              {delivery.label}
+                            <span className="inline-flex items-center" style={{ color: delivery.color }} title={delivery.label}>
+                              <DeliveryIcon size={14} />
                             </span>
                           )}
                         </div>
                       </div>
-                    </div>
+                      </div>
+                    </Fragment>
                   );
                 })
               )}
@@ -957,8 +1016,8 @@ export default function MesajlarPage() {
                     disabled={!composeText.trim() || sendMut.isPending}
                     className="h-12 px-5 rounded-[11px] flex items-center gap-1.5 text-[14px] font-semibold"
                     style={{
-                      background: composeText.trim() ? `linear-gradient(135deg, ${GOLD}, #b8a06f)` : 'rgba(255,255,255,0.04)',
-                      color: composeText.trim() ? '#0f0d0b' : 'rgba(250,250,249,0.35)',
+                      background: composeText.trim() ? '#25d366' : 'rgba(255,255,255,0.04)',
+                      color: composeText.trim() ? '#06301c' : 'rgba(250,250,249,0.35)',
                       opacity: sendMut.isPending ? 0.6 : 1,
                     }}
                   >
