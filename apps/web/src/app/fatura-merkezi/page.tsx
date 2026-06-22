@@ -78,6 +78,13 @@ function fmtDate(v: any): string {
   if (isNaN(d.getTime())) return '—';
   return d.toLocaleDateString('tr-TR');
 }
+const AY_ADLARI = ['Ocak', 'Şubat', 'Mart', 'Nisan', 'Mayıs', 'Haziran', 'Temmuz', 'Ağustos', 'Eylül', 'Ekim', 'Kasım', 'Aralık'];
+/** "2026-06" → "Haziran 2026" */
+function periodLabel(p: string): string {
+  const m = String(p || '').match(/^(\d{4})-(\d{1,2})$/);
+  if (!m) return p || '';
+  return `${AY_ADLARI[Number(m[2]) - 1] || m[2]} ${m[1]}`;
+}
 function deriveDurum(doc: any): { k: string; t: string } {
   const hasCode = Array.isArray(doc.lines) && doc.lines.some((l: any) => l.accountCode);
   const vissue =
@@ -334,7 +341,9 @@ function DocModal() {
 
   const fitToWidth = (w: number) => {
     const vw = viewRef.current?.clientWidth || 0;
-    if (w > 0 && vw > 0) setScale(Math.min(3, Math.max(0.3, +((vw - 6) / w).toFixed(3))));
+    // Sığdır: belgeyi gerçek boyutunu AŞMADAN (max %100) genişliğe oturt. Dar belge
+    // büyütülmez (kullanıcı isterse + ile büyütür); geniş belge küçültülerek sığar.
+    if (w > 0 && vw > 0) setScale(Math.min(1, Math.max(0.3, +((vw - 6) / w).toFixed(3))));
   };
   const onFrameLoad = (e: any) => {
     if (fittedRef.current) return;
@@ -768,7 +777,7 @@ function ScreenMukellefler({ taxpayers, period, onOpen }: { taxpayers: any[]; pe
   const list = taxpayers
     .filter((t) => !q.trim() || taxpayerLabel(t).toLocaleLowerCase('tr').includes(q.toLocaleLowerCase('tr')))
     .map((t) => ({ t, s: byId.get(t.id) || {} }))
-    .sort((a, b) => (Number(b.s.hasIssue || 0) - Number(a.s.hasIssue || 0)) || (pendingOf(b.s) - pendingOf(a.s)));
+    .sort((a, b) => taxpayerLabel(a.t).localeCompare(taxpayerLabel(b.t), 'tr'));
   const tot = rows.reduce((acc, r) => ({
     pending: acc.pending + pendingOf(r),
     posted: acc.posted + Number(r.postedToLuca || 0),
@@ -785,7 +794,7 @@ function ScreenMukellefler({ taxpayers, period, onOpen }: { taxpayers: any[]; pe
         <div className="mcard"><div className="ml">Dikkat gereken</div><div className="mv">{tot.attention}</div></div>
       </div>
       <div className="card">
-        <div className="ch"><h3>{list.length} mükellef · {period}</h3><div className="sp" /><input className="fmsel" style={{ maxWidth: 240 }} placeholder="Mükellef ara…" value={q} onChange={(e) => setQ(e.target.value)} /></div>
+        <div className="ch"><h3>{list.length} mükellef · {periodLabel(period)}</h3><div className="sp" /><input className="fmsel" style={{ maxWidth: 240 }} placeholder="Mükellef ara…" value={q} onChange={(e) => setQ(e.target.value)} /></div>
         <div className="twrap">
           <table>
             <thead><tr><th>Mükellef</th><th className="num">Bek. alış</th><th className="num">Bek. satış</th><th className="num">Onaylı</th><th className="num">Luca'ya</th><th className="num">Sorunlu</th><th style={{ width: 70 }} /></tr></thead>
@@ -994,7 +1003,7 @@ function InlineBelge({ id }: { id: string }) {
       if (scrollH > 40) f.style.height = Math.ceil(scrollH) + 'px';
       // 3) Genişliğe sığdır oranı.
       const paneW = (w.clientWidth || 600) - 16;
-      setFit(Math.min(2.4, Math.max(0.3, paneW / cw)));
+      setFit(Math.min(1, Math.max(0.3, paneW / cw)));
     } catch { /* cross-origin */ }
   };
   // Görseller geç yüklendiğinden birkaç kez yeniden ölç.
@@ -1048,7 +1057,7 @@ function InlineBelge({ id }: { id: string }) {
           {canZoom ? (
             <>
               <button type="button" onClick={() => dz(-0.25)} title="Uzaklaştır">−</button>
-              <span className="bpz">{Math.round(zoom * 100)}%</span>
+              <span className="bpz">{Math.round(appliedScale * 100)}%</span>
               <button type="button" onClick={() => dz(0.25)} title="Yakınlaştır">+</button>
               <button type="button" onClick={() => setZoom(1)} title="Tümünü sığdır (%100)">Sığdır</button>
             </>
