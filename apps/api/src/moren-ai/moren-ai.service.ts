@@ -4,7 +4,7 @@ import { ToolExecutorService } from './tool-executor.service';
 import { MOREN_AI_TOOLS } from './tools';
 import { runMaxAgent, type AgentToolDef } from '../common/max-agent-runner';
 import { buildSystemPrompt } from './system-prompt';
-import { buildOwnerStatusReply, buildOwnerTaxPayableReply, buildOwnerRevenueRankingReply, buildOwnerDebtRankingReply, buildOwnerTaxTotalReply, buildOwnerMizanStatusReply, buildOwnerSingleTaxpayerKdvReply } from './monthly-status.shared';
+import { buildOwnerStatusReply, buildOwnerTaxPayableReply, buildOwnerRevenueRankingReply, buildOwnerDebtRankingReply, buildOwnerTaxTotalReply, buildOwnerMizanStatusReply, buildOwnerSingleTaxpayerKdvReply, buildOwnerSingleTaxpayerReply } from './monthly-status.shared';
 import { computeCostUsd, computeRealtimeCostUsd, canSpendOnApi, logAiUsage } from '../common/ai-usage-logger';
 import { claudeTextViaMax, isMaxAvailable, MAX_MODEL_CHEAP } from '../common/max-inference';
 import { sablonForTool, sablonZatenVar } from './whatsapp-sablon';
@@ -556,6 +556,9 @@ export class MorenAiService {
         // "X'in/X'e ne kadar KDV çıkıyor" → TEK mükellef KDV (391−191), temkinli isim eşleme.
         const skRes = await buildOwnerSingleTaxpayerKdvReply(this.prisma, tenantId, userMessage).catch(() => null);
         if (skRes) return { reply: skRes.reply, model: 'moren-ai-single-kdv-shortcut' };
+        // "X'in borcu / gelir tablosu / beyanname durumu" → TEK mükellef (KDV dışı) veri şablonu.
+        const stRes = await buildOwnerSingleTaxpayerReply(this.prisma, tenantId, userMessage).catch(() => null);
+        if (stRes) return { reply: stRes.reply, model: 'moren-ai-single-data-shortcut' };
         return null;
       };
       const sc = await shortcut();

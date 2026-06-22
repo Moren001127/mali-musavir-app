@@ -820,3 +820,84 @@ export async function buildOwnerSingleTaxpayerKdvReply(
     `────────────\n${sonuc}`;
   return { reply, mukellef: ad };
 }
+
+// ============================================================================
+// TEK-MÜKELLEF (genel) — borç/cari, beyanname durumu, gelir tablosu. TEK resolve
+// + tip dispatch. KDV ayrı (buildOwnerSingleTaxpayerKdvReply) kalıyor; bu onun
+// kapsamadığı tek-mükellef veri tiplerini şablonla anında verir.
+// ============================================================================
+
+const TL2 = (x: number) => new Intl.NumberFormat('tr-TR', { minimumFractionDigits: 2, maximumFractionDigits: 2 }).format(x || 0) + ' ₺';
+const donemOku = (d: string) => {
+  const m = String(d || '').match(/^(\d{4})[\/-](\d{2})$/);
+  if (m) return `${KDV_AYLAR[parseInt(m[2], 10) - 1]} ${m[1]}`;
+  const q = String(d || '').match(/^(\d{4})[\/-]?Q([1-4])$/i);
+  if (q) return `${q[1]} ${q[2]}. dönem`;
+  return d;
+};
+
+export async function buildOwnerSingleTaxpayerReply(
+  prisma: any, tenantId: string, text: string,
+): Promise<{ reply: string; mukellef: string } | null> {
+  const n = normalizeForIntent(text);
+  if (/(kim|kimler|kimlere|liste|listele|herkes|hangi mukellef)/.test(n)) return null; // portföy
+  let kind = '';
+  if (/(borc|cari|bakiye|alacak)/.test(n)) kind = 'borc';
+  else if (/(gelir tablo|ciro|hasilat|net satis|kar(?!\w)|kazanc|karli)/.test(n)) kind = 'gelir';
+  else if (/(beyanname|beyan(?!\w)|verildi mi|verildi mı|tahakkuk)/.test(n)) kind = 'beyanname';
+  else return null;
+
+  const taxpayers = await prisma.taxpayer.findMany({
+    where: { tenantId, isActive: true },
+    select: { id: true, companyName: true, firstName: true, lastName: true },
+  }).catch(() => []);
+  const t = resolveTaxpayerByText(taxpayers, text);
+  if (!t) return null; // belirsiz/ad yok → agentic
+  const ad = (t.companyName || `${t.firstName || ''} ${t.lastName || ''}`).trim();
+
+  if (kind === 'borc') {
+    const rows = await prisma.cariHareket.findMany({ where: { tenantId, taxpayerId: t.id }, select: { tip: true, tutar: true } }).catch(() => []);
+    let bakiye = 0;
+    for (const h of rows) {
+      if (h.tip === 'TAHAKKUK') bakiye += Number(h.tutar) || 0;
+      else if (h.tip === 'TAHSILAT') bakiye -= Number(h.tutar) || 0;
+    }
+    const reply = bakiye > 0
+      ? `💰 CARİ DURUM — ${ad}\n\n• Açık bakiye (borç): ${TL2(bakiye)}\n\n(Tahsil edilince kapanır.)`
+      : bakiye < 0
+        ? `💰 CARİ DURUM — ${ad}\n\n• Alacaklı bakiye: ${TL2(-bakiye)} (fazla ödeme)`
+        : `💰 CARİ DURUM — ${ad}\n\nAçık borcu yok, bakiye sıfır. 👍`;
+    return { reply, mukellef: ad };
+  }
+
+  if (kind === 'gelir') {
+    const g = await prisma.gelirTablosu.findFirst({ where: { tenantId, taxpayerId: t.id }, orderBy: [{ donem: 'desc' }, { createdAt: 'desc' }], select: { donem: true, netSatislar: true, brutSatislar: true, donemNetKari: true, satisMaliyeti: true } }).catch(() => null);
+    if (!g) return { reply: `${ad} için gelir tablosu kaydı bulamadım.`, mukellef: ad };
+    const reply =
+      `📊 GELİR TABLOSU — ${ad}\n🗓️ ${donemOku(g.donem)}\n\n` +
+      `• Net satış (ciro): ${TL2(Number(g.netSatislar) || Number(g.brutSatislar) || 0)}\n` +
+      `• Satış maliyeti: ${TL2(Number(g.satisMaliyeti) || 0)}\n` +
+      `────────────\n💵 Dönem net kârı: ${TL2(Number(g.donemNetKari) || 0)}`;
+    return { reply, mukellef: ad };
+  }
+
+  // beyanname
+  const bk = await prisma.beyanKaydi.findMany({
+    where: { tenantId, taxpayerId: t.id },
+    orderBy: [{ donem: 'desc' }, { beyanTarihi: 'desc' }],
+    take: 8,
+    select: { beyanTipi: true, donem: true, tahakkukTutari: true, beyanTarihi: true },
+  }).catch(() => []);
+  if (!bk.length) return { reply: `${ad} için beyanname kaydı bulamadım.`, mukellef: ad };
+  // En son döneme ait olanları göster
+  const sonDonem = bk[0].donem;
+  const son = bk.filter((b: any) => b.donem === sonDonem);
+  const satirlar = son.map((b: any) => {
+    const verildi = !!b.beyanTarihi;
+    const tar = b.beyanTarihi ? ` (${new Date(b.beyanTarihi).toLocaleDateString('tr-TR')})` : '';
+    const tah = b.tahakkukTutari != null ? ` · tahakkuk ${TL2(Number(b.tahakkukTutari))}` : '';
+    return `• ${b.beyanTipi}: ${verildi ? '✅ VERİLDİ' : '⏳ hazırlandı'}${tar}${tah}`;
+  }).join('\n');
+  const reply = `📝 BEYANNAME DURUMU — ${ad}\n🗓️ ${donemOku(sonDonem)} dönemi\n\n${satirlar}`;
+  return { reply, mukellef: ad };
+}
