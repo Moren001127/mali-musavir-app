@@ -151,11 +151,9 @@ export async function buildLucaImportExcel(payload: BatchPayload): Promise<Buffe
       const credit = parseAmount(line.credit);
       // Bos satirlari atla (debit ve credit ikisi de 0 ise)
       if (debit === 0 && credit === 0) continue;
-      const detayAciklama = [
-        detayBase,
-        line.description ? `· ${line.description}` : '',
-        line.rate ? `(${line.rate})` : '',
-      ].filter(Boolean).join(' ').trim();
+      // Kullanıcı talebi: fiş açıklamasında SADECE firma adı görünsün (matrah/oran/satır açıklaması
+      //   YAZMASIN). Luca fiş açıklamasını detay açıklamasından türetiyor → detay = sadece firma adı.
+      const detayAciklama = detayBase;
 
       ws.addRow([
         fisNo,
