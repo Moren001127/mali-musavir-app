@@ -29,8 +29,14 @@ export function extractSaticiVkn(text: string, foldFn: FoldFn): string | null {
   const folded = foldFn(top);
   const labeled = folded.match(/\b(?:VKN|TCKN|VERGI\s*NO|MUKELLEF(?:LER)?\s*NO)\b[^0-9]{0,30}(\d{10,11})/);
   if (labeled?.[1]) return labeled[1];
-  const any = folded.match(/\b(\d{10,11})\b/);
-  return any?.[1] ?? null;
+  // K10: Etiketsiz son-care — telefon/IBAN/fatura-no'yu VKN SANMA. Numarasinin gectigi
+  // satirda TEL/GSM/FAX/IBAN/TR../FATURA/BELGE/MERSIS/SICIL ipucu varsa o satiri atla.
+  for (const ln of top.split('\n')) {
+    if (/\b\d{10,11}\b/.test(ln) && !/TEL|GSM|FAX|IBAN|\bTR\d|FATURA|BELGE|SIRA|MERSIS|SICIL/i.test(foldFn(ln))) {
+      return ln.match(/\b(\d{10,11})\b/)![1];
+    }
+  }
+  return null;
 }
 
 /**
