@@ -687,23 +687,37 @@ function ScreenFaturalar({ taxpayerId, period, kind = 'ALIS' }: { taxpayerId: st
 
   // Matrah/KDV kırılımı çıkmamış belgelere (ör. Mihsap'tan yalnız toplamı gelen satışlar) oranla fiş üret
 
-  // AI ile oku — seçili faturaları Max-vision ile tek tek okur (KDV kırılımı otomatik); her belge ayrı çağrı (HTTP timeout olmaz)
-  const [aiProg, setAiProg] = useState<{ done: number; total: number } | null>(null);
+  // AI ile oku — seçili faturalar SUNUCU kuyruğunda okunur (sayfa değişince DURMAZ).
+  // İlerleme aşağıdaki tarama şeridinden izlenir.
+  const [aiBusy, setAiBusy] = useState(false);
   const aiOku = async () => {
     const ids = [...sel];
     if (!ids.length) { toast.error('Önce belge seç'); return; }
-    setAiProg({ done: 0, total: ids.length });
-    let ok = 0, fail = 0;
-    for (let i = 0; i < ids.length; i++) {
-      try { const r = await api.post('/fatura-muhasebelestirme/documents/ai-read', { documentId: ids[i] }); if (r?.data?.ok) ok++; else fail++; }
-      catch { fail++; }
-      setAiProg({ done: i + 1, total: ids.length });
-    }
-    setAiProg(null);
-    setSel(new Set());
-    toast.success(`AI okudu · ${ok} başarılı${fail ? `, ${fail} okunamadı` : ''}`);
-    qc.invalidateQueries({ queryKey: ['fm2'] });
+    setAiBusy(true);
+    try {
+      const r = await api.post('/fatura-muhasebelestirme/documents/ai-read-batch', { documentIds: ids });
+      toast.success(`${r?.data?.queued ?? ids.length} belge okuma sırasına alındı — şeritten izle (sayfa değişse de sürer)`);
+      setSel(new Set());
+      qc.invalidateQueries({ queryKey: ['fm-ocr-progress'] });
+    } catch { toast.error('Okuma başlatılamadı'); }
+    finally { setAiBusy(false); }
   };
+  // OCR/okuma ilerlemesi — sunucudan periyodik çekilir (3sn). Sayfaya dönünce mevcut
+  // durumu gösterir; okuma sunucuda sürdüğü için kapanmaz.
+  const ocrProgQ = useQuery({
+    queryKey: ['fm-ocr-progress', taxpayerId, period],
+    queryFn: async () => (await api.get('/fatura-muhasebelestirme/ocr-progress', { params: { taxpayerId, period } })).data,
+    enabled: !!taxpayerId,
+    refetchInterval: 3000,
+  });
+  const ocrProg: any = ocrProgQ.data;
+  // Okuma bitince listeyi tazele (yeni veriler insin).
+  const prevReadingRef = useRef(0);
+  useEffect(() => {
+    const r = Number(ocrProg?.reading || 0);
+    if (prevReadingRef.current > 0 && r === 0) qc.invalidateQueries({ queryKey: ['fm2'] });
+    prevReadingRef.current = r;
+  }, [ocrProg?.reading, qc]);
 
   const muhasebelestir = () => {
     const hazir = docs.filter((d) => sel.has(d.id) && d.status !== 'APPROVED' && Array.isArray(d.lines) && d.lines.some((l: any) => l.accountCode));
@@ -726,9 +740,21 @@ function ScreenFaturalar({ taxpayerId, period, kind = 'ALIS' }: { taxpayerId: st
           <button className="btn sm" disabled={!taxpayerId || uploadMut.isPending} onClick={() => fileRef.current?.click()} title={!taxpayerId ? 'Önce mükellef seç' : 'JPEG / PDF / XML belge yükle (elle)'}><Ico html={I.plus} size={13} /> {uploadMut.isPending ? 'Yükleniyor…' : 'Belge Yükle'}</button>
           <button className="btn sm" disabled={!taxpayerId || fetchMut.isPending} onClick={() => fetchMut.mutate()} title={!taxpayerId ? 'Önce mükellef seç' : 'Entegratörden çek (henüz tamamlanmadı)'}><Ico html={I.download} size={13} /> {fetchMut.isPending ? 'Çekiliyor…' : 'Belgeleri Getir'}</button>
           <button className="btn sm ghost" disabled={syncMut.isPending} onClick={() => syncMut.mutate()} title="Mükellefe bağlanmamış (sahipsiz) belgeleri VKN/TCKN'ye göre ilgili mükellefe bağlar"><Ico html={I.sync} size={13} /> {syncMut.isPending ? 'Bağlanıyor…' : 'Sahipsiz belgeleri bağla'}</button>
-          <button className="btn sm blue" disabled={!!aiProg || sel.size === 0} onClick={aiOku} title="Seçili faturaları yapay zeka (Max) ile oku — KDV kırılımı otomatik çıkar, oran girmeye gerek yok">{aiProg ? `Okunuyor ${aiProg.done}/${aiProg.total}` : `AI ile oku${sel.size ? ` (${sel.size})` : ''}`}</button>
+          <button className="btn sm blue" disabled={aiBusy || sel.size === 0} onClick={aiOku} title="Seçili faturaları yapay zeka (Max) ile oku — sunucuda okur, sayfa değişince durmaz">{aiBusy ? 'Başlatılıyor…' : `AI ile oku${sel.size ? ` (${sel.size})` : ''}`}</button>
           <button className="btn sm primary" disabled={approveMut.isPending} onClick={muhasebelestir}><Ico html={I.checkSm} size={13} /> {approveMut.isPending ? 'İşleniyor…' : `Muhasebeleştir${sel.size ? ` (${sel.size})` : ''}`}</button>
         </div>
+        {ocrProg && (ocrProg.active || ocrProg.failed > 0) && (
+          <div className={`ocrstrip${ocrProg.active ? ' scanning' : ''}`}>
+            <div className="ocrbar"><div className="ocrfill" /></div>
+            <div className="ocrtxt">
+              {ocrProg.active ? (
+                <><span className="ocrdot" /> Belgeler okunuyor — <b>{ocrProg.reading}</b> sırada/işleniyor · {ocrProg.done} tamam{ocrProg.failed ? ` · ${ocrProg.failed} okunamadı` : ''} <span className="ocrhint">(sunucuda sürer, sayfa değiştirebilirsin)</span></>
+              ) : (
+                <><span className="ocrdot err" /> {ocrProg.failed} belge okunamadı — seçip <b>AI ile oku</b> ile tekrar dene</>
+              )}
+            </div>
+          </div>
+        )}
         <div className="twrap">
           <table>
             <thead><tr><th style={{ width: 30 }}><Check checked={allSelected} onToggle={toggleAll} /></th><th>Tarih</th><th>Fatura No</th><th>Firma Adı</th><th>Tip</th><th className="num">KDV Hariç</th><th className="num">KDV</th><th className="num">Tutar</th><th>Hesap Kodu</th><th>Durum</th><th className="actcol" style={{ width: 40 }} /></tr></thead>
@@ -2112,6 +2138,17 @@ const CSS = `
 #fm-root .pill.miss{background:#fdeaea;color:#c0353a}
 #fm-root .pill.warn{background:#fdf2e0;color:#b45309}
 #fm-root .pill.proc{background:#e6eefc;color:#2563eb}
+#fm-root .ocrstrip{display:flex;flex-direction:column;gap:5px;padding:9px 16px;border-bottom:1px solid var(--line);background:#f7faff}
+#fm-root .ocrbar{height:4px;border-radius:3px;background:#e6eefc;overflow:hidden;position:relative}
+#fm-root .ocrstrip.scanning .ocrfill{position:absolute;top:0;left:-40%;width:40%;height:100%;border-radius:3px;background:linear-gradient(90deg,transparent,var(--accent,#2563eb),transparent);animation:ocrscan 1.1s linear infinite}
+#fm-root .ocrstrip:not(.scanning) .ocrfill{width:100%;height:100%;background:#fdeaea}
+@keyframes ocrscan{0%{left:-40%}100%{left:100%}}
+#fm-root .ocrtxt{font-size:11.5px;color:var(--muted);display:flex;align-items:center;gap:6px;flex-wrap:wrap}
+#fm-root .ocrtxt b{color:var(--text)}
+#fm-root .ocrhint{color:var(--faint)}
+#fm-root .ocrdot{width:8px;height:8px;border-radius:50%;background:var(--accent,#2563eb);animation:ocrpulse 1s ease-in-out infinite;flex-shrink:0}
+#fm-root .ocrdot.err{background:#c0353a;animation:none}
+@keyframes ocrpulse{0%,100%{opacity:.35}50%{opacity:1}}
 #fm-root .pill.n{background:#eef1f5;color:#64748b}
 #fm-root .eye{height:28px;width:28px;border-radius:7px;border:1px solid var(--line2);display:grid;place-items:center;color:var(--muted);cursor:pointer}
 #fm-root .eye:hover{border-color:var(--accent);color:var(--accent)}
