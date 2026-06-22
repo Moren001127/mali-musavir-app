@@ -12,7 +12,7 @@
   // v1.42.2 (2026-06-16): Ajan kendini yenilerken (delete __morenAgent) eski async
   // döngü "Cannot read 'stopRequested' of undefined/null" ile ÇÖKÜYORDU → yetim
   // döngü artık nesne yoksa güvenle durur (stopRequested kontrollerine null-guard).
-  const AGENT_VERSION = '1.46.1';
+  const AGENT_VERSION = '1.46.2';
   const AGENT_INSTANCE_ID = 'mai_' + Date.now().toString(36) + '_' + Math.random().toString(36).slice(2, 8);
 
   // === VERSION-AWARE RELOAD ===
@@ -1895,18 +1895,17 @@
                 }
                 return false;
               };
-              let yuklendi = await nativeClickLucaText('Yükle', { exact: true, settleMs: 1800, timeoutMs: 6000 });
+              let yuklendi = await nativeClickLucaText('Yükle', { exact: true, settleMs: 1000, timeoutMs: 6000 });
               if (!yuklendi) yuklendi = lucaClickByText('Yükle');
               if (!yuklendi) throw new Error('"Yükle" butonu bulunamadı (ekran beklenenden farklı olabilir)');
-              await log('⏫ "Yükle" tıklandı (native) — İşlem Takip bekleniyor');
+              await log('⏫ "Yükle" tıklandı — İşlem Takip bekleniyor');
+              // HIZLANDIRMA (kullanıcı: burada çok boşa bekleniyordu): İşlem Takip popup'ı 1-2 sn'de açılır →
+              //   HIZLI poll (350ms), açılınca HEMEN devam; açılmasa da en fazla ~3 sn. "Yükle TEKRAR" adımı
+              //   KALDIRILDI — ilk (native) yükleme zaten tutuyor; tekrar yükleme hem ~9 sn boşa harcıyor hem
+              //   çift-yükleme riski taşıyordu (tespit ıskaladığında gereksiz tetikleniyordu). ~17 sn → ~3 sn.
               let yukleBasladi = false;
-              for (let w = 0; w < 12 && !yukleBasladi; w++) { await sleep(700); yukleBasladi = islemTakipAcik(); }
-              if (!yukleBasladi && dosyaHala() && yukleHala()) {
-                await log('↻ İşlem Takip görünmedi — "Yükle" tekrar (native) deneniyor');
-                await nativeClickLucaText('Yükle', { exact: true, settleMs: 2000, timeoutMs: 6000 });
-                for (let w = 0; w < 12 && !yukleBasladi; w++) { await sleep(700); yukleBasladi = islemTakipAcik(); }
-              }
-              await log(yukleBasladi ? '✓ Yükleme başladı (İşlem Takip açıldı)' : '⚠ İşlem Takip sinyali yok — yine de fiş kesmeye devam ediliyor');
+              for (let w = 0; w < 9 && !yukleBasladi; w++) { await sleep(350); yukleBasladi = islemTakipAcik(); }
+              await log(yukleBasladi ? '✓ İşlem Takip açıldı' : '⚠ İşlem Takip sinyali yok — yine de devam');
 
               // 6) Yükleme tetiklendi → İşlem Takip uyarısını KAPAT → fişi SEÇ → "Fiş Kes" ile
               //    GERÇEK fişi oluştur. (Kullanıcı süreci gösterdi: Yükle → İşlem Takip "Kapat" →
@@ -1931,8 +1930,8 @@
                 }
                 return null;
               };
-              // (islemTakipAcik yukarıda — popup başlık öğesine göre — tanımlandı)
-              await sleep(1500);
+              // (islemTakipAcik yukarıda tanımlandı). Yukarıda zaten ~3 sn beklendi → ekstra bekleme kısa.
+              await sleep(400);
               // 6a) İşlem Takip uyarısını KAPAT — kapatma ✕ İKONUDUR (metin "Kapat" DEĞİL; v1.44.0'da
               //     "Kapat" arandığı için kapanmıyordu). "İşlem Takip" başlıklı popup'ı bul → başlık
               //     çubuğundaki ✕/close öğesini tıkla; yedek ESC.
