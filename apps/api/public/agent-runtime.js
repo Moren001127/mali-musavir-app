@@ -12,7 +12,7 @@
   // v1.42.2 (2026-06-16): Ajan kendini yenilerken (delete __morenAgent) eski async
   // döngü "Cannot read 'stopRequested' of undefined/null" ile ÇÖKÜYORDU → yetim
   // döngü artık nesne yoksa güvenle durur (stopRequested kontrollerine null-guard).
-  const AGENT_VERSION = '1.45.0';
+  const AGENT_VERSION = '1.45.1';
   const AGENT_INSTANCE_ID = 'mai_' + Date.now().toString(36) + '_' + Math.random().toString(36).slice(2, 8);
 
   // === VERSION-AWARE RELOAD ===
@@ -1756,21 +1756,37 @@
                 return false;
               };
               const dosyaHala = () => { const fi = findFileInput(); return !!(fi && fi.files && fi.files.length > 0); };
+              // İşlem Takip popup'ı = yükleme BAŞARI sinyali. Luca yüklemeden HEMEN sonra onu açar
+              //   ("Excelde N adet satır bulundu... 1 numaralı fiş oluşturuldu... Fiş Kes düğmesiyle...").
+              //   Eski dosyaHala()&&yukleHala() sezgisi YANLIŞ-NEGATİF veriyordu: form "Yükle" butonu ve
+              //   seçili dosya yükleme BAŞARILI olup popup açıldıktan SONRA da DOM'da kalıyor → popup
+              //   açıkken bile "yükleme başlamadı" deyip ATIYOR, sonraki adımlara (ESC/Fiş Kes) hiç geçmiyordu.
+              //   Artık POZİTİF sinyale (popup açıldı mı) bakıyoruz ve bulamasak BİLE ATMIYORUZ.
+              const islemTakipAcik = () => {
+                for (const doc of lucaDocuments()) {
+                  try {
+                    for (const el of doc.querySelectorAll('div,span,td,th,b,font,h1,h2,h3,legend')) {
+                      if (!/^\s*i[şs]lem\s+takip\s*$/i.test((el.textContent || '').trim())) continue;
+                      if (el.children.length > 1) continue;
+                      let vis = false; try { const r = el.getBoundingClientRect(); vis = r.width > 0 && r.height > 0; } catch { vis = true; }
+                      if (vis) return true;
+                    }
+                  } catch {}
+                }
+                return false;
+              };
               let yuklendi = await nativeClickLucaText('Yükle', { exact: true, settleMs: 1800, timeoutMs: 6000 });
               if (!yuklendi) yuklendi = lucaClickByText('Yükle');
               if (!yuklendi) throw new Error('"Yükle" butonu bulunamadı (ekran beklenenden farklı olabilir)');
-              await log('⏫ "Yükle" tıklandı (native) — yükleme bekleniyor');
-              await sleep(3000);
-              // DOĞRULAMA: yükleme tetiklenmediyse (dialog hâlâ açık + dosya seçili) bir kez daha
-              //    native dene; yine olmazsa "başarılı" DEME — yalan pozitif önlenir, NET hata.
-              if (dosyaHala() && yukleHala()) {
-                await log('↻ Yükleme başlamadı gibi — "Yükle" tekrar (native) deneniyor');
+              await log('⏫ "Yükle" tıklandı (native) — İşlem Takip bekleniyor');
+              let yukleBasladi = false;
+              for (let w = 0; w < 12 && !yukleBasladi; w++) { await sleep(700); yukleBasladi = islemTakipAcik(); }
+              if (!yukleBasladi && dosyaHala() && yukleHala()) {
+                await log('↻ İşlem Takip görünmedi — "Yükle" tekrar (native) deneniyor');
                 await nativeClickLucaText('Yükle', { exact: true, settleMs: 2000, timeoutMs: 6000 });
-                await sleep(3000);
+                for (let w = 0; w < 12 && !yukleBasladi; w++) { await sleep(700); yukleBasladi = islemTakipAcik(); }
               }
-              if (dosyaHala() && yukleHala()) {
-                throw new Error('"Yükle" tıklandı ama yükleme başlamadı (dialog açık kaldı). Luca ekranında "Yükle"ye elle basıp tamamlayabilir ya da tekrar deneyebilirsin.');
-              }
+              await log(yukleBasladi ? '✓ Yükleme başladı (İşlem Takip açıldı)' : '⚠ İşlem Takip sinyali yok — yine de fiş kesmeye devam ediliyor');
 
               // 6) Yükleme tetiklendi → İşlem Takip uyarısını KAPAT → fişi SEÇ → "Fiş Kes" ile
               //    GERÇEK fişi oluştur. (Kullanıcı süreci gösterdi: Yükle → İşlem Takip "Kapat" →
@@ -1791,12 +1807,7 @@
                 if (await nativeClickLucaText(label, { exact: true, settleMs: opts.settleMs || 1200, timeoutMs: 5000 })) return 'native';
                 return null;
               };
-              const islemTakipAcik = () => {
-                for (const doc of lucaDocuments()) {
-                  try { const t = doc.body ? doc.body.textContent : ''; if (/i[şs]lem\s+takip/i.test(t) && /excelde\s+\d+\s+adet|fi[şs]\s+ekran/i.test(t)) return true; } catch {}
-                }
-                return false;
-              };
+              // (islemTakipAcik yukarıda — popup başlık öğesine göre — tanımlandı)
               await sleep(1500);
               // 6a) İşlem Takip uyarısını KAPAT — kapatma ✕ İKONUDUR (metin "Kapat" DEĞİL; v1.44.0'da
               //     "Kapat" arandığı için kapanmıyordu). "İşlem Takip" başlıklı popup'ı bul → başlık
@@ -1862,6 +1873,9 @@
                 }
               }
               await log(secim ? '✓ Fiş(ler) seçildi' : '⚠ Fiş seçimi yapılamadı (checkbox bulunamadı)');
+              if (!secim && !yukleBasladi) {
+                throw new Error('Yükleme doğrulanamadı ve seçilecek fiş bulunamadı — Luca ekranını kontrol et (fiş oluşturulmadı).');
+              }
               await sleep(700);
               // 6c) "Fiş Kes" (sağ-alt) → deftere yazan GERÇEK fişi oluşturur
               const kes = await robustClick('Fiş Kes', { settleMs: 2000 });
