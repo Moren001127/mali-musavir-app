@@ -221,6 +221,28 @@ function trAmount(n: number): string {
  * (İŞLEM, BELGE TURU, ALIŞ/SATIŞ TÜRÜ, ÖDEME TÜRÜ) Luca'nin bekledigi kesin
  * etiketlerle CANLI denemede dogrulanmalidir — bu yuzden tek noktada toplandi.
  */
+/**
+ * Luca "Hesap Planı Aktar" (Muhasebe → Hesap Planı İşlemleri) için toplu hesap CSV'si.
+ * Şablon (cp1254, ; ayraç): Hesap Kodu*;Hesap Adı*;Vergi No;Vergi Dairesi;T.C. Kimlik No;Adres;Döviz;E-Posta;Kdv Oran;Kdv Hesap Kodu
+ * Cari hesapta VKN 10 hane → "Vergi No"; 11 hane → "T.C. Kimlik No". Diğer alanlar boş.
+ */
+export function buildAccountPlanCsv(
+  accounts: Array<{ accountCode: string; accountName: string; isCari?: boolean; vkn?: string | null }>,
+): Buffer {
+  const HEADER = 'Hesap Kodu*;Hesap Adı*;Vergi No;Vergi Dairesi;T.C. Kimlik No;Adres;Döviz;E-Posta;Kdv Oran;Kdv Hesap Kodu';
+  const esc = (v: any) => String(v ?? '').replace(/[;\r\n]+/g, ' ').trim();
+  const lines: Buffer[] = [iconv.encode(HEADER + '\r\n', 'win1254')];
+  for (const a of accounts) {
+    const vkn = String(a.vkn || '').replace(/\D/g, '');
+    const isTckn = vkn.length === 11;
+    const vergiNo = a.isCari && vkn && !isTckn ? vkn : ''; // 10 haneli VKN
+    const tckn = a.isCari && isTckn ? vkn : '';            // 11 haneli TCKN
+    const cols = [esc(a.accountCode), esc(a.accountName), vergiNo, '', tckn, '', '', '', '', ''];
+    lines.push(iconv.encode(cols.join(';') + '\r\n', 'win1254'));
+  }
+  return Buffer.concat(lines);
+}
+
 export function buildLucaIsletmeHizliFisCsv(payload: BatchPayload): Buffer {
   const isSaleKind = (k?: string | null) => String(k || 'ALIS').toUpperCase() === 'SATIS';
   const lines: Buffer[] = [Buffer.from(ISLETME_HEADER_B64, 'base64')];

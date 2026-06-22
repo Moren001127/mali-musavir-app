@@ -38,7 +38,7 @@ import { IsletmeHesapOzetiService } from '../isletme-hesap-ozeti/isletme-hesap-o
 import { EarsivService, EarsivTip, BelgeKaynak } from '../earsiv/earsiv.service';
 import { MizanParserService } from '../mizan/mizan-parser.service';
 import { FaturaMuhasebelestirmeService } from '../fatura-muhasebelestirme/fatura-muhasebelestirme.service';
-import { buildLucaImportExcel, buildLucaIsletmeHizliFisCsv } from '../fatura-muhasebelestirme/luca-excel.service';
+import { buildLucaImportExcel, buildLucaIsletmeHizliFisCsv, buildAccountPlanCsv } from '../fatura-muhasebelestirme/luca-excel.service';
 import { resolveTenantFromAgentToken as resolveAgentTenant } from '../common/agent-token';
 
 /**
@@ -655,6 +655,44 @@ export class LucaController {
     const buffer = await buildLucaImportExcel(payload);
     res.setHeader('Content-Length', buffer.length.toString());
     res.end(buffer);
+  }
+
+  // Faz 2: ACCOUNT_PLAN_PUSH job — yerel açılmış hesaplar için Luca "Hesap Planı Aktar" CSV'si.
+  @Get('agent/luca/jobs/:id/account-csv')
+  @Header('Content-Type', 'text/csv; charset=windows-1254')
+  @Header('Content-Disposition', 'attachment; filename="hesap_plani_aktarim.csv"')
+  async getAccountPlanCsv(
+    @Param('id') id: string,
+    @Headers('x-agent-token') agentToken: string,
+    @Res() res: any,
+  ) {
+    await this.resolveTenantFromAgentToken(agentToken);
+    const job = await (this.prisma as any).lucaFetchJob.findUnique({ where: { id } });
+    if (!job) throw new BadRequestException('Job bulunamadi');
+    if (job.tip !== 'ACCOUNT_PLAN_PUSH') throw new BadRequestException('Sadece ACCOUNT_PLAN_PUSH job icin CSV uretilir');
+    const accounts = Array.isArray((job.payload as any)?.accounts) ? (job.payload as any).accounts : [];
+    if (!accounts.length) throw new BadRequestException('Acilacak hesap yok');
+    const csv = buildAccountPlanCsv(accounts);
+    res.setHeader('Content-Length', csv.length.toString());
+    res.end(csv);
+  }
+
+  // Faz 2: ajan hesapları Luca'da açınca bu job'un hesaplarını syncedToLuca=true yapar.
+  @SkipThrottle()
+  @Post('agent/luca/jobs/:id/account-plan-synced')
+  @HttpCode(HttpStatus.OK)
+  async accountPlanSynced(
+    @Param('id') id: string,
+    @Headers('x-agent-token') agentToken: string,
+  ) {
+    await this.resolveTenantFromAgentToken(agentToken);
+    const job = await (this.prisma as any).lucaFetchJob.findUnique({ where: { id } });
+    if (!job || job.tip !== 'ACCOUNT_PLAN_PUSH') throw new BadRequestException('ACCOUNT_PLAN_PUSH job bulunamadi');
+    const ids = (((job.payload as any)?.accounts) || []).map((a: any) => a?.id).filter(Boolean);
+    if (ids.length) {
+      await (this.prisma as any).lucaAccountPlanLine.updateMany({ where: { id: { in: ids } }, data: { syncedToLuca: true } });
+    }
+    return { ok: true, synced: ids.length };
   }
 
   @SkipThrottle()

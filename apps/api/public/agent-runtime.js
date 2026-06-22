@@ -12,7 +12,7 @@
   // v1.42.2 (2026-06-16): Ajan kendini yenilerken (delete __morenAgent) eski async
   // döngü "Cannot read 'stopRequested' of undefined/null" ile ÇÖKÜYORDU → yetim
   // döngü artık nesne yoksa güvenle durur (stopRequested kontrollerine null-guard).
-  const AGENT_VERSION = '1.45.11';
+  const AGENT_VERSION = '1.46.0';
   const AGENT_INSTANCE_ID = 'mai_' + Date.now().toString(36) + '_' + Math.random().toString(36).slice(2, 8);
 
   // === VERSION-AWARE RELOAD ===
@@ -1661,6 +1661,114 @@
               await fetch(API + `/agent/luca/jobs/${job.id}/fail`, {
                 method: 'POST', headers: { 'Content-Type': 'application/json', 'X-Agent-Token': TOKEN },
                 body: JSON.stringify({ error: (e && e.message) || 'işlem hatası' }),
+              }).catch(() => {});
+            }
+            continue;
+          }
+
+          // ─── ACCOUNT_PLAN_PUSH: yerelde açılan yeni hesapları Luca "Hesap Planı Aktar"
+          //     (Muhasebe > Hesap Planı İşlemleri > Hesap Planı Aktar) ekranına CSV ile yükler.
+          //     Fiş gibi: dosya seç + "Yükle". Fiş Kes adımı YOK; yükleme hesapları doğrudan açar. ───
+          if (job.tip === 'ACCOUNT_PLAN_PUSH') {
+            try {
+              const accs = (job.payload && job.payload.accounts) || [];
+              const cnt = accs.length;
+              await log(`🧾 ACCOUNT_PLAN_PUSH: ${cnt} yeni hesap Luca'ya açılacak`);
+
+              // 1) Hesap CSV'sini backend'ten al
+              const resp = await fetch(API + `/agent/luca/jobs/${job.id}/account-csv`, { headers: { 'X-Agent-Token': TOKEN } });
+              if (!resp.ok) throw new Error(`Hesap CSV alınamadı: HTTP ${resp.status}`);
+              const blob = await resp.blob();
+              const fname = 'hesap_plani_aktarim.csv';
+              const file = new File([blob], fname, { type: 'text/csv' });
+              await log(`📥 Hesap CSV alındı: ${Math.round(blob.size / 1024)} KB (${cnt} hesap)`);
+
+              // 2) Doğru firma seçili olsun
+              try { await ensureLucaFirma(job, log); } catch (e) { await log(`Firma seçimi atlandı: ${(e && e.message) || e}`); }
+
+              // YEREL native-tık köprüsü (INVOICE_POST ile aynı)
+              const nativeClickLucaText = async (text, opts = {}) => {
+                try {
+                  let bridge = null;
+                  try { bridge = window.__morenNativeClickText; } catch {}
+                  if (!bridge) { try { bridge = window.top && window.top.__morenNativeClickText; } catch {} }
+                  if (typeof bridge !== 'function') return false;
+                  const res = await bridge({ text, exact: !!opts.exact, hoverOnly: !!opts.hoverOnly, timeoutMs: opts.timeoutMs || 6000 });
+                  if (res && res.ok) { await sleep(opts.settleMs || 800); return true; }
+                } catch {}
+                return false;
+              };
+              const findFileInput = () => {
+                for (const doc of lucaDocuments()) {
+                  try { const el = doc.querySelector('input[type="file"]'); if (el) return el; } catch {}
+                }
+                return null;
+              };
+
+              // 3) "Hesap Planı Aktar" ekranını aç (II1a menü kodu ile; KDV/fiş ile aynı sağlam yol)
+              let input = findFileInput();
+              if (!input) {
+                await log('Hesap Planı Aktar ekranı açık değil — Luca menü kodu (II1a) ile açılıyor');
+                try {
+                  try { cacheVisibleLucaMenuIds(); } catch {}
+                  let opened = await openCachedLucaMenu('Hesap Planı Aktar', log, 1500);
+                  if (!opened) {
+                    await nativeClickLucaText('Muhasebe', { settleMs: 1000 }); await sleep(700);
+                    await nativeClickLucaText('Hesap Planı İşlemleri', { hoverOnly: true, settleMs: 1000 }); await sleep(800);
+                    try { cacheVisibleLucaMenuIds(); } catch {}
+                    opened = await openCachedLucaMenu('Hesap Planı Aktar', log, 1500);
+                    if (!opened) { await nativeClickLucaText('Hesap Planı Aktar', { settleMs: 1500 }); }
+                  }
+                  await sleep(1500);
+                } catch (e) { await log(`Menü gezinme uyarısı: ${(e && e.message) || e}`); }
+                for (let i = 0; i < 16 && !input; i++) { await sleep(900); input = findFileInput(); }
+              }
+              if (!input) throw new Error('Hesap Planı Aktar ekranındaki dosya alanı bulunamadı. Luca\'da o ekranı açıp tekrar deneyin.');
+
+              // 4) Dosyayı input'a koy + change tetikle
+              const dt = new DataTransfer();
+              dt.items.add(file);
+              input.files = dt.files;
+              input.dispatchEvent(new Event('input', { bubbles: true }));
+              input.dispatchEvent(new Event('change', { bubbles: true }));
+              await log(`📎 CSV seçildi: ${fname}`);
+              await sleep(900);
+
+              // 5) "Yükle" (native; tutmazsa DOM)
+              let yuklendi = await nativeClickLucaText('Yükle', { exact: true, settleMs: 1800, timeoutMs: 6000 });
+              if (!yuklendi) yuklendi = lucaClickByText('Yükle');
+              if (!yuklendi) throw new Error('"Yükle" butonu bulunamadı (Hesap Planı Aktar ekranı beklenenden farklı olabilir)');
+              await log('⏫ "Yükle" tıklandı — hesaplar Luca\'ya aktarılıyor');
+              await sleep(3500);
+
+              // 6) Sonuç: başarı metni ara (best-effort) — İşlem Takip / sonuç ekranı
+              let basari = false;
+              for (let w = 0; w < 14 && !basari; w++) {
+                for (const doc of lucaDocuments()) {
+                  try { const t = (doc.body && doc.body.textContent) || ''; if (/(aktar[ıi]ld[ıi]|ba[şs]ar[ıi]yla|olu[şs]turuldu|kaydedildi|i[şs]lem\s+tamamland|eklendi)/i.test(t)) { basari = true; break; } } catch {}
+                }
+                if (!basari) await sleep(900);
+              }
+
+              // 7) Başarılıysa hesapları syncedToLuca=true yap; sonra job done
+              if (basari) {
+                await fetch(API + `/agent/luca/jobs/${job.id}/account-plan-synced`, {
+                  method: 'POST', headers: { 'Content-Type': 'application/json', 'X-Agent-Token': TOKEN },
+                }).catch(() => {});
+              }
+              await fetch(API + `/agent/luca/jobs/${job.id}/done`, {
+                method: 'POST', headers: { 'Content-Type': 'application/json', 'X-Agent-Token': TOKEN },
+                body: JSON.stringify({ recordCount: cnt }),
+              }).catch(() => {});
+              setStatus(basari ? `Luca: ${cnt} hesap açıldı` : 'Luca: hesap CSV yüklendi');
+              await log(basari
+                ? `✅ ${cnt} hesap Luca'da açıldı (Hesap Planı Aktar).`
+                : `✅ Hesap CSV yüklendi + "Yükle" tıklandı. Luca Hesap Planı'ndan teyit et.`);
+            } catch (e) {
+              await log(`✗ ACCOUNT_PLAN_PUSH hata: ${(e && e.message) || e}`);
+              await fetch(API + `/agent/luca/jobs/${job.id}/fail`, {
+                method: 'POST', headers: { 'Content-Type': 'application/json', 'X-Agent-Token': TOKEN },
+                body: JSON.stringify({ error: (e && e.message) || 'ACCOUNT_PLAN_PUSH hata' }),
               }).catch(() => {});
             }
             continue;
