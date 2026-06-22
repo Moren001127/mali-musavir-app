@@ -5356,7 +5356,7 @@ export class FaturaMuhasebelestirmeService {
     // Max CLI soğuk başlangıç/geçici hatada başarısız olabiliyor → 2 deneme yap.
     let parsed: any = preParsed;
     let reason = 'okunamadı';
-    for (let attempt = 1; attempt <= 2 && !parsed; attempt++) {
+    for (let attempt = 1; attempt <= 3 && !parsed; attempt++) {
       const res = await claudeTextViaMax(
         isImage
           ? { prompt, images: [{ base64: imgBuf!.toString('base64'), mediaType: imgMedia }], timeoutMs: 45000 }
