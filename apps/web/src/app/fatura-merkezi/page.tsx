@@ -391,9 +391,10 @@ function DocModal() {
 
   const fitToWidth = (w: number) => {
     const vw = viewRef.current?.clientWidth || 0;
-    // Sığdır: belgeyi panonun GENİŞLİĞİNE oturt — dar belge de büyütülür (yan boşluk
-    // kalmasın), geniş belge küçültülür. Üst sınır 3x (küçük görüntü aşırı bozulmasın).
-    if (w > 0 && vw > 0) setScale(Math.min(3, Math.max(0.3, +((vw - 6) / w).toFixed(3))));
+    // Sığdır: GENİŞ belgeyi (A4 fatura) panoya KÜÇÜLT; DAR belgeyi (fiş/ÖKC) BÜYÜTME —
+    // en çok doğal boyut (%100). Eskiden dar fiş genişliğe doldurulup %257 gibi saçma
+    // şekilde şişiyordu. Daha büyük istenirse + ile yakınlaştırılır.
+    if (w > 0 && vw > 0) setScale(Math.min(1, Math.max(0.3, +((vw - 6) / w).toFixed(3))));
   };
   const onFrameLoad = (e: any) => {
     if (fittedRef.current) return;
