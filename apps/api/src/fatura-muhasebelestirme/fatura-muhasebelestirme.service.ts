@@ -5557,9 +5557,12 @@ export class FaturaMuhasebelestirmeService {
       const cariMemory = vendorVkn
         ? await this.pickCariMemoryAccount(tenantId, taxpayerId, vendorVkn, accounts)
         : null;
-      const cariMatch =
-        cariMemory ||
-        this.pickAccount(accounts, isSale ? ['120'] : ['320', '329', '331'], vendorName, { requireHint: true });
+      // ÖKC/yazarkasa fişi NAKİT işlemdir → karşı taraf cari değil, 100 KASA.
+      const okcFis = String(doc.documentType || '').toUpperCase() === 'OKC_FIS';
+      const cariMatch = okcFis
+        ? this.pickAccount(accounts, ['100'], null)
+        : (cariMemory ||
+          this.pickAccount(accounts, isSale ? ['120'] : ['320', '329', '331'], vendorName, { requireHint: true }));
       // ORAN-BAZLI matrah: her matrah satırı KENDİ KDV oranına göre öğrenilmiş kodu alır;
       // yoksa kategori/varsayılan. Öğrenilmiş kod (satıcı+oran) her zaman önceliklidir.
       const matrahCache = new Map<string, any>();
@@ -5583,6 +5586,16 @@ export class FaturaMuhasebelestirmeService {
         // bile) karşı tarafı içermiyorsa ve VKN-hafızasından gelmiyorsa → YANLIŞ otomatik
         // eşleşme (ör. KAYIKÇI faturasına AYDE cari); doğrusuyla değiştir ya da BOŞALT.
         if (group === 'cari') {
+          // ÖKC/yazarkasa fişi → HER ZAMAN 100 Kasa (nakit). İsim/VKN eşleşmesi aranmaz.
+          if (okcFis) {
+            if (cariMatch && !current.startsWith('100')) {
+              await (this.prisma as any).invoiceAccountingLine.update({
+                where: { id: line.id },
+                data: { accountCode: (cariMatch as any).accountCode, description: (cariMatch as any).accountName },
+              });
+            }
+            continue;
+          }
           const curAcc = current ? accounts.find((a: any) => String(a.accountCode || '') === current) : null;
           const fromMemory = !!cariMemory && !!curAcc && String(curAcc.accountCode) === String((cariMemory as any).accountCode);
           const nameOk = !!curAcc && this.nameMatchScore(vendorName || '', String(curAcc.accountName || '')) > 0;
