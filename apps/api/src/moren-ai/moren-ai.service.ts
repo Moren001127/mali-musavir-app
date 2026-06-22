@@ -1177,7 +1177,10 @@ export class MorenAiService {
           : { allow: false, message: 'Bu işlem yalnız preview_agent_command + "ONAYLIYORUM #PRV-XXXX" onayıyla yapılır.' }
         : undefined,
       model: p.model,
-      maxTurns: Number(process.env.MOREN_AI_AGENT_MAX_TURNS || 8),
+      // 8 tur çok-adımlı owner sorgularına (mükellef bul → KDV → KDV2 listele) yetmiyordu →
+      // error_max_turns ile pes edip zayıf prefetch'e düşüyor, hatalı/eksik cevap veriyordu
+      // (canlı log kanıtı). 14 tur tavanı: agent ilk seferde tamamlasın; erken biterse beklemez.
+      maxTurns: Number(process.env.MOREN_AI_AGENT_MAX_TURNS || 14),
     });
     if (!res.ok || !res.text.trim()) {
       this.logger.warn(`[AgentTools] bos/hatali sonuc (${res.error || 'bos'}) — prefetch'e dusuluyor`);
