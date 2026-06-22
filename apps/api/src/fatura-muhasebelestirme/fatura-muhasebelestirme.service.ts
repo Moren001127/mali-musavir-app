@@ -3215,8 +3215,8 @@ export class FaturaMuhasebelestirmeService {
     </div></body></html>`;
   }
 
-  async update(tenantId: string, id: string, body: UpdateDocumentInput) {
-    await this.get(tenantId, id);
+  async update(tenantId: string, id: string, body: UpdateDocumentInput, userId?: string) {
+    const before = await this.get(tenantId, id);
     const data: any = {};
     for (const key of [
       'taxpayerId',
@@ -3277,6 +3277,11 @@ export class FaturaMuhasebelestirmeService {
 
     // v2.1: Manuel değişiklik sonrası validation'ı tekrar çalıştır
     await this.revalidateDocument(tenantId, id);
+
+    // Faz C: denetim izi — belge bilgileri/satırları elle değiştirilince kaydet.
+    await this.logAudit(tenantId, userId, 'UPDATE', id,
+      { belgeNo: before.belgeNo, totalAmount: String(before.totalAmount ?? ''), invoiceKind: before.invoiceKind, lineCount: (before.lines || []).length },
+      { changedFields: Object.keys(data), lineCount: Array.isArray(body.lines) ? body.lines.length : (before.lines || []).length });
 
     return this.get(tenantId, id);
   }
@@ -3373,7 +3378,37 @@ export class FaturaMuhasebelestirmeService {
     await this.recordInvoiceAccountingMemory(tenantId, doc).catch((e: any) => {
       this.logger.warn(`Fatura hafizasi kaydedilemedi (${id}): ${e?.message || e}`);
     });
+    // Faz C: denetim izi — kim ne zaman onayladı.
+    await this.logAudit(tenantId, userId, 'APPROVE', id, { status: doc.status }, { status: 'APPROVED' });
 
+    return this.get(tenantId, id);
+  }
+
+  /** Faz C: denetim izi — değişiklikleri AuditLog'a yaz (kim/ne zaman/eski→yeni). */
+  private async logAudit(tenantId: string, userId: string | null | undefined, action: string, resourceId: string, oldData?: any, newData?: any) {
+    try {
+      await (this.prisma as any).auditLog.create({
+        data: {
+          tenantId, userId: userId || null,
+          action, resource: 'fatura-belge', resourceId,
+          oldData: oldData ?? undefined, newData: newData ?? undefined,
+        },
+      });
+    } catch { /* audit opsiyonel — akışı bozma */ }
+  }
+
+  /** Faz C: geri-alma — onaylı belgeyi tekrar düzenlenebilir yap (Luca'ya GİTMEMİŞSE). */
+  async reopen(tenantId: string, id: string, userId?: string) {
+    const doc = await this.get(tenantId, id);
+    if (doc.status !== 'APPROVED') throw new BadRequestException('Yalnız onaylı belge geri alınabilir.');
+    if (['POSTED', 'POSTING'].includes(String(doc.lucaStatus || ''))) {
+      throw new BadRequestException('Belge Luca\'ya aktarıldı/aktarılıyor — geri alınamaz (Luca\'da ters fiş gerekir).');
+    }
+    await (this.prisma as any).invoiceAccountingDocument.update({
+      where: { id },
+      data: { status: 'NEEDS_REVIEW', approvedBy: null, approvedAt: null, lucaStatus: 'NOT_STARTED', lucaErrorMessage: null },
+    });
+    await this.logAudit(tenantId, userId, 'REOPEN', id, { status: 'APPROVED' }, { status: 'NEEDS_REVIEW' });
     return this.get(tenantId, id);
   }
 
@@ -3620,8 +3655,11 @@ export class FaturaMuhasebelestirmeService {
     );
   }
 
-  async remove(tenantId: string, id: string) {
+  async remove(tenantId: string, id: string, userId?: string) {
     const doc = await this.get(tenantId, id);
+    // Faz C: denetim izi — silinen belgenin künyesini sakla (kim/ne sildi).
+    await this.logAudit(tenantId, userId, 'DELETE', id,
+      { belgeNo: doc.belgeNo, invoiceKind: doc.invoiceKind, totalAmount: String(doc.totalAmount ?? ''), status: doc.status }, null);
     await (this.prisma as any).invoiceAccountingDocument.delete({ where: { id } });
     if (String((doc as any).source || '') !== 'earsiv' && !String(doc.s3Key || '').startsWith('earsiv-inline://')) {
       this.storage.deleteObject(doc.s3Key).catch(() => {});

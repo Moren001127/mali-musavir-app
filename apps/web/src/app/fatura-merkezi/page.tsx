@@ -1537,6 +1537,12 @@ function ScreenAktarilanlar({ taxpayerId, period }: { taxpayerId: string; period
     onSuccess: () => { toast.success("Luca'ya yeniden gönderildi"); qc.invalidateQueries({ queryKey: ['fm2'] }); },
     onError: (e: any) => toast.error('Tekrar denenemedi: ' + (e?.response?.data?.message || e?.message || 'hata')),
   });
+  // Faz C: onayı geri al (Luca'ya gitmemişse) — tekrar düzenlenebilir.
+  const reopenMut = useMutation({
+    mutationFn: (id: string) => api.post(`/fatura-muhasebelestirme/documents/${id}/reopen`),
+    onSuccess: () => { toast.success('Onay geri alındı — Muhasebeleştir\'de düzenleyebilirsin'); qc.invalidateQueries({ queryKey: ['fm2'] }); },
+    onError: (e: any) => toast.error('Geri alınamadı: ' + (e?.response?.data?.message || e?.message || 'hata')),
+  });
   // Onaylı ama Luca'ya henüz aktarılmamış belgeler — alış/satış ayrı fiş olarak aktarılır.
   const aktarilabilir = all.filter((d) => d.status === 'APPROVED' && !['POSTED', 'POSTING', 'QUEUED'].includes(d.lucaStatus));
   const bekAlis = aktarilabilir.filter((d) => (d.invoiceKind || 'ALIS') !== 'SATIS').length;
@@ -1599,6 +1605,9 @@ function ScreenAktarilanlar({ taxpayerId, period }: { taxpayerId: string; period
                     <td className="actcol" style={{ display: 'flex', gap: 6, alignItems: 'center' }}>
                       {(d.lucaStatus === 'FAILED' || d.lucaStatus === 'ERROR') && (
                         <button className="btn ghost sm" disabled={retryMut.isPending} onClick={() => retryMut.mutate(d.id)} title={d.lucaErrorMessage || "Luca'ya tekrar gönder"}><Ico html={I.sync} size={12} /></button>
+                      )}
+                      {d.status === 'APPROVED' && !['POSTED', 'POSTING'].includes(d.lucaStatus) && (
+                        <button className="btn ghost sm" disabled={reopenMut.isPending} onClick={() => { if (confirm('Onayı geri al? Belge tekrar düzenlenebilir olacak.')) reopenMut.mutate(d.id); }} title="Onayı geri al (Luca'ya gitmemişse)">↩</button>
                       )}
                       <button className="btn ghost sm" onClick={() => setDetayId(acik ? '' : d.id)} title={acik ? 'Fiş detayını gizle' : 'Fiş (yevmiye) detayını göster'}>{acik ? '▾' : '▸'}</button>
                       <span className="eye" onClick={() => openDocFile(d.id)}><Ico html={I.eye} size={15} /></span>

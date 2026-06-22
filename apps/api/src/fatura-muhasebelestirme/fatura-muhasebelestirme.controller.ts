@@ -326,12 +326,18 @@ export class FaturaMuhasebelestirmeController {
 
   @Patch('documents/:id')
   update(@Req() req: any, @Param('id') id: string, @Body() body: any) {
-    return this.service.update(req.user.tenantId, id, body);
+    return this.service.update(req.user.tenantId, id, body, req.user?.userId);
   }
 
   @Post('documents/:id/approve')
   approve(@Req() req: any, @Param('id') id: string) {
     return this.service.approve(req.user.tenantId, id, req.user?.userId);
+  }
+
+  /** Faz C: onayı geri al (Luca'ya gitmemişse) — tekrar düzenlenebilir. */
+  @Post('documents/:id/reopen')
+  reopen(@Req() req: any, @Param('id') id: string) {
+    return this.service.reopen(req.user.tenantId, id, req.user?.userId);
   }
 
   // v1.38: Luca aktarimi basarisiz olursa veya kullanici manuel tekrarlamak isterse
@@ -351,7 +357,7 @@ export class FaturaMuhasebelestirmeController {
 
   @Delete('documents/:id')
   remove(@Req() req: any, @Param('id') id: string) {
-    return this.service.remove(req.user.tenantId, id);
+    return this.service.remove(req.user.tenantId, id, req.user?.userId);
   }
 
   /** İçerik tabanlı hesap kodu / gider türü önerisi */
