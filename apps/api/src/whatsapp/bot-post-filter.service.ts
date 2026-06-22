@@ -10,7 +10,7 @@ export class WhatsAppBotPostFilterService {
   // ASLA kullanıcıya gitmemeli (owner da mükellef de). Tek noktada burada kesilir.
   // 1) Araç adı / protokol token'ı — gerçek Türkçe metinde neredeyse hiç olmaz (kesin sinyal).
   private static readonly TOOL_TOKEN_RE =
-    /\b(get|list|search|create|preview|compare|calculate|research|save|set|run|send|update|delete|fetch)_[a-z][a-z0-9_]{2,}\b|tool_use|tool_result|<\/?function\b|<\/?antml|"name"\s*:\s*"[a-z_]+_[a-z_]+"/i;
+    /\b(get|list|search|create|preview|compare|calculate|research|save|set|run|send|update|delete|fetch)_[a-z][a-z0-9_]{2,}\b|\((get|list|search|create|preview|compare|calculate|research|save|run|send|update|delete|fetch)[a-z]{4,}\)|tool_use|tool_result|<\/?function\b|<\/?antml|"name"\s*:\s*"[a-z_]+_[a-z_]+"/i;
   // 2) Çağrı/iç-eylem anlatımı — "X aracını/tool'unu/fonksiyonunu çağırıyorum/kullanıyorum"
   //    VEYA "...çağırıyorum:/çağıracağım:" diye kesik biten cevap (sızıntının tipik şekli).
   //    Tek başına "çağırıyorum" yakalanmaz (meşru "sizi çağırıyorum" yanlış-pozitif olmasın).
