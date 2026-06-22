@@ -886,6 +886,11 @@ export class FaturaMuhasebelestirmeService {
         }),
       topSuppliers: this.topReportCounterparties(topSuppliers),
       topCustomers: this.topReportCounterparties(topCustomers),
+      // Ba/Bs TASLAĞI: cari (VKN) bazında dönem KDV-hariç toplamı eşik (5.000 ₺) üstü olanlar.
+      // Form Ba = alışlar, Form Bs = satışlar. Müşavir kontrol eder; resmi beyan değildir.
+      formBaBsThreshold: 5000,
+      formBa: this.formBaBsList(topSuppliers, 5000),
+      formBs: this.formBaBsList(topCustomers, 5000),
       quality,
       controls,
       warnings: controls.warnings,
@@ -1115,6 +1120,17 @@ export class FaturaMuhasebelestirmeService {
       .sort((a, b) => b.total - a.total)
       .slice(0, 5)
       .map((row) => ({ name: row.name, taxNo: row.taxNo || null, ...this.roundReportBucket(row) }));
+  }
+
+  /**
+   * Ba/Bs taslağı: cari (VKN) bazında dönem KDV-HARİÇ (matrah) toplamı eşik üstü olan
+   * tüm karşı tarafları döner (top-5 değil, tam liste). Müşavir kontrol için; resmi değildir.
+   */
+  private formBaBsList(target: Map<string, ReportCounterparty>, threshold: number) {
+    return Array.from(target.values())
+      .map((row) => ({ name: row.name, taxNo: row.taxNo || null, ...this.roundReportBucket(row) }))
+      .filter((r) => Math.abs(Number(r.base) || 0) >= threshold)
+      .sort((a, b) => (Number(b.base) || 0) - (Number(a.base) || 0));
   }
 
   private reportPeriodVariants(period: string) {

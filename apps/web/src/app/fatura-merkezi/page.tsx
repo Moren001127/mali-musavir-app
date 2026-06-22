@@ -1,6 +1,6 @@
 'use client';
 
-import { useState, useRef, useEffect } from 'react';
+import { useState, useRef, useEffect, Fragment } from 'react';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import { api } from '@/lib/api';
 import { toast } from 'sonner';
@@ -1475,6 +1475,7 @@ function ScreenAktarilanlar({ taxpayerId, period }: { taxpayerId: string; period
     },
     onError: (e: any) => toast.error("Luca'ya aktarılamadı: " + (e?.response?.data?.message || e?.message || 'hata')),
   });
+  const [detayId, setDetayId] = useState<string>('');
   const lucaPill = (d: any) => {
     const s = d.lucaStatus;
     if (s === 'POSTED') return <span className="pill ok">Luca'da</span>;
@@ -1507,8 +1508,12 @@ function ScreenAktarilanlar({ taxpayerId, period }: { taxpayerId: string; period
                 const sat = (d.invoiceKind || 'ALIS') === 'SATIS';
                 const firma = (sat ? d.customerName : d.vendorName) || '—';
                 const code = (Array.isArray(d.lines) ? d.lines.find((l: any) => l.accountCode) : null)?.accountCode || '';
+                const acik = detayId === d.id;
+                const lines: any[] = Array.isArray(d.lines) ? d.lines : [];
+                const grpLabel = (g: string) => g === 'matrah' ? 'Matrah' : g === 'vergi' ? 'KDV' : g === 'cari' ? 'Cari' : (g || '—');
                 return (
-                  <tr key={d.id}>
+                  <Fragment key={d.id}>
+                  <tr className={acik ? 'detay-on' : ''}>
                     <td>{fmtDate(d.faturaTarihi || d.createdAt)}</td>
                     <td>{d.belgeNo || '—'}</td>
                     <td className="firm"><b>{firma}</b></td>
@@ -1520,9 +1525,35 @@ function ScreenAktarilanlar({ taxpayerId, period }: { taxpayerId: string; period
                       {(d.lucaStatus === 'FAILED' || d.lucaStatus === 'ERROR') && (
                         <button className="btn ghost sm" disabled={retryMut.isPending} onClick={() => retryMut.mutate(d.id)} title={d.lucaErrorMessage || "Luca'ya tekrar gönder"}><Ico html={I.sync} size={12} /></button>
                       )}
+                      <button className="btn ghost sm" onClick={() => setDetayId(acik ? '' : d.id)} title={acik ? 'Fiş detayını gizle' : 'Fiş (yevmiye) detayını göster'}>{acik ? '▾' : '▸'}</button>
                       <span className="eye" onClick={() => openDocFile(d.id)}><Ico html={I.eye} size={15} /></span>
                     </td>
                   </tr>
+                  {acik && (
+                    <tr className="detayrow">
+                      <td colSpan={8}>
+                        <div className="detaybox">
+                          {lines.length ? (
+                            <table className="detaytbl">
+                              <thead><tr><th>Tür</th><th>Hesap Kodu</th><th>Açıklama</th><th className="num">Borç</th><th className="num">Alacak</th></tr></thead>
+                              <tbody>
+                                {lines.map((l: any, i: number) => (
+                                  <tr key={l.id || i}>
+                                    <td>{grpLabel(String(l.group || ''))}{l.rate ? ` %${String(l.rate).replace(/[^0-9.,]/g, '')}` : ''}</td>
+                                    <td>{l.accountCode ? <span className="hk">{l.accountCode}</span> : <span className="hk no">eksik</span>}</td>
+                                    <td>{l.description || '—'}</td>
+                                    <td className="num">{Number(l.debit) ? fmtMoney(l.debit) : ''}</td>
+                                    <td className="num">{Number(l.credit) ? fmtMoney(l.credit) : ''}</td>
+                                  </tr>
+                                ))}
+                              </tbody>
+                            </table>
+                          ) : <div className="empty" style={{ padding: 10 }}>Bu belgenin fiş satırı yok.</div>}
+                        </div>
+                      </td>
+                    </tr>
+                  )}
+                  </Fragment>
                 );
               })}
               {!docsQ.isLoading && docs.length === 0 && (
@@ -1767,6 +1798,36 @@ function ScreenKdv({ taxpayerId, period }: { taxpayerId: string; period: string 
                     ))}
                   </tbody>
                 </table>
+              </div>
+            </div>
+          )}
+
+          {(Array.isArray(rep.formBa) || Array.isArray(rep.formBs)) && ((rep.formBa?.length || 0) + (rep.formBs?.length || 0) > 0) && (
+            <div className="card">
+              <div className="ch"><h3>Ba/Bs Taslağı</h3><span className="mu">cari bazında KDV hariç toplam ≥ {fmtMoney(rep.formBaBsThreshold || 5000)} ₺ · müşavir kontrol eder, resmi beyan değildir</span></div>
+              <div className="babs2">
+                {[{ t: 'Form Ba — Alışlar', rows: rep.formBa || [] }, { t: 'Form Bs — Satışlar', rows: rep.formBs || [] }].map((blk, bi) => (
+                  <div className="babscol" key={bi}>
+                    <div className="babsh">{blk.t} <span className="mu">{blk.rows.length} cari</span></div>
+                    <div className="twrap">
+                      <table>
+                        <thead><tr><th>Cari</th><th>VKN/TCKN</th><th className="num">Belge</th><th className="num">KDV Hariç</th><th className="num">KDV</th></tr></thead>
+                        <tbody>
+                          {blk.rows.map((r: any, i: number) => (
+                            <tr key={i}>
+                              <td className="firm"><b>{r.name}</b></td>
+                              <td>{r.taxNo || '—'}</td>
+                              <td className="num">{r.count ?? '—'}</td>
+                              <td className="num">{fmtMoney(r.base)}</td>
+                              <td className="num">{fmtMoney(r.vat)}</td>
+                            </tr>
+                          ))}
+                          {blk.rows.length === 0 && <tr><td colSpan={5}><div className="empty">Eşik üstü cari yok.</div></td></tr>}
+                        </tbody>
+                      </table>
+                    </div>
+                  </div>
+                ))}
               </div>
             </div>
           )}
@@ -2021,6 +2082,19 @@ const CSS = `
 #fm-root tbody tr:hover{background:#fafbfd}
 /* Aksiyon (göz) sütunu daima görünür kalsın — geniş tabloda sağda kesilmesin */
 #fm-root td.actcol{position:sticky;right:0;background:#fff;box-shadow:-6px 0 6px -6px rgba(0,0,0,.12)}
+#fm-root tr.detay-on > td{background:#f7faff}
+#fm-root .detayrow > td{padding:0;background:#f7faff;border-bottom:1px solid var(--line)}
+#fm-root .detaybox{padding:8px 14px 12px}
+#fm-root .detaytbl{width:100%;border-collapse:collapse;background:#fff;border:1px solid var(--line);border-radius:8px;overflow:hidden}
+#fm-root .detaytbl th{font-size:10px;text-transform:uppercase;letter-spacing:.4px;color:var(--faint);text-align:left;padding:6px 10px;background:#fbfcfd;border-bottom:1px solid var(--line)}
+#fm-root .detaytbl td{font-size:12px;padding:6px 10px;border-bottom:1px solid var(--line)}
+#fm-root .detaytbl tr:last-child td{border-bottom:none}
+#fm-root .detaytbl .num{text-align:right;font-variant-numeric:tabular-nums}
+#fm-root .babs2{display:grid;grid-template-columns:1fr 1fr;gap:14px;padding:8px 14px 14px}
+#fm-root .babscol{border:1px solid var(--line);border-radius:10px;overflow:hidden}
+#fm-root .babsh{font-size:12px;font-weight:700;padding:8px 12px;background:#fbfcfd;border-bottom:1px solid var(--line);display:flex;align-items:center;gap:8px}
+#fm-root .babsh .mu{margin-left:auto;font-weight:500}
+@media (max-width:880px){#fm-root .babs2{grid-template-columns:1fr}}
 #fm-root th.actcol{position:sticky;right:0;background:var(--th)}
 #fm-root tbody tr:hover td.actcol{background:#fafbfd}
 #fm-root .num{text-align:right;font-variant-numeric:tabular-nums}
