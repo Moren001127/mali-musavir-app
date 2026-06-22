@@ -195,9 +195,11 @@ export async function buildLucaImportExcel(payload: BatchPayload): Promise<Buffe
 // (örn. "BELGE TURU", "FAALIYET KODU" yazımları Luca'nınkiyle birebir aynı).
 // ─────────────────────────────────────────────────────────────────────
 
-// hizli_fis_aktarim şablonunun gerçek cp1254 başlık baytları (base64).
-const ISLETME_HEADER_B64 =
-  '3d5MRU07S0FURUdPUt07QkVMR0UgVFVSVTtFVlJBSyBUQVLdSN07S0FZSVQgVEFS3UjdO1NFUt0gTk87RVZSQUsgTk87VENLTi9WS047VkVSR90gREHdUkVT3TtTT1lBREkg3E5WQU47QURJIERFVkFNSTtBRFJFUztDQVLdIEhFU0FQO0tEViDdU1TdU05BU0k7S09EO0JFTEdFIFTcUtwoREIpO0FMSd4vU0FUSd4gVNxS3DtLQVlJVCBBTFQgVNxS3DtNQUwgVkUgSN1aTUVUIEtPRFU7QcdJS0xBTUE7Td1LVEFSO0IuRt1ZQVQ7VFVUQVI7VEVWS91GQVQ7S0RWIE9SQU5JO9ZaRUwgTUFUUkFIIN3eTEVNIEJFREVM3TtNQVRSQUhUQU4gRNze3ExFQ0VLIFRVVEFSO01BVFJBSEEgREFI3UwgT0xNQVlBTiBCRURFTDtLRFYgVFVUQVJJO1RPUExBTSBUVVRBUjtLUkVE3UzdIFRVVEFSO1NUT1BBSiBLT0RVO1NUT1BBSiBUVVRBUkk7RNZORU1TRUxM3Usg3UxLRVPdO0ZBQUxJWUVUIEtPRFU71kRFTUUgVNxS';
+// Luca "Hızlı Fiş" Excel Aktarım şablonu — 37 sütun (kullanıcı şablonu doğrulandı). cp1254 yazılır.
+// ÖNEMLİ: "PLAKA NO" (19. sütun) önceki sürümde EKSİKTİ → sonraki tüm sütunlar 1 kayıyordu (veri yanlış
+//   alana düşüyordu, İşletme yüklemesini bozuyordu). Şablona birebir uyduruldu.
+const ISLETME_HEADER =
+  'İŞLEM;KATEGORİ;BELGE TÜRÜ;EVRAK TARİHİ;KAYIT TARİHİ;SERİ NO;EVRAK NO;TCKN/VKN;VERGİ DAİRESİ;SOYADI ÜNVAN;ADI DEVAMI;ADRES;CARİ HESAP;KDV İSTİSNASI;KOD;BELGE TÜRÜ(DB);ALIŞ/SATIŞ TÜRÜ;KAYIT ALT TÜRÜ;PLAKA NO;MAL VE HİZMET KODU;AÇIKLAMA;MİKTAR;B.FİYAT;TUTAR;TEVKİFAT;KDV ORANI;İŞLEM BEDELİ;MATRAHTAN DÜŞÜLECEK TUTAR;ÖZEL MATRAH ŞEKLİNE DAHİL OLMAYAN BEDEL;KDV TUTARI;TOPLAM TUTAR;KREDİLİ TUTAR;STOPAJ KODU;STOPAJ TUTARI;DÖNEMSELLIK İLKESİ;FAALIYET KODU;ÖDEME TÜRÜ';
 
 /** cp1254 CSV hucresi — ; veya tirnak/yeni satir varsa tirnakla. */
 function csvCell(v: any): string {
@@ -245,7 +247,7 @@ export function buildAccountPlanCsv(
 
 export function buildLucaIsletmeHizliFisCsv(payload: BatchPayload): Buffer {
   const isSaleKind = (k?: string | null) => String(k || 'ALIS').toUpperCase() === 'SATIS';
-  const lines: Buffer[] = [Buffer.from(ISLETME_HEADER_B64, 'base64')];
+  const lines: Buffer[] = [iconv.encode(ISLETME_HEADER, 'win1254')];
 
   for (const inv of payload.invoices) {
     const isSale = isSaleKind(inv.invoiceKind);
@@ -281,25 +283,26 @@ export function buildLucaIsletmeHizliFisCsv(payload: BatchPayload): Buffer {
       '',                                 // 15 KOD
       '',                                 // 16 BELGE TÜRÜ(DB)
       isSale ? 'Satış' : 'Alış',          // 17 ALIŞ/SATIŞ TÜRÜ  [DOGRULANACAK]
-      '',                                 // 18 KAYIT ALT TÜR
-      '',                                 // 19 MAL VE HİZMET KODU
-      inv.vendorName || inv.customerName || '', // 20 AÇIKLAMA
-      '',                                 // 21 MİKTAR
-      '',                                 // 22 B.FİYAT
-      trAmount(matrah),                   // 23 TUTAR (matrah/KDV haric)
-      '',                                 // 24 TEVKİFAT
-      rate || '',                         // 25 KDV ORANI
-      '',                                 // 26 ÖZEL MATRAH İŞLEM BEDELİ
-      '',                                 // 27 MATRAHTAN DÜŞÜLECEK TUTAR
-      '',                                 // 28 MATRAHA DAHİL OLMAYAN BEDEL
-      trAmount(kdv),                      // 29 KDV TUTARI
-      trAmount(total),                    // 30 TOPLAM TUTAR
-      '',                                 // 31 KREDİLİ TUTAR
-      '',                                 // 32 STOPAJ KODU
-      '',                                 // 33 STOPAJ TUTARI
-      '',                                 // 34 DÖNEMSELLİK İLKESİ
-      '',                                 // 35 FAALIYET KODU
-      '',                                 // 36 ÖDEME TÜRÜ      [DOGRULANACAK]
+      '',                                 // 18 KAYIT ALT TÜRÜ
+      '',                                 // 19 PLAKA NO  (şablonda VAR — eksikti, sonraki sütunlar kayıyordu)
+      '',                                 // 20 MAL VE HİZMET KODU
+      inv.vendorName || inv.customerName || '', // 21 AÇIKLAMA
+      '',                                 // 22 MİKTAR
+      '',                                 // 23 B.FİYAT
+      trAmount(matrah),                   // 24 TUTAR (matrah/KDV hariç)
+      '',                                 // 25 TEVKİFAT
+      rate || '',                         // 26 KDV ORANI
+      '',                                 // 27 İŞLEM BEDELİ
+      '',                                 // 28 MATRAHTAN DÜŞÜLECEK TUTAR
+      '',                                 // 29 ÖZEL MATRAH ŞEKLİNE DAHİL OLMAYAN BEDEL
+      trAmount(kdv),                      // 30 KDV TUTARI
+      trAmount(total),                    // 31 TOPLAM TUTAR
+      '',                                 // 32 KREDİLİ TUTAR
+      '',                                 // 33 STOPAJ KODU
+      '',                                 // 34 STOPAJ TUTARI
+      '',                                 // 35 DÖNEMSELLİK İLKESİ
+      '',                                 // 36 FAALIYET KODU
+      '',                                 // 37 ÖDEME TÜRÜ      [DOGRULANACAK]
     ].map(csvCell).join(';');
 
     lines.push(iconv.encode(row, 'win1254'));
