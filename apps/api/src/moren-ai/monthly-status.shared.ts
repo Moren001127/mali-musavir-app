@@ -55,6 +55,8 @@ export interface MonthlyStatusList {
   toplamMukellef: number;
   /** verildiMode'da period verilmediği için dönem dinamik (son verilen ay) seçildi mi. */
   donemDinamikSecildi: boolean;
+  /** İstenen işlem ayı boştu → veri bulunan en son işlem ayına düşüldü mü. */
+  bosDonemFallback: boolean;
 }
 
 function displayName(t: { companyName?: string | null; firstName?: string | null; lastName?: string | null }): string {
@@ -128,48 +130,70 @@ export async function computeMonthlyStatusList(prisma: any, opts: ComputeOpts): 
   const whereTaxpayer: any = { tenantId: opts.tenantId };
   if (opts.onlyActive !== false) whereTaxpayer.isActive = true;
 
-  const taxpayers = await prisma.taxpayer.findMany({
-    where: whereTaxpayer,
-    select: {
-      id: true, type: true, companyName: true, firstName: true, lastName: true,
-      taxNumber: true, evrakTeslimGunu: true,
-      monthlyStatuses: {
-        where: { year, month },
-        select: {
-          evraklarGeldi: true,
-          evraklarIslendi: true,
-          kontrolEdildi: true,
-          beyannameVerildi: true,
-          kdvKontrolEdildi: true,
-          indirilecekKdvKontrol: true,
-          hesaplananKdvKontrol: true,
-          eArsivKontrol: true,
+  const queryRows = async (y: number, m: number) => {
+    const taxpayers = await prisma.taxpayer.findMany({
+      where: whereTaxpayer,
+      select: {
+        id: true, type: true, companyName: true, firstName: true, lastName: true,
+        taxNumber: true, evrakTeslimGunu: true,
+        monthlyStatuses: {
+          where: { year: y, month: m },
+          select: {
+            evraklarGeldi: true,
+            evraklarIslendi: true,
+            kontrolEdildi: true,
+            beyannameVerildi: true,
+            kdvKontrolEdildi: true,
+            indirilecekKdvKontrol: true,
+            hesaplananKdvKontrol: true,
+            eArsivKontrol: true,
+          },
+          take: 1,
         },
-        take: 1,
       },
-    },
-    orderBy: [{ companyName: 'asc' }, { firstName: 'asc' }],
-  });
+      orderBy: [{ companyName: 'asc' }, { firstName: 'asc' }],
+    });
+    const rows: MonthlyStatusRow[] = taxpayers.map((t: any) => {
+      const s = t.monthlyStatuses?.[0] || null;
+      const kontrolBitti = !!(s?.indirilecekKdvKontrol && s?.hesaplananKdvKontrol && s?.eArsivKontrol);
+      return {
+        id: t.id,
+        isim: displayName(t),
+        vkn_tckn: t.taxNumber ?? null,
+        tip: t.type ?? null,
+        evrakTeslimGunu: t.evrakTeslimGunu ?? null,
+        evraklarGeldi: s?.evraklarGeldi ?? false,
+        evraklarIslendi: s?.evraklarIslendi ?? false,
+        kontrolEdildi: s?.kontrolEdildi ?? false,
+        kontrolBitti,
+        kdvKontrolEdildi: s?.kdvKontrolEdildi ?? false,
+        beyannameVerildi: s?.beyannameVerildi ?? false,
+        beyannameHazir: !!(s?.evraklarGeldi && s?.evraklarIslendi && kontrolBitti) && !(s?.beyannameVerildi ?? false),
+        kayitVar: !!s,
+      };
+    });
+    return { rows, toplam: taxpayers.length };
+  };
 
-  const rows: MonthlyStatusRow[] = taxpayers.map((t: any) => {
-    const s = t.monthlyStatuses?.[0] || null;
-    const kontrolBitti = !!(s?.indirilecekKdvKontrol && s?.hesaplananKdvKontrol && s?.eArsivKontrol);
-    return {
-      id: t.id,
-      isim: displayName(t),
-      vkn_tckn: t.taxNumber ?? null,
-      tip: t.type ?? null,
-      evrakTeslimGunu: t.evrakTeslimGunu ?? null,
-      evraklarGeldi: s?.evraklarGeldi ?? false,
-      evraklarIslendi: s?.evraklarIslendi ?? false,
-      kontrolEdildi: s?.kontrolEdildi ?? false,
-      kontrolBitti,
-      kdvKontrolEdildi: s?.kdvKontrolEdildi ?? false,
-      beyannameVerildi: s?.beyannameVerildi ?? false,
-      beyannameHazir: !!(s?.evraklarGeldi && s?.evraklarIslendi && kontrolBitti) && !(s?.beyannameVerildi ?? false),
-      kayitVar: !!s,
-    };
-  });
+  let { rows, toplam } = await queryRows(year, month);
+
+  // 4) BOŞ AY KORUMASI: çözülen işlem ayında HİÇBİR durum kaydı yoksa (örn. AI "bu ay"ı
+  // beyanname dönemi sanıp GELECEK/boş işlem ayını sorgulattıysa → "0/yok" yanlışı), veri
+  // bulunan EN SON işlem ayına düş. Deterministik kısayolu etkilemez (cari ay zaten doludur).
+  let bosDonemFallback = false;
+  if (!donemDinamikSecildi && !rows.some((r) => r.kayitVar)) {
+    const sonKayit = await prisma.taxpayerMonthlyStatus.findFirst({
+      where: { tenantId: opts.tenantId, ...(opts.onlyActive !== false ? { taxpayer: { isActive: true } } : {}) },
+      orderBy: [{ year: 'desc' }, { month: 'desc' }],
+      select: { year: true, month: true },
+    }).catch(() => null);
+    if (sonKayit && (sonKayit.year !== year || sonKayit.month !== month)) {
+      year = sonKayit.year;
+      month = sonKayit.month;
+      bosDonemFallback = true;
+      ({ rows, toplam } = await queryRows(year, month));
+    }
+  }
 
   const islemAyi = `${year}-${String(month).padStart(2, '0')}`;
   const byMonth = month === 1 ? 12 : month - 1;
@@ -183,7 +207,8 @@ export async function computeMonthlyStatusList(prisma: any, opts: ComputeOpts): 
     islemAyi,
     beyannameDonem,
     donemLabel: donemLabelOf(beyannameDonem),
-    toplamMukellef: taxpayers.length,
+    toplamMukellef: toplam,
     donemDinamikSecildi,
+    bosDonemFallback,
   };
 }

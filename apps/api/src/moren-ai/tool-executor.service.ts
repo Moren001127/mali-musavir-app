@@ -851,6 +851,12 @@ export class ToolExecutorService {
       donem: beyannameDonem,
       beyannameDonem,
       islemAyi,
+      // İstenen ay boştu, veri olan en son işlem ayına düşüldü → AI uydurma "yok" demesin,
+      // gerçek dönemi söylesin.
+      bosDonemFallback: list.bosDonemFallback || undefined,
+      bosDonemNotu: list.bosDonemFallback
+        ? `Sorulan ay için kayıt yoktu; veri bulunan en son dönem olan ${beyannameDonem} gösteriliyor. Cevapta bu dönemi (${beyannameDonem}) açıkça belirt.`
+        : undefined,
       donemNotu: `Bu evrak/işlem kayıtları İŞLEM ayı ${islemAyi}'de tutulur ama ait oldukları VERİ/beyanname dönemi ${beyannameDonem}'dir (işlem ayı−1). Owner'a/mükellefe dönemden bahsederken DAİMA beyanname dönemini (${beyannameDonem}) söyle; işlem ayını (${islemAyi}) SÖYLEME — "${islemAyi}'da evrak geldi" YANLIŞ/kafa karıştırıcı, doğrusu "${beyannameDonem} dönemi evrakı (${islemAyi}'da işlenir)".`,
       toplamMukellef: list.toplamMukellef,
       sonuc: rows.length,
