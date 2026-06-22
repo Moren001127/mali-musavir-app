@@ -503,6 +503,7 @@ const TITLES: Record<string, string> = {
   kurallar: 'Kurulum · <b>Eşleştirme Kuralları</b>',
   muhasebe: 'Belgeler · <b>Muhasebeleştir &amp; Aktar</b>',
   aktarilanlar: 'Belgeler · <b>Aktarım</b>',
+  arsiv: 'Belgeler · <b>Arşivim</b>',
   entegrator: 'Kurulum · <b>Entegratörler</b>',
   kdv: 'Kurulum · <b>KDV Raporu</b>',
   ayarlar: 'Kurulum · <b>Hesap Planı</b>',
@@ -590,7 +591,8 @@ export default function FaturaMerkeziPage() {
       <div className={`nsub${screen === 'faturalar' ? ' on' : ''}`} onClick={() => go('faturalar')}><span className="d" /> Alış Faturaları</div>
       <div className={`nsub${screen === 'satis' ? ' on' : ''}`} onClick={() => go('satis')}><span className="d" /> Satış Faturaları</div>
       <div className={`nitem${screen === 'muhasebe' ? ' on' : ''}`} onClick={() => go('muhasebe')}><Ico html={I.ledger} /> Muhasebeleştir {badge(sum.pending)}</div>
-      <div className={`nitem${screen === 'aktarilanlar' ? ' on' : ''}`} onClick={() => go('aktarilanlar')}><Ico html={I.check} /> Aktarım {badge(sum.posted)}</div>
+      <div className={`nitem${screen === 'aktarilanlar' ? ' on' : ''}`} onClick={() => go('aktarilanlar')}><Ico html={I.check} /> Aktarım {badge(Math.max(0, (Number(sum.approved) || 0) - (Number(sum.posted) || 0)))}</div>
+      <div className={`nitem${screen === 'arsiv' ? ' on' : ''}`} onClick={() => go('arsiv')}><Ico html={I.ledger} /> Arşivim {badge(sum.posted)}</div>
 
       <div className="ncap">Kurulum</div>
       <div className={`nitem${screen === 'kurallar' ? ' on' : ''}`} onClick={() => go('kurallar')}><Ico html={I.rules} /> Eşleştirme Kuralları</div>
@@ -644,7 +646,8 @@ export default function FaturaMerkeziPage() {
             {screen === 'mukellefler' && <ScreenMukellefler taxpayers={taxpayers} period={period} onOpen={(id) => { setTaxpayerId(id); setScreen('faturalar'); }} />}
             {screen === 'kurallar' && <ScreenKurallar taxpayerId={taxpayerId} period={period} />}
             {screen === 'muhasebe' && <ScreenMuhasebe taxpayerId={taxpayerId} period={period} isIsletme={String(taxpayers.find((t) => t.id === taxpayerId)?.defterTuru || '').toUpperCase() === 'ISLETME'} taxpayerNace={(taxpayers.find((t) => t.id === taxpayerId) as any)?.naceKodu || ''} taxpayerFaaliyet={(taxpayers.find((t) => t.id === taxpayerId) as any)?.faaliyetAciklama || ''} taxpayerAd={(() => { const t = taxpayers.find((x) => x.id === taxpayerId); return t ? taxpayerLabel(t) : ''; })()} full={editorFull} onToggleFull={() => setEditorFull((v) => !v)} />}
-            {screen === 'aktarilanlar' && <ScreenAktarilanlar taxpayerId={taxpayerId} period={period} />}
+            {screen === 'aktarilanlar' && <ScreenAktarilanlar taxpayerId={taxpayerId} period={period} mode="bekleyen" />}
+            {screen === 'arsiv' && <ScreenAktarilanlar taxpayerId={taxpayerId} period={period} mode="arsiv" />}
             {screen === 'entegrator' && <ScreenEntegrator taxpayerId={taxpayerId} period={period} />}
             {screen === 'kdv' && <ScreenKdv taxpayerId={taxpayerId} period={period} />}
             {screen === 'ayarlar' && <ScreenAyarlar taxpayerId={taxpayerId} />}
@@ -657,11 +660,18 @@ export default function FaturaMerkeziPage() {
 }
 
 /* ===================== EKRAN: ALIŞ / SATIŞ FATURALARI ===================== */
-// "Aktarım" (arşiv) kapsamı = işlenmiş/onaylanmış/aktarılmış belgeler. "Gelen Faturalar" (gelen
-//   kutusu) bunun TAM TERSİ: henüz işlenmemiş gelen belgeler. İki ekran asla çakışmasın/ikilenmesin
-//   diye tek ortak ölçü. (Kullanıcı: aktarılanlar Alış/Satış içinde görünmesin; Aktarım arşiv olsun.)
+// İşlenmiş belge pipeline'ı İKİ alt-kümeye ayrılır:
+//   isArchived         = Luca'ya AKTARILMIŞ (POSTED) → "Arşivim" modülü
+//   isWaitingTransfer  = işlenmiş ama henüz aktarılmamış (onaylı/hazır/hata) → "Aktarım" modülü
+// "Gelen Faturalar" (gelen kutusu) = ikisinin de DIŞI (isInAktarim'in TERSİ). Üç ekran çakışmaz.
+function isArchived(d: any): boolean {
+  return d?.lucaStatus === 'POSTED';
+}
+function isWaitingTransfer(d: any): boolean {
+  return !isArchived(d) && (d?.status === 'APPROVED' || ['QUEUED', 'POSTING', 'FAILED'].includes(d?.lucaStatus));
+}
 function isInAktarim(d: any): boolean {
-  return d?.status === 'APPROVED' || ['POSTED', 'QUEUED', 'POSTING', 'FAILED'].includes(d?.lucaStatus);
+  return isWaitingTransfer(d) || isArchived(d);
 }
 function ScreenFaturalar({ taxpayerId, period, kind = 'ALIS' }: { taxpayerId: string; period: string; kind?: 'ALIS' | 'SATIS' }) {
   const qc = useQueryClient();
@@ -1696,11 +1706,13 @@ function ScreenMuhasebe({ taxpayerId, period, isIsletme = false, taxpayerNace = 
 }
 
 /* ===================== EKRAN: AKTARILANLAR ===================== */
-function ScreenAktarilanlar({ taxpayerId, period }: { taxpayerId: string; period: string }) {
+function ScreenAktarilanlar({ taxpayerId, period, mode = 'bekleyen' }: { taxpayerId: string; period: string; mode?: 'bekleyen' | 'arsiv' }) {
+  const arsiv = mode === 'arsiv';
   const qc = useQueryClient();
   const docsQ = useDocuments(taxpayerId, period);
   const all: any[] = docsQ.data || [];
-  const docs = all.filter(isInAktarim); // Gelen Faturalar'ın TAM TERSİ — çakışma olmaz
+  // Aktarım = aktarım BEKLEYEN (işlenmiş, henüz Luca'da değil); Arşivim = AKTARILMIŞ (POSTED).
+  const docs = all.filter(arsiv ? isArchived : isWaitingTransfer);
   const retryMut = useMutation({
     mutationFn: (id: string) => api.post(`/fatura-muhasebelestirme/documents/${id}/retry-luca`),
     onSuccess: () => { toast.success("Luca'ya yeniden gönderildi"); qc.invalidateQueries({ queryKey: ['fm2'] }); },
@@ -1808,27 +1820,32 @@ function ScreenAktarilanlar({ taxpayerId, period }: { taxpayerId: string; period
   const renderSection = (yon: 'ALIS' | 'SATIS') => {
     const isSat = yon === 'SATIS';
     const dd = docs.filter((d) => ((d.invoiceKind || 'ALIS') === 'SATIS') === isSat);
+    const label = isSat ? 'Satış' : 'Alış';
     const hazir = dd.filter((d) => d.status === 'APPROVED' && !['POSTED', 'POSTING'].includes(d.lucaStatus));
     const toplam = hazir.reduce((s, d) => s + (Number(d.totalAmount) || 0), 0);
-    const aktarildi = dd.filter((d) => d.lucaStatus === 'POSTED').length;
-    const label = isSat ? 'Satış' : 'Alış';
     const busy = batchMut.isPending && aktarYon === yon;
     return (
       <div className="card" key={yon}>
         <div className="aktarbar">
           <div className="akbil">
             <span className={`pill ${isSat ? 'satis' : 'alis'}`}>{label} Faturaları</span>{' '}
-            {hazir.length > 0
-              ? <><b>{hazir.length}</b> belge aktarıma hazır · toplam <b>{fmtMoney(toplam)} ₺</b>{aktarildi ? ` · ${aktarildi} aktarıldı` : ''}</>
-              : (aktarildi ? <>{aktarildi} belge aktarıldı · yeni hazır yok</> : <>Aktarıma hazır {label.toLowerCase()} belge yok</>)}
+            {arsiv
+              ? (dd.length ? <><b>{dd.length}</b> belge Luca'ya aktarıldı ✓</> : <>Aktarılmış {label.toLowerCase()} belge yok</>)
+              : (hazir.length > 0
+                  ? <><b>{hazir.length}</b> belge aktarıma hazır · toplam <b>{fmtMoney(toplam)} ₺</b></>
+                  : <>Aktarıma hazır {label.toLowerCase()} belge yok</>)}
           </div>
-          <div className="sp" />
-          <button className="btn sm" disabled={indiriliyor === yon || dd.length === 0} onClick={() => indirExcel(yon)} title="Bu yöndeki toplu fişi Excel olarak indir — Luca'ya elle yükle ya da arşivle">
-            {indiriliyor === yon ? 'İndiriliyor…' : '⬇ Excel İndir'}
-          </button>
-          <button className="btn primary" disabled={batchMut.isPending || hazir.length === 0} onClick={() => { setAktarYon(yon); batchMut.mutate(yon); }}>
-            <Ico html={I.send} size={14} /> {busy ? 'Aktarılıyor…' : `${label}'ı tek fiş olarak aktar${hazir.length ? ` (${hazir.length})` : ''}`}
-          </button>
+          {!arsiv && (
+            <>
+              <div className="sp" />
+              <button className="btn sm" disabled={indiriliyor === yon || dd.length === 0} onClick={() => indirExcel(yon)} title="Bu yöndeki toplu fişi Excel olarak indir — Luca'ya elle yükle ya da arşivle">
+                {indiriliyor === yon ? 'İndiriliyor…' : '⬇ Excel İndir'}
+              </button>
+              <button className="btn primary" disabled={batchMut.isPending || hazir.length === 0} onClick={() => { setAktarYon(yon); batchMut.mutate(yon); }}>
+                <Ico html={I.send} size={14} /> {busy ? 'Aktarılıyor…' : `${label}'ı tek fiş olarak aktar${hazir.length ? ` (${hazir.length})` : ''}`}
+              </button>
+            </>
+          )}
         </div>
         <div className="twrap">
           <table>
@@ -1836,7 +1853,7 @@ function ScreenAktarilanlar({ taxpayerId, period }: { taxpayerId: string; period
             <tbody>
               {dd.map(renderRow)}
               {dd.length === 0 && (
-                <tr><td colSpan={7}><div className="empty">Bu dönemde {label.toLowerCase()} belge yok.</div></td></tr>
+                <tr><td colSpan={7}><div className="empty">{arsiv ? `Aktarılmış ${label.toLowerCase()} belge yok.` : `Aktarıma hazır ${label.toLowerCase()} belge yok.`}</div></td></tr>
               )}
             </tbody>
           </table>
@@ -1847,8 +1864,10 @@ function ScreenAktarilanlar({ taxpayerId, period }: { taxpayerId: string; period
 
   return (
     <section className="screen">
-      <div className="h2">Aktarım — Luca'ya Toplu Fiş</div>
-      <div className="sub">Onaylanan faturalar burada toplanır. <b>Alış</b> ve <b>Satış</b> AYRI birer <b>tek toplu fiş</b> olarak Luca'ya aktarılır ({period}). Onaylamak tek tek Luca'ya GÖNDERMEZ — buradan yön yön toplu aktarırsın.</div>
+      <div className="h2">{arsiv ? "Arşivim — Luca'ya Aktarılanlar" : "Aktarım — Luca'ya Toplu Fiş"}</div>
+      <div className="sub">{arsiv
+        ? <>Luca'ya aktarılmış (fişi kesilmiş) faturaların arşivi ({period}). Buradakiler işlenmiş ve Luca'da.</>
+        : <>İşlenmiş, Luca'ya aktarım <b>BEKLEYEN</b> faturalar. <b>Alış</b> ve <b>Satış</b> AYRI birer <b>tek toplu fiş</b> olarak aktarılır ({period}). Aktarılınca <b>Arşivim</b>'e geçer.</>}</div>
       {docsQ.isLoading
         ? <div className="card"><div className="ch"><h3>Yükleniyor…</h3></div></div>
         : <>{renderSection('ALIS')}{renderSection('SATIS')}</>}
