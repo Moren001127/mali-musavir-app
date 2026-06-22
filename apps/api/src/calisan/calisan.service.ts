@@ -130,12 +130,17 @@ export class CalisanService {
         model,
       };
     }
-    const maxModels = Array.from(new Set([
-      String(process.env.CALISAN_OWNER_MAX_MODEL || '').trim(),
-      critical ? MODEL_DEFAULT : MAX_MODEL_CHEAP,
-      critical ? MAX_MODEL_CHEAP : MODEL_DEFAULT,
-    ].filter(Boolean)));
-    const timeoutMs = Math.max(12000, Number(process.env.CALISAN_OWNER_MAX_HARD_MS || process.env.MAX_TEXT_HARD_MS) || 35000);
+    // YEDEK (araçsız Max-metin) — agentic başarısız/timeout olunca devreye girer. Veri sorusunu
+    // zaten cevaplayamaz (araç yok), o yüzden GECİKMEYİ büyütmesin: kritik-değilde TEK model,
+    // kısa timeout. (Eskiden 2-3 model × 35sn = +105sn → toplam 155sn; artık +22sn.)
+    const maxModels = critical
+      ? Array.from(new Set([
+          String(process.env.CALISAN_OWNER_MAX_MODEL || '').trim(),
+          MODEL_DEFAULT,
+          MAX_MODEL_CHEAP,
+        ].filter(Boolean)))
+      : [String(process.env.CALISAN_OWNER_MAX_MODEL || '').trim() || MAX_MODEL_CHEAP];
+    const timeoutMs = Math.max(12000, Number(process.env.CALISAN_OWNER_MAX_HARD_MS || process.env.MAX_TEXT_HARD_MS) || (critical ? 35000 : 22000));
     const maxErrors: string[] = [];
     let assistantMessage = '';
     let usedModel = model;

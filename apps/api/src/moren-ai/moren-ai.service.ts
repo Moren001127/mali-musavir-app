@@ -1226,9 +1226,11 @@ export class MorenAiService {
         : undefined,
       model: p.model,
       // 8 tur çok-adımlı sorguya yetmiyordu (error_max_turns); 14 ise yavaş sorguyu
-      // 124 sn'ye çıkardı. 12 = denge: çok-adımlı iş için yeterli, gecikme tavanı makul.
-      // Agent erken biterse beklemez; tamamlayamazsa yarım "çekiyorum" yerine dürüst yedeğe düşer.
-      maxTurns: Number(process.env.MOREN_AI_AGENT_MAX_TURNS || 12),
+      // 124 sn'ye çıkardı. 10 = denge: çok-adımlı iş için yeterli, gecikme tavanı makul.
+      // (Yaygın liste soruları artık deterministik fast-path'te anlık → agentic'te tavanı düşürdük.)
+      maxTurns: Number(process.env.MOREN_AI_AGENT_MAX_TURNS || 10),
+      // GECİKME TAVANI: agentic spin 82sn'ye çıkıyordu. 45sn'de kes → dürüst yedeğe düş.
+      timeoutMs: Number(process.env.MOREN_AI_AGENT_HARD_MS || 45000),
     });
     if (!res.ok || !res.text.trim()) {
       this.logger.warn(`[AgentTools] bos/hatali sonuc (${res.error || 'bos'}) — prefetch'e dusuluyor`);
