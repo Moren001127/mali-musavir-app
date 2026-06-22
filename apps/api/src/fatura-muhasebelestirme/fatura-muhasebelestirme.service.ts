@@ -5080,11 +5080,37 @@ export class FaturaMuhasebelestirmeService {
       return { ok: false, reason: 'belge getirilemedi: ' + (e?.message || '') };
     }
     const isImage = !!imgBuf && imgBuf.length > 200 && /^image\//i.test(imgMedia);
-    // HTML metni varsa onu, görsel varsa vision; PDF base64'i vision'a veremeyiz.
-    if (html && html.length > 80) {
-      // metin yolu
-    } else if (!isImage) {
-      return { ok: false, reason: imgBuf ? 'desteklenmeyen biçim (PDF) — e-Fatura XML/görsel gerek' : 'belge içeriği boş' };
+    // XML e-Arşiv/e-Fatura → UBL PARSE (AI'siz, BİREBİR; okuma asla başarısız olmaz).
+    let preParsed: any = null;
+    if (!isImage && !(html && html.length > 80) && imgBuf && /xml/i.test(imgMedia)) {
+      const xml = imgBuf.toString('utf8');
+      const ubl = this.parseProviderUblInvoice(xml) || this.regexProviderInvoiceFallback(xml);
+      if (ubl && ((Number(ubl.matrah) || 0) > 0 || (Number(ubl.kdvTutari) || 0) > 0 || (Number(ubl.toplamTutar) || 0) > 0)) {
+        const td: any = ubl.faturaTarihi;
+        const dt = td instanceof Date && !Number.isNaN(td.getTime())
+          ? `${String(td.getUTCDate()).padStart(2, '0')}.${String(td.getUTCMonth() + 1).padStart(2, '0')}.${td.getUTCFullYear()}`
+          : null;
+        preParsed = {
+          belgeNo: ubl.faturaNo, tarih: dt,
+          belgeTuru: this.documentTypeFromProviderXml(xml) === 'E_ARSIV' ? 'e-arsiv' : 'e-fatura',
+          saticiAd: ubl.satici, saticiVkn: ubl.saticiVergiNo,
+          aliciAd: ubl.alici, aliciVkn: ubl.aliciVergiNo,
+          toplam: ubl.toplamTutar,
+          kdv: [{ oran: ubl.kdvOrani || 0, matrah: ubl.matrah || 0, kdv: ubl.kdvTutari || 0 }],
+        };
+      }
+    }
+    // PDF → metne çevir (pdf-parse); metni Max-vision text yoluna ver (vision PDF okuyamaz).
+    if (!preParsed && !isImage && !(html && html.length > 80) && imgBuf && /pdf/i.test(imgMedia)) {
+      try {
+        const pdfParse = require('pdf-parse');
+        const r = await pdfParse(imgBuf, { max: 4 });
+        if (r?.text && String(r.text).trim().length > 80) html = String(r.text);
+      } catch { /* taranmış/şifreli PDF — aşağıda elenir */ }
+    }
+    // UBL parse / HTML metni / görsel — üçü de yoksa okunamaz.
+    if (!preParsed && !(html && html.length > 80) && !isImage) {
+      return { ok: false, reason: imgBuf ? 'belge biçimi okunamadı (taranmış/şifreli PDF)' : 'belge içeriği boş' };
     }
 
     // Mükellefin İŞİNİ/SEKTÖRÜNÜ eşleştirmeye kat → kategori firmanın faaliyetine göre
@@ -5128,8 +5154,9 @@ export class FaturaMuhasebelestirmeService {
     // Süre: Max CLI ilk çağrıda soğuk başlar + uzun HTML metni yavaş işlenir; 22sn YETMİYORDU
     // (toplu okumada belgelerin ~yarısı "22000ms içinde yanıt vermedi"ye düşüyordu). Frontend
     // axios timeout'u yok (sınırsız bekler), Railway uzun isteği kesmez → bolca süre veriyoruz.
+    // XML'den UBL parse edildiyse AI çağrısı YOK (birebir veri). Aksi halde Max-vision:
     // Max CLI soğuk başlangıç/geçici hatada başarısız olabiliyor → 2 deneme yap.
-    let parsed: any = null;
+    let parsed: any = preParsed;
     let reason = 'okunamadı';
     for (let attempt = 1; attempt <= 2 && !parsed; attempt++) {
       const res = await claudeTextViaMax(
