@@ -4558,7 +4558,18 @@ export class FaturaMuhasebelestirmeService {
     const breakdownSumKdv = Array.isArray(opts.kdvBreakdown)
       ? opts.kdvBreakdown.reduce((s, b) => s + Number(b.amount || 0), 0)
       : 0;
-    const hasAnyMatrah = matrahN > 0 || breakdownSumBase > 0;
+    // Yevmiye satirlarindan matrah: "matrah" grubundaki satirlarin tutari (OCR matrah'i
+    // bos olsa da satirlar dolu olabilir — Azure rawText verir ama matrah'i yapilandirmaz).
+    const linesMatrah = opts.lines
+      .filter((l) => String((l as any).group || '').toLowerCase() === 'matrah')
+      .reduce((s, l) => s + Number(l.debit || 0) + Number(l.credit || 0), 0);
+    // Satirlar belge toplamini zaten karsiliyorsa (dengeli + tutara esit) matrah/KDV
+    // ayristirilmis demektir; INCOMPLETE damgasi yanlis olur.
+    const journalTop = Math.max(sumDebit, sumCredit);
+    const linesCoverTotal =
+      opts.lines.length > 0 && journalTop > 0 && totalAmount > 0 &&
+      Math.abs(journalTop - totalAmount) <= Math.max(TOL, totalAmount * 0.001);
+    const hasAnyMatrah = matrahN > 0 || breakdownSumBase > 0 || linesMatrah > 0 || linesCoverTotal;
     if (totalAmount > 0 && !hasAnyMatrah) {
       issues.push({
         code: 'INCOMPLETE_AMOUNTS',
