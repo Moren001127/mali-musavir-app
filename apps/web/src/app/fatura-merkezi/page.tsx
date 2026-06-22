@@ -293,12 +293,17 @@ async function openDocFile(id: string) {
   }
 }
 
-/** Belge görüntüleme modalı — ekranda büyük gösterir (iframe). */
+/** Belge görüntüleme modalı — neredeyse tam ekran + yaklaştır/uzaklaştır. */
 function DocModal() {
   const [doc, setDoc] = useState<{ url?: string; html?: string; mime?: string } | null>(null);
+  const [scale, setScale] = useState(1);
   useEffect(() => {
-    const onView = (e: any) => setDoc(e.detail || null);
-    const onKey = (e: KeyboardEvent) => { if (e.key === 'Escape') setDoc(null); };
+    const onView = (e: any) => { setDoc(e.detail || null); setScale(1); };
+    const onKey = (e: KeyboardEvent) => {
+      if (e.key === 'Escape') setDoc(null);
+      if (e.key === '+' || e.key === '=') setScale((s) => Math.min(4, +(s + 0.2).toFixed(2)));
+      if (e.key === '-' || e.key === '_') setScale((s) => Math.max(0.4, +(s - 0.2).toFixed(2)));
+    };
     window.addEventListener('fm-view-doc', onView as any);
     window.addEventListener('keydown', onKey);
     return () => { window.removeEventListener('fm-view-doc', onView as any); window.removeEventListener('keydown', onKey); };
@@ -310,22 +315,33 @@ function DocModal() {
     /^data:image\//i.test(url) ||
     /\.(jpe?g|jpe|jfif|png|gif|webp|bmp|tiff?|heic|heif|avif)(\?|#|$)/i.test(url)
   );
+  const zoomStyle = { zoom: scale } as any;
+  const dec = () => setScale((s) => Math.max(0.4, +(s - 0.2).toFixed(2)));
+  const inc = () => setScale((s) => Math.min(4, +(s + 0.2).toFixed(2)));
   return (
     <div className="docov" onClick={() => setDoc(null)}>
       <div className="docbox" onClick={(e) => e.stopPropagation()}>
         <div className="docbar">
           <b>Belge görüntüle</b>
           <div className="sp" />
+          <div className="zoomctl">
+            <button className="zbtn" onClick={dec} title="Uzaklaştır (−)">−</button>
+            <span className="zval">{Math.round(scale * 100)}%</span>
+            <button className="zbtn" onClick={inc} title="Yaklaştır (+)">+</button>
+            <button className="zbtn zreset" onClick={() => setScale(1)} title="Sığdır">Sığdır</button>
+          </div>
           {url ? <a className="btn sm ghost" href={url} target="_blank" rel="noopener noreferrer">Yeni sekmede aç</a> : null}
           <button className="btn sm" onClick={() => setDoc(null)}>Kapat ✕</button>
         </div>
-        {doc.html
-          ? <iframe className="docframe" srcDoc={doc.html} title="Belge" sandbox="allow-same-origin" />
-          : isImg
-            ? <div className="docimgwrap"><img className="docimg" src={url} alt="Belge" /></div>
-            : url
-              ? <iframe className="docframe" src={url} title="Belge" />
-              : <div className="empty">Belge yok</div>}
+        <div className="docview">
+          {doc.html
+            ? <iframe className="docframe" style={zoomStyle} srcDoc={doc.html} title="Belge" sandbox="allow-same-origin" />
+            : isImg
+              ? <img className="docimg" style={zoomStyle} src={url} alt="Belge" />
+              : url
+                ? <iframe className="docframe" style={zoomStyle} src={url} title="Belge" />
+                : <div className="empty">Belge yok</div>}
+        </div>
       </div>
     </div>
   );
@@ -2031,11 +2047,16 @@ const CSS = `
 #fm-root .eform .erw{display:grid;grid-template-columns:1fr 1fr;gap:11px;margin-bottom:11px}
 #fm-root .endcol{justify-content:flex-end}
 /* Belge görüntüleme modalı (ekranda büyük, ayrı sekme yok) */
-#fm-root .docov{position:fixed;inset:0;background:rgba(15,23,42,.55);display:grid;place-items:center;z-index:60;padding:24px}
-#fm-root .docbox{background:#fff;border-radius:14px;width:min(1000px,96vw);height:min(90vh,1000px);display:flex;flex-direction:column;overflow:hidden;box-shadow:0 24px 70px rgba(0,0,0,.35)}
-#fm-root .docbar{display:flex;align-items:center;gap:9px;padding:11px 14px;border-bottom:1px solid var(--line);flex-shrink:0}
+#fm-root .docov{position:fixed;inset:0;background:rgba(15,23,42,.55);display:grid;place-items:center;z-index:60;padding:10px}
+#fm-root .docbox{background:#fff;border-radius:14px;width:min(1500px,99vw);height:97vh;display:flex;flex-direction:column;overflow:hidden;box-shadow:0 24px 70px rgba(0,0,0,.35)}
+#fm-root .docbar{display:flex;align-items:center;gap:9px;padding:9px 12px;border-bottom:1px solid var(--line);flex-shrink:0}
+#fm-root .zoomctl{display:flex;align-items:center;gap:4px;margin-right:6px}
+#fm-root .zbtn{min-width:30px;height:30px;padding:0 8px;border:1px solid var(--line);background:#f8fafc;border-radius:7px;cursor:pointer;font-size:16px;font-weight:700;line-height:1;color:#0f172a;display:inline-flex;align-items:center;justify-content:center}
+#fm-root .zbtn:hover{background:#eef2f7}
+#fm-root .zbtn.zreset{font-size:12px;font-weight:600}
+#fm-root .zval{min-width:46px;text-align:center;font-size:12.5px;font-weight:600;color:#334155}
+#fm-root .docview{flex:1;min-height:0;overflow:auto;background:#e9edf2;text-align:center}
 #fm-root .docbar b{font-size:13.5px}
-#fm-root .docframe{flex:1;width:100%;border:none;background:#fff}
-#fm-root .docimgwrap{flex:1;min-height:0;overflow:auto;background:#eef1f4;display:flex;justify-content:center;align-items:center;padding:18px}
-#fm-root .docimg{max-width:100%;max-height:100%;width:auto;height:auto;object-fit:contain;border-radius:6px;box-shadow:0 3px 16px rgba(0,0,0,.18);background:#fff}
+#fm-root .docframe{display:block;width:100%;height:100%;border:none;background:#fff}
+#fm-root .docimg{display:inline-block;max-width:100%;height:auto;vertical-align:top;border-radius:6px;box-shadow:0 3px 16px rgba(0,0,0,.18);background:#fff}
 `;
