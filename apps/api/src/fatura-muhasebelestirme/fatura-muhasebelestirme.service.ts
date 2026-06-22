@@ -2175,15 +2175,32 @@ export class FaturaMuhasebelestirmeService {
     }
   }
 
-  // Kuyruktan AI okuma (sunucu tarafı) — sayfa değişse de DURMAZ. ocrStatus'u yönetir
-  // ki ilerleme şeridi doğru göstersin.
+  // Kuyruktan okuma (sunucu tarafı) — sayfa değişse de DURMAZ. ocrStatus'u yönetir
+  // ki ilerleme şeridi doğru göstersin. MİHSAP belgesinde TAM akış (Max-vision birincil +
+  // PDF/başarısızlıkta Azure yedek) kullanılır → PDF e-Arşivler de okunur. Hata nedeni kaydedilir.
   private async runQueuedAiRead(tenantId: string, documentId: string) {
     await (this.prisma as any).invoiceAccountingDocument.updateMany({
       where: { id: documentId, tenantId }, data: { ocrStatus: 'IN_PROGRESS' },
     }).catch(() => {});
-    const r: any = await this.aiReadDocument(tenantId, documentId).catch(() => ({ ok: false }));
+    const doc = await (this.prisma as any).invoiceAccountingDocument.findFirst({
+      where: { id: documentId, tenantId },
+      select: { source: true, sourceRefId: true, invoiceKind: true },
+    }).catch(() => null);
+    // Mihsap belgesi → processMihsapDocumentOcr (Max-vision→Azure yedek + ocrStatus + hata nedeni)
+    if (doc?.source === 'mihsap' && doc?.sourceRefId) {
+      await this.processMihsapDocumentOcr(
+        tenantId, documentId, String(doc.sourceRefId),
+        (doc.invoiceKind === 'SATIS' ? 'SATIS' : 'ALIS') as 'ALIS' | 'SATIS',
+      ).catch(() => {});
+      return; // ocrStatus + ocrRawText (hata nedeni) processMihsapDocumentOcr içinde set edildi
+    }
+    // Diğer (elle yüklenen) → Max-vision; başarısızsa nedenini kaydet.
+    const r: any = await this.aiReadDocument(tenantId, documentId).catch((e: any) => ({ ok: false, reason: e?.message || 'okuma hatası' }));
     await (this.prisma as any).invoiceAccountingDocument.updateMany({
-      where: { id: documentId, tenantId }, data: { ocrStatus: r?.ok ? 'SUCCESS' : 'FAILED' },
+      where: { id: documentId, tenantId },
+      data: r?.ok
+        ? { ocrStatus: 'SUCCESS' }
+        : { ocrStatus: 'FAILED', lucaErrorMessage: String(r?.reason || 'okunamadı').slice(0, 300) },
     }).catch(() => {});
   }
 
