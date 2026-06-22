@@ -705,6 +705,8 @@ export async function buildOwnerMizanStatusReply(
     prisma.taxpayer.findMany({ where: { tenantId, isActive: true }, select: { id: true, companyName: true, firstName: true, lastName: true } }).catch(() => []),
     prisma.mizan.findMany({ where: { tenantId, donem }, select: { taxpayerId: true }, distinct: ['taxpayerId'] }).catch(() => []),
   ]);
+  // "X'in mizanı var mı" → tek mükellef sorusu; portföy listesi DEĞİL → tek-mükellef kısayoluna bırak.
+  if (resolveTaxpayerByText(taxpayers, text)) return null;
   const mizanliIds = new Set<string>(mizanlar.map((m: any) => m.taxpayerId).filter(Boolean));
   const ad = (t: any) => (t.companyName || `${t.firstName || ''} ${t.lastName || ''}`).trim() || 'Mükellef';
   const olan = taxpayers.filter((t: any) => mizanliIds.has(t.id)).map(ad).sort((a: string, b: string) => a.localeCompare(b, 'tr'));
@@ -842,7 +844,8 @@ export async function buildOwnerSingleTaxpayerReply(
   const n = normalizeForIntent(text);
   if (/(kim|kimler|kimlere|liste|listele|herkes|hangi mukellef)/.test(n)) return null; // portföy
   let kind = '';
-  if (/(borc|cari|bakiye|alacak)/.test(n)) kind = 'borc';
+  if (/mizan/.test(n)) kind = 'mizan';
+  else if (/(borc|cari|bakiye|alacak)/.test(n)) kind = 'borc';
   else if (/(gelir tablo|ciro|hasilat|net satis|kar(?!\w)|kazanc|karli)/.test(n)) kind = 'gelir';
   else if (/(beyanname|beyan(?!\w)|verildi mi|verildi mı|tahakkuk)/.test(n)) kind = 'beyanname';
   else return null;
@@ -854,6 +857,28 @@ export async function buildOwnerSingleTaxpayerReply(
   const t = resolveTaxpayerByText(taxpayers, text);
   if (!t) return null; // belirsiz/ad yok → agentic
   const ad = (t.companyName || `${t.firstName || ''} ${t.lastName || ''}`).trim();
+
+  if (kind === 'mizan') {
+    const m = await prisma.mizan.findFirst({
+      where: { tenantId, taxpayerId: t.id },
+      orderBy: [{ donem: 'desc' }, { createdAt: 'desc' }],
+      include: { hesaplar: { select: { borcToplami: true, alacakToplami: true } }, anomaliler: { select: { id: true } } },
+    }).catch(() => null);
+    if (!m) return { reply: `${ad} için yüklenmiş mizan bulamadım.`, mukellef: ad };
+    const tBorc = (m.hesaplar || []).reduce((s: number, h: any) => s + (Number(h.borcToplami) || 0), 0);
+    const tAlacak = (m.hesaplar || []).reduce((s: number, h: any) => s + (Number(h.alacakToplami) || 0), 0);
+    const fark = Math.abs(tBorc - tAlacak);
+    const denge = fark < 1 ? '✅ Tutarlı' : `⚠️ ${TL2(fark)} fark`;
+    const anomali = (m.anomaliler || []).length;
+    const reply =
+      `📒 MİZAN — ${ad}\n🗓️ ${donemOku(m.donem)}\n\n` +
+      `• Toplam Borç: ${TL2(tBorc)}\n` +
+      `• Toplam Alacak: ${TL2(tAlacak)}\n` +
+      `• Denge: ${denge}\n` +
+      `• Hesap sayısı: ${(m.hesaplar || []).length}` +
+      (anomali ? `\n• Anomali: ⚠️ ${anomali} adet` : '');
+    return { reply, mukellef: ad };
+  }
 
   if (kind === 'borc') {
     const rows = await prisma.cariHareket.findMany({ where: { tenantId, taxpayerId: t.id }, select: { tip: true, tutar: true } }).catch(() => []);
