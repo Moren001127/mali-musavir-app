@@ -6419,13 +6419,16 @@ export class FaturaMuhasebelestirmeService implements OnModuleInit, OnModuleDest
     const h = toks(hint);
     const nameSet = new Set(toks(name));
     if (!h.length || !nameSet.size) return 0;
-    // ASIL FİRMA ADI KURALI: ipucunun İLK ayırt edici kelimesi (KAYIKÇI/UNOX/YAŞAR/ALTEKS gibi
-    // asıl unvan) hesap adında GEÇMEK ZORUNDA. Geçmiyorsa eşleşme YOK — "TURİZM/MUTFAK/AİLE
-    // BİRLİĞİ" gibi sektör kelimeleri ortak olsa bile yanlış cari atanmaz.
-    if (!nameSet.has(h[0])) return 0;
     let shared = 0;
     for (const t of h) if (nameSet.has(t)) shared++;
-    // Birden çok ayırt edici kelime varsa en az 2 ortak iste (MURAT YILMAZ ≠ MURAT DEMİR).
+    if (shared === 0) return 0;
+    // EŞLEŞME KURALI: tek ayırt edici kelime (UNOX → "UNOX GIDA") yeter; birden çok kelimede EN AZ
+    // 2 ortak iste. Bu, MARKA-ÖNEKİ farkını TOLERE eder: belge "A101 YENİ MAĞAZACILIK", Luca cari
+    // "YENİ MAĞAZACILIK ANONİM ŞİRKETİ" → "yeni"+"magazacilik" 2 ortak → eşleşir. Ama tek jenerik
+    // ortağı (yalnız "yeni" / sektör kelimesi) reddeder (MURAT YILMAZ ≠ MURAT DEMİR). Sektör/biçim
+    // kelimeleri (turizm/insaat/market/magaza…) zaten STOP listesinde elenir → yanlış cari önlenir.
+    // (Eski "İLK kelime ZORUNLU" kuralı A101 gibi marka-önekli carileri kaçırıyordu — kullanıcı
+    //  "kabak gibi planında var ama eşleştirmiyor" dedi; VKN plan'da boş → isim tek dayanak.)
     if (h.length >= 2 && shared < 2) return 0;
     return shared * 100;
   }
