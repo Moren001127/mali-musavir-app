@@ -563,6 +563,29 @@ export class TaxpayersService {
       : [];
     const statusMap = new Map(statuses.map((s) => [s.taxpayerId, s]));
 
+    // OTOMATİK BEYAN İŞARETİ (Aylık Takip listesiyle BİREBİR aynı kural): işlem ayının (m)
+    // beyanname dönemi = m−1. O dönem için KDV beyannamesi İNDİRİLMİŞSE (BeyanKaydi'nde
+    // beyanname/tahakkuk PDF var) → beyanname GİB'e verilmiş demektir → TAMAM say.
+    // (Eskiden İş Akışı bu oto-işareti uygulamıyordu; verilmiş beyannameler TAMAM yerine
+    // BEYAN'da kalıyor, Aylık Takip ile çelişiyordu.)
+    const byYear = m === 1 ? y - 1 : y;
+    const byMonth = m === 1 ? 12 : m - 1;
+    const beyannameDonem = `${byYear}-${String(byMonth).padStart(2, '0')}`;
+    const kdvIndirilenler = new Set<string>();
+    try {
+      const kdvKayitlari = await (this.prisma as any).beyanKaydi.findMany({
+        where: {
+          tenantId,
+          taxpayerId: { in: taxpayerIds },
+          donem: beyannameDonem,
+          beyanTipi: { in: ['KDV1', 'KDV2', 'KDV'] },
+          OR: [{ beyannameUrl: { not: null } }, { pdfUrl: { not: null } }],
+        },
+        select: { taxpayerId: true },
+      });
+      for (const k of kdvKayitlari) if (k?.taxpayerId) kdvIndirilenler.add(k.taxpayerId);
+    } catch { /* beyan kaydı sorgusu başarısızsa oto-işaret atlanır, akış bozulmaz */ }
+
     // Aktif olmayan mükellefleri filtrele
     // Aşamayı belirle
     const items = taxpayers.map((taxpayer) => {
@@ -589,8 +612,10 @@ export class TaxpayersService {
       // hepsi tıklı olunca KONTROL TAMAM sayılır (eski: kdvKontrolEdildi legacy field aranıyordu)
       const kdvKontrolHepsiTamam =
         s.indirilecekKdvKontrol && s.hesaplananKdvKontrol && s.eArsivKontrol;
+      // KDV beyannamesi indirilmişse (oto-işaret) verilmiş say — Aylık Takip listesiyle uyumlu.
+      const beyannameVerildi = s.beyannameVerildi || kdvIndirilenler.has(taxpayer.id);
 
-      if (s.beyannameVerildi) {
+      if (beyannameVerildi) {
         stage = 'TAMAM';
         actionLabel = 'Tamamlandı';
         actionPath = `/panel/mukellefler/${taxpayer.id}`;
@@ -631,7 +656,7 @@ export class TaxpayersService {
         evraklarGeldi: s.evraklarGeldi,
         evraklarIslendi: s.evraklarIslendi,
         kontrolEdildi: s.kontrolEdildi || kdvKontrolHepsiTamam,
-        beyannameVerildi: s.beyannameVerildi,
+        beyannameVerildi,
         monthlyStatusExists: !!existingStatus,
       };
     });
