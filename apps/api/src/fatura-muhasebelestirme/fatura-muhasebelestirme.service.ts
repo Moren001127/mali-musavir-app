@@ -13,7 +13,7 @@ import { claudeTextViaMax, MAX_MODEL_CHEAP } from '../common/max-inference';
 import { buildLucaImportExcel, buildLucaIsletmeHizliFisCsv } from './luca-excel.service';
 import { VendorMemoryService } from '../vendor-memory/vendor-memory.service';
 import { MihsapService } from '../mihsap/mihsap.service';
-import { isletmeAutoKayitTuru, isletmeAutoKayitAltKod, isletmeRef, getKayitAltList } from '@mali-musavir/shared';
+import { isletmeAutoKayitTuru, isletmeGiderSinifi, isletmeRef, getKayitAltList } from '@mali-musavir/shared';
 
 type AccountingLineInput = {
   id?: string;
@@ -3530,12 +3530,20 @@ export class FaturaMuhasebelestirmeService implements OnModuleInit, OnModuleDest
       const sinifliMi = (Array.isArray(isl.satirlar) && isl.satirlar.length) || isl.kayitTuruKod;
       if (!sinifliMi) {
         const kindU = String((doc as any).invoiceKind || 'ALIS').toUpperCase().includes('SATIS') ? 'SATIS' : 'ALIS';
-        const ktKod = isletmeAutoKayitTuru(kindU, tp?.naceKodu, tp?.faaliyetAciklama) || (kindU === 'SATIS' ? '2' : '4');
-        const ktAd = isletmeRef(kindU).kayitTuru.find((x: any) => x.kod === ktKod)?.ad || '';
-        // Alt türü de satıcı adından otomatik (Elektrik/Yakıt/Doğalgaz…) — Luca CSV'sinde TÜR sütunu dolu gitsin.
-        const altKod = isletmeAutoKayitAltKod(kindU, ktKod, `${(doc as any).vendorName || ''} ${(doc as any).documentType || ''}`);
-        const altAd = altKod ? (getKayitAltList(kindU, ktKod).find((x: any) => x.kod === altKod)?.ad || '') : '';
-        data.ocrData = { ...((doc as any).ocrData || {}), isletme: { ...isl, kayitTuruKod: ktKod, kayitTuruAd: ktAd, kayitAltKod: altKod, kayitAltAd: altAd, autoMatched: true } };
+        const od: any = (doc as any).ocrData || {};
+        // Sınıf BELGE İÇERİĞİNDEN: satışta faaliyet, giderde matrahKategori/giderTuru. Kesin değilse ZORLAMA YOK.
+        let ktKod = '', altKod = '';
+        if (kindU === 'SATIS') {
+          ktKod = isletmeAutoKayitTuru('SATIS', tp?.naceKodu, tp?.faaliyetAciklama);
+        } else {
+          const sinif = isletmeGiderSinifi({ matrahKategori: od.matrahKategori, giderTuru: od.giderTuru, vendorName: (doc as any).vendorName, documentType: (doc as any).documentType });
+          if (sinif) { ktKod = sinif.kayitTuruKod; altKod = sinif.kayitAltKod; }
+        }
+        if (ktKod) {
+          const ktAd = isletmeRef(kindU).kayitTuru.find((x: any) => x.kod === ktKod)?.ad || '';
+          const altAd = altKod ? (getKayitAltList(kindU, ktKod).find((x: any) => x.kod === altKod)?.ad || '') : '';
+          data.ocrData = { ...od, isletme: { ...isl, kayitTuruKod: ktKod, kayitTuruAd: ktAd, kayitAltKod: altKod, kayitAltAd: altAd, autoMatched: true } };
+        }
       }
       await (this.prisma as any).invoiceAccountingDocument.update({ where: { id }, data });
       await this.logAudit(tenantId, userId, 'APPROVE', id, { status: doc.status }, { status: 'APPROVED', isletme: true });
