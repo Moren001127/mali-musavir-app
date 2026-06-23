@@ -972,7 +972,7 @@ function ScreenFaturalar({ taxpayerId, period, kind = 'ALIS', isIsletme = false,
                     <td>{isIsletme
                       ? (islKayit ? <span className="hk" title={islAltFull ? `${islMain} › ${islAltFull}` : islMain}>{islKayit}</span> : <span className="hk no" title="Belge içeriğinden tür çıkarılamadı — Muhasebeleştir'de seç">—</span>)
                       : (code ? <span className="hk">{code}</span> : <span className="hk no">— yok —</span>)}</td>
-                    <td><span className={`pill ${du.k}`} title={du.cat === 'okunamadi' && d.lucaErrorMessage ? `Neden: ${d.lucaErrorMessage}` : du.t}>{du.t}</span>{du.cat === 'okunamadi' && d.lucaErrorMessage ? <div className="oneden">{d.lucaErrorMessage}</div> : null}{du.cat === 'celiski' ? (() => { const iss = (Array.isArray(d.validationIssues) ? d.validationIssues : (Array.isArray(d.ocrData?.validationIssues) ? d.ocrData.validationIssues : [])).filter((i: any) => i?.code && i.code !== 'INCOMPLETE_AMOUNTS' && i?.severity !== 'WARNING'); const msg = iss.map((i: any) => i.message).filter(Boolean).join(' · '); return msg ? <div className="oneden">{msg}</div> : null; })() : null}</td>
+                    <td><span className={`pill ${du.k}`} title={du.cat === 'okunamadi' && d.lucaErrorMessage ? `Neden: ${d.lucaErrorMessage}` : du.cat === 'celiski' ? ((Array.isArray(d.validationIssues) ? d.validationIssues : (Array.isArray(d.ocrData?.validationIssues) ? d.ocrData.validationIssues : [])).filter((i: any) => i?.code && i.code !== 'INCOMPLETE_AMOUNTS' && i?.severity !== 'WARNING').map((i: any) => i.message).filter(Boolean).join(' · ') || du.t) : du.t}>{du.t}</span>{du.cat === 'okunamadi' && d.lucaErrorMessage ? <div className="oneden">{d.lucaErrorMessage}</div> : null}{du.cat === 'celiski' ? <div className="oneden" style={{ fontSize: 10.5, opacity: 0.85 }}>↓ sebebi fiş detayında</div> : null}</td>
                     <td className="actcol" style={{ display: 'flex', gap: 8, alignItems: 'center' }}>
                       <span className="eye" onClick={() => setFisDetayId(fisAcik ? '' : d.id)} title={fisAcik ? 'Detayı gizle' : (isIsletme ? 'Kayıt türünü göster' : 'Yevmiye fişini göster')} style={fisAcik ? { color: 'var(--accent,#2563eb)' } : undefined}><Ico html={I.ledger} size={15} /></span>
                       <span className="eye" onClick={() => openDocFile(d.id)} title="Belgeyi aç"><Ico html={I.eye} size={15} /></span>
@@ -993,7 +993,7 @@ function ScreenFaturalar({ taxpayerId, period, kind = 'ALIS', isIsletme = false,
                                   <tr key={l.id || i}>
                                     <td>{grpLabel(String(l.group || ''))}{l.rate ? ` %${String(l.rate).replace(/[^0-9.,]/g, '')}` : ''}</td>
                                     <td>{l.accountCode ? <span className="hk">{l.accountCode}</span> : <span className="hk no">eksik</span>}</td>
-                                    <td>{l.description || '—'}</td>
+                                    <td>{l.accountCode ? (l.description || '—') : '—'}</td>
                                     <td className="num">{Number(l.debit) ? fmtMoney(l.debit) : ''}</td>
                                     <td className="num">{Number(l.credit) ? fmtMoney(l.credit) : ''}</td>
                                   </tr>
@@ -1001,6 +1001,7 @@ function ScreenFaturalar({ taxpayerId, period, kind = 'ALIS', isIsletme = false,
                               </tbody>
                             </table>
                           ) : <div className="empty" style={{ padding: 10 }}>Fiş satırı yok — önce "AI ile oku".</div>}
+                          {(() => { const iss = (Array.isArray(d.validationIssues) ? d.validationIssues : (Array.isArray(d.ocrData?.validationIssues) ? d.ocrData.validationIssues : [])).filter((i: any) => i?.code && i.code !== 'INCOMPLETE_AMOUNTS' && i?.severity !== 'WARNING'); return iss.length ? <div className="celiskibanner"><b>Çelişki sebebi:</b>{iss.map((i: any, k: number) => <div key={k}>• {i.message}</div>)}</div> : null; })()}
                         </div>
                       </td>
                     </tr>
@@ -2732,7 +2733,9 @@ const CSS = `
 #fm-root tr.detay-on > td{background:#f7faff}
 #fm-root .detayrow > td{padding:0;background:#f7faff;border-bottom:1px solid var(--line)}
 #fm-root .detaybox{padding:8px 14px 12px;overflow-x:auto}
-#fm-root .detaytbl{width:100%;border-collapse:collapse;background:#fff;border:1px solid var(--line);border-radius:8px;overflow:hidden}
+#fm-root .detaytbl{width:auto;min-width:480px;max-width:920px;border-collapse:collapse;background:#fff;border:1px solid var(--line);border-radius:8px;overflow:hidden}
+#fm-root .celiskibanner{margin-top:8px;max-width:920px;padding:7px 11px;background:#fdf2e0;border:1px solid #f0c987;border-radius:7px;font-size:12px;color:#92400e;line-height:1.55}
+#fm-root .celiskibanner b{display:block;margin-bottom:2px;color:#b45309}
 #fm-root .detaytbl th{font-size:10px;text-transform:uppercase;letter-spacing:.4px;color:var(--faint);text-align:left;padding:6px 10px;background:#fbfcfd;border-bottom:1px solid var(--line)}
 #fm-root .detaytbl td{font-size:12px;padding:6px 10px;border-bottom:1px solid var(--line)}
 #fm-root .detaytbl tr:last-child td{border-bottom:none}
