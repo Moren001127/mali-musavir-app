@@ -1311,6 +1311,27 @@ export class PortalAutomationService {
     const donem = identity.donem;
     const declarationStatus = normalizeAgentDeclarationStatus(input);
     if (declarationStatus !== 'onaylandi') {
+      // ÖNCELİK + ÖZ-ONARIM: GİB bu beyannameyi "onay bekliyor" / "hatalı" raporluyor.
+      const existingKayit = await (this.prisma as any).beyanKaydi.findUnique({
+        where: {
+          tenantId_taxpayerId_beyanTipi_donem: { tenantId, taxpayerId: taxpayer.id, beyanTipi, donem },
+        },
+        select: { id: true, tahakkukTutari: true, pdfUrl: true },
+      });
+      // (1) ÖNCELİK: bu beyanname GERÇEKTEN onaylı/indirilmiş (tahakkuku veya tahakkuk PDF'i var).
+      //     Onaylanmış beyanname iptal edilemez (yalnız düzeltme verilir); GİB'in hâlâ gösterdiği
+      //     eski hatalı denemesi onu DÜŞÜRMESİN → durumu değiştirme, onaylı kalsın.
+      if (existingKayit && (existingKayit.tahakkukTutari != null || existingKayit.pdfUrl)) {
+        return existingKayit;
+      }
+      // (2) ÖZ-ONARIM: gerçek onaylı yok; pending "onaylı sızıntısı"ndan kalan TAHAKKUKSUZ sahte
+      //     BeyanKaydı ("Tutar okunamadı" satırı) varsa temizle — liste ve panel doğru yansısın.
+      //     Yalnız gib_agent + tahakkukTutari yok + tahakkuk PDF yok kayıtlara dokunur.
+      if (existingKayit) {
+        await (this.prisma as any).beyanKaydi.deleteMany({
+          where: { tenantId, taxpayerId: taxpayer.id, beyanTipi, donem, kaynak: 'gib_agent', tahakkukTutari: null, pdfUrl: null },
+        }).catch(() => {});
+      }
       return (this.prisma as any).beyanDurumu.upsert({
         where: {
           tenantId_taxpayerId_beyanTipi_donem: {
