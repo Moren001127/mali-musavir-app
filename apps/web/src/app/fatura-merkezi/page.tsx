@@ -2736,8 +2736,12 @@ const CSS = `
 #fm-root .detaytbl th{font-size:10px;text-transform:uppercase;letter-spacing:.4px;color:var(--faint);text-align:left;padding:6px 10px;background:#fbfcfd;border-bottom:1px solid var(--line)}
 #fm-root .detaytbl td{font-size:12px;padding:6px 10px;border-bottom:1px solid var(--line)}
 #fm-root .detaytbl tr:last-child td{border-bottom:none}
-#fm-root .detaytbl .num{text-align:right;font-variant-numeric:tabular-nums;white-space:nowrap;padding-right:16px}
-#fm-root .detaytbl td:nth-child(3){max-width:360px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+#fm-root .detaytbl .num{text-align:right;font-variant-numeric:tabular-nums;white-space:nowrap;padding-right:14px;min-width:96px}
+#fm-root .detaytbl td:nth-child(1){white-space:nowrap}
+#fm-root .detaytbl td:nth-child(2){white-space:nowrap}
+#fm-root .detaytbl td:nth-child(3){max-width:240px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+#fm-root .detayrow td{padding:0}
+#fm-root .detaybox .detaytbl{max-width:100%}
 #fm-root .babs2{display:grid;grid-template-columns:1fr 1fr;gap:14px;padding:8px 14px 14px}
 #fm-root .babscol{border:1px solid var(--line);border-radius:10px;overflow:hidden}
 #fm-root .babsh{font-size:12px;font-weight:700;padding:8px 12px;background:#fbfcfd;border-bottom:1px solid var(--line);display:flex;align-items:center;gap:8px}

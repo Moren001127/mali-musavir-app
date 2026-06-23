@@ -5268,10 +5268,14 @@ export class FaturaMuhasebelestirmeService implements OnModuleInit, OnModuleDest
       });
     }
 
-    // ── 3) TOTAL_MISMATCH — yevmiye toplamı ≠ belge toplamı
+    // ── 3) TOTAL_MISMATCH — yevmiye toplamı ≠ belge toplamı. ÇOK-ORANLI faturada her oran satırı
+    //   AYRI yuvarlanır (kuruş) → toplam birkaç kuruş sapabilir; tolerans satır sayısına göre esnetilir
+    //   (yoksa A101 gibi çok-oranlı belgeler kuruş farkıyla boş yere "çelişki"ye düşüyordu).
     if (totalAmount > 0) {
       const yevmiyeToplam = Math.max(sumDebit, sumCredit);
-      if (Math.abs(yevmiyeToplam - totalAmount) > TOL) {
+      const rateLineCount = opts.lines.filter((l) => ['matrah', 'vergi'].includes(String((l as any).group || ''))).length;
+      const totalTol = Math.max(TOL, rateLineCount * 0.02);
+      if (Math.abs(yevmiyeToplam - totalAmount) > totalTol) {
         issues.push({
           code: 'TOTAL_MISMATCH',
           severity: 'ERROR',
@@ -6205,7 +6209,7 @@ export class FaturaMuhasebelestirmeService implements OnModuleInit, OnModuleDest
               });
             }
           } else if (current) {
-            await (this.prisma as any).invoiceAccountingLine.update({ where: { id: line.id }, data: { accountCode: '' } });
+            await (this.prisma as any).invoiceAccountingLine.update({ where: { id: line.id }, data: { accountCode: '', description: '' } });
           }
           continue;
         }
@@ -6231,7 +6235,7 @@ export class FaturaMuhasebelestirmeService implements OnModuleInit, OnModuleDest
             where: { id: line.id },
             data: cariMatch
               ? { accountCode: (cariMatch as any).accountCode, description: (cariMatch as any).accountName }
-              : { accountCode: '' },
+              : { accountCode: '', description: '' },
           });
           continue;
         }
@@ -6261,7 +6265,7 @@ export class FaturaMuhasebelestirmeService implements OnModuleInit, OnModuleDest
             if (current !== matchCode && !typeOk) {
               await (this.prisma as any).invoiceAccountingLine.update({
                 where: { id: line.id },
-                data: matchCode ? { accountCode: matchCode } : { accountCode: '' },
+                data: matchCode ? { accountCode: matchCode } : { accountCode: '', description: '' },
               });
             }
             continue;
@@ -6317,7 +6321,7 @@ export class FaturaMuhasebelestirmeService implements OnModuleInit, OnModuleDest
           // "Eksik hesap kodu" görünür; kullanıcı 1 kez seçer → satıcı için öğrenilir.
           await (this.prisma as any).invoiceAccountingLine.update({
             where: { id: line.id },
-            data: { accountCode: '' },
+            data: { accountCode: '', description: '' },
           });
         }
       }
@@ -6448,7 +6452,13 @@ export class FaturaMuhasebelestirmeService implements OnModuleInit, OnModuleDest
       'fen', 'lisesi', 'okul', 'aile', 'birligi', 'kiz', 'erkek', 'ana', 'anaokulu', 'sitesi',
       'yonetimi', 'teknik', 'servis', 'sistemleri', 'sistem', 'makina', 'makine',
     ]);
-    const toks = (s: string) => this.norm(s).split(' ').filter((t) => t.length >= 3 && !STOP.has(t));
+    // Türkçe→ASCII katla (ş→s ğ→g ı→i ç→c ö→o ü→u): STOP listesi ASCII yazılı; "ŞİRKETİ/SANAYİ/
+    //   TİCARET/MAĞAZA" gibi Türkçe-karakterli kelimeler aksi halde STOP'tan GEÇMEYİP ortak çıkıyor →
+    //   YANLIŞ CARİ (FILE MARKET MAĞAZACILIK → YENİ MAĞAZACILIK: "şirketi"+"mağazacılık" 2 ortak
+    //   sanılıp eşleşiyordu; ASCII katlamayla "şirketi"→"sirketi" STOP'a düşer, yalnız "magazacilik"
+    //   ortak kalır=1<2 → eşleşme reddedilir; gerçek hesabı 320.01.F001 doğru seçilir).
+    const asciiFold = (s: string) => s.replace(/ş/g, 's').replace(/ğ/g, 'g').replace(/ı/g, 'i').replace(/ç/g, 'c').replace(/ö/g, 'o').replace(/ü/g, 'u');
+    const toks = (s: string) => asciiFold(this.norm(s)).split(' ').filter((t) => t.length >= 3 && !STOP.has(t));
     const h = toks(hint);
     const nameSet = new Set(toks(name));
     if (!h.length || !nameSet.size) return 0;
