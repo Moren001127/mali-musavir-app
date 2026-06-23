@@ -60,4 +60,32 @@ describe('WhatsAppBotPostFilterService', () => {
     const sentences = out.match(/[^.!?]+[.!?]/g) || [];
     expect(sentences.length).toBeLessThanOrEqual(3);
   });
+
+  // ── Eskalasyon sinyalleri (controller deterministik ağı bunları kullanır) ──
+  it('isContentFreeStall: içi-boş "kontrol edeyim" savsaklamasını yakalar', () => {
+    expect(svc.isContentFreeStall('Bunu bir kontrol edeyim, size net bilgiyle döneyim.')).toBe(true);
+    expect(svc.isContentFreeStall('Bir bakıp size döneyim.')).toBe(true);
+    expect(svc.isContentFreeStall('Müşavirimiz netleştirir.')).toBe(true);
+  });
+
+  it('isContentFreeStall: gerçek veri/rakam içeren cevabı stall SAYMAZ', () => {
+    expect(svc.isContentFreeStall('Borcunuz 28.750₺, detayını kontrol edip döneyim.')).toBe(false);
+    expect(svc.isContentFreeStall('KDV durumunuz 5.421₺ ödenecek görünüyor.')).toBe(false);
+  });
+
+  it('isContentFreeStall: standart eskalasyon cümlesini stall SAYMAZ (ağ döngüye girmesin)', () => {
+    expect(
+      svc.isContentFreeStall("Konuyu müşavirimiz Muzaffer Bey'e iletiyorum; en kısa sürede sizinle bu konuda iletişime geçecektir."),
+    ).toBe(false);
+  });
+
+  it('mentionsAiInfra: AI-altyapı terimi sızıntısını yakalar', () => {
+    expect(svc.mentionsAiInfra('Mesajınızı aldık, Claude Max bağlantısı geçici yanıt vermediği için ofisimiz dönüş yapacak.')).toBe(true);
+    expect(svc.mentionsAiInfra('Anthropic API hattı kapalı.')).toBe(true);
+  });
+
+  it('mentionsAiInfra: normal muhasebe cevabını altyapı-sızıntısı SAYMAZ', () => {
+    expect(svc.mentionsAiInfra('KDV oranı genel olarak %20, bazı mal/hizmetlerde %10 veya %1.')).toBe(false);
+    expect(svc.mentionsAiInfra("Konuyu müşavirimiz Muzaffer Bey'e iletiyorum; en kısa sürede iletişime geçecektir.")).toBe(false);
+  });
 });

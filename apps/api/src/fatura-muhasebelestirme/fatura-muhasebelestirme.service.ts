@@ -6002,6 +6002,11 @@ export class FaturaMuhasebelestirmeService implements OnModuleInit, OnModuleDest
     const isPostableLeaf = (code: string) => {
       const c = String(code || '');
       if (!c || !_codeSet.has(c) || _groupCodes.has(c)) return false;
+      // NOKTASIZ ana hesap (ör "150 İLK MADDE VE MALZEME", "320 SATICILAR") fiş hesabı DEĞİL —
+      //   yevmiye satırı her zaman noktalı ALT-hesaba kesilir. Aksi halde ticari_mal→"150" (alt-hesabı
+      //   olmayan ana hesap) atanıyordu (kullanıcı: "ana hesaba eşleme saçma, alt hesapta yok").
+      //   Bu, kategori prefix'inde noktalı alt-hesabı olan grubu (153.01.001) bulana kadar ilerletir.
+      if (!c.includes('.')) return false;
       return (c.split('.')[0].replace(/\D/g, '').length >= 3);
     };
     const leafOnly = (acc: any) => (acc && isPostableLeaf(String(acc.accountCode || '')) ? acc : null);
@@ -6032,22 +6037,25 @@ export class FaturaMuhasebelestirmeService implements OnModuleInit, OnModuleDest
       // NOT: matrahKategori AI okumada DOLU gelir ama giderTuru çoğu zaman boş kalıyordu; eşleştirmeyi
       //   yalnız giderTuru'na bağlamak belgelerin çoğunu (51/63) boş bırakıyordu. Kategori kaldıracı bunu çözer.
       let categoryMatrah: any = null;
+      let categoryGroupLeaves: any[] = []; // matrahKategori grubunun leaf'leri → ORAN-bazlı seçimde (153.01.001 %1 / .002 %10 / .003 %20)
       if (!isSale) {
         if (giderTuru) categoryMatrah = this.pickAccount(accounts, alisMatrahPrefixes, giderTuru, { requireHint: true });
         // matrahKategori belli → DOĞRUDAN o GRUBA ata (kategori = AI'ın içerik kararı, "rastgele" DEĞİL).
         //   Tek leaf → kesin. Çok leaf → önce giderTuru adıyla daralt; olmazsa o grubun EN GENEL
         //   (ilk/en düşük kodlu) alt-hesabına ata — BOŞ BIRAKMA. Kullanıcı yanlış alt-hesabı 1 kez
-        //   düzeltir → satıcı+oran için öğrenilir. (Eşleşme > boş: kullanıcı "neyle eşleşti"yi
-        //   listede yevmiye ikonundan görüp düzeltebilir.) Eski AI-eskalasyonu yavaştı + boş
-        //   bırakıyordu (153'te 3 alt-hesap → 56 belge AI'ya düşüp eşleşmiyordu) → kaldırıldı.
-        if (!categoryMatrah && kat) {
+        //   düzeltir → satıcı+oran için öğrenilir. Grubun TÜM leaf'leri categoryGroupLeaves'e saklanır:
+        //   çok-oranlı faturada her satır KENDİ oranına (matrahForRate) göre doğru alt-hesaba gider.
+        if (kat) {
           for (const p of alisMatrahPrefixes) {
             const key = String(p || '').trim();
             if (!/^\d/.test(key)) continue; // yalnız kod öneki (isim-needle'ı atla)
             const leaves = accounts.filter((a: any) => { const c = String(a.accountCode || ''); return c.startsWith(key) && !c.startsWith('79') && isPostableLeaf(c); });
             if (!leaves.length) continue;
-            const byName = giderTuru ? leaves.find((a: any) => this.nameMatchScore(giderTuru, String(a.accountName || '')) > 0) : null;
-            categoryMatrah = byName || leaves[0]; // accounts kod-artan sıralı → leaves[0] = en genel alt-hesap
+            categoryGroupLeaves = leaves; // ORAN-bazlı seçim için sakla (giderTuru eşleşse de)
+            if (!categoryMatrah) {
+              const byName = giderTuru ? leaves.find((a: any) => this.nameMatchScore(giderTuru, String(a.accountName || '')) > 0) : null;
+              categoryMatrah = byName || leaves[0]; // accounts kod-artan sıralı → leaves[0] = en genel alt-hesap
+            }
             break; // ilk dolu grup belirleyici
           }
         }
@@ -6131,6 +6139,15 @@ export class FaturaMuhasebelestirmeService implements OnModuleInit, OnModuleDest
         const mx = pool.reduce((m: number, a: any) => Math.max(m, depth(String(a.accountCode || ''))), 0);
         return pool.filter((a: any) => depth(String(a.accountCode || '')) === mx)[0] || pool[0];
       })();
+      // SATIŞ oran-bazlı pool: 600 grubu (tevkifat-farkında) leaf'leri — matrahForRate satırın oranına
+      //   göre seçer (600.01.001 %1 / .002 %10 / .003 %20). saleMatrahDefault tek-değer fallback'tir.
+      const saleGroupLeaves: any[] = isSale ? (() => {
+        const g600 = accounts.filter((a: any) => { const c = String(a.accountCode || ''); return c.startsWith('600') && !c.startsWith('79') && isPostableLeaf(c); });
+        if (!g600.length) return [];
+        if (tevkPay >= 1) return g600.filter((a: any) => this.isTevkifatAccountName(a.accountName || '') || String(a.accountName || '').includes(`${tevkPay}/10`));
+        const normals = g600.filter((a: any) => !this.isTevkifatAccountName(a.accountName || '') && !/(iade|ihrac|istisna)/i.test(String(a.accountName || '')));
+        return normals.length ? normals : g600;
+      })() : [];
       // CARI: önce VKN bazlı öğrenilmiş cari (kesin), yoksa KATI isim eşleşmesi. İsim de
       // tutmazsa null → placeholder boşaltılır ("Eksik cari"). Eskiden plandaki İLK cari
       // (ör. ALTEKS) sessizce seçiliyordu — yanlış eşleştirmenin ana kaynağıydı.
@@ -6149,7 +6166,17 @@ export class FaturaMuhasebelestirmeService implements OnModuleInit, OnModuleDest
       const matrahForRate = async (rate: string) => {
         if (matrahCache.has(rate)) return matrahCache.get(rate);
         const learned = vendorVkn ? await this.pickVendorMemoryAccount(tenantId, taxpayerId, vendorVkn, accounts, rate) : null;
-        const m = leafOnly(learned) || leafOnly(saleMatrahDefault);
+        let m = leafOnly(learned);
+        // ORAN-bazlı matrah (KDV gibi orana DUYARLI): kategori/600 grubunda adında satırın oranı geçen
+        //   leaf'i seç (153.01.001 "%1" / .002 "%10" / .003 "%20"; satışta 600 aynı). Eskiden hep en
+        //   genel leaf (153.01.001=%1) atanıyordu → çok-oranlı faturada %10 matrahı da %1 hesabına
+        //   gidiyordu (kullanıcı: "aynı faturada birden fazla oran var, niye orana dikkat etmiyor").
+        if (!m && rate) {
+          const pool = isSale ? saleGroupLeaves : categoryGroupLeaves;
+          const hit = (pool || []).find((a: any) => (this.norm(String(a.accountName || '')).match(/\d+/g) || ([] as string[])).includes(rate));
+          if (hit) m = leafOnly(hit);
+        }
+        if (!m) m = leafOnly(saleMatrahDefault);
         matrahCache.set(rate, m);
         return m;
       };

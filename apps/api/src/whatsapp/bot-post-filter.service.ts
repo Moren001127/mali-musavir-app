@@ -65,6 +65,31 @@ export class WhatsAppBotPostFilterService {
     return out.replace(/\n{3,}/g, '\n\n').replace(/[ \t]+\n/g, '\n').trim();
   }
 
+  // ── ESKALASYON SİNYALLERİ (controller deterministik ağı kullanır) ──
+  // (1) AI-ALTYAPI terimi yanıta sızmış: müşteriye ASLA gitmemeli. Sızdıysa model iç
+  //     hata anlatıyordur (Max/altyapı yanıt vermedi) → çıkmaz cevap yerine MÜŞAVİRE devret.
+  private static readonly AI_INFRA_RE =
+    /\bclaude\b|\banthropic\b|claude\s*max|\bmax\s+(aboneli|ba[ğg]lant|yan[ıi]t)|[üu]cretli\s*api|api\s*hatt[ıi]|api\s*katman|dil\s*modeli|\bllm\b|\bgpt\b|openai/i;
+
+  // (2) İÇİ BOŞ "kontrol edeyim" savsaklaması: kısa + rakamsız + sadece-erteleme kalıbı.
+  //     Gerçek veri/rakam içeren cevap ("borcunuz 28.750₺, detayını kontrol edeyim")
+  //     TETİKLEMEZ (rakam var). Standart eskalasyon cümlesi de eşleşmez (kalıbı farklı).
+  private static readonly STALL_RE =
+    /(bir\s+)?kontrol\s+ed(ip|eyim)|bak[ıi]p\s+(size\s+)?d[öo]neyim|net\s+bilgiyle\s+d[öo]neyim|m[üu][şs]avir(imiz)?\s+(kesinle[şs]tir|netle[şs]tir|bakacak)/i;
+
+  /** Yanıt müşteriye gitmemesi gereken AI-altyapı terimi içeriyor mu? (eskalasyon sinyali) */
+  mentionsAiInfra(text: string): boolean {
+    return WhatsAppBotPostFilterService.AI_INFRA_RE.test(String(text || ''));
+  }
+
+  /** Yanıt içi-boş "kontrol edeyim" savsaklaması mı? (kısa + rakamsız + erteleme kalıbı) */
+  isContentFreeStall(text: string): boolean {
+    const t = String(text || '').trim();
+    if (!t || t.length > 100) return false; // uzun = içerikli, stall değil
+    if (/\d/.test(t)) return false;          // rakam = gerçek veri/cevap var
+    return WhatsAppBotPostFilterService.STALL_RE.test(t);
+  }
+
   filterTaxpayerReply(raw: string, options?: { recentReplies?: string[]; mode?: 'taxpayer' | 'owner' | 'unknown' }): string {
     let text = String(raw || '').trim();
 

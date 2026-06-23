@@ -664,8 +664,12 @@ export class MorenAiService {
     if (maxResponse) return maxResponse;
 
     if (!this.allowAnthropicApiFallback()) {
+      // MÜŞTERİYE GİDEN METİN "Claude Max" gibi iç-altyapı terimi SIZDIRMAZ (eski metin
+      // "...Claude Max bağlantısı geçici yanıt vermediği için..." diyordu → müşteriye sızıyordu).
+      // Temiz tutulur; degrade durumu controller `usage.model='claude-max-unavailable'`
+      // işaretinden anlayıp MÜŞAVİRE ESKALE eder. İç (admin/portal) kaynak teknik detayı görebilir.
       const fallback = /whatsapp|calisan|owner|bot/i.test(String(body.source || ''))
-        ? 'Mesajınızı aldık, Claude Max bağlantısı geçici yanıt vermediği için ofisimiz size dönüş yapacak.'
+        ? 'Mesajınızı aldık, en kısa sürede ofisimiz size dönüş yapacak.'
         : 'Claude Max bağlantısı aktif değil veya yanıt vermedi. Ücretli API hattı kapalı olduğu için API çağrısı yapmadım.';
       return this.saveAssistantAndReturn({
         tenantId,

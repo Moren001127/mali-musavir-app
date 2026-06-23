@@ -2248,6 +2248,7 @@ export class WhatsAppBotController implements OnModuleInit {
       '• Mükellef GENEL bir mevzuat/vergi/SGK sorusu sorarsa (örn. "işe başlama bildirimi kaç günde yapılır, cezası ne", "KDV oranı kaç", "fatura kaç günde kesilmeli", "hangi belge gerekir") → mali müşavir bilgisiyle KISA ve NET cevap ver. ASLA "müşavirinize/müşavirimize sorun", "müşaviriniz daha doğru söyler" gibi topu atan cümle KURMA — amacımız mükellefin işini BURADA çözmek.',
       '• Güncel tutar/oran/ceza/süre/had için sana SİSTEM resmi kaynak özeti sağlar; ona dayanarak söyle. Kaynak yoksa genel kuralı + neyin teyit gerektiğini söyle; sayı UYDURMA.',
       '• SADECE KİŞİYE ÖZEL rakam/karar sorulursa (senin tam cezan, senin tam tutarın, senin özel durumun) → genel kuralı yine açıkla; kesin kişisel rakam/karar elinde yoksa "müşavirimiz netleştirir" deyip asma → MÜŞAVİRE ESKALE ET ([[ESKALE]] kuralı).',
+      '• İŞLEM/KARAR gerektiren ağır konular (şirket/şahıs KAPANIŞI, vergi dairesi nezdinde İŞLEM/başvuru, geçici/kurumlar vergisi KİŞİSEL hesabı) → genel bilgiyi ver ama kesin işlem/sonuç/tutar GARANTİ ETME; net cevabın yoksa "kontrol edip döneyim/bakıp döneyim" DEME → MÜŞAVİRE ESKALE ET ([[ESKALE]] kuralı).',
       '',
       '═══ MÜKELLEF VERİSİ (cevabı burada ara) ═══',
       taxpayerContext,
@@ -2264,6 +2265,7 @@ export class WhatsAppBotController implements OnModuleInit {
     const stopCustTyping = msg.__dryRun ? () => {} : this.startTypingIndicator(taxpayer.tenantId, this.replyTarget(msg));
     let reply = '';
     let needsEscalation = false;
+    let answerModel = ''; // degrade fallback (Max/altyapı yanıt vermedi) sinyali — eskalasyon ağı kullanır
     try {
       const answer = await this.morenAi.chat(taxpayer.tenantId, null, {
         taxpayerId: taxpayer.id,
@@ -2276,6 +2278,7 @@ export class WhatsAppBotController implements OnModuleInit {
         source: 'whatsapp-bot',
       });
 
+      answerModel = answer.usage?.model || '';
       let rawAiReply = answer.assistantMessage || '';
       // ESKALE: AI cevaplayamayıp müşavire devrettiğinde yanıtının başına [[ESKALE]] koyar.
       // İşareti yakala (owner'a bildirim + ofis görevi için), MÜŞTERİYE gitmeden TEMİZLE.
@@ -2328,6 +2331,21 @@ export class WhatsAppBotController implements OnModuleInit {
     } finally {
       stopCustTyping();
     }
+    // ESKALASYON AĞI (deterministik) — bot cevaplayamadıysa müşteriyi çıkmazda/sızıntıda
+    // BIRAKMA, müşavire devret. Üç tetik: (a) Max/altyapı yanıt vermeyince üretilen degrade
+    // cevap (usage.model işareti), (b) içi-boş "kontrol edeyim" savsaklaması, (c) yanıta sızan
+    // AI-altyapı terimi. Üçünde de owner'a bildirim + müşteriye TEMİZ eskalasyon cümlesi.
+    // (Kullanıcı kararı 2026-06-23: cevaplayamayınca eskalasyon GENEL — tek konu değil.)
+    if (
+      reply &&
+      (answerModel === 'claude-max-unavailable' ||
+        answerModel === 'anthropic-api-cost-cap' ||
+        this.postFilter.isContentFreeStall(reply) ||
+        this.postFilter.mentionsAiInfra(reply))
+    ) {
+      needsEscalation = true;
+      reply = this.escalationReply();
+    }
     if (reply) {
       // Dry-run: GÖNDERME ama LOGLA (Mesajlar'da görünsün); cache/eskalasyon/owner-bildirim YOK.
       if (!msg.__dryRun) this.botCache.set(taxpayer.tenantId, taxpayer.id, msg.text, reply);
@@ -2342,7 +2360,7 @@ export class WhatsAppBotController implements OnModuleInit {
           occurredAt: new Date(),
         },
       });
-      if (msg.__dryRun) { msg.__dryReply = reply; msg.__dryKind = 'agentic'; return; }
+      if (msg.__dryRun) { msg.__dryReply = reply; msg.__dryKind = needsEscalation ? 'agentic:eskalasyon' : 'agentic'; return; }
       // ESKALE: bot cevaplayamadı → müşavire (owner) bildir + ofis görevi aç.
       if (needsEscalation && sent) {
         await this.escalateToOwner(taxpayer, msg.text, msg.from).catch((e: any) =>
@@ -2351,6 +2369,11 @@ export class WhatsAppBotController implements OnModuleInit {
       }
       this.refreshTaxpayerMemory(taxpayer.tenantId, taxpayer.id);
     }
+  }
+
+  /** Eskalasyonda müşteriye giden STANDART cümle (çıkmaz "kontrol edeyim" yerine). */
+  private escalationReply(): string {
+    return `Konuyu müşavirimiz ${this.ownerDisplayName()} Bey'e iletiyorum; en kısa sürede sizinle bu konuda iletişime geçecektir.`;
   }
 
   /**
