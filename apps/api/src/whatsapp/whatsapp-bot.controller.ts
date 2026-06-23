@@ -1896,8 +1896,9 @@ export class WhatsAppBotController implements OnModuleInit {
         if (asksIdentity) {
           rawReply = `Ben ${OFFICE_NAME} ofisinin WhatsApp asistanıyım; mali müşavirlik işlemlerinizde yardımcı oluyorum. Sizi kayıtlarımızda bulabilmem için adınızı veya firma unvanınızı paylaşır mısınız?`;
         } else if (asksPricing) {
-          // Fiyat sorusu — sabit rakam VERME (ofis belirler), işe özel teklife yönlendir + lead topla
-          rawReply = `Memnuniyetle bilgilendirelim. Ücretlerimiz işin kapsamına göre belirleniyor — faaliyet türü, aylık belge/fatura adedi ve çalışan sayısı gibi etkenlere göre değişir. Size en uygun ve net teklifi mali müşavirimiz hazırlasın: kısaca ne iş yaptığınızı ve adınızı/firma unvanınızı yazarsanız en kısa sürede size özel teklifle dönüş yaparız.`;
+          // Fiyat sorusu (kayıtsız/aday): MESAJLA FİYAT VERME (ne rakam ne aralık ne ima).
+          // Nazikçe ofise/görüşmeye davet et + iletişim al. Kullanıcı talimatı 2026-06-23.
+          rawReply = `İlginiz için teşekkür ederiz. Ücret bilgimizi mesaj üzerinden paylaşmıyoruz; sizi ofisimizde ağırlamaktan memnuniyet duyarız — uygun bir zamanda buyurun, mali müşavirimiz işinize özel değerlendirmeyi yüz yüze yapsın. Dilerseniz adınızı/firma unvanınızı ve telefon numaranızı bırakın, en kısa sürede sizi arayıp görüşme için uygun bir zaman ayarlayalım.`;
         } else if (looksLikeProspect) {
           // Hizmet/yeni mükellef/tanışma — sıcak karşıla, hizmetleri özetle, lead topla
           rawReply = `Hoş geldiniz, ilginiz için teşekkür ederiz! ${OFFICE_NAME} olarak muhasebe, beyanname ve vergi işlemleri, SGK & bordro, şirket/şahıs kuruluşu ve mali danışmanlık hizmetleri sunuyoruz. Sizi mali müşavirimizle buluşturmaktan memnuniyet duyarız — adınızı/firma unvanınızı ve kısaca faaliyet konunuzu yazarsanız ekibimiz en kısa sürede size dönüş yapar.`;
