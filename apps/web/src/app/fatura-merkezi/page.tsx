@@ -2730,7 +2730,7 @@ const CSS = `
 #fm-root .planwrap thead th{position:sticky;top:0;z-index:2;padding:7px 11px;font-size:10px}
 #fm-root .planwrap tbody td{padding:4px 11px;border-bottom:1px solid #f1f3f7}
 #fm-root .planwrap tbody tr:hover td{background:#fafbfc}
-#fm-root .planwrap .hk{font-size:11.5px}
+#fm-root .planwrap .hk{font-size:13px}
 #fm-root .planwrap .pill{padding:1px 7px;font-size:10px}
 #fm-root .ch h3 .cnt{margin-left:8px;padding:1px 8px;border-radius:20px;background:var(--accent-soft);color:var(--accent);font-size:11px;font-weight:700;vertical-align:middle}
 #fm-root tbody tr:hover{background:#fafbfd}
@@ -2742,8 +2742,8 @@ const CSS = `
 #fm-root .detaytbl{width:100%;max-width:880px;border-collapse:collapse;background:#fff;border:1px solid var(--line);border-radius:8px;overflow:hidden}
 #fm-root .celiskibanner{margin-top:8px;max-width:920px;padding:7px 11px;background:#fdf2e0;border:1px solid #f0c987;border-radius:7px;font-size:12px;color:#92400e;line-height:1.55}
 #fm-root .celiskibanner b{display:block;margin-bottom:2px;color:#b45309}
-#fm-root .detaytbl th{font-size:10px;text-transform:uppercase;letter-spacing:.4px;color:var(--faint);text-align:left;padding:6px 10px;background:#fbfcfd;border-bottom:1px solid var(--line)}
-#fm-root .detaytbl td{font-size:12px;padding:6px 10px;border-bottom:1px solid var(--line)}
+#fm-root .detaytbl th{font-size:12px;font-weight:700;text-transform:uppercase;letter-spacing:.3px;color:var(--text);text-align:left;padding:8px 10px;background:#f4f7f9;border-bottom:2px solid var(--line)}
+#fm-root .detaytbl td{font-size:13.5px;padding:8px 10px;border-bottom:1px solid var(--line)}
 #fm-root .detaytbl tr:last-child td{border-bottom:none}
 #fm-root .detaytbl .num{text-align:right;font-variant-numeric:tabular-nums;white-space:nowrap;padding-right:14px;min-width:96px}
 #fm-root .detaytbl td:nth-child(1){white-space:nowrap}
@@ -2764,7 +2764,7 @@ const CSS = `
 #fm-root td.firm{max-width:230px}
 #fm-root .firm b{font-weight:600;display:block;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
 #fm-root .firm small{display:block;color:var(--faint);font-size:11px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
-#fm-root .hk{font-family:"Consolas",monospace;font-weight:700;color:var(--accent)}
+#fm-root .hk{font-family:"Consolas","SF Mono",ui-monospace,monospace;font-weight:700;color:var(--accent);font-size:13px;letter-spacing:.4px}
 #fm-root .hk.no{color:var(--red)}
 #fm-root .pill{font-size:11px;font-weight:700;padding:3px 9px;border-radius:6px;white-space:nowrap;display:inline-block}
 #fm-root .pill.alis{background:#eaf1ff;color:#2563eb}
