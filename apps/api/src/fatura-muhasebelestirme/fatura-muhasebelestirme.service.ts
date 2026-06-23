@@ -295,7 +295,7 @@ export class FaturaMuhasebelestirmeService implements OnModuleInit, OnModuleDest
   // 3'e çıkarıyoruz (1.5 kat). Her Max-vision bir Claude Code alt-süreci → çok süreç OOM/rate-limit
   // ("exited code 1") riski; KDV Kontrol de süreç açar. 3 temkinli üst sınır. Re-storm olursa düşür.
   // INVOICE_OCR_CONCURRENCY ile ayarlanır. (Daha büyük hız için hızlı-OCR/Azure-öncelik yolu var.)
-  private readonly uploadOcrConcurrency = Math.max(1, Number(process.env.INVOICE_OCR_CONCURRENCY || 5));
+  private readonly uploadOcrConcurrency = Math.max(1, Number(process.env.INVOICE_OCR_CONCURRENCY || 3));
   private uploadOcrActive = 0;
   private readonly uploadOcrActiveIds = new Set<string>(); // işlenmekte olan belge id'leri (resume çift-işlemesin)
   private ocrResumeTimer: NodeJS.Timeout | null = null;
@@ -5719,11 +5719,16 @@ export class FaturaMuhasebelestirmeService implements OnModuleInit, OnModuleDest
 
     // UBL/XML yolu max-vision AI'ı ATLAR → sınıflandırma (giderTuru/kategori/İşletme kayıt türü) BURADA
     //   ayrı çalışır; e-Fatura/e-Arşiv de "mali müşavir gibi" içerik+faaliyetle sınıflansın.
-    // HIZ: UBL/XML okuması anında AI YOK — içerik snippet'i sakla, sınıflandırmayı ARKA PLANA al
-    //   (okuma şeridi anında bitsin; kayıt türü/hesap arkadan dolsun). max-vision (resim/PDF) yolu okurken sınıflar.
+    // UBL/XML yolu max-vision AI'ı ATLAR → sınıflandırma (giderTuru/kategori/İşletme kayıt türü) BURADA
+    //   SENKRON çalışır: okuma = tam işlenmiş belge (yarım kalan yok, aynı satıcı hep aynı sonuç).
     if (parsed === preParsed && d.taxpayerId) {
       const contentText = (imgBuf ? imgBuf.toString('utf8') : (html || '')).replace(/<[^>]+>/g, ' ').replace(/\s+/g, ' ').trim();
-      if (contentText.length > 20) { parsed.icerikMetni = contentText.slice(0, 12000); parsed.needsClassify = true; }
+      const c = await this.aiClassifyAccounting(contentText, mukellefBilgi, isIsletmeMukellef).catch(() => null);
+      if (c) {
+        if (!parsed.giderTuru && c.giderTuru) parsed.giderTuru = c.giderTuru;
+        if (!parsed.kategori && c.kategori) parsed.kategori = c.kategori;
+        if (c.isletmeKayitTuru) { parsed.isletmeKayitTuru = c.isletmeKayitTuru; parsed.isletmeAltTuru = c.isletmeAltTuru; parsed.isletmeNeden = c.isletmeNeden; }
+      }
     }
 
     let breakdown = (Array.isArray(parsed.kdv) ? parsed.kdv : [])
@@ -5792,7 +5797,7 @@ export class FaturaMuhasebelestirmeService implements OnModuleInit, OnModuleDest
           ...(counterName ? (isSale ? { customerName: counterName } : { vendorName: counterName }) : {}),
           status: 'NEEDS_REVIEW',
           ocrEngine: 'max-vision',
-          ocrData: { ...((d.ocrData as any) || {}), matrah, kdvTutari: kdv, kdvOrani: breakdown[0].rate, kdvBreakdown: breakdown.map((b: any) => ({ oran: b.rate, matrah: b.base, tutar: b.amount })), matrahKategori: typeof parsed.kategori === 'string' ? parsed.kategori : undefined, giderTuru: typeof parsed.giderTuru === 'string' ? parsed.giderTuru.slice(0, 40) : undefined, ...(islSinifAi ? { isletme: islSinifAi } : {}), ...(parsed.needsClassify ? { icerikMetni: String(parsed.icerikMetni || ''), needsClassify: true } : {}), isReturn: parsed.iade === true || /iade|iptal/i.test(String(parsed.belgeTuru || '')), tevkifatHint: parsed.tevkifat === true || tevkifatOrani > 0 || /tevkifat/i.test(String(html || '')), tevkifatOrani: tevkifatOrani || 0, tevkifatKdv: tevkKdv || 0, engine: parsed === preParsed ? 'ubl-xml' : 'max-vision',
+          ocrData: { ...((d.ocrData as any) || {}), matrah, kdvTutari: kdv, kdvOrani: breakdown[0].rate, kdvBreakdown: breakdown.map((b: any) => ({ oran: b.rate, matrah: b.base, tutar: b.amount })), matrahKategori: typeof parsed.kategori === 'string' ? parsed.kategori : undefined, giderTuru: typeof parsed.giderTuru === 'string' ? parsed.giderTuru.slice(0, 40) : undefined, ...(islSinifAi ? { isletme: islSinifAi } : {}), isReturn: parsed.iade === true || /iade|iptal/i.test(String(parsed.belgeTuru || '')), tevkifatHint: parsed.tevkifat === true || tevkifatOrani > 0 || /tevkifat/i.test(String(html || '')), tevkifatOrani: tevkifatOrani || 0, tevkifatKdv: tevkKdv || 0, engine: parsed === preParsed ? 'ubl-xml' : 'max-vision',
             readMode: parsed === preParsed ? 'ubl-xml' : (isImage ? 'image' : /pdf/i.test(imgMedia) ? 'pdf-text' : /xml/i.test(imgMedia) ? 'xml-text' : 'html'),
             ...(!preParsed && imgBuf && /xml/i.test(imgMedia) ? { xmlHead: imgBuf.toString('utf8').slice(0, 220).replace(/\s+/g, ' ') } : {}) },
         },
@@ -5805,8 +5810,6 @@ export class FaturaMuhasebelestirmeService implements OnModuleInit, OnModuleDest
     // GERÇEK hesap planındaki kodla değiştir; öğrenilmiş satıcı kodu varsa onu uygula.
     // (Sadece applyLearnedVendorCodes yetmiyordu → öğrenilmemiş satıcıda placeholder kalıyordu.)
     if (d.taxpayerId) await this.rematchDocumentsWithLatestAccountPlan(tenantId, d.taxpayerId, [d.id]).catch(() => {});
-    // ARKA PLAN: sınıflandırma (kayıt türü/hesap) okuma şeridini BEKLETMEDEN kuyrukta yapılır.
-    if ((parsed as any).needsClassify && d.taxpayerId) { this.uploadOcrQueue.push({ tenantId, documentId: d.id, kind: 'classify' }); this.drainUploadedOcrQueue(); }
     return { ok: true, matrah, kdv, oranSayisi: breakdown.length };
   }
 
@@ -5908,6 +5911,17 @@ export class FaturaMuhasebelestirmeService implements OnModuleInit, OnModuleDest
     const tpRow: any = await (this.prisma as any).taxpayer.findFirst({ where: { id: taxpayerId, tenantId }, select: { companyName: true, firstName: true, lastName: true, naceKodu: true, faaliyetAciklama: true } }).catch(() => null);
     const tpFaaliyet = tpRow ? [String(tpRow.companyName || (String(tpRow.firstName || '') + ' ' + String(tpRow.lastName || ''))).trim(), String(tpRow.faaliyetAciklama || '').trim() || (tpRow.naceKodu ? ('NACE ' + tpRow.naceKodu) : '')].filter(Boolean).join(' — ') : '';
     let aiAccCalls = 0; // batch'te AI eskalasyonunu sınırla
+    // SADECE GERÇEK ALT HESAP: bir kod ATANABİLİR ancak plan'da varsa + 1-2 haneli sınıf/grup DEĞİLSE
+    //   (ana segmenti >=3 hane) + noktalı alt-hesabı YOKSA. "1 DÖNEN VARLIKLAR"/"320" gibi gruplar ASLA atanmaz.
+    const _codeSet = new Set(accounts.map((a: any) => String(a.accountCode || '')));
+    const _groupCodes = new Set<string>();
+    for (const a of accounts) { const c = String(a.accountCode || ''); let ix = c.indexOf('.'); while (ix !== -1) { _groupCodes.add(c.slice(0, ix)); ix = c.indexOf('.', ix + 1); } }
+    const isPostableLeaf = (code: string) => {
+      const c = String(code || '');
+      if (!c || !_codeSet.has(c) || _groupCodes.has(c)) return false;
+      return (c.split('.')[0].replace(/\D/g, '').length >= 3);
+    };
+    const leafOnly = (acc: any) => (acc && isPostableLeaf(String(acc.accountCode || '')) ? acc : null);
 
     for (const doc of docs) {
       const isSale = doc.invoiceKind === 'SATIS';
@@ -5938,6 +5952,7 @@ export class FaturaMuhasebelestirmeService implements OnModuleInit, OnModuleDest
         aiAccCalls++;
         categoryMatrah = await this.aiPickGiderAccount(accounts, tpFaaliyet, giderTuru, vendorName || '');
       }
+      categoryMatrah = leafOnly(categoryMatrah); // grup/plan-dışı kodu reddet
       // KDV hesabı: tevkifatlıda planında ADINDA oranı (ör "2/10") ya da "tevkifat" geçen
       // hesabı tercih et (391.01.004 "HESAPLANAN KDV %20 2/10"), düz 391.01.003 değil.
       const vergiPrefix = isSale ? '391' : '191';
@@ -6024,17 +6039,17 @@ export class FaturaMuhasebelestirmeService implements OnModuleInit, OnModuleDest
         : null;
       // ÖKC/yazarkasa fişi NAKİT işlemdir → karşı taraf cari değil, 100 KASA.
       const okcFis = String(doc.documentType || '').toUpperCase() === 'OKC_FIS';
-      const cariMatch = okcFis
+      const cariMatch = leafOnly(okcFis
         ? this.pickAccount(accounts, ['100'], null)
         : (cariMemory ||
-          this.pickAccount(accounts, isSale ? ['120'] : ['320', '329', '331'], vendorName, { requireHint: true }));
+          this.pickAccount(accounts, isSale ? ['120'] : ['320', '329', '331'], vendorName, { requireHint: true })));
       // ORAN-BAZLI matrah: her matrah satırı KENDİ KDV oranına göre öğrenilmiş kodu alır;
       // yoksa kategori/varsayılan. Öğrenilmiş kod (satıcı+oran) her zaman önceliklidir.
       const matrahCache = new Map<string, any>();
       const matrahForRate = async (rate: string) => {
         if (matrahCache.has(rate)) return matrahCache.get(rate);
         const learned = vendorVkn ? await this.pickVendorMemoryAccount(tenantId, taxpayerId, vendorVkn, accounts, rate) : null;
-        const m = learned || saleMatrahDefault;
+        const m = leafOnly(learned) || leafOnly(saleMatrahDefault);
         matrahCache.set(rate, m);
         return m;
       };
