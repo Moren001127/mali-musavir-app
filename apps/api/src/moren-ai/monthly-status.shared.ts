@@ -803,12 +803,16 @@ export async function buildTaxpayerSelfReply(
   const aylar = ['Ocak', 'Şubat', 'Mart', 'Nisan', 'Mayıs', 'Haziran', 'Temmuz', 'Ağustos', 'Eylül', 'Ekim', 'Kasım', 'Aralık'];
   const tarihTR = (d: any) => { const x = new Date(d); return `${x.getDate()} ${aylar[x.getMonth()]} ${x.getFullYear()}`; };
 
-  const wantsSonOdeme = /(en son.*(ode|odedi)|son odeme|ne zaman ode|en son ne kadar ode)/.test(n);
-  const wantsKdv = /kdv/.test(n) && /(ne kadar|odeyecek|odecek|cikiyor|cikti|durum|borc|kac tl|tutar|hesaplanan|indirilecek|odemem)/.test(n);
-  // NOT: "alacag" KALDIRILDI — "eleman alacağım" (alma fiili) ile "alacak" (receivable) aynı
-  // yazılıyor "yeni eleman alacağım" yanlışlıkla borç cevabı veriyordu. Receivable nadir; agentic'e kalsın.
-  const wantsBorc = !wantsKdv && (/(\bborc|borcum|bakiye|hesabim|odemem var|ne kadar.*ode)/.test(n) || wantsSonOdeme);
-  const wantsBeyan = /(beyanname|beyannamem)/.test(n) && /(veril|hazir|durum|oldu mu|verildi mi|hazir mi|var mi)/.test(n);
+  // SON ÖDEME: "en son ne zaman ÖDEDİM" (geçmiş, kendi ödemem). "ne zaman ÖDENİR/ödenmeli"
+  // (geçici vergi takvimi gibi) buraya GİRMEZ — onu son-ödeme sanıp yanlış cevap veriyordu.
+  const wantsSonOdeme = /(en son (ne (zaman|kadar) )?ode|son odeme(m|miz|yi)?\b|ne zaman odedi|en son ne kadar)/.test(n)
+    && !/oden(ir|ecek|meli|mes|me )|ne zaman oden|yatir/.test(n);
+  // KDV (kendi verisi): "kdvm/kdvim" (iyelik = benim kdv'm) veya tutar/durum kelimesi.
+  const wantsKdv = /kdv/.test(n) && (/(ne kadar|odeyecek|odecek|cikiyor|cikti|durum|borc|kac tl|kac para|tutar|hesaplanan|indirilecek|odemem)/.test(n) || /kdvm|kdvim/.test(n));
+  // NOT: "alacag" KALDIRILDI — "eleman alacağım" (alma fiili) ile "alacak" (receivable) çakışıyor.
+  const wantsBorc = !wantsKdv && (/(\bborc|borcum|bakiye|hesabim|odemem (var|gerek|olan)|odenecek (bir|var|tutar)|ne kadar.*ode)/.test(n) || wantsSonOdeme);
+  // Beyanname DURUMU: beyanname + tüm tipler (muhtasar/geçici) + durum kelimesi.
+  const wantsBeyan = /(beyanname|beyannamem|beyanim|muhtasar|gecici vergi)/.test(n) && /(veril|hazir|durum|oldu mu|verildi mi|hazir mi|yapildi)/.test(n);
 
   // KDV durumu (kendi)
   if (wantsKdv) {
@@ -901,11 +905,11 @@ export function buildTaxpayerQuickReply(text: string): { reply: string; kind: st
     return { reply: 'Rica ederim, her zaman buradayız. Başka bir konuda yardımcı olabilirsem yazmanız yeterli.', kind: 'tesekkur' };
   }
 
-  // KDV ORANI (sabit: %20 / %10 / %1) — "kdv durumum/ne kadar" değil, ORAN sorusu
-  if (/kdv/.test(n) && /(oran|yuzde|kacta|kac tl yok)/.test(n) || /kdv.*(kac|kactir)/.test(n)) {
-    if (!/(benim|durumum|borcum|odemem|hesaplanan|indirilecek)/.test(n)) {
-      return { reply: 'KDV oranları: genel oran %20; indirimli oranlar mal/hizmet türüne göre %10 ve %1 (örn. temel gıda %1). Hangi ürün/hizmet için sorduğunuzu yazarsanız netleştirebilirim.', kind: 'mevzuat:kdv-oran' };
-    }
+  // KDV ORANI (sabit: %20 / %10 / %1). SADECE "oran/yüzde" sorusu — "kdvm/kdvim/durumum/ne kadar"
+  // (kendi KDV tutarı) BURAYA GİRMEZ, o veri sorusudur (buildTaxpayerSelfReply'da cevaplanır).
+  if (/kdv/.test(n) && /(oran|yuzde|kacta)/.test(n)
+      && !/(kdvm|kdvim|benim|durumum|borcum|odemem|hesaplanan|indirilecek|ne kadar)/.test(n)) {
+    return { reply: 'KDV oranları: genel oran %20; indirimli oranlar mal/hizmet türüne göre %10 ve %1 (örn. temel gıda %1). Hangi ürün/hizmet için sorduğunuzu yazarsanız netleştirebilirim.', kind: 'mevzuat:kdv-oran' };
   }
   // FATURA DÜZENLEME SÜRESİ (7 gün, VUK 231/5)
   if (/fatura/.test(n) && /(kac gun|ne zaman|sure|kac gunde|gun icinde|ne kadar sure)/.test(n) && /(kes|duzenle|olustur|fatura)/.test(n)) {
