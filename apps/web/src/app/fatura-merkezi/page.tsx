@@ -863,6 +863,9 @@ function ScreenFaturalar({ taxpayerId, period, kind = 'ALIS', isIsletme = false,
     const t = setTimeout(() => setJustDone((s) => { const n = new Set(s); bitti.forEach((id) => n.delete(id)); return n; }), 2200);
     return () => clearTimeout(t);
   }, [docs]);
+  // Yevmiye fişi / kayıt türü detayı — listede aç-kapa (Muhasebeleştir'e gitmeden NEYLE eşleşti görünür).
+  const [fisDetayId, setFisDetayId] = useState('');
+  const grpLabel = (g: string) => g === 'matrah' ? 'Matrah' : g === 'vergi' ? 'KDV' : g === 'cari' ? 'Cari' : g === 'tevkifat' ? 'Tevkifat' : (g || '—');
 
   const muhasebelestir = () => {
     // İşletme defteri: hesap kodu YOK — tutarı olan hazır. Bilanço: TÜM satırların kodu dolu (cari dahil).
@@ -953,8 +956,11 @@ function ScreenFaturalar({ taxpayerId, period, kind = 'ALIS', isIsletme = false,
                 const code = (() => { const ls = Array.isArray(d.lines) ? d.lines : []; return (ls.find((l: any) => String(l.group) === 'matrah' && l.accountCode) || ls.find((l: any) => l.accountCode))?.accountCode || ''; })();
                 const { matrah, kdv } = kdvParts(d);
                 const ocrCls = d.ocrStatus === 'IN_PROGRESS' ? 'scanning' : justDone.has(d.id) ? 'justdone' : d.ocrStatus === 'PENDING' ? 'queued' : undefined;
+                const fisAcik = fisDetayId === d.id;
+                const fisLines: any[] = Array.isArray(d.lines) ? d.lines : [];
                 return (
-                  <tr key={d.id} className={ocrCls}>
+                  <Fragment key={d.id}>
+                  <tr className={`${ocrCls || ''}${fisAcik ? ' detay-on' : ''}`.trim() || undefined}>
                     <td><Check checked={sel.has(d.id)} onToggle={() => toggle(d.id)} /></td>
                     <td>{fmtDate(d.faturaTarihi || d.createdAt)}</td>
                     <td>{d.belgeNo || '—'}</td>
@@ -968,10 +974,38 @@ function ScreenFaturalar({ taxpayerId, period, kind = 'ALIS', isIsletme = false,
                       : (code ? <span className="hk">{code}</span> : <span className="hk no">— yok —</span>)}</td>
                     <td><span className={`pill ${du.k}`} title={du.cat === 'okunamadi' && d.lucaErrorMessage ? `Neden: ${d.lucaErrorMessage}` : du.t}>{du.t}</span>{du.cat === 'okunamadi' && d.lucaErrorMessage ? <div className="oneden">{d.lucaErrorMessage}</div> : null}</td>
                     <td className="actcol" style={{ display: 'flex', gap: 8, alignItems: 'center' }}>
+                      <span className="eye" onClick={() => setFisDetayId(fisAcik ? '' : d.id)} title={fisAcik ? 'Detayı gizle' : (isIsletme ? 'Kayıt türünü göster' : 'Yevmiye fişini göster')} style={fisAcik ? { color: 'var(--accent,#2563eb)' } : undefined}><Ico html={I.ledger} size={15} /></span>
                       <span className="eye" onClick={() => openDocFile(d.id)} title="Belgeyi aç"><Ico html={I.eye} size={15} /></span>
                       <span className="eye del" title="Belgeyi sil" onClick={() => { if (window.confirm(`Bu belge silinsin mi?\n${firma} · ${fmtMoney(d.totalAmount)} ₺${d.belgeNo ? ' · ' + d.belgeNo : ''}`)) delMut.mutate(d.id); }}><Ico html={I.trash} size={14} /></span>
                     </td>
                   </tr>
+                  {fisAcik && (
+                    <tr className="detayrow">
+                      <td colSpan={11}>
+                        <div className="detaybox">
+                          {isIsletme ? (
+                            <div style={{ padding: '4px 2px', fontSize: 13 }}>{(() => { const s = islSinif(d); return s.ok ? <><b>Kayıt Türü:</b> {s.ktAd}{s.altAd ? <> › {s.altAd}</> : null}</> : <span className="hk no">Kayıt türü belirlenemedi — "AI ile oku" ile yeniden okut ya da Muhasebeleştir'de seç.</span>; })()}</div>
+                          ) : fisLines.length ? (
+                            <table className="detaytbl">
+                              <thead><tr><th>Tür</th><th>Hesap Kodu</th><th>Açıklama</th><th className="num">Borç</th><th className="num">Alacak</th></tr></thead>
+                              <tbody>
+                                {fisLines.map((l: any, i: number) => (
+                                  <tr key={l.id || i}>
+                                    <td>{grpLabel(String(l.group || ''))}{l.rate ? ` %${String(l.rate).replace(/[^0-9.,]/g, '')}` : ''}</td>
+                                    <td>{l.accountCode ? <span className="hk">{l.accountCode}</span> : <span className="hk no">eksik</span>}</td>
+                                    <td>{l.description || '—'}</td>
+                                    <td className="num">{Number(l.debit) ? fmtMoney(l.debit) : ''}</td>
+                                    <td className="num">{Number(l.credit) ? fmtMoney(l.credit) : ''}</td>
+                                  </tr>
+                                ))}
+                              </tbody>
+                            </table>
+                          ) : <div className="empty" style={{ padding: 10 }}>Fiş satırı yok — önce "AI ile oku".</div>}
+                        </div>
+                      </td>
+                    </tr>
+                  )}
+                  </Fragment>
                 );
               })}
               {!docsQ.isLoading && docs.length === 0 && (
