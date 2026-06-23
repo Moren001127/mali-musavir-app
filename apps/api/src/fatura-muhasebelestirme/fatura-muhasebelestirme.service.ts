@@ -381,14 +381,20 @@ export class FaturaMuhasebelestirmeService implements OnModuleInit, OnModuleDest
   ];
   private async gateExistingDocsIfNoPlan(tenantId: string, taxpayerId?: string) {
     if (!taxpayerId) return;
-    if (await this.hasAccountPlan(tenantId, taxpayerId)) return;
+    const planCodes = await this.getPlanCodeSet(tenantId, taxpayerId);
     const docs = await (this.prisma as any).invoiceAccountingDocument.findMany({
       where: { tenantId, taxpayerId, status: { not: 'APPROVED' } },
       select: { id: true },
     }).catch(() => []);
     if (!docs.length) return;
+    // Plan YOK → tüm placeholder kodları boşalt. Plan VAR → yalnız planda OLMAYAN placeholder'ları
+    //   boşalt (191.01.020 mükellefte yoksa temizle; gerçekten planda olan 320.01.001 vb. KORUNUR).
+    const toClear = planCodes
+      ? this.PLACEHOLDER_CODES.filter((c) => !planCodes.has(c))
+      : this.PLACEHOLDER_CODES;
+    if (!toClear.length) return;
     await (this.prisma as any).invoiceAccountingLine.updateMany({
-      where: { documentId: { in: docs.map((d: any) => d.id) }, accountCode: { in: this.PLACEHOLDER_CODES } },
+      where: { documentId: { in: docs.map((d: any) => d.id) }, accountCode: { in: toClear } },
       data: { accountCode: null },
     }).catch(() => {});
   }
@@ -4934,11 +4940,44 @@ export class FaturaMuhasebelestirmeService implements OnModuleInit, OnModuleDest
     return !!(snap && Number(snap.accountCount) > 0);
   }
 
-  /** Hesap planı yoksa satır hesap kodlarını BOŞALT — kullanıcı talebi: plan yoksa
-   *  kod atanmasın (önce hesap planı çekilsin). Plan varsa kodlar olduğu gibi kalır. */
+  /** En son READY hesap planı snapshot'ındaki TÜM hesap kodlarını Set olarak döndürür;
+   *  plan yoksa (ya da boşsa) null. Placeholder / planda-olmayan kod süzmede kullanılır —
+   *  KULLANICI KURALI: "yalnız Luca'dan çekilen gerçek hesap planındaki kodlar; olmayan
+   *  hesabı var gibi yazmak yok." */
+  private planCodeCache = new Map<string, { at: number; codes: Set<string> | null }>();
+  private async getPlanCodeSet(tenantId: string, taxpayerId?: string | null): Promise<Set<string> | null> {
+    if (!taxpayerId) return null;
+    const key = `${tenantId}:${taxpayerId}`;
+    const hit = this.planCodeCache.get(key);
+    if (hit && Date.now() - hit.at < 30000) return hit.codes; // 30sn cache (liste/rematch sık çağırır)
+    const snap = await (this.prisma as any).lucaAccountPlanSnapshot.findFirst({
+      where: { tenantId, taxpayerId, status: 'READY' },
+      orderBy: { createdAt: 'desc' },
+      select: { id: true },
+    }).catch(() => null);
+    let codes: Set<string> | null = null;
+    if (snap) {
+      const lines = await (this.prisma as any).lucaAccountPlanLine.findMany({
+        where: { snapshotId: snap.id },
+        select: { accountCode: true },
+      }).catch(() => []);
+      if (lines.length) codes = new Set(lines.map((l: any) => String(l.accountCode || '').trim()).filter(Boolean));
+    }
+    this.planCodeCache.set(key, { at: Date.now(), codes });
+    return codes;
+  }
+
+  /** Satır hesap kodlarını mükellefin GERÇEK Luca planına göre süzer.
+   *  Plan YOK → tüm kodları boşalt (önce hesap planı çekilsin).
+   *  Plan VAR → planda OLMAYAN kodu (191.01.020 gibi placeholder/uydurma) boşalt; gerçek
+   *  plan kodu kalır. Okuma + rematch sonradan doğru kodu yazar. */
   private async gateCodesByPlan(tenantId: string, taxpayerId: string | null | undefined, lines: any[]): Promise<any[]> {
-    if (await this.hasAccountPlan(tenantId, taxpayerId)) return lines;
-    return (lines || []).map((l) => ({ ...l, accountCode: null }));
+    const planCodes = await this.getPlanCodeSet(tenantId, taxpayerId);
+    if (!planCodes) return (lines || []).map((l) => ({ ...l, accountCode: null }));
+    return (lines || []).map((l) => {
+      const c = String(l.accountCode || '').trim();
+      return c && !planCodes.has(c) ? { ...l, accountCode: null } : l;
+    });
   }
 
   private linesFromAmounts(opts: {
