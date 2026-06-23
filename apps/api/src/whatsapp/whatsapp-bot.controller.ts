@@ -31,6 +31,12 @@ type IncomingWhatsAppMessage = {
     filename?: string;
     caption?: string;
   };
+  // KURU-TEST (dry-run): gerçek handleMessage akışını GÖNDERMEDEN çalıştırır; üretilen
+  // cevabı __dryReply'a yakalar. GO_LIVE/automation kapıları dry-run'da atlanır. Müşteriye
+  // mesaj GİTMEZ — gerçek yolu (hızlı-yol + agentic + yargıç) güvenle test etmek için.
+  __dryRun?: boolean;
+  __dryReply?: string;
+  __dryKind?: string;
 };
 
 // Asistanın müşteriye görünen insan ismi. Değiştirmek için MOREN_BOT_NAME env'i.
@@ -169,6 +175,37 @@ export class WhatsAppBotController implements OnModuleInit {
       }
     })();
     return { ok: true, tenant: tenant.id, runId, mode, started: questions.length };
+  }
+
+  /**
+   * KURU-TEST: GERÇEK handleMessage akışını (kayıtlı mükellef yolu: hızlı-yol → cache-atla →
+   * agentic → yargıç) bir mükellefin telefonuyla GÖNDERMEDEN çalıştırır; üretilen cevabı + süreyi
+   * botQualityLog'a yazar. Selftest'in aksine controller'ı ATLAMAZ → gerçek üretim yolunu test eder.
+   * Token korumalı; geçici. Body: { token, phone, questions[], runId? }
+   */
+  @Post('dry-run')
+  async dryRun(@Body() body: any) {
+    if (String(body?.token || '') !== (process.env.MOREN_SELFTEST_TOKEN || 'moren-st-7Yq2x')) {
+      return { ok: false, error: 'unauthorized' };
+    }
+    const phone = String(body?.phone || '').trim();
+    const questions: string[] = Array.isArray(body?.questions) ? body.questions.slice(0, 12) : [];
+    if (!phone || !questions.length) return { ok: false, error: 'phone ve questions zorunlu' };
+    const results: any[] = [];
+    for (let i = 0; i < questions.length; i++) {
+      const q = String(questions[i]);
+      const msg: IncomingWhatsAppMessage = { from: phone, text: q, id: `dry-${Date.now()}-${i}`, __dryRun: true };
+      const t0 = Date.now();
+      let err = '';
+      try { await this.handleMessage(msg); } catch (e: any) { err = e?.message || String(e); }
+      results.push({
+        soru: q,
+        cevap: msg.__dryReply || (err ? `HATA: ${err}` : '(cevap üretilmedi — akış başka dalda bitti)'),
+        yol: msg.__dryKind || null,
+        ms: Date.now() - t0,
+      });
+    }
+    return { ok: true, results };
   }
 
   private extractMessages(body: any): IncomingWhatsAppMessage[] {
@@ -2023,12 +2060,12 @@ export class WhatsAppBotController implements OnModuleInit {
     const classified = this.intentClassifier.classify(msg.text);
     await this.maybeCreateDocumentRequestTask(taxpayer, msg.text);
 
-    if (!clientAutoReplyEnabled) {
+    if (!clientAutoReplyEnabled && !msg.__dryRun) {
       this.logger.log(`[Musteri botu kapali] kayitli mesaj kaydedildi, otomatik cevap atlanadi: taxpayer=${taxpayer.id} phone=${this.normalize(msg.from)}`);
       return;
     }
 
-    if (!automationActive) {
+    if (!automationActive && !msg.__dryRun) {
       await this.prisma.communicationLog.create({
         data: {
           taxpayerId: taxpayer.id,
@@ -2044,7 +2081,7 @@ export class WhatsAppBotController implements OnModuleInit {
 
     const recentReplies = await this.botContext.getRecentOutgoingReplies(taxpayer.id);
     const rate = this.rateLimiter.registerIncoming(taxpayer.tenantId, taxpayer.id);
-    if (rate.limited) {
+    if (rate.limited && !msg.__dryRun) {
       if (rate.shouldNotify) {
         const filteredRate = this.postFilter.filterTaxpayerReply('Mesajlariniz alindi; yogunluk nedeniyle konuyu siraya aldik.', { recentReplies });
         const limitedReply = await this.qualityGateReply({
@@ -2116,6 +2153,7 @@ export class WhatsAppBotController implements OnModuleInit {
     if (fast) {
       const fastReply = this.postFilter.filterTaxpayerReply(fast.reply, { recentReplies });
       if (fastReply) {
+        if (msg.__dryRun) { msg.__dryReply = fastReply; msg.__dryKind = 'hizli-yol:' + fast.kind; return; }
         const sent = await this.whatsapp.sendMessage(this.replyTarget(msg), fastReply, taxpayer.tenantId);
         this.botCache.set(taxpayer.tenantId, taxpayer.id, msg.text, fastReply);
         await this.prisma.communicationLog.create({
@@ -2137,7 +2175,7 @@ export class WhatsAppBotController implements OnModuleInit {
     // AI'ya gitmeden son onaylı cevabı dön. Hata/generic cevaplar shouldNotCache
     // filtresiyle zaten cache'lenmiyor (bkz. bot-cache.service.ts).
     const cachedReply = this.botCache.get(taxpayer.tenantId, taxpayer.id, msg.text);
-    if (cachedReply) {
+    if (cachedReply && !msg.__dryRun) {
       const filteredCached = this.postFilter.filterTaxpayerReply(cachedReply, { recentReplies });
       if (filteredCached) {
         const sent = await this.whatsapp.sendMessage(this.replyTarget(msg), filteredCached, taxpayer.tenantId);
@@ -2281,6 +2319,7 @@ export class WhatsAppBotController implements OnModuleInit {
       stopCustTyping();
     }
     if (reply) {
+      if (msg.__dryRun) { msg.__dryReply = reply; msg.__dryKind = 'agentic'; return; }
       // Cache'e yaz — sonraki aynı soru AI'ya gitmeden bu cevapla dönsün.
       // shouldNotCache filtresi (bot-cache.service.ts) generic/hata cevaplarını eler.
       this.botCache.set(taxpayer.tenantId, taxpayer.id, msg.text, reply);
