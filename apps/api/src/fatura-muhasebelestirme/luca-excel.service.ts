@@ -53,6 +53,7 @@ export interface InvoicePayload {
     kayitAltKod?: string; kayitAltAd?: string;
     kdvOranKod?: string; plakaNo?: string; kayitTarihi?: string;
     matrah?: number; kdvTutar?: number; krediliTutar?: number; donem?: boolean;
+    hesapKodu?: string; tevkifatOrani?: string; tevkifatTutar?: number; stopajOrani?: string; stopajTutar?: number;
   } | null;
 }
 
@@ -295,7 +296,7 @@ export function buildLucaIsletmeHizliFisCsv(payload: BatchPayload): Buffer {
       counterpartyName,                             // 10 SOYADI ÜNVAN
       '',                                           // 11 ADI DEVAMI
       '',                                           // 12 ADRES
-      '',                                           // 13 CARİ HESAP
+      isl.hesapKodu || '',                          // 13 CARİ HESAP (Luca hesap kodu)
       '',                                           // 14 KDV İSTİSNASI
       isl.islemTuruKod || '',                       // 15 KOD (İşlem Türü kodu)
       isl.belgeTuruKod || '',                       // 16 BELGE TÜRÜ(DB) (GİB Defter-Beyan kodu)
@@ -307,7 +308,7 @@ export function buildLucaIsletmeHizliFisCsv(payload: BatchPayload): Buffer {
       '',                                           // 22 MİKTAR
       '',                                           // 23 B.FİYAT
       trAmount(islMatrah),                          // 24 TUTAR (matrah/KDV hariç)
-      '',                                           // 25 TEVKİFAT
+      isl.tevkifatOrani || '',                      // 25 TEVKİFAT (ör. 5/10)
       kdvOranNum,                                   // 26 KDV ORANI
       '',                                           // 27 İŞLEM BEDELİ
       '',                                           // 28 MATRAHTAN DÜŞÜLECEK TUTAR
@@ -315,8 +316,8 @@ export function buildLucaIsletmeHizliFisCsv(payload: BatchPayload): Buffer {
       trAmount(islKdv),                             // 30 KDV TUTARI
       trAmount(total),                              // 31 TOPLAM TUTAR
       isl.krediliTutar ? trAmount(Number(isl.krediliTutar)) : '', // 32 KREDİLİ TUTAR
-      '',                                           // 33 STOPAJ KODU
-      '',                                           // 34 STOPAJ TUTARI
+      isl.stopajOrani || '',                        // 33 STOPAJ KODU (oran %)
+      isl.stopajTutar ? trAmount(Number(isl.stopajTutar)) : '', // 34 STOPAJ TUTARI
       isl.donem ? 'Evet' : '',                      // 35 DÖNEMSELLİK İLKESİ
       '',                                           // 36 FAALIYET KODU
       '',                                           // 37 ÖDEME TÜRÜ

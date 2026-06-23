@@ -1342,6 +1342,8 @@ function ScreenMuhasebe({ taxpayerId, period, isIsletme = false, taxpayerNace = 
           kdvOranKod: isl.kdvOranKod, plakaNo: isl.plakaNo || '', kayitTarihi: isl.kayitTarihi || '',
           matrah: Number(isl.matrah) || 0, kdvTutar: Number(isl.kdvTutar) || 0,
           krediliTutar: Number(isl.krediliTutar) || 0, donem: !!alt?.donem,
+          hesapKodu: isl.hesapKodu || '', tevkifatOrani: isl.tevkifatOrani || '', tevkifatTutar: Number(isl.tevkifatTutar) || 0,
+          stopajOrani: isl.stopajOrani || '', stopajTutar: Number(isl.stopajTutar) || 0,
         };
       })() : undefined;
       return api.patch(`/fatura-muhasebelestirme/documents/${selDoc.id}`, {
@@ -1426,6 +1428,7 @@ function ScreenMuhasebe({ taxpayerId, period, isIsletme = false, taxpayerNace = 
   const islKind = String(meta.invoiceKind || 'ALIS').includes('SATIS') ? 'SATIS' : 'ALIS';
   const islRef = isletmeRef(islKind);
   const [isl, setIsl] = useState<any>({});
+  const [islExp, setIslExp] = useState<{ hesap?: boolean; tevkifat?: boolean; stopaj?: boolean }>({});
   useEffect(() => {
     if (!isIsletme || !selDoc) { setIsl({}); return; }
     const saved: any = (selDoc.ocrData?.isletme) || {};
@@ -1447,7 +1450,13 @@ function ScreenMuhasebe({ taxpayerId, period, isIsletme = false, taxpayerNace = 
       matrah: saved.matrah ?? (Number(p.matrah) || 0),
       kdvTutar: saved.kdvTutar ?? (Number(p.kdv) || 0),
       krediliTutar: saved.krediliTutar ?? 0,
+      hesapKodu: saved.hesapKodu ?? '',
+      tevkifatOrani: saved.tevkifatOrani ?? '',
+      tevkifatTutar: saved.tevkifatTutar ?? 0,
+      stopajOrani: saved.stopajOrani ?? '',
+      stopajTutar: saved.stopajTutar ?? 0,
     });
+    setIslExp({});
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [selDoc?.id, isIsletme]);
   const setIslF = (k: string, v: any) => setIsl((s: any) => ({ ...s, [k]: v }));
@@ -1663,7 +1672,7 @@ function ScreenMuhasebe({ taxpayerId, period, isIsletme = false, taxpayerNace = 
                   {isIsletme ? (
                     <div className="islforms">
                       {/* Fatura Türü · Belge Türü · Alış/Satış Türü — TEK SATIR 3 sütun (Mihsap birebir) */}
-                      <div style={{ display: 'grid', gridTemplateColumns: 'repeat(3, minmax(0, 1fr))', gap: '8px 12px', marginBottom: 8 }}>
+                      <div className="docmeta" style={{ display: 'grid', gridTemplateColumns: 'repeat(3, minmax(0, 1fr))', gap: '8px 12px', marginBottom: 8 }}>
                         <div className="dm" style={{ minWidth: 0 }}><span className="dml">Fatura Türü</span>
                           <PlainSelect value={String(meta.invoiceKind || 'ALIS').includes('SATIS') ? 'SATIS' : 'ALIS'} onChange={(v) => { const k = v === 'SATIS' ? 'SATIS' : 'ALIS'; setMeta({ ...meta, invoiceKind: k }); setIslKind(k); }} options={[{ value: 'SATIS', label: 'Gelir' }, { value: 'ALIS', label: 'Gider' }]} />
                         </div>
@@ -1675,33 +1684,33 @@ function ScreenMuhasebe({ taxpayerId, period, isIsletme = false, taxpayerNace = 
                         </div>
                       </div>
                       {/* Evrak Tarihi · Kayıt Tarihi — 2 sütun */}
-                      <div style={{ display: 'grid', gridTemplateColumns: 'repeat(2, minmax(0, 1fr))', gap: '8px 12px', marginBottom: 8 }}>
+                      <div className="docmeta" style={{ display: 'grid', gridTemplateColumns: 'repeat(2, minmax(0, 1fr))', gap: '8px 12px', marginBottom: 8 }}>
                         <div className="dm" style={{ minWidth: 0 }}><span className="dml">Evrak Tarihi</span><input className="dmi" type="date" value={meta.faturaTarihi || ''} onChange={(e) => setMeta({ ...meta, faturaTarihi: e.target.value })} /></div>
                         <div className="dm" style={{ minWidth: 0 }}><span className="dml">Kayıt Tarihi</span><input className="dmi" type="date" value={isl.kayitTarihi || meta.faturaTarihi || ''} onChange={(e) => setIslF('kayitTarihi', e.target.value)} /></div>
                       </div>
                       {/* Evrak No · (gider) Plaka No — 2 sütun */}
-                      <div style={{ display: 'grid', gridTemplateColumns: 'repeat(2, minmax(0, 1fr))', gap: '8px 12px', marginBottom: 8 }}>
+                      <div className="docmeta" style={{ display: 'grid', gridTemplateColumns: 'repeat(2, minmax(0, 1fr))', gap: '8px 12px', marginBottom: 8 }}>
                         <div className="dm" style={{ minWidth: 0 }}><span className="dml">Evrak No</span><input className="dmi" value={meta.belgeNo || ''} onChange={(e) => setMeta({ ...meta, belgeNo: e.target.value })} /></div>
                         {islRef.plaka && (
                           <div className="dm" style={{ minWidth: 0 }}><span className="dml">Plaka No</span><input className="dmi" value={isl.plakaNo || ''} placeholder="34 ABC 123" onChange={(e) => setIslF('plakaNo', e.target.value)} /></div>
                         )}
                       </div>
                       {/* TCKN/VKN tam genişlik */}
-                      <div className="dm" style={{ marginBottom: 8 }}><span className="dml">{String(meta.invoiceKind).includes('SATIS') ? 'Alıcı TCKN/VKN' : 'Satıcı TCKN/VKN'}</span><input className="dmi" value={meta.vkn || ''} onChange={(e) => setMeta({ ...meta, vkn: e.target.value })} /></div>
+                      <div className="docmeta" style={{ marginBottom: 8 }}><div className="dm" style={{ flex: '1 1 100%' }}><span className="dml">{String(meta.invoiceKind).includes('SATIS') ? 'Alıcı TCKN/VKN' : 'Satıcı TCKN/VKN'}</span><input className="dmi" value={meta.vkn || ''} onChange={(e) => setMeta({ ...meta, vkn: e.target.value })} /></div></div>
                       {/* Cari — Mihsap mavi link kutusu (* FİRMA) */}
                       <input value={meta.cariUnvan || ''} placeholder="* cari ünvanı" onChange={(e) => setMeta({ ...meta, cariUnvan: e.target.value })}
                         style={{ width: '100%', margin: '2px 0 10px', padding: '10px 12px', background: '#eef5fc', border: '1px solid #bcd7f2', borderRadius: 8, color: '#1862ad', fontSize: 13, fontWeight: 600 }} />
                       {/* İşlem Türü — SADECE satış (gelir) */}
                       {islRef.islemTuru && (
-                        <div className="dm" style={{ marginBottom: 8 }}><span className="dml">İşlem Türü</span>
+                        <div className="docmeta" style={{ marginBottom: 8 }}><div className="dm" style={{ flex: '1 1 100%' }}><span className="dml">İşlem Türü</span>
                           <PlainSelect value={isl.islemTuruKod || '1100'} onChange={(v) => setIslF('islemTuruKod', v)} options={ISLETME_ISLEM_TURU.map((x) => ({ value: x.kod, label: x.ad }))} />
-                        </div>
+                        </div></div>
                       )}
                       <div style={{ fontSize: 14, fontWeight: 700, color: '#0f1b2d', margin: '6px 2px 2px' }}>Toplam Tutar: <span style={{ color: '#16a34a' }}>{fmtMoney((Number(isl.matrah) || 0) + (Number(isl.kdvTutar) || 0))} ₺</span></div>
                       {/* Numaralı satır — Mihsap "1" MAVİ kutusu */}
                       <div style={{ position: 'relative', background: '#e9f1fb', border: '1px solid #c5dbf3', borderRadius: 10, padding: '16px 12px 8px', marginTop: 12 }}>
                         <span style={{ position: 'absolute', top: -11, left: 12, background: '#1d9e75', color: '#fff', minWidth: 22, height: 22, padding: '0 6px', borderRadius: 6, fontSize: 12, display: 'inline-flex', alignItems: 'center', justifyContent: 'center', fontWeight: 700 }}>1</span>
-                        <div style={{ display: 'grid', gridTemplateColumns: 'repeat(2, minmax(0, 1fr))', gap: '8px 12px' }}>
+                        <div className="docmeta" style={{ display: 'grid', gridTemplateColumns: 'repeat(2, minmax(0, 1fr))', gap: '8px 12px' }}>
                           <div className="dm" style={{ minWidth: 0 }}><span className="dml">Kayıt Türü</span>
                             <PlainSelect value={isl.kayitTuruKod || ''} onChange={pickKayitTuru} options={islRef.kayitTuru.map((x) => ({ value: x.kod, label: x.ad }))} />
                           </div>
@@ -1709,7 +1718,7 @@ function ScreenMuhasebe({ taxpayerId, period, isIsletme = false, taxpayerNace = 
                             <PlainSelect value={isl.kayitAltKod || ''} onChange={(v) => setIslF('kayitAltKod', v)} options={[{ value: '', label: '—' }, ...islAltList.map((x: any) => ({ value: x.kod, label: x.ad }))]} />
                           </div>
                         </div>
-                        <div style={{ display: 'grid', gridTemplateColumns: `repeat(${islRef.kredili ? 4 : 3}, minmax(0, 1fr))`, gap: '8px 12px', marginTop: 8 }}>
+                        <div className="docmeta" style={{ display: 'grid', gridTemplateColumns: `repeat(${islRef.kredili ? 4 : 3}, minmax(0, 1fr))`, gap: '8px 12px', marginTop: 8 }}>
                           {islRef.kredili && (
                             <div className="dm" style={{ minWidth: 0 }}><span className="dml">Kredili Tutar</span><MoneyInput value={Number(isl.krediliTutar) || 0} onChange={(n) => setIslF('krediliTutar', n)} /></div>
                           )}
@@ -1719,11 +1728,44 @@ function ScreenMuhasebe({ taxpayerId, period, isIsletme = false, taxpayerNace = 
                           </div>
                           <div className="dm" style={{ minWidth: 0 }}><span className="dml">Kdv Tutarı</span><MoneyInput value={Number(isl.kdvTutar) || 0} onChange={(n) => setIslF('kdvTutar', n)} /></div>
                         </div>
-                        {/* Mihsap'taki açılır satırlar (görsel birebir) */}
-                        <div style={{ display: 'flex', flexDirection: 'column', gap: 7, marginTop: 10 }}>
-                          <span style={{ fontSize: 12.5, color: '#2c4a73', fontWeight: 600, cursor: 'default' }}>Hesap Kodu <span style={{ color: '#7a93b5' }}>⌄</span></span>
-                          {islRef.tevkifat && (<span style={{ fontSize: 12.5, color: '#2c4a73', fontWeight: 600 }}>Tevkifat İşlemleri <span style={{ color: '#7a93b5' }}>⌄</span></span>)}
-                          <span style={{ fontSize: 12.5, color: '#2c4a73', fontWeight: 600 }}>Stopaj İşlemleri <span style={{ color: '#7a93b5' }}>⌄</span></span>
+                        {/* İŞLEVSEL açılır bölümler — tıkla → gerçek alanlar (süs değil) */}
+                        <div style={{ display: 'flex', flexDirection: 'column', gap: 4, marginTop: 12 }}>
+                          {/* Hesap Kodu */}
+                          <div>
+                            <span onClick={() => setIslExp((e) => ({ ...e, hesap: !e.hesap }))} style={{ fontSize: 12.5, color: '#1862ad', fontWeight: 600, cursor: 'pointer', userSelect: 'none' }}>Hesap Kodu <span style={{ color: '#7a93b5' }}>{islExp.hesap ? '⌃' : '⌄'}</span></span>
+                            {islExp.hesap && (
+                              <div className="docmeta" style={{ marginTop: 6 }}><div className="dm" style={{ flex: '1 1 100%' }}><span className="dml">Luca Hesap Kodu (opsiyonel)</span>
+                                <input className="dmi" value={isl.hesapKodu || ''} list="fm-isl-acc" placeholder="örn. 770.01" onChange={(e) => setIslF('hesapKodu', e.target.value)} />
+                                <datalist id="fm-isl-acc">{accountPlan.slice(0, 500).map((a: any) => (<option key={a.code} value={a.code}>{a.name}</option>))}</datalist>
+                              </div></div>
+                            )}
+                          </div>
+                          {/* Tevkifat İşlemleri — sadece gider */}
+                          {islRef.tevkifat && (
+                            <div>
+                              <span onClick={() => setIslExp((e) => ({ ...e, tevkifat: !e.tevkifat }))} style={{ fontSize: 12.5, color: '#1862ad', fontWeight: 600, cursor: 'pointer', userSelect: 'none' }}>Tevkifat İşlemleri <span style={{ color: '#7a93b5' }}>{islExp.tevkifat ? '⌃' : '⌄'}</span></span>
+                              {islExp.tevkifat && (
+                                <div className="docmeta" style={{ display: 'grid', gridTemplateColumns: 'repeat(2, minmax(0, 1fr))', gap: '8px 12px', marginTop: 6 }}>
+                                  <div className="dm" style={{ minWidth: 0 }}><span className="dml">Tevkifat Oranı</span>
+                                    <PlainSelect value={isl.tevkifatOrani || ''} onChange={(v) => setIsl((s: any) => ({ ...s, tevkifatOrani: v, tevkifatTutar: v ? Math.round((Number(s.kdvTutar) || 0) * (Number(v.split('/')[0]) / Number(v.split('/')[1])) * 100) / 100 : 0 }))} options={[{ value: '', label: 'Yok' }, ...['2/10', '3/10', '4/10', '5/10', '7/10', '9/10', '10/10'].map((o) => ({ value: o, label: o }))]} />
+                                  </div>
+                                  <div className="dm" style={{ minWidth: 0 }}><span className="dml">Tevkifat Tutarı (sorumlu KDV)</span><MoneyInput value={Number(isl.tevkifatTutar) || 0} onChange={(n) => setIslF('tevkifatTutar', n)} /></div>
+                                </div>
+                              )}
+                            </div>
+                          )}
+                          {/* Stopaj İşlemleri */}
+                          <div>
+                            <span onClick={() => setIslExp((e) => ({ ...e, stopaj: !e.stopaj }))} style={{ fontSize: 12.5, color: '#1862ad', fontWeight: 600, cursor: 'pointer', userSelect: 'none' }}>Stopaj İşlemleri <span style={{ color: '#7a93b5' }}>{islExp.stopaj ? '⌃' : '⌄'}</span></span>
+                            {islExp.stopaj && (
+                              <div className="docmeta" style={{ display: 'grid', gridTemplateColumns: 'repeat(2, minmax(0, 1fr))', gap: '8px 12px', marginTop: 6 }}>
+                                <div className="dm" style={{ minWidth: 0 }}><span className="dml">Stopaj Oranı (%)</span>
+                                  <input className="dmi" value={isl.stopajOrani || ''} placeholder="örn. 20" onChange={(e) => { const o = e.target.value.replace(/[^0-9.,]/g, ''); setIsl((s: any) => ({ ...s, stopajOrani: o, stopajTutar: Math.round((Number(s.matrah) || 0) * (parseFloat(String(o).replace(',', '.')) || 0) / 100 * 100) / 100 })); }} />
+                                </div>
+                                <div className="dm" style={{ minWidth: 0 }}><span className="dml">Stopaj Tutarı</span><MoneyInput value={Number(isl.stopajTutar) || 0} onChange={(n) => setIslF('stopajTutar', n)} /></div>
+                              </div>
+                            )}
+                          </div>
                         </div>
                         <div style={{ fontSize: 13.5, fontWeight: 700, color: '#0f1b2d', textAlign: 'right', marginTop: 8 }}>Toplam Tutar (KDV Dahil): <span style={{ color: '#16a34a' }}>{fmtMoney((Number(isl.matrah) || 0) + (Number(isl.kdvTutar) || 0))} ₺</span></div>
                       </div>
