@@ -845,6 +845,24 @@ function ScreenFaturalar({ taxpayerId, period, kind = 'ALIS', isIsletme = false,
     if (prevReadingRef.current > 0 && r === 0) qc.invalidateQueries({ queryKey: ['fm2'] });
     prevReadingRef.current = r;
   }, [ocrProg?.reading, qc]);
+  // Okuma SÜRERKEN listeyi periyodik tazele → "şu an okunan" satır (ocrStatus IN_PROGRESS) canlansın.
+  useEffect(() => {
+    if (!ocrProg?.active) return;
+    const t = setInterval(() => qc.invalidateQueries({ queryKey: ['fm2'] }), 2500);
+    return () => clearInterval(t);
+  }, [ocrProg?.active, qc]);
+  // Okuması YENİ BİTEN satıra kısa "tamamlandı" vurgusu (IN_PROGRESS → değil geçişi yakalanır).
+  const prevOcrRef = useRef<Record<string, string>>({});
+  const [justDone, setJustDone] = useState<Set<string>>(new Set());
+  useEffect(() => {
+    const prev = prevOcrRef.current; const cur: Record<string, string> = {}; const bitti: string[] = [];
+    for (const d of docs) { cur[d.id] = d.ocrStatus || ''; if (prev[d.id] === 'IN_PROGRESS' && (d.ocrStatus || '') !== 'IN_PROGRESS') bitti.push(d.id); }
+    prevOcrRef.current = cur;
+    if (!bitti.length) return;
+    setJustDone((s) => { const n = new Set(s); bitti.forEach((id) => n.add(id)); return n; });
+    const t = setTimeout(() => setJustDone((s) => { const n = new Set(s); bitti.forEach((id) => n.delete(id)); return n; }), 2200);
+    return () => clearTimeout(t);
+  }, [docs]);
 
   const muhasebelestir = () => {
     // İşletme defteri: hesap kodu YOK — tutarı olan hazır. Bilanço: TÜM satırların kodu dolu (cari dahil).
@@ -934,8 +952,9 @@ function ScreenFaturalar({ taxpayerId, period, kind = 'ALIS', isIsletme = false,
                 const vkn = sat ? d.buyerVkn : d.sellerVkn;
                 const code = (() => { const ls = Array.isArray(d.lines) ? d.lines : []; return (ls.find((l: any) => String(l.group) === 'matrah' && l.accountCode) || ls.find((l: any) => l.accountCode))?.accountCode || ''; })();
                 const { matrah, kdv } = kdvParts(d);
+                const ocrCls = d.ocrStatus === 'IN_PROGRESS' ? 'scanning' : justDone.has(d.id) ? 'justdone' : d.ocrStatus === 'PENDING' ? 'queued' : undefined;
                 return (
-                  <tr key={d.id}>
+                  <tr key={d.id} className={ocrCls}>
                     <td><Check checked={sel.has(d.id)} onToggle={() => toggle(d.id)} /></td>
                     <td>{fmtDate(d.faturaTarihi || d.createdAt)}</td>
                     <td>{d.belgeNo || '—'}</td>
@@ -2713,6 +2732,16 @@ const CSS = `
 #fm-root .ocrstrip.scanning .ocrfill::after{content:'';position:absolute;inset:0;background-image:linear-gradient(45deg,rgba(255,255,255,.28) 25%,transparent 25%,transparent 50%,rgba(255,255,255,.28) 50%,rgba(255,255,255,.28) 75%,transparent 75%,transparent);background-size:20px 20px;animation:ocrstripes .65s linear infinite}
 #fm-root .ocrstrip.scanning .ocrfill::before{content:'';position:absolute;top:0;right:0;width:26px;height:100%;background:linear-gradient(90deg,transparent,rgba(255,255,255,.55));animation:ocrglow 1.3s ease-in-out infinite}
 #fm-root .ocrstrip:not(.scanning) .ocrfill{background:linear-gradient(90deg,#ef4444,#f87171)}
+/* AI okuma — satır bazlı canlı görsel (genel temayı bozmaz). Okunan: mavi pulse + sol şerit;
+   yeni biten: kısa yeşil flash; sırada bekleyen: hafif soluk. */
+#fm-root tbody tr.queued{opacity:.5}
+#fm-root tbody tr.scanning{animation:fmrowscan 1.2s ease-in-out infinite}
+#fm-root tbody tr.scanning td:first-child{position:relative}
+#fm-root tbody tr.scanning td:first-child::before{content:'';position:absolute;left:0;top:4px;bottom:4px;width:3px;border-radius:3px;background:#2563eb;animation:fmrowpulse 1.2s ease-in-out infinite}
+#fm-root tbody tr.justdone{animation:fmrowdone 2s ease-out}
+@keyframes fmrowscan{0%,100%{background:transparent}50%{background:rgba(37,99,235,.10)}}
+@keyframes fmrowpulse{0%,100%{opacity:.3}50%{opacity:1}}
+@keyframes fmrowdone{0%{background:rgba(34,197,94,.24)}100%{background:transparent}}
 #fm-root .ocrpct{font-weight:700;color:var(--accent,#2563eb);font-variant-numeric:tabular-nums;margin-left:auto}
 @keyframes ocrstripes{from{background-position:0 0}to{background-position:20px 0}}
 @keyframes ocrglow{0%,100%{opacity:.35}50%{opacity:.9}}
