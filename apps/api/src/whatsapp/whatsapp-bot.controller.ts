@@ -16,7 +16,7 @@ import { BotEvalService } from './bot-eval.service';
 import { QualityLogService } from './quality-log.service';
 import { CalisanService } from '../calisan/calisan.service';
 import { claudeTextViaMax, MAX_MODEL_CHEAP } from '../common/max-inference';
-import { buildOwnerStatusReply, resolveTaxpayerByText, buildTaxpayerSelfReply } from '../moren-ai/monthly-status.shared';
+import { buildOwnerStatusReply, resolveTaxpayerByText, buildTaxpayerSelfReply, buildTaxpayerQuickReply } from '../moren-ai/monthly-status.shared';
 
 type IncomingWhatsAppMessage = {
   from: string;
@@ -2149,7 +2149,10 @@ export class WhatsAppBotController implements OnModuleInit {
     // Sık sorular (borç/bakiye, son ödeme, KDV durumu, beyanname durumu) agentic+LLM-yargıç+
     // retry zincirini ATLAR → anında + şablonlu + doğru. AKTİF mükellefe kilitli (taxpayer.id),
     // yanlış mükellef imkânsız. Eşleşmezse null → normal akış (cache/agentic) devam eder.
-    const fast = await buildTaxpayerSelfReply(this.prisma, taxpayer.tenantId, taxpayer.id, msg.text).catch(() => null);
+    // 1) Veri sorusu (borç/ödeme/KDV/beyanname) → DB'li hızlı-yol; 2) tutmazsa sabit mevzuat/
+    //    selamlama hızlı-yolu (KDV oranı, fatura süresi, izin, SGK, merhaba/teşekkür) → anında.
+    const fast = (await buildTaxpayerSelfReply(this.prisma, taxpayer.tenantId, taxpayer.id, msg.text).catch(() => null))
+      || buildTaxpayerQuickReply(msg.text);
     if (fast) {
       const fastReply = this.postFilter.filterTaxpayerReply(fast.reply, { recentReplies });
       if (fastReply) {

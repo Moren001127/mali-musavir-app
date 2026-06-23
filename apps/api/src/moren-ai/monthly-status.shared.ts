@@ -845,21 +845,81 @@ export async function buildTaxpayerSelfReply(
     const kayitlar = await prisma.beyanKaydi.findMany({
       where: { tenantId, taxpayerId },
       orderBy: [{ donem: 'desc' }],
-      take: 12,
+      take: 25,
       select: { beyanTipi: true, donem: true, beyanTarihi: true },
     }).catch(() => []);
     if (!kayitlar.length) return { reply: 'Beyanname kaydınızı sistemde henüz görmüyorum; hazırlanınca size bilgi vereceğiz.', kind: 'beyanname' };
-    const sonDonem = kayitlar[0].donem;
-    const ddonem = kayitlar.filter((k: any) => k.donem === sonDonem);
-    const verildi = ddonem.filter((k: any) => k.beyanTarihi).map((k: any) => k.beyanTipi);
-    const bekleyen = ddonem.filter((k: any) => !k.beyanTarihi).map((k: any) => k.beyanTipi);
-    const m = sonDonem.match(/^(\d{4})[\/-](\d{2})$/);
-    const donemLabel = m ? `${aylar[parseInt(m[2], 10) - 1]} ${m[1]}` : sonDonem;
-    let r = `📝 ${donemLabel} beyanname durumunuz:\n`;
-    if (verildi.length) r += `✅ Verildi: ${verildi.join(', ')}\n`;
-    if (bekleyen.length) r += `⏳ Hazırlanıyor: ${bekleyen.join(', ')}`;
-    if (!verildi.length && !bekleyen.length) r += 'Bu döneme ait beyanname görünmüyor.';
+    // Ham kodu insan diline çevir (müşteri "GGECICI" değil "Gelir Geçici Vergi" görsün)
+    const TIP_AD: Record<string, string> = {
+      KDV1: 'KDV', KDV2: 'KDV tevkifat (2 No.lu)', MUHSGK: 'Muhtasar-SGK', DAMGA: 'Damga Vergisi',
+      GGECICI: 'Gelir Geçici Vergi', KGECICI: 'Kurumlar Geçici Vergi', GECICI_VERGI: 'Geçici Vergi',
+      KURUMLAR: 'Kurumlar Vergisi', GELIR: 'Yıllık Gelir Vergisi', POSET: 'Poşet Beyannamesi',
+      BILDIRGE: 'Bildirim', EDEFTER: 'e-Defter Beratı', DIGER: 'Beyanname',
+    };
+    const adKodu = (t: string) => TIP_AD[t] || t;
+    // Dönemi düzgün yaz: 2026-05→"Mayıs 2026", 2026-Q1→"2026 1. geçici vergi dönemi", 2025-YIL→"2025 yıllık"
+    const donemFmt = (d: string) => {
+      const mm = d.match(/^(\d{4})[\/-](\d{2})$/); if (mm) return `${aylar[parseInt(mm[2], 10) - 1]} ${mm[1]}`;
+      const qq = d.match(/^(\d{4})[\/-]?Q(\d)$/i); if (qq) return `${qq[1]} ${qq[2]}. geçici vergi dönemi`;
+      if (/yil/i.test(d)) return `${(d.match(/\d{4}/) || [d])[0]} yıllık`;
+      return d;
+    };
+    const verildi = kayitlar.filter((k: any) => k.beyanTarihi)
+      .sort((a: any, b: any) => new Date(b.beyanTarihi).getTime() - new Date(a.beyanTarihi).getTime())
+      .slice(0, 5);
+    const bekleyen = kayitlar.filter((k: any) => !k.beyanTarihi).slice(0, 5);
+    let r = '📝 Beyanname durumunuz\n';
+    if (verildi.length) r += '\n✅ Verilenler:\n' + verildi.map((k: any) => `• ${adKodu(k.beyanTipi)} — ${donemFmt(k.donem)}`).join('\n') + '\n';
+    if (bekleyen.length) r += '\n⏳ Hazırlananlar:\n' + bekleyen.map((k: any) => `• ${adKodu(k.beyanTipi)} — ${donemFmt(k.donem)}`).join('\n');
+    if (!verildi.length && !bekleyen.length) r += '\nKayıt görünmüyor.';
     return { reply: r.trim(), kind: 'beyanname' };
+  }
+
+  return null;
+}
+
+/**
+ * MÜKELLEF HIZLI-YOL 2 (mevzuat + selamlama): SABİT-kurallı sık sorular (KDV oranı, fatura
+ * süresi, yıllık izin, SGK giriş/çıkış süreleri) ve selamlama/teşekkür → agentic'i ATLAYIP
+ * anında + DOĞRU + saçma-sız cevaplar. SADECE değişmeyen kurallar (yıldan yıla değişen TUTAR/
+ * had/ceza BURADA YOK — onlar agentic'te güncel kaynakla). Veri sorusu DEĞİL (o buildTaxpayerSelfReply'da).
+ * Eşleşmezse null → agentic.
+ */
+export function buildTaxpayerQuickReply(text: string): { reply: string; kind: string } | null {
+  const n = normalizeForIntent(text);
+  const wc = n.split(/\s+/).filter(Boolean).length;
+
+  // SELAMLAMA (sadece kısa, başka niyet yoksa)
+  if (wc <= 4 && /\b(merhaba|merhabalar|selam|selamlar|slm|mrb|gunaydin|iyi gunler|iyi aksamlar|kolay gelsin|nasilsin|nasilsiniz|naber|ne haber)\b/.test(n)
+      && !/(borc|kdv|beyan|fatura|odeme|ne kadar|ne zaman|kac|mi$|var mi)/.test(n)) {
+    return { reply: 'Merhaba, hoş geldiniz! 😊 Size nasıl yardımcı olabilirim?', kind: 'selamlama' };
+  }
+  // TEŞEKKÜR
+  if (wc <= 5 && (/\b(tesekkur|tesekkurler|eyvallah|tsk)\b/.test(n) || /\bsag\s?ol/.test(n) || /\bsaol/.test(n))) {
+    return { reply: 'Rica ederim, her zaman buradayız. Başka bir konuda yardımcı olabilirsem yazmanız yeterli. 🙂', kind: 'tesekkur' };
+  }
+
+  // KDV ORANI (sabit: %20 / %10 / %1) — "kdv durumum/ne kadar" değil, ORAN sorusu
+  if (/kdv/.test(n) && /(oran|yuzde|kacta|kac tl yok)/.test(n) || /kdv.*(kac|kactir)/.test(n)) {
+    if (!/(benim|durumum|borcum|odemem|hesaplanan|indirilecek)/.test(n)) {
+      return { reply: 'KDV oranları: genel oran %20; indirimli oranlar mal/hizmet türüne göre %10 ve %1 (örn. temel gıda %1). Hangi ürün/hizmet için sorduğunuzu yazarsanız netleştirebilirim.', kind: 'mevzuat:kdv-oran' };
+    }
+  }
+  // FATURA DÜZENLEME SÜRESİ (7 gün, VUK 231/5)
+  if (/fatura/.test(n) && /(kac gun|ne zaman|sure|kac gunde|gun icinde|ne kadar sure)/.test(n) && /(kes|duzenle|olustur|fatura)/.test(n)) {
+    return { reply: 'Fatura, mal teslimi veya hizmetin yapılmasından itibaren 7 gün içinde düzenlenir (VUK 231/5). Bu süreyi aşmamaya dikkat edin; geç düzenleme cezaya tabi olabilir.', kind: 'mevzuat:fatura-sure' };
+  }
+  // YILLIK ÜCRETLİ İZİN (İş K. 53: 14/20/26)
+  if (/(yillik|ucretli)?\s*(izin|izn)/.test(n) && /(kac gun|ne kadar|hak|gun)/.test(n)) {
+    return { reply: 'Yıllık ücretli izin (İş Kanunu 53): 1-5 yıl kıdem 14 gün, 5-15 yıl 20 gün, 15 yıldan fazla 26 gün. 18 yaş altı ve 50 yaş üstü çalışanlarda en az 20 gündür.', kind: 'mevzuat:izin' };
+  }
+  // SGK İŞE GİRİŞ bildirimi (en geç 1 gün önce)
+  if (/sgk|sigorta|ise giris|ise alma|yeni eleman|eleman al|isci al/.test(n) && /(giris|baslama|alacag|alirken|bildir|ne yap|nasil)/.test(n) && !/cikis|cikar|ayril/.test(n)) {
+    return { reply: 'Yeni işçinin SGK işe giriş bildirgesi, çalışmaya başlamadan EN GEÇ bir gün önce verilir (inşaat, tarım, balıkçılık ve yeni işyeri açılışında istisnalar vardır). Bildirimi yapmamız için kimlik ve işe başlama tarihini iletmeniz yeterli.', kind: 'mevzuat:sgk-giris' };
+  }
+  // SGK İŞTEN ÇIKIŞ (10 gün)
+  if (/(isten cikis|cikis bildir|isci cikar|isten ayril|isten cikar)/.test(n)) {
+    return { reply: 'İşten çıkış bildirimi, çıkış tarihinden itibaren 10 gün içinde SGK\'ya yapılır. Çıkış tarihini ve nedenini iletirseniz işlemi biz yürütürüz.', kind: 'mevzuat:sgk-cikis' };
   }
 
   return null;
