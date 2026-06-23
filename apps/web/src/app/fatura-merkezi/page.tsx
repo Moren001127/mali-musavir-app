@@ -1662,63 +1662,62 @@ function ScreenMuhasebe({ taxpayerId, period, isIsletme = false, taxpayerNace = 
                 <div className="twrap">
                   {isIsletme ? (
                     <div className="islforms">
-                      {/* Mihsap birebir sıra: Fatura Türü · Belge Türü · Alış/Satış Türü */}
-                      <div className="docmeta">
-                        <div className="dm"><span className="dml">Fatura Türü</span>
+                      {/* Fatura Türü · Belge Türü · Alış/Satış Türü — TEK SATIR 3 sütun (Mihsap birebir) */}
+                      <div style={{ display: 'grid', gridTemplateColumns: 'repeat(3, minmax(0, 1fr))', gap: '8px 12px', marginBottom: 8 }}>
+                        <div className="dm" style={{ minWidth: 0 }}><span className="dml">Fatura Türü</span>
                           <PlainSelect value={String(meta.invoiceKind || 'ALIS').includes('SATIS') ? 'SATIS' : 'ALIS'} onChange={(v) => { const k = v === 'SATIS' ? 'SATIS' : 'ALIS'; setMeta({ ...meta, invoiceKind: k }); setIslKind(k); }} options={[{ value: 'SATIS', label: 'Gelir' }, { value: 'ALIS', label: 'Gider' }]} />
                         </div>
-                        <div className="dm"><span className="dml">Belge Türü</span>
+                        <div className="dm" style={{ minWidth: 0 }}><span className="dml">Belge Türü</span>
                           <PlainSelect value={isl.belgeTuruKod || ''} onChange={(v) => setIslF('belgeTuruKod', v)} options={islRef.belgeTuru.map((x) => ({ value: x.kod, label: x.ad }))} />
                         </div>
-                        <div className="dm"><span className="dml">Alış/Satış Türü</span>
+                        <div className="dm" style={{ minWidth: 0 }}><span className="dml">Alış/Satış Türü</span>
                           <PlainSelect value={isl.alisSatisKod || ''} onChange={(v) => setIslF('alisSatisKod', v)} options={islRef.alisSatisTuru.map((x) => ({ value: x.kod, label: x.ad }))} />
                         </div>
                       </div>
-                      {/* Evrak Tarihi · Kayıt Tarihi · Evrak No · (gider) Plaka No */}
-                      <div className="docmeta">
-                        <div className="dm"><span className="dml">Evrak Tarihi</span><input className="dmi" type="date" value={meta.faturaTarihi || ''} onChange={(e) => setMeta({ ...meta, faturaTarihi: e.target.value })} /></div>
-                        <div className="dm"><span className="dml">Kayıt Tarihi</span><input className="dmi" type="date" value={isl.kayitTarihi || meta.faturaTarihi || ''} onChange={(e) => setIslF('kayitTarihi', e.target.value)} /></div>
-                        <div className="dm"><span className="dml">Evrak No</span><input className="dmi" value={meta.belgeNo || ''} onChange={(e) => setMeta({ ...meta, belgeNo: e.target.value })} /></div>
+                      {/* Evrak Tarihi · Kayıt Tarihi — 2 sütun */}
+                      <div style={{ display: 'grid', gridTemplateColumns: 'repeat(2, minmax(0, 1fr))', gap: '8px 12px', marginBottom: 8 }}>
+                        <div className="dm" style={{ minWidth: 0 }}><span className="dml">Evrak Tarihi</span><input className="dmi" type="date" value={meta.faturaTarihi || ''} onChange={(e) => setMeta({ ...meta, faturaTarihi: e.target.value })} /></div>
+                        <div className="dm" style={{ minWidth: 0 }}><span className="dml">Kayıt Tarihi</span><input className="dmi" type="date" value={isl.kayitTarihi || meta.faturaTarihi || ''} onChange={(e) => setIslF('kayitTarihi', e.target.value)} /></div>
+                      </div>
+                      {/* Evrak No · (gider) Plaka No — 2 sütun */}
+                      <div style={{ display: 'grid', gridTemplateColumns: 'repeat(2, minmax(0, 1fr))', gap: '8px 12px', marginBottom: 8 }}>
+                        <div className="dm" style={{ minWidth: 0 }}><span className="dml">Evrak No</span><input className="dmi" value={meta.belgeNo || ''} onChange={(e) => setMeta({ ...meta, belgeNo: e.target.value })} /></div>
                         {islRef.plaka && (
-                          <div className="dm"><span className="dml">Plaka No</span><input className="dmi" value={isl.plakaNo || ''} placeholder="34 ABC 123" onChange={(e) => setIslF('plakaNo', e.target.value)} /></div>
+                          <div className="dm" style={{ minWidth: 0 }}><span className="dml">Plaka No</span><input className="dmi" value={isl.plakaNo || ''} placeholder="34 ABC 123" onChange={(e) => setIslF('plakaNo', e.target.value)} /></div>
                         )}
                       </div>
                       {/* TCKN/VKN tam genişlik */}
-                      <div className="docmeta">
-                        <div className="dm" style={{ flex: '1 1 100%' }}><span className="dml">{String(meta.invoiceKind).includes('SATIS') ? 'Alıcı TCKN/VKN' : 'Satıcı TCKN/VKN'}</span><input className="dmi" value={meta.vkn || ''} onChange={(e) => setMeta({ ...meta, vkn: e.target.value })} /></div>
-                      </div>
+                      <div className="dm" style={{ marginBottom: 8 }}><span className="dml">{String(meta.invoiceKind).includes('SATIS') ? 'Alıcı TCKN/VKN' : 'Satıcı TCKN/VKN'}</span><input className="dmi" value={meta.vkn || ''} onChange={(e) => setMeta({ ...meta, vkn: e.target.value })} /></div>
                       {/* Cari — Mihsap mavi link kutusu (* FİRMA) */}
                       <input value={meta.cariUnvan || ''} placeholder="* cari ünvanı" onChange={(e) => setMeta({ ...meta, cariUnvan: e.target.value })}
                         style={{ width: '100%', margin: '2px 0 10px', padding: '10px 12px', background: '#eef5fc', border: '1px solid #bcd7f2', borderRadius: 8, color: '#1862ad', fontSize: 13, fontWeight: 600 }} />
                       {/* İşlem Türü — SADECE satış (gelir) */}
                       {islRef.islemTuru && (
-                        <div className="docmeta">
-                          <div className="dm" style={{ flex: '1 1 100%' }}><span className="dml">İşlem Türü</span>
-                            <PlainSelect value={isl.islemTuruKod || '1100'} onChange={(v) => setIslF('islemTuruKod', v)} options={ISLETME_ISLEM_TURU.map((x) => ({ value: x.kod, label: x.ad }))} />
-                          </div>
+                        <div className="dm" style={{ marginBottom: 8 }}><span className="dml">İşlem Türü</span>
+                          <PlainSelect value={isl.islemTuruKod || '1100'} onChange={(v) => setIslF('islemTuruKod', v)} options={ISLETME_ISLEM_TURU.map((x) => ({ value: x.kod, label: x.ad }))} />
                         </div>
                       )}
                       <div style={{ fontSize: 14, fontWeight: 700, color: '#0f1b2d', margin: '6px 2px 2px' }}>Toplam Tutar: <span style={{ color: '#16a34a' }}>{fmtMoney((Number(isl.matrah) || 0) + (Number(isl.kdvTutar) || 0))} ₺</span></div>
                       {/* Numaralı satır — Mihsap "1" MAVİ kutusu */}
                       <div style={{ position: 'relative', background: '#e9f1fb', border: '1px solid #c5dbf3', borderRadius: 10, padding: '16px 12px 8px', marginTop: 12 }}>
                         <span style={{ position: 'absolute', top: -11, left: 12, background: '#1d9e75', color: '#fff', minWidth: 22, height: 22, padding: '0 6px', borderRadius: 6, fontSize: 12, display: 'inline-flex', alignItems: 'center', justifyContent: 'center', fontWeight: 700 }}>1</span>
-                        <div className="docmeta">
-                          <div className="dm" style={{ flex: '1 1 260px' }}><span className="dml">Kayıt Türü</span>
+                        <div style={{ display: 'grid', gridTemplateColumns: 'repeat(2, minmax(0, 1fr))', gap: '8px 12px' }}>
+                          <div className="dm" style={{ minWidth: 0 }}><span className="dml">Kayıt Türü</span>
                             <PlainSelect value={isl.kayitTuruKod || ''} onChange={pickKayitTuru} options={islRef.kayitTuru.map((x) => ({ value: x.kod, label: x.ad }))} />
                           </div>
-                          <div className="dm" style={{ flex: '1 1 360px' }}><span className="dml">K. Alt Türü{islAltList.length === 0 ? ' (opsiyonel)' : ''}</span>
-                            <PlainSelect value={isl.kayitAltKod || ''} onChange={(v) => setIslF('kayitAltKod', v)} options={[{ value: '', label: '— (opsiyonel)' }, ...islAltList.map((x: any) => ({ value: x.kod, label: x.ad }))]} />
+                          <div className="dm" style={{ minWidth: 0 }}><span className="dml">K. Alt Türü</span>
+                            <PlainSelect value={isl.kayitAltKod || ''} onChange={(v) => setIslF('kayitAltKod', v)} options={[{ value: '', label: '—' }, ...islAltList.map((x: any) => ({ value: x.kod, label: x.ad }))]} />
                           </div>
                         </div>
-                        <div className="docmeta">
+                        <div style={{ display: 'grid', gridTemplateColumns: `repeat(${islRef.kredili ? 4 : 3}, minmax(0, 1fr))`, gap: '8px 12px', marginTop: 8 }}>
                           {islRef.kredili && (
-                            <div className="dm"><span className="dml">Kredili Tutar</span><MoneyInput value={Number(isl.krediliTutar) || 0} onChange={(n) => setIslF('krediliTutar', n)} /></div>
+                            <div className="dm" style={{ minWidth: 0 }}><span className="dml">Kredili Tutar</span><MoneyInput value={Number(isl.krediliTutar) || 0} onChange={(n) => setIslF('krediliTutar', n)} /></div>
                           )}
-                          <div className="dm"><span className="dml">Matrah</span><MoneyInput value={Number(isl.matrah) || 0} onChange={(n) => setIsl((s: any) => ({ ...s, matrah: n, kdvTutar: recalcKdv(n, s.kdvOranKod) }))} /></div>
-                          <div className="dm"><span className="dml">Kdv Oranı</span>
+                          <div className="dm" style={{ minWidth: 0 }}><span className="dml">Matrah</span><MoneyInput value={Number(isl.matrah) || 0} onChange={(n) => setIsl((s: any) => ({ ...s, matrah: n, kdvTutar: recalcKdv(n, s.kdvOranKod) }))} /></div>
+                          <div className="dm" style={{ minWidth: 0 }}><span className="dml">Kdv Oranı</span>
                             <PlainSelect value={isl.kdvOranKod || 'KDV20'} onChange={(v) => setIsl((s: any) => ({ ...s, kdvOranKod: v, kdvTutar: recalcKdv(Number(s.matrah) || 0, v) }))} options={ISLETME_KDV_ORAN.map((x) => ({ value: x.kod, label: x.ad }))} />
                           </div>
-                          <div className="dm"><span className="dml">Kdv Tutarı</span><MoneyInput value={Number(isl.kdvTutar) || 0} onChange={(n) => setIslF('kdvTutar', n)} /></div>
+                          <div className="dm" style={{ minWidth: 0 }}><span className="dml">Kdv Tutarı</span><MoneyInput value={Number(isl.kdvTutar) || 0} onChange={(n) => setIslF('kdvTutar', n)} /></div>
                         </div>
                         {/* Mihsap'taki açılır satırlar (görsel birebir) */}
                         <div style={{ display: 'flex', flexDirection: 'column', gap: 7, marginTop: 10 }}>
