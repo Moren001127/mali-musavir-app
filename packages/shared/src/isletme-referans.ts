@@ -258,27 +258,36 @@ export function isletmeAutoKayitTuru(invoiceKind?: string | null, nace?: string 
   return ''; // belirlenemedi → İncele
 }
 
-// İndirilecek Giderler (GVK40) için satıcı adından/metinden ALT türü tahmin kuralları (yüksek güvenli).
+// İndirilecek Giderler (GVK40) ALT türü kuralları. ÖNCELİK: belge içeriği (AI giderTuru: "elektrik","akaryakıt",
+//   "kira"...). Satıcı ünvanı sadece ZAYIF yedek. Sıra önemli (özelden genele).
 const GVK40_ALT_KURAL: Array<[RegExp, string]> = [
-  [/elektrik|enerjisa|\bbedas\b|\bayedas\b|\btedas\b|\buedas\b|\bgdz\b|\bckenerji\b|enerji perakende|elektrik perakende/, '82'], // Elektrik Giderleri
-  [/dogalgaz|\bigdas\b|baskentgaz|\bizgaz\b|\bagdas\b|\bgazel\b|gaz dagitim|\bgaznet\b|\bbursagaz\b|\bpalgaz\b/, '84'],          // Doğalgaz Giderleri
-  [/akaryakit|\byakit\b|benzin|motorin|\bopet\b|\bshell\b|aytemiz|lukoil|petrol ofisi|\bpetrol\b|\bbp\b|\btotal\b|\bmoil\b|\balpet\b/, '113'], // Taşıt Akaryakıt
-  [/\biski\b|\baski\b|\bizsu\b|\bbuski\b|\basat\b|\bmuski\b|\bsuski\b|\bkaski\b|su ve kanalizasyon|su idaresi|su giderleri/, '83'], // Su Giderleri
-  [/telefon|turkcell|vodafone|turk telekom|\bavea\b|\bturktelekom\b/, '87'],                                                    // Telefon Giderleri
-  [/internet|\bfaks\b|\bfiber\b|\bttnet\b|superonline|kablonet|d-?smart|\bturknet\b/, '88'],                                     // Diğer Haberleşme
+  [/akaryakit|motorin|benzin|\bmazot\b|\blpg\b|\bopet\b|\bshell\b|aytemiz|lukoil|petrol ofisi|\bpetrol\b|\bbp\b|\btotalenergies\b|\bmoil\b|\balpet\b/, '113'], // Taşıt Akaryakıt
+  [/elektrik|enerjisa|\bbedas\b|\bayedas\b|\btedas\b|\buedas\b|\bgdz\b|enerji perakende|elektrik perakende/, '82'], // Elektrik
+  [/dogalgaz|\bigdas\b|baskentgaz|\bizgaz\b|\bagdas\b|\bgazel\b|gaz dagitim|\bgaznet\b|\bbursagaz\b|\bpalgaz\b/, '84'],          // Doğalgaz
+  [/\bsu\b|\biski\b|\baski\b|\bizsu\b|\bbuski\b|\basat\b|\bmuski\b|\bsuski\b|\bkaski\b|su ve kanalizasyon|su idaresi/, '83'],     // Su
+  [/telefon|turkcell|vodafone|turk telekom|\bavea\b/, '87'],                                                                    // Telefon
+  [/internet|\bfaks\b|\bfiber\b|\bttnet\b|superonline|kablonet|d-?smart|\bturknet\b/, '88'],                                     // Haberleşme
+  [/kiralama|arac kira|oto kira|rent.?a.?car|filo kira/, '115'],                                                                // Araç Kiralama
+  [/\bkira\b(?!lama)|kira gider|isyeri kira|dukkan kira/, '165'],                                                               // Kira
   [/muhasebe|mali musavir|\bsmmm\b|\bymm\b|musavirlik/, '179'],                                                                 // Muhasebe/Mali Müşavirlik
   [/avukat|hukuk buro|hukuki danis/, '196'],                                                                                   // Avukatlık/Hukuk
+  [/kirtasiye|\btoner\b|kartus/, '95'],                                                                                        // Kırtasiye
   [/\bkargo\b|\bptt\b|\baras\b|yurtici kargo|\bmng\b|surat kargo|\bups\b|\bdhl\b|fedex|\bsendeo\b|\bhepsijet\b/, '193'],         // Kargo ve Posta
-  [/\bhgs\b|\bogs\b|otoyol|gecis ucret|\bkgm\b|koprusu|otoyollari|\bpttogs\b/, '324'],                                          // Otoyol/Gişe
-  [/kirtasiye/, '95'],                                                                                                         // Kırtasiye
-  [/\bnoter\b/, '217'],                                                                                                        // Noter Makbuzları
+  [/nakliye|tasimacilik|\bnavlun\b|lojistik/, '205'],                                                                          // Nakliye
+  [/\bhgs\b|\bogs\b|otoyol|gecis ucret|\bkgm\b|koprusu|otoyollari/, '324'],                                                     // Otoyol/Gişe
+  [/\bnoter\b/, '217'],                                                                                                        // Noter
   [/konaklama|\botel\b|\bhotel\b|\bpansiyon\b/, '111'],                                                                        // Konaklama
+  [/seyahat|otobus bileti|\bucak bileti\b|\bthy\b|pegasus|\bbilet\b/, '189'],                                                  // Seyahat ve Ulaşım
+  [/sigorta|\bkasko\b|\bdask\b|trafik sigorta/, '92'],                                                                         // İşyeri Sigorta
+  [/temizlik/, '89'],                                                                                                          // Ofis (temizlik)
+  [/bakim onarim|bakim-onarim|\bonarim\b|\btamir\b|\bservis bedeli\b/, '85'],                                                  // Normal Bakım Onarım
+  [/reklam|\bilan\b|tanitim/, '96'],                                                                                           // Pazarlama
+  [/danisman|musavirlik hizmet|\bdanismanlik\b/, '194'],                                                                       // Dışarıdan Sağlanan Hizmet
 ];
 
 /**
- * GİDER (İndirilecek Giderler — GVK40) için satıcı adından/belge metninden ALT türü tahmin eder.
- * Örn. "CK Boğaziçi Elektrik" → '82' (Elektrik Giderleri), "Opet Akaryakıt" → '113'.
- * Sadece kayıt türü '4' (İndirilecek Giderler) ve gider faturasında çalışır; bulamazsa '' (varsayılana düşer).
+ * GİDER (İndirilecek Giderler — GVK40) için ALT türü tahmin eder. Metin = AI'ın belge içeriğinden
+ * çıkardığı giderTuru + (yedek) satıcı ünvanı. Bulamazsa '' (zorlama yok).
  */
 export function isletmeAutoKayitAltKod(invoiceKind?: string | null, kayitTuruKod?: string | null, text?: string | null): string {
   const sale = String(invoiceKind || 'ALIS').toUpperCase() === 'SATIS';
@@ -288,6 +297,27 @@ export function isletmeAutoKayitAltKod(invoiceKind?: string | null, kayitTuruKod
   if (!t) return '';
   for (const [re, kod] of GVK40_ALT_KURAL) if (re.test(t)) return kod;
   return '';
+}
+
+/**
+ * GİDER faturası için İşletme sınıfını BELGE İÇERİĞİNDEN belirler (Kayıt Türü + Alt Türü).
+ *   - matrahKategori (AI, mükellef-faaliyet-bilinçli): ticari_mal/hammadde → Mal Alışı; demirbas → Sabit Kıymet.
+ *   - giderTuru (AI içerik) / satıcı → İndirilecek Giderler + özel alt (Elektrik/Akaryakıt/Kira…).
+ *   - Hiçbir kesin sinyal yok → null (= "Eşleşmedi", körü körüne İndirilecek Gider'e ATILMAZ).
+ * Sadece gider (ALIŞ) için; satış faaliyet-tabanlı isletmeAutoKayitTuru ile ayrı işlenir.
+ */
+export function isletmeGiderSinifi(input: {
+  matrahKategori?: string | null;
+  giderTuru?: string | null;
+  vendorName?: string | null;
+  documentType?: string | null;
+}): { kayitTuruKod: string; kayitAltKod: string } | null {
+  const mk = asciiTr(input.matrahKategori || '');
+  if (mk === 'ticari_mal' || mk === 'hammadde') return { kayitTuruKod: '1', kayitAltKod: '186' }; // Mal Alışı
+  if (mk === 'demirbas' || mk === 'demirbas alimi' || mk === 'sabit kiymet') return { kayitTuruKod: '13', kayitAltKod: '' }; // Sabit Kıymet Alışı
+  const alt = isletmeAutoKayitAltKod('ALIS', '4', `${input.giderTuru || ''} ${input.vendorName || ''} ${input.documentType || ''}`);
+  if (alt) return { kayitTuruKod: '4', kayitAltKod: alt };
+  return null; // kesin sinyal yok → Eşleşmedi
 }
 
 /** "Elektrik Giderleri (GVK 40/1)" → "Elektrik Giderleri" — listede sade gösterim için GVK etiketini at. */
