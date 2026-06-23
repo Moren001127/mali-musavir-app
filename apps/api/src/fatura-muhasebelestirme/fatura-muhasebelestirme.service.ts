@@ -295,7 +295,7 @@ export class FaturaMuhasebelestirmeService implements OnModuleInit, OnModuleDest
   // 3'e çıkarıyoruz (1.5 kat). Her Max-vision bir Claude Code alt-süreci → çok süreç OOM/rate-limit
   // ("exited code 1") riski; KDV Kontrol de süreç açar. 3 temkinli üst sınır. Re-storm olursa düşür.
   // INVOICE_OCR_CONCURRENCY ile ayarlanır. (Daha büyük hız için hızlı-OCR/Azure-öncelik yolu var.)
-  private readonly uploadOcrConcurrency = Math.max(1, Number(process.env.INVOICE_OCR_CONCURRENCY || 3));
+  private readonly uploadOcrConcurrency = Math.max(1, Number(process.env.INVOICE_OCR_CONCURRENCY || 5));
   private uploadOcrActive = 0;
   private readonly uploadOcrActiveIds = new Set<string>(); // işlenmekte olan belge id'leri (resume çift-işlemesin)
   private ocrResumeTimer: NodeJS.Timeout | null = null;
@@ -5782,9 +5782,9 @@ export class FaturaMuhasebelestirmeService implements OnModuleInit, OnModuleDest
       'giderTuru: ALIŞ ise faturadaki ANA mal/hizmetin kısa adı (yakıt/motorin→"akaryakıt"; ayrıca "elektrik","su","doğalgaz","telefon","internet","kira","kırtasiye","danışmanlık","nakliye","yedek parça","bakım onarım","yemek","temizlik","sigorta","reklam" vb). Net değilse "". SATIŞ ise "".',
       'kategori: mükellefin ANA FAALİYETİNE göre → "ticari_mal" (satılacak emtia), "hammadde" (üretim girdisi), "demirbas" (makine/cihaz/sabit kıymet), "pazarlama" (reklam/kargo/nakliye), "genel_gider" (kira/elektrik/sarf/abonelik). Emin değilsen "genel_gider".',
       isIsletme ? islPromptSeg() : 'isletmeKayitTuru ve isletmeAltTuru = "" bırak (mükellef İşletme defteri değil).',
-      '\nİÇERİK:\n' + contentText.slice(0, 40000),
+      '\nİÇERİK:\n' + contentText.slice(0, 12000),
     ].filter(Boolean).join('\n');
-    const res = await claudeTextViaMax({ prompt, timeoutMs: 45000, model: MAX_MODEL_CHEAP }).catch(() => null);
+    const res = await claudeTextViaMax({ prompt, timeoutMs: 32000, model: MAX_MODEL_CHEAP }).catch(() => null);
     if (!res || !res.ok || !res.text) return null;
     try {
       const m = res.text.match(/\{[\s\S]*\}/);
