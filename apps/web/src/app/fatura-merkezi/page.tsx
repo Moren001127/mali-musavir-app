@@ -1444,6 +1444,7 @@ function ScreenMuhasebe({ taxpayerId, period, isIsletme = false, taxpayerNace = 
   };
   const [isl, setIsl] = useState<any>({ satirlar: [] });
   const [islExp, setIslExp] = useState<Record<string, boolean>>({});
+  const [islMenu, setIslMenu] = useState<number | null>(null);
   useEffect(() => {
     if (!isIsletme || !selDoc) { setIsl({ satirlar: [] }); return; }
     const saved: any = (selDoc.ocrData?.isletme) || {};
@@ -1477,6 +1478,22 @@ function ScreenMuhasebe({ taxpayerId, period, isIsletme = false, taxpayerNace = 
   const setSatir = (i: number, patch: any) => setIsl((s: any) => ({ ...s, satirlar: (s.satirlar || []).map((x: any, j: number) => (j === i ? { ...x, ...patch } : x)) }));
   const addSatir = () => setIsl((s: any) => ({ ...s, satirlar: [...(s.satirlar || []), mkSatir(islKind, 0, 'KDV20', 0)] }));
   const delSatir = (i: number) => setIsl((s: any) => { const arr = (s.satirlar || []).filter((_: any, j: number) => j !== i); return { ...s, satirlar: arr.length ? arr : [mkSatir(islKind, 0, 'KDV20', 0)] }; });
+  // Dahili (iç yüzde) KDV ayır: Matrah'taki tutarı KDV-DAHİL kabul et, KDV'yi ayır, KDV-hariç tutarı Matrah'a yaz.
+  const dahiliKdvAyir = (i: number, oranPct: number) => {
+    const st = islSatirlar[i] || {};
+    const dahil = Number(st.matrah) || 0;
+    const o = oranPct / 100;
+    const haric = Math.round((dahil / (1 + o)) * 100) / 100;
+    const kdv = Math.round((dahil - haric) * 100) / 100;
+    setSatir(i, { matrah: haric, kdvTutar: kdv, kdvOranKod: `KDV${oranPct}` });
+    setIslMenu(null);
+  };
+  useEffect(() => {
+    if (islMenu === null) return;
+    const close = () => setIslMenu(null);
+    const t = setTimeout(() => document.addEventListener('click', close, { once: true }), 0);
+    return () => { clearTimeout(t); document.removeEventListener('click', close); };
+  }, [islMenu]);
   const islTotMatrah = islSatirlar.reduce((a, x) => a + (Number(x.matrah) || 0), 0);
   const islTotKdv = islSatirlar.reduce((a, x) => a + (Number(x.kdvTutar) || 0), 0);
   const expKey = (i: number, sec: string) => `${i}:${sec}`;
@@ -1722,9 +1739,6 @@ function ScreenMuhasebe({ taxpayerId, period, isIsletme = false, taxpayerNace = 
                         return (
                           <div key={i} style={{ position: 'relative', background: '#e9f1fb', border: '1px solid #c5dbf3', borderRadius: 9, padding: '14px 10px 8px', marginTop: 10 }}>
                             <span style={{ position: 'absolute', top: -10, left: 10, background: '#1d9e75', color: '#fff', minWidth: 20, height: 20, padding: '0 6px', borderRadius: 5, fontSize: 12, display: 'inline-flex', alignItems: 'center', justifyContent: 'center', fontWeight: 700 }}>{i + 1}</span>
-                            {islSatirlar.length > 1 && (
-                              <button type="button" onClick={() => delSatir(i)} title="Satırı sil" style={{ position: 'absolute', top: 7, right: 7, width: 24, height: 24, borderRadius: '50%', border: 0, background: '#ef4444', color: '#fff', cursor: 'pointer', fontSize: 14, lineHeight: 1 }}>×</button>
-                            )}
                             <div className="islgrid" style={{ gridTemplateColumns: 'repeat(2, minmax(0, 1fr))' }}>
                               <div className="dm"><span className="dml">Kayıt Türü</span>
                                 <PlainSelect value={st.kayitTuruKod || ''} onChange={(v) => setSatir(i, { kayitTuruKod: v, kayitAltKod: '' })} options={islRef.kayitTuru.map((x) => ({ value: x.kod, label: x.ad }))} />
@@ -1775,7 +1789,22 @@ function ScreenMuhasebe({ taxpayerId, period, isIsletme = false, taxpayerNace = 
                                 )}
                               </div>
                             </div>
-                            <div style={{ fontSize: 12.5, fontWeight: 700, color: '#0f1b2d', textAlign: 'right', marginTop: 6 }}>Satır Toplamı: <span style={{ color: '#16a34a' }}>{fmtMoney((Number(st.matrah) || 0) + (Number(st.kdvTutar) || 0))} ₺</span></div>
+                            <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginTop: 8, gap: 8 }}>
+                              <span style={{ fontSize: 12.5, fontWeight: 700, color: '#0f1b2d' }}>Toplam (KDV Dahil): <span style={{ color: '#16a34a' }}>{fmtMoney((Number(st.matrah) || 0) + (Number(st.kdvTutar) || 0))} ₺</span></span>
+                              <div style={{ display: 'flex', gap: 8, position: 'relative' }} onClick={(e) => e.stopPropagation()}>
+                                <button type="button" title="Dahili KDV ayır" onClick={() => setIslMenu(islMenu === i ? null : i)} style={{ width: 30, height: 30, borderRadius: '50%', border: 0, background: '#2563eb', color: '#fff', cursor: 'pointer', fontSize: 19, lineHeight: 1, display: 'flex', alignItems: 'center', justifyContent: 'center' }}>⋮</button>
+                                <button type="button" title="Satırı sil" onClick={() => delSatir(i)} style={{ width: 30, height: 30, borderRadius: '50%', border: 0, background: '#ef4444', color: '#fff', cursor: 'pointer', display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
+                                  <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="#fff" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d="M3 6h18M8 6V4h8v2M19 6l-1 14H6L5 6m5 4v6m4-6v6" /></svg>
+                                </button>
+                                {islMenu === i && (
+                                  <div style={{ position: 'absolute', bottom: 38, right: 0, background: '#fff', border: '1px solid #d7dee8', borderRadius: 10, boxShadow: '0 12px 30px rgba(15,23,42,.18)', padding: 6, zIndex: 60, minWidth: 195 }}>
+                                    {[20, 10, 1].map((p) => (
+                                      <div key={p} onClick={() => dahiliKdvAyir(i, p)} style={{ padding: '9px 12px', borderRadius: 7, cursor: 'pointer', fontSize: 13.5, fontWeight: 600, color: '#1f2937', whiteSpace: 'nowrap' }} onMouseEnter={(e) => (e.currentTarget.style.background = '#eef2f7')} onMouseLeave={(e) => (e.currentTarget.style.background = 'transparent')}>%{p} Dahili Kdv Ayır</div>
+                                    ))}
+                                  </div>
+                                )}
+                              </div>
+                            </div>
                           </div>
                         );
                       })}
