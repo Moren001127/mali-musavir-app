@@ -2689,7 +2689,7 @@ const CSS = `
 #fm-root .navb:disabled{opacity:.35;cursor:default}
 #fm-root .navpos{font-size:10.5px;font-weight:600;color:var(--faint);min-width:34px;text-align:center}
 #fm-root .nacechip{display:inline-flex;align-items:center;gap:4px;height:22px;padding:0 8px;border:1px solid var(--accent-line);border-radius:11px;background:var(--accent-soft);color:var(--accent);font-size:10.5px;font-weight:700;text-transform:none;letter-spacing:0;cursor:help;flex-shrink:0}
-#fm-root .docmeta{display:grid;grid-template-columns:repeat(auto-fit,minmax(150px,1fr));gap:8px 14px;padding:11px 13px;margin-bottom:14px;background:#fbfcfd;border:1px solid var(--line);border-radius:10px}
+#fm-root .docmeta{display:grid;grid-template-columns:repeat(auto-fit,minmax(150px,1fr));gap:6px 12px;padding:8px 12px;margin-bottom:9px;background:#fbfcfd;border:1px solid var(--line);border-radius:9px}
 #fm-root .docmeta .dm{display:flex;flex-direction:column;gap:1px}
 #fm-root .docmeta .dml{font-size:10px;font-weight:700;color:var(--faint);text-transform:uppercase;letter-spacing:.4px}
 #fm-root .docmeta .dmv{font-size:13px;font-weight:600;color:var(--text)}
@@ -2728,12 +2728,12 @@ const CSS = `
 #fm-root .li:focus{outline:none;border-color:var(--accent)}
 #fm-root .licode{width:120px}
 #fm-root .linum{width:120px;text-align:right}
-#fm-root .fgrps{display:flex;flex-direction:column;gap:12px}
-#fm-root .fgrp{border:1px solid var(--line2);border-radius:10px;overflow:hidden}
-#fm-root .fgrp .fgh{display:flex;justify-content:space-between;align-items:center;padding:5px 10px;background:var(--th);color:var(--th-text);font-size:11.5px;font-weight:700}
+#fm-root .fgrps{display:flex;flex-direction:column;gap:7px}
+#fm-root .fgrp{border:1px solid var(--line2);border-radius:9px;overflow:hidden}
+#fm-root .fgrp .fgh{display:flex;justify-content:space-between;align-items:center;padding:3px 10px;background:var(--th);color:var(--th-text);font-size:11.5px;font-weight:700}
 #fm-root .fgrp .fgh .fgs{font-size:9.5px;opacity:.85;text-transform:uppercase;letter-spacing:.4px}
-#fm-root .fgrp .frow{display:flex;align-items:center;gap:6px;padding:4px 10px;border-top:1px solid var(--line)}
-#fm-root .fgrp .frow .li{height:27px}
+#fm-root .fgrp .frow{display:flex;align-items:center;gap:6px;padding:3px 10px;border-top:1px solid var(--line)}
+#fm-root .fgrp .frow .li{height:26px}
 #fm-root .fgrp .frow .csel{flex:1;min-width:0;position:relative}
 #fm-root .csel .cselfield{display:flex;align-items:center;gap:4px;height:27px;border:1px solid var(--line2);border-radius:6px;background:#fff;padding:0 7px 0 9px}
 #fm-root .csel .cselfield.on{border-color:var(--accent);box-shadow:0 0 0 2px var(--accent-soft)}
@@ -2761,11 +2761,11 @@ const CSS = `
 #fm-root .rsel .rselpop{z-index:9000;background:#fff;border:1px solid var(--line2);border-radius:8px;box-shadow:0 10px 26px rgba(15,23,42,.16);overflow:hidden;padding:3px}
 #fm-root .rsel .rselopt{padding:6px 12px;border-radius:5px;cursor:pointer;font-size:12.5px;font-weight:600;color:var(--text);text-align:center}
 #fm-root .rsel .rselopt:hover,#fm-root .rsel .rselopt.sel{background:var(--accent-soft);color:var(--accent)}
-#fm-root .fgrp .fgt{display:flex;justify-content:space-between;padding:5px 10px;border-top:1px solid var(--line2);background:#fbfcfd;font-size:12px}
+#fm-root .fgrp .fgt{display:flex;justify-content:space-between;padding:3px 10px;border-top:1px solid var(--line2);background:#fbfcfd;font-size:12px}
 #fm-root .fgrp .fgt b{font-weight:800}
 #fm-root .fgrp .frow .frowdel{width:22px;height:22px;flex:0 0 22px;border:1px solid var(--line2);border-radius:6px;background:#fff;color:var(--red);font-size:15px;font-weight:700;cursor:pointer;line-height:1;display:grid;place-items:center}
 #fm-root .fgrp .frow .frowdel:hover{background:#fdeaea;border-color:#f3c9c9}
-#fm-root .fgrp .frowadd{padding:4px 10px;border-top:1px dashed var(--line2);color:var(--accent);font-size:11.5px;font-weight:700;cursor:pointer}
+#fm-root .fgrp .frowadd{padding:3px 10px;border-top:1px dashed var(--line2);color:var(--accent);font-size:11.5px;font-weight:700;cursor:pointer}
 #fm-root .fgrp .frowadd:hover{background:var(--accent-soft)}
 #fm-root .wmain{padding:18px}
 #fm-root .wstrip{display:flex;gap:9px;overflow-x:auto;padding:11px 16px;border-top:1px solid var(--line);background:#fbfcfd}
@@ -2807,7 +2807,7 @@ const CSS = `
 #fm-root .belgebox .bpempty{height:200px;display:flex;align-items:center;justify-content:center;color:var(--faint);font-size:12px}
 @media(max-width:1100px){#fm-root .fiseditor{flex-direction:column}#fm-root .belgepane{flex:none;max-width:100%;width:100%;position:static}}
 #fm-root .ph .mu{margin-left:auto;font-weight:500}
-#fm-root .balance{display:flex;align-items:center;gap:10px;margin-top:13px;padding:11px 13px;border-radius:10px;background:#e9f7ee;border:1px solid #c7ecd3;color:#15803d;font-weight:700}
+#fm-root .balance{display:flex;align-items:center;gap:10px;margin-top:8px;padding:7px 12px;border-radius:9px;background:#e9f7ee;border:1px solid #c7ecd3;color:#15803d;font-weight:700}
 #fm-root .balance .bnote{color:var(--muted);font-size:12px;margin-left:auto;font-weight:400}
 #fm-root .banner{display:flex;align-items:flex-start;gap:10px;padding:12px 14px;border-radius:10px;font-size:12px;margin-bottom:14px;line-height:1.55}
 #fm-root .banner.info{background:var(--accent-soft);border:1px solid var(--accent-line);color:var(--text)}
