@@ -49,6 +49,9 @@ export class TaxpayersService {
   ) {
     // WHERE koşulları düzgün AND ile birleştiriliyor
     const andConditions: any[] = [{ tenantId }];
+    // WhatsApp Mesaj Merkezi'nin sanal "ofis sahibi / kişi" kayıtları (taxNumber WHATSAPP-*)
+    // gerçek mükellef DEĞİL; CRM listesinde gösterilmez (silinince tekrar açıldığı için listeyi kirletiyordu).
+    andConditions.push({ taxNumber: { not: { startsWith: 'WHATSAPP-' } } });
     const status = options.status ?? 'active';
     if (status === 'inactive') {
       andConditions.push({ isActive: false });
@@ -550,6 +553,8 @@ export class TaxpayersService {
       where: {
         tenantId,
         isActive: true,
+        // WhatsApp Mesaj Merkezi'nin sanal kayıtları (WHATSAPP-*) gerçek mükellef değil — iş akışına sayma.
+        taxNumber: { not: { startsWith: 'WHATSAPP-' } },
         OR: [{ startDate: null }, { startDate: { lte: lastDay } }],
         AND: [{ OR: [{ endDate: null }, { endDate: { gte: firstDay } }] }],
       },

@@ -63,6 +63,8 @@ export class BeyannameTakipService {
       where: {
         tenantId,
         isActive: true,
+        // WhatsApp Mesaj Merkezi'nin sanal kayıtları (WHATSAPP-*) gerçek mükellef değil — sayma.
+        taxNumber: { not: { startsWith: 'WHATSAPP-' } },
         // endDate dolu ve geçmişte ise (işi bırakmış) hariç tut
         OR: [
           { endDate: null },
@@ -206,7 +208,7 @@ export class BeyannameTakipService {
 
     // Tüm aktif mükellefleri + config'lerini getir
     const taxpayers = await (this.prisma as any).taxpayer.findMany({
-      where: { tenantId, isActive: true },
+      where: { tenantId, isActive: true, taxNumber: { not: { startsWith: 'WHATSAPP-' } } },
       include: { beyanConfig: true, portalCredentials: sgkCredentialInclude() },
     });
 
@@ -311,7 +313,7 @@ export class BeyannameTakipService {
     const ay = parseInt(ayStr, 10);
 
     const taxpayers = await (this.prisma as any).taxpayer.findMany({
-      where: { tenantId, isActive: true },
+      where: { tenantId, isActive: true, taxNumber: { not: { startsWith: 'WHATSAPP-' } } },
       include: { beyanConfig: true, portalCredentials: sgkCredentialInclude() },
       orderBy: [{ companyName: 'asc' }, { firstName: 'asc' }],
     });
