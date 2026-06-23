@@ -5672,6 +5672,18 @@ export class FaturaMuhasebelestirmeService implements OnModuleInit, OnModuleDest
     }
     if (!parsed) return { ok: false, reason };
 
+    // UBL/XML yolu max-vision AI'ı ATLAR → sınıflandırma (giderTuru/kategori/İşletme kayıt türü) BURADA
+    //   ayrı çalışır; e-Fatura/e-Arşiv de "mali müşavir gibi" içerik+faaliyetle sınıflansın.
+    if (parsed === preParsed && d.taxpayerId) {
+      const contentText = (imgBuf ? imgBuf.toString('utf8') : (html || '')).replace(/<[^>]+>/g, ' ').replace(/\s+/g, ' ').trim();
+      const c = await this.aiClassifyAccounting(contentText, mukellefBilgi, isIsletmeMukellef).catch(() => null);
+      if (c) {
+        if (!parsed.giderTuru && c.giderTuru) parsed.giderTuru = c.giderTuru;
+        if (!parsed.kategori && c.kategori) parsed.kategori = c.kategori;
+        if (c.isletmeKayitTuru) { parsed.isletmeKayitTuru = c.isletmeKayitTuru; parsed.isletmeAltTuru = c.isletmeAltTuru; parsed.isletmeNeden = c.isletmeNeden; }
+      }
+    }
+
     let breakdown = (Array.isArray(parsed.kdv) ? parsed.kdv : [])
       .map((x: any) => ({ rate: Number(x?.oran) || 0, base: Number(x?.matrah) || 0, amount: Number(x?.kdv) || 0 }))
       .filter((x: any) => x.base > 0 || x.amount > 0);
@@ -5752,6 +5764,40 @@ export class FaturaMuhasebelestirmeService implements OnModuleInit, OnModuleDest
     // (Sadece applyLearnedVendorCodes yetmiyordu → öğrenilmemiş satıcıda placeholder kalıyordu.)
     if (d.taxpayerId) await this.rematchDocumentsWithLatestAccountPlan(tenantId, d.taxpayerId, [d.id]).catch(() => {});
     return { ok: true, matrah, kdv, oranSayisi: breakdown.length };
+  }
+
+  // UBL/XML (max-vision AI'ı ATLAYAN) belgeler için MUHASEBE SINIFLANDIRMASI — bir mali müşavir gibi
+  // içeriğe + mükellefin faaliyetine bakıp giderTuru/kategori (+ İşletme ise kayıt türü/alt türü) belirler.
+  // e-Fatura/e-Arşiv XML'leri AI okumadan geçtiği için sınıf BURADA ayrı çağrıyla üretilir. Max aboneliği.
+  private async aiClassifyAccounting(
+    contentText: string,
+    mukellefBilgi: string,
+    isIsletme: boolean,
+  ): Promise<{ giderTuru: string; kategori: string; isletmeKayitTuru: string; isletmeAltTuru: string; isletmeNeden: string } | null> {
+    if (!contentText || contentText.length < 20) return null;
+    const prompt = [
+      'Aşağıda bir Türk e-Fatura/e-Arşiv belgesinin metin içeriği var. İçindeki MAL/HİZMET kalemlerini bir MALİ MÜŞAVİR gibi değerlendir.',
+      mukellefBilgi ? `Faturanın tarafı olan mükellef: ${mukellefBilgi}.` : '',
+      'YALNIZCA şu JSON: {"giderTuru":"","kategori":"","isletmeKayitTuru":"","isletmeAltTuru":"","isletmeNeden":""}',
+      'giderTuru: ALIŞ ise faturadaki ANA mal/hizmetin kısa adı (yakıt/motorin→"akaryakıt"; ayrıca "elektrik","su","doğalgaz","telefon","internet","kira","kırtasiye","danışmanlık","nakliye","yedek parça","bakım onarım","yemek","temizlik","sigorta","reklam" vb). Net değilse "". SATIŞ ise "".',
+      'kategori: mükellefin ANA FAALİYETİNE göre → "ticari_mal" (satılacak emtia), "hammadde" (üretim girdisi), "demirbas" (makine/cihaz/sabit kıymet), "pazarlama" (reklam/kargo/nakliye), "genel_gider" (kira/elektrik/sarf/abonelik). Emin değilsen "genel_gider".',
+      isIsletme ? islPromptSeg() : 'isletmeKayitTuru ve isletmeAltTuru = "" bırak (mükellef İşletme defteri değil).',
+      '\nİÇERİK:\n' + contentText.slice(0, 40000),
+    ].filter(Boolean).join('\n');
+    const res = await claudeTextViaMax({ prompt, timeoutMs: 45000, model: MAX_MODEL_CHEAP }).catch(() => null);
+    if (!res || !res.ok || !res.text) return null;
+    try {
+      const m = res.text.match(/\{[\s\S]*\}/);
+      const j = m ? JSON.parse(m[0]) : null;
+      if (!j) return null;
+      return {
+        giderTuru: String(j.giderTuru || '').slice(0, 40),
+        kategori: String(j.kategori || ''),
+        isletmeKayitTuru: String(j.isletmeKayitTuru || ''),
+        isletmeAltTuru: String(j.isletmeAltTuru || ''),
+        isletmeNeden: String(j.isletmeNeden || ''),
+      };
+    } catch { return null; }
   }
 
   // AI ile GİDER hesabı seçimi (kural/ad eşleşmesi bulamadığında ESKALASYON). Mükellefin FAALİYETİ +
