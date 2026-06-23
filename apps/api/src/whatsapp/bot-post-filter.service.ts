@@ -63,6 +63,10 @@ export class WhatsAppBotPostFilterService {
   filterTaxpayerReply(raw: string, options?: { recentReplies?: string[]; mode?: 'taxpayer' | 'owner' | 'unknown' }): string {
     let text = String(raw || '').trim();
 
+    // SAVUNMA: dahili ESKALE işareti hiçbir koşulda müşteriye/owner'a SIZMASIN
+    // (controller normalde temizler; bu son güvenlik katmanı).
+    text = text.replace(/\[\[\s*ESKALE\s*\]\]/gi, '').trim();
+
     // Owner (mali müşavir) raporları yapı ister: satır sonları, başlıklar, numaralar
     // KORUNMALI. Sohbet için tasarlanan agresif temizlik bunları eziyordu → ayrı yol.
     if (options?.mode === 'owner') {

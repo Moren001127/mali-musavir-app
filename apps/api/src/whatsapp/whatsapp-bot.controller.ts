@@ -2184,6 +2184,7 @@ export class WhatsAppBotController implements OnModuleInit {
     // try/finally: AI hata verse bile gösterge mutlaka kapanır.
     const stopCustTyping = this.startTypingIndicator(taxpayer.tenantId, this.replyTarget(msg));
     let reply = '';
+    let needsEscalation = false;
     try {
       const answer = await this.morenAi.chat(taxpayer.tenantId, null, {
         taxpayerId: taxpayer.id,
@@ -2196,7 +2197,11 @@ export class WhatsAppBotController implements OnModuleInit {
         source: 'whatsapp-bot',
       });
 
-      const rawAiReply = answer.assistantMessage || '';
+      let rawAiReply = answer.assistantMessage || '';
+      // ESKALE: AI cevaplayamayıp müşavire devrettiğinde yanıtının başına [[ESKALE]] koyar.
+      // İşareti yakala (owner'a bildirim + ofis görevi için), MÜŞTERİYE gitmeden TEMİZLE.
+      needsEscalation = /\[\[\s*ESKALE\s*\]\]/i.test(rawAiReply);
+      rawAiReply = rawAiReply.replace(/\[\[\s*ESKALE\s*\]\]/gi, '').trim();
       const contextBlock = [taxpayerContext, recentContext].filter(Boolean).join('\n\n');
       // SIRA: önce post-filter, SONRA eval (gönderilecek son metin denetlensin).
       // Retry de aynı sırayı izler: yeni ham cevap → post-filter → tekrar eval.
@@ -2253,7 +2258,52 @@ export class WhatsAppBotController implements OnModuleInit {
           occurredAt: new Date(),
         },
       });
+      // ESKALE: bot cevaplayamadı → müşavire (owner) bildir + ofis görevi aç.
+      if (needsEscalation && sent) {
+        await this.escalateToOwner(taxpayer, msg.text, msg.from).catch((e: any) =>
+          this.logger.warn(`Eskalasyon bildirimi başarısız: ${e?.message || e}`),
+        );
+      }
       this.refreshTaxpayerMemory(taxpayer.tenantId, taxpayer.id);
+    }
+  }
+
+  /**
+   * Bot bir mükellef sorusuna cevap veremeyip müşavire devrettiğinde: owner'a WhatsApp
+   * bildirimi gönderir (soru + "yanıt sizden bekleniyor") ve portalda ofis görevi açar.
+   */
+  private async escalateToOwner(taxpayer: any, question: string, fromPhone?: string) {
+    const ad = taxpayer.companyName || `${taxpayer.firstName || ''} ${taxpayer.lastName || ''}`.trim() || 'Mükellef';
+    const tel = this.normalize(fromPhone || '') || '';
+    const owner = this.ownerDisplayName();
+    const soru = String(question || '').replace(/\s+/g, ' ').trim().slice(0, 500);
+    const bildirim =
+      `📩 MÜKELLEF SORUSU — yanıt sizden bekleniyor\n` +
+      `Mükellef: ${ad}${tel ? ' (' + tel + ')' : ''}\n` +
+      `Soru: "${soru}"\n` +
+      `Cevap veremedim; mükellefe "${owner} Bey en kısa sürede iletişime geçecek" dedim. Lütfen siz dönüş yapın.`;
+    await this.sendOwnerNotification(taxpayer.tenantId, bildirim).catch(() => {});
+    // Portalda iz bırak (ofis görevi)
+    const user = await this.prisma.user.findFirst({
+      where: { tenantId: taxpayer.tenantId, isActive: true },
+      orderBy: { createdAt: 'asc' },
+      select: { id: true },
+    }).catch(() => null);
+    if (user) {
+      await (this.prisma as any).task.create({
+        data: {
+          tenantId: taxpayer.tenantId,
+          taxpayerId: taxpayer.id,
+          createdById: user.id,
+          title: `WhatsApp: müşavir yanıtı bekleniyor — ${ad}`,
+          description: soru,
+          category: 'MUKELLEF',
+          priority: 'HIGH',
+          tags: ['whatsapp', 'eskalasyon', 'musavir-yaniti'],
+          notifyInApp: true,
+          notifyBrowser: true,
+        },
+      }).catch(() => null);
     }
   }
 

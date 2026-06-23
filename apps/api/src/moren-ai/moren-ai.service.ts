@@ -595,6 +595,8 @@ export class MorenAiService {
       officeName: user?.tenant?.name,
       // DB user yoksa (owner WhatsApp köprüsü userId=null) body.userName ile kimliği bil.
       userName: cleanFirstName(user?.firstName) || cleanFirstName(user?.lastName) || cleanFirstName(body.userName),
+      // Mükellefe "müşavirimiz … Bey'e iletiyorum" derken kullanılır.
+      advisorName: process.env.MOREN_OWNER_DISPLAY_NAME || 'Muzaffer',
       tenantId,
       currentDate: today.toISOString().slice(0, 10),
       currentPeriod,
