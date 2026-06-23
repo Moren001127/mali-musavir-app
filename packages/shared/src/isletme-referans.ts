@@ -258,6 +258,43 @@ export function isletmeAutoKayitTuru(invoiceKind?: string | null, nace?: string 
   return ''; // belirlenemedi → İncele
 }
 
+// İndirilecek Giderler (GVK40) için satıcı adından/metinden ALT türü tahmin kuralları (yüksek güvenli).
+const GVK40_ALT_KURAL: Array<[RegExp, string]> = [
+  [/elektrik|enerjisa|\bbedas\b|\bayedas\b|\btedas\b|\buedas\b|\bgdz\b|\bckenerji\b|enerji perakende|elektrik perakende/, '82'], // Elektrik Giderleri
+  [/dogalgaz|\bigdas\b|baskentgaz|\bizgaz\b|\bagdas\b|\bgazel\b|gaz dagitim|\bgaznet\b|\bbursagaz\b|\bpalgaz\b/, '84'],          // Doğalgaz Giderleri
+  [/akaryakit|\byakit\b|benzin|motorin|\bopet\b|\bshell\b|aytemiz|lukoil|petrol ofisi|\bpetrol\b|\bbp\b|\btotal\b|\bmoil\b|\balpet\b/, '113'], // Taşıt Akaryakıt
+  [/\biski\b|\baski\b|\bizsu\b|\bbuski\b|\basat\b|\bmuski\b|\bsuski\b|\bkaski\b|su ve kanalizasyon|su idaresi|su giderleri/, '83'], // Su Giderleri
+  [/telefon|turkcell|vodafone|turk telekom|\bavea\b|\bturktelekom\b/, '87'],                                                    // Telefon Giderleri
+  [/internet|\bfaks\b|\bfiber\b|\bttnet\b|superonline|kablonet|d-?smart|\bturknet\b/, '88'],                                     // Diğer Haberleşme
+  [/muhasebe|mali musavir|\bsmmm\b|\bymm\b|musavirlik/, '179'],                                                                 // Muhasebe/Mali Müşavirlik
+  [/avukat|hukuk buro|hukuki danis/, '196'],                                                                                   // Avukatlık/Hukuk
+  [/\bkargo\b|\bptt\b|\baras\b|yurtici kargo|\bmng\b|surat kargo|\bups\b|\bdhl\b|fedex|\bsendeo\b|\bhepsijet\b/, '193'],         // Kargo ve Posta
+  [/\bhgs\b|\bogs\b|otoyol|gecis ucret|\bkgm\b|koprusu|otoyollari|\bpttogs\b/, '324'],                                          // Otoyol/Gişe
+  [/kirtasiye/, '95'],                                                                                                         // Kırtasiye
+  [/\bnoter\b/, '217'],                                                                                                        // Noter Makbuzları
+  [/konaklama|\botel\b|\bhotel\b|\bpansiyon\b/, '111'],                                                                        // Konaklama
+];
+
+/**
+ * GİDER (İndirilecek Giderler — GVK40) için satıcı adından/belge metninden ALT türü tahmin eder.
+ * Örn. "CK Boğaziçi Elektrik" → '82' (Elektrik Giderleri), "Opet Akaryakıt" → '113'.
+ * Sadece kayıt türü '4' (İndirilecek Giderler) ve gider faturasında çalışır; bulamazsa '' (varsayılana düşer).
+ */
+export function isletmeAutoKayitAltKod(invoiceKind?: string | null, kayitTuruKod?: string | null, text?: string | null): string {
+  const sale = String(invoiceKind || 'ALIS').toUpperCase() === 'SATIS';
+  if (sale) return '';
+  if (String(kayitTuruKod || '') !== '4') return ''; // sadece İndirilecek Giderler
+  const t = asciiTr(text || '');
+  if (!t) return '';
+  for (const [re, kod] of GVK40_ALT_KURAL) if (re.test(t)) return kod;
+  return '';
+}
+
+/** "Elektrik Giderleri (GVK 40/1)" → "Elektrik Giderleri" — listede sade gösterim için GVK etiketini at. */
+export function kayitAltKisaAd(ad?: string | null): string {
+  return String(ad || '').replace(/\s*\(GVK[^)]*\)\s*$/i, '').trim();
+}
+
 /** Mihsap-benzeri akıllı varsayılan: belge türü kodu (documentType → İşletme belge kodu) */
 export function defaultBelgeTuruKod(documentType?: string | null, invoiceKind?: string | null): string {
   const sale = String(invoiceKind || 'ALIS').toUpperCase() === 'SATIS';

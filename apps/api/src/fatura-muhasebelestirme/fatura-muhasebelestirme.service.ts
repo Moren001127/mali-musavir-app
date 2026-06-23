@@ -13,7 +13,7 @@ import { claudeTextViaMax, MAX_MODEL_CHEAP } from '../common/max-inference';
 import { buildLucaImportExcel, buildLucaIsletmeHizliFisCsv } from './luca-excel.service';
 import { VendorMemoryService } from '../vendor-memory/vendor-memory.service';
 import { MihsapService } from '../mihsap/mihsap.service';
-import { isletmeAutoKayitTuru, isletmeRef } from '@mali-musavir/shared';
+import { isletmeAutoKayitTuru, isletmeAutoKayitAltKod, isletmeRef, getKayitAltList } from '@mali-musavir/shared';
 
 type AccountingLineInput = {
   id?: string;
@@ -3532,7 +3532,10 @@ export class FaturaMuhasebelestirmeService implements OnModuleInit, OnModuleDest
         const kindU = String((doc as any).invoiceKind || 'ALIS').toUpperCase().includes('SATIS') ? 'SATIS' : 'ALIS';
         const ktKod = isletmeAutoKayitTuru(kindU, tp?.naceKodu, tp?.faaliyetAciklama) || (kindU === 'SATIS' ? '2' : '4');
         const ktAd = isletmeRef(kindU).kayitTuru.find((x: any) => x.kod === ktKod)?.ad || '';
-        data.ocrData = { ...((doc as any).ocrData || {}), isletme: { ...isl, kayitTuruKod: ktKod, kayitTuruAd: ktAd, autoMatched: true } };
+        // Alt türü de satıcı adından otomatik (Elektrik/Yakıt/Doğalgaz…) — Luca CSV'sinde TÜR sütunu dolu gitsin.
+        const altKod = isletmeAutoKayitAltKod(kindU, ktKod, `${(doc as any).vendorName || ''} ${(doc as any).documentType || ''}`);
+        const altAd = altKod ? (getKayitAltList(kindU, ktKod).find((x: any) => x.kod === altKod)?.ad || '') : '';
+        data.ocrData = { ...((doc as any).ocrData || {}), isletme: { ...isl, kayitTuruKod: ktKod, kayitTuruAd: ktAd, kayitAltKod: altKod, kayitAltAd: altAd, autoMatched: true } };
       }
       await (this.prisma as any).invoiceAccountingDocument.update({ where: { id }, data });
       await this.logAudit(tenantId, userId, 'APPROVE', id, { status: doc.status }, { status: 'APPROVED', isletme: true });

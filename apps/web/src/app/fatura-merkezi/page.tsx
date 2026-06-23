@@ -4,7 +4,7 @@ import { useState, useRef, useEffect, Fragment } from 'react';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import { api } from '@/lib/api';
 import { toast } from 'sonner';
-import { isletmeRef, ISLETME_ISLEM_TURU, ISLETME_KDV_ORAN, defaultBelgeTuruKod, getKayitAltList, defaultKayitAltKod, isletmeAutoKayitTuru } from '@mali-musavir/shared';
+import { isletmeRef, ISLETME_ISLEM_TURU, ISLETME_KDV_ORAN, defaultBelgeTuruKod, getKayitAltList, defaultKayitAltKod, isletmeAutoKayitTuru, isletmeAutoKayitAltKod, kayitAltKisaAd } from '@mali-musavir/shared';
 
 /**
  * Fatura İşleme Merkezi v2 — ana sayfa (CANLI)
@@ -909,7 +909,14 @@ function ScreenFaturalar({ taxpayerId, period, kind = 'ALIS', isIsletme = false,
               {docs.map((d) => {
                 const du = dd(d);
                 const sat = (d.invoiceKind || 'ALIS') === 'SATIS';
-                const islKayit = isIsletme ? (d.ocrData?.isletme?.satirlar?.[0]?.kayitTuruAd || d.ocrData?.isletme?.kayitTuruAd || autoKtAd) : '';
+                // İşletme "Kayıt Türü" sütunu: içerik = ALT türü (örn. "Elektrik Giderleri"). Seçili ise o,
+                //   değilse satıcı adından otomatik (Elektrik/Yakıt/Doğalgaz/Su/Telefon/Kargo/HGS…); alt yoksa ana türe düşer.
+                const islMain = isIsletme ? (d.ocrData?.isletme?.satirlar?.[0]?.kayitTuruAd || d.ocrData?.isletme?.kayitTuruAd || autoKtAd) : '';
+                const savedAlt = isIsletme ? (d.ocrData?.isletme?.satirlar?.[0]?.kayitAltAd || d.ocrData?.isletme?.kayitAltAd || '') : '';
+                const autoAltKod = isIsletme && !savedAlt ? isletmeAutoKayitAltKod(kind, autoKt, `${d.vendorName || ''} ${d.documentType || ''}`) : '';
+                const autoAltAd = autoAltKod ? (getKayitAltList(kind, autoKt).find((x) => x.kod === autoAltKod)?.ad || '') : '';
+                const islAltFull = savedAlt || autoAltAd;
+                const islKayit = isIsletme ? (kayitAltKisaAd(islAltFull) || islMain) : '';
                 const firma = (sat ? d.customerName : d.vendorName) || '—';
                 const vkn = sat ? d.buyerVkn : d.sellerVkn;
                 const code = (() => { const ls = Array.isArray(d.lines) ? d.lines : []; return (ls.find((l: any) => String(l.group) === 'matrah' && l.accountCode) || ls.find((l: any) => l.accountCode))?.accountCode || ''; })();
@@ -925,7 +932,7 @@ function ScreenFaturalar({ taxpayerId, period, kind = 'ALIS', isIsletme = false,
                     <td className="num">{kdv != null ? fmtMoney(kdv) : '—'}</td>
                     <td className="num">{fmtMoney(d.totalAmount)}</td>
                     <td>{isIsletme
-                      ? (islKayit ? <span className="hk">{islKayit}</span> : <span className="hk no" title="Mükellefin faaliyeti belirsiz — Kayıt Türü'nü Muhasebeleştir'de seç">İncele</span>)
+                      ? (islKayit ? <span className="hk" title={islAltFull ? `${islMain} › ${islAltFull}` : islMain}>{islKayit}</span> : <span className="hk no" title="Mükellefin faaliyeti belirsiz — Kayıt Türü'nü Muhasebeleştir'de seç">İncele</span>)
                       : (code ? <span className="hk">{code}</span> : <span className="hk no">— yok —</span>)}</td>
                     <td><span className={`pill ${du.k}`} title={du.cat === 'okunamadi' && d.lucaErrorMessage ? `Neden: ${d.lucaErrorMessage}` : du.t}>{du.t}</span>{du.cat === 'okunamadi' && d.lucaErrorMessage ? <div className="oneden">{d.lucaErrorMessage}</div> : null}</td>
                     <td className="actcol" style={{ display: 'flex', gap: 8, alignItems: 'center' }}>
@@ -1487,7 +1494,9 @@ function ScreenMuhasebe({ taxpayerId, period, isIsletme = false, taxpayerNace = 
     // Varsayılan Kayıt Türü = mükellefin faaliyetine göre otomatik (Mal/Hizmet); belirsizse satışta Hizmet, alışta İndirilecek Gider.
     const ktKod = isletmeAutoKayitTuru(kind, taxpayerNace, taxpayerFaaliyet) || (kind === 'SATIS' ? '2' : '4');
     const ktAd = isletmeRef(kind).kayitTuru.find((x) => x.kod === ktKod)?.ad;
-    return { kayitTuruKod: ktKod, kayitAltKod: defaultKayitAltKod(kind, ktKod, ktAd), matrah: Number(matrah) || 0, kdvOranKod: kdvKod, kdvTutar: Number(kdvTutar) || 0, krediliTutar: 0, hesapKodu: '', tevkifatOrani: '', tevkifatTutar: 0, stopajOrani: '', stopajTutar: 0 };
+    // Alt türü: giderde satıcı adından otomatik (Elektrik/Yakıt/Doğalgaz…); bulunamazsa Mihsap-benzeri varsayılan.
+    const altKod = isletmeAutoKayitAltKod(kind, ktKod, `${selDoc?.vendorName || ''} ${selDoc?.documentType || ''}`) || defaultKayitAltKod(kind, ktKod, ktAd);
+    return { kayitTuruKod: ktKod, kayitAltKod: altKod, matrah: Number(matrah) || 0, kdvOranKod: kdvKod, kdvTutar: Number(kdvTutar) || 0, krediliTutar: 0, hesapKodu: '', tevkifatOrani: '', tevkifatTutar: 0, stopajOrani: '', stopajTutar: 0 };
   };
   const [isl, setIsl] = useState<any>({ satirlar: [] });
   const [islExp, setIslExp] = useState<Record<string, boolean>>({});
