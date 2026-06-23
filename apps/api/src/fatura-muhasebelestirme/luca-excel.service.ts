@@ -54,6 +54,7 @@ export interface InvoicePayload {
     kdvOranKod?: string; plakaNo?: string; kayitTarihi?: string;
     matrah?: number; kdvTutar?: number; krediliTutar?: number; donem?: boolean;
     hesapKodu?: string; tevkifatOrani?: string; tevkifatTutar?: number; stopajOrani?: string; stopajTutar?: number;
+    satirlar?: Array<{ kayitTuruAd?: string; kayitAltAd?: string; kdvOranKod?: string; matrah?: number; kdvTutar?: number; krediliTutar?: number; donem?: boolean; hesapKodu?: string; tevkifatOrani?: string; stopajOrani?: string; stopajTutar?: number }>;
   } | null;
 }
 
@@ -262,68 +263,71 @@ export function buildLucaIsletmeHizliFisCsv(payload: BatchPayload): Buffer {
 
   for (const inv of payload.invoices) {
     const isSale = isSaleKind(inv.invoiceKind);
-    // Tutarlari fis satirlarindan turet
-    let matrah = 0, kdv = 0, rate = '';
+    // Fiş satırlarından toplam (geriye uyum / kdvBreakdown yoksa)
+    let lineMatrah = 0, lineKdv = 0, rate = '';
     for (const l of inv.lines || []) {
       const amt = Number(isSale ? l.credit : l.debit) || 0;
-      if (l.group === 'matrah') matrah += amt;
-      else if (l.group === 'vergi') { kdv += amt; if (!rate && l.rate) rate = String(l.rate).replace(/[%\s]/g, ''); }
+      if (l.group === 'matrah') lineMatrah += amt;
+      else if (l.group === 'vergi') { lineKdv += amt; if (!rate && l.rate) rate = String(l.rate).replace(/[%\s]/g, ''); }
     }
-    const total = parseAmount(inv.totalAmount) || (matrah + kdv);
     const fatTarihi = parseDate(inv.faturaTarihi);
     const tarihStr = fatTarihi ? fmtTr(fatTarihi) : '';
     const counterpartyVkn = isSale ? (inv.buyerVkn || '') : (inv.sellerVkn || '');
     const counterpartyName = isSale ? (inv.customerName || '') : (inv.vendorName || '');
-
-    // İşletme sınıflandırması (Muhasebeleştir → İşletme formunda seçilen) — varsa CSV alanlarını doldur.
-    const isl = inv.isletme || {};
-    const kdvOranNum = ({ KDV20: '20', KDV10: '10', KDV1: '1', KDV0: '0' } as Record<string, string>)[String(isl.kdvOranKod || '')] || rate || '';
-    const islMatrah = Number.isFinite(isl.matrah as number) && (isl.matrah as number) > 0 ? (isl.matrah as number) : matrah;
-    const islKdv = Number.isFinite(isl.kdvTutar as number) && (isl.kdvTutar as number) > 0 ? (isl.kdvTutar as number) : kdv;
+    const isl: any = inv.isletme || {};
     const islKayitTarih = (() => { const kd = isl.kayitTarihi ? parseDate(isl.kayitTarihi) : null; return kd ? fmtTr(kd) : tarihStr; })();
 
-    // 37 sutun — sirayla. İşletme formundan gelen seçimlerle dolar; boşlar opsiyonel/serbest.
-    const row = [
-      isSale ? 'Gelir' : 'Gider',                  // 1 İŞLEM
-      isl.kayitTuruAd || '',                        // 2 KATEGORİ (Kayıt Türü: Mal/Hizmet Satışı, İndirilecek Gider…)
-      isl.belgeTuruAd || inferIsletmeBelgeTuru(inv),// 3 BELGE TURU
-      tarihStr,                                     // 4 EVRAK TARİHİ
-      islKayitTarih,                                // 5 KAYIT TARİHİ
-      inv.seriNo || '',                             // 6 SERİ NO
-      inv.belgeNo || '',                            // 7 EVRAK NO
-      counterpartyVkn,                              // 8 TCKN/VKN
-      '',                                           // 9 VERGİ DAİRESİ
-      counterpartyName,                             // 10 SOYADI ÜNVAN
-      '',                                           // 11 ADI DEVAMI
-      '',                                           // 12 ADRES
-      isl.hesapKodu || '',                          // 13 CARİ HESAP (Luca hesap kodu)
-      '',                                           // 14 KDV İSTİSNASI
-      isl.islemTuruKod || '',                       // 15 KOD (İşlem Türü kodu)
-      isl.belgeTuruKod || '',                       // 16 BELGE TÜRÜ(DB) (GİB Defter-Beyan kodu)
-      isl.alisSatisAd || (isSale ? 'Normal Satış' : 'Normal Alım'), // 17 ALIŞ/SATIŞ TÜRÜ
-      isl.kayitAltAd || '',                         // 18 KAYIT ALT TÜRÜ
-      isl.plakaNo || '',                            // 19 PLAKA NO
-      '',                                           // 20 MAL VE HİZMET KODU
-      counterpartyName || '',                       // 21 AÇIKLAMA (firma adı)
-      '',                                           // 22 MİKTAR
-      '',                                           // 23 B.FİYAT
-      trAmount(islMatrah),                          // 24 TUTAR (matrah/KDV hariç)
-      isl.tevkifatOrani || '',                      // 25 TEVKİFAT (ör. 5/10)
-      kdvOranNum,                                   // 26 KDV ORANI
-      '',                                           // 27 İŞLEM BEDELİ
-      '',                                           // 28 MATRAHTAN DÜŞÜLECEK TUTAR
-      '',                                           // 29 ÖZEL MATRAH ŞEKLİNE DAHİL OLMAYAN BEDEL
-      trAmount(islKdv),                             // 30 KDV TUTARI
-      trAmount(total),                              // 31 TOPLAM TUTAR
-      isl.krediliTutar ? trAmount(Number(isl.krediliTutar)) : '', // 32 KREDİLİ TUTAR
-      isl.stopajOrani || '',                        // 33 STOPAJ KODU (oran %)
-      isl.stopajTutar ? trAmount(Number(isl.stopajTutar)) : '', // 34 STOPAJ TUTARI
-      isl.donem ? 'Evet' : '',                      // 35 DÖNEMSELLİK İLKESİ
-      '',                                           // 36 FAALIYET KODU
-      '',                                           // 37 ÖDEME TÜRÜ
-    ].map(csvCell).join(';');
+    // ÇOKLU SATIR: her İşletme satırı (farklı KDV oranı / gider türü) AYRI CSV satırı.
+    const satirlar: any[] = Array.isArray(isl.satirlar) && isl.satirlar.length
+      ? isl.satirlar
+      : [{ kayitTuruAd: isl.kayitTuruAd, kayitAltAd: isl.kayitAltAd, kdvOranKod: isl.kdvOranKod, matrah: isl.matrah ?? lineMatrah, kdvTutar: isl.kdvTutar ?? lineKdv, krediliTutar: isl.krediliTutar, donem: isl.donem, hesapKodu: isl.hesapKodu, tevkifatOrani: isl.tevkifatOrani, stopajOrani: isl.stopajOrani, stopajTutar: isl.stopajTutar }];
 
-    lines.push(iconv.encode(row, 'win1254'));
+    for (const st of satirlar) {
+      const kdvOranNum = ({ KDV20: '20', KDV10: '10', KDV1: '1', KDV0: '0' } as Record<string, string>)[String(st.kdvOranKod || '')] || rate || '';
+      const stMatrah = Number(st.matrah) || 0;
+      const stKdv = Number(st.kdvTutar) || 0;
+      // 37 sutun — sirayla. Üst bilgi (isl) tüm satırlarda aynı; satıra özgü alanlar (st).
+      const row = [
+        isSale ? 'Gelir' : 'Gider',                  // 1 İŞLEM
+        st.kayitTuruAd || '',                         // 2 KATEGORİ
+        isl.belgeTuruAd || inferIsletmeBelgeTuru(inv),// 3 BELGE TÜRÜ
+        tarihStr,                                     // 4 EVRAK TARİHİ
+        islKayitTarih,                                // 5 KAYIT TARİHİ
+        inv.seriNo || '',                             // 6 SERİ NO
+        inv.belgeNo || '',                            // 7 EVRAK NO
+        counterpartyVkn,                              // 8 TCKN/VKN
+        '',                                           // 9 VERGİ DAİRESİ
+        counterpartyName,                             // 10 SOYADI ÜNVAN
+        '',                                           // 11 ADI DEVAMI
+        '',                                           // 12 ADRES
+        st.hesapKodu || '',                           // 13 CARİ HESAP
+        '',                                           // 14 KDV İSTİSNASI
+        isl.islemTuruKod || '',                       // 15 KOD (İşlem Türü)
+        isl.belgeTuruKod || '',                       // 16 BELGE TÜRÜ(DB)
+        isl.alisSatisAd || (isSale ? 'Normal Satış' : 'Normal Alım'), // 17 ALIŞ/SATIŞ TÜRÜ
+        st.kayitAltAd || '',                          // 18 KAYIT ALT TÜRÜ
+        isl.plakaNo || '',                            // 19 PLAKA NO
+        '',                                           // 20 MAL VE HİZMET KODU
+        counterpartyName || '',                       // 21 AÇIKLAMA
+        '',                                           // 22 MİKTAR
+        '',                                           // 23 B.FİYAT
+        trAmount(stMatrah),                           // 24 TUTAR
+        st.tevkifatOrani || '',                       // 25 TEVKİFAT
+        kdvOranNum,                                   // 26 KDV ORANI
+        '',                                           // 27 İŞLEM BEDELİ
+        '',                                           // 28 MATRAHTAN DÜŞÜLECEK TUTAR
+        '',                                           // 29 ÖZEL MATRAH ŞEKLİNE DAHİL OLMAYAN BEDEL
+        trAmount(stKdv),                              // 30 KDV TUTARI
+        trAmount(stMatrah + stKdv),                   // 31 TOPLAM TUTAR (satır)
+        st.krediliTutar ? trAmount(Number(st.krediliTutar)) : '', // 32 KREDİLİ TUTAR
+        st.stopajOrani || '',                         // 33 STOPAJ KODU
+        st.stopajTutar ? trAmount(Number(st.stopajTutar)) : '',   // 34 STOPAJ TUTARI
+        st.donem ? 'Evet' : '',                       // 35 DÖNEMSELLİK İLKESİ
+        '',                                           // 36 FAALIYET KODU
+        '',                                           // 37 ÖDEME TÜRÜ
+      ].map(csvCell).join(';');
+      lines.push(iconv.encode(row, 'win1254'));
+    }
   }
 
   const sep = Buffer.from('\r\n', 'ascii');
