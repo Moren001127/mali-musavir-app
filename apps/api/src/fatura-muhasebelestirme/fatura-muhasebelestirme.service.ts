@@ -5754,6 +5754,41 @@ export class FaturaMuhasebelestirmeService implements OnModuleInit, OnModuleDest
     return { ok: true, matrah, kdv, oranSayisi: breakdown.length };
   }
 
+  // AI ile GİDER hesabı seçimi (kural/ad eşleşmesi bulamadığında ESKALASYON). Mükellefin FAALİYETİ +
+  // faturanın İÇERİĞİ (giderTuru) ile, mükellefin GERÇEK hesap planından en uygun gider/stok/sabit hesabı
+  // seçtirir. Dönen kod planda GERÇEKTEN yoksa null (uydurma kod kabul edilmez). Max aboneliği (token API yok).
+  private async aiPickGiderAccount(
+    accounts: Array<{ accountCode: string; accountName: string }>,
+    faaliyet: string,
+    giderTuru: string,
+    vendorName: string,
+  ): Promise<{ accountCode: string; accountName: string } | null> {
+    // Aday hesaplar: stok (15x), sabit kıymet (25x), gider (6xx/7xx) leaf'leri.
+    const cand = accounts.filter((a) => /^(15\d|25\d|6\d\d|7\d\d)/.test(String(a.accountCode || '')));
+    if (!cand.length) return null;
+    const codes = cand.map((a) => String(a.accountCode));
+    const leaves = cand.filter((a) => { const c = String(a.accountCode); return !codes.some((o) => o !== c && o.startsWith(c + '.')); });
+    const pool = (leaves.length ? leaves : cand).slice(0, 250);
+    const liste = pool.map((a) => `${a.accountCode} = ${a.accountName}`).join('\n');
+    const prompt = [
+      `Mükellefin işi: ${faaliyet || 'bilinmiyor'}.`,
+      `Bu bir ALIŞ (gider) faturası. İçindeki ana mal/hizmet: "${giderTuru}"${vendorName ? `, satıcı: "${vendorName}"` : ''}.`,
+      'Aşağıdaki mükellefin GERÇEK hesap planından, bu gideri MÜKELLEFİN İŞİNE göre yazacağın EN UYGUN TEK hesabı seç.',
+      'KURAL: Alınan şey mükellefin SATTIĞI emtia ise stok (15x). Kendi işinde KULLANDIĞI gider ise ilgili gider hesabı (7xx/6xx). Uzun ömürlü makine/cihaz/taşıt/demirbaş ise sabit kıymet (25x).',
+      'ÖRNEK: NAKLİYECİ kendi aracına yedek parça/lastik/tamir alır → taşıt giderleri / bakım-onarım gider hesabı (STOK DEĞİL). Oto yedek parça TİCARETİ yapan satmak için alır → ticari mal stok (153).',
+      'YALNIZCA şu JSON: {"kod":"<plandaki TAM hesap kodu, emin değilsen null>","neden":"<kısa>"}. Listede OLMAYAN kodu ASLA yazma.',
+      'HESAP PLANI:',
+      liste,
+    ].join('\n');
+    const res = await claudeTextViaMax({ prompt, timeoutMs: 30000, model: MAX_MODEL_CHEAP }).catch(() => null);
+    if (!res || !res.ok || !res.text) return null;
+    let kod = '';
+    try { const m = res.text.match(/\{[\s\S]*\}/); const j = m ? JSON.parse(m[0]) : null; kod = String(j?.kod || '').trim(); } catch { return null; }
+    if (!kod || /^null$/i.test(kod)) return null;
+    const hit = accounts.find((a) => String(a.accountCode) === kod); // hallüsinasyon koruması: plan'da var mı?
+    return hit ? { accountCode: hit.accountCode, accountName: hit.accountName } : null;
+  }
+
   private async rematchPendingDocumentsWithAccountPlan(
     tenantId: string,
     taxpayerId: string,
@@ -5779,6 +5814,11 @@ export class FaturaMuhasebelestirmeService implements OnModuleInit, OnModuleDest
     ]);
     if (!accounts.length || !docs.length) return;
 
+    // Mükellefin faaliyeti — AI gider-hesabı eşleştirmesinde "ne iş yapıyor" bağlamı.
+    const tpRow: any = await (this.prisma as any).taxpayer.findFirst({ where: { id: taxpayerId, tenantId }, select: { companyName: true, firstName: true, lastName: true, naceKodu: true, faaliyetAciklama: true } }).catch(() => null);
+    const tpFaaliyet = tpRow ? [String(tpRow.companyName || (String(tpRow.firstName || '') + ' ' + String(tpRow.lastName || ''))).trim(), String(tpRow.faaliyetAciklama || '').trim() || (tpRow.naceKodu ? ('NACE ' + tpRow.naceKodu) : '')].filter(Boolean).join(' — ') : '';
+    let aiAccCalls = 0; // batch'te AI eskalasyonunu sınırla
+
     for (const doc of docs) {
       const isSale = doc.invoiceKind === 'SATIS';
       const vendorName = isSale ? doc.customerName : doc.vendorName;
@@ -5799,9 +5839,15 @@ export class FaturaMuhasebelestirmeService implements OnModuleInit, OnModuleDest
       // GİDER hesabı SADECE EMİN olunca atanır (KULLANICI KURALI): gider türü hesap ADIYLA
       // eşleşirse o hesap; eşleşmezse null = BOŞ. Rastgele/jenerik/en-düşük hesaba ASLA düşürme.
       // Kullanıcı 1 kez seçer → VKN+oran bazında öğrenilir (matrahForRate 'learned').
-      const categoryMatrah = (isSale || !giderTuru)
+      let categoryMatrah = (isSale || !giderTuru)
         ? null
         : this.pickAccount(accounts, alisMatrahPrefixes, giderTuru, { requireHint: true });
+      // AI ESKALASYON: kural (ad eşleşmesi) gider hesabını bulamadıysa, AI faaliyet+içerikle plandan
+      //   SEMANTİK seçsin (ör. nakliyeci+yedek parça → taşıt/bakım-onarım gider hesabı, STOK değil).
+      if (!categoryMatrah && !isSale && giderTuru && aiAccCalls < 60) {
+        aiAccCalls++;
+        categoryMatrah = await this.aiPickGiderAccount(accounts, tpFaaliyet, giderTuru, vendorName || '');
+      }
       // KDV hesabı: tevkifatlıda planında ADINDA oranı (ör "2/10") ya da "tevkifat" geçen
       // hesabı tercih et (391.01.004 "HESAPLANAN KDV %20 2/10"), düz 391.01.003 değil.
       const vergiPrefix = isSale ? '391' : '191';
