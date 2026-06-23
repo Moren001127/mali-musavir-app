@@ -5708,7 +5708,12 @@ export class FaturaMuhasebelestirmeService implements OnModuleInit, OnModuleDest
           ? { prompt, images: [{ base64: imgBuf!.toString('base64'), mediaType: imgMedia }], timeoutMs: 45000, model }
           : { prompt, timeoutMs: 60000, model },
       );
-      if (!res.ok || !res.text) { reason = res.error || 'okunamadı'; continue; }
+      if (!res.ok || !res.text) {
+        reason = res.error || 'okunamadı';
+        // 429/hız-limiti/aşırı-yük: tekrar denemeden önce GERİ ÇEKİL (rapid-retry 429'u kötüleştirmesin).
+        if (attempt < 3) await new Promise((r) => setTimeout(r, /rate|429|limit|overload|too many|aşır/i.test(reason) ? 4000 : 700));
+        continue;
+      }
       try {
         const m = res.text.match(/\{[\s\S]*\}/);
         parsed = m ? JSON.parse(m[0]) : null;
@@ -5831,7 +5836,12 @@ export class FaturaMuhasebelestirmeService implements OnModuleInit, OnModuleDest
       isIsletme ? islPromptSeg() : 'isletmeKayitTuru ve isletmeAltTuru = "" bırak (mükellef İşletme defteri değil).',
       '\nİÇERİK:\n' + contentText.slice(0, 12000),
     ].filter(Boolean).join('\n');
-    const res = await claudeTextViaMax({ prompt, timeoutMs: 32000, model: MAX_MODEL_CHEAP }).catch(() => null);
+    // 429/hız-limitinde sınıflandırma sessizce düşmesin (matrah buna bağlı) → 1 kez GERİ-ÇEKİLMELİ tekrar dene.
+    let res: any = null;
+    for (let att = 1; att <= 2 && (!res || !res.ok || !res.text); att++) {
+      res = await claudeTextViaMax({ prompt, timeoutMs: 32000, model: MAX_MODEL_CHEAP }).catch(() => null);
+      if ((!res || !res.ok || !res.text) && att < 2) await new Promise((r) => setTimeout(r, /rate|429|limit|overload|too many/i.test(String(res?.error || '')) ? 3500 : 600));
+    }
     if (!res || !res.ok || !res.text) return null;
     try {
       const m = res.text.match(/\{[\s\S]*\}/);
