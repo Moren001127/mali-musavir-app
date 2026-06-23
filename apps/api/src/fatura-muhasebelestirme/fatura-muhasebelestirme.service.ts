@@ -5746,7 +5746,12 @@ export class FaturaMuhasebelestirmeService implements OnModuleInit, OnModuleDest
       const azTotal = az ? this.numFromOcr(az.totalTutari) : 0;
       const azBd = az && Array.isArray(az.kdvBreakdown) ? az.kdvBreakdown : [];
       const azHasAmt = azTotal > 0 || azBd.some((b: any) => Number(b.tutar) > 0 || Number(b.matrah) > 0);
-      if (az && /azure/i.test(String(az.engine || '')) && (Number(az.confidence) || 0) >= 0.5 && azHasAmt) {
+      // EŞİK — YALNIZ FATURA MERKEZİ'nin Azure-sonucu KABUL eşiği. Azure tutar+KDV'yi okuduysa
+      //   (azHasAmt) güven 0.4'e kadar kabul edilir → daha çok belge hızlı Azure'da kalır, azı
+      //   yavaş Max-vision'a eskale olur (okuma hızlanır). Yanlış okumayı sonraki denge/KDV-matematik
+      //   doğrulaması yakalar. ⚠️ KULLANICI TALİMATI: ocr.service.extractFromImage / KDV Kontrol gibi
+      //   DİĞER OCR yerlerindeki eşiklere DOKUNULMADI (extractFromImage'a eşik parametresi geçilmiyor).
+      if (az && /azure/i.test(String(az.engine || '')) && (Number(az.confidence) || 0) >= 0.4 && azHasAmt) {
         preParsed = {
           belgeNo: az.belgeNo || null,
           tarih: az.date || null,
