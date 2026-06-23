@@ -2700,6 +2700,8 @@ const CSS = `
 #fm-root .islgrid .dml{font-size:11px;font-weight:600;color:#6b7480;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
 #fm-root .islgrid .dmi{width:100%;height:31px;padding:0 8px;border:1px solid var(--line2);border-radius:7px;font-size:13px;font-weight:600;color:var(--text);background:#fff;font-family:inherit}
 #fm-root .islgrid .dmi:focus{outline:none;border-color:var(--accent)}
+#fm-root .islgrid .li{width:100%;min-width:0;height:31px;box-sizing:border-box}
+#fm-root .islgrid .psel{width:100%}
 /* Temiz açılır liste (native siyah select yerine) */
 #fm-root .psel{position:relative;width:100%}
 #fm-root .psel .pselfield{display:flex;align-items:center;gap:6px;height:30px;border:1px solid var(--line2);border-radius:7px;background:#fff;padding:0 9px;cursor:pointer;font-size:13px;font-weight:600;color:var(--text)}
