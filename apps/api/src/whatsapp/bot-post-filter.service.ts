@@ -215,7 +215,14 @@ export class WhatsAppBotPostFilterService {
   }
 
   private limitSentences(text: string): string {
-    const sentences = text.match(/[^.!?]+[.!?]?/g)?.map((part) => part.trim()).filter(Boolean) || [];
+    // KRİTİK: "5.000" / "22.05.2026" gibi sayı/tarih içindeki noktayı cümle sonu SAYMA —
+    // yoksa cevap sayının ortasından kesilir ("...tarihinde 5." gibi) ve boşluk eklenir.
+    // Gerçek cümle sonu = noktalama + (boşluk/metin sonu); sayı içindeki noktanın ardında
+    // RAKAM gelir, boşluk değil → bölünmez, kesilmez.
+    const sentences = text
+      .split(/(?<=[.!?])\s+/)
+      .map((part) => part.trim())
+      .filter(Boolean);
     if (sentences.length <= 3) return text;
     return sentences.slice(0, 3).join(' ').trim();
   }
