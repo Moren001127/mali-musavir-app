@@ -5751,7 +5751,7 @@ export class FaturaMuhasebelestirmeService implements OnModuleInit, OnModuleDest
       'kategori: faturadaki mal/hizmetin TÜRÜNE göre TEK kelime seç → "ticari_mal" (satılmak üzere alınan ürün/emtia), "hammadde" (üretimde kullanılan ilk madde/malzeme), "demirbas" (makine/cihaz/ekipman/mobilya/bilgisayar gibi sabit kıymet alımı), "pazarlama" (reklam/ilan/kargo-nakliye/pazarlama), "genel_gider" (kira/elektrik/su/doğalgaz/telefon/internet/akaryakıt/danışmanlık/kırtasiye/yemek/abonelik gibi genel giderler). EMİN DEĞİLSEN "genel_gider".',
       'giderTuru: ALIŞ ise faturadaki ANA mal/hizmetin kısa adı — hesap planındaki gider hesabı adıyla eşleşecek tek-iki kelime: ör. yakıt/motorin/benzin → "akaryakıt"; ayrıca "kira", "elektrik", "su", "doğalgaz", "telefon", "internet", "kırtasiye", "danışmanlık", "nakliye", "yemek", "temizlik", "bakım onarım", "sigorta", "reklam" vb. Yazarkasa fişinde de ürüne bak (benzinlik → akaryakıt). Net değilse "" (boş). SATIŞ ise "".',
       mukellefBilgi
-        ? `BU FATURAYI ALAN MÜKELLEFİN İŞİ: ${mukellefBilgi}. kategoriyi mükellefin ANA FAALİYETİNE göre seç: üretim/imalat firması ana işinde kullandığı/işlediği malı alırsa "hammadde"; alım-satım (toptan/perakende/market) firması satacağı ürünü alırsa "ticari_mal"; her firmanın kendi işinde tükettiği sarf/abonelik/kira/yakıt vb. "genel_gider". (Örnek: yemek/gıda üreticisi un-yağ-et alırsa hammadde; market aynı ürünü satmak için alırsa ticari_mal.)`
+        ? `BU FATURAYI ALAN MÜKELLEFİN İŞİ: ${mukellefBilgi}. kategoriyi mükellefin ANA FAALİYETİNE göre seç: üretim/imalat/LOKANTA/RESTORAN/KAFE/PASTANE/YEMEK işletmesi ana işinde KULLANDIĞI/işlediği/pişirdiği malı (gıda, yağ, un, et, sebze, süt, baharat, içecek, ambalaj…) alırsa "hammadde"; alım-satım (toptan/perakende/market) firması SATACAĞI ürünü alırsa "ticari_mal"; uzun ömürlü makine/cihaz/mobilya/bilgisayar/taşıt = "demirbas"; reklam/ilan/kargo/nakliye = "pazarlama"; SADECE işletmeyi yürüten sarf (kira, elektrik, su, doğalgaz, telefon, internet, akaryakıt, kırtasiye, temizlik, danışmanlık) = "genel_gider". ⚠️ KRİTİK: LOKANTA/RESTORAN/YEMEK üreticisinin aldığı GIDA / MUTFAK MALZEMESİ (yağ, un, et, sebze…) ASLA "genel_gider" ya da "demirbas" DEĞİLDİR — "hammadde"dir.`
         : '',
       isImage ? '' : ('\nİÇERİK:\n' + html.replace(/<[^>]+>/g, ' ').replace(/\s+/g, ' ').slice(0, 45000)),
     ].filter(Boolean).join('\n');
@@ -5766,8 +5766,11 @@ export class FaturaMuhasebelestirmeService implements OnModuleInit, OnModuleDest
     // AZURE-ÖNCELİKLİ OKUMA (kullanıcı tercihi): resim/JPG faturayı ÖNCE Azure okur — hız limiti YOK,
     //   güvenilir → "429 okunamadı" biter. SADECE gerçek Azure motoru ('azure-read') + yeterli güven kabul edilir;
     //   Azure yoksa/düşük güvende aşağıda KENDİ max-vision'ımıza (Max aboneliği) ZARİF düşer. Sınıflandırma yine Max'te (rawText'le).
+    let azureText = ''; // Azure'un okuduğu HAM METİN (preParsed olmasa/güven düşük olsa bile) — Max'e
+    //   GÖRÜNTÜ yerine METİN verip vision'ı atlamak için (HIZ: text okuma ~3x hızlı + alt-süreç hafif).
     if (!preParsed && isImage && imgBuf) {
       const az: any = await this.ocr.extractFromImage(imgBuf, String(d.belgeNo || 'fatura'), {}).catch(() => null);
+      if (az && String(az.rawText || '').replace(/\s+/g, ' ').trim().length > 80) azureText = String(az.rawText);
       const azTotal = az ? this.numFromOcr(az.totalTutari) : 0;
       const azBd = az && Array.isArray(az.kdvBreakdown) ? az.kdvBreakdown : [];
       const azHasAmt = azTotal > 0 || azBd.some((b: any) => Number(b.tutar) > 0 || Number(b.matrah) > 0);
@@ -5799,12 +5802,17 @@ export class FaturaMuhasebelestirmeService implements OnModuleInit, OnModuleDest
     }
     let parsed: any = preParsed;
     let reason = 'okunamadı';
+    // AZURE-TEXT HIZLANDIRMA: Azure görüntüyü zaten OKUDUYSA (azureText), Max'e GÖRÜNTÜ yerine METNİ ver
+    //   → text okuma vision'dan çok HIZLI + alt-süreç hafif (OOM riski az). Görüntü-vision yalnız Azure
+    //   metni yoksa. Yanlış okumayı denge/KDV-matematik doğrulaması yakalar. (Kullanıcı: "okuma yavaş".)
+    const useAzureText = azureText.length > 80;
+    const callPrompt = useAzureText ? (prompt + '\n\nBELGE METNİ (OCR ile okundu):\n' + azureText.slice(0, 20000)) : prompt;
     for (let attempt = 1; attempt <= 3 && !parsed; attempt++) {
       const model = attempt >= 3 ? undefined : MAX_MODEL_CHEAP; // 3. deneme: Sonnet (varsayılan)
       const res = await claudeTextViaMax(
-        isImage
-          ? { prompt, images: [{ base64: imgBuf!.toString('base64'), mediaType: imgMedia }], timeoutMs: 45000, model }
-          : { prompt, timeoutMs: 60000, model },
+        (isImage && !useAzureText)
+          ? { prompt: callPrompt, images: [{ base64: imgBuf!.toString('base64'), mediaType: imgMedia }], timeoutMs: 45000, model }
+          : { prompt: callPrompt, timeoutMs: 60000, model },
       );
       if (!res.ok || !res.text) {
         reason = res.error || 'okunamadı';
