@@ -2738,8 +2738,10 @@ const CSS = `
 #fm-root td.actcol{position:sticky;right:0;background:#fff;box-shadow:-6px 0 6px -6px rgba(0,0,0,.12)}
 #fm-root tr.detay-on > td{background:#f7faff}
 #fm-root .detayrow > td{padding:0;background:#f7faff;border-bottom:1px solid var(--line)}
-#fm-root .detaybox{padding:8px 14px 12px;overflow-x:auto}
-#fm-root .detaytbl{width:100%;max-width:880px;border-collapse:collapse;background:#fff;border:1px solid var(--line);border-radius:8px;overflow:hidden}
+/* Detay kutusu ana listenin YATAY-KAYAN genişliğinden BAĞIMSIZ — ekran sol kenarına yapışır
+   (position:sticky;left) ve viewport genişliğine sığar; böylece ALACAK sütunu hep görünür, taşmaz. */
+#fm-root .detaybox{position:sticky;left:0;width:calc(100vw - 300px);max-width:1040px;box-sizing:border-box;padding:8px 14px 12px;overflow-x:auto}
+#fm-root .detaytbl{width:100%;max-width:920px;border-collapse:collapse;background:#fff;border:1px solid var(--line);border-radius:8px;overflow:hidden}
 #fm-root .celiskibanner{margin-top:8px;max-width:920px;padding:7px 11px;background:#fdf2e0;border:1px solid #f0c987;border-radius:7px;font-size:12px;color:#92400e;line-height:1.55}
 #fm-root .celiskibanner b{display:block;margin-bottom:2px;color:#b45309}
 #fm-root .detaytbl th{font-size:12px;font-weight:700;text-transform:uppercase;letter-spacing:.3px;color:var(--text);text-align:left;padding:8px 10px;background:#f4f7f9;border-bottom:2px solid var(--line)}
