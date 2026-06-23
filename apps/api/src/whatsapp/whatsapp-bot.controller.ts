@@ -16,7 +16,7 @@ import { BotEvalService } from './bot-eval.service';
 import { QualityLogService } from './quality-log.service';
 import { CalisanService } from '../calisan/calisan.service';
 import { claudeTextViaMax, MAX_MODEL_CHEAP } from '../common/max-inference';
-import { buildOwnerStatusReply } from '../moren-ai/monthly-status.shared';
+import { buildOwnerStatusReply, resolveTaxpayerByText } from '../moren-ai/monthly-status.shared';
 
 type IncomingWhatsAppMessage = {
   from: string;
@@ -1660,6 +1660,13 @@ export class WhatsAppBotController implements OnModuleInit {
         return;
       }
 
+      // MÜŞAVİR → MÜKELLEF İLETME: owner "<Mükellef>'e ilet: <cevap>" derse, o mükellefe
+      // "müşavirimize danıştık" çerçevesiyle iletir (eskalasyonun geri dönüşü). İki nokta
+      // ZORUNLU + isim ≥2 ayırt edici kelimeyle çözülür → yanlış müşteriye gitmez.
+      if (await this.maybeHandleOwnerRelayToTaxpayer(ownerTenant, msg)) {
+        return;
+      }
+
       // DURUM LİSTESİ (deterministik): "evrakı gelen/işlenen/kontrol edilen/beyannamesi
       // verilebilecek/evrak bekleyen KİMLER var" → AI'ya BIRAKMA (sürekli "çekemiyorum"
       // halüsinasyonu yapıyordu); aylık durumdan listeyi doğrudan kod hesaplayıp döndür.
@@ -2305,6 +2312,63 @@ export class WhatsAppBotController implements OnModuleInit {
         },
       }).catch(() => null);
     }
+  }
+
+  /**
+   * Müşavir (owner) WhatsApp'tan "<Mükellef>'e ilet: <cevap>" derse, o mükellefe
+   * "müşavirimize danıştık" çerçevesiyle owner'ın cevabını iletir + owner'a onay döner.
+   * GÜVENLİK: iki nokta ZORUNLU (yanlış-pozitif önler) + isim ≥2 ayırt edici kelimeyle
+   * çözülmeli (resolveTaxpayerByText) → yanlış müşteriye gitmez.
+   */
+  private async maybeHandleOwnerRelayToTaxpayer(ownerTenant: any, msg: any): Promise<boolean> {
+    const text = String(msg?.text || '');
+    // "<isim>'e/'a/ye/ya  ilet|söyle|yaz|bildir|aktar|cevap|geç  :  <mesaj>"
+    const m = text.match(
+      /^\s*(.{2,50}?)['’]?\s*(?:e|a|ye|ya|na|ne)\s+(?:ilet|söyle|soyle|yaz|bildir|aktar|ge[çc]|cevap(?:\s*(?:ver|yaz))?|haber\s*ver)\s*:\s*([\s\S]{2,})$/i,
+    );
+    if (!m) return false;
+    const namePart = m[1].trim();
+    const messagePart = m[2].trim();
+    if (!namePart || messagePart.length < 2) return false;
+
+    const taxpayers = await this.prisma.taxpayer.findMany({
+      where: { tenantId: ownerTenant.id, isActive: true },
+      select: { id: true, companyName: true, firstName: true, lastName: true, phone: true, phones: true },
+    }).catch(() => [] as any[]);
+    const target = resolveTaxpayerByText(taxpayers, namePart);
+    if (!target) {
+      const r = `"${namePart}" için net bir mükellef bulamadım — yanlış kişiye göndermemek için tam unvanı (en az 2 kelime) yazar mısınız? Örn: "Wash Clean'e ilet: ...".`;
+      await this.whatsapp.sendMessage(this.replyTarget(msg), r, ownerTenant.id).catch(() => false);
+      return true;
+    }
+    const phone = [target.phone, ...(Array.isArray(target.phones) ? target.phones : [])]
+      .map((p: any) => this.normalize(p))
+      .filter(Boolean)[0];
+    const ad = this.displayName(target);
+    if (!phone) {
+      await this.whatsapp.sendMessage(this.replyTarget(msg), `${ad} için kayıtlı telefon numarası yok; iletemedim.`, ownerTenant.id).catch(() => false);
+      return true;
+    }
+    const advisor = this.ownerDisplayName();
+    const framed =
+      `Sayın ${ad}, konuyu müşavirimiz ${advisor} Bey'e ilettik — kendisi sizinle ilgili şu bilgiyi paylaştı:\n\n` +
+      `${messagePart}\n\n` +
+      `Başka bir sorunuz olursa yardımcı olmaktan memnuniyet duyarız.`;
+    const sent = await this.whatsapp.sendMessage(phone, framed, ownerTenant.id).catch(() => false);
+    await this.prisma.communicationLog.create({
+      data: {
+        taxpayerId: target.id,
+        channel: 'WHATSAPP',
+        subject: sent ? 'WhatsApp müşavir yanıtı iletildi' : 'WhatsApp müşavir yanıtı (gönderilemedi - şalter/hata)',
+        content: this.withWhatsAppPhone(framed, phone),
+        occurredAt: new Date(),
+      },
+    }).catch(() => null);
+    const confirm = sent
+      ? `✓ ${ad} mükellefine iletildi:\n${messagePart}`
+      : `⚠️ ${ad} mükellefine iletilemedi (WhatsApp bağlantısı/şalter). Lütfen tekrar deneyin.`;
+    await this.whatsapp.sendMessage(this.replyTarget(msg), confirm, ownerTenant.id).catch(() => false);
+    return true;
   }
 
   private async qualityGateReply(input: {
