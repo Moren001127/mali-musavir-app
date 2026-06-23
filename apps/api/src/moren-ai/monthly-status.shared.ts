@@ -3,17 +3,17 @@
  *
  * Bu fonksiyon, "kimlerin evrakı geldi / işlendi / kontrolü bitti / beyannamesi
  * verildi" sorularının ALTINDAKİ VERİYİ tek yerde hesaplar. Hem WhatsApp owner
- * kısayolu (whatsapp-bot.controller → maybeHandleOwnerStatusQuery) hem MOREN AI
- * tool'u (tool-executor → listTaxpayersMonthlyStatus) BUNU çağırır; böylece sayfa
+ * kısayolu (whatsapp-bot.controller maybeHandleOwnerStatusQuery) hem MOREN AI
+ * tool'u (tool-executor listTaxpayersMonthlyStatus) BUNU çağırır; böylece sayfa
  * ile WhatsApp HARFİ HARFİNE aynı cevabı verir, iki kopya birbirinden kaymaz.
  *
  * DÖNEM MODELİ: Aylık durum kayıtları İŞLEM ayına göre saklanır. Owner/mükellef
  * "dönem" derken BEYANNAME dönemini (= işlem ayı − 1) kasteder. Mayıs'ın faturaları
- * Haziran'da işlenir → "Mayıs dönemi" verisi İŞLEM ayı Haziran'dadır.
+ * Haziran'da işlenir "Mayıs dönemi" verisi İŞLEM ayı Haziran'dadır.
  *   - Gelen period = BEYANNAME dönemi kabul edilir; sorgu İŞLEM ayı (= period + 1).
  *   - period yoksa cari beyanname dönemi = (bu ay − 1).
  *   - verildiMode (beyannamesi VERİLMİŞ olanlar sorgusu) + period verilmemişse: cari
- *     ay henüz verilmemiş olabilir (vade gelmemiş) → "0/yok" yanlışı çıkar. Bu yüzden
+ *     ay henüz verilmemiş olabilir (vade gelmemiş) "0/yok" yanlışı çıkar. Bu yüzden
  *     GERÇEKTEN beyanname verilen EN SON işlem ayını bulup onu gösteririz.
  */
 
@@ -32,7 +32,7 @@ export interface MonthlyStatusRow {
   evraklarIslendi: boolean;
   /** Aylık takipteki tekil "kontrol edildi" bayrağı (eski alan). */
   kontrolEdildi: boolean;
-  /** Portaldaki deriveStage ile AYNI: İND+HES+ARŞİV üçü de ✓. */
+  /** Portaldaki deriveStage ile AYNI: İND+HES+ARŞİV üçü de . */
   kontrolBitti: boolean;
   kdvKontrolEdildi: boolean;
   beyannameVerildi: boolean;
@@ -55,7 +55,7 @@ export interface MonthlyStatusList {
   toplamMukellef: number;
   /** verildiMode'da period verilmediği için dönem dinamik (son verilen ay) seçildi mi. */
   donemDinamikSecildi: boolean;
-  /** İstenen işlem ayı boştu → veri bulunan en son işlem ayına düşüldü mü. */
+  /** İstenen işlem ayı boştu veri bulunan en son işlem ayına düşüldü mü. */
   bosDonemFallback: boolean;
 }
 
@@ -91,7 +91,7 @@ export async function computeMonthlyStatusList(prisma: any, opts: ComputeOpts): 
   const period = String(opts.period || '').trim();
   const explicit = /^\d{4}-\d{2}$/.test(period);
 
-  // 1) Beyanname dönemi → işlem ayı
+  // 1) Beyanname dönemi işlem ayı
   let bYear: number;
   let bMonth: number;
   if (explicit) {
@@ -107,7 +107,7 @@ export async function computeMonthlyStatusList(prisma: any, opts: ComputeOpts): 
   let month = bMonth + 1;
   if (month === 13) { month = 1; year += 1; }
 
-  // 2) verildiMode + dönem verilmemiş → gerçekten verilen EN SON işlem ayına geç.
+  // 2) verildiMode + dönem verilmemiş gerçekten verilen EN SON işlem ayına geç.
   let donemDinamikSecildi = false;
   if (opts.verildiMode && !explicit) {
     const son = await prisma.taxpayerMonthlyStatus.findFirst({
@@ -178,7 +178,7 @@ export async function computeMonthlyStatusList(prisma: any, opts: ComputeOpts): 
   let { rows, toplam } = await queryRows(year, month);
 
   // 4) BOŞ AY KORUMASI: çözülen işlem ayında HİÇBİR durum kaydı yoksa (örn. AI "bu ay"ı
-  // beyanname dönemi sanıp GELECEK/boş işlem ayını sorgulattıysa → "0/yok" yanlışı), veri
+  // beyanname dönemi sanıp GELECEK/boş işlem ayını sorgulattıysa "0/yok" yanlışı), veri
   // bulunan EN SON işlem ayına düş. Deterministik kısayolu etkilemez (cari ay zaten doludur).
   let bosDonemFallback = false;
   if (!donemDinamikSecildi && !rows.some((r) => r.kayitVar)) {
@@ -216,7 +216,7 @@ export async function computeMonthlyStatusList(prisma: any, opts: ComputeOpts): 
 // ============================================================================
 // OWNER DURUM-LİSTESİ KISAYOLU (TEK KAYNAK) — intent algılama + biçimlendirme
 // Hem WhatsApp owner kısayolu (whatsapp-bot.controller) hem MOREN AI sayfası
-// (moren-ai.service.chat owner fast-path) BUNU çağırır → "kimler evrak getirdi /
+// (moren-ai.service.chat owner fast-path) BUNU çağırır "kimler evrak getirdi /
 // beyannamesi verildi" soruları her yüzeyde AYNI, güvenilir, hızlı cevaplanır
 // (agentic AI'nın 'çekmem gerekiyor' yarım-cevabına düşmeden).
 // ============================================================================
@@ -225,7 +225,7 @@ export type OwnerStatusIntent =
   | 'beyanname_hazir' | 'kontrol_bekleyen' | 'evrak_islenen' | 'evrak_gelen'
   | 'evrak_bekleyen' | 'islem_bekleyen' | 'verildi' | 'verilmedi' | 'mukellef_sayisi';
 
-/** Türkçe aksanı sıyırır (ş→s, ı→i, ç→c …) + küçük harf. */
+/** Türkçe aksanı sıyırır (şs, ıi, çc …) + küçük harf. */
 function normalizeForIntent(value: string): string {
   return String(value || '')
     .toLocaleLowerCase('tr-TR')
@@ -258,12 +258,12 @@ export function detectOwnerStatusIntent(text: string): OwnerStatusIntent | null 
 /** Owner durum listesi ŞABLONU: başlık + dönem/sayı + her firma AYRI SATIR (numaralı). */
 export function formatOwnerStatusList(baslik: string, donemLabel: string, names: string[]): string {
   if (!names.length) {
-    return `📋 ${baslik}\n🗓️ ${donemLabel} dönemi\n\nBu durumda mükellef yok.`;
+    return `${baslik}\n${donemLabel} dönemi\n\nBu durumda mükellef yok.`;
   }
   const gosterilecek = names.slice(0, 60);
   const satirlar = gosterilecek.map((ad, i) => `${i + 1}. ${ad}`).join('\n');
   const fazla = names.length > 60 ? `\n… ve ${names.length - 60} mükellef daha.` : '';
-  return `📋 ${baslik}\n🗓️ ${donemLabel} dönemi · ${names.length} mükellef\n\n${satirlar}${fazla}`;
+  return `${baslik}\n${donemLabel} dönemi · ${names.length} mükellef\n\n${satirlar}${fazla}`;
 }
 
 /**
@@ -286,7 +286,7 @@ export async function buildOwnerStatusReply(
 
   if (intent === 'mukellef_sayisi') {
     return {
-      reply: `👥 Toplam ${list.toplamMukellef} aktif mükellefin takipte.`,
+      reply: `Toplam ${list.toplamMukellef} aktif mükellefin takipte.`,
       intent, count: list.toplamMukellef, donemLabel: list.donemLabel,
     };
   }
@@ -435,9 +435,9 @@ export async function computeTaxPayableList(prisma: any, opts: TaxPayableOpts): 
 
   const satirlar = liste.slice(0, 60).map((r, i) => `${i + 1}. ${r.isim}: ${fmtTLshared(r.toplam)}`).join('\n');
   const whatsappOzet = liste.length
-    ? `🧾 ${label.toLocaleUpperCase('tr-TR')} ÖDEMESİ ÇIKAN MÜKELLEFLER — ${donem}\n\n${satirlar}` +
+    ? `${label.toLocaleUpperCase('tr-TR')} ÖDEMESİ ÇIKAN MÜKELLEFLER — ${donem}\n\n${satirlar}` +
       `${liste.length > 60 ? `\n… ve ${liste.length - 60} mükellef daha.` : ''}` +
-      `\n\n💰 Toplam: ${fmtTLshared(toplam)} · ${liste.length} mükellef`
+      `\n\nToplam: ${fmtTLshared(toplam)} · ${liste.length} mükellef`
     : `${donem} döneminde ${label} ödemesi çıkan mükellef yok.`;
 
   return {
@@ -499,7 +499,7 @@ export async function computeRevenueRanking(
   const explicit = /^\d{4}-(\d{2}|Q[1-4])$/i.test(reqPeriod);
   let donem = explicit ? reqPeriod : '';
   let donemDinamikSecildi = false;
-  // NOT: gelirTablosu'nda `taxpayer` İLİŞKİSİ YOK (sadece taxpayerId skaler) → ilişki
+  // NOT: gelirTablosu'nda `taxpayer` İLİŞKİSİ YOK (sadece taxpayerId skaler) ilişki
   // filtresi/select HATA verir. İsimler ayrı taxpayer sorgusuyla çekilir, aktiflik orada süzülür.
   if (!donem) {
     const son = await prisma.gelirTablosu.findFirst({
@@ -543,7 +543,7 @@ export async function computeRevenueRanking(
   const deger = (r: any) => kind === 'kar' ? r.kar : r.ciro;
   const satirlar = top.map((r: any, i: number) =>
     `${i + 1}. ${r.mukellef}: ${new Intl.NumberFormat('tr-TR', { maximumFractionDigits: 0 }).format(deger(r))} ₺`).join('\n');
-  const baslik = kind === 'kar' ? '🏆 EN ÇOK KÂR EDEN MÜKELLEFLER' : '📈 EN ÇOK CİRO YAPAN MÜKELLEFLER';
+  const baslik = kind === 'kar' ? 'EN ÇOK KÂR EDEN MÜKELLEFLER' : 'EN ÇOK CİRO YAPAN MÜKELLEFLER';
   const dipnot = kind === 'kar' ? 'Dönem net kârı' : 'Net satışlar';
   const whatsappOzet = top.length
     ? `${baslik} — ${donem}\n\n${satirlar}\n\n(${dipnot}; ${liste.length} mükellefin gelir tablosu var)`
@@ -615,9 +615,9 @@ export async function buildOwnerDebtRankingReply(
   const fmt = (n: number) => new Intl.NumberFormat('tr-TR', { minimumFractionDigits: 2, maximumFractionDigits: 2 }).format(n) + ' ₺';
   const satirlar = liste.slice(0, limit).map((r, i) => `${i + 1}. ${r.ad}: ${fmt(r.bakiye)}`).join('\n');
   const reply = liste.length
-    ? `💰 BORÇLU MÜKELLEFLER (açık cari bakiye)\n\n${satirlar}` +
+    ? `BORÇLU MÜKELLEFLER (açık cari bakiye)\n\n${satirlar}` +
       `${liste.length > limit ? `\n… ve ${liste.length - limit} mükellef daha.` : ''}` +
-      `\n\n📊 Toplam: ${fmt(toplam)} · ${liste.length} borçlu mükellef`
+      `\n\nToplam: ${fmt(toplam)} · ${liste.length} borçlu mükellef`
     : 'Açık cari bakiyesi (borcu) olan mükellef yok.';
   return { reply, count: liste.length };
 }
@@ -664,7 +664,7 @@ export async function buildOwnerTaxTotalReply(
   const fmt = (n: number) => new Intl.NumberFormat('tr-TR', { minimumFractionDigits: 2, maximumFractionDigits: 2 }).format(n) + ' ₺';
   const satirlar = [...byType.entries()].sort((a, b) => b[1] - a[1]).map(([t, v]) => `• ${t}: ${fmt(v)}`).join('\n');
   const reply = kayitlar.length
-    ? `🧾 TOPLAM TAHAKKUK — ${donem}\n\n${satirlar}\n\n💰 GENEL TOPLAM: ${fmt(toplam)} (${kayitlar.length} beyanname)`
+    ? `TOPLAM TAHAKKUK — ${donem}\n\n${satirlar}\n\nGENEL TOPLAM: ${fmt(toplam)} (${kayitlar.length} beyanname)`
     : `${donem} için tahakkuk kaydı yok.`;
   return { reply };
 }
@@ -705,7 +705,7 @@ export async function buildOwnerMizanStatusReply(
     prisma.taxpayer.findMany({ where: { tenantId, isActive: true }, select: { id: true, companyName: true, firstName: true, lastName: true } }).catch(() => []),
     prisma.mizan.findMany({ where: { tenantId, donem }, select: { taxpayerId: true }, distinct: ['taxpayerId'] }).catch(() => []),
   ]);
-  // "X'in mizanı var mı" → tek mükellef sorusu; portföy listesi DEĞİL → tek-mükellef kısayoluna bırak.
+  // "X'in mizanı var mı" tek mükellef sorusu; portföy listesi DEĞİL tek-mükellef kısayoluna bırak.
   if (resolveTaxpayerByText(taxpayers, text)) return null;
   const mizanliIds = new Set<string>(mizanlar.map((m: any) => m.taxpayerId).filter(Boolean));
   const ad = (t: any) => (t.companyName || `${t.firstName || ''} ${t.lastName || ''}`).trim() || 'Mükellef';
@@ -713,18 +713,18 @@ export async function buildOwnerMizanStatusReply(
   const olmayan = taxpayers.filter((t: any) => !mizanliIds.has(t.id)).map(ad).sort((a: string, b: string) => a.localeCompare(b, 'tr'));
 
   const hedef = intent.durum === 'var' ? olan : olmayan;
-  const baslik = intent.durum === 'var' ? `📒 MİZANI YÜKLENMİŞ MÜKELLEFLER — ${donem}` : `📋 MİZANI EKSİK (YÜKLENMEMİŞ) MÜKELLEFLER — ${donem}`;
+  const baslik = intent.durum === 'var' ? `MİZANI YÜKLENMİŞ MÜKELLEFLER — ${donem}` : `MİZANI EKSİK (YÜKLENMEMİŞ) MÜKELLEFLER — ${donem}`;
   const satirlar = hedef.slice(0, 60).map((isim: string, i: number) => `${i + 1}. ${isim}`).join('\n');
   const reply = hedef.length
     ? `${baslik}\n\n${satirlar}${hedef.length > 60 ? `\n… ve ${hedef.length - 60} mükellef daha.` : ''}` +
-      `\n\n📊 ${hedef.length} mükellef (toplam ${taxpayers.length} aktif; ${olan.length} mizanlı / ${olmayan.length} eksik)`
-    : (intent.durum === 'var' ? `${donem} için mizanı yüklenmiş mükellef yok.` : `${donem} için tüm aktif mükelleflerin mizanı yüklenmiş 👍`);
+      `\n\n${hedef.length} mükellef (toplam ${taxpayers.length} aktif; ${olan.length} mizanlı / ${olmayan.length} eksik)`
+    : (intent.durum === 'var' ? `${donem} için mizanı yüklenmiş mükellef yok.` : `${donem} için tüm aktif mükelleflerin mizanı yüklenmiş `);
   return { reply, count: hedef.length };
 }
 
 // ============================================================================
 // TEK-MÜKELLEF KDV — "X'in/X'e ne kadar KDV çıkıyor/ödeyecek". TEMKİNLİ isim eşleme
-// (tek-net kazanan yoksa null→agentic). En son dönem KDV kontrol seansından
+// (tek-net kazanan yoksa nullagentic). En son dönem KDV kontrol seansından
 // 391(hesaplanan)−191(indirilecek)=ödenecek. ŞABLON + anında.
 // ============================================================================
 
@@ -741,7 +741,7 @@ export function resolveTaxpayerByText(taxpayers: any[], text: string): any | nul
   if (!qTokens.size) return null;
   const qArr = Array.from(qTokens);
   // Türkçe ek toleransı: sorgu-kelimesi ad-kökünü AYNEN içerir VEYA onunla BAŞLAR
-  // ("akgozun"→"akgoz", "madeninin"→"madeni"; kök ≥3 harf olmalı, kısa yanlış-eşleşme olmasın).
+  // ("akgozun""akgoz", "madeninin""madeni"; kök ≥3 harf olmalı, kısa yanlış-eşleşme olmasın).
   const eslesir = (nameTok: string) =>
     qTokens.has(nameTok) || (nameTok.length >= 3 && qArr.some((qt) => qt.startsWith(nameTok)));
   let best: any = null, bestScore = 0, secondScore = 0;
@@ -791,8 +791,8 @@ export async function computeTaxpayerKdvPayable(prisma: any, tenantId: string, t
 /**
  * MÜKELLEF HIZLI-YOL: mükellefin KENDİ sık sorularını (borç/bakiye, son ödeme, KDV durumu,
  * beyanname durumu) agentic+LLM-yargıç+retry zincirini ATLAYIP anında + şablonlu cevaplar.
- * AKTİF MÜKELLEFE KİLİTLİ (taxpayerId parametreyle gelir; isim çözümü YOK → yanlış mükellef
- * imkânsız). Eşleşme yoksa null → agentic akışa bırakır. Beyanname TUTARI verilmez (sadece durum).
+ * AKTİF MÜKELLEFE KİLİTLİ (taxpayerId parametreyle gelir; isim çözümü YOK yanlış mükellef
+ * imkânsız). Eşleşme yoksa null agentic akışa bırakır. Beyanname TUTARI verilmez (sadece durum).
  */
 export async function buildTaxpayerSelfReply(
   prisma: any, tenantId: string, taxpayerId: string, text: string,
@@ -806,7 +806,7 @@ export async function buildTaxpayerSelfReply(
   const wantsSonOdeme = /(en son.*(ode|odedi)|son odeme|ne zaman ode|en son ne kadar ode)/.test(n);
   const wantsKdv = /kdv/.test(n) && /(ne kadar|odeyecek|odecek|cikiyor|cikti|durum|borc|kac tl|tutar|hesaplanan|indirilecek|odemem)/.test(n);
   // NOT: "alacag" KALDIRILDI — "eleman alacağım" (alma fiili) ile "alacak" (receivable) aynı
-  // yazılıyor → "yeni eleman alacağım" yanlışlıkla borç cevabı veriyordu. Receivable nadir; agentic'e kalsın.
+  // yazılıyor "yeni eleman alacağım" yanlışlıkla borç cevabı veriyordu. Receivable nadir; agentic'e kalsın.
   const wantsBorc = !wantsKdv && (/(\bborc|borcum|bakiye|hesabim|odemem var|ne kadar.*ode)/.test(n) || wantsSonOdeme);
   const wantsBeyan = /(beyanname|beyannamem)/.test(n) && /(veril|hazir|durum|oldu mu|verildi mi|hazir mi|var mi)/.test(n);
 
@@ -816,7 +816,7 @@ export async function buildTaxpayerSelfReply(
     const kdv = await computeTaxpayerKdvPayable(prisma, tenantId, taxpayerId, pm ? `${pm[1]}/${pm[2]}` : '');
     if (!kdv) return { reply: 'KDV tutarınız için kontrolümüz henüz tamamlanmadı; en kısa sürede netleştirip ileteceğiz.', kind: 'kdv' };
     const sonuc = kdv.odenecek >= 0 ? `Ödenecek KDV: ${fmtTL(kdv.odenecek)}` : `Devreden KDV: ${fmtTL(-kdv.odenecek)} (ödeme çıkmıyor)`;
-    return { reply: `🧾 ${kdv.donemLabel} KDV durumunuz:\nHesaplanan: ${fmtTL(kdv.hesaplanan)}\nİndirilecek: ${fmtTL(kdv.indirilecek)}\n${sonuc}`, kind: 'kdv' };
+    return { reply: `${kdv.donemLabel} KDV durumunuz:\nHesaplanan: ${fmtTL(kdv.hesaplanan)}\nİndirilecek: ${fmtTL(kdv.indirilecek)}\n${sonuc}`, kind: 'kdv' };
   }
 
   // Borç / bakiye / son ödeme (kendi)
@@ -839,7 +839,7 @@ export async function buildTaxpayerSelfReply(
     }
     const durum = bakiye > 0 ? `Açık bakiyeniz: ${fmtTL(bakiye)}` : bakiye < 0 ? `${fmtTL(-bakiye)} alacaklı/avans görünüyorsunuz` : 'Açık borcunuz görünmüyor (hesap kapalı)';
     const sonLine = sonO ? `\nSon ödeme: ${tarihTR(sonO.tarih)} · ${fmtTL(Number(sonO.tutar) || 0)}` : '';
-    return { reply: `💰 ${durum}${sonLine}`, kind: 'borc' };
+    return { reply: `${durum}${sonLine}`, kind: 'borc' };
   }
 
   // Beyanname DURUMU (kendi) — tutar VERME, sadece verildi/hazırlanıyor
@@ -859,7 +859,7 @@ export async function buildTaxpayerSelfReply(
       BILDIRGE: 'Bildirim', EDEFTER: 'e-Defter Beratı', DIGER: 'Beyanname',
     };
     const adKodu = (t: string) => TIP_AD[t] || t;
-    // Dönemi düzgün yaz: 2026-05→"Mayıs 2026", 2026-Q1→"2026 1. geçici vergi dönemi", 2025-YIL→"2025 yıllık"
+    // Dönemi düzgün yaz: 2026-05"Mayıs 2026", 2026-Q1"2026 1. geçici vergi dönemi", 2025-YIL"2025 yıllık"
     const donemFmt = (d: string) => {
       const mm = d.match(/^(\d{4})[\/-](\d{2})$/); if (mm) return `${aylar[parseInt(mm[2], 10) - 1]} ${mm[1]}`;
       const qq = d.match(/^(\d{4})[\/-]?Q(\d)$/i); if (qq) return `${qq[1]} ${qq[2]}. geçici vergi dönemi`;
@@ -870,9 +870,9 @@ export async function buildTaxpayerSelfReply(
       .sort((a: any, b: any) => new Date(b.beyanTarihi).getTime() - new Date(a.beyanTarihi).getTime())
       .slice(0, 5);
     const bekleyen = kayitlar.filter((k: any) => !k.beyanTarihi).slice(0, 5);
-    let r = '📝 Beyanname durumunuz\n';
-    if (verildi.length) r += '\n✅ Verilenler:\n' + verildi.map((k: any) => `• ${adKodu(k.beyanTipi)} — ${donemFmt(k.donem)}`).join('\n') + '\n';
-    if (bekleyen.length) r += '\n⏳ Hazırlananlar:\n' + bekleyen.map((k: any) => `• ${adKodu(k.beyanTipi)} — ${donemFmt(k.donem)}`).join('\n');
+    let r = 'Beyanname durumunuz:\n';
+    if (verildi.length) r += '\nVerilenler:\n' + verildi.map((k: any) => `- ${adKodu(k.beyanTipi)} — ${donemFmt(k.donem)}`).join('\n') + '\n';
+    if (bekleyen.length) r += '\nHazırlananlar:\n' + bekleyen.map((k: any) => `- ${adKodu(k.beyanTipi)} — ${donemFmt(k.donem)}`).join('\n');
     if (!verildi.length && !bekleyen.length) r += '\nKayıt görünmüyor.';
     return { reply: r.trim(), kind: 'beyanname' };
   }
@@ -882,10 +882,10 @@ export async function buildTaxpayerSelfReply(
 
 /**
  * MÜKELLEF HIZLI-YOL 2 (mevzuat + selamlama): SABİT-kurallı sık sorular (KDV oranı, fatura
- * süresi, yıllık izin, SGK giriş/çıkış süreleri) ve selamlama/teşekkür → agentic'i ATLAYIP
+ * süresi, yıllık izin, SGK giriş/çıkış süreleri) ve selamlama/teşekkür agentic'i ATLAYIP
  * anında + DOĞRU + saçma-sız cevaplar. SADECE değişmeyen kurallar (yıldan yıla değişen TUTAR/
  * had/ceza BURADA YOK — onlar agentic'te güncel kaynakla). Veri sorusu DEĞİL (o buildTaxpayerSelfReply'da).
- * Eşleşmezse null → agentic.
+ * Eşleşmezse null agentic.
  */
 export function buildTaxpayerQuickReply(text: string): { reply: string; kind: string } | null {
   const n = normalizeForIntent(text);
@@ -894,11 +894,11 @@ export function buildTaxpayerQuickReply(text: string): { reply: string; kind: st
   // SELAMLAMA (sadece kısa, başka niyet yoksa)
   if (wc <= 4 && /\b(merhaba|merhabalar|selam|selamlar|slm|mrb|gunaydin|iyi gunler|iyi aksamlar|kolay gelsin|nasilsin|nasilsiniz|naber|ne haber)\b/.test(n)
       && !/(borc|kdv|beyan|fatura|odeme|ne kadar|ne zaman|kac|mi$|var mi)/.test(n)) {
-    return { reply: 'Merhaba, hoş geldiniz! 😊 Size nasıl yardımcı olabilirim?', kind: 'selamlama' };
+    return { reply: 'Merhaba, hoş geldiniz. Size nasıl yardımcı olabilirim?', kind: 'selamlama' };
   }
   // TEŞEKKÜR
   if (wc <= 5 && (/\b(tesekkur|tesekkurler|eyvallah|tsk)\b/.test(n) || /\bsag\s?ol/.test(n) || /\bsaol/.test(n))) {
-    return { reply: 'Rica ederim, her zaman buradayız. Başka bir konuda yardımcı olabilirsem yazmanız yeterli. 🙂', kind: 'tesekkur' };
+    return { reply: 'Rica ederim, her zaman buradayız. Başka bir konuda yardımcı olabilirsem yazmanız yeterli.', kind: 'tesekkur' };
   }
 
   // KDV ORANI (sabit: %20 / %10 / %1) — "kdv durumum/ne kadar" değil, ORAN sorusu
@@ -943,7 +943,7 @@ export async function buildOwnerSingleTaxpayerKdvReply(
     select: { id: true, companyName: true, firstName: true, lastName: true },
   }).catch(() => []);
   const t = resolveTaxpayerByText(taxpayers, text);
-  if (!t) return null; // belirsiz → agentic
+  if (!t) return null; // belirsiz agentic
   const pm = text.match(/\b(\d{4})[\/-](\d{2})\b/);
   const kdv = await computeTaxpayerKdvPayable(prisma, tenantId, t.id, pm ? `${pm[1]}/${pm[2]}` : '');
   const ad = (t.companyName || `${t.firstName || ''} ${t.lastName || ''}`).trim();
@@ -952,10 +952,10 @@ export async function buildOwnerSingleTaxpayerKdvReply(
   }
   const fmt = (x: number) => new Intl.NumberFormat('tr-TR', { minimumFractionDigits: 2, maximumFractionDigits: 2 }).format(x) + ' ₺';
   const sonuc = kdv.odenecek >= 0
-    ? `💰 Ödenecek KDV: ${fmt(kdv.odenecek)}`
-    : `↪️ Devreden KDV: ${fmt(-kdv.odenecek)} (ödeme çıkmıyor)`;
+    ? `Ödenecek KDV: ${fmt(kdv.odenecek)}`
+    : `Devreden KDV: ${fmt(-kdv.odenecek)} (ödeme çıkmıyor)`;
   const reply =
-    `🧾 KDV — ${ad}\n🗓️ ${kdv.donemLabel}\n\n` +
+    `KDV — ${ad}\n${kdv.donemLabel}\n\n` +
     `• Hesaplanan (391): ${fmt(kdv.hesaplanan)}\n` +
     `• İndirilecek (191): ${fmt(kdv.indirilecek)}\n` +
     `────────────\n${sonuc}`;
@@ -994,7 +994,7 @@ export async function buildOwnerSingleTaxpayerReply(
     select: { id: true, companyName: true, firstName: true, lastName: true },
   }).catch(() => []);
   const t = resolveTaxpayerByText(taxpayers, text);
-  if (!t) return null; // belirsiz/ad yok → agentic
+  if (!t) return null; // belirsiz/ad yok agentic
   const ad = (t.companyName || `${t.firstName || ''} ${t.lastName || ''}`).trim();
 
   if (kind === 'mizan') {
@@ -1007,15 +1007,15 @@ export async function buildOwnerSingleTaxpayerReply(
     const tBorc = (m.hesaplar || []).reduce((s: number, h: any) => s + (Number(h.borcToplami) || 0), 0);
     const tAlacak = (m.hesaplar || []).reduce((s: number, h: any) => s + (Number(h.alacakToplami) || 0), 0);
     const fark = Math.abs(tBorc - tAlacak);
-    const denge = fark < 1 ? '✅ Tutarlı' : `⚠️ ${TL2(fark)} fark`;
+    const denge = fark < 1 ? 'Tutarlı' : `${TL2(fark)} fark`;
     const anomali = (m.anomaliler || []).length;
     const reply =
-      `📒 MİZAN — ${ad}\n🗓️ ${donemOku(m.donem)}\n\n` +
+      `MİZAN — ${ad}\n${donemOku(m.donem)}\n\n` +
       `• Toplam Borç: ${TL2(tBorc)}\n` +
       `• Toplam Alacak: ${TL2(tAlacak)}\n` +
       `• Denge: ${denge}\n` +
       `• Hesap sayısı: ${(m.hesaplar || []).length}` +
-      (anomali ? `\n• Anomali: ⚠️ ${anomali} adet` : '');
+      (anomali ? `\n• Anomali: ${anomali} adet` : '');
     return { reply, mukellef: ad };
   }
 
@@ -1027,10 +1027,10 @@ export async function buildOwnerSingleTaxpayerReply(
       else if (h.tip === 'TAHSILAT') bakiye -= Number(h.tutar) || 0;
     }
     const reply = bakiye > 0
-      ? `💰 CARİ DURUM — ${ad}\n\n• Açık bakiye (borç): ${TL2(bakiye)}\n\n(Tahsil edilince kapanır.)`
+      ? `CARİ DURUM — ${ad}\n\n• Açık bakiye (borç): ${TL2(bakiye)}\n\n(Tahsil edilince kapanır.)`
       : bakiye < 0
-        ? `💰 CARİ DURUM — ${ad}\n\n• Alacaklı bakiye: ${TL2(-bakiye)} (fazla ödeme)`
-        : `💰 CARİ DURUM — ${ad}\n\nAçık borcu yok, bakiye sıfır. 👍`;
+        ? `CARİ DURUM — ${ad}\n\n• Alacaklı bakiye: ${TL2(-bakiye)} (fazla ödeme)`
+        : `CARİ DURUM — ${ad}\n\nAçık borcu yok, bakiye sıfır. `;
     return { reply, mukellef: ad };
   }
 
@@ -1038,10 +1038,10 @@ export async function buildOwnerSingleTaxpayerReply(
     const g = await prisma.gelirTablosu.findFirst({ where: { tenantId, taxpayerId: t.id }, orderBy: [{ donem: 'desc' }, { createdAt: 'desc' }], select: { donem: true, netSatislar: true, brutSatislar: true, donemNetKari: true, satisMaliyeti: true } }).catch(() => null);
     if (!g) return { reply: `${ad} için gelir tablosu kaydı bulamadım.`, mukellef: ad };
     const reply =
-      `📊 GELİR TABLOSU — ${ad}\n🗓️ ${donemOku(g.donem)}\n\n` +
+      `GELİR TABLOSU — ${ad}\n${donemOku(g.donem)}\n\n` +
       `• Net satış (ciro): ${TL2(Number(g.netSatislar) || Number(g.brutSatislar) || 0)}\n` +
       `• Satış maliyeti: ${TL2(Number(g.satisMaliyeti) || 0)}\n` +
-      `────────────\n💵 Dönem net kârı: ${TL2(Number(g.donemNetKari) || 0)}`;
+      `────────────\nDönem net kârı: ${TL2(Number(g.donemNetKari) || 0)}`;
     return { reply, mukellef: ad };
   }
 
@@ -1060,15 +1060,15 @@ export async function buildOwnerSingleTaxpayerReply(
     const verildi = !!b.beyanTarihi;
     const tar = b.beyanTarihi ? ` (${new Date(b.beyanTarihi).toLocaleDateString('tr-TR')})` : '';
     const tah = b.tahakkukTutari != null ? ` · tahakkuk ${TL2(Number(b.tahakkukTutari))}` : '';
-    return `• ${b.beyanTipi}: ${verildi ? '✅ VERİLDİ' : '⏳ hazırlandı'}${tar}${tah}`;
+    return `• ${b.beyanTipi}: ${verildi ? 'VERİLDİ' : 'hazırlandı'}${tar}${tah}`;
   }).join('\n');
-  const reply = `📝 BEYANNAME DURUMU — ${ad}\n🗓️ ${donemOku(sonDonem)} dönemi\n\n${satirlar}`;
+  const reply = `BEYANNAME DURUMU — ${ad}\n${donemOku(sonDonem)} dönemi\n\n${satirlar}`;
   return { reply, mukellef: ad };
 }
 
 // ============================================================================
 // İŞLENEN FATURA ADEDİ (portföy) — "bu ay kaç fatura işledik / fatura sayısı".
-// mihsapInvoice.donem; "bu ay" belirsizliği → işlenen dönem (önceki ay) + bu ay
+// mihsapInvoice.donem; "bu ay" belirsizliği işlenen dönem (önceki ay) + bu ay
 // gelen NET etiketle gösterilir (bot eskiden "Haziran 0/henüz yok" diyordu).
 // ============================================================================
 
@@ -1083,7 +1083,7 @@ export async function buildOwnerInvoiceCountReply(
   prisma: any, tenantId: string, text: string,
 ): Promise<{ reply: string } | null> {
   if (!detectInvoiceCountIntent(text)) return null;
-  // Tek-mükellef ("X'in kaç faturası") ise portföy sayımı DEĞİL → agentic'e bırak.
+  // Tek-mükellef ("X'in kaç faturası") ise portföy sayımı DEĞİL agentic'e bırak.
   const txp = await prisma.taxpayer.findMany({ where: { tenantId, isActive: true }, select: { id: true, companyName: true, firstName: true, lastName: true } }).catch(() => []);
   if (resolveTaxpayerByText(txp, text)) return null;
   const pm = text.match(/\b(\d{4})-(\d{2})\b/);
@@ -1103,11 +1103,11 @@ export async function buildOwnerInvoiceCountReply(
     return { reply: 'Henüz işlenmiş fatura kaydı bulamadım.' };
   }
   const fmtN = (x: number) => new Intl.NumberFormat('tr-TR').format(x);
-  const lines = [`🧾 İŞLENEN FATURA ADEDİ`, ''];
+  const lines = [`İŞLENEN FATURA ADEDİ`, ''];
   if (targetTotal > 0) {
-    lines.push(`📅 ${donemOku(target)} dönemi: *${fmtN(targetTotal)} fatura*`);
+    lines.push(`${donemOku(target)} dönemi: *${fmtN(targetTotal)} fatura*`);
     lines.push(`   • Alış: ${fmtN(alis)} · Satış: ${fmtN(satis)}`);
   }
-  if (!pm) lines.push(`🆕 ${donemOku(cur)} (bu ay gelen): ${fmtN(curCount)}`);
+  if (!pm) lines.push(`${donemOku(cur)} (bu ay gelen): ${fmtN(curCount)}`);
   return { reply: lines.join('\n') };
 }

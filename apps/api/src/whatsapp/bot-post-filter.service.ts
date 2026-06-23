@@ -5,6 +5,11 @@ import { Injectable } from '@nestjs/common';
 const OFFICE_FALLBACK = 'ofisin dijital asistanı';
 // Binlik ayraçtan sonra kaçan boşluğu temizle: "26. 000" → "26.000", "249. 359" → "249.359".
 const fixNumberSpacing = (s: string) => String(s || '').replace(/(\d)\.\s+(\d{3})(?=\D|$)/g, '$1.$2');
+// Emoji/sembol SÜZ — mali müşavirlik için profesyonel/sade dursun (kullanıcı talimatı: "çok fazla
+// emoji"). ₺, •, — gibi gerekli karakterler emoji aralıklarının DIŞINDA, korunur. Emoji + ardındaki
+// tek boşluk birlikte silinir ("🧾 KDV" → "KDV").
+const EMOJI_RE = /[\u{1F000}-\u{1FAFF}\u{2190}-\u{21FF}\u{2300}-\u{23FF}\u{2600}-\u{27BF}\u{2B00}-\u{2BFF}\u{FE0F}\u{20E3}]️?[ \t]?/gu;
+const stripEmojis = (s: string) => String(s || '').replace(EMOJI_RE, '').replace(/[ \t]{2,}/g, ' ').replace(/[ \t]+\n/g, '\n').trim();
 
 @Injectable()
 export class WhatsAppBotPostFilterService {
@@ -67,10 +72,13 @@ export class WhatsAppBotPostFilterService {
     // (controller normalde temizler; bu son güvenlik katmanı).
     text = text.replace(/\[\[\s*ESKALE\s*\]\]/gi, '').trim();
 
+    // Emoji süz (profesyonel/sade ton).
+    text = stripEmojis(text);
+
     // Owner (mali müşavir) raporları yapı ister: satır sonları, başlıklar, numaralar
     // KORUNMALI. Sohbet için tasarlanan agresif temizlik bunları eziyordu → ayrı yol.
     if (options?.mode === 'owner') {
-      return this.formatOwnerReport(text);
+      return this.formatOwnerReport(stripEmojis(text));
     }
 
     // 1. Code block + markdown formatting sil
