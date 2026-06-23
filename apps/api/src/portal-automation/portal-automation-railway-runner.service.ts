@@ -3993,6 +3993,26 @@ export class PortalAutomationRailwayRunnerService implements OnModuleInit {
     };
   }
 
+  /**
+   * ONAYLANDI indirme kapısı: bir satır GERÇEKTEN onaylı (indirilip BeyanKaydı yazılabilir) mı?
+   * Amaç — onay bekleyen / hatalı beyannameler (yanlışlıkla onaylı listesine düşse bile) İNDİRİLMESİN.
+   * Onlar yalnızca "onay bekleyen" / "hatalı" sorgusunda BİLGİ olarak takip edilir (indirme yok).
+   *   - Durum metni "onay bekliyor" / "hatalı" / "iptal" ise → onaylı değil.
+   *   - Onaylı beyanname HER ZAMAN bir tahakkuk fişi üretir; tahakkukOid hiç yoksa (T ikonu yok) ve
+   *     durum da açıkça "onaylandı" demiyorsa → bu pending bir beyannamedir ("Tutar okunamadı"nın
+   *     kaynağı; sadece beyannamesi iner, tahakkuku inmez) → indirilmez.
+   * (DOM yedek yolunda tahakkukOid bilinmez; orada yalnızca durum metni denetlenir.)
+   */
+  private isApprovedDownloadableRow(row: EBeyannameResultRow, tahakkukOid?: string | null): boolean {
+    const status = this.normalizeTextKey(row?.statusText || '');
+    if (/BEKL/.test(status)) return false;
+    if (/HATA/.test(status)) return false;
+    if (/IPTAL/.test(status)) return false;
+    const explicitlyApproved = /ONAYLAN/.test(status);
+    if (!explicitlyApproved && tahakkukOid === null) return false;
+    return true;
+  }
+
   private declarationFromEBeyannameRow(
     row: EBeyannameResultRow,
     status: EBeyannameStatus,
@@ -4125,6 +4145,11 @@ export class PortalAutomationRailwayRunnerService implements OnModuleInit {
       for (const row of rows) {
         if (processedRows >= maxRows) break;
         processedRows++;
+        // ONAYLI KAPISI (DOM yedek yolu): onay bekleyen/hatalı satır indirilmez; sadece bilgi olarak takip edilir.
+        if (!this.isApprovedDownloadableRow(row)) {
+          notes.push(`onaylandi: ${row.taxNumber || row.taxpayerName || ''} ${this.compact(row.beyanTipiRaw || '')} onaylı değil (durum=${this.compact(row.statusText || '-')}) — atlandı`);
+          continue;
+        }
         if (processedRows === 1 || processedRows % 10 === 0) {
           await this.jobProgress(tenantId, job, 'approved_scan', `Onaylandi liste taraniyor: ${processedRows}. satir.`, {
             current: Math.min(processedRows, totalRows),
@@ -5618,6 +5643,13 @@ export class PortalAutomationRailwayRunnerService implements OnModuleInit {
     for (const entry of entries) {
       processed++;
       const { row, beyannameOid, tahakkukOid } = entry;
+      // ONAYLI KAPISI: onay bekleyen/hatalı satır (yanlışlıkla listeye düşse de) indirilmez + BeyanKaydı yazılmaz.
+      // Pending'de tahakkuk fişi (T ikonu/tahakkukOid) olmadığı için sadece beyannamesi inip "Tutar okunamadı"
+      // satırı oluşuyordu; bu satırlar zaten "onay bekleyen" sorgusunda BİLGİ olarak takip ediliyor.
+      if (!this.isApprovedDownloadableRow(row, tahakkukOid)) {
+        notes.push(`liste-API: ${row.taxNumber || row.taxpayerName || ''} ${this.compact(row.beyanTipiRaw || '')} onaylı değil (durum=${this.compact(row.statusText || '-')}, tahakkuk yok) — indirilmedi, sadece bilgi`);
+        continue;
+      }
       const identity = this.ebeyannameIdentityFromRow(row, taxpayers, job);
       const existing = await this.existingBeyanKaydiFiles(tenantId, identity).catch(() => null);
       const skipExisting = !!existing && !identity?.isCorrection && !this.shouldRefreshExistingEBeyanname(job);
