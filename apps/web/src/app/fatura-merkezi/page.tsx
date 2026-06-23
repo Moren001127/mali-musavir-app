@@ -88,7 +88,7 @@ function periodLabel(p: string): string {
 }
 // Durum: TAM olarak neyin eksik olduğunu söyler (cari/gelir/gider/KDV kodu boş mu).
 // cat = filtreleme kategorisi.
-function deriveDurum(doc: any): { k: string; t: string; cat: string } {
+function deriveDurum(doc: any, isIsletme = false): { k: string; t: string; cat: string } {
   if (doc.status === 'APPROVED') return { k: 'ok', t: 'Onaylandı ✓', cat: 'onayli' };
   if (doc.status === 'PROCESSING') return { k: 'proc', t: 'Okunuyor…', cat: 'okunuyor' };
   if (String(doc.ocrStatus || '').toUpperCase() === 'FAILED') return { k: 'miss', t: 'Okunamadı', cat: 'okunamadi' };
@@ -100,6 +100,17 @@ function deriveDurum(doc: any): { k: string; t: string; cat: string } {
     doc.ocrData?.validationStatus === 'INVALID' ||
     issues.some((i: any) => i?.code && i.code !== 'INCOMPLETE_AMOUNTS' && i?.severity !== 'WARNING');
   if (vissue) return { k: 'warn', t: 'Çelişki — kontrol et', cat: 'celiski' };
+  // İŞLETME DEFTERİ (Defter-Beyan): tek-taraflı — hesap planı/kodu YOK, cari kodu açılmaz.
+  //   Sınıflandırma = Kayıt Türü (Mal/Hizmet Satışı) Muhasebeleştir'de seçilir (varsayılan otomatik).
+  //   Hazır olma şartı: tutarın okunmuş olması. Bilanço'daki "cari/gelir/KDV kodu eksik" UYGULANMAZ.
+  if (isIsletme) {
+    const p = kdvParts(doc);
+    const hasAmt = (Number(p.matrah) || 0) > 0 || (Number(p.kdv) || 0) > 0 || Number(doc.totalAmount) > 0;
+    if (!hasAmt) return { k: 'warn', t: 'Tutar okunamadı', cat: 'tutar' };
+    const isl = doc.ocrData?.isletme;
+    if (isl && ((Array.isArray(isl.satirlar) && isl.satirlar.length) || isl.kayitTuruKod)) return { k: 'ok', t: 'Kayıtlı ✓', cat: 'ready' };
+    return { k: 'ok', t: 'Hazır', cat: 'ready' };
+  }
   // Hiç satır yok → matrah/KDV okunamamış.
   if (!lines.length) return { k: 'warn', t: 'Tutar okunamadı', cat: 'tutar' };
   // Hangi grupların KODU boş? (cari hesap / gelir-gider / KDV) — tam söyle.
@@ -643,7 +654,7 @@ export default function FaturaMerkeziPage() {
           </div>
 
           <div className="content">
-            {(screen === 'faturalar' || screen === 'satis') && <ScreenFaturalar taxpayerId={taxpayerId} period={period} kind={screen === 'satis' ? 'SATIS' : 'ALIS'} />}
+            {(screen === 'faturalar' || screen === 'satis') && <ScreenFaturalar taxpayerId={taxpayerId} period={period} kind={screen === 'satis' ? 'SATIS' : 'ALIS'} isIsletme={(() => { const t = taxpayers.find((x) => x.id === taxpayerId); return /i[şs]letme|defter.?beyan|basit/i.test(`${t?.defterTuru || ''} ${(t as any)?.mihsapDefterTuru || ''}`); })()} />}
             {screen === 'mukellefler' && <ScreenMukellefler taxpayers={taxpayers} period={period} onOpen={(id) => { setTaxpayerId(id); setScreen('faturalar'); }} />}
             {screen === 'kurallar' && <ScreenKurallar taxpayerId={taxpayerId} period={period} />}
             {screen === 'muhasebe' && <ScreenMuhasebe taxpayerId={taxpayerId} period={period} isIsletme={(() => { const t = taxpayers.find((x) => x.id === taxpayerId); return /i[şs]letme|defter.?beyan|basit/i.test(`${t?.defterTuru || ''} ${(t as any)?.mihsapDefterTuru || ''}`); })()} taxpayerNace={(taxpayers.find((t) => t.id === taxpayerId) as any)?.naceKodu || ''} taxpayerFaaliyet={(taxpayers.find((t) => t.id === taxpayerId) as any)?.faaliyetAciklama || ''} taxpayerAd={(() => { const t = taxpayers.find((x) => x.id === taxpayerId); return t ? taxpayerLabel(t) : ''; })()} full={editorFull} onToggleFull={() => setEditorFull((v) => !v)} />}
@@ -674,7 +685,7 @@ function isWaitingTransfer(d: any): boolean {
 function isInAktarim(d: any): boolean {
   return isWaitingTransfer(d) || isArchived(d);
 }
-function ScreenFaturalar({ taxpayerId, period, kind = 'ALIS' }: { taxpayerId: string; period: string; kind?: 'ALIS' | 'SATIS' }) {
+function ScreenFaturalar({ taxpayerId, period, kind = 'ALIS', isIsletme = false }: { taxpayerId: string; period: string; kind?: 'ALIS' | 'SATIS'; isIsletme?: boolean }) {
   const qc = useQueryClient();
   const docsQ = useDocuments(taxpayerId, period);
   const all: any[] = docsQ.data || [];
@@ -683,8 +694,8 @@ function ScreenFaturalar({ taxpayerId, period, kind = 'ALIS' }: { taxpayerId: st
   const docsAll = all.filter((d) => (d.invoiceKind || 'ALIS') === kind && !isInAktarim(d));
   // Durum filtresi (Hepsi / Eşleşti / Kod eksik / Çelişki / …)
   const [durumF, setDurumF] = useState('all');
-  const durumCount = (cat: string) => cat === 'all' ? docsAll.length : docsAll.filter((d) => deriveDurum(d).cat === cat).length;
-  const docs = durumF === 'all' ? docsAll : docsAll.filter((d) => deriveDurum(d).cat === durumF);
+  const durumCount = (cat: string) => cat === 'all' ? docsAll.length : docsAll.filter((d) => deriveDurum(d, isIsletme).cat === cat).length;
+  const docs = durumF === 'all' ? docsAll : docsAll.filter((d) => deriveDurum(d, isIsletme).cat === durumF);
   const [sel, setSel] = useState<Set<string>>(new Set());
   const toggle = (id: string) =>
     setSel((prev) => {
@@ -698,7 +709,7 @@ function ScreenFaturalar({ taxpayerId, period, kind = 'ALIS' }: { taxpayerId: st
 
   const sayac = { ok: 0, miss: 0, warn: 0 };
   docsAll.forEach((d) => {
-    const k = deriveDurum(d).k;
+    const k = deriveDurum(d, isIsletme).k;
     if (k === 'miss') sayac.miss++;
     else if (k === 'warn') sayac.warn++;
     else sayac.ok++;
@@ -820,10 +831,15 @@ function ScreenFaturalar({ taxpayerId, period, kind = 'ALIS' }: { taxpayerId: st
   }, [ocrProg?.reading, qc]);
 
   const muhasebelestir = () => {
-    // TÜM satırların kodu dolu olmalı (cari dahil) — boş carili belge onaylanmasın.
-    const hazir = docs.filter((d) => sel.has(d.id) && d.status !== 'APPROVED' && Array.isArray(d.lines) && d.lines.length > 0 && d.lines.every((l: any) => l.accountCode));
+    // İşletme defteri: hesap kodu YOK — tutarı olan hazır. Bilanço: TÜM satırların kodu dolu (cari dahil).
+    const isReadyDoc = (d: any) => {
+      if (d.status === 'APPROVED') return false;
+      if (isIsletme) { const p = kdvParts(d); return (Number(p.matrah) || 0) > 0 || (Number(p.kdv) || 0) > 0 || Number(d.totalAmount) > 0; }
+      return Array.isArray(d.lines) && d.lines.length > 0 && d.lines.every((l: any) => l.accountCode);
+    };
+    const hazir = docs.filter((d) => sel.has(d.id) && isReadyDoc(d));
     if (hazir.length === 0) {
-      toast.error(sel.size === 0 ? 'Önce belge seç' : 'Seçilenlerde eksik hesap kodu var (cari/KDV/gider) ya da zaten onaylı');
+      toast.error(sel.size === 0 ? 'Önce belge seç' : (isIsletme ? 'Seçilenlerde tutar okunamamış ya da zaten onaylı' : 'Seçilenlerde eksik hesap kodu var (cari/KDV/gider) ya da zaten onaylı'));
       return;
     }
     approveMut.mutate(hazir.map((d) => d.id));
@@ -882,11 +898,12 @@ function ScreenFaturalar({ taxpayerId, period, kind = 'ALIS' }: { taxpayerId: st
         </div>
         <div className="twrap">
           <table>
-            <thead><tr><th style={{ width: 30 }}><Check checked={allSelected} onToggle={toggleAll} /></th><th>Tarih</th><th>Fatura No</th><th>Firma Adı</th><th>Tip</th><th className="num">KDV Hariç</th><th className="num">KDV</th><th className="num">Tutar</th><th>Hesap Kodu</th><th>Durum</th><th className="actcol" style={{ width: 40 }} /></tr></thead>
+            <thead><tr><th style={{ width: 30 }}><Check checked={allSelected} onToggle={toggleAll} /></th><th>Tarih</th><th>Fatura No</th><th>Firma Adı</th><th>Tip</th><th className="num">KDV Hariç</th><th className="num">KDV</th><th className="num">Tutar</th><th>{isIsletme ? 'Kayıt Türü' : 'Hesap Kodu'}</th><th>Durum</th><th className="actcol" style={{ width: 40 }} /></tr></thead>
             <tbody>
               {docs.map((d) => {
-                const du = deriveDurum(d);
+                const du = deriveDurum(d, isIsletme);
                 const sat = (d.invoiceKind || 'ALIS') === 'SATIS';
+                const islKayit = isIsletme ? (d.ocrData?.isletme?.satirlar?.[0]?.kayitTuruAd || d.ocrData?.isletme?.kayitTuruAd || '') : '';
                 const firma = (sat ? d.customerName : d.vendorName) || '—';
                 const vkn = sat ? d.buyerVkn : d.sellerVkn;
                 const code = (() => { const ls = Array.isArray(d.lines) ? d.lines : []; return (ls.find((l: any) => String(l.group) === 'matrah' && l.accountCode) || ls.find((l: any) => l.accountCode))?.accountCode || ''; })();
@@ -901,7 +918,9 @@ function ScreenFaturalar({ taxpayerId, period, kind = 'ALIS' }: { taxpayerId: st
                     <td className="num">{matrah != null ? fmtMoney(matrah) : '—'}</td>
                     <td className="num">{kdv != null ? fmtMoney(kdv) : '—'}</td>
                     <td className="num">{fmtMoney(d.totalAmount)}</td>
-                    <td>{code ? <span className="hk">{code}</span> : <span className="hk no">— yok —</span>}</td>
+                    <td>{isIsletme
+                      ? (islKayit ? <span className="hk">{islKayit}</span> : <span className="hk no" title="İşletme defterinde hesap kodu yok — Kayıt Türü (Mal/Hizmet Satışı) Muhasebeleştir'de seçilir">Muhasebeleştir'de seç</span>)
+                      : (code ? <span className="hk">{code}</span> : <span className="hk no">— yok —</span>)}</td>
                     <td><span className={`pill ${du.k}`} title={du.cat === 'okunamadi' && d.lucaErrorMessage ? `Neden: ${d.lucaErrorMessage}` : du.t}>{du.t}</span>{du.cat === 'okunamadi' && d.lucaErrorMessage ? <div className="oneden">{d.lucaErrorMessage}</div> : null}</td>
                     <td className="actcol" style={{ display: 'flex', gap: 8, alignItems: 'center' }}>
                       <span className="eye" onClick={() => openDocFile(d.id)} title="Belgeyi aç"><Ico html={I.eye} size={15} /></span>
@@ -917,7 +936,7 @@ function ScreenFaturalar({ taxpayerId, period, kind = 'ALIS' }: { taxpayerId: st
           </table>
         </div>
         <div className="foot">
-          <div className="selinfo">{docsAll.length} belge · {sayac.ok} eşleşti · {sayac.miss} eksik kod · {sayac.warn} çelişki{durumF !== 'all' ? ` · (filtre: ${docs.length})` : ''}</div>
+          <div className="selinfo">{docsAll.length} belge · {sayac.ok} {isIsletme ? 'hazır' : 'eşleşti'}{isIsletme ? '' : ` · ${sayac.miss} eksik kod`} · {sayac.warn} {isIsletme ? 'tutar/çelişki' : 'çelişki'}{durumF !== 'all' ? ` · (filtre: ${docs.length})` : ''}</div>
           <div className="sp" />
           {docsAll.length >= 300 && <div className="pg">İlk 300 gösteriliyor — dönem/durum filtresiyle daralt</div>}
         </div>

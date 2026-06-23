@@ -3508,6 +3508,30 @@ export class FaturaMuhasebelestirmeService implements OnModuleInit, OnModuleDest
   async approve(tenantId: string, id: string, userId?: string) {
     const doc = await this.get(tenantId, id);
 
+    // İşletme defteri mi? (tek-taraflı — hesap planı/kodu YOK, denge aranmaz)
+    const tp: any = (doc as any).taxpayerId
+      ? await (this.prisma as any).taxpayer.findFirst({ where: { id: (doc as any).taxpayerId, tenantId }, select: { defterTuru: true, mihsapDefterTuru: true } })
+      : null;
+    const isIsletme = /i[şs]letme|defter.?beyan|basit/i.test(`${tp?.defterTuru || ''} ${tp?.mihsapDefterTuru || ''}`);
+
+    if (isIsletme) {
+      // İşletme: kod/denge kontrolü YOK — tutarın okunmuş olması yeterli (Kayıt Türü Muhasebeleştir'de seçilir).
+      const isl: any = (doc as any).ocrData?.isletme || {};
+      const lineTot = (doc.lines || []).reduce((s: number, l: any) => s + Number(l.debit || 0) + Number(l.credit || 0), 0);
+      const hasAmt = (Number(isl.matrah) || 0) > 0 || (Number(isl.kdvTutar) || 0) > 0 || Number((doc as any).totalAmount) > 0 || lineTot > 0;
+      if (!hasAmt) throw new BadRequestException('Bu belge onaylanamaz — tutar okunamamış. Önce "AI ile oku" ile tutarları çıkar.');
+      await (this.prisma as any).invoiceAccountingDocument.update({
+        where: { id },
+        data: {
+          status: 'APPROVED', approvedBy: userId || null, approvedAt: new Date(),
+          lucaStatus: (doc as any).taxpayerId ? 'QUEUED' : 'NOT_STARTED',
+          lucaErrorMessage: (doc as any).taxpayerId ? null : 'Mukellef secilmedigi icin Luca\'ya aktarilamaz',
+        },
+      });
+      await this.logAudit(tenantId, userId, 'APPROVE', id, { status: doc.status }, { status: 'APPROVED', isletme: true });
+      return this.get(tenantId, id);
+    }
+
     // Boş hesap kodu (ör. cari) ile onaylama YASAK — Luca'ya eksik fiş gitmesin.
     const blankLine = (doc.lines || []).find((l: any) => !String(l.accountCode || '').trim());
     if (blankLine) {
