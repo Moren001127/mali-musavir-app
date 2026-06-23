@@ -883,18 +883,22 @@ function ScreenFaturalar({ taxpayerId, period, kind = 'ALIS', isIsletme = false,
             <button className="btn sm" onClick={() => docsQ.refetch()}><Ico html={I.sync} size={12} /> Tekrar dene</button>
           </div>
         )}
-        {ocrProg && (ocrProg.active || ocrProg.failed > 0) && (
-          <div className={`ocrstrip${ocrProg.active ? ' scanning' : ''}`}>
-            <div className="ocrbar"><div className="ocrfill" /></div>
-            <div className="ocrtxt">
-              {ocrProg.active ? (
-                <><span className="ocrdot" /> Belgeler okunuyor — <b>{ocrProg.reading}</b> sırada/işleniyor · {ocrProg.done} tamam{ocrProg.failed ? ` · ${ocrProg.failed} okunamadı` : ''} <span className="ocrhint">(sunucuda sürer, sayfa değiştirebilirsin)</span></>
-              ) : (
-                <><span className="ocrdot err" /> {ocrProg.failed} belge okunamadı — seçip <b>AI ile oku</b> ile tekrar dene</>
-              )}
+        {ocrProg && (ocrProg.active || ocrProg.failed > 0) && (() => {
+          const tot = Math.max(1, (ocrProg.done || 0) + (ocrProg.reading || 0) + (ocrProg.failed || 0));
+          const pct = Math.min(100, Math.round(((ocrProg.done || 0) / tot) * 100));
+          return (
+            <div className={`ocrstrip${ocrProg.active ? ' scanning' : ''}`}>
+              <div className="ocrbar"><div className="ocrfill" style={{ width: `${ocrProg.active ? pct : 100}%` }} /></div>
+              <div className="ocrtxt">
+                {ocrProg.active ? (
+                  <><span className="ocrdot" /> Belgeler okunuyor — <b>{ocrProg.done}</b> / {tot} okundu{ocrProg.reading ? <> · {ocrProg.reading} sırada</> : null}{ocrProg.failed ? <> · {ocrProg.failed} okunamadı</> : null} <span className="ocrpct">%{pct}</span> <span className="ocrhint">(sunucuda sürer, sayfa değiştirebilirsin)</span></>
+                ) : (
+                  <><span className="ocrdot err" /> {ocrProg.failed} belge okunamadı — seçip <b>AI ile oku</b> ile tekrar dene</>
+                )}
+              </div>
             </div>
-          </div>
-        )}
+          );
+        })()}
         {kind === 'ALIS' && missing.length > 0 && (
           <div className="eksikbelge" title="Bu satıcılar son aylarda düzenli alış faturası gönderdi ama bu dönem henüz yok — eksik belge olabilir.">
             <Ico html={I.info} size={14} />
@@ -2703,10 +2707,15 @@ const CSS = `
 #fm-root .pill.warn{background:#fdf2e0;color:#b45309}
 #fm-root .pill.proc{background:#e6eefc;color:#2563eb}
 #fm-root .ocrstrip{display:flex;flex-direction:column;gap:5px;padding:9px 16px;border-bottom:1px solid var(--line);background:#f7faff}
-#fm-root .ocrbar{height:4px;border-radius:3px;background:#e6eefc;overflow:hidden;position:relative}
-#fm-root .ocrstrip.scanning .ocrfill{position:absolute;top:0;left:-40%;width:40%;height:100%;border-radius:3px;background:linear-gradient(90deg,transparent,var(--accent,#2563eb),transparent);animation:ocrscan 1.1s linear infinite}
-#fm-root .ocrstrip:not(.scanning) .ocrfill{width:100%;height:100%;background:#fdeaea}
-@keyframes ocrscan{0%{left:-40%}100%{left:100%}}
+#fm-root .ocrbar{height:8px;border-radius:6px;background:#e6eefc;overflow:hidden;position:relative;box-shadow:inset 0 1px 2px rgba(20,40,80,.08)}
+#fm-root .ocrfill{height:100%;border-radius:6px;background:linear-gradient(90deg,#2563eb,#3b82f6 55%,#22c55e);transition:width .45s cubic-bezier(.4,0,.2,1);position:relative;overflow:hidden}
+#fm-root .ocrstrip.scanning .ocrfill{min-width:10px}
+#fm-root .ocrstrip.scanning .ocrfill::after{content:'';position:absolute;inset:0;background-image:linear-gradient(45deg,rgba(255,255,255,.28) 25%,transparent 25%,transparent 50%,rgba(255,255,255,.28) 50%,rgba(255,255,255,.28) 75%,transparent 75%,transparent);background-size:20px 20px;animation:ocrstripes .65s linear infinite}
+#fm-root .ocrstrip.scanning .ocrfill::before{content:'';position:absolute;top:0;right:0;width:26px;height:100%;background:linear-gradient(90deg,transparent,rgba(255,255,255,.55));animation:ocrglow 1.3s ease-in-out infinite}
+#fm-root .ocrstrip:not(.scanning) .ocrfill{background:linear-gradient(90deg,#ef4444,#f87171)}
+#fm-root .ocrpct{font-weight:700;color:var(--accent,#2563eb);font-variant-numeric:tabular-nums;margin-left:auto}
+@keyframes ocrstripes{from{background-position:0 0}to{background-position:20px 0}}
+@keyframes ocrglow{0%,100%{opacity:.35}50%{opacity:.9}}
 #fm-root .ocrtxt{font-size:11.5px;color:var(--muted);display:flex;align-items:center;gap:6px;flex-wrap:wrap}
 #fm-root .ocrtxt b{color:var(--text)}
 #fm-root .ocrhint{color:var(--faint)}
