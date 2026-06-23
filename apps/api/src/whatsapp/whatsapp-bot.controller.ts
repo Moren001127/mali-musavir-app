@@ -189,22 +189,28 @@ export class WhatsAppBotController implements OnModuleInit {
       return { ok: false, error: 'unauthorized' };
     }
     const phone = String(body?.phone || '').trim();
-    const questions: string[] = Array.isArray(body?.questions) ? body.questions.slice(0, 12) : [];
+    const questions: string[] = Array.isArray(body?.questions) ? body.questions.slice(0, 60) : [];
     if (!phone || !questions.length) return { ok: false, error: 'phone ve questions zorunlu' };
-    const results: any[] = [];
-    for (let i = 0; i < questions.length; i++) {
-      const q = String(questions[i]);
+    const runOne = async (q: string, i: number) => {
       const msg: IncomingWhatsAppMessage = { from: phone, text: q, id: `dry-${Date.now()}-${i}`, __dryRun: true };
       const t0 = Date.now();
       let err = '';
       try { await this.handleMessage(msg); } catch (e: any) { err = e?.message || String(e); }
-      results.push({
+      return {
         soru: q,
         cevap: msg.__dryReply || (err ? `HATA: ${err}` : '(cevap üretilmedi — akış başka dalda bitti)'),
         yol: msg.__dryKind || null,
         ms: Date.now() - t0,
-      });
+      };
+    };
+    // ASYNC mod: hemen dön, arka planda işle (502/timeout olmasın); sonuçlar communicationLog'a
+    // 'TEST' etiketiyle yazılır (Mesajlar'dan + DB'den okunabilir). Büyük batarya için.
+    if (body?.async === true) {
+      void (async () => { for (let i = 0; i < questions.length; i++) await runOne(questions[i], i); })();
+      return { ok: true, mode: 'async', started: questions.length };
     }
+    const results: any[] = [];
+    for (let i = 0; i < questions.length; i++) results.push(await runOne(String(questions[i]), i));
     return { ok: true, results };
   }
 
