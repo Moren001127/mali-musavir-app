@@ -16,7 +16,7 @@ import { BotEvalService } from './bot-eval.service';
 import { QualityLogService } from './quality-log.service';
 import { CalisanService } from '../calisan/calisan.service';
 import { claudeTextViaMax, MAX_MODEL_CHEAP } from '../common/max-inference';
-import { buildOwnerStatusReply, resolveTaxpayerByText } from '../moren-ai/monthly-status.shared';
+import { buildOwnerStatusReply, resolveTaxpayerByText, buildTaxpayerSelfReply } from '../moren-ai/monthly-status.shared';
 
 type IncomingWhatsAppMessage = {
   from: string;
@@ -2106,6 +2106,30 @@ export class WhatsAppBotController implements OnModuleInit {
       });
       this.refreshTaxpayerMemory(taxpayer.tenantId, taxpayer.id);
       return;
+    }
+
+    // ─── HIZLI-YOL (mükellef own-data) ─────────────────────────────
+    // Sık sorular (borç/bakiye, son ödeme, KDV durumu, beyanname durumu) agentic+LLM-yargıç+
+    // retry zincirini ATLAR → anında + şablonlu + doğru. AKTİF mükellefe kilitli (taxpayer.id),
+    // yanlış mükellef imkânsız. Eşleşmezse null → normal akış (cache/agentic) devam eder.
+    const fast = await buildTaxpayerSelfReply(this.prisma, taxpayer.tenantId, taxpayer.id, msg.text).catch(() => null);
+    if (fast) {
+      const fastReply = this.postFilter.filterTaxpayerReply(fast.reply, { recentReplies });
+      if (fastReply) {
+        const sent = await this.whatsapp.sendMessage(this.replyTarget(msg), fastReply, taxpayer.tenantId);
+        this.botCache.set(taxpayer.tenantId, taxpayer.id, msg.text, fastReply);
+        await this.prisma.communicationLog.create({
+          data: {
+            taxpayerId: taxpayer.id,
+            channel: 'WHATSAPP',
+            subject: sent ? 'WhatsApp bot cevabı (hızlı-yol)' : 'WhatsApp bot cevabı hızlı-yol (gönderilemedi)',
+            content: this.withWhatsAppPhone(fastReply, msg.from),
+            occurredAt: new Date(),
+          },
+        });
+        this.refreshTaxpayerMemory(taxpayer.tenantId, taxpayer.id);
+        return;
+      }
     }
 
     // ─── Cache lookup ──────────────────────────────────────────────

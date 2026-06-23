@@ -788,6 +788,83 @@ export async function computeTaxpayerKdvPayable(prisma: any, tenantId: string, t
   return { periodLabel: pl, donemLabel, hesaplanan: h, indirilecek: i, odenecek: h - i };
 }
 
+/**
+ * MÜKELLEF HIZLI-YOL: mükellefin KENDİ sık sorularını (borç/bakiye, son ödeme, KDV durumu,
+ * beyanname durumu) agentic+LLM-yargıç+retry zincirini ATLAYIP anında + şablonlu cevaplar.
+ * AKTİF MÜKELLEFE KİLİTLİ (taxpayerId parametreyle gelir; isim çözümü YOK → yanlış mükellef
+ * imkânsız). Eşleşme yoksa null → agentic akışa bırakır. Beyanname TUTARI verilmez (sadece durum).
+ */
+export async function buildTaxpayerSelfReply(
+  prisma: any, tenantId: string, taxpayerId: string, text: string,
+): Promise<{ reply: string; kind: string } | null> {
+  const n = normalizeForIntent(text);
+  const fmtTL = (x: number) =>
+    new Intl.NumberFormat('tr-TR', { minimumFractionDigits: 2, maximumFractionDigits: 2 }).format(x) + ' ₺';
+  const aylar = ['Ocak', 'Şubat', 'Mart', 'Nisan', 'Mayıs', 'Haziran', 'Temmuz', 'Ağustos', 'Eylül', 'Ekim', 'Kasım', 'Aralık'];
+  const tarihTR = (d: any) => { const x = new Date(d); return `${x.getDate()} ${aylar[x.getMonth()]} ${x.getFullYear()}`; };
+
+  const wantsSonOdeme = /(en son.*(ode|odedi)|son odeme|ne zaman ode|en son ne kadar ode)/.test(n);
+  const wantsKdv = /kdv/.test(n) && /(ne kadar|odeyecek|odecek|cikiyor|cikti|durum|borc|kac tl|tutar|hesaplanan|indirilecek|odemem)/.test(n);
+  const wantsBorc = !wantsKdv && (/(\bborc|borcum|bakiye|hesabim|odemem var|alacag|ne kadar.*ode)/.test(n) || wantsSonOdeme);
+  const wantsBeyan = /(beyanname|beyannamem)/.test(n) && /(veril|hazir|durum|oldu mu|verildi mi|hazir mi|var mi)/.test(n);
+
+  // KDV durumu (kendi)
+  if (wantsKdv) {
+    const pm = text.match(/\b(\d{4})[\/-](\d{2})\b/);
+    const kdv = await computeTaxpayerKdvPayable(prisma, tenantId, taxpayerId, pm ? `${pm[1]}/${pm[2]}` : '');
+    if (!kdv) return { reply: 'KDV tutarınız için kontrolümüz henüz tamamlanmadı; en kısa sürede netleştirip ileteceğiz.', kind: 'kdv' };
+    const sonuc = kdv.odenecek >= 0 ? `Ödenecek KDV: ${fmtTL(kdv.odenecek)}` : `Devreden KDV: ${fmtTL(-kdv.odenecek)} (ödeme çıkmıyor)`;
+    return { reply: `🧾 ${kdv.donemLabel} KDV durumunuz:\nHesaplanan: ${fmtTL(kdv.hesaplanan)}\nİndirilecek: ${fmtTL(kdv.indirilecek)}\n${sonuc}`, kind: 'kdv' };
+  }
+
+  // Borç / bakiye / son ödeme (kendi)
+  if (wantsBorc) {
+    const hareketler = await prisma.cariHareket.findMany({
+      where: { tenantId, taxpayerId },
+      select: { tip: true, tutar: true, tarih: true, odemeYontemi: true },
+      orderBy: { tarih: 'desc' },
+    }).catch(() => []);
+    let bakiye = 0;
+    for (const h of hareketler) {
+      const t = Number(h.tutar) || 0;
+      if (h.tip === 'TAHAKKUK') bakiye += t;
+      else if (h.tip === 'TAHSILAT' || h.tip === 'IADE') bakiye -= t;
+    }
+    const sonO = hareketler.find((h: any) => h.tip === 'TAHSILAT');
+    if (wantsSonOdeme) {
+      if (!sonO) return { reply: 'Sistemde kayıtlı bir ödemeniz görünmüyor.', kind: 'son-odeme' };
+      return { reply: `En son ${tarihTR(sonO.tarih)} tarihinde ${fmtTL(Number(sonO.tutar) || 0)} ödeme yapmışsınız${sonO.odemeYontemi ? ' (' + sonO.odemeYontemi + ')' : ''}.`, kind: 'son-odeme' };
+    }
+    const durum = bakiye > 0 ? `Açık bakiyeniz: ${fmtTL(bakiye)}` : bakiye < 0 ? `${fmtTL(-bakiye)} alacaklı/avans görünüyorsunuz` : 'Açık borcunuz görünmüyor (hesap kapalı)';
+    const sonLine = sonO ? `\nSon ödeme: ${tarihTR(sonO.tarih)} · ${fmtTL(Number(sonO.tutar) || 0)}` : '';
+    return { reply: `💰 ${durum}${sonLine}`, kind: 'borc' };
+  }
+
+  // Beyanname DURUMU (kendi) — tutar VERME, sadece verildi/hazırlanıyor
+  if (wantsBeyan) {
+    const kayitlar = await prisma.beyanKaydi.findMany({
+      where: { tenantId, taxpayerId },
+      orderBy: [{ donem: 'desc' }],
+      take: 12,
+      select: { beyanTipi: true, donem: true, beyanTarihi: true },
+    }).catch(() => []);
+    if (!kayitlar.length) return { reply: 'Beyanname kaydınızı sistemde henüz görmüyorum; hazırlanınca size bilgi vereceğiz.', kind: 'beyanname' };
+    const sonDonem = kayitlar[0].donem;
+    const ddonem = kayitlar.filter((k: any) => k.donem === sonDonem);
+    const verildi = ddonem.filter((k: any) => k.beyanTarihi).map((k: any) => k.beyanTipi);
+    const bekleyen = ddonem.filter((k: any) => !k.beyanTarihi).map((k: any) => k.beyanTipi);
+    const m = sonDonem.match(/^(\d{4})[\/-](\d{2})$/);
+    const donemLabel = m ? `${aylar[parseInt(m[2], 10) - 1]} ${m[1]}` : sonDonem;
+    let r = `📝 ${donemLabel} beyanname durumunuz:\n`;
+    if (verildi.length) r += `✅ Verildi: ${verildi.join(', ')}\n`;
+    if (bekleyen.length) r += `⏳ Hazırlanıyor: ${bekleyen.join(', ')}`;
+    if (!verildi.length && !bekleyen.length) r += 'Bu döneme ait beyanname görünmüyor.';
+    return { reply: r.trim(), kind: 'beyanname' };
+  }
+
+  return null;
+}
+
 export function detectSingleTaxpayerKdvIntent(text: string): boolean {
   const n = normalizeForIntent(text);
   if (!/kdv/.test(n)) return false;
