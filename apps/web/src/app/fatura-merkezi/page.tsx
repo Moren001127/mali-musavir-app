@@ -94,13 +94,17 @@ function deriveDurum(doc: any, isIsletme = false, autoKtKod = ''): { k: string; 
   if (String(doc.ocrStatus || '').toUpperCase() === 'FAILED') return { k: 'miss', t: 'Okunamadı', cat: 'okunamadi' };
   const lines: any[] = Array.isArray(doc.lines) ? doc.lines : [];
   const issues = Array.isArray(doc.validationIssues) ? doc.validationIssues : (Array.isArray(doc.ocrData?.validationIssues) ? doc.ocrData.validationIssues : []);
-  // İçerik çelişkisi = denge/sahiplik/toplam hatası. ANCAK kuruş-yuvarlama TOTAL_MISMATCH (belge tutarı
-  //   ile yevmiye farkı < 0.50 TL — Türk e-faturasında her kalemin KDV'si AYRI yuvarlanır) çelişki
-  //   SAYILMAZ; backend eski toleransla INVALID demiş olsa bile frontend ANINDA tolere eder (revalidate/
-  //   "Kodları düzelt" beklenmez). Gerçek hata (TL-seviyesi fark, BALANCE, OWNERSHIP, KDV_MATH) kalır.
-  const realIssues = issues.filter((i: any) => i?.code && i.code !== 'INCOMPLETE_AMOUNTS' && i?.severity !== 'WARNING'
-    && !(i.code === 'TOTAL_MISMATCH' && Math.abs(Number(i.expected || 0) - Number(i.actual || 0)) < 0.5));
-  const vissue = realIssues.length > 0;
+  // ÇELİŞKİ = GÜNCEL SATIRLARDAN hesaplanır. Backend validationIssues ESKİ/ALAKASIZ olabilir: rematch
+  //   satırları düzeltir ama revalidate olmadan eski kayıt kalır (ör. satırlar 202=202 dengeli ama eski
+  //   "yevmiye toplamı 404" mesajı = borç+alacak'ın yanlış toplandığı eski okumadan). TUTAR çelişkisini
+  //   (denge) güncel satırlardan türetiriz; tutar-DIŞI issue'lar (sahiplik/iade/tevkifat/SMM) satır-
+  //   bağımsız olduğundan backend'den alınır.
+  const sumB = lines.reduce((s: number, l: any) => s + Number(l.debit || 0), 0);
+  const sumA = lines.reduce((s: number, l: any) => s + Number(l.credit || 0), 0);
+  const dengesiz = lines.length > 0 && Math.abs(sumB - sumA) > 0.5; // borç ≠ alacak = GERÇEK denge hatası
+  const nonAmountIssues = issues.filter((i: any) => i?.code && i?.severity !== 'WARNING'
+    && !['INCOMPLETE_AMOUNTS', 'TOTAL_MISMATCH', 'BALANCE_MISMATCH'].includes(i.code));
+  const vissue = dengesiz || nonAmountIssues.length > 0;
   if (vissue) return { k: 'warn', t: 'Çelişki — kontrol et', cat: 'celiski' };
   // İŞLETME DEFTERİ (Defter-Beyan): tek-taraflı — hesap planı/kodu YOK, cari kodu açılmaz.
   //   Sınıflandırma = Kayıt Türü (Mal/Hizmet Satışı) MÜKELLEFİN FAALİYETİNE göre otomatik belirlenir.
@@ -1003,7 +1007,7 @@ function ScreenFaturalar({ taxpayerId, period, kind = 'ALIS', isIsletme = false,
                               </tbody>
                             </table>
                           ) : <div className="empty" style={{ padding: 10 }}>Fiş satırı yok — önce "AI ile oku".</div>}
-                          {(() => { const iss = (Array.isArray(d.validationIssues) ? d.validationIssues : (Array.isArray(d.ocrData?.validationIssues) ? d.ocrData.validationIssues : [])).filter((i: any) => i?.code && i.code !== 'INCOMPLETE_AMOUNTS' && i?.severity !== 'WARNING' && !(i.code === 'TOTAL_MISMATCH' && Math.abs(Number(i.expected || 0) - Number(i.actual || 0)) < 0.5)); return iss.length ? <div className="celiskibanner"><b>Çelişki sebebi:</b>{iss.map((i: any, k: number) => <div key={k}>• {i.message}</div>)}</div> : null; })()}
+                          {(() => { const sB = fisLines.reduce((s: number, l: any) => s + Number(l.debit || 0), 0); const sA = fisLines.reduce((s: number, l: any) => s + Number(l.credit || 0), 0); const msgs: string[] = []; if (fisLines.length > 0 && Math.abs(sB - sA) > 0.5) msgs.push(`Yevmiye dengesiz: Borç ${fmtMoney(sB)} ₺ ≠ Alacak ${fmtMoney(sA)} ₺ (${Math.abs(sB - sA).toLocaleString('tr-TR', { minimumFractionDigits: 2 })} ₺ fark) — bir satır eksik/fazla.`); (Array.isArray(d.validationIssues) ? d.validationIssues : (Array.isArray(d.ocrData?.validationIssues) ? d.ocrData.validationIssues : [])).filter((i: any) => i?.code && i?.severity !== 'WARNING' && !['INCOMPLETE_AMOUNTS', 'TOTAL_MISMATCH', 'BALANCE_MISMATCH'].includes(i.code)).forEach((i: any) => i.message && msgs.push(i.message)); return msgs.length ? <div className="celiskibanner"><b>Çelişki sebebi:</b>{msgs.map((m: string, k: number) => <div key={k}>• {m}</div>)}</div> : null; })()}
                         </div>
                       </td>
                     </tr>
