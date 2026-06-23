@@ -5390,6 +5390,27 @@ export class FaturaMuhasebelestirmeService implements OnModuleInit, OnModuleDest
     if (!taxpayerId) throw new BadRequestException('Mükellef seçilmeli');
     await this.gateExistingDocsIfNoPlan(tenantId, taxpayerId);
     await this.rematchDocumentsWithLatestAccountPlan(tenantId, taxpayerId);
+    // ÇELİŞKİ TAZELE: rematch satır/kodları güncelledi → ESKİ validation kayıtlarını (artık
+    //   geçersiz "çelişki" mesajları, ör. eski yevmiye toplamı) GÜNCEL satırlarla yeniden hesapla.
+    //   Denge tutan eski TOTAL_MISMATCH/BALANCE temizlenir; gerçek sorun (denge/sahiplik) kalır +
+    //   nedeni güncel. Böylece "Kodları düzelt" çelişki kayıtlarını da tazeler (yeniden okuma şart değil).
+    const docs = await (this.prisma as any).invoiceAccountingDocument.findMany({
+      where: { tenantId, taxpayerId, status: { in: ['READY', 'NEEDS_REVIEW', 'DRAFT'] } },
+      select: { id: true, totalAmount: true, lines: { select: { debit: true, credit: true } } }, take: 1000,
+    }).catch(() => []);
+    for (const d of docs) {
+      // Yevmiye DENGELİYSE belge toplamını YEVMİYEDEN (matrah+kdv) düzelt — eski parsed.toplam KDV
+      //   HARİÇ olabilir (858 vs 858,50) → TOTAL_MISMATCH. Denge bozuksa dokunma (gerçek sorun, kalsın).
+      const sumD = (d.lines || []).reduce((s: number, l: any) => s + Number(l.debit || 0), 0);
+      const sumC = (d.lines || []).reduce((s: number, l: any) => s + Number(l.credit || 0), 0);
+      if (Math.abs(sumD - sumC) <= 0.02) {
+        const yev = Math.round(Math.max(sumD, sumC) * 100) / 100;
+        if (yev > 0 && Math.abs(yev - Number(d.totalAmount || 0)) > 0.02) {
+          await (this.prisma as any).invoiceAccountingDocument.update({ where: { id: d.id }, data: { totalAmount: yev } }).catch(() => {});
+        }
+      }
+      await this.revalidateDocument(tenantId, d.id).catch(() => {});
+    }
     return { ok: true };
   }
 
