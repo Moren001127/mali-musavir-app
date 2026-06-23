@@ -231,6 +231,33 @@ export function defaultKayitAltKod(invoiceKind: string | null | undefined, kayit
   return byName ? byName.kod : '';
 }
 
+// Türkçe metni ascii'ye indir (ş→s, ç→c, ğ→g, ü→u, ö→o, ı→i, İ→i) — anahtar kelime eşleşmesi için.
+function asciiTr(s: string): string {
+  return String(s || '').toLowerCase().normalize('NFKD').replace(/[̀-ͯ]/g, '').replace(/ı/g, 'i');
+}
+
+/**
+ * Mükellefin FAALİYETİNE göre İşletme defteri Kayıt Türü'nü otomatik belirler (Bilanço'daki
+ * otomatik eşleşmenin İşletme karşılığı). Satışta: Hizmet Satışı('2') / Mal Satışı('1').
+ * Alışta: en yaygın İndirilecek Giderler('4') varsayılır (Muhasebeleştir'de Mal Alışı'na çevrilebilir).
+ * Belirlenemezse '' döner → "İncele".
+ */
+export function isletmeAutoKayitTuru(invoiceKind?: string | null, nace?: string | null, faaliyet?: string | null): string {
+  const sale = String(invoiceKind || 'ALIS').toUpperCase() === 'SATIS';
+  if (!sale) return '4'; // İndirilecek Giderler — alışta yaygın varsayılan
+  const f = asciiTr(faaliyet || '');
+  const n2 = String(nace || '').replace(/\D/g, '').slice(0, 2);
+  const HIZMET = /(hizmet|tasi|nakliye|lojistik|kargo|danisman|musavir|muhasebe|yemek|restoran|lokanta|kafe|kahve|konaklama|otel|pansiyon|kuafor|berber|guzellik|tamir|onarim|servis|bakim|egitim|kurs|saglik|doktor|dis hek|avukat|hukuk|kiral|reklam|temizlik|guvenlik|organizasyon|fotograf|matbaa|yazilim|bilisim|acente|komisyon|spor|dans|terzi)/;
+  const MAL = /(market|bakkal|bufe|sarkuteri|manav|kasap|firin|imalat|ureti|fabrika|toptan|perakende|magaza|ticaret|alim.?sat|nalbur|hirdavat|tekstil|giyim|konfeksiyon|mobilya|beyaz esya|elektronik|oto yedek|akaryakit|petrol|kirtasiye|eczane|gida|et ve|sebze|meyve)/;
+  if (HIZMET.test(f)) return '2';
+  if (MAL.test(f)) return '1';
+  const HN = new Set(['49','50','51','52','53','55','56','58','59','60','61','62','63','64','65','66','68','69','70','71','72','73','74','75','77','78','79','80','81','82','84','85','86','87','88','90','91','92','93','94','95','96']);
+  const MN = new Set(['01','02','03','05','06','07','08','09','10','11','12','13','14','15','16','17','18','19','20','21','22','23','24','25','26','27','28','29','30','31','32','33','45','46','47']);
+  if (HN.has(n2)) return '2';
+  if (MN.has(n2)) return '1';
+  return ''; // belirlenemedi → İncele
+}
+
 /** Mihsap-benzeri akıllı varsayılan: belge türü kodu (documentType → İşletme belge kodu) */
 export function defaultBelgeTuruKod(documentType?: string | null, invoiceKind?: string | null): string {
   const sale = String(invoiceKind || 'ALIS').toUpperCase() === 'SATIS';

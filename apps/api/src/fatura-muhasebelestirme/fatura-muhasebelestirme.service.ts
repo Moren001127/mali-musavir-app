@@ -13,6 +13,7 @@ import { claudeTextViaMax, MAX_MODEL_CHEAP } from '../common/max-inference';
 import { buildLucaImportExcel, buildLucaIsletmeHizliFisCsv } from './luca-excel.service';
 import { VendorMemoryService } from '../vendor-memory/vendor-memory.service';
 import { MihsapService } from '../mihsap/mihsap.service';
+import { isletmeAutoKayitTuru, isletmeRef } from '@mali-musavir/shared';
 
 type AccountingLineInput = {
   id?: string;
@@ -3510,24 +3511,30 @@ export class FaturaMuhasebelestirmeService implements OnModuleInit, OnModuleDest
 
     // İşletme defteri mi? (tek-taraflı — hesap planı/kodu YOK, denge aranmaz)
     const tp: any = (doc as any).taxpayerId
-      ? await (this.prisma as any).taxpayer.findFirst({ where: { id: (doc as any).taxpayerId, tenantId }, select: { defterTuru: true, mihsapDefterTuru: true } })
+      ? await (this.prisma as any).taxpayer.findFirst({ where: { id: (doc as any).taxpayerId, tenantId }, select: { defterTuru: true, mihsapDefterTuru: true, naceKodu: true, faaliyetAciklama: true } })
       : null;
     const isIsletme = /i[şs]letme|defter.?beyan|basit/i.test(`${tp?.defterTuru || ''} ${tp?.mihsapDefterTuru || ''}`);
 
     if (isIsletme) {
-      // İşletme: kod/denge kontrolü YOK — tutarın okunmuş olması yeterli (Kayıt Türü Muhasebeleştir'de seçilir).
+      // İşletme: kod/denge kontrolü YOK — tutarın okunmuş olması yeterli.
       const isl: any = (doc as any).ocrData?.isletme || {};
       const lineTot = (doc.lines || []).reduce((s: number, l: any) => s + Number(l.debit || 0) + Number(l.credit || 0), 0);
       const hasAmt = (Number(isl.matrah) || 0) > 0 || (Number(isl.kdvTutar) || 0) > 0 || Number((doc as any).totalAmount) > 0 || lineTot > 0;
       if (!hasAmt) throw new BadRequestException('Bu belge onaylanamaz — tutar okunamamış. Önce "AI ile oku" ile tutarları çıkar.');
-      await (this.prisma as any).invoiceAccountingDocument.update({
-        where: { id },
-        data: {
-          status: 'APPROVED', approvedBy: userId || null, approvedAt: new Date(),
-          lucaStatus: (doc as any).taxpayerId ? 'QUEUED' : 'NOT_STARTED',
-          lucaErrorMessage: (doc as any).taxpayerId ? null : 'Mukellef secilmedigi icin Luca\'ya aktarilamaz',
-        },
-      });
+      const data: any = {
+        status: 'APPROVED', approvedBy: userId || null, approvedAt: new Date(),
+        lucaStatus: (doc as any).taxpayerId ? 'QUEUED' : 'NOT_STARTED',
+        lucaErrorMessage: (doc as any).taxpayerId ? null : 'Mukellef secilmedigi icin Luca\'ya aktarilamaz',
+      };
+      // Sınıflandırılmamışsa Kayıt Türü'nü mükellefin FAALİYETİNE göre otomatik belirle + kalıcı yaz (Luca CSV'si boş gitmesin).
+      const sinifliMi = (Array.isArray(isl.satirlar) && isl.satirlar.length) || isl.kayitTuruKod;
+      if (!sinifliMi) {
+        const kindU = String((doc as any).invoiceKind || 'ALIS').toUpperCase().includes('SATIS') ? 'SATIS' : 'ALIS';
+        const ktKod = isletmeAutoKayitTuru(kindU, tp?.naceKodu, tp?.faaliyetAciklama) || (kindU === 'SATIS' ? '2' : '4');
+        const ktAd = isletmeRef(kindU).kayitTuru.find((x: any) => x.kod === ktKod)?.ad || '';
+        data.ocrData = { ...((doc as any).ocrData || {}), isletme: { ...isl, kayitTuruKod: ktKod, kayitTuruAd: ktAd, autoMatched: true } };
+      }
+      await (this.prisma as any).invoiceAccountingDocument.update({ where: { id }, data });
       await this.logAudit(tenantId, userId, 'APPROVE', id, { status: doc.status }, { status: 'APPROVED', isletme: true });
       return this.get(tenantId, id);
     }
