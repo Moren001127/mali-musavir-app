@@ -308,7 +308,7 @@ export class FaturaMuhasebelestirmeService implements OnModuleInit, OnModuleDest
     forceClaude?: boolean;
     // Mihsap'tan çekilen belgeler: buffer CDN'den lazy indirilir (210 buffer'i
     // bellekte tutmamak icin), yon-duyarli yevmiye uretilir.
-    kind?: 'upload' | 'mihsap' | 'ai-read';
+    kind?: 'upload' | 'mihsap' | 'ai-read' | 'classify';
     mihsapInvoiceId?: string;
     invoiceKind?: 'ALIS' | 'SATIS';
   }> = [];
@@ -2269,6 +2269,8 @@ export class FaturaMuhasebelestirmeService implements OnModuleInit, OnModuleDest
             String(job.mihsapInvoiceId || ''),
             (job.invoiceKind || 'ALIS') as 'ALIS' | 'SATIS',
           )
+        : job.kind === 'classify'
+        ? this.runQueuedClassify(job.tenantId, job.documentId)
         : job.kind === 'ai-read'
         ? this.runQueuedAiRead(job.tenantId, job.documentId)
         : this.processUploadedDocumentOcr(
@@ -2295,6 +2297,49 @@ export class FaturaMuhasebelestirmeService implements OnModuleInit, OnModuleDest
   // belgeyi DOĞRU getirir (mihsapId→kayıt çözümü orada) + XML(UBL)/PDF(metin)/görüntü(Max-vision)
   // hepsini okur. NOT: eskiden Mihsap'ı processMihsapDocumentOcr'a yönlendiriyordum ama oraya
   // mihsapId'yi DB-id sanıp geçiriyordum → "Fatura kaydı bulunamadı" hatası. Düzeltildi.
+  // ARKA PLAN SINIFLANDIRMA: okuma anında saklanan içerik snippet'iyle (ocrData.icerikMetni) faaliyet+içerik
+  // muhakemesi yapıp kayıt türü/giderTuru'yu doldurur + hesap eşleştirmesini yeniler. Okuma şeridini bekletmez
+  // (e-Fatura/e-Arşiv anında okunur; kayıt türü/hesap arkadan dolar). Max aboneliği.
+  private async runQueuedClassify(tenantId: string, documentId: string) {
+    const doc = await (this.prisma as any).invoiceAccountingDocument.findFirst({
+      where: { id: documentId, tenantId },
+      select: { id: true, taxpayerId: true, invoiceKind: true, ocrData: true },
+    }).catch(() => null);
+    if (!doc) return;
+    const od: any = doc.ocrData || {};
+    const content = String(od.icerikMetni || '');
+    if (!content || content.length < 20) return;
+    let mukellefBilgi = '';
+    let isIsletme = false;
+    if (doc.taxpayerId) {
+      const tp = await (this.prisma as any).taxpayer.findFirst({
+        where: { id: doc.taxpayerId, tenantId },
+        select: { companyName: true, firstName: true, lastName: true, naceKodu: true, faaliyetAciklama: true, defterTuru: true },
+      }).catch(() => null);
+      if (tp) {
+        isIsletme = String(tp.defterTuru || '').toUpperCase() === 'ISLETME';
+        const ad = String(tp.companyName || (String(tp.firstName || '') + ' ' + String(tp.lastName || ''))).trim();
+        const faaliyet = String(tp.faaliyetAciklama || '').trim();
+        mukellefBilgi = [ad && ('ünvanı "' + ad + '"'), faaliyet ? ('faaliyeti: ' + faaliyet) : (tp.naceKodu ? ('NACE ' + tp.naceKodu) : ''), isIsletme ? 'İşletme defteri' : 'Bilanço usulü'].filter(Boolean).join(', ');
+      }
+    }
+    const c = await this.aiClassifyAccounting(content, mukellefBilgi, isIsletme).catch(() => null);
+    const kind = doc.invoiceKind === 'SATIS' ? 'SATIS' : 'ALIS';
+    const patch: any = { ...od };
+    delete patch.icerikMetni; delete patch.needsClassify; // snippet'i temizle (DB bloat olmasın)
+    if (c) {
+      if (c.giderTuru) patch.giderTuru = String(c.giderTuru).slice(0, 40);
+      if (c.kategori) patch.matrahKategori = c.kategori;
+      if (c.isletmeKayitTuru) {
+        const isl = resolveIslAi(kind, { isletmeKayitTuru: c.isletmeKayitTuru, isletmeAltTuru: c.isletmeAltTuru, isletmeNeden: c.isletmeNeden });
+        if (isl) patch.isletme = isl;
+      }
+    }
+    await (this.prisma as any).invoiceAccountingDocument.update({ where: { id: doc.id }, data: { ocrData: patch } }).catch(() => {});
+    // giderTuru artık dolu → hesap eşleştirmesini yenile (kural + AI eskalasyon arkada çalışır).
+    if (doc.taxpayerId) await this.rematchDocumentsWithLatestAccountPlan(tenantId, doc.taxpayerId, [doc.id]).catch(() => {});
+  }
+
   private async runQueuedAiRead(tenantId: string, documentId: string) {
     await (this.prisma as any).invoiceAccountingDocument.updateMany({
       where: { id: documentId, tenantId }, data: { ocrStatus: 'IN_PROGRESS' },
@@ -5674,14 +5719,11 @@ export class FaturaMuhasebelestirmeService implements OnModuleInit, OnModuleDest
 
     // UBL/XML yolu max-vision AI'ı ATLAR → sınıflandırma (giderTuru/kategori/İşletme kayıt türü) BURADA
     //   ayrı çalışır; e-Fatura/e-Arşiv de "mali müşavir gibi" içerik+faaliyetle sınıflansın.
+    // HIZ: UBL/XML okuması anında AI YOK — içerik snippet'i sakla, sınıflandırmayı ARKA PLANA al
+    //   (okuma şeridi anında bitsin; kayıt türü/hesap arkadan dolsun). max-vision (resim/PDF) yolu okurken sınıflar.
     if (parsed === preParsed && d.taxpayerId) {
       const contentText = (imgBuf ? imgBuf.toString('utf8') : (html || '')).replace(/<[^>]+>/g, ' ').replace(/\s+/g, ' ').trim();
-      const c = await this.aiClassifyAccounting(contentText, mukellefBilgi, isIsletmeMukellef).catch(() => null);
-      if (c) {
-        if (!parsed.giderTuru && c.giderTuru) parsed.giderTuru = c.giderTuru;
-        if (!parsed.kategori && c.kategori) parsed.kategori = c.kategori;
-        if (c.isletmeKayitTuru) { parsed.isletmeKayitTuru = c.isletmeKayitTuru; parsed.isletmeAltTuru = c.isletmeAltTuru; parsed.isletmeNeden = c.isletmeNeden; }
-      }
+      if (contentText.length > 20) { parsed.icerikMetni = contentText.slice(0, 12000); parsed.needsClassify = true; }
     }
 
     let breakdown = (Array.isArray(parsed.kdv) ? parsed.kdv : [])
@@ -5750,7 +5792,7 @@ export class FaturaMuhasebelestirmeService implements OnModuleInit, OnModuleDest
           ...(counterName ? (isSale ? { customerName: counterName } : { vendorName: counterName }) : {}),
           status: 'NEEDS_REVIEW',
           ocrEngine: 'max-vision',
-          ocrData: { ...((d.ocrData as any) || {}), matrah, kdvTutari: kdv, kdvOrani: breakdown[0].rate, kdvBreakdown: breakdown.map((b: any) => ({ oran: b.rate, matrah: b.base, tutar: b.amount })), matrahKategori: typeof parsed.kategori === 'string' ? parsed.kategori : undefined, giderTuru: typeof parsed.giderTuru === 'string' ? parsed.giderTuru.slice(0, 40) : undefined, ...(islSinifAi ? { isletme: islSinifAi } : {}), isReturn: parsed.iade === true || /iade|iptal/i.test(String(parsed.belgeTuru || '')), tevkifatHint: parsed.tevkifat === true || tevkifatOrani > 0 || /tevkifat/i.test(String(html || '')), tevkifatOrani: tevkifatOrani || 0, tevkifatKdv: tevkKdv || 0, engine: parsed === preParsed ? 'ubl-xml' : 'max-vision',
+          ocrData: { ...((d.ocrData as any) || {}), matrah, kdvTutari: kdv, kdvOrani: breakdown[0].rate, kdvBreakdown: breakdown.map((b: any) => ({ oran: b.rate, matrah: b.base, tutar: b.amount })), matrahKategori: typeof parsed.kategori === 'string' ? parsed.kategori : undefined, giderTuru: typeof parsed.giderTuru === 'string' ? parsed.giderTuru.slice(0, 40) : undefined, ...(islSinifAi ? { isletme: islSinifAi } : {}), ...(parsed.needsClassify ? { icerikMetni: String(parsed.icerikMetni || ''), needsClassify: true } : {}), isReturn: parsed.iade === true || /iade|iptal/i.test(String(parsed.belgeTuru || '')), tevkifatHint: parsed.tevkifat === true || tevkifatOrani > 0 || /tevkifat/i.test(String(html || '')), tevkifatOrani: tevkifatOrani || 0, tevkifatKdv: tevkKdv || 0, engine: parsed === preParsed ? 'ubl-xml' : 'max-vision',
             readMode: parsed === preParsed ? 'ubl-xml' : (isImage ? 'image' : /pdf/i.test(imgMedia) ? 'pdf-text' : /xml/i.test(imgMedia) ? 'xml-text' : 'html'),
             ...(!preParsed && imgBuf && /xml/i.test(imgMedia) ? { xmlHead: imgBuf.toString('utf8').slice(0, 220).replace(/\s+/g, ' ') } : {}) },
         },
@@ -5763,6 +5805,8 @@ export class FaturaMuhasebelestirmeService implements OnModuleInit, OnModuleDest
     // GERÇEK hesap planındaki kodla değiştir; öğrenilmiş satıcı kodu varsa onu uygula.
     // (Sadece applyLearnedVendorCodes yetmiyordu → öğrenilmemiş satıcıda placeholder kalıyordu.)
     if (d.taxpayerId) await this.rematchDocumentsWithLatestAccountPlan(tenantId, d.taxpayerId, [d.id]).catch(() => {});
+    // ARKA PLAN: sınıflandırma (kayıt türü/hesap) okuma şeridini BEKLETMEDEN kuyrukta yapılır.
+    if ((parsed as any).needsClassify && d.taxpayerId) { this.uploadOcrQueue.push({ tenantId, documentId: d.id, kind: 'classify' }); this.drainUploadedOcrQueue(); }
     return { ok: true, matrah, kdv, oranSayisi: breakdown.length };
   }
 
