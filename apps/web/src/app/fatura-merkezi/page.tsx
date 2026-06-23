@@ -1147,6 +1147,7 @@ function InlineBelge({ id }: { id: string }) {
   const [blobUrl, setBlobUrl] = useState(''); // XML data: URL → blob (same-origin, ölçülebilir + XSLT render)
   const frameRef = useRef<HTMLIFrameElement | null>(null);
   const wrapRef = useRef<HTMLDivElement | null>(null);
+  const contentWRef = useRef(0); // ölçülen içerik genişliği → panel yeniden boyutlanınca refit
   // HTML belge: belgeyi panonun GENİŞLİĞİNE sığdır (fit-to-width) → yanlarda boşluk
   // kalmaz, fatura tam genişlikte ve okunur görünür; uzunsa dikey kaydırılır.
   const measure = () => {
@@ -1170,9 +1171,17 @@ function InlineBelge({ id }: { id: string }) {
       if (scrollH > 40) f.style.height = Math.ceil(scrollH) + 'px';
       // 3) Genişliğe sığdır — GENİŞ belgeyi küçült; DAR fişi BÜYÜTME (en çok %100). Tam-ekran
       //    önizlemeyle tutarlı (kullanıcı isteği). Daha büyük için zoom (+) kullanılır.
+      contentWRef.current = cw;
       const paneW = (w.clientWidth || 600) - 16;
       setFit(Math.min(1, Math.max(0.3, paneW / cw)));
     } catch { /* cross-origin */ }
+  };
+  // Panel yeniden boyutlanınca (Büyüt/Küçült/pencere) ölçülen içerik genişliğine göre yeniden sığdır.
+  const refit = () => {
+    const w = wrapRef.current, cw = contentWRef.current;
+    if (!w || !cw) { measure(); return; }
+    const paneW = (w.clientWidth || 600) - 16;
+    setFit(Math.min(1, Math.max(0.3, paneW / cw)));
   };
   // Resim de genişliğe sığdırılır ama DAR fiş BÜYÜTÜLMEZ (en çok %100) — tam-ekran önizlemeyle
   // tutarlı; geniş resim panoya küçültülür. Daha büyük için zoom (+).
@@ -1181,6 +1190,7 @@ function InlineBelge({ id }: { id: string }) {
     const nw = e.currentTarget?.naturalWidth || 0;
     if (!w || !nw) return;
     setImgW(Math.ceil(nw));
+    contentWRef.current = nw;
     const paneW = (w.clientWidth || 600) - 16;
     setFit(Math.min(1, Math.max(0.3, paneW / nw)));
   };
@@ -1194,6 +1204,17 @@ function InlineBelge({ id }: { id: string }) {
       .catch(() => { if (alive) setD({}); });
     return () => { alive = false; };
   }, [id]);
+  // Belge paneli yeniden boyutlanınca (Büyüt/Küçült/pencere) faturayı OTOMATİK yeniden sığdır.
+  useEffect(() => {
+    const w = wrapRef.current;
+    let raf = 0;
+    const onResize = () => { cancelAnimationFrame(raf); raf = requestAnimationFrame(refit); };
+    let ro: any = null;
+    if (w && typeof ResizeObserver !== 'undefined') { ro = new ResizeObserver(onResize); ro.observe(w); }
+    window.addEventListener('resize', onResize);
+    return () => { cancelAnimationFrame(raf); if (ro) ro.disconnect(); window.removeEventListener('resize', onResize); };
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [d]);
   // XML (e-arşiv) data: URL'i blob URL'e çevir → same-origin olur, ölçüp sığdırabiliriz.
   useEffect(() => {
     setBlobUrl('');
@@ -1237,7 +1258,7 @@ function InlineBelge({ id }: { id: string }) {
               <button type="button" onClick={() => dz(-0.25)} title="Uzaklaştır">−</button>
               <span className="bpz">{Math.round(zoom * 100)}%</span>
               <button type="button" onClick={() => dz(0.25)} title="Yakınlaştır">+</button>
-              <button type="button" onClick={() => setZoom(1)} title="Ekrana sığdır (%100)">Sığdır</button>
+              <button type="button" onClick={() => { setZoom(1); refit(); setTimeout(refit, 60); }} title="Faturayı ekrana sığdır">Sığdır</button>
             </>
           ) : null}
           <button type="button" onClick={() => openDocFile(id)} title="Tam ekran aç">⛶</button>
