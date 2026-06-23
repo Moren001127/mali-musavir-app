@@ -4,7 +4,7 @@ import { useState, useRef, useEffect, Fragment } from 'react';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import { api } from '@/lib/api';
 import { toast } from 'sonner';
-import { isletmeRef, ISLETME_ISLEM_TURU, ISLETME_KDV_ORAN, defaultBelgeTuruKod, getKayitAltList, defaultKayitAltKod, isletmeAutoKayitTuru, isletmeGiderSinifi, kayitAltKisaAd } from '@mali-musavir/shared';
+import { isletmeRef, ISLETME_ISLEM_TURU, ISLETME_KDV_ORAN, defaultBelgeTuruKod, getKayitAltList, defaultKayitAltKod, kayitAltKisaAd } from '@mali-musavir/shared';
 
 /**
  * Fatura İşleme Merkezi v2 — ana sayfa (CANLI)
@@ -694,25 +694,16 @@ function ScreenFaturalar({ taxpayerId, period, kind = 'ALIS', isIsletme = false,
   // Gelen kutusu: yalnız HENÜZ İŞLENMEMİŞ gelen belgeler. Onaylanan/aktarıma alınan/aktarılan
   //   belgeler buradan çıkar (Aktarım arşivinde görünür) — kullanıcı talebi.
   const docsAll = all.filter((d) => (d.invoiceKind || 'ALIS') === kind && !isInAktarim(d));
-  // İşletme sınıfı BELGE BAZINDA, BELGE İÇERİĞİNDEN belirlenir: satışta mükellef faaliyeti,
-  //   giderde AI'ın içerikten çıkardığı matrahKategori (ticari_mal→Mal Alışı, demirbas→Sabit Kıymet)
-  //   + giderTuru (elektrik/akaryakıt/kira→özel alt). Kesin sinyal yoksa ok:false → "Eşleşmedi" + boş.
+  // İşletme sınıfı = AI'ın fatura OKUMA anında faaliyet+içerikle verdiği karar (ocrData.isletme).
+  //   Kaydedilmiş satır varsa o; yoksa AI'ın sınıfı. AI sınıf vermediyse ok:false → "Eşleşmedi" + boş.
   const islSinif = (d: any): { ktAd: string; altAd: string; ok: boolean } => {
     if (!isIsletme) return { ktAd: '', altAd: '', ok: false };
     const isl = d.ocrData?.isletme;
-    const savedKt = isl?.satirlar?.[0]?.kayitTuruKod || isl?.kayitTuruKod;
-    if (savedKt) return { ktAd: isl?.satirlar?.[0]?.kayitTuruAd || isl?.kayitTuruAd || '', altAd: isl?.satirlar?.[0]?.kayitAltAd || isl?.kayitAltAd || '', ok: true };
-    if ((d.invoiceKind || 'ALIS') === 'SATIS') {
-      const kt = isletmeAutoKayitTuru('SATIS', taxpayerNace, taxpayerFaaliyet);
-      if (!kt) return { ktAd: '', altAd: '', ok: false };
-      return { ktAd: isletmeRef('SATIS').kayitTuru.find((x) => x.kod === kt)?.ad || '', altAd: '', ok: true };
-    }
-    const sinif = isletmeGiderSinifi({ matrahKategori: d.ocrData?.matrahKategori, giderTuru: d.ocrData?.giderTuru, vendorName: d.vendorName, documentType: d.documentType });
-    if (!sinif) return { ktAd: '', altAd: '', ok: false };
-    const ref = isletmeRef('ALIS');
+    const ktKod = isl?.satirlar?.[0]?.kayitTuruKod || isl?.kayitTuruKod;
+    if (!ktKod) return { ktAd: '', altAd: '', ok: false };
     return {
-      ktAd: ref.kayitTuru.find((x) => x.kod === sinif.kayitTuruKod)?.ad || '',
-      altAd: getKayitAltList('ALIS', sinif.kayitTuruKod).find((x) => x.kod === sinif.kayitAltKod)?.ad || '',
+      ktAd: isl?.satirlar?.[0]?.kayitTuruAd || isl?.kayitTuruAd || '',
+      altAd: isl?.satirlar?.[0]?.kayitAltAd || isl?.kayitAltAd || '',
       ok: true,
     };
   };
@@ -1509,16 +1500,11 @@ function ScreenMuhasebe({ taxpayerId, period, isIsletme = false, taxpayerNace = 
   const islRef = isletmeRef(islKind);
   const oranToKdvKod = (oran: any) => { const r = Math.round(Number(oran) || 0); return [20, 10, 1, 0].includes(r) ? `KDV${r}` : 'KDV20'; };
   const mkSatir = (kind: 'SATIS' | 'ALIS', matrah: number, kdvKod: string, kdvTutar: number) => {
-    // Sınıf BELGE İÇERİĞİNDEN: satışta mükellef faaliyeti, giderde AI matrahKategori (ticari_mal→Mal Alışı,
-    //   demirbas→Sabit Kıymet) + giderTuru (elektrik/akaryakıt/kira→özel alt). Form başlangıcı: satış Hizmet, gider İndirilecek.
-    let ktKod = '', altKod = '';
-    if (kind === 'SATIS') {
-      ktKod = isletmeAutoKayitTuru('SATIS', taxpayerNace, taxpayerFaaliyet) || '2';
-    } else {
-      const sinif = isletmeGiderSinifi({ matrahKategori: selDoc?.ocrData?.matrahKategori, giderTuru: selDoc?.ocrData?.giderTuru, vendorName: selDoc?.vendorName, documentType: selDoc?.documentType });
-      ktKod = sinif?.kayitTuruKod || '4';
-      altKod = sinif?.kayitAltKod || '';
-    }
+    // Sınıf = AI'ın okuma anında verdiği karar (ocrData.isletme). AI vermediyse form başlangıcı:
+    //   satış Hizmet, gider İndirilecek (kullanıcı Muhasebeleştir'de değiştirir).
+    const ai = selDoc?.ocrData?.isletme;
+    const ktKod = ai?.kayitTuruKod || (kind === 'SATIS' ? '2' : '4');
+    let altKod = ai?.kayitAltKod || '';
     const ktAd = isletmeRef(kind).kayitTuru.find((x) => x.kod === ktKod)?.ad;
     if (!altKod) altKod = defaultKayitAltKod(kind, ktKod, ktAd);
     return { kayitTuruKod: ktKod, kayitAltKod: altKod, matrah: Number(matrah) || 0, kdvOranKod: kdvKod, kdvTutar: Number(kdvTutar) || 0, krediliTutar: 0, hesapKodu: '', tevkifatOrani: '', tevkifatTutar: 0, stopajOrani: '', stopajTutar: 0 };
