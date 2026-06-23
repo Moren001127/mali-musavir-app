@@ -5274,7 +5274,11 @@ export class FaturaMuhasebelestirmeService implements OnModuleInit, OnModuleDest
     if (totalAmount > 0) {
       const yevmiyeToplam = Math.max(sumDebit, sumCredit);
       const rateLineCount = opts.lines.filter((l) => ['matrah', 'vergi'].includes(String((l as any).group || ''))).length;
-      const totalTol = Math.max(TOL, rateLineCount * 0.02);
+      // KURUŞ yuvarlama toleransı: Türk e-faturasında her kalemin KDV'si AYRI yuvarlanıp toplanır →
+      //   kalem toplamı, faturanın "genel toplam" satırından birkaç kuruş sapabilir (okuma hatası DEĞİL,
+      //   muhasebe yuvarlaması). 50 kuruşa kadar tolere; gerçek hata (TL-seviyesi fark) + KDV-matematik
+      //   bozukluğu (KDV_MATH) + denge bozukluğu (BALANCE) yine yakalanır.
+      const totalTol = Math.max(0.5, rateLineCount * 0.05);
       if (Math.abs(yevmiyeToplam - totalAmount) > totalTol) {
         issues.push({
           code: 'TOTAL_MISMATCH',

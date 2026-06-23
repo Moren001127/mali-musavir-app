@@ -2733,7 +2733,7 @@ const CSS = `
 #fm-root tr.detay-on > td{background:#f7faff}
 #fm-root .detayrow > td{padding:0;background:#f7faff;border-bottom:1px solid var(--line)}
 #fm-root .detaybox{padding:8px 14px 12px;overflow-x:auto}
-#fm-root .detaytbl{width:auto;min-width:480px;max-width:920px;border-collapse:collapse;background:#fff;border:1px solid var(--line);border-radius:8px;overflow:hidden}
+#fm-root .detaytbl{width:100%;max-width:880px;border-collapse:collapse;background:#fff;border:1px solid var(--line);border-radius:8px;overflow:hidden}
 #fm-root .celiskibanner{margin-top:8px;max-width:920px;padding:7px 11px;background:#fdf2e0;border:1px solid #f0c987;border-radius:7px;font-size:12px;color:#92400e;line-height:1.55}
 #fm-root .celiskibanner b{display:block;margin-bottom:2px;color:#b45309}
 #fm-root .detaytbl th{font-size:10px;text-transform:uppercase;letter-spacing:.4px;color:var(--faint);text-align:left;padding:6px 10px;background:#fbfcfd;border-bottom:1px solid var(--line)}
@@ -2742,7 +2742,7 @@ const CSS = `
 #fm-root .detaytbl .num{text-align:right;font-variant-numeric:tabular-nums;white-space:nowrap;padding-right:14px;min-width:96px}
 #fm-root .detaytbl td:nth-child(1){white-space:nowrap}
 #fm-root .detaytbl td:nth-child(2){white-space:nowrap}
-#fm-root .detaytbl td:nth-child(3){max-width:240px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+#fm-root .detaytbl td:nth-child(3){max-width:400px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
 #fm-root .detayrow td{padding:0}
 #fm-root .detaybox .detaytbl{max-width:100%}
 #fm-root .babs2{display:grid;grid-template-columns:1fr 1fr;gap:14px;padding:8px 14px 14px}
