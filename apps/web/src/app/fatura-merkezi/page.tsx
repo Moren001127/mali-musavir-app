@@ -1695,20 +1695,26 @@ function ScreenMuhasebe({ taxpayerId, period, isIsletme = false, taxpayerNace = 
                           <PlainSelect value={isl.alisSatisKod || ''} onChange={(v) => setIslF('alisSatisKod', v)} options={islRef.alisSatisTuru.map((x) => ({ value: x.kod, label: x.ad }))} />
                         </div>
                       </div>
-                      <div className="islgrid" style={{ gridTemplateColumns: islRef.plaka ? 'repeat(4, minmax(0, 1fr))' : 'repeat(3, minmax(0, 1fr))' }}>
+                      <div className="islgrid" style={{ gridTemplateColumns: 'repeat(2, minmax(0, 1fr))' }}>
                         <div className="dm"><span className="dml">Evrak Tarihi</span><input className="dmi" type="date" value={meta.faturaTarihi || ''} onChange={(e) => setMeta({ ...meta, faturaTarihi: e.target.value })} /></div>
                         <div className="dm"><span className="dml">Kayıt Tarihi</span><input className="dmi" type="date" value={isl.kayitTarihi || meta.faturaTarihi || ''} onChange={(e) => setIslF('kayitTarihi', e.target.value)} /></div>
+                      </div>
+                      <div className="islgrid" style={{ gridTemplateColumns: islRef.plaka ? 'repeat(2, minmax(0, 1fr))' : '1fr' }}>
                         <div className="dm"><span className="dml">Evrak No</span><input className="dmi" value={meta.belgeNo || ''} onChange={(e) => setMeta({ ...meta, belgeNo: e.target.value })} /></div>
                         {islRef.plaka && (<div className="dm"><span className="dml">Plaka No</span><input className="dmi" value={isl.plakaNo || ''} placeholder="34 ABC 123" onChange={(e) => setIslF('plakaNo', e.target.value)} /></div>)}
                       </div>
-                      <div className="islgrid" style={{ gridTemplateColumns: islRef.islemTuru ? 'repeat(2, minmax(0, 1fr))' : '1fr' }}>
+                      <div className="islgrid" style={{ gridTemplateColumns: '1fr' }}>
                         <div className="dm"><span className="dml">{String(meta.invoiceKind).includes('SATIS') ? 'Alıcı TCKN/VKN' : 'Satıcı TCKN/VKN'}</span><input className="dmi" value={meta.vkn || ''} onChange={(e) => setMeta({ ...meta, vkn: e.target.value })} /></div>
-                        {islRef.islemTuru && (<div className="dm"><span className="dml">İşlem Türü</span>
-                          <PlainSelect value={isl.islemTuruKod || '1100'} onChange={(v) => setIslF('islemTuruKod', v)} options={ISLETME_ISLEM_TURU.map((x) => ({ value: x.kod, label: x.ad }))} />
-                        </div>)}
                       </div>
                       <input value={meta.cariUnvan || ''} placeholder="* cari ünvanı" onChange={(e) => setMeta({ ...meta, cariUnvan: e.target.value })}
                         style={{ width: '100%', margin: '0 0 8px', padding: '8px 11px', background: '#eef5fc', border: '1px solid #bcd7f2', borderRadius: 7, color: '#1862ad', fontSize: 13, fontWeight: 600 }} />
+                      {islRef.islemTuru && (
+                        <div className="islgrid" style={{ gridTemplateColumns: '1fr' }}>
+                          <div className="dm"><span className="dml">İşlem Türü</span>
+                            <PlainSelect value={isl.islemTuruKod || '1100'} onChange={(v) => setIslF('islemTuruKod', v)} options={ISLETME_ISLEM_TURU.map((x) => ({ value: x.kod, label: x.ad }))} />
+                          </div>
+                        </div>
+                      )}
                       <div style={{ fontSize: 13.5, fontWeight: 700, color: '#0f1b2d', margin: '2px 2px' }}>Toplam Tutar: <span style={{ color: '#16a34a' }}>{fmtMoney(islTotMatrah + islTotKdv)} ₺</span></div>
                       {/* SATIRLAR — her KDV oranı / gider türü ayrı (Mihsap birebir) */}
                       {islSatirlar.map((st: any, i: number) => {
