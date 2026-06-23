@@ -2246,7 +2246,13 @@ export class WhatsAppBotController implements OnModuleInit {
         reply: filteredAiReply,
         contextBlock,
         recentReplies,
-        blocking: true, // mükellefe gidecek cevap → LLM-yargıç gönderimden ÖNCE
+        // HIZ: AKILLI mod (varsayılan) — temiz cevap (yerel skor 8+) anında gider; gri-bölge
+        // (6-7) gönderim ÖNCESİ LLM-yargıca sorulur; kötü (<6) retry'a gider. Eskiden HER
+        // cevap bloklayıcı LLM-yargıçtan geçiyordu → +10-15sn/cevap + retry'da +30-90sn (canlı
+        // bulgu). Veri soruları zaten deterministik hızlı-yolda (hatasız), agentic kalan
+        // sohbet/mevzuat cevapları yüksek kaliteli ölçüldü → akıllı mod kalite/hızda en iyi denge.
+        // Kalite sorunu olursa geri sıkılaştır: MOREN_AI_TAXPAYER_BLOCKING=1.
+        blocking: process.env.MOREN_AI_TAXPAYER_BLOCKING === '1',
         retry: async (reasons) => {
           const retryPrompt = this.botEval.buildRetryPrompt(
             rawAiReply,
