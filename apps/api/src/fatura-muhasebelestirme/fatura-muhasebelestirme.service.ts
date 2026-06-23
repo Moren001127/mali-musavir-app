@@ -5979,17 +5979,34 @@ export class FaturaMuhasebelestirmeService implements OnModuleInit, OnModuleDest
       // GİDER hesabı: faturanın İÇERİĞİNE göre. Eskiden satıcı adıyla eşleşmeyince en DÜŞÜK 770
       // (= planın ilk hesabı, ör. "MUTFAK VE YEMEKHANE") seçiliyordu → yakıt fişi mutfağa gidiyordu.
       const giderTuru = String((doc.ocrData as any)?.giderTuru || '').trim();
-      // GİDER hesabı SADECE EMİN olunca atanır (KULLANICI KURALI): gider türü hesap ADIYLA
-      // eşleşirse o hesap; eşleşmezse null = BOŞ. Rastgele/jenerik/en-düşük hesaba ASLA düşürme.
-      // Kullanıcı 1 kez seçer → VKN+oran bazında öğrenilir (matrahForRate 'learned').
-      let categoryMatrah = (isSale || !giderTuru)
-        ? null
-        : this.pickAccount(accounts, alisMatrahPrefixes, giderTuru, { requireHint: true });
-      // AI ESKALASYON: kural (ad eşleşmesi) gider hesabını bulamadıysa, AI faaliyet+içerikle plandan
-      //   SEMANTİK seçsin (ör. nakliyeci+yedek parça → taşıt/bakım-onarım gider hesabı, STOK değil).
-      if (!categoryMatrah && !isSale && giderTuru && aiAccCalls < 60) {
-        aiAccCalls++;
-        categoryMatrah = await this.aiPickGiderAccount(accounts, tpFaaliyet, giderTuru, vendorName || '');
+      // GİDER/STOK hesabı içerikten seçilir. Öncelik (her biri EMİN olunca atar, değilse boş):
+      //   1) giderTuru ADIYLA birebir eşleşen hesap (en spesifik).
+      //   2) matrahKategori → plandaki o grupta TEK leaf varsa KESİN ata (ticari_mal→153,
+      //      demirbaş→255). Tek hedef = belirsizlik yok; "rastgele atama" DEĞİLDİR.
+      //   3) Grup çok-leaf'li (ör. 770'in 3 alt hesabı) ya da giderTuru eşleşmediyse → AI
+      //      faaliyet+kategori+satıcıyla plandan SEMANTİK seçer; AI de bulamazsa null = BOŞ.
+      // NOT: matrahKategori AI okumada DOLU gelir ama giderTuru çoğu zaman boş kalıyordu; eşleştirmeyi
+      //   yalnız giderTuru'na bağlamak belgelerin çoğunu (51/63) boş bırakıyordu. Kategori kaldıracı bunu çözer.
+      let categoryMatrah: any = null;
+      if (!isSale) {
+        if (giderTuru) categoryMatrah = this.pickAccount(accounts, alisMatrahPrefixes, giderTuru, { requireHint: true });
+        if (!categoryMatrah && kat) {
+          for (const p of alisMatrahPrefixes) {
+            const key = String(p || '').trim();
+            if (!/^\d/.test(key)) continue; // yalnız kod öneki (isim-needle'ı atla)
+            const leaves = accounts.filter((a: any) => { const c = String(a.accountCode || ''); return c.startsWith(key) && !c.startsWith('79') && isPostableLeaf(c); });
+            if (!leaves.length) continue;
+            if (leaves.length === 1) categoryMatrah = leaves[0]; // tek hedef → kesin ata
+            break; // ilk dolu grup belirleyici (çok-leaf ise AI'ya bırak, alt grupları deneme)
+          }
+        }
+        // AI ESKALASYON: giderTuru eşleşmedi VEYA kategori grubu çok-leaf'li → faaliyet+içerikle
+        //   plandan SEMANTİK seç (ör. nakliyeci+yedek parça → taşıt/bakım-onarım, STOK değil).
+        //   giderTuru boşsa kategori açıklamasını bağlam olarak ver.
+        if (!categoryMatrah && (giderTuru || kat) && aiAccCalls < 60) {
+          aiAccCalls++;
+          categoryMatrah = await this.aiPickGiderAccount(accounts, tpFaaliyet, giderTuru || this.kategoriAciklama(kat), vendorName || '');
+        }
       }
       categoryMatrah = leafOnly(categoryMatrah); // grup/plan-dışı kodu reddet
       // KDV hesabı: tevkifatlıda planında ADINDA oranı (ör "2/10") ya da "tevkifat" geçen
@@ -6375,6 +6392,19 @@ export class FaturaMuhasebelestirmeService implements OnModuleInit, OnModuleDest
       .replace(/[^\p{L}\p{N}]+/gu, ' ')
       .replace(/\s+/g, ' ')
       .trim();
+  }
+
+  /** matrahKategori kodunu, giderTuru boş geldiğinde AI eskalasyonuna verilecek
+   *  insan-okur gider açıklamasına çevirir (bağlam). */
+  private kategoriAciklama(kat: string): string {
+    const m: Record<string, string> = {
+      ticari_mal: 'ticari mal / satılan emtia (stok)',
+      hammadde: 'hammadde / üretim girdisi',
+      demirbas: 'demirbaş / sabit kıymet',
+      pazarlama: 'pazarlama, satış ve dağıtım gideri',
+      genel_gider: 'genel yönetim gideri',
+    };
+    return m[String(kat || '').toLowerCase().trim()] || (kat || 'genel gider');
   }
 
   /** Hesap ADI tevkifatı işaret ediyor mu? — KDV hesabı gibi 600/391/191 tevkifat hesapları
