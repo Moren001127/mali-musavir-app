@@ -1747,7 +1747,7 @@ function ScreenMuhasebe({ taxpayerId, period, isIsletme = false, taxpayerNace = 
                                 <PlainSelect value={st.kayitAltKod || ''} onChange={(v) => setSatir(i, { kayitAltKod: v })} options={[{ value: '', label: '—' }, ...altList.map((x) => ({ value: x.kod, label: x.ad }))]} />
                               </div>
                             </div>
-                            <div className="islgrid" style={{ gridTemplateColumns: `repeat(${islRef.kredili ? 4 : 3}, minmax(0, 1fr))`, marginTop: 6 }}>
+                            <div className="islgrid" style={{ gridTemplateColumns: 'repeat(auto-fit, minmax(150px, 1fr))', marginTop: 6 }}>
                               {islRef.kredili && (<div className="dm"><span className="dml">Kredili Tutar</span><MoneyInput value={Number(st.krediliTutar) || 0} onChange={(n) => setSatir(i, { krediliTutar: n })} /></div>)}
                               <div className="dm"><span className="dml">Matrah</span><MoneyInput value={Number(st.matrah) || 0} onChange={(n) => setSatir(i, { matrah: n, kdvTutar: recalcKdv(n, st.kdvOranKod) })} /></div>
                               <div className="dm"><span className="dml">Kdv Oranı</span>
@@ -2701,7 +2701,9 @@ const CSS = `
 #fm-root .islgrid .dmi{width:100%;height:31px;padding:0 8px;border:1px solid var(--line2);border-radius:7px;font-size:13px;font-weight:600;color:var(--text);background:#fff;font-family:inherit}
 #fm-root .islgrid .dmi:focus{outline:none;border-color:var(--accent)}
 #fm-root .islgrid .li{width:100%;min-width:0;height:31px;box-sizing:border-box}
-#fm-root .islgrid .psel{width:100%}
+#fm-root .islgrid .psel{width:100%;min-width:0}
+#fm-root .islgrid .psel .pselfield{min-width:0}
+#fm-root .islgrid .psel .pselfield span:first-child{overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
 /* Temiz açılır liste (native siyah select yerine) */
 #fm-root .psel{position:relative;width:100%}
 #fm-root .psel .pselfield{display:flex;align-items:center;gap:6px;height:30px;border:1px solid var(--line2);border-radius:7px;background:#fff;padding:0 9px;cursor:pointer;font-size:13px;font-weight:600;color:var(--text)}
