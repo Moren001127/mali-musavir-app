@@ -499,8 +499,8 @@ function kdvParts(d: any): { matrah: number | null; kdv: number | null } {
 }
 
 const TITLES: Record<string, string> = {
-  faturalar: 'Belgeler · <b>Alış Faturaları</b>',
-  satis: 'Belgeler · <b>Satış Faturaları</b>',
+  faturalar: 'Belgeler · <b>Bekleyen Alış Faturaları</b>',
+  satis: 'Belgeler · <b>Bekleyen Satış Faturaları</b>',
   kurallar: 'Kurulum · <b>Eşleştirme Kuralları</b>',
   muhasebe: 'Belgeler · <b>Muhasebeleştir &amp; Aktar</b>',
   aktarilanlar: 'Belgeler · <b>Aktarım</b>',
@@ -589,8 +589,8 @@ export default function FaturaMerkeziPage() {
 
       <div className="ncap">Belgeler</div>
       <div className={`nitem${screen === 'faturalar' || screen === 'satis' ? ' on' : ''}`} onClick={() => go('faturalar')}><Ico html={I.file} /> Gelen Faturalar</div>
-      <div className={`nsub${screen === 'faturalar' ? ' on' : ''}`} onClick={() => go('faturalar')}><span className="d" /> Alış Faturaları</div>
-      <div className={`nsub${screen === 'satis' ? ' on' : ''}`} onClick={() => go('satis')}><span className="d" /> Satış Faturaları</div>
+      <div className={`nsub${screen === 'faturalar' ? ' on' : ''}`} onClick={() => go('faturalar')}><span className="d" /> Bekleyen Alış Faturaları {badge(sum.alisPending)}</div>
+      <div className={`nsub${screen === 'satis' ? ' on' : ''}`} onClick={() => go('satis')}><span className="d" /> Bekleyen Satış Faturaları {badge(sum.satisPending)}</div>
       <div className={`nitem${screen === 'muhasebe' ? ' on' : ''}`} onClick={() => go('muhasebe')}><Ico html={I.ledger} /> Muhasebeleştir {badge(sum.pending)}</div>
       <div className={`nitem${screen === 'aktarilanlar' ? ' on' : ''}`} onClick={() => go('aktarilanlar')}><Ico html={I.check} /> Aktarım {badge(Math.max(0, (Number(sum.approved) || 0) - (Number(sum.posted) || 0)))}</div>
       <div className={`nitem${screen === 'arsiv' ? ' on' : ''}`} onClick={() => go('arsiv')}><Ico html={I.ledger} /> Arşivim {badge(sum.posted)}</div>
@@ -831,7 +831,7 @@ function ScreenFaturalar({ taxpayerId, period, kind = 'ALIS' }: { taxpayerId: st
 
   return (
     <section className="screen">
-      <div className="h2">{kind === 'SATIS' ? 'Satış Faturaları' : 'Alış Faturaları'}</div>
+      <div className="h2">{kind === 'SATIS' ? 'Bekleyen Satış Faturaları' : 'Bekleyen Alış Faturaları'}</div>
       <div className="sub">{kind === 'SATIS' ? 'Mükellefin kestiği satış faturaları — kuralla otomatik eşleşir.' : 'Entegratörden çekilen gelen faturalar — kuralla otomatik eşleşir, sadece eksik/çelişkili olana bakarsın.'}</div>
       <div className="card">
         <div className="ch">

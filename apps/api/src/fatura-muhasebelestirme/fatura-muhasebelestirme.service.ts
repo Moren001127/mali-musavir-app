@@ -663,11 +663,12 @@ export class FaturaMuhasebelestirmeService implements OnModuleInit, OnModuleDest
     const docs = await (this.prisma as any).invoiceAccountingDocument.findMany({
       where,
       // v2.2: validationStatus select'i raw query ile yaparız, Prisma client tanımıyor olabilir
-      select: { status: true, lucaStatus: true, ocrStatus: true, taxpayerId: true, ocrData: true },
+      select: { status: true, lucaStatus: true, ocrStatus: true, taxpayerId: true, ocrData: true, invoiceKind: true },
     });
 
     // v2.2: Mukellef bağlantısı + validation durumu ayrı sayılır
     let pending = 0, approved = 0, errors = 0, posted = 0, ocrInProgress = 0;
+    let alisPending = 0, satisPending = 0; // sol menü "Bekleyen Alış/Satış Faturaları" rozetleri
     let pendingWithTaxpayer = 0;  // perTaxpayerSummary'de gözükenler
     let orphanCount = 0;          // taxpayerId null/empty
     let invalidCount = 0;         // validation INVALID/INCOMPLETE
@@ -679,6 +680,7 @@ export class FaturaMuhasebelestirmeService implements OnModuleInit, OnModuleDest
       if (isPending) {
         pending++;
         if (hasTaxpayer) pendingWithTaxpayer++;
+        if (String(d.invoiceKind || '').toUpperCase().includes('SATIS')) satisPending++; else alisPending++;
       }
       if (status === 'APPROVED') approved++;
       if (status === 'REJECTED' || status === 'ERROR') errors++;
@@ -694,6 +696,8 @@ export class FaturaMuhasebelestirmeService implements OnModuleInit, OnModuleDest
     return {
       total: docs.length,
       pending,
+      alisPending,
+      satisPending,
       // Sidebar'da gösterilen: gerçekten mukellefe bağlı bekleyenler
       pendingWithTaxpayer,
       // Mukellef seçilmediği için tabloda görünmeyen belgeler
