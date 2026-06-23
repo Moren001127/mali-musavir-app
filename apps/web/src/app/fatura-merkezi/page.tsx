@@ -2731,12 +2731,13 @@ const CSS = `
 #fm-root td.actcol{position:sticky;right:0;background:#fff;box-shadow:-6px 0 6px -6px rgba(0,0,0,.12)}
 #fm-root tr.detay-on > td{background:#f7faff}
 #fm-root .detayrow > td{padding:0;background:#f7faff;border-bottom:1px solid var(--line)}
-#fm-root .detaybox{padding:8px 14px 12px}
+#fm-root .detaybox{padding:8px 14px 12px;overflow-x:auto}
 #fm-root .detaytbl{width:100%;border-collapse:collapse;background:#fff;border:1px solid var(--line);border-radius:8px;overflow:hidden}
 #fm-root .detaytbl th{font-size:10px;text-transform:uppercase;letter-spacing:.4px;color:var(--faint);text-align:left;padding:6px 10px;background:#fbfcfd;border-bottom:1px solid var(--line)}
 #fm-root .detaytbl td{font-size:12px;padding:6px 10px;border-bottom:1px solid var(--line)}
 #fm-root .detaytbl tr:last-child td{border-bottom:none}
-#fm-root .detaytbl .num{text-align:right;font-variant-numeric:tabular-nums}
+#fm-root .detaytbl .num{text-align:right;font-variant-numeric:tabular-nums;white-space:nowrap;padding-right:16px}
+#fm-root .detaytbl td:nth-child(3){max-width:360px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
 #fm-root .babs2{display:grid;grid-template-columns:1fr 1fr;gap:14px;padding:8px 14px 14px}
 #fm-root .babscol{border:1px solid var(--line);border-radius:10px;overflow:hidden}
 #fm-root .babsh{font-size:12px;font-weight:700;padding:8px 12px;background:#fbfcfd;border-bottom:1px solid var(--line);display:flex;align-items:center;gap:8px}

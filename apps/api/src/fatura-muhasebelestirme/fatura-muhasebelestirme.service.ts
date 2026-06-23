@@ -5838,11 +5838,15 @@ export class FaturaMuhasebelestirmeService implements OnModuleInit, OnModuleDest
     // tevkifat yolu NET KDV + ÖDENECEK cariyi doğru üretir (tam KDV/tam toplam değil).
     const tevkKdv = Number(parsed.tevkifatKdv) || 0;
     const tevkifatOrani = (tevkKdv > 0 && kdv > 0 && tevkKdv < kdv) ? Math.round((tevkKdv / kdv) * 1000) / 1000 : 0;
-    // Toplam: tevkifatlıda ödenecek = matrah + NET KDV (validasyon yevmiyeyle tutsun).
-    const readTotal = Number(parsed.toplam) || 0;
+    // Toplam = matrah + KDV (yevmiye DENGESİ: cari satırı = matrah + kdv toplamı). AI'nın okuduğu
+    //   parsed.toplam KDV HARİÇ tutarı verebiliyordu → cari/totalAmount yanlış → BALANCE_MISMATCH /
+    //   TOTAL_MISMATCH (EDELER'de 31 belge "çelişki"; örn total=matrah=641.82 ama gerçek 648.33).
+    //   ARTIK satırlardan türetilir → yevmiye her zaman dengeli. Matrah/KDV okuma hatasını
+    //   (kdv > matrah×oran) zaten KDV_MATH doğrulaması yakalar → sessiz yanlış kalmaz.
+    //   Tevkifatlıda ödenecek = matrah + NET KDV (tevkifat sorumlu sıfatıyla beyan, cariye girmez).
     const total = tevkifatOrani > 0
       ? Math.round((matrah + kdv * (1 - tevkifatOrani)) * 100) / 100
-      : (readTotal > 0 ? readTotal : Math.round((matrah + kdv) * 100) / 100);
+      : Math.round((matrah + kdv) * 100) / 100;
     // Karşı taraf (cari) adı: satışta ALICI, alışta SATICI.
     const counterName = String((isSale ? parsed.aliciAd : parsed.saticiAd) || '').trim();
     // Belge türü: önce GERÇEK METİNDEN (e-Arşiv/e-Fatura ibaresi), yoksa AI'nın dediği.
@@ -6301,10 +6305,12 @@ export class FaturaMuhasebelestirmeService implements OnModuleInit, OnModuleDest
           ].includes(current);
         if (!isPlaceholder) continue; // kullanıcının seçtiği kod — dokunma
         if (match) {
-          // (cari yukarıda ele alındı) — matrah/vergi: açıklamaya dokunma.
+          // (cari yukarıda ele alındı) — matrah/vergi/tevkifat: AÇIKLAMA = HESAP ADI. Kullanıcı
+          //   "153'ün o hesabın açıklamasını yazmıyor" dedi → yevmiyede "Gider / matrah" yerine
+          //   "TİCARİ MALLAR %20" görünür. match accounts'tan gelir (accountName dolu).
           await (this.prisma as any).invoiceAccountingLine.update({
             where: { id: line.id },
-            data: { accountCode: match.accountCode },
+            data: { accountCode: match.accountCode, ...((match as any).accountName ? { description: String((match as any).accountName) } : {}) },
           });
         } else if (current) {
           // Planda uygun kod YOK → var olmayan placeholder'ı (ör. 770.01.010) BOŞALT.
