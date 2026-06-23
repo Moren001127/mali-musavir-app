@@ -805,7 +805,9 @@ export async function buildTaxpayerSelfReply(
 
   const wantsSonOdeme = /(en son.*(ode|odedi)|son odeme|ne zaman ode|en son ne kadar ode)/.test(n);
   const wantsKdv = /kdv/.test(n) && /(ne kadar|odeyecek|odecek|cikiyor|cikti|durum|borc|kac tl|tutar|hesaplanan|indirilecek|odemem)/.test(n);
-  const wantsBorc = !wantsKdv && (/(\bborc|borcum|bakiye|hesabim|odemem var|alacag|ne kadar.*ode)/.test(n) || wantsSonOdeme);
+  // NOT: "alacag" KALDIRILDI — "eleman alacağım" (alma fiili) ile "alacak" (receivable) aynı
+  // yazılıyor → "yeni eleman alacağım" yanlışlıkla borç cevabı veriyordu. Receivable nadir; agentic'e kalsın.
+  const wantsBorc = !wantsKdv && (/(\bborc|borcum|bakiye|hesabim|odemem var|ne kadar.*ode)/.test(n) || wantsSonOdeme);
   const wantsBeyan = /(beyanname|beyannamem)/.test(n) && /(veril|hazir|durum|oldu mu|verildi mi|hazir mi|var mi)/.test(n);
 
   // KDV durumu (kendi)
