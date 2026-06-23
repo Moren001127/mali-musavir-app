@@ -13,7 +13,42 @@ import { claudeTextViaMax, MAX_MODEL_CHEAP } from '../common/max-inference';
 import { buildLucaImportExcel, buildLucaIsletmeHizliFisCsv } from './luca-excel.service';
 import { VendorMemoryService } from '../vendor-memory/vendor-memory.service';
 import { MihsapService } from '../mihsap/mihsap.service';
-import { isletmeAutoKayitTuru, isletmeGiderSinifi, isletmeRef, getKayitAltList } from '@mali-musavir/shared';
+import { isletmeRef, getKayitAltList } from '@mali-musavir/shared';
+
+// ── İşletme defteri AI sınıflandırması ──
+// Faturayı okuyan max-vision AI'ına, mükellefin FAALİYETİ + faturanın İÇERİĞİYLE muhakeme ederek
+// İşletme kayıt türü + alt türünü seçtirmek için prompt segmenti; ve AI'ın verdiği AD'ı koda çözen yardımcı.
+function islPromptSeg(): string {
+  const tx = (k: string) => isletmeRef(k).kayitTuru.map((kt: any) =>
+    `  • ${kt.ad}: ${getKayitAltList(k, kt.kod).filter((a: any) => !/^99/.test(a.kod)).map((a: any) => a.ad).join(' | ') || '(alt yok)'}`,
+  ).join('\n');
+  return [
+    'İŞLETME DEFTERİ SINIFLANDIRMASI — bu mükellef İşletme/Defter-Beyan usulü. Faturayı MÜKELLEFİN İŞİNE + içindeki mal/hizmete göre sınıfla:',
+    '1) Yön: mükellef faturada SATICI mı (→ satış/gelir) yoksa ALICI mı (→ alış/gider)?',
+    '2) ALIŞ ise: alınan şey mükellefin SATTIĞI/ticaretini yaptığı emtia mı → "Mal Alışı". Kendi işinde KULLANDIĞI/tükettiği gider mi → "İndirilecek Giderler (GVK Md. 40)" + en uygun alt. Uzun ömürlü makine/cihaz/taşıt/demirbaş mı → "Sabit Kıymet Alışı".',
+    '   ÖRNEK: NAKLİYECİ kendi aracına yedek parça/lastik/tamir alır → "İndirilecek Giderler" + "Taşıt Bakım Onarım Giderleri" (MAL ALIŞI DEĞİL). Oto yedek parça TİCARETİ yapan satmak için aynı parçayı alır → "Mal Alışı".',
+    '3) SATIŞ ise: satılan mal mı (→ "Mal Satışı") hizmet mi (→ "Hizmet Satışı") + uygun alt.',
+    'GELİR türleri ve alt türleri:', tx('SATIS'),
+    'GİDER türleri ve alt türleri:', tx('ALIS'),
+    'JSON\'A EKLE: "isletmeKayitTuru":"<yukarıdaki TAM kayıt türü adı>","isletmeAltTuru":"<o türün listesinden TAM alt adı>","isletmeNeden":"<tek cümle gerekçe>". NET DEĞİLSEN isletmeKayitTuru="" ve isletmeAltTuru="" (ASLA UYDURMA).',
+  ].filter(Boolean).join('\n');
+}
+function islNorm(s: any): string {
+  return String(s || '').toLowerCase().normalize('NFKD').replace(/[̀-ͯ]/g, '').replace(/ı/g, 'i').replace(/[^a-z0-9]/g, '');
+}
+function resolveIslAi(kind: string, parsed: any): any {
+  const ktAd = String(parsed?.isletmeKayitTuru || '').trim();
+  if (!ktAd) return undefined; // AI emin değil → sınıflandırma yok (Eşleşmedi)
+  const dir = String(kind || '').toUpperCase().includes('SATIS') ? 'SATIS' : 'ALIS';
+  const ref = isletmeRef(dir);
+  const ktN = islNorm(ktAd);
+  const kt = ref.kayitTuru.find((x: any) => islNorm(x.ad) === ktN) || ref.kayitTuru.find((x: any) => islNorm(x.ad).includes(ktN) || ktN.includes(islNorm(x.ad)));
+  if (!kt) return undefined;
+  const altList = getKayitAltList(dir, kt.kod);
+  const altN = islNorm(parsed?.isletmeAltTuru || '');
+  const alt = altN ? (altList.find((x: any) => islNorm(x.ad) === altN) || altList.find((x: any) => islNorm(x.ad).includes(altN) || altN.includes(islNorm(x.ad)))) : null;
+  return { kayitTuruKod: kt.kod, kayitTuruAd: kt.ad, kayitAltKod: alt?.kod || '', kayitAltAd: alt?.ad || '', autoMatched: true, neden: String(parsed?.isletmeNeden || '').slice(0, 140) };
+}
 
 type AccountingLineInput = {
   id?: string;
@@ -3526,25 +3561,8 @@ export class FaturaMuhasebelestirmeService implements OnModuleInit, OnModuleDest
         lucaStatus: (doc as any).taxpayerId ? 'QUEUED' : 'NOT_STARTED',
         lucaErrorMessage: (doc as any).taxpayerId ? null : 'Mukellef secilmedigi icin Luca\'ya aktarilamaz',
       };
-      // Sınıflandırılmamışsa Kayıt Türü'nü mükellefin FAALİYETİNE göre otomatik belirle + kalıcı yaz (Luca CSV'si boş gitmesin).
-      const sinifliMi = (Array.isArray(isl.satirlar) && isl.satirlar.length) || isl.kayitTuruKod;
-      if (!sinifliMi) {
-        const kindU = String((doc as any).invoiceKind || 'ALIS').toUpperCase().includes('SATIS') ? 'SATIS' : 'ALIS';
-        const od: any = (doc as any).ocrData || {};
-        // Sınıf BELGE İÇERİĞİNDEN: satışta faaliyet, giderde matrahKategori/giderTuru. Kesin değilse ZORLAMA YOK.
-        let ktKod = '', altKod = '';
-        if (kindU === 'SATIS') {
-          ktKod = isletmeAutoKayitTuru('SATIS', tp?.naceKodu, tp?.faaliyetAciklama);
-        } else {
-          const sinif = isletmeGiderSinifi({ matrahKategori: od.matrahKategori, giderTuru: od.giderTuru, vendorName: (doc as any).vendorName, documentType: (doc as any).documentType });
-          if (sinif) { ktKod = sinif.kayitTuruKod; altKod = sinif.kayitAltKod; }
-        }
-        if (ktKod) {
-          const ktAd = isletmeRef(kindU).kayitTuru.find((x: any) => x.kod === ktKod)?.ad || '';
-          const altAd = altKod ? (getKayitAltList(kindU, ktKod).find((x: any) => x.kod === altKod)?.ad || '') : '';
-          data.ocrData = { ...od, isletme: { ...isl, kayitTuruKod: ktKod, kayitTuruAd: ktAd, kayitAltKod: altKod, kayitAltAd: altAd, autoMatched: true } };
-        }
-      }
+      // Sınıflandırma (Kayıt Türü + alt türü) faturayı okurken AI tarafından yapılır (ocrData.isletme).
+      //   Onayda ZORLAMA YOK — AI sınıf vermediyse belge "Eşleşmedi" kalır, kullanıcı Muhasebeleştir'de seçer.
       await (this.prisma as any).invoiceAccountingDocument.update({ where: { id }, data });
       await this.logAudit(tenantId, userId, 'APPROVE', id, { status: doc.status }, { status: 'APPROVED', isletme: true });
       return this.get(tenantId, id);
@@ -5586,6 +5604,7 @@ export class FaturaMuhasebelestirmeService implements OnModuleInit, OnModuleDest
     // Mükellefin İŞİNİ/SEKTÖRÜNÜ eşleştirmeye kat → kategori firmanın faaliyetine göre
     // seçilsin (ör. yemek üreticisinde un=hammadde, tüccarda satılan ürün=ticari_mal).
     let mukellefBilgi = '';
+    let isIsletmeMukellef = false;
     let ownVkn = ''; // mükellefin kendi VKN/TCKN'si → faturanın YÖNÜNÜ (alış/satış) türetmek için
     if (d.taxpayerId) {
       const tp = await (this.prisma as any).taxpayer.findFirst({
@@ -5595,7 +5614,8 @@ export class FaturaMuhasebelestirmeService implements OnModuleInit, OnModuleDest
       if (tp) {
         ownVkn = String(tryDecrypt(tp.taxNumber) || tp.taxNumber || tryDecrypt(tp.identityNumber) || tp.identityNumber || '').replace(/\D/g, '');
         const ad = String(tp.companyName || `${tp.firstName || ''} ${tp.lastName || ''}`).trim();
-        const defter = String(tp.defterTuru || '').toUpperCase() === 'ISLETME' ? 'İşletme defteri' : 'Bilanço usulü';
+        isIsletmeMukellef = String(tp.defterTuru || '').toUpperCase() === 'ISLETME';
+        const defter = isIsletmeMukellef ? 'İşletme defteri' : 'Bilanço usulü';
         const faaliyet = String(tp.faaliyetAciklama || '').trim();
         // Öncelik: serbest faaliyet açıklaması (en güvenilir) > NACE kodu > ünvan.
         mukellefBilgi = [
@@ -5605,7 +5625,9 @@ export class FaturaMuhasebelestirmeService implements OnModuleInit, OnModuleDest
         ].filter(Boolean).join(', ');
       }
     }
+    const islSeg = isIsletmeMukellef ? islPromptSeg() : '';
     const prompt = [
+      islSeg,
       isImage
         ? 'Aşağıdaki görüntü bir Türk faturası veya yazarkasa fişidir. İçindeki bilgileri oku.'
         : 'Aşağıda bir Türk e-Fatura/e-Arşiv belgesinin HTML/metin içeriği var. İçindeki bilgileri oku.',
@@ -5699,6 +5721,8 @@ export class FaturaMuhasebelestirmeService implements OnModuleInit, OnModuleDest
     await (this.prisma as any).$transaction(async (tx: any) => {
       await tx.invoiceAccountingLine.deleteMany({ where: { documentId: d.id } });
       if (lines.length) await tx.invoiceAccountingLine.createMany({ data: lines.map((l: any) => ({ ...l, documentId: d.id })) });
+      // İŞLETME: AI'ın faaliyet+içerik muhakemesiyle verdiği kayıt türü + alt türü. Net değilse undefined → Eşleşmedi.
+      const islSinifAi = isIsletmeMukellef ? resolveIslAi(kind, parsed) : undefined;
       await tx.invoiceAccountingDocument.update({
         where: { id: d.id },
         data: {
@@ -5714,7 +5738,7 @@ export class FaturaMuhasebelestirmeService implements OnModuleInit, OnModuleDest
           ...(counterName ? (isSale ? { customerName: counterName } : { vendorName: counterName }) : {}),
           status: 'NEEDS_REVIEW',
           ocrEngine: 'max-vision',
-          ocrData: { ...((d.ocrData as any) || {}), matrah, kdvTutari: kdv, kdvOrani: breakdown[0].rate, kdvBreakdown: breakdown.map((b: any) => ({ oran: b.rate, matrah: b.base, tutar: b.amount })), matrahKategori: typeof parsed.kategori === 'string' ? parsed.kategori : undefined, giderTuru: typeof parsed.giderTuru === 'string' ? parsed.giderTuru.slice(0, 40) : undefined, isReturn: parsed.iade === true || /iade|iptal/i.test(String(parsed.belgeTuru || '')), tevkifatHint: parsed.tevkifat === true || tevkifatOrani > 0 || /tevkifat/i.test(String(html || '')), tevkifatOrani: tevkifatOrani || 0, tevkifatKdv: tevkKdv || 0, engine: parsed === preParsed ? 'ubl-xml' : 'max-vision',
+          ocrData: { ...((d.ocrData as any) || {}), matrah, kdvTutari: kdv, kdvOrani: breakdown[0].rate, kdvBreakdown: breakdown.map((b: any) => ({ oran: b.rate, matrah: b.base, tutar: b.amount })), matrahKategori: typeof parsed.kategori === 'string' ? parsed.kategori : undefined, giderTuru: typeof parsed.giderTuru === 'string' ? parsed.giderTuru.slice(0, 40) : undefined, ...(islSinifAi ? { isletme: islSinifAi } : {}), isReturn: parsed.iade === true || /iade|iptal/i.test(String(parsed.belgeTuru || '')), tevkifatHint: parsed.tevkifat === true || tevkifatOrani > 0 || /tevkifat/i.test(String(html || '')), tevkifatOrani: tevkifatOrani || 0, tevkifatKdv: tevkKdv || 0, engine: parsed === preParsed ? 'ubl-xml' : 'max-vision',
             readMode: parsed === preParsed ? 'ubl-xml' : (isImage ? 'image' : /pdf/i.test(imgMedia) ? 'pdf-text' : /xml/i.test(imgMedia) ? 'xml-text' : 'html'),
             ...(!preParsed && imgBuf && /xml/i.test(imgMedia) ? { xmlHead: imgBuf.toString('utf8').slice(0, 220).replace(/\s+/g, ' ') } : {}) },
         },
