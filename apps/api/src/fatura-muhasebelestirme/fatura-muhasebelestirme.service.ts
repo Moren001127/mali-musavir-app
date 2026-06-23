@@ -6029,22 +6029,22 @@ export class FaturaMuhasebelestirmeService implements OnModuleInit, OnModuleDest
       let categoryMatrah: any = null;
       if (!isSale) {
         if (giderTuru) categoryMatrah = this.pickAccount(accounts, alisMatrahPrefixes, giderTuru, { requireHint: true });
+        // matrahKategori belli → DOĞRUDAN o GRUBA ata (kategori = AI'ın içerik kararı, "rastgele" DEĞİL).
+        //   Tek leaf → kesin. Çok leaf → önce giderTuru adıyla daralt; olmazsa o grubun EN GENEL
+        //   (ilk/en düşük kodlu) alt-hesabına ata — BOŞ BIRAKMA. Kullanıcı yanlış alt-hesabı 1 kez
+        //   düzeltir → satıcı+oran için öğrenilir. (Eşleşme > boş: kullanıcı "neyle eşleşti"yi
+        //   listede yevmiye ikonundan görüp düzeltebilir.) Eski AI-eskalasyonu yavaştı + boş
+        //   bırakıyordu (153'te 3 alt-hesap → 56 belge AI'ya düşüp eşleşmiyordu) → kaldırıldı.
         if (!categoryMatrah && kat) {
           for (const p of alisMatrahPrefixes) {
             const key = String(p || '').trim();
             if (!/^\d/.test(key)) continue; // yalnız kod öneki (isim-needle'ı atla)
             const leaves = accounts.filter((a: any) => { const c = String(a.accountCode || ''); return c.startsWith(key) && !c.startsWith('79') && isPostableLeaf(c); });
             if (!leaves.length) continue;
-            if (leaves.length === 1) categoryMatrah = leaves[0]; // tek hedef → kesin ata
-            break; // ilk dolu grup belirleyici (çok-leaf ise AI'ya bırak, alt grupları deneme)
+            const byName = giderTuru ? leaves.find((a: any) => this.nameMatchScore(giderTuru, String(a.accountName || '')) > 0) : null;
+            categoryMatrah = byName || leaves[0]; // accounts kod-artan sıralı → leaves[0] = en genel alt-hesap
+            break; // ilk dolu grup belirleyici
           }
-        }
-        // AI ESKALASYON: giderTuru eşleşmedi VEYA kategori grubu çok-leaf'li → faaliyet+içerikle
-        //   plandan SEMANTİK seç (ör. nakliyeci+yedek parça → taşıt/bakım-onarım, STOK değil).
-        //   giderTuru boşsa kategori açıklamasını bağlam olarak ver.
-        if (!categoryMatrah && (giderTuru || kat) && aiAccCalls < 60) {
-          aiAccCalls++;
-          categoryMatrah = await this.aiPickGiderAccount(accounts, tpFaaliyet, giderTuru || this.kategoriAciklama(kat), vendorName || '');
         }
       }
       categoryMatrah = leafOnly(categoryMatrah); // grup/plan-dışı kodu reddet
