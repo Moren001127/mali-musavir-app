@@ -93,12 +93,14 @@ function deriveDurum(doc: any, isIsletme = false, autoKtKod = ''): { k: string; 
   if (doc.status === 'PROCESSING') return { k: 'proc', t: 'Okunuyor…', cat: 'okunuyor' };
   if (String(doc.ocrStatus || '').toUpperCase() === 'FAILED') return { k: 'miss', t: 'Okunamadı', cat: 'okunamadi' };
   const lines: any[] = Array.isArray(doc.lines) ? doc.lines : [];
-  const issues = Array.isArray(doc.validationIssues) ? doc.validationIssues : [];
-  // İçerik çelişkisi = denge/sahiplik/toplam hatası (en kritik).
-  const vissue =
-    doc.validationStatus === 'INVALID' ||
-    doc.ocrData?.validationStatus === 'INVALID' ||
-    issues.some((i: any) => i?.code && i.code !== 'INCOMPLETE_AMOUNTS' && i?.severity !== 'WARNING');
+  const issues = Array.isArray(doc.validationIssues) ? doc.validationIssues : (Array.isArray(doc.ocrData?.validationIssues) ? doc.ocrData.validationIssues : []);
+  // İçerik çelişkisi = denge/sahiplik/toplam hatası. ANCAK kuruş-yuvarlama TOTAL_MISMATCH (belge tutarı
+  //   ile yevmiye farkı < 0.50 TL — Türk e-faturasında her kalemin KDV'si AYRI yuvarlanır) çelişki
+  //   SAYILMAZ; backend eski toleransla INVALID demiş olsa bile frontend ANINDA tolere eder (revalidate/
+  //   "Kodları düzelt" beklenmez). Gerçek hata (TL-seviyesi fark, BALANCE, OWNERSHIP, KDV_MATH) kalır.
+  const realIssues = issues.filter((i: any) => i?.code && i.code !== 'INCOMPLETE_AMOUNTS' && i?.severity !== 'WARNING'
+    && !(i.code === 'TOTAL_MISMATCH' && Math.abs(Number(i.expected || 0) - Number(i.actual || 0)) < 0.5));
+  const vissue = realIssues.length > 0;
   if (vissue) return { k: 'warn', t: 'Çelişki — kontrol et', cat: 'celiski' };
   // İŞLETME DEFTERİ (Defter-Beyan): tek-taraflı — hesap planı/kodu YOK, cari kodu açılmaz.
   //   Sınıflandırma = Kayıt Türü (Mal/Hizmet Satışı) MÜKELLEFİN FAALİYETİNE göre otomatik belirlenir.
@@ -1001,7 +1003,7 @@ function ScreenFaturalar({ taxpayerId, period, kind = 'ALIS', isIsletme = false,
                               </tbody>
                             </table>
                           ) : <div className="empty" style={{ padding: 10 }}>Fiş satırı yok — önce "AI ile oku".</div>}
-                          {(() => { const iss = (Array.isArray(d.validationIssues) ? d.validationIssues : (Array.isArray(d.ocrData?.validationIssues) ? d.ocrData.validationIssues : [])).filter((i: any) => i?.code && i.code !== 'INCOMPLETE_AMOUNTS' && i?.severity !== 'WARNING'); return iss.length ? <div className="celiskibanner"><b>Çelişki sebebi:</b>{iss.map((i: any, k: number) => <div key={k}>• {i.message}</div>)}</div> : null; })()}
+                          {(() => { const iss = (Array.isArray(d.validationIssues) ? d.validationIssues : (Array.isArray(d.ocrData?.validationIssues) ? d.ocrData.validationIssues : [])).filter((i: any) => i?.code && i.code !== 'INCOMPLETE_AMOUNTS' && i?.severity !== 'WARNING' && !(i.code === 'TOTAL_MISMATCH' && Math.abs(Number(i.expected || 0) - Number(i.actual || 0)) < 0.5)); return iss.length ? <div className="celiskibanner"><b>Çelişki sebebi:</b>{iss.map((i: any, k: number) => <div key={k}>• {i.message}</div>)}</div> : null; })()}
                         </div>
                       </td>
                     </tr>
