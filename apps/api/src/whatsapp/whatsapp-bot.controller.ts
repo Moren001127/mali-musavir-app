@@ -1872,8 +1872,35 @@ export class WhatsAppBotController implements OnModuleInit {
         // eval: "Siz kimsin?" → evasive, skor 4).
         const asksIdentity = /\bkimsin(iz)?\b|kim(ler)?\s*(le|siniz|sin)|kiminle|kim ile|nedir bu( numara| hat)?|hangi (firma|ofis|kurum|numara)|sizi tan[ıi]m[ıi]yorum|kim ar[ıi]yor/i.test(msg.text || '');
 
+        // MÜŞTERİ ADAYI: kayıtlı olmayan biri hizmet/fiyat sorabilir ya da yeni mükellef
+        // olmak/tanışmak isteyebilir. Eskiden bu mesajlar BILGI_SORUSU/GENEL'e düşüp
+        // soğuk "adınızı paylaşın" cevabı alıyordu — bir aday için kötü ilk izlenim.
+        // Bu yüzden ÖNCE sıcak, satış-bilinçli ama yalan/fiyat-taahhüt içermeyen,
+        // lead toplayan cevap veriyoruz.
+        // Mevcut-müşteri eylemi (evrak/ödeme/onay/şikayet) → aday SAYMA, kendi dalına gitsin.
+        const actionIntent = ['EVRAK_TESLIM', 'ODEME_BILDIRIMI', 'BEYANNAME_ONAY_TALEBI', 'SIKAYET'].includes(intentResult.intent);
+        // "kdv borcum ne kadar" gibi KENDİ verisini soran (kayıtsız) biri fiyat sormuyor →
+        // fiyat dalına SOKMA, "sizi tanıyalım"a bırak.
+        // Teslim/eylem fiili (evrak gönderdim vb.) → mevcut müşteri davranışı, aday/fiyat sayma.
+        const looksLikeDelivery = /g[öo]nderdim|yollad[ıi]m|att[ıi]m|ilettim|teslim|b[ıi]rakt[ıi]m|kargo/i.test(msg.text || '');
+        const debtOrData = /bor[çc]|kdv|beyan|tahakkuk|bakiye|vergi|sgk prim|ne zaman|son g[üu]n/i.test(msg.text || '');
+        const explicitPrice = /fiyat|[üu]cret|ka[çc] para|teklif|tarife|maliyet|ne al[ıi]yorsunuz/i.test(msg.text || '');
+        const pricePhrase =
+          /ne kadar|ayl[ıi]k ka[çc]/i.test(msg.text || '') &&
+          /muhasebe|hizmet|defter|m[üu][şs]avir|tut|kurulu[şs]|[şs]irket/i.test(msg.text || '');
+        const asksPricing = !actionIntent && !looksLikeDelivery && !debtOrData && (explicitPrice || pricePhrase);
+        const looksLikeProspect =
+          !actionIntent && !looksLikeDelivery &&
+          /mali m[üu][şs]avir|muhasebeci|m[üu][şs]avir ar|m[üu][şs]teri(niz)? olmak|m[üu]kellef(iniz)? olmak|hizmet|ne i[şs] yap|neler yap|[şs]irket kur|[şs]ah[ıi]s (firma|[şs]irket|i[şs]let)|limited|defter tut|muhasebe|kurulu[şs]|ge[çc]mek isti|de[ğg]i[şs]tirmek isti|tan[ıi][şs]|[çc]al[ıi][şs]mak ister|anla[şs]mak ister/i.test(msg.text || '');
+
         if (asksIdentity) {
           rawReply = `Ben ${OFFICE_NAME} ofisinin WhatsApp asistanıyım; mali müşavirlik işlemlerinizde yardımcı oluyorum. Sizi kayıtlarımızda bulabilmem için adınızı veya firma unvanınızı paylaşır mısınız?`;
+        } else if (asksPricing) {
+          // Fiyat sorusu — sabit rakam VERME (ofis belirler), işe özel teklife yönlendir + lead topla
+          rawReply = `Memnuniyetle bilgilendirelim. Ücretlerimiz işin kapsamına göre belirleniyor — faaliyet türü, aylık belge/fatura adedi ve çalışan sayısı gibi etkenlere göre değişir. Size en uygun ve net teklifi mali müşavirimiz hazırlasın: kısaca ne iş yaptığınızı ve adınızı/firma unvanınızı yazarsanız en kısa sürede size özel teklifle dönüş yaparız.`;
+        } else if (looksLikeProspect) {
+          // Hizmet/yeni mükellef/tanışma — sıcak karşıla, hizmetleri özetle, lead topla
+          rawReply = `Hoş geldiniz, ilginiz için teşekkür ederiz! ${OFFICE_NAME} olarak muhasebe, beyanname ve vergi işlemleri, SGK & bordro, şirket/şahıs kuruluşu ve mali danışmanlık hizmetleri sunuyoruz. Sizi mali müşavirimizle buluşturmaktan memnuniyet duyarız — adınızı/firma unvanınızı ve kısaca faaliyet konunuzu yazarsanız ekibimiz en kısa sürede size dönüş yapar.`;
         } else if (isFirstContact) {
           // İlk temas — kendini tanıt + kim olduğunu sor
           rawReply = `Merhaba, ${OFFICE_NAME} iletişim hattına hoş geldiniz. Size yardımcı olabilmemiz için adınızı veya firma unvanınızı paylaşır mısınız?`;
