@@ -1985,8 +1985,8 @@ export class WhatsAppBotController implements OnModuleInit {
       }
       return;
     }
-    // Otomasyon event'i: müvekkelden WhatsApp mesajı geldi
-    if (this.eventBus) {
+    // Otomasyon event'i: müvekkelden WhatsApp mesajı geldi (dry-run'da tetiklenmez)
+    if (this.eventBus && !msg.__dryRun) {
       const unvan =
         taxpayer.type === 'TUZEL_KISI'
           ? taxpayer.companyName || ''
@@ -2023,7 +2023,7 @@ export class WhatsAppBotController implements OnModuleInit {
     const passiveActionText = clientAutoReplyEnabled
       ? 'Bot pasif modda, otomatik cevap at\u0131lmad\u0131. Manuel cevap i\u00e7in Mesajlar ekran\u0131na git.'
       : 'Musteri botu kapali; mesaj Mesajlar ekranina kaydedildi, otomatik cevap atilmadi.';
-    await this.prisma.notification.create({
+    if (!msg.__dryRun) await this.prisma.notification.create({
       data: {
         tenantId: taxpayer.tenantId,
         type: 'WHATSAPP',
@@ -2045,7 +2045,7 @@ export class WhatsAppBotController implements OnModuleInit {
       },
     }).catch(() => null);
 
-    await this.sendOwnerNotification(
+    if (!msg.__dryRun) await this.sendOwnerNotification(
       taxpayer.tenantId,
       this.buildOwnerNotification({
         title: 'WhatsApp mesajı',
@@ -2153,19 +2153,20 @@ export class WhatsAppBotController implements OnModuleInit {
     if (fast) {
       const fastReply = this.postFilter.filterTaxpayerReply(fast.reply, { recentReplies });
       if (fastReply) {
-        if (msg.__dryRun) { msg.__dryReply = fastReply; msg.__dryKind = 'hizli-yol:' + fast.kind; return; }
-        const sent = await this.whatsapp.sendMessage(this.replyTarget(msg), fastReply, taxpayer.tenantId);
-        this.botCache.set(taxpayer.tenantId, taxpayer.id, msg.text, fastReply);
+        // Dry-run: GÖNDERME (müşteriye mesaj gitmesin) ama LOGLA (Mesajlar'da görünsün).
+        const sent = msg.__dryRun ? true : await this.whatsapp.sendMessage(this.replyTarget(msg), fastReply, taxpayer.tenantId);
+        if (!msg.__dryRun) this.botCache.set(taxpayer.tenantId, taxpayer.id, msg.text, fastReply);
         await this.prisma.communicationLog.create({
           data: {
             taxpayerId: taxpayer.id,
             channel: 'WHATSAPP',
-            subject: sent ? 'WhatsApp bot cevabı (hızlı-yol)' : 'WhatsApp bot cevabı hızlı-yol (gönderilemedi)',
+            subject: msg.__dryRun ? 'WhatsApp bot cevabı (TEST · hızlı-yol)' : (sent ? 'WhatsApp bot cevabı (hızlı-yol)' : 'WhatsApp bot cevabı hızlı-yol (gönderilemedi)'),
             content: this.withWhatsAppPhone(fastReply, msg.from),
             occurredAt: new Date(),
           },
         });
-        this.refreshTaxpayerMemory(taxpayer.tenantId, taxpayer.id);
+        if (msg.__dryRun) { msg.__dryReply = fastReply; msg.__dryKind = 'hizli-yol:' + fast.kind; }
+        else this.refreshTaxpayerMemory(taxpayer.tenantId, taxpayer.id);
         return;
       }
     }
@@ -2251,7 +2252,7 @@ export class WhatsAppBotController implements OnModuleInit {
 
     // İşlem boyunca "yazıyor…" göster (müşteri 10-20 sn boş ekrana bakmasın).
     // try/finally: AI hata verse bile gösterge mutlaka kapanır.
-    const stopCustTyping = this.startTypingIndicator(taxpayer.tenantId, this.replyTarget(msg));
+    const stopCustTyping = msg.__dryRun ? () => {} : this.startTypingIndicator(taxpayer.tenantId, this.replyTarget(msg));
     let reply = '';
     let needsEscalation = false;
     try {
@@ -2319,21 +2320,20 @@ export class WhatsAppBotController implements OnModuleInit {
       stopCustTyping();
     }
     if (reply) {
-      if (msg.__dryRun) { msg.__dryReply = reply; msg.__dryKind = 'agentic'; return; }
-      // Cache'e yaz — sonraki aynı soru AI'ya gitmeden bu cevapla dönsün.
-      // shouldNotCache filtresi (bot-cache.service.ts) generic/hata cevaplarını eler.
-      this.botCache.set(taxpayer.tenantId, taxpayer.id, msg.text, reply);
+      // Dry-run: GÖNDERME ama LOGLA (Mesajlar'da görünsün); cache/eskalasyon/owner-bildirim YOK.
+      if (!msg.__dryRun) this.botCache.set(taxpayer.tenantId, taxpayer.id, msg.text, reply);
 
-      const sent = await this.whatsapp.sendMessage(this.replyTarget(msg), reply, taxpayer.tenantId);
+      const sent = msg.__dryRun ? true : await this.whatsapp.sendMessage(this.replyTarget(msg), reply, taxpayer.tenantId);
       await this.prisma.communicationLog.create({
         data: {
           taxpayerId: taxpayer.id,
           channel: 'WHATSAPP',
-          subject: sent ? 'WhatsApp bot cevabı (MOREN AI)' : 'WhatsApp bot cevabı (gönderilemedi - master switch veya hata)',
+          subject: msg.__dryRun ? 'WhatsApp bot cevabı (TEST · MOREN AI)' : (sent ? 'WhatsApp bot cevabı (MOREN AI)' : 'WhatsApp bot cevabı (gönderilemedi - master switch veya hata)'),
           content: this.withWhatsAppPhone(reply, msg.from),
           occurredAt: new Date(),
         },
       });
+      if (msg.__dryRun) { msg.__dryReply = reply; msg.__dryKind = 'agentic'; return; }
       // ESKALE: bot cevaplayamadı → müşavire (owner) bildir + ofis görevi aç.
       if (needsEscalation && sent) {
         await this.escalateToOwner(taxpayer, msg.text, msg.from).catch((e: any) =>
