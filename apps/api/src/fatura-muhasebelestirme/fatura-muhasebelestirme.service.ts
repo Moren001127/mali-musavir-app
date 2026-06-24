@@ -6237,10 +6237,16 @@ export class FaturaMuhasebelestirmeService implements OnModuleInit, OnModuleDest
         : null;
       // ÖKC/yazarkasa fişi NAKİT işlemdir → karşı taraf cari değil, 100 KASA.
       const okcFis = String(doc.documentType || '').toUpperCase() === 'OKC_FIS';
+      // İADE carisi YÖN-belirsiz: satıştan iade → MÜŞTERİ (120), alıştan iade → SATICI (320). İade
+      //   ALIŞ görünüp cari 120'de olunca 320'de aranıp bulunamıyordu (kullanıcı: "carisi Luca'da
+      //   var ama eşleştirmedi"). İade'de her iki grubu + her iki tarafın adını dene.
+      const cariPrefixes = isReturn ? ['120', '320', '329', '331'] : (isSale ? ['120'] : ['320', '329', '331']);
+      const cariNames = isReturn ? [doc.customerName, doc.vendorName].filter(Boolean) : [vendorName];
+      let cariIsim: any = null;
+      if (!okcFis) { for (const nm of cariNames) { cariIsim = this.pickAccount(accounts, cariPrefixes, nm, { requireHint: true }); if (cariIsim) break; } }
       const cariMatch = leafOnly(okcFis
         ? this.pickAccount(accounts, ['100'], null)
-        : (cariMemory ||
-          this.pickAccount(accounts, isSale ? ['120'] : ['320', '329', '331'], vendorName, { requireHint: true })));
+        : (cariMemory || cariIsim));
       // ORAN-BAZLI matrah: her matrah satırı KENDİ KDV oranına göre öğrenilmiş kodu alır;
       // yoksa kategori/varsayılan. Öğrenilmiş kod (satıcı+oran) her zaman önceliklidir.
       const matrahCache = new Map<string, any>();
@@ -6410,6 +6416,23 @@ export class FaturaMuhasebelestirmeService implements OnModuleInit, OnModuleDest
             where: { id: line.id },
             data: { accountCode: '', description: '' },
           });
+        }
+      }
+      // AÇIKLAMA = HESAP ADI senkronu (TÜM accountCode değişikliklerinden SONRA): matrah/vergi
+      //   satırının açıklaması GÜNCEL hesap kodunun plandaki ADI olmalı ("Gider / matrah" /
+      //   "Satış matrahı" gibi standart metin DEĞİL — kullanıcı defalarca istedi; dolu/doğru
+      //   hesapta da geçerli). Hesap kodu boşsa açıklama da boş. Cari satırı zaten karşı taraf adını yazar.
+      {
+        const freshLines = await (this.prisma as any).invoiceAccountingLine.findMany({ where: { documentId: doc.id } });
+        for (const ln of freshLines) {
+          const g = String(ln.group || '');
+          if (g !== 'matrah' && g !== 'vergi') continue;
+          const code = String(ln.accountCode || '');
+          const acc = code ? accounts.find((a: any) => String(a.accountCode || '') === code) : null;
+          const wantDesc = acc ? String(acc.accountName || '') : '';
+          if (String(ln.description || '') !== wantDesc) {
+            await (this.prisma as any).invoiceAccountingLine.update({ where: { id: ln.id }, data: { description: wantDesc } });
+          }
         }
       }
     }

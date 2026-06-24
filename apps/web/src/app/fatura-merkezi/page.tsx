@@ -103,8 +103,13 @@ function deriveDurum(doc: any, isIsletme = false, autoKtKod = ''): { k: string; 
   const sumB = lines.reduce((s: number, l: any) => s + Number(l.debit || 0), 0);
   const sumA = lines.reduce((s: number, l: any) => s + Number(l.credit || 0), 0);
   const dengesiz = lines.length > 0 && Math.abs(sumB - sumA) > 0.5; // borç ≠ alacak = GERÇEK denge hatası
+  // İADE: 610/611 ters-kayıt satırı KONDUYSA "iade normal kayıt yapılamaz" (RETURN_NEEDS_REVERSAL)
+  //   uyarısı GÜNCEL DEĞİLDİR (610 eklendi/rematch attı, revalidate olmadan eski kayıt kalır). Güncel
+  //   satırdan türet: 610 varsa bu issue'yu yok say → geriye sadece gerçek eksik (cari) kalır.
+  const hasReturnLine = lines.some((l: any) => /^61[01]/.test(String(l.accountCode || '')));
   const nonAmountIssues = issues.filter((i: any) => i?.code && i?.severity !== 'WARNING'
-    && !['INCOMPLETE_AMOUNTS', 'TOTAL_MISMATCH', 'BALANCE_MISMATCH'].includes(i.code));
+    && !['INCOMPLETE_AMOUNTS', 'TOTAL_MISMATCH', 'BALANCE_MISMATCH'].includes(i.code)
+    && !(i.code === 'RETURN_NEEDS_REVERSAL' && hasReturnLine));
   const vissue = dengesiz || nonAmountIssues.length > 0;
   if (vissue) return { k: 'warn', t: 'Çelişki — kontrol et', cat: 'celiski' };
   // İŞLETME DEFTERİ (Defter-Beyan): tek-taraflı — hesap planı/kodu YOK, cari kodu açılmaz.
@@ -960,7 +965,9 @@ function ScreenFaturalar({ taxpayerId, period, kind = 'ALIS', isIsletme = false,
                 const islMain = sinif.ktAd;
                 const firma = (sat ? d.customerName : d.vendorName) || '—';
                 const vkn = sat ? d.buyerVkn : d.sellerVkn;
-                const code = (() => { const ls = Array.isArray(d.lines) ? d.lines : []; return (ls.find((l: any) => String(l.group) === 'matrah' && l.accountCode) || ls.find((l: any) => l.accountCode))?.accountCode || ''; })();
+                // HESAP KODU sütunu = SADECE matrah/gider kodu. Gider boşsa KDV/cari koduna DÜŞME →
+                //   boş kalsın (kullanıcı: gider kodu boşsa bu sütun da boş olmalı).
+                const code = (() => { const ls = Array.isArray(d.lines) ? d.lines : []; return ls.find((l: any) => String(l.group) === 'matrah' && l.accountCode)?.accountCode || ''; })();
                 const { matrah, kdv } = kdvParts(d);
                 const ocrCls = d.ocrStatus === 'IN_PROGRESS' ? 'scanning' : justDone.has(d.id) ? 'justdone' : d.ocrStatus === 'PENDING' ? 'queued' : undefined;
                 const fisAcik = fisDetayId === d.id;
