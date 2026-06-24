@@ -978,7 +978,7 @@ function ScreenFaturalar({ taxpayerId, period, kind = 'ALIS', isIsletme = false,
                     <td><Check checked={sel.has(d.id)} onToggle={() => toggle(d.id)} /></td>
                     <td>{fmtDate(d.faturaTarihi || d.createdAt)}</td>
                     <td>{d.belgeNo || '—'}</td>
-                    <td className="firm"><b>{firma}</b><small>{vkn ? `VKN ${vkn}` : '—'}</small></td>
+                    <td className="firm"><b>{firma}</b><small>{vkn ? `VKN ${vkn}` : '—'}</small>{(d as any).duplicateOfId ? <small style={{ color: '#c0353a', fontWeight: 700 }} title={(d as any).duplicateReason || 'Bu fatura daha önce yüklenmiş'}>⚠ {(d as any).duplicateReason || 'Mükerrer — daha önce yüklenmiş'}</small> : null}</td>
                     <td><span className={`pill ${sat ? 'satis' : 'alis'}`}>{sat ? 'Satış' : 'Alış'}</span></td>
                     <td className="num">{matrah != null ? fmtMoney(matrah) : '—'}</td>
                     <td className="num">{kdv != null ? fmtMoney(kdv) : '—'}</td>
