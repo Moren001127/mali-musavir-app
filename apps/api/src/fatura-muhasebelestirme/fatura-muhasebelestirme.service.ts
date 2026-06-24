@@ -364,6 +364,27 @@ export class FaturaMuhasebelestirmeService implements OnModuleInit, OnModuleDest
         this.logger.log(`OCR resume: ${n} oksuz PENDING belge yeniden kuyruga alindi (restart kurtarma)`);
         this.drainUploadedOcrQueue();
       }
+      // CLASSIFY RESUME: e-arsiv anlik okundu (SUCCESS) ama gider hesabi KATEGORISI arka planda dolacakti;
+      //   restart in-memory classify kuyrugunu sildiyse needsClassify belgeler oksuz kalir -> yeniden al.
+      if (this.uploadOcrQueue.length < this.uploadOcrConcurrency) {
+        const needCls = await (this.prisma as any).invoiceAccountingDocument.findMany({
+          where: { ocrStatus: 'SUCCESS', status: { not: 'APPROVED' }, ocrData: { path: ['needsClassify'], equals: true } },
+          select: { id: true, tenantId: true },
+          orderBy: { createdAt: 'asc' },
+          take: 60,
+        }).catch(() => []);
+        const q2 = new Set(this.uploadOcrQueue.map((j) => j.documentId));
+        let m = 0;
+        for (const dd of needCls) {
+          if (q2.has(dd.id) || this.uploadOcrActiveIds.has(dd.id)) continue;
+          this.uploadOcrQueue.push({ tenantId: dd.tenantId, documentId: dd.id, kind: 'classify' });
+          m++;
+        }
+        if (m) {
+          this.logger.log(`Classify resume: ${m} earsiv belge gider-hesabi siniflandirmasi icin kuyruga alindi`);
+          this.drainUploadedOcrQueue();
+        }
+      }
       return n;
     } finally {
       this.ocrResuming = false;
@@ -2411,6 +2432,16 @@ export class FaturaMuhasebelestirmeService implements OnModuleInit, OnModuleDest
         ? { ocrStatus: 'SUCCESS' }
         : { ocrStatus: 'FAILED', lucaErrorMessage: String(r?.reason || 'okunamadı').slice(0, 300) },
     }).catch(() => {});
+    // EARSIV (anlık okundu) → gider hesabı KATEGORİSİ arka planda dolsun: needsClassify işaretli belgeyi
+    //   classify kuyruğuna al (sınırlı eşzamanlılık = rate-limit fırtınası yok). Okuma şeridi BEKLEMEZ.
+    if (r?.ok) {
+      const od = await (this.prisma as any).invoiceAccountingDocument
+        .findFirst({ where: { id: documentId, tenantId }, select: { ocrData: true } }).catch(() => null);
+      if ((od?.ocrData as any)?.needsClassify) {
+        this.uploadOcrQueue.push({ kind: 'classify', tenantId, documentId });
+        this.drainUploadedOcrQueue();
+      }
+    }
   }
 
   /** Seçili belgeleri SUNUCU kuyruğunda AI ile oku (frontend döngüsü değil → sayfa
@@ -5965,7 +5996,7 @@ export class FaturaMuhasebelestirmeService implements OnModuleInit, OnModuleDest
     //   kullanıcının öğrettiği satıcı-hafızasından (vendorMemory, rematch'te) gelir; yeni satıcıda boş
     //   kalır (kullanıcı 1 kez seçer → öğrenilir). Böylece e-arşiv okuması TAMAMEN AI'siz/anlık olur.
     //   (AI kategorisi zaten güvenilmezdi — klima→ticari mal gibi; vendorMemory daha doğru.)
-    if (parsed === preParsed && d.taxpayerId) { // e-arsiv DAHIL: gider hesabi icerik+faaliyetle eslesir, BOS KALMAZ
+    if (parsed === preParsed && d.taxpayerId && !parsed._earsiv) { // earsiv HARIC: earsiv kategorisi ARKA PLANDA (classify kuyrugu) — okuma anlik, gider hesabi arkadan dolar
       const contentText = (parsed._azureText || (imgBuf ? imgBuf.toString('utf8') : (html || ''))).replace(/<[^>]+>/g, ' ').replace(/\s+/g, ' ').trim();
       const c = await this.aiClassifyAccounting(contentText, mukellefBilgi, isIsletmeMukellef).catch(() => null);
       if (c) {
@@ -6049,6 +6080,10 @@ export class FaturaMuhasebelestirmeService implements OnModuleInit, OnModuleDest
           ocrData: { ...((d.ocrData as any) || {}), matrah, kdvTutari: kdv, kdvOrani: breakdown[0].rate, kdvBreakdown: breakdown.map((b: any) => ({ oran: b.rate, matrah: b.base, tutar: b.amount })), matrahKategori: typeof parsed.kategori === 'string' ? parsed.kategori : undefined, giderTuru: typeof parsed.giderTuru === 'string' ? parsed.giderTuru.slice(0, 40) : undefined, muhasebeNeden: typeof parsed.muhasebeNeden === 'string' ? parsed.muhasebeNeden.slice(0, 300) : undefined, aiYorum: typeof parsed.muhasebeNeden === 'string' ? parsed.muhasebeNeden.slice(0, 400) : undefined, aiMatrahKodu: (typeof parsed.matrahHesapKodu === 'string' && planLeafSet.has(String(parsed.matrahHesapKodu).trim())) ? String(parsed.matrahHesapKodu).trim() : undefined, kalemler: Array.isArray(parsed.kalemler) ? parsed.kalemler.slice(0, 30).map((k: any) => ({ ad: String(k?.ad || '').slice(0, 80), tutar: Number(k?.tutar) || 0, oran: Number(k?.oran) || 0 })).filter((k: any) => k.ad) : undefined, ...(islSinifAi ? { isletme: islSinifAi } : {}), isReturn: parsed.iade === true || /iade|iptal/i.test(String(parsed.belgeTuru || '')), tevkifatHint: parsed.tevkifat === true || tevkifatOrani > 0 || /tevkifat/i.test(String(html || '')), tevkifatOrani: tevkifatOrani || 0, tevkifatKdv: tevkKdv || 0, engine: parsed._earsiv ? 'earsiv-direct' : parsed._azure ? 'azure-read' : (parsed === preParsed ? 'ubl-xml' : 'max-vision'),
             readMode: parsed === preParsed ? (parsed._earsiv ? 'earsiv-direct' : parsed._azure ? 'azure-full' : 'ubl-xml') : (isImage ? (useAzureText ? 'azure-text' : 'vision') : /pdf/i.test(imgMedia) ? 'pdf-text' : /xml/i.test(imgMedia) ? 'xml-text' : 'html'),
             readMs: Date.now() - _readT0, // tek belge okuma süresi (subprocess hızı ölçümü)
+            // EARSIV: tutar/cari/KDV anlık geldi; gider hesabı KATEGORİSİ arka planda dolacak (classify
+            //   kuyruğu). icerikMetni = XML düz metni (kalemler/açıklama → AI faaliyet+içerik muhakemesi),
+            //   needsClassify = kuyruğa alınacak işareti. Böylece okuma ŞERİDİ beklemez, hesap arkadan dolar.
+            ...(parsed._earsiv ? { icerikMetni: String((parsed as any)._azureText || '').slice(0, 4000), needsClassify: true } : {}),
             ...(!preParsed && imgBuf && /xml/i.test(imgMedia) ? { xmlHead: imgBuf.toString('utf8').slice(0, 220).replace(/\s+/g, ' ') } : {}) },
         },
       });
