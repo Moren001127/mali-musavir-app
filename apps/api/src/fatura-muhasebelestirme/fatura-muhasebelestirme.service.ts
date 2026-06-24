@@ -5845,16 +5845,28 @@ export class FaturaMuhasebelestirmeService implements OnModuleInit, OnModuleDest
     //   GÖRÜNTÜ yerine METİN verip vision'ı atlamak için (HIZ: text okuma ~3x hızlı + alt-süreç hafif).
     if (!preParsed && isImage && imgBuf) {
       const az: any = await this.ocr.extractFromImage(imgBuf, String(d.belgeNo || 'fatura'), {}).catch(() => null);
-      if (az && String(az.rawText || '').replace(/\s+/g, ' ').trim().length > 80) azureText = String(az.rawText);
+      // Azure HAM METNİ: 40+ char yeterli → Max'e GÖRÜNTÜ yerine METİN ver (vision'dan ~3x hızlı,
+      //   alt-süreç hafif). Eşik 80→40: kısa-ama-okunabilir fiş/faturada da vision'dan kaçın (HIZ).
+      if (az && String(az.rawText || '').replace(/\s+/g, ' ').trim().length > 40) azureText = String(az.rawText);
       const azTotal = az ? this.numFromOcr(az.totalTutari) : 0;
       const azBd = az && Array.isArray(az.kdvBreakdown) ? az.kdvBreakdown : [];
       const azHasAmt = azTotal > 0 || azBd.some((b: any) => Number(b.tutar) > 0 || Number(b.matrah) > 0);
-      // EŞİK — YALNIZ FATURA MERKEZİ'nin Azure-sonucu KABUL eşiği. Azure tutar+KDV'yi okuduysa
-      //   (azHasAmt) güven 0.4'e kadar kabul edilir → daha çok belge hızlı Azure'da kalır, azı
-      //   yavaş Max-vision'a eskale olur (okuma hızlanır). Yanlış okumayı sonraki denge/KDV-matematik
-      //   doğrulaması yakalar. ⚠️ KULLANICI TALİMATI: ocr.service.extractFromImage / KDV Kontrol gibi
-      //   DİĞER OCR yerlerindeki eşiklere DOKUNULMADI (extractFromImage'a eşik parametresi geçilmiyor).
-      if (az && /azure/i.test(String(az.engine || '')) && (Number(az.confidence) || 0) >= 0.4 && azHasAmt) {
+      // AZURE-TAM (AI'siz) KABUL — okuma SUBPROCESS'ini TAMAMEN atlar = en büyük hız kazancı (Max
+      //   çağrısı azaldıkça rate-limit/retry şişmesi de azalır). EŞİK — YALNIZ FATURA MERKEZİ'ne özel.
+      //   (1) Mevcut: güven >= 0.4 && azHasAmt. (2) EK GÜVENLİ YOL: Azure'un BAĞIMSIZ okuduğu genel
+      //   toplam (azTotal), KDV kırılımından hesaplanan toplama (~%3 tolerans) eşitse → iki bağımsız
+      //   Azure okuması UYUŞUYOR → güven skoru düşük olsa bile DOĞRU okumuştur → AI'ya gitmeden kabul.
+      //   Uyuşmazsa (yanlış okuma) ve güven de düşükse AI'ya düşer (güvenli). Yanlışı denge/KDV-matematik
+      //   doğrulaması ayrıca yakalar. ⚠️ KULLANICI TALİMATI: ocr.service.extractFromImage / KDV Kontrol
+      //   gibi DİĞER OCR yerlerindeki eşiklere DOKUNULMADI (extractFromImage'a eşik parametresi geçilmiyor).
+      const azBdTotal = azBd.reduce((s: number, b: any) => {
+        const amt = Number(b.tutar) || 0;
+        const rate = Number(b.oran) || 0;
+        const base = Number(b.matrah) > 0 ? Number(b.matrah) : (rate > 0 ? amt / (rate / 100) : 0);
+        return s + amt + base;
+      }, 0);
+      const azTotalConsistent = azTotal > 0 && azBdTotal > 0 && Math.abs(azBdTotal - azTotal) <= Math.max(1, azTotal * 0.03);
+      if (az && /azure/i.test(String(az.engine || '')) && azHasAmt && ((Number(az.confidence) || 0) >= 0.4 || azTotalConsistent)) {
         preParsed = {
           belgeNo: az.belgeNo || null,
           tarih: az.date || null,
@@ -5880,7 +5892,7 @@ export class FaturaMuhasebelestirmeService implements OnModuleInit, OnModuleDest
     // AZURE-TEXT HIZLANDIRMA: Azure görüntüyü zaten OKUDUYSA (azureText), Max'e GÖRÜNTÜ yerine METNİ ver
     //   → text okuma vision'dan çok HIZLI + alt-süreç hafif (OOM riski az). Görüntü-vision yalnız Azure
     //   metni yoksa. Yanlış okumayı denge/KDV-matematik doğrulaması yakalar. (Kullanıcı: "okuma yavaş".)
-    const useAzureText = azureText.length > 80;
+    const useAzureText = azureText.length > 40;
     const callPrompt = useAzureText ? (prompt + '\n\nBELGE METNİ (OCR ile okundu):\n' + azureText.slice(0, 20000)) : prompt;
     for (let attempt = 1; attempt <= 3 && !parsed; attempt++) {
       const model = attempt >= 3 ? undefined : MAX_MODEL_CHEAP; // 3. deneme: Sonnet (varsayılan)
@@ -5989,7 +6001,7 @@ export class FaturaMuhasebelestirmeService implements OnModuleInit, OnModuleDest
           status: 'NEEDS_REVIEW',
           ocrEngine: 'max-vision',
           ocrData: { ...((d.ocrData as any) || {}), matrah, kdvTutari: kdv, kdvOrani: breakdown[0].rate, kdvBreakdown: breakdown.map((b: any) => ({ oran: b.rate, matrah: b.base, tutar: b.amount })), matrahKategori: typeof parsed.kategori === 'string' ? parsed.kategori : undefined, giderTuru: typeof parsed.giderTuru === 'string' ? parsed.giderTuru.slice(0, 40) : undefined, muhasebeNeden: typeof parsed.muhasebeNeden === 'string' ? parsed.muhasebeNeden.slice(0, 300) : undefined, aiYorum: typeof parsed.muhasebeNeden === 'string' ? parsed.muhasebeNeden.slice(0, 400) : undefined, aiMatrahKodu: (typeof parsed.matrahHesapKodu === 'string' && planLeafSet.has(String(parsed.matrahHesapKodu).trim())) ? String(parsed.matrahHesapKodu).trim() : undefined, kalemler: Array.isArray(parsed.kalemler) ? parsed.kalemler.slice(0, 30).map((k: any) => ({ ad: String(k?.ad || '').slice(0, 80), tutar: Number(k?.tutar) || 0, oran: Number(k?.oran) || 0 })).filter((k: any) => k.ad) : undefined, ...(islSinifAi ? { isletme: islSinifAi } : {}), isReturn: parsed.iade === true || /iade|iptal/i.test(String(parsed.belgeTuru || '')), tevkifatHint: parsed.tevkifat === true || tevkifatOrani > 0 || /tevkifat/i.test(String(html || '')), tevkifatOrani: tevkifatOrani || 0, tevkifatKdv: tevkKdv || 0, engine: parsed._azure ? 'azure-read' : (parsed === preParsed ? 'ubl-xml' : 'max-vision'),
-            readMode: parsed === preParsed ? 'ubl-xml' : (isImage ? 'image' : /pdf/i.test(imgMedia) ? 'pdf-text' : /xml/i.test(imgMedia) ? 'xml-text' : 'html'),
+            readMode: parsed === preParsed ? (parsed._azure ? 'azure-full' : 'ubl-xml') : (isImage ? (useAzureText ? 'azure-text' : 'vision') : /pdf/i.test(imgMedia) ? 'pdf-text' : /xml/i.test(imgMedia) ? 'xml-text' : 'html'),
             ...(!preParsed && imgBuf && /xml/i.test(imgMedia) ? { xmlHead: imgBuf.toString('utf8').slice(0, 220).replace(/\s+/g, ' ') } : {}) },
         },
       });
