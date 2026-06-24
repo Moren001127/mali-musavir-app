@@ -6056,9 +6056,19 @@ export class FaturaMuhasebelestirmeService implements OnModuleInit, OnModuleDest
 
     for (const doc of docs) {
       const isSale = doc.invoiceKind === 'SATIS';
-      // İADE/İPTAL faturası (CreditNote / "İADE"): matrah/vergi OTOMATİK atanmaz → 610 ters kayıt
-      //   gerekir, 600/770/191'e atamak ciroyu/KDV'yi ŞİŞİRİR (kullanıcı: "hem 610 diyor hem 770'e atıyor").
+      // İADE/İPTAL faturası (CreditNote / "İADE"): normal 600/770/191'e ATANMAZ (ciro/KDV şişer).
+      //   Bunun yerine planında VARSA iade-özel hesaplara eşle — satıştan iade matrahı 610 (SATIŞTAN
+      //   İADELER), KDV adında "İADE" geçen 191/391 ("SATIŞTAN İADE İNDİRİLECEK KDV"). Kullanıcı:
+      //   "610 var, 191 satıştan iade ind. KDV var, niye seçmiyor". İade hesabı yoksa boş (kullanıcı ekler).
       const isReturn = (doc.ocrData as any)?.isReturn === true;
+      const _hasIade = (n: any) => { const u = String(n || '').toLocaleUpperCase('tr-TR'); return u.includes('İADE') || u.includes('IADE'); };
+      const returnMatrah = isReturn ? leafOnly(
+        accounts.find((a: any) => { const c = String(a.accountCode || ''); return /^61[01]/.test(c) && _hasIade(a.accountName) && isPostableLeaf(c); })
+        || accounts.find((a: any) => { const c = String(a.accountCode || ''); return /^610/.test(c) && isPostableLeaf(c); }),
+      ) : null;
+      const returnVergi = isReturn ? leafOnly(
+        accounts.find((a: any) => { const c = String(a.accountCode || ''); return /^(191|391)/.test(c) && _hasIade(a.accountName) && isPostableLeaf(c); }),
+      ) : null;
       const vendorName = isSale ? doc.customerName : doc.vendorName;
       const vendorVkn = String((isSale ? doc.buyerVkn : doc.sellerVkn) || '').replace(/\D/g, '');
       // Kalem-bazlı kategori (AI ile oku'dan): stok/masraf/demirbaş ayrımını plana eşle.
@@ -6255,12 +6265,17 @@ export class FaturaMuhasebelestirmeService implements OnModuleInit, OnModuleDest
       for (const line of doc.lines || []) {
         const group = String(line.group || '') as 'matrah' | 'vergi' | 'cari' | 'tevkifat';
         const lineRate = String(line.rate || '').replace(/[^0-9]/g, '');
-        // İADE/İPTAL: matrah/vergi/tevkifat satırı OTOMATİK doldurulmaz → boşalt. Kullanıcı 610 (satış
-        //   iadesi) / ters kayıt ile elle kurar; RETURN_NEEDS_REVERSAL uyarısı yönlendirir. Cari (karşı
-        //   taraf) normal akışta kalır — o kesindir, iade de aynı carinin hesabına işlenir.
+        // İADE/İPTAL: matrah → 610 (satıştan iade), vergi → iade-KDV (191/391 "İADE"). Plandaki gerçek
+        //   iade hesabı varsa ata (RETURN_NEEDS_REVERSAL uyarısı da kalkar), yoksa boş bırak (kullanıcı
+        //   ekler). Tevkifat iade'de boşalır. Cari (karşı taraf) normal akışta kalır — iade aynı cariye işlenir.
         if (isReturn && (group === 'matrah' || group === 'vergi' || group === 'tevkifat')) {
-          if (String(line.accountCode || '')) {
-            await (this.prisma as any).invoiceAccountingLine.update({ where: { id: line.id }, data: { accountCode: '', description: '' } });
+          const ret = group === 'matrah' ? returnMatrah : group === 'vergi' ? returnVergi : null;
+          const want = ret ? String((ret as any).accountCode) : '';
+          if (String(line.accountCode || '') !== want) {
+            await (this.prisma as any).invoiceAccountingLine.update({
+              where: { id: line.id },
+              data: want ? { accountCode: want, description: (ret as any).accountName } : { accountCode: '', description: '' },
+            });
           }
           continue;
         }
