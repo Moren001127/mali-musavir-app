@@ -5677,27 +5677,68 @@ export class FaturaMuhasebelestirmeService implements OnModuleInit, OnModuleDest
     if (!d) throw new NotFoundException('Belge bulunamadı');
     if (d.status === 'APPROVED') return { ok: false, reason: 'onaylı' };
 
-    // Belge içeriğini fileUrl mantığıyla getir — Mihsap CDN indirme + XML→HTML render
-    // ORADA çalışıyor (belge görüntüsü açılıyor). Eski özel indirme yolu "dosya yok"
-    // dönüyordu; artık aynı kaynağı kullanıyoruz.
+    let preParsed: any = null;
+    // ★ E-ARŞİV KISA YOL (AI'siz, ANLIK — OCR KÖK HIZ ÇÖZÜMÜ): e-arşiv faturasının matrah/KDV/oran/
+    //   satıcı/alıcı/VKN/toplam/tarih verisi `earsivFatura` tablosunda GİB'in RESMİ XML'inden parse
+    //   edilmiş halde HAZIR (prod: 1478/1485 dolu). Bu belgeyi Max-vision'a göndermek (~60sn subprocess
+    //   başına = okuma yavaşlığının asıl kaynağı) GEREKSİZ — veriyi DOĞRUDAN tablodan al → ANLIK, ve
+    //   GİB verisi AI okumasından GÜVENİLİR (tahmin yok). Matrah/KDV yoksa normal okuma yoluna düşer.
+    if (String((d as any).source || '') === 'earsiv') {
+      const refId = String(
+        (d as any).sourceRefId ||
+        (String(d.s3Key || '').startsWith('earsiv-inline://') ? String(d.s3Key).slice('earsiv-inline://'.length) : ''),
+      ).trim();
+      const ef: any = refId
+        ? await (this.prisma as any).earsivFatura.findFirst({
+            where: { tenantId, id: refId },
+            select: { faturaNo: true, faturaTarihi: true, satici: true, saticiVergiNo: true, alici: true, aliciVergiNo: true, matrah: true, kdvTutari: true, kdvOrani: true, toplamTutar: true, xmlContent: true },
+          }).catch(() => null)
+        : null;
+      const efMatrah = ef ? Number(ef.matrah) || 0 : 0;
+      const efKdv = ef ? Number(ef.kdvTutari) || 0 : 0;
+      if (ef && (efMatrah > 0 || efKdv > 0)) {
+        const xml = String(ef.xmlContent || '');
+        const td: any = ef.faturaTarihi;
+        const dt = td instanceof Date && !Number.isNaN(td.getTime())
+          ? `${String(td.getUTCDate()).padStart(2, '0')}.${String(td.getUTCMonth() + 1).padStart(2, '0')}.${td.getUTCFullYear()}`
+          : null;
+        const efOran = Number(ef.kdvOrani) || (efMatrah > 0 ? Math.round((efKdv / efMatrah) * 100) : 0);
+        preParsed = {
+          belgeNo: ef.faturaNo || d.belgeNo, tarih: dt, belgeTuru: 'e-arsiv',
+          saticiAd: ef.satici || null, saticiVkn: String(ef.saticiVergiNo || '').replace(/\D/g, '') || null,
+          aliciAd: ef.alici || null, aliciVkn: String(ef.aliciVergiNo || '').replace(/\D/g, '') || null,
+          toplam: Number(ef.toplamTutar) || (efMatrah + efKdv),
+          iade: /\b(İADE|IADE|İPTAL|IPTAL)\b/i.test(xml.slice(0, 4000)) || /CreditNote/i.test(xml),
+          tevkifat: /TEVKIFAT|WithholdingTax/i.test(xml),
+          kdv: [{ oran: efOran, matrah: efMatrah, kdv: efKdv }],
+          _earsiv: true,
+          // sınıflandırma (giderTuru/kategori) için XML'den düz metin (mal/hizmet kalemleri/açıklamalar)
+          _azureText: xml.replace(/<[^>]+>/g, ' ').replace(/&[a-z#0-9]+;/gi, ' ').replace(/\s+/g, ' ').trim().slice(0, 8000),
+        };
+      }
+    }
+
+    // Belge içeriğini fileUrl mantığıyla getir (preParsed YOKSA — earsiv kısa yolu kurmadıysa).
+    //   Mihsap CDN indirme + XML→HTML render ORADA çalışıyor (görüntüleyicinin kullandığı yol).
     let html = '';
     let imgBuf: Buffer | null = null;
     let imgMedia = '';
-    try {
-      const fu: any = await this.fileUrl(tenantId, documentId);
-      if (fu?.inlineHtml) {
-        html = String(fu.inlineHtml);
-      } else if (typeof fu?.url === 'string' && fu.url) {
-        const dm = fu.url.match(/^data:([^;]+);base64,(.+)$/);
-        if (dm) { imgMedia = dm[1]; imgBuf = Buffer.from(dm[2], 'base64'); }
-        else if (/^https?:/i.test(fu.url)) { const r = await fetch(fu.url); imgBuf = Buffer.from(await r.arrayBuffer()); imgMedia = String(fu.mimeType || r.headers.get('content-type') || ''); }
+    if (!preParsed) {
+      try {
+        const fu: any = await this.fileUrl(tenantId, documentId);
+        if (fu?.inlineHtml) {
+          html = String(fu.inlineHtml);
+        } else if (typeof fu?.url === 'string' && fu.url) {
+          const dm = fu.url.match(/^data:([^;]+);base64,(.+)$/);
+          if (dm) { imgMedia = dm[1]; imgBuf = Buffer.from(dm[2], 'base64'); }
+          else if (/^https?:/i.test(fu.url)) { const r = await fetch(fu.url); imgBuf = Buffer.from(await r.arrayBuffer()); imgMedia = String(fu.mimeType || r.headers.get('content-type') || ''); }
+        }
+      } catch (e: any) {
+        return { ok: false, reason: 'belge getirilemedi: ' + (e?.message || '') };
       }
-    } catch (e: any) {
-      return { ok: false, reason: 'belge getirilemedi: ' + (e?.message || '') };
     }
     const isImage = !!imgBuf && imgBuf.length > 200 && /^image\//i.test(imgMedia);
     // XML e-Arşiv/e-Fatura → UBL PARSE (AI'siz, BİREBİR; okuma asla başarısız olmaz).
-    let preParsed: any = null;
     if (!isImage && !(html && html.length > 80) && imgBuf && /xml/i.test(imgMedia)) {
       const xml = imgBuf.toString('utf8');
       const ubl = this.parseProviderUblInvoice(xml) || this.regexProviderInvoiceFallback(xml);
@@ -5920,7 +5961,11 @@ export class FaturaMuhasebelestirmeService implements OnModuleInit, OnModuleDest
     //   ayrı çalışır; e-Fatura/e-Arşiv de "mali müşavir gibi" içerik+faaliyetle sınıflansın.
     // UBL/XML yolu max-vision AI'ı ATLAR → sınıflandırma (giderTuru/kategori/İşletme kayıt türü) BURADA
     //   SENKRON çalışır: okuma = tam işlenmiş belge (yarım kalan yok, aynı satıcı hep aynı sonuç).
-    if (parsed === preParsed && d.taxpayerId) {
+    // E-ARŞİV: kategori/giderTuru sınıflandırması da AI subprocess (~60sn) — ATLA. Gider hesabı
+    //   kullanıcının öğrettiği satıcı-hafızasından (vendorMemory, rematch'te) gelir; yeni satıcıda boş
+    //   kalır (kullanıcı 1 kez seçer → öğrenilir). Böylece e-arşiv okuması TAMAMEN AI'siz/anlık olur.
+    //   (AI kategorisi zaten güvenilmezdi — klima→ticari mal gibi; vendorMemory daha doğru.)
+    if (parsed === preParsed && d.taxpayerId && !parsed._earsiv) {
       const contentText = (parsed._azureText || (imgBuf ? imgBuf.toString('utf8') : (html || ''))).replace(/<[^>]+>/g, ' ').replace(/\s+/g, ' ').trim();
       const c = await this.aiClassifyAccounting(contentText, mukellefBilgi, isIsletmeMukellef).catch(() => null);
       if (c) {
@@ -6001,8 +6046,8 @@ export class FaturaMuhasebelestirmeService implements OnModuleInit, OnModuleDest
           ...(counterName ? (isSale ? { customerName: counterName } : { vendorName: counterName }) : {}),
           status: 'NEEDS_REVIEW',
           ocrEngine: 'max-vision',
-          ocrData: { ...((d.ocrData as any) || {}), matrah, kdvTutari: kdv, kdvOrani: breakdown[0].rate, kdvBreakdown: breakdown.map((b: any) => ({ oran: b.rate, matrah: b.base, tutar: b.amount })), matrahKategori: typeof parsed.kategori === 'string' ? parsed.kategori : undefined, giderTuru: typeof parsed.giderTuru === 'string' ? parsed.giderTuru.slice(0, 40) : undefined, muhasebeNeden: typeof parsed.muhasebeNeden === 'string' ? parsed.muhasebeNeden.slice(0, 300) : undefined, aiYorum: typeof parsed.muhasebeNeden === 'string' ? parsed.muhasebeNeden.slice(0, 400) : undefined, aiMatrahKodu: (typeof parsed.matrahHesapKodu === 'string' && planLeafSet.has(String(parsed.matrahHesapKodu).trim())) ? String(parsed.matrahHesapKodu).trim() : undefined, kalemler: Array.isArray(parsed.kalemler) ? parsed.kalemler.slice(0, 30).map((k: any) => ({ ad: String(k?.ad || '').slice(0, 80), tutar: Number(k?.tutar) || 0, oran: Number(k?.oran) || 0 })).filter((k: any) => k.ad) : undefined, ...(islSinifAi ? { isletme: islSinifAi } : {}), isReturn: parsed.iade === true || /iade|iptal/i.test(String(parsed.belgeTuru || '')), tevkifatHint: parsed.tevkifat === true || tevkifatOrani > 0 || /tevkifat/i.test(String(html || '')), tevkifatOrani: tevkifatOrani || 0, tevkifatKdv: tevkKdv || 0, engine: parsed._azure ? 'azure-read' : (parsed === preParsed ? 'ubl-xml' : 'max-vision'),
-            readMode: parsed === preParsed ? (parsed._azure ? 'azure-full' : 'ubl-xml') : (isImage ? (useAzureText ? 'azure-text' : 'vision') : /pdf/i.test(imgMedia) ? 'pdf-text' : /xml/i.test(imgMedia) ? 'xml-text' : 'html'),
+          ocrData: { ...((d.ocrData as any) || {}), matrah, kdvTutari: kdv, kdvOrani: breakdown[0].rate, kdvBreakdown: breakdown.map((b: any) => ({ oran: b.rate, matrah: b.base, tutar: b.amount })), matrahKategori: typeof parsed.kategori === 'string' ? parsed.kategori : undefined, giderTuru: typeof parsed.giderTuru === 'string' ? parsed.giderTuru.slice(0, 40) : undefined, muhasebeNeden: typeof parsed.muhasebeNeden === 'string' ? parsed.muhasebeNeden.slice(0, 300) : undefined, aiYorum: typeof parsed.muhasebeNeden === 'string' ? parsed.muhasebeNeden.slice(0, 400) : undefined, aiMatrahKodu: (typeof parsed.matrahHesapKodu === 'string' && planLeafSet.has(String(parsed.matrahHesapKodu).trim())) ? String(parsed.matrahHesapKodu).trim() : undefined, kalemler: Array.isArray(parsed.kalemler) ? parsed.kalemler.slice(0, 30).map((k: any) => ({ ad: String(k?.ad || '').slice(0, 80), tutar: Number(k?.tutar) || 0, oran: Number(k?.oran) || 0 })).filter((k: any) => k.ad) : undefined, ...(islSinifAi ? { isletme: islSinifAi } : {}), isReturn: parsed.iade === true || /iade|iptal/i.test(String(parsed.belgeTuru || '')), tevkifatHint: parsed.tevkifat === true || tevkifatOrani > 0 || /tevkifat/i.test(String(html || '')), tevkifatOrani: tevkifatOrani || 0, tevkifatKdv: tevkKdv || 0, engine: parsed._earsiv ? 'earsiv-direct' : parsed._azure ? 'azure-read' : (parsed === preParsed ? 'ubl-xml' : 'max-vision'),
+            readMode: parsed === preParsed ? (parsed._earsiv ? 'earsiv-direct' : parsed._azure ? 'azure-full' : 'ubl-xml') : (isImage ? (useAzureText ? 'azure-text' : 'vision') : /pdf/i.test(imgMedia) ? 'pdf-text' : /xml/i.test(imgMedia) ? 'xml-text' : 'html'),
             readMs: Date.now() - _readT0, // tek belge okuma süresi (subprocess hızı ölçümü)
             ...(!preParsed && imgBuf && /xml/i.test(imgMedia) ? { xmlHead: imgBuf.toString('utf8').slice(0, 220).replace(/\s+/g, ' ') } : {}) },
         },
