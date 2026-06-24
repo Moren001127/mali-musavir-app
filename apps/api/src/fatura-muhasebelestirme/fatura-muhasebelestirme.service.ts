@@ -5965,7 +5965,7 @@ export class FaturaMuhasebelestirmeService implements OnModuleInit, OnModuleDest
     //   kullanıcının öğrettiği satıcı-hafızasından (vendorMemory, rematch'te) gelir; yeni satıcıda boş
     //   kalır (kullanıcı 1 kez seçer → öğrenilir). Böylece e-arşiv okuması TAMAMEN AI'siz/anlık olur.
     //   (AI kategorisi zaten güvenilmezdi — klima→ticari mal gibi; vendorMemory daha doğru.)
-    if (parsed === preParsed && d.taxpayerId && !parsed._earsiv) {
+    if (parsed === preParsed && d.taxpayerId) { // e-arsiv DAHIL: gider hesabi icerik+faaliyetle eslesir, BOS KALMAZ
       const contentText = (parsed._azureText || (imgBuf ? imgBuf.toString('utf8') : (html || ''))).replace(/<[^>]+>/g, ' ').replace(/\s+/g, ' ').trim();
       const c = await this.aiClassifyAccounting(contentText, mukellefBilgi, isIsletmeMukellef).catch(() => null);
       if (c) {
