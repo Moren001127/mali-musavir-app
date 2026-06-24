@@ -115,6 +115,8 @@ function deriveDurum(doc: any, isIsletme = false, autoKtKod = ''): { k: string; 
   const nonAmountIssues = issues.filter((i: any) => i?.code && i?.severity !== 'WARNING'
     && !['INCOMPLETE_AMOUNTS', 'TOTAL_MISMATCH', 'BALANCE_MISMATCH'].includes(i.code)
     && !(i.code === 'RETURN_NEEDS_REVERSAL' && hasReturnLine));
+  // DEMİRBAŞ (sabit kıymet) alış/satışı: otomatik işlenmez → Luca'da manuel. "Çelişki"den AYRI/ÖNCE göster.
+  if (issues.some((i: any) => i?.code === 'FIXED_ASSET_MANUAL')) return { k: 'asset', t: 'Demirbaş — manuel', cat: 'demirbas' };
   const vissue = dengesiz || nonAmountIssues.length > 0;
   if (vissue) return { k: 'warn', t: 'Çelişki — kontrol et', cat: 'celiski' };
   // İŞLETME DEFTERİ (Defter-Beyan): tek-taraflı — hesap planı/kodu YOK, cari kodu açılmaz.
@@ -157,6 +159,7 @@ const DURUM_FILTRELER: Array<{ v: string; l: string }> = [
   { v: 'incele', l: 'Eşleşmedi' },
   { v: 'eksik', l: 'Kod eksik' },
   { v: 'celiski', l: 'Çelişki' },
+  { v: 'demirbas', l: 'Demirbaş (manuel)' },
   { v: 'tutar', l: 'Tutar okunamadı' },
   { v: 'okunuyor', l: 'Okunuyor' },
   { v: 'okunamadi', l: 'Okunamadı' },
@@ -2727,10 +2730,11 @@ const CSS = `
 #fm-root[data-accent="slate"]{--accent:#475569;--accent-soft:#eef1f5;--accent-line:#d6dce4;--th:#f1f4f7;--th-text:#3b4757}
 #fm-root[data-accent="bordo"]{--accent:#b91c1c;--accent-soft:#fbeaea;--accent-line:#f1c9c9;--th:#fbeeee;--th-text:#991b1b}
 #fm-root *{box-sizing:border-box;margin:0;padding:0}
-#fm-root .app{display:flex;min-height:100vh;background:var(--bg)}
-#fm-root .side{width:236px;flex-shrink:0;background:var(--side);border-right:1px solid var(--line);display:flex;flex-direction:column;padding:0 0 14px}
+#fm-root .app{display:flex;min-height:100vh;background:var(--bg);position:relative}
+#fm-root .app::before{content:'';position:absolute;top:0;left:0;right:0;height:3px;z-index:6;background:linear-gradient(90deg,var(--accent),#22c55e,#34d399,#22d3ee,#60a5fa)}
+#fm-root .side{width:236px;flex-shrink:0;background:linear-gradient(180deg,var(--side) 0%,#f6faf7 52%,#edf5ef 100%);border-right:1px solid var(--line);display:flex;flex-direction:column;padding:0 0 14px}
 #fm-root .brand{display:flex;align-items:center;gap:9px;padding:16px 18px;border-bottom:1px solid var(--line)}
-#fm-root .brand .lg{height:30px;width:30px;border-radius:8px;background:var(--accent);display:grid;place-items:center;color:#fff;font-weight:800;font-size:13px}
+#fm-root .brand .lg{height:32px;width:32px;border-radius:9px;background:linear-gradient(135deg,var(--accent),#1aa34a);box-shadow:0 5px 12px color-mix(in srgb,var(--accent) 32%,transparent);display:grid;place-items:center;color:#fff;font-weight:800;font-size:14px}
 #fm-root .brand b{font-size:14px;font-weight:700}
 #fm-root .brand small{display:block;font-size:10px;color:var(--faint);font-weight:600}
 #fm-root .nav{padding:10px 10px 0;overflow:auto}
@@ -2841,16 +2845,17 @@ const CSS = `
 #fm-root .hk{font-family:"Consolas","SF Mono",ui-monospace,monospace;font-weight:700;color:var(--accent);font-size:13px;letter-spacing:.4px}
 #fm-root .hk.no{color:var(--red)}
 #fm-root .pill{font-size:11px;font-weight:700;padding:3px 9px;border-radius:6px;white-space:nowrap;display:inline-block}
-#fm-root td .pill.miss,#fm-root td .pill.warn{white-space:normal;max-width:180px;line-height:1.25;text-align:center}
+#fm-root td .pill.miss,#fm-root td .pill.warn,#fm-root td .pill.asset{white-space:normal;max-width:180px;line-height:1.25;text-align:center}
 #fm-root .pill.alis{background:#eaf1ff;color:#2563eb}
 #fm-root .pill.satis{background:#e7f6ec;color:#15803d}
 #fm-root .pill.ok{background:#e7f6ec;color:#15803d}
 #fm-root .pill.miss{background:#fdeaea;color:#c0353a}
 #fm-root .pill.warn{background:#fdf2e0;color:#b45309}
 #fm-root .pill.proc{background:#e6eefc;color:#2563eb}
-#fm-root .ocrstrip{display:flex;flex-direction:column;gap:5px;padding:9px 16px;border-bottom:1px solid var(--line);background:#f7faff}
-#fm-root .ocrbar{height:8px;border-radius:6px;background:#e6eefc;overflow:hidden;position:relative;box-shadow:inset 0 1px 2px rgba(20,40,80,.08)}
-#fm-root .ocrfill{height:100%;border-radius:6px;background:linear-gradient(90deg,#2563eb,#3b82f6 55%,#22c55e);transition:width .45s cubic-bezier(.4,0,.2,1);position:relative;overflow:hidden}
+#fm-root .pill.asset{background:#f3e8ff;color:#7c3aed;border:1px solid #e3d4fb}
+#fm-root .ocrstrip{display:flex;flex-direction:column;gap:5px;padding:11px 16px;border-bottom:1px solid var(--line);background:radial-gradient(150% 130% at 0% 0%, #eafaf1, var(--accent-soft) 72%)}
+#fm-root .ocrbar{height:8px;border-radius:6px;background:#d4ebdd;overflow:hidden;position:relative;box-shadow:inset 0 1px 2px rgba(20,60,40,.1)}
+#fm-root .ocrfill{height:100%;border-radius:6px;background:linear-gradient(90deg,var(--accent),#22c55e 55%,#34d399);transition:width .45s cubic-bezier(.4,0,.2,1);position:relative;overflow:hidden}
 #fm-root .ocrstrip.scanning .ocrfill{min-width:10px}
 #fm-root .ocrstrip.scanning .ocrfill::after{content:'';position:absolute;inset:0;background-image:linear-gradient(45deg,rgba(255,255,255,.28) 25%,transparent 25%,transparent 50%,rgba(255,255,255,.28) 50%,rgba(255,255,255,.28) 75%,transparent 75%,transparent);background-size:20px 20px;animation:ocrstripes .65s linear infinite}
 #fm-root .ocrstrip.scanning .ocrfill::before{content:'';position:absolute;top:0;right:0;width:26px;height:100%;background:linear-gradient(90deg,transparent,rgba(255,255,255,.55));animation:ocrglow 1.3s ease-in-out infinite}
@@ -2883,8 +2888,8 @@ const CSS = `
 #fm-root .yuklenemedi span{display:inline-flex;align-items:center;gap:6px}
 #fm-root .eksikbelge{display:flex;align-items:flex-start;gap:8px;margin:10px 16px 0;padding:9px 12px;background:#fef6e7;border:1px solid #f0d28a;border-radius:9px;font-size:12px;color:#8a6314}
 #fm-root .eksikbelge b{color:#6b4d0f}
-#fm-root .dfchip .dfn{font-size:10px;font-weight:700;opacity:.7}
-#fm-root .dfchip.on .dfn{opacity:.95}
+#fm-root .dfchip .dfn{font-size:10px;font-weight:800;background:var(--accent-soft);color:var(--accent);border-radius:10px;padding:1px 7px;min-width:18px;text-align:center}
+#fm-root .dfchip.on .dfn{background:rgba(255,255,255,.28);color:#fff}
 #fm-root .pill.n{background:#eef1f5;color:#64748b}
 #fm-root .eye{height:28px;width:28px;border-radius:7px;border:1px solid var(--line2);display:grid;place-items:center;color:var(--muted);cursor:pointer}
 #fm-root .eye:hover{border-color:var(--accent);color:var(--accent)}

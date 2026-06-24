@@ -3598,8 +3598,15 @@ export class FaturaMuhasebelestirmeService implements OnModuleInit, OnModuleDest
       return /^61[01]/.test(c) || (/^(191|391)/.test(c) && /İADE|IADE/i.test(String(l.description || '')));
     });
 
+    // DEMİRBAŞ (sabit kıymet): faaliyet bağlamı için mükellefi çek → demirbaş alış/satışı uyarısı (manuel/Luca).
+    const tpForAsset = doc.taxpayerId
+      ? await (this.prisma as any).taxpayer.findFirst({ where: { id: doc.taxpayerId, tenantId }, select: { faaliyetAciklama: true, naceKodu: true, companyName: true } }).catch(() => null)
+      : null;
+    const fixedAsset = this.detectFixedAsset(ocrData, tpForAsset);
+
     const validation = await this.runValidation({
       tenantId,
+      fixedAsset,
       taxpayerId: doc.taxpayerId,
       invoiceKind: doc.invoiceKind,
       tevkifatli,
@@ -5225,6 +5232,41 @@ export class FaturaMuhasebelestirmeService implements OnModuleInit, OnModuleDest
     };
   }
 
+  /** DEMİRBAŞ (sabit kıymet) tespiti — fatura İÇERİĞİ + mükellefin FAALİYETİ ile birlikte değerlendirir.
+   *  Demirbaş alış/satışı amortisman + özel kayıt (255/257/268; satışta 255 çıkış + 679/689 kâr/zarar)
+   *  gerektirir → Fatura Merkezi OTOMATİK işlemez; uyarı verip MANUEL (Luca) bırakır. Hem alış hem satış.
+   *  "Nokta-yama" DEĞİL: bir cihaz/makine adı TEK BAŞINA yetmez — mükellef o ürünü TİCARETEN satıyorsa
+   *  (faaliyet/ünvan/NACE'de geçiyorsa) o ürün TİCARİ MAL'dır (klima ticareti yapanın kliması = ticari mal),
+   *  satmıyorsa (lokantanın kliması) = DEMİRBAŞ. AI'ın "demirbas" kategorisi de birincil sinyaldir. */
+  private detectFixedAsset(ocrData: any, taxpayer: any): { is: boolean; reason: string } {
+    const ocr = ocrData || {};
+    const fold = (s: string) => this.norm(s).replace(/ş/g, 's').replace(/ğ/g, 'g').replace(/ı/g, 'i').replace(/ç/g, 'c').replace(/ö/g, 'o').replace(/ü/g, 'u');
+    const kalemAd = Array.isArray(ocr.kalemler) ? ocr.kalemler.map((k: any) => String(k?.ad || '')).join(' ') : '';
+    const blob = fold(`${kalemAd} ${ocr.giderTuru || ''} ${ocr.muhasebeNeden || ''}`);
+    // Güçlü sabit-kıymet anahtarları (asciiFold edilmiş, kök biçimde). Sarf/gıda/hizmet bunlara girmez.
+    const ASSET = [
+      'klima', 'iklimlendirme', 'kombi', 'kazan dair', 'buzdolab', 'dondurucu', 'sogutucu', 'sogutma dolab',
+      'davlumbaz', 'set ustu ocak', 'bulasik makin', 'camasir makin', 'kurutma makin', 'kahve makin', 'hamur makin',
+      'makine', 'makina', 'jenerator', 'kompresor', 'forklift', 'transpalet', 'celik tezgah', 'vitrin',
+      'bilgisayar', 'laptop', 'dizustu', 'monitor', 'yazici', 'fotokopi', 'tarayici', 'projeksiyon',
+      'televizyon', 'mobilya', 'demirbas', 'sabit kiymet', 'asansor', 'kamera sistem', 'guvenlik kamera',
+    ];
+    // İÇERİK sinyali ŞART: faturada gerçek cihaz/makine/sabit-kıymet adı geçmeli. AI'ın salt "demirbas"
+    //   KATEGORİSİ TEK BAŞINA güvenilmez — AI, mükellefin faaliyet açıklamasındaki cihaz isimlerine
+    //   kapılıp HİZMET/onarım gelirini bile "demirbas" diyebiliyordu (beyaz eşya TAMİRCİSİNİN onarım
+    //   SATIŞLARI yanlışlıkla demirbaş işaretleniyordu — gerçek prod verisinde 23 belge). Bu yüzden
+    //   yalnız fatura İÇERİĞİNDEKİ (kalem/giderTuru) gerçek mala bakılır.
+    const hitWord = ASSET.find((w) => blob.includes(w)) || '';
+    if (!hitWord) return { is: false, reason: '' };
+    // Mükellef bu ürünü TİCARETEN satıyor / üretiyor / ONARIYORSA (faaliyet/ünvan/NACE'de ürün KÖKÜ
+    //   geçiyorsa) → o ürün ticari mal / hizmet konusudur, DEMİRBAŞ DEĞİL (klima ticareti/onarımı yapanın
+    //   kliması demirbaş değildir; lokantanın kliması demirbaştır).
+    const faal = fold(`${taxpayer?.faaliyetAciklama || ''} ${taxpayer?.companyName || ''} ${taxpayer?.naceKodu || ''}`);
+    const kok = hitWord.split(' ')[0].slice(0, 6); // "klima"→klima, "bilgisayar"→bilgis, "buzdolab"→buzdol
+    if (kok.length >= 4 && faal.includes(kok)) return { is: false, reason: '' };
+    return { is: true, reason: hitWord };
+  }
+
   /**
    * v2.1 — Belge validation pipeline.
    * 3 tip kontrol yapar:
@@ -5256,6 +5298,7 @@ export class FaturaMuhasebelestirmeService implements OnModuleInit, OnModuleDest
     isReturn?: boolean;
     hasReturnLine?: boolean;
     documentType?: string | null;
+    fixedAsset?: { is: boolean; reason: string };
   }): Promise<{
     status: 'OK' | 'INCOMPLETE' | 'INVALID';
     issues: Array<{ code: string; severity: 'WARNING' | 'ERROR'; message: string; expected?: any; actual?: any }>;
@@ -5420,6 +5463,19 @@ export class FaturaMuhasebelestirmeService implements OnModuleInit, OnModuleDest
           message: 'Tevkifatlı SATIŞ — tevkifat tutarı okunamadı, KDV TAM görünüyor. Tevkifat oranını gir (KDV net hesaplanmalı: tahsil edilen = KDV − tevkifat).',
         });
       }
+    }
+
+    // ── 9) FIXED_ASSET_MANUAL — DEMİRBAŞ (sabit kıymet) alış/satışı OTOMATİK işlenmez. Amortisman +
+    //     özel kayıt (alışta 255/257/268; satışta 255 çıkış + 679/689 kâr-zarar) gerektirir → kullanıcı
+    //     Luca'dan MANUEL işler. ERROR → status INVALID → otomatik onay/aktarım engellenir (uyarı kalır).
+    if (opts.fixedAsset?.is) {
+      const sale = String(opts.invoiceKind || '').toUpperCase() === 'SATIS';
+      const r = String(opts.fixedAsset.reason || '').trim();
+      issues.push({
+        code: 'FIXED_ASSET_MANUAL',
+        severity: 'ERROR',
+        message: `Demirbaş / sabit kıymet ${sale ? 'satışı' : 'alışı'}${r && r !== 'demirbaş' ? ` (${r})` : ''} — otomatik muhasebeleştirilmez. Amortisman ve özel kayıt gerektirir; Luca'dan manuel işleyin.`,
+      });
     }
 
     // Sonuç durumu
