@@ -1394,8 +1394,8 @@ export default function KdvKontrolPage() {
               )}
             </div>
           </div>
-          <div className="p-5">
-            <div className="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-4 xl:grid-cols-7 gap-3">
+          <div className="p-3.5">
+            <div className="grid grid-cols-3 sm:grid-cols-4 lg:grid-cols-5 xl:grid-cols-7 gap-2">
               {(() => {
                 // Eşleşme Hatalı kartı için kırılım: iki ayrı kovadan geliyor
                 //   (1) Luca var, fatura yok  → lucaOnlyMissing (Luca tarafı orphan)
@@ -1422,8 +1422,8 @@ export default function KdvKontrolPage() {
                   { key: 'failed',  label: 'Eşleşme Hatalı',    val: _lucaOrphan + _imageOrphan + _otherUnmatched + _rejected, color: '#f43f5e', icon: XCircle, sub: failedSubParts.join(' · ') || null },
                 ];
               })().map(({ key, label, val, color, icon: Icon, showRerun, sub }: any) => (
-                <div key={key} className="rounded-xl p-4" style={{ background: 'rgba(255,255,255,0.02)', border: '1px solid rgba(255,255,255,0.05)' }}>
-                  <div className="flex items-center justify-between mb-2 text-[11px] font-medium uppercase tracking-wider" style={{ color: 'rgba(250,250,249,0.55)' }}>
+                <div key={key} className="rounded-lg p-2.5" style={{ background: 'rgba(255,255,255,0.02)', border: '1px solid rgba(255,255,255,0.05)' }}>
+                  <div className="flex items-center justify-between mb-1 text-[10px] font-medium uppercase tracking-wide" style={{ color: 'rgba(250,250,249,0.55)' }}>
                     <span className="flex items-center gap-1.5">
                       <Icon size={12} style={{ color }} /> {label}
                     </span>
@@ -1445,7 +1445,7 @@ export default function KdvKontrolPage() {
                       </button>
                     )}
                   </div>
-                  <p className="leading-none tabular-nums" style={{ fontFamily: 'Fraunces, serif', fontSize: 28, fontWeight: 700, color: '#fafaf9' }}>
+                  <p className="leading-none tabular-nums" style={{ fontFamily: 'Fraunces, serif', fontSize: 22, fontWeight: 700, color: '#fafaf9' }}>
                     {val ?? 0}
                   </p>
                   {sub && (
@@ -1647,12 +1647,12 @@ export default function KdvKontrolPage() {
               )}
             </div>
           </div>
-          <div className="max-h-[240px] overflow-y-auto p-2">
+          <div className="max-h-[520px] overflow-y-auto p-2">
             {contentAuditPanelRows.map((img: any) => (
               <div
                 key={img.id}
                 title={contentAuditTooltip(img)}
-                className="grid min-h-[38px] grid-cols-[118px_minmax(130px,220px)_minmax(0,1fr)] items-center gap-3 border-b px-2.5 py-1.5 last:border-b-0"
+                className="grid min-h-[38px] grid-cols-[118px_minmax(130px,220px)_minmax(0,1fr)] items-start gap-3 border-b px-2.5 py-2 last:border-b-0"
                 style={{ borderColor: 'rgba(20,184,166,0.10)' }}
               >
                 <ContentAuditBadge risk={img.contentAuditRisk} status={img.contentAuditStatus} />
@@ -1668,11 +1668,11 @@ export default function KdvKontrolPage() {
                   </div>
                 </div>
                 <div className="min-w-0">
-                  <p className="truncate text-[12px]" style={{ color: 'rgba(250,250,249,0.68)' }}>
+                  <p className="text-[12px] leading-snug" style={{ color: 'rgba(250,250,249,0.72)', whiteSpace: 'normal', wordBreak: 'break-word', overflowWrap: 'anywhere' }}>
                     {img.contentAuditSummary || (img.contentAuditStatus === 'PROCESSING' ? 'Denetleniyor...' : 'Yorum bekleniyor')}
                   </p>
                   {img.contentAuditSuggestion && (
-                    <p className="truncate text-[11px]" style={{ color: 'rgba(94,234,212,0.78)' }}>
+                    <p className="text-[11px] leading-snug mt-1" style={{ color: 'rgba(94,234,212,0.82)', whiteSpace: 'normal', wordBreak: 'break-word', overflowWrap: 'anywhere' }}>
                       {img.contentAuditSuggestion}
                     </p>
                   )}
@@ -1692,8 +1692,9 @@ export default function KdvKontrolPage() {
         <MatchReviewPanel sessionId={activeSession.id} results={results as any[]} />
       )}
 
-      {/* CANLI KONTROL AKIŞI — her zaman görünür */}
-      <div className="rounded-xl border overflow-hidden" style={{ background: 'rgba(255,255,255,0.02)', borderColor: 'rgba(255,255,255,0.05)' }}>
+      {/* CANLI KONTROL AKIŞI — kullanıcı isteğiyle GİZLENDİ (içerik denetimine yer açmak için).
+          feed/pushFeed altyapısı korunuyor (OCR akışı besliyor); sadece UI gizli. */}
+      <div className="hidden rounded-xl border overflow-hidden" style={{ background: 'rgba(255,255,255,0.02)', borderColor: 'rgba(255,255,255,0.05)' }}>
           <div className="flex items-center justify-between px-5 py-3.5" style={{ borderBottom: '1px solid rgba(255,255,255,0.05)' }}>
             <div className="flex items-center gap-2.5">
               <Zap size={14} style={{ color: GOLD }} />
