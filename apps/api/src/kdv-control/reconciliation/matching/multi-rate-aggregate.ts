@@ -14,6 +14,18 @@ interface MultiRateAggregateDeps {
   log?: (message: string) => void;
 }
 
+// ALIŞ tevkifat satırı: "191.03 — Sorumlu sıfatıyla indirilecek KDV" (KDV2 / sorumlu sıfatı).
+// Bu satır GERÇEK bir KDV ORANI bileşeni DEĞİLDİR (Luca'da oran çoğu kez hatalı "1" görünür).
+// Çok-oranlı breakdown'a katılırsa, sahte bir oran (ör. %1:600) fatura kırılımıyla (tek oran %20)
+// uyuşmaz ve tevkifatlı alış HİÇ eşleşmez. Tutarı toplam KDV'ye dahil edilir (virtual = TAM KDV),
+// böylece calculateScore "Luca TAM = fatura NET + tevkifat" yolundan eşleşmeyi yakalar.
+function isAlisTevkifatRow(rec: KdvRecord): boolean {
+  const kod = String(rec.aciklama || ''); // KdvRecord.aciklama = Luca hesap kodu (ör. "191.03.001")
+  let raw = '';
+  try { raw = JSON.stringify(rec.rawData ?? {}); } catch { /* yok say */ }
+  return /(^|[^\d])191\.03/.test(kod) || /191\.03|SORUMLU\s*S[İI]F|TEVK[İI]F/i.test(raw);
+}
+
 export function aggregateMultiRateRecords(
   rawRecords: KdvRecord[],
   isAlis: boolean,
@@ -90,7 +102,9 @@ export function aggregateMultiRateRecords(
       kdvToplam += tutar;
       matrahToplam += parseFloat(record.kdvMatrahi?.toString() || '0');
       const oran = deps.inferRecordRate(record) || 0;
-      if (oran > 0 && tutar > 0) {
+      // ALIŞ tevkifat (191.03 sorumlu sıfatıyla) satırını çok-oranlı breakdown'a KATMA (bkz.
+      //   isAlisTevkifatRow). Tutar kdvToplam'a zaten dahil → virtual = TAM KDV (net+tevkifat).
+      if (oran > 0 && tutar > 0 && !(isAlis && isAlisTevkifatRow(record))) {
         expectedByRate.set(oran, (expectedByRate.get(oran) || 0) + tutar);
       }
     }
