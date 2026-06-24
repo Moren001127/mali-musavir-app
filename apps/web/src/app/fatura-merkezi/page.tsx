@@ -106,7 +106,12 @@ function deriveDurum(doc: any, isIsletme = false, autoKtKod = ''): { k: string; 
   // İADE: 610/611 ters-kayıt satırı KONDUYSA "iade normal kayıt yapılamaz" (RETURN_NEEDS_REVERSAL)
   //   uyarısı GÜNCEL DEĞİLDİR (610 eklendi/rematch attı, revalidate olmadan eski kayıt kalır). Güncel
   //   satırdan türet: 610 varsa bu issue'yu yok say → geriye sadece gerçek eksik (cari) kalır.
-  const hasReturnLine = lines.some((l: any) => /^61[01]/.test(String(l.accountCode || '')));
+  // ALIŞTAN iade matrahı 610 DEĞİL (orijinal stok/gider 153/770) ama KDV "İADE" adlı 391'e işlenir →
+  //   o satır da kaydın iade olduğunu gösterir; RETURN_NEEDS_REVERSAL yanlış alarm vermesin.
+  const hasReturnLine = lines.some((l: any) => {
+    const c = String(l.accountCode || '');
+    return /^61[01]/.test(c) || (/^(191|391)/.test(c) && /İADE|IADE/i.test(String(l.description || '')));
+  });
   const nonAmountIssues = issues.filter((i: any) => i?.code && i?.severity !== 'WARNING'
     && !['INCOMPLETE_AMOUNTS', 'TOTAL_MISMATCH', 'BALANCE_MISMATCH'].includes(i.code)
     && !(i.code === 'RETURN_NEEDS_REVERSAL' && hasReturnLine));

@@ -3590,7 +3590,13 @@ export class FaturaMuhasebelestirmeService implements OnModuleInit, OnModuleDest
     // Faz D/1: iade/iptal — normal kayıt yapılmasın (ters kayıt/610 gerekli). 610 satırı
     // varsa müşavir düzeltmiş demektir → engelleme.
     const isReturn = ocrData?.isReturn === true;
-    const hasReturnLine = (doc.lines || []).some((l: any) => /^61[01]/.test(String(l.accountCode || '')));
+    // İADE-UYGUN satır var mı? SATIŞTAN iade → 610/611 (matrah ters kayıt). ALIŞTAN iade → matrah
+    //   orijinal stok/gider'e (610 DEĞİL) ALACAK yazılır ama KDV "İADE" adlı 391'e işlenir → o satır
+    //   kaydın iade olduğunu gösterir; RETURN_NEEDS_REVERSAL yanlış alarm vermesin.
+    const hasReturnLine = (doc.lines || []).some((l: any) => {
+      const c = String(l.accountCode || '');
+      return /^61[01]/.test(c) || (/^(191|391)/.test(c) && /İADE|IADE/i.test(String(l.description || '')));
+    });
 
     const validation = await this.runValidation({
       tenantId,
@@ -6162,12 +6168,17 @@ export class FaturaMuhasebelestirmeService implements OnModuleInit, OnModuleDest
       //   "610 var, 191 satıştan iade ind. KDV var, niye seçmiyor". İade hesabı yoksa boş (kullanıcı ekler).
       const isReturn = (doc.ocrData as any)?.isReturn === true;
       const _hasIade = (n: any) => { const u = String(n || '').toLocaleUpperCase('tr-TR'); return u.includes('İADE') || u.includes('IADE'); };
-      const returnMatrah = isReturn ? leafOnly(
+      // YÖNE GÖRE İADE: (a) SATIŞTAN iade (alış görünümlü, !isSale) → matrah 610 (SATIŞTAN İADELER),
+      //   KDV 191 "satıştan iade indirilecek KDV". (b) ALIŞTAN iade (satış görünümlü, isSale, mükellef
+      //   KESTİ) → matrah 610 DEĞİL, orijinal stok/gider (153/770) ALACAK; KDV 391 "alıştan iade
+      //   hesaplanan KDV". returnMatrah yalnız SATIŞTAN iade'de dolu; alıştan iade matrahı aşağıda
+      //   normal categoryMatrah/saleMatrahDefault akışına bırakılır.
+      const returnMatrah = (isReturn && !isSale) ? leafOnly(
         accounts.find((a: any) => { const c = String(a.accountCode || ''); return /^61[01]/.test(c) && _hasIade(a.accountName) && isPostableLeaf(c); })
         || accounts.find((a: any) => { const c = String(a.accountCode || ''); return /^610/.test(c) && isPostableLeaf(c); }),
       ) : null;
       const returnVergi = isReturn ? leafOnly(
-        accounts.find((a: any) => { const c = String(a.accountCode || ''); return /^(191|391)/.test(c) && _hasIade(a.accountName) && isPostableLeaf(c); }),
+        accounts.find((a: any) => { const c = String(a.accountCode || ''); return c.startsWith(isSale ? '391' : '191') && _hasIade(a.accountName) && isPostableLeaf(c); }),
       ) : null;
       const vendorName = isSale ? doc.customerName : doc.vendorName;
       const vendorVkn = String((isSale ? doc.buyerVkn : doc.sellerVkn) || '').replace(/\D/g, '');
@@ -6194,7 +6205,7 @@ export class FaturaMuhasebelestirmeService implements OnModuleInit, OnModuleDest
       //   yalnız giderTuru'na bağlamak belgelerin çoğunu (51/63) boş bırakıyordu. Kategori kaldıracı bunu çözer.
       let categoryMatrah: any = null;
       let categoryGroupLeaves: any[] = []; // matrahKategori grubunun leaf'leri → ORAN-bazlı seçimde (153.01.001 %1 / .002 %10 / .003 %20)
-      if (!isSale) {
+      if (!isSale || isReturn) { // ALIŞTAN iade (isReturn && isSale) de alış-kategorisini (153/770) kullanır
         if (giderTuru) categoryMatrah = this.pickAccount(accounts, alisMatrahPrefixes, giderTuru, { requireHint: true });
         // matrahKategori belli → DOĞRUDAN o GRUBA ata (kategori = AI'ın içerik kararı, "rastgele" DEĞİL).
         //   Tek leaf → kesin. Çok leaf → önce giderTuru adıyla daralt; olmazsa o grubun EN GENEL
@@ -6314,7 +6325,7 @@ export class FaturaMuhasebelestirmeService implements OnModuleInit, OnModuleDest
       // Eskiden isim eşleşmesi olmayınca EN DÜŞÜK 600 leaf seçiliyordu → planın ilk hesabı
       // "600.01.003 TEVKİFATLI GELİRLER" ise NORMAL satışlar da oraya düşüyordu (kullanıcı bildirdi).
       const saleMatrahDefault = (() => {
-        if (!isSale) return categoryMatrah;
+        if (!isSale || isReturn) return categoryMatrah; // alıştan iade: 600 değil, orijinal stok/gider
         const g600 = accounts.filter((a: any) => { const c = String(a.accountCode || ''); return c.startsWith('600') && !c.startsWith('79'); });
         if (!g600.length) return categoryMatrah;
         if (tevkPay >= 1) {
@@ -6393,14 +6404,20 @@ export class FaturaMuhasebelestirmeService implements OnModuleInit, OnModuleDest
         //   ekler). Tevkifat iade'de boşalır. Cari (karşı taraf) normal akışta kalır — iade aynı cariye işlenir.
         if (isReturn && (group === 'matrah' || group === 'vergi' || group === 'tevkifat')) {
           const ret = group === 'matrah' ? returnMatrah : group === 'vergi' ? returnVergi : null;
-          const want = ret ? String((ret as any).accountCode) : '';
-          if (String(line.accountCode || '') !== want) {
-            await (this.prisma as any).invoiceAccountingLine.update({
-              where: { id: line.id },
-              data: want ? { accountCode: want, description: (ret as any).accountName } : { accountCode: '', description: '' },
-            });
+          // ALIŞTAN İADE matrahı (returnMatrah null, satış görünümlü): 610 DEĞİL — orijinal stok/gider
+          //   (153/770). Bu satırı normal matrah akışına BIRAK (continue etme); matrahForRate
+          //   saleMatrahDefault=categoryMatrah'ı atar. returnMatrah yalnız SATIŞTAN iade'de dolu (610).
+          if (!(group === 'matrah' && !returnMatrah)) {
+            const want = ret ? String((ret as any).accountCode) : '';
+            if (String(line.accountCode || '') !== want) {
+              await (this.prisma as any).invoiceAccountingLine.update({
+                where: { id: line.id },
+                data: want ? { accountCode: want, description: (ret as any).accountName } : { accountCode: '', description: '' },
+              });
+            }
+            continue;
           }
-          continue;
+          // (alıştan iade matrahı → aşağıdaki normal categoryMatrah akışına düşer)
         }
         const match = group === 'matrah'
           ? await matrahForRate(lineRate)
