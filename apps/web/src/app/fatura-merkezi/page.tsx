@@ -999,7 +999,7 @@ function ScreenFaturalar({ taxpayerId, period, kind = 'ALIS', isIsletme = false,
                       <td colSpan={11}>
                         <div className="detaybox">
                           {(d.ocrData as any)?.muhasebeNeden ? (
-                            <div style={{ padding: '7px 10px', marginBottom: 8, background: 'rgba(124,58,237,0.08)', borderLeft: '3px solid #7c3aed', borderRadius: 5, fontSize: 12.5, lineHeight: 1.45 }}>
+                            <div style={{ padding: '7px 10px', marginBottom: 8, background: 'rgba(124,58,237,0.08)', borderLeft: '3px solid #7c3aed', borderRadius: 5, fontSize: 12.5, lineHeight: 1.5, whiteSpace: 'normal', wordBreak: 'break-word', overflowWrap: 'anywhere', maxWidth: 940 }}>
                               <b style={{ color: '#7c3aed' }}>💡 AI değerlendirmesi:</b> {(d.ocrData as any).muhasebeNeden}
                             </div>
                           ) : null}
