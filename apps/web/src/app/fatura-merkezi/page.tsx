@@ -55,6 +55,7 @@ const I = {
   expand: '<svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.1"><path d="M8 3H5a2 2 0 0 0-2 2v3m18 0V5a2 2 0 0 0-2-2h-3M3 16v3a2 2 0 0 0 2 2h3m13-5v3a2 2 0 0 1-2 2h-3"/></svg>',
   compress: '<svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.1"><path d="M8 3v3a2 2 0 0 1-2 2H3m18 0h-3a2 2 0 0 1-2-2V3M3 16h3a2 2 0 0 1 2 2v3m8 0v-3a2 2 0 0 1 2-2h3"/></svg>',
   trash: '<svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M3 6h18M8 6V4a2 2 0 0 1 2-2h4a2 2 0 0 1 2 2v2m2 0v14a2 2 0 0 1-2 2H7a2 2 0 0 1-2-2V6"/><path d="M10 11v6M14 11v6"/></svg>',
+  edit: '<svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M11 4H4a2 2 0 0 0-2 2v14a2 2 0 0 0 2 2h14a2 2 0 0 0 2-2v-7"/><path d="M18.5 2.5a2.12 2.12 0 0 1 3 3L12 15l-4 1 1-4 9.5-9.5z"/></svg>',
 };
 
 const COLORS = [
@@ -662,7 +663,7 @@ export default function FaturaMerkeziPage() {
           </div>
 
           <div className="content">
-            {(screen === 'faturalar' || screen === 'satis') && <ScreenFaturalar taxpayerId={taxpayerId} period={period} kind={screen === 'satis' ? 'SATIS' : 'ALIS'} isIsletme={(() => { const t = taxpayers.find((x) => x.id === taxpayerId); return /i[şs]letme|defter.?beyan|basit/i.test(`${t?.defterTuru || ''} ${(t as any)?.mihsapDefterTuru || ''}`); })()} taxpayerNace={(taxpayers.find((t) => t.id === taxpayerId) as any)?.naceKodu || ''} taxpayerFaaliyet={(taxpayers.find((t) => t.id === taxpayerId) as any)?.faaliyetAciklama || ''} />}
+            {(screen === 'faturalar' || screen === 'satis') && <ScreenFaturalar taxpayerId={taxpayerId} period={period} kind={screen === 'satis' ? 'SATIS' : 'ALIS'} isIsletme={(() => { const t = taxpayers.find((x) => x.id === taxpayerId); return /i[şs]letme|defter.?beyan|basit/i.test(`${t?.defterTuru || ''} ${(t as any)?.mihsapDefterTuru || ''}`); })()} taxpayerNace={(taxpayers.find((t) => t.id === taxpayerId) as any)?.naceKodu || ''} taxpayerFaaliyet={(taxpayers.find((t) => t.id === taxpayerId) as any)?.faaliyetAciklama || ''} onOpenMuhasebe={(id) => { try { localStorage.setItem('fm-open-doc', id); } catch { /* yok say */ } setScreen('muhasebe'); }} />}
             {screen === 'mukellefler' && <ScreenMukellefler taxpayers={taxpayers} period={period} onOpen={(id) => { setTaxpayerId(id); setScreen('faturalar'); }} />}
             {screen === 'kurallar' && <ScreenKurallar taxpayerId={taxpayerId} period={period} />}
             {screen === 'muhasebe' && <ScreenMuhasebe taxpayerId={taxpayerId} period={period} isIsletme={(() => { const t = taxpayers.find((x) => x.id === taxpayerId); return /i[şs]letme|defter.?beyan|basit/i.test(`${t?.defterTuru || ''} ${(t as any)?.mihsapDefterTuru || ''}`); })()} taxpayerNace={(taxpayers.find((t) => t.id === taxpayerId) as any)?.naceKodu || ''} taxpayerFaaliyet={(taxpayers.find((t) => t.id === taxpayerId) as any)?.faaliyetAciklama || ''} taxpayerAd={(() => { const t = taxpayers.find((x) => x.id === taxpayerId); return t ? taxpayerLabel(t) : ''; })()} full={editorFull} onToggleFull={() => setEditorFull((v) => !v)} />}
@@ -693,7 +694,7 @@ function isWaitingTransfer(d: any): boolean {
 function isInAktarim(d: any): boolean {
   return isWaitingTransfer(d) || isArchived(d);
 }
-function ScreenFaturalar({ taxpayerId, period, kind = 'ALIS', isIsletme = false, taxpayerNace = '', taxpayerFaaliyet = '' }: { taxpayerId: string; period: string; kind?: 'ALIS' | 'SATIS'; isIsletme?: boolean; taxpayerNace?: string; taxpayerFaaliyet?: string }) {
+function ScreenFaturalar({ taxpayerId, period, kind = 'ALIS', isIsletme = false, taxpayerNace = '', taxpayerFaaliyet = '', onOpenMuhasebe }: { taxpayerId: string; period: string; kind?: 'ALIS' | 'SATIS'; isIsletme?: boolean; taxpayerNace?: string; taxpayerFaaliyet?: string; onOpenMuhasebe?: (id: string) => void }) {
   const qc = useQueryClient();
   const docsQ = useDocuments(taxpayerId, period);
   const all: any[] = docsQ.data || [];
@@ -980,9 +981,10 @@ function ScreenFaturalar({ taxpayerId, period, kind = 'ALIS', isIsletme = false,
                       : (code ? <span className="hk">{code}</span> : <span className="hk no">— yok —</span>)}</td>
                     <td><span className={`pill ${du.k}`} title={du.cat === 'okunamadi' && d.lucaErrorMessage ? `Neden: ${d.lucaErrorMessage}` : du.cat === 'celiski' ? ((Array.isArray(d.validationIssues) ? d.validationIssues : (Array.isArray(d.ocrData?.validationIssues) ? d.ocrData.validationIssues : [])).filter((i: any) => i?.code && i.code !== 'INCOMPLETE_AMOUNTS' && i?.severity !== 'WARNING').map((i: any) => i.message).filter(Boolean).join(' · ') || du.t) : du.t}>{du.t}</span>{du.cat === 'okunamadi' && d.lucaErrorMessage ? <div className="oneden">{d.lucaErrorMessage}</div> : null}{du.cat === 'celiski' ? <div className="oneden" style={{ fontSize: 10.5, opacity: 0.85 }}>↓ sebebi fiş detayında</div> : null}</td>
                     <td className="actcol" style={{ display: 'flex', gap: 8, alignItems: 'center' }}>
-                      <span className="eye" onClick={() => setFisDetayId(fisAcik ? '' : d.id)} title={fisAcik ? 'Detayı gizle' : (isIsletme ? 'Kayıt türünü göster' : 'Yevmiye fişini göster')} style={fisAcik ? { color: 'var(--accent,#2563eb)' } : undefined}><Ico html={I.ledger} size={15} /></span>
-                      <span className="eye" onClick={() => openDocFile(d.id)} title="Belgeyi aç"><Ico html={I.eye} size={15} /></span>
-                      <span className="eye del" title="Belgeyi sil" onClick={() => { if (window.confirm(`Bu belge silinsin mi?\n${firma} · ${fmtMoney(d.totalAmount)} ₺${d.belgeNo ? ' · ' + d.belgeNo : ''}`)) delMut.mutate(d.id); }}><Ico html={I.trash} size={14} /></span>
+                      <span className="eye" onClick={() => setFisDetayId(fisAcik ? '' : d.id)} title={fisAcik ? 'Detayı gizle' : (isIsletme ? 'Kayıt türünü göster' : 'Yevmiye fişini göster')} style={{ color: fisAcik ? 'var(--accent,#2563eb)' : '#2563eb' }}><Ico html={I.ledger} size={15} /></span>
+                      <span className="eye" onClick={() => onOpenMuhasebe?.(d.id)} title="Muhasebeleştir ekranında aç" style={{ color: '#7c3aed' }}><Ico html={I.edit} size={15} /></span>
+                      <span className="eye" onClick={() => openDocFile(d.id)} title="Belgeyi aç" style={{ color: '#0891b2' }}><Ico html={I.eye} size={15} /></span>
+                      <span className="eye del" title="Belgeyi sil" onClick={() => { if (window.confirm(`Bu belge silinsin mi?\n${firma} · ${fmtMoney(d.totalAmount)} ₺${d.belgeNo ? ' · ' + d.belgeNo : ''}`)) delMut.mutate(d.id); }} style={{ color: '#dc2626' }}><Ico html={I.trash} size={14} /></span>
                     </td>
                   </tr>
                   {fisAcik && (
@@ -1405,6 +1407,11 @@ function ScreenMuhasebe({ taxpayerId, period, isIsletme = false, taxpayerNace = 
   const eksik = allF.filter((d) => d.status !== 'APPROVED' && !ready(d));
 
   const [selId, setSelId] = useState<string>('');
+  // Liste ekranındaki "Muhasebeleştir" ikonu localStorage'a hedef belgeyi yazar → bu ekran
+  //   açılınca o belgeyi otomatik seçer (hatalı belgeyi listede tekrar aramaya gerek kalmaz).
+  useEffect(() => {
+    try { const t = localStorage.getItem('fm-open-doc'); if (t) { setSelId(t); localStorage.removeItem('fm-open-doc'); } } catch { /* yok say */ }
+  }, []);
   const navList = [...hazir, ...eksik];
   const selDoc = navList.find((d) => d.id === selId) || hazir[0] || eksik[0];
   const navIdx = selDoc ? navList.findIndex((d) => d.id === selDoc.id) : -1;
