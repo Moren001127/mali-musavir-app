@@ -1957,6 +1957,36 @@ export class FaturaMuhasebelestirmeService implements OnModuleInit, OnModuleDest
   }
 
   /**
+   * ④ OTOMATİK PLAN TAZELEME: BİLANÇO mükellefinde, hesap planı yoksa ya da eskiyse (>3 gün) ve
+   * son 1 saatte tetiklenmemişse Luca'dan plan çekmeyi başlatır. Plan gelince importAccountPlanSnapshot
+   * zaten otomatik yeniden eşleştirir. İŞLETME defterinde tek düzen hesap planı YOK → atlanır.
+   * Fire-and-forget: hata okuma/aktarımı engellemez.
+   */
+  private async maybeRefreshAccountPlan(tenantId: string, taxpayerId?: string | null): Promise<void> {
+    if (!taxpayerId) return;
+    const tp = await (this.prisma as any).taxpayer.findFirst({
+      where: { id: taxpayerId, tenantId },
+      select: { defterTuru: true },
+    }).catch(() => null);
+    // SADECE bilanço — işletme defterinde tek düzen hesap planı yok (kullanıcı kuralı).
+    if (!tp || String(tp.defterTuru || '').toUpperCase() !== 'BILANCO') return;
+    // Son 1 saatte plan-çekme işi tetiklendiyse tekrar etme (Luca'ya mükerrer iş yağdırma).
+    const recent = await (this.prisma as any).lucaFetchJob.findFirst({
+      where: { tenantId, mukellefId: taxpayerId, tip: 'ACCOUNT_PLAN', createdAt: { gte: new Date(Date.now() - 60 * 60 * 1000) } },
+      select: { id: true },
+    }).catch(() => null);
+    if (recent) return;
+    // Plan TAZE (<3 gün) ise dokunma; yok ya da eskiyse çek.
+    const snap = await (this.prisma as any).lucaAccountPlanSnapshot.findFirst({
+      where: { tenantId, taxpayerId, status: 'READY' },
+      orderBy: { createdAt: 'desc' },
+      select: { createdAt: true },
+    }).catch(() => null);
+    if (snap?.createdAt && (Date.now() - new Date(snap.createdAt).getTime()) < 3 * 24 * 60 * 60 * 1000) return;
+    await this.refreshAccountPlan(tenantId, { taxpayerId, createdBy: 'oto-plan-tazeleme' }).catch(() => {});
+  }
+
+  /**
    * Toplu hesap plani yenileme. Verilen mukellef id listesi (yoksa tum aktif mukellefler)
    * icin sirayla refreshAccountPlan'i cagirir. Her biri icin Luca Local Agent'a job yaratir.
    */
@@ -2389,8 +2419,13 @@ export class FaturaMuhasebelestirmeService implements OnModuleInit, OnModuleDest
     if (!ids.length) throw new BadRequestException('Belge seçilmedi');
     const docs = await (this.prisma as any).invoiceAccountingDocument.findMany({
       where: { tenantId, id: { in: ids }, status: { not: 'APPROVED' } },
-      select: { id: true },
+      select: { id: true, taxpayerId: true },
     });
+    // ④ Plan tazeleme: okumadan önce bilanço mükellef(ler)inin planı yoksa/eskiyse Luca'dan çekmeyi
+    //   başlat (arka plan; debounce'lı, işletme atlanır). Fire-and-forget — okumayı bekletmez.
+    for (const tp of [...new Set(docs.map((d: any) => d.taxpayerId).filter(Boolean))]) {
+      this.maybeRefreshAccountPlan(tenantId, tp as string).catch(() => {});
+    }
     // ÖNCELİK: kullanıcının elle "AI ile oku" isteği kuyruğun ÖNÜNE (unshift) → arka plan
     // kurtarma (push, arkada) onu bekletmesin; seçtiğin mükellefin belgeleri hemen sıraya geçer.
     for (const d of docs) {
@@ -3128,6 +3163,10 @@ export class FaturaMuhasebelestirmeService implements OnModuleInit, OnModuleDest
     if (!taxpayer?.mihsapId) {
       throw new BadRequestException('Bu mükellef için Mihsap ID tanımlı değil (mükellef kartında "Mihsap ID" alanını doldurun)');
     }
+
+    // ④ Plan tazeleme: bilanço mükellefinde plan yoksa/eskiyse Luca'dan çekmeyi başlat (arka plan;
+    //   plan gelince belgeler otomatik yeniden eşleşir). Fire-and-forget — aktarımı bekletmez.
+    this.maybeRefreshAccountPlan(tenantId, opts.taxpayerId).catch(() => {});
 
     // 1. Mihsap'tan çek → mihsap_invoices tablosuna yaz
     try {
