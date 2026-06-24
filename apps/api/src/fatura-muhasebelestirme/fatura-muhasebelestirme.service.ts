@@ -6056,6 +6056,9 @@ export class FaturaMuhasebelestirmeService implements OnModuleInit, OnModuleDest
 
     for (const doc of docs) {
       const isSale = doc.invoiceKind === 'SATIS';
+      // İADE/İPTAL faturası (CreditNote / "İADE"): matrah/vergi OTOMATİK atanmaz → 610 ters kayıt
+      //   gerekir, 600/770/191'e atamak ciroyu/KDV'yi ŞİŞİRİR (kullanıcı: "hem 610 diyor hem 770'e atıyor").
+      const isReturn = (doc.ocrData as any)?.isReturn === true;
       const vendorName = isSale ? doc.customerName : doc.vendorName;
       const vendorVkn = String((isSale ? doc.buyerVkn : doc.sellerVkn) || '').replace(/\D/g, '');
       // Kalem-bazlı kategori (AI ile oku'dan): stok/masraf/demirbaş ayrımını plana eşle.
@@ -6252,6 +6255,15 @@ export class FaturaMuhasebelestirmeService implements OnModuleInit, OnModuleDest
       for (const line of doc.lines || []) {
         const group = String(line.group || '') as 'matrah' | 'vergi' | 'cari' | 'tevkifat';
         const lineRate = String(line.rate || '').replace(/[^0-9]/g, '');
+        // İADE/İPTAL: matrah/vergi/tevkifat satırı OTOMATİK doldurulmaz → boşalt. Kullanıcı 610 (satış
+        //   iadesi) / ters kayıt ile elle kurar; RETURN_NEEDS_REVERSAL uyarısı yönlendirir. Cari (karşı
+        //   taraf) normal akışta kalır — o kesindir, iade de aynı carinin hesabına işlenir.
+        if (isReturn && (group === 'matrah' || group === 'vergi' || group === 'tevkifat')) {
+          if (String(line.accountCode || '')) {
+            await (this.prisma as any).invoiceAccountingLine.update({ where: { id: line.id }, data: { accountCode: '', description: '' } });
+          }
+          continue;
+        }
         const match = group === 'matrah'
           ? await matrahForRate(lineRate)
           : group === 'vergi' ? vergiForRate(lineRate)
