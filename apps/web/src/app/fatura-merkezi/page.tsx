@@ -1008,6 +1008,19 @@ function ScreenFaturalar({ taxpayerId, period, kind = 'ALIS', isIsletme = false,
                               <b style={{ color: '#7c3aed' }}>💡 AI değerlendirmesi:</b> {(d.ocrData as any).muhasebeNeden}
                             </div>
                           ) : null}
+                          {Array.isArray((d.ocrData as any)?.kalemler) && (d.ocrData as any).kalemler.length > 0 ? (
+                            <div style={{ padding: '6px 10px', marginBottom: 8, background: 'rgba(255,255,255,0.025)', border: '1px solid var(--line)', borderRadius: 5, fontSize: 11.5, maxWidth: 940 }}>
+                              <b style={{ color: 'var(--faint)' }}>📋 Fatura kalemleri</b>
+                              <div style={{ marginTop: 4, display: 'flex', flexDirection: 'column', gap: 2 }}>
+                                {(d.ocrData as any).kalemler.map((k: any, i: number) => (
+                                  <div key={i} style={{ display: 'flex', justifyContent: 'space-between', gap: 10 }}>
+                                    <span style={{ whiteSpace: 'normal', wordBreak: 'break-word' }}>{k.ad}{k.oran ? ` · %${k.oran}` : ''}</span>
+                                    <span style={{ fontVariantNumeric: 'tabular-nums', flexShrink: 0, color: 'var(--faint)' }}>{fmtMoney(k.tutar)} ₺</span>
+                                  </div>
+                                ))}
+                              </div>
+                            </div>
+                          ) : null}
                           {isIsletme ? (
                             <div style={{ padding: '4px 2px', fontSize: 13 }}>{(() => { const s = islSinif(d); return s.ok ? <><b>Kayıt Türü:</b> {s.ktAd}{s.altAd ? <> › {s.altAd}</> : null}</> : <span className="hk no">Kayıt türü belirlenemedi — "AI ile oku" ile yeniden okut ya da Muhasebeleştir'de seç.</span>; })()}</div>
                           ) : fisLines.length ? (
