@@ -5754,7 +5754,7 @@ export class FaturaMuhasebelestirmeService implements OnModuleInit, OnModuleDest
       'KURALLAR: Türk sayı biçimi "1.234,56" = 1234.56 (tümünü ondalıklı sayıya çevir). Birden çok KDV oranı varsa her oran ayrı nesne. matrah=KDV hariç tutar, kdv=o orana ait KDV. ÖTV/ÖİV/tevkifat varsa matrahı şişirme — gerçek mal/hizmet matrahını ver. Okunamayan alanı null bırak, UYDURMA.',
       'kategori: faturadaki mal/hizmetin TÜRÜNE göre TEK kelime seç → "ticari_mal" (satılmak üzere alınan ürün/emtia), "hammadde" (üretimde kullanılan ilk madde/malzeme), "demirbas" (makine/cihaz/ekipman/mobilya/bilgisayar gibi sabit kıymet alımı), "pazarlama" (reklam/ilan/kargo-nakliye/pazarlama), "genel_gider" (kira/elektrik/su/doğalgaz/telefon/internet/akaryakıt/danışmanlık/kırtasiye/yemek/abonelik gibi genel giderler). EMİN DEĞİLSEN "genel_gider".',
       'giderTuru: ALIŞ ise faturadaki ANA mal/hizmetin kısa adı — hesap planındaki gider hesabı adıyla eşleşecek tek-iki kelime: ör. yakıt/motorin/benzin → "akaryakıt"; ayrıca "kira", "elektrik", "su", "doğalgaz", "telefon", "internet", "kırtasiye", "danışmanlık", "nakliye", "yemek", "temizlik", "bakım onarım", "sigorta", "reklam" vb. Yazarkasa fişinde de ürüne bak (benzinlik → akaryakıt). ⚠️ ARAÇ/TAŞIT KİRALAMA bedeli → giderTuru "araç kiralama" yaz (SADECE "kira" YAZMA — "kira" yalnız işyeri/gayrimenkul kirasıdır, araç kirası ayrıdır). Net değilse "" (boş). SATIŞ ise "".',
-      'muhasebeNeden: 1 KISA Türkçe cümle — ALIŞ\'ta bu mal/hizmet mükellefin FAALİYETİNE göre hangi tür hesaba (stok/gider/demirbaş) ve NEDEN yazılmalı; içerik faaliyetle UYUMSUZSA (ör. yemek üreticisinde KLİMA → demirbaş; araç kiralama → işyeri kira gideri DEĞİL) "manuel kontrol gerekir" de. SATIŞ ise kısa değerlendirme (olağan satış / tevkifatlı satış). Belge neyse onu açıkla, uydurma.',
+      'muhasebeNeden: Bir mali müşavirin ağzından, AKICI ve DOĞAL Türkçe ile yazılmış 1-2 cümlelik DEĞERLENDİRME (kalıp/şablon DEĞİL — gerçekten yorumla). Faturada özetle NE alınmış/satılmış (içeriği özetle) ve mükellefin faaliyetine göre bu NİYE o nitelikte (ticari mal / hammadde-üretim girdisi / demirbaş-sabit kıymet / gider). İçerik faaliyetle uyumsuzsa nedenini söyle (ör. yemek üreticisinin aldığı klima → işte kullanılan sabit kıymet/demirbaş; araç kiralama → işyeri kirası değil). ⚠️ "alış"/"satış" kelimesini ve hesap NUMARASINI (153.01.001 gibi) YAZMA — yönü ve kesin hesabı SİSTEM ekleyecek; sen YALNIZ içeriği ve niteliği yorumla. Örnek: "Faturada ayçiçek yağı ve un alınmış; lokanta işletmesinin mutfağında kullandığı gıda malzemeleri olduğundan üretim girdisi (hammadde) niteliğindedir." Belge neyse onu açıkla, uydurma.',
       mukellefBilgi
         ? `BU FATURAYI ALAN MÜKELLEFİN İŞİ: ${mukellefBilgi}. kategoriyi mükellefin ANA FAALİYETİNE göre seç: üretim/imalat/LOKANTA/RESTORAN/KAFE/PASTANE/YEMEK işletmesi ana işinde KULLANDIĞI/işlediği/pişirdiği malı (gıda, yağ, un, et, sebze, süt, baharat, içecek, ambalaj…) alırsa "hammadde"; alım-satım (toptan/perakende/market) firması SATACAĞI ürünü alırsa "ticari_mal"; uzun ömürlü makine/cihaz/mobilya/bilgisayar/taşıt = "demirbas"; reklam/ilan/kargo/nakliye = "pazarlama"; SADECE işletmeyi yürüten sarf (kira, elektrik, su, doğalgaz, telefon, internet, akaryakıt, kırtasiye, temizlik, danışmanlık) = "genel_gider". ⚠️ KRİTİK-1: LOKANTA/RESTORAN/YEMEK üreticisinin aldığı GIDA / MUTFAK MALZEMESİ (yağ, un, et, sebze…) ASLA "genel_gider" ya da "demirbas" DEĞİLDİR — "hammadde"dir. ⚠️ KRİTİK-2: Mükellefin ANA FAALİYETİNDE SATMADIĞI bir CİHAZ/MAKİNE/EKİPMAN/MOBİLYA/KLİMA/BEYAZ EŞYA/BİLGİSAYAR/TELEVİZYON alımı = "demirbas" (sabit kıymet); ASLA "ticari_mal" DEĞİLDİR. "ticari_mal" YALNIZCA mükellefin o ürünü SATARAK ticaret yaptığı durumdur — ör. LOKANTA/YEMEK üreticisi KLİMA alırsa "demirbas"; klima TİCARETİ yapan firma klima alırsa "ticari_mal".`
         : '',
@@ -5918,7 +5918,7 @@ export class FaturaMuhasebelestirmeService implements OnModuleInit, OnModuleDest
           ...(counterName ? (isSale ? { customerName: counterName } : { vendorName: counterName }) : {}),
           status: 'NEEDS_REVIEW',
           ocrEngine: 'max-vision',
-          ocrData: { ...((d.ocrData as any) || {}), matrah, kdvTutari: kdv, kdvOrani: breakdown[0].rate, kdvBreakdown: breakdown.map((b: any) => ({ oran: b.rate, matrah: b.base, tutar: b.amount })), matrahKategori: typeof parsed.kategori === 'string' ? parsed.kategori : undefined, giderTuru: typeof parsed.giderTuru === 'string' ? parsed.giderTuru.slice(0, 40) : undefined, muhasebeNeden: typeof parsed.muhasebeNeden === 'string' ? parsed.muhasebeNeden.slice(0, 300) : undefined, ...(islSinifAi ? { isletme: islSinifAi } : {}), isReturn: parsed.iade === true || /iade|iptal/i.test(String(parsed.belgeTuru || '')), tevkifatHint: parsed.tevkifat === true || tevkifatOrani > 0 || /tevkifat/i.test(String(html || '')), tevkifatOrani: tevkifatOrani || 0, tevkifatKdv: tevkKdv || 0, engine: parsed._azure ? 'azure-read' : (parsed === preParsed ? 'ubl-xml' : 'max-vision'),
+          ocrData: { ...((d.ocrData as any) || {}), matrah, kdvTutari: kdv, kdvOrani: breakdown[0].rate, kdvBreakdown: breakdown.map((b: any) => ({ oran: b.rate, matrah: b.base, tutar: b.amount })), matrahKategori: typeof parsed.kategori === 'string' ? parsed.kategori : undefined, giderTuru: typeof parsed.giderTuru === 'string' ? parsed.giderTuru.slice(0, 40) : undefined, muhasebeNeden: typeof parsed.muhasebeNeden === 'string' ? parsed.muhasebeNeden.slice(0, 300) : undefined, aiYorum: typeof parsed.muhasebeNeden === 'string' ? parsed.muhasebeNeden.slice(0, 400) : undefined, ...(islSinifAi ? { isletme: islSinifAi } : {}), isReturn: parsed.iade === true || /iade|iptal/i.test(String(parsed.belgeTuru || '')), tevkifatHint: parsed.tevkifat === true || tevkifatOrani > 0 || /tevkifat/i.test(String(html || '')), tevkifatOrani: tevkifatOrani || 0, tevkifatKdv: tevkKdv || 0, engine: parsed._azure ? 'azure-read' : (parsed === preParsed ? 'ubl-xml' : 'max-vision'),
             readMode: parsed === preParsed ? 'ubl-xml' : (isImage ? 'image' : /pdf/i.test(imgMedia) ? 'pdf-text' : /xml/i.test(imgMedia) ? 'xml-text' : 'html'),
             ...(!preParsed && imgBuf && /xml/i.test(imgMedia) ? { xmlHead: imgBuf.toString('utf8').slice(0, 220).replace(/\s+/g, ' ') } : {}) },
         },
@@ -5949,7 +5949,7 @@ export class FaturaMuhasebelestirmeService implements OnModuleInit, OnModuleDest
       'YALNIZCA şu JSON: {"giderTuru":"","kategori":"","isletmeKayitTuru":"","isletmeAltTuru":"","isletmeNeden":"","muhasebeNeden":""}',
       'giderTuru: ALIŞ ise faturadaki ANA mal/hizmetin kısa adı (yakıt/motorin→"akaryakıt"; ayrıca "elektrik","su","doğalgaz","telefon","internet","kira","kırtasiye","danışmanlık","nakliye","yedek parça","bakım onarım","yemek","temizlik","sigorta","reklam" vb). Net değilse "". SATIŞ ise "".',
       'kategori: mükellefin ANA FAALİYETİNE göre → "ticari_mal" (satılacak emtia), "hammadde" (üretim girdisi), "demirbas" (makine/cihaz/sabit kıymet), "pazarlama" (reklam/kargo/nakliye), "genel_gider" (kira/elektrik/sarf/abonelik). Emin değilsen "genel_gider". ⚠️ Mükellefin SATMADIĞI cihaz/klima/makine/ekipman/mobilya/bilgisayar = "demirbas", ASLA "ticari_mal" değil (lokanta klima alırsa demirbas). Araç/taşıt kiralama = "genel_gider" ama giderTuru "araç kiralama" (kira değil).',
-      'muhasebeNeden: 1 KISA Türkçe cümle — bu belge mükellefin FAALİYETİNE göre nasıl değerlendirildi, hangi tür hesaba neden yazılmalı; içerik faaliyetle uyumsuzsa (yemek üreticisinde klima → demirbaş; araç kiralama → işyeri kira gideri değil) "manuel kontrol gerekir" de. SATIŞ ise olağan/tevkifatlı satış değerlendirmesi.',
+      'muhasebeNeden: Bir mali müşavir ağzından AKICI, DOĞAL Türkçe 1-2 cümlelik değerlendirme (kalıp DEĞİL — gerçekten yorumla). Faturada özetle NE alınmış/satılmış ve mükellefin faaliyetine göre bu NİYE o nitelikte (ticari mal / hammadde / demirbaş / gider). İçerik faaliyetle uyumsuzsa nedenini söyle. ⚠️ "alış"/"satış" kelimesini ve hesap NUMARASINI YAZMA — yönü ve kesin hesabı sistem ekler; sen YALNIZ içeriği ve niteliği yorumla. Örnek: "Faturada ofis için yazıcı ve toner alınmış; işte kullanılan sabit kıymet/demirbaş niteliğindedir."',
       isIsletme ? islPromptSeg() : 'isletmeKayitTuru ve isletmeAltTuru = "" bırak (mükellef İşletme defteri değil).',
       '\nİÇERİK:\n' + contentText.slice(0, 12000),
     ].filter(Boolean).join('\n');
@@ -5992,6 +5992,21 @@ export class FaturaMuhasebelestirmeService implements OnModuleInit, OnModuleDest
     const ic = giderTuru || katAd[kat] || 'alım';
     if (!hesap) return `${pre}${ic} alışı; içeriğe uygun hesap bulunamadı → manuel seçim gerekir.`;
     return `${pre}${ic} alışı → ${hesap}${kat && katAd[kat] && giderTuru ? ` (${katAd[kat]})` : ''}.`;
+  }
+
+  // YAPAY ZEKA YORUMU + SİSTEM ÇERÇEVESİ: yapay zeka faturayı OKURKEN içeriği/niteliği DOĞAL dille
+  //   yorumlar (aiYorum). Burada o yorumun BAŞINA yön (alış/satış — sistemde kesin), SONUNA seçilen
+  //   GERÇEK hesap kodu+adı (mükellefin planından) eklenir → "yapay zeka neye göre karar verdiyse onu
+  //   yazsın" + "kesin numarayı sistem koysun". Yapay zeka karar DEĞİŞTİRMEZ. aiYorum yoksa (eski belge
+  //   ya da okunamayan) deterministik buildMuhasebeNeden'e düşülür (güvenlik ağı, ekstra AI çağrısı YOK).
+  private composeMuhasebeNeden(faaliyet: string, isSale: boolean, isReturn: boolean, aiYorum: string, matrahAcc: any, kat: string, giderTuru: string): string {
+    const yorum = String(aiYorum || '').replace(/\s+/g, ' ').trim();
+    if (yorum.length <= 8) return this.buildMuhasebeNeden(faaliyet, isSale, kat, giderTuru, matrahAcc, isReturn);
+    const kod = matrahAcc ? String(matrahAcc.accountCode || '').trim() : '';
+    const ad = matrahAcc ? String(matrahAcc.accountName || '').trim() : '';
+    const yon = isReturn ? (isSale ? 'Satıştan iade.' : 'Alıştan iade.') : (isSale ? 'Satış faturası.' : 'Alış faturası.');
+    const hesapEk = kod ? ` → ${kod}${ad ? ' ' + ad : ''} hesabına işlenir.` : '';
+    return `${yon} ${yorum}${hesapEk}`.replace(/\s+/g, ' ').trim().slice(0, 500);
   }
 
   private async aiPickGiderAccount(
@@ -6462,8 +6477,13 @@ export class FaturaMuhasebelestirmeService implements OnModuleInit, OnModuleDest
       //   hesapla net kurulur → "neye göre işlendi". ocrData.muhasebeNeden'e yazılır (üstüne yazar).
       {
         const matrahAccForNeden = isSale ? saleMatrahDefault : categoryMatrah;
-        const neden = this.buildMuhasebeNeden(tpFaaliyet, isSale, kat, giderTuru, matrahAccForNeden, isReturn);
         const prevOcr = (doc.ocrData as any) || {};
+        // Yapay zekanın OKUMA ANINDA ürettiği gerçek içerik/nitelik yorumu (aiYorum) KORUNUR;
+        //   yön (sistemde KESİN) + seçilen GERÇEK hesap kodu (mükellefin planından) onun etrafına
+        //   eklenir. Yapay zeka karar değiştirmez, sistem yalnız kesin bilgiyle çerçeveler.
+        //   aiYorum yoksa (eski/okunamayan belge) eski deterministik cümleye düşülür (fallback).
+        const aiYorum = String(prevOcr.aiYorum || '').trim();
+        const neden = this.composeMuhasebeNeden(tpFaaliyet, isSale, isReturn, aiYorum, matrahAccForNeden, kat, giderTuru);
         if (neden && String(prevOcr.muhasebeNeden || '') !== neden) {
           await (this.prisma as any).invoiceAccountingDocument.update({ where: { id: doc.id }, data: { ocrData: { ...prevOcr, muhasebeNeden: neden } } });
         }
