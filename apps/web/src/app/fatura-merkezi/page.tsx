@@ -998,6 +998,11 @@ function ScreenFaturalar({ taxpayerId, period, kind = 'ALIS', isIsletme = false,
                     <tr className="detayrow">
                       <td colSpan={11}>
                         <div className="detaybox">
+                          {(d.ocrData as any)?.muhasebeNeden ? (
+                            <div style={{ padding: '7px 10px', marginBottom: 8, background: 'rgba(124,58,237,0.08)', borderLeft: '3px solid #7c3aed', borderRadius: 5, fontSize: 12.5, lineHeight: 1.45 }}>
+                              <b style={{ color: '#7c3aed' }}>💡 AI değerlendirmesi:</b> {(d.ocrData as any).muhasebeNeden}
+                            </div>
+                          ) : null}
                           {isIsletme ? (
                             <div style={{ padding: '4px 2px', fontSize: 13 }}>{(() => { const s = islSinif(d); return s.ok ? <><b>Kayıt Türü:</b> {s.ktAd}{s.altAd ? <> › {s.altAd}</> : null}</> : <span className="hk no">Kayıt türü belirlenemedi — "AI ile oku" ile yeniden okut ya da Muhasebeleştir'de seç.</span>; })()}</div>
                           ) : fisLines.length ? (
