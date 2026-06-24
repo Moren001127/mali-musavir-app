@@ -5669,6 +5669,7 @@ export class FaturaMuhasebelestirmeService implements OnModuleInit, OnModuleDest
    * Kilitli KDV/OCR modülüne DOKUNMAZ. Tek belge (frontend sırayla çağırır → HTTP timeout yok).
    */
   async aiReadDocument(tenantId: string, documentId: string) {
+    const _readT0 = Date.now(); // okuma süresi ölçümü (subprocess hızlandırma teşhisi → ocrData.readMs)
     const d = await (this.prisma as any).invoiceAccountingDocument.findFirst({
       where: { tenantId, id: documentId },
       select: { id: true, status: true, taxpayerId: true, invoiceKind: true, totalAmount: true, vendorName: true, customerName: true, belgeNo: true, source: true, sourceRefId: true, mimeType: true, s3Key: true, ocrData: true },
@@ -6002,6 +6003,7 @@ export class FaturaMuhasebelestirmeService implements OnModuleInit, OnModuleDest
           ocrEngine: 'max-vision',
           ocrData: { ...((d.ocrData as any) || {}), matrah, kdvTutari: kdv, kdvOrani: breakdown[0].rate, kdvBreakdown: breakdown.map((b: any) => ({ oran: b.rate, matrah: b.base, tutar: b.amount })), matrahKategori: typeof parsed.kategori === 'string' ? parsed.kategori : undefined, giderTuru: typeof parsed.giderTuru === 'string' ? parsed.giderTuru.slice(0, 40) : undefined, muhasebeNeden: typeof parsed.muhasebeNeden === 'string' ? parsed.muhasebeNeden.slice(0, 300) : undefined, aiYorum: typeof parsed.muhasebeNeden === 'string' ? parsed.muhasebeNeden.slice(0, 400) : undefined, aiMatrahKodu: (typeof parsed.matrahHesapKodu === 'string' && planLeafSet.has(String(parsed.matrahHesapKodu).trim())) ? String(parsed.matrahHesapKodu).trim() : undefined, kalemler: Array.isArray(parsed.kalemler) ? parsed.kalemler.slice(0, 30).map((k: any) => ({ ad: String(k?.ad || '').slice(0, 80), tutar: Number(k?.tutar) || 0, oran: Number(k?.oran) || 0 })).filter((k: any) => k.ad) : undefined, ...(islSinifAi ? { isletme: islSinifAi } : {}), isReturn: parsed.iade === true || /iade|iptal/i.test(String(parsed.belgeTuru || '')), tevkifatHint: parsed.tevkifat === true || tevkifatOrani > 0 || /tevkifat/i.test(String(html || '')), tevkifatOrani: tevkifatOrani || 0, tevkifatKdv: tevkKdv || 0, engine: parsed._azure ? 'azure-read' : (parsed === preParsed ? 'ubl-xml' : 'max-vision'),
             readMode: parsed === preParsed ? (parsed._azure ? 'azure-full' : 'ubl-xml') : (isImage ? (useAzureText ? 'azure-text' : 'vision') : /pdf/i.test(imgMedia) ? 'pdf-text' : /xml/i.test(imgMedia) ? 'xml-text' : 'html'),
+            readMs: Date.now() - _readT0, // tek belge okuma süresi (subprocess hızı ölçümü)
             ...(!preParsed && imgBuf && /xml/i.test(imgMedia) ? { xmlHead: imgBuf.toString('utf8').slice(0, 220).replace(/\s+/g, ' ') } : {}) },
         },
       });

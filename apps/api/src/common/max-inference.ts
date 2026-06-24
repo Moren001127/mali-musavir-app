@@ -163,6 +163,14 @@ export async function claudeTextViaMax(params: {
         // HIZ: her çağrıda CLAUDE.md/settings dosyalarını OKUMA (saf çıkarımda gereksiz; subprocess'i
         //   yavaşlatıp prompt'u şişiriyordu). Boş kaynak → ayar yükleme yok.
         settingSources: [],
+        // SUBPROCESS BAŞLANGIÇ HIZI (OCR kök yavaşlık): her query() yeni Claude Code subprocess'i
+        //   açıyor (~soğuk başlangıç). Saf metin/görüntü çıkarımı MCP/plugin/skill KULLANMAZ ama
+        //   subprocess açılışta bunları tarayıp yüklüyordu (yavaşlatan asıl yük). Hepsini kapat →
+        //   subprocess HAFİF + HIZLI başlar. İZOLASYON KORUNUR: her belge yine AYRI/temiz subprocess
+        //   (context karışmaz, muhasebe verisi güvende) — yalnızca başlangıç hızlanır.
+        mcpServers: {}, // MCP server bağlantısı kurma (yoksa zaten kullanılmıyor)
+        plugins: [], // plugin yükleme yok
+        skills: [], // skill tarama/yükleme yok (default 'all' tüm skill'leri tarar = yavaş)
       } as any),
     })) {
       if (m?.type === 'assistant') {
