@@ -6054,14 +6054,20 @@ export class FaturaMuhasebelestirmeService implements OnModuleInit, OnModuleDest
   private buildMuhasebeNeden(faaliyet: string, isSale: boolean, kat: string, giderTuru: string, matrahAcc: any, isReturn: boolean): string {
     const parts = String(faaliyet || '').split('—');
     const faal = (parts.length > 1 ? parts[1] : parts[0]).replace(/\s+/g, ' ').trim().slice(0, 60);
-    const pre = faal ? faal + '; ' : '';
-    const katAd: Record<string, string> = { ticari_mal: 'ticari mal', hammadde: 'hammadde/üretim girdisi', demirbas: 'demirbaş/sabit kıymet', pazarlama: 'pazarlama gideri', genel_gider: 'genel gider' };
-    const hesap = matrahAcc ? String(matrahAcc.accountName || '').trim() : '';
-    if (isReturn) return `${pre}iade faturası — ${isSale ? 'satıştan' : 'alıştan'} iade (ters kayıt); yön ve tutarlar kontrol edilmeli.`;
-    if (isSale) return `${pre}olağan satış → ${hesap || 'gelir (600) hesabı'}.`;
-    const ic = giderTuru || katAd[kat] || 'alım';
-    if (!hesap) return `${pre}${ic} alışı; içeriğe uygun hesap bulunamadı → manuel seçim gerekir.`;
-    return `${pre}${ic} alışı → ${hesap}${kat && katAd[kat] && giderTuru ? ` (${katAd[kat]})` : ''}.`;
+    const fpre = faal ? `${faal} faaliyeti. ` : '';
+    const katAd: Record<string, string> = { ticari_mal: 'ticari mal', hammadde: 'üretim girdisi (hammadde)', demirbas: 'demirbaş/sabit kıymet', pazarlama: 'pazarlama gideri', genel_gider: 'genel gider' };
+    const nitelik = katAd[kat] || '';
+    const kod = matrahAcc ? String(matrahAcc.accountCode || '').trim() : '';
+    const ad = matrahAcc ? String(matrahAcc.accountName || '').trim() : '';
+    const kodAd = kod ? `${kod}${ad ? ' ' + ad : ''}` : '';
+    const ic = giderTuru || nitelik || 'mal/hizmet';
+    // ⚠️ YÖN MÜKELLEF GÖZÜNDEN: ALIŞ'ta "MÜKELLEF ... ALDI" (satıcının ne SATTIĞI değil). AI okuma-anı
+    //   yorumu satıcı gözünden "satış" diyordu (lokananın havuç ALIŞINA "havuç satışı"; marketten alışa
+    //   "perakende satılmış") — burada yön rematch'te KESİN, mükellefin faaliyetine bağlanır.
+    if (isReturn) return `${fpre}${isSale ? 'Alıştan' : 'Satıştan'} iade (ters kayıt); yön ve tutarlar kontrol edilmeli${kodAd ? ` → ${kodAd}` : ''}.`;
+    if (isSale) return `${fpre}Mükellefin sattığı ${ic}; olağan satış geliri${kodAd ? ` → ${kodAd}` : ' (600 hesabı)'}.`;
+    if (!kodAd) return `${fpre}Mükellef ${ic} almış; faaliyetine uygun hesap bulunamadı, manuel seçim gerekir.`;
+    return `${fpre}Mükellef ${ic} almış; faaliyetinde ${nitelik || 'kullanılan girdi'} niteliğinde olduğundan ${kodAd} hesabına işlenir.`;
   }
 
   // YAPAY ZEKA YORUMU + SİSTEM ÇERÇEVESİ: yapay zeka faturayı OKURKEN içeriği/niteliği DOĞAL dille
@@ -6070,13 +6076,12 @@ export class FaturaMuhasebelestirmeService implements OnModuleInit, OnModuleDest
   //   yazsın" + "kesin numarayı sistem koysun". Yapay zeka karar DEĞİŞTİRMEZ. aiYorum yoksa (eski belge
   //   ya da okunamayan) deterministik buildMuhasebeNeden'e düşülür (güvenlik ağı, ekstra AI çağrısı YOK).
   private composeMuhasebeNeden(faaliyet: string, isSale: boolean, isReturn: boolean, aiYorum: string, matrahAcc: any, kat: string, giderTuru: string): string {
-    const yorum = String(aiYorum || '').replace(/\s+/g, ' ').trim();
-    if (yorum.length <= 8) return this.buildMuhasebeNeden(faaliyet, isSale, kat, giderTuru, matrahAcc, isReturn);
-    const kod = matrahAcc ? String(matrahAcc.accountCode || '').trim() : '';
-    const ad = matrahAcc ? String(matrahAcc.accountName || '').trim() : '';
-    const yon = isReturn ? (isSale ? 'Satıştan iade.' : 'Alıştan iade.') : (isSale ? 'Satış faturası.' : 'Alış faturası.');
-    const hesapEk = kod ? ` → ${kod}${ad ? ' ' + ad : ''} hesabına işlenir.` : '';
-    return `${yon} ${yorum}${hesapEk}`.replace(/\s+/g, ' ').trim().slice(0, 500);
+    // AI okuma-anı yorumu (aiYorum) GÜVENİLMEZ çıktı: YÖN'ü ve mükellef-faaliyetini karıştırıyordu —
+    //   satıcı/market gözünden "satış" diyordu (lokananın havuç ALIŞINA "havuç satışı, yurt içi satış";
+    //   marketten alışa "perakende satılmış, satış geliri"). Okuma anında yön henüz kesin değil. Yorum
+    //   artık DETERMINISTIK: yön (rematch'te KESİN, MÜKELLEF gözünden) + faaliyet + içerik + seçilen hesap.
+    void aiYorum; // okuma-anı yorumu bilerek kullanılmıyor (yanlış yön/satıcı-bakışı kaynağıydı)
+    return this.buildMuhasebeNeden(faaliyet, isSale, kat, giderTuru, matrahAcc, isReturn);
   }
 
   private async aiPickGiderAccount(

@@ -1602,7 +1602,12 @@ export default function KdvKontrolPage() {
         </div>
       )}
 
-      {/* İçerik denetimi paneli */}
+      {/* OCR Teyit paneli — içerik denetiminin ÜSTÜNDE (kullanıcı isteği) */}
+      {activeSession?.id && (
+        <OcrReviewPanel sessionId={activeSession.id} images={images as any} sessionType={activeSession.type} />
+      )}
+
+      {/* İçerik denetimi paneli — OCR teyit panelinin ALTINDA */}
       {activeSession && contentAuditRows.length > 0 && (
         <div
           className="rounded-xl overflow-hidden"
@@ -1647,7 +1652,7 @@ export default function KdvKontrolPage() {
               )}
             </div>
           </div>
-          <div className="max-h-[520px] overflow-y-auto p-2">
+          <div className="max-h-[320px] overflow-y-auto p-2">
             {contentAuditPanelRows.map((img: any) => (
               <div
                 key={img.id}
@@ -1681,10 +1686,6 @@ export default function KdvKontrolPage() {
             ))}
           </div>
         </div>
-      )}
-
-      {activeSession?.id && (
-        <OcrReviewPanel sessionId={activeSession.id} images={images as any} sessionType={activeSession.type} />
       )}
 
       {/* EŞLEŞME İNCELE PANELİ — PARTIAL / NEEDS_REVIEW durumundaki eşleşmeler için kullanıcı kararı */}
