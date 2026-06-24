@@ -618,21 +618,21 @@ export default function FaturaMerkeziPage() {
   const nav = (
     <nav className="nav">
       <div className="ncap">Çalışma</div>
-      <div className={`nitem${screen === 'mukellefler' ? ' on' : ''}`} onClick={() => go('mukellefler')}><Ico html={I.users} /> Mükellefler</div>
+      <div className={`nitem${screen === 'mukellefler' ? ' on' : ''}`} style={{ ['--icc' as any]: '#2563eb' }} onClick={() => go('mukellefler')}><Ico html={I.users} /> Mükellefler</div>
 
       <div className="ncap">Belgeler</div>
-      <div className={`nitem${screen === 'faturalar' || screen === 'satis' ? ' on' : ''}`} onClick={() => go('faturalar')}><Ico html={I.file} /> Gelen Faturalar</div>
+      <div className={`nitem${screen === 'faturalar' || screen === 'satis' ? ' on' : ''}`} style={{ ['--icc' as any]: '#15803d' }} onClick={() => go('faturalar')}><Ico html={I.file} /> Gelen Faturalar</div>
       <div className={`nsub${screen === 'faturalar' ? ' on' : ''}`} onClick={() => go('faturalar')}><span className="d" /> Bekleyen Alış Faturaları {badge(sum.alisPending)}</div>
       <div className={`nsub${screen === 'satis' ? ' on' : ''}`} onClick={() => go('satis')}><span className="d" /> Bekleyen Satış Faturaları {badge(sum.satisPending)}</div>
-      <div className={`nitem${screen === 'muhasebe' ? ' on' : ''}`} onClick={() => go('muhasebe')}><Ico html={I.ledger} /> Muhasebeleştir {badge(sum.pending)}</div>
-      <div className={`nitem${screen === 'aktarilanlar' ? ' on' : ''}`} onClick={() => go('aktarilanlar')}><Ico html={I.check} /> Aktarım {badge(Math.max(0, (Number(sum.approved) || 0) - (Number(sum.posted) || 0)))}</div>
-      <div className={`nitem${screen === 'arsiv' ? ' on' : ''}`} onClick={() => go('arsiv')}><Ico html={I.ledger} /> Arşivim {badge(sum.posted)}</div>
+      <div className={`nitem${screen === 'muhasebe' ? ' on' : ''}`} style={{ ['--icc' as any]: '#7c3aed' }} onClick={() => go('muhasebe')}><Ico html={I.ledger} /> Muhasebeleştir {badge(sum.pending)}</div>
+      <div className={`nitem${screen === 'aktarilanlar' ? ' on' : ''}`} style={{ ['--icc' as any]: '#0891b2' }} onClick={() => go('aktarilanlar')}><Ico html={I.check} /> Aktarım {badge(Math.max(0, (Number(sum.approved) || 0) - (Number(sum.posted) || 0)))}</div>
+      <div className={`nitem${screen === 'arsiv' ? ' on' : ''}`} style={{ ['--icc' as any]: '#d97706' }} onClick={() => go('arsiv')}><Ico html={I.ledger} /> Arşivim {badge(sum.posted)}</div>
 
       <div className="ncap">Kurulum</div>
-      <div className={`nitem${screen === 'kurallar' ? ' on' : ''}`} onClick={() => go('kurallar')}><Ico html={I.rules} /> Eşleştirme Kuralları</div>
-      <div className={`nitem${screen === 'entegrator' ? ' on' : ''}`} onClick={() => go('entegrator')}><Ico html={I.plug} /> Entegratörler</div>
-      <div className={`nitem${screen === 'kdv' ? ' on' : ''}`} onClick={() => go('kdv')}><Ico html={I.chart} /> KDV Raporu</div>
-      <div className={`nitem${screen === 'ayarlar' ? ' on' : ''}`} onClick={() => go('ayarlar')}><Ico html={I.ledger} /> Hesap Planı</div>
+      <div className={`nitem${screen === 'kurallar' ? ' on' : ''}`} style={{ ['--icc' as any]: '#475569' }} onClick={() => go('kurallar')}><Ico html={I.rules} /> Eşleştirme Kuralları</div>
+      <div className={`nitem${screen === 'entegrator' ? ' on' : ''}`} style={{ ['--icc' as any]: '#0d9488' }} onClick={() => go('entegrator')}><Ico html={I.plug} /> Entegratörler</div>
+      <div className={`nitem${screen === 'kdv' ? ' on' : ''}`} style={{ ['--icc' as any]: '#be123c' }} onClick={() => go('kdv')}><Ico html={I.chart} /> KDV Raporu</div>
+      <div className={`nitem${screen === 'ayarlar' ? ' on' : ''}`} style={{ ['--icc' as any]: '#15803d' }} onClick={() => go('ayarlar')}><Ico html={I.ledger} /> Hesap Planı</div>
     </nav>
   );
 
@@ -2753,6 +2753,8 @@ const CSS = `
 #fm-root .ncap{font-size:10px;color:var(--faint);font-weight:700;text-transform:uppercase;letter-spacing:.5px;padding:14px 10px 6px}
 #fm-root .nitem{display:flex;align-items:center;gap:10px;padding:9px 11px;border-radius:9px;color:var(--muted);font-weight:600;font-size:13px;cursor:pointer;margin-bottom:1px}
 #fm-root .nitem:hover{background:#f7f8fb;color:var(--text)}
+#fm-root .nitem > span:first-child{color:var(--icc,var(--faint));transition:color .12s}
+#fm-root .nitem.on > span:first-child{color:var(--accent)}
 #fm-root .nitem.on{background:var(--accent-soft);color:var(--accent);box-shadow:inset 3px 0 0 var(--accent)}
 #fm-root .nitem .ct{margin-left:auto;font-size:10.5px;font-weight:700;background:#eef1f5;color:var(--muted);border-radius:999px;padding:1px 7px}
 #fm-root .nitem.on .ct{background:#fff;color:var(--accent)}
