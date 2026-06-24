@@ -6358,7 +6358,17 @@ export class FaturaMuhasebelestirmeService implements OnModuleInit, OnModuleDest
       const vendorName = isSale ? doc.customerName : doc.vendorName;
       const vendorVkn = String((isSale ? doc.buyerVkn : doc.sellerVkn) || '').replace(/\D/g, '');
       // Kalem-bazlı kategori (AI ile oku'dan): stok/masraf/demirbaş ayrımını plana eşle.
-      const kat = String((doc.ocrData as any)?.matrahKategori || '').toLowerCase().trim();
+      let kat = String((doc.ocrData as any)?.matrahKategori || '').toLowerCase().trim();
+      // İÇERİK-FAALİYET TUTARLILIK DENETİMİ (kullanıcı kuralı: prompt yetmiyor, KOD da garanti etmeli):
+      //   AI kategoriyi "ticari_mal/hammadde/genel_gider" dese de, fatura İÇERİĞİ kesin bir sabit-kıymet
+      //   (cihaz/makine/mobilya/klima…) + mükellef o ürünü ANA FAALİYETİNDE SATMIYORSA → bu bir DEMİRBAŞ'tır
+      //   (lokantanın aldığı klima ticari mal değildir). detectFixedAsset = içerik(kalem/giderTuru/yorum) +
+      //   faaliyet semantiği — "nokta-yama DEĞİL"; klima TİCARETİ yapanın kliması ticari mal kalır (faaliyetinde
+      //   geçer → is=false). Bu içerik-sinyali AI kategorisini EZER → klima 153 TİCARİ MAL yerine 255 DEMİRBAŞ'a
+      //   (yoksa BOŞ; KAT_PREFIX[demirbas]=255/253/254, gider prefix'i YOK) gider. Belge zaten FIXED_ASSET_MANUAL
+      //   ile bloklu (manuel Luca) — kategori/hesap da artık tutarlı görünür. Yalnız ALIŞ (satış demirbaş ayrı).
+      const faDet = !isSale ? this.detectFixedAsset(doc.ocrData, tpRow) : { is: false, reason: '' };
+      if (faDet.is && kat !== 'demirbas') kat = 'demirbas';
       const KAT_PREFIX: Record<string, string[]> = {
         ticari_mal: ['153', '150', '770'],       // stok yoksa gidere düş
         hammadde: ['150', '153', '730', '740', '770'],
@@ -6418,7 +6428,10 @@ export class FaturaMuhasebelestirmeService implements OnModuleInit, OnModuleDest
       //   kullan (öğrenilmiş koddan SONRA, mekanik kategoriden ÖNCE — matrahForRate'te uygulanır).
       //   Yalnız ALIŞ: satış 600 mantığı (tevkifat-farkında) zaten doğru. Gelir (60x) kodu alışta reddedilir.
       const aiKod = String((doc.ocrData as any)?.aiMatrahKodu || '').trim();
-      const aiMatrahAcc = (!isSale && aiKod && !aiKod.startsWith('60') && isPostableLeaf(aiKod))
+      // Sabit-kıymet tespit edildiyse (faDet.is) AI'ın okuma anında seçtiği 153/770 gibi stok/gider kodu
+      //   GEÇERSİZ — yalnız 25x (demirbaş) kabul; aksi halde AI seçimi düşer, kategori-düzeltmesi (255/BOŞ) geçerli.
+      const aiMatrahAcc = (!isSale && aiKod && !aiKod.startsWith('60') && isPostableLeaf(aiKod)
+        && !(faDet.is && !/^25/.test(aiKod)))
         ? accounts.find((a: any) => String(a.accountCode || '') === aiKod) : null;
       const aiGroupLeaves = aiMatrahAcc
         ? accounts.filter((a: any) => { const c = String(a.accountCode || ''); return c.startsWith(aiKod.split('.').slice(0, 2).join('.') + '.') && isPostableLeaf(c); })
