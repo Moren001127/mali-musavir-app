@@ -5978,6 +5978,22 @@ export class FaturaMuhasebelestirmeService implements OnModuleInit, OnModuleDest
   // AI ile GİDER hesabı seçimi (kural/ad eşleşmesi bulamadığında ESKALASYON). Mükellefin FAALİYETİ +
   // faturanın İÇERİĞİ (giderTuru) ile, mükellefin GERÇEK hesap planından en uygun gider/stok/sabit hesabı
   // seçtirir. Dönen kod planda GERÇEKTEN yoksa null (uydurma kod kabul edilmez). Max aboneliği (token API yok).
+  // AI GEREKÇE (deterministik): "sistem bu hesabı NEYE GÖRE seçti" — mükellef faaliyeti + YÖN +
+  //   içerik/kategori + SEÇİLEN hesap. Okuma-anı AI yorumu yanlış olabiliyordu (alışa "satış" diyor,
+  //   firma faaliyetini kopyalıyordu); bu deterministik üretim yön-KESİN + hesap-KESİN, rematch'te yazılır.
+  private buildMuhasebeNeden(faaliyet: string, isSale: boolean, kat: string, giderTuru: string, matrahAcc: any, isReturn: boolean): string {
+    const parts = String(faaliyet || '').split('—');
+    const faal = (parts.length > 1 ? parts[1] : parts[0]).replace(/\s+/g, ' ').trim().slice(0, 60);
+    const pre = faal ? faal + '; ' : '';
+    const katAd: Record<string, string> = { ticari_mal: 'ticari mal', hammadde: 'hammadde/üretim girdisi', demirbas: 'demirbaş/sabit kıymet', pazarlama: 'pazarlama gideri', genel_gider: 'genel gider' };
+    const hesap = matrahAcc ? String(matrahAcc.accountName || '').trim() : '';
+    if (isReturn) return `${pre}iade faturası — ${isSale ? 'satıştan' : 'alıştan'} iade (ters kayıt); yön ve tutarlar kontrol edilmeli.`;
+    if (isSale) return `${pre}olağan satış → ${hesap || 'gelir (600) hesabı'}.`;
+    const ic = giderTuru || katAd[kat] || 'alım';
+    if (!hesap) return `${pre}${ic} alışı; içeriğe uygun hesap bulunamadı → manuel seçim gerekir.`;
+    return `${pre}${ic} alışı → ${hesap}${kat && katAd[kat] && giderTuru ? ` (${katAd[kat]})` : ''}.`;
+  }
+
   private async aiPickGiderAccount(
     accounts: Array<{ accountCode: string; accountName: string }>,
     faaliyet: string,
@@ -6439,6 +6455,17 @@ export class FaturaMuhasebelestirmeService implements OnModuleInit, OnModuleDest
           if (String(ln.description || '') !== wantDesc) {
             await (this.prisma as any).invoiceAccountingLine.update({ where: { id: ln.id }, data: { description: wantDesc } });
           }
+        }
+      }
+      // AI GEREKÇE (deterministik, yön-KESİN): okuma-anı AI yorumu yanlış olabiliyordu (alışa "satış"
+      //   diyor, firma faaliyetini kopyalıyordu). Burada faaliyet + GERÇEK yön + içerik + SEÇİLEN
+      //   hesapla net kurulur → "neye göre işlendi". ocrData.muhasebeNeden'e yazılır (üstüne yazar).
+      {
+        const matrahAccForNeden = isSale ? saleMatrahDefault : categoryMatrah;
+        const neden = this.buildMuhasebeNeden(tpFaaliyet, isSale, kat, giderTuru, matrahAccForNeden, isReturn);
+        const prevOcr = (doc.ocrData as any) || {};
+        if (neden && String(prevOcr.muhasebeNeden || '') !== neden) {
+          await (this.prisma as any).invoiceAccountingDocument.update({ where: { id: doc.id }, data: { ocrData: { ...prevOcr, muhasebeNeden: neden } } });
         }
       }
     }
