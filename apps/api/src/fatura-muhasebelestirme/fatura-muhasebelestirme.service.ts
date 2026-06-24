@@ -5841,7 +5841,11 @@ export class FaturaMuhasebelestirmeService implements OnModuleInit, OnModuleDest
     let azureText = ''; // Azure'un okuduğu HAM METİN (preParsed olmasa/güven düşük olsa bile) — Max'e
     //   GÖRÜNTÜ yerine METİN verip vision'ı atlamak için (HIZ: text okuma ~3x hızlı + alt-süreç hafif).
     if (!preParsed && isImage && imgBuf) {
-      const az: any = await this.ocr.extractFromImage(imgBuf, String(d.belgeNo || 'fatura'), {}).catch(() => null);
+      const _azT0 = Date.now();
+      const az: any = await this.ocr.extractFromImage(imgBuf, String(d.belgeNo || 'fatura'), {}).catch((e: any) => { console.warn(`[FM-OKU-PROB] extractFromImage HATA belge=${d.belgeNo}: ${e?.message || e}`); return null; });
+      // GEÇİCİ TEŞHİS PROBU: okuma yavaşlığının kök nedeni (Azure devrede mi, ne kadar sürüyor, metin
+      //   çıkıyor mu, hangi motor) — log netleşince KALDIRILACAK. console.warn (libsignal log filtresine takılmaz).
+      console.warn(`[FM-OKU-PROB] belge=${d.belgeNo} isImage=${isImage} mime=${imgMedia} azureMs=${Date.now() - _azT0} azRawLen=${az ? String(az.rawText || '').replace(/\s+/g, ' ').trim().length : -1} azEngine=${az?.engine || '-'} azConf=${az?.confidence ?? '-'} bufKB=${Math.round((imgBuf?.length || 0) / 1024)}`);
       if (az && String(az.rawText || '').replace(/\s+/g, ' ').trim().length > 80) azureText = String(az.rawText);
       const azTotal = az ? this.numFromOcr(az.totalTutari) : 0;
       const azBd = az && Array.isArray(az.kdvBreakdown) ? az.kdvBreakdown : [];
@@ -5878,6 +5882,7 @@ export class FaturaMuhasebelestirmeService implements OnModuleInit, OnModuleDest
     //   → text okuma vision'dan çok HIZLI + alt-süreç hafif (OOM riski az). Görüntü-vision yalnız Azure
     //   metni yoksa. Yanlış okumayı denge/KDV-matematik doğrulaması yakalar. (Kullanıcı: "okuma yavaş".)
     const useAzureText = azureText.length > 80;
+    console.warn(`[FM-OKU-PROB2] belge=${d.belgeNo} azureTextLen=${azureText.length} useAzureText=${useAzureText} preParsed=${!!preParsed} yol=${preParsed ? 'PRE-PARSED(azure-direkt)' : useAzureText ? 'MAX-TEXT(hizli)' : (isImage ? 'MAX-VISION-GORUNTU(yavas)' : 'MAX-TEXT-html')}`);
     const callPrompt = useAzureText ? (prompt + '\n\nBELGE METNİ (OCR ile okundu):\n' + azureText.slice(0, 20000)) : prompt;
     for (let attempt = 1; attempt <= 3 && !parsed; attempt++) {
       const model = attempt >= 3 ? undefined : MAX_MODEL_CHEAP; // 3. deneme: Sonnet (varsayılan)
