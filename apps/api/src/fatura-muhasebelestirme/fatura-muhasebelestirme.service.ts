@@ -1976,14 +1976,15 @@ export class FaturaMuhasebelestirmeService implements OnModuleInit, OnModuleDest
       select: { id: true },
     }).catch(() => null);
     if (recent) return;
-    // Plan TAZE (<3 gün) ise dokunma; yok ya da eskiyse çek.
+    // SADECE planı HİÇ OLMAYAN mükellefte çek (kullanıcı kararı). Planı varsa DOKUNMA — Luca yerel
+    //   makinede, gece/kapalıyken çalışmaz; eski-plan tazeleme ayrı planlanacak. Bu yüzden "eskiyse çek"
+    //   mantığı kaldırıldı; sadece ilk kurulum (plan yok) tetikler.
     const snap = await (this.prisma as any).lucaAccountPlanSnapshot.findFirst({
       where: { tenantId, taxpayerId, status: 'READY' },
-      orderBy: { createdAt: 'desc' },
-      select: { createdAt: true },
+      select: { id: true },
     }).catch(() => null);
-    if (snap?.createdAt && (Date.now() - new Date(snap.createdAt).getTime()) < 3 * 24 * 60 * 60 * 1000) return;
-    await this.refreshAccountPlan(tenantId, { taxpayerId, createdBy: 'oto-plan-tazeleme' }).catch(() => {});
+    if (snap) return; // plan zaten var → tetikleme
+    await this.refreshAccountPlan(tenantId, { taxpayerId, createdBy: 'oto-plan-ilk-kurulum' }).catch(() => {});
   }
 
   /**
@@ -2421,11 +2422,6 @@ export class FaturaMuhasebelestirmeService implements OnModuleInit, OnModuleDest
       where: { tenantId, id: { in: ids }, status: { not: 'APPROVED' } },
       select: { id: true, taxpayerId: true },
     });
-    // ④ Plan tazeleme: okumadan önce bilanço mükellef(ler)inin planı yoksa/eskiyse Luca'dan çekmeyi
-    //   başlat (arka plan; debounce'lı, işletme atlanır). Fire-and-forget — okumayı bekletmez.
-    for (const tp of [...new Set(docs.map((d: any) => d.taxpayerId).filter(Boolean))]) {
-      this.maybeRefreshAccountPlan(tenantId, tp as string).catch(() => {});
-    }
     // ÖNCELİK: kullanıcının elle "AI ile oku" isteği kuyruğun ÖNÜNE (unshift) → arka plan
     // kurtarma (push, arkada) onu bekletmesin; seçtiğin mükellefin belgeleri hemen sıraya geçer.
     for (const d of docs) {
@@ -5825,7 +5821,7 @@ export class FaturaMuhasebelestirmeService implements OnModuleInit, OnModuleDest
         ? `BU FATURAYI ALAN MÜKELLEFİN İŞİ: ${mukellefBilgi}. kategoriyi mükellefin ANA FAALİYETİNE göre seç: üretim/imalat/LOKANTA/RESTORAN/KAFE/PASTANE/YEMEK işletmesi ana işinde KULLANDIĞI/işlediği/pişirdiği malı (gıda, yağ, un, et, sebze, süt, baharat, içecek, ambalaj…) alırsa "hammadde"; alım-satım (toptan/perakende/market) firması SATACAĞI ürünü alırsa "ticari_mal"; uzun ömürlü makine/cihaz/mobilya/bilgisayar/taşıt = "demirbas"; reklam/ilan/kargo/nakliye = "pazarlama"; SADECE işletmeyi yürüten sarf (kira, elektrik, su, doğalgaz, telefon, internet, akaryakıt, kırtasiye, temizlik, danışmanlık) = "genel_gider". ⚠️ KRİTİK-1: LOKANTA/RESTORAN/YEMEK üreticisinin aldığı GIDA / MUTFAK MALZEMESİ (yağ, un, et, sebze…) ASLA "genel_gider" ya da "demirbas" DEĞİLDİR — "hammadde"dir. ⚠️ KRİTİK-2: Mükellefin ANA FAALİYETİNDE SATMADIĞI bir CİHAZ/MAKİNE/EKİPMAN/MOBİLYA/KLİMA/BEYAZ EŞYA/BİLGİSAYAR/TELEVİZYON alımı = "demirbas" (sabit kıymet); ASLA "ticari_mal" DEĞİLDİR. "ticari_mal" YALNIZCA mükellefin o ürünü SATARAK ticaret yaptığı durumdur — ör. LOKANTA/YEMEK üreticisi KLİMA alırsa "demirbas"; klima TİCARETİ yapan firma klima alırsa "ticari_mal".`
         : '',
       planAdaylar ? `\nMÜKELLEFİN HESAP PLANI — matrah/gider için aday hesaplar (matrahHesapKodu'nu SADECE bu listeden seç):\n${planAdaylar}\n→ matrahHesapKodu: bu faturanın matrahını (mal/hizmet/gider tutarını) mükellefin İŞİNE ve fatura İÇERİĞİNE göre yukarıdaki listeden EN UYGUN TAM koda ata. Mükellefin SATARAK ticaret yaptığı emtia → stok (15x); kendi işinde KULLANDIĞI/tükettiği şey → ilgili gider (7xx/6xx; ör. mutfak malzemesi/çatal-kaşık→mutfak gideri, yakıt→akaryakıt gideri); uzun ömürlü makine/cihaz/mobilya/demirbaş → sabit kıymet (25x); SATIŞ faturasıysa gelir (600). ⚠️ İçeriğe gerçekten uyan hesap yoksa BOŞ bırak — listede OLMAYAN kodu ASLA yazma, uydurma.` : '',
-      isImage ? '' : ('\nİÇERİK:\n' + html.replace(/<[^>]+>/g, ' ').replace(/\s+/g, ' ').slice(0, 45000)),
+      isImage ? '' : ('\nİÇERİK:\n' + html.replace(/<(script|style)[^>]*>[\s\S]*?<\/(script|style)>/gi, ' ').replace(/<[^>]+>/g, ' ').replace(/&[a-z#0-9]+;/gi, ' ').replace(/\s+/g, ' ').trim().slice(0, 16000)),
     ].filter(Boolean).join('\n');
 
     // Süre: Max CLI ilk çağrıda soğuk başlar + uzun HTML metni yavaş işlenir; 22sn YETMİYORDU
@@ -5841,11 +5837,7 @@ export class FaturaMuhasebelestirmeService implements OnModuleInit, OnModuleDest
     let azureText = ''; // Azure'un okuduğu HAM METİN (preParsed olmasa/güven düşük olsa bile) — Max'e
     //   GÖRÜNTÜ yerine METİN verip vision'ı atlamak için (HIZ: text okuma ~3x hızlı + alt-süreç hafif).
     if (!preParsed && isImage && imgBuf) {
-      const _azT0 = Date.now();
-      const az: any = await this.ocr.extractFromImage(imgBuf, String(d.belgeNo || 'fatura'), {}).catch((e: any) => { console.warn(`[FM-OKU-PROB] extractFromImage HATA belge=${d.belgeNo}: ${e?.message || e}`); return null; });
-      // GEÇİCİ TEŞHİS PROBU: okuma yavaşlığının kök nedeni (Azure devrede mi, ne kadar sürüyor, metin
-      //   çıkıyor mu, hangi motor) — log netleşince KALDIRILACAK. console.warn (libsignal log filtresine takılmaz).
-      console.warn(`[FM-OKU-PROB] belge=${d.belgeNo} isImage=${isImage} mime=${imgMedia} azureMs=${Date.now() - _azT0} azRawLen=${az ? String(az.rawText || '').replace(/\s+/g, ' ').trim().length : -1} azEngine=${az?.engine || '-'} azConf=${az?.confidence ?? '-'} bufKB=${Math.round((imgBuf?.length || 0) / 1024)}`);
+      const az: any = await this.ocr.extractFromImage(imgBuf, String(d.belgeNo || 'fatura'), {}).catch(() => null);
       if (az && String(az.rawText || '').replace(/\s+/g, ' ').trim().length > 80) azureText = String(az.rawText);
       const azTotal = az ? this.numFromOcr(az.totalTutari) : 0;
       const azBd = az && Array.isArray(az.kdvBreakdown) ? az.kdvBreakdown : [];
@@ -5882,7 +5874,6 @@ export class FaturaMuhasebelestirmeService implements OnModuleInit, OnModuleDest
     //   → text okuma vision'dan çok HIZLI + alt-süreç hafif (OOM riski az). Görüntü-vision yalnız Azure
     //   metni yoksa. Yanlış okumayı denge/KDV-matematik doğrulaması yakalar. (Kullanıcı: "okuma yavaş".)
     const useAzureText = azureText.length > 80;
-    console.warn(`[FM-OKU-PROB2] belge=${d.belgeNo} azureTextLen=${azureText.length} useAzureText=${useAzureText} preParsed=${!!preParsed} yol=${preParsed ? 'PRE-PARSED(azure-direkt)' : useAzureText ? 'MAX-TEXT(hizli)' : (isImage ? 'MAX-VISION-GORUNTU(yavas)' : 'MAX-TEXT-html')}`);
     const callPrompt = useAzureText ? (prompt + '\n\nBELGE METNİ (OCR ile okundu):\n' + azureText.slice(0, 20000)) : prompt;
     for (let attempt = 1; attempt <= 3 && !parsed; attempt++) {
       const model = attempt >= 3 ? undefined : MAX_MODEL_CHEAP; // 3. deneme: Sonnet (varsayılan)
