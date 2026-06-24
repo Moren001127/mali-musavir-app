@@ -6084,6 +6084,119 @@ export class FaturaMuhasebelestirmeService implements OnModuleInit, OnModuleDest
     return this.buildMuhasebeNeden(faaliyet, isSale, kat, giderTuru, matrahAcc, isReturn);
   }
 
+  // ZENGİN AI MUHASEBE YORUMU (eşleştirme SONRASI, tek belge, lazy/on-demand). Deterministik
+  //   buildMuhasebeNeden kullanıcıya "yavan" geliyordu; istenen = mali müşavir ağzından 2 bölümlü
+  //   GERÇEK değerlendirme (Faaliyet + Yorum). Okuma-anı AI yorumu YÖN'ü karıştırıyordu ("alışa satış");
+  //   burada yön (invoiceKind) + seçilen GERÇEK hesap KESİN belli → AI'a VERİLİR, AI yalnız İÇERİĞİ
+  //   yapılandırılmış cümleyle açıklar (karar/yön DEĞİŞTİREMEZ). Sonuç ocrData.muhasebeNedenZengin'e
+  //   cache'lenir (tekrar açılışta AI çağrısı YOK); "Kodları düzelt"/rematch hesabı değiştirirse cache
+  //   temizlenir → bir sonraki açılışta tazelenir. Max yolu (MAX_MODEL_CHEAP), token-başı API yok.
+  async generateRichMuhasebeNeden(
+    tenantId: string,
+    docId: string,
+    force = false,
+  ): Promise<{ ok: boolean; neden: string; zengin: boolean }> {
+    const doc: any = await (this.prisma as any).invoiceAccountingDocument
+      .findFirst({ where: { id: docId, tenantId }, include: { lines: { orderBy: { orderNo: 'asc' } } } })
+      .catch(() => null);
+    if (!doc) return { ok: false, neden: '', zengin: false };
+    const ocr = (doc.ocrData as any) || {};
+    // Cache: zaten üretilmiş zengin yorum varsa (ve zorlanmadıysa) onu döndür — AI çağrısı yok.
+    const cached = String(ocr.muhasebeNedenZengin || '').trim();
+    if (!force && cached) return { ok: true, neden: cached, zengin: true };
+
+    // KESİN yön (rematch ile aynı türetim) + iade.
+    const isSale = String(doc.invoiceKind || 'ALIS').toUpperCase() === 'SATIS';
+    const isReturn = ocr.isReturn === true;
+    // Seçilen GERÇEK matrah/gider hesabı (kullanıcının/eşleştirmenin koyduğu) — yoksa zengin yorumun
+    //   "şu hesaba işlendi" kısmı kurulamaz → deterministik özete düş (AI çağrısı boşa gitmesin).
+    const matrahLines = (doc.lines || []).filter(
+      (l: any) => String(l.group || '') === 'matrah' && String(l.accountCode || '').trim(),
+    );
+    const hesapStr = matrahLines
+      .map((l: any) => `${String(l.accountCode).trim()}${l.description ? ' ' + String(l.description).trim() : ''}`)
+      .filter((v: string, i: number, a: string[]) => a.indexOf(v) === i)
+      .join(', ');
+
+    // Mükellef faaliyeti (rematch'teki ile aynı kaynak).
+    const tpRow: any = await (this.prisma as any).taxpayer
+      .findFirst({ where: { id: doc.taxpayerId, tenantId }, select: { companyName: true, firstName: true, lastName: true, naceKodu: true, faaliyetAciklama: true } })
+      .catch(() => null);
+    const tpFaaliyet = tpRow
+      ? [String(tpRow.companyName || (String(tpRow.firstName || '') + ' ' + String(tpRow.lastName || ''))).trim(), String(tpRow.faaliyetAciklama || '').trim() || (tpRow.naceKodu ? 'NACE ' + tpRow.naceKodu : '')].filter(Boolean).join(' — ')
+      : '';
+
+    // Fatura kalemleri (#20 Faz A — ocrData.kalemler). Eski belgelerde yoksa giderTuru/kategori ile yorumlanır.
+    const kalemler: any[] = Array.isArray(ocr.kalemler) ? ocr.kalemler : [];
+    const kalemStr = kalemler
+      .slice(0, 30)
+      .map((k: any) => {
+        const ad = String(k.ad || '').trim();
+        if (!ad) return '';
+        const t = Number(k.tutar) || 0;
+        const o = k.oran != null && k.oran !== '' ? `%${k.oran}` : '';
+        const ek = t ? ` (${t.toLocaleString('tr-TR')} TL${o ? ', ' + o : ''})` : o ? ` (${o})` : '';
+        return ad + ek;
+      })
+      .filter(Boolean)
+      .join('; ');
+    const giderTuru = String(ocr.giderTuru || '').trim();
+    const kat = String(ocr.matrahKategori || ocr.kategori || '').trim();
+
+    // Hesap atanmamışsa zengin yorum anlamsız → deterministik özet (AI çağırma).
+    const matrahAccForNeden = matrahLines.length ? { accountCode: String(matrahLines[0].accountCode).trim(), accountName: String(matrahLines[0].description || '').trim() } : null;
+    if (!hesapStr || !matrahAccForNeden) {
+      const det = this.buildMuhasebeNeden(tpFaaliyet, isSale, kat, giderTuru, matrahAccForNeden, isReturn);
+      return { ok: true, neden: det, zengin: false };
+    }
+
+    const yonText = isReturn
+      ? isSale
+        ? 'mükellefin DÜZENLEDİĞİ bir ALIŞTAN İADE (ters kayıt) faturasıdır — daha önce alınan mal geri verilmiştir'
+        : 'mükellefe DÜZENLENEN bir SATIŞTAN İADE faturasıdır — daha önce satılan mal geri gelmiştir'
+      : isSale
+        ? 'mükellef için bir SATIŞ (gelir) faturasıdır — bu mal/hizmeti mükellef SATMIŞTIR'
+        : 'mükellef için bir ALIŞ (gider/gelen) faturasıdır — bu mal/hizmeti mükellef ALMIŞTIR';
+
+    const prompt = [
+      'Sen deneyimli bir Türk mali müşavirisin. Aşağıdaki fatura için KISA, AKICI ve DOĞAL Türkçe ile bir muhasebe değerlendirmesi yaz.',
+      '⚠️ YÖN ve HESAP KESİN olarak verildi — bunları SORGULAMA, DEĞİŞTİRME, yönü TERS çevirme. Sen YALNIZ faturanın İÇERİĞİNİ yorumla; kararı sistem verdi.',
+      `Mükellefin işi: ${tpFaaliyet || 'belirtilmemiş'}.`,
+      `Bu fatura ${yonText}.`,
+      kalemStr ? `Faturadaki kalemler: ${kalemStr}.` : `Faturanın içeriği: ${giderTuru || kat || 'belirsiz'}.`,
+      `Sistemin işlediği muhasebe hesabı: ${hesapStr}.`,
+      '',
+      'ÇIKTI — TAM OLARAK aşağıdaki iki satır; başka HİÇBİR şey yazma (kod bloğu, yıldız, madde işareti, ek başlık YOK):',
+      'Faaliyet: <mükellefin ne iş yaptığını tek cümleyle açıkla>',
+      'Yorum: <Faturada özetle nelerin alındığını/satıldığını içerikten özetle; mükellefin faaliyetine göre bunların NİYE ticari mal / üretim girdisi(hammadde) / demirbaş / gider niteliğinde olduğunu açıkla; içerik faaliyetle uyumsuzsa (ör. lokantanın aldığı klima → demirbaş) nedenini belirt; cümleyi "... bu nedenle ' + hesapStr + ' hesabına işlenmiştir." ile bitir>',
+      '',
+      'KURALLAR: Yönü MÜKELLEF gözünden anlat (ALIŞ ise "mükellef almış"; satıcının ne sattığı önemli değil). Hesap kodunu (' + hesapStr + ') Yorum cümlesinde AYNEN kullan. Faturada olmayan şey UYDURMA. Toplam ~60 kelimeyi geçme.',
+    ].join('\n');
+
+    const res = await claudeTextViaMax({ prompt, timeoutMs: 30000, model: MAX_MODEL_CHEAP }).catch(() => null);
+    let text = res && res.ok && res.text ? String(res.text) : '';
+    // Temizle: kod bloğu çitleri, baştaki etiket/numara süprüntüsü; "Faaliyet:"/"Yorum:" satırlarını koru.
+    text = text.replace(/```[a-z]*/gi, '').replace(/```/g, '').trim();
+    if (text) {
+      const fa = text.match(/Faaliyet\s*:?[ \t]*(.+?)(?:\n+|$)/i);
+      const yo = text.match(/Yorum\s*:?[ \t]*([\s\S]+)$/i);
+      if (fa && yo) {
+        text = `Faaliyet: ${fa[1].trim()}\nYorum: ${yo[1].replace(/\s+/g, ' ').trim()}`;
+      }
+      text = text.slice(0, 900).trim();
+    }
+    if (!text) {
+      // AI boş/başarısız → deterministik özet (cache'leme, sonra tekrar denenebilsin).
+      const det = this.buildMuhasebeNeden(tpFaaliyet, isSale, kat, giderTuru, matrahAccForNeden, isReturn);
+      return { ok: true, neden: det, zengin: false };
+    }
+    // Cache (üstüne yaz). Deterministik muhasebeNeden'e DOKUNMA (anlık fallback olarak kalsın).
+    await (this.prisma as any).invoiceAccountingDocument
+      .update({ where: { id: doc.id }, data: { ocrData: { ...ocr, muhasebeNedenZengin: text } } })
+      .catch(() => {});
+    return { ok: true, neden: text, zengin: true };
+  }
+
   private async aiPickGiderAccount(
     accounts: Array<{ accountCode: string; accountName: string }>,
     faaliyet: string,
@@ -6587,8 +6700,17 @@ export class FaturaMuhasebelestirmeService implements OnModuleInit, OnModuleDest
         //   aiYorum yoksa (eski/okunamayan belge) eski deterministik cümleye düşülür (fallback).
         const aiYorum = String(prevOcr.aiYorum || '').trim();
         const neden = this.composeMuhasebeNeden(tpFaaliyet, isSale, isReturn, aiYorum, matrahAccForNeden, kat, giderTuru);
-        if (neden && String(prevOcr.muhasebeNeden || '') !== neden) {
-          await (this.prisma as any).invoiceAccountingDocument.update({ where: { id: doc.id }, data: { ocrData: { ...prevOcr, muhasebeNeden: neden } } });
+        // ZENGİN AI YORUMU (ocrData.muhasebeNedenZengin) bayatlamasın: rematch kodları/yönü yeniden
+        //   eşledi → daha önce üretilmiş zengin yorum eski hesap/içeriğe ait olabilir. KOŞULSUZ temizle;
+        //   kullanıcı belgeyi tekrar açınca lazy yeniden üretilir (tek belge = tek Max çağrısı, ucuz).
+        //   Deterministik muhasebeNeden anlık fallback olarak güncel kalır.
+        const hadZengin = !!String(prevOcr.muhasebeNedenZengin || '');
+        const nedenChanged = neden && String(prevOcr.muhasebeNeden || '') !== neden;
+        if (nedenChanged || hadZengin) {
+          await (this.prisma as any).invoiceAccountingDocument.update({
+            where: { id: doc.id },
+            data: { ocrData: { ...prevOcr, ...(neden ? { muhasebeNeden: neden } : {}), muhasebeNedenZengin: '' } },
+          });
         }
       }
     }

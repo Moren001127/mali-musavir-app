@@ -883,6 +883,34 @@ function ScreenFaturalar({ taxpayerId, period, kind = 'ALIS', isIsletme = false,
   // Yevmiye fişi / kayıt türü detayı — listede aç-kapa (Muhasebeleştir'e gitmeden NEYLE eşleşti görünür).
   const [fisDetayId, setFisDetayId] = useState('');
   const grpLabel = (g: string) => g === 'matrah' ? 'Matrah' : g === 'vergi' ? 'KDV' : g === 'cari' ? 'Cari' : g === 'tevkifat' ? 'Tevkifat' : (g || '—');
+  // ZENGİN AI YORUMU — belge detayı (defter ikonu) açılınca lazy üret. Belgede ocrData.muhasebeNedenZengin
+  //   yoksa tek-belge çağrısı yapılır (eşleştirme SONRASI; yön+hesap kesin → AI yalnız içeriği yorumlar).
+  //   fetchedRef bir kez çağrı garantisi (docs tazelense de yeniden istemez); deterministik muhasebeNeden
+  //   yorum gelene kadar anlık gösterilir.
+  const [richNotes, setRichNotes] = useState<Record<string, { loading?: boolean; text?: string }>>({});
+  const richFetchedRef = useRef<Set<string>>(new Set());
+  useEffect(() => {
+    const id = fisDetayId;
+    if (!id) return;
+    const d = docs.find((x: any) => x.id === id);
+    if (!d) return;
+    if (String((d.ocrData as any)?.muhasebeNedenZengin || '')) return; // DB'de zaten var
+    if (richFetchedRef.current.has(id)) return; // zaten istendi
+    richFetchedRef.current.add(id);
+    setRichNotes((s) => ({ ...s, [id]: { loading: true } }));
+    api.post(`/fatura-muhasebelestirme/documents/${id}/muhasebe-yorum`)
+      .then((r) => {
+        const t = String(r.data?.neden || '');
+        const zengin = r.data?.zengin === true;
+        setRichNotes((s) => ({ ...s, [id]: { loading: false, text: zengin ? t : '' } }));
+      })
+      .catch(() => setRichNotes((s) => ({ ...s, [id]: { loading: false, text: '' } })));
+  }, [fisDetayId, docs]);
+  // "Faaliyet: … / Yorum: …" iki bölümü satır satır, etiketleri vurgulu göster (deterministik tek cümlede düz).
+  const renderNeden = (text: string) => text.split('\n').map((ln, i) => {
+    const m = ln.match(/^\s*(Faaliyet|Yorum)\s*:\s*(.*)$/i);
+    return <div key={i} style={{ marginTop: i ? 3 : 0 }}>{m ? <><b style={{ color: '#6d28d9' }}>{m[1]}:</b> {m[2]}</> : ln}</div>;
+  });
 
   const muhasebelestir = () => {
     // İşletme defteri: hesap kodu YOK — tutarı olan hazır. Bilanço: TÜM satırların kodu dolu (cari dahil).
@@ -1003,11 +1031,18 @@ function ScreenFaturalar({ taxpayerId, period, kind = 'ALIS', isIsletme = false,
                     <tr className="detayrow">
                       <td colSpan={11}>
                         <div className="detaybox">
-                          {(d.ocrData as any)?.muhasebeNeden ? (
-                            <div style={{ padding: '7px 10px', marginBottom: 8, background: 'rgba(124,58,237,0.08)', borderLeft: '3px solid #7c3aed', borderRadius: 5, fontSize: 12.5, lineHeight: 1.5, whiteSpace: 'normal', wordBreak: 'break-word', overflowWrap: 'anywhere', maxWidth: 940 }}>
-                              <b style={{ color: '#7c3aed' }}>💡 AI değerlendirmesi:</b> {(d.ocrData as any).muhasebeNeden}
+                          {(() => {
+                            const rn = richNotes[d.id];
+                            const text = (rn?.text || String((d.ocrData as any)?.muhasebeNedenZengin || '') || String((d.ocrData as any)?.muhasebeNeden || '')).trim();
+                            const loading = !!rn?.loading && !text;
+                            if (!text && !loading) return null;
+                            return (
+                              <div style={{ padding: '7px 10px', marginBottom: 8, background: 'rgba(124,58,237,0.08)', borderLeft: '3px solid #7c3aed', borderRadius: 5, fontSize: 12.5, lineHeight: 1.5, whiteSpace: 'normal', wordBreak: 'break-word', overflowWrap: 'anywhere', maxWidth: 940 }}>
+                              <b style={{ color: '#7c3aed' }}>💡 AI değerlendirmesi:</b>{' '}
+                              {loading ? <span style={{ opacity: 0.7 }}>yorumlanıyor…</span> : renderNeden(text)}
                             </div>
-                          ) : null}
+                            );
+                          })()}
                           {Array.isArray((d.ocrData as any)?.kalemler) && (d.ocrData as any).kalemler.length > 0 ? (
                             <div style={{ padding: '6px 10px', marginBottom: 8, background: 'rgba(255,255,255,0.025)', border: '1px solid var(--line)', borderRadius: 5, fontSize: 11.5, maxWidth: 940 }}>
                               <b style={{ color: 'var(--faint)' }}>📋 Fatura kalemleri</b>
