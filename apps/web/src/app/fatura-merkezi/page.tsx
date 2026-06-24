@@ -934,6 +934,13 @@ function ScreenFaturalar({ taxpayerId, period, kind = 'ALIS', isIsletme = false,
     <section className="screen">
       <div className="h2">{kind === 'SATIS' ? 'Bekleyen Satış Faturaları' : 'Bekleyen Alış Faturaları'}</div>
       <div className="sub">{kind === 'SATIS' ? 'Mükellefin kestiği satış faturaları — kuralla otomatik eşleşir.' : 'Entegratörden çekilen gelen faturalar — kuralla otomatik eşleşir, sadece eksik/çelişkili olana bakarsın.'}</div>
+      <div className="fmstats">
+        <div className="fmstat" style={{ ['--sc' as any]: '#2563eb' }}><span className="fmsl">Bekleyen belge</span><span className="fmsv">{durumCount('all')}</span></div>
+        <div className="fmstat" style={{ ['--sc' as any]: '#15803d' }}><span className="fmsl">Eşleşti</span><span className="fmsv">{durumCount('ready')}</span></div>
+        <div className="fmstat" style={{ ['--sc' as any]: '#d97706' }}><span className="fmsl">Çelişki</span><span className="fmsv">{durumCount('celiski')}</span></div>
+        <div className="fmstat" style={{ ['--sc' as any]: '#7c3aed' }}><span className="fmsl">Demirbaş (manuel)</span><span className="fmsv">{durumCount('demirbas')}</span></div>
+        <div className="fmstat" style={{ ['--sc' as any]: '#e5484d' }}><span className="fmsl">Okunamadı / eksik</span><span className="fmsv">{durumCount('okunamadi') + durumCount('eksik')}</span></div>
+      </div>
       <div className="card">
         <div className="ch">
           <h3>{docsQ.isLoading ? 'Yükleniyor…' : `${docs.length} belge`}</h3><div className="sp" />
@@ -956,15 +963,20 @@ function ScreenFaturalar({ taxpayerId, period, kind = 'ALIS', isIsletme = false,
           const tot = Math.max(1, (ocrProg.done || 0) + (ocrProg.reading || 0) + (ocrProg.failed || 0));
           const pct = Math.min(100, Math.round(((ocrProg.done || 0) / tot) * 100));
           return (
-            <div className={`ocrstrip${ocrProg.active ? ' scanning' : ''}`}>
-              <div className="ocrbar"><div className="ocrfill" style={{ width: `${ocrProg.active ? pct : 100}%` }} /></div>
-              <div className="ocrtxt">
-                {ocrProg.active ? (
-                  <><span className="ocrdot" /> Belgeler okunuyor — <b>{ocrProg.done}</b> / {tot} okundu{ocrProg.reading ? <> · {ocrProg.reading} sırada</> : null}{ocrProg.failed ? <> · {ocrProg.failed} okunamadı</> : null} <span className="ocrpct">%{pct}</span> <span className="ocrhint">(sunucuda sürer, sayfa değiştirebilirsin)</span></>
-                ) : (
-                  <><span className="ocrdot err" /> {ocrProg.failed} belge okunamadı — seçip <b>AI ile oku</b> ile tekrar dene</>
-                )}
-              </div>
+            <div className={`aibar${ocrProg.active ? '' : ' err'}`}>
+              {ocrProg.active ? (
+                <>
+                  <div className="aiscan"><i /><i /><i /><i /><span className="beam" /></div>
+                  <div className="aimid">
+                    <div className="ait">Belgeler yapay zeka ile okunuyor<span className="dots" /></div>
+                    <div className="aisub"><b>{ocrProg.done}</b> / {tot} belge okundu{ocrProg.reading ? ` · ${ocrProg.reading} sırada` : ''}{ocrProg.failed ? ` · ${ocrProg.failed} okunamadı` : ''} · sunucuda işlenir, sayfayı değiştirebilirsin</div>
+                    <div className="aitrack"><div className="aifill" style={{ width: `${pct}%` }} /></div>
+                  </div>
+                  <div className="airight"><div className="aipct">%{pct}</div><small>OKUNDU</small></div>
+                </>
+              ) : (
+                <><span className="aidot err" /> <span><b>{ocrProg.failed}</b> belge okunamadı — seçip <b>AI ile oku</b> ile tekrar dene</span></>
+              )}
             </div>
           );
         })()}
@@ -2760,6 +2772,12 @@ const CSS = `
 #fm-root .fmsel:focus{outline:none;border-color:var(--accent)}
 #fm-root .empty{padding:34px 16px;text-align:center;color:var(--faint);font-size:12.5px}
 #fm-root .mgrid{display:grid;grid-template-columns:repeat(4,1fr);gap:12px;margin-bottom:16px}
+#fm-root .fmstats{display:grid;grid-template-columns:repeat(auto-fit,minmax(135px,1fr));gap:11px;margin-bottom:15px}
+#fm-root .fmstat{background:#fff;border:1px solid var(--line);border-radius:13px;padding:12px 15px;position:relative;overflow:hidden;box-shadow:0 1px 2px rgba(15,27,45,.04),0 5px 14px rgba(15,27,45,.05)}
+#fm-root .fmstat::before{content:'';position:absolute;left:0;top:0;bottom:0;width:4px;background:var(--sc,var(--accent))}
+#fm-root .fmstat .fmsl{font-size:11.5px;color:var(--muted);font-weight:600;display:flex;align-items:center;gap:6px}
+#fm-root .fmstat .fmsl::before{content:'';width:8px;height:8px;border-radius:50%;background:var(--sc,var(--accent))}
+#fm-root .fmstat .fmsv{display:block;font-size:26px;font-weight:800;line-height:1.05;margin-top:6px;font-variant-numeric:tabular-nums;color:var(--text)}
 #fm-root .mcard{background:#fff;border:1px solid var(--line);border-radius:12px;padding:14px 16px}
 #fm-root .mcard .ml{font-size:12px;color:var(--muted)}
 #fm-root .mcard .mv{font-size:26px;font-weight:700;margin-top:5px}
@@ -2853,13 +2871,27 @@ const CSS = `
 #fm-root .pill.warn{background:#fdf2e0;color:#b45309}
 #fm-root .pill.proc{background:#e6eefc;color:#2563eb}
 #fm-root .pill.asset{background:#f3e8ff;color:#7c3aed;border:1px solid #e3d4fb}
-#fm-root .ocrstrip{display:flex;flex-direction:column;gap:5px;padding:11px 16px;border-bottom:1px solid var(--line);background:radial-gradient(150% 130% at 0% 0%, #eafaf1, var(--accent-soft) 72%)}
-#fm-root .ocrbar{height:8px;border-radius:6px;background:#d4ebdd;overflow:hidden;position:relative;box-shadow:inset 0 1px 2px rgba(20,60,40,.1)}
-#fm-root .ocrfill{height:100%;border-radius:6px;background:linear-gradient(90deg,var(--accent),#22c55e 55%,#34d399);transition:width .45s cubic-bezier(.4,0,.2,1);position:relative;overflow:hidden}
-#fm-root .ocrstrip.scanning .ocrfill{min-width:10px}
-#fm-root .ocrstrip.scanning .ocrfill::after{content:'';position:absolute;inset:0;background-image:linear-gradient(45deg,rgba(255,255,255,.28) 25%,transparent 25%,transparent 50%,rgba(255,255,255,.28) 50%,rgba(255,255,255,.28) 75%,transparent 75%,transparent);background-size:20px 20px;animation:ocrstripes .65s linear infinite}
-#fm-root .ocrstrip.scanning .ocrfill::before{content:'';position:absolute;top:0;right:0;width:26px;height:100%;background:linear-gradient(90deg,transparent,rgba(255,255,255,.55));animation:ocrglow 1.3s ease-in-out infinite}
-#fm-root .ocrstrip:not(.scanning) .ocrfill{background:linear-gradient(90deg,#ef4444,#f87171)}
+#fm-root .aibar{display:flex;align-items:center;gap:15px;margin:10px 16px 12px;padding:14px 18px;border-radius:14px;background:radial-gradient(150% 130% at 0% 0%, #e9faf0, var(--accent-soft) 60%);border:1px solid var(--accent-line);box-shadow:0 4px 16px rgba(21,128,61,.1)}
+#fm-root .aibar.err{background:#fdeeee;border-color:#f3c9c9;color:#92400e;font-size:12.5px;gap:9px;align-items:center}
+#fm-root .aibar .aidot.err{width:9px;height:9px;border-radius:50%;background:#c0353a;flex-shrink:0}
+#fm-root .aibar .aiscan{height:42px;width:32px;border-radius:6px;border:1.5px solid var(--accent);background:#fff;position:relative;overflow:hidden;flex-shrink:0;box-shadow:0 2px 7px rgba(21,128,61,.2)}
+#fm-root .aibar .aiscan i{position:absolute;left:5px;height:2px;border-radius:2px;background:var(--accent-line)}
+#fm-root .aibar .aiscan i:nth-child(1){top:9px;width:18px}#fm-root .aibar .aiscan i:nth-child(2){top:15px;width:22px}#fm-root .aibar .aiscan i:nth-child(3){top:21px;width:14px}#fm-root .aibar .aiscan i:nth-child(4){top:27px;width:20px}
+#fm-root .aibar .aiscan .beam{position:absolute;left:0;right:0;height:12px;background:linear-gradient(transparent,rgba(21,128,61,.5),transparent);animation:aibeam 1.5s ease-in-out infinite}
+@keyframes aibeam{0%{top:-12px}100%{top:42px}}
+#fm-root .aibar .aimid{flex:1;min-width:0}
+#fm-root .aibar .ait{font-size:13px;font-weight:700;color:var(--accent);display:flex;align-items:center}
+#fm-root .aibar .ait .dots::after{content:'...';animation:aidots 1.5s steps(4,end) infinite;display:inline-block;width:16px;text-align:left}
+@keyframes aidots{0%{content:''}25%{content:'.'}50%{content:'..'}75%{content:'...'}}
+#fm-root .aibar .aisub{font-size:11px;color:var(--muted);margin-top:2px}
+#fm-root .aibar .aisub b{color:var(--text);font-weight:700}
+#fm-root .aibar .aitrack{height:6px;border-radius:5px;background:var(--accent-soft);overflow:hidden;margin-top:8px;position:relative}
+#fm-root .aibar .aifill{height:100%;border-radius:5px;background:linear-gradient(90deg,var(--accent),#22c55e 55%,#34d399);position:relative;overflow:hidden;transition:width .45s cubic-bezier(.4,0,.2,1)}
+#fm-root .aibar .aifill::after{content:'';position:absolute;inset:0;background:linear-gradient(90deg,transparent,rgba(255,255,255,.65),transparent);animation:aishim 1.7s ease-in-out infinite}
+@keyframes aishim{0%{transform:translateX(-100%)}100%{transform:translateX(100%)}}
+#fm-root .aibar .airight{text-align:center;flex-shrink:0}
+#fm-root .aibar .aipct{font-size:22px;font-weight:800;color:var(--accent);font-variant-numeric:tabular-nums;letter-spacing:-.5px;line-height:1}
+#fm-root .aibar .airight small{font-size:9px;color:var(--faint);font-weight:700;letter-spacing:.6px}
 /* AI okuma — satır bazlı canlı görsel (genel temayı bozmaz). Okunan: mavi pulse + sol şerit;
    yeni biten: kısa yeşil flash; sırada bekleyen: hafif soluk. */
 #fm-root tbody tr.queued{opacity:.5}
