@@ -151,14 +151,19 @@ export async function claudeTextViaMax(params: {
     const query = await loadQuery();
     for await (const m of query({
       prompt: queryPrompt as any,
-      options: {
+      options: ({
         model,
-        systemPrompt: params.system,
+        // Claude Code'un kocaman varsayılan "kodlama asistanı" promptunu kullanma — saf çıkarımda
+        //   gereksiz, model'i yavaşlatır + odağı dağıtır. Çağıran system verirse o, vermezse minimal.
+        systemPrompt: params.system ?? 'Sen kısa ve kesin yanıt veren bir çıkarım asistanısın. Yalnız istenen çıktıyı ver, açıklama ekleme.',
         allowedTools: [], // saf çıkarım — dosya/bash/araç yok
         maxTurns: params.maxTurns ?? 1,
         env: childEnv,
         abortController: abort,
-      },
+        // HIZ: her çağrıda CLAUDE.md/settings dosyalarını OKUMA (saf çıkarımda gereksiz; subprocess'i
+        //   yavaşlatıp prompt'u şişiriyordu). Boş kaynak → ayar yükleme yok.
+        settingSources: [],
+      } as any),
     })) {
       if (m?.type === 'assistant') {
         for (const block of m.message?.content || []) {
