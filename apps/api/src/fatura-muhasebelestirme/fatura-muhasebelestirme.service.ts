@@ -5738,6 +5738,33 @@ export class FaturaMuhasebelestirmeService implements OnModuleInit, OnModuleDest
         ].filter(Boolean).join(', ');
       }
     }
+    // ③ KARAR VERİCİ: BİLANÇO mükellefinde AI'a hesap planından MATRAH-aday hesapları ver →
+    //   AI doğru hesabı içerik+faaliyetle DOĞRUDAN seçsin (mekanik kategori→kod eşlemesi yerine;
+    //   "çatal-kaşık→mutfak gideri", "lokanta klima→demirbaş" kategori kutusuyla değil, planı görüp).
+    //   İŞLETME defterinde hesap planı YOK → atla. Plan yoksa boş → mekanik kategori yedeği devreye girer.
+    let planAdaylar = '';
+    const planLeafSet = new Set<string>();
+    if (d.taxpayerId && !isIsletmeMukellef) {
+      const snap = await (this.prisma as any).lucaAccountPlanSnapshot.findFirst({
+        where: { tenantId, taxpayerId: d.taxpayerId, status: 'READY' },
+        orderBy: { createdAt: 'desc' },
+        select: { id: true },
+      }).catch(() => null);
+      if (snap?.id) {
+        const allLines: any[] = await (this.prisma as any).lucaAccountPlanLine.findMany({
+          where: { snapshotId: snap.id },
+          select: { accountCode: true, accountName: true },
+        }).catch(() => []);
+        // Leaf = noktalı + alt-hesabı OLMAYAN kod (grup/ana hesaba fiş kesilmez).
+        const grpCodes = new Set<string>();
+        for (const a of allLines) { const c = String(a.accountCode || ''); let ix = c.indexOf('.'); while (ix !== -1) { grpCodes.add(c.slice(0, ix)); ix = c.indexOf('.', ix + 1); } }
+        const isLeaf = (c: string) => c.includes('.') && !grpCodes.has(c);
+        // MATRAH adayları: stok 15x, sabit kıymet 25x, gider 6xx/7xx, gelir 600 leaf'leri (79x hariç).
+        const cand = allLines.filter((a) => { const c = String(a.accountCode || ''); return /^(15\d|25\d|6\d\d|7\d\d)/.test(c) && !c.startsWith('79') && isLeaf(c); });
+        for (const a of cand) planLeafSet.add(String(a.accountCode));
+        if (cand.length) planAdaylar = cand.slice(0, 220).map((a) => `${a.accountCode} = ${a.accountName}`).join('\n');
+      }
+    }
     const islSeg = isIsletmeMukellef ? islPromptSeg() : '';
     const prompt = [
       islSeg,
@@ -5745,7 +5772,7 @@ export class FaturaMuhasebelestirmeService implements OnModuleInit, OnModuleDest
         ? 'Aşağıdaki görüntü bir Türk faturası veya yazarkasa fişidir. İçindeki bilgileri oku.'
         : 'Aşağıda bir Türk e-Fatura/e-Arşiv belgesinin HTML/metin içeriği var. İçindeki bilgileri oku.',
       'YALNIZCA şu JSON\'u döndür — kod bloğu, açıklama, başka metin YOK:',
-      `{"belgeNo":"<fatura/fiş no ya da null>","tarih":"<GG.AA.YYYY ya da null>","belgeTuru":"<e-arsiv|e-fatura|fis|diger>","saticiAd":"<satıcı ünvanı ya da null>","saticiVkn":"<satıcının VKN/TCKN ya da null>","aliciAd":"<alıcı ünvanı ya da null>","aliciVkn":"<alıcının VKN/TCKN ya da null>","toplam":<genel toplam KDV dahil sayı ya da null>,"kategori":"<asagidaki tek deger>","giderTuru":"<ALIŞ ise faturadaki ana mal/hizmetin kısa adı — aşağıdaki giderTuru kuralına göre; SATIŞ ya da net değilse boş>"${isIsletmeMukellef ? ',"isletmeKayitTuru":"<aşağıdaki İŞLETME listesinden TAM kayıt türü adı; net değilse boş>","isletmeAltTuru":"<o türün listesinden TAM alt adı; net değilse boş>","isletmeNeden":"<tek cümle gerekçe>"' : ''},"muhasebeNeden":"<1 cümle Türkçe muhasebe gerekçesi — aşağıdaki kurala göre>","kdv":[{"oran":<KDV yüzdesi sayı>,"matrah":<KDV hariç tutar sayı>,"kdv":<KDV tutarı sayı>}]}`,
+      `{"belgeNo":"<fatura/fiş no ya da null>","tarih":"<GG.AA.YYYY ya da null>","belgeTuru":"<e-arsiv|e-fatura|fis|diger>","saticiAd":"<satıcı ünvanı ya da null>","saticiVkn":"<satıcının VKN/TCKN ya da null>","aliciAd":"<alıcı ünvanı ya da null>","aliciVkn":"<alıcının VKN/TCKN ya da null>","toplam":<genel toplam KDV dahil sayı ya da null>,"kategori":"<asagidaki tek deger>","giderTuru":"<ALIŞ ise faturadaki ana mal/hizmetin kısa adı — aşağıdaki giderTuru kuralına göre; SATIŞ ya da net değilse boş>"${isIsletmeMukellef ? ',"isletmeKayitTuru":"<aşağıdaki İŞLETME listesinden TAM kayıt türü adı; net değilse boş>","isletmeAltTuru":"<o türün listesinden TAM alt adı; net değilse boş>","isletmeNeden":"<tek cümle gerekçe>"' : ''},"muhasebeNeden":"<1 cümle Türkçe muhasebe gerekçesi — aşağıdaki kurala göre>"${planAdaylar ? ',"matrahHesapKodu":"<aşağıdaki HESAP PLANI listesinden matrah/gider için EN UYGUN TAM kod; emin değilsen boş>"' : ''},"kdv":[{"oran":<KDV yüzdesi sayı>,"matrah":<KDV hariç tutar sayı>,"kdv":<KDV tutarı sayı>}]}`,
       'belgeTuru: belgenin üstündeki ibareye göre → "e-arsiv" (e-Arşiv Fatura), "e-fatura" (e-Fatura), "e-smm" (Serbest Meslek Makbuzu / SMM), "fis" (yazarkasa/ÖKC fişi), yoksa "diger".',
       'JSON\'a "iade": true/false ekle — belge bir İADE FATURASI / İPTAL / CreditNote ise true (üstte "İADE", "İADE FATURASI" yazar ya da senaryo İADE/IPTAL\'dir), normal satış/alış faturasıysa false.',
       'JSON\'a "tevkifat": true/false ekle — belgede KDV TEVKİFATI varsa true (Fatura Tipi: TEVKIFAT, ya da "KDV TEVKİFAT (%..)=... TL" satırı/Diğer Vergiler\'de tevkifat), yoksa false.',
@@ -5758,6 +5785,7 @@ export class FaturaMuhasebelestirmeService implements OnModuleInit, OnModuleDest
       mukellefBilgi
         ? `BU FATURAYI ALAN MÜKELLEFİN İŞİ: ${mukellefBilgi}. kategoriyi mükellefin ANA FAALİYETİNE göre seç: üretim/imalat/LOKANTA/RESTORAN/KAFE/PASTANE/YEMEK işletmesi ana işinde KULLANDIĞI/işlediği/pişirdiği malı (gıda, yağ, un, et, sebze, süt, baharat, içecek, ambalaj…) alırsa "hammadde"; alım-satım (toptan/perakende/market) firması SATACAĞI ürünü alırsa "ticari_mal"; uzun ömürlü makine/cihaz/mobilya/bilgisayar/taşıt = "demirbas"; reklam/ilan/kargo/nakliye = "pazarlama"; SADECE işletmeyi yürüten sarf (kira, elektrik, su, doğalgaz, telefon, internet, akaryakıt, kırtasiye, temizlik, danışmanlık) = "genel_gider". ⚠️ KRİTİK-1: LOKANTA/RESTORAN/YEMEK üreticisinin aldığı GIDA / MUTFAK MALZEMESİ (yağ, un, et, sebze…) ASLA "genel_gider" ya da "demirbas" DEĞİLDİR — "hammadde"dir. ⚠️ KRİTİK-2: Mükellefin ANA FAALİYETİNDE SATMADIĞI bir CİHAZ/MAKİNE/EKİPMAN/MOBİLYA/KLİMA/BEYAZ EŞYA/BİLGİSAYAR/TELEVİZYON alımı = "demirbas" (sabit kıymet); ASLA "ticari_mal" DEĞİLDİR. "ticari_mal" YALNIZCA mükellefin o ürünü SATARAK ticaret yaptığı durumdur — ör. LOKANTA/YEMEK üreticisi KLİMA alırsa "demirbas"; klima TİCARETİ yapan firma klima alırsa "ticari_mal".`
         : '',
+      planAdaylar ? `\nMÜKELLEFİN HESAP PLANI — matrah/gider için aday hesaplar (matrahHesapKodu'nu SADECE bu listeden seç):\n${planAdaylar}\n→ matrahHesapKodu: bu faturanın matrahını (mal/hizmet/gider tutarını) mükellefin İŞİNE ve fatura İÇERİĞİNE göre yukarıdaki listeden EN UYGUN TAM koda ata. Mükellefin SATARAK ticaret yaptığı emtia → stok (15x); kendi işinde KULLANDIĞI/tükettiği şey → ilgili gider (7xx/6xx; ör. mutfak malzemesi/çatal-kaşık→mutfak gideri, yakıt→akaryakıt gideri); uzun ömürlü makine/cihaz/mobilya/demirbaş → sabit kıymet (25x); SATIŞ faturasıysa gelir (600). ⚠️ İçeriğe gerçekten uyan hesap yoksa BOŞ bırak — listede OLMAYAN kodu ASLA yazma, uydurma.` : '',
       isImage ? '' : ('\nİÇERİK:\n' + html.replace(/<[^>]+>/g, ' ').replace(/\s+/g, ' ').slice(0, 45000)),
     ].filter(Boolean).join('\n');
 
@@ -5918,7 +5946,7 @@ export class FaturaMuhasebelestirmeService implements OnModuleInit, OnModuleDest
           ...(counterName ? (isSale ? { customerName: counterName } : { vendorName: counterName }) : {}),
           status: 'NEEDS_REVIEW',
           ocrEngine: 'max-vision',
-          ocrData: { ...((d.ocrData as any) || {}), matrah, kdvTutari: kdv, kdvOrani: breakdown[0].rate, kdvBreakdown: breakdown.map((b: any) => ({ oran: b.rate, matrah: b.base, tutar: b.amount })), matrahKategori: typeof parsed.kategori === 'string' ? parsed.kategori : undefined, giderTuru: typeof parsed.giderTuru === 'string' ? parsed.giderTuru.slice(0, 40) : undefined, muhasebeNeden: typeof parsed.muhasebeNeden === 'string' ? parsed.muhasebeNeden.slice(0, 300) : undefined, aiYorum: typeof parsed.muhasebeNeden === 'string' ? parsed.muhasebeNeden.slice(0, 400) : undefined, ...(islSinifAi ? { isletme: islSinifAi } : {}), isReturn: parsed.iade === true || /iade|iptal/i.test(String(parsed.belgeTuru || '')), tevkifatHint: parsed.tevkifat === true || tevkifatOrani > 0 || /tevkifat/i.test(String(html || '')), tevkifatOrani: tevkifatOrani || 0, tevkifatKdv: tevkKdv || 0, engine: parsed._azure ? 'azure-read' : (parsed === preParsed ? 'ubl-xml' : 'max-vision'),
+          ocrData: { ...((d.ocrData as any) || {}), matrah, kdvTutari: kdv, kdvOrani: breakdown[0].rate, kdvBreakdown: breakdown.map((b: any) => ({ oran: b.rate, matrah: b.base, tutar: b.amount })), matrahKategori: typeof parsed.kategori === 'string' ? parsed.kategori : undefined, giderTuru: typeof parsed.giderTuru === 'string' ? parsed.giderTuru.slice(0, 40) : undefined, muhasebeNeden: typeof parsed.muhasebeNeden === 'string' ? parsed.muhasebeNeden.slice(0, 300) : undefined, aiYorum: typeof parsed.muhasebeNeden === 'string' ? parsed.muhasebeNeden.slice(0, 400) : undefined, aiMatrahKodu: (typeof parsed.matrahHesapKodu === 'string' && planLeafSet.has(String(parsed.matrahHesapKodu).trim())) ? String(parsed.matrahHesapKodu).trim() : undefined, ...(islSinifAi ? { isletme: islSinifAi } : {}), isReturn: parsed.iade === true || /iade|iptal/i.test(String(parsed.belgeTuru || '')), tevkifatHint: parsed.tevkifat === true || tevkifatOrani > 0 || /tevkifat/i.test(String(html || '')), tevkifatOrani: tevkifatOrani || 0, tevkifatKdv: tevkKdv || 0, engine: parsed._azure ? 'azure-read' : (parsed === preParsed ? 'ubl-xml' : 'max-vision'),
             readMode: parsed === preParsed ? 'ubl-xml' : (isImage ? 'image' : /pdf/i.test(imgMedia) ? 'pdf-text' : /xml/i.test(imgMedia) ? 'xml-text' : 'html'),
             ...(!preParsed && imgBuf && /xml/i.test(imgMedia) ? { xmlHead: imgBuf.toString('utf8').slice(0, 220).replace(/\s+/g, ' ') } : {}) },
         },
@@ -6164,6 +6192,16 @@ export class FaturaMuhasebelestirmeService implements OnModuleInit, OnModuleDest
         }
       }
       categoryMatrah = leafOnly(categoryMatrah); // grup/plan-dışı kodu reddet
+      // ③ AI DOĞRUDAN SEÇİM (alış matrahı): okuma anında AI, mükellefin GERÇEK planından matrah
+      //   hesabını seçtiyse (aiMatrahKodu, plan'da doğrulanmış leaf) → mekanik kategori yerine ONU
+      //   kullan (öğrenilmiş koddan SONRA, mekanik kategoriden ÖNCE — matrahForRate'te uygulanır).
+      //   Yalnız ALIŞ: satış 600 mantığı (tevkifat-farkında) zaten doğru. Gelir (60x) kodu alışta reddedilir.
+      const aiKod = String((doc.ocrData as any)?.aiMatrahKodu || '').trim();
+      const aiMatrahAcc = (!isSale && aiKod && !aiKod.startsWith('60') && isPostableLeaf(aiKod))
+        ? accounts.find((a: any) => String(a.accountCode || '') === aiKod) : null;
+      const aiGroupLeaves = aiMatrahAcc
+        ? accounts.filter((a: any) => { const c = String(a.accountCode || ''); return c.startsWith(aiKod.split('.').slice(0, 2).join('.') + '.') && isPostableLeaf(c); })
+        : [];
       // İÇERİK-HESAP SEMANTİK EŞLEŞTİRME (kullanıcı kuralı): heterojen gider havuzunda (7xx/6xx) ad
       //   eşleşmeyince hesabı RASTGELE atama — AI, fatura içeriğini (giderTuru) mükellefin işine +
       //   plandaki gider hesaplarına SEMANTİK eşler; uygun hesap yoksa null = BOŞ. Aynı giderTuru bir
@@ -6291,6 +6329,13 @@ export class FaturaMuhasebelestirmeService implements OnModuleInit, OnModuleDest
         if (matrahCache.has(rate)) return matrahCache.get(rate);
         const learned = vendorVkn ? await this.pickVendorMemoryAccount(tenantId, taxpayerId, vendorVkn, accounts, rate) : null;
         let m = leafOnly(learned);
+        // ③ AI doğrudan seçim (öğrenilmiş kod YOKSA): AI'ın okuma anında plandan seçtiği matrah
+        //   hesabı. Çok-oranlı faturada AI grubunun bu orana ait varyantı (153.01.001 %1 / .003 %20)
+        //   varsa onu, yoksa AI'ın seçtiği kodu. Mekanik kategori/varsayılandan ÖNCE gelir.
+        if (!m && aiMatrahAcc) {
+          if (rate) { const v = aiGroupLeaves.find((a: any) => (this.norm(String(a.accountName || '')).match(/\d+/g) || ([] as string[])).includes(rate)); m = leafOnly(v) || leafOnly(aiMatrahAcc); }
+          else m = leafOnly(aiMatrahAcc);
+        }
         // ORAN-bazlı matrah (KDV gibi orana DUYARLI): kategori/600 grubunda adında satırın oranı geçen
         //   leaf'i seç (153.01.001 "%1" / .002 "%10" / .003 "%20"; satışta 600 aynı). Eskiden hep en
         //   genel leaf (153.01.001=%1) atanıyordu → çok-oranlı faturada %10 matrahı da %1 hesabına
