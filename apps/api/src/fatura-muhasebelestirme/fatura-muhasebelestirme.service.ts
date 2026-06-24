@@ -6035,6 +6035,8 @@ export class FaturaMuhasebelestirmeService implements OnModuleInit, OnModuleDest
     const tpRow: any = await (this.prisma as any).taxpayer.findFirst({ where: { id: taxpayerId, tenantId }, select: { companyName: true, firstName: true, lastName: true, naceKodu: true, faaliyetAciklama: true } }).catch(() => null);
     const tpFaaliyet = tpRow ? [String(tpRow.companyName || (String(tpRow.firstName || '') + ' ' + String(tpRow.lastName || ''))).trim(), String(tpRow.faaliyetAciklama || '').trim() || (tpRow.naceKodu ? ('NACE ' + tpRow.naceKodu) : '')].filter(Boolean).join(' — ') : '';
     let aiAccCalls = 0; // batch'te AI eskalasyonunu sınırla
+    const AI_GIDER_LIMIT = 40; // "Kodları düzelt" batch'inde AI semantik eşleştirme tavanı (Max yükü)
+    const aiGiderCache = new Map<string, any>(); // norm(giderTuru) → hesap|null; aynı gider 1 kez sorulur
     // SADECE GERÇEK ALT HESAP: bir kod ATANABİLİR ancak plan'da varsa + 1-2 haneli sınıf/grup DEĞİLSE
     //   (ana segmenti >=3 hane) + noktalı alt-hesabı YOKSA. "1 DÖNEN VARLIKLAR"/"320" gibi gruplar ASLA atanmaz.
     const _codeSet = new Set(accounts.map((a: any) => String(a.accountCode || '')));
@@ -6095,13 +6097,38 @@ export class FaturaMuhasebelestirmeService implements OnModuleInit, OnModuleDest
             categoryGroupLeaves = leaves; // ORAN-bazlı seçim için sakla (giderTuru eşleşse de)
             if (!categoryMatrah) {
               const byName = giderTuru ? leaves.find((a: any) => this.nameMatchScore(giderTuru, String(a.accountName || '')) > 0) : null;
-              categoryMatrah = byName || leaves[0]; // accounts kod-artan sıralı → leaves[0] = en genel alt-hesap
+              if (byName) {
+                categoryMatrah = byName; // içerik ↔ hesap adı birebir → kesin ata
+              } else if (/^(15|25)/.test(key)) {
+                // HOMOJEN stok/sabit-kıymet grubu (153 TİCARİ MALLAR / 255 DEMİRBAŞLAR): tüm leaf'ler
+                //   aynı semantik, yalnız KDV oranı farkı → içerik-uyuşması kategoriyle zaten sağlandı.
+                //   En genel leaf güvenli; matrahForRate çok-oranlı faturada satırın oranına göre düzeltir.
+                categoryMatrah = leaves[0];
+              }
+              // HETEROJEN gider havuzu (770/760/730/740): leaf'ler FARKLI amaçlı (mutfak/demirbaş/kira).
+              //   İçerik↔ad uyuşmazsa leaves[0] = RASTGELE = YANLIŞ (araç kiralama→"DEMİRBAŞ"). Boş bırak;
+              //   aşağıda AI semantik eşleştirir, o da uygun hesap bulamazsa boş kalır (kullanıcı 1 kez seçer).
             }
             break; // ilk dolu grup belirleyici
           }
         }
       }
       categoryMatrah = leafOnly(categoryMatrah); // grup/plan-dışı kodu reddet
+      // İÇERİK-HESAP SEMANTİK EŞLEŞTİRME (kullanıcı kuralı): heterojen gider havuzunda (7xx/6xx) ad
+      //   eşleşmeyince hesabı RASTGELE atama — AI, fatura içeriğini (giderTuru) mükellefin işine +
+      //   plandaki gider hesaplarına SEMANTİK eşler; uygun hesap yoksa null = BOŞ. Aynı giderTuru bir
+      //   kez sorulur (aiGiderCache) + batch limiti → "Kodları düzelt"te Max fırtınası olmaz, hız korunur.
+      if (!isSale && !categoryMatrah && giderTuru) {
+        const ck = this.norm(giderTuru);
+        if (aiGiderCache.has(ck)) {
+          categoryMatrah = aiGiderCache.get(ck);
+        } else if (aiAccCalls < AI_GIDER_LIMIT) {
+          aiAccCalls++;
+          const aiPick = leafOnly(await this.aiPickGiderAccount(accounts, tpFaaliyet, giderTuru, vendorName));
+          aiGiderCache.set(ck, aiPick);
+          categoryMatrah = aiPick;
+        }
+      }
       // KDV hesabı: tevkifatlıda planında ADINDA oranı (ör "2/10") ya da "tevkifat" geçen
       // hesabı tercih et (391.01.004 "HESAPLANAN KDV %20 2/10"), düz 391.01.003 değil.
       const vergiPrefix = isSale ? '391' : '191';
