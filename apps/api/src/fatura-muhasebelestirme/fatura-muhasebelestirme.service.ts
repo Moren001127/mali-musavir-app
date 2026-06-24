@@ -6109,21 +6109,25 @@ export class FaturaMuhasebelestirmeService implements OnModuleInit, OnModuleDest
   //   firma faaliyetini kopyalıyordu); bu deterministik üretim yön-KESİN + hesap-KESİN, rematch'te yazılır.
   private buildMuhasebeNeden(faaliyet: string, isSale: boolean, kat: string, giderTuru: string, matrahAcc: any, isReturn: boolean): string {
     const parts = String(faaliyet || '').split('—');
-    const faal = (parts.length > 1 ? parts[1] : parts[0]).replace(/\s+/g, ' ').trim().slice(0, 60);
+    let faal = (parts.length > 1 ? parts[1] : parts[0]).replace(/\s+/g, ' ').trim();
+    // Kelime ORTASINDAN kesme ("...FAALİYETL") yerine: 60'ı aşıyorsa son boşluğa kadar al (tam kelime).
+    if (faal.length > 60) { const cut = faal.slice(0, 60); const sp = cut.lastIndexOf(' '); faal = (sp > 0 ? cut.slice(0, sp) : cut).trim(); }
     const fpre = faal ? `${faal} faaliyeti. ` : '';
-    const katAd: Record<string, string> = { ticari_mal: 'ticari mal', hammadde: 'üretim girdisi (hammadde)', demirbas: 'demirbaş/sabit kıymet', pazarlama: 'pazarlama gideri', genel_gider: 'genel gider' };
-    const nitelik = katAd[kat] || '';
+    // Niteliği KATEGORİDEN ("hammadde") türetmek seçilen HESAPLA çelişiyordu: "üretim girdisi (hammadde)
+    //   niteliğinde olduğundan 153 TİCARİ MALLAR'a işlenir" = mantıksız. Niteliği cümleden çıkardık;
+    //   seçilen hesabın ADI (kodAd → "TİCARİ MALLAR") zaten niteliği gösterir.
+    void kat;
     const kod = matrahAcc ? String(matrahAcc.accountCode || '').trim() : '';
     const ad = matrahAcc ? String(matrahAcc.accountName || '').trim() : '';
     const kodAd = kod ? `${kod}${ad ? ' ' + ad : ''}` : '';
-    const ic = giderTuru || nitelik || 'mal/hizmet';
+    const ic = giderTuru || 'mal/malzeme';
     // ⚠️ YÖN MÜKELLEF GÖZÜNDEN: ALIŞ'ta "MÜKELLEF ... ALDI" (satıcının ne SATTIĞI değil). AI okuma-anı
     //   yorumu satıcı gözünden "satış" diyordu (lokananın havuç ALIŞINA "havuç satışı"; marketten alışa
     //   "perakende satılmış") — burada yön rematch'te KESİN, mükellefin faaliyetine bağlanır.
     if (isReturn) return `${fpre}${isSale ? 'Alıştan' : 'Satıştan'} iade (ters kayıt); yön ve tutarlar kontrol edilmeli${kodAd ? ` → ${kodAd}` : ''}.`;
     if (isSale) return `${fpre}Mükellefin sattığı ${ic}; olağan satış geliri${kodAd ? ` → ${kodAd}` : ' (600 hesabı)'}.`;
     if (!kodAd) return `${fpre}Mükellef ${ic} almış; faaliyetine uygun hesap bulunamadı, manuel seçim gerekir.`;
-    return `${fpre}Mükellef ${ic} almış; faaliyetinde ${nitelik || 'kullanılan girdi'} niteliğinde olduğundan ${kodAd} hesabına işlenir.`;
+    return `${fpre}Mükellef ${ic} almış; ${kodAd} hesabına işlenir.`;
   }
 
   // YAPAY ZEKA YORUMU + SİSTEM ÇERÇEVESİ: yapay zeka faturayı OKURKEN içeriği/niteliği DOĞAL dille
@@ -6371,7 +6375,7 @@ export class FaturaMuhasebelestirmeService implements OnModuleInit, OnModuleDest
       if (faDet.is && kat !== 'demirbas') kat = 'demirbas';
       const KAT_PREFIX: Record<string, string[]> = {
         ticari_mal: ['153', '150', '770'],       // stok yoksa gidere düş
-        hammadde: ['150', '153', '730', '740', '770'],
+        hammadde: ['153', '730', '740', '770'],   // 150 KULLANILMAZ → 153 (kullanıcı: "150 kullanma 153 olacak")
         demirbas: ['255', '253', '254'],          // sabit kıymet yoksa BOŞ bırak (gidere yazma yanlış olur)
         pazarlama: ['760', '770'],
         genel_gider: ['770', '760', '740', '730'],
