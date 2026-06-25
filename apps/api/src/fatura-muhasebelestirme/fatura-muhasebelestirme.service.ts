@@ -13,7 +13,7 @@ import { claudeTextViaMax, MAX_MODEL_CHEAP } from '../common/max-inference';
 import { buildLucaImportExcel, buildLucaIsletmeHizliFisCsv } from './luca-excel.service';
 import { VendorMemoryService } from '../vendor-memory/vendor-memory.service';
 import { MihsapService } from '../mihsap/mihsap.service';
-import { isletmeRef, getKayitAltList } from '@mali-musavir/shared';
+import { isletmeRef, getKayitAltList, isletmeAlisSatisTuru, isletmeIslemTuru, defaultBelgeTuruKod } from '@mali-musavir/shared';
 
 // ── İşletme defteri AI sınıflandırması ──
 // Faturayı okuyan max-vision AI'ına, mükellefin FAALİYETİ + faturanın İÇERİĞİYLE muhakeme ederek
@@ -2345,8 +2345,19 @@ export class FaturaMuhasebelestirmeService implements OnModuleInit, OnModuleDest
       if (c.giderTuru) patch.giderTuru = String(c.giderTuru).slice(0, 40);
       if (c.kategori) patch.matrahKategori = c.kategori;
       if (c.isletmeKayitTuru) {
-        const isl = resolveIslAi(kind, { isletmeKayitTuru: c.isletmeKayitTuru, isletmeAltTuru: c.isletmeAltTuru, isletmeNeden: c.isletmeNeden });
-        if (isl) patch.isletme = isl;
+        let isl = resolveIslAi(kind, { isletmeKayitTuru: c.isletmeKayitTuru, isletmeAltTuru: c.isletmeAltTuru, isletmeNeden: c.isletmeNeden });
+        if (isl) {
+          // GİB Defter-Beyan: Alış/Satış + İşlem + Belge Türü'nü belgenin sinyallerinden türet (XML yolu).
+          const islText = [c.giderTuru, isl.kayitAltAd, c.isletmeNeden].filter(Boolean).join(' ');
+          const islKdvVar = typeof od?.kdvTutari === 'number' ? od.kdvTutari > 0 : undefined;
+          isl = {
+            ...isl,
+            alisSatisKod: isletmeAlisSatisTuru(kind, { isReturn: od?.isReturn === true, tevkifat: od?.tevkifatHint === true || Number(od?.tevkifatOrani) > 0, kdvVar: islKdvVar, text: islText }),
+            islemTuruKod: isletmeIslemTuru(kind, islText),
+            belgeTuruKod: defaultBelgeTuruKod(doc.documentType, kind),
+          };
+          patch.isletme = isl;
+        }
       }
     }
     await (this.prisma as any).invoiceAccountingDocument.update({ where: { id: doc.id }, data: { ocrData: patch } }).catch(() => {});
@@ -6070,7 +6081,20 @@ export class FaturaMuhasebelestirmeService implements OnModuleInit, OnModuleDest
       await tx.invoiceAccountingLine.deleteMany({ where: { documentId: d.id } });
       if (lines.length) await tx.invoiceAccountingLine.createMany({ data: lines.map((l: any) => ({ ...l, documentId: d.id })) });
       // İŞLETME: AI'ın faaliyet+içerik muhakemesiyle verdiği kayıt türü + alt türü. Net değilse undefined → Eşleşmedi.
-      const islSinifAi = isIsletmeMukellef ? resolveIslAi(kind, parsed) : undefined;
+      // Kayıt türü netse, GİB Defter-Beyan kurallarına göre Alış/Satış Türü + İşlem Türü + Belge Türü'nü de
+      // belgenin sinyallerinden (iade/tevkifat/KDV/ikinci-el/belge tipi) TÜRET. (Araştırma: [[project-isletme-dbs-arastirma]])
+      let islSinifAi = isIsletmeMukellef ? resolveIslAi(kind, parsed) : undefined;
+      if (islSinifAi) {
+        const islIade = parsed.iade === true || /iade|iptal/i.test(String(parsed.belgeTuru || ''));
+        const islTevk = parsed.tevkifat === true || tevkifatOrani > 0 || /tevkifat/i.test(String(html || ''));
+        const islText = [parsed.giderTuru, islSinifAi.kayitAltAd, parsed.muhasebeNeden, ...(Array.isArray(parsed.kalemler) ? parsed.kalemler.map((k: any) => k?.ad) : [])].filter(Boolean).join(' ');
+        islSinifAi = {
+          ...islSinifAi,
+          alisSatisKod: isletmeAlisSatisTuru(kind, { isReturn: islIade, tevkifat: islTevk, kdvVar: kdv > 0, text: islText }),
+          islemTuruKod: isletmeIslemTuru(kind, islText),
+          belgeTuruKod: defaultBelgeTuruKod(mappedType || parsed.belgeTuru, kind),
+        };
+      }
       await tx.invoiceAccountingDocument.update({
         where: { id: d.id },
         data: {

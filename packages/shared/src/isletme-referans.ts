@@ -337,3 +337,49 @@ export function defaultBelgeTuruKod(documentType?: string | null, invoiceKind?: 
   if (t === 'PERAKENDE' || t === 'PERAKENDE_SATIS') return '3';
   return '1';
 }
+
+/**
+ * İkinci el araç/taşınmaz (özel matrah) tespiti — belge içeriğinden. GİB SSS: ikinci el araç/taşınmaz
+ * satışı Özel Matrah'a ve İşlem Türü 1004/1005'e gider. Belirgin ikinci-el ibaresi yoksa '' (zorlama yok).
+ */
+export function isletmeIkinciElTipi(text?: string | null): 'arac' | 'tasinmaz' | '' {
+  const t = asciiTr(text || '');
+  if (!t) return '';
+  if (!/ikinci el|2\.?\s?el|kullanilmis|\b2el\b/.test(t)) return '';
+  if (/tasinmaz|gayrimenkul|\bdaire\b|\barsa\b|isyeri|\bkonut\b|\bbina\b|\bdukkan\b/.test(t)) return 'tasinmaz';
+  if (/\barac\b|otomobil|\bbinek\b|kamyonet|motosiklet|\btasit\b|vasita|\bplaka\b|\boto\b/.test(t)) return 'arac';
+  return '';
+}
+
+/**
+ * ALIŞ/SATIŞ TÜRÜ otomatik türetimi (GİB Defter-Beyan SSS desenleri — kanıt: defterbeyan.gov.tr SSS v1.3).
+ *   ALIŞ:  iade → Satıştan İade (2); normal → Normal Alım (1).
+ *   SATIŞ: tevkifat → Kısmi Tevkifat (2); ikinci el araç/taşınmaz → Özel Matrah (6); KDV=0 → İSTİSNA mı
+ *          %0 mı BELİRSİZ → '' (İncele, tahmin yok); aksi → Normal Satışlar (1).
+ * Dönen kodlar isletme-referans SATIS_AS/GIDER_AS listelerindeki kodlardır.
+ */
+export function isletmeAlisSatisTuru(
+  invoiceKind: string | null | undefined,
+  opts: { isReturn?: boolean; tevkifat?: boolean; kdvVar?: boolean; text?: string | null },
+): string {
+  const sale = String(invoiceKind || 'ALIS').toUpperCase() === 'SATIS';
+  if (!sale) return opts.isReturn ? '2' : '1';      // Satıştan İade : Normal Alım
+  if (opts.tevkifat) return '2';                      // Kısmi Tevkifat Uygulanan İşlemler
+  if (isletmeIkinciElTipi(opts.text)) return '6';     // Özel Matrah
+  if (opts.kdvVar === false) return '';               // KDV=0 → istisna/%0 belirsiz → İncele
+  return '1';                                          // Normal Satışlar
+}
+
+/**
+ * İŞLEM TÜRÜ otomatik türetimi — SADECE satış (gider tarafında İşlem Türü yoktur).
+ * Varsayılan 1100 Yurtiçi Teslim ve Hizmetleri; ikinci el araç → 1004, ikinci el taşınmaz → 1005.
+ * (Diğer nadir kodlar — ihracat/altın/tütün — araştırmada tam doğrulanmadı, zorlanmaz.)
+ */
+export function isletmeIslemTuru(invoiceKind: string | null | undefined, text?: string | null): string {
+  const sale = String(invoiceKind || 'ALIS').toUpperCase() === 'SATIS';
+  if (!sale) return ''; // İşlem Türü sadece satış formunda görünür
+  const ie = isletmeIkinciElTipi(text);
+  if (ie === 'arac') return '1004';     // İkinci El Araç Ticareti
+  if (ie === 'tasinmaz') return '1005'; // İkinci El Taşınmaz Ticareti
+  return '1100';                        // Yurtiçi Teslim ve Hizmetleri
+}
