@@ -4186,6 +4186,13 @@ export class FaturaMuhasebelestirmeService implements OnModuleInit, OnModuleDest
     if (loginRes.status !== 302 && loginRes.status !== 301) {
       throw new Error(`TÜRMOB girişi başarısız — TCKN/parola hatalı olabilir (HTTP ${loginRes.status})`);
     }
+    // 3) Redirect hedefini İZLE — ASP.NET'te auth/session çerezi çoğu zaman bu adımda tamamlanır.
+    //    (redirect izlenmezse liste isteği login'e geri atılıp 0 kayıt döner.)
+    const loc = loginRes.headers.get('location') || '/';
+    try {
+      const home = await fetch(loc.startsWith('http') ? loc : BASE + loc, { headers: { Cookie: cookieHeader(), 'User-Agent': 'MorenPortal/1.0' }, redirect: 'manual' });
+      addCookies(pick(home));
+    } catch { /* redirect izlenemese de eldeki çerezle devam */ }
     if (!cookieMap.size) throw new Error('TÜRMOB oturum çerezi alınamadı');
     return cookieHeader();
   }
@@ -4224,9 +4231,13 @@ export class FaturaMuhasebelestirmeService implements OnModuleInit, OnModuleDest
       },
       body: listBody,
     });
-    const data: any = await res.json().catch(() => null);
+    const ct = res.headers.get('content-type') || '';
+    const raw = await res.text();
+    let data: any = null; try { data = JSON.parse(raw); } catch { /* HTML = muhtemelen login redirect */ }
     const rows: any[] = Array.isArray(data?.data) ? data.data : Array.isArray(data?.Data) ? data.Data : Array.isArray(data) ? data : [];
-    this.logger.log(`TÜRMOB portal ${opts.direction}: oturum açıldı, ${rows.length} kayıt geldi (tx=${opts.taxpayer.id}). Satır şeması ilk testte: ${JSON.stringify(Object.keys(rows[0] || {})).slice(0, 300)}`);
+    const first = raw.trimStart().slice(0, 1); // '<' = HTML/login redirect (cookie yetersiz), '{'/'[' = JSON (parametre/dönem)
+    // TEŞHİS: first='<' → oturum liste için yetersiz; '{' ama rows=0 → parametre/dönem filtresi gerekli.
+    this.logger.log(`TÜRMOB portal ${opts.direction}: status=${res.status} ct=${ct.slice(0, 40)} len=${raw.length} first=${first} rows=${rows.length} topKeys=${JSON.stringify(Object.keys(data || {})).slice(0, 150)} rowKeys=${JSON.stringify(Object.keys(rows[0] || {})).slice(0, 250)}`);
     // İPTAL filtresi (durum alanı adı ilk testte netleşecek — "İptal/Iptal/Reddedildi/Cancel" geçeni atla):
     const isCancelled = (r: any) => /iptal|reddedil|cancel/i.test(JSON.stringify(r?.Durum ?? r?.durum ?? r?.Status ?? r?.status ?? ''));
     const live = rows.filter((r) => !isCancelled(r));
