@@ -206,7 +206,7 @@ export const PROVIDER_AUTH_HINTS: Record<string, string> = {
   ELOGO: "eLogo kullanici ve sifresi. Opsiyonel olarak servis URL girilebilir.",
   LOGO_ISBASI: "Logo Isbasi API anahtari. developers.isbasi.com adresinden alin.",
   KOLAYSOFT: "Kolaysoft kullanici ve sifresi. Servis URL hesabiniza ozeldir.",
-  TURMOB_EFATURA: "TURMOB e-Fatura Luca Local Agent uzerinden cekilir. Luca da TURMOB hesabiniz tanimli olmali. Sorgu Luca ya yonlendirilir, agent acik olmali.",
+  TURMOB_EFATURA: "TÜRMOB e-Belge portalına mükellefin TCKN ve parolasıyla otomatik giriş yapılıp gelen/giden faturalar XML olarak çekilir (kod/2FA sormaz).",
   GIB_PORTAL: "GIB Portal: dogrudan API yok. Luca Local Agent veya mali muhur ile portal otomasyonu gerekir.",
 };
 
@@ -1702,39 +1702,16 @@ export class FaturaMuhasebelestirmeService implements OnModuleInit, OnModuleDest
             errorMessage: failed && errors.length ? errors[0].message : null,
           },
         });
-        if (cfg.provider === 'TURMOB_EFATURA') {
-          // Luca'ya yonlendirildi; job arka planda calisacak
-          const recentJob = await (this.prisma as any).lucaFetchJob.findFirst({
-            where: { tenantId, mukellefId: taxpayerId, tip: { in: ['EFATURA_ALIS', 'EFATURA_SATIS'] } },
-            orderBy: { createdAt: 'desc' },
-            select: { id: true, status: true, createdAt: true },
-          });
-          statuses.push({
-            provider: item.provider,
-            label: cfg.label,
-            status: 'QUEUED_VIA_LUCA',
-            reason: 'Sorgu Luca Local Agent kuyruguna alindi. Agent acikken 1-3 dakika icinde fatura listesi Yuklenen Faturalar sekmesine duser.',
-            jobId: recentJob?.id || null,
-            jobStatus: recentJob?.status || 'pending',
-            viaLuca: true,
-            fetched: 0,
-            created: 0,
-            alreadyQueued: 0,
-            failed: 0,
-            errors: [],
-          });
-        } else {
-          statuses.push({
-            provider: item.provider,
-            label: cfg.label,
-            status: failed && !created && !alreadyQueued ? 'FAILED' : 'SUCCESS',
-            fetched: payloads.length,
-            created,
-            alreadyQueued,
-            failed,
-            errors,
-          });
-        }
+        statuses.push({
+          provider: item.provider,
+          label: cfg.label,
+          status: failed && !created && !alreadyQueued ? 'FAILED' : 'SUCCESS',
+          fetched: payloads.length,
+          created,
+          alreadyQueued,
+          failed,
+          errors,
+        });
       } catch (e: any) {
         totals.failed++;
         const message = e?.message || 'entegrator cekme hatasi';
@@ -4129,8 +4106,9 @@ export class FaturaMuhasebelestirmeService implements OnModuleInit, OnModuleDest
       return missing.length ? `Parasut bilgileri eksik: ${missing.join(', ')}` : null;
     }
     if (cfg.provider === 'UYUMSOFT' && (!cfg.username || !cfg.password)) return 'Uyumsoft kullanici/sifre eksik';
+    if (cfg.provider === 'TURMOB_EFATURA' && (!cfg.username || !cfg.password)) return 'TÜRMOB TCKN ve parola gerekli';
     if (I2I_SOAP_PROVIDERS.has(cfg.provider) && (!cfg.username || !cfg.password)) return 'Izibiz/i2i kullanici/sifre eksik';
-    if (cfg.provider !== 'UYUMSOFT' && !I2I_SOAP_PROVIDERS.has(cfg.provider) && !cfg.baseUrl) return 'API adresi eksik';
+    if (cfg.provider !== 'UYUMSOFT' && cfg.provider !== 'TURMOB_EFATURA' && !I2I_SOAP_PROVIDERS.has(cfg.provider) && !cfg.baseUrl) return 'API adresi eksik';
     if (!cfg.username && !cfg.password && !cfg.apiKey && !cfg.apiSecret && !cfg.baseUrl) return 'Kimlik bilgisi eksik';
     return null;
   }
@@ -4170,9 +4148,54 @@ export class FaturaMuhasebelestirmeService implements OnModuleInit, OnModuleDest
   }
 
   /**
-   * TURMOB e-Fatura cekme - turmobefatura.luca.com.tr Luca'nin uzantisi oldugu icin
-   * Luca Local Agent uzerinden cekilir. Yeni bir LucaFetchJob yaratir; agent islerse
-   * faturalari indirip portala yukler. Suresi: 1-3 dakika.
+   * TÜRMOB e-Belge portalına (turmobefatura.luca.com.tr) TCKN/parola ile OTOMATİK giriş → session cookie.
+   * Portal girişi 2FA/kod SORMUYOR (kullanıcı teyit etti; Asistan da TCKN+parola ile giriyor) → backend
+   * otomatik login takılmaz. Login formu (gerçek): POST /Account/Login, alanlar VknTckn + Password +
+   * __RequestVerificationToken (antiforgery) + RememberMe. Akış: GET login (token+antiforgery cookie) →
+   * POST login → başarı 302 redirect + auth cookie. Hatalı kimlik 200 (login sayfası tekrar).
+   */
+  private readonly TURMOB_BASE = 'https://turmobefatura.luca.com.tr';
+  private async turmobLogin(vknTckn: string, password: string): Promise<string> {
+    const BASE = this.TURMOB_BASE;
+    const pick = (res: Response): string[] => {
+      const anyH = res.headers as any;
+      if (typeof anyH.getSetCookie === 'function') return anyH.getSetCookie();
+      const sc = res.headers.get('set-cookie');
+      return sc ? [sc] : [];
+    };
+    const cookieMap = new Map<string, string>();
+    const addCookies = (arr: string[]) => { for (const c of arr) { const kv = c.split(';')[0]; const k = kv.split('=')[0]; if (k) cookieMap.set(k, kv); } };
+    const cookieHeader = () => [...cookieMap.values()].join('; ');
+    // 1) GET login → antiforgery token + cookie
+    const page = await fetch(BASE + '/account/login', { headers: { 'User-Agent': 'MorenPortal/1.0' } });
+    addCookies(pick(page));
+    const html = await page.text();
+    const token = html.match(/name="__RequestVerificationToken"[^>]*value="([^"]+)"/)?.[1]
+      || html.match(/__RequestVerificationToken[^>]*value="([^"]+)"/)?.[1];
+    if (!token) throw new Error('TÜRMOB giriş sayfası okunamadı (antiforgery token yok)');
+    // 2) POST login
+    const body = new URLSearchParams({ VknTckn: String(vknTckn).trim(), Password: password, __RequestVerificationToken: token, RememberMe: 'true' }).toString();
+    const loginRes = await fetch(BASE + '/Account/Login', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/x-www-form-urlencoded', Cookie: cookieHeader(), 'User-Agent': 'MorenPortal/1.0' },
+      body,
+      redirect: 'manual',
+    });
+    addCookies(pick(loginRes));
+    // Başarılı giriş = redirect (302/301). 200 dönerse kimlik hatalı (login sayfası tekrar geldi).
+    if (loginRes.status !== 302 && loginRes.status !== 301) {
+      throw new Error(`TÜRMOB girişi başarısız — TCKN/parola hatalı olabilir (HTTP ${loginRes.status})`);
+    }
+    if (!cookieMap.size) throw new Error('TÜRMOB oturum çerezi alınamadı');
+    return cookieHeader();
+  }
+
+  /**
+   * TÜRMOB e-Belge portalından fatura çek — OTOMATİK login (TCKN=cfg.username, parola=cfg.password),
+   * sonra gelen/giden liste (DataTables AJAX). Asistan PDF veriyordu; biz portal XML'ini alıyoruz (OCR yok).
+   * NOT(ilk-test): liste response satır şeması + İPTAL durum alanı + XML indirme uç URL'i, ilk gerçek
+   * çekimde response'tan netleşecek (loglanır); şimdilik login+liste kanıtı + iskelet. İptal olan satırlar
+   * createDocumentFromProviderXml'e GÖNDERİLMEZ.
    */
   private async fetchTurmobViaLuca(
     cfg: RuntimeIntegrationConfig,
@@ -4183,25 +4206,33 @@ export class FaturaMuhasebelestirmeService implements OnModuleInit, OnModuleDest
       limit: number;
     },
   ): Promise<ProviderInvoicePayload[]> {
-    // Luca'ya job yarat - agent bunu alip islemeli
-    const tip = opts.direction === 'ALIS' ? 'EFATURA_ALIS' : 'EFATURA_SATIS';
-    const job = await (this.prisma as any).lucaFetchJob.create({
-      data: {
-        tenantId: opts.taxpayer.tenantId || (cfg as any).tenantId,
-        sessionId: null,
-        mukellefId: opts.taxpayer.id,
-        donem: opts.period.donem,
-        tip,
-        status: 'pending',
-        createdBy: 'turmob-sorgu',
-        errorMsg: `[META] source=TURMOB_EFATURA dateFrom=${opts.period.startDate} dateTo=${opts.period.endDate}`,
+    if (!cfg.username || !cfg.password) throw new Error('TÜRMOB için TCKN (kullanıcı adı) ve parola gerekli');
+    const cookie = await this.turmobLogin(cfg.username, cfg.password);
+    const BASE = this.TURMOB_BASE;
+    // Gelen=alış (/IncomingInvoice), Giden=satış (/OutgoingInvoice). e-Arşiv ucu ilk testte eklenecek.
+    const listUrl = opts.direction === 'SATIS'
+      ? '/OutgoingInvoice/AllOutgoingInvoiceByFilter'
+      : '/IncomingInvoice/AllIncomingInvoiceByFilter';
+    const listBody = `draw=1&start=0&length=${Math.min(Math.max(Number(opts.limit) || 500, 1), 1000)}`;
+    const res = await fetch(BASE + listUrl, {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/x-www-form-urlencoded; charset=UTF-8',
+        'X-Requested-With': 'XMLHttpRequest',
+        Cookie: cookie,
+        'User-Agent': 'MorenPortal/1.0',
       },
+      body: listBody,
     });
-    this.logger.log(
-      `TURMOB e-Fatura icin Luca job yaratildi: jobId=${job.id} tip=${tip} tx=${opts.taxpayer.id}`,
-    );
-    // Job async olarak agent tarafindan islenecek - su anda 0 payload donulur,
-    // belge sayisi job tamamlandiginda gorunur olur.
+    const data: any = await res.json().catch(() => null);
+    const rows: any[] = Array.isArray(data?.data) ? data.data : Array.isArray(data?.Data) ? data.Data : Array.isArray(data) ? data : [];
+    this.logger.log(`TÜRMOB portal ${opts.direction}: oturum açıldı, ${rows.length} kayıt geldi (tx=${opts.taxpayer.id}). Satır şeması ilk testte: ${JSON.stringify(Object.keys(rows[0] || {})).slice(0, 300)}`);
+    // İPTAL filtresi (durum alanı adı ilk testte netleşecek — "İptal/Iptal/Reddedildi/Cancel" geçeni atla):
+    const isCancelled = (r: any) => /iptal|reddedil|cancel/i.test(JSON.stringify(r?.Durum ?? r?.durum ?? r?.Status ?? r?.status ?? ''));
+    const live = rows.filter((r) => !isCancelled(r));
+    // TODO(ilk-test): live satırlardan ETTN/ID al → XML indir ucu (İndir(Xml) butonunun URL'i) → payload.xml.
+    // Şimdilik login+liste doğrulandı; XML indirme uç URL'i gerçek response/test ile eklenecek.
+    void live;
     return [];
   }
 
