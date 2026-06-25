@@ -6,6 +6,28 @@ import { api } from '@/lib/api';
 import { toast } from 'sonner';
 import { isletmeRef, ISLETME_ISLEM_TURU, ISLETME_KDV_ORAN, defaultBelgeTuruKod, getKayitAltList, defaultKayitAltKod, kayitAltKisaAd } from '@mali-musavir/shared';
 
+// Entegratör "Sorgula/Çek" sonucunu kullanıcıya GÖSTER. Eskiden onSuccess sadece "çekiliyor" diyordu;
+// backend providers[].reason ("yetkiniz yok" gibi) ve created/fetched sayılarını dönüyor ama yutuluyordu.
+function showFetchResult(d: any) {
+  const provs: any[] = Array.isArray(d?.providers) ? d.providers : [];
+  const failed = provs.filter((p) => p?.status === 'FAILED' || (p?.errors && p.errors.length));
+  const queued = provs.filter((p) => p?.status === 'QUEUED_VIA_LUCA');
+  const skipped = provs.filter((p) => p?.status === 'SKIPPED');
+  if (failed.length) {
+    toast.error('Çekilemedi — ' + failed.map((p) => `${p.label || p.provider}: ${p.reason || p.errors?.[0]?.message || 'hata'}`).join(' · '), { duration: 9000 });
+  } else if (Number(d?.created) > 0) {
+    toast.success(`${d.created} fatura çekildi${Number(d?.alreadyQueued) ? ` · ${d.alreadyQueued} zaten vardı` : ''}`);
+  } else if (queued.length) {
+    toast.success(queued[0].reason || 'Luca kuyruğuna alındı (Agent açıkken 1-3 dk içinde düşer)', { duration: 8000 });
+  } else if (skipped.length) {
+    toast(skipped.map((p) => `${p.label || p.provider}: ${p.reason}`).join(' · '), { duration: 8000 });
+  } else if (Number(d?.fetched) === 0) {
+    toast('Bu dönemde entegratörde fatura bulunamadı');
+  } else {
+    toast.success('Sorgu tamamlandı');
+  }
+}
+
 /**
  * Fatura İşleme Merkezi v2 — ana sayfa (CANLI)
  *
@@ -756,7 +778,7 @@ function ScreenFaturalar({ taxpayerId, period, kind = 'ALIS', isIsletme = false,
       api.post('/fatura-muhasebelestirme/integrations/fetch', {
         taxpayerId, direction: kind, donem: period,
       }),
-    onSuccess: () => { toast.success('Belgeler entegratörden çekiliyor'); qc.invalidateQueries({ queryKey: ['fm2'] }); },
+    onSuccess: (r: any) => { showFetchResult(r?.data); qc.invalidateQueries({ queryKey: ['fm2'] }); },
     onError: (e: any) => toast.error('Çekilemedi: ' + (e?.response?.data?.message || e?.message || 'hata')),
   });
   // Geçici köprü: Mihsap "bekleyen evraklar"daki faturaları portala aktarır
@@ -2368,7 +2390,7 @@ function ScreenEntegrator({ taxpayerId, period }: { taxpayerId: string; period: 
   const fetchMut = useMutation({
     mutationFn: (prov: string) =>
       api.post('/fatura-muhasebelestirme/integrations/fetch', { taxpayerId: taxpayerId || undefined, providers: [prov], direction: 'ALIS', donem: period }),
-    onSuccess: () => { toast.success('Sorgu başlatıldı'); qc.invalidateQueries({ queryKey: ['fm2'] }); },
+    onSuccess: (r: any) => { showFetchResult(r?.data); qc.invalidateQueries({ queryKey: ['fm2'] }); },
     onError: (e: any) => toast.error('Sorgu başarısız: ' + (e?.response?.data?.message || e?.message || 'hata')),
   });
   const talimatMut = useMutation({
