@@ -6016,8 +6016,8 @@ export class FaturaMuhasebelestirmeService implements OnModuleInit, OnModuleDest
       const model = attempt >= 3 ? undefined : MAX_MODEL_CHEAP; // 3. deneme: Sonnet (varsayılan)
       const res = await claudeTextViaMax(
         (isImage && !useAzureText)
-          ? { prompt: callPrompt, images: [{ base64: imgBuf!.toString('base64'), mediaType: imgMedia }], timeoutMs: 45000, model }
-          : { prompt: callPrompt, timeoutMs: 60000, model },
+          ? { prompt: callPrompt, images: [{ base64: imgBuf!.toString('base64'), mediaType: imgMedia }], timeoutMs: 90000, model }
+          : { prompt: callPrompt, timeoutMs: 150000, model }, // büyük/çok-kalemli belge 60sn'de bitmiyordu → "Okunamadı". Kuyruk arka planda, uzun süre sorun değil.
       );
       if (!res.ok || !res.text) {
         reason = res.error || 'okunamadı';
