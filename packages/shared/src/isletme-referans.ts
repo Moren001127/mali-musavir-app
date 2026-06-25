@@ -283,6 +283,7 @@ const GVK40_ALT_KURAL: Array<[RegExp, string]> = [
   [/bakim onarim|bakim-onarim|\bonarim\b|\btamir\b|\bservis bedeli\b/, '85'],                                                  // Normal Bakım Onarım
   [/reklam|\bilan\b|tanitim/, '96'],                                                                                           // Pazarlama
   [/danisman|musavirlik hizmet|\bdanismanlik\b/, '194'],                                                                       // Dışarıdan Sağlanan Hizmet
+  [/sarf malzeme|\bsarf\b|tek kullanim|ambalaj|isletme malzeme/, '228'],                                                       // Diğer Sarf Malzeme Giderleri (ambalaj/tek-kullanımlık vb.)
 ];
 
 /**

@@ -13,7 +13,7 @@ import { claudeTextViaMax, MAX_MODEL_CHEAP } from '../common/max-inference';
 import { buildLucaImportExcel, buildLucaIsletmeHizliFisCsv } from './luca-excel.service';
 import { VendorMemoryService } from '../vendor-memory/vendor-memory.service';
 import { MihsapService } from '../mihsap/mihsap.service';
-import { isletmeRef, getKayitAltList, isletmeAlisSatisTuru, isletmeIslemTuru, defaultBelgeTuruKod } from '@mali-musavir/shared';
+import { isletmeRef, getKayitAltList, isletmeAlisSatisTuru, isletmeIslemTuru, defaultBelgeTuruKod, isletmeGiderSinifi, isletmeAutoKayitAltKod, defaultKayitAltKod } from '@mali-musavir/shared';
 
 // ── İşletme defteri AI sınıflandırması ──
 // Faturayı okuyan max-vision AI'ına, mükellefin FAALİYETİ + faturanın İÇERİĞİYLE muhakeme ederek
@@ -37,16 +37,37 @@ function islNorm(s: any): string {
   return String(s || '').toLowerCase().normalize('NFKD').replace(/[̀-ͯ]/g, '').replace(/ı/g, 'i').replace(/[^a-z0-9]/g, '');
 }
 function resolveIslAi(kind: string, parsed: any): any {
-  const ktAd = String(parsed?.isletmeKayitTuru || '').trim();
-  if (!ktAd) return undefined; // AI emin değil → sınıflandırma yok (Eşleşmedi)
   const dir = String(kind || '').toUpperCase().includes('SATIS') ? 'SATIS' : 'ALIS';
   const ref = isletmeRef(dir);
-  const ktN = islNorm(ktAd);
-  const kt = ref.kayitTuru.find((x: any) => islNorm(x.ad) === ktN) || ref.kayitTuru.find((x: any) => islNorm(x.ad).includes(ktN) || ktN.includes(islNorm(x.ad)));
-  if (!kt) return undefined;
+  const giderTuru = String(parsed?.giderTuru || '').trim();
+  const matrahKat = String(parsed?.kategori || parsed?.matrahKategori || '').trim();
+  const vendor = String(parsed?.saticiAd || parsed?.vendorName || '').trim();
+  const ktAd = String(parsed?.isletmeKayitTuru || '').trim();
+
+  // 1) AI'ın verdiği kayıt türü adını koda eşle.
+  let kt: any = null;
+  if (ktAd) {
+    const ktN = islNorm(ktAd);
+    kt = ref.kayitTuru.find((x: any) => islNorm(x.ad) === ktN) || ref.kayitTuru.find((x: any) => islNorm(x.ad).includes(ktN) || ktN.includes(islNorm(x.ad)));
+  }
+  // 2) AI kayıt türü vermedi/eşleşmedi → GİDER tarafında içerik-bazlı deterministik sınıf (Mal/Sabit/GVK40).
+  let detAlt = '';
+  if (!kt && dir === 'ALIS') {
+    const gs = isletmeGiderSinifi({ matrahKategori: matrahKat, giderTuru, vendorName: vendor });
+    if (gs) { kt = ref.kayitTuru.find((x: any) => x.kod === gs.kayitTuruKod) || null; detAlt = gs.kayitAltKod; }
+  }
+  if (!kt) return undefined; // hiçbir kesin sinyal yok → Eşleşmedi
+
+  // 3) Alt türü: AI'ın verdiğini eşle; yoksa İÇERİK-BAZLI türet (elektrik/kira/akaryakıt… ya da deterministik sınıfın alt'ı).
   const altList = getKayitAltList(dir, kt.kod);
   const altN = islNorm(parsed?.isletmeAltTuru || '');
-  const alt = altN ? (altList.find((x: any) => islNorm(x.ad) === altN) || altList.find((x: any) => islNorm(x.ad).includes(altN) || altN.includes(islNorm(x.ad)))) : null;
+  let alt = altN ? (altList.find((x: any) => islNorm(x.ad) === altN) || altList.find((x: any) => islNorm(x.ad).includes(altN) || altN.includes(islNorm(x.ad)))) : null;
+  if (!alt) {
+    const fbKod = detAlt
+      || (kt.kod === '4' ? isletmeAutoKayitAltKod(dir, '4', `${giderTuru} ${vendor}`) : '')
+      || defaultKayitAltKod(dir, kt.kod, kt.ad);
+    if (fbKod) alt = altList.find((x: any) => x.kod === fbKod) || null;
+  }
   return { kayitTuruKod: kt.kod, kayitTuruAd: kt.ad, kayitAltKod: alt?.kod || '', kayitAltAd: alt?.ad || '', autoMatched: true, neden: String(parsed?.isletmeNeden || '').slice(0, 140) };
 }
 
@@ -2344,8 +2365,8 @@ export class FaturaMuhasebelestirmeService implements OnModuleInit, OnModuleDest
     if (c) {
       if (c.giderTuru) patch.giderTuru = String(c.giderTuru).slice(0, 40);
       if (c.kategori) patch.matrahKategori = c.kategori;
-      if (c.isletmeKayitTuru) {
-        let isl = resolveIslAi(kind, { isletmeKayitTuru: c.isletmeKayitTuru, isletmeAltTuru: c.isletmeAltTuru, isletmeNeden: c.isletmeNeden });
+      if (isIsletme && (c.isletmeKayitTuru || c.giderTuru || c.kategori)) {
+        let isl = resolveIslAi(kind, { isletmeKayitTuru: c.isletmeKayitTuru, isletmeAltTuru: c.isletmeAltTuru, isletmeNeden: c.isletmeNeden, giderTuru: c.giderTuru, kategori: c.kategori, saticiAd: doc.vendorName });
         if (isl) {
           // GİB Defter-Beyan: Alış/Satış + İşlem + Belge Türü'nü belgenin sinyallerinden türet (XML yolu).
           const islText = [c.giderTuru, isl.kayitAltAd, c.isletmeNeden].filter(Boolean).join(' ');
@@ -5930,11 +5951,11 @@ export class FaturaMuhasebelestirmeService implements OnModuleInit, OnModuleDest
       'JSON\'a "tevkifatKdv": <tevkifata düşen KDV tutarı (TL) sayı, yoksa 0> ekle — belgede "Hesaplanan KDV Tevkifat", "KDV TEVKİFAT(%..)=... TL" ya da "Tevkifata Tabi İşlem Üzerinden Hes. KDV"den ALIKONAN/tevkif edilen KDV kısmı. Örn "KDV TEVKİFAT(%20,00)=520,00 TL" → 520. Tevkifat yoksa 0.',
       'saticiAd/aliciAd: SATICI (faturayı kesen) ve ALICI (SAYIN/müşteri) ünvanları. saticiVkn/aliciVkn: bu tarafların VKN (10 hane) ya da TC (11 hane) — SADECE rakam. Yazarkasa fişinde satıcı = mağaza. toplam: genel/ödenecek toplam (KDV dahil). Bulamazsan null, UYDURMA.',
       'KURALLAR: Türk sayı biçimi "1.234,56" = 1234.56 (tümünü ondalıklı sayıya çevir). Birden çok KDV oranı varsa her oran ayrı nesne. matrah=KDV hariç tutar, kdv=o orana ait KDV. ÖTV/ÖİV/tevkifat varsa matrahı şişirme — gerçek mal/hizmet matrahını ver. Okunamayan alanı null bırak, UYDURMA.',
-      'kategori: faturadaki mal/hizmetin TÜRÜNE göre TEK kelime seç → "ticari_mal" (satılmak üzere alınan ürün/emtia), "hammadde" (üretimde kullanılan ilk madde/malzeme), "demirbas" (makine/cihaz/ekipman/mobilya/bilgisayar gibi sabit kıymet alımı), "pazarlama" (reklam/ilan/kargo-nakliye/pazarlama), "genel_gider" (kira/elektrik/su/doğalgaz/telefon/internet/akaryakıt/danışmanlık/kırtasiye/yemek/abonelik gibi genel giderler). EMİN DEĞİLSEN "genel_gider".',
+      'kategori: mükellefin İŞİNE + fatura içeriğine göre TEK kelime seç → "ticari_mal" (SADECE mükellefin alıp AYNEN SATARAK ticaretini yaptığı emtia/stok), "hammadde" (üretimde kullanılan ilk madde/malzeme), "demirbas" (makine/cihaz/ekipman/mobilya/bilgisayar gibi sabit kıymet alımı), "pazarlama" (reklam/ilan/kargo-nakliye/pazarlama), "genel_gider" (kira/elektrik/su/doğalgaz/telefon/internet/akaryakıt/danışmanlık/kırtasiye/yemek/abonelik VE mükellefin satmadığı tüketim/SARF malzemesi: ambalaj, tek-kullanımlık, temizlik, servis malzemesi). EMİN DEĞİLSEN "genel_gider". ⚠️ Mükellef MAL TİCARETİ yapmıyorsa (hizmet/eğitim/lokanta/ofis) aldığı malzeme "ticari_mal" DEĞİLDİR — bunları satmıyor, kendi işinde tüketiyor → "genel_gider" (üretim girdisiyse "hammadde").',
       'giderTuru: ALIŞ ise faturadaki ANA mal/hizmetin kısa adı — hesap planındaki gider hesabı adıyla eşleşecek tek-iki kelime: ör. yakıt/motorin/benzin → "akaryakıt"; ayrıca "kira", "elektrik", "su", "doğalgaz", "telefon", "internet", "kırtasiye", "danışmanlık", "nakliye", "yemek", "temizlik", "bakım onarım", "sigorta", "reklam" vb. Yazarkasa fişinde de ürüne bak (benzinlik → akaryakıt). ⚠️ ARAÇ/TAŞIT KİRALAMA bedeli → giderTuru "araç kiralama" yaz (SADECE "kira" YAZMA — "kira" yalnız işyeri/gayrimenkul kirasıdır, araç kirası ayrıdır). Net değilse "" (boş). SATIŞ ise "".',
       'muhasebeNeden: Bir mali müşavirin ağzından, AKICI ve DOĞAL Türkçe ile yazılmış 1-2 cümlelik DEĞERLENDİRME (kalıp/şablon DEĞİL — gerçekten yorumla). Faturada özetle NE alınmış/satılmış (içeriği özetle) ve mükellefin faaliyetine göre bu NİYE o nitelikte (ticari mal / hammadde-üretim girdisi / demirbaş-sabit kıymet / gider). İçerik faaliyetle uyumsuzsa nedenini söyle (ör. yemek üreticisinin aldığı klima → işte kullanılan sabit kıymet/demirbaş; araç kiralama → işyeri kirası değil). ⚠️ "alış"/"satış" kelimesini ve hesap NUMARASINI (153.01.001 gibi) YAZMA — yönü ve kesin hesabı SİSTEM ekleyecek; sen YALNIZ içeriği ve niteliği yorumla. Örnek: "Faturada ayçiçek yağı ve un alınmış; lokanta işletmesinin mutfağında kullandığı gıda malzemeleri olduğundan üretim girdisi (hammadde) niteliğindedir." Belge neyse onu açıkla, uydurma.',
       mukellefBilgi
-        ? `BU FATURAYI ALAN MÜKELLEFİN İŞİ: ${mukellefBilgi}. kategoriyi mükellefin ANA FAALİYETİNE göre seç: üretim/imalat/LOKANTA/RESTORAN/KAFE/PASTANE/YEMEK işletmesi ana işinde KULLANDIĞI/işlediği/pişirdiği malı (gıda, yağ, un, et, sebze, süt, baharat, içecek, ambalaj…) alırsa "hammadde"; alım-satım (toptan/perakende/market) firması SATACAĞI ürünü alırsa "ticari_mal"; uzun ömürlü makine/cihaz/mobilya/bilgisayar/taşıt = "demirbas"; reklam/ilan/kargo/nakliye = "pazarlama"; SADECE işletmeyi yürüten sarf (kira, elektrik, su, doğalgaz, telefon, internet, akaryakıt, kırtasiye, temizlik, danışmanlık) = "genel_gider". ⚠️ KRİTİK-1: LOKANTA/RESTORAN/YEMEK üreticisinin aldığı GIDA / MUTFAK MALZEMESİ (yağ, un, et, sebze…) ASLA "genel_gider" ya da "demirbas" DEĞİLDİR — "hammadde"dir. ⚠️ KRİTİK-2: Mükellefin ANA FAALİYETİNDE SATMADIĞI bir CİHAZ/MAKİNE/EKİPMAN/MOBİLYA/KLİMA/BEYAZ EŞYA/BİLGİSAYAR/TELEVİZYON alımı = "demirbas" (sabit kıymet); ASLA "ticari_mal" DEĞİLDİR. "ticari_mal" YALNIZCA mükellefin o ürünü SATARAK ticaret yaptığı durumdur — ör. LOKANTA/YEMEK üreticisi KLİMA alırsa "demirbas"; klima TİCARETİ yapan firma klima alırsa "ticari_mal".`
+        ? `BU FATURAYI ALAN MÜKELLEFİN İŞİ: ${mukellefBilgi}. kategoriyi mükellefin ANA FAALİYETİNE göre seç: üretim/imalat/LOKANTA/RESTORAN/KAFE/PASTANE/YEMEK işletmesi ana işinde KULLANDIĞI/işlediği/pişirdiği malı (gıda, yağ, un, et, sebze, süt, baharat, içecek, ambalaj…) alırsa "hammadde"; alım-satım (toptan/perakende/market) firması SATACAĞI ürünü alırsa "ticari_mal"; uzun ömürlü makine/cihaz/mobilya/bilgisayar/taşıt = "demirbas"; reklam/ilan/kargo/nakliye = "pazarlama"; SADECE işletmeyi yürüten sarf (kira, elektrik, su, doğalgaz, telefon, internet, akaryakıt, kırtasiye, temizlik, danışmanlık) = "genel_gider". ⚠️ KRİTİK-1: LOKANTA/RESTORAN/YEMEK üreticisinin aldığı GIDA / MUTFAK MALZEMESİ (yağ, un, et, sebze…) ASLA "genel_gider" ya da "demirbas" DEĞİLDİR — "hammadde"dir. ⚠️ KRİTİK-2: Mükellefin ANA FAALİYETİNDE SATMADIĞI bir CİHAZ/MAKİNE/EKİPMAN/MOBİLYA/KLİMA/BEYAZ EŞYA/BİLGİSAYAR/TELEVİZYON alımı = "demirbas" (sabit kıymet); ASLA "ticari_mal" DEĞİLDİR. "ticari_mal" YALNIZCA mükellefin o ürünü SATARAK ticaret yaptığı durumdur — ör. LOKANTA/YEMEK üreticisi KLİMA alırsa "demirbas"; klima TİCARETİ yapan firma klima alırsa "ticari_mal". ⚠️ KRİTİK-3: Mükellefin SATMADIĞI TÜKETİM/SARF malzemesi (ambalaj, poşet, streç, tek-kullanımlık bardak/tabak/çatal/kaşık, eldiven, temizlik, kırtasiye, servis malzemesi) hizmet/eğitim/ofis/lokanta gibi MAL TİCARETİ YAPMAYAN işletmede "genel_gider"dir (sarf malzeme); ASLA "ticari_mal" DEĞİLDİR (mükellef bunları satmıyor, kendi işinde tüketiyor). Bunları SATARAK ticaret yapan ambalaj/kırtasiye toptancısı alırsa "ticari_mal".`
         : '',
       planAdaylar ? `\nMÜKELLEFİN HESAP PLANI — matrah/gider için aday hesaplar (matrahHesapKodu'nu SADECE bu listeden seç):\n${planAdaylar}\n→ matrahHesapKodu: bu faturanın matrahını (mal/hizmet/gider tutarını) mükellefin İŞİNE ve fatura İÇERİĞİNE göre yukarıdaki listeden EN UYGUN TAM koda ata. Mükellefin SATARAK ticaret yaptığı emtia → stok (15x); kendi işinde KULLANDIĞI/tükettiği şey → ilgili gider (7xx/6xx; ör. mutfak malzemesi/çatal-kaşık→mutfak gideri, yakıt→akaryakıt gideri); uzun ömürlü makine/cihaz/mobilya/demirbaş → sabit kıymet (25x); SATIŞ faturasıysa gelir (600). ⚠️ İçeriğe gerçekten uyan hesap yoksa BOŞ bırak — listede OLMAYAN kodu ASLA yazma, uydurma.` : '',
       isImage ? '' : ('\nİÇERİK:\n' + html.replace(/<(script|style)[^>]*>[\s\S]*?<\/(script|style)>/gi, ' ').replace(/<[^>]+>/g, ' ').replace(/&[a-z#0-9]+;/gi, ' ').replace(/\s+/g, ' ').trim().slice(0, 16000)),
@@ -6140,7 +6161,7 @@ export class FaturaMuhasebelestirmeService implements OnModuleInit, OnModuleDest
       mukellefBilgi ? `Faturanın tarafı olan mükellef: ${mukellefBilgi}.` : '',
       'YALNIZCA şu JSON: {"giderTuru":"","kategori":"","isletmeKayitTuru":"","isletmeAltTuru":"","isletmeNeden":"","muhasebeNeden":""}',
       'giderTuru: ALIŞ ise faturadaki ANA mal/hizmetin kısa adı (yakıt/motorin→"akaryakıt"; ayrıca "elektrik","su","doğalgaz","telefon","internet","kira","kırtasiye","danışmanlık","nakliye","yedek parça","bakım onarım","yemek","temizlik","sigorta","reklam" vb). Net değilse "". SATIŞ ise "".',
-      'kategori: mükellefin ANA FAALİYETİNE göre → "ticari_mal" (satılacak emtia), "hammadde" (üretim girdisi), "demirbas" (makine/cihaz/sabit kıymet), "pazarlama" (reklam/kargo/nakliye), "genel_gider" (kira/elektrik/sarf/abonelik). Emin değilsen "genel_gider". ⚠️ Mükellefin SATMADIĞI cihaz/klima/makine/ekipman/mobilya/bilgisayar = "demirbas", ASLA "ticari_mal" değil (lokanta klima alırsa demirbas). Araç/taşıt kiralama = "genel_gider" ama giderTuru "araç kiralama" (kira değil).',
+      'kategori: mükellefin ANA FAALİYETİNE göre → "ticari_mal" (SADECE mükellefin SATARAK ticaretini yaptığı emtia), "hammadde" (üretim girdisi), "demirbas" (makine/cihaz/sabit kıymet), "pazarlama" (reklam/kargo/nakliye), "genel_gider" (kira/elektrik/sarf/abonelik + satılmayan tüketim/sarf malzemesi). Emin değilsen "genel_gider". ⚠️ Mükellefin SATMADIĞI cihaz/klima/makine/ekipman/mobilya/bilgisayar = "demirbas", ASLA "ticari_mal" değil (lokanta klima alırsa demirbas). ⚠️ Mükellef MAL TİCARETİ yapmıyorsa (hizmet/eğitim/lokanta/ofis) aldığı tüketim/sarf malzemesi (ambalaj, tek-kullanımlık, temizlik, kırtasiye, servis) = "genel_gider", ASLA "ticari_mal" değil. Araç/taşıt kiralama = "genel_gider" ama giderTuru "araç kiralama" (kira değil).',
       'muhasebeNeden: Bir mali müşavir ağzından AKICI, DOĞAL Türkçe 1-2 cümlelik değerlendirme (kalıp DEĞİL — gerçekten yorumla). Faturada özetle NE alınmış/satılmış ve mükellefin faaliyetine göre bu NİYE o nitelikte (ticari mal / hammadde / demirbaş / gider). İçerik faaliyetle uyumsuzsa nedenini söyle. ⚠️ "alış"/"satış" kelimesini ve hesap NUMARASINI YAZMA — yönü ve kesin hesabı sistem ekler; sen YALNIZ içeriği ve niteliği yorumla. Örnek: "Faturada ofis için yazıcı ve toner alınmış; işte kullanılan sabit kıymet/demirbaş niteliğindedir."',
       isIsletme ? islPromptSeg() : 'isletmeKayitTuru ve isletmeAltTuru = "" bırak (mükellef İşletme defteri değil).',
       '\nİÇERİK:\n' + contentText.slice(0, 12000),

@@ -356,11 +356,23 @@ function RateSelect({ value, onChange }: { value: string; onChange: (v: string) 
 // Genel temiz açılır liste (native siyah select yerine) — Fatura Türü, Belge Türü vb.
 function PlainSelect({ value, options, onChange }: { value: string; options: { value: string; label: string }[]; onChange: (v: string) => void }) {
   const [open, setOpen] = useState(false);
-  const [pos, setPos] = useState<{ top: number; left: number; width: number } | null>(null);
+  const [pos, setPos] = useState<{ left: number; width: number; maxH: number; top?: number; bottom?: number } | null>(null);
   const boxRef = useRef<HTMLDivElement>(null);
   const popRef = useRef<HTMLDivElement>(null);
   const cur = options.find((o) => String(o.value) === String(value));
-  const measure = () => { const el = boxRef.current; if (!el) return; const r = el.getBoundingClientRect(); setPos({ top: r.bottom + 3, left: r.left, width: r.width }); };
+  // Viewport-duyarlı: altta yer yoksa YUKARI aç; her durumda yüksekliği ekrana sığdır (ekrandan taşmaz).
+  const measure = () => {
+    const el = boxRef.current; if (!el) return;
+    const r = el.getBoundingClientRect();
+    const vh = window.innerHeight;
+    const below = vh - r.bottom - 8;
+    const above = r.top - 8;
+    const flipUp = below < 240 && above > below;
+    const maxH = Math.max(140, Math.min(330, flipUp ? above : below));
+    setPos(flipUp
+      ? { left: r.left, width: r.width, maxH, bottom: vh - r.top + 3 }
+      : { left: r.left, width: r.width, maxH, top: r.bottom + 3 });
+  };
   useEffect(() => {
     if (!open) { setPos(null); return; }
     measure();
@@ -377,7 +389,7 @@ function PlainSelect({ value, options, onChange }: { value: string; options: { v
         <span className={cur ? '' : 'ph'}>{cur ? cur.label : '—'}</span><span className="pselcar" />
       </div>
       {open && pos && (
-        <div className="pselpop" ref={popRef} style={{ position: 'fixed', top: pos.top, left: pos.left, minWidth: pos.width }}>
+        <div className="pselpop" ref={popRef} style={{ position: 'fixed', left: pos.left, minWidth: pos.width, maxHeight: pos.maxH, ...(pos.top != null ? { top: pos.top } : { bottom: pos.bottom }) }}>
           {options.map((o) => (
             <div key={o.value} className={`pselopt${String(o.value) === String(value) ? ' sel' : ''}`} onMouseDown={(e) => { e.preventDefault(); onChange(o.value); setOpen(false); }}>{o.label}</div>
           ))}
@@ -1070,7 +1082,10 @@ function ScreenFaturalar({ taxpayerId, period, kind = 'ALIS', isIsletme = false,
                         <div className="detaybox">
                           {(() => {
                             const rn = richNotes[d.id];
-                            const text = (rn?.text || String((d.ocrData as any)?.muhasebeNedenZengin || '') || String((d.ocrData as any)?.muhasebeNeden || '')).trim();
+                            // NOT: ham `muhasebeNeden` (AI okuma-anı) SATICI gözünden/yanlış nitelikte olabiliyordu →
+                            //   fallback'ten çıkarıldı. Gösterilen yorum yalnız mükellef-gözü: zengin (rn/muhasebeNedenZengin).
+                            //   Eşleşmeyen belgede lazy fetch deterministik mükellef-gözü özeti getirir (rn.text).
+                            const text = (rn?.text || String((d.ocrData as any)?.muhasebeNedenZengin || '')).trim();
                             const loading = !!rn?.loading && !text;
                             if (!text && !loading) return null;
                             return (
