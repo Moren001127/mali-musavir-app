@@ -13,7 +13,7 @@ import { claudeTextViaMax, MAX_MODEL_CHEAP } from '../common/max-inference';
 import { buildLucaImportExcel, buildLucaIsletmeHizliFisCsv } from './luca-excel.service';
 import { VendorMemoryService } from '../vendor-memory/vendor-memory.service';
 import { MihsapService } from '../mihsap/mihsap.service';
-import { isletmeRef, getKayitAltList, isletmeAlisSatisTuru, isletmeIslemTuru, defaultBelgeTuruKod, isletmeGiderSinifi, isletmeAutoKayitAltKod, isletmeAutoKayitTuru, defaultKayitAltKod } from '@mali-musavir/shared';
+import { isletmeRef, getKayitAltList, isletmeAlisSatisTuru, isletmeIslemTuru, defaultBelgeTuruKod, isletmeGiderSinifi, isletmeAutoKayitAltKod, isletmeAutoKayitTuru, defaultKayitAltKod, denetimUyariOlustur } from '@mali-musavir/shared';
 
 // ── İşletme defteri AI sınıflandırması ──
 // Faturayı okuyan max-vision AI'ına, mükellefin FAALİYETİ + faturanın İÇERİĞİYLE muhakeme ederek
@@ -6213,6 +6213,16 @@ export class FaturaMuhasebelestirmeService implements OnModuleInit, OnModuleDest
           belgeTuruKod: defaultBelgeTuruKod(mappedType || parsed.belgeTuru, kind),
         };
       }
+      const _uyarilar = denetimUyariOlustur({
+        invoiceKind: kind,
+        matrah,
+        kdvTutari: kdv,
+        giderTuru: typeof parsed.giderTuru === 'string' ? parsed.giderTuru : '',
+        kalemAciklamalari: Array.isArray(parsed.kalemler) ? parsed.kalemler.map((k: any) => String(k?.ad || '')) : [],
+        muhasebeNeden: typeof parsed.muhasebeNeden === 'string' ? parsed.muhasebeNeden : '',
+        kdvOrani: breakdown[0]?.rate ?? 0,
+        tevkifatVar: parsed.tevkifat === true || tevkifatOrani > 0 || /tevkifat/i.test(String(html || '')),
+      });
       await tx.invoiceAccountingDocument.update({
         where: { id: d.id },
         data: {
@@ -6233,7 +6243,8 @@ export class FaturaMuhasebelestirmeService implements OnModuleInit, OnModuleDest
                 return (aiKod && planLeafSet.has(aiKod)) ? aiKod : undefined;
               })(), kalemler: Array.isArray(parsed.kalemler) ? parsed.kalemler.slice(0, 30).map((k: any) => ({ ad: String(k?.ad || '').slice(0, 80), tutar: Number(k?.tutar) || 0, oran: Number(k?.oran) || 0 })).filter((k: any) => k.ad) : undefined, ...(islSinifAi ? { isletme: islSinifAi } : {}), isReturn: parsed.iade === true || /iade|iptal/i.test(String(parsed.belgeTuru || '')), tevkifatHint: parsed.tevkifat === true || tevkifatOrani > 0 || /tevkifat/i.test(String(html || '')), tevkifatOrani: tevkifatOrani || 0, tevkifatKdv: tevkKdv || 0, engine: parsed._azure ? 'azure-read' : (parsed === preParsed ? 'ubl-xml' : 'max-vision'),
             readMode: parsed === preParsed ? 'ubl-xml' : (isImage ? 'image' : /pdf/i.test(imgMedia) ? 'pdf-text' : /xml/i.test(imgMedia) ? 'xml-text' : 'html'),
-            ...(!preParsed && imgBuf && /xml/i.test(imgMedia) ? { xmlHead: imgBuf.toString('utf8').slice(0, 220).replace(/\s+/g, ' ') } : {}) },
+            ...(!preParsed && imgBuf && /xml/i.test(imgMedia) ? { xmlHead: imgBuf.toString('utf8').slice(0, 220).replace(/\s+/g, ' ') } : {}),
+            ...(_uyarilar.length ? { uyarilar: _uyarilar } : {}) },
         },
       });
     });

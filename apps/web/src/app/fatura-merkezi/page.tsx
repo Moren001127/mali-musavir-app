@@ -1079,6 +1079,9 @@ function ScreenFaturalar({ taxpayerId, period, kind = 'ALIS', isIsletme = false,
                 const ocrCls = d.ocrStatus === 'IN_PROGRESS' ? 'scanning' : justDone.has(d.id) ? 'justdone' : d.ocrStatus === 'PENDING' ? 'queued' : undefined;
                 const fisAcik = fisDetayId === d.id;
                 const fisLines: any[] = Array.isArray(d.lines) ? d.lines : [];
+                const docUyarilar: any[] = Array.isArray((d.ocrData as any)?.uyarilar) ? (d.ocrData as any).uyarilar : [];
+                const docUyariHata = docUyarilar.filter((u: any) => u?.siddet === 'hata').length;
+                const docUyariRenk = docUyariHata > 0 ? '#dc2626' : '#d97706';
                 return (
                   <Fragment key={d.id}>
                   <tr className={`${ocrCls || ''}${fisAcik ? ' detay-on' : ''}`.trim() || undefined}>
@@ -1095,6 +1098,11 @@ function ScreenFaturalar({ taxpayerId, period, kind = 'ALIS', isIsletme = false,
                       : (code ? <span className="hk">{code}</span> : <span className="hk no">— yok —</span>)}</td>
                     <td><span className={`pill ${du.k}`} title={du.cat === 'okunamadi' && d.lucaErrorMessage ? `Neden: ${d.lucaErrorMessage}` : du.cat === 'celiski' ? ((Array.isArray(d.validationIssues) ? d.validationIssues : (Array.isArray(d.ocrData?.validationIssues) ? d.ocrData.validationIssues : [])).filter((i: any) => i?.code && i.code !== 'INCOMPLETE_AMOUNTS' && i?.severity !== 'WARNING').map((i: any) => i.message).filter(Boolean).join(' · ') || du.t) : du.t}>{du.t}</span>{du.cat === 'okunamadi' && d.lucaErrorMessage ? <div className="oneden">{d.lucaErrorMessage}</div> : null}{du.cat === 'celiski' ? <div className="oneden" style={{ fontSize: 10.5, opacity: 0.85 }}>↓ sebebi fiş detayında</div> : null}</td>
                     <td className="actcol" style={{ display: 'flex', gap: 8, alignItems: 'center' }}>
+                      {docUyarilar.length > 0 && (
+                        <span className="dnt-bdg" style={{ color: docUyariRenk, borderColor: docUyariRenk }} title={docUyarilar.map((u: any) => `⚠ ${u.baslik}: ${u.mesaj}`).join('\n\n')} onClick={() => setFisDetayId(fisAcik ? '' : d.id)}>
+                          ⚠{docUyarilar.length}
+                        </span>
+                      )}
                       <span className="eye" onClick={() => setFisDetayId(fisAcik ? '' : d.id)} title={fisAcik ? 'Detayı gizle' : (isIsletme ? 'Kayıt türünü göster' : 'Yevmiye fişini göster')} style={{ color: fisAcik ? 'var(--accent,#2563eb)' : '#2563eb' }}><Ico html={I.ledger} size={15} /></span>
                       <span className="eye" onClick={() => onOpenMuhasebe?.(d.id)} title="Muhasebeleştir ekranında aç" style={{ color: '#7c3aed' }}><Ico html={I.edit} size={15} /></span>
                       <span className="eye" onClick={() => openDocFile(d.id)} title="Belgeyi aç" style={{ color: '#0891b2' }}><Ico html={I.eye} size={15} /></span>
@@ -1121,6 +1129,21 @@ function ScreenFaturalar({ taxpayerId, period, kind = 'ALIS', isIsletme = false,
                             </div>
                             );
                           })()}
+                          {docUyarilar.length > 0 && (
+                            <div style={{ marginBottom: 8 }}>
+                              {docUyarilar.map((u: any, i: number) => {
+                                const isHata = u?.siddet === 'hata';
+                                const isUyari = u?.siddet === 'uyari';
+                                const renk = isHata ? '#dc2626' : isUyari ? '#d97706' : '#2563eb';
+                                const bg = isHata ? 'rgba(220,38,38,0.07)' : isUyari ? 'rgba(217,119,6,0.07)' : 'rgba(37,99,235,0.07)';
+                                return (
+                                  <div key={i} style={{ padding: '6px 10px', marginBottom: 4, background: bg, borderLeft: `3px solid ${renk}`, borderRadius: 5, fontSize: 12, lineHeight: 1.5 }}>
+                                    <b style={{ color: renk }}>{isHata ? '🚨' : isUyari ? '⚠️' : 'ℹ️'} {u.baslik}:</b>{' '}{u.mesaj}
+                                  </div>
+                                );
+                              })}
+                            </div>
+                          )}
                           {Array.isArray((d.ocrData as any)?.kalemler) && (d.ocrData as any).kalemler.length > 0 ? (
                             <div style={{ padding: '6px 10px', marginBottom: 8, background: 'rgba(255,255,255,0.025)', border: '1px solid var(--line)', borderRadius: 5, fontSize: 11.5, maxWidth: 940 }}>
                               <b style={{ color: 'var(--faint)' }}>📋 Fatura kalemleri</b>
@@ -3266,4 +3289,5 @@ const CSS = `
 #fm-root .faint{color:var(--faint)}
 #fm-root .mkbtn{display:inline-flex;align-items:center;padding:5px 11px;border-radius:7px;border:1.5px solid var(--accent-line);background:var(--accent-soft);color:var(--accent);font-size:12px;font-weight:700;cursor:pointer;white-space:nowrap;font-family:inherit;transition:background .12s,color .12s}
 #fm-root .mkbtn:hover{background:var(--accent);color:#fff;border-color:var(--accent)}
+#fm-root .dnt-bdg{display:inline-flex;align-items:center;height:20px;padding:0 6px;border-radius:5px;border:1.5px solid;font-size:11px;font-weight:800;cursor:pointer;letter-spacing:.3px;flex-shrink:0;white-space:nowrap}
 `;
