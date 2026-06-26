@@ -1826,7 +1826,8 @@ function ScreenMuhasebe({ taxpayerId, period, isIsletme = false, taxpayerNace = 
     else if (bd.length > 1) satirlar = bd.map((b: any) => mkSatir(kind, Number(b.matrah ?? b.base) || 0, oranToKdvKod(b.oran ?? b.rate), Number(b.tutar ?? b.amount) || 0));
     else satirlar = [mkSatir(kind, Number(p.matrah) || 0, kdvKod, Number(p.kdv) || 0)];
     setIsl({
-      belgeTuruKod: saved.belgeTuruKod || defaultBelgeTuruKod(selDoc.documentType, kind),
+      // Belge türü: OKUNDUYSA onu göster; okunmadıysa (documentType boş) BOŞ bırak — VARSAYMA, kullanıcı seçer.
+      belgeTuruKod: saved.belgeTuruKod || (selDoc.documentType ? defaultBelgeTuruKod(selDoc.documentType, kind) : ''),
       alisSatisKod: saved.alisSatisKod || '1',
       islemTuruKod: saved.islemTuruKod || '1100',
       plakaNo: saved.plakaNo || '',

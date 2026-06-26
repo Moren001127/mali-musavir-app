@@ -296,7 +296,8 @@ const GVK40_ALT_KURAL: Array<[RegExp, string]> = [
   [/nakliye|tasimacilik|\bnavlun\b|lojistik|sevkiyat|tasima hizmet/, '205'],                                                   // Nakliye
   [/ozel guvenlik|guvenlik hizmet|guvenlik personel|koruma hizmet|guvenlik sirket|devriye hizmet/, '93'],                     // Güvenlik Harcamaları
   [/\bkomisyon\b/, '188'],                                                                                                     // Komisyon
-  [/danisman|musavirlik hizmet|\bdanismanlik\b|disaridan saglanan|\btaseron\b|\bfason\b|yazilim hizmet|bilisim hizmet|teknik destek|yazilim abonelik|lisans bedeli/, '194'], // Dışarıdan Sağlanan Fayda ve Hizmet
+  [/\babonelik\b|\buyelik\b|\bpremium\b|membership|e-?ticaret platform|platform hizmet|dijital hizmet|bulut hizmet|yazilim abonelik|lisans bedeli/, '194'], // Abonelik/üyelik/platform hizmeti → Dışarıdan Sağlanan Hizmet (gıdadan ÖNCE — "premium abonelik" gıdaya düşmesin)
+  [/danisman|musavirlik hizmet|\bdanismanlik\b|disaridan saglanan|\btaseron\b|\bfason\b|yazilim hizmet|bilisim hizmet|teknik destek/, '194'], // Dışarıdan Sağlanan Fayda ve Hizmet
   // ── KONAKLAMA / SEYAHAT ──
   [/konaklama|\botel\b|\bhotel\b|\bpansiyon\b/, '111'],                                                                        // Konaklama
   [/seyahat|otobus bileti|ucak bileti|\bthy\b|pegasus|\bbilet\b|tren bileti|seyahat gider/, '189'],                           // Seyahat ve Ulaşım
@@ -305,7 +306,7 @@ const GVK40_ALT_KURAL: Array<[RegExp, string]> = [
   [/\bgiyim\b|kiyafet|uniforma|\bayakkabi\b|\btekstil\b|konfeksiyon|personel kiyafet/, '101'],                                 // Giyim Giderleri
   [/is yemegi|\bagirlama\b|\btemsil\b|misafir ikram|toplanti ikram|temsil agirlama/, '97'],                                    // Temsil ve Ağırlama
   [/temizlik|\bcay\b|\bkahve\b|\bseker\b|deterjan|\bpecete\b|hijyen|kagit havlu|tuvalet kagidi|cop poseti|temizlik malzeme/, '89'], // Ofis (temizlik/çay/kahve)
-  [/\bgida\b|sebze|\bmeyve\b|bakkal|\bmarket\b|\bmanav\b|\bkasap\b|\bfirin\b|bakliyat|\bicecek\b|kuruyemis|gida urun|\berzak\b/, '90'], // Gıda Harcamaları
+  [/gida urun|gida malzeme|\bsebze\b|\bmeyve\b|\bet urun\b|sut urun|\bekmek\b|bakliyat|kuruyemis|\berzak\b|\bbaharat\b|\bzeytin\b|\bpeynir\b/, '90'], // Gıda Harcamaları (İÇERİK kelimeleri — "market/bakkal" gibi SATICI TİPİ değil, vendor adı yanlış pozitif yapıyordu: "D-MARKET")
   [/ambalaj|\bposet\b|\bstrec\b|\bkoli\b|tek kullanim|sarf malzeme|\bsarf\b|isletme malzeme|\bnaylon\b|paketleme/, '228'],     // Diğer Sarf Malzeme
   // ── BAKIM/ONARIM (genel — araç-bakım yukarıda öncelikli) ──
   [/bakim onarim|bakim-onarim|\bonarim\b|\btamir\b|servis bedeli|tadilat|tesisat onarim/, '85'],                              // Normal Bakım Onarım
